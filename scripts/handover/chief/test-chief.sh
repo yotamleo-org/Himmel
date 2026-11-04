@@ -2557,10 +2557,10 @@ check "79 override: the launch log says it launched unbound" \
     "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-chief".log 2>/dev/null | grep -c 'launching unbound (HIMMEL_LAUNCH_UNBOUND_OK=1)')" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79override/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79o")" >/dev/null 2>&1
 t79=$SECONDS
-out79h="$(run79 in new bus79hang BUS79_HANG=1 BUS_EXEC_SECS=1)"
+out79h="$(run79 in new bus79hang BUS79_HANG=1 BUS_EXEC_SECS=08)"
 check "79 hung bus: refused within the bound" \
     "$(printf '%s\n' "$out79h" | grep -c '^armed: '):$([ $((SECONDS - t79)) -lt 15 ] && echo bounded || echo slow)" "0:bounded"
-check "79 hung bus: the refusal says it timed out" "$(printf '%s\n' "$out79h" | grep -c 'timed out after 1s')" "1"
+check "79 hung bus: the refusal says it timed out" "$(printf '%s\n' "$out79h" | grep -c 'timed out after 8s')" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79hang/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79h")" >/dev/null 2>&1
 # Chief-path twin, on the REAL bus CLI: a chief name already bound
 # refuses the launch whether its holder is dead (a chief name is never re-bound)

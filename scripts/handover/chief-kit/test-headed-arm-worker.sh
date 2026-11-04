@@ -4773,6 +4773,7 @@ cat > "$bus45/headed" <<'HEADED_EOF'
   printf 'BUS_CLI=%s\n' "${HEADED_ARM_BUS_CLI:-<unset>}"
   printf 'AMBIENT=%s\n' "${HIMMEL_BUS_NAME:-<unset>}"
   printf 'EXTRA=%s\n' "${HIMMEL_BUS_EXTRA:-<unset>}"
+  printf 'OVERRIDE=%s\n' "${HIMMEL_LAUNCH_UNBOUND_OK:-<unset>}"
 } > "$(dirname "$0")/seen"
 HEADED_EOF
 chmod 755 "$bus45/headed"
@@ -4940,17 +4941,28 @@ HIMMEL_LAUNCH_UNBOUND_OK=1 HEADED_ARM_BUS_CLI="$bus45_broken" XDG_STATE_HOME="$b
     bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45 HIMMEL-9071-broken "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 >/dev/null 2>&1 || rc=$?
 check "9071e broken bus with the override: launch exits 0, unbound" "$rc:$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen" 2>/dev/null)" "0:<unset>"
 check "9071e broken bus with the override: the log says it launched unbound" "$(grep -c 'launching unbound (HIMMEL_LAUNCH_UNBOUND_OK=1)' "$bus45/log")" "1"
+check "9071e the override is not passed on to the worker" "$(sed -n 's/^OVERRIDE=//p' "$bus45/seen" 2>/dev/null)" "<unset>"
+mkdir -p "$bus45/nomktemp"
+# shellcheck disable=SC2016  # deliberately unexpanded: written literally, evaluated when the stub runs.
+printf '#!/usr/bin/env bash\ncase "$*" in *headed-arm-bus*) exit 1 ;; esac\nPATH="${PATH#*:}" exec mktemp "$@"\n' > "$bus45/nomktemp/mktemp"
+chmod +x "$bus45/nomktemp/mktemp"
+rm -f "$bus45/seen"; rc=0
+HIMMEL_LAUNCH_UNBOUND_OK=1 PATH="$bus45/nomktemp:$PATH" HEADED_ARM_BUS_CLI="$bus45_broken" XDG_STATE_HOME="$bus45/state" \
+  HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
+  HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+    bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45 HIMMEL-9071-broken "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 >/dev/null 2>&1 || rc=$?
+check "9071h the override never launches when the bus output was lost" "$rc:$([ -e "$bus45/seen" ] && echo launched || echo none)" "2:none"
 rc=0; HIMMEL_LAUNCH_UNBOUND_OK=1 run45 in HIMMEL-45-in HIMMEL-chief-45-other || rc=$?
 check "9071f the override never launches over a held name" "$rc:$([ -e "$bus45/seen" ] && echo launched || echo none)" "2:none"
 bus45_hung="$bus45/bus-hung-stub"
 printf '#!/usr/bin/env bash\nexec sleep 20\n' > "$bus45_hung"; chmod +x "$bus45_hung"
 rm -f "$bus45/seen"; rc=0; bus9071_t0=$SECONDS
-bus9071_out="$(BUS_EXEC_SECS=1 HEADED_ARM_BUS_CLI="$bus45_hung" XDG_STATE_HOME="$bus45/state" \
+bus9071_out="$(BUS_EXEC_SECS=08 HEADED_ARM_BUS_CLI="$bus45_hung" XDG_STATE_HOME="$bus45/state" \
   HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
   HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
     bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45 HIMMEL-9071-hung "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 2>&1)" || rc=$?
 check "9071g hung bus: refused within the bound" "$rc:$([ $((SECONDS - bus9071_t0)) -lt 15 ] && echo bounded || echo slow)" "2:bounded"
-contains "9071g hung bus: the refusal says it timed out" "$bus9071_out" "timed out after 1s"
+contains "9071g hung bus: the refusal says it timed out, a leading zero read as decimal" "$bus9071_out" "timed out after 8s"
 # an opted-out profile launched from a shell that carries a live
 # bind flag and an extra HIMMEL_BUS_* leaks neither to the launched env.
 rm -f "$bus45/seen"

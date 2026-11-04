@@ -2747,6 +2747,7 @@ case "${MCP_NAMES_JSON:-}" in
             # never hold the launch. Past the limit: TERM, a second's grace, KILL.
             BUS_SECS="${BUS_EXEC_SECS:-15}"
             case "$BUS_SECS" in ''|*[!0-9]*) BUS_SECS=15 ;; esac
+            BUS_SECS=$((10#$BUS_SECS))
             BUS_TMP="$(mktemp "${TMPDIR:-/tmp}/headed-arm-bus.XXXXXX")" || BUS_TMP=/dev/null  # swallow-ok: the output only feeds the refusal text
             "$BUS_CLI" "${BUS_ARGS[@]}" >"$BUS_TMP" 2>&1 &
             BUS_PID=$! BUS_TICKS=0 BUS_RC=0
@@ -2777,9 +2778,10 @@ case "${MCP_NAMES_JSON:-}" in
                 worker_propagate_env HIMMEL_BUS_NAME "$NAME"
                 # The CLI that registered is the CLI that binds.
                 export HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$BUS_CLI"
-            elif [ "${HIMMEL_LAUNCH_UNBOUND_OK:-}" = 1 ] && [[ "$BUS_OUT" != *"name already registered"* ]]; then
+            elif [ "${HIMMEL_LAUNCH_UNBOUND_OK:-}" = 1 ] && [ "$BUS_TMP" != /dev/null ] && [[ "$BUS_OUT" != *"name already registered"* ]]; then
                 # Operator override for a broken bus, set in the launching shell:
-                # the worker launches unbound. A held name is never overridden.
+                # the worker launches unbound. A held name is never overridden,
+                # and output that was not captured cannot show the name is free.
                 echo "$(date +%F_%T) headed-arm-worker: WARN bus register failed for $NAME - launching unbound (HIMMEL_LAUNCH_UNBOUND_OK=1): $BUS_OUT" >> "$LOG"
                 echo "headed-arm-worker: WARN bus register failed for $NAME - launching unbound (HIMMEL_LAUNCH_UNBOUND_OK=1): $BUS_OUT" >&2
             else
@@ -2804,7 +2806,7 @@ case "${MCP_NAMES_JSON:-}" in
         fi
         ;;
 esac
-unset -v BUS_CLI BUS_ROLE BUS_ARGS BUS_OUT BUS_REASON BUS_CHIEF WORKER_SESSION_BUS_PAIR BUS_SECS BUS_TMP BUS_PID BUS_TICKS BUS_RC
+unset -v BUS_CLI BUS_ROLE BUS_ARGS BUS_OUT BUS_REASON BUS_CHIEF WORKER_SESSION_BUS_PAIR BUS_SECS BUS_TMP BUS_PID BUS_TICKS BUS_RC HIMMEL_LAUNCH_UNBOUND_OK
 
 # Every headed worker gets one bus-idle-waker, started by headed-arm.sh once the
 # konsole pid exists (only it knows the pid). A headless worker has no konsole and

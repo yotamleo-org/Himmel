@@ -333,7 +333,10 @@ bus_bounded() {
     local cli="$1" secs="${BUS_EXEC_SECS:-15}" tmp pid ticks=0 rc=0
     shift
     case "$secs" in ''|*[!0-9]*) secs=15 ;; esac
-    tmp="$(mktemp "${TMPDIR:-/tmp}/chief-bus.XXXXXX")" || tmp=/dev/null  # swallow-ok: the output only feeds the refusal text
+    secs=$((10#$secs))
+    # bus_captured=0: the output was lost, so it cannot show a name is free.
+    bus_captured=1
+    tmp="$(mktemp "${TMPDIR:-/tmp}/chief-bus.XXXXXX")" || { tmp=/dev/null; bus_captured=0; }  # swallow-ok: the output only feeds the refusal text
     "$cli" "$@" >"$tmp" 2>&1 &
     pid=$!
     while kill -0 "$pid" 2>/dev/null; do
@@ -430,9 +433,9 @@ do_arm() {
                 fi
             fi
             bus_note "$log" "registered $session as chief$bus_stamp"
-        elif [ "${HIMMEL_LAUNCH_UNBOUND_OK:-}" = 1 ] && [[ "$bus_out" != *"name already registered"* ]]; then
+        elif [ "${HIMMEL_LAUNCH_UNBOUND_OK:-}" = 1 ] && [ "$bus_captured" = 1 ] && [[ "$bus_out" != *"name already registered"* ]]; then
             # Operator override for a broken bus, set in the launching shell.
-            # A held name is never overridden.
+            # A held name is never overridden, nor is output that was lost.
             bus_warn "$log" "bus register failed for $session - launching unbound (HIMMEL_LAUNCH_UNBOUND_OK=1): $bus_out"
         else
             # An unbound chief can neither hear nor reach its
