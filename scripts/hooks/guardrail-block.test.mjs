@@ -9,6 +9,10 @@ import zlib from 'node:zlib';
 import { makeTmpDir } from '../lib/test-tmpdir.mjs';
 import { install as installStatusData, statusDetail, sanitizedGitEnv, findPackOffset, readObject, readHeadBlob, applyDelta, readHeadOid } from './guardrail-block.mjs';
 
+// The guardrail subprocesses and their git calls never read the operator's real home or config roots.
+const SANDBOX_HOME = makeTmpDir('gblock-home-');
+Object.assign(process.env, { HOME: SANDBOX_HOME, XDG_CONFIG_HOME: join(SANDBOX_HOME, '.config'), HIMMEL_CONFIG_DIR: join(SANDBOX_HOME, '.himmel'), CLAUDE_CONFIG_DIR: join(SANDBOX_HOME, '.claude'), CLAUDE_USER_SETTINGS: join(SANDBOX_HOME, '.claude', 'settings.json'), GIT_CONFIG_GLOBAL: join(SANDBOX_HOME, '.gitconfig') });
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MODULE = join(HERE, 'guardrail-block.mjs');
 const NODE = process.execPath;

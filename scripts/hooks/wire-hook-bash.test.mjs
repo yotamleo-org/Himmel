@@ -8,6 +8,10 @@ import { fileURLToPath } from 'node:url';
 import { assertOnlyHookCommandsChanged, assertPermissionsUnchanged, EXPECTED_SCRIPT_ORDER } from './wire-hook-bash.mjs';
 import { makeTmpDir } from '../lib/test-tmpdir.mjs';
 
+// The wirer subprocesses never read the operator's real home or config roots.
+const SANDBOX_HOME = makeTmpDir('wire-hook-bash-home-');
+Object.assign(process.env, { HOME: SANDBOX_HOME, XDG_CONFIG_HOME: join(SANDBOX_HOME, '.config'), HIMMEL_CONFIG_DIR: join(SANDBOX_HOME, '.himmel'), CLAUDE_CONFIG_DIR: join(SANDBOX_HOME, '.claude'), CLAUDE_USER_SETTINGS: join(SANDBOX_HOME, '.claude', 'settings.json'), GIT_CONFIG_GLOBAL: join(SANDBOX_HOME, '.gitconfig') });
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WIRER = join(HERE, 'wire-hook-bash.mjs');
 const SETTINGS = join(HERE, '..', '..', '.claude', 'settings.json');
