@@ -532,5 +532,49 @@ out19=$( PATH="$BIN19:$PATH" bash "$SCRIPT" "$CORPUS19" 2>&1 ); rc19=$?
 grep -q '"keep19"' "$OUT19/graph.pre-ast.kept.json" 2>/dev/null && pass "T19 pre-rebuild graph kept" || fail "T19 nothing kept: $(ls -A "$OUT19")"
 echo "$out19" | grep -q "graph.pre-ast.kept.json" && pass "T19 stderr names the kept file" || fail "T19 stderr: $out19"
 
+# --- T20: the hourly rebuild keeps the shell sourcing edges
+echo "T20: graphify update rewrites graph.json -> the harden re-adds the sources edge"
+CORPUS20="$WS/c20"; OUT20="$CORPUS20/graphify-out"; mkdir -p "$CORPUS20/a"
+cat > "$CORPUS20/a/caller.sh" <<'SH'
+#!/usr/bin/env bash
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$HERE/lib.sh"
+SH
+printf '#!/usr/bin/env bash\n' > "$CORPUS20/a/lib.sh"
+BIN20="$WS/bin20"; mkdir -p "$BIN20"
+cat > "$BIN20/graphify" <<STUB
+#!/usr/bin/env bash
+mkdir -p "$OUT20"
+cat > "$OUT20/graph.json" <<'JSON'
+{"directed": false, "multigraph": false, "graph": {}, "hyperedges": [], "links": [],
+ "nodes": [
+  {"id": "a_caller_sh", "label": "caller.sh", "source_file": "a/caller.sh", "file_type": "code", "source_location": "L1", "metadata": {"language": "bash", "kind": "file"}},
+  {"id": "a_lib_sh", "label": "lib.sh", "source_file": "a/lib.sh", "file_type": "code", "source_location": "L1", "metadata": {"language": "bash", "kind": "file"}}]}
+JSON
+exit 0
+STUB
+chmod +x "$BIN20/graphify"
+out20=$( PATH="$BIN20:$PATH" bash "$SCRIPT" "$CORPUS20" 2>&1 ); rc20=$?
+[ "$rc20" -eq 0 ] && pass "T20 exits 0" || fail "T20 should exit 0 (got $rc20): $out20"
+python3 -c 'import json,sys;g=json.load(open(sys.argv[1]));sys.exit(0 if any(e["relation"]=="sources" and e["source"]=="a_caller_sh" and e["target"]=="a_lib_sh" for e in g["links"]) else 1)' "$OUT20/graph.json" \
+  && pass "T20 the rebuilt graph holds the caller to lib sources edge" || fail "T20 no sources edge after the tick: $(cat "$OUT20/graph.json" 2>&1)"
+[ ! -e "$OUT20/.promote.lock" ] && pass "T20 the lock is released" || fail "T20 lock left behind"
+
+# --- T21: a harden that fails (graph.json is not JSON) does not fail the tick
+echo "T21: harden failure -> WARN, the tick still exits 0"
+CORPUS21="$WS/c21"; OUT21="$CORPUS21/graphify-out"; mkdir -p "$CORPUS21"
+BIN21="$WS/bin21"; mkdir -p "$BIN21"
+cat > "$BIN21/graphify" <<STUB
+#!/usr/bin/env bash
+mkdir -p "$OUT21"
+printf 'not json' > "$OUT21/graph.json"
+exit 0
+STUB
+chmod +x "$BIN21/graphify"
+out21=$( PATH="$BIN21:$PATH" bash "$SCRIPT" "$CORPUS21" 2>&1 ); rc21=$?
+[ "$rc21" -eq 0 ] && pass "T21 exits 0 despite the harden failing" || fail "T21 should exit 0 (got $rc21): $out21"
+echo "$out21" | grep -q "WARN harden-graph.py failed" && pass "T21 the failure is a WARN on stderr" || fail "T21 no WARN: $out21"
+[ ! -e "$OUT21/.promote.lock" ] && pass "T21 the lock is released" || fail "T21 lock left behind"
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"
