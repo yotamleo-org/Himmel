@@ -27,7 +27,7 @@ export function Shell({ token, run, fleet, children }: { token: string | null; r
         {links.length > 0 && (
           <nav className="pages" aria-label="Pages">
             {links.map((l) => (
-              <a key={l.id} href={l.href} aria-current={l.current ? "page" : undefined} {...(l.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
+              <a key={l.id} data-page={l.id} href={l.href}aria-current={l.current ? "page" : undefined} {...(l.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
                 {l.label}
                 {l.id === "fleet" && <span className={`st-dot ${dot.cls}`} title={dot.title} />}
               </a>

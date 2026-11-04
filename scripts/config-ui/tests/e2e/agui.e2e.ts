@@ -270,7 +270,23 @@ test("archived and released consoles show zero live sessions", async ({ page }) 
   await expect(finished.locator(".fleet-finished .fleet-row")).toHaveCount(2);
 });
 
-test("9. the fleet landing lists 3 live sessions and 1 wrapped one, and a row opens that session's stream", async ({ page }) => {
+test("a wrapped session with no console stays reachable from the Fleet page", async ({ page }) => {
+  h = await bootAgui("", { fleet: true });
+  await page.route("**/api/agui/fleet", async (route) => {
+    const response = await route.fetch();
+    const fleet = await response.json();
+    const wrapped = fleet.sessions.find((r: any) => r.state === "wrapped");
+    fleet.sessions = [{ ...wrapped, console: "gone-chief", parent: "gone-chief" }];
+    await route.fulfill({ response, json: fleet });
+  });
+  await page.goto(h.url);
+  const finished = page.locator("details.fleet-closed");
+  await expect(finished).not.toHaveAttribute("open", "");
+  await finished.locator("summary").click();
+  await expect(finished.locator(`[id="fleet-${FLEET.wrapped.name}"] a.fleet-head`)).toHaveAttribute("href", new RegExp(`&run=${FLEET.wrapped.run}$`));
+});
+
+test("9.the fleet landing lists 3 live sessions and 1 wrapped one, and a row opens that session's stream", async ({ page }) => {
   h = await bootAgui("", { fleet: true });
   expect(h.url).not.toContain("&run=");
   await page.goto(h.url);
@@ -438,6 +454,7 @@ test("12. two-chief group headers, deep-linked page, and a row drill-in", async 
   const chiefs = page.locator(".fleet-chief a.chief-page");
   await expect(chiefs).toHaveCount(2);
   await page.locator(".fleet-chief", { has: page.locator("h2", { hasText: FLEET.console.name }) }).locator("a.chief-page").click();
+  await expect(page.locator(".top .run")).toHaveText(FLEET.console.name);
   await expect(page.locator(".fleet-chief h2")).toHaveText(FLEET.console.name);
   const worker = card(page, FLEET.worker.name);
   await worker.locator("a.fleet-head").click();

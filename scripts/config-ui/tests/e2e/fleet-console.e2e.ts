@@ -70,6 +70,24 @@ test("a live chief's group header counts its running and waiting-for-GO sessions
   await expect(group).toHaveJSProperty("open", true); // the link follows; it never toggles the group
 });
 
+// One rail, two documents: the AG-UI Fleet page and the console's Board page list the same page ids.
+test("the AG-UI Fleet rail lists the same page ids as the console rail on Board", async ({ page }) => {
+  test.skip(noDist, NO_DIST);
+  h = await bootAgui("", { fleet: true });
+  const { origin, hash } = new URL(h.url);
+  const ids = (p: typeof page) => p.locator("nav.pages a[data-page]").evaluateAll((as) => as.map((a) => a.getAttribute("data-page")).join());
+  const fleetPage = await page.context().newPage();
+  const settled = Promise.all([page.waitForResponse("**/api/sources"), fleetPage.waitForResponse("**/api/sources")]);
+  await page.goto(`${origin}/${hash}&page=board`);
+  await fleetPage.goto(h.url);
+  await settled;
+  await expect(page.locator("nav.pages a[data-page]").first()).toBeVisible();
+  await expect(fleetPage.locator("nav.pages a[data-page]").first()).toBeVisible();
+  const consoleIds = await ids(page);
+  expect(consoleIds).toContain("fleet");
+  await expect.poll(() => ids(fleetPage)).toBe(consoleIds);
+});
+
 // The console's Health page keeps its project picker in the page bar, never the rail; at 760 px the bar folds to "Filters (n on)".
 test("the Health page bar folds to Filters (n on) at 760px and the rail holds no picker", async ({ page }) => {
   h = await bootAgui("", { fleet: true });
