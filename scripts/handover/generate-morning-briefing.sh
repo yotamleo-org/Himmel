@@ -414,7 +414,11 @@ if [ "$briefing_forge" = "github" ] && [ "$pr_map_ok" -eq 1 ]; then
     # swallow-ok: a failed open-PR read sets open_ok=0 and the remote rows are skipped
     if open_json=$($GH_CMD pr list --state open --limit "$pr_cap" --json headRefName 2>/dev/null) &&
         open_branches=$(printf '%s' "$open_json" | jq -r '.[].headRefName' 2>/dev/null); then
-        :
+        # swallow-ok: a failed count reads as not capped only when the list itself parsed above
+        if [ "$(printf '%s' "$open_json" | jq 'length' 2>/dev/null || echo 0)" -ge "$pr_cap" ]; then
+            open_branches=""; open_ok=0
+            echo "WARNING: briefing: gh open-PR list hit its cap — remote stale rows skipped" >&2
+        fi
     else
         open_branches=""; open_ok=0
         echo "WARNING: briefing: gh open-PR query failed — remote stale rows skipped" >&2

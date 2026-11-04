@@ -1105,6 +1105,14 @@ rem5=$(grep -F '`origin/' "$OUT_RM5" || true)
 assert_contains "cap: a miss reads PR unknown" "PR unknown" "$rem5"
 assert_absent   "cap: a miss gets no delete command" "git push origin --delete old-nopr" "$(cat "$OUT_RM5")"
 
+echo "TEST: an open-PR list that hit its cap skips the remote rows"
+OUT_RM6="$TMP_ROOT/remote-stale6.md"
+OPENCAP=$(jq -nc '[range(500) | {headRefName: ("open-\(.)")}]')
+FAKE_GH_PR_ALL="$PRALL_NOOPEN" FAKE_GH_PR_OPENLIST="$OPENCAP" run_day "$REMREPO" --out "$OUT_RM6" >/dev/null 2>&1
+rem6=$(grep -F '`origin/' "$OUT_RM6" || true)
+assert_absent "open cap: no remote row is listed" "origin/" "$rem6"
+assert_absent "open cap: no delete command is offered" "git push origin --delete" "$(cat "$OUT_RM6")"
+
 echo "TEST: sixteen or more idle branches print 15 rows and a count by kind"
 MANYREPO="$TMP_ROOT/manyrepo"; mk_day_repo "$MANYREPO"
 n=1; while [ "$n" -le 20 ]; do mkref "$MANYREPO" "idle-$n" 9; n=$((n+1)); done
