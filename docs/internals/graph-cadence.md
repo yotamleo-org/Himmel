@@ -113,8 +113,8 @@ that already exist, so it can never re-arm a disarmed Luna task.
 The publish task is opt-in: `arm` registers `HIMMEL-GraphPublish-Himmel`
 only with `--with-publish`. It is grouped with the free structural (AST) pair for
 `--ast-only` purposes (HIMMEL-2071): it needs no backend credential, so
-`--ast-only` arms/replaces it too, alongside the AST pair, while leaving the
-weekly semantic pair untouched. Default schedule: **every 6 hours**,
+`--ast-only` arms/replaces it too, alongside the himmel AST task, while leaving the
+himmel semantic task untouched. Default schedule: **every 6 hours**,
 anchored at `:35` past (`35 */6 * * *`) — 20 minutes clear of `HIMMEL-GraphMapAst-Himmel`'s
 own `:15`-past hourly fire, wider than the AST pair's own 10-minute mutual
 stagger, because this step is not free-and-instant like the AST pair: with a

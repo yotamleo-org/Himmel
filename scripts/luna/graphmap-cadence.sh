@@ -340,9 +340,10 @@ usage() {
     cat <<'EOF'
 Usage: graphmap-cadence.sh <arm|status|disarm> [flags]
 
-Arm the OS scheduler with the recurring graphify graph cadence: an HOURLY
-free structural (AST) refresh per corpus (`graphify update <corpus> --force`,
-via the promote-lock wrapper — no bank, no claude session) AND a WEEKLY
+Arm the OS scheduler with the recurring graphify graph cadence for the himmel
+corpus (the Luna corpus only via `arm --luna-only`): a free structural (AST)
+refresh (`graphify update <corpus> --force`,
+via the promote-lock wrapper — no bank, no claude session) AND a
 semantic refresh per corpus (fence-safe incremental extraction + curated-MOC
 republish, `bash refresh-graph-map.sh ...` on the claude-cli backend — draws
 the SAME interactive 5h/weekly Anthropic bank as a live session, gated by
@@ -391,11 +392,12 @@ Flags (arm only, except --dry-run and --luna-only):
                          --ast-only for the free structural row alone and
                          --with-luna-semantic to add the semantic worker. Refused
                          with --with-publish and --rewrite-armed.
-  --ast-only             Arm/dedup-check ONLY the free structural (AST) pair.
-                         The semantic pair is left
+  --ast-only             Arm/dedup-check ONLY the free structural (AST) row of the
+                         scope being armed (himmel's, or Luna's with --luna-only).
+                         That scope's semantic row is left
                          absent/untouched and its backend credential is not
                          required. Re-arm without --ast-only later to add the
-                         semantic pair back in (--force to replace).
+                         semantic row back in (--force to replace).
   --with-publish         Also register the publish worker
                          (HIMMEL-GraphPublish-Himmel, every 6h). Opt-in:
                          arm leaves it out by default.
