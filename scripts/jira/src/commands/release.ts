@@ -281,39 +281,40 @@ export function parseDecisions(stdout: string): Decision[] {
 
 // A call launched from inside a session inherits its markers, which make the child identify as that session
 // or a chief worker. The auth and provider vars go too, so the child bills the native subscription bank the
-// preflight checked, never an API key or a cloud provider.
+// preflight checked, never an API key, the API lane (decision 525) or a cloud provider; the OAuth token stays, as
+// scripts/lib/native-auth-pin.sh keeps it.
 export function judgeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return Object.fromEntries(Object.entries(env).filter(([k]) =>
     !['CLAUDECODE', 'AI_AGENT', 'CLAUDE_PID', 'CLAUDE_EFFORT', 'CLAUDE_PROJECT_DIR', 'HIMMEL_RELEASE_MANAGER'].includes(k)
-    && !['HIMMEL_CONSOLE_', 'HIMMEL_RM_', 'HIMMEL_WORKER_SESSION_'].some((p) => k.startsWith(p))
-    && !['ANTHROPIC_', 'CLAUDE_CODE_'].some((p) => k.toUpperCase().startsWith(p))));
+    && !['HIMMEL_CONSOLE_', 'HIMMEL_RM_', 'HIMMEL_WORKER_SESSION_', 'HIMMEL_API_'].some((p) => k.startsWith(p))
+    && (k === 'CLAUDE_CODE_OAUTH_TOKEN' || !['ANTHROPIC_', 'CLAUDE_CODE_'].some((p) => k.toUpperCase().startsWith(p)))));
 }
 
-// The call runs on the API lane (decision 288): the lane is on and the account auto-picked unless the caller says
-// otherwise, so an operator's HIMMEL_API_LANE=off still refuses the API call. The lane then alerts and, unless
-// HIMMEL_API_FALLBACK=off, re-runs a refused or failed call once on the subscription, replaying the stdin prompt (docs/internals/api-lane.md).
-export function apiLaneEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return {
-    ...judgeEnv(env),
-    HIMMEL_API_LANE: env.HIMMEL_API_LANE ?? 'on',
-    HIMMEL_API_ACCOUNT: env.HIMMEL_API_ACCOUNT ?? 'auto',
-    HIMMEL_API_KIND: 'judge',
-    HIMMEL_API_CALL_TIMEOUT_S: '900',
-    HIMMEL_API_TOOLS: '',
-  };
+// The native-lane subscription preflight: its last line is the token.
+function judgePreflight(): string {
+  const env = { ...process.env, CADENCE_USAGE_LANE: 'native', CADENCE_USAGE_WORKER: 'rm-judge' };
+  for (const k of ['WORKER_SESSION_LANE', 'CADENCE_USAGE_LAUNCH', 'CADENCE_USAGE_CALLER_PID']) delete env[k];
+  return execFileSync('bash', [join(repoRoot, 'scripts', 'lib', 'usage-preflight.sh')], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] })
+    .trim().split('\n').pop() ?? '';
 }
 
-// One bounded model call per batch through the API launcher: tool-free, one turn, JSON envelope, the prompt on stdin.
-// The launcher's own bank gate and credit ledger replace the subscription preflight.
+// One bounded model call per batch on the subscription, never the API lane (decision 525): preflight first, the bare
+// plugin profile, no tools, one turn, JSON envelope, the prompt on stdin. A stale bank reading still shows budget and
+// runs; an unreadable or exhausted bank rules nothing.
 export const liveJudge: Judge = async (input) => {
+  const verdict = judgePreflight();
+  if (verdict !== 'PROCEED' && verdict !== 'BANK-STALE') throw new Error(`rm-run: nothing ruled: preflight ${verdict || '(no token)'}`);
   const skill = readFileSync(join(repoRoot, 'marketplace', 'plugins', 'himmel-ops', 'skills', 'release-manager', 'SKILL.md'), 'utf8');
+  // execFileSync throws on the resolver's fail-closed rc 2.
+  const settings = execFileSync('bash', [join(repoRoot, 'scripts', 'lanes', 'profile-settings.sh'), 'bare'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }).trim();
+  if (!settings) throw new Error('rm-run: profile-settings.sh bare printed no settings path; nothing ruled');
   // An empty cwd, so no project instructions load beside the skill.
   const cwd = mkdtempSync(join(tmpdir(), 'rm-run-judge-'));
   try {
-    const out = execFileSync('bash', [
-      join(repoRoot, 'scripts', 'api-lane', 'claude-api.sh'),
-      '-p', '--model', 'opus', '--effort', 'high', '--permission-mode', 'plan', '--max-budget-usd', '2', '--output-format', 'json',
-    ], { input: judgePrompt(input, skill), cwd, env: apiLaneEnv(process.env), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 900_000, stdio: ['pipe', 'pipe', 'inherit'] });
+    const out = execFileSync('claude', [
+      '-p', '--settings', settings, '--model', 'opus', '--effort', 'high', '--output-format', 'json', '--permission-mode', 'plan',
+      '--tools', '', '--max-turns', '1', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
+    ], { input: judgePrompt(input, skill), cwd, env: judgeEnv(process.env), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 900_000, stdio: ['pipe', 'pipe', 'inherit'] });
     return parseDecisions(out);
   } finally {
     rmSync(cwd, { recursive: true, force: true });

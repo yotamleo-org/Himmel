@@ -787,6 +787,17 @@ function withC(f) {
   f.save();
 }
 
+// The operator's "BANK-UNKNOWN invalid-account-config" alert: the station config carried a C row before PR 4669 put C
+// in the account set, and one unknown row refuses the whole config (fail-closed, kept). With C known it is gone.
+test('HIMMEL-9077: one account row outside A, B and C refuses every pick with invalid-account-config; a C row does not', () => {
+  const f = fixture();
+  withC(f);
+  assert.equal(pickUsd(f, '0.01').verdict, 'PROCEED');
+  f.config.accounts.D = { organization_id: 'org-d', cycle_id: 'cycle-d', cap_usd: '1.00', reset_at: FAR_RESET };
+  f.save();
+  assert.deepEqual(pickUsd(f, '0.01'), { verdict: 'BANK-UNKNOWN', reason: 'invalid-account-config' });
+});
+
 test('HIMMEL-9052: account C reports its own 200.00 cap by the explicit name', () => {
   const f = fixture();
   withC(f);
