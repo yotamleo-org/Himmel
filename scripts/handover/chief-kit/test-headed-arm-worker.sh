@@ -163,6 +163,7 @@ PATH="$tmp/sysd-bin:$PATH"
 # scope, waker started); a Darwin host takes the shim branch and fails them all.
 # The Darwin rows pin HEADED_ARM_UNAME=Darwin inline.
 export HEADED_ARM_UNAME=Linux
+export UNGUARDED_LAUNCH_OK=1  # scratch fixtures are not a guarded folder
 # pin every root this suite could resolve to its own temp dir, at
 # SUITE level. A chief-spawned worker exports the LIVE HANDOVER_DIR into this
 # shell (headed-arm-worker.sh); the case-26 e2e below runs the real
