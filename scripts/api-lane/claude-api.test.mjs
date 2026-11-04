@@ -54,6 +54,11 @@ exit "\${STUB_RC:-0}"
 // on a tree that is its own primary checkout, as CI's is.
 const SESSION_ARGV0 = 'claude';
 
+// the auto gate names the repo from git's common dir: a repo directory called himmel, and one that is not
+const HIMMEL_REPO = join(T, 'himmel');
+const OTHER_REPO = join(T, 'luna');
+for (const d of [HIMMEL_REPO, OTHER_REPO]) { mkdirSync(d, { recursive: true }); spawnSync('git', ['init', '-q', d]); }
+
 function fixture() {
   const dir = mkdtempSync(join(T, 'case-'));
   const now = Math.floor(Date.now() / 1000);
@@ -92,7 +97,7 @@ function fixture() {
     HIMMEL_API_FALLBACK: 'off', HIMMEL_API_ALERT_CMD: paths.alert, HIMMEL_API_ALERT_DIR: join(dir, 'alerts') };
   writeFileSync(env.CADENCE_USAGE_CACHE, JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
   const good = ['-p', 'say hi', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'];
-  const run = (args = good, extra = {}, opts = {}) => spawnSync('bash', [LAUNCH, ...args], { env: { ...env, ...extra }, encoding: 'utf8', ...opts });
+  const run = (args = good, extra = {}, opts = {}) => spawnSync('bash', [LAUNCH, ...args], { env: { ...env, ...extra }, encoding: 'utf8', cwd: HIMMEL_REPO, ...opts });
   const status = (account = 'A') => {
     const r = spawnSync(process.execPath, [STATE, 'status'], { env: { ...env, HIMMEL_API_ACCOUNT: account }, encoding: 'utf8' });
     return JSON.parse(r.stdout);
@@ -935,7 +940,7 @@ function keyFiles(f, mode = 0o600) {
   return env;
 }
 const launch = (env, extra = {}) => spawnSync('bash', [LAUNCH, '-p', 'say hi', '--model', 'claude-haiku-5-5',
-  '--permission-mode', 'plan', '--max-budget-usd', '0.10'], { env: { ...env, ...extra }, encoding: 'utf8' });
+  '--permission-mode', 'plan', '--max-budget-usd', '0.10'], { env: { ...env, ...extra }, encoding: 'utf8', cwd: HIMMEL_REPO });
 
 test('HIMMEL-5433: with no key in the caller env the launcher reads key-<account>.env beside the ledger, child env only', () => {
   const f = fixture();
@@ -965,14 +970,14 @@ test('HIMMEL-5433: HIMMEL_API_ACCOUNT=auto spends the earliest-expiring grant fi
   f.snapshot.accounts.A.expires_at += 7200;  // A expires after B
   f.save();
   const env = keyFiles(f);
-  const first = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-auto-1' });
+  const first = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-auto-1' });
   assert.equal(first.status, 0, first.stderr);
   assert.match(readFileSync(f.paths.env, 'utf8'), /^key_tail=BBBB$/m);
   // B has 0.05 left: a 0.10 budget does not fit, so A takes the next call.
   f.snapshot.accounts.B.remaining_usd = '0.05';
   f.snapshot.accounts.B.reconciled_spent_usd = '0.012345';
   f.save();
-  const second = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-auto-2' });
+  const second = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-auto-2' });
   assert.equal(second.status, 0, second.stderr);
   assert.match(readFileSync(f.paths.env, 'utf8'), /^key_tail=AAAA$/m);
   assert.deepEqual(f.record().trim().split('\n').map((l) => JSON.parse(l).account), ['B', 'A']);
@@ -981,7 +986,7 @@ test('HIMMEL-5433: HIMMEL_API_ACCOUNT=auto spends the earliest-expiring grant fi
   f.snapshot.accounts.A.reconciled_spent_usd = '0.012345';
   f.save();
   rmSync(f.paths.log);
-  const third = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-auto-3' });
+  const third = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-auto-3' });
   assert.equal(third.status, 2);
   assert.match(third.stderr, /no account has room/);
   assert.equal(f.called(), false);
@@ -991,7 +996,7 @@ test('HIMMEL-7264: auto routing launches on a snapshot older than 24 h and warns
   const f = fixture();
   for (const a of ['A', 'B']) { f.snapshot.accounts[a].starts_at = f.now - 400000; f.snapshot.accounts[a].observed_at = f.now - 90000; }
   f.save();
-  const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-stale-1' });
+  const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-stale-1' });
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stderr, /WARN.*credit reading/);
   assert.equal(f.called(), true);
@@ -1000,7 +1005,7 @@ test('HIMMEL-7264: auto routing launches on a snapshot older than 24 h and warns
 test('HIMMEL-7264: auto routing launches with no snapshot file at all, inside the caps', () => {
   const f = fixture();
   rmSync(f.paths.snapshot);
-  const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-nosnap-1' });
+  const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-nosnap-1' });
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stderr, /WARN.*credit reading/);
   assert.equal(f.called(), true);
@@ -1020,7 +1025,7 @@ test('HIMMEL-7264: auto routing goes on past the bank gate when the old reading 
   for (const a of ['A', 'B']) { f.snapshot.accounts[a].starts_at = f.now - 400000; f.snapshot.accounts[a].observed_at = f.now - 90000; }
   f.save();
   ledgerAtCap(f);
-  const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-over-1' });
+  const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-over-1' });
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stderr, /spend estimate has no room/);
   assert.equal(f.called(), true);
@@ -1039,12 +1044,12 @@ test('HIMMEL-7264: a credit-exhausted result marks the account and the next auto
   const f = fixture();
   const env = keyFiles(f);
   const dead = JSON.stringify({ type: 'result', is_error: true, result: 'API Error: 400 Your credit balance is too low to access the Anthropic API.' });
-  const first = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-dry-1', STUB_OUT: dead, STUB_RC: '1' });
+  const first = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-dry-1', STUB_OUT: dead, STUB_RC: '1' });
   assert.equal(first.status, 6);
   assert.match(readFileSync(f.paths.env, 'utf8'), /^key_tail=AAAA$/m);
   assert.match(first.stderr, /credit exhausted/);
   assert.equal(Number.isInteger(JSON.parse(readFileSync(f.paths.state, 'utf8')).accounts.A.exhausted_at), true);
-  const second = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-dry-2' });
+  const second = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-dry-2' });
   assert.equal(second.status, 0, second.stderr);
   assert.match(readFileSync(f.paths.env, 'utf8'), /^key_tail=BBBB$/m);
 });
@@ -1062,13 +1067,13 @@ test('HIMMEL-7161: an invalid-key result flags the account, exits 6 and the next
   const f = fixture();
   const env = keyFiles(f);
   const bad = JSON.stringify({ type: 'result', is_error: true, result: 'Invalid API key · Fix external API key' });
-  const first = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-key-1', STUB_OUT: bad, STUB_RC: '1' });
+  const first = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-key-1', STUB_OUT: bad, STUB_RC: '1' });
   assert.equal(first.status, 6, first.stderr);
   assert.match(readFileSync(f.paths.env, 'utf8'), /^key_tail=AAAA$/m);
   assert.match(first.stderr, /API key rejected/);
   assert.equal(JSON.parse(f.record().trim().split('\n').pop()).outcome, 'key_invalid');
   assert.equal(Number.isInteger(JSON.parse(readFileSync(f.paths.state, 'utf8')).accounts.A.exhausted_at), true);
-  const second = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-key-2' });
+  const second = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-key-2' });
   assert.equal(second.status, 0, second.stderr);
   assert.match(readFileSync(f.paths.env, 'utf8'), /^key_tail=BBBB$/m);
 });
@@ -1099,7 +1104,7 @@ test('HIMMEL-7161: a successful call whose result text mentions an invalid API k
 
 test('HIMMEL-5433: auto routing refuses a caller-supplied key, which cannot follow the pick', () => {
   const f = fixture();
-  const r = f.run(f.good, { HIMMEL_API_ACCOUNT: 'auto' });
+  const r = f.run(f.good, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify' });
   assert.equal(r.status, 2);
   assert.match(r.stderr, /auto routing reads the per-account key files/);
   assert.equal(f.called(), false);
@@ -1342,7 +1347,7 @@ test('HIMMEL-7111: a call that outruns the call timeout is stopped, even one ign
   } finally { rmSync(hold, { force: true }); }
 });
 
-// account C is explicit-only (never auto), billed to its own 200.00 cap, and refused for review kinds
+// account C behaves like A and B, billed to its own 200.00 cap
 const KEY_C = 'sk-ant-dummy-account-c-key-CCCC';
 function withC(f, mode = 0o600) {
   f.config.accounts.C = { organization_id: 'org-c', cycle_id: 'cycle-c', cap_usd: '200.00', key_id: 'key-c', reset_at: '2099-01-01T00:00:00Z' };
@@ -1365,33 +1370,45 @@ test('HIMMEL-9052: HIMMEL_API_ACCOUNT=C with a graphify kind runs one stubbed ca
   for (const text of [r.stdout, r.stderr, f.record()]) assert.ok(!text.includes(KEY_C));
 });
 
-test('HIMMEL-9052: account C refuses every kind but graphify and smoke, review kinds included, before any spawn', () => {
-  for (const kind of ['judge', 'critic', 'bulk', 'cull', 'other']) {
+test('HIMMEL-9052: an explicit account C call runs for any kind, like A and B', () => {
+  for (const kind of ['judge', 'critic', 'bulk', 'cull', 'smoke']) {
     const f = fixture();
     const r = launch(withC(f), { HIMMEL_API_ACCOUNT: 'C', HIMMEL_API_KIND: kind });
+    assert.equal(r.status, 0, `${kind}: ${r.stderr}`);
+    assert.equal(JSON.parse(f.record().trim()).account, 'C');
+  }
+});
+
+test('HIMMEL-9052: auto routes only the himmel graphify kind; any other kind is refused before any spawn', () => {
+  for (const kind of ['judge', 'critic', 'bulk', 'cull', 'other']) {
+    const f = fixture();
+    const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: kind });
     assert.equal(r.status, 2, `${kind}: ${r.stderr}`);
-    assert.match(r.stderr, /account C is for graphify and smoke only/);
+    assert.match(r.stderr, /auto routing is for the himmel graph pass only/);
     assert.equal(f.called(), false);
   }
   const f = fixture();
-  assert.equal(launch(withC(f), { HIMMEL_API_ACCOUNT: 'C', HIMMEL_API_KIND: 'smoke' }).status, 0);
+  const ok = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify' });
+  assert.equal(ok.status, 0, ok.stderr);
 });
 
-test('HIMMEL-9052: auto never picks C, even with A and B out of room', () => {
+test('HIMMEL-9052: auto with the graphify kind from another repo is refused before any spawn', () => {
+  const f = fixture();
+  const r = spawnSync('bash', [LAUNCH, '-p', 'say hi', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'],
+    { env: { ...keyFiles(f), HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify' }, encoding: 'utf8', cwd: OTHER_REPO });
+  assert.equal(r.status, 2, r.stderr);
+  assert.match(r.stderr, /auto routing is for the himmel graph pass only/);
+  assert.equal(f.called(), false);
+});
+
+test('HIMMEL-9052: auto ranks account C like A and B', () => {
   const f = fixture();
   const env = withC(f);
-  const ok = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-c-auto-1' });
-  assert.equal(ok.status, 0, ok.stderr);
-  assert.notEqual(JSON.parse(f.record().trim()).account, 'C');
-  for (const a of ['A', 'B']) {
-    f.snapshot.accounts[a].remaining_usd = '0.05';
-    f.snapshot.accounts[a].reconciled_spent_usd = '0.012345';
-  }
+  f.snapshot.accounts.C.expires_at = f.now + 60;
   f.save();
-  // with A and B over their estimate auto still serves one of them (the API's credit answer decides); never C
-  launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-c-auto-2' });
-  for (const line of f.record().trim().split('\n')) assert.notEqual(JSON.parse(line).account, 'C');
-  assert.ok(!JSON.parse(readFileSync(f.paths.state, 'utf8')).accounts?.C);
+  const ok = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-c-auto-1' });
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.equal(JSON.parse(f.record().trim()).account, 'C');
 });
 
 test('HIMMEL-9052: account C refuses a wrong key id and a key file that is not mode 600', () => {

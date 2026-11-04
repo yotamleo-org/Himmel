@@ -1,7 +1,7 @@
 # The API lane: failure alert and subscription fallback
 
 `scripts/api-lane/claude-api.sh` runs one print-mode `claude` call billed to an
-API account (`HIMMEL_API_ACCOUNT=A|B|auto`) instead of the subscription. It is
+API account (`HIMMEL_API_ACCOUNT=A|B|C|auto`; auto only for the himmel graph pass) instead of the subscription. It is
 OFF unless the launching shell sets `HIMMEL_API_LANE=on`. This page covers what
 happens when a call on it fails (HIMMEL-8643). The launcher's header lists the
 full argument and environment contract.
@@ -108,17 +108,16 @@ The fallback appends one row to the same `launches.jsonl` as the API call:
 
 The API call's own row and its reservation are settled as before.
 
-## Account C: the himmel graph only (HIMMEL-9052)
+## Account C and auto routing (HIMMEL-9052, decision 525 FINAL)
 
-Account C is a third API org with a 200.00 USD cap. It differs from A and B in three ways:
+Account C is a third API org with a 200.00 USD cap. A, B and C are treated identically: the same refusals (key
+from `ANTHROPIC_ORG_C_KEY` or a mode-600 `key-C.env`, `HIMMEL_API_KEY_ID` equal to the roster `key_id`, lane on,
+ledger spend estimate under the account's cap) and `pickAccount` ranks all three by grant expiry.
 
-- **Explicit only.** `HIMMEL_API_ACCOUNT=C` names it; `auto` never ranks it, even when A and B are empty.
-  An `auto` run with no funded A or B refuses as before.
-- **Graph and smoke kinds only.** `claude-api.sh` refuses account C for any `HIMMEL_API_KIND` other than
-  `graphify` and `smoke` (exit 2, before any spawn, no subscription fallback). That covers `judge`, `critic`,
-  `bulk`, `cull` and every code-review caller, so review can never spend C.
-- **Same refusals as A and B:** key from `ANTHROPIC_ORG_C_KEY` or a mode-600 `key-C.env`, `HIMMEL_API_KEY_ID` equal
-  to the roster `key_id`, lane on, ledger spend estimate under the 200.00 cap.
+Auto routing is off for every call except the himmel semantic graph pass. `HIMMEL_API_ACCOUNT=auto` is accepted
+only with `HIMMEL_API_KIND=graphify` from the himmel repo; any other kind, or the graphify kind from another repo
+(for example the luna graph map), exits 2 before any spawn with no subscription fallback. Naming the account
+(`HIMMEL_API_ACCOUNT=A`, `B` or `C`) works for every kind, judge, critic, bulk and cull included.
 
 Config name: `ANTHROPIC_API_ORG_ID_C`, matching `ANTHROPIC_API_ORG_ID_A` and `_B`. `ANTHROPIC_ORG_ID_C` is also
 accepted by the loader. Every site that unsets the A and B keys before a subscription `claude -p` also unsets

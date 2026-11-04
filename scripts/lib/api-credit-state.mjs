@@ -18,10 +18,8 @@ const MAX_AGE = 600;
 // Operator decision 185: both grants reset on one date, whatever expiry a snapshot row carries.
 // A config account may override it with reset_at for the next cycle.
 export const GRANT_RESET_AT = { A: '2026-11-01T00:00:00Z', B: '2026-11-01T00:00:00Z' };
-// C is explicit-only: HIMMEL_API_ACCOUNT=C names it, pickAccount (auto) never ranks it. Its
-// config row carries its own reset_at (no default date).
+// C ranks like A and B; its config row carries its own reset_at (no default date).
 const ACCOUNTS = ['A', 'B', 'C'];
-const AUTO_ACCOUNTS = ['A', 'B'];
 // Auto routing prefers a snapshot younger than this: the ledger cannot see spend billed outside it.
 // An older operator snapshot still routes (flagged snapshot_stale) while its estimate has headroom.
 const ROUTE_MAX_AGE = 86400;
@@ -390,7 +388,7 @@ export function pickAccount(budget, env = process.env) {
     configs(config);
     const pickEnv = { ...env, HIMMEL_API_SNAPSHOT_OPTIONAL: '1' };
     const now = Math.floor(Date.now() / 1000);
-    const all = Object.keys(config.accounts).filter((a) => AUTO_ACCOUNTS.includes(a)).sort()
+    const all = Object.keys(config.accounts).sort()
       .map((account) => creditState('status', { usd: budget }, { ...pickEnv, HIMMEL_API_ACCOUNT: account }));
     const roomy = all.filter((r) => r.verdict === 'PROCEED' && money(r.available_est_usd) >= need);
     const marked = (r) => Number.isInteger(r.exhausted_at) && now - r.exhausted_at < EXHAUSTED_TTL

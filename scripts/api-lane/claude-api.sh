@@ -10,7 +10,8 @@
 #                      [--append-system-prompt-file F]  (no other flags)
 # Env:   HIMMEL_API_LANE=on  HIMMEL_API_ACCOUNT=A|B|C|auto  [HIMMEL_API_KEY_ID=<roster id>]
 #        ANTHROPIC_API_KEY, or else <state_dir>/key-<account>.env (mode 600); never printed, logged,
-#        exported or passed on a command line. auto = the earliest-expiring grant with room for the budget.
+#        exported or passed on a command line. auto = the earliest-expiring grant with room for the budget,
+#        allowed only for HIMMEL_API_KIND=graphify in the himmel repo.
 #        [HIMMEL_API_TOOLS=<comma list>]  opt-in tool grant, a subset of Read,Edit,Write,Glob,Grep,Bash; unset/empty = tool-free (default)
 #        [HIMMEL_API_KIND=<label>] run kind for the cache report (eval|judge|bulk|critic|graphify|cull|probe; a caller sets its own, default other)
 #        [HIMMEL_API_CACHE_TTL=5m|1h] prompt-cache lifetime of the call (default 5m)
@@ -328,10 +329,12 @@ case "${HIMMEL_CLAUDE_LANE:-}" in ""|native) ;; *) refuse "conflicting lane HIMM
 # cache lifetime. An API-key call gets 5m unless told otherwise, so the launcher always states the choice itself.
 KIND="${HIMMEL_API_KIND:-other}"
 case "$KIND" in ""|*[!A-Za-z0-9._-]*) refuse "HIMMEL_API_KIND has characters outside [A-Za-z0-9._-]" ;; esac
-# account C (graph only, never code review) serves only these kinds; every other kind,
-# every review kind included (judge, critic, bulk, cull ...), is refused, and never re-run on the subscription
-if [ "$HIMMEL_API_ACCOUNT" = C ]; then
-  case "$KIND" in graphify|smoke) ;; *) NO_FB="the request itself was refused"; refuse "account C is for graphify and smoke only (kind $KIND)" ;; esac
+# auto routing is for the himmel semantic graph pass only (decision 525 FINAL): any other kind, or the same kind
+# from another repo, must name its account; refused before any spawn and never re-run on the subscription
+if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
+  _auto_repo="$(basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)")")"
+  [ "$KIND" = graphify ] && [ "$_auto_repo" = himmel ] ||
+    { NO_FB="the request itself was refused"; refuse "auto routing is for the himmel graph pass only (kind $KIND, repo $_auto_repo); name HIMMEL_API_ACCOUNT=A, B or C"; }
 fi
 CACHE_TTL="${HIMMEL_API_CACHE_TTL:-5m}"
 case "$CACHE_TTL" in 5m|1h) ;; *) refuse "HIMMEL_API_CACHE_TTL must be 5m or 1h" ;; esac
@@ -349,7 +352,7 @@ if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
   case "$PICK" in *'"over_estimate":true'*)
     echo "claude-api: WARN: our own spend estimate has no room left on either account; the call goes on and the API's credit answer decides" >&2 ;;
   esac
-  HIMMEL_API_ACCOUNT="$(printf '%s' "$PICK" | sed -n 's/.*"account":"\([AB]\)".*/\1/p')"
+  HIMMEL_API_ACCOUNT="$(printf '%s' "$PICK" | sed -n 's/.*"account":"\([ABC]\)".*/\1/p')"
   [ -n "$HIMMEL_API_ACCOUNT" ] || refuse "auto routing returned no account"
 fi
 
@@ -539,7 +542,7 @@ else
   state unknown --id "$JOB_ID" >/dev/null; OUTCOME=unknown
 fi
 
-# --- a credit-exhausted or key-rejected answer marks the account; later auto picks rotate to the other one ---
+# --- a credit-exhausted or key-rejected answer marks the account; later auto picks rotate to another account ---
 # Either answer exits 6 (EXIT_REJECTED), the code a looping caller treats as non-retryable: the same account would answer the same.
 EXIT_RC="$RC"
 REJECTED=""
@@ -552,7 +555,7 @@ if [ -n "$REJECTED" ]; then
   OUTCOME="$REJECTED"; EXIT_RC=6
   case "$REJECTED" in exhausted) WHAT="credit exhausted" ;; *) WHAT="API key rejected" ;; esac
   if state exhausted >/dev/null 2>&1; then
-    echo "claude-api: account $HIMMEL_API_ACCOUNT $WHAT; auto routing rotates to the other account" >&2
+    echo "claude-api: account $HIMMEL_API_ACCOUNT $WHAT; auto routing rotates to another account" >&2
   else
     echo "claude-api: account $HIMMEL_API_ACCOUNT $WHAT, but the marker was not saved; the next auto call may pick it again" >&2
   fi

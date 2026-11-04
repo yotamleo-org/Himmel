@@ -795,12 +795,12 @@ test('HIMMEL-9052: account C reports its own 200.00 cap by the explicit name', (
   assert.equal(JSON.parse(r.stdout).verdict, 'PROCEED');
 });
 
-test('HIMMEL-9052: auto never picks C, the earliest-expiring and only funded account included', () => {
+test('HIMMEL-9052: auto ranks C like A and B: the earliest-expiring funded account wins, an empty C does not', () => {
   const f = fixture();
   withC(f);
   const pick = (budget) => spawnSync(process.execPath, [SUT, 'pick', '--usd', budget], { env: f.env, encoding: 'utf8' });
-  assert.notEqual(JSON.parse(pick('0.01').stdout).account, 'C');
-  for (const a of ['A', 'B']) { f.snapshot.accounts[a].remaining_usd = '0'; f.snapshot.accounts[a].expires_at = f.now + 3600; }
+  assert.equal(JSON.parse(pick('0.01').stdout).account, 'C');
+  f.snapshot.accounts.C.remaining_usd = '0';
   f.save();
   const r = pick('0.01');
   const out = r.stdout.trim() ? JSON.parse(r.stdout) : {};
