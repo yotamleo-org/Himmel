@@ -90,7 +90,7 @@ function baseUrl() {
 }
 
 async function accountKey(account) {
-  if (!['A', 'B'].includes(account)) refuse('--account must be A or B');
+  if (!['A', 'B', 'C'].includes(account)) refuse('--account must be A, B or C');
   const { configuredAccount } = await import(pathToFileURL(join(HERE, '../lib/api-credit-state.mjs')).href);
   const row = configuredAccount({ ...process.env, HIMMEL_API_ACCOUNT: account });
   if (row.verdict) refuse(`roster: ${row.reason}`);
