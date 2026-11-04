@@ -270,7 +270,7 @@ test("archived and released consoles show zero live sessions", async ({ page }) 
   await expect(finished.locator(".fleet-finished .fleet-row")).toHaveCount(2);
 });
 
-test("a wrapped session with no console retains a collapsed sidebar drill-in", async ({ page }) => {
+test("a wrapped session with no console stays reachable from the Fleet page", async ({ page }) => {
   h = await bootAgui("", { fleet: true });
   await page.route("**/api/agui/fleet", async (route) => {
     const response = await route.fetch();
@@ -280,12 +280,13 @@ test("a wrapped session with no console retains a collapsed sidebar drill-in", a
     await route.fulfill({ response, json: fleet });
   });
   await page.goto(h.url);
-  const wrapped = page.locator(".fleet-menu .fleet-menu-wrapped");
-  await expect(wrapped).not.toHaveAttribute("open", "");
-  await wrapped.locator("summary").click();
-  await expect(wrapped.getByRole("link", { name: FLEET.wrapped.name, exact: true })).toHaveAttribute("href", new RegExp(`&run=${FLEET.wrapped.run}$`));
+  const finished = page.locator("details.fleet-closed");
+  await expect(finished).not.toHaveAttribute("open", "");
+  await finished.locator("summary").click();
+  await expect(finished.locator(`[id="fleet-${FLEET.wrapped.name}"] a.fleet-head`)).toHaveAttribute("href", new RegExp(`&run=${FLEET.wrapped.run}$`));
 });
-test("9. the fleet landing lists 3 live sessions and 1 wrapped one, and a row opens that session's stream", async ({ page }) => {
+
+test("9.the fleet landing lists 3 live sessions and 1 wrapped one, and a row opens that session's stream", async ({ page }) => {
   h = await bootAgui("", { fleet: true });
   expect(h.url).not.toContain("&run=");
   await page.goto(h.url);
@@ -431,7 +432,7 @@ test("orphans section, and a lane filter that narrows the page and is kept", asy
   await expect(page.locator(".fleet .fleet-row:not(.finished)")).toHaveCount(2);
 });
 
-test("12. two-chief side menu, deep-linked page, and identical menu/row drill-in", async ({ page }) => {
+test("12. two-chief group headers, deep-linked page, and a row drill-in", async ({ page }) => {
   h = await bootAgui("", { fleet: true });
   const other = "HIMMEL-project-chief";
   await page.route("**/api/agui/fleet", async (route) => {
@@ -448,19 +449,17 @@ test("12. two-chief side menu, deep-linked page, and identical menu/row drill-in
   await expect(page.locator(".fleet-chief h2")).toHaveText(other);
   await expect(page.locator(".fleet")).toContainText(FLEET.idle.name);
   await expect(page.locator(".fleet")).not.toContainText(FLEET.worker.name);
-  const menu = page.getByRole("navigation", { name: "Supervisor sessions" });
-  await expect(menu.locator("a.chief-page")).toHaveCount(2);
-  await menu.locator("a.chief-page", { hasText: FLEET.console.name }).click();
+  // the chiefs are the group headers of the whole-fleet page, each with a link to its page
+  await page.goto(h.url);
+  const chiefs = page.locator(".fleet-chief a.chief-page");
+  await expect(chiefs).toHaveCount(2);
+  await page.locator(".fleet-chief", { has: page.locator("h2", { hasText: FLEET.console.name }) }).locator("a.chief-page").click();
+  await expect(page.locator(".top .run")).toHaveText(FLEET.console.name);
   await expect(page.locator(".fleet-chief h2")).toHaveText(FLEET.console.name);
   const worker = card(page, FLEET.worker.name);
-  const rowHref = await worker.locator("a.fleet-head").getAttribute("href");
-  const menuLeg = menu.getByRole("link", { name: FLEET.worker.name, exact: true });
-  await expect(menuLeg).toHaveAttribute("href", rowHref!);
-  await menuLeg.click();
+  await worker.locator("a.fleet-head").click();
   await expect(page.locator(".top .run")).toHaveText(`run ${FLEET.worker.run}`);
   await expect(page.locator(".call", { hasText: "Push" })).toBeVisible();
-  await menu.getByRole("link", { name: FLEET.console.name, exact: true }).last().click();
-  await expect(page.locator(".top .run")).toHaveText(`run ${FLEET.console.run}`);
 });
 
 // a cloud session is a node under its chief with its shepherd worker under it; it links its session,

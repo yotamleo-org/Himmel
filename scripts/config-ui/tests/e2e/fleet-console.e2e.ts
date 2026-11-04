@@ -33,6 +33,61 @@ for (const scheme of ["dark", "light"] as const) {
   }
 }
 
+// The AG-UI rail is the console rail (links only); the filters are a bar in the page and the chiefs are group headers.
+test("the AG-UI rail holds no filter input and no session tree; the page holds the filter bar and no supervisor sessions nav", async ({ page }) => {
+  test.skip(noDist, NO_DIST);
+  h = await bootAgui("", { fleet: true });
+  await page.goto(h.url);
+  await expect(page.locator(".fleet-row").first()).toBeVisible();
+  const rail = page.locator("aside.rail");
+  await expect(rail.locator("nav.pages a")).not.toHaveCount(0);
+  await expect(rail.locator("input, [role=group][aria-label=Filters], nav[aria-label='Supervisor sessions'], details")).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Supervisor sessions" })).toHaveCount(0);
+  await expect(page.locator("main.fleet").getByRole("group", { name: "Filters" }).locator("input[type=search]")).toBeVisible();
+});
+
+test("a live chief's group header counts its running and waiting-for-GO sessions and links its page; Other sessions shows none", async ({ page }) => {
+  test.skip(noDist, NO_DIST);
+  h = await bootAgui("", { fleet: true });
+  await page.route("**/api/agui/fleet", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    for (const r of body.sessions) if (r.role === "worker" && r.live !== false && r.state !== "wrapped") r.state = "waiting for GO";
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto(h.url);
+  const group = page.locator(".fleet-chief:not([aria-label='Other sessions'])").first();
+  await expect(group.locator(".fleet-chief-counts")).toHaveText(/\b1 running\b.*\b1 waiting for GO\b/);
+  const link = group.locator("a.chief-page");
+  await expect(link).toHaveCount(1);
+  await expect(link).not.toHaveAttribute("aria-current", "page");
+  await expect(group).toHaveJSProperty("open", true);
+  const other = page.locator(".fleet-chief[aria-label='Other sessions']");
+  await expect(other).toHaveCount(1);
+  await expect(other.locator(".fleet-chief-counts, a.chief-page")).toHaveCount(0);
+  await link.click();
+  await expect(group.locator("a.chief-page")).toHaveAttribute("aria-current", "page");
+  await expect(group).toHaveJSProperty("open", true); // the link follows; it never toggles the group
+});
+
+// One rail, two documents: the AG-UI Fleet page and the console's Board page list the same page ids.
+test("the AG-UI Fleet rail lists the same page ids as the console rail on Board", async ({ page }) => {
+  test.skip(noDist, NO_DIST);
+  h = await bootAgui("", { fleet: true });
+  const { origin, hash } = new URL(h.url);
+  const ids = (p: typeof page) => p.locator("nav.pages a[data-page]").evaluateAll((as) => as.map((a) => a.getAttribute("data-page")).join());
+  const fleetPage = await page.context().newPage();
+  const settled = Promise.all([page.waitForResponse("**/api/sources"), fleetPage.waitForResponse("**/api/sources")]);
+  await page.goto(`${origin}/${hash}&page=board`);
+  await fleetPage.goto(h.url);
+  await settled;
+  await expect(page.locator("nav.pages a[data-page]").first()).toBeVisible();
+  await expect(fleetPage.locator("nav.pages a[data-page]").first()).toBeVisible();
+  const consoleIds = await ids(page);
+  expect(consoleIds).toContain("fleet");
+  await expect.poll(() => ids(fleetPage)).toBe(consoleIds);
+});
+
 // The console's Health page keeps its project picker in the page bar, never the rail; at 760 px the bar folds to "Filters (n on)".
 test("the Health page bar folds to Filters (n on) at 760px and the rail holds no picker", async ({ page }) => {
   h = await bootAgui("", { fleet: true });
