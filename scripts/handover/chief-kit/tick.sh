@@ -231,11 +231,13 @@ signal: ownership checks still treat it as held. The stable workers= label wakes
 chief-wait once on transition, not on growing age. The sweep's IDLE-HELD? uses
 heartbeat age alone and cannot distinguish a long foreground suite.
 Other worker states:
-CLOSABLE (HIMMEL-3747: lock released, the tail says WRAPPED, AND the leg's own
+CLOSABLE (HIMMEL-3747: lock released, the tail says WRAPPED or is a BLOCKED
+hand-off naming its successor, AND the leg's own
 session process is still alive in the census -- the window is sitting there
 finished but not yet closed; chief-wait.sh wakes on this the same way it
 wakes on any other workers= change, since it samples the whole field, so no
-change was needed there), WRAPPED (lock released and the tail says WRAPPED,
+change was needed there), WRAPPED (lock released and the tail says WRAPPED or
+is a BLOCKED hand-off naming its successor,
 but either no live session matched or the census itself could not be read --
 the normal end of a leg once its window is gone, and also the fail-closed
 reading when CLOSABLE cannot be proven), FREE (lock released while the tail
@@ -773,6 +775,10 @@ csv_add() {
 # gate, so the two readers can never accept different marker-bullet shapes.
 # shellcheck source=../../lib/worker-tail-status.sh
 . "$HERE/../../lib/worker-tail-status.sh"
+# worker_handoff_tail is shared with close-wrapped-worker.sh, so the tick counts as closable
+# exactly the named hand-off the close accepts.
+# shellcheck source=../../lib/worker-successor.sh
+. "$HERE/../../lib/worker-successor.sh"
 
 # ready_mismatch_scan <bucket-dir> -- READY claims a judge or the diff contradicts
 # Prints TSV: one `M1a|M1b|M1c <pr> <head12> <model>` row per flag,
@@ -1222,7 +1228,11 @@ for leg in $WORKERS_SPLIT; do
         # mean a lock that is gone with no wrap behind it (lost, or never acquired).
         # ponytail: WRAPPED is the worker's own last bullet, self-reported -- a worker
         # that wrote WRAPPED and is somehow still working reads WRAPPED, not FREE.
+        # A named hand-off is a clean wrap too: the lock is free and the worker's newest own
+        # marker bullet is the WRAPPED or BLOCKED hand-off naming its successor.
         if [ "$lock_status" = FREE ] && [ "$tail_status" = WRAPPED ]; then
+            lock_status=WRAPPED
+        elif [ "$lock_status" = FREE ] && [ "$tail_status" = BLOCKED ] && worker_handoff_tail "$leg_doc"; then
             lock_status=WRAPPED
         fi
     else

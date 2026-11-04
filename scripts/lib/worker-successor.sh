@@ -61,3 +61,20 @@ worker_named_successor() {
     done
     printf '%s\n' "$path"
 }
+
+# worker_handoff_tail <worker doc>: success when the worker's newest own marker bullet is itself a
+# WRAPPED or BLOCKED hand-off (not negated) and that hand-off names a successor. A later ordinary
+# BLOCKED (waiting on CI) is a working worker and fails.
+worker_handoff_tail() {
+    local last
+    [ -r "$1" ] || return 1
+    last="$(awk '
+        /^## Results([ \t]|$)/ { r = !seen; seen = 1; next }
+        /^## / { r = seen && ($0 ~ /^## (Chief|Console) Rulings([ \t]|$)/); next }
+        r && /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/ { l = $0 }
+        END { print l }' "$1")" || return 1
+    printf '%s\n' "$last" | grep -Eq '^- ([0-9]?[0-9]:[0-9][0-9][[:space:]]+)?(\*\*)?(WRAPPED|BLOCKED)([^A-Za-z0-9_]|$)' || return 1
+    printf '%s\n' "$last" | grep -Eq '([Hh]and-?off|RESUME written:)' || return 1
+    ! printf '%s\n' "$last" | grep -Eq '(^|[^A-Za-z0-9_])([Nn]o|[Nn]ot|[Nn]ever|[Ww]ithout|[Cc]annot)[^A-Za-z0-9_][^;.]{0,30}[Hh]and-?off' || return 1
+    [ -n "$(worker_named_successor "$1")" ]
+}

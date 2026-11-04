@@ -5,9 +5,8 @@
 # this script wraps the same TERM under a literal the classifier allowlists,
 # but ONLY after verifying the worker is actually done: the queue lock on its
 # doc is free AND its own last Results marker-bullet is WRAPPED (or that last
-# bullet is itself a BLOCKED hand-off naming its successor; the tick counts only a
-# WRAPPED tail as closable, so such a BLOCKED hand-off closes by a sweep or by hand,
-# not through the waiter). A named hand-off closes only the predecessor's own
+# bullet is itself a BLOCKED hand-off naming its launched successor; the tick counts both
+# as closable=). A named hand-off closes only the predecessor's own
 # identity; it never signals a live successor, and a successor that shares any of
 # the predecessor's session names is not exempted.
 # It never kills a pid it cannot independently prove belongs to that worker.
@@ -59,7 +58,8 @@
 #
 # After the signal, the worker's own /tmp scratch (its judge dirs, and its session
 # scratch dir) is archived then reaped via tmp-reap.sh, scoped to this worker only
-# a reap failure warns and never fails the close.
+# a reap failure warns and never fails the close. A predecessor whose named successor
+# still holds its lock reaps nothing and prunes nothing: the successor works that PR.
 #
 # Then the failure-loop digest: the session id is read from
 # ~/.claude/sessions/<pid>.json BEFORE the TERM, and after it
@@ -345,12 +345,9 @@ if [ -n "$NAMED_SUCCESSOR" ]; then
     case "$last_marker" in
         WRAPPED) PREDECESSOR=1 ;;
         BLOCKED)
-            # a BLOCKED tail closes only when that bullet is itself the hand-off; a later ordinary
-            # BLOCKED (waiting on CI) is a working worker
-            last_mark_line=$(awk '/^## Results( |$)/ { seen = 1; r = 1; next } /^## / { r = seen && ($0 ~ /^## (Chief|Console) Rulings( |$)/); next }
-                r &&/^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/ { l = $0 }
-                END { print l }' "$DOC")
-            if printf '%s\n' "$last_mark_line" | grep -Eq '([Hh]and-?off|RESUME written:)'; then PREDECESSOR=1; fi ;;
+            # a BLOCKED tail closes only when that bullet is itself the hand-off (not negated); a later
+            # ordinary BLOCKED (waiting on CI) is a working worker
+            if worker_handoff_tail "$DOC"; then PREDECESSOR=1; fi ;;
     esac
 fi
 if [ -n "$SIB_DOC" ] && [ "$PREDECESSOR" -eq 0 ]; then
@@ -788,7 +785,13 @@ reap_worker_scratch() {
     bash "$TMP_REAP" --apply "${args[@]}" || echo "close-wrapped-worker: WARN tmp-reap --apply failed for ${args[*]} - close continues" >&2
     return 0
 }
-reap_worker_scratch || echo "close-wrapped-worker: WARN /tmp reap errored - close continues" >&2
+# A predecessor closed while its successor still holds the lock reaps nothing: the successor works
+# the same PR, so its judge dirs are live.
+if [ "$PREDECESSOR" -eq 1 ] && ! bash "$HERE/../queue-lock.sh" status "$NAMED_SUCCESSOR" >/dev/null 2>&1; then
+    echo "close-wrapped-worker: its successor still runs - skipping the /tmp reap"
+else
+    reap_worker_scratch || echo "close-wrapped-worker: WARN /tmp reap errored - close continues" >&2
+fi
 
 # ---------- Failure-loop digest --------------------
 # One `digest=` line and nothing else: worker-digest-step.sh's stderr is dropped,

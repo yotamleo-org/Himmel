@@ -1553,6 +1553,13 @@ rc=0; out=$(run "$HP" 2>&1) || rc=$?
 check "handoff: named live successor lock permits predecessor close (base rc 3)" "$rc" "0"
 exact_count "handoff: predecessor alone is signaled" "$(cat "$CALLS")" "kill -TERM 389" "1"
 not_contains "handoff: held successor is never signaled" "$(cat "$CALLS")" "kill -TERM 390"
+# The successor works on the same PR: the predecessor's close reaps none of its scratch.
+printf '# worker\n\n## Results\n\n- 09:00 LIVE - started\n- 09:50 READY - PR 7 abc GREEN\n- 10:00 WRAPPED - hand-off to %s\n' "$HS" > "$HP"
+reset_calls
+rc=0; out=$(CWL_KILL_REMOVES_PROC=1 run "$HP" 2>&1) || rc=$?
+check "handoff: predecessor with a held successor still closes" "$rc" "0"
+check "handoff: held successor means no /tmp reap" "$(wc -c < "$CALLS.reap" | tr -d ' ')" "0"
+mkcmdline 389 claude -n HIMMEL-9-N90-demo-2026-01-01 work
 [ -n "$token" ] && HANDOVER_DIR="$W/handover-root" bash "$QL" release "$HS" "$token" >/dev/null 2>&1
 
 # A second successor is not an ambiguity about the predecessor's own window.
