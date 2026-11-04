@@ -954,6 +954,22 @@ start "$I" "$WORK/rdy-nog.out" --doc "$RD" --workers-from "$RM"
 wait_exit "$WPID"
 check "(rdy) a READY without GREEN is no ready wake" "" "$(grep '^WAKE ready' "$WORK/rdy-nog.out")"
 check "(rdy) and runs no check" "" "$(cat "$STUB/rc.calls" 2>/dev/null)"
+# the out file shows the chief the READY bullet text (separate fixture: PR 2577)
+ready_stubs_pass
+mkdir -p "$WORK/rdytxt/consoles"; I2="$WORK/rdytxt/consoles/c.md"; : > "$I2"
+RD2="$WORK/rdytxt/chief.md"; printf '# chief\n' > "$RD2"
+RL2="$WORK/rdytxt/HIMMEL-1-N1-a.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$RL2"
+RM2="$WORK/rdytxt/chief.fleet.json"; printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"}]}\n' "$RL2" > "$RM2"
+ready_tick "N1:LIVE"
+start "$I2" "$WORK/rdytxt.out" --doc "$RD2" --workers-from "$RM2"
+wait_hb "$I2" || fail "(rdy-txt) no baseline heartbeat"
+# shellcheck disable=SC2016  # the backticks are literal bullet text
+printf -- '- 10:00 READY 2577 %s GREEN — trust path: no; rows `suite-tiers.tsv` added\n' "$HA" >> "$RL2"
+ready_tick "N1:READY" "N1:READY#1"
+wait_exit "$WPID"
+# shellcheck disable=SC2016  # the backticks are literal bullet text
+check "(rdy-txt) the out file carries the READY bullet" "1" "$(grep -cF -- 'rows `suite-tiers.tsv` added' "$I2.wait.ready-2577" 2>/dev/null)"
+check "(rdy-txt) waiter.md names the bullet in the out file" "1" "$(grep -c 'holds the READY bullet' "$HERE/../../../docs/handover/chief-sections/waiter.md")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 unset CHIEF_WAIT_READY_CHECK CHIEF_WAIT_CI CHIEF_WAIT_DISPOSITION
 
