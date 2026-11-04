@@ -53,6 +53,7 @@ export HEADED_ARM_UNAME=Linux
 # then targets an unintended location instead of a throwaway one - abort
 # loudly rather than let that happen.
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/headed-arm-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
+tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
 # Marker for the end-of-suite check that no case left a launch
 # record in the operator's real launch-record dir (see case 40).
