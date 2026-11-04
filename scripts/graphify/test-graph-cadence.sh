@@ -310,15 +310,16 @@ assert_contains "ledger merges_behind is the true distance (seed-graph commit + 
 
 # =============================================================================
 # Test 1b: origin/main does not track
-# graphify-out/graph.json at all -> the LOCAL AST-only refresh still runs
-# (worktree created, ast-update.sh invoked, action=refreshed, rc=0), while
-# publish/merge cleanly no-op (merge-on-green.sh AND `gh` never invoked) --
-# not a clean skip and not _fail/exit-3. This is the PERMANENT steady state
+# graphify-out/graph.json at all (and no --semantic) -> the worktree rebuild is
+# SKIPPED, because nothing consumes it (no worktree created, ast-update.sh not
+# invoked, action=skipped, rc=0; the hourly HIMMEL-GraphMapAst-* run owns the
+# rebuild), and publish/merge never run (merge-on-green.sh AND `gh` never
+# invoked) -- not a _fail/exit-3. This is the PERMANENT steady state
 # after graphify-out/ was retired from the git tree and gitignored outright --
 # unlike Test 1's below-threshold skip, there is no graph.json on origin/main
 # to diff against in the first place.
 # =============================================================================
-echo "TEST: origin/main missing graphify-out/graph.json entirely -> local refresh still runs, publish/merge cleanly no-op (HIMMEL-2705)"
+echo "TEST: origin/main missing graphify-out/graph.json entirely -> the worktree rebuild is skipped, publish/merge never run (HIMMEL-2705)"
 REPO1B="$TMP_ROOT/t1b-primary"; BARE1B="$TMP_ROOT/t1b-origin.git"
 HOME1B="$TMP_ROOT/t1b-home"; LEDGER1B="$TMP_ROOT/t1b-ledger"
 mkdir -p "$HOME1B" "$LEDGER1B"
@@ -338,7 +339,7 @@ rc=0
 out=$(HOME="$HOME1B" GRAPH_CADENCE_HIMMEL_ROOT="$REPO1B" GRAPH_CADENCE_LEDGER_ROOT="$LEDGER1B" \
       GRAPH_CADENCE_AST_UPDATE="$AST_REC" AST_REC_LOG="$AST_REC_LOG" \
       run_gc --threshold 10 2>&1) || rc=$?
-assert_eq        "untracked-graph rc=0 (local refresh + clean no-op, not a failure)" "0" "$rc"
+assert_eq        "untracked-graph rc=0 (rebuild skipped, not a failure)" "0" "$rc"
 assert_contains  "untracked-graph message says retired" "retired from the git tree" "$out"
 assert_not_contains "untracked-graph message carries no internal id" "HIMMEL-2705" "$out"
 assert_contains  "untracked-graph message" "does not track graphify-out/graph.json" "$out"
