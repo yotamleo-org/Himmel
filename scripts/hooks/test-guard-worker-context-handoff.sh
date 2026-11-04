@@ -372,7 +372,23 @@ case "$reason" in
 esac
 printf 'next\n' > "$DIR/HIMMEL-9-N77c-thing-2026-10-06-RESUME.md"
 check "resumed worker + fresh N77c RESUME doc -> allow" allow "$LS"
-rm -f "$DOC2" "$DIR/HIMMEL-9-N77c-thing-2026-10-06-RESUME.md"
+rm -f "$DIR/HIMMEL-9-N77c-thing-2026-10-06-RESUME.md"
+# Only a regular file in this directory carrying a later letter is the hand-off.
+printf 'next\n' > "$T/n77c-target.md"
+ln -s "$T/n77c-target.md" "$DIR/HIMMEL-9-N77c-thing-2026-10-06-RESUME.md"
+check "resumed worker + symlinked N77c RESUME -> block" block "$LS"
+rm -f "$DIR/HIMMEL-9-N77c-thing-2026-10-06-RESUME.md" "$T/n77c-target.md"
+mkdir -p "$T/elsewhere"
+printf 'next\n' > "$T/elsewhere/HIMMEL-9-N77c-thing-2026-10-06-RESUME.md"
+check "resumed worker + N77c RESUME in another directory -> block" block "$LS"
+rm -rf "$T/elsewhere"
+mkdir "$DIR/HIMMEL-9-N77c-thing-2026-10-06-RESUME.md"
+check "resumed worker + a directory named N77c-RESUME.md -> block" block "$LS"
+rmdir "$DIR/HIMMEL-9-N77c-thing-2026-10-06-RESUME.md"
+printf 'back\n' > "$DIR/HIMMEL-9-N77a-thing-2026-10-06-RESUME.md"
+check "resumed N77b worker + fresh N77a RESUME (letter backwards) -> block" block "$LS"
+rm -f "$DIR/HIMMEL-9-N77a-thing-2026-10-06-RESUME.md"
+rm -f "$DOC2"
 # a worker id ending in z has no one-letter successor; the message
 # must not name the worker's own doc as the thing to write.
 DOCZ="$DIR/HIMMEL-9-N77z-thing-2026-10-06-RESUME.md"
