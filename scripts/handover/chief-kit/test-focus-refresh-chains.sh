@@ -236,5 +236,37 @@ jlrc=0; (cd "$WTR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR -u JUDGE_LADDER_S
 check "a linked worktree: judge-ladder writes under the primary env's root" "$jlrc $([ -f "$CFG/.judge-ladder" ] && echo yes)" "0 yes"
 lacks "a linked worktree: judge-ladder prints no load-dotenv advisory" "$(cat "$tmp/err")" "load-dotenv: .env absent under worktree"
 
+# --- no exit leaves a .focus-stage.* folder in the doc dir (the vault sync stages whatever sits there)
+stages_left() { local f n=0; for f in "$tmp"/doc/.focus-stage.*; do [ -e "$f" ] && n=$((n + 1)); done; echo "$n"; }
+cat >"$tmp/bin/sweep-fail" <<'EOS'
+#!/usr/bin/env bash
+prev=""; for a in "$@"; do [ "$prev" = --snapshot-out ] && mkdir -p "$a" && echo '{}' > "$a/graphql.json"; prev="$a"; done
+echo "status-sweep: boom" >&2
+exit 3
+EOS
+cat >"$tmp/bin/sweep-hang" <<'EOS'
+#!/usr/bin/env bash
+trap '' TERM
+prev=""; for a in "$@"; do [ "$prev" = --snapshot-out ] && mkdir -p "$a" && echo '{}' > "$a/graphql.json"; prev="$a"; done
+sleep 20
+EOS
+chmod +x "$tmp"/bin/sweep-fail "$tmp"/bin/sweep-hang
+reset
+FR_SWEEP="$tmp/bin/sweep-fail" refresh
+check "a sweep that fails after the stage holds a snapshot ends the run FAILED" "$(out)" "focus=FAILED:sweep:rc3"
+check "and no stage folder is left" "$(stages_left)" 0
+reset
+FR_SWEEP="$tmp/bin/sweep-hang" FOCUS_REFRESH_BUDGET=3 refresh
+check "a refresh killed on its budget ends FAILED:timeout" "$(out)" "focus=FAILED:timeout"
+check "and no stage folder is left (SIGTERM runs the EXIT trap)" "$(stages_left)" 0
+# a run killed outright (SIGKILL, OOM, a closed session) cannot run its trap: the next run sweeps what it left
+reset
+mkdir -p "$tmp/doc/.focus-stage.dead" "$tmp/doc/.focus-stage.live"
+touch -d '2 hours ago' "$tmp/doc/.focus-stage.dead"
+refresh
+check "a refresh sweeps a stage folder left by a killed run" "$([ -e "$tmp/doc/.focus-stage.dead" ] && echo left || echo gone)" gone
+check "and leaves a recent stage folder alone (it may belong to a live run)" "$([ -e "$tmp/doc/.focus-stage.live" ] && echo kept || echo gone)" kept
+check "and leaves nothing of its own behind" "$(stages_left)" 1
+
 printf '%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
