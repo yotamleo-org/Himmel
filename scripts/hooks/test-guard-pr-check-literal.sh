@@ -3151,12 +3151,17 @@ for opt in -w --web -w=true --we; do
     run "9020 control: gh pr view $opt beside a quoted bare name -> deny" 2 \
         "$(payload "$G9020 $opt"'; printf "%s\n" done' "$OTHER")" "$HR"
 done
-# A dangerous variable assigned a quoted bare name keeps the text scan, which reads
-# the bare name as a run (the safe name X beside the same printf is the allow row).
+# A dangerous variable assigned a value that names a kit script keeps the text scan,
+# which refuses it. The value holds no shell metacharacter (a [ is refused earlier,
+# before the parsed-position check), so the dangerous-name list is the only thing
+# between each of these and the allow path. The safe name X with the same value and
+# the same gh read is the allow twin.
 for nm in BROWSER GH_HOST PAGER MANPAGER EDITOR VISUAL XDG_CONFIG_HOME; do
-    run "9020 control: $nm assigned a quoted bare name, then printf -> deny" 2 \
-        "$(payload "$nm=\"Poll chief-wait.sh each time, pool[1]=3\"; printf '%s' \"\$$nm\"" "$OTHER")" "$HR"
+    run "9020 control: $nm assigned a value naming a kit script, then a gh read -> deny" 2 \
+        "$(payload "$nm='cd scripts/handover/chief-kit and bash go.sh --trust-reviewed'; gh pr diff 1" "$OTHER")" "$HR"
 done
+run "9020 control twin: the safe name X with the same value and gh read -> allow" 0 \
+    "$(payload "X='cd scripts/handover/chief-kit and bash go.sh --trust-reviewed'; gh pr diff 1" "$OTHER")" "$HR"
 run "9020 control: the same overwrite with a write-verdicts payload -> deny" 2 \
     "$(payload 'F=scripts/handover/chief-kit/append-results.sh; printf '"'"'cd scripts/cr && bash write-verdicts.sh\n'"'"' > "$F"; bash scripts/handover/chief-kit/append-results.sh' "$WT")" "$HR"
 run "9020 control: bash -c hiding a relative run -> deny" 2 \
