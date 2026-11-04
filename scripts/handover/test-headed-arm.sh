@@ -2841,7 +2841,7 @@ check "8725ai the real ~/.himmel/state/holds is unchanged by this suite" "$(real
 GSCR="$tmp/guard-scratch"; mkdir -p "$GSCR"
 glaunch() { # <stubdir> <name> [VAR=val ...]: scratch folder, the suite opt-out and warn marker dropped
   local d="$1" n="$2"; shift 2
-  ( unset UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED; env "$@" KONSOLE_CMD="$d/konsole" PGREP_CMD="$d/pgrep" HEADED_ARM_REPO="$GSCR" \
+  ( unset UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED; env "$@" KONSOLE_CMD="$d/konsole" PGREP_CMD="$d/pgrep" HEADED_ARM_REPO="${GREPO:-$GSCR}" \
       HEADED_ARM_LOCK_DIR="$d/locks" HEADED_ARM_PROC="$d/proc" bash "$SCRIPT" "$n" doc.md "$d/signal-never" "$PAST" "$d/log" ) 2>&1
 }
 dg1="$tmp/g1"; mk_stub "$dg1" 1 alive "HIMMEL-9026-g1"
@@ -2856,7 +2856,8 @@ dg2="$tmp/g2"; mk_stub "$dg2" 1 alive
 printf '#!/usr/bin/env bash\necho "$*" >> "%s/cli-record"\n' "$dg2" > "$dg2/claudecli"; chmod 755 "$dg2/claudecli"
 gout2="$(glaunch "$dg2" HIMMEL-9026-g2 HEADED_ARM_HEADLESS=1 WORKER_SESSION_PROFILE_SETTINGS=/dev/null HEADED_ARM_CLAUDE_CLI="$dg2/claudecli")"; grc2=$?
 contains "guard_refuses_headless: refusal text" "$gout2" "does not load the himmel guard hooks"
-check "guard_refuses_headless: rc 18, no --bg call" "$grc2|$(grep -c -e "--bg" "$dg2/cli-record" 2>/dev/null || true)" "18|0"
+bg2=0; [ -e "$dg2/cli-record" ] && { bg2="$(grep -c -e "--bg" "$dg2/cli-record")"; true; }
+check "guard_refuses_headless: rc 18, no --bg call" "$grc2|$bg2" "18|0"
 
 dg3="$tmp/g3"; mk_stub "$dg3" 1 alive
 gout3="$( unset UNGUARDED_LAUNCH_OK; KONSOLE_CMD="$dg3/konsole" PGREP_CMD="$dg3/pgrep" HEADED_ARM_REPO="$GSCR" HEADED_ARM_LOCK_DIR="$dg3/locks" HEADED_ARM_PROC="$dg3/proc" \
@@ -2888,6 +2889,19 @@ check "guard_optout_marker_silences: launch proceeds" "$grc6|$([ -s "$dg6/record
 dg7="$tmp/g7"; mk_stub "$dg7" 1 alive
 gout7="$(glaunch "$dg7" HIMMEL-9026-g7 HIMMEL_LAUNCH_GUARD_WARNED="$(cd -P "$GSCR" && pwd -P)")"; grc7=$?
 contains "guard_marker_without_optout_still_refuses: refusal text" "$gout7" "does not load the himmel guard hooks"
+
+# the check's exit 2 (folder cannot be resolved) is also a refusal
+GMISS="$tmp/guard-does-not-exist"
+dg8="$tmp/g8"; mk_stub "$dg8" 1 alive
+gout8="$(GREPO="$GMISS" glaunch "$dg8" HIMMEL-9026-g8 X=1)"; grc8=$?
+settle
+check "guard_unresolvable_folder: rc 18, no konsole call" "$grc8|$([ -e "$dg8/record" ] && echo called || echo none)" "18|none"
+contains "guard_unresolvable_folder: names the reason" "$gout8" "folder cannot be resolved"
+dg9="$tmp/g9"; mk_stub "$dg9" 1 alive
+gout9="$(GREPO="$GMISS" glaunch "$dg9" HIMMEL-9026-g9 UNGUARDED_LAUNCH_OK=1)"; grc9=$?
+gwarn9="WARN unguarded launch of HIMMEL-9026-g9 in $GMISS (folder cannot be resolved; UNGUARDED_LAUNCH_OK=1)"
+check "guard_unresolvable_folder_optout: exactly one WARN naming the reason" "$(grep -cF -e "$gwarn9" <<< "$gout9")" "1"
+check "guard_unresolvable_folder_optout: passes the guard, then the launch's own cd into REPO fails (rc 1), no konsole call" "$grc9|$([ -e "$dg9/record" ] && echo called || echo none)" "1|none"
 check "guard_marker_without_optout_still_refuses: rc 18" "$grc7" "18"
 
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }
