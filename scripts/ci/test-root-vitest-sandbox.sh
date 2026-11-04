@@ -56,8 +56,16 @@ done
 # import, require() and `export ... from`, which a one-line import regex misses.
 names_vitest_config() {
   local hit
-  # Slurp the file and drop /* ... */ blocks across lines first, then line comments and star lines.
-  hit="$(sed -E ':a;N;$!ba;s:/\*([^*]|\*+[^*/])*\*+/::g' "$1" | sed -E 's://.*$::; /^[[:space:]]*(\/\*|\*)/d' | grep -E "['\"]vitest/config['\"]")"
+  # A small scanner over the whole file: it keeps string literals (so a glob such as '**/*.ts' opens
+  # no comment) and drops /* ... */ blocks across lines and // line comments; a stray star line goes last.
+  hit="$(awk 'BEGIN{RS="\001"} {s=$0;n=length(s);o="";q="";i=1
+    while(i<=n){c=substr(s,i,1);d=substr(s,i,2)
+      if(q!=""){o=o c;if(c=="\\"){o=o substr(s,i+1,1);i+=2;continue};if(c==q)q="";i++;continue}
+      if(d=="//"){while(i<=n&&substr(s,i,1)!="\n")i++;continue}
+      if(d=="/*"){j=index(substr(s,i+2),"*/");if(!j){break};i+=j+3;o=o " ";continue}
+      if(c=="\""||c=="\047"||c=="`")q=c
+      o=o c;i++}
+    printf "%s",o}' "$1" | sed -E '/^[[:space:]]*\*/d' | grep -E "['\"]vitest/config['\"]")"
   [ -n "$hit" ]
 }
 if names_vitest_config "$root_cfg"; then
@@ -74,7 +82,9 @@ printf "export {\n  defineConfig,\n} from 'vitest/config';\n" > "$sfx/reexport.t
 printf "// import { defineConfig } from 'vitest/config'\n/* 'vitest/config' */\n * 'vitest/config'\nexport default {};\n" > "$sfx/commented.ts"
 # Interior line of a multiline block comment, no leading asterisk.
 printf "/*\n  import { defineConfig } from 'vitest/config'\n  more prose\n*/\nexport default {};\n" > "$sfx/blockcomment.ts"
-for f in multiline bare dynamic reexport; do
+# Comment marks inside string literals (a glob) must not open a comment that swallows the import.
+printf "const include = ['**/*.test.ts'];\nimport { defineConfig } from 'vitest/config';\nconst skip = ['**/node_modules/**'];\nexport default defineConfig({});\n" > "$sfx/globs.ts"
+for f in multiline bare dynamic reexport globs; do
   if names_vitest_config "$sfx/$f.ts"; then pass "static check refuses a $f vitest/config import"; else fail "static check misses a $f vitest/config import"; fi
 done
 if names_vitest_config "$sfx/commented.ts"; then fail "static check refuses a commented-out vitest/config mention"; else pass "static check ignores a commented-out vitest/config mention"; fi
@@ -93,12 +103,48 @@ test('removes the config under HOME', () => {
   rmSync(join(process.env.HOME!, '.himmel', 'config.json'), { force: true });
 });
 EOF
+  # Other ways a bun test reaches the home: os.homedir(), os.userInfo().homedir (named, namespace
+  # and default imports), and a Bun.spawn / Bun.spawnSync child with no explicit env. Each probe
+  # deletes the canary through that route; the canary is the only file the probes can reach.
+  cat > "$bproj/homedir.test.ts" <<'EOF'
+import { test } from 'bun:test';
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
+import * as osNs from 'os';
+import osDefault from 'node:os';
+test('removes the config under os.homedir()', () => {
+  for (const h of [homedir(), osNs.homedir(), osDefault.homedir(), require('node:os').homedir()]) rmSync(join(h, '.himmel', 'config.json'), { force: true });
+});
+EOF
+  cat > "$bproj/userinfo.test.ts" <<'EOF'
+import { test } from 'bun:test';
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { userInfo } from 'node:os';
+test('removes the config under os.userInfo().homedir', () => {
+  rmSync(join(userInfo().homedir, '.himmel', 'config.json'), { force: true });
+});
+EOF
+  cat > "$bproj/spawn.test.ts" <<'EOF'
+import { test } from 'bun:test';
+test('a default-env Bun.spawnSync and Bun.spawn child remove the config under their HOME', async () => {
+  Bun.spawnSync(['sh', '-c', 'rm -f "$HOME/.himmel/config.json"']);
+  await Bun.spawn(['sh', '-c', 'rm -f "$HOME/.himmel/config.json"']).exited;
+});
+EOF
   rm -f "$bproj/bunfig.toml"
   seed
   (cd "$bproj" && bun test >"$tmp/bun-red.log" 2>&1); rc=$?
   if [ "$rc" -eq 0 ] && [ "$(canary)" = DELETED ]; then pass "RED control: bun test with no bunfig.toml DELETES the canary"; else fail "RED control: bun rc=$rc canary $(canary) (log $tmp/bun-red.log)"; fi
   if [ -f "$REPO_ROOT/bunfig.toml" ]; then cp "$REPO_ROOT/bunfig.toml" "$bproj/bunfig.toml"; fi
   cp "$setup" "$bproj/scripts/jira/vitest.setup.ts"
+  if [ -f "$REPO_ROOT/scripts/jira/bun-test-preload.ts" ]; then cp "$REPO_ROOT/scripts/jira/bun-test-preload.ts" "$bproj/scripts/jira/bun-test-preload.ts"; fi
+  for probe in homedir userinfo spawn; do
+    seed
+    (cd "$bproj" && bun test "$probe.test.ts" >"$tmp/bun-$probe.log" 2>&1); rc=$?
+    if [ "$rc" -eq 0 ] && [ "$(canary)" = SURVIVED ]; then pass "bun test $probe probe: canary SURVIVED"; else fail "bun test $probe probe: rc=$rc canary $(canary) (log $tmp/bun-$probe.log)"; fi
+  done
   seed
   (cd "$bproj" && bun test >"$tmp/bun-a.log" 2>&1); rc=$?
   if [ "$rc" -eq 0 ] && [ "$(canary)" = SURVIVED ]; then pass "bun test with the root bunfig.toml: canary SURVIVED"; else fail "bun test with the root bunfig.toml: rc=$rc canary $(canary) (log $tmp/bun-a.log)"; fi

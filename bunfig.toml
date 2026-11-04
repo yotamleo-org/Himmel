@@ -1,6 +1,7 @@
-# `bun test` from the repo root ignores vitest.config.ts. Preload the same sandbox the vitest
-# root config applies (temp HOME, release state, ledger, config/handover roots, keyring off), so a
-# bare run never reaches the operator's real home. Unconditional: it does not rest on NODE_ENV,
-# which bun sets to "test" only when it is unset.
+# `bun test` from the repo root ignores vitest.config.ts. Two preloads sandbox it:
+#   vitest.setup.ts      - temp HOME, release state, ledger, config/handover roots, keyring off
+#   bun-test-preload.ts  - makes os.homedir(), os.userInfo().homedir and a default-env Bun.spawn
+#                          child follow that HOME (bun keeps the real one there otherwise)
+# Unconditional: it does not rest on NODE_ENV, which bun sets to "test" only when it is unset.
 [test]
-preload = ["./scripts/jira/vitest.setup.ts"]
+preload = ["./scripts/jira/vitest.setup.ts", "./scripts/jira/bun-test-preload.ts"]
