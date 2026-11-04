@@ -12,7 +12,7 @@ lib="$repo_root/scripts/lib"
 
 # shellcheck source=lib/uninstall-provenance-fixture.sh
 # shellcheck disable=SC1091
-. "$lib/uninstall-provenance-fixture.sh"
+. "$here/lib/uninstall-provenance-fixture.sh"
 
 echo "==== RED20 (HIMMEL-3332 slice3): install-created qmd kept by default, removed under --purge-state; stub never removed ===="
 # Fixture shape mirrors the real prov_record call sites (scripts/lib/qmd-bin.sh

@@ -12,7 +12,7 @@ lib="$repo_root/scripts/lib"
 
 # shellcheck source=lib/uninstall-provenance-fixture.sh
 # shellcheck disable=SC1091
-. "$lib/uninstall-provenance-fixture.sh"
+. "$here/lib/uninstall-provenance-fixture.sh"
 
 echo "==== RED3: plugin ownership via ledger register rows ===="
 new_case red3

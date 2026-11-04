@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2015
+# shellcheck disable=SC2015,SC2034 # lib is read by the sourced fixture's helpers
 # test-uninstall-provenance-legacy.sh -- the RED33-RED60 cases (settings containers, legacy-path backups, purge-state refusals).
 # One of four files (test-uninstall-provenance.sh, -qmd, -legacy, -tty-block) split from one 525 s
 # suite so no CI shard is bounded by it. The shared fixture is
@@ -12,7 +12,7 @@ lib="$repo_root/scripts/lib"
 
 # shellcheck source=lib/uninstall-provenance-fixture.sh
 # shellcheck disable=SC1091
-. "$lib/uninstall-provenance-fixture.sh"
+. "$here/lib/uninstall-provenance-fixture.sh"
 
 echo "==== RED33 (HIMMEL-3541): settings containers + a scope marketplace entry install created ===="
 # install-plugins.sh records a created-when-absent json-key row for the
