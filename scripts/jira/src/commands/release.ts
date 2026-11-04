@@ -292,7 +292,7 @@ export function judgeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 
 // The native-lane subscription preflight: its last line is the token.
 function judgePreflight(): string {
-  const env = { ...process.env, CADENCE_USAGE_LANE: 'native', CADENCE_USAGE_WORKER: 'rm-judge' };
+  const env: NodeJS.ProcessEnv = { ...process.env, CADENCE_USAGE_LANE: 'native', CADENCE_USAGE_WORKER: 'rm-judge' };
   for (const k of ['WORKER_SESSION_LANE', 'CADENCE_USAGE_LAUNCH', 'CADENCE_USAGE_CALLER_PID']) delete env[k];
   return execFileSync('bash', [join(repoRoot, 'scripts', 'lib', 'usage-preflight.sh')], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] })
     .trim().split('\n').pop() ?? '';
