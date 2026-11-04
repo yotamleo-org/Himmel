@@ -2208,6 +2208,8 @@ has "I13 ... a RESUME row is not withheld" "$rg_out" "RESUME	HIMMEL-50"
 has "I13 ... a To Do row is listed" "$rg_out" "HIMMEL-56	"
 rg6="$(NEXT_DISPATCH_MIRROR="$WORK/m6/HIMMEL" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --resume-only --workers-from "$WORK/fleet-rg.json" 2>/dev/null)"
 has "I13 ... an IN CI row (a merged PR, no worker) is not withheld" "$rg6" "MERGED-NOT-CLOSED	HIMMEL-70"
+rgf="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-live" LIVE_STATUS="In Progress" runl 1 "$FAM" "$WORK/fleet-rg.json")"
+has "I13 ... a series-family row is not withheld" "$rgf" "SERIES FAMILY docs/handover HIMMEL-870,HIMMEL-871"
 : > "$MERGED_TSV"
 printf '4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
 
