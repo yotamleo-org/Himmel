@@ -286,6 +286,6 @@ rc=$?
 cat "$err_file" >&2
 rm -f "$err_file"
 if [ "$rc" -eq 2 ]; then
-    echo "block-graphify-egress: for read-only queries use: bash scripts/graphify/worker-graph.sh query|explain \"<question>\"  (no cd, no relative target)" >&2
+    echo "block-graphify-egress: for read-only queries use: bash scripts/graphify/worker-graph.sh query|explain|path \"<question>\"  (no cd, no relative target)" >&2
 fi
 exit "$rc"

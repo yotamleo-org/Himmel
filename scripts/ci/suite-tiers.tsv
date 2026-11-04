@@ -774,7 +774,6 @@ scripts/hooks/test-redirect-webfetch-walled-hosts.sh	pr	trust-path
 scripts/hooks/test-refresh-statusline-caches.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-refresh-where-are-we-on-end.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-require-quiet-run.sh	pr	guard
-scripts/hooks/test-retrieval-nudge.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-rtk-hook-guard.sh	pr	trust-path
 scripts/hooks/test-run-hook-with-bash-unroll.sh	pr	trust-path
 scripts/hooks/test-session-end-timeout-budget.sh	pr	static-gate
