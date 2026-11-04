@@ -27,8 +27,8 @@
 #      (one carrying a <status>) or a TaskStop result (toolUseResult.task_id).
 #   5. HIMMEL_RELEASE_MANAGER is not 1: a release manager's STANDBY is exempt.
 #   6. None of the last 4 tool calls reported READY, FINDING or BLOCKED to the
-#      chief (an append-results.sh bullet or a SendMessage opening with the
-#      marker): that worker waits on the chief's reply by design.
+#      chief (an append-results.sh bullet or a SendMessage to a chief or console
+#      session opening with the marker): that worker waits on the chief's reply by design.
 #
 # The keepalive bound is HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS (launch
 # env, default 3000 = 50 min, 60-3300 accepted, anything else = the default);
@@ -126,9 +126,10 @@ case "$running" in ''|*[!0-9]*) exit 0 ;; esac
 
 # A READY, FINDING or BLOCKED report within the last 4 tool calls means the
 # worker is waiting on the chief's reply, not idle: about half of all firings
-# followed one. A marker is an append-results.sh bullet or a SendMessage that
-# OPENS with it; a plain-text mention or another marker (LIVE, JUDGE-REQUEST)
-# does not count. Count 0 falls through to the refusal.
+# followed one. A marker is an append-results.sh bullet or a SendMessage to a
+# chief or console session (the same name suffixes the lock loop above skips)
+# that OPENS with it; a plain-text mention, a message to a peer or another
+# marker (LIVE, JUDGE-REQUEST) does not count. Count 0 falls through to the refusal.
 reported="$(jq -R -r '
     fromjson? // empty
     | select(.type == "assistant")
@@ -137,7 +138,7 @@ reported="$(jq -R -r '
     | if .name == "Bash" then
           (.input.command // "" | strings
            | if test("append-results\\.sh\\s+\\S+\\s+[\"\\x27]?\\s*(READY|FINDING|BLOCKED)\\b") then "M" else "T" end)
-      elif .name == "SendMessage" then
+      elif .name == "SendMessage" and ((.input.to // "") | strings | test("chief|console"; "i")) then
           (.input.message // "" | strings
            | if test("^\\s*(READY|FINDING|BLOCKED)\\b") then "M" else "T" end)
       else "T" end

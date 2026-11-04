@@ -222,7 +222,7 @@ expect_allow "empty payload -> allow (fail open)"
 # the refusal is skipped. A real idle still fires: no marker, a LIVE bullet, a stale marker, a marker word that
 # is not a bullet or message opener.
 row_bash() { jq -nc --arg c "$1" '{type:"assistant",message:{content:[{type:"tool_use",name:"Bash",input:{command:$c}}]}}'; }
-row_send() { jq -nc --arg m "$1" '{type:"assistant",message:{content:[{type:"tool_use",name:"SendMessage",input:{to:"chief",message:$m}}]}}'; }
+row_send() { jq -nc --arg m "$1" --arg to "${2:-roadmap-chief}" '{type:"assistant",message:{content:[{type:"tool_use",name:"SendMessage",input:{to:$to,message:$m}}]}}'; }
 APPEND="bash /repo/scripts/handover/chief-kit/append-results.sh /handover/HIMMEL-1-N1-fixture-worker.md"
 mk_transcript() {   # mk_transcript <name> <row>... — a JSONL fixture ending in the text row
     local f="$TMP/$1.jsonl"; shift
@@ -255,7 +255,13 @@ expect_block "real idle: the marker is older than the last 4 tool calls -> block
 t="$(mk_transcript marker-word "$R_EDIT" "$(row_bash 'echo READY')" "$(row_send 'not READY yet, still testing')")"
 run_guard "$(payload "$t")"
 expect_block "real idle: READY inside other text, not a bullet or message opener -> block"
-t="$(mk_transcript marker-with-bg "$(row_bash "$APPEND \"READY 4702 head GREEN\"")" "$(row_bg b8)")"
+t="$(mk_transcript to-peer "$R_EDIT" "$(row_send 'FINDING shared with a peer' N4741-worker)")"
+run_guard "$(payload "$t")"
+expect_block "real idle: a FINDING sent to a peer worker, not the chief -> block"
+t="$(mk_transcript to-console "$R_EDIT" "$(row_send 'BLOCKED on a permission prompt' nextleg-console)")"
+run_guard "$(payload "$t")"
+expect_allow "BLOCKED sent to a console-named session -> allow"
+t="$(mk_transcript marker-with-bg"$(row_bash "$APPEND \"READY 4702 head GREEN\"")" "$(row_bg b8)")"
 run_guard "$(payload "$t")"
 expect_allow "marker plus a running background task -> allow (unchanged)"
 
