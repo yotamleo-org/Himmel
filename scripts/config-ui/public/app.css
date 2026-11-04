@@ -177,6 +177,8 @@ div.tile{cursor:default}.tiles.three{grid-template-columns:repeat(3,minmax(0,1fr
 /* the bundle table: check and kind keep a word whole, the detail column takes the wrapping with a floor (as .data.thtab does) */
 .data.chk th,.data.chk td{overflow-wrap:normal}
 .data.chk td.wrap{overflow-wrap:anywhere;min-width:16ch}
+/* the tab panels are grid items of .p: without this the wide table grows the track instead of scrolling inside .scroll */
+.p>[role="tabpanel"]{min-width:0}
 .alert{padding:var(--s2) 0;border-bottom:1px solid var(--rule);overflow-wrap:anywhere}
 .card{border:1px solid var(--rule);border-radius:8px;background:var(--bg);padding:var(--s3);margin:var(--s2) 0;overflow-wrap:anywhere}
 .card h3{margin:0 0 var(--s1);font:600 var(--fs-sm) var(--font-ui)}

@@ -299,3 +299,11 @@ test("the bundle table keeps the check and kind columns whole and lets only the 
   expect(wrap).toContain("overflow-wrap:anywhere");
   expect(wrap).toMatch(/min-width:\d+ch/);
 });
+
+// The tab panels are grid items of .p; a grid item's min width is its content, so a wide table grew the track (the page
+// overflowed at 390px) instead of scrolling inside .scroll. The panels may shrink below their content.
+test("the Health tab panels can shrink below their content so the table scrolls inside its box", async () => {
+  const html = renderHealth(feed(own("a", "fail")), null, { tile: "checks", tab: "all" });
+  expect(html).toContain('role="tabpanel" id="tab-all"');
+  expect(await cssRule('.p>[role="tabpanel"]')).toContain("min-width:0");
+});
