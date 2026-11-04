@@ -103,7 +103,11 @@ cron_read() {
         *) echo "ERR failure-review-cadence: cannot read the crontab: $err" >&2; return 1 ;;
     esac
 }
-cron_entry() { printf '%s\n' "$CRON_TAB" | grep -F "# $TASK_NAME" || true; }
+# Only the exact tagged, uncommented row is ours: a commented row, a lookalike tag
+# (# HIMMEL-FailureReviewOther) and every other line belong to the operator.
+cron_row_re() { printf '^[[:space:]]*[^#[:space:]].*[[:space:]]# %s[[:space:]]*$' "$TASK_NAME"; }
+cron_entry() { printf '%s\n' "$CRON_TAB" | grep -E "$(cron_row_re)" || true; }
+cron_without_entry() { printf '%s\n' "$CRON_TAB" | { grep -vE "$(cron_row_re)" || true; }; }
 
 cmd_arm() {
     local time="06:15" vault="" live=0 force=0 dry=0 root runner bash_bin entry
@@ -135,6 +139,11 @@ cmd_arm() {
         echo "ERR failure-review-cadence: already armed: $TASK_NAME (use --force to replace)" >&2
         return 3
     fi
+    if [ "$(cron_entry | grep -c .)" -gt 1 ]; then
+        echo "ERR failure-review-cadence: more than one live $TASK_NAME row; refusing to guess which to keep (crontab untouched):" >&2
+        cron_entry >&2
+        return 5
+    fi
     runner="$RUNNER_DIR/failure-review-cadence.sh"
     # cron reads an unescaped % as a newline, even inside quotes.
     entry="${time#*:} ${time%:*} * * * \"${runner//%/\\%}\" # $TASK_NAME"
@@ -161,12 +170,12 @@ cmd_arm() {
             "$vault" "$([ "$live" -eq 1 ] && printf ' --live')"
     } > "$runner.new" || { rm -f "$runner.new"; echo "ERR failure-review-cadence: cannot write the runner $runner.new" >&2; return 4; }
     chmod +x "$runner.new" || { rm -f "$runner.new"; echo "ERR failure-review-cadence: cannot chmod the runner $runner.new" >&2; return 4; }
-    { printf '%s\n' "$CRON_TAB" | { grep -vF "# $TASK_NAME" || true; } | sed '/^$/d'; printf '%s\n' "$entry"; } | "$CRONTAB_BIN" - \
+    { cron_without_entry; printf '%s\n' "$entry"; } | "$CRONTAB_BIN" - \
         || { rm -f "$runner.new"; echo "ERR failure-review-cadence: crontab install failed" >&2; return 4; }
     if ! mv -f "$runner.new" "$runner"; then
         rm -f "$runner.new"
         # The new entry must not outlive its runner: put the crontab back as it was read.
-        { printf '%s\n' "$CRON_TAB" | sed '/^$/d'; } | "$CRONTAB_BIN" - \
+        { printf '%s\n' "$CRON_TAB"; } | "$CRONTAB_BIN" - \
             || echo "ERR failure-review-cadence: could not restore the previous crontab; check 'crontab -l'" >&2
         echo "ERR failure-review-cadence: cannot install the runner $runner (crontab restored)" >&2
         return 4
@@ -194,7 +203,7 @@ cmd_disarm() {
     local guard_rc=0
     bash "$SCRIPT_DIR/../../lib/test-run-guard" check --tool "$CRONTAB_BIN" failure-review-cadence-disarm "$RUNNER_DIR" || guard_rc=$?
     [ "$guard_rc" -ne 77 ] || return 77
-    { printf '%s\n' "$CRON_TAB" | grep -vF "# $TASK_NAME" || true; } | "$CRONTAB_BIN" - || return 4
+    cron_without_entry | "$CRONTAB_BIN" - || return 4
     rm -f "$RUNNER_DIR/failure-review-cadence.sh"
     echo "failure-review-cadence: disarmed"
 }
