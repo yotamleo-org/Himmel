@@ -49,7 +49,6 @@
 # ANTHROPIC_API_ORG_ID_A=dummy-org-a
 # ANTHROPIC_API_ORG_ID_B=dummy-org-b
 # ANTHROPIC_API_ORG_ID_C=dummy-org-c
-# ANTHROPIC_ORG_ID_C=dummy-org-c
 
 # Plain behaviour settings (HIMMEL-7427)
 # HIMMEL_REPO=/path/to/your/himmel

@@ -123,8 +123,7 @@ path (the shim runs the lane from a scratch directory, so it hands the judged re
 any spawn or batch submit, with no subscription fallback. Naming the account (`HIMMEL_API_ACCOUNT=A`, `B` or `C`)
 works for every kind and every repo, judge, critic, bulk and cull included.
 
-Config name: `ANTHROPIC_API_ORG_ID_C`, matching `ANTHROPIC_API_ORG_ID_A` and `_B`. `ANTHROPIC_ORG_ID_C` is also
-accepted by the loader. Every site that unsets the A and B keys before a subscription `claude -p` also unsets
+Config name: `ANTHROPIC_API_ORG_ID_C`, matching `ANTHROPIC_API_ORG_ID_A` and `_B`. Every site that unsets the A and B keys before a subscription `claude -p` also unsets
 `ANTHROPIC_ORG_C_KEY`. The key file `key-C.env` is written by the operator, never by a script.
 
 ### Caching recommendation for the graph pass

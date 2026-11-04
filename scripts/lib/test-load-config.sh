@@ -78,7 +78,7 @@ assert_has "forced secret failure prints a short hash" "sha256 " "$probe_out"
 # Reclassifying only the named service identifiers makes the config layers usable.
 identifiers='JIRA_BASE_URL JIRA_EMAIL JIRA_PROJECTS JIRA_PROJECT_KEY JIRA_CLOUD_ID
 GCP_CI_PROJECT_ID SNYK_ORG_ID SNYK_ORG_SLUG
-VERCEL_TEAM_ID VERCEL_USER_ID ANTHROPIC_API_ORG_ID_A ANTHROPIC_API_ORG_ID_B ANTHROPIC_API_ORG_ID_C ANTHROPIC_ORG_ID_C'
+VERCEL_TEAM_ID VERCEL_USER_ID ANTHROPIC_API_ORG_ID_A ANTHROPIC_API_ORG_ID_B ANTHROPIC_API_ORG_ID_C'
 for k in $identifiers; do
     reset
     assert_eq_fp "$k is config" "config" "$(run '_himmel_key_class "$k"')"

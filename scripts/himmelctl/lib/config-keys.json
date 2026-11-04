@@ -30,7 +30,7 @@
     { "name": "VERCEL_USER_ID", "class": "config", "explanation": "Vercel account identifier.", "effect": "Identifies the account for Vercel tooling." },
     { "name": "ANTHROPIC_API_ORG_ID_A", "class": "config", "explanation": "Anthropic organization identifier for account A.", "effect": "Associates API usage reporting with account A." },
     { "name": "ANTHROPIC_API_ORG_ID_B", "class": "config", "explanation": "Anthropic organization identifier for account B.", "effect": "Associates API usage reporting with account B." },
-    { "name": "ANTHROPIC_API_ORG_ID_C", "class": "config", "explanation": "Anthropic organization identifier for account C (ANTHROPIC_ORG_ID_C is read as an alias).", "effect": "Associates API usage reporting with account C." },
+    { "name": "ANTHROPIC_API_ORG_ID_C", "class": "config", "explanation": "Anthropic organization identifier for account C.", "effect": "Associates API usage reporting with account C." },
     { "name": "HIMMEL_REPO", "class": "config", "explanation": "Absolute path of the himmel checkout.", "effect": "Lets tooling locate the harness outside its current directory." },
     { "name": "CLAUDE_HUD_ALLOW_EXTRA_CMD", "class": "config", "explanation": "Allow the HUD extra-command segment.", "effect": "Enables the HUD's optional extra command when configured." },
     { "name": "HIMMEL_WHERE_ARE_WE_ROLLUP_TTL", "class": "config", "explanation": "Lifetime of the cached session-position rollup.", "effect": "Controls how often the rollup is recomputed." },
