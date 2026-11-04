@@ -85,10 +85,13 @@
 #      only --trust-reviewed <judge qid> may write it. The worker's READY text is never read.
 #   9  refused: cr-disposition.sh check found a deferred Critical or Important
 #      finding on the PR's branch with no valid disposition at <head>
-#  10  refused: --trust-reviewed <qid>'s only GO for <head> is a `delta: no-op` verdict
-#      (write-verdict.sh --delta-noop) and delta-class.sh no longer classifies the
-#      delta from its judged head as `none` (a trust-path or judged-finding delta, or
-#      a read error): a real judge must rule on the head
+#  10  refused: --trust-reviewed <qid> has a real GO for <head> but a judge's NO-GO
+#      (any qid of the PR) sits at or after <head>; or its only GO for <head> is a
+#      `delta: no-op` verdict (write-verdict.sh --delta-noop) that go-gate.sh's
+#      go_noop_carry refuses (no real GO at the chain's root, a NO-GO at or after
+#      <head>, an over-long or cyclic chain) or delta-class.sh no longer classifies
+#      every hop of its chain as `none` (a trust-path or judged-finding delta); or any
+#      read error on that path, or an unresolvable verdict scope: a real judge must rule
 #
 # A relative entry (`bash scripts/handover/chief-kit/go.sh`, the worker
 # profile's pre-approved literal) hands off to the HIMMEL_REPO anchor's own
@@ -221,7 +224,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # gate against, so it must use their exact rule, not a hand-rolled copy of it.
 # Fail closed: this write is sensitive enough that a broken/missing shared lib
 # must never be read as "not a worker".
-unset -f go_adapter_entry go_adopted_entry _go_harness_ref chief_worker go_gate _go_gate_verify go_trust_gate go_trust_id_ok go_trust_verdict go_verdict_scope go_mac go_msg_mac go_verdict_mac go_verdict_mac_ok _go_sha256 go_key_file go_resolve_root _go_in_harness go_fixred_gate go_fixred_file go_fork_ready 2>/dev/null || true
+unset -f go_adapter_entry go_adopted_entry _go_harness_ref chief_worker go_gate _go_gate_verify go_trust_gate go_trust_id_ok go_trust_verdict go_verdict_line go_pr_qids go_noop_chain go_nogo_after go_noop_carry go_verdict_scope go_mac go_msg_mac go_verdict_mac go_verdict_mac_ok _go_sha256 go_key_file go_resolve_root _go_in_harness go_fixred_gate go_fixred_file go_fork_ready 2>/dev/null || true
 # shellcheck source=scripts/lib/go-gate.sh
 # shellcheck disable=SC1091
 if ! . "$HERE/../../lib/go-gate.sh" 2>/dev/null || ! declare -F chief_worker >/dev/null 2>&1 \
@@ -229,7 +232,9 @@ if ! . "$HERE/../../lib/go-gate.sh" 2>/dev/null || ! declare -F chief_worker >/d
         || ! declare -F go_trust_id_ok >/dev/null 2>&1 || ! declare -F go_trust_verdict >/dev/null 2>&1 \
         || ! declare -F go_verdict_scope >/dev/null 2>&1 || ! declare -F go_fixred_file >/dev/null 2>&1 \
         || ! declare -F go_adapter_entry >/dev/null 2>&1 || ! declare -F go_fork_ready >/dev/null 2>&1 \
-        || ! declare -F go_adopted_entry >/dev/null 2>&1; then
+        || ! declare -F go_adopted_entry >/dev/null 2>&1 || ! declare -F go_verdict_line >/dev/null 2>&1 \
+        || ! declare -F go_pr_qids >/dev/null 2>&1 || ! declare -F go_noop_chain >/dev/null 2>&1 \
+        || ! declare -F go_nogo_after >/dev/null 2>&1 || ! declare -F go_noop_carry >/dev/null 2>&1; then
     echo "go: cannot load scripts/lib/go-gate.sh - refusing (the chief-worker marker check must fail closed, not silently no-op)" >&2
     exit 1
 fi
@@ -315,33 +320,56 @@ if [ "$TRUST_SET" -eq 1 ] && ! REASON=$(go_trust_verdict "$ROOT" "$TRUST" "$SHA"
 fi
 
 # a `delta: no-op` verdict (write-verdict.sh --delta-noop) stands in for a judge only
-# while the delta from the judged head still classifies none. When every GO record
-# for this head is a no-op, delta-class.sh runs again here, from the caller's cwd,
-# and a trust or finding delta (or any read error) refuses: it needs a real judge.
+# while go-gate.sh's go_noop_carry (the one carry rule auto-go.sh runs too) holds and
+# the delta of every hop of its chain still classifies none. A real GO at the head is
+# vetoed by any judge's NO-GO at or after it (go_nogo_after). The PR's commits are read
+# in the caller's cwd, as delta-class.sh reads them; a trust or finding delta, a NO-GO
+# or any read error refuses: it needs a real judge.
 if [ "$TRUST_SET" -eq 1 ]; then
-    REAL=0 NOOPS=()
+    REAL=0 NOOP=0
     if ! NSCOPE=$(go_verdict_scope "$ANCHOR" "$VREPO"); then
         echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - the verdict scope could not be resolved, so whether its verdict is a delta no-op cannot be checked. No GO written." >&2
         exit 10
     fi
-    for vf in "$ROOT/$NSCOPE/verdicts/$TRUST"/*.md; do
+    NVD="$ROOT/$NSCOPE/verdicts"
+    for vf in "$NVD/$TRUST"/*.md; do
         [ -f "$vf" ] || continue
-        tr -d '\r' < "$vf" | grep -q "^\*\*GO\*\* for head \`$SHA\`" || continue
-        if grep -qx 'delta: no-op' "$vf"; then
-            NJ=$(sed -n 's/^delta-judged: //p' "$vf" | head -n 1)
-            NOOPS+=("${NJ:--}")
-        else
-            REAL=1
+        if ! RL=$(go_verdict_line "$vf"); then
+            echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - cannot read the verdict $vf, so whether it is a delta no-op cannot be checked. No GO written." >&2
+            exit 10
         fi
+        # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
+        case "$RL" in '**GO** for head `'"$SHA"'`'|'**GO** for head `'"$SHA"'`.') ;; *) continue ;; esac
+        DRC=0; grep -qxE "delta: no-op"$'\r'"?" "$vf" 2>/dev/null || DRC=$?
+        case "$DRC" in
+            0) NOOP=1 ;;
+            1) REAL=1 ;;
+            *) echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - cannot read the verdict $vf (grep exit $DRC), so whether it is a delta no-op cannot be checked. No GO written." >&2
+               exit 10 ;;
+        esac
     done
-    if [ "$REAL" -eq 0 ] && [ "${#NOOPS[@]}" -gt 0 ]; then
-        for NJ in "${NOOPS[@]}"; do
-            DCLASS=$(bash "$HERE/delta-class.sh" --qid "$TRUST" ${VREPO:+--repo "$VREPO"} "$NJ" "$SHA" 2>/dev/null) || DCLASS=trust # swallow-ok: a failed classifier reads trust, which refuses, on this line
+    if [ "$REAL" -eq 1 ]; then
+        if ! WHY=$(go_nogo_after "$NVD" "$PR" "$PWD" "$SHA"); then
+            echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - $WHY. No GO written." >&2
+            exit 10
+        fi
+    elif [ "$NOOP" -eq 1 ]; then
+        if ! WHY=$(go_noop_carry "$NVD" "$TRUST" "$PR" "$PWD" "$SHA" "$ROOT" "$ANCHOR" "$VREPO"); then
+            echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - its only verdict is a delta no-op that may not carry: $WHY. No GO written." >&2
+            exit 10
+        fi
+        if ! CHAIN=$(go_noop_chain "$NVD" "$TRUST" "$SHA"); then
+            echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - $CHAIN. No GO written." >&2
+            exit 10
+        fi
+        while read -r NH NJ; do
+            [ -n "$NH" ] && [ "$NJ" != - ] || continue
+            DCLASS=$(bash "$HERE/delta-class.sh" --qid "$TRUST" ${VREPO:+--repo "$VREPO"} "$NJ" "$NH" 2>/dev/null) || DCLASS=trust # swallow-ok: a failed classifier reads trust, which refuses, on this line
             if [ "$DCLASS" != none ]; then
-                echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - its only verdict is a delta no-op, but delta-class.sh classifies the delta from '$NJ' as '$DCLASS' (not none). A judge must rule on this head; a no-op never carries a trust-path or judged-finding delta. No GO written." >&2
+                echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - its only verdict is a delta no-op, but delta-class.sh classifies the delta from '$NJ' to '$NH' as '$DCLASS' (not none). A judge must rule on this head; a no-op never carries a trust-path or judged-finding delta. No GO written." >&2
                 exit 10
             fi
-        done
+        done <<< "$CHAIN"
     fi
 fi
 
