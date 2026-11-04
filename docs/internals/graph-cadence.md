@@ -35,7 +35,18 @@ script.
    `--count --merges` always returns 0 while the true distance is the real
    number.
 4. Below `--threshold`: `action=skipped`, one ledger row, exit 0.
-5. At/above threshold: `ast-update.sh` (the free, AST-only structural
+   **No tracked graph (the steady state):** `origin/main` no longer carries
+   `graphify-out/graph.json`, so there is nothing to measure or publish. Without
+   `--semantic` the run then exits right here — `action=skipped`, no pipeline lock,
+   no worktree sync, **no `ast-update.sh` rebuild** (HIMMEL-9069). The only
+   rebuild of the himmel AST graph per cycle is the hourly
+   `HIMMEL-GraphMapAst-Himmel` run into the primary checkout's `graphify-out/`,
+   which is what the graph workers and the session-start advisory read; a rebuild
+   in this step's worktree would feed nothing. `--semantic` keeps the rebuild (the
+   semantic step builds on it and promotes it into the primary), and an
+   unreadable `graph.json` object (corrupt clone) still falls through and fails
+   closed (rc 3) rather than hiding behind the skip.
+5. At/above threshold (a tracked graph only): `ast-update.sh` (the free, AST-only structural
    refresh), `graph-publish.sh` (open/refresh the publish PR), then
    `merge-on-green.sh` (`ARMAUTOMERGE=1`, the sanctioned auto-merge
    script) — all three against a **dedicated worktree**, never the
@@ -99,9 +110,11 @@ only with `--with-publish`. It is grouped with the free structural (AST) pair fo
 weekly semantic pair untouched. Default schedule: **every 6 hours**,
 anchored at `:35` past (`35 */6 * * *`) — 20 minutes clear of `HIMMEL-GraphMapAst-Himmel`'s
 own `:15`-past hourly fire, wider than the AST pair's own 10-minute mutual
-stagger, because this step is not free-and-instant like the AST pair: it can
-run `ast-update.sh`, open/refresh a PR, and drive `merge-on-green.sh`'s own
-`check-ci` watch, all in one fire. Both steps would otherwise contend for
+stagger, because this step is not free-and-instant like the AST pair: with a
+tracked graph or `--semantic` it can run `ast-update.sh`, open/refresh a PR, and
+drive `merge-on-green.sh`'s own `check-ci` watch, all in one fire (without
+either it skips at once and rebuilds nothing — the hourly AST pair already
+built the graph, HIMMEL-9069). Both steps would otherwise contend for
 `ast-update.sh`'s HIMMEL-910 promote lock (skip-not-wait, so a collision is
 a skipped-and-retried refresh next fire, not a failure — the wider offset
 just makes that the exception rather than the rule).

@@ -68,7 +68,10 @@
 #   script's header.)
 #   HIMMEL-GraphPublish-Himmel  every 6h, free (default :35 past)
 #       bash <himmel>/scripts/graphify/graph-cadence.sh <himmel repo>
-#   (graph-cadence.sh measures staleness against origin/main and, above its
+#   (graph-cadence.sh does NOT rebuild the himmel AST graph a second time: the
+#   hourly HIMMEL-GraphMapAst-Himmel run above is the only rebuild per cycle.
+#   With no tracked graph on origin/main and no --semantic it skips at once;
+#   otherwise it measures staleness against origin/main and, above its
 #   --threshold, refreshes + opens/refreshes a publish PR + auto-merges it
 #   through merge-on-green.sh — see that script's own header for the full
 #   design, including why it operates in a DEDICATED worktree rather than
