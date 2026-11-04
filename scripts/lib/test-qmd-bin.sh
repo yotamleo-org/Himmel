@@ -31,7 +31,7 @@ assert() {
 echo "[test-qmd-bin] qmd_install_hint emits the fork clone+build+link recipe (HIMMEL-877)"
 hint="$(qmd_install_hint)"
 assert "hint mentions git clone" grep -q '^git clone ' <<<"$hint"
-assert "hint mentions the carried qmd fork (HIMMEL-3956)" grep -q 'yotamleo/qmd' <<<"$hint"
+assert "hint mentions the carried qmd fork (HIMMEL-3956)" grep -q 'yotamleo-org/qmd' <<<"$hint"
 assert "hint pins a full commit SHA (HIMMEL-911), not a movable ref" grep -qE 'fetch origin [0-9a-f]{40} ' <<<"$hint"
 # shellcheck disable=SC2016
 # Single quotes intentional — $1 expands inside the spawned bash -c subshell.
@@ -54,10 +54,10 @@ assert "default QMD_FORK_REF is a full 40-hex SHA" \
   bash -c 'printf "%s" "$1" | grep -qE "^[0-9a-f]{40}$"' _ "$default_ref"
 # the carried launcher-signal fork until tobi/qmd#1030 lands
 default_repo="$(env -u QMD_FORK_REPO bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; _qmd_fork_repo')"
-assert "default QMD_FORK_REPO is the carried fork yotamleo/qmd" \
-  test "$default_repo" = "https://github.com/yotamleo/qmd.git"
-assert "default QMD_FORK_REF is the fork main merge of fork PR #50" \
-  test "$default_ref" = "3aef32b548488b68c78ea815dc8e8fef09e80b98"
+assert "default QMD_FORK_REPO is the carried fork yotamleo-org/qmd (decision 517)" \
+  test "$default_repo" = "https://github.com/yotamleo-org/qmd.git"
+assert "default QMD_FORK_REF is the fork main merge of fork PR #51" \
+  test "$default_ref" = "af7f9a967163d72dfb9502416449ae2dc9f12ca5"
 # shellcheck disable=SC2016
 # Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
 assert "the pin comment names fork PRs #42 and #43 and HIMMEL-5952" \
@@ -301,7 +301,7 @@ case "$1" in
     fi
     # `remote get-url origin` ownership probe: default answers the default
     # upstream repo URL so owned-clone scenarios pass the guard.
-    printf '%s\n' "${STUB_GIT_ORIGIN_URL:-https://github.com/yotamleo/qmd.git}"
+    printf '%s\n' "${STUB_GIT_ORIGIN_URL:-https://github.com/yotamleo-org/qmd.git}"
     exit 0
     ;;
   fetch|reset) exit "${STUB_GIT_FETCH_RC:-0}" ;;
@@ -625,14 +625,17 @@ repoint_case() {
   assert "re-point $label: proceeded to fetch the pin" grep -q 'GIT fetch' "$git_log"
   assert "re-point $label: rc 0" grep -q '^RC=0$' <<<"$out"
 }
-fork_url="https://github.com/yotamleo/qmd.git"
+fork_url="https://github.com/yotamleo-org/qmd.git"
 up_url="https://github.com/tobi/qmd.git"
 repoint_case tobi-to-fork "$up_url" "$fork_url"
 repoint_case tobi-nogit "https://github.com/tobi/qmd" "$fork_url"
 repoint_case tobi-slash "https://github.com/tobi/qmd.git/" "$fork_url"
-repoint_case fork-to-tobi "$fork_url" "$up_url"
+repoint_case fork-to-tobi "https://github.com/yotamleo/qmd.git" "$up_url"
 repoint_case fork-nogit "https://github.com/yotamleo/qmd" "$up_url"
 repoint_case fork-slash "https://github.com/yotamleo/qmd.git/" "$up_url"
+repoint_case org-to-tobi "$fork_url" "$up_url"
+repoint_case old-fork-to-org "https://github.com/yotamleo/qmd.git" "$fork_url"
+repoint_case org-slash "https://github.com/yotamleo-org/qmd/" "$up_url"
 
 n=0
 for ssh in git@github.com:yotamleo/qmd.git git@github.com:tobi/qmd.git; do

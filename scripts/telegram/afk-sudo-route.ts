@@ -183,9 +183,19 @@ const CODE_RUN = /(?<!\d)\d(?:[\s-]*\d){5}/u;
 // "ticket 123-456 is done") are ordinary text.
 const CODE_TOKEN = /(?<!\d)\d{6}(?!\d)/u;
 const CODE_ONLY = /^\d{6,7}$/u;
-// The whole text is only a code once whitespace, hyphens and the Unicode hyphens U+2010 and U+2011 are removed.
-const wholeCode = (text: string): boolean => CODE_ONLY.test(text.replace(/[\s\-‐‑]/gu, ""));
-const heldAsCode = (text: string): boolean => CODE_TOKEN.test(text) || wholeCode(text);
+// Fold a text to ASCII digits before any code test: NFKC (fullwidth), every other Unicode decimal digit
+// (Arabic-Indic and the like, counted from its block's zero) and no format characters (zero-width).
+const asciiDigit = (d: string): string => {
+  let n = 0, cp = d.codePointAt(0)!;
+  while (/\p{Nd}/u.test(String.fromCodePoint(cp - 1))) { cp--; n++; }
+  return String(n % 10);
+};
+const fold = (text: string): string => text.normalize("NFKC").replace(/\p{Cf}/gu, "").replace(/\p{Nd}/gu, asciiDigit);
+// The whole text is only a code once whitespace, punctuation, dashes, the minus sign and other separators are removed.
+const wholeCode = (text: string): boolean => CODE_ONLY.test(fold(text).replace(/[\s\p{Z}\p{P}−]/gu, ""));
+// A NONCE CODE pair, ignoring trailing punctuation.
+const pairCode = (text: string): boolean => CODE_REPLY.test(fold(text).replace(/[\s\p{P}]+$/u, ""));
+const heldAsCode = (text: string): boolean => CODE_TOKEN.test(fold(text)) || wholeCode(text);
 
 // A reply to a prompt this bridge issued. Always consumed, so a code (or a
 // mistyped one) never lands in a session inbox or a run prompt.
@@ -238,7 +248,7 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
       // memory, so a restart forgets it) when it holds a standalone six-digit token,
       // whatever words surround it, or is only a spaced or hyphenated code, or any
       // message sent while a prompt waits.
-      if (CODE_RUN.test(msg.text) && eligible(deps.access(), msg)) {
+      if (CODE_RUN.test(fold(msg.text)) && eligible(deps.access(), msg)) {
         const waiting = prompts?.live(msg.chat_id) ?? [];
         if ((msg.reply_to_bot === true && heldAsCode(msg.text)) || waiting.length > 0) {
           void deps.reply(msg.chat_id, waiting.length > 0
@@ -255,8 +265,8 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
       // or not it is a reply (a reply to a live prompt was answered above).
       // ponytail: ordinary bare six-digit numbers are held too; prefix with "text:".
       // Upgrade path: an explicit non-code message mode instead of guessing intent.
-      if ((((msg.reply_to_message_id == null || msg.reply_to_bot === true) && (BARE_CODE.test(msg.text) || CODE_REPLY.test(msg.text))) || wholeCode(msg.text))
-        && msg.forwarded === false && msg.caption === false
+      // A caption, a forward and a reply to a message that is not the bot's are held the same way.
+      if ((wholeCode(msg.text) || pairCode(msg.text))
         && isOperatorIdentity(deps.access(), msg.from, msg.chat_id, msg.sender_chat)) {
         void deps.reply(msg.chat_id, '⚠️ afk-sudo: held a code-shaped message; nothing ran. To send a number as text, prefix it with "text:".').catch(() => deps.log("[afk-sudo] hold notice failed"));
         return true;

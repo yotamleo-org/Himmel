@@ -305,7 +305,7 @@ async function flushPendingMedia(root: string, pendingMedia: PendingMedia[]): Pr
 }
 
 export async function ingestUpdates(root: string, updates: any[], allow: AllowFn = () => true, fetchImage?: FetchImageFn, fetchVoice?: FetchVoiceFn, fetchDoc?: FetchDocFn, notifyDocFail?: NotifyDocFailFn): Promise<void> {
-  await mkdir(root, { recursive: true });
+  await mkdir(root, { recursive: true, mode: 0o700 });
   const offset = await loadOffset(root);
   let maxId = offset - 1;
   // Inbox entries ready to append immediately (no pending download).

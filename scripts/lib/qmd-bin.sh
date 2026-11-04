@@ -29,10 +29,10 @@
 # clone AND the clone's HEAD is the pinned commit AND `qmd --version`
 # reports >= QMD_FORK_MIN_VERSION) and skips.
 #
-# carries the `yotamleo/qmd` fork again -- two commits on top of
+# carries the `yotamleo-org/qmd` fork (formerly `yotamleo/qmd`) again -- two commits on top of
 # tobi/qmd main 04e4dbd8 that make the bin/qmd launcher forward signals to
 # its bun child (tobi/qmd#1030, fixing #1029). An existing clone whose origin
-# is either known qmd remote (tobi/qmd or yotamleo/qmd, https) is re-pointed
+# is either known qmd remote (tobi/qmd, yotamleo-org/qmd or yotamleo/qmd, https) is re-pointed
 # with `git remote set-url` -- no re-clone -- the next time qmd_install()
 # runs, in either direction, so moving back to upstream is a pin change only.
 # QMD_FORK_REPO/_REF/_DIR and the on-disk `qmd-fork` dir name are unchanged.
@@ -107,15 +107,20 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 # The pin was 17008861, the squash merge of fork PR #49 into fork main (the
 # MCP `query` tool answers typed searches inline and reranks by default; only
 # the plain query becomes a task; a failing rerank falls back to RRF).
-# The pin is now 3aef32b5, the squash merge of fork PR #50 into fork main (a
+# The pin was 3aef32b5, the squash merge of fork PR #50 into fork main (a
 # query embed that hangs or fails is skipped for a while: the search answers
 # with its keyword part and a note, `qmd vsearch` exits non-zero).
+# The pin is now af7f9a96, the squash merge of fork PR #51 into fork main (the
+# scores cached after a rerank wait at most QMD_RERANK_CACHE_BUSY_TIMEOUT_MS,
+# default 250 ms, for the database, then are skipped, so a search never waits
+# out another process's write). The fork lives at yotamleo-org/qmd;
+# yotamleo/qmd is a GitHub redirect to it.
 # ponytail: pinned by SHA, fork tags are labels only (HIMMEL-5952), re-pin on the next /fork-resync.
-_qmd_fork_repo() { printf '%s\n' "${QMD_FORK_REPO:-https://github.com/yotamleo/qmd.git}"; }
-_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-3aef32b548488b68c78ea815dc8e8fef09e80b98}"; }
+_qmd_fork_repo() { printf '%s\n' "${QMD_FORK_REPO:-https://github.com/yotamleo-org/qmd.git}"; } # env-literal-ok: the carried qmd fork identity
+_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-af7f9a967163d72dfb9502416449ae2dc9f12ca5}"; }
 _qmd_fork_dir() { printf '%s\n' "${QMD_FORK_DIR:-$HOME/.himmel/qmd-fork}"; }
 # An owned clone's origin may be either known qmd remote -- upstream tobi/qmd
-# or the himmel fork yotamleo/qmd -- in the forms seen in the wild (with or
+# or the himmel fork yotamleo-org/qmd (or its old name yotamleo/qmd) -- in the forms seen in the wild (with or
 # without .git, a trailing slash from a hand-fixed remote). A known origin
 # that differs from QMD_FORK_REPO is re-pointed rather than refused
 # (both directions). The SSH forms are
@@ -124,6 +129,7 @@ _qmd_fork_dir() { printf '%s\n' "${QMD_FORK_DIR:-$HOME/.himmel/qmd-fork}"; }
 # unowned remote.
 _qmd_is_known_origin() {
   case "${1%/}" in
+    https://github.com/yotamleo-org/qmd.git | https://github.com/yotamleo-org/qmd) return 0 ;; # env-literal-ok: the carried qmd fork identity
     https://github.com/yotamleo/qmd.git | https://github.com/yotamleo/qmd) return 0 ;;
     https://github.com/tobi/qmd.git | https://github.com/tobi/qmd) return 0 ;;
     *) return 1 ;;
