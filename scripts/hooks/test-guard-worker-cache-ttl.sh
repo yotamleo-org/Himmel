@@ -261,7 +261,10 @@ expect_block "real idle: a FINDING sent to a peer worker, not the chief -> block
 t="$(mk_transcript to-console "$R_EDIT" "$(row_send 'BLOCKED on a permission prompt' nextleg-console)")"
 run_guard "$(payload "$t")"
 expect_allow "BLOCKED sent to a console-named session -> allow"
-t="$(mk_transcript marker-with-bg"$(row_bash "$APPEND \"READY 4702 head GREEN\"")" "$(row_bg b8)")"
+t="$(mk_transcript to-chief-lookalike "$R_EDIT" "$(row_send 'FINDING for a helper' roadmap-chief-worker)")"
+run_guard "$(payload "$t")"
+expect_block "real idle: a recipient only containing chief mid-name is not a chief -> block"
+t="$(mk_transcript marker-with-bg "$(row_bash "$APPEND \"READY 4702 head GREEN\"")" "$(row_bg b8)")"
 run_guard "$(payload "$t")"
 expect_allow "marker plus a running background task -> allow (unchanged)"
 

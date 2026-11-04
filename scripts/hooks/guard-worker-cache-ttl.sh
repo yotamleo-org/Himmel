@@ -138,7 +138,7 @@ reported="$(jq -R -r '
     | if .name == "Bash" then
           (.input.command // "" | strings
            | if test("append-results\\.sh\\s+\\S+\\s+[\"\\x27]?\\s*(READY|FINDING|BLOCKED)\\b") then "M" else "T" end)
-      elif .name == "SendMessage" and ((.input.to // "") | strings | test("chief|console"; "i")) then
+      elif .name == "SendMessage" and ((.input.to // "") | strings | test("(chief|console)$"; "i")) then
           (.input.message // "" | strings
            | if test("^\\s*(READY|FINDING|BLOCKED)\\b") then "M" else "T" end)
       else "T" end
