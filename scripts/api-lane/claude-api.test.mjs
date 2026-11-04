@@ -1402,6 +1402,25 @@ test('HIMMEL-9052: auto with the graphify kind from another repo is refused befo
   assert.equal(f.called(), false);
 });
 
+test('HIMMEL-9052: the graph shim runs the lane from a scratch directory: the repo it judged rides in HIMMEL_API_AUTO_REPO_DIR', () => {
+  const commonDir = (cwd) => spawnSync('git', ['-C', cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).stdout.trim();
+  const args = ['-p', 'say hi', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'];
+  const shim = (f, repoDir) => spawnSync('bash', [LAUNCH, ...args], { env: { ...keyFiles(f), HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify',
+    ...(repoDir ? { HIMMEL_API_AUTO_REPO_DIR: repoDir } : {}) }, encoding: 'utf8', cwd: mkdtempSync(join(T, 'scratch-')) });
+  let f = fixture();
+  const noHandoff = shim(f);
+  assert.equal(noHandoff.status, 2, noHandoff.stderr);
+  assert.equal(f.called(), false);
+  f = fixture();
+  const own = shim(f, commonDir(HIMMEL_REPO));
+  assert.equal(own.status, 0, own.stderr);
+  f = fixture();
+  const other = shim(f, commonDir(OTHER_REPO));
+  assert.equal(other.status, 2, other.stderr);
+  assert.match(other.stderr, /auto routing is for the himmel graph pass only/);
+  assert.equal(f.called(), false);
+});
+
 test('HIMMEL-9052: auto ranks account C like A and B', () => {
   const f = fixture();
   const env = withC(f);

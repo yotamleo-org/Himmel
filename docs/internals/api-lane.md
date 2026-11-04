@@ -110,18 +110,22 @@ The API call's own row and its reservation are settled as before.
 
 ## Account C and auto routing (HIMMEL-9052, decision 525 FINAL)
 
-Account C is a third API org with a 200.00 USD cap. A, B and C are treated identically: the same refusals (key
-from `ANTHROPIC_ORG_C_KEY` or a mode-600 `key-C.env`, `HIMMEL_API_KEY_ID` equal to the roster `key_id`, lane on,
-ledger spend estimate under the account's cap) and `pickAccount` ranks all three by grant expiry.
+Account C is a third API org with a 200.00 USD cap. A, B and C are treated identically: the same refusals (key from
+the caller `ANTHROPIC_API_KEY` or a mode-600 `key-C.env` beside the ledger, `HIMMEL_API_KEY_ID` equal to the roster
+`key_id`, lane on, ledger spend estimate under the account's cap) and `pickAccount` ranks all three by grant expiry.
+The batch client (`semantic-batch.mjs`) takes C the same way. The lane never reads the keyring or `.env`.
 
 Auto routing is off for every call except the himmel semantic graph pass. `HIMMEL_API_ACCOUNT=auto` is accepted
-only with `HIMMEL_API_KIND=graphify` from the himmel repo; any other kind, or the graphify kind from another repo
-(for example the luna graph map), exits 2 before any spawn with no subscription fallback. Naming the account
-(`HIMMEL_API_ACCOUNT=A`, `B` or `C`) works for every kind, judge, critic, bulk and cull included.
+only with `HIMMEL_API_KIND=graphify` and a caller whose git common dir is the launcher's own checkout. For the
+graph pass, `semantic-update.sh` judges the corpus repo once, before any pick, in both the batch and the synchronous
+path (the shim runs the lane from a scratch directory, so it hands the judged repo over in
+`HIMMEL_API_AUTO_REPO_DIR`). Any other kind, or a graph pass over another repo (the luna graph map), exits 2 before
+any spawn or batch submit, with no subscription fallback. Naming the account (`HIMMEL_API_ACCOUNT=A`, `B` or `C`)
+works for every kind and every repo, judge, critic, bulk and cull included.
 
 Config name: `ANTHROPIC_API_ORG_ID_C`, matching `ANTHROPIC_API_ORG_ID_A` and `_B`. `ANTHROPIC_ORG_ID_C` is also
 accepted by the loader. Every site that unsets the A and B keys before a subscription `claude -p` also unsets
-`ANTHROPIC_ORG_C_KEY`. The key is stored by the operator (keyring or `key-C.env`), never by a script.
+`ANTHROPIC_ORG_C_KEY`. The key file `key-C.env` is written by the operator, never by a script.
 
 ### Caching recommendation for the graph pass
 

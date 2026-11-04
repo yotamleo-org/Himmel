@@ -32,7 +32,7 @@
 # account key, roster, credit gate, reserve/settle ledger all stay in the lane;
 # this script never reads or handles a key). A scratch `claude` shim first on
 # PATH adapts graphify's call to the lane's flag allowlist. It needs
-# HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto in the launching shell,
+# HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|C|auto in the launching shell,
 # refuses a caller ANTHROPIC_API_KEY, and fails closed (exit 2) otherwise,
 # before any call: it never switches itself to the claude-cli backend. Each
 # chunk call then follows the lane's own failure rule: a refusal or a failed
@@ -317,11 +317,20 @@ fi
 [ "$DRY" -eq 0 ] || { echo "semantic-update: --dry-run, stopping before the bank and the copy"; exit 0; }
 if [ "$BACKEND" = "claude-api" ]; then
   { [ "${HIMMEL_API_LANE:-}" = "on" ] && [ -n "${HIMMEL_API_ACCOUNT:-}" ]; } \
-    || { echo "semantic-update: refusing claude-api: the API lane is off (HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto are required) -- nothing copied, no claude-cli fallback" >&2; exit 2; }
+    || { echo "semantic-update: refusing claude-api: the API lane is off (HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|C|auto are required) -- nothing copied, no claude-cli fallback" >&2; exit 2; }
   [ -z "${ANTHROPIC_API_KEY:-}" ] \
     || { echo "semantic-update: refusing claude-api: a caller ANTHROPIC_API_KEY is set; the lane reads its own per-account key file -- nothing copied" >&2; exit 2; }
   [ "$BATCH_MODE" -eq 1 ] || [ -f "$REPO_ROOT/scripts/api-lane/claude-api.sh" ] \
     || { echo "semantic-update: refusing claude-api: scripts/api-lane/claude-api.sh is missing -- nothing copied" >&2; exit 2; }
+  # auto routing is for the himmel graph pass only: the batch path picks an account itself and the sync shim calls the
+  # lane from a scratch directory, so the corpus repo is judged here, once, and handed to the lane
+  if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
+    AUTO_REPO_DIR="$(git -C "$CORPUS_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || AUTO_REPO_DIR=""
+    OWN_REPO_DIR="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || OWN_REPO_DIR=""
+    { [ -n "$OWN_REPO_DIR" ] && [ "$AUTO_REPO_DIR" = "$OWN_REPO_DIR" ]; } \
+      || { echo "semantic-update: refusing claude-api: auto routing is for the himmel graph pass only (corpus repo ${AUTO_REPO_DIR:-none}); name HIMMEL_API_ACCOUNT=A, B or C -- nothing copied" >&2; exit 2; }
+    export HIMMEL_API_AUTO_REPO_DIR="$AUTO_REPO_DIR"
+  fi
 fi
 acquire_promote_lock
 # Re-plan under the lock: another run may have promoted (or the corpus moved)
@@ -349,7 +358,7 @@ batch_submit() {
     if [ "$acct" = auto ]; then
       pick="$(node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" pick --usd "$API_CALL_BUDGET")"
       case "$pick" in *'"verdict":"PROCEED"'*) ;; *) echo "semantic-update: refusing the batch: auto routing: no account has room ($pick)" >&2; return 2 ;; esac
-      acct="$(printf '%s' "$pick" | sed -n 's/.*"account":"\([AB]\)".*/\1/p')"
+      acct="$(printf '%s' "$pick" | sed -n 's/.*"account":"\([ABC]\)".*/\1/p')"
       [ -n "$acct" ] || { echo "semantic-update: refusing the batch: auto routing returned no account" >&2; return 2; }
     fi
     rc=0
