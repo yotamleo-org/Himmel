@@ -29,7 +29,7 @@ export type State = { open: Open | null; closedAt: number | null; at?: number };
 export type Span = { name: string; bucket: string; start: number; end: number | null; approx: boolean };
 export type Gap = { pr: number; chiefs: [string, string] };
 export type Chief = { name: string; bucket: string; span: { start: string; end: string | null; approx: boolean }; prs: number[] };
-export type Row = { id: string; name: "day" | "night"; opened: string; closed: string; why: "idle" | "cut"; zone: string; chiefs: Chief[]; buckets: string[]; gap: Gap[]; carried?: Carried[]; waiting?: WaitingSnap[]; shipped?: number };
+export type Row = { id: string; name: "day" | "night"; opened: string; closed: string; why: "idle" | "cut"; zone: string; chiefs: Chief[]; buckets: string[]; gap: Gap[]; carried?: Carried[]; waiting?: WaitingSnap[]; shipped?: number; boards?: "file" | "built" }; // boards: where the live boards behind carried/waiting came from
 // A Waiting row as the Shift page showed it when the shift closed at a cut; the Morning report labels it with the close time.
 export type WaitingSnap = { kind: string; ticket: string | null; title: string; chief: string; since: string | null };
 export type Pr = { number: number; mergedAt: string; [k: string]: unknown };
@@ -238,7 +238,7 @@ export const appendShift = (file: string, row: Row) => withLock(file, () => appe
 
 // ---- the poll: the Shift route and the report generator call this, nothing else writes ----
 // merged resolves null when the PR list could not be read: a shift is never closed on a list that may be missing PRs
-export type Tick = { root: string; file: string; now: number; opts?: Opts; merged: (fromMs: number, toMs: number) => Promise<Pr[] | null>; boards?: (locks: Lock[], spans: Span[]) => Promise<Board[]> };
+export type Tick = { root: string; file: string; now: number; opts?: Opts; merged: (fromMs: number, toMs: number) => Promise<Pr[] | null>; boards?: (locks: Lock[], spans: Span[]) => Promise<Live> };
 export type Snapshot = { state: State; spans: Span[]; locks: Lock[]; offsetMin: number };
 
 const stateFile = (file: string) => `${file}.state.json`;
@@ -259,7 +259,8 @@ export async function tick(t: Tick): Promise<Snapshot & { closed: Row[] }> {
   const ends = spans.map((s) => s.end).filter((e): e is number => e !== null);
   const obs: Obs = { now: t.now, locks, lastEnd: ends.length ? Math.max(...ends) : null, chiefLiveAt: live.length ? Math.min(...live) : null };
   const prs = await t.merged(state0.open?.opened ?? t.now - 3 * DAY, t.now + MIN);
-  const rows0 = rowsOf(await (t.boards?.(locks, spans) ?? []));
+  const live0 = await t.boards?.(locks, spans);
+  const rows0 = rowsOf(live0?.boards ?? []);
   const carried = rows0.running.map((r): Carried => ({ ticket: r.ticket, title: r.title, stage: r.stage, pr: r.pr }));
   const waiting = rows0.waiting.map((w): WaitingSnap => ({ kind: w.kind, ticket: w.ticket, title: w.title, chief: w.chief, since: w.since }));
   return withLock(t.file, () => {
@@ -273,7 +274,7 @@ export async function tick(t: Tick): Promise<Snapshot & { closed: Row[] }> {
       st = r.state;
       if (!r.closed) break;
       const off = (r.closed.zone[0] === "-" ? -1 : 1) * (Number(r.closed.zone.slice(1, 3)) * 60 + Number(r.closed.zone.slice(4, 6)));
-      const full = { ...r.closed, carried: r.closed.why === "cut" ? carried : [], waiting: r.closed.why === "cut" ? waiting : [], ...chiefsOf(spans, prs ?? [], Date.parse(r.closed.opened), Date.parse(r.closed.closed), t.now, off) };
+      const full = { ...r.closed, ...(live0?.from ? { boards: live0.from } : {}), carried: r.closed.why === "cut" ? carried : [], waiting: r.closed.why === "cut" ? waiting : [], ...chiefsOf(spans, prs ?? [], Date.parse(r.closed.opened), Date.parse(r.closed.closed), t.now, off) };
       appendRow(t.file, full);
       closed.push(full);
     }
@@ -323,6 +324,7 @@ export type View = {
   shift: { id: string; name: string; opened: string; closed: string | null; why: string | null; zone: string; nextCut: string | null; minutes: number } | null;
   chiefs: Chief[]; buckets: string[];
   mergedUnread: boolean; // the merged-PR list could not be read: Shipped is unknown, not empty
+  boardMissing: string[]; boardError: { chief: string; error: string }[]; // live chiefs whose board is absent or failed to build: Running is unknown for them, not empty
   waiting: Waiting[]; running: Running[]; shipped: { number: number; title: string; mergedAt: string; chief: string | null }[]; carried: Carried[]; gap: Gap[];
   pager: { prev: string | null; next: string | null };
   last: { id: string; name: string; opened: string; closed: string; chiefs: number; shipped: number | null } | null;
@@ -357,10 +359,10 @@ export function rowsOf(boards: Board[]): { waiting: Waiting[]; running: Running[
 }
 
 // The page's whole read. id selects a closed shift (its row), none selects the current one.
-export function viewOf(o0: { now: number; rows: Row[]; snap: Snapshot; id: string | null; merged: Pr[] | null; boards: Board[]; opts?: Opts }): View {
+export function viewOf(o0: { now: number; rows: Row[]; snap: Snapshot; id: string | null; merged: Pr[] | null; boards: Board[]; boardMissing?: string[]; boardError?: { chief: string; error: string }[]; opts?: Opts }): View {
   const o = { ...o0, merged: o0.merged ?? [] };
   const opts = o.opts ?? DEFAULTS;
-  const empty: View = { state: "none", shift: null, chiefs: [], buckets: [], mergedUnread: o0.merged === null, waiting: [], running: [], shipped: [], carried: [], gap: [], pager: { prev: null, next: null }, last: null };
+  const empty: View = { state: "none", shift: null, chiefs: [], buckets: [], mergedUnread: o0.merged === null, boardMissing: [], boardError: [], waiting: [], running: [], shipped: [], carried: [], gap: [], pager: { prev: null, next: null }, last: null };
   const closedRows = o.rows; // oldest first
   const open = o.snap.state.open;
   const pager = (id: string | null) => {
@@ -385,7 +387,7 @@ export function viewOf(o0: { now: number; rows: Row[]; snap: Snapshot; id: strin
   const c = chiefsOf(o.snap.spans, o.merged, open.opened, null, o.now, off);
   const { waiting, running } = rowsOf(o.boards);
   return {
-    ...empty, state: "open", last, pager: pager(null), chiefs: c.chiefs, gap: c.gap, buckets: open.buckets, waiting, running,
+    ...empty, state: "open", last, pager: pager(null), chiefs: c.chiefs, gap: c.gap, buckets: open.buckets, boardMissing: o.boardMissing ?? [], boardError: o.boardError ?? [], waiting, running,
     shipped: shipped(open.opened, null, c.chiefs),
     shift: { id: iso(open.opened, off), name: nameOf(open.opened, off, opts), opened: iso(open.opened, off), closed: null, why: null, zone: zoneOf(off), nextCut: iso(nextCut(open.opened, off, opts), off), minutes: Math.round((o.now - open.opened) / MIN) },
   };
@@ -400,18 +402,30 @@ export function redactShift(view: View, redact: <T>(v: T) => T): View {
   const out = redact(view);
   out.chiefs.forEach((c, i) => { c.name = keep(view.chiefs[i].name, c.name)!; });
   out.waiting.forEach((w, i) => { w.chief = keep(view.waiting[i].chief, w.chief)!; });
+  out.boardMissing.forEach((c, i) => { out.boardMissing[i] = keep(view.boardMissing[i], c)!; });
+  out.boardError.forEach((e, i) => { e.chief = keep(view.boardError[i].chief, e.chief)!; });
   out.shipped.forEach((p, i) => { p.chief = keep(view.shipped[i].chief, p.chief); });
   out.gap.forEach((g, i) => { g.chiefs = [keep(view.gap[i].chiefs[0], g.chiefs[0])!, keep(view.gap[i].chiefs[1], g.chiefs[1])!]; });
   return out;
 }
 
-// the boards of the chiefs that hold a queue lock now, one per live chief doc, by NAME under the handover root
-export async function liveBoards(root: string, locks: Lock[], spans: Span[]): Promise<Board[]> {
-  const out: Board[] = [];
+// How a live chief's board is read: null = no board (none written, none built), {error} = the build failed.
+export type BoardReader = (doc: string) => Promise<Board | { error: string } | null>;
+// The live boards plus what could not be read, so a missing or broken board is stated and never reads as an empty fleet.
+export type Live = { boards: Board[]; missing: string[]; error: { chief: string; error: string }[]; from?: "file" | "built" };
+
+// the file-only reader: the CLI never pays a cold board build
+export const fileReader: BoardReader = async (doc) => ((await readBoardFile(doc))?.body as Board | undefined) ?? null;
+
+// the boards of the chiefs that hold a queue lock now, one per live chief doc, by NAME under the handover root, read through `read`
+export async function liveBoards(root: string, locks: Lock[], spans: Span[], read: BoardReader): Promise<Live> {
+  const out: Live = { boards: [], missing: [], error: [] };
   for (const s of liveChiefs(spans, locks)) {
     const doc = await findDoc(root, s.name);
-    const b = doc ? await readBoardFile(doc) : null;
-    if (b) out.push(b.body as Board);
+    const b = doc ? await read(doc) : null;
+    if (b === null) out.missing.push(s.name);
+    else if ("error" in b) out.error.push({ chief: s.name, error: String(b.error).split("\n")[0].slice(0, 200) });
+    else out.boards.push(b);
   }
   return out;
 }
