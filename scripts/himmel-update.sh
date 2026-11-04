@@ -812,6 +812,9 @@ sync_agent_clis() {
 # This surfaces that right after the pull. Advisory; never fails the update.
 # *_BAT_DIR env seams mirror each emitter's runner home; defaults resolve via
 # cadence_user_home (emitter parity).
+# The graphmap hint below is `arm --rewrite-armed`, which rewrites only runner files that already
+# exist and registers nothing, so an update can never re-arm a Luna graph task the operator left
+# off (test-graphmap-cadence.sh C17 holds that); only `arm --luna-only` arms Luna.
 report_cadence_stale() {
     local label bat_dir rearm ver uh
     uh="$(cadence_user_home)"

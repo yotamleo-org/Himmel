@@ -1465,15 +1465,18 @@ view into the vault — the bridge between the derived graph and the KB.
   PATH check an arm could report ARMED while every weekly run failed
   unattended:
   `bash scripts/luna/graphmap-cadence.sh arm` (`--luna-time` / `--himmel-time` /
-  `--vault` / `--force` / `--dry-run` / `--ast-only`).
-  `--ast-only` arms/dedup-checks ONLY the two free structural
-  (AST) tasks, skipping the weekly semantic pair (and its backend credential
-  requirement) entirely — a pre-existing semantic pair, if any, is left
+  `--vault` / `--force` / `--dry-run` / `--ast-only`). A bare arm registers the
+  HIMMEL rows only; the Luna graph tasks are off by default (HIMMEL-9011,
+  decision 449) and come only from `arm --luna-only`.
+  `--ast-only` arms/dedup-checks ONLY the free structural (AST) task of the
+  scope being armed (himmel's on a bare arm, Luna's with `--luna-only`),
+  skipping that scope's semantic task (and its backend credential
+  requirement) entirely — a pre-existing semantic task, if any, is left
   untouched. Lets the free jobs re-arm independently of an operator ruling on
-  the semantic pair's backend/egress. To ADD a missing semantic pair later,
+  the semantic backend/egress. To ADD a missing semantic task later,
   re-arm WITHOUT `--ast-only` and WITH `--force` — a plain re-arm (no
-  `--force`) dedup-blocks on the already-armed AST tasks instead of adding
-  the missing semantic pair.
+  `--force`) dedup-blocks on the already-armed AST task instead of adding
+  the missing semantic task.
   `status` also prints a per-log **run summary**: the
   `tokens:` totals when the run finished, otherwise `NO tokens summary`, plus
   the last chunk reached and the count of hollow responses (each of which graphify bisects), with
