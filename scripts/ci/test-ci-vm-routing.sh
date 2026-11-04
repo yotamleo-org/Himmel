@@ -2,7 +2,7 @@
 # scripts/ci/test-ci-vm-routing.sh -- regression suite: ci.yml routes the
 # shell-unit-shard matrix to the himmel-vm self-hosted runner ONLY for a
 # same-repo pull_request by an operator account while vars.HIMMEL_VM_RUNNER is
-# 'on', and runs it on matrix.os (ubuntu-latest) in every other case. The repo
+# 'on', and runs it on the pinned ubuntu-24.04 in every other case. The repo
 # is public: a fork PR must never reach the VM runner, and a PR must not hang
 # queued for a runner that is switched off.
 #
@@ -28,9 +28,9 @@ runs_on="$(sed -n 's/^[[:space:]]*runs-on:[[:space:]]*//p' <<< "$blk")"
 
 if [ -n "$runs_on" ] && [ "$(wc -l <<< "$runs_on")" -eq 1 ]; then ok "shell-unit-shard has exactly one runs-on"; else bad "shell-unit-shard runs-on missing or repeated: $runs_on"; fi
 
-# 1. Both labels of the VM runner are named, and matrix.os is the fallback.
+# 1. Both labels of the VM runner are named, and the pinned ubuntu-24.04 host is the fallback (never the floating matrix.os / ubuntu-latest).
 if grep -q 'self-hosted' <<< "$runs_on" && grep -q 'himmel-vm' <<< "$runs_on"; then ok "runs-on can select [self-hosted, himmel-vm]"; else bad "runs-on never names the himmel-vm runner: $runs_on"; fi
-if grep -qE '\|\|[[:space:]]*matrix\.os[[:space:]]*\}\}[[:space:]]*$' <<< "$runs_on"; then ok "runs-on falls back to matrix.os"; else bad "runs-on does not fall back to matrix.os: $runs_on"; fi
+if grep -qE "\|\|[[:space:]]*'ubuntu-24\.04'[[:space:]]*\}\}[[:space:]]*\$" <<< "$runs_on"; then ok "runs-on falls back to the pinned ubuntu-24.04"; else bad "runs-on does not fall back to the pinned ubuntu-24.04: $runs_on"; fi
 
 # 2. The VM route needs every one of: pull_request, same repo, operator author,
 #    operator actor, the kill switch on.
@@ -47,9 +47,9 @@ need "the kill switch on" "vars.HIMMEL_VM_RUNNER == 'on'"
 # 2b. The conditions are mandatory conjunctions, not just present: pin the whole
 #     expression, so turning one `&&` into `||` (a route open to any fork PR or
 #     any author) fails here. A deliberate routing change edits this line too.
-want_expr="\${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('[\"yotamleo\",\"yotamleo11-test\"]'), github.event.pull_request.user.login) && contains(fromJSON('[\"yotamleo\",\"yotamleo11-test\"]'), github.actor) && contains(fromJSON('[\"yotamleo\",\"yotamleo11-test\"]'), github.triggering_actor) && vars.HIMMEL_VM_RUNNER == 'on') && fromJSON('[\"self-hosted\",\"himmel-vm\"]') || (vars.CI_GCP == 'on' && contains(fromJSON('[\"yotamleo\",\"yotamleo11-test\"]'), github.actor) && contains(fromJSON('[\"yotamleo\",\"yotamleo11-test\"]'), github.triggering_actor) && (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('[\"yotamleo\",\"yotamleo11-test\"]'), github.event.pull_request.user.login)))) && fromJSON('[\"self-hosted\",\"gcp\"]') || matrix.os }}"
+want_expr="\${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('[\"yotamleo\",\"yotamleo11-test\"]'), github.event.pull_request.user.login) && contains(fromJSON('[\"yotamleo\",\"yotamleo11-test\"]'), github.actor) && contains(fromJSON('[\"yotamleo\",\"yotamleo11-test\"]'), github.triggering_actor) && vars.HIMMEL_VM_RUNNER == 'on') && fromJSON('[\"self-hosted\",\"himmel-vm\"]') || (vars.CI_GCP == 'on' && contains(fromJSON('[\"yotamleo\",\"yotamleo11-test\"]'), github.actor) && contains(fromJSON('[\"yotamleo\",\"yotamleo11-test\"]'), github.triggering_actor) && (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('[\"yotamleo\",\"yotamleo11-test\"]'), github.event.pull_request.user.login)))) && fromJSON('[\"self-hosted\",\"gcp\"]') || 'ubuntu-24.04' }}"
 if [ "$runs_on" = "$want_expr" ]; then ok "the routing expression is exactly the reviewed all-conditions-and form"; else bad "runs-on differs from the reviewed expression: $runs_on"; fi
-if [ "$(grep -o '||' <<< "$runs_on" | wc -l)" -eq 3 ]; then ok "the || are the gcp fallback, the gcp event list (1) and the matrix.os fallback"; else bad "runs-on carries an unreviewed ||: $runs_on"; fi
+if [ "$(grep -o '||' <<< "$runs_on" | wc -l)" -eq 3 ]; then ok "the || are the gcp fallback, the gcp event list (1) and the pinned ubuntu-24.04 fallback"; else bad "runs-on carries an unreviewed ||: $runs_on"; fi
 
 # 3. The operator list matches the runner-side hook's, so the two cannot drift.
 for who in yotamleo yotamleo11-test; do

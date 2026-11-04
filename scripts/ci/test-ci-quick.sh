@@ -25,6 +25,9 @@
 #       run the sentinels took runners and went red; under the sentinel gate
 #       they take none. On the green run only the required-named sentinels now
 #       take a runner (and pass)
+#   Q7  two recorded jobs of one merge sha (S1 passed on ubuntu-24.04, failed on
+#       ubuntu-26.04 once ubuntu-latest moved): every runs-on in ci.yml names the
+#       green job's image, none floats
 #
 # Usage: bash scripts/ci/test-ci-quick.sh
 # Exit codes: 0 -- all cases passed; 1 -- at least one failed.
@@ -201,6 +204,25 @@ if [ -r "$cancelled_fx" ] && [ -r "$green_fx" ]; then
   else bad "Q6 green fixture: ci-quick '$res', $ran sentinels ran, $spent would run (want $want_spent)"; fi
 else
   bad "Q6 missing fixtures under $FIX"
+fi
+
+# Q7: `ubuntu-latest` moved from ubuntu-24.04 to ubuntu-26.04 between two ci-quick jobs of the SAME merge sha
+# (run 41812666688), and the consult sandbox row S1 failed on 26.04. The fixtures are the recorded runner-image lines and
+# suite rows of those two jobs; every runs-on in ci.yml must name the image the green job ran on, never a floating label.
+green7="$FIX/runner-image-green-job-126516044346.txt"
+red7="$FIX/runner-image-red-job-126525191459.txt"
+fx_image() { sed -n 's/^[^ ]* Image: //p' "$1"; }
+if [ -r "$green7" ] && [ -r "$red7" ]; then
+  gi="$(fx_image "$green7")"; ri="$(fx_image "$red7")"
+  if [ -n "$gi" ] && [ -n "$ri" ] && [ "$gi" != "$ri" ] && grep -q 'PASS  S1 ' "$green7" && grep -q 'FAIL  S1 ' "$red7"; then ok "Q7 recorded jobs: S1 passed on $gi and failed on $ri"
+  else bad "Q7 the recorded fixtures are not a green/red pair on two images (green '$gi', red '$ri')"; fi
+  runs_on_all="$(sed -e '/^[[:space:]]*#/d' -e 's/[[:space:]][[:space:]]*#.*$//' "$CI_YML" | sed -n 's/^[[:space:]]*runs-on:[[:space:]]*//p')"
+  total="$(printf '%s\n' "$runs_on_all" | grep -c .)"
+  floating="$(printf '%s\n' "$runs_on_all" | awk -v pin="$gi" -v red="$ri" 'NF && (index($0, pin) == 0 || index($0, red) || index($0, "-latest") || index($0, "matrix.os")) { n++ } END { print n + 0 }')"
+  if [ "$total" -gt 0 ] && [ "$floating" -eq 0 ]; then ok "Q7 all $total runs-on lines in ci.yml name $gi; none floats with ubuntu-latest"
+  else bad "Q7 $floating of $total runs-on lines in ci.yml float (ubuntu-latest, matrix.os) or name an image other than $gi"; fi
+else
+  bad "Q7 missing runner-image fixtures under $FIX"
 fi
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }

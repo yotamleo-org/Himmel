@@ -123,10 +123,12 @@ printf 'untouched\n' >"$SIBLING"; rm -f "$REPO_PROBE"; printf '# consult\n\n## R
 
 echo "== S sandbox ON: the same scripted probes =="
 run_probe "$WORK/on" "$WORK/on.json"
-if grep -q 'FINDING smoke-ok' "$DOC"; then pass "S1 the append to the consult doc landed"; else fail "S1 the append did not land"; fi
+RL="$WORK/on/mock.log"
+# A refused append is named by what the sandbox told the model, which the second request carries (the first tool_result).
+if grep -q 'FINDING smoke-ok' "$DOC"; then pass "S1 the append to the consult doc landed"
+else fail "S1 the append did not land (append tool_result: $(jsonl_q "$RL" 'JSON.stringify(rows.filter(r=>r.path==="/v1/messages"&&r.turn!==null)[1].body.messages.at(-1).content).slice(0,600)'); err: $(head -c 300 "$WORK/on/err.txt"))"; fi
 if [ "$(cat "$SIBLING")" = untouched ]; then pass "S2 the sibling file is untouched"; else fail "S2 a sandboxed write reached the sibling file"; fi
 if [ ! -e "$REPO_PROBE" ]; then pass "S3 nothing was written inside the repo"; else fail "S3 a sandboxed write reached the repo"; fi
-RL="$WORK/on/mock.log"
 if [ -s "$RL" ] && [ "$(jsonl_q "$RL" 'rows.filter(r=>r.path==="/v1/messages"&&r.turn!==null).length')" = 4 ]; then
   pass "S4 all four scripted turns were served, so both probes were really attempted"
 else fail "S4 not every scripted turn ran (turns: $(jsonl_q "$RL" 'rows.map(r=>r.turn).join(",")'); err: $(head -c 300 "$WORK/on/err.txt"))"; fi
