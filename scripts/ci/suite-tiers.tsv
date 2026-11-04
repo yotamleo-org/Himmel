@@ -808,6 +808,7 @@ scripts/lanes/srt-poc/test-push-wrapper.sh	local	behaviour suite, 0 catches in t
 scripts/lanes/srt-poc/test-recorded-run.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/test-ceiling-conformance.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/test-lane-canary.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/lanes/test-launch-site-guard.sh	pr	guard
 scripts/lanes/test-launch-site-profiles.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/test-worker-cost-report.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/test-worker-pr-open.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -878,6 +879,7 @@ scripts/lib/test-himmel-secrets.sh	pr	trust-path
 scripts/lib/test-host-caps.sh	pr	trust-path
 scripts/lib/test-impacted-suites-runner.sh	pr	trust-path
 scripts/lib/test-initiative-workers.sh	pr	trust-path
+scripts/lib/test-launch-guard-check.sh	pr	trust-path
 scripts/lib/test-worker-identity.sh	pr	trust-path
 scripts/lib/test-legacy-names.sh	pr	trust-path
 scripts/lib/test-llm-backend.sh	pr	trust-path
