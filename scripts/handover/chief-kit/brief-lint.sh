@@ -139,6 +139,29 @@ def raw_docs_only(scope):
 # a design leg is read from the brief's own Writes tokens only: never from a filtered list or the ticket's paths
 docs_only = bool(paths) and not stray_absolute and raw_docs_only(text) and all(q.startswith('docs/') or q.endswith('.md') for q in paths)
 
+def state_spec(t):
+    # a state-repo specs/ .md file: relative to the bucket, or absolute under the handover root, never a repo path
+    if not t.endswith('.md'):
+        return False
+    if t.startswith('/'):
+        return allowed_absolute(t) and 'specs' in os.path.relpath(os.path.realpath(t), doc_state_root).split('/')[:-1]
+    parts = t.split('/')
+    return len(parts) > 1 and parts[0] == 'specs' and not any(p in ('', '.', '..') for p in parts)
+
+# A minerva design leg: the exact `> **Design leg:** minerva` line, and every raw Writes token a state-repo specs/
+# file. It reaches core-check as non-core state stand-ins with --docs-only, so a key core by its label alone answers BYPASS
+# design; a single other token refuses the brief, because a design leg writes no repo file.
+if any(l.rstrip() == '> **Design leg:** minerva' for l in lines):
+    raw = [t.rstrip('.,;:)]') for t in re.findall(r'[\w.+@/-]+', text)]
+    raw = [t for t in raw if t.strip('.-')]
+    bad = [t for t in raw if not state_spec(t)]
+    if not raw or bad:
+        print('design leg: a `> **Design leg:** minerva` brief writes only state-repo specs/ .md files, and its Writes name %s; '
+              'a build brief drops the marker and needs a signed minerva spec' % (', '.join(bad) if bad else 'nothing'))
+        sys.exit(1)
+    paths = list(dict.fromkeys('state/' + os.path.basename(t) for t in raw))
+    docs_only = True
+
 def ticket_paths(mirror, key):
     try:
         text = open(os.path.join(mirror, key + '.md'), encoding='utf-8', errors='replace').read()
