@@ -81,6 +81,7 @@ HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 HEAD_SHA=""
 BRANCH=""
 CONTEXT_FILE=""
+FULL=0
 # The context file a later round builds for itself, removed on every exit.
 ctx_tmp=""
 trap '[ -z "$ctx_tmp" ] || rm -f "$ctx_tmp"' EXIT
@@ -97,6 +98,9 @@ while [ $# -gt 0 ]; do
             # --context-file); forwarded to critic-panel.sh as given.
             [ $# -ge 2 ] || { echo "panel-first-pass: --context-file requires a file" >&2; exit 2; }
             CONTEXT_FILE="$2"; shift 2 ;;
+        --full)
+            # Rounds 1-3 review the whole branch (an outside PR); never lifts the cap.
+            FULL=1; shift ;;
         *)
             echo "panel-first-pass: unknown arg: $1" >&2; exit 2 ;;
     esac
@@ -218,6 +222,11 @@ else
     fi
     review_round="$(bash "$HIMMEL_ROOT/scripts/cr/review-round.sh" start --branch "$BRANCH" --head "$HEAD_SHA" --base-sha "$db_sha")"
     round_rc=$?
+    full_takeover="panel-first-pass ABORT - outside PR past its three full rounds: hand it to a maintainer takeover (HIMMEL-9019). Nothing was reviewed."
+    if [ "$round_rc" -eq 8 ] && [ "$FULL" -eq 1 ]; then
+        echo "$full_takeover" >&2
+        exit 8
+    fi
     if [ "$round_rc" -eq 8 ]; then
         echo "panel-first-pass ABORT - the three-round /pr-check cap refused another round on $BRANCH (see the reason above). Nothing was reviewed." >&2
         exit 8
@@ -303,6 +312,10 @@ else
     }
     case "$review_round" in
         *" delta "*)
+            if [ "$FULL" -eq 1 ]; then
+                echo "$full_takeover" >&2
+                give_back 8
+            fi
             # the one delta round reviews only last-reviewed
             # head..HEAD_SHA, never the whole branch again.
             delta_from="${review_round##* delta }"
@@ -318,7 +331,9 @@ else
             ;;
         *)
             printf 'pr-check: round %s of 3 on %s\n' "$review_round" "$BRANCH"
-            case "$review_round" in 2|3) scope_since_last_round ;; esac
+            if [ "$FULL" -eq 0 ]; then
+                case "$review_round" in 2|3) scope_since_last_round ;; esac
+            fi
             ;;
     esac
     [ -z "${CR_PROFILE:-}" ] && echo "Default cross-model CR - no free critics registered, using the PAID codex anchor (~2min; set CR_PROFILE=none for instant claude-only)."
@@ -411,6 +426,27 @@ PINABORTRETRY
         fi
     fi
 fi
+
+# write_round_scope <source> <pr>: one round-scope row for a run whose panel
+# ran, read from the final diff range: full exactly when it is the captured
+# base...HEAD, otherwise delta from the range's left side. It decides nothing
+# about which critics answered (item 4 owns that). A failed write is reported
+# and leaves no row, so ready-check item 16 refuses that head.
+write_round_scope() {
+    [ "$panel_ran" -eq 1 ] || return 0
+    wrs_source="$1" wrs_pr="$2"
+    if [ "$diff_range" = "$db_sha...$HEAD_SHA" ]; then
+        set -- --scope full
+    else
+        set -- --scope delta --from "${diff_range%%..*}"
+    fi
+    [ -z "$wrs_pr" ] || set -- "$@" --pr "$wrs_pr"
+    if ! CR_LEDGER="$pf_ledger" bash "$HIMMEL_ROOT/scripts/cr/ledger-append.sh" round-scope --branch "$BRANCH" --head "$HEAD_SHA" \
+        --base-sha "$db_sha" --round "$review_round" --source "$wrs_source" "$@" >/dev/null; then
+        echo "panel-first-pass: could not record the round-scope row for $HEAD_SHA (ledger-append.sh, reason above)" >&2
+    fi
+}
+write_round_scope panel-first-pass ""
 
 # Rounds 2 and 3 tag an Important finding on code older than the PR
 # (critic-pre-existing-tag.py): git blame decides, and the ledger field

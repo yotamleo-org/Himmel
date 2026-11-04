@@ -103,6 +103,8 @@ build_repo_template() {
         || { echo "FAIL: cp env-alias.sh and legacy-names.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     cp "$LEDGER_APPEND" "$REPO_TEMPLATE/scripts/cr/ledger-append.sh" \
         || { echo "FAIL: cp ledger-append.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
+    cp "$(dirname "$CLEAR")/blast-scope.cjs" "$REPO_TEMPLATE/scripts/cr/blast-scope.cjs" \
+        || { echo "FAIL: cp blast-scope.cjs into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     cp "$(dirname "$CLEAR")/anchor-handoff.sh" "$REPO_TEMPLATE/scripts/cr/anchor-handoff.sh" \
         || { echo "FAIL: cp anchor-handoff.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     cp "$(dirname "$CLEAR")/set-impl-family.sh" "$REPO_TEMPLATE/scripts/cr/set-impl-family.sh" \
@@ -1211,6 +1213,24 @@ rm -rf "$tmp"
 blast_case scripts/hooks/test-x.sh full 2026-11-01T10:00:00Z
 run_clear "$tmp" 0 "diff changes only a hook test file → exit 0"
 rm -rf "$tmp"
+
+blast_case scripts/hooks/fixtures/guard-x.sh full 2026-11-01T10:00:00Z
+run_clear "$tmp" 0 "diff changes only a hook fixture file → exit 0"
+rm -rf "$tmp"
+
+# The scope lives in blast-scope.cjs: a gate whose module is missing refuses closed.
+blast_case scripts/hooks/guard-x.sh full 2026-11-01T10:00:00Z "$(_bl_row feat/x deadbeef0 ran)"
+rm -f "$tmp/scripts/cr/blast-scope.cjs"
+run_clear "$tmp" 14 "blast-scope.cjs missing → exit 14"
+if grepq "$LAST_CLEAR_OUT" -F 'reason=blast-radius-unreadable'; then pass; else fail "a missing blast-scope.cjs must refuse as unreadable: $LAST_CLEAR_OUT"; fi
+rm -rf "$tmp"
+
+# blast-scope.cjs CLI: NUL-separated paths in, touched or untouched out.
+_bs_cli() { printf '%b' "$1" | node "$(dirname "$CLEAR")/blast-scope.cjs"; }
+if [ "$(_bs_cli 'docs/a.md\0scripts/hooks/guard-x.sh\0')" = touched ]; then pass; else fail "blast-scope CLI: a guard path must print touched"; fi
+if [ "$(_bs_cli 'scripts/hooks/test-x.sh\0scripts/hooks/fixtures/a.sh\0docs/a.md')" = untouched ]; then pass; else fail "blast-scope CLI: test-* and fixture paths must print untouched"; fi
+node "$(dirname "$CLEAR")/blast-scope.cjs" < "$(dirname "$CLEAR")" >/dev/null 2>&1; _bs_rc=$?
+if [ "$_bs_rc" -eq 2 ]; then pass; else fail "blast-scope CLI: an unreadable stdin must exit 2 (got $_bs_rc)"; fi
 
 # A rename out of scope still touches the guard: git's default rename
 # detection would list only the destination.
