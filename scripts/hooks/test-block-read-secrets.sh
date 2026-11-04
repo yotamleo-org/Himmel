@@ -1485,6 +1485,7 @@ assert_rc "7147 age --decrypt"                             2 "$(run_case "$(j_ba
 assert_rc "7147 ctl himmel-secrets status"                 0 "$(run_case "$(j_bash 'himmel-secrets status')")"
 assert_rc "7147 ctl repo-path himmel-secrets status"       0 "$(run_case "$(j_bash 'bash scripts/lib/himmel-secrets status FAKE_KEY')")"
 assert_rc "7147 ctl himmel-secrets exec"                   0 "$(run_case "$(j_bash 'himmel-secrets exec --keys FAKE_KEY -- ./run.sh')")"
+assert_rc "9000 ctl repo-path himmel-secrets same-value"   0 "$(run_case "$(j_bash 'scripts/lib/himmel-secrets same-value NAME')")"
 assert_rc "7147 ctl git show of a source file"             0 "$(run_case "$(j_bash 'git show HEAD:scripts/lib/load-dotenv.sh')")"
 assert_rc "7147 ctl git show --stat"                       0 "$(run_case "$(j_bash 'git show --stat HEAD')")"
 assert_rc "7147 ctl git cat-file -p of a source file"      0 "$(run_case "$(j_bash 'git cat-file -p HEAD:README.md')")"
