@@ -87,6 +87,10 @@ case "$1 $2" in
             else
                 printf '%s\n' "${FAKE_GH_PR_JSON:-[]}"
             fi
+        elif printf '%s ' "$@" | grep -q -- '--state open'; then
+            # The open-PR list: FAKE_GH_PR_OPENLIST, else the OPEN rows of the all-state fixture.
+            if [ -n "${FAKE_GH_PR_OPENLIST:-}" ]; then printf '%s\n' "$FAKE_GH_PR_OPENLIST"
+            else printf '%s' "${FAKE_GH_PR_ALL:-[]}" | jq -c '[.[] | select(.state == "OPEN")]'; fi
         else
             printf '%s\n' "${FAKE_GH_PR_ALL:-[]}"
         fi
@@ -1083,6 +1087,23 @@ rc=0
 FAKE_GH_PR_ALL="$PRALL" STALE_BRANCH_DAYS=08 run_day "$REMREPO" --out "$OUT_RM3" >/dev/null 2>&1 || rc=$?
 if [ "$rc" -eq 0 ]; then pass "remote: STALE_BRANCH_DAYS=08 is decimal, not an octal error"; else fail "remote: STALE_BRANCH_DAYS=08 is decimal, not an octal error" "rc=$rc"; fi
 assert_contains "remote: STALE_BRANCH_DAYS=08 still lists the 9-day-old branch" "origin/old-nopr" "$(cat "$OUT_RM3" 2>/dev/null || true)"
+
+echo "TEST: an open PR that fell out of the capped all-state list is still never listed"
+OUT_RM4="$TMP_ROOT/remote-stale4.md"
+PRALL_NOOPEN='[{"number":91,"state":"CLOSED","headRefName":"old-closed","title":"a"},{"number":93,"state":"MERGED","headRefName":"old-merged","title":"c"}]'
+FAKE_GH_PR_ALL="$PRALL_NOOPEN" FAKE_GH_PR_OPENLIST='[{"headRefName":"old-open"}]' run_day "$REMREPO" --out "$OUT_RM4" >/dev/null
+rem4=$(grep -F '`origin/' "$OUT_RM4" || true)
+assert_absent   "open list: an open PR missing from the all-state list gets no row" "old-open" "$rem4"
+assert_absent   "open list: it gets no delete command" "--delete old-open" "$(cat "$OUT_RM4")"
+assert_contains "open list: a closed PR still gets its row" "git push origin --delete old-closed" "$rem4"
+
+echo "TEST: a branch missing from an all-state list that hit its cap is PR unknown, with no delete command"
+OUT_RM5="$TMP_ROOT/remote-stale5.md"
+PRCAP=$(jq -nc '[range(500) | {number: (. + 1000), state: "MERGED", headRefName: ("capped-\(.)"), title: "t"}]')
+FAKE_GH_PR_ALL="$PRCAP" run_day "$REMREPO" --out "$OUT_RM5" >/dev/null
+rem5=$(grep -F '`origin/' "$OUT_RM5" || true)
+assert_contains "cap: a miss reads PR unknown" "PR unknown" "$rem5"
+assert_absent   "cap: a miss gets no delete command" "git push origin --delete old-nopr" "$(cat "$OUT_RM5")"
 
 echo "TEST: sixteen or more idle branches print 15 rows and a count by kind"
 MANYREPO="$TMP_ROOT/manyrepo"; mk_day_repo "$MANYREPO"

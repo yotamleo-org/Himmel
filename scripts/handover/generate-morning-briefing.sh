@@ -392,15 +392,32 @@ fi
 # bound on total PRs scanned for branch correlation (a different axis from the
 # jira-limit knob).
 pr_map=""
+pr_cap=500
 if [ "$briefing_forge" = "github" ]; then
     if ! command -v "${GH_CMD%% *}" >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
         pr_map_ok=0
-    elif all_json=$($GH_CMD pr list --state all --limit 500 --json number,state,headRefName,title 2>/dev/null); then
+    elif all_json=$($GH_CMD pr list --state all --limit "$pr_cap" --json number,state,headRefName,title 2>/dev/null); then
         pr_map=$(printf '%s' "$all_json" | jq -r '.[] | "\(.state)\t\(.headRefName)\t\(.number)"' 2>/dev/null) ||
             { pr_map=""; pr_map_ok=0; }
     else
         pr_map_ok=0
         echo "WARNING: briefing: gh PR-state query failed — stale + PR correlation skipped" >&2
+    fi
+fi
+
+# The all-state list is capped, so an old open PR can fall out of it: OPEN is decided from its own list (open PRs
+# number far fewer than the cap), and a branch missing from a list that hit the cap is "PR unknown", never "no PR".
+pr_capped=0; open_branches=""; open_ok=1
+if [ "$briefing_forge" = "github" ] && [ "$pr_map_ok" -eq 1 ]; then
+    # swallow-ok: a failed count reads as not capped only when the list itself parsed above
+    [ "$(printf '%s' "$all_json" | jq 'length' 2>/dev/null || echo 0)" -ge "$pr_cap" ] && pr_capped=1
+    # swallow-ok: a failed open-PR read sets open_ok=0 and the remote rows are skipped
+    if open_json=$($GH_CMD pr list --state open --limit "$pr_cap" --json headRefName 2>/dev/null) &&
+        open_branches=$(printf '%s' "$open_json" | jq -r '.[].headRefName' 2>/dev/null); then
+        :
+    else
+        open_branches=""; open_ok=0
+        echo "WARNING: briefing: gh open-PR query failed — remote stale rows skipped" >&2
     fi
 fi
 
@@ -439,7 +456,7 @@ stale_days="${STALE_BRANCH_DAYS:-7}"
 case "$stale_days" in ''|*[!0-9]*) stale_days=7 ;; esac
 stale_days=$((10#$stale_days))   # a leading zero (08) is decimal here, not octal
 remote_scanned=0; stale_odd=0; fetch_note=""
-if [ "$briefing_forge" = "github" ] && [ "$pr_map_ok" -eq 1 ]; then
+if [ "$briefing_forge" = "github" ] && [ "$pr_map_ok" -eq 1 ] && [ "$open_ok" -eq 1 ]; then
     remote_scanned=1
     now_epoch=$(date +%s)
     stale_cutoff=$((now_epoch - stale_days * 86400))
@@ -449,12 +466,17 @@ if [ "$briefing_forge" = "github" ] && [ "$pr_map_ok" -eq 1 ]; then
         rb="${_ref#refs/remotes/origin/}"
         case "$rb" in HEAD|main|"$default_name") continue ;; esac
         [ "$_ts" -le "$stale_cutoff" ] || continue
+        printf '%s\n' "$open_branches" | grep -qixF -- "$rb" && continue
         _pr=$(printf '%s\n' "$pr_map" | awk -F'\t' -v b="$rb" '
             tolower($2) == tolower(b) { if ($1 == "OPEN") o = 1; else if ($1 == "MERGED" && !m) m = $3; else if ($1 == "CLOSED" && !c) c = $3 }
             END { if (o) print "OPEN"; else if (m) print "MERGED " m; else if (c) print "CLOSED " c; else print "none" }')
         [ "$_pr" = "OPEN" ] && continue
         # The delete command is pasted into a shell: a name outside the plain set is not offered as one.
         case "$rb" in *[!A-Za-z0-9._/+@=-]*) stale_odd=$((stale_odd + 1)); continue ;; esac
+        if [ "$_pr" = "none" ] && [ "$pr_capped" -eq 1 ]; then
+            stale_rows="$stale_rows| \`origin/$rb\` | remote | PR unknown (list capped) | check the PR first |"$'\n'
+            continue
+        fi
         if [ "$_pr" = "none" ]; then _state="no PR"; else _state="PR #${_pr#* } ${_pr%% *}"; fi
         stale_rows="$stale_rows| \`origin/$rb\` | remote | $_state | \`git push origin --delete $rb\` |"$'\n'
     done < <($GIT_CMD -C "$repo_root" for-each-ref --sort=committerdate --format='%(refname)%09%(committerdate:unix)' refs/remotes/origin 2>/dev/null)
