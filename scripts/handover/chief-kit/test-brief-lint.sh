@@ -378,6 +378,23 @@ err="$(bash "$LINT" "$tmp/dl_code.md" 2>&1 >/dev/null)"; rc=$?
     && ok "8q4 the marker on a brief that writes any repo file is refused, naming the file" || bad "8q4 marker plus repo code (rc=$rc): $err"
 expect_rc "8q5 specs/ Writes without the marker are no design leg: the ticket's own paths decide (core)" 3 "$tmp/dl_nomark.md"
 HANDOVER_DIR="$tmp/state" expect_rc "8q6 the marker with an absolute specs/ path under the handover root launches" 0 "$tmp/dl_abs.md"
+# each row isolates one clause of the state-repo specs/ test: a .md token that fails only that clause is refused by name
+dl_refused() { # label doc token [--core-only]
+    local err rc=0
+    err="$(bash "$LINT" ${4:+"$4"} "$2" 2>&1 >/dev/null)" || rc=$?
+    { [ "$rc" -eq 3 ] && grep -Fq 'design leg' <<< "$err" && grep -Fq -- "$3" <<< "$err"; } && ok "$1" || bad "$1 (rc=$rc): $err"
+}
+mk dl_repomd '# HIMMEL-9419 — marker on a repo .md' "$PA" '> **Contract:** y' "$DL" '> **Writes:** specs/design/HIMMEL-9419-x.md marketplace/plugins/himmel-bus/SKILL.md' '## Results (newest at the bottom)'
+mk dl_dotdot '# HIMMEL-9419 — marker on a specs/ traversal' "$PA" '> **Contract:** y' "$DL" '> **Writes:** specs/../scripts/HIMMEL-9419-x.md' '## Results (newest at the bottom)'
+mk dl_dot '# HIMMEL-9419 — marker on a specs/ dot segment' "$PA" '> **Contract:** y' "$DL" '> **Writes:** specs/./HIMMEL-9419-x.md' '## Results (newest at the bottom)'
+mk dl_empty '# HIMMEL-9419 — marker on a specs/ empty segment' "$PA" '> **Contract:** y' "$DL" '> **Writes:** specs//HIMMEL-9419-x.md' '## Results (newest at the bottom)'
+mk dl_absout '# HIMMEL-9419 — absolute bucket file outside specs/' "$PA" '> **Contract:** y' "$DL" "> **Writes:** $tmp/state/u/r/HIMMEL-9419-x.md" '## Results (newest at the bottom)'
+dl_refused "8q7 the marker beside a repo .md file outside specs/ is refused, naming it" "$tmp/dl_repomd.md" 'marketplace/plugins/himmel-bus/SKILL.md'
+# the full lint refuses a . or .. segment first; --core-only (a launch with --no-prior-art-check) reaches the core rule alone
+dl_refused "8q8 --core-only: the marker on a specs/ path with a .. segment is refused" "$tmp/dl_dotdot.md" 'specs/../scripts/HIMMEL-9419-x.md' --core-only
+dl_refused "8q9 --core-only: the marker on a specs/ path with a . segment is refused" "$tmp/dl_dot.md" 'specs/./HIMMEL-9419-x.md' --core-only
+dl_refused "8q10 the marker on a specs/ path with an empty segment is refused" "$tmp/dl_empty.md" 'specs//HIMMEL-9419-x.md'
+HANDOVER_DIR="$tmp/state" dl_refused "8q11 the marker on an absolute bucket .md outside specs/ is refused" "$tmp/dl_absout.md" "$tmp/state/u/r/HIMMEL-9419-x.md"
 # a relative token is a path only when it reads as a repo file: n/a and and/or name nothing
 mk na '# HIMMEL-9416 — core by its own body' "$PA" '> **Contract:** y' '> **Writes:** n/a' '## Results (newest at the bottom)'
 mk andor '# HIMMEL-9416 — core by its own body' "$PA" '> **Contract:** y' '> **Writes:** and/or' '## Results (newest at the bottom)'
