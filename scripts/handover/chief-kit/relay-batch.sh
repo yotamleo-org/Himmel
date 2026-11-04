@@ -199,6 +199,21 @@ resolve_session() {
     done <<EOC
 $census_lines
 EOC
+    [ "$hits" -eq 0 ] || return 0
+    # A worker relaunched under a lettered label (doc N90, session N90b): with that label put back
+    # to the doc's, the session name must equal a candidate.
+    local dlabel clabel back
+    dlabel="$(worker_label "$1")"
+    [[ $dlabel =~ ^N[0-9]+$ ]] || return 0
+    while IFS=$'\t' read -r _cpid cname _rest; do
+        [ -n "$cname" ] || continue
+        clabel="$(worker_label "$cname")"
+        [[ $clabel =~ ^${dlabel}[a-z]+$ ]] || continue
+        back="$(printf '%s' "$cname" | sed -E "s/-${clabel}(-|\$)/-${dlabel}\\1/")"
+        case "$cands" in *",$back,"*) hits=$((hits + 1)); lsession="$cname" ;; esac
+    done <<EOC
+$census_lines
+EOC
 }
 bus_queue=""
 # The live process census (pid<TAB>name<TAB>model<TAB>autocompact), taken once.
