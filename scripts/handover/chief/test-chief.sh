@@ -2061,6 +2061,7 @@ cat > "$tmp/stub-arm-66.sh" <<STUB
     printf 'WORKER_SESSION_LANE=%s\n' "\${WORKER_SESSION_LANE+set}"
     printf 'OPENROUTER_MODEL=%s\n' "\${OPENROUTER_MODEL+set}"
     printf 'HEADED_ARM_REQUIRED_AUTOCOMPACT=%s\n' "\${HEADED_ARM_REQUIRED_AUTOCOMPACT+set}"
+    printf 'HEADED_ARM_LAUNCHER_ENV_LINES=%s\n' "\${HEADED_ARM_LAUNCHER_ENV_LINES+set}"
     printf 'HIMMEL_HOLD_KEY=%s\n' "\${HIMMEL_HOLD_KEY+set}"
     printf 'HIMMEL_HOLD_DOC=%s\n' "\${HIMMEL_HOLD_DOC+set}"
     printf 'HIMMEL_HOLD_LABEL=%s\n' "\${HIMMEL_HOLD_LABEL+set}"
@@ -2093,6 +2094,7 @@ out66b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PR
     HIMMEL_CONSOLE_RELAY=1 HIMMEL_HOLD_KEY=HIMMEL-1 HIMMEL_HOLD_DOC=/leaked-66/doc.md HIMMEL_HOLD_LABEL=N1 WRITE_HOLD_OK=1 \
     HEADED_ARM_LAUNCHER=/leaked-66/worker-claude-launcher.sh HEADED_ARM_RECORDER=1 \
     HEADED_ARM_REQUIRED_AUTOCOMPACT=200000 \
+    HEADED_ARM_LAUNCHER_ENV_LINES=LEAK=1 \
     HEADED_ARM_LAUNCHER_ENV="CLAUDEX_LANE_OK=1 WORKER_SESSION_PROFILE_SETTINGS=/leaked-66/settings.json " \
     HEADED_ARM_UNAME=Darwin \
     CHIEF_CONTEXT=1m \
@@ -2113,6 +2115,8 @@ check "66 armed child's OWN environment still lacks HIMMEL_CONSOLE_LEG (not just
     "$(grep -c '^HIMMEL_CONSOLE_LEG=set$' "$tmp/child-env-66.txt")" "0"
 check "66 armed child's OWN environment still lacks HEADED_ARM_REQUIRED_AUTOCOMPACT (not just unprinted)" \
     "$(grep -c '^HEADED_ARM_REQUIRED_AUTOCOMPACT=set$' "$tmp/child-env-66.txt")" "0"
+check "66 armed child's OWN environment still lacks HEADED_ARM_LAUNCHER_ENV_LINES (not just unprinted)" \
+    "$(grep -c '^HEADED_ARM_LAUNCHER_ENV_LINES=set$' "$tmp/child-env-66.txt")" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc66A" "$token66a" >/dev/null 2>&1
 
 # --- 67: chief_context_worker_env_unset_names must name
