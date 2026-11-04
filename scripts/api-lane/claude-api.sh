@@ -23,7 +23,8 @@
 #        notification sender, scripts/telegram/session-status.ts)  [HIMMEL_API_ALERT_DIR=<dir>] rate-limit stamps
 # OFF by default. Failure path (docs/internals/api-lane.md): a refusal (exit 2), a rejected account (exit 6)
 #        or any other non-zero call exit still happens first, then sends ONE Telegram alert (kind, account, class,
-#        exit code, one-line reason, never the key; one per kind and class per hour), then re-runs the same prompt
+#        exit code, one-line reason, never the key; one per kind and class per hour; never for the decision-525 auto
+#        refusal, which only appends one line to <alert dir>/policy-refusals.jsonl and never falls back), then re-runs the same prompt
 #        once as a subscription `claude -p`: native auth (every API-key variable removed), the same model,
 #        permission mode, tool grant and budget cap, --output-format json. The fallback runs only when the native
 #        usage preflight says PROCEED, BANK-STALE or BANK-UNKNOWN; SKIPPED-BANK or SKIPPED-FLEET skips it and the
@@ -41,7 +42,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CLAUDE_BIN="${HIMMEL_API_CLAUDE_BIN:-claude}"
 
 # --- failure path state: set before any refusal can fire ---
-KEY="" STATE_DIR="" WORKER_SESSION_NAME="" OUT="" FB_OUT="" PROMPT_FILE="" NO_FB="" FAILING_OVER=0 STOPPED=0
+KEY="" STATE_DIR="" WORKER_SESSION_NAME="" OUT="" FB_OUT="" PROMPT_FILE="" NO_FB="" POLICY_REPO="" FAILING_OVER=0 STOPPED=0
 KIND_SAFE="${HIMMEL_API_KIND:-other}"
 case "$KIND_SAFE" in ""|*[!A-Za-z0-9._-]*) KIND_SAFE=other ;; esac
 JOB_SAFE="${HIMMEL_API_JOB_ID:-}"
@@ -193,6 +194,18 @@ fail_over() {
   local rc="$1" class="$2" reason="$3" decision token="" run=0
   [ "$FAILING_OVER" = 0 ] || return 0
   FAILING_OVER=1
+  # a decision-525 policy refusal means a caller regressed: one quiet record for the doctor, no alert, no stamp, no
+  # launch row and no fallback, whatever HIMMEL_API_FALLBACK says
+  if [ "$class" = refused-policy ]; then
+    local dir repo_json
+    dir="${HIMMEL_API_ALERT_DIR:-${HOME:-/tmp}/.himmel/state/api-lane-alerts}"
+    repo_json="$(printf '%s' "${POLICY_REPO:-none}" | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g')"
+    { mkdir -p "$dir" && printf '{"ts":%s,"kind":"%s","repo":"%s","job_id":"%s","branch":"%s","head":"%s"}\n' \
+      "$(date +%s)" "$KIND_SAFE" "$repo_json" "$JOB_SAFE" "$R_BRANCH" "$R_HEAD" >>"$dir/policy-refusals.jsonl"; } 2>/dev/null ||
+      echo "claude-api: warning: policy refusal record not written" >&2
+    echo "claude-api: policy refusal (decision 525): no alert, no fallback" >&2
+    return 0
+  fi
   if [ "${HIMMEL_API_FALLBACK:-on}" = off ]; then
     decision="off (HIMMEL_API_FALLBACK=off)"
   elif [ -n "$NO_FB" ]; then
@@ -219,6 +232,8 @@ fail_over() {
 }
 
 refuse() { echo "claude-api: refused: $*" >&2; fail_over 2 refused "$*"; exit 2; }
+# the decision-525 auto check only: class refused-policy, the one refusal that is not an alert
+refuse_policy() { echo "claude-api: refused: $*" >&2; fail_over 2 refused-policy "$*"; exit 2; }
 
 # --- argument policy: print mode only, explicit permission mode, model and budget ---
 # Parsed before any other check, so the failure path has the request in hand; the first error is refused below,
@@ -330,12 +345,12 @@ case "${HIMMEL_CLAUDE_LANE:-}" in ""|native) ;; *) refuse "conflicting lane HIMM
 KIND="${HIMMEL_API_KIND:-other}"
 case "$KIND" in ""|*[!A-Za-z0-9._-]*) refuse "HIMMEL_API_KIND has characters outside [A-Za-z0-9._-]" ;; esac
 # auto routing is for the himmel semantic graph pass only (decision 525 FINAL): any other kind, or the same kind
-# from another repo, must name its account; refused before any spawn and never re-run on the subscription
+# from another repo, must name its account; refused before any spawn, never re-run on the subscription and never an alert
 if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
   _auto_here="${HIMMEL_API_AUTO_REPO_DIR:-$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)}"
   _auto_own="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
   [ "$KIND" = graphify ] && [ -n "$_auto_own" ] && [ "$_auto_here" = "$_auto_own" ] ||
-    { NO_FB="the request itself was refused"; refuse "auto routing is for the himmel graph pass only (kind $KIND, repo ${_auto_here:-none}); name HIMMEL_API_ACCOUNT=A, B or C"; }
+    { POLICY_REPO="${_auto_here:-none}"; refuse_policy "auto routing is for the himmel graph pass only (kind $KIND, repo ${_auto_here:-none}); name HIMMEL_API_ACCOUNT=A, B or C"; }
 fi
 CACHE_TTL="${HIMMEL_API_CACHE_TTL:-5m}"
 case "$CACHE_TTL" in 5m|1h) ;; *) refuse "HIMMEL_API_CACHE_TTL must be 5m or 1h" ;; esac

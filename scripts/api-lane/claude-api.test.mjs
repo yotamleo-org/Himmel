@@ -1421,6 +1421,43 @@ test('HIMMEL-9052: the graph shim runs the lane from a scratch directory: the re
   assert.equal(f.called(), false);
 });
 
+test('HIMMEL-9077: a decision-525 policy refusal sends no alert, writes no stamp, runs no fallback and leaves one policy record', () => {
+  const f = fixture();
+  const r = spawnSync('bash', [LAUNCH, '-p', 'say hi', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'],
+    { env: { ...keyFiles(f), ...FB_ON, STUB_FB_OUT: FB_OK, HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'judge', HIMMEL_API_JOB_ID: 'job-p1',
+      HIMMEL_API_BRANCH: 'fix/x', HIMMEL_API_HEAD: 'abc1234' }, encoding: 'utf8', cwd: mkdtempSync(join(T, 'scratch-')) });
+  assert.equal(r.status, 2, r.stderr);
+  assert.match(r.stderr, /refused: auto routing is for the himmel graph pass only \(kind judge, repo none\)/);
+  const alertDir = f.env.HIMMEL_API_ALERT_DIR;
+  assert.deepEqual(alerts(f), []);
+  assert.deepEqual(readdirSync(alertDir), ['policy-refusals.jsonl']);
+  assert.match(r.stderr, /^claude-api: policy refusal \(decision 525\): no alert, no fallback$/m);
+  const lines = readFileSync(join(alertDir, 'policy-refusals.jsonl'), 'utf8').trim().split('\n');
+  assert.equal(lines.length, 1);
+  const rec = JSON.parse(lines[0]);
+  assert.deepEqual(Object.keys(rec).sort(), ['branch', 'head', 'job_id', 'kind', 'repo', 'ts']);
+  assert.ok(Number.isInteger(rec.ts) && Math.abs(rec.ts - Date.now() / 1000) < 60, `ts ${rec.ts}`);
+  assert.deepEqual({ ...rec, ts: 0 }, { ts: 0, kind: 'judge', repo: 'none', job_id: 'job-p1', branch: 'fix/x', head: 'abc1234' });
+  assert.deepEqual(rows(f), []);
+  assert.equal(fbCalls(f), 0);
+  assert.equal(f.called(), false);
+});
+
+test('HIMMEL-9077: every refusal but the policy one still alerts, and a graph-pass call failure still alerts', () => {
+  const f = fixture();
+  const off = f.run(f.good, { HIMMEL_API_LANE: '', HIMMEL_API_KIND: 'judge' });
+  assert.equal(off.status, 2, off.stderr);
+  assert.ok(existsSync(join(f.env.HIMMEL_API_ALERT_DIR, 'judge.refused')));
+  assert.equal(alerts(f).length, 1);
+  assert.doesNotMatch(off.stderr, /policy refusal/);
+  const g = fixture();
+  const fail = launch(keyFiles(g), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', STUB_OUT: CALL_FAIL, STUB_RC: '1' });
+  assert.notEqual(fail.status, 0, fail.stderr);
+  assert.ok(existsSync(join(g.env.HIMMEL_API_ALERT_DIR, 'graphify.call-failed')));
+  assert.equal(alerts(g).length, 1);
+  assert.doesNotMatch(fail.stderr, /policy refusal/);
+});
+
 test('HIMMEL-9052: auto ranks account C like A and B', () => {
   const f = fixture();
   const env = withC(f);
