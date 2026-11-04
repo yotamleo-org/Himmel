@@ -465,3 +465,12 @@ test("rotateConsumedLedger rotates to .1 at the threshold only once fully consum
   expect((await readNewLines(f, cur)).map((o: any) => o.n)).toEqual([2]);
   expect(LEDGER_ROTATE_BYTES).toBe(10 * 1024 * 1024);
 });
+
+test("HIMMEL-8737: ingestUpdates creates inbound.jsonl 0600 under a 0700 root (raw text kept: the gate reads it back)", async () => {
+  const { ingestUpdates } = await import("./poller");
+  const { statSync } = await import("node:fs");
+  const r = join(root(), "bridge");
+  await ingestUpdates(r, [{ update_id: 1, message: { message_id: 1, from: { id: 42 }, chat: { id: 42, type: "private" }, date: 1, text: "123456" } }]);
+  expect((statSync(join(r, "inbound.jsonl")).mode & 0o777).toString(8)).toBe("600");
+  expect((statSync(r).mode & 0o777).toString(8)).toBe("700");
+});
