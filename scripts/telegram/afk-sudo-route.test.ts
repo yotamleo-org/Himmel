@@ -250,7 +250,7 @@ const held = (msg: ReturnType<typeof dm>) => {
 };
 const shapes: Record<string, string> = {
   dot: "123.456", underscore: "123_456", slash: "123/456", comma: "123,456", "en dash": "123–456", "em dash": "123—456",
-  "minus sign": "123−456", "no-break space": "123 456", "em space": "123 456", "ideographic space": "123 456",
+  "minus sign": "123−456", "no-break space": "123 456", "em space": "123 456", "ideographic space": "123　456",
   "zero-width space": "123​456", "zero-width joiner": "123‍456", "word joiner": "123⁠456", "BOM": "123﻿456",
   "fullwidth digits": "１２３４５６", "fullwidth with space": "１２３ ４５６", "arabic-indic digits": "١٢٣٤٥٦",
   "extended arabic-indic digits": "۱۲۳۴۵۶", "trailing period": "123 456.", "trailing bang": "123456!", "leading and trailing": "(123 456)",
