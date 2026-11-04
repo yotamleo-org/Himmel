@@ -18,6 +18,8 @@ const MAX_AGE = 600;
 // Operator decision 185: both grants reset on one date, whatever expiry a snapshot row carries.
 // A config account may override it with reset_at for the next cycle.
 export const GRANT_RESET_AT = { A: '2026-11-01T00:00:00Z', B: '2026-11-01T00:00:00Z' };
+// C ranks like A and B; its config row carries its own reset_at (no default date).
+const ACCOUNTS = ['A', 'B', 'C'];
 // Auto routing prefers a snapshot younger than this: the ledger cannot see spend billed outside it.
 // An older operator snapshot still routes (flagged snapshot_stale) while its estimate has headroom.
 const ROUTE_MAX_AGE = 86400;
@@ -96,7 +98,7 @@ function configs(config) {
   const names = Object.keys(config.accounts);
   if (names.length === 0) refuse('missing-account-config');
   for (const account of names) {
-    if (!['A', 'B'].includes(account)) refuse('invalid-account-config');
+    if (!ACCOUNTS.includes(account)) refuse('invalid-account-config');
     const c = config.accounts[account];
     if (!object(c)) refuse('invalid-account-config');
     id(c.organization_id); id(c.cycle_id); money(c.cap_usd);
@@ -112,7 +114,7 @@ function identity(a, c) {
 function ledgerCheck(state) {
   if (!object(state) || state.version !== 1 || !object(state.accounts)) refuse('invalid-ledger');
   for (const [name, a] of Object.entries(state.accounts)) {
-    if (!['A', 'B'].includes(name) || !object(a) || !object(a.jobs) || typeof a.discrepancy !== 'boolean') refuse('invalid-ledger');
+    if (!ACCOUNTS.includes(name) || !object(a) || !object(a.jobs) || typeof a.discrepancy !== 'boolean') refuse('invalid-ledger');
     id(a.organization_id); id(a.cycle_id);
     for (const [job, j] of Object.entries(a.jobs)) {
       id(job);
@@ -245,7 +247,7 @@ const configPathFor = (env) => resolve(env.HIMMEL_API_CREDIT_CONFIG || join(stat
 export function configuredAccount(env = process.env) {
   try {
     const account = env.HIMMEL_API_ACCOUNT;
-    if (!['A', 'B'].includes(account)) refuse('account-required');
+    if (!ACCOUNTS.includes(account)) refuse('account-required');
     const config = read(configPathFor(env));
     configs(config);
     if (!own(config.accounts, account)) refuse('account-not-configured');
@@ -261,7 +263,7 @@ export function creditState(command, options = {}, env = process.env) {
   let lock, held = false;
   try {
     const account = env.HIMMEL_API_ACCOUNT;
-    if (!['A', 'B'].includes(account)) refuse('account-required');
+    if (!ACCOUNTS.includes(account)) refuse('account-required');
     if (!['status', 'reserve', 'unknown', 'settle', 'exhausted'].includes(command)) refuse('invalid-command');
     const optional = env.HIMMEL_API_SNAPSHOT_OPTIONAL === '1';
     const configPath = configPathFor(env);
@@ -427,7 +429,7 @@ export function pickAccount(budget, env = process.env) {
 export function refreshSnapshot(env, account, { remaining, grant, starts, expires, source = 'operator-console-snapshot', expect, pulled = false }) {
   let lock = null;
   try {
-    if (!['A', 'B'].includes(account)) refuse('account-required');
+    if (!ACCOUNTS.includes(account)) refuse('account-required');
     const config = read(configPathFor(env));
     configs(config);
     if (!own(config.accounts, account)) refuse('account-not-configured');
@@ -534,7 +536,7 @@ export function centsToMicro(amount) {
 }
 export async function pullSnapshot(env, account, { fetchImpl = globalThis.fetch } = {}) {
   try {
-    if (!['A', 'B'].includes(account)) refuse('account-required');
+    if (!ACCOUNTS.includes(account)) refuse('account-required');
     const config = read(configPathFor(env));
     configs(config);
     if (!own(config.accounts, account)) refuse('account-not-configured');
