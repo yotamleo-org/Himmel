@@ -3,16 +3,16 @@
 # test-uninstall-provenance-qmd.sh -- the RED20-RED32 cases (the qmd fork checkout and collection).
 # One of four files (test-uninstall-provenance.sh, -qmd, -legacy, -tty-block) split from one 525 s
 # suite so no CI shard is bounded by it. The shared fixture is
-# scripts/lib/uninstall-provenance-fixture.sh; each piece ends with its own real-ledger tripwire.
+# scripts/lib/testlib-uninstall-provenance.sh; each piece ends with its own real-ledger tripwire.
 # jq-only. Usage: bash scripts/test-uninstall-provenance-qmd.sh
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 repo_root="$(cd "$here/.." && pwd)"
 lib="$repo_root/scripts/lib"
 
-# shellcheck source=lib/uninstall-provenance-fixture.sh
+# shellcheck source=lib/testlib-uninstall-provenance.sh
 # shellcheck disable=SC1091
-. "$here/lib/uninstall-provenance-fixture.sh"
+. "$here/lib/testlib-uninstall-provenance.sh"
 
 echo "==== RED20 (HIMMEL-3332 slice3): install-created qmd kept by default, removed under --purge-state; stub never removed ===="
 # Fixture shape mirrors the real prov_record call sites (scripts/lib/qmd-bin.sh

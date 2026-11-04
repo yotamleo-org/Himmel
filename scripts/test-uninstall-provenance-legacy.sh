@@ -3,16 +3,16 @@
 # test-uninstall-provenance-legacy.sh -- the RED33-RED60 cases (settings containers, legacy-path backups, purge-state refusals).
 # One of four files (test-uninstall-provenance.sh, -qmd, -legacy, -tty-block) split from one 525 s
 # suite so no CI shard is bounded by it. The shared fixture is
-# scripts/lib/uninstall-provenance-fixture.sh; each piece ends with its own real-ledger tripwire.
+# scripts/lib/testlib-uninstall-provenance.sh; each piece ends with its own real-ledger tripwire.
 # jq-only. Usage: bash scripts/test-uninstall-provenance-legacy.sh
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 repo_root="$(cd "$here/.." && pwd)"
 lib="$repo_root/scripts/lib"
 
-# shellcheck source=lib/uninstall-provenance-fixture.sh
+# shellcheck source=lib/testlib-uninstall-provenance.sh
 # shellcheck disable=SC1091
-. "$here/lib/uninstall-provenance-fixture.sh"
+. "$here/lib/testlib-uninstall-provenance.sh"
 
 echo "==== RED33 (HIMMEL-3541): settings containers + a scope marketplace entry install created ===="
 # install-plugins.sh records a created-when-absent json-key row for the

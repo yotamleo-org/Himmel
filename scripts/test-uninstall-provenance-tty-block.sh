@@ -3,16 +3,16 @@
 # test-uninstall-provenance-tty-block.sh -- the RED61-RED79b cases (TTY sidecars, the working-principles block, the reconcile report).
 # One of four files (test-uninstall-provenance.sh, -qmd, -legacy, -tty-block) split from one 525 s
 # suite so no CI shard is bounded by it. The shared fixture is
-# scripts/lib/uninstall-provenance-fixture.sh; each piece ends with its own real-ledger tripwire.
+# scripts/lib/testlib-uninstall-provenance.sh; each piece ends with its own real-ledger tripwire.
 # jq-only. Usage: bash scripts/test-uninstall-provenance-tty-block.sh
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 repo_root="$(cd "$here/.." && pwd)"
 lib="$repo_root/scripts/lib"
 
-# shellcheck source=lib/uninstall-provenance-fixture.sh
+# shellcheck source=lib/testlib-uninstall-provenance.sh
 # shellcheck disable=SC1091
-. "$here/lib/uninstall-provenance-fixture.sh"
+. "$here/lib/testlib-uninstall-provenance.sh"
 
 echo "==== RED61 (HIMMEL-3787 S2b, spec 5.5): a TTY [r]estore on a user-modified file saves the live bytes to a sidecar FIRST ===="
 new_case red61

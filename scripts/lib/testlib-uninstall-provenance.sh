@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2015,SC2154,SC2034 # sourced: the part sets repo_root and reads the BACKUP_SM, S3_BACKUP and BLK_* values the helpers set
-# uninstall-provenance-fixture.sh -- the shared fixture of the test-uninstall-provenance*.sh family:
+# testlib-uninstall-provenance.sh -- the shared fixture of the test-uninstall-provenance*.sh family:
 # scratch HOME + provenance dir per case, the fake claude, run_uninstall and the
 # seed_* helpers, then the real-ledger tripwire in uninstall_prov_finish. Sourced, never run;
 # the caller sets here, repo_root and lib first.
