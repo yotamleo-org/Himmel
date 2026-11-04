@@ -51,10 +51,14 @@
 # per corpus (luna weekly, himmel daily) on the claude-cli backend (draws the SAME
 # interactive 5h/weekly Anthropic bank as a live session, gated by
 # usage-preflight.sh inside refresh-graph-map.sh). It never auto-arms —
-# `arm` registers all five tasks only when explicitly invoked, so the
+# `arm` registers the tasks only when explicitly invoked, so the
 # operator decides.
 #
-# Five tasks are registered:
+# LUNA IS OFF BY DEFAULT (decision 449: graphify stays off Luna until it is proven
+# better than qmd for the cost): a bare `arm` registers the HIMMEL rows only; the
+# Luna rows exist only through `arm --luna-only`.
+#
+# Up to six tasks exist; the Luna ones are opt-in:
 #   HIMMEL-GraphMap-Luna       weekly, semantic (default Sunday 13:00 local)
 #       bash <himmel>/scripts/graphify/refresh-graph-map.sh --name luna ...
 #   HIMMEL-GraphMap-Himmel     DAILY, semantic (default 13:20 local)
@@ -94,12 +98,14 @@
 # flags; edit + re-arm to change them.
 #
 # Usage:
-#   bash scripts/luna/graphmap-cadence.sh arm [--luna-time HH:MM]
-#       [--himmel-time HH:MM] [--vault PATH] [--force] [--dry-run]
+#   bash scripts/luna/graphmap-cadence.sh arm [--himmel-time HH:MM]
+#       [--vault PATH] [--force] [--dry-run]            (himmel rows only)
+#   bash scripts/luna/graphmap-cadence.sh arm --luna-only [--luna-time HH:MM]
+#       [--vault PATH] [--force] [--dry-run]            (the opt-in Luna rows)
 #   bash scripts/luna/graphmap-cadence.sh status
-#   bash scripts/luna/graphmap-cadence.sh disarm
+#   bash scripts/luna/graphmap-cadence.sh disarm [--luna-only]
 #
-# --luna-time/--himmel-time apply ONLY to the semantic pair; the
+# --luna-time/--himmel-time apply ONLY to the semantic rows; the
 # structural pair's fire offsets are not
 # operator-configurable (see WHY :05/:15 above).
 #
@@ -344,8 +350,10 @@ usage-preflight.sh inside refresh-graph-map.sh). The structural pair never
 opens a claude session; the semantic pair's claude-cli fire does (headless).
 
 Subcommands:
-  arm      Register the cadence tasks (six when every opt-in is passed). Dedup-guarded: refuses (rc=3) if any
-           HIMMEL-GraphMap-* task already exists; --force replaces.
+  arm      Register the HIMMEL cadence tasks. The Luna graph tasks are OFF by default
+           (decision 449): they are registered only by `arm --luna-only`, and a bare
+           arm neither adds nor replaces them. Dedup-guarded: refuses (rc=3) if a
+           task in the scope being armed already exists; --force replaces.
   status   Show which cadence tasks are armed (+ next run time).
   disarm   Remove every cadence task (idempotent; rc=0 if nothing was armed).
            With --luna-only: remove only the Luna rows and runners and unregister
@@ -354,7 +362,7 @@ Subcommands:
 
 Flags (arm only, except --dry-run and --luna-only):
   --luna-time <HH:MM>    Weekly luna-map time, 24h local   (default 13:00,
-                         semantic worker only)
+                         semantic worker only; used by arm --luna-only)
   --himmel-time <HH:MM>  Daily himmel-map time, 24h local  (default 13:20,
                          semantic worker only; staggered 20min after luna to
                          reduce the chance of the two extraction jobs
@@ -376,8 +384,9 @@ Flags (arm only, except --dry-run and --luna-only):
                          (honored by arm AND disarm)
   --luna-only            Scope arm or disarm to the Luna-corpus rows alone
                          (HIMMEL-GraphMap-Luna, HIMMEL-GraphMapAst-Luna and
-                         HIMMEL-GraphSemantic-Luna). arm --luna-only re-arms them
-                         while the himmel rows stay armed (its dedup guard and
+                         HIMMEL-GraphSemantic-Luna). This is the ONLY way to arm
+                         the Luna rows. arm --luna-only leaves the himmel rows
+                         alone (its dedup guard and
                          --force look only at the Luna rows); combine with
                          --ast-only for the free structural row alone and
                          --with-luna-semantic to add the semantic worker. Refused
@@ -399,7 +408,7 @@ Flags (arm only, except --dry-run and --luna-only):
   --semantic-active      With --publish-semantic or --with-luna-semantic: arm
                          without the marker, so the semantic pass runs from the
                          first fire.
-  --with-luna-semantic   Also register the luna semantic worker
+  --with-luna-semantic   With --luna-only: also register the luna semantic worker
                          (HIMMEL-GraphSemantic-Luna, every 2h): capped
                          claude-api semantic-update over the vault. Cron only.
                          Arms PAUSED: arm writes semantic-luna.paused; rm it
@@ -490,6 +499,10 @@ case "$PUBLISH_EVERY_HOURS" in
 esac
 if [ "$PUBLISH_SEMANTIC" -eq 1 ] && [ "$WITH_PUBLISH" -ne 1 ]; then
     echo "ERR graphmap-cadence: --publish-semantic needs --with-publish" >&2; exit 1
+fi
+# The Luna graph tasks are off unless `arm --luna-only` asks for them (decision 449).
+if [ "$WITH_LUNA_SEMANTIC" -eq 1 ] && [ "$LUNA_ONLY" -ne 1 ]; then
+    echo "ERR graphmap-cadence: --with-luna-semantic needs --luna-only (the Luna graph tasks are off unless arm --luna-only asks for them)" >&2; exit 1
 fi
 # --luna-only scopes to the Luna corpus: the publish worker is himmel-only, and --rewrite-armed rebuilds
 # every existing runner regardless of corpus.
@@ -1214,15 +1227,19 @@ cmd_arm() {
     # comment -- the publish worker is grouped with the AST pair here too, but
     # only when --with-publish is also asking for it this run.
     if [ "$AST_ONLY" -eq 1 ]; then
-        local ast_scope_re="${TASK_AST_LUNA}|${TASK_AST_HIMMEL}"
+        local ast_scope_re="${TASK_AST_HIMMEL}"
+        [ "$LUNA_ONLY" -ne 1 ] || ast_scope_re="${TASK_AST_LUNA}"
         [ "$WITH_PUBLISH" -ne 1 ] || ast_scope_re="${ast_scope_re}|${TASK_PUBLISH_HIMMEL}"
         [ "$WITH_LUNA_SEMANTIC" -ne 1 ] || ast_scope_re="${ast_scope_re}|${TASK_SEMANTIC_LUNA}"
         existing=$(printf '%s\n' "$existing" | grep -E "# (${ast_scope_re})\$" || true)
     fi
     # --luna-only: the dedup guard and --force look at the Luna rows alone, so himmel rows already armed
-    # neither block the re-arm nor get replaced by it.
+    # neither block the re-arm nor get replaced by it. A bare arm is the mirror: it looks at the himmel
+    # rows alone, so an operator-armed Luna row neither blocks it nor gets replaced (Luna is opt-in).
     if [ "$LUNA_ONLY" -eq 1 ]; then
         existing=$(printf '%s\n' "$existing" | grep -E "# ${TASK_LUNA_MATCH_RE}\$" || true)
+    else
+        existing=$(printf '%s\n' "$existing" | grep -vE "# ${TASK_LUNA_MATCH_RE}\$" || true)
     fi
     if [ -n "$existing" ] && [ "$REWRITE_ARMED" -ne 1 ]; then
         if [ "$FORCE" -eq 1 ]; then
@@ -1385,16 +1402,18 @@ cmd_arm() {
         if [ "$AST_ONLY" -eq 1 ]; then
             echo "DRY graphmap-cadence: --ast-only set; the semantic pair ($TASK_LUNA / $TASK_HIMMEL) is skipped entirely"
         else
-            echo "DRY graphmap-cadence: would write $CRON_RUNNER_LUNA:"
-            emit_runner "$TASK_LUNA" "$payload_luna" "$q_log_luna" "$q_himmel" "$q_node_dir" "$q_graphify_dir" 0 "$q_claude_dir" graphmap-luna "3 4" | sed 's/^/    /'
-            if [ "$LUNA_ONLY" -eq 0 ]; then
+            if [ "$LUNA_ONLY" -eq 1 ]; then
+                echo "DRY graphmap-cadence: would write $CRON_RUNNER_LUNA:"
+                emit_runner "$TASK_LUNA" "$payload_luna" "$q_log_luna" "$q_himmel" "$q_node_dir" "$q_graphify_dir" 0 "$q_claude_dir" graphmap-luna "3 4" | sed 's/^/    /'
+            else
                 echo "DRY graphmap-cadence: would write $CRON_RUNNER_HIMMEL:"
                 emit_runner "$TASK_HIMMEL" "$payload_himmel" "$q_log_himmel" "$q_himmel" "$q_node_dir" "$q_graphify_dir" 0 "$q_claude_dir" graphmap-himmel "3 4" | sed 's/^/    /'
             fi
         fi
-        echo "DRY graphmap-cadence: would write $CRON_RUNNER_AST_LUNA:"
-        emit_runner "$TASK_AST_LUNA" "$payload_ast_luna" "$q_log_ast_luna" "$q_himmel" "" "$q_graphify_dir" 1 "" graphmap-ast-luna 4 | sed 's/^/    /'
-        if [ "$LUNA_ONLY" -eq 0 ]; then
+        if [ "$LUNA_ONLY" -eq 1 ]; then
+            echo "DRY graphmap-cadence: would write $CRON_RUNNER_AST_LUNA:"
+            emit_runner "$TASK_AST_LUNA" "$payload_ast_luna" "$q_log_ast_luna" "$q_himmel" "" "$q_graphify_dir" 1 "" graphmap-ast-luna 4 | sed 's/^/    /'
+        else
             echo "DRY graphmap-cadence: would write $CRON_RUNNER_AST_HIMMEL:"
             emit_runner "$TASK_AST_HIMMEL" "$payload_ast_himmel" "$q_log_ast_himmel" "$q_himmel" "" "$q_graphify_dir" 0 "" graphmap-ast-himmel 4 | sed 's/^/    /'
         fi
@@ -1407,16 +1426,14 @@ cmd_arm() {
         if [ "$WITH_LUNA_SEMANTIC" -eq 1 ]; then
             echo "DRY graphmap-cadence: would write $CRON_RUNNER_SEMANTIC_LUNA:"
             emit_runner "$TASK_SEMANTIC_LUNA" "$payload_semantic_luna" "$q_log_semantic_luna" "$q_himmel" "" "$q_graphify_dir" 0 "" graphmap-semantic-luna "3 4" | sed 's/^/    /'
-        else
+        elif [ "$LUNA_ONLY" -eq 1 ]; then
             echo "DRY graphmap-cadence: --with-luna-semantic not set; $TASK_SEMANTIC_LUNA is skipped entirely"
         fi
         echo "DRY graphmap-cadence: would add crontab entries:"
         if [ "$AST_ONLY" -eq 0 ]; then
-            echo "    $entry_luna"
-            [ "$LUNA_ONLY" -eq 1 ] || echo "    $entry_himmel"
+            if [ "$LUNA_ONLY" -eq 1 ]; then echo "    $entry_luna"; else echo "    $entry_himmel"; fi
         fi
-        echo "    $entry_ast_luna"
-        [ "$LUNA_ONLY" -eq 1 ] || echo "    $entry_ast_himmel"
+        if [ "$LUNA_ONLY" -eq 1 ]; then echo "    $entry_ast_luna"; else echo "    $entry_ast_himmel"; fi
         if [ "$WITH_PUBLISH" -eq 1 ]; then
             echo "    $entry_publish_himmel"
         fi
@@ -1447,19 +1464,23 @@ cmd_arm() {
     # promoted, and their entries never enter $own_match_re below, so a
     # PRE-EXISTING semantic pair's crontab lines and runner files survive an
     # --ast-only (re-)arm untouched.
-    local tmp_ast_luna="$CRON_RUNNER_AST_LUNA.tmp.$$" tmp_ast_himmel=""
+    local tmp_ast_luna="" tmp_ast_himmel=""
     local tmp_publish_himmel="" tmp_semantic_luna=""
-    emit_runner "$TASK_AST_LUNA" "$payload_ast_luna" "$q_log_ast_luna" "$q_himmel" "" "$q_graphify_dir" 1 "" graphmap-ast-luna 4 > "$tmp_ast_luna"
-    chmod +x "$tmp_ast_luna"
-    local own_match_re="(${TASK_AST_LUNA})"
-    local new_entries="$entry_ast_luna"
-    # --luna-only leaves the himmel structural row, runner and registry entry alone.
-    if [ "$LUNA_ONLY" -eq 0 ]; then
+    local own_match_re new_entries
+    # The Luna graph tasks are off by default (decision 449): --luna-only arms the Luna structural row
+    # and leaves every himmel row alone; a bare arm arms the himmel structural row and leaves Luna alone.
+    if [ "$LUNA_ONLY" -eq 1 ]; then
+        tmp_ast_luna="$CRON_RUNNER_AST_LUNA.tmp.$$"
+        emit_runner "$TASK_AST_LUNA" "$payload_ast_luna" "$q_log_ast_luna" "$q_himmel" "" "$q_graphify_dir" 1 "" graphmap-ast-luna 4 > "$tmp_ast_luna"
+        chmod +x "$tmp_ast_luna"
+        own_match_re="(${TASK_AST_LUNA})"
+        new_entries="$entry_ast_luna"
+    else
         tmp_ast_himmel="$CRON_RUNNER_AST_HIMMEL.tmp.$$"
         emit_runner "$TASK_AST_HIMMEL" "$payload_ast_himmel" "$q_log_ast_himmel" "$q_himmel" "" "$q_graphify_dir" 0 "" graphmap-ast-himmel 4 > "$tmp_ast_himmel"
         chmod +x "$tmp_ast_himmel"
-        own_match_re="(${TASK_AST_LUNA}|${TASK_AST_HIMMEL})"
-        new_entries="$entry_ast_luna"$'\n'"$entry_ast_himmel"
+        own_match_re="(${TASK_AST_HIMMEL})"
+        new_entries="$entry_ast_himmel"
     fi
     # --with-publish: opt-in, like the semantic pair under
     # --ast-only -- left out of own_match_re/new_entries entirely so a
@@ -1482,23 +1503,24 @@ cmd_arm() {
     fi
     local tmp_luna="" tmp_himmel=""
     if [ "$AST_ONLY" -eq 0 ]; then
-        tmp_luna="$CRON_RUNNER_LUNA.tmp.$$"
-        emit_runner "$TASK_LUNA" "$payload_luna" "$q_log_luna" "$q_himmel" "$q_node_dir" "$q_graphify_dir" 0 "$q_claude_dir" graphmap-luna "3 4" > "$tmp_luna"
-        chmod +x "$tmp_luna"
-        own_match_re="(${own_match_re}|${TASK_LUNA})"
-        if [ "$LUNA_ONLY" -eq 0 ]; then
+        if [ "$LUNA_ONLY" -eq 1 ]; then
+            tmp_luna="$CRON_RUNNER_LUNA.tmp.$$"
+            emit_runner "$TASK_LUNA" "$payload_luna" "$q_log_luna" "$q_himmel" "$q_node_dir" "$q_graphify_dir" 0 "$q_claude_dir" graphmap-luna "3 4" > "$tmp_luna"
+            chmod +x "$tmp_luna"
+            own_match_re="(${own_match_re}|${TASK_LUNA})"
+            new_entries="$entry_luna"$'\n'"$new_entries"
+        else
             tmp_himmel="$CRON_RUNNER_HIMMEL.tmp.$$"
             emit_runner "$TASK_HIMMEL" "$payload_himmel" "$q_log_himmel" "$q_himmel" "$q_node_dir" "$q_graphify_dir" 0 "$q_claude_dir" graphmap-himmel "3 4" > "$tmp_himmel"
             chmod +x "$tmp_himmel"
             own_match_re="(${own_match_re}|${TASK_HIMMEL})"
             new_entries="$entry_himmel"$'\n'"$new_entries"
         fi
-        new_entries="$entry_luna"$'\n'"$new_entries"
     fi
 
     # Single atomic rewrite: everything that isn't ours (scoped by
-    # own_match_re, which is AST-only or all-four per --ast-only above), then
-    # this arm's own entries.
+    # own_match_re: the structural row of the scope being armed, plus the
+    # semantic/opt-in rows this arm asks for), then this arm's own entries.
     local newtab
     newtab=$(mktemp -t graphmap-cadence.cron.XXXXXX)
     {
@@ -1517,21 +1539,23 @@ cmd_arm() {
         [ "$PUBLISH_SEMANTIC" -eq 1 ] && rm -f "$BAT_DIR/$SEMANTIC_PAUSE_MARKER"
         [ "$WITH_LUNA_SEMANTIC" -eq 1 ] && rm -f "$BAT_DIR/$LUNA_SEMANTIC_PAUSE_MARKER"
     fi
+    # luna weekly (604800s), himmel daily (86400s): each must match its cron entry, or
+    # cadence-based staleness tooling flags a healthy job as stalled (or misses a stalled one).
     if [ -n "$tmp_luna" ]; then
         mv -f "$tmp_luna" "$CRON_RUNNER_LUNA"  # prim-ok: publish the pre-chmod-ed runner after cron succeeds; atomic_write resets executable permissions.
-        # luna weekly (604800s), himmel daily (86400s): each must match its cron entry, or
-        # cadence-based staleness tooling flags a healthy job as stalled (or misses a stalled one).
         observability_register_cadence graphmap-luna 604800 "$TASK_LUNA"
         cadence_prov_record "$TASK_LUNA"
-        if [ -n "$tmp_himmel" ]; then
-            mv -f "$tmp_himmel" "$CRON_RUNNER_HIMMEL"  # prim-ok: preserve the staged executable mode at publication.
-            observability_register_cadence graphmap-himmel 86400 "$TASK_HIMMEL"
-            cadence_prov_record "$TASK_HIMMEL"
-        fi
     fi
-    mv -f "$tmp_ast_luna" "$CRON_RUNNER_AST_LUNA"  # prim-ok: preserve the staged executable mode at publication.
-    observability_register_cadence graphmap-ast-luna 86400 "$TASK_AST_LUNA"
-    cadence_prov_record "$TASK_AST_LUNA"
+    if [ -n "$tmp_himmel" ]; then
+        mv -f "$tmp_himmel" "$CRON_RUNNER_HIMMEL"  # prim-ok: preserve the staged executable mode at publication.
+        observability_register_cadence graphmap-himmel 86400 "$TASK_HIMMEL"
+        cadence_prov_record "$TASK_HIMMEL"
+    fi
+    if [ -n "$tmp_ast_luna" ]; then
+        mv -f "$tmp_ast_luna" "$CRON_RUNNER_AST_LUNA"  # prim-ok: preserve the staged executable mode at publication.
+        observability_register_cadence graphmap-ast-luna 86400 "$TASK_AST_LUNA"
+        cadence_prov_record "$TASK_AST_LUNA"
+    fi
     if [ -n "$tmp_ast_himmel" ]; then
         mv -f "$tmp_ast_himmel" "$CRON_RUNNER_AST_HIMMEL"  # prim-ok: preserve the staged executable mode at publication.
         observability_register_cadence graphmap-ast-himmel 3600 "$TASK_AST_HIMMEL"
@@ -1577,18 +1601,16 @@ cmd_arm() {
         else
             himmel_line="  $TASK_HIMMEL     NOT armed (--ast-only)"
         fi
-        semantic_lines="$luna_line
-$himmel_line"
+        semantic_lines="$himmel_line"
         arming_note="  No task ever opens a claude session. --ast-only arms/replaces only the
-  free structural pair; a pre-existing semantic pair (if shown above) is
+  free structural row; a pre-existing semantic row (if shown above) is
   left byte-identical. Re-arm without --ast-only to add a missing
-  semantic pair (--force to replace). Disarm anytime with:"
+  semantic row (--force to replace). Disarm anytime with:"
     else
-        semantic_lines="  $TASK_LUNA       weekly (dow $WEEKLY_DAY_CRON) $LUNA_TIME   -> refresh-graph-map luna (semantic, $BACKEND)
-  $TASK_HIMMEL     daily $HIMMEL_TIME   -> refresh-graph-map himmel (semantic, $BACKEND)"
-        arming_note="  No task ever opens a claude session. Arming = semantic graphify (luna weekly, himmel daily)
+        semantic_lines="  $TASK_HIMMEL     daily $HIMMEL_TIME   -> refresh-graph-map himmel (semantic, $BACKEND)"
+        arming_note="  No task ever opens a claude session. Arming = semantic graphify (himmel daily)
   extraction on the $BACKEND backend (off the interactive Anthropic bank)
-  + free structural refresh (himmel hourly, luna daily); disarm anytime:"
+  + free structural refresh (himmel hourly); disarm anytime:"
     fi
     local publish_lines=""
     if [ "$WITH_PUBLISH" -eq 1 ]; then
@@ -1602,15 +1624,21 @@ $himmel_line"
   $TASK_SEMANTIC_LUNA  every ${LUNA_SEMANTIC_EVERY_HOURS}h at :$LUNA_SEMANTIC_MINUTE   -> semantic-update luna (claude-api, max ${LUNA_SEMANTIC_MAX_FILES} files / ${LUNA_SEMANTIC_RUN_USD} USD per fire)"
     fi
     # --luna-only armed the Luna rows alone: say so, and offer the matching Luna-only disarm.
-    local ast_himmel_line disarm_cmd="disarm"
+    local ast_lines luna_hint="" ast_himmel_line disarm_cmd="disarm"
     ast_himmel_line="  $TASK_AST_HIMMEL  hourly at :$ast_himmel_mm   -> graphify update himmel (structural, free)"
-    if [ "$LUNA_ONLY" -eq 1 ]; then
+    ast_lines="$ast_himmel_line"
+    if [ "$LUNA_ONLY" -eq 0 ]; then
+        # Luna is off by default (decision 449): a bare arm never registers it; say how to opt in.
+        luna_hint="  The Luna graph tasks are OFF by default (decision 449); opt in with:
+      bash scripts/luna/graphmap-cadence.sh arm --luna-only"
+    else
         if [ "$AST_ONLY" -eq 1 ]; then
             semantic_lines="$luna_line"
         else
             semantic_lines="  $TASK_LUNA       weekly (dow $WEEKLY_DAY_CRON) $LUNA_TIME   -> refresh-graph-map luna (semantic, $BACKEND)"
         fi
-        ast_himmel_line="  himmel rows: untouched by --luna-only (see \`status\`)"
+        ast_lines="  $TASK_AST_LUNA    daily at $AST_LUNA_TIME   -> graphify update luna (structural, free)
+  himmel rows: untouched by --luna-only (see \`status\`)"
         arming_note="  --luna-only armed the Luna rows alone; no task ever opens a claude
   session. Disarm the Luna rows alone anytime with:"
         disarm_cmd="disarm --luna-only"
@@ -1620,8 +1648,7 @@ $himmel_line"
 ================================================================
   GRAPHMAP CADENCE ARMED
 $semantic_lines
-  $TASK_AST_LUNA    daily at $AST_LUNA_TIME   -> graphify update luna (structural, free)
-$ast_himmel_line
+$ast_lines
 $publish_lines
   Vault: $VAULT   (maps -> 60-Maps/)
   Himmel: $HIMMEL_ROOT
@@ -1629,6 +1656,7 @@ $publish_lines
 
 $arming_note
       bash scripts/luna/graphmap-cadence.sh $disarm_cmd
+$luna_hint
 ================================================================
 EOF
     macos_fda_warn_if_needed "$VAULT" "$HIMMEL_ROOT"

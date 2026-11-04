@@ -96,12 +96,19 @@ Same three verbs as every sibling cadence, via the shared
 this step:
 
 ```bash
-bash scripts/luna/graphmap-cadence.sh arm        # registers the default tasks
+bash scripts/luna/graphmap-cadence.sh arm        # registers the himmel tasks (the Luna tasks are off by default)
 bash scripts/luna/graphmap-cadence.sh arm --with-publish  # also registers the publish task (opt-in)
-bash scripts/luna/graphmap-cadence.sh arm --force  # replace an existing arm
+bash scripts/luna/graphmap-cadence.sh arm --force  # replace an existing himmel arm
+bash scripts/luna/graphmap-cadence.sh arm --luna-only  # opt in to the Luna tasks (decision 449: off until graphify beats qmd on Luna)
 bash scripts/luna/graphmap-cadence.sh status     # per-task ARMED/not-armed + run log
-bash scripts/luna/graphmap-cadence.sh disarm     # removes all five
+bash scripts/luna/graphmap-cadence.sh disarm     # removes every task; disarm --luna-only removes the Luna ones alone
 ```
+
+The Luna graph tasks (`HIMMEL-GraphMap-Luna`, `HIMMEL-GraphMapAst-Luna`,
+`HIMMEL-GraphSemantic-Luna`) are off by default (HIMMEL-9011): a bare `arm`
+neither adds nor replaces them, a fresh install registers none (so doctor C24
+expects none), and `himmel-update`'s `arm --rewrite-armed` only rewrites runners
+that already exist, so it can never re-arm a disarmed Luna task.
 
 The publish task is opt-in: `arm` registers `HIMMEL-GraphPublish-Himmel`
 only with `--with-publish`. It is grouped with the free structural (AST) pair for
@@ -280,7 +287,7 @@ explicit `GRAPHIFY_MAX_CONCURRENCY` wins, and an ollama-cloud model keeps 6.
 
 The luna vault graph is rebuilt AST-only nightly (`HIMMEL-GraphMapAst-Luna`), so
 its markdown only gets LLM extraction from a separate job:
-`graphmap-cadence.sh arm --ast-only --with-luna-semantic` adds
+`graphmap-cadence.sh arm --luna-only --ast-only --with-luna-semantic` adds
 `HIMMEL-GraphSemantic-Luna` (cron, `50 */2`), which runs `semantic-update.sh
 --name luna --corpus-class luna-personal --backend claude-api` against the same
 external out dir the AST job writes (an absolute `GRAPHIFY_OUT`), capped at 20

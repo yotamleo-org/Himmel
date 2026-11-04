@@ -385,7 +385,8 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
       }
       if (item.id === 'graphmap-cadence') {
         severity = 'n/a';
-        detail = `${probe.detail} — opt-in (bash scripts/luna/graphmap-cadence.sh arm)`;
+        // A bare arm registers the himmel graph tasks only; the Luna ones stay off (decision 449).
+        detail = `${probe.detail} — opt-in (bash scripts/luna/graphmap-cadence.sh arm); Luna graph tasks stay off unless you also run arm --luna-only`;
       }
       // doctor-cadence is opt-in too (and doctor-cadence.sh
       // refuses to arm on Windows, so a red there could never be cleared).

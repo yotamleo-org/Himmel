@@ -1465,7 +1465,9 @@ view into the vault — the bridge between the derived graph and the KB.
   PATH check an arm could report ARMED while every weekly run failed
   unattended:
   `bash scripts/luna/graphmap-cadence.sh arm` (`--luna-time` / `--himmel-time` /
-  `--vault` / `--force` / `--dry-run` / `--ast-only`).
+  `--vault` / `--force` / `--dry-run` / `--ast-only`). A bare arm registers the
+  HIMMEL rows only; the Luna graph tasks are off by default (HIMMEL-9011,
+  decision 449) and come only from `arm --luna-only`.
   `--ast-only` arms/dedup-checks ONLY the two free structural
   (AST) tasks, skipping the weekly semantic pair (and its backend credential
   requirement) entirely — a pre-existing semantic pair, if any, is left
