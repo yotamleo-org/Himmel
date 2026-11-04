@@ -22,7 +22,17 @@ lacks() { # <name> <haystack> <needle>
 }
 
 REAL_HOME="$HOME"
-real_register() { find "$REAL_HOME/.himmel/state/holds" -printf '%P %s %T@\n' 2>/dev/null | sort | cksum; }
+real_register() { # a portable snapshot of the real register: names, sizes and mtimes (find -printf is GNU-only)
+    python3 -I -c 'import os, sys, zlib
+d = sys.argv[1]
+rows = []
+for r, _, fs in os.walk(d):
+    for f in fs:
+        p = os.path.join(r, f)
+        s = os.stat(p)
+        rows.append("%s %d %.0f" % (os.path.relpath(p, d), s.st_size, s.st_mtime))
+print(zlib.crc32("\n".join(sorted(rows)).encode()))' "$REAL_HOME/.himmel/state/holds"
+}
 REAL_BEFORE="$(real_register)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/next-dispatch-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
@@ -2225,6 +2235,9 @@ if a[:1] == ['read']:
     if mode == 'read' or (mode == 'keys' and keys) or (mode == 'paths' and paths):
         sys.stderr.write('stub: register unreadable\n')
         sys.exit(3)
+    if mode == 'all' and not keys and not paths:
+        sys.stderr.write('stub: register unreadable\n')
+        sys.exit(3)
     if mode == 'garbled' and paths and not keys:
         print('only\ttwo')
         sys.exit(0)
@@ -2270,6 +2283,9 @@ lacks "... and no To Do ticket is offered on a malformed row" "$f_garb" "HIMMEL-
 f_ro="$(STUB_HOLDS_FAIL=keys ND_HOLDS="$WORK/holds-stub.py" NEXT_DISPATCH_MIRROR="$M5" NEXT_DISPATCH_GH_CMD="$WORK/gh-un" bash "$SUT" --resume-only --workers-from "$WORK/fleet-un.json" 2>/dev/null)"
 has "--resume-only with a failing register reads the live workers unknown (tick prints ? for orphans)" "$(fault_head "$f_ro")" "live workers unknown"
 lacks "--resume-only with a failing register withholds the RESUME rows" "$f_ro" "RESUME	HIMMEL-50"
+f_all="$(STUB_HOLDS_FAIL=all ND_HOLDS="$WORK/holds-stub.py" NEXT_DISPATCH_MIRROR="$M5" NEXT_DISPATCH_GH_CMD="$WORK/gh-un" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --workers-from "$WORK/fleet-un.json" 2>/dev/null)"
+has "a failing all-rows read (the classifier's --held list) reads the live workers unknown" "$(fault_head "$f_all")" "live workers unknown"
+lacks "... and no To Do ticket is offered on the all-rows fault" "$f_all" "HIMMEL-56	"
 f_dz="$(STUB_HOLDS_FAIL=paths ND_HOLDS="$WORK/holds-stub.py" runcg "$CGM")"
 lacks "a failing register drops a DESIGN row: the design's own files could be held" "$f_dz" "DESIGN${TAB}HIMMEL-901"
 mkdir -p "$HOME/.himmel/state/holds"; : > "$HOME/.himmel/state/holds/OFF"

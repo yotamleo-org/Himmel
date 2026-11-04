@@ -18,7 +18,17 @@ if ! command -v python3 >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1; the
 fi
 
 REAL_HOME="$HOME"
-real_register() { find "$REAL_HOME/.himmel/state/holds" -printf '%P %s %T@\n' 2>/dev/null | sort | cksum; }
+real_register() { # a portable snapshot of the real register: names, sizes and mtimes (find -printf is GNU-only)
+    python3 -I -c 'import os, sys, zlib
+d = sys.argv[1]
+rows = []
+for r, _, fs in os.walk(d):
+    for f in fs:
+        p = os.path.join(r, f)
+        s = os.stat(p)
+        rows.append("%s %d %.0f" % (os.path.relpath(p, d), s.st_size, s.st_mtime))
+print(zlib.crc32("\n".join(sorted(rows)).encode()))' "$REAL_HOME/.himmel/state/holds"
+}
 REAL_BEFORE="$(real_register)"
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/holds-test.XXXXXX")" || exit 1

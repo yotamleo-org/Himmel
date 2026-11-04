@@ -1044,13 +1044,10 @@ if not holds_off:
             have.add((path, who))
     os.unlink(pf)
 
-held_all_rows = None  # every live row of the register, read once, for the classifier's --held file
-
-def register_all():
-    global held_all_rows
-    if held_all_rows is None:
-        held_all_rows = [] if holds_off or register_unknown else [r[0] for r in register_rows(reg(['read', '--repo', repo], fatal=False))]
-    return held_all_rows
+# every live row of the register, read with the early reads so a fault is recorded before any gate runs, for the classifier's --held file
+held_all_rows = []
+if not holds_off and not register_unknown and os.environ.get('ND_CLASSIFY') == '1':
+    held_all_rows = [r[0] for r in register_rows(reg(['read', '--repo', repo]))]
 
 for label, doc, lines, wkeys in live_workers:
     if wkeys and key_state.get(wkeys[0]) in ('alive', 'unknown') and wkeys[0] in seeded_keys and not holds_off:
@@ -1291,7 +1288,7 @@ def classify(batch):
     cmd = os.environ.get('NEXT_DISPATCH_CLASSIFY_CMD')
     argv = [cmd] if cmd else ['node', os.path.join(repo, 'scripts/lanes/cloud-route.mjs'), '--classify-only']
     hfile = None
-    paths = [h for h, _, _ in held] + register_all()
+    paths = [h for h, _, _ in held] + held_all_rows
     if paths:
         import tempfile
         t = tempfile.NamedTemporaryFile('w', suffix='.held', delete=False)
