@@ -1485,6 +1485,7 @@ assert_rc "7147 age --decrypt"                             2 "$(run_case "$(j_ba
 assert_rc "7147 ctl himmel-secrets status"                 0 "$(run_case "$(j_bash 'himmel-secrets status')")"
 assert_rc "7147 ctl repo-path himmel-secrets status"       0 "$(run_case "$(j_bash 'bash scripts/lib/himmel-secrets status FAKE_KEY')")"
 assert_rc "7147 ctl himmel-secrets exec"                   0 "$(run_case "$(j_bash 'himmel-secrets exec --keys FAKE_KEY -- ./run.sh')")"
+assert_rc "9000 ctl repo-path himmel-secrets same-value"   0 "$(run_case "$(j_bash 'scripts/lib/himmel-secrets same-value NAME')")"
 assert_rc "7147 ctl git show of a source file"             0 "$(run_case "$(j_bash 'git show HEAD:scripts/lib/load-dotenv.sh')")"
 assert_rc "7147 ctl git show --stat"                       0 "$(run_case "$(j_bash 'git show --stat HEAD')")"
 assert_rc "7147 ctl git cat-file -p of a source file"      0 "$(run_case "$(j_bash 'git cat-file -p HEAD:README.md')")"
@@ -1526,8 +1527,13 @@ rm -rf "$mirror_dir"
 # A READER over a 10,000-name glob. Every match is an existing
 # file, and each one used to cost a path canonicalisation fork (about 1.4 ms),
 # so three mirror shapes ran past the 15 s member window. Synthetic names; the
-# queries are hook input, never executed. Each shape runs through the default
-# chain window and must finish with rc 0.
+# queries are hook input, never executed. Each shape must finish with rc 0, and
+# the chain's CPU time (user + sys, every process) must stay inside the 15 s
+# member budget. Wall time is not asserted: a CI shard running 4 suites at once
+# took 15.1 s wall for shape 2, which needs 2.2 s idle. CPU time barely moves
+# under that load, and on an idle runner it is about the wall time, so a hook
+# that really runs past the budget still fails. The kill window is the loaded
+# wall time x2 (31 s), so load cannot kill a run before its CPU is measured.
 m10k_dir=$(mktemp -d "${TMPDIR:-/tmp}/secrets-mirror10k.XXXXXX") || exit 1
 mkdir "$m10k_dir/HIMMEL" || exit 1
 m10k_i=0
@@ -1535,17 +1541,19 @@ while [ "$m10k_i" -lt 10000 ]; do
     : > "$m10k_dir/HIMMEL/HIMMEL-$m10k_i.md" || exit 1
     m10k_i=$((m10k_i + 1))
 done
-m10k_run() { # $1 = command; prints the chain rc and elapsed ms
-    local in rc=0 s e
+m10k_run() { # $1 = command; prints the chain rc, elapsed ms and CPU ms
+    local in rc=0 s e TIMEFORMAT='%3U %3S'
     in=$(j_bash "$1")
     s=$(now_ms)
-    (
+    # A stderr redirect on the timed subshell (or an exec inside it) also takes
+    # the time report, so only the chain command itself is redirected.
+    { time (
         unset RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS RUN_HOOK_CHAIN_BUDGET_MS \
             RUN_HOOK_CHAIN_ENTRY_TIMEOUT_MS RUN_HOOK_CHAIN_ENTRY_SAFETY_MARGIN_MS
-        cd "$m10k_dir/HIMMEL" && printf '%s' "$in" | RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS=15000 node "${HOOK%/*}/run-hook-with-bash.js" --chain "$HOOK"
-    ) >/dev/null 2>"$m10k_dir/chain.err" || rc=$?
+        cd "$m10k_dir/HIMMEL" && printf '%s' "$in" | RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS=31000 node "${HOOK%/*}/run-hook-with-bash.js" --chain "$HOOK" >/dev/null 2>"$m10k_dir/chain.err"
+    ); } 2>"$m10k_dir/cpu" || rc=$?
     e=$(now_ms)
-    echo "$rc $((e - s))"
+    echo "$rc $((e - s)) $(awk 'END { gsub(",", "."); printf "%d", ($1 + $2) * 1000 }' "$m10k_dir/cpu")"
 }
 m10k_cmds=(
     "grep -lE '^fixVersions:.*\"v1\\.1\\.3\"' $m10k_dir/HIMMEL/HIMMEL-*.md | xargs grep -h sector"
@@ -1555,9 +1563,14 @@ m10k_cmds=(
 m10k_n=0
 for m10k_cmd in "${m10k_cmds[@]}"; do
     m10k_n=$((m10k_n + 1))
-    read -r m10k_rc m10k_ms <<<"$(m10k_run "$m10k_cmd")"
-    echo "     8990 shape $m10k_n: rc=$m10k_rc elapsed=${m10k_ms}ms (member window 15000ms)"
+    read -r m10k_rc m10k_ms m10k_cpu <<<"$(m10k_run "$m10k_cmd")"
+    echo "     8990 shape $m10k_n: rc=$m10k_rc elapsed=${m10k_ms}ms cpu=${m10k_cpu}ms (member budget 15000ms)"
     assert_rc "8990 reader over a 10000-name mirror glob, shape $m10k_n, completes in the default chain window" 0 "$m10k_rc"
+    if [ "${m10k_cpu:-99999}" -le 15000 ]; then
+        echo "PASS 8990 shape $m10k_n chain CPU ${m10k_cpu}ms is inside the 15000ms member budget"
+    else
+        echo "FAIL 8990 shape $m10k_n chain CPU ${m10k_cpu:-unread}ms is past the 15000ms member budget"; FAILED=$((FAILED + 1))
+    fi
 done
 # Control: a secret name hidden among the 10,000 is still refused, by the
 # hook's own deny message (a timeout also exits 2, so the text is the proof).

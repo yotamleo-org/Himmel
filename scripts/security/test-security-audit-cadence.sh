@@ -355,6 +355,26 @@ esac
                        capture_output=True, timeout=20)
         self.assertFalse((self.root / 'INJECTED').exists())
 
+    # Two cadences arming at the same moment must both land, with the unrelated job.
+    def test_concurrent_arms_keep_both_changes(self):
+        self.executable('slowcron', '#!/bin/sh\n[ "$1" = -l ] && sleep 0.4\nexec "%s" "$@"\n' % (self.bin / 'crontab'))
+        (self.root / 'cron').write_text('0 1 * * * /other/job # HIMMEL-Other\n')
+        (self.root / 'ho').mkdir()
+        morning = SCRIPT.parents[1] / 'handover' / 'morning-report-cadence.sh'
+        env = dict(self.env, SECURITY_AUDIT_CRONTAB=str(self.bin / 'slowcron'),
+                   MORNINGREPORT_CRONTAB=str(self.bin / 'slowcron'),
+                   MORNINGREPORT_RUNNER_DIR=str(self.root / 'mr-runner'),
+                   HANDOVER_DIR=str(self.root / 'ho'))
+        procs = [subprocess.Popen(['bash', str(path), 'arm'], env=env, text=True,
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                 for path in (SCRIPT, morning)]
+        for proc in procs:
+            out, _ = proc.communicate(timeout=30)
+            self.assertEqual(proc.returncode, 0, out)
+        cron = (self.root / 'cron').read_text()
+        for tag in ('HIMMEL-SecurityAudit', 'HIMMEL-MorningReport', 'HIMMEL-Other'):
+            self.assertEqual(cron.count('# ' + tag), 1, cron)
+
     def runner_payload(self):
         primary = self.root / 'primary'
         payload = primary / 'scripts' / 'security' / 'security-audit-cadence.sh'

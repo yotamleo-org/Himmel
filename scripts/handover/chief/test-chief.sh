@@ -102,6 +102,11 @@ for _e in "$REPO_REAL"/scripts/* "$REPO_REAL"/docs/*; do
     esac
 done
 C="$fixture_repo/scripts/handover/chief/chief.sh"
+# A failed bus register refuses a chief launch, so the fixture
+# carries an always-OK bus at the default CLI path; the bus rows bring their own.
+mkdir -p "$fixture_repo/marketplace/plugins/himmel-bus/bin"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$fixture_repo/marketplace/plugins/himmel-bus/bin/bus"
+chmod +x "$fixture_repo/marketplace/plugins/himmel-bus/bin/bus"
 
 root="$tmp/handovers"
 mkdir -p "$root"
@@ -2521,16 +2526,22 @@ HANDOVER_DIR="$root" bash "$QL" release "$root/tester/nosuffix78/DEMO-nextleg-${
 # --- 79: the chief profile's himmel-bus opt-in registers the
 # armed chief (--predecessor on next), exports only HIMMEL_BUS_NAME plus the
 # bind flag, and drops a predecessor's own HIMMEL_BUS_*; opted-out registers
-# and exports nothing; a failed register warns and still arms.
+# and exports nothing; a failed register warns and refuses to arm.
 bus79="$tmp/bus79"; mkdir -p "$bus79"
 cat > "$bus79/arm.sh" <<'STUB'
 #!/usr/bin/env bash
 [ "$1" = --role ] && shift 2
 printf 'bus_name=%s extra=%s bind=%s\n' "${HIMMEL_BUS_NAME:-<unset>}" "${HIMMEL_BUS_EXTRA:-<unset>}" "${HEADED_ARM_BUS:-<unset>}" >> "$5"
+printf 'override=%s\n' "${HIMMEL_LAUNCH_UNBOUND_OK:-<unset>}" >> "$5"
 STUB
 cat > "$bus79/bus" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/calls"
+[ -n "${BUS79_HANG:-}" ] && exec sleep 20
+if [ -n "${BUS79_HELD:-}" ]; then
+  echo "name already registered: $2 (live holder pid 4242)" >&2
+  exit 1
+fi
 if [ -n "${BUS79_FAIL:-}" ] && { [ -z "${BUS79_FAIL_VERB:-}" ] || [ "$1" = "$BUS79_FAIL_VERB" ]; }; then
   echo "stub bus: $1 refused" >&2
   exit 1
@@ -2576,11 +2587,70 @@ check "79 opted-out: armed env carries no HIMMEL_BUS_* and no bind flag" \
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79out/$session79c.md" "$(token_of "$out79c")" >/dev/null 2>&1
 rm -f "$bus79/calls"
 out79d="$(run79 in new bus79fail BUS79_FAIL=1)"
-check "79 failed register: chief still arms" "$(printf '%s\n' "$out79d" | grep -c '^armed: ')" "1"
+check "79 failed register: the chief is not armed" "$(printf '%s\n' "$out79d" | grep -c '^armed: ')" "0"
 check "79 failed register: warned" "$(printf '%s\n' "$out79d" | grep -c 'WARN bus register failed')" "1"
-check "79 failed register: the warning lands in the launch log" \
-    "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-chief".log 2>/dev/null | grep -c 'WARN: bus register failed for .* launching unbound')" "1"
+check "79 failed register: the refusal lands in the launch log" \
+    "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-chief".log 2>/dev/null | grep -c 'WARN: bus register failed for .* refusing to launch')" "1"
+check "79 failed register: the refusal names the broken-bus override" \
+    "$(printf '%s\n' "$out79d" | grep -c 'set HIMMEL_LAUNCH_UNBOUND_OK=1 in the launching shell')" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79fail/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79d")" >/dev/null 2>&1
+# the operator override for a broken bus arms the chief unbound; a hung bus
+# is bounded and refused.
+unbound79() { cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-chief".log 2>/dev/null | grep -c '^bus_name=<unset> extra=<unset> bind=<unset>$'; }
+before79o="$(unbound79)"
+out79o="$(run79 in new bus79override BUS79_FAIL=1 HIMMEL_LAUNCH_UNBOUND_OK=1)"
+check "79 override: the chief arms" "$(printf '%s\n' "$out79o" | grep -c '^armed: ')" "1"
+check "79 override: armed unbound, with no bind flag" "$(( $(unbound79) - before79o ))" "1"
+check "79 override: the launch log says it launched unbound" \
+    "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-chief".log 2>/dev/null | grep -c 'launching unbound (HIMMEL_LAUNCH_UNBOUND_OK=1)')" "1"
+check "79 override: the armed chief does not inherit the override" \
+    "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-chief".log 2>/dev/null | grep -c '^override=1$')" "0"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79override/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79o")" >/dev/null 2>&1
+out79held="$(run79 in new bus79held BUS79_HELD=1 HIMMEL_LAUNCH_UNBOUND_OK=1)"
+check "79 override: a held name is never overridden, nothing armed" "$(printf '%s\n' "$out79held" | grep -c '^armed: ')" "0"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79held/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79held")" >/dev/null 2>&1
+mkdir -p "$bus79/nomktemp"
+# shellcheck disable=SC2016  # deliberately unexpanded: written literally, evaluated when the stub runs.
+printf '#!/usr/bin/env bash\ncase "$*" in *chief-bus*) exit 1 ;; esac\nPATH="${PATH#*:}" exec mktemp "$@"\n' > "$bus79/nomktemp/mktemp"
+chmod +x "$bus79/nomktemp/mktemp"
+out79lost="$(run79 in new bus79lost BUS79_FAIL=1 HIMMEL_LAUNCH_UNBOUND_OK=1 PATH="$bus79/nomktemp:$PATH")"
+check "79 override: lost bus output is never overridden, nothing armed" "$(printf '%s\n' "$out79lost" | grep -c '^armed: ')" "0"
+check "79 lost bus output: the refusal says so" "$(printf '%s\n' "$out79lost" | grep -c 'output lost (mktemp failed)')" "1"
+check "79 lost bus output: the refusal does not advise the override" "$(printf '%s\n' "$out79lost" | grep -c 'set HIMMEL_LAUNCH_UNBOUND_OK=1')" "0"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79lost/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79lost")" >/dev/null 2>&1
+t79=$SECONDS
+out79h="$(run79 in new bus79hang BUS79_HANG=1 BUS_EXEC_SECS=08)"
+check "79 hung bus: refused within the bound" \
+    "$(printf '%s\n' "$out79h" | grep -c '^armed: '):$([ $((SECONDS - t79)) -lt 15 ] && echo bounded || echo slow)" "0:bounded"
+check "79 hung bus: the refusal says it timed out" "$(printf '%s\n' "$out79h" | grep -c 'timed out after 8s')" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79hang/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79h")" >/dev/null 2>&1
+# Chief-path twin, on the REAL bus CLI: a chief name already bound
+# refuses the launch whether its holder is dead (a chief name is never re-bound)
+# or live, exits non-zero, launches nothing and names the holder pid.
+if [ -r /proc/self/stat ]; then
+  bus9071="$tmp/bus9071"; mkdir -p "$bus9071/state" && chmod 700 "$bus9071/state"
+  bus9071_cli="$HERE/../../../marketplace/plugins/himmel-bus/bin/bus"
+  session9071="DEMO-nextleg-${today}A-bus79-chief"
+  for case9071 in dead live; do
+    XDG_STATE_HOME="$bus9071/state" "$bus9071_cli" register "$session9071" --role chief >/dev/null 2>&1
+    sleep 30 & pid9071=$!
+    XDG_STATE_HOME="$bus9071/state" "$bus9071_cli" bind "$session9071" "$pid9071" >/dev/null 2>&1
+    if [ "$case9071" = dead ]; then kill "$pid9071" 2>/dev/null; wait "$pid9071" 2>/dev/null || true; fi
+    rc9071=0
+    out9071="$( ( cd "$fixture_repo" && env HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+        XDG_STATE_HOME="$bus9071/state" CHIEF_BUS_CLI="$bus9071_cli" CHIEF_BUS_PROFILES_MJS="$bus79/profiles-in.mjs" \
+        CHIEF_HEADED_ARM="$bus79/arm.sh" CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work9071-$case9071" \
+        bash "$C" new --bucket "bus9071$case9071" --name bus79-chief --arm --deadline-min 0 ) 2>&1)" || rc9071=$?
+    check "9071 chief path, $case9071 holder: launch refused (non-zero)" "$([ "$rc9071" -ne 0 ] && echo refused || echo "rc=$rc9071")" "refused"
+    check "9071 chief path, $case9071 holder: nothing armed" \
+        "$(cat "$tmp/work9071-$case9071"/*/launch-"$session9071".log 2>/dev/null | grep -c '^bus_name=')" "0"
+    contains "$out9071" "$session9071" "9071 chief path, $case9071 holder: refusal names the chief"
+    contains "$out9071" "pid $pid9071" "9071 chief path, $case9071 holder: refusal names the holder pid"
+    HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus9071$case9071/$session9071.md" "$(token_of "$out9071")" >/dev/null 2>&1
+    kill "$pid9071" 2>/dev/null; wait "$pid9071" 2>/dev/null || true
+    rm -rf "$bus9071/state/himmel"
+  done
+fi
 # a successor whose register works but whose stamp fails still arms, bound, and says so in the launch log
 rm -f "$bus79/calls"
 out79e="$(run79 in new bus79stamp)"

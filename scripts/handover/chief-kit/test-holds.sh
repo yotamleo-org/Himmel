@@ -18,7 +18,21 @@ if ! command -v python3 >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1; the
 fi
 
 REAL_HOME="$HOME"
-real_register() { find "$REAL_HOME/.himmel/state/holds" -printf '%P %s %T@\n' 2>/dev/null | sort | cksum; }
+real_register() { # a portable snapshot of the real register: names, sizes and mtimes (find -printf is GNU-only)
+    python3 -I -c 'import os, sys, zlib
+d = sys.argv[1]
+rows = []
+for r, _, fs in os.walk(d):
+    for f in fs:
+        p = os.path.join(r, f)
+        try:
+            s = os.stat(p)
+        except OSError as e:
+            print("STAT-ERROR " + p + " " + str(e))
+            sys.exit(1)
+        rows.append("%s %d %d" % (os.path.relpath(p, d), s.st_size, s.st_mtime_ns))
+print(zlib.crc32("\n".join(sorted(rows)).encode()))' "$REAL_HOME/.himmel/state/holds"
+}
 REAL_BEFORE="$(real_register)"
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/holds-test.XXXXXX")" || exit 1
@@ -581,12 +595,12 @@ GONE="$HANDOVER_DIR/u/r/HIMMEL-9321-gone.md"
 put_row scripts/m1.sh HIMMEL-9321 alpha "$GONE"
 : > "$W/ql-calls"
 run env HOLDS_QUEUE_LOCK="$W/bin/ql-count" python3 -I "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/m1.sh
-same "F6 a doc that is gone is still put to the lock" "$(grep -c 'HIMMEL-9321-gone.md' "$W/ql-calls")" 1
+same "F6 a doc that is gone is still put to the lock (one sweep serves it)" "$(grep -cxF -- 'status --sweep' "$W/ql-calls")" 1
 NOB="$W/nobucket/HIMMEL-9322-case.md"
 put_row scripts/m2.sh HIMMEL-9322 alpha "$NOB"
 : > "$W/ql-calls"
 run env HOLDS_QUEUE_LOCK="$W/bin/ql-count" python3 -I "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/m2.sh
-same "F6 a doc whose bucket is gone is still put to the lock" "$(grep -c 'HIMMEL-9322-case.md' "$W/ql-calls")" 1
+same "F6 a doc whose bucket is gone is still put to the lock (one sweep serves it)" "$(grep -cxF -- 'status --sweep' "$W/ql-calls")" 1
 GL="$(mkdoc HIMMEL-9324-case.md)"
 lock_hold "$GL"
 rm -f "$GL"
@@ -602,7 +616,7 @@ run bash -c 'cd "$1" && ql="$2" && shift 2 && exec env -u HANDOVER_DIR HOLDS_QUE
 same "F6 a handover root that cannot be resolved passes (a fault)" "$RC" 0
 same "F6 ... the holder's row is not taken over" "$(cut -f1 "$(rowf scripts/m3.sh)")" HIMMEL-9323
 same "F6 ... one events.log line" "$(( $(ev_count) - before ))" 1
-same "F6 ... and the lock was asked for the holder's doc" "$(grep -cxF -- "status $GR" "$W/ql-free-calls")" 1
+same "F6 ... and the lock was asked (one sweep)" "$(grep -cxF -- 'status --sweep' "$W/ql-free-calls")" 1
 
 # ---- F6b: a gone RESUME-named doc with a free lock is dead, not unknown
 GRS="$HANDOVER_DIR/u/r/HIMMEL-9340-N1-RESUME.md"
@@ -667,7 +681,7 @@ printf 'HIMMEL-9351\tlab\t%s\tbrief\t\n' "$(mkdoc HIMMEL-9351-case.md)" > "$(row
 printf 'HIMMEL-9351\tlab\t%s\tbogus-source\t\n' "$DB" > "$(rowf scripts/b1.sh "$R5")"
 touch -d '2 hours ago' "$(rowf scripts/a1.sh "$R5")" "$(rowf scripts/b1.sh "$R5")"
 run hp read --repo "$R5" --keys
-same "F7b read --keys: a dead row then a junk row of the same key reads that key unknown, never dead" "$OUT" "$(printf 'HIMMEL-9351\tunknown\t2')"
+same "F7b read --keys: a dead row then a junk row of the same key reads that key unknown, never dead" "$(printf '%s\n' "$OUT" | grep '^HIMMEL-9351')" "$(printf 'HIMMEL-9351\tunknown\t2')"
 
 # ---- Task 2: seed exit 3 on a claim fault, fallback doc, repoint, deadline, backfill
 mkdir -p "$(slugdir)"
@@ -802,8 +816,95 @@ touch -d '2 hours ago' "$(rowf scripts/t2ba.sh)"
 run hp alive --repo "$R" scripts/t2ba.sh
 same "T2 backfill: a row past the grace with the worker's lock held reads alive" "$OUT" alive
 
+# ---- merged PR first, sidecars, _abs keys, directory lines, sync-prs, gc, one lock sweep
+G3M="$(mkdoc HIMMEL-9500-N1-case-RESUME.md '# resume doc, unwrapped, fresh')"
+put_row scripts/t3m.sh HIMMEL-9500 alpha "$G3M" pr 4999
+run env HOLDS_GH="$W/bin/gh-merged" python3 -I "$SUT" alive --repo "$R" scripts/t3m.sh
+same "T3 a row whose own PR reads merged is dead, though a RESUME doc of its key is fresh" "$OUT" dead
+put_row scripts/t3o.sh HIMMEL-9500 alpha "$G3M" pr 4999
+run env HOLDS_GH="$W/bin/gh-open" python3 -I "$SUT" alive --repo "$R" scripts/t3o.sh
+same "T3 ... a row whose PR is open stays alive" "$OUT" alive
+
+mkdoc 'HIMMEL-9501-N1-case-RESUME.md.worker-preface.md' '# sidecar' > /dev/null
+mkdoc 'HIMMEL-9501-N1-case-RESUME.md.worker-contract.md' '# sidecar' > /dev/null
+put_row scripts/t3s.sh HIMMEL-9501 alpha "$HANDOVER_DIR/u/r/HIMMEL-9501-N1-case.md"
+run hp alive --repo "$R" scripts/t3s.sh
+same "T3 a .worker-preface.md / .worker-contract.md sidecar is never read as the key's RESUME doc" "$OUT" dead
+
+AB3="$HANDOVER_DIR/u/r/specs/t3abs.md"
+DAB3="$(mkdoc HIMMEL-9502-case.md "> **Writes:** $AB3")"
+hp seed --key HIMMEL-9502 --label lab --doc "$DAB3" --repo "$R" > /dev/null 2>&1
+run hp read --repo "$R" --keys
+contains "T3 read --keys also walks _abs: a key holding only a bucket file is listed" "$OUT" "$(printf 'HIMMEL-9502\talive\t1')"
+run hp read --repo "$W/no-such-repo-register" --keys
+same "T3 read --keys with no repo directory: exit 0, and no repo row listed (_abs is shared by every repo)" "$RC:$(printf '%s\n' "$OUT" | grep -c '^HIMMEL-9351')" "0:0"
+
+put_row scripts/t3tree/a.sh HIMMEL-9503 lab "$(mkdoc HIMMEL-9503-case.md)"
+put_row scripts/t3tree/sub/b.sh HIMMEL-9503 lab "$(mkdoc HIMMEL-9503-case.md)"
+put_row scripts/t3tree-other/c.sh HIMMEL-9503 lab "$(mkdoc HIMMEL-9503-case.md)"
+printf 'scripts/t3tree/\n' > "$W/paths-tree"
+run hp read --repo "$R" --paths-from "$W/paths-tree"
+same "T3 a --paths-from line ending in / selects the rows under it (and not a sibling dir with the same prefix)" "$(printf '%s\n' "$OUT" | cut -f1 | sort | paste -sd, -)" "scripts/t3tree/a.sh,scripts/t3tree/sub/b.sh"
+
+printf '5050\tfeat/himmel-9504-x\tfeat(x): [HIMMEL-9504] t\tscripts/t3pr.sh\n5050\tfeat/himmel-9504-x\tfeat(x): [HIMMEL-9504] t\tscripts/t3pr-live.sh\n' > "$W/pr-files.tsv"
+put_row scripts/t3pr-live.sh HIMMEL-9599 other "$(mkdoc HIMMEL-9599-case.md)"
+touch "$(rowf scripts/t3pr-live.sh)"
+run env HOLDS_GH="$W/bin/gh-open" python3 -I "$SUT" sync-prs --repo "$R" --files-from "$W/pr-files.tsv"
+same "T3 sync-prs exits 0" "$RC" 0
+same "T3 sync-prs writes a pr row: key from the title, label branch:<head>, source pr, the PR number" "$(cut -f1,2,4,5 "$(rowf scripts/t3pr.sh)" | tr '\t' ' ')" "HIMMEL-9504 branch:feat/himmel-9504-x pr 5050"
+same "T3 sync-prs leaves a file that has a live row alone" "$(cut -f1 "$(rowf scripts/t3pr-live.sh)")" HIMMEL-9599
+printf '5051\tfeat/no-key\tno key in the title\tscripts/t3pr2.sh\n' > "$W/pr-files2.tsv"
+run env HOLDS_GH="$W/bin/gh-open" python3 -I "$SUT" sync-prs --repo "$R" --files-from "$W/pr-files2.tsv"
+same "T3 sync-prs: a title with no key uses PR-<n>" "$(cut -f1 "$(rowf scripts/t3pr2.sh)")" "PR-5051"
+
+put_row scripts/t3gc1.sh HIMMEL-9505 lab "$(mkdoc HIMMEL-9505-case.md)"
+: > "$(rowf scripts/t3gc1.sh).grant.HIMMEL-9598"
+put_row scripts/t3gc2.sh HIMMEL-9506 lab "$(mkdoc HIMMEL-9506-case.md)"
+touch "$(rowf scripts/t3gc2.sh)"
+run hp gc --repo "$R"
+same "T3 gc exits 0" "$RC" 0
+same "T3 gc removes a dead row" "$([ -e "$(rowf scripts/t3gc1.sh)" ] && echo row || echo none)" none
+same "T3 gc removes a dead key's grant sibling" "$([ -e "$(rowf scripts/t3gc1.sh).grant.HIMMEL-9598" ] && echo grant || echo none)" none
+same "T3 gc keeps an alive row" "$([ -e "$(rowf scripts/t3gc2.sh)" ] && echo row || echo none)" row
+
+cat > "$W/bin/ql-sweep" <<STUB
+#!/usr/bin/env bash
+echo "\$*" >> "$W/ql-sweep-calls"
+case "\$*" in "status --sweep"*) echo "slug=u__r__HIMMEL-9507-case session=s host=h age=1s status=OK"; exit 0 ;; esac
+exit 1
+STUB
+chmod +x "$W/bin/ql-sweep"
+D3A="$(mkdoc HIMMEL-9507-case.md)"; D3B="$(mkdoc HIMMEL-9508-case.md)"
+put_row scripts/t3w1.sh HIMMEL-9507 lab "$D3A"
+put_row scripts/t3w2.sh HIMMEL-9507 lab "$D3A"
+put_row scripts/t3w3.sh HIMMEL-9508 lab "$D3B"
+printf 'scripts/t3w1.sh\nscripts/t3w2.sh\nscripts/t3w3.sh\n' > "$W/paths-sweep"
+: > "$W/ql-sweep-calls"
+run env HOLDS_QUEUE_LOCK="$W/bin/ql-sweep" python3 -I "$SUT" read --repo "$R" --paths-from "$W/paths-sweep"
+same "T3 one queue-lock status --sweep serves every doc of the read" "$(wc -l < "$W/ql-sweep-calls" | tr -d ' '):$(head -n 1 "$W/ql-sweep-calls")" "1:status --sweep"
+same "T3 a doc whose lock slug the sweep lists reads alive" "$(printf '%s\n' "$OUT" | grep 't3w1.sh' | cut -f6)" alive
+same "T3 a doc the sweep lists no lock for reads dead" "$(printf '%s\n' "$OUT" | grep 't3w3.sh' | cut -f6)" dead
+printf '#!/usr/bin/env bash\necho "a record in a format this reader does not know"\nexit 0\n' > "$W/bin/ql-garbled"
+chmod +x "$W/bin/ql-garbled"
+run env HOLDS_QUEUE_LOCK="$W/bin/ql-garbled" python3 -I "$SUT" read --repo "$R" --paths-from "$W/paths-sweep"
+same "T3 a sweep line it cannot parse makes the lock unknown, not free" "$(printf '%s\n' "$OUT" | grep 't3w3.sh' | cut -f6)" unknown
+printf '#!/usr/bin/env bash\necho "sweep: no held locks"\nexit 0\n' > "$W/bin/ql-none"
+chmod +x "$W/bin/ql-none"
+run env HOLDS_QUEUE_LOCK="$W/bin/ql-none" python3 -I "$SUT" read --repo "$R" --paths-from "$W/paths-sweep"
+same "T3 a sweep that says no held locks leaves every doc free, so its rows read dead" "$(printf '%s\n' "$OUT" | grep 't3w3.sh' | cut -f6)" dead
+
+# a row freshened after it was judged dead is live again: remove_dead keeps it when the mtime it was judged at has moved
+put_row scripts/t3gc3.sh HIMMEL-9507 lab "$(mkdoc HIMMEL-9507-case.md)"
+run python3 -I -c 'import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("holds", sys.argv[1]); h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
+d, n = os.path.split(sys.argv[2]); st, f = h.read_row(sys.argv[2])
+print(h.remove_dead(d, n, f, os.path.getmtime(sys.argv[2]) - 100))' "$SUT" "$(rowf scripts/t3gc3.sh)"
+same "T3 gc keeps a row whose mtime moved since it was judged dead" "$OUT:$([ -e "$(rowf scripts/t3gc3.sh)" ] && echo row || echo none)" "False:row"
+
 # ---- the real register was never touched
-same "the real ~/.himmel/state/holds is unchanged" "$REAL_BEFORE" "$(HOME="$REAL_HOME" real_register)"
+REAL_AFTER="$(HOME="$REAL_HOME" real_register)"
+case "$REAL_BEFORE$REAL_AFTER" in *STAT-ERROR*) same "the real register snapshot has no stat error" "before: $REAL_BEFORE; after: $REAL_AFTER" "no stat error" ;; esac
+same "the real ~/.himmel/state/holds is unchanged" "$REAL_BEFORE" "$REAL_AFTER"
 
 if [ "$fails" -eq 0 ]; then
     printf 'test-holds: %d passed, 0 failed\n' "$total"

@@ -1,7 +1,7 @@
 # The API lane: failure alert and subscription fallback
 
 `scripts/api-lane/claude-api.sh` runs one print-mode `claude` call billed to an
-API account (`HIMMEL_API_ACCOUNT=A|B|auto`) instead of the subscription. It is
+API account (`HIMMEL_API_ACCOUNT=A|B|C|auto`; auto only for the himmel graph pass) instead of the subscription. It is
 OFF unless the launching shell sets `HIMMEL_API_LANE=on`. This page covers what
 happens when a call on it fails (HIMMEL-8643). The launcher's header lists the
 full argument and environment contract.
@@ -107,6 +107,44 @@ The fallback appends one row to the same `launches.jsonl` as the API call:
 | `kind`, `job_id`, `branch`, `head`, `pr` | as on the API row |
 
 The API call's own row and its reservation are settled as before.
+
+## Account C and auto routing (HIMMEL-9052, decision 525 FINAL)
+
+Account C is a third API org with a 200.00 USD cap. A, B and C are treated identically: the same refusals (key from
+the caller `ANTHROPIC_API_KEY` or a mode-600 `key-C.env` beside the ledger, `HIMMEL_API_KEY_ID` equal to the roster
+`key_id`, lane on, ledger spend estimate under the account's cap) and `pickAccount` ranks all three by grant expiry.
+The batch client (`semantic-batch.mjs`) takes C the same way. The lane never reads the keyring or `.env`.
+
+Auto routing is off for every call except the himmel semantic graph pass. `HIMMEL_API_ACCOUNT=auto` is accepted
+only with `HIMMEL_API_KIND=graphify` and a caller whose git common dir is the launcher's own checkout. For the
+graph pass, `semantic-update.sh` judges the corpus repo once, before any pick, in both the batch and the synchronous
+path (the shim runs the lane from a scratch directory, so it hands the judged repo over in
+`HIMMEL_API_AUTO_REPO_DIR`). Any other kind, or a graph pass over another repo (the luna graph map), exits 2 before
+any spawn or batch submit, with no subscription fallback. Naming the account (`HIMMEL_API_ACCOUNT=A`, `B` or `C`)
+works for every kind and every repo, judge, critic, bulk and cull included.
+
+Config name: `ANTHROPIC_API_ORG_ID_C`, matching `ANTHROPIC_API_ORG_ID_A` and `_B`. Every site that unsets the A and B keys before a subscription `claude -p` also unsets
+`ANTHROPIC_ORG_C_KEY`. The key file `key-C.env` is written by the operator, never by a script.
+
+### Caching recommendation for the graph pass
+
+Measured from `launches.jsonl` (no new spend): across 470 untyped, 244 judge, 93 critic and 67 bulk launches the
+lane writes 20.8M, 7.7M, 2.5M and 1.5M cache-creation tokens against 0.7M, 2.0M, 2.8M and 4.4M cache-read tokens.
+Call kinds that do not reuse their prefix pay the cache write (1.25 x input at 5 minutes, 2 x at 1 hour) and
+read little; the kinds that share a long prefix (bulk, eval) read three to ten times what they write.
+
+The graph pass is the second kind: every chunk prompt opens with graphify's fixed extraction instructions.
+Recommended, cheapest first:
+
+1. Keep the Message Batches API (half price) with the shared prefix as one cached system block at the 1-hour tier,
+   as `semantic-batch.mjs` already does. Batch and prompt caching combine: the batch discount applies to the cache
+   write and read rates alike, and a batch runs longer than 5 minutes, so the 1-hour tier is the one that survives it.
+2. Rely on graphify's on-disk extraction cache so only changed files are re-extracted; that cuts the chunk count,
+   which is the largest lever.
+3. Use synchronous calls (`GRAPHIFY_API_BATCH=0`) only for a small changed set; there the 5-minute tier is enough
+   and the write premium is smaller, but the full price is twice the batch price.
+
+The measured per-run cost and cache read/write split for C is posted on HIMMEL-9052 after the one bounded run.
 
 ## Test seams
 

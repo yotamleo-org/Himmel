@@ -42,6 +42,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_DIR="${HIMMEL_DOCTOR_STATE_DIR:-${HOME:-}/.himmel/state/doctor-cadence}"
 # shellcheck source=doctor-counts.sh
 . "$SCRIPT_DIR/doctor-counts.sh"
+# shellcheck source=lib/crontab-locked-rmw.sh
+. "$SCRIPT_DIR/lib/crontab-locked-rmw.sh"
 CRONTAB_BIN="${DOCTORCAD_CRONTAB:-crontab}"
 RUNNER_DIR="${DOCTORCAD_RUNNER_DIR:-${HOME:-}/.claude/doctor-cadence}"
 
@@ -208,6 +210,17 @@ cron_read() {
 }
 cron_entry() { printf '%s\n' "$CRON_TAB" | grep -F "# $TASK_NAME" || true; }
 
+# The edit steps run under crontab_locked_rmw on the table it just read;
+# $force and $entry are cmd_arm's locals, visible because cmd_arm is on the call stack.
+arm_edit() {
+    if [ -n "$(cron_entry)" ] && [ "$force" -eq 0 ]; then
+        echo "ERR doctor-cadence: already armed: $TASK_NAME (use --force to replace)" >&2
+        return 3
+    fi
+    { printf '%s\n' "$CRON_TAB" | { grep -vF "# $TASK_NAME" || true; } | sed '/^$/d'; printf '%s\n' "$entry"; }
+}
+disarm_edit() { { printf '%s\n' "$CRON_TAB" | grep -vF "# $TASK_NAME" || true; }; }
+
 cmd_arm() {
     local time="05:30" force=0 dry=0 root runner bash_bin entry
     while [ $# -gt 0 ]; do
@@ -251,8 +264,7 @@ cmd_arm() {
         printf '_rc=$?\necho "[exit rc=$_rc]" >> "$log"\nexit "$_rc"\n'
     } > "$runner" || { echo "ERR doctor-cadence: cannot write the runner $runner" >&2; return 4; }
     chmod +x "$runner" || { echo "ERR doctor-cadence: cannot chmod the runner $runner" >&2; return 4; }
-    { printf '%s\n' "$CRON_TAB" | { grep -vF "# $TASK_NAME" || true; } | sed '/^$/d'; printf '%s\n' "$entry"; } | "$CRONTAB_BIN" - \
-        || { echo "ERR doctor-cadence: crontab install failed" >&2; return 4; }
+    crontab_locked_rmw "$CRONTAB_BIN" arm_edit || return $?
     echo "doctor-cadence ARMED: daily $time — $runner (status: bash scripts/doctor-cadence.sh status)"
 }
 
@@ -301,7 +313,7 @@ cmd_disarm() {
     local guard_rc=0
     bash "$SCRIPT_DIR/lib/test-run-guard" check --tool "$CRONTAB_BIN" doctor-cadence-disarm "$RUNNER_DIR" || guard_rc=$?
     [ "$guard_rc" -ne 77 ] || return 77
-    { printf '%s\n' "$CRON_TAB" | grep -vF "# $TASK_NAME" || true; } | "$CRONTAB_BIN" - || return 4
+    crontab_locked_rmw "$CRONTAB_BIN" disarm_edit || return $?
     rm -f "$RUNNER_DIR/doctor-cadence.sh"
     echo "doctor-cadence: disarmed"
 }

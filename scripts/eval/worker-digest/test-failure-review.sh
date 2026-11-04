@@ -294,6 +294,28 @@ PATH="$MVF:$PATH" bash "$CAD" arm --vault "$V" --time 07:30 --live --force >/dev
 check "a failed runner swap restores the previous crontab (rc 4)" '[ "$rc" = 4 ] && cmp -s "$CR/tab" "$TMP/tab.before" && ! grep -q -- "--live" "$TMP/runner/failure-review-cadence.sh"'
 bash "$CAD" disarm >/dev/null 2>&1
 check "disarm removes the entry and the runner" '! grep -q "HIMMEL-FailureReview" "$CR/tab" && [ ! -f "$TMP/runner/failure-review-cadence.sh" ]'
+seed_tab() {
+    printf '%s\n' '0 3 * * * /usr/bin/backup' '' '15 6 * * * /opt/x/runner.sh # HIMMEL-FailureReviewOther' \
+        '#30 7 * * * /old/runner.sh # HIMMEL-FailureReview' '' '45 8 * * * /old/failure-review-cadence.sh # HIMMEL-FailureReview' \
+        '5 9 * * * /usr/bin/last' >"$CR/tab"
+    cp "$CR/tab" "$TMP/seed.tab"
+}
+seed_tab
+bash "$CAD" arm --vault "$V" --force >/dev/null 2>&1; rc=$?
+diff "$TMP/seed.tab" "$CR/tab" >"$TMP/seed.diff"
+check "arm --force replaces only the exact live row: one line changed, lookalike/commented/unrelated/blank lines byte-identical" \
+    '[ "$rc" = 0 ] && [ "$(grep -c "^<" "$TMP/seed.diff")" = 1 ] && [ "$(grep -c "^>" "$TMP/seed.diff")" = 1 ] && grep -q "^< 45 8 .* # HIMMEL-FailureReview$" "$TMP/seed.diff"'
+seed_tab
+bash "$CAD" disarm >/dev/null 2>&1
+diff "$TMP/seed.tab" "$CR/tab" >"$TMP/seed.diff"
+check "disarm removes only the exact live row and keeps lookalike, commented, unrelated and blank lines" \
+    '[ "$(grep -c "^<" "$TMP/seed.diff")" = 1 ] && [ "$(grep -c "^>" "$TMP/seed.diff")" = 0 ] && grep -q "^< 45 8 " "$TMP/seed.diff"'
+seed_tab
+printf '%s\n' '50 9 * * * /dup/runner.sh # HIMMEL-FailureReview' >>"$CR/tab"; cp "$CR/tab" "$TMP/seed.tab"
+bash "$CAD" arm --vault "$V" --force >"$TMP/arm-dup.out" 2>&1; rc=$?
+check "two live exact-tag rows: arm refuses (rc 5), names the duplicate, crontab untouched" \
+    '[ "$rc" = 5 ] && cmp -s "$TMP/seed.tab" "$CR/tab" && grep -q "/dup/runner.sh" "$TMP/arm-dup.out"'
+rm -f "$CR/tab"
 printf '#!/usr/bin/env bash\necho SKIPPED-BANK\n' >"$STUB/preflight"; chmod +x "$STUB/preflight"
 C8="$TMP/c8"; mkdir -p "$C8"
 FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" HIMMEL_FAILURE_REVIEW_DIR="$C8/out" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$C2/ledger.jsonl" \
@@ -460,5 +482,62 @@ CH="$TMP/ch"; mkdir -p "$CH"; : >"$CH/ledger.jsonl"
 review "$CH" >"$CH/run.out" 2>&1
 check "an empty command turns the subsection off" '! digest "$CH" | grep -q "Friction"'
 
+echo "HIMMEL-9102: the review also writes failure-review-<date>.json beside the markdown"
+J2="$C2/out/failure-review-$DAY.json"
+# Control: the markdown for the C2 fixture is byte-identical to what the review wrote before the sidecar existed.
+cat >"$TMP/golden-c2.md" <<'EOF'
+## Failure review
+
+- window: 2026-10-06T12:00:00Z to 2026-10-07T12:00:00Z (24 h), mode: dry-run
+- failures: 2 rows, 1 classes, 2 workers
+
+### Top classes
+
+- denied/guard-pr-check-literal: 2 rows, workers N100, N200 (new)
+
+### Routing (dry-run)
+
+- would-file denied/guard-pr-check-literal (workers 2 in 14 d)
+- capped: none
+
+### Trajectory signals
+
+- none
+- excluded until HIMMEL-4698: red_before_green, verify_before_claim
+
+### Eval feedback
+
+- no change and nothing to re-measure
+EOF
+check "control: the markdown is byte-identical to the pre-sidecar output" 'cmp -s "$TMP/golden-c2.md" "$C2/out/failure-review-$DAY.md"'
+check "the JSON file is written beside the markdown" '[ -f "$J2" ]'
+check "the JSON parses" 'jq -e . "$J2" >/dev/null 2>&1'
+# 12 classes: error/Edit has 7 workers and an older row (recurring); 11 single-row new classes.
+C92="$TMP/c92"; mkdir -p "$C92"
+row "$C92/ledger.jsonl" N100 error/Edit 0 2026-10-03T08:00:00Z
+for i in 1 2 3 4 5 6 7; do row "$C92/ledger.jsonl" "N10$i" error/Edit; done
+for i in 01 02 03 04 05 06 07 08 09 10 11; do row "$C92/ledger.jsonl" "N2$i" "blocked/c$i"; done
+review "$C92" >"$C92/run.out" 2>&1 || bad "review exits 0 on the 12-class fixture: $(head -c 300 "$C92/run.out")"
+J92="$C92/out/failure-review-$DAY.json"
+md_top="$(digest "$C92" | awk '/^### Top classes/{f=1;next} /^### /{f=0} f && /^- [^ ]+: [0-9]+ rows/{sub(/^- /,""); sub(/:/,""); print $1, $2}')"
+js_top="$(jq -r '.classes[:10][] | "\(.class) \(.rows)"' "$J92" 2>/dev/null)"
+check "the JSON class rows equal the markdown top classes" '[ -n "$md_top" ] && [ "$(wc -l <<<"$md_top")" -eq 10 ] && [ "$md_top" = "$js_top" ]'
+check "the JSON lists every class, not only the top ten" '[ "$(jq ".classes | length" "$J92" 2>/dev/null)" = 12 ]'
+check "the class carries kind, workers count and at most 5 sample names" \
+  '[ "$(jq -r ".classes[0] | [.class, .kind, .workers, (.workers_sample | length)] | @csv" "$J92" 2>/dev/null)" = "\"error/Edit\",\"error\",7,5" ] && jq -e "[.classes[] | (.workers_sample | length) <= 5] | all" "$J92" >/dev/null 2>&1'
+check "the sample names the first workers in the markdown order" '[ "$(jq -r ".classes[0].workers_sample | join(\",\")" "$J92" 2>/dev/null)" = "N101,N102,N103,N104,N105" ]'
+check "recurring is true for a class seen before the window, false for a new one" \
+  '[ "$(jq -r "[.classes[0].recurring, .classes[1].recurring] | @csv" "$J92" 2>/dev/null)" = "true,false" ]'
+check "the route is the router decision for the class, null when it has none" \
+  '[ "$(jq -r ".classes[0].route" "$J92" 2>/dev/null)" = "would-file" ] && [ "$(jq -r ".classes[1].route" "$J92" 2>/dev/null)" = "null" ]'
+check "the routing list holds the decision, class, ticket and workers" \
+  'digest "$C92" | grep -q "would-file error/Edit (workers 8 in 14 d)" && jq -e ".routing | any(.decision == \"would-file\" and .class == \"error/Edit\" and .workers == 8 and has(\"ticket\"))" "$J92" >/dev/null 2>&1'
+check "the window is the digest header window and spans 24 hours" \
+  '[ "$(jq -r "\"window: \" + .window.start + \" to \" + .window.end + \" (24 h), mode: \" + .mode" "$J92" 2>/dev/null)" = "$(digest "$C92" | grep -o "window: .* (24 h), mode: [a-z-]*")" ] && [ "$(jq "(.window.end | fromdateiso8601) - (.window.start | fromdateiso8601)" "$J92" 2>/dev/null)" = 86400 ]'
+check "the totals match the markdown failures line" \
+  '[ "$(jq -r "[.totals.rows, .totals.classes, .totals.workers] | @csv" "$J92" 2>/dev/null)" = "18,12,18" ] && digest "$C92" | grep -q "^- failures: 18 rows, 12 classes, 18 workers$"'
+check "no worker name beyond the sample reaches the JSON" '[ -f "$J92" ] && ! grep -q "N107" "$J92"'
+
+echo
 echo "test-failure-review:$PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

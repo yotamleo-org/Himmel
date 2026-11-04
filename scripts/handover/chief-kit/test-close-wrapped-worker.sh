@@ -463,11 +463,11 @@ check "no-worktree: exactly two calls logged (subtree check + kill, no other pid
 
 # removing the successful-close manifest update must fail this.
 fleet_manifest="$W/fleet.json"
-bash "$HERE/fleet-manifest.sh" add "$fleet_manifest" "$DOC" "$W/HIMMEL-9-N2-other.md"
+bash "$HERE/fleet-manifest.sh" add "$fleet_manifest" --lane native "$DOC" "$W/HIMMEL-9-N2-other.md"
 rc=0; out=$(run --fleet "$fleet_manifest" "$DOC" 2>&1) || rc=$?
 check 'fleet: successful no-worktree close returns zero' 0 "$rc"
 check 'fleet: close removes only its own doc' "$W/HIMMEL-9-N2-other.md" "$(jq -r '.workers[].doc' "$fleet_manifest")"
-bash "$HERE/fleet-manifest.sh" add "$fleet_manifest" "$DOC"
+bash "$HERE/fleet-manifest.sh" add "$fleet_manifest" --lane native "$DOC"
 fleet_before="$(cat "$fleet_manifest")"
 mkdoc '- 10:00 LIVE - not wrapped'
 rc=0; out=$(run --fleet "$fleet_manifest" "$DOC" 2>&1) || rc=$?
@@ -480,7 +480,7 @@ check 'fleet: failed signal keeps manifest unchanged' "$fleet_before" "$(cat "$f
 
 # Each successful prune exit must retire its doc; a failed prune must not.
 for fleet_mode in ok not-candidate in-use fail; do
-    bash "$HERE/fleet-manifest.sh" add "$fleet_manifest" "$DOC"
+    bash "$HERE/fleet-manifest.sh" add "$fleet_manifest" --lane native "$DOC"
     mkdoc '- 10:00 WRAPPED - done' "worktree: \`$WT/.claude/worktrees/demo\`"
     rc=0; out=$(CWL_CLEAN_MODE="$fleet_mode" run --fleet "$fleet_manifest" "$DOC" 2>&1) || rc=$?
     fleet_present="$(jq --arg d "$DOC" 'any(.workers[]; .doc == $d)' "$fleet_manifest")"
@@ -1478,7 +1478,7 @@ check "resume N7c, original gone, N7b alive: CLOSED-ALREADY rc 0" "$rc" "0"
 contains "resume N7c, original gone: says CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
 check "resume N7c, original gone: nothing signaled" "$(cat "$CALLS")" ""
 # CLOSED-ALREADY still retires the worker from the fleet manifest
-bash "$HERE/fleet-manifest.sh" add "$W/closed-already.fleet.json" "$RDOC" "$W/HIMMEL-9-N2-other.md"
+bash "$HERE/fleet-manifest.sh" add "$W/closed-already.fleet.json" --lane native "$RDOC" "$W/HIMMEL-9-N2-other.md"
 rc=0; out=$(run --fleet "$W/closed-already.fleet.json" "$RDOC" 2>&1) || rc=$?
 check "closed-already: --fleet rc 0" "$rc" "0"
 check "closed-already: the manifest keeps only the other worker" "$W/HIMMEL-9-N2-other.md" "$(jq -r '.workers[].doc' "$W/closed-already.fleet.json")"
@@ -1937,7 +1937,7 @@ mkcmdline 273 claude -n HIMMEL-9-N34-held-2026-01-01 work
 pgrep_x_stub 270 271 272 273
 sweep_manifest="$W/sweep-fleet.json"
 rm -f "$sweep_manifest"
-bash "$HERE/fleet-manifest.sh" add "$sweep_manifest" "$SW_A" "$SW_HELD" "$SW_B" "$SW_C"
+bash "$HERE/fleet-manifest.sh" add "$sweep_manifest" --lane native "$SW_A" "$SW_HELD" "$SW_B" "$SW_C"
 # --check names what it would close and signals nothing
 : > "$CALLS"
 rc=0; out=$(run --check --sweep --fleet "$sweep_manifest" 2>&1) || rc=$?
@@ -1963,7 +1963,7 @@ SW_D="$W/HIMMEL-9-N35-notes-2026-01-01-RESUME.md"
 printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go\n\n## Notes\n\n- 10:00 WRAPPED - a note about the wrap\n' > "$SW_D"
 sweep_manifest2="$W/sweep-fleet2.json"
 rm -f "$sweep_manifest2"
-bash "$HERE/fleet-manifest.sh" add "$sweep_manifest2" "$SW_D"
+bash "$HERE/fleet-manifest.sh" add "$sweep_manifest2" --lane native "$SW_D"
 reset_calls
 rc=0; out=$(run --sweep --fleet "$sweep_manifest2" 2>&1) || rc=$?
 check "sweep: a Results tail that is not WRAPPED: rc 0" "$rc" "0"
@@ -1990,15 +1990,15 @@ pgrep_x_stub 280 281 282
 MS_PRED_M="$W/bucket/console-A.fleet.json"
 MS_CUR_M="$W/bucket/console-B.fleet.json"
 rm -f "$MS_PRED_M" "$MS_CUR_M"
-bash "$HERE/fleet-manifest.sh" add "$MS_PRED_M" "$MS_PRED"
+bash "$HERE/fleet-manifest.sh" add "$MS_PRED_M" --lane native "$MS_PRED"
 MS_GONE="$W/HIMMEL-9-N45-gone-2026-01-01-RESUME.md"
 printf '# worker\n\n## Results (newest at the bottom)\n\n- 10:00 WRAPPED - done\n' > "$MS_GONE"
-bash "$HERE/fleet-manifest.sh" add "$MS_CUR_M" "$MS_HELD" "$MS_CUR" "$MS_GONE"
+bash "$HERE/fleet-manifest.sh" add "$MS_CUR_M" --lane native "$MS_HELD" "$MS_CUR" "$MS_GONE"
 MS_OLD="$W/HIMMEL-9-N44-old-2026-01-01-RESUME.md"
 printf '# worker\n\n## Results (newest at the bottom)\n\n- 10:00 WRAPPED - done\n' > "$MS_OLD"
 mkcmdline 283 claude -n HIMMEL-9-N44-old-2026-01-01 work
 pgrep_x_stub 280 281 282 283
-bash "$HERE/fleet-manifest.sh" add "$W/bucket/console-old.fleet.json" "$MS_OLD"
+bash "$HERE/fleet-manifest.sh" add "$W/bucket/console-old.fleet.json" --lane native "$MS_OLD"
 age_file "$W/bucket/console-old.fleet.json" 2
 rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-workers.sh" run --check "$W/bucket/console-old.fleet.json" 2>&1) || rc=$?
 check "workers setup: the aged manifest sweep succeeds" "$rc" "0"

@@ -74,6 +74,11 @@ case "$now" in ''|*[!0-9]*) echo "verdict-retention: HIMMEL_VERDICT_NOW must be 
 # shellcheck source=scripts/lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/handover-path.sh" || { echo "verdict-retention: cannot load scripts/lib/handover-path.sh" >&2; exit 3; }
+# shellcheck source=scripts/lib/load-dotenv.sh
+# shellcheck disable=SC1091
+. "$HERE/../../lib/load-dotenv.sh" || { echo "verdict-retention: cannot load scripts/lib/load-dotenv.sh" >&2; exit 3; }
+# A shell without HANDOVER_DIR would resolve the stub folder; read the configured root from the primary checkout's .env.
+load_dotenv --root "$(_load_dotenv_primary_for "$HERE/../../.." 2>/dev/null)" HANDOVER_DIR 2>/dev/null || true # swallow-ok: an unreadable .env leaves the resolver's own fallback, as before
 
 # iso_epoch <ISO-8601 UTC>: epoch seconds on stdout, rc 1 when unparsable.
 iso_epoch() {

@@ -279,7 +279,7 @@ go_trust_verdict() {
             return 2
         fi
         snap=$GO_VERDICT_SNAP
-        line=$(printf '%s' "$snap" | tr -d '\r' | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } p && NF { print; exit }')
+        line=$(printf '%s' "$snap" | go_verdict_line /dev/stdin)
         word=$(printf '%s\n' "$line" | sed -nE 's/^\*\*(GO|NO-GO)\*\* for head `[0-9a-f]{40}`\.?$/\1/p')
         head=$(printf '%s\n' "$line" | sed -nE 's/^\*\*(GO|NO-GO)\*\* for head `([0-9a-f]{40})`\.?$/\2/p')
         if [ -z "$word" ] || [ -z "$head" ]; then
@@ -323,6 +323,167 @@ go_trust_verdict() {
     if [ "$go" -ne 1 ]; then
         printf 'no verdict under %s/%s/verdicts/%s/ rules **GO** for head `%s` — the judge writes that verdict before a trust-reviewed GO.\n' "$root" "$scope" "$qid" "$sha"
         return 2
+    fi
+}
+
+# --- the no-op GO carry rule --------------------------------------------------
+# One rule for go.sh and auto-go.sh: a GO at a head that only a `delta: no-op`
+# record (write-verdict.sh --delta-noop, named delta-noop-<head>.md) rules on
+# carries only when its chain of no-op records ends at a real, signed GO and no
+# judge holds a NO-GO for the PR at or after any head of the chain. <verdicts-dir>
+# is <go-root>/<user>/<bucket>/verdicts. No caller global is read. Read-only.
+
+# go_verdict_line <file> — the first non-blank line under `## Verdict` (CRs
+# dropped): what a verdict record rules. rc 2 on an unreadable file.
+go_verdict_line() {
+    local l
+    l=$(awk '{ gsub(/\r/, "") } /^## Verdict[[:space:]]*$/ { p = 1; next } p && NF { print; exit }' "$1" 2>/dev/null) || return 2
+    printf '%s\n' "$l"
+}
+
+# go_pr_qids <verdicts-dir> <pr> <head> — each qid (a directory name, go-pr-*
+# excluded: a persisted chief GO, never a judge) holding a .md with the exact
+# line `pr: <pr>` or naming `for head `<head>``, sorted, one per line. A missing
+# directory prints nothing; rc 2 when it cannot be read.
+go_pr_qids() {
+    local cand crc=0 vpath rel q out="" cr=$'\r'
+    [ -d "$1" ] || return 0
+    cand=$(grep -rlE --include='*.md' -e "^pr: ${2}${cr}?\$|for head \`${3}\`" "$1" 2>/dev/null) || crc=$?
+    if [ "$crc" -gt 1 ]; then
+        printf 'cannot read the verdict directory %s (grep exit %s)\n' "$1" "$crc"
+        return 2
+    fi
+    while IFS= read -r vpath; do
+        [ -n "$vpath" ] || continue
+        rel=${vpath#"$1"/}
+        case "$rel" in */*/*) continue ;; esac
+        q=${rel%%/*}
+        case "$q" in go-pr-*) continue ;; esac
+        out="$out$q"$'\n'
+    done <<< "$cand"
+    [ -z "$out" ] || printf '%s' "$out" | LC_ALL=C sort -u
+}
+
+# go_noop_chain <verdicts-dir> <qid> <head> — the chain of <qid>'s no-op records
+# from <head>: one `<head> <judged>` line per hop (delta-noop-<head>.md's
+# `delta-judged:` line), then `<root> -` for the first head with no such record
+# (or none naming a 40-hex judged head). rc 2, the reason on stdout and no pairs,
+# on more than 8 hops, a cycle, or a record that cannot be read.
+go_noop_chain() {
+    local h="$3" n f hops=0 seen=" $3 " out="" cr=$'\r'
+    while :; do
+        f="$1/$2/delta-noop-$h.md"
+        [ -e "$f" ] || break
+        if ! n=$(sed -nE "s/^delta-judged: ([0-9a-f]{40})${cr}?\$/\\1/p" "$f" 2>/dev/null); then
+            printf 'cannot read the delta no-op record %s, so the judged head it rests on is unknown\n' "$f"
+            return 2
+        fi
+        n=${n%%$'\n'*}
+        [ -n "$n" ] || break
+        hops=$((hops + 1))
+        if [ "$hops" -gt 8 ]; then
+            printf 'the delta no-op records of %s under %s chain past 8 hops: a chain that long needs a judge\n' "$2" "${3:0:8}"
+            return 2
+        fi
+        case "$seen" in
+            *" $n "*)
+                printf 'the delta no-op records of %s under %s form a cycle at %s\n' "$2" "${3:0:8}" "${n:0:8}"
+                return 2 ;;
+        esac
+        out="$out$h $n"$'\n'
+        seen="$seen$n "; h=$n
+    done
+    printf '%s%s -\n' "$out" "$h"
+}
+
+# go_nogo_after <verdicts-dir> <pr> <anchor> <head> — rc 0 when no qid of
+# go_pr_qids holds a record with the line `pr: <pr>` whose verdict line
+# (go_verdict_line) is `**NO-GO** for head `<nh>`` with <nh> = <head> or a
+# descendant of it in the <anchor> checkout. A NO-GO quoted anywhere else in a
+# record does not count. rc 1, the reason on stdout, on such a NO-GO; rc 2 on a
+# read failure, a git answer other than yes/no (an unknown commit included), or
+# a `pr: <pr>` record whose verdict line is neither a GO nor a NO-GO for a
+# 40-hex head (a drifted NO-GO must not be skipped).
+# shellcheck disable=SC2016  # the backticks are the verdict line's literal text
+go_nogo_after() {
+    local qids q files frc nf l nh grc cr=$'\r' gore='^\*\*GO\*\* for head `[0-9a-f]{40}`\.?$'
+    qids=$(go_pr_qids "$1" "$2" "$4") || { printf '%s\n' "$qids"; return 2; }
+    while IFS= read -r q; do
+        [ -n "$q" ] || continue
+        frc=0; files=$(grep -lxE -e "pr: ${2}${cr}?" "$1/$q"/*.md 2>/dev/null) || frc=$?
+        if [ "$frc" -gt 1 ]; then
+            printf 'cannot read the verdicts of %s (grep exit %s), so a NO-GO there cannot be ruled out\n' "$q" "$frc"
+            return 2
+        fi
+        while IFS= read -r nf; do
+            [ -n "$nf" ] || continue
+            if ! l=$(go_verdict_line "$nf"); then
+                printf 'cannot read the verdict %s, so a NO-GO in it cannot be ruled out\n' "$nf"
+                return 2
+            fi
+            nh=$(printf '%s\n' "$l" | sed -nE 's/^\*\*NO-GO\*\* for head `([0-9a-f]{40})`\.?$/\1/p')
+            if [ -z "$nh" ]; then
+                [[ $l =~ $gore ]] && continue
+                printf 'the verdict %s names PR %s but its verdict line is neither a GO nor a NO-GO for a full head, so a NO-GO in it cannot be ruled out\n' "$nf" "$2"
+                return 2
+            fi
+            grc=0
+            if [ "$nh" != "$4" ]; then
+                (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
+                 git -C "$3" merge-base --is-ancestor "$4" "$nh" 2>/dev/null) || grc=$?
+            fi
+            case "$grc" in
+                0) printf 'verdict %s holds a NO-GO for head %s of PR %s, at or after the judged head %s: a GO does not carry past it\n' "$q" "${nh:0:8}" "$2" "${4:0:8}"
+                   return 1 ;;
+                1) ;;
+                *) printf 'cannot tell whether the NO-GO of %s for head %s comes after %s (git exit %s in %s)\n' "$q" "${nh:0:8}" "${4:0:8}" "$grc" "$3"
+                   return 2 ;;
+            esac
+        done <<< "$files"
+    done <<< "$qids"
+}
+
+# go_noop_carry <verdicts-dir> <qid> <pr> <anchor> <head> <go-root> <scope-anchor> [<owner/name>]
+#   rc 0 when <qid>'s GO at <head> may carry: go_noop_chain walks cleanly,
+#   go_nogo_after (git asked in <anchor>) is clear at every head of the chain,
+#   and the root holds a real GO — a record of <qid> whose verdict line is
+#   `**GO** for head `<root>`` with no `delta: no-op` line — that
+#   go_trust_verdict <go-root> <qid> <root> <scope-anchor> <pr> [<owner/name>]
+#   accepts. rc 1 with the reason on stdout; rc 2 on a read failure.
+#   <scope-anchor> names the repo whose verdict bucket go_trust_verdict reads;
+#   <anchor> is the checkout holding the PR's commits (they differ for go.sh
+#   run from an adopted repo's checkout).
+# shellcheck disable=SC2016  # the backticks are the verdict line's literal text
+go_noop_carry() {
+    local chain line why rc root="" rf rl drc real=0 cr=$'\r'
+    chain=$(go_noop_chain "$1" "$2" "$5") || { printf '%s\n' "$chain"; return 2; }
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        root=${line%% *}
+        rc=0; why=$(go_nogo_after "$1" "$3" "$4" "$root") || rc=$?
+        [ "$rc" -eq 0 ] || { printf '%s\n' "$why"; return "$rc"; }
+    done <<< "$chain"
+    for rf in "$1/$2"/*.md; do
+        [ -e "$rf" ] || continue
+        if ! rl=$(go_verdict_line "$rf"); then
+            printf 'cannot read the verdict %s\n' "$rf"
+            return 2
+        fi
+        case "$rl" in '**GO** for head `'"$root"'`'|'**GO** for head `'"$root"'`.') ;; *) continue ;; esac
+        drc=0; grep -qxE "delta: no-op${cr}?" "$rf" 2>/dev/null || drc=$?
+        case "$drc" in
+            0) ;;
+            1) real=1; break ;;
+            *) printf 'cannot read the verdict %s\n' "$rf"; return 2 ;;
+        esac
+    done
+    if [ "$real" -ne 1 ]; then
+        printf 'the GO of %s at %s rests on %s, where %s holds no real (judged, not no-op) GO\n' "$2" "${5:0:8}" "${root:0:8}" "$2"
+        return 1
+    fi
+    if ! go_trust_verdict "$6" "$2" "$root" "$7" "$3" "${8:-}" >/dev/null; then
+        printf 'the GO of %s at %s rests on %s, where the verdicts of %s do not hold a valid GO\n' "$2" "${5:0:8}" "${root:0:8}" "$2"
+        return 1
     fi
 }
 

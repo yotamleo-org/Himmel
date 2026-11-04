@@ -1748,6 +1748,252 @@ test('verifyProjectHookIntegrity denies a pinned script whose on-disk content dr
   }
 });
 
+// A pin drift on the auto-arm-on-cap watchdog skips it with a
+// once-per-session notice instead of denying; every other failure still denies.
+// Fixture: a temp project with a stub watchdog at its real path (identity is by
+// path; the real watchdog's side effects must not run here), a lib it sources,
+// and two other members, all pinned by a legacy record hashed once at creation.
+const hookIntegrity = require('./hook-integrity.js');
+const WD_REL = 'scripts/hooks/auto-arm-on-cap.sh';
+
+function watchdogFixture({ extraUnpinnedLib = false } = {}) {
+  const fs = require('node:fs');
+  const dir = makeTmpDir('hook-integrity-wd-');
+  const pins = makeTmpDir('hook-integrity-wd-pins-');
+  const canaries = join(dir, 'canaries');
+  fs.mkdirSync(join(dir, 'scripts', 'hooks'), { recursive: true });
+  fs.mkdirSync(join(dir, 'scripts', 'lib'), { recursive: true });
+  fs.mkdirSync(canaries);
+  const write = (rel, text) => writeFileSync(join(dir, ...rel.split('/')), text);
+  const sources = ['. "$(dirname "$0")/../lib/wd-lib.sh"'];
+  if (extraUnpinnedLib) sources.push('. "$(dirname "$0")/../lib/wd-lib2.sh"');
+  write(WD_REL, `${sources.join('\n')}\n: > "${canaries}/ran-auto-arm-on-cap"\nexit 0\n`);
+  write('scripts/lib/wd-lib.sh', ':\n');
+  if (extraUnpinnedLib) write('scripts/lib/wd-lib2.sh', ':\n');
+  write('scripts/hooks/guard.sh', `: > "${canaries}/ran-guard"\nexit 0\n`);
+  write('scripts/hooks/auto-arm-on-cap-x.sh', `: > "${canaries}/ran-auto-arm-on-cap-x"\nexit 0\n`);
+  const pinMap = {};
+  for (const rel of [WD_REL, 'scripts/lib/wd-lib.sh', 'scripts/hooks/guard.sh', 'scripts/hooks/auto-arm-on-cap-x.sh']) {
+    pinMap[rel] = gitBlobSha1(readFileSync(join(dir, ...rel.split('/'))));
+  }
+  return {
+    dir,
+    pins,
+    canaries,
+    path: (rel) => join(dir, ...rel.split('/')),
+    pin(sid) {
+      writeFileSync(join(pins, `${sid}.json`), JSON.stringify({ session_id: sid, pins: pinMap }));
+      writeFileSync(join(pins, `${sid}.recorder`), 'done');
+    },
+    run(event, args, sessionId = 's1') {
+      const payload = { session_id: sessionId, tool_name: 'Bash', tool_input: { command: 'echo hi' } };
+      if (event !== undefined) payload.hook_event_name = event;
+      return spawnSync(process.execPath, [LAUNCHER, ...args], {
+        input: JSON.stringify(payload),
+        env: { ...process.env, CLAUDE_PROJECT_DIR: dir, HIMMEL_HOOK_INTEGRITY_DIR: pins, HIMMEL_HOOK_INTEGRITY_BYPASS_OK: '' },
+        encoding: 'utf8',
+      });
+    },
+    verify(rel, sid) {
+      return withEnv(
+        { CLAUDE_PROJECT_DIR: dir, HIMMEL_HOOK_INTEGRITY_DIR: pins, HIMMEL_HOOK_INTEGRITY_BYPASS_OK: undefined },
+        () => verifyProjectHookIntegrity(join(dir, ...rel.split('/')), sid),
+      );
+    },
+    cleanup() {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(pins, { recursive: true, force: true });
+    },
+  };
+}
+
+function assertWatchdogSkip(fx, res, { notice = true, names = WD_REL } = {}) {
+  assert.equal(res.status, 0, `exit ${res.status}; stderr: ${res.stderr}`);
+  const errLines = res.stderr.trim().split('\n');
+  assert.equal(errLines.length, 1, `one stderr line, got: ${res.stderr}`);
+  assert.match(errLines[0], /auto-arm-on-cap\.sh was NOT run/);
+  if (notice) {
+    const msg = JSON.parse(res.stdout).systemMessage;
+    assert.match(msg, /auto-arm-on-cap\.sh was NOT run/);
+    assert.match(msg, /start a new session/);
+    assert.ok(msg.includes(names), `systemMessage names ${names}: ${msg}`);
+  } else {
+    assert.equal(res.stdout, '');
+  }
+  assert.equal(existsSync(join(fx.canaries, 'ran-auto-arm-on-cap')), false, 'the skipped watchdog never ran');
+}
+
+function assertDeny(res) {
+  assert.equal(res.status, 2, `exit ${res.status}; stderr: ${res.stderr}`);
+  assert.equal(res.stdout, '');
+  assert.match(res.stderr, /run-hook-with-bash: DENY /);
+}
+
+test('HIMMEL-8779: A — drifted watchdog bytes skip with a notice on every event, never run', () => {
+  const fx = watchdogFixture();
+  try {
+    const events = ['PreToolUse', 'PermissionRequest', 'UserPromptSubmit', 'PostToolUse', 'Stop', undefined];
+    events.forEach((_e, i) => fx.pin(`a${i}`));
+    writeFileSync(fx.path(WD_REL), 'echo rewritten\n');
+    events.forEach((event, i) => {
+      assert.equal(fx.verify(WD_REL, `a${i}`).ok, false);
+      assertWatchdogSkip(fx, fx.run(event, [fx.path(WD_REL)], `a${i}`));
+    });
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('HIMMEL-8779: B — a pinned lib of the watchdog whose bytes changed skips, naming the lib', () => {
+  const fx = watchdogFixture();
+  try {
+    fx.pin('s1');
+    writeFileSync(fx.path('scripts/lib/wd-lib.sh'), 'echo rewritten\n');
+    const pre = fx.verify(WD_REL, 's1');
+    assert.equal(pre.ok, false);
+    assert.equal(pre.relPath, 'scripts/lib/wd-lib.sh');
+    assertWatchdogSkip(fx, fx.run('PreToolUse', [fx.path(WD_REL)]), { names: 'scripts/lib/wd-lib.sh' });
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('HIMMEL-8779: B2 — an unverifiable (sourced-lib:) lib of the watchdog skips', () => {
+  const fx = watchdogFixture({ extraUnpinnedLib: true });
+  try {
+    fx.pin('s1');
+    const pre = fx.verify(WD_REL, 's1');
+    assert.equal(pre.ok, false);
+    assert.ok(String(pre.reason).startsWith('sourced-lib: '), `reason class: ${pre.reason}`);
+    assertWatchdogSkip(fx, fx.run('PreToolUse', [fx.path(WD_REL)]), { names: 'scripts/lib/wd-lib2.sh' });
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('HIMMEL-8779: C — another drifted member still denies, stderr unchanged', () => {
+  const fx = watchdogFixture();
+  try {
+    fx.pin('s1');
+    writeFileSync(fx.path('scripts/hooks/guard.sh'), 'echo rewritten\n');
+    const res = fx.run('PreToolUse', [fx.path('scripts/hooks/guard.sh')]);
+    assertDeny(res);
+    assert.ok(res.stderr.startsWith('run-hook-with-bash: DENY guard.sh — on-disk content no longer matches'), res.stderr);
+    assert.equal(existsSync(join(fx.canaries, 'ran-guard')), false);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('HIMMEL-8779: D — a missing record still denies the watchdog', () => {
+  const fx = watchdogFixture();
+  try {
+    fx.pin('s1');
+    require('node:fs').unlinkSync(join(fx.pins, 's1.json'));
+    const res = fx.run('PreToolUse', [fx.path(WD_REL)]);
+    assertDeny(res);
+    assert.match(res.stderr, /record is missing/);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('HIMMEL-8779: D2 — isPinDrift: record/path prefixes deny, null, free text and sourced-lib: are drift', () => {
+  assert.equal(typeof hookIntegrity.isPinDrift, 'function');
+  for (const p of ['missing-record: x', 'publish-window: x', 'escapes-project: x', 'unwalkable: x']) {
+    assert.equal(hookIntegrity.isPinDrift(p), false, p);
+  }
+  for (const p of [null, undefined, 'pinned blob is not on the anchor line', 'sourced-lib: x']) {
+    assert.equal(hookIntegrity.isPinDrift(p), true, String(p));
+  }
+});
+
+test('HIMMEL-8779: D3 — every *_DENY prefix is classified in DENY_PREFIX_CLASS', () => {
+  const text = readFileSync(join(HERE, 'hook-integrity.js'), 'utf8');
+  const strict = [...text.matchAll(/const (\w+_DENY) = '([^']+)'/g)].map((m) => ({ name: m[1], value: m[2] }));
+  const loose = [...text.matchAll(/\b\w+_DENY\s*=/g)];
+  assert.ok(strict.length >= 5, `strict scan found ${strict.length}`);
+  assert.equal(loose.length, strict.length, 'a *_DENY declared outside the strict shape escapes classification');
+  const table = hookIntegrity.DENY_PREFIX_CLASS;
+  assert.ok(table && typeof table === 'object', 'DENY_PREFIX_CLASS exported');
+  assert.deepEqual(Object.keys(table).sort(), strict.map((s) => s.value).sort());
+  const body = text.slice(text.indexOf('function denyIntegrityMismatch('));
+  const fnBody = body.slice(0, body.indexOf('\n}\n'));
+  const tested = [...fnBody.matchAll(/reason\.indexOf\((\w+)\) === 0/g)].map((m) => m[1]);
+  assert.ok(tested.length > 0);
+  for (const name of tested) assert.ok(strict.some((s) => s.name === name), `${name} is a scanned constant`);
+  for (const { value } of strict) {
+    assert.ok(table[value] === 'deny' || table[value] === 'drift', `${value} has a class`);
+    assert.equal(hookIntegrity.isPinDrift(`${value}x`), table[value] === 'drift', value);
+  }
+});
+
+test('HIMMEL-8779: E(1) — a drifted look-alike filename keeps the deny', () => {
+  const fx = watchdogFixture();
+  try {
+    fx.pin('s1');
+    writeFileSync(fx.path('scripts/hooks/auto-arm-on-cap-x.sh'), 'echo rewritten\n');
+    assertDeny(fx.run('PreToolUse', [fx.path('scripts/hooks/auto-arm-on-cap-x.sh')]));
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('HIMMEL-8779: E(2) — a pinned guard swapped for a symlink to the drifted watchdog keeps the deny', () => {
+  const fs = require('node:fs');
+  const fx = watchdogFixture();
+  try {
+    fx.pin('s1');
+    writeFileSync(fx.path(WD_REL), 'echo rewritten\n');
+    fs.unlinkSync(fx.path('scripts/hooks/guard.sh'));
+    fs.symlinkSync(fx.path(WD_REL), fx.path('scripts/hooks/guard.sh'));
+    assertDeny(fx.run('PreToolUse', [fx.path('scripts/hooks/guard.sh')]));
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('HIMMEL-8779: E(3) — the watchdog path swapped for a symlink to a drifted guard keeps the deny', () => {
+  const fs = require('node:fs');
+  const fx = watchdogFixture();
+  try {
+    fx.pin('s1');
+    fs.unlinkSync(fx.path(WD_REL));
+    fs.symlinkSync(fx.path('scripts/hooks/guard.sh'), fx.path(WD_REL));
+    writeFileSync(fx.path('scripts/hooks/guard.sh'), 'echo rewritten\n');
+    assertDeny(fx.run('PreToolUse', [fx.path(WD_REL)]));
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('HIMMEL-8779: F — the notice reaches stdout once per session', () => {
+  const fx = watchdogFixture();
+  try {
+    fx.pin('s1');
+    writeFileSync(fx.path(WD_REL), 'echo rewritten\n');
+    assert.equal(fx.verify(WD_REL, 's1').ok, false);
+    assertWatchdogSkip(fx, fx.run('PreToolUse', [fx.path(WD_REL)]));
+    assertWatchdogSkip(fx, fx.run('PreToolUse', [fx.path(WD_REL)]), { notice: false });
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('HIMMEL-8779: G — a chained drifted watchdog still denies the chain', () => {
+  const fx = watchdogFixture();
+  try {
+    fx.pin('s1');
+    writeFileSync(fx.path(WD_REL), 'echo rewritten\n');
+    const res = fx.run('PreToolUse', ['--chain', fx.path(WD_REL), fx.path('scripts/hooks/guard.sh')]);
+    assert.equal(res.status, 2, `exit ${res.status}; stderr: ${res.stderr}`);
+    assert.match(res.stderr, /DENY/);
+    assert.equal(existsSync(join(fx.canaries, 'ran-auto-arm-on-cap')), false);
+  } finally {
+    fx.cleanup();
+  }
+});
+
 // `..` segments and symlinks are resolved BEFORE the project-local
 // and pin decisions. Fixture: a pinned guard under <dir>/scripts/hooks, a
 // tampered copy of it, and a sibling directory outside the project.

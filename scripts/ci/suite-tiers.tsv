@@ -847,6 +847,7 @@ scripts/lib/test-cr-body-findings.sh	pr	trust-path
 scripts/lib/test-cr-high-risk-diff.sh	pr	trust-path
 scripts/lib/test-cr-ledger-evidence.sh	pr	static-gate
 scripts/lib/test-cr-merge-gate.sh	pr	trust-path
+scripts/lib/test-crontab-locked-rmw.sh	pr	trust-path
 scripts/lib/test-dedupe-path.sh	pr	trust-path
 scripts/lib/test-deprecated-forwarder.sh	pr	trust-path
 scripts/lib/test-detach.sh	pr	trust-path

@@ -40,6 +40,9 @@ git_env_scrub
 # shellcheck source=../lib/load-dotenv.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/load-dotenv.sh"
+# shellcheck source=../lib/crontab-locked-rmw.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/crontab-locked-rmw.sh"
 
 resolve_primary() {
     local common
@@ -77,6 +80,19 @@ cron_read() {
     esac
 }
 cron_entry() { printf '%s\n' "$CRON_TAB" | grep -F "# $TASK_NAME" || true; }
+
+# The edit steps run under crontab_locked_rmw on the table it just read;
+# $force, $auto and $entry are cmd_arm's locals, visible because cmd_arm is on the call stack.
+arm_edit() {
+    # --auto never fails on an armed table: another run armed it since the early check.
+    if [ -n "$(cron_entry)" ] && [ "$auto" -eq 1 ]; then printf '%s\n' "$CRON_TAB"; return 0; fi
+    if [ -n "$(cron_entry)" ] && [ "$force" -eq 0 ]; then
+        echo "ERR morning-report-cadence: already armed: $TASK_NAME (use --force to replace)" >&2
+        return 3
+    fi
+    { printf '%s\n' "$CRON_TAB" | { grep -vF "# $TASK_NAME" || true; } | sed '/^$/d'; printf '%s\n' "$entry"; }
+}
+disarm_edit() { { printf '%s\n' "$CRON_TAB" | grep -vF "# $TASK_NAME" || true; }; }
 
 cmd_arm() {
     local time="07:10" force=0 dry=0 auto=0 root runner entry ho
@@ -127,8 +143,7 @@ cmd_arm() {
     } > "$runner" || { echo "ERR morning-report-cadence: cannot write the runner $runner" >&2; return 4; }
     chmod 700 "$runner" || return 4
     rm -f "$RUNNER_DIR/.operator-disarmed"
-    { printf '%s\n' "$CRON_TAB" | { grep -vF "# $TASK_NAME" || true; } | sed '/^$/d'; printf '%s\n' "$entry"; } | "$CRONTAB_BIN" - \
-        || { echo "ERR morning-report-cadence: crontab install failed" >&2; return 4; }
+    crontab_locked_rmw "$CRONTAB_BIN" arm_edit || return $?
     echo "morning-report-cadence ARMED: daily $time — $runner (status: bash scripts/handover/morning-report-cadence.sh status)"
 }
 
@@ -172,7 +187,7 @@ cmd_disarm() {
         echo "morning-report-cadence: nothing armed; it stays off until you run arm"
         return 0
     fi
-    { printf '%s\n' "$CRON_TAB" | grep -vF "# $TASK_NAME" || true; } | "$CRONTAB_BIN" - || return 4
+    crontab_locked_rmw "$CRONTAB_BIN" disarm_edit || return $?
     rm -f "$RUNNER_DIR/morning-report-cadence.sh"
     : > "$RUNNER_DIR/.operator-disarmed" || { echo "ERR morning-report-cadence: disarmed, but cannot write the marker in $RUNNER_DIR; an update may re-arm it" >&2; return 4; }
     echo "morning-report-cadence: disarmed"

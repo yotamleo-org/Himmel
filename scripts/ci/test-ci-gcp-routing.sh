@@ -5,7 +5,7 @@
 # workflow_dispatch or a same-repo pull_request, and the actor, the triggering
 # actor and (for a PR) the author are operator accounts. The repo is public: a fork
 # PR or any other author must never reach a self-hosted runner, and the switch off must always fall back to the
-# GitHub-hosted matrix.os, so an empty pool can never wedge CI.
+# GitHub-hosted ubuntu-24.04 (pinned), so an empty pool can never wedge CI.
 #
 # The expression is EVALUATED (python3 translation of the GitHub expression
 # subset ci.yml uses), not pattern-matched, so a flipped && or || fails here.
@@ -41,7 +41,6 @@ ctx = wrap({
                "event": {"pull_request": {"head": {"repo": {"full_name": head}},
                                           "user": {"login": os.environ.get("AUTHOR", "yotamleo")}}}},
     "vars": {"CI_GCP": ci_gcp, "HIMMEL_VM_RUNNER": vm},
-    "matrix": {"os": "ubuntu-latest"},
 })
 body = re.fullmatch(r"\$\{\{\s*(.*?)\s*\}\}", expr).group(1)
 body = body.replace("&&", " and ").replace("||", " or ")
@@ -52,7 +51,7 @@ PY
 }
 
 GCP='["self-hosted", "gcp"]'
-HOSTED='"ubuntu-latest"'
+HOSTED='"ubuntu-24.04"'
 chk() { # <label> <want> <event> <head> <ci_gcp> <vm>
     got="$(resolve "$3" "$4" "$5" "$6" 2>&1)"
     if [ "$got" = "$2" ]; then ok "$1"; else bad "$1: want $2 got $got"; fi

@@ -233,7 +233,39 @@ test("HIMMEL-8375: a spaced or hyphenated six or seven digit code sent as a new 
     expect([...replies, ...logs].join("\n")).not.toContain("456");
   }
   // Fail closed only on what is wholly a code: words, other characters or a different digit count pass.
-  for (const text of ["123 45", "123 456 78 9", "123_456", "123.456", "do 123 456", "123 456 ok"]) {
+  for (const text of ["123 45", "123 456 78 9", "do 123 456", "123 456 ok", "text: 123456", "number 123456"]) {
+    const { deps } = fake();
+    expect(makeAfkSudoGate(deps, makeAfkSudoPrompts())(dm(text))).toBe(false);
+  }
+});
+
+// Every shape below is an obviously fake code; each is held, never forwarded.
+const held = (msg: ReturnType<typeof dm>) => {
+  const { deps, calls, replies, logs } = fake();
+  expect(makeAfkSudoGate(deps, makeAfkSudoPrompts())(msg)).toBe(true);
+  expect(calls).toEqual([]);
+  expect(replies).toHaveLength(1);
+  expect(replies[0]).toContain("held");
+  expect([...replies, ...logs].join("\n")).not.toContain("456");
+};
+const shapes: Record<string, string> = {
+  dot: "123.456", underscore: "123_456", slash: "123/456", comma: "123,456", "en dash": "123–456", "em dash": "123—456",
+  "minus sign": "123−456", "no-break space": "123 456", "em space": "123 456", "ideographic space": "123　456",
+  "zero-width space": "123​456", "zero-width joiner": "123‍456", "word joiner": "123⁠456", "BOM": "123﻿456",
+  "fullwidth digits": "１２３４５６", "fullwidth with space": "１２３ ４５６", "arabic-indic digits": "١٢٣٤٥٦",
+  "extended arabic-indic digits": "۱۲۳۴۵۶", "trailing period": "123 456.", "trailing bang": "123456!", "leading and trailing": "(123 456)",
+};
+for (const [name, text] of Object.entries(shapes)) {
+  test(`HIMMEL-8737: ${name} code is held`, () => held(dm(text)));
+}
+test("HIMMEL-8737: a code sent as a caption is held", () => held(dm("123456", { caption: true })));
+test("HIMMEL-8737: a forwarded code is held", () => held(dm("123456", { forwarded: true })));
+test("HIMMEL-8737: a NONCE CODE pair as a reply to a message that is not the bot's, no prompt live, is held", () => {
+  held(dm("K7QF 123456", { reply_to_message_id: 77, reply_to_bot: false }));
+  held(dm("K7QF 123456.", { reply_to_message_id: 77 }));
+});
+test("HIMMEL-8737: controls stay ordinary text", () => {
+  for (const text of ["ticket 123-456 is done", "do 8276 8277 next", "12345", "text: 123456", "number 123456.", "hello"]) {
     const { deps } = fake();
     expect(makeAfkSudoGate(deps, makeAfkSudoPrompts())(dm(text))).toBe(false);
   }
@@ -465,7 +497,7 @@ test("button: while a code prompt is live, a code-shaped message sent without re
   const live = buttons();
   live.tap(tapOf("afk:approve:abcdefgh"));
   await settle();
-  for (const msg of [dm("123456", { from: 999, chat_id: 999 }), dm("123456", { forwarded: true }), dm("hello"), dm("42")]) {
+  for (const msg of [dm("123456", { from: 999, chat_id: 999 }), dm("hello"), dm("42")]) {
     expect(live.gate(msg)).toBe(false);
   }
 });
@@ -473,9 +505,9 @@ test("button: while a code prompt is live, a code-shaped message sent without re
 test("button: a code buried in words or punctuation is consumed while a prompt is live, and on a reply to a bot message when it is a standalone six-digit token", async () => {
   const texts = ["123456.", "code 123456", "123456 thanks", "approve 123456", "my code is 123 456, ok", "(123-456)"];
   for (const text of texts) {
-    // a reply to a bot message with no known prompt is held only for a contiguous six-digit token
+    // a reply to a bot message with no known prompt is held for a contiguous six-digit token or a text that is wholly a code
     const gone = buttons();
-    expect(gone.gate(reply(text, 99, { reply_to_bot: true }))).toBe(/(?<!\d)\d{6}(?!\d)/.test(text));
+    expect(gone.gate(reply(text, 99, { reply_to_bot: true }))).toBe(/(?<!\d)\d{6}(?!\d)/.test(text) || text === "(123-456)");
     const live = buttons();
     live.tap(tapOf("afk:approve:abcdefgh"));
     await settle();
@@ -525,7 +557,7 @@ test("button: a six-digit reply to a bot message with no known prompt is consume
   expect(b.replies).toEqual(["⚠️ afk-sudo: that code prompt expired, tap Approve again"]);
   expect(b.logs.join("\n")).not.toContain("123456");
   // other shapes of a reply to the bot stay ordinary text
-  for (const msg of [reply("hello", 99, { reply_to_bot: true }), reply("123456", 99, { reply_to_bot: true, forwarded: true }), reply("123456", 99, { reply_to_bot: true, from: 999, chat_id: 999 })]) {
+  for (const msg of [reply("hello", 99, { reply_to_bot: true }), reply("123456", 99, { reply_to_bot: true, from: 999, chat_id: 999 })]) {
     expect(buttons().gate(msg)).toBe(false);
   }
 });
