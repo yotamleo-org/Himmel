@@ -499,7 +499,7 @@ has "a completes-ticket: yes Ship step keeps --jira-transition" "$ship_yes" "mer
 has "a completes-ticket: yes Ship step states yes" "$ship_yes" "completes-ticket: yes"
 ship_last="$(printf '%s\n' "$ct_last" | grep '^> 4\. Ship:')"
 lacks "the LAST value (no) also drives the Ship step" "$ship_last" "--jira-transition"
-has "the LAST value (no) writes the bare-merge Ship wording" "$ship_last" "completes-ticket: no (leave the ticket In Progress after MERGED)"
+has "the LAST value (no) writes the bare-merge Ship wording" "$ship_last" "completes-ticket: no (leave the ticket In Progress after the merge)"
 ship_none="$(printf '%s\n' "$ct_none" | grep '^> 4\. Ship:')"
 has "a scope stating neither keeps the yes Ship step" "$ship_none" "merge-on-green.sh --jira-transition"
 # shellcheck disable=SC2016 # literal backticks in the expected brief text
@@ -535,6 +535,40 @@ bash "$HERE/brief-lint.sh" "$WORK"/cx1/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/
 [ "$rc" = 0 ] && pass "a claudex brief with the chief-merges Ship step passes brief-lint.sh" || fail "claudex brief-lint rc=$rc: $(cat "$WORK/lint-cx.err")"
 bash "$HERE/brief-lint.sh" "$WORK"/ct1/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/lint-ct.err"; rc=$?
 [ "$rc" = 0 ] && pass "a brief with the Completes ticket line passes brief-lint.sh" || fail "Completes ticket brief-lint rc=$rc: $(cat "$WORK/lint-ct.err")"
+
+# READY is a bullet only and the merge is no message, on every lane.
+lane_brief() { # <lane> <completes value> <bucket>
+    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]=sys.argv[3]; l[0]["scope"]="one PR. completes-ticket: "+sys.argv[4]
+if sys.argv[3] not in ("native","claudex"): l[0]["model"]="claude-sonnet-5-5"
+json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ln.json" "$1" "$2" || { fail "lane brief fixture setup failed"; return 1; }
+    python3 "$SUT" "$WORK/ln.json" --base 4ccb59d --chief BZ --bucket "$3" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ln.err" || fail "lane brief generation rc=$?: $(cat "$WORK/ln.err")"
+    cat "$3"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null
+}
+bullet_rows() { # <label> <ship line> <expect no MERGED step: 1|0> <expect no second-key: 1|0>
+    local ship="$2"
+    [ -n "$ship" ] && pass "$1: brief has a Ship step" || fail "$1: brief has no Ship step"
+    lacks "$1: no READY message" "$ship" "to the chief quoting your token"
+    # shellcheck disable=SC2016 # literal backticks in the expected brief text
+    [ "$3" = 1 ] && lacks "$1: no MERGED step" "$ship" 'MERGED, `cd` out'
+    [ "$4" = 1 ] && lacks "$1: no second-key message" "$ship" "say so after MERGED"
+    has "$1: READY bullet named" "$ship" "never a message"
+}
+ship_ln_n="$(lane_brief native yes "$WORK/ln1" | grep '^> 4\. Ship:')"
+bullet_rows "native yes" "$ship_ln_n" 1 1
+ship_ln_nn="$(lane_brief native no "$WORK/ln2" | grep '^> 4\. Ship:')"
+bullet_rows "native no" "$ship_ln_nn" 1 0
+ship_ln_c="$(lane_brief claudex yes "$WORK/ln3" | grep '^> 4\. Ship:')"
+bullet_rows "claudex yes" "$ship_ln_c" 0 1
+# shellcheck disable=SC2016 # literal text in the expected brief
+has "claudex: chief's MERGED message kept" "$ship_ln_c" 'MERGED #<pr> → <sha>'
+ship_ln_o="$(lane_brief openrouter yes "$WORK/ln4" | grep '^> 4\. Ship:')"
+bullet_rows "openrouter yes" "$ship_ln_o" 1 1
+pre=$(grep -n 'READY <pr> <full head> GREEN' "$HERE/../../../docs/handover/worker-preface.md")
+pb=0
+for t in "$pre" "$ship_ln_n"; do
+    case "$t" in *"never a message"*"bullet"*|*"bullet"*"never a message"*) pb=$((pb + 1)) ;; esac
+done
+[ "$pb" = 2 ] && pass "preface and brief agree: READY never a message" || fail "preface and brief agree: READY never a message (both must say bullet and never a message; $pb of 2 do)"
 
 # A completes-ticket value other than yes or no is refused (it used to fall through to the closing
 # merge): nothing is written, and the message names the worker label and the value. Case is ignored.
