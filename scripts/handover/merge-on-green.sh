@@ -237,6 +237,10 @@
 #       anchor's scripts/lib/pr_remainder.py is missing or prints no answer. The
 #       refusal names the missing line. Checked after the title gate, before
 #       the audit preflight, on --dry-run too.
+#   27  --go was given and no OPEN PR resolved (no PR for the target, or it is
+#       CLOSED, or its state is empty or unknown): nothing was merged. A PR
+#       already MERGED at the head the GO file names exits 0 ("already
+#       merged"); --dry-run and a run without --go keep the clean no-op exit 0.
 #
 # Environment:
 #   ARMAUTOMERGE           Must be truthy (1/true/on/yes) to enable at all.
@@ -643,6 +647,15 @@ _focus_mark_dirty() {
         && date +%s > "$st.again"; } 2>/dev/null || true
 }
 
+# _go_nothing_merged_exit — a run given --go (not --dry-run) that resolved no OPEN PR merged nothing, so it exits 27, never a
+# silent 0. Without --go it returns and the caller keeps its clean no-op.
+_go_nothing_merged_exit() {
+    [ -n "$GO_FLAG" ] && [ "$DRY_RUN" -eq 0 ] || return 0
+    echo "merge-on-green: --go was given but no OPEN PR resolved (selector: ${selector:-<cwd-branch>}) — nothing merged" >&2
+    audit "REFUSED reason=go-no-open-pr selector=${selector:-<cwd-branch>}"
+    exit 27
+}
+
 # gh helper honoring an optional selector (mirrors check-ci's pr_view shape).
 gh_pr_view() {
     if [ -n "$selector" ]; then "$GH" pr view "$selector" "$@"; else "$GH" pr view "$@"; fi
@@ -662,6 +675,7 @@ if [ "$meta_rc" -ne 0 ]; then
     if printf '%s' "$meta" | grep -qi 'no pull requests found'; then
         echo "merge-on-green: no open PR for the target — nothing to merge."
         audit "NOOP reason=no-open-pr selector=${selector:-<cwd-branch>}"
+        _go_nothing_merged_exit
         exit 0
     fi
     echo "merge-on-green: could not query the PR (auth/network?): ${meta:-<no output>} — refusing to guess. Re-run." >&2
@@ -740,6 +754,12 @@ case "$pr_state" in
             [ -z "$_closed_nwo" ] || jira_closed_pr_event "$_closed_nwo" "$pr_num"
         fi
         audit "NOOP reason=pr-not-open state=${pr_state:-unknown} selector=${selector:-<cwd-branch>}"
+        # A PR already MERGED at the head the GO file names is a repeated merge, not a failed one.
+        if [ "$pr_state" = "MERGED" ] && [ -n "$GO_FLAG" ] && [ "$(basename "$GO_FLAG")" = "$pr_num.$sha" ]; then
+            echo "merge-on-green: PR #$pr_num is already merged at $sha — nothing to do." >&2
+            exit 0
+        fi
+        _go_nothing_merged_exit
         exit 0 ;;
 esac
 # The PR's repo comes from its OWN url — a URL selector pointing at another repo
@@ -2473,12 +2493,18 @@ record_after_report_pending_marker() {
 # caller's gh seam, ledger and wait settings are dropped (`env -u`); the ledger
 # is the anchor's, never the caller's cwd repo.
 CR_THREADS_RESULT="not-attempted"
+# _mog_shorten_secs <value> <bound> — the seconds a gate time bound runs for: <value> when it is 1 to 99 with no leading
+# zero and below <bound>, else <bound>. A zero in any spelling (00 turns `timeout` off) and a value too long to compare
+# are ignored, so a knob can only shorten a bound.
+_mog_shorten_secs() {
+    case "$1" in ""|*[!0-9]*|0*|???*) echo "$2"; return 0 ;; esac
+    if [ "$1" -lt "$2" ]; then echo "$1"; else echo "$2"; fi
+}
 record_cr_threads() {
-    local pr="$1" rec_to="" rec_secs="${MOG_CR_THREADS_SECS:-60}" rec_gcd=""
+    local pr="$1" rec_to="" rec_secs="" rec_gcd=""
     CR_THREADS_RESULT="not-attempted"
     [ -f "$himmel_repo/scripts/cr/cr-thread-recorder.sh" ] || { CR_THREADS_RESULT="no-recorder"; return 0; }
-    case "$rec_secs" in ""|*[!0-9]*|0) rec_secs=60 ;; esac
-    [ "$rec_secs" -le 60 ] || rec_secs=60
+    rec_secs=$(_mog_shorten_secs "${MOG_CR_THREADS_SECS:-}" 60)
     if command -v timeout >/dev/null 2>&1; then rec_to="timeout -k 10 $rec_secs"
     elif command -v gtimeout >/dev/null 2>&1; then rec_to="gtimeout -k 10 $rec_secs"
     else CR_THREADS_RESULT="no-timeout"; return 0; fi
@@ -2509,10 +2535,8 @@ record_bug_origin() {
     BUG_ORIGIN_RESULT="not-attempted"
     [ -f "$report" ] || { BUG_ORIGIN_RESULT="no-report"; return 0; }
     command -v python3 >/dev/null 2>&1 || { BUG_ORIGIN_RESULT="no-python"; return 0; }
-    case "$bo_cap" in ""|*[!0-9]*|0*|???*) ;; *)
-        [ "$bo_cap" -ge "$bo_gh_secs" ] || bo_gh_secs="$bo_cap"
-        [ "$bo_cap" -ge "$bo_ing_secs" ] || bo_ing_secs="$bo_cap" ;;
-    esac
+    bo_gh_secs=$(_mog_shorten_secs "$bo_cap" "$bo_gh_secs")
+    bo_ing_secs=$(_mog_shorten_secs "$bo_cap" "$bo_ing_secs")
     if command -v timeout >/dev/null 2>&1; then bo_to_gh="timeout -k 5 $bo_gh_secs"; bo_to_ing="timeout -k 10 $bo_ing_secs"
     elif command -v gtimeout >/dev/null 2>&1; then bo_to_gh="gtimeout -k 5 $bo_gh_secs"; bo_to_ing="gtimeout -k 10 $bo_ing_secs"
     else BUG_ORIGIN_RESULT="no-timeout"; return 0; fi
