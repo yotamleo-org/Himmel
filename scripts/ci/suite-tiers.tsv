@@ -164,9 +164,11 @@ scripts/ci/test-run-bun-tests-flake.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-discovery.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-flake.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-impacted.sh	pr	trust-path
+scripts/ci/test-run-shell-tests-ledger-fresh.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-live-state.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-manifest.sh	pr	static-gate
 scripts/ci/test-run-shell-tests-parallel.sh	pr	trust-path
+scripts/ci/test-run-shell-tests-retry.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-rotation-cursor.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-rotation-guards.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-rotation.sh	pr	trust-path
@@ -1135,6 +1137,9 @@ scripts/test-tmp-reap.sh	local	behaviour suite, 0 catches in the 400-PR audit wi
 scripts/test-uninstall-guard.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-uninstall-home-guard.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-uninstall-plugins.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-uninstall-provenance-legacy.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-uninstall-provenance-qmd.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-uninstall-provenance-tty-block.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-uninstall-provenance.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-uninstall-real-home-callers.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-uninstall-real-home-runtime.sh	local	behaviour suite, 0 catches in the 400-PR audit window
