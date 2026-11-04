@@ -218,10 +218,11 @@ out_empty="$(printf '{"model":{"id":"claude-opus-4-8"},"transcript_path":"/nonex
     HIMMEL_WHERE_ARE_WE_ROLLUP_DIR="$ROLLDIR" HANDOVER_DIR="$HROOT" \
     HIMMEL_WHERE_ARE_WE_SEG_TIMEOUT=30 \
     CLAUDE_ALL_SESSIONS_CACHE_DIR="$TMP/empty" bash "$COMPOSER" 2>/dev/null)"; rc=$?
-if [ "$rc" -eq 0 ] && ! grepq "$out_empty" -E "$econ_row_re"; then
+grep -qE "$econ_row_re" <<< "$out_empty"; empty_grep_rc=$?
+if [ "$rc" -eq 0 ] && [ "$empty_grep_rc" -eq 1 ]; then
     pass "fail-open -> missing transcript and caches: exit 0, no economics row"
 else
-    fail "fail-open -> rc=$rc out='$out_empty'"
+    fail "fail-open -> rc=$rc grep-rc=$empty_grep_rc out='$out_empty'"
 fi
 
 echo "---"
