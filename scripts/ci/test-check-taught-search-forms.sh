@@ -30,6 +30,12 @@ expect "the taught files pass" 0 "$(run)"
 REPO="$(cd "$(dirname "$CHECK")/../.." && pwd)"
 expect "CLAUDE.md teaches the qmd wrapper form" 0 "$(grep -q -F 'bash scripts/lib/qmd-bounded.sh query -c' "$REPO/CLAUDE.md"; echo $?)"
 expect "CLAUDE.md teaches the graph wrapper form" 0 "$(grep -q -F 'bash scripts/graphify/worker-graph.sh query|explain|path' "$REPO/CLAUDE.md"; echo $?)"
+# The check skips CLAUDE.md's installer-owned `## graphify` section, so pin that section here: it names the wrapper,
+# not a bare graphify form (a worktree has no graph, so the bare form fails there), and has no `graphify update`.
+GSEC="$(awk '/^## graphify[[:space:]]*$/ { on = 1; next } /^## / { on = 0 } on' "$REPO/CLAUDE.md")"
+expect "CLAUDE.md graphify section was read" 0 "$(grep -q . <<<"$GSEC"; echo $?)"
+expect "CLAUDE.md graphify section names no bare graphify form" 1 "$(grep -Eq '(^|[^A-Za-z0-9_./-])graphify[[:space:]]+(query|explain|path|update)([^A-Za-z0-9_-]|$)' <<<"$GSEC"; echo $?)"
+expect "CLAUDE.md graphify section teaches the graph wrapper" 0 "$(grep -q -F 'bash scripts/graphify/worker-graph.sh query' <<<"$GSEC"; echo $?)"
 
 # Default mode scans the listed files, and a listed file or filter that yields no line cannot be evaluated.
 # A copy of the check sits in a fake repo root whose listed files this test writes.
@@ -53,7 +59,7 @@ fake_root "$T/fake-bare"
 printf 'qmd query "x"\n' >"$T/fake-bare/docs/token-economy.md"
 expect "default mode: a bare form in a listed file fails" 1 "$(run_fake "$T/fake-bare")"
 fake_root "$T/fake-nofilter"
-printf 'echo "the nudge line was reworded"\n' >"$T/fake-nofilter/scripts/hooks/retrieval-nudge.sh"
+printf 'echo "the deny line was reworded"\n' >"$T/fake-nofilter/scripts/hooks/block-graphify-egress.sh"
 expect "default mode: a filter that matches no line cannot be evaluated" 2 "$(run_fake "$T/fake-nofilter")"
 fake_root "$T/fake-empty"
 : >"$T/fake-empty/docs/handover/running-a-chief.md"

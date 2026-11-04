@@ -6866,6 +6866,17 @@ for cr_t in HIMMEL-GraphMapAst-Luna HIMMEL-GraphMapAst-Himmel; do
 done
 echo "ok: cadence-runs-graphmap — rc=4 is clean on the two refresh tasks, still failing on the AST tasks"
 
+# A station with the Luna graph tasks off (the default; only the himmel rows armed, every Luna row
+# `not armed`) reads present and never names a Luna task, so the probe needs no Luna row dropped to stay quiet;
+# an armed Luna task is still judged (the rc=5 loop above), so opting Luna in stays visible.
+cr_variant "$cr_fix/graphmap.txt" healthy | sed -E 's/^ARMED( +)HIMMEL-GraphMapAst-Luna/not armed\1HIMMEL-GraphMapAst-Luna/' > "$cr_cur"
+grep -q '^not armed  *HIMMEL-GraphMapAst-Luna' "$cr_cur" || fail "cadence-runs-graphmap: the Luna-off fixture must carry no armed Luna task"
+! grep -q '^ARMED .*Luna' "$cr_cur" || fail "cadence-runs-graphmap: the Luna-off fixture still arms a Luna task"
+outCRl=$(run_cr graphmap)
+echo "$outCRl" | jq -e '.actual == "present" and ((.detail | contains("Luna")) | not)' >/dev/null \
+  || fail "cadence-runs-graphmap: a station with every Luna graph task off must read present and name no Luna task (got: $outCRl)"
+echo "ok: cadence-runs-graphmap — a Luna-off station reads present and names no Luna task"
+
 # a status that cannot be read is degraded, never a quiet green.
 printf '#!/usr/bin/env bash\necho "crontab: denied" >&2\nexit 1\n' > "$cr_root/scripts/luna/qmd-cadence.sh"
 outCRe=$(run_cr qmd)

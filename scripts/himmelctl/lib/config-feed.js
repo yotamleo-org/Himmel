@@ -193,7 +193,8 @@ function itemGroup(item) {
 }
 
 // Best-effort: the copy-paste command buried in a status detail, e.g.
-// "… — opt-in (bash scripts/luna/graphmap-cadence.sh arm)". status --json is
+// "… — opt-in (bash scripts/luna/graphmap-cadence.sh arm); Luna graph tasks stay off unless you also
+// run arm --luna-only" (a bare arm registers the himmel graph tasks only). status --json is
 // golden-tested and unchanged; the parse lives here only (critic F9).
 function remedyFromDetail(detail) {
   const m = /\((?:[^()]*?(?:with|run):\s*)?((?:bash|npm|node|cd|himmelctl|git|bun|brew|pip3?)\s[^)]*)\)/.exec(String(detail || ''));

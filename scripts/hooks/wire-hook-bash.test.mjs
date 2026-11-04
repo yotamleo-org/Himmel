@@ -215,6 +215,12 @@ test('no hook command in the live settings.json matches a superseded launcher sh
   }
 });
 
+test('the retired retrieval nudge is gone from the inventory, settings.json and disk', () => {
+  assert.ok(!EXPECTED_SCRIPT_ORDER.includes('retrieval-nudge.sh'));
+  assert.ok(!readFileSync(SETTINGS, 'utf8').includes('retrieval-nudge'));
+  assert.ok(!existsSync(join(HERE, 'retrieval-nudge.sh')));
+});
+
 test('is idempotent after the first rewrite', () => {
   withFixture((fixture) => {
     const first = invoke(fixture);
