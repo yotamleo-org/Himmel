@@ -570,6 +570,19 @@ for t in "$pre" "$ship_ln_n"; do
 done
 [ "$pb" = 2 ] && pass "preface and brief agree: READY never a message" || fail "preface and brief agree: READY never a message (both must say bullet and never a message; $pb of 2 do)"
 
+# JUDGE-REQUEST has one channel per lane, and the worker docs point at it.
+hd="$HERE/../../../docs/handover"
+grep 'JUDGE-REQUEST' "$hd/worker-preface.md" | grep -qF 'worker-sections/judge-request.md' && pass "preface: JUDGE-REQUEST points at its section" || fail "preface: JUDGE-REQUEST does not point at worker-sections/judge-request.md"
+jr="$hd/worker-sections/judge-request.md"
+jrok=0; [ -r "$jr" ] && jrok=1
+for w in 'SendMessage' 'send' 'at READY' 'once per head'; do
+    [ -r "$jr" ] && grep -qF -- "$w" "$jr" || jrok=0
+done
+[ "$jrok" = 1 ] && pass "judge-request section: channel per lane" || fail "judge-request section: missing or lacks SendMessage, send, at READY, once per head"
+for l in claudex openrouter; do
+    grep 'JUDGE-REQUEST' "$hd/worker-preface-$l.md" | grep -qF 'send' && pass "$l preface: JUDGE-REQUEST on the bus" || fail "$l preface: JUDGE-REQUEST not on the bus"
+done
+
 # A completes-ticket value other than yes or no is refused (it used to fall through to the closing
 # merge): nothing is written, and the message names the worker label and the value. Case is ignored.
 # shellcheck disable=SC2016  # the backticks are literal characters in the value under test

@@ -28,7 +28,8 @@ that `ListAgents` cannot see. Your handover document stays the source of truth a
 milestone is still a bullet there, and without `HIMMEL_BUS_NAME` the document is your only channel.
 `LIVE`, `RESOLVED`, `CHECKPOINT`, `WRAPPED` and `READY` are bullets only, never a bus message
 (`READY <pr> <full 40-hex head> GREEN`, exactly; the chief's waiter pre-checks it and wakes the
-chief once). Only `FINDING`, `BLOCKED`, a question, `MAIN-RED`, `ORPHAN`, `CONSULT` and a token
+chief once). `JUDGE-REQUEST` goes by bus `send`, once per head
+(`worker-sections/judge-request.md`). Only `FINDING`, `BLOCKED`, a question, `MAIN-RED`, `ORPHAN`, `CONSULT` and a token
 quote-back go by bus. A bullet authorises nothing.
 
 **An unreadable path in your brief is a BLOCKED, never a shortcut.** If the brief tells

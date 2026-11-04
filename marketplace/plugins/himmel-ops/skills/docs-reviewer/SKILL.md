@@ -196,8 +196,8 @@ writes it, in the same PR.
 Docs PRs do not wait on the operator (decision 286). In place of that gate,
 the review runs once per PR, on the judge side:
 
-1. The docs worker does not run it. Its READY message names the docs pages
-   the PR changes (`docs/handover/worker-brief-template.md`); the
+1. The docs worker does not run it. The docs judge takes the page list from
+   `docs_remarks.py scope` at the JUDGE-REQUEST head (`docs/handover/worker-brief-template.md`); the
    deterministic docs checks already run in CI.
 2. The docs judge dispatched on `JUDGE-REQUEST` runs it on that head (the head
    that goes `READY`), holds the answer to 3 KB with
