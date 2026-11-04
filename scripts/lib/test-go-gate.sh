@@ -794,6 +794,23 @@ got=$(gg12 go_noop_carry "$NC12" J 93 "$NG" "$B12" "$R12" "$NG")
 rec12 "$NC12" K judge "**NO-GO** for head \`$A12\`." 93
 got=$(gg12 go_noop_carry "$NC12" J 93 "$NG" "$B12" "$R12" "$NG")
 case "$got" in 1\|*"NO-GO"*) ;; *) fail "12 carry: K's NO-GO at the judged head vetoes the carry (rc 1): $got" ;; esac
+U12="$ROOT/u12"; NU12="$U12/u/b/verdicts"
+rec12 "$NU12" J "delta-noop-$B12" "**GO** for head \`$B12\`." 93 "delta: no-op"$'\n'"delta-judged: $A12"
+rec12 "$NU12" J judge "**GO** for head \`$A12\`." 93
+got=$(gg12 go_noop_carry "$NU12" J 93 "$NG" "$B12" "$U12" "$NG")
+case "$got" in 1\|*"valid GO"*) ;; *) fail "12 carry: an unsigned real GO at the chain root is rc 1 (go_trust_verdict refuses it): $got" ;; esac
+
+D12="$ROOT/d12/verdicts"
+rec12 "$D12" K judge "**NO-GO** for head \`$A12\`. see the notes" 93
+got=$(gg12 go_nogo_after "$D12" 93 "$NG" "$B12")
+[ "${got%%|*}" = 2 ] || fail "12 drift: a NO-GO with trailing text is rc 2, never skipped: $got"
+rec12 "$D12" K judge "**NO-GO** for head \`$(printf '%s' "$A12" | tr a-f A-F)\`." 93
+got=$(gg12 go_nogo_after "$D12" 93 "$NG" "$B12")
+[ "${got%%|*}" = 2 ] || fail "12 drift: a NO-GO with uppercase hex is rc 2, never skipped: $got"
+# shellcheck disable=SC2016  # the backticks are literal verdict-line text
+printf '# VERDICT K - judge\n\n**NO-GO** for head `%s`.\n\npr: 93\n' "$A12" > "$D12/K/judge.md"
+got=$(gg12 go_nogo_after "$D12" 93 "$NG" "$B12")
+[ "${got%%|*}" = 2 ] || fail "12 drift: a NO-GO with no Verdict heading is rc 2, never skipped: $got"
 
 # --- 12f. Structure: the carry rule is never re-inlined in go.sh or auto-go.sh
 AUTO_GO_SRC="${AUTO_GO_SRC:-$HERE/../handover/chief-kit/auto-go.sh}"

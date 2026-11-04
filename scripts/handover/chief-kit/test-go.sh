@@ -416,8 +416,12 @@ t15 "an empty verdict dir" J8
 verdict "$ROOT15" "judge:J9" "**GO** for head \`$SHA\`."
 t15 "an id that is not a qid path segment" "judge:J9"
 # any judge's NO-GO for this PR at the head vetoes every trust GO
-# (section 29), so the NO-GO records of J2 and J6 leave before the GO rows below.
-rm -f "$ROOT15/$VSCOPE/verdicts/J2/HIMMEL-1-judge-J2.md" "$ROOT15/$VSCOPE/verdicts/J6/second.md"
+# (section 29), and an unparsed record for this PR refuses it (it may be a drifted
+# NO-GO), so the NO-GO records of J2 and J6 and the unparsed ones of J4, J5 and J7
+# leave before the GO rows below.
+rm -f "$ROOT15/$VSCOPE/verdicts/J2/HIMMEL-1-judge-J2.md" "$ROOT15/$VSCOPE/verdicts/J6/second.md" \
+  "$ROOT15/$VSCOPE/verdicts/J4/HIMMEL-1-judge-J4.md" "$ROOT15/$VSCOPE/verdicts/J5/HIMMEL-1-judge-J5.md" \
+  "$ROOT15/$VSCOPE/verdicts/J7/second.md"
 verdict "$ROOT15" J10 "**GO** for head \`$SHA\`."
 rc=0; out="$(HANDOVER_DIR="$ROOT15" bash "$SCRIPT" --trust-reviewed J10 83 "$SHA" 2>/dev/null)" || rc=$?
 check    "3832: GO verdict for this head -> exit 0" "$rc" "0"
@@ -924,6 +928,23 @@ verdict "$ROOT29" J "**GO** for head \`$B29\`." HIMMEL-1-judge-J-b
 check "8732-e0: a real GO of J at B is written" "$(go29 "$B29")" "0:go"
 verdict "$ROOT29" K "**NO-GO** for head \`$B29\`." HIMMEL-1-judge-K
 check "8732-e: a real GO of J at B with K's NO-GO at B is refused (exit 10, no GO)" "$(go29 "$B29")" "10:none"
+rm -f "$V29/J/HIMMEL-1-judge-J-b.md" "$V29/K/HIMMEL-1-judge-K.md"
+VEXTRA=$'delta: no-op\ndelta-judged: '"$A29"$'\ndelta-class: none\n' verdict "$ROOT29" J "**GO** for head \`$B29\`." "delta-noop-$B29"
+VEXTRA=$'finding: src/a.txt:3-4\n' verdict "$ROOT29" K "**NO-GO** for head \`$A29\`." HIMMEL-1-judge-K
+# shellcheck disable=SC2016  # the backticks are literal verdict-line text
+VEXTRA=$'**GO** for head `'"$B29"$'`.\n' verdict "$ROOT29" J "**GO** for head \`$S29\`." HIMMEL-1-judge-J-s
+check "8732-h: a J record at another head whose body quotes the GO line for B leaves B a no-op, and K's NO-GO at A vetoes it (exit 10, no GO)" "$(go29 "$B29")" "10:none"
+rm -f "$V29/J/HIMMEL-1-judge-J-s.md" "$V29/K/HIMMEL-1-judge-K.md" "$V29/J/delta-noop-$B29.md"
+# B - T adds a trust path, D removes it: the net A..D delta is none, A..T is trust.
+fx29_git checkout -q a29
+printf 't\n' > "$fx29/scripts/ci/t.sh"; fx29_git add -A && fx29_git commit -qm t
+T29=$(fx29_git rev-parse HEAD)
+fx29_git rm -q scripts/ci/t.sh && fx29_git commit -qm d
+D29=$(fx29_git rev-parse HEAD)
+ready_pass_ledger "$fx29" "$D29"
+VEXTRA=$'delta: no-op\ndelta-judged: '"$A29"$'\ndelta-class: none\n' verdict "$ROOT29" J "**GO** for head \`$T29\`." "delta-noop-$T29"
+VEXTRA=$'delta: no-op\ndelta-judged: '"$T29"$'\ndelta-class: none\n' verdict "$ROOT29" J "**GO** for head \`$D29\`." "delta-noop-$D29"
+check "8732-i: a two-hop no-op chain whose second hop (A to T) is a trust delta is refused (exit 10, no GO)" "$(go29 "$D29")" "10:none"
 VPR=
 
 echo "---"

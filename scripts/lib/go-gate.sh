@@ -401,10 +401,12 @@ go_noop_chain() {
 # (go_verdict_line) is `**NO-GO** for head `<nh>`` with <nh> = <head> or a
 # descendant of it in the <anchor> checkout. A NO-GO quoted anywhere else in a
 # record does not count. rc 1, the reason on stdout, on such a NO-GO; rc 2 on a
-# read failure or a git answer other than yes/no (an unknown commit included).
+# read failure, a git answer other than yes/no (an unknown commit included), or
+# a `pr: <pr>` record whose verdict line is neither a GO nor a NO-GO for a
+# 40-hex head (a drifted NO-GO must not be skipped).
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 go_nogo_after() {
-    local qids q files frc nf l nh grc cr=$'\r'
+    local qids q files frc nf l nh grc cr=$'\r' gore='^\*\*GO\*\* for head `[0-9a-f]{40}`\.?$'
     qids=$(go_pr_qids "$1" "$2" "$4") || { printf '%s\n' "$qids"; return 2; }
     while IFS= read -r q; do
         [ -n "$q" ] || continue
@@ -420,7 +422,11 @@ go_nogo_after() {
                 return 2
             fi
             nh=$(printf '%s\n' "$l" | sed -nE 's/^\*\*NO-GO\*\* for head `([0-9a-f]{40})`\.?$/\1/p')
-            [ -n "$nh" ] || continue
+            if [ -z "$nh" ]; then
+                [[ $l =~ $gore ]] && continue
+                printf 'the verdict %s names PR %s but its verdict line is neither a GO nor a NO-GO for a full head, so a NO-GO in it cannot be ruled out\n' "$nf" "$2"
+                return 2
+            fi
             grc=0
             if [ "$nh" != "$4" ]; then
                 (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE

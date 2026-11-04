@@ -334,7 +334,12 @@ if [ "$TRUST_SET" -eq 1 ]; then
     NVD="$ROOT/$NSCOPE/verdicts"
     for vf in "$NVD/$TRUST"/*.md; do
         [ -f "$vf" ] || continue
-        tr -d '\r' < "$vf" | grep -q "^\*\*GO\*\* for head \`$SHA\`" || continue
+        if ! RL=$(go_verdict_line "$vf"); then
+            echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - cannot read the verdict $vf, so whether it is a delta no-op cannot be checked. No GO written." >&2
+            exit 10
+        fi
+        # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
+        case "$RL" in '**GO** for head `'"$SHA"'`'|'**GO** for head `'"$SHA"'`.') ;; *) continue ;; esac
         if grep -qxE "delta: no-op"$'\r'"?" "$vf"; then NOOP=1; else REAL=1; fi
     done
     if [ "$REAL" -eq 1 ]; then
