@@ -210,7 +210,7 @@ mkdir -p "$tmp/wrongroot"
 fx_refresh HANDOVER_DIR="$tmp/wrongroot"
 contains "a wrong root: the skip is a WARN on stdout" "$(out)" "focus=WARN:chains root"
 contains "a wrong root: the skip is named on stderr" "$(cat "$tmp/err")" "chains root"
-(cd "$FXR" && env -u HANDOVER_DIR HOME="$tmp/home" JUDGE_LADDER_NOW=1000 bash "$FXR/scripts/handover/chief-kit/judge-ladder.sh" convene seat1 sonnet >/dev/null 2>&1)
+(cd "$FXR" && env -u HANDOVER_DIR -u JUDGE_LADDER_STATE HOME="$tmp/home" JUDGE_LADDER_NOW=1000 bash "$FXR/scripts/handover/chief-kit/judge-ladder.sh" convene seat1 sonnet >/dev/null 2>&1)
 check "no HANDOVER_DIR: the judge ladder is written under the configured root" "$([ -f "$CFG/.judge-ladder" ] && echo yes)" yes
 check "no HANDOVER_DIR: nothing is written under the stub folder" "$([ -e "$FXR/handovers/.judge-ladder" ] && echo yes || echo no)" no
 
