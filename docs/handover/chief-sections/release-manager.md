@@ -69,12 +69,15 @@ release is declared (`jira release state <R>` prints a status other than
   the first 8 hex of the held signature, which moves only when the held set moves.
   `unfiled=<n>` counts signed operator records no request carries yet. Both read
   `release/<R>/repair-held.json`. `repair=off:<why>` shows while the repair cannot
-  run: `mirror-unknown` or `bad-input` (a stop), `error` (a crashed run, retried
-  on the `TICK_RMRUN_MIN_SECS` gap), or `unreviewed` (no `repair-reviewed` marker,
+  run: `mirror-unknown` or `bad-input` (a stop), `error` (a run that reported an
+  error, retried on the `TICK_RMRUN_MIN_SECS` gap), `lost` (a launched run
+  left no end record: it failed to start or died mid-run; the tick retries it on a
+  backoff from `TICK_RMRUN_MIN_SECS`, capped at 6 h, and `repair-run.log` holds its
+  stderr), or `unreviewed` (no `repair-reviewed` marker,
   so the first `jira release repair <R> --apply --repo <owner/name>` is yours, after
   a dry run). With the marker the tick launches the apply itself, detached, only when
   the run signature (leak set plus the operator, requests, journal and mirror
-  heads) changed; it never writes a Fix Version. What you do: put the held batch
+  heads) changed, or when the last launch left no end record; it never writes a Fix Version. What you do: put the held batch
   in one line of the milestone report's "Blocked on you" list (the path, the
   default per class, the paste-ready commands from `repair-held.json`), and repeat
   that line only when the `<sig8>` changes. The board's repair panel lists the
