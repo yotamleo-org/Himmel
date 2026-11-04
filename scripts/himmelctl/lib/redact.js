@@ -9,7 +9,7 @@
 //     JWTs, Bearer headers)
 //   - the value of NAME=value / NAME: value when NAME looks secret-bearing
 //   - any other 32+ char mixed letter+digit run that is not a path segment or
-//     a pure-hex digest (git shas stay readable)
+//     a pure-hex digest (git shas stay readable) or a hyphenated session name
 //
 // ponytail: shape-based, so a short or low-entropy secret is caught only
 // through the .env-value literals; the config UI must keep passing envValues.
@@ -30,6 +30,24 @@ const TOKEN_SHAPES = [
 ];
 const SECRET_ASSIGN = /\b([A-Za-z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|COOKIE|CREDENTIAL)[A-Za-z0-9_]*)(\s*[=:]\s*)(?!‹)(["']?)[^\s"',;)]{4,}\3/gi;
 const LONG_RUN = /(?<![A-Za-z0-9/_.-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9/_.-])/g;
+
+// A session name (acme-roadmap-chief-2026-11-04-N4748-fix-the-hud-lines) is 3+ hyphen-joined
+// word segments, so LONG_RUN leaves it readable. A segment is a word (all-lower, Capitalised,
+// ALL-CAPS), digits, or a short (≤5) letter+digit id; at most two ids per name. A longer
+// letter+digit segment, mixed-case junk or an underscore marks a random token: it still masks.
+// Token shapes, NAME=value and .env literals run before LONG_RUN and are unaffected.
+const WORD_SEGMENT = /^(?:[A-Za-z][a-z]*|[A-Z]+|[0-9]+)$/;
+const SHORT_ID = /^[A-Za-z0-9]{1,5}$/;
+function isSessionName(run) {
+  const segs = run.split('-');
+  if (segs.length < 3 || segs.some((s) => s === '' || !/^[A-Za-z0-9]+$/.test(s))) return false;
+  let ids = 0;
+  for (const s of segs) {
+    if (WORD_SEGMENT.test(s)) continue;
+    if (!SHORT_ID.test(s) || ++ids > 2) return false;
+  }
+  return true;
+}
 
 function escapeRe(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -118,7 +136,7 @@ function redact(input, opts) {
   for (const re of TOKEN_SHAPES) s = s.replace(re, REDACTED);
   if (opts && opts.idKey) return s;
   s = s.replace(SECRET_ASSIGN, (_m, name, sep) => `${name}${sep}${REDACTED}`);
-  s = s.replace(LONG_RUN, (m) => (/^[0-9a-f]+$/i.test(m) || !(/[A-Za-z]/.test(m) && /[0-9]/.test(m)) ? m : REDACTED));
+  s = s.replace(LONG_RUN, (m) => (/^[0-9a-f]+$/i.test(m) || !(/[A-Za-z]/.test(m) && /[0-9]/.test(m)) || isSessionName(m) ? m : REDACTED));
   return s;
 }
 
