@@ -29,8 +29,12 @@ rows = []
 for r, _, fs in os.walk(d):
     for f in fs:
         p = os.path.join(r, f)
-        s = os.stat(p)
-        rows.append("%s %d %.0f" % (os.path.relpath(p, d), s.st_size, s.st_mtime))
+        try:
+            s = os.stat(p)
+        except OSError as e:
+            print("STAT-ERROR " + p + " " + str(e))
+            sys.exit(1)
+        rows.append("%s %d %d" % (os.path.relpath(p, d), s.st_size, s.st_mtime_ns))
 print(zlib.crc32("\n".join(sorted(rows)).encode()))' "$REAL_HOME/.himmel/state/holds"
 }
 REAL_BEFORE="$(real_register)"
@@ -2270,6 +2274,13 @@ un_out2="$(rgrun --workers-from "$WORK/fleet-un.json")"
 has "a seeded worker's doc Writes line is not parsed: its register rows say what it holds" "$un_out2" "HIMMEL-9600	"
 
 fault_head() { printf '%s\n' "$1" | grep '^# next-dispatchable:'; }
+# (9067) clean-run controls: the "lacks" rows below pass on an empty output, so each fault shape has a healthy twin that
+# must offer the row, and a crashed fixture run (empty output) cannot pass them
+c_ok="$(ND_HOLDS="$WORK/holds-stub.py" rgrun --workers-from "$WORK/fleet-un.json")"
+has "(9067) control: the stub with no fault mode offers the To Do ticket the fault rows withhold" "$c_ok" "HIMMEL-56	"
+lacks "(9067) control: the clean stub run reads no register fault" "$(fault_head "$c_ok")" "holds register unknown"
+c_ro="$(ND_HOLDS="$WORK/holds-stub.py" NEXT_DISPATCH_MIRROR="$M5" NEXT_DISPATCH_GH_CMD="$WORK/gh-un" bash "$SUT" --resume-only --workers-from "$WORK/fleet-un.json" 2>/dev/null)"
+has "(9067) control: the clean --resume-only run lists the RESUME row the fault withholds" "$c_ro" "RESUME	HIMMEL-50"
 f_keys="$(STUB_HOLDS_FAIL=keys ND_HOLDS="$WORK/holds-stub.py" rgrun --workers-from "$WORK/fleet-un.json")"
 has "a register whose --keys read fails reads the live workers unknown (tick prints ?)" "$(fault_head "$f_keys")" "live workers unknown"
 has "... and names the register unknown" "$(fault_head "$f_keys")" "holds register unknown"
@@ -2296,7 +2307,9 @@ lacks "OFF reads the worker from its doc: its Writes-only file stays held" "$f_o
 printf '4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
 
 same_reg="$(HOME="$REAL_HOME" real_register)"
-[ "$REAL_BEFORE" = "$same_reg" ] && pass "the real ~/.himmel/state/holds is unchanged" || fail "the real ~/.himmel/state/holds changed during the run"
+case "$REAL_BEFORE$same_reg" in *STAT-ERROR*) fail "the real register snapshot hit a stat error (before: $REAL_BEFORE; after: $same_reg)" ;;
+    *) [ "$REAL_BEFORE" = "$same_reg" ] && pass "the real ~/.himmel/state/holds is unchanged" || fail "the real ~/.himmel/state/holds changed during the run" ;;
+esac
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
