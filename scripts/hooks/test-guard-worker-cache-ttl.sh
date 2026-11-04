@@ -217,6 +217,57 @@ expect_allow "junk payload -> allow (fail open)"
 run_guard ''
 expect_allow "empty payload -> allow (fail open)"
 
+# --- a READY / FINDING / BLOCKED marker is a correct wait -----------------------
+# The worker just reported to the chief and is waiting on the chief's reply, so
+# the refusal is skipped. A real idle still fires: no marker, a LIVE bullet, a stale marker, a marker word that
+# is not a bullet or message opener.
+row_bash() { jq -nc --arg c "$1" '{type:"assistant",message:{content:[{type:"tool_use",name:"Bash",input:{command:$c}}]}}'; }
+row_send() { jq -nc --arg m "$1" --arg to "${2:-roadmap-chief}" '{type:"assistant",message:{content:[{type:"tool_use",name:"SendMessage",input:{to:$to,message:$m}}]}}'; }
+APPEND="bash /repo/scripts/handover/chief-kit/append-results.sh /handover/HIMMEL-1-N1-fixture-worker.md"
+mk_transcript() {   # mk_transcript <name> <row>... — a JSONL fixture ending in the text row
+    local f="$TMP/$1.jsonl"; shift
+    { for r in "$@"; do printf '%s\n' "$r"; done; printf '%s\n' "$ROW_TEXT"; } > "$f"
+    printf '%s' "$f"
+}
+R_EDIT="$(row_bash 'git status')"
+
+for marker in READY FINDING BLOCKED; do
+    t="$(mk_transcript "bullet-$marker" "$R_EDIT" "$(row_bash "$APPEND \"$marker 4702 head GREEN\"")")"
+    run_guard "$(payload "$t")"
+    expect_allow "$marker bullet via append-results.sh as the last act -> allow (waiting on the chief)"
+    t="$(mk_transcript "send-$marker" "$R_EDIT" "$(row_send "$marker 4702 head GREEN")")"
+    run_guard "$(payload "$t")"
+    expect_allow "$marker SendMessage to the chief as the last act -> allow"
+done
+t="$(mk_transcript marker-then-two "$(row_bash "$APPEND \"READY 4702 head GREEN\"")" "$R_EDIT" "$R_EDIT")"
+run_guard "$(payload "$t")"
+expect_allow "READY bullet followed by two quick reads (inside the last-4 window) -> allow"
+
+t="$(mk_transcript no-marker "$R_EDIT" "$R_EDIT" "$(row_send 'status note for the chief')")"
+run_guard "$(payload "$t")"
+expect_block "real idle: tool calls but no READY/FINDING/BLOCKED marker -> block"
+t="$(mk_transcript live-bullet "$R_EDIT" "$(row_bash "$APPEND \"LIVE — resumed\"")")"
+run_guard "$(payload "$t")"
+expect_block "real idle: a LIVE bullet is not one of the three markers -> block"
+t="$(mk_transcript stale-marker "$(row_bash "$APPEND \"READY 4702 head GREEN\"")" "$R_EDIT" "$R_EDIT" "$R_EDIT" "$R_EDIT")"
+run_guard "$(payload "$t")"
+expect_block "real idle: the marker is older than the last 4 tool calls -> block"
+t="$(mk_transcript marker-word "$R_EDIT" "$(row_bash 'echo READY')" "$(row_send 'not READY yet, still testing')")"
+run_guard "$(payload "$t")"
+expect_block "real idle: READY inside other text, not a bullet or message opener -> block"
+t="$(mk_transcript to-peer "$R_EDIT" "$(row_send 'FINDING shared with a peer' N4741-worker)")"
+run_guard "$(payload "$t")"
+expect_block "real idle: a FINDING sent to a peer worker, not the chief -> block"
+t="$(mk_transcript to-console "$R_EDIT" "$(row_send 'BLOCKED on a permission prompt' nextleg-console)")"
+run_guard "$(payload "$t")"
+expect_allow "BLOCKED sent to a console-named session -> allow"
+t="$(mk_transcript to-chief-lookalike "$R_EDIT" "$(row_send 'FINDING for a helper' roadmap-chief-worker)")"
+run_guard "$(payload "$t")"
+expect_block "real idle: a recipient only containing chief mid-name is not a chief -> block"
+t="$(mk_transcript marker-with-bg "$(row_bash "$APPEND \"READY 4702 head GREEN\"")" "$(row_bg b8)")"
+run_guard "$(payload "$t")"
+expect_allow "marker plus a running background task -> allow (unchanged)"
+
 # a chief's own lock is skipped whether the doc is named *-console or *-chief
 CHIEF_SESSION="test-session-himmel-7505"
 for chief_doc in "$HANDOVER_DIR/HIMMEL-nextleg-2026-10-25A-roadmap-chief.md" "$HANDOVER_DIR/HIMMEL-nextleg-2026-10-25B-roadmap-chief.md"; do
