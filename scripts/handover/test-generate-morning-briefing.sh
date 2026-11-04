@@ -472,7 +472,7 @@ file=$(cat "$OUT_GHF")
 assert_contains "gh-down banner"          "gh PR state unavailable"      "$file"
 assert_contains "gh-down stale message"   "stale detection unavailable"  "$file"
 assert_contains "gh-down: TL;DR stale unavailable" "stale worktrees unavailable" "$file"
-if grepq "$file" -F -- "**0** stale worktrees"; then fail "gh-down: TL;DR never shows 0 stale"; else pass "gh-down: TL;DR never shows 0 stale"; fi
+if grepq "$file" -F -- "**0** stale branches"; then fail "gh-down: TL;DR never shows 0 stale"; else pass "gh-down: TL;DR never shows 0 stale"; fi
 assert_contains "gh-down: waits open PRs gap"    "Open PRs: not available"             "$(lead_of "$file")"
 assert_contains "gh-down: waits stale gap"       "Stale worktrees: not available"      "$(lead_of "$file")"
 assert_contains "bb: waits stale gap"            "Stale worktrees: not available"      "$(lead_of "$bb_file")"
@@ -1031,6 +1031,20 @@ assert_absent   "zone utc: the +10 local morning of the next UTC day does not sh
 assert_contains "zone local: the station zone (+10) takes the commit that is 08:00 there" "early-utc" "$zl"
 assert_absent   "zone local: the 23:30 UTC commit is the next local day" "late-utc" "$zl"
 
+echo "TEST: the day window is half open and a commit dated out of order does not end the walk"
+EDGEREPO="$TMP_ROOT/edgerepo"; mk_day_repo "$EDGEREPO"
+dc "$EDGEREPO" 2026-11-03T00:00:00Z "chore: at-day-start"
+dc "$EDGEREPO" 2026-11-03T10:00:00Z "feat: hidden-by-skew"
+n=1; while [ "$n" -le 7 ]; do dc "$EDGEREPO" 2026-10-31T10:00:00Z "chore: skew-$n"; n=$((n+1)); done
+dc "$EDGEREPO" 2026-11-04T00:00:00Z "chore: at-next-midnight"
+OUT_EDGE="$TMP_ROOT/edge.md"
+run_day "$EDGEREPO" --out "$OUT_EDGE" >/dev/null
+edge=$(cat "$OUT_EDGE")
+assert_contains "edge: a commit at the day's first second counts" "at-day-start" "$edge"
+assert_absent   "edge: a commit at the next day's first second does not" "at-next-midnight" "$edge"
+assert_contains "edge: a day commit under seven older-dated commits is still counted" "hidden-by-skew" "$edge"
+assert_contains "edge: the heading counts exactly the two commits of the day" "Commits (2 on Tue 3 Nov)" "$edge"
+
 echo "TEST: no Backlog section; --backlog-limit is accepted and ignored with a stderr note"
 OUT_BL2="$TMP_ROOT/nobacklog.md"
 err=$(FAKE_JIRA_TODO=$'HIMMEL-801\tTask\tTo Do\tAlpha' FAKE_JIRA_INPROG=$'HIMMEL-901\tTask\tIn Progress\tThing' \
@@ -1059,11 +1073,16 @@ assert_absent   "remote: a branch with an OPEN PR is never listed" "old-open" "$
 assert_absent   "remote: a 3-day-old branch is not listed" "origin/recent" "$rem"
 assert_absent   "remote: origin/main is never listed" "origin/main" "$rem"
 assert_absent   "remote: origin/HEAD is never listed" "origin/HEAD" "$rem"
-assert_contains "remote: the waits line counts the remote rows" "**3** stale worktree(s)" "$(lead_of "$(cat "$OUT_RM")")"
+assert_contains "remote: the waits line counts the remote rows" "**3** stale branch(es)" "$(lead_of "$(cat "$OUT_RM")")"
 assert_contains "remote: the report says how fresh the remote refs are" "Remote refs as last fetched" "$(cat "$OUT_RM")"
 OUT_RM2="$TMP_ROOT/remote-stale2.md"
 FAKE_GH_PR_ALL="$PRALL" STALE_BRANCH_DAYS=2 run_day "$REMREPO" --out "$OUT_RM2" >/dev/null
 assert_contains "remote: STALE_BRANCH_DAYS lowers the idle bar" "origin/recent" "$(cat "$OUT_RM2")"
+OUT_RM3="$TMP_ROOT/remote-stale3.md"
+rc=0
+FAKE_GH_PR_ALL="$PRALL" STALE_BRANCH_DAYS=08 run_day "$REMREPO" --out "$OUT_RM3" >/dev/null 2>&1 || rc=$?
+if [ "$rc" -eq 0 ]; then pass "remote: STALE_BRANCH_DAYS=08 is decimal, not an octal error"; else fail "remote: STALE_BRANCH_DAYS=08 is decimal, not an octal error" "rc=$rc"; fi
+assert_contains "remote: STALE_BRANCH_DAYS=08 still lists the 9-day-old branch" "origin/old-nopr" "$(cat "$OUT_RM3" 2>/dev/null || true)"
 
 echo "TEST: sixteen or more idle branches print 15 rows and a count by kind"
 MANYREPO="$TMP_ROOT/manyrepo"; mk_day_repo "$MANYREPO"
@@ -1073,7 +1092,7 @@ FAKE_GH_PR_ALL='[]' run_day "$MANYREPO" --out "$OUT_MANY" >/dev/null
 rows=$(grep -cF '| `origin/' "$OUT_MANY" || true)
 if [ "$rows" = "15" ]; then pass "many: 15 remote rows are printed"; else fail "many: 15 remote rows are printed" "got $rows"; fi
 assert_contains "many: the rest are counted by kind" "and 5 more (0 worktree, 5 remote)" "$(cat "$OUT_MANY")"
-assert_contains "many: the waits line counts all twenty" "**20** stale worktree(s)" "$(lead_of "$(cat "$OUT_MANY")")"
+assert_contains "many: the waits line counts all twenty" "**20** stale branch(es)" "$(lead_of "$(cat "$OUT_MANY")")"
 
 echo "TEST: the failure review is a table from the digest's JSON, with no worker name"
 FRV="$SCRIPT_DIR/../eval/worker-digest/failure_review.py"

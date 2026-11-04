@@ -299,9 +299,12 @@ if [ -n "$default_branch" ]; then
     elif $GIT_CMD -C "$repo_root" rev-parse --verify -q "refs/remotes/origin/$default_branch" >/dev/null 2>&1; then default_ref="refs/remotes/origin/$default_branch"; fi
 fi
 
-# Commits: the report day's, [today 00:00, next day 00:00) on the default branch, read with the zone pinned on the git
-# call (UTC when report_day=utc, the station zone otherwise) so git and `today` agree. --since SHA is the explicit
-# override: SHA..HEAD, and the heading then says "since SHA". Without a next day the window has no end.
+# Commits: the report day's, [today 00:00, today 23:59:59] on the default branch (second resolution: a commit at the next
+# midnight belongs to the next day), read with the zone pinned on the git call (UTC when report_day=utc, the station zone
+# otherwise) so git and `today` agree. --since-as-filter reads every commit in range, so a commit dated out of order
+# does not end the walk early; a git without it falls back to --since. --since SHA is the explicit override: SHA..HEAD,
+# and the heading then says "since SHA".
+day_commits() { ( [ "$report_day" = "utc" ] && export TZ=UTC; $GIT_CMD -C "$repo_root" log --oneline "$1=$today 00:00:00" --until="$today 23:59:59" "$default_ref" 2>/dev/null ); }
 if [ "$since_given" -eq 1 ]; then
     commit_range="${SINCE_SHA}..HEAD"
     if commits_raw=$($GIT_CMD -C "$repo_root" log --oneline "$commit_range" 2>/dev/null); then
@@ -310,10 +313,10 @@ if [ "$since_given" -eq 1 ]; then
         commits_raw=""
     fi
 else
-    until_args=()
-    [ -n "$next_day" ] && until_args=(--until="$next_day 00:00")
     # swallow-ok: a failed git read leaves the day without commits, and the section says none were found
-    if commits_raw=$( [ "$report_day" = "utc" ] && export TZ=UTC; $GIT_CMD -C "$repo_root" log --oneline --since="$today 00:00" ${until_args[@]+"${until_args[@]}"} "$default_ref" 2>/dev/null ); then
+    if commits_raw=$(day_commits --since-as-filter); then
+        :
+    elif commits_raw=$(day_commits --since); then
         :
     else
         commits_raw=""
@@ -434,6 +437,7 @@ EOF_WT
 
 stale_days="${STALE_BRANCH_DAYS:-7}"
 case "$stale_days" in ''|*[!0-9]*) stale_days=7 ;; esac
+stale_days=$((10#$stale_days))   # a leading zero (08) is decimal here, not octal
 remote_scanned=0; stale_odd=0; fetch_note=""
 if [ "$briefing_forge" = "github" ] && [ "$pr_map_ok" -eq 1 ]; then
     remote_scanned=1
@@ -723,7 +727,7 @@ open_prs=$(printf '%s\n' "$pr_map" | awk -F'\t' '$1=="OPEN"{c++} END{print c+0}'
 
 if [ "$briefing_forge" = "github" ] && [ "$pr_map_ok" -eq 1 ]; then
     open_prs_shown="**${open_prs}** open PRs"
-    stale_shown="**${stale_count}** stale worktrees"
+    stale_shown="**${stale_count}** stale branches"
 else
     open_prs_shown="open PRs unavailable"
     stale_shown="stale worktrees unavailable"
@@ -736,7 +740,7 @@ fi
 
 order_default=$(
     n=1
-    [ "$stale_count" -gt 0 ] && { printf '%d. Prune %s stale worktree(s)%s.\n' "$n" "$stale_count" "$(cmd_hint clean)"; n=$((n+1)); }
+    [ "$stale_count" -gt 0 ] && { printf '%d. Prune %s stale branch(es)%s.\n' "$n" "$stale_count" "$(cmd_hint clean)"; n=$((n+1)); }
     [ "$open_prs" -gt 0 ] && { printf '%d. Review/merge %s open PR(s)%s.\n' "$n" "$open_prs" "$(cmd_hint pr-check)"; n=$((n+1)); }
     [ "$inprog_count" -gt 0 ] && { printf '%d. Advance %s In-Progress ticket(s).\n' "$n" "$inprog_count"; n=$((n+1)); }
     :   # force final exit 0 — a trailing short-circuit && would propagate rc1 to
@@ -885,7 +889,7 @@ EOF
     printf '## ⏳ What waits on you\n\n'
     if [ "$briefing_forge" = "github" ] && [ "$pr_map_ok" -eq 1 ]; then
         printf -- '- **%s** open PR(s) to review/merge%s\n' "$open_prs" "$(cmd_hint pr-check)"
-        printf -- '- **%s** stale worktree(s) to prune%s\n' "$stale_count" "$(cmd_hint clean)"
+        printf -- '- **%s** stale branch(es) to prune%s\n' "$stale_count" "$(cmd_hint clean)"
     elif [ "$briefing_forge" != "github" ]; then
         printf -- '- Open PRs: not available (no GitHub forge for this project)\n'
         printf -- '- Stale worktrees: not available (no GitHub forge for this project)\n'
