@@ -101,6 +101,11 @@ for _e in "$REPO_REAL"/scripts/* "$REPO_REAL"/docs/*; do
     esac
 done
 C="$fixture_repo/scripts/handover/chief/chief.sh"
+# A failed bus register refuses a chief launch, so the fixture
+# carries an always-OK bus at the default CLI path; the bus rows bring their own.
+mkdir -p "$fixture_repo/marketplace/plugins/himmel-bus/bin"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$fixture_repo/marketplace/plugins/himmel-bus/bin/bus"
+chmod +x "$fixture_repo/marketplace/plugins/himmel-bus/bin/bus"
 
 root="$tmp/handovers"
 mkdir -p "$root"
@@ -2478,7 +2483,7 @@ HANDOVER_DIR="$root" bash "$QL" release "$root/tester/nosuffix78/DEMO-nextleg-${
 # --- 79: the chief profile's himmel-bus opt-in registers the
 # armed chief (--predecessor on next), exports only HIMMEL_BUS_NAME plus the
 # bind flag, and drops a predecessor's own HIMMEL_BUS_*; opted-out registers
-# and exports nothing; a failed register warns and still arms.
+# and exports nothing; a failed register warns and refuses to arm.
 bus79="$tmp/bus79"; mkdir -p "$bus79"
 cat > "$bus79/arm.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -2533,11 +2538,38 @@ check "79 opted-out: armed env carries no HIMMEL_BUS_* and no bind flag" \
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79out/$session79c.md" "$(token_of "$out79c")" >/dev/null 2>&1
 rm -f "$bus79/calls"
 out79d="$(run79 in new bus79fail BUS79_FAIL=1)"
-check "79 failed register: chief still arms" "$(printf '%s\n' "$out79d" | grep -c '^armed: ')" "1"
+check "79 failed register: the chief is not armed" "$(printf '%s\n' "$out79d" | grep -c '^armed: ')" "0"
 check "79 failed register: warned" "$(printf '%s\n' "$out79d" | grep -c 'WARN bus register failed')" "1"
-check "79 failed register: the warning lands in the launch log" \
-    "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-chief".log 2>/dev/null | grep -c 'WARN: bus register failed for .* launching unbound')" "1"
+check "79 failed register: the refusal lands in the launch log" \
+    "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-chief".log 2>/dev/null | grep -c 'WARN: bus register failed for .* refusing to launch')" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79fail/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79d")" >/dev/null 2>&1
+# Chief-path twin, on the REAL bus CLI: a chief name already bound
+# refuses the launch whether its holder is dead (a chief name is never re-bound)
+# or live, exits non-zero, launches nothing and names the holder pid.
+if [ -r /proc/self/stat ]; then
+  bus9071="$tmp/bus9071"; mkdir -p "$bus9071/state" && chmod 700 "$bus9071/state"
+  bus9071_cli="$HERE/../../../marketplace/plugins/himmel-bus/bin/bus"
+  session9071="DEMO-nextleg-${today}A-bus79-chief"
+  for case9071 in dead live; do
+    XDG_STATE_HOME="$bus9071/state" "$bus9071_cli" register "$session9071" --role chief >/dev/null 2>&1
+    sleep 30 & pid9071=$!
+    XDG_STATE_HOME="$bus9071/state" "$bus9071_cli" bind "$session9071" "$pid9071" >/dev/null 2>&1
+    if [ "$case9071" = dead ]; then kill "$pid9071" 2>/dev/null; wait "$pid9071" 2>/dev/null || true; fi
+    rc9071=0
+    out9071="$( ( cd "$fixture_repo" && env HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+        XDG_STATE_HOME="$bus9071/state" CHIEF_BUS_CLI="$bus9071_cli" CHIEF_BUS_PROFILES_MJS="$bus79/profiles-in.mjs" \
+        CHIEF_HEADED_ARM="$bus79/arm.sh" CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work9071-$case9071" \
+        bash "$C" new --bucket "bus9071$case9071" --name bus79-chief --arm --deadline-min 0 ) 2>&1)" || rc9071=$?
+    check "9071 chief path, $case9071 holder: launch refused (non-zero)" "$([ "$rc9071" -ne 0 ] && echo refused || echo "rc=$rc9071")" "refused"
+    check "9071 chief path, $case9071 holder: nothing armed" \
+        "$(cat "$tmp/work9071-$case9071"/*/launch-"$session9071".log 2>/dev/null | grep -c '^bus_name=')" "0"
+    contains "$out9071" "$session9071" "9071 chief path, $case9071 holder: refusal names the chief"
+    contains "$out9071" "pid $pid9071" "9071 chief path, $case9071 holder: refusal names the holder pid"
+    HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus9071$case9071/$session9071.md" "$(token_of "$out9071")" >/dev/null 2>&1
+    kill "$pid9071" 2>/dev/null; wait "$pid9071" 2>/dev/null || true
+    rm -rf "$bus9071/state/himmel"
+  done
+fi
 # a successor whose register works but whose stamp fails still arms, bound, and says so in the launch log
 rm -f "$bus79/calls"
 out79e="$(run79 in new bus79stamp)"

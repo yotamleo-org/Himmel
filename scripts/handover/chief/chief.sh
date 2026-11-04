@@ -364,7 +364,8 @@ do_arm() {
     # pid. Whatever HIMMEL_BUS_* this process carries (a predecessor chief's
     # own HIMMEL_BUS_NAME is live in its shell) never reaches the successor, and
     # the chief profile's opt-in decides whether anything is registered.
-    # Fail-open: a failed register warns and the chief launches unbound.
+    # A failed register refuses the launch; a failed profile probe warns and
+    # the chief launches unbound.
     local bus_var bus_cli bus_args
     for bus_var in $(compgen -v HIMMEL_BUS_); do unset "$bus_var"; done
     unset HEADED_ARM_BUS HEADED_ARM_BUS_CLI HIMMEL_CHIEF_PREDECESSOR
@@ -392,7 +393,11 @@ do_arm() {
             fi
             bus_note "$log" "registered $session as chief$bus_stamp"
         else
-            bus_warn "$log" "bus register failed for $session - launching unbound: $bus_out"
+            # An unbound chief can neither hear nor reach its
+            # workers, so a failed register (a live holder, whose pid the
+            # error names, or a broken bus) refuses the launch.
+            bus_warn "$log" "bus register failed for $session - refusing to launch: $bus_out"
+            return 2
         fi
     fi
     # plugin /chief from any repo: a

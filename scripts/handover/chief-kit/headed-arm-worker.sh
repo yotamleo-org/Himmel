@@ -2723,13 +2723,10 @@ fi
 # (the only party that knows it before the model exists), hands the worker
 # HIMMEL_BUS_NAME and nothing else, and tells headed-arm.sh to bind the claude
 # pid it resolves. No secret exists: identity is (name, pid, start time).
-# Fail-open on purpose: no profile requires the bus in phase 1, and an
-# unregistered worker is merely unbound (bus send refused) and keeps today's
-# channels, so a register failure warns (launch log, launcher stdout, a
-# bus=FAIL: worker-doc bullet) and never blocks a launch of the live fleet. A headless worker
+# A register failure refuses the launch: an unbound worker is deaf
+# and mute to its chief. A headless worker
 # never binds (spec 8.5), so it is not registered either; nor is a worker whose doc
 # names no chief, which has nobody to register with.
-# ponytail: fail-open only until a profile can require the bus, upgrade path HIMMEL-4818 phase 2.
 # A profile with no mcpServers field (null) loads every user MCP server,
 # himmel-bus among them, so it opts in too.
 case "${MCP_NAMES_JSON:-}" in
@@ -2749,16 +2746,21 @@ case "${MCP_NAMES_JSON:-}" in
                 # The CLI that registered is the CLI that binds.
                 export HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$BUS_CLI"
             else
-                echo "$(date +%F_%T) headed-arm-worker: WARN bus register failed for $NAME - launching unbound: $BUS_OUT" >> "$LOG"
-                # a failed register was only ever in the log, so the
-                # bus sat dead unseen. Say it on stdout and leave a bus=FAIL:
+                # An unbound worker can neither hear nor reach its
+                # chief, so a failed register refuses the launch. A relaunch whose
+                # previous holder is gone re-registers (identity.mjs register), so
+                # what fails here is a live holder (the error names its pid) or a
+                # broken bus. Said in the log, on stdout and stderr, and as a bus=FAIL:
                 # bullet in the worker doc (a lowercase lead is a non-status
                 # bullet: the tick tail ignores it, a grep for bus=FAIL finds it).
                 # WRAPPED is stripped: worker_tail_status reads a final unmarked
                 # bullet containing it as a wrap.
+                echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - bus register failed: $BUS_OUT" >> "$LOG"
                 BUS_REASON="$(printf '%s' "$BUS_OUT" | tr '\n>' ' -' | sed 's/WRAPPED//g' | cut -c1-160)"
-                echo "headed-arm-worker: WARN bus register failed for $NAME - launching unbound (bus=FAIL:$BUS_REASON)"
+                echo "headed-arm-worker: refusing to launch $NAME - bus register failed (bus=FAIL:$BUS_REASON)"
+                echo "headed-arm-worker: refusing to launch $NAME - bus register failed: $BUS_OUT" >&2
                 bash "$HERE/append-results.sh" "$DOC" "bus=FAIL:$BUS_REASON" >/dev/null 2>&1 || true
+                exit 2
             fi
         fi
         ;;

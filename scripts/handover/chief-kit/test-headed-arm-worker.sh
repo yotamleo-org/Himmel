@@ -4763,7 +4763,7 @@ check "44f --dry-run writes no config" "$([ -e "$pt_home/.claude.json" ] && echo
 # bus CLI before launch (peer file 0600, no secret in it) and hands the launched
 # env exactly HIMMEL_BUS_NAME, whatever HIMMEL_BUS_* the caller preset or left in
 # its ambient env. An opted-out profile registers nothing and carries no
-# HIMMEL_BUS_* either; a failed register never blocks the launch.
+# HIMMEL_BUS_* either; a failed register refuses the launch.
 bus45="$tmp/c45"; mkdir -p "$bus45"
 cat > "$bus45/headed" <<'HEADED_EOF'
 #!/usr/bin/env bash
@@ -4845,11 +4845,10 @@ rc=0; run45 in HIMMEL-45-in || rc=$?
 check "45l re-arm of an unbound name: launch exits 0" "$rc" "0"
 check "45m re-arm of an unbound name: the launched env carries HIMMEL_BUS_NAME" "$(bus45_toks)" "HIMMEL_BUS_NAME=HIMMEL-45-in"
 check "45n re-arm of an unbound name: headed-arm.sh is told to bind" "$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen")" "1"
-# the same name registered under another chief is refused: launch goes, unbound
+# the same name registered under another chief is refused: the launch is refused too
 rc=0; run45 in HIMMEL-45-in HIMMEL-chief-45-other || rc=$?
-check "45o refused register (changed chief): launch still exits 0" "$rc" "0"
-check "45p refused register: no HIMMEL_BUS_* in the launched env" "$(bus45_toks)" ""
-check "45q refused register: headed-arm.sh is not told to bind" "$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen")" "<unset>"
+check "45o refused register (changed chief): launch exits 2" "$rc" "2"
+check "45q refused register: nothing launched" "$([ -e "$bus45/seen" ] && echo launched || echo none)" "none"
 # the refused register is no longer log-only: it is on the launcher's
 # stdout and a bus=FAIL: bullet sits in the worker doc, still not a status marker.
 bus45_doc="$bus45/worker-doc.md"; fx_brief '# fixture doc' > "$bus45_doc"
@@ -4873,6 +4872,43 @@ HEADED_ARM_BUS_CLI="$bus45_stub" XDG_STATE_HOME="$bus45/state" \
     bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45-other3 HIMMEL-45-in3 "$bus45_doc2" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 >/dev/null 2>&1 || true
 check "45z failed register naming WRAPPED: bullet written, word stripped" "$(grep -c '^- [0-9:]* bus=FAIL:.*WRAPPED' "$bus45_doc2"):$(grep -c '^- [0-9:]* bus=FAIL:' "$bus45_doc2")" "0:1"
 check "45z2 failed register naming WRAPPED: tail status stays LIVE" "$(. "$HERE/../../lib/worker-tail-status.sh"; worker_tail_status "$bus45_doc2")" "LIVE"
+# A relaunch of a bound name never launches unbound. Its previous
+# holder dead (9071a), the name comes up registered again and a fresh pid binds
+# it (a bus read answers live); its holder live (9071b), the launch is refused,
+# nothing is launched and the refusal names the worker and the holder pid.
+if [ -r /proc/self/stat ]; then
+  bus9071_cli="$HERE/../../../marketplace/plugins/himmel-bus/bin/bus"
+  rc=0; run45 in HIMMEL-9071-dead || rc=$?
+  sleep 30 & bus9071_old=$!
+  XDG_STATE_HOME="$bus45/state" "$bus9071_cli" bind HIMMEL-9071-dead "$bus9071_old" >/dev/null 2>&1
+  kill "$bus9071_old" 2>/dev/null; wait "$bus9071_old" 2>/dev/null || true
+  rc=0; run45 in HIMMEL-9071-dead || rc=$?
+  check "9071a dead holder relaunch: launch exits 0" "$rc" "0"
+  check "9071a dead holder relaunch: headed-arm.sh is told to bind" "$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen" 2>/dev/null)" "1"
+  check "9071a dead holder relaunch: the launched env carries HIMMEL_BUS_NAME" "$(bus45_toks)" "HIMMEL_BUS_NAME=HIMMEL-9071-dead"
+  check "9071a dead holder relaunch: no launching-unbound warning" "$(grep -c 'register failed for HIMMEL-9071-dead' "$bus45/log")" "0"
+  sleep 30 & bus9071_new=$!
+  XDG_STATE_HOME="$bus45/state" "$bus9071_cli" bind HIMMEL-9071-dead "$bus9071_new" >/dev/null 2>&1
+  check "9071a dead holder relaunch: the new pid binds and a bus read answers live" \
+    "$(XDG_STATE_HOME="$bus45/state" "$bus9071_cli" status HIMMEL-9071-dead 2>&1)" "live"
+  kill "$bus9071_new" 2>/dev/null; wait "$bus9071_new" 2>/dev/null || true
+  rc=0; run45 in HIMMEL-9071-live || rc=$?
+  sleep 30 & bus9071_live=$!
+  XDG_STATE_HOME="$bus45/state" "$bus9071_cli" bind HIMMEL-9071-live "$bus9071_live" >/dev/null 2>&1
+  rm -f "$bus45/seen"
+  rc=0
+  bus9071_out="$(XDG_STATE_HOME="$bus45/state" \
+    HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
+    HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+      bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45 HIMMEL-9071-live "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 2>&1)" || rc=$?
+  check "9071b live holder relaunch: launch refused (non-zero)" "$([ "$rc" -ne 0 ] && echo refused || echo "launched rc=$rc")" "refused"
+  check "9071b live holder relaunch: nothing launched" "$([ -e "$bus45/seen" ] && echo launched || echo none)" "none"
+  contains "9071b live holder relaunch: refusal names the worker" "$bus9071_out" "HIMMEL-9071-live"
+  contains "9071b live holder relaunch: refusal names the holder pid" "$bus9071_out" "pid $bus9071_live"
+  check "9071b live holder relaunch: the holder stays bound and live" \
+    "$(XDG_STATE_HOME="$bus45/state" "$bus9071_cli" status HIMMEL-9071-live 2>&1)" "live"
+  kill "$bus9071_live" 2>/dev/null; wait "$bus9071_live" 2>/dev/null || true
+fi
 # an opted-out profile launched from a shell that carries a live
 # bind flag and an extra HIMMEL_BUS_* leaks neither to the launched env.
 rm -f "$bus45/seen"

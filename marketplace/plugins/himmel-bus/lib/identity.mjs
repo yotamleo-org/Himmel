@@ -104,9 +104,10 @@ export async function loadPeers(root) {
 // an entry that was registered but never bound, with the same
 // role, console, pair and predecessor, is adopted instead of refused - it has
 // no pid, so nothing can resolve to it and re-registering grants nothing new.
+// A bound non-chief entry whose pid is gone is reset to unbound the same way.
 // The chief a session belongs to is stored under `console` (the stored field is not renamed here).
 // `console` is the pre-rename spelling of `chief`: read while the legacy-names switch is on.
-export async function register(root, name, { role: given, chief, console: old, pair, predecessor } = {}) {
+export async function register(root, name, { role: given, chief, console: old, pair, predecessor, proc = '/proc' } = {}) {
   checkName(name);
   if (old !== undefined && !legacyNamesOn()) throw new Error('--console was renamed to --chief');
   if (old !== undefined && chief !== undefined && chief !== old) throw new Error('--console and --chief name different chiefs');
@@ -125,10 +126,23 @@ export async function register(root, name, { role: given, chief, console: old, p
     const held = await readPeer(root, name);
     const same = ['role', 'console', 'pair', 'predecessor'].every(key => held?.[key] === peer[key]);
     if (held && held.pid === undefined && same) return held;
-    throw new Error(`name already registered: ${name}`);
+    // A relaunch of a non-chief name whose holder is gone takes the name back
+    // unbound, as `rebind` would let any new pid take it.
+    if (held && same && role !== 'chief') return reclaim(root, name, peer, proc);
+    throw new Error(`name already registered: ${name}${held?.pid === undefined ? '' : ` (holder pid ${held.pid})`}`);
   }
   finally { await unlink(path).catch(() => {}); }
   return peer;
+}
+
+// Under the registry lock: the holder must still be gone, else the name stays its.
+async function reclaim(root, name, peer, proc) {
+  return update(root, name, async held => {
+    if (held.pid !== undefined && await status(root, name, { proc }) === 'live') {
+      throw new Error(`name already registered: ${name} (holder pid ${held.pid})`);
+    }
+    return peer;
+  });
 }
 
 async function start(proc, pid) {
