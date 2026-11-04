@@ -2213,6 +2213,72 @@ has "I13 ... a series-family row is not withheld" "$rgf" "SERIES FAMILY docs/han
 : > "$MERGED_TSV"
 printf '4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
 
+# --- a register that fails or lies is unknown, never free; an unseeded worker keeps its doc's Writes files ---
+# a holds.py stand-in: the real verbs, except the read modes STUB_HOLDS_FAIL names (keys, paths: exit 3; garbled: a two-column
+# row on the --paths-from read; read: every read exits 3)
+cat > "$WORK/holds-stub.py" <<'STUBEOF'
+import os, runpy, sys
+mode = os.environ.get('STUB_HOLDS_FAIL', '')
+a = sys.argv[1:]
+if a[:1] == ['read']:
+    keys, paths = '--keys' in a, '--paths-from' in a
+    if mode == 'read' or (mode == 'keys' and keys) or (mode == 'paths' and paths):
+        sys.stderr.write('stub: register unreadable\n')
+        sys.exit(3)
+    if mode == 'garbled' and paths and not keys:
+        print('only\ttwo')
+        sys.exit(0)
+sys.argv = [os.environ['STUB_REAL_HOLDS']] + a
+runpy.run_path(os.environ['STUB_REAL_HOLDS'], run_name='__main__')
+STUBEOF
+export STUB_REAL_HOLDS="$HOLDS_PY"
+M_SAVE9="$M"; M="$M5"
+mk HIMMEL-9600 "To Do" Highest '[]' '[]' '[]' "a file only a worker doc names" "Edit scripts/lib/unseeded-w.sh."
+M="$M_SAVE9"
+UN_DOC="$WORK/HIMMEL-9610-N9610-unseeded.md"
+printf '# live\n> **Writes:** scripts/lib/unseeded-w.sh\n' > "$UN_DOC"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N9610"}]}\n' "$UN_DOC" > "$WORK/fleet-un.json"
+printf '4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n9610\tfix(x): [HIMMEL-9610] open\tfix/himmel-9610-o\n' > "$PRS_TSV"
+# the one open PR (9610) names a file no other row holds, so a sync-prs row appears under its title's key
+cat > "$WORK/gh-un" <<'GHEOF'
+#!/usr/bin/env bash
+case "$2" in
+    list) case "$*" in *headRefName*|*merged*) exec "$GH_UN_BASE" "$@" ;; *) echo 9610 ;; esac ;;
+    view) exec "$GH_UN_BASE" "$@" ;;
+    *) echo scripts/lib/pr-un-file.sh ;;
+esac
+GHEOF
+chmod +x "$WORK/gh-un"; export GH_UN_BASE="$WORK/gh"
+rgrun() { NEXT_DISPATCH_MIRROR="$M5" NEXT_DISPATCH_GH_CMD="$WORK/gh-un" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --no-classify "$@" 2>"$WORK/rg2.err"; }
+un_out="$(rgrun --workers-from "$WORK/fleet-un.json")"
+lacks "an unseeded worker with an open PR keeps its Writes-only file held (the PR title's key is not a seed)" "$un_out" "HIMMEL-9600	"
+seed HIMMEL-9610 N9610 "$UN_DOC" scripts/lib/seeded-elsewhere.sh
+un_out2="$(rgrun --workers-from "$WORK/fleet-un.json")"
+has "a seeded worker's doc Writes line is not parsed: its register rows say what it holds" "$un_out2" "HIMMEL-9600	"
+
+fault_head() { printf '%s\n' "$1" | grep '^# next-dispatchable:'; }
+f_keys="$(STUB_HOLDS_FAIL=keys ND_HOLDS="$WORK/holds-stub.py" rgrun --workers-from "$WORK/fleet-un.json")"
+has "a register whose --keys read fails reads the live workers unknown (tick prints ?)" "$(fault_head "$f_keys")" "live workers unknown"
+has "... and names the register unknown" "$(fault_head "$f_keys")" "holds register unknown"
+lacks "... and no To Do ticket is offered" "$f_keys" "HIMMEL-56	"
+f_paths="$(STUB_HOLDS_FAIL=paths ND_HOLDS="$WORK/holds-stub.py" rgrun --workers-from "$WORK/fleet-un.json")"
+has "a register whose --paths-from read fails reads the live workers unknown" "$(fault_head "$f_paths")" "live workers unknown"
+lacks "... and no To Do ticket is offered on the paths fault" "$f_paths" "HIMMEL-56	"
+f_garb="$(STUB_HOLDS_FAIL=garbled ND_HOLDS="$WORK/holds-stub.py" rgrun --workers-from "$WORK/fleet-un.json")"
+has "a register row that is not six columns reads the live workers unknown" "$(fault_head "$f_garb")" "live workers unknown"
+lacks "... and no To Do ticket is offered on a malformed row" "$f_garb" "HIMMEL-56	"
+f_ro="$(STUB_HOLDS_FAIL=keys ND_HOLDS="$WORK/holds-stub.py" NEXT_DISPATCH_MIRROR="$M5" NEXT_DISPATCH_GH_CMD="$WORK/gh-un" bash "$SUT" --resume-only --workers-from "$WORK/fleet-un.json" 2>/dev/null)"
+has "--resume-only with a failing register reads the live workers unknown (tick prints ? for orphans)" "$(fault_head "$f_ro")" "live workers unknown"
+lacks "--resume-only with a failing register withholds the RESUME rows" "$f_ro" "RESUME	HIMMEL-50"
+f_dz="$(STUB_HOLDS_FAIL=paths ND_HOLDS="$WORK/holds-stub.py" runcg "$CGM")"
+lacks "a failing register drops a DESIGN row: the design's own files could be held" "$f_dz" "DESIGN${TAB}HIMMEL-901"
+mkdir -p "$HOME/.himmel/state/holds"; : > "$HOME/.himmel/state/holds/OFF"
+f_off="$(STUB_HOLDS_FAIL=read ND_HOLDS="$WORK/holds-stub.py" rgrun --workers-from "$WORK/fleet-un.json")"
+rm -f "$HOME/.himmel/state/holds/OFF"
+lacks "OFF folds the barrier: no register verb runs, so a failing register is not read" "$(fault_head "$f_off")" "holds register unknown"
+lacks "OFF reads the worker from its doc: its Writes-only file stays held" "$f_off" "HIMMEL-9600	"
+printf '4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
+
 same_reg="$(HOME="$REAL_HOME" real_register)"
 [ "$REAL_BEFORE" = "$same_reg" ] && pass "the real ~/.himmel/state/holds is unchanged" || fail "the real ~/.himmel/state/holds changed during the run"
 

@@ -186,7 +186,7 @@ stacked=0
 if . "$REPO/scripts/lib/flags.sh" 2>/dev/null && himmel_flag stacked_series 2>/dev/null; then stacked=1; fi  # swallow-ok: an unreadable registry or bad value reads as off, which is today's output
 export ND_STACKED="$stacked"
 export ND_GIT_DIR="${NEXT_DISPATCH_GIT_DIR:-$REPO}" ND_MAIN_REF="${NEXT_DISPATCH_MAIN_REF:-origin/main}"
-export ND_TOP="$top" ND_MIRROR="$mirror" ND_WORKERS_FROM="$workers_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_DISPO="$dispo" ND_LEDGER="$ledger" ND_HOLDS="$HERE/holds.py"
+export ND_TOP="$top" ND_MIRROR="$mirror" ND_WORKERS_FROM="$workers_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_DISPO="$dispo" ND_LEDGER="$ledger" ND_HOLDS="${ND_HOLDS:-$HERE/holds.py}"
 exec python3 -I - <<'PY'
 import datetime, json, os, re, subprocess, sys, tempfile, time
 
@@ -968,7 +968,7 @@ except (OSError, subprocess.SubprocessError):
 
 # The holds register (scripts/handover/chief-kit/holds.py): the one record of who holds which file. Rows of open PRs are
 # synced in, dead rows swept, then the rows of the candidates' files are read. A worker whose key holds a live (or unproven)
-# row has its files in the register; a worker without one falls back to its doc's Writes line through holds.py parse.
+# SEEDED row (not a sync-prs one) has its files in the register; any other worker falls back to its doc's Writes line through holds.py parse.
 # A register that cannot be read hides holders, so it drops rows like an unread PR list does. OFF folds the barrier: no
 # register verb runs and every worker is read from its doc.
 register_unknown = False
@@ -978,7 +978,7 @@ reg_deadline = time.time() + (30 if resume_only else 60)
 
 def reg(args, fatal=True):
     # one holds.py verb inside the read deadline: its stdout, or None. A read that fails or runs out of time marks the register unknown.
-    global register_unknown
+    global register_unknown, workers_unknown
     left = reg_deadline - time.time()
     r = None
     if left > 0:
@@ -989,16 +989,23 @@ def reg(args, fatal=True):
     if r is None or r.returncode != 0:
         if fatal:
             register_unknown = True
+            workers_unknown = True  # tick reads the header's live-workers-unknown line as a `?`
             print('next-dispatchable: holds register %s failed%s: its holders are unknown' % (args[0], (': ' + r.stderr.strip().splitlines()[-1]) if r is not None and r.stderr.strip() else ''), file=sys.stderr)
         return None
     return r.stdout
 
 def register_rows(out):
     # the rows of a plain read that still hold: (path, holder, key); only a dead row is free
+    global register_unknown, workers_unknown
     rows = []
     for l in (out or '').splitlines():
+        if not l.strip():
+            continue
         c = l.split('\t')
-        if len(c) == 6 and c[5] != 'dead':
+        if len(c) != 6:
+            register_unknown = workers_unknown = True  # a row this reader cannot split could be hiding a holder
+            print('next-dispatchable: holds register row is malformed (%d columns): its holders are unknown' % len(c), file=sys.stderr)
+        elif c[5] != 'dead':
             rows.append((c[0], 'open PR %s' % c[4] if c[3] == 'pr' and c[4] else 'live worker %s' % c[2], c[1]))
     return rows
 
@@ -1008,6 +1015,7 @@ def write_tmp(text):
     return t.name
 
 key_state = {}
+seeded_keys = set()
 if not holds_off:
     if not resume_only and not pr_unknown and pr_file_map:
         tsv = write_tmp(''.join('%s\t%s\t%s\t%s\n' % (n, pr_meta.get(n, ('', ''))[1], re.sub(r'\s+', ' ', pr_meta.get(n, ('', ''))[0]), f)
@@ -1021,6 +1029,8 @@ if not holds_off:
             c = l.split('\t')
             if len(c) == 3:
                 key_state[c[0]] = c[1]
+        # a key counts as seeded only with a row that is not a sync-prs row (source pr): a PR title's key is not proof the worker was seeded
+        seeded_keys = {c[1] for c in (l.split('\t') for l in (reg(['read', '--repo', repo], fatal=False) or '').splitlines()) if len(c) == 6 and c[3] != 'pr' and c[5] != 'dead'}
     want = []
     for i in issues.values():
         for f in i['files']:
@@ -1043,7 +1053,7 @@ def register_all():
     return held_all_rows
 
 for label, doc, lines, wkeys in live_workers:
-    if any(key_state.get(k) in ('alive', 'unknown') for k in wkeys) and not holds_off:
+    if wkeys and key_state.get(wkeys[0]) in ('alive', 'unknown') and wkeys[0] in seeded_keys and not holds_off:
         continue  # its files are in the register
     try:
         r = subprocess.run([sys.executable, '-I', holds_py, 'parse', doc, '--repo', repo], capture_output=True, text=True, timeout=30)
