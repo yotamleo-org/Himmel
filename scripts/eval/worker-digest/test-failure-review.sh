@@ -294,6 +294,28 @@ PATH="$MVF:$PATH" bash "$CAD" arm --vault "$V" --time 07:30 --live --force >/dev
 check "a failed runner swap restores the previous crontab (rc 4)" '[ "$rc" = 4 ] && cmp -s "$CR/tab" "$TMP/tab.before" && ! grep -q -- "--live" "$TMP/runner/failure-review-cadence.sh"'
 bash "$CAD" disarm >/dev/null 2>&1
 check "disarm removes the entry and the runner" '! grep -q "HIMMEL-FailureReview" "$CR/tab" && [ ! -f "$TMP/runner/failure-review-cadence.sh" ]'
+seed_tab() {
+    printf '%s\n' '0 3 * * * /usr/bin/backup' '' '15 6 * * * /opt/x/runner.sh # HIMMEL-FailureReviewOther' \
+        '#30 7 * * * /old/runner.sh # HIMMEL-FailureReview' '' '45 8 * * * /old/failure-review-cadence.sh # HIMMEL-FailureReview' \
+        '5 9 * * * /usr/bin/last' >"$CR/tab"
+    cp "$CR/tab" "$TMP/seed.tab"
+}
+seed_tab
+bash "$CAD" arm --vault "$V" --force >/dev/null 2>&1; rc=$?
+diff "$TMP/seed.tab" "$CR/tab" >"$TMP/seed.diff"
+check "arm --force replaces only the exact live row: one line changed, lookalike/commented/unrelated/blank lines byte-identical" \
+    '[ "$rc" = 0 ] && [ "$(grep -c "^<" "$TMP/seed.diff")" = 1 ] && [ "$(grep -c "^>" "$TMP/seed.diff")" = 1 ] && grep -q "^< 45 8 .* # HIMMEL-FailureReview$" "$TMP/seed.diff"'
+seed_tab
+bash "$CAD" disarm >/dev/null 2>&1
+diff "$TMP/seed.tab" "$CR/tab" >"$TMP/seed.diff"
+check "disarm removes only the exact live row and keeps lookalike, commented, unrelated and blank lines" \
+    '[ "$(grep -c "^<" "$TMP/seed.diff")" = 1 ] && [ "$(grep -c "^>" "$TMP/seed.diff")" = 0 ] && grep -q "^< 45 8 " "$TMP/seed.diff"'
+seed_tab
+printf '%s\n' '50 9 * * * /dup/runner.sh # HIMMEL-FailureReview' >>"$CR/tab"; cp "$CR/tab" "$TMP/seed.tab"
+bash "$CAD" arm --vault "$V" --force >"$TMP/arm-dup.out" 2>&1; rc=$?
+check "two live exact-tag rows: arm refuses (rc 5), names the duplicate, crontab untouched" \
+    '[ "$rc" = 5 ] && cmp -s "$TMP/seed.tab" "$CR/tab" && grep -q "/dup/runner.sh" "$TMP/arm-dup.out"'
+rm -f "$CR/tab"
 printf '#!/usr/bin/env bash\necho SKIPPED-BANK\n' >"$STUB/preflight"; chmod +x "$STUB/preflight"
 C8="$TMP/c8"; mkdir -p "$C8"
 FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" HIMMEL_FAILURE_REVIEW_DIR="$C8/out" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$C2/ledger.jsonl" \
