@@ -333,6 +333,20 @@ run_cron() {
         "$REAL_BASH" "$SCRIPT" "$@"
 }
 
+# arm_full <runner-fn> <args...> — the station of an operator who opted Luna in (a bare arm
+# registers the himmel rows only): the bare arm, then `arm --luna-only` with the same args.
+# Output is concatenated (stderr included); the rc is the first non-zero one.
+arm_full() {
+    local fn="$1" rc=0 o1 o2
+    shift
+    o1=$("$fn" "$@" 2>&1) || rc=$?
+    printf '%s\n' "$o1"
+    [ "$rc" -eq 0 ] || return "$rc"
+    o2=$("$fn" "$@" --luna-only 2>&1) || rc=$?
+    printf '%s\n' "$o2"
+    return "$rc"
+}
+
 # Test C0: usage errors (subcommand parsing precedes the platform case) --------
 
 echo "TEST: missing / unknown subcommand rejected"
@@ -429,7 +443,7 @@ assert_rc "cron arm --dry-run succeeds with no backend credential anywhere" 0 "$
 # Test C2: arm --dry-run touches nothing --------------------------------------
 
 echo "TEST: cron arm --dry-run prints plan, installs nothing"
-out=$(run_cron arm --vault "$VAULT" --dry-run)
+out=$(arm_full run_cron arm --vault "$VAULT" --dry-run)
 assert_contains "dry-run weekly luna entry"   "00 13 * * 0" "$out"
 assert_contains "dry-run daily himmel entry" "20 13 * * * " "$out"
 assert_contains "dry-run luna marker"   "# HIMMEL-GraphMap-Luna"   "$out"
@@ -461,7 +475,7 @@ fi
 
 echo "TEST: cron arm installs entries with defaults, preserves unrelated lines"
 printf '5 5 * * * /usr/bin/true # keep-me\n' > "$CSTATE/crontab"
-out=$(run_cron arm --vault "$VAULT")
+out=$(arm_full run_cron arm --vault "$VAULT")
 assert_contains "cron arm banner" "GRAPHMAP CADENCE ARMED" "$out"
 tab=$(cat "$CSTATE/crontab" 2>/dev/null || echo MISSING)
 assert_contains "weekly luna entry (Sunday) 13:00"   "00 13 * * 0" "$tab"
@@ -842,7 +856,7 @@ fi
 # Test C7: re-arm --force with overrides ----------------------------------------
 
 echo "TEST: cron re-arm --force applies flag overrides"
-out=$(run_cron arm --vault "$VAULT" --force --luna-time 01:15 --himmel-time 02:30 2>&1)
+out=$(arm_full run_cron arm --vault "$VAULT" --force --luna-time 01:15 --himmel-time 02:30 2>&1)
 tab=$(cat "$CSTATE/crontab" 2>/dev/null || echo MISSING)
 assert_contains "cron weekly luna override"   "15 01 * * 0" "$tab"
 assert_contains "cron daily himmel override" "30 02 * * * " "$tab"
@@ -909,7 +923,7 @@ T_AST_LUNA="HIMMEL-GraphMapAst-Luna"
 T_AST_HIMMEL="HIMMEL-GraphMapAst-Himmel"
 
 echo "TEST: cron arm --ast-only --dry-run skips the semantic pair entirely"
-out=$(run_cron arm --vault "$VAULT" --ast-only --dry-run)
+out=$(arm_full run_cron arm --vault "$VAULT" --ast-only --dry-run)
 assert_contains "ast-only dry-run says semantic pair skipped" "semantic pair" "$out"
 assert_not_contains "ast-only dry-run has no weekly luna entry"   "00 13 * * 0" "$out"
 assert_not_contains "ast-only dry-run has no daily himmel entry" "20 13 * * * " "$out"
@@ -918,10 +932,17 @@ assert_contains "ast-only dry-run still has the daily ast-luna entry" "05 00 * *
 assert_contains "ast-only dry-run still has the hourly ast-himmel entry" "15 * * * *" "$out"
 
 echo "TEST: cron arm --ast-only needs no semantic-backend credential or claude on PATH"
-rc=0; out=$(unset MOONSHOT_API_KEY ZAI_API_KEY DEEPSEEK_API_KEY; GRAPHMAP_DOTENV_ROOT="$DOTENV_ROOT_EMPTY" \
-    env OSTYPE=linux-gnu GRAPHMAP_CRONTAB="$FAKE_CRONTAB" GRAPHMAP_BAT_DIR="$CRON_DIR" \
-    PATH="$PATH_NOCLAUDE" "$REAL_BASH" "$SCRIPT" arm --vault "$VAULT" --ast-only 2>&1) || rc=$?
+run_nocred() {
+    (unset MOONSHOT_API_KEY ZAI_API_KEY DEEPSEEK_API_KEY; GRAPHMAP_DOTENV_ROOT="$DOTENV_ROOT_EMPTY" \
+        env OSTYPE=linux-gnu GRAPHMAP_CRONTAB="$FAKE_CRONTAB" GRAPHMAP_BAT_DIR="$CRON_DIR" \
+        PATH="$PATH_NOCLAUDE" "$REAL_BASH" "$SCRIPT" "$@" 2>&1)
+}
+rc=0; out=$(run_nocred arm --vault "$VAULT" --ast-only) || rc=$?
 assert_rc "ast-only arm succeeds with no credential and no claude on PATH" 0 "$rc"
+rc=0; out2=$(run_nocred arm --vault "$VAULT" --ast-only --luna-only) || rc=$?
+assert_rc "ast-only --luna-only arm succeeds with no credential and no claude on PATH" 0 "$rc"
+out="$out
+$out2"
 tab=$(cat "$CSTATE/crontab" 2>/dev/null || echo MISSING)
 if [ "$(grep -c 'HIMMEL-GraphMap' "$CSTATE/crontab" 2>/dev/null)" -eq 2 ]; then
     pass "ast-only arm installed exactly two cadence entries"
@@ -945,17 +966,20 @@ else
 fi
 
 echo "TEST: cron re-arm without --ast-only dedup-blocks on the already-armed AST tasks"
-rc=0; out=$(run_cron arm --vault "$VAULT" 2>&1) || rc=$?
+rc=0; out=$(arm_full run_cron arm --vault "$VAULT" 2>&1) || rc=$?
 assert_rc "full re-arm over an ast-only arm dedup-blocks" 3 "$rc"
-assert_contains "dedup message names the already-armed AST task" "$T_AST_LUNA" "$out"
+assert_contains "dedup message names the already-armed AST task" "$T_AST_HIMMEL" "$out"
+rc=0; out=$(run_cron arm --vault "$VAULT" --luna-only 2>&1) || rc=$?
+assert_rc "a Luna-only re-arm over an ast-only Luna arm dedup-blocks" 3 "$rc"
+assert_contains "the Luna-only dedup message names the already-armed Luna AST task" "$T_AST_LUNA" "$out"
 
 echo "TEST: --ast-only --force re-arm ADDS the AST pair without touching a pre-existing semantic pair"
-out=$(run_cron arm --vault "$VAULT" --force 2>&1)   # full re-arm: now all four are armed
+out=$(arm_full run_cron arm --vault "$VAULT" --force 2>&1)   # full re-arm: now all four are armed
 luna_sh_before=$(cat "$CRON_DIR/graphmap-luna.sh" 2>/dev/null || echo MISSING)
 himmel_sh_before=$(cat "$CRON_DIR/graphmap-himmel.sh" 2>/dev/null || echo MISSING)
 tab_before_luna=$(grep -F "# $T_LUNA" "$CSTATE/crontab" 2>/dev/null || echo MISSING)
 tab_before_himmel=$(grep -F "# $T_HIMMEL" "$CSTATE/crontab" 2>/dev/null || echo MISSING)
-out=$(run_cron arm --vault "$VAULT" --ast-only --force 2>&1)
+out=$(arm_full run_cron arm --vault "$VAULT" --ast-only --force 2>&1)
 assert_contains "ast-only --force re-arm banner" "GRAPHMAP CADENCE ARMED" "$out"
 # The banner must report the pre-existing
 # semantic pair's REAL state, not a blanket "NOT armed" false negative.
@@ -999,7 +1023,7 @@ assert_contains "cron arm failure surfaces stderr" "must be privileged" "$out"
 rc=0; out=$(run_cron status 2>&1) || rc=$?
 assert_rc "cron fail-closed status rc 2" 2 "$rc"
 rm -f "$CSTATE/fail-list"
-out=$(run_cron arm --vault "$VAULT")
+out=$(arm_full run_cron arm --vault "$VAULT")
 touch "$CSTATE/fail-list"
 rc=0; out=$(run_cron disarm 2>&1) || rc=$?
 assert_rc "cron fail-closed disarm rc 2" 2 "$rc"
@@ -1041,7 +1065,7 @@ run_cron disarm >/dev/null
 # Test C10b: --force re-arm with failing install leaves NO half-state ------------
 
 echo "TEST: cron --force re-arm with failing install keeps old runners + entries"
-out=$(run_cron arm --vault "$VAULT")
+out=$(arm_full run_cron arm --vault "$VAULT")
 VAULT2="$TMP_ROOT/vault2"
 mkdir -p "$VAULT2"
 touch "$CSTATE/fail-write"
@@ -1066,7 +1090,7 @@ run_cron disarm >/dev/null
 # Test C10c: disarm with failing install keeps entries + runners -----------------
 
 echo "TEST: cron disarm with failing crontab install exits 4, keeps entries + runners"
-out=$(run_cron arm --vault "$VAULT")
+out=$(arm_full run_cron arm --vault "$VAULT")
 touch "$CSTATE/fail-write"
 rc=0; out=$(run_cron disarm 2>&1) || rc=$?
 assert_rc "cron disarm install failure rc 4" 4 "$rc"
@@ -1094,10 +1118,11 @@ mkdir -p "$EVIL_VAULT"
 out=$(env OSTYPE=linux-gnu GRAPHMAP_CRONTAB="$FAKE_CRONTAB" \
     GRAPHMAP_BAT_DIR="$EVIL_DIR" PATH="$TMP_ROOT/bin:$GRAPHIFY_BIN_DIR_PATH:$CLAUDE_BIN_DIR_PATH:$PATH" \
     "$REAL_BASH" "$SCRIPT" arm --vault "$EVIL_VAULT")
-luna_sh=$(cat "$EVIL_DIR/graphmap-luna.sh" 2>/dev/null || echo MISSING)
-assert_contains "ampersand %q-escaped in runner" 'va\&ult' "$luna_sh"
+# a bare arm writes the himmel runner (the Luna runner is opt-in); its maps dir carries the vault path
+himmel_sh=$(cat "$EVIL_DIR/graphmap-himmel.sh" 2>/dev/null || echo MISSING)
+assert_contains "ampersand %q-escaped in runner" 'va\&ult' "$himmel_sh"
 # shellcheck disable=SC2016  # literal \$X needle — asserting the %q escape itself
-assert_contains "dollar %q-escaped in runner" '\$X' "$luna_sh"
+assert_contains "dollar %q-escaped in runner" '\$X' "$himmel_sh"
 tab=$(cat "$CSTATE/crontab" 2>/dev/null || echo MISSING)
 assert_contains "percent cron-escaped in entry (\\%)" 'cr\%on' "$tab"
 assert_contains "space %q-escaped in entry" 'cr\%on\ rnr' "$tab"
@@ -1171,7 +1196,7 @@ run_cron2() {
 # ("HIMMEL-GraphMap") but is none of the four owned names — an operator's own
 # unrelated entry, by construction.
 printf '0 0 * * * /usr/bin/true # HIMMEL-GraphMapExtra\n' > "$CSTATE2/crontab"
-rc=0; out=$(run_cron2 arm --vault "$VAULT" 2>&1) || rc=$?
+rc=0; out=$(arm_full run_cron2 arm --vault "$VAULT" 2>&1) || rc=$?
 assert_rc "arm succeeds with only an unrelated prefixed entry present (no false dedup-block)" 0 "$rc"
 tab=$(cat "$CSTATE2/crontab" 2>/dev/null || echo MISSING)
 assert_contains "unrelated prefixed entry survives arm's own-entry rewrite" "HIMMEL-GraphMapExtra" "$tab"
@@ -1182,9 +1207,13 @@ else
 fi
 rc=0; out=$(run_cron2 arm --vault "$VAULT" 2>&1) || rc=$?
 assert_rc "re-arm without --force now dedup-blocks on the REAL entries" 3 "$rc"
-assert_contains "dedup message names a real owned entry" "HIMMEL-GraphMap-Luna" "$out"
+assert_contains "dedup message names a real owned entry" "HIMMEL-GraphMap-Himmel" "$out"
 assert_not_contains "dedup message does not name the unrelated entry" "HIMMEL-GraphMapExtra" "$out"
-out=$(run_cron2 arm --vault "$VAULT" --force 2>&1)
+rc=0; out=$(run_cron2 arm --luna-only --vault "$VAULT" 2>&1) || rc=$?
+assert_rc "a Luna-only re-arm without --force dedup-blocks on the real Luna entries" 3 "$rc"
+assert_contains "the Luna-only dedup message names a real Luna entry" "HIMMEL-GraphMap-Luna" "$out"
+assert_not_contains "the Luna-only dedup message does not name the unrelated entry" "HIMMEL-GraphMapExtra" "$out"
+out=$(arm_full run_cron2 arm --vault "$VAULT" --force 2>&1)
 tab=$(cat "$CSTATE2/crontab" 2>/dev/null || echo MISSING)
 assert_contains "unrelated entry still survives a --force re-arm" "HIMMEL-GraphMapExtra" "$tab"
 if [ "$(grep -c 'HIMMEL-GraphMap' "$CSTATE2/crontab")" -eq 5 ]; then
@@ -1528,7 +1557,7 @@ assert_not_contains "no luna semantic entry by default" "HIMMEL-GraphSemantic-Lu
 run_cron3 disarm >/dev/null 2>&1
 
 echo "TEST: cron arm --ast-only --with-luna-semantic registers the luna semantic worker PAUSED"
-rc=0; out=$(run_cron3 arm --vault "$VAULT" --ast-only --with-luna-semantic 2>&1) || rc=$?
+rc=0; out=$(run_cron3 arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic 2>&1) || rc=$?
 assert_rc "arm --with-luna-semantic succeeds" 0 "$rc"
 tab4=$(cat "$CSTATE3/crontab" 2>/dev/null || echo MISSING)
 assert_contains "luna semantic crontab entry present" "# HIMMEL-GraphSemantic-Luna" "$tab4"
@@ -1589,7 +1618,8 @@ fi
 echo "TEST: --semantic-active on a re-arm lifts a pause marker left by the earlier paused arm"
 : > "$CRON_DIR3/semantic-luna.paused"
 : > "$CRON_DIR3/semantic.paused"
-run_cron3 arm --vault "$VAULT" --ast-only --with-luna-semantic --with-publish --publish-semantic --semantic-active >/dev/null 2>&1 || true
+run_cron3 arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --semantic-active >/dev/null 2>&1 || true
+run_cron3 arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic --semantic-active >/dev/null 2>&1 || true
 for _m in semantic-luna.paused semantic.paused; do
     if [ -e "$CRON_DIR3/$_m" ]; then
         fail "re-arm with --semantic-active left $_m" "$(ls "$CRON_DIR3" 2>/dev/null)"
@@ -1603,8 +1633,10 @@ echo "TEST: --semantic-active re-arm whose crontab install fails keeps the pause
 : > "$CRON_DIR3/semantic-luna.paused"
 : > "$CRON_DIR3/semantic.paused"
 touch "$CSTATE3/fail-write"
-rc=0; run_cron3 arm --vault "$VAULT" --ast-only --with-luna-semantic --with-publish --publish-semantic --semantic-active >/dev/null 2>&1 || rc=$?
+rc=0; run_cron3 arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --semantic-active >/dev/null 2>&1 || rc=$?
 assert_rc "semantic-active re-arm install failure rc 4" 4 "$rc"
+rc=0; run_cron3 arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic --semantic-active >/dev/null 2>&1 || rc=$?
+assert_rc "semantic-active Luna re-arm install failure rc 4" 4 "$rc"
 for _m in semantic-luna.paused semantic.paused; do
     if [ -e "$CRON_DIR3/$_m" ]; then
         pass "failed --semantic-active re-arm kept $_m"
@@ -1725,8 +1757,10 @@ rows_absent() { # <names...> -> 0 when no name has a crontab row
     local n; for n in "$@"; do ! grep -qE "# $n\$" "$LSTATE/crontab" || return 1; done
 }
 printf '0 5 * * * /usr/bin/true # keep-me\n' > "$LSTATE/crontab"
-rc=0; out=$(run_luna arm --vault "$VAULT" --with-publish --with-luna-semantic 2>&1) || rc=$?
-assert_rc "luna-only fixture: full arm of all six rows" 0 "$rc"
+rc=0; out=$(run_luna arm --vault "$VAULT" --with-publish 2>&1) || rc=$?
+assert_rc "luna-only fixture: the himmel arm with the publish worker" 0 "$rc"
+rc=0; out=$(run_luna arm --luna-only --vault "$VAULT" --with-luna-semantic 2>&1) || rc=$?
+assert_rc "luna-only fixture: the Luna opt-in arm with the semantic worker (all six rows armed)" 0 "$rc"
 # shellcheck disable=SC2086
 if rows_present $LUNA_ROWS $HIM_ROWS; then pass "all six rows armed before the Luna-only disarm"; else fail "fixture is missing rows" "$(cat "$LSTATE/crontab")"; fi
 
@@ -1815,6 +1849,73 @@ assert_rc "bare disarm exits 0" 0 "$rc"
 # shellcheck disable=SC2086
 if rows_absent $LUNA_ROWS $HIM_ROWS; then pass "bare disarm still removes every row, himmel included"; else fail "bare disarm left rows" "$(cat "$LSTATE/crontab")"; fi
 assert_registry "bare disarm still unregisters the himmel names" 'all(.expected_tasks[]; (. | test("Himmel")) | not)'
+
+# Test C17: the Luna graph tasks are off by default. A bare arm registers the himmel
+# rows only; Luna runs solely through arm --luna-only (decision 449: graphify stays off Luna).
+echo "TEST: bare arm registers the himmel rows and no Luna row; C24 expects no Luna task"
+printf '0 5 * * * /usr/bin/true # keep-me\n' > "$LSTATE/crontab"
+rm -f "$HIMMEL_OBSERVABILITY_CONFIG"
+rm -rf "$LDIR"
+rc=0; out=$(run_luna arm --vault "$VAULT" 2>&1) || rc=$?
+assert_rc "bare arm exits 0" 0 "$rc"
+# shellcheck disable=SC2086
+if rows_present HIMMEL-GraphMap-Himmel HIMMEL-GraphMapAst-Himmel; then pass "bare arm registers both himmel rows"; else fail "bare arm left a himmel row out" "$(cat "$LSTATE/crontab")"; fi
+# shellcheck disable=SC2086
+if rows_absent $LUNA_ROWS; then pass "bare arm registers no Luna row"; else fail "bare arm registered a Luna row" "$(cat "$LSTATE/crontab")"; fi
+if [ ! -e "$LDIR/graphmap-luna.sh" ] && [ ! -e "$LDIR/graphmap-ast-luna.sh" ] && [ ! -e "$LDIR/graphmap-semantic-luna.sh" ]; then pass "bare arm writes no Luna runner"; else fail "bare arm wrote a Luna runner" "$(ls "$LDIR")"; fi
+assert_not_contains "bare arm banner does not list a Luna task" "HIMMEL-GraphMap-Luna" "$out"
+assert_contains "bare arm banner says how to opt Luna in" "arm --luna-only" "$out"
+assert_registry "bare arm registers no Luna name" 'all(.expected_tasks[]; (. | test("Luna")) | not)'
+assert_registry "bare arm registers no Luna flow" 'all(.flows[]; (.name | test("luna")) | not)'
+assert_registry "bare arm registers the himmel flows" '[.flows[] | select(.name == "graphmap-himmel" or .name == "graphmap-ast-himmel")] | length == 2'
+out=$(run_c24)
+assert_contains "C24 reads OK after a bare arm" "OK   C24-cadence-registry" "$out"
+out=$(run_luna status 2>&1)
+assert_contains "status shows the Luna semantic row not armed after a bare arm" "not armed  HIMMEL-GraphMap-Luna" "$out"
+assert_contains "status shows the Luna structural row not armed after a bare arm" "not armed  HIMMEL-GraphMapAst-Luna" "$out"
+
+echo "TEST: bare arm --dry-run names no Luna row; --with-luna-semantic needs --luna-only"
+rc=0; out=$(run_luna arm --vault "$VAULT" --dry-run --force 2>&1) || rc=$?
+assert_rc "bare arm --dry-run exits 0" 0 "$rc"
+assert_not_contains "bare arm --dry-run plans no Luna crontab row" "# HIMMEL-GraphMap-Luna" "$out"
+assert_not_contains "bare arm --dry-run plans no Luna structural row" "# HIMMEL-GraphMapAst-Luna" "$out"
+rc=0; out=$(run_luna arm --vault "$VAULT" --force --with-luna-semantic 2>&1) || rc=$?
+assert_rc "bare arm --with-luna-semantic (no --luna-only) is refused" 1 "$rc"
+assert_contains "the refusal names --luna-only" "--luna-only" "$out"
+
+echo "TEST: arm --luna-only still registers the Luna rows beside the himmel rows"
+rc=0; out=$(run_luna arm --luna-only --vault "$VAULT" 2>&1) || rc=$?
+assert_rc "arm --luna-only exits 0 over an armed himmel pair" 0 "$rc"
+# shellcheck disable=SC2086
+if rows_present HIMMEL-GraphMap-Luna HIMMEL-GraphMapAst-Luna HIMMEL-GraphMap-Himmel HIMMEL-GraphMapAst-Himmel; then pass "arm --luna-only adds the two Luna rows and keeps the himmel rows"; else fail "arm --luna-only left the crontab wrong" "$(cat "$LSTATE/crontab")"; fi
+assert_registry "arm --luna-only registers the Luna names" '[.expected_tasks[] | select(. == "HIMMEL-GraphMap-Luna" or . == "HIMMEL-GraphMapAst-Luna")] | length == 2'
+
+echo "TEST: a bare re-arm never touches an operator-armed Luna row"
+luna_row_before=$(grep -F '# HIMMEL-GraphMap-Luna' "$LSTATE/crontab")
+luna_runner_before=$(cat "$LDIR/graphmap-luna.sh")
+rc=0; out=$(run_luna arm --vault "$VAULT" --force 2>&1) || rc=$?
+assert_rc "bare arm --force over armed Luna rows exits 0" 0 "$rc"
+# shellcheck disable=SC2086
+if rows_present HIMMEL-GraphMap-Luna HIMMEL-GraphMapAst-Luna HIMMEL-GraphMap-Himmel HIMMEL-GraphMapAst-Himmel; then pass "bare arm --force keeps every Luna row and the himmel rows"; else fail "bare arm --force changed the row set" "$(cat "$LSTATE/crontab")"; fi
+if [ "$luna_row_before" = "$(grep -F '# HIMMEL-GraphMap-Luna' "$LSTATE/crontab")" ] && [ "$luna_runner_before" = "$(cat "$LDIR/graphmap-luna.sh")" ]; then pass "bare arm --force leaves the Luna row and runner byte-identical"; else fail "bare arm --force rewrote the Luna row or runner"; fi
+# the dedup guard looks at the himmel rows alone, so armed Luna rows never block a bare arm
+rc=0; run_luna disarm >/dev/null 2>&1 || rc=$?
+rc=0; run_luna arm --luna-only --vault "$VAULT" >/dev/null 2>&1 || rc=$?
+rc=0; out=$(run_luna arm --vault "$VAULT" 2>&1) || rc=$?
+assert_rc "bare arm over armed Luna rows alone is not dedup-blocked" 0 "$rc"
+# shellcheck disable=SC2086
+if rows_present HIMMEL-GraphMap-Himmel HIMMEL-GraphMapAst-Himmel HIMMEL-GraphMap-Luna; then pass "bare arm beside Luna-only rows adds the himmel rows"; else fail "bare arm beside Luna-only rows left the crontab wrong" "$(cat "$LSTATE/crontab")"; fi
+
+echo "TEST: arm --rewrite-armed on a station with Luna off creates no Luna runner and no Luna row"
+rc=0; run_luna disarm >/dev/null 2>&1 || rc=$?
+rc=0; run_luna arm --vault "$VAULT" >/dev/null 2>&1 || rc=$?
+cp "$LSTATE/crontab" "$LSTATE/crontab.before-rewrite"
+rc=0; out=$(run_luna arm --rewrite-armed --vault "$VAULT" 2>&1) || rc=$?
+assert_rc "arm --rewrite-armed exits 0 with Luna off" 0 "$rc"
+if cmp -s "$LSTATE/crontab" "$LSTATE/crontab.before-rewrite"; then pass "arm --rewrite-armed leaves a Luna-off crontab byte-identical"; else fail "arm --rewrite-armed changed the crontab" "$(cat "$LSTATE/crontab")"; fi
+if [ ! -e "$LDIR/graphmap-luna.sh" ] && [ ! -e "$LDIR/graphmap-ast-luna.sh" ] && [ ! -e "$LDIR/graphmap-semantic-luna.sh" ]; then pass "arm --rewrite-armed creates no Luna runner on a Luna-off station"; else fail "arm --rewrite-armed re-armed a Luna runner" "$(ls "$LDIR")"; fi
+assert_registry "arm --rewrite-armed registers no Luna name" 'all(.expected_tasks[]; (. | test("Luna")) | not)'
+rc=0; run_luna disarm >/dev/null 2>&1 || rc=$?
 export HIMMEL_OBSERVABILITY_CONFIG="$SAVED_OBS"
 
 summary
