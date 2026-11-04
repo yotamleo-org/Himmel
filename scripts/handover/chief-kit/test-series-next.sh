@@ -216,7 +216,7 @@ git -C "$FXR" init -q -b main
 cp -R "$HERE/../../lib" "$FXR/scripts/lib"; cp -R "$HERE" "$FXR/scripts/handover/chief-kit"
 printf 'HANDOVER_DIR=%s\n' "$CFG" > "$FXR/.env"
 printf 'go\n' > "$CFG/.locks/go/4242.$PUBHEAD"
-out="$( cd "$REPO" && env -u HANDOVER_DIR bash "$FXR/scripts/handover/chief-kit/series-next.sh" status --ledger "$L5" 2>&1 )"
+out="$( cd "$REPO" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR bash "$FXR/scripts/handover/chief-kit/series-next.sh" status --ledger "$L5" 2>&1 )"
 contains "6: no HANDOVER_DIR: GO-FILE names the configured root's GO file" "$out" "GO-FILE 4242 $CFG/.locks/go/4242.$PUBHEAD"
 GH_PR_FAIL=1 sn status --ledger "$L5"
 contains "6: a gh failure shows pr=unknown, never a guess" "$out" "ITEM K1 state=published wip=${MAIN:0:12} ahead=0 pr=unknown"

@@ -278,7 +278,7 @@ mkdir -p "$FXR/scripts/handover" "$FXR/handovers" "$CFG/cache" "$CFG/v"
 git -C "$FXR" init -q -b main
 cp -R "$HERE/../../lib" "$FXR/scripts/lib"; cp -R "$HERE" "$FXR/scripts/handover/chief-kit"
 printf 'HANDOVER_DIR=%s\n' "$CFG" > "$FXR/.env"
-rc=0; out=$(cd "$FXR" && env -u HANDOVER_DIR HIMMEL_VERDICT_PR_STATE_CMD="$stub" HIMMEL_VERDICT_HEAD_CHECK_CMD="$hstub" HIMMEL_VERDICT_NOW="$NOW" bash "$FXR/scripts/handover/chief-kit/verdict-retention.sh" prune --verdicts-dir "$CFG/v" --cache "$CFG/cache" 2>&1) || rc=$?
+rc=0; out=$(cd "$FXR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR HIMMEL_VERDICT_PR_STATE_CMD="$stub" HIMMEL_VERDICT_HEAD_CHECK_CMD="$hstub" HIMMEL_VERDICT_NOW="$NOW" bash "$FXR/scripts/handover/chief-kit/verdict-retention.sh" prune --verdicts-dir "$CFG/v" --cache "$CFG/cache" 2>&1) || rc=$?
 check "9: no HANDOVER_DIR: a cache inside the configured root is refused" "$rc" 2
 contains "9: no HANDOVER_DIR: the refusal names the configured root" "$out" "inside the handover root $CFG"
 

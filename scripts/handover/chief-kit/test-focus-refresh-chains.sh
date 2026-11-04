@@ -215,5 +215,22 @@ contains "a wrong root: the skip is named on stderr" "$(cat "$tmp/err")" "chains
 check "no HANDOVER_DIR: the judge ladder is written under the configured root" "$([ -f "$CFG/.judge-ladder" ] && echo yes)" yes
 check "no HANDOVER_DIR: nothing is written under the stub folder" "$([ -e "$FXR/handovers/.judge-ladder" ] && echo yes || echo no)" no
 
+# --- run from a linked worktree (no .env of its own), the primary-env lookup leaves no advisory on stderr
+PRIM="$tmp/primrepo"; WTR="$tmp/primwt"
+rm -rf "$PRIM" "$WTR"
+mkdir -p "$PRIM/scripts/handover" "$PRIM/handovers" "$CFG/fxuser/himmel"
+git -C "$PRIM" init -q -b main
+cp -R "$SRC/lib" "$PRIM/scripts/lib"; cp -R "$SRC/handover/chief-kit" "$PRIM/scripts/handover/chief-kit"
+printf 'HANDOVER_DIR=%s\n' "$CFG" > "$PRIM/.env"
+printf '.env\n' > "$PRIM/.gitignore"
+git -C "$PRIM" add -A
+git -C "$PRIM" -c user.email=t@test.local -c user.name=t -c commit.gpgsign=false commit -q -m fixture
+git -C "$PRIM" worktree add -q "$WTR" -b wtbranch
+reset
+(cd "$WTR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR HOME="$tmp/home" bash "$WTR/scripts/handover/chief-kit/focus-refresh.sh" --doc "$DOC" --repo example-org/example-repo >"$tmp/out" 2>"$tmp/err")
+lacks "a linked worktree: focus-refresh prints no load-dotenv advisory" "$(cat "$tmp/err")" "load-dotenv: .env absent under worktree"
+(cd "$WTR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR -u JUDGE_LADDER_STATE HOME="$tmp/home" JUDGE_LADDER_NOW=1000 bash "$WTR/scripts/handover/chief-kit/judge-ladder.sh" convene seat1 sonnet >/dev/null 2>"$tmp/err")
+lacks "a linked worktree: judge-ladder prints no load-dotenv advisory" "$(cat "$tmp/err")" "load-dotenv: .env absent under worktree"
+
 printf '%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

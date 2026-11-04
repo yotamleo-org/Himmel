@@ -827,7 +827,8 @@ cp -R "$HERE/../../lib" "$FXR/scripts/lib"; cp -R "$HERE" "$FXR/scripts/handover
 printf 'HANDOVER_DIR=%s\n' "$CFG" > "$FXR/.env"
 reset "In Progress"; wipe_docs; owned "$K" LIVE '{"state":"live"}'; jl "$K" "In Progress"
 mkdoc "$CFG/$K-N2-other-2026-10-21.md" LIVE
-(cd "$FXR" && env -u HANDOVER_DIR bash "$FXR/scripts/handover/chief-kit/status-drift.sh" --repo acme/fork >"$tmp/dout" 2>&1)
+mkdir -p "$tmp/fxhome"
+(cd "$FXR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR HOME="$tmp/fxhome" bash "$FXR/scripts/handover/chief-kit/status-drift.sh" --repo acme/fork >"$tmp/dout" 2>&1)
 contains "3b: no HANDOVER_DIR: a second live doc under the configured root is TWO-OWNERS" "$(drows TWO-OWNERS)" "TWO-OWNERS $K"
 wipe_docs
 

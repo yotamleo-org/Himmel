@@ -385,7 +385,7 @@ printf '#!/usr/bin/env bash\nprintf '"'"'{"digest_v":1,"mapper_v":1,"trajectory_
 chmod +x "$W/dg-bin.sh"
 DGDOC="$CFG/u/himmel/HIMMEL-37-N1-x-2026-11-04.md"
 printf -- '---\nsession_ids: %s\n---\n\n## Results\n- 10:00 LIVE - x\n' "$DGSID" > "$DGDOC"
-(cd "$FXR" && env -u HANDOVER_DIR WORKER_SESSION_DIGEST_BIN="$W/dg-bin.sh" WORKER_SESSION_DIGEST_STATE_DIR="$W/dg-state" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/dg-fail.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/dg-eval.jsonl" bash "$FXR/scripts/handover/chief-kit/worker-digest-step.sh" --doc "$DGDOC" --projects "$W/dgproj" >/dev/null 2>&1)
+(cd "$FXR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR WORKER_SESSION_DIGEST_BIN="$W/dg-bin.sh" WORKER_SESSION_DIGEST_STATE_DIR="$W/dg-state" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/dg-fail.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/dg-eval.jsonl" bash "$FXR/scripts/handover/chief-kit/worker-digest-step.sh" --doc "$DGDOC" --projects "$W/dgproj" >/dev/null 2>&1)
 if [ "$(jq -r '.meta.doc // empty' "$W/dg-eval.jsonl" 2>/dev/null | head -n 1)" = "u/himmel/HIMMEL-37-N1-x-2026-11-04.md" ]; then pass "worker-digest-step: no HANDOVER_DIR files the doc by its path below the configured root"; else fail "worker-digest-step: no HANDOVER_DIR: doc recorded as [$(jq -r '.meta.doc // empty' "$W/dg-eval.jsonl" 2>/dev/null | head -n 1)]"; fi
 
 if [ "$fails" -gt 0 ]; then echo "FAILED: $fails"; exit 1; fi
