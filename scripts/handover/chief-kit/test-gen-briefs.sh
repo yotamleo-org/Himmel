@@ -10,6 +10,7 @@
 #
 # Run: bash scripts/handover/chief-kit/test-gen-briefs.sh
 set -u
+export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch fixtures; guard rows drop it
 unset CLAUDE_GLM_CONFIG_DIR  # the classifier reads it for its claude-glm lists: an inherited one would redirect every salus row
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="${GEN_BRIEFS:-$HERE/gen-briefs.py}"

@@ -163,6 +163,9 @@ PATH="$tmp/sysd-bin:$PATH"
 # scope, waker started); a Darwin host takes the shim branch and fails them all.
 # The Darwin rows pin HEADED_ARM_UNAME=Darwin inline.
 export HEADED_ARM_UNAME=Linux
+export UNGUARDED_LAUNCH_OK=1  # scratch fixtures are not a guarded folder
+# A dry-run row that passes a Claude Code marker (CLAUDE_CODE_*) drops the opt-out above and runs in this guarded folder, so the seam guard has nothing to deny.
+guarded_repo="$(cd "$HERE/../../.." && pwd -P)"
 # pin every root this suite could resolve to its own temp dir, at
 # SUITE level. A chief-spawned worker exports the LIVE HANDOVER_DIR into this
 # shell (headed-arm-worker.sh); the case-26 e2e below runs the real
@@ -1233,11 +1236,11 @@ not_contains "claudex: the stale usage lane token is dropped" "$out" "CADENCE_US
 rc=0; out="$(WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 contains "dry-run --lane claudex: WORKER_SESSION_EFFORT overrides the xhigh default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=high"
 
-rc=0; out="$(CLAUDE_CODE_EFFORT_LEVEL=medium bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$guarded_repo" CLAUDE_CODE_EFFORT_LEVEL=medium bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL exits 0" "$rc" "0"
 contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL overrides the xhigh default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 not_contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL is not replaced by xhigh" "$out" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
-rc=0; out="$(CLAUDE_CODE_EFFORT_LEVEL=medium WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$guarded_repo" CLAUDE_CODE_EFFORT_LEVEL=medium WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL with WORKER_SESSION_EFFORT exits 0" "$rc" "0"
 contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL wins over WORKER_SESSION_EFFORT" "$out" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 
@@ -3501,7 +3504,7 @@ not_contains "34b a model with no tier row leaves CLAUDE_CODE_EFFORT_LEVEL unset
 
 # 34c. An explicit CLAUDE_CODE_EFFORT_LEVEL already set in the launching
 # shell wins over the registry lookup - never silently overwritten.
-out34c="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture" CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker-34c some/doc.md /tmp/nosig 99999999999 "$tmp/leg34c.log" claude-sonnet-5 2>&1)"
+out34c="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$guarded_repo" HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture" CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker-34c some/doc.md /tmp/nosig 99999999999 "$tmp/leg34c.log" claude-sonnet-5 2>&1)"
 lenv34c="$(printf '%s\n' "$out34c" | grep '^headed-arm-worker: lane=')"
 contains "34c an ambient CLAUDE_CODE_EFFORT_LEVEL=xhigh survives the registry lookup" "$lenv34c" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
 not_contains "34c the registry's medium never overwrites the ambient value" "$lenv34c" "CLAUDE_CODE_EFFORT_LEVEL=medium"
@@ -3528,7 +3531,7 @@ contains "34e native WORKER_SESSION_EFFORT=high beats the registry's medium" "$l
 not_contains "34e the registry's medium is not what propagates" "$lenv34e" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 
 rc34f=0
-out34f="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker-34f "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34f.log" claude-opus-5-5 2>&1)" || rc34f=$?
+out34f="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$guarded_repo" HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker-34f "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34f.log" claude-opus-5-5 2>&1)" || rc34f=$?
 lenv34f="$(printf '%s\n' "$out34f" | grep '^headed-arm-worker: lane=')"
 check "34f dry run exits 0" "$rc34f" "0"
 contains "34f an explicit CLAUDE_CODE_EFFORT_LEVEL=xhigh beats WORKER_SESSION_EFFORT=high" "$lenv34f" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
@@ -5341,6 +5344,68 @@ contains "49n a --judge launch carries no key (an inherited one is dropped)" "$o
 out49r="$(HIMMEL_HOLD_KEY=HIMMEL-1 env -u IMPL_GUARD_OK -u INLINE_IMPL_OK -u HIMMEL_RM_EFFORT bash "$SCRIPT" --dry-run --profile release-manager --rm-release v1.1.3 HIMMEL-9605-N1-rm "$doc_tier_rm" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)"
 contains "49o a release-manager launch carries no key" "$out49r" "HIMMEL_HOLD_KEY=<unset> HIMMEL_HOLD_DOC=<unset> HIMMEL_HOLD_LABEL=<unset>"
 check "49p the real ~/.himmel/state/holds is unchanged by this suite" "$(real_register)" "$REAL_REGISTER_BEFORE"
+
+# --- 50. A launch whose session folder would not load the guard hooks is refused (exit 18) before the
+# dry-run report and before every side effect: no preflight/slot, no doc edit, no launch log, no pretrust
+# write, no konsole. UNGUARDED_LAUNCH_OK=1 launches it with exactly one WARN. This suite opts in at its top,
+# so every row below drops it from its own environment.
+scratch50="$tmp/scratch50"; mkdir -p "$scratch50"
+doc50="$tmp/HIMMEL-9026-N3-guard.md"; fx_brief '# guard fixture' > "$doc50"
+doc50_sum="$(cksum < "$doc50")"
+d50="$tmp/c50"; mk_launch_stubs "$d50" "HIMMEL-9026-N3-guard"
+slots50_before="$(find "$HIMMEL_FLEET_SLOTS" -mindepth 1 2>/dev/null | sort | cksum)"
+pre50_before="$(find "$WORKER_SESSION_PRETRUST_HOME" -mindepth 1 2>/dev/null | sort | cksum)"
+rm -f "$tmp/rec-preflight50.env"
+rc=0; out50="$(some_doc="$doc50" REC_PREFLIGHT_OUT="$tmp/rec-preflight50.env" RUN_WORKER_WRAP="env -u UNGUARDED_LAUNCH_OK" RUN_WORKER_ARGS=--no-profile run_worker "$d50" "$scratch50" "HIMMEL-9026-N3-guard" "claude-sonnet-5" "$REC_PREFLIGHT" 2>&1)" || rc=$?
+sleep 0.3
+check "guard_worker_refuses_scratch: exit 18" "$rc" "18"
+contains "guard_worker_refuses_scratch: names the launcher and folder" "$out50" "headed-arm-worker: refusing to launch HIMMEL-9026-N3-guard: $scratch50 does not load the himmel guard hooks (not a git work tree)."
+check "guard_worker_refuses_scratch: the launch preflight never ran" "$([ -e "$tmp/rec-preflight50.env" ] && echo ran || echo none)" "none"
+check "guard_worker_refuses_scratch: no slot file written" "$(find "$HIMMEL_FLEET_SLOTS" -mindepth 1 2>/dev/null | sort | cksum)" "$slots50_before"
+check "guard_worker_refuses_scratch: the doc bytes are unchanged" "$(cksum < "$doc50")" "$doc50_sum"
+check "guard_worker_refuses_scratch: no pretrust write" "$(find "$WORKER_SESSION_PRETRUST_HOME" -mindepth 1 2>/dev/null | sort | cksum)" "$pre50_before"
+check "guard_worker_refuses_scratch: no launch log" "$([ -e "$HIMMELCTL_CACHE_DIR/launch-logs/HIMMEL-9026-N3-guard.log" ] && echo log || echo none)" "none"
+check "guard_worker_refuses_scratch: the launcher was never exec'd" "$([ -e "$d50/record" ] && echo konsole || echo none)" "none"
+
+rc=0; out50d="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$scratch50" bash "$SCRIPT" --dry-run --no-profile HIMMEL-9026-N3-guard "$doc50" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+check "guard_worker_dry_run: --dry-run exits 18 too" "$rc" "18"
+not_contains "guard_worker_dry_run: no would-exec report" "$out50d" "would exec"
+
+# a resume_cwd worktree of a registered repo folds into the session folder; the folded folder is judged
+adopter50="$tmp/adopter50"; mkdir -p "$adopter50"
+git -C "$adopter50" init -q
+git -C "$adopter50" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+git -C "$adopter50" worktree add -q -b fix/adopter-50 "$adopter50/.claude/worktrees/fix+adopter-50"
+wt50="$adopter50/.claude/worktrees/fix+adopter-50"
+reg50="$tmp/reg50.json"; printf '{"repos":{"adopter50":{"path":"%s"}}}\n' "$adopter50" > "$reg50"
+fdoc50="$tmp/c50-fold-doc.md"
+printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' "$wt50" > "$fdoc50"
+rc=0; out50f="$(env -u UNGUARDED_LAUNCH_OK HANDOVER_REGISTRY="$reg50" bash "$SCRIPT" --dry-run --no-profile HIMMEL-9026-N3-fold "$fdoc50" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+check "guard_worker_folded_worktree_checked: exit 18" "$rc" "18"
+contains "guard_worker_folded_worktree_checked: the folded worktree is the folder judged" "$out50f" "$wt50 does not load the himmel guard hooks"
+contains "guard_worker_folded_worktree_checked: the refusal reason is the check's" "$out50f" "does not load the himmel guard hooks (user guard layer incomplete (run himmelctl ensure))."
+
+# opt-out through the real headed-arm.sh: exactly one WARN across stderr
+d50o="$tmp/c50o"; mk_launch_stubs "$d50o" "HIMMEL-9026-N3-optout"
+rc=0; out50o="$(UNGUARDED_LAUNCH_OK=1 some_doc="$doc50" RUN_WORKER_ARGS=--no-profile run_worker "$d50o" "$scratch50" "HIMMEL-9026-N3-optout" "claude-sonnet-5" 2>&1 >/dev/null)" || rc=$?
+wait_record "$d50o" || true
+check "optout_chain_single_warn: opted-out launch exits 0" "$rc" "0"
+check "optout_chain_single_warn: exactly one WARN reaches stderr" "$(printf '%s\n' "$out50o" | grep -c '^WARN unguarded launch of HIMMEL-9026-N3-optout')" "1"
+contains "optout_chain_single_warn: the WARN names the reason" "$out50o" "WARN unguarded launch of HIMMEL-9026-N3-optout in $scratch50 (not a git work tree; UNGUARDED_LAUNCH_OK=1)"
+
+# control: the real, fully wired worktree under test launches with the opt-out dropped, and no WARN
+gwt50="$(cd "$HERE/../../.." && pwd -P)"
+d50g="$tmp/c50g"; mk_launch_stubs "$d50g" "HIMMEL-9026-N3-ctl"
+rc=0; out50g="$(RUN_WORKER_WRAP="env -u UNGUARDED_LAUNCH_OK" some_doc="$doc50" RUN_WORKER_ARGS=--no-profile run_worker "$d50g" "$gwt50" "HIMMEL-9026-N3-ctl" "claude-sonnet-5" 2>&1 >/dev/null)" || rc=$?
+wait_record "$d50g" || true
+check "guard_control_worker_passes: guarded folder, opt-out dropped: exit 0, launcher reached" "$rc|$([ -s "$d50g/record" ] && echo konsole || echo none)" "0|konsole"
+not_contains "guard_control_worker_passes: no WARN" "$out50g" "WARN unguarded launch"
+
+# --consult is not exempt in code: a consult on an unguarded folder is refused like any launch (its usual
+# folder, the chief checkout, passes; a test cannot stand in the checkout, since --consult refuses a worktree cwd)
+rc=0; out50c="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$scratch50" bash "$SCRIPT" --dry-run --consult --profile design-motion --chief HIMMEL-9026-chief HIMMEL-9026-N3-c "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+check "consult_guard_applies: a --consult on an unguarded folder exits 18" "$rc" "18"
+contains "consult_guard_applies: the refusal names the folder" "$out50c" "$scratch50 does not load the himmel guard hooks"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

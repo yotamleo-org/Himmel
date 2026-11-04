@@ -132,6 +132,7 @@ export WORKER_BRIDGE_ROOT="$TMP/bridge"
 # opt-out as test-arm-resume.sh; missing it cost 30 failures first caught by
 # the public wave-2k CI (the private repo runs no Actions by design).
 export ARM_TEMP_CWD_OK=1
+export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch fixtures; guard rows drop it
 # keep the real bank-preflight's usage-cache refresh off the live cache.
 export CADENCE_USAGE_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
 # Shipped-work shield: the preflight derives a ticket

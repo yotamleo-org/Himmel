@@ -100,6 +100,7 @@ STUB
 # dispatched, so 102 is live but must not appear in procs=/models=, only in
 # ceiling= which scans every session regardless of --workers), 103 (the chief
 # -- no --autocompact, exempt from drift).
+# launch-guard-ok: test fixture (process cmdline stubs), nothing is launched
 mkcmdline 101 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-111-legN61 work
 mkcmdline 102 claude --model claude-opus-5 --autocompact 200000 -n LUNA-222-legN9 work
 mkcmdline 103 claude --model claude-sonnet-5 -n HIMMEL-next-chief work

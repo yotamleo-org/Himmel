@@ -30,7 +30,7 @@ directly when you already hold the worker doc. The hand sequence below is the
 fallback, not the default: a measured chief spent 7 to 9 full-context turns
 per MERGED/WRAPPED on it (HIMMEL-5592).
 
-For a batch close, run `bash scripts/handover/chief-kit/close-wrapped-worker.sh --sweep --fleet <manifest>`: it closes only WRAPPED, lock-free workers, skips held or live workers, and continues after an already-pruned worktree.
+For a batch close, run `bash scripts/handover/chief-kit/close-wrapped-worker.sh --sweep --fleet <manifest>`: it closes only lock-free workers whose tail is WRAPPED or a BLOCKED hand-off naming its launched successor (the tick counts the same two as `closable=`), skips held or live workers, and continues after an already-pruned worktree.
 To close every finished window across chiefs, run
 `bash scripts/handover/chief-kit/close-wrapped-workers.sh [--check] [<manifest>...]`.
 It runs that sweep once per manifest and goes on after a failed one. With no

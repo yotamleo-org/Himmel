@@ -30,7 +30,9 @@ function fixture(t, reg = registry()) {
   return { dir, env: { PATH: process.env.PATH, HOME: dir, CLAUDE_CONFIG_DIR: join(dir, 'config'),
     PLUGIN_PROFILES_REGISTRY: join(dir, 'registry.json'), HANDOVER_DIR: join(dir, 'handovers'),
     WORKER_SESSION_REPO: dir, HEADED_ARM_REPO: dir, HIMMELCTL_CACHE_DIR: join(dir, 'cache'),
-    HIMMEL_DENIAL_ACK_DIR: join(dir, 'acks'), XDG_RUNTIME_DIR: dir } };
+    HIMMEL_DENIAL_ACK_DIR: join(dir, 'acks'), XDG_RUNTIME_DIR: dir,
+    // The fixture dir is no git work tree; the launch guard would refuse it.
+    UNGUARDED_LAUNCH_OK: '1' } };
 }
 function launch(f, profile, extra = {}) {
   return spawnSync(BASH_BIN, [join(ROOT, 'scripts/handover/chief-kit/headed-arm-worker.sh'),

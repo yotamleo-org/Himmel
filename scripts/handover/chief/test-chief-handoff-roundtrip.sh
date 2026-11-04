@@ -26,6 +26,7 @@ trap 'rm -rf "$tmp"' EXIT
 export HIMMELCTL_CACHE_DIR="$tmp/himmelctl-cache"
 export HANDOVER_REGISTRY="$tmp/no-registry-for-this-suite.json"
 export BRIDGE_ROOT="$tmp/bridge"
+export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch --project fixtures; the guard rows drop it
 printf '#!/usr/bin/env bash\necho "bank-preflight: worker=unknown five_hour=9.0 seven_day=91.0 extra_usage=n/a"\necho PROCEED\n' > "$tmp/facts-bank.sh"
 printf '#!/usr/bin/env bash\necho "#5 [DEMO-1] stub pr (feat/x)"\n' > "$tmp/facts-prs.sh"
 export HANDOFF_FACTS_BANK="$tmp/facts-bank.sh" HANDOFF_FACTS_PRS="$tmp/facts-prs.sh"

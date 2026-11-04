@@ -136,6 +136,7 @@ echo "Copy the line above and run it — Claude Code's built-in /rename sets the
 echo "session display name shown in the /resume picker and on the prompt bar."
 echo "To also set your terminal tab title, relaunch with the name baked in:"
 # launch-profile-ok: printed hint for the operator to run themselves, not a launch from this script
+# launch-guard-ok: printed hint, not an exec
 echo "  claude -n \"$final\""
 
 # Degraded: a name half only (no ticket part) → WARN + rc 3.

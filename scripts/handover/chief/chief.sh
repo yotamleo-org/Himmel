@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# launch-guard-ok-file: folder checked by launch-guard-check.sh in chief.sh
 # scripts/handover/chief/chief.sh — start or hand over a chief session
 #
 # A chief is a long-running headed Claude session that holds a queue lock
@@ -51,7 +52,8 @@
 # other than its own chief-wait.sh waiter, or that check could not run;
 # 6 `next` refused: a Results bullet quotes an operator ruling (verbatim) that
 # the decisions: line does not hold; 7 `next` refused: the outgoing doc has no
-# real `## Current direction` block.
+# real `## Current direction` block; 18 `--project` refused: the project folder would not load the
+# himmel guard hooks (UNGUARDED_LAUNCH_OK=1 in the launching shell starts it with one WARN).
 #
 # Platform guard: POSIX bash 3.2+; --arm launches through
 # konsole via headed-arm.sh (Linux/KDE), or the konsole-macos.sh shim on macOS.
@@ -861,6 +863,28 @@ if [ -n "$PROJECT_ARG" ]; then
         project_dir="$project_canon"
     fi
 fi
+# A foreign project folder that would not load the himmel guard hooks is refused (exit 18) before the
+# registry match, any chief doc or registry write, do_arm or terminal call: every worker this chief
+# launched there would be refused anyway. UNGUARDED_LAUNCH_OK=1 (launching shell) starts it with one WARN.
+# The chief has no session name yet, so the message names the project folder's basename.
+if [ -n "$project_dir" ]; then
+    _lg_rc=0; _lg_reason="$(bash "$HERE/../../lib/launch-guard-check.sh" "$project_dir")" || _lg_rc=$?
+    if [ "$_lg_rc" -ne 0 ]; then
+        case "$_lg_rc" in
+            1) ;;
+            2) _lg_reason="folder cannot be resolved" ;;
+            *) _lg_reason="launch-guard-check failed (rc $_lg_rc)" ;;
+        esac
+        _lg_name="$(basename "$project_dir")"
+        _lg_phys="$(cd -P -- "$project_dir" 2>/dev/null && pwd -P)" || _lg_phys="$project_dir"  # swallow-ok: an unresolvable folder is named raw in the message
+        if [ "${UNGUARDED_LAUNCH_OK:-}" = "1" ]; then
+            echo "WARN unguarded launch of $_lg_name in $_lg_phys ($_lg_reason; UNGUARDED_LAUNCH_OK=1)" >&2
+        else
+            echo "chief: refusing to launch $_lg_name: $_lg_phys does not load the himmel guard hooks ($_lg_reason). Launch from a himmel checkout or worktree, register the repo and wire the user guard layer (himmelctl ensure), or set UNGUARDED_LAUNCH_OK=1 in the launching shell to launch it unguarded." >&2
+            exit 18
+        fi
+    fi
+fi
 project_doc_value="none — this console runs in the himmel checkout itself"
 [ -n "$project_dir" ] && project_doc_value="$project_dir"
 
@@ -1113,6 +1137,7 @@ launch_cmd() {
     chief_brief="$(cd "$HERE/../../.." && pwd)/docs/handover/chief-adhd-brief.md"
     [ -f "$chief_brief" ] || { err "the chief brief $chief_brief is missing; refusing to print a chief launch without it"; exit 2; }
     local claude_cmd
+    # launch-guard-ok: printed hint, not an exec
     claude_cmd="$(printf '%s claude --settings %q --model %q %s--append-system-prompt-file %q --autocompact %s -n %s "load %s and continue"' \
         "$CHIEF_LAUNCH_ENV" "$console_settings" "$launch_model" "$mcp_flags" "$chief_brief" "$console_autocompact" "$1" "$2")"
     # No launcher binds a pasted chief on the bus, so the line runs claude

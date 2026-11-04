@@ -51,7 +51,8 @@ export function navLinks({ here, token, current, run, sources }) {
 
 // The rail's link ids: the same on every page (page controls live in the page bar, never the rail), plus Run on the run page, then Docs.
 // Pure: no state, so the AG-UI build and the console rail test read the one list.
-export const railItems = (current) => [...PAGES.map((p) => p.id), ...(current === "run" ? ["run"] : []), "docs"];
+// sources: as for navLinks, so an empty list hides Board here exactly as the rendered rail does; omitted, nothing is hidden.
+export const railItems = (current, sources) => [...PAGES.filter((p) => !(sources && sources.length === 0 && TRACKER_PAGES.includes(p.id))).map((p) => p.id), ...(current === "run" ? ["run"] : []), "docs"];
 
 // The console rail's markup. dots: { fleet, health } status dots; waiting: the Shift badge's count.
 // Nothing here depends on the page but the current mark: the Health project picker is the page bar's (app.js).

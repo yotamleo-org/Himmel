@@ -6,13 +6,14 @@
 // interactive sessions) from GET /api/agui/fleet, polled; a row opens that session's run stream. A
 // worker's row also links to the chief's Health page, whose workers card reads the same handover docs.
 // sections from fleet-model's fleetSections — Needs you, Needs the chief, Orphans, Running per live chief, and
-// Finished (closed by default) — narrowed by the rail's filters. A card is one line: its name opens the session's run
+// Finished (closed by default) — narrowed by the page's filter bar. A card is one line: its name opens the session's run
 // page, its chevron expands it in place to the status (left) and lineage (right) columns.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 // @ts-expect-error: plain ES module shared with the chief (no types).
 import { pageHref } from "../../public/nav.js";
 import { FLEET_URL } from "./stream";
-import { chainKey, cloudPhase, fleetSections, NO_FILTERS, rowHref, runHash, shortName, type Filters, type ProcessOrphan, type Row } from "./fleet-model";
+import { FleetFilterBar } from "./FleetMenu";
+import { chainKey, chiefCounts, cloudPhase, consoleHash, fleetSections, NO_FILTERS, rowHref, runHash, shortName, type Filters, type ProcessOrphan, type Row } from "./fleet-model";
 import { BoardContext, cardOf, DrawerView, Legend, StageDots, StateChip, Swatch, Trends, RollupCards, useBoard, useBoardCtx, useDrawerKeys, useRollup, type BoardCtx, type Panel } from "./Board";
 import { joinBoard, needsShown, openAt, parseView, viewHash, type Drawer, type Stage } from "./board-model";
 export { rowHref, orphanReason, visibleRows, consoleGroups, type Row } from "./fleet-model";
@@ -79,7 +80,7 @@ export function useOpen(key: string, initial: boolean): [boolean, (open: boolean
   return [open, (o) => { setOpen(o); try { localStorage.setItem(`fleet-open:${key}`, o ? "1" : "0"); } catch { /* not kept */ } }];
 }
 
-// the rail's filters, kept per viewer and shared with the page through one window event, so the rail and
+// the filter bar's filters, kept per viewer and shared through one window event, so the bar and
 // the list never disagree. `finished` shows the Finished section open.
 export type ViewFilters = Filters & { finished: boolean };
 export const EMPTY_FILTERS: ViewFilters = { ...NO_FILTERS, finished: false };
@@ -190,6 +191,7 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
         {tab === "trends" && !board && <><p className="quiet">{boardError ? `The board could not be read: ${boardError}.` : "Loading the board…"}</p><div className="bd-trends"><RollupCards rollup={rollup} /></div></>}
         {tab === "fleet" && board && <Legend board={board} groups={["verb", "stage", "state"]} />}
         {tab === "fleet" && <>
+        {fleet && <FleetFilterBar rows={all} procs={fleet.processOrphans} />}
         <details className="bd-legend">
           <summary>Session state legend</summary>
           <p><span className="state running">running</span>: busy · <span className="state waiting">waiting</span>: background shell · <span className="state waiting">waiting for GO</span>: ready for the chief · <span className="state idle">idle</span>: at the prompt · wrapped: finished · unknown: state unavailable</p>
@@ -209,7 +211,8 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
         </Section>}
         {fleet && !unavailable && <Section id="running" title="Running" count={s.running.reduce((n, g) => n + g.rows.length + (g.showConsole ? 1 : 0), 0)} initial={true}>
           {s.running.length === 0 && <p className="quiet">{`No running sessions${filtering(filters) ? " match the filters" : ""}.${counts.finished > 0 ? ` ${counts.finished} finished below.` : ""}`}</p>}
-          {s.running.map((g) => <ConsoleGroup key={g.console?.name ?? "-"} group={g} all={all} hops={s.hops} token={token} now={now} />)}
+          {s.running.map((g) => <ConsoleGroup key={g.console?.name ?? "-"} group={g} all={all} hops={s.hops} token={token} now={now}
+            counts={g.console ? chiefCounts(all, g.console.name, fleet.processOrphans ?? []) : null} selected={selected} />)}
         </Section>}
         {fleet && !unavailable && s.cadences.length > 0 && <Section id="cadences" title="Cadences" count={s.cadences.length} initial={true} className="fleet-cadences">
           <ul className="fleet-rows fleet-tree" aria-label="Cadence sessions">
@@ -236,14 +239,26 @@ function Jump({ to, className, children }: { to: string; className?: string; chi
   }}>{children}</button>;
 }
 
-function ConsoleGroup({ group, all, hops, token, now }: { group: ReturnType<typeof fleetSections>["running"][number]; all: Row[]; hops: Record<string, Row[]>; token: string; now: number }) {
+// A live chief's group header: its running / waiting-for-GO / attention / orphaned counts (zeroes after the first two are left out)
+// and a link to the chief's page. The link sits inside the summary, so a click on it follows the link and never toggles the group.
+function ChiefCounts({ counts }: { counts: ReturnType<typeof chiefCounts> }) {
+  const text = [`${counts.running} running`, `${counts.go} waiting for GO`, counts.attention > 0 && `${counts.attention} attention`, counts.orphaned > 0 && `${counts.orphaned} orphaned`].filter(Boolean).join(" · ");
+  return <small className="fleet-chief-counts">{text}</small>;
+}
+
+function ConsoleGroup({ group, all, hops, token, now, counts, selected }: { group: ReturnType<typeof fleetSections>["running"][number]; all: Row[]; hops: Record<string, Row[]>; token: string; now: number; counts: ReturnType<typeof chiefCounts> | null; selected: string | null }) {
   const name = group.console?.name ?? "Other sessions";
   const [open, setOpen] = useOpen(`console:${name}`, true);
   const cloud = group.rows.filter((r) => r.role === "cloud").length;
   const kids = forest(group.rows);
   return (
     <details className="fleet-chief" open={open} onToggle={(e) => setOpen(e.currentTarget.open)} aria-label={name}>
-      <summary><h2>{name}</h2><span className="fleet-count">{[plural(group.rows.length - cloud, "session"), cloud > 0 && `${cloud} cloud`].filter(Boolean).join(" · ")}</span></summary>
+      <summary><h2>{name}</h2><span className="fleet-count">{[plural(group.rows.length - cloud, "session"), cloud > 0 && `${cloud} cloud`].filter(Boolean).join(" · ")}</span>
+        {group.console && counts && <>
+          <ChiefCounts counts={counts} />
+          <a className="chief-page" href={consoleHash(token, group.console.name)} aria-current={selected === group.console.name ? "page" : undefined} onClick={(e) => e.stopPropagation()}>chief page</a>
+        </>}
+      </summary>
       <ul className="fleet-rows fleet-tree" aria-label="Live sessions">
         {group.console && group.showConsole
           ? <FleetNode node={{ row: group.console, kids }} live={all} hops={hops} token={token} now={now} />

@@ -387,12 +387,16 @@ fi
 want="$dir/$next_stem-RESUME.md"
 
 resume_ok() {
-    local cand m
+    local cand m tok
     for cand in "$dir"/*-RESUME.md; do
-        [ -f "$cand" ] || continue
+        [ -f "$cand" ] && [ -r "$cand" ] && [ ! -L "$cand" ] || continue
         [ "$cand" = "$doc" ] && continue
         if [ -n "$worker_id" ]; then
-            grep -qE "^${worker_base}[a-z]?\$" <<< "$(basename "$cand" .md | tr '-' '\n')" || continue
+            tok=$(basename "$cand" .md | tr '-' '\n' | grep -E "^${worker_base}[a-z]?\$" | head -n 1)
+            [ -n "$tok" ] || continue
+            # a resumed worker's successor letter moves forward only; past z, the unsuffixed id
+            [ -z "$suffix" ] || [[ ${tok#"$worker_base"} > $suffix ]] ||
+                { [ "$no_successor" = 1 ] && [ "$tok" = "$worker_base" ]; } || continue
         else
             [ "$cand" = "$want" ] || continue
         fi

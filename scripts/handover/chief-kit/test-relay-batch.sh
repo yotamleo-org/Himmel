@@ -432,7 +432,7 @@ check "with HIMMEL_LEGACY_NAMES=0 an old legs manifest sends nothing (the claude
 PDOC="$WORK/DEMO-nextleg-2026-10-28A-chief.md"
 PWORK="$WORK/DEMO-30-N80-old-2026-10-28.md"
 SWORK="$WORK/DEMO-30-N80b-old-2026-10-28-RESUME.md"
-printf '# worker\n\n## Results\n' > "$SWORK"
+printf '# worker\n\n## Results\n\n- 10:05 LIVE - resumed\n' > "$SWORK"
 printf '# worker\n\n## Results\n\n- 10:00 BLOCKED - context hand-off to %s\n' "$SWORK" > "$PWORK"
 # shellcheck disable=SC2016  # fixture Live state delimiters
 printf '# chief\n\n## Live state\nworkers: `N80:fixture-old:lock:80`\n\n## Results\n' > "$PDOC"
@@ -482,5 +482,22 @@ oute="$(bash "$RB" "$PDOC" --successor S10 2>&1)"; rce=$?
 check "an equal-label resume relay run succeeds" "0" "$rce"
 check "an equal-label resume keeps the shared session in the relay" "1" "$(printf '%s\n' "$oute" | grep -c '^SENT-INBOX N82')"
 [ -z "$token" ] || bash "$QL" release "$ERES" "$token" >/dev/null 2>&1
+
+# A worker relaunched under a lettered label (doc N90, session N90b) is the same worker: with no exact
+# match the lettered session is resolved; two lettered sessions stay UNRESOLVED, and an exact match wins.
+LWORK="$WORK/DEMO-40-N90-lett-2026-10-28.md"
+: > "$LWORK"
+# shellcheck disable=SC2016  # fixture Live state delimiters
+printf '# chief\n\n## Live state\nworkers: `N90:fixture-lt:lock:90`\n\n## Results\n' > "$PDOC"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N90","lane":"native"}]}\n' "$LWORK" > "${PDOC%.md}.fleet.json"
+census DEMO-40-N90b-lett-2026-10-28 DEMO-41-N90b-other-2026-10-28 DEMO-40-N900b-lett-2026-10-28
+outl="$(: > "$WORK/bus.log"; bash "$RB" "$PDOC" --successor S10 2>&1)"
+check "a lettered relaunch session is resolved" "send DEMO-40-N90b-lett-2026-10-28" "$(cat "$WORK/bus.log")"
+census DEMO-40-N90b-lett-2026-10-28 DEMO-40-N90c-lett
+outl="$(bash "$RB" "$PDOC" --successor S10 2>&1)"
+check "two lettered sessions stay UNRESOLVED" "1" "$(printf '%s\n' "$outl" | grep -c '^UNRESOLVED N90')"
+census DEMO-40-N90b-lett-2026-10-28 DEMO-40-N90-lett-2026-10-28
+outl="$(: > "$WORK/bus.log"; bash "$RB" "$PDOC" --successor S10 2>&1)"
+check "an exact session match wins over a lettered one" "send DEMO-40-N90-lett-2026-10-28" "$(cat "$WORK/bus.log")"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
