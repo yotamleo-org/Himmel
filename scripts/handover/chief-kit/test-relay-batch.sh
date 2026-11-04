@@ -432,7 +432,7 @@ check "with HIMMEL_LEGACY_NAMES=0 an old legs manifest sends nothing (the claude
 PDOC="$WORK/DEMO-nextleg-2026-10-28A-chief.md"
 PWORK="$WORK/DEMO-30-N80-old-2026-10-28.md"
 SWORK="$WORK/DEMO-30-N80b-old-2026-10-28-RESUME.md"
-printf '# worker\n\n## Results\n' > "$SWORK"
+printf '# worker\n\n## Results\n\n- 10:05 LIVE - resumed\n' > "$SWORK"
 printf '# worker\n\n## Results\n\n- 10:00 BLOCKED - context hand-off to %s\n' "$SWORK" > "$PWORK"
 # shellcheck disable=SC2016  # fixture Live state delimiters
 printf '# chief\n\n## Live state\nworkers: `N80:fixture-old:lock:80`\n\n## Results\n' > "$PDOC"

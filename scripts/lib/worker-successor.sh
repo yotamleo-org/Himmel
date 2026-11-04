@@ -17,11 +17,14 @@ worker_named_successor() {
     [[ $label =~ ^(N[0-9]+)[a-z]*$ ]] || return 0
     base="${BASH_REMATCH[1]}"
     # shellcheck disable=SC2016  # literal delimiters around Markdown paths
+    # Only the first Results heading opens the worker's own record: a second one is quoted text.
+    # A negated hand-off ("not a hand-off", "no hand-off to ...") names no successor.
     named="$(awk '
-        /^## Results( |$)/ { seen = 1; keep = 1; next }
-        /^## / { keep = seen && ($0 ~ /^## (Chief|Console) Rulings( |$)/); next }
+        /^## Results([ \t]|$)/ { keep = !seen; seen = 1; next }
+        /^## / { keep = seen && ($0 ~ /^## (Chief|Console) Rulings([ \t]|$)/); next }
         !keep || !/^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|BLOCKED)([^A-Za-z0-9_]|$)/ { next }
         !/([Hh]and-?off|RESUME written:)/ { next }
+        /(^|[^A-Za-z0-9_])([Nn]o|[Nn]ot|[Nn]ever|[Ww]ithout|[Cc]annot)[^A-Za-z0-9_][^;.]{0,30}[Hh]and-?off/ { next }
         {
             found = ""; text = $0
             while (match(text, /[^ \t`"<>():,;]+-RESUME\.md/)) {
@@ -44,6 +47,12 @@ worker_named_successor() {
     expected="$(printf '%s' "${stem%-RESUME}" | sed -E "s/-(leg)?${label}(-|\$)/-\\1${next_label}\\2/")-RESUME"
     next_stem="$(basename "$path" .md)"
     [ "$next_stem" = "$expected" ] || return 0
+    # A successor that never launched proves nothing: its own Results must hold a marker bullet.
+    awk '
+        /^## Results([ \t]|$)/ { r = !seen; seen = 1; next }
+        /^## / { r = seen && ($0 ~ /^## (Chief|Console) Rulings([ \t]|$)/); next }
+        r && /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/ { f = 1; exit }
+        END { exit !f }' "$path" || return 0
     # A successor running under any of this worker's own session names is no distinct worker.
     own_set=",$(worker_identity "$doc" | cut -f2),$stem,"
     suc_set=",$(worker_identity "$path" | cut -f2),$next_stem,"

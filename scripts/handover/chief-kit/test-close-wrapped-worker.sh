@@ -1556,7 +1556,7 @@ not_contains "handoff: held successor is never signaled" "$(cat "$CALLS")" "kill
 [ -n "$token" ] && HANDOVER_DIR="$W/handover-root" bash "$QL" release "$HS" "$token" >/dev/null 2>&1
 
 # A second successor is not an ambiguity about the predecessor's own window.
-printf '# worker\n\n## Results\n' > "$HT"
+printf '# worker\n\n## Results\n\n- 11:30 LIVE - resumed\n' > "$HT"
 printf '# worker\n\n## Results\n\n- 09:00 LIVE - started\n- 10:00 WRAPPED - hand-off to %s\n' "$HT" > "$HP"
 reset_calls
 rc=0; out=$(run "$HP" 2>&1) || rc=$?
@@ -1633,6 +1633,7 @@ check "handoff: a later ordinary BLOCKED does not close the worker (base rc 0)" 
 check "handoff: a later ordinary BLOCKED signals nothing" "$(cat "$CALLS")" ""
 
 # The worker's own final hand-off appended at EOF lands below a ruling heading and still counts.
+printf '# worker\n\n## Results\n\n- 11:00 LIVE - resumed\n' > "$HS"
 printf '# worker\n\n## Results\n\n- 09:00 LIVE - started\n\n## Chief Rulings\n\n- 10:00 BLOCKED - context hand-off to %s\n' "$HS" > "$HP"
 reset_calls
 rc=0; out=$(run "$HP" 2>&1) || rc=$?
