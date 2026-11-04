@@ -5,12 +5,14 @@ import { test, expect } from "@playwright/test";
 import { aguiBuilt, bootAgui, type AguiHarness } from "./agui-fixtures";
 
 let h: AguiHarness;
-test.skip(!aguiBuilt(), "agui-web/dist is not built: cd scripts/config-ui/agui-web && bun install && bun run build");
+const noDist = !aguiBuilt(); // the Fleet tests need the bundle; the Health page bar test is the console's and does not
+const NO_DIST = "agui-web/dist is not built: cd scripts/config-ui/agui-web && bun install && bun run build";
 test.afterEach(async () => { await h?.stop(); });
 
 for (const scheme of ["dark", "light"] as const) {
   for (const width of [1280, 390]) {
     test(`the Fleet page logs no console error in ${scheme} at ${width}px`, async ({ page }) => {
+      test.skip(noDist, NO_DIST);
       const logged: string[] = [];
       page.on("console", (m) => { if (m.type() === "error") logged.push(`${m.text()} @ ${m.location().url}:${m.location().lineNumber}`); });
       page.on("pageerror", (e) => logged.push(`pageerror: ${e.message}`));
