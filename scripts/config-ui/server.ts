@@ -210,6 +210,7 @@ export type ServerOpts = {
   port?: number; token?: string; hostname?: string; env?: Env; onIdle?: () => void;
   root?: string; projectRoot?: string; projects?: string[]; /* the Board's Jira projects (--project KEY, repeatable); none = every mirrored project */ now?: () => number; actionTimeoutMs?: number; reprobeBudgetMs?: number; feedWaitMs?: number; feedTimeoutMs?: number; verifyTimeoutMs?: number;
   backgroundFeed?: boolean; feedRefreshMs?: number; noIdle?: boolean;
+  readOnly?: boolean; /* himmelctl ui --read-only: set once at start, every non-GET/HEAD request is refused with 403 before any route runs */
   legsScript?: string; legsTimeoutMs?: number; fleetScript?: string; boardScript?: string; aguiPollMs?: number; aguiIdleMs?: number; aguiMaxMs?: number; aguiDist?: string; aguiWeb?: string;
 };
 type Preview = Resolved & { expires: number };
@@ -659,6 +660,8 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   async function route(req: Request): Promise<Response> {
     const origin = `http://${LOOPBACK}:${server.port}`;
     if (req.headers.get("host") !== `${LOOPBACK}:${server.port}`) return new Response("bad host", { status: 403 });
+    // read-only mode: the one gate, ahead of every route, so a route added later is refused too
+    if (opts.readOnly && req.method !== "GET" && req.method !== "HEAD") return new Response("read-only: this config UI was started with --read-only and refuses every write", { status: 403 });
     const path = new URL(req.url).pathname;
     if (path === "/api/login" || path === "/api/logout") return loginRoute(req, path, origin);
     if (path.startsWith("/api/")) {
@@ -667,6 +670,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (!session && !sameToken(req.headers.get("x-himmel-token"), token)) return new Response("unauthorized", { status: 401 });
       bump(); // only an authenticated request keeps the server alive
       lastSeen = now(); // and only one keeps the background refresh going
+      if (req.method === "GET" && path === "/api/mode") return json({ readOnly: !!opts.readOnly }); // the page's banner and disabled write controls
       if (req.method === "GET" && path === "/api/projects") { // never runs a doctor: each project's own cached feed, or "not checked"
         const { current, list } = projectsNow();
         return json(redactOut({ current, projects: list.map((p) => summarize(p, p.name === current, loadFeed(env, list, p.name))) })); // a saved feed may predate a secret the list has learned
@@ -997,7 +1001,7 @@ if (import.meta.main) {
   // the operator lands on Fleet (another page); the config report loads meanwhile.
   // --project KEY (repeatable, or --project=KEY): narrow the Board to these Jira projects; with none it covers every mirrored project.
   const only = projectFlags(process.argv);
-  const { port, token } = startServer({ port: i > 0 ? Number(process.argv[i + 1]) : 0, backgroundFeed: true, noIdle: service, token: fixed, ...(only.length ? { projects: only } : {}) });
+  const { port, token } = startServer({ port: i > 0 ? Number(process.argv[i + 1]) : 0, backgroundFeed: true, noIdle: service, token: fixed, readOnly: process.argv.includes("--read-only"), ...(only.length ? { projects: only } : {}) });
   // himmelctl ui --agui [<run>]: the launcher has already resolved and validated the run id; with none, the
   // fleet landing.
   const run = a > 0 ? process.argv[a + 1] : undefined;

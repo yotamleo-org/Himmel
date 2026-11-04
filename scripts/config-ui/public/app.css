@@ -70,6 +70,8 @@ h2{font:600 var(--fs-md)/1.3 var(--font-ui);margin:0 0 var(--s1)}
 .probe progress::-webkit-progress-bar{background:var(--panel);border-radius:3px}
 .probe progress::-webkit-progress-value{background:var(--accent);border-radius:3px}
 .probe progress::-moz-progress-bar{background:var(--accent);border-radius:3px}
+#read-only-banner{position:sticky;top:0;z-index:10;padding:8px 16px;background:var(--panel);border-bottom:2px solid var(--line);font-size:13px}
+body[data-read-only] :disabled{cursor:not-allowed;opacity:.5}
 .toast{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--panel);border:1px solid var(--line);padding:8px 12px;font-size:12px}
 @media (max-width:760px){
   .nav{flex-direction:row;flex-wrap:wrap}

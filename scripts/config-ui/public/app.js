@@ -286,7 +286,34 @@ function toast(t) {
   toast.t = setTimeout(() => { el.hidden = true; }, 2600);
 }
 
+// Read-only mode (himmelctl ui --read-only): GET /api/mode says so once on load. The server refuses every write with 403 whatever
+// this page does; the page shows the banner and disables the write controls so nothing offers a change that cannot land.
+let readOnly = false;
+const WRITE_CONTROLS = [
+  '[data-act="plan"]', '[data-act="run"]', '[data-act="consent"]', '[data-act="vm-save"]', '[data-act="reports-save"]', '[data-act="review-gate-save"]',
+  '[data-act="setup-remove"]', '[data-act="setup-verify"]', '[data-act="drift-refresh"]',
+  '[data-vm]', '[data-rs]', '[data-fc]', '[data-rg]',
+  'form[data-setup-form] :is(input,button)', 'form[data-path-form] :is(input,button)', 'form[data-account-form] :is(input,button)',
+].join(",");
+function lockWrites() {
+  for (const el of document.querySelectorAll(WRITE_CONTROLS)) el.disabled = true;
+  for (const el of document.querySelectorAll("[data-rm-card]")) el.draggable = false;
+}
+async function loadMode() {
+  try {
+    const r = await fetch("/api/mode", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    if (!r.ok || (await r.json()).readOnly !== true) return;
+  } catch (_) { return; } // no answer: the server still refuses writes itself
+  readOnly = true;
+  $("#read-only-banner").hidden = false;
+  document.body.dataset.readOnly = "1";
+  lockWrites();
+  new MutationObserver(lockWrites).observe($("#main"), { childList: true, subtree: true });
+}
+loadMode();
+
 async function post(path, body) {
+  if (readOnly) return { ok: false, status: 403, j: { error: "read-only: this config UI was started with --read-only" } };
   let r;
   try { r = await fetch(path, { method: "POST", headers: { "X-Himmel-Token": token, "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
   catch (_) { return { ok: false, status: 0, j: { error: `${path} unreachable (is the server still running?)` } }; }
@@ -671,6 +698,7 @@ let rmDrag = null;
 document.addEventListener("dragstart", (e) => {
   const c = e.target.closest && e.target.closest("[data-rm-card]");
   if (!c) return;
+  if (readOnly) return void e.preventDefault();
   rmDrag = { k: Number(c.dataset.rmCard), project: c.dataset.rmProject || "" };
   try { e.dataTransfer.setData("text/plain", c.dataset.rmId || (rmDrag.project || "HIMMEL") + "-" + rmDrag.k); e.dataTransfer.effectAllowed = "move"; } catch (_) { /* no dataTransfer */ }
 });
