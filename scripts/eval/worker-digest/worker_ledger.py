@@ -320,31 +320,76 @@ CHIEF_LINE = re.compile(r"^headed-arm: role=(chief|console) ")
 LINE_LANE = re.compile(r"\blane=(native|claudex|codex|openrouter|cloud)\b")
 
 
+LINE_SID = re.compile(r"\bsession_id=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b")
+_SID_INDEX = {}
+
+
+def _launch_dir():
+    cache = os.environ.get("HIMMELCTL_CACHE_DIR") or os.path.join(os.path.expanduser("~"), ".claude", "himmel")
+    return os.path.join(cache, "launch-logs")
+
+
+def _sid_log(session):
+    """The launch log whose line names this session id (the id the launcher passes to claude), else None.
+    Read once per process and logs directory: a backfill asks for every session."""
+    d = _launch_dir()
+    if d not in _SID_INDEX:
+        index = {}
+        for p in sorted(glob.glob(os.path.join(d, "*.log"))):
+            try:
+                with open(p, encoding="utf-8", errors="replace") as fh:
+                    for line in fh:
+                        m = LAUNCH_LINE.match(line) or CHIEF_LINE.match(line)
+                        sid = m and LINE_SID.search(line)
+                        if sid:
+                            index.setdefault(sid.group(1), p)
+            except OSError:
+                continue
+        _SID_INDEX.clear()
+        _SID_INDEX[d] = index
+    return _SID_INDEX[d].get(session)
+
+
+def _read_launch_log(path):
+    profiles, lanes = set(), set()
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            m = LAUNCH_LINE.match(line) or CHIEF_LINE.match(line)
+            if not m:
+                continue
+            profiles.add(m.group(1))
+            lane = LINE_LANE.search(line)
+            if lane:
+                lanes.add(lane.group(1))
+    return profiles, lanes
+
+
 def _launch_lines(who):
     """The launcher's per-session launch record as (profiles, lanes) seen across its lines, else None.
-    The record is filed under the session name; a -RESUME doc's name is that name plus the suffix."""
+    The record is filed under the session name; a -RESUME doc's name is that name plus the suffix.
+    Found by the launch name, else by the session id the launcher wrote, else by the doc's stem."""
     name = who.get("launch_name")
-    if not name:
-        return None
-    if not LAUNCH_NAME.match(name):
+    if name and not LAUNCH_NAME.match(name):
         raise ValueError("launch name %r is not a session name" % name)
-    cache = os.environ.get("HIMMELCTL_CACHE_DIR") or os.path.join(os.path.expanduser("~"), ".claude", "himmel")
-    # the name as given first, then without the -RESUME suffix the launcher drops from the log's name
-    for stem in dict.fromkeys((name, re.sub(r"-RESUME$", "", name))):
-        profiles, lanes = set(), set()
+    d = _launch_dir()
+    paths = []
+    if name:
+        paths += [os.path.join(d, stem + ".log") for stem in dict.fromkeys((name, re.sub(r"-RESUME$", "", name)))]
+    session = who.get("session")
+    if session:
+        sid = _sid_log(session)
+        if sid:
+            paths.append(sid)
+    doc = who.get("doc")
+    if doc:
+        stem = re.sub(r"-RESUME$", "", re.sub(r"\.md$", "", os.path.basename(doc)))
+        if LAUNCH_NAME.match(stem):
+            paths.append(os.path.join(d, stem + ".log"))
+    for p in paths:
         try:
-            with open(os.path.join(cache, "launch-logs", stem + ".log"), encoding="utf-8", errors="replace") as fh:
-                for line in fh:
-                    m = LAUNCH_LINE.match(line) or CHIEF_LINE.match(line)
-                    if not m:
-                        continue
-                    profiles.add(m.group(1))
-                    lane = LINE_LANE.search(line)
-                    if lane:
-                        lanes.add(lane.group(1))
+            return _read_launch_log(p)
         except OSError:
             continue
-        return profiles, lanes
     return None
 
 
@@ -399,15 +444,20 @@ def build_rows(digest, who):
     if who.get("digest_error"):
         meta["digest_error"] = who["digest_error"]
     # Launch metadata is authoritative; model names never determine the lane.
+    who = dict(who, session=session)
     lane = launch_lane(digest, who)
     config["lane"] = lane
     # The launch record is authoritative for the profile, as it is for the lane.
     profile = launch_profile(who)
     if profile:
         meta["profile"] = profile
+    # A session no launch record or doc names stays unknown, and says what kind of session it was.
+    gap = None if profile or lane != "unknown" else who.get("kind") or "no-launch-record"
+    if gap:
+        meta["launch_gap"] = gap
     health = digest.get("tool_health")
     if isinstance(health, list):
-        stamp = {"lane": lane, **({"profile": profile} if profile else {})}
+        stamp = {"lane": lane, **({"profile": profile} if profile else {}), **({"launch_gap": gap} if gap else {})}
         meta["tool_health"] = [dict(r, **stamp) for r in health if isinstance(r, dict)]
         meta["started_ts"] = digest.get("started_ts")
     m = _metrics(digest)
@@ -419,6 +469,27 @@ def build_rows(digest, who):
     if problems:
         raise ValueError("eval-runs row: %s" % "; ".join(problems))
     return frows, erow
+
+
+def _write_marker(marker, digest, erow):
+    tmp = marker + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        saved = dict(digest, lane=erow["lane"])
+        if "tool_health" in erow["meta"]:
+            saved["tool_health"] = erow["meta"]["tool_health"]
+        json.dump(saved, fh, ensure_ascii=False, separators=(",", ":"))
+    os.replace(tmp, marker)
+
+
+def _launch_gained(eval_ledger, erow):
+    """True when the session's newest ok row has an unknown lane (or no profile) that this row now names."""
+    rows, _, _ = eval_runs.scan_rows(eval_ledger)
+    old = [r for r in rows if r["eval"] == EVAL_ID and r["run_id"] == erow["run_id"] and r["status"] == "ok"]
+    if not old:
+        return False
+    old = old[-1]
+    return ((old.get("lane") == "unknown" and erow["lane"] != "unknown")
+            or (not (old.get("meta") or {}).get("profile") and bool(erow["meta"].get("profile"))))
 
 
 def record(digest, who, failures_ledger, eval_ledger):
@@ -434,6 +505,11 @@ def record(digest, who, failures_ledger, eval_ledger):
                 prev = json.load(fh).get("status")
         except (OSError, ValueError, AttributeError):
             prev = None
+        if prev == "ok" and status == "ok" and _launch_gained(eval_ledger, erow):
+            # The launch record arrived after the first record: the same digest, now with its lane and profile.
+            eval_runs.append_row(erow, eval_ledger)
+            _write_marker(marker, digest, erow)
+            return 0, 1
         if prev == "ok" or (prev is not None and status != "ok"):
             return 0, 0
         if status == "ok" and prev is not None:
@@ -450,13 +526,7 @@ def record(digest, who, failures_ledger, eval_ledger):
         if not ("ok" in seen or (seen and status != "ok")):
             eval_runs.append_row(erow, eval_ledger)
             e = 1
-        tmp = marker + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
-            saved = dict(digest, lane=erow["lane"])
-            if "tool_health" in erow["meta"]:
-                saved["tool_health"] = erow["meta"]["tool_health"]
-            json.dump(saved, fh, ensure_ascii=False, separators=(",", ":"))
-        os.replace(tmp, marker)
+        _write_marker(marker, digest, erow)
         return len(add), e
 
 
@@ -545,11 +615,21 @@ def run_digest(journal, session, denials):
             "model": None, "metrics": {}, "failures": []}
 
 
+def session_kind(title):
+    """What kind of session a backfilled journal was, from its title: the title's leading words, else a worker
+    title reads worker. Names the share no launch record covers; never decides a lane."""
+    if TITLE.match(title or ""):
+        return "worker"
+    m = re.match(r"[A-Za-z]+(?:-[A-Za-z]+)*", title or "")
+    kind = m.group(0).lower()[:40].strip("-") if m else ""
+    return kind if PROFILE.match(kind) else "untitled"
+
+
 def backfill(a):
     since = datetime.strptime(a.since, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     roots = _roots("phi-roots") + _roots("egress-denylist")
     live_cut = datetime.now(timezone.utc).timestamp() - a.live_minutes * 60
-    n = workers = others = salus = done = live = fa = ea = 0
+    n = workers = others = salus = done = live = fa = ea = restamped = 0
     for j in sorted(glob.glob(os.path.join(a.projects, "*", "*.jsonl"))):
         session = os.path.basename(j)[:-len(".jsonl")]
         if not UUID.match(session) or os.path.getmtime(j) < since.timestamp():
@@ -571,30 +651,39 @@ def backfill(a):
             workers += 1
         else:
             others += 1
+        saved = None
         try:
             with open(os.path.join(a.state_dir, session + ".json"), encoding="utf-8") as fh:
-                if json.load(fh).get("status") == "ok":
-                    done += 1
-                    continue
-        except (OSError, ValueError, AttributeError):
+                saved = json.load(fh)
+        except (OSError, ValueError):
             pass
+        done_ok = isinstance(saved, dict) and saved.get("status") == "ok"
+        # A session recorded ok with its lane unknown is asked again: its launch record may exist now.
+        if done_ok and saved.get("lane") != "unknown":
+            done += 1
+            continue
         # ponytail: recency stands in for "still running" (a worker idle past the window
         # still freezes), upgrade path: an end-of-session signal in the journal.
-        if journal_last_ts(j) > live_cut:
+        if not done_ok and journal_last_ts(j) > live_cut:
             live += 1
             continue
         who = {"leg": m.group(2) if m else None, "ticket": m.group(1) if m else None, "console": None, "pr": None,
                "doc": None, "lane": None, "state_dir": a.state_dir, "backfill": True,
-               "launch_name": title if title and LAUNCH_NAME.match(title) else None}
+               "launch_name": title if title and LAUNCH_NAME.match(title) else None, "kind": session_kind(title)}
         try:
-            f, e = record(run_digest(j, session, a.denials_ledger), who, a.failures_ledger, a.eval_ledger)
+            digest = saved if done_ok else run_digest(j, session, a.denials_ledger)
+            f, e = record(digest, who, a.failures_ledger, a.eval_ledger)
         except ValueError as err:
             print("backfill: %s skipped: %s" % (session, err), file=sys.stderr)
             continue
+        if done_ok:
+            done += 1
+            restamped += e
+            continue
         fa += f
         ea += e
-    print("backfill: journals=%d workers=%d others=%d salus=%d already=%d failures+=%d eval+=%d live=%d"
-          % (n, workers, others, salus, done, fa, ea, live))
+    print("backfill: journals=%d workers=%d others=%d salus=%d already=%d failures+=%d eval+=%d live=%d restamped=%d"
+          % (n, workers, others, salus, done, fa, ea, live, restamped))
     return 0
 
 
@@ -610,7 +699,7 @@ def main(argv=None):
     r.add_argument("--digest", required=True)
     r.add_argument("--worker", dest="worker")
     r.add_argument("--chief", dest="console")
-    for k in ("ticket", "doc", "lane", "launch-name"):
+    for k in ("ticket", "doc", "lane", "launch-name", "kind"):
         r.add_argument("--" + k)
     r.add_argument("--pr", type=int)
     r.add_argument("--digest-error", choices=DIGEST_ERRORS)
@@ -637,7 +726,7 @@ def main(argv=None):
             digest = json.load(fh)
         who = {"leg": a.worker, "ticket": a.ticket, "console": a.console, "pr": a.pr, "doc": a.doc,
                "lane": a.lane, "state_dir": a.state_dir, "digest_error": a.digest_error,
-               "launch_name": a.launch_name}
+               "launch_name": a.launch_name, "kind": a.kind if a.kind and PROFILE.match(a.kind) else None}
         f, e = record(digest, who, a.failures_ledger, a.eval_ledger)
     except (OSError, ValueError) as err:
         print("worker-ledger: %s" % err, file=sys.stderr)

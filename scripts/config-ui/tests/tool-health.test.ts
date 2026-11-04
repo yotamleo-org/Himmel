@@ -337,6 +337,21 @@ test("the page shows the per-profile table in plain words and labels the unknown
   expect(renderToolHealth({ data: evil }, "t")).not.toContain("<b>x</b>");
 });
 
+test("the page renders the role x lane x profile cross-tab and names the unknown remainder", async () => {
+  const { renderToolHealth } = await import("../public/tool-health.js");
+  const env = seedSplit();
+  const rows = readFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, "utf8").trim().split("\n").map((l: string) => JSON.parse(l));
+  rows[2].lane = "unknown"; rows[2].meta.launch_gap = "release-manager";
+  writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, rows.map((r: any) => JSON.stringify(r)).join("\n") + "\n");
+  const html = renderToolHealth({ data: read(env) }, "t");
+  expect(html).toContain("Role, lane and profile");
+  expect(html).toContain('data-cross-tab="worker native worker-impl"');
+  expect(html).toContain('data-cross-tab="judge claudex console-judge"');
+  expect(html).toContain('data-cross-tab="other unknown unknown"');
+  expect(html).toContain("Lane unknown: 14.3% of calls (1 of 3 sessions)");
+  expect(html).toContain("release-manager (1 sessions, 10 calls)");
+});
+
 test("Tool health navigation carries tokens only in fragments", () => {
   const token = "a".repeat(64);
   const link = navLinks({ here: "agui", token, current: "fleet" }).find((r: any) => r.id === "toolhealth");
@@ -370,6 +385,41 @@ test("roles map from the launch profile, sum to the fleet, and an unmapped profi
   expect(one.tools.find((r: any) => r.tool === "Bash").calls).toBe(30);
   expect(one.teams).toHaveLength(3);
   expect(read(seedSplit(), new URLSearchParams({ team: "nonsense" })).selected.team).toBe("");
+});
+
+test("the role x lane x profile cross-tab sums to the fleet and the unknown share is named, not inferred", async () => {
+  const { teamOf } = await import("../../eval/worker-digest/tool-health.mjs");
+  expect([teamOf("console"), teamOf("console-relay"), teamOf("leg-impl"), teamOf("worker-docs"), teamOf("worker-eval")]).toEqual(["chief", "chief-relay", "worker", "worker", "worker"]);
+  const data = read(seedSplit());
+  expect(data.cross_tab).toEqual([
+    { team: "judge", lane: "claudex", profile: "console-judge", sessions: 1, calls: 40, failures: 4, denials: 3 },
+    { team: "other", lane: "native", profile: "unknown", sessions: 1, calls: 10, failures: 1, denials: 1 },
+    { team: "worker", lane: "native", profile: "worker-impl", sessions: 1, calls: 20, failures: 3, denials: 1 },
+  ]);
+  expect(data.cross_tab.reduce((n: number, c: any) => n + c.calls, 0)).toBe(data.totalCalls);
+  expect(data.attribution).toMatchObject({ calls: 70, lane_unknown_calls: 0, lane_unknown_share: 0, profile_unknown_calls: 10, remainder: [] });
+  expect(data.attribution.profile_unknown_share).toBeCloseTo(10 / 70);
+  // a session no launch record names stays unknown, and the remainder says what kind of session it was
+  const env = seedSplit();
+  const rows = readFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, "utf8").trim().split("\n").map((l: string) => JSON.parse(l));
+  rows[2].lane = "unknown"; rows[2].meta.launch_gap = "release-manager";
+  writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, rows.map((r: any) => JSON.stringify(r)).join("\n") + "\n");
+  const gap = read(env).attribution;
+  expect(gap.remainder).toEqual([{ kind: "release-manager", sessions: 1, calls: 10 }]);
+  expect(gap).toMatchObject({ lane_unknown_calls: 10, lane_unknown_sessions: 1, sessions: 3 });
+  // a row written before the kind was kept is named for what it is
+  delete rows[2].meta.launch_gap;
+  writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, rows.map((r: any) => JSON.stringify(r)).join("\n") + "\n");
+  expect(read(env).attribution.remainder).toEqual([{ kind: "not-restamped", sessions: 1, calls: 10 }]);
+});
+
+test("a PreToolUse deny on an mcp tool rolls up as a denial of that tool, not an error", () => {
+  const env = seed();
+  const rows = readFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, "utf8").trim().split("\n").map((l: string) => JSON.parse(l));
+  rows[0].meta.tool_health.push({ agent, lane: "native", tool: "mcp__himmel-bus__read", calls: 2, failures: 2, errors: 1, denials: 1, classes: { "denied/guard-leg-context-handoff": 1, "error/mcp": 1 } });
+  writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, rows.map((r: any) => JSON.stringify(r)).join("\n") + "\n");
+  const mcp = read(env).tools.find((t: any) => t.tool === "mcp__himmel-bus__read");
+  expect(mcp).toMatchObject({ calls: 2, failures: 2, errors: 1, denials: 1 });
 });
 
 test("Bash rolls up by command head and cause; rtk joins by call id and a missing history stays unread", async () => {
