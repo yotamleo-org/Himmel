@@ -126,8 +126,8 @@ function allHtml(feed) {
   return [...by].map(([k, rows]) => {
     const bad = rows.filter(isTriage).length;
     return `<details class="bundle"${bad ? " open" : ""}><summary><b>${esc(k)}</b> <span class="ro">${rows.length} checked${bad ? ` · ${bad} to look at` : ""}</span></summary>
-      <table class="data"><thead><tr><th>result</th><th>check</th><th>what it found</th><th>kind</th></tr></thead><tbody>${rows.map((r) =>
-        `<tr><td><span class="pill ${esc(r.health)}">${esc(r.health)}</span></td><td>${esc(r.id)}</td><td>${esc(r.installed && r.installed.detail)}</td><td>${esc(r.kind || r.source)}</td></tr>`).join("")}</tbody></table></details>`;
+      <div class="scroll"><table class="data chk"><thead><tr><th>result</th><th>check</th><th>what it found</th><th>kind</th></tr></thead><tbody>${rows.map((r) =>
+        `<tr><td><span class="pill ${esc(r.health)}">${esc(r.health)}</span></td><td class="id">${esc(r.id)}</td><td class="wrap">${esc(r.installed && r.installed.detail)}</td><td class="kind">${esc(r.kind || r.source)}</td></tr>`).join("")}</tbody></table></div></details>`;
   }).join("");
 }
 
