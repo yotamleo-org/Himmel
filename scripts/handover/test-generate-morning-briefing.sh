@@ -1024,7 +1024,7 @@ OUT_ZU="$TMP_ROOT/zone-utc.md"; OUT_ZL="$TMP_ROOT/zone-local.md"
     bash "$SCRIPT" --out "$OUT_ZU" >/dev/null )
 ( cd "$ZONEREPO"; GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" MORNING_TODAY=2026-11-03 TZ=AEST-10 HIMMEL_LUNA_CONFIG_PATH="$TMP_ROOT/no-config.json" \
     bash "$SCRIPT" --out "$OUT_ZL" >/dev/null )
-zu=$(cat "$OUT_ZU"); zl=$(cat "$OUT_ZL")
+zu=$(cat "$OUT_ZU"); zl=$(cat "$OUT_ZL") # read-sink-ok: both paths are this test's own mktemp outputs, not argv or env
 assert_contains "zone utc: the heading counts one commit" "Commits (1 on Tue 3 Nov)" "$zu"
 assert_contains "zone utc: a 23:30 UTC commit counts on its UTC day" "late-utc" "$zu"
 assert_absent   "zone utc: the +10 local morning of the next UTC day does not shift the window" "early-utc" "$zu"
