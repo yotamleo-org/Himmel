@@ -298,6 +298,31 @@ assert_not_contains "luna rc 3 is not labelled failed" 'luna_template  *failed' 
 assert_not_contains "luna rc 3 is not labelled updated" 'luna_template  *updated' "$OUT"
 
 echo ""
+echo "Test 2d: luna vault found via install profile / settings when env is unset (HIMMEL-9145)"
+cat > "$LUNA_CLONE/templates/luna-second-brain/scripts/upgrade.sh" <<'UPGRADE'
+#!/usr/bin/env bash
+echo 'upgrade: vault is already current'
+exit 0
+UPGRADE
+git -C "$LUNA_CLONE" add -A
+git -C "$LUNA_CLONE" commit --quiet -m "current upgrade fixture"
+run_update_novault() { ( unset LUNA_VAULT_PATH; run_update "$@" ); }
+FH9="$TMP/luna-home-9145";mkdir -p "$FH9/.claude/himmel"
+printf '{"vault":{"mode":"existing","path":"%s"}}\n' "$LUNA_VAULT" > "$FH9/.claude/himmel/install-profile.json"
+OUT="$(run_update_novault "$LUNA_CLONE" "$FH9" "$STUB1" --only luna_template)"; RC=$?
+assert_not_contains "profile vault: not skipped as unset" 'LUNA_VAULT_PATH not set' "$OUT"
+assert_contains "profile vault: upgraded and source named" 'luna_template  *up-to-date .*vault from install profile' "$OUT"
+printf '{"vault":{"mode":"none","path":"%s"}}\n' "$LUNA_VAULT" > "$FH9/.claude/himmel/install-profile.json"
+OUT="$(run_update_novault "$LUNA_CLONE" "$FH9" "$STUB1" --only luna_template)"; RC=$?
+assert_contains "RED control: profile vault.mode none stays skipped" 'luna_template  *skipped  *LUNA_VAULT_PATH not set' "$OUT"
+printf '{"env":{"LUNA_VAULT_PATH":"%s"}}\n' "$LUNA_VAULT" > "$FH9/.claude/settings.json"
+OUT="$(run_update_novault "$LUNA_CLONE" "$FH9" "$STUB1" --only luna_template)"; RC=$?
+assert_contains "profile vault.mode none beats a stale settings env vault" 'luna_template  *skipped  *LUNA_VAULT_PATH not set' "$OUT"
+rm -f "$FH9/.claude/himmel/install-profile.json"
+OUT="$(run_update_novault "$LUNA_CLONE" "$FH9" "$STUB1" --only luna_template)"; RC=$?
+assert_contains "settings env vault: upgraded and source named" 'luna_template  *up-to-date .*vault from Claude settings' "$OUT"
+
+echo ""
 echo "Test 3: --only pull honours the dirty-tree pre-check"
 printf 'dirty\n' >> "$CLONE1/file.txt"
 OUT="$(run_update "$CLONE1" "$FH1" "$STUB1" --only pull)"; RC=$?
