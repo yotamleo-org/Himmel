@@ -370,6 +370,8 @@ class Judge:
                     m = re.match(r'slug=(\S+)\s.*?\bstatus=(\S+)', l)
                     if m:
                         self.sweep_rows.append((m.group(1), m.group(2)))
+                    elif l.strip() == 'sweep: no held locks':
+                        pass  # queue-lock.sh's stated empty sweep (rc 0), not a record
                     elif l.strip():
                         self.sweep_rows = 'fault'  # a record this reader cannot parse must not read as no lock
                         break

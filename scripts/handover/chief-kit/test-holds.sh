@@ -884,6 +884,10 @@ printf '#!/usr/bin/env bash\necho "a record in a format this reader does not kno
 chmod +x "$W/bin/ql-garbled"
 run env HOLDS_QUEUE_LOCK="$W/bin/ql-garbled" python3 -I "$SUT" read --repo "$R" --paths-from "$W/paths-sweep"
 same "T3 a sweep line it cannot parse makes the lock unknown, not free" "$(printf '%s\n' "$OUT" | grep 't3w3.sh' | cut -f6)" unknown
+printf '#!/usr/bin/env bash\necho "sweep: no held locks"\nexit 0\n' > "$W/bin/ql-none"
+chmod +x "$W/bin/ql-none"
+run env HOLDS_QUEUE_LOCK="$W/bin/ql-none" python3 -I "$SUT" read --repo "$R" --paths-from "$W/paths-sweep"
+same "T3 a sweep that says no held locks leaves every doc free, so its rows read dead" "$(printf '%s\n' "$OUT" | grep 't3w3.sh' | cut -f6)" dead
 
 # a row freshened after it was judged dead is live again: remove_dead keeps it when the mtime it was judged at has moved
 put_row scripts/t3gc3.sh HIMMEL-9507 lab "$(mkdoc HIMMEL-9507-case.md)"
