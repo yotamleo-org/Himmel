@@ -519,6 +519,25 @@ LAUNCHER_ENV="${HEADED_ARM_LAUNCHER_ENV:-}"
 # worker's claude. A leaked list would make any arm spawned from that worker prepend
 # the PARENT's profile tokens (first token wins) ahead of its own.
 unset HEADED_ARM_LAUNCHER_ENV
+# HEADED_ARM_LAUNCHER_ENV_LINES: newline-delimited NAME=VALUE, each entry ONE argv
+# element (the token list above word-splits, so a value with a space cannot ride it).
+LAUNCHER_ENV_LINES=()
+while IFS= read -r _l; do
+    [ -n "$_l" ] && LAUNCHER_ENV_LINES+=("$_l")
+done <<<"${HEADED_ARM_LAUNCHER_ENV_LINES:-}"
+unset HEADED_ARM_LAUNCHER_ENV_LINES
+# Validated before any claim or launch: a name that is not a shell identifier is refused.
+for _l in ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"}; do
+    case "$_l" in
+        *=*) _n="${_l%%=*}" ;;
+        *)   _n="" ;;
+    esac
+    case "$_n" in
+        ''|[!_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz]*|*[!_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789]*)
+            echo "headed-arm: HEADED_ARM_LAUNCHER_ENV_LINES line is not NAME=VALUE: $_l" >&2
+            exit 2 ;;
+    esac
+done
 RECORDER="${HEADED_ARM_RECORDER:-0}"
 REQUIRED_AUTOCOMPACT="${HEADED_ARM_REQUIRED_AUTOCOMPACT:-}"
 unset HEADED_ARM_REQUIRED_AUTOCOMPACT
@@ -591,6 +610,15 @@ if [ "$ROLE" = "chief" ]; then
     done
     set +f
     LAUNCHER_ENV="$_kept_env"
+    # Same drop for the line channel (an element is exact, so match the whole name).
+    _kept_lines=()
+    for _l in ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"}; do
+        case "$_l" in
+            HIMMEL_CONSOLE_RELAY=*) ;;
+            *) _kept_lines+=("$_l") ;;
+        esac
+    done
+    LAUNCHER_ENV_LINES=(${_kept_lines[@]+"${_kept_lines[@]}"})
     # A relative DOC resolves against REPO (the session's --workdir, see the
     # DOC note below), but the PreCompact hook runs in whatever cwd the session
     # has by then -- export it absolute so the hook opens the file the chief
@@ -798,6 +826,9 @@ if [ "$DRY_RUN" -eq 1 ]; then
     printf 'headed-arm: would exec: %s\n' "$(printf '%q ' "${LAUNCH_ARGV[@]}")"
     printf 'headed-arm: env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR%s CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE=%s ARMAUTOMERGE=1%s%s\n' \
         "${ROLE_ENV_UNSET:+ $ROLE_ENV_UNSET}" "$INIT" "${CHIEF_ENV[0]:+ ${CHIEF_ENV[*]}}" "${LAUNCHER_ENV:+ $LAUNCHER_ENV}"
+    for _l in ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"}; do
+        printf 'launcher-env-line: %s\n' "$_l"
+    done
     printf 'headed-arm: name=%s doc=%s signal=%s deadline=%s log=%s role=%s\n' \
         "$NAME" "$DOC" "$SIGNAL" "$DEADLINE" "$LOG" "${ROLE:-unsplit}"
     printf 'headed-arm: %s (autocompact=%s)\n' "$CONTEXT_REASON" "$AUTOCOMPACT"
@@ -1127,6 +1158,9 @@ headless_launch() {
         case "$tok" in *=*) _hl_set "${tok%%=*}" "${tok#*=}" ;; esac
     done
     set +f
+    for tok in ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"}; do
+        _hl_set "${tok%%=*}" "${tok#*=}"
+    done
     # Only a launcher the operator started with the bypass hands it on; a
     # daemon spawned from a bypass shell never does.
     val=""
@@ -1163,7 +1197,7 @@ headless_launch() {
     local lrc=0
     # shellcheck disable=SC2086  # deliberately word-split env tokens, the same shape as the konsole branches.
     env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR $ROLE_ENV_UNSET \
-        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV \
+        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"} \
         "${LAUNCH_ARGV[@]}" < /dev/null >> "$LOG" 2>&1 || lrc=$?
     [ "$lrc" -eq 0 ] || headless_fail 1 "headless: the background launch for $NAME exited $lrc - see $LOG for its output"
 
@@ -1716,13 +1750,13 @@ if [ "$RECORDER" = "1" ]; then
     # same file. -a is load-bearing: without it, `script -f` TRUNCATES $LOG on
     # open, discarding whatever the outer >> already wrote there.
     TERM_ARGV=(env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR $ROLE_ENV_UNSET
-        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} SHELL="$BASH_BIN" $LAUNCHER_ENV PATH="$DEDUPED_PATH"
+        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} SHELL="$BASH_BIN" $LAUNCHER_ENV ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"} PATH="$DEDUPED_PATH"
         script -q -a -f "$LOG" -c "$LAUNCH_CMD")
 else
     # shellcheck disable=SC2206  # LAUNCHER_ENV and ROLE_ENV_UNSET
     # word-split, same contract as the recorder branch above.
     TERM_ARGV=(env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR $ROLE_ENV_UNSET
-        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV PATH="$DEDUPED_PATH"
+        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"} PATH="$DEDUPED_PATH"
         "${LAUNCH_ARGV[@]}")
 fi
 
