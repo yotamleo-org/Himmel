@@ -24,7 +24,10 @@ DIGEST (the section "## Failure review"), over the ledger rows of the last 24 h:
     default ~/.himmel/eval-changes.jsonl) are written on every run;
     the memory-inbox line of a learning change only on --live. FAILURE_REVIEW_FEEDBACK="" turns it off.
   Written to <out-dir>/failure-review-<local date>.md (the morning report reads it) and, with
-  --vault, upserted into <vault>/50-Journal/Daily/<local date>.md.
+  --vault, upserted into <vault>/50-Journal/Daily/<local date>.md. Beside the markdown the same figures go to
+  <out-dir>/failure-review-<local date>.json (HIMMEL-9102): window {start, end}, mode, totals, classes[] (class,
+  kind, rows, workers count, workers_sample of at most 5 names, recurring, route) and routing[] (decision, class,
+  ticket, workers), for the report's table.
   out-dir: --out-dir, else $HIMMEL_FAILURE_REVIEW_DIR, else ~/.himmel/state/failure-review.
 
 TELEGRAM: one line through the notifier (--notify-cmd, else $FAILURE_REVIEW_NOTIFY_CMD, else
@@ -69,6 +72,7 @@ CAPPED = ("capped", "would-cap")
 LIVE_LINE = re.compile(r"^failure-router: (\S+) workers=(\d+) (\S+)(?: (\S+))?$")
 REASON_LINE = re.compile(r"^failure-router: (\S+) reason: (.+)$")
 TOP = 10
+SAMPLE = 5
 NOTIFIER = os.path.join(HERE, "..", "..", "luna", "vault-stall-alert.sh")
 
 
@@ -185,7 +189,22 @@ def build(a, rows, seen_before, rc, decisions, boxed):
     traj = sorted(c for c in fails if c.startswith("traj/"))
     out += ["- %s: %d" % (c, len(fails[c])) for c in traj] or ["- none"]
     out.append("- excluded until HIMMEL-4698: %s" % ", ".join(sorted(EXCLUDED.values())))
-    return "\n".join(out) + "\n", new, n, len(fails), routed, boxed
+    # The same figures as structured data: the morning report draws them as a table.
+    route = {}
+    for d in decisions:
+        route.setdefault(d["class"], d["decision"])
+    rows_json = []
+    for c in classes:
+        names = sorted({r["leg"] for r in fails[c] if r.get("leg")}, key=worker_key)
+        rows_json.append({"class": c, "kind": c.split("/")[0], "rows": len(fails[c]), "workers": len(names),
+                          "workers_sample": names[:SAMPLE], "recurring": c not in new, "route": route.get(c)})
+    data = {"window": {"start": failure_router.iso(since), "end": failure_router.iso(a.now)}, "mode": mode,
+            "totals": {"rows": n, "classes": len(fails),
+                       "workers": len({r["leg"] for rs in fails.values() for r in rs if r.get("leg")})},
+            "classes": rows_json,
+            "routing": [{"decision": d["decision"], "class": d["class"], "ticket": d.get("ticket"),
+                         "workers": d.get("workers")} for d in decisions]}
+    return "\n".join(out) + "\n", new, n, len(fails), routed, boxed, data
 
 
 TOP_NEW = 3
@@ -317,10 +336,13 @@ def daily_note(vault, day, section):
     return path
 
 
-def write_outputs(a, day, section):
+def write_outputs(a, day, section, data):
     digest = os.path.join(a.out_dir, "failure-review-%s.md" % day)
     write_atomic(digest, section)
     print("failure-review: wrote %s" % digest)
+    sidecar = os.path.join(a.out_dir, "failure-review-%s.json" % day)
+    write_atomic(sidecar, json.dumps(data, indent=1) + "\n")
+    print("failure-review: wrote %s" % sidecar)
     if a.vault:
         print("failure-review: daily note %s" % daily_note(a.vault, day, section))
 
@@ -351,7 +373,7 @@ def main(argv=None):
         return 2
     a.ledger = ledger
     rc, decisions, boxed = run_router(a)
-    section, new, n, k, routed, boxed = build(a, rows, set(older), rc, decisions, boxed)
+    section, new, n, k, routed, boxed, data = build(a, rows, set(older), rc, decisions, boxed)
     section += friction_part(a)
     section += feedback_part(a)
     npath = notify_path(a)
@@ -404,7 +426,7 @@ def main(argv=None):
             ns["pending"] = pending + done + ["new %s" % c for c in fresh]
             ns["sent"] = sent
             write_atomic(npath, json.dumps(ns, indent=1, sort_keys=True) + "\n")
-        write_outputs(a, day, section)
+        write_outputs(a, day, section, data)
         if line:
             try:
                 ok = subprocess.run([a.notify_cmd, line], capture_output=True, timeout=60).returncode == 0
