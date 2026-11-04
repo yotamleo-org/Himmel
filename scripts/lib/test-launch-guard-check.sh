@@ -136,6 +136,17 @@ mkdir -p "$tmp/a b"; mkrepo "$tmp/a b/repo"; register "$tmp/a b/repo"
 ln -s "$tmp/a b/repo" "$tmp/link"
 run "$tmp/link"; expect "spaces_and_symlink" 0 "guarded: user-layer $tmp/a b/repo"
 
+# --- callers carry no layer logic: each names the shared check and none of the layer internals ---
+callers_ok=1
+for f in scripts/handover/headed-arm.sh scripts/handover/chief-kit/headed-arm-worker.sh \
+         scripts/handover/arm-resume.sh scripts/handover/chief/chief.sh; do
+  if grep -q -e 'guardrail-block' -e 'rewriteSettingsText' -e 'register-state.sh --check' "$W/$f"; then
+    callers_ok=0; echo "  $f carries layer logic"
+  fi
+  grep -q 'launch-guard-check.sh' "$W/$f" || { callers_ok=0; echo "  $f does not name launch-guard-check.sh"; }
+done
+[ "$callers_ok" = 1 ] && pass "callers_carry_no_layer_logic" || fail "callers_carry_no_layer_logic"
+
 # --- read-only: the check wrote nothing into the folder under test --------------
 [ -z "$(git -C "$tmp/adopter" status --porcelain)" ] && pass "writes_nothing_in_folder" || fail "writes_nothing_in_folder"
 

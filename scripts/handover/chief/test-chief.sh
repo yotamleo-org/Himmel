@@ -47,6 +47,7 @@ trap 'rm -rf "$tmp"' EXIT
 # launch repo must not contaminate the --arm fixture. Release discovery is fixture-only.
 export HIMMEL_CONFIG_DIR="$tmp/config" HIMMEL_RELEASE_STATE_DIR="$tmp/releases"
 unset HEADED_ARM_REPO
+export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch --project fixtures; the guard rows drop it
 
 # chief.sh records the launch context of the chief it prints a
 # launch line for, under ${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/launch-logs.
@@ -2198,6 +2199,48 @@ check "68f collision refusal names the conflicting registered path" \
     "$(printf '%s\n' "$out68f" | grep -c "collides with the registered project at '$tmp/some-other-real-project'")" "1"
 check "68f no doc written on a collision refusal" \
     "$([ -e "$root/tester/collideproj68" ] && echo yes || echo no)" "no"
+
+# --- guard_chief_project_*: a --project folder that would not load the guard hooks is refused (18)
+# before any doc/registry write or arm; the suite-level opt-out is dropped with env -u.
+gp_proj="$tmp/guard-scratch-proj"; mkdir -p "$gp_proj"
+gp_reg="$tmp/guard-registry.json"; printf '{"repos":{}}\n' > "$gp_reg"
+gp_before="$(cksum < "$gp_reg")"
+printf '#!/usr/bin/env bash\ntouch "%s"\n' "$tmp/gp-arm-ran" > "$tmp/gp-arm-stub.sh"
+gp_rc=0
+# shellcheck disable=SC2016  # literal bash -c body
+gp_out="$( env -u UNGUARDED_LAUNCH_OK HANDOVER_REGISTRY="$gp_reg" bash -c 'cd "$1" && HANDOVER_DIR="$2" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CHIEF_HEADED_ARM="$3" CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$4" bash "$5" new --project "$6" --arm --deadline-min 0' _ "$fixture_repo" "$root" "$tmp/gp-arm-stub.sh" "$tmp/work-gp" "$C" "$gp_proj" 2>&1 )" || gp_rc=$?
+check "guard_chief_project_scratch exits 18" "$gp_rc" "18"
+check "guard_chief_project_scratch names the folder" \
+    "$(printf '%s\n' "$gp_out" | grep -c "^chief: refusing to launch guard-scratch-proj: $gp_proj does not load the himmel guard hooks (not a git work tree)\\.")" "1"
+check "guard_chief_project_scratch registry bytes unchanged" "$(cksum < "$gp_reg")" "$gp_before"
+check "guard_chief_project_scratch no chief doc written" \
+    "$([ -e "$root/tester/guard-scratch-proj" ] && echo yes || echo no)" "no"
+check "guard_chief_project_scratch no arm stub call" "$([ -e "$tmp/gp-arm-ran" ] && echo yes || echo no)" "no"
+
+gp_rc=0
+# shellcheck disable=SC2016  # literal bash -c body
+gp_out="$( env HANDOVER_REGISTRY="$gp_reg" bash -c 'cd "$1" && HANDOVER_DIR="$2" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO bash "$3" new --project "$4" --dry-run' _ "$fixture_repo" "$root" "$C" "$gp_proj" 2>&1 )" || gp_rc=$?
+check "guard_chief_project_optout proceeds (rc 0)" "$gp_rc" "0"
+check "guard_chief_project_optout prints exactly one WARN" \
+    "$(printf '%s\n' "$gp_out" | grep -c "^WARN unguarded launch of guard-scratch-proj in $gp_proj (not a git work tree; UNGUARDED_LAUNCH_OK=1)\$")" "1"
+
+# control: a registered adopter with a complete user layer starts without the opt-out.
+gp_cfg="$tmp/gp-cfg"; mkdir -p "$gp_cfg"
+gp_adopter="$tmp/gp-adopter"; mkdir -p "$gp_adopter"
+git -C "$gp_adopter" init -q -b main && git -C "$gp_adopter" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+gp_adopter="$(cd "$gp_adopter" && pwd -P)"
+mkdir -p "$tmp/gp-state" "$tmp/gp-home"
+env HANDOVER_REGISTRY="$gp_reg" USER_SLUG=tester bash "$REPO_REAL/scripts/handover/register-state.sh" \
+    --repo-path "$gp_adopter" --state-host "$tmp/gp-state" >/dev/null 2>&1
+env HOME="$tmp/gp-home" HIMMEL_REPO="$REPO_REAL" CLAUDE_USER_SETTINGS="$gp_cfg/settings.json" \
+    node "$REPO_REAL/scripts/hooks/guardrail-block.mjs" install --node "$(command -v node)" --bash "$(command -v bash)" >/dev/null 2>&1
+gp_rc=0
+# shellcheck disable=SC2016  # literal bash -c body
+gp_out="$( env -u UNGUARDED_LAUNCH_OK HOME="$tmp/gp-home" HIMMEL_REPO="$REPO_REAL" CLAUDE_CONFIG_DIR="$gp_cfg" HANDOVER_REGISTRY="$gp_reg" \
+    bash -c 'cd "$1" && HANDOVER_DIR="$2" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO bash "$3" new --project "$4" --dry-run' _ "$fixture_repo" "$root" "$C" "$gp_adopter" 2>&1 )" || gp_rc=$?
+check "chief_project_registered_adopter proceeds (rc 0)" "$gp_rc" "0"
+check "chief_project_registered_adopter has no refusal or WARN" \
+    "$(printf '%s\n' "$gp_out" | grep -c "refusing to launch\|^WARN unguarded")" "0"
 
 # --- 68g (change 7): a SYMLINK to the himmel checkout given as --project is
 # canonicalized with pwd -P and recognized as himmel itself, not a foreign

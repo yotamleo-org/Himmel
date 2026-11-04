@@ -51,7 +51,8 @@
 # other than its own chief-wait.sh waiter, or that check could not run;
 # 6 `next` refused: a Results bullet quotes an operator ruling (verbatim) that
 # the decisions: line does not hold; 7 `next` refused: the outgoing doc has no
-# real `## Current direction` block.
+# real `## Current direction` block; 18 `--project` refused: the project folder would not load the
+# himmel guard hooks (UNGUARDED_LAUNCH_OK=1 in the launching shell starts it with one WARN).
 #
 # Platform guard: POSIX bash 3.2+; --arm launches through
 # konsole via headed-arm.sh (Linux/KDE), or the konsole-macos.sh shim on macOS.
@@ -803,6 +804,23 @@ if [ -n "$PROJECT_ARG" ]; then
     project_canon="$(cd "$PROJECT_ARG" && pwd -P)"
     if [ "$project_canon" != "$repo" ]; then
         project_dir="$project_canon"
+    fi
+fi
+# A foreign project folder that would not load the himmel guard hooks is refused (exit 18) before the
+# registry match, any chief doc or registry write, do_arm or terminal call: every worker this chief
+# launched there would be refused anyway. UNGUARDED_LAUNCH_OK=1 (launching shell) starts it with one WARN.
+# The chief has no session name yet, so the message names the project folder's basename.
+if [ -n "$project_dir" ]; then
+    _lg_rc=0; _lg_reason="$(bash "$HERE/../../lib/launch-guard-check.sh" "$project_dir")" || _lg_rc=$?
+    if [ "$_lg_rc" -ne 0 ]; then
+        [ "$_lg_rc" -eq 1 ] || _lg_reason="folder cannot be resolved"
+        _lg_name="$(basename "$project_dir")"
+        if [ "${UNGUARDED_LAUNCH_OK:-}" = "1" ]; then
+            echo "WARN unguarded launch of $_lg_name in $project_dir ($_lg_reason; UNGUARDED_LAUNCH_OK=1)" >&2
+        else
+            echo "chief: refusing to launch $_lg_name: $project_dir does not load the himmel guard hooks ($_lg_reason). Launch from a himmel checkout or worktree, register the repo and wire the user guard layer (himmelctl ensure), or set UNGUARDED_LAUNCH_OK=1 in the launching shell to launch it unguarded." >&2
+            exit 18
+        fi
     fi
 fi
 project_doc_value="none — this console runs in the himmel checkout itself"
