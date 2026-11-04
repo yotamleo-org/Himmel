@@ -25,8 +25,12 @@ rows = []
 for r, _, fs in os.walk(d):
     for f in fs:
         p = os.path.join(r, f)
-        s = os.stat(p)
-        rows.append("%s %d %.0f" % (os.path.relpath(p, d), s.st_size, s.st_mtime))
+        try:
+            s = os.stat(p)
+        except OSError as e:
+            print("STAT-ERROR " + p + " " + str(e))
+            sys.exit(1)
+        rows.append("%s %d %d" % (os.path.relpath(p, d), s.st_size, s.st_mtime_ns))
 print(zlib.crc32("\n".join(sorted(rows)).encode()))' "$REAL_HOME/.himmel/state/holds"
 }
 REAL_BEFORE="$(real_register)"
@@ -898,7 +902,9 @@ print(h.remove_dead(d, n, f, os.path.getmtime(sys.argv[2]) - 100))' "$SUT" "$(ro
 same "T3 gc keeps a row whose mtime moved since it was judged dead" "$OUT:$([ -e "$(rowf scripts/t3gc3.sh)" ] && echo row || echo none)" "False:row"
 
 # ---- the real register was never touched
-same "the real ~/.himmel/state/holds is unchanged" "$REAL_BEFORE" "$(HOME="$REAL_HOME" real_register)"
+REAL_AFTER="$(HOME="$REAL_HOME" real_register)"
+case "$REAL_BEFORE$REAL_AFTER" in *STAT-ERROR*) same "the real register snapshot has no stat error" "before: $REAL_BEFORE; after: $REAL_AFTER" "no stat error" ;; esac
+same "the real ~/.himmel/state/holds is unchanged" "$REAL_BEFORE" "$REAL_AFTER"
 
 if [ "$fails" -eq 0 ]; then
     printf 'test-holds: %d passed, 0 failed\n' "$total"
