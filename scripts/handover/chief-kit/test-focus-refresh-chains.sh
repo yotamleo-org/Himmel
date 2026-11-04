@@ -227,9 +227,13 @@ git -C "$PRIM" add -A
 git -C "$PRIM" -c user.email=t@test.local -c user.name=t -c commit.gpgsign=false commit -q -m fixture
 git -C "$PRIM" worktree add -q "$WTR" -b wtbranch
 reset
-(cd "$WTR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR HOME="$tmp/home" bash "$WTR/scripts/handover/chief-kit/focus-refresh.sh" --doc "$DOC" --repo example-org/example-repo >"$tmp/out" 2>"$tmp/err")
+cp "$REGISTRY" "$CFG/fxuser/himmel/chains.json"
+rm -f "$CFG/.judge-ladder"
+frrc=0; (cd "$WTR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR HOME="$tmp/home" bash "$WTR/scripts/handover/chief-kit/focus-refresh.sh" --doc "$DOC" --repo example-org/example-repo >"$tmp/out" 2>"$tmp/err") || frrc=$?
+check "a linked worktree: focus-refresh succeeds with the primary env's root" "$frrc $(out)" "0 focus=ok"
 lacks "a linked worktree: focus-refresh prints no load-dotenv advisory" "$(cat "$tmp/err")" "load-dotenv: .env absent under worktree"
-(cd "$WTR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR -u JUDGE_LADDER_STATE HOME="$tmp/home" JUDGE_LADDER_NOW=1000 bash "$WTR/scripts/handover/chief-kit/judge-ladder.sh" convene seat1 sonnet >/dev/null 2>"$tmp/err")
+jlrc=0; (cd "$WTR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR -u JUDGE_LADDER_STATE HOME="$tmp/home" JUDGE_LADDER_NOW=1000 bash "$WTR/scripts/handover/chief-kit/judge-ladder.sh" convene seat1 sonnet >/dev/null 2>"$tmp/err") || jlrc=$?
+check "a linked worktree: judge-ladder writes under the primary env's root" "$jlrc $([ -f "$CFG/.judge-ladder" ] && echo yes)" "0 yes"
 lacks "a linked worktree: judge-ladder prints no load-dotenv advisory" "$(cat "$tmp/err")" "load-dotenv: .env absent under worktree"
 
 printf '%d failure(s)\n' "$fails"
