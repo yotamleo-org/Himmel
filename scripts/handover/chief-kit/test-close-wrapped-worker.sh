@@ -1553,10 +1553,17 @@ rc=0; out=$(run "$HP" 2>&1) || rc=$?
 check "handoff: named live successor lock permits predecessor close (base rc 3)" "$rc" "0"
 exact_count "handoff: predecessor alone is signaled" "$(cat "$CALLS")" "kill -TERM 389" "1"
 not_contains "handoff: held successor is never signaled" "$(cat "$CALLS")" "kill -TERM 390"
+# The successor works on the same PR: the predecessor's close reaps none of its scratch.
+printf '# worker\n\n## Results\n\n- 09:00 LIVE - started\n- 09:50 READY - PR 7 abc GREEN\n- 10:00 WRAPPED - hand-off to %s\n' "$HS" > "$HP"
+reset_calls
+rc=0; out=$(CWL_KILL_REMOVES_PROC=1 run "$HP" 2>&1) || rc=$?
+check "handoff: predecessor with a held successor still closes" "$rc" "0"
+check "handoff: held successor means no /tmp reap" "$(wc -c < "$CALLS.reap" | tr -d ' ')" "0"
+mkcmdline 389 claude -n HIMMEL-9-N90-demo-2026-01-01 work
 [ -n "$token" ] && HANDOVER_DIR="$W/handover-root" bash "$QL" release "$HS" "$token" >/dev/null 2>&1
 
 # A second successor is not an ambiguity about the predecessor's own window.
-printf '# worker\n\n## Results\n' > "$HT"
+printf '# worker\n\n## Results\n\n- 11:30 LIVE - resumed\n' > "$HT"
 printf '# worker\n\n## Results\n\n- 09:00 LIVE - started\n- 10:00 WRAPPED - hand-off to %s\n' "$HT" > "$HP"
 reset_calls
 rc=0; out=$(run "$HP" 2>&1) || rc=$?
@@ -1633,6 +1640,7 @@ check "handoff: a later ordinary BLOCKED does not close the worker (base rc 0)" 
 check "handoff: a later ordinary BLOCKED signals nothing" "$(cat "$CALLS")" ""
 
 # The worker's own final hand-off appended at EOF lands below a ruling heading and still counts.
+printf '# worker\n\n## Results\n\n- 11:00 LIVE - resumed\n' > "$HS"
 printf '# worker\n\n## Results\n\n- 09:00 LIVE - started\n\n## Chief Rulings\n\n- 10:00 BLOCKED - context hand-off to %s\n' "$HS" > "$HP"
 reset_calls
 rc=0; out=$(run "$HP" 2>&1) || rc=$?
@@ -1660,6 +1668,71 @@ exact_count "handoff worktree: the predecessor is signaled" "$(cat "$CALLS")" "k
 not_contains "handoff worktree: the live successor's worktree is not pruned" "$(cat "$CALLS")" "clean.sh"
 [ -z "$token" ] || HANDOVER_DIR="$W/handover-root" bash "$QL" release "$HS" "$token" >/dev/null 2>&1
 rm -f "$HP" "$HS"
+
+# A relaunch writes its record under a second Results heading: its hand-off there still names the
+# successor, so a running successor keeps the /tmp scratch and the worktree.
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 390 claude -n HIMMEL-9-N90b-demo-2026-01-01 work
+mkcmdline 391 claude -n HIMMEL-9-N90c-demo-2026-01-01 work
+pgrep_x_stub 390 391
+# shellcheck disable=SC2016  # literal fixture backticks around the worktree path
+printf '# worker\n\n## Results\n\n- 11:00 LIVE - resumed, worktree: `%s`\n- 11:30 READY - PR 7 abc GREEN\n\n## Notes\n\n## Results (relaunch)\n\n- 12:00 WRAPPED - hand-off to %s\n' "$WT/.claude/worktrees/demo" "$HT" > "$HS"
+printf '# worker\n\n## Results\n\n- 12:30 LIVE - resumed\n' > "$HT"
+acq_out="$(HANDOVER_DIR="$W/handover-root" bash "$QL" acquire "$HT" "cwl-test-holder" 2>&1)"
+# shellcheck disable=SC2016  # literal fixture token delimiters
+token="$(printf '%s' "$acq_out" | sed -n 's/.*release-token: `\([^`]*\)`.*/\1/p')"
+check "relaunch setup: successor lock acquired" "$([ -n "$token" ] && echo yes)" "yes"
+reset_calls
+rc=0; out=$(CWL_KILL_REMOVES_PROC=1 run "$HS" 2>&1) || rc=$?
+check "relaunch: the predecessor closes" "$rc" "0"
+not_contains "relaunch: the successor is never signaled" "$(cat "$CALLS")" "kill -TERM 391"
+check "relaunch: a second-heading hand-off to a held successor reaps no /tmp" "$(wc -c < "$CALLS.reap" | tr -d ' ')" "0"
+not_contains "relaunch: a second-heading hand-off to a held successor prunes nothing" "$(cat "$CALLS")" "clean.sh"
+mkcmdline 390 claude -n HIMMEL-9-N90b-demo-2026-01-01 work
+
+# The later-letter guard reads no Results: an unnamed later RESUME holding its lock keeps both.
+# shellcheck disable=SC2016  # literal fixture backticks around the worktree path
+printf '# worker\n\n## Results\n\n- 11:00 LIVE - resumed, worktree: `%s`\n- 11:30 READY - PR 7 abc GREEN\n- 12:00 WRAPPED - done\n' "$WT/.claude/worktrees/demo" > "$HS"
+reset_calls
+rc=0; out=$(CWL_KILL_REMOVES_PROC=1 run "$HS" 2>&1) || rc=$?
+check "later-letter lock: the worker closes" "$rc" "0"
+check "later-letter lock: a later RESUME holding its lock means no /tmp reap" "$(wc -c < "$CALLS.reap" | tr -d ' ')" "0"
+not_contains "later-letter lock: a later RESUME holding its lock means no prune" "$(cat "$CALLS")" "clean.sh"
+mkcmdline 390 claude -n HIMMEL-9-N90b-demo-2026-01-01 work
+[ -z "$token" ] || HANDOVER_DIR="$W/handover-root" bash "$QL" release "$HT" "$token" >/dev/null 2>&1
+
+# ...and a later RESUME not yet locked that names this worktree as its resume_cwd keeps both too.
+printf -- '---\nresume_cwd: %s\n---\n\n# worker\n\n## Results\n' "$WT/.claude/worktrees/demo" > "$HT"
+reset_calls
+rc=0; out=$(CWL_KILL_REMOVES_PROC=1 run "$HS" 2>&1) || rc=$?
+check "later-letter cwd: the worker closes" "$rc" "0"
+check "later-letter cwd: a later RESUME naming this worktree means no /tmp reap" "$(wc -c < "$CALLS.reap" | tr -d ' ')" "0"
+not_contains "later-letter cwd: a later RESUME naming this worktree means no prune" "$(cat "$CALLS")" "clean.sh"
+mkcmdline 390 claude -n HIMMEL-9-N90b-demo-2026-01-01 work
+
+# RED CONTROL: an unlocked later RESUME that names another worktree leaves the reap and the prune on.
+printf -- '---\nresume_cwd: %s\n---\n\n# worker\n\n## Results\n' "$WT/.claude/worktrees/other" > "$HT"
+reset_calls
+rc=0; out=$(CWL_KILL_REMOVES_PROC=1 run "$HS" 2>&1) || rc=$?
+check "later-letter control: the worker closes" "$rc" "0"
+contains "later-letter control: the /tmp reap runs" "$(cat "$CALLS.reap")" "tmp-reap"
+contains "later-letter control: the prune runs" "$(cat "$CALLS")" "clean.sh"
+mkcmdline 390 claude -n HIMMEL-9-N90b-demo-2026-01-01 work
+
+# A later RESUME that takes its lock while the digest runs still keeps the worktree: the prune
+# reads the successor state again.
+printf '#!/usr/bin/env bash\nHANDOVER_DIR=%q bash %q acquire %q cwl-test-holder > %q 2>&1\necho digest=skipped:test\n' \
+    "$W/handover-root" "$QL" "$HT" "$W/digest-acq.out" > "$W/digest-lock-stub.sh"
+reset_calls
+rc=0; out=$(CWL_KILL_REMOVES_PROC=1 WORKER_SESSION_DIGEST_STEP_BIN="$W/digest-lock-stub.sh" run "$HS" 2>&1) || rc=$?
+check "late lock: the worker closes" "$rc" "0"
+contains "late lock: the reap ran before the lock was taken" "$(cat "$CALLS.reap")" "tmp-reap"
+not_contains "late lock: a lock taken during the digest means no prune" "$(cat "$CALLS")" "clean.sh"
+mkcmdline 390 claude -n HIMMEL-9-N90b-demo-2026-01-01 work
+# shellcheck disable=SC2016  # literal fixture token delimiters
+token="$(sed -n 's/.*release-token: `\([^`]*\)`.*/\1/p' "$W/digest-acq.out" 2>/dev/null)"
+[ -z "$token" ] || HANDOVER_DIR="$W/handover-root" bash "$QL" release "$HT" "$token" >/dev/null 2>&1
+rm -f "$HS" "$HT"
 
 # --- a worker relaunched under <stem>-RESUME closes like any other ---
 # WRAPPED lands on the ORIGINAL doc; the live window is named <stem>-RESUME.

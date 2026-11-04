@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One read-only derivation of a worker's explicitly named hand-off successor.
-# Only the worker's leading Results markers count, including its own EOF appends
-# below ruling headings. A quoted/mirrored ruling or a filename in Notes proves nothing.
+# Only the worker's Results markers count (every Results heading, as append-results writes them),
+# including its own EOF appends below ruling headings. A fenced quote or a filename in Notes proves nothing.
 # bash 3.2-safe. Source this library; it performs no close or message action.
 _WS_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/worker-identity.sh
@@ -17,11 +17,16 @@ worker_named_successor() {
     [[ $label =~ ^(N[0-9]+)[a-z]*$ ]] || return 0
     base="${BASH_REMATCH[1]}"
     # shellcheck disable=SC2016  # literal delimiters around Markdown paths
+    # Every Results heading opens the record (a relaunch appends its own), but a heading or bullet
+    # inside a fenced block is quoted text. A negated hand-off ("no hand-off to ...") names no successor.
     named="$(awk '
-        /^## Results( |$)/ { seen = 1; keep = 1; next }
-        /^## / { keep = seen && ($0 ~ /^## (Chief|Console) Rulings( |$)/); next }
+        /^ {0,3}(```|~~~)/ { d = $0; sub(/^ */, "", d); d = substr(d, 1, 3); if (fence == "") fence = d; else if (d == fence) fence = ""; next }
+        fence != "" { next }
+        /^## Results([ \t]|$)/ { keep = 1; seen = 1; next }
+        /^## / { keep = seen && ($0 ~ /^## (Chief|Console) Rulings([ \t]|$)/); next }
         !keep || !/^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|BLOCKED)([^A-Za-z0-9_]|$)/ { next }
         !/([Hh]and-?off|RESUME written:)/ { next }
+        /(^|[^A-Za-z0-9_])([Nn]o|[Nn]ot|[Nn]ever|[Ww]ithout|[Cc]annot)[^A-Za-z0-9_][^;.]{0,30}[Hh]and-?off/ { next }
         {
             found = ""; text = $0
             while (match(text, /[^ \t`"<>():,;]+-RESUME\.md/)) {
@@ -44,6 +49,14 @@ worker_named_successor() {
     expected="$(printf '%s' "${stem%-RESUME}" | sed -E "s/-(leg)?${label}(-|\$)/-\\1${next_label}\\2/")-RESUME"
     next_stem="$(basename "$path" .md)"
     [ "$next_stem" = "$expected" ] || return 0
+    # A successor that never launched proves nothing: its own Results must hold a marker bullet.
+    awk '
+        /^ {0,3}(```|~~~)/ { d = $0; sub(/^ */, "", d); d = substr(d, 1, 3); if (fence == "") fence = d; else if (d == fence) fence = ""; next }
+        fence != "" { next }
+        /^## Results([ \t]|$)/ { r = 1; seen = 1; next }
+        /^## / { r = seen && ($0 ~ /^## (Chief|Console) Rulings([ \t]|$)/); next }
+        r && /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/ { f = 1; exit }
+        END { exit !f }' "$path" || return 0
     # A successor running under any of this worker's own session names is no distinct worker.
     own_set=",$(worker_identity "$doc" | cut -f2),$stem,"
     suc_set=",$(worker_identity "$path" | cut -f2),$next_stem,"
@@ -51,4 +64,23 @@ worker_named_successor() {
         case "$suc_set" in *",$own_n,"*) return 0 ;; esac
     done
     printf '%s\n' "$path"
+}
+
+# worker_handoff_tail <worker doc>: success when the worker's newest own marker bullet is itself a
+# WRAPPED or BLOCKED hand-off (not negated) and that hand-off names a successor. A later ordinary
+# BLOCKED (waiting on CI) is a working worker and fails.
+worker_handoff_tail() {
+    local last
+    [ -r "$1" ] || return 1
+    last="$(awk '
+        /^ {0,3}(```|~~~)/ { d = $0; sub(/^ */, "", d); d = substr(d, 1, 3); if (fence == "") fence = d; else if (d == fence) fence = ""; next }
+        fence != "" { next }
+        /^## Results([ \t]|$)/ { r = 1; seen = 1; next }
+        /^## / { r = seen && ($0 ~ /^## (Chief|Console) Rulings([ \t]|$)/); next }
+        r && /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/ { l = $0 }
+        END { print l }' "$1")" || return 1
+    grep -Eq '^- ([0-9]?[0-9]:[0-9][0-9][[:space:]]+)?(\*\*)?(WRAPPED|BLOCKED)([^A-Za-z0-9_]|$)' <<< "$last" || return 1
+    grep -Eq '([Hh]and-?off|RESUME written:)' <<< "$last" || return 1
+    ! grep -Eq '(^|[^A-Za-z0-9_])([Nn]o|[Nn]ot|[Nn]ever|[Ww]ithout|[Cc]annot)[^A-Za-z0-9_][^;.]{0,30}[Hh]and-?off' <<< "$last" || return 1
+    [ -n "$(worker_named_successor "$1")" ]
 }

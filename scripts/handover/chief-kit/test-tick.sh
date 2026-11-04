@@ -1854,6 +1854,34 @@ case "$o5923b" in *' closable='*) fail 'a fresh CLOSABLE worker must not be coun
 o5923c="$(PATH="$W/bin-3747b:$PATH" bash "$SUT" --workers "$W/handover/$w3747b.md")"
 case "$o5923c" in *' closable='*) fail 'no CLOSABLE leg: closable= must be absent (HIMMEL-5923)' ;; *) pass 'no CLOSABLE leg: closable= is absent (HIMMEL-5923)' ;; esac
 
+# --- a BLOCKED hand-off naming its launched successor, with the worker's own lock free, is a
+# closable named hand-off: CLOSABLE and counted in closable=. A held lock, or a later ordinary
+# BLOCKED after the hand-off, is a working worker. (closable=0 prints as an absent field.)
+w8949a="HIMMEL-8949-N660-handoff-2026-11-04"
+s8949="$W/handover/HIMMEL-8949-N660b-handoff-2026-11-04-RESUME.md"
+printf '%s\n' '# successor' '' '## Results' '' '- 13:05 LIVE — resumed' > "$s8949"
+printf '%s\n' '# worker' '' '## Results' '' '- 12:00 LIVE — working' "- 13:00 BLOCKED — context 80 %, RESUME written: $s8949" > "$W/handover/$w8949a.md"
+mkcmdline 143 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-8949-N660-handoff-2026-11-04 work
+mk_pgrep_x "$W/bin-8949" 143
+touch -d '20 minutes ago' "$W/handover/$w8949a.md"
+o8949a="$(PATH="$W/bin-8949:$PATH" bash "$SUT" --workers "$W/handover/$w8949a.md")"
+contains 'a BLOCKED hand-off naming its successor with its lock free reads CLOSABLE' "$o8949a" 'workers=N660:CLOSABLE'
+contains 'a BLOCKED hand-off naming its successor with its lock free is counted in closable=1' "$o8949a" ' closable=1'
+# the fixture queue-lock stub reports any *odd-name* doc as held
+w8949b="HIMMEL-8949-N661-odd-name-2026-11-04"
+s8949b="$W/handover/HIMMEL-8949-N661b-odd-name-2026-11-04-RESUME.md"
+printf '%s\n' '# successor' '' '## Results' '' '- 13:05 LIVE — resumed' > "$s8949b"
+printf '%s\n' '# worker' '' '## Results' '' '- 12:00 LIVE — working' "- 13:00 BLOCKED — context 80 %, RESUME written: $s8949b" > "$W/handover/$w8949b.md"
+mkcmdline 144 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-8949-N661-odd-name-2026-11-04 work
+mk_pgrep_x "$W/bin-8949b" 144
+touch -d '20 minutes ago' "$W/handover/$w8949b.md"
+o8949b="$(PATH="$W/bin-8949b:$PATH" bash "$SUT" --workers "$W/handover/$w8949b.md")"
+case "$o8949b" in *'N661:CLOSABLE'*|*' closable='*) fail 'a BLOCKED hand-off with its lock held must not be closable' ;; *) pass 'a BLOCKED hand-off with its lock held is not closable (closable=0)' ;; esac
+printf '%s\n' '- 13:30 LIVE — working again' '- 14:00 BLOCKED — waiting on CI' >> "$W/handover/$w8949a.md"
+touch -d '20 minutes ago' "$W/handover/$w8949a.md"
+o8949c="$(PATH="$W/bin-8949:$PATH" bash "$SUT" --workers "$W/handover/$w8949a.md")"
+case "$o8949c" in *'N660:CLOSABLE'*|*' closable='*) fail 'a later ordinary BLOCKED after the hand-off must not be closable' ;; *) pass 'a later ordinary BLOCKED after the hand-off is not closable (closable=0)' ;; esac
+
 # --- denials= (classifier-denial jsonl -> tick line, SHIP-STEP /
 # REPEAT / PAUSE-RISK / none / skip). mkdenial writes one row at an offset
 # (minutes before "now") so tests control window inclusion without a stale
