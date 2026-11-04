@@ -112,12 +112,12 @@ test("page: a slower, older feed load never repaints over a newer one", async ()
   const waiting: ((b: string) => void)[] = [];
   let first = true;
   const g = globalThis as Record<string, unknown>;
-  const names = ["render", "renderNav", "renderHeader", "parseLanding", "navLinks", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "__loadFeed"];
+  const names = ["render", "renderNav", "renderHeader", "parseLanding", "navLinks", "railMarkup", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "__loadFeed"];
   const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
   Object.assign(g, {
     render: (f: { id?: string } | null) => { if (f) painted.push(f.id ?? "?"); return ""; }, renderNav: () => "", renderHeader: () => "",
     // the rail (nav.js) and its fleet read are not under test here.
-    parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
+    parseLanding: () => null, navLinks: () => [], railMarkup: () => "", fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
     document: { querySelector: el, querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
     location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
     // nor is the vm form's or the report settings' or the review gate's or the fleet cap's or the setup read (Configure's onVisit) or the tracker sources' read: none may take the feed's fetch slot.
@@ -146,11 +146,11 @@ test("page: a repaint after a review gate control changes puts the focus back on
   const rendered = [ctl("mode", "codex"), ctl("required", "claude"), ctl("enabled", "claude")];
   const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
   const g = globalThis as Record<string, unknown>;
-  const names = ["render", "renderNav", "renderHeader", "parseLanding", "navLinks", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "__paint"];
+  const names = ["render", "renderNav", "renderHeader", "parseLanding", "navLinks", "railMarkup", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "__paint"];
   const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
   Object.assign(g, {
     render: () => "", renderNav: () => "", renderHeader: () => "",
-    parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
+    parseLanding: () => null, navLinks: () => [], railMarkup: () => "", fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
     document: { querySelector: el, querySelectorAll: (q: string) => (q === "[data-rg]" ? rendered : []), getElementById: el, activeElement: rendered[1], addEventListener() {} },
     location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
     fetch: () => new Promise(() => {}),
@@ -174,11 +174,11 @@ for (const [name, before, after, want] of [
   const repainted = { value: after, focus() {}, setSelectionRange() {} };
   const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
   const g = globalThis as Record<string, unknown>;
-  const names = ["render", "renderNav", "renderHeader", "parseLanding", "navLinks", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "__paint"];
+  const names = ["render", "renderNav", "renderHeader", "parseLanding", "navLinks", "railMarkup", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "__paint"];
   const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
   Object.assign(g, {
     render: () => "", renderNav: () => "", renderHeader: () => "",
-    parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
+    parseLanding: () => null, navLinks: () => [], railMarkup: () => "", fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
     document: { querySelector: (q: string) => (q === 'input[data-path="handover-root"]' ? repainted : el()), querySelectorAll: (q: string) => (q.startsWith("input[data-secret]") ? [emptied] : []), getElementById: el, activeElement: null, addEventListener() {} },
     location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
     fetch: () => new Promise(() => {}),
@@ -197,11 +197,11 @@ test("page: a failed setup refresh keeps the last good setup and says so, instea
   const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
   let failing = false;
   const g = globalThis as Record<string, unknown>;
-  const names = ["render", "renderNav", "renderHeader", "parseLanding", "navLinks", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "__loadSetup", "__setup"];
+  const names = ["render", "renderNav", "renderHeader", "parseLanding", "navLinks", "railMarkup", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "__loadSetup", "__setup"];
   const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
   Object.assign(g, {
     render: () => "", renderNav: () => "", renderHeader: () => "",
-    parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
+    parseLanding: () => null, navLinks: () => [], railMarkup: () => "", fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
     document: { querySelector: (q: string) => (q === "#toast" ? toastEl : el()), querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
     location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
     fetch: (url: string) => (url === "/api/setup"
@@ -236,24 +236,24 @@ test("a server idle after a feed still exits on time (an in-flight report does n
   expect(idled).toBe(true);
 });
 
-// the Health picker lives in the rail only on the Health page, and a refreshed feed re-reads it (no route change).
-type PickerHarness = { pages: () => string; refresh: () => Promise<void>; seed: (f: object) => void; go: (hash: string) => void; setFail: (n: number) => void };
+// the Health picker lives in the page bar (the top of #main) only on the Health page, and a refreshed feed re-reads it (no route change).
+type PickerHarness = { main: () => string; refresh: () => Promise<void>; seed: (f: object) => void; go: (hash: string) => void; setFail: (n: number) => void };
 async function pickerHarness(hash: string, run: (h: PickerHarness) => Promise<void>) {
   const { parseView, projectVerdict } = await import("../public/health.js");
   const src = readFileSync(join(import.meta.dir, "../public/app.js"), "utf8")
     .replace(/^import .*$/gm, "").concat("\nglobalThis.__refresh = refreshFeed;\nglobalThis.__seed = (f) => { feed = f; };\nglobalThis.__route = route;\n");
-  let fail = 0, pages = "";
+  let fail = 0, main = "";
   const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
-  const pagesEl = { textContent: "", hidden: false, focus() {}, setSelectionRange() {}, set innerHTML(v: string) { pages = v; }, get innerHTML() { return pages; } };
+  const mainEl = { textContent: "", hidden: false, focus() {}, setSelectionRange() {}, set innerHTML(v: string) { main = v; }, get innerHTML() { return main; } };
   const loc = { hash, pathname: "/", search: "" };
   const g = globalThis as Record<string, unknown>;
-  const names = ["render", "renderNav", "renderHeader", "renderHealth", "renderInventory", "renderProbe", "parseView", "projectVerdict", "parseLanding", "navLinks", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "addEventListener", "__refresh", "__seed", "__route"];
+  const names = ["render", "renderNav", "renderHeader", "renderHealth", "renderInventory", "renderProbe", "parseView", "projectVerdict", "parseLanding", "navLinks", "railMarkup", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "addEventListener", "__refresh", "__seed", "__route"];
   const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
   const json = (b: object) => Promise.resolve({ status: 200, ok: true, json: async () => b });
   Object.assign(g, {
     render: () => "", renderNav: () => "", renderHeader: () => "", renderHealth: () => "", renderInventory: () => "", renderProbe: () => "", parseView, projectVerdict,
-    parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
-    document: { querySelector: (q: string) => (q === "#pages" ? pagesEl : el()), querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
+    parseLanding: () => null, navLinks: () => [], railMarkup: () => "", fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
+    document: { querySelector: (q: string) => (q === "#main" ? mainEl : el()), querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
     location: loc, history: { replaceState() {} }, addEventListener() {},
     fetch: (url: string) => url === "/api/projects" ? json({ current: "himmel", projects: [{ name: "himmel", checkedAt: "2026-10-31T00:00:00Z", counts: { project: { fail, warn: 0 } } }] })
       : url === "/api/feed" ? json({ generatedAt: "2" }) : new Promise(() => {}),
@@ -261,27 +261,27 @@ async function pickerHarness(hash: string, run: (h: PickerHarness) => Promise<vo
   try {
     new Function(src)();
     await sleep(20);
-    await run({ pages: () => pages, refresh: g.__refresh as () => Promise<void>, seed: g.__seed as (f: object) => void,
+    await run({ main: () => main, refresh: g.__refresh as () => Promise<void>, seed: g.__seed as (f: object) => void,
       go: (h) => { loc.hash = h; (g.__route as () => void)(); }, setFail: (n) => { fail = n; } });
   } finally { for (const n of names) { if (saved[n] === undefined) delete g[n]; else g[n] = saved[n]; } }
 }
 
 test("page: a refreshed feed changes the picker's verdict word with no route change", async () => {
   await pickerHarness("#/health", async (h) => {
-    expect(h.pages()).toContain("himmel · All clear");
+    expect(h.main()).toContain("himmel · All clear");
     h.seed({ generatedAt: "1" });
     h.setFail(1);
     await h.refresh();
     await sleep(20);
-    expect(h.pages()).toContain("himmel · Act now");
-    expect(h.pages()).not.toContain("All clear");
+    expect(h.main()).toContain("himmel · Act now");
+    expect(h.main()).not.toContain("All clear");
   });
 });
 
 test("page: the picker is gone from the rail once the reader leaves Health", async () => {
   await pickerHarness("#/health", async (h) => {
-    expect(h.pages()).toContain('id="proj"');
+    expect(h.main()).toContain('id="proj"');
     h.go("#/config");
-    expect(h.pages()).not.toContain('id="proj"');
+    expect(h.main()).not.toContain('id="proj"');
   });
 });

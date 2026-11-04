@@ -7,7 +7,7 @@ import { renderWorkflow, parseWorkflowRoute } from "/workflow.js";
 import { renderConfigure as render } from "/setup.js";
 import { renderShift } from "/shift.js";
 import { renderReport } from "/report.js";
-import { fleetDot, healthDot, navLinks, parseLanding } from "/nav.js";
+import { fleetDot, healthDot, navLinks, parseLanding, railMarkup } from "/nav.js";
 
 const $ = (s) => document.querySelector(s);
 const state = { open: new Set(), bundles: {}, filt: { health: null, kind: null, q: "", problems: false }, plans: {}, vm: null, reviewGate: null, fleetCap: null, tile: null };
@@ -57,6 +57,7 @@ const setupMsgs = {}; // per secret name: the last save or remove outcome, never
 let verify = null; // the Setup page's Verify step: null, { state: "running" } or POST /api/setup/verify's answer; page memory only
 let roadmap = null, roadmapGen = 0, nvGen = 0; // declared before route() runs, as healthGen is: a reload at #/board?tab=nv calls loadNoVersion() from it
 let boardExtras = null, boardGen = 0; // GET /api/board: { drift, chains, versionChains }, null until read
+let pagebarOpen = false; // the page bar's "Filters (n on)" fold at phone width; declared before route() runs, as the next one is
 let originsReading = false; // declared before route() runs: a reload at #/board paints, and that paint asks for Tidy up's origins
 // writes = cards drag and take a theme // tab, v, at = the Board route (#/board?tab=&v=&at=); chain = the Chain filter
 const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null, held: null, drawer: null, tab: null, v: null, at: null, why: null, logOpen: [], chain: null, nv: null };
@@ -69,12 +70,12 @@ let wfModel = null, wfStats = null, wfGen = 0, wfAt = 0, wfScrolled = null; // t
 const wfUi = { tab: "workflow", phase: null, step: null, walk: null, at: 0 }; // from the route: #/workflow[/eval]?phase=|step=|walk=&at=
 const PAGES = [
   { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify }), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); if (!state.reports || !state.reports.data) loadReportSettings(); loadSetup(); } },
-  { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
+  { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => pageBar() + healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => toolHealthPage(), onVisit: () => loadToolHealth(), afterPaint: () => thFocusBack() },
   { id: "board", label: "Board", needsFeed: false, render: trackerPage(() => renderBoard(roadmap, roadmapUi, boardExtras)), afterPaint: () => { whyFocus(null); loadDriftOrigins(); }, onVisit: () => { if (!(sources && !sources.length)) { if (!roadmap) loadRoadmap(); if (!boardExtras) loadBoard(); if (roadmapUi.tab === "nv" && !roadmapUi.nv) loadNoVersion(); } } },
   { id: "workflow", label: "Workflow", needsFeed: false, render: () => renderWorkflow(wfModel, wfUi, wfStats), onVisit: () => { if (!wfModel || wfModel.error || !wfStats || wfStats.error || Date.now() - wfAt > 60_000) loadWorkflow(); }, afterPaint: () => wfScroll() },
   { id: "shift", label: "Shift", needsFeed: false, render: () => renderShift(shift, { ...shiftUi, fleet: (navLinks({ here: "console", token, current: "shift", sources }).find((l) => l.id === "fleet") || {}).href }), onVisit: () => loadShift() },
-  { id: "report", label: "Morning report", needsFeed: false, render: () => renderReport(reportList, reportView, { ...reportUi, shiftHref: "#/shift" }), onVisit: () => loadReport() },
+  { id: "report", label: "Morning report", needsFeed: false, render: () => pageBar() + renderReport(reportList, reportView, { ...reportUi, shiftHref: "#/shift" }), onVisit: () => loadReport() },
 ];
 let unmountPage = null; // what the page's afterPaint returned: undoes its draw before the next paint replaces #main
 let currentPage = PAGES[0];
@@ -150,12 +151,21 @@ loadSources();
 function renderPages() {
   const dots = { fleet: fleetDot(fleet.data, fleet.error), health: healthDot(verdict(feed, health)) };
   const waiting = shift && shift.state === "open" ? shift.waiting.length : 0; // the Shift entry's badge: rows waiting on the operator
-  // Health v2 mockup: the project picker sits above the page links
-  $("#pages").innerHTML = (currentPage.id === "health" ? projectPicker() : "") + navLinks({ here: "console", token, current: currentPage.id, sources }).map((l) =>
-    `<a href="${l.href}"${l.current ? ' aria-current="page"' : ""}${l.external ? ' target="_blank" rel="noopener noreferrer"' : ""}>${l.label}${dots[l.id] ? `<span class="st-dot ${dots[l.id].cls}" title="${dots[l.id].title}"></span>` : ""}${l.id === "shift" && waiting ? `<span class="sh-badge" title="${waiting} waiting on you">${waiting}</span>` : ""}</a>`).join("");
+  $("#pages").innerHTML = railMarkup({ token, current: currentPage.id, sources, dots, waiting });
 }
 
-// The rail's project picker, drawn on the Health page only (only Health reloads /api/projects): "All my projects" first, then each registered project with its own verdict (shared rows left out).
+// The page bar (spec 8044 section 2): the slot under the top of a page for that page's own controls, never the rail.
+// Health holds the project picker, Report an empty slot (its day picker and refresh move in later); Shift has none.
+// One line on desktop; at 760 px the controls fold behind "Filters (n on)" (app.css).
+function pageBar() {
+  if (currentPage.id !== "health" && currentPage.id !== "report") return "";
+  const ctl = currentPage.id === "health" ? projectPicker() : "";
+  const on = currentPage.id === "health" && (healthView.mode === "all" || (healthView.project && projects && healthView.project !== projects.current)) ? 1 : 0;
+  const fold = ctl ? `<button type="button" class="pb-fold" aria-expanded="${pagebarOpen}" aria-controls="pb-ctl">Filters (${on} on)</button>` : "";
+  return `<div class="pagebar${pagebarOpen ? " open" : ""}" id="pagebar" data-page="${currentPage.id}"${ctl ? "" : " hidden"}>${fold}<div class="pb-ctl" id="pb-ctl">${ctl}</div></div>`;
+}
+
+// The page bar's project picker, drawn on the Health page only (only Health reloads /api/projects): "All my projects" first, then each registered project with its own verdict (shared rows left out).
 function projectPicker() {
   if (!projects) return "";
   const esc = (x) => String(x).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -744,7 +754,7 @@ document.addEventListener("keydown", (e) => {
 });
 document.addEventListener("dragend", () => { rmDrag = null; });
 document.addEventListener("change", (e) => {
-  if (e.target.id === "proj") { // the rail picker: it routes, the route reads the project
+  if (e.target.id === "proj") { // the page bar picker: it routes, the route reads the project
     const v = e.target.value;
     location.hash = v === "*" ?"#/health?view=all" : projects && v === projects.current ? "#/health" : "#/health?project=" + encodeURIComponent(v);
     return;
@@ -977,3 +987,12 @@ function toolHealthClick(b) {
   else return;
   paint();
 }
+
+// The page bar's "Filters (n on)" fold at phone width: it toggles the class in place, no repaint.
+document.addEventListener("click", (e) => {
+  const b = e.target.closest && e.target.closest(".pb-fold");
+  if (!b) return;
+  pagebarOpen = !pagebarOpen;
+  $("#pagebar").classList.toggle("open", pagebarOpen);
+  b.setAttribute("aria-expanded", String(pagebarOpen));
+});

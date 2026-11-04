@@ -92,14 +92,14 @@ test("the verdict strip has no visible heading, only an accessible name", () => 
   expect(html).toMatch(/<section id="verdict" class="sec" aria-label="Is this project working right now\?">/);
 });
 
-// At phone width the rail's links wrap in a row; the Health picker takes a full line of its own.
-// On desktop the rail is a column, where a 100% flex basis would stretch the picker tall, so the rule is phone-only.
-test("the rail project picker takes its own line only when the rail wraps", async () => {
+// The Health picker sits in the page bar: one line on desktop; at phone width the bar folds behind "Filters (n on)"
+// and the picker takes a full line of its own when it is open. Nothing about it is styled under the rail (.pages).
+test("the page bar project picker folds at phone width and is not styled in the rail", async () => {
   const css = await Bun.file(new URL("../public/app.css", import.meta.url)).text();
-  const phone = /@media \(max-width:760px\)\{\.pages \.picker\{([^}]*)\}\}/.exec(css);
+  const phone = /@media \(max-width:760px\)\{([^@]*?\.pagebar \.picker\{[^}]*flex:1 0 100%[^}]*\})/.exec(css);
   expect(phone).not.toBeNull();
-  expect(phone![1]).toContain("flex:1 0 100%");
-  expect(/(?:^|\n)\.pages \.picker\{/.test(css)).toBe(false);
+  expect(phone![1]).toContain(".pagebar:not(.open) .pb-ctl{display:none}");
+  expect(/\.pages \.picker/.test(css)).toBe(false);
 });
 
 const own = (id: string, health: string, fix: object = {}) => r(id, health, { scope: "project", fix: { by: "chief", ...fix } });

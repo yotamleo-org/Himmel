@@ -49,6 +49,17 @@ export function navLinks({ here, token, current, run, sources }) {
   ];
 }
 
+// The rail's link ids: the same on every page (page controls live in the page bar, never the rail), plus Run on the run page, then Docs.
+// Pure: no state, so the AG-UI build and the console rail test read the one list.
+export const railItems = (current) => [...PAGES.map((p) => p.id), ...(current === "run" ? ["run"] : []), "docs"];
+
+// The console rail's markup. dots: { fleet, health } status dots; waiting: the Shift badge's count.
+// Nothing here depends on the page but the current mark: the Health project picker is the page bar's (app.js).
+export function railMarkup({ token, current, sources, run, dots = {}, waiting = 0 }) {
+  return navLinks({ here: "console", token, current, run, sources }).map((l) =>
+    `<a href="${l.href}" data-page="${l.id}"${l.current ? ' aria-current="page"' : ""}${l.external ? ' target="_blank" rel="noopener noreferrer"' : ""}>${l.label}${dots[l.id] ? `<span class="st-dot ${dots[l.id].cls}" title="${dots[l.id].title}"></span>` : ""}${l.id === "shift" && waiting ? `<span class="sh-badge" title="${waiting} waiting on you">${waiting}</span>` : ""}</a>`).join("");
+}
+
 // The chief's landing fragment, #t=<hex>[&page=<id>]: the token and the chief page to open; null otherwise.
 export function parseLanding(hash) {
   const p = new URLSearchParams(hash.replace(/^#/, ""));
