@@ -47,7 +47,9 @@
 # only the page/ack records under ${HIMMEL_DENIAL_ACK_DIR:-~/.himmel/state/
 # denial-acks} (never the denial log), and fails open: no record, an acked one,
 # a REPEAT, or an unreadable record launches. Exit 14 joins 2 usage, 10 fleet
-# cap, 11 bank exhausted, 12 macOS whitespace.
+# cap, 11 bank exhausted, 12 macOS whitespace. Exit 18: the session folder (WORKER_SESSION_REPO, else
+# HEADED_ARM_REPO, else this checkout, after the resume_cwd fold) does not load the himmel guard hooks;
+# UNGUARDED_LAUNCH_OK=1 in the launching shell launches it anyway with one WARN.
 #
 # --headless (or WORKER_SESSION_HEADLESS=1 in the launching shell, the flag
 # wins): the same launch with no konsole - the worker runs as a Claude Code
@@ -1088,6 +1090,23 @@ _rm_doc=""
 [ "$RM" -eq 1 ] && { _rm_doc="$(_worker_phys_path "$DOC")" || _rm_doc=""; }
 unset -f _worker_phys_path
 unset -v _worker_rcwd _worker_rcwd_phys _worker_vroot _worker_vroot_phys _worker_wt_top _worker_wt_phys _worker_wt_base
+# A session folder that would not load the himmel guard hooks is refused before the dry-run report and
+# every side effect below (preflight slot, doc edit, launch log, pretrust, exec). UNGUARDED_LAUNCH_OK=1
+# (launching shell) launches anyway with one WARN; the exported marker keeps headed-arm.sh from repeating it.
+_lg_dir="${WORKER_SESSION_REPO:-${HEADED_ARM_REPO:-$HERE/../../..}}"
+_lg_phys="$(cd -P -- "$_lg_dir" 2>/dev/null && pwd -P)" || _lg_phys=""  # swallow-ok: an unresolvable folder is passed raw, the check then exits 2 and refuses
+_lg_reason="$(bash "$HERE/../../lib/launch-guard-check.sh" "${_lg_phys:-$_lg_dir}")"; _lg_rc=$?
+if [ "$_lg_rc" -ne 0 ]; then
+    [ "$_lg_rc" -eq 1 ] || _lg_reason="folder cannot be resolved"
+    if [ "${UNGUARDED_LAUNCH_OK:-}" = "1" ]; then
+        echo "WARN unguarded launch of $NAME in ${_lg_phys:-$_lg_dir} ($_lg_reason; UNGUARDED_LAUNCH_OK=1)" >&2
+        [ -z "$_lg_phys" ] || export HIMMEL_LAUNCH_GUARD_WARNED="$_lg_phys"
+    else
+        echo "headed-arm-worker: refusing to launch $NAME: ${_lg_phys:-$_lg_dir} does not load the himmel guard hooks ($_lg_reason). Launch from a himmel checkout or worktree, register the repo and wire the user guard layer (himmelctl ensure), or set UNGUARDED_LAUNCH_OK=1 in the launching shell to launch it unguarded." >&2
+        exit 18
+    fi
+fi
+unset -v _lg_dir _lg_phys _lg_reason _lg_rc
 
 # Context resolution: off-values stay standard;
 # the one old 1m opt-in is resolved explicitly so the argv guard below can

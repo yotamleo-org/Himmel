@@ -9,6 +9,7 @@
 #
 # Run: bash scripts/handover/chief-kit/test-gen-judge-brief.sh
 set -u
+export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch fixtures; guard rows drop it
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="${GEN_JUDGE_BRIEF:-$HERE/gen-judge-brief.py}"
 

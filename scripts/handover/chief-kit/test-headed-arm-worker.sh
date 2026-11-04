@@ -5251,6 +5251,59 @@ out49r="$(HIMMEL_HOLD_KEY=HIMMEL-1 env -u IMPL_GUARD_OK -u INLINE_IMPL_OK -u HIM
 contains "49o a release-manager launch carries no key" "$out49r" "HIMMEL_HOLD_KEY=<unset> HIMMEL_HOLD_DOC=<unset> HIMMEL_HOLD_LABEL=<unset>"
 check "49p the real ~/.himmel/state/holds is unchanged by this suite" "$(real_register)" "$REAL_REGISTER_BEFORE"
 
+# --- 50. A launch whose session folder would not load the guard hooks is refused (exit 18) before the
+# dry-run report and before every side effect: no preflight/slot, no doc edit, no launch log, no pretrust
+# write, no konsole. UNGUARDED_LAUNCH_OK=1 launches it with exactly one WARN. This suite opts in at its top,
+# so every row below drops it from its own environment.
+scratch50="$tmp/scratch50"; mkdir -p "$scratch50"
+doc50="$tmp/HIMMEL-9026-N3-guard.md"; fx_brief '# guard fixture' > "$doc50"
+doc50_sum="$(cksum < "$doc50")"
+d50="$tmp/c50"; mk_launch_stubs "$d50" "HIMMEL-9026-N3-guard"
+slots50_before="$(find "$HIMMEL_FLEET_SLOTS" -mindepth 1 2>/dev/null | sort | cksum)"
+pre50_before="$(find "$WORKER_SESSION_PRETRUST_HOME" -mindepth 1 2>/dev/null | sort | cksum)"
+rm -f "$tmp/rec-preflight50.env"
+rc=0; out50="$(some_doc="$doc50" REC_PREFLIGHT_OUT="$tmp/rec-preflight50.env" RUN_WORKER_WRAP="env -u UNGUARDED_LAUNCH_OK" RUN_WORKER_ARGS=--no-profile run_worker "$d50" "$scratch50" "HIMMEL-9026-N3-guard" "claude-sonnet-5" "$REC_PREFLIGHT" 2>&1)" || rc=$?
+sleep 0.3
+check "guard_worker_refuses_scratch: exit 18" "$rc" "18"
+contains "guard_worker_refuses_scratch: names the launcher and folder" "$out50" "headed-arm-worker: refusing to launch HIMMEL-9026-N3-guard: $scratch50 does not load the himmel guard hooks (not a git work tree)."
+check "guard_worker_refuses_scratch: the launch preflight never ran" "$([ -e "$tmp/rec-preflight50.env" ] && echo ran || echo none)" "none"
+check "guard_worker_refuses_scratch: no slot file written" "$(find "$HIMMEL_FLEET_SLOTS" -mindepth 1 2>/dev/null | sort | cksum)" "$slots50_before"
+check "guard_worker_refuses_scratch: the doc bytes are unchanged" "$(cksum < "$doc50")" "$doc50_sum"
+check "guard_worker_refuses_scratch: no pretrust write" "$(find "$WORKER_SESSION_PRETRUST_HOME" -mindepth 1 2>/dev/null | sort | cksum)" "$pre50_before"
+check "guard_worker_refuses_scratch: no launch log" "$([ -e "$HIMMELCTL_CACHE_DIR/launch-logs/HIMMEL-9026-N3-guard.log" ] && echo log || echo none)" "none"
+check "guard_worker_refuses_scratch: the launcher was never exec'd" "$([ -e "$d50/record" ] && echo konsole || echo none)" "none"
+
+rc=0; out50d="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$scratch50" bash "$SCRIPT" --dry-run --no-profile HIMMEL-9026-N3-guard "$doc50" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+check "guard_worker_dry_run: --dry-run exits 18 too" "$rc" "18"
+not_contains "guard_worker_dry_run: no would-exec report" "$out50d" "would exec"
+
+# a resume_cwd worktree of a registered repo folds into the session folder; the folded folder is judged
+adopter50="$tmp/adopter50"; mkdir -p "$adopter50"
+git -C "$adopter50" init -q
+git -C "$adopter50" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+git -C "$adopter50" worktree add -q -b fix/adopter-50 "$adopter50/.claude/worktrees/fix+adopter-50"
+wt50="$adopter50/.claude/worktrees/fix+adopter-50"
+reg50="$tmp/reg50.json"; printf '{"repos":{"adopter50":{"path":"%s"}}}\n' "$adopter50" > "$reg50"
+fdoc50="$tmp/c50-fold-doc.md"
+printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' "$wt50" > "$fdoc50"
+rc=0; out50f="$(env -u UNGUARDED_LAUNCH_OK HANDOVER_REGISTRY="$reg50" bash "$SCRIPT" --dry-run --no-profile HIMMEL-9026-N3-fold "$fdoc50" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+check "guard_worker_folded_unregistered: exit 18" "$rc" "18"
+contains "guard_worker_folded_unregistered: the folded worktree is the folder judged" "$out50f" "$wt50 does not load the himmel guard hooks"
+
+# opt-out through the real headed-arm.sh: exactly one WARN across stderr
+d50o="$tmp/c50o"; mk_launch_stubs "$d50o" "HIMMEL-9026-N3-optout"
+rc=0; out50o="$(UNGUARDED_LAUNCH_OK=1 some_doc="$doc50" RUN_WORKER_ARGS=--no-profile run_worker "$d50o" "$scratch50" "HIMMEL-9026-N3-optout" "claude-sonnet-5" 2>&1 >/dev/null)" || rc=$?
+wait_record "$d50o" || true
+check "optout_chain_single_warn: opted-out launch exits 0" "$rc" "0"
+check "optout_chain_single_warn: exactly one WARN reaches stderr" "$(printf '%s\n' "$out50o" | grep -c '^WARN unguarded launch of HIMMEL-9026-N3-optout')" "1"
+contains "optout_chain_single_warn: the WARN names the reason" "$out50o" "WARN unguarded launch of HIMMEL-9026-N3-optout in $scratch50 (not a git work tree; UNGUARDED_LAUNCH_OK=1)"
+
+# --consult is not exempt in code: a consult on an unguarded folder is refused like any launch (its usual
+# folder, the chief checkout, passes; a test cannot stand in the checkout, since --consult refuses a worktree cwd)
+rc=0; out50c="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$scratch50" bash "$SCRIPT" --dry-run --consult --profile design-motion --chief HIMMEL-9026-chief HIMMEL-9026-N3-c "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+check "consult_guard_applies: a --consult on an unguarded folder exits 18" "$rc" "18"
+contains "consult_guard_applies: the refusal names the folder" "$out50c" "$scratch50 does not load the himmel guard hooks"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-headed-arm-worker.sh"
