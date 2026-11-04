@@ -277,6 +277,69 @@ RC7L=$(run_tree tree-old-id "$(payload console-judge-ro 'judge' "$SHIP_FLOW_PROM
 assert_rc "console-judge-ro (old id, even with a read-only agent file) gets no read-only carve-out" 2 "$RC7L"
 rm -f "$FT/.claude/agents/console-judge-ro.md"
 
+# brief-drafter is allowed by exact subagent type, only while its
+# agent file pins one tools: line, Read, Write, Edit, Bash. The prompt text
+# (it names a worktree and a PR) changes nothing either way.
+BD_LOG="$TMP/bd-dispatch.jsonl"
+RC9A=$(run_hook brief-drafter-repo "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$BD_LOG")
+assert_rc "chief + subagent_type brief-drafter (repo agent file) + ship-flow markers allowed" 0 "$RC9A"
+assert_contains "brief-drafter dispatch is logged with its subagent type" '"subagent_type":"brief-drafter"' "$(cat "$BD_LOG" 2>/dev/null || true)"
+assert_contains "brief-drafter dispatch log names the allowance" '"override":"brief-drafter-dispatch"' "$(cat "$BD_LOG" 2>/dev/null || true)"
+
+RC9B=$(run_hook brief-drafter-gp "$(payload general-purpose 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-gp.jsonl")
+assert_rc "general-purpose with the brief-drafter prompt still denied" 2 "$RC9B"
+assert_contains "the deny message names brief-drafter as its own allowance" 'Drafting worker briefs is a separate allowance: dispatch with subagent_type: brief-drafter' "$(combined_output brief-drafter-gp)"
+RC9C=$(run_hook brief-drafter-fork "$(payload fork 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-fork.jsonl")
+assert_rc "fork with the brief-drafter prompt still denied" 2 "$RC9C"
+RC9D=$(run_hook brief-drafter-x "$(payload x-brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-x.jsonl")
+assert_rc "x-brief-drafter does not match the brief-drafter allowance" 2 "$RC9D"
+assert_empty "a denied dispatch writes no brief-drafter log" "$(cat "$TMP/bd-gp.jsonl" "$TMP/bd-fork.jsonl" "$TMP/bd-x.jsonl" 2>/dev/null || true)"
+
+agent_md brief-drafter 'Read, Write, Edit, Bash'
+RC9E=$(run_tree tree-bd-pinned "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-pinned.jsonl")
+assert_rc "brief-drafter whose agent file pins Read/Write/Edit/Bash allowed" 0 "$RC9E"
+
+agent_md brief-drafter 'Read, Write, Edit, Bash, WebFetch'
+RC9F=$(run_tree tree-bd-wide "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-wide.jsonl")
+assert_rc "brief-drafter whose agent file widens its tools loses the allowance" 2 "$RC9F"
+assert_empty "a brief-drafter without the allowance is not logged" "$(cat "$TMP/bd-wide.jsonl" 2>/dev/null || true)"
+
+rm -f "$FT/.claude/agents/brief-drafter.md"
+RC9G=$(run_tree tree-bd-missing "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-missing.jsonl")
+assert_rc "brief-drafter with no agent file gets no allowance" 2 "$RC9G"
+
+printf -- '---\nname: brief-drafter\ntools: Read, Write, Edit, Bash\ntools: Read, Write, Edit, Bash, WebFetch\n---\n' > "$FT/.claude/agents/brief-drafter.md"
+RC9H=$(run_tree tree-bd-two-tools "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-two.jsonl")
+assert_rc "brief-drafter whose frontmatter repeats tools: gets no allowance" 2 "$RC9H"
+
+# The widened line comes FIRST and the pinned line SECOND: only counting the
+# tools: lines refuses it (a last-line-wins read would allow).
+printf -- '---\nname: brief-drafter\ntools: Read, Write, Edit, Bash, WebFetch\ntools: Read, Write, Edit, Bash\n---\n' > "$FT/.claude/agents/brief-drafter.md"
+RC9I=$(run_tree tree-bd-wide-first "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-wide-first.jsonl")
+assert_rc "brief-drafter with a widened tools: line before the pinned one gets no allowance" 2 "$RC9I"
+
+# The pinned line sits in the BODY, after the frontmatter closes.
+printf -- '---\nname: brief-drafter\n---\n\ntools: Read, Write, Edit, Bash\n' > "$FT/.claude/agents/brief-drafter.md"
+RC9J=$(run_tree tree-bd-body-tools "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-body.jsonl")
+assert_rc "brief-drafter with the tools: line only in the body gets no allowance" 2 "$RC9J"
+
+# No frontmatter at all. Line 1 is not the tools: line, so a scan that skips
+# line 1 without checking it for --- still sees the pinned line on line 2.
+printf -- '# brief-drafter\ntools: Read, Write, Edit, Bash\n\nbody\n' > "$FT/.claude/agents/brief-drafter.md"
+RC9K=$(run_tree tree-bd-no-frontmatter "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-nofm.jsonl")
+assert_rc "brief-drafter whose agent file has no frontmatter gets no allowance" 2 "$RC9K"
+assert_empty "the refused agent-file shapes write no brief-drafter log" "$(cat "$TMP/bd-wide-first.jsonl" "$TMP/bd-body.jsonl" "$TMP/bd-nofm.jsonl" 2>/dev/null || true)"
+
+# A subagent_type with a trailing newline is not the exact type: $(...) used to
+# strip it and match. Pinned file in place, so only the newline separates the rows.
+agent_md brief-drafter 'Read, Write, Edit, Bash'
+RC9L=$(run_tree tree-bd-newline "$(jq -nc --arg p "$SHIP_FLOW_PROMPT" '{tool_name:"Agent",session_id:"sess-test",tool_input:{subagent_type:"brief-drafter\n\n",description:"d",prompt:$p}}')" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-nl.jsonl")
+assert_rc "brief-drafter with a trailing newline in its type is not the exact type" 2 "$RC9L"
+assert_empty "a trailing-newline brief-drafter dispatch is not logged" "$(cat "$TMP/bd-nl.jsonl" 2>/dev/null || true)"
+RC9M=$(run_hook explore-newline "$(jq -nc --arg p "$SHIP_FLOW_PROMPT" '{tool_name:"Agent",session_id:"sess-test",tool_input:{subagent_type:"Explore\n",description:"d",prompt:$p}}')" HIMMEL_SESSION_ROLE=chief)
+assert_rc "Explore with a trailing newline in its type is not the exact type" 2 "$RC9M"
+rm -f "$FT/.claude/agents/brief-drafter.md"
+
 RC8C=$(run_hook env-chief-worktree-propen "$(payload general-purpose 'ship it' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)
 assert_rc "HIMMEL_SESSION_ROLE=chief + full ship-flow prompt refuses like console" 2 "$RC8C"
 
