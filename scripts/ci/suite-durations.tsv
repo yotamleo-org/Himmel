@@ -840,6 +840,7 @@ scripts/lib/test-cr-body-findings.sh	4
 scripts/lib/test-cr-high-risk-diff.sh	1
 scripts/lib/test-cr-ledger-evidence.sh	4
 scripts/lib/test-cr-merge-gate.sh	36
+scripts/lib/test-crontab-locked-rmw.sh	3
 scripts/lib/test-dedupe-path.sh	0
 scripts/lib/test-detach.sh	0
 scripts/lib/test-detect-hook-dup.sh	1

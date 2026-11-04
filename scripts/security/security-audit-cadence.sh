@@ -12,6 +12,8 @@
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TASK_NAME=HIMMEL-SecurityAudit
+# shellcheck source=../lib/crontab-locked-rmw.sh
+. "$SCRIPT_DIR/../lib/crontab-locked-rmw.sh" || exit 2
 CRONTAB_BIN="${SECURITY_AUDIT_CRONTAB:-crontab}"
 RUNNER_DIR="${SECURITY_AUDIT_RUNNER_DIR:-$HOME/.claude/security-audit-cadence}"
 
@@ -341,6 +343,14 @@ cron_read() {
 }
 cron_entry() { printf '%s\n' "$CRON_TAB" | grep -F "# $TASK_NAME" || true; }
 
+# The edit steps run under crontab_locked_rmw on the table it just read;
+# $force and $entry are cmd_arm's locals, visible because cmd_arm is on the call stack.
+arm_edit() {
+    [ -z "$(cron_entry)" ] || [ "$force" -eq 1 ] || return 3
+    { printf '%s\n' "$CRON_TAB" | { grep -vF "# $TASK_NAME" || true; } | sed '/^$/d'; printf '%s\n' "$entry"; }
+}
+disarm_edit() { { printf '%s\n' "$CRON_TAB" | grep -vF "# $TASK_NAME" || true; }; }
+
 cmd_arm() {
     local day=1 time=07:00 dry=0 force=0 root runner entry name value
     while [ $# -gt 0 ]; do
@@ -378,7 +388,7 @@ cmd_arm() {
         printf '_rc=$?\nprintf "[exit rc=%%s]\\n" "$_rc" >> "$log"\nexit "$_rc"\n'
     } > "$runner" || return 4
     chmod 700 "$runner" || return 4
-    { printf '%s\n' "$CRON_TAB" | { grep -vF "# $TASK_NAME" || true; } | sed '/^$/d'; printf '%s\n' "$entry"; } | "$CRONTAB_BIN" - || return 4
+    crontab_locked_rmw "$CRONTAB_BIN" arm_edit || return $?
     echo "security-audit ARMED: weekly day $day $time"
 }
 
@@ -411,7 +421,7 @@ cmd_disarm() {
     cron_read || return 4
     [ -n "$(cron_entry)" ] || { echo 'security-audit: nothing armed'; return 0; }
     if [ "${1:-}" = --dry-run ]; then echo 'DRY security-audit: would disarm'; return 0; fi
-    { printf '%s\n' "$CRON_TAB" | grep -vF "# $TASK_NAME" || true; } | "$CRONTAB_BIN" - || return 4
+    crontab_locked_rmw "$CRONTAB_BIN" disarm_edit || return $?
     rm -f "$RUNNER_DIR/security-audit-cadence.sh"
     echo 'security-audit: disarmed'
 }
