@@ -39,12 +39,19 @@ printf '# worker\n\n## Results\n\n- 10:00 BLOCKED - waiting\n\n## Chief Rulings\
 check "a mirrored ruling is not a worker marker" ""
 printf '# worker\n\n## Results\n\n## Chief Rulings\n\n- 10:30 WRAPPED - hand-off to %s\n' "$B" > "$P"
 check "own EOF append below ruling heading still counts" "$B"
-printf '# worker\n\n## Results\n\n- 10:00 LIVE - working\n\n## Notes\n\n## Results\n\n- 11:00 WRAPPED - hand-off to %s\n' "$B" > "$P"
-check "a second literal Results heading does not re-enable keep" ""
+printf '# worker\n\n## Results\n\n- 10:00 LIVE - working\n\n## Notes\n\n## Results (relaunch)\n\n- 11:00 WRAPPED - hand-off to %s\n' "$B" > "$P"
+check "a relaunch's second Results heading reopens the record" "$B"
+# shellcheck disable=SC2016  # literal fixture fence backticks
+printf '# worker\n\n## Results\n\n- 10:00 LIVE - working\n\n## Notes\n\n```\n## Results\n- 11:00 WRAPPED - hand-off to %s\n```\n' "$B" > "$P"
+check "a Results heading inside a fenced quote opens nothing" ""
 printf '# worker\n\n## Results\t(newest at the bottom)\n\n- 10:00 WRAPPED - hand-off to %s\n' "$B" > "$P"
 check "a tab-suffixed Results heading opens the record" "$B"
 record "- 10:00 BLOCKED - not a hand-off, waiting on $B"
 check "a negated hand-off names no successor" ""
+printf '# worker\n\n## Results\n\n- 10:00 WRAPPED - hand-off to %s\n- 11:00 BLOCKED - not a hand-off, waiting on %s\n' "$B" "$B" > "$P"
+if [ -r "$SUT" ] && ! bash -c '. "$1"; worker_handoff_tail "$2"' bash "$SUT" "$P"; then
+    passes=$((passes + 1)); printf 'PASS: %s\n' "a negated newest bullet is no hand-off tail after an earlier valid one"
+else fails=$((fails + 1)); printf 'FAIL: %s\n' "a negated newest bullet is no hand-off tail after an earlier valid one"; fi
 D="$T/HIMMEL-9-N80d-demo-2026-01-01-RESUME.md"
 printf '# successor\n\n## Results\n' > "$D"
 record "- 10:00 WRAPPED - hand-off to $D"

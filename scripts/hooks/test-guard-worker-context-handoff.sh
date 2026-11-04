@@ -385,6 +385,15 @@ rm -rf "$T/elsewhere"
 mkdir "$DIR/HIMMEL-9-N77c-thing-2026-10-06-RESUME.md"
 check "resumed worker + a directory named N77c-RESUME.md -> block" block "$LS"
 rmdir "$DIR/HIMMEL-9-N77c-thing-2026-10-06-RESUME.md"
+printf 'next\n' > "$DIR/HIMMEL-9-N77c-thing-2026-10-06-RESUME.md"
+chmod 000 "$DIR/HIMMEL-9-N77c-thing-2026-10-06-RESUME.md"
+if [ -r "$DIR/HIMMEL-9-N77c-thing-2026-10-06-RESUME.md" ]; then
+    printf 'SKIP: resumed worker + unreadable N77c RESUME -> block (running as root)\n'
+else
+    check "resumed worker + unreadable N77c RESUME -> block" block "$LS"
+fi
+chmod 600 "$DIR/HIMMEL-9-N77c-thing-2026-10-06-RESUME.md"
+rm -f "$DIR/HIMMEL-9-N77c-thing-2026-10-06-RESUME.md"
 printf 'back\n' > "$DIR/HIMMEL-9-N77a-thing-2026-10-06-RESUME.md"
 check "resumed N77b worker + fresh N77a RESUME (letter backwards) -> block" block "$LS"
 rm -f "$DIR/HIMMEL-9-N77a-thing-2026-10-06-RESUME.md"

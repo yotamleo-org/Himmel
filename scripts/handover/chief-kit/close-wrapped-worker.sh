@@ -59,7 +59,9 @@
 # After the signal, the worker's own /tmp scratch (its judge dirs, and its session
 # scratch dir) is archived then reaped via tmp-reap.sh, scoped to this worker only
 # a reap failure warns and never fails the close. A predecessor whose named successor
-# still holds its lock reaps nothing and prunes nothing: the successor works that PR.
+# still holds its lock reaps nothing and prunes nothing: the successor works that PR. The
+# same holds, whatever the Results say, when a later-lettered RESUME doc of this worker
+# beside the doc holds a queue lock or names this doc's worktree as its resume_cwd.
 #
 # Then the failure-loop digest: the session id is read from
 # ~/.claude/sessions/<pid>.json BEFORE the TERM, and after it
@@ -785,9 +787,31 @@ reap_worker_scratch() {
     bash "$TMP_REAP" --apply "${args[@]}" || echo "close-wrapped-worker: WARN tmp-reap --apply failed for ${args[*]} - close continues" >&2
     return 0
 }
-# A predecessor closed while its successor still holds the lock reaps nothing: the successor works
+# later_successor_live: success when a later-lettered RESUME doc of this worker beside $DOC holds a
+# queue lock, or names a worktree this doc names as its resume_cwd. It reads no Results section, so
+# a hand-off the successor reader misses still keeps the successor's scratch and worktree.
+DOC_WORKTREES=$(grep -oE "/[^\` ]*/\.claude/worktrees/[^\`) ]+" "$DOC" | sort -u)
+later_successor_live() {
+    local cand lbase cl cwd
+    [[ $sib_label =~ ^(N[0-9]+)[a-z]*$ ]] || return 1
+    lbase="${BASH_REMATCH[1]}"
+    for cand in "$sib_dir"/*-RESUME.md; do
+        [ -f "$cand" ] && [ ! -L "$cand" ] && [ "$cand" != "$DOC" ] || continue
+        cl="$(worker_label "$cand")"
+        [[ $cl =~ ^${lbase}[a-z]*$ ]] && [[ $cl > $sib_label ]] || continue
+        bash "$HERE/../queue-lock.sh" status "$cand" >/dev/null 2>&1 || return 0
+        cwd="$(sed -n '1,20s/^resume_cwd:[[:space:]]*//p' "$cand" | head -n 1)"
+        [ -n "$cwd" ] && [ -n "$DOC_WORKTREES" ] && printf '%s\n' "$DOC_WORKTREES" | grep -qxF -- "$cwd" && return 0
+    done
+    return 1
+}
+SUCCESSOR_LIVE=0
+if { [ "$PREDECESSOR" -eq 1 ] && ! bash "$HERE/../queue-lock.sh" status "$NAMED_SUCCESSOR" >/dev/null 2>&1; } || later_successor_live; then
+    SUCCESSOR_LIVE=1
+fi
+# A predecessor closed while its successor still runs reaps nothing: the successor works
 # the same PR, so its judge dirs are live.
-if [ "$PREDECESSOR" -eq 1 ] && ! bash "$HERE/../queue-lock.sh" status "$NAMED_SUCCESSOR" >/dev/null 2>&1; then
+if [ "$SUCCESSOR_LIVE" -eq 1 ]; then
     echo "close-wrapped-worker: its successor still runs - skipping the /tmp reap"
 else
     reap_worker_scratch || echo "close-wrapped-worker: WARN /tmp reap errored - close continues" >&2
@@ -803,13 +827,13 @@ digest_line=$(timeout -k 5 "${CLOSE_WRAPPED_WORKER_DIGEST_TIMEOUT:-120}" bash "$
     | grep -m 1 '^digest=')
 echo "${digest_line:-digest=failed:step}"
 
-# A predecessor closed while its successor still holds the lock leaves the worktree alone: the
+# A predecessor closed while its successor still runs leaves the worktree alone: the
 # successor works in it, and a prune could take it before the successor's cwd lands.
-if [ "$PREDECESSOR" -eq 1 ] && ! bash "$HERE/../queue-lock.sh" status "$NAMED_SUCCESSOR" >/dev/null 2>&1; then
+if [ "$SUCCESSOR_LIVE" -eq 1 ]; then
     echo "close-wrapped-worker: its successor still runs - skipping the prune, the worktree stays" >&2
     close_success
 fi
-worktrees=$(grep -oE "/[^\` ]*/\.claude/worktrees/[^\`) ]+" "$DOC" | sort -u)
+worktrees="$DOC_WORKTREES"
 wt_count=$(printf '%s\n' "$worktrees" | grep -c . || true)
 if [ "$wt_count" -ne 1 ]; then
     echo "close-wrapped-worker: doc names $wt_count worktree path(s) - skipping the prune, never guessing" >&2

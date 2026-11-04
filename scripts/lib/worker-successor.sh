@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One read-only derivation of a worker's explicitly named hand-off successor.
-# Only the worker's leading Results markers count, including its own EOF appends
-# below ruling headings. A quoted/mirrored ruling or a filename in Notes proves nothing.
+# Only the worker's Results markers count (every Results heading, as append-results writes them),
+# including its own EOF appends below ruling headings. A fenced quote or a filename in Notes proves nothing.
 # bash 3.2-safe. Source this library; it performs no close or message action.
 _WS_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/worker-identity.sh
@@ -17,10 +17,12 @@ worker_named_successor() {
     [[ $label =~ ^(N[0-9]+)[a-z]*$ ]] || return 0
     base="${BASH_REMATCH[1]}"
     # shellcheck disable=SC2016  # literal delimiters around Markdown paths
-    # Only the first Results heading opens the worker's own record: a second one is quoted text.
-    # A negated hand-off ("not a hand-off", "no hand-off to ...") names no successor.
+    # Every Results heading opens the record (a relaunch appends its own), but a heading or bullet
+    # inside a fenced block is quoted text. A negated hand-off ("no hand-off to ...") names no successor.
     named="$(awk '
-        /^## Results([ \t]|$)/ { keep = !seen; seen = 1; next }
+        /^```/ { fence = !fence; next }
+        fence { next }
+        /^## Results([ \t]|$)/ { keep = 1; seen = 1; next }
         /^## / { keep = seen && ($0 ~ /^## (Chief|Console) Rulings([ \t]|$)/); next }
         !keep || !/^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|BLOCKED)([^A-Za-z0-9_]|$)/ { next }
         !/([Hh]and-?off|RESUME written:)/ { next }
@@ -49,7 +51,9 @@ worker_named_successor() {
     [ "$next_stem" = "$expected" ] || return 0
     # A successor that never launched proves nothing: its own Results must hold a marker bullet.
     awk '
-        /^## Results([ \t]|$)/ { r = !seen; seen = 1; next }
+        /^```/ { fence = !fence; next }
+        fence { next }
+        /^## Results([ \t]|$)/ { r = 1; seen = 1; next }
         /^## / { r = seen && ($0 ~ /^## (Chief|Console) Rulings([ \t]|$)/); next }
         r && /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/ { f = 1; exit }
         END { exit !f }' "$path" || return 0
@@ -69,7 +73,9 @@ worker_handoff_tail() {
     local last
     [ -r "$1" ] || return 1
     last="$(awk '
-        /^## Results([ \t]|$)/ { r = !seen; seen = 1; next }
+        /^```/ { fence = !fence; next }
+        fence { next }
+        /^## Results([ \t]|$)/ { r = 1; seen = 1; next }
         /^## / { r = seen && ($0 ~ /^## (Chief|Console) Rulings([ \t]|$)/); next }
         r && /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/ { l = $0 }
         END { print l }' "$1")" || return 1
