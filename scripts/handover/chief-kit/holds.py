@@ -645,7 +645,7 @@ def claim_one(repo, judge, path, key, label, doc, source, pr, created=None):
                 fault('takeover rename: %s' % (e.strerror or e), rel, key)
                 return 'fault'
             st2, f2 = read_row(moved)
-            if st2 == 'ok' and f2 == fields:
+            if st2 == 'ok' and f2 == fields and os.path.getmtime(moved) == mtime:  # a row freshened since it was judged dead is live again
                 try:
                     os.unlink(moved)
                 except OSError:
