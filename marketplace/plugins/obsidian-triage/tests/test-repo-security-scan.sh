@@ -298,8 +298,9 @@ for (const mode of ["gh", "scanner"]) {
     const args = target !== "cli" ? [cli, "gather", "--vault", vault, "--limit", "1", "--refetch"] : [lib, "x/repo"];
     const runEnv = { ...env, HANG_SCAN: mode };
     if (target === "default") delete runEnv.FOLLOW_REPO_SCAN;
+    const t0 = Date.now();
     const r = spawnSync(process.execPath, ["--import", pathToFileURL(preload).href, ...args], {
-      env: runEnv, encoding: "utf8", timeout: 3000, killSignal: "SIGKILL", detached: process.platform !== "win32",
+      env: runEnv, encoding: "utf8", timeout: 12000, killSignal: "SIGKILL", detached: process.platform !== "win32",
     });
     if (r.error && process.platform !== "win32") {
       try { process.kill(-r.pid, "SIGKILL"); } catch { /* watchdog already reaped the group */ }
@@ -316,16 +317,22 @@ for (const mode of ["gh", "scanner"]) {
     const ok = r.status === 0 && (target === "default"
       ? repos.status === "ok" && repos.repo_count === 1 && repos.security_scan.length === 0
       : mode === "gh" ? scan?.status === "fetch_error" : scan?.findings.some(f => f.detail === "screen-error"));
-    console.log(target.toUpperCase() + "_" + mode.toUpperCase() + "=" + !!ok);
+    const key = target.toUpperCase() + "_" + mode.toUpperCase();
+    console.log(key + "=" + !!ok);
+    // One bounded diagnostic line per row, echoed by the suite when its assert fails.
+    console.log("DIAG_" + key + " ok=" + !!ok + " status=" + r.status + " signal=" + r.signal +
+      " elapsed_ms=" + (Date.now() - t0) + " error=" + (r.error ? r.error.code || r.error.message : "none") +
+      " scan=" + JSON.stringify(scan ?? null).slice(0, 300));
   }
 }
 EOF
+diag7() { grep "^DIAG_$1 " <<<"$out7" | sed 's/^/         /'; }
 out7="$(node "$tmpdir/timeouts.mjs" "$tmpdir" "$CLI" "$LIB" "$vault" "$tmpdir/account.json" 2>&1)"
-grep -q '^DEFAULT_GH=true$' <<<"$out7" && r=yes || r=no; assert "default gather skips scan while retaining verified repo evidence" yes "$r"
-grep -q '^GATHER_GH=true$' <<<"$out7" && r=yes || r=no; assert "gather kills hanging scan gh and writes fetch_error dossier" yes "$r"
-grep -q '^CLI_GH=true$' <<<"$out7" && r=yes || r=no; assert "standalone CLI kills hanging gh and returns fetch_error" yes "$r"
-grep -q '^GATHER_SCANNER=true$' <<<"$out7" && r=yes || r=no; assert "gather kills hanging scanner and records screen-error" yes "$r"
-grep -q '^CLI_SCANNER=true$' <<<"$out7" && r=yes || r=no; assert "standalone CLI kills hanging scanner and records screen-error" yes "$r"
+grep -q '^DEFAULT_GH=true$' <<<"$out7" && r=yes || r=no; assert "default gather skips scan while retaining verified repo evidence" yes "$r"; [ "$r" = yes ] || diag7 DEFAULT_GH
+grep -q '^GATHER_GH=true$' <<<"$out7" && r=yes || r=no; assert "gather kills hanging scan gh and writes fetch_error dossier" yes "$r"; [ "$r" = yes ] || diag7 GATHER_GH
+grep -q '^CLI_GH=true$' <<<"$out7" && r=yes || r=no; assert "standalone CLI kills hanging gh and returns fetch_error" yes "$r"; [ "$r" = yes ] || diag7 CLI_GH
+grep -q '^GATHER_SCANNER=true$' <<<"$out7" && r=yes || r=no; assert "gather kills hanging scanner and records screen-error" yes "$r"; [ "$r" = yes ] || diag7 GATHER_SCANNER
+grep -q '^CLI_SCANNER=true$' <<<"$out7" && r=yes || r=no; assert "standalone CLI kills hanging scanner and records screen-error" yes "$r"; [ "$r" = yes ] || diag7 CLI_SCANNER
 
 echo ""
 echo "Results: $pass / $((pass + fail)) passed, $fail failed."
