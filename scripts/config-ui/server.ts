@@ -27,7 +27,7 @@ import { busRootOf, journalStream, resolveJournal } from "./agui/sse";
 import { readFleet } from "./agui/fleet";
 import { readRollup } from "./rollup";
 import { readPhaseStats } from "./phase-stats";
-import { liveBoards, readMerged, readShifts, redactShift, shiftsFile, tick as tickShifts, viewOf } from "./shift";
+import { liveBoards, readMerged, type Board, type BoardReader, type Live, type Lock, type Span, readShifts, redactShift, shiftsFile, tick as tickShifts, viewOf } from "./shift";
 import { readReviewers } from "./reviewers";
 import { eligibleFromInventory, readToolInventory } from "./tool-inventory";
 import { findDoc, readBoard, readBoardFile, scrub, validName } from "./agui/board";
@@ -638,6 +638,16 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   let lastSeen = -Infinity;
   const refreshMs = opts.feedRefreshMs ?? FEED_REFRESH_MS;
   const refresher = opts.backgroundFeed ? setInterval(() => { if (now() - lastSeen < refreshMs) feedStart(true); }, refreshMs) : undefined;
+  // The one board reader of the Fleet board route and the Shift page: the chief's board file, else a board.mjs build (cached, so one build serves both routes).
+  // `built` marks a body that came from a build, not from the file.
+  const boardOf = async (doc: string): Promise<{ body: unknown; built?: true } | { error: string }> =>
+    (await readBoardFile(doc)) ?? { ...(await readBoard({ script: opts.boardScript ?? join(CHECKOUT, "scripts/handover/chief-kit/board.mjs"), doc, checkout: CHECKOUT, env: { ...env }, now: now() })), built: true as const };
+  // The Shift page's live boards through boardOf; `from` says whether any of them was built.
+  const shiftBoards = (handover: string) => {
+    let built = false;
+    const read: BoardReader = async (doc) => { const r = await boardOf(doc); if ("built" in r) built = true; return "error" in r ? { error: r.error } : (r.body as Board); };
+    return async (locks: Lock[], spans: Span[]): Promise<Live> => ({ ...(await liveBoards(handover, locks, spans, read)), from: built ? "built" : "file" });
+  };
   let fleetRun: ReturnType<typeof readFleet> | null = null;
   // The page polls every 5 s and every navigation asks too: requests that arrive during a read share it (never a cached body).
   function fleetOnce(): ReturnType<typeof readFleet> {
@@ -708,13 +718,13 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const mergedIn = (a: number, b: number) => { const k = `${a}:${b}`; if (!memo.has(k)) memo.set(k, readMerged(env, root, a, b)); return memo.get(k)!; };
         const rs = readReports(); // the shift numbers saved on Configure; an unreadable config polls with the defaults
         const opts = "report_day" in rs.body ? optsOf(rs.body) : undefined;
-        const snap = await tickShifts({ root: handover, file, now: at, opts, merged: mergedIn, boards: (locks, spans) => liveBoards(handover, locks, spans) });
+        const snap = await tickShifts({ root: handover, file, now: at, opts, merged: mergedIn, boards: shiftBoards(handover) });
         const rows = readShifts(file);
         const win = id === null ? null : rows.find((r) => r.id === id);
         const from = win ? Date.parse(win.opened) : snap.state.open?.opened ?? (rows.length ? Date.parse(rows[rows.length - 1].opened) : at - 86_400_000);
         const merged = await mergedIn(from, win ? Date.parse(win.closed) : at + 60_000);
-        const boards = id === null ? await liveBoards(handover, snap.locks, snap.spans) : [];
-        return json(redactShift(viewOf({ now: at, rows, snap, id, merged, boards, opts }), redactOut));
+        const live = id === null ? await shiftBoards(handover)(snap.locks, snap.spans) : { boards: [], missing: [], error: [] };
+        return json(redactShift(viewOf({ now: at, rows, snap, id, merged, boards: live.boards, boardMissing: live.missing, boardError: live.error, opts }), redactOut));
       }
       // the Morning report page: the dated report files under the handover root (the generator writes them, nothing here does),
       // one report parsed to blocks, and the "so far" view of today's closed shifts. The day is a validated date, never a path.
@@ -820,7 +830,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const doc = await findDoc(env.HANDOVER_DIR || "", name);
         if (!doc) return new Response("no such doc", { status: 404 });
         if (!board) return new Response(String(scrub(readFileSync(doc, "utf8").slice(0, 200_000), (v) => redactOut(v))), { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
-        const r = (await readBoardFile(doc)) ?? await readBoard({ script: opts.boardScript ?? join(CHECKOUT, "scripts/handover/chief-kit/board.mjs"), doc, checkout: CHECKOUT, env: { ...env }, now: now() });
+        const r = await boardOf(doc);
         return "error" in r ? json({ error: "the board could not be built", detail: String(scrub(r.error, (v) => redactOut(v))) }, 502) : json(scrub(r.body, (v) => redactOut(v)));
       }
       if (path.startsWith("/api/agui/")) {
