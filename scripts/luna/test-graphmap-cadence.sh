@@ -431,7 +431,7 @@ assert_rc "cron arm --dry-run succeeds with no backend credential anywhere" 0 "$
 echo "TEST: cron arm --dry-run prints plan, installs nothing"
 out=$(run_cron arm --vault "$VAULT" --dry-run)
 assert_contains "dry-run weekly luna entry"   "00 13 * * 0" "$out"
-assert_contains "dry-run weekly himmel entry" "20 13 * * 0" "$out"
+assert_contains "dry-run daily himmel entry" "20 13 * * * " "$out"
 assert_contains "dry-run luna marker"   "# HIMMEL-GraphMap-Luna"   "$out"
 assert_contains "dry-run himmel marker" "# HIMMEL-GraphMap-Himmel" "$out"
 assert_contains "dry-run fires refresh-graph-map.sh" "refresh-graph-map.sh" "$out"
@@ -465,7 +465,9 @@ out=$(run_cron arm --vault "$VAULT")
 assert_contains "cron arm banner" "GRAPHMAP CADENCE ARMED" "$out"
 tab=$(cat "$CSTATE/crontab" 2>/dev/null || echo MISSING)
 assert_contains "weekly luna entry (Sunday) 13:00"   "00 13 * * 0" "$tab"
-assert_contains "weekly himmel entry (Sunday) 13:20" "20 13 * * 0" "$tab"
+# The himmel semantic pass runs daily; the luna one stays weekly.
+assert_contains "daily himmel entry 13:20" "20 13 * * * " "$tab"
+assert_not_contains "himmel entry is no longer weekly" "20 13 * * 0" "$tab"
 assert_contains "luna entry marker-tagged"   "# HIMMEL-GraphMap-Luna"   "$tab"
 assert_contains "himmel entry marker-tagged" "# HIMMEL-GraphMap-Himmel" "$tab"
 assert_contains "luna entry fires the runner"   "graphmap-luna.sh"   "$tab"
@@ -478,7 +480,8 @@ assert_contains "arm recorded all four graphmap jobs (ours, cron)" \
 HIMMEL-GraphMap-Luna ours=true scheduler=cron
 HIMMEL-GraphMapAst-Himmel ours=true scheduler=cron
 HIMMEL-GraphMapAst-Luna ours=true scheduler=cron" "$jobs"
-assert_registry "cron arm registers both weekly graphmap flows" '[.flows[] | select((.name == "graphmap-luna" or .name == "graphmap-himmel") and .cadence_seconds == 604800)] | length == 2'
+assert_registry "cron arm registers the weekly luna graphmap flow" '[.flows[] | select(.name == "graphmap-luna" and .cadence_seconds == 604800)] | length == 1'
+assert_registry "cron arm registers the daily himmel graphmap flow" '[.flows[] | select(.name == "graphmap-himmel" and .cadence_seconds == 86400)] | length == 1'
 assert_registry "cron arm registers both expected task names" '[.expected_tasks[] | select(. == "HIMMEL-GraphMap-Luna" or . == "HIMMEL-GraphMap-Himmel")] | length == 2'
 assert_registry "cron arm registers both ast graphmap flows" '[.flows[] | select(.name == "graphmap-ast-luna" or .name == "graphmap-ast-himmel")] | length == 2'
 assert_registry "cron arm registers both ast expected task names" '[.expected_tasks[] | select(. == "HIMMEL-GraphMapAst-Luna" or . == "HIMMEL-GraphMapAst-Himmel")] | length == 2'
@@ -842,7 +845,7 @@ echo "TEST: cron re-arm --force applies flag overrides"
 out=$(run_cron arm --vault "$VAULT" --force --luna-time 01:15 --himmel-time 02:30 2>&1)
 tab=$(cat "$CSTATE/crontab" 2>/dev/null || echo MISSING)
 assert_contains "cron weekly luna override"   "15 01 * * 0" "$tab"
-assert_contains "cron weekly himmel override" "30 02 * * 0" "$tab"
+assert_contains "cron daily himmel override" "30 02 * * * " "$tab"
 assert_contains "unrelated entry survives --force re-arm" "keep-me" "$tab"
 if [ "$(grep -c 'HIMMEL-GraphMap' "$CSTATE/crontab")" -eq 4 ]; then
     pass "still exactly four entries after --force re-arm"
@@ -909,7 +912,7 @@ echo "TEST: cron arm --ast-only --dry-run skips the semantic pair entirely"
 out=$(run_cron arm --vault "$VAULT" --ast-only --dry-run)
 assert_contains "ast-only dry-run says semantic pair skipped" "semantic pair" "$out"
 assert_not_contains "ast-only dry-run has no weekly luna entry"   "00 13 * * 0" "$out"
-assert_not_contains "ast-only dry-run has no weekly himmel entry" "20 13 * * 0" "$out"
+assert_not_contains "ast-only dry-run has no daily himmel entry" "20 13 * * * " "$out"
 assert_not_contains "ast-only dry-run never fires refresh-graph-map.sh" "refresh-graph-map.sh" "$out"
 assert_contains "ast-only dry-run still has the daily ast-luna entry" "05 00 * * *" "$out"
 assert_contains "ast-only dry-run still has the hourly ast-himmel entry" "15 * * * *" "$out"
