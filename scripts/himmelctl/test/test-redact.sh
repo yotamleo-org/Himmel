@@ -40,6 +40,17 @@ row('control: a 40-char random run masks inside prose', () => eq(redact('key ' +
 row('control: a hyphenated base64url-like run (mixed segments) masks', () => eq(redact('aB3dE5fG7hI9-jK1lM3nO5pQ7-rS9tU1vW3xY5zA7'), REDACTED));
 row('control: a UUID-like run with a mixed 12-char tail masks', () => eq(redact('0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d'), REDACTED));
 row('control: a UUID whose segments are each only letters or only digits masks', () => eq(redact('abcdefab-1234-4123-8123-123456789012'), REDACTED));
+row('control: a UUID inside a longer name masks (prefix)', () => eq(redact('x-abcdefab-1234-4123-8123-123456789012'), REDACTED));
+row('control: a UUID inside a longer name masks (suffix)', () => eq(redact('abcdefab-1234-4123-8123-123456789012-chief'), REDACTED));
+row('control: a UUID-shaped run of non-hex words inside a longer name masks (only the UUID rule catches it)', () => {
+  eq(redact('x-abcdefgh-1234-4123-8123-abcdefghijkl'), REDACTED);
+  eq(redact('abcdefgh-1234-4123-8123-abcdefghijkl-chief'), REDACTED);
+});
+row('control: mixed-case junk segments mask (the word rule is lower, Capitalised or ALL-CAPS only)', () => eq(redact('aBcDeFgHiJ-kLmNoPqRsT-2026-11-05'), REDACTED));
+row('control: three short letter+digit ids mask (cap is two)', () => eq(redact('HIMMEL-a1B2c-D3e4F-g5H6i-roadmap-chief'), REDACTED));
+row('control: a 6-char letter+digit id masks (id limit is 5)', () => eq(redact('HIMMEL-9176-aB3dE5-roadmap-chief-2026'), REDACTED));
+row('control: an 8-hex worker nonce inside a name masks (digits only)', () => eq(redact('HIMMEL-9176-V-N255-93727264-roadmap-chief'), REDACTED));
+row('control: an 8-hex worker nonce inside a name masks (letters and digits)', () => eq(redact('HIMMEL-9176-V-N255-93f72f64-roadmap-chief'), REDACTED));
 row('control: a run with an underscore masks', () => eq(redact('aB3dE5fG7hI9_jK1lM3nO5pQ7_rS9tU1vW3xY5zA7'), REDACTED));
 row('control: a hyphenated run of many short mixed chunks masks', () => eq(redact('a1B2c-D3e4F-g5H6i-J7k8L-m9N0o-P1q2R-s3T4u'), REDACTED));
 row('control: a two-segment hyphenated random run masks', () => eq(redact('aB3dE5fG7hI9jK1lM3nO5pQ7-rS9tU1vW3xY5zA7'), REDACTED));

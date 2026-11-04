@@ -34,14 +34,17 @@ const LONG_RUN = /(?<![A-Za-z0-9/_.-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9/_.-])/g;
 // A session name (acme-roadmap-chief-2026-11-04-N4748-fix-the-hud-lines) is 3+ hyphen-joined
 // word segments, so LONG_RUN leaves it readable. A segment is a word (all-lower, Capitalised,
 // ALL-CAPS), digits, or a short (≤5) letter+digit id; at most two ids per name. A longer
-// letter+digit segment, mixed-case junk or an underscore marks a random token: it still masks.
+// letter+digit segment, mixed-case junk, an underscore, a UUID anywhere in the run or a
+// 6+ char lowercase-hex segment (a nonce) marks a random token: it still masks.
 // Token shapes, NAME=value and .env literals run before LONG_RUN and are unaffected.
 const WORD_SEGMENT = /^(?:[A-Za-z][a-z]*|[A-Z]+|[0-9]+)$/;
 const SHORT_ID = /^[A-Za-z0-9]{1,5}$/;
-const UUID_SHAPE = /^[A-Za-z0-9]{8}(?:-[A-Za-z0-9]{4}){3}-[A-Za-z0-9]{12}$/;
+const UUID_SHAPE = /(?:^|-)[A-Za-z0-9]{8}(?:-[A-Za-z0-9]{4}){3}-[A-Za-z0-9]{12}(?:-|$)/;
+const HEX_NONCE = /^[0-9a-f]{6,}$/;
 function isSessionName(run) {
   if (UUID_SHAPE.test(run)) return false;
   const segs = run.split('-');
+  if (segs.some((s) => HEX_NONCE.test(s))) return false;
   if (segs.length < 3 || segs.some((s) => s === '' || !/^[A-Za-z0-9]+$/.test(s))) return false;
   let ids = 0;
   for (const s of segs) {
