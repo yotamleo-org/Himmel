@@ -85,10 +85,13 @@
 #      only --trust-reviewed <judge qid> may write it. The worker's READY text is never read.
 #   9  refused: cr-disposition.sh check found a deferred Critical or Important
 #      finding on the PR's branch with no valid disposition at <head>
-#  10  refused: --trust-reviewed <qid>'s only GO for <head> is a `delta: no-op` verdict
-#      (write-verdict.sh --delta-noop) and delta-class.sh no longer classifies the
-#      delta from its judged head as `none` (a trust-path or judged-finding delta, or
-#      a read error): a real judge must rule on the head
+#  10  refused: --trust-reviewed <qid> has a real GO for <head> but a judge's NO-GO
+#      (any qid of the PR) sits at or after <head>; or its only GO for <head> is a
+#      `delta: no-op` verdict (write-verdict.sh --delta-noop) that go-gate.sh's
+#      go_noop_carry refuses (no real GO at the chain's root, a NO-GO at or after
+#      <head>, an over-long or cyclic chain) or delta-class.sh no longer classifies
+#      every hop of its chain as `none` (a trust-path or judged-finding delta); or any
+#      read error on that path, or an unresolvable verdict scope: a real judge must rule
 #
 # A relative entry (`bash scripts/handover/chief-kit/go.sh`, the worker
 # profile's pre-approved literal) hands off to the HIMMEL_REPO anchor's own

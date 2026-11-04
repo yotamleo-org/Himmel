@@ -787,7 +787,8 @@ case "$got" in 1\|*"NO-GO"*) ;; *) fail "12 carry: K's NO-GO at the judged head 
 # --- 12f. Structure: the carry rule is never re-inlined in go.sh or auto-go.sh
 AUTO_GO_SRC="${AUTO_GO_SRC:-$HERE/../handover/chief-kit/auto-go.sh}"
 for site in "$GO_SCRIPT" "$AUTO_GO_SRC"; do
-    if grep -vE '^[[:space:]]*#' "$site" | grep -qE '(^|[[:space:]])(nogo_after|judged_root)\(\)|delta-judged:'; then
+    inl=$(grep -vE '^[[:space:]]*#' "$site" | grep -E '(^|[[:space:]])(nogo_after|judged_root)\(\)|delta-judged:')
+    if [ -n "$inl" ]; then
         fail "12f: $site defines nogo_after()/judged_root() or reads delta-judged: itself - the carry rule lives in go-gate.sh"
     fi
     for fn in go_verdict_line go_pr_qids go_noop_chain go_nogo_after go_noop_carry; do
