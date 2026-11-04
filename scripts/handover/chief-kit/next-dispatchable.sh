@@ -956,7 +956,7 @@ try:
                 held += [(f, 'open PR %s' % num, False) for f in d if f]  # a diff is files: compared exactly
                 pr_file_map[num] = [f for f in d if f]
     # an open PR cites a ticket by its title or head branch (the commit/PR gate puts the key in both)
-    for line in subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'title,headRefName', '--jq', '.[] | [.number, .title, .headRefName] | @tsv'],
+    for line in subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName', '--jq', '.[] | [.number, .title, .headRefName] | @tsv'],
                                capture_output=True, text=True, timeout=60, check=True).stdout.splitlines():
         cols = line.split('\t')
         if len(cols) >= 3:

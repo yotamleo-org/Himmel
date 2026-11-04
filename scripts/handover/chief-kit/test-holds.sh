@@ -870,6 +870,18 @@ run env HOLDS_QUEUE_LOCK="$W/bin/ql-sweep" python3 -I "$SUT" read --repo "$R" --
 same "T3 one queue-lock status --sweep serves every doc of the read" "$(wc -l < "$W/ql-sweep-calls" | tr -d ' '):$(head -n 1 "$W/ql-sweep-calls")" "1:status --sweep"
 same "T3 a doc whose lock slug the sweep lists reads alive" "$(printf '%s\n' "$OUT" | grep 't3w1.sh' | cut -f6)" alive
 same "T3 a doc the sweep lists no lock for reads dead" "$(printf '%s\n' "$OUT" | grep 't3w3.sh' | cut -f6)" dead
+printf '#!/usr/bin/env bash\necho "a record in a format this reader does not know"\nexit 0\n' > "$W/bin/ql-garbled"
+chmod +x "$W/bin/ql-garbled"
+run env HOLDS_QUEUE_LOCK="$W/bin/ql-garbled" python3 -I "$SUT" read --repo "$R" --paths-from "$W/paths-sweep"
+same "T3 a sweep line it cannot parse makes the lock unknown, not free" "$(printf '%s\n' "$OUT" | grep 't3w3.sh' | cut -f6)" unknown
+
+# a row freshened after it was judged dead is live again: remove_dead keeps it when the mtime it was judged at has moved
+put_row scripts/t3gc3.sh HIMMEL-9507 lab "$(mkdoc HIMMEL-9507-case.md)"
+run python3 -I -c 'import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("holds", sys.argv[1]); h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
+d, n = os.path.split(sys.argv[2]); st, f = h.read_row(sys.argv[2])
+print(h.remove_dead(d, n, f, os.path.getmtime(sys.argv[2]) - 100))' "$SUT" "$(rowf scripts/t3gc3.sh)"
+same "T3 gc keeps a row whose mtime moved since it was judged dead" "$OUT:$([ -e "$(rowf scripts/t3gc3.sh)" ] && echo row || echo none)" "False:row"
 
 # ---- the real register was never touched
 same "the real ~/.himmel/state/holds is unchanged" "$REAL_BEFORE" "$(HOME="$REAL_HOME" real_register)"

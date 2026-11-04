@@ -370,6 +370,9 @@ class Judge:
                     m = re.match(r'slug=(\S+)\s.*?\bstatus=(\S+)', l)
                     if m:
                         self.sweep_rows.append((m.group(1), m.group(2)))
+                    elif l.strip():
+                        self.sweep_rows = 'fault'  # a record this reader cannot parse must not read as no lock
+                        break
         return self.sweep_rows
 
     def lock_state(self, doc):
@@ -1132,7 +1135,7 @@ def op_sync_prs(a):
     return 0
 
 
-def remove_dead(d, n, fields):
+def remove_dead(d, n, fields, mtime):
     """Take a row judged dead out under the directory lock: rename aside, compare, unlink; put it back when it changed. -> bool removed."""
     lock = dir_lock(d)
     if lock is None:
@@ -1146,7 +1149,7 @@ def remove_dead(d, n, fields):
         except OSError:
             return False
         st, f2 = read_row(moved)
-        if st == 'ok' and f2 == fields:
+        if st == 'ok' and f2 == fields and os.path.getmtime(moved) == mtime:  # a row freshened since it was judged dead is live again
             try:
                 os.unlink(moved)
             except OSError:
@@ -1198,7 +1201,7 @@ def op_gc(a):
             rank = {'alive': 0, 'unknown': 1, 'dead': 2}
             if f[0] not in key_state or rank[state] < rank[key_state[f[0]]]:
                 key_state[f[0]] = state
-            if state == 'dead' and remove_dead(d, n, f):
+            if state == 'dead' and remove_dead(d, n, f, mt):
                 removed += 1
                 log_event('gc', unescape(n), f[0], '')
         for n in names:
