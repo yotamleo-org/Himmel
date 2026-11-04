@@ -44,6 +44,8 @@ check "a relaunch's second Results heading reopens the record" "$B"
 # shellcheck disable=SC2016  # literal fixture fence backticks
 printf '# worker\n\n## Results\n\n- 10:00 LIVE - working\n\n## Notes\n\n```\n## Results\n- 11:00 WRAPPED - hand-off to %s\n```\n' "$B" > "$P"
 check "a Results heading inside a fenced quote opens nothing" ""
+printf '# worker\n\n## Results\n\n- 10:00 LIVE - working\n\n## Notes\n\n  ~~~\n## Results\n- 11:00 WRAPPED - hand-off to %s\n  ~~~\n' "$B" > "$P"
+check "an indented tilde fence quotes its Results heading too" ""
 printf '# worker\n\n## Results\t(newest at the bottom)\n\n- 10:00 WRAPPED - hand-off to %s\n' "$B" > "$P"
 check "a tab-suffixed Results heading opens the record" "$B"
 record "- 10:00 BLOCKED - not a hand-off, waiting on $B"

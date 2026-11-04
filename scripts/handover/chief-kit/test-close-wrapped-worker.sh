@@ -1718,6 +1718,20 @@ check "later-letter control: the worker closes" "$rc" "0"
 contains "later-letter control: the /tmp reap runs" "$(cat "$CALLS.reap")" "tmp-reap"
 contains "later-letter control: the prune runs" "$(cat "$CALLS")" "clean.sh"
 mkcmdline 390 claude -n HIMMEL-9-N90b-demo-2026-01-01 work
+
+# A later RESUME that takes its lock while the digest runs still keeps the worktree: the prune
+# reads the successor state again.
+printf '#!/usr/bin/env bash\nHANDOVER_DIR=%q bash %q acquire %q cwl-test-holder > %q 2>&1\necho digest=skipped:test\n' \
+    "$W/handover-root" "$QL" "$HT" "$W/digest-acq.out" > "$W/digest-lock-stub.sh"
+reset_calls
+rc=0; out=$(CWL_KILL_REMOVES_PROC=1 WORKER_SESSION_DIGEST_STEP_BIN="$W/digest-lock-stub.sh" run "$HS" 2>&1) || rc=$?
+check "late lock: the worker closes" "$rc" "0"
+contains "late lock: the reap ran before the lock was taken" "$(cat "$CALLS.reap")" "tmp-reap"
+not_contains "late lock: a lock taken during the digest means no prune" "$(cat "$CALLS")" "clean.sh"
+mkcmdline 390 claude -n HIMMEL-9-N90b-demo-2026-01-01 work
+# shellcheck disable=SC2016  # literal fixture token delimiters
+token="$(sed -n 's/.*release-token: `\([^`]*\)`.*/\1/p' "$W/digest-acq.out" 2>/dev/null)"
+[ -z "$token" ] || HANDOVER_DIR="$W/handover-root" bash "$QL" release "$HT" "$token" >/dev/null 2>&1
 rm -f "$HS" "$HT"
 
 # --- a worker relaunched under <stem>-RESUME closes like any other ---

@@ -801,17 +801,18 @@ later_successor_live() {
         [[ $cl =~ ^${lbase}[a-z]*$ ]] && [[ $cl > $sib_label ]] || continue
         bash "$HERE/../queue-lock.sh" status "$cand" >/dev/null 2>&1 || return 0
         cwd="$(sed -n '1,20s/^resume_cwd:[[:space:]]*//p' "$cand" | head -n 1)"
-        [ -n "$cwd" ] && [ -n "$DOC_WORKTREES" ] && printf '%s\n' "$DOC_WORKTREES" | grep -qxF -- "$cwd" && return 0
+        [ -n "$cwd" ] && [ -n "$DOC_WORKTREES" ] && grep -qxF -- "$cwd" <<< "$DOC_WORKTREES" && return 0
     done
     return 1
 }
-SUCCESSOR_LIVE=0
-if { [ "$PREDECESSOR" -eq 1 ] && ! bash "$HERE/../queue-lock.sh" status "$NAMED_SUCCESSOR" >/dev/null 2>&1; } || later_successor_live; then
-    SUCCESSOR_LIVE=1
-fi
+# successor_live: the named successor holds its lock, or a later RESUME doc keeps it live. Read
+# again before the prune, since a successor can take its lock while the digest runs.
+successor_live() {
+    { [ "$PREDECESSOR" -eq 1 ] && ! bash "$HERE/../queue-lock.sh" status "$NAMED_SUCCESSOR" >/dev/null 2>&1; } || later_successor_live
+}
 # A predecessor closed while its successor still runs reaps nothing: the successor works
 # the same PR, so its judge dirs are live.
-if [ "$SUCCESSOR_LIVE" -eq 1 ]; then
+if successor_live; then
     echo "close-wrapped-worker: its successor still runs - skipping the /tmp reap"
 else
     reap_worker_scratch || echo "close-wrapped-worker: WARN /tmp reap errored - close continues" >&2
@@ -829,7 +830,7 @@ echo "${digest_line:-digest=failed:step}"
 
 # A predecessor closed while its successor still runs leaves the worktree alone: the
 # successor works in it, and a prune could take it before the successor's cwd lands.
-if [ "$SUCCESSOR_LIVE" -eq 1 ]; then
+if successor_live; then
     echo "close-wrapped-worker: its successor still runs - skipping the prune, the worktree stays" >&2
     close_success
 fi
