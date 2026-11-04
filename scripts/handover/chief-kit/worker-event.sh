@@ -29,7 +29,7 @@
 #                        `ESCALATE auto-go-error rc=<n> ...`. Flag off: ESCALATE marker-READY, as before.
 #   anything else     -> ESCALATE (READY with the flag off, and FINDING, need a judge or the chief)
 #
-#   after a MERGED with a PR, station-sync.sh --pr <n> runs detached to bring the
+#   after a MERGED with a PR, or a WRAPPED whose merged PR wrap-merged.sh printed, station-sync.sh --pr <n> runs detached to bring the
 #   station back to main: ` station=pending log=<file>` is appended at once, its
 #   output goes to the log and its verdict to the state file tick.sh shows.
 #
@@ -234,15 +234,20 @@ if [ -n "$close_only" ]; then
 else
     args=(--doc "$DOC" --fleet "$FLEET" "$worker")
     [ -z "$pr" ] || args+=(--pr "$pr")
-    "${WRAP[@]}" "${args[@]}" >/dev/null 2>"$errf"; rc=$?
+    outf="$(mktemp "${TMPDIR:-/tmp}/worker-event-out.XXXXXX")" || { rm -f "$errf"; escalate "wrap-merged-failed rc=1 mktemp"; }
+    "${WRAP[@]}" "${args[@]}" >"$outf" 2>"$errf"; rc=$?
     what=wrap-merged
 fi
 if [ "$rc" -ne 0 ]; then
     msg="$(tr '\n' ' ' <"$errf")"
-    rm -f "$errf"
+    rm -f "$errf" "${outf:-}"
     escalate "$what-failed rc=$rc $msg"
 fi
-rm -f "$errf"
+# a WRAPPED line carries no PR: take the one wrap-merged proved merged
+if [ -z "$pr" ] && [ -n "${outf:-}" ]; then
+    pr="$(sed -n 's/^wrap-merged: merged pr=\([0-9][0-9]*\) sha=.*/\1/p' "$outf" | head -n 1)" || pr=""
+fi
+rm -f "$errf" "${outf:-}"
 # A merged PR leaves the station behind main until its components are updated:
 # station-sync.sh runs the matching himmel-update steps and checks --versions. Those
 # fetch and rebuild without a bound, so it runs detached: the line returns at once

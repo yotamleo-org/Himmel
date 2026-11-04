@@ -119,7 +119,7 @@ commands are VM-only): `worker-sections/shell-and-tests.md`.
   `Security reviewed: <token>`, tokens listed in `check-security-reviewed.sh`).
   Never `git commit --amend` (blocked): use the stuck playbook. [enforced: security-reviewed]
 - **Order: commit → push → `/pr-check` → open the PR** with `bash scripts/lanes/worker-pr-open.sh <title-file> <body-file>` (refused while review is pending). **One push per review round**: one commit of every fix, title/body/`## Ticket coverage` edits too. [prose]
-- Once open: `/pr-check` at the `READY` head → as it enters final CI, `JUDGE-REQUEST <pr> <head>` (a later push needs a fresh judge and GO) → one foreground `scripts/check-ci.sh <pr> --max-wait <sec>`, whose exit code decides, never a background poll → `READY` bullet. [prose]
+- Once open: `/pr-check` at the `READY` head → as it enters final CI, `JUDGE-REQUEST <pr> <head>` (`worker-sections/judge-request.md`) → one foreground `scripts/check-ci.sh <pr> --max-wait <sec>`, whose exit code decides, never a background poll → `READY` bullet. [prose]
 - **Lint `## Ticket coverage` before `READY`:**
   `bash scripts/handover/chief-kit/ready-check.sh --only 7 <pr>` until it prints
   `COVERAGE-LINT PASS` (`- <ask>: done` / `- <ask>: deferred → HIMMEL-<n>`, marker last). [prose]

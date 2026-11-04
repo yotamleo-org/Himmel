@@ -195,7 +195,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     <pr> <head>`, one bounded `gh pr checks` read (a failed read is `PENDING`, never
     `GREEN`) and `cr-disposition.sh check <pr> <head>` (read only; `open:?` = it
     could not evaluate); `coverage=` is ready-check's item 7. The out file
-    (`<inbox>.wait.ready-<pr>`) holds the three outputs, tokens scrubbed. Do not
+    (`<inbox>.wait.ready-<pr>`) holds the READY bullet (any note the worker wrote in it: a trust path, suite rows) and the three outputs, tokens scrubbed. Do not
     re-run ready-check or poll CI: read the diff, rule, and GO through `go.sh` or
     `verdict-go.sh` as before, which run their own gates. It wakes once per (PR,
     head) (`<inbox>.wait.readywoke`): the same head written again wakes nothing,

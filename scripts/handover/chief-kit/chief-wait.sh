@@ -1417,8 +1417,8 @@ ready_wake() {
             *) dsp='open:?' ;;
         esac
         outf="$inbox.wait.ready-$pr"
-        printf '%s READY %s %s\n== ready-check rc=%s\n%s\n== ci %s\n== cr-disposition check rc=%s\n%s\n' \
-            "$label" "$pr" "$head" "$rc" "$rc_out" "$ci" "$drc" "$disp" | r0_scrub > "$outf" 2>/dev/null
+        printf '%s READY %s %s\n== bullet\n%s\n== ready-check rc=%s\n%s\n== ci %s\n== cr-disposition check rc=%s\n%s\n' \
+            "$label" "$pr" "$head" "$bullet" "$rc" "$rc_out" "$ci" "$drc" "$disp" | r0_scrub > "$outf" 2>/dev/null
         printf '%s %s\n' "$pr" "$head" >> "$ready_woke_file"
         printf 'WAKE ready %s %s ready-check=%s ci=%s coverage=%s disposition=%s out=%s\n' "$pr" "$head" "$rck" "$ci" "$cov" "$dsp" "$outf"
         return 0
