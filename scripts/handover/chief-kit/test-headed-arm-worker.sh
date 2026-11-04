@@ -3488,8 +3488,8 @@ check "31g token-preset HANDOVER_DIR with a spaced env value launches" "$rc" "0"
 contains "31g the caller token is kept" "$(printf '%s\n' "$out31g" | grep 'launcher-env=')" "HANDOVER_DIR=/preset"
 not_contains "31g no line is written for that name" "$out31g" "launcher-env-line: HANDOVER_DIR"
 # 31h. Whitespace other than a space is still refused on Darwin.
-for _c31h in tab cr lf vt ff; do
-  case "$_c31h" in tab) _ch=$'\t';; cr) _ch=$'\r';; lf) _ch=$'\n';; vt) _ch=$'\v';; ff) _ch=$'\f';; esac
+for _c31h in tab cr lf vt ff sp_tab; do
+  case "$_c31h" in tab) _ch=$'\t';; cr) _ch=$'\r';; lf) _ch=$'\n';; vt) _ch=$'\v';; ff) _ch=$'\f';; sp_tab) _ch=$' \t';; esac
   _d31h="$tmp/ws${_ch}dir"; mkdir -p "$_d31h"
   rc=0
   err31h="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker-31h some/doc.md /tmp/nosig 99999999999 "$_d31h/w.log" claude-sonnet-5 2>&1)" || rc=$?

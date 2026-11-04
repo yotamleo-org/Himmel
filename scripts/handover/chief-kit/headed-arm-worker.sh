@@ -243,6 +243,14 @@ usage() {
     echo "  --context-guard: the worker context guard (default none = off, except a Sonnet launch on a profile that sets one: worker-impl hands off, worker-eval compacts); see docs/internals/worker-context-guard.md" >&2
 }
 
+# _worker_line_has NAME - true when HEADED_ARM_LAUNCHER_ENV_LINES already carries a NAME= line.
+_worker_line_has() {
+    case $'\n'"${HEADED_ARM_LAUNCHER_ENV_LINES:-}"$'\n' in
+        *$'\n'"$1="*) return 0 ;;
+    esac
+    return 1
+}
+
 # worker_propagate_env NAME VALUE - on macOS, `open -a` starts a worker
 # from a FRESH environment (konsole-macos.sh's own header - PATH excepted, by
 # a deliberate policy this fix leaves untouched), so a plain `export` here
@@ -294,20 +302,14 @@ _worker_propagate_one() {
                     esac
                 done
                 set +f
-                while IFS= read -r _worker_prop_line; do
-                    case "$_worker_prop_line" in
-                        "$_worker_prop_name="*)
-                            unset -v _worker_prop_name _worker_prop_value _worker_prop_nospace _worker_prop_tok _worker_prop_line
-                            return
-                            ;;
-                    esac
-                done <<EOF_WORKER_PROP_LINES
-${HEADED_ARM_LAUNCHER_ENV_LINES:-}
-EOF_WORKER_PROP_LINES
+                if _worker_line_has "$_worker_prop_name"; then
+                    unset -v _worker_prop_name _worker_prop_value _worker_prop_nospace _worker_prop_tok
+                    return
+                fi
                 HEADED_ARM_LAUNCHER_ENV_LINES="${HEADED_ARM_LAUNCHER_ENV_LINES:+$HEADED_ARM_LAUNCHER_ENV_LINES
 }$_worker_prop_name=$_worker_prop_value"
                 export HEADED_ARM_LAUNCHER_ENV_LINES
-                unset -v _worker_prop_name _worker_prop_value _worker_prop_nospace _worker_prop_tok _worker_prop_line
+                unset -v _worker_prop_name _worker_prop_value _worker_prop_nospace _worker_prop_tok
                 return
             fi
             echo "headed-arm-worker: $_worker_prop_name value contains whitespace - leaving it to plain-export inheritance instead of HEADED_ARM_LAUNCHER_ENV (whose token list cannot carry it); harmless on $HEADED_ARM_UNAME, which inherits this process's environment directly" >&2
@@ -328,19 +330,13 @@ EOF_WORKER_PROP_LINES
         esac
     done
     set +f
-    while IFS= read -r _worker_prop_line; do
-        case "$_worker_prop_line" in
-            "$_worker_prop_name="*)
-                unset -v _worker_prop_name _worker_prop_value _worker_prop_tok _worker_prop_line
-                return
-                ;;
-        esac
-    done <<EOF_WORKER_PROP_LINES
-${HEADED_ARM_LAUNCHER_ENV_LINES:-}
-EOF_WORKER_PROP_LINES
+    if _worker_line_has "$_worker_prop_name"; then
+        unset -v _worker_prop_name _worker_prop_value _worker_prop_tok
+        return
+    fi
     HEADED_ARM_LAUNCHER_ENV="${HEADED_ARM_LAUNCHER_ENV:+$HEADED_ARM_LAUNCHER_ENV }$_worker_prop_name=$_worker_prop_value"
     export HEADED_ARM_LAUNCHER_ENV
-    unset -v _worker_prop_name _worker_prop_value _worker_prop_tok _worker_prop_line
+    unset -v _worker_prop_name _worker_prop_value _worker_prop_tok
 }
 
 # worker_propagate_env NAME VALUE - _worker_propagate_one for NAME. A
