@@ -277,6 +277,15 @@ test("HIMMEL-9099: a chief's header counts are fleetSections' counts for it: one
   expect(chiefCounts(mine, C, [])).toEqual({ running: 1, go: 1, attention: 0, orphaned: 0 });
 });
 
+test("HIMMEL-9099: a process orphan with no owner is in no chief's header count, one owned by a chief only in its own", () => {
+  const A = "HIMMEL-nextleg-2026-11-04QM-roadmap-chief";
+  const B = "HIMMEL-nextleg-2026-11-04QN-roadmap-chief";
+  const rows = [row(A, "console", A, { state: "idle" }), row(B, "console", B, { state: "idle" }), row("a-w", "worker", A, { state: "running" })];
+  const procs = [{ pid: 7, owner: "orphan", ageMin: 45 }, { pid: 8, owner: "a-w", ageMin: 31 }];
+  expect(chiefCounts(rows, A, procs).orphaned).toBe(1);
+  expect(chiefCounts(rows, B, procs).orphaned).toBe(0);
+});
+
 test("HIMMEL-9099: the AG-UI rail list hides Board with no readable tracker, exactly as navLinks does", () => {
   const ids = (sources?: string[]) => (nav as any).railItems("fleet", sources);
   expect(ids([])).not.toContain("board");
