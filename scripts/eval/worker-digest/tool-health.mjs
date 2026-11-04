@@ -63,7 +63,9 @@ const eligibleFingerprint = (eligible) => eligible && typeof eligible === 'objec
 // Launch profile → v9 role (spec 0.4 a). An unmapped or absent profile is "other", never guessed.
 const ROLE_OF = { chief: 'chief', 'chief-relay': 'chief-relay', 'worker-impl': 'worker', 'worker-bus': 'worker', 'worker-vm': 'worker',
   'worker-e2e': 'worker', design: 'worker', 'lane-impl': 'worker', code: 'worker', 'code-ui': 'worker', 'lane-content': 'worker',
-  'console-judge': 'judge', 'release-manager': 'release-manager', 'lane-review': 'critic', user: 'interactive' };
+  'console-judge': 'judge', 'release-manager': 'release-manager', 'lane-review': 'critic', user: 'interactive',
+  // the launcher's own names: a chief's launch line carries its role, and rows written before the rename carry the old ids
+  console: 'chief', 'console-relay': 'chief-relay', 'leg-impl': 'worker', 'leg-bus': 'worker', 'worker-docs': 'worker', 'worker-eval': 'worker' };
 export const TEAMS = ['chief', 'chief-relay', 'worker', 'judge', 'release-manager', 'critic', 'interactive', 'other'];
 export const teamOf = (profile) => Object.hasOwn(ROLE_OF, profile) ? ROLE_OF[profile] : /^design-[a-z0-9-]+$/.test(profile) ? 'worker' : 'other';
 // Time to result (RESULT time minus START time, includes waiting and hooks): kept per call by the digest. A call without a time is
@@ -117,7 +119,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
       if (!/^\d{4}-\d{2}-\d{2}$/.test(cohort) || cohort < firstDay || cohort > lastDay) return null;
       const key = `${session}\0${agent}\0${cohort}`;
       if (!slots.has(key)) {
-        const slot = { session, agent, day: cohort, lane, role, profile, team: teamOf(profile), model: model || 'unknown', known: Array.isArray(r.meta?.tool_health), incomplete: r.status !== 'ok' || (!!since && cohort === firstDay && Date.parse(since) !== Date.parse(firstDay)), tools: new Map(), failures: [] };
+        const slot = { session, agent, day: cohort, lane, role, profile, team: teamOf(profile), gap: typeof r.meta?.launch_gap === 'string' ? r.meta.launch_gap : null, model: model || 'unknown', known: Array.isArray(r.meta?.tool_health), incomplete: r.status !== 'ok' || (!!since && cohort === firstDay && Date.parse(since) !== Date.parse(firstDay)), tools: new Map(), failures: [] };
         slots.set(key, slot);
         const agentKey = `${session}\0${agent}`, cohorts = byAgent.get(agentKey) || [];
         cohorts.push(slot); byAgent.set(agentKey, cohorts);
@@ -287,11 +289,30 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
     const list = teamSlots.filter((s) => s.team === t), a = aggregate(list);
     return { team: t, sessions: new Set(list.map((s) => s.session)).size, calls: a.totalCalls, failures: a.tools.reduce((n, x) => n + x.failures, 0) };
   });
+  // Role x lane x profile over every filter, one cell per combination that has a session. A cell's calls are null when any of
+  // its sessions has unknown denominators.
+  const cellKey = (s) => `${s.team}\0${s.lane}\0${s.profile}`;
+  const cross_tab = [...new Set(filtered.map(cellKey))].sort().map((key) => {
+    const list = filtered.filter((s) => cellKey(s) === key), a = aggregate(list);
+    return { team: list[0].team, lane: list[0].lane, profile: list[0].profile, sessions: new Set(list.map((s) => s.session)).size,
+      calls: a.totalCalls, failures: a.tools.reduce((n, x) => n + x.failures, 0), denials: a.tools.reduce((n, x) => n + x.denials, 0) };
+  });
+  // What the launch record leaves unnamed: the share of calls whose lane (or profile) reads unknown, and that remainder by
+  // the kind of session it was. A session recorded before the kind was kept reads "not-restamped", never a guess.
+  const callsOf = (list) => list.reduce((n, s) => n + [...s.tools.values()].reduce((m, h) => m + (num(h.calls) ? h.calls : 0), 0), 0);
+  const totalCalls = callsOf(filtered), noLane = filtered.filter((s) => s.lane === 'unknown'), noProfile = filtered.filter((s) => s.profile === 'unknown');
+  const remainder = [...new Set(noLane.map((s) => s.gap || 'not-restamped'))].sort().map((kind) => {
+    const list = noLane.filter((s) => (s.gap || 'not-restamped') === kind);
+    return { kind, sessions: new Set(list.map((s) => s.session)).size, calls: callsOf(list) };
+  }).sort((a, b) => b.calls - a.calls || a.kind.localeCompare(b.kind));
+  const attribution = { calls: totalCalls, lane_unknown_calls: callsOf(noLane), lane_unknown_share: rate(callsOf(noLane), totalCalls),
+    profile_unknown_calls: callsOf(noProfile), profile_unknown_share: rate(callsOf(noProfile), totalCalls),
+    lane_unknown_sessions: new Set(noLane.map((s) => s.session)).size, sessions: new Set(filtered.map((s) => s.session)).size, remainder };
   const refused = new Map(result.hooks.filter((h) => h.class.startsWith('denied/')).map((h) => [memberOfGuardClass(h.class), h.refusals]));
   const chainOut = rollupChain(chain, { firstDay, lastDay, refused });
   result.hooks = result.hooks.map(({ refusals, ...h }) => ({ ...h, reason_gap: chainOut.gaps?.[memberOfGuardClass(h.class)] ?? null }));
   const { gaps, ...chainShown } = chainOut ?? {};
-  return { state: slots.size ? 'ok' : 'absent', ...result, eligible_fingerprint: eligibleFingerprint(eligible), window_days: windowDays, first_day: firstDay, last_day: lastDay, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], teams, bash: bashRollup(filtered, usable, rtk), coverage: coverageOf(everySlot.filter((s) => matches(s)), new Set(sessions.keys()), rtk, firstDay, lastDay), chain: chainOut.state === 'not-read' ? chainOut : chainShown, filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort(), teams: TEAMS.filter((t) => everySlot.some((s) => s.team === t)) }, selected };
+  return { state: slots.size ? 'ok' : 'absent', ...result, eligible_fingerprint: eligibleFingerprint(eligible), window_days: windowDays, first_day: firstDay, last_day: lastDay, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], teams, cross_tab, attribution, bash: bashRollup(filtered, usable, rtk), coverage: coverageOf(everySlot.filter((s) => matches(s)), new Set(sessions.keys()), rtk, firstDay, lastDay), chain: chainOut.state === 'not-read' ? chainOut : chainShown, filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort(), teams: TEAMS.filter((t) => everySlot.some((s) => s.team === t)) }, selected };
 }
 
 // What the roll-up does not see: digested sessions that carry no tool_health (left out of the rates), and the sessions and
