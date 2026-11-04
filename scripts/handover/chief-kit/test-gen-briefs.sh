@@ -582,6 +582,9 @@ done
 for l in claudex openrouter; do
     grep 'JUDGE-REQUEST' "$hd/worker-preface-$l.md" | grep -qF 'send' && pass "$l preface: JUDGE-REQUEST on the bus" || fail "$l preface: JUDGE-REQUEST not on the bus"
 done
+# The claudex "Only ... go by bus" list must itself name JUDGE-REQUEST (it spans two lines).
+only="$(tr '\n' ' ' < "$hd/worker-preface-claudex.md" | grep -oE 'Only `[^.]*go by bus' | head -1)"
+case "$only" in *'JUDGE-REQUEST'*) pass "claudex preface: the Only-by-bus list names JUDGE-REQUEST" ;; *) fail "claudex preface: the Only-by-bus list omits JUDGE-REQUEST ($only)" ;; esac
 
 # A completes-ticket value other than yes or no is refused (it used to fall through to the closing
 # merge): nothing is written, and the message names the worker label and the value. Case is ignored.
