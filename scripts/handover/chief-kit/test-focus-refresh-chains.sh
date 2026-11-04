@@ -188,5 +188,31 @@ reset
 refresh
 lacks "no focus-plan, no priority-source warning" "$(cat "$tmp/err")" "priority-source"
 
+# --- a shell with no HANDOVER_DIR still finds the root the repo's .env configures
+# A fixture repo (its scripts copied from FR_FIXTURE_SCRIPTS, default this tree) whose .env names a root elsewhere.
+SRC="${FR_FIXTURE_SCRIPTS:-$(cd "$HERE/../.." && pwd)}"
+FXR="$tmp/fxrepo"; CFG="$tmp/cfgroot"
+rm -rf "$FXR" "$CFG" "${tmp:?}/home"
+mkdir -p "$tmp/home" "$FXR/scripts/handover" "$FXR/handovers" "$CFG/fxuser/himmel"
+git -C "$FXR" init -q -b main
+cp -R "$SRC/lib" "$FXR/scripts/lib"; cp -R "$SRC/handover/chief-kit" "$FXR/scripts/handover/chief-kit"
+printf 'HANDOVER_DIR=%s\n' "$CFG" > "$FXR/.env"
+reset
+cp "$REGISTRY" "$CFG/fxuser/himmel/chains.json"
+rm -rf "$HANDOVER_DIR"
+fx_refresh() { (cd "$FXR" && env -u HANDOVER_DIR HOME="$tmp/home" "$@" bash "$FXR/scripts/handover/chief-kit/focus-refresh.sh" --doc "$DOC" --repo example-org/example-repo >"$tmp/out" 2>"$tmp/err"); }
+fx_refresh
+check "no HANDOVER_DIR: the refresh prints ok" "$(out)" "focus=ok"
+check "no HANDOVER_DIR: focus-chains.json is regenerated from the configured root's registry" "$([ -f "$CH" ] && echo yes)" yes
+contains "no HANDOVER_DIR: it holds the registry's chain" "$(cat "$CH" 2>/dev/null)" '"name": "The stage test chain"'
+rm -f "$CH"
+mkdir -p "$tmp/wrongroot"
+fx_refresh HANDOVER_DIR="$tmp/wrongroot"
+contains "a wrong root: the skip is a WARN on stdout" "$(out)" "focus=WARN:chains root"
+contains "a wrong root: the skip is named on stderr" "$(cat "$tmp/err")" "chains root"
+(cd "$FXR" && env -u HANDOVER_DIR HOME="$tmp/home" JUDGE_LADDER_NOW=1000 bash "$FXR/scripts/handover/chief-kit/judge-ladder.sh" convene seat1 sonnet >/dev/null 2>&1)
+check "no HANDOVER_DIR: the judge ladder is written under the configured root" "$([ -f "$CFG/.judge-ladder" ] && echo yes)" yes
+check "no HANDOVER_DIR: nothing is written under the stub folder" "$([ -e "$FXR/handovers/.judge-ladder" ] && echo yes || echo no)" no
+
 printf '%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

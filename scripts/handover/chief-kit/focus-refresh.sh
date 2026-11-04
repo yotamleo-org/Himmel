@@ -84,6 +84,12 @@ export LC_ALL=C
 # shellcheck source=../../lib/user-slug.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/user-slug.sh"
+# shellcheck source=../../lib/load-dotenv.sh
+# shellcheck disable=SC1091
+. "$HERE/../../lib/load-dotenv.sh"
+# A shell without HANDOVER_DIR would fall back to the stub folder and skip the chain stage; read the
+# configured root from the primary checkout's .env, as the doctor does (a live value in the environment wins).
+load_dotenv --root "$(_load_dotenv_primary_for "$HERE/../../..")" HANDOVER_DIR USER_SLUG 2>/dev/null || true # swallow-ok: an unreadable .env leaves the resolver's own fallback, which chains_skip_visible reports below
 
 usage() {
     echo "usage: focus-refresh.sh --doc <chief doc> [--mirror-fresh <dir>] [--repo <owner/repo>] | --status | --mark-dirty" >&2
@@ -290,6 +296,15 @@ chains_fail() { # <registry|graph|render> <detail file> - the run goes on with t
     echo "focus-refresh: WARN: chains $1: $(head -n 1 "$2" 2>/dev/null | tr -c 'A-Za-z0-9 ._:/=,-' '_' | cut -c1-200); focus-chains.json is as it was" >&2
 }
 chains_reg=$(chains_registry) || chains_reg=""
+chains_skip_visible() { # a chains.json under the configured root but none under the resolved one is a WARN, never ok
+    local cfg slug
+    cfg=$(unset HANDOVER_DIR; load_dotenv --root "$(_load_dotenv_primary_for "$HERE/../../..")" HANDOVER_DIR 2>/dev/null; printf '%s' "${HANDOVER_DIR:-}") || return 0 # swallow-ok: no configured root means nothing to compare
+    slug=$(cd "$HERE/../../.." && user_slug 2>/dev/null) || return 0 # swallow-ok: no slug, no registry path to compare
+    [ -n "$cfg" ] && [ -f "$cfg/$slug/himmel/chains.json" ] || return 0
+    CHAINS_WARN="chains root"
+    echo "focus-refresh: WARN: chains root: $cfg/$slug/himmel/chains.json exists but the resolved handover root is ${chains_reg:-unresolved}; focus-chains.json is as it was" >&2
+}
+if [ -z "$chains_reg" ] || [ ! -f "$chains_reg" ]; then chains_skip_visible; fi
 if [ -n "$chains_reg" ] && [ -f "$chains_reg" ]; then
     if ! bounded 30 node "$HERE/chain-state.mjs" --json --registry "$chains_reg" --mirror "$MIR" > "$stage/chain-state.json" 2> "$stage/chains.err"; then
         chains_fail registry "$stage/chains.err"
