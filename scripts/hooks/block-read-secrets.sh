@@ -78,7 +78,9 @@
 #     busctl/gdbus/dbus-send call naming GetSecret, `systemd-creds
 #     decrypt|cat`, `op read|inject|run`, `sops` decrypt shapes, `age -d`, and
 #     scripts/lib/himmel-secrets get|put|import-env|export-env are denied;
-#     `himmel-secrets status|exec` and the keyring's Locked property read pass.
+#     `himmel-secrets status|exec|same-value|names` and the keyring's Locked
+#     property read pass (same-value answers by exit code alone and prints no
+#     value; the secrets migration needs it; names prints names only).
 #     ponytail: a store reached through python/node bindings (secretstorage,
 #     keytar) is not read, revisit on the first real call of that shape.
 #   * Cross-command exfil: `mv .env /tmp/x; cat /tmp/x` — mv is write-only,
@@ -1276,8 +1278,10 @@ g4_scan() {
             case "$a1" in decrypt|edit|exec-env|exec-file) kflag=1 ;; esac
             if [ "$kflag" = 1 ]; then hit=1; note="sops decrypts a secret file"; fi ;;
         age|rage) if [ "$kflag" = 1 ]; then hit=1; note="$cmd -d decrypts a secret file"; fi ;;
-        # The resolver itself: only status and exec keep values out of the
-        # transcript. Run as a command or as `bash <path>/himmel-secrets VERB`.
+        # The resolver itself: get|put|import-env|export-env are denied below;
+        # status, exec, same-value (exit code only) and names (names only) keep
+        # values out of the transcript and pass. Run as a command or as
+        # `bash <path>/himmel-secrets VERB`.
         himmel-secrets)
             case "$a1" in get|put|import-env|export-env) hit=1; note="himmel-secrets $a1 handles a secret value" ;; esac ;;
         bash|sh|zsh|dash|ksh)
