@@ -431,12 +431,13 @@ PINABORTRETRY
 fi
 
 # write_round_scope <source> <pr>: one round-scope row for a run whose panel
-# ran, read from the final diff range: full exactly when it is the captured
-# base...HEAD, otherwise delta from the range's left side. It decides nothing
-# about which critics answered (item 4 owns that). A failed write is reported
-# and leaves no row, so ready-check item 16 refuses that head.
+# ran and exited 0, read from the final diff range: full exactly when it is the
+# captured base...HEAD, otherwise delta from the range's left side. A claude-only
+# fallback (panel rc 1, 2 or 6) writes no row. It decides nothing about which
+# critics answered (item 4 owns that). A failed write is reported and leaves no
+# row, so ready-check item 16 refuses that head.
 write_round_scope() {
-    [ "$panel_ran" -eq 1 ] || return 0
+    [ "$panel_ran" -eq 1 ] && [ "${panel_rc:-1}" -eq 0 ] || return 0
     wrs_source="$1" wrs_pr="$2"
     if [ "$diff_range" = "$db_sha...$HEAD_SHA" ]; then
         set -- --scope full

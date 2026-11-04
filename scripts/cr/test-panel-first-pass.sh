@@ -243,6 +243,9 @@ else
 fi
 
 # T6: stubbed panel exit 1 -> fail-open, loud message, empty findings.
+# T1.64: a claude-only fallback (panel rc 1, 2 or 6) writes no round-scope row.
+t164_count() { grep -cF '"kind":"round-scope"' "$repo/.git/cr-critic-scores.jsonl" 2>/dev/null | tr -d ' '; }
+t164_before="$(t164_count)"
 rm -f "$CALL_LOG" "$tmp/err"
 out="$( (cd "$repo" && FAKE_RC=1 FAKE_OUT='PHANTOM-FINDING-MUST-NOT-SURVIVE' \
     FAKE_ERR='panel-availability: codex unavailable (rc=1)' \
@@ -288,6 +291,7 @@ out="$( (cd "$repo" && FAKE_RC=2 FAKE_ERR='usage: critic-panel.sh [--worktree <p
 err="$(cat "$tmp/err")"
 assert_has "$err" "critic panel unavailable (exit 2: usage error: usage: critic-panel.sh [--worktree <path>]) - claude-only review" "T6e usage cause named on stderr"
 assert_lacks "$err" "mktemp" "T6e usage-error exit 2 does not claim mktemp"
+if [ "$(t164_count)" = "$t164_before" ]; then ok "T1.64 panel rc 1, 6 and 2 write no round-scope row"; else bad "T1.64 a claude-only fallback wrote a round-scope row ($t164_before before, $(t164_count) after)"; fi
 # Every panel run advances the branch's 3-round counter; T6b is an extra run
 # the later cases were not budgeted for, so give them a fresh counter.
 rm -rf "$repo/.git/cr-review-rounds"
@@ -1033,7 +1037,7 @@ out="$( (cd "$rs4" && PATH="$tmp/rtkbin:$PATH" FAKE_RC=1 FAKE_RC_RETRY=0 bash "$
 if [ "$(wc -l < "$CALL_LOG" | tr -d ' ')" = 2 ]; then ok "T1.36 the panel was retried through rtk"; else bad "T1.36 panel calls (got $(wc -l < "$CALL_LOG"))"; fi
 if [ "$(rs_count "$rs4")" = 1 ]; then ok "T1.36 the rtk retry writes one row"; else bad "T1.36 row count (got $(rs_count "$rs4"); err: $(cat "$tmp/err"))"; fi
 
-# T1.37: one critic ok and one failed writes the row; all critics failed writes it too.
+# T1.37: one critic ok and one failed writes the row; all critics failed (a claude-only fallback) writes none.
 rs5="$tmp/repo-rs5"; r5_new "$rs5"
 rs5_h1="$(git -C "$rs5" rev-parse HEAD)"
 rm -f "$CALL_LOG" "$tmp/err"
@@ -1045,7 +1049,7 @@ rs6_h1="$(git -C "$rs6" rev-parse HEAD)"
 rm -f "$CALL_LOG" "$tmp/err"
 out="$( (cd "$rs6" && FAKE_RC=1 FAKE_ERR='panel-availability: codex unavailable (rc=1)' bash "$SCRIPT" --head "$rs6_h1" --branch feature) 2>"$tmp/err" )"; rc=$?
 assert_has "$(cat "$tmp/err")" "all critics failed" "T1.37 the all-failed run degraded"
-if [ "$(rs_count "$rs6")" = 1 ]; then ok "T1.37 all critics failed still writes the row"; else bad "T1.37 all-failed row count (got $(rs_count "$rs6"))"; fi
+if [ "$(rs_count "$rs6")" = 0 ]; then ok "T1.37 all critics failed writes no row"; else bad "T1.37 all-failed row count (got $(rs_count "$rs6"))"; fi
 
 # T1.38: a run whose panel did not run writes nothing.
 rs7="$tmp/repo-rs7"; r5_new "$rs7"

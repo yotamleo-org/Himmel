@@ -91,7 +91,9 @@ if [ -r "$LEDGER" ]; then r=1; else r=$(passed 7 "$H" "$B"); fi  # root reads a 
 chmod 644 "$LEDGER"
 check 'audit: an unreadable ledger' "$r" 1
 fresh; row pass; printf 'not json\n' >> "$LEDGER"
-check 'audit: a malformed ledger line' "$(passed 7 "$H" "$B")" 1
+check 'audit: a malformed ledger line is skipped, the pass row still counts' "$(passed 7 "$H" "$B")" 0
+fresh; printf 'not json\n' >> "$LEDGER"; row fail; row pass
+check 'audit: a malformed line does not hide a fail row' "$(passed 7 "$H" "$B")" 1
 fresh; rm -f "$LEDGER"
 check 'audit: no ledger at all' "$(passed 7 "$H" "$B")" 1
 fresh; row pass

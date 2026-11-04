@@ -37,7 +37,7 @@ case "$*" in
     *':pullRequest(number:'*)
         jq -n --arg h "${READY_STUB_HEAD:-}" --arg args "$*" '
             ($args | capture("p(?<n>[0-9]+):pullRequest").n) as $n |
-            {data:{repository:{("p"+$n):{number:($n|tonumber),headRefOid:$h,mergeStateStatus:"CLEAN",reviewDecision:null,
+            {data:{repository:{("p"+$n):{number:($n|tonumber),headRefOid:$h,mergeStateStatus:"CLEAN",reviewDecision:null,isCrossRepository:false,author:{__typename:"User",login:"yotamleo",id:"U_stub"},
                 body:"## Ticket coverage\n- ask: done\n\nRED then GREEN: the new row failed before the change\n",
                 commits:{nodes:[{commit:{oid:$h,messageHeadline:"fix(x): [HIMMEL-1] t (#1)",messageBody:"Platforms tested: linux\nSecurity reviewed: manual",parents:{totalCount:1}}}],pageInfo:{hasNextPage:false,endCursor:null}},
                 reviewThreads:{nodes:[],pageInfo:{hasNextPage:false,endCursor:null}},

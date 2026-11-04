@@ -40,8 +40,8 @@ outside_audit_passed() {
   gcd=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
   ledger="$gcd/cr-critic-scores.jsonl"
   [ -r "$ledger" ] || return 1
-  row=$(jq -sr --argjson pr "$pr" --arg h "$head" --arg b "$branch" --arg ps "$psha" '
-      [.[] | select(type == "object" and .kind == "security-audit")] as $r
+  row=$(jq -nRr --argjson pr "$pr" --arg h "$head" --arg b "$branch" --arg ps "$psha" '
+      [inputs | fromjson? | select(type == "object" and .kind == "security-audit")] as $r
       | if any($r[]; .pr == $pr and .head == $h and .verdict == "fail") then empty
         else ([$r[] | select(.pr == $pr and .head == $h and .branch == $b and .status == "ok")] | last)
           | select(. != null and .perspective_sha256 == $ps and (.verdict == "pass" or .verdict == "flagged")
