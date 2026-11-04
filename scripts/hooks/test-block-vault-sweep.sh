@@ -16,8 +16,7 @@ fail() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
 # the opt-in PreToolUse deny that refuses the first hand sweep of the notes
 # once and names the qmd search. Hermetic: the vault paths below are strings
 # the hook never opens, its state dir and log live under $TMP, and the cwd is a
-# plain temp dir (no git, no salus). Unlike the rows above, a deny here is the
-# expected result (exit 2).
+# plain temp dir (no git, no salus). A deny here is the expected result (exit 2).
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 VHOOK="${VSWEEP_HOOK_UNDER_TEST:-$ROOT/marketplace/plugins/himmel-ops/hooks/block-vault-sweep.sh}"
 VLOG="$TMP/vlog.jsonl"

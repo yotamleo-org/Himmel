@@ -494,7 +494,9 @@ echo "graphify-fence: DENY fake reason" >&2
 exit 2
 FENCE_EOF
 out="$(run_hook "cd $T/luna && graphify query q" 2>&1)"; rc=$?
-if [ "$rc" -eq 2 ] && grep -q 'DENY fake reason' <<<"$out" && grep -q 'scripts/graphify/worker-graph.sh query|explain|path' <<<"$out"; then
+if [ "$rc" -eq 2 ] && grep -q 'DENY fake reason' <<<"$out" && grep -qF 'bash scripts/graphify/worker-graph.sh query "<question>"' <<<"$out" \
+    && grep -qF 'bash scripts/graphify/worker-graph.sh explain "<symbol>"' <<<"$out" \
+    && grep -qF 'bash scripts/graphify/worker-graph.sh path "<A>" "<B>"' <<<"$out"; then
     ok "a fence denial keeps its reason and names worker-graph.sh"
 else
     bad "denial hint: rc=$rc out=$out"
