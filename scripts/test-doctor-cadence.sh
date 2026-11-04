@@ -32,6 +32,7 @@ git init -q "$P"
 cp "$REAL_ROOT/scripts/lib/prim.sh" "$REAL_ROOT/scripts/lib/canon-path.sh" "$P/scripts/lib/"
 cp "$DIR/doctor-cadence.sh" "$P/scripts/doctor-cadence.sh" 2>/dev/null || true
 cp "$DIR/doctor-counts.sh" "$P/scripts/doctor-counts.sh" 2>/dev/null || true
+cp "$REAL_ROOT/scripts/lib/crontab-locked-rmw.sh" "$P/scripts/lib/"
 cp "$REAL_ROOT/scripts/luna/cadence-alert.sh" "$P/scripts/luna/cadence-alert.sh"
 # The stub doctor: prints $STUB_OUT, records where it ran.
 cat > "$P/scripts/himmel-doctor.sh" <<'SH'
@@ -491,6 +492,25 @@ DOCTORCAD_RUNNER_DIR="$PCT" bash "$P/scripts/doctor-cadence.sh" disarm >/dev/nul
 
 # A grep error at the negative assertion must fail the real suite, not count
 # as absence. Run it once with that grep call fault-injected (no recursion).
+# two cadences arming at the same moment both land, with the unrelated job
+export W
+cat > "$W/slowcron" <<'SH'
+#!/usr/bin/env bash
+[ "${1:-}" = "-l" ] && sleep 0.4
+exec "$W/crontab" "$@"
+SH
+chmod +x "$W/slowcron"
+mkdir -p "$W/ho"
+printf '0 1 * * * keepme\n' > "$FAKE_CRON"
+DOCTORCAD_CRONTAB="$W/slowcron" bash "$P/scripts/doctor-cadence.sh" arm >/dev/null 2>&1 & p1=$!
+MORNINGREPORT_CRONTAB="$W/slowcron" MORNINGREPORT_RUNNER_DIR="$W/mr-runner" HANDOVER_DIR="$W/ho" \
+    bash "$REAL_ROOT/scripts/handover/morning-report-cadence.sh" arm >/dev/null 2>&1 & p2=$!
+wait "$p1"; r1=$?; wait "$p2"; r2=$?
+check "concurrent arms both exit 0" "0 0" "$r1 $r2"
+check "concurrent arms keep the doctor entry" 1 "$(grep -c '# HIMMEL-Doctor' "$FAKE_CRON")"
+check "concurrent arms keep the morning-report entry" 1 "$(grep -c '# HIMMEL-MorningReport' "$FAKE_CRON")"
+check "concurrent arms keep the unrelated job" 1 "$(grep -c 'keepme' "$FAKE_CRON")"
+
 if [ "${DOCTORCAD_TEST_GREP_ERROR:-0}" = 0 ]; then
     REAL_GREP="$(command -v grep)"
     export REAL_GREP

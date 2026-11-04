@@ -83,4 +83,21 @@ bash "$CAD" disarm >/dev/null 2>&1; rc=$?
 chmod 700 "$W/runner"
 if [ "$(id -u)" -eq 0 ]; then pass "unwritable marker dir (skipped as root)"; else check "disarm fails loud (rc 4) when the marker cannot be written" 4 "$rc"; fi
 
+# two cadences arming at the same moment both land, with the unrelated job
+export W
+cat > "$W/slowcron" <<'SH'
+#!/usr/bin/env bash
+[ "${1:-}" = "-l" ] && sleep 0.4
+exec "$W/crontab" "$@"
+SH
+chmod +x "$W/slowcron"
+printf '0 1 * * * /other/job # HIMMEL-Other\n' > "$TAB"
+MORNINGREPORT_CRONTAB="$W/slowcron" bash "$CAD" arm >/dev/null 2>&1 & p1=$!
+SECURITY_AUDIT_CRONTAB="$W/slowcron" SECURITY_AUDIT_RUNNER_DIR="$W/sa-runner" bash "$DIR/../security/security-audit-cadence.sh" arm >/dev/null 2>&1 & p2=$!
+wait "$p1"; r1=$?; wait "$p2"; r2=$?
+check "concurrent arms both exit 0" "0 0" "$r1 $r2"
+check "concurrent arms keep the morning-report entry" 1 "$(grep -c '# HIMMEL-MorningReport' "$TAB")"
+check "concurrent arms keep the security-audit entry" 1 "$(grep -c '# HIMMEL-SecurityAudit' "$TAB")"
+check "concurrent arms keep the unrelated job" 1 "$(grep -c 'HIMMEL-Other' "$TAB")"
+
 [ "$FAILED" -eq 0 ] && echo "ALL PASS" || { echo "$FAILED FAILED"; exit 1; }
