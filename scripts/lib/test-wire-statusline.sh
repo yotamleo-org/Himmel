@@ -746,4 +746,29 @@ newcmd40="$(jq -r .display.customLineCommand "$cfg40/claude-hud.json")"
 [ ! -f "$hud40/config.json" ] || fail "40: himmel-owned legacy config was not removed after migration"
 echo "ok 40 a legacy-only starting config migrates to the new path without its env prefix and the legacy file is removed"
 
+# 41. The shape check behind unwire (and the legacy-config migration) accepts the
+# bare himmel command and ONE NAME=alnum prefix in front of it, and nothing
+# else: a different script, a lowercase or substituting prefix, two prefixes
+# and a chained command are all still not himmel's.
+(
+  # shellcheck source=unwire-hud-config.sh
+  . "$HERE/unwire-hud-config.sh"
+  match41() { jq -n --arg c "$1" '{display:{customLineCommand:$c}}' | jq -e --arg re "$_UNWIRE_HUD_PAT" '.display.customLineCommand | test($re)' >/dev/null 2>&1; }
+  hud41='/x/scripts/statusline/hud-custom-lines.sh'
+  for ok in "bash \"$hud41\"" "HIMMEL_RETIRED_KNOB=off bash \"$hud41\"" "A1_B=x bash \"$hud41\""; do
+    match41 "$ok" || fail "41: himmel's own command was not matched: $ok"
+  done
+  # shellcheck disable=SC2016  # literal $(x) fixture text, not meant to expand
+  for no in 'bash "/x/scripts/other.sh"' 'FOO=1 bash "/x/scripts/other.sh"' "echo bash \"$hud41\"" \
+            "FOO=\$(x) bash \"$hud41\"" "foo=1 bash \"$hud41\"" "FOO=1 BAR=2 bash \"$hud41\"" \
+            "bash \"$hud41\" && rm -rf /x" "FOO=1 sh \"$hud41\""; do
+    if match41 "$no"; then fail "41: a non-himmel command was matched: $no"; fi
+  done
+) || exit 1
+cfg41="$TMP/cfg41.json"
+printf '{"display":{"customLineCommand":"FOO=1 bash \\"/x/scripts/other.sh\\""}}\n' > "$cfg41"
+( . "$HERE/unwire-hud-config.sh"; unwire_hud_config "$cfg41" >/dev/null ) || fail "41: unwire errored on a non-himmel config"
+[ -f "$cfg41" ] || fail "41: unwire removed a non-himmel hud config"
+echo "ok 41 the shape check matches only himmel's hud command (bare or one NAME=alnum prefix)"
+
 echo "ALL PASS"
