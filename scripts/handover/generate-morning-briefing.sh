@@ -182,7 +182,7 @@ if [ "$report_day" = "utc" ]; then zone_label="UTC"; else zone_label="local midn
 # swallow-ok: no next-day form (GNU or BSD date) leaves next_day empty, so the window line reads without its end
 next_day=$(date -d "$today + 1 day" +%F 2>/dev/null || date -j -v+1d -f %F "$today" +%F 2>/dev/null || echo "")
 # swallow-ok: no weekday form (GNU or BSD date) leaves the bare date as the day's label
-day_label=$(LC_ALL=C date -d "$today" '+%a %-d %b' 2>/dev/null || LC_ALL=C date -j -f %F "$today" '+%a %-d %b' 2>/dev/null || echo "$today")
+day_label=$(LC_ALL=C date -d "$today" '+%a %-d %b' 2>/dev/null || LC_ALL=C date -j -f %F "$today" '+%a %-d %b' 2>/dev/null || echo "$today") # gnu-ok: paired with the BSD date -j form
 
 # Resolve --since-date when not passed — LOCAL day.
 [ -z "$SINCE_DATE" ] && SINCE_DATE="$today"
