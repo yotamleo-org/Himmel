@@ -20,8 +20,8 @@ worker_named_successor() {
     # Every Results heading opens the record (a relaunch appends its own), but a heading or bullet
     # inside a fenced block is quoted text. A negated hand-off ("no hand-off to ...") names no successor.
     named="$(awk '
-        /^ {0,3}(```|~~~)/ { fence = !fence; next }
-        fence { next }
+        /^ {0,3}(```|~~~)/ { d = $0; sub(/^ */, "", d); d = substr(d, 1, 3); if (fence == "") fence = d; else if (d == fence) fence = ""; next }
+        fence != "" { next }
         /^## Results([ \t]|$)/ { keep = 1; seen = 1; next }
         /^## / { keep = seen && ($0 ~ /^## (Chief|Console) Rulings([ \t]|$)/); next }
         !keep || !/^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|BLOCKED)([^A-Za-z0-9_]|$)/ { next }
@@ -51,8 +51,8 @@ worker_named_successor() {
     [ "$next_stem" = "$expected" ] || return 0
     # A successor that never launched proves nothing: its own Results must hold a marker bullet.
     awk '
-        /^ {0,3}(```|~~~)/ { fence = !fence; next }
-        fence { next }
+        /^ {0,3}(```|~~~)/ { d = $0; sub(/^ */, "", d); d = substr(d, 1, 3); if (fence == "") fence = d; else if (d == fence) fence = ""; next }
+        fence != "" { next }
         /^## Results([ \t]|$)/ { r = 1; seen = 1; next }
         /^## / { r = seen && ($0 ~ /^## (Chief|Console) Rulings([ \t]|$)/); next }
         r && /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/ { f = 1; exit }
@@ -73,8 +73,8 @@ worker_handoff_tail() {
     local last
     [ -r "$1" ] || return 1
     last="$(awk '
-        /^ {0,3}(```|~~~)/ { fence = !fence; next }
-        fence { next }
+        /^ {0,3}(```|~~~)/ { d = $0; sub(/^ */, "", d); d = substr(d, 1, 3); if (fence == "") fence = d; else if (d == fence) fence = ""; next }
+        fence != "" { next }
         /^## Results([ \t]|$)/ { r = 1; seen = 1; next }
         /^## / { r = seen && ($0 ~ /^## (Chief|Console) Rulings([ \t]|$)/); next }
         r && /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/ { l = $0 }
