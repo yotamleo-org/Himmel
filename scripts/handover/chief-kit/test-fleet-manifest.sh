@@ -122,7 +122,7 @@ printf '' > "$s"
 bash "$SCRIPT" list "$s" >/dev/null 2>&1; rc=$?
 check '7b. list refuses an empty file (rc 1)' 1 "$rc"
 
-# 7c. add stores --lane and --lockless; a missing lane is `unknown`.
+# 7c. add requires --lane (a missing one is a usage error, rc 2, nothing written) and stores it; --lockless is stored too.
 m5="$tmp/lane.fleet.json"
 l1="$tmp/HIMMEL-5-N70-x.md"; l2="$tmp/HIMMEL-5-N71-y.md"; l3="$tmp/HIMMEL-5-P01-z.md"; l4="$tmp/HIMMEL-5-N72-w.md"
 m5n="$tmp/nolane.fleet.json"
