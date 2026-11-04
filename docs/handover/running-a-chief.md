@@ -689,7 +689,7 @@ other delta is refused with nothing written.
 
 `READY <pr> <head> GREEN` → the chief verifies independently (all check-runs
 green at that exact head, zero unresolved review threads, attestation trailers
-in the first commit) → `GO` → the worker merges and writes `WRAPPED`; the relay wraps it and the next wake shows `merged=#<n>`.
+in the first commit) → `GO` → the worker merges and writes `WRAPPED`; the relay wraps it (claudex: the chief merges and sends the worker `MERGED #<n> → <sha>`) and the next wake shows `merged=<n> (#<pr>)`.
 
 <!-- mem:d21a0c8458ad -->
 A worker's `READY`, or a predecessor's note that a PR is clean, is not
@@ -701,7 +701,7 @@ The Jira close is the worker's call from the brief, not a default:
 `merge-on-green.sh` transitions the ticket only on `--jira-transition`,
 and the brief's Ship contract carries `completes-ticket: yes|no`:
 `yes` → the worker passes the flag, `no` (the ticket spans further
-PRs) → it omits it. After the merge (`merged=#<pr>` in the wake digest, or the `MERGED #<n>` chief-doc bullet), re-read the ticket: the flag closes only the
+PRs) → it omits it. After the merge (`merged=<n> (#<pr>)` in the wake digest, or the `MERGED #<n>` chief-doc bullet), re-read the ticket: the flag closes only the
 first `[KEY]` of the PR title, so a multi-key PR needs its other ticket checked
 by hand.
 
