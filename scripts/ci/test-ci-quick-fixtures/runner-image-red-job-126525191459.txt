@@ -1,0 +1,22 @@
+2026-11-04T10:38:41.9710176Z ##[group]Operating System
+2026-11-04T10:38:41.9710939Z Ubuntu
+2026-11-04T10:38:41.9711435Z 26.04.1
+2026-11-04T10:38:41.9712002Z LTS
+2026-11-04T10:38:41.9712507Z ##[endgroup]
+2026-11-04T10:38:41.9713132Z ##[group]Runner Image
+2026-11-04T10:38:41.9713762Z Image: ubuntu-26.04
+2026-11-04T10:38:41.9714319Z Version: 20261025.179.1
+2026-11-04T10:38:41.9715734Z Included Software: https://github.com/actions/runner-images/blob/ubuntu26/20261025.179/images/ubuntu/Ubuntu2604-Readme.md
+2026-11-04T10:38:41.9717397Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu26%2F20261025.179
+2026-11-04T10:38:41.9718389Z ##[endgroup]
+2026-11-04T10:40:00.5966587Z == R1 RED control: sandbox OFF => the sibling write lands (the smoke can catch a leak) ==
+2026-11-04T10:40:01.9632580Z   PASS  R1 with the sandbox off the sibling write landed
+2026-11-04T10:40:01.9634149Z   PASS  R1 with the sandbox off the repo write landed too
+2026-11-04T10:40:01.9653225Z == S sandbox ON: the same scripted probes ==
+2026-11-04T10:40:03.4586060Z   FAIL  S1 the append did not land
+2026-11-04T10:40:03.4601907Z   PASS  S2 the sibling file is untouched
+2026-11-04T10:40:03.4602890Z   PASS  S3 nothing was written inside the repo
+2026-11-04T10:40:03.4914258Z   PASS  S4 all four scripted turns were served, so both probes were really attempted
+2026-11-04T10:40:03.4914708Z
+2026-11-04T10:40:03.4915036Z NOTE: mock-backed result - proves Claude Code enforces the consult sandbox, not real-model behaviour.
+2026-11-04T10:40:03.4915527Z FAILED: 1
