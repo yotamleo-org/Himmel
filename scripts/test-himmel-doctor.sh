@@ -7466,13 +7466,14 @@ printf '{"real.md": {"mtime": 0}}\n' > "$c70_out/manifest.json"
 printf '{"nodes":[],"edges":[]}\n' > "$c70_out/graph.json"
 printf '# real\n' > "$c70_corpus/real.md"
 printf '%s\n' "$c70_corpus" > "$c70_out/.graphify_root"
-# c70_rows <failed files>...: one merge row per argument, each a comma list
-c70_rows() { python3 - "$c70_out/semantic-runs.jsonl" "$@" <<'PY'
+# c70_rows <failed files>...: one merge row per argument, each a comma list, dated today (UTC) inside the semantic age bound
+c70_day="$(date -u +%Y-%m-%d)"
+c70_rows() { python3 - "$c70_out/semantic-runs.jsonl" "$c70_day" "$@" <<'PY'
 import json, sys
 with open(sys.argv[1], "w") as f:
-    for i, spec in enumerate(sys.argv[2:]):
+    for i, spec in enumerate(sys.argv[3:]):
         failed = [s for s in spec.split(",") if s]
-        f.write(json.dumps({"ts": "2026-10-19T0%d:00:00Z" % i, "name": "t", "batch": 3, "failed": len(failed), "shrink_refused": 0,
+        f.write(json.dumps({"ts": "%sT0%d:00:00Z" % (sys.argv[2], i), "name": "t", "batch": 3, "failed": len(failed), "shrink_refused": 0,
                             "failed_files": failed, "refused_files": [], "backed_off_files": []}) + "\n")
 PY
 }
@@ -7481,11 +7482,33 @@ c70_run() { env HOME="$c70_t/home" CLAUDE_DIR="$c70_t/home/claude" HIMMEL_DOCTOR
 c70_rows "x.md" "x.md" "x.md"
 out="$(c70_run)"
 if grepq "$out" -F 'WARN C70-graph-semantic'; then pass "C70 a file stuck across 3 runs -> WARN"; else fail "C70 stuck -> $(printf '%s' "$out" | head -3)"; fi
-if grepq "$out" -F 'graph-freshness: semantic last=2026-10-19T02:00:00Z failed=1 refused=0'; then pass "C70 prints the semantic line verbatim"; else fail "C70 stuck line -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F "graph-freshness: semantic last=${c70_day}T02:00:00Z failed=1 refused=0"; then pass "C70 prints the semantic line verbatim"; else fail "C70 stuck line -> $(printf '%s' "$out" | head -3)"; fi
 
 c70_rows "x.md" "y.md" ""
 out="$(c70_run)"
-if grepq "$out" -F 'OK   C70-graph-semantic' && grepq "$out" -F 'graph-freshness: semantic last=2026-10-19T02:00:00Z failed=0'; then pass "C70 draining failures -> OK with the line"; else fail "C70 draining -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F 'OK   C70-graph-semantic' && grepq "$out" -F "graph-freshness: semantic last=${c70_day}T02:00:00Z failed=0"; then pass "C70 draining failures -> OK with the line"; else fail "C70 draining -> $(printf '%s' "$out" | head -3)"; fi
+# c70_row_at <ts> <failed csv>: a single merge row at an explicit ts
+c70_row_at() { python3 - "$c70_out/semantic-runs.jsonl" "$1" "${2:-}" <<'PY'
+import json, sys
+failed = [s for s in sys.argv[3].split(",") if s]
+open(sys.argv[1], "w").write(json.dumps({"ts": sys.argv[2], "name": "t", "batch": 3, "failed": len(failed), "shrink_refused": 0,
+                                         "failed_files": failed, "refused_files": [], "backed_off_files": []}) + "\n")
+PY
+}
+c70_ago() { python3 -c 'import sys,time; print(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time()-float(sys.argv[1])*3600)))' "$1"; }
+c70_row_at "$(c70_ago 72)" ""
+out="$(c70_run)"
+if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F 'SEMANTIC' && grepq "$out" -F 'last semantic merge 3d ago' && grepq "$out" -F 'graphmap-himmel.sh'; then pass "C70 semantic layer 3 days old on a fresh AST graph -> WARN naming the age and the semantic pass"; else fail "C70 semantic 3d old -> $(printf '%s' "$out" | head -3)"; fi
+c70_row_at "$(c70_ago 1)" ""
+out="$(c70_run)"
+if grepq "$out" -F 'OK   C70-graph-semantic'; then pass "C70 semantic layer 1h old -> OK"; else fail "C70 semantic fresh -> $(printf '%s' "$out" | head -3)"; fi
+c70_row_at "$(c70_ago 1)" "docs/a1.md,docs/a2.md,docs/a3.md,docs/a4.md,docs/a5.md,docs/a6.md,docs/a7.md,docs/a8.md,docs/a9.md,docs/a10.md,docs/a11.md"
+out="$(c70_run)"
+if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F 'content failed=11'; then pass "C70 11 content failures (bound 10) -> WARN with the count"; else fail "C70 content failed -> $(printf '%s' "$out" | head -3)"; fi
+mkdir -p "$c70_corpus/marketplace/plugins/vend"; printf '# v\n' > "$c70_corpus/marketplace/plugins/vend/VENDORED.md"
+c70_row_at "$(c70_ago 1)" "marketplace/plugins/vend/skills/a.md,marketplace/plugins/vend/b.md,templates/t/c.md,templates/d.md,plugins/p/templates/e.md,scripts/ci/test-x-fixtures/f.md,scripts/ci/test-x-fixtures/g.md,scripts/hooks/testdata/h.md,plugins/q/evals/c/graders/i.md,plugins/q/evals/c/graders/j.md,fixtures/k.md"
+out="$(c70_run)"
+if grepq "$out" -F 'OK   C70-graph-semantic' && grepq "$out" -F 'non_content_failed=11'; then pass "C70 11 vendored/template/fixture failures -> not counted, OK"; else fail "C70 non-content failed -> $(printf '%s' "$out" | head -3)"; fi
 
 rm -f "$c70_out/semantic-runs.jsonl"
 out="$(c70_run)"
@@ -7520,7 +7543,7 @@ c70_rows "" "" ""
 printf '{"ts": "2026-10-17T00:00:00Z", "name": "t", "batch": 3, "failed": 0, "shrink_refused": 0, "failed_files": [], "refused_files": [], "backed_off_files": []}\n' > "$c70_t/root/graphify-out/semantic-runs.jsonl"
 c70_div() { env HOME="$c70_t/home" CLAUDE_DIR="$c70_t/home/claude" HIMMEL_DOCTOR_ROOT="$c70_t/root" HIMMEL_DOCTOR_GRAPH_OUT= HIMMEL_DOCTOR_GRAPH_CHECK= HIMMEL_DOCTOR_CADENCE_OUT="$c70_out" "$@" bash "$DOC" --no-color --only C70 2>&1; }
 out="$(c70_div)"
-if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F 'cadence graph' && grepq "$out" -F 'last=2026-10-19T02:00:00Z' && grepq "$out" -F 'HIMMEL-7357'; then pass "C70 station semantic layer older than the cadence graph -> WARN naming both"; else fail "C70 divergence -> $(printf '%s' "$out" | head -4)"; fi
+if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F 'cadence graph' && grepq "$out" -F "last=${c70_day}T02:00:00Z" && grepq "$out" -F 'HIMMEL-7357'; then pass "C70 station semantic layer older than the cadence graph -> WARN naming both"; else fail "C70 divergence -> $(printf '%s' "$out" | head -4)"; fi
 cp "$c70_out/semantic-runs.jsonl" "$c70_t/root/graphify-out/semantic-runs.jsonl"
 out="$(c70_div)"
 if grepq "$out" -F 'C70-graph-semantic' && ! grepq "$out" -F 'cadence graph'; then pass "C70 station and cadence graph at the same semantic run -> no divergence row"; else fail "C70 equal -> $(printf '%s' "$out" | head -4)"; fi

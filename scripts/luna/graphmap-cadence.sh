@@ -47,8 +47,8 @@
 # discipline lives in the runner; this scheduler just fires it.
 #
 # OPERATOR FLIP: arming this cadence commits to an HOURLY free structural
-# extraction per corpus (no bank, no egress) AND a WEEKLY semantic extraction
-# per corpus on the claude-cli backend (draws the SAME
+# extraction per corpus (no bank, no egress) AND a semantic extraction
+# per corpus (luna weekly, himmel daily) on the claude-cli backend (draws the SAME
 # interactive 5h/weekly Anthropic bank as a live session, gated by
 # usage-preflight.sh inside refresh-graph-map.sh). It never auto-arms —
 # `arm` registers all five tasks only when explicitly invoked, so the
@@ -57,7 +57,7 @@
 # Five tasks are registered:
 #   HIMMEL-GraphMap-Luna       weekly, semantic (default Sunday 13:00 local)
 #       bash <himmel>/scripts/graphify/refresh-graph-map.sh --name luna ...
-#   HIMMEL-GraphMap-Himmel     weekly, semantic (default Sunday 13:20 local)
+#   HIMMEL-GraphMap-Himmel     DAILY, semantic (default 13:20 local)
 #       bash <himmel>/scripts/graphify/refresh-graph-map.sh --name himmel ...
 #   HIMMEL-GraphMapAst-Luna    DAILY, structural, free (default 00:05 local)
 #       bash <himmel>/scripts/graphify/ast-update.sh <vault>
@@ -78,8 +78,9 @@
 #   this repo's own checkout. himmel-only in v1 — see docs/internals/
 #   graph-cadence.md for the one-line note on adding a second corpus.)
 #
-# WHY SUNDAY 13:00 / 13:20 LOCAL for the semantic pair (staggered 20 min apart,
-# weekly): a quiet day/time
+# WHY SUNDAY 13:00 / 13:20 LOCAL for the semantic pair (staggered 20 min apart;
+# luna weekly on Sunday, himmel daily at 13:20 so the doctor's 48h
+# semantic-age bound holds): a quiet day/time
 # default; the stagger REDUCES THE CHANCE of the two extraction jobs
 # overlapping (it cannot guarantee no overlap — luna and himmel are different
 # corpora / out dirs, so the per-out-dir promote lock does not serialize them).
@@ -98,7 +99,7 @@
 #   bash scripts/luna/graphmap-cadence.sh status
 #   bash scripts/luna/graphmap-cadence.sh disarm
 #
-# --luna-time/--himmel-time apply ONLY to the weekly semantic pair; the
+# --luna-time/--himmel-time apply ONLY to the semantic pair; the
 # structural pair's fire offsets are not
 # operator-configurable (see WHY :05/:15 above).
 #
@@ -217,7 +218,7 @@ PUBLISH_FLOW_NAME="graph-publish-${PUBLISH_CORPUS_SLUG}"
 # Sunday 13:00 / 13:20 local rationale).
 LUNA_TIME="13:00"
 HIMMEL_TIME="13:20"
-# Weekly day-of-week, semantic workers only. Sunday: quiet, low odds
+# Weekly day-of-week, luna semantic worker only (himmel runs daily). Sunday: quiet, low odds
 # of colliding with weekday operator work; ONE fixed day shared by both workers
 # (the 20-min stagger still separates them within that day).
 WEEKLY_DAY_CRON="0"        # cron day-of-week field (0 = Sunday)
@@ -354,7 +355,7 @@ Subcommands:
 Flags (arm only, except --dry-run and --luna-only):
   --luna-time <HH:MM>    Weekly luna-map time, 24h local   (default 13:00,
                          semantic worker only)
-  --himmel-time <HH:MM>  Weekly himmel-map time, 24h local (default 13:20,
+  --himmel-time <HH:MM>  Daily himmel-map time, 24h local  (default 13:20,
                          semantic worker only; staggered 20min after luna to
                          reduce the chance of the two extraction jobs
                          overlapping — different corpora/out-dirs, so no
@@ -382,7 +383,7 @@ Flags (arm only, except --dry-run and --luna-only):
                          --with-luna-semantic to add the semantic worker. Refused
                          with --with-publish and --rewrite-armed.
   --ast-only             Arm/dedup-check ONLY the free structural (AST) pair.
-                         The weekly semantic pair is left
+                         The semantic pair is left
                          absent/untouched and its backend credential is not
                          required. Re-arm without --ast-only later to add the
                          semantic pair back in (--force to replace).
@@ -530,7 +531,7 @@ installed_semantic_backend() {
 task_summary() {
     case "$1" in
         "$TASK_LUNA")       printf ' -> refresh-graph-map luna (weekly, semantic, %s)' "$(installed_semantic_backend graphmap-luna)" ;;
-        "$TASK_HIMMEL")     printf ' -> refresh-graph-map himmel (weekly, semantic, %s)' "$(installed_semantic_backend graphmap-himmel)" ;;
+        "$TASK_HIMMEL")     printf ' -> refresh-graph-map himmel (daily, semantic, %s)' "$(installed_semantic_backend graphmap-himmel)" ;;
         "$TASK_AST_LUNA")   printf ' -> graphify update luna (daily, structural, free)' ;;
         "$TASK_AST_HIMMEL") printf ' -> graphify update himmel (hourly, structural, free)' ;;
         "$TASK_PUBLISH_HIMMEL") printf ' -> graph-cadence publish himmel (auto-merge; interval = cron schedule; --publish-semantic adds a billed claude-api pass)' ;;
@@ -1366,10 +1367,11 @@ cmd_arm() {
     q_runner_publish_himmel=$(cron_escape "$CRON_RUNNER_PUBLISH_HIMMEL")
     q_runner_semantic_luna=$(cron_escape "$CRON_RUNNER_SEMANTIC_LUNA")
     local entry_luna entry_himmel entry_ast_luna entry_ast_himmel entry_publish_himmel entry_semantic_luna
-    # Weekly (semantic pair): day-of-week field pinned to
+    # Weekly (luna semantic): day-of-week field pinned to
     # WEEKLY_DAY_CRON instead of "*".
     entry_luna="$luna_mm $luna_hh * * $WEEKLY_DAY_CRON $q_runner_luna # $TASK_LUNA"
-    entry_himmel="$himmel_mm $himmel_hh * * $WEEKLY_DAY_CRON $q_runner_himmel # $TASK_HIMMEL"
+    # The himmel semantic worker runs DAILY ("*"); luna stays weekly.
+    entry_himmel="$himmel_mm $himmel_hh * * * $q_runner_himmel # $TASK_HIMMEL"
     # Structural pair: himmel hourly (fixed minute, every
     # hour); luna DAILY at its full HH:MM.
     entry_ast_luna="$ast_luna_mm $ast_luna_hh * * * $q_runner_ast_luna # $TASK_AST_LUNA"
@@ -1517,14 +1519,13 @@ cmd_arm() {
     fi
     if [ -n "$tmp_luna" ]; then
         mv -f "$tmp_luna" "$CRON_RUNNER_LUNA"  # prim-ok: publish the pre-chmod-ed runner after cron succeeds; atomic_write resets executable permissions.
-        # weekly (604800s), not daily -- these are the semantic pair: a wrong cadence here would make future
-        # cadence-based staleness tooling flag a healthy weekly job as
-        # stalled every day it hasn't fired.
+        # luna weekly (604800s), himmel daily (86400s): each must match its cron entry, or
+        # cadence-based staleness tooling flags a healthy job as stalled (or misses a stalled one).
         observability_register_cadence graphmap-luna 604800 "$TASK_LUNA"
         cadence_prov_record "$TASK_LUNA"
         if [ -n "$tmp_himmel" ]; then
             mv -f "$tmp_himmel" "$CRON_RUNNER_HIMMEL"  # prim-ok: preserve the staged executable mode at publication.
-            observability_register_cadence graphmap-himmel 604800 "$TASK_HIMMEL"
+            observability_register_cadence graphmap-himmel 86400 "$TASK_HIMMEL"
             cadence_prov_record "$TASK_HIMMEL"
         fi
     fi
@@ -1584,8 +1585,8 @@ $himmel_line"
   semantic pair (--force to replace). Disarm anytime with:"
     else
         semantic_lines="  $TASK_LUNA       weekly (dow $WEEKLY_DAY_CRON) $LUNA_TIME   -> refresh-graph-map luna (semantic, $BACKEND)
-  $TASK_HIMMEL     weekly (dow $WEEKLY_DAY_CRON) $HIMMEL_TIME   -> refresh-graph-map himmel (semantic, $BACKEND)"
-        arming_note="  No task ever opens a claude session. Arming = weekly semantic graphify
+  $TASK_HIMMEL     daily $HIMMEL_TIME   -> refresh-graph-map himmel (semantic, $BACKEND)"
+        arming_note="  No task ever opens a claude session. Arming = semantic graphify (luna weekly, himmel daily)
   extraction on the $BACKEND backend (off the interactive Anthropic bank)
   + free structural refresh (himmel hourly, luna daily); disarm anytime:"
     fi
