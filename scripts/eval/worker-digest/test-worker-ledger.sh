@@ -138,6 +138,15 @@ check "both backfill ledgers validate" 'python3 "$LL" validate "$BF" >/dev/null 
 n1="$(lines "$BF")"
 bf >"$TMP/bf2.out" 2>&1
 check "a second backfill appends 0 rows" '[ "$(lines "$BE")" = 3 ] && [ "$(lines "$BF")" = "$n1" ] && grep -qE "failures\+=0 eval\+=0" "$TMP/bf2.out"'
+# A session recorded with its lane known but no profile is asked again once its launch record names a profile.
+mkdir -p "$TMP/bfp-cache/launch-logs"
+printf 'headed-arm-worker: profile=none lane=native model=m role=worker session=HIMMEL-4670-N1365-agui-spec launched=2026-10-23T00:00:00Z\n' >"$TMP/bfp-cache/launch-logs/HIMMEL-4670-N1365-agui-spec.log"
+bfp() { HIMMELCTL_CACHE_DIR="$TMP/bfp-cache" python3 "$LL" backfill --since 2026-10-01 --projects "$P" --denials-ledger "$FX/classifier-denials.jsonl" --failures-ledger "$TMP/bfp-f.jsonl" --eval-ledger "$TMP/bfp-e.jsonl" --state-dir "$TMP/bfp-s"; }
+bfp >"$TMP/bfp1.out" 2>&1
+check "backfill: a launch with a lane and no profile records the lane and no profile" 'jq -e "select(.run_id == \"$B1\") | .lane == \"native\" and .meta.profile == null" "$TMP/bfp-e.jsonl" >/dev/null'
+printf 'headed-arm-worker: profile=worker-impl lane=native model=m role=worker session=HIMMEL-4670-N1365-agui-spec launched=2026-10-23T00:00:00Z\n' >"$TMP/bfp-cache/launch-logs/HIMMEL-4670-N1365-agui-spec.log"
+bfp >"$TMP/bfp2.out" 2>&1
+check "backfill asks a lane-known, profile-unknown session again, and the profile is stamped" 'jq -s "[.[] | select(.run_id == \"$B1\")] | length == 2 and (.[-1].meta.profile == \"worker-impl\")" "$TMP/bfp-e.jsonl" | grep -q true && jq -e "all(.tool_health[]; .profile == \"worker-impl\")" "$TMP/bfp-s/$B1.json" >/dev/null'
 mkdir -p "$TMP/h/.config/claude-glm/phi-roots"
 HOME="$TMP/h" python3 "$LL" backfill --since 2026-10-01 --projects "$P" --denials-ledger "$FX/classifier-denials.jsonl" --failures-ledger "$TMP/bf3-f.jsonl" --eval-ledger "$TMP/bf3-e.jsonl" --state-dir "$TMP/bf3-s" >"$TMP/bf3.out" 2>&1; rc3=$?
 check "an unreadable PHI-roots file fails closed: nonzero, nothing written" '[ "$rc3" != 0 ] && [ ! -s "$TMP/bf3-e.jsonl" ]'

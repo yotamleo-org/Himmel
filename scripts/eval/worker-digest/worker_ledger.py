@@ -375,21 +375,23 @@ def _launch_lines(who):
     paths = []
     if name:
         paths += [os.path.join(d, stem + ".log") for stem in dict.fromkeys((name, re.sub(r"-RESUME$", "", name)))]
-    session = who.get("session")
-    if session:
-        sid = _sid_log(session)
-        if sid:
-            paths.append(sid)
-    doc = who.get("doc")
-    if doc:
-        stem = re.sub(r"-RESUME$", "", re.sub(r"\.md$", "", os.path.basename(doc)))
-        if LAUNCH_NAME.match(stem):
-            paths.append(os.path.join(d, stem + ".log"))
-    for p in paths:
-        try:
-            return _read_launch_log(p)
-        except OSError:
-            continue
+
+    def by_sid():
+        # Scans every launch log once per process, so it runs only when the named paths found nothing.
+        sid = _sid_log(who["session"]) if who.get("session") else None
+        return [sid] if sid else []
+
+    def by_doc():
+        doc = who.get("doc")
+        stem = re.sub(r"-RESUME$", "", re.sub(r"\.md$", "", os.path.basename(doc))) if doc else ""
+        return [os.path.join(d, stem + ".log")] if LAUNCH_NAME.match(stem) else []
+
+    for step in (lambda: paths, by_sid, by_doc):
+        for p in step():
+            try:
+                return _read_launch_log(p)
+            except OSError:
+                continue
     return None
 
 
@@ -658,8 +660,10 @@ def backfill(a):
         except (OSError, ValueError):
             pass
         done_ok = isinstance(saved, dict) and saved.get("status") == "ok"
-        # A session recorded ok with its lane unknown is asked again: its launch record may exist now.
-        if done_ok and saved.get("lane") != "unknown":
+        # A session recorded ok with its lane or profile unknown is asked again: its launch record may exist now.
+        health = saved.get("tool_health") if done_ok else None
+        no_profile = isinstance(health, list) and bool(health) and not any(isinstance(r, dict) and r.get("profile") not in (None, "unknown") for r in health)
+        if done_ok and saved.get("lane") != "unknown" and not no_profile:
             done += 1
             continue
         # ponytail: recency stands in for "still running" (a worker idle past the window
