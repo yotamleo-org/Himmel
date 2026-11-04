@@ -774,6 +774,17 @@ got=$(gg12 go_nogo_after "$G12" 93 "$NG" "$A12")
 rec12 "$G12" K2 judge "**NO-GO** for head \`$A12\`." 93
 got=$(gg12 go_nogo_after "$G12" 93 "$NG" "$A12")
 [ "${got%%|*}" = 1 ] || fail "12 8732-g: a record whose verdict line is that NO-GO does veto: $got"
+W12="$ROOT/w12/verdicts"
+rec12 "$W12" K judge "**NO-GO** for head \`$A12\`." 93
+sed -i.bak 's/$/\r/' "$W12/K/judge.md" && rm -f "$W12/K/judge.md.bak"
+got=$(gg12 go_pr_qids "$W12" 93 "$B12")
+[ "$got" = "0|K" ] || fail "12 CRLF: a CRLF record's pr: line still names its PR: $got"
+got=$(gg12 go_nogo_after "$W12" 93 "$NG" "$A12")
+[ "${got%%|*}" = 1 ] || fail "12 CRLF: a CRLF NO-GO still vetoes: $got"
+rec12 "$W12" J "delta-noop-$B12" "**GO** for head \`$B12\`." 93 "delta: no-op"$'\n'"delta-judged: $A12"
+sed -i.bak 's/$/\r/' "$W12/J/delta-noop-$B12.md" && rm -f "$W12/J/delta-noop-$B12.md.bak"
+got=$(gg12 go_noop_chain "$W12" J "$B12")
+[ "$got" = "0|$B12 $A12"$'\n'"$A12 -" ] || fail "12 CRLF: a CRLF no-op record still chains to its judged head: $got"
 
 R12="$ROOT/r12"; mkdir -p "$R12"
 NC12="$R12/u/b/verdicts"

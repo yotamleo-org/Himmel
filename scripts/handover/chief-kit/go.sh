@@ -335,7 +335,7 @@ if [ "$TRUST_SET" -eq 1 ]; then
     for vf in "$NVD/$TRUST"/*.md; do
         [ -f "$vf" ] || continue
         tr -d '\r' < "$vf" | grep -q "^\*\*GO\*\* for head \`$SHA\`" || continue
-        if grep -qx 'delta: no-op' "$vf"; then NOOP=1; else REAL=1; fi
+        if grep -qxE "delta: no-op"$'\r'"?" "$vf"; then NOOP=1; else REAL=1; fi
     done
     if [ "$REAL" -eq 1 ]; then
         if ! WHY=$(go_nogo_after "$NVD" "$PR" "$PWD" "$SHA"); then

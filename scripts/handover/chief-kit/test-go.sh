@@ -903,12 +903,16 @@ VEXTRA=$'delta: no-op\ndelta-judged: '"$A29"$'\ndelta-class: none\n' verdict "$R
 check "8732-b0: the no-op GO at B with no NO-GO anywhere is written" "$(go29 "$B29")" "0:go"
 VEXTRA=$'finding: src/a.txt:3-4\n' verdict "$ROOT29" K "**NO-GO** for head \`$A29\`." HIMMEL-1-judge-K
 check "8732-a: a no-op GO at B after K's NO-GO at A is refused (exit 10, no GO)" "$(go29 "$B29")" "10:none"
-chmod 000 "$V29/K/HIMMEL-1-judge-K.md"
-check "8732-c: an unreadable NO-GO record refuses the no-op GO (exit 10)" "$(go29 "$B29")" "10:none"
-chmod 600 "$V29/K/HIMMEL-1-judge-K.md"
 rm -f "$V29/K/HIMMEL-1-judge-K.md"
 VEXTRA=$'finding: src/a.txt:3-4\n' verdict "$ROOT29" K "**NO-GO** for head \`$S29\`." HIMMEL-1-judge-K
 check "8732-b: a NO-GO at a sibling of A does not veto the no-op GO" "$(go29 "$B29")" "0:go"
+chmod 000 "$V29/K/HIMMEL-1-judge-K.md"
+if [ -r "$V29/K/HIMMEL-1-judge-K.md" ]; then
+  echo "  skip 8732-c: chmod 000 leaves the record readable here"
+else
+  check "8732-c: an unreadable record (a sibling NO-GO that would not veto) refuses the no-op GO (exit 10)" "$(go29 "$B29")" "10:none"
+fi
+chmod 600 "$V29/K/HIMMEL-1-judge-K.md"
 VEXTRA=$'reason quotes **NO-GO** for head `'"$A29"$'`\n' verdict "$ROOT29" K "**GO** for head \`$S29\`." HIMMEL-1-judge-K
 check "8732-g: a NO-GO quoted in a GO record's evidence does not veto" "$(go29 "$B29")" "0:go"
 rm -f "$V29/K/HIMMEL-1-judge-K.md"

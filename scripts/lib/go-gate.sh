@@ -346,9 +346,9 @@ go_verdict_line() {
 # line `pr: <pr>` or naming `for head `<head>``, sorted, one per line. A missing
 # directory prints nothing; rc 2 when it cannot be read.
 go_pr_qids() {
-    local cand crc=0 vpath rel q out=""
+    local cand crc=0 vpath rel q out="" cr=$'\r'
     [ -d "$1" ] || return 0
-    cand=$(grep -rlE --include='*.md' -e "^pr: ${2}\$|for head \`${3}\`" "$1" 2>/dev/null) || crc=$?
+    cand=$(grep -rlE --include='*.md' -e "^pr: ${2}${cr}?\$|for head \`${3}\`" "$1" 2>/dev/null) || crc=$?
     if [ "$crc" -gt 1 ]; then
         printf 'cannot read the verdict directory %s (grep exit %s)\n' "$1" "$crc"
         return 2
@@ -370,11 +370,11 @@ go_pr_qids() {
 # (or none naming a 40-hex judged head). rc 2, the reason on stdout and no pairs,
 # on more than 8 hops, a cycle, or a record that cannot be read.
 go_noop_chain() {
-    local h="$3" n f hops=0 seen=" $3 " out=""
+    local h="$3" n f hops=0 seen=" $3 " out="" cr=$'\r'
     while :; do
         f="$1/$2/delta-noop-$h.md"
         [ -e "$f" ] || break
-        if ! n=$(sed -nE 's/^delta-judged: ([0-9a-f]{40})$/\1/p' "$f" 2>/dev/null); then
+        if ! n=$(sed -nE "s/^delta-judged: ([0-9a-f]{40})${cr}?\$/\\1/p" "$f" 2>/dev/null); then
             printf 'cannot read the delta no-op record %s, so the judged head it rests on is unknown\n' "$f"
             return 2
         fi
@@ -404,11 +404,11 @@ go_noop_chain() {
 # read failure or a git answer other than yes/no (an unknown commit included).
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 go_nogo_after() {
-    local qids q files frc nf l nh grc
+    local qids q files frc nf l nh grc cr=$'\r'
     qids=$(go_pr_qids "$1" "$2" "$4") || { printf '%s\n' "$qids"; return 2; }
     while IFS= read -r q; do
         [ -n "$q" ] || continue
-        frc=0; files=$(grep -lx -e "pr: ${2}" "$1/$q"/*.md 2>/dev/null) || frc=$?
+        frc=0; files=$(grep -lxE -e "pr: ${2}${cr}?" "$1/$q"/*.md 2>/dev/null) || frc=$?
         if [ "$frc" -gt 1 ]; then
             printf 'cannot read the verdicts of %s (grep exit %s), so a NO-GO there cannot be ruled out\n' "$q" "$frc"
             return 2
@@ -449,7 +449,7 @@ go_nogo_after() {
 #   run from an adopted repo's checkout).
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 go_noop_carry() {
-    local chain line why rc root="" rf rl drc real=0
+    local chain line why rc root="" rf rl drc real=0 cr=$'\r'
     chain=$(go_noop_chain "$1" "$2" "$5") || { printf '%s\n' "$chain"; return 2; }
     while IFS= read -r line; do
         [ -n "$line" ] || continue
@@ -464,7 +464,7 @@ go_noop_carry() {
             return 2
         fi
         case "$rl" in '**GO** for head `'"$root"'`'|'**GO** for head `'"$root"'`.') ;; *) continue ;; esac
-        drc=0; grep -qx 'delta: no-op' "$rf" 2>/dev/null || drc=$?
+        drc=0; grep -qxE "delta: no-op${cr}?" "$rf" 2>/dev/null || drc=$?
         case "$drc" in
             0) ;;
             1) real=1; break ;;

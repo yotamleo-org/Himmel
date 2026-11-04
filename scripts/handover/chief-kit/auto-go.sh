@@ -370,7 +370,7 @@ else
             rl=$(go_verdict_line "$rf") || fail 5 "cannot read the verdict $rf"
             # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
             case "$rl" in '**GO** for head `'"$2"'`'|'**GO** for head `'"$2"'`.') ;; *) continue ;; esac
-            rrc=0; grep -qx 'delta: no-op' "$rf" 2>/dev/null || rrc=$?
+            rrc=0; grep -qxE "delta: no-op"$'\r'"?" "$rf" 2>/dev/null || rrc=$?
             case "$rrc" in 0) ;; 1) return 0 ;; *) fail 5 "cannot read the verdict $rf" ;; esac
         done
         return 1
