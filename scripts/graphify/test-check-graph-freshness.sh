@@ -356,8 +356,28 @@ json.dump({"version":1,"files":{"real.md":hashlib.sha256(open(sys.argv[2],"rb").
   "$OUT/semantic-manifest.json" "$CORPUS/real.md"
 backdate_days "$CORPUS/notes/sub.md" 8
 out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
-[ "$rc" -eq 3 ] && [[ "$out" == *"SEMANTIC-STALE"* ]] && [[ "$out" == *"oldest content unstamped 8d"* ]] \
+[ "$rc" -eq 3 ] && [[ "$out" == *"SEMANTIC-STALE"* ]] && [[ "$out" == *"oldest content unstamped 8."* ]] \
   && pass "T11f a content file unstamped past 7 days -> rc=3 SEMANTIC-STALE" || fail "T11f (rc=$rc): $out"
+# 7.5 days is past the 7-day bound even though it floors to 7 whole days
+backdate_days "$CORPUS/notes/sub.md" 7.5
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 3 ] && [[ "$out" == *"oldest content unstamped 7.5d (bound 7d)"* ]] \
+  && pass "T11f2 a content file unstamped 7.5 days -> rc=3, not floored under the bound" || fail "T11f2 (rc=$rc): $out"
+
+# --- T11j: 11 refusals on template/vendored paths are not counted -> OK ---
+new_sem_fixture t11j
+semantic_row_at "$OUT" "$(ts_hours_ago 2)" "" "$(csv_files templates/r 11)"
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] && [[ "$out" != *"SEMANTIC-STALE"* ]] \
+  && pass "T11j 11 template refusals -> not counted, rc=0 OK" || fail "T11j (rc=$rc): $out"
+
+# --- T11k: an unreadable semantic manifest -> SEMANTIC-STALE, never OK on unjudged unstamped bounds ---
+new_sem_fixture t11k
+semantic_row_at "$OUT" "$(ts_hours_ago 2)" "" ""
+printf 'not json\n' > "$OUT/semantic-manifest.json"
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 3 ] && [[ "$out" == *"unstamped counts unavailable"* ]] \
+  && pass "T11k an unreadable semantic manifest -> rc=3 SEMANTIC-STALE naming it" || fail "T11k (rc=$rc): $out"
 
 # --- T11g: 51 content files unstamped (bound 50) -> SEMANTIC-STALE; the same count under templates/ is not counted ---
 new_sem_fixture t11g

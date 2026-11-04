@@ -31,9 +31,10 @@
 #   rc=3 SEMANTIC-STALE — the semantic layer is past a bound even
 #               though the AST layer may be fresh: the last merge row is older
 #               than 48h (daily cadence + one missed fire), or the last row has
-#               more than 10 content failures or 10 refusals, or more than 50
-#               content files are unstamped, or the oldest unstamped content
-#               file is older than 7d. Templates, fixtures, testdata, eval
+#               more than 10 content failures or 10 content refusals, or more
+#               than 50 content files are unstamped, or the oldest unstamped
+#               content file is older than 7d, or the unstamped counts cannot
+#               be read. Templates, fixtures, testdata, eval
 #               graders and vendored dirs (an ancestor holds VENDORED.md) are
 #               counted apart as non_content_* and never trip the bound. A
 #               stale graph still reports rc=1; the message prints either way.
@@ -263,9 +264,10 @@ failed_files = last.get("failed_files")
 failed = len(failed_files) if failed_files is not None else last.get("failed", 0)
 nc_failed = sum(1 for f in failed_files or [] if noncontent(f))
 refused = len(last["refused_files"]) if "refused_files" in last else last.get("shrink_refused", 0)
+nc_refused = sum(1 for f in last.get("refused_files") or [] if noncontent(f))
 status = ""
-unstamped_content, oldest_content_d = 0, 0
-changed = None
+unstamped_content, oldest_content_d = 0, 0.0
+changed, unstamped_err = None, ""
 if os.path.isfile(os.path.join(out, "semantic-manifest.json")):
     # the same counts `semantic-merge.py status` prints, plus the content-only ones the bounds judge
     try:
@@ -273,14 +275,15 @@ if os.path.isfile(os.path.join(out, "semantic-manifest.json")):
         sm = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(sm)
         _, changed, skipped = sm.unstamped(type("A", (), {"root": root, "out": out}))
-    except Exception:  # an unreadable manifest or corpus leaves the counts unprinted, as `status` failing did
+    except Exception as exc:  # unreadable manifest or corpus: the unstamped bounds cannot be judged, so never OK
         changed = skipped = None
+        unstamped_err = type(exc).__name__
 if changed is not None:
     now = time.time()
-    age_d = {rel: (now - os.path.getmtime(os.path.join(root, rel))) // 86400 for rel in changed}
+    age_d = {rel: (now - os.path.getmtime(os.path.join(root, rel))) / 86400 for rel in changed}
     content = [rel for rel in changed if not noncontent(rel)]
     unstamped_content = len(content)
-    oldest_content_d = int(max((age_d[rel] for rel in content), default=0))
+    oldest_content_d = max((age_d[rel] for rel in content), default=0.0)
     status = " backed_off=%d unstamped=%d oldest_unstamped=%dd non_content_unstamped=%d" % (
         len(skipped), len(changed), max(age_d.values(), default=0), len(changed) - len(content))
 print("LINE last=%s failed=%s refused=%s%s non_content_failed=%d" % (last.get("ts", "?"), failed, refused, status, nc_failed))
@@ -300,12 +303,14 @@ elif age_h > max_age_h:
     why.append("last semantic merge %dd ago (%dh, bound %dh)" % (age_h // 24, age_h, max_age_h))
 if failed - nc_failed > max_failed:
     why.append("content failed=%d (bound %d; %d non-content failures not counted)" % (failed - nc_failed, max_failed, nc_failed))
-if refused > max_refused:
-    why.append("refused=%d (bound %d)" % (refused, max_refused))
+if refused - nc_refused > max_refused:
+    why.append("content refused=%d (bound %d; %d non-content refusals not counted)" % (refused - nc_refused, max_refused, nc_refused))
+if unstamped_err:
+    why.append("unstamped counts unavailable (%s reading the semantic manifest or corpus)" % unstamped_err)
 if unstamped_content > max_unstamped:
     why.append("content unstamped=%d (bound %d)" % (unstamped_content, max_unstamped))
 if oldest_content_d > max_oldest_d:
-    why.append("oldest content unstamped %dd (bound %dd)" % (oldest_content_d, max_oldest_d))
+    why.append("oldest content unstamped %.1fd (bound %dd)" % (oldest_content_d, max_oldest_d))
 if why:
     print("SEMSTALE " + "; ".join(why))
 PYEOF
