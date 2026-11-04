@@ -2698,7 +2698,8 @@ contains "grant-quote the printed grant command quotes a repo path with a space"
 # WRITE_HOLD_OK is the operator's bypass; a worker's own launch (HIMMEL_CONSOLE_LEG set) must not carry it on
 W4DOC="$(hdoc HIMMEL-9512-N1-w4.md '# w4')"
 w4_lead="$(HIMMEL_CONSOLE_LEG='' WRITE_HOLD_OK=1 bash "$HERE/chief-kit/headed-arm-worker.sh" --dry-run --no-profile --no-prior-art-check HIMMEL-9512-N1-w4 "$W4DOC" /tmp/nosig 99999999999 "$tmp/w4.log" claude-sonnet-5 2>&1)"
-w4_leg="$(HIMMEL_CONSOLE_LEG=1 WRITE_HOLD_OK=1 bash "$HERE/chief-kit/headed-arm-worker.sh" --dry-run --no-profile --no-prior-art-check HIMMEL-9512-N1-w4 "$W4DOC" /tmp/nosig 99999999999 "$tmp/w4.log" claude-sonnet-5 2>&1)"
+# HIMMEL_CONSOLE_LEG is a Claude Code marker: on an anchor checkout with no claude ancestor (CI) the seam guard refuses it beside a set seam, and the suite exports UNGUARDED_LAUNCH_OK; the real repo is a guarded folder, so the seam is dropped for this one launch
+w4_leg="$(unset UNGUARDED_LAUNCH_OK; HIMMEL_CONSOLE_LEG=1 WRITE_HOLD_OK=1 bash "$HERE/chief-kit/headed-arm-worker.sh" --dry-run --no-profile --no-prior-art-check HIMMEL-9512-N1-w4 "$W4DOC" /tmp/nosig 99999999999 "$tmp/w4.log" claude-sonnet-5 2>&1)"
 contains "scrub-a control: WRITE_HOLD_OK=1 from a non-worker launching shell reaches the worker" "$w4_lead" "WRITE_HOLD_OK=1"
 case "$w4_leg" in *"WRITE_HOLD_OK=<unset>"*) ;; *) printf 'scrub-b worker output:\n%s\n' "$w4_leg" | cut -c1-400 | head -n 12 >&2 ;; esac
 contains "scrub-b WRITE_HOLD_OK=1 inherited by a worker's own launch (HIMMEL_CONSOLE_LEG set) is dropped" "$w4_leg" "WRITE_HOLD_OK=<unset>"
