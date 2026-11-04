@@ -3470,14 +3470,16 @@ run31d() { # run31d <outfile> <uname> [VAR=VAL...]
 # 31d. The ticket's case: a brief under a spaced directory reaches the worker.
 rc=0; run31d "$tmp/out31d" Darwin >/dev/null || rc=$?
 check "31d a spaced brief path launches (exit 0)" "$rc" "0"
-contains "31d HIMMEL_HOLD_DOC rides the line channel verbatim" "$(cat "$tmp/out31d" 2>/dev/null)" "HIMMEL_HOLD_DOC=$doc31d"
+if grep -Fxq "HIMMEL_HOLD_DOC=$doc31d" "$tmp/out31d" 2>/dev/null; then check "31d HIMMEL_HOLD_DOC rides the line channel verbatim" ok ok
+else check "31d HIMMEL_HOLD_DOC rides the line channel verbatim" "$(cat "$tmp/out31d" 2>/dev/null)" "HIMMEL_HOLD_DOC=$doc31d"; fi
 # 31e. A spaced HANDOVER_DIR is carried too.
 out31e="$(HANDOVER_DIR="$tmp/space hd" HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker-31e some/doc.md /tmp/nosig 99999999999 "$tmp/leg31e.log" claude-sonnet-5 2>&1)"
 contains "31e a spaced HANDOVER_DIR rides the line channel" "$out31e" "launcher-env-line: HANDOVER_DIR=$tmp/space hd"
 # 31f. A caller-preset line channel never reaches the worker.
 rc=0; run31d "$tmp/out31f" Darwin HEADED_ARM_LAUNCHER_ENV_LINES='BOGUS=1' >/dev/null || rc=$?
 check "31f a preset line channel does not break the launch" "$rc" "0"
-contains "31f the wrapper's own line is still written" "$(cat "$tmp/out31f" 2>/dev/null)" "HIMMEL_HOLD_DOC="
+if grep -Fxq "HIMMEL_HOLD_DOC=$doc31d" "$tmp/out31f" 2>/dev/null; then check "31f the wrapper's own line is still written" ok ok
+else check "31f the wrapper's own line is still written" "$(cat "$tmp/out31f" 2>/dev/null)" "HIMMEL_HOLD_DOC=$doc31d"; fi
 not_contains "31f the preset BOGUS=1 line is cleared" "$(cat "$tmp/out31f" 2>/dev/null)" "BOGUS=1"
 # 31g. A caller token for the same name wins; no line is added for it.
 rc=0
@@ -3498,6 +3500,26 @@ done
 rc=0; run31d "$tmp/out31j" Linux >/dev/null || rc=$?
 check "31j Linux launches with a spaced brief path" "$rc" "0"
 check "31j Linux leaves the line channel unset" "$(cat "$tmp/out31j" 2>/dev/null)" "UNSET"
+# 31i. End to end: the real headed-arm.sh on Darwin carries the spaced brief
+# path to the terminal launcher as one argument (rc 0 needs the launch confirmed).
+d31i="$tmp/d31i"; mk_launch_stubs "$d31i" "HIMMEL-9999-N1-x"; mkdir -p "$tmp/repo31i"
+cat > "$d31i/konsole" <<'KONSOLE_EOF'
+#!/usr/bin/env bash
+printf '%q\n' "$@" >> "$(dirname "$0")/record"
+: > "$(dirname "$0")/confirmable"
+sleep 5
+KONSOLE_EOF
+chmod 755 "$d31i/konsole"
+rc=0
+HEADED_ARM_UNAME=Darwin KONSOLE_MACOS_STARTUP_TICKS=2 some_doc="$doc31d" RUN_WORKER_ARGS='--no-profile' \
+  run_worker "$d31i" "$tmp/repo31i" "HIMMEL-9999-N1-x" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+check "31i a spaced brief path launches through the real headed-arm.sh (exit 0)" "$rc" "0"
+wait_record "$d31i" || true
+if grep -Fxq "HIMMEL_HOLD_DOC=${doc31d// /\\ }" "$d31i/record" 2>/dev/null; then
+  check "31i the launcher gets HIMMEL_HOLD_DOC as one escaped element" ok ok
+else
+  check "31i the launcher gets HIMMEL_HOLD_DOC as one escaped element" "$(cat "$d31i/record" 2>/dev/null)" "HIMMEL_HOLD_DOC=${doc31d// /\\ }"
+fi
 
 # 33. HIMMEL_CONSOLE_NAME is a
 # worker-process var too - #1121 routed a worker's merge-block alert to the owning
