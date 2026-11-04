@@ -145,7 +145,7 @@ export async function writeMeta(root: string, s: string, m: Meta): Promise<void>
 }
 
 export async function appendLine(file: string, line: string): Promise<void> {
-  await appendFile(file, line + "\n", "utf8");
+  await appendFile(file, line + "\n", { encoding: "utf8", mode: 0o600 });
 }
 
 // Append `line` to `file` ONLY if it already exists — an
