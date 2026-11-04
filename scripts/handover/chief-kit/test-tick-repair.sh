@@ -76,6 +76,9 @@ mkdir -p "$RDIR"
 printf '#!/bin/sh\necho "$@" >> "%s/state-asked"\ncat "%s/state.json"\nexit "${TICK_RMQ_EXIT:-0}"\n' "$W" "$W" > "$W/rmq-probe.sh"
 printf '#!/bin/sh\necho "$@" >> "%s/rmrun-ran"\n' "$W" > "$W/rmrun-probe.sh"
 printf '#!/bin/sh\necho "$* key=$JIRA_PROJECT_KEY" >> "%s/repair-ran"\n' "$W" > "$W/repair-probe.sh"
+# the dead launcher: logs one line to a tally file and exits 127, so the probe never runs and no run ends
+printf '#!/bin/sh\necho x >> "%s/launch-tried"\nexit 127\n' "$W" > "$W/bin/deadlaunch"
+chmod +x "$W/bin/deadlaunch"
 export TICK_RMQ_PROBE="$W/rmq-probe.sh" TICK_RMRUN_PROBE="$W/rmrun-probe.sh" TICK_REPAIR_PROBE="$W/repair-probe.sh" TICK_RMRUN_LAUNCHER=env
 
 SIG64=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789
@@ -87,15 +90,26 @@ heldjson() { # <held> <unfiled>
     printf '{"release":"R1","held":%s,"unfiled":%s,"held_signature":"%s","classes":[]}\n' "$1" "$2" "$SIG64" > "$RDIR/repair-held.json"
 }
 reset() {
-    rm -f "$W/repair-ran" "$W/rmrun-ran" "$W/state-asked" "$W/journal.jsonl"
+    rm -f "$W/repair-ran" "$W/launch-tried" "$W/rmrun-ran" "$W/state-asked" "$W/journal.jsonl"
     rm -rf "$W/state" "$RDIR"; mkdir -p "$RDIR"
     git -C "$W/repo" remote remove origin 2>/dev/null
     git -C "$W/repo" remote add origin git@github.com:acme/widgets.git
     base_state
     mkdoc R1
 }
-reviewed() { printf '2026-11-03T00:00:00Z\n' > "$RDIR/repair-reviewed"; }
+reviewed() { printf '2026-11-03T00:00:00Z\n' > "$RDIR/repair-reviewed"; touch -d '2 days ago' "$RDIR/repair-reviewed"; }  # older than every stamp a row writes, so it never reads as an end
 age_log() { touch -d '20 minutes ago' "$RDIR/repair-run.log"; }
+# the launch stamp: aging is a content rewrite, never touch -d (the tick reads the content)
+stamp() { printf '%s %s\n' "$(( $(date +%s) - $1 ))" "$2" > "$RDIR/repair-launch"; }  # <age-secs> <k>
+stamp_count() { awk '{print $2}' "$RDIR/repair-launch" 2>/dev/null; }
+age_stamp() { stamp 1200 "$(stamp_count)"; }
+stamp_is() { [ "$(cat "$RDIR/repair-launch" 2>/dev/null)" = "$1" ]; }  # <line>
+tried() { # wait up to 5 s for the dead launcher to log <n> lines, then print how many it logged
+    local n="$1" i=0
+    while [ "$( [ -f "$W/launch-tried" ] && wc -l < "$W/launch-tried" | tr -d ' ' || echo 0)" -lt "$n" ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+    [ -f "$W/launch-tried" ] && wc -l < "$W/launch-tried" | tr -d ' ' || echo 0
+}
+none_tried() { sleep 1; [ -f "$W/launch-tried" ] && wc -l < "$W/launch-tried" | tr -d ' ' || echo 0; }
 tick() { bash "$SUT" --doc "$W/handover/chief.md" 2>/dev/null; }
 field() { # <field> <tick output>
     printf '%s\n' "$2" | tr ' ' '\n' | sed -n "s/^$1=//p" | head -n 1
@@ -226,6 +240,29 @@ reset; reviewed
 printf 'mirror-unknown\nthe mirror is UNKNOWN\n' > "$RDIR/repair-status"
 out="$(tick)"
 check 'stop prints repair=off with its reason' 'off:mirror-unknown' "$(field repair "$out")"
+
+# --- a launch that left no end record: the dead launcher exits 127 and writes nothing
+export TICK_RMRUN_LAUNCHER="$W/bin/deadlaunch"
+reset; reviewed
+tick >/dev/null
+check '1a lost launch: the first tick tries once' 1 "$(tried 1)"
+check '1a lost launch: the first tick writes a stamp with count 0' 0 "$(stamp_count)"
+s1a="$(cat "$RDIR/repair-launch" 2>/dev/null)"
+age_log
+out="$(tick)"
+check '1b log aged only: no new try' 1 "$(none_tried 1)"
+check '1b log aged only: the stamp is unchanged' 1 "$(stamp_is "$s1a" && echo 1 || echo 0)"
+check '1b log aged only: no repair=off:lost field' '' "$(field repair "$out")"
+touch "$RDIR/repair-run.log"; age_stamp
+s1c="$(cat "$RDIR/repair-launch" 2>/dev/null)"
+tick >/dev/null
+check '1c stamp aged only: no new try (the log gap holds)' 1 "$(none_tried 1)"
+check '1c stamp aged only: the stamp is unchanged' 1 "$(stamp_is "$s1c" && echo 1 || echo 0)"
+age_log; age_stamp
+out="$(tick)"
+check '1d both aged: a second try' 2 "$(tried 2)"
+check '1d both aged: the field reads off:lost' 'off:lost' "$(field repair "$out")"
+export TICK_RMRUN_LAUNCHER=env
 
 # --- the fence and the lock
 reset; reviewed
