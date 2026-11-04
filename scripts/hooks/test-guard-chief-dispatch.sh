@@ -323,8 +323,9 @@ printf -- '---\nname: brief-drafter\n---\n\ntools: Read, Write, Edit, Bash\n' > 
 RC9J=$(run_tree tree-bd-body-tools "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-body.jsonl")
 assert_rc "brief-drafter with the tools: line only in the body gets no allowance" 2 "$RC9J"
 
-# No frontmatter at all.
-printf -- 'tools: Read, Write, Edit, Bash\n\nbody\n' > "$FT/.claude/agents/brief-drafter.md"
+# No frontmatter at all. Line 1 is not the tools: line, so a scan that skips
+# line 1 without checking it for --- still sees the pinned line on line 2.
+printf -- '# brief-drafter\ntools: Read, Write, Edit, Bash\n\nbody\n' > "$FT/.claude/agents/brief-drafter.md"
 RC9K=$(run_tree tree-bd-no-frontmatter "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-nofm.jsonl")
 assert_rc "brief-drafter whose agent file has no frontmatter gets no allowance" 2 "$RC9K"
 assert_empty "the refused agent-file shapes write no brief-drafter log" "$(cat "$TMP/bd-wide-first.jsonl" "$TMP/bd-body.jsonl" "$TMP/bd-nofm.jsonl" 2>/dev/null || true)"
