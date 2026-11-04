@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCS_URL, PAGES, fleetDot, healthDot, navLinks, pageHref, parseLanding } from "../public/nav.js";
+import * as nav from "../public/nav.js";
 import { LANDING, launchUrl, startServer } from "../server";
 
 // the config chief and the AG-UI pages are one app with one rail. These pin the page list, the
@@ -65,12 +66,12 @@ async function landedOn(hash: string) {
   const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
   const g = globalThis as Record<string, unknown>;
   const names = ["render", "renderInventory", "renderTriage", "renderHeader", "renderProbe", "reviewGateDraft", "renderHealth", "verdict", "parseView", "projectVerdict", "renderToolHealth", "renderBoard", "renderKanban", "renderRoadmap", "renderWorkflow",
-    "parseLanding", "navLinks", "fleetDot", "healthDot", "document", "location", "history", "fetch", "addEventListener"];
+    "parseLanding", "navLinks", "railMarkup", "fleetDot", "healthDot", "document", "location", "history", "fetch", "addEventListener"];
   const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
   Object.assign(g, {
     render: (_f: unknown, c: unknown) => { painted.push(c); return ""; }, renderInventory: () => "", renderTriage: () => "", renderHeader: () => "", renderProbe: () => "", reviewGateDraft: () => [],
     renderHealth: () => "", parseView: () => ({ mode: "project", project: null, tab: "broken", row: null }), projectVerdict: () => ({ word: "All clear" }), verdict: () => ({ cls: "off", word: "No data" }), renderToolHealth: () => "", renderBoard: () => "", renderKanban: () => "", renderRoadmap: () => "", renderWorkflow: () => "",
-    parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }),
+    parseLanding: () => null, navLinks: () => [], railMarkup: () => "", fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }),
     document: { querySelector: el, querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
     location: { hash, pathname: "/", search: "", host: "x" }, history: { replaceState: (_a: unknown, _b: unknown, u: string) => urls.push(u) },
     fetch: () => new Promise(() => {}), addEventListener() {},
@@ -165,6 +166,24 @@ test("himmelctl ui prints ONE URL: the landing switch picks the fleet or the con
   // --agui asks for the AG-UI page outright: the fleet, or one run.
   expect(launchUrl(BASE, TOKEN, { landing: "config", built: true, agui: "fleet" })).toBe(`${BASE}/agui/#t=${TOKEN}`);
   expect(launchUrl(BASE, TOKEN, { landing: "config", built: false, agui: RUN })).toBe(`${BASE}/agui/#t=${TOKEN}&run=${RUN}`);
+});
+
+// The console rail is the same on every page; page controls sit in the page bar, never the rail.
+const railIds = (html: string) => [...html.matchAll(/data-page="([^"]+)"/g)].map((m) => m[1]);
+const railOf = (current: string) => (nav as any).railMarkup({ token: TOKEN, current, dots: {}, waiting: 0 }) as string;
+
+test("the console rail markup holds the same child ids on Health as on Board, and no picker", () => {
+  const health = railOf("health"), board = railOf("board");
+  expect(railIds(health)).toEqual(railIds(board));
+  expect(railIds(health).length).toBeGreaterThan(0);
+  expect(health).not.toContain("picker");
+  expect(health).not.toContain("<select");
+});
+
+test("railItems(p) is the page ids plus the docs link for every page", () => {
+  for (const p of PAGES) expect((nav as any).railItems(p.id)).toEqual([...PAGES.map((x) => x.id), "docs"]);
+  expect((nav as any).railItems("run")).toEqual([...PAGES.map((x) => x.id), "run", "docs"]);
+  for (const p of PAGES) expect(railIds(railOf(p.id))).toEqual((nav as any).railItems(p.id));
 });
 
 let stops: (() => void)[] = [];

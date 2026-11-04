@@ -49,7 +49,7 @@ Configure ▸ Tracker.
 | Usage (shared) | the newest row with usage numbers in the last 64 KiB of `$CADENCE_USAGE_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; the tile reads `Claude X % of 5h · Y % of week`; the worker list moved to Fleet and Usage links to it | no ledger row with usage numbers |
 | Search & graph | feed rows with `bundle: search` (doctor owns qmd freshness) | doctor reports no search rows |
 
-**Project picker and Shared (HIMMEL-8044).** The rail carries a picker: the project this UI runs in
+**Project picker and Shared (HIMMEL-8044).** The page bar at the top of the Health page carries a picker (the rail holds the same links on every page; at 760 px the bar folds behind "Filters (n on)", HIMMEL-9098): the project this UI runs in
 (the page opens on it), the other registered projects (`~/.claude/handover/registry.json`, `repos{name:{path}}`),
 and **All my projects** (`#/health?view=all`). Every feed row carries a `scope` (`shared` for the machine or
 himmel itself, `project` for the rest) and a `fix.by`, classified once in `config-feed.js` `classifyRow`:

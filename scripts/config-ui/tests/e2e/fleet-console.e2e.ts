@@ -30,3 +30,20 @@ for (const scheme of ["dark", "light"] as const) {
     });
   }
 }
+
+// The console's Health page keeps its project picker in the page bar, never the rail; at 760 px the bar folds to "Filters (n on)".
+test("the Health page bar folds to Filters (n on) at 760px and the rail holds no picker", async ({ page }) => {
+  h = await bootAgui("", { fleet: true });
+  const { origin, hash } = new URL(h.url); // /agui/#t=<token>: the console is the same server's /, the token in the same fragment
+  await page.setViewportSize({ width: 760, height: 800 });
+  await page.goto(`${origin}/${hash}&page=health`);
+  const fold = page.locator("#pagebar .pb-fold");
+  await expect(fold).toHaveText(/^Filters \(\d+ on\)$/);
+  await expect(page.locator("#proj")).toBeHidden();
+  await fold.click();
+  await expect(page.locator("#proj")).toBeVisible();
+  await expect(page.locator("nav.pages #proj")).toHaveCount(0);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(fold).toBeHidden();
+  await expect(page.locator("#proj")).toBeVisible();
+});

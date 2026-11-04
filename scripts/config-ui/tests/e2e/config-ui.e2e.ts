@@ -211,7 +211,7 @@ test("health: fail first with one fix action; the who-fixes-it button opens the 
   await expect(rows.first().locator(".who")).toBeVisible();
 });
 
-test("health: Every item checked lists the rows and the project picker is in the rail", async ({ page }) => {
+test("health: Every item checked lists the rows and the project picker is in the page bar", async ({ page }) => {
   await openHealth(page);
   await page.locator('[data-act="health-tab"][data-tab="all"]').click();
   await expect(page.locator("#tab-all")).toContainText("guard-fail");
