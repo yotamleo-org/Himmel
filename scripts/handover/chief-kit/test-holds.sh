@@ -2,8 +2,8 @@
 # test-holds.sh — hermetic tests for holds.py, the single-writer holds register and its CLI.
 #
 # HOME, HANDOVER_DIR and the queue-lock runtime dirs are pinned to a temp dir at the top, so no row, event or
-# lock ever lands in the real ~/.himmel/state/holds or the live release queue; a row at the end asserts the real
-# register is unchanged. Locks are real queue-lock.sh locks under the temp handover root. gh and a
+# lock ever lands in the real ~/.himmel/state/holds or the live release queue; a row at the end asserts no row of this run
+# (named by its temp path) is in the real register. Locks are real queue-lock.sh locks under the temp handover root. gh and a
 # counting/failing queue-lock are stubs. Races use 2 real processes.
 #
 # PLATFORM GUARD: the chief kit is Linux-only; GNU touch -d is used to age rows.
@@ -18,22 +18,6 @@ if ! command -v python3 >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1; the
 fi
 
 REAL_HOME="$HOME"
-real_register() { # a portable snapshot of the real register: names, sizes and mtimes (find -printf is GNU-only)
-    python3 -I -c 'import os, sys, zlib
-d = sys.argv[1]
-rows = []
-for r, _, fs in os.walk(d):
-    for f in fs:
-        p = os.path.join(r, f)
-        try:
-            s = os.stat(p)
-        except OSError as e:
-            print("STAT-ERROR " + p + " " + str(e))
-            sys.exit(1)
-        rows.append("%s %d %d" % (os.path.relpath(p, d), s.st_size, s.st_mtime_ns))
-print(zlib.crc32("\n".join(sorted(rows)).encode()))' "$REAL_HOME/.himmel/state/holds"
-}
-REAL_BEFORE="$(real_register)"
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/holds-test.XXXXXX")" || exit 1
 W="$(cd "$W" && pwd -P)"
@@ -179,13 +163,15 @@ put_row scripts/c07.sh HIMMEL-9117 alpha "$D07"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c07.sh
 same "I3 a wrapped worker with an unwrapped RESUME doc under 24 h keeps its rows" "$RC" 1
 
-# the real shape: the worker wrote WRAPPED into its own doc after the RESUME doc existed, and the RESUME doc has no marks
+# a RESUME doc is consumed only by an explicit link (a WRAPPED doc names it off its
+# last bullet, or is its stem), never by a file mtime or a shared leg number: a stale hold costs a 24 h wait, a wrong release a double launch.
+# The old real shape (the worker wrapped its own doc, same leg, no mention) used to release the rows; it now holds.
 D11R="$(mkdoc HIMMEL-9420-N1b-RESUME.md '# resume doc')"
 touch -d '1 hour ago' "$D11R"
 D11="$(mkdoc HIMMEL-9420-N1-case.md '- 10:00 WRAPPED — PR merged')"
 put_row scripts/c11.sh HIMMEL-9420 alpha "$D11"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c11.sh
-same "I3 a RESUME doc with no marks, consumed by a newer doc whose last mark is WRAPPED, holds nothing" "$RC" 0
+same "I3 a RESUME doc with no marks and a newer same-leg WRAPPED doc with no link to it holds (changed: a leg number is no link)" "$RC" 1
 D12R="$(mkdoc HIMMEL-9421-N1b-RESUME.md '# resume doc')"
 touch -d '1 hour ago' "$D12R"
 D12="$(mkdoc HIMMEL-9421-N1-case.md '- 10:00 WRAPPED — resume doc HIMMEL-9421-N1b-RESUME.md')"
@@ -198,7 +184,7 @@ touch -d '1 hour ago' "$D13R"
 D13="$(mkdoc HIMMEL-9422-N2-case.md '- 10:00 WRAPPED — PR merged')"
 put_row scripts/c13.sh HIMMEL-9422 alpha "$D13"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c13.sh
-same "I3 a different-leg newer WRAPPED doc with no mention of the RESUME doc holds" "$RC" 1
+same "I3 a different-leg newer WRAPPED doc with no mention of the RESUME doc holds (unchanged result, now because no link exists, not because of the leg)" "$RC" 1
 D14R="$(mkdoc HIMMEL-9423-N1b-RESUME.md '# resume doc')"
 touch -d '1 hour ago' "$D14R"
 D14="$(mkdoc HIMMEL-9423-N2-case.md $'> **Prior art:** HIMMEL-9423-N1b-RESUME.md\n- 10:00 WRAPPED — PR merged')"
@@ -217,6 +203,15 @@ D16="$(mkdoc HIMMEL-9425-N7c-case.md $'- 09:00 LIVE — HIMMEL-9425-N7f-RESUME.m
 put_row scripts/c16.sh HIMMEL-9425 alpha "$D16"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c16.sh
 same "I3 a same-leg WRAPPED doc whose last bullet names the RESUME doc still holds, a mention elsewhere too" "$RC" 1
+# touching an old WRAPPED doc of the leg (a later edit bumps its mtime past the RESUME doc) must not release a live RESUME's rows
+D17R="$(mkdoc HIMMEL-9426-N3b-RESUME.md '# resume doc')"
+touch -d '1 hour ago' "$D17R"
+D17="$(mkdoc HIMMEL-9426-N3-case.md '- 10:00 WRAPPED — PR merged')"
+touch -d '3 hours ago' "$D17"
+touch "$D17"
+put_row scripts/c17.sh HIMMEL-9426 alpha "$D17"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c17.sh
+same "I3 touching an old WRAPPED doc of the leg no longer releases a live RESUME doc's rows" "$RC" 1
 
 mkdoc HIMMEL-9118-N1-RESUME.md '# resume doc' > /dev/null
 touch -d '25 hours ago' "$HANDOVER_DIR/u/r/HIMMEL-9118-N1-RESUME.md"
@@ -701,6 +696,12 @@ DT3="$(mkdoc HIMMEL-9403-case-RESUME.md '# resume doc, nothing anywhere')"
 run hp seed --key HIMMEL-9403 --label N3 --doc "$DT3" --repo "$R"
 same "T2 seed: no Writes anywhere exits 0" "$RC" 0
 same "T2 seed: ... and makes no row" "$(grep -rlF "$DT3" "$(slugdir)" 2>/dev/null | wc -l | tr -d ' ')" 0
+# the fallback is for a RESUME doc only; a plain brief with no Writes line seeds nothing of its predecessor's
+DT4P="$(mkdoc HIMMEL-9406-N1-case.md '> **Writes:** scripts/t2fb2.sh')"
+touch -d '1 hour ago' "$DT4P"
+DT4="$(mkdoc HIMMEL-9406-N2-case.md '# plain brief, no Writes line')"
+run hp seed --key HIMMEL-9406 --label N2 --doc "$DT4" --repo "$R"
+same "T2 seed: a non-RESUME doc with no Writes line does not inherit the predecessor's files: exit 0, no row" "$RC|$([ -e "$(rowf scripts/t2fb2.sh)" ] && echo row || echo none)" "0|none"
 
 put_row scripts/t2rp1.sh HIMMEL-9404 oldlabel "$HANDOVER_DIR/u/r/HIMMEL-9404-old.md"
 put_row scripts/t2rp2.sh HIMMEL-9404 oldlabel "$HANDOVER_DIR/u/r/HIMMEL-9404-old.md"
@@ -902,9 +903,9 @@ print(h.remove_dead(d, n, f, os.path.getmtime(sys.argv[2]) - 100))' "$SUT" "$(ro
 same "T3 gc keeps a row whose mtime moved since it was judged dead" "$OUT:$([ -e "$(rowf scripts/t3gc3.sh)" ] && echo row || echo none)" "False:row"
 
 # ---- the real register was never touched
-REAL_AFTER="$(HOME="$REAL_HOME" real_register)"
-case "$REAL_BEFORE$REAL_AFTER" in *STAT-ERROR*) same "the real register snapshot has no stat error" "before: $REAL_BEFORE; after: $REAL_AFTER" "no stat error" ;; esac
-same "the real ~/.himmel/state/holds is unchanged" "$REAL_BEFORE" "$REAL_AFTER"
+# a before/after compare of the live register fails when a real worker writes during the run. Every row this
+# suite writes names a doc or repo under $W, a path unique to this run: none may appear in the real register.
+same "no row or event of this suite reached the real ~/.himmel/state/holds" "$(grep -rlF "$W" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)" 0
 
 if [ "$fails" -eq 0 ]; then
     printf 'test-holds: %d passed, 0 failed\n' "$total"

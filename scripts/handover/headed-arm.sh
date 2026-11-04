@@ -1614,7 +1614,11 @@ if [ -n "${HIMMEL_HOLD_KEY:-}" ] && [ -n "${HIMMEL_HOLD_DOC:-}" ] && [ "$ROLE" !
             _holds_line="$(printf '%s\n' "$_holds_err" | grep -m 1 '^holds: ' | tr -d '>')"
             case "$_holds_path" in
                 /*) _holds_grant="no grant exists for a path outside the repo ($_holds_path): wait for the holder to wrap, or the operator launches with WRITE_HOLD_OK=1" ;;
-                *) _holds_grant="to let $HIMMEL_HOLD_KEY write it, the chief runs: python3 -I $_holds_primary/scripts/handover/chief-kit/holds.py grant --key $HIMMEL_HOLD_KEY --repo $REPO ${_holds_path:-PATH}" ;;
+                *)  # the line is pasted and run: the primary path, the repo and the file are shell-quoted
+                    printf -v _holds_q_holds '%q' "$_holds_primary/scripts/handover/chief-kit/holds.py"
+                    printf -v _holds_q_repo '%q' "$REPO"
+                    printf -v _holds_q_path '%q' "${_holds_path:-PATH}"
+                    _holds_grant="to let $HIMMEL_HOLD_KEY write it, the chief runs: python3 -I $_holds_q_holds grant --key $HIMMEL_HOLD_KEY --repo $_holds_q_repo $_holds_q_path" ;;
             esac
             echo "headed-arm: $_holds_grant" >&2
             # the chief reads neither this stderr (a generated launcher keeps it in launch.out, a hand launch sends it to /dev/null) nor

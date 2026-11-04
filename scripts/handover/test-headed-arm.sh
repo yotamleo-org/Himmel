@@ -66,8 +66,6 @@ trap 'rm -rf "$tmp"' EXIT
 export HIMMELCTL_CACHE_DIR="$tmp/pinned-himmelctl-cache"
 # the single-writer register lives under $HOME/.himmel/state/holds: pinned, so no seed here can reach the real one
 REAL_HOME="$HOME"
-real_register() { find "$REAL_HOME/.himmel/state/holds" -printf '%P %s %T@\n' 2>/dev/null | sort | cksum; }  # gnu-ok: Linux-only suite, fails closed where find has no -printf
-REAL_REGISTER_BEFORE="$(real_register)"
 export HOME="$tmp/pinned-home"
 mkdir -p "$HOME"
 # Headed-arm.sh mkdirs its claim-lock root `-m 0700` and then
@@ -2688,6 +2686,22 @@ contains "8725h4 ... and carries the runnable grant line" "$(cat "$dh1b/log")" "
 contains "8725h5 ... the brief gets a BLOCKED bullet naming the holder" "$(tail -n 1 "$HB2")" "BLOCKED launch of HIMMEL-9509-N1-b2 refused, not armed: holds: scripts/h1.sh is held by HIMMEL-9501"
 contains "8725h6 ... and the grant line" "$(tail -n 1 "$HB2")" "holds.py grant --key HIMMEL-9509 --repo $REPO scripts/h1.sh"
 
+# the printed grant command is runnable as typed, so a repo path with a space or a metacharacter is shell-quoted (printf %q)
+RSP="$tmp/repo with space"; mkdir -p "$RSP"
+HA3="$(hdoc HIMMEL-9510-N1-a3.md '# a3')"
+hp claim --key HIMMEL-9510 --label N1 --doc "$HA3" --repo "$RSP" scripts/h1.sh >/dev/null 2>&1
+HB3="$(hdoc HIMMEL-9511-N1-b3.md '# b3' '> **Writes:** scripts/h1.sh' '## Results (newest at the bottom)')"
+dh1c="$tmp/h1c"; mk_stub "$dh1c" 1 alive "HIMMEL-9511-N1-b3"
+h1cout="$(hlaunch "$dh1c" HIMMEL-9511-N1-b3 "$HB3" N1 "$RSP" 2>&1)"
+contains "grant-quote the printed grant command quotes a repo path with a space" "$h1cout" "holds.py grant --key HIMMEL-9511 --repo $(printf '%q' "$RSP") scripts/h1.sh"
+
+# WRITE_HOLD_OK is the operator's bypass; a worker's own launch (HIMMEL_CONSOLE_LEG set) must not carry it on
+W4DOC="$(hdoc HIMMEL-9512-N1-w4.md '# w4')"
+w4_lead="$(HIMMEL_CONSOLE_LEG='' WRITE_HOLD_OK=1 bash "$HERE/chief-kit/headed-arm-worker.sh" --dry-run --no-profile --no-prior-art-check HIMMEL-9512-N1-w4 "$W4DOC" /tmp/nosig 99999999999 "$tmp/w4.log" claude-sonnet-5 2>&1)"
+w4_leg="$(HIMMEL_CONSOLE_LEG=1 WRITE_HOLD_OK=1 bash "$HERE/chief-kit/headed-arm-worker.sh" --dry-run --no-profile --no-prior-art-check HIMMEL-9512-N1-w4 "$W4DOC" /tmp/nosig 99999999999 "$tmp/w4.log" claude-sonnet-5 2>&1)"
+contains "scrub-a control: WRITE_HOLD_OK=1 from a non-worker launching shell reaches the worker" "$w4_lead" "WRITE_HOLD_OK=1"
+contains "scrub-b WRITE_HOLD_OK=1 inherited by a worker's own launch (HIMMEL_CONSOLE_LEG set) is dropped" "$w4_leg" "WRITE_HOLD_OK=<unset>"
+
 # a grant, then the same launch passes
 hp grant --key HIMMEL-9502 --repo "$REPO" scripts/h1.sh >/dev/null 2>&1
 dh2="$tmp/h2"; mk_stub "$dh2" 1 alive "HIMMEL-9502-N2-b"
@@ -2836,7 +2850,11 @@ HANDOVER_DIR="$HH" HIMMEL_HOLD_KEY=HIMMEL-9532 HIMMEL_HOLD_DOC="$HZ" HIMMEL_HOLD
 wait_record "$dh20" || true
 check "8725ah a chief launch seeds nothing and the child carries no key" "$h20rc|$([ -e "$(hrow scripts/h32.sh)" ] && echo row || echo none)|$(cat "$dh20/holdenv" 2>/dev/null)" "0|none|unset"
 
-check "8725ai the real ~/.himmel/state/holds is unchanged by this suite" "$(real_register)" "$REAL_REGISTER_BEFORE"
+# a before/after compare of the live register fails when a real worker writes during the run. This suite's rows live in
+# the private register under the pinned HOME and name docs under $tmp, a path unique to this run: none may appear in the real one.
+h_priv="$(grep -rlF "$tmp" "$HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"
+h_real="$(grep -rlF "$tmp" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"
+check "8725ai the suite's rows are in the private register and none reached the real ~/.himmel/state/holds" "$([ "${h_priv:-0}" -gt 0 ] && echo private || echo none)|${h_real:-0}" "private|0"
 
 # --- a folder that does not load the guard hooks is refused (rc 18) before any lock, terminal or child
 GSCR="$tmp/guard-scratch"; mkdir -p "$GSCR"

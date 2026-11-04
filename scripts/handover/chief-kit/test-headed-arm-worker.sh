@@ -184,8 +184,6 @@ export HIMMELCTL_CACHE_DIR="$tmp/pinned-himmelctl-cache"
 export HIMMEL_CONFIG_DIR="$tmp/pinned-himmel-config"
 # the single-writer register lives under $HOME/.himmel/state/holds; pinned, so no launch here can seed the real one.
 REAL_HOME="$HOME"
-real_register() { find "$REAL_HOME/.himmel/state/holds" -printf '%P %s %T@\n' 2>/dev/null | sort | cksum; }  # gnu-ok: Linux-only suite, fails closed where find has no -printf
-REAL_REGISTER_BEFORE="$(real_register)"
 export HOME="$tmp/pinned-home"
 mkdir -p "$HOME"
 # the re-dispatch refusal reads page/ack records from this dir;
@@ -5343,7 +5341,11 @@ out49j="$(HIMMEL_HOLD_KEY=HIMMEL-1 HIMMEL_HOLD_DOC=/x/y.md HIMMEL_HOLD_LABEL=N99
 contains "49n a --judge launch carries no key (an inherited one is dropped)" "$out49j" "HIMMEL_HOLD_KEY=<unset> HIMMEL_HOLD_DOC=<unset> HIMMEL_HOLD_LABEL=<unset>"
 out49r="$(HIMMEL_HOLD_KEY=HIMMEL-1 env -u IMPL_GUARD_OK -u INLINE_IMPL_OK -u HIMMEL_RM_EFFORT bash "$SCRIPT" --dry-run --profile release-manager --rm-release v1.1.3 HIMMEL-9605-N1-rm "$doc_tier_rm" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)"
 contains "49o a release-manager launch carries no key" "$out49r" "HIMMEL_HOLD_KEY=<unset> HIMMEL_HOLD_DOC=<unset> HIMMEL_HOLD_LABEL=<unset>"
-check "49p the real ~/.himmel/state/holds is unchanged by this suite" "$(real_register)" "$REAL_REGISTER_BEFORE"
+# a before/after compare of the live register fails when a real worker writes during the run. This suite's rows live in
+# the private register under the pinned HOME and name docs under $tmp, a path unique to this run: none may appear in the real one.
+h49_priv="$(grep -rlF "$tmp" "$HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"
+h49_real="$(grep -rlF "$tmp" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"
+check "49p the suite's rows are in the private register and none reached the real ~/.himmel/state/holds" "$([ "${h49_priv:-0}" -gt 0 ] && echo private || echo none)|${h49_real:-0}" "private|0"
 
 # --- 50. A launch whose session folder would not load the guard hooks is refused (exit 18) before the
 # dry-run report and before every side effect: no preflight/slot, no doc edit, no launch log, no pretrust
