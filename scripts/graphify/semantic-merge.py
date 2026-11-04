@@ -55,6 +55,26 @@ SEMANTIC_SKIP_DIRS = GRAPHIFY_SKIP_DIRS | {"fixtures"}
 # graphify's own exported notes (<vault>/60-Maps/graph/): extracting them mints Skills1.md-style duplicate families on every run.
 # ponytail: the luna vault's fixed maps dir, as refresh-graph-map.sh's <maps-dir>/graph and luna-index-hygiene.sh hardcode it; a corpus with another maps dir needs .graphify-corpus-ignore.
 EXPORT_DIRS = ["60-Maps/graph/"]
+# Templates, test data, eval graders and vendored plugin docs never yield content nodes: the model omits
+# them, so each failed on every run. ONE rule for the semantic corpus walk, `noncontent-filter` (the
+# refresh-graph-map.sh copy) and check-graph-freshness.sh's non-content class.
+NON_CONTENT_DIRS = {"templates", "_Templates", "ISSUE_TEMPLATE", "fixtures", "testdata", "evals"}
+_VENDORED = {}
+
+
+def noncontent(root, rel):
+    # rel is corpus-relative with "/" separators. Non-content when a directory component is a
+    # NON_CONTENT_DIRS name or ends in -fixtures, or a directory above the file holds VENDORED.md.
+    parts = rel.split("/")[:-1]
+    if any(d in NON_CONTENT_DIRS or d.endswith("-fixtures") for d in parts):
+        return True
+    for i in range(1, len(parts) + 1):
+        key = os.path.join(root, *parts[:i])
+        if key not in _VENDORED:
+            _VENDORED[key] = os.path.isfile(os.path.join(key, "VENDORED.md"))
+        if _VENDORED[key]:
+            return True
+    return False
 
 
 def die(msg, rc=1):
@@ -148,7 +168,7 @@ def corpus_files(root, out_name):
     keep = []
     for rel in files:
         rel = rel.replace(os.sep, "/")
-        if any(rel.startswith(d) for d in skip) or SEMANTIC_SKIP_DIRS & set(rel.split("/")[:-1]):
+        if any(rel.startswith(d) for d in skip) or SEMANTIC_SKIP_DIRS & set(rel.split("/")[:-1]) or noncontent(root, rel):
             continue
         full = os.path.join(root, rel)
         if os.path.isfile(full) and not os.path.islink(full) and not moved_stub(full):
@@ -189,6 +209,15 @@ def cmd_plan(a):
     write_json_atomic(a.plan, plan)
     print("plan: changed=%d batch=%d deleted=%d backlog=%d backed_off=%d"
           % (len(changed), len(batch), len(deleted), plan["backlog"], len(skipped)))
+
+
+def cmd_noncontent_filter(a):
+    # NUL-separated paths in ("./x/y.md", as find prints them), the content ones out, for refresh-graph-map.sh.
+    data = sys.stdin.buffer.read().split(b"\0")
+    out = sys.stdout.buffer
+    for p in data:
+        if p and not noncontent(a.root, os.fsdecode(p)[2:] if p.startswith(b"./") else os.fsdecode(p)):
+            out.write(p + b"\0")
 
 
 def cmd_status(a):
@@ -633,9 +662,12 @@ def main():
     st.add_argument("--out", required=True)
     u = sub.add_parser("unstick")
     u.add_argument("--out", required=True)
+    nf = sub.add_parser("noncontent-filter")
+    nf.add_argument("--root", required=True)
     a = ap.parse_args()
     {"plan": cmd_plan, "seed": cmd_seed, "merge": cmd_merge, "failrow": cmd_failrow, "restore": cmd_restore,
-     "prune": cmd_prune, "untracked": cmd_untracked, "status": cmd_status, "unstick": cmd_unstick}[a.cmd](a)
+     "prune": cmd_prune, "untracked": cmd_untracked, "status": cmd_status, "unstick": cmd_unstick,
+     "noncontent-filter": cmd_noncontent_filter}[a.cmd](a)
 
 
 if __name__ == "__main__":
