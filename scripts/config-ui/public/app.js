@@ -292,7 +292,7 @@ let readOnly = false;
 const WRITE_CONTROLS = [
   '[data-act="plan"]', '[data-act="run"]', '[data-act="consent"]', '[data-act="vm-save"]', '[data-act="reports-save"]', '[data-act="review-gate-save"]',
   '[data-act="setup-remove"]', '[data-act="setup-verify"]', '[data-act="drift-refresh"]',
-  '[data-vm]', '[data-rs]', '[data-fc]', '[data-rg]',
+  '[data-vm]', '[data-rs]', '[data-fc]', '[data-rg]', 'select.rm-theme',
   'form[data-setup-form] :is(input,button)', 'form[data-path-form] :is(input,button)', 'form[data-account-form] :is(input,button)',
 ].join(",");
 function lockWrites() {

@@ -238,7 +238,8 @@ export const appendShift = (file: string, row: Row) => withLock(file, () => appe
 
 // ---- the poll: the Shift route and the report generator call this, nothing else writes ----
 // merged resolves null when the PR list could not be read: a shift is never closed on a list that may be missing PRs
-export type Tick = { root: string; file: string; now: number; opts?: Opts; merged: (fromMs: number, toMs: number) => Promise<Pr[] | null>; boards?: (locks: Lock[], spans: Span[]) => Promise<Live> };
+// readOnly: report the recorded state as it is; no lock, no state file, no shifts.jsonl row, no gh read
+export type Tick = { root: string; file: string; now: number; opts?: Opts; readOnly?: boolean; merged: (fromMs: number, toMs: number) => Promise<Pr[] | null>; boards?: (locks: Lock[], spans: Span[]) => Promise<Live> };
 export type Snapshot = { state: State; spans: Span[]; locks: Lock[]; offsetMin: number };
 
 const stateFile = (file: string) => `${file}.state.json`;
@@ -255,6 +256,7 @@ export async function tick(t: Tick): Promise<Snapshot & { closed: Row[] }> {
   const locks = readLocks(t.root);
   const state0 = readState(t.file);
   const spans = chiefSpans(readChiefDocs(t.root, t.now - 3 * DAY), state0.open?.offsetMin ?? offsetMin, new Set(locks.filter((l) => l.role === "chief").map((l) => l.doc)));
+  if (t.readOnly) return { state: state0, spans, locks, offsetMin, closed: [] };
   const live = liveChiefs(spans, locks).map((s) => s.start);
   const ends = spans.map((s) => s.end).filter((e): e is number => e !== null);
   const obs: Obs = { now: t.now, locks, lastEnd: ends.length ? Math.max(...ends) : null, chiefLiveAt: live.length ? Math.min(...live) : null };

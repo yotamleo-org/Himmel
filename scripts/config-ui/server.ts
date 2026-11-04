@@ -299,6 +299,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 export function startServer(opts: ServerOpts = {}): { server: import("bun").Server; port: number; token: string; stop: () => void } {
   if (opts.hostname !== undefined && opts.hostname !== LOOPBACK) throw new Error(`config-ui binds ${LOOPBACK} only (got ${opts.hostname})`);
   const env = opts.env ?? process.env;
+  const readOnly = !!opts.readOnly; // a route that declares its own `opts` still sees the start option
   scrubProviderKeys(env);
   const token = opts.token ?? newToken();
   const idleMs = Number(env.CONFIG_UI_IDLE_MS) > 0 ? Number(env.CONFIG_UI_IDLE_MS) : DEFAULT_IDLE_MS;
@@ -612,7 +613,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     active++; // a running report keeps the idle timer from shutting the server down
     const onProgress = (p: Progress) => { if (!run.progress || p.i > run.progress.i) { run.progress = p; wake(run); } };
     run.promise = runFeed(env, opts.feedTimeoutMs ?? FEED_TIMEOUT_MS, onProgress, redactOut) // masked before it is cached or saved
-      .then((b) => { run.body = b; if (run.epoch === feedEpoch) { feedLast = { body: b, at: now() }; saveFeed(env, projectsNow().current, b); } }, () => { run.error = "himmelctl report --json failed or timed out"; })
+      .then((b) => { run.body = b; if (run.epoch === feedEpoch) { feedLast = { body: b, at: now() }; if (!opts.readOnly) saveFeed(env, projectsNow().current, b); } }, () => { run.error = "himmelctl report --json failed or timed out"; })
       .finally(() => { run.done = true; run.at = now(); wake(run); active--; if (deferred && active === 0) { deferred = false; bump(); } });
     return feedRun = run;
   }
@@ -722,7 +723,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const mergedIn = (a: number, b: number) => { const k = `${a}:${b}`; if (!memo.has(k)) memo.set(k, readMerged(env, root, a, b)); return memo.get(k)!; };
         const rs = readReports(); // the shift numbers saved on Configure; an unreadable config polls with the defaults
         const opts = "report_day" in rs.body ? optsOf(rs.body) : undefined;
-        const snap = await tickShifts({ root: handover, file, now: at, opts, merged: mergedIn, boards: shiftBoards(handover) });
+        const snap = await tickShifts({ root: handover, file, now: at, opts, readOnly, merged: mergedIn, boards: shiftBoards(handover) });
         const rows = readShifts(file);
         const win = id === null ? null : rows.find((r) => r.id === id);
         const from = win ? Date.parse(win.opened) : snap.state.open?.opened ?? (rows.length ? Date.parse(rows[rows.length - 1].opened) : at - 86_400_000);

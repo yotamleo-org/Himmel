@@ -1,7 +1,7 @@
 // The config UI's read-only mode. With readOnly set at start (himmelctl ui --read-only) the server answers every
 // request whose method is not GET or HEAD with 403 before any route runs. Scratch HOME and config only, never the station's.
 import { test, expect, afterEach } from "bun:test";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -20,10 +20,11 @@ function boot(readOnly: boolean) {
   dir = mkdtempSync(join(tmpdir(), "read-only-"));
   mkdirSync(join(dir, "home", ".himmel"), { recursive: true });
   mkdirSync(join(dir, "station"));
+  mkdirSync(join(dir, "handover"));
   writeFileSync(join(dir, "critics.json"), JSON.stringify(BASE, null, 2) + "\n");
   const s = startServer({
     port: 0, token: TOKEN, ...(readOnly ? { readOnly: true } : {}),
-    env: { PATH: process.env.PATH, HOME: join(dir, "home"), HIMMEL_POLICY_FOLLOWS_HOME: "1", CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000",
+    env: { PATH: process.env.PATH, HOME: join(dir, "home"), HIMMEL_POLICY_FOLLOWS_HOME: "1", CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: join(dir, "handover"),
       HIMMELCTL_REPO_ROOT: join(dir, "station"), CRITICS_BASE_JSON: join(dir, "critics.json"), CRITICS_LOCAL_JSON: join(dir, "critics.local.json") },
   });
   stop = () => s.stop();
@@ -32,8 +33,10 @@ function boot(readOnly: boolean) {
 // every file under the scratch dir with its content hash: a refused write leaves this identical
 function tree(d: string, out: Record<string, string> = {}): Record<string, string> {
   for (const n of readdirSync(d)) {
+    if (n === ".bun") continue; // bun's own package cache, filled by a child process a route starts; not config or state
     const p = join(d, n);
-    if (statSync(p).isDirectory()) tree(p, out); else out[p] = createHash("sha256").update(readFileSync(p)).digest("hex");
+    const st = statSync(p);
+    if (st.isDirectory()) tree(p, out); else out[p] = `${createHash("sha256").update(readFileSync(p)).digest("hex")}:${st.mtimeMs}`;
   }
   return out;
 }
@@ -87,6 +90,25 @@ test("--read-only: GET and HEAD still work and GET /api/mode says readOnly", asy
   expect((await get(port, "/api/fleet-cap", "HEAD")).status).not.toBe(403); // HEAD passes the gate (the routes themselves serve GET only)
 });
 
+// every GET route that reads the config or the fleet; a poll that records state (the shift poll, the cached feed) is among them
+const GET_ROUTES = ["/api/feed", "/api/projects", "/api/bank", "/api/board", "/api/fleet-cap", "/api/health", "/api/mode", "/api/phase-stats", "/api/report",
+  "/api/reports", "/api/report-settings", "/api/reviewers", "/api/review-gate", "/api/roadmap", "/api/rollup", "/api/setup", "/api/shift", "/api/sources",
+  "/api/tool-health", "/api/tool-inventory", "/api/vm"];
+
+test("--read-only: a GET on every route writes nothing, file bytes and mtimes in the scratch tree are unchanged", async () => {
+  const port = boot(true);
+  const before = tree(dir);
+  for (const r of GET_ROUTES) await get(port, r);
+  await new Promise((res) => setTimeout(res, 300)); // the feed saves after its run ends
+  expect(tree(dir)).toEqual(before);
+});
+
+test("RED control, no flag: the same GET sweep records the shift state, so the read-only sweep above is not vacuous", async () => {
+  const port = boot(false);
+  await get(port, "/api/shift");
+  expect(existsSync(join(dir, "handover", "shifts.jsonl.state.json"))).toBe(true);
+});
+
 test("RED control, no flag: the same review-gate POST writes the overlay, and /api/mode says readOnly false", async () => {
   const port = boot(false);
   expect(await (await get(port, "/api/mode")).json()).toEqual({ readOnly: false });
@@ -104,10 +126,29 @@ test("the page carries a hidden read-only banner that app.js shows from GET /api
   expect(app).toContain('$("#read-only-banner").hidden = false');
   expect(app).toMatch(/async function post\(path, body\) \{\n  if \(readOnly\) return \{ ok: false, status: 403/);
   // every control that sends one of the page's writes is on the disabled list
-  for (const sel of ['data-act="plan"', 'data-act="run"', 'data-act="vm-save"', 'data-act="reports-save"', 'data-act="review-gate-save"', 'data-act="setup-remove"', 'data-act="setup-verify"', 'data-act="drift-refresh"', "[data-vm]", "[data-rs]", "[data-fc]", "[data-rg]", "form[data-setup-form]", "form[data-account-form]", "form[data-path-form]"]) {
+  for (const sel of ['data-act="plan"', 'data-act="run"', 'data-act="vm-save"', 'data-act="reports-save"', 'data-act="review-gate-save"', 'data-act="setup-remove"', 'data-act="setup-verify"', 'data-act="drift-refresh"', "[data-vm]", "[data-rs]", "[data-fc]", "[data-rg]", "select.rm-theme", "form[data-setup-form]", "form[data-account-form]", "form[data-path-form]"]) {
     expect(app.slice(app.indexOf("const WRITE_CONTROLS"), app.indexOf("function lockWrites"))).toContain(sel);
   }
   expect(app).toContain('document.querySelectorAll("[data-rm-card]")'); // the Roadmap cards stop being draggable
+});
+
+// --allow-agent-session: the suite may itself run inside a Claude session, and that refusal also exits 2
+// a scratch HOME: were a flag ever accepted, the command would touch the scratch home, never the station's
+const ctl = (...args: string[]) => {
+  const home = mkdtempSync(join(tmpdir(), "read-only-ctl-"));
+  try { return spawnSync("node", [BIN, ...args], { encoding: "utf8", env: { ...process.env, HOME: home } }); } finally { rmSync(home, { recursive: true, force: true }); }
+};
+
+test("himmelctl ui --service refuses --read-only: the installed unit would start the server without it", () => {
+  const r = ctl("ui", "--allow-agent-session", "--service", "status", "--read-only");
+  expect(r.status).toBe(2);
+  expect(r.stderr).toContain("--read-only does not apply to --service");
+});
+
+test("himmelctl rejects --read-only on a command that is not ui, so ensure --yes --read-only changes nothing", () => {
+  const r = ctl("ensure", "--yes", "--read-only", "--dry-run");
+  expect(r.status).toBe(2);
+  expect(r.stderr).toContain("--read-only is not valid with 'ensure'");
 });
 
 test("himmelctl ui help says the default mode can write and describes --read-only", () => {

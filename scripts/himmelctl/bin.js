@@ -414,6 +414,7 @@ const OPTION_DEFAULTS = {
   purgeState: false,
   port: null,
   allowAgentSession: false,
+  readOnly: false,
   agui: null,
   service: null,
 };
@@ -5792,6 +5793,10 @@ function latestSessionId(projects) {
 function cmdUi(args) {
   if (!args.allowAgentSession && Object.keys(process.env).some((k) => (k === 'CLAUDECODE' || k.startsWith('CLAUDE_CODE_')) && process.env[k])) {
     console.error('himmelctl: ui: operator-only; refused inside a Claude session (CLAUDECODE / CLAUDE_CODE_* is set). Run it from your own terminal, or pass --allow-agent-session to override.');
+    return 2;
+  }
+  if (args.service && args.readOnly) {
+    console.error('himmelctl: ui: --read-only does not apply to --service: the installed unit would start the server without it. Run `himmelctl ui --read-only` in the foreground.');
     return 2;
   }
   if (args.service) {
