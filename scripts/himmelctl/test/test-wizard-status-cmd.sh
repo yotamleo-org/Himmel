@@ -223,4 +223,31 @@ grepq "$errD" -F 'run himmelctl install first' || fail "case d: expected the 'ru
 [ ! -f "$cacheD/state.json" ] || fail "case d: state.json must NOT be created when the install-profile cache is missing"
 echo "ok: case d — missing install-profile cache exits 2 with the exact message, no state.json created"
 
+# ── case h: a legacy `scope: project` record whose target is
+# himmel's OWN checkout reads as user scope. The fixture repo stands in for
+# himmel's checkout (cwd == HIMMELCTL_REPO_ROOT). Its tracked
+# .claude/settings.json carries no enabledPlugins/statusLine by design.
+cacheH="$work/cache-h"; mkdir -p "$cacheH"
+write_cache "$cacheH/install-profile.json" adopter project none "" inline "" lean
+homeH="$work/home-h"; mkdir -p "$homeH/.claude"
+nine144_ids='["claude-plugins-pluginSet","himmel-ops-plugin","wiring-statusline"]'
+runStatusH() {
+  ( cd "$fixtureRepo" && HIMMELCTL_REPO_ROOT="$(winpath "$fixtureRepo")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheH")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheH")-luna-config.json" HOME="$homeH" USERPROFILE="$(winpath "$homeH")" \
+      "$node_bin" "$wizard" status --json --items claude-plugins-pluginSet,himmel-ops-plugin,wiring-statusline )
+}
+# h2 (RED control): user-scope wiring absent -> the three stay red.
+outH2=$(runStatusH)
+redH2=$(echo "$outH2" | jq -c --argjson ids "$nine144_ids" '[.items[] | select(.severity=="red") | .id] | sort == ($ids | sort)')
+[ "$redH2" = "true" ] || fail "case h2: with no user-scope wiring the three items must stay red (got: $outH2)"
+echo "ok: case h2 — RED control: legacy project record, user wiring absent -> still red"
+# h1: user-scope wiring present -> not red.
+cat > "$homeH/.claude/settings.json" <<'JSON'
+{"statusLine":{"type":"command","command":"bash foo.sh"},"enabledPlugins":{"himmel-ops@himmel":true}}
+JSON
+outH1=$(runStatusH)
+redH1=$(echo "$outH1" | jq -c '[.items[] | select(.severity=="red") | .id]')
+[ "$redH1" = "[]" ] || fail "case h1: legacy project record on himmel's own checkout + user-scope wiring present must not read red (red: $redH1; got: $outH1)"
+grepq "$(cat "$cacheH/install-profile.json")" -F '"scope":"project"' || fail "case h1: the recorded profile file must be left untouched"
+echo "ok: case h1 — legacy project record on himmel's own checkout reads as user scope"
+
 echo "PASS"
