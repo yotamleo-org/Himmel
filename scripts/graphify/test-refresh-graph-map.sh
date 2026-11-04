@@ -1631,9 +1631,10 @@ out=$( GRAPHIFY_MAP_BIN="$HXBIN/graphify-nc" PATH="$HXBIN:$PATH" \
   bash "$SCRIPT" --name nctest --corpus-root "$NCCORPUS" --backend claude-cli \
   --maps-dir "$NCMAPS" --title "Nc Map" --slug nc-map --corpus-tag nc 2>&1 ); rc=$?
 [ "$rc" -eq 0 ] || fail "T22f exit 0 (got $rc): $out"
-[ "$(cat "$NCLOG")" = "./notes/n.md" ] \
+nc_seen="$(cat "$NCLOG")" # read-sink-ok: fixture log the stub wrote under the suite's own $WS
+[ "$nc_seen" = "./notes/n.md" ] \
   && pass "T22f only the content note reaches the scratch copy; templates, testdata, evals, -fixtures and VENDORED dirs do not" \
-  || fail "T22f scratch copy should hold only notes/n.md: $(cat "$NCLOG")" # read-sink-ok: fixture log the stub wrote under the suite's own $WS
+  || fail "T22f scratch copy should hold only notes/n.md: $nc_seen"
 
 # --- T23: the sideline `mv "$OUT_DIR/cache"
 # "$CACHE_BACKUP"` that makes room for the staged cache was unguarded (no
