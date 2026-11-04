@@ -28,7 +28,7 @@ docs/handover/running-a-chief.md
 docs/handover/worker-brief-template.md
 docs/handover/judge-brief-template.md
 marketplace/plugins/qmd/skills/qmd/SKILL.md
-scripts/hooks/block-graphify-egress.sh|for read-only queries use:'
+scripts/hooks/block-graphify-egress.sh|worker-graph.sh'
 
 BARE='(^|[^A-Za-z0-9_./-])(qmd[[:space:]]+(query|search|vsearch)|graphify[[:space:]]+(query|explain|path))([^A-Za-z0-9_-]|$)'
 
