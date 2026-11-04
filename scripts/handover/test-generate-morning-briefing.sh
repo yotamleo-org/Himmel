@@ -4,7 +4,7 @@
 # Assertions match ASCII substrings only — both the 🌅/✅/🔴/🧹/📋 emoji and
 # the em-dash separator are multibyte; MINGW `grep -qF` can SIGABRT on those,
 # so every header is matched by an ASCII tail ("Morning Report", "Completed (",
-# "In-flight WIP", "Stale worktrees", "Backlog (", "TL;DR", "Suggested order").
+# "In-flight WIP", "Stale worktrees", "Moved to Done", "TL;DR", "Suggested order").
 set -euo pipefail
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
@@ -56,6 +56,11 @@ assert_contains() {
     if grepq "$haystack" -F -- "$needle"; then pass "$name"; else fail "$name" "missing: $needle"; fi
 }
 
+assert_absent() {
+    local name="$1" needle="$2" haystack="$3"
+    if grepq "$haystack" -F -- "$needle"; then fail "$name" "present: $needle"; else pass "$name"; fi
+}
+
 TMP_ROOT=$(mktemp -d)
 if command -v cygpath >/dev/null 2>&1; then TMP_ROOT=$(cygpath -m "$TMP_ROOT"); fi
 # Hermetic: the operator's real failure-review digests must not leak in.
@@ -97,8 +102,12 @@ cat >"$FAKE_JIRA" <<'FAKE'
 case "$1" in
     versions) printf '%s\n' "${FAKE_JIRA_VERSIONS:-}";;
     list)
+        # FAKE_JIRA_LOG set => every list call's argv is appended to it.
+        [ -n "${FAKE_JIRA_LOG:-}" ] && printf '%s\n' "$*" >>"$FAKE_JIRA_LOG"
         status=""; prev=""; jql=0
         for a in "$@"; do [ "$prev" = "--status" ] && status="$a"; [ "$a" = "--jql" ] && jql=1; prev="$a"; done
+        # The report-day Done query (status CHANGED TO Done DURING) reads FAKE_JIRA_DONE_OUT, every other --jql reads FAKE_JIRA_JQL_OUT.
+        case "$*" in *"CHANGED TO Done DURING"*) printf '%s\n' "${FAKE_JIRA_DONE_OUT:-}"; exit 0 ;; esac
         [ "$jql" -eq 1 ] && { printf '%s\n' "${FAKE_JIRA_JQL_OUT:-}"; exit 0; }
         case "$status" in
             "To Do")        printf '%s\n' "${FAKE_JIRA_TODO:-}";;
@@ -218,17 +227,16 @@ run_script() {
 echo "TEST: default run produces the morning-report schema"
 OUT_DEFAULT="$TMP_ROOT/out1.md"
 out=$(FAKE_GH_PR_JSON='[{"number":42,"title":"feat(scope): HIMMEL-901 add A","mergedAt":"2026-05-25T00:00:00Z"}]' \
-    FAKE_JIRA_OUT=$'HIMMEL-901\tTask\tDone\tAdd A' \
+    FAKE_JIRA_DONE_OUT=$'HIMMEL-901\tTask\tDone\tAdd A' \
     run_script --since "$MARKER" --out "$OUT_DEFAULT")
 file=$(cat "$OUT_DEFAULT")
 assert_contains "header"             "Morning Report"               "$file"
 assert_contains "tldr section"       "## TL;DR"                     "$file"
 assert_contains "completed section"  "Completed ("                  "$file"
 assert_contains "commits subsection" "### Commits"                  "$file"
-assert_contains "done subsection"    "Tickets transitioned to Done" "$file"
+assert_contains "done subsection"    "Moved to Done on"             "$file"
 assert_contains "wip section"        "In-flight WIP"                "$file"
 assert_contains "stale section"      "Stale worktrees"              "$file"
-assert_contains "backlog section"    "Backlog ("                    "$file"
 assert_contains "order section"      "Suggested order"              "$file"
 assert_contains "PR row #42"         "#42"                          "$file"
 assert_contains "commit cited"       "HIMMEL-901"                   "$file"
@@ -325,23 +333,19 @@ out=$(run_script --since "$MARKER" --out "$OUT6" --dry-run)
 if [ -f "$OUT6" ]; then fail "--dry-run created $OUT6"; else pass "--dry-run did not write file"; fi
 assert_contains "dry-run prints body" "Morning Report" "$out"
 
-# Test 8: cross-ref Done block ---------------------------------------
+# Test 8: Done block is the day's transitions ------------------------
 
-echo "TEST: Done block cross-references commits"
+echo "TEST: Done block lists every ticket the transition query returns, not only those the commits name"
 OUT7="$TMP_ROOT/out7.md"
 out=$(FAKE_GH_PR_JSON='[]' \
-    FAKE_JIRA_OUT=$'HIMMEL-901\tTask\tDone\tA
+    FAKE_JIRA_DONE_OUT=$'HIMMEL-901\tTask\tDone\tA
 HIMMEL-902\tTask\tDone\tB
 HIMMEL-999\tTask\tDone\tNot in commits' \
     run_script --since "$MARKER" --out "$OUT7")
 file=$(cat "$OUT7")
 assert_contains "Done block has HIMMEL-901" "HIMMEL-901 — Task — A" "$file"
 assert_contains "Done block has HIMMEL-902" "HIMMEL-902 — Task — B" "$file"
-if grepq "$file" 'HIMMEL-999'; then
-    fail "Done block leaked unrelated ticket HIMMEL-999"
-else
-    pass "Done block filtered out HIMMEL-999 (not in commits)"
-fi
+assert_contains "Done block keeps HIMMEL-999 (the commits are no filter)" "HIMMEL-999 — Task — Not in commits" "$file"
 
 # Test 9: In-flight WIP join rule + catch-all ------------------------
 
@@ -383,45 +387,30 @@ bb_file=$(cat "$OUT_BB")
 assert_contains "bb still has wip header" "In-flight WIP"    "$bb_file"
 assert_contains "bb stale degraded"       "non-github forge" "$bb_file"
 
-# Test 12: Backlog flat + cap ----------------------------------------
-
-echo "TEST: backlog renders flat + respects --backlog-limit"
-OUT_BL="$TMP_ROOT/bl.md"
-out=$(FAKE_JIRA_TODO=$'HIMMEL-801\tTask\tTo Do\tAlpha\nHIMMEL-802\tTask\tTo Do\tBeta\nHIMMEL-803\tTask\tTo Do\tGamma' \
-    run_script --since "$MARKER" --out "$OUT_BL" --backlog-limit 2)
-file=$(cat "$OUT_BL")
-assert_contains "backlog item 1" "HIMMEL-801" "$file"
-assert_contains "backlog item 2" "HIMMEL-802" "$file"
-if grepq "$file" 'HIMMEL-803'; then fail "backlog ignored --backlog-limit 2"; else pass "backlog capped at 2"; fi
-assert_contains "backlog total noted" "1 more" "$file"
-
 # Test 13: TL;DR + Suggested order heuristics ------------------------
 
 echo "TEST: TL;DR + Suggested order heuristics render"
 OUT_TL="$TMP_ROOT/tldr.md"
 out=$(FAKE_JIRA_INPROG=$'HIMMEL-901\tTask\tIn Progress\tThing' \
-    FAKE_JIRA_TODO=$'HIMMEL-801\tTask\tTo Do\tAlpha' \
     run_script --since "$MARKER" --out "$OUT_TL")
 file=$(cat "$OUT_TL")
-# Assert COMPUTED content (1 In-Progress + 1 To-Do, no stale, no PRs), not just
+# Assert COMPUTED content (1 In-Progress, no stale, no PRs), not just
 # the static template labels — a wrong count/order must not ship green.
 assert_contains "tldr 1 in-flight" "**1** in-flight" "$file"
-assert_contains "tldr 1 backlog"   "**1** backlog"   "$file"
+assert_contains "tldr links the Board" "Backlog: on the Board" "$file"
 assert_contains "order advance"    "Advance 1 In-Progress ticket(s)." "$file"
-assert_contains "order pull"       "Pull from the 1-item backlog."     "$file"
 
 # Test 14: --llm splices enriched blocks -----------------------------
 
 echo "TEST: --llm splices multi-line enriched blocks"
 OUT_LLM="$TMP_ROOT/llm.md"
 out=$( cd "$REPO"; GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" CLAUDE_CMD="$FAKE_CLAUDE" \
-       FAKE_JIRA_TODO=$'HIMMEL-801\tTask\tTo Do\tAlpha' \
        bash "$SCRIPT" --since "$MARKER" --out "$OUT_LLM" --llm )
 file=$(cat "$OUT_LLM")
 assert_contains "llm tldr spliced"   "LLM TL;DR line one"  "$file"
 assert_contains "llm tldr multiline" "LLM TL;DR line two"  "$file"
 assert_contains "llm order spliced"  "LLM-suggested first" "$file"
-assert_contains "llm backlog theme"  "theme A"             "$file"
+assert_absent   "llm backlog block is not spliced" "theme A" "$file"
 
 # Test 15: --llm fails open to heuristic -----------------------------
 
@@ -443,16 +432,14 @@ assert_contains "blank-first order: next step" "Next step: 1. FIRST NONBLANK STE
 
 # Test 16: --llm per-block fail-open (only TLDR present) --------------
 
-echo "TEST: --llm per-block fail-open (TLDR from LLM, ORDER + BACKLOG fall back)"
+echo "TEST: --llm per-block fail-open (TLDR from LLM, ORDER falls back)"
 OUT_PARTIAL="$TMP_ROOT/partial.md"
 out=$( cd "$REPO"; GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" CLAUDE_CMD="$FAKE_CLAUDE_PARTIAL" \
        FAKE_JIRA_INPROG=$'HIMMEL-901\tTask\tIn Progress\tThing' \
-       FAKE_JIRA_TODO=$'HIMMEL-801\tTask\tTo Do\tAlpha' \
        bash "$SCRIPT" --since "$MARKER" --out "$OUT_PARTIAL" --llm )
 file=$(cat "$OUT_PARTIAL")
 assert_contains "partial: llm tldr taken"    "ONLY TLDR FROM LLM"               "$file"
 assert_contains "partial: order fell back"   "Advance 1 In-Progress ticket(s)." "$file"
-assert_contains "partial: backlog fell back" "HIMMEL-801"                       "$file"
 
 # Test 16b: --llm under Codex never forks claude ----------
 
@@ -565,7 +552,6 @@ OUT_F16="$TMP_ROOT/f16.md"
 out=$(FAKE_GH_PR_JSON='[{"number":42,"title":"feat(scope): HIMMEL-901 add A","mergedAt":"2026-05-25T00:00:00Z"}]' \
     FAKE_GH_PR_ALL='[{"number":50,"state":"OPEN","headRefName":"feat/himmel-901-thing","title":"x"},{"number":51,"state":"OPEN","headRefName":"feat/random-slug","title":"y"}]' \
     FAKE_JIRA_INPROG=$'HIMMEL-901\tTask\tIn Progress\tThing' \
-    FAKE_JIRA_TODO=$'HIMMEL-801\tTask\tTo Do\tAlpha' \
     run_script --since "$MARKER" --out "$OUT_F16")
 file=$(cat "$OUT_F16")
 # Headings with the multibyte emoji stripped, so the match is ASCII-only.
@@ -574,10 +560,10 @@ first_four=$(printf '%s\n' "$h2_ascii" | sed -n '1,4p')
 rest=$(printf '%s\n' "$h2_ascii" | sed -n '5,$p')
 want_first=$'## What shipped\n## What waits on you\n## What it spent\n## What runs next'
 if [ "$first_four" = "$want_first" ]; then pass "first four headings are the frame 16 ones, in order"; else fail "first four headings" "got: $(printf '%s' "$first_four" | tr '\n' '|')"; fi
-want_rest=$'## Chiefs\n## Spend per shift\n## TL;DR\n## Completed (1 PRs merged to main)\n## In-flight WIP\n## Stale worktrees\n## Backlog (1 To Do)\n## Docs drift\n## Failure review\n## Prompt cache\n## Suggested order'
+want_rest=$'## Chiefs\n## Spend per shift\n## TL;DR\n## Completed (1 PRs merged to main)\n## In-flight WIP\n## Stale worktrees\n## Docs drift\n## Failure review\n## Prompt cache\n## Suggested order'
 if [ "$rest" = "$want_rest" ]; then pass "every pre-change section kept below, in order"; else fail "sections below the four" "got: $(printf '%s' "$rest" | tr '\n' '|')"; fi
 assert_contains "f16: commits subsection kept" "### Commits"                  "$file"
-assert_contains "f16: done subsection kept"    "Tickets transitioned to Done" "$file"
+assert_contains "f16: done subsection kept"    "Moved to Done on"             "$file"
 # Fields with an input are computed; a field with none says so, never a guess.
 lead=$(lead_of "$file")
 assert_contains "f16: shipped counts"          "**1** PRs merged"             "$lead"
@@ -764,11 +750,11 @@ echo "TEST: adopted project with a tracker prints the tracker sections"
 OUT_ADT="$TMP_ROOT/adopted-tracker.md"
 rc=0
 ( cd "$ADOPTED"; env -u JIRA_PROJECT_KEY GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" \
-    FAKE_JIRA_TODO=$'ACME-3\tTask\tTo Do\tPolish' \
+    FAKE_JIRA_DONE_OUT=$'ACME-3\tTask\tDone\tPolish' \
     bash scripts/handover/generate-morning-briefing.sh --out "$OUT_ADT" >/dev/null 2>&1 ) || rc=$?
 if [ "$rc" -eq 0 ]; then pass "adopted+tracker: run exits 0"; else fail "adopted+tracker: run exits 0" "rc=$rc"; fi
 file=$(cat "$OUT_ADT" 2>/dev/null || true)
-assert_contains "adopted+tracker: backlog row" "ACME-3" "$file"
+assert_contains "adopted+tracker: Done row" "ACME-3" "$file"
 if ! grepq "$file" -F -- "Morning Report" || grepq "$file" -F -- "No Jira tracker configured"; then fail "adopted+tracker: not called trackerless"; else pass "adopted+tracker: not called trackerless"; fi
 
 echo "TEST: an invalid tracker setting is named, not called absent"
@@ -967,6 +953,201 @@ check "helper failure: the report is still written" "missing or empty helper.md"
 assert_contains "helper failure: WARNING carries the exit code" "exit 2" "$GEN_ERR"
 assert_contains "helper failure: WARNING carries the first stderr line" "shift-cli: no handover root is set (HANDOVER_DIR)" "$GEN_ERR"
 if grepq "$GEN_ERR" -F -- "second line"; then fail "helper failure: only the first stderr line"; else pass "helper failure: only the first stderr line"; fi
+
+# Report day, real Done, no Backlog, remote stale rows, failure review table ----------------------------
+
+# ago <days>: the UTC time that many days before now.
+ago() { date -u -d "$1 days ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-"$1"d +%Y-%m-%dT%H:%M:%SZ; } # gnu-ok: paired with the BSD date -v form
+# dc <repo> <iso date> <subject>: an empty commit with both dates pinned.
+dc() { GIT_AUTHOR_DATE="$2" GIT_COMMITTER_DATE="$2" git -C "$1" -c user.email=t@test.com -c user.name=test commit -q --allow-empty -m "$3"; }
+# mk_day_repo <dir>: a repo with a tagged first commit on 2026-10-30 and a github origin.
+mk_day_repo() {
+    git init -q --initial-branch=main "$1" 2>/dev/null || { git init -q "$1"; git -C "$1" symbolic-ref HEAD refs/heads/main; }
+    dc "$1" 2026-10-30T12:00:00Z "init"
+    git -C "$1" tag v0
+    git -C "$1" remote add origin https://github.com/test/test.git
+}
+# mkref <repo> <branch> <days old>: a remote-tracking branch whose last commit is that old.
+mkref() {
+    local d c
+    d=$(ago "$3")
+    c=$(GIT_AUTHOR_DATE="$d" GIT_COMMITTER_DATE="$d" git -C "$1" -c user.email=t@test.com -c user.name=test commit-tree -m x -p "$(git -C "$1" rev-parse HEAD)" "$(git -C "$1" rev-parse 'HEAD^{tree}')")
+    git -C "$1" update-ref "refs/remotes/origin/$2" "$c"
+}
+# run_day <repo> <args...>: the generator on report day 2026-11-03, station zone UTC, no operator config.
+run_day() {
+    local repo="$1"; shift
+    ( cd "$repo"; GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" MORNING_TODAY=2026-11-03 TZ=UTC \
+        HIMMEL_LUNA_CONFIG_PATH="$TMP_ROOT/no-config.json" JIRA_PROJECT_KEY=HIMMEL bash "$SCRIPT" "$@" )
+}
+
+echo "TEST: Commits are the report day and Done is read from the day's transitions"
+DAYREPO="$TMP_ROOT/dayrepo"; mk_day_repo "$DAYREPO"
+dc "$DAYREPO" 2026-11-02T10:00:00Z "chore: HIMMEL-801 older day A"
+dc "$DAYREPO" 2026-11-02T12:00:00Z "chore: HIMMEL-802 older day B"
+dc "$DAYREPO" 2026-11-03T10:00:00Z "feat: HIMMEL-901 day A"
+dc "$DAYREPO" 2026-11-03T11:00:00Z "fix: HIMMEL-902 day B"
+JLOG="$TMP_ROOT/jira-argv.log"; : >"$JLOG"
+OUT_DAY="$TMP_ROOT/day.md"
+FAKE_JIRA_LOG="$JLOG" \
+    FAKE_JIRA_DONE_OUT=$'HIMMEL-901\tTask\tDone\tDay A\nHIMMEL-950\tBug\tDone\tNo commit' \
+    FAKE_GH_PR_JSON='[{"number":77,"title":"feat: HIMMEL-901 day A","mergedAt":"2026-11-03T10:30:00Z"}]' \
+    run_day "$DAYREPO" --out "$OUT_DAY" >/dev/null
+file=$(cat "$OUT_DAY")
+jlog=$(cat "$JLOG")
+assert_contains "day: the Commits heading counts only the report day" "Commits (2 on Tue 3 Nov)" "$file"
+assert_absent   "day: the since-tag range is not the default window" "since v0" "$(grep -E '^### Commits' <<<"$file" || true)"
+assert_contains "day: the report day's commit is listed" "HIMMEL-901 day A" "$file"
+assert_absent   "day: a commit of the day before is not listed" "older day A" "$file"
+assert_contains "day: the Done query is project scoped and reads transitions" "project = HIMMEL AND status CHANGED TO Done DURING" "$jlog"
+assert_contains "day: the Done window is the report day to the next" '("2026-11-03", "2026-11-04")' "$jlog"
+assert_absent   "day: the Done list is no longer the status filter" "--status Done" "$jlog"
+assert_contains "day: the Done heading names the day and the count" "Moved to Done on Tue 3 Nov (2)" "$file"
+assert_contains "day: a Done row names the merged PR that carries its key" "HIMMEL-901 — Task — Day A — PR #77" "$file"
+assert_contains "day: a ticket Done without a commit is still listed" "HIMMEL-950 — Bug — No commit" "$file"
+assert_contains "day: the lead counts the day's Done" "**2** Done that day" "$(lead_of "$file")"
+OUT_DAYS="$TMP_ROOT/day-since.md"
+run_day "$DAYREPO" --since v0 --out "$OUT_DAYS" >/dev/null
+assert_contains "day: --since stays an explicit override and the heading says since" "Commits (4 since v0)" "$(cat "$OUT_DAYS")"
+OUT_DAYE="$TMP_ROOT/day-empty.md"
+( cd "$DAYREPO"; GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" MORNING_TODAY=2026-11-05 TZ=UTC HIMMEL_LUNA_CONFIG_PATH="$TMP_ROOT/no-config.json" \
+    bash "$SCRIPT" --out "$OUT_DAYE" >/dev/null )
+assert_contains "day: a day without commits says so" "No commits found on Thu 5 Nov" "$(cat "$OUT_DAYE")"
+
+echo "TEST: the report day's zone is pinned on the git call (report_day=utc vs the station zone)"
+ZONEREPO="$TMP_ROOT/zonerepo"; mk_day_repo "$ZONEREPO"
+dc "$ZONEREPO" 2026-11-02T22:00:00Z "chore: early-utc"
+dc "$ZONEREPO" 2026-11-03T23:30:00Z "feat: late-utc"
+printf '{"reports":{"report_day":"utc"}}\n' > "$TMP_ROOT/utc-config.json"
+OUT_ZU="$TMP_ROOT/zone-utc.md"; OUT_ZL="$TMP_ROOT/zone-local.md"
+( cd "$ZONEREPO"; GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" MORNING_TODAY=2026-11-03 TZ=AEST-10 HIMMEL_LUNA_CONFIG_PATH="$TMP_ROOT/utc-config.json" \
+    bash "$SCRIPT" --out "$OUT_ZU" >/dev/null )
+( cd "$ZONEREPO"; GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" MORNING_TODAY=2026-11-03 TZ=AEST-10 HIMMEL_LUNA_CONFIG_PATH="$TMP_ROOT/no-config.json" \
+    bash "$SCRIPT" --out "$OUT_ZL" >/dev/null )
+zu=$(cat "$OUT_ZU"); zl=$(cat "$OUT_ZL")
+assert_contains "zone utc: the heading counts one commit" "Commits (1 on Tue 3 Nov)" "$zu"
+assert_contains "zone utc: a 23:30 UTC commit counts on its UTC day" "late-utc" "$zu"
+assert_absent   "zone utc: the +10 local morning of the next UTC day does not shift the window" "early-utc" "$zu"
+assert_contains "zone local: the station zone (+10) takes the commit that is 08:00 there" "early-utc" "$zl"
+assert_absent   "zone local: the 23:30 UTC commit is the next local day" "late-utc" "$zl"
+
+echo "TEST: no Backlog section; --backlog-limit is accepted and ignored with a stderr note"
+OUT_BL2="$TMP_ROOT/nobacklog.md"
+err=$(FAKE_JIRA_TODO=$'HIMMEL-801\tTask\tTo Do\tAlpha' FAKE_JIRA_INPROG=$'HIMMEL-901\tTask\tIn Progress\tThing' \
+    run_day "$DAYREPO" --out "$OUT_BL2" --backlog-limit 5 2>&1 >/dev/null)
+file=$(cat "$OUT_BL2")
+if grepq "$file" -E '^## .*Backlog'; then fail "backlog: no Backlog heading"; else pass "backlog: no Backlog heading"; fi
+assert_absent   "backlog: the To Do tickets are not listed" "HIMMEL-801" "$file"
+assert_absent   "backlog: the suggested order does not offer the backlog" "Pull from the" "$file"
+assert_contains "backlog: the TL;DR links once to the Board" "Backlog: on the Board" "$file"
+assert_contains "backlog: --backlog-limit says it is ignored" "--backlog-limit is ignored" "$err"
+
+echo "TEST: stale table lists idle remote branches whose PR is not open"
+REMREPO="$TMP_ROOT/remrepo"; mk_day_repo "$REMREPO"
+for spec in main:20 old-closed:8 old-open:8 recent:3 old-nopr:9 old-merged:10; do mkref "$REMREPO" "${spec%%:*}" "${spec##*:}"; done
+git -C "$REMREPO" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+: > "$REMREPO/.git/FETCH_HEAD"
+PRALL='[{"number":91,"state":"CLOSED","headRefName":"old-closed","title":"a"},{"number":92,"state":"OPEN","headRefName":"old-open","title":"b"},{"number":93,"state":"MERGED","headRefName":"old-merged","title":"c"}]'
+OUT_RM="$TMP_ROOT/remote-stale.md"
+FAKE_GH_PR_ALL="$PRALL" run_day "$REMREPO" --out "$OUT_RM" >/dev/null
+rem=$(grep -F '`origin/' "$OUT_RM" || true)
+assert_contains "remote: a branch with a CLOSED PR is listed with the delete command" "git push origin --delete old-closed" "$rem"
+assert_contains "remote: its row names the PR and its state" "PR #91 CLOSED" "$rem"
+assert_contains "remote: a branch with a MERGED PR is listed" "origin/old-merged" "$rem"
+assert_contains "remote: an idle branch with no PR is listed" "origin/old-nopr" "$rem"
+assert_absent   "remote: a branch with an OPEN PR is never listed" "old-open" "$rem"
+assert_absent   "remote: a 3-day-old branch is not listed" "origin/recent" "$rem"
+assert_absent   "remote: origin/main is never listed" "origin/main" "$rem"
+assert_absent   "remote: origin/HEAD is never listed" "origin/HEAD" "$rem"
+assert_contains "remote: the waits line counts the remote rows" "**3** stale worktree(s)" "$(lead_of "$(cat "$OUT_RM")")"
+assert_contains "remote: the report says how fresh the remote refs are" "Remote refs as last fetched" "$(cat "$OUT_RM")"
+OUT_RM2="$TMP_ROOT/remote-stale2.md"
+FAKE_GH_PR_ALL="$PRALL" STALE_BRANCH_DAYS=2 run_day "$REMREPO" --out "$OUT_RM2" >/dev/null
+assert_contains "remote: STALE_BRANCH_DAYS lowers the idle bar" "origin/recent" "$(cat "$OUT_RM2")"
+
+echo "TEST: sixteen or more idle branches print 15 rows and a count by kind"
+MANYREPO="$TMP_ROOT/manyrepo"; mk_day_repo "$MANYREPO"
+n=1; while [ "$n" -le 20 ]; do mkref "$MANYREPO" "idle-$n" 9; n=$((n+1)); done
+OUT_MANY="$TMP_ROOT/many-stale.md"
+FAKE_GH_PR_ALL='[]' run_day "$MANYREPO" --out "$OUT_MANY" >/dev/null
+rows=$(grep -cF '| `origin/' "$OUT_MANY" || true)
+if [ "$rows" = "15" ]; then pass "many: 15 remote rows are printed"; else fail "many: 15 remote rows are printed" "got $rows"; fi
+assert_contains "many: the rest are counted by kind" "and 5 more (0 worktree, 5 remote)" "$(cat "$OUT_MANY")"
+assert_contains "many: the waits line counts all twenty" "**20** stale worktree(s)" "$(lead_of "$(cat "$OUT_MANY")")"
+
+echo "TEST: the failure review is a table from the digest's JSON, with no worker name"
+FRV="$SCRIPT_DIR/../eval/worker-digest/failure_review.py"
+FRD="$TMP_ROOT/frfix"; mkdir -p "$FRD/out"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$FRD/notify"; chmod +x "$FRD/notify"
+fr_row() { # <class> <worker>
+    jq -nc --arg w "$2" --arg c "$1" '{v:1, ts:"2026-11-03T08:00:00Z", host:"h", source:"scripts/eval/worker-digest/worker_ledger.py", kind:"leg-failure",
+        session:"4713c1a5-0000-4000-8000-000000000001", leg:$w, console:"c", ticket:"HIMMEL-4713", pr:2030, agent:{id:"main", role:"leg", kind:"k", model:"claude-opus-5-5"},
+        class:$c, failure:($c | split("/")[0]), count:1, identical_retry:0, recovered:false, first_ts:1, last_ts:2, tool_call_ids:["t"]}' >>"$FRD/ledger.jsonl"
+}
+i=1
+for cls in denied/guard-a denied/guard-b denied/guard-c denied/guard-d denied/guard-e denied/guard-f error/tool-g error/tool-h error/tool-i error/tool-j error/tool-k error/tool-l; do
+    fr_row "$cls" N7771; [ $((i % 2)) -eq 0 ] && fr_row "$cls" N7772; [ $((i % 3)) -eq 0 ] && fr_row "$cls" N7773
+    i=$((i+1))
+done
+fr_row traj/identical-retry N7771; fr_row traj/zz-other N7772; fr_row traj/zz-other N7773
+( export TZ=UTC JIRA_PROJECT_KEY=HIMMEL FAILURE_REVIEW_NOTIFY_CMD="$FRD/notify" FAILURE_REVIEW_FRICTION_CMD="" \
+    HIMMEL_EVAL_RUNS_LEDGER="$FRD/never-runs.jsonl" HIMMEL_EVAL_CHANGES_LEDGER="$FRD/never-changes.jsonl" WORKER_SESSION_DIGEST_STATE_DIR="$FRD/never-digest"
+  python3 -I "$FRV" --ledger "$FRD/ledger.jsonl" --state "$FRD/state.json" --log "$FRD/log.jsonl" --inbox "$FRD/inbox.md" \
+    --out-dir "$FRD/out" --now 2026-11-03T12:00:00Z --jira-bin "$FRD/never-jira" >"$FRD/run.out" 2>&1 ) || fail "failure review fixture: failure_review.py ran" "$(head -c 300 "$FRD/run.out")"
+FRJSON="$FRD/out/failure-review-2026-11-03.json"
+if [ -f "$FRJSON" ] && [ -f "$FRD/out/failure-review-2026-11-03.md" ]; then pass "failure review fixture: the real writer made the .md and the .json"; else fail "failure review fixture: the real writer made the .md and the .json" "$(ls "$FRD/out")"; fi
+run_fr() { # <out file>: the report for 2026-11-03 reading the fixture digest dir
+    HIMMEL_FAILURE_REVIEW_DIR="$FRD/out" run_day "$DAYREPO" --out "$1" >/dev/null
+}
+OUT_FR="$TMP_ROOT/fr-table.md"
+run_fr "$OUT_FR"
+file=$(cat "$OUT_FR")
+fr_start=$(jq -r '.window.start' "$FRJSON"); fr_end=$(jq -r '.window.end' "$FRJSON")
+fr_nclass=$(jq '.classes | length' "$FRJSON"); fr_rows=$(jq '[.classes[].rows] | add' "$FRJSON")
+fr_ntraj=$(jq '.totals.classes - (.classes | length)' "$FRJSON"); fr_trows=$(jq '.totals.rows - ([.classes[].rows] | add)' "$FRJSON")
+assert_contains "failure table: the header row" "| Class | Kind | Rows | Workers | New or recurring | Route |" "$file"
+assert_contains "failure table: a class row carries kind, workers and route" "| denied/guard-" "$file"
+assert_contains "failure table: the routing decision is shown" "would-file" "$file"
+assert_contains "failure table: the digest's own window is shown verbatim" "$fr_start to $fr_end" "$file"
+assert_contains "failure table: only the top 10 classes, the rest counted" "and 2 more classes" "$file"
+assert_absent   "failure table: no worker name is printed" "N777" "$file"
+assert_absent   "failure table: the raw digest is not pasted" "raw digest" "$file"
+if [ "$fr_ntraj" = "2" ]; then pass "count rule: the fixture holds two traj/ classes that classes[] leaves out"; else fail "count rule: the fixture holds two traj/ classes that classes[] leaves out" "got $fr_ntraj"; fi
+assert_contains "count rule: the class count is classes[], not totals.classes" "**$fr_nclass** classes" "$file"
+assert_contains "count rule: the row count is the sum of classes[]" "**$fr_rows** rows" "$file"
+assert_contains "count rule: the trajectory signals are named, not counted as classes" "and $fr_ntraj trajectory signals (not listed) over $fr_trows rows" "$file"
+if [ "$(jq 'has("schema_version")' "$FRJSON")" = "false" ]; then pass "schema: the real writer emits no schema_version, so the table above is the absent-version row"; else fail "schema: the real writer emits no schema_version"; fi
+
+echo "TEST: a JSON the reader cannot trust falls back to the raw digest with one line saying why"
+FRBAK="$FRD/good.json"; cp "$FRJSON" "$FRBAK"
+OUT_FR1="$TMP_ROOT/fr-v1.md"
+jq '. + {schema_version: 1}' "$FRBAK" > "$FRJSON"; run_fr "$OUT_FR1"
+assert_contains "schema: schema_version 1 is accepted" "| Class | Kind | Rows |" "$(cat "$OUT_FR1")"
+OUT_FR2="$TMP_ROOT/fr-v2.md"
+jq '. + {schema_version: 2}' "$FRBAK" > "$FRJSON"; run_fr "$OUT_FR2"
+file=$(cat "$OUT_FR2")
+assert_contains "schema: schema_version 2 is rejected to the raw digest" "raw digest" "$file"
+assert_contains "schema: the rejection says why" "JSON was not used" "$file"
+assert_contains "schema: the reason names the version" "schema_version 2" "$file"
+assert_absent   "schema: no table from a rejected file" "| Class | Kind |" "$file"
+OUT_FR3="$TMP_ROOT/fr-bad.md"
+printf '{"window": ' > "$FRJSON"; run_fr "$OUT_FR3"
+file=$(cat "$OUT_FR3")
+assert_contains "schema: malformed JSON is rejected to the raw digest" "raw digest" "$file"
+assert_contains "schema: the malformed reason" "not valid JSON" "$file"
+OUT_FR4="$TMP_ROOT/fr-missing.md"
+jq 'del(.classes[0].rows)' "$FRBAK" > "$FRJSON"; run_fr "$OUT_FR4"
+assert_contains "schema: a class row missing a field is rejected" "a required field is missing" "$(cat "$OUT_FR4")"
+OUT_FR5="$TMP_ROOT/fr-nojson.md"
+rm -f "$FRJSON"; run_fr "$OUT_FR5"
+file=$(cat "$OUT_FR5")
+assert_contains "no JSON: the raw digest disclosure" "<summary>raw digest</summary>" "$file"
+assert_contains "no JSON: the markdown digest is inside it, headings dropped a level" "#### Top classes" "$file"
+assert_absent   "no JSON: no 'not used' line when there was no JSON to use" "JSON was not used" "$file"
+assert_contains "no JSON: the worker lines are the raw digest's own" "workers N7771" "$file"
+OUT_FR6="$TMP_ROOT/fr-nodigest.md"
+rm -f "$FRD/out/failure-review-2026-11-03.md"; run_fr "$OUT_FR6"
+assert_contains "no digest at all: today's no-digest line" "No failure review digest for 2026-11-03" "$(cat "$OUT_FR6")"
 
 # Summary --------------------------------------------------------------
 

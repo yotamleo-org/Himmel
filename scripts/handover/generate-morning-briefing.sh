@@ -12,15 +12,14 @@
 #   ## 💸 What it spent   — Claude usage of the last 24h + this report's cost
 #   ## ▶️ What runs next  — in-flight count, release progress + first suggested step
 #   ## TL;DR            — derived counts (heuristic; --llm enriches)
-#   ## ✅ Completed       — merged PRs (gh) + commits + Done cross-ref
+#   ## ✅ Completed       — merged PRs (gh) + the report day's commits + tickets moved to Done that day
 #   ## 🔴 In-flight WIP   — jira In Progress correlated to worktrees/open-PRs
-#   ## 🧹 Stale worktrees — worktrees on MERGED-PR branches
-#   ## 📋 Backlog         — flat To-Do list (--llm clusters by theme)
+#   ## 🧹 Stale worktrees — worktrees on MERGED-PR branches + idle remote branches
 #   ## 📄 Docs drift     — mapped sources changed without their docs
 #   ## Suggested order    — heuristic ordering (--llm enriches)
 #
 # Default run costs ~no Claude tokens. `--llm` enriches TL;DR + Suggested
-# order + Backlog theme-clustering via a bounded interactive claude turn
+# order via a bounded interactive claude turn
 # (the interactive form with stdin closed, NOT the headless -p/--print/--bg
 # forms; stays on Max quota, passes the no-headless gate), failing open
 # per-block to the deterministic heuristic.
@@ -63,6 +62,7 @@ GIT_CMD="${GIT_CMD:-git}"
 JIRA_CMD="${JIRA_CMD:-}"
 CLAUDE_CMD="${CLAUDE_CMD:-claude}"
 SINCE_SHA=""
+since_given=0
 since_all=0
 SINCE_DATE=""
 OUT_FILE=""
@@ -70,7 +70,6 @@ DRY_RUN=0
 JIRA_LIMIT=200
 LLM=0
 LLM_MODEL="sonnet"
-BACKLOG_LIMIT=40
 
 usage() {
     cat <<'EOF'
@@ -83,8 +82,11 @@ Generates the dated 🌅 Morning Report by templating live git/gh/jira/worktree
 state into the curated schema. Default run costs ~no Claude tokens.
 
 Optional:
-  --since SHA              Marker commit. Default: last tag (`git
-                           describe --tags --abbrev=0`) or `HEAD~50`.
+  --since SHA              Marker commit: the Commits section then lists
+                           SHA..HEAD. Default: the report day's commits on the
+                           default branch; the docs-drift range and the source
+                           markers use the last tag (`git describe --tags
+                           --abbrev=0`) or `HEAD~50`.
   --since-date YYYY-MM-DD  Date filter for `gh pr list --search
                            'merged:>=DATE'`. Default: today LOCAL (date +%F),
                            inclusive.
@@ -95,10 +97,10 @@ Optional:
                            with no HANDOVER_DIR and no --out exits 1 and
                            writes nothing.
   --jira-limit N           Max rows per jira status query. Default 200.
-  --backlog-limit N        Max To-Do rows rendered in Backlog. Default 40.
-  --llm                    Enrich TL;DR + Suggested order + Backlog clustering
-                           via a bounded `claude` turn (default OFF). Also
-                           enabled by MORNING_REPORT_LLM=1.
+  --backlog-limit N        Accepted and ignored (the Backlog section was removed).
+  --llm                    Enrich TL;DR + Suggested order via a bounded
+                           `claude` turn (default OFF). Also enabled by
+                           MORNING_REPORT_LLM=1.
   --llm-model MODEL        Model for --llm. Default `sonnet`.
   --dry-run                Print the report to stdout; touch no files.
 
@@ -109,16 +111,17 @@ Environment overrides:
   SHIFTS_FILE                                The shift record (default $HANDOVER_DIR/shifts.jsonl).
   MORNING_SHIFT_CMD / MORNING_SHIFT_SPEND_CMD  The shift helper (run first) and the spend reader.
   MORNING_TODAY=YYYY-MM-DD                   Test override of the report day.
+  STALE_BRANCH_DAYS=N                        Idle days before a remote branch is listed as stale. Default 7.
 EOF
 }
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --since)         SINCE_SHA="${2:-}"; shift 2 ;;
+        --since)         SINCE_SHA="${2:-}"; since_given=1; shift 2 ;;
         --since-date)    SINCE_DATE="${2:-}"; shift 2 ;;
         --out)           OUT_FILE="${2:-}"; shift 2 ;;
         --jira-limit)    JIRA_LIMIT="${2:-200}"; shift 2 ;;
-        --backlog-limit) BACKLOG_LIMIT="${2:-40}"; shift 2 ;;
+        --backlog-limit) echo "NOTE: briefing: --backlog-limit is ignored (the Backlog section was removed)" >&2; shift 2 ;;
         --llm)           LLM=1; shift ;;
         --llm-model)     LLM_MODEL="${2:-sonnet}"; shift 2 ;;
         --dry-run)       DRY_RUN=1; shift ;;
@@ -178,6 +181,8 @@ fi
 if [ "$report_day" = "utc" ]; then zone_label="UTC"; else zone_label="local midnight on the station, $(date +%Z)"; fi
 # swallow-ok: no next-day form (GNU or BSD date) leaves next_day empty, so the window line reads without its end
 next_day=$(date -d "$today + 1 day" +%F 2>/dev/null || date -j -v+1d -f %F "$today" +%F 2>/dev/null || echo "")
+# swallow-ok: no weekday form (GNU or BSD date) leaves the bare date as the day's label
+day_label=$(LC_ALL=C date -d "$today" '+%a %-d %b' 2>/dev/null || LC_ALL=C date -j -f %F "$today" '+%a %-d %b' 2>/dev/null || echo "$today")
 
 # Resolve --since-date when not passed — LOCAL day.
 [ -z "$SINCE_DATE" ] && SINCE_DATE="$today"
@@ -279,13 +284,40 @@ pr_map_ok=1
 
 # Gather sections (all PARENT-scope; the template heredoc only prints these) ----
 
-# Commits since SINCE_SHA.
-commit_range="${SINCE_SHA}..HEAD"
-[ "$since_all" -eq 1 ] && commit_range="HEAD"
-if commits_raw=$($GIT_CMD -C "$repo_root" log --oneline "$commit_range" 2>/dev/null); then
-    :
+# The default branch: origin's HEAD, else main or master, as the local branch when it exists (else origin's), else HEAD.
+# swallow-ok: no origin/HEAD leaves the name empty, so main or master, else HEAD, is the default branch
+default_branch=$($GIT_CMD -C "$repo_root" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || true)
+default_branch="${default_branch#origin/}"
+if [ -z "$default_branch" ]; then
+    for _b in main master; do
+        if $GIT_CMD -C "$repo_root" rev-parse --verify -q "refs/heads/$_b" >/dev/null 2>&1; then default_branch="$_b"; break; fi
+    done
+fi
+default_ref="HEAD"
+if [ -n "$default_branch" ]; then
+    if $GIT_CMD -C "$repo_root" rev-parse --verify -q "refs/heads/$default_branch" >/dev/null 2>&1; then default_ref="refs/heads/$default_branch"
+    elif $GIT_CMD -C "$repo_root" rev-parse --verify -q "refs/remotes/origin/$default_branch" >/dev/null 2>&1; then default_ref="refs/remotes/origin/$default_branch"; fi
+fi
+
+# Commits: the report day's, [today 00:00, next day 00:00) on the default branch, read with the zone pinned on the git
+# call (UTC when report_day=utc, the station zone otherwise) so git and `today` agree. --since SHA is the explicit
+# override: SHA..HEAD, and the heading then says "since SHA". Without a next day the window has no end.
+if [ "$since_given" -eq 1 ]; then
+    commit_range="${SINCE_SHA}..HEAD"
+    if commits_raw=$($GIT_CMD -C "$repo_root" log --oneline "$commit_range" 2>/dev/null); then
+        :
+    else
+        commits_raw=""
+    fi
 else
-    commits_raw=""
+    until_args=()
+    [ -n "$next_day" ] && until_args=(--until="$next_day 00:00")
+    # swallow-ok: a failed git read leaves the day without commits, and the section says none were found
+    if commits_raw=$( [ "$report_day" = "utc" ] && export TZ=UTC; $GIT_CMD -C "$repo_root" log --oneline --since="$today 00:00" ${until_args[@]+"${until_args[@]}"} "$default_ref" 2>/dev/null ); then
+        :
+    else
+        commits_raw=""
+    fi
 fi
 commit_count=$(printf '%s\n' "$commits_raw" | grep -c . || true)
 
@@ -316,19 +348,39 @@ if [ "$briefing_forge" = "github" ] && command -v "${GH_CMD%% *}" >/dev/null 2>&
     fi
 fi
 
-# Done tickets via jira (best-effort) — cross-referenced against commit keys.
+# Done tickets via jira (best-effort): the tickets whose status moved to Done inside the report day, from Jira's own
+# transition history (the commits no longer filter them). A merged PR of the day that names the key adds its number.
+# A window with no end is never queried: without a next day the section says so.
+# ponytail: the Done window is bounded in the Jira profile's zone, not the report zone; ceiling = with report_day=utc and a
+# non-UTC Jira profile, transitions within the zone offset of midnight land on the neighbouring day; upgrade path = pass
+# "yyyy/MM/dd HH:mm" bounds converted to the Jira profile's zone (read once from /myself) and add a VM row with a non-UTC profile.
 done_block=""
+done_skipped=0
 if [ -n "$JIRA_CMD" ]; then
-    if done_raw=$("${JIRA_ARGV[@]}" list --status Done --limit "$JIRA_LIMIT" 2>/dev/null); then
-        if [ ${#ticket_keys[@]} -gt 0 ]; then
-            done_block=$(printf '%s\n' "$done_raw" | awk -F'\t' -v keys="$(IFS='|'; echo "${ticket_keys[*]}")" '
-                BEGIN { split(keys, k, "|"); for (i in k) want[k[i]]=1 }
-                want[$1] { printf "- %s — %s — %s\n", $1, $2, $4 }
-            ')
-        fi
+    if [ -z "$next_day" ]; then
+        done_skipped=1
     else
-        jira_ok=0
-        echo "WARNING: briefing: jira 'Done' query failed — counts may be incomplete" >&2
+        done_jql="status CHANGED TO Done DURING (\"$today\", \"$next_day\")"
+        [ -n "${JIRA_PROJECT_KEY:-}" ] && done_jql="project = $JIRA_PROJECT_KEY AND $done_jql"
+        if done_raw=$("${JIRA_ARGV[@]}" list --jql "$done_jql" --limit "$JIRA_LIMIT" 2>/dev/null); then
+            # BSD awk (macOS) rejects a newline inside -v, so the PR rows go over tab-separated.
+            done_block=$(printf '%s\n' "$done_raw" | awk -F'\t' -v prs="$(printf '%s' "$pr_table" | tr '\n' '\t')" '
+                BEGIN {
+                    n = split(prs, row, "\t")
+                    for (i = 1; i <= n; i++) {
+                        m = split(row[i], f, "|")
+                        if (m < 4) continue
+                        k = f[3]; p = f[2]
+                        gsub(/^ +| +$/, "", k); gsub(/^ +| +$/, "", p)
+                        if (!(k in pr)) pr[k] = p
+                    }
+                }
+                NF >= 3 && $1 != "KEY" { printf "- %s — %s — %s%s\n", $1, $2, $4, ($1 in pr) ? " — PR " pr[$1] : "" }
+            ')
+        else
+            jira_ok=0
+            echo "WARNING: briefing: jira 'Done' query failed — counts may be incomplete" >&2
+        fi
     fi
 fi
 
@@ -362,8 +414,10 @@ if [ -n "$JIRA_CMD" ]; then
     fi
 fi
 
-# Stale worktrees: branches whose PR is MERGED. Exclude main + current checkout.
-# "no PR yet" is active WIP, NOT stale.
+# Stale branches, one table of two kinds of row. worktree: a worktree branch whose PR is MERGED (main + the current
+# checkout excluded; "no PR yet" is active WIP, NOT stale). remote: origin/<branch> idle at least STALE_BRANCH_DAYS
+# (committer date) whose PR is merged, closed or absent; an OPEN PR is never listed, nor origin/HEAD, origin/main or the
+# default branch. The report does not fetch: it says how old the remote refs are. The copy command is never run.
 cur_branch=$($GIT_CMD -C "$repo_root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 stale_rows=""
 while IFS= read -r br; do
@@ -372,22 +426,46 @@ while IFS= read -r br; do
     [ "$br" = "$cur_branch" ] && continue
     merged_pr=$(printf '%s\n' "$pr_map" | awk -F'\t' -v b="$br" 'tolower($2)==tolower(b) && $1=="MERGED"{print $3; exit}')
     if [ -n "$merged_pr" ]; then
-        stale_rows="$stale_rows| \`$br\` | PR #$merged_pr MERGED | prune |"$'\n'
+        stale_rows="$stale_rows| \`$br\` | worktree | PR #$merged_pr MERGED | prune |"$'\n'
     fi
 done <<EOF_WT
 $wt_branches
 EOF_WT
 
-# Backlog (To-Do) tickets.
-backlog_raw=""
-if [ -n "$JIRA_CMD" ]; then
-    if ! backlog_raw=$("${JIRA_ARGV[@]}" list --status 'To Do' --limit "$JIRA_LIMIT" 2>/dev/null); then
-        jira_ok=0; backlog_raw=""
-        echo "WARNING: briefing: jira 'To Do' query failed — counts may be incomplete" >&2
+stale_days="${STALE_BRANCH_DAYS:-7}"
+case "$stale_days" in ''|*[!0-9]*) stale_days=7 ;; esac
+remote_scanned=0; stale_odd=0; fetch_note=""
+if [ "$briefing_forge" = "github" ] && [ "$pr_map_ok" -eq 1 ]; then
+    remote_scanned=1
+    now_epoch=$(date +%s)
+    stale_cutoff=$((now_epoch - stale_days * 86400))
+    default_name="${default_ref#refs/heads/}"; default_name="${default_name#refs/remotes/origin/}"
+    while IFS=$'\t' read -r _ref _ts; do
+        [ -n "$_ref" ] && [ -n "$_ts" ] || continue
+        rb="${_ref#refs/remotes/origin/}"
+        case "$rb" in HEAD|main|"$default_name") continue ;; esac
+        [ "$_ts" -le "$stale_cutoff" ] || continue
+        _pr=$(printf '%s\n' "$pr_map" | awk -F'\t' -v b="$rb" '
+            tolower($2) == tolower(b) { if ($1 == "OPEN") o = 1; else if ($1 == "MERGED" && !m) m = $3; else if ($1 == "CLOSED" && !c) c = $3 }
+            END { if (o) print "OPEN"; else if (m) print "MERGED " m; else if (c) print "CLOSED " c; else print "none" }')
+        [ "$_pr" = "OPEN" ] && continue
+        # The delete command is pasted into a shell: a name outside the plain set is not offered as one.
+        case "$rb" in *[!A-Za-z0-9._/+@=-]*) stale_odd=$((stale_odd + 1)); continue ;; esac
+        if [ "$_pr" = "none" ]; then _state="no PR"; else _state="PR #${_pr#* } ${_pr%% *}"; fi
+        stale_rows="$stale_rows| \`origin/$rb\` | remote | $_state | \`git push origin --delete $rb\` |"$'\n'
+    done < <($GIT_CMD -C "$repo_root" for-each-ref --sort=committerdate --format='%(refname)%09%(committerdate:unix)' refs/remotes/origin 2>/dev/null)
+    # swallow-ok: no common dir leaves FETCH_HEAD unfound, so the age reads unknown
+    _gcd=$($GIT_CMD -C "$repo_root" rev-parse --git-common-dir 2>/dev/null || echo "")
+    case "$_gcd" in /*) ;; *) _gcd="$repo_root/$_gcd" ;; esac
+    fetch_note="unknown (no FETCH_HEAD in this clone)"
+    # swallow-ok: an unreadable FETCH_HEAD time leaves the age unknown
+    if [ -f "$_gcd/FETCH_HEAD" ] && _fm=$(stat -c %Y "$_gcd/FETCH_HEAD" 2>/dev/null || stat -f %m "$_gcd/FETCH_HEAD" 2>/dev/null); then # gnu-ok: BSD stat -f is the fallback
+        _age=$((now_epoch - _fm))
+        if [ "$_age" -lt 5400 ]; then fetch_note="$((_age / 60)) min ago (FETCH_HEAD)"
+        elif [ "$_age" -lt 172800 ]; then fetch_note="$((_age / 3600)) h ago (FETCH_HEAD)"
+        else fetch_note="$((_age / 86400)) d ago (FETCH_HEAD)"; fi
     fi
 fi
-backlog_rows=$(printf '%s\n' "$backlog_raw" | awk -F'\t' 'NF>=3 && $1!="KEY"{print}')
-backlog_total=$(printf '%s\n' "$backlog_rows" | grep -c . || true)
 
 # Frame 16 inputs -------------------------------------------------------------
 # Three lead lines read an input of their own. Each fails open: a source that is
@@ -653,7 +731,7 @@ fi
 if [ "$no_tracker" -eq 1 ]; then
     tldr_default="${open_prs_shown} · ${stale_shown} · **${commit_count}** commits"
 else
-    tldr_default="**${inprog_count}** in-flight · ${stale_shown} · **${done_count}** Done (cross-ref'd) · **${backlog_total}** backlog"
+    tldr_default="**${inprog_count}** in-flight · ${stale_shown} · **${done_count}** Done · Backlog: on the Board"
 fi
 
 order_default=$(
@@ -661,12 +739,11 @@ order_default=$(
     [ "$stale_count" -gt 0 ] && { printf '%d. Prune %s stale worktree(s)%s.\n' "$n" "$stale_count" "$(cmd_hint clean)"; n=$((n+1)); }
     [ "$open_prs" -gt 0 ] && { printf '%d. Review/merge %s open PR(s)%s.\n' "$n" "$open_prs" "$(cmd_hint pr-check)"; n=$((n+1)); }
     [ "$inprog_count" -gt 0 ] && { printf '%d. Advance %s In-Progress ticket(s).\n' "$n" "$inprog_count"; n=$((n+1)); }
-    [ "$backlog_total" -gt 0 ] && printf '%d. Pull from the %s-item backlog.\n' "$n" "$backlog_total"
     :   # force final exit 0 — a trailing short-circuit && would propagate rc1 to
-        # the assignment and abort under set -e (empty backlog / jira down).
+        # the assignment and abort under set -e (nothing in flight / jira down).
 )
 if [ -z "$order_default" ]; then
-    if [ "$no_tracker" -eq 1 ]; then order_default="_Nothing waiting on you._"; else order_default="_Nothing in flight — pick from the backlog._"; fi
+    if [ "$no_tracker" -eq 1 ]; then order_default="_Nothing waiting on you._"; else order_default="_Nothing in flight._"; fi
 fi
 
 # --llm enrichment (opt-in, fail-open per block) -------------------------------
@@ -674,7 +751,6 @@ fi
 tldr_final="$tldr_default"
 order_final="$order_default"
 llm_status=""   # ok | failed | unresolved; empty when --llm did not run
-backlog_block_final=""   # empty => template uses the deterministic backlog render
 
 # extract_block RAW NAME → text between <<<NAME_BEGIN>>>/<<<NAME_END>>> (exclusive).
 extract_block() {
@@ -690,7 +766,7 @@ fi
 
 if [ "$LLM" -eq 1 ]; then
     llm_prompt="You are enriching a daily engineering Morning Report. Below is the
-deterministic report body. Produce ONLY three blocks, each wrapped EXACTLY in
+deterministic report body. Produce ONLY two blocks, each wrapped EXACTLY in
 its sentinel lines and nothing else outside them:
 
 <<<TLDR_BEGIN>>>
@@ -699,14 +775,9 @@ its sentinel lines and nothing else outside them:
 <<<ORDER_BEGIN>>>
 a numbered suggested order of what to do next
 <<<ORDER_END>>>
-<<<BACKLOG_BEGIN>>>
-the backlog tickets clustered into 3-6 named themes (markdown)
-<<<BACKLOG_END>>>
 
 --- REPORT BODY ---
-In-flight: ${inprog_count}; stale: ${stale_count}; Done: ${done_count}; backlog: ${backlog_total}
-Backlog tickets:
-${backlog_rows}
+In-flight: ${inprog_count}; stale: ${stale_count}; Done: ${done_count}
 In-Progress:
 ${inprogress_raw}"
     # a text-in/text-out summary needs no plugins beyond the floor.
@@ -717,12 +788,65 @@ ${inprogress_raw}"
         llm_status="ok"
         t=$(extract_block "$llm_out" TLDR);    if [ -n "$t" ]; then tldr_final="$t"; else echo "WARNING: --llm TLDR block empty; using heuristic" >&2; fi
         o=$(extract_block "$llm_out" ORDER);   if [ -n "$o" ]; then order_final="$o"; else echo "WARNING: --llm ORDER block empty; using heuristic" >&2; fi
-        b=$(extract_block "$llm_out" BACKLOG); if [ -n "$b" ]; then backlog_block_final="$b"; fi
     else
         llm_status="failed"
         echo "WARNING: --llm: '$CLAUDE_CMD' failed; using deterministic heuristics" >&2
     fi
 fi
+
+# Failure review body -----------------------------------------------------------
+# The digest the daily failure-review cadence wrote for the report day. failure_review.py writes it twice: failure-review-<day>.md
+# and failure-review-<day>.json beside it. A usable JSON is drawn as a table; with none, or one that fails the check below,
+# the markdown goes under a "raw digest" disclosure, headings dropped one level (and one line says why the JSON was not used).
+# Worker names never print on the table path: workers_sample is not read, and the raw markdown is not pasted.
+# The check, in one place: the file parses; it is an object with window.start and window.end strings, classes and routing arrays,
+# a totals object, and every classes[] row has class, kind, rows, workers and recurring; a schema_version key, if present, is 1.
+# ponytail: the reader pins no version because the writer emits none; ceiling = a writer that changes a field without adding
+# a version is read wrongly; upgrade path = failure_review.py adds schema_version (its open follow-up ticket owns that file).
+# shellcheck disable=SC2016  # the jq programs: $d, $nc and the rest are jq variables, not shell ones
+fr_shape_jq='(.window | type == "object" and (.start | type == "string") and (.end | type == "string"))
+    and (.classes | type == "array") and (.routing | type == "array") and (.totals | type == "object")
+    and all(.classes[]; type == "object" and has("class") and has("kind") and has("rows") and has("workers") and has("recurring"))'
+# shellcheck disable=SC2016
+fr_table_jq='def cell: tostring | gsub("\\|"; "\\|") | gsub("\n"; " ");
+    . as $d | ($d.classes | length) as $nc
+    | ($d.classes | map(.rows) | add // 0) as $sumrows
+    | ((($d.totals.classes // 0) - $nc) | if . < 0 then 0 else . end) as $ntraj
+    | ((($d.totals.rows // 0) - $sumrows) | if . < 0 then 0 else . end) as $trows
+    | ($d.routing | length) as $nr
+    | "Digest window (its own 24 h, not the report day): \($d.window.start) to \($d.window.end)", "",
+      "**\($nc)** classes over **\($sumrows)** rows by **\($d.totals.workers // 0)** workers"
+        + (if $ntraj > 0 then ", and \($ntraj) trajectory signals (not listed) over \($trows) rows" else "" end), "",
+      "| Class | Kind | Rows | Workers | New or recurring | Route |", "|---|---|---|---|---|---|",
+      ($d.classes[:10][] | "| \(.class | cell) | \(.kind | cell) | \(.rows) | \(.workers) | \(if .recurring then "recurring" else "new" end) | \((.route // "none") | cell) |"),
+      (if $nc > 10 then "", "and \($nc - 10) more classes" else empty end), "",
+      "Routing (\($nr)):", "",
+      ($d.routing[:10][] | "- \((.decision // "?") | cell) \((.class // "?") | cell)\(if .ticket then " " + (.ticket | tostring) else "" end) (\(.workers // 0) workers)"),
+      (if $nr > 10 then "- and \($nr - 10) more" else empty end),
+      (if $nr == 0 then "- none" else empty end)'
+failure_review_body() {   # <digest .md> <digest .json> <report day>
+    local md="$1" js="$2" day="$3" why="" table=""
+    if [ -f "$js" ]; then
+        if ! command -v jq >/dev/null 2>&1; then why="jq is not installed"
+        elif ! jq -e . "$js" >/dev/null 2>&1; then why="the file is not valid JSON"
+        elif ! jq -e 'type == "object"' "$js" >/dev/null 2>&1; then why="a required field is missing"
+        elif ! jq -e '(has("schema_version") | not) or .schema_version == 1' "$js" >/dev/null 2>&1; then
+            why="schema_version $(jq -c '.schema_version' "$js") is not the supported 1"
+        elif ! jq -e "$fr_shape_jq" "$js" >/dev/null 2>&1; then why="a required field is missing"
+        # swallow-ok: a table jq cannot build is not used, and the section says why and falls back to the raw digest
+        elif ! table=$(jq -r "$fr_table_jq" "$js" 2>/dev/null); then why="the table could not be built from it"
+        fi
+        if [ -z "$why" ]; then printf '%s\n' "$table"; return 0; fi
+        printf '_The failure review JSON was not used: %s._\n\n' "$why"
+    fi
+    if [ -f "$md" ]; then
+        printf '<details>\n<summary>raw digest</summary>\n\n'
+        sed -e '/^## Failure review$/d' -e 's/^### /#### /' "$md" | sed '/./,$!d'
+        printf '\n</details>\n'
+    else
+        printf '_No failure review digest for %s (scripts/eval/worker-digest/failure-review-cadence.sh)._\n' "$day"
+    fi
+}
 
 # Template ---------------------------------------------------------------------
 
@@ -744,18 +868,19 @@ EOF
     [ "$jira_ok" -eq 0 ] && [ "$no_tracker" -eq 0 ] && jira_down=1
     if [ "$jira_down" -eq 1 ] || [ "$pr_map_ok" -eq 0 ]; then
         printf '> ⚠️ '
-        [ "$jira_down" -eq 1 ] && printf 'jira unavailable — In-flight / Backlog / Done counts are INCOMPLETE. '
+        [ "$jira_down" -eq 1 ] && printf 'jira unavailable — In-flight / Done counts are INCOMPLETE. '
         [ "$pr_map_ok" -eq 0 ] && printf 'gh PR state unavailable — Stale + PR correlation SKIPPED. '
         printf '\n\n'
     fi
     # The four answers a reader back from a shift needs first (v5 frame 16);
     # every older section follows unchanged. A field with no input says so.
     printf '## ✅ What shipped\n\n'
-    if [ "$jira_ok" -eq 1 ]; then done_shown="**$done_count**"
+    if [ "$done_skipped" -eq 1 ]; then done_shown="not available (no day window to query)"
+    elif [ "$jira_ok" -eq 1 ]; then done_shown="**$done_count**"
     elif [ "$no_tracker" -eq 1 ]; then done_shown="not available (no Jira tracker)"
     else done_shown="not available (jira unavailable)"; fi
     if [ "$pr_count_ok" -eq 1 ] && [ "$pr_count" != "unknown" ]; then pr_shown="**$pr_count**"; else pr_shown="not available"; fi
-    printf '%s PRs merged to main · **%s** commits · %s Done (cross-ref'"'"'d). Detail: Completed, below.\n\n' \
+    printf '%s PRs merged to main · **%s** commits · %s Done that day. Detail: Completed, below.\n\n' \
         "$pr_shown" "$commit_count" "$done_shown"
     printf '## ⏳ What waits on you\n\n'
     if [ "$briefing_forge" = "github" ] && [ "$pr_map_ok" -eq 1 ]; then
@@ -847,22 +972,40 @@ EOF
     else
         printf '_No merged PRs found via gh since %s. Check gh auth + filter._\n' "$SINCE_DATE"
     fi
-    printf '\n### Commits (%s since %s)\n\n' "$commit_count" "$SINCE_SHA"
+    if [ "$since_given" -eq 1 ]; then
+        printf '\n### Commits (%s since %s)\n\n' "$commit_count" "$SINCE_SHA"
+    else
+        printf '\n### Commits (%s on %s)\n\n' "$commit_count" "$day_label"
+    fi
     if [ -n "$commits_raw" ]; then
         # shellcheck disable=SC2016  # backticks here are markdown literal, not subshell
         printf '```\n%s\n```\n' "$commits_raw"
-    else
+    elif [ "$since_given" -eq 1 ]; then
         printf '_No commits found since %s._\n' "$SINCE_SHA"
+    else
+        printf '_No commits found on %s._\n' "$day_label"
     fi
-    printf '\n### Tickets transitioned to Done (cross-referenced against commits)\n\n'
+    if [ "$no_tracker" -eq 1 ]; then
+        printf '\n### Moved to Done on %s (tracker has no transition history)\n\n' "$day_label"
+    elif [ "$jira_ok" -eq 1 ] && [ "$done_skipped" -eq 0 ]; then
+        printf '\n### Moved to Done on %s (%s)\n\n' "$day_label" "$done_count"
+    else
+        printf '\n### Moved to Done on %s (not available)\n\n' "$day_label"
+    fi
     if [ -n "$done_block" ]; then
         printf '%s\n' "$done_block"
     elif [ "$no_tracker" -eq 1 ]; then
         printf '_%s_\n' "$no_tracker_msg"
-    elif [ ${#ticket_keys[@]} -eq 0 ]; then
-        printf '_No ticket keys detected in commit messages._\n'
+    elif [ "$done_skipped" -eq 1 ]; then
+        printf '_The day after %s could not be computed, so no Done query was made (a window with no end is never queried)._\n' "$today"
+    elif [ "$jira_ok" -eq 0 ]; then
+        if [ ${#ticket_keys[@]} -eq 0 ]; then
+            printf '_jira CLI unavailable; no ticket keys detected in the day'"'"'s commits._\n'
+        else
+            printf '_Ticket keys detected in the day'"'"'s commits: %s. jira CLI unavailable._\n' "$(IFS=,; echo "${ticket_keys[*]}")"
+        fi
     else
-        printf '_Ticket keys detected in commits: %s. jira CLI unavailable or no Done matches._\n' "$(IFS=,; echo "${ticket_keys[*]}")"
+        printf '_No ticket moved to Done on %s._\n' "$day_label"
     fi
 
     # In-flight WIP -----------------------------------------------------------
@@ -908,30 +1051,26 @@ EOF_WIP
     # Stale worktrees ---------------------------------------------------------
     printf '\n## 🧹 Stale worktrees\n\n'
     if [ -n "$stale_rows" ]; then
-        printf '| Worktree branch | State | Action |\n|---|---|---|\n%s' "$stale_rows"
+        printf '| Branch | Kind | State | Action |\n|---|---|---|---|\n'
+        printf '%s' "$stale_rows" | sed -n '1,15p'
+        if [ "$stale_count" -gt 15 ]; then
+            # swallow-ok: grep -c prints 0 for no match; the true only keeps its exit status from ending the run
+            more_wt=$(printf '%s' "$stale_rows" | sed -n '16,$p' | grep -c '| worktree |' || true)
+            # swallow-ok: as above
+            more_rm=$(printf '%s' "$stale_rows" | sed -n '16,$p' | grep -c '| remote |' || true)
+            printf '\n_and %s more (%s worktree, %s remote)._\n' "$((stale_count - 15))" "$more_wt" "$more_rm"
+        fi
     elif [ "$briefing_forge" != "github" ]; then
         printf '_PR state unavailable on non-github forge — stale detection skipped._\n'
     elif [ "$pr_map_ok" -eq 0 ]; then
         printf '_gh PR-state query failed — stale detection unavailable (NOT a clean garden)._\n'
     else
-        printf '_No stale worktrees (no merged-PR branches checked out)._\n'
+        printf '_No stale worktrees (no merged-PR branches checked out) and no idle remote branches._\n'
     fi
-
-    # Backlog -----------------------------------------------------------------
-    printf '\n## 📋 Backlog (%s To Do)\n\n' "$backlog_total"
-    if [ -n "$backlog_block_final" ]; then
-        printf '%s\n' "$backlog_block_final"
-    elif [ "$backlog_total" -gt 0 ]; then
-        # head may close the pipe early → SIGPIPE/141 → pipefail; guard with || true.
-        { printf '%s\n' "$backlog_rows" | head -n "$BACKLOG_LIMIT" \
-            | awk -F'\t' '{printf "- %s — %s\n", $1, $4}'; } || true
-        if [ "$backlog_total" -gt "$BACKLOG_LIMIT" ]; then
-            printf '_…and %s more (raise --backlog-limit to see all)._\n' "$((backlog_total - BACKLOG_LIMIT))"
-        fi
-    elif [ "$no_tracker" -eq 1 ]; then
-        printf '_%s_\n' "$no_tracker_msg"
-    else
-        printf '_No To-Do tickets (or jira unavailable)._\n'
+    if [ "$remote_scanned" -eq 1 ]; then
+        printf '\nRemote refs as last fetched: %s; the report does not fetch.' "$fetch_note"
+        [ "$stale_odd" -gt 0 ] && printf ' %s remote branch(es) with an unusual name are not listed.' "$stale_odd"
+        printf '\n'
     fi
 
     # Docs drift -------------------------------------------------
@@ -950,17 +1089,12 @@ EOF_WIP
     fi
 
     # Failure review --------------------------------------------
-    # The digest the daily failure-review cadence wrote today; its headings drop
-    # one level so it nests under this section. Only where the cadence ships: the
-    # shared state dir may hold another project's digest.
-    failure_review="${HIMMEL_FAILURE_REVIEW_DIR:-$HOME/.himmel/state/failure-review}/failure-review-$today.md"
+    # The digest the daily failure-review cadence wrote today (see failure_review_body). Only where the cadence ships:
+    # the shared state dir may hold another project's digest.
+    failure_review="${HIMMEL_FAILURE_REVIEW_DIR:-$HOME/.himmel/state/failure-review}/failure-review-$today"
     if [ -f "$SCRIPT_DIR/../eval/worker-digest/failure-review-cadence.sh" ]; then
         printf '\n## 🧯 Failure review\n\n'
-        if [ -f "$failure_review" ]; then
-            sed -e '/^## Failure review$/d' -e 's/^### /#### /' "$failure_review" | sed '/./,$!d'
-        else
-            printf '_No failure review digest for %s (scripts/eval/worker-digest/failure-review-cadence.sh)._\n' "$today"
-        fi
+        failure_review_body "$failure_review.md" "$failure_review.json" "$today"
     fi
 
     # Prompt cache ------------------------------------------------------------
