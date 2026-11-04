@@ -8,6 +8,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 W="$(cd "$HERE/../.." && pwd)"
 CHECK="$W/scripts/lib/launch-guard-check.sh"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/launch-guard-test.XXXXXX")" || { echo "FAIL: mktemp" >&2; exit 1; }
+tmp="$(cd "$tmp" && pwd -P)"  # the check prints physical paths (macOS /var -> /private/var)
 trap 'rm -rf "$tmp"' EXIT
 fails=0
 pass() { echo "ok - $1"; }
@@ -47,6 +48,24 @@ mkhimmel() {
   cp "$2" "$1/.claude/settings.json"
   git -C "$1" init -q -b main && git -C "$1" add -A && git -C "$1" commit -q -m init
 }
+# History fixtures: an anchor primary that carries trusted copies of the checker code
+# and a fake origin/main. mkanchor commits the OLD inventory (PARTIAL stands for a hook
+# list main has since outgrown); newinv moves main on to the GOOD list and points
+# refs/remotes/origin/main at it. A worktree cut between the two is "stale but untouched".
+CHAIN_DIFF="himmel hook chain differs from main (rebase onto main, or launch with UNGUARDED_LAUNCH_OK=1)"
+mkanchor() { # <dir> <wire-hook-bash.mjs to carry>
+  mkdir -p "$1/scripts/hooks" "$1/scripts/lib" "$1/scripts/guardrails" "$1/.claude"
+  cp "$2" "$1/scripts/hooks/wire-hook-bash.mjs"
+  cp "$W/scripts/lib/settings-lock.mjs" "$W/scripts/lib/config-audit.cjs" "$1/scripts/lib/"
+  cp "$W/scripts/guardrails/lib.sh" "$1/scripts/guardrails/"
+  cp "$PARTIAL" "$1/.claude/settings.json"
+  git -C "$1" init -q -b main && git -C "$1" add -A && git -C "$1" commit -q -m old-inventory
+}
+newinv() { # <anchor dir>
+  cp "$GOOD" "$1/.claude/settings.json"
+  git -C "$1" commit -q -am new-inventory
+  git -C "$1" update-ref refs/remotes/origin/main "$(git -C "$1" rev-parse main)"
+}
 
 # Settings variants: complete (the worktree's own) and partial (first PreToolUse group dropped).
 GOOD="$W/.claude/settings.json"
@@ -77,6 +96,8 @@ git -C "$tmp/luna" worktree add -q "$tmp/luna-wt" -b wt >/dev/null 2>&1
 run "$tmp/luna-wt"; expect "luna_linked_worktree" 1 "single-writer state repo"
 
 mkrepo "$tmp/adopter"; register "$tmp/adopter"
+printf '%s' '{not json' > "$tmp/registry-bad.json"
+run "$tmp/adopter" HANDOVER_REGISTRY="$tmp/registry-bad.json"; expect "registry_unreadable" 1 "handover registry unreadable"
 BADCFG="$tmp/cfg-incomplete"; mkdir -p "$BADCFG"; echo '{}' > "$BADCFG/settings.json"
 run "$tmp/adopter" CLAUDE_CONFIG_DIR="$BADCFG"
 expect "lane_config_dir_incomplete" 1 "user guard layer incomplete (run himmelctl ensure)"
@@ -101,11 +122,11 @@ run "$tmp/adopter" PATH="$NOBIN"; expect "node_absent" 1 "node not on PATH"
 
 # --- layer P -------------------------------------------------------------------
 mkhimmel "$tmp/himmel-partial" "$PARTIAL"; register "$tmp/himmel-partial"
-run "$tmp/himmel-partial"; expect "himmel_partial_chain_complete_user_layer" 1 "himmel hook chain incomplete"
+run "$tmp/himmel-partial"; expect "himmel_partial_chain_complete_user_layer" 1 "himmel hook chain differs from main (rebase onto main, or launch with UNGUARDED_LAUNCH_OK=1)"
 
 mkhimmel "$tmp/stubbed" "$PARTIAL"
 run "$tmp/stubbed"
-[ "$RC" = 1 ] && [ "$OUT" = "himmel hook chain incomplete" ] && [ ! -e "$tmp/stubbed/.claude/settings.json.lock" ] \
+[ "$RC" = 1 ] && [ "$OUT" = "himmel hook chain differs from main (rebase onto main, or launch with UNGUARDED_LAUNCH_OK=1)" ] && [ ! -e "$tmp/stubbed/.claude/settings.json.lock" ] \
   && pass "candidate_checker_stubbed" \
   ||fail "candidate_checker_stubbed" "rc=$RC out=[$OUT] lock=$(ls "$tmp/stubbed/.claude" 2>&1)"
 
@@ -127,7 +148,53 @@ run "$tmp/pmain-wt"; expect "worktree_of_main_passes" 0 "guarded: project $tmp/p
 mkhimmel "$tmp/rmain" "$PARTIAL"
 git -C "$tmp/rmain" worktree add -q "$tmp/rmain-wt" -b wt >/dev/null 2>&1
 cp "$GOOD" "$tmp/rmain/.claude/settings.json"
-run "$tmp/rmain-wt"; expect "primary_complete_worktree_partial" 1 "himmel hook chain incomplete"
+run "$tmp/rmain-wt"; expect "primary_complete_worktree_partial" 1 "himmel hook chain differs from main (rebase onto main, or launch with UNGUARDED_LAUNCH_OK=1)"
+
+# Settings history (spec A2b): a folder passes when its settings file is byte-equal to a
+# blob main carried at or after the folder's merge-base with origin/main.
+REAL_CHECKER="$W/scripts/hooks/wire-hook-bash.mjs"
+mkanchor "$tmp/hm" "$REAL_CHECKER"
+git -C "$tmp/hm" worktree add -q "$tmp/hm-wt" -b wt >/dev/null 2>&1      # cut at the old inventory
+newinv "$tmp/hm"
+git -C "$tmp/hm" worktree add -q "$tmp/hm-wt-new" -b wt-new >/dev/null 2>&1   # cut at the new one
+run "$tmp/hm-wt" HIMMEL_REPO="$tmp/hm"
+expect "worktree_before_inventory_change_passes" 0 "guarded: project $tmp/hm-wt"
+run "$tmp/hm-wt-new" HIMMEL_REPO="$tmp/hm"
+expect "worktree_after_inventory_change_passes" 0 "guarded: project $tmp/hm-wt-new"
+# a branch that edits settings.json itself (blob not on origin/main) stays refused
+git -C "$tmp/hm-wt-new" show HEAD:.claude/settings.json \
+  | "$NODE" -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);j.hooks.PreToolUse.pop();process.stdout.write(JSON.stringify(j,null,2)+"\n")})' \
+  > "$tmp/hm-wt-new/.claude/settings.json"
+git -C "$tmp/hm-wt-new" commit -q -am "branch edits settings"
+run "$tmp/hm-wt-new" HIMMEL_REPO="$tmp/hm"; expect "branch_edits_settings_refused" 1 "$CHAIN_DIFF"
+# the partial list sitting on a folder cut AFTER main moved on is not an old blob of that history
+git -C "$tmp/hm" worktree add -q "$tmp/hm-wt-late" -b wt-late >/dev/null 2>&1
+cp "$PARTIAL" "$tmp/hm-wt-late/.claude/settings.json"
+run "$tmp/hm-wt-late" HIMMEL_REPO="$tmp/hm"; expect "old_blob_before_merge_base_refused" 1 "$CHAIN_DIFF"
+# no origin/main ref and no main: nothing to match against -> refused (strict check only)
+mkanchor "$tmp/hm-norefs" "$REAL_CHECKER"; git -C "$tmp/hm-norefs" branch -m trunk
+run "$tmp/hm-norefs" HIMMEL_REPO="$tmp/hm-norefs"; expect "no_main_ref_refused" 1 "$CHAIN_DIFF"
+# newer settings, older anchor: the anchor's checker predates the candidate's hooks and
+# throws on it, but the candidate file equals a blob on origin/main after the merge-base
+printf '%s\n' 'export function rewriteSettingsText(){ throw new Error("unknown hook entry"); }' > "$tmp/throwing-checker.mjs"
+mkanchor "$tmp/oa" "$tmp/throwing-checker.mjs"
+git -C "$tmp/oa" worktree add -q "$tmp/oa-wt" -b wt >/dev/null 2>&1
+newinv "$tmp/oa"
+cp "$GOOD" "$tmp/oa-wt/.claude/settings.json"
+run "$tmp/oa-wt" HIMMEL_REPO="$tmp/oa"; expect "newer_settings_older_anchor" 0 "guarded: project $tmp/oa-wt"
+# the throwing anchor alone does not pass a file that is on no origin/main blob
+cp "$PARTIAL" "$tmp/oa-wt/.claude/settings.json"; printf ' ' >> "$tmp/oa-wt/.claude/settings.json"
+run "$tmp/oa-wt" HIMMEL_REPO="$tmp/oa"; expect "unlisted_settings_older_anchor_refused" 1 "$CHAIN_DIFF"
+# fallback to local main when origin/main does not resolve
+git -C "$tmp/hm" update-ref -d refs/remotes/origin/main
+run "$tmp/hm-wt" HIMMEL_REPO="$tmp/hm"; expect "main_fallback_when_no_origin_main" 0 "guarded: project $tmp/hm-wt"
+
+# M-1: the folder the session loads is judged, not its toplevel
+run "$W/scripts"; expect "subdir_launch_refused" 1 "not a git work tree root (launch from $W)"
+mkhimmel "$tmp/subrepo" "$GOOD"; mkdir -p "$tmp/subrepo/pkg/.claude"; cp "$GOOD" "$tmp/subrepo/pkg/.claude/settings.json"
+run "$tmp/subrepo/pkg"; expect "subdir_with_own_settings_passes" 0 "guarded: project $tmp/subrepo/pkg"
+cp "$PARTIAL" "$tmp/subrepo/pkg/.claude/settings.json"
+run "$tmp/subrepo/pkg"; expect "subdir_own_partial_settings_refused" 1 "$CHAIN_DIFF"
 
 # --- layer U passes ------------------------------------------------------------
 run "$tmp/adopter"; expect "registered_adopter_passes" 0 "guarded: user-layer $tmp/adopter"
