@@ -29,7 +29,7 @@
 #                        `ESCALATE auto-go-error rc=<n> ...`. Flag off: ESCALATE marker-READY, as before.
 #   anything else     -> ESCALATE (READY with the flag off, and FINDING, need a judge or the chief)
 #
-#   after a MERGED with a PR, station-sync.sh --pr <n> runs detached to bring the
+#   after a MERGED with a PR, or a WRAPPED whose merged PR wrap-merged.sh printed, station-sync.sh --pr <n> runs detached to bring the
 #   station back to main: ` station=pending log=<file>` is appended at once, its
 #   output goes to the log and its verdict to the state file tick.sh shows.
 #

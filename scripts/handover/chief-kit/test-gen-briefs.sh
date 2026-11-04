@@ -585,6 +585,8 @@ done
 # The claudex "Only ... go by bus" list must itself name JUDGE-REQUEST (it spans two lines).
 only="$(tr '\n' ' ' < "$hd/worker-preface-claudex.md" | grep -oE 'Only `[^.]*go by bus' | head -1)"
 case "$only" in *'JUDGE-REQUEST'*) pass "claudex preface: the Only-by-bus list names JUDGE-REQUEST" ;; *) fail "claudex preface: the Only-by-bus list omits JUDGE-REQUEST ($only)" ;; esac
+# The chief's READY fallback: a READY whose head has no judge dispatches one before any GO.
+grep -qF 'dispatch the judge now, before any GO' "$hd/chief-sections/merges.md" && pass "merges: READY fallback dispatches the judge" || fail "merges: READY fallback does not say to dispatch the judge now, before any GO"
 
 # A completes-ticket value other than yes or no is refused (it used to fall through to the closing
 # merge): nothing is written, and the message names the worker label and the value. Case is ignored.
