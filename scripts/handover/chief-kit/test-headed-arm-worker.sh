@@ -164,6 +164,8 @@ PATH="$tmp/sysd-bin:$PATH"
 # The Darwin rows pin HEADED_ARM_UNAME=Darwin inline.
 export HEADED_ARM_UNAME=Linux
 export UNGUARDED_LAUNCH_OK=1  # scratch fixtures are not a guarded folder
+# A dry-run row that passes a Claude Code marker (CLAUDE_CODE_*) drops the opt-out above and runs in this guarded folder, so the seam guard has nothing to deny.
+guarded_repo="$(cd "$HERE/../../.." && pwd -P)"
 # pin every root this suite could resolve to its own temp dir, at
 # SUITE level. A chief-spawned worker exports the LIVE HANDOVER_DIR into this
 # shell (headed-arm-worker.sh); the case-26 e2e below runs the real
@@ -1234,11 +1236,11 @@ not_contains "claudex: the stale usage lane token is dropped" "$out" "CADENCE_US
 rc=0; out="$(WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 contains "dry-run --lane claudex: WORKER_SESSION_EFFORT overrides the xhigh default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=high"
 
-rc=0; out="$(CLAUDE_CODE_EFFORT_LEVEL=medium bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$guarded_repo" CLAUDE_CODE_EFFORT_LEVEL=medium bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL exits 0" "$rc" "0"
 contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL overrides the xhigh default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 not_contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL is not replaced by xhigh" "$out" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
-rc=0; out="$(CLAUDE_CODE_EFFORT_LEVEL=medium WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$guarded_repo" CLAUDE_CODE_EFFORT_LEVEL=medium WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL with WORKER_SESSION_EFFORT exits 0" "$rc" "0"
 contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL wins over WORKER_SESSION_EFFORT" "$out" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 
@@ -3502,7 +3504,7 @@ not_contains "34b a model with no tier row leaves CLAUDE_CODE_EFFORT_LEVEL unset
 
 # 34c. An explicit CLAUDE_CODE_EFFORT_LEVEL already set in the launching
 # shell wins over the registry lookup - never silently overwritten.
-out34c="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture" CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker-34c some/doc.md /tmp/nosig 99999999999 "$tmp/leg34c.log" claude-sonnet-5 2>&1)"
+out34c="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$guarded_repo" HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture" CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker-34c some/doc.md /tmp/nosig 99999999999 "$tmp/leg34c.log" claude-sonnet-5 2>&1)"
 lenv34c="$(printf '%s\n' "$out34c" | grep '^headed-arm-worker: lane=')"
 contains "34c an ambient CLAUDE_CODE_EFFORT_LEVEL=xhigh survives the registry lookup" "$lenv34c" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
 not_contains "34c the registry's medium never overwrites the ambient value" "$lenv34c" "CLAUDE_CODE_EFFORT_LEVEL=medium"
@@ -3529,7 +3531,7 @@ contains "34e native WORKER_SESSION_EFFORT=high beats the registry's medium" "$l
 not_contains "34e the registry's medium is not what propagates" "$lenv34e" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 
 rc34f=0
-out34f="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker-34f "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34f.log" claude-opus-5-5 2>&1)" || rc34f=$?
+out34f="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$guarded_repo" HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker-34f "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34f.log" claude-opus-5-5 2>&1)" || rc34f=$?
 lenv34f="$(printf '%s\n' "$out34f" | grep '^headed-arm-worker: lane=')"
 check "34f dry run exits 0" "$rc34f" "0"
 contains "34f an explicit CLAUDE_CODE_EFFORT_LEVEL=xhigh beats WORKER_SESSION_EFFORT=high" "$lenv34f" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
