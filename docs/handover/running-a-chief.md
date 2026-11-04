@@ -562,7 +562,8 @@ both the same way: `ListAgents`, then `SendMessage` the worker its lock command
 (`queue-lock.sh acquire <its doc>`), your chief name and its RETASK
 token; if it is gone, relaunch it.
 `tick.sh --workers-from <manifest>` reads the same absolute docs
-from a fleet manifest that `chief-kit/fleet-manifest.sh add|remove` keeps,
+from a fleet manifest that `chief-kit/fleet-manifest.sh add|remove` keeps
+(an add by hand needs `--lane <lane>`, the lane the worker runs on; `headed-arm-worker.sh --fleet` passes its own),
 re-read every sample, so a dispatch or wrap needs no waiter re-start.
 Pass `--fleet <manifest>` before the positional arguments to
 `chief-kit/headed-arm-worker.sh` and `chief-kit/close-wrapped-worker.sh` to keep

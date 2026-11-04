@@ -90,7 +90,7 @@ fixture() {
     rm -f "$MANIFEST" "$MANIFEST.lock"
     printf '# chief\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE chief\n' > "$CHIEF"
     printf '# worker\nRETASK token x\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE x\n- 10:30 READY 777 %s GREEN\n- 10:40 WRAPPED\n' "$HEAD_OID" > "$WORKER"
-    bash "$HERE/fleet-manifest.sh" add "$MANIFEST" "$WORKER" >/dev/null || { echo "FAIL: fixture manifest add" >&2; exit 1; }
+    bash "$HERE/fleet-manifest.sh" add "$MANIFEST" --lane native "$WORKER" >/dev/null || { echo "FAIL: fixture manifest add" >&2; exit 1; }
     export WM_PR_STATE=MERGED WM_CLOSE_RC=0 WM_PULL_RC=0 WM_BOARD_RC=0 WM_CLOSE_ERR=""
 }
 NO_SESSION='close-wrapped-worker: refusing - 0 live session(s) matched worker names [x] (need exactly 1)'
