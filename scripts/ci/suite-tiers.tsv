@@ -653,6 +653,7 @@ scripts/hooks/test-block-subagent-park.sh	pr	guard
 scripts/hooks/test-block-tail-pipe-on-gates.sh	pr	guard
 scripts/hooks/test-block-terminal-write-fence.sh	pr	guard
 scripts/hooks/test-block-unresolved-cr-merge.sh	pr	guard
+scripts/hooks/test-block-vault-sweep.sh	local	behaviour suite, split from the retired retrieval-nudge suite
 scripts/hooks/test-block-write-into-main-checkout-adopted.sh	pr	guard
 scripts/hooks/test-block-write-into-main-checkout-ast.sh	pr	guard
 scripts/hooks/test-block-write-into-main-checkout-cd.sh	pr	guard
