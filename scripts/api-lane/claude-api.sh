@@ -332,9 +332,10 @@ case "$KIND" in ""|*[!A-Za-z0-9._-]*) refuse "HIMMEL_API_KIND has characters out
 # auto routing is for the himmel semantic graph pass only (decision 525 FINAL): any other kind, or the same kind
 # from another repo, must name its account; refused before any spawn and never re-run on the subscription
 if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
-  _auto_repo="$(basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)")")"
-  [ "$KIND" = graphify ] && [ "$_auto_repo" = himmel ] ||
-    { NO_FB="the request itself was refused"; refuse "auto routing is for the himmel graph pass only (kind $KIND, repo $_auto_repo); name HIMMEL_API_ACCOUNT=A, B or C"; }
+  _auto_here="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+  _auto_own="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+  [ "$KIND" = graphify ] && [ -n "$_auto_own" ] && [ "$_auto_here" = "$_auto_own" ] ||
+    { NO_FB="the request itself was refused"; refuse "auto routing is for the himmel graph pass only (kind $KIND, repo ${_auto_here:-none}); name HIMMEL_API_ACCOUNT=A, B or C"; }
 fi
 CACHE_TTL="${HIMMEL_API_CACHE_TTL:-5m}"
 case "$CACHE_TTL" in 5m|1h) ;; *) refuse "HIMMEL_API_CACHE_TTL must be 5m or 1h" ;; esac

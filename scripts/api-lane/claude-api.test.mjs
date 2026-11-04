@@ -54,10 +54,11 @@ exit "\${STUB_RC:-0}"
 // on a tree that is its own primary checkout, as CI's is.
 const SESSION_ARGV0 = 'claude';
 
-// the auto gate names the repo from git's common dir: a repo directory called himmel, and one that is not
-const HIMMEL_REPO = join(T, 'himmel');
+// the auto gate compares the caller's git common dir with the launcher's own: this checkout, and an unrelated repo
+const HIMMEL_REPO = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const OTHER_REPO = join(T, 'luna');
-for (const d of [HIMMEL_REPO, OTHER_REPO]) { mkdirSync(d, { recursive: true }); spawnSync('git', ['init', '-q', d]); }
+mkdirSync(OTHER_REPO, { recursive: true });
+spawnSync('git', ['init', '-q', OTHER_REPO]);
 
 function fixture() {
   const dir = mkdtempSync(join(T, 'case-'));

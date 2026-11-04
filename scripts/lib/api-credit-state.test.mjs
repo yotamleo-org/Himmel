@@ -803,6 +803,6 @@ test('HIMMEL-9052: auto ranks C like A and B: the earliest-expiring funded accou
   f.snapshot.accounts.C.remaining_usd = '0';
   f.save();
   const r = pick('0.01');
-  const out = r.stdout.trim() ? JSON.parse(r.stdout) : {};
-  assert.notEqual(out.account, 'C', `${r.stdout}${r.stderr}`);
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(['A', 'B'].includes(JSON.parse(r.stdout).account), r.stdout);
 });
