@@ -54,7 +54,7 @@ D="$WORK/HIMMEL-1-N61-a-2026-10-20-RESUME.md"
 M="$WORK/console.fleet.json"
 if command -v flock >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
     listed() { jq -r --arg d "$D" '[.workers[] | select(.doc == $d)] | length' "$M" 2>/dev/null; }
-    bash "$MANIFEST" add "$M" "$D" >/dev/null 2>&1 && [ "$(listed)" = 1 ] && ends_nl "fleet-manifest.sh add leaves a final newline" "$M" || fail "fleet-manifest.sh add failed to list the doc"
+    bash "$MANIFEST" add "$M" --lane native "$D" >/dev/null 2>&1 && [ "$(listed)" = 1 ] && ends_nl "fleet-manifest.sh add leaves a final newline" "$M" || fail "fleet-manifest.sh add failed to list the doc"
     bash "$MANIFEST" remove "$M" "$D" >/dev/null 2>&1 && [ "$(listed)" = 0 ] && ends_nl "fleet-manifest.sh remove leaves a final newline" "$M" || fail "fleet-manifest.sh remove failed to drop the doc"
 else
     echo "skip - fleet-manifest rows: need flock and jq"

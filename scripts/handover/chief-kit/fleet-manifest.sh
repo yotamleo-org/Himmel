@@ -4,7 +4,7 @@
 # on every sample, so a dispatch or a wrap edits one file instead of the chief
 # restarting its waiter with a new 10-15 path --workers argv.
 #
-#   fleet-manifest.sh add    <manifest> <worker doc>... [--lane <lane>] [--lockless] [--arm 200k|400k]
+#   fleet-manifest.sh add    <manifest> <worker doc>... --lane <lane> [--lockless] [--arm 200k|400k]
 #   fleet-manifest.sh remove <manifest> <worker doc | label>...
 #   fleet-manifest.sh list   <manifest>                      one doc per line
 #
@@ -17,8 +17,8 @@
 # Every write emits `workers` and drops the pre-rename `legs` array, so an old manifest is
 # rewritten on its next add/remove with the same entries in the same order. The readers still
 # take `legs` while legacy names are on (scripts/lib/legacy-names.sh).
-# add also stores `lane` (native|claudex|deepseek|api|...; a missing
-# --lane is stored `unknown`, never guessed) and, with --lockless, `lockless: true`
+# add requires --lane (native|claudex|deepseek|api|...; a missing one is a usage error,
+# rc 2, before any lock or write) and stores it, and with --lockless stores `lockless: true`
 # (an eval/pilot row that holds no queue lock: tick reports NOLOCK and judges it by
 # tail marker only). A manifest written before this carries neither key and reads
 # as lane `unknown`, not lockless. A doc already listed is left alone, flags and all.
@@ -60,7 +60,7 @@ if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .
 
 usage() {
     cat <<'USAGE'
-usage: fleet-manifest.sh add    <manifest> <worker doc>... [--lane <lane>] [--lockless] [--arm 200k|400k]
+usage: fleet-manifest.sh add    <manifest> <worker doc>... --lane <lane> [--lockless] [--arm 200k|400k]
        fleet-manifest.sh remove <manifest> <worker doc | label>...
        fleet-manifest.sh list   <manifest>
 USAGE
@@ -124,6 +124,10 @@ if [ "$verb" = add ]; then
 $docs_only
 EOD
     [ "$#" -ge 1 ] || { usage >&2; exit 2; }
+    if [ "$lane_given" != true ]; then
+        echo "fleet-manifest: add requires --lane <lane> (a lowercase word: native, claudex, deepseek, api, ...); a row with no lane reads unknown and the handover refuses to relay it" >&2
+        exit 2
+    fi
     for doc in "$@"; do
         case "$doc" in
             /*) ;;

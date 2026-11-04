@@ -41,7 +41,7 @@ d3="$HANDOVER_DIR/b/HIMMEL-3-N66-c-2026-09-30-RESUME.md"
 : > "$d1"; : > "$d2"; : > "$d3"
 t1="$(bash "$LOCK" acquire "$d1" tok-one 2>/dev/null | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
 bash "$LOCK" acquire "$d2" tok-two >/dev/null 2>&1
-bash "$FM" add "$m" "$d1" "$d2" "$d3" >/dev/null 2>&1   # d3 holds no lock
+bash "$FM" add "$m" --lane native "$d1" "$d2" "$d3" >/dev/null 2>&1   # d3 holds no lock
 
 cat > "$con" <<'DOC'
 # chief
@@ -107,7 +107,7 @@ check '6. --print prints the workers: line' yes "$r"
 
 # 7. no workers: line.
 printf '# c\n\n## Live state\n\nqueue: none\n' > "$HANDOVER_DIR/b/HIMMEL-nextleg-Y-chief.md"
-bash "$FM" add "$HANDOVER_DIR/b/HIMMEL-nextleg-Y-chief.fleet.json" "$d1" >/dev/null 2>&1
+bash "$FM" add "$HANDOVER_DIR/b/HIMMEL-nextleg-Y-chief.fleet.json" --lane native "$d1" >/dev/null 2>&1
 bash "$SCRIPT" "$HANDOVER_DIR/b/HIMMEL-nextleg-Y-chief.md" --nonce N61=x >/dev/null 2>&1; rc=$?
 check '7. a doc with no workers: line is refused' 1 "$rc"
 
@@ -120,7 +120,7 @@ check '8. the refused run leaves the doc untouched' "$before8" "$(cat "$con")"
 # 9. the `none` placeholder is not carried into a rendered line.
 con9="$HANDOVER_DIR/b/HIMMEL-nextleg-Z-chief.md"
 printf '# c\n\n## Live state\n\nlegs: none\nqueue: none\n' > "$con9"
-bash "$FM" add "${con9%.md}.fleet.json" "$d1" >/dev/null 2>&1
+bash "$FM" add "${con9%.md}.fleet.json" --lane native "$d1" >/dev/null 2>&1
 bash "$SCRIPT" "$con9" --nonce N61=n9 --pid N61=9 >/dev/null 2>&1
 check '9. legs: none becomes the entries alone' 'workers: `N61:n9:tok-one:9`' "$(grep '^workers:' "$con9")"
 bash "$FM" remove "${con9%.md}.fleet.json" N61 >/dev/null 2>&1
@@ -131,7 +131,7 @@ check '9. an empty render is a stable single none' 'workers: none' "$(grep '^wor
 # 10. a backslash in the preserved prose survives the rewrite (not awk-interpreted).
 con10="$HANDOVER_DIR/b/HIMMEL-nextleg-W-chief.md"
 printf '# c\n\n## Live state\n\nlegs: `N61:n10:tok-one:10` note a\\nb \\t end\nqueue: none\n' > "$con10"
-bash "$FM" add "${con10%.md}.fleet.json" "$d1" >/dev/null 2>&1
+bash "$FM" add "${con10%.md}.fleet.json" --lane native "$d1" >/dev/null 2>&1
 bash "$SCRIPT" "$con10" >/dev/null 2>&1
 check '10. backslashes in prose are written verbatim' 'workers: `N61:n10:tok-one:10` note a\nb \t end' "$(grep '^workers:' "$con10")"
 check '10. the doc keeps its line count' 6 "$(wc -l < "$con10" | tr -d ' ')"
@@ -139,7 +139,7 @@ check '10. the doc keeps its line count' 6 "$(wc -l < "$con10" | tr -d ' ')"
 # 11. a lock status failure (not "free") refuses and leaves the doc untouched.
 con11="$HANDOVER_DIR/b/HIMMEL-nextleg-V-chief.md"
 printf '# c\n\n## Live state\n\nlegs: `N61:n11:tok-one:11`\n' > "$con11"
-bash "$FM" add "${con11%.md}.fleet.json" "$d1" >/dev/null 2>&1
+bash "$FM" add "${con11%.md}.fleet.json" --lane native "$d1" >/dev/null 2>&1
 before11="$(cat "$con11")"
 cp -R "$HERE/.." "$tmp/kitcopy" 2>/dev/null
 mkdir -p "$tmp/lib" && cp "$HERE/../../lib/legacy-names.sh" "$tmp/lib/"   # live-state.sh sources ../../lib/legacy-names.sh
@@ -168,7 +168,7 @@ done
 # 13. end to end: tick.sh reads the rendered doc as livestate=ok.
 e2e="$HANDOVER_DIR/b/HIMMEL-nextleg-T-chief.md"
 printf '# c\n\n## Live state\n\nlegs: none\nqueue: none\nlast GO: none\nacked: none\n' > "$e2e"
-bash "$FM" add "${e2e%.md}.fleet.json" "$d1" >/dev/null 2>&1
+bash "$FM" add "${e2e%.md}.fleet.json" --lane native "$d1" >/dev/null 2>&1
 bash "$SCRIPT" "$e2e" --nonce N61=n13 --pid N61=13 >/dev/null 2>&1
 mkdir -p "$tmp/tickstate"
 tick_out="$(TICK_DOCTOR_TTL_MIN=0 TICK_WORKTREE_ORPHANS_PROBE="$tmp/no-wt-orphans-probe" TICK_STATE_DIR="$tmp/tickstate" TICK_TMPDIR="$tmp" TICK_LAUNCH_DIR="$tmp" bash "$HERE/tick.sh" --doc "$e2e" --token test-token --workers "$d1" 2>/dev/null)"
@@ -181,7 +181,7 @@ lk="$HANDOVER_DIR/b/HIMMEL-nextleg-L-chief.md"
 lkd="$HANDOVER_DIR/b/HIMMEL-4869-N90-pilot.md"
 : > "$lkd"
 printf '# c\n\n## Live state\n\nlegs: none\nlockless: stale (x) /old; \nqueue: none\n\n## Results\n' > "$lk"
-bash "$FM" add "${lk%.md}.fleet.json" "$d1" >/dev/null 2>&1
+bash "$FM" add "${lk%.md}.fleet.json" --lane native "$d1" >/dev/null 2>&1
 bash "$FM" add "${lk%.md}.fleet.json" --lane deepseek --lockless "$lkd" >/dev/null 2>&1
 lk_err="$(bash "$SCRIPT" "$lk" --nonce N61=n14 --pid N61=14 2>&1 >/dev/null)"
 check '15. the lockless row is listed with its lane and doc' "lockless: N90 (deepseek) $lkd" "$(grep '^lockless:' "$lk")"
