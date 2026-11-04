@@ -18,7 +18,8 @@ contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: [$2] lac
 lacks()    { case "$2" in *"$3"*) echo "FAIL - $1: [$2] has [$3]"; fails=$((fails + 1)) ;; *) echo "ok - $1" ;; esac; }
 if ! command -v node >/dev/null 2>&1; then echo "SKIP - test-focus-refresh-chains.sh (node not installed)"; exit 0; fi
 
-unset GH_REPO HIMMEL_CONSOLE_DOC HANDOVER_DIR
+unset GH_REPO HIMMEL_CONSOLE_DOC HANDOVER_DIR HIMMEL_CONFIG_DIR
+export HOME="$tmp/home"; mkdir -p "$HOME"   # no row reads the operator's own config
 export FX="$tmp/fx" TICKET_STATUS_STATE_DIR="$tmp/state" JIRA_PROJECT_KEY=HIMMEL USER_SLUG=fxuser
 export HANDOVER_DIR="$tmp/handover"
 export FOCUS_REFRESH_BUDGET=60
@@ -213,6 +214,27 @@ contains "a wrong root: the skip is named on stderr" "$(cat "$tmp/err")" "chains
 (cd "$FXR" && env -u HANDOVER_DIR -u JUDGE_LADDER_STATE HOME="$tmp/home" JUDGE_LADDER_NOW=1000 bash "$FXR/scripts/handover/chief-kit/judge-ladder.sh" convene seat1 sonnet >/dev/null 2>&1)
 check "no HANDOVER_DIR: the judge ladder is written under the configured root" "$([ -f "$CFG/.judge-ladder" ] && echo yes)" yes
 check "no HANDOVER_DIR: nothing is written under the stub folder" "$([ -e "$FXR/handovers/.judge-ladder" ] && echo yes || echo no)" no
+
+# --- run from a linked worktree (no .env of its own), the primary-env lookup leaves no advisory on stderr
+PRIM="$tmp/primrepo"; WTR="$tmp/primwt"
+rm -rf "$PRIM" "$WTR"
+mkdir -p "$PRIM/scripts/handover" "$PRIM/handovers" "$CFG/fxuser/himmel"
+git -C "$PRIM" init -q -b main
+cp -R "$SRC/lib" "$PRIM/scripts/lib"; cp -R "$SRC/handover/chief-kit" "$PRIM/scripts/handover/chief-kit"
+printf 'HANDOVER_DIR=%s\n' "$CFG" > "$PRIM/.env"
+printf '.env\n' > "$PRIM/.gitignore"
+git -C "$PRIM" add -A
+git -C "$PRIM" -c user.email=t@test.local -c user.name=t -c commit.gpgsign=false commit -q -m fixture
+git -C "$PRIM" worktree add -q "$WTR" -b wtbranch
+reset
+cp "$REGISTRY" "$CFG/fxuser/himmel/chains.json"
+rm -f "$CFG/.judge-ladder"
+frrc=0; (cd "$WTR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR HOME="$tmp/home" bash "$WTR/scripts/handover/chief-kit/focus-refresh.sh" --doc "$DOC" --repo example-org/example-repo >"$tmp/out" 2>"$tmp/err") || frrc=$?
+check "a linked worktree: focus-refresh succeeds with the primary env's root" "$frrc $(out)" "0 focus=ok"
+lacks "a linked worktree: focus-refresh prints no load-dotenv advisory" "$(cat "$tmp/err")" "load-dotenv: .env absent under worktree"
+jlrc=0; (cd "$WTR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR -u JUDGE_LADDER_STATE HOME="$tmp/home" JUDGE_LADDER_NOW=1000 bash "$WTR/scripts/handover/chief-kit/judge-ladder.sh" convene seat1 sonnet >/dev/null 2>"$tmp/err") || jlrc=$?
+check "a linked worktree: judge-ladder writes under the primary env's root" "$jlrc $([ -f "$CFG/.judge-ladder" ] && echo yes)" "0 yes"
+lacks "a linked worktree: judge-ladder prints no load-dotenv advisory" "$(cat "$tmp/err")" "load-dotenv: .env absent under worktree"
 
 printf '%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

@@ -374,5 +374,19 @@ m1a_row close-wrapped-worker m1a_cw '^sweep: closed=1 refused=0 skipped=1$' '^sw
 m1a_row pr-stall m1a_ps '^STALL 7 conflict N901 ' '^STALL 7 conflict - '
 m1a_row version-status-audit m1a_vsa 'HIMMEL-901.*OWNED' 'UNKNOWN'
 
+# worker-digest-step.sh with no HANDOVER_DIR files a doc under the repo's .env root by its path below that root
+FXR="$W/fxrepo"; CFG="$W/cfgroot"; DGSID=4670c3a0-0000-4000-8000-000000000037
+mkdir -p "$FXR/scripts/handover" "$FXR/handovers" "$CFG/u/himmel" "$W/dgproj/-p"
+git -C "$FXR" init -q -b main
+cp -R "$REPO/scripts/lib" "$FXR/scripts/lib"; cp -R "$REPO/scripts/eval" "$FXR/scripts/eval"; cp -R "$CK" "$FXR/scripts/handover/chief-kit"
+printf 'HANDOVER_DIR=%s\n' "$CFG" > "$FXR/.env"
+printf '{"type":"user","sessionId":"%s"}\n' "$DGSID" > "$W/dgproj/-p/$DGSID.jsonl"
+printf '#!/usr/bin/env bash\nprintf '"'"'{"digest_v":1,"mapper_v":1,"trajectory_v":null,"session":"%s","status":"ok","model":null,"metrics":{},"failures":[]}\\n'"'"'\n' "$DGSID" > "$W/dg-bin.sh"
+chmod +x "$W/dg-bin.sh"
+DGDOC="$CFG/u/himmel/HIMMEL-37-N1-x-2026-11-04.md"
+printf -- '---\nsession_ids: %s\n---\n\n## Results\n- 10:00 LIVE - x\n' "$DGSID" > "$DGDOC"
+(cd "$FXR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR WORKER_SESSION_DIGEST_BIN="$W/dg-bin.sh" WORKER_SESSION_DIGEST_STATE_DIR="$W/dg-state" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/dg-fail.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/dg-eval.jsonl" bash "$FXR/scripts/handover/chief-kit/worker-digest-step.sh" --doc "$DGDOC" --projects "$W/dgproj" >/dev/null 2>&1)
+if [ "$(jq -r '.meta.doc // empty' "$W/dg-eval.jsonl" 2>/dev/null | head -n 1)" = "u/himmel/HIMMEL-37-N1-x-2026-11-04.md" ]; then pass "worker-digest-step: no HANDOVER_DIR files the doc by its path below the configured root"; else fail "worker-digest-step: no HANDOVER_DIR: doc recorded as [$(jq -r '.meta.doc // empty' "$W/dg-eval.jsonl" 2>/dev/null | head -n 1)]"; fi
+
 if [ "$fails" -gt 0 ]; then echo "FAILED: $fails"; exit 1; fi
 echo "all ok"
