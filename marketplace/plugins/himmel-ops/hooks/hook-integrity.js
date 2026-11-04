@@ -1704,6 +1704,53 @@ function denyIntegrityMismatch(scriptPath, relPath, reason) {
   );
 }
 
+// auto-arm-on-cap.sh is a fail-open watchdog on a `*` PreToolUse
+// entry, so denying it on a pin drift locked the session out of every tool. The
+// single-hook launcher skips it instead (never runs it) when BOTH hold: the
+// member is exactly the watchdog, and the failure is a pin drift. Record- and
+// path-level failures keep their deny. Each sentinel prefix has exactly one
+// class here; the suite fails if a *_DENY constant is added without one.
+const WATCHDOG_REL = 'scripts/hooks/auto-arm-on-cap.sh';
+const WATCHDOG_NOTICE_SUFFIX = '.watchdog-skip-notified';
+const DENY_PREFIX_CLASS = {
+  [PUBLISH_WINDOW_DENY]: 'deny',
+  [MISSING_RECORD_DENY]: 'deny',
+  [ESCAPES_PROJECT_DENY]: 'deny',
+  [UNWALKABLE_DENY]: 'deny',
+  [SOURCED_DENY]: 'drift',
+};
+
+// True for content drift (a null or free-text reason, or `sourced-lib: `);
+// false when a 'deny'-class prefix opens the reason.
+function isPinDrift(reason) {
+  if (typeof reason !== 'string') return true;
+  return !Object.keys(DENY_PREFIX_CLASS).some((p) => DENY_PREFIX_CLASS[p] === 'deny' && reason.indexOf(p) === 0);
+}
+
+// Exact and case-sensitive, on both sides: the path as wired names the watchdog
+// (so a guard swapped for a link to the watchdog keeps its deny) AND the file it
+// resolves to is the watchdog (so the watchdog path linked elsewhere keeps it).
+function isWatchdogMember(scriptPath) {
+  const projectDir = process.env.CLAUDE_PROJECT_DIR;
+  if (!projectDir || !scriptPath) return false;
+  const lexical = normalize(path.resolve(scriptPath)) === `${normalize(path.resolve(projectDir))}/${WATCHDOG_REL}`;
+  const resolved = normalize(resolveReal(scriptPath)) === `${normalize(resolveReal(projectDir))}/${WATCHDOG_REL}`;
+  return lexical && resolved;
+}
+
+// Once per session, like takeUnvouchedNotice but with its own flag: `text` to
+// the first caller, null after (or when the flag cannot be written).
+function takeWatchdogSkipNotice(sessionId, text) {
+  const recordPath = integrityRecordPath(sessionId);
+  if (!recordPath) return null;
+  try {
+    fs.writeFileSync(recordPath.replace(/\.json$/, WATCHDOG_NOTICE_SUFFIX), 'notified\n', { flag: 'wx' });
+  } catch (_e) {
+    return null;
+  }
+  return text;
+}
+
 // acquireRecordLock / reclaimIfDead / releaseRecordLock / persistIntegrityRecord
 // are exported for the suite only — the launcher uses none of them. They are the
 // three failure modes that cannot be provoked through verifyProjectHookIntegrity
@@ -1711,6 +1758,7 @@ function denyIntegrityMismatch(scriptPath, relPath, reason) {
 // a failed record publish), and a race whose fix is not tested is a fix that
 // silently regresses.
 module.exports = {
+  DENY_PREFIX_CLASS,
   LOCK_MAX_WAIT_MS,
   LOCK_POLL_MS,
   PIN_DIRS,
@@ -1720,12 +1768,15 @@ module.exports = {
   gitBlobSha1,
   hookIntegrityDir,
   integrityRecordPath,
+  isPinDrift,
   isV2Record,
+  isWatchdogMember,
   loadIntegrityRecord,
   persistIntegrityRecord,
   reclaimIfDead,
   releaseRecordLock,
   sourcedClosure,
   takeUnvouchedNotice,
+  takeWatchdogSkipNotice,
   verifyProjectHookIntegrity,
 };

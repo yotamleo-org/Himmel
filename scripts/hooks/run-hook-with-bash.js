@@ -18,8 +18,11 @@ const {
   denyIntegrityMismatch,
   gitBlobSha1,
   hookIntegrityDir,
+  isPinDrift,
+  isWatchdogMember,
   loadIntegrityRecord,
   takeUnvouchedNotice,
+  takeWatchdogSkipNotice,
   verifyProjectHookIntegrity,
 } = require('./hook-integrity.js');
 
@@ -39,13 +42,28 @@ const {
 // nothing; it stays unclassified rather than fail open).
 const NON_GATING_EVENTS = new Set(['Stop', 'SubagentStop', 'TeammateIdle', 'TaskCompleted', 'PreCompact']);
 
+// Display text for an integrity failure that carries no reason.
+const DRIFT_FALLBACK = 'its content differs from the session pin';
+
 // The skip notice for an integrity failure on a non-gating event, or null when
 // the failure must still deny (exit 2).
 function skipNotice(hookInput, member, integrity) {
   const event = hookInput && typeof hookInput.hook_event_name === 'string' ? hookInput.hook_event_name : '';
   if (!NON_GATING_EVENTS.has(event)) return null;
   return `himmel hook-integrity: ${path.basename(member)} was NOT run on ${event} `
-    + `(${integrity.reason || 'its content differs from the session pin'}); the session is allowed to continue. Start a new session to restore the guard.`;
+    + `(${integrity.reason || DRIFT_FALLBACK}); the session is allowed to continue. Start a new session to restore the guard.`;
+}
+
+// A pin drift on the fail-open auto-arm-on-cap watchdog (single-hook
+// mode only) skips it instead of denying; see isWatchdogMember / isPinDrift.
+function watchdogSkip(member, integrity) {
+  return isWatchdogMember(member) && isPinDrift(integrity.reason);
+}
+
+function watchdogNotice(integrity) {
+  return `himmel hook-integrity: auto-arm-on-cap.sh was NOT run (${integrity.relPath}: ${integrity.reason || DRIFT_FALLBACK}). `
+    + 'It is a fail-open watchdog, so the tool call goes ahead. If its pin drifted, the usage-cap auto-arm stays off '
+    + 'for the rest of this session: start a new session to restore it.';
 }
 
 // Returns true when the integrity failure was reported as a skipped hook on a
@@ -164,6 +182,7 @@ function parseHookArgs(argv) {
 // .codex/codex-hook-adapter.sh; same invariants: whole-chain
 // validation before any member runs, first deny short-circuits, and the one
 // side-effecting hook (auto-arm-on-cap.sh) stays OUT of every chain.
+// Its pin-drift skip (watchdogSkip) lives only in main's single-hook integrity branch.
 
 // Claude Code reads our stdout as ONE JSON object (or nothing). These are the
 // keys a chain knows how to combine; anything else is dropped with a warning
@@ -1464,6 +1483,14 @@ function main() {
   const sessionId = hookInput && typeof hookInput.session_id === 'string' ? hookInput.session_id : null;
   const integrity = verifyProjectHookIntegrity(hookScript, sessionId);
   if (!integrity.ok) {
+    if (watchdogSkip(hookScript, integrity)) {
+      const text = watchdogNotice(integrity);
+      process.stderr.write(`${text}\n`);
+      const once = takeWatchdogSkipNotice(sessionId, text);
+      if (once) process.stdout.write(`${JSON.stringify({ systemMessage: once })}\n`);
+      process.exitCode = 0;
+      return;
+    }
     denyIntegrityMismatch(hookScript, integrity.relPath, integrity.reason);
     process.exitCode = skipOnNonGatingEvent(hookInput, hookScript, integrity) ? 0 : 2;
     return;
