@@ -1201,6 +1201,28 @@ deny "ssh host bunx @tobilu/qmd search x"
 # model is never weaker than the unmodified guard.
 deny 'qmd que{ry,} x'
 deny 'qmd {query,status} x'
+deny '{qmd,x} query foo'
+deny 'qmd {query,x} foo'
+deny 'ls; {qmd,query}'
+deny '{qmd,x} {query,y} foo'
+deny 'env {qmd,x} query foo'
+# a brace word that only names qmd, in a command with no search verb, is a
+# mention: a `-cadence/` left after the brace split names no listed function
+allow 'ls ~/.claude/{pipeline,qmd}-cadence/'
+allow "grep -rl 'x' ~/.claude/{a,qmd}-c/"
+allow 'ls {qmd,x}-{a,b}/'
+# a function may be named with a trailing slash, so the whole word is looked up
+deny 'd/x/() { $(cat /tmp/x); }; d/x/'
+deny 'f/() { $(cat /tmp/x); }; f/'
+# the body's substitution is an echo argument, so only the whole-word lookup of
+# the slash-ended call denies it
+deny 'd/x/() { echo $(cat /tmp/x); }; d/x/'
+deny 'f/() { echo $(cat /tmp/x); }; f/'
+# a program word that holds a substitution or a variable and ends in `/` is not
+# a directory: the whole-word fallback is only for a literal word
+deny '$(echo x)/'
+deny '`echo x`/'
+deny 'read v; $v/'
 deny 'timeout 5 qmd que{ry,} x'
 deny 'git commit -m "x; qmd query y"'
 deny 'curl -d "a; qmd query b" http://example.invalid'
