@@ -146,8 +146,10 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     keep the worker set in `<this file's stem>.fleet.json` next to this doc and
     start the waiter with `--workers-from "<that file>"` in place of `--workers`.
     On each dispatch run `bash "<kit>/fleet-manifest.sh" add "<manifest>"
-    "<absolute worker doc>" --lane <lane>` (`--lane` is required: native,
-    claudex, deepseek, api, ...); on each wrap, `… remove "<manifest>" <N-label>`.
+    "<absolute worker doc>" --lane <lane>` (`--lane` is required: the lane
+    the worker was launched on, the same value as `headed-arm-worker.sh --lane`:
+    native, claudex, openrouter or deepseek; `relay-batch.sh` relays only native
+    and claudex rows); on each wrap, `… remove "<manifest>" <N-label>`.
     The tick re-reads the manifest every sample and the waiter takes a silent
     baseline when its worker set changes, so neither needs a re-start; the
     `workerset=`/`unwatched=` checks above then compare against the manifest.

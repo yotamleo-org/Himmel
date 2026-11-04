@@ -17,7 +17,7 @@
 # Every write emits `workers` and drops the pre-rename `legs` array, so an old manifest is
 # rewritten on its next add/remove with the same entries in the same order. The readers still
 # take `legs` while legacy names are on (scripts/lib/legacy-names.sh).
-# add requires --lane (native|claudex|deepseek|api|...; a missing one is a usage error,
+# add requires --lane (native|claudex|openrouter|deepseek; a missing one is a usage error,
 # rc 2, before any lock or write) and stores it, and with --lockless stores `lockless: true`
 # (an eval/pilot row that holds no queue lock: tick reports NOLOCK and judges it by
 # tail marker only). A manifest written before this carries neither key and reads
@@ -125,7 +125,7 @@ $docs_only
 EOD
     [ "$#" -ge 1 ] || { usage >&2; exit 2; }
     if [ "$lane_given" != true ]; then
-        echo "fleet-manifest: add requires --lane <lane> (a lowercase word: native, claudex, deepseek, api, ...); a row with no lane reads unknown and the handover refuses to relay it" >&2
+        echo "fleet-manifest: add requires --lane <lane> (the lane the worker was launched on: native, claudex, openrouter or deepseek); a row with no lane reads unknown and the handover refuses to relay it" >&2
         exit 2
     fi
     for doc in "$@"; do

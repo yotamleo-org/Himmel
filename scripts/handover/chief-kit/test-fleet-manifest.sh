@@ -129,7 +129,7 @@ m5n="$tmp/nolane.fleet.json"
 msg="$(bash "$SCRIPT" add "$m5n" "$l1" 2>&1)"; rc=$?
 check '7c. add with no --lane is a usage error (rc 2)' 2 "$rc"
 check '7c. and writes no manifest' absent "$([ -e "$m5n" ] && echo present || echo absent)"
-case "$msg" in *--lane*native*claudex*deepseek*api*) refusal=names ;; *) refusal=silent ;; esac
+case "$msg" in *--lane*native*claudex*openrouter*deepseek*) refusal=names ;; *) refusal=silent ;; esac
 check '7c. and the refusal names --lane and its valid values' names "$refusal"
 bash "$SCRIPT" add "$m5" --lane native "$l1" >/dev/null 2>&1; rc=$?
 check '7c. add --lane native still writes (control)' 0 "$rc"
