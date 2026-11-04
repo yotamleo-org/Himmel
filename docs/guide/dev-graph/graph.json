@@ -3509,7 +3509,8 @@
         "23": "plugin-bump recheck: operational",
         "24": "static re-check refusal: operational",
         "25": "local-commit guard refusal: operational",
-        "26": "partial merge with no remainder in the PR body: operational"
+        "26": "partial merge with no remainder in the PR body: operational",
+        "27": "--go given but no open PR resolved, nothing merged: operational"
       }
     },
     "scripts/handover/chief-kit/go.sh": {
