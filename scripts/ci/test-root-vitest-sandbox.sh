@@ -56,7 +56,8 @@ done
 # import, require() and `export ... from`, which a one-line import regex misses.
 names_vitest_config() {
   local hit
-  hit="$(sed -E 's://.*$::; /^[[:space:]]*(\/\*|\*)/d' "$1" | grep -E "['\"]vitest/config['\"]")"
+  # Slurp the file and drop /* ... */ blocks across lines first, then line comments and star lines.
+  hit="$(sed -E ':a;N;$!ba;s:/\*([^*]|\*+[^*/])*\*+/::g' "$1" | sed -E 's://.*$::; /^[[:space:]]*(\/\*|\*)/d' | grep -E "['\"]vitest/config['\"]")"
   [ -n "$hit" ]
 }
 if names_vitest_config "$root_cfg"; then
@@ -71,10 +72,44 @@ printf "import 'vitest/config';\nexport default {};\n" > "$sfx/bare.ts"
 printf "const m = await import(\"vitest/config\");\nexport default {};\n" > "$sfx/dynamic.ts"
 printf "export {\n  defineConfig,\n} from 'vitest/config';\n" > "$sfx/reexport.ts"
 printf "// import { defineConfig } from 'vitest/config'\n/* 'vitest/config' */\n * 'vitest/config'\nexport default {};\n" > "$sfx/commented.ts"
+# Interior line of a multiline block comment, no leading asterisk.
+printf "/*\n  import { defineConfig } from 'vitest/config'\n  more prose\n*/\nexport default {};\n" > "$sfx/blockcomment.ts"
 for f in multiline bare dynamic reexport; do
   if names_vitest_config "$sfx/$f.ts"; then pass "static check refuses a $f vitest/config import"; else fail "static check misses a $f vitest/config import"; fi
 done
 if names_vitest_config "$sfx/commented.ts"; then fail "static check refuses a commented-out vitest/config mention"; else pass "static check ignores a commented-out vitest/config mention"; fi
+if names_vitest_config "$sfx/blockcomment.ts"; then fail "static check refuses a vitest/config mention inside a multiline block comment"; else pass "static check ignores a vitest/config mention inside a multiline block comment"; fi
+
+# ---- bun test: bun ignores vitest.config.ts; the root bunfig.toml preload sandboxes it.
+# The guard must not rest on NODE_ENV (bun sets it to test only when unset), so one row exports
+# NODE_ENV=production. SKIP when bun is absent unless HIMMEL_REQUIRE_BUN_TEST=1.
+if command -v bun >/dev/null 2>&1; then
+  bproj="$tmp/bunproj"; mkdir -p "$bproj/scripts/jira"
+  cat > "$bproj/delete.test.ts" <<'EOF'
+import { test } from 'bun:test';
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
+test('removes the config under HOME', () => {
+  rmSync(join(process.env.HOME!, '.himmel', 'config.json'), { force: true });
+});
+EOF
+  rm -f "$bproj/bunfig.toml"
+  seed
+  (cd "$bproj" && bun test >"$tmp/bun-red.log" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] && [ "$(canary)" = DELETED ]; then pass "RED control: bun test with no bunfig.toml DELETES the canary"; else fail "RED control: bun rc=$rc canary $(canary) (log $tmp/bun-red.log)"; fi
+  if [ -f "$REPO_ROOT/bunfig.toml" ]; then cp "$REPO_ROOT/bunfig.toml" "$bproj/bunfig.toml"; fi
+  cp "$setup" "$bproj/scripts/jira/vitest.setup.ts"
+  seed
+  (cd "$bproj" && bun test >"$tmp/bun-a.log" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] && [ "$(canary)" = SURVIVED ]; then pass "bun test with the root bunfig.toml: canary SURVIVED"; else fail "bun test with the root bunfig.toml: rc=$rc canary $(canary) (log $tmp/bun-a.log)"; fi
+  seed
+  (cd "$bproj" && NODE_ENV=production bun test >"$tmp/bun-b.log" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] && [ "$(canary)" = SURVIVED ]; then pass "bun test with NODE_ENV=production: canary SURVIVED"; else fail "bun test with NODE_ENV=production: rc=$rc canary $(canary) (log $tmp/bun-b.log)"; fi
+elif [ "${HIMMEL_REQUIRE_BUN_TEST:-}" = 1 ]; then
+  fail "bun test cases cannot run: bun is missing and HIMMEL_REQUIRE_BUN_TEST=1"
+else
+  echo "  SKIP  bun test cases: bun is not installed"
+fi
 
 # ---- runtime cases need the jira vitest install
 vitest="$REPO_ROOT/scripts/jira/node_modules/.bin/vitest"

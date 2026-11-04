@@ -1,0 +1,6 @@
+# `bun test` from the repo root ignores vitest.config.ts. Preload the same sandbox the vitest
+# root config applies (temp HOME, release state, ledger, config/handover roots, keyring off), so a
+# bare run never reaches the operator's real home. Unconditional: it does not rest on NODE_ENV,
+# which bun sets to "test" only when it is unset.
+[test]
+preload = ["./scripts/jira/vitest.setup.ts"]
