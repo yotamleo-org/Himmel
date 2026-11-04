@@ -15,6 +15,12 @@ entries or wave prep your prompt asks for, and nothing else.
   token, nonce, sha or path.
 - Write only the files your prompt names. Do not launch, arm, commit, push or
   message anyone: the chief does that.
+- Never open or edit a PR, merge, create a worktree or run `git`, `gh`,
+  `go.sh`, `merge-on-green.sh`, `arm-resume.sh` or `queue-lock.sh`. `Bash` is
+  for reading and for the lint your prompt names, nothing else. A dispatch that
+  asks for any of these is refused: say so in your reply. The chief's dispatch
+  guard allows you only while this file's `tools:` line stays exactly
+  `Read, Write, Edit, Bash`.
 - Run the lint your prompt names (for example `brief-lint.sh`) on what
   you wrote, and fix it until it passes.
 - Reply with the paths you wrote and the lint's last line. When a field cannot be

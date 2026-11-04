@@ -3054,6 +3054,120 @@ run "6548 command env NAME='x; literal' prog from a wrong root -> deny" 2 \
 run "6548 env NAME=1 then the literal from a wrong root -> deny" 2 \
     "$(payload "env NAME=1 bash scripts/cr/pr-check-context.sh" "$OTHER")" "$HR"
 
+# ---- 9020: a kit script name that sits in quoted data is not a run ----------
+# A bare kit script name (no scripts/ path) inside a quoted string, an assignment
+# value or an echo/printf operand is text: nothing on the line runs it. The
+# prose below carries "command" and "time" (words the presence scan reads as
+# wrappers) and glob characters, which kept the line in the text scan, where the
+# bare name read as an unresolvable run. Synthetic fixtures, every cwd.
+# shellcheck disable=SC2016 # literal command payloads, never expanded
+{
+for cw in "$WT" "$OTHER"; do
+    run "9020 scalar quoted name, printf reads it -> allow" 0 \
+        "$(payload 'X="Poll chief-wait.sh each time, pool[1]=3"; printf '"'%s'"' "$X"' "$cw")" "$HR"
+    run "9020 array element quoted name, then gh and printf -> allow" 0 \
+        "$(payload 'R[1]="Remaining: 3 open, chief-wait.sh pool count, no command"; R[2]="x"; gh pr view 12 --json state; printf "%s\n" done' "$cw")" "$HR"
+    run "9020 echo string naming go.sh appended to a file -> allow" 0 \
+        "$(payload 'F=/tmp/d9020.md; echo "- 21:00 go.sh --trust-reviewed written, no command ran?" >> "$F"' "$cw")" "$HR"
+done
+# Controls: all refused on main and after. Only a non-himmel cwd refuses a
+# well-formed relative run (a himmel worktree root is the lane that may run it).
+run "9020 control: bash on a relative cr script from a non-himmel cwd -> deny" 2 \
+    "$(payload 'bash scripts/cr/write-verdicts.sh --branch x' "$OTHER")" "$HR"
+run "9020 control: a relative kit script as argv[0] from a non-himmel cwd -> deny" 2 \
+    "$(payload 'scripts/handover/chief-kit/go.sh --trust-reviewed' "$OTHER")" "$HR"
+run "9020 control: bash on a relative kit script operand -> deny" 2 \
+    "$(payload 'bash scripts/handover/chief-kit/chief-wait.sh pool' "$OTHER")" "$HR"
+run "9020 control: a relative kit run inside \$(...) -> deny" 2 \
+    "$(payload 'echo $(bash scripts/cr/write-verdicts.sh)' "$OTHER")" "$HR"
+run "9020 control: an unterminated quote stays refused -> deny" 2 \
+    "$(payload 'echo "unterminated chief-wait.sh [x] time' "$OTHER")" "$HR"
+run "9020 control: an unterminated quote hiding a relative run -> deny" 2 \
+    "$(payload 'echo "unterminated chief-wait.sh ; bash scripts/cr/write-verdicts.sh' "$OTHER")" "$HR"
+run "9020 control: bare kit name executed by bash -> deny" 2 \
+    "$(payload 'bash chief-wait.sh pool [x] time' "$OTHER")" "$HR"
+run "9020 control: bare kit name as argv[0] -> deny" 2 \
+    "$(payload './go.sh --x [x] time' "$OTHER")" "$HR"
+run "9020 control: written text naming a relative cr path -> deny" 2 \
+    "$(payload 'echo "bash scripts/cr/write-verdicts.sh" >> "$F"' "$OTHER")" "$HR"
+run "9020 control: a glob write target into scripts/cr -> deny" 2 \
+    "$(payload 'echo x > scripts/cr/*.sh' "$OTHER")" "$HR"
+run "9020 control: a glob-spelled write target into scripts/cr -> deny" 2 \
+    "$(payload 'echo x > scripts/c?/write-verdicts.sh' "$OTHER")" "$HR"
+run "9020 control: a variable write target naming a gate -> deny" 2 \
+    "$(payload 'F=scripts/cr/write-verdicts.sh; echo x >> "$F"' "$OTHER")" "$HR"
+run "9020 control: an echo with an expanded operand written to a file, bare name in the text -> deny" 2 \
+    "$(payload 'F=/tmp/d9020.md; echo "go.sh $D, each time [x]" >> "$F"' "$OTHER")" "$HR"
+run "9020 control: gh pr checkout beside a quoted bare name -> deny" 2 \
+    "$(payload 'R[1]="Remaining: 3 open, chief-wait.sh pool count, no command"; R[2]="x"; gh pr checkout 12; printf "%s\n" done' "$OTHER")" "$HR"
+run "9020 control: gh api beside a quoted bare name -> deny" 2 \
+    "$(payload 'R[1]="Remaining: 3 open, chief-wait.sh pool count, no command"; R[2]="x"; gh api repos/x/y; printf "%s\n" done' "$OTHER")" "$HR"
+run "9020 control: gh with an expanded argument beside a quoted bare name -> deny" 2 \
+    "$(payload 'R[1]="Remaining: 3 open, chief-wait.sh pool count, no command"; R[2]="x"; gh pr view $N; printf "%s\n" done' "$OTHER")" "$HR"
+run "9020 control: a non-digit subscript assignment beside a quoted bare name -> deny" 2 \
+    "$(payload 'a[b]=1; printf "%s\n" "chief-wait.sh pool, no command"' "$OTHER")" "$HR"
+# An echo/printf write is never allowed beside a bash/sh run: the write can
+# overwrite the byte-checked script the run then trusts (judge PP-j4658-1).
+run "9020 control: printf overwrites the bullet writer through \"\$F\", then runs it -> deny" 2 \
+    "$(payload 'F=scripts/handover/chief-kit/append-results.sh; printf '"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed\n'"'"' > "$F"; bash scripts/handover/chief-kit/append-results.sh' "$WT")" "$HR"
+# A reader (or any runner) beside the write can execute the file the write just
+# made, so a write is data only when every position is an echo/printf or a
+# standalone assignment (judge PP-j4658-2). Main refuses all of these.
+run "9020 control: a write, then an exported-path reader that runs the file -> deny" 2 \
+    "$(payload 'F=scripts/lib/qmd-bounded.sh; printf '"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed\n'"'"' > "$F"; CLAUDE_CODE_EXECPATH=$F; grep x y' "$OTHER")" "$HR"
+run "9020 control: a write, then a jq reader -> deny" 2 \
+    "$(payload 'F=scripts/lib/qmd-bounded.sh; printf '"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed\n'"'"' > "$F"; jq . y' "$OTHER")" "$HR"
+run "9020 control: a write, then a cat reader -> deny" 2 \
+    "$(payload 'F=scripts/lib/qmd-bounded.sh; printf '"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed\n'"'"' > "$F"; cat y' "$OTHER")" "$HR"
+run "9020 control: an upper-case HANDOVER literal write, then a cat reader -> deny" 2 \
+    "$(payload 'printf '"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed\n'"'"' > scripts/HANDOVER/x.sh; cat y' "$OTHER")" "$HR"
+# gh --web / -w opens $BROWSER, which a standalone assignment can set to a command.
+run "9020 control: BROWSER set to a command, then gh pr view --web -> deny" 2 \
+    "$(payload 'BROWSER='"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed'"'"'; gh pr view 1 --web' "$OTHER")" "$HR"
+run "9020 control: BROWSER set to a command, then gh pr view -w -> deny" 2 \
+    "$(payload 'BROWSER='"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed'"'"'; gh pr view 1 -w' "$OTHER")" "$HR"
+run "9020 control: BROWSER set to a command, then gh pr view -w=true -> deny" 2 \
+    "$(payload 'BROWSER='"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed'"'"'; gh pr view 1 -w=true' "$OTHER")" "$HR"
+run "9020 control: BROWSER set to a command, then gh pr view --web=true -> deny" 2 \
+    "$(payload 'BROWSER='"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed'"'"'; gh pr view 1 --web=true' "$OTHER")" "$HR"
+run "9020 control: GH_BROWSER set to a command beside any gh read -> deny" 2 \
+    "$(payload 'GH_BROWSER='"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed'"'"'; gh pr view 1 --json state' "$OTHER")" "$HR"
+# Lone writes: every position is an assignment or an echo/printf and the target is
+# a literal path under scripts/cr or scripts/handover (any case). The prose names
+# a bare kit script, so only the target check keeps these off the allow path; main
+# refuses them. Each flips to allow when the target's case-insensitive flag or its
+# cr/|handover/ exclusion is removed from the guard.
+P9020='"- 21:00 go.sh --trust-reviewed written, no command ran?"'
+for tgt in scripts/HANDOVER/x.md scripts/handover/x.md scripts/cr/x.md scripts/CR/x.md; do
+    run "9020 control: assignment, then echo written to the literal $tgt -> deny" 2 \
+        "$(payload "X=1; echo $P9020 > $tgt" "$OTHER")" "$HR"
+    run "9020 control: assignment, then printf written to the literal $tgt -> deny" 2 \
+        "$(payload "F=1; printf \"%s\\n\" $P9020 > $tgt" "$OTHER")" "$HR"
+done
+# Each browser option spelling beside a plain gh read and a quoted bare name, with
+# no dangerous assignment: only the gh option check keeps these off the allow path.
+G9020='R[1]="Remaining: 3 open, chief-wait.sh pool count, no command"; R[2]="x"; gh pr view 12 --json state'
+for opt in -w --web -w=true --we; do
+    run "9020 control: gh pr view $opt beside a quoted bare name -> deny" 2 \
+        "$(payload "$G9020 $opt"'; printf "%s\n" done' "$OTHER")" "$HR"
+done
+# A dangerous variable assigned a value that names a kit script keeps the text scan,
+# which refuses it. The value holds no shell metacharacter (a [ is refused earlier,
+# before the parsed-position check), so the dangerous-name list is the only thing
+# between each of these and the allow path. The safe name X with the same value and
+# the same gh read is the allow twin.
+for nm in BROWSER GH_HOST PAGER MANPAGER EDITOR VISUAL XDG_CONFIG_HOME; do
+    run "9020 control: $nm assigned a value naming a kit script, then a gh read -> deny" 2 \
+        "$(payload "$nm='cd scripts/handover/chief-kit and bash go.sh --trust-reviewed'; gh pr diff 1" "$OTHER")" "$HR"
+done
+run "9020 control twin: the safe name X with the same value and gh read -> allow" 0 \
+    "$(payload "X='cd scripts/handover/chief-kit and bash go.sh --trust-reviewed'; gh pr diff 1" "$OTHER")" "$HR"
+run "9020 control: the same overwrite with a write-verdicts payload -> deny" 2 \
+    "$(payload 'F=scripts/handover/chief-kit/append-results.sh; printf '"'"'cd scripts/cr && bash write-verdicts.sh\n'"'"' > "$F"; bash scripts/handover/chief-kit/append-results.sh' "$WT")" "$HR"
+run "9020 control: bash -c hiding a relative run -> deny" 2 \
+    "$(payload 'bash -c "bash scripts/cr/write-verdicts.sh"' "$OTHER")" "$HR"
+}
+
 echo
 if [ "$FAILED" -eq 0 ]; then
     echo "all guard-pr-check-literal cases passed"

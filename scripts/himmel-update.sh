@@ -1027,6 +1027,22 @@ EOF
         fi
     fi
 
+    # (3d) the morning-report cadence. `arm --auto` arms it once, never twice, and leaves
+    # alone a cadence the operator disarmed; a machine with no handover root is skipped quietly (rc 5).
+    local mrc="$ROOT/scripts/handover/morning-report-cadence.sh" mout mrc_rc=0
+    if [ -f "$mrc" ]; then
+        if [ "$mode" = "check" ]; then
+            echo "    would run: bash scripts/handover/morning-report-cadence.sh arm --auto"
+        else
+            mout="$(bash "$mrc" arm --auto 2>&1)" || mrc_rc=$?
+            case "$mrc_rc" in
+                0) echo "    morning-report cadence: ${mout##*$'\n'}" ;;
+                5) echo "    morning-report cadence: skipped, no handover root" ;;
+                *) _drift_add "morning-report cadence could not be armed: $(printf '%s' "$mout" | tail -n 1)" "bash scripts/handover/morning-report-cadence.sh arm" ;;
+            esac
+        fi
+    fi
+
     if [ -z "$DRIFT_LINES" ]; then
         echo "    no unconverged drift."
         return 0

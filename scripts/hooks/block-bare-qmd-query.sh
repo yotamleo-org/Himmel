@@ -1596,7 +1596,7 @@ _dyn_body() {
 # qmd_words decline and skips this reading entirely.
 dyn_check() {
     local LC_ALL=C t=$1 dp=$2 ar=${3:-0} n i=0 j c pd bq pp=1 w nx k s inner subs sp sa sb lastd tail nm r
-    local adang=' ' fdang=' ' vdyn=' ' wopt=0 wx=0 aln='' wo=0 al=0 vm=0 fn=0 bd
+    local adang=' ' fdang=' ' vdyn=' ' wopt=0 wx=0 aln='' wo=0 al=0 vm=0 fn=0 bd dk
     n=${#t}
     if [ "$dp" -gt 4 ]; then deny=1; return 0; fi
     while [ "$i" -lt "$n" ]; do
@@ -1718,7 +1718,14 @@ dyn_check() {
                 if [[ $bd =~ $DYNBODY ]] || [[ $bd == *'$('* || $bd == *'`'* ]]; then fdang="$fdang$w "; fi
                 i=$j; pp=0; continue
             fi
-            case "$adang$fdang" in *" ${w##*/} "*) deny=1; return 0 ;; esac
+            # A word ending in `/` (e.g. `-cadence/` left after a brace split) has an
+            # empty basename, which would match the lists' blank padding: look the
+            # whole word up instead, since a function may be named `f/`. A word
+            # holding a substitution or a variable keeps the empty key, which
+            # matches the lists' padding and so denies.
+            dk=${w##*/}
+            if [ -z "$dk" ] && [ -z "$subs" ] && [[ $w != *'$'* ]]; then dk=$w; fi
+            case "$adang$fdang" in *" $dk "*) deny=1; return 0 ;; esac
             if [ -n "$subs" ] || [[ $w == *'$'* ]]; then
                 # The part after the last dynamic piece must be a literal path.
                 if [ "$lastd" -ge 0 ]; then

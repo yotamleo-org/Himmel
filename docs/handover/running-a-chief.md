@@ -357,6 +357,18 @@ effort guidance, including the chief's own wake-up budget, is in
   in-flight key passes only through the `core-snapshot` record. A `BYPASS` key
   is printed as `bypass=<class>` and logged to `core-gate.jsonl` beside the
   brief. Run a minerva worker for each `CORE` key without `SPEC ok`.
+- **The minerva design leg launches on a key with no spec (HIMMEL-9027).** The
+  brief for that minerva worker carries the line `> **Design leg:** minerva`,
+  spelled exactly so, and a `Writes:` line that names only `.md` files in the
+  state repo's `specs/` folder. Each file is either relative to the bucket,
+  such as `specs/designs/<KEY>-<slug>.md` or `specs/plans/<KEY>-<slug>.md`,
+  or an absolute path under the handover root. `brief-lint.sh` then reads the
+  brief as a design worker. A key that is core only because of its label gets
+  `BYPASS design`, shown and logged like any other bypass, whatever paths the
+  ticket names. If any other token is on the `Writes:` line, such as a repo
+  file or a word of prose, the marker brief is refused outright. A build brief
+  never carries the marker, so it still needs `SPEC ok`. Without the marker, a
+  `specs/` token is not a path, and the ticket's own paths decide.
 
 The chief's own helper subagents (`Agent` dispatches inside the chief session)
 follow the same policy: raise *effort* before tier, and name the model per

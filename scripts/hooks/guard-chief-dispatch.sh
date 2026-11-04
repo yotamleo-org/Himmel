@@ -23,9 +23,9 @@
 #      CodeRabbit, say) is deliberately NOT enough — the two-family
 #      conjunction is the false-positive budget that keeps bounded read-only
 #      research dispatches frictionless.
-# Always-allow carve-out, checked BEFORE the family count: subagent_type
+# Always-allow carve-outs, checked BEFORE the family count: subagent_type
 # "Explore" (the read-only search agent) — a real, STRUCTURAL read-only
-# lane, not a claim made in prompt text.
+# lane, not a claim made in prompt text — and the two pinned repo agents below.
 #
 # THERE IS DELIBERATELY NO PROMPT-TEXT READ-ONLY CARVE-OUT. Every such
 # carve-out leaks, in three different ways:
@@ -45,7 +45,12 @@
 # spoofable by the dispatch's own prompt text:
 #   * subagent_type: Explore, or judge-ro (a
 #     repo agent whose frontmatter pins tools Read, Grep, Glob, Bash only,
-#     checked at dispatch — the same structural read-only lane)
+#     checked at dispatch — the same structural read-only lane), or
+#     brief-drafter (a repo agent whose frontmatter pins tools
+#     Read, Write, Edit, Bash; its job is writing brief files for the chief,
+#     and its prompt forbids launch, commit, push and PR. Each such dispatch
+#     is appended to the CHIEF_DISPATCH_LOG audit log best-effort: a failed
+#     write never blocks the dispatch)
 #   * CHIEF_DISPATCH_OK=1 (see "Escape hatches" below)
 # A genuinely read-only dispatch uses one of those two; the deny message
 # names both.
@@ -100,7 +105,8 @@ grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 input=$(cat 2>/dev/null || true)
 
-log_override() {
+# log_record <name> — append one audit line to CHIEF_DISPATCH_LOG, best-effort
+log_record() {
     local override="$1" log now session subagent log_dir
     log="${CHIEF_DISPATCH_LOG:-${HOME:-}/.claude/chief-dispatch-guard/overrides.jsonl}"
     now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || printf 'unknown')
@@ -119,7 +125,12 @@ log_override() {
         printf '{"ts":"%s","override":"%s","session":"","subagent_type":""}\n' \
             "$now" "$override" >> "$log" 2>/dev/null || true
     fi
-    warn "$override=1 — allowing by explicit session override; audit log: $log"
+    LOG_PATH="$log"
+}
+
+log_override() {
+    log_record "$1"
+    warn "$1=1 — allowing by explicit session override; audit log: $LOG_PATH"
 }
 
 # Each escape hatch lifts the guard when set to a non-falsy value; a set falsy
@@ -140,19 +151,29 @@ if ! tool=$(printf '%s' "$input" | jq -r '.tool_name | select(type == "string") 
 fi
 [ "$tool" = "Agent" ] || exit 0
 
-subagent_type=$(printf '%s' "$input" | jq -r '.tool_input.subagent_type | select(type == "string") // empty' 2>/dev/null || true)
-# judge-ro is matched exactly and keeps the
-# read-only lane only while its project agent file has one tools: line,
-# Read, Grep, Glob, Bash. A file that grants more, or no file, gets none.
-ro_judge_pinned() {
+# Read the raw value: $(...) strips trailing newlines, so a type of
+# "brief-drafter\n" would compare equal. The sentinel keeps them; jq adds one.
+subagent_type=$({ printf '%s' "$input" | jq -r '.tool_input.subagent_type | select(type == "string") // empty' 2>/dev/null || true; printf x; })
+subagent_type="${subagent_type%x}"
+subagent_type="${subagent_type%$'\n'}"
+# judge-ro and brief-drafter are matched exactly and keep their lane only
+# while the project agent file has one tools: line, exactly the expected one
+# (judge-ro: Read, Grep, Glob, Bash; brief-drafter: Read, Write, Edit, Bash).
+# A file that grants more, or no file, gets none.
+agent_pinned() {
     local f
     f="$(dirname "${BASH_SOURCE[0]}")/../../.claude/agents/$1.md"
     [ -f "$f" ] && [ -r "$f" ] || return 1
-    [ "$(awk 'NR == 1 { if ($0 != "---") exit; next } /^---$/ { exit } /^tools:/ { n++; t = $0 } END { if (n == 1) print t }' "$f")" = "tools: Read, Grep, Glob, Bash" ]
+    [ "$(awk 'NR == 1 { if ($0 != "---") exit; next } /^---$/ { exit } /^tools:/ { n++; t = $0 } END { if (n == 1) print t }' "$f")" = "tools: $2" ]
 }
 case "$subagent_type" in
     Explore) exit 0 ;;
-    judge-ro) ro_judge_pinned "$subagent_type" && exit 0 ;;
+    judge-ro) agent_pinned "$subagent_type" 'Read, Grep, Glob, Bash' && exit 0 ;;
+    brief-drafter)
+        if agent_pinned "$subagent_type" 'Read, Write, Edit, Bash'; then
+            log_record brief-drafter-dispatch
+            exit 0
+        fi ;;
 esac
 
 text=$(printf '%s' "$input" | jq -r '[.tool_input.description, .tool_input.prompt] | map(select(type == "string")) | join("\n")' 2>/dev/null || true)
@@ -280,7 +301,10 @@ Genuinely read-only work has two structural options, neither spoofable by prompt
 prompt-text read-only claim is NOT a carve-out here — three CR rounds proved it leaks):
   * dispatch with subagent_type: Explore (or judge-ro for a judge call), or
   * relaunch with CHIEF_DISPATCH_OK=1 in the launching shell
-    (audited; a per-call prefix does not reach this hook)."
+    (audited; a per-call prefix does not reach this hook).
+
+Drafting worker briefs is a separate allowance: dispatch with subagent_type: brief-drafter
+(its agent file must pin tools Read, Write, Edit, Bash; each dispatch is logged best-effort)."
 
 reason=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \
     || reason='"guard-chief-dispatch: chief session denied a ship-flow-shaped Agent dispatch"'

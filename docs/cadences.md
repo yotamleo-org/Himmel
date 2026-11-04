@@ -3,7 +3,7 @@
 A **cadence** is a recurring job himmel can arm on your machine: a crontab entry
 (Linux, macOS) that fires a runner on a schedule.
 Every cadence is **off until you arm it**: the install wizard only offers the
-ones whose precondition holds, and nothing arms itself.
+ones whose precondition holds, and nothing arms itself except `morning-report`, which `himmel-update` arms once.
 
 The wizard menu is not a hand-written list. It reads
 `scripts/himmelctl/lib/cadence-registry.json`, one row per cadence, and a
@@ -46,6 +46,13 @@ task silently vanishes.
 | `security-audit` | `scripts/security/security-audit-cadence.sh` | always | Weekly read-only diff of existing GitHub, Snyk, Arnica and CodeRabbit findings; optional sources skip. No new scan, paid call or LLM call. `arm --day 0-6 --time HH:MM` (default Monday 07:00). See [setup and sources](#weekly-security-findings-audit) |
 | `doctor` | `scripts/doctor-cadence.sh` | always | Daily `himmel-doctor` run from the primary checkout. A FAIL or a new WARN goes to Telegram and the statusline shows the counts. Report only, fixes nothing. Cron only (Linux, macOS) |
 | `pull-cadence` | `scripts/luna-vitals/connectors/pull-cadence.sh` | `GOOGLE_HEALTH_REFRESH_TOKEN` is set | Daily Google Health connector pull to a review artifact. No Claude session. Setup: [luna/google-health-connector-setup.md](luna/google-health-connector-setup.md) |
+
+`morning-report` (`scripts/handover/morning-report-cadence.sh`) is not in the
+registry, so the install wizard does not offer it. It runs daily at 07:10 local
+and writes `morning-report-<date>.md` into the handover root, with no Claude
+session (0 tokens). `himmel-update` arms it once (`arm --auto`) and never
+re-arms one you disarmed. `himmel-doctor` C86 warns when the newest report is
+over 36 h old.
 
 ## Weekly security findings audit
 
