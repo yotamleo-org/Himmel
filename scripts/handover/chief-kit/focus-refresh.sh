@@ -89,7 +89,7 @@ export LC_ALL=C
 . "$HERE/../../lib/load-dotenv.sh"
 # A shell without HANDOVER_DIR would fall back to the stub folder and skip the chain stage; read the
 # configured root from the primary checkout's .env, as the doctor does (a live value in the environment wins).
-load_dotenv --root "$(_load_dotenv_primary_for "$HERE/../../..")" HANDOVER_DIR USER_SLUG 2>/dev/null || true # swallow-ok: an unreadable .env leaves the resolver's own fallback, which chains_skip_visible reports below
+load_dotenv --root "$(_load_dotenv_primary_for "$HERE/../../.." 2>/dev/null)" HANDOVER_DIR USER_SLUG 2>/dev/null || true # swallow-ok: an unreadable .env leaves the resolver's own fallback, which chains_skip_visible reports below
 
 usage() {
     echo "usage: focus-refresh.sh --doc <chief doc> [--mirror-fresh <dir>] [--repo <owner/repo>] | --status | --mark-dirty" >&2
@@ -298,7 +298,7 @@ chains_fail() { # <registry|graph|render> <detail file> - the run goes on with t
 chains_reg=$(chains_registry) || chains_reg=""
 chains_skip_visible() { # a chains.json under the configured root but none under the resolved one is a WARN, never ok
     local cfg slug
-    cfg=$(unset HANDOVER_DIR; load_dotenv --root "$(_load_dotenv_primary_for "$HERE/../../..")" HANDOVER_DIR 2>/dev/null; printf '%s' "${HANDOVER_DIR:-}") || return 0 # swallow-ok: no configured root means nothing to compare
+    cfg=$(unset HANDOVER_DIR; load_dotenv --root "$(_load_dotenv_primary_for "$HERE/../../.." 2>/dev/null)" HANDOVER_DIR 2>/dev/null; printf '%s' "${HANDOVER_DIR:-}") || return 0 # swallow-ok: no configured root means nothing to compare
     slug=$(cd "$HERE/../../.." && user_slug 2>/dev/null) || return 0 # swallow-ok: no slug, no registry path to compare
     [ -n "$cfg" ] && [ -f "$cfg/$slug/himmel/chains.json" ] || return 0
     CHAINS_WARN="chains root"

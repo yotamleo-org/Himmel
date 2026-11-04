@@ -1318,9 +1318,10 @@ for _n in a b c; do
     seed_named_transcript "$PROJ_ROOT19C" "recrys19c-$_n" "$TRANSCRIPT_FIXTURES/normal.jsonl"
 done
 PF_C="$SB/pf-c.sh"; PF_C_LOG="$SB/pf-c.log"
-printf '#!/usr/bin/env bash\necho call >> "%s"\necho "SKIP: five_hour at 97"\n' "$PF_C_LOG" > "$PF_C"
+# shellcheck disable=SC2016  # the stub body expands ANTHROPIC_ORG_C_KEY when it runs, not here
+printf '#!/usr/bin/env bash\necho call >> "%s"\necho "orgc=${ANTHROPIC_ORG_C_KEY:-unset}" >> "%s.env"\necho "SKIP: five_hour at 97"\n' "$PF_C_LOG" "$PF_C_LOG" > "$PF_C"
 chmod +x "$PF_C"
-out19c=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT -u CRYSTALLIZE_BACKEND CRYSTALLIZE_PREFLIGHT_CMD="$PF_C" \
+out19c=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT -u CRYSTALLIZE_BACKEND ANTHROPIC_ORG_C_KEY=dummy-not-a-key CRYSTALLIZE_PREFLIGHT_CMD="$PF_C" \
     CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" STUB_MODE=success CRYSTALLIZE_PID_DIR="$SB/pids" \
     bash "$BACKFILL" --recrystallize \
     --projects-dir "$PROJ_ROOT19C" --luna-vault-path "$VAULT19C" \
@@ -1330,6 +1331,8 @@ assert_contains "recrys(bank-refused): the stop is announced" "recrystallize: st
 # read-sink-ok: PF_C_LOG is the sandbox log this suite's own stub preflight writes, never an argv or env input
 _pf_c_calls="$(wc -l < "$PF_C_LOG" 2>/dev/null | tr -d ' ')"
 if [ "$_pf_c_calls" = "1" ]; then pass "recrys(bank-refused): one preflight, then the loop stops"; else fail "recrys(bank-refused): $_pf_c_calls preflight calls (expected 1)" "$out19c"; fi
+# read-sink-ok: the sandbox log this suite's own stub preflight writes
+if [ "$(cat "$PF_C_LOG.env" 2>/dev/null)" = "orgc=unset" ]; then pass "recrys(bank-refused): the preflight child never sees ANTHROPIC_ORG_C_KEY"; else fail "recrys(bank-refused): ANTHROPIC_ORG_C_KEY reached the preflight child" "$(cat "$PF_C_LOG.env" 2>/dev/null)"; fi
 
 # A typo'd CRYSTALLIZE_BACKEND says why nothing is crystallized, once.
 out19t=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT CRYSTALLIZE_BACKEND=bogus CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" \

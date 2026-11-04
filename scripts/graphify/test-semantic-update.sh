@@ -16,6 +16,8 @@ fail() { echo "  FAIL: $1"; FAILS=$((FAILS+1)); }
 WS="$(mktemp -d "${TMPDIR:-/tmp}/test-semantic-update.XXXXXX")" || exit 1; trap 'rm -rf "$WS"' EXIT
 REPO="$WS/repo"
 mkdir -p "$REPO/scripts/graphify" "$REPO/scripts/lib" "$REPO/scripts/api-lane" "$WS/bin" "$WS/tmp" "$WS/glm"
+# the copied repo is a git repo of its own: a corpus inside it is "the himmel graph", one beside it is another repo
+git init -q "$REPO"
 # Other tools share TMPDIR (handover-path.sh's arm-resume-cache.* in CI): the
 # scratch checks look only for this script's own graphify-semantic-* dirs.
 mkdir "$WS/tmp/arm-resume-cache.foreign"
@@ -699,7 +701,7 @@ grep -q 'not dispatching' "$WS/claude.out" && pass "T68 the shim says why it sto
 [ "$(lastrun "$C68" cost_usd)" = "0.0" ] && pass "T68 rejected calls add no cost" || fail "T68 row: $(tail -1 "$C68/graphify-out/semantic-runs.jsonl" 2>&1)"
 
 echo "T68b: on auto routing the second account gets one call, then dispatch stops"
-C68B="$WS/c68b"; new_corpus "$C68B"; : > "$WS/calls.log"; : > "$WS/claude.out"
+C68B="$REPO/c68b"; new_corpus "$C68B"; : > "$WS/calls.log"; : > "$WS/claude.out"
 out=$(env HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPHIFY_API_BATCH=0 GRAPHIFY_STUB_CHUNKFAIL=1 LANE_STUB_REJECT=1 GRAPHIFY_STUB_CALL_N=5 GRAPHIFY_STUB_CALL_CLAUDE=1 PATH="$WS/bin:$PATH" bash "$SCRIPT" --name t68b --corpus-root "$C68B" --corpus-class himmel-code --backend claude-api 2>&1); rc=$?
 [ "$rc" -eq 5 ] && pass "T68b the run exits 5 too" || fail "T68b exit (got $rc): $out"
 [ "$(grep -c '^lane ' "$WS/calls.log")" -eq 2 ] && pass "T68b two lane calls: the first rejection plus one rotated call" || fail "T68b lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
@@ -1059,12 +1061,18 @@ out=$(BATCH_STUB_DROP=1 GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t73 --corpu
 grep -q 'claude-shim-rc=1' "$WS/calls.log" && pass "T73 the replay shim exited 1 on the unanswered prompt" || fail "T73 (rc=$rc): $(cat "$WS/calls.log")"
 
 echo "T74: auto routing rotates to the other account on a credit-exhausted answer (decision 229)"
-C74="$WS/c74"; new_corpus "$C74"; batch_reset
+C74="$REPO/c74"; new_corpus "$C74"; batch_reset
 out=$(ACCT=auto BATCH_STUB_EXHAUSTED=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t74 --corpus-root "$C74" --corpus-class himmel-code --backend claude-api); rc=$?
 [ "$rc" -eq 0 ] && [ "$(grep -c '^submit' "$WS/batch.log")" -eq 2 ] && [ "$(sed -n 1p "$WS/batch.log" | cut -d' ' -f2)" = "account=A" ] \
   && [ "$(sed -n 2p "$WS/batch.log" | cut -d' ' -f2)" = "account=B" ] && [ "$(cat "$WS/exhausted.log")" = "A" ] \
   && [ "$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["account"])' "$C74/graphify-out/semantic-batch/batch.json")" = "B" ] \
   && pass "T74 A exhausted and marked, the batch went to B" || fail "T74 (rc=$rc): $out / $(cat "$WS/batch.log") / $(cat "$WS/exhausted.log" 2>&1)"
+
+echo "T74b: auto routing over a corpus outside the himmel checkout is refused before any pick or submit"
+C74B="$WS/c74b"; new_corpus "$C74B"; batch_reset
+out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t74b --corpus-root "$C74B" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 2 ] && [ ! -s "$WS/batch.log" ] && [ ! -e "$C74B/graphify-out/semantic-batch" ] && [[ "$out" == *"himmel graph pass only"* ]] \
+  && pass "T74b exit 2, nothing submitted, no batch directory" || fail "T74b (rc=$rc): $out / $(cat "$WS/batch.log")"
 
 echo "T75: a pinned account is marked exhausted but never rotated; nothing is submitted, exit 2"
 C75="$WS/c75"; new_corpus "$C75"; batch_reset

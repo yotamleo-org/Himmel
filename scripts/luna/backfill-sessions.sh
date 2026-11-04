@@ -744,12 +744,12 @@ _claude_available() { # [--no-preflight]
         claude-cli)
             [ "${1:-}" = "--no-preflight" ] && return 0
             if [ -n "${CRYSTALLIZE_PREFLIGHT_CMD:-}" ]; then
-                pf="$(env -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u LQ_API_KEY \
+                pf="$(env -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u ANTHROPIC_ORG_C_KEY -u LQ_API_KEY \
                     -u CADENCE_USAGE_LAUNCH -u CADENCE_USAGE_CALLER_PID -u WORKER_SESSION_LANE \
                     CADENCE_USAGE_LANE=native CADENCE_USAGE_WORKER="backfill:$$" \
                     "$CRYSTALLIZE_PREFLIGHT_CMD" </dev/null 2>/dev/null | tail -n 1)"
             else
-                pf="$(env -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u LQ_API_KEY \
+                pf="$(env -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u ANTHROPIC_ORG_C_KEY -u LQ_API_KEY \
                     -u CADENCE_USAGE_LAUNCH -u CADENCE_USAGE_CALLER_PID -u WORKER_SESSION_LANE \
                     CADENCE_USAGE_LANE=native CADENCE_USAGE_WORKER="backfill:$$" \
                     bash "$SCRIPT_DIR/../lib/usage-preflight.sh" </dev/null 2>/dev/null | tail -n 1)"
