@@ -254,6 +254,17 @@ corpus_slug_of() {
     printf '%s' "$s"
 }
 
+# --- recording ast-update stub: every call appends its corpus arg ---
+AST_REC="$TMP_ROOT/ast-update-rec.sh"
+cat > "$AST_REC" <<'ASTREC'
+#!/usr/bin/env bash
+echo "ast-update-call: $1" >> "$AST_REC_LOG"
+exec bash "$AST_REC_REAL" "$@"
+ASTREC
+chmod +x "$AST_REC"
+AST_REC_LOG="$TMP_ROOT/ast-rec.log"
+export AST_REC_REAL="$SCRIPT_DIR/ast-update.sh"
+
 run_gc() {
     PATH="$FAKE_BIN:$PATH" \
     FORGE=github \
@@ -323,7 +334,9 @@ git -C "$REPO1B" push -q origin main
 : > "$FAKE_MERGE_LOG"
 : > "$FAKE_GH_LOG"
 rc=0
+: > "$AST_REC_LOG"
 out=$(HOME="$HOME1B" GRAPH_CADENCE_HIMMEL_ROOT="$REPO1B" GRAPH_CADENCE_LEDGER_ROOT="$LEDGER1B" \
+      GRAPH_CADENCE_AST_UPDATE="$AST_REC" AST_REC_LOG="$AST_REC_LOG" \
       run_gc --threshold 10 2>&1) || rc=$?
 assert_eq        "untracked-graph rc=0 (local refresh + clean no-op, not a failure)" "0" "$rc"
 assert_contains  "untracked-graph message says retired" "retired from the git tree" "$out"
@@ -331,22 +344,43 @@ assert_not_contains "untracked-graph message carries no internal id" "HIMMEL-270
 assert_contains  "untracked-graph message" "does not track graphify-out/graph.json" "$out"
 CORPUS_SLUG1B=$(corpus_slug_of "$REPO1B")
 WT1B="$HOME1B/.claude/graph-cadence/$CORPUS_SLUG1B"
+# Nothing consumes a worktree rebuild on this path (no publish, no promote
+# without --semantic), and the hourly GraphMapAst cadence already builds the graph that
+# is read -- so this fire must NOT rebuild. RED on base: base ran ast-update.sh here.
+assert_eq "untracked-graph run invoked NO ast-update rebuild (the hourly cadence owns it)" "" "$(cat "$AST_REC_LOG" 2>/dev/null)"
+assert_contains  "untracked-graph message says the rebuild is skipped" "skipping the rebuild" "$out"
 if [ -d "$WT1B" ]; then
-    pass "untracked-graph run DOES create the dedicated worktree (local refresh is no longer unreachable)"
+    fail "untracked-graph run created the dedicated worktree for a rebuild nobody consumes" "$(ls "$HOME1B/.claude/graph-cadence" 2>/dev/null)"
 else
-    fail "untracked-graph run created no worktree -- local refresh (step 5) is still unreachable" "$(ls "$HOME1B/.claude/graph-cadence" 2>/dev/null)"
-fi
-if [ -f "$WT1B/graphify-out/graph.json" ]; then
-    pass "the local ast-update.sh refresh actually ran (graphify-out/graph.json written into the worktree)"
-else
-    fail "no graphify-out/graph.json found in the worktree -- ast-update.sh never ran" "$(ls "$WT1B/graphify-out" 2>/dev/null)"
+    pass "untracked-graph run created no dedicated worktree"
 fi
 assert_eq "untracked-graph run never invoked merge-on-green (nothing to merge)" "" "$(cat "$FAKE_MERGE_LOG")"
 assert_eq "untracked-graph run never invoked gh (nothing to publish)" "" "$(cat "$FAKE_GH_LOG")"
 LEDGER_LINE1B=$(tail -n1 "$LEDGER1B/.graph-cadence/ledger.jsonl" 2>/dev/null || echo MISSING)
-assert_contains "ledger action=refreshed (real work happened, not a skip)" '"action":"refreshed"' "$LEDGER_LINE1B"
-assert_not_contains "ledger action is not skipped" '"action":"skipped"' "$LEDGER_LINE1B"
+assert_contains "ledger action=skipped (nothing ran this fire)" '"action":"skipped"' "$LEDGER_LINE1B"
 assert_contains "ledger error=null (not the _fail/exit-3 path)" '"error":null' "$LEDGER_LINE1B"
+
+# Controls: the rebuild still runs where something consumes it.
+# (a) retired fixture + --semantic: the semantic step builds on the worktree's AST output.
+FAKE_SEM1B="$TMP_ROOT/t1b-semantic-fake.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$FAKE_SEM1B"; chmod +x "$FAKE_SEM1B"
+: > "$AST_REC_LOG"; rc=0
+out=$(HOME="$HOME1B" GRAPH_CADENCE_HIMMEL_ROOT="$REPO1B" GRAPH_CADENCE_LEDGER_ROOT="$LEDGER1B" \
+      GRAPH_CADENCE_AST_UPDATE="$AST_REC" AST_REC_LOG="$AST_REC_LOG" GRAPH_CADENCE_SEMANTIC_UPDATE="$FAKE_SEM1B" \
+      run_gc --threshold 10 --semantic 2>&1) || rc=$?
+assert_eq "retired + --semantic rc=0" "0" "$rc"
+assert_eq "retired + --semantic still rebuilds once" "1" "$(grep -c '^ast-update-call: ' "$AST_REC_LOG")"
+# (b) tracked, stale graph: the publish path needs the origin/main rebuild.
+REPO1BT="$TMP_ROOT/t1bt-primary"; BARE1BT="$TMP_ROOT/t1bt-origin.git"
+HOME1BT="$TMP_ROOT/t1bt-home"; LEDGER1BT="$TMP_ROOT/t1bt-ledger"
+mkdir -p "$HOME1BT" "$LEDGER1BT"
+seed_repo "$REPO1BT" "$BARE1BT" 20
+: > "$AST_REC_LOG"; rc=0
+out=$(HOME="$HOME1BT" GRAPH_CADENCE_HIMMEL_ROOT="$REPO1BT" GRAPH_CADENCE_LEDGER_ROOT="$LEDGER1BT" \
+      GRAPH_CADENCE_AST_UPDATE="$AST_REC" AST_REC_LOG="$AST_REC_LOG" \
+      run_gc --threshold 10 2>&1) || rc=$?
+assert_eq "tracked stale graph rc=0" "0" "$rc"
+assert_eq "tracked stale graph still rebuilds once (publish consumes it)" "1" "$(grep -c '^ast-update-call: ' "$AST_REC_LOG")"
 
 # =============================================================================
 # Test 1c (CodeRabbit, PR #2272): origin/main does not RESOLVE at all (empty
