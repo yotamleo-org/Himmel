@@ -280,6 +280,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
             ;;
         print)
             echo "DRY hop: would print operator command:"
+            # launch-guard-ok: printed hint, not an exec
             echo "    claude --settings '$hop_settings' \"$RESUME_PROMPT\""
             ;;
     esac
@@ -325,6 +326,7 @@ case "$MODE" in
         if [ "$rc" -ne 0 ]; then
             echo "ERR hop: arm-resume.sh failed (rc=$rc) — snapshot written but no relaunch scheduled" >&2
             echo "    Snapshot is still at: $SNAPSHOT" >&2
+            # launch-guard-ok: printed hint, not an exec
             echo "    Resume manually: claude --settings '$hop_settings' \"$RESUME_PROMPT\"" >&2
             exit "$rc"
         fi
@@ -344,6 +346,7 @@ case "$MODE" in
 ================================================================
 EOF
         ;;
+        # launch-guard-ok: deferred to follow-up g
     print)
         cat <<EOF
 

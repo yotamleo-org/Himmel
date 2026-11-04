@@ -713,6 +713,7 @@ ${inprogress_raw}"
     if ! llm_settings=$(bash "$(dirname "${BASH_SOURCE[0]}")/../lanes/profile-settings.sh" bare); then
         llm_status="unresolved"
         echo "WARNING: --llm plugin profile 'bare' did not resolve; using heuristic" >&2
+    # launch-guard-ok: unattended text summary (stdin /dev/null, output captured)
     elif llm_out=$($CLAUDE_CMD --settings "$llm_settings" --model "$LLM_MODEL" "$llm_prompt" </dev/null 2>/dev/null); then
         llm_status="ok"
         t=$(extract_block "$llm_out" TLDR);    if [ -n "$t" ]; then tldr_final="$t"; else echo "WARNING: --llm TLDR block empty; using heuristic" >&2; fi

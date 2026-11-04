@@ -705,11 +705,11 @@ _sync_claude_cli() {
         if [ "$rc" -eq 1 ]; then
             echo "    claude $inst is current (latest $latest)."
             _probe_tool_row claude up-to-date "$inst"
-            _ver_row claude "$inst" "$latest" current # launch-profile-ok: version-table label, not a launch
+            _ver_row claude "$inst" "$latest" current # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
         else
             echo "    claude ${inst:-?} vs latest ${latest:-?} — cannot compare (report only)."
             _probe_tool_row claude skipped "cannot compare ${inst:-?} with ${latest:-?}"
-            _ver_row claude "${inst:--}" "${latest:--}" unknown "cannot compare" # launch-profile-ok: version-table label, not a launch
+            _ver_row claude "${inst:--}" "${latest:--}" unknown "cannot compare" # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
         fi
         return 0
     fi
@@ -728,13 +728,13 @@ _sync_claude_cli() {
     fi
     if [ "$mode" = "check" ]; then
         _probe_tool_row claude skipped "$inst -> ${latest:-?} update available — run without --check"
-        _ver_row claude "$inst" "${latest:--}" behind "run /himmel-update to upgrade" # launch-profile-ok: version-table label, not a launch
+        _ver_row claude "$inst" "${latest:--}" behind "run /himmel-update to upgrade" # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
         return 0
     fi
     if [ "$owner" = "brew" ] || [ "$owner" = "pacman" ] || [ ! -O "$path" ] || [ ! -w "$path" ]; then
         echo "    needs you: $cmd (not auto-upgrading $path)."
         _probe_tool_row claude skipped "$inst -> ${latest:-?} — needs you: $cmd"
-        _ver_row claude "$inst" "${latest:--}" behind "needs you: $cmd" # launch-profile-ok: version-table label, not a launch
+        _ver_row claude "$inst" "${latest:--}" behind "needs you: $cmd" # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
         [ "$below" -eq 0 ] || echo "    FAIL: claude $inst stays below the floor $CLAUDE_MIN_VERSION — chief launches refuse until: $cmd" >&2
         [ "$below" -eq 0 ]
         return
@@ -744,7 +744,7 @@ _sync_claude_cli() {
     if [ "$gate_rc" -ne 0 ]; then
         echo "    not upgrading: claude stays on $inst (latest ${latest:-?})." >&2
         _probe_tool_row claude skipped "HELD by the VM-first gate — $inst -> ${latest:-?}, then: $cmd"
-        _ver_row claude "$inst" "${latest:--}" behind "held by the VM-first gate" # launch-profile-ok: version-table label, not a launch
+        _ver_row claude "$inst" "${latest:--}" behind "held by the VM-first gate" # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
         [ "$below" -eq 0 ]
         return
     fi
@@ -763,7 +763,7 @@ _sync_claude_cli() {
             echo "    claude updater exited $rc (now $after) — $(_last_line_trimmed "$out")" >&2
             echo "    retry by hand: $cmd" >&2
             _probe_tool_row claude failed "updater exit $rc ($inst -> $after); retry: $cmd"
-            _ver_row claude "$after" "${latest:--}" behind "updater failed" # launch-profile-ok: version-table label, not a launch
+            _ver_row claude "$after" "${latest:--}" behind "updater failed" # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
             return 1
         elif [ "$after" != "$inst" ]; then
             local after_cmp=0
@@ -771,28 +771,28 @@ _sync_claude_cli() {
             if [ "$after_cmp" -eq 0 ]; then
                 echo "    claude $inst -> $after (upgraded via ${owner:-native}; latest is $latest)."
                 _probe_tool_row claude updated "$inst -> $after (latest $latest)"
-                _ver_row claude "$after" "${latest:--}" behind "latest is $latest" # launch-profile-ok: version-table label, not a launch
+                _ver_row claude "$after" "${latest:--}" behind "latest is $latest" # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
             elif [ "$after_cmp" -eq 1 ]; then
                 echo "    claude $inst -> $after (upgraded via ${owner:-native})."
                 _probe_tool_row claude updated "$inst -> $after"
-                _ver_row claude "$after" "${latest:--}" current # launch-profile-ok: version-table label, not a launch
+                _ver_row claude "$after" "${latest:--}" current # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
             else
                 echo "    claude $inst -> $after (upgraded via ${owner:-native}; latest ${latest:-?} unknown, cannot confirm current)."
                 _probe_tool_row claude updated "$inst -> $after (latest ${latest:-?} unknown)"
-                _ver_row claude "$after" "${latest:--}" unknown "cannot compare" # launch-profile-ok: version-table label, not a launch
+                _ver_row claude "$after" "${latest:--}" unknown "cannot compare" # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
             fi
         else
             echo "    claude upgrade did not change $after — $(_last_line_trimmed "$out")" >&2
             echo "    retry by hand: $cmd" >&2
             _probe_tool_row claude failed "$inst stays; retry: $cmd"
-            _ver_row claude "$inst" "${latest:--}" behind "upgrade failed" # launch-profile-ok: version-table label, not a launch
+            _ver_row claude "$inst" "${latest:--}" behind "upgrade failed" # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
         fi
         return 0
     fi
     echo "    FAIL: claude is still below the floor $CLAUDE_MIN_VERSION after the update (now ${after:-unreadable}) — $(_last_line_trimmed "$out")" >&2
     echo "    chief launches will refuse until fixed; retry by hand: $cmd" >&2
     _probe_tool_row claude failed "still below floor $CLAUDE_MIN_VERSION (${after:-?}); retry: $cmd"
-    _ver_row claude "${after:-$inst}" "${latest:--}" behind "BELOW the chief-launch floor $CLAUDE_MIN_VERSION" # launch-profile-ok: version-table label, not a launch
+    _ver_row claude "${after:-$inst}" "${latest:--}" behind "BELOW the chief-launch floor $CLAUDE_MIN_VERSION" # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
     return 1
 }
 

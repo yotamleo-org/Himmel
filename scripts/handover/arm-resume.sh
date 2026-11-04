@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# launch-guard-ok-file: folder checked by launch-guard-check.sh in arm-resume.sh
 # arm-resume.sh — actually create the scheduled relaunch + dedupe.
 #
 # Unlike scripts/handover/schedule-resume.sh (which prints the

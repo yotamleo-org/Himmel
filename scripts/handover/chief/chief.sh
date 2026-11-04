@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# launch-guard-ok-file: folder checked by launch-guard-check.sh in chief.sh
 # scripts/handover/chief/chief.sh — start or hand over a chief session
 #
 # A chief is a long-running headed Claude session that holds a queue lock
@@ -1075,6 +1076,7 @@ launch_cmd() {
     chief_brief="$(cd "$HERE/../../.." && pwd)/docs/handover/chief-adhd-brief.md"
     [ -f "$chief_brief" ] || { err "the chief brief $chief_brief is missing; refusing to print a chief launch without it"; exit 2; }
     local claude_cmd
+    # launch-guard-ok: printed hint, not an exec
     claude_cmd="$(printf '%s claude --settings %q --model %q %s--append-system-prompt-file %q --autocompact %s -n %s "load %s and continue"' \
         "$CHIEF_LAUNCH_ENV" "$console_settings" "$launch_model" "$mcp_flags" "$chief_brief" "$console_autocompact" "$1" "$2")"
     # No launcher binds a pasted chief on the bus, so the line runs claude

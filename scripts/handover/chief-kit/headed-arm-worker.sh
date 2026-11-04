@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# launch-guard-ok-file: folder checked by launch-guard-check.sh in headed-arm-worker.sh
 # scripts/handover/chief-kit/headed-arm-worker.sh - versioned WORKER launcher
 # A thin wrapper around scripts/handover/headed-arm.sh that
 # pins every worker arm to the standard --autocompact 200000 ceiling (a native-lane

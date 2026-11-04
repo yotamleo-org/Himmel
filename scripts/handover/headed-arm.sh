@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# launch-guard-ok-file: folder checked by launch-guard-check.sh in headed-arm.sh
 # scripts/handover/headed-arm.sh - launch a HEADED successor session (a konsole
 # window with a real TTY) when a signal file appears OR a hard deadline passes,
 # whichever comes first.

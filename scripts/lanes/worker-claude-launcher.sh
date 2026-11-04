@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# launch-guard-ok-file: folder checked by launch-guard-check.sh in headed-arm-worker.sh
 # scripts/lanes/worker-claude-launcher.sh - the `claude` stand-in that applies a
 # worker's plugin profile.
 #

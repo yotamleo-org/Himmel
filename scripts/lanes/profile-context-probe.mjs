@@ -497,6 +497,7 @@ function spawnClaude(extraArgs, prompt) {
   const args = ['-p', '--model', 'haiku', '--max-turns', '1', '--permission-mode', 'dontAsk',
     '--output-format', 'stream-json', '--verbose', ...extraArgs, prompt];
   // launch-profile-ok: the probe passes the profile under test via extraArgs (--settings per run)
+  // launch-guard-ok: unattended probe (-p is on a continuation line), runs in the repo root
   return spawnSync('claude', args, {
     cwd: REPO_ROOT,
     encoding: 'utf8',
@@ -574,6 +575,7 @@ async function captureRequests(extraArgs, prompt = BASELINE_PROMPT) {
   await new Promise((r) => srv.listen(0, '127.0.0.1', r));
   const args = ['-p', '--model', 'haiku', '--max-turns', '1', '--permission-mode', 'dontAsk', ...extraArgs, prompt];
   // launch-profile-ok: the probe passes the profile under test via extraArgs (--settings per run)
+  // launch-guard-ok: unattended probe (-p is on a continuation line), runs in the repo root
   const child = spawn('claude', args, { cwd: REPO_ROOT, env: { ...process.env, ANTHROPIC_BASE_URL: `http://127.0.0.1:${srv.address().port}` }, stdio: 'ignore' });
   const timer = setTimeout(() => child.kill(), CLAUDE_TIMEOUT_MS);
   const code = await new Promise((r) => { child.on('close', r); child.on('error', () => r(-1)); });

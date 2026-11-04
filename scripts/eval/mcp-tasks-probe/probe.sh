@@ -70,6 +70,7 @@ run_mode() {
   local base=(--mcp-config "$dir/mcp.json" --strict-mcp-config --allowedTools 'mcp__probe__*' --permission-mode default --model "$model")
   local rc=0 cmd
   case "$mode" in
+  # launch-guard-ok: eval probe, runs in its own scratch dir
     headed)     cmd=$(printf '%q ' timeout "$tmo" claude "${base[@]}" "$PROMPT")
                 script -qec "$cmd" /dev/null > "$dir/client.out" 2>&1 < /dev/null; rc=$? ;;
     bg)         local before; before=$(bg_ids)
