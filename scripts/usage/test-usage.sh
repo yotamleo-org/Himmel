@@ -362,4 +362,53 @@ check "non-404 timing failure stored no unknown row" "0" "$(nrows "$CD/store-502
 # a flag typo or a missing repo is refused
 check "no --repo is refused" "1" "$(CIM_FIX="$F4" CIM_LOG="$CD/gh.log" bash "$CIM" write --store "$CD/store-x" --gh "$CD/bin/gh" >/dev/null 2>&1; echo $?)"
 
+# --- release-judge-reconcile.sh: release judge transcripts against launch rows --------------------------
+RJ="$HERE/release-judge-reconcile.sh"
+RJD="$ROOT/rj"; mkdir -p "$RJD/projects/-tmp-rm-run-judge-AAA" "$RJD/logs"
+rj_tr() { # sid first-ts last-ts cost
+  { printf '{"type":"user","timestamp":"%s","message":{"content":"x"}}\n' "$2"
+    printf '{"type":"assistant","timestamp":"%s"}\n' "$3"
+    printf '{"type":"cost-state","sessionId":"%s","totalCostUSD":%s}\n' "$1" "$4"; } > "$RJD/projects/-tmp-rm-run-judge-AAA/$1.jsonl"
+}
+S1=11111111-1111-4111-8111-111111111111; S2=22222222-2222-4222-8222-222222222222
+S3=33333333-3333-4333-8333-333333333333; S4=44444444-4444-4444-8444-444444444444
+rj_tr $S1 2026-11-04T10:00:00.000Z 2026-11-04T10:01:00.000Z 1.5
+rj_tr $S2 2026-11-04T11:00:00.000Z 2026-11-04T11:00:30.500Z 1.3725738
+rj_tr $S3 2026-11-04T12:00:00.000Z 2026-11-04T12:00:01.000Z 0
+rj_tr $S4 2026-11-04T13:00:00.000Z 2026-11-04T13:01:00.000Z 2
+printf 'headed-arm-worker: profile=bare lane=native model=opus role=release-manager session=rm-judge-44444444 session_id=%s launched=2026-11-04T13:00:00Z\n' "$S4" > "$RJD/logs/rm-judge-44444444.log"
+{
+  printf '{"ts":"2026-11-04T10:01:01Z","kind":"judge","lane":"native","session_id":"%s","sub_cost_usd":"1.500000","cost_usd":""}\n' "$S1"
+  printf '{"ts":"2026-11-04T11:00:31Z","kind":"judge","lane":"sub-fallback","sub_cost_usd":"1.372574","cost_usd":""}\n'
+  printf '{"ts":"2026-11-04T12:00:02Z","kind":"judge","lane":"api","cost_usd":"0.000000"}\n'
+  printf '{"ts":"2026-11-04T14:00:00Z","kind":"judge","lane":"sub-fallback","sub_cost_usd":"9.990000","cost_usd":""}\n'
+  printf '{"ts":"2026-11-04T10:01:02Z","kind":"critic","lane":"api","cost_usd":"1.500000"}\n'
+  echo null
+} > "$RJD/launches.jsonl"
+rj() { bash "$RJ" --launches "$RJD/launches.jsonl" --launch-logs "$RJD/logs" --projects "$RJD/projects" "$@"; }
+RJ1="$(rj --tolerance 2)"
+check "reconcile: rows and transcripts counted, the critic row and the null line ignored" "yes" \
+  "$(grep -qxF "launch rows (kind=judge): 4  total \$12.86" <<<"$RJ1" && grep -qxF "transcripts: 4  total \$4.87" <<<"$RJ1" && echo yes || echo no)"
+check "reconcile: matched by session id and by cost and time (a zero-cost row too)" "yes" \
+  "$(grep -qx 'matched: 3  (by session id 1, by cost and time 2)' <<<"$RJ1" && echo yes || echo no)"
+check "reconcile: the transcript with no row is counted, priced, and shows its launch-log line" "yes" \
+  "$(grep -qxF "transcripts with no launch row: 1  total \$2  (with a launch-log line: 1)" <<<"$RJ1" && echo yes || echo no)"
+check "reconcile: the row with no transcript is counted" "yes" "$(grep -qx 'launch rows with no transcript: 1' <<<"$RJ1" && echo yes || echo no)"
+check "reconcile: class totals are far apart and the verdict says so" "yes" \
+  "$(grep -qx 'OUTSIDE TOLERANCE 2%' <<<"$RJ1" && echo yes || echo no)"
+check "reconcile: --until bounds both sides (the 13:00 transcript and the 14:00 row drop out)" "yes" \
+  "$(rj --until 2026-11-04T13:00:00Z | grep -qxF "transcripts with no launch row: 0  total \$0  (with a launch-log line: 0)" && echo yes || echo no)"
+# GREEN: the missing row exists (carrying the session id) and the orphan row is gone
+grep -v '9.990000' "$RJD/launches.jsonl" > "$RJD/launches.green"; mv "$RJD/launches.green" "$RJD/launches.jsonl"
+printf '{"ts":"2026-11-04T13:01:01Z","kind":"judge","lane":"native","session_id":"%s","sub_cost_usd":"2.000000","cost_usd":""}\n' "$S4" >> "$RJD/launches.jsonl"
+RJ2="$(rj --tolerance 2)"
+check "reconcile green: no unmatched transcript, all four matched" "yes" \
+  "$(grep -qxF "matched: 4  (by session id 2, by cost and time 2)" <<<"$RJ2" && grep -qxF "transcripts with no launch row: 0  total \$0  (with a launch-log line: 0)" <<<"$RJ2" && echo yes || echo no)"
+check "reconcile green: the class totals agree inside the tolerance" "yes" \
+  "$(grep -qx 'WITHIN TOLERANCE 2%' <<<"$RJ2" && grep -q 'difference 0%' <<<"$RJ2" && echo yes || echo no)"
+# idempotent control: a second run changes nothing, in the ledger or in the output
+SUM1="$(cksum < "$RJD/launches.jsonl")"; RJ3="$(rj --tolerance 2)"
+check "reconcile is read-only and repeatable: ledger bytes and output unchanged" "yes" \
+  "$([ "$SUM1" = "$(cksum < "$RJD/launches.jsonl")" ] && [ "$RJ2" = "$RJ3" ] && echo yes || echo no)"
+
 if [ "$FAIL" -eq 0 ]; then echo "PASS"; else echo "FAILED" >&2; exit 1; fi
