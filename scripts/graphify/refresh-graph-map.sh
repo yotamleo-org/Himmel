@@ -1481,7 +1481,8 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # config it cannot read as "not the publisher" counts as the publisher. No config file
   # at all is an adopter.
   _pub_marker="$OUT_DIR/.graphify_published"
-  if [ -f "$_pub_marker" ] && [ ! -L "$_pub_marker" ]; then
+  # manifest.json is the install's completion marker: without it the graph is not whole.
+  if [ -f "$OUT_DIR/manifest.json" ] && [ -f "$_pub_marker" ] && [ ! -L "$_pub_marker" ]; then
     _pub_sha="$(head -n 1 "$_pub_marker" 2>/dev/null | tr -d '[:space:]')" || _pub_sha=""
     _pub_max="${HIMMEL_UPDATE_GRAPH_MAX_BEHIND:-150}"
     case "$_pub_max" in ''|*[!0-9]*) _pub_max=150 ;; esac

@@ -4683,6 +4683,8 @@ done
 mkdir -p "$ADCORPUS/graphify-out"
 ad_run() { # <marker sha> — one refresh of the adopter corpus; the call log tells whether graphify ran
   printf '%s\n' "$1" > "$ADCORPUS/graphify-out/.graphify_published"
+  # manifest.json is the install's completion marker; AD_NOMANIFEST=1 models a half-installed graph.
+  if [ -n "${AD_NOMANIFEST:-}" ]; then rm -f "$ADCORPUS/graphify-out/manifest.json"; else printf '{}\n' > "$ADCORPUS/graphify-out/manifest.json"; fi
   : > "$WS/adopter-calls.log"
   GRAPHIFY_CALL_LOG="$WS/adopter-calls.log" GRAPHIFY_MAP_BIN="$BIN/graphify" bash "$SCRIPT" --name adopter \
     --corpus-root "$ADCORPUS" --backend claude-cli --maps-dir "$ADMAPS" --title "Adopter" --slug adopter-map 2>&1
@@ -4749,6 +4751,11 @@ ad_cfg_run() { # <expected> <label> [PATH override] — fresh marker at the buil
   fi
 }
 mkdir -p "$HERMETIC_HOME/.himmel"
+# Every config row needs jq on the test host: without it a config reads as the publisher
+# and (d5) could not skip, while (d2) and (d3) would pass for the wrong reason.
+if ! command -v jq >/dev/null 2>&1; then
+  skip "T-adopter-skip (d1-d5, d8-d11) the config rows need jq on the test host"
+else
 printf '{"graphify":{"semantic_api_ok":false}}\n' > "$AD_CFG"
 ad_cfg_run skip "(d5) a valid config that is not the publisher"
 rm -f "$AD_CFG"; printf '{"graphify":{"semantic_api_ok":false}}\n' > "$WS/adopter-real-config.json"
@@ -4778,7 +4785,8 @@ if [ -r "$AD_CFG" ]; then
 else
   ad_cfg_run run "(d4) an unreadable config"
 fi
-chmod 600 "$AD_CFG"; rm -f "$AD_CFG"
+fi
+chmod 600 "$AD_CFG" 2>/dev/null; rm -f "$AD_CFG"
 # A symlinked marker is never trusted, and a non-numeric limit falls back to the 150 default.
 printf '%s\n' "$AD_BUILD" > "$WS/adopter-real-marker"
 rm -f "$ADCORPUS/graphify-out/.graphify_published"; ln -s "$WS/adopter-real-marker" "$ADCORPUS/graphify-out/.graphify_published"
@@ -4796,6 +4804,13 @@ if [ "$rc" -eq 3 ] && [ ! -s "$WS/adopter-calls.log" ]; then
   pass "T-adopter-skip (d7) a non-numeric limit falls back to 150 and skips"
 else
   fail "T-adopter-skip (d7) expected rc=3 and no graphify call (rc=$rc): $out"
+fi
+# A marker without manifest.json is a half-installed graph: it never skips the row.
+out=$( AD_NOMANIFEST=1 ad_run "$AD_BUILD" ); rc=$?
+if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ]; then
+  pass "T-adopter-skip (d12) a marker with no manifest.json runs the row"
+else
+  fail "T-adopter-skip (d12) expected rc=0 and a graphify call (rc=$rc): $out"
 fi
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
