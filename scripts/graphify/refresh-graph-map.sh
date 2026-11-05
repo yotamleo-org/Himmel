@@ -1492,11 +1492,10 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
     if [ -L "$_pub_cfg" ]; then
       _pub_publisher=1
     elif [ -e "$_pub_cfg" ]; then
-      # jq empty fails on a missing jq, an unreadable file and non-JSON alike.
-      if ! jq empty "$_pub_cfg" >/dev/null 2>&1 \
-          || jq -e '.graphify.semantic_api_ok == true' "$_pub_cfg" >/dev/null 2>&1; then
-        _pub_publisher=1
-      fi
+      # Only a JSON object whose flag is not true proves an adopter; jq -e fails on a
+      # missing jq, an unreadable, empty or non-JSON file and a wrongly shaped one alike.
+      jq -e 'type == "object" and (.graphify.semantic_api_ok != true)' "$_pub_cfg" >/dev/null 2>&1 \
+        || _pub_publisher=1
     fi
     if [ "$_pub_publisher" -eq 0 ] && [[ "$_pub_sha" =~ ^[0-9a-fA-F]{7,40}$ ]] \
         && git -C "$CORPUS_ROOT" merge-base --is-ancestor "$_pub_sha" HEAD 2>/dev/null; then
