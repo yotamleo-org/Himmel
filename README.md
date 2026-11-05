@@ -22,17 +22,24 @@ Most of what himmel offers comes from running it whole: parallel sessions run
 by a chief, runs that carry on overnight, a second brain that fills itself.
 You can install less, and each step is optional. Without the fleet and the
 vault, what remains is mainly guards and configuration, and the UI and the
-evals have little to show. The [adoption trail](docs/adoption-trail.html) lays
-the steps out as levels, and each level says what it gives you, what it costs
-and how to turn it off.
+evals have little to show.
 
 Along with that you get:
 
-- **A simple install.** One command. Preview it first with `--dry-run`. Without
-  `--scope` it asks a few questions, each with a default answer, prints the plan
-  and waits for your yes; with `--scope` it installs from a shipped profile
-  without asking ([install profiles](docs/setup/profiles/README.md)). One
-  command takes it off again.
+- **An easy start, then more as you learn what you want.** Clone himmel and
+  run the installer in your project with its starter answers. Sessions can then
+  no longer edit `main`, and each change goes in a worktree of its own. One
+  command takes it off again. When you want more, add one thing at a time:
+
+  1. **A notes vault** that fills and links itself on a schedule.
+  2. **Your phone**, to send notes to the vault and get alerts.
+  3. **A second model family** that reads each diff beside Claude.
+  4. **Shifts while you are away**, over your Jira tickets, ending in one report.
+  5. **A fleet**: one chief, run from your himmel clone, and many workers, which
+     you watch live.
+
+  The [adoption trail](docs/adoption-trail.html) starts with a practice climb,
+  then gives each step what it needs, what it costs and how to turn it off.
 - **A UI that shows the fleet.** `himmelctl ui`, run outside Claude Code, prints a link
   to a local page. The part
   that stands out is the Fleet page, built on AG-UI, an open protocol that
