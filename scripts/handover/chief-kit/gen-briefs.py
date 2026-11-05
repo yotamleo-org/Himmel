@@ -108,7 +108,7 @@ the manifest (sha256sum format), which Telegram /launch-worker checks (HIMMEL-50
 
 Exit: 0 ok; 1 a worker is invalid or a worktree failed (nothing written for it); 2 usage.
 """
-import argparse, fcntl, hashlib, json, os, re, secrets, shlex, subprocess, sys, tempfile
+import argparse, contextlib, fcntl, hashlib, json, os, re, secrets, shlex, subprocess, sys, tempfile
 from datetime import date as _date, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from salus_marked import salus_marked, is_adapter  # noqa: E402
@@ -632,7 +632,10 @@ def check_pr_size(l, repo, base):
             msg = 'worker %s Writes cannot be projected (git ls-tree failed for base %s in %s)' % (l['label'], base, repo)
         else:
             msg = 'worker %s Writes project to %d files, over the %d-file hard max (pr-size-bands.tsv row hard)' % (l['label'], n, bands['hard'])
-        if flag_on('pr_size_gate'):
+        with flag_read():
+            from flags import himmel_flag  # scripts/lib/flags.py, the registry reader
+            gate_on = himmel_flag('pr_size_gate')
+        if gate_on:
             die(msg + ('; split the ticket, or set "bulk": "mechanical" on a scripted transform' if n is not None else ''))
         print('gen-briefs: warning: ' + msg + '; pr_size_gate is off, so the brief is written', file=sys.stderr)
     elif n > bands['soft']:
@@ -646,15 +649,25 @@ SERIES_DOC = 'docs/handover/worker-sections/series.md'
 SERIES_LEDGER_PY = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'series-ledger.py')
 
 
-def flag_on(name):
+@contextlib.contextmanager
+def flag_read():
+    # A flag read that cannot complete (flags.py missing from the kit, an unreadable registry, an invalid value) is a
+    # configuration error: exit 2 through die, never a traceback.
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
     try:
-        from flags import himmel_flag, FlagError  # scripts/lib/flags.py, the registry reader
-        return himmel_flag(name)
+        yield
     except ImportError as e:
-        die('cannot read flag %s: scripts/lib/flags.py is missing beside this kit (%s)' % (name, e), 2)
-    except FlagError as e:
-        die('cannot read flag %s: %s' % (name, e), 2)
+        die('cannot read a flag: scripts/lib/flags.py is missing beside this kit (%s)' % e, 2)
+    except Exception as e:
+        if type(e).__name__ != 'FlagError':
+            raise
+        die('cannot read a flag: %s' % e, 2)
+
+
+def flag_on(name):
+    with flag_read():
+        from flags import himmel_flag  # scripts/lib/flags.py, the registry reader
+        return himmel_flag(name)
 
 
 CORE_VERBS = ('CORE', 'NOT-CORE', 'BYPASS', 'UNKNOWN')
