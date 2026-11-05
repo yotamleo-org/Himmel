@@ -43,7 +43,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/git-clean.sh
 . "$SCRIPT_DIR/../../lib/git-clean.sh" && git_env_scrub
-GH_CMD="${CI_CADENCE_GH:-${TICK_GH_CMD:-$SCRIPT_DIR/../../lib/gh-read.sh}}"
+GH_CMD="${CI_CADENCE_GH:-$SCRIPT_DIR/../../lib/gh-read.sh}"
 STATE_FILE="${CI_CADENCE_STATE:-${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/ci-cadence.cache}"
 # <workflow file>:<period in hours>. ci.yml fires a nightly and a 7 h main sweep; its period is the nightly's.
 # macos-cadence runs Tue and Fri, so its longest gap is Friday to Tuesday, 4 days.
@@ -71,6 +71,9 @@ refresh() {
             printf '%s\tnone\t-\t0\t0\n' "$wf" >> "$tmp"
             continue
         fi
+        # an answer that is not a run row (a stand-in gh, a proxy page) is no data at all, not an unreadable gh
+        # the stamp alone is kept, so the next tick inside the interval makes no gh call
+        [[ "$row" =~ ^[a-z_]+$'\t'[a-z_-]+$'\t'[0-9T:Z.+-]+$'\t'[0-9]+$ ]] || { head -n 1 "$tmp" > "$tmp.stamp" && mv -f "$tmp.stamp" "$STATE_FILE"; rm -f "$tmp"; return 2; }  # prim-ok: the temp file sits beside the cache, so the rename is atomic
         IFS=$'\t' read -r status concl created id <<< "$row"
         epoch="$(date -d "$created" +%s 2>/dev/null)" || epoch=0  # gnu-ok: Linux-only kit; swallow-ok: an unparsable time reads as age unknown
         printf '%s\t%s\t%s\t%s\t%s\n' "$wf" "$status" "$concl" "$epoch" "$id" >> "$tmp"
@@ -86,8 +89,10 @@ cmd_last() {
     [ -f "$STATE_FILE" ] && stamp="$(head -n 1 "$STATE_FILE" 2>/dev/null)"  # swallow-ok: an unreadable cache reads as stale
     case "$stamp" in ''|*[!0-9]*) stamp="" ;; esac
     if [ -z "$stamp" ] || [ $(( $(now) - stamp )) -ge "$interval" ]; then
-        refresh || return 1
+        refresh || return $?
     fi
+    # a stamp-only cache is an answer that held no run rows: nothing to show until the interval passes
+    [ "$(wc -l < "$STATE_FILE")" -gt 1 ] || return 2
     tail -n +2 "$STATE_FILE"
 }
 
@@ -99,9 +104,11 @@ fmt_age() { # <seconds>
 }
 
 cmd_field() {
-    local rows out="" wf status concl epoch id period state age flag name p t
+    local rows rc=0 out="" wf status concl epoch id period state age flag name p t
     t="$(now)"
-    rows="$(cmd_last)" || { printf '?\n'; return 0; }
+    rows="$(cmd_last)" || rc=$?
+    # 1 = gh unreadable (the tick shows ?); 2 = gh answered with no run rows (nothing to show)
+    [ "$rc" -eq 0 ] || { [ "$rc" -eq 2 ] || printf '?\n'; return 0; }
     while IFS=$'\t' read -r wf status concl epoch id; do
         [ -n "$wf" ] || continue
         name="${wf%.yml}"
@@ -126,7 +133,7 @@ cmd_field() {
 # `none` = no review file; a missing or unreadable sidecar reads `?` for the counts.
 cmd_review() {
     local dir md day mtime age counts rows new big filed flags=""
-    dir="${HIMMEL_FAILURE_REVIEW_DIR:-${HOME:-/tmp}/.himmel/state/failure-review}"
+    dir="${HIMMEL_FAILURE_REVIEW_DIR:-${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/failure-review}"
     # shellcheck disable=SC2012  # names are failure-review-YYYY-MM-DD.md only
     md="$(ls -1 "$dir"/failure-review-????-??-??.md 2>/dev/null | sort | tail -n 1)"  # swallow-ok: no review file reads as none
     [ -n "$md" ] || { printf 'none\n'; return 0; }
@@ -293,7 +300,7 @@ cmd_disarm() {
 
 sub="${1:-}"; [ $# -gt 0 ] && shift
 case "$sub" in
-    last) cmd_last || { printf '?\n'; } ;;
+    last) cmd_last; [ $? -ne 1 ] || printf '?\n' ;;
     field) cmd_field ;;
     review) cmd_review ;;
     cause) cmd_cause "$@" ;;

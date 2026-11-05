@@ -1949,7 +1949,6 @@ fi
 # cadence=: the last scheduled run of every scheduled workflow, one helper call that
 # reads gh at most once per CI_CADENCE_INTERVAL_SEC and serves its cache between.
 cadence_summary="$(cd "$pr_repo" 2>/dev/null && CI_CADENCE_DIR="$pr_repo" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 40)"} bash "$HERE/ci-cadence.sh" field 2>/dev/null)" || cadence_summary='?'  # swallow-ok: an unreadable cadence renders as cadence=?
-[ -n "$cadence_summary" ] || cadence_summary='?'
 # review=: the daily failure review as one more scheduled row (operator decision 593), a local file read.
 review_summary="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 10)"} bash "$HERE/ci-cadence.sh" review 2>/dev/null)" || review_summary='?'  # swallow-ok: an unreadable review renders as review=?
 [ -n "$review_summary" ] || review_summary='?'

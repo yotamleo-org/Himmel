@@ -1312,6 +1312,10 @@ cg_seed
 cg_bad="$(CG_FAIL=1 cg_tick)"
 same 'an unreadable gh reads cadence=? (HIMMEL-9247)' "$(printf '%s\n' "$cg_bad" | cadence_of)" '?'
 contains 'a tick with gh unreadable still prints its line (HIMMEL-9247)' "$cg_bad" 'TICK '
+printf '%s\n' '#!/bin/sh' 'echo "not a run row"' > "$cg9247/gh-junk"
+chmod +x "$cg9247/gh-junk"
+rm -f "$cg9247/cache"
+not_contains 'a gh answer that is no run row leaves cadence= off the line (HIMMEL-9247)' "$(CG_DIR="$cg9247" CI_CADENCE_GH="$cg9247/gh-junk" CI_CADENCE_STATE="$cg9247/cache" bash "$SUT" 2>/dev/null)" 'cadence='
 rm -rf "$cg9247"
 
 # --- the station row for ledger-drift: ci-cadence.sh arm / status / run / disarm on a stub
