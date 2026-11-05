@@ -1587,7 +1587,7 @@ while :; do
                 rol_out="$(timeout -k 2 60 bash "${CHIEF_WAIT_RELAY:-$HERE/relay-batch.sh}" "$console_doc" --successor "$rol_succ" </dev/null 2>&1 9>&-)"; rol_brc=$?  # gnu-ok: Linux-only kit
                 # The second line is the whole tail: the successor's LIVE is a message
                 # that wakes this chief, so it waits with no waiter, and the wrap is one command.
-                rol_tail="AFTER RELAYED: no re-arm, no reads, no tick; end your turn, and on the successor's LIVE run chief.sh wrap <your doc> <release-token> '<one line>', then stop"
+                rol_tail="AFTER RELAYED: no re-arm, no reads, no tick; end your turn, and on the successor's LIVE relay any worker it names as not relayed, then run chief.sh wrap <your doc> <release-token> '<one line>', then stop"
                 if [ "$rol_brc" -eq 0 ]; then
                     printf 'WAKE relay-on-live successor=%s\n%s\n%s\n' "$rol_succ" "$rol_tail" "$rol_out"
                 else
