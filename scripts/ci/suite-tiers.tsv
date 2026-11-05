@@ -1055,7 +1055,6 @@ scripts/setup/test-onboard-telegram.sh	local	behaviour suite, 0 catches in the 4
 scripts/setup/test-setup-preflight.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/skill-index/test-ensure-skill-index.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/skill-index/test-skill-find.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/statusline/test-all-sessions-index-parity.sh	pr	static-gate
 scripts/statusline/test-check-hud-drift.sh	pr	static-gate
 scripts/statusline/test-hud-composer-parity.sh	pr	static-gate
 scripts/statusline/test-hud-render-parity.sh	pr	static-gate
