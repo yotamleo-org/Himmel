@@ -26,7 +26,7 @@ export PATH="$W/bin:$PATH"
 fails=0
 check() { if [ "$2" = "$3" ]; then printf 'ok - %s\n' "$1"; else printf 'FAIL - %s: [%s] != [%s]\n' "$1" "$2" "$3"; fails=$((fails+1)); fi; }
 fixture() {
-    jq -n --arg h "$1" '{data:{repository:{p77:{number:77,headRefOid:$h,mergeStateStatus:"CLEAN",reviewDecision:"APPROVED",body:"## Ticket coverage\n- ask: done",state:"OPEN",title:"test",headRefName:"fix/test",isDraft:false,mergedAt:null,commits:{nodes:[{commit:{oid:$h,messageHeadline:"fix: [HIMMEL-1] test",messageBody:"",parents:{totalCount:1}}}],pageInfo:{hasNextPage:false,endCursor:null}},reviewThreads:{nodes:[{isResolved:true}],pageInfo:{hasNextPage:false,endCursor:null}},statusCheckRollup:{contexts:{nodes:[{__typename:"CheckRun",name:"build",status:"COMPLETED",conclusion:"SUCCESS",startedAt:null,completedAt:null,checkSuite:{workflowRun:{workflow:{name:"CI"}}}}],pageInfo:{hasNextPage:false,endCursor:null}}}}}}}' > "$REPLY_FILE"
+    jq -n --arg h "$1" '{data:{repository:{p77:{number:77,headRefOid:$h,mergeStateStatus:"CLEAN",reviewDecision:"APPROVED",body:"## Ticket coverage\n- ask: done",state:"OPEN",title:"test",headRefName:"fix/test",isDraft:false,mergedAt:null,commits:{nodes:[{commit:{oid:$h,messageHeadline:"fix: [HIMMEL-1] test",messageBody:"",parents:{totalCount:1}}}],pageInfo:{hasNextPage:false,endCursor:null}},author:{__typename:"User",login:"Goomal",id:"U_kgDOBieNbw"},isCrossRepository:true,reviewThreads:{nodes:[{isResolved:true,resolvedBy:{login:"yotamleo"}}],pageInfo:{hasNextPage:false,endCursor:null}},statusCheckRollup:{contexts:{nodes:[{__typename:"CheckRun",name:"build",status:"COMPLETED",conclusion:"SUCCESS",startedAt:null,completedAt:null,checkSuite:{workflowRun:{workflow:{name:"CI"}}}}],pageInfo:{hasNextPage:false,endCursor:null}}}}}}}' > "$REPLY_FILE"
 }
 run() { bash "$HERE/gh-pr-snapshot.sh" acme/repo 60 "$@"; }
 fixture "$SHA"
@@ -132,5 +132,40 @@ fixture "$NEW"
 rc=0; out=$(FAIL_FINAL_HEAD=1 bash "$HERE/gh-pr-snapshot.sh" acme/repo 0 77) || rc=$?
 check 'failed final head read with valid stdout still fails closed' "$rc" 1
 check 'failed final head read publishes nothing' "$out" ''
+# author class inputs (author, its type and node id, the fork flag, thread resolvers)
+fixture "$NEW"
+: > "$GH_LOG"
+rc=0; out=$(bash "$HERE/gh-pr-snapshot.sh" acme/repo 0 77) || rc=$?
+check 'author fields: snapshot succeeds' "$rc" 0
+check 'author fields: query selects author type, login and node id' "$(grep -c 'author{__typename login ...on User{id} ...on Bot{id}} isCrossRepository' "$GH_LOG")" 1
+check 'author fields: projected' "$(printf '%s' "$out" | jq -c '.[0] | [.author, .authorIsBot, .authorId, .isCrossRepository]' 2>/dev/null)" '["Goomal",false,"U_kgDOBieNbw",true]'
+check 'author fields: thread resolver projected' "$(printf '%s' "$out" | jq -c '.[0].reviewThreads.nodes[0].resolvedBy' 2>/dev/null)" '{"login":"yotamleo"}'
+fixture "$NEW"
+jq '.data.repository.p77.author = {__typename:"Bot",login:"github-actions",id:"BOT_kgDOx"}' "$REPLY_FILE" > "$W/bot"; mv "$W/bot" "$REPLY_FILE"
+rc=0; out=$(bash "$HERE/gh-pr-snapshot.sh" acme/repo 0 77) || rc=$?
+check 'bot author: projected as app/<login>' "$(printf '%s' "$out" | jq -c '.[0] | [.author, .authorIsBot, .authorId]' 2>/dev/null)" '["app/github-actions",true,"BOT_kgDOx"]'
+fixture "$NEW"
+jq '.data.repository.p77.isCrossRepository = "true"' "$REPLY_FILE" > "$W/bad"; mv "$W/bad" "$REPLY_FILE"
+rc=0; out=$(bash "$HERE/gh-pr-snapshot.sh" acme/repo 0 77) || rc=$?
+check 'non-boolean fork flag: snapshot invalid' "$rc" 1
+check 'non-boolean fork flag: no data' "$out" ''
+fixture "$NEW"
+jq 'del(.data.repository.p77.isCrossRepository)' "$REPLY_FILE" > "$W/bad"; mv "$W/bad" "$REPLY_FILE"
+rc=0; out=$(bash "$HERE/gh-pr-snapshot.sh" acme/repo 0 77) || rc=$?
+check 'missing fork flag: snapshot invalid' "$rc" 1
+fixture "$NEW"
+jq '.data.repository.p77.author = {__typename:"User",login:7}' "$REPLY_FILE" > "$W/bad"; mv "$W/bad" "$REPLY_FILE"
+rc=0; out=$(bash "$HERE/gh-pr-snapshot.sh" acme/repo 0 77) || rc=$?
+check 'non-string author login: snapshot invalid' "$rc" 1
+fixture "$NEW"
+jq '.data.repository.p77.author = null' "$REPLY_FILE" > "$W/null"; mv "$W/null" "$REPLY_FILE"
+rc=0; out=$(bash "$HERE/gh-pr-snapshot.sh" acme/repo 0 77) || rc=$?
+check 'null author (deleted account): valid' "$rc" 0
+check 'null author: projected as null' "$(printf '%s' "$out" | jq -c '.[0] | [.author, .authorIsBot, .authorId]' 2>/dev/null)" '[null,false,null]'
+fixture "$NEW"
+jq '.data.repository.p77.author |= del(.id)' "$REPLY_FILE" > "$W/noid"; mv "$W/noid" "$REPLY_FILE"
+rc=0; out=$(bash "$HERE/gh-pr-snapshot.sh" acme/repo 0 77) || rc=$?
+check 'missing node id: valid' "$rc" 0
+check 'missing node id: projected as null' "$(printf '%s' "$out" | jq -c '.[0] | [.author, .authorId]' 2>/dev/null)" '["Goomal",null]'
 [ "$fails" -eq 0 ] || exit 1
 printf 'ALL PASS\n'

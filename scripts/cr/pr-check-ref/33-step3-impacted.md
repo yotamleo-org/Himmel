@@ -25,4 +25,13 @@
    SUITE <path> = SKIP <reason>
    ```
 
+   **On `outside-pr: yes` (step 0), record the verdicts** with `--record`, naming the PR's head branch (`headRefName`) and head:
+   ```bash
+   bash "<himmel_dir>/scripts/cr/impacted-suites.sh" --check <base>..<head> --from-file <scratch-path> --record --branch '<headRefName>' --head <head>
+   ```
+   `--record` appends one `impacted` row (its exit code and its SKIP count) to the CR ledger and keeps `--check`'s exit code. A failed append exits 4. Ready-check item 16f passes an outside PR only when the newest such row at its head reads exit 0 with no SKIP. When the diff touches the blast scope (`scripts/cr/blast-scope.cjs`), item 16g also needs a `blast` row at that head. Record it with the same branch, run from wherever you review it, the primary checkout included:
+   ```bash
+   bash "<himmel_dir>/scripts/cr/ledger-append.sh" blast --branch '<headRefName>' --head <head> --duration-secs <s>
+   ```
+
    Carry forward `impacted_rc` (the fence's exit code) and its `impacted-suites: N impacted, M without a verdict` line. `impacted_rc = 0` means every impacted suite has a verdict (or none is impacted); `impacted_rc = 1` names each unverdicted suite on stderr and the row is NOT clean; `impacted_rc = 2` is an unresolvable range or a failed search — fix it, do not proceed as if the list were empty; `impacted_rc = 3` means every suite has a verdict but at least one is BLOCKED (accounted for, NOT clean). Steps 4.9, 5 and 6 read `impacted_rc`.
