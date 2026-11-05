@@ -25,7 +25,7 @@ a reader never sees a half-written file and two writers never lose an update. `r
 as the ledger's writer or as the `from` of a pass, and the label of the one fleet-manifest entry whose doc is the
 ledger's current writer (`-` for no entry or several). Paths are compared by realpath. An unreadable ledger is exit 1.
 
-Exit: 0 ok, 1 ledger missing or not valid JSON, 2 usage or a refused field/state, 3 lock timeout
+Exit: 0 ok, 1 ledger missing or not valid JSON or not writable (a read-only directory), 2 usage or a refused field/state, 3 lock timeout
 (SERIES_LEDGER_LOCK_TIMEOUT seconds, default 10), 4 conflict (ledger exists, duplicate or unknown key, `pass`
 from a doc that is not the writer).
 """
@@ -308,6 +308,9 @@ def main():
     except Refused as e:
         print("series-ledger: %s" % e, file=sys.stderr)
         return e.code
+    except OSError as e:  # a read-only directory or a full disk: a refusal, never a traceback
+        print("series-ledger: cannot write the ledger (%s)" % e, file=sys.stderr)
+        return 1
     return 0
 
 

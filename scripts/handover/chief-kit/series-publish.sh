@@ -2,8 +2,8 @@
 # scripts/handover/chief-kit/series-publish.sh - publish one finished item of a stacked series as its own branch.
 #
 # An item is authored and committed in its own locked worktree on series/<sid>/<key>, cut from the item before it. Once
-# that item has merged (or been abandoned), this verb turns the item into a branch on main: in the item's worktree it cuts
-# series-pub/<sid>/<key> from origin/<default>, cherry-picks only cut_from..wip, pushes with an upstream, records
+# the item before it has merged (its PR, read through gh; or it was abandoned), this verb turns the item into a branch on main: in the item's worktree it cuts
+# series-pub/<sid>/<key> from origin's default branch (read from the remote), cherry-picks only cut_from..wip, pushes with an upstream, records
 # publish_branch and published_head, sets the item published and unlocks the worktree. The worktree stays on the publish
 # branch so the pre-push HEAD-match rule holds. It opens no PR: the worker runs /pr-check and worker-pr-open next.
 # It never edits the ledger JSON: the one write is `series-ledger.py set` (invariant I3). Design: the stacked-series design, 5.2 Publish and rows F6/F10.
@@ -13,8 +13,9 @@
 #
 # Output: PUBLISHED-BRANCH <KEY> <branch>   (rc 0)
 #         PUBLISH-CONFLICT <files>          (rc 2: cherry-pick aborted, item branch checked out at wip, nothing pushed, ledger untouched)
-# Exit: 0 ok, 1 failure (ledger unreadable, git or ledger write failed), 2 refused (not the writer, item not committed, dirty,
-# drift, branch exists, conflict). A refusal moves nothing.
+# Exit: 0 ok, 1 failure (ledger unreadable, git or ledger write failed, a cherry-pick that failed with no conflicted file), 2 refused
+# (not the writer, item not committed, dirty, drift, worktree outside <repo>/.claude/worktrees, cut not an ancestor of wip, previous
+# item not merged or gh unreadable, branch exists, conflict). A refusal moves nothing. GH_CMD overrides `gh` (tests).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,6 +23,7 @@ LEDGER_PY="$HERE/series-ledger.py"
 # shellcheck source=../../lib/git-clean.sh
 . "$HERE/../../lib/git-clean.sh" || { echo "series-publish: cannot source scripts/lib/git-clean.sh" >&2; exit 1; }
 git_env_scrub   # an inherited GIT_DIR would make every worktree and range answer about the wrong repo
+GH="${GH_CMD:-gh}"
 
 refuse() { echo "series-publish: $*" >&2; exit 2; }
 fail()   { echo "series-publish: $*" >&2; exit 1; }
@@ -59,6 +61,9 @@ st="$(field state)"; wt="$(field worktree)"; ibr="$(field branch)"; cut="$(field
 [ "$st" = committed ] || refuse "item $KEY is $st; only a committed item publishes"
 # shellcheck disable=SC2015  # refuse exits, so C running after a failed A or B is the intent
 [ -n "$wt" ] && [ -d "$wt" ] && git -C "$wt" rev-parse --git-dir >/dev/null 2>&1 || refuse "item $KEY has no usable worktree ($wt)"
+wtcommon="$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir)" || fail "cannot read the git directory of $wt"
+wtroot="${wtcommon%/.git}/.claude/worktrees"   # where series-next.sh start makes every item worktree
+case "$(rp "$wt")" in "$(rp "$wtroot")"/*) ;; *) refuse "item $KEY worktree $wt is outside $wtroot" ;; esac
 [ -n "$cut" ] && [ -n "$wip" ] && [ -n "$ibr" ] || refuse "item $KEY has no recorded branch, cut_from or wip"
 sid="$(top sid)"
 pub="series-pub/$sid/$KEY"
@@ -88,14 +93,44 @@ if [ "$head" != "$wip" ]; then
     echo "SERIES-DRIFT $KEY wip"
     refuse "item $KEY worktree HEAD is not the recorded wip; run series-next.sh commit first"
 fi
+git -C "$wt" merge-base --is-ancestor "$cut" "$wip" 2>/dev/null; ancrc=$?   # swallow-ok: the rc is read below
+case "$ancrc" in
+    0) ;;
+    1) refuse "item $KEY cut_from $cut is not an ancestor of wip $wip; cut..wip would carry commits that are not the item's own" ;;
+    *) fail "cannot tell whether $cut is an ancestor of $wip in $wt (rc $ancrc)" ;;
+esac
 ahead="$(git -C "$wt" rev-list --count "$cut..$wip")" || fail "cannot count $cut..$wip in $wt"
 [ "$ahead" -gt 0 ] || refuse "item $KEY has no commits in $cut..$wip"
 
+# the item before this one (the nearest that is not abandoned) must have merged: publishing earlier would leave its commits
+# off the branch. An abandoned previous item never merges and never blocks.
+prev="$(python3 -I -c '
+import json, sys
+d = json.loads(sys.argv[1])
+keys = [i["key"] for i in d["items"]]
+for it in reversed(d["items"][:keys.index(sys.argv[2])]):
+    if it.get("state") != "abandoned":
+        print("%s\t%s" % (it["key"], it.get("publish_branch") or ""))
+        break' "$LJ" "$KEY")" || fail "cannot read the previous item of $KEY from $LEDGER"
+if [ -n "$prev" ]; then
+    pk="${prev%%$'\t'*}"; ppb="${prev#*$'\t'}"
+    [ -n "$ppb" ] || refuse "previous item $pk has no recorded PR (it was never published); publish $KEY once $pk has merged or been abandoned"
+    prows="$("$GH" pr list --head "$ppb" --state all --limit 100 --json number,state --jq '.[] | [.number, .state] | @tsv')" \
+        || refuse "cannot read the PR of previous item $pk ($ppb): gh failed; nothing moved, retry once it answers"
+    if [ "$(printf '%s\n' "$prows" | awk -F'\t' '$2 == "MERGED" { f = 1 } END { print f + 0 }')" != 1 ]; then
+        pstates="$(printf '%s\n' "$prows" | awk -F'\t' 'NF { printf "%s#%s %s", (n++ ? ", " : ""), $1, $2 }')"
+        refuse "previous item $pk has not merged (${pstates:-no PR on $ppb}); publish $KEY once it has merged or been abandoned"
+    fi
+fi
+
 git -C "$wt" show-ref --verify --quiet "refs/heads/$pub" && refuse "local branch $pub already exists"
 
-def="$(git -C "$wt" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)" || def=""   # swallow-ok: no origin/HEAD falls back to origin/main
-[ -n "$def" ] || def="origin/main"
-git -C "$wt" fetch --quiet origin "${def#origin/}" || fail "git fetch origin ${def#origin/} failed; publishing needs the current main"
+# the default branch is what origin says now, never the cached refs/remotes/origin/HEAD (it goes stale when the default moves)
+symref="$(git -C "$wt" ls-remote --symref origin HEAD)" || fail "git ls-remote --symref origin HEAD failed; cannot tell origin's default branch"
+defb="$(printf '%s\n' "$symref" | awk -F'\t' '$2 == "HEAD" && $1 ~ /^ref: refs\/heads\// { sub(/^ref: refs\/heads\//, "", $1); print $1; exit }')"
+[ -n "$defb" ] || fail "origin names no default branch (git ls-remote --symref origin HEAD printed no ref); cannot publish"
+def="origin/$defb"
+git -C "$wt" fetch --quiet origin "$defb" || fail "git fetch origin $defb failed; publishing needs the current $defb"
 base="$(git -C "$wt" rev-parse --verify --quiet "$def^{commit}")" || fail "cannot resolve $def"
 git -C "$wt" ls-remote --exit-code --heads origin "$pub" >/dev/null 2>&1; lsrc=$?   # swallow-ok: the rc is read below
 case "$lsrc" in
@@ -108,12 +143,15 @@ esac
 back() { git -C "$wt" checkout -q "$ibr" && git -C "$wt" branch -D "$pub" >/dev/null 2>&1; }
 
 git -C "$wt" checkout -q -b "$pub" "$base" || fail "cannot create $pub from $def in $wt"
-if ! git -C "$wt" cherry-pick "$cut..$wip" >/dev/null 2>&1; then
+if ! cpout="$(git -C "$wt" cherry-pick "$cut..$wip" 2>&1)"; then
     files="$(git -C "$wt" diff --name-only --diff-filter=U | tr '\n' ' ')"
     git -C "$wt" cherry-pick --abort >/dev/null 2>&1
     back || fail "cherry-pick failed and $wt could not be returned to $ibr; fix it by hand"
-    echo "PUBLISH-CONFLICT ${files% }"
-    refuse "cherry-pick of $cut..$wip onto $def conflicts; nothing pushed, ledger unchanged"
+    if [ -n "$files" ]; then
+        echo "PUBLISH-CONFLICT ${files% }"
+        refuse "cherry-pick of $cut..$wip onto $def conflicts; nothing pushed, ledger unchanged"
+    fi
+    fail "cherry-pick of $cut..$wip onto $def failed with no conflicted file; nothing pushed, ledger unchanged. git said: $cpout"
 fi
 if ! git -C "$wt" push -q -u origin "$pub"; then
     back || echo "series-publish: $wt could not be returned to $ibr; fix it by hand" >&2
@@ -122,5 +160,5 @@ fi
 pubhead="$(git -C "$wt" rev-parse HEAD)" || fail "cannot read HEAD of $wt after the push; $pub is pushed, the ledger and the worktree lock are unchanged"
 python3 -I "$LEDGER_PY" set --ledger "$LEDGER" --key "$KEY" publish_branch="$pub" published_head="$pubhead" state=published \
     || { record_lines "$pubhead"; exit 1; }
-git -C "$wt" worktree unlock "$wt" 2>/dev/null || echo "series-publish: WARN worktree unlock failed for $wt" >&2
+uerr="$(git -C "$wt" worktree unlock "$wt" 2>&1)" || echo "series-publish: WARN worktree unlock failed for $wt: $uerr" >&2
 echo "PUBLISHED-BRANCH $KEY $pub"
