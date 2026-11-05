@@ -288,6 +288,7 @@ echo "api $ep" >> "$CIM_LOG"
 case "$ep" in
   repos/o/r/actions/runs/*/timing)
     id="${ep#repos/o/r/actions/runs/}"; id="${id%/timing}"
+    [ ! -e "$CIM_FIX/timing-fail" ] || { echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1; }
     jq -ce --arg id "$id" '.[$id]' "$CIM_FIX/timing.json" 2>/dev/null || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
     ;;
   repos/o/r/actions/runs\?*)
@@ -351,9 +352,13 @@ check "real answer of 0 billed ms stays the number 0" "0" "$(jq -c 'select(.run_
 
 # (d) report: billed next to wall, unknowns on their own line, run count beside gh's total_count
 REP="$(CIM_FIX="$F4" CIM_LOG="$CD/gh.log" bash "$CIM" report --repo o/r --days 7 --until "$UNTIL" --store "$S4" --gh "$CD/bin/gh" 2>&1)" || REP="rc=$? $REP"
-check "report: minutes line, billed beside wall" "yes" "$(printf '%s\n' "$REP" | grep -qx 'minutes: billed=19 wall=14' && echo yes || echo no)"
-check "report: unknown runs on their own line" "yes" "$(printf '%s\n' "$REP" | grep -qx 'billed_unknown_runs: 1' && echo yes || echo no)"
-check "report: run count beside gh total_count" "yes" "$(printf '%s\n' "$REP" | grep -qx 'runs: 4  gh_total_count: 4' && echo yes || echo no)"
+check "report: minutes line, billed beside wall" "yes" "$(grep -qx 'minutes: billed=19 wall=14' <<<"$REP" && echo yes || echo no)"
+check "report: unknown runs on their own line" "yes" "$(grep -qx 'billed_unknown_runs: 1' <<<"$REP" && echo yes || echo no)"
+check "report: run count beside gh total_count" "yes" "$(grep -qx 'runs: 4  gh_total_count: 4' <<<"$REP" && echo yes || echo no)"
+# a timing failure that is not a 404/410 (rate limit, server error) aborts, never becomes unknown
+F5="$CD/fx-502"; mkdir -p "$F5"; gen_runs 400000 3 1000 60 > "$F5/runs.json"; echo '{}' > "$F5/timing.json"; : > "$F5/timing-fail"
+check "non-404 timing failure aborts the run" "1" "$(circ "$F5" "$CD/store-502" write)"
+check "non-404 timing failure stored no unknown row" "0" "$(nrows "$CD/store-502/ci-minutes.jsonl")"
 # a flag typo or a missing repo is refused
 check "no --repo is refused" "1" "$(CIM_FIX="$F4" CIM_LOG="$CD/gh.log" bash "$CIM" write --store "$CD/store-x" --gh "$CD/bin/gh" >/dev/null 2>&1; echo $?)"
 

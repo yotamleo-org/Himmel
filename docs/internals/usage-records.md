@@ -120,7 +120,7 @@ empty). `cr.rounds` counts heads with a responding review
 (same store as above): one row per Actions run, the run id is the idempotence
 key, so a rerun on the same window appends nothing for a run it already holds.
 
-```
+```bash
 bash scripts/usage/ci-minutes.sh write  --repo OWNER/NAME [--days 7] [--until <iso>] [--store <dir>]
 bash scripts/usage/ci-minutes.sh report --repo OWNER/NAME [--days 7] [--until <iso>] [--store <dir>]
 ```
