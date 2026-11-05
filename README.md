@@ -3,10 +3,10 @@
 > **A control plane for coding agents.**
 
 himmel turns Claude Code into a team you can leave running. One session, the
-*chief*, coordinates the work and oversees it: it has each idea planned with
-[minerva](marketplace/plugins/himmel-ops/skills/minerva/SKILL.md), either
-itself or by starting a design worker. It then hands each ticket to a
-*worker* session of its own, checks every result, and approves each merge.
+*chief*, coordinates the work and oversees it: it has a big change planned with
+[minerva](marketplace/plugins/himmel-ops/skills/minerva/SKILL.md), in a
+subagent or in a new session. It then hands each ticket to a *worker* session
+of its own, checks every result, and approves each merge.
 Work carries on while you are away and restarts by itself after a usage
 limit. Each session picks up where the last one stopped, and a local UI shows
 you what all of them are doing.
@@ -51,9 +51,11 @@ One ticket travels the same path every time:
    step.
 2. **Build.** The chief hands the ticket to a worker. The worker gets its own
    branch and working folder, so parallel workers never touch the same files.
-3. **Review.** The worker runs `/pr-check`: a panel of review agents, one of
-   them from a second model, reads the change. The PR cannot be opened until
-   every serious finding is fixed, ruled out, or moved to a ticket of its own.
+3. **Review.** The worker runs `/pr-check`: a second model reads the change,
+   if you have one set up, and the worker checks each finding against the
+   code. With no second model, the worker reviews the change itself. The PR
+   cannot be opened until every serious finding is fixed, ruled out, or moved
+   to a ticket of its own.
 4. **Approve.** The chief checks the result and approves the merge of that
    one PR at the exact commit that was reviewed. It can ask an independent
    judge for a second opinion first.
@@ -161,11 +163,12 @@ The test run shows a few of these. The rest arrive as you add them, and the
 
 **Keep it right**
 
-- **Every merge is reviewed by several agents.** `/pr-check` runs a panel of
-  review agents plus a first pass from a second model, and the PR cannot merge
-  until the result is clean. A finding marked critical must survive an
-  adversarial check first, which filters out invented findings. The
-  [evals](docs/evals/README.md) publish how often each reviewer is right.
+- **Every merge is reviewed first.** `/pr-check` has a second model read the
+  change, if you have one set up, and the session checks each finding against
+  the code. The PR cannot merge until the result is clean. A finding marked
+  critical must survive an adversarial check first, which filters out
+  invented findings. The [evals](docs/evals/README.md) publish how often each
+  reviewer is right.
 - **Rules that hold.** Hooks stop edits on `main`, reads of secret files and
   opening a PR without a passing review, at the moment Claude tries the tool
   call, so a rule holds even after it falls out of the context window.
@@ -538,8 +541,8 @@ that explains it. [`docs/README.md`](docs/README.md) lists every page.
   phone): [`docs/telegram-bridge.md`](docs/telegram-bridge.md)
 
 **Keep it right**
-- Pre-commit and Claude tool-call guardrail hooks, and the multi-agent PR
-  review (`/pr-check`) that gates every merge:
+- Pre-commit and Claude tool-call guardrail hooks, and the PR review
+  (`/pr-check`) that gates every merge:
   [`docs/internals/enforcement.md`](docs/internals/enforcement.md)
 - Evals of the review panel, the prompt cache and test-first work:
   [`docs/evals/README.md`](docs/evals/README.md)
