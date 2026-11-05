@@ -1467,6 +1467,40 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # below). Preflight it next to the graphify check so a python3-less box fails
   # BEFORE the scratch copy / paid extraction — never after promoting a new graph.
   command -v python3 >/dev/null 2>&1 || { echo "refresh-graph-map: python3 not found (needed to write manifest.json for freshness verification)" >&2; exit 2; }
+  # An adopter that installed the published himmel graph (himmel-update.sh sync_graph
+  # writes the build commit to $OUT_DIR/.graphify_published) does not pay for its own
+  # semantic pass: skip, exit 3 (extraction skipped, not a failure), BEFORE the lock,
+  # the pull, the scratch copy and the bank preflight. Same rule as sync_graph: the
+  # build commit is an ancestor of HEAD at most HIMMEL_UPDATE_GRAPH_MAX_BEHIND (default
+  # 150, keep in step with GRAPH_MAX_BEHIND in himmel-update.sh) commits behind it, and
+  # the station is not the publisher (graphify.semantic_api_ok is true in config.json).
+  # Any doubt (no marker, odd marker, not an ancestor, too old, publisher) runs the row.
+  _pub_marker="$OUT_DIR/.graphify_published"
+  if [ -f "$_pub_marker" ] && [ ! -L "$_pub_marker" ]; then
+    _pub_sha="$(head -n 1 "$_pub_marker" 2>/dev/null | tr -d '[:space:]')" || _pub_sha=""
+    _pub_max="${HIMMEL_UPDATE_GRAPH_MAX_BEHIND:-150}"
+    case "$_pub_max" in ''|*[!0-9]*) _pub_max=150 ;; esac
+    _pub_cfg="$HOME/.himmel/config.json"
+    _pub_publisher=0
+    # An unreadable config cannot prove this is not the publisher: run the row.
+    if [ -f "$_pub_cfg" ] && [ ! -L "$_pub_cfg" ] && { [ ! -r "$_pub_cfg" ] \
+        || { command -v jq >/dev/null 2>&1 && jq -e '.graphify.semantic_api_ok == true' "$_pub_cfg" >/dev/null 2>&1; }; }; then
+      _pub_publisher=1
+    fi
+    if [ "$_pub_publisher" -eq 0 ] && [[ "$_pub_sha" =~ ^[0-9a-fA-F]{7,40}$ ]] \
+        && git -C "$CORPUS_ROOT" merge-base --is-ancestor "$_pub_sha" HEAD 2>/dev/null; then
+      _pub_behind="$(git -C "$CORPUS_ROOT" rev-list --count "$_pub_sha..HEAD" 2>/dev/null)" || _pub_behind=""
+      case "$_pub_behind" in
+        ''|*[!0-9]*) ;;
+        *)
+          if [ "$_pub_behind" -le "$_pub_max" ]; then
+            echo "refresh-graph-map: the installed published graph (built at ${_pub_sha:0:12}, $_pub_behind commits behind HEAD, limit $_pub_max) covers corpus '$NAME' -- semantic extraction SKIPPED (graphify-out left untouched)" >&2
+            exit 3
+          fi
+          ;;
+      esac
+    fi
+  fi
   # Fence-safe incremental refresh on a scratchpad COPY (never the live corpus).
   # Always work inside a uniquely-named, launcher-OWNED subdir (mktemp-suffixed) so
   # we never rm -rf an operator-supplied --scratch that may point at an existing

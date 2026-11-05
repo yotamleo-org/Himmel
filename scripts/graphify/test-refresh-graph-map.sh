@@ -4669,5 +4669,73 @@ out=$(recent_run 2); rc=$?
 [ "$(recent_calls)" = "notes/x.md notes/y.md " ] && [ "$rc" -eq 4 ] \
   && pass "T-recent cap 2 with three changed notes stops inside the pre-pass (exit 4)" || fail "T-recent cap 2 with x y z expected x y and exit 4, got: $(recent_calls) rc=$rc"
 
+echo "T-adopter-skip: an installed fresh published graph stops the paid semantic row (HIMMEL-9253)"
+# The marker graphify-out/.graphify_published holds the build commit himmel-update.sh
+# sync_graph installed. graphify is stubbed and logs every call: no model call here.
+ADCORPUS="$WS/adopter-corpus"; ADMAPS="$WS/adopter-maps"; mkdir -p "$ADMAPS"
+git_corpus "$ADCORPUS"
+AD_BUILD=$(git -C "$ADCORPUS" rev-parse HEAD)
+for ad_i in 1 2 3; do
+  printf '# c%s\n' "$ad_i" > "$ADCORPUS/c$ad_i.md"
+  git -C "$ADCORPUS" add -A >/dev/null 2>&1
+  git -C "$ADCORPUS" -c core.hooksPath=/dev/null commit -qm "c$ad_i" >/dev/null 2>&1
+done
+mkdir -p "$ADCORPUS/graphify-out"
+ad_run() { # <marker sha> — one refresh of the adopter corpus; the call log tells whether graphify ran
+  printf '%s\n' "$1" > "$ADCORPUS/graphify-out/.graphify_published"
+  : > "$WS/adopter-calls.log"
+  GRAPHIFY_CALL_LOG="$WS/adopter-calls.log" GRAPHIFY_MAP_BIN="$BIN/graphify" bash "$SCRIPT" --name adopter \
+    --corpus-root "$ADCORPUS" --backend claude-cli --maps-dir "$ADMAPS" --title "Adopter" --slug adopter-map 2>&1
+}
+out=$( ad_run "$AD_BUILD" ); rc=$?
+if [ "$rc" -eq 3 ] && [ ! -s "$WS/adopter-calls.log" ] && grep -q "installed published graph" <<< "$out" \
+   && [ "$(grep -c "installed published graph" <<< "$out")" -eq 1 ]; then
+  pass "T-adopter-skip (a) fresh installed graph on a non-publisher: rc=3, one-line reason, graphify never called"
+else
+  fail "T-adopter-skip (a) expected rc=3, one reason line, no graphify call (rc=$rc, calls=$(wc -l < "$WS/adopter-calls.log")): $out"
+fi
+mkdir -p "$HERMETIC_HOME/.himmel"
+printf '{"graphify":{"semantic_api_ok":true}}\n' > "$HERMETIC_HOME/.himmel/config.json"
+out=$( ad_run "$AD_BUILD" ); rc=$?
+if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ] && ! grep -q "installed published graph" <<< "$out"; then
+  pass "T-adopter-skip (b) the publisher (graphify.semantic_api_ok true) keeps its semantic row"
+else
+  fail "T-adopter-skip (b) expected rc=0 and a graphify call (rc=$rc): $out"
+fi
+rm -f "$HERMETIC_HOME/.himmel/config.json"
+out=$( HIMMEL_UPDATE_GRAPH_MAX_BEHIND=2 ad_run "$AD_BUILD" ); rc=$?
+if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ]; then
+  pass "T-adopter-skip (c1) a marker 3 commits behind with a limit of 2 runs the row"
+else
+  fail "T-adopter-skip (c1) expected rc=0 and a graphify call (rc=$rc): $out"
+fi
+out=$( HIMMEL_UPDATE_GRAPH_MAX_BEHIND=3 ad_run "$AD_BUILD" ); rc=$?
+if [ "$rc" -eq 3 ] && [ ! -s "$WS/adopter-calls.log" ]; then
+  pass "T-adopter-skip (c2) the limit is inclusive: 3 behind with a limit of 3 skips"
+else
+  fail "T-adopter-skip (c2) expected rc=3 and no graphify call (rc=$rc): $out"
+fi
+out=$( ad_run "0123456789abcdef0123456789abcdef01234567" ); rc=$?
+if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ]; then
+  pass "T-adopter-skip (c3) a marker that is not an ancestor of HEAD runs the row"
+else
+  fail "T-adopter-skip (c3) expected rc=0 and a graphify call (rc=$rc): $out"
+fi
+out=$( ad_run "not-a-sha" ); rc=$?
+if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ]; then
+  pass "T-adopter-skip (c4) a malformed marker runs the row"
+else
+  fail "T-adopter-skip (c4) expected rc=0 and a graphify call (rc=$rc): $out"
+fi
+rm -f "$ADCORPUS/graphify-out/.graphify_published"
+: > "$WS/adopter-calls.log"
+out=$( GRAPHIFY_CALL_LOG="$WS/adopter-calls.log" GRAPHIFY_MAP_BIN="$BIN/graphify" bash "$SCRIPT" --name adopter \
+  --corpus-root "$ADCORPUS" --backend claude-cli --maps-dir "$ADMAPS" --title "Adopter" --slug adopter-map 2>&1 ); rc=$?
+if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ]; then
+  pass "T-adopter-skip (c5) no marker (no installed graph) runs the row"
+else
+  fail "T-adopter-skip (c5) expected rc=0 and a graphify call (rc=$rc): $out"
+fi
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 if [ "$SKIPS" -ne 0 ]; then echo "ALL PASS ($SKIPS skipped)"; else echo "ALL PASS"; fi
