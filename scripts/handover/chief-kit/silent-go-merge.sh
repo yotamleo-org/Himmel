@@ -109,7 +109,9 @@ while IFS=$'\t' read -r label wdoc; do
     marker="$(grep -E '^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?(LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED|MERGED)([^A-Za-z0-9_]|$)' "$wdoc" | tail -n 1)"
     last="$(grep -E '^- ' "$wdoc" | tail -n 1)"
     handoff=0
-    printf '%s\n' "$last" | grep -qiE 'hand-?off' && handoff=1
+    printf '%s\n' "$last" | grep -qiE 'hand-?off' \
+        && ! printf '%s\n' "$last" | grep -qiE "(no|not|never|without|cannot|can't)[[:space:]]+(a[[:space:]]+|the[[:space:]]+)?hand-?off" \
+        && handoff=1
     if [ "$handoff" -eq 1 ]; then
         # The waiver holds only when no stop marker is newer than the newest READY.
         ready_ln="$(grep -nE '^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?READY[[:space:]]' "$wdoc" | tail -n 1 | cut -d: -f1)"

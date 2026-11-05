@@ -177,6 +177,9 @@ reset yes "- 03:00 BLOCKED — no hand-off possible"; go_file "$SHA"; run
 check "(n12) a BLOCKED last bullet that mentions hand-off: no merge" "0" "$(n "$STUB/merges")"
 reset yes "- 02:00 HALTED — chief halt" "- 03:00 LIVE — handoff written"; go_file "$SHA"; run
 check "(n12) a HALTED between the READY and a hand-off: no merge" "0" "$(n "$STUB/merges")"
+reset yes "- 03:00 LIVE — no handoff possible, still working"; go_file "$SHA"
+printf '4242 claude --name HIMMEL-1-N9-thing-2026-11-05\n' > "$STUB/ps"; run
+check "(n12) a negated hand-off on a live worker: no merge" "0" "$(n "$STUB/merges")"
 
 # --- (w1) the waiter runs the helper each sample and wakes on its lines ---
 # The helper is a seam here (its rows are above); the waiter's tick and bank are stubbed.
