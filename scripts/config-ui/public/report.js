@@ -170,7 +170,7 @@ export function renderReport(list, view, ui) {
     const blocks = waits ? s.blocks.map((b) => (b.t === "ul" ? { ...b, items: b.items.filter((x) => !/open PR/i.test(x)) } : b)) : s.blocks;
     const open = waits ? items(s).filter((x) => /open PR/i.test(x)) : [];
     const own = open.length ? sec(`open-prs-${i}`, "g-wait", "Open PRs", `<ul class="rp-list">${open.map((x) => `<li>${inline(x)}</li>`).join("")}</ul>`) : "";
-    const body = (spend ? timeline(view.sections, view.day) : "") + blocks.map((b) => blockHtml(b, { wide: spend, chiefs })).join("");
+    const body = (spend ? timeline(view.sections, view.day) : "") + blocks.map((b) => blockHtml(b, { wide: spend || chiefs, chiefs })).join("");
     return sec(`s-${i}`, group(s.title) + (/Failure review/.test(s.title) ? " fr" : ""), s.title, body || none("nothing in this section")) + own;
   }).join("");
   return pg(`${head}${bar}${barText}${notes}${tiles(view.sections)}${strip}${panels}`);

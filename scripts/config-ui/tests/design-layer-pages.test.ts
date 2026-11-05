@@ -177,6 +177,7 @@ test("the Chiefs table adds the length of each span after the span", () => {
   expect(chiefs).toMatch(/<th>Chief<\/th><th>Span<\/th><th>Length<\/th><th>PRs merged<\/th><th>Shift<\/th>/);
   expect(chiefs).toMatch(/<td>00:35 to 01:16<\/td><td>41 min<\/td><td>8<\/td>/);
   expect(chiefs).toMatch(/<td>09:00 to open<\/td><td>open<\/td>/);
+  expect(chiefs).toContain('<div class="tw"><table class="data wide">'); // five columns do not wrap at 390 px, they scroll
 });
 
 test("the Health project picker sits in the page bar above the page, never in the rail", () => {
