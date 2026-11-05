@@ -53,14 +53,18 @@ state_up() {
   BASE="${url%%/#t=*}"; BASE="${BASE%%/agui*}"; TOKEN="${url##*#t=}"
 }
 api_get() { curl -s -H "x-himmel-token: $TOKEN" "$BASE/api/api-roles"; }
-routed() { node "$REPO/scripts/lib/api-roles.mjs" accounts "$1"; }
+routed() { # a failed CLI prints cli-failed, so an empty answer is only ever a real empty answer
+  local out
+  out="$(node "$REPO/scripts/lib/api-roles.mjs" accounts "$1" 2>/dev/null)" || { printf 'cli-failed'; return 0; }
+  printf '%s' "$out"
+}
 
 # 1. absent: no roles.json
 state_up absent ok
 check "absent: role map state" absent "$(api_get | field roleMap.state)"
 check "absent: judge routing is the 525 default (no accounts)" "" "$(routed judge)"
 PAGE="$(curl -s -H "x-himmel-token: $TOKEN" "$BASE/setup.js")"
-check "absent: the served page carries the Multi accounts section" yes "$(printf '%s' "$PAGE" | grep -q '<h3>Multi accounts</h3>' && echo yes || echo no)"
+check "absent: the served page carries the Multi accounts section" yes "$(grep -q '<h3>Multi accounts</h3>' <<<"$PAGE" && echo yes || echo no)"
 stop_server
 
 # 2. valid after a UI save
