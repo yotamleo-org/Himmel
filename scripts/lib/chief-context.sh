@@ -242,7 +242,8 @@ chief_context_worker_env_unset_names() {
         HEADED_ARM_REQUIRED_AUTOCOMPACT \
         HEADED_ARM_LAUNCHER \
         HEADED_ARM_RECORDER \
-        HEADED_ARM_LAUNCHER_ENV
+        HEADED_ARM_LAUNCHER_ENV \
+        HEADED_ARM_LAUNCHER_ENV_LINES
 }
 
 # chief_context_launch_seam_env_names -- prints, one per line, the names in
@@ -265,5 +266,6 @@ chief_context_launch_seam_env_names() {
         WORKER_SESSION_REMOTE_CONTROL \
         WORKER_SESSION_CLAUDE_BIN \
         HEADED_ARM_LAUNCHER \
-        HEADED_ARM_LAUNCHER_ENV
+        HEADED_ARM_LAUNCHER_ENV \
+        HEADED_ARM_LAUNCHER_ENV_LINES
 }

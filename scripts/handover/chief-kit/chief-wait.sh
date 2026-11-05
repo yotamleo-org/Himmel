@@ -832,27 +832,39 @@ unowned_none_streak=0
 dispatch_cmd="${CHIEF_WAIT_DISPATCH:-$HERE/next-dispatchable.sh}"
 pool_probe() { # [timeout secs] sets pool_lf (the dispatch flags), pool_out (the priority-pool pass) and pool_sig (its sorted key set)
     local budget="${1:-${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}}"
-    pool_lf=(); pool_out=""; pool_sig=""; pool_summary=""; pool_counts=""; pool_unresolved=""
+    pool_lf=(); pool_out=""; pool_sig=""; pool_summary=""; pool_counts=""; pool_unresolved=""; pool_keys=""
     [ -r "$dispatch_cmd" ] || return 0
     case "${cap_val#UNDERFILLED:}" in ''|*[!0-9]*) ;; *) pool_lf+=(--top "${cap_val#UNDERFILLED:}") ;; esac  # the slack is the slot count pool=<n>/<slots> reads against
     [ -z "$console_doc" ] || pool_lf+=(--doc "$console_doc")  # its Live state `priority:` line ranks tier 1
     [ -z "$legs_from" ] || pool_lf+=(--workers-from "$legs_from")  # live workers' files must reach the collision check
     pool_out="$(timeout -k 2 "$budget" bash "$dispatch_cmd" --priority-pool-only --dispositions "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)" || pool_out=""  # gnu-ok: Linux-only kit; swallow-ok: a failed or timed-out dispatch drops its partial rows, the wake block still prints
-    pool_sig="$(printf '%s\n' "$pool_out" | awk '$1 != "NEXT-TIER" && $1 != "RESUME-HELD" && $2 ~ /^[A-Z]+-[0-9]+$/ { print $2 }' | sort -u | paste -sd, -)"
     pool_summary="$(printf '%s\n' "$pool_out" | DOC='' bash "$HERE/tick.sh" --pool-dispositions --doc "$console_doc" 2>/dev/null)" || pool_summary=""  # swallow-ok: an unavailable interpreter keeps the legacy underfill wake, never an all-clear
+    pool_keys="$(printf '%s\n' "$pool_summary" | sed -n 's/^# pool-keys //p')"  # a stacked-series row names its tickets here, joined to its row by line number
+    pool_sig="$(printf '%s\n' "$pool_out" | awk -v pk="$pool_keys" '
+        BEGIN { n = split(pk, p, "\n"); for (i = 1; i <= n; i++) { split(p[i], f, " "); if (f[2] == "SERIES") sk[f[1]] = f[3] } }
+        NR in sk { m = split(sk[NR], a, ","); for (j = 1; j <= m; j++) print a[j]; next }
+        $1 != "NEXT-TIER" && $1 != "RESUME-HELD" && $2 ~ /^[A-Z]+-[0-9]+$/ { print $2 }' | sort -u | paste -sd, -)"
     pool_counts="$(printf '%s\n' "$pool_summary" | sed -n 's/^# pool-counts //p')"
     pool_unresolved="$(printf '%s\n' "$pool_summary" | sed -n '/^# pool-unresolved /p')"
     # a probe that read the pool and found nothing unresolved ends the streak: a set that returns is a change
     [ -z "$pool_out" ] || [ -n "$pool_unresolved" ] || rm -f "$pool_sig_file"
 }
+pool_row_keys() { # stdin: a pool pass; $1: its `# pool-keys` lines; prints the ticket key of each LOCAL/CLOUD row and each key of a SERIES row, one per line
+    awk -F'\t' -v pk="$1" '
+        BEGIN { n = split(pk, p, "\n"); for (i = 1; i <= n; i++) { split(p[i], f, " "); if (f[2] == "SERIES") sk[f[1]] = f[3] } }
+        NR in sk { m = split(sk[NR], a, ","); for (j = 1; j <= m; j++) print a[j]; next }
+        $1 ~ /^(LOCAL\??|CLOUD)$/ && $2 ~ /^[A-Z]+-[0-9]+$/ { print $2 }'
+}
 pool_view() { # stdin: the pool pass; stdout: its ticket rows grouped under a '# dispatchable in <version>' heading (the version of its '# dropped from' line), then the rest; a listed row's '# disposition' line is dropped, the row already says it
-    awk -F'\t' '
+    awk -F'\t' -v pk="$pool_keys" '
+        BEGIN { n = split(pk, p, "\n"); for (i = 1; i <= n; i++) { split(p[i], f, " "); if (f[2] == "SERIES") sk[f[1]] = 1 } }
         /^# dropped from / { ver = $0; sub(/^# dropped from /, "", ver); sub(/:.*/, "", ver) }
         { line[NR] = $0 }
         END {
             for (i = 1; i <= NR; i++) {
                 n = split(line[i], f, "\t")
-                if (f[1] ~ /^(LOCAL\??|CLOUD|RESUME|MERGED-NOT-CLOSED)$/ && f[2] ~ /^[A-Z]+-[0-9]+$/) {
+                if (i in sk) kind[i] = "series"
+                else if (f[1] ~ /^(LOCAL\??|CLOUD|RESUME|MERGED-NOT-CLOSED)$/ && f[2] ~ /^[A-Z]+-[0-9]+$/) {
                     is_cur = 0
                     m = split(f[4], v, ",")
                     for (j = 1; j <= m; j++) if (ver != "" && v[j] == ver) is_cur = 1
@@ -860,10 +872,11 @@ pool_view() { # stdin: the pool pass; stdout: its ticket rows grouped under a '#
                 } else if (line[i] ~ /^# disposition [A-Z]+-[0-9]+ listed /) kind[i] = "drop"
                 else kind[i] = "rest"
             }
-            for (i = 1; i <= NR && kind[i] != "cur" && kind[i] != "other"; i++) if (kind[i] == "rest") print line[i]  # the header lines before the first row stay first
+            for (i = 1; i <= NR && kind[i] != "cur" && kind[i] != "other" && kind[i] != "series"; i++) if (kind[i] == "rest") print line[i]  # the header lines before the first row stay first
             first = i
             for (i = 1; i <= NR; i++) if (kind[i] == "cur") { if (!hc++) print "# dispatchable in " ver; print line[i] }
             for (i = 1; i <= NR; i++) if (kind[i] == "other") { if (!ho++ && ver != "") print "# dispatchable in other versions"; print line[i] }
+            for (i = 1; i <= NR; i++) if (kind[i] == "series") { if (!hs++) print "# dispatchable as one series worker"; print line[i] }
             for (i = first; i <= NR; i++) if (kind[i] == "rest") print line[i]
         }'
 }
@@ -888,7 +901,7 @@ underfill_wake() {
     printf '%s\n' "$blk"
 }
 underfill_block() { # prints the WAKE block for the pool pool_probe just read; fail-open on the dispatchable list
-    local back="" extra="" count="" intake_ver="" wake=underfilled
+    local back="" back_keys="" extra="" count="" intake_ver="" wake=underfilled
     if [ -n "$pool_unresolved" ]; then wake=pool-unresolved
     else
         case "$pool_counts" in ''|'?') ;; *) return 1 ;; esac
@@ -898,11 +911,17 @@ underfill_block() { # prints the WAKE block for the pool pool_probe just read; f
     if printf '%s\n' "$pool_out" | awk -F'[=/,]' '/^# pool=/ && ($2 + 0) < ($3 + 0) { f = 1 } $0 == "POOL-EMPTY" { f = 1 } END { exit !f }'; then  # a pool short of its slots, whether the line says LOW or INTAKE:<m>
         heartbeat sampling
         back="$(timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)" || back=""  # gnu-ok: Linux-only kit; swallow-ok: a failed or timed-out second pass drops its partial rows, the pool list still prints
-        extra="$(printf '%s\n' "$back" | awk -v pool="$pool_out" '
-            BEGIN { n = split(pool, p, "\n"); for (i = 1; i <= n; i++) { split(p[i], f, "\t"); if (f[1] != "NEXT-TIER" && f[2] ~ /^[A-Z]+-[0-9]+$/) seen[f[2]] = 1 } }
+        back_keys="$(printf '%s\n' "$back" | DOC='' bash "$HERE/tick.sh" --pool-dispositions 2>/dev/null | sed -n 's/^# pool-keys //p')" || back_keys=""  # swallow-ok: no keys reads a series row as an unknown row, never a wrong count
+        extra="$(printf '%s\n' "$back" | awk -v pool="$pool_out" -v pk="$pool_keys" -v bk="$back_keys" '
+            BEGIN {
+                n = split(pool, p, "\n"); for (i = 1; i <= n; i++) { split(p[i], f, "\t"); if (f[1] != "NEXT-TIER" && f[2] ~ /^[A-Z]+-[0-9]+$/) seen[f[2]] = 1 }
+                n = split(pk, p, "\n"); for (i = 1; i <= n; i++) { split(p[i], f, " "); if (f[2] == "SERIES") { m = split(f[3], a, ","); for (j = 1; j <= m; j++) seen[a[j]] = 1 } }
+                n = split(bk, p, "\n"); for (i = 1; i <= n; i++) { split(p[i], f, " "); if (f[2] == "SERIES") sk[f[1]] = f[3] }
+            }
+            NR in sk { m = split(sk[NR], a, ","); all = 1; for (j = 1; j <= m; j++) if (!seen[a[j]]) all = 0; if (all) next; print; next }
             $0 == "" || seen[$2] { next }
             { print }')"
-        count="$(printf '%s\n%s\n' "$pool_out" "$back" | awk -F'\t' '$1 ~ /^(LOCAL\??|CLOUD)$/ && $2 ~ /^[A-Z]+-[0-9]+$/ { k[$2] = 1 } END { n = 0; for (i in k) n++; print n }')"
+        count="$({ printf '%s\n' "$pool_out" | pool_row_keys "$pool_keys"; printf '%s\n' "$back" | pool_row_keys "$back_keys"; } | sort -u | wc -l | tr -d ' ')"
     fi
     if [ "$wake" = pool-unresolved ]; then
         printf 'WAKE pool-unresolved capacity=%s%s%s\n%s\n' "$cap_val" "${pool_counts:+ pool=$pool_counts}" "${count:+ dispatchable=$count}" "$tick_line"
