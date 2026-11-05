@@ -44,7 +44,7 @@ check "exit 0" '[ "$rc" = 0 ]'
 check "the warning names the lost record" 'printf "%s" "$out" | grep -q "launch record for w-name NOT written"'
 
 echo "5. no HIMMELCTL_CACHE_DIR: the record goes under HOME"
-HOME="$TMP/home" bash "$LR" home-name bare native x
+env -u HIMMELCTL_CACHE_DIR HOME="$TMP/home" bash "$LR" home-name bare native x
 check "written under HOME/.claude/himmel/launch-logs" '[ -s "$TMP/home/.claude/himmel/launch-logs/home-name.log" ]'
 
 echo "test-launch-record: $pass passed, $fail failed"
