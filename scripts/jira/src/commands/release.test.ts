@@ -193,6 +193,8 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
     vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
     // profile-settings.sh bare runs for real and writes its settings file here.
     vi.stubEnv('HIMMEL_PROFILE_SETTINGS_DIR', join(root, 'profiles'));
+    // the judge run appends its launch row beside this path, never under the real HOME
+    vi.stubEnv('HIMMEL_API_CREDIT_STATE', join(root, 'credit', 'ledger.json'));
   });
 
   async function oneRequest() {
@@ -235,6 +237,19 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
     expect(sid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     const log = readFileSync(join(cache, 'launch-logs', `rm-judge-${sid.slice(0, 8)}.log`), 'utf8');
     expect(log).toMatch(new RegExp(`^headed-arm-worker: profile=bare lane=native model=opus role=release-manager session=rm-judge-${sid.slice(0, 8)} session_id=${sid} launched=\\S+\\n$`));
+  });
+
+  it('the judge run writes exactly one launches.jsonl row carrying its session id and its real cost (HIMMEL-9276)', async () => {
+    await oneRequest();
+    const d = { req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 's', ground: 'g', reason: 'r' };
+    judgeReply.out = JSON.stringify({ type: 'result', is_error: false, total_cost_usd: 1.2345678, result: JSON.stringify([d]) });
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    const call = judgeReply.calls.find((c) => c.file === 'claude');
+    const sid = call?.args[(call?.args.indexOf('--session-id') ?? -2) + 1] ?? '';
+    const rows = readFileSync(join(root, 'credit', 'launches.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: 'judge', lane: 'native', model: 'opus', session_id: sid, sub_cost_usd: '1.234568', cost_usd: '', outcome: 'native', rc: 0 });
+    expect(rows[0].ts).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
   });
 
   it.each(['SKIPPED-BANK', 'BANK-UNKNOWN'])('the judge stops on preflight %s and names the token', async (token) => {

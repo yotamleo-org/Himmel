@@ -370,6 +370,35 @@ fn "$K" --event wrapped --doc "$DOC"
 check "D6: WRAPPED, no PR and no merge row -> To Do" "$(moved)" "transition $K To Do"
 check "D6: rule" "$(row rule)" D6
 check "D6: direction" "$(row dir)" back
+# --- D6n: a wrapped worker on a completes-no brief leaves an In Progress ticket In Progress ---
+flagdoc() { # <yes|no|-> - DOC carries the brief's Completes ticket line above ## Results ("-" = no such line)
+    { printf '# worker\n\n'; [ "$1" = - ] || printf '> **Completes ticket:** %s\n\n' "$1"
+      printf '## Results (newest at the bottom)\n- 10:00 WRAPPED — x\n'; } > "$DOC"
+}
+reset "In Progress"; owned WRAPPED 0; flagdoc no
+fn "$K" --event wrapped --doc "$DOC"
+check "D6n: WRAPPED on a completes-no brief, In Progress, no PR, no merge row -> no transition" "$(ntrans)" 0
+check "D6n: rule" "$(row rule)" D6n
+check "D6n: the row is a noop" "$(row result)" noop
+reset "In Progress"; owned WRAPPED 0; flagdoc yes
+fn "$K" --event wrapped --doc "$DOC"
+check "D6n guard: completes yes still moves In Progress to To Do" "$(moved)" "transition $K To Do"
+check "D6n guard: completes yes rule D6" "$(row rule)" D6
+reset "In Progress"; owned WRAPPED 0; flagdoc -
+fn "$K" --event wrapped --doc "$DOC"
+check "D6n guard: a brief with no flag line still moves to To Do" "$(moved)" "transition $K To Do"
+check "D6n guard: no flag line rule D6" "$(row rule)" D6
+reset "In Review"; owned WRAPPED 0; flagdoc no
+fn "$K" --event wrapped --doc "$DOC"
+check "D6n guard: completes no with Jira In Review keeps today's move to To Do" "$(moved)" "transition $K To Do"
+check "D6n guard: Jira In Review rule D6" "$(row rule)" D6
+reset "To Do"; owned WRAPPED 0; flagdoc no
+fn "$K" --event wrapped --doc "$DOC"
+check "D6n guard: completes no with Jira To Do changes nothing" "$(ntrans)" 0
+reset "In Progress"; owned WRAPPED 0
+printf '# worker\n\n## Results (newest at the bottom)\n- 10:00 WRAPPED — x\n\n> **Completes ticket:** no\n' > "$DOC"
+fn "$K" --event wrapped --doc "$DOC"
+check "D6n guard: a flag line below ## Results is not the brief's flag" "$(moved)" "transition $K To Do"
 # --- D5c: a merged PR with no merge row keeps a wrapped ticket In Progress ---
 merged() { printf '%s\n' "$1" > "$FX/pr-merged.json"; } # the merged-PR list the stub gh returns
 reset "In Review"; owned WRAPPED 0

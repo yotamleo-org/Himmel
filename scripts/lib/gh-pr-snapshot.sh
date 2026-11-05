@@ -44,6 +44,8 @@ validation='def valid:
         (.parents.totalCount | type == "number" and . >= 0 and . == floor)) and
     (.reviewThreads.nodes | type == "array") and all(.reviewThreads.nodes[]; (.isResolved | type == "boolean")) and
     (.reviewThreads.pageInfo.hasNextPage == false) and
+    (.isCrossRepository | type == "boolean") and (.authorIsBot | type == "boolean") and
+    (.author == null or (.author | type == "string")) and (.authorId == null or (.authorId | type == "string")) and
     (.statusCheckRollup == null or ((.statusCheckRollup | type == "array") and
         all(.statusCheckRollup[]; .__typename == "CheckRun" or .__typename == "StatusContext")));'
 # The API read, not the caller's expected sha, is authoritative for freshness.
@@ -59,7 +61,7 @@ for pr in "$@"; do
         jq '.value' "$file" > "$work/$pr.json" || exit 1
     else
         misses="$misses $pr"
-        query="$query p$pr:pullRequest(number:$pr){number headRefOid mergeStateStatus reviewDecision body state title headRefName isDraft mergedAt commits(first:100){nodes{commit{oid messageHeadline messageBody parents{totalCount}}} pageInfo{hasNextPage endCursor}} reviewThreads(first:100){nodes{isResolved} pageInfo{hasNextPage endCursor}} statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt detailsUrl checkSuite{workflowRun{workflow{name}}}} ...on StatusContext{context state createdAt}} pageInfo{hasNextPage endCursor}}}}"
+        query="$query p$pr:pullRequest(number:$pr){number headRefOid mergeStateStatus reviewDecision body state title headRefName isDraft mergedAt author{__typename login ...on User{id} ...on Bot{id}} isCrossRepository commits(first:100){nodes{commit{oid messageHeadline messageBody parents{totalCount}}} pageInfo{hasNextPage endCursor}} reviewThreads(first:100){nodes{isResolved resolvedBy{login}} pageInfo{hasNextPage endCursor}} statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt detailsUrl checkSuite{workflowRun{workflow{name}}}} ...on StatusContext{context state createdAt}} pageInfo{hasNextPage endCursor}}}}"
     fi
 done
 query="$query }}"
@@ -77,6 +79,8 @@ if [ -n "$misses" ]; then
                 (.messageHeadline | type == "string") and (.messageBody == null or (.messageBody | type == "string")) and
                 (.parents.totalCount | type == "number" and . >= 0 and . == floor)) and
             (.reviewThreads.nodes | type == "array") and all(.reviewThreads.nodes[]; (.isResolved | type == "boolean")) and
+            (.isCrossRepository | type == "boolean") and
+            (.author == null or ((.author | type == "object") and (.author.__typename | type == "string") and (.author.login | type == "string"))) and
             (.statusCheckRollup == null or ((.statusCheckRollup.contexts.nodes | type == "array") and
                 all(.statusCheckRollup.contexts.nodes[]; .__typename == "CheckRun" or .__typename == "StatusContext")))
         ' "$work/$pr.raw" >/dev/null 2>&1 || exit 1
@@ -85,7 +89,7 @@ if [ -n "$misses" ]; then
         for field in commits reviewThreads statusCheckRollup; do
             case "$field" in
                 commits) path='.commits'; selection='nodes{commit{oid messageHeadline messageBody parents{totalCount}}}'; connection='commits' ;;
-                reviewThreads) path='.reviewThreads'; selection='nodes{isResolved}'; connection='reviewThreads' ;;
+                reviewThreads) path='.reviewThreads'; selection='nodes{isResolved resolvedBy{login}}'; connection='reviewThreads' ;;
                 statusCheckRollup) path='.statusCheckRollup.contexts'; selection='nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt detailsUrl checkSuite{workflowRun{workflow{name}}}} ...on StatusContext{context state createdAt}}'; connection='contexts' ;;
             esac
             [ "$field" != statusCheckRollup ] || ! jq -e '.statusCheckRollup == null' "$work/$pr.raw" >/dev/null || continue
@@ -106,7 +110,9 @@ if [ -n "$misses" ]; then
                 mv "$work/next" "$work/$pr.raw" || exit 1
             done
         done
-        jq '{number,headRefOid,mergeStateStatus,reviewDecision,body,state,title,headRefName,isDraft,mergedAt,
+        jq '{number,headRefOid,mergeStateStatus,reviewDecision,body,state,title,headRefName,isDraft,mergedAt,isCrossRepository,
+            author:(if .author == null then null elif .author.__typename == "Bot" then "app/" + .author.login else .author.login end),
+            authorIsBot:(.author != null and .author.__typename == "Bot"), authorId:(.author.id // null),
             commits:[.commits.nodes[].commit], reviewThreads:.reviewThreads,
             statusCheckRollup:(if .statusCheckRollup == null then null else [.statusCheckRollup.contexts.nodes[] |
                 if .__typename == "CheckRun" then . + {workflowName:(.checkSuite.workflowRun.workflow.name // "")} | del(.checkSuite) else . end] end)}' "$work/$pr.raw" > "$work/$pr.json" || exit 1

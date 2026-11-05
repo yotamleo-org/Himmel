@@ -41,7 +41,7 @@ case "$*" in
         jq -n --arg h "${READY_STUB_HEAD:-}" --arg args "$*" --arg b "${READY_STUB_GQL_BRANCH-${READY_STUB_BRANCH:-b}}" --arg t "${READY_STUB_TITLE-fix(x): t (#1)}" \
             --arg body "$(printf '%b' "${READY_STUB_BODY-$DEFAULT_BODY}")" '
             ($args | capture("p(?<n>[0-9]+):pullRequest").n) as $n |
-            {data:{repository:{("p"+$n):{number:($n|tonumber),headRefOid:$h,headRefName:$b,title:$t,mergeStateStatus:"CLEAN",reviewDecision:null,
+            {data:{repository:{("p"+$n):{number:($n|tonumber),headRefOid:$h,headRefName:$b,title:$t,mergeStateStatus:"CLEAN",reviewDecision:null,isCrossRepository:false,author:{__typename:"User",login:"yotamleo",id:"U_stub"},
                 body:$body,
                 commits:{nodes:[{commit:{oid:$h,messageHeadline:"fix(x): [HIMMEL-1] t (#1)",messageBody:"Platforms tested: linux\nSecurity reviewed: manual",parents:{totalCount:1}}}],pageInfo:{hasNextPage:false,endCursor:null}},
                 reviewThreads:{nodes:[],pageInfo:{hasNextPage:false,endCursor:null}},

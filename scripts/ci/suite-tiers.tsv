@@ -711,6 +711,7 @@ scripts/hooks/test-check-settings-portability.sh	pr	guard
 scripts/hooks/test-check-template-himmel-plugins.sh	pr	guard
 scripts/hooks/test-check-update-available.sh	pr	guard
 scripts/hooks/test-check-worktree-isolation.sh	pr	guard
+scripts/hooks/test-check-write-hold.sh	pr	guard
 scripts/hooks/test-ci-doc-invariants.sh	pr	static-gate
 scripts/hooks/test-cmdpos-clean.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-codex-adapter-e2e.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -899,6 +900,7 @@ scripts/lib/test-mode-single-owner.sh	pr	trust-path
 scripts/lib/test-native-auth-pin.sh	pr	trust-path
 scripts/lib/test-observability-registry.sh	pr	static-gate
 scripts/lib/test-orphan-branches.sh	pr	trust-path
+scripts/lib/test-outside-contributors.sh	pr	trust-path
 scripts/lib/test-override-env.sh	pr	trust-path
 scripts/lib/test-prim.sh	pr	trust-path
 scripts/lib/test-proc-tree.sh	pr	trust-path
@@ -934,6 +936,7 @@ scripts/lib/test-shared-branch-lock.sh	pr	trust-path
 scripts/lib/test-status-marker.sh	pr	trust-path
 scripts/lib/test-suite-semaphore.sh	pr	trust-path
 scripts/lib/test-telemetry.sh	pr	trust-path
+scripts/lib/test-ticket-id-internal.sh	pr	trust-path
 scripts/lib/test-ticket-status.sh	pr	trust-path
 scripts/lib/test-timeout-bin.sh	pr	trust-path
 scripts/lib/test-tracker-contract.sh	pr	trust-path

@@ -13,7 +13,7 @@
 #   steering-cull-cadence.sh run  --proposal-dir <dir> [--chief <session>] [--repo <path>]
 #   steering-cull-cadence.sh arm  --proposal-dir <dir> [--chief <session>]
 #                                 [--day 0-6] [--time HH:MM] [--backend claude-api|claude-cli]
-#                                 [--api-account A|B|auto] [--force] [--dry-run]
+#                                 [--api-account A|B|C] [--force] [--dry-run]
 #   steering-cull-cadence.sh status
 #   steering-cull-cadence.sh disarm [--dry-run]
 #
@@ -39,10 +39,10 @@
 # Backend (STEERING_CULL_BACKEND, resolved by scripts/lib/llm-backend.sh): claude-cli
 # is the default, the bank-preflight path above; `arm` with no --backend
 # arms the cron runner on it. claude-api is the explicit opt-in: set
-# STEERING_CULL_BACKEND=claude-api, or `arm --backend claude-api --api-account A|B|auto`.
+# STEERING_CULL_BACKEND=claude-api, or `arm --backend claude-api --api-account A|B|C` (auto is not accepted).
 # It sends the call through scripts/api-lane/claude-api.sh (API credit, Read tool only,
 # plan mode, a per-call budget STEERING_CULL_API_BUDGET_USD, default 0.50) and skips
-# bank-preflight here; it needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT (else the run
+# bank-preflight here; it needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|C (else the run
 # refuses, rc 1). A refused or failed call inside claude-api.sh alerts and re-runs once
 # on the subscription behind its own usage preflight (docs/internals/api-lane.md).
 #
@@ -129,7 +129,7 @@ cmd_run() {
             ;;
         claude-api)
             llm_backend_api_ready || {
-                echo "ERR steering-cull: STEERING_CULL_BACKEND=claude-api needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT in the launching environment: refusing, no claude-cli fallback" >&2; return 1; }
+                echo "ERR steering-cull: STEERING_CULL_BACKEND=claude-api needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|C in the launching environment: refusing, no claude-cli fallback" >&2; return 1; }
             claude="${STEERING_CULL_API_LANE:-$SCRIPT_DIR/../api-lane/claude-api.sh}"
             [ -f "$claude" ] || { echo "ERR steering-cull: api lane launcher missing: $claude" >&2; bash "$ALERT" fail steering-cull no-api-lane ""; return 1; }
             ;;
@@ -255,7 +255,7 @@ cmd_arm() {
     fi
     [ -n "$backend" ] || backend="claude-cli"
     if [ "$backend" = "claude-api" ]; then
-        case "$acct" in A|B|auto) ;; *) echo "ERR steering-cull: --backend claude-api needs --api-account A|B|auto" >&2; return 1 ;; esac
+        llm_backend_api_account_ok "$acct" || { echo "ERR steering-cull: --backend claude-api needs --api-account A|B|C (auto is not accepted)" >&2; return 1; }
     elif [ -n "$acct" ]; then
         echo "ERR steering-cull: --api-account only applies to --backend claude-api" >&2; return 1
     fi

@@ -3564,6 +3564,7 @@
         "11": "e.verify.fail",
         "12": "e.verify.trust",
         "13": "e.verify.fail",
+        "16": "e.verify.fail",
         "17": "e.verify.fail",
         "18": "e.verify.fail"
       },

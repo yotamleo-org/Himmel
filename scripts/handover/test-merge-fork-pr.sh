@@ -266,6 +266,17 @@ rc=0; out="$(merge "$FORK" 18 "$SHA" 2>&1)" || rc=$?
 check "merge valid -> exit 0" "$rc" 0
 check "merge valid ran exactly one gh pr merge" "$(merged)" 1
 contains "merge valid squashes with the head pinned" "$(cat "$STUB_LOG")" "MERGE pr merge 18 --repo $FORK --squash --match-head-commit $SHA"
+# 9272: the transcript an auto-mode classifier reads must carry the review evidence the
+# script just checked, before the merge line: repo, PR, full head, the GO file, the judge
+# verdict and its signed qid, the live PR state, and the one-line verified statement.
+contains "9272 evidence: names the repo and PR" "$out" "$FORK PR #18"
+contains "9272 evidence: names the full head" "$out" "$SHA"
+contains "9272 evidence: names the GO file" "$out" "$ROOT/.locks/go/18.$SHA"
+contains "9272 evidence: names the judge verdict file" "$out" "$ROOT/$VSCOPE/verdicts/j1/HIMMEL-5899-judge-j1.md"
+contains "9272 evidence: names the signed qid" "$out" "qid j1"
+contains "9272 evidence: names the live PR state" "$out" "OPEN, CLEAN"
+contains "9272 evidence: says threads are resolved" "$out" "every review thread resolved"
+contains "9272 evidence: the one-line verified statement" "$out" "trust-reviewed GO verified"
 jlog() { cat "$STUB_JIRA_LOG"; }  # read-sink-ok: the node shim's own log, a fixed path under this test's mktemp dir
 check "merge without --jira-transition leaves the ticket untouched" "$(jlog)" ""
 

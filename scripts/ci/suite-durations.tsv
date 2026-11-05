@@ -707,6 +707,7 @@ scripts/hooks/test-check-settings-portability.sh	0
 scripts/hooks/test-check-template-himmel-plugins.sh	1
 scripts/hooks/test-check-update-available.sh	7
 scripts/hooks/test-check-worktree-isolation.sh	0
+scripts/hooks/test-check-write-hold.sh	16
 scripts/hooks/test-ci-doc-invariants.sh	17
 scripts/hooks/test-cmdpos-clean.sh	0
 scripts/hooks/test-codex-adapter-e2e.sh	0
@@ -888,6 +889,7 @@ scripts/lib/test-mode-single-owner.sh	0
 scripts/lib/test-native-auth-pin.sh	1
 scripts/lib/test-observability-registry.sh	0
 scripts/lib/test-orphan-branches.sh	7
+scripts/lib/test-outside-contributors.sh	1
 scripts/lib/test-override-env.sh	1
 scripts/lib/test-prim.sh	7
 scripts/lib/test-proc-tree.sh	2
@@ -922,6 +924,7 @@ scripts/lib/test-sha256-bin.sh	0
 scripts/lib/test-shared-branch-lock.sh	1
 scripts/lib/test-suite-semaphore.sh	11
 scripts/lib/test-telemetry.sh	0
+scripts/lib/test-ticket-id-internal.sh	1
 scripts/lib/test-ticket-status.sh	0
 scripts/lib/test-timeout-bin.sh	13
 scripts/lib/test-tracker-contract.sh	4

@@ -127,7 +127,7 @@ ledger_registry_path() {
 # answer for every project), "project" = the default. The per-repo index checks (graph freshness, semantic graph)
 # are project rows that name the repo they judge, so a feed saved under another project does not carry them.
 # A check id is its Cn prefix (C40-qmd-vec -> C40).
-DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 "
+DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 "
 DOCTOR_REPO_CHECKS=" C33 C70 "
 DOCTOR_REPO_NAME="himmel"
 
@@ -3882,6 +3882,59 @@ check_c50_qmd_fork_stamp() {
     fi
 }
 
+# --- C89-qmd-rerank: qmd running without its reranker ---
+# An adopter with no OpenRouter key searches on qmd's local models; rerank is the largest single
+# retrieval gain measured, so a qmd that cannot rerank is worth a WARN. Three ways to
+# lose it: QMD_RERANK=off (or 0/false) in the environment, no remote reranker configured and no local
+# reranker model in the cache (qmd pull never ran or failed), or neither. INFO and skip when qmd is
+# absent or the operator switched it off. Read-only. Seams: HIMMEL_DOCTOR_QMD_BIN (default: qmd-bin.sh has_qmd),
+# HIMMEL_DOCTOR_QMD_MODELS_DIR (default ${XDG_CACHE_HOME:-~/.cache}/qmd/models, where the fork keeps
+# its gguf files), QMD_CONFIG_DIR (default ${XDG_CONFIG_HOME:-~/.config}/qmd), QMD_DAEMON_DISABLED
+# and QMD_DAEMON_OFF_FLAG (the same off switch as C40).
+check_c89_qmd_rerank() {
+    local qbin="${HIMMEL_DOCTOR_QMD_BIN:-qmd}" models qcfg rerank_env have_qmd=0
+    models="${HIMMEL_DOCTOR_QMD_MODELS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/models}"
+    qcfg="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/index.yml"
+    if [ "${QMD_DAEMON_DISABLED:-}" = "1" ] || [ -e "${QMD_DAEMON_OFF_FLAG:-$HOME/.himmel/state/qmd-daemon.off}" ]; then  # t13b-ok: reads the operator off flag, starts nothing
+        emit INFO C89-qmd-rerank "qmd off by operator (the qmd off flag) -- rerank check skipped"
+        return 0
+    fi
+    # An adopter's qmd is the bun-global script, not always a `qmd` on PATH: ask qmd-bin.sh's own presence test
+    # unless the seam names a binary.
+    if [ -n "${HIMMEL_DOCTOR_QMD_BIN:-}" ]; then
+        command -v "$qbin" >/dev/null 2>&1 && have_qmd=1
+    elif [ -f "$REPO_ROOT/scripts/lib/qmd-bin.sh" ]; then
+        # shellcheck disable=SC1090,SC1091
+        ( . "$REPO_ROOT/scripts/lib/qmd-bin.sh" >/dev/null 2>&1; has_qmd ) && have_qmd=1
+    else
+        command -v qmd >/dev/null 2>&1 && have_qmd=1
+    fi
+    if [ "$have_qmd" -eq 0 ]; then
+        emit INFO C89-qmd-rerank "qmd is not installed -- rerank check skipped (qmd is optional)"
+        return 0
+    fi
+    rerank_env="$(printf '%s' "${QMD_RERANK:-}" | tr '[:upper:]' '[:lower:]')"
+    case "$rerank_env" in
+        off|0|false)
+            emit WARN C89-qmd-rerank "QMD_RERANK=${QMD_RERANK} turns qmd's reranker off for every search -- results come back in keyword/vector order" \
+                "unset QMD_RERANK   # in the shell or service that starts qmd, then restart the qmd server"
+            return 0 ;;
+    esac
+    case "$(printf '%s' "${QMD_RERANK_MODEL:-}" | tr '[:upper:]' '[:lower:]')" in
+        openai:*) emit OK C89-qmd-rerank "qmd reranks with a remote reranker (QMD_RERANK_MODEL)"; return 0 ;;
+    esac
+    if grep -Eqis "^[[:space:]]*rerank:[[:space:]]*[\"']?openai:" "$qcfg" 2>/dev/null; then
+        emit OK C89-qmd-rerank "qmd reranks with the remote reranker set in $qcfg"
+        return 0
+    fi
+    if compgen -G "$models/*reranker*.gguf" >/dev/null 2>&1; then
+        emit OK C89-qmd-rerank "qmd reranks with its local reranker model (pass rerank:true on the MCP query tool, see the qmd skill)"
+    else
+        emit WARN C89-qmd-rerank "qmd has no reranker: none configured and no local reranker model under $models -- searches are unreranked" \
+            "qmd pull   # downloads the local embedding and reranker models (about 2.1 GB)"
+    fi
+}
+
 # --- C41: MCP server credential on the command line ---------------
 # An MCP server entry launched as `npm exec <server> --api-key <key>` puts the key
 # in argv, so any local user reads it via ps or /proc/<pid>/cmdline, and it lands
@@ -5635,6 +5688,7 @@ run_check C85 check_c85_self_heartbeat
 run_check C86 check_c86_morning_report
 run_check C88 check_c88_graph_api_optin
 run_check C87 check_c87_stub_handover_state
+run_check C89 check_c89_qmd_rerank
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
