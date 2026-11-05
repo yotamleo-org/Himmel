@@ -183,10 +183,11 @@ cachettl_cases() (
     printf '#!/bin/sh\ncase "$*" in *customTitle*) echo x >> "$GREP_COUNT_FILE" ;; esac\nexec "%s" "$@"\n' "$(command -v grep)" > "$W/grepshim/grep"
     chmod +x "$W/grepshim/grep"
     : > "$W/grepshim/count"
-    out="$(PATH="$W/grepshim:$PATH" GREP_COUNT_FILE="$W/grepshim/count" bash "$SUT")"
-    contains 'the shared transcript index still lists the idle worker' "$out" ' cachettl=N61'
+    two_workers='HIMMEL-111-legN61 HIMMEL-6532-N1-other'
+    out="$(WORKERS="$two_workers" PATH="$W/grepshim:$PATH" GREP_COUNT_FILE="$W/grepshim/count" bash "$SUT")"
+    contains 'the shared transcript index still lists both idle workers' "$out" ' cachettl=N61,N1'
     scans="$(wc -l < "$W/grepshim/count" | tr -d ' ')"
-    [ "$scans" -le 1 ] && pass "two workers cost one transcript scan ($scans)" || fail "two workers cost $scans transcript scans, expected at most 1"
+    [ "$scans" -eq 1 ] && pass "two workers cost one transcript scan ($scans)" || fail "two workers cost $scans transcript scans, expected 1"
     touch -d '25 hours ago' "$TICK_PROJECTS_DIR/p/cache.jsonl"
     out="$(bash "$SUT")"
     not_contains 'a matching transcript older than the search window is ignored' "$out" ' cachettl='
