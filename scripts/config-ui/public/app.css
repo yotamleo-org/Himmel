@@ -171,6 +171,14 @@ div.tile{cursor:default}.tiles.three{grid-template-columns:repeat(3,minmax(0,1fr
 .hrow{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;padding:var(--s2) 0;border-bottom:1px solid var(--rule);overflow-wrap:anywhere}
 .hrow:last-child{border-bottom:0}
 .hrow .id{font-weight:600;font-size:12px}.hrow .det{color:var(--dim);min-width:0;font-size:var(--fs-xs)}.hrow .ro{font-size:11px;color:var(--muted)}.hrow .remedy{background:var(--code);border-radius:4px;padding:1px 6px;font-size:11px;overflow-wrap:anywhere}
+/* A check detail can be one ~5 KB line. The global .det is nowrap, which made the row's min-content width the whole line
+   and pushed the page sideways; in a row or an alert it wraps anywhere instead, so the full text stays in view. */
+.hrow .det,.alert .det{white-space:normal;overflow:visible;overflow-wrap:anywhere}
+/* the bundle table: check and kind keep a word whole, the detail column takes the wrapping with a floor (as .data.thtab does) */
+.data.chk th,.data.chk td{overflow-wrap:normal}
+.data.chk td.wrap{overflow-wrap:anywhere;min-width:16ch}
+/* the tab panels are grid items of .p: without this the wide table grows the track instead of scrolling inside .scroll */
+.p>[role="tabpanel"]{min-width:0}
 .alert{padding:var(--s2) 0;border-bottom:1px solid var(--rule);overflow-wrap:anywhere}
 .card{border:1px solid var(--rule);border-radius:8px;background:var(--bg);padding:var(--s3);margin:var(--s2) 0;overflow-wrap:anywhere}
 .card h3{margin:0 0 var(--s1);font:600 var(--fs-sm) var(--font-ui)}
@@ -280,6 +288,11 @@ div.tile{cursor:default}.tiles.three{grid-template-columns:repeat(3,minmax(0,1fr
 details.more{margin:6px 0}details.more>summary{cursor:pointer;color:var(--dim);padding:4px 0}
 @media (max-width:900px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.cols{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:440px){.tiles{grid-template-columns:minmax(0,1fr)}.cpanel{padding:var(--s3)}}
+/* Report page: five tiles on one line, two columns at 760px and under; the failure review table right-aligns Rows and Workers */
+.tiles.t5{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media (max-width:760px){.tiles.t5{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.fr .data th:nth-child(3),.fr .data th:nth-child(4),.fr .data td:nth-child(3),.fr .data td:nth-child(4){text-align:right;font-variant-numeric:tabular-nums}
+.fr .data tbody tr:nth-child(even){background:var(--surface-2)}
 @media (max-width:760px){.rm-board{grid-template-columns:1fr 1fr}}
 /* Health page v2 (HIMMEL-8044): group tiles reuse the Configure tile; rows, tabs, Shared panel, project lines and the rail picker. Tokens only. */
 .g-chk{--gc:var(--accent)}.g-use{--gc:var(--road)}.g-job{--gc:var(--camp)}.g-srch{--gc:var(--alpha)}

@@ -576,5 +576,46 @@ out21=$( PATH="$BIN21:$PATH" bash "$SCRIPT" "$CORPUS21" 2>&1 ); rc21=$?
 echo "$out21" | grep -q "WARN harden-graph.py failed" && pass "T21 the failure is a WARN on stderr" || fail "T21 no WARN: $out21"
 [ ! -e "$OUT21/.promote.lock" ] && pass "T21 the lock is released" || fail "T21 lock left behind"
 
+# --- T22: a live worker keeps a heartbeat in the lock so a
+# refresh does not judge a long AST run stale; a killed worker's heartbeat
+# stops, and a clean exit leaves no heartbeat process behind.
+echo "T22: heartbeat advances while the worker runs and stops when it dies"
+CORPUS22="$WS/c22"; mkdir -p "$CORPUS22"
+OUT22="$CORPUS22/graphify-out"
+BIN22="$WS/bin22"; make_stub "$BIN22" 6
+GRAPHIFY_PROMOTE_LOCK_HEARTBEAT_SECONDS=1 PATH="$BIN22:$PATH" bash "$SCRIPT" "$CORPUS22" > "$WS/t22.out" 2> "$WS/t22.err" &
+PID22=$!
+i=0
+while [ ! -d "$OUT22/.promote.lock" ] && [ "$i" -lt 200 ]; do sleep 0.05; i=$((i + 1)); done
+sleep 3
+hb1=$(cat "$OUT22/.promote.lock/heartbeat" 2>/dev/null || echo "")
+acq22=$(cat "$OUT22/.promote.lock/acquired" 2>/dev/null || echo "")
+case "$hb1" in
+  ''|*[!0-9]*) fail "T22 no numeric heartbeat in the held lock: '$hb1'" ;;
+  *) [ "$hb1" -gt "$acq22" ] && pass "T22 heartbeat is newer than the acquired stamp mid-run" \
+       || fail "T22 heartbeat $hb1 not newer than acquired $acq22" ;;
+esac
+sleep 2
+hb2=$(cat "$OUT22/.promote.lock/heartbeat" 2>/dev/null || echo "")
+[ -n "$hb2" ] && [ -n "$hb1" ] && [ "$hb2" -gt "$hb1" ] && pass "T22 heartbeat keeps advancing" || fail "T22 heartbeat did not advance ($hb1 -> $hb2)"
+wait "$PID22"; rc22=$?
+[ "$rc22" -eq 0 ] && pass "T22 worker exits 0" || fail "T22 should exit 0 (got $rc22): $(cat "$WS/t22.err")"
+[ ! -e "$OUT22/.promote.lock" ] && pass "T22 lock released with its heartbeat" || fail "T22 lock left behind"
+
+CORPUS22B="$WS/c22b"; mkdir -p "$CORPUS22B"
+OUT22B="$CORPUS22B/graphify-out"
+GRAPHIFY_PROMOTE_LOCK_HEARTBEAT_SECONDS=1 PATH="$BIN22:$PATH" bash "$SCRIPT" "$CORPUS22B" > /dev/null 2>&1 &
+PID22B=$!
+i=0
+while [ ! -f "$OUT22B/.promote.lock/heartbeat" ] && [ "$i" -lt 200 ]; do sleep 0.05; i=$((i + 1)); done
+kill -9 "$PID22B" 2>/dev/null
+wait "$PID22B" 2>/dev/null
+sleep 3
+hbk1=$(cat "$OUT22B/.promote.lock/heartbeat" 2>/dev/null || echo "")
+sleep 3
+hbk2=$(cat "$OUT22B/.promote.lock/heartbeat" 2>/dev/null || echo "")
+[ -n "$hbk1" ] && [ "$hbk1" = "$hbk2" ] && pass "T22 a killed worker's heartbeat stops advancing" \
+  || fail "T22 heartbeat kept advancing after the worker was killed ($hbk1 -> $hbk2)"
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"
