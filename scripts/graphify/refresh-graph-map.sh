@@ -1054,7 +1054,7 @@ _promote_lock_takeover() {
   return 1
 }
 
-# _promote_lock_acquire -- bounded mkdir spin (default 120s, 1s poll) with
+# _promote_lock_acquire [ceiling] -- bounded mkdir spin (default 120s, 1s poll; $1 overrides the wait) with
 # single-winner stale takeover (default 600s, loud on stderr). The lock dir
 # carries an "owner" token (release compares against it, above) and an
 # "acquired" epoch-seconds file written by the winner right after mkdir,
@@ -1068,7 +1068,7 @@ _promote_lock_takeover() {
 # silently clobbering.
 _promote_lock_acquire() {
   local waited=0 missing_polls=0 held_at now age token owner_pid live_holder=""
-  local ceiling="$PROMOTE_LOCK_TIMEOUT_SECONDS"
+  local ceiling="${1:-$PROMOTE_LOCK_TIMEOUT_SECONDS}"
   while :; do
     # prim-ok: ast-update and semantic-update share this owner-token directory and stale-takeover protocol.
     if mkdir "$PROMOTE_LOCK" 2>/dev/null; then
@@ -1122,7 +1122,7 @@ _promote_lock_acquire() {
         echo "refresh-graph-map: promote lock $PROMOTE_LOCK still held by live pid $live_holder after ${ceiling}s -- giving up, no takeover" >&2
         return 1
       fi
-      echo "refresh-graph-map: promote lock $PROMOTE_LOCK held by another refresh-graph-map run after ${PROMOTE_LOCK_TIMEOUT_SECONDS}s -- giving up (another refresh is in progress against this out dir)" >&2
+      echo "refresh-graph-map: promote lock $PROMOTE_LOCK held by another refresh-graph-map run after ${ceiling}s -- giving up (another refresh is in progress against this out dir)" >&2
       return 1
     fi
     sleep 1
@@ -2478,11 +2478,14 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   # live out dir's cache (content-keyed, so adding entries is safe) under the
   # promote lock, and leave a marker so an overridden out dir still proves it
   # is graphify's. Never promotes the graph. $1 = optional failed-chunk line.
+  # The keep waits up to the live-wait ceiling, not the plain promote timeout:
+  # giving up here deletes the run's paid chunks, and the hourly ast-update
+  # holds a fresh lock for minutes.
   _KEEP_FAILED=0
   _keep_finished_chunks() {
     local note="${1:-}"
     [ -d "$SCRATCH_OUT/cache" ] || [ -n "$note" ] || return 0
-    _promote_lock_acquire || exit 2
+    _promote_lock_acquire "$PROMOTE_LOCK_LIVE_WAIT_SECONDS" || exit 2
     if mkdir -p "$OUT_DIR/cache" \
        && { [ ! -d "$SCRATCH_OUT/cache" ] || cp -R "$SCRATCH_OUT/cache/." "$OUT_DIR/cache/"; } \
        && : > "$OUT_DIR/.graphify_resume_cache"; then

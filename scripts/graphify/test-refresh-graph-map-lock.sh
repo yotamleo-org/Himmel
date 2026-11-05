@@ -279,6 +279,41 @@ out_x=$(t3b_run t3b-dead 60); rc_x=$?
   && pass "T3b dead holder: the stale lock is taken over as before" \
   || fail "T3b dead holder should be taken over (got $rc_x): $out_x"
 
+# --- T3c: a capped run keeps its finished chunks even when a live holder
+# (the hourly ast-update) keeps a FRESH promote lock past the plain promote
+# timeout: the keep waits up to the live-wait ceiling instead of exiting 2 and
+# discarding the run's paid chunks. ---
+echo "T3c: a capped run waits out a fresh lock past the promote timeout and keeps its chunks"
+CBIN="$WS/cbin"; mkdir -p "$CBIN"
+cat > "$CBIN/graphify" <<'STUB'
+#!/usr/bin/env bash
+if [ "$1" = "--version" ]; then echo "graphify 0.0.0"; exit 0; fi
+if [ "$1" = "cluster-only" ]; then exit 0; fi
+mkdir -p "$1/graphify-out/cache"
+printf '{}' > "$1/graphify-out/cache/t3c-chunk.json"
+echo "[graphify extract] chunk 1/2 done" >&2
+: > "$T3C_CAPPED"
+sleep 5
+echo "[graphify extract] chunk 2/2 done" >&2
+exit 0
+STUB
+chmod +x "$CBIN/graphify"
+T3C="$WS/t3c"; mkdir -p "$T3C/notes" "$WS/t3c-maps" "$T3C/graphify-out/.promote.lock"
+printf '# g\ncontent g\n' > "$T3C/notes/g.md"
+sleep 600 & T3C_PID=$!
+date -u +%s > "$T3C/graphify-out/.promote.lock/acquired"
+printf '%s\n' "$T3C_PID-321" > "$T3C/graphify-out/.promote.lock/owner"
+export T3C_CAPPED="$WS/t3c-capped"
+( until [ -e "$T3C_CAPPED" ]; do sleep 0.2; done; sleep 4; rm -rf "$T3C/graphify-out/.promote.lock" ) &
+out_c=$( GRAPHIFY_MAP_BIN="$CBIN/graphify" PATH="$CBIN:$PATH" GRAPHIFY_MAX_CHUNKS_PER_RUN=1 \
+  GRAPHIFY_PROMOTE_LOCK_TIMEOUT_SECONDS=1 GRAPHIFY_PROMOTE_LOCK_LIVE_WAIT_SECONDS=60 \
+  bash "$SCRIPT" --name t3c --corpus-root "$T3C" --backend claude \
+  --maps-dir "$WS/t3c-maps" --title "Lock t3c" --slug t3c-map --corpus-tag t3c 2>&1 ); rc_c=$?
+kill "$T3C_PID" 2>/dev/null; wait "$T3C_PID" 2>/dev/null
+{ [ "$rc_c" -eq 4 ] && [ -e "$T3C/graphify-out/cache/t3c-chunk.json" ] && grep -q "finished chunks kept" <<<"$out_c"; } \
+  && pass "T3c the capped run waited out the live holder and kept its finished chunk (exit 4)" \
+  || fail "T3c the capped run should keep its chunk and exit 4 (got $rc_c): $out_c"
+
 # --- T4: two SIMULTANEOUS
 # contenders against one stale lock -- the takeover must be single-winner.
 # A naive rm-then-continue takeover would let both contenders judge the same
