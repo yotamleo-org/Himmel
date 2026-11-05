@@ -7,7 +7,7 @@
 #
 # Guest mode (--guest): starts the real config-ui server six times, once per role-map state, each on a
 # throwaway HOME and credit config, and asserts what the route answers, what auto routing reads
-# (api-roles.mjs accounts) and what the served page carries. Twelve state assertions plus the mode 600 check.
+# (api-roles.mjs accounts) and what the served page carries. Fourteen assertions in all, including the mode 600 check.
 # It never touches the guest's real ~/.himmel.
 #
 # Exit: 0 all passed; 1 an assertion failed; 2 bad inputs.
@@ -18,7 +18,7 @@ REPO="$(cd -- "$HERE/../.." && pwd)"
 
 if [ "${1:-}" != "--guest" ]; then
   [ "$#" -eq 1 ] || { echo "usage: multi-accounts-e2e.sh <vm> | --guest" >&2; exit 2; }
-  exec bash "$REPO/scripts/vm/guest-exec.sh" "$1" --timeout 300 -- bash -lc 'cd ~/himmel && bash scripts/vm/multi-accounts-e2e.sh --guest'
+  exec bash "$REPO/scripts/vm/guest-exec.sh" "$1" --timeout 300 -- "cd ~/himmel && bash scripts/vm/multi-accounts-e2e.sh --guest"
 fi
 
 command -v bun >/dev/null 2>&1 || export PATH="$HOME/.bun/bin:$PATH"
