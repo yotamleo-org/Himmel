@@ -37,7 +37,9 @@
 # and env dumps (bare env/printenv/set/declare -p/export -p, `echo $X_TOKEN`,
 # `gh auth token`). g4_secret_path adds .netrc, .npmrc, ~/.aws, ~/.kube,
 # docker config, gh hosts.yml, ~/.claude/.credentials.json, terraform.tfstate,
-# ~/.ssh/* (not .pub/known_hosts/config) and /proc/*/environ. Another entry adds
+# ~/.ssh/* (not .pub/known_hosts/config) and /proc/*/environ. `systemctl
+# show-environment` (with or without --user) and a busctl read of the systemd
+# Manager's environment are denied the same way. Another entry adds
 # shell tracing that can print the inherited environment (`bash -x`, `-o xtrace`,
 # `set -x`, SHELLOPTS=xtrace, BASH_XTRACEFD; denied even under `env -i`). Another entry adds
 # a python/node/bun/deno command that prints the whole environment or reads
@@ -1018,7 +1020,7 @@ g4_scan() {
     local nargs=0 nflags=0 pflag=0 nnames=0 hit=0 note="" cls=""
     local last_secret=0 tdir=0 skip_out=0 skipv=0 a1="" a2="" showtok=0 rest name
     local herecred=0 zc=0 zsec=0 xt=0 xo=0 xend=0 dsc=0 msgv=0 xskip=0 gmsg=0 gcfg=0 gsub=0 gskip=0 rdr=0
-    local gsc="" kflag=0 fv=0 bx=0
+    local gsc="" kflag=0 fv=0 bx=0 sd1=0 sdenv=0
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     set -f
     local nw i nx
@@ -1214,7 +1216,13 @@ g4_scan() {
                 esac ;;
             security) case "$d" in --*) ;; -*[wg]*) kflag=1 ;; esac ;;
             kwallet-query) case "$d" in -r|--read-password) hit=1; note="kwallet-query -r prints a wallet secret" ;; esac ;;
-            busctl|gdbus|dbus-send) case "$d" in *GetSecret*) hit=1; note="$cmd GetSecret prints a keyring secret" ;; esac ;;
+            busctl|gdbus|dbus-send)
+                case "$d" in
+                    *GetSecret*) hit=1; note="$cmd GetSecret prints a keyring secret" ;;
+                    org.freedesktop.systemd1*) sd1=1 ;;      # judged after the loop (busctl only)
+                    Environment|GetAll|introspect) sdenv=1 ;;
+                esac ;;
+            systemctl) case "$d" in show-environment) hit=1; note="systemctl show-environment prints the whole systemd manager environment, credentials included. Check one setting with: printenv NAME (a non-credential name, e.g. printenv DISPLAY); list stored secrets by name with: himmel-secrets names" ;; esac ;;
             sops|age|rage) case "$d" in -d|--decrypt) kflag=1 ;; esac ;;
         esac
         case "$cls" in
@@ -1264,6 +1272,16 @@ g4_scan() {
             if [ "$nargs" = 0 ] && [ "$nflags" = 0 ]; then hit=1; note="bare $cmd dumps variables"; fi
             if [ "$pflag" = 1 ] && [ "$nnames" = 0 ]; then hit=1; note="$cmd -p dumps variables"; fi ;;
         gh) if [ "$a1" = auth ] && { [ "$a2" = token ] || [ "$showtok" = 1 ]; }; then hit=1; note="gh auth token prints a credential"; fi ;;
+        # ponytail: the shapes covered are `systemctl [flags] show-environment` and a busctl
+        # clause naming org.freedesktop.systemd1 with Environment, GetAll or introspect; a
+        # bare `systemctl --user show` (manager properties), gdbus/dbus-send reads of the
+        # Manager, a variable-built command and an alias are not read. Upgrade path: stop
+        # importing credentials into the manager (the install side of this fix), so no dump has
+        # anything to print, instead of parsing more command shapes.
+        busctl)
+            if [ "$sd1" = 1 ] && [ "$sdenv" = 1 ]; then
+                hit=1; note="busctl read of the systemd manager environment prints credentials. Check one setting with: printenv NAME (a non-credential name, e.g. printenv DISPLAY); list stored secrets by name with: himmel-secrets names"
+            fi ;;
         secret-tool)
             case "$a1" in lookup|search|store) hit=1; note="secret-tool $a1 reads or writes a keyring secret" ;; esac ;;
         security)

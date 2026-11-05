@@ -1496,6 +1496,22 @@ assert_rc "7147 ctl grep for secret-tool in a file"        0 "$(run_case "$(j_ba
 assert_rc "7147 ctl commit message naming secret-tool"     0 "$(run_case "$(j_bash "git commit -m 'docs: secret-tool lookup is denied'")")"
 assert_rc "7147 ctl age encrypt"                           0 "$(run_case "$(j_bash 'age -r age1xyz -o out.age in.txt')")"
 
+# The systemd manager's environment holds whatever a login imported;
+# printing it puts every credential in it into the transcript. Hook input only.
+assert_rc "9341 systemctl --user show-environment"         2 "$(run_case "$(j_bash 'systemctl --user show-environment')")"
+assert_rc "9341 systemctl show-environment (no --user)"    2 "$(run_case "$(j_bash 'systemctl show-environment')")"
+assert_rc "9341 systemctl --user flags then show-environment" 2 "$(run_case "$(j_bash 'systemctl --user --no-pager show-environment')")"
+assert_rc "9341 show-environment piped to a filter"        2 "$(run_case "$(j_bash 'systemctl --user show-environment | grep DISPLAY')")"
+assert_rc "9341 busctl get-property Manager Environment"   2 "$(run_case "$(j_bash 'busctl --user get-property org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager Environment')")"
+assert_rc "9341 busctl Properties GetAll on the Manager"   2 "$(run_case "$(j_bash 'busctl --user call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.DBus.Properties GetAll s org.freedesktop.systemd1.Manager')")"
+assert_rc "9341 busctl introspect the Manager"             2 "$(run_case "$(j_bash 'busctl --user introspect org.freedesktop.systemd1 /org/freedesktop/systemd1')")"
+assert_rc "9341 ctl systemctl --user status"               0 "$(run_case "$(j_bash 'systemctl --user status telegram-bridge.service')")"
+assert_rc "9341 ctl systemctl --user is-active"            0 "$(run_case "$(j_bash 'systemctl --user is-active telegram-bridge.service')")"
+assert_rc "9341 ctl busctl Manager Version property"       0 "$(run_case "$(j_bash 'busctl --user get-property org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager Version')")"
+assert_rc "9341 ctl busctl StartUnit on the Manager"       0 "$(run_case "$(j_bash 'busctl --user call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager StartUnit ss x.service replace')")"
+assert_rc "9341 ctl grep for show-environment in a script" 0 "$(run_case "$(j_bash 'grep -n show-environment scripts/telegram/restart-bridge.sh')")"
+assert_rc "9341 ctl commit message naming show-environment" 0 "$(run_case "$(j_bash "git commit -m 'docs: systemctl --user show-environment is denied'")")"
+
 # A short mirror query expands thousands of filenames even when the raw
 # clause's command is rtk, not a reader. It must finish in the real chain's
 # unchanged member window; the query is hook input, never executed.
