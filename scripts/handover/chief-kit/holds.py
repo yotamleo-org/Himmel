@@ -585,8 +585,8 @@ def successor_of(resume, rest):
 
 
 def refusal(path, fields, key):
-    return ('holds: %s is held by %s (%s, %s). Keep working on other files. This deny is logged: your chief sees it on '
-            'its tick (hreg=) and grants it with holds.py grant, and a trust path also pages the operator. You may also '
+    return ('holds: %s is held by %s (%s, %s). Keep working on other files. This deny is logged: on a trust path your '
+            'chief sees it on its tick (hreg=) and the operator is paged with the grant command. For any other path, '
             'message your chief: HOLD-ASK %s %s' % (path, fields[0], fields[1], fields[3], path, key))
 
 
@@ -1432,8 +1432,8 @@ def pending_asks(repo):
             size = fh.seek(0, os.SEEK_END)
             fh.seek(max(0, size - ASK_TAIL))
             data = fh.read().decode('utf-8', 'replace')
-    except OSError:
-        return []
+    except FileNotFoundError:
+        return []  # no log, no denies; any other read error propagates as a fault (the tick shows hreg=?)
     lines = data.split('\n')
     if size > ASK_TAIL:
         lines = lines[1:]  # the first line of the tail is cut
@@ -1467,7 +1467,12 @@ def pending_asks(repo):
 def op_asks(a):
     """TSV key path holder command, one per pending trust-path ask: the command is the paste-ready grant."""
     repo = primary_of(a.repo)
-    script = os.path.join(repo, 'scripts', 'handover', 'chief-kit', 'holds.py')
+    kit = os.path.abspath(os.path.join(HERE, '..', '..', '..'))  # the checkout this holds.py runs from, whatever --repo names
+    try:
+        kit = primary_of(kit)
+    except RepoFault:
+        pass  # swallow-ok: no git identity for the kit checkout; its own path is the best command there is
+    script = os.path.join(kit, 'scripts', 'handover', 'chief-kit', 'holds.py')
     for key, path, holder in pending_asks(repo):
         print('\t'.join([key, path, holder, 'python3 -I %s grant --key %s --repo %s %s'
                          % (shlex.quote(script), key, shlex.quote(repo), shlex.quote(path))]))
@@ -1490,8 +1495,11 @@ def op_summary(a):
     for d in (d0, slug_dir(repo, '_abs')):
         try:
             names = os.listdir(d)
-        except OSError:
+        except FileNotFoundError:
             continue
+        except OSError as e:
+            sys.stderr.write('holds: cannot read %s: %s\n' % (d, e.strerror or e))
+            return 3  # an unreadable register is hreg=?, never a clean 0
         for n in names:
             if n.startswith(TMP_PREFIX) or GRANT_RE.search(n):
                 continue
@@ -1507,8 +1515,9 @@ def op_summary(a):
     if a.live_docs:
         try:
             docs = [l.strip() for l in (sys.stdin if a.live_docs == '-' else open(a.live_docs, encoding='utf-8')) if l.strip()]
-        except OSError:
-            docs = []
+        except OSError as e:
+            sys.stderr.write('holds: cannot read %s: %s\n' % (a.live_docs, e.strerror or e))
+            return 3
     norows, seen = 0, set()
     for doc in docs:
         km = re.search(r'[A-Z][A-Z0-9]*-[0-9]+', os.path.basename(doc))
@@ -1518,7 +1527,7 @@ def op_summary(a):
         try:
             text = open(doc, encoding='utf-8', errors='replace').read()
         except OSError:
-            continue
+            continue  # swallow-ok: a worker doc that is gone or unreadable is no live worker to seed
         if any(kind == 'file' for kind, _p in parse_text(text, repo)):
             norows += 1
     print('%d/%d/%d' % (norows, stale, len(pending_asks(repo))))

@@ -1095,7 +1095,8 @@ same "9186 a claim on a held trust path is refused (the deny the ask is read fro
 OUT=$(printf '%s\n%s\n' "$L1" "$L2" | env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" summary --repo "$R10" --live-docs - --open-prs '#4702' 2>/dev/null)
 same "9186 summary: one live worker with no rows, one stale row, one pending trust-path ask" "$OUT" "1/1/1"
 run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10"
-same "9186 asks names the key, the path and the full paste-ready grant command" "$OUT" "$(printf 'HIMMEL-9626\tscripts/check-ci.sh\tHIMMEL-9625\tpython3 -I %s/scripts/handover/chief-kit/holds.py grant --key HIMMEL-9626 --repo %s scripts/check-ci.sh' "$R10" "$R10")"
+KIT_P="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)"; KIT_P="${KIT_P%/.git}"  # the checkout holds.py runs from, not the repo --repo names (R10 has no kit)
+same "9186 asks names the key, the path and the full paste-ready grant command, located from the running kit" "$OUT" "$(printf 'HIMMEL-9626\tscripts/check-ci.sh\tHIMMEL-9625\tpython3 -I %s/scripts/handover/chief-kit/holds.py grant --key HIMMEL-9626 --repo %s scripts/check-ci.sh' "$KIT_P" "$R10")"
 OUT=$(printf '%s\n' "$L1" | env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" summary --repo "$R10" --live-docs - --open-prs none 2>/dev/null)
 same "9186 summary: with no open PR the pr row is stale too (2), no other count moves" "$OUT" "1/2/1"
 : > "$(rowf scripts/check-ci.sh "$R10").grant.HIMMEL-9626"
@@ -1103,6 +1104,12 @@ run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10"
 same "9186 a granted ask is no longer pending" "$OUT" ""
 run hp summary --repo "$W/repo-9186-no-register"
 same "9186 summary prints nothing when this repo has never had a register directory" "$RC:$OUT" "0:"
+if [ "$(id -u)" != 0 ]; then  # root reads a mode-000 directory
+    chmod 000 "$(slugdir "$R10")"
+    run hp summary --repo "$R10"
+    chmod 755 "$(slugdir "$R10")"
+    same "9186 summary on an unreadable register directory exits 3 with no count (the tick shows hreg=?)" "$RC:$OUT" "3:"
+fi
 
 # the refusal text names the route that exists
 put_row scripts/r9186.sh HIMMEL-9628 lab "$(mkdoc HIMMEL-9628-case.md)" brief "" "$R9"
