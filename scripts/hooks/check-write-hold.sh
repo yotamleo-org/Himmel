@@ -36,7 +36,8 @@ set -uo pipefail
 
 exec 3>&2 2>/dev/null  # a crash stays silent; what this hook means to say goes to fd 3
 scratch=""
-trap 'rc=$?; [ -z "$scratch" ] || rm -f "$scratch"; case "$rc" in 0|2) ;; *) exit 0 ;; esac' EXIT
+denied=0
+trap '[ -z "$scratch" ] || rm -f "$scratch"; [ "$denied" != 1 ] || exit 2; exit 0' EXIT  # exit 2 only from deny: a syntax error also exits 2
 
 [ "${WRITE_HOLD_OK:-0}" != "1" ] || exit 0
 KEY="${HIMMEL_HOLD_KEY:-}"
@@ -62,12 +63,24 @@ EXEMPT="$HERE/../handover/chief-kit/holds-exempt.txt"
 ROOT="$HOME/.himmel/state/holds"
 [ ! -e "$ROOT/OFF" ] || exit 0
 
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX \
+    GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_REPLACE_REF_BASE GIT_SHALLOW_FILE GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
+
 deny() {  # deny <text>: the structured decision plus stderr, exit 2
     local reason
     reason=$(printf '%s' "$1" | jq -Rs . 2>/dev/null) || reason='"write-hold: this file is held by another worker"' # swallow-ok: the deny still names the refusal, stderr carries the full text
     printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}\n' "$reason"
     printf '%s\n' "$1" >&3
+    denied=1
     exit 2
+}
+
+holds_real() {  # the hook's own primary checkout's holds.py, shell-quoted: a chief pastes it, and a worktree's copy is its worker's to edit
+    local home real
+    home=$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || home=""  # swallow-ok: no git answer falls back to the hook's sibling below
+    real="${home%/.git}/scripts/handover/chief-kit/holds.py"
+    [ -n "$home" ] && [ -f "$real" ] || real="$(cd -P "${HOLDS%/*}" && printf '%s' "$PWD")/holds.py"
+    printf '%q' "$real"
 }
 
 clean() { local s=${1//$'\t'/ }; s=${s//$'\r'/ }; printf '%s' "${s//$'\n'/ }"; }  # as holds.py clean does
@@ -152,13 +165,11 @@ fi
 case "$target/" in
     "$reg"/*|"$ROOT"/*)
         event deny "$target" register
-        deny "$target is inside the holds register, which only holds.py writes. To let another worker write a held file, your chief runs: python3 -I $HOLDS grant. Bypass: WRITE_HOLD_OK=1 in the launching shell"
+        deny "$target is inside the holds register, which only holds.py writes. To let another worker write a held file, your chief runs: python3 -I $(holds_real) grant. Bypass: WRITE_HOLD_OK=1 in the launching shell"
         ;;
 esac
 
 # One repo identity, however the worker reached the file: git-common-dir minus /.git, as holds.py primary_of derives it.
-unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX \
-    GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_REPLACE_REF_BASE GIT_SHALLOW_FILE GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
 ids=$(git rev-parse --path-format=absolute --show-toplevel --git-common-dir 2>/dev/null) || exit 0 # swallow-ok: outside a repo or git fault, the hook fails open by design
 top=${ids%%$'\n'*}
 common=${ids#*$'\n'}
@@ -167,6 +178,8 @@ case "$common" in /*) ;; *) exit 0 ;; esac
 primary=${common%/.git}
 [ ! -f "$primary/.single-writer" ] || exit 0
 
+# ponytail: a gitignored path is claimed like a tracked one; ceiling: two workers writing one ignored name in their own
+# worktrees meet on one row and the second is refused; upgrade path: on the contested path only, pass on git check-ignore -q.
 case "$target" in "$top"/*) rel=${target#"$top"/} ;; *) exit 0 ;; esac
 
 if [ -r "$EXEMPT" ]; then
@@ -216,19 +229,29 @@ if IFS= read -r held < "$row"; then
 fi
 [ ! -e "$row.grant.$KEY" ] || exit 0
 
-scratch=$(mktemp "${TMPDIR:-/tmp}/himmel-hold.XXXXXX") || exit 0
+if ! scratch=$(mktemp "${TMPDIR:-/tmp}/himmel-hold.XXXXXX"); then
+    event fault "$rel" 'mktemp failed'
+    exit 0
+fi
 bounded 10 /dev/null "$scratch" python3 -I "$HOLDS" claim --key "$KEY" --label "${HIMMEL_HOLD_LABEL:-}" --doc "$DOC" --repo "$primary" --source claim -- "$rel"
 rc=$?
 if [ "$rc" -eq 124 ]; then
     event fault "$rel" 'holds.py over the bound'
     exit 0
 fi
-[ "$rc" -eq 1 ] || exit 0
+[ "$rc" -ne 0 ] || exit 0
+if [ "$rc" -ne 1 ]; then
+    event fault "$rel" "holds.py exit $rc"
+    exit 0
+fi
 refused=0
 while IFS= read -r line; do
     case "$line" in holds:*) refused=1 ;; esac
 done < "$scratch"
-[ "$refused" = 1 ] || exit 0
+if [ "$refused" != 1 ]; then
+    event fault "$rel" 'holds.py exit 1 with no holds: line'
+    exit 0
+fi
 
 # A positive answer. holds.py already logged the deny event; re-read the row, which a takeover race may have changed.
 IFS= read -r now < "$row" && held=$now
@@ -248,4 +271,6 @@ case "$route" in
         deny "$rel is a trust path, held by $h_key ($h_label, $h_source), and has no grant. Wait for its release, or the operator launches with WRITE_HOLD_OK=1"
         ;;
 esac
-deny "$rel is held by $h_key ($h_label, $h_source). Keep working on other files, and send your chief: HOLD-ASK $rel $KEY. Chief grants with: python3 -I $primary/scripts/handover/chief-kit/holds.py grant --key $KEY --repo $primary $rel. Bypass: WRITE_HOLD_OK=1 in the launching shell"
+printf -v q_repo '%q' "$primary"
+printf -v q_rel '%q' "$rel"
+deny "$rel is held by $h_key ($h_label, $h_source). Keep working on other files, and send your chief: HOLD-ASK $rel $KEY. Chief grants with: python3 -I $(holds_real) grant --key $KEY --repo $q_repo $q_rel. Bypass: WRITE_HOLD_OK=1 in the launching shell"

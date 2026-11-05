@@ -21,6 +21,10 @@ for tool in python3 git jq; do
         exit 0
     fi
 done
+# The grant line names the hook's own primary checkout's holds.py, the hook's sibling when that has none.
+HOLDS_HOME="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+HOLDS_REAL="${HOLDS_HOME%/.git}/scripts/handover/chief-kit/holds.py"
+[ -n "$HOLDS_HOME" ] && [ -f "$HOLDS_REAL" ] || HOLDS_REAL="$(cd "$(dirname "$HOLDS")" && pwd -P)/holds.py"
 
 REAL_HOME="$HOME"
 
@@ -95,8 +99,8 @@ as_worker() {
 w() { fx Write file_path "$2" "${3:-$R}"; as_worker "$1"; }
 
 deny_text() {  # deny_text <path> <holder> <rival>
-    printf '%s is held by %s (%s lbl, claim). Keep working on other files, and send your chief: HOLD-ASK %s %s. Chief grants with: python3 -I %s/scripts/handover/chief-kit/holds.py grant --key %s --repo %s %s. Bypass: WRITE_HOLD_OK=1 in the launching shell' \
-        "$1" "$2" "$2" "$1" "$3" "$R" "$3" "$R" "$1"
+    printf '%s is held by %s (%s lbl, claim). Keep working on other files, and send your chief: HOLD-ASK %s %s. Chief grants with: python3 -I %q grant --key %s --repo %q %q. Bypass: WRITE_HOLD_OK=1 in the launching shell' \
+        "$1" "$2" "$2" "$1" "$3" "$HOLDS_REAL" "$3" "$R" "$1"
 }
 trust_text() {  # trust_text <path> <holder>
     printf '%s is a trust path, held by %s (%s lbl, claim), and has no grant. Wait for its release, or the operator launches with WRITE_HOLD_OK=1' "$1" "$2" "$2"
@@ -168,6 +172,14 @@ OUT=$(env HIMMEL_CONSOLE_LEG=1 HIMMEL_HOLD_DOC="$(docof "$KA")" "$BASH" "$HOOK" 
 same "marker but no key: exit 0" "$RC" 0
 norow "marker but no key: no row" a20.txt
 
+OUT=$(env HIMMEL_CONSOLE_LEG=1 HIMMEL_HOLD_KEY='not a key' HIMMEL_HOLD_DOC="$(docof "$KA")" "$BASH" "$HOOK" < "$FX" 2> "$W/err"); RC=$?
+same "a key the regex refuses: exit 0" "$RC" 0
+norow "a key the regex refuses: no row" a20.txt
+
+OUT=$(env HIMMEL_CONSOLE_LEG=1 HIMMEL_HOLD_KEY="$KA" HIMMEL_HOLD_DOC=u/r/rel-doc.md "$BASH" "$HOOK" < "$FX" 2> "$W/err"); RC=$?
+same "a relative doc: exit 0" "$RC" 0
+norow "a relative doc: no row" a20.txt
+
 fx Write file_path "$R/a01.txt"
 OUT=$(env HIMMEL_HOLD_KEY="$KB" HIMMEL_HOLD_DOC="$(docof "$KB")" "$BASH" "$HOOK" < "$FX" 2> "$W/err"); RC=$?
 same "no HIMMEL_CONSOLE_LEG: exit 0" "$RC" 0
@@ -196,6 +208,7 @@ w "$KA" "$REG/$(esc "$R")/forged"
 same "a direct write into the register: exit 2" "$RC" 2
 same "a direct write into the register: one event" "$(ev_count)" "$((before + 1))"
 contains "a direct write into the register: the deny says why" "$ERR" "holds register"
+lacks "a direct write into the register: the printed holds.py path is the real one" "$ERR" "/../"
 
 # ---- I2 and payload shapes
 K2A=HIMMEL-201
@@ -237,10 +250,40 @@ w "$KA" "$R/realdir/b14.txt"
 w "$KB" "$R/ldir/b14.txt"
 same "a path through a symlinked directory onto a held file: exit 2" "$RC" 2
 
+: > "$R/b15.txt"
+w "$KA" "$R/b15.txt"
+prev=b15.txt
+i=1
+while [ "$i" -le 9 ]; do
+    ln -s "$prev" "$R/hop$i"
+    prev="hop$i"
+    i=$((i + 1))
+done
+w "$KB" "$R/hop8"
+same "8 symlink hops onto a held file: exit 2" "$RC" 2
+w "$KB" "$R/hop9"
+same "9 symlink hops: past the limit the write passes" "$RC" 0
+norow "9 symlink hops: no row" hop9
+
+names_before="$(find "$(slugdir)" -type f | wc -l | tr -d ' ')"
+w "$KA" "$R/sub"
+same "a path naming a directory: exit 0" "$RC" 0
+norow "a path naming a directory: no row" sub
+w "$KA" "$R/nomiss/."
+same "a directory spelling of a missing directory: exit 0" "$RC" 0
+same "directory spellings publish no row" "$(find "$(slugdir)" -type f | wc -l | tr -d ' ')" "$names_before"
+
 # ---- what the bash publisher writes, read back by holds.py
 w "$KA" "$R/with space 100%.txt"
 same "a path with a space and a percent: exit 0" "$RC" 0
 contains "holds.py read returns that row" "$(hp read --repo "$R")" "with space 100%.txt	$KA	$KA lbl	claim"
+w "$KB" "$R/with space 100%.txt"
+same "a rival on a path with a space: exit 2" "$RC" 2
+grant_line="$(printf '%s' "$ERR" | sed -n 's/.*Chief grants with: \(.*\)\. Bypass:.*/\1/p')"
+bash -c "$grant_line" > /dev/null 2>&1
+same "the printed grant line pastes and runs on a path with a space" "$?" 0
+w "$KB" "$R/with space 100%.txt"
+same "the pasted grant lets that rival write" "$RC" 0
 
 fx Write file_path "$R/b20.txt"
 OUT=$(env HIMMEL_CONSOLE_LEG=1 HIMMEL_HOLD_KEY="$KA" HIMMEL_HOLD_DOC="$(docof "$KA")" HIMMEL_HOLD_LABEL="$(printf 'tab\tlabel')" "$BASH" "$HOOK" < "$FX" 2> "$W/err"); RC=$?
@@ -253,12 +296,34 @@ printf 'x\n' > "$(slugdir)/%00w.4242"
 lacks "a temp file the publisher left is never a row" "$(hp read --repo "$R")" "w.4242"
 rm -f "$(slugdir)/%00w.4242"
 
+# A stub ln on PATH loses the race: it copies a rival's row into place when RACE_ROW names one, and always fails.
+mkdir -p "$W/stubln"
+# shellcheck disable=SC2016
+printf '#!/bin/sh\n[ -z "${RACE_ROW:-}" ] || cp "$RACE_ROW" "$2"\nexit 1\n' > "$W/stubln/ln"
+chmod +x "$W/stubln/ln"
+w "$KA" "$R/b25.txt"
+mv "$(rowf b25.txt)" "$W/race-row"
+fx Write file_path "$R/b25.txt"
+as_worker "$KB" PATH="$W/stubln:$PATH" RACE_ROW="$W/race-row"
+same "a lost ln race answers as a contested row: exit 2" "$RC" 2
+contains "a lost ln race: the deny names the winner" "$ERR" "$KA"
+same "a lost ln race: the row still names the winner" "$(row_field b25.txt 1)" "$KA"
+KR=HIMMEL-251
+fx Write file_path "$R/b26.txt"
+as_worker "$KR" PATH="$W/stubln:$PATH"
+same "an ln that fails and leaves no row: exit 0" "$RC" 0
+contains "an ln that fails and leaves no row: says what failed" "$ERR" "holds register"
+norow "an ln that fails and leaves no row: no row" b26.txt
+
 long="$(printf 'x%.0s' $(seq 1 300))"
 names_before="$(find "$(slugdir)" -type f | wc -l | tr -d ' ')"
+before="$(ev_count)"
 w "$KA" "$R/$long"
 same "a 300-byte path: exit 0" "$RC" 0
 same "a 300-byte path: silent" "$ERR" ""
 same "a 300-byte path: no row" "$(find "$(slugdir)" -type f | wc -l | tr -d ' ')" "$names_before"
+same "a 300-byte path: one event" "$(ev_count)" "$((before + 1))"
+same "a 300-byte path: that event is a fault" "$(ev_last)" fault
 
 # Plan deviation, ruled by the chief: a row by this name would read as a grant of b30.txt to that key (holds.py op_read
 # skips it, claim_one faults on it), so the hook publishes none. The gap: a file with such a name is written with no hold.
@@ -368,18 +433,36 @@ as_worker "$KB"
 same "a hook crash: exit 0" "$RC" 0
 same "a hook crash: silent" "$OUT$ERR" ""
 
+stub_tree 'import sys; sys.exit(0)'
+awk '{print} /^trap /{print "if then fi"}' "$HOOK" > "$HOOK_UT" 2>/dev/null
+as_worker "$KB"
+same "a syntax error in the hook is not a deny: exit 0" "$RC" 0
+same "a syntax error in the hook: silent" "$OUT$ERR" ""
+
 stub_tree 'import sys; sys.stderr.write("some other failure\n"); sys.exit(1)'
 fx Write file_path "$R/e01.txt"
+before="$(ev_count)"
 as_worker "$KB"
 same "holds.py exit 1 with no holds: line: exit 0" "$RC" 0
+same "holds.py exit 1 with no holds: line: one event" "$(ev_count)" "$((before + 1))"
+same "holds.py exit 1 with no holds: line: that event is a fault" "$(ev_last)" fault
 
 stub_tree 'import sys; sys.stderr.write("holds: e01.txt is held\n"); sys.exit(1)'
 as_worker "$KB"
 same "control: holds.py exit 1 with a holds: line: exit 2" "$RC" 2
 
 stub_tree 'import sys; sys.exit(3)'
+before="$(ev_count)"
 as_worker "$KB"
 same "holds.py exit 3: exit 0" "$RC" 0
+same "holds.py exit 3: one event" "$(ev_count)" "$((before + 1))"
+same "holds.py exit 3: that event is a fault" "$(ev_last)" fault
+
+stub_tree 'import sys; sys.exit(0)'
+before="$(ev_count)"
+as_worker "$KB"
+same "holds.py exit 0: exit 0" "$RC" 0
+same "holds.py exit 0: no event" "$(ev_count)" "$before"
 
 stub_tree 'import time; time.sleep(60)'
 before="$(ev_count)"
@@ -391,6 +474,12 @@ if [ "$elapsed" -lt 15 ]; then pass "holds.py hanging: the hook's own bound fire
 same "holds.py hanging: one event" "$(ev_count)" "$((before + 1))"
 same "holds.py hanging: that event is a fault" "$(ev_last)" fault
 HOOK_UT="$HOOK"
+
+before="$(ev_count)"
+as_worker "$KB" TMPDIR="$W/no-such-tmp"
+same "mktemp fails on a contested write: exit 0" "$RC" 0
+same "mktemp fails on a contested write: one event" "$(ev_count)" "$((before + 1))"
+same "mktemp fails on a contested write: that event is a fault" "$(ev_last)" fault
 
 if [ "$(id -u)" != 0 ]; then
     KU=HIMMEL-501
