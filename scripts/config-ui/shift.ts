@@ -423,18 +423,17 @@ export const fileReader: BoardReader = async (doc) => ((await readBoardFile(doc)
 export const LOCK_TTL_MS = 6 * 3_600_000;
 
 // The open operator decisions of a chief doc: its Live-state `decisions:` line, ';'-separated at parenthesis depth 0 (board.mjs's split).
-// A line that points at a decisions file lists decided entries, not open ones, so it gives none.
+// An entry that points at a decisions file lists decided entries, not open ones, so it gives none.
 export function decisionsOf(text: string): string[] {
   const live = text.split(/^## Live state[^\n]*\n/m)[1]?.split(/^## /m)[0] ?? "";
   const line = /^decisions:[ \t]*(.*)$/m.exec(live)?.[1].trim() ?? "";
-  if (/specs\/decisions\/(?:chief|console)-decisions-[0-9-]+\.md/.test(line)) return [];
   const out: string[] = [];
   let depth = 0, cur = "";
   for (const ch of line + ";") {
     if (ch === "(") depth++; else if (ch === ")") depth = Math.max(0, depth - 1);
     if (ch === ";" && depth === 0) { out.push(cur.trim()); cur = ""; } else cur += ch;
   }
-  return out.filter((d) => d && d !== "none");
+  return out.filter((d) => d && d !== "none" && !/specs\/decisions\/(?:chief|console)-decisions-[0-9-]+\.md/.test(d));
 }
 
 export async function liveBoards(root: string, locks: Lock[], spans: Span[], read: BoardReader, now = Date.now()): Promise<Live> {
@@ -445,7 +444,11 @@ export async function liveBoards(root: string, locks: Lock[], spans: Span[], rea
     const b = doc ? await read(doc) : null;
     if (b === null) out.missing.push(s.name);
     else if ("error" in b) out.error.push({ chief: s.name, error: String(b.error).split("\n")[0].slice(0, 200) });
-    else out.boards.push({ ...b, decisions: decisionsOf(await readFile(doc!, "utf8").catch(() => "")) });
+    else {
+      const text = await readFile(doc!, "utf8").catch(() => null);
+      if (text === null) out.error.push({ chief: s.name, error: "chief doc unreadable: its open decisions are not shown" }); // never reads as no decisions
+      out.boards.push({ ...b, decisions: decisionsOf(text ?? "") });
+    }
   }
   return out;
 }

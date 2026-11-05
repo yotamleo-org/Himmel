@@ -616,6 +616,19 @@ test("liveBoards: the chief doc's Live-state decisions: line is the operator's W
   expect(await waiting()).toEqual([]);
   docWith("decisions: carried verbatim in specs/decisions/console-decisions-2026-10-25.md (read it before ruling)");
   expect(await waiting()).toEqual([]);
+  docWith("decisions: specs/decisions/console-decisions-2026-10-25.md; approve new spend?");
+  expect(await waiting()).toEqual(["approve new spend?"]);
+});
+
+test("liveBoards: a chief doc that cannot be read is a boardError, never an empty decisions list", async () => {
+  const root = tmp(), name = "HIMMEL-nextleg-2026-10-27A-roadmap-chief";
+  chiefDocIn(root, name);
+  const lv = await liveBoards(root, chiefLocks(name), chiefSpan(name), async () => {
+    rmSync(join(root, "yotamleo", "himmel", `${name}.md`)); // gone between the board read and the doc read
+    return { legs: [liveLeg] };
+  });
+  expect(lv.error).toEqual([{ chief: name, error: "chief doc unreadable: its open decisions are not shown" }]);
+  expect(rowsOf(lv.boards).running.length).toBe(1);
 });
 
 test("liveBoards: a chief whose lock heartbeat is past the queue-lock TTL is dead: its board and decisions are not shown, and it is not reported missing", async () => {
