@@ -333,8 +333,9 @@ after `sync_graphify`, and its status table shows a `graph` row. It fetches
 
 The install is atomic: the files are staged in a temp folder, then renamed
 into `graphify-out/`. The fetch then stamps the semantic manifest
-(`semantic-update.sh --seed-manifest`, with no model call), so the next
-semantic pass has nothing left to do.
+(`semantic-update.sh --seed-manifest`, with no model call) from the docs as
+they stood at the build commit. The next semantic pass then has nothing left
+to do, except for docs that changed after that commit.
 
 If the graph is stale, off this checkout's history, missing or tampered
 with, the station stays AST-only and `graphify-out/` is not touched.

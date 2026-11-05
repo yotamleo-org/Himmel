@@ -2420,7 +2420,8 @@ sync_graph() {
     local max="${HIMMEL_UPDATE_GRAPH_MAX_BEHIND:-$GRAPH_MAX_BEHIND}"
     local out="$ROOT/graphify-out" cfg="$HOME/.himmel/config.json"
     local host_re='(/Users/|[A-Za-z]:\\Users\\|[A-Za-z]:/Users/|\\Users\\|/home/[^/]+/|(^|[/\\])AppData([/\\]|$)|/tmp/claude-[0-9]+/|/var/folders/)'
-    local ls_out ls_rc=0 fetched bac gbac behind short stage="" lock f
+    local ls_out ls_rc=0 fetched bac gbac behind short stage="" lock f snap seeded
+    local -a snap_paths
     echo "==> graph-data fetch (the published himmel graph)"
     case "$max" in ''|*[!0-9]*) max=$GRAPH_MAX_BEHIND ;; esac
     _graph_ast_only() {
@@ -2487,10 +2488,25 @@ sync_graph() {
         fi
     done
     rm -rf "$lock" "$stage"; stage=""
-    # Stamp the corpus as the semantic baseline (model-free) so the next
-    # semantic-update.sh run has nothing to extract.
-    if bash "$ROOT/scripts/graphify/semantic-update.sh" --name himmel --corpus-root "$ROOT" \
-            --corpus-class himmel-code --seed-manifest >/dev/null 2>&1; then
+    # Stamp the corpus as it stood at the build commit as the semantic baseline
+    # (model-free): the installed graph covers those bytes, and a doc changed
+    # since then stays owed to the next semantic-update.sh run. The snapshot sits
+    # outside the checkout: inside it, git ls-files would see an empty corpus.
+    snap_paths=('*.md')
+    for f in .graphifyignore .graphify-corpus-ignore; do
+        if git -C "$ROOT" cat-file -e "$bac:$f" 2>/dev/null; then snap_paths+=("$f"); fi
+    done
+    seeded=0
+    # prim-ok: the himmel-update suites run a copy of this script in a clone with no prim.sh
+    if snap=$(mktemp -d "${TMPDIR:-/tmp}/himmel-graph-seed.XXXXXX"); then
+        if git -C "$ROOT" archive --format=tar "$bac" -- "${snap_paths[@]}" 2>/dev/null | tar -x -C "$snap" 2>/dev/null \
+            && GRAPHIFY_OUT="$out" bash "$ROOT/scripts/graphify/semantic-update.sh" --name himmel --corpus-root "$snap" \
+                --corpus-class himmel-code --seed-manifest >/dev/null 2>&1; then
+            seeded=1
+        fi
+        rm -rf "$snap"
+    fi
+    if [ "$seeded" -eq 1 ]; then
         echo "    installed the graph built at $short ($behind commits behind HEAD); the local semantic pass is skipped"
         STATUS_graph="updated"; DETAIL_graph="installed graph built at $short, $behind behind; semantic pass skipped"
     else

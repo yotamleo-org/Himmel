@@ -13,10 +13,12 @@
 #   publish: the orphan branch carries exactly the four files, no parent
 #   publish: a second publish replaces the branch (lease on the old tip)
 #   publish: refuses a graph with no semantic layer
+#   publish: a flag with no value is a usage error, never a hang
 #   publish: the scan blocks a planted host path, alerts, names file and rule only
 #   publish: the scan blocks a planted secret-shaped string (gitleaks)
 #   publish: no gitleaks = blocked, fail closed
 #   fetch:   fresh and an ancestor installs; the semantic pass is then skipped
+#   fetch:   a doc changed after the build commit stays owed to the semantic pass
 #   fetch:   150 behind installs, 151 behind falls back
 #   fetch:   a non-ancestor build commit falls back
 #   fetch:   a missing graph-data branch falls back
@@ -132,6 +134,16 @@ run_publish "$SRC"
 if [ "$PUB_RC" -ne 0 ]; then ok "no manifest.json exits non-zero"; else bad "no manifest.json published"; fi
 check_eq "branch untouched" "$GOOD_TIP" "$(branch_tip)"
 
+echo "publish: a flag with no value is a usage error, never a hang"
+if command -v timeout >/dev/null 2>&1; then
+    for _flag in --src --repo --remote --log; do
+        _rc=0; timeout 10 bash "$PUBLISH" --src "$SRC" --repo "$PUB" "$_flag" >/dev/null 2>&1 || _rc=$?
+        check_eq "a trailing $_flag exits 1 (usage)" 1 "$_rc"
+    done
+else
+    echo "  SKIP: no timeout binary, the trailing-flag rows cannot bound a hang"
+fi
+
 echo "publish: the scan blocks a planted host path"
 make_src "$SRC" "$SEED_SHA"
 # The planted paths are split in the source so the repo's own leak gate does not match this file.
@@ -233,6 +245,16 @@ check_has "status row says installed" "installed" "$(grep -E '^    graph ' <<< "
 check_eq "after install a semantic pass has nothing to extract" 0 "$(plan_batch "$ADO")"
 if ls "$ADO/graphify-out"/.graph-fetch.* >/dev/null 2>&1; then bad "staging dir left behind"; else ok "no staging dir left behind"; fi
 if [ -d "$ADO/graphify-out/.promote.lock" ]; then bad "promote lock left held"; else ok "promote lock released"; fi
+
+echo "fetch: a doc changed after the build commit stays owed to the semantic pass"
+make_adopter "$ADO" "$BARE" || exit 1
+printf '# beta v2\n' > "$ADO/beta.md"
+printf '# gamma\n' > "$ADO/gamma.md"
+gitq -C "$ADO" add beta.md gamma.md
+gitq -C "$ADO" commit --quiet -m "chore: docs after the build"
+run_update "$ADO" --only graph
+check_eq "installed with HEAD one commit past the build" "$SEED_SHA" "$(cat "$ADO/graphify-out/.graphify_published" 2>/dev/null)"
+check_eq "the changed and the new doc stay planned, the unchanged one does not" 2 "$(plan_batch "$ADO")"
 
 echo "fetch: 150 commits behind installs, 151 falls back"
 make_adopter "$ADO" "$BARE" || exit 1

@@ -50,10 +50,10 @@ SRC="" REPO="" REMOTE="${GRAPH_CHANNEL_REMOTE:-origin}" LOG="-"
 usage() { echo "usage: publish-graph-channel.sh --src <graphify-out dir> --repo <git checkout> [--remote <name or url>] [--log <path>]" >&2; exit 1; }
 while [ $# -gt 0 ]; do
     case "$1" in
-        --src) SRC="${2:-}"; shift 2 ;;
-        --repo) REPO="${2:-}"; shift 2 ;;
-        --remote) REMOTE="${2:-}"; shift 2 ;;
-        --log) LOG="${2:-}"; shift 2 ;;
+        --src) [ $# -ge 2 ] || usage; SRC="$2"; shift 2 ;;
+        --repo) [ $# -ge 2 ] || usage; REPO="$2"; shift 2 ;;
+        --remote) [ $# -ge 2 ] || usage; REMOTE="$2"; shift 2 ;;
+        --log) [ $# -ge 2 ] || usage; LOG="$2"; shift 2 ;;
         -h|--help) usage ;;
         *) echo "publish-graph-channel: unknown argument '$1'" >&2; usage ;;
     esac
@@ -76,8 +76,6 @@ refuse() {
 for f in $FILES; do
     [ -f "$SRC/$f" ] || refuse 2 "$f missing from $SRC"
 done
-BAC="$(bash "$HERE/check-graph-freshness.sh" --out "$SRC" --print-built-at 2>/dev/null)" \
-    || refuse 2 "graph.json has no literal built_at_commit"
 python3 -c 'import json,sys
 d = json.load(open(sys.argv[1], encoding="utf-8"))
 sys.exit(0 if isinstance(d, dict) and isinstance(d.get("files"), dict) and d["files"] else 1)' \
@@ -88,6 +86,9 @@ STAGE="$(tmpdir)" || refuse 5 "could not create a staging dir"
 for f in $FILES; do
     cp "$SRC/$f" "$STAGE/$f" || refuse 5 "could not stage $f"
 done
+# Read from the staged copy, so the marker always names the bytes published.
+BAC="$(bash "$HERE/check-graph-freshness.sh" --out "$STAGE" --print-built-at 2>/dev/null)" \
+    || refuse 2 "graph.json has no literal built_at_commit"
 printf '%s\n' "$BAC" > "$STAGE/built_at_commit" || refuse 5 "could not write built_at_commit"
 
 # --- the scan: exact staged bytes ------------------------------------------
