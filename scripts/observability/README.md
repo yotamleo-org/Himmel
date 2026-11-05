@@ -29,7 +29,7 @@ a 14d window, low row churn) that artifact is small and accepted; if it ever
 misleads, the fix is in-process monotonic accumulation in the collector child, not a family rename here.
 
 The truncated / error / stalled alerts do NOT read `flow_run_outcome_total`
-(HIMMEL-1634). They read two event-time families built from the same fold:
+. They read two event-time families built from the same fold:
 `flow_run_last_failure_timestamp{flow,outcome}` (epoch seconds of the newest
 `truncated` or `error` end row in the window; absent when there is none, so an
 expiring old failure simply disappears and cannot page) and
@@ -139,7 +139,7 @@ exposes:
   denial whose reason carries no nameable token.
 - `himmel_tool_denial_sessions{guard,project}`,
   `himmel_tool_denial_max_per_session{guard,project}` and
-  `himmel_tool_sessions{project}` (HIMMEL-6036) — the distinct-session view of
+  `himmel_tool_sessions{project}` — the distinct-session view of
   the same denials: sessions with at least one denial by the guard, the most
   denials one session took from it, and the census sessions in the window
   (the denominator). `guard` carries the same value as `class` above.
@@ -634,7 +634,7 @@ from the bridge's own allowlist (`access.json`'s `allowFrom[0]`, override via
 `LUNA_SYNC_ALERT_CHAT_ID`). It never runs `git fetch`, same passivity
 invariant as the exporter.
 
-### Sweeper-status extension (LUNA-131 — a second, independent trigger)
+### Sweeper-status extension (— a second, independent trigger)
 
 The headless vault sweeper writes a heartbeat,
 `<StateDir>\status.json` (default `~/.himmel/luna-sync/status.json`, override
@@ -714,7 +714,7 @@ against `{state="alerting"} 0` while sending ~125 Telegram messages/day for
 (`HimmelFlowLastSuccessAgeExceeded`, `HimmelWatcherDown`,
 `HimmelLunaInboxBacklogRising`; the other 6 were Windows-only and are gone)
 use `noDataState: OK`, as do `HimmelFlowRunTruncated` and `HimmelFlowRunError`
-since HIMMEL-1634 (their refId A is now a recency filter). `HimmelFlowStalled`
+since the event-time rewrite (their refId A is now a recency filter). `HimmelFlowStalled`
 keeps `KeepLast` (see its comment in `rules.yaml`); the remaining 4
 (`HimmelSessionDead` and the
 three hook-chain rules — `HimmelHookChainBudgetPressure`,

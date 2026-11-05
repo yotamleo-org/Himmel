@@ -1,5 +1,5 @@
 {
-  "_comment": "Version literals outside any manifest, read by pin-scan.py (HIMMEL-8282). var names a shell assignment VAR=<version>; var null reads the file's first line. tag_prefix is stripped from upstream tags (bun tags bun-v1.2.3). Station-only probes and Dependabot surfaces are listed in scripts/upstreams.json coverage_audit, not here.",
+  "_comment": "Version literals outside any manifest, read by pin-scan.py. var names a shell assignment VAR=<version>; var null reads the file's first line. tag_prefix is stripped from upstream tags (bun tags bun-v1.2.3). Station-only probes and Dependabot surfaces are listed in scripts/upstreams.json coverage_audit, not here.",
   "pins": [
     {"file": "scripts/machine-setup/installer-pins.sh", "var": "NVM_TAG", "eco": "gh", "key": "nvm-sh/nvm"},
     {"file": "scripts/machine-setup/installer-pins.sh", "var": "NODE_VERSION", "eco": "node", "key": "node"},

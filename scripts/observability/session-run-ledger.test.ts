@@ -215,7 +215,7 @@ test("the pair still correlates when the payload carries no native tool_use_id",
   expect((pre as { subagent_id: string }).subagent_id).toBe((post as { subagent_id: string }).subagent_id);
 });
 
-test("HIMMEL-2294: recordSessionClose reads the session id from env and the evidence from argv", () => {
+test("recordSessionClose reads the session id from env and the evidence from argv", () => {
   const row = recordSessionClose(
     { CLAUDE_CODE_SESSION_ID: "a1b2" },
     ["bun", "session-run-hook.ts", "session-close", "--evidence", "queue_lock_release"],

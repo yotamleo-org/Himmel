@@ -87,7 +87,7 @@ test('implementation lane must be class "claude-tier", not e.g. a critic lane', 
   assert.match(errors[0], /only routes to claude-tier lanes/);
 });
 
-test('an impl-class lane is refused for implementation work even when NOT dormant (HIMMEL-1967)', () => {
+test('an impl-class lane is refused for implementation work even when NOT dormant', () => {
   const { plan, errors } = buildFanoutPlan(
     [{ id: 'x', type: 'implementation', lane: 'hypothetical-impl' }],
     LIVE,
@@ -96,7 +96,7 @@ test('an impl-class lane is refused for implementation work even when NOT dorman
   assert.match(errors[0], /only routes to claude-tier lanes/);
 });
 
-test('a dormant lane is refused even though it is present in the live roster (HIMMEL-1967)', () => {
+test('a dormant lane is refused even though it is present in the live roster', () => {
   const { plan, errors } = buildFanoutPlan(
     [{ id: 'x', type: 'implementation', lane: 'hermes-oneshot' }],
     LIVE,

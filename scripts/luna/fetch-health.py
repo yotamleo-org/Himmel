@@ -462,7 +462,7 @@ def probe_instagram_scrapling(
     *,
     child_env: dict[str, str] | None = None,
 ) -> ProbeResult:
-    """HIMMEL-4675: the cookieless Scrapling path /ig-media-enrich tries first.
+    """the cookieless Scrapling path /ig-media-enrich tries first.
     Same venv lookup as ig-media-fetch.py; no cookie is sent."""
     override = (env.get("IG_SCRAPLING_PYTHON") or "").strip()
     py = Path(override) if override else resolve_home(env) / ".himmel" / "scrapling-venv" / "bin" / "python"
@@ -541,7 +541,7 @@ def probe_x_scrapling(
     *,
     child_env: dict[str, str] | None = None,
 ) -> ProbeResult:
-    """HIMMEL-4677: the cookieless Scrapling path /x-media-enrich tries first."""
+    """the cookieless Scrapling path /x-media-enrich tries first."""
     py = scrapling_python(env, "x")
     if not py.is_file():
         return ProbeResult("transport-fail", f"scrapling python missing ({py}); create ~/.himmel/scrapling-venv "
@@ -567,7 +567,7 @@ def probe_youtube_scrapling(
     *,
     child_env: dict[str, str] | None = None,
 ) -> ProbeResult:
-    """HIMMEL-4677: the cookieless YouTube path the crawler tries first:
+    """the cookieless YouTube path the crawler tries first:
     metadata from Scrapling, the transcript from yt-dlp subtitles."""
     py = scrapling_python(env, "youtube")
     if not py.is_file():

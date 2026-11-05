@@ -1,6 +1,6 @@
 /**
  * Google Health API dataType → luna-vitals series mapping table.
- * Ground truth: scripts/luna-vitals/connectors/SCHEMA.md (HIMMEL-609).
+ * Ground truth: scripts/luna-vitals/connectors/SCHEMA.md.
  *
  * aggregate semantics:
  *   none     — already one value per day (daily aggregates from Fitbit/Samsung)

@@ -258,7 +258,7 @@ describe('deriveRestingHeartRate', () => {
     expect(rows.some((r) => r.date === '2026-06-28')).toBe(true);
   });
 
-  test('dataPoint with no typed payload field → skipped WITH a stderr warning (HIMMEL-801)', () => {
+  test('dataPoint with no typed payload field → skipped WITH a stderr warning', () => {
     // A malformed point carrying only name/dataSource (no beatsPerMinute payload
     // field) is dropped — but no longer silently: a [google-health] stderr line fires.
     const errSpy = spyOn(console, 'error');
@@ -279,7 +279,7 @@ describe('deriveRestingHeartRate', () => {
 // ── deriveSleep ───────────────────────────────────────────────────────────────
 
 describe('deriveSleep', () => {
-  test('dataPoint with no typed payload field → skipped WITH a warning (returned + stderr) (HIMMEL-801)', () => {
+  test('dataPoint with no typed payload field → skipped WITH a warning (returned + stderr)', () => {
     // A malformed point with only name/dataSource (no typed sleep payload) is
     // dropped — now through the same warn() channel as the other parse-loop drops:
     // a durable, undated SleepWarning (index-embedded so it never dedup-collides)
@@ -552,7 +552,7 @@ describe('deriveSleep', () => {
     expect(asleepRow.value).toBe(8.0); // full 8h LIGHT span, garbage AWAKE ignored
   });
 
-  test('dataPoint whose interval lacks endTime → dropped, no rows, exact warning (HIMMEL-794 Fix D)', () => {
+  test('dataPoint whose interval lacks endTime → dropped, no rows, exact warning', () => {
     // interval.startTime present but endTime absent — and no civilEndTime or
     // endUtcOffset either, so no end date is derivable and the warning is UNDATED.
     const fixture = {

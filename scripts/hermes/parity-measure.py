@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """parity-measure.py — guardrail parity between the Claude Code PreToolUse hook
-chain and the hermes parity_guard.py (HIMMEL-5496).
+chain and the hermes parity_guard.py.
 
 Feeds ONE corpus of normalised tool calls through
   (a) every PreToolUse chain member `.claude/settings.json` wires for the tool

@@ -1,6 +1,6 @@
 # claude-p P0 probe results
 
-Epic: HIMMEL-2178 (claude-p dispatch-substrate migration plan).
+Part of the claude-p dispatch-substrate migration plan.
 CLI version under test: 2.1.250 (Claude Code), Windows / Git Bash.
 Run with `bash run-all.sh`; per-probe raw envelopes/JSONL/logs land in `tmp/`
 (gitignored, not committed). Several probes got one additional diagnostic

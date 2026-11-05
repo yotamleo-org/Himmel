@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 const SERVER = join(import.meta.dir, "..", "server.ts");
 const STUB = join(import.meta.dir, "stub-himmelctl.js");
-const IDLE = 1000; // HIMMEL-4350: wide enough that a loaded runner's jitter stays well inside each bound
+const IDLE = 1000; // Wide enough that a loaded runner's jitter stays well inside each bound
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // seams: CONFIG_UI_IDLE_MS (shortened), CONFIG_UI_HIMMELCTL (stub feed)

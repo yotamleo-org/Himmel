@@ -91,7 +91,7 @@ describe("VM queue HTTP API", () => {
     expect(gotJob[0].json.job.id).toBe("j1");
   });
 
-  test("HIMMEL-8438: /renew by the claimant keeps the job past the TTL; a second /claim gets nothing", async () => {
+  test("/renew by the claimant keeps the job past the TTL; a second /claim gets nothing", async () => {
     await call("POST", "/submit", { job: job() }, TOKEN);
     expect((await claimAs("A")).json.job.id).toBe("j1");
     clockNow += 14 * 60_000;
@@ -101,7 +101,7 @@ describe("VM queue HTTP API", () => {
     expect((await claimAs("B")).json.job).toBeNull();
   });
 
-  test("HIMMEL-8438: without renews the job is re-granted only after the TTL", async () => {
+  test("without renews the job is re-granted only after the TTL", async () => {
     await call("POST", "/submit", { job: job() }, TOKEN);
     await claimAs("A");
     clockNow += 14 * 60_000;
@@ -110,14 +110,14 @@ describe("VM queue HTTP API", () => {
     expect((await claimAs("B")).json.job.id).toBe("j1");
   });
 
-  test("HIMMEL-8438: /renew from a non-claimant is refused", async () => {
+  test("/renew from a non-claimant is refused", async () => {
     await call("POST", "/submit", { job: job() }, TOKEN);
     await claimAs("A");
     const res = await call("POST", "/renew", { jobId: "j1", ...as("B") }, TOKEN);
     expect(res.status).toBe(409);
   });
 
-  test("HIMMEL-8439: an expired holder's /complete cannot overwrite the claimant's conclusion", async () => {
+  test("an expired holder's /complete cannot overwrite the claimant's conclusion", async () => {
     await call("POST", "/submit", { job: job() }, TOKEN);
     await claimAs("A");
     clockNow += 16 * 60_000; // A's lease lapses
@@ -131,7 +131,7 @@ describe("VM queue HTTP API", () => {
     expect(state.json.jobs.j1.claimant).toBe("B");
   });
 
-  test("HIMMEL-8439: /complete from a non-claimant, without a claimant id, or on a done job is refused", async () => {
+  test("/complete from a non-claimant, without a claimant id, or on a done job is refused", async () => {
     await call("POST", "/submit", { job: job() }, TOKEN);
     await claimAs("A");
     expect((await call("POST", "/complete", { jobId: "j1", ...as("B"), conclusion: "failure" }, TOKEN)).status).toBe(409);

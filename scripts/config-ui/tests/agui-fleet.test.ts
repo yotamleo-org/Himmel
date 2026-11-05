@@ -237,7 +237,7 @@ test("a secret straddling the summary cut is redacted whole, not left as a fragm
   expect(c.activity.summary).not.toContain(secret.slice(0, 20));
 });
 
-test("a value only the keyring holds is masked in the census (HIMMEL-8565)", async () => {
+test("a value only the keyring holds is masked in the census", async () => {
   const kdir = mkdtempSync(join(tmpdir(), "agui-fleet-kr-"));
   cleanups.push(() => rmSync(kdir, { recursive: true, force: true }));
   const kr = "kr-only-" + "q7x2".repeat(2);
@@ -595,7 +595,7 @@ test("the codex bank row reads CODEX_USAGE_CACHE", async () => {
   expect((await (await fleet(s.port)).json()).banks.codex).toMatchObject({ weeklyPct: 47 });
 });
 
-test("HIMMEL-4817: a claudex worker renders lane, backend model, codex-bank cost row and eval row", async () => {
+test("a claudex worker renders lane, backend model, codex-bank cost row and eval row", async () => {
   const now = Date.now();
   const bankDir = mkdtempSync(join(tmpdir(), "agui-bank-")), bank = join(bankDir, "codex-bank.json");
   cleanups.push(() => rmSync(bankDir, { recursive: true, force: true }));

@@ -436,7 +436,7 @@ test('a `local=` entry in VENDORED.md is NOT exempted by its own marker (CR roun
   rmSync(tree, { recursive: true });
 });
 
-test('lintPositionalArgs refuses a bare $<digit> in ANY command\'s fenced code, argument-hint or not (HIMMEL-2051)', (t) => {
+test('lintPositionalArgs refuses a bare $<digit> in ANY command\'s fenced code, argument-hint or not', (t) => {
   const dir = makeTmpDir('skill-cost-posargs-');
   t.after(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -701,7 +701,7 @@ test('CLI exits 3 (not 0, not 2) when a path is skipped, in all three modes', (t
   assert.equal(parsed.summary.total.skipped, 1);
 });
 
-test('plugin walk tells apart two directories whose inodes collapse to one Number (HIMMEL-6093)', (t) => {
+test('plugin walk tells apart two directories whose inodes collapse to one Number', (t) => {
   const root = makeTmpDir('skill-cost-ino-');
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const configDir = join(root, 'config');
@@ -731,7 +731,7 @@ test('plugin walk tells apart two directories whose inodes collapse to one Numbe
   assert.deepEqual(names, ['a-skill', 'b-skill']);
 });
 
-test('plugin walk still visits a directory reached twice once (HIMMEL-6093 control)', (t) => {
+test('plugin walk still visits a directory reached twice once (control)', (t) => {
   const root = makeTmpDir('skill-cost-ino-same-');
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const configDir = join(root, 'config');

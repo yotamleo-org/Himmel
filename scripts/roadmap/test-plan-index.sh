@@ -27,6 +27,7 @@ printf 'key\ttheme\tepic\tgoals\timpact\timpact_evidence\talignment\tdeps\tdup_o
 printf 'key\tuser_impact\tissue_plain\nHIMMEL-111\tinternal\tA plain sentence about the zebra widget.\nHIMMEL-222\tinternal\tGuards plain text.\n' > "$plan/stage1/C01.explain.tsv"
 printf 'key\troi\tconfidence\teffort_mid\trank\tversion\tcommit\tslice_effort\tlayer\treason\nHIMMEL-111\t1\t1\t1\t1\tv1.0.1\tcommitted\t\tbugs\twhy-one\nHIMMEL-222\t1\t1\t1\t2\tv1.0.2\tcommitted\t\tfeatures\twhy-two\n' > "$plan/stage3/placement.tsv"
 printf '{"stage":3}\n' > "$plan/stage3/meta.json"
+dk=HIMMEL-111
 echo one > "$mir/HIMMEL-111.md"
 plan_sum() { (cd "$plan" && find . -type f | sort | xargs sha256sum | sha256sum); }
 
@@ -50,7 +51,7 @@ run() { ROADMAP_QMD_BIN="$W/qmd" bash "$SUT" "$@" --plan-dir "$plan" --out "$out
 
 r="$(run --refresh 2>&1)"; rc=$?
 [ "$rc" = 0 ] && pass "first refresh rc=0" || fail "first refresh rc=$rc: $r"
-doc="$(cat "$out/docs/HIMMEL-111.md" 2>/dev/null)"
+doc="$(cat "$out/docs/$dk.md" 2>/dev/null)"
 contains "ticket doc has version" "$doc" "version: v1.0.1"
 contains "ticket doc has theme" "$doc" "theme: Knowledge substrate"
 contains "ticket doc has epic" "$doc" "epic: HIMMEL-100"
@@ -75,7 +76,7 @@ contains "mirror change: rebuilds" "$r" "rebuilt"
 sed -i.bak 's/why-one/why-changed/' "$plan/stage3/placement.tsv"; rm -f "$plan/stage3/placement.tsv.bak"
 r="$(run --refresh 2>&1)"
 contains "plan change: rebuilds" "$r" "rebuilt"
-contains "plan change reaches the doc" "$(cat "$out/docs/HIMMEL-111.md")" "why-changed"
+contains "plan change reaches the doc" "$(cat "$out/docs/$dk.md")" "why-changed"
 
 before="$(plan_sum)"
 run --refresh --force >/dev/null 2>&1

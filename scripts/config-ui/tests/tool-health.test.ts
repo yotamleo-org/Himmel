@@ -1042,7 +1042,7 @@ test("the recent-events table keeps a word whole in its narrow columns and lets 
   expect(css).toMatch(/\.data\.events td\.wrap\{overflow-wrap:anywhere\}/);
 });
 
-test("the five Tool health tables keep a header and a short value whole and give the wrapping to their free-text columns (HIMMEL-8680)", async () => {
+test("the five Tool health tables keep a header and a short value whole and give the wrapping to their free-text columns", async () => {
   const data = readP(seedP());
   const wrapFlags = (html: string, row: RegExp) => [...row.exec(html)![1].matchAll(/<td( class="wrap")?>/g)].map((m) => !!m[1]);
   const tab = (html: string) => (html.match(/<table class="data thtab">/g) || []).length;

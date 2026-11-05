@@ -89,7 +89,7 @@ write_unit() {
     mkdir -p "$UNIT_DIR" || die "cannot create $UNIT_DIR"
     cat > "$UNIT_DIR/$UNIT" <<EOF || die "cannot write $UNIT_DIR/$UNIT"
 [Unit]
-Description=himmel flow exporter (HIMMEL-922)
+Description=himmel flow exporter
 
 [Service]
 Type=simple

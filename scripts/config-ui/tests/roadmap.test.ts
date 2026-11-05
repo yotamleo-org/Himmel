@@ -10,6 +10,8 @@ import { driftSince, renderBoard, renderKanban, renderRoadmap } from "../public/
 import { navLinks, parseLanding } from "../public/nav.js";
 import { startServer } from "../server";
 
+const K = (n: number) => "HIMMEL-" + n;
+
 const TOKEN = "a".repeat(64); // hex: parseLanding only accepts a hex token
 const cleanups: (() => void)[] = [];
 afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
@@ -253,12 +255,12 @@ test("Tidy up: Refresh starts nothing on open, marks the kept rows while running
 });
 
 test("Tidy up: the origin column says who moved the ticket, and a read that failed never reads as nobody", () => {
-  const row = (h: unknown) => cellText(tidy({ driftOrigins: { "HIMMEL-6691": h } }));
+  const row = (h: unknown) => cellText(tidy({ driftOrigins: { [K(6691)]: h } }));
   expect(tidy({})).toContain("<th>origin</th>");
   expect(tidy({})).toContain('colspan="6"');
   const ev = (who: string, himmel?: boolean) => ({ at: "2026-10-01T10:00", who, from: "To Do", to: "Done", ...(himmel ? { himmel } : {}) });
   expect(row({ events: [ev("Hima", true), ev("Ana")] })).toContain("moved in Jira by Ana");
-  expect(tidy({ driftOrigins: { "HIMMEL-6691": { events: [ev("Ana <x>")] } } })).toContain("Ana &lt;x&gt;");
+  expect(tidy({ driftOrigins: { [K(6691)]: { events: [ev("Ana <x>")] } } })).toContain("Ana &lt;x&gt;");
   const mine = row({ events: [ev("Ana"), ev("Hima", true)] }); // the newest move decides
   expect(mine).not.toContain("moved in Jira by");
   expect(mine).toMatch(/himmel(&#39;|')s Jira account/);
@@ -297,8 +299,8 @@ test("Board lanes: a card with a known-checker-bug row carries the tag naming th
 
 const chainsOk = () => ({ schema: "himmel.chains/1", chains: [{ id: "memory", name: "Memory guard rework", total: 2, done: 1, steps: 2, next: { step: 2, keys: ["HIMMEL-5"] } }],
   tickets: {
-    "HIMMEL-1": { key: "HIMMEL-1", state: "in flight", chains: [{ id: "memory", step: 1, steps: 2, state: "in flight" }], badges: ["memory"], more: 0 },
-    "HIMMEL-5": { key: "HIMMEL-5", state: "waits on you", chains: [{ id: "memory", step: 2, steps: 2, state: "waits on you" }], badges: ["memory"], more: 0 },
+    [K(1)]: { key: K(1), state: "in flight", chains: [{ id: "memory", step: 1, steps: 2, state: "in flight" }], badges: ["memory"], more: 0 },
+    [K(5)]: { key: K(5), state: "waits on you", chains: [{ id: "memory", step: 2, steps: 2, state: "waits on you" }], badges: ["memory"], more: 0 },
   } });
 
 test("Board: one page with the header, the version strip, the three tabs and the running version's lanes", () => {
@@ -418,8 +420,8 @@ test("Board: chain badges, the waits-for-you card and the Chains tab come from t
   }
   // the Chain filter narrows the lanes to one chain's tickets
   const one = renderBoard(r, { version: null, theme: null, chain: "memory" }, { drift: null, chains: chainsOk() });
-  expect(one).toContain("Roadmap in the ui"); // HIMMEL-1
-  expect(one).not.toContain("Orphaned work"); // HIMMEL-2, in no chain
+  expect(one).toContain("Roadmap in the ui"); // ticket 1
+  expect(one).not.toContain("Orphaned work"); // ticket 2, in no chain
 });
 
 test("Board: loading, no tracker, unavailable and GitHub read-only states, and ticket text is escaped", () => {
@@ -444,10 +446,10 @@ test("#/roadmap/<version>: one version's board, four status columns, ticket link
   const html = renderRoadmap(r, { version: null, theme: null, ver: "v1.1.2" });
   expect(html).toContain("v1.1.2");
   for (const col of ["To do", "In progress", "Review / CI", "Done"]) expect(html).toContain(col);
-  expect(html).toContain("Roadmap in the ui"); // HIMMEL-1, v1.1.2
-  expect(html).toContain("Resumed work");      // HIMMEL-5, v1.1.2
-  expect(html).not.toContain("Shipped thing"); // HIMMEL-3, v1.1.1
-  expect(html).not.toContain("Left behind");   // HIMMEL-4, v1.1.1
+  expect(html).toContain("Roadmap in the ui"); // ticket 1, v1.1.2
+  expect(html).toContain("Resumed work");      // ticket 5, v1.1.2
+  expect(html).not.toContain("Shipped thing"); // ticket 3, v1.1.1
+  expect(html).not.toContain("Left behind");   // ticket 4, v1.1.1
   expect(html).toContain('href="#/roadmap"');  // back to the overview
   expect(html).not.toContain('id="rm-sync"');  // the overview's panels do not repeat here
   expect(html).toContain("<b>HIMMEL-1</b>");
@@ -551,7 +553,7 @@ test("GET /api/roadmap: the default payload has no ticket with no fixVersion; ?n
   expect(n.tickets.map((t: { k: number }) => t.k)).toEqual([8]);
   expect(n.tickets[0].worker).toMatchObject({ label: "N9", marker: "BLOCKED" }); // the worker is on the ticket, so legSync over it is not empty:
   expect(legSync(n.tickets).length).toBeGreaterThan(0);
-  expect(n.sync).toEqual([]); // the nv read plans nothing; a sync planned over it would flag HIMMEL-8 in Jira
+  expect(n.sync).toEqual([]); // the nv read plans nothing; a sync planned over it would flag ticket 8 in Jira
   expect(d.sync.some((o: { k: number }) => o.k === 8)).toBe(false); // and the default read's plan never names it
 });
 
@@ -581,7 +583,7 @@ const optIdx = (html: string, name: string, label: string) => {
 const board = (r: ReturnType<typeof readRoadmap>, ui: Record<string, unknown> = {}, extras: unknown = null) => renderBoard(r, { version: null, theme: null, v: "all", ...ui }, extras);
 
 // ---- the No version board: its tickets are left out of the default read and fetched only when that board opens ----
-const withNv = (s: ReturnType<typeof station>) => { // adds HIMMEL-9, In Progress with no fixVersion, to withNoVersion's HIMMEL-8
+const withNv = (s: ReturnType<typeof station>) => { // adds ticket 9, In Progress with no fixVersion, to withNoVersion's ticket 8
   writeFileSync(join(s.mirror, "HIMMEL-9.md"), issue(9, "In Progress", "In Progress", [], "Loose ticket"));
   return s;
 };
@@ -605,7 +607,7 @@ test("the No version read carries those tickets only, marked, and no versioned t
   expect(r.tickets.map((t) => t.k)).toEqual([8, 9]);
   for (const t of r.tickets) { expect(t.noVersion).toBe(true); expect(t.v).toBe(-1); }
   expect(r.noVersionCount).toBe(2);
-  expect(JSON.stringify(r)).not.toContain("Roadmap in the ui"); // negative control: HIMMEL-1 has a fixVersion
+  expect(JSON.stringify(r)).not.toContain("Roadmap in the ui"); // negative control: ticket 1 has a fixVersion
   expect(r.librarian).toEqual({ staleInProgress: [], drift: [], unthemed: [], releasedOpen: [], duplicates: [] });
   expect(nvRead(station()).tickets).toEqual([]); // nothing without a version: nothing to fetch
 });
@@ -814,7 +816,7 @@ test("5494: two projects with one ticket number keep their own plan version and 
   const r = readRoadmap({ mirrorDir: "", projects, planDir: plan, workers: { state: "absent" } as never });
   const by = Object.fromEntries(r.tickets.map((t) => [t.id, t]));
   expect([by["HIMMEL-1"].pv, r.planThemes[by["HIMMEL-1"].pt]]).toEqual(["v1.1.2", "Alpha"]);
-  expect([by["SALUS-1"].pv, r.planThemes[by["SALUS-1"].pt]]).toEqual(["v1.1.3", "Beta"]); // a project-blind key would give SALUS-1 HIMMEL's row
+  expect([by["SALUS-1"].pv, r.planThemes[by["SALUS-1"].pt]]).toEqual(["v1.1.3", "Beta"]); // a project-blind key would give the SALUS ticket HIMMEL's row
 });
 
 test("5494: a card on the No version tab still offers the Sectors its project's versioned tickets use", () => {
@@ -909,7 +911,7 @@ test("8832 drawer: the Done lane stays open while a Done card's drawer is open, 
   const r = read(station());
   const html = (drawer: unknown) => renderBoard(r, { version: null, theme: null, writes: true, v: "all", drawer }, null);
   expect(html(null)).toMatch(/<details class="rm-col rm-done"(?! open)/); // folded by default
-  expect(html({ k: 3, project: "HIMMEL", history: null })).toMatch(/<details class="rm-col rm-done" open/); // HIMMEL-3 is Done
+  expect(html({ k: 3, project: "HIMMEL", history: null })).toMatch(/<details class="rm-col rm-done" open/); // ticket 3 is Done
   expect(html({ k: 1, project: "HIMMEL", history: null })).toMatch(/<details class="rm-col rm-done"(?! open)/); // another card's drawer leaves it folded
 });
 
@@ -923,10 +925,10 @@ const chainsLinked = () => ({ schema: "himmel.chains/1", now: "2026-11-03T08:00:
       log: [{ ts: "2026-11-01T09:00:00.000Z", change: "hold", key: "HIMMEL-6", kind: "operator", who: "chief", reason: "waiting on the freeze" }, { ts: "2026-11-02T09:00:00.000Z", change: "release", key: "HIMMEL-6", who: "chief" }] },
   ],
   tickets: {
-    "HIMMEL-1": { key: "HIMMEL-1", title: "First", state: "done", done: true, chains: [{ id: "memory", step: 1, steps: 2, state: "done" }], links: [] },
-    "HIMMEL-2": { key: "HIMMEL-2", title: "Second", state: "can launch", done: false, chains: [{ id: "memory", step: 2, steps: 2, state: "can launch" }], links: [linkOf("HIMMEL-1", "cleared")] },
-    "HIMMEL-6": { key: "HIMMEL-6", title: "Linked", state: "waits on HIMMEL-2", done: false, chains: [{ id: "ops", step: 1, steps: 1, state: "waits on HIMMEL-2" }], links: [linkOf("HIMMEL-2")] },
-    "HIMMEL-7": { key: "HIMMEL-7", title: "Stuck", state: "blocked", done: false, chains: [{ id: "ops", step: 1, steps: 1, state: "blocked" }], links: [linkOf("HIMMEL-21")] },
+    [K(1)]: { key: K(1), title: "First", state: "done", done: true, chains: [{ id: "memory", step: 1, steps: 2, state: "done" }], links: [] },
+    [K(2)]: { key: K(2), title: "Second", state: "can launch", done: false, chains: [{ id: "memory", step: 2, steps: 2, state: "can launch" }], links: [linkOf("HIMMEL-1", "cleared")] },
+    [K(6)]: { key: K(6), title: "Linked", state: "waits on HIMMEL-2", done: false, chains: [{ id: "ops", step: 1, steps: 1, state: "waits on HIMMEL-2" }], links: [linkOf("HIMMEL-2")] },
+    [K(7)]: { key: K(7), title: "Stuck", state: "blocked", done: false, chains: [{ id: "ops", step: 1, steps: 1, state: "blocked" }], links: [linkOf("HIMMEL-21")] },
   },
   burn: { total: 4, undated: 1, points: [{ day: "2026-11-01", open: 3, merged: 1 }, { day: "2026-11-02", open: 3, merged: 0 }, { day: "2026-11-03", open: 3, merged: 0 }] } });
 const chainsHtml = (ui: object = {}, ch: object = chainsLinked(), r = read(station())) => renderBoard(r, { version: null, theme: null, tab: "chains", ...ui }, { drift: null, chains: ch });
@@ -1038,7 +1040,7 @@ test("Chains tab, a version with no chains: it names the version and never says 
 // The whole-Board consumers read every version; only the Chains tab reads the running one.
 const twoReads = () => {
   const c = chainsLinked();
-  const narrowed = { ...c, chains: [c.chains[1]], tickets: { "HIMMEL-6": c.tickets["HIMMEL-6"], "HIMMEL-7": c.tickets["HIMMEL-7"] } };
+  const narrowed = { ...c, chains: [c.chains[1]], tickets: { [K(6)]: c.tickets[K(6)], [K(7)]: c.tickets[K(7)] } };
   return { drift: null, chains: { ...chainsOk(), version: null }, versionChains: narrowed };
 };
 
@@ -1129,7 +1131,7 @@ test("9100 Board: a writable board has a Won't drop target and a Review / CI dro
   expect(cols(board(r)).map((x) => x[0])).toEqual(["todo", "prog", "rev", "done"]); // read-only and no Won't card: no lane
   const ci = { ...r, tickets: r.tickets.map((t, i) => (i === 0 ? { ...t, b: "ci", s: "IN CI" } : t)) };
   const rev = cols(board(ci)).find((x) => x[0] === "rev")!;
-  expect(rev.slice(1, 3)).toEqual([2, 2]); // HIMMEL-7 in review and HIMMEL-1 in CI
+  expect(rev.slice(1, 3)).toEqual([2, 2]); // ticket 7 in review and ticket 1 in CI
   expect(board(ci)).toMatch(/class="[^"]*\bpill\b[^"]*">CI<\/span>/);
   const wont = { ...r, tickets: r.tickets.map((t, i) => (i === 0 ? { ...t, b: "wont", s: "wont do" } : t)) };
   expect(cols(board(wont)).map((x) => x[0])).toEqual(["todo", "prog", "rev", "done", "wont"]);
@@ -1140,13 +1142,13 @@ test("9100 Board: a 200-character title and a 60-character chain name keep their
   const LONG = "T".repeat(199) + "!", CHAIN = "c".repeat(60);
   const tickets = r.tickets.map((t) => (t.k === 1 ? { ...t, t: LONG } : t));
   const ch = { schema: "himmel.chains/1", chains: [{ id: CHAIN, name: CHAIN, total: 1, done: 0, steps: 1, next: null }],
-    tickets: { "HIMMEL-1": { key: "HIMMEL-1", state: "in flight", chains: [{ id: CHAIN, step: 1, steps: 1, state: "in flight" }], badges: [CHAIN], more: 0 } } };
+    tickets: { [K(1)]: { key: K(1), state: "in flight", chains: [{ id: CHAIN, step: 1, steps: 1, state: "in flight" }], badges: [CHAIN], more: 0 } } };
   const html = renderBoard({ ...r, tickets }, { version: null, theme: null }, { chains: ch });
   expect(html).toContain(`<div class="rm-tip rm-title" data-tip="${LONG}">`);
   expect(html).toContain(`data-tip="● ${CHAIN} 1/1 · in flight"`); // the badge's visible text, glyph included
   const card = [...html.matchAll(/<div class="rm-card"[^>]*>/g)].map((m) => m[0]).find((c) => c.includes(LONG))!;
   expect(card).toContain('role="button"');
-  expect(card).toContain(`aria-label="HIMMEL-1: ${LONG}"`);
+  expect(card).toContain(`aria-label="${K(1)}: ${LONG}"`);
   expect(html).not.toMatch(/<[^>]*\bdata-tip="[^>]*\btitle="|<[^>]*\btitle="[^>]*\bdata-tip="/);
   expect(html).not.toContain('title="Open the'); // the link's action is its accessible name now, not a second bubble
   expect(html).toMatch(/<a class="rm-chain"[^>]*aria-label="Open the c{60} chain on the Chains tab[^"]*"/);

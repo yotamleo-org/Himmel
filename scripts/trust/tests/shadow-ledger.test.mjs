@@ -1160,7 +1160,7 @@ describe('dropped writes are visible, not silent', () => {
       '{"ts":"2026-08-01T00:00:00.000Z","reason":"append_failed"}\n');
     const r = runHook(['report'], '', dir);
     assert.match(r.stdout, /Drops do NOT/);
-    assert.match(r.stdout, /HIMMEL-1547/);
+    assert.match(r.stdout, /needs the recorder checkpoint/);
     assert.doesNotMatch(r.stdout, /acknowledge them by rotating/);
   });
 

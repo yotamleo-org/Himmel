@@ -305,7 +305,7 @@ assert_rc "full run with a prior scope map exits 0" 0 "$rc"
 assert_has "full run: this run's own plugin still carries --scope user" "plugin uninstall good-a@mp1 --scope user" "$log"
 assert_has "full run: mp1 removed at this run's scope" "plugin marketplace remove mp1 --scope user" "$log"
 assert_has "full run: mp2 removed at the PRIOR run's persisted project scope" "plugin marketplace remove mp2 --scope project" "$log"
-assert_has "full run: mp2 also tries the install-profile scope (HIMMEL-2796)" "plugin marketplace remove mp2 --scope user" "$log"
+assert_has "full run: mp2 also tries the install-profile scope" "plugin marketplace remove mp2 --scope user" "$log"
 map_scopes=$(cat "$TMP/scope-map-prior")
 if printf '%s\n' "$map_scopes" | grep -qx "$(printf 'mp2\tproject\t%s' "$(pwd -P)")"; then
     echo "PASS full run: prior scope-map row survives"
@@ -508,7 +508,7 @@ log=$(cat "$ARGV_LOG")
 rm "$STUB_DIR/awk"
 assert_has "RED 10b: plugin removed at its installed scope" "plugin uninstall good-a@mp1 --scope project" "$log"
 assert_has "RED 10b: mp1 removed at this run's plugin scope" "plugin marketplace remove mp1 --scope project" "$log"
-assert_has "RED 10b: install-profile scope supplements the retained plugin scope (HIMMEL-2796)" "plugin marketplace remove mp1 --scope user" "$log"
+assert_has "RED 10b: install-profile scope supplements the retained plugin scope" "plugin marketplace remove mp1 --scope user" "$log"
 
 # ── 17. RED control 11: exclusive paths cannot traverse up. ──
 cat > "$TMP/settings-template-segments.json" <<'JSON'

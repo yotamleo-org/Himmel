@@ -281,7 +281,7 @@ else
         pgrep_x_stub 108 114
         out_q="$(run_primary)"; rc_q=$?
         if [ "$rc_q" -eq 0 ]; then pass 'a degraded scan still exits 0 (report, not a gate)'; else fail "exits 0 (rc=$rc_q)"; fi
-        contains 'a scan-degraded pid is named (HIMMEL-3002)' "$out_q" 'scan-degraded:114'
+        contains 'a scan-degraded pid is named' "$out_q" 'scan-degraded:114'
         contains 'a degraded scan reports ceiling=? not ok/DRIFT' "$out_q" 'ceiling=?'
         contains 'a degraded scan still prints the readable row' "$out_q" 'HIMMEL-555-legN70-2026-09-13 auto'
         chmod 700 "$W/proc/114/cmdline"

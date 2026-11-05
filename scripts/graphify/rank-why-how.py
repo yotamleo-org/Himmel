@@ -19,7 +19,7 @@ through byte for byte.
 Usage: <worker-graph query output> | python3 rank-why-how.py <graph.json> <question> [<budget>]
 
 Fails open: an unreadable graph or any error prints the input as-is and says so on stderr.
-ponytail: word overlap, not meaning; upgrade path is graphify scoring rationale itself (HIMMEL-6056).
+ponytail: word overlap, not meaning; upgrade path is graphify scoring rationale itself.
 """
 import ast
 import json

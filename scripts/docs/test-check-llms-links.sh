@@ -319,8 +319,8 @@ git -C "$R" add docs/specs/plan.md scripts/lib/public-clone-paths.sh
 git -C "$R" commit -q -m specs-dir
 printf '[specs](docs/specs)\n' > "$R/llms.txt"
 run_check llms.txt
-expect 1 "HIMMEL-2847: a link to the bare carved-out directory is rejected"
-expect_says "targets a DETECTOR_DROP path" "HIMMEL-2847: names the DETECTOR_DROP class for the bare directory"
+expect 1 "a link to the bare carved-out directory is rejected"
+expect_says "targets a DETECTOR_DROP path" "names the DETECTOR_DROP class for the bare directory"
 
 # A sibling path that merely shares the carved-out directory's name as a
 # prefix must still be accepted — the bare-directory match has to be anchored
@@ -332,7 +332,7 @@ git -C "$R" add docs/specs-other.md scripts/lib/public-clone-paths.sh
 git -C "$R" commit -q -m specs-sibling
 printf '[other](docs/specs-other.md)\n' > "$R/llms.txt"
 run_check llms.txt
-expect 0 "HIMMEL-2847: a sibling path sharing the carved-out directory's name prefix is still accepted"
+expect 0 "a sibling path sharing the carved-out directory's name prefix is still accepted"
 
 # PRIVATE_PATHS membership is ANCHORED, the same way propagate-public.sh
 # anchors it. Unanchored prefix matching would let the token `handovers` claim

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""research_path.py - deterministic pieces of the himmel research path (HIMMEL-5863/5864/5865/5862).
+"""research_path.py - deterministic pieces of the himmel research path.
 
 Stdlib-only apart from a lazy Scrapling import in fetch_reddit_html: callers
 inject the search rungs as callables and hand in raw HTML / JSON. Entry point:
-research(). PS3 (HIMMEL-5751) decides how it is wired. Only the two Reddit
+research(). PS3 decides how it is wired. Only the two Reddit
 fetchers touch the network, each pinned to one of REDDIT_ENDPOINT_HOSTS.
 
 - Relevance floor: the topic's primary entity must appear in title or snippet.

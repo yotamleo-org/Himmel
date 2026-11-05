@@ -54,7 +54,7 @@ describe("grantClaim", () => {
   });
 });
 
-describe("renewLease (HIMMEL-8438)", () => {
+describe("renewLease", () => {
   test("a renewing claimant keeps the job past the TTL; a second claim gets nothing", () => {
     const p = freshLedger();
     const J = jobAttrs();

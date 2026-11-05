@@ -141,10 +141,10 @@ out3=$(PATH="$STUB_DIR:$PATH" STUB_PRESENT="foo@mp" \
 rc3=$?
 set -e
 [ "$rc3" -eq 0 ] || fail "HIMMEL-2324 force-enable run should exit 0 (got $rc3): $out3"
-[ "$(cat "$CANARY3")" = "CANARY-UNCHANGED" ] || fail "HIMMEL-2324: write landed through the predictable force-enable temp path onto the canary file"
-[ -f "$SETTINGS3" ] || fail "HIMMEL-2324: settings3.json missing after force-enable"
-[ ! -L "$SETTINGS3" ] || fail "HIMMEL-2324: settings3.json ended up as a symlink"
-[ "$(jq -r '.enabledPlugins["foo@mp"]' "$SETTINGS3")" = "true" ] || fail "HIMMEL-2324: drifted plugin was not force-enabled"
+[ "$(cat "$CANARY3")" = "CANARY-UNCHANGED" ] || fail "write landed through the predictable force-enable temp path onto the canary file"
+[ -f "$SETTINGS3" ] || fail "settings3.json missing after force-enable"
+[ ! -L "$SETTINGS3" ] || fail "settings3.json ended up as a symlink"
+[ "$(jq -r '.enabledPlugins["foo@mp"]' "$SETTINGS3")" = "true" ] || fail "drifted plugin was not force-enabled"
 echo "ok: HIMMEL-2324 — pre-planted link at the predictable force-enable temp path is not written through"
 
 # A CLI child must not consume the next loop record. The same
@@ -256,6 +256,6 @@ for mode in missing list-fail malformed; do
     reg_check "$mode does not falsely claim unregistered" test "$(grep -c 'NOT registered' <<< "$REG_OUT" || true)" -eq 0
   fi
 done
-[ "$REG_FAILURES" -eq 0 ] || fail "HIMMEL-2753: $REG_FAILURES registration assertions failed"
+[ "$REG_FAILURES" -eq 0 ] || fail "$REG_FAILURES registration assertions failed"
 
 echo "PASS"

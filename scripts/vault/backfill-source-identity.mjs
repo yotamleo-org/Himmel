@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * backfill-source-identity.mjs — HIMMEL-3055.
+ * backfill-source-identity.mjs
  *
  * One-off backfill: gives every existing luna vault note that points at a
  * github repo (`source: https://github.com/<owner>/<repo>` in its
