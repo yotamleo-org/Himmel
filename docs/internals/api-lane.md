@@ -108,6 +108,25 @@ The fallback appends one row to the same `launches.jsonl` as the API call:
 
 The API call's own row and its reservation are settled as before.
 
+### The native release judge row
+
+`launches.jsonl` has a second writer: the release judge's subscription run (`liveJudge` in
+`scripts/jira/src/commands/release.ts`) appends one `kind=judge` row per run, after the call returns. It is not
+an API call, so it takes no reservation and `claude-api.sh` never sees it.
+
+| Field | Value |
+|---|---|
+| `lane` | `native` |
+| `outcome` | `native`, or `native-failed` on a non-zero exit or a timeout |
+| `session_id` | the id passed to `claude --session-id`; the transcript is `<session_id>.jsonl` |
+| `cost_usd` | empty (no API credit spent) |
+| `sub_cost_usd` | the call's verified `total_cost_usd` (six places), empty when the call failed or printed none |
+| `rc` | the call's exit code (1 when it threw without one) |
+
+A reader that sums API dollars skips every row with a `lane` other than `api` (the API launcher's own rows carry
+no `lane`): `shift-spend.mjs` does, so the native and `sub-fallback` rows are neither summed nor counted as unpriced.
+`scripts/usage/release-judge-reconcile.sh` is the read-only check that each release judge transcript has its row.
+
 ## Account C and auto routing (HIMMEL-9052, decision 525 FINAL)
 
 Account C is a third API org with a 200.00 USD cap. A, B and C are treated identically: the same refusals (key from
