@@ -411,5 +411,16 @@ check "reconcile green: the class totals agree inside the tolerance" "yes" \
 SUM1="$(cksum < "$RJD/launches.jsonl")"; RJ3="$(rj --tolerance 2)"
 check "reconcile is read-only and repeatable: ledger bytes and output unchanged" "yes" \
   "$([ "$SUM1" = "$(cksum < "$RJD/launches.jsonl")" ] && [ "$RJ2" = "$RJ3" ] && echo yes || echo no)"
+# a row written before the run ended cannot be that run's row; the default ledger follows the writers' state path
+S5=55555555-5555-4555-8555-555555555555
+RJE="$ROOT/rj-early"; mkdir -p "$RJE/projects/-tmp-rm-run-judge-BBB"
+{ printf '{"type":"user","timestamp":"2026-11-04T15:00:00.000Z"}\n{"type":"assistant","timestamp":"2026-11-04T15:00:30.000Z"}\n'
+  printf '{"type":"cost-state","sessionId":"%s","totalCostUSD":3}\n' "$S5"; } > "$RJE/projects/-tmp-rm-run-judge-BBB/$S5.jsonl"
+printf '{"ts":"2026-11-04T15:00:10Z","kind":"judge","lane":"sub-fallback","sub_cost_usd":"3.000000","cost_usd":""}\n' > "$RJE/launches.jsonl"
+RJEO="$(bash "$RJ" --launches "$RJE/launches.jsonl" --launch-logs "$RJE/none" --projects "$RJE/projects")"
+check "reconcile: a row stamped 20s before the run ended does not match it" "yes" \
+  "$(grep -qx "matched: 0  (by session id 0, by cost and time 0)" <<<"$RJEO" && grep -qxF "launch rows with no transcript: 1" <<<"$RJEO" && echo yes || echo no)"
+RJD2="$(HIMMEL_API_CREDIT_STATE="$RJD/ledger.json" bash "$RJ" --launch-logs "$RJD/logs" --projects "$RJD/projects" --tolerance 2)"
+check "reconcile: with no --launches the ledger is the one beside HIMMEL_API_CREDIT_STATE" "$RJ3" "$RJD2"
 
 if [ "$FAIL" -eq 0 ]; then echo "PASS"; else echo "FAILED" >&2; exit 1; fi

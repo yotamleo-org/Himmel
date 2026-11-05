@@ -8,7 +8,7 @@
 #                uses); a transcript's cost is its last cost-state totalCostUSD.
 #   launch rows: kind=judge rows of launches.jsonl; a row's cost is sub_cost_usd, else cost_usd.
 # A row matches a transcript by its session_id; a row without one (the API launcher's sub-fallback row) matches
-# the unused transcript with the same cost (to 1e-6) whose run ended within [-5s, +120s] of the row's ts.
+# the unused transcript with the same cost (to 1e-6) whose run ended within [-120s, +5s] of the row's ts.
 # A zero-cost row (a refused API-route attempt) matches a zero-cost transcript the same way; a zero-cost
 # transcript left over spent nothing, so it is counted apart and is never "unmatched".
 # --since/--until bound both sides by the row ts and the transcript's last record. --tolerance <pct> adds
@@ -18,7 +18,14 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
 # shellcheck source=../lib/prim.sh
 . "$HERE/../lib/prim.sh" || exit 1
 
+# The default ledger is where the writers put it: beside HIMMEL_API_CREDIT_STATE, else beside the credit config's ledger_path.
 LAUNCHES="$HOME/.himmel/state/api-credit/launches.jsonl"
+if [ -n "${HIMMEL_API_CREDIT_STATE:-}" ]; then
+    LAUNCHES="$(dirname "$HIMMEL_API_CREDIT_STATE")/launches.jsonl"
+else
+    lp="$(jq -r '.ledger_path // empty' "${HIMMEL_API_CREDIT_CONFIG:-$HOME/.himmel/state/api-credit/config.json}" 2>/dev/null)" || lp=""
+    [ "${lp#/}" = "$lp" ] || LAUNCHES="$(dirname "$lp")/launches.jsonl"
+fi
 LOGS="${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/launch-logs"
 PROJECTS="$HOME/.claude/projects"
 SINCE="" UNTIL="" TOL=""
@@ -64,7 +71,7 @@ jq -rn --slurpfile rows "$T/rows.jsonl" --rawfile tr "$T/tr.tsv" --rawfile logs 
     if $mode == 1 then ($r.session_id // "") == $t.sid
     else ($r.session_id // "") == "" and $r.cost != null
          and (($r.cost - $t.cost) | fabs) <= 0.000001
-         and $r.ep >= ($t.start - 5) and $r.ep <= ($t.end + 120) end;
+         and $r.ep >= ($t.end - 5) and $r.ep <= ($t.end + 120) end;
   def assign($mode; $R; $T): . as $st | reduce range(0; $R | length) as $i ($st;
       . as $s
       | if ($s.m | has($i | tostring)) then .
