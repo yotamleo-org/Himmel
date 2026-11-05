@@ -1,5 +1,5 @@
 {
-  "comment": "Cloud-lane capability matrix (HIMMEL-6135). cloud-route.mjs builds its run-time-need check from every row with a match (joined in order, flag i) and its ask cap from max_asks; a row with no match is reference for briefs and shepherds. Method and sources: the state repo research doc cloud-lane-capability-map-2026-10-17.md.",
+  "comment": "Cloud-lane capability matrix. cloud-route.mjs builds its run-time-need check from every row with a match (joined in order, flag i) and its ask cap from max_asks; a row with no match is reference for briefs and shepherds. Method and sources: the state repo research doc cloud-lane-capability-map-2026-10-17.md.",
   "max_asks": 3,
   "rows": [
     {
@@ -7,7 +7,7 @@
       "capability": "luna vault and other personal vaults",
       "state": "cannot",
       "local_split": "run the ticket LOCAL-NATIVE",
-      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, HIMMEL-5442 parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): luna, vaults absent, by design",
+      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): luna, vaults absent, by design",
       "source": "docs/setup/cloud-environment.md (parity table)",
       "match": "\\bluna\\b|\\bvault\\b",
       "route": "LOCAL-NATIVE"
@@ -17,7 +17,7 @@
       "capability": "handover state repo ($HANDOVER_DIR, handovers/, specs/)",
       "state": "cannot",
       "local_split": "run the ticket LOCAL-NATIVE",
-      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, HIMMEL-5442 parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): handover state absent, by design",
+      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): handover state absent, by design",
       "source": "docs/setup/cloud-environment.md (parity table)",
       "match": "handover state|\\$HANDOVER_DIR|\\bstate[ -]repo\\b|(?<![\\w.-])handovers\\/[\\w.-]+\\/|(?<![\\w.-])specs\\/HIMMEL-\\d",
       "route": "LOCAL-NATIVE"
@@ -27,7 +27,7 @@
       "capability": "qmd vector search, embed, model pull",
       "state": "cannot",
       "local_split": "run the ticket LOCAL-NATIVE; the himmel BM25 collection stays cloud",
-      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, HIMMEL-5442 parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): setup-env.sh indexes himmel BM25 only, no model pull and no embed (fits the ~5 min setup)",
+      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): setup-env.sh indexes himmel BM25 only, no model pull and no embed (fits the ~5 min setup)",
       "source": "scripts/cloud/setup-env.sh (qmd-index step)",
       "match": "\\bqmd\\s+(?:query|vsearch|embed|pull)\\b|vector search",
       "route": "LOCAL-NATIVE"
@@ -37,7 +37,7 @@
       "capability": "semantic graphify extraction (/graphify, --backend)",
       "state": "cannot",
       "local_split": "run the ticket LOCAL-NATIVE; graphify AST update and query stay cloud",
-      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, HIMMEL-5442 parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): graphify installed AST-only, no backend extra and no backend key",
+      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): graphify installed AST-only, no backend extra and no backend key",
       "source": "scripts/cloud/setup-env.sh (graphify steps)",
       "match": "(?<![\\w.-])\\/graphify\\b|semantic (?:graphify|extraction)|\\bgraphify\\b[^\\n]*--backend",
       "route": "LOCAL-NATIVE"
@@ -47,7 +47,7 @@
       "capability": "qmd collections other than himmel",
       "state": "cannot",
       "local_split": "run the ticket LOCAL-NATIVE",
-      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, HIMMEL-5442 parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): setup-env.sh adds the himmel collection and nothing else",
+      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): setup-env.sh adds the himmel collection and nothing else",
       "source": "scripts/cloud/setup-env.sh (qmd-index step)",
       "match": "\\bqmd\\b[^\\n]*?(?<![\\w-])(?:-c|--collections?)[\\s=]+['\"]?(?!himmel(?![\\w-]))[\\w-]",
       "route": "LOCAL-NATIVE"
@@ -57,7 +57,7 @@
       "capability": "station state under ~/.himmel or ~/.cache",
       "state": "cannot",
       "local_split": "run the ticket LOCAL-NATIVE",
-      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, HIMMEL-5442 parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): fresh root home, user CLAUDE.md absent, user deny rules 0",
+      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): fresh root home, user CLAUDE.md absent, user deny rules 0",
       "source": "docs/setup/cloud-environment.md (parity table)",
       "match": "(?:~|\\$HOME|\\$\\{HOME\\})\\/\\.(?:himmel|cache)\\/",
       "route": "LOCAL-NATIVE"
@@ -67,7 +67,7 @@
       "capability": "the LIVE eval / run ledgers on the station",
       "state": "cannot",
       "local_split": "run the ticket LOCAL-NATIVE",
-      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, HIMMEL-5442 parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): no station state in the VM (fresh home)",
+      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): no station state in the VM (fresh home)",
       "source": "docs/setup/cloud-environment.md (parity table)",
       "match": "\\bLIVE\\b[^\\n.]{0,40}\\bledger\\b",
       "route": "LOCAL-NATIVE"
@@ -77,7 +77,7 @@
       "capability": "arming the cadence, systemd timers, at/atrm jobs",
       "state": "cannot",
       "local_split": "run the ticket LOCAL-NATIVE",
-      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, HIMMEL-5442 parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): the VM is per-session; at ships without a running atd and nothing outlives the session",
+      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): the VM is per-session; at ships without a running atd and nothing outlives the session",
       "source": "scripts/cloud/setup-env.sh (apt step)",
       "match": "\\barm(?:s|ed|ing)?\\b[^\\n.]{0,40}\\bcadence\\b|\\bsystemd[ -](?:timer|unit|service)s?\\b|\\batrm\\b",
       "route": "LOCAL-NATIVE"
@@ -142,7 +142,7 @@
       "id": "git-gates",
       "capability": "pre-commit, commit-msg, pre-push gates",
       "state": "does",
-      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, HIMMEL-5442 parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): the git-hooks step installs all three; a ticketless commit message is refused rc 1",
+      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): the git-hooks step installs all three; a ticketless commit message is refused rc 1",
       "source": "docs/setup/cloud-environment.md (parity table)"
     },
     {
@@ -150,7 +150,7 @@
       "capability": "gitleaks binary for the pre-push secret scan",
       "state": "does",
       "local_split": "if the setup-env.sh gitleaks step reports failed, the local shepherd runs the secret scan",
-      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, HIMMEL-5442 parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): gitleaks not installed by setup (before HIMMEL-6135); setup-env.sh step 3a now installs gitleaks 8.30.1, sha256-pinned to the CI release; cse_014jSqhdQMC6HYFeB2y2vBpc (PR 3037 CLOUD-DONE probe): setup-env.sh rc 0, step=gitleaks action=install v8.30.1, gitleaks version 8.30.1",
+      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): gitleaks not installed by setup (before the gitleaks install step); setup-env.sh step 3a now installs gitleaks 8.30.1, sha256-pinned to the CI release; cse_014jSqhdQMC6HYFeB2y2vBpc (PR 3037 CLOUD-DONE probe): setup-env.sh rc 0, step=gitleaks action=install v8.30.1, gitleaks version 8.30.1",
       "source": "scripts/cloud/setup-env.sh (gitleaks step); docs/setup/cloud-environment.md (parity table)"
     },
     {
@@ -158,7 +158,7 @@
       "capability": "repo .claude/settings.json hooks",
       "state": "partial",
       "local_split": "a hook that needs HIMMEL_REPO over-blocks; the shepherd runs that step",
-      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, HIMMEL-5442 parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): 40 hook commands wired, 9/9 PreToolUse deny probes DENY; session_01BpfAfkxHtZhfAP3spgSXyR (PR 1761): guard-pr-check-literal refused impacted-suites.sh, HIMMEL_REPO unset",
+      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): 40 hook commands wired, 9/9 PreToolUse deny probes DENY; session_01BpfAfkxHtZhfAP3spgSXyR (PR 1761): guard-pr-check-literal refused impacted-suites.sh, HIMMEL_REPO unset",
       "source": "PR 2493, PR 1761"
     },
     {
@@ -166,7 +166,7 @@
       "capability": "user-scope deny rules and user CLAUDE.md",
       "state": "cannot",
       "local_split": "every rule a cloud session needs lives in the repo",
-      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, HIMMEL-5442 parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): deny=0, user CLAUDE.md absent",
+      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): deny=0, user CLAUDE.md absent",
       "source": "docs/setup/cloud-environment.md (parity table)"
     },
     {
@@ -174,7 +174,7 @@
       "capability": "himmel plugins",
       "state": "partial",
       "local_split": "only the lean set (himmel-ops, lean-skills) via setup-env.sh --with-plugins; the claude.ai plugin upload does not load",
-      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, HIMMEL-5442 parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): plugins-installed himmel-ops@himmel,lean-skills@himmel, 2 plugin hook files (81 locally)",
+      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): plugins-installed himmel-ops@himmel,lean-skills@himmel, 2 plugin hook files (81 locally)",
       "source": "PR 2493"
     },
     {
@@ -229,7 +229,7 @@
       "capability": "network egress",
       "state": "partial",
       "local_split": "hosts outside the Trusted allowlist are reached locally",
-      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, HIMMEL-5442 parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): pypi, npm, ubuntu archive 200; example.com 000; HTTPS goes through a proxy",
+      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): pypi, npm, ubuntu archive 200; example.com 000; HTTPS goes through a proxy",
       "source": "docs/setup/cloud-environment.md (parity table)"
     },
     {
@@ -238,7 +238,7 @@
       "state": "cannot",
       "local_split": "those steps run at the local shepherd",
       "evidence": "session_01BpfAfkxHtZhfAP3spgSXyR (PR 1761): HIMMEL_REPO unset, impacted-suites step refused",
-      "source": "PR 1761; HIMMEL-4580"
+      "source": "PR 1761"
     }
   ]
 }

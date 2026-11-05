@@ -437,7 +437,7 @@ runner_plain=${runner//\\/}
 # shellcheck disable=SC1091
 . "$(dirname "$0")/../lib/cadence-format.sh"
 FMT="$CADENCE_RUNNER_FORMAT_VERSION"
-assert_contains "runner stamps the format version (HIMMEL-588)" "# himmel-cadence-runner-format: $FMT" "$runner"
+assert_contains "runner stamps the format version" "# himmel-cadence-runner-format: $FMT" "$runner"
 assert_contains "runner fires qmd-reindex.sh" "qmd-reindex.sh" "$runner_plain"
 assert_contains "runner points at the SHIPPED reindex script" \
     "$HIMMEL_ROOT_EXP/scripts/luna/qmd-reindex.sh" "$runner_plain"

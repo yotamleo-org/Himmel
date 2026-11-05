@@ -355,7 +355,7 @@ describe('pull', () => {
     };
   }
 
-  test('degraded sleep date OUTSIDE the pull window → artifact has NO warnings key (HIMMEL-794 Fix A)', async () => {
+  test('degraded sleep date OUTSIDE the pull window → artifact has NO warnings key', async () => {
     // Same degraded session as above (date 2026-01-02), but the pull window
     // (2024-01-01..2025-01-01) does not cover it — the dated warning must be
     // window-dropped exactly like its row is (rows are already filtered by window).

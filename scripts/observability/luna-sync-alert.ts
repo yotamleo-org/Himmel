@@ -39,7 +39,7 @@ export function statePath(env: Record<string, string | undefined> = process.env)
   return join(home, ".himmel", "luna-sync-alert-state.json");
 }
 
-// LUNA-131 Task 8: sweeperStatusPath mirrors statePath's override pattern.
+// Sweeper plan Task 8: sweeperStatusPath mirrors statePath's override pattern.
 // The file read stays OUT of checkLunaSync (its stated invariant is no fs/
 // network) — main() reads + parses it and injects the value as an opt.
 export function sweeperStatusPath(env: Record<string, string | undefined> = process.env): string {
@@ -91,7 +91,7 @@ export function buildAlertText(
   // The git clause (counts + "in <path>") is omitted ENTIRELY when both
   // counts are 0 — joining an empty `parts` used to emit a malformed
   // "⚠️ luna vault sync:  in <path> — …" (double space, no content). A RED
-  // sweeper reading on an otherwise-clean tree (LUNA-131 Task 8's swallow
+  // sweeper reading on an otherwise-clean tree (sweeper plan Task 8's swallow
   // regression) is exactly this case, so it must not resurrect the bug.
   const clauses: string[] = [];
   if (parts.length > 0) clauses.push(parts.join(" and "));
@@ -100,7 +100,7 @@ export function buildAlertText(
   let text = `⚠️ luna vault sync: ${clauses.join(" and ")} in ${path} — check for a blocked auto-sync (e.g. a gitleaks false positive holding a commit or push back).`;
   // The YELLOW note is only ever appended alongside an alert that is already
   // firing (this function is only called from the send path) — a yellow
-  // sweeper reading never wakes the operator on its own (LUNA-131 design D10).
+  // sweeper reading never wakes the operator on its own (design D10).
   if (sweeperYellow) text += " (sweeper had a recent alarm within the last 24h)";
   return text;
 }
@@ -110,7 +110,7 @@ export type CheckOutcome = "sent" | "clean" | "cooldown" | "skip-no-vault" | "sk
 export type SweeperLevel = "red" | "yellow" | "green";
 export type SweeperEvaluation = { level: SweeperLevel; reason: string | null };
 
-// LUNA-131 Task 8 — thresholds from status.json's RED/YELLOW rule (design
+// Sweeper plan Task 8 — thresholds from status.json's RED/YELLOW rule (design
 // Component 3). Pure: no fs, no network, no Date.now() — nowMs is injected.
 const SWEEPER_DEAD_MS = 30 * 60 * 1000;
 const STALE_MS = 60 * 60 * 1000;
@@ -183,7 +183,7 @@ export function evaluateSweeperStatus(status: unknown, nowMs: number): SweeperEv
 // no fs/network/state-file access here — so this is unit-testable with plain
 // values. Never throws; the caller decides how to log/exit.
 //
-// LUNA-131 Task 8: a RED sweeper reading must never be swallowed by the four
+// Sweeper plan Task 8: a RED sweeper reading must never be swallowed by the four
 // pre-existing early returns (skip-no-vault / skip-error / clean-no-upstream /
 // clean-genuinely-clean). Required order (design D10, plan Task 8 step 3):
 //   1. Evaluate the sweeper FIRST, before any early return.
@@ -234,7 +234,7 @@ export async function checkLunaSync(opts: {
         // in-progress alert state unconditionally — resetting here would wipe
         // the cooldown/rising-edge on a reading that says nothing about
         // whether changes are piling up (only a genuinely-clean
-        // tree resets; LUNA-131 Task 8 step 4 — this holds regardless of
+        // tree resets; sweeper plan Task 8 step 4 — this holds regardless of
         // sweeper level).
         earlyOutcome = "clean";
       } else {
@@ -249,7 +249,7 @@ export async function checkLunaSync(opts: {
           // rising edge, but ONLY when the sweeper isn't RED: a GREEN/YELLOW
           // sweeper on its own says nothing about the git tree, and a RED
           // sweeper on a clean tree must fall through to alert, not reset
-          // (LUNA-131 Task 8 step 4 — the swallow regression this exists to fix).
+          // (Task 8 step 4 — the swallow regression this exists to fix).
           earlyOutcome = "clean";
           earlyState = sweeper.level !== "red" ? { lastAlertedAt: null } : opts.state;
         }

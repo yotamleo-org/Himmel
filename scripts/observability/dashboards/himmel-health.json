@@ -1,7 +1,7 @@
 {
   "uid": "himmel-health",
   "title": "himmel health",
-  "description": "Is himmel healthy, what is failing and what to do. HIMMEL-4292.",
+  "description": "Is himmel healthy, what is failing and what to do.",
   "tags": [
     "himmel",
     "health"
@@ -2616,7 +2616,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "These health answers have no Prometheus series yet, so this dashboard leaves them out instead of faking them.\n\n- **Daily health check** (himmel-doctor results) — shown via `/obs-report`, HIMMEL-4291.\n- **Machine setup** (`himmelctl status`) — shown via `/obs-report`, HIMMEL-4291.\n- **qmd search index age** — shown via `/obs-report`, HIMMEL-4291.\n- **Chief workers and their cost** — machine-readable after HIMMEL-4290; shown via `/obs-report`, HIMMEL-4291.\n- **Usage bank reset time** — the exporter does not keep `resets_at` yet.\n- **Advice per alert** lives in this dashboard's mapping, not in the alert rules."
+        "content": "These health answers have no Prometheus series yet, so this dashboard leaves them out instead of faking them.\n\n- **Daily health check** (himmel-doctor results) — shown via `/obs-report`.\n- **Machine setup** (`himmelctl status`) — shown via `/obs-report`.\n- **qmd search index age** — shown via `/obs-report`.\n- **Chief workers and their cost** — machine-readable once the ledger registry lands; shown via `/obs-report`.\n- **Usage bank reset time** — the exporter does not keep `resets_at` yet.\n- **Advice per alert** lives in this dashboard's mapping, not in the alert rules."
       }
     }
   ]

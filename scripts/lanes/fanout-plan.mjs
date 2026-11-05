@@ -96,7 +96,7 @@ export function buildFanoutPlan(items, liveLanes) {
     // plan entry, including an explicit override, must land on a
     // claude-tier lane, whose id IS the Agent tool's dispatchable model.
     if (lane.class !== 'claude-tier') {
-      errors.push(`${id}: lane '${laneId}' is class '${lane.class}' — /fanout only routes to claude-tier lanes (impl routes to native Claude subagents only, HIMMEL-1967).`);
+      errors.push(`${id}: lane '${laneId}' is class '${lane.class}' — /fanout only routes to claude-tier lanes (impl routes to native Claude subagents only).`);
       continue;
     }
 

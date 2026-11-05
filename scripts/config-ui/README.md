@@ -32,7 +32,7 @@ Read-only: every value is rendered from its owner and nothing is re-measured.
 answers `ok`, `absent` or `error` on its own, so one missing source never blanks
 the page.
 
-The page is built from the v2 mockup (HIMMEL-8031). The top section, **Is this project working right now?**,
+The page is built from the v2 mockup. The top section, **Is this project working right now?**,
 holds the verdict strip (the word, its inputs, `checked N ago`, the fail/warn/shared/ok counts) and four tiles:
 Checks, Usage, Scheduled jobs and Search & graph. A tile opens its panel under the strip, one at a time; the open
 tile closes it again. Checks opens by itself only when the verdict is Act now or Needs a look. The open tile rides
@@ -49,7 +49,7 @@ Configure ▸ Tracker.
 | Usage (shared) | the newest row with usage numbers in the last 64 KiB of `$CADENCE_USAGE_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; the tile reads `Claude X % of 5h · Y % of week`; the worker list moved to Fleet and Usage links to it | no ledger row with usage numbers |
 | Search & graph | feed rows with `bundle: search` (doctor owns qmd freshness) | doctor reports no search rows |
 
-**Project picker and Shared (HIMMEL-8044).** The page bar at the top of the Health page carries a picker (the rail holds the same links on every page; at 760 px the bar folds behind "Filters (n on)", HIMMEL-9098): the project this UI runs in
+**Project picker and Shared.** The page bar at the top of the Health page carries a picker (the rail holds the same links on every page; at 760 px the bar folds behind "Filters (n on)"): the project this UI runs in
 (the page opens on it), the other registered projects (`~/.claude/handover/registry.json`, `repos{name:{path}}`),
 and **All my projects** (`#/health?view=all`). Every feed row carries a `scope` (`shared` for the machine or
 himmel itself, `project` for the rest) and a `fix.by`. The probe declares the scope, `config-feed.js` `classifyRow`
@@ -71,7 +71,7 @@ answers each project from its own cached feed (`~/.himmel/state/config-ui/feeds/
 that ran in it) or `not checked`; it never runs a doctor. `GET /api/feed?project=<name>` answers one of them
 (404 `not-checked` otherwise). A project's data is only as fresh as its own last UI run.
 
-The **Trends** section (HIMMEL-6969) is fed by `GET /api/rollup` (token-gated, GET
+The **Trends** section is fed by `GET /api/rollup` (token-gated, GET
 only), which reads `~/.himmel/state/rollup/weekly.jsonl` (`$WEEKLY_ROLLUP_FILE`
 overrides) as written by `scripts/eval/weekly-rollup.py` and returns
 `{state: ok, cards: [velocity, cost, health]}` (each with the by-week sparkline, the
@@ -79,14 +79,14 @@ stored week and version deltas and one sentence) or `{state: absent, reason}` wh
 file is missing. The deltas are the writer's; nothing is recomputed. The Fleet page's
 Trends tab shows the same cards.
 
-The **How good are our reviewers?** section (HIMMEL-7385) is fed by `GET /api/reviewers` (token-gated, GET
+The **How good are our reviewers?** section is fed by `GET /api/reviewers` (token-gated, GET
 only), which returns `{state: ok, text, writtenAt}` from `~/.himmel/state/review-page/review-page.md`
 (`REVIEW_PAGE_FILE` overrides) as rendered by `scripts/eval/review-page.py` (the weekly
 `judge-accuracy-cadence.sh` writes it) or `{state: absent, reason}` when the file is missing. The browser
 shapes the Markdown: `##` and `###` headings become small headings, the H1 is dropped, `- ` lines become
 list items, other lines become paragraphs, and a "Written <date>" footer is added.
 
-The **Usage windows** card (HIMMEL-5486) is fed by `GET /api/bank` (token-gated,
+The **Usage windows** card is fed by `GET /api/bank` (token-gated,
 GET only), which reads the two caches `bank-preflight` reads and never spawns a
 probe: the Claude usage cache (`$CADENCE_USAGE_CACHE`, else `$CLAUDE_USAGE_CACHE`,
 default `/tmp/claude/statusline-usage-cache.json`, stale after
@@ -179,7 +179,7 @@ were made with. A closed shift also stores its Waiting rows as they stood at a c
 
 ## Board page (`#/board`)
 
-The Board page (HIMMEL-8678) replaced the Roadmap and Kanban pages; the rail has the one Board entry, and the old
+The Board page replaced the Roadmap and Kanban pages; the rail has the one Board entry, and the old
 routes land on it: `#/roadmap` is `#/board`, `#/roadmap/<version>` is `#/board?v=<version>`, `#/kanban` is
 `#/board?v=all`, and the AG-UI rail's `page=roadmap|kanban` landings open it. `GET /api/roadmap` (token-gated, GET only)
 reads its sources live on every request: no static render, no republish. The page draws a drift banner, a version strip
@@ -204,7 +204,7 @@ reads are Jira-backed: with TRACKER set to none, local or GitHub they answer abs
 input is found; otherwise that part answers `{state: "absent", reason}` and the page says so in words (drift: not read, waits for you:
 not read, no Chains tab content): it never shows a made-up count.
 
-`GET /api/roadmap/history?key=<KEY>` (token-gated, GET only, read-only, HIMMEL-8832) feeds the ticket drawer's stage
+`GET /api/roadmap/history?key=<KEY>` (token-gated, GET only, read-only) feeds the ticket drawer's stage
 history. It runs the Jira CLI's `history <KEY> --json` as the key's own project (argv, no shell, no write lock) and answers
 `{key, events: [{at, who, from, to}]}`: the status moves only, oldest first. The key must be `<PROJECT>-<n>` for a project on
 the Board (400 otherwise); a tracker that is not Jira answers 403; a failed read, text that is not JSON or entries that are
@@ -231,14 +231,14 @@ The Workflow page (`#/workflow`) draws the development graph: it mounts the docs
 are `docs/guide/dev-graph/`'s `.json`, `.js` and `.css` only). A walkthrough step rides the fragment beside the
 route, `#/workflow&w=<id>&s=<n>`.
 
-- **Projects (HIMMEL-5494).** The Board covers every Jira project that has a mirror on this machine, wherever config-ui
+- **Projects.** The Board covers every Jira project that has a mirror on this machine, wherever config-ui
   is launched (the himmel checkout or an adopter repo). **The enumeration source is the mirror root,
   `~/.himmel/state/jira-mirror/`: each directory there named by a project key (`HIMMEL/`, `SALUS/`, ...) is a project, with
   its `<KEY>-<n>.md` tickets inside and its `<KEY>.versions.tsv` snapshot beside it.** `JIRA_PROJECT_KEY` no longer narrows
   the Board; `HIMMEL_JIRA_MIRROR`, when set, only relocates the mirror dir of the project `JIRA_PROJECT_KEY` names (else
   HIMMEL). Narrow it with `--project KEY` (repeatable, `bun scripts/config-ui/server.ts --project SALUS --project HIMMEL`) or its
   env twin `HIMMEL_BOARD_PROJECTS=SALUS,HIMMEL` (`himmelctl ui` does not forward `--project` yet, so there the env twin is the way), and on the page with the Project filter. Each card shows its key
-  (`SALUS-12`); versions, Sectors and the plan stay per project: a version name two projects share is two entries in the
+  (`PROJ-12`); versions, Sectors and the plan stay per project: a version name two projects share is two entries in the
   strip, shown `v1.1.3 (SALUS)` and `v1.1.3 (HIMMEL)` while more than one project is on the Board (the default view is then
   every version, not one project's running version). The plan tables name a ticket by its full key. The chain and drift reads
   of `GET /api/board` still read the one mirror `JIRA_PROJECT_KEY` (else HIMMEL) names. The rail's Board link is lit when any project
@@ -251,7 +251,7 @@ route, `#/workflow&w=<id>&s=<n>`.
 - **Sync plan.** `legSync` lists the Jira CLI commands that mirror each worker marker onto its ticket (flag and comment
   a stuck worker, clear the flag on resume, note READY/WRAPPED once). The chief kit is the one writer; workers never
   write Jira and the sync plan never does; only the lane writes below change Jira from this page.
-- **Writes (HIMMEL-5491).** The Board's lanes are writable: dragging a card to another column transitions the ticket in
+- **Writes.** The Board's lanes are writable: dragging a card to another column transitions the ticket in
   Jira, and the per-card Sector select sets its Sector with `jira edit <key> --sector` (the CLI checks the name against
   the live option list and has no way to clear one, so "no sector" is not offered as a write). Both go through
   `POST /api/roadmap/write` (token gate, same-origin and JSON checks, the machine write lock, one audit row per write),
@@ -261,7 +261,7 @@ route, `#/workflow&w=<id>&s=<n>`.
   never a default; `CONFIG_UI_JIRA_CLI` overrides the CLI path, tests use a stub), then runs an
   incremental `jira mirror` over that project's mirror so the board re-reads Jira; the reply says `mirror: refreshed|stale`. A refusal moves the
   card back and shows the reason above the board.
-- **Local tracker (HIMMEL-5495).** With `TRACKER=local` (or no `TRACKER` and no `JIRA_PROJECT_KEY`, as the resolver
+- **Local tracker.** With `TRACKER=local` (or no `TRACKER` and no `JIRA_PROJECT_KEY`, as the resolver
   `project-mode.mjs` decides), the Board reads the local tracker store through the tracker seam
   (`local-tracker.ts` runs `scripts/lib/tracker.sh` as an argv child, never a shell string; the store is `TRACKER_STORE`,
   else `<handover root>/<user>/<repo>/tracker`). Cards keep their generated `LOCAL-<n>` id, `fix_version` is the version
@@ -277,7 +277,7 @@ route, `#/workflow&w=<id>&s=<n>`.
   mirror is lying around.
 - **No tracker.** With `TRACKER=none`, `GET /api/sources` lists `none`: the rail keeps the Board and it says no tracker
   is configured instead of drawing an empty board.
-- **Sector grouping (HIMMEL-8379).** A ticket groups under the mirror's `sector:` line; a retired `theme-<slug>` label is the
+- **Sector grouping.** A ticket groups under the mirror's `sector:` line; a retired `theme-<slug>` label is the
   fallback, then the plan overlay; a ticket with none is under "(no sector)". The wire keys (`themes`, `theme`, `unthemed`)
   keep their names, the page shows Sector.
 - **Librarian.** Stale In Progress, version drift, no sector (it proposes `jira edit <key> --sector`), released-but-open and duplicate titles, as proposals

@@ -7,7 +7,7 @@ hermes's one-shot dispatch path loads the PROFILE config, not the root
 config. The root config carries the `model_aliases:` block (qwen aliases +
 openrouter fallback target); a profile cloned before those aliases existed
 never picks up new/changed aliases on its own — a bare `-m qwen-plus` then
-falls through to catalog detection and breaks (HIMMEL-737). This keeps the
+falls through to catalog detection and breaks. This keeps the
 profile's block synced to the root's on every install/refresh.
 
 Behavior:

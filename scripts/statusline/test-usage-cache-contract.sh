@@ -66,7 +66,7 @@ mk_empty_fleet_stub() {
 
 STATUSLINE_DIR="$(cd "$(dirname "$0")" && pwd)"
 PRODUCER="$STATUSLINE_DIR/usage-cache-producer.sh"
-COMPOSER="$STATUSLINE_DIR/hud-custom-lines.sh"   # HIMMEL-718 Task 2.3 real driver
+COMPOSER="$STATUSLINE_DIR/hud-custom-lines.sh"   # the real driver
 CAP_RESET="$STATUSLINE_DIR/../handover/cap-reset-time.sh"
 AUTO_ARM="$STATUSLINE_DIR/../hooks/auto-arm-on-cap.sh"
 RESUME_SLOT="$STATUSLINE_DIR/../handover/resume-slot.sh"

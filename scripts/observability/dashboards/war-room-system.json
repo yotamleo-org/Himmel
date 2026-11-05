@@ -134,7 +134,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "description": "git rev-list --count @{u}..HEAD in the luna vault clone, no fetch (HIMMEL-1199). Omitted (no data) when the vault has no upstream configured. The exact signal for the incident this ticket detects: an auto-sync push silently blocked, commits piling up unpushed.",
+      "description": "git rev-list --count @{u}..HEAD in the luna vault clone, no fetch. Omitted (no data) when the vault has no upstream configured. The exact signal for the incident this ticket detects: an auto-sync push silently blocked, commits piling up unpushed.",
       "fieldConfig": {
         "defaults": {
           "mappings": [],
@@ -161,7 +161,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "description": "Line count of git status --porcelain in the luna vault clone (HIMMEL-1199) — catches a commit-gate block, complementing the push-gate signal above.",
+      "description": "Line count of git status --porcelain in the luna vault clone — catches a commit-gate block, complementing the push-gate signal above.",
       "fieldConfig": {
         "defaults": {
           "mappings": [],
@@ -209,8 +209,8 @@
     {
       "gridPos": { "h": 5, "w": 6, "x": 18, "y": 25 },
       "id": 18,
-      "options": { "code": { "language": "plaintext", "showLineNumbers": false, "showMiniMap": false }, "content": "RAM process trees, orphan detection, and per-subtree attribution are intentionally out of scope for HIMMEL-922. They belong to HIMMEL-924.", "mode": "markdown" },
-      "title": "HIMMEL-924 placeholder",
+      "options": { "code": { "language": "plaintext", "showLineNumbers": false, "showMiniMap": false }, "content": "RAM process trees, orphan detection, and per-subtree attribution are intentionally out of scope for this dashboard and not built yet.", "mode": "markdown" },
+      "title": "Placeholder",
       "type": "text"
     },
     {
@@ -242,7 +242,7 @@
       },
       "gridPos": { "h": 6, "w": 24, "x": 0, "y": 31 },
       "id": 20,
-      "description": "Real bank sources (HIMMEL-1000): claude = statusline usage cache (5h + weekly), codex = newest rollout rate_limits (weekly; used_percent emitted verbatim), glm = quota-gauge ledger (5h). One bar per lanes.json lane × governing window. Lanes without a machine-readable quota are omitted — /metrics carries an explicit omit comment per lane.",
+      "description": "Real bank sources: claude = statusline usage cache (5h + weekly), codex = newest rollout rate_limits (weekly; used_percent emitted verbatim), glm = quota-gauge ledger (5h). One bar per lanes.json lane × governing window. Lanes without a machine-readable quota are omitted — /metrics carries an explicit omit comment per lane.",
       "options": { "displayMode": "gradient", "maxVizHeight": 300, "minVizHeight": 10, "minVizWidth": 0, "namePlacement": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showUnfilled": true, "valueMode": "color" },
       "targets": [
         { "expr": "lane_quota_used_pct", "legendFormat": "{{lane}} {{window}}", "refId": "A" }
@@ -269,7 +269,7 @@
       },
       "gridPos": { "h": 5, "w": 6, "x": 0, "y": 38 },
       "id": 25,
-      "description": "Claude Code sessions with an unpaired start row whose transcript is still advancing (HIMMEL-1052). Interactive/foreground sessions only — pipeline workers are the Flows row, dispatched GLM/claudex workers keep their own per-session meta.json.",
+      "description": "Claude Code sessions with an unpaired start row whose transcript is still advancing. Interactive/foreground sessions only — pipeline workers are the Flows row, dispatched GLM/claudex workers keep their own per-session meta.json.",
       "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [
         { "expr": "sum(session_active_total)", "legendFormat": "live", "refId": "A" }

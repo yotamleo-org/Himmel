@@ -135,7 +135,7 @@ test('normalizeRateLimits reads planType out of the BUCKET (the plan=unknown def
   assert.equal(normalizeRateLimits({ ...LIVE_RESULT, planType: 'ignored-top-level' }).planType, 'prolite');
 });
 
-test('normalizeRateLimits keeps EVERY limitId with its own reset (HIMMEL-1725)', () => {
+test('normalizeRateLimits keeps EVERY limitId with its own reset', () => {
   const { limits } = normalizeRateLimits(LIVE_RESULT);
   assert.deepEqual(limits, [
     { limitId: 'codex/primary', usedPercent: 23, windowDurationMins: 10080, resetsAt: 1787198028 },
@@ -189,7 +189,7 @@ test('readCodexBankCache: unparseable/malformed caches are unmeasurable, never f
   assert.equal(readCodexBankCache(noStamp, now, 21600).kind, 'unmeasurable');
 });
 
-test('readCodexBankCache drops a limit whose window already reset (HIMMEL-1689 hole 1)', () => {
+test('readCodexBankCache drops a limit whose window already reset (hole 1)', () => {
   const now = Date.now();
   const payload = {
     limits: [
@@ -225,7 +225,7 @@ test('readCodexBankCache: the WORST limit on a shared window governs (no fail-op
   ]);
 });
 
-test('per-limit resetsAt stay DISTINCT through the detail line (HIMMEL-1725)', () => {
+test('per-limit resetsAt stay DISTINCT through the detail line', () => {
   const now = Date.now();
   const result = readCodexBankCache(JSON.stringify(twoLimitPayload(now)), now, 21600);
   const detail = formatMeasured(result.readings);

@@ -15,7 +15,7 @@ afterAll(() => rmSync(sandboxHome, { recursive: true, force: true }));
 import { exitFor } from './exit-codes.js';
 import { BitbucketHttpError } from '../client.js';
 
-describe('exitFor (command-layer error→exit mapping, HIMMEL-341)', () => {
+describe('exitFor (command-layer error→exit mapping)', () => {
   it('maps a listed status to its special code, surfacing the message verbatim', () => {
     // issue create / issue get: 404 (issues-disabled or gone) → exit 3.
     const err = new BitbucketHttpError(

@@ -1471,7 +1471,7 @@ export function collectionHealth(allRecords, sinceIso, nowIso, span = observedDa
 
 function printReport(summary) {
   const l = [];
-  l.push('shadow ledger — HIMMEL-1529 R0');
+  l.push('shadow ledger — R0');
   l.push(`  window            ${summary.span_days.toFixed(1)} days`);
   l.push(`  requests recorded ${summary.requests}`);
   const damaged = summary.integrity && !summary.integrity.intact;
@@ -1503,7 +1503,7 @@ function printReport(summary) {
     l.push('               (see drops.jsonl). The surviving chain still validates — it can only');
     l.push('               attest rows that landed — so these counts are a floor. Drops do NOT');
     l.push('               expire, and deleting drops.jsonl does not make the lost event exist —');
-    l.push('               restoring a rate honestly needs the checkpoint in HIMMEL-1547.');
+    l.push('               restoring a rate honestly needs the recorder checkpoint (not built yet).');
     if (summary.health_channel_unreadable) {
       l.push('               The health channel itself could not be READ, so the drop count is');
       l.push('               a floor on the floor.');

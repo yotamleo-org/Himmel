@@ -240,7 +240,7 @@ build() {
         || die "a provisioned wrapper is empty in $CLONE_NAME — not snapshotting"
     vm_poweroff || die "$CLONE_NAME did not power off — not snapshotting a running VM"
     (cd "$HOME" && "$VBOXMANAGE" snapshot "$CLONE_NAME" take "$RUNNER_SNAPSHOT" \
-        --description "HIMMEL-5037: ephemeral Actions runner image, unregistered") \
+        --description "ephemeral Actions runner image, unregistered") \
         || die "could not take $RUNNER_SNAPSHOT"
     echo "ci-runner: $CLONE_NAME@$RUNNER_SNAPSHOT baked"
 }

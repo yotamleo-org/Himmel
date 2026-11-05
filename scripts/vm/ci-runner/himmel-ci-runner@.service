@@ -1,5 +1,5 @@
 [Unit]
-Description=himmel-vm Actions runner loop for himmel-ci-%i (HIMMEL-5037)
+Description=himmel-vm Actions runner loop for himmel-ci-%i
 # Started and stopped only by scripts/handover/chief-kit/vm-runner.sh; the
 # loop itself exits 0 when the repo variable is off or the stop file exists.
 

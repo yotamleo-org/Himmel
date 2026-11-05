@@ -1,5 +1,5 @@
 {
-  "_comment": "Ledger registry (HIMMEL-4290). One row per append-only ledger himmel writes. Linted by scripts/observability/test-ledgers-registry.sh: writer/readers must exist and reference the ledger, every ~/.himmel ledger a script spells out must have a row, and a non-grandfathered row must carry min_envelope. 'envelope' lists which min_envelope fields the rows carry today; rows predating the registry are grandfathered.",
+  "_comment": "Ledger registry. One row per append-only ledger himmel writes. Linted by scripts/observability/test-ledgers-registry.sh: writer/readers must exist and reference the ledger, every ~/.himmel ledger a script spells out must have a row, and a non-grandfathered row must carry min_envelope. 'envelope' lists which min_envelope fields the rows carry today; rows predating the registry are grandfathered.",
   "v": 1,
   "min_envelope": ["v", "ts", "host", "source", "kind"],
   "ledgers": [

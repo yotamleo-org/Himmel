@@ -98,7 +98,7 @@ function computeNoUpstreamHint(branch, exec) {
   } catch {
     return undefined;
   }
-  return 'branch has local commits but no upstream — GLM lane push-block? the parent must push before verifying (HIMMEL-1641)';
+  return 'branch has local commits but no upstream — GLM lane push-block? the parent must push before verifying';
 }
 
 // Pure core. `exec(cmd, args)` returns stdout or throws — injected by tests.
@@ -158,7 +158,7 @@ function appendLedger(result) {
 // exists to emit (CR round, PR #1608).
 function main() {
   const args = process.argv.slice(2);
-  // ponytail: branch argv is not validated for whitespace or control chars; callers pass existing local branches, which git ref rules already constrain, so validate direct CLI argv, HIMMEL-1632
+  // ponytail: branch argv is not validated for whitespace or control chars; callers pass existing local branches, which git ref rules already constrain, so validate direct CLI argv
   let branch = '', ticket = '', ledger = true;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];

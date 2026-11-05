@@ -172,9 +172,9 @@ PRE_OP="$(jq -c '.extraKnownMarketplaces.flagged' "$SF")"
 ( cd "$WORK" && PATH="$STUB_DIR:$PATH" bash "$script" --scope local --template "$TEMPLATE" ) \
   >/dev/null 2>&1 || fail "operator-entry run exited non-zero"
 [ "$(jq -c '.extraKnownMarketplaces.flagged' "$SF")" = "$PRE_OP" ] \
-  || fail "HIMMEL-3541: the operator's pre-existing flagged entry was changed"
+  || fail "the operator's pre-existing flagged entry was changed"
 [ "$(jq -r '.extraKnownMarketplaces.unflagged.source.repo' "$SF")" = "a/unflagged" ] \
-  || fail "HIMMEL-3541: the run did not register unflagged beside the operator entry"
+  || fail "the run did not register unflagged beside the operator entry"
 [ "$FAILED" -eq 0 ] && echo "ok: an operator's pre-existing entry is left as it was"
 
 # A link pre-planted at the OLD predictable temp path
@@ -188,11 +188,11 @@ printf 'CANARY-UNCHANGED\n' > "$CANARY"
 plant_attack_link "$SF.autoupdate.tmp" "$CANARY"
 ( cd "$WORK" && PATH="$STUB_DIR:$PATH" bash "$script" --scope local --template "$TEMPLATE" ) \
   >/dev/null 2>&1 || fail "HIMMEL-2324 run exited non-zero"
-[ "$(cat "$CANARY")" = "CANARY-UNCHANGED" ] || fail "HIMMEL-2324: write landed through the predictable temp path onto the canary file"
-[ -f "$SF" ] || fail "HIMMEL-2324: settings file missing after patch"
-[ ! -L "$SF" ] || fail "HIMMEL-2324: settings file ended up as a symlink"
+[ "$(cat "$CANARY")" = "CANARY-UNCHANGED" ] || fail "write landed through the predictable temp path onto the canary file"
+[ -f "$SF" ] || fail "settings file missing after patch"
+[ ! -L "$SF" ] || fail "settings file ended up as a symlink"
 [ "$(jq -r '.extraKnownMarketplaces.flagged.autoUpdate' "$SF")" = "true" ] \
-  || fail "HIMMEL-2324: intended autoUpdate patch did not land"
+  || fail "intended autoUpdate patch did not land"
 [ "$FAILED" -eq 0 ] && echo "ok: HIMMEL-2324 — pre-planted link at the predictable temp path is not written through"
 
 # Exclusivity primitive, not just naming.

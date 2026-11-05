@@ -94,7 +94,7 @@ test("POSIX: a child spawned WITHOUT its own group still gets the direct signal 
   }
 });
 
-test("POSIX: descendants are reaped even after the direct child has already exited (HIMMEL-1835 hole 2)", async () => {
+test("POSIX: descendants are reaped even after the direct child has already exited (hole 2)", async () => {
   // The child exits immediately; its background grandchild does not. The old
   // shape returned early on `exitCode !== null` and cleaned up nothing --
   // exactly the case where the MCP fleet is left running. A pgid stays

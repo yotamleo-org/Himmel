@@ -403,7 +403,7 @@ describe('it will not wire hooks that point at a recorder that is not there', ()
     assert.equal(r.status, 1);
     assert.match(r.stderr, /no recorder at/);
     assert.match(r.stderr, /not part of the portable core yet/);
-    assert.match(r.stderr, /HIMMEL-2756/);
+    assert.match(r.stderr, /shipping it for adopted projects is a follow-up/);
     assert.match(r.stderr, /supported in a himmel checkout/);
     assert.equal(fs.readFileSync(f, 'utf8'), original, 'nothing is written');
   });
@@ -828,7 +828,7 @@ describe('a noncanonical ledger invocation is refused, not silently doubled', ()
 // nothing, while `trust status` reports N/N. The handshake asks the artefact
 // at the resolved path to PROVE it implements every verb this tool wires, and
 // fails closed on every answer it cannot trust.
-describe('the capability handshake (HIMMEL-1560)', () => {
+describe('the capability handshake', () => {
   const REQUIRED = ENTRIES.map((s) => s.verb);
 
   // A fixture whose recorder is a hand-written script rather than the real one,

@@ -61,7 +61,7 @@ test("board: serves the model of the named console's doc, with no nonce and no l
 });
 
 // The error text is the board script's last stderr line, so it can carry a credential. The value has no token shape: only the literal list masks it.
-test("board: a failed build's error text is masked with the keyring's secrets too (HIMMEL-8565)", async () => {
+test("board: a failed build's error text is masked with the keyring's secrets too", async () => {
   const dir = mkdtempSync(join(tmpdir(), "agui-board-kr-"));
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   const handovers = join(dir, "handovers");

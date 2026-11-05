@@ -9,7 +9,7 @@ policies:
     group_by: ['alertname', 'flow', 'task', 'class', 'stage', 'job']
     group_wait: 30s
     group_interval: 5m
-    repeat_interval: 12h  # HIMMEL-2130 (operator-directed, 2026-08-26): was 4h
+    repeat_interval: 12h  # operator-directed 2026-08-26: was 4h
     routes:
       # severity=warn alerts (HimmelAgentTreeRamRunaway,
       # HimmelSessionDead) still deliver to the same

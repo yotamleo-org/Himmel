@@ -265,7 +265,7 @@ export function buildSummary(runs) {
     // direct callers, keeping a PENDING run from being scored as a fail
     // (dragging the cell's pass rate) structurally unreachable.
     if (isVerdictUndecided(r)) {
-      throw new Error(`buildSummary: undecided verdict for ${r.run_id} reached the summary — score only classifyRuns().scored (HIMMEL-1723)`);
+      throw new Error(`buildSummary: undecided verdict for ${r.run_id} reached the summary — score only classifyRuns().scored`);
     }
     const cell = r.cell;
     if (!cells[cell]) {
@@ -311,7 +311,7 @@ export function buildSummary(runs) {
 const THREATS_TO_VALIDITY = `## Threats to validity
 
 Reproduced from spec §2.4 (residual confound table), §3.3.1 (axis
-comparability), and §4.4 (fixture-scale claim limit) — HIMMEL-1723.
+comparability), and §4.4 (fixture-scale claim limit).
 
 | | Haiku cell | luna cell |
 |---|---|---|
@@ -406,7 +406,7 @@ export function renderReport({ runs, tokenRowsByRunId = new Map(), unknown = {} 
   }
   if (completeness.length > 0) {
     lines.push('## Data completeness', '');
-    lines.push('Incomplete data is surfaced here as UNKNOWN, never silently zero-filled (HIMMEL-1723).');
+    lines.push('Incomplete data is surfaced here as UNKNOWN, never silently zero-filled.');
     lines.push(...completeness, '');
   }
 

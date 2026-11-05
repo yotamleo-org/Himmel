@@ -396,7 +396,7 @@ if grep -q '_Crystallized by stub' "$NOTE"; then pass "success: Summary section 
 if grep -q '^crystallized_at: 2026-06-28T12:00:00Z$' "$NOTE"; then pass "success: crystallized_at set"; else fail "success: crystallized_at not set"; fi
 if [ "$ID_BEFORE" = "$(identity_lines "$NOTE")" ]; then pass "success: identity frontmatter byte-stable"; else fail "success: identity frontmatter changed"; fi
 if grep -q '^CLAUDE_END_SESSION_WIKI=0$' "$ENVD" 2>/dev/null; then pass "recursion-guard: CLAUDE_END_SESSION_WIKI=0 exported to claude"; else fail "recursion-guard: end-session-wiki env not set"; fi
-if grep -q '^HIMMEL_WHERE_ARE_WE=0$' "$ENVD" 2>/dev/null; then pass "recursion-guard: HIMMEL_WHERE_ARE_WE=0 exported (HIMMEL-572 fold-in)"; else fail "recursion-guard: where-are-we env not set"; fi
+if grep -q '^HIMMEL_WHERE_ARE_WE=0$' "$ENVD" 2>/dev/null; then pass "recursion-guard: HIMMEL_WHERE_ARE_WE=0 exported (fold-in)"; else fail "recursion-guard: where-are-we env not set"; fi
 rm -rf "$SB"
 
 # --- Case 2: fail — note unchanged, crystallized stays false -----------------

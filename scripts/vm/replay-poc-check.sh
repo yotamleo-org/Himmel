@@ -78,7 +78,7 @@ echo "replay-poc-check: doctor ok (key ${KEY:0:12}, recorded=$recorded, model ca
 # shellcheck disable=SC2329  # invoked indirectly by replay_run
 record_cmd() {
   HIMMEL_REGISTRY_DIR="$W/registry" bash "$SUT" \
-    --role replay-poc --ticket HIMMEL-5420 --worktree "$W" --cwd "$W" \
+    --role replay-poc --ticket replay-poc --worktree "$W" --cwd "$W" \
     --artifact "$ARTIFACT" --permission-mode acceptEdits \
     --allowed-tools "Write" --model "$MODEL" --prompt-file "$PROMPT"
 }

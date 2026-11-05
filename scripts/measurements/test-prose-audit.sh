@@ -119,19 +119,19 @@ if node -e '
 const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
 const row = d.rows.find((item) => item.file === "marketplace/plugins/bigcmd/commands/big.md");
 process.exit(row && row.bytes > 6144 && row.flagged ? 0 : 1);
-' <<< "$json_out"; then ok "marketplace plugin commands/*.md file is scanned and flagged (HIMMEL-1939 finding 1)"; else bad "marketplace plugin commands/*.md file was missing from rows"; fi
+' <<< "$json_out"; then ok "marketplace plugin commands/*.md file is scanned and flagged"; else bad "marketplace plugin commands/*.md file was missing from rows"; fi
 
 if node -e '
 const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
 const row = d.rows.find((item) => item.file === "plugins/himmel-test/commands/big.md");
 process.exit(row && row.bytes > 6144 && row.flagged ? 0 : 1);
-' <<< "$json_out"; then ok "top-level plugins/*/commands/*.md file is scanned and flagged (HIMMEL-1939 finding 1)"; else bad "top-level plugins/*/commands/*.md file was missing from rows"; fi
+' <<< "$json_out"; then ok "top-level plugins/*/commands/*.md file is scanned and flagged"; else bad "top-level plugins/*/commands/*.md file was missing from rows"; fi
 
 if node -e '
 const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
 const row = d.rows.find((item) => item.file === "plugins/himmel-test/skills/widget/SKILL.md");
 process.exit(row && row.bytes > 6144 && row.flagged ? 0 : 1);
-' <<< "$json_out"; then ok "top-level plugins/*/skills/**/SKILL.md file is scanned and flagged (HIMMEL-1939 finding 1)"; else bad "top-level plugins/*/skills/**/SKILL.md file was missing from rows"; fi
+' <<< "$json_out"; then ok "top-level plugins/*/skills/**/SKILL.md file is scanned and flagged"; else bad "top-level plugins/*/skills/**/SKILL.md file was missing from rows"; fi
 
 if node -e '
 const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
@@ -214,7 +214,7 @@ bad_flag_out="$(bash "$AUDIT" --not-a-flag 2>&1)"; bad_flag_rc=$?
 if [ "$bad_flag_rc" -ne 0 ] && grepq "$bad_flag_out" 'unknown flag'; then ok "bad flag returns non-zero"; else bad "bad flag did not return a reporter error"; fi
 
 if grep -Eq '\bmapfile\b|\breadarray\b|shopt -s globstar' "$AUDIT"; then
-  bad "script still uses a bash-4-only construct (mapfile/readarray/globstar) — bash 3.2 hosts would silently degrade (HIMMEL-1939 finding 2)"
+  bad "script still uses a bash-4-only construct (mapfile/readarray/globstar) — bash 3.2 hosts would silently degrade"
 else
   ok "no bash-4-only discovery/sort construct (mapfile/readarray/globstar) remains"
 fi
@@ -244,7 +244,7 @@ chmod +x "$FAKEBIN/find"
 
 fail_out="$(PATH="$FAKEBIN:$PATH" bash "$AUDIT" 2>&1)"; fail_rc=$?
 if [ "$fail_rc" -ne 0 ] && ! grepq "$fail_out" '^summary:'; then
-  ok "discovery failure below a readable tree fails the reporter closed, non-zero, no summary line (HIMMEL-1939 finding 2)"
+  ok "discovery failure below a readable tree fails the reporter closed, non-zero, no summary line"
 else
   bad "discovery failure did not fail closed (rc=$fail_rc): $fail_out"
 fi
@@ -261,7 +261,7 @@ chmod +x "$SORTBIN/sort"
 
 sort_fail_out="$(PATH="$SORTBIN:$PATH" bash "$AUDIT" 2>&1)"; sort_fail_rc=$?
 if [ "$sort_fail_rc" -ne 0 ] && ! grepq "$sort_fail_out" '^summary:'; then
-  ok "sort failure fails the reporter closed, non-zero, no summary line (HIMMEL-1939 round 3 finding 1)"
+  ok "sort failure fails the reporter closed, non-zero, no summary line"
 else
   bad "sort failure did not fail closed (rc=$sort_fail_rc): $sort_fail_out"
 fi
@@ -277,7 +277,7 @@ chmod +x "$MKTEMPBIN/mktemp"
 
 mktemp_fail_out="$(PATH="$MKTEMPBIN:$PATH" bash "$0" 2>&1)"; mktemp_fail_rc=$?
 if [ "$mktemp_fail_rc" -ne 0 ] && grepq "$mktemp_fail_out" 'mktemp'; then
-  ok "unchecked mktemp -d failure aborts before any fixture write (HIMMEL-1939 round 3 finding 2)"
+  ok "unchecked mktemp -d failure aborts before any fixture write"
 else
   bad "mktemp -d failure did not abort cleanly (rc=$mktemp_fail_rc): $mktemp_fail_out"
 fi
@@ -301,7 +301,7 @@ chmod +x "$FAKEAWKBIN/awk"
 
 awk_fail_out="$(PATH="$FAKEAWKBIN:$PATH" bash "$AUDIT" 2>&1)"; awk_fail_rc=$?
 if [ "$awk_fail_rc" -ne 0 ] && ! grepq "$awk_fail_out" '^summary:'; then
-  ok "awk failure on the fence-ratio threshold check fails the reporter closed, non-zero, no summary line (HIMMEL-1939 round 4 finding 1)"
+  ok "awk failure on the fence-ratio threshold check fails the reporter closed, non-zero, no summary line"
 else
   bad "awk threshold-check failure did not fail closed (rc=$awk_fail_rc): $awk_fail_out"
 fi

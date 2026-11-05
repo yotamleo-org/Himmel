@@ -35,8 +35,8 @@ import pathlib
 import sys
 
 source = pathlib.Path(sys.argv[1]).read_text()
-start_marker = "# >>> HIMMEL-3708 backup prune protocol"
-end_marker = "# <<< HIMMEL-3708 backup prune protocol"
+start_marker = "# >>> backup prune protocol"
+end_marker = "# <<< backup prune protocol"
 try:
     start = source.index(start_marker)
     end = source.index(end_marker, start)

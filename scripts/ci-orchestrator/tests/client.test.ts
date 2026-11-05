@@ -86,7 +86,7 @@ describe("localRoute (client-side local-exec decision, protect-local)", () => {
   });
 });
 
-describe("completeOnVm (HIMMEL-8439)", () => {
+describe("completeOnVm", () => {
   test("sends the claimant id with /complete", async () => {
     const post = vi.fn<HttpPostFn>(async () => ({ ok: true }));
     expect(await completeOnVm("http://vm:9000", "tok", "j1", "success", post, "local")).toBe("completed");
@@ -104,7 +104,7 @@ describe("completeOnVm (HIMMEL-8439)", () => {
   });
 });
 
-describe("holdLease (HIMMEL-8438)", () => {
+describe("holdLease", () => {
   test("renews on an interval while the job runs and stops when told", async () => {
     vi.useFakeTimers();
     try {

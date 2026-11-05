@@ -81,7 +81,7 @@ test('evaluatePreflight reports BOTH reasons when both banks breach', () => {
   assert.equal(result.reasons.length, 2);
 });
 
-test('evaluateDelta reports UNMEASURED (stale source) when post <= pre (spec §6.2 / HIMMEL-1689)', () => {
+test('evaluateDelta reports UNMEASURED (stale source) when post <= pre (spec §6.2)', () => {
   assert.deepEqual(evaluateDelta(50, 50), { status: 'UNMEASURED', reason: 'stale source (post <= pre)' });
   assert.deepEqual(evaluateDelta(50, 40), { status: 'UNMEASURED', reason: 'stale source (post <= pre)' });
 });

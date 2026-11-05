@@ -51,7 +51,7 @@ expected_sorted=$(echo "$expected_apt_tools" | tr ' ' '\n' | sort | tr '\n' ' ' 
 grep -q 'NVM_DIR' "$target" || fail "caseA: nvm provisioning missing"
 grep -q 'nvm install' "$target" || fail "caseA: nvm install call missing"
 grep -q 'astral-sh/uv/releases/download' "$target" || fail "caseA: uv provisioning missing"
-grep -q 'oven-sh/bun/releases/download' "$target" || fail "caseA: bun provisioning missing (HIMMEL-3068)"
+grep -q 'oven-sh/bun/releases/download' "$target" || fail "caseA: bun provisioning missing"
 grep -q 'claude-code-releases' "$target" || fail "caseA: claude CLI provisioning missing"
 grep -q 'rtk-ai/rtk/releases/download' "$target" || fail "caseA: rtk provisioning missing"
 echo "ok: caseA every tool the old ubuntu.sh provisioned (${expected_sorted}, nvm, uv, bun, claude, rtk) is still provisioned"

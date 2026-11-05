@@ -254,7 +254,7 @@ else
     echo "FAIL - ts-extensionless: dead-parts.sh rc=$rctsext (expected 0): $OUTTSEXT"
     fails=$((fails + 1))
 fi
-check_contains "ts-extensionless: a .ts entry referenced only via an extensionless import specifier lands WIRED, not DEAD (HIMMEL-3550)" \
+check_contains "ts-extensionless: a .ts entry referenced only via an extensionless import specifier lands WIRED, not DEAD" \
     "$OUTTSEXT" $'script\textless-src\tscripts/extless-src.ts\tWIRED'
 
 # --- malformed edge timestamps: a transcript whose sorted-first (head) or
@@ -279,9 +279,9 @@ else
     echo "FAIL - malformed-edge: dead-parts.sh rc=$rcmal (expected 0): $OUTMAL"
     fails=$((fails + 1))
 fi
-check_contains "malformed-edge: a transcript with a malformed HEAD timestamp still counts its in-window Bash call as USED, not skipped as bad-timestamp (HIMMEL-3547)" \
+check_contains "malformed-edge: a transcript with a malformed HEAD timestamp still counts its in-window Bash call as USED, not skipped as bad-timestamp" \
     "$OUTMAL" $'script\tmalformed-head\tscripts/malformed-head.sh\tUSED'
-check_contains "malformed-edge: a transcript with a malformed TAIL timestamp still counts its in-window Bash call as USED, not skipped as bad-timestamp (HIMMEL-3547)" \
+check_contains "malformed-edge: a transcript with a malformed TAIL timestamp still counts its in-window Bash call as USED, not skipped as bad-timestamp" \
     "$OUTMAL" $'script\tmalformed-tail\tscripts/malformed-tail.sh\tUSED'
 check_contains "malformed-edge: the WARNING names the fallback, not a silent skip" \
     "$OUTMAL" "dead-parts: WARNING: 2 transcript(s) had a malformed head/tail timestamp - fell back to the nearest valid one instead of skipping the file"
@@ -301,7 +301,7 @@ git -C "$JQORDERREPO" -c user.email=fixture@test -c user.name=fixture commit -q 
     || { echo "FAIL - jqorder repo git commit"; exit 1; }
 export SCORECARD_PROJECTS_DIR="$HERE/fixtures/dead-parts/malformed-jq-order-transcripts"
 OUTJQORDER=$("$SCRIPT" --since 2026-09-15T00:00:00Z --repo-root "$JQORDERREPO" 2>&1)
-check_contains "malformed-jq-order: a valid in-window Bash record emitted before a later malformed-timestamp record still counts as USED (HIMMEL-3547)" \
+check_contains "malformed-jq-order: a valid in-window Bash record emitted before a later malformed-timestamp record still counts as USED" \
     "$OUTJQORDER" $'script\tmalformed-jq-order\tscripts/malformed-jq-order.sh\tUSED'
 
 # --- malformed BOTH edges: when the sorted-first AND sorted-last timestamp

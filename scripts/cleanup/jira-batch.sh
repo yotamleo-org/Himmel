@@ -19,7 +19,7 @@
 # Titles are never edited. JIRA_PROJECT_KEY is required.
 set -uo pipefail
 
-# ponytail: the cap lives in this runner, HIMMEL-6778 (bulk-edit guard in the jira CLI) replaces it.
+# ponytail: the cap lives in this runner, a bulk-edit guard in the jira CLI replaces it.
 CAP=20
 LIST_LIMIT=500
 

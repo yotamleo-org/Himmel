@@ -353,7 +353,7 @@ test("secret-shaped strings in the journal are redacted before they leave the se
   expect(text).not.toContain(canary);
 });
 
-test("a value only the keyring holds is masked in the stream (HIMMEL-8565)", async () => {
+test("a value only the keyring holds is masked in the stream", async () => {
   const h = home();
   const kr = "kr-only-" + "q7x2".repeat(2);
   const k = stubKeyring(h);
@@ -367,7 +367,7 @@ test("a value only the keyring holds is masked in the stream (HIMMEL-8565)", asy
   expect(text).not.toContain(kr);
 });
 
-test("a keyring value holding a quote and a backslash is masked in a tool call's arguments (HIMMEL-8907)", async () => {
+test("a keyring value holding a quote and a backslash is masked in a tool call's arguments", async () => {
   const h = home();
   const kr = 'kr"only\\q7x2';
   const k = stubKeyring(h);
@@ -382,7 +382,7 @@ test("a keyring value holding a quote and a backslash is masked in a tool call's
 });
 
 // a secret-named server env value is a redaction literal as a whole, a newline included (the keyring resolver skips multi-line values)
-test("a server env secret holding a quote, a backslash and a newline is masked in a tool call's arguments (HIMMEL-8907)", async () => {
+test("a server env secret holding a quote, a backslash and a newline is masked in a tool call's arguments", async () => {
   const h = home();
   const kr = 'kr"only\\q7x2\nq7x2-tail';
   const body = readFileSync(join(FIX, "happy-path.jsonl"), "utf8").replace('"command":"ls"', `"command":${JSON.stringify("echo " + kr)}`);
@@ -395,7 +395,7 @@ test("a server env secret holding a quote, a backslash and a newline is masked i
 });
 
 // the stub keyring is one line per item, so the newline row masks at the mapper with a literal-replacing redactor
-test("the mapper masks a tool call's argument holding a quote, a backslash and a newline as a parsed value (HIMMEL-8907)", () => {
+test("the mapper masks a tool call's argument holding a quote, a backslash and a newline as a parsed value", () => {
   const kr = 'kr"only\\q7x2\nq7x2-tail';
   const line = JSON.stringify({ type: "assistant", uuid: "a-1", timestamp: "2026-10-06T10:00:00.000Z", sessionId: "s",
     message: { id: "m1", role: "assistant", content: [{ type: "tool_use", id: "toolu_x", name: "Bash", input: { command: "echo " + kr, nested: [kr] } }] } });
@@ -405,7 +405,7 @@ test("the mapper masks a tool call's argument holding a quote, a backslash and a
   expect(args.delta).not.toContain("q7x2");
 });
 
-test("the mapper keeps the non-string arguments of a tool call as they are (HIMMEL-8907)", () => {
+test("the mapper keeps the non-string arguments of a tool call as they are", () => {
   const line = JSON.stringify({ type: "assistant", uuid: "a-1", timestamp: "2026-10-06T10:00:00.000Z", sessionId: "s",
     message: { id: "m1", role: "assistant", content: [{ type: "tool_use", id: "toolu_x", name: "Bash", input: { command: "echo kr", timeout: 5, flag: true, none: null } }] } });
   const redact = (v: unknown) => (typeof v === "string" ? v.split("kr").join("‹redacted›") : v);
@@ -413,7 +413,7 @@ test("the mapper keeps the non-string arguments of a tool call as they are (HIMM
   expect(JSON.parse(args.delta)).toEqual({ command: "echo ‹redacted›", timeout: 5, flag: true, none: null });
 });
 
-test("a long branch name with no slash keeps its name when the mapper masks the prompt (HIMMEL-8907)", () => {
+test("a long branch name with no slash keeps its name when the mapper masks the prompt", () => {
   const branch = "fixhimmel8907agentnamestreammaskedlongbranch";
   const line = JSON.stringify({ type: "user", uuid: "u1", sessionId: "s", timestamp: "2026-10-06T10:00:00.000Z", gitBranch: branch, message: { role: "user", content: "hello" } });
   const redact = (v: unknown) => (typeof v === "string" && /\w{32,}/.test(v) ? "‹redacted›" : v);
@@ -425,7 +425,7 @@ test("a long branch name with no slash keeps its name when the mapper masks the 
 test.each([
   ["straddles column 40 of the prompt", "x".repeat(30) + " {kr} tail", "kr-only-q7x2q7x2"],
   ["holds a tab", "see {kr} here", "kr-tab\tq7x2"],
-])("a keyring-style value that %s is masked in the agent name (HIMMEL-8907)", async (_n, tmpl, kr) => {
+])("a keyring-style value that %s is masked in the agent name", async (_n, tmpl, kr) => {
   const h = home();
   const body = readFileSync(join(FIX, "happy-path.jsonl"), "utf8").replace("List the files in the repo root.", JSON.stringify(tmpl.replace("{kr}", kr)).slice(1, -1));
   journal(h, "-proj", RUN, body);
@@ -437,7 +437,7 @@ test.each([
   expect(text).not.toContain("kr-tab");
 });
 
-test("a server env secret holding a tab and a carriage return is masked in a tool call's arguments (HIMMEL-8907)", async () => {
+test("a server env secret holding a tab and a carriage return is masked in a tool call's arguments", async () => {
   const h = home();
   const kr = "kr\tonly\rq7x2";
   const body = readFileSync(join(FIX, "happy-path.jsonl"), "utf8").replace('"command":"ls"', `"command":${JSON.stringify("echo " + kr)}`);
@@ -450,7 +450,7 @@ test("a server env secret holding a tab and a carriage return is masked in a too
 });
 
 // a key holding a quote, a backslash or a newline is escaped in the JSON a tool call's input becomes
-test("a secret that is an object key of a tool call's input is masked (HIMMEL-8940)", async () => {
+test("a secret that is an object key of a tool call's input is masked", async () => {
   const h = home();
   const kr = 'kr"key\\q7x2\nq7x2-tail';
   const body = readFileSync(join(FIX, "happy-path.jsonl"), "utf8").replace('"command":"ls"', `${JSON.stringify(kr)}:1,"command":"ls"`);

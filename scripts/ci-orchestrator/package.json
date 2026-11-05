@@ -1,7 +1,7 @@
 {
   "name": "ci-orchestrator",
   "version": "0.1.0",
-  "description": "Queue + routing layer over himmel's scarce CI compute (HIMMEL-502). P2 pure core + P3 scheduler/server/client/adapters/reporter.",
+  "description": "Queue + routing layer over himmel's scarce CI compute. P2 pure core + P3 scheduler/server/client/adapters/reporter.",
   "private": true,
   "license": "MIT",
   "type": "module",

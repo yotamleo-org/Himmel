@@ -98,7 +98,7 @@ test("/api/feed?project= answers another project from its cache, else not-checke
   expect((await get(port, "/api/feed?project=" + encodeURIComponent("../../../etc/passwd"))).status).toBe(404);
 });
 
-test("a cached feed saved before a value was stored is masked when it is served (HIMMEL-8565)", async () => {
+test("a cached feed saved before a value was stored is masked when it is served", async () => {
   const kdir = mkdtempSync(join(tmpdir(), "projects-kr-"));
   cleanups.push(() => rmSync(kdir, { recursive: true, force: true }));
   const kr = "kr-only-" + "q7x2".repeat(2);
@@ -113,14 +113,14 @@ test("a cached feed saved before a value was stored is masked when it is served 
 
 // HIMMEL_SECRETS_KEYRING matches the secret-name pattern, but its value ("off") is a mode, not a credential: masking it
 // would blank every "off" state the feed shows.
-test("the keyring mode switch's value is not a redaction literal (HIMMEL-8565)", async () => {
+test("the keyring mode switch's value is not a redaction literal", async () => {
   const { port, feeds } = boot({ HIMMEL_SECRETS_KEYRING: "off" });
   writeFileSync(join(feeds, "luna.json"), JSON.stringify({ rows: [{ ...row("flag", "ok", "project"), installed: { detail: "48 off" } }] }));
   const text = await (await get(port, "/api/feed?project=luna")).text();
   expect(text).toContain("48 off");
 });
 
-test("/api/projects masks a cached feed's detail and remedy with the keyring's secrets (HIMMEL-8565)", async () => {
+test("/api/projects masks a cached feed's detail and remedy with the keyring's secrets", async () => {
   const kdir = mkdtempSync(join(tmpdir(), "projects-kr-"));
   cleanups.push(() => rmSync(kdir, { recursive: true, force: true }));
   const kr = "kr-only-" + "q7x2".repeat(2);

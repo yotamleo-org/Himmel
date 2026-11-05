@@ -248,7 +248,7 @@ test("health: bank card shows the newest row with bank numbers; I2 the ledger is
   expect(h.ledgerLines()).toBe(1);
 });
 
-test("health: refresh re-probes the doctor feed inside the server's 30 s cache and the verdict follows (HIMMEL-7350)", async ({ page }) => {
+test("health: refresh re-probes the doctor feed inside the server's 30 s cache and the verdict follows", async ({ page }) => {
   await openHealth(page, { clean: true });
   await expect(verdictWord(page)).toHaveText("All clear");
   h.writeFeed({});
@@ -256,7 +256,7 @@ test("health: refresh re-probes the doctor feed inside the server's 30 s cache a
   await expect(verdictWord(page)).toHaveText("Act now");
 });
 
-test("health: refresh re-reads the Fleet census, so a chief row follows a chief starting or stopping (HIMMEL-8031)", async ({ page }) => {
+test("health: refresh re-reads the Fleet census, so a chief row follows a chief starting or stopping", async ({ page }) => {
   await openHealth(page, { clean: true });
   let reads = 0; // the page's own Fleet read was sent before this listener; only a read the refresh sends counts
   page.on("request", (r) => { if (new URL(r.url()).pathname === "/api/agui/fleet") reads++; });
@@ -273,7 +273,7 @@ test("health: with the feed pending the verdict is No data and the bank still re
   await expect(verdictWord(page)).toHaveText("Act now", { timeout: 20_000 }); // the feed lands, the verdict follows
 });
 
-test("health: returning to Configure before the feed lands paints Configure at once, not Health content (HIMMEL-4443)", async ({ page }) => {
+test("health: returning to Configure before the feed lands paints Configure at once, not Health content", async ({ page }) => {
   h = await boot({}, { ledger: LEDGER, handover: { bullet: "- 03:00 LIVE — x" }, feedDelayMs: 5000 });
   await page.goto(h.url);
   await page.evaluate(() => { location.hash = "#/health"; });

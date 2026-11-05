@@ -146,7 +146,7 @@ test("golden scrape folds active and rotated flow ledgers", async () => {
   expect(body).toBe(`# HELP flow_run_last_success_timestamp Epoch seconds of the last complete run end row in the 14d ledger window.
 # TYPE flow_run_last_success_timestamp gauge
 flow_run_last_success_timestamp{flow="pipeline-harvest"} ${epoch("2026-07-12T10:00:00Z")}
-# HELP flow_run_outcome_total Runs by outcome in the sliding 14d ledger window; exporter restarts and window slides can reset this counter. \`stalled\` = an unpaired start past its deadline whose process is alive or unprobeable; \`abandoned\` = the same, but the pid was confirmed dead on this host (HIMMEL-2211).
+# HELP flow_run_outcome_total Runs by outcome in the sliding 14d ledger window; exporter restarts and window slides can reset this counter. \`stalled\` = an unpaired start past its deadline whose process is alive or unprobeable; \`abandoned\` = the same, but the pid was confirmed dead on this host.
 # TYPE flow_run_outcome_total counter
 flow_run_outcome_total{flow="pipeline-harvest",outcome="complete"} 1
 flow_run_outcome_total{flow="pipeline-harvest",outcome="truncated"} 0
@@ -183,7 +183,7 @@ flow_cadence_seconds{flow="pipeline-harvest"} 86400
 flow_cadence_seconds{flow="pipeline-silent"} 60
 flow_cadence_seconds{flow="pipeline-synthesize"} 3600
 # hook_chain_budget_events_recent: skip log absent, reporting 0
-# HELP hook_chain_budget_events_recent Hook-chain members that blew their time budget in the last 10 minutes, by action (\`skip\` = the guard silently did not evaluate the tool call, \`deny\` = the tool call was refused fail-closed). Folded from the skip log scripts/hooks/run-hook-with-bash.js writes. A GAUGE over a sliding window, deliberately NOT a window-folded counter: a folded counter reads its own window slide as a reset, which is how increase() invents phantom spikes (HIMMEL-2478). Both actions are always emitted, 0 included, so a quiet box renders Normal instead of Grafana NoData.
+# HELP hook_chain_budget_events_recent Hook-chain members that blew their time budget in the last 10 minutes, by action (\`skip\` = the guard silently did not evaluate the tool call, \`deny\` = the tool call was refused fail-closed). Folded from the skip log scripts/hooks/run-hook-with-bash.js writes. A GAUGE over a sliding window, deliberately NOT a window-folded counter: a folded counter reads its own window slide as a reset, which is how increase() invents phantom spikes. Both actions are always emitted, 0 included, so a quiet box renders Normal instead of Grafana NoData.
 # TYPE hook_chain_budget_events_recent gauge
 hook_chain_budget_events_recent{action="deny"} 0
 hook_chain_budget_events_recent{action="skip"} 0
@@ -208,7 +208,7 @@ session_runs_ledger_rows 0
   expect(body).not.toContain('flow_run_items_processed{flow="pipeline-synthesize"');
 });
 
-test("flow_cadence_seconds omits flows with no declared cadence_seconds, never fabricates one (HIMMEL-924)", async () => {
+test("flow_cadence_seconds omits flows with no declared cadence_seconds, never fabricates one", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");
   const config = join(tmp, "observability.json");
   writeFileSync(config, JSON.stringify({
@@ -313,7 +313,7 @@ test("fetch-health state is passive and fail-soft", async () => {
   expect(missing).not.toContain("clip_fetch_source_");
 });
 
-test("tool-call census exports per-guard distinct-session denial series (HIMMEL-6036)", async () => {
+test("tool-call census exports per-guard distinct-session denial series", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");
   const census = join(tmp, "tool-call-census.jsonl");
   writeLines(ledger, []);
@@ -349,7 +349,7 @@ test("tool-call census exports per-guard distinct-session denial series (HIMMEL-
   expect(body).toContain('himmel_tool_denials_total{class="guardA",project="himmel"} 4');
 });
 
-test("tool-call census exports per-tool call/error and per-class denial counters (HIMMEL-1462)", async () => {
+test("tool-call census exports per-tool call/error and per-class denial counters", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");
   const census = join(tmp, "tool-call-census.jsonl");
   writeLines(ledger, []);
@@ -417,7 +417,7 @@ test("tool-call census exports per-tool call/error and per-class denial counters
   expect(missing).not.toContain("himmel_tool_");
 });
 
-test("hook-chain budget events count skip/deny rows in the trailing 10m window, dropping stale/future rows silently and counting malformed/unparseable/unknown-action rows as partial (HIMMEL-2478/2480/2485)", async () => {
+test("hook-chain budget events count skip/deny rows in the trailing 10m window, dropping stale/future rows silently and counting malformed/unparseable/unknown-action rows as partial", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");
   const skipLog = join(tmp, "hook-chain-skips.jsonl");
   writeLines(ledger, []);
@@ -461,7 +461,7 @@ test("hook-chain budget events count skip/deny rows in the trailing 10m window, 
   expect(body).toContain("hook_chain_skip_log_unreadable 0");
 });
 
-test("hook-chain budget events emit both actions at 0 plus the absent-log comment when the skip log does not exist (HIMMEL-2478/2480)", async () => {
+test("hook-chain budget events emit both actions at 0 plus the absent-log comment when the skip log does not exist", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");
   writeLines(ledger, []);
 
@@ -483,7 +483,7 @@ test("hook-chain budget events emit both actions at 0 plus the absent-log commen
   expect(body).toContain("hook_chain_skip_log_unreadable 0");
 });
 
-test("hook-chain budget events omit the whole family (no series, only the omitted comment) when the skip log exists but cannot be read (HIMMEL-2478/2480)", async () => {
+test("hook-chain budget events omit the whole family (no series, only the omitted comment) when the skip log exists but cannot be read", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");
   writeLines(ledger, []);
   // A directory at the skip-log path: existsSync() is true (so this takes the
@@ -510,7 +510,7 @@ test("hook-chain budget events omit the whole family (no series, only the omitte
   expect(body).toContain("hook_chain_skip_log_unreadable 1");
 });
 
-test("hook-chain budget events fold the primary checkout's log with every worktree's own log (HIMMEL-2478 finding 1)", () => {
+test("hook-chain budget events fold the primary checkout's log with every worktree's own log (finding 1)", () => {
   // A fake repoRoot laid out like the real checkout: a primary
   // .claude/logs/hook-chain-skips.jsonl plus two worktrees each with their
   // own — never the developer's real .claude/worktrees. This is the positive
@@ -544,7 +544,7 @@ test("hook-chain budget events fold the primary checkout's log with every worktr
   expect(lines).toContain('hook_chain_budget_events_recent{action="skip"} 2');
 });
 
-test("hook-chain budget events explicit path option reads exactly that file, never a sibling log (HIMMEL-2478 finding 1)", async () => {
+test("hook-chain budget events explicit path option reads exactly that file, never a sibling log (finding 1)", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");
   writeLines(ledger, []);
   const targetLog = join(tmp, "target-hook-chain-skips.jsonl");
@@ -571,7 +571,7 @@ test("hook-chain budget events explicit path option reads exactly that file, nev
   expect(body).toContain('hook_chain_budget_events_recent{action="deny"} 0');
 });
 
-test("hook-chain budget events keep the other logs' counts when one log in the fold is unreadable (HIMMEL-2478 finding 1)", () => {
+test("hook-chain budget events keep the other logs' counts when one log in the fold is unreadable (finding 1)", () => {
   const readableA = join(tmp, "readable-a-hook-chain-skips.jsonl");
   const readableC = join(tmp, "readable-c-hook-chain-skips.jsonl");
   const unreadableB = join(tmp, "unreadable-b-hook-chain-skips.jsonl");
@@ -595,7 +595,7 @@ test("hook-chain budget events keep the other logs' counts when one log in the f
   expect(unreadableCount).toBe(1);
 });
 
-test("hook_chain_skip_log_unreadable gauge is 1 when the worktrees directory exists but cannot be enumerated, not when it is simply absent (HIMMEL-2478/2480 CR follow-up)", () => {
+test("hook_chain_skip_log_unreadable gauge is 1 when the worktrees directory exists but cannot be enumerated, not when it is simply absent (CR follow-up)", () => {
   // A FILE at .claude/worktrees (not a directory): existsSync() is true, so
   // defaultHookChainSkipLogPaths takes the enumerate path, but readdirSync()
   // throws ENOTDIR — the same portable-across-platforms trick as the EISDIR
@@ -650,7 +650,7 @@ test("active ledger without config uses default six-hour stall deadline", async 
   expect(body).toContain('flow_run_in_flight{flow="unconfigured-flow"} 0');
 });
 
-test("HIMMEL-2149: a stalled run past FLOW_STALLED_ALERT_TTL_SECONDS drops out of flow_run_outcome_total{outcome=stalled}", async () => {
+test("a stalled run past FLOW_STALLED_ALERT_TTL_SECONDS drops out of flow_run_outcome_total{outcome=stalled}", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");
   writeLines(ledger, [
     // Default 6h stall deadline. Fired 7h before NOW: became stalled 1h ago,
@@ -671,7 +671,7 @@ test("HIMMEL-2149: a stalled run past FLOW_STALLED_ALERT_TTL_SECONDS drops out o
   expect(body).toContain('flow_run_outcome_total{flow="hermes-invoke",outcome="stalled"} 1');
 });
 
-test("HIMMEL-2149: the stall alert TTL is measured from when a run BECAME stalled, not from raw age — a stall deadline >= the TTL must still let a recently-stalled run count", async () => {
+test("the stall alert TTL is measured from when a run BECAME stalled, not from raw age — a stall deadline >= the TTL must still let a recently-stalled run count", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");
   const config = join(tmp, "observability.json");
   // 25h declared stall_deadline_seconds, ABOVE the 24h alert TTL.
@@ -693,7 +693,7 @@ test("HIMMEL-2149: the stall alert TTL is measured from when a run BECAME stalle
 // confirmed-alive pid must still page (stalled) — the fail-safe fallbacks
 // (foreign host, no pid) must never downgrade a row on their own.
 
-test("HIMMEL-1634: last-failure timestamp keeps the newest truncated/error end per flow and outcome", async () => {
+test("last-failure timestamp keeps the newest truncated/error end per flow and outcome", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");
   writeLines(ledger, [
     serializeFlowRunEnd(flowEnd("f", "a", "2026-07-13T09:00:00Z", "error", null)),
@@ -709,14 +709,14 @@ test("HIMMEL-1634: last-failure timestamp keeps the newest truncated/error end p
   expect(body).not.toContain('flow_run_last_failure_timestamp{flow="ok-only"');
 });
 
-test("HIMMEL-1634: a failure that aged out of the ledger window leaves no last-failure series", async () => {
+test("a failure that aged out of the ledger window leaves no last-failure series", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");
   writeLines(ledger, [serializeFlowRunEnd(flowEnd("f", "old", "2026-06-01T09:00:00Z", "error", null))]);
   const body = await renderMetrics({ nowMs: NOW, configPath: join(tmp, "missing-observability.json"), flowLedgerPath: ledger, quotaLedgerPath: join(tmp, "none"), lanesPath: join(tmp, "no-lanes.json") });
   expect(body).not.toContain("flow_run_last_failure_timestamp{");
 });
 
-test("HIMMEL-1634: stalled-current counts expired unpaired starts and falls to 0 once the run ends", async () => {
+test("stalled-current counts expired unpaired starts and falls to 0 once the run ends", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");
   const config = join(tmp, "observability.json");
   writeFileSync(config, JSON.stringify({ flows: [{ name: "short-flow", cadence_seconds: 100 }] }));
@@ -730,7 +730,7 @@ test("HIMMEL-1634: stalled-current counts expired unpaired starts and falls to 0
   expect(await renderMetrics(args)).toContain('flow_run_stalled_current{flow="short-flow"} 0');
 });
 
-test("HIMMEL-2211: a ghost row (confirmed-dead pid, same host) becomes abandoned, not stalled", async () => {
+test("a ghost row (confirmed-dead pid, same host) becomes abandoned, not stalled", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");
   // Default 6h stall deadline. Fired 7h before NOW: expired, same as the
   // stall tests above.
@@ -752,7 +752,7 @@ test("HIMMEL-2211: a ghost row (confirmed-dead pid, same host) becomes abandoned
   expect(probed).toEqual([3242214]);
 });
 
-test("HIMMEL-2211: positive control — a real stall (confirmed-alive pid) still pages", async () => {
+test("positive control — a real stall (confirmed-alive pid) still pages", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");
   writeLines(ledger, [
     serializeFlowRunStart({ ...flowStart("hermes-invoke", "real-stall", "2026-07-13T05:00:00Z"), pid: 4242214 }),
@@ -770,7 +770,7 @@ test("HIMMEL-2211: positive control — a real stall (confirmed-alive pid) still
   expect(body).toContain('flow_run_outcome_total{flow="hermes-invoke",outcome="abandoned"} 0');
 });
 
-test("HIMMEL-2211: fail-safe — a row from another host stays stalled and is never probed", async () => {
+test("fail-safe — a row from another host stays stalled and is never probed", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");
   writeLines(ledger, [
     serializeFlowRunStart({ ...flowStart("hermes-invoke", "foreign", "2026-07-13T05:00:00Z"), host: "other-host", pid: 3242214 }),
@@ -790,7 +790,7 @@ test("HIMMEL-2211: fail-safe — a row from another host stays stalled and is ne
   expect(probed).toEqual([]);
 });
 
-test("HIMMEL-2211: fail-safe — a start row with no pid stays stalled", async () => {
+test("fail-safe — a start row with no pid stays stalled", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");
   writeLines(ledger, [
     serializeFlowRunStart({ ...flowStart("hermes-invoke", "nopid", "2026-07-13T05:00:00Z"), pid: null }),
@@ -808,7 +808,7 @@ test("HIMMEL-2211: fail-safe — a start row with no pid stays stalled", async (
   expect(body).toContain('flow_run_outcome_total{flow="hermes-invoke",outcome="abandoned"} 0');
 });
 
-test("HIMMEL-2211: an in-flight start is never probed for liveness", async () => {
+test("an in-flight start is never probed for liveness", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");
   writeLines(ledger, [
     // Fired 2 minutes before NOW: well inside the default 6h deadline.
@@ -832,7 +832,7 @@ test("HIMMEL-2211: an in-flight start is never probed for liveness", async () =>
 // other than ESRCH/EPERM) must fail safe to alive, same as EPERM — treating
 // it as dead would silently downgrade a real stall to `abandoned` and mute
 // a page-severity alert.
-test("HIMMEL-2211: defaultPidLiveness treats ESRCH as dead and every other outcome (EPERM, an unprobeable error, or no throw) as alive", () => {
+test("defaultPidLiveness treats ESRCH as dead and every other outcome (EPERM, an unprobeable error, or no throw) as alive", () => {
   const realKill = process.kill;
   try {
     process.kill = ((pid: number) => {
@@ -1592,7 +1592,7 @@ test("staleness threshold is operator-tunable via sessions.stale_after_seconds",
   expect(body).toContain('session_dead_total{host="test-host"} 0');
 });
 
-test("HIMMEL-2075: a session dead past SESSION_DEAD_ALERT_TTL_SECONDS drops out of session_dead_total", async () => {
+test("a session dead past SESSION_DEAD_ALERT_TTL_SECONDS drops out of session_dead_total", async () => {
   const ledger = join(tmp, "session-runs.jsonl");
   const config = join(tmp, "observability.json");
   writeFileSync(config, "{}");
@@ -1627,7 +1627,7 @@ test("HIMMEL-2075 CR fix (codex-1): the alert TTL is measured from when a sessio
   expect(body).toContain('session_dead_total{host="test-host"} 1');
 });
 
-test("HIMMEL-2294: a close-evidence row suppresses a stale unpaired session from session_dead_total", async () => {
+test("a close-evidence row suppresses a stale unpaired session from session_dead_total", async () => {
   const ledger = join(tmp, "session-runs.jsonl");
   const config = join(tmp, "observability.json");
   writeFileSync(config, "{}");
@@ -1649,7 +1649,7 @@ test("HIMMEL-2294: a close-evidence row suppresses a stale unpaired session from
   expect(body).toContain('session_dead_total{host="test-host"} 0');
 });
 
-test("HIMMEL-2294: a close-evidence row does NOT suppress the alert when it stranded a subagent", async () => {
+test("a close-evidence row does NOT suppress the alert when it stranded a subagent", async () => {
   const ledger = join(tmp, "session-runs.jsonl");
   const config = join(tmp, "observability.json");
   writeFileSync(config, "{}");
@@ -1756,7 +1756,7 @@ test("HIMMEL-2294 regression: a dead session with no close row is counted exactl
   expect(body).toContain('session_dead_total{host="test-host"} 1');
 });
 
-test("HIMMEL-2294: a close row does not change the dashboard-facing SessionView.status", async () => {
+test("a close row does not change the dashboard-facing SessionView.status", async () => {
   const ledger = join(tmp, "session-runs.jsonl");
   const config = join(tmp, "observability.json");
   writeFileSync(config, "{}");
@@ -1829,7 +1829,7 @@ test("malformed and out-of-window session rows are skipped without failing the s
   expect(body).toContain("session_runs_ledger_rows 1");
 });
 
-test("v1 and v2 rows coexist in one ledger — v2 only ADDS fields (HIMMEL-2022)", async () => {
+test("v1 and v2 rows coexist in one ledger — v2 only ADDS fields", async () => {
   const ledger = join(tmp, "session-runs.jsonl");
   const config = join(tmp, "observability.json");
   writeFileSync(config, "{}");
@@ -1965,7 +1965,7 @@ test("eval-runs regression gauge follows eval-compare's noise bands", async () =
   expect(body).toContain('himmel_eval_metric_regression{eval="qmd-quality",metric="hybrid.mrr"} 1');
 });
 
-test("eval-runs observational rows export values but no baseline delta or regression (HIMMEL-4670)", async () => {
+test("eval-runs observational rows export values but no baseline delta or regression", async () => {
   const thresholds = join(tmp, "obs-thresholds.json");
   writeFileSync(thresholds, JSON.stringify({ "worker-trajectory": { fail_denied: { higher_is_better: false, band: 0 } } }));
   const ledger = join(tmp, "eval-runs.jsonl");

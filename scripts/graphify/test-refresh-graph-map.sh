@@ -2821,7 +2821,7 @@ out=$( ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic GRAPHIFY_LEDGER="$CLAUD
 # to the verdict; no graphify call and no ledger line may be produced.
 { [ "$rc" -eq 2 ] && [ ! -s "$CLAUDE_PREFLIGHT_CALLS" ] && [ ! -e "$CLAUDE_PREFLIGHT_LEDGER" ] \
   && grep -qF 'DENY luna-personal x zai-glm x extraction' <<< "$out"; } \
-  && pass "T40j claude-cli exact Z.ai endpoint is classified zai-glm and denied (HIMMEL-2224; anthropic would have allowed)" \
+  && pass "T40j claude-cli exact Z.ai endpoint is classified zai-glm and denied (anthropic would have allowed)" \
   || fail "T40j claude-cli Z.ai endpoint should deny rc=2 naming zai-glm, no call, no ledger (rc=$rc): $out ledger=$(cat "$CLAUDE_PREFLIGHT_LEDGER" 2>/dev/null)"
 
 : > "$CLAUDE_PREFLIGHT_CALLS"; rm -f "$CLAUDE_PREFLIGHT_LEDGER"
@@ -3774,13 +3774,13 @@ out=$( GRAPHIFY_MAP_BIN="$GOBIN/graphify" bash "$SCRIPT" \
 # actually CALL them — not just define them unused.
 grep -q '^_fs_id()' "$SCRIPT" && grep -q '^_verify_fs_id()' "$SCRIPT" \
   && pass "T48a _fs_id/_verify_fs_id are defined in source" \
-  || fail "T48a _fs_id/_verify_fs_id definition missing (HIMMEL-1704)"
+  || fail "T48a _fs_id/_verify_fs_id definition missing"
 grep -Fq '_verify_fs_id "corpus-root" "." "$CORPUS_ID"' "$SCRIPT" \
   && pass "T48b the corpus-root copy re-verifies identity after cd, before find/tar" \
-  || fail "T48b copy site does not call _verify_fs_id (HIMMEL-1704 TOCTOU reopened)"
+  || fail "T48b copy site does not call _verify_fs_id (TOCTOU reopened)"
 grep -Fq '_verify_fs_id "maps-dir" "." "$MAPS_ID"' "$SCRIPT" \
   && pass "T48c the maps-dir publish re-verifies identity before the write" \
-  || fail "T48c publish site does not call _verify_fs_id (HIMMEL-1704 TOCTOU reopened)"
+  || fail "T48c publish site does not call _verify_fs_id (TOCTOU reopened)"
 # T48d (codex-2 r1): the identity check must be BOUND to the cd'd directory
 # (a relative "." probed from inside a `cd "$MAPS_DIR" && ...` subshell,
 # where the process's cwd is fixed to the directory's INODE), not merely a
@@ -3788,7 +3788,7 @@ grep -Fq '_verify_fs_id "maps-dir" "." "$MAPS_ID"' "$SCRIPT" \
 # separate node process -- the latter still races node's own open().
 grep -Fq 'cd "$MAPS_DIR" && _verify_fs_id "maps-dir" "."' "$SCRIPT" \
   && pass "T48d the maps-dir check is bound to a cd'd cwd, not a re-stat of the pathname" \
-  || fail "T48d publish identity check is not cwd-bound (HIMMEL-1704 codex-2 residual reopened)"
+  || fail "T48d publish identity check is not cwd-bound"
 
 # T49 (behavioural): the TOCTOU scenario — an actor with
 # write access to the corpus-root's PARENT directory swaps the accepted
@@ -3829,7 +3829,7 @@ if ln -s "$TOCTOU_REAL_A" "$TOCTOU_PARENT/vault" 2>/dev/null && [ -L "$TOCTOU_PA
     --corpus-root "$TOCTOU_PARENT/vault" --corpus-id "$TOCTOU_ID" \
     --backend claude-cli --maps-dir "$TOCTOU_MAPS" --title Guard --slug toctou-map 2>&1 ); rc=$?
   if [ "$rc" -eq 1 ] && grep -q "TOCTOU guard" <<< "$out" && [ ! -s "$TOCTOU_CALLS" ]; then
-    pass "T49b a corpus-root swapped after preflight is refused before any copy (TOCTOU closed, HIMMEL-1704)"
+    pass "T49b a corpus-root swapped after preflight is refused before any copy (TOCTOU closed)"
   else
     fail "T49b the TOCTOU guard must refuse before graphify runs (rc=$rc, graphify called=$( [ -s "$TOCTOU_CALLS" ] && echo yes || echo NO )): $out"
   fi
@@ -3846,13 +3846,13 @@ fi
 # than left to node's own unguarded mkdirSync.
 grep -q -- '--maps-parent-id' "$SCRIPT" \
   && pass "T50a --maps-parent-id flag is accepted" \
-  || fail "T50a --maps-parent-id flag missing (HIMMEL-1704 round 3 reopened)"
+  || fail "T50a --maps-parent-id flag missing"
 grep -Fq 'cd "$VAULT_DIR" && _verify_fs_id "maps-dir parent" "." "$MAPS_PARENT_ID"' "$SCRIPT" \
   && pass "T50b first-publish path re-verifies the vault parent identity before mkdir" \
-  || fail "T50b first-publish parent-identity check missing (HIMMEL-1704 round 3 reopened)"
+  || fail "T50b first-publish parent-identity check missing"
 grep -Fq '&& mkdir "$MAPS_LEAF"' "$SCRIPT" \
   && pass "T50c first-publish creates 60-Maps via a TOCTOU-safe mkdir, not node's mkdirSync" \
-  || fail "T50c mkdir-based safe-create missing (HIMMEL-1704 round 3 reopened)"
+  || fail "T50c mkdir-based safe-create missing"
 
 # T51 (behavioural): the first-ever-publish case -- 60-
 # Maps does not exist at preflight time, so no --maps-id was pinned, only
@@ -3891,7 +3891,7 @@ if ln -s "$T51_REAL_A" "$T51_OUTER/vault" 2>/dev/null && [ -L "$T51_OUTER/vault"
     --maps-dir "$T51_OUTER/vault/60-Maps" --maps-parent-id "$T51_PARENT_ID" \
     --title Guard --slug t51-race-map --no-update 2>&1 ); rc=$?
   if [ "$rc" -eq 1 ] && grep -q "TOCTOU guard" <<< "$out" && [ ! -e "$T51_OUTER/vault/60-Maps" ]; then
-    pass "T51b a vault swapped after pinning is refused before mkdir, no 60-Maps created (TOCTOU closed, HIMMEL-1704)"
+    pass "T51b a vault swapped after pinning is refused before mkdir, no 60-Maps created (TOCTOU closed)"
   else
     fail "T51b the parent-identity guard must refuse before mkdir (rc=$rc, 60-Maps exists=$( [ -e "$T51_OUTER/vault/60-Maps" ] && echo yes || echo NO )): $out"
   fi
@@ -4669,7 +4669,7 @@ out=$(recent_run 2); rc=$?
 [ "$(recent_calls)" = "notes/x.md notes/y.md " ] && [ "$rc" -eq 4 ] \
   && pass "T-recent cap 2 with three changed notes stops inside the pre-pass (exit 4)" || fail "T-recent cap 2 with x y z expected x y and exit 4, got: $(recent_calls) rc=$rc"
 
-echo "T-adopter-skip: an installed fresh published graph stops the paid semantic row (HIMMEL-9253)"
+echo "T-adopter-skip: an installed fresh published graph stops the paid semantic row"
 # The marker graphify-out/.graphify_published holds the build commit himmel-update.sh
 # sync_graph installed. graphify is stubbed and logs every call: no model call here.
 ADCORPUS="$WS/adopter-corpus"; ADMAPS="$WS/adopter-maps"; mkdir -p "$ADMAPS"

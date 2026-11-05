@@ -36,7 +36,7 @@
 ## Threats to validity
 
 Reproduced from spec §2.4 (residual confound table), §3.3.1 (axis
-comparability), and §4.4 (fixture-scale claim limit) — HIMMEL-1723.
+comparability), and §4.4 (fixture-scale claim limit).
 
 | | Haiku cell | luna cell |
 |---|---|---|

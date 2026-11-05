@@ -19,9 +19,9 @@ function runner(result: GitDivergenceResult) {
   return async () => result;
 }
 
-// A fully-healthy status.json reading (LUNA-131 Task 8): fresh ts, fresh
+// A fully-healthy status.json reading (Task 8): fresh ts, fresh
 // last_clean_ts, no backlog, no alarm. Used as the sweeperStatus fixture for
-// the pre-existing (pre-LUNA-131) tests below so their git-only assertions
+// the pre-existing (pre-sweeper-plan) tests below so their git-only assertions
 // are unaffected by the new sweeper dimension — a missing/red sweeper reading
 // would otherwise fall through to the send path and change their outcomes.
 function greenSweeperStatus(nowMs: number = NOW) {
@@ -149,7 +149,7 @@ test("a git runner error/timeout skips without throwing and never alerts", async
   expect(logs[0]).toContain("git status timed out");
 });
 
-test("uncommitted files with zero unpushed commits still alerts (HIMMEL-1199 CR: codex-1)", async () => {
+test("uncommitted files with zero unpushed commits still alerts (CR: codex-1)", async () => {
   // The metric and alert text both cover uncommitted files, so the trigger must
   // too — a dirty-but-fully-pushed tree (e.g. auto-commit blocked) is the same
   // blocked-git-op silent failure and must not read as clean.
@@ -183,7 +183,7 @@ test("uncommitted files with no upstream (null unpushed) still alerts — null m
   expect(sent[0]).toContain("2 uncommitted files");
 });
 
-test("an undelivered alert (no chat_id / Telegram drop) leaves state unchanged and does NOT enter cooldown (HIMMEL-1199 CR: codex-adv + coderabbit)", async () => {
+test("an undelivered alert (no chat_id / Telegram drop) leaves state unchanged and does NOT enter cooldown (CR: codex-adv + coderabbit)", async () => {
   // sendAlert resolves false when nothing was actually delivered. Advancing
   // lastAlertedAt then would suppress retries for the whole cooldown window with
   // the operator never notified — the exact silent failure this checker fights.
@@ -284,7 +284,7 @@ test("evaluateSweeperStatus: pure — RED reasons, YELLOW window, GREEN otherwis
     .toEqual({ level: "green", reason: null });
 });
 
-// ── LUNA-131 Task 8 fixtures A1-A7 ──────────────────────────────────────────
+// ── Sweeper plan Task 8 fixtures A1-A7 ──────────────────────────────────────────
 // These exercise checkLunaSync's sweeper-status dimension end to end (not just
 // evaluateSweeperStatus in isolation) — the swallow regression lives in
 // checkLunaSync's control flow, not in the pure evaluator.
