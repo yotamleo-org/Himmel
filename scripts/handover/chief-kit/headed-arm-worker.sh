@@ -173,10 +173,12 @@
 # WHY the worker profiles are thin: the measured floor is schema-shaped, not
 # roster-shaped (~40k of a 74.3k first-turn floor is tool + MCP schemas), so a
 # "profile by skill set" would resolve to the same manifest. worker-eval and
-# worker-docs exist to carry a different context setting, not a different roster:
-# a profile's sonnetAutocompact / sonnetContextGuard apply to the native lane on a
-# claude-sonnet-5 model only (worker-impl 450000 + hand-off, worker-eval 450000 +
-# compaction, worker-docs 200000). See the _comment in plugin-profiles.json.
+# worker-docs exist to carry a different context setting, not a different roster
+# (the one difference: worker-docs keeps lean-skills on the native lane, where the
+# others drop it): a profile's sonnetAutocompact / sonnetContextGuard apply to the
+# native lane on a claude-sonnet-5 model only (worker-impl 450000 + hand-off,
+# worker-eval 450000 + compaction, worker-docs 200000). See the _comment in
+# plugin-profiles.json.
 # --profile composes with --lane claudex: the shim prepends
 # profile flags, then execs scripts/claude-codex via WORKER_SESSION_CLAUDE_BIN. The
 # backend and its guarded argument screen remain in the launch path.
@@ -1950,7 +1952,7 @@ if [ -n "$PROFILE" ]; then
     # catalog (deny-by-default beyond CATALOG). Resolve from the worker's repo.
     _worker_resolve_cwd="${HEADED_ARM_REPO:-$HERE/../../..}"
     [ -d "$_worker_resolve_cwd" ] || _worker_resolve_cwd="$HERE"
-    if ! PROFILE_JSON="$(cd "$_worker_resolve_cwd" && node "$PROFILES_MJS" "$PROFILE" 2>&1)"; then
+    if ! PROFILE_JSON="$(cd "$_worker_resolve_cwd" && node "$PROFILES_MJS" "$PROFILE" --lane "$LANE" 2>&1)"; then
         echo "headed-arm-worker: --profile $PROFILE: resolver failed: $PROFILE_JSON" >&2
         exit 2
     fi

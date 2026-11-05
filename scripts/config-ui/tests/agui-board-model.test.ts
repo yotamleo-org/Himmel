@@ -102,10 +102,37 @@ test("normalizeBoard: the old wire shape from board.mjs yields the same board as
   const old = JSON.parse(readFileSync(join(import.meta.dir, "fixtures", "agui", "board-old-wire.json"), "utf8"));
   const want = {
     ...board([worker("N1"), worker("N2")], [{ worker: "N1", verb: "go", action: "GO", detail: "", command: null, since: null }]),
+    sections: [], // a payload with no sections key reads as an empty list
     trends: { worker_time: { unit: "min", today: [{ worker: "N1", live_at: null, merged_at: null, live_to_merged_min: null, to_pr_min: null, ready_to_merged_min: null }] } },
   };
   expect(normalizeBoard(old)).toEqual(want);
   expect(normalizeBoard(want)).toEqual(want); // the new shape passes through untouched
+});
+
+// The chief's sections (the route's `sections` key): shape coercion only, the stored order is kept.
+const sec = (id: string, o: Record<string, unknown> = {}) => ({ id, title: `T ${id}`, body: `body ${id}`, tone: "info", order: 0, ...o });
+const withSections = (sections: unknown, extra: Record<string, unknown> = {}) => ({ ...board([worker("N1")]), sections, ...extra });
+
+test("normalizeBoard: sections come back in the order given, whatever their ids or order numbers say", () => {
+  const two = [sec("zeta", { order: 2 }), sec("alpha", { order: 1, tone: "warn" })];
+  expect(normalizeBoard(withSections(two)).sections).toEqual(two);
+});
+
+test("normalizeBoard: an absent or non-array sections key is an empty list", () => {
+  expect(normalizeBoard(board([worker("N1")])).sections).toEqual([]);
+  expect(normalizeBoard(withSections("x")).sections).toEqual([]);
+  expect(normalizeBoard(withSections({ 0: sec("a") })).sections).toEqual([]);
+  expect(normalizeBoard(withSections(null)).sections).toEqual([]);
+});
+
+test("normalizeBoard: a section with a non-string id, title, body or tone is dropped, the rest stay", () => {
+  const bad = [sec("a", { title: 5 }), sec("b", { body: null }), sec("c", { id: 7 }), sec("d", { tone: {} }), "text", null, sec("keep")];
+  expect(normalizeBoard(withSections(bad)).sections).toEqual([sec("keep")]);
+});
+
+test("normalizeBoard: sections_error passes through as a string and is dropped otherwise", () => {
+  expect(normalizeBoard(withSections([], { sections_error: "too big" })).sections_error).toBe("too big");
+  expect(normalizeBoard(withSections([], { sections_error: 3 })).sections_error).toBeUndefined();
 });
 
 test("normalizeBoard: a board with no worker-time block still loads, with an empty one", () => {
