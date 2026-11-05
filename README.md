@@ -2,32 +2,64 @@
 
 > **A control plane for coding agents.**
 
-New to himmel? Start with the trial below. Here to run or work on himmel
-itself? Go to the [Quickstart](#quickstart).
+himmel turns Claude Code into a team you can leave running. One session, the
+*chief*, plans the work and hands each ticket to a *worker* session of its
+own. Work carries on while you are away and restarts by itself after a usage
+limit. Each session picks up where the last one stopped, and a local UI shows
+you what all of them are doing.
 
-himmel earns its keep once you run several Claude Code sessions at once, want
-work done while you are away, or want each session to pick up where the last
-one stopped. If Claude Code as it ships serves you well, you do not need it;
-[Who is this for](#who-is-this-for) says more.
+Still deciding? [Take a short test run](#still-deciding-take-a-short-test-run)
+on a spare project: one command puts himmel on, one takes it off. Ready to use
+it on your own project, or here to work on himmel itself? Go to the
+[Quickstart](#quickstart).
 
-## Start here: protect one project
+## Why use himmel
 
-Try himmel on a project you can throw away. Install it, then ask Claude Code
-to edit a file on `main`, the main branch, and watch the edit get refused.
-Commit the install before creating a worktree, a separate working folder and
-branch; make a change there, then remove himmel at the end of the trial.
+You do not need a fleet of sessions or a notes vault to get something out of
+himmel. From the first session you get:
 
-The install adds hooks and settings for Claude Code (under `.claude/`), the
-scripts they run (`scripts/`) and `.gitignore` entries to the project.
-Follow [Getting Started](docs/getting-started.md) step by step: it previews
-the install before you run it, and each step tells you which folder to run
-it from and what you should see.
+- **A simple install.** One command. It shows what it will add before it
+  adds anything, then asks a few questions, each with a default answer
+  ([install profiles](docs/setup/profiles/README.md)). One command takes it
+  off again.
+- **A UI for your setup.** `himmelctl ui` opens a local page that shows what
+  is installed and whether it is healthy, and turns features on and off,
+  with a preview before each change. Once you run several sessions, it also
+  shows the fleet and your Jira board ([the himmel UI](docs/ui.md)).
+- **Evals, not promises.** himmel measures itself: how often the review
+  panel catches planted bugs, how often its findings are right and what the
+  prompt cache saves, each number with its sample size
+  ([evals](docs/evals/README.md)).
+- **Sessions that remember.** Work carries from one session to the next in
+  plain notes, so you stop explaining the same thing twice.
 
-That one protected project is a complete result. The rest is optional and
-comes later: a notes vault, runs that carry on while you are away, many
-sessions in parallel. The [adoption trail](docs/adoption-trail.html) lays these
-out as levels, and each level says what it gives you, what it costs and how to
-turn it off.
+When you want more, himmel grows with you: parallel sessions run by a chief,
+runs that carry on overnight, a second brain that fills itself. Each step is
+optional. The [adoption trail](docs/adoption-trail.html) lays them out as
+levels, and each level says what it gives you, what it costs and how to turn
+it off.
+
+## Still deciding? Take a short test run
+
+Try himmel on a spare project before you put it on a real one.
+[Getting Started](docs/getting-started.md) walks through it step by step:
+each step says which folder to run it from and what you should see.
+
+1. **Install it.** Preview the install with `--dry-run`, then run it. It adds
+   hooks and settings for Claude Code (under `.claude/`), the scripts they
+   run (`scripts/`) and `.gitignore` entries.
+2. **Pick up where you stopped.** Start a change in its own worktree with
+   `bash scripts/worktree.sh feat/try-himmel`. Run `/handover-setup` once to
+   choose where session notes live, then end the session with `/handover`.
+   Open a fresh session, ask it to resume, and it reads the note and carries
+   on, with the decisions and the reasons for them intact.
+3. **Open the UI.** `node ~/himmel/scripts/himmelctl/bin.js ui` (needs
+   `bun`) shows what the install set up and what you can turn on next.
+4. **Take it off.** `uninstall --dry-run` lists what would go; `uninstall`
+   removes it.
+
+Along the way the guardrails do their part: an edit on `main` is refused
+before the file changes, not only when you push.
 
 > Deciding whether it is worth it? Read [**Why himmel**](docs/why-himmel.md),
 > the failure modes it exists for and what each one costs. Want the design
@@ -74,11 +106,12 @@ Claude remembering a paragraph of instructions.
 
 ## What you get
 
-The trial above shows the first of these: the refused edit on `main`, a
-check before each commit and the separate worktree. The rest arrive as you
-add them, and the [adoption trail](docs/adoption-trail.html) says which level
-brings each one.
+The test run shows a few of these. The rest arrive as you add them, and the
+[adoption trail](docs/adoption-trail.html) says which level brings each one.
 
+- **Many sessions, one chief.** A chief session plans the work and hands
+  each ticket to a worker with its own branch and PR, then checks each
+  result before it merges ([Jarvis](docs/jarvis-subsystems.md)).
 - **Work carries over between sessions.** Each session leaves a plain
   markdown handover doc behind. A fresh session reads it and resumes where the
   last one stopped, with the decisions and the reasons for them intact.
@@ -86,21 +119,23 @@ brings each one.
   tickets to parallel agents that branch, review themselves and open PRs.
   When a session nears its usage limit, himmel schedules a restart with the
   operating system's scheduler, so the run carries on.
-- **Mistakes are blocked, not just discouraged.** Hooks stop edits on `main`,
-  reads of secret files, and opening a PR without a passing review, at the
-  moment Claude tries the tool call.
+- **A second brain, not just a memory file.** With the optional notes vault,
+  every session leaves a note, search finds a note by its words or its
+  meaning, and a graph shows which notes connect. It is all plain markdown
+  you can open and fix. [Second brain and memory](#second-brain-and-memory)
+  says what sets it apart.
 - **Every merge is reviewed by several agents.** `/pr-check` runs a panel of
   review agents plus a first pass from a second model, and the PR cannot merge
   until the result is clean. A finding marked critical must survive an
-  adversarial check first, which filters out invented findings.
+  adversarial check first, which filters out invented findings. The
+  [evals](docs/evals/README.md) publish how often each reviewer is right.
 - **It stays cheap.** A local Jira CLI replaces a Jira MCP (Model Context
   Protocol) server, a command-line filter shortens noisy output before Claude
   reads it, and each helper agent gets only the instructions it needs. All
   three keep the context window and the bill small.
-- **Memory you can read and edit.** Everything Claude remembers is a markdown
-  file you can open. The search index on top is disposable and always points
-  back at the file. [Memory architecture](#memory-architecture) explains how
-  the pieces fit.
+- **Rules that hold.** Hooks stop edits on `main`, reads of secret files and
+  opening a PR without a passing review, at the moment Claude tries the tool
+  call, so a rule holds even after it falls out of the context window.
 - **GitHub or Bitbucket.** The worktree, PR and merge loop works the same on
   GitHub and Bitbucket Cloud. himmel picks the backend from each repo's
   `origin` remote.
@@ -188,10 +223,10 @@ install Claude Code first:
 
 There are two ways in:
 
-1. **Protecting your own project?** This is the usual case. It brings over
-   the portable core: hooks, guardrails, the worktree workflow and the
-   marketplace plugins and skills. Do the trial in
-   [`docs/getting-started.md`](docs/getting-started.md) on a spare project
+1. **Using himmel on your own project?** This is the usual case. It brings
+   over the portable core: hooks, guardrails, the worktree workflow and the
+   marketplace plugins and skills. If you have not yet, take the
+   [short test run](#still-deciding-take-a-short-test-run) on a spare project
    first, then run this from your project's folder:
 
    ```bash
@@ -318,20 +353,40 @@ himmel runs on Linux and macOS. Windows (Git Bash or WSL) is not supported.
 
 himmel's scripts run on macOS's built-in bash.
 
-## Memory architecture
+## Second brain and memory
 
-Your agent's working memory lives in files you can open, edit and correct.
-Search indexes help it find those files; they do not replace them. The agent
-can read a note alongside its links, decisions and reasons, then write back
-to it.
+A memory file holds the rules Claude should follow. himmel adds a second
+brain that holds the work itself: a wiki of plain markdown notes that Claude
+writes and keeps up, sometimes called an LLM wiki, and that you read and edit
+in [Obsidian](https://obsidian.md). The notes vault is optional (the `luna`
+[install profile](docs/setup/profiles/README.md)). With it, five things set
+himmel's memory apart:
 
-Another approach extracts facts from conversations and files into a separate
-database and retrieves matching facts rather than their source files. That
-can be useful for very large collections where readers do not need to
-inspect the originals. himmel instead keeps the files as the source so you
-can inspect and fix what the agent uses.
+- **It fills itself.** Every Claude Code session ends by writing a note: what
+  it did, what it decided, what comes next
+  ([end-session hook](docs/luna/end-session-wiki.md)). `/luna-ingest` saves a
+  GitHub repo or issue as a note, and pages you clip in the browser are filed
+  by the [clip pipeline](docs/luna/compounding.md).
+- **One vault for all your projects.** Sessions from every repo himmel is
+  installed in land in the same vault, so what one project learned is there for the next.
+- **It finds by meaning and leads back to the note.** Search matches the
+  words and the meaning of your question and returns the note itself, never a
+  fact pulled out of it.
+- **It shows what connects.** A graph of the links between notes lets Claude
+  follow from one note to the ones next to it
+  ([luna, your second brain](docs/luna/README.md)).
+- **It stays lean and stays yours.** Claude Code's `MEMORY.md` stays a short
+  index that loads into every session, and lasting lessons move into the
+  vault, where they are searched instead of loaded every time
+  ([the compounding loop](docs/luna/compounding.md)). Everything is markdown
+  in git on your disk; the search index and the graph can be deleted and
+  rebuilt from it.
 
-What the memory is made of today, all plain files:
+Some tools instead extract facts into a separate database and return those
+facts, not their source files. himmel keeps the files as the source, so you
+can open and fix exactly what the agent uses.
+
+What the memory is made of, all plain files:
 
 - **Auto-memory.** Claude Code keeps a per-project memory folder. himmel uses
   its `MEMORY.md` as a short index that *routes*: one line per theme, each
@@ -355,8 +410,9 @@ Two search tools sit on top. Neither replaces a file:
   can be deleted and rebuilt at any time. The distinction is not whether
   search uses embeddings, but whether it leads back to the file.
 - **graphify** builds a knowledge graph of the code (which file and function
-  relates to which) and answers structure questions with `graphify query` and
-  `graphify explain`. The graph is rebuilt from the source on a schedule.
+  relates to which) and of the vault's notes, and answers structure questions
+  with `graphify query` and `graphify explain`. The graph is rebuilt from the
+  source on a schedule.
   Building the graph can send code to an outside model; the
   [egress matrix](docs/internals/egress-matrix.md) lists which files may go to
   which provider.
@@ -428,7 +484,7 @@ Each feature below links to the page that explains it;
 **Knowledge (optional)**
 - Vault capture and the clip pipeline (harvest, triage, synthesize, archive):
   [`marketplace/plugins/obsidian-triage/README.md`](marketplace/plugins/obsidian-triage/README.md)
-- graphify and qmd: see [Memory architecture](#memory-architecture)
+- graphify and qmd: see [Second brain and memory](#second-brain-and-memory)
 
 **Comms**
 - Telegram bridge (start a session, check on it and chat with it from your
@@ -444,10 +500,12 @@ Claude Code use tends to grow through four stages:
 3. **Orchestrated**: parallel agents and a harness around them.
 4. **Autonomous**: scheduled runs that work unattended, around the clock.
 
-himmel is built for stages 3 and 4. If you are happy at stage 1, and many
-excellent engineers are, you do not need it. It earns its complexity once you
-run several sessions in parallel, want work done overnight, or want work to
-build on itself across sessions without re-explaining the context each time.
+himmel helps at every stage. At stages 1 and 2 it gives you a simple
+install, a UI for your setup, evals that measure it and rules that hold. At
+stages 3 and 4 it is what
+holds the work together: a chief that runs the parallel sessions, runs that
+carry on overnight, and sessions that build on each other's work without
+re-explaining the context each time.
 
 ## Setup details
 
