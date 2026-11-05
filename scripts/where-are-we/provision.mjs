@@ -4,13 +4,16 @@
 //                                                    (empty on miss/contentless)
 //   emit  --ledger <p> --key <KEY> [fields]   WRITE → appends ONE structured
 //                                                    record via appendRecords
+//   compact --ledger <p>                      WRITE → drops the records fold() no
+//                                                    longer reads; every slice
+//                                                    stays byte-identical
 // Pure logic lives in lib/provision.mjs; this is the thin impure seam. main()
 // takes injected deps (readRecords/appendRecords) so tests stay hermetic —
 // local-fs-only (a temp ledger), no network/collector surface. Mirrors
 // collect.mjs / index.mjs.
 import { isMain } from '../lib/is-main.mjs';
 import { readRecords } from './lib/ledger.mjs';
-import { appendRecords } from './lib/append.mjs';
+import { appendRecords, compactLedger } from './lib/append.mjs';
 import { fold } from './lib/fold.mjs';
 import { renderSlice, buildEmitRecord } from './lib/provision.mjs';
 import { UsageError } from './lib/errors.mjs';
@@ -44,9 +47,10 @@ export function parseArgs(argv) {
 // main(argv, deps). `now` is resolved here as a string ISO timestamp (the
 // collect.mjs precedent), NOT injected. Returns a string: the rendered slice
 // (slice) or an "appended=N dropped=M" summary (emit).
-export function main(argv, deps = { readRecords, appendRecords }) {
+export function main(argv, deps = { readRecords, appendRecords, compactLedger }) {
   const read = deps.readRecords ?? readRecords;
   const append = deps.appendRecords ?? appendRecords;
+  const compact = deps.compactLedger ?? compactLedger;
   const a = parseArgs(argv);
   const now = a.now ?? new Date().toISOString();
 
@@ -67,7 +71,13 @@ export function main(argv, deps = { readRecords, appendRecords }) {
     return `appended=${r.appended} dropped=${r.dropped}`;
   }
 
-  throw new UsageError(`unknown verb: ${a.verb ?? '(none)'} (expected 'slice' or 'emit')`);
+  if (a.verb === 'compact') {
+    if (!a.ledger) throw new UsageError('compact: --ledger <path> is required');
+    const r = compact(a.ledger);
+    return `kept=${r.kept} dropped=${r.dropped}`;
+  }
+
+  throw new UsageError(`unknown verb: ${a.verb ?? '(none)'} (expected 'slice', 'emit' or 'compact')`);
 }
 
 // CLI entry (not exercised by hermetic tests). slice is fail-open (exit 0 even on
