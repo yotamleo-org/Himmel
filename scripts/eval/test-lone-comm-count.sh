@@ -63,7 +63,7 @@ check "SUCCESSION is a safety class" 'grep -qxF "CLASS${T}SUCCESSION${T}safety${
 check "token-quoting is a safety class" 'grep -qxF "CLASS${T}token-quoting${T}safety${T}1" "$TMP/a.out"'
 check "LIVE bullet is batchable" 'grep -qxF "CLASS${T}LIVE${T}batchable${T}1" "$TMP/a.out"'
 check "a batched bullet (FINDING + Read) is not counted" '! grep -qF "CLASS${T}FINDING${T}" "$TMP/a.out"'
-check "a safety row never shows as batchable" '! grep -F "${T}batchable${T}" "$TMP/a.out" | grep -qE "^CLASS.(GO|SUCCESSION|token-quoting)."'
+check "a safety row never shows as batchable" '! grep -qE "^CLASS${T}(GO|SUCCESSION|token-quoting)${T}batchable" "$TMP/a.out"'
 
 echo "3. window and file arguments"
 python3 "$LC" "$TMP/win/s2.jsonl" >"$TMP/b.out" 2>"$TMP/b.err"; rc=$?
