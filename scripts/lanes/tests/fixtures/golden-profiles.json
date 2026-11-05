@@ -9,7 +9,7 @@
       "mcp-server-dev@claude-plugins-official": false,
       "watch@claude-video": false,
       "lean-skills@himmel": true,
-      "i-have-adhd@himmel": true,
+      "i-have-adhd@himmel": false,
       "plannotator-effective-html@himmel": false,
       "impeccable@himmel": false,
       "ui-ux-pro-max@himmel": false,
@@ -358,6 +358,11 @@
       "humanizer@himmel": false,
       "himmel-guard@himmel": false,
       "domain-modeling@himmel": false
+    },
+    "permissions": {
+      "deny": [
+        "Artifact"
+      ]
     }
   }
 }

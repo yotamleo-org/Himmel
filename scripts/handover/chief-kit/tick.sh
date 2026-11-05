@@ -416,6 +416,15 @@ when there is no mirror. The waiter wakes on a
 positive value only; the console resets each row (version-status-audit.sh prints them).
 In compact output, a non-zero count also prints an `ACTION versionless-done=<n>: bash …/versionless-done.sh --backfill`
 line after the TICK line (HIMMEL-6416); chief-wait reads only the TICK line.
+cadence=<name>:<state>:<age>:<run id>[:RED|:SKIP|:MISSED],... (HIMMEL-9247) is the last SCHEDULED run of every workflow
+with a schedule: trigger, from ci-cadence.sh (gh read at most once per CI_CADENCE_INTERVAL_SEC, default 1800, else the
+cache beside the other tick state). RED = failure or timed_out, SKIP = concluded skipped, MISSED = no scheduled run inside 1.5
+periods; a running run flags nothing. ? = gh unreadable. Always on the line; the waiter wakes once per flagged run id.
+review=<date>:<age>:<failures>:<new classes>:<new 5+>:<filed keys joined by +, or ->[:CAPPED][:STALE] (decision 593) is the
+daily failure review (ci-cadence.sh review: a local read of the newest failure-review-<date>.md and its .json sidecar,
+HIMMEL_FAILURE_REVIEW_DIR). STALE = no review for 26 h; CAPPED = the router hit its daily create cap. Hidden when there is no
+review file. The waiter wakes once per review day on a filed key, a new class with 5+ failures or CAPPED, and once per
+last-review date on STALE; never on a 1-count class.
 leaks=<n|?> (HIMMEL-7153) counts the LEAK lines of one bounded `jira release leaks <active version>`
 read (TICK_LEAKS_PROBE gets the version and the mirror directory as its arguments; TICK_LEAKS_TIMEOUT, default 30 s): open tickets
 in a frozen version with no frozen-set membership and no admissions-ledger row. Shown only when non-zero
@@ -1936,6 +1945,13 @@ if [ "$dispatch_summary" = none ] && [ -n "$dispatch_runs" ]; then
     done <<< "$dispatch_runs"
     [ -z "$dispatch_list" ] || dispatch_summary="$dispatch_list"
 fi
+
+# cadence=: the last scheduled run of every scheduled workflow, one helper call that
+# reads gh at most once per CI_CADENCE_INTERVAL_SEC and serves its cache between.
+cadence_summary="$(cd "$pr_repo" 2>/dev/null && CI_CADENCE_DIR="$pr_repo" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 40)"} bash "$HERE/ci-cadence.sh" field 2>/dev/null)" || cadence_summary='?'  # swallow-ok: an unreadable cadence renders as cadence=?
+# review=: the daily failure review as one more scheduled row (operator decision 593), a local file read.
+review_summary="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 10)"} bash "$HERE/ci-cadence.sh" review 2>/dev/null)" || review_summary='?'  # swallow-ok: an unreadable review renders as review=?
+[ -n "$review_summary" ] || review_summary='?'
 
 # the board fingerprint -- what chief-board.html shows that the
 # chief authors or a tick already reads: worker locks, worker tails, open PRs, and
@@ -3578,6 +3594,8 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$focus_summary" ] || printf 'focus: %s\n' "$focus_summary"
     [ -z "$sdrift_summary" ] || printf 'sdrift: %s\n' "$sdrift_summary"
     printf 'denials: %s\n' "$denials_summary"
+    printf 'ci cadence: %s\n' "$cadence_summary"
+    printf 'failure review: %s\n' "$review_summary"
     printf 'ci queue: %s\n' "$ciq_summary"
     printf 'ci guardrail: %s%s\n' "$ciguard_summary" "${ciguard_age:+ (read $ciguard_age ago)}"
     [ -z "$deadline_over" ] || printf 'deadline over: %s\n' "$deadline_over"
@@ -3630,7 +3648,7 @@ else
     compact_field() {
         case "$1=$2" in
             *=|hb=ok|hb=skip|effort=ok|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
-            ext-prs=none|dispatch=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
+            ext-prs=none|dispatch=none|review=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
             versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|rm-queue=0|rm-queue=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*|prio=skip|pool-stale=skip|INTAKE=0|INTAKE=skip|chains=ok|chains=skip|residual-unversioned=skip|residual-unversioned=0|\
             focus=ok|sdrift=0:*) return ;;
@@ -3650,6 +3668,8 @@ else
     compact_field unowned-prs "$unowned_prs"
     compact_field ext-prs "$ext_prs"
     compact_field dispatch "$dispatch_summary"
+    compact_field cadence "$cadence_summary"
+    compact_field review "$review_summary"
     compact_field usage "$bank"
     compact_field vmspend "$vmspend"
     compact_field fill "$fill"

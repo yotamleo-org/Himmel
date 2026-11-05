@@ -40,7 +40,7 @@ catalog needs a checkout.
    `/worktree`, `/clean` and `/check-ci` do not. The daily loop's
    [adopter route](daily-loop.md#adopter-route-your-own-repo) types the scripts.
 3. **Plugin commands:** the plugins in the base set (`handover`, `himmel-ops`,
-   `qmd`, `lean-skills`, `i-have-adhd`, per `scripts/lanes/plugin-profiles.json`)
+   `qmd`, `lean-skills`, per `scripts/lanes/plugin-profiles.json`)
    carry their own commands. `/handover-setup` comes from `handover`;
    `/chief`, `/cloud-route`, `/fanout`,
    `/himmel-doctor`, `/himmel-update`, `/himmel-update-all`,
