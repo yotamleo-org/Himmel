@@ -245,3 +245,65 @@ test("the Usage panel points the worker list at Fleet", () => {
   expect(html).toContain("open Fleet");
   expect(html).toContain('href="/agui/?t=x"');
 });
+
+// One check detail can be a ~5 KB line (the graph-freshness paths, comma-separated, no break inside a path).
+// It must wrap inside its row, bundle table cell and alert, never widen the page, and stay readable whole.
+const longDetail = Array.from({ length: 60 }, (_, i) => `scripts/semantic/refresh/stuck/area-${i}/an-unbroken-file-name-${i}.md`).join(",");
+const count = (html: string, s: string) => html.split(s).length - 1;
+const cssRule = async (selector: string) => {
+  const css = await Bun.file(new URL("../public/app.css", import.meta.url)).text();
+  const m = new RegExp(`(?:^|[}\\n])${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\{([^}]*)\\}`).exec(css);
+  expect(m).not.toBeNull();
+  return m![1];
+};
+
+test("a long detail is rendered whole in every Health path: row, jobs, search, bundle table and alert", () => {
+  expect(longDetail.length).toBeGreaterThan(3000);
+  const f = feed(own("a", "fail"), r("cadence:j", "ok", { source: "cadence", scope: "shared" }), r("s", "ok", { bundle: "search", scope: "shared" }));
+  for (const x of f.rows as any[]) x.installed = { state: "present", detail: longDetail };
+  const health = { bank: { state: "absent" }, monitoring: { state: "ok", prometheus: { state: "ok", alerts: [{ alertname: "A", severity: "warn", summary: longDetail }] }, exporter: { state: "ok" } } };
+  const det = `<span class="det">${longDetail}</span>`;
+  expect(count(renderHealth(f, health, { tile: "checks", tab: "broken" }), det)).toBe(2); // the row and the alert
+  expect(count(renderHealth(f, health, { tile: "jobs" }), det)).toBe(1);
+  expect(count(renderHealth(f, health, { tile: "search" }), det)).toBe(1);
+  expect(renderHealth(f, health, { tile: "checks", tab: "all" })).toContain(`${longDetail}</td>`);
+});
+
+// The nowrap + ellipsis .det made a row's min-content width the whole line, so the page grew sideways; the row and
+// the alert now wrap it anywhere. One rule covers both, so no render path is left out.
+test("a detail in a Health row or an alert wraps anywhere instead of staying on one line", async () => {
+  const rule = await cssRule(".hrow .det,.alert .det");
+  expect(rule).toContain("white-space:normal");
+  expect(rule).toContain("overflow-wrap:anywhere");
+});
+
+// Short details render as before: the same span, the same text, inside the same row.
+test("a short detail renders as before", () => {
+  const html = renderHealth(feed(own("a", "fail")), null, { tile: "checks" });
+  expect(html).toContain('<span class="det">d-a</span>');
+  expect(html).toContain('<div class="hrow br" data-id="a">');
+});
+
+// The bundle table: a 5 KB detail column took all the width, so check and kind squeezed to one letter. The check id and
+// the kind keep a word whole (no wrapping inside them); only the detail column wraps, with a floor.
+test("the bundle table keeps the check and kind columns whole and lets only the detail wrap", async () => {
+  const f = feed(r("doctor:C70-graph-freshness", "warn", { scope: "project", installed: { state: "present", detail: longDetail } }));
+  const html = renderHealth(f, null, { tab: "all" });
+  expect(html).toContain('<table class="data chk">');
+  const tr = /<tr><td><span class="pill[^>]*>[^<]*<\/span><\/td>(.*?)<\/tr>/s.exec(html)![1];
+  expect(tr).toContain('<td class="id">doctor:C70-graph-freshness</td>');
+  expect(tr).toContain(`<td class="wrap">${longDetail}</td>`);
+  expect(tr).toMatch(/<td class="kind">[^<]+<\/td>$/);
+  expect(await cssRule(".data.chk th,.data.chk td")).toContain("overflow-wrap:normal");
+  const wrap = await cssRule(".data.chk td.wrap");
+  expect(wrap).toContain("overflow-wrap:anywhere");
+  expect(wrap).toMatch(/min-width:\d+ch/);
+});
+
+// The tab panels are grid items of .p; a grid item's min width is its content, so a wide table grew the track (the page
+// overflowed at 390px) instead of scrolling inside .scroll. The panels may shrink below their content.
+test("the Health tab panels can shrink below their content so the table scrolls inside its box", async () => {
+  const html = renderHealth(feed(own("a", "fail")), null, { tile: "checks", tab: "all" });
+  expect(html).toContain('role="tabpanel" id="tab-all"');
+  expect(await cssRule('.p>[role="tabpanel"]')).toContain("min-width:0");
+});
