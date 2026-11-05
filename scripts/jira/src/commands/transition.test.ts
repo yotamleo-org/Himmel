@@ -173,12 +173,13 @@ describe('transition to Done respects the intake gate of a frozen version', () =
   });
 
   it('a deferred ticket closes unstamped, fails loudly on stderr and exits 3', async () => {
-    ledger({ ts: 't', version: 'v1.1.3', key: 'HIMMEL-1', kind: 'deferral', actor: 'a' });
+    const key = 'HIMMEL-1';
+    ledger({ ts: 't', version: 'v1.1.3', key, kind: 'deferral', actor: 'a' });
     wire([], FROZEN);
-    await run('HIMMEL-1', 'Done');
+    await run(key, 'Done');
     expect(puts()).toHaveLength(0);
     expect(mockRequest.mock.calls.some((c) => c[0] === 'POST')).toBe(true);
-    expect(vi.mocked(console.error).mock.calls.flat().join('\n')).toMatch(/^FAIL \S+ closed with no fixVersion: .*deferral/m);
+    expect(vi.mocked(console.error).mock.calls.flat().join('\n')).toMatch(new RegExp(`^FAIL ${key} closed with no fixVersion: .*deferral`, 'm'));
     expect(process.exitCode).toBe(3);
   });
 

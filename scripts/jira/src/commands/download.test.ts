@@ -48,7 +48,7 @@ describe('attachments / download', () => {
   it('attachments with none prints the empty line', async () => {
     mockRequest.mockResolvedValue({ fields: {} });
     await run(['attachments', 'HIMMEL-1']);
-    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^\S+: no attachments$/));
+    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^HIMMEL-1: no attachments$/));
   });
 
   it('download <id> --out: fetches the content URL and writes under --out', async () => {
