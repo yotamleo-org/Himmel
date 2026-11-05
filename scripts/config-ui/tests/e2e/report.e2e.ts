@@ -33,6 +33,8 @@ test("the Morning report page: day selector, five tiles, per-shift spend, an emp
   await page.goto(`${h.url}&page=report`);
   await page.locator("h1", { hasText: "Morning report" }).waitFor();
   await expect(page.locator("nav.pages a", { hasText: "Morning report" })).toHaveAttribute("aria-current", "page");
+  await expect(page.locator("#pagebar .rp-days")).toBeVisible();
+  await expect(page.locator("#pagebar [data-act=report-refresh]")).toBeVisible();
   const chips = page.locator(".rp-days .chip");
   await expect(chips.filter({ hasText: "Wed 28 Oct" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".tiles .tile")).toHaveCount(5);

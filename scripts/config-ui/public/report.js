@@ -59,6 +59,13 @@ function selector(list, day, ui) {
   return `<nav class="rp-days" aria-label="Report day">${so}${shown.map((d) => link(d, shortDay(d))).join(" ")}${more}</nav>`;
 }
 
+// the page bar's controls (app.js pageBar): the day picker and a refresh that reads the list and the day again; empty while loading or on an error
+export function reportBar(list, view, ui) {
+  if (!list || list.error || list.reason) return "";
+  const day = (view && view.day) || ui.day || list.newest || list.today;
+  return `${selector(list, day, ui)}<button type="button" class="chip" data-act="report-refresh">Refresh</button>`;
+}
+
 function stale(list) {
   if (list.newest === null || list.ageHours === null || list.ageHours < 36) return "";
   return `<div class="nodata" role="status">No report since ${esc(list.newest)}. The morning-report cadence has not run (doctor: WARN).</div>`;
@@ -78,7 +85,7 @@ export function renderReport(list, view, ui) {
   if (list.error) return pg(`${head}<div class="nodata">${esc(list.error)}</div>`);
   if (list.reason) return pg(`${head}<div class="nodata">${esc(list.reason)}</div>`);
   const day = (view && view.day) || ui.day || list.newest || list.today;
-  const bar = stale(list) + selector(list, day, ui);
+  const bar = stale(list);
   if (!view) return pg(`${head}${bar}${none("loading…")}`);
   if (view.state === "none") {
     if (!list.days.length && day === list.today) return pg(`${head}${bar}${none("No report has been made yet. The morning-report cadence writes one a day.")}${soFarView(list.soFar, day, ui)}`);

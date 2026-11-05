@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
 import { parseReport } from "../reports";
-import { renderReport } from "../public/report.js";
+import { renderReport, reportBar } from "../public/report.js";
 import { renderReports } from "../public/render.js";
 // @ts-expect-error CommonJS module without types
 import { defaultConfig } from "../../himmelctl/lib/luna-config.js";
@@ -201,7 +201,8 @@ const ui = { day: null, shiftHref: "#/shift" };
 
 test("a report draws the day selector, the window bar, five tiles, the open PRs apart and a degraded banner", () => {
   const html = renderReport(LIST, parseReport(GEN, "2026-10-27"), ui);
-  expect(html).toContain('href="#/report?day=2026-10-27"');
+  expect(html).not.toContain("rp-days");
+  expect(reportBar(LIST, parseReport(GEN, "2026-10-27"), ui)).toContain('href="#/report?day=2026-10-27"');
   expect(html).toContain("Day starts: local midnight on the station");
   expect(html).toContain("covers each shift over its own [opened, closed)");
   expect((html.match(/<div class="tile /g) || []).length).toBe(5);
@@ -219,7 +220,15 @@ test("a day with no report says so, and today shows the so-far view instead", ()
   const so = renderReport({ ...LIST, days: ["2026-10-27"], newest: "2026-10-27" }, { state: "none", day: "2026-10-28" }, ui);
   expect(so).toContain("So far today");
   expect(so).toContain("is not a report and is never saved");
-  expect(so).toContain(">so far</a>");
+  expect(reportBar({ ...LIST, days: ["2026-10-27"], newest: "2026-10-27" }, { state: "none", day: "2026-10-28" }, ui)).toContain(">so far</a>");
+});
+
+test("the page bar holds the day picker and a refresh button, empty while the list loads or on an error", () => {
+  const bar = reportBar(LIST, parseReport(GEN, "2026-10-27"), ui);
+  expect(bar).toContain('class="rp-days"');
+  expect(bar).toContain('data-act="report-refresh"');
+  expect(reportBar(null, null, ui)).toBe("");
+  expect(reportBar({ error: "x" }, null, ui)).toBe("");
 });
 
 test("a newest report older than 36 hours warns that the cadence has not run", () => {
