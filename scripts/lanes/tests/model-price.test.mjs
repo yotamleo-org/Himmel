@@ -124,3 +124,26 @@ test('call CLI prices one call and exits 2 for an unpriced model', () => {
   assert.equal(bad.status, 2);
   assert.match(bad.stdout, /^unpriced model=gpt-9-imaginary$/m);
 });
+
+test('a message repeated by streaming is priced at its last (final) usage', () => {
+  const root = mkdtempSync(join(tmpdir(), 'model-price-'));
+  try {
+    writeTranscript(join(root, 'proj'), 's1.jsonl', [
+      rec(1, 'gpt-6.1-sol', { input_tokens: M, output_tokens: 5 }),
+      rec(1, 'gpt-6.1-sol', FIXTURE_USAGE),
+    ]);
+    const res = priceTranscripts(root, rows);
+    assert.equal(res.perModel['gpt-6.1-sol'].calls, 1);
+    assert.ok(Math.abs(res.perModel['gpt-6.1-sol'].usd - priceCall({ model: 'gpt-6.1-sol', usage: FIXTURE_USAGE }, rows).usd) < 1e-9);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a malformed token count or --since date is an argument error, never a successful zero or NaN', () => {
+  for (const args of [['call', '--model', 'gpt-6.1-sol', '--input', 'abc'], ['call', '--model', 'gpt-6.1-sol', '--input', '-1'],
+    ['transcripts', tmpdir(), '--since', 'not-a-date']]) {
+    const r = spawnSync('node', [CLI, ...args], { encoding: 'utf8' });
+    assert.equal(r.status, 64, `${args.join(' ')}: ${r.stdout}${r.stderr}`);
+  }
+});

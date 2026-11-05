@@ -54,13 +54,16 @@ function* jsonlFiles(dir) {
 
 // Read-only walk of a transcripts dir. since: ISO date; a record older than it is skipped.
 export function priceTranscripts(dir, rows, { since, priceAs } = {}) {
-  const sinceMs = since ? Date.parse(since) : null;
+  const sinceMs = since === undefined ? null : Date.parse(since);
+  if (Number.isNaN(sinceMs)) throw new Error(`--since is not a date: ${since}`);
   const perModel = {};
   const unpriced = {};
   let total = 0;
   let opusCalls = 0;
   for (const file of jsonlFiles(dir)) {
-    const seen = new Set();
+    // one entry per message: a streamed message repeats, and its last record carries the final usage
+    const calls = new Map();
+    let anon = 0;
     for (const line of readFileSync(file, 'utf8').split('\n')) {
       if (!line.trim()) continue;
       let r;
@@ -68,11 +71,9 @@ export function priceTranscripts(dir, rows, { since, priceAs } = {}) {
       const m = r.message;
       if (r.type !== 'assistant' || !m || typeof m !== 'object' || !m.usage) continue;
       if (sinceMs !== null && !(Date.parse(r.timestamp) >= sinceMs)) continue;
-      if (m.id) {
-        const key = `${m.id}|${r.requestId ?? ''}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-      }
+      calls.set(m.id ? `${m.id}|${r.requestId ?? ''}` : `anon${anon++}`, m);
+    }
+    for (const m of calls.values()) {
       const res = priceCall({ model: m.model, usage: m.usage }, rows, priceAs);
       if (!res.priced) { unpriced[m.model] = (unpriced[m.model] ?? 0) + 1; continue; }
       const p = perModel[m.model] ??= { calls: 0, usd: 0 };
@@ -99,9 +100,14 @@ function main(argv) {
   const rows = loadPrices();
   if (cmd === 'call') {
     const f = flags(rest);
+    const count = (k) => {
+      const n = Number(f[k] ?? 0);
+      if (!Number.isFinite(n) || n < 0) throw new Error(`--${k} must be a non-negative number: ${f[k]}`);
+      return n;
+    };
     const usage = {
-      input_tokens: +(f.input ?? 0), output_tokens: +(f.output ?? 0), cache_read_input_tokens: +(f['cache-read'] ?? 0),
-      cache_creation: { ephemeral_5m_input_tokens: +(f['cache-write-5m'] ?? 0), ephemeral_1h_input_tokens: +(f['cache-write-1h'] ?? 0) },
+      input_tokens: count('input'), output_tokens: count('output'), cache_read_input_tokens: count('cache-read'),
+      cache_creation: { ephemeral_5m_input_tokens: count('cache-write-5m'), ephemeral_1h_input_tokens: count('cache-write-1h') },
     };
     const res = priceCall({ model: f.model, usage }, rows);
     if (!res.priced) { console.log(`unpriced model=${f.model}`); return 2; }
