@@ -39,7 +39,7 @@
 # docker config, gh hosts.yml, ~/.claude/.credentials.json, terraform.tfstate,
 # ~/.ssh/* (not .pub/known_hosts/config) and /proc/*/environ. `systemctl
 # show-environment` (with or without --user), `systemctl show` with no operand
-# or a -p / -P / --property list naming Environment, and a busctl/gdbus/dbus-send
+# or a -p / --property list naming Environment, and a busctl/gdbus/dbus-send
 # clause on the systemd Manager with Environment, GetAll or introspect are denied
 # the same way. This is an open list of shapes, not a closed class: `show -P NAME`,
 # wrappers and relays (ssh, systemd-run, machinectl, rtk proxy, ...) are not read;
