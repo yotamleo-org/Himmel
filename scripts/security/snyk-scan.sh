@@ -137,10 +137,11 @@ fi
 # --- Code triage list: a malformed row stops the run before it spends any quota -----
 TRIAGE_SRC=/dev/null
 if [ -e "$TRIAGE" ]; then
-    [ -r "$TRIAGE" ] || { err "cannot read the triage list $TRIAGE"; exit 2; }
+    { [ -f "$TRIAGE" ] && [ -r "$TRIAGE" ]; } || { err "the triage list $TRIAGE is not a readable regular file"; exit 2; }
     TRIAGE_SRC="$TRIAGE"
-    tri_bad="$(awk -F'\t' '$0 !~ /^[[:space:]]*(#|$)/ && ($1 == "" || $2 !~ /^(fixed|hardened|false-positive)$/ || $3 == "") {print "line " NR ": " $0; exit}' "$TRIAGE")"
-    [ -z "$tri_bad" ] || { err "triage list $TRIAGE has a row without an id, a verdict (fixed, hardened or false-positive) or a reason: $tri_bad"; exit 2; }
+    tri_bad="$(awk -F'\t' '$0 !~ /^[[:space:]]*(#|$)/ && ($1 == "" || $2 !~ /^(fixed|hardened|false-positive)$/ || $3 == "" || ($1 in seen)) {print "line " NR ": " $0; exit} $0 !~ /^[[:space:]]*(#|$)/ {seen[$1] = 1}' "$TRIAGE")" \
+        || { err "cannot validate the triage list $TRIAGE"; exit 2; }
+    [ -z "$tri_bad" ] || { err "triage list $TRIAGE has a row without an id, a verdict (fixed, hardened or false-positive) or a reason, or an id that repeats an earlier row: $tri_bad"; exit 2; }
 fi
 
 # --- quota guard --------------------------------------------------------------

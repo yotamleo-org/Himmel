@@ -530,6 +530,17 @@ check "a bad triage list stops the run before any scan" 0 "$(grep -c '^[^|]*|tes
 printf '%s\tmaybe\tsome reason\n' "$FID" > "$TRI"
 run badverdict
 check "a triage row with an unknown verdict exits 2" 2 "$RC"
+# a repeated id could let a suppressing row hide a fixed one, whatever the row order
+printf '%s\tfixed\tthe flagged call was replaced\n%s\tfalse-positive\tthe flagged line holds a name\n' "$FID" "$FID" > "$TRI"
+run dupid
+check "a triage id that repeats an earlier row exits 2" 2 "$RC"
+has "the repeated triage row is named" "repeats" "$OUT"
+check "a repeated triage id stops the run before any scan" 0 "$(grep -c '^[^|]*|test' "$W/calls.log")"
+# the triage source must be a regular file: a directory used to pass the checks and fail after the quota was spent
+mkdir -p "$W/triage-dir"
+SNYK_SCAN_TRIAGE="$W/triage-dir" run dirtriage
+check "a triage list that is a directory exits 2" 2 "$RC"
+check "a triage directory stops the run before any scan" 0 "$(grep -c '^[^|]*|test' "$W/calls.log")"
 
 # the cadence over the real scan: an untriaged finding alerts once, a triaged one clears it
 rm -rf "$W/alert-sent" "$W/alerts.log" "$W/sent.log"
@@ -555,11 +566,15 @@ if [ "${1:-}" = "-l" ]; then
     out="$(cat "$SLOW_TAB")"
     [ -z "${STUB_READ_DELAY:-}" ] || sleep "$STUB_READ_DELAY"
     printf '%s\n' "$out"
-else
+elif [ "${1:-}" = "-" ]; then
     cat > "$SLOW_TAB"
+else
+    echo "slowcron: unexpected argument: ${1:-}" >&2; exit 2
 fi
 SH
 chmod +x "$W/slowcron"
+"$W/slowcron" -bad < /dev/null > /dev/null 2>&1
+check "the slow crontab stub rejects an install argument other than -" 2 "$?"
 printf '0 1 * * * /other/job # HIMMEL-Other\n30 2 * * * /keep/me # HIMMEL-Keep\n' > "$SLOW_TAB"
 mkdir -p "$W/ho"
 STUB_READ_DELAY=1.5 SNYKCAD_CRONTAB="$W/slowcron" SNYKCAD_RUNNER_DIR="$W/runner-lock-a" bash "$CAD" arm > "$W/lock-a.log" 2>&1 & lock_p1=$!
