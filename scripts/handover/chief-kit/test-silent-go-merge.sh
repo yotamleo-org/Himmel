@@ -40,7 +40,11 @@ cat "$STUB/rc.out" 2>/dev/null
 exit "$(cat "$STUB/rc.rc" 2>/dev/null || echo 0)"
 EOF
 # process-table seam: prints $STUB/ps (pid args lines).
-printf '#!/usr/bin/env bash\ncat "$STUB/ps" 2>/dev/null\n' > "$STUB/ps.sh"
+cat > "$STUB/ps.sh" <<'EOF'
+#!/usr/bin/env bash
+[ -f "$STUB/ps.fail" ] && exit 1
+cat "$STUB/ps" 2>/dev/null || printf '1 /sbin/init\n'
+EOF
 chmod +x "$STUB/page.sh" "$STUB/ready-check.sh" "$STUB/ps.sh"
 export CHIEF_WAIT_PAGE_CMD="$STUB/page.sh" CHIEF_SILENT_GO_READY_CHECK="$STUB/ready-check.sh" CHIEF_SILENT_GO_PS="$STUB/ps.sh"
 
@@ -66,7 +70,7 @@ printf '{"workers":[{"label":"N9","doc":"%s"}]}\n' "$WD" > "$WM"
 
 # reset <completes> <tail bullet...>: a fresh fleet, the worker READY at $SHA and silent for 2 h.
 reset() {
-    rm -f "$STUB/merges" "$STUB/pages" "$STUB/rc-calls" "$STUB/rc.out" "$STUB/rc.rc" "$STUB/ps" "$STUB/merge.rc" "$STATE" "$HANDOVER_DIR/.locks/go/"*
+    rm -f "$STUB/merges" "$STUB/pages" "$STUB/rc-calls" "$STUB/rc.out" "$STUB/rc.rc" "$STUB/ps" "$STUB/ps.fail" "$STUB/merge.rc" "$STATE" "$HANDOVER_DIR/.locks/go/"*
     printf '# chief\n\n## Results (newest at the bottom)\n- 01:00 LIVE — chief\n' > "$CD"
     {
         printf '# worker N9\n\n> **completes-ticket: %s**\n\n## Results (newest at the bottom)\n' "$1"
@@ -160,6 +164,11 @@ check "(n9) the operator is alerted" "1" "$(n "$STUB/pages" "reason=not-checkout
 reset yes; go_file "$SHA"; echo 17 > "$STUB/merge.rc"; run
 check "(n10) a refused merge alerts with its rc" "1" "$(n "$STUB/pages" "^SILENT-WORKER-MERGE-FAILED N9 pr=77 head=$SHA rc=17")"
 check "(n10) and the chief doc says so" "1" "$(n "$CD" "SILENT-WORKER-MERGE-FAILED N9")"
+
+# --- (n11) an unreadable process table is unknown liveness: no merge ---
+reset yes; go_file "$SHA"; touch "$STUB/ps.fail"; run
+check "(n11) a failing process table: no merge" "0" "$(n "$STUB/merges")"
+check "(n11) it is held as alive" "1" "$(n "$STUB/pages" "reason=alive")"
 
 # --- (w1) the waiter runs the helper each sample and wakes on its lines ---
 # The helper is a seam here (its rows are above); the waiter's tick and bank are stubbed.

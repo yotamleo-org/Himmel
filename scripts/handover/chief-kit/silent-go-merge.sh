@@ -49,9 +49,9 @@ REPO="$(cd "$HERE/../../.." && pwd)"
 doc="" from="" state=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --doc) doc="${2:-}"; shift 2 ;;
-        --workers-from) from="${2:-}"; shift 2 ;;
-        --state) state="${2:-}"; shift 2 ;;
+        --doc) doc="${2:-}"; shift 2 || break ;;
+        --workers-from) from="${2:-}"; shift 2 || break ;;
+        --state) state="${2:-}"; shift 2 || break ;;
         *) echo "usage: silent-go-merge.sh --doc <chief doc> --workers-from <manifest> --state <file>" >&2; exit 2 ;;
     esac
 done
@@ -88,13 +88,16 @@ once() { # <key>: succeeds the first time a key is seen, and records it
     printf '%s\n' "$1" >> "$state"
 }
 mtime() { stat -c %Y "$1" 2>/dev/null || echo 0; }  # gnu-ok: Linux-only kit  # swallow-ok: both files were just tested to exist; 0 only lengthens silence of a vanished file, and merge-on-green re-verifies the GO
-alive() { # <doc>: a process carries the doc's stem in its argv
-    local stem="${1##*/}"; stem="${stem%.md}"; stem="${stem%-RESUME}"
+alive() { # <doc>: a process carries the doc's stem in its argv; an unreadable table counts as alive
+    local stem="${1##*/}" table
+    stem="${stem%.md}"; stem="${stem%-RESUME}"
     if [ -n "${CHIEF_SILENT_GO_PS:-}" ]; then
-        bash "$CHIEF_SILENT_GO_PS"
+        table="$(bash "$CHIEF_SILENT_GO_PS")" || return 0
     else
-        ps -ww -eo pid=,args= 2>/dev/null
-    fi | awk -v me="$$" -v s="$stem" '$1 != me && index($0, s) { f = 1 } END { exit !f }'
+        table="$(ps -ww -eo pid=,args=)" || return 0
+    fi
+    [ -n "$table" ] || return 0
+    printf '%s\n' "$table" | awk -v me="$$" -v s="$stem" '$1 != me && index($0, s) { f = 1 } END { exit !f }'
 }
 
 workers="$(jq -r '(.workers // [])[]? | [.label, .doc] | @tsv' "$from" 2>/dev/null)" || exit 1  # swallow-ok: rc is checked, an unreadable manifest merges nothing
