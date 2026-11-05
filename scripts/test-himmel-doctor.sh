@@ -8076,7 +8076,11 @@ c89_reset; c89_gguf
 mkdir -p "$c89_t/bun/install/global/node_modules/@tobilu/qmd/dist/cli" "$c89_t/stubbin"
 : > "$c89_t/bun/install/global/node_modules/@tobilu/qmd/dist/cli/qmd.js"
 printf '#!/bin/sh\nexit 0\n' > "$c89_t/stubbin/bun"; chmod +x "$c89_t/stubbin/bun"
-out="$(env -u QMD_RERANK -u QMD_RERANK_MODEL -u QMD_DAEMON_DISABLED -u HIMMEL_DOCTOR_QMD_BIN HOME="$c89_t/home" BUN_INSTALL="$c89_t/bun" PATH="$c89_t/stubbin:$PATH" QMD_CONFIG_DIR="$c89_t/cfg" HIMMEL_DOCTOR_QMD_MODELS_DIR="$c89_t/models" QMD_DAEMON_OFF_FLAG="$c89_t/no-such-flag" QMD_RERANK=off bash "$DOC" --only C89 --no-color 2>&1)"
+c89_path="$c89_t/stubbin"; c89_ifs="$IFS"; IFS=:
+for c89_d in $PATH; do [ -e "$c89_d/qmd" ] || c89_path="$c89_path:$c89_d"; done
+IFS="$c89_ifs"
+if PATH="$c89_path" command -v qmd >/dev/null 2>&1; then fail "C89 bun-global qmd: a qmd is still on the scrubbed PATH"; fi
+out="$(env -u QMD_RERANK -u QMD_RERANK_MODEL -u QMD_DAEMON_DISABLED -u HIMMEL_DOCTOR_QMD_BIN HOME="$c89_t/home" BUN_INSTALL="$c89_t/bun" PATH="$c89_path" QMD_CONFIG_DIR="$c89_t/cfg" HIMMEL_DOCTOR_QMD_MODELS_DIR="$c89_t/models" QMD_DAEMON_OFF_FLAG="$c89_t/no-such-flag" QMD_RERANK=off bash "$DOC" --only C89 --no-color 2>&1)"
 if grepq "$out" 'WARN C89-qmd-rerank' && ! grepq "$out" -F 'not installed'; then pass "C89 bun-global qmd -> checked, WARN"; else fail "C89 bun-global qmd -> $(printf '%s' "$out" | head -4)"; fi
 echo "== C89: QMD_RERANK=0 and QMD_RERANK=FALSE also warn =="
 c89_reset; c89_gguf
