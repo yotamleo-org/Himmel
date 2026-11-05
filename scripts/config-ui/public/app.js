@@ -497,7 +497,7 @@ async function saveApiRoles() {
 }
 function toggleApiRole(role, letter) {
   const ar = state.apiRoles;
-  if (!ar || !ar.draft) return;
+  if (!ar || !ar.draft || apiRolesSaving) return;
   const now = ar.draft[role] || [], next = now.includes(letter) ? now.filter((l) => l !== letter) : [...now, letter].sort();
   if (next.length) ar.draft[role] = next; else delete ar.draft[role];
   ar.msg = null;
@@ -925,7 +925,7 @@ document.addEventListener("click", (e) => {
   if (b.dataset.act === "role-toggle") return void toggleApiRole(b.dataset.role, b.dataset.account);
   if (b.dataset.act === "roles-save") return void saveApiRoles();
   if (b.dataset.act === "roles-preview" && state.apiRoles) { state.apiRoles.preview = true; return void paint(); }
-  if (b.dataset.act === "roles-cancel" && state.apiRoles && state.apiRoles.data) { Object.assign(state.apiRoles, { draft: apiRolesDraft(state.apiRoles.data), preview: false, msg: null }); return void paint(); }
+  if (b.dataset.act === "roles-cancel" && state.apiRoles && state.apiRoles.data && !apiRolesSaving) { Object.assign(state.apiRoles, { draft: apiRolesDraft(state.apiRoles.data), preview: false, msg: null }); return void paint(); }
   if (b.dataset.act === "fleet-cap-save") return void saveFleetCap();
   if (b.dataset.act === "reveal") {
     e.stopPropagation();
