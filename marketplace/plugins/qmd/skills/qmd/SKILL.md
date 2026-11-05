@@ -126,7 +126,7 @@ Measured on a 38-query golden set with `scripts/eval/qmd-quality/qmd-quality.sh`
    the reranker is remote (OpenRouter); with a local reranker (no OpenRouter
    key) an unset `rerank` answers unreranked, so **pass `rerank: true`** there.
    The first call can be slow on a cold model load; a hung rerank falls back to
-   the unreranked order and says so. The CLI `qmd query` reranks by default.
+   the unreranked order and says so. The bounded CLI query below reranks by default.
 
 ## Other MCP Tools
 
