@@ -4,7 +4,7 @@ test("classifies control/dispatch/followup/chat + validates key", () => {
   expect(classify("status")).toEqual({ kind: "control", verb: "status" });
   expect(classify("stop HIMMEL-9")).toEqual({ kind: "control", verb: "stop", ticket: "HIMMEL-9" });
   expect(classify("work on HIMMEL-216")).toEqual({ kind: "dispatch", ticket: "HIMMEL-216" });
-  expect(classify("HIMMEL-216: also do Z")).toEqual({ kind: "followup", ticket: "HIMMEL-216", text: "also do Z" });
+  expect(classify("ABC-216: also do Z")).toEqual({ kind: "followup", ticket: "ABC-216", text: "also do Z" });
   expect(classify("hello there")).toEqual({ kind: "chat", text: "hello there" });
   expect(classify("work on lol-rm -rf")).toEqual({ kind: "chat", text: "work on lol-rm -rf" });
 });
@@ -34,7 +34,7 @@ test("/arm with bad/missing pieces or mid-text falls through to chat (never auto
   expect(classify("please /arm HIMMEL-389")).toEqual({ kind: "chat", text: "please /arm HIMMEL-389" });
 });
 
-test("classifies /mergepub <pr> <sha12> auto-commands (HIMMEL-1213)", () => {
+test("classifies /mergepub <pr> <sha12> auto-commands", () => {
   expect(classify("/mergepub 123 abcdef123456")).toEqual({ kind: "auto", op: "merge-public", arg: "123", time: "abcdef123456" });
   // optional leading # on the PR number
   expect(classify("/mergepub #123 abcdef123456")).toEqual({ kind: "auto", op: "merge-public", arg: "123", time: "abcdef123456" });
@@ -96,7 +96,7 @@ test("/restart is anchored on the WHOLE message — anything else is chat", () =
 
 // the chief verbs are case-insensitive and accept Telegram's
 // `/cmd@<bot>` addressing; a mid-text or trailing /chief stays chat.
-test("HIMMEL-5148: /chief is case-insensitive and accepts /chief@<bot>", () => {
+test("/chief is case-insensitive and accepts /chief@<bot>", () => {
   expect(classify("/Chief foo bar baz")).toEqual({ kind: "console", name: "foo", text: "bar baz" });
   expect(classify("/CHIEF@MyBot foo bar")).toEqual({ kind: "console", name: "foo", text: "bar" });
   expect(classify("/chief@mybot hello there", "MyBot")).toEqual({ kind: "console", name: "hello", text: "there" });
@@ -106,7 +106,7 @@ test("HIMMEL-5148: /chief is case-insensitive and accepts /chief@<bot>", () => {
   expect(classify("/chiefs@mybot", "mybot")).toEqual({ kind: "consoles" });
 });
 
-test("HIMMEL-5148: a mid-text, trailing, or other-bot /chief stays chat", () => {
+test("a mid-text, trailing, or other-bot /chief stays chat", () => {
   for (const t of [
     "Note that we had the issue when console is in queue again /chief. Let's also use the cloud",
     "please /chief foo bar",
@@ -120,14 +120,14 @@ test("HIMMEL-5148: a mid-text, trailing, or other-bot /chief stays chat", () => 
   expect(classify("/chiefs@otherbot", "mybot").kind).toBe("chat");
 });
 
-test("HIMMEL-7505: /chief and /chiefs route like /console and /consoles", () => {
+test("/chief and /chiefs route like /console and /consoles", () => {
   expect(classify("/chief foo bar baz")).toEqual({ kind: "console", name: "foo", text: "bar baz" });
   expect(classify("/Chief@mybot just text", "mybot")).toEqual({ kind: "console", name: "just", text: "text" });
   expect(classify("/chiefs")).toEqual({ kind: "consoles" });
   for (const t of ["/chiefx foo bar", "/chiefs foo", "please /chief foo bar"]) expect(classify(t).kind).toBe("chat");
 });
 
-test("HIMMEL-8381: the old /console and /consoles aliases are gone and classify as chat", () => {
+test("the old /console and /consoles aliases are gone and classify as chat", () => {
   for (const t of ["/console x", "/console foo bar baz", "/console@mybot foo bar", "/consoles"]) {
     expect(classify(t, "mybot").kind).toBe("chat");
   }
@@ -135,7 +135,7 @@ test("HIMMEL-8381: the old /console and /consoles aliases are gone and classify 
 
 // fleet verbs and /lockdown take the same case-insensitive verb and
 // `/cmd@<bot>` addressing as /chief; the worker label stays exact.
-test("HIMMEL-5150: fleet verbs are case-insensitive and accept /cmd@<bot>", () => {
+test("fleet verbs are case-insensitive and accept /cmd@<bot>", () => {
   expect(classify("/Fleet")).toEqual({ kind: "fleet", verb: "status" });
   expect(classify("/fleet@MyBot", "mybot")).toEqual({ kind: "fleet", verb: "status" });
   // bot name unknown: an @ suffix is unverifiable, so only halt/lockdown accept it
@@ -152,19 +152,19 @@ test("HIMMEL-5150: fleet verbs are case-insensitive and accept /cmd@<bot>", () =
   expect(classify("/halt@mybot N1490", "mybot")).toEqual({ kind: "fleet", verb: "halt", worker: "N1490" });
 });
 
-test("HIMMEL-5150: malformed or other-bot fleet shapes keep their refusal/chat split", () => {
+test("malformed or other-bot fleet shapes keep their refusal/chat split", () => {
   for (const t of ["/Go", "/go@mybot", "/fleet@mybot now", "/Go ../x", "/push@mybot a b"]) expect(classify(t, "mybot").kind).toBe("fleet-malformed");
   for (const t of ["/fleet@otherbot", "/go@otherbot N1", "/lockdown@otherbot", "/gopher", "/workersx", "/legsx", "/fleet@", "/fleet@bad-bot"]) expect(classify(t, "mybot").kind).toBe("chat");
 });
 
-test("HIMMEL-5150: /lockdown is case-insensitive and accepts /lockdown@<bot>", () => {
+test("/lockdown is case-insensitive and accepts /lockdown@<bot>", () => {
   expect(classify("/Lockdown")).toEqual({ kind: "lockdown" });
   expect(classify("/LOCKDOWN@MyBot", "mybot")).toEqual({ kind: "lockdown" });
   expect(classify("/lockdown now").kind).toBe("chat");
 });
 
 // Auto ops authorise bridge actions without the agent: they stay strict.
-test("HIMMEL-5150: /Arm and /arm@<bot> (and other auto ops) authorise nothing", () => {
+test("/Arm and /arm@<bot> (and other auto ops) authorise nothing", () => {
   for (const t of ["/Arm HIMMEL-389", "/ARM HIMMEL-389", "/arm@mybot HIMMEL-389", "/Arm@mybot HIMMEL-389 at 02:00",
     "/Mergepub@mybot 12 0123456789ab", "/restart@mybot", "/Restart@mybot full", "/Station-Status", "/confirm@mybot 0123abcd", "/Cr-Reset 12", "/cr-grant-delta@mybot 12 " + "a".repeat(40)]) {
     expect(classify(t, "mybot").kind).toBe("chat");

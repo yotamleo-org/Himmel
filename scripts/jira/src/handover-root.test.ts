@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { behaviourKey, handoverRoot } from './handover-root.js';
 
-describe('handoverRoot (HIMMEL-6917)', () => {
+describe('handoverRoot', () => {
   let dir: string;
   let dotenv: string;
   let confDir: string;

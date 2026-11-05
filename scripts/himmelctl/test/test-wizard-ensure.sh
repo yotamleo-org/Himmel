@@ -79,7 +79,7 @@ grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
 # shellcheck disable=SC1091
-. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # HIMMEL-2350: shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
+. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
 wizard="$repo_root/scripts/himmelctl/bin.js"
 [ -f "$wizard" ] || { echo "FAIL: $wizard not found" >&2; exit 1; }
 command -v node >/dev/null 2>&1 || { echo "FAIL: node required" >&2; exit 1; }
@@ -865,7 +865,7 @@ const state = require(process.env.STATE_LIB_PATH);
 const s = state.load();
 const key = Object.keys(s.targets)[0];
 s.targets[key].items['stale-item'].enabled = false;
-s.targets[key].items['stale-item'].overrides = { consent: 'no' };  // HIMMEL-2349: a deliberate override suppresses the new additive reconcile too
+s.targets[key].items['stale-item'].overrides = { consent: 'no' };  // a deliberate override suppresses the new additive reconcile too
 state.save(s);
 "
 rm -f "$targetO/stale.marker"
@@ -1040,7 +1040,7 @@ outS=$( cd "$targetS" && HIMMELCTL_REPO_ROOT="$(winpath "$repoS")" HIMMELCTL_CAC
 [ -s "$logS" ] || fail "case s: adopt.sh must be dispatched for a red pre-commit-hooks item under install:{type:\"adopt\"} (spy log is empty; ensure output: $outS)"
 grepq "$(cat "$logS")" 'adopt.sh-INVOKED' || fail "case s: spy log missing the adopt.sh-INVOKED marker (got: $(cat "$logS"))"
 grepq "$outS" -F 'pre-commit-hooks' || fail "case s: ensure output should name pre-commit-hooks (got: $outS)"
-echo "ok: case s — pre-commit-hooks (install:{type:\"adopt\"}) dispatches adopt.sh for a red item (HIMMEL-2441)"
+echo "ok: case s — pre-commit-hooks (install:{type:\"adopt\"}) dispatches adopt.sh for a red item"
 
 # ── case t (MAJOR — the toward-ENABLED mirror of case k's bug):
 # being NAMED in --items does NOT mean a dependency will actually be
@@ -1180,7 +1180,7 @@ const s = state.load();
 const key = Object.keys(s.targets)[0];
 s.targets[key].scope = 'user';
 s.targets[key].items['drift-item'].enabled = false;
-s.targets[key].items['drift-item'].overrides = { consent: 'no' };  // HIMMEL-2349: a deliberate override suppresses the new additive reconcile too
+s.targets[key].items['drift-item'].overrides = { consent: 'no' };  // a deliberate override suppresses the new additive reconcile too
 state.save(s);
 "
 rm -f "$targetV/drift.marker"

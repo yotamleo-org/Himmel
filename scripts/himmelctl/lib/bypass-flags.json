@@ -1,5 +1,5 @@
 {
-  "$comment": "HIMMEL-4254 P2: display registry of the *_OK / *_BYPASS flags hooks honour. The config UI shows these display-only (spec A6): a launch-shell variable cannot be set for another session. scripts/install/flag-registry-lint.mjs fails when a hook reads a flag with no entry here, or an entry names a hook that does not exist.",
+  "$comment": "Display registry of the *_OK / *_BYPASS flags hooks honour. The config UI shows these display-only (spec A6): a launch-shell variable cannot be set for another session. scripts/install/flag-registry-lint.mjs fails when a hook reads a flag with no entry here, or an entry names a hook that does not exist.",
   "flags": [
     {
       "name": "AGENTS_MD_OK",

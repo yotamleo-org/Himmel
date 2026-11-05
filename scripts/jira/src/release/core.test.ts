@@ -53,7 +53,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe('coreMatch (HIMMEL-8353 C1b)', () => {
+describe('coreMatch', () => {
   const patterns = loadCorePatterns(corePathsFile);
 
   it('core-check names a ship-loop path as CORE', async () => {
@@ -126,7 +126,7 @@ describe('coreMatch (HIMMEL-8353 C1b)', () => {
   });
 });
 
-describe('core-paths.txt (HIMMEL-8353 C1b)', () => {
+describe('core-paths.txt', () => {
   const patterns = loadCorePatterns(corePathsFile);
 
   it('splits a prefix(a|b)suffix line into its alternatives and refuses any other shape', () => {
@@ -160,7 +160,7 @@ describe('core-paths.txt (HIMMEL-8353 C1b)', () => {
   });
 });
 
-describe('core-paths size guard (HIMMEL-8353 C1b)', () => {
+describe('core-paths size guard', () => {
   const files = Array.from({ length: 100 }, (_, i) => (i < 5 ? `core/f${i}` : `other/f${i}`));
 
   it('alerts when more than 2 % of tracked files match, naming the counts', () => {
@@ -194,7 +194,7 @@ describe('core-paths size guard (HIMMEL-8353 C1b)', () => {
   });
 });
 
-describe('core-check decides each key on its own (HIMMEL-8353 C1b leftovers)', () => {
+describe('core-check decides each key on its own', () => {
   const MOG = 'scripts/handover/merge-on-green.sh';
   const m = () => mirrorOf([
     { key: 'K-1', type: 'Bug' },

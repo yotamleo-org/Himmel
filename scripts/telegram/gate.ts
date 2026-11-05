@@ -8,7 +8,7 @@ import { homedir } from "node:os";
 // groups is keyed by chat_id string; negative chat_ids cover
 // groups (-…) and channels (-100…). Values carry the fork's GroupPolicy:
 // a non-empty per-group allowFrom restricts senders (honored here);
-// requireMention (LUNA-158) opts a group into @mention-only mode — honored by
+// requireMention opts a group into @mention-only mode — honored by
 // the bun bridge's poller.ts handleInbound via requireMentionForChat below
 // (no message-entities parsing; matches `@<botusername>` against the raw
 // text) — a present key without allowFrom admits every member.
@@ -19,7 +19,7 @@ import { homedir } from "node:os";
 // posts as the operator's for the triage floor. Off by default and per-group,
 // because the anonymous sender id is shared by every admin of the chat — see
 // isOperatorIdentity.
-// cwd (LUNA-101): an absolute REPO path this chat's bounded run spawns in,
+// cwd: an absolute REPO path this chat's bounded run spawns in,
 // instead of the himmel checkout. Sibling of vault, not a replacement: a
 // cwd-routed chat is code-repo-routed, so it gets no Obsidian filing clause
 // (see cwdForChat).
@@ -143,7 +143,7 @@ export function vaultForChat(access: Access | null | undefined, chatId: number |
   return g?.vault ?? access?.defaultVault ?? null;
 }
 
-// Resolve the repo cwd a chat's bounded run spawns in (LUNA-101). Deliberately
+// Resolve the repo cwd a chat's bounded run spawns in. Deliberately
 // NOT a mirror of vaultForChat: there is no defaultCwd, because a default would
 // route every chat — DMs included — into that repo. Group's own `cwd`, else null
 // (→ the caller keeps the himmel checkout).
@@ -165,7 +165,7 @@ export function cwdForChat(access: Access | null | undefined, chatId: number | s
   return cwd;
 }
 
-// Resolve whether `chatId`'s group opted into @mention-only mode (LUNA-158) —
+// Resolve whether `chatId`'s group opted into @mention-only mode —
 // straight boolean read of GroupPolicy.requireMention, defaulting to false so
 // a chat absent from `groups` (including every DM) is unaffected.
 export function requireMentionForChat(access: Access | null | undefined, chatId: number | string): boolean {

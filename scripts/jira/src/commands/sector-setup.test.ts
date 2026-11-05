@@ -14,7 +14,7 @@ import { SECTORS } from './sector.js';
 
 const mockRequest = request as unknown as ReturnType<typeof vi.fn>;
 
-describe('sector setup (HIMMEL-6277)', () => {
+describe('sector setup', () => {
   let out: string[];
   let err: string[];
   let dir: string;

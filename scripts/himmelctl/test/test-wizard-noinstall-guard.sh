@@ -214,12 +214,12 @@ echo "ok: caseB dropping any single allow-set name breaks the guard (proves it c
 # up to and including the write leaves a previously-saved profile intact.
 writes=$(grep -c 'fs\.writeFileSync' "$wizard")
 [ "$writes" -eq 6 ] \
-  || fail "caseC: expected exactly 6 fs.writeFileSync calls in bin.js (profile cache + install-profile save + phi-roots + .salus marker + the vm.mode resolver probe + the retired-cadence profile rewrite; the PATH-launcher tmp write moved to lib/launcher.js, HIMMEL-3312 S13 item 1, and the ~/.himmel/himmel.conf writes to lib/behaviour-config.js, HIMMEL-7021), got $writes"
+  || fail "caseC: expected exactly 6 fs.writeFileSync calls in bin.js (profile cache + install-profile save + phi-roots + .salus marker + the vm.mode resolver probe + the retired-cadence profile rewrite; the PATH-launcher tmp write moved to lib/launcher.js, item 1, and the ~/.himmel/himmel.conf writes to lib/behaviour-config.js), got $writes"
 # vmProofRoute writes the doc-with-answer to a
 # mkdtemp dir under os.tmpdir() so scripts/lib/vm-mode.sh can resolve it,
 # and removes the dir in finally -- a probe, never an install write.
 grep -q 'fs.writeFileSync(cfg, JSON.stringify(probe))' "$wizard" \
-  || fail "caseC: missing the vm.mode resolver probe write (vmProofRoute, HIMMEL-4597), or its call shape changed"
+  || fail "caseC: missing the vm.mode resolver probe write (vmProofRoute), or its call shape changed"
 grep -q 'fs.writeFileSync(cachePath()' "$wizard" \
   || fail "caseC: missing the profile-cache write (cachePath())"
 # Pinned on the FULL call shape (destination var + bytes var + the exclusive-
@@ -228,22 +228,22 @@ grep -q 'fs.writeFileSync(cachePath()' "$wizard" \
 # would silently re-match if some OTHER write later also targets a variable
 # named `tmpDest`.
 grep -q "fs.writeFileSync(tmpDest, bytes, { flag: 'wx' })" "$wizard" \
-  || fail "caseC: missing the install-profile save write (offerSaveProfile tmpDest, HIMMEL-2483), or its call shape changed"
+  || fail "caseC: missing the install-profile save write (offerSaveProfile tmpDest), or its call shape changed"
 # writeMarkedLauncher (and its tmp+rename PATH-
 # launcher shim write) was extracted out of bin.js into lib/launcher.js —
 # checked here, not against $wizard, since bin.js's own text no longer
 # contains it.
 grep -q "fs.writeFileSync(tmp, contents, 'utf8')" "$repo_root/scripts/himmelctl/lib/launcher.js" \
-  || fail "caseC: missing the PATH-launcher shim write (writeMarkedLauncher tmp, HIMMEL-1446) in lib/launcher.js"
+  || fail "caseC: missing the PATH-launcher shim write (writeMarkedLauncher tmp) in lib/launcher.js"
 # Pinned on the FULL call shape, not the bare `fs.writeFileSync(tmp,` prefix:
 # since fix 3, mergePhiRoot also writes to a variable named
 # `tmp`, so the short prefix matched EITHER site and this pin silently stopped
 # being site-specific. The count check alone would not cover that — it only
 # catches a write disappearing, not two pins collapsing onto one site.
 grep -q "fs.writeFileSync(tmp, lines.join('" "$wizard" \
-  || fail "caseC: missing the phi-roots merge write (mergePhiRoot, HIMMEL-2347 — now via tmp+rename, HIMMEL-2347 CR fix 3)"
+  || fail "caseC: missing the phi-roots merge write (mergePhiRoot, now via tmp+rename)"
 grep -q "fs.writeFileSync(markerPath, '', { flag: 'wx' })" "$wizard" \
-  || fail "caseC: missing the .salus marker write, or it is no longer exclusive-create 'wx' (HIMMEL-2347 — a plain write would truncate an existing marker)"
+  || fail "caseC: missing the .salus marker write, or it is no longer exclusive-create 'wx' (a plain write would truncate an existing marker)"
 # dropRetiredFromProfileFile rewrites the saved profile without its retired
 # cadence ids through a temp file + rename. Pinned on the FULL call shape, with
 # the exclusive-create flag, so a plain write can never truncate a leftover temp

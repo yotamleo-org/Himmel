@@ -48,7 +48,7 @@
 set -euo pipefail
 
 repo_root=$(git rev-parse --show-toplevel)
-. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # HIMMEL-2350: shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
+. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
 wizard="$repo_root/scripts/himmelctl/bin.js"
 [ -f "$wizard" ] || { echo "FAIL: $wizard not found" >&2; exit 1; }
 command -v node >/dev/null 2>&1 || { echo "FAIL: node required" >&2; exit 1; }
@@ -148,7 +148,7 @@ qs=$(count_questions "$out")
 # 6 main questions (pluginSet no longer asked) + those 2 = 8; the commit-rules prompts follow a bare "> " on closed stdin so this line-anchored count does not see them. See test-wizard-cadence-per-unit.sh case e
 # for the row-level coverage of this exact scenario.
 [ "$qs" -eq 8 ] \
-  || fail "case1: starter profile + vault=none should ask 6 main questions (pluginSet is no longer asked, HIMMEL-6362) + cadences + disarm-consent = 8 (got $qs): $out"
+  || fail "case1: starter profile + vault=none should ask 6 main questions (pluginSet is no longer asked) + cadences + disarm-consent = 8 (got $qs): $out"
 grepq "$out" '"schemaVersion": 2' \
   || fail "case1: cache/summary should carry schemaVersion 2 (got: $out)"
 grepq "$out" '"profile": "starter"' \

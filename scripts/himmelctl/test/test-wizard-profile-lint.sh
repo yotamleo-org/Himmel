@@ -46,7 +46,7 @@ set -euo pipefail
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
-. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # HIMMEL-2350: shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
+. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
 wizard="$repo_root/scripts/himmelctl/bin.js"
 [ -f "$wizard" ] || { echo "FAIL: $wizard not found" >&2; exit 1; }
 command -v node >/dev/null 2>&1 || { echo "FAIL: node required" >&2; exit 1; }
@@ -236,7 +236,7 @@ set +e
 outD=$(lint_profile "$bridgeOffAbsent"); rcD=$?
 set -e
 [ "$rcD" -eq 0 ] || fail "case d: bridge.enabled:false with no envPath/etc should lint clean (got rc=$rcD): $outD"
-echo "ok: case d — bridge.enabled:false with its dependent fields absent lints clean (honest validation, HIMMEL-2752)"
+echo "ok: case d — bridge.enabled:false with its dependent fields absent lints clean (honest validation)"
 
 # e. bridge.enabled:false but envPath is PRESENT with the wrong type — still
 #    refused. Proves "optional" means absent=empty, not unchecked-if-present.
@@ -317,7 +317,7 @@ grepq "$outG" -F '"lanes": [] with "lanesMeaningful": true' \
   || fail "case g: error should name the accepted spelling verbatim (got: $outG)"
 grepq "$outG" -F -- "--lanes none" \
   || fail "case g: error should note '--lanes none' is a CLI flag, not a profile value (got: $outG)"
-echo "ok: case g — lanesMeaningful refusal names the accepted spelling verbatim and disambiguates the CLI flag (HIMMEL-2752)"
+echo "ok: case g — lanesMeaningful refusal names the accepted spelling verbatim and disambiguates the CLI flag"
 
 # h. legacy lanes:[] with lanesMeaningful absent — same accepted-spelling
 #    message on the sibling refusal path.
@@ -341,7 +341,7 @@ set -e
 [ "$rcH" -eq 2 ] || fail "case h: legacy lanes:[] without lanesMeaningful should be refused (got rc=$rcH): $outH"
 grepq "$outH" -F '"lanes": [] with "lanesMeaningful": true' \
   || fail "case h: error should name the accepted spelling verbatim (got: $outH)"
-echo "ok: case h — legacy lanes:[] refusal names the accepted spelling verbatim (HIMMEL-2752)"
+echo "ok: case h — legacy lanes:[] refusal names the accepted spelling verbatim"
 
 # ── --scope as a real non-interactive selector ────────────────
 # i. --scope project alone (no --from-profile, no wizard) loads the SHIPPED
@@ -362,6 +362,6 @@ set -e
 [ "$rcJ" -eq 0 ] || fail "case j: --scope user --from-profile <project profile> should dry-run clean (got rc=$rcJ): $outJ"
 grepq "$outJ" -F 'scope=user' \
   || fail "case j: --scope should override the loaded profile's own scope to user (got: $outJ)"
-echo "ok: case j — --scope overrides a --from-profile profile's own scope (HIMMEL-2752)"
+echo "ok: case j — --scope overrides a --from-profile profile's own scope"
 
 echo "PASS"

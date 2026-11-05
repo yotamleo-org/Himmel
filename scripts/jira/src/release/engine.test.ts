@@ -120,7 +120,7 @@ afterEach(() => {
   else process.env.HIMMEL_ADMISSIONS_LEDGER = savedLedger;
 });
 
-describe('release state admissions_today (HIMMEL-7153)', () => {
+describe('release state admissions_today', () => {
   const decide = (c: Ctx, decision: string, keys: string[], op: string, from_v: string | null, to_v: string | null) =>
     operatorDecision(c, { decision, keys, op, from_v, to_v, verbatim: 'x' });
 
@@ -140,7 +140,7 @@ describe('release state admissions_today (HIMMEL-7153)', () => {
   });
 });
 
-describe('release engine (HIMMEL-6796)', () => {
+describe('release engine', () => {
   it('runs request → claim → rule → apply to a receipted RULING line and an applied membership', async () => {
     await setup();
     const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'found work', evidence: {}, from: 'console' });
@@ -160,7 +160,7 @@ describe('release engine (HIMMEL-6796)', () => {
     expect(s.trend['2026-10-21']).toEqual({ ruled: 1 });
   });
 
-  it('an applied INTAKE ADMIT appends one rm-admit ledger row, and a replay adds no second (HIMMEL-6918)', async () => {
+  it('an applied INTAKE ADMIT appends one rm-admit ledger row, and a replay adds no second', async () => {
     await setup();
     const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
     claim(ctx(rmEnv));
@@ -171,7 +171,7 @@ describe('release engine (HIMMEL-6796)', () => {
     expect(rows).toMatchObject([{ version: 'v1', key: 'K-2', kind: 'rm-admit', reason: 'regression: breaks the console', by: 'rm-1' }]);
   });
 
-  it('apply goes on past a bad line in the admissions ledger and still receipts (HIMMEL-8823)', async () => {
+  it('apply goes on past a bad line in the admissions ledger and still receipts', async () => {
     await setup();
     writeFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'not json\n');
     const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
@@ -183,7 +183,7 @@ describe('release engine (HIMMEL-6796)', () => {
     expect(rows.filter((l) => l.includes('"rm-admit"'))).toHaveLength(1);
   });
 
-  it('a re-admission after a removal appends a second rm-admit row, and its replay adds no third (HIMMEL-6796)', async () => {
+  it('a re-admission after a removal appends a second rm-admit row, and its replay adds no third', async () => {
     await setup();
     const rows = () => readFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
     const q1 = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
@@ -211,7 +211,7 @@ describe('release engine (HIMMEL-6796)', () => {
   it.each([
     ['frozen', 'v2', 'v1'],
     ['unfrozen', 'v1', 'v2'],
-  ])('a REVERSION MOVE into a %s version appends the destination rm-admit and the source rm-remove, and an applied-phase replay adds none (HIMMEL-7059)', async (_kind, from, to) => {
+  ])('a REVERSION MOVE into a %s version appends the destination rm-admit and the source rm-remove, and an applied-phase replay adds none', async (_kind, from, to) => {
     await setup();
     const rows = () => readFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
     jira.fv.set('K-2', [from]);
@@ -226,7 +226,7 @@ describe('release engine (HIMMEL-6796)', () => {
     ]);
   });
 
-  it('an INTAKE ADMIT replayed from the applied phase appends no second rm-admit row (HIMMEL-7059)', async () => {
+  it('an INTAKE ADMIT replayed from the applied phase appends no second rm-admit row', async () => {
     await setup();
     const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
     claim(ctx(rmEnv));
@@ -236,7 +236,7 @@ describe('release engine (HIMMEL-6796)', () => {
     expect(rows.map((x) => [x.kind, x.key, x.version, x.ruling])).toEqual([['rm-admit', 'K-2', 'v1', r.id]]);
   });
 
-  it('an INTAKE ADMIT with an unwritable ledger refuses before Jira is touched (HIMMEL-6918)', async () => {
+  it('an INTAKE ADMIT with an unwritable ledger refuses before Jira is touched', async () => {
     await setup();
     const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
     claim(ctx(rmEnv));
@@ -359,7 +359,7 @@ describe('release engine (HIMMEL-6796)', () => {
     expect(() => admit(q.req, { authority: { kind: 'operator', ref: o.id } })).toThrow(/does not cover K-2/);
   });
 
-  describe('a newer operator record supersedes an older operator-authority ruling (HIMMEL-8348)', () => {
+  describe('a newer operator record supersedes an older operator-authority ruling', () => {
     const at = (iso: string): Ctx => ({ ...ctx(), now: () => new Date(iso) });
     const decide = (iso: string, op: string, from_v: string | null, to_v: string | null) =>
       operatorDecision(at(iso), { decision: '383', keys: ['K-2'], op, from_v, to_v, verbatim: 'pull it in' });
@@ -420,7 +420,7 @@ describe('release engine (HIMMEL-6796)', () => {
       expect(() => admit(req, { ...pull, supersedes: [prior], authority: { kind: 'operator', ref: move.id } })).toThrow(conflict);
     });
 
-    describe('an operator restore of a key held under an older operator record (HIMMEL-8761)', () => {
+    describe('an operator restore of a key held under an older operator record', () => {
       const restoreTo = (to_v: string, from_v: string | null = null) => ({ outcome: 'MOVE', op: { kind: 'move' as const, from_v, to_v } });
       const restore = restoreTo('v2');
       const T = (hh: number) => `2026-10-21T${String(hh).padStart(2, '0')}:00:00.000Z`;
@@ -734,7 +734,7 @@ describe('release engine (HIMMEL-6796)', () => {
   });
 });
 
-describe('release fold (HIMMEL-7158)', () => {
+describe('release fold', () => {
   const events = () => readFileSync(join(root, 'release', 'R1', 'events.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
   const closedDone = { status: 'Closed', category: 'Done', resolution: 'Done' };
   const resync = '2026-10-21T11:00:00.000Z';
@@ -817,7 +817,7 @@ describe('release fold (HIMMEL-7158)', () => {
   });
 });
 
-describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
+describe('rm-run: the on-demand release manager', () => {
   const declared = () => {
     declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
   };
@@ -890,7 +890,7 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
     expect(readMirror(mirror).issues?.get('K-9')?.sector).toBe('Ship loop');
   });
 
-  it('a decision the engine refuses is reported, its request is closed, and a re-file opens a new qid (HIMMEL-8348)', async () => {
+  it('a decision the engine refuses is reported, its request is closed, and a re-file opens a new qid', async () => {
     vi.stubEnv('JIRA_SECTOR_FIELD', 'customfield_10500');
     declared();
     ask('K-2');
@@ -902,7 +902,7 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
     expect(ask('K-2').req).toBe('Q-R1-0002');
   });
 
-  it('the run summary counts the refused requests, and a run with no refusal prints none (HIMMEL-8761)', async () => {
+  it('the run summary counts the refused requests, and a run with no refusal prints none', async () => {
     declared();
     ask('K-2');
     const refused = await rmRun(ctx(), async () => []);
@@ -1020,7 +1020,7 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
   });
 });
 
-describe('release withdraw (HIMMEL-7434)', () => {
+describe('release withdraw', () => {
   const ask = (key: string, verb: 'INTAKE' | 'REVERSION', from_v: string | null, to_v: string | null) =>
     request(ctx(), { verb, key, from_v, to_v, why: 'found work', evidence: {}, from: 'console' });
   const decide = (keys: string[], op: string, from_v: string | null, to_v: string | null) =>
@@ -1094,7 +1094,7 @@ describe('release withdraw (HIMMEL-7434)', () => {
   });
 });
 
-describe('rm-run bulk guard (HIMMEL-6778)', () => {
+describe('rm-run bulk guard', () => {
   const overrideRows = () => {
     const p = process.env.HIMMEL_ADMISSIONS_LEDGER as string;
     return existsSync(p) ? readFileSync(p, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as Record<string, string>).filter((r) => r.kind === 'override') : [];
@@ -1197,7 +1197,7 @@ describe('rm-run bulk guard (HIMMEL-6778)', () => {
   });
 });
 
-describe('a blocker of a current-version ticket is pulled into the current version (HIMMEL-8350)', () => {
+describe('a blocker of a current-version ticket is pulled into the current version', () => {
   const at = (iso: string): Ctx => ({ ...ctx(), now: () => new Date(iso) });
   const noJudge: Judge = async () => { throw new Error('the judge must not be called for a blocker pull'); };
   const declared = () => declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
@@ -1403,7 +1403,7 @@ describe('a blocker of a current-version ticket is pulled into the current versi
   });
 });
 
-describe('signed minerva specs (HIMMEL-8353 C1a)', () => {
+describe('signed minerva specs', () => {
   const specEnv = () => ({ HIMMEL_RELEASE_STATE_DIR: join(root, 'release'), HIMMEL_RELEASE_KEY_DIR: join(root, 'keys') });
   const sctx = (env: Record<string, string> = specEnv()) => ctx(env);
   const r2 = (): Ctx => ({ ...sctx(), release: 'R2', dir: join(root, 'release', 'R2'), keyPath: join(root, 'keys', 'R2.key') });
@@ -1683,7 +1683,7 @@ describe('signed minerva specs (HIMMEL-8353 C1a)', () => {
   });
 });
 
-describe('admission rows enter the reducer through reduceLoaded (HIMMEL-8724 S1)', () => {
+describe('admission rows enter the reducer through reduceLoaded', () => {
   // HIMMEL_ADMISSIONS_LEDGER is a temp path (beforeEach), so none of these reads the operator's ledger.
   const ledger = () => process.env.HIMMEL_ADMISSIONS_LEDGER!;
   const row = (key: string, kind: string) => JSON.stringify({ ts: '2026-10-21T09:30:00.000Z', version: 'v1', key, kind, actor: 'someone' });

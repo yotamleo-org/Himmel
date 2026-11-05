@@ -253,7 +253,7 @@ test("invariant: empty section does not borrow long trailing sections", () => {
 
 test("invariant: pasted refusal template is not an authored section", () => {
   const pasted = [
-    "spawn-glm: REFUSED (round guard, HIMMEL-1553)",
+    "spawn-glm: REFUSED (round guard)",
     "Re-dispatch with a line-delimited section in the brief:",
     "INVARIANT:",
     "  <the single property every prior round's defect violated — what the fix must preserve, stated so a reviewer can check the WHOLE change against it>",

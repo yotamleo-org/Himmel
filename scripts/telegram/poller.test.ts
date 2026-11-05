@@ -538,11 +538,11 @@ test("dispatch creates session, enqueues, sets chat_id; running session only enq
   const m = await readMeta(r, "HIMMEL-5"); expect(m?.chat_id).toBe(7);
   expect(ran).toEqual(["HIMMEL-5"]);
   await writeMeta(r, "HIMMEL-5", { ...(m as any), status:"running", last_run_pid: 999999 });
-  await handleInbound(r, { from:1, chat_id:7, text:"HIMMEL-5: more" }, fakeRun, undefined, undefined, isOperator);
+  await handleInbound(r, { from:1, chat_id:7, text:"ABC-5: more" }, fakeRun, undefined, undefined, isOperator);
   expect(ran).toEqual(["HIMMEL-5"]);   // no 2nd RUN while in-flight
 });
 
-test("stop <KEY>: a non-operator sender is refused and the session keeps running; the operator's stop lands (HIMMEL-5820)", async () => {
+test("stop <KEY>: a non-operator sender is refused and the session keeps running; the operator's stop lands", async () => {
   const r = root(); const notes: string[] = [];
   const isOperator = (from: number) => from === 5;
   const notifyChat = async (_chat: number, text: string) => { notes.push(text); };
@@ -558,7 +558,7 @@ test("stop <KEY>: a non-operator sender is refused and the session keeps running
   expect(notes.length).toBe(1);
 });
 
-test("operator stop ends a running session within one turn (HIMMEL-6128)", async () => {
+test("operator stop ends a running session within one turn", async () => {
   const r = root(); const sd = () => sessionDir(r, "HIMMEL-7"); const kinds: string[] = [];
   await ensureSession(r, "HIMMEL-7");
   await writeMeta(r, "HIMMEL-7", freshMeta(-50));
@@ -580,7 +580,7 @@ test("operator stop ends a running session within one turn (HIMMEL-6128)", async
   expect((await peekPending(r, "HIMMEL-7")).count).toBe(0);     // queued work dropped, not re-run
 });
 
-test("operator stop on a failed ticket session, then work on it through handleInbound, runs the session (HIMMEL-6342)", async () => {
+test("operator stop on a failed ticket session, then work on it through handleInbound, runs the session", async () => {
   const r = root(); const notes: string[] = []; const ran: string[] = [];
   const isOperator = () => true;
   const notifyChat = async (_chat: number, text: string) => { notes.push(text); };
@@ -591,13 +591,13 @@ test("operator stop on a failed ticket session, then work on it through handleIn
   expect(notes).toEqual(["nothing running for HIMMEL-7"]);
   const prompts: string[] = [];
   const runFn = makeRunFn(r, "/repo", async (prompt) => { prompts.push(prompt); return { code: 0, capped: false, pid: 1 }; }, 5000);
-  await handleInbound(r, { from: 5, chat_id: -50, text: "HIMMEL-7: retry" }, async (s) => { ran.push(s); await runFn(s); }, undefined, undefined, isOperator);
+  await handleInbound(r, { from: 5, chat_id: -50, text: "ABC-7: retry" }, async (s) => { ran.push(s); await runFn(s); }, undefined, undefined, isOperator);
   expect(ran).toEqual(["HIMMEL-7"]);
   expect(prompts.length).toBe(1);
   expect(readdirSync(sessionDir(r, "HIMMEL-7"))).not.toContain("stop");
 });
 
-test("operator stop with no existing session leaves no session, and the next work on it is not dropped (HIMMEL-6342)", async () => {
+test("operator stop with no existing session leaves no session, and the next work on it is not dropped", async () => {
   const r = root(); const spawns: string[] = [];
   const isOperator = () => true;
   await handleInbound(r, { from: 5, chat_id: -50, text: "stop HIMMEL-8", ts: 42 }, async () => {}, undefined, undefined, isOperator);
@@ -607,7 +607,7 @@ test("operator stop with no existing session leaves no session, and the next wor
   expect(spawns.length).toBe(1);
 });
 
-test("operator stop written before the first spawn prevents the spawn (HIMMEL-6128)", async () => {
+test("operator stop written before the first spawn prevents the spawn", async () => {
   const r = root(); const sd = sessionDir(r, "HIMMEL-7");
   await ensureSession(r, "HIMMEL-7");
   await writeMeta(r, "HIMMEL-7", freshMeta(-50));
@@ -618,7 +618,7 @@ test("operator stop written before the first spawn prevents the spawn (HIMMEL-61
   expect(spawns).toBe(0);
 });
 
-test("non-operator work on <KEY> creates no session, spawns nothing, never un-parks a failed one (HIMMEL-6128)", async () => {
+test("non-operator work on <KEY> creates no session, spawns nothing, never un-parks a failed one", async () => {
   const r = root(); const ran: string[] = [];
   const isOperator = (from: number) => from === 5;
   const run = async (s: string) => { ran.push(s); };
@@ -626,12 +626,12 @@ test("non-operator work on <KEY> creates no session, spawns nothing, never un-pa
   await handleInbound(r, { from: 9, chat_id: -50, text: "work on HIMMEL-9" }, run, undefined, undefined, isOperator);
   expect(await readMeta(r, "HIMMEL-9")).toBeNull();
   // 2. `KEY: text` from a member with no session: still no session
-  await handleInbound(r, { from: 9, chat_id: -50, text: "HIMMEL-9: do it" }, run, undefined, undefined, isOperator);
+  await handleInbound(r, { from: 9, chat_id: -50, text: "ABC-9: do it" }, run, undefined, undefined, isOperator);
   expect(await readMeta(r, "HIMMEL-9")).toBeNull();
   // 3. a member's follow-up to a FAILED session: appended untrusted, parked stays parked, nothing spawns
   await ensureSession(r, "HIMMEL-8");
   await writeMeta(r, "HIMMEL-8", { ...freshMeta(-50), status: "failed", fail_count: 3 });
-  await handleInbound(r, { from: 9, chat_id: -50, text: "HIMMEL-8: try again", update_id: 1 }, run, undefined, undefined, isOperator);
+  await handleInbound(r, { from: 9, chat_id: -50, text: "ABC-8: try again", update_id: 1 }, run, undefined, undefined, isOperator);
   expect((await readMeta(r, "HIMMEL-8"))?.status).toBe("failed");
   expect((await readMeta(r, "HIMMEL-8"))?.fail_count).toBe(3);
   const lines = readFileSync(join(sessionDir(r, "HIMMEL-8"), "inbox.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
@@ -640,16 +640,16 @@ test("non-operator work on <KEY> creates no session, spawns nothing, never un-pa
   // 4. a member's follow-up to an IDLE session is appended but does not spawn
   await ensureSession(r, "HIMMEL-6");
   await writeMeta(r, "HIMMEL-6", freshMeta(-50));
-  await handleInbound(r, { from: 9, chat_id: -50, text: "HIMMEL-6: hi" }, run, undefined, undefined, isOperator);
+  await handleInbound(r, { from: 9, chat_id: -50, text: "ABC-6: hi" }, run, undefined, undefined, isOperator);
   expect(ran).toEqual([]);
   // 5. the operator still creates, spawns and un-parks
-  await handleInbound(r, { from: 5, chat_id: -50, text: "HIMMEL-8: retry" }, run, undefined, undefined, isOperator);
+  await handleInbound(r, { from: 5, chat_id: -50, text: "ABC-8: retry" }, run, undefined, undefined, isOperator);
   expect((await readMeta(r, "HIMMEL-8"))?.status).not.toBe("failed");
   await handleInbound(r, { from: 5, chat_id: -50, text: "work on HIMMEL-9" }, run, undefined, undefined, isOperator);
   expect(ran).toEqual(["HIMMEL-8", "HIMMEL-9"]);
 });
 
-test("a ticket session whose pending lines are all non-operator is not spawned by its runFn (HIMMEL-6128)", async () => {
+test("a ticket session whose pending lines are all non-operator is not spawned by its runFn", async () => {
   const r = root(); const sd = sessionDir(r, "HIMMEL-6");
   await ensureSession(r, "HIMMEL-6");
   await writeMeta(r, "HIMMEL-6", freshMeta(-50));
@@ -763,7 +763,7 @@ test("group chat spawn-low triage passes haiku as the run model override", async
 // purpose was cutting resource spam in SHARED groups, never filtering the
 // operator, so an operator message floors to spawn-low instead of dropping.
 
-test("operator group message triaged `ignore` is floored to spawn-low, never dropped (HIMMEL-1296)", async () => {
+test("operator group message triaged `ignore` is floored to spawn-low, never dropped", async () => {
   const r = root(); const ran: any[] = [];
   await handleInbound(r, { from:5, chat_id:-50, text:"try again.." },
     async (session:string, modelOverride?: string) => { ran.push({ session, modelOverride }); },
@@ -776,7 +776,7 @@ test("operator group message triaged `ignore` is floored to spawn-low, never dro
   expect((await peekPending(r, "group_-50")).count).toBe(1);
 });
 
-test("operator group message triaged `ack` is floored to spawn-low, never dropped (HIMMEL-1296)", async () => {
+test("operator group message triaged `ack` is floored to spawn-low, never dropped", async () => {
   const r = root(); const ran: any[] = [];
   await handleInbound(r, { from:5, chat_id:-50, text:"why didn't we got an answer on last messagE?" },
     async (session:string, modelOverride?: string) => { ran.push({ session, modelOverride }); },
@@ -791,7 +791,7 @@ test("operator group message triaged `ack` is floored to spawn-low, never droppe
 // The floor is a FLOOR, not an override: it lifts ignore/ack to spawn-low and
 // leaves every verdict at or above it alone, so the classifier keeps deciding
 // cheap-vs-full model for the operator exactly as before.
-test("operator exemption is a floor: spawn-high keeps the full model (HIMMEL-1296)", async () => {
+test("operator exemption is a floor: spawn-high keeps the full model", async () => {
   const r = root(); const ran: any[] = [];
   await handleInbound(r, { from:5, chat_id:-50, text:"rewrite the retry cap" },
     async (session:string, modelOverride?: string) => { ran.push({ session, modelOverride }); },
@@ -804,7 +804,7 @@ test("operator exemption is a floor: spawn-high keeps the full model (HIMMEL-129
 
 // The triage gate must still do its job: a NON-operator member of a shared group is
 // triaged exactly as before, so the exemption did not neuter the spam gate.
-test("non-operator group chatter is still dropped when the exemption is wired (HIMMEL-1296)", async () => {
+test("non-operator group chatter is still dropped when the exemption is wired", async () => {
   const r = root(); const ran: string[] = [];
   await handleInbound(r, { from:9, chat_id:-50, text:"lol nice" },
     async (s:string) => { ran.push(s); },
@@ -816,7 +816,7 @@ test("non-operator group chatter is still dropped when the exemption is wired (H
   expect(await readMeta(r, "group_-50")).toBeNull();
 });
 
-// --- REQUIRE-MENTION GATE (LUNA-158) ---
+// --- REQUIRE-MENTION GATE ---
 // Grow-tent groups are shared with luna_grow_bot, which owns `/grow`. Rather
 // than blocklist that one command, access.json opts the whole group into
 // @mention-only mode (GroupPolicy.requireMention) — a message that doesn't
@@ -825,7 +825,7 @@ test("non-operator group chatter is still dropped when the exemption is wired (H
 const mentionOn = () => true;
 const BOT = "luna_bridge_bot";
 
-test("tent-group message without @mention from the OPERATOR is dropped before triage (LUNA-158)", async () => {
+test("tent-group message without @mention from the OPERATOR is dropped before triage", async () => {
   const r = root(); const ran: string[] = []; const triaged: string[] = [];
   const logs: string[] = [];
   const origError = console.error;
@@ -846,7 +846,7 @@ test("tent-group message without @mention from the OPERATOR is dropped before tr
   expect(logs.some((l) => l.includes("require-mention drop for group_***"))).toBe(true);
 });
 
-test("the same tent-group message WITH @mention reaches triage (LUNA-158)", async () => {
+test("the same tent-group message WITH @mention reaches triage", async () => {
   const r = root(); const ran: any[] = []; const triaged: string[] = [];
   await handleInbound(r, { from:5, chat_id:-50, text:`@${BOT} status?` },
     async (session:string, modelOverride?: string) => { ran.push({ session, modelOverride }); },
@@ -860,7 +860,7 @@ test("the same tent-group message WITH @mention reaches triage (LUNA-158)", asyn
   expect(ran).toEqual([{ session: "group_-50", modelOverride: undefined }]);
 });
 
-test("a group WITHOUT require_mention is unaffected — triage runs regardless of mention (LUNA-158)", async () => {
+test("a group WITHOUT require_mention is unaffected — triage runs regardless of mention", async () => {
   const r = root(); const ran: any[] = []; const triaged: string[] = [];
   await handleInbound(r, { from:1, chat_id:-50, text:"no mention here" },
     async (session:string, modelOverride?: string) => { ran.push({ session, modelOverride }); },
@@ -874,7 +874,7 @@ test("a group WITHOUT require_mention is unaffected — triage runs regardless o
   expect(ran).toEqual([{ session: "group_-50", modelOverride: undefined }]);
 });
 
-test("a DM is unaffected by require_mention (chat_id >= 0 is out of scope) (LUNA-158)", async () => {
+test("a DM is unaffected by require_mention (chat_id >= 0 is out of scope)", async () => {
   const r = root(); const ran: any[] = []; const triaged: string[] = [];
   await handleInbound(r, { from:5, chat_id:5, text:"no mention here either" },
     async (session:string, modelOverride?: string) => { ran.push({ session, modelOverride }); },
@@ -901,7 +901,7 @@ test("mentionsBot: word-char boundaries on both sides (CR codex-2)", () => {
   expect(mentionsBot(`/grow@${BOT}2`, BOT)).toBe(false);                 // longer username still excluded
 });
 
-test("an unresolvable bot username fails OPEN to triage, never drops (LUNA-158)", async () => {
+test("an unresolvable bot username fails OPEN to triage, never drops", async () => {
   const r = root(); const ran: any[] = []; const triaged: string[] = [];
   await handleInbound(r, { from:5, chat_id:-50, text:"status?" },
     async (session:string, modelOverride?: string) => { ran.push({ session, modelOverride }); },
@@ -921,7 +921,7 @@ test("an unresolvable bot username fails OPEN to triage, never drops (LUNA-158)"
 const inbound = (text: string, update_id: number, from = 5) =>
   ({ from, chat_id: -50, text, ts: 0, update_id, forwarded: false, caption: false });
 
-test("handleBatch isolates a throwing record so later records still land (HIMMEL-1296)", async () => {
+test("handleBatch isolates a throwing record so later records still land", async () => {
   const handled: string[] = [];
   await handleBatch(
     [inbound("poison", 1, 9), inbound("try again..", 2), inbound("status?", 3)],
@@ -935,7 +935,7 @@ test("handleBatch isolates a throwing record so later records still land (HIMMEL
 // Containing the throw must not make the loss QUIET — that would swap a loud
 // crash-loop for a healthy-looking bridge that silently eats messages, which is
 // the exact signature the operator floor exists to kill.
-test("handleBatch notifies on a dropped record, keyed by update_id (HIMMEL-1296)", async () => {
+test("handleBatch notifies on a dropped record, keyed by update_id", async () => {
   const drops: number[] = [];
   await handleBatch(
     [inbound("poison", 42), inbound("fine", 43)],
@@ -948,7 +948,7 @@ test("handleBatch notifies on a dropped record, keyed by update_id (HIMMEL-1296)
 
 // The notice can fail on its own (Telegram down, chat gone). That must not
 // abort the batch and strand the records queued behind the failed one.
-test("handleBatch survives an onDrop that itself throws (HIMMEL-1296)", async () => {
+test("handleBatch survives an onDrop that itself throws", async () => {
   const handled: string[] = [];
   await handleBatch(
     [inbound("poison", 1), inbound("later", 2)],
@@ -964,7 +964,7 @@ test("handleBatch survives an onDrop that itself throws (HIMMEL-1296)", async ()
 // later record of a batch the cursor has already consumed — and a restart while
 // blocked would lose them permanently. onDrop is fire-and-forget by signature,
 // so a notifier that never settles cannot hold the loop.
-test("a drop notifier that never settles does not stall later records (HIMMEL-1296)", async () => {
+test("a drop notifier that never settles does not stall later records", async () => {
   const handled: string[] = [];
   await handleBatch(
     [inbound("poison", 1), inbound("later", 2), inbound("later still", 3)],
@@ -982,7 +982,7 @@ test("a drop notifier that never settles does not stall later records (HIMMEL-12
 // onDrop is typed `=> void` (fire-and-forget), but void says "don't await",
 // not "can't reject" — a caller passing an async callback that rejects must
 // not let that rejection escape the seam as an unhandled rejection.
-test("handleBatch contains an onDrop that rejects asynchronously, without an unhandled rejection (HIMMEL-1311)", async () => {
+test("handleBatch contains an onDrop that rejects asynchronously, without an unhandled rejection", async () => {
   const rejections: unknown[] = [];
   const handler = (reason: unknown) => { rejections.push(reason); };
   process.on("unhandledRejection", handler);
@@ -1010,7 +1010,7 @@ test("handleBatch contains an onDrop that rejects asynchronously, without an unh
 
 // A resolving async onDrop is the common case (main()'s real notifier) and must
 // stay silent: no drop-notice log fires just because onDrop returned a thenable.
-test("handleBatch logs nothing for a resolving async onDrop (HIMMEL-1311)", async () => {
+test("handleBatch logs nothing for a resolving async onDrop", async () => {
   const logs: string[] = [];
   const origError = console.error;
   console.error = (...args: unknown[]) => { logs.push(args.join(" ")); };
@@ -1026,7 +1026,7 @@ test("handleBatch logs nothing for a resolving async onDrop (HIMMEL-1311)", asyn
   expect(logs.some((l) => l.includes("drop notice"))).toBe(false);
 });
 
-test("handleBatch handles every record when none throw (HIMMEL-1296)", async () => {
+test("handleBatch handles every record when none throw", async () => {
   const handled: string[] = [];
   await handleBatch(
     [inbound("a", 1), inbound("b", 2)],
@@ -1041,7 +1041,7 @@ test("handleBatch handles every record when none throw (HIMMEL-1296)", async () 
 // `(from) => isAllowed(access, from)`, exactly what main() passes — against an
 // access.json shape where the two identities differ, so the claim that the floor
 // keys on the GLOBAL allowFrom (and not on group membership) is actually tested.
-test("operator floor keys on GLOBAL allowFrom: a per-group allowFrom member is still triaged (HIMMEL-1296)", async () => {
+test("operator floor keys on GLOBAL allowFrom: a per-group allowFrom member is still triaged", async () => {
   // 5 is the operator; 9 is merely allowed to post in group -50
   const access = { allowFrom: ["5"], groups: { "-50": { allowFrom: ["9"] } } };
   const isOperator = (from: number) => isAllowed(access, from);
@@ -1065,7 +1065,7 @@ test("operator floor keys on GLOBAL allowFrom: a per-group allowFrom member is s
 // PERMANENT drop with only a supervisor.log line to show for it. Composes the
 // REAL production predicate (what main() passes), not a mock — the wiring is the
 // thing that was wrong. Ids below are synthetic.
-test("an anonymous group admin reaches the spawn floor, not the drop path (HIMMEL-1358)", async () => {
+test("an anonymous group admin reaches the spawn floor, not the drop path", async () => {
   const access = { allowFrom: ["1000000001"], groups: { "-1009999999": { trustAnonymousAdmins: true } } };
   const isOperator = (from: number, chat_id: number) => isOperatorIdentity(access, from, chat_id);
   const ignoreTriage = async (): Promise<TriageVerdict> => "ignore";
@@ -1084,7 +1084,7 @@ test("an anonymous group admin reaches the spawn floor, not the drop path (HIMME
 // destination chat is a different trust principal and must stay triaged — and
 // the check is only reachable if ingest actually PRESERVES the field, which is
 // why this drives the real ingestUpdates rather than hand-building the message.
-test("ingest preserves sender_chat, and a mismatched one is not floored (HIMMEL-1358)", async () => {
+test("ingest preserves sender_chat, and a mismatched one is not floored", async () => {
   const access = { allowFrom: ["1000000001"], groups: { "-1009999999": { trustAnonymousAdmins: true } } };
   const isOperator = (from: number, chat_id: number, sender_chat?: number) => isOperatorIdentity(access, from, chat_id, sender_chat);
   const ignoreTriage = async (): Promise<TriageVerdict> => "ignore";
@@ -1127,7 +1127,7 @@ test("ingest records a reply to a bot message as reply_to_bot, and no other repl
 // field survives by construction rather than by an explicit copy. Pin the two
 // that go through that post-download finalization (panel CR glm-1) — the plain
 // text path is covered above, and voice shares the ready.push shape.
-test("ingest preserves sender_chat through the post-download media branches (HIMMEL-1358)", async () => {
+test("ingest preserves sender_chat through the post-download media branches", async () => {
   const r = root();
   const fetchDoc = async () => "/tmp/att/1.pdf";
   const fetchImg: FetchImageFn = async () => "/tmp/att/2.jpg";
@@ -1148,7 +1148,7 @@ test("ingest preserves sender_chat through the post-download media branches (HIM
 // group" where the operator opted that group in. Anywhere else it is an unknown
 // sender and stays fully triaged, so the floor cannot be reached by posting
 // anonymously in an arbitrary chat.
-test("the anonymous-admin id is still triaged in a non-opted-in group (HIMMEL-1358)", async () => {
+test("the anonymous-admin id is still triaged in a non-opted-in group", async () => {
   const access = { allowFrom: ["1000000001"], groups: { "-1009999999": { trustAnonymousAdmins: true } } };
   const isOperator = (from: number, chat_id: number) => isOperatorIdentity(access, from, chat_id);
 
@@ -1165,7 +1165,7 @@ test("the anonymous-admin id is still triaged in a non-opted-in group (HIMMEL-13
 // escape handleInbound — handleBatch would label it "could not be queued" and
 // tell the operator to resend an already-enqueued message (CR coderabbit-1).
 // Reachable via TELEGRAM_BATCH_QUIET_MS=0, where the coalescer awaits dispatch.
-test("a dispatch failure after the inbox append does not escape handleInbound (HIMMEL-1296)", async () => {
+test("a dispatch failure after the inbox append does not escape handleInbound", async () => {
   const r = root();
   let threw = false;
   try {
@@ -1183,7 +1183,7 @@ test("a dispatch failure after the inbox append does not escape handleInbound (H
 // The poller must tell the classifier the SAME sender role the floor uses —
 // otherwise a group member could be classified under operator framing (CR
 // codex-adv-1), or the operator under shared-group framing.
-test("the sender role handleInbound passes to triage matches the floor's (HIMMEL-1296)", async () => {
+test("the sender role handleInbound passes to triage matches the floor's", async () => {
   const seen: Array<boolean | undefined> = [];
   const recordingTriage = async (_t: string, _s?: string, fromOperator?: boolean): Promise<TriageVerdict> => {
     seen.push(fromOperator); return "spawn-high";
@@ -1242,7 +1242,7 @@ test("ticket session chat_id is pinned by its creator; a group followup does not
   const r = root();
   const fakeRun = async (_s:string)=>{};
   await handleInbound(r, { from:1, chat_id:7, text:"work on HIMMEL-5" }, fakeRun, undefined, undefined, (f: number) => f === 1);
-  await handleInbound(r, { from:9, chat_id:-50, text:"HIMMEL-5: from the group" }, fakeRun, undefined, undefined, (f: number) => f === 1);
+  await handleInbound(r, { from:9, chat_id:-50, text:"ABC-5: from the group" }, fakeRun, undefined, undefined, (f: number) => f === 1);
   expect((await readMeta(r, "HIMMEL-5"))?.chat_id).toBe(7);
 });
 
@@ -1386,7 +1386,7 @@ test("cold runFn: resolves the telegram profile settings + mcp allowlist for eve
   expect(capturedSettings).toBeDefined();
   const enabled = JSON.parse(capturedSettings!).enabledPlugins;
   expect(enabled["obsidian-triage@himmel"]).toBe(true);
-  expect(enabled["claude-obsidian@himmel"]).toBe(false);   // HIMMEL-4020: unused by the bridge, dropped
+  expect(enabled["claude-obsidian@himmel"]).toBe(false);   // unused by the bridge, dropped
   expect(enabled["telegram-himmel@himmel"]).toBe(false);   // self-referential MCP server, excluded
   expect(enabled["luna-correlate@himmel"]).toBe(false);    // unrelated, excluded
   expect(capturedMcpConfig).toBeDefined();
@@ -1521,7 +1521,7 @@ test("deliverAllPending: runs idle + due-capped sessions; skips not-due-capped",
   // idle session with a pending inbox line
   await ensureSession(r, "IDLE");
   await writeMeta(r, "IDLE", { ...baseMeta, chat_id: 1, status: "idle", retry_at: null });
-  await appendLine(join(sessionDir(r, "IDLE"), "inbox.jsonl"), JSON.stringify({ text: "do it" }));
+  await appendLine(join(sessionDir(r, "IDLE"), "inbox.jsonl"), JSON.stringify({ text: "ABC-9: do it" }));
 
   // capped with FUTURE retry_at (not due) with a pending line
   await ensureSession(r, "CAPPED-FUTURE");
@@ -1714,7 +1714,7 @@ test("handleInbound forwards document_path + document_name into the session inbo
   expect(lines[0].text).toBe("file this");
 });
 
-test("ingest document whose download fails notifies the operator (never a silent drop, HIMMEL-321)", async () => {
+test("ingest document whose download fails notifies the operator (never a silent drop)", async () => {
   const r = root();
   const notices: Array<[number, string]> = [];
   const notifyDocFail = async (chatId: number, name: string) => { notices.push([chatId, name]); };
@@ -1733,7 +1733,7 @@ test("ingest a successful document download does NOT notify failure", async () =
   expect(notified).toBe(0);
 });
 
-test("ingest a mixed batch (photo + document) lands both with their own attachment paths (HIMMEL-321/266)", async () => {
+test("ingest a mixed batch (photo + document) lands both with their own attachment paths", async () => {
   const r = root();
   const photoUpd = { update_id: 20, message: { chat:{id:1}, from:{id:1}, caption: "pic", photo: [{ file_id: "p" }] } };
   const docUpd = { update_id: 21, message: { chat:{id:1}, from:{id:1}, caption: "doc", document: { file_id: "d", file_name: "x.pdf" } } };
@@ -1747,7 +1747,7 @@ test("ingest a mixed batch (photo + document) lands both with their own attachme
   expect(await loadOffset(r)).toBe(22);              // offset advanced past both
 });
 
-test("makeRunFn resolves the chat's vault and threads it into the run prompt (HIMMEL-321 wiring seam)", async () => {
+test("makeRunFn resolves the chat's vault and threads it into the run prompt (wiring seam)", async () => {
   const r = root(); await ensureSession(r, "group_-50");
   await writeMeta(r, "group_-50", freshMeta(-50));
   await appendLine(join(sessionDir(r, "group_-50"), "inbox.jsonl"), JSON.stringify({ text: "file this", document_path: "/att/x.pdf", document_name: "x.pdf" }));
@@ -1759,7 +1759,7 @@ test("makeRunFn resolves the chat's vault and threads it into the run prompt (HI
   expect(captured).toContain("document_path");
 });
 
-test("makeRunFn with no vault for the chat threads no file-into-vault clause (HIMMEL-321)", async () => {
+test("makeRunFn with no vault for the chat threads no file-into-vault clause", async () => {
   const r = root(); await ensureSession(r, "group_-99");
   await writeMeta(r, "group_-99", freshMeta(-99));
   await appendLine(join(sessionDir(r, "group_-99"), "inbox.jsonl"), JSON.stringify({ text: "hi" }));
@@ -1770,7 +1770,7 @@ test("makeRunFn with no vault for the chat threads no file-into-vault clause (HI
   expect(captured).not.toContain("file the document's content into the Obsidian vault");
 });
 
-// --- LUNA-101: the three spawn routes (cwd / vault / neither) ---
+// --- the three spawn routes (cwd / vault / neither) ---
 // One spy shape for all three: capture every arg runImpl receives so the branch
 // is asserted on what actually reaches the spawn, not on an intermediate.
 type SpawnSpy = { prompt: string; cwd: string; mode?: string; extraEnv?: Record<string, string> };
@@ -1984,7 +1984,7 @@ test("makeFetchVoice: sendFail itself throwing is swallowed (logged), null still
 
 // --- photo download non-blocking for ingest loop ---
 
-test("HIMMEL-266: mixed batch — photo and text in same batch both land in inbox; offset advances for both", async () => {
+test("mixed batch — photo and text in same batch both land in inbox; offset advances for both", async () => {
   // Regression guard for the refactor: non-photo messages must not be lost when
   // a photo is present in the same batch, and offset must cover all updates.
   const r = root();
@@ -2005,7 +2005,7 @@ test("HIMMEL-266: mixed batch — photo and text in same batch both land in inbo
   expect(await loadOffset(r)).toBe(102);
 });
 
-test("HIMMEL-266: consumer contract — image_path in inbox entry points to a file that exists at write time", async () => {
+test("consumer contract — image_path in inbox entry points to a file that exists at write time", async () => {
   // This test verifies that we only write image_path once the download promise has resolved
   // (the consumer — a bounded claude run — reads the inbox entry after download is done).
   const r = root();
@@ -2029,7 +2029,7 @@ test("HIMMEL-266: consumer contract — image_path in inbox entry points to a fi
   expect(downloadResolved).toBe(true);   // download was awaited before the inbox entry was appended
 });
 
-test("HIMMEL-266: a batch of N photos does not delay getUpdates by N × file-fetch timeout (concurrent downloads)", async () => {
+test("a batch of N photos does not delay getUpdates by N × file-fetch timeout (concurrent downloads)", async () => {
   const r = root();
   const ORDER: string[] = [];
   // Three slow fetches — each takes 10ms but they run concurrently
@@ -2254,7 +2254,7 @@ test("handleInbound routes a DM + operator + typed + enabled /arm to the auto fi
   expect(ran).toBe(false);
 });
 
-test("handleInbound: a /config restore line with its code never reaches an inbox or a run (HIMMEL-8401)", async () => {
+test("handleInbound: a /config restore line with its code never reaches an inbox or a run", async () => {
   for (const msg of [
     { from: 5, chat_id: 5, text: "/config restore 20261031T120000Z-ab12 123456", forwarded: false, caption: false },
     // Not eligible (forwarded, or from a group): still consumed, the helper never runs.
@@ -2286,7 +2286,7 @@ test("autoGate.authorize composition: operator + allowlisted-chat only (CR S1 se
   expect(authorize(5, -99)).toBe(false);  // operator in a NON-allowlisted group → refused (chat gate)
 });
 
-test("handleInbound: an OPERATOR /arm in an allowlisted GROUP fires (operator-identity, HIMMEL-424 groups)", async () => {
+test("handleInbound: an OPERATOR /arm in an allowlisted GROUP fires (operator-identity, groups)", async () => {
   const r = root(); const fired: any[] = []; let ran = false;
   // operator (from=5) in a group (chat_id<0); isOperator(5)=true → arms
   await handleInbound(r, { from:5, chat_id:-50, text:"/arm HIMMEL-1", ts: Math.floor(Date.now() / 1000), forwarded:false, caption:false },
@@ -2484,7 +2484,7 @@ test("parseBridgeEnv tolerates spacing, single quotes and a missing key", () => 
   expect(parsed.TELEGRAM_AUTO_ACTIONS).toBeUndefined();
 });
 
-test("loadBridgeEnv reads TELEGRAM_AUTO_ACTIONS from the file the docs point at (HIMMEL-1270)", async () => {
+test("loadBridgeEnv reads TELEGRAM_AUTO_ACTIONS from the file the docs point at", async () => {
   // The bug: the poller read this key from process.env ONLY, so the operator's
   // correctly-edited bridge config enabled nothing and /mergepub routed as chat.
   const dir = mkdtempSync(join(tmpdir(), "bridgecfg-"));
@@ -2561,7 +2561,7 @@ test("loadBridgeEnv: an EMPTY process TELEGRAM_AUTO_ACTIONS disables file-enable
   }
 });
 
-test("loadBridgeEnv: NO process TELEGRAM_BOT_TOKEN can override the bridge file's (HIMMEL-1270 CR)", async () => {
+test("loadBridgeEnv: NO process TELEGRAM_BOT_TOKEN can override the bridge file's", async () => {
   // The token is FILE-ONLY, as loadToken() always was. This repo runs a SECOND
   // bot: the HIMMEL_JIRA_NUDGE SessionEnd relay reads TELEGRAM_BOT_TOKEN from the
   // repo .env. If the process env could win, launching the bridge from a shell
@@ -2586,7 +2586,7 @@ test("loadBridgeEnv: NO process TELEGRAM_BOT_TOKEN can override the bridge file'
   }
 });
 
-test("parseBridgeEnv: an empty scaffold placeholder never masks a later real token (HIMMEL-1270 CR)", async () => {
+test("parseBridgeEnv: an empty scaffold placeholder never masks a later real token", async () => {
   // scripts/setup/onboard-telegram.{sh,ps1} writes a literal `TELEGRAM_BOT_TOKEN=`
   // placeholder. An operator who APPENDED the real token has a working bridge;
   // first-match-wins would resolve the empty line and abort startup on upgrade.
@@ -2604,7 +2604,7 @@ test("parseBridgeEnv: an empty scaffold placeholder never masks a later real tok
   expect(parseBridgeEnv("TELEGRAM_AUTO_ACTIONS=\n").TELEGRAM_AUTO_ACTIONS).toBe("");
 });
 
-test("loadBridgeEnv tracks provenance so a warning points at the right place (HIMMEL-1270 CR)", async () => {
+test("loadBridgeEnv tracks provenance so a warning points at the right place", async () => {
   // A typo'd PROCESS value that was reported as "read from <file>" would send the
   // operator to edit the file; after restart the process value wins again and
   // /mergepub is still dead.
@@ -2634,7 +2634,7 @@ test("loadBridgeEnv tracks provenance so a warning points at the right place (HI
   }
 });
 
-test("parseBridgeEnv: a later TELEGRAM_AUTO_ACTIONS assignment REVOKES an earlier one (HIMMEL-1270 CR)", async () => {
+test("parseBridgeEnv: a later TELEGRAM_AUTO_ACTIONS assignment REVOKES an earlier one", async () => {
   // Opposite rule from the token, deliberately. This is a CAPABILITY flag: with
   // first-wins, an operator who appended `off` under an existing
   // `merge-public` line would still have a live public-merge capability while
@@ -2664,7 +2664,7 @@ const restartRoute = (rung = "poller") =>
   ({ kind: "auto", op: "restart", arg: rung, time: "-" }) as any;
 const restartMsg = () => ({ chat_id: 5, from: 7, text: "/restart", forwarded: false, caption: false, ts: 1 }) as any;
 
-test("/restart acks and audits BEFORE firing — the fire kills the transport (HIMMEL-1272)", async () => {
+test("/restart acks and audits BEFORE firing — the fire kills the transport", async () => {
   // Ordering is the whole point: reply is an outbox APPEND, and this process never
   // gets to flush it. The respawned poller drains outbox.jsonl. Fire first and the
   // operator watches the bridge go silent with no confirmation it heard them.
@@ -2841,7 +2841,7 @@ test("a burst keeps the STRONGEST model — a cheap first line cannot pin haiku"
   expect(got).toEqual([undefined]);      // NOT "haiku"
 });
 
-// --- LUNA-101: leading `model:` tag ---
+// --- leading `model:` tag ---
 test("parseModelTag: strips a valid leading tag", () => {
   expect(parseModelTag("model:sonnet hi")).toEqual({ model: "sonnet", rest: "hi", unknown: false });
 });
@@ -3548,7 +3548,7 @@ const seedInbound = async (r: string, recs: ReturnType<typeof inbound>[]) => {
 };
 const ackRoot = () => mkdtempSync(join(tmpdir(), "tg-ack-"));
 
-test("a record interrupted before it is durable is re-delivered on the next pass (HIMMEL-1302)", async () => {
+test("a record interrupted before it is durable is re-delivered on the next pass", async () => {
   const r = ackRoot();
   await seedInbound(r, [inbound("one", 1), inbound("two", 2), inbound("three", 3)]);
   // pass 1: record 2 never settles (process killed mid-triage), so the cursor never moves past it
@@ -3567,7 +3567,7 @@ test("a record interrupted before it is durable is re-delivered on the next pass
   expect(seen3).toEqual([]);
 });
 
-test("a throw on record N does not strand N+1..M and the batch is fully acked (HIMMEL-1302)", async () => {
+test("a throw on record N does not strand N+1..M and the batch is fully acked", async () => {
   const r = ackRoot();
   await seedInbound(r, [inbound("one", 1), inbound("poison", 2), inbound("three", 3)]);
   const seen: string[] = [];
@@ -3578,7 +3578,7 @@ test("a throw on record N does not strand N+1..M and the batch is fully acked (H
   expect(again).toEqual([]);
 });
 
-test("a replayed update_id after enqueue-before-commit neither enqueues nor spawns twice (HIMMEL-1302)", async () => {
+test("a replayed update_id after enqueue-before-commit neither enqueues nor spawns twice", async () => {
   const r = ackRoot();
   const ran: string[] = [];
   const msg = { from: 1, chat_id: 7, text: "hello", update_id: 77 };
@@ -3589,7 +3589,7 @@ test("a replayed update_id after enqueue-before-commit neither enqueues nor spaw
   expect(ran).toHaveLength(1);
 });
 
-test("a replayed update_id after the inbox was consumed and truncated neither enqueues nor spawns twice (HIMMEL-5795)", async () => {
+test("a replayed update_id after the inbox was consumed and truncated neither enqueues nor spawns twice", async () => {
   const r = ackRoot();
   const ran: string[] = [];
   const msg = { from: 1, chat_id: 7, text: "hello", update_id: 88 };
@@ -3602,7 +3602,7 @@ test("a replayed update_id after the inbox was consumed and truncated neither en
   expect(ran).toHaveLength(1);
 });
 
-test("the handled high-water mark skips any id at or below it and lets a higher id through (HIMMEL-5795)", async () => {
+test("the handled high-water mark skips any id at or below it and lets a higher id through", async () => {
   const r = ackRoot();
   const ran: string[] = [];
   const run = async (s: string) => { ran.push(s); };
@@ -3616,7 +3616,7 @@ test("the handled high-water mark skips any id at or below it and lets a higher 
   expect(readFileSync(inbox, "utf8").trim().split("\n")).toHaveLength(1);
 });
 
-test("a corrupt or missing high-water marker fails open to the inbox check (HIMMEL-5795)", async () => {
+test("a corrupt or missing high-water marker fails open to the inbox check", async () => {
   const r = ackRoot();
   const ran: string[] = [];
   const run = async (s: string) => { ran.push(s); };
@@ -3633,7 +3633,7 @@ test("a corrupt or missing high-water marker fails open to the inbox check (HIMM
   expect(readFileSync(join(r, "handled-update.hw"), "utf8")).toMatch(/^56 \d+$/);
 });
 
-test("a failed marker write drops the stale marker so the replay still hits the inbox check (HIMMEL-5795)", async () => {
+test("a failed marker write drops the stale marker so the replay still hits the inbox check", async () => {
   const r = ackRoot();
   const run = async (_s: string) => {};
   await handleInbound(r, { from: 1, chat_id: 7, text: "a", update_id: 20 }, run);
@@ -3645,7 +3645,7 @@ test("a failed marker write drops the stale marker so the replay still hits the 
   expect(readFileSync(join(r, "sessions", session, "inbox.jsonl"), "utf8").trim().split("\n")).toHaveLength(2);
 });
 
-test("an unmarked enqueue (crash before the marker write) is still caught by the inbox tail (HIMMEL-5795)", async () => {
+test("an unmarked enqueue (crash before the marker write) is still caught by the inbox tail", async () => {
   const r = ackRoot();
   const run = async (_s: string) => {};
   await handleInbound(r, { from: 1, chat_id: 7, text: "a", update_id: 20 }, run);
@@ -3657,7 +3657,7 @@ test("an unmarked enqueue (crash before the marker write) is still caught by the
   expect(readFileSync(join(r, "sessions", session, "inbox.jsonl"), "utf8").trim().split("\n")).toHaveLength(2);
 });
 
-test("a marker older than a day is ignored so a reset Telegram update_id is not dropped (HIMMEL-5795)", async () => {
+test("a marker older than a day is ignored so a reset Telegram update_id is not dropped", async () => {
   const r = ackRoot();
   const run = async (_s: string) => {};
   await handleInbound(r, { from: 1, chat_id: 7, text: "a", update_id: 9000 }, run);
@@ -3685,7 +3685,7 @@ test("inbox line carries operator:true only for the operator's own messages", as
 // redacts via redactChatId.
 const RAW_GROUP = -1001234567890;
 
-test("handleBatch drop log redacts the chat id (HIMMEL-1308)", async () => {
+test("handleBatch drop log redacts the chat id", async () => {
   const logs: string[] = [];
   const origError = console.error;
   console.error = (...args: unknown[]) => { logs.push(args.join(" ")); };
@@ -3698,7 +3698,7 @@ test("handleBatch drop log redacts the chat id (HIMMEL-1308)", async () => {
   expect(line).toContain("chat ***90");
 });
 
-test("require-mention drop log redacts the group_<chat_id> session name (HIMMEL-1308)", async () => {
+test("require-mention drop log redacts the group_<chat_id> session name", async () => {
   const r = root(); const logs: string[] = [];
   const origError = console.error;
   console.error = (...args: unknown[]) => { logs.push(args.join(" ")); };
@@ -3717,7 +3717,7 @@ test("require-mention drop log redacts the group_<chat_id> session name (HIMMEL-
 // goes through redactChatId / logRedacted. The one deliberate raw site is the
 // gated-out discovery line, whose whole point is to show the id to add to
 // access.json.
-test("poller.ts logs no raw chat id or session name (HIMMEL-1308)", () => {
+test("poller.ts logs no raw chat id or session name", () => {
   const src = readFileSync(join(import.meta.dir, "poller.ts"), "utf8").split("\n");
   const offenders = src.map((l, i) => ({ l, n: i + 1 }))
     .filter(({ l }) => /chief\.error\(|logRedacted\(/.test(l))

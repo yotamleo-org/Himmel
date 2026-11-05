@@ -400,7 +400,7 @@ export function checkHugeDiff(
     const b = printable(base);
     const br = printable(args.branch);
     return {
-      note: `${lane}: WARNING (huge-diff guard, HIMMEL-1778): ${b}...${br} is dominated by ONE file — ${printable(dom.path)} is ${mib(dom.bytes)}, ${(dom.share * 100).toFixed(1)}% of the ${mib(dom.totalBytes)} across ${dom.pathCount} changed path(s). A worker that orients itself with \`git diff ${b}...${br}\` can blow its context window on this one file (two claudex dispatches died exactly this way — "prompt is too long", and nothing in the error named the file). Dispatching anyway (fail-open): scope diffs by path (\`git diff ${b}...${br} -- <path>\`), never ingest the whole branch diff.`,
+      note: `${lane}: WARNING (huge-diff guard): ${b}...${br} is dominated by ONE file — ${printable(dom.path)} is ${mib(dom.bytes)}, ${(dom.share * 100).toFixed(1)}% of the ${mib(dom.totalBytes)} across ${dom.pathCount} changed path(s). A worker that orients itself with \`git diff ${b}...${br}\` can blow its context window on this one file (two claudex dispatches died exactly this way — "prompt is too long", and nothing in the error named the file). Dispatching anyway (fail-open): scope diffs by path (\`git diff ${b}...${br} -- <path>\`), never ingest the whole branch diff.`,
     };
   } catch (e) {
     failOpen("probe threw", e instanceof Error ? e.message : String(e));

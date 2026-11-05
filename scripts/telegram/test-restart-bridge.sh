@@ -2019,15 +2019,15 @@ if [ "$NOBUN_OK" -eq 1 ]; then
   HOMEBUN_SUPERVISOR_PAT="$HOME/.bun/bin/bun supervisor.ts"
   path2582_pos_rc=0
   path2582_pos_out=$(run_with_timeout 20 env PATH="$NOBUN_BIN" bash "$SCRIPT" --repo "$FIXTURE_REPO" start 2>&1) || path2582_pos_rc=$?
-  check "HIMMEL-2582: with \$HOME/.bun/bin/bun present, start exits 0" 0 "$path2582_pos_rc"
+  check "with \$HOME/.bun/bin/bun present, start exits 0" 0 "$path2582_pos_rc"
   if grep -q "'bun' not found on PATH" <<< "$path2582_pos_out"; then
-    fail "HIMMEL-2582: the PATH fallback finds \$HOME/.bun/bin/bun (no not-found message)" \
+    fail "the PATH fallback finds \$HOME/.bun/bin/bun (no not-found message)" \
       "output: $(printf '%s' "$path2582_pos_out" | tr '\n' '|')"
   else
-    pass "HIMMEL-2582: the PATH fallback finds \$HOME/.bun/bin/bun (no not-found message)"
+    pass "the PATH fallback finds \$HOME/.bun/bin/bun (no not-found message)"
   fi
   homebun_pollers=$(poll_until "$HOMEBUN_POLLER_PAT" 1 30)
-  check "HIMMEL-2582: the bridge actually launched via \$HOME/.bun/bin/bun (one poller)" 1 "$homebun_pollers"
+  check "the bridge actually launched via \$HOME/.bun/bin/bun (one poller)" 1 "$homebun_pollers"
 
   stop_bridge >"$WORK/log-2582-cleanup-stop.log" 2>&1
   poll_until "$HOMEBUN_POLLER_PAT" 0 30 >/dev/null
@@ -2049,11 +2049,11 @@ if [ "$NOBUN_OK" -eq 1 ]; then
   PRECEDENCE_POLLER_PAT="$PRECEDENCE_BIN/bun poller.ts"
   precedence_rc=0
   run_with_timeout 20 env PATH="$PRECEDENCE_BIN:$NOBUN_BIN" bash "$SCRIPT" --repo "$FIXTURE_REPO" start >"$WORK/log-2582-precedence.log" 2>&1 || precedence_rc=$?
-  check "HIMMEL-5383: user Bun precedence start succeeds" 0 "$precedence_rc"
+  check "user Bun precedence start succeeds" 0 "$precedence_rc"
   homebun_pollers=$(poll_until "$HOMEBUN_POLLER_PAT" 1 30)
-  check "HIMMEL-5383: the bridge launches the preferred user Bun even with a PATH Bun" 1 "$homebun_pollers"
+  check "the bridge launches the preferred user Bun even with a PATH Bun" 1 "$homebun_pollers"
   precedence_pollers=$(count_procs "$PRECEDENCE_POLLER_PAT")
-  check "HIMMEL-5383: the PATH Bun is not launched when user Bun exists" 0 "$precedence_pollers"
+  check "the PATH Bun is not launched when user Bun exists" 0 "$precedence_pollers"
 
   stop_bridge >"$WORK/log-2582-precedence-stop.log" 2>&1
   poll_until "$PRECEDENCE_POLLER_PAT" 0 30 >/dev/null
@@ -2133,12 +2133,12 @@ else
   skip "HIMMEL-2582 control: linger-shaped PATH with no \$HOME/.bun/bin exits 1" \
     "could not build a bun-less PATH on this host (see the RETASK bun-resolution skip above)"
   skip "HIMMEL-2582 control: output names \"'bun' not found on PATH\"" "see the skip above"
-  skip "HIMMEL-2582: with \$HOME/.bun/bin/bun present, start exits 0" "see the skip above"
-  skip "HIMMEL-2582: the PATH fallback finds \$HOME/.bun/bin/bun (no not-found message)" "see the skip above"
-  skip "HIMMEL-2582: the bridge actually launched via \$HOME/.bun/bin/bun (one poller)" "see the skip above"
-  skip "HIMMEL-2582: a bun already on PATH wins over \$HOME/.bun/bin (dirs are appended)" "see the skip above"
-  skip "HIMMEL-2582: the launcher exec'd the PATH bun, not the \$HOME/.bun/bin one" "see the skip above"
-  skip "HIMMEL-2582: \$HOME/.bun/bin/bun was NOT used while a PATH bun existed" "see the skip above"
+  skip "with \$HOME/.bun/bin/bun present, start exits 0" "see the skip above"
+  skip "the PATH fallback finds \$HOME/.bun/bin/bun (no not-found message)" "see the skip above"
+  skip "the bridge actually launched via \$HOME/.bun/bin/bun (one poller)" "see the skip above"
+  skip "a bun already on PATH wins over \$HOME/.bun/bin (dirs are appended)" "see the skip above"
+  skip "the launcher exec'd the PATH bun, not the \$HOME/.bun/bin one" "see the skip above"
+  skip "\$HOME/.bun/bin/bun was NOT used while a PATH bun existed" "see the skip above"
   skip "HIMMEL-2582 (claude fallback): start exits 0" "see the skip above"
   skip "HIMMEL-2582 (claude fallback): the probe bridge launched (one poller)" "see the skip above"
   skip "HIMMEL-2582 (claude fallback): the launched child resolves claude via \$HOME/.local/bin" "see the skip above"

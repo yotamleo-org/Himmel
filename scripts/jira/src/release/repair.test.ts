@@ -88,6 +88,13 @@ function build(w: World) {
   return { state, input, out: classify(input) };
 }
 
+// ticket keys used as object keys below, named once so the map literals stay plain
+const K3084 = 'HIMMEL-3084';
+const K6691 = 'HIMMEL-6691';
+const K7044 = 'HIMMEL-7044';
+const K7804 = 'HIMMEL-7804';
+const K8231 = 'HIMMEL-8231';
+
 const FIX = fileURLToPath(new URL('./fixtures/repair/', import.meta.url));
 interface Fixture { key: string; journal: VersionWriteRow[]; changelog: Array<{ id: string; created: string; items: Array<{ field: string }> }> }
 function fixture(key: string): { newest: { id: string; ts: string }; journal: VersionWriteRow[] } {
@@ -193,7 +200,7 @@ describe('test-version-repair', () => {
   });
 
   it('lanes count each key once', () => {
-    const w = build(doneRuledLater('HIMMEL-7804', { entries: { 'HIMMEL-7804': fixture('HIMMEL-7804').newest } }));
+    const w = build(doneRuledLater('HIMMEL-7804', { entries: { [K7804]: fixture('HIMMEL-7804').newest } }));
     expect(w.state.leaks).toEqual({ unauthorized: ['HIMMEL-7804@v1.1.3'], ruled_in_non_member: ['HIMMEL-7804@v1.1.4'] });
     expect(w.out).toHaveLength(1);
     expect(one(w.out, 'HIMMEL-7804')).toMatchObject({ lane: 'held', action: { kind: 'held', cls: 'unbound' } });
@@ -289,7 +296,7 @@ describe('test-version-repair', () => {
     const gone = build({
       issues: [issue('HIMMEL-8231', [])], rulings: [ruling('R-1', 'HIMMEL-8231', 'add', null, 'v1.1.4', 'rm', '2026-10-30T10:00:00.000Z')],
       journal: [jr('HIMMEL-8231', 'displace-residual', ['v1.1.4'], [], '85466', '2026-11-01T21:13:42.360Z')],
-      entries: { 'HIMMEL-8231': fixture('HIMMEL-8231').newest },
+      entries: { [K8231]: fixture('HIMMEL-8231').newest },
     });
     expect(one(gone.out, 'HIMMEL-8231')).toMatchObject({ lane: 'bound-ruled', action: { kind: 'request', verb: 'REVERSION', from: null, to: 'v1.1.4', entry: '85466' } });
   });
@@ -339,7 +346,7 @@ describe('test-version-repair', () => {
   });
 
   it('no fold when version is not decl.current', () => {
-    const w = build({ issues: [done('HIMMEL-6691', ['v1.1.4'])], entries: { 'HIMMEL-6691': fixture('HIMMEL-6691').newest }, prs: { 'HIMMEL-6691': 12 } });
+    const w = build({ issues: [done('HIMMEL-6691', ['v1.1.4'])], entries: { [K6691]: fixture('HIMMEL-6691').newest }, prs: { [K6691]: 12 } });
     expect(one(w.out, 'HIMMEL-6691')).toMatchObject({ lane: 'held', action: { kind: 'held', cls: 'unbound' } });
   });
 
@@ -356,7 +363,7 @@ describe('test-version-repair', () => {
   });
 
   it('Done key with both mismatches offers move and says it overrules', () => {
-    const w = build(doneRuledLater('HIMMEL-7804', { entries: { 'HIMMEL-7804': fixture('HIMMEL-7804').newest } }));
+    const w = build(doneRuledLater('HIMMEL-7804', { entries: { [K7804]: fixture('HIMMEL-7804').newest } }));
     const o = offerFor(one(w.out, 'HIMMEL-7804'), w.input);
     expect(o).toMatchObject({ op: 'move', verb: 'INTAKE', from: 'v1.1.4', to: 'v1.1.3' });
     expect(o.note).toContain('overrules');
@@ -426,12 +433,12 @@ describe('test-version-repair', () => {
   });
 
   it('no fold outside current for 6691', () => {
-    const w = build({ issues: [done('HIMMEL-6691', ['v1.1.4'])], prs: { 'HIMMEL-6691': 5 } });
+    const w = build({ issues: [done('HIMMEL-6691', ['v1.1.4'])], prs: { [K6691]: 5 } });
     expect(one(w.out, 'HIMMEL-6691').lane).not.toBe('fold');
   });
 
   it('no fold with a ruling elsewhere for 7804', () => {
-    const w = build(doneRuledLater('HIMMEL-7804', { prs: { 'HIMMEL-7804': 4039 } }));
+    const w = build(doneRuledLater('HIMMEL-7804', { prs: { [K7804]: 4039 } }));
     expect(one(w.out, 'HIMMEL-7804').lane).not.toBe('fold');
   });
 
@@ -462,7 +469,7 @@ describe('test-version-repair', () => {
     issues: [issue('HIMMEL-8231', [])],
     operator: auth === 'rm' ? [] : [decision(auth, ['HIMMEL-8231'], 'add', null, 'v1.1.4', '2026-10-30T09:00:00.000Z')],
     rulings: [ruling('R-1', 'HIMMEL-8231', 'add', null, 'v1.1.4', auth, '2026-10-30T10:00:00.000Z')],
-    journal: fixture('HIMMEL-8231').journal, entries: { 'HIMMEL-8231': fixture('HIMMEL-8231').newest },
+    journal: fixture('HIMMEL-8231').journal, entries: { [K8231]: fixture('HIMMEL-8231').newest },
   });
 
   it('ruled-displaced on 8231 with a synthesized row', () => {
@@ -480,7 +487,7 @@ describe('test-version-repair', () => {
   const stamped = (auth: string): World => {
     const f = fixture('HIMMEL-7804').newest;
     return doneRuledLater('HIMMEL-7804', {
-      journal: [jr('HIMMEL-7804', 'merge-stamp', ['v1.1.4'], ['v1.1.3'], f.id, '2026-10-27T07:49:33.000Z')], entries: { 'HIMMEL-7804': f },
+      journal: [jr('HIMMEL-7804', 'merge-stamp', ['v1.1.4'], ['v1.1.3'], f.id, '2026-10-27T07:49:33.000Z')], entries: { [K7804]: f },
       rulings: [ruling('R-1', 'HIMMEL-7804', 'add', null, 'v1.1.4', auth, '2026-10-27T05:30:00.000Z')],
       operator: auth === 'rm' ? [] : [{ ...O7804, id: auth }],
     });
@@ -626,7 +633,7 @@ describe('test-version-repair', () => {
         world: { issues: [issue('HIMMEL-7535', [])], operator: [decision('O-R1-0071', ['HIMMEL-7535'], 'add', null, 'v1.1.4', at(1))], rulings: [ruling('R-1', 'HIMMEL-7535', 'add', null, 'v1.1.4', 'O-R1-0071')] } },
       { name: 'ruled in then displaced, after the journal: ruled-displaced', key: 'HIMMEL-8231', lane: 'bound-ruled', action: 'held:ruled-displaced', world: displaced8231('O-R1-0004') },
       { name: 'HIMMEL-3084 hand edit outside the declared versions', key: 'HIMMEL-3084', lane: null,
-        world: { issues: [issue('HIMMEL-3084', ['v1.1.1'])], journal: fixture('HIMMEL-3084').journal, entries: { 'HIMMEL-3084': fixture('HIMMEL-3084').newest } } },
+        world: { issues: [issue('HIMMEL-3084', ['v1.1.1'])], journal: fixture('HIMMEL-3084').journal, entries: { [K3084]: fixture('HIMMEL-3084').newest } } },
       { name: 'gate row, Done: fold', key: 'K-1', lane: 'fold', action: 'fold',
         world: { issues: [done('K-1', ['v1.1.3'])], admissions: [{ ts: at(1), version: 'v1.1.3', key: 'K-1', gate: 'critical', actor: 'a' }], prs: { 'K-1': 3 } } },
       { name: 'gate row, Won\'t Do', key: 'K-1', lane: 'closed-undelivered', action: 'held:closed-undelivered',
@@ -644,10 +651,10 @@ describe('test-version-repair', () => {
       { name: '13 v1.1.4 open outside that record', key: 'K-1', lane: 'held', action: 'held:unbound', world: { issues: [issue('K-1', ['v1.1.4'])] } },
       { name: 'new residual with a machine-chosen version', key: 'K-1', lane: 'bound', action: 'request', world: machineWrite() },
       { name: 'HIMMEL-6691 held in v1.1.4, closed by hand', key: 'HIMMEL-6691', lane: 'held', action: 'held:unbound',
-        world: { issues: [done('HIMMEL-6691', ['v1.1.4'])], prs: { 'HIMMEL-6691': 1 } } },
-      { name: 'HIMMEL-7804 Done in v1.1.3, ruled into v1.1.4', key: 'HIMMEL-7804', lane: 'held', action: 'held:unbound', world: doneRuledLater('HIMMEL-7804', { prs: { 'HIMMEL-7804': 4039 } }) },
+        world: { issues: [done('HIMMEL-6691', ['v1.1.4'])], prs: { [K6691]: 1 } } },
+      { name: 'HIMMEL-7804 Done in v1.1.3, ruled into v1.1.4', key: 'HIMMEL-7804', lane: 'held', action: 'held:unbound', world: doneRuledLater('HIMMEL-7804', { prs: { [K7804]: 4039 } }) },
       { name: 'HIMMEL-7044 same shape', key: 'HIMMEL-7044', lane: 'held', action: 'held:unbound',
-        world: doneRuledLater('HIMMEL-7044', { entries: { 'HIMMEL-7044': f7044 } }) },
+        world: doneRuledLater('HIMMEL-7044', { entries: { [K7044]: f7044 } }) },
       { name: '10-14 sweep: no version, no ruling', key: 'K-1', lane: null, world: { issues: [issue('K-1', [])] } },
       { name: '1652 open with no version', key: 'K-1', lane: null, world: { issues: [issue('K-1', [])], entries: { 'K-1': { id: '9', ts: at(1) } } } },
       { name: '5 High signed, no ruling cites them', key: 'HIMMEL-8667', lane: 'operator-record', action: 'unfiled',

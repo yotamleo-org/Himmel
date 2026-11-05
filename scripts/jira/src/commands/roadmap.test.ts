@@ -250,6 +250,9 @@ describe('roadmapExport', () => {
   });
 });
 
+// the issue list a dry-run line appends after "move N"
+const moved = (...keys: string[]) => ` (${keys.join(' ')})`;
+
 describe('syncSprints', () => {
   const versions = [
     { id: '1', name: 'v1.0.0', released: false, startDate: '2026-10-01', releaseDate: '2026-10-04' },
@@ -280,8 +283,8 @@ describe('syncSprints', () => {
     const r = await syncSprints('HIMMEL', '166', true, api.req, agile.req);
     expect(r.drift).toBe(4); // 3 issues + 1 missing sprint
     expect(r.lines).toEqual([
-      'v1.0.0: sprint 7, move 1 (HIMMEL-1)',
-      'v1.0.1: sprint missing (would create 2026-10-05..2026-10-08), move 2 (HIMMEL-2 HIMMEL-3)',
+      `v1.0.0: sprint 7, move 1${moved('HIMMEL-1')}`,
+      `v1.0.1: sprint missing (would create 2026-10-05..2026-10-08), move 2${moved('HIMMEL-2', 'HIMMEL-3')}`,
     ]);
     expect(agile.calls.filter((c) => c.method !== 'GET')).toEqual([]);
   });
@@ -361,7 +364,7 @@ describe('syncSprints', () => {
       },
     };
     const dry = await syncSprints('HIMMEL', '166', true, api.req, stub(sprints).req);
-    expect(dry).toEqual({ drift: 1, lines: ['v1.0.0: sprint 7, in sync', 'v1.0.1: sprint 8, move 1 (HIMMEL-6)'] });
+    expect(dry).toEqual({ drift: 1, lines: ['v1.0.0: sprint 7, in sync', `v1.0.1: sprint 8, move 1${moved('HIMMEL-6')}`] });
 
     const agile = stub({ ...sprints, 'POST /sprint/8/issue': '' });
     await syncSprints('HIMMEL', '166', false, api.req, agile.req);

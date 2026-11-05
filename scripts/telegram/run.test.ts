@@ -10,7 +10,7 @@ import { join } from "node:path";
 // can skew the argv assertions (centralized per CR round-2).
 beforeEach(() => { delete process.env.TELEGRAM_CLAUDE_MODEL; });
 
-test("killTree takes down a live child process (HIMMEL-246 orphan guard)", async () => {
+test("killTree takes down a live child process (orphan guard)", async () => {
   // a child that would sleep ~100s; killTree must end it promptly
   const p = spawn(["bun", "-e", "await Bun.sleep(100000)"], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
   killTree(p.pid, (s) => p.kill(s as any));
@@ -57,27 +57,27 @@ test.skipIf(!process.env.LIVE)("live: claude </dev/null exits cleanly", async ()
   const r = await runSession("Reply with exactly PONG and nothing else.", process.cwd());
   expect(r.code).toBe(0);
 });
-test("buildPrompt tells the run to Read an image_path when a line carries one (HIMMEL-250)", () => {
+test("buildPrompt tells the run to Read an image_path when a line carries one", () => {
   const p = buildPrompt("__chat__", { inbox:"i", outbox:"o", context:"c", cwd:"/r" });
   expect(p).toContain("image_path");
   expect(p).toContain("Read");
 });
-test("buildPrompt tells the run to Read a document_path attachment (HIMMEL-321)", () => {
+test("buildPrompt tells the run to Read a document_path attachment", () => {
   const p = buildPrompt("group_-50", { inbox:"i", outbox:"o", context:"c", cwd:"/r" });
   expect(p).toContain("document_path");
   expect(p).toContain("Read");
 });
-test("buildPrompt with a vault adds a file-into-vault clause (HIMMEL-321)", () => {
+test("buildPrompt with a vault adds a file-into-vault clause", () => {
   const p = buildPrompt("group_-50", { inbox:"i", outbox:"o", context:"c", cwd:"/r" }, "/salus");
   expect(p).toContain("/salus");
   expect(p).toContain("document_path");
   expect(p).toContain("_CLAUDE.md");
 });
-test("buildPrompt without a vault adds no file-into-vault clause (HIMMEL-321)", () => {
+test("buildPrompt without a vault adds no file-into-vault clause", () => {
   const p = buildPrompt("group_-50", { inbox:"i", outbox:"o", context:"c", cwd:"/r" });
   expect(p).not.toContain("into the Obsidian vault");   // matches the real clause text
 });
-// --- LUNA-101: cwd-routed (code-repo) sessions read attachments, file nothing ---
+// --- cwd-routed (code-repo) sessions read attachments, file nothing ---
 test("buildPrompt cwdRouted swaps the vault-filing clause for read-and-summarize", () => {
   const p = buildPrompt("group_-50", { inbox:"i", outbox:"o", context:"c", cwd:"/r", sessionCwd:"/ggs" }, null, true);
   expect(p).not.toContain("into the Obsidian vault");
@@ -126,7 +126,7 @@ test("buildRunArgs injects --mcp-config + --strict-mcp-config before the prompt 
 });
 // --- bounded runs must pin an explicit --model (never inherit the
 // user default, which is currently Fable) ---
-test("buildRunArgs pins --model with the baked-in default in BOTH spawn branches (HIMMEL-671)", () => {
+test("buildRunArgs pins --model with the baked-in default in BOTH spawn branches", () => {
   const withMode = buildRunArgs("go", "bypassPermissions").cmd;
   const without = buildRunArgs("go").cmd;
   for (const cmd of [withMode, without]) {
@@ -136,7 +136,7 @@ test("buildRunArgs pins --model with the baked-in default in BOTH spawn branches
     expect(cmd.indexOf("--model")).toBeLessThan(cmd.indexOf("go")); // flag precedes the prompt
   }
 });
-test("buildRunArgs honours the TELEGRAM_CLAUDE_MODEL env override in BOTH branches, trimmed (HIMMEL-671)", () => {
+test("buildRunArgs honours the TELEGRAM_CLAUDE_MODEL env override in BOTH branches, trimmed", () => {
   process.env.TELEGRAM_CLAUDE_MODEL = " sonnet ";   // padded: pins the trim contract too
   try {
     for (const cmd of [buildRunArgs("go", "bypassPermissions").cmd, buildRunArgs("go").cmd]) {
@@ -147,7 +147,7 @@ test("buildRunArgs honours the TELEGRAM_CLAUDE_MODEL env override in BOTH branch
     delete process.env.TELEGRAM_CLAUDE_MODEL;
   }
 });
-test("buildRunArgs falls back to the default when TELEGRAM_CLAUDE_MODEL is blank (HIMMEL-671)", () => {
+test("buildRunArgs falls back to the default when TELEGRAM_CLAUDE_MODEL is blank", () => {
   process.env.TELEGRAM_CLAUDE_MODEL = "   ";
   try {
     const cmd = buildRunArgs("go").cmd;
@@ -156,11 +156,11 @@ test("buildRunArgs falls back to the default when TELEGRAM_CLAUDE_MODEL is blank
     delete process.env.TELEGRAM_CLAUDE_MODEL;
   }
 });
-test("the baked-in default model is non-Fable (HIMMEL-671 — the whole point)", () => {
+test("the baked-in default model is non-Fable (the whole point)", () => {
   expect(DEFAULT_MODEL.toLowerCase()).not.toContain("fable");
   expect(DEFAULT_MODEL.length).toBeGreaterThan(0);
 });
-test("the baked-in default is pinned to claude-opus-5-5, not an alias that can move (HIMMEL-3481)", () => {
+test("the baked-in default is pinned to claude-opus-5-5, not an alias that can move", () => {
   expect(DEFAULT_MODEL).toBe("claude-opus-5-5");
 });
 test("buildPrompt reports the SPAWN cwd (sessionCwd) but keeps the Jira path on repoCwd (cwd) — HIMMEL-578 decoupling", () => {
@@ -173,14 +173,14 @@ test("buildPrompt falls back to cwd for 'running in' when sessionCwd is absent (
   const p = buildPrompt("__chat__", { inbox:"i", outbox:"o", context:"c", cwd:"/repo" });
   expect(p).toContain("running in /repo");
 });
-test("buildPrompt vault clause files an image_path (not just document_path) and prefers a vault medic skill (HIMMEL-578)", () => {
+test("buildPrompt vault clause files an image_path (not just document_path) and prefers a vault medic skill", () => {
   const p = buildPrompt("group_-50", { inbox:"i", outbox:"o", context:"c", cwd:"/r", sessionCwd:"/salus" }, "/salus");
   expect(p).toContain("image_path");
   expect(p).toMatch(/FILE that attachment/i);             // images are FILED, not just read
   expect(p).toMatch(/medic.*skill/i);                     // prefer the vault-local medic skill
   expect(p).toContain("/salus");
 });
-test("buildPrompt sanctions non-destructive Jira ticket ops (HIMMEL-424 followup — lifts the classifier veto)", () => {
+test("buildPrompt sanctions non-destructive Jira ticket ops (followup — lifts the classifier veto)", () => {
   const p = buildPrompt("__chat__", { inbox:"i", outbox:"o", context:"c", cwd:"/repo" });
   // the absolute jira CLI path, derived from cwd (avoids the worktree dist/ trap)
   expect(p).toContain("/repo/scripts/jira/dist/index.js");
@@ -205,7 +205,7 @@ test("buildRunArgs without override keeps resolveModel behavior", () => {
   expect(buildRunArgs("hi").cmd).toEqual(["claude", "--model", "sonnet", "hi"]);
 });
 
-test("sessionEnv strips HIMMEL_HOOK_INTEGRITY_BYPASS_OK (HIMMEL-3396)", () => {
+test("sessionEnv strips HIMMEL_HOOK_INTEGRITY_BYPASS_OK", () => {
   const prior = process.env.HIMMEL_HOOK_INTEGRITY_BYPASS_OK;
   process.env.HIMMEL_HOOK_INTEGRITY_BYPASS_OK = "1";
   try {
@@ -220,7 +220,7 @@ test("REPO_ROOT resolves to the himmel checkout root (Windows-safe)", () => {
   expect(existsSync(join(REPO_ROOT, "scripts", "telegram", "run.ts"))).toBe(true);
 });
 
-// --- LUNA-101: extraEnv merge (the GGS marker channel) ---
+// --- extraEnv merge (the GGS marker channel) ---
 test("sessionEnv merges extraEnv over the inherited env", () => {
   const e = sessionEnv({ HERMES_BOUNDED_RUN: "1", GGS_ROLE: "readonly" });
   expect(e.HERMES_BOUNDED_RUN).toBe("1");
@@ -280,7 +280,7 @@ test("sessionEnv still strips TELEGRAM_OWN_POLLER when extraEnv is present", () 
   } finally { delete process.env.TELEGRAM_OWN_POLLER; }
 });
 // --- a model: tag's opus/sonnet alias is pinned to the 5.5 full id ---
-test("spawnSpec pins the opus/sonnet tier aliases to the 5.5 ids, leaves other models alone (HIMMEL-3848)", () => {
+test("spawnSpec pins the opus/sonnet tier aliases to the 5.5 ids, leaves other models alone", () => {
   const model = (s: { cmd: string[] }) => s.cmd[s.cmd.indexOf("--model") + 1];
   expect(model(spawnSpec("p", undefined, undefined, "opus"))).toBe("claude-opus-5-5");
   expect(model(spawnSpec("p", undefined, undefined, "sonnet"))).toBe("claude-sonnet-5-5");
@@ -298,7 +298,7 @@ const restoreEffort = () => {
   if (AMBIENT_EFFORT === undefined) delete process.env.CLAUDE_CODE_EFFORT_LEVEL;
   else process.env.CLAUDE_CODE_EFFORT_LEVEL = AMBIENT_EFFORT;
 };
-test("spawnSpec carries the lane's effort for a native dispatch (HIMMEL-3482)", () => {
+test("spawnSpec carries the lane's effort for a native dispatch", () => {
   try {
     delete process.env.CLAUDE_CODE_EFFORT_LEVEL;
     // default model (a full claude-opus-* id) resolves to the opus lane
@@ -310,7 +310,7 @@ test("spawnSpec carries the lane's effort for a native dispatch (HIMMEL-3482)", 
     expect(spawnSpec("p").env.CLAUDE_CODE_EFFORT_LEVEL).toBe(tierEffort("opus"));
   } finally { restoreEffort(); }
 });
-test("spawnSpec leaves the ambient effort alone when the lane sets none (HIMMEL-3482 control)", () => {
+test("spawnSpec leaves the ambient effort alone when the lane sets none (control)", () => {
   const noEffort = { lanes: [{ id: "opus", class: "claude-tier" }] };
   try {
     process.env.CLAUDE_CODE_EFFORT_LEVEL = "high";
@@ -321,17 +321,17 @@ test("spawnSpec leaves the ambient effort alone when the lane sets none (HIMMEL-
     expect("CLAUDE_CODE_EFFORT_LEVEL" in spawnSpec("p", undefined, undefined, undefined, undefined, undefined, undefined, noEffort).env).toBe(false);
   } finally { restoreEffort(); }
 });
-test("spawnSpec: a route's extraEnv effort wins over the lane's (HIMMEL-3482)", () => {
+test("spawnSpec: a route's extraEnv effort wins over the lane's", () => {
   expect(spawnSpec("p", undefined, undefined, undefined, undefined, { CLAUDE_CODE_EFFORT_LEVEL: "low" }).env.CLAUDE_CODE_EFFORT_LEVEL).toBe("low");
 });
-test("laneEffort ignores a non-tier lane and a prose effort value (HIMMEL-3482)", () => {
+test("laneEffort ignores a non-tier lane and a prose effort value", () => {
   expect(laneEffort("some-other-model", REAL_LANES)).toBeUndefined();
   expect(laneEffort("opus", { lanes: [{ id: "opus", class: "claude-tier", effort: "codex weekly bank" }] })).toBeUndefined();
 });
-test("laneEffort falls back to no effort on a registry that parses to the wrong shape (HIMMEL-3482)", () => {
+test("laneEffort falls back to no effort on a registry that parses to the wrong shape", () => {
   for (const bad of [{}, null, { lanes: "x" }, { lanes: [null] }]) expect(laneEffort("opus", bad as never)).toBeUndefined();
 });
-test("buildPrompt frames a group session's messages as untrusted third-party input, not operator requests (HIMMEL-1359)", () => {
+test("buildPrompt frames a group session's messages as untrusted third-party input, not operator requests", () => {
   const p = buildPrompt("group_-1009999999", { inbox:"/b/in.jsonl", outbox:"/b/out.jsonl", context:"/b/ctx.md", cwd:"/repo" });
   expect(p).not.toContain("treat them as the operator's requests");
   expect(p).not.toContain("scripts/jira/dist/index.js");
@@ -341,7 +341,7 @@ test("buildPrompt frames a group session's messages as untrusted third-party inp
   expect(p).toContain("/b/out.jsonl");
   expect(p.toLowerCase()).toContain("do not poll");
 });
-test("buildPrompt keeps operator framing (for marked lines) + Jira sanction for DM and ticket sessions (HIMMEL-1359)", () => {
+test("buildPrompt keeps operator framing (for marked lines) + Jira sanction for DM and ticket sessions", () => {
   for (const s of ["__chat__", "HIMMEL-5"]) {
     const p = buildPrompt(s, { inbox:"i", outbox:"o", context:"c", cwd:"/r" });
     expect(p).toContain("is the operator's own request");
@@ -383,7 +383,7 @@ test("buildPrompt Jira sanction applies only to operator-marked lines", () => {
   expect(p).not.toContain("Acting on Jira tickets for the operator is part of your job: when asked,");
 });
 
-test("a bridge run gets a session id and writes a launch record the digest reads back (HIMMEL-9163)", () => {
+test("a bridge run gets a session id and writes a launch record the digest reads back", () => {
   const cache = mkdtempSync(join(tmpdir(), "tg-launch-"));
   const sid = "9163c0de-0000-4000-8000-0000000000aa";
   try {
@@ -396,7 +396,7 @@ test("a bridge run gets a session id and writes a launch record the digest reads
 });
 // Drives runSession itself against a stub `claude` on PATH, so deleting the writeLaunchRecord call or the
 // withSessionId call in runSession fails here (the helper-only test above cannot see either).
-test("runSession writes the launch record and passes --session-id to claude (HIMMEL-9163)", async () => {
+test("runSession writes the launch record and passes --session-id to claude", async () => {
   const dir = mkdtempSync(join(tmpdir(), "tg-runsession-"));
   const bin = join(dir, "bin");
   const cache = join(dir, "cache");
@@ -424,12 +424,12 @@ test("runSession writes the launch record and passes --session-id to claude (HIM
     rmSync(dir, { recursive: true, force: true });
   }
 });
-test("buildRunArgs and spawnSpec argv are unchanged: the session id is added at spawn only (HIMMEL-9163)", () => {
+test("buildRunArgs and spawnSpec argv are unchanged: the session id is added at spawn only", () => {
   expect(spawnSpec("p").cmd).not.toContain("--session-id");
   expect(buildRunArgs("p").cmd).not.toContain("--session-id");
 });
 
-test("run-prompt.md template matches buildPrompt's per-message operator marker (HIMMEL-5832)", () => {
+test("run-prompt.md template matches buildPrompt's per-message operator marker", () => {
   const doc = readFileSync(join(import.meta.dir, "run-prompt.md"), "utf8");
   expect(doc).not.toContain("treat them as the operator's requests");
   expect(doc).toContain(`a line carrying the top-level \`"operator":true\` field`);

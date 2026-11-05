@@ -31,7 +31,7 @@ export function registerGet(program: Command): void {
     .option('--json', 'Output raw JSON')
     .option(
       '--short',
-      'Suppress the description body (one-line header only — backward-compatible with the pre-HIMMEL-121 output)',
+      'Suppress the description body (one-line header only — backward-compatible with the old header-only output)',
     )
     .action(async (key: string, options: { json?: boolean; short?: boolean }) => {
       // Always fetch description from the API — output flag controls

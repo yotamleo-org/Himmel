@@ -133,7 +133,7 @@
 set -euo pipefail
 
 repo_root=$(git rev-parse --show-toplevel)
-. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # HIMMEL-2350: shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
+. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
 wizard="$repo_root/scripts/himmelctl/bin.js"
 # the printed hint single-quotes any path outside a plain charset
 # (a checkout under a spaced directory included), so the expectation is built the
@@ -552,7 +552,7 @@ sDscope="$work/d-scope"; mkdir -p "$sDscope"; hDscope="$work/d-scope-home"; mkdi
 fDscope="$work/d-scope-fix"; make_fixture "$fDscope"
 capture "$sDscope" "$hDscope" "$fDscope" --scope project
 [ "$rc" -eq 0 ] || fail "caseD: --scope project alone (no lane flags) should still install (got rc=$rc): $out"
-echo "ok: caseD --scope + lane-flag conflict is refused the same way --from-profile is (HIMMEL-2838); bare --scope still installs"
+echo "ok: caseD --scope + lane-flag conflict is refused the same way --from-profile is; bare --scope still installs"
 
 # ── Case D2: legacy empty lane placeholder requires reconfirmation ──────────
 sD2="$work/d2"; mkdir -p "$sD2"; hD2="$work/d2-home"; mkdir -p "$hD2"
@@ -994,7 +994,7 @@ grepq "$out" 'full plugin set enabled' \
   && fail "caseL: must NOT claim the full plugin set was enabled — the step no longer runs: $out"
 grepq "$out" 'plugin command(s) FAILED' \
   && fail "caseL: must NOT report a plugin-command failure — no plugin command was ever invoked: $out"
-grepq "$out" 'retired (HIMMEL-2304)' \
+grepq "$out" 'retired' \
   || fail "caseL: the summary should say pluginSet=full was retired: $out"
 echo "ok: caseL a legacy pluginSet=full profile -> retired, never reported as enabled or failed"
 
@@ -1015,7 +1015,7 @@ grepq "$out" 'full plugin set enabled' \
   && fail "caseL2: --dry-run must not claim the retired enable step ran: $out"
 grepq "$out" 'would be enabled' \
   && fail "caseL2: --dry-run must not preview a retired enable step as planned work: $out"
-grepq "$out" 'retired (HIMMEL-2304)' \
+grepq "$out" 'retired' \
   || fail "caseL2: --dry-run should also say pluginSet=full was retired: $out"
 echo "ok: caseL2 --dry-run also reports pluginSet=full as retired, never planned or done"
 
@@ -1200,7 +1200,7 @@ for (const plat of ["linux", "darwin"]) {
 }
 ' "$(winpath "$repo_root/scripts/himmelctl/lib/adopter-profile.js")" "$(winpath "$fQ")" \
   || fail "caseQ: lane guidance is not platform-correct"
-echo "ok: caseQ POSIX platforms get POSIX guidance and no Windows-only text (HIMMEL-2126)"
+echo "ok: caseQ POSIX platforms get POSIX guidance and no Windows-only text"
 
 # ── Case R: vault=default-template onto an OCCUPIED destination ────────────
 # adopt.sh's do_luna skips the template copy
