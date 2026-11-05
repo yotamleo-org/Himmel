@@ -726,6 +726,8 @@ mergeability.
 `scripts/handover/chief-kit/ready-go.sh [--to <worker> --token <nonce>] [--ledger <chief doc>] <pr> <sha>`
 is the whole mechanical READY turn in one call: the `ready-check.sh` output, the coverage line, the trust-path result, the ticket state and the exact GO line to send. It is read-only (no GO file, no message): `go.sh` and the SendMessage stay yours.
 
+At each `READY`, run `scripts/handover/chief-kit/auto-go.sh --dry-run --doc <chief doc> --fleet <manifest> --worker <label> <pr> <head>` and record its one answer line (`WOULD-GO` or `ESCALATE auto-go <check#> <reason>`) in your own notes beside the GO you send by hand. The dry run acts on nothing: no GO file, no verdict record, no message. It writes one `auto-go.jsonl` row, so the record builds up the evidence of how often a script would have given the same GO.
+
 <!-- mem:7aba121571b0 -->
 The automated review ledger is keyed by head sha, so **every push needs its own review
 round**, even a one-line fix after a judge's NO-GO. A ruling of "no new
