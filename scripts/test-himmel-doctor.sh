@@ -7904,4 +7904,38 @@ out="$(C76_DUP=0 c76_run)"
 if grepq "$out" 'OK   C76-duplicate-plugin-installs'; then pass "C76 within the limit -> OK"; else fail "C76 within limit -> $(printf '%s' "$out" | grep -A1 C76)"; fi
 rm -rf "$c76_t"
 
+# --- C87-stub-handover-state: files under <repo>/handovers written after .env configured HANDOVER_DIR ---
+c87_t="$(mktemp -d "${TMPDIR:-/tmp}/c87.XXXXXX")" || { echo "FATAL: C87 setup mktemp failed" >&2; exit 1; }
+c87_x="$c87_t/repo"
+mkdir -p "$c87_x/scripts/lib" "$c87_t/home" "$c87_t/claude" "$c87_t/root"
+cp "$REPO_ROOT/scripts/himmel-doctor.sh" "$c87_x/scripts/"
+cp -R "$REPO_ROOT/scripts/lib/." "$c87_x/scripts/lib/"
+c87_age() { python3 -I -c 'import os,sys,time; t=time.time()-int(sys.argv[2]); os.utime(sys.argv[1],(t,t))' "$1" "$2"; }
+c87_run() { env -u HANDOVER_DIR HOME="$c87_t/home" CLAUDE_DIR="$c87_t/claude" HIMMEL_CONFIG_DIR="" bash "$c87_x/scripts/himmel-doctor.sh" --root "$c87_x" --no-color --only C87 2>&1; }
+c87_reset() { rm -rf "$c87_x/handovers" "$c87_x/.env"; }
+
+echo "== C87: HANDOVER_DIR unset and no .env -> the stub folder is the root: INFO, never WARN =="
+c87_reset
+mkdir -p "$c87_x/handovers/himmel"; : > "$c87_x/handovers/himmel/new.md"
+out="$(c87_run)"
+if grepq "$out" -F 'INFO C87-stub-handover-state' && ! grepq "$out" -F 'WARN C87'; then pass "C87 no split root -> INFO"; else fail "C87 no split root -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: .env configures a root elsewhere and the stub holds a newer file -> WARN naming both =="
+c87_reset
+printf 'HANDOVER_DIR=%s\n' "$c87_t/root" > "$c87_x/.env"; c87_age "$c87_x/.env" 3600
+mkdir -p "$c87_x/handovers/himmel"; : > "$c87_x/handovers/himmel/.judge-ladder"
+out="$(c87_run)"
+if grepq "$out" -F 'WARN C87-stub-handover-state' && grepq "$out" -F 'himmel/.judge-ladder' && grepq "$out" -F "$c87_t/root"; then pass "C87 newer stub file -> WARN"; else fail "C87 newer stub file -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: control: the stub file is older than the .env -> no WARN =="
+c87_age "$c87_x/handovers/himmel/.judge-ladder" 7200
+out="$(c87_run)"
+if grepq "$out" -F 'OK   C87-stub-handover-state' && ! grepq "$out" -F 'WARN C87'; then pass "C87 older stub file -> OK"; else fail "C87 older stub file -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: control: no stub folder at all -> no WARN =="
+rm -rf "$c87_x/handovers"
+out="$(c87_run)"
+if grepq "$out" -F 'OK   C87-stub-handover-state' && ! grepq "$out" -F 'WARN C87'; then pass "C87 no stub folder -> OK"; else fail "C87 no stub folder -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c87_t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi
