@@ -288,6 +288,11 @@ div.tile{cursor:default}.tiles.three{grid-template-columns:repeat(3,minmax(0,1fr
 details.more{margin:6px 0}details.more>summary{cursor:pointer;color:var(--dim);padding:4px 0}
 @media (max-width:900px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.cols{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:440px){.tiles{grid-template-columns:minmax(0,1fr)}.cpanel{padding:var(--s3)}}
+/* Report page: five tiles on one line, two columns at 760px and under; the failure review table right-aligns Rows and Workers */
+.tiles.t5{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media (max-width:760px){.tiles.t5{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.fr .data th:nth-child(3),.fr .data th:nth-child(4),.fr .data td:nth-child(3),.fr .data td:nth-child(4){text-align:right;font-variant-numeric:tabular-nums}
+.fr .data tbody tr:nth-child(even){background:var(--surface-2)}
 @media (max-width:760px){.rm-board{grid-template-columns:1fr 1fr}}
 /* Health page v2 (HIMMEL-8044): group tiles reuse the Configure tile; rows, tabs, Shared panel, project lines and the rail picker. Tokens only. */
 .g-chk{--gc:var(--accent)}.g-use{--gc:var(--road)}.g-job{--gc:var(--camp)}.g-srch{--gc:var(--alpha)}

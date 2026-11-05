@@ -32,6 +32,7 @@ const text = (s) => (s ? s.blocks.filter((b) => b.t === "p").map((b) => b.text).
 const num = (re, str) => { const m = re.exec(str || ""); return m ? m[1] : null; };
 
 // the five tiles come from the sections the generator leads with; a figure the report did not carry reads "?"
+// ponytail: the page re-parses the briefing's markdown for tile figures; ceiling = a heading reword breaks a tile to "?"; upgrade path = the briefing writes a small JSON front-matter of its counts that the page reads.
 function tiles(sections) {
   const shipped = find(sections, /What shipped/), waits = find(sections, /What waits/), spent = find(sections, /What it spent/), next = find(sections, /What runs next/);
   const wi = items(waits);
@@ -40,7 +41,7 @@ function tiles(sections) {
   const waitN = gos === null && qs === null ? "?" : String(Number(gos || 0) + Number(qs || 0));
   const t = (g, ic, label, n, val) => `<div class="tile ${g}${n === "0" ? " zero" : ""}"><span class="ic" aria-hidden="true">${ic}</span><span class="tname">${esc(label)}</span><span class="num">${esc(n)}</span><span class="tval">${esc(val)}</span></div>`;
   const bank = num(/\+([\d.]+)\*\* points/, items(spent).join("\n"));
-  return `<div class="tiles">${[
+  return `<div class="tiles t5">${[
     t("g-ship", "✓", "What shipped", num(/(\d+)\*{0,2} PRs merged/, text(shipped)) || "?", "PRs merged to main"),
     t("g-wait", "!", "Waits on you", waitN, `${gos || 0} GO · ${qs || 0} question`),
     t("g-wait", "⇄", "Open PRs", num(/\*\*(\d+)\*\* open PR/, openLine) || "?", "to review or merge"),
@@ -56,6 +57,13 @@ function selector(list, day, ui) {
   const so = !hasToday && list.today ? link(list.today, "so far") + " " : "";
   const more = older.length ? ` <details class="rp-more"><summary>earlier ▾</summary>${older.map((d) => link(d, shortDay(d))).join(" ")}</details>` : "";
   return `<nav class="rp-days" aria-label="Report day">${so}${shown.map((d) => link(d, shortDay(d))).join(" ")}${more}</nav>`;
+}
+
+// the page bar's controls (app.js pageBar): the day picker and a refresh that reads the list and the day again; empty while loading or on an error
+export function reportBar(list, view, ui) {
+  if (!list || list.error || list.reason) return "";
+  const day = (view && view.day) || ui.day || list.newest || list.today;
+  return `${selector(list, day, ui)}<button type="button" class="chip" data-act="report-refresh">Refresh</button>`;
 }
 
 function stale(list) {
@@ -77,7 +85,7 @@ export function renderReport(list, view, ui) {
   if (list.error) return pg(`${head}<div class="nodata">${esc(list.error)}</div>`);
   if (list.reason) return pg(`${head}<div class="nodata">${esc(list.reason)}</div>`);
   const day = (view && view.day) || ui.day || list.newest || list.today;
-  const bar = stale(list) + selector(list, day, ui);
+  const bar = stale(list);
   if (!view) return pg(`${head}${bar}${none("loading…")}`);
   if (view.state === "none") {
     if (!list.days.length && day === list.today) return pg(`${head}${bar}${none("No report has been made yet. The morning-report cadence writes one a day.")}${soFarView(list.soFar, day, ui)}`);
@@ -91,7 +99,7 @@ export function renderReport(list, view, ui) {
     const blocks = waits ? s.blocks.map((b) => (b.t === "ul" ? { ...b, items: b.items.filter((x) => !/open PR/i.test(x)) } : b)) : s.blocks;
     const open = waits ? items(s).filter((x) => /open PR/i.test(x)) : [];
     const own = open.length ? sec(`open-prs-${i}`, "g-wait", "Open PRs", `<ul class="rp-list">${open.map((x) => `<li>${inline(x)}</li>`).join("")}</ul>`) : "";
-    return sec(`s-${i}`, group(s.title), s.title, blocks.map(blockHtml).join("") || none("nothing in this section")) + own;
+    return sec(`s-${i}`, group(s.title) + (/Failure review/.test(s.title) ? " fr" : ""), s.title, blocks.map(blockHtml).join("") || none("nothing in this section")) + own;
   }).join("");
   return pg(`${head}${bar}${barText}${notes}${tiles(view.sections)}${panels}`);
 }
