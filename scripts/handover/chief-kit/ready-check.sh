@@ -1636,31 +1636,6 @@ check_open_findings() {
         mark_fail
         return 0
     fi
-    # The marker reads findings by head, not by branch, so a ledger with no finding or amend row at this tip (any 7+ hex
-    # prefix of it, an amend's target_head or set.head included) has nothing to block or leave undecided and the read
-    # below can only return 0: skip it then, and only then. Every other shape runs it: a ledger line that does not parse
-    # (read with JSON.parse, as the marker reads it), a recorded round head (the gates then read that head), a missing
-    # node, an unreadable ledger or git dir.
-    of_gd=$(git rev-parse --git-common-dir 2>/dev/null) || of_gd=""  # swallow-ok: no git dir skips nothing
-    if [ -n "$of_gd" ] && [ -f "$of_gd/cr-critic-scores.jsonl" ] && command -v node >/dev/null 2>&1 \
-        && [ ! -e "$of_gd/cr-review-rounds/$of_branch.head" ] && [ ! -L "$of_gd/cr-review-rounds/$of_branch.head" ] \
-        && [ "$(node -e '
-            const fs = require("fs");
-            const sha = process.argv[2].toLowerCase();
-            const hits = (h) => typeof h === "string" && h.length >= 7 && ((h = h.toLowerCase()), h.startsWith(sha) || sha.startsWith(h));
-            try {
-                const lines = fs.readFileSync(process.argv[1], "utf8").split("\n");
-                if (lines[lines.length - 1] === "") lines.pop();
-                const rows = lines.map((l) => JSON.parse(l));
-                if (!rows.every((r) => r !== null && typeof r === "object" && !Array.isArray(r))) { console.log("no"); process.exit(0); }
-                const touched = rows.some((r) => (r.kind === "finding" || r.kind === "amend")
-                    && (hits(r.head) || hits(r.target_head) || (r.set !== null && typeof r.set === "object" && hits(r.set.head))));
-                console.log(touched ? "no" : "yes");
-            } catch (e) { console.log("no"); }
-        ' "$of_gd/cr-critic-scores.jsonl" "$SHA" 2>/dev/null)" = yes ]; then  # swallow-ok: a failed read prints nothing, which is no skip
-        echo "[PASS] 18. no blocking or undecided finding at the head the merge gates on (the ledger holds no finding or amend row at $SHA)"
-        return 0
-    fi
     _TIMEOUT_BIN=""
     of_lib="$(cd "$(dirname "$0")/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir leaves the read unbounded, never unread
     # shellcheck source=/dev/null

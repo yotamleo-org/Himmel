@@ -3478,40 +3478,13 @@ r18_ledger ""
 R18_BEFORE=$(cksum < "$LEDGER")
 run >/dev/null 2>&1 || true
 check "18f the check writes nothing to the ledger" "$(cksum < "$LEDGER")" "$R18_BEFORE"
-# a ledger with no finding or amend row at the tip skips the read (same PASS the full read gives); every other shape runs it
+# the marker reads findings by head, not by branch: an unruled Important at the tip filed under ANOTHER branch still blocks
 rm -f "$REPO/.git/cr-review-rounds/feat/himmel-100-thing.head"
-r18_avail() { printf '{"kind":"avail","ts":"2026-01-01T00:00:00Z","branch":"%s","head":"%s","model":"codex","status":"ok"}\n' "$R18_BRANCH" "$R18_B" > "$LEDGER"; }
-r18_avail
-R18_RC=0; R18_OUT="$(run)" || R18_RC=$?
-check "18g no finding row at the tip: exit 0" "$R18_RC" "0"
-contains "18g: item 18 passes by the skip" "$R18_OUT" "holds no finding or amend row at $R18_B"
-# a finding at the tip filed under ANOTHER branch still blocks: the marker reads findings by head
-r18_avail
+printf '{"kind":"avail","ts":"2026-01-01T00:00:00Z","branch":"%s","head":"%s","model":"codex","status":"ok"}\n' "$R18_BRANCH" "$R18_B" > "$LEDGER"
 printf '{"kind":"finding","ts":"2026-01-01T00:00:01Z","branch":"other/branch","head":"%s","model":"codex","finding_id":"codex-9","severity":"imp","file":"a.sh","line":1}\n' "$R18_B" >> "$LEDGER"
 R18_RC=0; R18_OUT="$(run)" || R18_RC=$?
-check "18h an unruled Important at the tip under another branch: exit 1" "$R18_RC" "1"
-contains "18h: item 18 fails" "$R18_OUT" "[FAIL] 18."
-notcontains "18h: the read ran, no skip" "$R18_OUT" "holds no finding or amend row"
-# a ruled finding at the tip runs the read and passes
-r18_avail
-printf '{"kind":"finding","ts":"2026-01-01T00:00:01Z","branch":"%s","head":"%s","model":"codex","finding_id":"codex-9","severity":"imp","file":"a.sh","line":1,"verdict":"disproved"}\n' "$R18_BRANCH" "$R18_B" >> "$LEDGER"
-R18_RC=0; R18_OUT="$(run)" || R18_RC=$?
-check "18i a ruled finding at the tip: exit 0" "$R18_RC" "0"
-contains "18i: item 18 passes" "$R18_OUT" "[PASS] 18."
-notcontains "18i: the read ran, no skip" "$R18_OUT" "holds no finding or amend row"
-# a bare nan line is not JSON to the marker, so the skip parser must refuse it as well
-r18_avail
-printf 'nan\n' >> "$LEDGER"
-R18_RC=0; R18_OUT="$(run)" || R18_RC=$?
-check "18j a nan ledger line: exit 1" "$R18_RC" "1"
-contains "18j: item 18 fails" "$R18_OUT" "[FAIL] 18."
-# a recorded round head never skips
-r18_avail
-printf '%s\n' "$R18_A" > "$REPO/.git/cr-review-rounds/feat/himmel-100-thing.head"
-R18_RC=0; R18_OUT="$(run)" || R18_RC=$?
-notcontains "18k a recorded round head: the read ran, no skip" "$R18_OUT" "holds no finding or amend row"
-rm -f "$REPO/.git/cr-review-rounds/feat/himmel-100-thing.head"
-rm -f "$REPO/.git/cr-review-rounds/feat/himmel-100-thing.head"
+check "18g an unruled Important at the tip under another branch: exit 1" "$R18_RC" "1"
+contains "18g: item 18 fails" "$R18_OUT" "[FAIL] 18."
 SHA="$SHA_SAVE"
 reset_stubs
 
