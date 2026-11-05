@@ -70,7 +70,8 @@ function fileCarriesMarker(filePath) {
     if (e && e.code === 'ENOENT') return false;
     throw e;
   }
-  return content.includes(SHIM_MARKER);
+  // Only a comment line counts: a hand-written file that merely mentions the phrase is not ours.
+  return new RegExp('^(?:\\/\\/|#)\\s*' + SHIM_MARKER, 'm').test(content);
 }
 
 // Write <contents> to <dest> (optional <mode> for chmod), but ONLY when dest is
