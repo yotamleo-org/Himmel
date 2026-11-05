@@ -5335,10 +5335,15 @@ check_c87_stub_handover_state() {
     fi
     envfile="$(_load_dotenv_primary_for "$REPO_ROOT" 2>/dev/null)/.env"
     if [ -f "$envfile" ]; then
-        new="$(find "$stub" -type f -newer "$envfile" 2>/dev/null | sort)"
+        new="$(find "$stub" -type f -newer "$envfile" 2>/dev/null)" || new="unreadable"
     else
-        new="$(find "$stub" -type f 2>/dev/null | sort)"
+        new="$(find "$stub" -type f 2>/dev/null)" || new="unreadable"
     fi
+    if [ "$new" = unreadable ]; then
+        emit INFO C87-stub-handover-state "the stub folder $stub could not be fully read -- not judged clean"
+        return 0
+    fi
+    new="$(printf '%s\n' "$new" | sort)"
     if [ -z "$new" ]; then
         emit OK C87-stub-handover-state "nothing under $stub is newer than the configured root"
         return 0

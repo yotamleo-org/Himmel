@@ -7936,6 +7936,13 @@ echo "== C87: control: no stub folder at all -> no WARN =="
 rm -rf "$c87_x/handovers"
 out="$(c87_run)"
 if grepq "$out" -F 'OK   C87-stub-handover-state' && ! grepq "$out" -F 'WARN C87'; then pass "C87 no stub folder -> OK"; else fail "C87 no stub folder -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: an unreadable folder under the stub is never reported OK =="
+mkdir -p "$c87_x/handovers/himmel/locked"; chmod 000 "$c87_x/handovers/himmel/locked"
+out="$(c87_run)"
+chmod 755 "$c87_x/handovers/himmel/locked"
+if [ "$(id -u)" = 0 ]; then pass "C87 unreadable folder -> skipped as root (chmod does not block root)"
+elif grepq "$out" -F 'INFO C87-stub-handover-state' && ! grepq "$out" -F 'OK   C87'; then pass "C87 unreadable folder -> INFO, not OK"; else fail "C87 unreadable folder -> $(printf '%s' "$out" | head -4)"; fi
 rm -rf "$c87_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi
