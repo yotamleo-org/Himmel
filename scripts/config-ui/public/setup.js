@@ -262,7 +262,7 @@ function accountRows(d) {
     const cap = r.cap_usd == null ? "—" : `$${esc(String(Number(r.cap_usd)))} cap`;
     return `<tr data-account-row="${esc(r.account)}"><th scope="row">${esc(r.account)}</th><td>${r.configured == null ? "unknown" : r.configured ? "configured" : "not configured"}</td><td>${cap}</td><td>${tag}</td><td>${roles}</td></tr>`;
   }).join("");
-  return `<table class="roles-table"><thead><tr><th>Account</th><th>Configured</th><th>Cap</th><th>Bank</th><th>Roles</th></tr></thead><tbody>${body}</tbody></table>`;
+  return `<div class="scroll"><table class="roles-table"><thead><tr><th>Account</th><th>Configured</th><th>Cap</th><th>Bank</th><th>Roles</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 function roleEditor(d, ar) {
@@ -281,7 +281,7 @@ function roleEditor(d, ar) {
   const msg = ar.msg ? `<span class="${ar.msg.ok ? "ok-t" : "bad-t"}" role="status">${esc(ar.msg.text)}</span>` : "";
   return `<h4>Edit roles</h4>
     <p class="sub">Press an account to let it serve that kind of run on auto. Leaving a row with no account means its decision 525 default.</p>
-    <table class="roles-table roles-edit"><thead><tr><th>Role</th><th>Accounts</th><th>With no account</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="scroll"><table class="roles-table roles-edit"><thead><tr><th>Role</th><th>Accounts</th><th>With no account</th></tr></thead><tbody>${rows}</tbody></table></div>
     <p class="sub">critic, eval, bulk and cull get a row when their callers route auto (P2).</p>
     ${preview}
     <div class="srow"><span class="det">${p.changes ? `${p.changes} change${p.changes === 1 ? "" : "s"} · not saved` : "no changes"}</span>
