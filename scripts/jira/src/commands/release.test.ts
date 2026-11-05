@@ -37,7 +37,7 @@ vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { projectKey, request } from '../client.js';
 import { admissionBudget } from '../release/leaks.js';
-import { ctxFor, JUDGE_API_PASS_ENV, judgeApiEnv, judgeEnv, judgeFor, judgePrompt, liveJira, liveJudge, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge } from './release.js';
+import { ctxFor, JUDGE_API_PASS_ENV, judgeApiEnv, judgeEnv, judgeFor, judgePrompt, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge } from './release.js';
 import type { Judge, JudgeInput } from '../release/engine.js';
 import { defaultRoot } from './mirror.js';
 
@@ -690,6 +690,10 @@ describe('routedJudge (HIMMEL-9076)', () => {
     const read = (f: string) => (existsSync(join(dir, f)) ? readFileSync(join(dir, f), 'utf8') : '');
     return { fallback, fallbackCalls, read };
   }
+
+  it('the outer spawn timeout outlasts the launcher call timeout plus its five-second kill grace', () => {
+    expect(JUDGE_SPAWN_TIMEOUT_MS).toBeGreaterThan((JUDGE_TIMEOUT_S + 5) * 1000);
+  });
 
   it('unmapped: the fallback answers and the fake claude never runs', async () => {
     const w = world(undefined);

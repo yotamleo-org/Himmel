@@ -326,6 +326,9 @@ export const liveJudge: Judge = async (input) => {
 // launcher's own call timeout, so a killed call never holds its reservation for the default hour).
 export const JUDGE_API_BUDGET_USD = 2;
 export const JUDGE_TIMEOUT_S = 900;
+// The outer spawn timeout outlasts the launcher's own call timeout plus its five-second kill grace, so the launcher
+// stops its call and releases the reservation before this process would kill it alone.
+export const JUDGE_SPAWN_TIMEOUT_MS = (JUDGE_TIMEOUT_S + 30) * 1000;
 // judgeEnv strips every HIMMEL_API_ name; these seven pass back: the roster path (it anchors the role map path) and
 // the binary, snapshot, ledger-state, alert and lock-wait seams the launcher's own tests set. Unset, the launcher uses
 // its default. No other name from the caller's API env reaches the judge.
@@ -370,7 +373,7 @@ export function makeRoutedJudge(fallback: Judge = liveJudge): Judge {
     try {
       const r = spawnSync('bash', [join(repoRoot, 'scripts', 'api-lane', 'claude-api.sh'),
         '-p', '--model', 'opus', '--effort', 'high', '--permission-mode', 'plan', '--max-budget-usd', String(JUDGE_API_BUDGET_USD), '--output-format', 'json',
-      ], { input: judgePrompt(input, skill), cwd, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: JUDGE_TIMEOUT_S * 1000, stdio: ['pipe', 'pipe', 'inherit'] });
+      ], { input: judgePrompt(input, skill), cwd, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: JUDGE_SPAWN_TIMEOUT_MS, stdio: ['pipe', 'pipe', 'inherit'] });
       if (r.status !== 0) return fallback(input);
       try { return parseDecisions(r.stdout); } catch { return fallback(input); }
     } finally {
