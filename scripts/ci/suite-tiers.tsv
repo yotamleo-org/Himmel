@@ -1110,6 +1110,7 @@ scripts/test-himmel-update-chain.sh	local	behaviour suite, 0 catches in the 400-
 scripts/test-himmel-update-check.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-himmel-update-clis.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-himmel-update-drift.sh	pr	static-gate
+scripts/test-himmel-update-graph-fetch.sh	local	new since the audit, behaviour suite
 scripts/test-himmel-update-hermes.sh	local	new since the audit, behaviour suite
 scripts/test-himmel-update-migrations.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-himmel-update-plugin-update.sh	local	behaviour suite, 0 catches in the 400-PR audit window
