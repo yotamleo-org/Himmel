@@ -2721,7 +2721,9 @@ check "8464j a same-lineage claim that is never released ends the arm with exit 
 check "8464k that arm launched no konsole" "$([ -e "$tp6/record" ] && echo launched || echo none)" "none"
 check "8464l that arm's own name claim is gone" "$(compgen -G "$tp6/locks/HIMMEL-8464-N7b-*.lock" | grep -c .)" "0"
 check "8464m the held ticket claim is untouched" "$(cat "$tp6/locks/ticket-HIMMEL-8464.lock/holder" 2>/dev/null)" "HIMMEL-8464-N7-first-2026-11-02"
-check "8464n the wait is bounded (under 20s)" "$([ $((tp6_t1 - tp6_t0)) -lt 20 ] && echo yes || echo no)" "yes"
+# a macOS runner takes about four times a Linux one per launch; an unbounded wait runs for minutes, so 60s still tells them apart
+if [ "$(uname -s)" = Darwin ]; then tp6_bound=60; else tp6_bound=20; fi
+check "8464n the wait is bounded (under ${tp6_bound}s)" "$([ $((tp6_t1 - tp6_t0)) -lt "$tp6_bound" ] && echo yes || echo "no:$((tp6_t1 - tp6_t0))s")" "yes"
 # the ticket claim is released once the session is visible, not held through the slow bus bind
 tp7="$tmp/tp7"; mk_pair "$tp7" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8464-N2-second-2026-11-02"
 cat > "$tp7/bus" <<'BUS_EOF'
@@ -2888,11 +2890,18 @@ dh11="$tmp/h11"; mk_stub "$dh11" 1 alive "HIMMEL-9512-N1b-none"
 hlaunch "$dh11" HIMMEL-9512-N1b-none "$HR3" N1b >/dev/null 2>&1; h11rc=$?
 check "8725u no Writes anywhere: launches, no row" "$h11rc|$(grep -rlF HIMMEL-9512 "$HOME/.himmel/state/holds" 2>/dev/null | wc -l | tr -d ' ')" "0|0"
 # rows taken over while the successor was parked past 24 hours: the RESUME launch is refused, naming the new holder
+# age_by <seconds> <file>... backdates mtimes. GNU touch takes a relative -d; BSD touch (macOS) refuses it, so fall back to
+# BSD date -v feeding touch -t.
+age_by() {
+  local s="$1"; shift
+  touch -d "$s seconds ago" "$@" 2>/dev/null && return 0  # gnu-ok: the BSD form follows
+  touch -t "$(date -v-"$s"S +%Y%m%d%H%M.%S)" "$@"
+}
 HP3="$(hdoc HIMMEL-9513-N1-pred.md '> **Writes:** scripts/h13.sh')"
 hp seed --key HIMMEL-9513 --label N1 --doc "$HP3" --repo "$REPO" >/dev/null 2>&1
-touch -d '3 days ago' "$HP3" "$(hrow scripts/h13.sh)"
+age_by 259200 "$HP3" "$(hrow scripts/h13.sh)"
 HR4="$(hdoc HIMMEL-9513-N1b-pred-RESUME.md '> **Writes:** scripts/h13.sh')"
-touch -d '3 days ago' "$HR4"
+age_by 259200 "$HR4"
 HT="$(hdoc HIMMEL-9514-N1-thief.md '# thief')"
 hp claim --key HIMMEL-9514 --label N1 --doc "$HT" --repo "$REPO" scripts/h13.sh >/dev/null 2>&1
 dh12="$tmp/h12"; mk_stub "$dh12" 1 alive "HIMMEL-9513-N1b-pred"
@@ -2906,14 +2915,14 @@ hp claim --key HIMMEL-9521 --label N1 --doc "$(hdoc HIMMEL-9521-N1-x.md '# x')" 
 HR5="$(hdoc HIMMEL-9520-N1b-pred-RESUME.md '> **Writes:** scripts/h20b.sh')"
 dh13="$tmp/h13"; mk_stub "$dh13" 1 alive "HIMMEL-9520-N1b-pred"
 hlaunch "$dh13" HIMMEL-9520-N1b-pred "$HR5" N1b >/dev/null 2>&1; h13rc=$?
-touch -d '2 hours ago' "$(hrow scripts/h20a.sh)"
+age_by 7200 "$(hrow scripts/h20a.sh)"
 check "8725x an aborted RESUME launch (exit 2) leaves the re-pointed row on the RESUME doc" "$h13rc|$(cut -f3 "$(hrow scripts/h20a.sh)")" "2|$HR5"
 check "8725y ... and it reads alive past the grace on the RESUME clause" "$(hp alive --repo "$REPO" scripts/h20a.sh)" "alive"
 # a launch that fails after the seed keeps its rows, which read dead past the grace with no lock held
 HW="$(hdoc HIMMEL-9522-N1-w.md '> **Writes:** scripts/h22.sh')"
 dh14="$tmp/h14"; mk_stub "$dh14" 1 dying "HIMMEL-9522-N1-w"
 hlaunch "$dh14" HIMMEL-9522-N1-w "$HW" N1 >/dev/null 2>&1; h14rc=$?
-touch -d '2 hours ago' "$(hrow scripts/h22.sh)"
+age_by 7200 "$(hrow scripts/h22.sh)"
 check "8725z a launch that fails after the seed keeps its row, dead past the grace with no lock held" "$([ "$h14rc" -ne 0 ] && echo failed)|$(hp alive --repo "$REPO" scripts/h22.sh)" "failed|dead"
 
 # a seed fault warns and launches; a stub with no holds: line is a fault, with one it is a refusal; OFF calls neither

@@ -2563,7 +2563,7 @@ STUB
 cat > "$bus79/bus" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/calls"
-[ -n "${BUS79_HANG:-}" ] && exec sleep 20
+[ -n "${BUS79_HANG:-}" ] && exec sleep 120
 if [ -n "${BUS79_HELD:-}" ]; then
   echo "name already registered: $2 (live holder pid 4242)" >&2
   exit 1
@@ -2646,8 +2646,11 @@ check "79 lost bus output: the refusal does not advise the override" "$(printf '
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79lost/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79lost")" >/dev/null 2>&1
 t79=$SECONDS
 out79h="$(run79 in new bus79hang BUS79_HANG=1 BUS_EXEC_SECS=08)"
+# the stub sleeps 120s and the bus times out after 8s; a macOS runner adds far more overhead than Linux does, so the bound sits
+# well under the stub's sleep (an unbounded wait would take all 120s) rather than just above the 8s timeout
+t79_secs=$((SECONDS - t79))
 check "79 hung bus: refused within the bound" \
-    "$(printf '%s\n' "$out79h" | grep -c '^armed: '):$([ $((SECONDS - t79)) -lt 15 ] && echo bounded || echo slow)" "0:bounded"
+    "$(printf '%s\n' "$out79h" | grep -c '^armed: '):$([ "$t79_secs" -lt 60 ] && echo bounded || echo "slow:${t79_secs}s")" "0:bounded"
 check "79 hung bus: the refusal says it timed out" "$(printf '%s\n' "$out79h" | grep -c 'timed out after 8s')" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79hang/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79h")" >/dev/null 2>&1
 # Chief-path twin, on the REAL bus CLI: a chief name already bound
