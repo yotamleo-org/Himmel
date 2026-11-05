@@ -1937,8 +1937,8 @@ ADOPTER_ENV="$TMP_ROOT/adopter-dotenv"
 mkdir -p "$ADOPTER_HOME" "$OPTIN_HOME/.himmel" "$ADOPTER_ENV"
 printf 'ANTHROPIC_ORG_A_KEY=dummy-not-a-real-key\n' > "$ADOPTER_ENV/.env"
 printf '{"graphify":{"semantic_api_ok":true}}\n' > "$OPTIN_HOME/.himmel/config.json"
-run_adopter() { HOME="$ADOPTER_HOME" GRAPHMAP_DOTENV_ROOT="$ADOPTER_ENV" run_cron3 "$@"; }
-run_optin() { HOME="$OPTIN_HOME" GRAPHMAP_DOTENV_ROOT="$ADOPTER_ENV" run_cron3 "$@"; }
+run_adopter() { HOME="$ADOPTER_HOME" GRAPHMAP_DOTENV_ROOT="$ADOPTER_ENV" PATH="$CLAUDE_BIN_DIR_PATH:$PATH" run_cron3 "$@"; }
+run_optin() { HOME="$OPTIN_HOME" GRAPHMAP_DOTENV_ROOT="$ADOPTER_ENV" PATH="$CLAUDE_BIN_DIR_PATH:$PATH" run_cron3 "$@"; }
 SKIP_TEXT="semantic skipped: API lane not opted in"
 q9() { printf '%q' "$1"; }
 run_cron3 disarm >/dev/null 2>&1 || true
