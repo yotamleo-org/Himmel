@@ -1164,6 +1164,7 @@ git -C "$GC" add -A
 git -C "$GC" commit -q -m base
 git -C "$GC" push -q origin main
 BASE0="$(git -C "$GC" rev-parse HEAD)"
+mkdir -p "$GC/.git/hooks"  # an image whose git has no template dir creates none
 printf '#!/bin/sh\n%s\n' "$ENTRY_C" > "$GC/.git/hooks/pre-commit"
 printf '#!/bin/sh\n%s\n' "$ENTRY_P" > "$GC/.git/hooks/pre-push"
 chmod +x "$GC/.git/hooks/pre-commit" "$GC/.git/hooks/pre-push"
