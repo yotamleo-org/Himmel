@@ -125,7 +125,7 @@ if command -v timeout >/dev/null 2>&1; then seg_to="timeout"
 elif command -v gtimeout >/dev/null 2>&1; then seg_to="gtimeout"; fi
 node_to="${HIMMEL_WHERE_ARE_WE_NODE_TIMEOUT:-3}"
 case "$node_to" in ''|*[!0-9]*) node_to=3 ;; esac
-# The slice is cached per key on the ledger's path, size and mtime:
+# The slice is cached per key on the ledger's path, size, mtime and inode:
 # a slice re-reads the whole ledger and the ledger changes rarely, so an unchanged
 # ledger starts NO node. An entry's first line is that stamp, the rest the slice.
 # A missing, foreign-owned, symlinked or unmatched entry is a miss, never an error.
@@ -133,8 +133,9 @@ cachedir="${HIMMEL_WHERE_ARE_WE_ROLLUP_DIR:-/tmp/claude}"
 if [ -n "$node_bin" ] && [ -f "$ledger" ] && [ -n "$seg_to" ]; then
     slice_cache="$cachedir/where-are-we-slice-$key.txt"
     stamp=""
-    lst="$(stat -c '%s %Y' "$ledger" 2>/dev/null || stat -f '%z %m' "$ledger" 2>/dev/null || true)"
-    [ -n "$lst" ] && stamp="$ledger|${lst% *}|${lst#* }"
+    # size, mtime seconds and inode: a compaction replaces the file, so it never matches an old stamp.
+    lst="$(stat -c '%s %Y %i' "$ledger" 2>/dev/null || stat -f '%z %m %i' "$ledger" 2>/dev/null || true)"
+    [ -n "$lst" ] && stamp="$ledger|$lst"
     hit=0
     slice=""
     if [ -n "$stamp" ] && [ -f "$slice_cache" ] && [ ! -L "$slice_cache" ] && [ -O "$slice_cache" ]; then

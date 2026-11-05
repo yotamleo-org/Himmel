@@ -335,7 +335,8 @@ if [ -n "$REALNODE" ] && { command -v timeout >/dev/null 2>&1 || command -v gtim
     SLEDGER="$TMP/ledger-link.jsonl"; cp "$LEDGER_INPROG" "$SLEDGER"
     ssz="$(stat -c %s "$SLEDGER" 2>/dev/null || stat -f %z "$SLEDGER")"
     smt="$(stat -c %Y "$SLEDGER" 2>/dev/null || stat -f %m "$SLEDGER")"
-    printf '%s\n%s\n' "$SLEDGER|$ssz|$smt" '- status: FORGED' > "$TMP/forged-target"
+    sino="$(stat -c %i "$SLEDGER" 2>/dev/null || stat -f %i "$SLEDGER")"
+    printf '%s\n%s\n' "$SLEDGER|$ssz $smt $sino" '- status: FORGED' > "$TMP/forged-target"
     ln -s "$TMP/forged-target" "$SDIR/where-are-we-slice-HIMMEL-538.txt"
     before="$(cat "$TMP/forged-target")"
     rm -f "$COUNTER"
@@ -344,6 +345,22 @@ if [ -n "$REALNODE" ] && { command -v timeout >/dev/null 2>&1 || command -v gtim
         pass "symlinked cache entry -> not trusted, target untouched"
     else
         fail "symlinked cache entry -> calls=$n6 out='$o6'"
+    fi
+
+    # 22: a replacement with the same size and mtime but a new inode (a compaction)
+    # is a miss.
+    RDIR="$TMP/slice-replace"; mkdir -p "$RDIR"
+    RLEDGER="$TMP/ledger-replace.jsonl"; cp "$LEDGER_INPROG" "$RLEDGER"
+    rm -f "$COUNTER"
+    o7="$(crun "$RDIR" "$RLEDGER")"
+    sed 's/in-progress/on-progress/' "$RLEDGER" > "$RLEDGER.new"
+    touch -r "$RLEDGER" "$RLEDGER.new"
+    mv "$RLEDGER.new" "$RLEDGER"
+    o8="$(crun "$RDIR" "$RLEDGER")"; n8="$(calls)"
+    if grepq "$o7" -F 'in-progress' && grepq "$o8" -F 'on-progress' && [ "$n8" = 2 ]; then
+        pass "same size and mtime, new inode -> cache miss, new content shown"
+    else
+        fail "same size and mtime, new inode -> calls=$n8 o7='$o7' o8='$o8'"
     fi
 else
     pass "ledger-slice cache cases -> SKIPPED (no node or no timeout/gtimeout on this host)"

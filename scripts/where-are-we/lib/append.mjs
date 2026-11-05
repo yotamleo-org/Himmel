@@ -1,5 +1,5 @@
 // scripts/where-are-we/lib/append.mjs
-import { mkdirSync, rmdirSync, writeFileSync, renameSync, linkSync, unlinkSync } from 'node:fs';
+import { mkdirSync, rmdirSync, writeFileSync, renameSync, linkSync, unlinkSync, statSync, chmodSync } from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
 import { REQUIRED, validateRecord } from './schema.mjs';
 import { appendRecord, readRecords } from './ledger.mjs';
@@ -139,6 +139,7 @@ export function compactLedger(ledgerPath, opts = {}) {
       throw new Error('compact: refused, the compacted ledger would fold differently');
     }
     writeFileSync(tmp, kept.map((r) => JSON.stringify(r) + '\n').join(''));
+    chmodSync(tmp, statSync(ledgerPath).mode & 0o7777); // the new file keeps the ledger's own mode
     try { unlinkSync(ledgerPath + '.pre-compact'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
     linkSync(ledgerPath, ledgerPath + '.pre-compact');
     renameSync(tmp, ledgerPath);

@@ -1,7 +1,7 @@
 // scripts/where-are-we/tests/append.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, existsSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, existsSync, writeFileSync, readFileSync, chmodSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { readRecords } from '../lib/ledger.mjs';
 import { acquireLock, releaseLock, appendRecords, compactRecords, compactLedger } from '../lib/append.mjs';
@@ -146,6 +146,17 @@ test('compactRecords drops a superseded write, keeps other sources and each key 
   const kept = compactRecords(recs);
   assert.deepEqual(kept.map((x) => x.ts), [recs[0].ts, recs[3].ts, recs[4].ts, recs[5].ts]);
   assert.deepEqual(compactRecords(kept), kept, 'compacting a compacted list drops nothing more');
+});
+
+test('compactLedger keeps the ledger file mode', () => {
+  const dir = makeTmpDir('waw-append-');
+  const ledger = join(dir, 'ledger.jsonl');
+  const rec = { ts: '2026-06-22T10:00:00Z', source: 'jira', key: 'K-1', kind: 'ticket', status: 'a' };
+  writeFileSync(ledger, [rec, { ...rec, ts: '2026-06-22T10:01:00Z', status: 'b' }, { ...rec, ts: '2026-06-22T10:02:00Z', status: 'c' }]
+    .map((x) => JSON.stringify(x) + '\n').join(''));
+  chmodSync(ledger, 0o600);
+  assert.equal(compactLedger(ledger).dropped, 1);
+  assert.equal(statSync(ledger).mode & 0o777, 0o600);
 });
 
 // compactLedger takes the writers' lock: a held lock blocks it and nothing is touched
