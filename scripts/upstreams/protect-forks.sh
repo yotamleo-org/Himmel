@@ -35,7 +35,9 @@
 # Seams: GH (gh binary), PROTECT_FORKS_ADAPTERS (registry path),
 # PROTECT_FORKS_ORG (default yotamleo-org).
 #
-# Exit codes: 0 done | 1 a read, write or verification failed | 2 usage | 3 --apply refused
+# Exit codes: 0 done | 1 a read, write or verification failed, or the org fork
+# list could not be read | 2 usage, or jq / the registry missing | 3 --apply refused
+# (before any gh call)
 set -uo pipefail
 
 SELF_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
