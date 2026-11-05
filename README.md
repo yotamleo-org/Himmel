@@ -45,8 +45,9 @@ Along with that you get:
   panel catches planted bugs, how often its findings are right and what the
   prompt cache saves, each number with its sample size
   ([evals](docs/evals/README.md)).
-- **Sessions that remember.** Work carries from one session to the next in
-  plain notes, so you stop explaining the same thing twice.
+- **Sessions that remember.** In a himmel checkout or with the optional notes
+  vault, work carries from one session to the next in plain notes, so you stop
+  explaining the same thing twice.
 
 ### How the work moves
 
@@ -64,7 +65,8 @@ One ticket travels the same path every time:
    project): a second model reads the change, if you have one set up, and the worker checks each finding against the
    code, then fixes it, rules it out or moves it to a ticket of its own. With
    no second model, the worker reviews the change itself, so nobody independent
-   reads it, and the merge gate in step 5 holds the merge until you
+   reads it, and once a review is recorded in your clone of the project the
+   merge gate in step 5 holds the merge until you
    [turn the required reviewer off](docs/configuration.md#reviewer-modes). In a
    himmel checkout (a clone of this repo, when you work inside it) a push marks
    the review as owed, and the PR cannot be opened until `/pr-check` clears it.
@@ -76,8 +78,10 @@ One ticket travels the same path every time:
    note for the next session. In a project-scope install or a himmel checkout,
    a Claude Code session's merge has its own gate, which refuses while CI is red
    or pending, a reviewer finding is open, or the required reviewer has not
-   passed at that commit. himmel does not check a merge you run yourself with the
-   GitHub CLI or on the web.
+   passed at that commit. The reviewer checks start once a review is recorded in
+   your clone: before the first one the gate lets the merge through with a note.
+   himmel does not check a merge you run yourself with the GitHub CLI or on the
+   web.
 
 ### How sessions find what is already known
 
@@ -159,8 +163,9 @@ If you work with a coding agent every day, alone or in a small team, himmel
 is for you. Claude Code still runs your sessions; himmel installs on top of it
 and adds checks before edits, commits and pushes, and before a Claude Code
 session's merge in a project-scope install, so nobody has to remember those rules. Each change gets its own branch and pull request (PR), each commit names
-its ticket (a Jira issue, or a plain `#number` if you do not use Jira), and
-notes carry the work into the next session. Set up a chief and its workers and
+its ticket (a Jira issue, or a plain `#number` if you do not use Jira), and,
+in a himmel checkout or with the optional notes vault, notes carry the work into
+the next session. Set up a chief and its workers and
 they work like a small software factory: tickets go in, reviewed and merged
 PRs come out. In a project-scope install or a himmel checkout, each worker's
 merge waits for the chief's approval, signed for that PR at the reviewed commit.
@@ -213,9 +218,11 @@ The test run shows a few of these. The rest arrive as you add them, and the
   hook, and without a working scheduler the relaunch never fires, so nothing
   restarts the run
   ([scheduler setup](docs/setup/new-machine.md#4c-scheduler-backend-auto-arm-resume)).
-- **Work carries over between sessions, in a himmel checkout.** `/handover`
-  leaves a plain markdown doc behind, and `/handover-resume` in a fresh session
-  reads it and resumes from the decisions and reasons it recorded.
+- **Work carries over between sessions, in a himmel checkout.** For a tracked
+  item (one you opened with `/handover new-epic <name>` or
+  `/handover new-standalone <name>`), `/handover` leaves a plain markdown doc
+  behind, and `/handover-resume` in a fresh session reads it and resumes from
+  the decisions and reasons it recorded.
   In your own project handover is not ready yet: its setup and resume call
   scripts a project install does not copy.
 
@@ -226,8 +233,10 @@ The test run shows a few of these. The rest arrive as you add them, and the
   so a finding that misreads the code is disproved, not fixed. In a project-scope
   install or a himmel checkout, the merge gate refuses a Claude Code session's
   merge while CI is red or pending, a reviewer finding is open, or the required
-  reviewer has not passed at that commit; himmel does not check a merge you run
-  yourself with the GitHub CLI or on the web. Review is
+  reviewer has not passed at that commit. The reviewer checks start once a review
+  is recorded in your clone: before the first one the gate lets the merge through
+  with a note. himmel does not check a merge you run yourself with the GitHub CLI
+  or on the web. Review is
   not proof: the required reviewer caught 75% of planted bugs (likely range 46.8
   to 91.1, from 9 of 12), and the PR's author ruled 79.5% of its 5,388 ruled
   findings right
@@ -301,8 +310,10 @@ Once the pull request (PR) is open, in a project-scope install or a himmel
 checkout the merge gate refuses a Claude Code session's merge while continuous
 integration (CI) is red or pending, a reviewer finding is open or the required
 reviewer has not passed at that commit and, in a fleet run, until the chief has
-approved the merge in writing for its exact commit. himmel does not check a merge
-you run yourself with the GitHub CLI or on the web.
+approved the merge in writing for its exact commit. The reviewer checks start once
+a review is recorded in your clone: before the first one the gate lets the merge
+through with a note. himmel does not check a merge you run yourself with the
+GitHub CLI or on the web.
 `scripts/clean.sh` removes the finished worktree.
 
 **2. Run a fleet: one chief, many workers.** For bigger runs, one Claude
@@ -314,7 +325,7 @@ writing; only then does the worker merge. The [glossary](docs/glossary.md)
 defines chief, worker, judge and the rest.
 
 **3. Carry work across sessions, in a himmel checkout.** A session that has
-made decisions writes them into a handover doc with `/handover`. The doc lives where you chose with
+made decisions on a tracked item writes them into a handover doc with `/handover`. The doc lives where you chose with
 `/handover-setup`: a folder in your vault, a separate git repo, or a
 `handovers/` folder in the repo. On a machine set up for it, when a session
 nears its usage limit, himmel schedules a restart. The next session reads the
@@ -345,7 +356,7 @@ In Claude Code:
 
 ```text
 /himmel-ops:pr-check      # 3. review; `/pr-check` inside a himmel checkout
-/handover                 # 6. write down where you stopped; himmel checkout only for now
+/handover                 # 6. write down where you stopped on a tracked item; himmel checkout only for now
 ```
 
 A himmel checkout also has `/worktree` and `/clean` for steps 1 and 5.
@@ -483,7 +494,7 @@ node scripts/jira/dist/index.js list      # only if you set up Jira
 From the release tarball, run `gh auth status`, then `himmelctl status`,
 which reports any part of the install that is missing or out of date.
 
-Then run one full loop (worktree, commit, PR, merge, `scripts/clean.sh`, and in a himmel checkout `/handover`)
+Then run one full loop (worktree, commit, PR, merge, `scripts/clean.sh`, and in a himmel checkout `/handover` for a tracked item)
 with [`docs/daily-loop.md`](docs/daily-loop.md) open beside you.
 
 ## Support matrix
