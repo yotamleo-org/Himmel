@@ -173,10 +173,12 @@
 # WHY the worker profiles are thin: the measured floor is schema-shaped, not
 # roster-shaped (~40k of a 74.3k first-turn floor is tool + MCP schemas), so a
 # "profile by skill set" would resolve to the same manifest. worker-eval and
-# worker-docs exist to carry a different context setting, not a different roster:
-# a profile's sonnetAutocompact / sonnetContextGuard apply to the native lane on a
-# claude-sonnet-5 model only (worker-impl 450000 + hand-off, worker-eval 450000 +
-# compaction, worker-docs 200000). See the _comment in plugin-profiles.json.
+# worker-docs exist to carry a different context setting, not a different roster
+# (the one difference: worker-docs keeps lean-skills on the native lane, where the
+# others drop it): a profile's sonnetAutocompact / sonnetContextGuard apply to the
+# native lane on a claude-sonnet-5 model only (worker-impl 450000 + hand-off,
+# worker-eval 450000 + compaction, worker-docs 200000). See the _comment in
+# plugin-profiles.json.
 # --profile composes with --lane claudex: the shim prepends
 # profile flags, then execs scripts/claude-codex via WORKER_SESSION_CLAUDE_BIN. The
 # backend and its guarded argument screen remain in the launch path.
