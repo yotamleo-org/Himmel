@@ -3895,8 +3895,8 @@ check_c89_qmd_rerank() {
     local qbin="${HIMMEL_DOCTOR_QMD_BIN:-qmd}" models qcfg rerank_env have_qmd=0
     models="${HIMMEL_DOCTOR_QMD_MODELS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/models}"
     qcfg="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/index.yml"
-    if [ "${QMD_DAEMON_DISABLED:-}" = "1" ] || [ -e "${QMD_DAEMON_OFF_FLAG:-$HOME/.himmel/state/qmd-daemon.off}" ]; then
-        emit INFO C89-qmd-rerank "qmd off by operator (qmd-daemon-off flag) -- rerank check skipped"
+    if [ "${QMD_DAEMON_DISABLED:-}" = "1" ] || [ -e "${QMD_DAEMON_OFF_FLAG:-$HOME/.himmel/state/qmd-daemon.off}" ]; then  # t13b-ok: reads the operator off flag, starts nothing
+        emit INFO C89-qmd-rerank "qmd off by operator (the qmd off flag) -- rerank check skipped"
         return 0
     fi
     # An adopter's qmd is the bun-global script, not always a `qmd` on PATH: ask qmd-bin.sh's own presence test
@@ -3917,7 +3917,7 @@ check_c89_qmd_rerank() {
     case "$rerank_env" in
         off|0|false)
             emit WARN C89-qmd-rerank "QMD_RERANK=${QMD_RERANK} turns qmd's reranker off for every search -- results come back in keyword/vector order" \
-                "unset QMD_RERANK   # in the shell or service that starts qmd, then restart the qmd daemon"
+                "unset QMD_RERANK   # in the shell or service that starts qmd, then restart the qmd server"
             return 0 ;;
     esac
     case "$(printf '%s' "${QMD_RERANK_MODEL:-}" | tr '[:upper:]' '[:lower:]')" in
