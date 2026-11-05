@@ -12,12 +12,12 @@ or `MERGED` worker (`waiter.md`, the script relay) and wakes you only with
 worker already closed prints `HANDLED noop <label>`. The paths below are for that
 wake, or a chief armed without `--workers-from`.
 
-**One call per message.** Write the worker's `MERGED` or
-`WRAPPED` message to a file and run
+**One call per message.** Write the worker's `WRAPPED` bullet line (or a claudex
+`MERGED` line you wrote yourself) to a file and run
 `bash scripts/handover/chief-kit/worker-event.sh --doc <chief doc> --fleet <manifest> <message-file>`.
 It finds the worker doc by the message's `N<k>` label and runs
 `chief-kit/wrap-merged.sh` (PR state, close, pull, Results bullet, board). `HANDLED ...`
-means done; `ESCALATE <reason>` means do the steps below by hand. After a `MERGED` it
+means done; `ESCALATE <reason>` means do the steps below by hand. After a merged PR, on a `MERGED` or `WRAPPED` line, it
 also starts `chief-kit/station-sync.sh --pr <n>` detached (HIMMEL-5945): the
 `himmel-update.sh --only` steps for the paths the PR touched, then `--versions`. The line
 ends `station=pending log=<file>` at once; the tick carries the verdict as `station=`

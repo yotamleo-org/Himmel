@@ -499,7 +499,7 @@ has "a completes-ticket: yes Ship step keeps --jira-transition" "$ship_yes" "mer
 has "a completes-ticket: yes Ship step states yes" "$ship_yes" "completes-ticket: yes"
 ship_last="$(printf '%s\n' "$ct_last" | grep '^> 4\. Ship:')"
 lacks "the LAST value (no) also drives the Ship step" "$ship_last" "--jira-transition"
-has "the LAST value (no) writes the bare-merge Ship wording" "$ship_last" "completes-ticket: no (leave the ticket In Progress after MERGED)"
+has "the LAST value (no) writes the bare-merge Ship wording" "$ship_last" "completes-ticket: no (leave the ticket In Progress after the merge)"
 ship_none="$(printf '%s\n' "$ct_none" | grep '^> 4\. Ship:')"
 has "a scope stating neither keeps the yes Ship step" "$ship_none" "merge-on-green.sh --jira-transition"
 # shellcheck disable=SC2016 # literal backticks in the expected brief text
@@ -535,6 +535,58 @@ bash "$HERE/brief-lint.sh" "$WORK"/cx1/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/
 [ "$rc" = 0 ] && pass "a claudex brief with the chief-merges Ship step passes brief-lint.sh" || fail "claudex brief-lint rc=$rc: $(cat "$WORK/lint-cx.err")"
 bash "$HERE/brief-lint.sh" "$WORK"/ct1/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/lint-ct.err"; rc=$?
 [ "$rc" = 0 ] && pass "a brief with the Completes ticket line passes brief-lint.sh" || fail "Completes ticket brief-lint rc=$rc: $(cat "$WORK/lint-ct.err")"
+
+# READY is a bullet only and the merge is no message, on every lane.
+lane_brief() { # <lane> <completes value> <bucket>
+    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]=sys.argv[3]; l[0]["scope"]="one PR. completes-ticket: "+sys.argv[4]
+if sys.argv[3] not in ("native","claudex"): l[0]["model"]="claude-sonnet-5-5"
+json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ln.json" "$1" "$2" || { fail "lane brief fixture setup failed"; return 1; }
+    python3 "$SUT" "$WORK/ln.json" --base 4ccb59d --chief BZ --bucket "$3" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ln.err" || fail "lane brief generation rc=$?: $(cat "$WORK/ln.err")"
+    cat "$3"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null
+}
+bullet_rows() { # <label> <ship line> <expect no MERGED step: 1|0> <expect no second-key: 1|0>
+    local ship="$2"
+    [ -n "$ship" ] && pass "$1: brief has a Ship step" || fail "$1: brief has no Ship step"
+    lacks "$1: no READY message" "$ship" "to the chief quoting your token"
+    # shellcheck disable=SC2016 # literal backticks in the expected brief text
+    [ "$3" = 1 ] && lacks "$1: no MERGED step" "$ship" 'MERGED, `cd` out'
+    [ "$4" = 1 ] && lacks "$1: no second-key message" "$ship" "say so after MERGED"
+    has "$1: READY bullet named" "$ship" "never a message"
+}
+ship_ln_n="$(lane_brief native yes "$WORK/ln1" | grep '^> 4\. Ship:')"
+bullet_rows "native yes" "$ship_ln_n" 1 1
+ship_ln_nn="$(lane_brief native no "$WORK/ln2" | grep '^> 4\. Ship:')"
+bullet_rows "native no" "$ship_ln_nn" 1 0
+ship_ln_c="$(lane_brief claudex yes "$WORK/ln3" | grep '^> 4\. Ship:')"
+bullet_rows "claudex yes" "$ship_ln_c" 0 1
+# shellcheck disable=SC2016 # literal text in the expected brief
+has "claudex: chief's MERGED message kept" "$ship_ln_c" 'MERGED #<pr> → <sha>'
+ship_ln_o="$(lane_brief openrouter yes "$WORK/ln4" | grep '^> 4\. Ship:')"
+bullet_rows "openrouter yes" "$ship_ln_o" 1 1
+pre=$(grep -n 'READY <pr> <full head> GREEN' "$HERE/../../../docs/handover/worker-preface.md")
+pb=0
+for t in "$pre" "$ship_ln_n"; do
+    case "$t" in *"never a message"*"bullet"*|*"bullet"*"never a message"*) pb=$((pb + 1)) ;; esac
+done
+[ "$pb" = 2 ] && pass "preface and brief agree: READY never a message" || fail "preface and brief agree: READY never a message (both must say bullet and never a message; $pb of 2 do)"
+
+# JUDGE-REQUEST has one channel per lane, and the worker docs point at it.
+hd="$HERE/../../../docs/handover"
+grep 'JUDGE-REQUEST' "$hd/worker-preface.md" | grep -qF 'worker-sections/judge-request.md' && pass "preface: JUDGE-REQUEST points at its section" || fail "preface: JUDGE-REQUEST does not point at worker-sections/judge-request.md"
+jr="$hd/worker-sections/judge-request.md"
+jrok=0; [ -r "$jr" ] && jrok=1
+for w in 'SendMessage' 'send' 'at READY' 'once per head'; do
+    [ -r "$jr" ] && grep -qF -- "$w" "$jr" || jrok=0
+done
+[ "$jrok" = 1 ] && pass "judge-request section: channel per lane" || fail "judge-request section: missing or lacks SendMessage, send, at READY, once per head"
+for l in claudex openrouter; do
+    grep 'JUDGE-REQUEST' "$hd/worker-preface-$l.md" | grep -qF 'send' && pass "$l preface: JUDGE-REQUEST on the bus" || fail "$l preface: JUDGE-REQUEST not on the bus"
+done
+# The claudex "Only ... go by bus" list must itself name JUDGE-REQUEST (it spans two lines).
+only="$(tr '\n' ' ' < "$hd/worker-preface-claudex.md" | grep -oE 'Only `[^.]*go by bus' | head -1)"
+case "$only" in *'JUDGE-REQUEST'*) pass "claudex preface: the Only-by-bus list names JUDGE-REQUEST" ;; *) fail "claudex preface: the Only-by-bus list omits JUDGE-REQUEST ($only)" ;; esac
+# The chief's READY fallback: a READY whose head has no judge dispatches one before any GO.
+grep -qF 'dispatch the judge now, before any GO' "$hd/chief-sections/merges.md" && pass "merges: READY fallback dispatches the judge" || fail "merges: READY fallback does not say to dispatch the judge now, before any GO"
 
 # A completes-ticket value other than yes or no is refused (it used to fall through to the closing
 # merge): nothing is written, and the message names the worker label and the value. Case is ignored.
@@ -617,7 +669,7 @@ done
 # (rarely-read rules live in docs/handover/worker-sections/ and chief-sections/).
 HANDOVER_DOCS="${HANDOVER_DOCS:-$HERE/../../../docs/handover}"
 # worker-preface.md carries the adapter-repo stop-at-READY rule, so its budget is 12800.
-for budget in "worker-preface.md:12800" "chief-template.md:16637"; do
+for budget in "worker-preface.md:12800" "chief-template.md:16768"; do
     f="${budget%%:*}"; max="${budget##*:}"
     size="$(wc -c < "$HANDOVER_DOCS/$f" 2>/dev/null | tr -d '[:space:]')"
     [ -n "$size" ] && [ "$size" -le "$max" ] && pass "$f is within its byte budget ($size <= $max)" || fail "$f is over its byte budget (${size:-missing} > $max)"

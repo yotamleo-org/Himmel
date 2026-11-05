@@ -257,6 +257,20 @@ toml_regex() {
         END { exit !done }' "$1" > "$3" || return "$EDIT_UNSAFE"
 }
 
+# unstage_focus_stage <vault> <dry> — a focus refresh keeps scratch under handovers/<user>/<repo>/.focus-stage.*/
+# and the sync can stage it mid-run; the folder is gone (or half-written) by the time the hooks run, so a fixer refuses a
+# blob nobody owns. It is never content: drop it from the index (the working tree is not touched) before the replay.
+FOCUS_STAGE_RE='(^|/)\.focus-stage\.[^/]+/'
+unstage_focus_stage() {
+    local vault="$1" dry="$2" n
+    n="$(git -C "$vault" diff --cached --name-only -z | grep -zcE "$FOCUS_STAGE_RE")"
+    [ "${n:-0}" -gt 0 ] || return 0
+    if [ "$dry" -eq 1 ]; then echo "vault-stall: would unstage $n focus-stage path(s)"; return 0; fi
+    git -C "$vault" diff --cached --name-only -z | grep -zE "$FOCUS_STAGE_RE" \
+        | git -C "$vault" reset -q --pathspec-from-file=- --pathspec-file-nul \
+        && echo "vault-stall: unstaged $n focus-stage path(s)"
+}
+
 alert() {
     local reason="$1" dry="$2"
     reason="${reason:0:160}"
@@ -422,6 +436,15 @@ cmd_run() {
         return 0
     fi
     echo "vault-stall: STALL ($staged staged, newest commit ${age}m old)"
+    unstage_focus_stage "$vault" "$dry"
+    if [ "$dry" -eq 0 ]; then
+        staged="$(git -C "$vault" diff --cached --name-only | wc -l | tr -d ' ')"
+        if [ "$staged" -eq 0 ]; then
+            echo "vault-stall: ok (only focus-stage paths were staged)"
+            bash "$ALERT" clear "$WORKER"
+            return 0
+        fi
+    fi
 
     [ "$dry" -eq 1 ] || (umask 077 && : > "$STATE_DIR/last-run.log")
     replay_hook "$vault" "$gitdir"; hook_rc=$?

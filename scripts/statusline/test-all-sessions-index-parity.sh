@@ -11,7 +11,6 @@ set -uo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LIB="$DIR/lib/all-sessions-index.sh"
 LEGACY="$DIR/bin/statusline.sh"
-COMPOSER="$DIR/hud-custom-lines.sh"
 
 FAILED=0; PASSED=0
 pass() { echo "PASS $1"; PASSED=$((PASSED + 1)); }
@@ -70,20 +69,18 @@ for _fn in _hud_write_index_checkpoint _hud_rb_rmtemps; do
     fi
 done
 
-# ── Cases 5-6: _HUD_DEDUP_JQ byte-identical across ALL THREE copies ──────────
-# The dedup jq program is the actual accounting rule: if the
-# composer's copy drifts from the rebuild's, the `session` row and the `all` row
-# start counting the SAME transcripts differently and the discrepancy is
-# invisible — both rows still render, just with numbers that no longer agree.
-# It lives in three files (lib, legacy bar, composer) and is a variable, so the
-# two function diffs above never covered it. Same structural enforcement, one
-# case per pair against the lib as the reference copy.
+# ── Case 5: _HUD_DEDUP_JQ byte-identical across BOTH copies ───────────────────
+# The dedup jq program is the actual accounting rule: if the legacy bar's copy
+# drifts from the rebuild's, its session and all rows start counting the SAME
+# transcripts differently and the discrepancy is invisible. It lives in two
+# files (lib, legacy bar) and is a variable, so the function diffs above never
+# covered it. Same structural enforcement, against the lib as the reference.
 lib_jq="$TMP/lib-jq"
 extract_var _HUD_DEDUP_JQ "$LIB" > "$lib_jq"
 if [ ! -s "$lib_jq" ]; then
     fail "_HUD_DEDUP_JQ not extractable from the lib (extractor or definition changed shape)"
 fi
-for _pair in "legacy:$LEGACY" "composer:$COMPOSER"; do
+for _pair in "legacy:$LEGACY"; do
     _name="${_pair%%:*}"; _file="${_pair#*:}"
     _out="$TMP/$_name-jq"
     extract_var _HUD_DEDUP_JQ "$_file" > "$_out"

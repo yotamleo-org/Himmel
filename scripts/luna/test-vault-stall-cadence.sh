@@ -673,5 +673,31 @@ printf "paths = ['''notes\\\\.md''']\n" >>"$V/.gitleaks.toml"
 out="$(run_sut)"
 assert_has "T35 alert names the rule the staged config refused" "gitleaks aws-access-token notes.md:1" "$(sent)"
 
+# --- T36 a focus refresh's staged scratch is unstaged, never alerted ---
+mkvault
+before="$(head_sha)"
+mkdir -p "$V/handovers/u/himmel/.focus-stage.bBmrmZ/snap"
+printf '{"data": 1}' >"$V/handovers/u/himmel/.focus-stage.bBmrmZ/snap/graphql.json"
+git -C "$V" add handovers
+out="$(run_sut)"; rc=$?
+assert_eq "T36 run exits 0" "0" "$rc"
+assert_has "T36 the run names what it unstaged" "unstaged 1 focus-stage path" "$out"
+assert_has "T36 a stall of stage paths alone ends ok" "ok (only focus-stage paths were staged)" "$out"
+assert_eq "T36 no alert sent" "" "$(sent)"
+assert_eq "T36 no commit, nothing staged" "$before :" "$(head_sha) :$(staged)"
+assert_eq "T36 the stage file on disk is not touched" '{"data": 1}' "$(cat "$V/handovers/u/himmel/.focus-stage.bBmrmZ/snap/graphql.json")"
+
+# --- T37 a stage path beside a benign stall: the stage leaves the index, the remediation still runs ---
+mkvault
+mkdir -p "$V/handovers/u/himmel/.focus-stage.bBmrmZ/snap"
+printf '{"data": 1}' >"$V/handovers/u/himmel/.focus-stage.bBmrmZ/snap/graphql.json"
+printf '#!/usr/bin/env bash\nfor f in $(cat list); do echo $f; done\n' >"$V/handovers/x.sh"
+git -C "$V" add handovers
+out="$(run_sut)"; rc=$?
+assert_eq "T37 run exits 0" "0" "$rc"
+assert_has "T37 the remediation commit still lands" "remediate stall class shellcheck" "$(git -C "$V" log -1 --format=%s)"
+assert_eq "T37 only the real backlog stays staged" "handovers/x.sh " "$(staged)"
+assert_eq "T37 no alert sent" "" "$(sent)"
+
 echo "----"
 if [ "$FAILED" -eq 0 ]; then echo "PASS: vault-stall-cadence ($0)"; else echo "FAIL: vault-stall-cadence — $FAILED failed ($0)" >&2; exit 1; fi

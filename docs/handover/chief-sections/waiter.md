@@ -195,7 +195,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     <pr> <head>`, one bounded `gh pr checks` read (a failed read is `PENDING`, never
     `GREEN`) and `cr-disposition.sh check <pr> <head>` (read only; `open:?` = it
     could not evaluate); `coverage=` is ready-check's item 7. The out file
-    (`<inbox>.wait.ready-<pr>`) holds the three outputs, tokens scrubbed. Do not
+    (`<inbox>.wait.ready-<pr>`) holds the READY bullet (any note the worker wrote in it: a trust path, suite rows) and the three outputs, tokens scrubbed. Do not
     re-run ready-check or poll CI: read the diff, rule, and GO through `go.sh` or
     `verdict-go.sh` as before, which run their own gates. It wakes once per (PR,
     head) (`<inbox>.wait.readywoke`): the same head written again wakes nothing,
@@ -207,6 +207,24 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     `holds=` set (`BLOCKED`, or a `FINDING` awaiting a ruling, untouched for
     `TICK_HOLD_MIN` minutes, default 20): read its newest bullet and answer it. It
     does not repeat while the hold stands.
+
+    **A silent worker wakes you once, and the operator is already told** (HIMMEL-9133).
+    `WAKE worker-silent <worker> signal=<capped-waker|succession-partial> [silent=<n>m]`
+    means no turn is coming from that worker: the tick lists `wakerstate=<worker>:capped`
+    (its bus mail went unread) and, with `--workers-from`, its doc has had no write for
+    `CHIEF_WAIT_WORKER_SILENT_MIN` minutes (default 45; the doc's mtime stands in for its
+    newest Results bullet), or a `--succession` tally still waits on it (the line follows
+    the partial block). The waiter already appended a `WORKER-SILENT` bullet to your doc and
+    sent the operator one page naming the worker, the signal and the action; it repeats
+    neither while the worker's doc is unchanged (`<inbox>.wait.silent`). Recover the worker
+    in that turn, never wait on it. First confirm it is not working (`queue-lock.sh status
+    <worker doc>`, `ListAgents`, its newest Results bullet). Then do ONE of: **relaunch** it:
+    write a RESUME doc from the worker's doc (`worker-resume-brief.sh <worker doc>` supplies
+    the git facts; name it per `worker-brief-template.md`), end its stale session (one pid
+    per call), release its lock with the worker's token, launch `chief-kit/headed-arm-worker.sh`
+    on the RESUME doc (same branch, worktree and PR) and add it to the fleet manifest; or
+    **take over** its one blocked step yourself (a merge after your GO runs as a claudex PR's
+    does, `merges.md`). Then send the operator one message saying which you did, for which worker.
 
     **Permission.** The tracked `.claude/settings.json` allows exactly the
     step-10 launch shape `bash scripts/handover/chief-kit/chief-wait.sh …`

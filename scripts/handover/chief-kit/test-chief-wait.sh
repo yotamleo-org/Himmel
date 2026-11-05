@@ -115,6 +115,100 @@ start() { # <inbox> <outfile> [tick args...]
     WPID=$!
 }
 
+# --- (ws) a silent worker wakes the chief once and the operator is alerted ---
+# A held worker is silent when its bus waker is capped (wakerstate=<w>:capped: the same unread
+# mail was typed --max-wakes times) and its doc has had no write for CHIEF_WAIT_WORKER_SILENT_MIN
+# minutes, or when a --succession tally names it still out. Every fleet below is a sandbox under
+# $WORK: a chief doc with a Results heading, one worker doc aged with touch, a one-worker manifest,
+# and the suite's page stub (never a real Telegram send). RED control (chief-wait.sh before this
+# change): no WAKE worker-silent line, no page and no chief-doc bullet.
+# Run only these rows with --worker-silent-only.
+ws_fleet() { # <case> <age of the worker doc's last write, as touch -d reads it>: sets I, WD, WL, WM
+    mkdir -p "$WORK/$1/consoles"; I="$WORK/$1/consoles/c.md"; : > "$I"
+    WD="$WORK/$1/chief.md"; printf '# chief\n\n## Results\n' > "$WD"
+    WL="$WORK/$1/HIMMEL-1-N1-a.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$WL"
+    touch -d "$2" "$WL"  # gnu-ok: Linux-only kit
+    WM="$WORK/$1/chief.fleet.json"; printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"}]}\n' "$WL" > "$WM"
+    rm -f "$STUB/pages"
+}
+ws_tick() { # [wakerstate value]: the standing tick line, a held worker with no bus edge
+    tick_line "N1:FRESH" "ok"
+    sed -i "s/ denials=none/ busedge=MISSING:N1${1:+ wakerstate=$1} denials=none/" "$STUB/tick.line"  # gnu-ok: Linux-only kit
+}
+ws_pages() { cat "$STUB/pages" 2>/dev/null | grep -c . || true; }  # pipefail-ok: none set; a missing file counts 0
+ws_bullets() { grep -c '^- [0-9:]* WORKER-SILENT N1 signal=capped-waker' "$WD" 2>/dev/null || true; }
+reset_stub
+ws_fleet ws1 "2 hours ago"
+ws_tick "N1:capped"
+CHIEF_WAIT_WORKER_SILENT_MIN=30 start "$I" "$WORK/ws1.out" --doc "$WD" --workers-from "$WM"
+wait_exit "$WPID"
+check "(ws1) a capped waker on a doc quiet past the bound ends the wait" "0" "$rc"
+check "(ws1) the wake names the worker and the signal" "WAKE worker-silent N1 signal=capped-waker" "$(head -n1 "$WORK/ws1.out" | cut -d' ' -f1-4)"
+check "(ws1) exactly one worker-silent line for the worker" "1" "$(grep -c '^WAKE worker-silent' "$WORK/ws1.out")"
+check "(ws1) the tick line follows it" "1" "$(grep -c '^TICK ' "$WORK/ws1.out")"
+check "(ws1) the operator alert went out once" "1" "$(ws_pages)"
+check "(ws1) and names the worker and the signal" "1" "$(grep -c 'WORKER-SILENT N1 signal=capped-waker' "$STUB/pages" 2>/dev/null)"
+check "(ws1) the chief doc got one bullet naming the action" "1" "$(ws_bullets)"
+check "(ws1) the exit reason is logged" "yes" "$(grep -q 'exit=wake-worker-silent' "$I.wait" && echo yes)"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+# the state is unchanged: a re-arm repeats neither the wake, the page nor the bullet
+CHIEF_WAIT_WORKER_SILENT_MIN=30 timeout 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(ws2) a re-arm on an unchanged silent worker keeps waiting" "124" "$rc"
+check "(ws2) and prints no worker-silent line" "0" "$(grep -c 'worker-silent' "$WORK/ws2.out")"
+check "(ws2) and pages nothing more" "1" "$(ws_pages)"
+check "(ws2) and writes no second bullet" "1" "$(ws_bullets)"
+# the worker wrote, then went quiet again: the state moved, so it is a new silence
+touch -d "90 minutes ago" "$WL"  # gnu-ok: Linux-only kit
+CHIEF_WAIT_WORKER_SILENT_MIN=30 start "$I" "$WORK/ws2b.out" --doc "$WD" --workers-from "$WM"
+wait_exit "$WPID"
+check "(ws2b) a worker that wrote and went quiet again wakes again" "WAKE worker-silent N1 signal=capped-waker" "$(head -n1 "$WORK/ws2b.out" | cut -d' ' -f1-4)"
+check "(ws2b) with a second alert" "2" "$(ws_pages)"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+
+# negative: a Results bullet inside the bound keeps the worker out of the silent set
+reset_stub
+ws_fleet ws3 "1 minute ago"
+ws_tick "N1:capped"
+CHIEF_WAIT_WORKER_SILENT_MIN=30 timeout 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws3.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(ws3) a fresh bullet inside the bound keeps waiting" "124" "$rc"
+check "(ws3) and prints no worker-silent wake" "0" "$(grep -c 'worker-silent' "$WORK/ws3.out")"
+check "(ws3) and sends no alert" "0" "$(ws_pages)"
+# negative: a quiet doc with a waker that is not capped is a worker waiting, not a silent one
+reset_stub
+ws_fleet ws4 "2 hours ago"
+ws_tick
+CHIEF_WAIT_WORKER_SILENT_MIN=30 timeout 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws4.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(ws4) a quiet doc with no capped waker keeps waiting" "124" "$rc"
+check "(ws4) and prints no worker-silent wake" "0" "$(grep -c 'worker-silent' "$WORK/ws4.out")"
+# the bound is a named, overridable value: 20 quiet minutes sit inside the default and outside a 10-minute bound
+reset_stub
+ws_fleet ws5 "20 minutes ago"
+ws_tick "N1:capped"
+timeout 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws5a.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(ws5) 20 quiet minutes are inside the default bound" "0" "$(grep -c 'worker-silent' "$WORK/ws5a.out")"
+CHIEF_WAIT_WORKER_SILENT_MIN=10 start "$I" "$WORK/ws5b.out" --doc "$WD" --workers-from "$WM"
+wait_exit "$WPID"
+check "(ws5) CHIEF_WAIT_WORKER_SILENT_MIN=10 makes them a silent worker" "WAKE worker-silent N1 signal=capped-waker" "$(head -n1 "$WORK/ws5b.out" | cut -d' ' -f1-4)"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+# a succession partial that names the worker is the second signal, with no waker or age needed
+reset_stub
+ws_fleet ws6 "1 minute ago"
+ws_tick
+# shellcheck disable=SC2016  # the stub body expands when the stub runs
+printf '#!/usr/bin/env bash\ncat "$STUB/ws-succ.out"\n' > "$STUB/ws-tracker.sh"
+printf 'N1 missing\nINCOMPLETE 0/1 (waiting on: N1)\n' > "$STUB/ws-succ.out"
+CHIEF_WAIT_TRACKER="$STUB/ws-tracker.sh" CHIEF_WAIT_SUCCESSION_SEC=1 start "$I" "$WORK/ws6.out" --doc "$WD" --succession S2 --silent-min 0 --workers-from "$WM"
+wait_exit "$WPID"
+check "(ws6) the partial wake still comes first" "WAKE succession partial 0/1 silent 0 min" "$(head -n1 "$WORK/ws6.out")"
+check "(ws6) the worker it names gets one worker-silent line" "1" "$(grep -c '^WAKE worker-silent N1 signal=succession-partial' "$WORK/ws6.out")"
+check "(ws6) and one operator alert" "1" "$(ws_pages)"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+rm -f "$STUB/pages"
+if [ "${1:-}" = --worker-silent-only ]; then
+    printf '\n%d failure(s)\n' "$fails"
+    [ "$fails" -eq 0 ]; exit $?
+fi
+
 # A missing ceiling key loses the alarm; saving it must also suppress a re-arm.
 reset_stub
 I="$(new_inbox wt-ceiling)"
@@ -954,6 +1048,22 @@ start "$I" "$WORK/rdy-nog.out" --doc "$RD" --workers-from "$RM"
 wait_exit "$WPID"
 check "(rdy) a READY without GREEN is no ready wake" "" "$(grep '^WAKE ready' "$WORK/rdy-nog.out")"
 check "(rdy) and runs no check" "" "$(cat "$STUB/rc.calls" 2>/dev/null)"
+# the out file shows the chief the READY bullet text (separate fixture: PR 2577)
+ready_stubs_pass
+mkdir -p "$WORK/rdytxt/consoles"; I2="$WORK/rdytxt/consoles/c.md"; : > "$I2"
+RD2="$WORK/rdytxt/chief.md"; printf '# chief\n' > "$RD2"
+RL2="$WORK/rdytxt/HIMMEL-1-N1-a.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$RL2"
+RM2="$WORK/rdytxt/chief.fleet.json"; printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"}]}\n' "$RL2" > "$RM2"
+ready_tick "N1:LIVE"
+start "$I2" "$WORK/rdytxt.out" --doc "$RD2" --workers-from "$RM2"
+wait_hb "$I2" || fail "(rdy-txt) no baseline heartbeat"
+# shellcheck disable=SC2016  # the backticks are literal bullet text
+printf -- '- 10:00 READY 2577 %s GREEN — trust path: no; rows `suite-tiers.tsv` added\n' "$HA" >> "$RL2"
+ready_tick "N1:READY" "N1:READY#1"
+wait_exit "$WPID"
+# shellcheck disable=SC2016  # the backticks are literal bullet text
+check "(rdy-txt) the out file carries the READY bullet" "1" "$(grep -cF -- 'rows `suite-tiers.tsv` added' "$I2.wait.ready-2577" 2>/dev/null)"
+check "(rdy-txt) waiter.md names the bullet in the out file" "1" "$(grep -c 'holds the READY bullet' "$HERE/../../../docs/handover/chief-sections/waiter.md")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 unset CHIEF_WAIT_READY_CHECK CHIEF_WAIT_CI CHIEF_WAIT_DISPOSITION
 

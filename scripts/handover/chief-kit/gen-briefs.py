@@ -879,14 +879,14 @@ def ship_completes(scope, lane='native'):
     # the chief runs the merge; every other lane merges on GO itself.
     found = COMPLETES_RE.findall(scope)
     if found and found[-1].lower() == 'no':
-        ct = 'completes-ticket: no (leave the ticket In Progress after MERGED)'
+        ct = 'completes-ticket: no (leave the ticket In Progress after the merge)'
         cmd = '`bash scripts/handover/merge-on-green.sh` (bare, without the Jira-transition flag, typed exactly so from your worktree root, then `--go <the GO file the chief\'s GO message names>`)'
     else:
-        ct = 'completes-ticket: yes (if the PR title carries a second key, say so after MERGED so the chief closes it)'
+        ct = 'completes-ticket: yes'
         cmd = '`bash scripts/handover/merge-on-green.sh --jira-transition` (typed exactly so from your worktree root, then `--go <the GO file the chief\'s GO message names>`)'
     if lane == 'claudex':
         return ct, MERGE_AT_READY_LINE
-    return ct, 'Merge only on GO with %s. MERGED, `cd` out, WRAPPED, release the lock,' % cmd
+    return ct, 'Merge only on GO with %s. After the merge (no message), `cd` out, WRAPPED, release the lock,' % cmd
 
 
 def render_rm_brief(l, ctx):
@@ -1022,7 +1022,7 @@ template_version: 3
 > 2. Do exactly what the ticket asks, smallest correct change. RED first: a failing test row reproducing the defect, shown failing before the fix: run it as `bash scripts/quiet-run.sh suite -- bash <test-*.sh>` with nothing appended (no `>`, `2>&1`, `| tail`, `; echo rc`) and Read the log path its ERR line prints. {extra}{envline}
 > 2a. A new test suite may add exactly one row for itself to scripts/ci/suite-tiers.tsv and scripts/ci/suite-durations.tsv (duration measured locally); name the rows in READY. Rows under a ci-trust-paths pattern still get a trust-reviewed GO.
 > 3. Impacted suites: `scripts/cr/impacted-suites.sh` over your diff, a verdict per suite. Locally run only the RED rows of the item you build; a VM-only check goes through the VM queue; list every other impacted suite as `SKIP CI-gated per decision 101 (GitHub CI is the gate)`; never run run-shell-tests.sh full or sharded locally.
-> 4. Ship: commit `{commit}`; FIRST-commit trailers `Platforms tested: linux` (shell/script diffs), `Security reviewed: manual — <what you checked>` (non-docs code); `## Ticket coverage` in the PR body (`ready-check.sh --only 7 <pr>`); {shipct}. /pr-check (≤3 rounds; the moment you mark a finding agreed or fixed, write its `SWEEP [<id>@<head>] class=… :: sites=…` line (a one-site finding: `:: single-site search=git grep …`) with `bash scripts/cr/write-verdicts.sh sweep --branch <b> --from-file <f>`, else `clear-review-marker.sh` refuses with exit 14), CI green, `ready-check.sh <pr> <full-head>`, then `READY <pr> <full-40-hex-head> GREEN` to the chief quoting your token. {judge} {shipmerge} `bash scripts/handover/wrap-subtree-check.sh --queue-doc {doc}`.
+> 4. Ship: commit `{commit}`; FIRST-commit trailers `Platforms tested: linux` (shell/script diffs), `Security reviewed: manual — <what you checked>` (non-docs code); `## Ticket coverage` in the PR body (`ready-check.sh --only 7 <pr>`); {shipct}. /pr-check (≤3 rounds; the moment you mark a finding agreed or fixed, write its `SWEEP [<id>@<head>] class=… :: sites=…` line (a one-site finding: `:: single-site search=git grep …`) with `bash scripts/cr/write-verdicts.sh sweep --branch <b> --from-file <f>`, else `clear-review-marker.sh` refuses with exit 14), CI green, `ready-check.sh <pr> <full-head>`, then write the `READY <pr> <full-40-hex-head> GREEN` bullet with `append-results.sh` (a bullet only, never a message, as the preface says: the chief's waiter wakes the chief on it and shows it the bullet's text). {judge} {shipmerge} `bash scripts/handover/wrap-subtree-check.sh --queue-doc {doc}`.
 > 5. CI: a shell-unit shard dying with exit 124 in apt-get before any suite ran is a known mirror flake (HIMMEL-2872); you may `gh run rerun <id> --failed` once per run and report it.
 
 {inhblock}{vmline}{uiline}> **Writes:** {scope_line}

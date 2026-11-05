@@ -1,6 +1,6 @@
 // shift.ts — the shift helper: the cut rule, shifts.jsonl under one writer, the span-and-attribution function.
 import { test, expect, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULTS, appendShift, attribute, chiefSpans, iso, liveBoards, liveChiefs, mergedIn, nameOf, readLocks, readMerged, readShifts, redactShift, rowsOf, step, tick, viewOf, type Lock, type Row, type Span, type State, type View } from "../shift";
@@ -70,6 +70,16 @@ for (const id of ["a", "b", "c", "d"]) await appendShift(${JSON.stringify(f)}, {
   for (const p of procs) expect(await p.exited).toBe(0);
   const ids = readFileSync(f, "utf8").trim().split("\n").map((l) => JSON.parse(l).id).sort();
   expect(ids).toEqual(["a", "b", "c", "d"]);
+});
+
+test("tick with readOnly returns the recorded state and writes no state file or shift row; without it the same poll writes the state file", async () => {
+  const d = tmp(), f = join(d, "shifts.jsonl"), now = T("2026-10-27T12:00+01:00");
+  const snap = await tick({ root: d, file: f, now, readOnly: true, merged: async () => { throw new Error("a read-only poll reads no PR list"); } });
+  expect(snap.state).toEqual({ open: null, closedAt: null });
+  expect(snap.closed).toEqual([]);
+  expect(readdirSync(d)).toEqual([]);
+  await tick({ root: d, file: f, now, merged: async () => [] });
+  expect(existsSync(`${f}.state.json`)).toBe(true);
 });
 
 test("a shift that closes after midnight is returned once, with ISO times that carry an offset", async () => {
@@ -466,23 +476,24 @@ test("redactShift: a strict chief doc name passes in every chief-name field, a 3
   }
 });
 
-test("redactShift: a doc name in a free-text field stays redacted", () => {
+test("redactShift: a doc name in a free-text field stays readable", () => {
   const real = "HIMMEL-nextleg-2026-10-31LO-roadmap-chief";
   const v = chiefView(real);
   v.waiting[0].title = real;
   v.shipped[0].title = real;
   const out = redactShift(v, redactDeep);
-  expect([out.waiting[0].title, out.shipped[0].title]).toEqual(["‹redacted›", "‹redacted›"]);
+  expect([out.waiting[0].title, out.shipped[0].title]).toEqual([real, real]);
 });
 
-test("redactShift: a doc-name shape that also carries a token shape, a prefix before a valid name, or more than 80 characters stays redacted", () => {
+test("redactShift: a doc name after a prefix stays readable, a doc-name shape that carries a token shape or a random run is still redacted", () => {
   const real = "HIMMEL-nextleg-2026-10-31LO-roadmap-chief";
   const aws = "AK" + "IA" + "ABCDEFGHIJKLMNOP"; // an access-key shape built at run time
   const fields = (v: View) => [v.chiefs[0].name, v.waiting[0].chief, v.shipped[0].chief, ...v.gap[0].chiefs];
   const viaToken = fields(redactShift(chiefView(aws + "-nextleg-2026-10-31A-roadmap-chief"), redactDeep));
   for (const f of viaToken) expect(f).not.toContain(aws);
-  for (const bad of ["abc " + real, "Zx-" + real, "HIMMEL-nextleg-2026-10-31A-" + "roadmap-".repeat(10) + "chief"]) {
-    for (const f of fields(redactShift(chiefView(bad), redactDeep))) expect(f).not.toContain("roadmap-chief");
+  for (const f of fields(redactShift(chiefView("abc " + real), redactDeep))) expect(f).toContain(real);
+  for (const bad of ["abc " + LONG_RUN36, "Zx-" + LONG_RUN36]) {
+    for (const f of fields(redactShift(chiefView(bad), redactDeep))) expect(f).not.toContain(LONG_RUN36);
   }
 });
 

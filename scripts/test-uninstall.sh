@@ -2738,14 +2738,14 @@ cp "$U_HOME/.claude/claude-hud.json" "$TMP/u21b-hud"
 u_run_fx
 assert_rc 'U21b wet run completes' 0 "$rc"
 u_same 'U21b mention-only hud config kept byte-identical' "$U_HOME/.claude/claude-hud.json" "$TMP/u21b-hud"
-# ...and so is himmel's own command behind the ECON prefix, absent a ledger
+# ...and so is himmel's own command behind an older install's env prefix, absent a ledger
 # unit for it: no more content-based removal without ledger evidence.
 u_residue_fixture u21c
-printf '{"display":{"customLineCommand":"HIMMEL_STATUSLINE_ECON=off bash \\"/x/scripts/statusline/hud-custom-lines.sh\\""}}\n' > "$U_HOME/.claude/claude-hud.json"
+printf '{"display":{"customLineCommand":"HIMMEL_RETIRED_KNOB=off bash \\"/x/scripts/statusline/hud-custom-lines.sh\\""}}\n' > "$U_HOME/.claude/claude-hud.json"
 cp "$U_HOME/.claude/claude-hud.json" "$TMP/u21c-hud"
 u_run_fx
 assert_rc 'U21c wet run completes' 0 "$rc"
-u_same 'U21c ECON-prefixed himmel hud config kept (not in ledger), byte-identical' "$U_HOME/.claude/claude-hud.json" "$TMP/u21c-hud"
+u_same 'U21c env-prefixed himmel hud config kept (not in ledger), byte-identical' "$U_HOME/.claude/claude-hud.json" "$TMP/u21c-hud"
 
 # U21d — a leftover config at the
 # OLD, swept plugin-manager path with NO ledger unit recorded for it is kept,
@@ -2754,7 +2754,7 @@ u_same 'U21c ECON-prefixed himmel hud config kept (not in ledger), byte-identica
 # config happens to match the template", so ledger evidence is now required
 # before this path is ever touched, exactly like the NEW-path policy above.
 u_residue_fixture u21d
-printf '{"display":{"customLineCommand":"HIMMEL_STATUSLINE_ECON=off bash \\"/x/scripts/statusline/hud-custom-lines.sh\\""}}\n' > "$U_HOME/.claude/plugins/claude-hud/config.json"
+printf '{"display":{"customLineCommand":"HIMMEL_RETIRED_KNOB=off bash \\"/x/scripts/statusline/hud-custom-lines.sh\\""}}\n' > "$U_HOME/.claude/plugins/claude-hud/config.json"
 cp "$U_HOME/.claude/plugins/claude-hud/config.json" "$TMP/u21d-legacy"
 cp "$U_HOME/.claude/claude-hud.json" "$TMP/u21d-hud"
 u_run_fx
@@ -2779,7 +2779,7 @@ u_same 'U21e operator legacy hud config left alone' "$U_HOME/.claude/plugins/cla
 # be kept too -- unlike U21d, where no statusLine is wired at all.
 u_residue_fixture u21f
 printf '{"statusLine":{"type":"command","command":"bash \\"%s/scripts/statusline/bin/statusline.sh\\""}}\n' "$U17_SCRIPTS/.." > "$HIMMEL_USER_SETTINGS"
-printf '{"display":{"customLineCommand":"HIMMEL_STATUSLINE_ECON=off bash \\"/x/scripts/statusline/hud-custom-lines.sh\\""}}\n' > "$U_HOME/.claude/plugins/claude-hud/config.json"
+printf '{"display":{"customLineCommand":"HIMMEL_RETIRED_KNOB=off bash \\"/x/scripts/statusline/hud-custom-lines.sh\\""}}\n' > "$U_HOME/.claude/plugins/claude-hud/config.json"
 cp "$U_HOME/.claude/plugins/claude-hud/config.json" "$TMP/u21f-legacy"
 u_run_fx
 assert_rc 'U21f wet run completes' 0 "$rc"
@@ -2797,7 +2797,7 @@ assert_has 'U21f output names the kept legacy hud config' "kept (statusLine stil
 # a DRY-RUN preview must match what the WET run would actually do.
 u_residue_fixture u21g
 printf '{"statusLine":{"type":"command","command":"bash \\"%s/scripts/statusline/bin/statusline.sh\\""}}\n' "$U17_SCRIPTS/.." > "$HIMMEL_USER_SETTINGS"
-printf '{"display":{"customLineCommand":"HIMMEL_STATUSLINE_ECON=off bash \\"/x/scripts/statusline/hud-custom-lines.sh\\""}}\n' > "$U_HOME/.claude/plugins/claude-hud/config.json"
+printf '{"display":{"customLineCommand":"HIMMEL_RETIRED_KNOB=off bash \\"/x/scripts/statusline/hud-custom-lines.sh\\""}}\n' > "$U_HOME/.claude/plugins/claude-hud/config.json"
 cp "$U_HOME/.claude/plugins/claude-hud/config.json" "$TMP/u21g-legacy"
 (
     # shellcheck disable=SC2030,SC2031 # confined to this subshell, same as

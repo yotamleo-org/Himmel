@@ -261,9 +261,13 @@ commands:
                           Secrets show presence, never values. --deep adds the
                           wiring layers: pre-commit ids, Claude hooks, git
                           hooks and CI workflows (fires reads unverified).
-  ui [--port N]           read-only config UI on 127.0.0.1 (needs bun): serves the
+  ui [--port N]           config UI on 127.0.0.1 (needs bun): serves the
                           report feed as one page and prints a URL carrying a
-                          per-launch token. The OPERATOR runs this from a
+                          per-launch token. By default the page CAN WRITE your
+                          config (login, setup, review gate, report settings,
+                          VM and roadmap writes); --read-only refuses every
+                          non-GET request with 403 and shows a read-only banner.
+                          The OPERATOR runs this from a
                           terminal; agents must not (refused under a Claude
                           session env unless --allow-agent-session). Runs in the foreground,
                           Ctrl-C or 30 min idle exits. Prints ONE URL: the fleet
@@ -352,8 +356,8 @@ const ALLOWED_OPTIONS = {
   // the config UI's feed (himmel-config-feed/1). Its own verb,
   // never a `status` mode — status --json is a golden-tested contract.
   report: ['items', 'json', 'deep'],
-  // the read-only config UI server.
-  ui: ['port', 'allowAgentSession', 'agui', 'service', 'dryRun'],
+  // the config UI server.
+  ui: ['port', 'allowAgentSession', 'readOnly', 'agui', 'service', 'dryRun'],
   ensure: ['items', 'profile', 'yes', 'dryRun', 'prune', 'noNetwork'],
   // `scope` takes its OWN positional verbs/targets (set|get|status, then
   // project|user for set) — parsed in parseArgs's scope cases, not as --flags.
@@ -397,6 +401,7 @@ const OPTION_FLAGS = {
   purgeState: '--purge-state',
   port: '--port',
   allowAgentSession: '--allow-agent-session',
+  readOnly: '--read-only',
   agui: '--agui',
   service: '--service',
 };
@@ -409,6 +414,7 @@ const OPTION_DEFAULTS = {
   purgeState: false,
   port: null,
   allowAgentSession: false,
+  readOnly: false,
   agui: null,
   service: null,
 };
@@ -447,6 +453,7 @@ function parseArgs(argv) {
     purgeState: false, // uninstall: --purge-state (also remove operator state; default keeps it)
     port: null,        // ui: --port N (null = ephemeral)
     allowAgentSession: false, // ui: --allow-agent-session (operator override of the agent-session refusal)
+    readOnly: false,   // ui: --read-only (the server refuses every non-GET/HEAD request with 403)
     agui: null,        // ui: --agui [<session-id>|latest] (also print the AG-UI page URL; 'fleet' = no id)
     service: null,     // ui: --service install|uninstall|status|url (the always-on systemd user unit)
   };
@@ -670,6 +677,9 @@ function parseArgs(argv) {
         break;
       case '--allow-agent-session':
         args.allowAgentSession = true;
+        break;
+      case '--read-only':
+        args.readOnly = true;
         break;
       case '--from-profile':
         args.fromProfile = argv[++i];
@@ -5785,6 +5795,10 @@ function cmdUi(args) {
     console.error('himmelctl: ui: operator-only; refused inside a Claude session (CLAUDECODE / CLAUDE_CODE_* is set). Run it from your own terminal, or pass --allow-agent-session to override.');
     return 2;
   }
+  if (args.service && args.readOnly) {
+    console.error('himmelctl: ui: --read-only does not apply to --service: the installed unit would start the server without it. Run `himmelctl ui --read-only` in the foreground.');
+    return 2;
+  }
   if (args.service) {
     const r = args.service === 'install' ? uiServiceLib.install({ repoRoot: repoRoot(), port: args.port, dryRun: args.dryRun })
       : args.service === 'uninstall' ? uiServiceLib.uninstall({ dryRun: args.dryRun }) : uiServiceLib[args.service]();
@@ -5809,7 +5823,7 @@ function cmdUi(args) {
     }
   }
   const agui = run === 'fleet' ? ['--agui'] : run ? ['--agui', run] : [];
-  const serverArgs = [server, '--port', String(args.port === null ? 0 : args.port), ...agui];
+  const serverArgs = [server, '--port', String(args.port === null ? 0 : args.port), ...(args.readOnly ? ['--read-only'] : []), ...agui];
   return new Promise((resolve) => {
     const child = require('child_process').spawn('bun', serverArgs, { stdio: 'inherit' });
     // A signal to this wrapper must reach the server, never orphan it.
