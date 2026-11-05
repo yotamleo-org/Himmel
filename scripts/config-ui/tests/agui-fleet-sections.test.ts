@@ -2,7 +2,8 @@
 // worker and chief chains, the filters, and the short names, over plain rows: the model is dependency-free, so this runs
 // without an install.
 import { expect, test } from "bun:test";
-import { chainKey, chiefOf, cloudPhase, consoleGroups, filterCount, fleetSections, laneOf, NO_FILTERS, orphanReason, shortName, siblingOrder } from "../agui-web/src/fleet-model";
+import * as nav from "../public/nav.js";
+import { chainKey, chiefCounts, chiefOf, cloudPhase, consoleGroups, filterCount, fleetSections, laneOf, NO_FILTERS, orphanReason, shortName, siblingOrder } from "../agui-web/src/fleet-model";
 
 const row = (name: string, role: string, console: string | null, extra: any = {}) => ({
   name, role, console, parent: console, live: true, lock: "unknown", lane: "native",
@@ -266,4 +267,29 @@ test("short names drop the ticket and date: a worker keeps its id and slug, a co
   expect(shortName(BU)).toBe("BU-roadmap-chief");
   expect(shortName("cloud-HIMMEL-4728")).toBe("cloud-HIMMEL-4728");
   expect(shortName("scratch-session")).toBe("scratch-session");
+});
+
+test("HIMMEL-9099: a chief's header counts are fleetSections' counts for it: one running and one waiting for GO", () => {
+  const C = "HIMMEL-nextleg-2026-11-04QM-roadmap-chief";
+  const mine = [row(C, "console", C, { state: "idle" }), row("run-w", "worker", C, { state: "running" }), row("go-w", "worker", C, { state: "waiting for GO" })];
+  const c = fleetSections(mine, C, NO_FILTERS, []).counts;
+  expect(chiefCounts(mine, C, [])).toEqual({ running: c.running, go: c.waiting, attention: c.attention, orphaned: c.orphaned });
+  expect(chiefCounts(mine, C, [])).toEqual({ running: 1, go: 1, attention: 0, orphaned: 0 });
+});
+
+test("HIMMEL-9099: a process orphan with no owner is in no chief's header count, one owned by a chief only in its own", () => {
+  const A = "HIMMEL-nextleg-2026-11-04QM-roadmap-chief";
+  const B = "HIMMEL-nextleg-2026-11-04QN-roadmap-chief";
+  const rows = [row(A, "console", A, { state: "idle" }), row(B, "console", B, { state: "idle" }), row("a-w", "worker", A, { state: "running" })];
+  const procs = [{ pid: 7, owner: "orphan", ageMin: 45 }, { pid: 8, owner: "a-w", ageMin: 31 }];
+  expect(chiefCounts(rows, A, procs).orphaned).toBe(1);
+  expect(chiefCounts(rows, B, procs).orphaned).toBe(0);
+});
+
+test("HIMMEL-9099: the AG-UI rail list hides Board with no readable tracker, exactly as navLinks does", () => {
+  const ids = (sources?: string[]) => (nav as any).railItems("fleet", sources);
+  expect(ids([])).not.toContain("board");
+  expect(ids([])).toEqual((nav as any).navLinks({ here: "agui", token: "a".repeat(64), current: "fleet", run: null, sources: [] }).map((l: any) => l.id));
+  expect(ids(["jira"])).toContain("board");
+  expect(ids(undefined)).toContain("board");
 });

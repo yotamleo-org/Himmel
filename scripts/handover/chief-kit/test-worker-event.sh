@@ -36,6 +36,7 @@ cat > "$W/wrap" <<'EOF'
 #!/usr/bin/env bash
 echo "wrap $*" >> "$LE_CALLS"
 [ -z "${LE_WRAP_ERR:-}" ] || echo "$LE_WRAP_ERR" >&2
+if [ "${LE_WRAP_PRINT:-}" = 1 ]; then printf '%s\n' "wrap-merged: closing" "pr=999" "wrap-merged: merged pr=123 sha=abcdef12"; fi
 exit "${LE_WRAP_RC:-0}"
 EOF
 cat > "$W/list" <<'EOF'
@@ -206,6 +207,24 @@ pkill -f "$W/station-hang" 2>/dev/null || true
 
 run "WRAPPED N2078"
 lacks "12 WRAPPED runs no station sync" "$calls" "station"
+
+# 12e. a WRAPPED wrap starts the sync for the PR wrap-merged proved, not a bullet or other output
+printf '%s\n' '# worker' '- PR 111 opened' '- READY 222 abcdef0123456789abcdef0123456789abcdef01 GREEN' '- WRAPPED — done' > "$W/HIMMEL-5-N5050-real-2026-11-04.md"
+cat > "$W/list-real" <<'EOF3'
+#!/usr/bin/env bash
+printf '%s\n' "$LE_REAL_DOC"
+EOF3
+chmod +x "$W/list-real"
+: > "$LE_STATION_LOG"
+LE_REAL_DOC="$W/HIMMEL-5-N5050-real-2026-11-04.md" LE_LIST="$W/list-real" LE_WRAP_PRINT=1 run "WRAPPED N5050 done"
+await "$LE_CALLS" "station --pr 123"; check "12e WRAPPED wrap starts station-sync with the PR wrap-merged proved" "$?" 0
+contains "12e WRAPPED line says pending" "$out" "station=pending"
+lacks "12e no --pr 111" "$(cat "$LE_CALLS")" "station --pr 111"
+lacks "12e no --pr 222" "$(cat "$LE_CALLS")" "station --pr 222"
+lacks "12e no --pr 999" "$(cat "$LE_CALLS")" "station --pr 999"
+LE_WRAP_PRINT=1 run "MERGED #456 N2088"
+await "$LE_CALLS" "station --pr 456"; check "12e a MERGED line keeps its own PR" "$?" 0
+lacks "12e MERGED does not take the printed PR" "$(cat "$LE_CALLS")" "station --pr 123"
 
 LE_WRAP_RC=3 run "MERGED #2566 N2088"
 lacks "12 failed wrap runs no station sync" "$calls" "station"

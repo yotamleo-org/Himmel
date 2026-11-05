@@ -217,14 +217,16 @@ bash "$SCRIPT" --out "$OUT" --max-age-days 7 >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 1 ] && pass "T9e built_at_commit=HEAD rejected, falls back to mtime -> rc=1" || fail "T9e rc=1 (got $rc)"
 
 # Semantic run rows: one merge row per argument, each argument "<failed files>|<refused files>" (comma lists).
+# Rows are dated today (UTC), so they sit inside the semantic age bound.
+SEM_DAY="$(date -u +%Y-%m-%d)"
 semantic_rows() {  # $1=out dir, $2...=rows
   local out="$1"; shift
-  python3 - "$out/semantic-runs.jsonl" "$@" <<'PY'
+  python3 - "$out/semantic-runs.jsonl" "$SEM_DAY" "$@" <<'PY'
 import json, sys
 with open(sys.argv[1], "w") as f:
-    for i, spec in enumerate(sys.argv[2:]):
+    for i, spec in enumerate(sys.argv[3:]):
         failed, refused, backed = (s.split(",") if s else [] for s in (spec.split("|") + [""])[:3])
-        f.write(json.dumps({"ts": "2026-10-19T0%d:00:00Z" % i, "name": "t", "batch": 3, "failed": len(failed),
+        f.write(json.dumps({"ts": "%sT0%d:00:00Z" % (sys.argv[2], i), "name": "t", "batch": 3, "failed": len(failed),
                             "shrink_refused": len(refused), "failed_files": failed, "refused_files": refused,
                             "backed_off_files": backed}) + "\n")
         f.write(json.dumps({"ts": "2026-10-19T0%d:30:00Z" % i, "name": "ast-update", "ast_restored_nodes": 1}) + "\n")
@@ -272,7 +274,7 @@ OUT="$WS/t10c/graphify-out"; CORPUS="$WS/t10c/corpus"; build_out "$OUT" "$CORPUS
 printf '%s\n' "$CORPUS" > "$OUT/.graphify_root"
 semantic_rows "$OUT" "x.md|" "|y.md" "|"
 out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>/dev/null ); rc=$?
-[ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -Eq '^graph-freshness: semantic last=2026-10-19T02:00:00Z failed=0 refused=0 ' \
+[ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -Eq "^graph-freshness: semantic last=${SEM_DAY}T02:00:00Z failed=0 refused=0 " \
   && pass "T10c draining failures -> rc=0 with the semantic line" || fail "T10c (rc=$rc): $out"
 
 # --- T10d: the semantic line reports backed-off files and the oldest unstamped file's age ---
@@ -287,6 +289,123 @@ backdate_days "$CORPUS/notes/sub.md" 5
 out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>/dev/null ); rc=$?
 printf '%s\n' "$out" | grep -q 'backed_off=1 unstamped=1 oldest_unstamped=5d' \
   && pass "T10d backed_off and oldest unstamped age" || fail "T10d (rc=$rc): $out"
+
+# One merge row at an explicit ts ("" = no ts key): $1=out dir, $2=ts, $3=failed csv, $4=refused csv.
+semantic_row_at() {
+  python3 - "$1/semantic-runs.jsonl" "$2" "${3:-}" "${4:-}" <<'PY'
+import json, sys
+failed = [s for s in sys.argv[3].split(",") if s]
+refused = [s for s in sys.argv[4].split(",") if s]
+row = {"name": "t", "batch": 3, "failed": len(failed), "shrink_refused": len(refused),
+       "failed_files": failed, "refused_files": refused, "backed_off_files": []}
+if sys.argv[2]:
+    row["ts"] = sys.argv[2]
+open(sys.argv[1], "w").write(json.dumps(row) + "\n")
+PY
+}
+ts_hours_ago() { python3 -c 'import sys,time; print(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time()-float(sys.argv[1])*3600)))' "$1"; }
+csv_files() { local p="$1" n="$2" i=1 s=""; while [ "$i" -le "$n" ]; do s="$s${s:+,}$p$i.md"; i=$((i+1)); done; printf '%s' "$s"; }
+new_sem_fixture() {  # $1=test id: sets OUT and CORPUS, AST layer fresh
+  OUT="$WS/$1/graphify-out"; CORPUS="$WS/$1/corpus"; build_out "$OUT" "$CORPUS"
+  printf '%s\n' "$CORPUS" > "$OUT/.graphify_root"
+}
+
+# --- T11a: AST fresh, semantic last merge 3 days old -> SEMANTIC-STALE, non-zero, never OK ---
+new_sem_fixture t11a
+semantic_row_at "$OUT" "$(ts_hours_ago 72)" "" ""
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 3 ] && [[ "$out" == *"SEMANTIC-STALE"* ]] && [[ "$out" == *"3d ago"* ]] && ! printf '%s\n' "$out" | grep -q '^graph-freshness: OK' \
+  && pass "T11a semantic 3 days old on a fresh AST graph -> rc=3 SEMANTIC-STALE naming the age, no OK" || fail "T11a (rc=$rc): $out"
+[[ "$out" == *"run the semantic pass"* ]] && pass "T11a the message names the remedy" || fail "T11a no remedy: $out"
+
+# --- T11b: semantic last merge 2h old -> OK ---
+new_sem_fixture t11b
+semantic_row_at "$OUT" "$(ts_hours_ago 2)" "" ""
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^graph-freshness: OK' && [[ "$out" != *"SEMANTIC-STALE"* ]] \
+  && pass "T11b a fresh semantic layer -> rc=0 OK" || fail "T11b (rc=$rc): $out"
+
+# --- T11c: 11 content files failed (bound 10) -> SEMANTIC-STALE ---
+new_sem_fixture t11c
+semantic_row_at "$OUT" "$(ts_hours_ago 2)" "$(csv_files docs/page 11)" ""
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 3 ] && [[ "$out" == *"SEMANTIC-STALE"* ]] && [[ "$out" == *"content failed=11"* ]] \
+  && pass "T11c content failures above the bound -> rc=3 SEMANTIC-STALE with the count" || fail "T11c (rc=$rc): $out"
+
+# --- T11d: the same 11 failures on vendored, template and fixture paths are not counted -> OK ---
+new_sem_fixture t11d
+mkdir -p "$CORPUS/marketplace/plugins/vend"; printf '# vendored\n' > "$CORPUS/marketplace/plugins/vend/VENDORED.md"
+nc="$(csv_files marketplace/plugins/vend/skills/s 3),$(csv_files templates/second-brain/t 2),$(csv_files plugins/p/templates/e 1),$(csv_files scripts/ci/test-x-fixtures/f 2),$(csv_files scripts/hooks/testdata/d 1),$(csv_files plugins/q/evals/case/graders/g 2)"
+semantic_row_at "$OUT" "$(ts_hours_ago 2)" "$nc" ""
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] && [[ "$out" != *"SEMANTIC-STALE"* ]] && [[ "$out" == *"failed=11 "* ]] && [[ "$out" == *"non_content_failed=11"* ]] \
+  && pass "T11d 11 vendored/template/fixture failures -> counted separately, rc=0 OK" || fail "T11d (rc=$rc): $out"
+
+# --- T11e: 11 files shrink-refused (bound 10) -> SEMANTIC-STALE ---
+new_sem_fixture t11e
+semantic_row_at "$OUT" "$(ts_hours_ago 2)" "" "$(csv_files docs/r 11)"
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 3 ] && [[ "$out" == *"refused=11"* ]] && [[ "$out" == *"SEMANTIC-STALE"* ]] \
+  && pass "T11e refusals above the bound -> rc=3 SEMANTIC-STALE" || fail "T11e (rc=$rc): $out"
+
+# --- T11f: a content file unstamped for 8 days (bound 7d) -> SEMANTIC-STALE ---
+new_sem_fixture t11f
+semantic_row_at "$OUT" "$(ts_hours_ago 2)" "" ""
+python3 -c 'import hashlib,json,sys
+json.dump({"version":1,"files":{"real.md":hashlib.sha256(open(sys.argv[2],"rb").read()).hexdigest()}},open(sys.argv[1],"w"))' \
+  "$OUT/semantic-manifest.json" "$CORPUS/real.md"
+backdate_days "$CORPUS/notes/sub.md" 8
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 3 ] && [[ "$out" == *"SEMANTIC-STALE"* ]] && [[ "$out" == *"oldest content unstamped 8."* ]] \
+  && pass "T11f a content file unstamped past 7 days -> rc=3 SEMANTIC-STALE" || fail "T11f (rc=$rc): $out"
+# 7.5 days is past the 7-day bound even though it floors to 7 whole days
+backdate_days "$CORPUS/notes/sub.md" 7.5
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 3 ] && [[ "$out" == *"oldest content unstamped 7.5d (bound 7d)"* ]] \
+  && pass "T11f2 a content file unstamped 7.5 days -> rc=3, not floored under the bound" || fail "T11f2 (rc=$rc): $out"
+
+# --- T11j: 11 refusals on template/vendored paths are not counted -> OK ---
+new_sem_fixture t11j
+semantic_row_at "$OUT" "$(ts_hours_ago 2)" "" "$(csv_files templates/r 11)"
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] && [[ "$out" != *"SEMANTIC-STALE"* ]] \
+  && pass "T11j 11 template refusals -> not counted, rc=0 OK" || fail "T11j (rc=$rc): $out"
+
+# --- T11k: an unreadable semantic manifest -> SEMANTIC-STALE, never OK on unjudged unstamped bounds ---
+new_sem_fixture t11k
+semantic_row_at "$OUT" "$(ts_hours_ago 2)" "" ""
+printf 'not json\n' > "$OUT/semantic-manifest.json"
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 3 ] && [[ "$out" == *"unstamped counts unavailable"* ]] \
+  && pass "T11k an unreadable semantic manifest -> rc=3 SEMANTIC-STALE naming it" || fail "T11k (rc=$rc): $out"
+
+# --- T11g: 51 content files unstamped (bound 50) -> SEMANTIC-STALE; the same count under templates/ is not counted ---
+new_sem_fixture t11g
+semantic_row_at "$OUT" "$(ts_hours_ago 2)" "" ""
+mkdir -p "$CORPUS/docs" "$CORPUS/templates"
+i=1; while [ "$i" -le 51 ]; do printf '# d%s\n' "$i" > "$CORPUS/docs/d$i.md"; printf '# t%s\n' "$i" > "$CORPUS/templates/t$i.md"; i=$((i+1)); done
+printf '{"version":1,"files":{}}\n' > "$OUT/semantic-manifest.json"
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 3 ] && [[ "$out" == *"content unstamped=53"* ]] && [[ "$out" == *" unstamped=53 "* ]] && [[ "$out" == *"non_content_unstamped=0"* ]] \
+  && pass "T11g 53 content files unstamped -> rc=3, the 51 template files are not in the corpus at all (HIMMEL-9140)" || fail "T11g (rc=$rc): $out"
+rm -f "$CORPUS"/docs/d*.md
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] && [[ "$out" != *"SEMANTIC-STALE"* ]] \
+  && pass "T11g2 51 unstamped template files alone -> rc=0 OK" || fail "T11g2 (rc=$rc): $out"
+
+# --- T11h: AST stale AND semantic stale -> rc=1 (stale), SEMANTIC-STALE still printed ---
+new_sem_fixture t11h
+backdate_days "$OUT/graph.json" 10
+semantic_row_at "$OUT" "$(ts_hours_ago 72)" "" ""
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 1 ] && [[ "$out" == *"SEMANTIC-STALE"* ]] && pass "T11h stale AST + stale semantic -> rc=1, SEMANTIC-STALE printed" || fail "T11h (rc=$rc): $out"
+
+# --- T11i: a merge row with no ts -> age unknown is not fresh ---
+new_sem_fixture t11i
+semantic_row_at "$OUT" "" "" ""
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 3 ] && [[ "$out" == *"SEMANTIC-STALE"* ]] && [[ "$out" == *"age unknown"* ]] \
+  && pass "T11i a merge row without a ts -> SEMANTIC-STALE (age unknown), never OK" || fail "T11i (rc=$rc): $out"
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

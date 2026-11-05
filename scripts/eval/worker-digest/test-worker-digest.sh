@@ -313,5 +313,19 @@ check "a missing chain log is null on every denied row, never an error, and the 
 check "control: apart from refusal_line the digest is the same with and without a chain log" '[ "$(jq -S "del(.failures[].refusal_line)" "$TMP/cr/with.json")" = "$(jq -S "del(.failures[].refusal_line)" "$TMP/cr/without.json")" ]'
 check "control: the classes fixture digest gains only a null refusal_line on its denied rows" '[ "$(jq "[.failures[] | select(.failure == \"denied\") | .refusal_line] | all(. == null)" "$TMP/classes.json")" = true ] && [ "$(jq "[.failures[] | select(.failure == \"denied\" and (has(\"refusal_line\") | not))] | length" "$TMP/classes.json")" = 0 ]'
 
+echo "9. a PreToolUse hook deny on an mcp tool or an Agent call is a denial, not an error"
+# fixtures/hook-deny: an mcp__himmel-bus__read refused by the context hand-off guard (hyphen in the tool name), a real read error,
+# an Agent refused with no hook prefix (only the hook-chain log says a guard refused it), and an Agent that really failed.
+S9=9072c1a5-0000-4000-8000-000000000001
+mkdir -p "$TMP/hd"
+cp "$FX/hook-deny/journal.jsonl" "$TMP/hd/$S9.jsonl"
+RUN_HOOK_CHAIN_SKIP_LOG="$TMP/hd/no-skips.jsonl" RUN_HOOK_CHAIN_RUN_LOG="$FX/hook-deny/hook-runs.jsonl" bun "$DIG" --transcript "$TMP/hd/$S9.jsonl" --denials-ledger "$FX/classifier-denials.jsonl" >"$TMP/hd/with.json" 2>"$TMP/hd/with.err" || bad "the hook-deny digest exits 0: $(head -c 300 "$TMP/hd/with.err")"
+hrow() { jq -r --arg t "$1" '[.tool_health[] | select(.tool == $t)] | .[0] | "\(.calls) \(.failures) \(.errors) \(.denials)"' "$TMP/hd/with.json"; }
+check "a hook-denied mcp call counts under denials, the read error under errors" '[ "$(hrow mcp__himmel-bus__read)" = "2 2 1 1" ]'
+check "the mcp hook deny is keyed by its guard, the read error stays error/mcp" 'jq -e "([.failures[] | select(.class == \"denied/guard-leg-context-handoff\")] | length) == 1 and ([.failures[] | select(.class == \"error/mcp\")] | length) == 1" "$TMP/hd/with.json" >/dev/null'
+check "a hook-denied Agent call (no prefix, named by the chain log) counts under denials, the crash under errors" '[ "$(hrow Agent:judge)" = "2 2 1 1" ]'
+check "the Agent hook deny is keyed by the guard the chain log names" '[ "$(jq -r "[.failures[] | select(.class == \"denied/guard-agent-model\")] | .[0].count" "$TMP/hd/with.json")" = 1 ]'
+check "the metrics count two denied and two errored calls" 'jq -e ".metrics.fail_denied == 2 and .metrics.fail_error == 2" "$TMP/hd/with.json" >/dev/null'
+
 echo "test-worker-digest: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

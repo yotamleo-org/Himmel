@@ -37,7 +37,6 @@ TMP_PREFIX = '%00'       # escaping only ever makes %25 and %2F, so a name start
 MAX_NAME = 255
 LOCK_WAIT = 5.0          # seconds a row write waits for the directory lock before it faults
 SIDECARS = ('.worker-preface.md', '.worker-contract.md')  # a launch's sidecars carry the doc's name; they are not a doc of the key
-LEG_RE = re.compile(r'-(N\d+)[a-z]*-')  # the leg number in a handover doc's name
 
 # ---- copied from next-dispatchable.sh (inline python): Task 3 removes the originals ------------------------
 FILE_RE = re.compile(r"(?<![\w./-])((?:scripts|docs|marketplace|plugins|templates|tools|\.claude|\.github|\.codex)/[\w.+@-]+(?:/[\w.+@-]+)*/?|CLAUDE\.md|AGENTS\.md|README\.md|package\.json|package-lock\.json|bun\.lock|uv\.lock|pyproject\.toml|\.gitignore|\.pre-commit-config\.yaml)")
@@ -483,12 +482,12 @@ class Judge:
         for d, mt, mark, _line, _rest in info:
             if 'RESUME' not in os.path.basename(d) or time.time() - mt >= RESUME_AGE or mark == 'WRAPPED':
                 continue
-            # a worker that wraps writes WRAPPED into the doc it worked in, not the RESUME doc: that wrap consumes it,
-            # when it is proven the doc's successor, and unless the wrap bullet hands off to this very doc.
-            # ponytail: a different-leg successor that never names the doc holds for up to RESUME_AGE; a recorded parent link is the upgrade path.
+            # a WRAPPED doc that names the RESUME doc outside its last bullet consumes it; a last bullet that names it hands
+            # off to it. The file mtime, the leg number and the stem are no link: a RESUME doc made after its stem doc wrapped is live work.
+            # ponytail: a successor that never names the doc holds for up to RESUME_AGE, a stem-named wrapped doc included; a recorded parent link is the upgrade path.
             b = os.path.basename(d)
-            if any(m2 == 'WRAPPED' and mt2 > mt and b not in l2 and successor_of(b, d2, r2)
-                   for d2, mt2, m2, l2, r2 in info if d2 != d):
+            if any(m2 == 'WRAPPED' and b not in l2 and successor_of(b, r2)
+                   for d2, _mt2, m2, l2, r2 in info if d2 != d):
                 continue
             return 'alive'
         return res
@@ -551,13 +550,10 @@ def dir_unlock(fd):
     os.close(fd)  # closing the only descriptor releases the flock
 
 
-def successor_of(resume, other, rest):
-    """A newer WRAPPED doc counts against a RESUME doc only through a proven link: it names the doc off its last
-    bullet, or is the doc's stem, or shares its leg number."""
-    if any(resume in l for l in rest) or os.path.basename(other) == resume.replace('-RESUME', ''):
-        return True
-    a, b = LEG_RE.search(resume), LEG_RE.search(os.path.basename(other))
-    return bool(a and b and a.group(1) == b.group(1))
+def successor_of(resume, rest):
+    """A WRAPPED doc consumes a RESUME doc only through an explicit mention of it off its last bullet. A file mtime, a
+    shared leg number and a shared stem are no link: a stale hold costs a 24 h wait, a wrong release a double launch."""
+    return any(resume in l for l in rest)
 
 
 def refusal(path, fields, key):
@@ -717,7 +713,7 @@ def seed_budget(a):
 def seed_rows(repo, judge, key, label, doc, text, deadline):
     """-> (0 | 1 refused | 3 fault, refusal message). Refused: no row of this seed stays. A claim fault or a
     deadline passed: the rows made stay and the answer is 3."""
-    if not has_writes(text):
+    if not has_writes(text) and 'RESUME' in os.path.basename(doc):
         text = fallback_text(judge, doc, key) or text  # a RESUME doc with no Writes line: the predecessor's
     created = []
     faulted = False

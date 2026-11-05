@@ -1,16 +1,29 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// The judge's launcher call returns this envelope while it is set; every other child process runs for real.
-const judgeReply = vi.hoisted(() => ({ out: null as string | null }));
+// While a reply is set, the judge's subscription `claude` call returns it, the usage preflight prints `preflight`, and
+// the API launcher is refused on policy as on the station since PR 4669; each is recorded. Every other child runs for real.
+type Seen = { file: string; args: string[]; env: NodeJS.ProcessEnv };
+const judgeReply = vi.hoisted(() => ({ out: null as string | null, preflight: 'PROCEED\n', calls: [] as Seen[] }));
 vi.mock('node:child_process', async (orig) => {
   const m = await orig<typeof import('node:child_process')>();
-  const execFileSync = ((...a: Parameters<typeof m.execFileSync>) =>
-    judgeReply.out !== null && String((a[1] as string[] | undefined)?.[0] ?? '').endsWith('claude-api.sh') ? judgeReply.out : m.execFileSync(...a)) as typeof m.execFileSync;
+  const execFileSync = ((...a: Parameters<typeof m.execFileSync>) => {
+    if (judgeReply.out === null) return m.execFileSync(...a);
+    const file = String(a[0]);
+    const args = (a[1] as string[] | undefined) ?? [];
+    const seen = { file, args, env: { ...((a[2] as { env?: NodeJS.ProcessEnv } | undefined)?.env ?? process.env) } };
+    if (file === 'claude') { judgeReply.calls.push(seen); return judgeReply.out; }
+    if (String(args[0] ?? '').endsWith('usage-preflight.sh')) { judgeReply.calls.push(seen); return judgeReply.preflight; }
+    if (String(args[0] ?? '').endsWith('claude-api.sh')) {
+      judgeReply.calls.push(seen);
+      throw Object.assign(new Error('Command failed: claude-api.sh\nclaude-api: refused: auto routing is for the himmel graph pass only (kind judge, repo none)'), { status: 2 });
+    }
+    return m.execFileSync(...a);
+  }) as typeof m.execFileSync;
   return { ...m, execFileSync };
 });
 // The run options the repair command hands to the repair, as the last call saw them.
@@ -24,7 +37,9 @@ vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { projectKey, request } from '../client.js';
 import { admissionBudget } from '../release/leaks.js';
-import { apiLaneEnv, judgeEnv, judgePrompt, liveJira, parseDecisions, refuseRequest, registerRelease, renderState } from './release.js';
+import { ctxFor, JUDGE_API_PASS_ENV, judgeApiEnv, judgeEnv, judgeFor, judgePrompt, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge } from './release.js';
+import type { Judge, JudgeInput } from '../release/engine.js';
+import { defaultRoot } from './mirror.js';
 
 let out: string[];
 let root: string;
@@ -51,6 +66,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllEnvs();
   judgeReply.out = null;
+  judgeReply.preflight = 'PROCEED\n';
+  judgeReply.calls = [];
 });
 
 describe.skipIf(process.platform !== 'linux')('jira release from a test on the station', () => {
@@ -174,6 +191,65 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
   beforeEach(() => {
     // rm-run posts to Jira; a loopback Jira is a stub, so the post door stays open.
     vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+    // profile-settings.sh bare runs for real and writes its settings file here.
+    vi.stubEnv('HIMMEL_PROFILE_SETTINGS_DIR', join(root, 'profiles'));
+  });
+
+  async function oneRequest() {
+    await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', join(root, 'verbatim.txt'));
+    await run('request', 'R1', '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'found work');
+    const d = { req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 's', ground: 'g', reason: 'r' };
+    judgeReply.out = JSON.stringify({ is_error: false, result: JSON.stringify([d]) });
+    out = [];
+  }
+
+  it('with no usable API account the judge rules the batch on the subscription (HIMMEL-9077)', async () => {
+    // the station since PR 4669: the API launcher refuses a judge's auto request on policy, with no fallback
+    vi.stubEnv('HIMMEL_API_LANE', 'on');
+    vi.stubEnv('HIMMEL_API_ACCOUNT', 'auto');
+    vi.stubEnv('ANTHROPIC_API_KEY', 'dummy-api-key');
+    vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', 'dummy-oauth-token');
+    vi.stubEnv('WORKER_SESSION_LANE', 'claudex');
+    await oneRequest();
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    expect(out.some((l) => /R-R1-\d+/.test(l))).toBe(true);
+    expect(judgeReply.calls.some((c) => String(c.args[0]).endsWith('claude-api.sh'))).toBe(false);
+    const call = judgeReply.calls.find((c) => c.file === 'claude');
+    expect(call?.args).toEqual(expect.arrayContaining(['--permission-mode', 'plan', '--output-format', 'json', '--max-turns', '1', '--strict-mcp-config']));
+    expect(call?.args[call.args.indexOf('--tools') + 1]).toBe('');
+    expect(call?.args[call.args.indexOf('--mcp-config') + 1]).toBe('{"mcpServers":{}}');
+    expect(Object.keys(call?.env ?? {}).filter((k) => /^(ANTHROPIC_|HIMMEL_API_)/i.test(k))).toEqual([]);
+    expect(call?.env.CLAUDE_CODE_OAUTH_TOKEN).toBe('dummy-oauth-token');
+    const pre = judgeReply.calls.find((c) => String(c.args[0]).endsWith('usage-preflight.sh'));
+    expect(pre?.env).toMatchObject({ CADENCE_USAGE_LANE: 'native', CADENCE_USAGE_WORKER: 'rm-judge' });
+    for (const k of ['WORKER_SESSION_LANE', 'CADENCE_USAGE_LAUNCH', 'CADENCE_USAGE_CALLER_PID']) expect(pre?.env).not.toHaveProperty(k);
+  });
+
+  it('the judge run writes a launch record the digest reads back by the session id (HIMMEL-9163)', async () => {
+    const cache = join(root, 'cache');
+    vi.stubEnv('HIMMELCTL_CACHE_DIR', cache);
+    await oneRequest();
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    const call = judgeReply.calls.find((c) => c.file === 'claude');
+    const sid = call?.args[(call?.args.indexOf('--session-id') ?? -2) + 1] ?? '';
+    expect(sid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    const log = readFileSync(join(cache, 'launch-logs', `rm-judge-${sid.slice(0, 8)}.log`), 'utf8');
+    expect(log).toMatch(new RegExp(`^headed-arm-worker: profile=bare lane=native model=opus role=release-manager session=rm-judge-${sid.slice(0, 8)} session_id=${sid} launched=\\S+\\n$`));
+  });
+
+  it.each(['SKIPPED-BANK', 'BANK-UNKNOWN'])('the judge stops on preflight %s and names the token', async (token) => {
+    await oneRequest();
+    judgeReply.preflight = `bank-preflight: note\n${token}\n`;
+    await expect(run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'))).rejects.toThrow(`nothing ruled: preflight ${token}`);
+    expect(judgeReply.calls.some((c) => c.file === 'claude')).toBe(false);
+  });
+
+  it('a stale bank reading still runs the judge', async () => {
+    await oneRequest();
+    judgeReply.preflight = 'BANK-STALE\n';
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    expect(judgeReply.calls.some((c) => c.file === 'claude')).toBe(true);
+    expect(out.some((l) => /R-R1-\d+/.test(l))).toBe(true);
   });
 
   it('prints nothing pending on an empty queue and makes no judge call', async () => {
@@ -316,19 +392,12 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
       PATH: '/bin', CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli', AI_AGENT: 'x', HOME: '/h', CLAUDE_PROJECT_DIR: '/repo',
       HIMMEL_CONSOLE_LEG: '1', HIMMEL_CONSOLE_DOC: '/d.md', HIMMEL_RELEASE_MANAGER: '1', HIMMEL_RM_DOC: '/r.md', HIMMEL_WORKER_SESSION_ID: 'N1',
       ANTHROPIC_API_KEY: 'k', anthropic_base_url: 'u', CLAUDE_CODE_USE_BEDROCK: '1', HIMMEL_RELEASE_STATE_DIR: '/s',
-    })).toEqual({ PATH: '/bin', HOME: '/h', HIMMEL_RELEASE_STATE_DIR: '/s' });
+      CLAUDE_CODE_OAUTH_TOKEN: 't',
+    })).toEqual({ PATH: '/bin', HOME: '/h', HIMMEL_RELEASE_STATE_DIR: '/s', CLAUDE_CODE_OAUTH_TOKEN: 't' });
   });
 
-  it('the judge call runs on the API lane unless the caller says otherwise (decision 288)', () => {
-    expect(apiLaneEnv({ PATH: '/bin', CLAUDECODE: '1', ANTHROPIC_API_KEY: 'k' })).toEqual({
-      PATH: '/bin', HIMMEL_API_LANE: 'on', HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'judge', HIMMEL_API_CALL_TIMEOUT_S: '900', HIMMEL_API_TOOLS: '',
-    });
-    expect(apiLaneEnv({ HIMMEL_API_LANE: 'off', HIMMEL_API_ACCOUNT: 'B' })).toMatchObject({ HIMMEL_API_LANE: 'off', HIMMEL_API_ACCOUNT: 'B' });
-  });
-
-  it('the judge call is tool-free whatever tool grant the caller exported', () => {
-    expect(apiLaneEnv({ HIMMEL_API_TOOLS: 'Bash,Write' }).HIMMEL_API_TOOLS).toBe('');
-    expect(apiLaneEnv({ PATH: '/bin' }).HIMMEL_API_TOOLS).toBe('');
+  it('the judge env carries nothing of the API lane (decision 525)', () => {
+    expect(judgeEnv({ PATH: '/bin', HIMMEL_API_LANE: 'on', HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_TOOLS: 'Bash,Write' })).toEqual({ PATH: '/bin' });
   });
 });
 
@@ -587,6 +656,119 @@ describe('liveJira.newestFixVersionEntry', () => {
     serve(all);
     expect((await liveJira.newestFixVersionEntry('HIMMEL-3084')).id).toBe('57628');
     expect(vi.mocked(request).mock.calls.some((c) => String(c[1]).includes('startAt=100'))).toBe(true);
+  });
+});
+
+// The judge reaches the API launcher only when the role map maps `judge`. A temp launcher world
+// (roster, snapshot, key files, a fake claude, an alert recorder) and a recording fallback: no row reaches the real
+// liveJudge, a real claude or the real alert sender, and no row reads the station's role map.
+describe('routedJudge (HIMMEL-9076)', () => {
+  const INPUT = { release: 'R1', current: 'v1', versions: ['v1'], requests: [], records: [], operator: [], rulings: [], issues: [] } as unknown as JudgeInput;
+  const decision = (reason: string) => ({ req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 's', ground: 'g', reason });
+  const envelope = (reason: string) => JSON.stringify({ is_error: false, result: JSON.stringify([decision(reason)]) });
+  let dir: string;
+
+  function world(roles: unknown, fake: { out?: string; rc?: number } = {}) {
+    dir = mkdtempSync(join(root, 'world-'));
+    const now = Math.floor(Date.now() / 1000);
+    const config = { version: 1, ledger_path: join(dir, 'ledger.json'), accounts: {
+      A: { organization_id: 'org-a', cycle_id: 'cycle-a', cap_usd: '5.00', key_id: 'key-a', reset_at: '2099-01-01T00:00:00Z' },
+      B: { organization_id: 'org-b', cycle_id: 'cycle-b', cap_usd: '5.00', key_id: 'key-b', reset_at: '2099-01-01T00:00:00Z' },
+    } };
+    const snapshot = { version: 1, accounts: Object.fromEntries(['A', 'B'].map((a) => [a, {
+      organization_id: `org-${a.toLowerCase()}`, cycle_id: `cycle-${a.toLowerCase()}`, grant_usd: '5.00', remaining_usd: '5.00', reconciled_spent_usd: '0',
+      starts_at: now - 1000, expires_at: now + 3600, observed_at: now, source: 'operator-console-snapshot', exclusive_org: true, discrepancy: false,
+    }])) };
+    writeFileSync(join(dir, 'config.json'), JSON.stringify(config));
+    writeFileSync(join(dir, 'snapshot.json'), JSON.stringify(snapshot));
+    for (const a of ['A', 'B']) writeFileSync(join(dir, `key-${a}.env`), `ANTHROPIC_API_KEY=sk-ant-dummy-${a}-0000\n`, { mode: 0o600 });
+    if (roles !== undefined) writeFileSync(join(dir, 'roles.json'), JSON.stringify({ version: 1, roles }));
+    const script = (name: string, body: string) => { writeFileSync(join(dir, name), `#!/bin/bash\n${body}\n`); chmodSync(join(dir, name), 0o700); };
+    script('claude-fake', `{ echo "cwd=$PWD"; echo "acct=\${HIMMEL_API_ACCOUNT:-}"; printf 'arg=%s\\n' "$@"; echo --; } >> '${join(dir, 'fake.log')}'\nprintf '%s' '${fake.out ?? envelope('from-fake')}'\nexit ${fake.rc ?? 0}`);
+    script('alert-stub', `echo "alert $TG_MESSAGE" >> '${join(dir, 'alert.log')}'`);
+    script('ps', 'exit 0');
+    writeFileSync(join(dir, 'native-cache.json'), JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
+    const set: Record<string, string> = {
+      HIMMEL_API_CREDIT_CONFIG: join(dir, 'config.json'), HIMMEL_API_CREDIT_SNAPSHOT: join(dir, 'snapshot.json'),
+      HIMMEL_API_CREDIT_STATE: join(dir, 'ledger.json'), HIMMEL_API_CLAUDE_BIN: join(dir, 'claude-fake'),
+      HIMMEL_API_ALERT_DIR: join(dir, 'alerts'), HIMMEL_API_ALERT_CMD: join(dir, 'alert-stub'), HIMMEL_API_LOCK_WAIT_MS: '2000',
+      HIMMEL_FLEET_CAP: '4', HIMMEL_FLEET_SLOTS: join(dir, 'slots'), FLEET_PS_CMD: join(dir, 'ps'), FLEET_PROC: dir,
+      CADENCE_USAGE_LEDGER: join(dir, 'bank-ledger'), CADENCE_USAGE_SKIP_REFRESH: '1', CADENCE_USAGE_CACHE: join(dir, 'native-cache.json'),
+      ANTHROPIC_API_KEY: '', HIMMEL_API_KEY_ID: '',
+    };
+    for (const [k, v] of Object.entries(set)) vi.stubEnv(k, v);
+    const fallbackCalls: JudgeInput[] = [];
+    const fallback: Judge = async (i) => { fallbackCalls.push(i); return [decision('from-fallback')] as never; };
+    const read = (f: string) => (existsSync(join(dir, f)) ? readFileSync(join(dir, f), 'utf8') : '');
+    return { fallback, fallbackCalls, read };
+  }
+
+  it('the outer spawn timeout outlasts the launcher call timeout plus its five-second kill grace', () => {
+    expect(JUDGE_SPAWN_TIMEOUT_MS).toBeGreaterThan((JUDGE_TIMEOUT_S + 5) * 1000);
+  });
+
+  it('unmapped: the fallback answers and the fake claude never runs', async () => {
+    const w = world(undefined);
+    const got = await makeRoutedJudge(w.fallback)(INPUT);
+    expect(got[0]).toMatchObject({ reason: 'from-fallback' });
+    expect(w.fallbackCalls).toHaveLength(1);
+    expect(w.read('fake.log')).toBe('');
+    expect(existsSync(join(dir, 'alerts', 'policy-refusals.jsonl'))).toBe(false);
+  });
+
+  it('mapped judge:[B]: the fake answers on account B with no tools, no settings, no turn cap and an empty cwd', async () => {
+    const w = world({ judge: ['B'] });
+    const got = await makeRoutedJudge(w.fallback)(INPUT);
+    expect(got[0]).toMatchObject({ reason: 'from-fake' });
+    expect(w.fallbackCalls).toHaveLength(0);
+    expect(JSON.parse(w.read('launches.jsonl').trim()).account).toBe('B');
+    expect(existsSync(join(dir, 'alerts', 'policy-refusals.jsonl'))).toBe(false);
+    const log = w.read('fake.log');
+    expect(log).toMatch(/^acct=B$/m);
+    const args = [...log.matchAll(/^arg=(.*)$/gm)].map((m) => m[1]);
+    expect(args[args.indexOf('--tools') + 1]).toBe('');
+    expect(args[args.indexOf('--permission-mode') + 1]).toBe('plan');
+    for (const bad of ['--settings', '--max-turns', '--mcp-config']) expect(args).not.toContain(bad);
+    const cwd = /^cwd=(.*)$/m.exec(log)?.[1] ?? '';
+    expect(cwd).not.toBe('');
+    expect(cwd.startsWith(join(dir, '..'))).toBe(false);
+    expect(existsSync(join(cwd, '.git'))).toBe(false);
+  });
+
+  it('judgeApiEnv carries exactly the pass-through names plus the pins and no other HIMMEL_API_ name', () => {
+    const wide: NodeJS.ProcessEnv = { HIMMEL_API_FOO: '1', HIMMEL_API_ACCOUNT: 'A', HIMMEL_API_KIND: 'eval', ANTHROPIC_API_KEY: 'k', PATH: '/bin' };
+    for (const k of JUDGE_API_PASS_ENV) wide[k] = `v-${k}`;
+    const got = judgeApiEnv(wide, '/repo/.git');
+    const keys = Object.keys(got).filter((k) => k.startsWith('HIMMEL_API_')).sort();
+    const pins = ['HIMMEL_API_LANE', 'HIMMEL_API_ACCOUNT', 'HIMMEL_API_KIND', 'HIMMEL_API_FALLBACK', 'HIMMEL_API_TOOLS', 'HIMMEL_API_CALL_TIMEOUT_S', 'HIMMEL_API_AUTO_REPO_DIR'];
+    expect(keys).toEqual([...JUDGE_API_PASS_ENV, ...pins].sort());
+    expect(got).toMatchObject({ HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'judge', HIMMEL_API_FALLBACK: 'off', HIMMEL_API_TOOLS: '', HIMMEL_API_CALL_TIMEOUT_S: '900', HIMMEL_API_AUTO_REPO_DIR: '/repo/.git' });
+    expect(got).not.toHaveProperty('ANTHROPIC_API_KEY');
+    expect(got.HIMMEL_API_CREDIT_CONFIG).toBe('v-HIMMEL_API_CREDIT_CONFIG');
+  });
+
+  it('mapped, launcher exit non-zero: the fallback answers and the fake ran exactly once (fallback off)', async () => {
+    const w = world({ judge: ['B'] }, { rc: 2, out: 'boom' });
+    const got = await makeRoutedJudge(w.fallback)(INPUT);
+    expect(got[0]).toMatchObject({ reason: 'from-fallback' });
+    expect(w.fallbackCalls).toHaveLength(1);
+    expect((w.read('fake.log').match(/^--$/gm) ?? []).length).toBe(1);
+    expect(w.read('alert.log')).not.toBe('');
+  });
+
+  it('mapped, unparseable output: the fallback answers', async () => {
+    const w = world({ judge: ['B'] }, { out: 'not json at all' });
+    const got = await makeRoutedJudge(w.fallback)(INPUT);
+    expect(got[0]).toMatchObject({ reason: 'from-fallback' });
+  });
+
+  it('judgeFor: the himmel mirror routes, any other mirror (a SALUS one, or slice A\'s no-mirror) is liveJudge', () => {
+    const w = world({ judge: ['B'] });
+    void w;
+    expect(judgeFor(ctxFor('R1', defaultRoot('HIMMEL')))).toBe(routedJudge);
+    expect(judgeFor(ctxFor('R1', defaultRoot('SALUS')))).toBe(liveJudge);
+    expect(judgeFor(ctxFor('R1', join(root, 'no-mirror')))).toBe(liveJudge);
+    expect(w.read('fake.log')).toBe('');
   });
 });
 

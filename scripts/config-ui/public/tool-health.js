@@ -353,6 +353,15 @@ function profilePanel(data) {
   const empty = '<p class="nodata">No per-profile data: no sessions in this period</p>';
   return `<h3 class="sec">Tools by launch profile</h3>${sub("Per launch profile: sessions, how often each tool was called and failed, its estimated listing cost (Skill listing only; MCP schemas are not measured), and whether it earns its place in that profile's default. Suggestions only: nothing changes until an operator applies one.")}${rows.length ? table(["Profile", "Sessions", "Calls", "Tool", "Failure rate", "Listing cost", "Suggestion"], rows) : empty}`;
 }
+// Role x lane x profile, straight from the rollup's cross_tab; the unknown share and what it was are named, never inferred.
+function crossTabPanel(data) {
+  const rows = (data.cross_tab || []).map((c) => `<tr data-cross-tab="${esc(`${c.team} ${c.lane} ${c.profile}`)}">${td(esc(TEAM_LABEL[c.team] || c.team))}${td(esc(c.lane))}${td(esc(profileName(c.profile)))}${td(num(c.sessions))}${td(num(c.calls))}${td(num(c.failures))}${td(num(c.denials))}</tr>`);
+  const a = data.attribution || {};
+  const remainder = (a.remainder || []).map((r) => `${esc(r.kind)} (${num(r.sessions)} sessions, ${num(r.calls)} calls)`).join(", ");
+  const note = isNum(a.lane_unknown_share) || isNum(a.profile_unknown_share)
+    ? `<p class="nodata" data-attribution>Lane unknown: ${pct(a.lane_unknown_share)} of calls (${num(a.lane_unknown_sessions)} of ${num(a.sessions)} sessions). Launch profile unknown: ${pct(a.profile_unknown_share)} of calls.${remainder ? ` Lane remainder by kind of session: ${remainder}.` : ""}</p>` : "";
+  return `${sub("Every session's role, lane and launch profile come from its launch record at ingest. A session with no launch record reads unknown and names what kind of session it was; nothing is inferred.")}${table(["Role", "Lane", "Profile", "Sessions", "Calls", "Failures", "Denied"], rows, "No sessions in this window")}${note}`;
+}
 function candidatesPanel(data) {
   const rows = (data.drop_candidates || []).map((d) => `<tr data-candidate="${esc(`${d.profile} ${d.tool}`)}">${td(esc(d.profile))}${td(esc(d.tool))}${td(`${num(d.calls)} calls`)}${td(`${num(d.listing_tokens)} tokens per listing`)}</tr>`);
   return table(["Profile", "Tool", "Calls in window", "Listing cost"], rows, "Nothing loaded and unused, or the listing cost is not measured");
@@ -369,6 +378,7 @@ function overview(data, st, ui) {
 ${box("tools", "Tools", "Which tool, skill, hook or plugin fails most? Each name opens its drill-in.", toolList(data, st.inventory, ui), "First build")}
 <div class="th-cols">${box("guards", "Guards that refuse most", "Which guard blocks the most calls? The rate is over the calls to the tools each guard is wired to check; the Bash-only rate is the older denominator, kept for comparison. A refusal can be correct.", guardsPanel(data, ui), "÷ eligible call attempts")}${box("classifier", "Classifier denials", "Which calls did the auto-mode classifier deny? A count per category; the reason stays unverified.", classifierPanel(data), "reason unverified")}</div>
 ${box("lanes", "Bash on each lane", "Does Bash fail more on one lane?", lanePanel(data))}
+${box("roles", "Role, lane and profile", "Which role ran on which lane under which profile, and how much of the fleet the launch records leave unnamed?", crossTabPanel(data))}
 ${box("unused", "Loaded, never used", "Costs usage in every session; could load on demand. The cost is the estimated tokens per listing, not a measured gain.", candidatesPanel(data) + profilePanel(data))}`;
 }
 

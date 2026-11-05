@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# launch-guard-ok-file: folder checked by launch-guard-check.sh in headed-arm.sh
 # scripts/handover/headed-arm.sh - launch a HEADED successor session (a konsole
 # window with a real TTY) when a signal file appears OR a hard deadline passes,
 # whichever comes first.
@@ -54,7 +55,8 @@
 # (and eventually past) the first 60 lines of the file, the window
 # scripts/parity/test-ws5-invariants.sh's T15 check scans for one.
 #
-# Exit codes: 2 usage / bad argument, or a launch refused because its Writes paths overlap a live hold; 3 no konsole on PATH; 13 could not
+# Exit codes: 18 the session folder does not load the himmel guard hooks (UNGUARDED_LAUNCH_OK=1 in the
+# launching shell launches it anyway with a WARN); 2 usage / bad argument, or a launch refused because its Writes paths overlap a live hold; 3 no konsole on PATH; 13 could not
 # resolve this script's own directory to locate the
 # macOS konsole shim, a distinct failure from 3 above; 16 another live worker
 # session already holds the same ticket, or another lineage's arm for that
@@ -517,6 +519,25 @@ LAUNCHER_ENV="${HEADED_ARM_LAUNCHER_ENV:-}"
 # worker's claude. A leaked list would make any arm spawned from that worker prepend
 # the PARENT's profile tokens (first token wins) ahead of its own.
 unset HEADED_ARM_LAUNCHER_ENV
+# HEADED_ARM_LAUNCHER_ENV_LINES: newline-delimited NAME=VALUE, each entry ONE argv
+# element (the token list above word-splits, so a value with a space cannot ride it).
+LAUNCHER_ENV_LINES=()
+while IFS= read -r _l; do
+    [ -n "$_l" ] && LAUNCHER_ENV_LINES+=("$_l")
+done <<<"${HEADED_ARM_LAUNCHER_ENV_LINES:-}"
+unset HEADED_ARM_LAUNCHER_ENV_LINES
+# Validated before any claim or launch: a name that is not a shell identifier is refused.
+for _l in ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"}; do
+    case "$_l" in
+        *=*) _n="${_l%%=*}" ;;
+        *)   _n="" ;;
+    esac
+    case "$_n" in
+        ''|[!_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz]*|*[!_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789]*)
+            echo "headed-arm: HEADED_ARM_LAUNCHER_ENV_LINES line is not NAME=VALUE: $_l" >&2
+            exit 2 ;;
+    esac
+done
 RECORDER="${HEADED_ARM_RECORDER:-0}"
 REQUIRED_AUTOCOMPACT="${HEADED_ARM_REQUIRED_AUTOCOMPACT:-}"
 unset HEADED_ARM_REQUIRED_AUTOCOMPACT
@@ -589,6 +610,15 @@ if [ "$ROLE" = "chief" ]; then
     done
     set +f
     LAUNCHER_ENV="$_kept_env"
+    # Same drop for the line channel (an element is exact, so match the whole name).
+    _kept_lines=()
+    for _l in ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"}; do
+        case "$_l" in
+            HIMMEL_CONSOLE_RELAY=*) ;;
+            *) _kept_lines+=("$_l") ;;
+        esac
+    done
+    LAUNCHER_ENV_LINES=(${_kept_lines[@]+"${_kept_lines[@]}"})
     # A relative DOC resolves against REPO (the session's --workdir, see the
     # DOC note below), but the PreCompact hook runs in whatever cwd the session
     # has by then -- export it absolute so the hook opens the file the chief
@@ -759,6 +789,32 @@ if ! command -v "$PGREP" >/dev/null 2>&1; then
     exit 4
 fi
 
+# A session folder that would not load the himmel guard hooks is refused before the dry-run
+# report, any lock, terminal or headless child. UNGUARDED_LAUNCH_OK=1 (launching shell) launches anyway
+# with one WARN; HIMMEL_LAUNCH_GUARD_WARNED=<this folder> only silences that WARN, never the check.
+_lg_reason="$(bash "$(dirname "$0")/../lib/launch-guard-check.sh" "$REPO")"; _lg_rc=$?
+if [ "$_lg_rc" -ne 0 ]; then
+    case "$_lg_rc" in
+        1) ;;
+        2) _lg_reason="folder cannot be resolved" ;;
+        *) _lg_reason="launch-guard-check failed (rc $_lg_rc)" ;;
+    esac
+    _lg_phys="$(cd -P -- "$REPO" 2>/dev/null && pwd -P)" || _lg_phys="$REPO"  # swallow-ok: an unresolvable folder falls back to the raw path for the message and marker comparison
+    if [ "${UNGUARDED_LAUNCH_OK:-}" = "1" ]; then
+        if [ "${HIMMEL_LAUNCH_GUARD_WARNED:-}" != "$_lg_phys" ]; then
+            _lg_warn="WARN unguarded launch of $NAME in $_lg_phys ($_lg_reason; UNGUARDED_LAUNCH_OK=1)"
+            echo "$_lg_warn" >&2
+            # $LOG was absolutized above; if its directory does not exist this early, stderr alone carries the WARN.
+            [ -d "$(dirname "$LOG")" ] && echo "$_lg_warn" >> "$LOG" 2>/dev/null
+        fi
+    else
+        echo "headed-arm: refusing to launch $NAME: $_lg_phys does not load the himmel guard hooks ($_lg_reason). Launch from a himmel checkout or worktree, register the repo and wire the user guard layer (himmelctl ensure), or set UNGUARDED_LAUNCH_OK=1 in the launching shell to launch it unguarded." >&2
+        exit 18
+    fi
+fi
+# The check has used both names; the session this launches must not inherit the opt-out or the WARN marker.
+unset UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED
+
 # Everything above this point is pure argument resolution and
 # validation (usage-arity, --role, context, the placeholder-name refusal,
 # NAME/DEADLINE shape, konsole/pgrep PATH availability) - none of it writes
@@ -770,6 +826,9 @@ if [ "$DRY_RUN" -eq 1 ]; then
     printf 'headed-arm: would exec: %s\n' "$(printf '%q ' "${LAUNCH_ARGV[@]}")"
     printf 'headed-arm: env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR%s CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE=%s ARMAUTOMERGE=1%s%s\n' \
         "${ROLE_ENV_UNSET:+ $ROLE_ENV_UNSET}" "$INIT" "${CHIEF_ENV[0]:+ ${CHIEF_ENV[*]}}" "${LAUNCHER_ENV:+ $LAUNCHER_ENV}"
+    for _l in ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"}; do
+        printf 'launcher-env-line: %s\n' "$_l"
+    done
     printf 'headed-arm: name=%s doc=%s signal=%s deadline=%s log=%s role=%s\n' \
         "$NAME" "$DOC" "$SIGNAL" "$DEADLINE" "$LOG" "${ROLE:-unsplit}"
     printf 'headed-arm: %s (autocompact=%s)\n' "$CONTEXT_REASON" "$AUTOCOMPACT"
@@ -1099,6 +1158,9 @@ headless_launch() {
         case "$tok" in *=*) _hl_set "${tok%%=*}" "${tok#*=}" ;; esac
     done
     set +f
+    for tok in ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"}; do
+        _hl_set "${tok%%=*}" "${tok#*=}"
+    done
     # Only a launcher the operator started with the bypass hands it on; a
     # daemon spawned from a bypass shell never does.
     val=""
@@ -1135,7 +1197,7 @@ headless_launch() {
     local lrc=0
     # shellcheck disable=SC2086  # deliberately word-split env tokens, the same shape as the konsole branches.
     env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR $ROLE_ENV_UNSET \
-        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV \
+        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"} \
         "${LAUNCH_ARGV[@]}" < /dev/null >> "$LOG" 2>&1 || lrc=$?
     [ "$lrc" -eq 0 ] || headless_fail 1 "headless: the background launch for $NAME exited $lrc - see $LOG for its output"
 
@@ -1586,7 +1648,11 @@ if [ -n "${HIMMEL_HOLD_KEY:-}" ] && [ -n "${HIMMEL_HOLD_DOC:-}" ] && [ "$ROLE" !
             _holds_line="$(printf '%s\n' "$_holds_err" | grep -m 1 '^holds: ' | tr -d '>')"
             case "$_holds_path" in
                 /*) _holds_grant="no grant exists for a path outside the repo ($_holds_path): wait for the holder to wrap, or the operator launches with WRITE_HOLD_OK=1" ;;
-                *) _holds_grant="to let $HIMMEL_HOLD_KEY write it, the chief runs: python3 -I $_holds_primary/scripts/handover/chief-kit/holds.py grant --key $HIMMEL_HOLD_KEY --repo $REPO ${_holds_path:-PATH}" ;;
+                *)  # the line is pasted and run: the primary path, the repo and the file are shell-quoted
+                    printf -v _holds_q_holds '%q' "$_holds_primary/scripts/handover/chief-kit/holds.py"
+                    printf -v _holds_q_repo '%q' "$REPO"
+                    printf -v _holds_q_path '%q' "${_holds_path:-PATH}"
+                    _holds_grant="to let $HIMMEL_HOLD_KEY write it, the chief runs: python3 -I $_holds_q_holds grant --key $HIMMEL_HOLD_KEY --repo $_holds_q_repo $_holds_q_path" ;;
             esac
             echo "headed-arm: $_holds_grant" >&2
             # the chief reads neither this stderr (a generated launcher keeps it in launch.out, a hand launch sends it to /dev/null) nor
@@ -1684,13 +1750,13 @@ if [ "$RECORDER" = "1" ]; then
     # same file. -a is load-bearing: without it, `script -f` TRUNCATES $LOG on
     # open, discarding whatever the outer >> already wrote there.
     TERM_ARGV=(env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR $ROLE_ENV_UNSET
-        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} SHELL="$BASH_BIN" $LAUNCHER_ENV PATH="$DEDUPED_PATH"
+        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} SHELL="$BASH_BIN" $LAUNCHER_ENV ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"} PATH="$DEDUPED_PATH"
         script -q -a -f "$LOG" -c "$LAUNCH_CMD")
 else
     # shellcheck disable=SC2206  # LAUNCHER_ENV and ROLE_ENV_UNSET
     # word-split, same contract as the recorder branch above.
     TERM_ARGV=(env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR $ROLE_ENV_UNSET
-        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV PATH="$DEDUPED_PATH"
+        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"} PATH="$DEDUPED_PATH"
         "${LAUNCH_ARGV[@]}")
 fi
 

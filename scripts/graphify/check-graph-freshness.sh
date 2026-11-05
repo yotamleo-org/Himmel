@@ -28,17 +28,29 @@
 #               carry it. A stale graph still reports rc=1; the stuck message
 #               is printed either way. rc=3 is not rc=2: the graph can be
 #               queried, only its semantic layer is behind.
+#   rc=3 SEMANTIC-STALE — the semantic layer is past a bound even
+#               though the AST layer may be fresh: the last merge row is older
+#               than 48h (daily cadence + one missed fire), or the last row has
+#               more than 10 content failures or 10 content refusals, or more
+#               than 50 content files are unstamped, or the oldest unstamped
+#               content file is older than 7d, or the unstamped counts cannot
+#               be read. Templates, fixtures, testdata, eval
+#               graders and vendored dirs (an ancestor holds VENDORED.md) are
+#               counted apart as non_content_* and never trip the bound. A
+#               stale graph still reports rc=1; the message prints either way.
 #   rc=1 WARN — age is older than --max-age-days. Age is measured from
 #               graph.json's embedded built_at_commit (via that commit's
 #               committer date in the resolved corpus, when available),
 #               else falls back to graph.json's (or
 #               manifest.json's) filesystem mtime.
-#   rc=0 OK   — fresh AND corpus verified; prints exactly one OK line (after the
+#   rc=0 OK   — fresh AND corpus verified AND (with a semantic-runs.jsonl) the
+#               semantic layer within the bounds above; prints exactly one OK line (after the
 #               semantic line below, when there is one):
 #               "graph-freshness: OK (<age-days>d old, corpus verified)"
 #   With a semantic-runs.jsonl, every verdict past the orphan check is preceded
 #   by "graph-freshness: semantic last=<ts> failed=<n> refused=<n> [backed_off=<n>
-#   unstamped=<n> oldest_unstamped=<d>d]" on stdout.
+#   unstamped=<n> oldest_unstamped=<d>d non_content_unstamped=<n>]
+#   non_content_failed=<n>" on stdout.
 #
 # CORPUS RESOLUTION (orphan detection):
 #   --corpus-root given → that dir is the corpus root (must exist); the orphan
@@ -201,15 +213,35 @@ else
 fi
 
 # --- 3b. semantic refresh: the last merge row, and files stuck across runs ---
-STUCK_MSG=""
+# The semantic layer is judged on its own, apart from the AST age in step 4: the
+# hourly AST rebuild keeps graph.json fresh while the semantic layer can lag for
+# weeks. SEMANTIC-STALE when the last merge row is older than SEM_MAX_AGE_H (the
+# daily semantic cadence, 24h, plus 24h grace for one missed fire), has no ts, or
+# carries more than SEM_MAX_FAILED content failures, SEM_MAX_REFUSED refusals,
+# SEM_MAX_UNSTAMPED unstamped content files, or a content file unstamped for more
+# than SEM_MAX_OLDEST_D days. A failed or refused path is non-content, and
+# counted apart, when a directory above it holds VENDORED.md or one of its
+# directories is a template or fixture directory: semantic-merge.py's
+# noncontent(), which also keeps such files out of the corpus, so a new one is
+# never unstamped and only older run rows still name them.
+SEM_MAX_AGE_H=48 SEM_MAX_FAILED=10 SEM_MAX_REFUSED=10 SEM_MAX_UNSTAMPED=50 SEM_MAX_OLDEST_D=7
+STUCK_MSG="" SEM_STALE_MSG=""
 SEMANTIC_RUNS="$OUT/semantic-runs.jsonl"
 if [ -f "$SEMANTIC_RUNS" ]; then
-  SEM_STATUS=""
-  if [ -f "$OUT/semantic-manifest.json" ]; then
-    SEM_STATUS="$(python3 "$HERE/semantic-merge.py" status --root "$CORPUS_RESOLVED" --out "$OUT" 2>/dev/null || true)"
-  fi
-  SEM_OUT="$(python3 - "$SEMANTIC_RUNS" <<'PYEOF'
-import json, sys
+  SEM_OUT="$(python3 - "$SEMANTIC_RUNS" "$CORPUS_RESOLVED" "$OUT" "$HERE/semantic-merge.py" \
+    "$SEM_MAX_AGE_H" "$SEM_MAX_FAILED" "$SEM_MAX_REFUSED" "$SEM_MAX_UNSTAMPED" "$SEM_MAX_OLDEST_D" <<'PYEOF'
+import calendar, importlib.util, json, os, sys, time
+
+root, out = sys.argv[2], sys.argv[3]
+max_age_h, max_failed, max_refused, max_unstamped, max_oldest_d = (int(v) for v in sys.argv[5:10])
+spec = importlib.util.spec_from_file_location("semantic_merge", sys.argv[4])
+sm = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(sm)
+
+
+def noncontent(rel):  # the one rule the semantic corpus walk uses, so the two never drift
+    return sm.noncontent(root, rel)
+
 
 rows = []
 with open(sys.argv[1], encoding="utf-8", errors="replace") as fh:
@@ -229,21 +261,69 @@ def stuck(row):
 
 
 last = rows[-1]
-failed = len(last["failed_files"]) if "failed_files" in last else last.get("failed", 0)
+failed_files = last.get("failed_files")
+failed = len(failed_files) if failed_files is not None else last.get("failed", 0)
+nc_failed = sum(1 for f in failed_files or [] if noncontent(f))
 refused = len(last["refused_files"]) if "refused_files" in last else last.get("shrink_refused", 0)
-print("LINE last=%s failed=%s refused=%s" % (last.get("ts", "?"), failed, refused))
+nc_refused = sum(1 for f in last.get("refused_files") or [] if noncontent(f))
+status = ""
+unstamped_content, oldest_content_d = 0, 0.0
+changed, unstamped_err = None, ""
+if os.path.isfile(os.path.join(out, "semantic-manifest.json")):
+    # the same counts `semantic-merge.py status` prints, plus the content-only ones the bounds judge
+    try:
+        _, changed, skipped = sm.unstamped(type("A", (), {"root": root, "out": out}))
+    except Exception as exc:  # unreadable manifest or corpus: the unstamped bounds cannot be judged, so never OK
+        changed = skipped = None
+        unstamped_err = type(exc).__name__
+if changed is not None:
+    now = time.time()
+    age_d = {rel: (now - os.path.getmtime(os.path.join(root, rel))) / 86400 for rel in changed}
+    content = [rel for rel in changed if not noncontent(rel)]
+    unstamped_content = len(content)
+    oldest_content_d = max((age_d[rel] for rel in content), default=0.0)
+    status = " backed_off=%d unstamped=%d oldest_unstamped=%dd non_content_unstamped=%d" % (
+        len(skipped), len(changed), max(age_d.values(), default=0), len(changed) - len(content))
+print("LINE last=%s failed=%s refused=%s%s non_content_failed=%d" % (last.get("ts", "?"), failed, refused, status, nc_failed))
 if len(rows) >= 3:
     every = stuck(rows[-1]) & stuck(rows[-2]) & stuck(rows[-3])
     if every:
         print("STUCK " + ", ".join(sorted(every)))
+
+why = []
+try:
+    age_h = (time.time() - calendar.timegm(time.strptime(last["ts"], "%Y-%m-%dT%H:%M:%SZ"))) / 3600
+except (KeyError, TypeError, ValueError):
+    age_h = None
+if age_h is None:
+    why.append("last semantic merge age unknown (no parseable ts)")
+elif age_h > max_age_h:
+    why.append("last semantic merge %dd ago (%dh, bound %dh)" % (age_h // 24, age_h, max_age_h))
+if failed - nc_failed > max_failed:
+    why.append("content failed=%d (bound %d; %d non-content failures not counted)" % (failed - nc_failed, max_failed, nc_failed))
+if refused - nc_refused > max_refused:
+    why.append("content refused=%d (bound %d; %d non-content refusals not counted)" % (refused - nc_refused, max_refused, nc_refused))
+if unstamped_err:
+    why.append("unstamped counts unavailable (%s reading the semantic manifest or corpus)" % unstamped_err)
+if unstamped_content > max_unstamped:
+    why.append("content unstamped=%d (bound %d)" % (unstamped_content, max_unstamped))
+if oldest_content_d > max_oldest_d:
+    why.append("oldest content unstamped %.1fd (bound %dd)" % (oldest_content_d, max_oldest_d))
+if why:
+    print("SEMSTALE " + "; ".join(why))
 PYEOF
 )" || fail "cannot read $SEMANTIC_RUNS."
   SEM_LINE="$(printf '%s\n' "$SEM_OUT" | sed -n 's/^LINE //p')"
-  [ -z "$SEM_LINE" ] || echo "graph-freshness: semantic $SEM_LINE $SEM_STATUS"
+  [ -z "$SEM_LINE" ] || echo "graph-freshness: semantic $SEM_LINE"
   SEM_STUCK="$(printf '%s\n' "$SEM_OUT" | sed -n 's/^STUCK //p')"
   if [ -n "$SEM_STUCK" ]; then
     STUCK_MSG="semantic refresh stuck: $SEM_STUCK failed, was refused or stayed backed off in each of the last 3 runs (a backed-off file stays stuck until its content changes; to retry it now run: python3 $(printf '%q' "$HERE")/semantic-merge.py unstick --out $(printf '%q' "$OUT"))."
     echo "graph-freshness: STUCK $STUCK_MSG" >&2
+  fi
+  SEM_WHY="$(printf '%s\n' "$SEM_OUT" | sed -n 's/^SEMSTALE //p')"
+  if [ -n "$SEM_WHY" ]; then
+    SEM_STALE_MSG="semantic layer is stale: $SEM_WHY. The AST layer can be fresh while this is true. Remedy: run the semantic pass for this corpus (himmel station: bash ~/.claude/graphmap-cadence/graphmap-himmel.sh, the HIMMEL-GraphMap-Himmel cron runner)."
+    echo "graph-freshness: SEMANTIC-STALE $SEM_STALE_MSG" >&2
   fi
 fi
 
@@ -301,6 +381,6 @@ if [ "$AGE_VERDICT" = "STALE" ]; then
   exit 1
 fi
 
-[ -z "${STUCK_MSG:-}" ] || exit 3
+[ -z "$STUCK_MSG$SEM_STALE_MSG" ] || exit 3
 
 echo "graph-freshness: OK (${AGE_DAYS_FLOOR}d old, corpus verified)"

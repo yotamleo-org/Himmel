@@ -720,8 +720,9 @@ PATH="$PATH:/usr/local/bin:/usr/bin:/bin" bash "$REPO_ROOT/scripts/lib/test-run-
 # scripts/handover/queue-lock.sh's queue lock (see its header for the full
 # mkdir-atomicity rationale). Deliberately smaller here: this is a
 # lean-invoke operator/scheduler tool, not the multi-writer armed-session
-# coordination queue-lock.sh guards, so no session tokens, heartbeat, or
-# arms-registry integration -- just a bounded-wait acquire with stale-by-age
+# coordination queue-lock.sh guards, so no session tokens or arms-registry
+# integration (the one heartbeat is the AST worker's, see _promote_lock_acquire)
+# -- just a bounded-wait acquire with stale-by-age
 # takeover (a loud stderr trail either way), released on ANY exit (success
 # or failure) by the same EXIT trap that cleans up SCRATCH below.
 # Residual (accepted): a stale-but-ALIVE holder (machine-sleep
@@ -1045,7 +1046,7 @@ _promote_lock_takeover() {
 # the wait budget is exhausted -- the caller exits non-zero rather than
 # silently clobbering.
 _promote_lock_acquire() {
-  local waited=0 missing_polls=0 held_at now age token
+  local waited=0 missing_polls=0 held_at now age token beat
   while :; do
     # prim-ok: ast-update and semantic-update share this owner-token directory and stale-takeover protocol.
     if mkdir "$PROMOTE_LOCK" 2>/dev/null; then
@@ -1068,6 +1069,13 @@ _promote_lock_acquire() {
     case "$held_at" in ''|*[!0-9]*) held_at="" ;; esac
     if [ -n "$held_at" ]; then
       missing_polls=0
+      # A live AST worker (ast-update.sh) rewrites <lock>/heartbeat
+      # while it runs (an AST run holds the lock ~18 min, past the 600s floor);
+      # judge staleness from whichever of stamp and heartbeat is newer. A dead
+      # holder's heartbeat stops, so it still ages out.
+      beat=$(cat "$PROMOTE_LOCK/heartbeat" 2>/dev/null) || beat=""
+      case "$beat" in ''|*[!0-9]*) beat="" ;; esac
+      if [ -n "$beat" ] && [ "$beat" -gt "$held_at" ]; then held_at="$beat"; fi
       now=$(date -u +%s)
       age=$(( now - held_at ))
       if [ "$age" -ge "$PROMOTE_LOCK_STALE_SECONDS" ]; then
@@ -2116,6 +2124,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
     if p and p[2:] in t:
         out.write(p + b"\0")' "$TRACKED_LIST"
         else cat; fi \
+      | python3 "$HERE/semantic-merge.py" noncontent-filter --root "$CORPUS_ROOT" \
       | tar --null -T - -cf - ) | ( cd "$SCRATCH" && tar -xf - ) \
     || { echo "refresh-graph-map: corpus scan/copy failed or refused (see output above)" >&2; exit 1; }
   if [ -n "$TRACKED_LIST" ]; then rm -f "$TRACKED_LIST"; fi

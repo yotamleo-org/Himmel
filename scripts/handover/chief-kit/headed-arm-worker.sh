@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# launch-guard-ok-file: folder checked by launch-guard-check.sh in headed-arm-worker.sh
 # scripts/handover/chief-kit/headed-arm-worker.sh - versioned WORKER launcher
 # A thin wrapper around scripts/handover/headed-arm.sh that
 # pins every worker arm to the standard --autocompact 200000 ceiling (a native-lane
@@ -47,7 +48,9 @@
 # only the page/ack records under ${HIMMEL_DENIAL_ACK_DIR:-~/.himmel/state/
 # denial-acks} (never the denial log), and fails open: no record, an acked one,
 # a REPEAT, or an unreadable record launches. Exit 14 joins 2 usage, 10 fleet
-# cap, 11 bank exhausted, 12 macOS whitespace.
+# cap, 11 bank exhausted, 12 macOS whitespace. Exit 18: the session folder (WORKER_SESSION_REPO, else
+# HEADED_ARM_REPO, else this checkout, after the resume_cwd fold) does not load the himmel guard hooks;
+# UNGUARDED_LAUNCH_OK=1 in the launching shell launches it anyway with one WARN.
 #
 # --headless (or WORKER_SESSION_HEADLESS=1 in the launching shell, the flag
 # wins): the same launch with no konsole - the worker runs as a Claude Code
@@ -80,9 +83,11 @@
 # preflight call below. Exit 11: the $LANE bank is
 # exhausted (SKIPPED-BANK) - same preflight call, distinct refusal reason.
 # Exit 12: on macOS, worker_propagate_env refused a worker-process
-# env value that contains whitespace - it cannot round-trip through
-# HEADED_ARM_LAUNCHER_ENV's whitespace-split token list, and macOS has no
+# env value that contains whitespace other than a space - neither
+# HEADED_ARM_LAUNCHER_ENV's whitespace-split token list nor its
+# newline-separated HEADED_ARM_LAUNCHER_ENV_LINES can carry it, and macOS has no
 # other channel for it (a plain export never reaches an `open -a` worker there).
+# A value whose only whitespace is spaces rides HEADED_ARM_LAUNCHER_ENV_LINES.
 # On any other platform, plain-export inheritance already carries such a
 # value, so worker_propagate_env leaves it there instead of refusing - see its
 # own doc comment below. All three exit codes are distinct from
@@ -238,6 +243,14 @@ usage() {
     echo "  --context-guard: the worker context guard (default none = off, except a Sonnet launch on a profile that sets one: worker-impl hands off, worker-eval compacts); see docs/internals/worker-context-guard.md" >&2
 }
 
+# _worker_line_has NAME - true when HEADED_ARM_LAUNCHER_ENV_LINES already carries a NAME= line.
+_worker_line_has() {
+    case $'\n'"${HEADED_ARM_LAUNCHER_ENV_LINES:-}"$'\n' in
+        *$'\n'"$1="*) return 0 ;;
+    esac
+    return 1
+}
+
 # worker_propagate_env NAME VALUE - on macOS, `open -a` starts a worker
 # from a FRESH environment (konsole-macos.sh's own header - PATH excepted, by
 # a deliberate policy this fix leaves untouched), so a plain `export` here
@@ -256,9 +269,10 @@ usage() {
 # already present as a token. HEADED_ARM_LAUNCHER_ENV is a whitespace-split
 # token list (same contract as CODEX_USAGE_PROBE_CMD) with no quoting scheme,
 # so a value containing whitespace cannot become a token: it would silently
-# mis-split into extra bogus tokens. On macOS (HEADED_ARM_UNAME=Darwin), the
-# token list is the ONLY channel to the worker, so such a value is refused
-# loudly (exit 12) rather than silently corrupted. On every other platform, a
+# mis-split into extra bogus tokens. On macOS (HEADED_ARM_UNAME=Darwin), a
+# value whose only whitespace is spaces goes to HEADED_ARM_LAUNCHER_ENV_LINES
+# (one NAME=VALUE per line, one argv element each in headed-arm.sh); any other
+# whitespace has no channel and is refused loudly (exit 12). On every other platform, a
 # plain `export` already reaches the worker via ordinary environment
 # inheritance (this was true before and must stay true), so the
 # value is left there untouched, a stderr warning explains why no token was
@@ -269,8 +283,34 @@ _worker_propagate_one() {
     case "$_worker_prop_value" in
         *[[:space:]]*)
             if [ "$HEADED_ARM_UNAME" = "Darwin" ]; then
-                echo "headed-arm-worker: refusing to propagate $_worker_prop_name: value contains whitespace, which HEADED_ARM_LAUNCHER_ENV's token list cannot carry ($_worker_prop_name=$_worker_prop_value)" >&2
-                exit 12
+                _worker_prop_nospace="${_worker_prop_value// /}"
+                case "$_worker_prop_nospace" in
+                    *[[:space:]]*)
+                        echo "headed-arm-worker: refusing to propagate $_worker_prop_name: value contains whitespace other than a space, which no launcher env channel can carry ($_worker_prop_name=$_worker_prop_value)" >&2
+                        exit 12
+                        ;;
+                esac
+                export "$_worker_prop_name=$_worker_prop_value"
+                set -f
+                for _worker_prop_tok in ${HEADED_ARM_LAUNCHER_ENV:-}; do
+                    case "$_worker_prop_tok" in
+                        "$_worker_prop_name="*)
+                            set +f
+                            unset -v _worker_prop_name _worker_prop_value _worker_prop_nospace _worker_prop_tok
+                            return
+                            ;;
+                    esac
+                done
+                set +f
+                if _worker_line_has "$_worker_prop_name"; then
+                    unset -v _worker_prop_name _worker_prop_value _worker_prop_nospace _worker_prop_tok
+                    return
+                fi
+                HEADED_ARM_LAUNCHER_ENV_LINES="${HEADED_ARM_LAUNCHER_ENV_LINES:+$HEADED_ARM_LAUNCHER_ENV_LINES
+}$_worker_prop_name=$_worker_prop_value"
+                export HEADED_ARM_LAUNCHER_ENV_LINES
+                unset -v _worker_prop_name _worker_prop_value _worker_prop_nospace _worker_prop_tok
+                return
             fi
             echo "headed-arm-worker: $_worker_prop_name value contains whitespace - leaving it to plain-export inheritance instead of HEADED_ARM_LAUNCHER_ENV (whose token list cannot carry it); harmless on $HEADED_ARM_UNAME, which inherits this process's environment directly" >&2
             export "$_worker_prop_name=$_worker_prop_value"
@@ -290,6 +330,10 @@ _worker_propagate_one() {
         esac
     done
     set +f
+    if _worker_line_has "$_worker_prop_name"; then
+        unset -v _worker_prop_name _worker_prop_value _worker_prop_tok
+        return
+    fi
     HEADED_ARM_LAUNCHER_ENV="${HEADED_ARM_LAUNCHER_ENV:+$HEADED_ARM_LAUNCHER_ENV }$_worker_prop_name=$_worker_prop_value"
     export HEADED_ARM_LAUNCHER_ENV
     unset -v _worker_prop_name _worker_prop_value _worker_prop_tok
@@ -306,7 +350,9 @@ worker_propagate_env() {
 # caller-preset HEADED_ARM_LAUNCHER_ENV, keeping the rest in order. For a var
 # this wrapper must own outright (a scrubbed knob, a validated value), where
 # worker_propagate_env's caller-wins de-dupe would otherwise let the preset token
-# reach the worker. set -f so no caller token is glob-expanded.
+# reach the worker. set -f so no caller token is glob-expanded. The drop
+# helpers act on the token list only; the line channel is cleared at start-up
+# and written only by _worker_propagate_one.
 worker_env_drop_token() {
     _worker_drop_one "$1"
 }
@@ -923,6 +969,8 @@ if [ "$IGNORE_DENIALS" -eq 0 ] && [ -r "$HERE/denial-ack-lib.sh" ]; then
     unset _den_label _den_key _den_hit
 fi
 
+# A caller-preset line channel is never trusted: this wrapper alone writes it.
+unset -v HEADED_ARM_LAUNCHER_ENV_LINES
 # a chief-spawned worker that runs merge-on-green.sh from its own
 # (linked) worktree gets exit 17 "no chief GO" - handover_root() falls back
 # to `git rev-parse --show-toplevel`, which resolves to the WORKTREE, not the
@@ -1088,6 +1136,27 @@ _rm_doc=""
 [ "$RM" -eq 1 ] && { _rm_doc="$(_worker_phys_path "$DOC")" || _rm_doc=""; }
 unset -f _worker_phys_path
 unset -v _worker_rcwd _worker_rcwd_phys _worker_vroot _worker_vroot_phys _worker_wt_top _worker_wt_phys _worker_wt_base
+# A session folder that would not load the himmel guard hooks is refused before the dry-run report and
+# every side effect below (preflight slot, doc edit, launch log, pretrust, exec). UNGUARDED_LAUNCH_OK=1
+# (launching shell) launches anyway with one WARN; the exported marker keeps headed-arm.sh from repeating it.
+_lg_dir="${WORKER_SESSION_REPO:-${HEADED_ARM_REPO:-$HERE/../../..}}"
+_lg_phys="$(cd -P -- "$_lg_dir" 2>/dev/null && pwd -P)" || _lg_phys=""  # swallow-ok: an unresolvable folder is passed raw, the check then exits 2 and refuses
+_lg_reason="$(bash "$HERE/../../lib/launch-guard-check.sh" "${_lg_phys:-$_lg_dir}")"; _lg_rc=$?
+if [ "$_lg_rc" -ne 0 ]; then
+    case "$_lg_rc" in
+        1) ;;
+        2) _lg_reason="folder cannot be resolved" ;;
+        *) _lg_reason="launch-guard-check failed (rc $_lg_rc)" ;;
+    esac
+    if [ "${UNGUARDED_LAUNCH_OK:-}" = "1" ]; then
+        echo "WARN unguarded launch of $NAME in ${_lg_phys:-$_lg_dir} ($_lg_reason; UNGUARDED_LAUNCH_OK=1)" >&2
+        [ -z "$_lg_phys" ] || export HIMMEL_LAUNCH_GUARD_WARNED="$_lg_phys"
+    else
+        echo "headed-arm-worker: refusing to launch $NAME: ${_lg_phys:-$_lg_dir} does not load the himmel guard hooks ($_lg_reason). Launch from a himmel checkout or worktree, register the repo and wire the user guard layer (himmelctl ensure), or set UNGUARDED_LAUNCH_OK=1 in the launching shell to launch it unguarded." >&2
+        exit 18
+    fi
+fi
+unset -v _lg_dir _lg_phys _lg_reason _lg_rc
 
 # Context resolution: off-values stay standard;
 # the one old 1m opt-in is resolved explicitly so the argv guard below can
@@ -1306,12 +1375,15 @@ for _worker_env_scrub in $(chief_context_worker_env_unset_names); do
     case "$_worker_env_scrub" in
         HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|WORKER_SESSION_EFFORT|HEADED_ARM_UNAME) continue ;;
         HIMMEL_CONSOLE_LEG) continue ;;
-        # the operator's single-writer bypass is launch input, propagated below when set.
-        WRITE_HOLD_OK) continue ;;
+        # the operator's single-writer bypass is launch input, propagated below when set; a worker's own launch
+        # (HIMMEL_CONSOLE_LEG set, kept above) inherited it from the worker, not the operator, so it is scrubbed there.
+        WRITE_HOLD_OK) [ -z "${HIMMEL_CONSOLE_LEG:-}" ] && continue ;;
         # the chief's chosen context mode is launch input, read below.
         HIMMEL_WORKER_SESSION_CONTEXT_MODE) continue ;;
         WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_PREFACE|WORKER_SESSION_PROFILE_MCP_CONFIG) continue ;;
         HEADED_ARM_LAUNCHER_ENV) continue ;;
+        # cleared at start-up and rewritten from the HANDOVER_DIR propagation on, so scrubbing it here would drop HANDOVER_DIR's line.
+        HEADED_ARM_LAUNCHER_ENV_LINES) continue ;;
     esac
     unset -v "$_worker_env_scrub"
     worker_env_drop_token "$_worker_env_scrub"
@@ -2417,6 +2489,14 @@ if [ "$DRY_RUN" -eq 1 ]; then
         printf ' exec-target=%s preface=%s recorder=%s' "$WORKER_SESSION_CLAUDE_BIN" "$WORKER_SESSION_PROFILE_PREFACE" "$HEADED_ARM_RECORDER"
     fi
     printf '\n'
+    if [ -n "${HEADED_ARM_LAUNCHER_ENV_LINES:-}" ]; then
+        while IFS= read -r _worker_dry_line; do
+            printf 'headed-arm-worker: launcher-env-line: %s\n' "$_worker_dry_line"
+        done <<EOF_WORKER_DRY_LINES
+$HEADED_ARM_LAUNCHER_ENV_LINES
+EOF_WORKER_DRY_LINES
+        unset -v _worker_dry_line
+    fi
     # Printed ONLY under --profile: with the flag omitted this whole line is
     # absent and the dry-run report is byte-identical to the earlier
     # one, matching the argv guarantee it describes.
@@ -2723,13 +2803,11 @@ fi
 # (the only party that knows it before the model exists), hands the worker
 # HIMMEL_BUS_NAME and nothing else, and tells headed-arm.sh to bind the claude
 # pid it resolves. No secret exists: identity is (name, pid, start time).
-# Fail-open on purpose: no profile requires the bus in phase 1, and an
-# unregistered worker is merely unbound (bus send refused) and keeps today's
-# channels, so a register failure warns (launch log, launcher stdout, a
-# bus=FAIL: worker-doc bullet) and never blocks a launch of the live fleet. A headless worker
+# A register failure refuses the launch: an unbound worker is deaf
+# and mute to its chief. For a broken bus (never a held name) the operator
+# may set HIMMEL_LAUNCH_UNBOUND_OK=1 in the launching shell to launch unbound. A headless worker
 # never binds (spec 8.5), so it is not registered either; nor is a worker whose doc
 # names no chief, which has nobody to register with.
-# ponytail: fail-open only until a profile can require the bus, upgrade path HIMMEL-4818 phase 2.
 # A profile with no mcpServers field (null) loads every user MCP server,
 # himmel-bus among them, so it opts in too.
 case "${MCP_NAMES_JSON:-}" in
@@ -2744,26 +2822,74 @@ case "${MCP_NAMES_JSON:-}" in
             BUS_ARGS=(register "$NAME" --role "$BUS_ROLE" --chief "$BUS_CHIEF")
             # WORKER_SESSION_BUS_PAIR: the worker a judge or consult was launched for (spec 3c).
             [ "$BUS_ROLE" != worker ] && [ -n "${WORKER_SESSION_BUS_PAIR:-}" ] && BUS_ARGS+=(--pair "$WORKER_SESSION_BUS_PAIR")
-            if BUS_OUT="$("$BUS_CLI" "${BUS_ARGS[@]}" 2>&1)"; then
+            # Bounded by BUS_EXEC_SECS (default 15) as chief-bus-exec.sh is: the
+            # bus takes its chain lock with no wait limit, and a stuck lock must
+            # never hold the launch. Past the limit: TERM, a second's grace, KILL.
+            BUS_SECS="${BUS_EXEC_SECS:-15}"
+            case "$BUS_SECS" in ''|*[!0-9]*) BUS_SECS=15 ;; esac
+            BUS_SECS=$((10#$BUS_SECS))
+            BUS_TMP="$(mktemp "${TMPDIR:-/tmp}/headed-arm-bus.XXXXXX")" || BUS_TMP=/dev/null  # swallow-ok: the output only feeds the refusal text
+            "$BUS_CLI" "${BUS_ARGS[@]}" >"$BUS_TMP" 2>&1 &
+            BUS_PID=$! BUS_TICKS=0 BUS_RC=0
+            while kill -0 "$BUS_PID" 2>/dev/null; do
+                if [ "$BUS_TICKS" -ge $((BUS_SECS * 10)) ]; then
+                    kill "$BUS_PID" 2>/dev/null
+                    BUS_TICKS=0
+                    while kill -0 "$BUS_PID" 2>/dev/null && [ "$BUS_TICKS" -lt 10 ]; do
+                        sleep 0.1
+                        BUS_TICKS=$((BUS_TICKS + 1))
+                    done
+                    kill -0 "$BUS_PID" 2>/dev/null && kill -9 "$BUS_PID" 2>/dev/null
+                    BUS_RC=124
+                    break
+                fi
+                sleep 0.1
+                BUS_TICKS=$((BUS_TICKS + 1))
+            done
+            if [ "$BUS_RC" -eq 124 ]; then
+                wait "$BUS_PID" 2>/dev/null
+                BUS_OUT="timed out after ${BUS_SECS}s: $(cat "$BUS_TMP" 2>/dev/null)"  # swallow-ok: refusal detail only
+            else
+                wait "$BUS_PID" 2>/dev/null || BUS_RC=$?
+                BUS_OUT="$(cat "$BUS_TMP" 2>/dev/null)"  # swallow-ok: refusal detail only
+            fi
+            [ "$BUS_TMP" = /dev/null ] || rm -f "$BUS_TMP"
+            if [ "$BUS_RC" -eq 0 ]; then
                 worker_propagate_env HIMMEL_BUS_NAME "$NAME"
                 # The CLI that registered is the CLI that binds.
                 export HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$BUS_CLI"
+            elif [ "${HIMMEL_LAUNCH_UNBOUND_OK:-}" = 1 ] && [ "$BUS_TMP" != /dev/null ] && [[ "$BUS_OUT" != *"name already registered"* ]]; then
+                # Operator override for a broken bus, set in the launching shell:
+                # the worker launches unbound. A held name is never overridden,
+                # and output that was not captured cannot show the name is free.
+                echo "$(date +%F_%T) headed-arm-worker: WARN bus register failed for $NAME - launching unbound (HIMMEL_LAUNCH_UNBOUND_OK=1): $BUS_OUT" >> "$LOG"
+                echo "headed-arm-worker: WARN bus register failed for $NAME - launching unbound (HIMMEL_LAUNCH_UNBOUND_OK=1): $BUS_OUT" >&2
             else
-                echo "$(date +%F_%T) headed-arm-worker: WARN bus register failed for $NAME - launching unbound: $BUS_OUT" >> "$LOG"
-                # a failed register was only ever in the log, so the
-                # bus sat dead unseen. Say it on stdout and leave a bus=FAIL:
+                # An unbound worker can neither hear nor reach its
+                # chief, so a failed register refuses the launch. A relaunch whose
+                # previous holder is gone re-registers (identity.mjs register), so
+                # what fails here is a held name (the error names the cause and
+                # the way out) or a broken bus. Said in the log, on stdout and stderr, and as a bus=FAIL:
                 # bullet in the worker doc (a lowercase lead is a non-status
                 # bullet: the tick tail ignores it, a grep for bus=FAIL finds it).
                 # WRAPPED is stripped: worker_tail_status reads a final unmarked
                 # bullet containing it as a wrap.
+                if [ "$BUS_TMP" = /dev/null ]; then
+                    BUS_OUT="output lost (mktemp failed) - fix the temp dir and relaunch"
+                elif [[ "$BUS_OUT" != *"name already registered"* ]]; then
+                    BUS_OUT="${BUS_OUT:-no output} - the bus is broken: fix it, or set HIMMEL_LAUNCH_UNBOUND_OK=1 in the launching shell to launch unbound"
+                fi
+                echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - bus register failed: $BUS_OUT" >> "$LOG"
                 BUS_REASON="$(printf '%s' "$BUS_OUT" | tr '\n>' ' -' | sed 's/WRAPPED//g' | cut -c1-160)"
-                echo "headed-arm-worker: WARN bus register failed for $NAME - launching unbound (bus=FAIL:$BUS_REASON)"
+                echo "headed-arm-worker: refusing to launch $NAME - bus register failed (bus=FAIL:$BUS_REASON)"
+                echo "headed-arm-worker: refusing to launch $NAME - bus register failed: $BUS_OUT" >&2
                 bash "$HERE/append-results.sh" "$DOC" "bus=FAIL:$BUS_REASON" >/dev/null 2>&1 || true
+                exit 2
             fi
         fi
         ;;
 esac
-unset -v BUS_CLI BUS_ROLE BUS_ARGS BUS_OUT BUS_REASON BUS_CHIEF WORKER_SESSION_BUS_PAIR
+unset -v BUS_CLI BUS_ROLE BUS_ARGS BUS_OUT BUS_REASON BUS_CHIEF WORKER_SESSION_BUS_PAIR BUS_SECS BUS_TMP BUS_PID BUS_TICKS BUS_RC HIMMEL_LAUNCH_UNBOUND_OK
 
 # Every headed worker gets one bus-idle-waker, started by headed-arm.sh once the
 # konsole pid exists (only it knows the pid). A headless worker has no konsole and

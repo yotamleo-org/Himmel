@@ -245,8 +245,12 @@ NEWGEN=$((S_gen + 1))
 [ -n "$S_dirty" ] || S_dirty=$(now)
 save_state
 
+# A run killed outright (SIGKILL, OOM, a closed session) cannot run its EXIT trap, and the vault sync stages whatever
+# sits in this dir: sweep what such a run left. 15 min is far past the 240 s budget, so a live run's stage is never hit.
+# swallow-ok: a failed sweep only leaves the stale folder for the next run
+find "$DIR" -maxdepth 1 -type d -name '.focus-stage.*' -mmin +15 -exec rm -rf {} + 2>/dev/null # gnu-ok: BSD find has -maxdepth and -mmin too
 stage=$(mktemp -d "$DIR/.focus-stage.XXXXXX") || failed stage  # prim-ok: the stage must share the doc dir's filesystem for the atomic mv
-trap 'rm -rf "$stage"' EXIT
+trap 'rm -rf "$stage"' EXIT # SIGTERM and SIGINT take the shell down through this trap too (a trap of their own would defer them behind a running child)
 
 if [ -n "$FRESH" ]; then
     MIR="$FRESH"

@@ -76,6 +76,9 @@ mkdir -p "$RDIR"
 printf '#!/bin/sh\necho "$@" >> "%s/state-asked"\ncat "%s/state.json"\nexit "${TICK_RMQ_EXIT:-0}"\n' "$W" "$W" > "$W/rmq-probe.sh"
 printf '#!/bin/sh\necho "$@" >> "%s/rmrun-ran"\n' "$W" > "$W/rmrun-probe.sh"
 printf '#!/bin/sh\necho "$* key=$JIRA_PROJECT_KEY" >> "%s/repair-ran"\n' "$W" > "$W/repair-probe.sh"
+# the dead launcher: logs one line to a tally file and exits 127, so the probe never runs and no run ends
+printf '#!/bin/sh\necho x >> "%s/launch-tried"\nexit 127\n' "$W" > "$W/bin/deadlaunch"
+chmod +x "$W/bin/deadlaunch"
 export TICK_RMQ_PROBE="$W/rmq-probe.sh" TICK_RMRUN_PROBE="$W/rmrun-probe.sh" TICK_REPAIR_PROBE="$W/repair-probe.sh" TICK_RMRUN_LAUNCHER=env
 
 SIG64=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789
@@ -87,15 +90,26 @@ heldjson() { # <held> <unfiled>
     printf '{"release":"R1","held":%s,"unfiled":%s,"held_signature":"%s","classes":[]}\n' "$1" "$2" "$SIG64" > "$RDIR/repair-held.json"
 }
 reset() {
-    rm -f "$W/repair-ran" "$W/rmrun-ran" "$W/state-asked" "$W/journal.jsonl"
+    rm -f "$W/repair-ran" "$W/launch-tried" "$W/rmrun-ran" "$W/state-asked" "$W/journal.jsonl"
     rm -rf "$W/state" "$RDIR"; mkdir -p "$RDIR"
     git -C "$W/repo" remote remove origin 2>/dev/null
     git -C "$W/repo" remote add origin git@github.com:acme/widgets.git
     base_state
     mkdoc R1
 }
-reviewed() { printf '2026-11-03T00:00:00Z\n' > "$RDIR/repair-reviewed"; }
+reviewed() { printf '2026-11-03T00:00:00Z\n' > "$RDIR/repair-reviewed"; touch -d '2 days ago' "$RDIR/repair-reviewed"; }  # older than every stamp a row writes, so it never reads as an end
 age_log() { touch -d '20 minutes ago' "$RDIR/repair-run.log"; }
+# the launch stamp: aging is a content rewrite, never touch -d (the tick reads the content)
+stamp() { printf '%s %s\n' "$(( $(date +%s) - $1 ))" "$2" > "$RDIR/repair-launch"; }  # <age-secs> <k>
+stamp_count() { awk '{print $2}' "$RDIR/repair-launch" 2>/dev/null; }
+age_stamp() { stamp 1200 "$(stamp_count)"; }
+stamp_is() { [ "$(cat "$RDIR/repair-launch" 2>/dev/null)" = "$1" ]; }  # <line>
+tried() { # wait up to 5 s for the dead launcher to log <n> lines, then print how many it logged
+    local n="$1" i=0
+    while [ "$( [ -f "$W/launch-tried" ] && wc -l < "$W/launch-tried" | tr -d ' ' || echo 0)" -lt "$n" ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+    [ -f "$W/launch-tried" ] && wc -l < "$W/launch-tried" | tr -d ' ' || echo 0
+}
+none_tried() { sleep 1; [ -f "$W/launch-tried" ] && wc -l < "$W/launch-tried" | tr -d ' ' || echo 0; }
 tick() { bash "$SUT" --doc "$W/handover/chief.md" 2>/dev/null; }
 field() { # <field> <tick output>
     printf '%s\n' "$2" | tr ' ' '\n' | sed -n "s/^$1=//p" | head -n 1
@@ -227,6 +241,180 @@ printf 'mirror-unknown\nthe mirror is UNKNOWN\n' > "$RDIR/repair-status"
 out="$(tick)"
 check 'stop prints repair=off with its reason' 'off:mirror-unknown' "$(field repair "$out")"
 
+# --- a launch that left no end record: the dead launcher exits 127 and writes nothing
+export TICK_RMRUN_LAUNCHER="$W/bin/deadlaunch"
+reset; reviewed
+tick >/dev/null
+check '1a lost launch: the first tick tries once' 1 "$(tried 1)"
+check '1a lost launch: the first tick writes a stamp with count 0' 0 "$(stamp_count)"
+s1a="$(cat "$RDIR/repair-launch" 2>/dev/null)"
+age_log
+out="$(tick)"
+check '1b log aged only: no new try' 1 "$(none_tried 1)"
+check '1b log aged only: the stamp is unchanged' 1 "$(stamp_is "$s1a" && echo 1 || echo 0)"
+check '1b log aged only: no repair=off:lost field' '' "$(field repair "$out")"
+touch "$RDIR/repair-run.log"; age_stamp
+s1c="$(cat "$RDIR/repair-launch" 2>/dev/null)"
+tick >/dev/null
+check '1c stamp aged only: no new try (the log gap holds)' 1 "$(none_tried 1)"
+check '1c stamp aged only: the stamp is unchanged' 1 "$(stamp_is "$s1c" && echo 1 || echo 0)"
+age_log; age_stamp
+out="$(tick)"
+check '1d both aged: a second try' 2 "$(tried 2)"
+check '1d both aged: the field reads off:lost' 'off:lost' "$(field repair "$out")"
+
+# a pid that is dead and reaped, so no zombie keeps /proc/<pid>
+deadpid() { sleep 60 & local p=$!; kill "$p"; wait "$p" 2>/dev/null; echo "$p"; }
+lost_field() { # <name> <want> <tick output>
+    check "$1" "$2" "$(field repair "$3")"
+}
+
+# 2 control, a clean run: the probe rewrites repair-reviewed, so the run reached its end
+printf '#!/bin/sh\ntouch "%s/repair-reviewed"\necho "$*" >> "%s/repair-ran"\n' "$RDIR" "$W" > "$W/clean-probe.sh"
+reset; reviewed
+TICK_RMRUN_LAUNCHER=env TICK_REPAIR_PROBE="$W/clean-probe.sh" tick >/dev/null
+check '2 clean run: launched once' 1 "$(launched 1)"
+age_log; age_stamp
+out="$(TICK_RMRUN_LAUNCHER=env TICK_REPAIR_PROBE="$W/clean-probe.sh" tick)"
+check '2 clean run: no relaunch after the gap' 1 "$(none_launched)"
+lost_field '2 clean run: no repair= field' '' "$out"
+
+# 3 control, a stop: the probe writes repair-status, so the run reached its end
+printf '#!/bin/sh\nprintf "mirror-unknown\\nx\\n" > "%s/repair-status"\necho "$*" >> "%s/repair-ran"\n' "$RDIR" "$W" > "$W/stop-probe.sh"
+reset; reviewed
+TICK_RMRUN_LAUNCHER=env TICK_REPAIR_PROBE="$W/stop-probe.sh" tick >/dev/null
+check '3 stop: launched once' 1 "$(launched 1)"
+age_log; age_stamp
+out="$(TICK_RMRUN_LAUNCHER=env TICK_REPAIR_PROBE="$W/stop-probe.sh" tick)"
+check '3 stop: no relaunch after the gap' 1 "$(none_launched)"
+lost_field '3 stop: the field reads off:mirror-unknown' 'off:mirror-unknown' "$out"
+
+# 4 the bound (I2): wait(3) is 2400 s at the default gap
+reset; reviewed; age_log; stamp 1500 2
+out="$(tick)"
+check '4 bound: inside wait(3) nothing launches' 0 "$(none_tried 0)"
+lost_field '4 bound: inside wait(3) the field reads off:lost' 'off:lost' "$out"
+stamp 2500 2
+tick >/dev/null
+check '4 bound: past wait(3) it launches' 1 "$(tried 1)"
+check '4 bound: the count reads 3' 3 "$(stamp_count)"
+
+# 5 the cap (I2): the doubling stops at 6 h, so k=100 neither overflows nor waits longer than the cap
+reset; reviewed; age_log; stamp 21000 100
+tick >/dev/null
+check '5 cap: inside the cap nothing launches' 0 "$(none_tried 0)"
+stamp 21700 100
+tick >/dev/null
+check '5 cap: past the cap it launches' 1 "$(tried 1)"
+check '5 cap: the count reads 101' 101 "$(stamp_count)"
+
+# 6 a live lock (I1)
+reset; reviewed; age_log; stamp 1200 0
+sleep 60 &
+holder=$!
+printf '%s\n' "$holder" > "$RDIR/repair.lock"
+out="$(tick)"
+check '6 live lock: nothing launches' 0 "$(none_tried 0)"
+lost_field '6 live lock: no off:lost' '' "$out"
+kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+
+# 7 a mid-run kill: the lock names a dead pid
+reset; reviewed; age_log; stamp 1200 0
+deadp="$(deadpid)"
+printf '%s\n' "$deadp" > "$RDIR/repair.lock"
+out="$(tick)"
+check '7 mid-run kill: it launches' 1 "$(tried 1)"
+lost_field '7 mid-run kill: the field reads off:lost' 'off:lost' "$out"
+
+# 8 a lock from before the boot, naming a live pid, is not live
+reset; reviewed; age_log; stamp 1200 0
+sleep 60 &
+holder=$!
+printf '%s\n' "$holder" > "$RDIR/repair.lock"
+touch -d @1 "$RDIR/repair.lock"
+out="$(tick)"
+check '8 pre-boot lock: it launches' 1 "$(tried 1)"
+lost_field '8 pre-boot lock: the field reads off:lost' 'off:lost' "$out"
+kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+
+# 9 the reset (I3): a run that reached its end puts the next launch at count 0
+reset; reviewed; age_log; stamp 1200 3
+touch "$RDIR/repair-reviewed"
+mkstate '["K-1@v1.1.4"]' op2 rq1 mi1
+out="$(tick)"
+check '9 reset: it launches' 1 "$(tried 1)"
+check '9 reset: the count reads 0' 0 "$(stamp_count)"
+lost_field '9 reset: no off:lost' '' "$out"
+
+# 12 precedence: a stale error status older than the stamp loses to lost
+reset; reviewed; age_log; stamp 1200 0
+printf 'error\nboom\n' > "$RDIR/repair-status"; touch -d '3 days ago' "$RDIR/repair-status"
+out="$(tick)"
+lost_field '12 precedence: lost beats a stale error' 'off:lost' "$out"
+
+# 13 a malformed stamp reads as none: no launch on the same signature, a launch on a changed one
+for bad in garbage '08 0' '5' "$(( $(date +%s) + 3600 )) 1"; do
+    reset; reviewed
+    tick >/dev/null
+    check "13 malformed stamp '$bad': the first tick launches" 1 "$(tried 1)"
+    printf '%s\n' "$bad" > "$RDIR/repair-launch"; age_log
+    out="$(tick)"
+    check "13 malformed stamp '$bad': the same signature launches nothing" 1 "$(none_tried 1)"
+    lost_field "13 malformed stamp '$bad': no off:lost" '' "$out"
+    mkstate '["K-1@v1.1.4"]' op2 rq1 mi1; age_log
+    tick >/dev/null
+    check "13 malformed stamp '$bad': a changed signature launches" 2 "$(tried 2)"
+    check "13 malformed stamp '$bad': the stamp is rewritten with count 0" 0 "$(stamp_count)"
+done
+
+# 14 a zero gap does not turn the backoff off (I2): base is floored at 60
+reset; reviewed
+TICK_RMRUN_MIN_SECS=0 tick >/dev/null
+check '14 zero gap: the first tick launches' 1 "$(tried 1)"
+stamp 10 0
+out="$(TICK_RMRUN_MIN_SECS=0 tick)"
+check '14 zero gap: inside the floor nothing launches' 1 "$(none_tried 1)"
+lost_field '14 zero gap: no off:lost' '' "$out"
+
+# 15 a pending launch after a lost one (I2): a changed signature does not shorten the wait
+reset; reviewed; stamp 10 1
+printf '%064d\n' 0 > "$RDIR/repair-signature"
+out="$(TICK_RMRUN_MIN_SECS=0 tick)"
+check '15 pending after lost: nothing launches' 0 "$(none_tried 0)"
+lost_field '15 pending after lost: the field reads off:lost' 'off:lost' "$out"
+
+# 16 no reset on a signature change (Q5)
+reset; reviewed; age_log; stamp 2500 2
+printf '%064d\n' 0 > "$RDIR/repair-signature"
+tick >/dev/null
+check '16 no reset: it launches' 1 "$(tried 1)"
+check '16 no reset: the count reads 3' 3 "$(stamp_count)"
+
+# 17 the stamp write fails (I4): nothing launches and the signature is not written
+reset; reviewed
+mkdir "$RDIR/repair-launch"
+tick >/dev/null
+check '17 stamp write fails: nothing launches' 0 "$(none_tried 0)"
+check '17 stamp write fails: no signature' 0 "$([ -e "$RDIR/repair-signature" ] && echo 1 || echo 0)"
+
+# 18 an EPERM pid is live (I1); pid 1 is probe-able when this user may signal it, so the row is skipped then
+if kill -0 1 2>/dev/null; then
+    pass '18 EPERM pid: skipped (pid 1 is probe-able for this user)'
+else
+    reset; reviewed; age_log; stamp 1200 0
+    printf '1\n' > "$RDIR/repair.lock"
+    out="$(tick)"
+    check '18 EPERM pid: nothing launches' 0 "$(none_tried 0)"
+    lost_field '18 EPERM pid: no off:lost' '' "$out"
+fi
+
+# 19 a leading-zero gap is decimal, not octal
+reset; reviewed; age_log; stamp 900 0
+out="$(TICK_RMRUN_MIN_SECS=0800 tick)"
+check '19 leading-zero gap: it launches' 1 "$(tried 1)"
+lost_field '19 leading-zero gap: the field reads off:lost' 'off:lost' "$out"
+export TICK_RMRUN_LAUNCHER=env
+
 # --- the fence and the lock
 reset; reviewed
 for fence in HIMMEL_CONSOLE_LEG HIMMEL_RELEASE_MANAGER; do
@@ -234,6 +422,7 @@ for fence in HIMMEL_CONSOLE_LEG HIMMEL_RELEASE_MANAGER; do
     out="$(env "$fence=1" bash "$SUT" --doc "$W/handover/chief.md" 2>/dev/null)"
     check "fence variables skip the launch and write no signature ($fence: no process)" 0 "$(none_launched)"
     check "fence variables skip the launch and write no signature ($fence: no signature)" 0 "$([ -e "$RDIR/repair-signature" ] && echo 1 || echo 0)"
+    check "fence variables skip the launch and write no stamp ($fence: no repair-launch)" 0 "$([ -e "$RDIR/repair-launch" ] && echo 1 || echo 0)"
 done
 out="$(tick)"
 check 'fence variables skip the launch and write no signature (negative control: unset, it launches)' 1 "$(launched 1)"
@@ -261,6 +450,11 @@ check 'no release line launches nothing' 0 "$(none_launched)"
 doc_ok=1
 for f in 'held=' 'unfiled=' 'repair=off:'; do grep -qF "$f" "$DOCPAGE" || doc_ok=0; done
 check 'the doc names all three fields' 1 "$doc_ok"
+doc_flat="$(tr '\n' ' ' < "$DOCPAGE")"
+doc_lost=0; case "$doc_flat" in *'`lost` (a launched run'*) doc_lost=1 ;; esac
+check 'the doc names the lost reason' 1 "$doc_lost"
+doc_rule=0; case "$doc_flat" in *'or when the last launch left no end record'*) doc_rule=1 ;; esac
+check 'the doc states the retry in the launch rule' 1 "$doc_rule"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

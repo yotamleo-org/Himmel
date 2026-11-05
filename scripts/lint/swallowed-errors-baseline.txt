@@ -339,7 +339,6 @@ scripts/hooks/refresh-statusline-caches-periodic.sh	true-after-read	4
 scripts/hooks/refresh-where-are-we-on-end.sh	cmdsub-devnull	1
 scripts/hooks/require-quiet-run.sh	cmdsub-devnull	1
 scripts/hooks/require-quiet-run.sh	true-after-read	1
-scripts/hooks/retrieval-nudge.sh	cmdsub-devnull	3
 scripts/hooks/rtk-hook-guard.sh	cmdsub-devnull	3
 scripts/hooks/rtk-hook-guard.sh	true-after-read	1
 scripts/hooks/stop-chief-idle-guard.sh	cmdsub-devnull	5

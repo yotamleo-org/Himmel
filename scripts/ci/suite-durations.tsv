@@ -191,15 +191,17 @@ scripts/ci/test-run-bun-tests-flake.sh	0
 scripts/ci/test-run-shell-tests-discovery.sh	27
 scripts/ci/test-run-shell-tests-flake.sh	17
 scripts/ci/test-run-shell-tests-impacted.sh	15
+scripts/ci/test-run-shell-tests-ledger-fresh.sh	289
 scripts/ci/test-run-shell-tests-live-state.sh	6
 scripts/ci/test-run-shell-tests-manifest.sh	11
 scripts/ci/test-run-shell-tests-parallel.sh	76
+scripts/ci/test-run-shell-tests-retry.sh	175
 scripts/ci/test-run-shell-tests-rotation-cursor.sh	14
 scripts/ci/test-run-shell-tests-rotation-guards.sh	16
 scripts/ci/test-run-shell-tests-rotation.sh	16
 scripts/ci/test-run-shell-tests-scanroot.sh	7
 scripts/ci/test-run-shell-tests-timing.sh	81
-scripts/ci/test-run-shell-tests.sh	572
+scripts/ci/test-run-shell-tests.sh	108
 scripts/ci/test-shard-manifest-verify.sh	5
 scripts/ci/test-shell-extended-nightly-issue.sh	0
 scripts/ci/test-shell-unit-dispatch-name.sh	0
@@ -345,6 +347,7 @@ scripts/eval/test-eval-feedback.sh	6
 scripts/eval/test-eval-runs.sh	7
 scripts/eval/test-harness-run.sh	8
 scripts/eval/test-judge-cache-row.sh	0
+scripts/eval/test-lone-comm-count.sh	0
 scripts/eval/test-profile-openings.sh	0
 scripts/eval/test-readme-glossary.sh	0
 scripts/eval/test-review-page.sh	3
@@ -508,6 +511,7 @@ scripts/handover/test-konsole-macos.sh	20
 scripts/handover/test-worker-handoff-threshold-docs.sh	0
 scripts/handover/test-worker-resume-brief.sh	2
 scripts/handover/test-worker-timeline.sh	8
+scripts/handover/test-launch-record.sh	1
 scripts/handover/test-lessons-sweep.sh	1
 scripts/handover/test-librarian-cadence.sh	1
 scripts/handover/test-librarian.sh	4
@@ -555,6 +559,7 @@ scripts/himmelctl/test/test-himmelctl-path-shim.sh	3
 scripts/himmelctl/test/test-luna-config-migration.sh	9
 scripts/himmelctl/test/test-provenance-js.sh	4
 scripts/himmelctl/test/test-provenance-session.sh	2
+scripts/himmelctl/test/test-redact.sh	0
 scripts/himmelctl/test/test-report-deep.sh	1
 scripts/himmelctl/test/test-secret-store.sh	0
 scripts/himmelctl/test/test-standalone-bundle-closure.sh	0
@@ -648,6 +653,7 @@ scripts/hooks/test-block-subagent-park.sh	0
 scripts/hooks/test-block-tail-pipe-on-gates.sh	35
 scripts/hooks/test-block-terminal-write-fence.sh	10
 scripts/hooks/test-block-unresolved-cr-merge.sh	444
+scripts/hooks/test-block-vault-sweep.sh	6
 scripts/hooks/test-block-write-into-main-checkout-adopted.sh	13
 scripts/hooks/test-block-write-into-main-checkout-ast.sh	7
 scripts/hooks/test-block-write-into-main-checkout-cd.sh	69
@@ -768,7 +774,6 @@ scripts/hooks/test-redirect-webfetch-walled-hosts.sh	0
 scripts/hooks/test-refresh-statusline-caches.sh	4
 scripts/hooks/test-refresh-where-are-we-on-end.sh	14
 scripts/hooks/test-require-quiet-run.sh	6
-scripts/hooks/test-retrieval-nudge.sh	5
 scripts/hooks/test-rtk-hook-guard.sh	1
 scripts/hooks/test-run-hook-with-bash-unroll.sh	25
 scripts/hooks/test-session-end-timeout-budget.sh	12
@@ -1117,7 +1122,10 @@ scripts/test-tmp-reap.sh	54
 scripts/test-uninstall-guard.sh	9
 scripts/test-uninstall-home-guard.sh	0
 scripts/test-uninstall-plugins.sh	5
-scripts/test-uninstall-provenance.sh	525
+scripts/test-uninstall-provenance-legacy.sh	128
+scripts/test-uninstall-provenance-qmd.sh	125
+scripts/test-uninstall-provenance-tty-block.sh	135
+scripts/test-uninstall-provenance.sh	137
 scripts/test-uninstall-real-home-callers.sh	134
 scripts/test-uninstall-real-home-runtime.sh	106
 scripts/test-uninstall-routines.sh	115

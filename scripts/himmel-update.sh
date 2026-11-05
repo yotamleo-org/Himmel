@@ -705,11 +705,11 @@ _sync_claude_cli() {
         if [ "$rc" -eq 1 ]; then
             echo "    claude $inst is current (latest $latest)."
             _probe_tool_row claude up-to-date "$inst"
-            _ver_row claude "$inst" "$latest" current # launch-profile-ok: version-table label, not a launch
+            _ver_row claude "$inst" "$latest" current # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
         else
             echo "    claude ${inst:-?} vs latest ${latest:-?} — cannot compare (report only)."
             _probe_tool_row claude skipped "cannot compare ${inst:-?} with ${latest:-?}"
-            _ver_row claude "${inst:--}" "${latest:--}" unknown "cannot compare" # launch-profile-ok: version-table label, not a launch
+            _ver_row claude "${inst:--}" "${latest:--}" unknown "cannot compare" # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
         fi
         return 0
     fi
@@ -728,13 +728,13 @@ _sync_claude_cli() {
     fi
     if [ "$mode" = "check" ]; then
         _probe_tool_row claude skipped "$inst -> ${latest:-?} update available — run without --check"
-        _ver_row claude "$inst" "${latest:--}" behind "run /himmel-update to upgrade" # launch-profile-ok: version-table label, not a launch
+        _ver_row claude "$inst" "${latest:--}" behind "run /himmel-update to upgrade" # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
         return 0
     fi
     if [ "$owner" = "brew" ] || [ "$owner" = "pacman" ] || [ ! -O "$path" ] || [ ! -w "$path" ]; then
         echo "    needs you: $cmd (not auto-upgrading $path)."
         _probe_tool_row claude skipped "$inst -> ${latest:-?} — needs you: $cmd"
-        _ver_row claude "$inst" "${latest:--}" behind "needs you: $cmd" # launch-profile-ok: version-table label, not a launch
+        _ver_row claude "$inst" "${latest:--}" behind "needs you: $cmd" # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
         [ "$below" -eq 0 ] || echo "    FAIL: claude $inst stays below the floor $CLAUDE_MIN_VERSION — chief launches refuse until: $cmd" >&2
         [ "$below" -eq 0 ]
         return
@@ -744,7 +744,7 @@ _sync_claude_cli() {
     if [ "$gate_rc" -ne 0 ]; then
         echo "    not upgrading: claude stays on $inst (latest ${latest:-?})." >&2
         _probe_tool_row claude skipped "HELD by the VM-first gate — $inst -> ${latest:-?}, then: $cmd"
-        _ver_row claude "$inst" "${latest:--}" behind "held by the VM-first gate" # launch-profile-ok: version-table label, not a launch
+        _ver_row claude "$inst" "${latest:--}" behind "held by the VM-first gate" # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
         [ "$below" -eq 0 ]
         return
     fi
@@ -763,7 +763,7 @@ _sync_claude_cli() {
             echo "    claude updater exited $rc (now $after) — $(_last_line_trimmed "$out")" >&2
             echo "    retry by hand: $cmd" >&2
             _probe_tool_row claude failed "updater exit $rc ($inst -> $after); retry: $cmd"
-            _ver_row claude "$after" "${latest:--}" behind "updater failed" # launch-profile-ok: version-table label, not a launch
+            _ver_row claude "$after" "${latest:--}" behind "updater failed" # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
             return 1
         elif [ "$after" != "$inst" ]; then
             local after_cmp=0
@@ -771,28 +771,28 @@ _sync_claude_cli() {
             if [ "$after_cmp" -eq 0 ]; then
                 echo "    claude $inst -> $after (upgraded via ${owner:-native}; latest is $latest)."
                 _probe_tool_row claude updated "$inst -> $after (latest $latest)"
-                _ver_row claude "$after" "${latest:--}" behind "latest is $latest" # launch-profile-ok: version-table label, not a launch
+                _ver_row claude "$after" "${latest:--}" behind "latest is $latest" # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
             elif [ "$after_cmp" -eq 1 ]; then
                 echo "    claude $inst -> $after (upgraded via ${owner:-native})."
                 _probe_tool_row claude updated "$inst -> $after"
-                _ver_row claude "$after" "${latest:--}" current # launch-profile-ok: version-table label, not a launch
+                _ver_row claude "$after" "${latest:--}" current # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
             else
                 echo "    claude $inst -> $after (upgraded via ${owner:-native}; latest ${latest:-?} unknown, cannot confirm current)."
                 _probe_tool_row claude updated "$inst -> $after (latest ${latest:-?} unknown)"
-                _ver_row claude "$after" "${latest:--}" unknown "cannot compare" # launch-profile-ok: version-table label, not a launch
+                _ver_row claude "$after" "${latest:--}" unknown "cannot compare" # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
             fi
         else
             echo "    claude upgrade did not change $after — $(_last_line_trimmed "$out")" >&2
             echo "    retry by hand: $cmd" >&2
             _probe_tool_row claude failed "$inst stays; retry: $cmd"
-            _ver_row claude "$inst" "${latest:--}" behind "upgrade failed" # launch-profile-ok: version-table label, not a launch
+            _ver_row claude "$inst" "${latest:--}" behind "upgrade failed" # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
         fi
         return 0
     fi
     echo "    FAIL: claude is still below the floor $CLAUDE_MIN_VERSION after the update (now ${after:-unreadable}) — $(_last_line_trimmed "$out")" >&2
     echo "    chief launches will refuse until fixed; retry by hand: $cmd" >&2
     _probe_tool_row claude failed "still below floor $CLAUDE_MIN_VERSION (${after:-?}); retry: $cmd"
-    _ver_row claude "${after:-$inst}" "${latest:--}" behind "BELOW the chief-launch floor $CLAUDE_MIN_VERSION" # launch-profile-ok: version-table label, not a launch
+    _ver_row claude "${after:-$inst}" "${latest:--}" behind "BELOW the chief-launch floor $CLAUDE_MIN_VERSION" # launch-profile-ok: version-table label, not a launch; launch-guard-ok: version-table label, not a launch
     return 1
 }
 
@@ -812,6 +812,9 @@ sync_agent_clis() {
 # This surfaces that right after the pull. Advisory; never fails the update.
 # *_BAT_DIR env seams mirror each emitter's runner home; defaults resolve via
 # cadence_user_home (emitter parity).
+# The graphmap hint below is `arm --rewrite-armed`, which rewrites only runner files that already
+# exist and registers nothing, so an update can never re-arm a Luna graph task the operator left
+# off (test-graphmap-cadence.sh C17 holds that); only `arm --luna-only` arms Luna.
 report_cadence_stale() {
     local label bat_dir rearm ver uh
     uh="$(cadence_user_home)"
@@ -1755,7 +1758,7 @@ report_qmd_daemon_restart() {
     # also runs as a per-session STDIO MCP server that the looser pattern
     # matches just as well, and stopping those kills other sessions' servers.
     echo "      # 1. LOOK — confirm these are the daemon, and only the daemon:"
-    echo "      pgrep -af 'qmd.*mcp.*--http'"
+    echo "      ps -axww -o pid=,command= | grep '[q]md.*mcp.*--http'"
     echo "      # 2. STOP — same filter, once the list above looks right:"
     echo "      pkill -f 'qmd.*mcp.*--http'"
     echo "      # 3. RESTART:"
@@ -1867,16 +1870,38 @@ update_luna_template() {
     # never exported LUNA_VAULT_PATH silently skipped the luna-template upgrade
     # even though it was configured in .env (operator report 2026-07-21).
     load_dotenv LUNA_VAULT_PATH 2>/dev/null || true
-    local vault="${LUNA_VAULT_PATH:-}"
+    local vault="${LUNA_VAULT_PATH:-}" vsrc=""
+    # The installer wires the vault into the install profile and the
+    # Claude settings env block, not the checkout dotenv. Fall back to those so an
+    # update run from a plain terminal/cron still finds it. Profile vault.mode
+    # "none" means no vault, and also stops the settings fallback: the installer
+    # never clears the settings env when a profile switches to no vault.
+    if [ -z "$vault" ] && command -v jq >/dev/null 2>&1; then
+        local prof sett optout=""
+        prof=$(_channel_profile_path)
+        if [ -f "$prof" ]; then
+            vault=$(jq -r 'if (.vault.mode // "none") != "none" then (.vault.path // "") else "" end' "$prof" 2>/dev/null) || vault=""
+            [ -n "$vault" ] && vsrc="install profile"
+            [ "$(jq -r '.vault.mode // ""' "$prof" 2>/dev/null)" = "none" ] && optout=1
+        fi
+        if [ -z "$vault" ] && [ -z "$optout" ]; then
+            sett="${CLAUDE_USER_SETTINGS:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json}"
+            if [ -f "$sett" ]; then
+                vault=$(jq -r '.env.LUNA_VAULT_PATH // ""' "$sett" 2>/dev/null) || vault=""
+                [ -n "$vault" ] && vsrc="Claude settings"
+            fi
+        fi
+    fi
     local template="$ROOT/templates/luna-second-brain"
     local upgrade="$template/scripts/upgrade.sh"
 
+    local note=""; [ -n "$vsrc" ] && note=" (vault from $vsrc)"
     if [ -z "$vault" ]; then
         STATUS_luna_template="skipped"; DETAIL_luna_template="LUNA_VAULT_PATH not set"
         return 0
     fi
     if [ ! -d "$vault" ]; then
-        STATUS_luna_template="skipped"; DETAIL_luna_template="vault dir not found ($vault)"
+        STATUS_luna_template="skipped"; DETAIL_luna_template="vault dir not found ($vault)$note"
         return 0
     fi
     if [ ! -f "$upgrade" ]; then
@@ -1897,7 +1922,7 @@ update_luna_template() {
     if out=$(bash "$upgrade" --template-dir "$template" --vault-dir "$vault" "$flag" 2>&1); then rc=0; else rc=$?; fi
     printf '%s\n' "$out"
     if [ "$mode" = "check" ]; then
-        STATUS_luna_template="skipped"; DETAIL_luna_template="$(_last_line_trimmed "$out")"
+        STATUS_luna_template="skipped"; DETAIL_luna_template="$(_last_line_trimmed "$out")$note"
         _ver_luna_row "$out" "$rc"
         return 0
     fi
@@ -1907,7 +1932,7 @@ update_luna_template() {
         else
             STATUS_luna_template="updated"
         fi
-        DETAIL_luna_template="$(_last_line_trimmed "$out")"
+        DETAIL_luna_template="$(_last_line_trimmed "$out")$note"
         return 0
     fi
     # rc 3 = upgrade.sh NEEDS-RECONCILE — the only non-success is
@@ -1915,7 +1940,7 @@ update_luna_template() {
     # not "updated" either: the vault stays unstamped, so --check keeps
     # offering the upgrade until the operator reconciles the withheld files.
     if [ "$rc" -eq 3 ]; then
-        STATUS_luna_template="needs-reconcile"; DETAIL_luna_template="$(_last_line_trimmed "$out")"
+        STATUS_luna_template="needs-reconcile"; DETAIL_luna_template="$(_last_line_trimmed "$out")$note"
         return 0
     fi
     STATUS_luna_template="failed"

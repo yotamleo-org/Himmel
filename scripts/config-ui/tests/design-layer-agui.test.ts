@@ -48,7 +48,7 @@ test("every agent name colour meets normal-text contrast in both shared themes",
 
 test("Fleet prose uses the UI font at token sizes, with monospace kept for session data and tables", () => {
   expect(rule("body")).toMatch(/font:var\(--fs-[a-z0-9]+\)\/[^;]+var\(--(?:font-ui|sans)\)/);
-  for (const selector of [".fleet-sec>summary", ".fleet-chief h2", ".fleet-menu", ".fleet-search", ".fleet-chip-btn", ".fleet-clear", ".fleet-more-btn"]) {
+  for (const selector of [".fleet-sec>summary", ".fleet-chief h2", ".fleet-chief .fleet-chief-counts", ".fleet-search", ".fleet-chip-btn", ".fleet-clear", ".fleet-more-btn"]) {
     expect(rule(selector), selector).toMatch(/font:[^;]*var\(--(?:font-ui|sans)\)/);
     expect(rule(selector), selector).toMatch(/var\(--fs-[a-z0-9]+\)/);
   }

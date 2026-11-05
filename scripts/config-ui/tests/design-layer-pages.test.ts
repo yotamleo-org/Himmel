@@ -121,7 +121,9 @@ test("Shift chain: a hand-over gap shorter than half a percent of the shift is s
   expect(renderShift(view, {})).toMatch(/title="hand-over gap 21:00–21:03"/); // 3 min of 12 h is under half a percent
 });
 
-test("the Health project picker sits above the page links in the rail", () => {
+test("the Health project picker sits in the page bar above the page, never in the rail", () => {
   const js = read("app.js");
-  expect(js).toMatch(/\$\("#pages"\)\.innerHTML = \(currentPage\.id === "health" \? projectPicker\(\) : ""\) \+ navLinks\(/);
+  expect(js).toMatch(/id: "health"[^\n]*render: \(f\) => pageBar\(\) \+ healthPage\(f\)/);
+  expect(js).toMatch(/const ctl = currentPage\.id === "health" \? projectPicker\(\) : currentPage\.id === "report" \? reportBar\(reportList, reportView, reportUi\) : ""/);
+  expect(js).toMatch(/\$\("#pages"\)\.innerHTML = railMarkup\(/);
 });

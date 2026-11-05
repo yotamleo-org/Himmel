@@ -138,7 +138,7 @@ ci="$root/.github/workflows/ci.yml"
 step="$(awk '/^  [a-z][a-z0-9-]*:/ { injob = ($1 == "lint:") } injob && /- name: docs-review scope/ { s = 1 } s && /^      - / && !/docs-review scope/ { exit } s { print }' "$ci")"
 case "$step" in *"continue-on-error: true"*) ok "ci: the lint job's docs-review step is advisory" ;; *) bad "ci: no advisory docs-review step in the lint job" ;; esac
 case "$step" in *"docs_remarks.py scope"*) ok "ci: the step runs docs_remarks.py scope" ;; *) bad "ci: the step does not run docs_remarks.py scope" ;; esac
-has "brief: READY quotes the docs-review scope line" "$root/docs/handover/worker-brief-template.md" 'docs-review scope:'
+has "brief: the docs judge runs docs_remarks.py scope" "$root/docs/handover/worker-brief-template.md" 'docs_remarks.py scope'
 has "judge: the verdict quotes the docs-review summary line" "$root/docs/handover/judge-brief-template.md" "\`docs-review:\` summary line"
 
 [ "$fails" = 0 ] && echo "PASS test-docs-remarks" || { echo "FAIL test-docs-remarks ($fails)"; exit 1; }

@@ -22,22 +22,6 @@ lacks() { # <name> <haystack> <needle>
 }
 
 REAL_HOME="$HOME"
-real_register() { # a portable snapshot of the real register: names, sizes and mtimes (find -printf is GNU-only)
-    python3 -I -c 'import os, sys, zlib
-d = sys.argv[1]
-rows = []
-for r, _, fs in os.walk(d):
-    for f in fs:
-        p = os.path.join(r, f)
-        try:
-            s = os.stat(p)
-        except OSError as e:
-            print("STAT-ERROR " + p + " " + str(e))
-            sys.exit(1)
-        rows.append("%s %d %d" % (os.path.relpath(p, d), s.st_size, s.st_mtime_ns))
-print(zlib.crc32("\n".join(sorted(rows)).encode()))' "$REAL_HOME/.himmel/state/holds"
-}
-REAL_BEFORE="$(real_register)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/next-dispatch-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
 # the holds register lives under HOME: pin it (and the handover root holds.py judges liveness in) to the fixture, so
@@ -2306,10 +2290,10 @@ lacks "OFF folds the barrier: no register verb runs, so a failing register is no
 lacks "OFF reads the worker from its doc: its Writes-only file stays held" "$f_off" "HIMMEL-9600	"
 printf '4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
 
-same_reg="$(HOME="$REAL_HOME" real_register)"
-case "$REAL_BEFORE$same_reg" in *STAT-ERROR*) fail "the real register snapshot hit a stat error (before: $REAL_BEFORE; after: $same_reg)" ;;
-    *) [ "$REAL_BEFORE" = "$same_reg" ] && pass "the real ~/.himmel/state/holds is unchanged" || fail "the real ~/.himmel/state/holds changed during the run" ;;
-esac
+# a before/after compare of the live register fails when a real worker writes during the run. Every row this
+# suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
+real_hits="$(grep -rlF "$WORK" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"
+[ "${real_hits:-0}" = 0 ] && pass "no row of this run reached the real ~/.himmel/state/holds" || fail "$real_hits file(s) of the real ~/.himmel/state/holds name this run's temp path"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

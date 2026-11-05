@@ -20,6 +20,10 @@ import {
   install, remove, statusOf, writeAtomic,
 } from './wire-session-telemetry-hooks.mjs';
 
+// The wiring subprocesses never read the operator's real home or config roots.
+const SANDBOX_HOME = makeTmpDir('wire-session-telemetry-home-');
+Object.assign(process.env, { HOME: SANDBOX_HOME, XDG_CONFIG_HOME: path.join(SANDBOX_HOME, '.config'), HIMMEL_CONFIG_DIR: path.join(SANDBOX_HOME, '.himmel'), CLAUDE_CONFIG_DIR: path.join(SANDBOX_HOME, '.claude'), CLAUDE_USER_SETTINGS: path.join(SANDBOX_HOME, '.claude', 'settings.json'), GIT_CONFIG_GLOBAL: path.join(SANDBOX_HOME, '.gitconfig') });
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT = path.join(HERE, 'wire-session-telemetry-hooks.mjs');
 const REAL_WRITER = path.join(HERE, 'session-run-hook.ts');

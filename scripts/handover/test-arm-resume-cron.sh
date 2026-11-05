@@ -93,6 +93,7 @@ export WORKER_BRIDGE_ROOT="$TMP/worker-bridge-shield"
 export WORKSPACE_TRUST_CONFIG="$TMP/claude-trust.json"
 export HIMMEL_FLOW_RUNS_LEDGER="$TMP/flow-runs.jsonl"
 export ARM_TEMP_CWD_OK=1
+export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch fixtures; guard rows drop it
 export ARM_RESUME_DOTENV_ROOT="$TMP/dotenv-shield"
 mkdir -p "$ARM_RESUME_DOTENV_ROOT"
 unset ARMAUTOMERGE CR_MERGE_GATE_OK HIMMEL_HEADROOM_PROXY 2>/dev/null || true

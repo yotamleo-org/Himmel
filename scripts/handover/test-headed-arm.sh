@@ -33,10 +33,13 @@ HERE="$(cd "$(dirname "$0")" && pwd)"; SCRIPT="$HERE/headed-arm.sh"
 # those rows green-from-default to green-from-override. Clear them so the
 # suite's own per-case overrides are the only source, same as
 # chief-kit/test-headed-arm-worker.sh:40.
-unset HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER 2>/dev/null || true
+unset HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_LAUNCHER_ENV_LINES HEADED_ARM_RECORDER 2>/dev/null || true
 # The ticket-duplicate rows (8436*) assert a refusal; HEADED_ARM_ALLOW_TICKET_DUP=1 exported in the
 # operator's launching shell would silently turn them into launches. Rows that want it set it per call.
 unset HEADED_ARM_ALLOW_TICKET_DUP
+# Scratch fixtures are not guarded folders, so the suite opts in; the guard rows drop it per call.
+export UNGUARDED_LAUNCH_OK=1
+unset HIMMEL_LAUNCH_GUARD_WARNED
 # A real macOS host reads uname=Darwin, which picks the macOS shim
 # and its ~7 minute session-visibility budget; every case that launches but
 # never confirms (44c+) then outruns the CI timeout. Pin the platform so the
@@ -50,6 +53,7 @@ export HEADED_ARM_UNAME=Linux
 # then targets an unintended location instead of a throwaway one - abort
 # loudly rather than let that happen.
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/headed-arm-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
+tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
 # Marker for the end-of-suite check that no case left a launch
 # record in the operator's real launch-record dir (see case 40).
@@ -62,8 +66,6 @@ trap 'rm -rf "$tmp"' EXIT
 export HIMMELCTL_CACHE_DIR="$tmp/pinned-himmelctl-cache"
 # the single-writer register lives under $HOME/.himmel/state/holds: pinned, so no seed here can reach the real one
 REAL_HOME="$HOME"
-real_register() { find "$REAL_HOME/.himmel/state/holds" -printf '%P %s %T@\n' 2>/dev/null | sort | cksum; }  # gnu-ok: Linux-only suite, fails closed where find has no -printf
-REAL_REGISTER_BEFORE="$(real_register)"
 export HOME="$tmp/pinned-home"
 mkdir -p "$HOME"
 # Headed-arm.sh mkdirs its claim-lock root `-m 0700` and then
@@ -1701,6 +1703,104 @@ contains "resolved launcher (recorder branch): clears CLAUDE_CODE_MESSAGING_TOKE
 # quoted the command, regardless of the launching station's own $SHELL.
 contains "resolved launcher: SHELL forced to bash ahead of script(1), independent of the launching shell" "$rec36b" "SHELL=/"
 
+# --- 36e-36j. HEADED_ARM_LAUNCHER_ENV_LINES: a newline-delimited
+# NAME=VALUE channel whose entries become SINGLE argv elements, so a value with a
+# space (a macOS path) survives. The token channel above word-splits and cannot.
+# mk_lines_stub: a konsole stub that records one %q-quoted argv element per line.
+mk_lines_stub() { # <dir> <name>
+  mk_stub "$1" 1 alive "$2"
+  cat > "$1/konsole" <<'KONSOLE_EOF'
+#!/usr/bin/env bash
+printf '%q\n' "$@" >> "$(dirname "$0")/record"
+: > "$(dirname "$0")/confirmable"
+sleep 5
+KONSOLE_EOF
+  chmod 755 "$1/konsole"
+}
+LINE36='HIMMEL_HOLD_DOC=/x/a b/HIMMEL-1-N1-x.md'
+# 36f (I1): var unset and var '' give byte-identical terminal argv (no '' element).
+# N36F=31 is the element count captured on the unmodified script.
+d36f="$tmp/c36f"; mk_lines_stub "$d36f" "HIMMEL-lines36f"
+KONSOLE_CMD="$d36f/konsole" PGREP_CMD="$d36f/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36f/proc" HEADED_ARM_LOCK_DIR="$d36f/locks" \
+  bash "$SCRIPT" "HIMMEL-lines36f" "doc36f.md" "$d36f/signal-never" "$PAST" "$d36f/log" >/dev/null 2>&1
+wait_record "$d36f" || true
+mv "$d36f/record" "$d36f/record.unset"; rm -f "$d36f/confirmable"; rm -rf "$d36f/locks"
+HEADED_ARM_LAUNCHER_ENV_LINES='' KONSOLE_CMD="$d36f/konsole" PGREP_CMD="$d36f/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36f/proc" HEADED_ARM_LOCK_DIR="$d36f/locks" \
+  bash "$SCRIPT" "HIMMEL-lines36f" "doc36f.md" "$d36f/signal-never" "$PAST" "$d36f/log" >/dev/null 2>&1
+wait_record "$d36f" || true
+if cmp -s "$d36f/record.unset" "$d36f/record" && [ -s "$d36f/record" ]; then echo "ok - 36f LINES unset vs '': terminal argv byte-identical"
+else echo "FAIL - 36f LINES unset vs '': terminal argv differs"; fails=$((fails+1)); fi
+not_contains "36f LINES '': no empty argv element" "$(grep -Fx "''" "$d36f/record" 2>/dev/null || true)" "''"
+check "36f LINES '': argv element count unchanged (N36F=31)" "$(wc -l < "$d36f/record" | tr -d ' ')" "31"
+
+# 36e: the spaced value reaches the terminal argv as ONE element.
+d36e="$tmp/c36e"; mk_lines_stub "$d36e" "HIMMEL-lines36e"
+rc36e=0
+HEADED_ARM_LAUNCHER_ENV_LINES="$LINE36" KONSOLE_CMD="$d36e/konsole" PGREP_CMD="$d36e/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36e/proc" HEADED_ARM_LOCK_DIR="$d36e/locks" \
+  bash "$SCRIPT" "HIMMEL-lines36e" "doc36e.md" "$d36e/signal-never" "$PAST" "$d36e/log" >/dev/null 2>&1 || rc36e=$?
+wait_record "$d36e" || true
+check "36e LINES with a space: exit 0" "$rc36e" "0"
+check "36e LINES with a space: ONE argv element" "$(grep -Fxc 'HIMMEL_HOLD_DOC=/x/a\ b/HIMMEL-1-N1-x.md' "$d36e/record" 2>/dev/null || true)" "1"
+
+# 36e2: same through the recorder branch (script -c "<cmd>"): the value is one element of the env part.
+d36e2="$tmp/c36e2"; mk_lines_stub "$d36e2" "HIMMEL-lines36e2"
+rc36e2=0
+HEADED_ARM_LAUNCHER_ENV_LINES="$LINE36" HEADED_ARM_RECORDER=1 HEADED_ARM_UNAME=Linux KONSOLE_CMD="$d36e2/konsole" PGREP_CMD="$d36e2/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36e2/proc" HEADED_ARM_LOCK_DIR="$d36e2/locks" \
+  bash "$SCRIPT" "HIMMEL-lines36e2" "doc36e2.md" "$d36e2/signal-never" "$PAST" "$d36e2/log" >/dev/null 2>&1 || rc36e2=$?
+wait_record "$d36e2" || true
+check "36e2 LINES with a space, RECORDER: exit 0" "$rc36e2" "0"
+check "36e2 LINES with a space, RECORDER: ONE argv element" "$(grep -Fxc 'HIMMEL_HOLD_DOC=/x/a\ b/HIMMEL-1-N1-x.md' "$d36e2/record" 2>/dev/null || true)" "1"
+
+# 36g: a line that is not NAME=VALUE is refused (exit 2) before any launch.
+d36g="$tmp/c36g"; mk_lines_stub "$d36g" "HIMMEL-lines36g"
+rc36g=0
+err36g=$(HEADED_ARM_LAUNCHER_ENV_LINES=$'1BAD=x' KONSOLE_CMD="$d36g/konsole" PGREP_CMD="$d36g/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36g/proc" HEADED_ARM_LOCK_DIR="$d36g/locks" \
+  bash "$SCRIPT" "HIMMEL-lines36g" "doc36g.md" "$d36g/signal-never" "$PAST" "$d36g/log" 2>&1 >/dev/null) || rc36g=$?
+sleep 0.3
+check "36g LINES bad name: exit 2" "$rc36g" "2"
+contains "36g LINES bad name: names the shape" "$err36g" "is not NAME=VALUE"
+if [ -e "$d36g/record" ]; then echo "FAIL - 36g LINES bad name: konsole must not be invoked"; fails=$((fails+1)); else echo "ok - 36g LINES bad name: konsole never invoked"; fi
+
+# 36h: a chief drops HIMMEL_CONSOLE_RELAY from the lines, keeps the rest.
+d36h="$tmp/c36h"; mk_lines_stub "$d36h" "HIMMEL-lines36h"
+rc36h=0
+HEADED_ARM_LAUNCHER_ENV_LINES=$'HIMMEL_CONSOLE_RELAY=1\nHIMMEL_X=a b' KONSOLE_CMD="$d36h/konsole" PGREP_CMD="$d36h/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36h/proc" HEADED_ARM_LOCK_DIR="$d36h/locks" \
+  bash "$SCRIPT" --role chief "HIMMEL-lines36h" "doc36h.md" "$d36h/signal-never" "$PAST" "$d36h/log" >/dev/null 2>&1 || rc36h=$?
+wait_record "$d36h" || true
+check "36h chief LINES: exit 0" "$rc36h" "0"
+check "36h chief LINES: the other line survives as one element" "$(grep -Fxc 'HIMMEL_X=a\ b' "$d36h/record" 2>/dev/null || true)" "1"
+check "36h chief LINES: HIMMEL_CONSOLE_RELAY=1 line dropped" "$(grep -Fxc 'HIMMEL_CONSOLE_RELAY=1' "$d36h/record" 2>/dev/null || true)" "0"
+
+# 36i: --dry-run reports each line.
+d36i="$tmp/c36i"; mk_lines_stub "$d36i" "HIMMEL-lines36i"
+out36i=$(HEADED_ARM_LAUNCHER_ENV_LINES="$LINE36" KONSOLE_CMD="$d36i/konsole" PGREP_CMD="$d36i/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36i/proc" HEADED_ARM_LOCK_DIR="$d36i/locks" \
+  bash "$SCRIPT" --dry-run "HIMMEL-lines36i" "doc36i.md" "$d36i/signal-never" "$PAST" "$d36i/log" 2>&1) || true
+contains "36i dry-run prints the line" "$out36i" "launcher-env-line: $LINE36"
+
+# 36j: headless real run (stubbed CLI + launcher): the spaced value reaches the
+# launch env AND the settings file's env block.
+d36j="$tmp/c36j"; mkdir -p "$d36j"
+printf '{}\n' > "$d36j/settings.json"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$d36j/pgrep"
+cat > "$d36j/cli" <<CLI_EOF
+#!/usr/bin/env bash
+d="$d36j"
+case "\$1" in
+  --version) echo "2.1.296 (Claude Code)" ;;
+  agents) if [ -e "\$d/launched" ]; then echo '[{"name":"HIMMEL-lines36j","pid":4242}]'; else echo '[]'; fi ;;
+  --bg) printenv HIMMEL_HOLD_DOC > "\$d/envfile"; : > "\$d/launched" ;;
+esac
+exit 0
+CLI_EOF
+chmod 755 "$d36j/pgrep" "$d36j/cli"
+rc36j=0
+HEADED_ARM_LAUNCHER_ENV_LINES="$LINE36" HEADED_ARM_HEADLESS=1 WORKER_SESSION_PROFILE_SETTINGS="$d36j/settings.json" \
+  HEADED_ARM_CLAUDE_CLI="$d36j/cli" HEADED_ARM_LAUNCHER="$d36j/cli" PGREP_CMD="$d36j/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36j/proc" HEADED_ARM_LOCK_DIR="$d36j/locks" \
+  bash "$SCRIPT" "HIMMEL-lines36j" "doc36j.md" "$d36j/signal-never" "$PAST" "$d36j/log" >/dev/null 2>&1 || rc36j=$?
+check "36j headless LINES: exit 0" "$rc36j" "0"
+check "36j headless LINES: launch env holds the spaced value" "$(cat "$d36j/envfile" 2>/dev/null || echo MISSING)" "/x/a b/HIMMEL-1-N1-x.md"
+check "36j headless LINES: settings env block holds the spaced value" "$(jq -r '.env.HIMMEL_HOLD_DOC' "$d36j/settings.json" 2>/dev/null || echo MISSING)" "/x/a b/HIMMEL-1-N1-x.md"
+
 # --- 37. RED control: a mutant that always takes the RECORDER=1 branch
 # must fail case 36's "no script(1) wrapper" assertion for the DEFAULT
 # (unset) launcher - proves that assertion is not vacuous. -----------------
@@ -2684,6 +2784,24 @@ contains "8725h4 ... and carries the runnable grant line" "$(cat "$dh1b/log")" "
 contains "8725h5 ... the brief gets a BLOCKED bullet naming the holder" "$(tail -n 1 "$HB2")" "BLOCKED launch of HIMMEL-9509-N1-b2 refused, not armed: holds: scripts/h1.sh is held by HIMMEL-9501"
 contains "8725h6 ... and the grant line" "$(tail -n 1 "$HB2")" "holds.py grant --key HIMMEL-9509 --repo $REPO scripts/h1.sh"
 
+# the printed grant command is runnable as typed, so a repo path with a space or a metacharacter is shell-quoted (printf %q)
+RSP="$tmp/repo with space"; mkdir -p "$RSP"
+HA3="$(hdoc HIMMEL-9510-N1-a3.md '# a3')"
+hp claim --key HIMMEL-9510 --label N1 --doc "$HA3" --repo "$RSP" scripts/h1.sh >/dev/null 2>&1
+HB3="$(hdoc HIMMEL-9511-N1-b3.md '# b3' '> **Writes:** scripts/h1.sh' '## Results (newest at the bottom)')"
+dh1c="$tmp/h1c"; mk_stub "$dh1c" 1 alive "HIMMEL-9511-N1-b3"
+h1cout="$(hlaunch "$dh1c" HIMMEL-9511-N1-b3 "$HB3" N1 "$RSP" 2>&1)"
+contains "grant-quote the printed grant command quotes a repo path with a space" "$h1cout" "holds.py grant --key HIMMEL-9511 --repo $(printf '%q' "$RSP") scripts/h1.sh"
+
+# WRITE_HOLD_OK is the operator's bypass; a worker's own launch (HIMMEL_CONSOLE_LEG set) must not carry it on
+W4DOC="$(hdoc HIMMEL-9512-N1-w4.md '# w4')"
+w4_lead="$(HIMMEL_CONSOLE_LEG='' WRITE_HOLD_OK=1 bash "$HERE/chief-kit/headed-arm-worker.sh" --dry-run --no-profile --no-prior-art-check HIMMEL-9512-N1-w4 "$W4DOC" /tmp/nosig 99999999999 "$tmp/w4.log" claude-sonnet-5 2>&1)"
+# HIMMEL_CONSOLE_LEG is a Claude Code marker: on an anchor checkout with no claude ancestor (CI) the seam guard refuses it beside a set seam, and the suite exports UNGUARDED_LAUNCH_OK; the real repo is a guarded folder, so the seam is dropped for this one launch
+w4_leg="$(unset UNGUARDED_LAUNCH_OK; HIMMEL_CONSOLE_LEG=1 WRITE_HOLD_OK=1 bash "$HERE/chief-kit/headed-arm-worker.sh" --dry-run --no-profile --no-prior-art-check HIMMEL-9512-N1-w4 "$W4DOC" /tmp/nosig 99999999999 "$tmp/w4.log" claude-sonnet-5 2>&1)"
+contains "scrub-a control: WRITE_HOLD_OK=1 from a non-worker launching shell reaches the worker" "$w4_lead" "WRITE_HOLD_OK=1"
+case "$w4_leg" in *"WRITE_HOLD_OK=<unset>"*) ;; *) printf 'scrub-b worker output:\n%s\n' "$w4_leg" | cut -c1-400 | head -n 12 >&2 ;; esac
+contains "scrub-b WRITE_HOLD_OK=1 inherited by a worker's own launch (HIMMEL_CONSOLE_LEG set) is dropped" "$w4_leg" "WRITE_HOLD_OK=<unset>"
+
 # a grant, then the same launch passes
 hp grant --key HIMMEL-9502 --repo "$REPO" scripts/h1.sh >/dev/null 2>&1
 dh2="$tmp/h2"; mk_stub "$dh2" 1 alive "HIMMEL-9502-N2-b"
@@ -2832,6 +2950,117 @@ HANDOVER_DIR="$HH" HIMMEL_HOLD_KEY=HIMMEL-9532 HIMMEL_HOLD_DOC="$HZ" HIMMEL_HOLD
 wait_record "$dh20" || true
 check "8725ah a chief launch seeds nothing and the child carries no key" "$h20rc|$([ -e "$(hrow scripts/h32.sh)" ] && echo row || echo none)|$(cat "$dh20/holdenv" 2>/dev/null)" "0|none|unset"
 
-check "8725ai the real ~/.himmel/state/holds is unchanged by this suite" "$(real_register)" "$REAL_REGISTER_BEFORE"
+# a before/after compare of the live register fails when a real worker writes during the run. This suite's rows live in
+# the private register under the pinned HOME and name docs under $tmp, a path unique to this run: none may appear in the real one.
+h_priv="$(grep -rlF "$tmp" "$HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"
+h_real="$(grep -rlF "$tmp" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"
+check "8725ai the suite's rows are in the private register and none reached the real ~/.himmel/state/holds" "$([ "${h_priv:-0}" -gt 0 ] && echo private || echo none)|${h_real:-0}" "private|0"
+
+# --- a folder that does not load the guard hooks is refused (rc 18) before any lock, terminal or child
+GSCR="$tmp/guard-scratch"; mkdir -p "$GSCR"
+glaunch() { # <stubdir> <name> [VAR=val ...]: scratch folder, the suite opt-out and warn marker dropped
+  local d="$1" n="$2"; shift 2
+  ( unset UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED; env "$@" KONSOLE_CMD="$d/konsole" PGREP_CMD="$d/pgrep" HEADED_ARM_REPO="${GREPO:-$GSCR}" \
+      HEADED_ARM_LOCK_DIR="$d/locks" HEADED_ARM_PROC="$d/proc" bash "$SCRIPT" "$n" doc.md "$d/signal-never" "$PAST" "$d/log" ) 2>&1
+}
+dg1="$tmp/g1"; mk_stub "$dg1" 1 alive "HIMMEL-9026-g1"
+gout1="$(glaunch "$dg1" HIMMEL-9026-g1 X=1)"; grc1=$?
+settle
+check "guard_refuses_scratch: rc 18" "$grc1" "18"
+contains "guard_refuses_scratch: names the folder" "$gout1" "$GSCR does not load the himmel guard hooks (not a git work tree)"
+contains "guard_refuses_scratch: names the opt-out" "$gout1" "UNGUARDED_LAUNCH_OK=1"
+check "guard_refuses_scratch: konsole never called, no lock dir" "$([ -e "$dg1/record" ] && echo called || echo none)|$([ -e "$dg1/locks" ] && echo lock || echo none)" "none|none"
+
+dg2="$tmp/g2"; mk_stub "$dg2" 1 alive
+printf '#!/usr/bin/env bash\necho "$*" >> "%s/cli-record"\n' "$dg2" > "$dg2/claudecli"; chmod 755 "$dg2/claudecli"
+gout2="$(glaunch "$dg2" HIMMEL-9026-g2 HEADED_ARM_HEADLESS=1 WORKER_SESSION_PROFILE_SETTINGS=/dev/null HEADED_ARM_CLAUDE_CLI="$dg2/claudecli")"; grc2=$?
+contains "guard_refuses_headless: refusal text" "$gout2" "does not load the himmel guard hooks"
+bg2=0; [ -e "$dg2/cli-record" ] && { bg2="$(grep -c -e "--bg" "$dg2/cli-record")"; true; }
+check "guard_refuses_headless: rc 18, no --bg call" "$grc2|$bg2" "18|0"
+
+dg3="$tmp/g3"; mk_stub "$dg3" 1 alive
+gout3="$( unset UNGUARDED_LAUNCH_OK; KONSOLE_CMD="$dg3/konsole" PGREP_CMD="$dg3/pgrep" HEADED_ARM_REPO="$GSCR" HEADED_ARM_LOCK_DIR="$dg3/locks" HEADED_ARM_PROC="$dg3/proc" \
+  bash "$SCRIPT" --dry-run HIMMEL-9026-g3 doc.md "$dg3/signal-never" "$PAST" "$dg3/log" 2>&1)"; grc3=$?
+check "guard_refuses_dry_run: rc 18" "$grc3" "18"
+not_contains "guard_refuses_dry_run: no would-exec report" "$gout3" "would exec"
+
+GLUNA="$tmp/guard-luna"; mkdir -p "$GLUNA"; git -C "$GLUNA" init -q -b main; : > "$GLUNA/.single-writer"
+dg4="$tmp/g4"; mk_stub "$dg4" 1 alive
+gout4="$( unset UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED; HANDOVER_DIR='' KONSOLE_CMD="$dg4/konsole" PGREP_CMD="$dg4/pgrep" HEADED_ARM_REPO="$GLUNA" HEADED_ARM_LOCK_DIR="$dg4/locks" HEADED_ARM_PROC="$dg4/proc" \
+  bash "$SCRIPT" HIMMEL-9026-g4 doc.md "$dg4/signal-never" "$PAST" "$dg4/log" 2>&1)"; grc4=$?
+check "guard_luna_no_handover_dir: rc 18" "$grc4" "18"
+contains "guard_luna_no_handover_dir: refusal text" "$gout4" "does not load the himmel guard hooks"
+
+dg5="$tmp/g5"; mk_stub "$dg5" 1 alive "HIMMEL-9026-g5"
+gout5="$(glaunch "$dg5" HIMMEL-9026-g5 UNGUARDED_LAUNCH_OK=1)"; grc5=$?
+wait_record "$dg5" || true
+gwarn5="WARN unguarded launch of HIMMEL-9026-g5 in $GSCR (not a git work tree; UNGUARDED_LAUNCH_OK=1)"
+check "guard_optout_warns_once: rc 0, konsole called" "$grc5|$([ -s "$dg5/record" ] && echo called || echo none)" "0|called"
+check "guard_optout_warns_once: one WARN on stderr" "$(grep -cF -e "$gwarn5" <<< "$gout5")" "1"
+check "guard_optout_warns_once: one WARN in the log" "$(grep -cF -e "$gwarn5" "$dg5/log" 2>/dev/null)" "1"
+
+dg6="$tmp/g6"; mk_stub "$dg6" 1 alive "HIMMEL-9026-g6"
+gout6="$(glaunch "$dg6" HIMMEL-9026-g6 UNGUARDED_LAUNCH_OK=1 HIMMEL_LAUNCH_GUARD_WARNED="$(cd -P "$GSCR" && pwd -P)")"; grc6=$?
+wait_record "$dg6" || true
+not_contains "guard_optout_marker_silences: no WARN" "$gout6" "WARN unguarded launch"
+check "guard_optout_marker_silences: launch proceeds" "$grc6|$([ -s "$dg6/record" ] && echo called || echo none)" "0|called"
+
+dg7="$tmp/g7"; mk_stub "$dg7" 1 alive
+gout7="$(glaunch "$dg7" HIMMEL-9026-g7 HIMMEL_LAUNCH_GUARD_WARNED="$(cd -P "$GSCR" && pwd -P)")"; grc7=$?
+contains "guard_marker_without_optout_still_refuses: refusal text" "$gout7" "does not load the himmel guard hooks"
+
+# the check's exit 2 (folder cannot be resolved) is also a refusal
+GMISS="$tmp/guard-does-not-exist"
+dg8="$tmp/g8"; mk_stub "$dg8" 1 alive
+gout8="$(GREPO="$GMISS" glaunch "$dg8" HIMMEL-9026-g8 X=1)"; grc8=$?
+settle
+check "guard_unresolvable_folder: rc 18, no konsole call" "$grc8|$([ -e "$dg8/record" ] && echo called || echo none)" "18|none"
+contains "guard_unresolvable_folder: names the reason" "$gout8" "folder cannot be resolved"
+dg9="$tmp/g9"; mk_stub "$dg9" 1 alive
+gout9="$(GREPO="$GMISS" glaunch "$dg9" HIMMEL-9026-g9 UNGUARDED_LAUNCH_OK=1)"; grc9=$?
+gwarn9="WARN unguarded launch of HIMMEL-9026-g9 in $GMISS (folder cannot be resolved; UNGUARDED_LAUNCH_OK=1)"
+check "guard_unresolvable_folder_optout: exactly one WARN naming the reason" "$(grep -cF -e "$gwarn9" <<< "$gout9")" "1"
+check "guard_unresolvable_folder_optout: passes the guard, then the launch's own cd into REPO fails (rc 1), no konsole call" "$grc9|$([ -e "$dg9/record" ] && echo called || echo none)" "1|none"
+check "guard_marker_without_optout_still_refuses: rc 18" "$grc7" "18"
+
+# --- controls: a GUARDED folder launches with the opt-out dropped and no WARN (the suite-level opt-out
+# would otherwise turn a false refusal into a WARN plus a launch)
+GWT="$(cd "$HERE/../.." && pwd -P)"   # the worktree under test: fully wired
+dgc1="$tmp/gc1"; mk_stub "$dgc1" 1 alive "HIMMEL-9026-gc1"
+goutc1="$(GREPO="$GWT" glaunch "$dgc1" HIMMEL-9026-gc1 X=1)"; grcc1=$?
+wait_record "$dgc1" || true
+check "guard_control_worktree_passes: rc 0, konsole called" "$grcc1|$([ -s "$dgc1/record" ] && echo called || echo none)" "0|called"
+not_contains "guard_control_worktree_passes: no WARN" "$goutc1" "WARN unguarded launch"
+not_contains "guard_control_worktree_passes: no refusal" "$goutc1" "refusing to launch"
+
+# a linked worktree of this repo cut at an OLDER commit that changed the settings file: its file is a
+# blob main carried, so it still launches (main's hook list has moved on since it was cut)
+GSTALE="$tmp/guard-stale-wt"
+GOLDER="$(git -C "$GWT" log -2 --format=%H -- .claude/settings.json | sed -n 2p)"
+if [ -n "$GOLDER" ] && git -C "$GWT" worktree add -q --detach "$GSTALE" "$GOLDER" >/dev/null 2>&1; then
+  trap 'git -C "$GWT" worktree remove --force "$GSTALE" >/dev/null 2>&1; rm -rf "$tmp"' EXIT
+  dgc2="$tmp/gc2"; mk_stub "$dgc2" 1 alive "HIMMEL-9026-gc2"
+  goutc2="$(GREPO="$GSTALE" glaunch "$dgc2" HIMMEL-9026-gc2 X=1)"; grcc2=$?
+  wait_record "$dgc2" || true
+  check "guard_control_stale_worktree_passes: rc 0, konsole called" "$grcc2|$([ -s "$dgc2/record" ] && echo called || echo none)" "0|called"
+  not_contains "guard_control_stale_worktree_passes: no WARN" "$goutc2" "WARN unguarded launch"
+else
+  check "guard_control_stale_worktree_passes: fixture worktree created" "no" "yes"
+fi
+
+# the opt-out and the WARN marker reach the check only: the session this launches must not inherit them
+dgo="$tmp/go"; mk_stub "$dgo" 1 alive "HIMMEL-9026-go"
+cat > "$dgo/konsole" <<KONSOLE_EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$dgo/record"
+printf '%s|%s\n' "\${UNGUARDED_LAUNCH_OK-absent}" "\${HIMMEL_LAUNCH_GUARD_WARNED-absent}" > "$dgo/childenv"
+: > "$dgo/confirmable"
+sleep 5
+KONSOLE_EOF
+chmod 755 "$dgo/konsole"
+glaunch "$dgo" HIMMEL-9026-go UNGUARDED_LAUNCH_OK=1 HIMMEL_LAUNCH_GUARD_WARNED=/elsewhere >/dev/null; grcgo=$?
+wait_record "$dgo" || true
+n=0; while [ ! -s "$dgo/childenv" ] && [ "$n" -lt 40 ]; do sleep 0.05; n=$((n+1)); done
+check "guard_optout_not_inherited: launch proceeds, child env carries neither name" "$grcgo|$(cat "$dgo/childenv" 2>/dev/null)" "0|absent|absent"
 
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }

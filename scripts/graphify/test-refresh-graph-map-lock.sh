@@ -241,6 +241,38 @@ grep -q '"gen":"E"' "$OUT3/graph.json" 2>/dev/null && pass "T3 the refresh compl
 [ -d "$OUT3/.promote.lock" ] && fail "T3 lock dir left behind after takeover run (takeover -> acquire -> release did not compose)" \
   || pass "T3 lock dir gone after the takeover run (takeover -> acquire -> eager release composed)"
 
+# --- T3b: a lock held longer than the stale floor by a LIVE
+# holder (its heartbeat is fresh) is NOT taken over; a dead holder (heartbeat
+# as old as the stamp) still is. Touched stamps, no real clock wait. ---
+echo "T3b: a live holder's lock older than the stale floor is not taken over"
+CORPUS3B="$WS/c3b"; mkdir -p "$CORPUS3B/notes"
+MAPS3B="$WS/m3b"; mkdir -p "$MAPS3B"
+OUT3B="$CORPUS3B/graphify-out"
+printf '# f\ncontent f\n' > "$CORPUS3B/notes/f.md"
+mkdir -p "$OUT3B/.promote.lock"
+printf 'live-ast-holder\n' > "$OUT3B/.promote.lock/owner"
+printf '%s\n' "$(( $(date -u +%s) - 1100 ))" > "$OUT3B/.promote.lock/acquired"
+date -u +%s > "$OUT3B/.promote.lock/heartbeat"
+FBIN="$WS/fbin"; make_stub "$FBIN" "F"
+out_f=$( GRAPHIFY_MAP_BIN="$FBIN/graphify" PATH="$FBIN:$PATH" GRAPHIFY_PROMOTE_LOCK_STALE_SECONDS=600 GRAPHIFY_PROMOTE_LOCK_TIMEOUT_SECONDS=2 \
+  bash "$SCRIPT" --name lock3b --corpus-root "$CORPUS3B" --backend claude \
+  --maps-dir "$MAPS3B" --title "Lock Map 3b" --slug lock-map-3b --corpus-tag lock3b 2>&1 ); rc_f=$?
+[ "$rc_f" -ne 0 ] && pass "T3b refresh gives up on the live holder's lock (rc $rc_f)" || fail "T3b refresh should not succeed past a live holder's lock: $out_f"
+grep -qi "taking over" <<<"$out_f" && fail "T3b refresh took over a LIVE holder's lock: $out_f" || pass "T3b no takeover trail for a live holder"
+[ "$(cat "$OUT3B/.promote.lock/owner" 2>/dev/null)" = "live-ast-holder" ] && pass "T3b the live holder's lock is untouched" \
+  || fail "T3b the live holder's lock was replaced"
+
+echo "T3b-control: a dead holder (stale stamp AND stale heartbeat) is still taken over"
+rm -rf "$OUT3B/.promote.lock"; mkdir -p "$OUT3B/.promote.lock"
+printf 'dead-ast-holder\n' > "$OUT3B/.promote.lock/owner"
+printf '%s\n' "$(( $(date -u +%s) - 1100 ))" > "$OUT3B/.promote.lock/acquired"
+printf '%s\n' "$(( $(date -u +%s) - 900 ))" > "$OUT3B/.promote.lock/heartbeat"
+out_g=$( GRAPHIFY_MAP_BIN="$FBIN/graphify" PATH="$FBIN:$PATH" GRAPHIFY_PROMOTE_LOCK_STALE_SECONDS=600 GRAPHIFY_PROMOTE_LOCK_TIMEOUT_SECONDS=2 \
+  bash "$SCRIPT" --name lock3b --corpus-root "$CORPUS3B" --backend claude \
+  --maps-dir "$MAPS3B" --title "Lock Map 3b" --slug lock-map-3b --corpus-tag lock3b 2>&1 ); rc_g=$?
+[ "$rc_g" -eq 0 ] && pass "T3b-control refresh takes over a dead holder's lock" || fail "T3b-control should exit 0 (got $rc_g): $out_g"
+grep -qi "taking over" <<<"$out_g" && pass "T3b-control takeover trail present" || fail "T3b-control should log the takeover: $out_g"
+
 # --- T4: two SIMULTANEOUS
 # contenders against one stale lock -- the takeover must be single-winner.
 # A naive rm-then-continue takeover would let both contenders judge the same

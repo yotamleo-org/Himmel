@@ -710,6 +710,120 @@ lg -C "$TL" add -A && lg -C "$TL" commit -q -m miss
 got=$(tpc "$TLID" br-feat-tpmiss "$(lg -C "$TL" rev-parse HEAD)" "$TL")
 [ "$got" = "0:none" ] || fail "11: unlisted files are not none: $got"
 
+# --- 12. the one no-op carry rule (go_pr_qids, go_noop_chain, go_nogo_after, go_noop_carry)
+# P - A - B on one branch, S a sibling of A off P.
+NG="$ROOT/ng12"; lg init -q "$NG"
+lg -C "$NG" commit -q --allow-empty -m p; P12=$(lg -C "$NG" rev-parse HEAD)
+lg -C "$NG" commit -q --allow-empty -m a; A12=$(lg -C "$NG" rev-parse HEAD)
+lg -C "$NG" commit -q --allow-empty -m b; B12=$(lg -C "$NG" rev-parse HEAD)
+lg -C "$NG" checkout -q -b s12 "$P12"
+lg -C "$NG" commit -q --allow-empty -m s; S12=$(lg -C "$NG" rev-parse HEAD)
+DEAD12=dead00000000000000000000000000000000beef
+rec12() {  # <verdicts-dir> <qid> <name> <verdict line> <pr> [<extra lines>] - an unsigned verdict record
+    mkdir -p "$1/$2"
+    printf '# VERDICT %s - judge\n\n## Verdict\n\n%s\n\npr: %s\n%s\n## Evidence checked\n\ne\n' "$2" "$4" "$5" "${6:-}" > "$1/$2/$3.md"
+}
+gg12() {  # <fn> <args...> - "<rc>|<stdout>" of a go-gate.sh function in a clean shell
+    local o r=0
+    o=$(bash -c '. "$1"; shift; "$@"' _ "$GO_GATE_SRC" "$@") || r=$?
+    printf '%s|%s' "$r" "$o"
+}
+V12="$ROOT/v12/verdicts"
+rec12 "$V12" J judge "**GO** for head \`$A12\`." 93
+rec12 "$V12" K other "**GO** for head \`$B12\`." 94
+rec12 "$V12" go-pr-93 go "**GO** for head \`$B12\`." 93
+rec12 "$V12" Z far "**GO** for head \`$S12\`." 94
+got=$(gg12 go_pr_qids "$V12" 93 "$B12")
+[ "$got" = "0|J"$'\n'"K" ] || fail "12 qids: go_pr_qids lists J (pr: 93) and K (names the head), never go-pr-* or Z: $got"
+got=$(gg12 go_pr_qids "$ROOT/v12-none" 93 "$B12")
+[ "$got" = "0|" ] || fail "12 qids: a missing verdict directory lists nothing: $got"
+
+C12="$ROOT/c12/verdicts"
+rec12 "$C12" J "delta-noop-$B12" "**GO** for head \`$B12\`." 93 "delta: no-op"$'\n'"delta-judged: $A12"
+rec12 "$C12" J "delta-noop-$A12" "**GO** for head \`$A12\`." 93 "delta: no-op"$'\n'"delta-judged: $P12"
+got=$(gg12 go_noop_chain "$C12" J "$B12")
+[ "$got" = "0|$B12 $A12"$'\n'"$A12 $P12"$'\n'"$P12 -" ] || fail "12 chain: two hops print two pairs and the root line: $got"
+got=$(gg12 go_noop_chain "$C12" J "$S12")
+[ "$got" = "0|$S12 -" ] || fail "12 chain: a head with no no-op record is its own root: $got"
+rec12 "$C12" Y "delta-noop-$B12" "**GO** for head \`$B12\`." 93 "delta: no-op"$'\n'"delta-judged: $S12"
+rec12 "$C12" Y "delta-noop-$S12" "**GO** for head \`$S12\`." 93 "delta: no-op"$'\n'"delta-judged: $B12"
+got=$(gg12 go_noop_chain "$C12" Y "$B12")
+[ "${got%%|*}" = 2 ] || fail "12 chain: a cycle (B on S, S on B) is rc 2: $got"
+for i in 0 1 2 3 4 5 6 7 8; do
+    rec12 "$C12" L "delta-noop-${i}000000000000000000000000000000000000000" "**GO** for head \`${i}000000000000000000000000000000000000000\`." 93 \
+        "delta: no-op"$'\n'"delta-judged: $((i + 1))000000000000000000000000000000000000000"
+done
+got=$(gg12 go_noop_chain "$C12" L 0000000000000000000000000000000000000000)
+[ "${got%%|*}" = 2 ] || fail "12 chain: 9 hops is rc 2: $got"
+
+nogo12() {  # <label> <NO-GO head> <asked head> <want rc> - one NO-GO of K in a fresh directory
+    local d="$ROOT/n12-$1/verdicts"
+    rec12 "$d" K judge "**NO-GO** for head \`$2\`." 93
+    got=$(gg12 go_nogo_after "$d" 93 "$NG" "$3")
+    [ "${got%%|*}" = "$4" ] || fail "12 NO-GO ($1): go_nogo_after wants rc $4: $got"
+}
+nogo12 same "$B12" "$B12" 1
+nogo12 descendant "$B12" "$A12" 1
+nogo12 sibling "$S12" "$A12" 0
+nogo12 ancestor "$P12" "$A12" 0
+nogo12 unknown "$DEAD12" "$A12" 2
+G12="$ROOT/g12/verdicts"
+rec12 "$G12" K judge "**GO** for head \`$S12\`." 93 "reason quotes"$'\n'"**NO-GO** for head \`$A12\`."
+got=$(gg12 go_nogo_after "$G12" 93 "$NG" "$A12")
+[ "$got" = "0|" ] || fail "12 8732-g: a NO-GO quoted in a GO record's evidence does not veto: $got"
+rec12 "$G12" K2 judge "**NO-GO** for head \`$A12\`." 93
+got=$(gg12 go_nogo_after "$G12" 93 "$NG" "$A12")
+[ "${got%%|*}" = 1 ] || fail "12 8732-g: a record whose verdict line is that NO-GO does veto: $got"
+W12="$ROOT/w12/verdicts"
+rec12 "$W12" K judge "**NO-GO** for head \`$A12\`." 93
+awk '{ printf "%s\r\n", $0 }' "$W12/K/judge.md" > "$W12/K/judge.md.crlf" && mv -f "$W12/K/judge.md.crlf" "$W12/K/judge.md"
+got=$(gg12 go_pr_qids "$W12" 93 "$B12")
+[ "$got" = "0|K" ] || fail "12 CRLF: a CRLF record's pr: line still names its PR: $got"
+got=$(gg12 go_nogo_after "$W12" 93 "$NG" "$A12")
+[ "${got%%|*}" = 1 ] || fail "12 CRLF: a CRLF NO-GO still vetoes: $got"
+rec12 "$W12" J "delta-noop-$B12" "**GO** for head \`$B12\`." 93 "delta: no-op"$'\n'"delta-judged: $A12"
+awk '{ printf "%s\r\n", $0 }' "$W12/J/delta-noop-$B12.md" > "$W12/J/delta-noop-$B12.md.crlf" && mv -f "$W12/J/delta-noop-$B12.md.crlf" "$W12/J/delta-noop-$B12.md"
+got=$(gg12 go_noop_chain "$W12" J "$B12")
+[ "$got" = "0|$B12 $A12"$'\n'"$A12 -" ] || fail "12 CRLF: a CRLF no-op record still chains to its judged head: $got"
+
+R12="$ROOT/r12"; mkdir -p "$R12"
+NC12="$R12/u/b/verdicts"
+rec12 "$NC12" J "delta-noop-$B12" "**GO** for head \`$B12\`." 93 "delta: no-op"$'\n'"delta-judged: $A12"
+got=$(gg12 go_noop_carry "$NC12" J 93 "$NG" "$B12" "$R12" "$NG")
+[ "${got%%|*}" = 1 ] || fail "12 carry: a chain whose root holds no real GO is rc 1: $got"
+rec12 "$NC12" K judge "**NO-GO** for head \`$A12\`." 93
+got=$(gg12 go_noop_carry "$NC12" J 93 "$NG" "$B12" "$R12" "$NG")
+case "$got" in 1\|*"NO-GO"*) ;; *) fail "12 carry: K's NO-GO at the judged head vetoes the carry (rc 1): $got" ;; esac
+U12="$ROOT/u12"; NU12="$U12/u/b/verdicts"
+rec12 "$NU12" J "delta-noop-$B12" "**GO** for head \`$B12\`." 93 "delta: no-op"$'\n'"delta-judged: $A12"
+rec12 "$NU12" J judge "**GO** for head \`$A12\`." 93
+got=$(gg12 go_noop_carry "$NU12" J 93 "$NG" "$B12" "$U12" "$NG")
+case "$got" in 1\|*"valid GO"*) ;; *) fail "12 carry: an unsigned real GO at the chain root is rc 1 (go_trust_verdict refuses it): $got" ;; esac
+
+D12="$ROOT/d12/verdicts"
+rec12 "$D12" K judge "**NO-GO** for head \`$A12\`. see the notes" 93
+got=$(gg12 go_nogo_after "$D12" 93 "$NG" "$B12")
+[ "${got%%|*}" = 2 ] || fail "12 drift: a NO-GO with trailing text is rc 2, never skipped: $got"
+rec12 "$D12" K judge "**NO-GO** for head \`$(printf '%s' "$A12" | tr a-f A-F)\`." 93
+got=$(gg12 go_nogo_after "$D12" 93 "$NG" "$B12")
+[ "${got%%|*}" = 2 ] || fail "12 drift: a NO-GO with uppercase hex is rc 2, never skipped: $got"
+# shellcheck disable=SC2016  # the backticks are literal verdict-line text
+printf '# VERDICT K - judge\n\n**NO-GO** for head `%s`.\n\npr: 93\n' "$A12" > "$D12/K/judge.md"
+got=$(gg12 go_nogo_after "$D12" 93 "$NG" "$B12")
+[ "${got%%|*}" = 2 ] || fail "12 drift: a NO-GO with no Verdict heading is rc 2, never skipped: $got"
+
+# --- 12f. Structure: the carry rule is never re-inlined in go.sh or auto-go.sh
+AUTO_GO_SRC="${AUTO_GO_SRC:-$HERE/../handover/chief-kit/auto-go.sh}"
+for site in "$GO_SCRIPT" "$AUTO_GO_SRC"; do
+    inl=$(grep -vE '^[[:space:]]*#' "$site" | grep -E '(^|[[:space:]])(nogo_after|judged_root)\(\)|delta-judged:')
+    if [ -n "$inl" ]; then
+        fail "12f: $site defines nogo_after()/judged_root() or reads delta-judged: itself - the carry rule lives in go-gate.sh"
+    fi
+    for fn in go_verdict_line go_pr_qids go_noop_chain go_nogo_after go_noop_carry; do
+        grep -q "declare -F $fn " "$site" || fail "12f: $site does not fail closed on a missing $fn"
+    done
+done
+
 if [ "$FAIL" -eq 0 ]; then
     echo "PASS: test-go-gate.sh"
     exit 0

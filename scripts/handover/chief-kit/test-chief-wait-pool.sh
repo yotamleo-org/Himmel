@@ -77,6 +77,7 @@ case " $* " in
         elif [ -f "$STUB/pool.rows" ]; then cat "$STUB/pool.rows"; printf '# pool=%s/7,LOW\n' "$(wc -l < "$STUB/pool.rows" | tr -d ' ')"
         else printf '# pool=0/7,LOW\nPOOL-EMPTY\n'; fi
         case " $* " in *" --dispositions "*) [ ! -f "$STUB/dispositions" ] || cat "$STUB/dispositions" ;; esac ;;
+    *) [ ! -f "$STUB/pass2.rows" ] || cat "$STUB/pass2.rows" ;;  # the second pass, without --priority-pool-only
 esac
 EOF
 export CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh"
@@ -231,14 +232,14 @@ EOF
     unowned_hk '#2575:120m'
     I="$(new_inbox unownedhk)"
     timeout 6 bash "$WAIT" "$I" --workers N1.md > "$WORK/unhk1.out" 2>/dev/null; digest_rc=$?
-    check '(8197) the first sight of an unowned PR wakes at once' '0:WAKE unowned-prs #2575:120m' "$digest_rc:$(head -n 1 "$WORK/unhk1.out")"
+    check '(8934) the first sight of an unowned PR joins the digest, no wake' '124:0:1' "$digest_rc:$(grep -c '^WAKE ' "$WORK/unhk1.out"):$(grep -c '^unowned-prs #2575:120m' "$I.wait.housekeeping")"
     touch -d '2 hours ago' "$I.wait.unowned"
     unowned_hk '#2575:121m'
     timeout 6 bash "$WAIT" "$I" --workers N1.md > "$WORK/unhk2.out" 2>/dev/null; digest_rc=$?
     check '(8197) the same unowned set past its re-wake window joins the digest, no wake' '124:0:1' "$digest_rc:$(grep -c '^WAKE ' "$WORK/unhk2.out"):$(grep -c '^unowned-prs #2575:121m' "$I.wait.housekeeping")"
     unowned_hk '#2575:130m,#2600:15m'
     timeout 6 bash "$WAIT" "$I" --workers N1.md > "$WORK/unhk3.out" 2>/dev/null; digest_rc=$?
-    check '(8197) a PR joining the unowned set wakes at once' '0:WAKE unowned-prs #2575:130m,#2600:15m' "$digest_rc:$(head -n 1 "$WORK/unhk3.out")"
+    check '(8934) a PR joining the unowned set joins the digest, no wake' '124:0:1' "$digest_rc:$(grep -c '^WAKE ' "$WORK/unhk3.out"):$(grep -c '^unowned-prs #2575:130m,#2600:15m' "$I.wait.housekeeping")"
     unset CHIEF_WAIT_UNOWNED_REWAKE_MIN
 
     # The digest signature is the whole wake, not the unresolved lines alone: a capacity move to
@@ -602,6 +603,45 @@ I="$(new_inbox spacever)"
 arm "$I" "$WORK/spacever.out" 8
 check "(8336) a version name with a space still gets the INTAKE command, shell-quoted as one --to argument" "1" "$(grep -c -F -e '--to v1.2\ beta ' "$WORK/spacever.out")"
 rm -f "$STUB/pool.intake" "$STUB/pool.rows"
+
+# --- (8349 P-A) stacked-series pool rows: a SERIES row names its tickets in field 3, tick.sh prints them as
+# `# pool-keys`, and the waiter reads that line for the pool signature, the pool view and the second pass.
+# RED control (pre-change waiter): the SERIES keys are missing from the signature (a changed series never re-wakes),
+# from dispatchable=, and no row is classed SERIES.
+export CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh"
+rm -f "$STUB/pool.fail" "$STUB/pool.slow" "$STUB/pool.partial" "$STUB/pool.intake" "$STUB/dispositions" "$STUB/pass2.rows"
+printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\nSERIES\tLOCAL\tHIMMEL-9101,HIMMEL-9102\tHigh\tv1\tfiles=s.sh\n' > "$STUB/pool.rows"
+I="$(new_inbox series)"
+arm "$I" "$WORK/series1.out" 8
+check "(8349) a pool with a SERIES row wakes (rc 0)" "0" "$rc"
+check "(8349) the SERIES row is classed once, under its own heading" "1:1" "$(grep -c '^# dispatchable as one series worker' "$WORK/series1.out"):$(grep -c '^SERIES.LOCAL.HIMMEL-9101,HIMMEL-9102' "$WORK/series1.out")"
+check "(8349) dispatchable= counts the series' tickets" "1" "$(head -n1 "$WORK/series1.out" | grep -c 'dispatchable=3')"
+arm "$I" "$WORK/series2.out" 4
+check "(8349) the same series pool does not wake again (rc 124)" "124" "$rc"
+printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\nSERIES\tLOCAL\tHIMMEL-9101,HIMMEL-9103\tHigh\tv1\tfiles=s.sh\n' > "$STUB/pool.rows"
+arm "$I" "$WORK/series3.out" 6
+check "(8349) a series whose tickets changed wakes (rc 0)" "0" "$rc"
+
+# a SERIES row only in the second pass is counted and listed once; one the pool already holds is not listed twice
+printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
+printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\nSERIES\tLOCAL\tHIMMEL-9201,HIMMEL-9202\tHigh\tv2\tfiles=t.sh\n' > "$STUB/pass2.rows"
+I="$(new_inbox seriespass2)"
+arm "$I" "$WORK/seriespass2.out" 8
+check "(8349) a SERIES row only in the second pass is counted" "1" "$(head -n1 "$WORK/seriespass2.out" | grep -c 'dispatchable=3')"
+check "(8349) and listed once in the version backlog" "1" "$(sed -n '/^# version backlog/,$p' "$WORK/seriespass2.out" | grep -c '^SERIES.LOCAL.HIMMEL-9201,HIMMEL-9202')"
+printf 'SERIES\tLOCAL\tHIMMEL-9101,HIMMEL-9102\tHigh\tv1\tfiles=s.sh\n' > "$STUB/pool.rows"
+cp "$STUB/pool.rows" "$STUB/pass2.rows"
+I="$(new_inbox seriesboth)"
+arm "$I" "$WORK/seriesboth.out" 8
+check "(8349) a series row in both passes is not repeated in the version backlog" "0" "$(sed -n '/^# version backlog/,$p' "$WORK/seriesboth.out" | grep -c '^SERIES')"
+
+# (spec I2) a pool with no series row prints byte for byte what the pre-change waiter printed (golden captured at base)
+printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\nLOCAL\tHIMMEL-9002\tMedium\tv1\tsecond\tfiles=b.sh\n' > "$STUB/pool.rows"
+printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\nLOCAL\tHIMMEL-9005\tLow\tv2\tlater\tfiles=e.sh\n' > "$STUB/pass2.rows"
+I="$(new_inbox golden)"
+arm "$I" "$WORK/golden.out" 8
+check "(8349) a pool with no series row is byte-identical to the base golden" "same" "$(cmp -s "$WORK/golden.out" "$HERE/test-chief-wait-pool.golden" && echo same || echo differs)"
+rm -f "$STUB/pool.rows" "$STUB/pass2.rows"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

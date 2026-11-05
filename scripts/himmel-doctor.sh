@@ -123,9 +123,19 @@ ledger_registry_path() {
     printf '%s\n' "$p"
 }
 
+# Each check declares the scope its --json row carries: "shared" = the machine or himmel itself (one
+# answer for every project), "project" = the default. The per-repo index checks (graph freshness, semantic graph)
+# are project rows that name the repo they judge, so a feed saved under another project does not carry them.
+# A check id is its Cn prefix (C40-qmd-vec -> C40).
+DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 "
+DOCTOR_REPO_CHECKS=" C33 C70 "
+DOCTOR_REPO_NAME="himmel"
+
 # emit <SEV> <id> <msg> <remedy>
 emit() {
-    local sev="$1" id="$2" msg="$3" remedy="${4:-}" col=""
+    local sev="$1" id="$2" msg="$3" remedy="${4:-}" col="" cn="${2%%-*}" scope="project" repo=""
+    case "$DOCTOR_SHARED_CHECKS" in *" $cn "*) scope="shared" ;; esac
+    case "$DOCTOR_REPO_CHECKS" in *" $cn "*) repo="$DOCTOR_REPO_NAME" ;; esac
     case "$sev" in
         FAIL) col="$C_RED"; n_fail=$((n_fail+1)) ;;
         WARN) col="$C_YEL"; n_warn=$((n_warn+1)) ;;
@@ -133,8 +143,8 @@ emit() {
         OK)   col="$C_GRN" ;;
     esac
     if [ "$DO_JSON" = 1 ]; then
-        jq -cn --arg sev "$sev" --arg id "$id" --arg msg "$msg" --arg remedy "$remedy" \
-            '{sev: $sev, id: $id, msg: $msg, remedy: $remedy}' >&3
+        jq -cn --arg sev "$sev" --arg id "$id" --arg msg "$msg" --arg remedy "$remedy" --arg scope "$scope" --arg repo "$repo" \
+            '{sev: $sev, id: $id, msg: $msg, remedy: $remedy, scope: $scope} + (if $repo == "" then {} else {repo: $repo} end)' >&3
     else
         printf '%s%-4s%s %s: %s\n' "$col" "$sev" "$C_0" "$id" "$msg"
         [ -n "$remedy" ] && printf '       %s→ %s%s\n' "$C_DIM" "$remedy" "$C_0"
@@ -3232,7 +3242,7 @@ check_c40_qmd_vec() {
     if [ -f "$qd_pidfile" ] && [ -f "$qd_stamp" ] && [ "$qd_pidfile" -ot "$qd_stamp" ] \
         && [ -n "$qd_pid" ] && kill -0 "$qd_pid" 2>/dev/null; then
         emit WARN C40-qmd-vec "the qmd daemon on $url is older than the installed qmd build (it started before $qd_stamp was written) -- it serves the old code from memory, so its vector-index status cannot be trusted" \
-            "restart it: pgrep -af 'qmd.*mcp.*--http' (look), then pkill -f 'qmd.*mcp.*--http', then bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh"
+            "restart it: ps -axww -o pid=,command= | grep '[q]md.*mcp.*--http' (look), then pkill -f 'qmd.*mcp.*--http', then bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh"  # t13b-ok: doctor remedy text naming the existing script, starts nothing
         return
     fi
     instr="$(printf '%s' "$init_json" | jq -r '.result.instructions // ""' 2>/dev/null)"
@@ -4715,7 +4725,11 @@ check_c71_verdict_scratch() {
 # run, failed, refused, backed-off, oldest unstamped file). A file failed or
 # refused in each of the last 3 runs (the script's rc 3, or rc 1 on a stale
 # graph, carrying "semantic refresh stuck") is WARN naming the files and the
-# `semantic-merge.py unstick` verb that clears them. No graphify-out or no
+# `semantic-merge.py unstick` verb that clears them. A SEMANTIC-STALE line (the
+# semantic layer older than its daily cadence allows, or content failures,
+# refusals or unstamped files past the script's bounds; the AST layer can be
+# fresh meanwhile) is WARN naming the age, the counts and the semantic pass to
+# run, never OK. No graphify-out or no
 # semantic-runs.jsonl is an OK skip; any other rc 2, or an rc the script does not
 # define (it could not run), is INFO -- never a healthy OK -- the graph's own
 # staleness being C33's. Seams: HIMMEL_DOCTOR_GRAPH_OUT (graphify-out dir),
@@ -4740,7 +4754,7 @@ check_c70_graph_semantic() {
 graph_semantic_station_verdict() {
     local out="${HIMMEL_DOCTOR_GRAPH_OUT:-$REPO_ROOT/graphify-out}"
     local check="${HIMMEL_DOCTOR_GRAPH_CHECK:-$SELF_DIR/graphify/check-graph-freshness.sh}"
-    local res rc=0 line fail_line stuck_line
+    local res rc=0 line fail_line stuck_line stale_line
     if [ ! -d "$out" ]; then
         emit OK C70-graph-semantic "no graphify-out at $out -- semantic freshness check skipped"
         return 0
@@ -4753,9 +4767,13 @@ graph_semantic_station_verdict() {
     line="$(printf '%s\n' "$res" | grep -m1 '^graph-freshness: semantic ')" || true
     fail_line="$(printf '%s\n' "$res" | sed -n 's/^graph-freshness: FAIL //p' | head -1)"
     stuck_line="$(printf '%s\n' "$res" | sed -n 's/^graph-freshness: STUCK //p' | head -1)"
+    stale_line="$(printf '%s\n' "$res" | sed -n 's/^graph-freshness: \(SEMANTIC-STALE .*\)/\1/p' | head -1)"
     if { [ "$rc" -eq 3 ] || [ "$rc" -eq 1 ]; } && [ -n "$stuck_line" ]; then
-        emit WARN C70-graph-semantic "${line:-semantic line unavailable}; $stuck_line" \
+        emit WARN C70-graph-semantic "${line:-semantic line unavailable}; $stuck_line${stale_line:+; $stale_line}" \
             "python3 $(printf '%q' "$SELF_DIR")/graphify/semantic-merge.py unstick --out $(printf '%q' "$out")   # then run a semantic batch; bash scripts/graphify/check-graph-freshness.sh --out $out names the stuck files"
+    elif { [ "$rc" -eq 3 ] || [ "$rc" -eq 1 ]; } && [ -n "$stale_line" ]; then
+        emit WARN C70-graph-semantic "${line:-semantic line unavailable}; $stale_line" \
+            "bash ~/.claude/graphmap-cadence/graphmap-himmel.sh   # the station's semantic pass (HIMMEL-GraphMap-Himmel, daily); bash scripts/graphify/check-graph-freshness.sh --out $out shows the bounds"
     elif [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
         emit INFO C70-graph-semantic "graph-freshness check exited $rc, semantic freshness not judged: ${fail_line:-$(printf '%s\n' "$res" | head -1)}" \
             "bash scripts/graphify/check-graph-freshness.sh --out $out"
@@ -5299,6 +5317,97 @@ check_c86_morning_report() {
     fi
 }
 
+# --- C88-graph-api-optin: the graph cadence's billed API lane needs a station opt-in ---
+# graphmap-cadence.sh renders the semantic runners on the API lane (HIMMEL_API_LANE=on, claude-api) only
+# when graphify.semantic_api_ok is the JSON literal true in ~/.himmel/config.json (semantic_api_opted_in
+# there; a symlink, a malformed file or any other value is off). This row reports that state. WARN when
+# the opt-in is off, a lane-key name has a value in the himmel .env, and an armed runner still bakes
+# HIMMEL_API_LANE=on: that cadence draws the key without an opt-in until it is re-rendered. A baked lane
+# with no key in .env draws nothing (INFO). Key NAMES only: no .env value is printed.
+# Seams: HIMMEL_DOCTOR_ENV_FILE (the .env, as C74), GRAPHMAP_BAT_DIR (the runner dir).
+check_c88_graph_api_optin() {
+    command -v jq >/dev/null 2>&1 || { emit INFO C88-graph-api-optin "jq not on PATH -- API lane opt-in not checked"; return 0; }
+    local cfg="${HOME:-}/.himmel/config.json" envfile bat keys="" lanes="" f optin=0
+    envfile="${HIMMEL_DOCTOR_ENV_FILE:-$(_load_dotenv_envfile "")}"
+    bat="${GRAPHMAP_BAT_DIR:-${HOME:-}/.claude/graphmap-cadence}"
+    if [ ! -L "${HOME:-}/.himmel" ] && [ ! -L "$cfg" ] && [ -f "$cfg" ] && [ -r "$cfg" ] \
+        && jq -e '.graphify.semantic_api_ok == true' "$cfg" >/dev/null 2>&1; then
+        optin=1
+    fi
+    if [ -f "$envfile" ] && [ -r "$envfile" ]; then
+        keys="$(awk '{ sub(/\r$/, "") } /^[[:space:]]*#/ { next } {
+            i = index($0, "="); if (i == 0) next
+            k = substr($0, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k); sub(/^export[[:space:]]+/, "", k)
+            v = substr($0, i + 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", v); gsub("\"", "", v); gsub("\047", "", v)
+            if (v != "" && !(k in seen) && (k == "ANTHROPIC_API_KEY" || k ~ /^ANTHROPIC_ORG_[ABC]_KEY$/)) { seen[k] = 1; printf "%s%s", (n++ ? ", " : ""), k }
+        }' "$envfile")"
+    fi
+    for f in "$bat"/graphmap-*.sh; do
+        [ -f "$f" ] || continue
+        grep -qF 'HIMMEL_API_LANE=on' "$f" 2>/dev/null && lanes="${lanes:+$lanes, }$(basename "$f")"
+    done
+    if [ "$optin" = 1 ]; then
+        emit OK C88-graph-api-optin "the graph cadence's API lane is opted in (graphify.semantic_api_ok is true in ~/.himmel/config.json)"
+    elif [ -n "$lanes" ] && [ -n "$keys" ]; then
+        emit WARN C88-graph-api-optin "the API lane is not opted in, but $keys is in $envfile and an armed runner still bakes HIMMEL_API_LANE=on ($lanes): the cadence draws that key without an opt-in until it is re-rendered" \
+            "bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed  (drops the lane); a station meant to draw it sets graphify.semantic_api_ok to true in ~/.himmel/config.json first"
+    elif [ -n "$lanes" ]; then
+        emit INFO C88-graph-api-optin "the API lane is not opted in and an armed runner bakes HIMMEL_API_LANE=on ($lanes), but .env holds no API key, so the cadence draws no key from .env (a key in the runner's own environment is not checked)" \
+            "bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed  (drops the lane)"
+    else
+        emit OK C88-graph-api-optin "the API lane is not opted in (graphify.semantic_api_ok is not true in ~/.himmel/config.json) and no armed runner carries it${keys:+; $keys in .env is never drawn by the cadence}"
+    fi
+}
+
+# --- C87-stub-handover-state: state written under the stub handover folder after the root was configured ---
+# The stub folder is <checkout>/handovers, the root a script falls back to when HANDOVER_DIR is
+# unset. With the root configured elsewhere (any layer load_dotenv reads), a chief script that
+# skipped load_dotenv writes its state (a judge ladder, an arm record, a new doc) under the stub,
+# where nothing reads it. WARN names the files newer than the baseline: the mtime of the marker
+# file the operator touches once the stub is dealt with (default ~/.himmel/state/stub-handover-baseline,
+# seam HIMMEL_DOCTOR_STUB_BASELINE). No marker means no baseline: any file counts. The baseline is not
+# the config time: a config layer is touched after the strays it should catch. INFO with no split root.
+check_c87_stub_handover_state() {
+    local stub="$REPO_ROOT/handovers" root new n names baseline baseline_word
+    baseline="${HIMMEL_DOCTOR_STUB_BASELINE:-${HOME:-}/.himmel/state/stub-handover-baseline}"
+    baseline_word="(none yet)"; [ ! -f "$baseline" ] || baseline_word="$baseline"
+    load_dotenv --root "$REPO_ROOT" HANDOVER_DIR >/dev/null 2>&1 || true
+    if [ -z "${HANDOVER_DIR:-}" ]; then
+        emit INFO C87-stub-handover-state "HANDOVER_DIR is not configured -- the stub folder is the handover root, no split to check"
+        return 0
+    fi
+    if ! root="$(doctor_handover_root 2>/dev/null)" || [ -z "$root" ]; then
+        emit INFO C87-stub-handover-state "HANDOVER_DIR=$HANDOVER_DIR is not a directory -- stub folder not checked"
+        return 0
+    fi
+    if [ ! -d "$stub" ]; then
+        emit OK C87-stub-handover-state "no stub folder $stub"
+        return 0
+    fi
+    if [ "$(cd "$stub" && pwd -P)" = "$(cd "$root" && pwd -P)" ]; then
+        emit INFO C87-stub-handover-state "HANDOVER_DIR is the stub folder itself -- no split root"
+        return 0
+    fi
+    if [ -f "$baseline" ]; then
+        new="$(find -H "$stub" -type f -newer "$baseline" 2>/dev/null)" || new="unreadable"
+    else
+        new="$(find -H "$stub" -type f 2>/dev/null)" || new="unreadable"
+    fi
+    if [ "$new" = unreadable ]; then
+        emit INFO C87-stub-handover-state "the stub folder $stub could not be fully read -- not judged clean"
+        return 0
+    fi
+    new="$(printf '%s\n' "$new" | sort)"
+    if [ -z "$new" ]; then
+        emit OK C87-stub-handover-state "nothing under $stub is newer than the baseline"
+        return 0
+    fi
+    n="$(printf '%s\n' "$new" | wc -l | tr -d ' ')"
+    names="$(printf '%s\n' "$new" | head -n 3 | sed "s|^$stub/||" | paste -sd, - | sed 's/,/, /g')"
+    emit WARN C87-stub-handover-state "$n file(s) under the stub folder $stub are newer than the baseline ${baseline_word} ($names), state a script wrote without the configured root $root" \
+        "move what you need under $root, make the script load HANDOVER_DIR (load_dotenv --root <primary checkout> HANDOVER_DIR, as focus-refresh.sh does), then touch $baseline"
+}
+
 # --- C82-mcp-sources: every MCP server with the layer it comes from ---
 # Read only, key names only: never an env, header or argument value. Layers: user config
 # (~/.claude.json mcpServers), project .mcp.json, an enabled plugin's .mcp.json (newest
@@ -5515,6 +5624,8 @@ run_check C83 check_c83_qmd_embed_backlog
 run_check C84 check_c84_release_queue
 run_check C85 check_c85_self_heartbeat
 run_check C86 check_c86_morning_report
+run_check C88 check_c88_graph_api_optin
+run_check C87 check_c87_stub_handover_state
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

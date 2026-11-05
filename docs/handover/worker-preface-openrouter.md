@@ -13,7 +13,8 @@ using `append-results.sh` and the standing marker vocabulary. Never call
 The himmel-bus is the exception to that rule. When
 your launch registered you on it (your environment carries `HIMMEL_BUS_NAME` and
 the `himmel-bus` tools `send` and `read` are listed), use them to message your
-chief and read its replies. Your handover document stays the source of truth and the
+chief and read its replies; `send` `JUDGE-REQUEST <pr> <head>` once per head
+(`worker-sections/judge-request.md`). Your handover document stays the source of truth and the
 fallback: report each milestone there as before, and without
 `HIMMEL_BUS_NAME` the document is your only channel.
 

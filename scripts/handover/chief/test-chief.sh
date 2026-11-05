@@ -47,6 +47,7 @@ trap 'rm -rf "$tmp"' EXIT
 # launch repo must not contaminate the --arm fixture. Release discovery is fixture-only.
 export HIMMEL_CONFIG_DIR="$tmp/config" HIMMEL_RELEASE_STATE_DIR="$tmp/releases"
 unset HEADED_ARM_REPO
+export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch --project fixtures; the guard rows drop it
 
 # chief.sh records the launch context of the chief it prints a
 # launch line for, under ${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/launch-logs.
@@ -101,6 +102,11 @@ for _e in "$REPO_REAL"/scripts/* "$REPO_REAL"/docs/*; do
     esac
 done
 C="$fixture_repo/scripts/handover/chief/chief.sh"
+# A failed bus register refuses a chief launch, so the fixture
+# carries an always-OK bus at the default CLI path; the bus rows bring their own.
+mkdir -p "$fixture_repo/marketplace/plugins/himmel-bus/bin"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$fixture_repo/marketplace/plugins/himmel-bus/bin/bus"
+chmod +x "$fixture_repo/marketplace/plugins/himmel-bus/bin/bus"
 
 root="$tmp/handovers"
 mkdir -p "$root"
@@ -360,8 +366,13 @@ token6a="$(token_of "$out6a")"
 printf '%s\n' '# worker' '## Results' '- 10:00 READY 5 aaaa GREEN' '- 10:05 WRAPPED — done' > "$root/tester/nextrepo/DEMO-1-N9-wrapped.md"
 printf '%s\n' '# worker' '## Results' '- 10:00 READY 77 bbbb GREEN' '- 10:05 WRAPPED — done' > "$root/tester/nextrepo/DEMO-2-N8-closed.md"
 printf '{"legs":[{"label":"N9","doc":"%s"},{"label":"N8","doc":"%s"}]}\n' "$root/tester/nextrepo/DEMO-1-N9-wrapped.md" "$root/tester/nextrepo/DEMO-2-N8-closed.md" > "$root/tester/nextrepo/DEMO-nextleg-${today}A-chief.fleet.json"
-chief next --bucket nextrepo >/dev/null
+out6next="$(chief next --bucket nextrepo)"
 check "6 next writes successor stub" "$([ -f "$doc6B" ] && echo yes)" "yes"
+# The outgoing chief is told, once, what its tail is: relay, wait for LIVE with no waiter, wrap, stop.
+check "6 next without --arm prints no after-next line: an unarmed successor never reports LIVE" \
+    "$(printf '%s\n' "$out6next" | grep -c '^after-next:')" "0"
+check "6 next still arms the relay and the handover mode (control)" \
+    "$(printf '%s\n' "$out6next" | grep -c '^\(relay-on-live\|handover-mode\): ')" "2"
 check "6 Telegram metadata records the successor bucket" "$(grep -c '"bucket":' "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}B-chief.md.meta.json" 2>/dev/null || true)" "1"
 check "6 next writes predecessor HANDOFF" "$([ -f "$handoff6A" ] && echo yes)" "yes"
 check "6 successor stub names the predecessor" "$(grep -c "DEMO-nextleg-${today}A-chief.md" "$doc6B")" "1"
@@ -494,7 +505,24 @@ check "7 arm log carries armed/signal/deadline/session" \
     "$(grep -cE "armed: name=${session7B} doc=.* signal=.*sig-${session7B} deadline=[0-9]+" "$log7B" 2>/dev/null)" "1"
 check "7945 next --arm exports the predecessor's session name to the arm" \
     "$(grep -c "^predecessor=DEMO-nextleg-${today}A-chief\$" "$log7B")" "1"
+check "7 next --arm tells the outgoing chief to relay, re-arm the muted waiter once, read nothing, wrap on LIVE and stop" \
+    "$(printf '%s\n' "$out7b" | grep -c '^after-next: .*re-arm the muted waiter once.*read nothing.*chief.sh wrap.*stop')" "1"
+check "7 next --arm prints the after-next line once, after the armed: line" \
+    "$(printf '%s\n' "$out7b" | grep -n '^\(armed\|after-next\):' | cut -d: -f2 | tr '\n' ' ')" "armed after-next "
 HANDOVER_DIR="$root" bash "$QL" release "$doc7A" "$token7a" >/dev/null 2>&1
+# a refused arm prints no after-next line: the outgoing chief must not be told to stop for a successor that never launched
+cat > "$tmp/stub-arm-fail.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+chmod +x "$tmp/stub-arm-fail.sh"
+out7fa="$(chief new --bucket armfail)"
+token7fa="$(token_of "$out7fa")"
+out7f="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+    CHIEF_HEADED_ARM="$tmp/stub-arm-fail.sh" CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work" CHIEF_CONTEXT=1m \
+    bash "$C" next --bucket armfail --arm --deadline-min 0 --context standard ) 2>/dev/null || true )"
+check "7 a failed arm prints no after-next line" "$(printf '%s\n' "$out7f" | grep -c '^after-next:')" "0"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/armfail/DEMO-nextleg-${today}A-chief.md" "$token7fa" >/dev/null 2>&1
 
 # --- 8: no private-string leak -----------------------------------------
 # leak-pattern-allow: this line and the next NAME the banned words in order
@@ -529,7 +557,7 @@ leak_free() {
 # every such line must carry a token this run actually saw `new` print — an
 # unrelated
 # leak, or a line that merely LOOKS token-shaped, still fails loudly.
-known_tokens=("$token1" "$token4" "$token6a" "$token6ba" "$token6da" "$token7a" "$tokenInbox" "$tokenOB")
+known_tokens=("$token1" "$token4" "$token6a" "$token6ba" "$token6da" "$token7a" "$token7fa" "$tokenInbox" "$tokenOB")
 token_residual() {
     local token
     for token in "$@"; do
@@ -1945,7 +1973,7 @@ rm -f "$tmp/claude-argv-63"
 run_launch_line "$out63a"
 row63a="$(cat "$LL63/$S63.log" 2>/dev/null || true)"
 case "$row63a" in
-    "headed-arm: role=chief session=$S63 context=1m source=default autocompact=auto launched="[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) r63a=match ;;
+    "headed-arm: role=chief session=$S63 context=1m source=default autocompact=auto launched="[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z" lane=native") r63a=match ;;
     *) r63a="nomatch: [$row63a]" ;;
 esac
 check "63a running the pasted line writes one chief row: context, source, autocompact, launched" "$r63a" "match"
@@ -2055,6 +2083,7 @@ cat > "$tmp/stub-arm-66.sh" <<STUB
     printf 'WORKER_SESSION_LANE=%s\n' "\${WORKER_SESSION_LANE+set}"
     printf 'OPENROUTER_MODEL=%s\n' "\${OPENROUTER_MODEL+set}"
     printf 'HEADED_ARM_REQUIRED_AUTOCOMPACT=%s\n' "\${HEADED_ARM_REQUIRED_AUTOCOMPACT+set}"
+    printf 'HEADED_ARM_LAUNCHER_ENV_LINES=%s\n' "\${HEADED_ARM_LAUNCHER_ENV_LINES+set}"
     printf 'HIMMEL_HOLD_KEY=%s\n' "\${HIMMEL_HOLD_KEY+set}"
     printf 'HIMMEL_HOLD_DOC=%s\n' "\${HIMMEL_HOLD_DOC+set}"
     printf 'HIMMEL_HOLD_LABEL=%s\n' "\${HIMMEL_HOLD_LABEL+set}"
@@ -2087,6 +2116,7 @@ out66b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PR
     HIMMEL_CONSOLE_RELAY=1 HIMMEL_HOLD_KEY=HIMMEL-1 HIMMEL_HOLD_DOC=/leaked-66/doc.md HIMMEL_HOLD_LABEL=N1 WRITE_HOLD_OK=1 \
     HEADED_ARM_LAUNCHER=/leaked-66/worker-claude-launcher.sh HEADED_ARM_RECORDER=1 \
     HEADED_ARM_REQUIRED_AUTOCOMPACT=200000 \
+    HEADED_ARM_LAUNCHER_ENV_LINES=LEAK=1 \
     HEADED_ARM_LAUNCHER_ENV="CLAUDEX_LANE_OK=1 WORKER_SESSION_PROFILE_SETTINGS=/leaked-66/settings.json " \
     HEADED_ARM_UNAME=Darwin \
     CHIEF_CONTEXT=1m \
@@ -2107,6 +2137,8 @@ check "66 armed child's OWN environment still lacks HIMMEL_CONSOLE_LEG (not just
     "$(grep -c '^HIMMEL_CONSOLE_LEG=set$' "$tmp/child-env-66.txt")" "0"
 check "66 armed child's OWN environment still lacks HEADED_ARM_REQUIRED_AUTOCOMPACT (not just unprinted)" \
     "$(grep -c '^HEADED_ARM_REQUIRED_AUTOCOMPACT=set$' "$tmp/child-env-66.txt")" "0"
+check "66 armed child's OWN environment still lacks HEADED_ARM_LAUNCHER_ENV_LINES (not just unprinted)" \
+    "$(grep -c '^HEADED_ARM_LAUNCHER_ENV_LINES=set$' "$tmp/child-env-66.txt")" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc66A" "$token66a" >/dev/null 2>&1
 
 # --- 67: chief_context_worker_env_unset_names must name
@@ -2198,6 +2230,48 @@ check "68f collision refusal names the conflicting registered path" \
     "$(printf '%s\n' "$out68f" | grep -c "collides with the registered project at '$tmp/some-other-real-project'")" "1"
 check "68f no doc written on a collision refusal" \
     "$([ -e "$root/tester/collideproj68" ] && echo yes || echo no)" "no"
+
+# --- guard_chief_project_*: a --project folder that would not load the guard hooks is refused (18)
+# before any doc/registry write or arm; the suite-level opt-out is dropped with env -u.
+gp_proj="$tmp/guard-scratch-proj"; mkdir -p "$gp_proj"
+gp_reg="$tmp/guard-registry.json"; printf '{"repos":{}}\n' > "$gp_reg"
+gp_before="$(cksum < "$gp_reg")"
+printf '#!/usr/bin/env bash\ntouch "%s"\n' "$tmp/gp-arm-ran" > "$tmp/gp-arm-stub.sh"
+gp_rc=0
+# shellcheck disable=SC2016  # literal bash -c body
+gp_out="$( env -u UNGUARDED_LAUNCH_OK HANDOVER_REGISTRY="$gp_reg" bash -c 'cd "$1" && HANDOVER_DIR="$2" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CHIEF_HEADED_ARM="$3" CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$4" bash "$5" new --project "$6" --arm --deadline-min 0' _ "$fixture_repo" "$root" "$tmp/gp-arm-stub.sh" "$tmp/work-gp" "$C" "$gp_proj" 2>&1 )" || gp_rc=$?
+check "guard_chief_project_scratch exits 18" "$gp_rc" "18"
+check "guard_chief_project_scratch names the folder" \
+    "$(printf '%s\n' "$gp_out" | grep -c "^chief: refusing to launch guard-scratch-proj: $gp_proj does not load the himmel guard hooks (not a git work tree)\\.")" "1"
+check "guard_chief_project_scratch registry bytes unchanged" "$(cksum < "$gp_reg")" "$gp_before"
+check "guard_chief_project_scratch no chief doc written" \
+    "$([ -e "$root/tester/guard-scratch-proj" ] && echo yes || echo no)" "no"
+check "guard_chief_project_scratch no arm stub call" "$([ -e "$tmp/gp-arm-ran" ] && echo yes || echo no)" "no"
+
+gp_rc=0
+# shellcheck disable=SC2016  # literal bash -c body
+gp_out="$( env HANDOVER_REGISTRY="$gp_reg" bash -c 'cd "$1" && HANDOVER_DIR="$2" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO bash "$3" new --project "$4" --dry-run' _ "$fixture_repo" "$root" "$C" "$gp_proj" 2>&1 )" || gp_rc=$?
+check "guard_chief_project_optout proceeds (rc 0)" "$gp_rc" "0"
+check "guard_chief_project_optout prints exactly one WARN" \
+    "$(printf '%s\n' "$gp_out" | grep -c "^WARN unguarded launch of guard-scratch-proj in $gp_proj (not a git work tree; UNGUARDED_LAUNCH_OK=1)\$")" "1"
+
+# control: a registered adopter with a complete user layer starts without the opt-out.
+gp_cfg="$tmp/gp-cfg"; mkdir -p "$gp_cfg"
+gp_adopter="$tmp/gp-adopter"; mkdir -p "$gp_adopter"
+git -C "$gp_adopter" init -q -b main && git -C "$gp_adopter" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+gp_adopter="$(cd "$gp_adopter" && pwd -P)"
+mkdir -p "$tmp/gp-state" "$tmp/gp-home"
+env HANDOVER_REGISTRY="$gp_reg" USER_SLUG=tester bash "$REPO_REAL/scripts/handover/register-state.sh" \
+    --repo-path "$gp_adopter" --state-host "$tmp/gp-state" >/dev/null 2>&1
+env HOME="$tmp/gp-home" HIMMEL_REPO="$REPO_REAL" CLAUDE_USER_SETTINGS="$gp_cfg/settings.json" \
+    node "$REPO_REAL/scripts/hooks/guardrail-block.mjs" install --node "$(command -v node)" --bash "$(command -v bash)" >/dev/null 2>&1
+gp_rc=0
+# shellcheck disable=SC2016  # literal bash -c body
+gp_out="$( env -u UNGUARDED_LAUNCH_OK HOME="$tmp/gp-home" HIMMEL_REPO="$REPO_REAL" CLAUDE_CONFIG_DIR="$gp_cfg" HANDOVER_REGISTRY="$gp_reg" \
+    bash -c 'cd "$1" && HANDOVER_DIR="$2" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO bash "$3" new --project "$4" --dry-run' _ "$fixture_repo" "$root" "$C" "$gp_adopter" 2>&1 )" || gp_rc=$?
+check "chief_project_registered_adopter proceeds (rc 0)" "$gp_rc" "0"
+check "guard_chief_project_guarded_no_warn: registered adopter, opt-out dropped, no refusal and 0 WARN" \
+    "$(printf '%s\n' "$gp_out" | grep -c "refusing to launch\|^WARN unguarded")" "0"
 
 # --- 68g (change 7): a SYMLINK to the himmel checkout given as --project is
 # canonicalized with pwd -P and recognized as himmel itself, not a foreign
@@ -2478,16 +2552,22 @@ HANDOVER_DIR="$root" bash "$QL" release "$root/tester/nosuffix78/DEMO-nextleg-${
 # --- 79: the chief profile's himmel-bus opt-in registers the
 # armed chief (--predecessor on next), exports only HIMMEL_BUS_NAME plus the
 # bind flag, and drops a predecessor's own HIMMEL_BUS_*; opted-out registers
-# and exports nothing; a failed register warns and still arms.
+# and exports nothing; a failed register warns and refuses to arm.
 bus79="$tmp/bus79"; mkdir -p "$bus79"
 cat > "$bus79/arm.sh" <<'STUB'
 #!/usr/bin/env bash
 [ "$1" = --role ] && shift 2
 printf 'bus_name=%s extra=%s bind=%s\n' "${HIMMEL_BUS_NAME:-<unset>}" "${HIMMEL_BUS_EXTRA:-<unset>}" "${HEADED_ARM_BUS:-<unset>}" >> "$5"
+printf 'override=%s\n' "${HIMMEL_LAUNCH_UNBOUND_OK:-<unset>}" >> "$5"
 STUB
 cat > "$bus79/bus" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/calls"
+[ -n "${BUS79_HANG:-}" ] && exec sleep 20
+if [ -n "${BUS79_HELD:-}" ]; then
+  echo "name already registered: $2 (live holder pid 4242)" >&2
+  exit 1
+fi
 if [ -n "${BUS79_FAIL:-}" ] && { [ -z "${BUS79_FAIL_VERB:-}" ] || [ "$1" = "$BUS79_FAIL_VERB" ]; }; then
   echo "stub bus: $1 refused" >&2
   exit 1
@@ -2533,11 +2613,70 @@ check "79 opted-out: armed env carries no HIMMEL_BUS_* and no bind flag" \
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79out/$session79c.md" "$(token_of "$out79c")" >/dev/null 2>&1
 rm -f "$bus79/calls"
 out79d="$(run79 in new bus79fail BUS79_FAIL=1)"
-check "79 failed register: chief still arms" "$(printf '%s\n' "$out79d" | grep -c '^armed: ')" "1"
+check "79 failed register: the chief is not armed" "$(printf '%s\n' "$out79d" | grep -c '^armed: ')" "0"
 check "79 failed register: warned" "$(printf '%s\n' "$out79d" | grep -c 'WARN bus register failed')" "1"
-check "79 failed register: the warning lands in the launch log" \
-    "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-chief".log 2>/dev/null | grep -c 'WARN: bus register failed for .* launching unbound')" "1"
+check "79 failed register: the refusal lands in the launch log" \
+    "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-chief".log 2>/dev/null | grep -c 'WARN: bus register failed for .* refusing to launch')" "1"
+check "79 failed register: the refusal names the broken-bus override" \
+    "$(printf '%s\n' "$out79d" | grep -c 'set HIMMEL_LAUNCH_UNBOUND_OK=1 in the launching shell')" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79fail/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79d")" >/dev/null 2>&1
+# the operator override for a broken bus arms the chief unbound; a hung bus
+# is bounded and refused.
+unbound79() { cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-chief".log 2>/dev/null | grep -c '^bus_name=<unset> extra=<unset> bind=<unset>$'; }
+before79o="$(unbound79)"
+out79o="$(run79 in new bus79override BUS79_FAIL=1 HIMMEL_LAUNCH_UNBOUND_OK=1)"
+check "79 override: the chief arms" "$(printf '%s\n' "$out79o" | grep -c '^armed: ')" "1"
+check "79 override: armed unbound, with no bind flag" "$(( $(unbound79) - before79o ))" "1"
+check "79 override: the launch log says it launched unbound" \
+    "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-chief".log 2>/dev/null | grep -c 'launching unbound (HIMMEL_LAUNCH_UNBOUND_OK=1)')" "1"
+check "79 override: the armed chief does not inherit the override" \
+    "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-chief".log 2>/dev/null | grep -c '^override=1$')" "0"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79override/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79o")" >/dev/null 2>&1
+out79held="$(run79 in new bus79held BUS79_HELD=1 HIMMEL_LAUNCH_UNBOUND_OK=1)"
+check "79 override: a held name is never overridden, nothing armed" "$(printf '%s\n' "$out79held" | grep -c '^armed: ')" "0"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79held/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79held")" >/dev/null 2>&1
+mkdir -p "$bus79/nomktemp"
+# shellcheck disable=SC2016  # deliberately unexpanded: written literally, evaluated when the stub runs.
+printf '#!/usr/bin/env bash\ncase "$*" in *chief-bus*) exit 1 ;; esac\nPATH="${PATH#*:}" exec mktemp "$@"\n' > "$bus79/nomktemp/mktemp"
+chmod +x "$bus79/nomktemp/mktemp"
+out79lost="$(run79 in new bus79lost BUS79_FAIL=1 HIMMEL_LAUNCH_UNBOUND_OK=1 PATH="$bus79/nomktemp:$PATH")"
+check "79 override: lost bus output is never overridden, nothing armed" "$(printf '%s\n' "$out79lost" | grep -c '^armed: ')" "0"
+check "79 lost bus output: the refusal says so" "$(printf '%s\n' "$out79lost" | grep -c 'output lost (mktemp failed)')" "1"
+check "79 lost bus output: the refusal does not advise the override" "$(printf '%s\n' "$out79lost" | grep -c 'set HIMMEL_LAUNCH_UNBOUND_OK=1')" "0"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79lost/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79lost")" >/dev/null 2>&1
+t79=$SECONDS
+out79h="$(run79 in new bus79hang BUS79_HANG=1 BUS_EXEC_SECS=08)"
+check "79 hung bus: refused within the bound" \
+    "$(printf '%s\n' "$out79h" | grep -c '^armed: '):$([ $((SECONDS - t79)) -lt 15 ] && echo bounded || echo slow)" "0:bounded"
+check "79 hung bus: the refusal says it timed out" "$(printf '%s\n' "$out79h" | grep -c 'timed out after 8s')" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79hang/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79h")" >/dev/null 2>&1
+# Chief-path twin, on the REAL bus CLI: a chief name already bound
+# refuses the launch whether its holder is dead (a chief name is never re-bound)
+# or live, exits non-zero, launches nothing and names the holder pid.
+if [ -r /proc/self/stat ]; then
+  bus9071="$tmp/bus9071"; mkdir -p "$bus9071/state" && chmod 700 "$bus9071/state"
+  bus9071_cli="$HERE/../../../marketplace/plugins/himmel-bus/bin/bus"
+  session9071="DEMO-nextleg-${today}A-bus79-chief"
+  for case9071 in dead live; do
+    XDG_STATE_HOME="$bus9071/state" "$bus9071_cli" register "$session9071" --role chief >/dev/null 2>&1
+    sleep 30 & pid9071=$!
+    XDG_STATE_HOME="$bus9071/state" "$bus9071_cli" bind "$session9071" "$pid9071" >/dev/null 2>&1
+    if [ "$case9071" = dead ]; then kill "$pid9071" 2>/dev/null; wait "$pid9071" 2>/dev/null || true; fi
+    rc9071=0
+    out9071="$( ( cd "$fixture_repo" && env HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+        XDG_STATE_HOME="$bus9071/state" CHIEF_BUS_CLI="$bus9071_cli" CHIEF_BUS_PROFILES_MJS="$bus79/profiles-in.mjs" \
+        CHIEF_HEADED_ARM="$bus79/arm.sh" CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work9071-$case9071" \
+        bash "$C" new --bucket "bus9071$case9071" --name bus79-chief --arm --deadline-min 0 ) 2>&1)" || rc9071=$?
+    check "9071 chief path, $case9071 holder: launch refused (non-zero)" "$([ "$rc9071" -ne 0 ] && echo refused || echo "rc=$rc9071")" "refused"
+    check "9071 chief path, $case9071 holder: nothing armed" \
+        "$(cat "$tmp/work9071-$case9071"/*/launch-"$session9071".log 2>/dev/null | grep -c '^bus_name=')" "0"
+    contains "$out9071" "$session9071" "9071 chief path, $case9071 holder: refusal names the chief"
+    contains "$out9071" "pid $pid9071" "9071 chief path, $case9071 holder: refusal names the holder pid"
+    HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus9071$case9071/$session9071.md" "$(token_of "$out9071")" >/dev/null 2>&1
+    kill "$pid9071" 2>/dev/null; wait "$pid9071" 2>/dev/null || true
+    rm -rf "$bus9071/state/himmel"
+  done
+fi
 # a successor whose register works but whose stamp fails still arms, bound, and says so in the launch log
 rm -f "$bus79/calls"
 out79e="$(run79 in new bus79stamp)"

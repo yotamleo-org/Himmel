@@ -163,6 +163,9 @@ PATH="$tmp/sysd-bin:$PATH"
 # scope, waker started); a Darwin host takes the shim branch and fails them all.
 # The Darwin rows pin HEADED_ARM_UNAME=Darwin inline.
 export HEADED_ARM_UNAME=Linux
+export UNGUARDED_LAUNCH_OK=1  # scratch fixtures are not a guarded folder
+# A dry-run row that passes a Claude Code marker (CLAUDE_CODE_*) drops the opt-out above and runs in this guarded folder, so the seam guard has nothing to deny.
+guarded_repo="$(cd "$HERE/../../.." && pwd -P)"
 # pin every root this suite could resolve to its own temp dir, at
 # SUITE level. A chief-spawned worker exports the LIVE HANDOVER_DIR into this
 # shell (headed-arm-worker.sh); the case-26 e2e below runs the real
@@ -181,8 +184,6 @@ export HIMMELCTL_CACHE_DIR="$tmp/pinned-himmelctl-cache"
 export HIMMEL_CONFIG_DIR="$tmp/pinned-himmel-config"
 # the single-writer register lives under $HOME/.himmel/state/holds; pinned, so no launch here can seed the real one.
 REAL_HOME="$HOME"
-real_register() { find "$REAL_HOME/.himmel/state/holds" -printf '%P %s %T@\n' 2>/dev/null | sort | cksum; }  # gnu-ok: Linux-only suite, fails closed where find has no -printf
-REAL_REGISTER_BEFORE="$(real_register)"
 export HOME="$tmp/pinned-home"
 mkdir -p "$HOME"
 # the re-dispatch refusal reads page/ack records from this dir;
@@ -1233,11 +1234,11 @@ not_contains "claudex: the stale usage lane token is dropped" "$out" "CADENCE_US
 rc=0; out="$(WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 contains "dry-run --lane claudex: WORKER_SESSION_EFFORT overrides the xhigh default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=high"
 
-rc=0; out="$(CLAUDE_CODE_EFFORT_LEVEL=medium bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$guarded_repo" CLAUDE_CODE_EFFORT_LEVEL=medium bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL exits 0" "$rc" "0"
 contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL overrides the xhigh default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 not_contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL is not replaced by xhigh" "$out" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
-rc=0; out="$(CLAUDE_CODE_EFFORT_LEVEL=medium WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$guarded_repo" CLAUDE_CODE_EFFORT_LEVEL=medium WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL with WORKER_SESSION_EFFORT exits 0" "$rc" "0"
 contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL wins over WORKER_SESSION_EFFORT" "$out" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 
@@ -3412,19 +3413,14 @@ contains "31b caller-preset value wins on a name clash (HIMMEL_CONSOLE_LEG)" "$l
 not_contains "31b the wrapper's own HIMMEL_CONSOLE_LEG=1 is not also added" "$lenv29b" "HIMMEL_CONSOLE_LEG=1"
 contains "31b the wrapper still appends its own vars after the caller's" "$lenv29b" "IMPL_GUARD_OK=1"
 
-# 31c. A worker-process value containing whitespace is refused loudly (exit 12)
-# rather than silently mis-split into extra bogus HEADED_ARM_LAUNCHER_ENV
-# tokens - the var is a whitespace-split token list with no quoting scheme
-# (same contract as CODEX_USAGE_PROBE_CMD). (case 32):
-# this refusal is Darwin-only, so pin the seam explicitly rather than rely on
-# the test runner's real platform (this box happens to be Darwin too, but
-# case 32c below proves the non-Darwin branch takes a different path).
+# 31c. On Darwin a worker-process value containing a space is carried on the
+# line channel (HEADED_ARM_LAUNCHER_ENV_LINES) instead of being refused: the
+# token list cannot hold it, the line channel can. Pin the seam explicitly.
 mkdir -p "$tmp/space dir"
 rc=0
 err29c="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker-31c some/doc.md /tmp/nosig 99999999999 "$tmp/space dir/worker.log" claude-sonnet-5 2>&1)" || rc=$?
-check "31c a whitespace-carrying worker-process value is refused with exit 12" "$rc" "12"
-contains "31c the refusal names the offending var" "$err29c" "WORKER_SESSION_PROFILE_SETTINGS"
-contains "31c the refusal explains why (HEADED_ARM_LAUNCHER_ENV cannot carry a spacey value)" "$err29c" "cannot carry"
+check "31c a space-carrying worker-process value is carried, not refused" "$rc" "0"
+contains "31c the value rides the line channel" "$err29c" "launcher-env-line: WORKER_SESSION_PROFILE_SETTINGS=$tmp/space dir/"
 
 # 32a. (GAP): a caller-preset HANDOVER_DIR - the normal
 # case for a grouped chief, which sets it before this wrapper ever runs -
@@ -3435,12 +3431,11 @@ out32a="$(HANDOVER_DIR="$tmp/preset-hd-32a" bash "$SCRIPT" --dry-run --no-profil
 lenv30a="$(printf '%s\n' "$out32a" | grep '^headed-arm-worker: lane=')"
 contains "32a a caller-preset HANDOVER_DIR reaches launcher-env=" "$lenv30a" "HANDOVER_DIR=$tmp/preset-hd-32a"
 
-# 32b. Darwin: the whitespace refusal is unchanged (regression guard for the
-# restructured worker_propagate_env - same outcome as 31c, pinned explicitly).
+# 32b. Darwin: same outcome as 31c, pinned explicitly.
 rc=0
 err30b="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker-32b some/doc.md /tmp/nosig 99999999999 "$tmp/space dir/leg32b.log" claude-sonnet-5 2>&1)" || rc=$?
-check "32b Darwin still refuses a whitespace-carrying value with exit 12" "$rc" "12"
-contains "32b the refusal still names the offending var" "$err30b" "WORKER_SESSION_PROFILE_SETTINGS"
+check "32b Darwin carries a spaced value on the line channel (exit 0)" "$rc" "0"
+contains "32b the line names the offending var" "$err30b" "launcher-env-line: WORKER_SESSION_PROFILE_SETTINGS="
 
 # 32c. (REGRESSION RISK): on any platform other than
 # Darwin, plain-export inheritance already carried a whitespace-carrying
@@ -3456,6 +3451,75 @@ not_contains "32c non-Darwin: no WORKER_SESSION_PROFILE_SETTINGS token is added"
 contains "32c non-Darwin: the wrapper still appends its other, non-spacey vars" "$lenv30c" "HIMMEL_CONSOLE_LEG=1"
 contains "32c non-Darwin: a stderr warning explains the value was left to inheritance" "$out32c" "leaving it to plain-export inheritance"
 contains "32c non-Darwin: the warning names the platform" "$out32c" "harmless on Linux"
+not_contains "32c non-Darwin: no launcher-env-line is written" "$out32c" "launcher-env-line:"
+
+# 31d-31j. The line channel on Darwin (HEADED_ARM_LAUNCHER_ENV_LINES).
+mkdir -p "$tmp/space hd"
+doc31d="$tmp/space dir/HIMMEL-9999-N1-x.md"
+fx_brief '# line-channel fixture' > "$doc31d"
+stub31d="$tmp/stub31d.sh"
+# shellcheck disable=SC2016  # deliberately unexpanded: evaluated when the stub runs.
+printf '%s\n' '#!/usr/bin/env bash' 'printf "%s" "${HEADED_ARM_LAUNCHER_ENV_LINES-UNSET}" > "$STUB31D_OUT"' 'exit 0' > "$stub31d"
+chmod 755 "$stub31d"
+run31d() { # run31d <outfile> <uname> [VAR=VAL...]
+  local _o="$1" _u="$2"; shift 2
+  env ${1+"$@"} STUB31D_OUT="$_o" HEADED_ARM_UNAME="$_u" HEADED_ARM_WORKER_TARGET="$stub31d" \
+    HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" bash "$SCRIPT" --no-profile \
+    HIMMEL-9999-N1-x "$doc31d" "$tmp/sig31d" 99999999999 "$tmp/leg31d.log" claude-sonnet-5 2>&1
+}
+# 31d. The ticket's case: a brief under a spaced directory reaches the worker.
+rc=0; run31d "$tmp/out31d" Darwin >/dev/null || rc=$?
+check "31d a spaced brief path launches (exit 0)" "$rc" "0"
+if grep -Fxq "HIMMEL_HOLD_DOC=$doc31d" "$tmp/out31d" 2>/dev/null; then check "31d HIMMEL_HOLD_DOC rides the line channel verbatim" ok ok
+else check "31d HIMMEL_HOLD_DOC rides the line channel verbatim" "$(cat "$tmp/out31d" 2>/dev/null)" "HIMMEL_HOLD_DOC=$doc31d"; fi
+# 31e. A spaced HANDOVER_DIR is carried too.
+out31e="$(HANDOVER_DIR="$tmp/space hd" HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker-31e some/doc.md /tmp/nosig 99999999999 "$tmp/leg31e.log" claude-sonnet-5 2>&1)"
+contains "31e a spaced HANDOVER_DIR rides the line channel" "$out31e" "launcher-env-line: HANDOVER_DIR=$tmp/space hd"
+# 31f. A caller-preset line channel never reaches the worker.
+rc=0; run31d "$tmp/out31f" Darwin HEADED_ARM_LAUNCHER_ENV_LINES='BOGUS=1' >/dev/null || rc=$?
+check "31f a preset line channel does not break the launch" "$rc" "0"
+if grep -Fxq "HIMMEL_HOLD_DOC=$doc31d" "$tmp/out31f" 2>/dev/null; then check "31f the wrapper's own line is still written" ok ok
+else check "31f the wrapper's own line is still written" "$(cat "$tmp/out31f" 2>/dev/null)" "HIMMEL_HOLD_DOC=$doc31d"; fi
+not_contains "31f the preset BOGUS=1 line is cleared" "$(cat "$tmp/out31f" 2>/dev/null)" "BOGUS=1"
+# 31g. A caller token for the same name wins; no line is added for it.
+rc=0
+out31g="$(HEADED_ARM_LAUNCHER_ENV='HANDOVER_DIR=/preset' HANDOVER_DIR="$tmp/space hd" HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker-31g some/doc.md /tmp/nosig 99999999999 "$tmp/leg31g.log" claude-sonnet-5 2>&1)" || rc=$?
+check "31g token-preset HANDOVER_DIR with a spaced env value launches" "$rc" "0"
+contains "31g the caller token is kept" "$(printf '%s\n' "$out31g" | grep 'launcher-env=')" "HANDOVER_DIR=/preset"
+not_contains "31g no line is written for that name" "$out31g" "launcher-env-line: HANDOVER_DIR"
+# 31h. Whitespace other than a space is still refused on Darwin.
+for _c31h in tab cr lf vt ff sp_tab; do
+  case "$_c31h" in tab) _ch=$'\t';; cr) _ch=$'\r';; lf) _ch=$'\n';; vt) _ch=$'\v';; ff) _ch=$'\f';; sp_tab) _ch=$' \t';; esac
+  _d31h="$tmp/ws${_ch}dir"; mkdir -p "$_d31h"
+  rc=0
+  err31h="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker-31h some/doc.md /tmp/nosig 99999999999 "$_d31h/w.log" claude-sonnet-5 2>&1)" || rc=$?
+  check "31h $_c31h in a value is refused with exit 12" "$rc" "12"
+  contains "31h $_c31h refusal says other than a space" "$err31h" "other than a space"
+done
+# 31j. Linux never writes the line channel.
+rc=0; run31d "$tmp/out31j" Linux >/dev/null || rc=$?
+check "31j Linux launches with a spaced brief path" "$rc" "0"
+check "31j Linux leaves the line channel unset" "$(cat "$tmp/out31j" 2>/dev/null)" "UNSET"
+# 31i. End to end: the real headed-arm.sh on Darwin carries the spaced brief
+# path to the terminal launcher as one argument (rc 0 needs the launch confirmed).
+d31i="$tmp/d31i"; mk_launch_stubs "$d31i" "HIMMEL-9999-N1-x"; mkdir -p "$tmp/repo31i"
+cat > "$d31i/konsole" <<'KONSOLE_EOF'
+#!/usr/bin/env bash
+printf '%q\n' "$@" >> "$(dirname "$0")/record"
+: > "$(dirname "$0")/confirmable"
+sleep 5
+KONSOLE_EOF
+chmod 755 "$d31i/konsole"
+rc=0
+HEADED_ARM_UNAME=Darwin KONSOLE_MACOS_STARTUP_TICKS=2 some_doc="$doc31d" RUN_WORKER_ARGS='--no-profile' \
+  run_worker "$d31i" "$tmp/repo31i" "HIMMEL-9999-N1-x" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+check "31i a spaced brief path launches through the real headed-arm.sh (exit 0)" "$rc" "0"
+wait_record "$d31i" || true
+if grep -Fxq "HIMMEL_HOLD_DOC=${doc31d// /\\ }" "$d31i/record" 2>/dev/null; then
+  check "31i the launcher gets HIMMEL_HOLD_DOC as one escaped element" ok ok
+else
+  check "31i the launcher gets HIMMEL_HOLD_DOC as one escaped element" "$(cat "$d31i/record" 2>/dev/null)" "HIMMEL_HOLD_DOC=${doc31d// /\\ }"
+fi
 
 # 33. HIMMEL_CONSOLE_NAME is a
 # worker-process var too - #1121 routed a worker's merge-block alert to the owning
@@ -3501,7 +3565,7 @@ not_contains "34b a model with no tier row leaves CLAUDE_CODE_EFFORT_LEVEL unset
 
 # 34c. An explicit CLAUDE_CODE_EFFORT_LEVEL already set in the launching
 # shell wins over the registry lookup - never silently overwritten.
-out34c="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture" CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker-34c some/doc.md /tmp/nosig 99999999999 "$tmp/leg34c.log" claude-sonnet-5 2>&1)"
+out34c="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$guarded_repo" HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture" CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker-34c some/doc.md /tmp/nosig 99999999999 "$tmp/leg34c.log" claude-sonnet-5 2>&1)"
 lenv34c="$(printf '%s\n' "$out34c" | grep '^headed-arm-worker: lane=')"
 contains "34c an ambient CLAUDE_CODE_EFFORT_LEVEL=xhigh survives the registry lookup" "$lenv34c" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
 not_contains "34c the registry's medium never overwrites the ambient value" "$lenv34c" "CLAUDE_CODE_EFFORT_LEVEL=medium"
@@ -3528,7 +3592,7 @@ contains "34e native WORKER_SESSION_EFFORT=high beats the registry's medium" "$l
 not_contains "34e the registry's medium is not what propagates" "$lenv34e" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 
 rc34f=0
-out34f="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker-34f "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34f.log" claude-opus-5-5 2>&1)" || rc34f=$?
+out34f="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$guarded_repo" HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker-34f "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34f.log" claude-opus-5-5 2>&1)" || rc34f=$?
 lenv34f="$(printf '%s\n' "$out34f" | grep '^headed-arm-worker: lane=')"
 check "34f dry run exits 0" "$rc34f" "0"
 contains "34f an explicit CLAUDE_CODE_EFFORT_LEVEL=xhigh beats WORKER_SESSION_EFFORT=high" "$lenv34f" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
@@ -4763,7 +4827,7 @@ check "44f --dry-run writes no config" "$([ -e "$pt_home/.claude.json" ] && echo
 # bus CLI before launch (peer file 0600, no secret in it) and hands the launched
 # env exactly HIMMEL_BUS_NAME, whatever HIMMEL_BUS_* the caller preset or left in
 # its ambient env. An opted-out profile registers nothing and carries no
-# HIMMEL_BUS_* either; a failed register never blocks the launch.
+# HIMMEL_BUS_* either; a failed register refuses the launch.
 bus45="$tmp/c45"; mkdir -p "$bus45"
 cat > "$bus45/headed" <<'HEADED_EOF'
 #!/usr/bin/env bash
@@ -4773,6 +4837,7 @@ cat > "$bus45/headed" <<'HEADED_EOF'
   printf 'BUS_CLI=%s\n' "${HEADED_ARM_BUS_CLI:-<unset>}"
   printf 'AMBIENT=%s\n' "${HIMMEL_BUS_NAME:-<unset>}"
   printf 'EXTRA=%s\n' "${HIMMEL_BUS_EXTRA:-<unset>}"
+  printf 'OVERRIDE=%s\n' "${HIMMEL_LAUNCH_UNBOUND_OK:-<unset>}"
 } > "$(dirname "$0")/seen"
 HEADED_EOF
 chmod 755 "$bus45/headed"
@@ -4845,11 +4910,10 @@ rc=0; run45 in HIMMEL-45-in || rc=$?
 check "45l re-arm of an unbound name: launch exits 0" "$rc" "0"
 check "45m re-arm of an unbound name: the launched env carries HIMMEL_BUS_NAME" "$(bus45_toks)" "HIMMEL_BUS_NAME=HIMMEL-45-in"
 check "45n re-arm of an unbound name: headed-arm.sh is told to bind" "$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen")" "1"
-# the same name registered under another chief is refused: launch goes, unbound
+# the same name registered under another chief is refused: the launch is refused too
 rc=0; run45 in HIMMEL-45-in HIMMEL-chief-45-other || rc=$?
-check "45o refused register (changed chief): launch still exits 0" "$rc" "0"
-check "45p refused register: no HIMMEL_BUS_* in the launched env" "$(bus45_toks)" ""
-check "45q refused register: headed-arm.sh is not told to bind" "$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen")" "<unset>"
+check "45o refused register (changed chief): launch exits 2" "$rc" "2"
+check "45q refused register: nothing launched" "$([ -e "$bus45/seen" ] && echo launched || echo none)" "none"
 # the refused register is no longer log-only: it is on the launcher's
 # stdout and a bus=FAIL: bullet sits in the worker doc, still not a status marker.
 bus45_doc="$bus45/worker-doc.md"; fx_brief '# fixture doc' > "$bus45_doc"
@@ -4873,6 +4937,98 @@ HEADED_ARM_BUS_CLI="$bus45_stub" XDG_STATE_HOME="$bus45/state" \
     bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45-other3 HIMMEL-45-in3 "$bus45_doc2" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 >/dev/null 2>&1 || true
 check "45z failed register naming WRAPPED: bullet written, word stripped" "$(grep -c '^- [0-9:]* bus=FAIL:.*WRAPPED' "$bus45_doc2"):$(grep -c '^- [0-9:]* bus=FAIL:' "$bus45_doc2")" "0:1"
 check "45z2 failed register naming WRAPPED: tail status stays LIVE" "$(. "$HERE/../../lib/worker-tail-status.sh"; worker_tail_status "$bus45_doc2")" "LIVE"
+# A relaunch of a bound name never launches unbound. Its previous
+# holder dead (9071a), the name comes up registered again and a fresh pid binds
+# it (a bus read answers live); its holder live (9071b), the launch is refused,
+# nothing is launched and the refusal names the worker and the holder pid.
+if [ -r /proc/self/stat ]; then
+  bus9071_cli="$HERE/../../../marketplace/plugins/himmel-bus/bin/bus"
+  rc=0; run45 in HIMMEL-9071-dead || rc=$?
+  sleep 30 & bus9071_old=$!
+  XDG_STATE_HOME="$bus45/state" "$bus9071_cli" bind HIMMEL-9071-dead "$bus9071_old" >/dev/null 2>&1
+  kill "$bus9071_old" 2>/dev/null; wait "$bus9071_old" 2>/dev/null || true
+  rc=0; run45 in HIMMEL-9071-dead || rc=$?
+  check "9071a dead holder relaunch: launch exits 0" "$rc" "0"
+  check "9071a dead holder relaunch: headed-arm.sh is told to bind" "$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen" 2>/dev/null)" "1"
+  check "9071a dead holder relaunch: the launched env carries HIMMEL_BUS_NAME" "$(bus45_toks)" "HIMMEL_BUS_NAME=HIMMEL-9071-dead"
+  check "9071a dead holder relaunch: no launching-unbound warning" "$(grep -c 'register failed for HIMMEL-9071-dead' "$bus45/log")" "0"
+  sleep 30 & bus9071_new=$!
+  XDG_STATE_HOME="$bus45/state" "$bus9071_cli" bind HIMMEL-9071-dead "$bus9071_new" >/dev/null 2>&1
+  check "9071a dead holder relaunch: the new pid binds and a bus read answers live" \
+    "$(XDG_STATE_HOME="$bus45/state" "$bus9071_cli" status HIMMEL-9071-dead 2>&1)" "live"
+  kill "$bus9071_new" 2>/dev/null; wait "$bus9071_new" 2>/dev/null || true
+  rc=0; run45 in HIMMEL-9071-live || rc=$?
+  sleep 30 & bus9071_live=$!
+  XDG_STATE_HOME="$bus45/state" "$bus9071_cli" bind HIMMEL-9071-live "$bus9071_live" >/dev/null 2>&1
+  rm -f "$bus45/seen"
+  rc=0
+  bus9071_out="$(XDG_STATE_HOME="$bus45/state" \
+    HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
+    HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+      bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45 HIMMEL-9071-live "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 2>&1)" || rc=$?
+  check "9071b live holder relaunch: launch refused (non-zero)" "$([ "$rc" -ne 0 ] && echo refused || echo "launched rc=$rc")" "refused"
+  check "9071b live holder relaunch: nothing launched" "$([ -e "$bus45/seen" ] && echo launched || echo none)" "none"
+  contains "9071b live holder relaunch: refusal names the worker" "$bus9071_out" "HIMMEL-9071-live"
+  contains "9071b live holder relaunch: refusal names the holder pid" "$bus9071_out" "pid $bus9071_live"
+  check "9071b live holder relaunch: the holder stays bound and live" \
+    "$(XDG_STATE_HOME="$bus45/state" "$bus9071_cli" status HIMMEL-9071-live 2>&1)" "live"
+  kill "$bus9071_live" 2>/dev/null; wait "$bus9071_live" 2>/dev/null || true
+  # A successor chief re-arming a dead worker its predecessor registered: the
+  # dead worker never adopted the successor, and the name still comes back.
+  XDG_STATE_HOME="$bus45/state" "$bus9071_cli" register HIMMEL-chief-9071a --role chief >/dev/null 2>&1
+  rc=0; run45 in HIMMEL-9071-succ HIMMEL-chief-9071a || rc=$?
+  sleep 30 & bus9071_succ=$!
+  XDG_STATE_HOME="$bus45/state" "$bus9071_cli" bind HIMMEL-9071-succ "$bus9071_succ" >/dev/null 2>&1
+  kill "$bus9071_succ" 2>/dev/null; wait "$bus9071_succ" 2>/dev/null || true
+  XDG_STATE_HOME="$bus45/state" "$bus9071_cli" register HIMMEL-chief-9071b --role chief --predecessor HIMMEL-chief-9071a >/dev/null 2>&1
+  rc=0; run45 in HIMMEL-9071-succ HIMMEL-chief-9071b || rc=$?
+  check "9071c successor chief re-arms a dead worker: launch exits 0" "$rc" "0"
+  check "9071c successor chief re-arms a dead worker: headed-arm.sh is told to bind" "$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen" 2>/dev/null)" "1"
+  check "9071c successor chief re-arms a dead worker: the name now belongs to the successor" \
+    "$(jq -r '.console' "$bus45/state/himmel/bus/peers/HIMMEL-9071-succ.json" 2>/dev/null)" "HIMMEL-chief-9071b"
+fi
+# A broken bus: the refusal names the override, which launches unbound when set
+# in the launching shell; a held name is never overridden; a hung bus is bounded.
+bus45_broken="$bus45/bus-broken-stub"
+printf '#!/usr/bin/env bash\necho "bus store unreadable"\nexit 1\n' > "$bus45_broken"; chmod +x "$bus45_broken"
+rm -f "$bus45/seen"; rc=0
+bus9071_out="$(HEADED_ARM_BUS_CLI="$bus45_broken" XDG_STATE_HOME="$bus45/state" \
+  HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
+  HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+    bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45 HIMMEL-9071-broken "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 2>&1)" || rc=$?
+check "9071d broken bus: launch exits 2" "$rc" "2"
+contains "9071d broken bus: the refusal names the override" "$bus9071_out" "set HIMMEL_LAUNCH_UNBOUND_OK=1 in the launching shell"
+rm -f "$bus45/seen"; rc=0
+HIMMEL_LAUNCH_UNBOUND_OK=1 HEADED_ARM_BUS_CLI="$bus45_broken" XDG_STATE_HOME="$bus45/state" \
+  HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
+  HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+    bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45 HIMMEL-9071-broken "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 >/dev/null 2>&1 || rc=$?
+check "9071e broken bus with the override: launch exits 0, unbound" "$rc:$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen" 2>/dev/null)" "0:<unset>"
+check "9071e broken bus with the override: the log says it launched unbound" "$(grep -c 'launching unbound (HIMMEL_LAUNCH_UNBOUND_OK=1)' "$bus45/log")" "1"
+check "9071e the override is not passed on to the worker" "$(sed -n 's/^OVERRIDE=//p' "$bus45/seen" 2>/dev/null)" "<unset>"
+mkdir -p "$bus45/nomktemp"
+# shellcheck disable=SC2016  # deliberately unexpanded: written literally, evaluated when the stub runs.
+printf '#!/usr/bin/env bash\ncase "$*" in *headed-arm-bus*) exit 1 ;; esac\nPATH="${PATH#*:}" exec mktemp "$@"\n' > "$bus45/nomktemp/mktemp"
+chmod +x "$bus45/nomktemp/mktemp"
+rm -f "$bus45/seen"; rc=0
+bus9071_out="$(HIMMEL_LAUNCH_UNBOUND_OK=1 PATH="$bus45/nomktemp:$PATH" HEADED_ARM_BUS_CLI="$bus45_broken" XDG_STATE_HOME="$bus45/state" \
+  HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
+  HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+    bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45 HIMMEL-9071-broken "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 2>&1)" || rc=$?
+check "9071h the override never launches when the bus output was lost" "$rc:$([ -e "$bus45/seen" ] && echo launched || echo none)" "2:none"
+contains "9071h the refusal says the output was lost" "$bus9071_out" "output lost (mktemp failed)"
+check "9071h the refusal does not advise the override" "$(printf '%s\n' "$bus9071_out" | grep -c 'set HIMMEL_LAUNCH_UNBOUND_OK=1')" "0"
+rc=0; HIMMEL_LAUNCH_UNBOUND_OK=1 run45 in HIMMEL-45-in HIMMEL-chief-45-other || rc=$?
+check "9071f the override never launches over a held name" "$rc:$([ -e "$bus45/seen" ] && echo launched || echo none)" "2:none"
+bus45_hung="$bus45/bus-hung-stub"
+printf '#!/usr/bin/env bash\nexec sleep 20\n' > "$bus45_hung"; chmod +x "$bus45_hung"
+rm -f "$bus45/seen"; rc=0; bus9071_t0=$SECONDS
+bus9071_out="$(BUS_EXEC_SECS=08 HEADED_ARM_BUS_CLI="$bus45_hung" XDG_STATE_HOME="$bus45/state" \
+  HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
+  HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+    bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45 HIMMEL-9071-hung "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 2>&1)" || rc=$?
+check "9071g hung bus: refused within the bound" "$rc:$([ $((SECONDS - bus9071_t0)) -lt 15 ] && echo bounded || echo slow)" "2:bounded"
+contains "9071g hung bus: the refusal says it timed out, a leading zero read as decimal" "$bus9071_out" "timed out after 8s"
 # an opted-out profile launched from a shell that carries a live
 # bind flag and an extra HIMMEL_BUS_* leaks neither to the launched env.
 rm -f "$bus45/seen"
@@ -5248,7 +5404,73 @@ out49j="$(HIMMEL_HOLD_KEY=HIMMEL-1 HIMMEL_HOLD_DOC=/x/y.md HIMMEL_HOLD_LABEL=N99
 contains "49n a --judge launch carries no key (an inherited one is dropped)" "$out49j" "HIMMEL_HOLD_KEY=<unset> HIMMEL_HOLD_DOC=<unset> HIMMEL_HOLD_LABEL=<unset>"
 out49r="$(HIMMEL_HOLD_KEY=HIMMEL-1 env -u IMPL_GUARD_OK -u INLINE_IMPL_OK -u HIMMEL_RM_EFFORT bash "$SCRIPT" --dry-run --profile release-manager --rm-release v1.1.3 HIMMEL-9605-N1-rm "$doc_tier_rm" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)"
 contains "49o a release-manager launch carries no key" "$out49r" "HIMMEL_HOLD_KEY=<unset> HIMMEL_HOLD_DOC=<unset> HIMMEL_HOLD_LABEL=<unset>"
-check "49p the real ~/.himmel/state/holds is unchanged by this suite" "$(real_register)" "$REAL_REGISTER_BEFORE"
+# a before/after compare of the live register fails when a real worker writes during the run. This suite's rows live in
+# the private register under the pinned HOME and name docs under $tmp, a path unique to this run: none may appear in the real one.
+h49_priv="$(grep -rlF "$tmp" "$HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"
+h49_real="$(grep -rlF "$tmp" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"
+check "49p the suite's rows are in the private register and none reached the real ~/.himmel/state/holds" "$([ "${h49_priv:-0}" -gt 0 ] && echo private || echo none)|${h49_real:-0}" "private|0"
+
+# --- 50. A launch whose session folder would not load the guard hooks is refused (exit 18) before the
+# dry-run report and before every side effect: no preflight/slot, no doc edit, no launch log, no pretrust
+# write, no konsole. UNGUARDED_LAUNCH_OK=1 launches it with exactly one WARN. This suite opts in at its top,
+# so every row below drops it from its own environment.
+scratch50="$tmp/scratch50"; mkdir -p "$scratch50"
+doc50="$tmp/HIMMEL-9026-N3-guard.md"; fx_brief '# guard fixture' > "$doc50"
+doc50_sum="$(cksum < "$doc50")"
+d50="$tmp/c50"; mk_launch_stubs "$d50" "HIMMEL-9026-N3-guard"
+slots50_before="$(find "$HIMMEL_FLEET_SLOTS" -mindepth 1 2>/dev/null | sort | cksum)"
+pre50_before="$(find "$WORKER_SESSION_PRETRUST_HOME" -mindepth 1 2>/dev/null | sort | cksum)"
+rm -f "$tmp/rec-preflight50.env"
+rc=0; out50="$(some_doc="$doc50" REC_PREFLIGHT_OUT="$tmp/rec-preflight50.env" RUN_WORKER_WRAP="env -u UNGUARDED_LAUNCH_OK" RUN_WORKER_ARGS=--no-profile run_worker "$d50" "$scratch50" "HIMMEL-9026-N3-guard" "claude-sonnet-5" "$REC_PREFLIGHT" 2>&1)" || rc=$?
+sleep 0.3
+check "guard_worker_refuses_scratch: exit 18" "$rc" "18"
+contains "guard_worker_refuses_scratch: names the launcher and folder" "$out50" "headed-arm-worker: refusing to launch HIMMEL-9026-N3-guard: $scratch50 does not load the himmel guard hooks (not a git work tree)."
+check "guard_worker_refuses_scratch: the launch preflight never ran" "$([ -e "$tmp/rec-preflight50.env" ] && echo ran || echo none)" "none"
+check "guard_worker_refuses_scratch: no slot file written" "$(find "$HIMMEL_FLEET_SLOTS" -mindepth 1 2>/dev/null | sort | cksum)" "$slots50_before"
+check "guard_worker_refuses_scratch: the doc bytes are unchanged" "$(cksum < "$doc50")" "$doc50_sum"
+check "guard_worker_refuses_scratch: no pretrust write" "$(find "$WORKER_SESSION_PRETRUST_HOME" -mindepth 1 2>/dev/null | sort | cksum)" "$pre50_before"
+check "guard_worker_refuses_scratch: no launch log" "$([ -e "$HIMMELCTL_CACHE_DIR/launch-logs/HIMMEL-9026-N3-guard.log" ] && echo log || echo none)" "none"
+check "guard_worker_refuses_scratch: the launcher was never exec'd" "$([ -e "$d50/record" ] && echo konsole || echo none)" "none"
+
+rc=0; out50d="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$scratch50" bash "$SCRIPT" --dry-run --no-profile HIMMEL-9026-N3-guard "$doc50" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+check "guard_worker_dry_run: --dry-run exits 18 too" "$rc" "18"
+not_contains "guard_worker_dry_run: no would-exec report" "$out50d" "would exec"
+
+# a resume_cwd worktree of a registered repo folds into the session folder; the folded folder is judged
+adopter50="$tmp/adopter50"; mkdir -p "$adopter50"
+git -C "$adopter50" init -q
+git -C "$adopter50" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+git -C "$adopter50" worktree add -q -b fix/adopter-50 "$adopter50/.claude/worktrees/fix+adopter-50"
+wt50="$adopter50/.claude/worktrees/fix+adopter-50"
+reg50="$tmp/reg50.json"; printf '{"repos":{"adopter50":{"path":"%s"}}}\n' "$adopter50" > "$reg50"
+fdoc50="$tmp/c50-fold-doc.md"
+printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' "$wt50" > "$fdoc50"
+rc=0; out50f="$(env -u UNGUARDED_LAUNCH_OK HANDOVER_REGISTRY="$reg50" bash "$SCRIPT" --dry-run --no-profile HIMMEL-9026-N3-fold "$fdoc50" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+check "guard_worker_folded_worktree_checked: exit 18" "$rc" "18"
+contains "guard_worker_folded_worktree_checked: the folded worktree is the folder judged" "$out50f" "$wt50 does not load the himmel guard hooks"
+contains "guard_worker_folded_worktree_checked: the refusal reason is the check's" "$out50f" "does not load the himmel guard hooks (user guard layer incomplete (run himmelctl ensure))."
+
+# opt-out through the real headed-arm.sh: exactly one WARN across stderr
+d50o="$tmp/c50o"; mk_launch_stubs "$d50o" "HIMMEL-9026-N3-optout"
+rc=0; out50o="$(UNGUARDED_LAUNCH_OK=1 some_doc="$doc50" RUN_WORKER_ARGS=--no-profile run_worker "$d50o" "$scratch50" "HIMMEL-9026-N3-optout" "claude-sonnet-5" 2>&1 >/dev/null)" || rc=$?
+wait_record "$d50o" || true
+check "optout_chain_single_warn: opted-out launch exits 0" "$rc" "0"
+check "optout_chain_single_warn: exactly one WARN reaches stderr" "$(printf '%s\n' "$out50o" | grep -c '^WARN unguarded launch of HIMMEL-9026-N3-optout')" "1"
+contains "optout_chain_single_warn: the WARN names the reason" "$out50o" "WARN unguarded launch of HIMMEL-9026-N3-optout in $scratch50 (not a git work tree; UNGUARDED_LAUNCH_OK=1)"
+
+# control: the real, fully wired worktree under test launches with the opt-out dropped, and no WARN
+gwt50="$(cd "$HERE/../../.." && pwd -P)"
+d50g="$tmp/c50g"; mk_launch_stubs "$d50g" "HIMMEL-9026-N3-ctl"
+rc=0; out50g="$(RUN_WORKER_WRAP="env -u UNGUARDED_LAUNCH_OK" some_doc="$doc50" RUN_WORKER_ARGS=--no-profile run_worker "$d50g" "$gwt50" "HIMMEL-9026-N3-ctl" "claude-sonnet-5" 2>&1 >/dev/null)" || rc=$?
+wait_record "$d50g" || true
+check "guard_control_worker_passes: guarded folder, opt-out dropped: exit 0, launcher reached" "$rc|$([ -s "$d50g/record" ] && echo konsole || echo none)" "0|konsole"
+not_contains "guard_control_worker_passes: no WARN" "$out50g" "WARN unguarded launch"
+
+# --consult is not exempt in code: a consult on an unguarded folder is refused like any launch (its usual
+# folder, the chief checkout, passes; a test cannot stand in the checkout, since --consult refuses a worktree cwd)
+rc=0; out50c="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$scratch50" bash "$SCRIPT" --dry-run --consult --profile design-motion --chief HIMMEL-9026-chief HIMMEL-9026-N3-c "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+check "consult_guard_applies: a --consult on an unguarded folder exits 18" "$rc" "18"
+contains "consult_guard_applies: the refusal names the folder" "$out50c" "$scratch50 does not load the himmel guard hooks"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

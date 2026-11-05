@@ -273,8 +273,9 @@ mog_build_fixture() {
     # MOG_TIMEOUT_SHIM=1: a `timeout` that logs the bound of the bug-origin snapshot read and ingest to timeout.log and runs
     # neither (so nothing waits), and passes every other call to the real one.
     if [ "${MOG_TIMEOUT_SHIM:-0}" = "1" ]; then
-        printf '#!/usr/bin/env bash\ncase "$*" in\n  *mergedAt*|*bug-origin-report*) printf "%%s\\n" "$*" >> "%s/timeout.log"; exit 0 ;;\nesac\nexec %s "$@"\n' \
-            "$tmp" "$(command -v timeout || command -v gtimeout)" > "$tmp/bin/timeout"
+        # The cr-thread recorder's call is logged apart, to cr-timeout.log, so the bug-origin rows never read it.
+        printf '#!/usr/bin/env bash\ncase "$*" in\n  *cr-thread-recorder*) printf "%%s\\n" "$*" >> "%s/cr-timeout.log"; exit 0 ;;\n  *mergedAt*|*bug-origin-report*) printf "%%s\\n" "$*" >> "%s/timeout.log"; exit 0 ;;\nesac\nexec %s "$@"\n' \
+            "$tmp" "$tmp" "$(command -v timeout || command -v gtimeout)" > "$tmp/bin/timeout"
         chmod +x "$tmp/bin/timeout"
     fi
     # The status lib is sourced from the anchor; the status funnel at its anchor
@@ -1140,6 +1141,26 @@ STUB_STATE_FAIL=1 run_mog 13 "gh pr view auth/network failure → exit 13 (not n
 # 3b. gh 'no pull requests found' → clean no-op (exit 0), NOT a refusal.
 STUB_NO_PR=1 run_mog 0 "gh 'no pull requests found' → exit 0 nothing-to-merge"
 assert_gh_lacks "no-PR: no merge attempted" "pr merge"
+
+# 8918 exit 27: a --go run that resolves no OPEN PR merged nothing and says so.
+# a: --go with no PR number on a branch with no PR
+STUB_NO_PR=1 run_mog 27 "8918-a: --go and no PR resolved → exit 27" -- --go /nonexistent/go/77.abc123def456
+assert_err_has "8918-a: stderr says nothing merged" "nothing merged"
+assert_gh_lacks "8918-a: no merge attempted" "pr merge"
+# a2: no --go keeps the clean no-op
+STUB_NO_PR=1 run_mog 0 "8918-a2: no --go and no PR resolved → exit 0"
+# a3: --go plus a selector naming a closed PR
+STUB_STATE=CLOSED run_mog 27 "8918-a3: --go and a closed PR → exit 27" -- 77 --go /nonexistent/go/77.abc123def456
+assert_err_has "8918-a3: stderr says nothing merged" "nothing merged"
+# a3b: an empty or unknown state is refused too
+STUB_STATE="" run_mog 27 "8918-a3b: --go and an empty PR state → exit 27" -- --go /nonexistent/go/77.abc123def456
+# a5: --dry-run is exempt
+STUB_NO_PR=1 run_mog 0 "8918-a5: --go --dry-run and no PR resolved → exit 0" -- --go /nonexistent/go/77.abc123def456 --dry-run
+# a6: the PR already MERGED at the GO file's head is not a failure
+STUB_STATE=MERGED run_mog 0 "8918-a6: --go and the PR already MERGED at the GO head → exit 0" -- --go /nonexistent/go/77.abc123def456
+assert_err_has "8918-a6: stderr says already merged" "already merged"
+# a6b: MERGED at another head is not the GO's merge
+STUB_STATE=MERGED run_mog 27 "8918-a6b: --go and the PR MERGED at another head → exit 27" -- --go /nonexistent/go/77.deadbeef
 
 # 4. PR OPEN but repo is public → fail-closed refuse (exit 12), no merge.
 STUB_PRIVATE=false run_mog 12 "public repo → exit 12"
@@ -3067,6 +3088,19 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
     bo_secs_row 45 30 45
     bo_secs_row 7 7 7
     bo_secs_row "" 30 60
+    # MOG_CR_THREADS_SECS can only shorten the 60 s bound of the cr-thread recorder: a zero in any spelling (a zero duration
+    # turns `timeout` off), a value too long to compare and a value of 3 digits change nothing
+    cr_secs_row() {
+        MOG_ANCHOR_GIT=1 MOG_TIMEOUT_SHIM=1 MOG_CR_THREADS_SECS="$1" STUB_NUM=89 run_mog 0 "8948-$3: MOG_CR_THREADS_SECS=$1 bounds the recorder at $2 s"
+        if grep -q "^-k 10 $2 " "$LAST_TMP/cr-timeout.log" 2>/dev/null; then pass
+        else fail "8948-$3: MOG_CR_THREADS_SECS=$1 wanted the recorder bound $2 s, got: $(cut -c1-40 "$LAST_TMP/cr-timeout.log" 2>/dev/null | tr '\n' ';')"; fi
+    }
+    cr_secs_row 00 60 00
+    cr_secs_row 99999999999999999999 60 20d
+    cr_secs_row 045 60 045
+    cr_secs_row 100 60 100
+    cr_secs_row 45 45 45
+    cr_secs_row 7 7 7
     # no timeout binary: the ingest is not run (a symlink farm of the real PATH minus timeout and gtimeout)
     mog_nt_farm=$(mktemp -d "${TMPDIR:-/tmp}/mog-nt.XXXXXX") || mog_nt_farm=""
     if [ -z "$mog_nt_farm" ] || [ ! -d "$mog_nt_farm" ]; then
@@ -3478,6 +3512,7 @@ go_write "$GO_ROOT" 77 "$GO_SHA"
 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
     run_mog 0 "2919-b: chief worker with a GO for the certified head → merged" -- --go "$GO_ROOT/.locks/go/77.$GO_SHA"
 assert_merge_has "2919-b: merge pins the certified head" "--match-head-commit $GO_SHA"
+assert_audit_lacks "8918-a4: a bare --go on the PR's own branch still merges, never exit 27" "go-no-open-pr"
 assert_audit_has "2919-b: MERGED recorded" "MERGED repo="
 assert_err_has "2919-b: the verified GO evidence is printed" "GO evidence: file=$GO_ROOT/.locks/go/77.$GO_SHA pr=77 head=$GO_SHA"
 GO_B_GHLOG=$(cat "$LAST_GH_LOG")

@@ -14,9 +14,9 @@
 #   a. one row per manifest item, per doctor line, per registry flag, per
 #      secrets-manifest entry, per cadence (4, each once), per optional
 #      plugin, per lane, per initiative worker; every spec §4 field present
-#   c. fires: doctor cadence = yes (last.tsv mtime); pipeline on linux =
-#      unverified even though its stubbed status says ARMED; nothing but
-#      component run evidence ever yields yes
+#   c. fires: doctor cadence = yes (last.tsv mtime); pipeline and qmd = yes from
+#      their own run logs (fired time + exit code); graphmap with an empty or
+#      absent log = no-run; nothing but component run evidence ever yields yes
 #   d. redact(): a canary .env value planted in a stub probe detail is absent
 #      from the output (and the RED control, redaction off, leaks it)
 #   e. --items: a cadence-only call never invokes the stub doctor
@@ -59,6 +59,14 @@ printf 'HIMMEL_INITIATIVE=execute,pr\nJIRA_API_TOKEN=%s\n' "$CANARY" > "$fixture
 homeDir="$work/home"
 mkdir -p "$homeDir/.claude" "$homeDir/.himmel/state/doctor-cadence"
 printf 'FAIL C44-skill-index\n' > "$homeDir/.himmel/state/doctor-cadence/last.tsv"
+# run logs the cadence runners write: pipeline has two task logs (the newer one wins) and a
+# rotated .log.prev that must be ignored; qmd's run has no exit line yet; graphmap's log is empty.
+mkdir -p "$homeDir/.claude/pipeline-cadence" "$homeDir/.claude/qmd-cadence" "$homeDir/.claude/graphmap-cadence"
+printf '[fired 2026-11-03 04:10:00]\nPIPELINE-WORKER-DONE\n[exit rc=0]\n' > "$homeDir/.claude/pipeline-cadence/pipeline-harvest.log"
+printf '[fired 2026-11-04 04:00:00]\nboom\n[exit rc=1]\n' > "$homeDir/.claude/pipeline-cadence/pipeline-health.log"
+printf '[fired 2026-11-05 09:00:00]\n[exit rc=0]\n' > "$homeDir/.claude/pipeline-cadence/pipeline-health.log.prev"
+printf '[fired 2026-11-04 05:00:00]\nqmd-reindex: start\n' > "$homeDir/.claude/qmd-cadence/qmd-reindex.log"
+: > "$homeDir/.claude/graphmap-cadence/graphmap-himmel.log"
 cacheDir="$work/cache"; mkdir -p "$cacheDir"
 cat > "$cacheDir/install-profile.json" <<'JSON'
 {"role":"adopter","tier":"standard","scope":"user","vault":{"mode":"none","path":""},"handover":{"mode":"inline","path":""},"pluginSet":"lean","lanes":[],"lanesMeaningful":true,"alwaysOn":false}
@@ -72,8 +80,8 @@ stubDoctor="$work/stub-doctor.sh"
 cat > "$stubDoctor" <<STUB
 #!/usr/bin/env bash
 echo called >> "$doctorLog"
-printf '%s\n' '{"sev":"OK","id":"C1-guardrail","msg":"guardrail ok","remedy":""}'
-printf '%s\n' '{"sev":"WARN","id":"C3-luna","msg":"luna dirty (execute,pr)","remedy":"commit it"}'
+printf '%s\n' '{"sev":"OK","id":"C1-guardrail","msg":"guardrail ok","remedy":"","scope":"shared"}'
+printf '%s\n' '{"sev":"WARN","id":"C3-luna","msg":"luna dirty (execute,pr)","remedy":"commit it","scope":"project","repo":"himmel"}'
 printf '%s\n' '{"sev":"FAIL","id":"C9-leak","msg":"token is $CANARY here","remedy":"rotate"}'
 STUB
 chmod +x "$stubDoctor"
@@ -136,7 +144,7 @@ for _bin in secret-tool busctl; do
 done
 
 run_report() {
-  ( cd "$target" && HOME="$homeDir" USERPROFILE="$(winpath "$homeDir")" \
+  ( cd "$target" && TZ=UTC HOME="$homeDir" USERPROFILE="$(winpath "$homeDir")" \
       HIMMELCTL_CACHE_DIR="$(winpath "$cacheDir")" HIMMELCTL_REPO_ROOT="$(winpath "$fixtureRepo")" \
       HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheDir")-luna-config.json" \
       HIMMEL_REPORT_DOCTOR="$(winpath "${DOCTOR_STUB:-$stubDoctor}")" HIMMEL_REPORT_CADENCE_ROOT="$(winpath "$scriptRoot")" \
@@ -183,10 +191,22 @@ bad=$(jq -r '.rows[]|select(((.scope // "")|IN("shared","project")|not) or ((.fi
 classify() { "$node_bin" -e 'const f=require(process.argv[1]);const [src,id]=process.argv[2].split("|");const r=f.classifyRow({source:src,id,fix:{remedy:process.argv[3]||""}});console.log([r.scope,r.by,r.tile||"-"].join(" "))' "$repo_root/scripts/himmelctl/lib/config-feed.js" "$1" "${2:-}"; }
 [ "$(classify 'secret|secret:TELEGRAM_BOT_TOKEN')" = "shared configure secrets" ] || fail "a4 telegram token: $(classify 'secret|secret:TELEGRAM_BOT_TOKEN')"
 [ "$(classify 'secret|secret:JIRA_PROJECT_KEY')" = "project configure tracker" ] || fail "a4 jira project key: $(classify 'secret|secret:JIRA_PROJECT_KEY')"
-[ "$(classify 'doctor|doctor:C12-gh-auth' 'gh auth login')" = "shared operator -" ] || fail "a4 gh auth: $(classify 'doctor|doctor:C12-gh-auth' 'gh auth login')"
-[ "$(classify 'doctor|doctor:C12-gh-auth' '')" = "shared chief -" ] || fail "a4 an operator row with no command falls to the chief"
-[ "$(classify 'doctor|doctor:C40-qmd-vec')" = "shared chief -" ] || fail "a4 qmd-vec: $(classify 'doctor|doctor:C40-qmd-vec')"
-[ "$(classify 'doctor|doctor:C22-chain-skips')" = "project chief -" ] || fail "a4 chain skips: $(classify 'doctor|doctor:C22-chain-skips')"
+# A doctor or item row carries the scope its probe declares; classifyRow reads it, no hand list.
+classifyJ() { "$node_bin" -e 'const f=require(process.argv[1]);const r=f.classifyRow(JSON.parse(process.argv[2]));console.log([r.scope,r.by,r.tile||"-"].join(" "))' "$repo_root/scripts/himmelctl/lib/config-feed.js" "$1"; }
+[ "$(classifyJ '{"source":"doctor","id":"doctor:C12-gh-auth","scope":"shared","fix":{"remedy":"gh auth login"}}')" = "shared operator -" ] || fail "a4 gh auth"
+[ "$(classifyJ '{"source":"doctor","id":"doctor:C12-gh-auth","scope":"shared","fix":{"remedy":""}}')" = "shared chief -" ] || fail "a4 an operator row with no command falls to the chief"
+for c in C38-uv C44-skill-index C45-qmd-daemon C52-graphify-ollama C83-qmd-embed-backlog C22-chain-skips C80-status-drift C86-morning-report C40-qmd-vec; do
+  [ "$(classifyJ "{\"source\":\"doctor\",\"id\":\"doctor:$c\",\"scope\":\"shared\",\"fix\":{\"remedy\":\"\"}}")" = "shared chief -" ] || fail "a4 $c declared shared reads $(classifyJ "{\"source\":\"doctor\",\"id\":\"doctor:$c\",\"scope\":\"shared\",\"fix\":{\"remedy\":\"\"}}")"
+done
+[ "$(classifyJ '{"source":"doctor","id":"doctor:C33-graph-stale","scope":"project","repo":"himmel","fix":{"remedy":""}}')" = "project chief -" ] || fail "a4 C33 declared project"
+[ "$(classifyJ '{"source":"doctor","id":"doctor:C77-undeclared","fix":{"remedy":""}}')" = "project chief -" ] || fail "a4 an undeclared doctor row defaults to the project"
+[ "$(classifyJ '{"source":"item","kind":"vault","id":"qmd-himmel-collection","healthScope":"project","fix":{"remedy":""}}')" = "project chief -" ] || fail "a4 an item healthScope beats its kind default"
+[ "$(classifyJ '{"source":"item","kind":"vault","id":"qmd-index","fix":{"remedy":""}}')" = "shared chief -" ] || fail "a4 an item with no healthScope keeps its kind default"
+# through the feed: the stub doctor's declared scope and repo reach the row, and the manifest item declares its own
+jq -e '[.rows[]|select(.id=="doctor:C1-guardrail")|.scope=="shared"]==[true]' "$out" >/dev/null || fail "a4 a declared-shared doctor row is shared in the feed"
+jq -e '[.rows[]|select(.id=="doctor:C3-luna")|.scope=="project" and .repo=="himmel"]==[true]' "$out" >/dev/null || fail "a4 a declared repo reaches the feed row"
+jq -e '[.rows[]|select(.id=="qmd-himmel-collection")|.scope=="project" and .repo=="himmel"]==[true]' "$out" >/dev/null || fail "a4 qmd-himmel-collection is project himmel in the feed"
+jq -e '[.rows[]|select(.id=="qmd-index")|.scope=="shared"]==[true]' "$out" >/dev/null || fail "a4 qmd-index stays shared in the feed"
 [ "$(classify 'initiative|initiative:execute')" = "project configure scope" ] || fail "a4 initiative: $(classify 'initiative|initiative:execute')"
 [ "$(classify 'lane|lane:codex')" = "shared configure review" ] || fail "a4 lane: $(classify 'lane|lane:codex')"
 [ "$(classify 'cadence|qmd-cadence')" = "shared configure scope" ] || fail "a4 cadence: $(classify 'cadence|qmd-cadence')"
@@ -195,11 +215,19 @@ pass "a4 every row carries scope, fix.by and (for configure) fix.tile"
 
 # ── c. fires honesty ────────────────────────────────────────────────────────
 jq -e '.rows[]|select(.id=="doctor-cadence")|.fires.state=="yes" and (.fires.at|type)=="string"' "$out" >/dev/null || fail "doctor cadence fires != yes with a timestamp"
-if [ "$(uname -s)" != MINGW64_NT ] && [ "$(uname -s)" != MSYS_NT ]; then
-  jq -e '.rows[]|select(.id=="pipeline-cadence")|.fires.state=="unverified"' "$out" >/dev/null || fail "pipeline cadence fires != unverified on non-Windows"
-fi
-[ "$(jq '[.rows[]|select(.fires.state=="yes")]|map(.id)|sort|join(",")' "$out")" = '"doctor-cadence"' ] || fail "fires=yes on a row other than doctor-cadence"
-pass "c fires: doctor yes, pipeline unverified, nothing else yes"
+fires_of() { jq -c ".rows[]|select(.id==\"$1\")|.fires" "${2:-$out}"; }
+# the newest task log wins, its time and exit code are read, and the rotated .log.prev is ignored
+[ "$(fires_of pipeline-cadence)" = '{"state":"yes","evidence":"pipeline-health.log run log, exit rc=1","at":"2026-11-04T04:00:00.000Z"}' ] || fail "c pipeline fires: $(fires_of pipeline-cadence)"
+# a run with no exit line yet says so rather than inventing an outcome
+[ "$(fires_of qmd-cadence)" = '{"state":"yes","evidence":"qmd-reindex.log run log, no exit line (still running, or died)","at":"2026-11-04T05:00:00.000Z"}' ] || fail "c qmd fires: $(fires_of qmd-cadence)"
+# an empty log is not a run: a named no-run state, never unverified
+jq -e '.rows[]|select(.id=="graphmap-cadence")|.fires.state=="no-run" and .fires.at==null and (.fires.evidence|contains("graphmap-cadence"))' "$out" >/dev/null || fail "c graphmap (empty log) fires: $(fires_of graphmap-cadence)"
+[ "$(jq '[.rows[]|select(.fires.state=="yes")]|map(.id)|sort|join(",")' "$out")" = '"doctor-cadence,pipeline-cadence,qmd-cadence"' ] || fail "fires=yes on a row other than doctor and the logged cadences"
+# no log directory at all: the same named state
+rm -rf "$homeDir/.claude/graphmap-cadence"
+run_report --items graphmap-cadence > "$work/nolog.json" 2> "$work/nolog.err" || { cat "$work/nolog.err" >&2; fail "report --items graphmap-cadence exited non-zero"; }
+jq -e '.rows[]|select(.id=="graphmap-cadence")|.fires.state=="no-run"' "$work/nolog.json" >/dev/null || fail "c graphmap (no log dir) fires: $(fires_of graphmap-cadence "$work/nolog.json")"
+pass "c fires: doctor yes from last.tsv, pipeline and qmd yes from their run logs, graphmap no-run"
 
 # ── d. redaction ────────────────────────────────────────────────────────────
 if grep -q "$CANARY" "$out"; then fail "canary leaked into report output"; fi

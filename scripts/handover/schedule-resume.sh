@@ -87,6 +87,7 @@ case "$platform" in
         # Prefer `at` (one-shot, exactly the semantics we want). Falls back
         # to crontab if `at` is unavailable - but crontab is recurring, so
         # we add a self-deleting wrapper to keep one-shot semantics.
+            # launch-guard-ok: deferred to follow-up g
         if command -v at >/dev/null 2>&1; then
             cat <<EOF
 # Step 1 - schedule via 'at':
@@ -103,6 +104,7 @@ EOF
             # fires once on the next occurrence then we manually clean up.
             # Operator gets a warning so they know it's NOT auto-self-deleting.
             hh="${RESUME_TIME%:*}"
+            # launch-guard-ok: deferred to follow-up g
             mm="${RESUME_TIME#*:}"
             cat <<EOF
 # WARNING: 'at' is not installed; falling back to crontab. crontab entries

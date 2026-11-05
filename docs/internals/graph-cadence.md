@@ -35,7 +35,18 @@ script.
    `--count --merges` always returns 0 while the true distance is the real
    number.
 4. Below `--threshold`: `action=skipped`, one ledger row, exit 0.
-5. At/above threshold: `ast-update.sh` (the free, AST-only structural
+   **No tracked graph (the steady state):** `origin/main` no longer carries
+   `graphify-out/graph.json`, so there is nothing to measure or publish. Without
+   `--semantic` the run then exits right here — `action=skipped`, no pipeline lock,
+   no worktree sync, **no `ast-update.sh` rebuild** (HIMMEL-9069). The only
+   rebuild of the himmel AST graph per cycle is the hourly
+   `HIMMEL-GraphMapAst-Himmel` run into the primary checkout's `graphify-out/`,
+   which is what the graph workers and the session-start advisory read; a rebuild
+   in this step's worktree would feed nothing. `--semantic` keeps the rebuild (the
+   semantic step builds on it and promotes it into the primary), and an
+   unreadable `graph.json` object (corrupt clone) still falls through and fails
+   closed (rc 3) rather than hiding behind the skip.
+5. At/above threshold (a tracked graph only): `ast-update.sh` (the free, AST-only structural
    refresh), `graph-publish.sh` (open/refresh the publish PR), then
    `merge-on-green.sh` (`ARMAUTOMERGE=1`, the sanctioned auto-merge
    script) — all three against a **dedicated worktree**, never the
@@ -85,23 +96,32 @@ Same three verbs as every sibling cadence, via the shared
 this step:
 
 ```bash
-bash scripts/luna/graphmap-cadence.sh arm        # registers the default tasks
+bash scripts/luna/graphmap-cadence.sh arm        # registers the himmel tasks (the Luna tasks are off by default)
 bash scripts/luna/graphmap-cadence.sh arm --with-publish  # also registers the publish task (opt-in)
-bash scripts/luna/graphmap-cadence.sh arm --force  # replace an existing arm
+bash scripts/luna/graphmap-cadence.sh arm --force  # replace an existing himmel arm
+bash scripts/luna/graphmap-cadence.sh arm --luna-only  # opt in to the Luna tasks (decision 449: off until graphify beats qmd on Luna)
 bash scripts/luna/graphmap-cadence.sh status     # per-task ARMED/not-armed + run log
-bash scripts/luna/graphmap-cadence.sh disarm     # removes all five
+bash scripts/luna/graphmap-cadence.sh disarm     # removes every task; disarm --luna-only removes the Luna ones alone
 ```
+
+The Luna graph tasks (`HIMMEL-GraphMap-Luna`, `HIMMEL-GraphMapAst-Luna`,
+`HIMMEL-GraphSemantic-Luna`) are off by default (HIMMEL-9011): a bare `arm`
+neither adds nor replaces them, a fresh install registers none (so doctor C24
+expects none), and `himmel-update`'s `arm --rewrite-armed` only rewrites runners
+that already exist, so it can never re-arm a disarmed Luna task.
 
 The publish task is opt-in: `arm` registers `HIMMEL-GraphPublish-Himmel`
 only with `--with-publish`. It is grouped with the free structural (AST) pair for
 `--ast-only` purposes (HIMMEL-2071): it needs no backend credential, so
-`--ast-only` arms/replaces it too, alongside the AST pair, while leaving the
-weekly semantic pair untouched. Default schedule: **every 6 hours**,
+`--ast-only` arms/replaces it too, alongside the himmel AST task, while leaving the
+himmel semantic task untouched. Default schedule: **every 6 hours**,
 anchored at `:35` past (`35 */6 * * *`) — 20 minutes clear of `HIMMEL-GraphMapAst-Himmel`'s
 own `:15`-past hourly fire, wider than the AST pair's own 10-minute mutual
-stagger, because this step is not free-and-instant like the AST pair: it can
-run `ast-update.sh`, open/refresh a PR, and drive `merge-on-green.sh`'s own
-`check-ci` watch, all in one fire. Both steps would otherwise contend for
+stagger, because this step is not free-and-instant like the AST pair: with a
+tracked graph or `--semantic` it can run `ast-update.sh`, open/refresh a PR, and
+drive `merge-on-green.sh`'s own `check-ci` watch, all in one fire (without
+either it skips at once and rebuilds nothing — the hourly AST pair already
+built the graph, HIMMEL-9069). Both steps would otherwise contend for
 `ast-update.sh`'s HIMMEL-910 promote lock (skip-not-wait, so a collision is
 a skipped-and-retried refresh next fire, not a failure — the wider offset
 just makes that the exception rather than the rule).
@@ -267,7 +287,7 @@ explicit `GRAPHIFY_MAX_CONCURRENCY` wins, and an ollama-cloud model keeps 6.
 
 The luna vault graph is rebuilt AST-only nightly (`HIMMEL-GraphMapAst-Luna`), so
 its markdown only gets LLM extraction from a separate job:
-`graphmap-cadence.sh arm --ast-only --with-luna-semantic` adds
+`graphmap-cadence.sh arm --luna-only --ast-only --with-luna-semantic` adds
 `HIMMEL-GraphSemantic-Luna` (cron, `50 */2`), which runs `semantic-update.sh
 --name luna --corpus-class luna-personal --backend claude-api` against the same
 external out dir the AST job writes (an absolute `GRAPHIFY_OUT`), capped at 20

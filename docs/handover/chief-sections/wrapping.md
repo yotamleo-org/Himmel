@@ -12,12 +12,12 @@ or `MERGED` worker (`waiter.md`, the script relay) and wakes you only with
 worker already closed prints `HANDLED noop <label>`. The paths below are for that
 wake, or a chief armed without `--workers-from`.
 
-**One call per message.** Write the worker's `MERGED` or
-`WRAPPED` message to a file and run
+**One call per message.** Write the worker's `WRAPPED` bullet line (or a claudex
+`MERGED` line you wrote yourself) to a file and run
 `bash scripts/handover/chief-kit/worker-event.sh --doc <chief doc> --fleet <manifest> <message-file>`.
 It finds the worker doc by the message's `N<k>` label and runs
 `chief-kit/wrap-merged.sh` (PR state, close, pull, Results bullet, board). `HANDLED ...`
-means done; `ESCALATE <reason>` means do the steps below by hand. After a `MERGED` it
+means done; `ESCALATE <reason>` means do the steps below by hand. After a merged PR, on a `MERGED` or `WRAPPED` line, it
 also starts `chief-kit/station-sync.sh --pr <n>` detached (HIMMEL-5945): the
 `himmel-update.sh --only` steps for the paths the PR touched, then `--versions`. The line
 ends `station=pending log=<file>` at once; the tick carries the verdict as `station=`
@@ -30,7 +30,7 @@ directly when you already hold the worker doc. The hand sequence below is the
 fallback, not the default: a measured chief spent 7 to 9 full-context turns
 per MERGED/WRAPPED on it (HIMMEL-5592).
 
-For a batch close, run `bash scripts/handover/chief-kit/close-wrapped-worker.sh --sweep --fleet <manifest>`: it closes only WRAPPED, lock-free workers, skips held or live workers, and continues after an already-pruned worktree.
+For a batch close, run `bash scripts/handover/chief-kit/close-wrapped-worker.sh --sweep --fleet <manifest>`: it closes only lock-free workers whose tail is WRAPPED or a BLOCKED hand-off naming its launched successor (the tick counts the same two as `closable=`), skips held or live workers, and continues after an already-pruned worktree.
 To close every finished window across chiefs, run
 `bash scripts/handover/chief-kit/close-wrapped-workers.sh [--check] [<manifest>...]`.
 It runs that sweep once per manifest and goes on after a failed one. With no

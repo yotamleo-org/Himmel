@@ -575,7 +575,7 @@ never update the manifest. An update failure returns nonzero and reports that
 the launch/close already happened; it does not undo it. Nonces remain chief-only
 inputs to `live-state.sh --nonce`, never sourced from the manifest.
 
-A worker's `MERGED` or `WRAPPED` message is one call, not a turn sequence:
+A worker's `WRAPPED` (or your own claudex `MERGED`) line is one call, not a turn sequence:
 `chief-kit/worker-event.sh --doc <chief doc> --fleet <manifest> <message-file>`
 routes it to `chief-kit/wrap-merged.sh` and prints `HANDLED` or `ESCALATE
 <reason>`; a judge verdict is one `chief-kit/verdict-go.sh` call. Chiefs that
@@ -689,7 +689,7 @@ other delta is refused with nothing written.
 
 `READY <pr> <head> GREEN` → the chief verifies independently (all check-runs
 green at that exact head, zero unresolved review threads, attestation trailers
-in the first commit) → `GO` → the worker merges and reports `MERGED #<n> → <sha>`.
+in the first commit) → `GO` → the worker merges and writes `WRAPPED`; the relay wraps it (claudex: the chief merges and sends the worker `MERGED #<n> → <sha>`) and the next wake shows `merged=<n> (#<pr>)`.
 
 <!-- mem:d21a0c8458ad -->
 A worker's `READY`, or a predecessor's note that a PR is clean, is not
@@ -701,7 +701,7 @@ The Jira close is the worker's call from the brief, not a default:
 `merge-on-green.sh` transitions the ticket only on `--jira-transition`,
 and the brief's Ship contract carries `completes-ticket: yes|no`:
 `yes` → the worker passes the flag, `no` (the ticket spans further
-PRs) → it omits it. After `MERGED`, re-read the ticket: the flag closes only the
+PRs) → it omits it. After the merge (`merged=<n> (#<pr>)` in the wake digest, or the `MERGED #<n>` chief-doc bullet), re-read the ticket: the flag closes only the
 first `[KEY]` of the PR title, so a multi-key PR needs its other ticket checked
 by hand.
 
@@ -725,6 +725,8 @@ mergeability.
 
 `scripts/handover/chief-kit/ready-go.sh [--to <worker> --token <nonce>] [--ledger <chief doc>] <pr> <sha>`
 is the whole mechanical READY turn in one call: the `ready-check.sh` output, the coverage line, the trust-path result, the ticket state and the exact GO line to send. It is read-only (no GO file, no message): `go.sh` and the SendMessage stay yours.
+
+At each `READY`, run `scripts/handover/chief-kit/auto-go.sh --dry-run --doc <chief doc> --fleet <manifest> --worker <label> <pr> <head>` and record its one answer line (`WOULD-GO` or `ESCALATE auto-go <check#> <reason>`) in your own notes beside the GO you send by hand. The dry run acts on nothing: no GO file, no verdict record, no message. It writes one `auto-go.jsonl` row, so the record builds up the evidence of how often a script would have given the same GO.
 
 <!-- mem:7aba121571b0 -->
 The automated review ledger is keyed by head sha, so **every push needs its own review

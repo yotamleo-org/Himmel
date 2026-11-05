@@ -364,7 +364,7 @@ unset DOCTORCAD_JIRA_CMD
 
 # 9. statusline segment: renders from a fixture, silent when absent / clean.
 SEG_STATE="$W/segstate"; mkdir -p "$SEG_STATE"
-seg() { HIMMEL_DOCTOR_STATE_DIR="$SEG_STATE" HIMMEL_WHERE_ARE_WE=off HIMMEL_STATUSLINE_ECON=off \
+seg() { HIMMEL_DOCTOR_STATE_DIR="$SEG_STATE" HIMMEL_WHERE_ARE_WE=off \
         bash "$REAL_ROOT/scripts/statusline/hud-custom-lines.sh" </dev/null 2>/dev/null; }
 check "segment prints nothing when the state file is absent" "" "$(seg)"
 echo "fail=2 warn=5" > "$SEG_STATE/counts"

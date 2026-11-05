@@ -289,5 +289,24 @@ out="$(run)"; rc=$?
 eq "an equal-label resume keeps succession incomplete" "$rc" 1
 has "and the shared-name worker is reported as waiting" "$out" "N82 missing"
 
+# The doc names successor N84c while a lettered relaunch (the N84d session) holds the doc's own lock:
+# a live session, never replaced.
+LD="$WORK/HIMMEL-9-N84b-demo-2026-01-01.md"
+LC="$WORK/HIMMEL-9-N84c-demo-2026-01-01-RESUME.md"
+printf '# worker\n\n## Results\n\n- 10:00 BLOCKED - context hand-off to %s\n' "$LC" > "$LD"
+printf '# successor\n\n## Results\n\n- 10:01 LIVE - working\n' > "$LC"
+# shellcheck disable=SC2016
+printf '# chief\n\n## Live state\nworkers: `N1:Y-N1-aa:lockA:11` `N84b:Y-N84b-dd:lockD:14`\n' > "$CDOC"
+printf '{"schema":1,"workers":[{"doc":"%s/N1.md","label":"N1","lane":"native"},{"doc":"%s","label":"N84b","lane":"claudex"}]}\n' "$WORK" "$LD" > "$MAN"
+acq_out="$(bash "$QL" acquire "$LD" "HIMMEL-9-N84d-demo-2026-01-01" 2>&1)"
+# shellcheck disable=SC2016  # literal token delimiters
+token="$(printf '%s' "$acq_out" | sed -n 's/.*release-token: `\([^`]*\)`.*/\1/p')"
+eq "setup: the N84d session holds the doc lock" "$(bash "$QL" status "$LD" >/dev/null 2>&1 && echo free || echo held)" "held"
+out="$(run)"; rc=$?
+eq "a doc whose lock a lettered relaunch holds keeps succession incomplete" "$rc" 1
+lacks "and it is never called replaced" "$out" "N84b replaced"
+has "and it is reported as waiting" "$out" "N84b missing"
+[ -z "$token" ] || bash "$QL" release "$LD" "$token" >/dev/null 2>&1
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

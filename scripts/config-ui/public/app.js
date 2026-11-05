@@ -1,13 +1,13 @@
 // thin DOM glue. All markup comes from render.js.
 import { renderInventory, renderTriage, renderHeader, renderProbe, reviewGateDraft } from "/render.js";
-import { renderHealth, verdict, parseView, projectVerdict } from "/health.js";
+import { renderHealth, verdict, parseView, projectVerdict, chiefLiveFor } from "/health.js";
 import { renderToolHealth, toolHealthLoader, toolHealthHref } from "/tool-health.js";
 import { driftSince, renderBoard } from "/roadmap.js";
 import { renderWorkflow, parseWorkflowRoute } from "/workflow.js";
 import { renderConfigure as render } from "/setup.js";
 import { renderShift } from "/shift.js";
-import { renderReport } from "/report.js";
-import { fleetDot, healthDot, navLinks, parseLanding } from "/nav.js";
+import { renderReport, reportBar } from "/report.js";
+import { fleetDot, healthDot, navLinks, parseLanding, railMarkup } from "/nav.js";
 
 const $ = (s) => document.querySelector(s);
 const state = { open: new Set(), bundles: {}, filt: { health: null, kind: null, q: "", problems: false }, plans: {}, vm: null, reviewGate: null, fleetCap: null, tile: null };
@@ -57,6 +57,7 @@ const setupMsgs = {}; // per secret name: the last save or remove outcome, never
 let verify = null; // the Setup page's Verify step: null, { state: "running" } or POST /api/setup/verify's answer; page memory only
 let roadmap = null, roadmapGen = 0, nvGen = 0; // declared before route() runs, as healthGen is: a reload at #/board?tab=nv calls loadNoVersion() from it
 let boardExtras = null, boardGen = 0; // GET /api/board: { drift, chains, versionChains }, null until read
+let pagebarOpen = false; // the page bar's "Filters (n on)" fold at phone width; declared before route() runs, as the next one is
 let originsReading = false; // declared before route() runs: a reload at #/board paints, and that paint asks for Tidy up's origins
 // writes = cards drag and take a theme // tab, v, at = the Board route (#/board?tab=&v=&at=); chain = the Chain filter
 const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null, held: null, drawer: null, tab: null, v: null, at: null, why: null, logOpen: [], chain: null, nv: null };
@@ -69,12 +70,12 @@ let wfModel = null, wfStats = null, wfGen = 0, wfAt = 0, wfScrolled = null; // t
 const wfUi = { tab: "workflow", phase: null, step: null, walk: null, at: 0 }; // from the route: #/workflow[/eval]?phase=|step=|walk=&at=
 const PAGES = [
   { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify }), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); if (!state.reports || !state.reports.data) loadReportSettings(); loadSetup(); } },
-  { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
+  { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => pageBar() + healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => toolHealthPage(), onVisit: () => loadToolHealth(), afterPaint: () => thFocusBack() },
   { id: "board", label: "Board", needsFeed: false, render: trackerPage(() => renderBoard(roadmap, roadmapUi, boardExtras)), afterPaint: () => { whyFocus(null); loadDriftOrigins(); }, onVisit: () => { if (!(sources && !sources.length)) { if (!roadmap) loadRoadmap(); if (!boardExtras) loadBoard(); if (roadmapUi.tab === "nv" && !roadmapUi.nv) loadNoVersion(); } } },
   { id: "workflow", label: "Workflow", needsFeed: false, render: () => renderWorkflow(wfModel, wfUi, wfStats), onVisit: () => { if (!wfModel || wfModel.error || !wfStats || wfStats.error || Date.now() - wfAt > 60_000) loadWorkflow(); }, afterPaint: () => wfScroll() },
   { id: "shift", label: "Shift", needsFeed: false, render: () => renderShift(shift, { ...shiftUi, fleet: (navLinks({ here: "console", token, current: "shift", sources }).find((l) => l.id === "fleet") || {}).href }), onVisit: () => loadShift() },
-  { id: "report", label: "Morning report", needsFeed: false, render: () => renderReport(reportList, reportView, { ...reportUi, shiftHref: "#/shift" }), onVisit: () => loadReport() },
+  { id: "report", label: "Morning report", needsFeed: false, render: () => pageBar() + renderReport(reportList, reportView, { ...reportUi, shiftHref: "#/shift" }), onVisit: () => loadReport() },
 ];
 let unmountPage = null; // what the page's afterPaint returned: undoes its draw before the next paint replaces #main
 let currentPage = PAGES[0];
@@ -150,12 +151,21 @@ loadSources();
 function renderPages() {
   const dots = { fleet: fleetDot(fleet.data, fleet.error), health: healthDot(verdict(feed, health)) };
   const waiting = shift && shift.state === "open" ? shift.waiting.length : 0; // the Shift entry's badge: rows waiting on the operator
-  // Health v2 mockup: the project picker sits above the page links
-  $("#pages").innerHTML = (currentPage.id === "health" ? projectPicker() : "") + navLinks({ here: "console", token, current: currentPage.id, sources }).map((l) =>
-    `<a href="${l.href}"${l.current ? ' aria-current="page"' : ""}${l.external ? ' target="_blank" rel="noopener noreferrer"' : ""}>${l.label}${dots[l.id] ? `<span class="st-dot ${dots[l.id].cls}" title="${dots[l.id].title}"></span>` : ""}${l.id === "shift" && waiting ? `<span class="sh-badge" title="${waiting} waiting on you">${waiting}</span>` : ""}</a>`).join("");
+  $("#pages").innerHTML = railMarkup({ token, current: currentPage.id, sources, dots, waiting });
 }
 
-// The rail's project picker, drawn on the Health page only (only Health reloads /api/projects): "All my projects" first, then each registered project with its own verdict (shared rows left out).
+// The page bar (spec 8044 section 2): the slot under the top of a page for that page's own controls, never the rail.
+// Health holds the project picker, Report its day picker and refresh; Shift has none.
+// One line on desktop; at 760 px the controls fold behind "Filters (n on)" (app.css).
+function pageBar() {
+  if (currentPage.id !== "health" && currentPage.id !== "report") return "";
+  const ctl = currentPage.id === "health" ? projectPicker() : currentPage.id === "report" ? reportBar(reportList, reportView, reportUi) : "";
+  const on = currentPage.id === "health" && (healthView.mode === "all" || (healthView.project && projects && healthView.project !== projects.current)) ? 1 : 0;
+  const fold = ctl ? `<button type="button" class="pb-fold" aria-expanded="${pagebarOpen}" aria-controls="pb-ctl">Filters (${on} on)</button>` : "";
+  return `<div class="pagebar${pagebarOpen ? " open" : ""}" id="pagebar" data-page="${currentPage.id}"${ctl ? "" : " hidden"}>${fold}<div class="pb-ctl" id="pb-ctl">${ctl}</div></div>`;
+}
+
+// The page bar's project picker, drawn on the Health page only (only Health reloads /api/projects): "All my projects" first, then each registered project with its own verdict (shared rows left out).
 function projectPicker() {
   if (!projects) return "";
   const esc = (x) => String(x).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -172,17 +182,16 @@ function healthPage(f) {
   const other = healthView.project && cur && healthView.project !== cur;
   const fleetLink = navLinks({ here: "console", token, current: "health", sources }).find((l) => l.id === "fleet");
   const shown = other ? (otherFeed && otherFeed !== "none" ? otherFeed : null) : f;
-  const view = { ...healthView, projects, project: healthView.project || cur, foreign: Boolean(other), fleetHref: fleetLink && fleetLink.href, unchecked: Boolean(other) && otherFeed === "none", chief: chiefLive() };
+  const view = { ...healthView, projects, project: healthView.project || cur, foreign: Boolean(other), fleetHref: fleetLink && fleetLink.href, unchecked: Boolean(other) && otherFeed === "none", chief: chiefLive(cur), himmelChief: chiefLive("himmel") };
   // the filterable Inventory stays below the v2 page until its e2e is ported to the Every item checked tab; Triage is the broken tab now.
   const legacy = shown && !other && healthView.mode !== "all" ? renderInventory(shown, state) : "";
   return renderHealth(shown, health, view) + legacy + (!shown && !other && healthView.mode !== "all" ? probeStatus() : "");
 }
-// Is a chief session live? true/false from the fleet read, undefined until it lands (the row then says only "for the chief").
-// Liveness as Fleet reads it (fleet-model.ts isLive). ponytail: any live chief on this station counts for the project this
-// UI runs in; upgrade path: a project field on each fleet row, matched against projects.current.
-function chiefLive() {
-  if (!fleet.data || fleet.data.census === "unavailable") return undefined;
-  return (fleet.data.sessions || []).some((s) => s.role === "console" && s.live !== false && s.state !== "wrapped" && s.lock !== "released");
+// Is a chief session of this project live? true/false from the fleet read, undefined until it lands (the row then says only
+// "for the chief"). A chief is named <KEY>-…, the key being the project's name uppercased (health.js chiefLiveFor); shared rows
+// ask for "himmel", the harness's own project. ponytail: a name prefix, upgrade path: a project field on each fleet row.
+function chiefLive(project) {
+  return project ? chiefLiveFor(fleet.data, project) : undefined;
 }
 const healthHash = (v) => {
   const q = new URLSearchParams();
@@ -276,7 +285,34 @@ function toast(t) {
   toast.t = setTimeout(() => { el.hidden = true; }, 2600);
 }
 
+// Read-only mode (himmelctl ui --read-only): GET /api/mode says so once on load. The server refuses every write with 403 whatever
+// this page does; the page shows the banner and disables the write controls so nothing offers a change that cannot land.
+let readOnly = false;
+const WRITE_CONTROLS = [
+  '[data-act="plan"]', '[data-act="run"]', '[data-act="consent"]', '[data-act="vm-save"]', '[data-act="reports-save"]', '[data-act="review-gate-save"]',
+  '[data-act="setup-remove"]', '[data-act="setup-verify"]', '[data-act="drift-refresh"]',
+  '[data-vm]', '[data-rs]', '[data-fc]', '[data-rg]', 'select.rm-theme',
+  'form[data-setup-form] :is(input,button)', 'form[data-path-form] :is(input,button)', 'form[data-account-form] :is(input,button)',
+].join(",");
+function lockWrites() {
+  for (const el of document.querySelectorAll(WRITE_CONTROLS)) el.disabled = true;
+  for (const el of document.querySelectorAll("[data-rm-card]")) el.draggable = false;
+}
+async function loadMode() {
+  try {
+    const r = await fetch("/api/mode", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    if (!r.ok || (await r.json()).readOnly !== true) return;
+  } catch (_) { return; } // no answer: the server still refuses writes itself
+  readOnly = true;
+  $("#read-only-banner").hidden = false;
+  document.body.dataset.readOnly = "1";
+  lockWrites();
+  new MutationObserver(lockWrites).observe($("#main"), { childList: true, subtree: true });
+}
+loadMode();
+
 async function post(path, body) {
+  if (readOnly) return { ok: false, status: 403, j: { error: "read-only: this config UI was started with --read-only" } };
   let r;
   try { r = await fetch(path, { method: "POST", headers: { "X-Himmel-Token": token, "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
   catch (_) { return { ok: false, status: 0, j: { error: `${path} unreachable (is the server still running?)` } }; }
@@ -661,6 +697,7 @@ let rmDrag = null;
 document.addEventListener("dragstart", (e) => {
   const c = e.target.closest && e.target.closest("[data-rm-card]");
   if (!c) return;
+  if (readOnly) return void e.preventDefault();
   rmDrag = { k: Number(c.dataset.rmCard), project: c.dataset.rmProject || "" };
   try { e.dataTransfer.setData("text/plain", c.dataset.rmId || (rmDrag.project || "HIMMEL") + "-" + rmDrag.k); e.dataTransfer.effectAllowed = "move"; } catch (_) { /* no dataTransfer */ }
 });
@@ -672,7 +709,7 @@ document.addEventListener("drop", (e) => {
   const card = rmDrag; rmDrag = null;
   const t = rmTicket(card.k, card.project);
   if (t && EVENT_OWNED.has(col.dataset.rmDrop)) { // In review, CI and Done are moved by their event (a PR opening, CI, the merge): a drop there is held, nothing is written (ruling Q4)
-    if (t.b !== col.dataset.rmDrop) { roadmapUi.held = `${t.id || "HIMMEL-" + t.k}: ${COLS_BY_ID[col.dataset.rmDrop]} is moved by its event, not by a drop. Nothing was written.`; paint(); }
+    if (t.b !== col.dataset.rmDrop && !(col.dataset.rmDrop === "rev" && t.b === "ci")) { roadmapUi.held = `${t.id || "HIMMEL-" + t.k}: ${COLS_BY_ID[col.dataset.rmDrop]} is moved by its event, not by a drop. Nothing was written.`; paint(); }
     return;
   }
   if (t && t.b !== col.dataset.rmDrop) writeRoadmap(t, { status: col.dataset.rmDrop });
@@ -744,7 +781,7 @@ document.addEventListener("keydown", (e) => {
 });
 document.addEventListener("dragend", () => { rmDrag = null; });
 document.addEventListener("change", (e) => {
-  if (e.target.id === "proj") { // the rail picker: it routes, the route reads the project
+  if (e.target.id === "proj") { // the page bar picker: it routes, the route reads the project
     const v = e.target.value;
     location.hash = v === "*" ?"#/health?view=all" : projects && v === projects.current ? "#/health" : "#/health?project=" + encodeURIComponent(v);
     return;
@@ -879,6 +916,7 @@ document.addEventListener("click", (e) => {
     history.replaceState(null, "", location.pathname + location.search + healthHash(healthView));
     return paint();
   }
+  if (b.dataset.act === "report-refresh") return loadReport();
   if (b.dataset.act === "tile") { // one group open at a time; the open one closes again. The hash keeps it across a reload.
     state.tile = state.tile === b.dataset.tile ? null : b.dataset.tile;
     history.replaceState(null, "", location.pathname + location.search + "#/config" + (state.tile ? "?tile=" + state.tile : ""));
@@ -977,3 +1015,12 @@ function toolHealthClick(b) {
   else return;
   paint();
 }
+
+// The page bar's "Filters (n on)" fold at phone width: it toggles the class in place, no repaint.
+document.addEventListener("click", (e) => {
+  const b = e.target.closest && e.target.closest(".pb-fold");
+  if (!b) return;
+  pagebarOpen = !pagebarOpen;
+  $("#pagebar").classList.toggle("open", pagebarOpen);
+  b.setAttribute("aria-expanded", String(pagebarOpen));
+});

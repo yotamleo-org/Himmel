@@ -386,11 +386,26 @@ txt="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" CLAUDE_DIR="$t/claude" HOME="$t/home"
 js="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --json --no-color 2>/dev/null)"; rc_js=$?
 n_txt="$(grep -cE '^(FAIL|WARN|INFO|OK) ' <<< "$txt")"
 n_js="$(grep -c . <<< "$js")"
-if jq -e -s 'length > 0 and all(.[]; (keys == ["id","msg","remedy","sev"]) and (.sev | IN("FAIL","WARN","INFO","OK")))' <<< "$js" >/dev/null 2>&1; then
-    pass "--json -> every stdout line is a {sev,id,msg,remedy} object"
+if jq -e -s 'length > 0 and all(.[]; ((keys - ["repo"]) == ["id","msg","remedy","scope","sev"]) and (.sev | IN("FAIL","WARN","INFO","OK")))' <<< "$js" >/dev/null 2>&1; then
+    pass "--json -> every stdout line is a {sev,id,msg,remedy,scope[,repo]} object"
 else
     fail "--json -> stdout is not JSON lines: $(head -3 <<< "$js")"
 fi
+# Each check declares its own scope: the machine checks are shared, the per-repo index checks
+# (C33 graph, C70 semantic graph) are project rows that name the repo they judge, the rest default to project.
+sc="$(jq -r 'select(.id | test("^C(22|38|44|45|52|80|83|86|40|12)-")) | select(.scope != "shared") | .id' <<< "$js")"
+if [ -z "$sc" ] && [ "$(jq -r 'select(.id | test("^C(22|38|44|52|80|86)-")) | .id' <<< "$js" | grep -c .)" -ge 4 ]; then
+    pass "--json -> C22 C38 C44 C45 C52 C80 C83 C86 (and C40, C12) declare scope shared"
+else
+    fail "--json -> machine checks not declared shared: [$sc]"
+fi
+rp="$(jq -r 'select(.id | test("^C(33|70)-")) | select(.scope != "project" or .repo != "himmel") | .id' <<< "$js")"
+if [ -z "$rp" ] && [ "$(jq -r 'select(.id | test("^C(33|70)-")) | .id' <<< "$js" | grep -c .)" -ge 2 ]; then
+    pass "--json -> C33 and C70 are project rows that name the repo they judge"
+else
+    fail "--json -> C33/C70 do not declare project + repo himmel: [$rp]"
+fi
+if [ -z "$(jq -r 'select(.id | test("^C(33|70)-") | not) | select(.repo != null) | .id' <<< "$js")" ]; then pass "--json -> no other check names a repo"; else fail "--json -> a check other than C33/C70 names a repo"; fi
 if [ "$n_js" -eq "$n_txt" ] && [ "$n_txt" -gt 0 ]; then pass "--json -> $n_js rows = $n_txt text emits"; else fail "--json -> $n_js rows vs $n_txt text emits"; fi
 if [ "$rc_js" -eq "$rc_txt" ]; then pass "--json -> exit code matches text run ($rc_js)"; else fail "--json -> rc=$rc_js vs text rc=$rc_txt"; fi
 if grepq "$js" 'Summary:'; then fail "--json -> Summary line leaked to stdout"; else pass "--json -> Summary line kept off stdout"; fi
@@ -5365,8 +5380,8 @@ touch -t 202610180405 "$c40_t/home/.himmel/qmd-fork/.himmel-build-ok"
 if ! c40_precond novec; then fail "C40 stale daemon: precondition — stub did not answer init"
 else
     out="$(XDG_CACHE_HOME="$c40_t/home/.cache" QMD_FORK_DIR="$c40_t/home/.himmel/qmd-fork" c40_run novec)"
-    if grepq "$out" 'WARN C40-qmd-vec.*older than the installed qmd build' && grepq "$out" -F "pkill -f 'qmd.*mcp.*--http'" && ! grepq "$out" -F 'no vector index'; then
-        pass "C40 daemon older than the build -> WARN stale daemon with the restart commands"
+    if grepq "$out" 'WARN C40-qmd-vec.*older than the installed qmd build' && grepq "$out" -F "ps -axww -o pid=,command= | grep '[q]md.*mcp.*--http'" && ! grepq "$out" -F 'pgrep -af' && grepq "$out" -F "pkill -f 'qmd.*mcp.*--http'" && ! grepq "$out" -F 'no vector index'; then
+        pass "C40 daemon older than the build -> WARN stale daemon with the restart commands (look step prints command lines)"
     else
         fail "C40 daemon older than the build -> $(printf '%s' "$out" | grep -A1 C40)"
     fi
@@ -7466,13 +7481,14 @@ printf '{"real.md": {"mtime": 0}}\n' > "$c70_out/manifest.json"
 printf '{"nodes":[],"edges":[]}\n' > "$c70_out/graph.json"
 printf '# real\n' > "$c70_corpus/real.md"
 printf '%s\n' "$c70_corpus" > "$c70_out/.graphify_root"
-# c70_rows <failed files>...: one merge row per argument, each a comma list
-c70_rows() { python3 - "$c70_out/semantic-runs.jsonl" "$@" <<'PY'
+# c70_rows <failed files>...: one merge row per argument, each a comma list, dated today (UTC) inside the semantic age bound
+c70_day="$(date -u +%Y-%m-%d)"
+c70_rows() { python3 - "$c70_out/semantic-runs.jsonl" "$c70_day" "$@" <<'PY'
 import json, sys
 with open(sys.argv[1], "w") as f:
-    for i, spec in enumerate(sys.argv[2:]):
+    for i, spec in enumerate(sys.argv[3:]):
         failed = [s for s in spec.split(",") if s]
-        f.write(json.dumps({"ts": "2026-10-19T0%d:00:00Z" % i, "name": "t", "batch": 3, "failed": len(failed), "shrink_refused": 0,
+        f.write(json.dumps({"ts": "%sT0%d:00:00Z" % (sys.argv[2], i), "name": "t", "batch": 3, "failed": len(failed), "shrink_refused": 0,
                             "failed_files": failed, "refused_files": [], "backed_off_files": []}) + "\n")
 PY
 }
@@ -7481,11 +7497,33 @@ c70_run() { env HOME="$c70_t/home" CLAUDE_DIR="$c70_t/home/claude" HIMMEL_DOCTOR
 c70_rows "x.md" "x.md" "x.md"
 out="$(c70_run)"
 if grepq "$out" -F 'WARN C70-graph-semantic'; then pass "C70 a file stuck across 3 runs -> WARN"; else fail "C70 stuck -> $(printf '%s' "$out" | head -3)"; fi
-if grepq "$out" -F 'graph-freshness: semantic last=2026-10-19T02:00:00Z failed=1 refused=0'; then pass "C70 prints the semantic line verbatim"; else fail "C70 stuck line -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F "graph-freshness: semantic last=${c70_day}T02:00:00Z failed=1 refused=0"; then pass "C70 prints the semantic line verbatim"; else fail "C70 stuck line -> $(printf '%s' "$out" | head -3)"; fi
 
 c70_rows "x.md" "y.md" ""
 out="$(c70_run)"
-if grepq "$out" -F 'OK   C70-graph-semantic' && grepq "$out" -F 'graph-freshness: semantic last=2026-10-19T02:00:00Z failed=0'; then pass "C70 draining failures -> OK with the line"; else fail "C70 draining -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F 'OK   C70-graph-semantic' && grepq "$out" -F "graph-freshness: semantic last=${c70_day}T02:00:00Z failed=0"; then pass "C70 draining failures -> OK with the line"; else fail "C70 draining -> $(printf '%s' "$out" | head -3)"; fi
+# c70_row_at <ts> <failed csv>: a single merge row at an explicit ts
+c70_row_at() { python3 - "$c70_out/semantic-runs.jsonl" "$1" "${2:-}" <<'PY'
+import json, sys
+failed = [s for s in sys.argv[3].split(",") if s]
+open(sys.argv[1], "w").write(json.dumps({"ts": sys.argv[2], "name": "t", "batch": 3, "failed": len(failed), "shrink_refused": 0,
+                                         "failed_files": failed, "refused_files": [], "backed_off_files": []}) + "\n")
+PY
+}
+c70_ago() { python3 -c 'import sys,time; print(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time()-float(sys.argv[1])*3600)))' "$1"; }
+c70_row_at "$(c70_ago 72)" ""
+out="$(c70_run)"
+if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F 'SEMANTIC' && grepq "$out" -F 'last semantic merge 3d ago' && grepq "$out" -F 'graphmap-himmel.sh'; then pass "C70 semantic layer 3 days old on a fresh AST graph -> WARN naming the age and the semantic pass"; else fail "C70 semantic 3d old -> $(printf '%s' "$out" | head -3)"; fi
+c70_row_at "$(c70_ago 1)" ""
+out="$(c70_run)"
+if grepq "$out" -F 'OK   C70-graph-semantic'; then pass "C70 semantic layer 1h old -> OK"; else fail "C70 semantic fresh -> $(printf '%s' "$out" | head -3)"; fi
+c70_row_at "$(c70_ago 1)" "docs/a1.md,docs/a2.md,docs/a3.md,docs/a4.md,docs/a5.md,docs/a6.md,docs/a7.md,docs/a8.md,docs/a9.md,docs/a10.md,docs/a11.md"
+out="$(c70_run)"
+if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F 'content failed=11'; then pass "C70 11 content failures (bound 10) -> WARN with the count"; else fail "C70 content failed -> $(printf '%s' "$out" | head -3)"; fi
+mkdir -p "$c70_corpus/marketplace/plugins/vend"; printf '# v\n' > "$c70_corpus/marketplace/plugins/vend/VENDORED.md"
+c70_row_at "$(c70_ago 1)" "marketplace/plugins/vend/skills/a.md,marketplace/plugins/vend/b.md,templates/t/c.md,templates/d.md,plugins/p/templates/e.md,scripts/ci/test-x-fixtures/f.md,scripts/ci/test-x-fixtures/g.md,scripts/hooks/testdata/h.md,plugins/q/evals/c/graders/i.md,plugins/q/evals/c/graders/j.md,fixtures/k.md"
+out="$(c70_run)"
+if grepq "$out" -F 'OK   C70-graph-semantic' && grepq "$out" -F 'non_content_failed=11'; then pass "C70 11 vendored/template/fixture failures -> not counted, OK"; else fail "C70 non-content failed -> $(printf '%s' "$out" | head -3)"; fi
 
 rm -f "$c70_out/semantic-runs.jsonl"
 out="$(c70_run)"
@@ -7520,7 +7558,7 @@ c70_rows "" "" ""
 printf '{"ts": "2026-10-17T00:00:00Z", "name": "t", "batch": 3, "failed": 0, "shrink_refused": 0, "failed_files": [], "refused_files": [], "backed_off_files": []}\n' > "$c70_t/root/graphify-out/semantic-runs.jsonl"
 c70_div() { env HOME="$c70_t/home" CLAUDE_DIR="$c70_t/home/claude" HIMMEL_DOCTOR_ROOT="$c70_t/root" HIMMEL_DOCTOR_GRAPH_OUT= HIMMEL_DOCTOR_GRAPH_CHECK= HIMMEL_DOCTOR_CADENCE_OUT="$c70_out" "$@" bash "$DOC" --no-color --only C70 2>&1; }
 out="$(c70_div)"
-if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F 'cadence graph' && grepq "$out" -F 'last=2026-10-19T02:00:00Z' && grepq "$out" -F 'HIMMEL-7357'; then pass "C70 station semantic layer older than the cadence graph -> WARN naming both"; else fail "C70 divergence -> $(printf '%s' "$out" | head -4)"; fi
+if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F 'cadence graph' && grepq "$out" -F "last=${c70_day}T02:00:00Z" && grepq "$out" -F 'HIMMEL-7357'; then pass "C70 station semantic layer older than the cadence graph -> WARN naming both"; else fail "C70 divergence -> $(printf '%s' "$out" | head -4)"; fi
 cp "$c70_out/semantic-runs.jsonl" "$c70_t/root/graphify-out/semantic-runs.jsonl"
 out="$(c70_div)"
 if grepq "$out" -F 'C70-graph-semantic' && ! grepq "$out" -F 'cadence graph'; then pass "C70 station and cadence graph at the same semantic run -> no divergence row"; else fail "C70 equal -> $(printf '%s' "$out" | head -4)"; fi
@@ -7880,5 +7918,115 @@ echo "== C76: no plugin over the limit -> OK =="
 out="$(C76_DUP=0 c76_run)"
 if grepq "$out" 'OK   C76-duplicate-plugin-installs'; then pass "C76 within the limit -> OK"; else fail "C76 within limit -> $(printf '%s' "$out" | grep -A1 C76)"; fi
 rm -rf "$c76_t"
+
+# --- C88-graph-api-optin: the graph cadence's billed API lane needs a station opt-in ---
+c88_t="$(mktemp -d "${TMPDIR:-/tmp}/c88.XXXXXX")" || { echo "FATAL: C88 setup mktemp failed" >&2; exit 1; }
+mkdir -p "$c88_t/claude" "$c88_t/home/.himmel" "$c88_t/bat"
+c88_key="dummy-not-a-real-key-c88"
+c88_run() { CLAUDE_DIR="$c88_t/claude" HOME="$c88_t/home" GRAPHMAP_BAT_DIR="$c88_t/bat" HIMMEL_DOCTOR_ENV_FILE="$c88_t/env" bash "$DOC" --only C88 --no-color 2>&1; }
+c88_reset() { rm -rf "$c88_t/home/.himmel" "$c88_t/bat" "$c88_t/env"; mkdir -p "$c88_t/home/.himmel" "$c88_t/bat"; }
+c88_optin() { printf '{"graphify":{"semantic_api_ok":true}}\n' > "$c88_t/home/.himmel/config.json"; }
+c88_key_in_env() { printf '# himmel .env\nANTHROPIC_ORG_A_KEY=%s\n' "$c88_key" > "$c88_t/env"; }
+c88_lane_runner() { printf '#!/bin/sh\n_rc=0; HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api graph-cadence.sh --semantic || _rc=$?\n' > "$c88_t/bat/graphmap-publish-himmel.sh"; }
+c88_skip_runner() { printf '#!/bin/sh\n_rc=0; echo "[semantic skipped: API lane not opted in]"; graph-cadence.sh || _rc=$?\n' > "$c88_t/bat/graphmap-publish-himmel.sh"; }
+echo "== C88: no opt-in, a key in .env and an armed runner that bakes the lane -> WARN naming the runner and the re-render =="
+c88_reset; c88_key_in_env; c88_lane_runner
+out="$(c88_run)"
+if grepq "$out" 'WARN C88-graph-api-optin' && grepq "$out" -F 'graphmap-publish-himmel.sh' && grepq "$out" -F 'ANTHROPIC_ORG_A_KEY' && grepq "$out" -F 'graphmap-cadence.sh arm --rewrite-armed' && ! grepq "$out" -F "$c88_key"; then pass "C88 key + baked lane + no opt-in -> WARN, no key value"; else fail "C88 key + baked lane + no opt-in -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: opted in -> OK reporting the state, even with a key and a lane runner =="
+c88_reset; c88_key_in_env; c88_lane_runner; c88_optin
+out="$(c88_run)"
+if grepq "$out" 'OK   C88-graph-api-optin' && grepq "$out" -F 'opted in' && ! grepq "$out" -F 'not opted in'; then pass "C88 opted in -> OK"; else fail "C88 opted in -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: no opt-in and the armed runner carries the skip line, not the lane -> OK reporting the state =="
+c88_reset; c88_key_in_env; c88_skip_runner
+out="$(c88_run)"
+if grepq "$out" 'OK   C88-graph-api-optin' && grepq "$out" -F 'not opted in' && ! grepq "$out" 'WARN C88'; then pass "C88 skip-line runner + key -> OK"; else fail "C88 skip-line runner + key -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: no opt-in, no key in .env, nothing armed -> OK =="
+c88_reset
+out="$(c88_run)"
+if grepq "$out" 'OK   C88-graph-api-optin' && grepq "$out" -F 'not opted in'; then pass "C88 nothing to draw -> OK"; else fail "C88 nothing to draw -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: a baked lane with no key in .env draws nothing -> INFO, never a WARN =="
+c88_reset; c88_lane_runner; printf 'ANTHROPIC_ORG_A_KEY=\nJIRA_EMAIL=a@example.com\n' > "$c88_t/env"
+out="$(c88_run)"
+if grepq "$out" 'INFO C88-graph-api-optin' && ! grepq "$out" 'WARN C88'; then pass "C88 baked lane, empty key -> INFO"; else fail "C88 baked lane, empty key -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: only the JSON literal true opts in: a symlinked config.json and a string value do not =="
+c88_reset; c88_key_in_env; c88_lane_runner
+printf '{"graphify":{"semantic_api_ok":true}}\n' > "$c88_t/real-config.json"; ln -s "$c88_t/real-config.json" "$c88_t/home/.himmel/config.json"
+out="$(c88_run)"
+if grepq "$out" 'WARN C88-graph-api-optin'; then pass "C88 symlinked config.json is no opt-in"; else fail "C88 symlinked config.json -> $(printf '%s' "$out" | head -4)"; fi
+c88_reset; c88_key_in_env; c88_lane_runner; printf '{"graphify":{"semantic_api_ok":"true"}}\n' > "$c88_t/home/.himmel/config.json"
+out="$(c88_run)"
+if grepq "$out" 'WARN C88-graph-api-optin'; then pass "C88 string \"true\" is no opt-in"; else fail "C88 string true -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c88_t"
+
+# --- C87-stub-handover-state: files under <repo>/handovers newer than the operator's baseline marker ---
+c87_t="$(mktemp -d "${TMPDIR:-/tmp}/c87.XXXXXX")" || { echo "FATAL: C87 setup mktemp failed" >&2; exit 1; }
+c87_x="$c87_t/repo"
+mkdir -p "$c87_x/scripts/lib" "$c87_t/home" "$c87_t/claude" "$c87_t/root"
+cp "$REPO_ROOT/scripts/himmel-doctor.sh" "$c87_x/scripts/"
+cp -R "$REPO_ROOT/scripts/lib/." "$c87_x/scripts/lib/"
+c87_age() { python3 -I -c 'import os,sys,time; t=time.time()-int(sys.argv[2]); os.utime(sys.argv[1],(t,t))' "$1" "$2"; }
+c87_base="$c87_t/home/baseline"
+# C87_HD, when set, is the root exported to the doctor's environment; a .env in the fixture repo configures one too.
+c87_run() { env -u HANDOVER_DIR ${C87_HD:+HANDOVER_DIR="$C87_HD"} HOME="$c87_t/home" CLAUDE_DIR="$c87_t/claude" HIMMEL_CONFIG_DIR="" HIMMEL_DOCTOR_STUB_BASELINE="$c87_base" bash "$c87_x/scripts/himmel-doctor.sh" --root "$c87_x" --no-color --only C87 2>&1; }
+c87_reset() { rm -rf "$c87_x/handovers" "$c87_x/.env" "$c87_base" "$c87_t/elsewhere"; unset C87_HD; }
+
+echo "== C87: HANDOVER_DIR unset and no .env -> the stub folder is the root: INFO, never WARN =="
+c87_reset
+mkdir -p "$c87_x/handovers/himmel"; : > "$c87_x/handovers/himmel/new.md"
+out="$(c87_run)"
+if grepq "$out" -F 'INFO C87-stub-handover-state' && ! grepq "$out" -F 'WARN C87'; then pass "C87 no split root -> INFO"; else fail "C87 no split root -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: .env configures a root elsewhere and a stub file older than that .env is still reported (no baseline marker) =="
+c87_reset
+printf 'HANDOVER_DIR=%s\n' "$c87_t/root" > "$c87_x/.env"
+mkdir -p "$c87_x/handovers/himmel"; : > "$c87_x/handovers/himmel/.judge-ladder"; c87_age "$c87_x/handovers/himmel/.judge-ladder" 7200
+out="$(c87_run)"
+if grepq "$out" -F 'WARN C87-stub-handover-state' && grepq "$out" -F 'himmel/.judge-ladder' && grepq "$out" -F "$c87_t/root"; then pass "C87 .env root, old stub file, no marker -> WARN"; else fail "C87 .env root, old stub file -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: a root exported in the environment (no .env) is checked the same way =="
+c87_reset
+mkdir -p "$c87_x/handovers/.locks"; : > "$c87_x/handovers/.locks/arms.jsonl"
+C87_HD="$c87_t/root" out="$(c87_run)"
+if grepq "$out" -F 'WARN C87-stub-handover-state' && grepq "$out" -F '.locks/arms.jsonl'; then pass "C87 exported root -> WARN"; else fail "C87 exported root -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: a root served by ~/.himmel/himmel.conf (no .env) is checked the same way =="
+c87_reset
+mkdir -p "$c87_t/home/.himmel" "$c87_x/handovers/himmel"; printf 'HANDOVER_DIR=%s\n' "$c87_t/root" > "$c87_t/home/.himmel/himmel.conf"
+: > "$c87_x/handovers/himmel/.judge-ladder"
+out="$(c87_run)"
+rm -rf "$c87_t/home/.himmel"
+if grepq "$out" -F 'WARN C87-stub-handover-state' && grepq "$out" -F "$c87_t/root"; then pass "C87 himmel.conf root -> WARN"; else fail "C87 himmel.conf root -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: the baseline marker decides: newer than the stub file -> OK, older -> WARN =="
+c87_reset
+mkdir -p "$c87_x/handovers/himmel"; : > "$c87_x/handovers/himmel/.judge-ladder"; c87_age "$c87_x/handovers/himmel/.judge-ladder" 7200
+: > "$c87_base"; c87_age "$c87_base" 3600
+C87_HD="$c87_t/root" out="$(c87_run)"
+if grepq "$out" -F 'OK   C87-stub-handover-state' && ! grepq "$out" -F 'WARN C87'; then pass "C87 stub file older than the marker -> OK"; else fail "C87 older than marker -> $(printf '%s' "$out" | head -4)"; fi
+c87_age "$c87_base" 10800
+C87_HD="$c87_t/root" out="$(c87_run)"
+if grepq "$out" -F 'WARN C87-stub-handover-state'; then pass "C87 stub file newer than the marker -> WARN"; else fail "C87 newer than marker -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: control: no stub folder at all -> no WARN =="
+c87_reset
+C87_HD="$c87_t/root" out="$(c87_run)"
+if grepq "$out" -F 'OK   C87-stub-handover-state' && ! grepq "$out" -F 'WARN C87'; then pass "C87 no stub folder -> OK"; else fail "C87 no stub folder -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: a stub that is a symlink to another folder is scanned =="
+c87_reset
+mkdir -p "$c87_t/elsewhere"; : > "$c87_t/elsewhere/new.md"; ln -s "$c87_t/elsewhere" "$c87_x/handovers"
+C87_HD="$c87_t/root" out="$(c87_run)"
+if grepq "$out" -F 'WARN C87-stub-handover-state' && grepq "$out" -F 'new.md'; then pass "C87 symlinked stub -> WARN"; else fail "C87 symlinked stub -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: an unreadable folder under the stub is never reported OK =="
+c87_reset
+mkdir -p "$c87_x/handovers/himmel/locked"; chmod 000 "$c87_x/handovers/himmel/locked"
+: > "$c87_base"
+C87_HD="$c87_t/root" out="$(c87_run)"
+chmod 755 "$c87_x/handovers/himmel/locked"
+if [ "$(id -u)" = 0 ]; then pass "C87 unreadable folder -> skipped as root (chmod does not block root)"
+elif grepq "$out" -F 'INFO C87-stub-handover-state' && ! grepq "$out" -F 'OK   C87'; then pass "C87 unreadable folder -> INFO, not OK"; else fail "C87 unreadable folder -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c87_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

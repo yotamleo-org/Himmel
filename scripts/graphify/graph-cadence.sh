@@ -32,6 +32,10 @@
 #      count) while the true distance is the real number (36, measured at
 #      write time) -- getting this wrong makes the cadence never fire.
 #   4. Below --threshold: action=skipped, ledger row, exit 0.
+#   4a. No tracked graph on origin/main (the steady state) and no --semantic:
+#      action=skipped, exit 0 right here -- no lock, no worktree, NO rebuild
+#      (the hourly HIMMEL-GraphMapAst-* ast-update.sh run is the
+#      one rebuild per cycle; a worktree rebuild here would feed nothing).
 #   5. At/above threshold: run ast-update.sh (the free, AST-only structural
 #      refresh) against a DEDICATED worktree -- never the primary checkout.
 #   6. graph-publish.sh, invoked with cwd = that worktree, opens/refreshes
@@ -109,8 +113,9 @@
 # block must stay in sync with step 8's actual rc classification -- it drifted
 # once already, see that step's own comment for the full rc table):
 #   skipped   -- below --threshold, OR the pipeline lock was held by a
-#                concurrent LIVE run (skip-not-wait; see step 5a) --
-#                nothing else ran either way.
+#                concurrent LIVE run (skip-not-wait; see step 5a), OR no
+#                tracked graph on origin/main and no --semantic (step 4a:
+#                nothing consumes a rebuild) -- nothing else ran either way.
 #   failed    -- a genuine error: a STALE pipeline lock (holder gone; never
 #                taken over, a human removes it -- step 5a), fetch, the
 #                built_at_commit read, rev-list,
@@ -123,12 +128,13 @@
 #   refreshed -- ast-update.sh succeeded but graph-publish.sh found nothing
 #                new to publish (exit 5) -- the local rebuild produced
 #                byte-identical tracked output. Not a failure. ALSO this
-#                action, permanently: origin/main no
-#                longer tracks graphify-out/graph.json at all (retired from
-#                the git tree), so there is nothing to compare a rebuild
-#                against and nothing to publish -- the local, AST-only refresh
-#                still runs every fire (see step 5's own comment), and steps
-#                6-7 (publish/merge) cleanly no-op right after it succeeds.
+#                action under --semantic when origin/main no longer tracks
+#                graphify-out/graph.json at all (retired from the git tree):
+#                there is nothing to publish, the AST refresh runs because the
+#                semantic step builds on it (see step 5's own comment), and
+#                steps 6-7 (publish/merge) cleanly no-op right after it.
+#                Without --semantic that retired path never gets here: step 4a
+#                skips it.
 #   published -- graph-publish.sh opened/refreshed the PR (exit 0) but
 #                merge-on-green.sh did not land it this run, for a genuine,
 #                TIME-RESOLVING reason ONLY (rc 14: check-ci gate not green;
@@ -633,17 +639,16 @@ fi
 # -- this repo's derived graph does not publish at
 # all, so origin/main never has graphify-out/graph.json to read. That is the
 # permanent steady state, not a transient gap. PUBLISH_POSSIBLE gates
-# ONLY the origin-comparison staleness measurement (steps 3-4) and the
-# retired publish/merge workers (steps 6-7) -- it must NEVER
-# skip step 5, the local AST-only refresh, which has nothing to do with
-# whether origin has anything to compare against or publish to. Collapsing
-# all of that into one early `exit 0` would make step 5 -- the free,
-# no-LLM-cost rebuild .gitignore's own comment promises ("the daily cadence
-# keeps rebuilding them locally") -- permanently unreachable. It is not
-# gated on staleness at all: with no shipped graph left to measure distance
-# against, "stale" has no origin-side meaning, so the local refresh
-# just runs every fire, throttled only by this cadence's own external
-# schedule (6h) -- exactly what the .gitignore promise says.
+# the origin-comparison staleness measurement (steps 3-4), the retired
+# publish/merge workers (steps 6-7) and, with no --semantic, the worktree
+# rebuild itself (step 4a). The local AST-only rebuild the
+# .gitignore comment promises ("the daily cadence keeps rebuilding them
+# locally") is the hourly HIMMEL-GraphMapAst-* ast-update.sh run into the
+# primary's graphify-out; this cadence's worktree rebuild fed nothing once
+# there was no graph to publish, so it only runs for --semantic or a
+# tracked graph. With no shipped graph left to measure distance against,
+# "stale" has no origin-side meaning, so --semantic runs the refresh every
+# fire, throttled only by this cadence's own external schedule.
 PUBLISH_POSSIBLE=1
 GRAPH_JSON_OBJECT_UNREADABLE=0
 if ! git -C "$HIMMEL_ROOT" cat-file -e "origin/main:graphify-out/graph.json" 2>/dev/null; then
@@ -688,7 +693,29 @@ if [ "$PUBLISH_POSSIBLE" -eq 1 ]; then
 elif [ "$GRAPH_JSON_OBJECT_UNREADABLE" -eq 1 ]; then
     : # already reported by the loud WARN above; nothing more to say here
 else
-    echo "graph-cadence: origin/main does not track graphify-out/graph.json (retired from the git tree) -- publish/merge will no-op this run, but the local AST-only refresh (step 5) still runs"
+    echo "graph-cadence: origin/main does not track graphify-out/graph.json (retired from the git tree) -- nothing to publish or merge"
+fi
+
+# --- 4a. nothing consumes a rebuild: skip it ----------------------------------
+# With no tracked graph to publish and no --semantic step, the worktree rebuild
+# of step 6 feeds nothing: publish/merge no-op right after it, and only the
+# --semantic path promotes the worktree's output into the primary graphify-out.
+# The graph workers and the session-start advisory read that primary graphify-out,
+# which the hourly HIMMEL-GraphMapAst-* cadence (ast-update.sh) already rebuilds.
+# So this fire exits here -- no pipeline lock, no worktree sync, no rebuild -- and
+# the himmel graph is built once per cycle, not twice. The publishable path
+# (PUBLISH_POSSIBLE=1) and --semantic are unchanged. action=skipped is a
+# known-good value to himmel-doctor C33.
+#
+# An UNREADABLE graph.json object (corrupt or partial clone) is not the retired
+# steady state: it keeps falling through to the worktree steps, which fail closed
+# (rc 3, a C33 WARN) instead of hiding a broken clone behind a quiet skip.
+if [ "$PUBLISH_POSSIBLE" -eq 0 ] && [ "$SEMANTIC" -eq 0 ] && [ "$GRAPH_JSON_OBJECT_UNREADABLE" -eq 0 ]; then
+    ACTION="skipped"
+    FINAL_RC=0
+    echo "graph-cadence: skipping the rebuild -- nothing consumes it (no tracked graph to publish, no --semantic step); the hourly AST cadence (ast-update.sh) already rebuilds the graph workers read"
+    _write_ledger
+    exit 0
 fi
 
 # --- 5. dedicated worktree: create on demand, always resync to origin/main --

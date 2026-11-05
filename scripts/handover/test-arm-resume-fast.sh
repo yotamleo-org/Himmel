@@ -79,6 +79,7 @@ exec bash test-arm-resume.sh \
     --only "1331b" \
     --only "1329" \
     --only "1330" \
+    --only "9026" \
     --only "1603" \
     --only "1640" \
     --only "1719" \

@@ -307,6 +307,7 @@ fleet_manifest() {
     printf '%s\n' "$fleet"
 }
 
+# launch-guard-ok: operator emergency path
 # A detached launch reports only that it started, so check what it needs first.
 have_detach() {
     command -v setsid >/dev/null 2>&1 && command -v nohup >/dev/null 2>&1 && return 0

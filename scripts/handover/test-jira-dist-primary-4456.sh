@@ -39,6 +39,7 @@ if (process.argv[2] === 'get') console.log(process.argv[3] + '\tPRIMARY-DIST-MAR
 EOF
 
 export HANDOVER_DIR="$TMP_ROOT/ho"; mkdir -p "$HANDOVER_DIR"
+export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch fixtures; guard rows drop it
 REPO="$TMP_ROOT/repo"; mkdir -p "$REPO"
 git -C "$REPO" init -q -b feat/himmel-9004-x
 git -C "$REPO" config user.email t@e.x; git -C "$REPO" config user.name t

@@ -159,9 +159,10 @@ held=<n>:<sig8> unfiled=<n> repair=off:<why> follow rm-queue= and are ABSENT unl
 the version repair's held key count and the first 8 hex of its held signature (repair-held.json in the
 release dir), unfiled= the signed records no request carries yet, each elided at zero; repair=off:<why> shows
 while the repair cannot run (the first line of repair-status, `unreviewed` with no repair-reviewed marker,
-`bad-input` with no origin slug). With the marker, an OK state, no HIMMEL_CONSOLE_LEG / HIMMEL_RELEASE_MANAGER=1
-and no live repair.lock owner, a changed run signature (repair-signature) launches one detached `jira release
-repair <R> --apply --repo <slug>`, no sooner than TICK_RMRUN_MIN_SECS after repair-run.log was last written.
+`bad-input` with no origin slug, `lost` when the last launch left no end record). With the marker, an OK state,
+no HIMMEL_CONSOLE_LEG / HIMMEL_RELEASE_MANAGER=1 and no live repair.lock owner, a changed run signature
+(repair-signature), or a lost last launch (repair-launch stamp, backoff capped at 6 h), launches one detached `jira
+release repair <R> --apply --repo <slug>`, no sooner than TICK_RMRUN_MIN_SECS after repair-run.log was last written.
 Seam: TICK_REPAIR_PROBE. Never in chief-wait's action key; no alert, no wake.
 
 cap=<version>:<n>[,<version>:<n>] (HIMMEL-6762) follows vmismatch= and is ABSENT unless an unreleased version
@@ -231,11 +232,13 @@ signal: ownership checks still treat it as held. The stable workers= label wakes
 chief-wait once on transition, not on growing age. The sweep's IDLE-HELD? uses
 heartbeat age alone and cannot distinguish a long foreground suite.
 Other worker states:
-CLOSABLE (HIMMEL-3747: lock released, the tail says WRAPPED, AND the leg's own
+CLOSABLE (HIMMEL-3747: lock released, the tail says WRAPPED or is a BLOCKED
+hand-off naming its successor, AND the leg's own
 session process is still alive in the census -- the window is sitting there
 finished but not yet closed; chief-wait.sh wakes on this the same way it
 wakes on any other workers= change, since it samples the whole field, so no
-change was needed there), WRAPPED (lock released and the tail says WRAPPED,
+change was needed there), WRAPPED (lock released and the tail says WRAPPED or
+is a BLOCKED hand-off naming its successor,
 but either no live session matched or the census itself could not be read --
 the normal end of a leg once its window is gone, and also the fail-closed
 reading when CLOSABLE cannot be proven), FREE (lock released while the tail
@@ -491,6 +494,17 @@ for line in text.splitlines():
     m = re.fullmatch(r"# disposition ([A-Z]+-\d+) (.+)", line)
     if m:
         rows[m[1]] = m[2]
+# one line per key-carrying series row, joined to its row by the row's 1-based line number on stdin
+for idx, line in enumerate(text.splitlines(), 1):
+    f = line.split("\t")
+    m = re.fullmatch(r"# disposition ([A-Z]+-\d+) .* held by series [\w.-]+", line)
+    s = re.match(r"STACKABLE ([A-Z]+-\d+)(?: |$)", line)
+    if f[0] == "SERIES" and len(f) > 2 and re.fullmatch(r"[A-Z]+-\d+(?:,[A-Z]+-\d+)*", f[2]):
+        print("# pool-keys %d SERIES %s" % (idx, f[2]))
+    elif s:
+        print("# pool-keys %d STACKABLE %s" % (idx, s[1]))
+    elif m:
+        print("# pool-keys %d # %s" % (idx, m[1]))
 decisions, invalid = {}, {}
 if sys.argv[1]:
     try:
@@ -519,7 +533,7 @@ unresolved = []
 for key, reason in rows.items():
     owned = bool(re.match(r"(?:in-flight )?owned by (?!a live worker$).+", reason))
     inflight += int(owned)
-    holder = bool(re.search(r" held by (?:(?:live )?worker [\w.-]+|PR #\d+)(?:$|\s)", reason))
+    holder = bool(re.search(r" held by (?:(?:live )?worker [\w.-]+|PR #\d+|series [\w.-]+)(?:$|\s)", reason)) or reason.startswith("stackable on ")
     blocker = bool(re.match(r"blocker-unknown [A-Z]+-\d+", reason)) or (reason.startswith("blocker ") and bool(re.search(r"[A-Z]+-\d+ \((?:(?!Done,|Closed,)[^()]+, live|reopened live)\)", reason)))
     if key in invalid:
         unresolved.append(("invalid", key, invalid[key]))
@@ -773,6 +787,10 @@ csv_add() {
 # gate, so the two readers can never accept different marker-bullet shapes.
 # shellcheck source=../../lib/worker-tail-status.sh
 . "$HERE/../../lib/worker-tail-status.sh"
+# worker_handoff_tail is shared with close-wrapped-worker.sh, so the tick counts as closable
+# exactly the named hand-off the close accepts.
+# shellcheck source=../../lib/worker-successor.sh
+. "$HERE/../../lib/worker-successor.sh"
 
 # ready_mismatch_scan <bucket-dir> -- READY claims a judge or the diff contradicts
 # Prints TSV: one `M1a|M1b|M1c <pr> <head12> <model>` row per flag,
@@ -1222,7 +1240,11 @@ for leg in $WORKERS_SPLIT; do
         # mean a lock that is gone with no wrap behind it (lost, or never acquired).
         # ponytail: WRAPPED is the worker's own last bullet, self-reported -- a worker
         # that wrote WRAPPED and is somehow still working reads WRAPPED, not FREE.
+        # A named hand-off is a clean wrap too: the lock is free and the worker's newest own
+        # marker bullet is the WRAPPED or BLOCKED hand-off naming its successor.
         if [ "$lock_status" = FREE ] && [ "$tail_status" = WRAPPED ]; then
+            lock_status=WRAPPED
+        elif [ "$lock_status" = FREE ] && [ "$tail_status" = BLOCKED ] && worker_handoff_tail "$leg_doc"; then
             lock_status=WRAPPED
         fi
     else
@@ -2298,8 +2320,15 @@ fi
 # repair-signature, and no sooner than TICK_RMRUN_MIN_SECS after the log was last written. The tick writes the
 # signature on launch; repair-run.ts clears it after an error or a capped run with progress. The lock is read,
 # never taken. The repair writes no Fix Version and raises no alert. None of the three is in chief-wait's key.
+# A launch that left no end record is retried: before the signature the tick writes release/<R>/repair-launch
+# (`<epoch> <lost-count>`, the tick its only writer), and a stamp with no repair-status or repair-reviewed mtime at
+# or after it, no live lock and max(TICK_RMRUN_MIN_SECS, 60) elapsed reads as `lost` (repair=off:lost). A lost
+# launch relaunches even on an unchanged signature, on a doubling backoff from that base capped at 6 h; the count
+# resets at the first launch after an observed end. A live lock is proc_tree_process_alive rc 0 or 2 on a lock
+# written since boot (the launch gate and the field share it). A malformed stamp reads as none.
 # Seams: TICK_REPAIR_PROBE (a script run in place of the CLI), TICK_RMRUN_LAUNCHER.
 held_summary="" unfiled_summary="" repair_summary=""
+. "$HERE/../../lib/proc-tree.sh"
 if [[ "$rm_rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && [ -n "${rm_root:-}" ] && [ -d "$rm_root/$rm_rel" ]; then
     rp_dir="$rm_root/$rm_rel"
     # shellcheck disable=SC2016  # the python program is single-quoted on purpose
@@ -2323,6 +2352,53 @@ except Exception:
     elif [ "$rp_marker" = 0 ]; then
         rp_why=unreviewed
     fi
+    # The lock owner, the gap and the lost-launch rule are reads of files only, so a fenced tick shows the field too.
+    rp_busy=0 rp_E="" rp_k=0 rp_lost=0 rp_k2=0 rp_wait=0 rp_now=0 rp_gap=600
+    if [ "$rp_marker" = 1 ]; then
+        rp_now="$(date +%s)"
+        rp_pid="$(head -n 1 "$rp_dir/repair.lock" 2>/dev/null)" || rp_pid=""  # swallow-ok: no lock file means no owner
+        # live(pid): proc_tree_process_alive rc 0 or 2 (an EPERM pid counts as live, as in takeLock), and a lock written since boot
+        case "$rp_pid" in
+            '' | *[!0-9]*) ;;
+            *)
+                rp_rc=0; proc_tree_process_alive "$rp_pid" || rp_rc=$?
+                if [ "$rp_rc" = 0 ] || [ "$rp_rc" = 2 ]; then
+                    rp_busy=1
+                    rp_btime="$(awk '$1 == "btime" { print $2 }' /proc/stat 2>/dev/null)" || rp_btime=""  # swallow-ok: an unreadable btime passes the boot half
+                    rp_lock_m="$(stat -c %Y "$rp_dir/repair.lock" 2>/dev/null)" || rp_lock_m=""  # gnu-ok: console kit is Linux-only; swallow-ok: an unreadable mtime passes the boot half
+                    if [[ "$rp_btime" =~ ^[0-9]+$ ]] && [[ "$rp_lock_m" =~ ^[0-9]+$ ]] && [ "$rp_lock_m" -lt "$rp_btime" ]; then rp_busy=0; fi
+                fi
+                ;;
+        esac
+        rp_gap="${TICK_RMRUN_MIN_SECS:-600}"
+        case "$rp_gap" in '' | *[!0-9]*) rp_gap=600 ;; esac
+        rp_gap=$((10#$rp_gap))
+        rp_base=$rp_gap; [ "$rp_base" -ge 60 ] || rp_base=60
+        rp_cap=21600; [ "$rp_cap" -ge "$rp_base" ] || rp_cap=$rp_base
+        rp_stamp=""
+        if [ -f "$rp_dir/repair-launch" ]; then
+            IFS= read -r rp_stamp < "$rp_dir/repair-launch" 2>/dev/null || true  # swallow-ok: an unreadable stamp reads as no stamp
+        fi
+        if [[ "$rp_stamp" =~ ^(0|[1-9][0-9]{0,17})\ (0|[1-9][0-9]{0,8})$ ]] && [ "${BASH_REMATCH[1]}" -le "$rp_now" ]; then
+            rp_E="${BASH_REMATCH[1]}" rp_k="${BASH_REMATCH[2]}"
+        fi
+        if [ -n "$rp_E" ]; then
+            rp_ended=0
+            for rp_f in repair-status repair-reviewed; do
+                [ -e "$rp_dir/$rp_f" ] || continue
+                rp_m="$(stat -c %Y "$rp_dir/$rp_f" 2>/dev/null)" || rp_m=""  # gnu-ok: console kit is Linux-only; swallow-ok: an unreadable end file reads as no end
+                case "$rp_m" in '' | *[!0-9]*) ;; *) [ "$rp_m" -lt "$rp_E" ] || rp_ended=1 ;; esac
+            done
+            if [ "$rp_ended" = 0 ]; then
+                rp_k2=$rp_k
+                if [ "$rp_busy" = 0 ] && [ $((rp_now - rp_E)) -ge "$rp_base" ]; then rp_lost=1; rp_k2=$((rp_k + 1)); fi
+                if [ "$rp_busy" = 0 ] && { [ "$rp_lost" = 1 ] || [ "$rp_k" -ge 1 ]; }; then rp_why=lost; fi
+                rp_wait=$rp_base rp_i=1
+                while [ "$rp_i" -lt "$rp_k2" ] && [ "$rp_wait" -lt "$rp_cap" ]; do rp_wait=$((rp_wait * 2)); rp_i=$((rp_i + 1)); done
+                [ "$rp_wait" -le "$rp_cap" ] || rp_wait=$rp_cap
+            fi
+        fi
+    fi
     if [ "$rp_marker" = 1 ] && [ "${rm_status:-}" = OK ]; then
         rp_url="$( . "$HERE/../../lib/git-clean.sh" && git_env_scrub && git -C "$REPO" remote get-url origin 2>/dev/null)" || rp_url=""  # swallow-ok: no origin reads as bad-input below
         rp_slug="$(printf '%s' "$rp_url" | sed -E 's#(\.git)?/?$##; s#^.*[:/]([^:/]+/[^:/]+)$#\1#')"
@@ -2330,11 +2406,6 @@ except Exception:
         if [ -z "$rp_slug" ]; then
             [ -n "$rp_why" ] || rp_why='bad-input'
         elif [ "${HIMMEL_CONSOLE_LEG:-}" != 1 ] && [ "${HIMMEL_RELEASE_MANAGER:-}" != 1 ]; then
-            rp_pid="$(head -n 1 "$rp_dir/repair.lock" 2>/dev/null)" || rp_pid=""  # swallow-ok: no lock file means no owner
-            rp_busy=0
-            case "$rp_pid" in '' | *[!0-9]*) ;; *) ! kill -0 "$rp_pid" 2>/dev/null || rp_busy=1 ;; esac
-            rp_gap="${TICK_RMRUN_MIN_SECS:-600}"
-            case "$rp_gap" in '' | *[!0-9]*) rp_gap=600 ;; esac
             rp_log_age=999999999
             if [ -e "$rp_dir/repair-run.log" ]; then
                 rp_log_m="$(stat -c %Y "$rp_dir/repair-run.log" 2>/dev/null)" || rp_log_m=""  # gnu-ok: console kit is Linux-only; swallow-ok: an unreadable log reads old
@@ -2354,13 +2425,16 @@ rows = ["leak=" + k for k in leaks] + ["operator=" + str(h["operator"]), "reques
 print(hashlib.sha256("\n".join(rows).encode()).hexdigest())
 ' "${HIMMEL_VERSION_WRITES:-$rm_root/version-writes.jsonl}" 2>/dev/null)" || rp_sig=""  # swallow-ok: an unreadable state computes no signature, so nothing launches
             rp_old="$(head -n 1 "$rp_dir/repair-signature" 2>/dev/null)" || rp_old=""  # swallow-ok: no signature file is the launch trigger
-            if [ "$rp_busy" = 0 ] && [ -n "$rp_sig" ] && [ "$rp_sig" != "$rp_old" ] && [ "$rp_log_age" -ge "$rp_gap" ]; then
+            if [ "$rp_busy" = 0 ] && [ -n "$rp_sig" ] && [ "$rp_log_age" -ge "$rp_gap" ] \
+                && { [ "$rp_sig" != "$rp_old" ] || [ "$rp_lost" = 1 ]; } \
+                && { [ "$rp_k2" = 0 ] || [ $((rp_now - rp_E)) -ge "$rp_wait" ]; }; then
                 read -r -a rp_launcher <<<"${TICK_RMRUN_LAUNCHER:-setsid nohup}"
                 rp_have=1; [ "${#rp_launcher[@]}" -gt 0 ] || rp_have=0
                 for rp_w in "${rp_launcher[@]}"; do command -v "$rp_w" >/dev/null 2>&1 || rp_have=0; done  # command -v with several operands passes if ANY exists
                 rp_cli="${rm_anchor%/.git}/scripts/jira/dist/index.js"
                 if [ "$rp_have" = 1 ] && { [ -n "${TICK_REPAIR_PROBE:-}" ] || { [ -n "$rm_anchor" ] && [ -f "$rp_cli" ]; }; } \
-                    && printf '%s\n' "$rp_sig" > "$rp_dir/repair-signature.tick-$$" && mv -f "$rp_dir/repair-signature.tick-$$" "$rp_dir/repair-signature"; then
+                    && printf '%s %s\n' "$rp_now" "$rp_k2" > "$rp_dir/repair-launch.tick-$$" && mv -fT "$rp_dir/repair-launch.tick-$$" "$rp_dir/repair-launch" \
+                    && printf '%s\n' "$rp_sig" > "$rp_dir/repair-signature.tick-$$" && mv -f "$rp_dir/repair-signature.tick-$$" "$rp_dir/repair-signature"; then  # gnu-ok: console kit is Linux-only; the stamp precedes the signature
                     if [ -n "${TICK_REPAIR_PROBE:-}" ]; then
                         ( JIRA_PROJECT_KEY="$rm_pk" "${rp_launcher[@]}" bash "$TICK_REPAIR_PROBE" release repair "$rm_rel" --apply --repo "$rp_slug" </dev/null >>"$rp_dir/repair-run.log" 2>&1 & )
                     else
@@ -2693,7 +2767,6 @@ slot_cap="${HIMMEL_SUITE_SLOT_CAP:-1200}"
 case "$slot_cap" in ''|*[!0-9]*) slot_cap=1200 ;; esac
 [ "$((10#$slot_cap))" -gt 0 ] || slot_cap=1200
 slot_now="$(date +%s)"
-. "$HERE/../../lib/proc-tree.sh"
 for slot_dir in "${HIMMEL_SUITE_SEMAPHORE_DIR:-$suite_tmp/himmel-suite-semaphore.d}"/slot-*; do
     # one read of the owner record, so a slot released and retaken mid-parse cannot mix two holders
     slot_rec="$(cat "$slot_dir/owner" 2>/dev/null)" || continue  # swallow-ok: a slot released mid-read has no holder to report

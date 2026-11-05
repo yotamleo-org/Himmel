@@ -133,12 +133,14 @@ ANCHOR="${AUTO_GO_ANCHOR:-$(cd "$HERE/../../.." && pwd)}"
 GH_BIN="${GH_CMD:-gh}"
 
 # a function inherited from the environment must not stand in for the shared go-gate helpers
-unset -f chief_worker go_resolve_root go_verdict_scope go_trust_verdict 2>/dev/null || true
+unset -f chief_worker go_resolve_root go_verdict_scope go_trust_verdict go_verdict_line go_pr_qids go_noop_chain go_nogo_after go_noop_carry 2>/dev/null || true
 # shellcheck source=scripts/lib/go-gate.sh
 # shellcheck disable=SC1091
 if ! . "$HERE/../../lib/go-gate.sh" 2>/dev/null || ! declare -F chief_worker >/dev/null 2>&1 \
         || ! declare -F go_resolve_root >/dev/null 2>&1 || ! declare -F go_verdict_scope >/dev/null 2>&1 \
-        || ! declare -F go_trust_verdict >/dev/null 2>&1; then
+        || ! declare -F go_trust_verdict >/dev/null 2>&1 || ! declare -F go_verdict_line >/dev/null 2>&1 \
+        || ! declare -F go_pr_qids >/dev/null 2>&1 || ! declare -F go_noop_chain >/dev/null 2>&1 \
+        || ! declare -F go_nogo_after >/dev/null 2>&1 || ! declare -F go_noop_carry >/dev/null 2>&1; then
     echo "auto-go: cannot load scripts/lib/go-gate.sh - refusing (the chief-worker check must fail closed)" >&2
     exit 1
 fi
@@ -354,94 +356,35 @@ if [ -z "$NEED" ]; then
 else
     VERDICTS="$ROOT/$SCOPE/verdicts"
     LAST_DC=""
-    # every qid whose verdict names this PR or this head
-    QIDS=""
-    if [ -d "$VERDICTS" ]; then
-        CAND=$(grep -rlE --include='*.md' -e "^pr: ${PR}\$|for head \`${SHA}\`" "$VERDICTS" 2>/dev/null); CAND_RC=$?  # swallow-ok: rc 1 is no verdict; rc 2 escalates on the next line
-        [ "$CAND_RC" -le 1 ] || fail 5 "cannot read the verdict directory $VERDICTS"
-        while IFS= read -r vpath; do
-            [ -n "$vpath" ] || continue
-            rel="${vpath#"$VERDICTS"/}"
-            case "$rel" in */*/*) continue ;; esac
-            q="${rel%%/*}"
-            case "$q" in go-pr-*) continue ;; esac  # a persisted chief GO, never a judge's verdict
-            QIDS="$QIDS$q"$'\n'
-        done <<< "$CAND"
-        QIDS=$(printf '%s' "$QIDS" | sort -u)
-    fi
+    # every qid whose verdict names this PR or this head (go-gate.sh's go_pr_qids)
+    QIDS=$(go_pr_qids "$VERDICTS" "$PR" "$SHA") || fail 5 "$QIDS"
     # a GO at the head: any qid failing for another reason than "no GO at this head" (a NO-GO, an
     # unsigned or unparsed record, another PR) refuses outright. A real (judged) GO at the head wins;
     # a GO that rests on a delta no-op record carries only as a chain that may carry (may_carry)
-    # judged_root <qid> <head>: JR = the judged head the chain of delta no-op records of <head> rests on
-    # (else <head>), JCHAIN = every head of the chain, <head> first; past 8 hops, a cycle or a record
-    # that cannot be read refuses (fail 5)
-    judged_root() {
-        local jh="$2" jn jf jhops=0 jseen=" $2 "
-        JCHAIN="$2"
-        while :; do
-            jf="$VERDICTS/$1/delta-noop-$jh.md"
-            [ -e "$jf" ] || break
-            jn=$(sed -nE 's/^delta-judged: ([0-9a-f]{40})$/\1/p' "$jf" 2>/dev/null) || fail 5 "cannot read the delta no-op record $jf, so the judged head it rests on is unknown"  # swallow-ok: a failed read refuses right here (ESCALATE 5)
-            jn="${jn%%$'\n'*}"
-            [ -n "$jn" ] || break
-            jhops=$((jhops + 1))
-            [ "$jhops" -le 8 ] || fail 5 "the delta no-op records of $1 under ${2:0:8} chain past 8 hops: a chain that long needs a judge"
-            case "$jseen" in *" $jn "*) fail 5 "the delta no-op records of $1 under ${2:0:8} form a cycle at ${jn:0:8}" ;; esac
-            jseen="$jseen$jn "; jh="$jn"; JCHAIN="$JCHAIN $jn"
-        done
-        JR="$jh"
-    }
-    # nogo_after <head>: rc 1 (reason in NOGO_WHY) when any qid holds a NO-GO for this PR at <head> or at a
-    # descendant of it, read in the anchor checkout; a read that fails refuses (fail 5)
-    nogo_after() {
-        local nq nf nh nrc nfiles nheads
-        while IFS= read -r nq; do
-            [ -n "$nq" ] || continue
-            nrc=0; nfiles=$(grep -lx -e "pr: ${PR}" "$VERDICTS/$nq"/*.md 2>/dev/null) || nrc=$?  # swallow-ok: rc 1 is no file for this PR; any other rc refuses on the next line
-            [ "$nrc" -le 1 ] || fail 5 "cannot read the verdicts of $nq (grep exit $nrc), so a NO-GO there cannot be ruled out"
-            while IFS= read -r nf; do
-                [ -n "$nf" ] || continue
-                # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
-                nheads=$(sed -nE 's/^\*\*NO-GO\*\* for head `([0-9a-f]{40})`\.?$/\1/p' "$nf" 2>/dev/null) || fail 5 "cannot read the verdict $nf, so a NO-GO in it cannot be ruled out"  # swallow-ok: a failed read refuses right here (ESCALATE 5)
-                while IFS= read -r nh; do
-                    [ -n "$nh" ] || continue
-                    if [ "$nh" = "$1" ]; then nrc=0; else nrc=0; git -C "$ANCHOR" merge-base --is-ancestor "$1" "$nh" 2>/dev/null || nrc=$?; fi  # swallow-ok: rc 1 is not-after; any other rc refuses below
-                    case "$nrc" in
-                        0) NOGO_WHY="verdict $nq holds a NO-GO for head ${nh:0:8} of PR $PR, at or after the judged head ${1:0:8}: a GO does not carry past it"; return 1 ;;
-                        1) ;;
-                        *) fail 5 "cannot tell whether the NO-GO of $nq for head ${nh:0:8} comes after ${1:0:8} (git exit $nrc in $ANCHOR)" ;;
-                    esac
-                done <<< "$nheads"
-            done <<< "$nfiles"
-        done <<< "$QIDS"
-    }
     # real_go <qid> <head>: rc 0 when a verdict of <qid> that is not a delta no-op record rules GO for
-    # <head> (its first line under ## Verdict); a read that fails refuses (fail 5)
+    # <head> (its go_verdict_line); a read that fails refuses (fail 5)
     real_go() {
         local rf rl rrc
         for rf in "$VERDICTS/$1"/*.md; do
             [ -e "$rf" ] || continue
-            rl=$(awk '{ sub(/\r$/, "") } /^## Verdict[[:space:]]*$/ { p = 1; next } p && NF { print; exit }' "$rf" 2>/dev/null) || fail 5 "cannot read the verdict $rf"  # swallow-ok: a failed read refuses right here (ESCALATE 5)
+            rl=$(go_verdict_line "$rf") || fail 5 "cannot read the verdict $rf"
             # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
             case "$rl" in '**GO** for head `'"$2"'`'|'**GO** for head `'"$2"'`.') ;; *) continue ;; esac
-            rrc=0; grep -qx 'delta: no-op' "$rf" 2>/dev/null || rrc=$?
+            rrc=0; grep -qxE "delta: no-op"$'\r'"?" "$rf" 2>/dev/null || rrc=$?
             case "$rrc" in 0) ;; 1) return 0 ;; *) fail 5 "cannot read the verdict $rf" ;; esac
         done
         return 1
     }
-    # may_carry <qid> <head>: rc 0 when the GO of <qid> at <head> may carry: the chain of no-op records it
-    # rests on ends at a head where <qid> holds a real, signed GO, and no qid holds a NO-GO at or after
-    # any head of the chain; else rc 1, the reason in NOGO_WHY
+    # may_carry <qid> <head>: go-gate.sh's go_noop_carry, the one no-op carry rule go.sh runs too:
+    # rc 0 when the GO may carry; rc 1 with the reason in NOGO_WHY; a read failure refuses (fail 5)
     may_carry() {
-        local mh
-        judged_root "$1" "$2"
-        for mh in $JCHAIN; do nogo_after "$mh" || return 1; done
-        if ! real_go "$1" "$JR"; then
-            NOGO_WHY="the GO of $1 at ${2:0:8} rests on ${JR:0:8}, where $1 holds no real (judged, not no-op) GO"; return 1
-        fi
-        if ! go_trust_verdict "$ROOT" "$1" "$JR" "$ANCHOR" "$PR" >/dev/null; then
-            NOGO_WHY="the GO of $1 at ${2:0:8} rests on ${JR:0:8}, where the verdicts of $1 do not hold a valid GO"; return 1
-        fi
+        local mrc=0
+        NOGO_WHY=$(go_noop_carry "$VERDICTS" "$1" "$PR" "$ANCHOR" "$2" "$ROOT" "$ANCHOR") || mrc=$?
+        case "$mrc" in
+            0) return 0 ;;
+            1) return 1 ;;
+            *) fail 5 "$NOGO_WHY" ;;
+        esac
     }
     REALQ=""; NOOPQ=""; LAST_WHY=""
     while IFS= read -r q; do

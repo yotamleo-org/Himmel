@@ -9,7 +9,9 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
-const root = process.argv[2] || process.cwd();
+const args = process.argv.slice(2);
+const GUARD = args.includes("--guard");
+const root = args.find((a) => !a.startsWith("--")) || process.cwd();
 const SITE = new RegExp(
   String.raw`(?<![\w./-])(claude|"?\$\{?[A-Za-z_]*(CLAUDE|LAUNCHER)[A-Za-z_]*\}?"?)\s+(-p\b|--print|--bg|--settings|--model|--dangerously|--permission|--append|-n\b|--name)` +
     String.raw`|spawn(Sync)?\(\s*["']claude["']` +
@@ -20,15 +22,42 @@ const COVER = /--settings|WORKER_SESSION_PROFILE_SETTINGS|profile-settings\.sh|l
 const FILE_OK = /launch-profile-ok-file:/;
 const SKIP_DIR = new Set(["node_modules", "dist", "fixtures", ".git"]);
 const EXT = /\.(sh|ts|mjs|js|ps1)$/;
+const GUARD_EXT = /\.(sh|ts|mjs|js|ps1|py)$/;
+const GUARD_OK = /launch-guard-ok:/;
+const GUARD_FILE_OK = /launch-guard-ok-file:/;
+const PRINT_FLAG = /(?<![\w-])(-p|--print)(?![\w-])/;
 
-function* walk(dir) {
+function* walk(dir, ext = EXT) {
   for (const n of readdirSync(dir)) {
     if (SKIP_DIR.has(n)) continue;
     const p = join(dir, n);
     const st = statSync(p);
-    if (st.isDirectory()) yield* walk(p);
-    else if (EXT.test(n) && !/^test-|\.test\./.test(n)) yield p;
+    if (st.isDirectory()) yield* walk(p, ext);
+    else if (ext.test(n) && !/^test-|\.test\./.test(n)) yield p;
   }
+}
+
+if (GUARD) {
+  let found = 0;
+  for (const f of walk(join(root, "scripts"), GUARD_EXT)) {
+    const lines = readFileSync(f, "utf8").split("\n");
+    if (lines.some((l) => GUARD_FILE_OK.test(l))) continue;
+    lines.forEach((l, i) => {
+      const t = l.trim();
+      if (t.startsWith("#") || t.startsWith("//")) return;
+      const m = SITE.exec(l);
+      if (!m) return;
+      if (/`claude|claude --model (for|pin)|quota_gauge_row claude/.test(l)) return; // prose / usage text / gauge row, not a launch
+      // ponytail: the inventory is only as complete as the SITE regex (a launch spelled through an unusual variable or a non-scanned language is missed); upgrade path: a PATH shim that refuses an interactive claude launch whose cwd has not passed launch-guard-check.sh (follow-up h)
+      const stmt = l.slice(m.index).split(/;|&&|\|\|?/)[0];
+      if (PRINT_FLAG.test(stmt)) return;
+      const win = lines.slice(Math.max(0, i - 12), i + 4).join("\n");
+      if (GUARD_OK.test(win)) return;
+      console.log(`${relative(root, f)}:${i + 1}: ${t.slice(0, 120)}`);
+      found++;
+    });
+  }
+  process.exit(found ? 1 : 0);
 }
 
 for (const f of walk(join(root, "scripts"))) {

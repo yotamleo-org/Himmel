@@ -223,9 +223,8 @@ button.band-name{width:100%;padding:0;background:none;border:0;text-align:left;c
 .fleet-detail,.fleet-detail>*{min-width:0;overflow-wrap:anywhere}
 .fleet-status{display:flex;flex-direction:column;gap:2px;min-width:0}
 .fleet-lineage{display:flex;flex-direction:column;gap:2px;min-width:0;padding-left:12px;border-left:1px solid var(--line);font:12px var(--mono);color:var(--dim)}
-/* The rail: wider on the fleet, with its filters. */
-.shell:has(.fleet-menu){grid-template-columns:280px minmax(0,1fr)}
-.fleet-filters{display:grid;gap:6px;margin:12px 0 16px}
+/* The filter bar in the fleet page. */
+.fleet-filters{display:grid;gap:6px;margin:0 0 16px}
 .fleet-search{width:100%;padding:5px 8px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--fg);font:var(--fs-xs) var(--font-ui)}
 .fleet-chips{display:flex;flex-wrap:wrap;gap:5px}
 .fleet-chip-btn{font:var(--fs-xs) var(--font-ui);padding:2px 8px;border:1px solid var(--rule);border-radius:999px;color:var(--muted);background:var(--surface-2);cursor:pointer}
@@ -270,7 +269,6 @@ a.fleet-head:hover .fleet-name,a.fleet-head:focus-visible .fleet-name{text-decor
 @media (max-width:760px){
   .top,.strip{padding-inline:16px}
   .fleet{padding:16px}
-  .shell:has(.fleet-menu){grid-template-columns:1fr}
   .fleet-line{grid-template-columns:12px 10px minmax(0,1fr) auto}
   .fleet-act{display:none}
   .fleet-line .fleet-meter,.fleet-line .fleet-nometer{grid-column:3/-1;grid-row:2}
@@ -310,16 +308,9 @@ a.fleet-head:hover .fleet-name,a.fleet-head:focus-visible .fleet-name{text-decor
 .fleet-chief>summary::before{content:"▸";color:var(--dim);font:12px var(--mono)}
 .fleet-chief[open]>summary::before{content:"▾"}
 .fleet-chief h2{display:inline;margin:0;font:600 var(--fs-sm) var(--font-ui);overflow-wrap:anywhere}
-.fleet-menu{margin-top:20px;font:var(--fs-xs) var(--font-ui);overflow-wrap:anywhere}
-.fleet-menu h2{display:inline;margin:0;font:600 var(--fs-xs) var(--font-ui);color:var(--dim)}
-.fleet-menu details{margin:8px 0}
-.fleet-menu summary{cursor:pointer;font-weight:600;padding:4px 0}
-.fleet-menu ul{list-style:none;margin:4px 0;padding-left:10px;border-left:1px solid var(--line)}
-.fleet-menu li{margin:8px 0}
-.fleet-menu a{display:block;color:var(--accent);padding:3px 0}
-.fleet-menu small{display:block;color:var(--dim);font-size:11px}
-.fleet-menu a[aria-current=page]{color:var(--fg);font-weight:600}
-.rail:has(.fleet-menu){overflow-y:auto;max-height:100vh}
+.fleet-chief .fleet-chief-counts{color:var(--dim);font:var(--fs-xs) var(--font-ui)}
+.fleet-chief a.chief-page{margin-left:auto;color:var(--accent);font:var(--fs-xs) var(--font-ui)}
+.fleet-chief a.chief-page[aria-current=page]{color:var(--fg);font-weight:600}
 
 /* board: legend chips, stage dots, Trends cards, the worker drawer. --c is a legend colour (a theme token). */
 :root{--vio:var(--road)}

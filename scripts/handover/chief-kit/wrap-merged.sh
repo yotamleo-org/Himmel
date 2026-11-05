@@ -107,6 +107,7 @@ sha="$(printf '%s' "$view" | jq -r '.mergeCommit.oid // empty' 2>/dev/null)"
 { [ "$state" = MERGED ] && [ -n "$sha" ]; } || fail pr-state "PR #$PR is '${state:-unreadable}', not MERGED" 3
 sha8="${sha:0:8}"
 BOARD_ON_FAIL=1
+echo "wrap-merged: merged pr=$PR sha=$sha8"
 
 base="${WORKER##*/}"
 ticket=""; label=""

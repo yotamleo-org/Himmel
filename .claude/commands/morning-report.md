@@ -1,6 +1,6 @@
 ---
 description: Generate today's Morning Report.
-argument-hint: "[--llm] [--llm-model M] [--since SHA] [--since-date YYYY-MM-DD] [--out PATH] [--jira-limit N] [--backlog-limit N] [--dry-run]"
+argument-hint: "[--llm] [--llm-model M] [--since SHA] [--since-date YYYY-MM-DD] [--out PATH] [--jira-limit N] [--dry-run]"
 ---
 
 Generate the daily 🌅 Morning Report by templating live `git`/`gh`/`jira`/`worktree`
@@ -10,7 +10,7 @@ state into the curated schema and writing it to the handover root
 leads with four answers (✅ What shipped, ⏳ What waits on you, 💸 What it spent,
 ▶️ What runs next; a field with no input reads "not available"), then emits
 deterministic sections (✅ Completed PRs, 🔴 In-flight WIP, 🧹 Stale
-worktrees, 📋 Backlog, Done cross-ref, 🗄️ Prompt cache) plus heuristic TL;DR + Suggested order.
+worktrees, tickets moved to Done that day, 🗄️ Prompt cache) plus heuristic TL;DR + Suggested order.
 The cache line reads the cache-health metrics: 7-day read ratio per role, a
 trailing 14-day-median baseline and a 3-day below-baseline flag; stale or missing
 metrics print `cache: unmonitored`.
@@ -20,7 +20,7 @@ adopted project. With no Jira tracker configured (`JIRA_PROJECT_KEY` unset) the 
 sections say so and the PR, commit and worktree sections still print; sections that
 need himmel-only tooling are left out where that tooling is not installed.
 
-Pass `--llm` to enrich TL;DR, Suggested order, and Backlog theme-clustering via a
+Pass `--llm` to enrich TL;DR and Suggested order via a
 bounded interactive Sonnet turn (degrades to the deterministic heuristic if
 `claude` is unavailable, and skipped with a notice under Codex). It is a point-in-time snapshot — cross-day continuity
 stays a session's job.

@@ -3509,7 +3509,8 @@
         "23": "plugin-bump recheck: operational",
         "24": "static re-check refusal: operational",
         "25": "local-commit guard refusal: operational",
-        "26": "partial merge with no remainder in the PR body: operational"
+        "26": "partial merge with no remainder in the PR body: operational",
+        "27": "--go given but no open PR resolved, nothing merged: operational"
       }
     },
     "scripts/handover/chief-kit/go.sh": {
@@ -3597,7 +3598,8 @@
         "pool-stale": "a pool disposition whose blocker shipped: the chief re-rules the parked ticket, operational triage",
         "focus": "FOCUS page refresh failure or stale dirty state: operational",
         "status-sweep": "Jira status sweep moved or missed tickets: operational",
-        "resolve": "a worker's BLOCKED resolve marker: the chief resolves the thread itself, not a workflow decision"
+        "resolve": "a worker's BLOCKED resolve marker: the chief resolves the thread itself, not a workflow decision",
+        "worker-silent": "a worker gone quiet: the chief relaunches it or takes over its one blocked step, operational triage"
       }
     },
     "docs/handover/worker-preface.md": {

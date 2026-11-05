@@ -16,19 +16,19 @@
 # untouched and says why. Only config.json goes: the hud's runtime cache
 # beside it is the plugin's own.
 # ponytail: the byte-identity check compares against the plain template only,
-# not the optional HIMMEL_STATUSLINE_ECON prefix wire-statusline.sh may have
-# carried forward -- a prefixed-but-otherwise-himmel's-own file is kept
-# rather than removed follow-up if that false negative matters.
+# not an env prefix an older wire-statusline.sh carried forward -- a
+# prefixed-but-otherwise-himmel's-own file is kept rather than removed;
+# follow-up if that false negative matters.
 #
 # Requires jq. Source it to call unwire_hud_config directly, or invoke via bash.
 set -euo pipefail
 
 # Also read by uninstall.sh's read-back so the two cannot drift.
 # Anchored to the exact command shape wire-statusline.sh writes (the template's
-# `bash "<path>/scripts/statusline/hud-custom-lines.sh"`, optionally behind the
-# HIMMEL_STATUSLINE_ECON=<alnum> prefix), so an operator command that
+# `bash "<path>/scripts/statusline/hud-custom-lines.sh"`, optionally behind an
+# older install's NAME=<alnum> env prefix), so an operator command that
 # merely MENTIONS the script is never taken for himmel's.
-_UNWIRE_HUD_PAT='^(HIMMEL_STATUSLINE_ECON=[A-Za-z0-9]+ )?bash "[^"]*/scripts/statusline/hud-custom-lines[.]sh"$'
+_UNWIRE_HUD_PAT='^([A-Z][A-Z0-9_]*=[A-Za-z0-9]+ )?bash "[^"]*/scripts/statusline/hud-custom-lines[.]sh"$'
 
 unwire_hud_config() {
   local cfg="$1" dry="${2:-0}" himmel_root="${3:-}"

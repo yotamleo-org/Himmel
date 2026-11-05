@@ -76,6 +76,7 @@ unset QUEUE_LOCK_TAKEOVER QUEUE_LOCK_TTL_SECONDS ARM_DUP_OK 2>/dev/null || true
 # hits the temp-target refusal (rc=12). Same shield
 # test-arm-resume.sh carries.
 export ARM_TEMP_CWD_OK=1
+export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch fixtures; guard rows drop it
 # keep the real bank-preflight's usage-cache refresh off the live cache.
 export CADENCE_USAGE_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
 # Split-worker shield: this suite's fixtures are a flat POOL of
