@@ -11,6 +11,8 @@
 #   5. F11 concurrent writers  -> N parallel add-items all land, the JSON is valid, no temp file is left
 #   6. lock timeout            -> exit 3 while another process holds the lock; the ledger is untouched
 #   7. read errors             -> a missing or corrupt ledger is exit 1; `read` takes no lock
+#   8. find                    -> a doc's series, its role (writer, or from for a doc that passed the series on) and the
+#                                 manifest label of the ledger's writer; paths match by realpath; a stranger prints nothing
 # SERIES_LEDGER overrides the script under test (the RED control). Hermetic: temp dir only.
 set -uo pipefail
 
@@ -210,6 +212,41 @@ rc=0; out="$(sl pass --ledger "$tmp/nowriter.json" --from /d.md --to /e.md 2>&1)
 check "7: a ledger with no writer is rc 1, not a traceback" "$rc" 1
 rc=0; out="$(sl bogus-verb --ledger "$L" 2>&1)" || rc=$?
 check "7: unknown verb rc 2" "$rc" 2
+
+# --- 8. find -------------------------------------------------------------
+BK="$tmp/bk"; mkdir -p "$BK/series" "$tmp/realdocs"
+ln -s "$BK" "$tmp/bk-link"; ln -s "$tmp/realdocs" "$tmp/linkdocs"
+DA="$tmp/realdocs/HIMMEL-1-N8-a.md"; DB="$tmp/realdocs/HIMMEL-1-N9-b.md"; DX="$tmp/realdocs/HIMMEL-2-N1-x.md"
+M="$BK/chief.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N8"},{"doc":"%s","label":"N9"}]}\n' "$DA" "$DB" > "$M"
+sl create --ledger "$BK/series/s8.json" --sid s8 --completes-ticket no --writer "$DA" >/dev/null 2>&1
+sl pass --ledger "$BK/series/s8.json" --from "$DA" --to "$DB" >/dev/null 2>&1
+rc=0; out="$(sl find --bucket "$BK" --doc "$DB" --manifest "$M" 2>&1)" || rc=$?
+check "8: find a writer doc rc 0" "$rc" 0
+check "8: find prints sid, ledger, role writer and the writer's label" "$out" "s8 $BK/series/s8.json writer N9"
+rc=0; out="$(sl find --bucket "$BK" --doc "$DA" --manifest "$M" 2>&1)" || rc=$?
+check "8: find a passes-from doc: role from, with the current writer's label" "$out" "s8 $BK/series/s8.json from N9"
+rc=0; out="$(sl find --bucket "$BK" --doc "$DX" --manifest "$M" 2>&1)" || rc=$?
+check "8: a doc in no ledger prints nothing, rc 0" "$rc:$out" "0:"
+rc=0; out="$(sl find --bucket "$tmp/bk-link" --doc "$tmp/linkdocs/HIMMEL-1-N9-b.md" --manifest "$M" 2>&1)" || rc=$?
+check "8: a symlinked bucket and a symlinked doc path still match" "$out" "s8 $BK/series/s8.json writer N9"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N8"}]}\n' "$DA" > "$tmp/m-zero.json"
+check "8: a writer doc in no manifest entry has the dash label" "$(sl find --bucket "$BK" --doc "$DB" --manifest "$tmp/m-zero.json" 2>&1)" "s8 $BK/series/s8.json writer -"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N9"},{"doc":"%s","label":"N9b"}]}\n' "$DB" "$tmp/linkdocs/HIMMEL-1-N9-b.md" > "$tmp/m-two.json"
+check "8: a writer doc in two manifest entries has the dash label" "$(sl find --bucket "$BK" --doc "$DB" --manifest "$tmp/m-two.json" 2>&1)" "s8 $BK/series/s8.json writer -"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N9"}]}\n' "$DB" > "$tmp/m-legs.json"
+check "8: a manifest still on the pre-rename legs array is read" "$(sl find --bucket "$BK" --doc "$DB" --manifest "$tmp/m-legs.json" 2>&1)" "s8 $BK/series/s8.json writer N9"
+rc=0; out="$(sl find --bucket "$tmp/no-bucket" --doc "$DB" --manifest "$M" 2>&1)" || rc=$?
+check "8: a bucket with no series directory prints nothing, rc 0" "$rc:$out" "0:"
+printf '{not json' > "$BK/series/zz-broken.json"
+rc=0; out="$(sl find --bucket "$BK" --doc "$DX" --manifest "$M" 2>&1)" || rc=$?
+check "8: an unreadable ledger is rc 1, never a silent miss" "$rc" 1
+rm -f "$BK/series/zz-broken.json"
+sl create --ledger "$BK/series/s8b.json" --sid s8b --completes-ticket no --writer "$DX" >/dev/null 2>&1
+sl create --ledger "$BK/series/s8c.json" --sid s8c --completes-ticket no --writer "$DX" >/dev/null 2>&1
+rc=0; out="$(sl find --bucket "$BK" --doc "$DX" --manifest "$M" 2>&1)" || rc=$?
+check "8: a doc that is the writer of two ledgers is rc 1, never a first-file guess" "$rc" 1
+rm -f "$BK/series/s8b.json" "$BK/series/s8c.json"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "all passed"; exit 0; fi

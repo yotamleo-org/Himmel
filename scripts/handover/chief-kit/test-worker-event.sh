@@ -417,7 +417,7 @@ echo "autogo $*" >> "$LE_CALLS"
 exit "${LE_AUTOGO_RC:-0}"
 EOF3
 chmod +x "$W/autogo"
-printf 'auto_go\toff\tfeature\tHIMMEL-8349\tHIMMEL-8404\t2099-01-01\tfixture\n' > "$W/flags.tsv"
+printf 'auto_go\toff\tfeature\tHIMMEL-8349\tHIMMEL-8404\t2099-01-01\tfixture\nstacked_series\toff\tfeature\tHIMMEL-8349\tHIMMEL-8349\t2099-01-01\tfixture\n' > "$W/flags.tsv"
 export HIMMEL_FLAGS_TSV="$W/flags.tsv" HIMMEL_CONFIG_DIR="$W/no-conf" LE_AUTOGO="$W/autogo"
 unset HIMMEL_FLAG_AUTO_GO
 
@@ -481,5 +481,89 @@ run "READY 2553 abc N2088"
 contains "15f a READY with no full head" "$out" "ESCALATE ready-unparsed"
 check "15f auto-go not run" "$calls" ""
 unset HIMMEL_FLAG_AUTO_GO HIMMEL_FLAGS_TSV HIMMEL_CONFIG_DIR LE_AUTOGO
+
+# 16. series routing (stacked_series): the REAL series-ledger.py find on a real ledger and manifest file, never a stub.
+# N8 passed the series to N9 (the ledger writer); each doc names a PR, so at base a WRAPPED from either runs wrap-merged.
+printf 'auto_go\toff\tfeature\tHIMMEL-8349\tHIMMEL-8404\t2099-01-01\tfixture\nstacked_series\toff\tfeature\tHIMMEL-8349\tHIMMEL-8349\t2099-01-01\tfixture\n' > "$W/flags16.tsv"
+export HIMMEL_FLAGS_TSV="$W/flags16.tsv" HIMMEL_CONFIG_DIR="$W/no-conf" LE_AUTOGO="$W/autogo" HIMMEL_FLAG_AUTO_GO=1 HIMMEL_FLAG_STACKED_SERIES=1
+SD="$W/ser-docs"; mkdir -p "$SD"
+SA="$SD/HIMMEL-5-N8-ser-2026-11-05.md"; SW="$SD/HIMMEL-5-N9-ser-2026-11-05-RESUME.md"
+printf '%s\n' '## Results' '- 10:00 READY 2553 abc' '- 10:30 WRAPPED hand-off' > "$SA"
+printf '%s\n' '## Results' '- 10:00 READY 2553 abc' > "$SW"
+cat > "$W/list16" <<EOF16
+#!/usr/bin/env bash
+printf '%s\n' $SA $SW /h/HIMMEL-1-N2078-foo-2026-10-14.md
+EOF16
+chmod +x "$W/list16"
+# mkser <dir> <manifest workers json>: a bucket whose ledger s16 has writer N9 after N8 passed the series on
+mkser() {
+    mkdir -p "$1/series"
+    python3 -I "$HERE/series-ledger.py" create --ledger "$1/series/s16.json" --sid s16 --completes-ticket no --writer "$SA" >/dev/null 2>&1
+    python3 -I "$HERE/series-ledger.py" pass --ledger "$1/series/s16.json" --from "$SA" --to "$SW" >/dev/null 2>&1
+    printf '{"schema":1,"workers":[%s]}\n' "$2" > "$1/fleet.json"
+}
+runf() { : > "$LE_CALLS"; : > "$LE_LIVE_CALLS"; printf '%s\n' "$2" > "$W/msg"; out="$(LE_LIST="$W/list16" bash "$SCRIPT" --doc "$W/doc" --fleet "$1" "$W/msg" 2>/dev/null)"; rc=$?; calls="$(cat "$LE_CALLS")"; }
+ROW8="{\"doc\":\"$SA\",\"label\":\"N8\"}"; ROW9="{\"doc\":\"$SW\",\"label\":\"N9\"}"
+mkser "$W/s-ok" "$ROW8,$ROW9"
+printf '# chief\n\n## Results\n' > "$W/doc"
+
+runf "$W/s-ok/fleet.json" "WRAPPED N8. Lock released."
+check "16.1 a WRAPPED from a passes-from doc: rc" "$rc" 0
+check "16.1 it is closed, not wrap-merged" "$out" "HANDLED close-wrapped N8"
+contains "16.1 close-wrapped-worker runs on the doc" "$calls" "close --fleet $W/s-ok/fleet.json $SA"
+lacks "16.1 wrap-merged does not run" "$calls" "wrap --doc"
+
+HIMMEL_FLAG_STACKED_SERIES=0 runf "$W/s-ok/fleet.json" "WRAPPED N8. Lock released."
+contains "16.1b stacked_series off: the same WRAPPED still reaches wrap-merged" "$calls" "wrap --doc $W/doc --fleet $W/s-ok/fleet.json $SA"
+check "16.1b it finishes: rc" "$rc" 0
+check "16.1b it finishes: HANDLED" "$out" "HANDLED wrap-merged N8"
+
+runf "$W/s-ok/fleet.json" "WRAPPED N9. Lock released."
+contains "16.1c a WRAPPED from the current writer still reaches wrap-merged" "$calls" "wrap --doc $W/doc --fleet $W/s-ok/fleet.json $SW"
+check "16.1c it finishes: rc" "$rc" 0
+check "16.1c it finishes: HANDLED" "$out" "HANDLED wrap-merged N9"
+
+runf "$W/s-ok/fleet.json" "WRAPPED N2078. Lock released."
+contains "16.4 a non-series WRAPPED still reaches wrap-merged" "$calls" "wrap --doc $W/doc --fleet $W/s-ok/fleet.json /h/HIMMEL-1-N2078-foo-2026-10-14.md"
+check "16.4 it finishes: rc" "$rc" 0
+check "16.4 it finishes: HANDLED" "$out" "HANDLED wrap-merged N2078"
+
+LE_AUTOGO_OUT="GO-SENT 2553 $H40 to N9 bus=#7 qid=q1" runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N8"
+check "16.2 a READY from the passes-from doc N8: rc" "$rc" 0
+check "16.2 the GO addressee is the writer" "$out" "HANDLED auto-go N9"
+check "16.2 auto-go is called with the writer's label" "$calls" "autogo --doc $W/doc --fleet $W/s-ok/fleet.json --worker N9 2553 $H40"
+LE_AUTOGO_OUT="GO-SENT 2553 $H40 to N9 bus=#7 qid=q1" runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N9"
+check "16.2b a READY from the writer itself keeps its own label" "$calls" "autogo --doc $W/doc --fleet $W/s-ok/fleet.json --worker N9 2553 $H40"
+
+mkser "$W/s-zero" "$ROW8"
+runf "$W/s-zero/fleet.json" "READY 2553 $H40 GREEN N8"
+check "16.3 writer doc in no manifest entry: rc" "$rc" 10
+check "16.3 writer doc in no manifest entry escalates" "$out" "ESCALATE series-writer-unlisted"
+check "16.3 no auto-go call" "$calls" ""
+mkser "$W/s-two" "$ROW8,$ROW9,{\"doc\":\"$SW\",\"label\":\"N9b\"}"
+runf "$W/s-two/fleet.json" "READY 2553 $H40 GREEN N8"
+check "16.3 writer doc in two manifest entries: rc" "$rc" 10
+check "16.3 writer doc in two manifest entries escalates" "$out" "ESCALATE series-writer-unlisted"
+check "16.3 no auto-go call (two entries)" "$calls" ""
+
+mkser "$W/s sp" "$ROW8,$ROW9"
+LE_AUTOGO_OUT="GO-SENT 2553 $H40 to N9 bus=#7 qid=q1" runf "$W/s sp/fleet.json" "READY 2553 $H40 GREEN N8"
+contains "16.2c a space in the bucket path does not shift the role and label fields" "$calls" "--worker N9 2553 $H40"
+LE_CLOSE_RC=0 runf "$W/s sp/fleet.json" "WRAPPED N8. Lock released."
+check "16.1d a space in the bucket path: a passes-from WRAPPED is still closed" "$out" "HANDLED close-wrapped N8"
+
+HIMMEL_FLAG_STACKED_SERIES=0 LE_AUTOGO_OUT="GO-SENT 2553 $H40 to N8 bus=#7 qid=q1" runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N8"
+contains "16.5 stacked_series off: a READY keeps its own label" "$calls" "--worker N8 2553"
+
+HIMMEL_FLAG_STACKED_SERIES=bogus LE_AUTOGO_OUT="GO-SENT 2553 $H40 to N8 bus=#7 qid=q1" runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N8"
+check "16.7 a stacked_series flag that cannot be read: rc" "$rc" 10
+contains "16.7 it escalates, never reads as off" "$out" "ESCALATE series-flag-unreadable rc=2"
+check "16.7 no auto-go call" "$calls" ""
+
+mkser "$W/s-bad" "$ROW8,$ROW9"; printf '{not json' > "$W/s-bad/series/zz.json"
+runf "$W/s-bad/fleet.json" "WRAPPED N8. Lock released."
+contains "16.6 an unreadable ledger escalates instead of guessing a route" "$out" "ESCALATE series-find-failed rc=1"
+check "16.6 nothing ran" "$calls" ""
+unset HIMMEL_FLAG_AUTO_GO HIMMEL_FLAG_STACKED_SERIES HIMMEL_FLAGS_TSV HIMMEL_CONFIG_DIR LE_AUTOGO
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
