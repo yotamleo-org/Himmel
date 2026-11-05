@@ -11,7 +11,7 @@
 #
 # Usage: go.sh [--contract yes|no] [--trust-reviewed <reviewer-id>] <pr-number> <full-40-hex-head-sha>
 #        go.sh --fix-main-red <red-run-id> <pr-number> <full-40-hex-head-sha>
-#        go.sh --repo <owner/repo> --trust-reviewed <judge-qid> <pr-number> <full-40-hex-head-sha>
+#        go.sh --repo <owner/repo> [--checkout <dir>] --trust-reviewed <judge-qid> <pr-number> <full-40-hex-head-sha>
 # Prints the written path. Re-running overwrites (idempotent).
 #
 # Every merge GO (not --fix-main-red) is also persisted as a signed verdict record
@@ -54,6 +54,10 @@
 # go_adopted_entry): the PR must be based on that repo's default branch, and the
 # judge's record must be written with write-verdict.sh --repo <owner/name>, so it
 # lives under that repo's bucket and names that repo.
+# The NO-GO order and delta reads (git) run in that repo's own checkout, found without a cd:
+# --checkout <dir>, else the first checkout under HIMMEL_FORK_ROOTS (colon list, default the
+# harness checkout's parent) whose origin names the repo, else the cwd. An unreadable
+# --checkout is exit 10; so is a git read that fails in the checkout that was found.
 #
 # --contract yes|no: the merge contract of the merge this GO lets through - yes when the
 # merge completes the ticket (merge-on-green.sh --jira-transition), no for a partial merge.
@@ -137,7 +141,7 @@ GH_READ="$(cd "$_csg_dir/../../lib" 2>/dev/null && pwd)/gh-read.sh"  # swallow-o
 usage() {
     echo "usage: go.sh [--model <id>] [--effort <level>] [--contract yes|no] [--trust-reviewed <reviewer-id>] <pr-number> <full-40-hex-head-sha>" >&2
     echo "       go.sh --fix-main-red <red-run-id> <pr-number> <full-40-hex-head-sha>" >&2
-    echo "       go.sh --repo <owner/repo> --trust-reviewed <judge-qid> <pr-number> <full-40-hex-head-sha>" >&2
+    echo "       go.sh --repo <owner/repo> [--checkout <dir>] --trust-reviewed <judge-qid> <pr-number> <full-40-hex-head-sha>" >&2
 }
 
 TRUST=""
@@ -152,6 +156,8 @@ GO_EFFORT=""
 GO_EFFORT_SET=0
 CONTRACT=""
 CONTRACT_SET=0
+CHECKOUT=""
+CHECKOUT_SET=0
 # Each option, in any order, at most once (a repeat is a usage error).
 while :; do
     case "${1:-}" in
@@ -178,6 +184,10 @@ while :; do
         --repo)
             [ "$FORK_SET" -eq 0 ] || { usage; exit 2; }
             FORK="${2:-}"; FORK_SET=1
+            shift 2 2>/dev/null || shift "$#" ;;
+        --checkout)
+            [ "$CHECKOUT_SET" -eq 0 ] || { usage; exit 2; }
+            CHECKOUT="${2:-}"; CHECKOUT_SET=1
             shift 2 2>/dev/null || shift "$#" ;;
         *) break ;;
     esac
@@ -223,6 +233,10 @@ if [ "$FORK_SET" -eq 1 ]; then
         echo "go: --repo needs an owner/name and --trust-reviewed <judge-qid>, and excludes --fix-main-red (got '$FORK')" >&2
         exit 2
     fi
+elif [ "$CHECKOUT_SET" -eq 1 ]; then
+    usage
+    echo "go: --checkout belongs to --repo (the checkout holding that repo's PR commits)" >&2
+    exit 2
 fi
 
 case "$PR" in
@@ -343,6 +357,41 @@ if [ "$TRUST_SET" -eq 1 ] && ! REASON=$(go_trust_verdict "$ROOT" "$TRUST" "$SHA"
     exit 5
 fi
 
+# The checkout holding the PR's commits, where the NO-GO order and delta reads below ask git.
+# A himmel PR: the cwd. --repo: --checkout <dir>, else the first checkout whose origin names
+# $FORK under HIMMEL_FORK_ROOTS (colon list, default the harness checkout's parent) or the
+# cwd, preferring one that holds $SHA, else the cwd - where a git read that fails refuses (exit 10).
+# git-env-ok: every git call in this block runs in a subshell that unsets GIT_DIR, GIT_WORK_TREE, GIT_COMMON_DIR and GIT_INDEX_FILE first
+GITDIR=$PWD
+if [ "$CHECKOUT_SET" -eq 1 ]; then
+    if ! (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE; git -C "$CHECKOUT" rev-parse --git-dir) >/dev/null 2>&1; then
+        echo "go: --checkout '$CHECKOUT' is not a readable git checkout, so the NO-GO order of the fork PR cannot be read. No GO written." >&2
+        exit 10
+    fi
+    GITDIR=$(cd "$CHECKOUT" && pwd)
+elif [ "$FORK_SET" -eq 1 ]; then
+    _gfc_want=$(printf '%s' "$FORK" | tr '[:upper:]' '[:lower:]') _gfc_first="" _gfc_has=""
+    _gfc_try() {  # <dir>: note the first checkout whose origin names $FORK, and the first of those holding $SHA
+        local u
+        u=$( (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE; git -C "$1" remote get-url origin) 2>/dev/null) || return 0  # swallow-ok: a directory with no origin is not a candidate, the scan moves on
+        u=$(printf '%s' "$u" | sed -E 's#^(https?://[^/]+/|git@[^:]+:|ssh://git@[^/]+/)##; s#\.git/?$##' | tr '[:upper:]' '[:lower:]')
+        [ "$u" = "$_gfc_want" ] || return 0
+        [ -n "$_gfc_first" ] || _gfc_first=$1
+        [ -n "$_gfc_has" ] || { (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE; git -C "$1" cat-file -e "$SHA^{commit}") 2>/dev/null && _gfc_has=$1; }
+        return 0
+    }
+    _gfc_try "$PWD"
+    _gfc_rest="${HIMMEL_FORK_ROOTS:-$(dirname "$ANCHOR")}:"
+    while [ -n "$_gfc_rest" ]; do
+        _gfc_root=${_gfc_rest%%:*}; _gfc_rest=${_gfc_rest#*:}
+        [ -d "$_gfc_root" ] || continue
+        for _gfc_d in "$_gfc_root"/*/; do
+            [ -d "$_gfc_d" ] && _gfc_try "${_gfc_d%/}"
+        done
+    done
+    GITDIR=${_gfc_has:-${_gfc_first:-$PWD}}
+fi
+
 # a `delta: no-op` verdict (write-verdict.sh --delta-noop) stands in for a judge only
 # while go-gate.sh's go_noop_carry (the one carry rule auto-go.sh runs too) holds and
 # the delta of every hop of its chain still classifies none. A real GO at the head is
@@ -373,12 +422,12 @@ if [ "$TRUST_SET" -eq 1 ]; then
         esac
     done
     if [ "$REAL" -eq 1 ]; then
-        if ! WHY=$(go_nogo_after "$NVD" "$PR" "$PWD" "$SHA"); then
+        if ! WHY=$(go_nogo_after "$NVD" "$PR" "$GITDIR" "$SHA"); then
             echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - $WHY. No GO written." >&2
             exit 10
         fi
     elif [ "$NOOP" -eq 1 ]; then
-        if ! WHY=$(go_noop_carry "$NVD" "$TRUST" "$PR" "$PWD" "$SHA" "$ROOT" "$ANCHOR" "$VREPO"); then
+        if ! WHY=$(go_noop_carry "$NVD" "$TRUST" "$PR" "$GITDIR" "$SHA" "$ROOT" "$ANCHOR" "$VREPO"); then
             echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - its only verdict is a delta no-op that may not carry: $WHY. No GO written." >&2
             exit 10
         fi
@@ -388,7 +437,7 @@ if [ "$TRUST_SET" -eq 1 ]; then
         fi
         while read -r NH NJ; do
             [ -n "$NH" ] && [ "$NJ" != - ] || continue
-            DCLASS=$(bash "$HERE/delta-class.sh" --qid "$TRUST" ${VREPO:+--repo "$VREPO"} "$NJ" "$NH" 2>/dev/null) || DCLASS=trust # swallow-ok: a failed classifier reads trust, which refuses, on this line
+            DCLASS=$(cd "$GITDIR" && bash "$HERE/delta-class.sh" --qid "$TRUST" ${VREPO:+--repo "$VREPO"} "$NJ" "$NH" 2>/dev/null) || DCLASS=trust # swallow-ok: a failed classifier reads trust, which refuses, on this line
             if [ "$DCLASS" != none ]; then
                 echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - its only verdict is a delta no-op, but delta-class.sh classifies the delta from '$NJ' to '$NH' as '$DCLASS' (not none). A judge must rule on this head; a no-op never carries a trust-path or judged-finding delta. No GO written." >&2
                 exit 10
