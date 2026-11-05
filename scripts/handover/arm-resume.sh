@@ -5326,6 +5326,14 @@ fi
 if [ "$_arm_is_chief" -eq 1 ] && ! chief_context_write_record "$SESSION_NAME" "$CONTEXT_MODE" "$_arm_context_source" "$AUTOCOMPACT"; then
     echo "WARN arm-resume: context record NOT written under ${CHIEF_CONTEXT_RECORD_DIR:-<no cache dir>} (this chief's launch context is unrecoverable after a reboot)" >&2
 fi
+# A non-chief arm records its launch the same way (profile, lane, role), so the digest reads the lane
+# from the record, never infers it. The relaunch is native `claude -n SESSION_NAME`, found by that title. Same spot
+# and same rule as the chief row: after the verify, best-effort (the helper warns and exits 0, a bad name is refused).
+if [ "$_arm_is_chief" -eq 0 ]; then
+    _arm_rec_profile="${PROFILE:-$(bash "$SCRIPT_DIR/../lanes/role-profile.sh" "$HANDOVER_PATH" 2>/dev/null)}"
+    bash "$SCRIPT_DIR/launch-record.sh" "$SESSION_NAME" "${_arm_rec_profile:-user}" native resume "" "${MODEL:-default}" || true
+    unset _arm_rec_profile
+fi
 
 # A CONSUMED arm exits HERE -- before the force-replace reap and
 # before the arms-registry publication (r5 round). Both of those

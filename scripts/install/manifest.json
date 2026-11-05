@@ -104,6 +104,8 @@
       "profiles": ["core", "luna", "all"],
       "deps": [],
       "probe": { "type": "qmd-index", "collections": ["himmel"] },
+      "healthScope": "project",
+      "repo": "himmel",
       "install": { "type": "qmd" },
       "removable": "full-offboard-only",
       "provenance": { "kinds": ["collection"] }

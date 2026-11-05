@@ -80,8 +80,8 @@ stubDoctor="$work/stub-doctor.sh"
 cat > "$stubDoctor" <<STUB
 #!/usr/bin/env bash
 echo called >> "$doctorLog"
-printf '%s\n' '{"sev":"OK","id":"C1-guardrail","msg":"guardrail ok","remedy":""}'
-printf '%s\n' '{"sev":"WARN","id":"C3-luna","msg":"luna dirty (execute,pr)","remedy":"commit it"}'
+printf '%s\n' '{"sev":"OK","id":"C1-guardrail","msg":"guardrail ok","remedy":"","scope":"shared"}'
+printf '%s\n' '{"sev":"WARN","id":"C3-luna","msg":"luna dirty (execute,pr)","remedy":"commit it","scope":"project","repo":"himmel"}'
 printf '%s\n' '{"sev":"FAIL","id":"C9-leak","msg":"token is $CANARY here","remedy":"rotate"}'
 STUB
 chmod +x "$stubDoctor"
@@ -191,10 +191,22 @@ bad=$(jq -r '.rows[]|select(((.scope // "")|IN("shared","project")|not) or ((.fi
 classify() { "$node_bin" -e 'const f=require(process.argv[1]);const [src,id]=process.argv[2].split("|");const r=f.classifyRow({source:src,id,fix:{remedy:process.argv[3]||""}});console.log([r.scope,r.by,r.tile||"-"].join(" "))' "$repo_root/scripts/himmelctl/lib/config-feed.js" "$1" "${2:-}"; }
 [ "$(classify 'secret|secret:TELEGRAM_BOT_TOKEN')" = "shared configure secrets" ] || fail "a4 telegram token: $(classify 'secret|secret:TELEGRAM_BOT_TOKEN')"
 [ "$(classify 'secret|secret:JIRA_PROJECT_KEY')" = "project configure tracker" ] || fail "a4 jira project key: $(classify 'secret|secret:JIRA_PROJECT_KEY')"
-[ "$(classify 'doctor|doctor:C12-gh-auth' 'gh auth login')" = "shared operator -" ] || fail "a4 gh auth: $(classify 'doctor|doctor:C12-gh-auth' 'gh auth login')"
-[ "$(classify 'doctor|doctor:C12-gh-auth' '')" = "shared chief -" ] || fail "a4 an operator row with no command falls to the chief"
-[ "$(classify 'doctor|doctor:C40-qmd-vec')" = "shared chief -" ] || fail "a4 qmd-vec: $(classify 'doctor|doctor:C40-qmd-vec')"
-[ "$(classify 'doctor|doctor:C22-chain-skips')" = "project chief -" ] || fail "a4 chain skips: $(classify 'doctor|doctor:C22-chain-skips')"
+# A doctor or item row carries the scope its probe declares; classifyRow reads it, no hand list.
+classifyJ() { "$node_bin" -e 'const f=require(process.argv[1]);const r=f.classifyRow(JSON.parse(process.argv[2]));console.log([r.scope,r.by,r.tile||"-"].join(" "))' "$repo_root/scripts/himmelctl/lib/config-feed.js" "$1"; }
+[ "$(classifyJ '{"source":"doctor","id":"doctor:C12-gh-auth","scope":"shared","fix":{"remedy":"gh auth login"}}')" = "shared operator -" ] || fail "a4 gh auth"
+[ "$(classifyJ '{"source":"doctor","id":"doctor:C12-gh-auth","scope":"shared","fix":{"remedy":""}}')" = "shared chief -" ] || fail "a4 an operator row with no command falls to the chief"
+for c in C38-uv C44-skill-index C45-qmd-daemon C52-graphify-ollama C83-qmd-embed-backlog C22-chain-skips C80-status-drift C86-morning-report C40-qmd-vec; do
+  [ "$(classifyJ "{\"source\":\"doctor\",\"id\":\"doctor:$c\",\"scope\":\"shared\",\"fix\":{\"remedy\":\"\"}}")" = "shared chief -" ] || fail "a4 $c declared shared reads $(classifyJ "{\"source\":\"doctor\",\"id\":\"doctor:$c\",\"scope\":\"shared\",\"fix\":{\"remedy\":\"\"}}")"
+done
+[ "$(classifyJ '{"source":"doctor","id":"doctor:C33-graph-stale","scope":"project","repo":"himmel","fix":{"remedy":""}}')" = "project chief -" ] || fail "a4 C33 declared project"
+[ "$(classifyJ '{"source":"doctor","id":"doctor:C77-undeclared","fix":{"remedy":""}}')" = "project chief -" ] || fail "a4 an undeclared doctor row defaults to the project"
+[ "$(classifyJ '{"source":"item","kind":"vault","id":"qmd-himmel-collection","healthScope":"project","fix":{"remedy":""}}')" = "project chief -" ] || fail "a4 an item healthScope beats its kind default"
+[ "$(classifyJ '{"source":"item","kind":"vault","id":"qmd-index","fix":{"remedy":""}}')" = "shared chief -" ] || fail "a4 an item with no healthScope keeps its kind default"
+# through the feed: the stub doctor's declared scope and repo reach the row, and the manifest item declares its own
+jq -e '[.rows[]|select(.id=="doctor:C1-guardrail")|.scope=="shared"]==[true]' "$out" >/dev/null || fail "a4 a declared-shared doctor row is shared in the feed"
+jq -e '[.rows[]|select(.id=="doctor:C3-luna")|.scope=="project" and .repo=="himmel"]==[true]' "$out" >/dev/null || fail "a4 a declared repo reaches the feed row"
+jq -e '[.rows[]|select(.id=="qmd-himmel-collection")|.scope=="project" and .repo=="himmel"]==[true]' "$out" >/dev/null || fail "a4 qmd-himmel-collection is project himmel in the feed"
+jq -e '[.rows[]|select(.id=="qmd-index")|.scope=="shared"]==[true]' "$out" >/dev/null || fail "a4 qmd-index stays shared in the feed"
 [ "$(classify 'initiative|initiative:execute')" = "project configure scope" ] || fail "a4 initiative: $(classify 'initiative|initiative:execute')"
 [ "$(classify 'lane|lane:codex')" = "shared configure review" ] || fail "a4 lane: $(classify 'lane|lane:codex')"
 [ "$(classify 'cadence|qmd-cadence')" = "shared configure scope" ] || fail "a4 cadence: $(classify 'cadence|qmd-cadence')"

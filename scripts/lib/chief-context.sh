@@ -179,7 +179,7 @@ chief_context_write_record() {
     case "$1" in ""|*/*) return 1 ;; esac
     [ -n "$CHIEF_CONTEXT_RECORD_DIR" ] || return 1
     ( umask 077 && mkdir -p "$CHIEF_CONTEXT_RECORD_DIR" && \
-        printf 'headed-arm: role=chief session=%s context=%s source=%s autocompact=%s launched=%s\n' \
+        printf 'headed-arm: role=chief session=%s context=%s source=%s autocompact=%s launched=%s lane=native\n' \
             "$1" "$2" "$3" "$4" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             >> "$CHIEF_CONTEXT_RECORD_DIR/$1.log" ) 2>/dev/null
 }

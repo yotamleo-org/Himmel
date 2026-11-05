@@ -225,6 +225,18 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
     for (const k of ['WORKER_SESSION_LANE', 'CADENCE_USAGE_LAUNCH', 'CADENCE_USAGE_CALLER_PID']) expect(pre?.env).not.toHaveProperty(k);
   });
 
+  it('the judge run writes a launch record the digest reads back by the session id (HIMMEL-9163)', async () => {
+    const cache = join(root, 'cache');
+    vi.stubEnv('HIMMELCTL_CACHE_DIR', cache);
+    await oneRequest();
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    const call = judgeReply.calls.find((c) => c.file === 'claude');
+    const sid = call?.args[(call?.args.indexOf('--session-id') ?? -2) + 1] ?? '';
+    expect(sid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    const log = readFileSync(join(cache, 'launch-logs', `rm-judge-${sid.slice(0, 8)}.log`), 'utf8');
+    expect(log).toMatch(new RegExp(`^headed-arm-worker: profile=bare lane=native model=opus role=release-manager session=rm-judge-${sid.slice(0, 8)} session_id=${sid} launched=\\S+\\n$`));
+  });
+
   it.each(['SKIPPED-BANK', 'BANK-UNKNOWN'])('the judge stops on preflight %s and names the token', async (token) => {
     await oneRequest();
     judgeReply.preflight = `bank-preflight: note\n${token}\n`;

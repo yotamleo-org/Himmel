@@ -1,6 +1,6 @@
 // thin DOM glue. All markup comes from render.js.
 import { renderInventory, renderTriage, renderHeader, renderProbe, reviewGateDraft } from "/render.js";
-import { renderHealth, verdict, parseView, projectVerdict } from "/health.js";
+import { renderHealth, verdict, parseView, projectVerdict, chiefLiveFor } from "/health.js";
 import { renderToolHealth, toolHealthLoader, toolHealthHref } from "/tool-health.js";
 import { driftSince, renderBoard } from "/roadmap.js";
 import { renderWorkflow, parseWorkflowRoute } from "/workflow.js";
@@ -182,17 +182,16 @@ function healthPage(f) {
   const other = healthView.project && cur && healthView.project !== cur;
   const fleetLink = navLinks({ here: "console", token, current: "health", sources }).find((l) => l.id === "fleet");
   const shown = other ? (otherFeed && otherFeed !== "none" ? otherFeed : null) : f;
-  const view = { ...healthView, projects, project: healthView.project || cur, foreign: Boolean(other), fleetHref: fleetLink && fleetLink.href, unchecked: Boolean(other) && otherFeed === "none", chief: chiefLive() };
+  const view = { ...healthView, projects, project: healthView.project || cur, foreign: Boolean(other), fleetHref: fleetLink && fleetLink.href, unchecked: Boolean(other) && otherFeed === "none", chief: chiefLive(cur), himmelChief: chiefLive("himmel") };
   // the filterable Inventory stays below the v2 page until its e2e is ported to the Every item checked tab; Triage is the broken tab now.
   const legacy = shown && !other && healthView.mode !== "all" ? renderInventory(shown, state) : "";
   return renderHealth(shown, health, view) + legacy + (!shown && !other && healthView.mode !== "all" ? probeStatus() : "");
 }
-// Is a chief session live? true/false from the fleet read, undefined until it lands (the row then says only "for the chief").
-// Liveness as Fleet reads it (fleet-model.ts isLive). ponytail: any live chief on this station counts for the project this
-// UI runs in; upgrade path: a project field on each fleet row, matched against projects.current.
-function chiefLive() {
-  if (!fleet.data || fleet.data.census === "unavailable") return undefined;
-  return (fleet.data.sessions || []).some((s) => s.role === "console" && s.live !== false && s.state !== "wrapped" && s.lock !== "released");
+// Is a chief session of this project live? true/false from the fleet read, undefined until it lands (the row then says only
+// "for the chief"). A chief is named <KEY>-…, the key being the project's name uppercased (health.js chiefLiveFor); shared rows
+// ask for "himmel", the harness's own project. ponytail: a name prefix, upgrade path: a project field on each fleet row.
+function chiefLive(project) {
+  return project ? chiefLiveFor(fleet.data, project) : undefined;
 }
 const healthHash = (v) => {
   const q = new URLSearchParams();
@@ -710,7 +709,7 @@ document.addEventListener("drop", (e) => {
   const card = rmDrag; rmDrag = null;
   const t = rmTicket(card.k, card.project);
   if (t && EVENT_OWNED.has(col.dataset.rmDrop)) { // In review, CI and Done are moved by their event (a PR opening, CI, the merge): a drop there is held, nothing is written (ruling Q4)
-    if (t.b !== col.dataset.rmDrop) { roadmapUi.held = `${t.id || "HIMMEL-" + t.k}: ${COLS_BY_ID[col.dataset.rmDrop]} is moved by its event, not by a drop. Nothing was written.`; paint(); }
+    if (t.b !== col.dataset.rmDrop && !(col.dataset.rmDrop === "rev" && t.b === "ci")) { roadmapUi.held = `${t.id || "HIMMEL-" + t.k}: ${COLS_BY_ID[col.dataset.rmDrop]} is moved by its event, not by a drop. Nothing was written.`; paint(); }
     return;
   }
   if (t && t.b !== col.dataset.rmDrop) writeRoadmap(t, { status: col.dataset.rmDrop });
