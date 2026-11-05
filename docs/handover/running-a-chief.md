@@ -409,14 +409,16 @@ Standing operator rulings keep four helper classes on Opus at high effort, and
 a chief that follows the table over them is wrong: audits (backlog, version,
 done, collision or drift audits, decision explainers, spend measurement),
 docs work, mockups and HTML renders, and spec critics. Over 2026-11-01 and
-2026-11-02 these classes were about 99.8 % of the chief `general-purpose` Opus
+2026-11-02 these classes were about 87 % of the chief `general-purpose` Opus
 spend (22.98 $-eq a day, measured in
 `specs/audits/HIMMEL-8926-chief-helper-spend-2026-11-05.md` in the state
-repo), so a tier move cannot bring that spend under 15 a day. The rules:
+repo); the rest was one root-cause investigation (a hard call) and a 0.07
+triage. A tier move alone therefore cannot bring that spend under 15 a day.
+The rules:
 
 1. **Ruled class: `general-purpose`, Opus, high.** Dispatch it as
    `general-purpose`, not as a named agent. The named agents' rows above stay as
-   they are: 9 of 29 Opus helper dispatches in that window were a named agent
+   they are: 9 of 29 Opus helper dispatches from 2026-11-01 to 2026-11-05 were a named agent
    (`ticket-auditor`, `page-reviewer`, `brief-drafter`, `edit-runner`) passed
    `model: opus`, which contradicts its own row. Put `TIER: operator-ruling
    <decision or ruling> (<class>)` and `EFFORT: operator-ruling, <class> runs at
