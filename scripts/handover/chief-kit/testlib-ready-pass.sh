@@ -38,7 +38,7 @@ case "$*" in
     *"--json body"*) printf '%b' "${READY_STUB_BODY-$DEFAULT_BODY}"; exit 0 ;;
     'api repos/'*'/pulls/'*) printf '%s\n' "${READY_STUB_HEAD:-}"; exit 0 ;;
     *':pullRequest(number:'*)
-        jq -n --arg h "${READY_STUB_HEAD:-}" --arg args "$*" --arg b "${READY_STUB_BRANCH:-b}" --arg t "${READY_STUB_TITLE-fix(x): t (#1)}" \
+        jq -n --arg h "${READY_STUB_HEAD:-}" --arg args "$*" --arg b "${READY_STUB_GQL_BRANCH-${READY_STUB_BRANCH:-b}}" --arg t "${READY_STUB_TITLE-fix(x): t (#1)}" \
             --arg body "$(printf '%b' "${READY_STUB_BODY-$DEFAULT_BODY}")" '
             ($args | capture("p(?<n>[0-9]+):pullRequest").n) as $n |
             {data:{repository:{("p"+$n):{number:($n|tonumber),headRefOid:$h,headRefName:$b,title:$t,mergeStateStatus:"CLEAN",reviewDecision:null,
