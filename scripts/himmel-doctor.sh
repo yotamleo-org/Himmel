@@ -5342,7 +5342,7 @@ check_c88_graph_api_optin() {
         emit WARN C88-graph-api-optin "the API lane is not opted in, but $keys is in $envfile and an armed runner still bakes HIMMEL_API_LANE=on ($lanes): the cadence draws that key without an opt-in until it is re-rendered" \
             "bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed  (drops the lane); a station meant to draw it sets graphify.semantic_api_ok to true in ~/.himmel/config.json first"
     elif [ -n "$lanes" ]; then
-        emit INFO C88-graph-api-optin "the API lane is not opted in and an armed runner bakes HIMMEL_API_LANE=on ($lanes), but .env holds no API key, so nothing is drawn" \
+        emit INFO C88-graph-api-optin "the API lane is not opted in and an armed runner bakes HIMMEL_API_LANE=on ($lanes), but .env holds no API key, so the cadence draws no key from .env (a key in the runner's own environment is not checked)" \
             "bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed  (drops the lane)"
     else
         emit OK C88-graph-api-optin "the API lane is not opted in (graphify.semantic_api_ok is not true in ~/.himmel/config.json) and no armed runner carries it${keys:+; $keys in .env is never drawn by the cadence}"
