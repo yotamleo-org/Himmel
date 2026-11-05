@@ -270,9 +270,10 @@ class Sweep:
                 "--allowedTools", allowed, "--strict-mcp-config", "--mcp-config", self.mcp_config(arm)] + keep + [
                 "--append-system-prompt-file", PREFACE]
 
-    def ask(self, q, arm, text, tag=None, sess=None, pos=1, prime=False):
+    def ask(self, q, arm, text, tag=None, sess=None, prime=False):
         """One answerer call -> a result row (labelled `tag` when given), or None when the sweep must stop.
-        `sess` is a warm session {id, n}: n counts its good calls; a failed first call gets a fresh id."""
+        `sess` is a warm session {id, n}: n counts its good calls and the row's pos is n + 1, so a question
+        that had to open a fresh session after a failed call counts as question 1 of it, not a warm one."""
         cap = min(PER_RUN_USD, self.a.max_usd - self.spent)
         if cap <= 0:
             self.stopped = "max-usd %s reached before %s/%s" % (self.a.max_usd, q["id"], arm)
@@ -291,7 +292,7 @@ class Sweep:
             prompt, cwd = build_prompt(q["q"], arm, text), self.scratch
         row = dict(id=q["id"], arm=tag or arm, split=q.get("split", "insample"), correct=False, named=[], tokens=0, weighted=0,
                    cost_usd=0.0, priced_usd=0.0, priced=True, input=0, output=0, cache_read=0, cache_creation=0,
-                   turns=0, retr_tokens=self.ev.tok(text), error=None, pos=pos, prime=prime)
+                   turns=0, retr_tokens=self.ev.tok(text), error=None, pos=sess["n"] + 1 if sess is not None else 1, prime=prime)
         t0 = time.time()
         try:
             # eval answerer: bank-preflighted above, explicit permission mode (never bypassPermissions)
@@ -607,7 +608,7 @@ def run_warm(sw, a, real, qsel):
                     break
                 r0 = (g + j) % len(real)
                 for arm in real[r0:] + real[:r0]:
-                    if sw.ask(q, arm, "", sess=sessions[arm], pos=j + 1) is None:
+                    if sw.ask(q, arm, "", sess=sessions[arm]) is None:
                         break
                 print("%s %s" % (q["id"], " ".join("%s=%d" % (r["arm"], r["correct"]) for r in sw.rows if r["id"] == q["id"] and r["arm"] in real)),
                       file=sys.stderr)

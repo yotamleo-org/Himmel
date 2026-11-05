@@ -371,6 +371,7 @@ rm -f "$W"/sess-*.log "$W/ledger.jsonl"
 if STUB_FAIL_Q="queue lock" CLAUDE_CONFIG_DIR="$W/cc" python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-warmerr" --arms vanilla --model claude-sonnet-5-5 --pool 3 --n 3 --warm-session 2 --no-ledger > "$W/warmerr.txt" 2>&1; then fail "an errored warm call makes the run exit nonzero"; else pass "an errored warm call makes the run exit nonzero"; fi
 eq "after a failed first call the next question opens a new session, not --resume" "--session-id --session-id --session-id" "$(wsess vanilla | awk '{print $1}' | tr '\n' ' ' | sed 's/ $//')"
 eq "the three sessions have three different ids" "3" "$(wsess vanilla | cut -d' ' -f2 | sort -u | wc -l | tr -d ' ')"
+eq "a question that opened a fresh session after a failed call is question 1 of it, not a warm one" "1 1 1" "$(python3 -I -c 'import json,sys; print(" ".join(str(r["pos"]) for r in map(json.loads, open(sys.argv[1]))))' "$W/out-warmerr/results.jsonl")"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
