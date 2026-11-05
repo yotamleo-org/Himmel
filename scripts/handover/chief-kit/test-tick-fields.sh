@@ -1252,6 +1252,145 @@ not_contains 'no semaphore dir leaves slotage= off the line (HIMMEL-5788)' "$(HI
 not_contains "slotage= is not in chief-wait's wake key (HIMMEL-5788)" "$cw_keys" 'slotage'
 rm -rf "$sa_dir"
 
+# --- cadence=<name>:<state>:<age>:<run id>[:RED|:SKIP|:MISSED],...: the last SCHEDULED
+# run of every workflow with a schedule: trigger, read through ci-cadence.sh at most once per
+# CI_CADENCE_INTERVAL_SEC and served from the cache between. cg9247 stands in for gh: it counts each
+# call and answers `run list --workflow <file>` from <dir>/<file>.row (status, conclusion, createdAt, id),
+# so no suite reaches GitHub. RED control (tick.sh before this change): the line never carries cadence=.
+cg9247="$W/cadence9247"
+mkdir -p "$cg9247"
+# shellcheck disable=SC2016  # the stub's own $-expressions must stay literal
+printf '%s\n' '#!/bin/sh' 'echo "$*" >> "$CG_DIR/calls"' '[ -n "$CG_FAIL" ] && exit 1' \
+    'case "$1 $2" in' \
+    '"run list") wf=; while [ $# -gt 0 ]; do [ "$1" = --workflow ] && wf=$2; shift; done; [ -f "$CG_DIR/$wf.row" ] && cat "$CG_DIR/$wf.row"; exit 0 ;;' \
+    '"run view") printf "https://github.com/x/y/actions/runs/%s\tbuild / Run tests\n" "$3"; exit 0 ;;' \
+    'esac' 'exit 0' > "$cg9247/gh"
+chmod +x "$cg9247/gh"
+cg_row() { # <workflow file> <status> <conclusion> <age> <id>
+    printf '%s\t%s\t%s\t%s\n' "$2" "$3" "$(date -u -d "$4 ago" +%Y-%m-%dT%H:%M:%SZ)" "$5" > "$cg9247/$1.row"  # gnu-ok: Linux-only kit
+}
+cg_seed() {
+    rm -f "$cg9247"/*.row "$cg9247/calls" "$cg9247/cache"
+    cg_row ci.yml completed success '3 hours' 101
+    cg_row ledger-drift.yml completed success '20 hours' 102
+    cg_row fork-drift.yml completed success '5 hours' 103
+    cg_row pages.yml completed success '9 hours' 104
+    cg_row ci-image.yml completed success '3 days' 105
+    cg_row macos-cadence.yml completed failure '2 days' 106
+    cg_row snyk-weekly.yml completed failure '3 days' 107
+}
+cg_tick() { CG_DIR="$cg9247" CI_CADENCE_GH="$cg9247/gh" CI_CADENCE_STATE="$cg9247/cache" bash "$SUT" "$@" 2>/dev/null; }
+cadence_of() { sed -nE 's/.* cadence=([^ ]*).*/\1/p'; }
+cg_seed
+cg_line="$(cg_tick | cadence_of)"
+for cg_name in ci ledger-drift fork-drift pages ci-image macos-cadence snyk-weekly; do
+    contains "cadence= carries $cg_name (HIMMEL-9247)" "$cg_line" "$cg_name:"
+done
+contains 'a failure run reads RED with its run id (HIMMEL-9247)' "$cg_line" 'macos-cadence:failure:2d:106:RED'
+contains 'a green run carries no flag (HIMMEL-9247)' "$cg_line" 'ci:success:3h:101,'
+contains 'verbose labels the field (HIMMEL-9247)' "$(cg_tick --verbose)" 'ci cadence: ci:success'
+# (d) a second tick inside the interval makes no gh call
+cg_n="$(wc -l < "$cg9247/calls" | tr -d ' ')"
+cg_tick >/dev/null
+same 'a second tick inside the interval makes no gh call (HIMMEL-9247)' "$(wc -l < "$cg9247/calls" | tr -d ' ')" "$cg_n"
+same 'the first read made one call per workflow (HIMMEL-9247)' "$cg_n" '7'
+# a run older than the interval is read again
+CI_CADENCE_INTERVAL_SEC=0 CG_DIR="$cg9247" CI_CADENCE_GH="$cg9247/gh" CI_CADENCE_STATE="$cg9247/cache" bash "$SUT" >/dev/null 2>&1
+same 'interval 0 reads again (HIMMEL-9247)' "$(wc -l < "$cg9247/calls" | tr -d ' ')" '14'
+# (c) a skipped run is flagged; a run that gated itself on purpose concludes success and is not
+cg_seed; cg_row pages.yml completed skipped '4 hours' 204
+contains 'a skipped scheduled run reads SKIP (HIMMEL-9247)' "$(cg_tick | cadence_of)" 'pages:skipped:4h:204:SKIP'
+cg_seed; cg_row snyk-weekly.yml completed success '3 days' 205
+not_contains 'a gated run that concluded success is not flagged (HIMMEL-9247)' "$(cg_tick | cadence_of)" 'snyk-weekly:success:3d:205:'
+# no scheduled run inside 1.5 times the period reads MISSED; a running run flags nothing
+cg_seed; cg_row fork-drift.yml completed success '40 hours' 206
+contains 'a scheduled run older than 1.5 periods reads MISSED (HIMMEL-9247)' "$(cg_tick | cadence_of)" 'fork-drift:success:40h:206:MISSED'
+cg_seed; cg_row ci.yml in_progress - '50 hours' 207
+not_contains 'a run still in progress is not flagged (HIMMEL-9247)' "$(cg_tick | cadence_of)" '207:MISSED'
+# (e) gh unreadable: cadence=?, the tick still answers
+cg_seed
+cg_bad="$(CG_FAIL=1 cg_tick)"
+same 'an unreadable gh reads cadence=? (HIMMEL-9247)' "$(printf '%s\n' "$cg_bad" | cadence_of)" '?'
+contains 'a tick with gh unreadable still prints its line (HIMMEL-9247)' "$cg_bad" 'TICK '
+printf '%s\n' '#!/bin/sh' 'echo "not a run row"' > "$cg9247/gh-junk"
+chmod +x "$cg9247/gh-junk"
+rm -f "$cg9247/cache"
+not_contains 'a gh answer that is no run row leaves cadence= off the line (HIMMEL-9247)' "$(CG_DIR="$cg9247" CI_CADENCE_GH="$cg9247/gh-junk" CI_CADENCE_STATE="$cg9247/cache" bash "$SUT" 2>/dev/null)" 'cadence='
+rm -rf "$cg9247"
+
+# --- the station row for ledger-drift: ci-cadence.sh arm / status / run / disarm on a stub
+# crontab, a stub ledger check and a stub alert sink, in a temp HOME. The crontab is written only through
+# crontab_locked_rmw: two cadences armed at once on a SLOW crontab (its read sleeps) both land. RED
+# control (before ci-cadence.sh has the verbs): the first arm prints a usage line and installs nothing.
+sr="$W/station9247"
+mkdir -p "$sr/home"
+# shellcheck disable=SC2016  # the stubs' own $-expressions must stay literal
+printf '#!/usr/bin/env bash\nif [ "${1:-}" = "-l" ]; then cat "$SR_TAB"; [ -z "${SR_SLOW:-}" ] || sleep 1; else cat > "$SR_TAB"; fi\n' > "$sr/crontab"  # read-sink-ok: a stub crontab written into the test sandbox, the suite names the file
+# shellcheck disable=SC2016  # the stub's own $-expressions must stay literal
+printf '#!/usr/bin/env bash\necho "ledger-drift ran" ; exit "${SR_RC:-0}"\n' > "$sr/ledger.sh"
+# shellcheck disable=SC2016  # the stub's own $-expressions must stay literal
+printf '#!/usr/bin/env bash\necho "$*" >> "$SR_ALERTS"\n' > "$sr/alert.sh"
+chmod +x "$sr/crontab"
+printf '0 1 * * * /other/job # HIMMEL-Other\n' > "$sr/tab"
+sr_cad() { HOME="$sr/home" HIMMEL_CRONTAB_LOCK="$sr/lock" SR_TAB="$sr/tab" SR_ALERTS="$sr/alerts" CICADENCE_CRONTAB="$sr/crontab" CICADENCE_RUNNER_DIR="$sr/runner" CICADENCE_LEDGER_SCRIPT="$sr/ledger.sh" CICADENCE_ALERT="$sr/alert.sh" bash "$HERE/ci-cadence.sh" "$@"; }
+sr_n() { grep -c "# $1" "$sr/tab" || true; }  # swallow-ok: grep -c prints 0 and exits 1 on no match
+sr_cad arm --dry-run >/dev/null 2>&1
+same 'arm --dry-run installs nothing (HIMMEL-9247)' "$(sr_n HIMMEL-LedgerDrift)" '0'
+sr_cad arm >/dev/null 2>&1
+same 'arm installs one HIMMEL-LedgerDrift row (HIMMEL-9247)' "$(sr_n HIMMEL-LedgerDrift)" '1'
+same 'arm keeps the other cron line (HIMMEL-9247)' "$(sr_n HIMMEL-Other)" '1'
+contains 'the default time is 09:20 (HIMMEL-9247)' "$(cat "$sr/tab")" '20 09 * * * '
+sr_cad arm >/dev/null 2>&1
+same 'a second arm refuses with rc 3 (HIMMEL-9247)' "$?" '3'
+contains 'status says ARMED (HIMMEL-9247)' "$(sr_cad status 2>&1)" 'ARMED      HIMMEL-LedgerDrift'
+sr_cad run >/dev/null 2>&1
+same 'run on a balanced ledger exits 0 (HIMMEL-9247)' "$?" '0'
+contains 'a clean run clears the alert (HIMMEL-9247)' "$(cat "$sr/alerts")" 'clear ledger-drift'
+SR_RC=1 sr_cad run >/dev/null 2>&1
+same 'run on a drifted ledger exits 1 (HIMMEL-9247)' "$?" '1'
+contains 'a failed run reports through cadence-alert fail (HIMMEL-9247)' "$(cat "$sr/alerts")" 'fail ledger-drift the shard ledger check exited 1'
+sr_cad disarm >/dev/null 2>&1
+same 'disarm removes the row (HIMMEL-9247)' "$(sr_n HIMMEL-LedgerDrift)" '0'
+same 'disarm keeps the other cron line (HIMMEL-9247)' "$(sr_n HIMMEL-Other)" '1'
+# two cadences armed at once on a slow crontab both land (the cadence lock)
+printf '#!/usr/bin/env bash\necho gen\n' > "$sr/gen.sh"
+mr_env() { HOME="$sr/home" HANDOVER_DIR="$sr/ho" HIMMEL_CRONTAB_LOCK="$sr/lock" SR_TAB="$sr/tab" SR_SLOW=1 MORNINGREPORT_CRONTAB="$sr/crontab" MORNINGREPORT_RUNNER_DIR="$sr/mr-runner" MORNINGREPORT_GENERATOR="$sr/gen.sh" "$@"; }
+mkdir -p "$sr/ho"
+mr_env bash "$HERE/../morning-report-cadence.sh" arm >/dev/null 2>&1 &
+sr_p1=$!
+SR_SLOW=1 sr_cad arm >/dev/null 2>&1 &
+sr_p2=$!
+wait "$sr_p1" "$sr_p2"
+same 'two cadences armed at once on a slow crontab both land (HIMMEL-9247)' "$(sr_n HIMMEL-LedgerDrift)$(sr_n HIMMEL-MorningReport)$(sr_n HIMMEL-Other)" '111'
+rm -rf "$sr"
+
+# --- review=<date>:<age>:<failures>:<new>:<new 5+>:<filed>[:CAPPED][:STALE] (decision 593): the daily failure
+# review as one more scheduled row, a local read of the newest failure-review-<date>.md and its .json sidecar
+# in HIMMEL_FAILURE_REVIEW_DIR. RED control (tick.sh before this change): the line never carries review=.
+rv="$W/review593"
+mkdir -p "$rv"
+review_of() { sed -nE 's/.* review=([^ ]*).*/\1/p'; }
+rv_tick() { HIMMEL_FAILURE_REVIEW_DIR="$rv" bash "$SUT" "$@" 2>/dev/null; }
+rv_write() { # <date> <age as touch -d reads it> <sidecar json>
+    printf '## Failure review\n' > "$rv/failure-review-$1.md"
+    printf '%s\n' "$3" > "$rv/failure-review-$1.json"
+    touch -d "$2 ago" "$rv/failure-review-$1.md"  # gnu-ok: Linux-only kit
+}
+rv_json_filed='{"totals":{"rows":100,"classes":4,"workers":9},"classes":[{"class":"denied/a","rows":7,"recurring":false},{"class":"error/b","rows":1,"recurring":false},{"class":"error/c","rows":50,"recurring":true},{"class":"traj/x","rows":9,"recurring":false}],"routing":[{"decision":"filed","class":"denied/a","ticket":"HIMMEL-9256"},{"decision":"filed","class":"error/c","ticket":"HIMMEL-9257"},{"decision":"commented","class":"x","ticket":"HIMMEL-1"},{"decision":"capped","class":"y"}]}'
+rv_json_quiet='{"totals":{"rows":100,"classes":2,"workers":9},"classes":[{"class":"error/b","rows":1,"recurring":false},{"class":"error/c","rows":50,"recurring":true}],"routing":[{"decision":"commented","class":"x","ticket":"HIMMEL-1"}]}'
+rv_write 2026-11-05 '2 hours' "$rv_json_filed"
+same 'a fresh review reads its age, failures, new classes, big new classes, filed keys and the cap (decision 593)' "$(rv_tick | review_of)" '2026-11-05:2h:100:2:1:HIMMEL-9256+HIMMEL-9257:CAPPED'
+contains 'verbose labels the failure review (decision 593)' "$(rv_tick --verbose)" 'failure review: 2026-11-05:2h:100:2:1:'
+rv_write 2026-11-05 '30 hours' "$rv_json_filed"
+same 'a review older than 26 h reads STALE (decision 593)' "$(rv_tick | review_of)" '2026-11-05:30h:100:2:1:HIMMEL-9256+HIMMEL-9257:CAPPED:STALE'
+rv_write 2026-11-05 '3 hours' "$rv_json_quiet"
+same 'a 1-count new class files nothing and flags nothing (decision 593)' "$(rv_tick | review_of)" '2026-11-05:3h:100:1:0:-'
+rm -f "$rv/failure-review-2026-11-05.json"
+same 'a review with no sidecar reads ? for the counts (decision 593)' "$(rv_tick | review_of)" '2026-11-05:3h:?:?:?:-'
+rm -f "$rv"/*
+not_contains 'no review file leaves review= off the line (decision 593)' "$(rv_tick)" 'review='
+rm -rf "$rv"
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick-fields.sh'
     exit 0
