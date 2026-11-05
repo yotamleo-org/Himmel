@@ -755,7 +755,7 @@ each check is right for reporting that check's state, never for deciding
 mergeability.
 
 `scripts/handover/chief-kit/ready-go.sh [--to <worker> --token <nonce>] [--ledger <chief doc>] --contract yes|no <pr> <sha>`
-is the whole mechanical READY turn in one call: the `ready-check.sh` output, the coverage line, the trust-path result, the ticket state and the exact GO line to send. `--contract` is the brief's `Completes ticket:` answer and goes into the GO line it prints. It is read-only (no GO file, no message): `go.sh` and the SendMessage stay yours.
+is the whole mechanical READY turn in one call: the `ready-check.sh` output, the coverage line, the trust-path result, the ticket state and the exact GO line to send. `--contract` is the brief's `Completes ticket:` answer and goes into the `go.sh` command on the `NEXT:` line. It is read-only (no GO file, no message): `go.sh` and the SendMessage stay yours.
 
 At each `READY`, run `scripts/handover/chief-kit/auto-go.sh --dry-run --doc <chief doc> --fleet <manifest> --worker <label> <pr> <head>` and record its one answer line (`WOULD-GO` or `ESCALATE auto-go <check#> <reason>`) in your own notes beside the GO you send by hand. The dry run acts on nothing: no GO file, no verdict record, no message. It writes one `auto-go.jsonl` row, so the record builds up the evidence of how often a script would have given the same GO.
 
