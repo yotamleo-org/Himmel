@@ -369,8 +369,8 @@ printf '{"legs":[{"label":"N9","doc":"%s"},{"label":"N8","doc":"%s"}]}\n' "$root
 out6next="$(chief next --bucket nextrepo)"
 check "6 next writes successor stub" "$([ -f "$doc6B" ] && echo yes)" "yes"
 # The outgoing chief is told, once, what its tail is: relay, wait for LIVE with no waiter, wrap, stop.
-check "6 next tells the outgoing chief to relay, re-arm the muted waiter once, read nothing, wrap on LIVE and stop" \
-    "$(printf '%s\n' "$out6next" | grep -c '^after-next: .*re-arm the muted waiter once.*read nothing.*chief.sh wrap.*stop')" "1"
+check "6 next without --arm prints no after-next line: an unarmed successor never reports LIVE" \
+    "$(printf '%s\n' "$out6next" | grep -c '^after-next:')" "0"
 check "6 next still arms the relay and the handover mode (control)" \
     "$(printf '%s\n' "$out6next" | grep -c '^\(relay-on-live\|handover-mode\): ')" "2"
 check "6 Telegram metadata records the successor bucket" "$(grep -c '"bucket":' "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}B-chief.md.meta.json" 2>/dev/null || true)" "1"
@@ -505,6 +505,8 @@ check "7 arm log carries armed/signal/deadline/session" \
     "$(grep -cE "armed: name=${session7B} doc=.* signal=.*sig-${session7B} deadline=[0-9]+" "$log7B" 2>/dev/null)" "1"
 check "7945 next --arm exports the predecessor's session name to the arm" \
     "$(grep -c "^predecessor=DEMO-nextleg-${today}A-chief\$" "$log7B")" "1"
+check "7 next --arm tells the outgoing chief to relay, re-arm the muted waiter once, read nothing, wrap on LIVE and stop" \
+    "$(printf '%s\n' "$out7b" | grep -c '^after-next: .*re-arm the muted waiter once.*read nothing.*chief.sh wrap.*stop')" "1"
 check "7 next --arm prints the after-next line once, after the armed: line" \
     "$(printf '%s\n' "$out7b" | grep -n '^\(armed\|after-next\):' | cut -d: -f2 | tr '\n' ' ')" "armed after-next "
 HANDOVER_DIR="$root" bash "$QL" release "$doc7A" "$token7a" >/dev/null 2>&1
