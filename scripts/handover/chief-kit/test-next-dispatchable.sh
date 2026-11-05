@@ -1640,6 +1640,15 @@ lacks "(8436) a good sibling still holds its ticket beside malformed ones" "$b8m
 b8a="$(NEXT_DISPATCH_SIBLING_MAX_AGE_MIN=abc run8 "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json" --top 20)"
 has "(8436) a non-integer sibling age window does not stop the list" "$b8a" "${TAB}HIMMEL-57${TAB}"
 lacks "(8436) a non-integer sibling age window reads as the default" "$b8a" "RESUME${TAB}HIMMEL-53${TAB}"
+# a worker of the other chief owns every ticket its doc title names, not only the one in its file name
+M_SAVE="$M"; M="$M8"
+mk HIMMEL-58 "In Progress" High '[]' '["v1.0.1"]' '[]' "bundle sibling of a chief A worker" "Edit scripts/lib/r9.sh only."
+M="$M_SAVE"
+W59="$C8/HIMMEL-59-N12-bundle-2026-10-31.md"
+printf '# bundle — HIMMEL-59 / 58\n> **Writes:** scripts/lib/r10.sh\n' > "$W59"
+mkfleet "$C8/HIMMEL-nextleg-2026-10-31MF-roadmap-chief.fleet.json" "N12:$W59"
+b8t="$(run8 "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json" --top 20 --resume-only)"
+lacks "a worker of the other chief owns the sibling its doc title names" "$b8t" "RESUME${TAB}HIMMEL-58${TAB}"
 
 # --- (8349 S1b) the series ledger is a holder, and an abandoned series is flagged SERIES-ORPHAN ---
 # ledgers are written by the real series-ledger.py; the bucket is the directory of the --workers-from manifest

@@ -911,7 +911,7 @@ if chain_m:
                 smarks = [m.group(1) for m in (MARKER_RE.match(l) for l in slines) if m]
                 if smarks and smarks[-1] == 'WRAPPED':
                     continue
-                for k in re.findall(r'[A-Z]+-\d+', os.path.basename(sdoc)):
+                for k in re.findall(r'[A-Z]+-\d+', os.path.basename(sdoc)) + title_keys(slines):
                     worker_keys.add(k); owner.setdefault(k, 'live worker %s of the chief on %s' % (worker.get('label', '?'), sib[:-len('.fleet.json')]))
         except (OSError, ValueError, TypeError, AttributeError):
             continue  # swallow-ok: a sibling chief's unreadable or malformed manifest names no worker; this chief's own fleet is still known
