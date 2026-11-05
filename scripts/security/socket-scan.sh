@@ -11,12 +11,17 @@
 # single `socket scan create --report` call (1 quota unit; the free plan is a small quota, so a
 # change set never fans out into one scan per file).
 #
-# Exit: 0 scan passed or skipped, 1 the scan found a policy violation, 2 usage or scan error.
+# Exit: 0 scan passed or skipped, 1 socket exited 1 (a policy violation: always red, the report
+# is printed, never a skip), 2 usage or scan error (socket exited with any other code and no quota reply).
 # A skip is always exit 0 with a named reason on stdout and in $GITHUB_STEP_SUMMARY:
 #   SKIP no-manifest  the change set holds no manifest or lock file; nothing runs, no key is read
 #   SKIP no-key       SOCKET_DEV_API_KEY is not set and the secrets resolver serves none
-#   SKIP quota        Socket answered with a quota or rate-limit reply (HTTP 429, "Insufficient
-#                     quota for API route"); that is the plan running out, not a finding
+#   SKIP quota        socket exited with a code other than 0 or 1 and answered with a quota or
+#                     rate-limit reply (HTTP 429, "Insufficient quota for API route"); that is the
+#                     plan running out, not a finding. The reply text is read only for an rc other
+#                     than 0/1, because an rc 1 report can name a path or package that looks like
+#                     one. Cost: if Socket exits 1 on a 429 the check goes red, the safe direction
+#                     on a non-required check.
 #
 # The key: SOCKET_DEV_API_KEY from the environment (the repo secret in CI), else the himmel
 # secrets resolver without its .env fallback (.env feeds only jira). It reaches socket as
@@ -107,6 +112,14 @@ if [ "$rc" -eq 0 ]; then
     say "OK — ${#targets[@]} manifest or lock file(s) scanned in one scan, the report passes the policy"
     exit 0
 fi
+# rc 1 is the policy exit: report and fail, never a skip, whatever the report text says (a path or
+# package name in it can look like a quota reply). The quota reply is read only for another rc.
+if [ "$rc" -eq 1 ]; then
+    printf '%s\n' "$out"
+    [ -z "${GITHUB_STEP_SUMMARY:-}" ] || printf '%s\n' "$out" >> "$GITHUB_STEP_SUMMARY"
+    say "FAIL — the Socket report does not pass the policy (socket exit 1), see the output above"
+    exit 1
+fi
 if grep -Eiq "$QUOTA_RE" <<< "$out"; then
     reason="$(grep -Ei -m1 "$QUOTA_RE" <<< "$out" | head -c 300)"
     say "SKIP quota — Socket's quota or rate limit is reached, not a finding: $reason"
@@ -114,9 +127,5 @@ if grep -Eiq "$QUOTA_RE" <<< "$out"; then
 fi
 printf '%s\n' "$out"
 [ -z "${GITHUB_STEP_SUMMARY:-}" ] || printf '%s\n' "$out" >> "$GITHUB_STEP_SUMMARY"
-if [ "$rc" -eq 1 ]; then
-    say "FAIL — the Socket report does not pass the policy (socket exit 1), see the output above"
-    exit 1
-fi
 say "ERR — the Socket scan did not complete (socket exit $rc)"
 exit 2
