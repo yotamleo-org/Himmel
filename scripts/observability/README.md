@@ -634,7 +634,7 @@ from the bridge's own allowlist (`access.json`'s `allowFrom[0]`, override via
 `LUNA_SYNC_ALERT_CHAT_ID`). It never runs `git fetch`, same passivity
 invariant as the exporter.
 
-### Sweeper-status extension (— a second, independent trigger)
+### Sweeper-status extension (a second, independent trigger)
 
 The headless vault sweeper writes a heartbeat,
 `<StateDir>\status.json` (default `~/.himmel/luna-sync/status.json`, override

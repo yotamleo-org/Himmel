@@ -23,16 +23,15 @@
 #            (vocabulary = _PROV_KINDS in scripts/lib/provenance.sh),
 #            or 'none' when install records nothing for it. The reader also
 #            accepts the older 8-column form (no record). A row whose `what`
-#            says "removal pending" is listed for completeness: no step removes
-#            it yet, so the printed REMOVE/KEEP verdict is the policy, not yet
-#            the action (the ticket the row's own `what` text names, or one not
-#            yet filed).
+#            says its removal is "pending" or "not yet scheduled" is listed
+#            for completeness: no step removes it yet, so the printed
+#            REMOVE/KEEP verdict is the policy, not yet the action.
 bridge-process	code	telegram-bridge	process	-	-	1	the telegram bun bridge supervisor (stopped, not deleted)	none
-bridge-unit	code	telegram-bridge	file	-	{HOME}/.config/systemd/user/telegram-bridge.service	1	the telegram bridge systemd user unit install wrote (removal not yet implemented)	unit,file
+bridge-unit	code	telegram-bridge	file	-	{HOME}/.config/systemd/user/telegram-bridge.service	1	the telegram bridge systemd user unit install wrote (step 1 disables the unit and removes the file only when the provenance ledger records it, and restores an operator unit it replaced)	unit,file
 telegram-channel	state	telegram-bridge	dir	TELEGRAM_CHANNEL_DIR	{HOME}/.claude/channels/telegram	2	telegram pairing: bot-token .env + access.json	file
 telegram-bridge	state	telegram-bridge	dir	BRIDGE_ROOT	{HOME}/.claude/handover/bridge	2	bridge sessions, inbox/outbox, supervisor state	file
 scheduled-jobs	code	scheduler	jobs	-	-	3	HIMMEL-Resume-* scheduled jobs	job
-cadence-jobs	code	scheduler	jobs	-	-	3	the cadence jobs install scheduled (removal not yet implemented)	job
+cadence-jobs	code	scheduler	jobs	-	-	3	the cadence jobs install scheduled (step 3 strips the crontab entries the ledger recorded; the runner directories are separate rows)	job
 cadence-pipeline-dir	code	scheduler	dir	PIPELINE_BAT_DIR	{HOME}/.claude/pipeline-cadence	3	the pipeline-cadence runner scripts + settings fragment install writes when armed (cadence-jobs covers only the scheduler entry, never this directory)	none
 cadence-qmd-dir	code	scheduler	dir	QMD_CADENCE_BAT_DIR	{HOME}/.claude/qmd-cadence	3	the qmd-cadence runner scripts + settings fragment install writes when armed (cadence-jobs covers only the scheduler entry, never this directory)	none
 cadence-graphmap-dir	code	scheduler	dir	GRAPHMAP_BAT_DIR	{HOME}/.claude/graphmap-cadence	3	the graphmap-cadence runner scripts + settings fragment install writes when armed (cadence-jobs covers only the scheduler entry, never this directory)	none

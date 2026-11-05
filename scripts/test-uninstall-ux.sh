@@ -179,8 +179,8 @@ m1_want graphify-wiring code file - 6 mcp,json-elem,symlink
 m1_want qmd-fork state file - 8 symlink,file,collection
 m1_want adopter-scripts keep dir - - file
 case "$(m1_col adopter-scripts 8)" in *"code for recorded files; unrecorded copies kept"*) pass "M1 adopter-scripts reason names recorded vs unrecorded copies" ;; *) fail "M1 adopter-scripts reason text not updated" ;; esac
-case "$(m1_col third-party-caches 8)" in *HIMMEL-3330*) pass "M1 third-party-caches cites HIMMEL-3330" ;; *) fail "M1 third-party-caches does not cite HIMMEL-3330" ;; esac
-case "$(m1_col qmd-fork 8)" in *HIMMEL-3311*) pass "M1 qmd-fork cites HIMMEL-3311" ;; *) fail "M1 qmd-fork does not cite HIMMEL-3311" ;; esac
+case "$(m1_col third-party-caches 8)" in *"never himmel-provenanced"*) pass "M1 third-party-caches reason says they are never himmel-provenanced" ;; *) fail "M1 third-party-caches reason text not as expected" ;; esac
+case "$(m1_col qmd-fork 8)" in *"ledger-decided: kept by default"*) pass "M1 qmd-fork reason says ledger-decided, kept by default" ;; *) fail "M1 qmd-fork reason text not as expected" ;; esac
 m1_steps=$(grep -v '^#' "$MANIFEST" 2>/dev/null | awk -F'\t' '$2!="keep"{print $7}' | LC_ALL=C sort -u | tr '\n' ' ')
 if [ "$m1_steps" = "1 2 3 4 5 6 7 8 " ]; then pass "M1 every uninstall step 1-8 is covered by a manifest row"
 else fail "M1 manifest covers steps '$m1_steps', expected 1..8"; fi
