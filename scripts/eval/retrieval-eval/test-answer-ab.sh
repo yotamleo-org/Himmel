@@ -71,6 +71,11 @@ import json, os, re, subprocess, sys
 d = os.environ["STUB_DIR"]
 argv = sys.argv[1:]
 prompt = sys.stdin.read()
+open(os.path.join(d, "sess-all.log"), "a").write(" ".join(argv) + "\n")
+sid = argv[argv.index("--session-id") + 1] if "--session-id" in argv else (argv[argv.index("--resume") + 1] if "--resume" in argv else None)
+if sid and os.environ.get("CLAUDE_CONFIG_DIR"):  # a persisted session leaves a transcript the run must remove
+    os.makedirs(os.path.join(os.environ["CLAUDE_CONFIG_DIR"], "projects", "p"), exist_ok=True)
+    open(os.path.join(os.environ["CLAUDE_CONFIG_DIR"], "projects", "p", sid + ".jsonl"), "a").write("x\n")
 if os.environ.get("STUB_FAIL_Q") and os.environ["STUB_FAIL_Q"] in prompt:
     print("not json")
     sys.exit(0)
@@ -114,7 +119,9 @@ m = re.search(r"[A-Za-z0-9_./-]+\.(md|sh|py)", text)
 f = m.group(0) if m else "docs/zeta.md"
 u = ({"input_tokens": 120, "output_tokens": 60, "cache_read_input_tokens": 9000, "cache_creation_input_tokens": 2000} if servers
      else {"input_tokens": 100, "output_tokens": 50, "cache_read_input_tokens": 9000, "cache_creation_input_tokens": 1000})
-out = {"type": "result", "is_error": False, "num_turns": 4 if servers else 3,
+if "--resume" in argv:  # a resumed session reads the cached prefix and earlier turns, writes only the new tail
+    u["cache_read_input_tokens"], u["cache_creation_input_tokens"] = 12000, 200
+out ={"type": "result", "is_error": False, "num_turns": 4 if servers else 3,
        "result": "Looked around.\nANSWER: " + json.dumps([f]), "usage": u, "total_cost_usd": 9.99}
 if os.environ.get("STUB_SESS_MODEL"):  # a model with no price row
     out["modelUsage"] = {os.environ["STUB_SESS_MODEL"]: {"inputTokens": u["input_tokens"], "outputTokens": u["output_tokens"],
@@ -309,6 +316,61 @@ print("%.4f" % (3 * (cost("claude-sonnet-5-5", 100, 50, 9000, 1000, s) + cost("c
 PYEOF
 )"
 eq "a two-model call is priced per model with the cache-write split kept" "$want_multi" "$(lg '"%.4f" % r["metrics"]["vanilla.cost_usd"]')"
+
+# 19. the route output is trimmed: the top 5 files, at most 400 characters of excerpt each.
+cat > "$W/qmdbig" <<'EOF'
+#!/usr/bin/env bash
+cat > /dev/null
+python3 -I -c 'import json; print(json.dumps([{"file": "qmd://himmel/docs/f%d.md" % i, "title": "T%d" % i, "snippet": "Z" * 2000} for i in range(8)]))'
+EOF
+chmod +x "$W/qmdbig"
+rm -f "$W/route.log"
+RETRIEVAL_EVAL_QMD_CMD="$W/qmdbig" python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-trim" --arms bm25-rerank,fused-cached --model claude-sonnet-5-5 --pool 1 --n 1 --no-ledger > "$W/trim.txt" 2>&1
+eq "a trimmed-route run completes" "0" "$?"
+eq "no excerpt runs past 400 characters" "0" "$(grep -cE 'Z{401}' "$W/route.log")"
+files_listed="$(grep -c '^- ' "$W/route.log")"
+if [ "$files_listed" -gt 0 ] && [ "$files_listed" -le 10 ]; then pass "each route call lists at most 5 files ($files_listed over two calls)"; else fail "each route call lists at most 5 files ($files_listed over two calls)"; fi
+eq "each route call is a few KB at most, not the raw dumps" "yes" "$(python3 -I -c 'import sys; print("yes" if all(len(b) < 3500 for b in open(sys.argv[1]).read().split("=====\n")) else "no")' "$W/route.log")"
+
+# 20. --prime: one throwaway call per arm before the measured questions; cost reported with and without it.
+rm -f "$W"/sess-*.log "$W/route.log" "$W/ledger.jsonl"
+HOME="$HOMEX" python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-prime" --arms "$REAL" --model claude-sonnet-5-5 --pool 3 --n 3 --prime > "$W/prime.txt" 2>&1
+eq "a primed run completes" "0" "$?"
+eq "results.jsonl holds 4 prime calls, first, and 12 measured calls" "4 4 16" "$(python3 -I -c 'import json,sys; r=[json.loads(l) for l in open(sys.argv[1])]; print(sum(1 for x in r[:4] if x["prime"]), sum(1 for x in r if x["prime"]), len(r))' "$W/out-prime/results.jsonl")"
+eq "every prime call asks the same fixed question" "4" "$(grep -c 'handover queue lock is held' "$W/sess-prompt.log")"
+pt() { awk -F'\t' -v a="$1" -v c="$2" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i;next} $1==a{print $h[c]}' "$W/out-prime/table.tsv"; }
+eq "the prime call is not a measured question" "3 3 3 3" "$(pt vanilla n) $(pt fused-cached n) $(pt bm25-rerank n) $(pt vec-rerank n)"
+eq "the measured cost leaves the prime call out" "$want_v" "$(lg '"%.4f" % r["metrics"]["vanilla.cost_usd"]')"
+eq "the prime call is priced on its own" "yes" "$(lg "\"yes\" if abs(r['metrics']['vanilla.prime_cost_usd'] * 3 - $want_v) < 1e-3 else \"no\"")"
+eq "the cost with the cold call is the measured cost plus the prime cost" "yes" "$(lg "\"yes\" if abs(r['metrics']['vanilla.cost_usd_with_prime'] * 3 - 4 * $want_v) < 1e-3 else \"no\"")"
+eq "cost per correct with the cold call is reported" "yes" "$(lg "\"yes\" if abs(r['metrics']['vanilla.cost_per_correct_with_prime'] - r['metrics']['vanilla.cost_usd_with_prime'] / r['metrics']['vanilla.correct']) < 1e-9 else \"no\"")"
+eq "the prime calls add no question to the row" "3" "$(lg 'r["n"]')"
+eq "the spend guard counts the prime calls" "True" "$(lg 'r["meta"]["spent_usd"] > 4 * r["metrics"]["vanilla.prime_cost_usd"]')"
+
+# 21. --warm-session K: K questions in ONE session per arm (first call --session-id, later calls --resume).
+rm -rf "$W/cc"; rm -f "$W"/sess-*.log "$W/route.log" "$W/ledger.jsonl"
+CLAUDE_CONFIG_DIR="$W/cc" HOME="$HOMEX" python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-warm" --arms vanilla,fused-cached --model claude-sonnet-5-5 --pool 3 --n 3 --warm-session 2 > "$W/warm.txt" 2>&1
+eq "a warm-session run completes" "0" "$?"
+wsess() { awk -v a="mcp-$1" 'index($0, a) {for (i = 1; i <= NF; i++) if ($i == "--session-id" || $i == "--resume") print $i, $(i + 1)}' "$W/sess-all.log"; }
+eq "vanilla: the first question opens a session, the second resumes it, the next group opens a new one" "--session-id --resume --session-id" "$(wsess vanilla | awk '{print $1}' | tr '\n' ' ' | sed 's/ $//')"
+eq "the resumed call names the session the first call opened" "yes" "$(wsess vanilla | awk 'NR==1{a=$2} NR==2{b=$2} NR==3{c=$2} END{print (a==b && a!=c) ? "yes" : "no"}')"
+eq "each arm has its own session" "yes" "$([ "$(wsess vanilla | sed -n 1p | cut -d' ' -f2)" != "$(wsess fused-cached | sed -n 1p | cut -d' ' -f2)" ] && echo yes || echo no)"
+eq "a warm session persists (no --no-session-persistence on any call)" "0" "$(grep -c -- '--no-session-persistence' "$W/sess-all.log")"
+eq "the question position is on each row" "1 2 1" "$(python3 -I -c 'import json,sys; print(" ".join(str(r["pos"]) for r in map(json.loads, open(sys.argv[1])) if r["arm"] == "vanilla"))' "$W/out-warm/results.jsonl")"
+eq "question 1 against questions 2..k: n per group" "2 1" "$(lg 'r["metrics"]["vanilla.pos1.n"]') $(lg 'r["metrics"]["vanilla.pos2k.n"]')"
+eq "question 1 against questions 2..k: mean cache_creation" "1000.0000 200.0000" "$(lg '"%.4f %.4f" % (r["metrics"]["vanilla.pos1.cache_creation_mean"], r["metrics"]["vanilla.pos2k.cache_creation_mean"])')"
+eq "question 1 against questions 2..k: mean cache_read" "9000.0000 12000.0000" "$(lg '"%.4f %.4f" % (r["metrics"]["vanilla.pos1.cache_read_mean"], r["metrics"]["vanilla.pos2k.cache_read_mean"])')"
+eq "question 1 against questions 2..k: cached_share" "0.8911 0.9756" "$(lg '"%.4f %.4f" % (r["metrics"]["vanilla.pos1.cached_share"], r["metrics"]["vanilla.pos2k.cached_share"])')"
+eq "a later question in a session costs less than the first" "yes" "$(lg '"yes" if r["metrics"]["vanilla.pos2k.cost_mean"] < r["metrics"]["vanilla.pos1.cost_mean"] else "no"')"
+eq "warm.tsv has a row per arm and position group" "fused-cached 1|fused-cached 2-k|vanilla 1|vanilla 2-k" "$(awk -F'\t' 'NR>1{print $1" "$2}' "$W/out-warm/warm.tsv" | sort | tr '\n' '|' | sed 's/|$//')"
+eq "the row config records the warm-session size" "2" "$(lg 'r["config"]["warm_session"]')"
+eq "the persisted session transcripts are removed after the run" "0" "$(find "$W/cc/projects/p" -type f 2>/dev/null | wc -l | tr -d ' ')"
+
+# 22. a failed first call leaves no session to resume: the next question opens a fresh one.
+rm -f "$W"/sess-*.log "$W/ledger.jsonl"
+if STUB_FAIL_Q="queue lock" CLAUDE_CONFIG_DIR="$W/cc" python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-warmerr" --arms vanilla --model claude-sonnet-5-5 --pool 3 --n 3 --warm-session 2 --no-ledger > "$W/warmerr.txt" 2>&1; then fail "an errored warm call makes the run exit nonzero"; else pass "an errored warm call makes the run exit nonzero"; fi
+eq "after a failed first call the next question opens a new session, not --resume" "--session-id --session-id --session-id" "$(wsess vanilla | awk '{print $1}' | tr '\n' ' ' | sed 's/ $//')"
+eq "the three sessions have three different ids" "3" "$(wsess vanilla | cut -d' ' -f2 | sort -u | wc -l | tr -d ' ')"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

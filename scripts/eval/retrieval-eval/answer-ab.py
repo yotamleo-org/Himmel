@@ -9,6 +9,7 @@ counted. The realistic arms (below) ask the same of a real worker session.
   run  --questions Q --out DIR [--repo R] [--arms A,B] [--pool 20] [--n 15]
        [--k 5] [--model claude-haiku-5-5] [--max-usd 3] [--timeout 180]
        [--retrieval-timeout 60] [--collection himmel] [--no-ledger]
+       [--prime] [--warm-session K]   (realistic arms only)
   route-server --kind K --repo R   (internal: the one-tool MCP server a realistic arm's session calls)
 
 Steps:
@@ -40,6 +41,14 @@ Steps:
                 vec-rerank    the same session, route = qmd vector search, reranked
               They take the question sample (--pool, --n; --pool 75 --n 75 for the whole file)
               with no closed-book screen, and are priced from the session usage.
+              A route call returns the top 5 files with at most 400 characters of excerpt each.
+              --prime asks one throwaway question per arm first (its cold prefix write); the
+              headline cost leaves it out and <arm>.prime_cost_usd, .cost_usd_with_prime and
+              .cost_per_correct_with_prime report it. --warm-session K asks K questions in ONE
+              persisted session per arm (claude --session-id, then --resume), question j of every
+              arm before question j+1; <arm>.pos1.* and <arm>.pos2k.* (n, cost_mean,
+              cache_read_mean, cache_creation_mean, cached_share) and warm.tsv compare question 1
+              with questions 2..k. The run deletes the session transcripts it created.
   3. score    the answer is correct when one of its (at most three) named paths is a
               gold file of the question, the rule hit@k uses. A name list, not prose,
               keeps the grader a set test.
@@ -71,16 +80,19 @@ Stdlib only (node for the price table).
 # billed-opt-in: HIMMEL_BILLED_OK
 import argparse
 import hashlib
+import glob
 import importlib.util
 import json
 import os
 import re
 import shlex
+import shutil
 import statistics
 import subprocess
 import sys
 import tempfile
 import time
+import uuid
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "lib"))
 from burn_weights import cache_read_weight, result_model  # noqa: E402
@@ -93,6 +105,9 @@ ARMS = OLD_ARMS + REAL_ARMS
 SPLITS = ("insample", "heldout")
 PER_RUN_USD = 1.0
 MAX_NAMED = 3
+ROUTE_FILES = 5      # a route call lists this many files
+ROUTE_EXCERPT = 400   # and at most this many characters of excerpt each
+PRIME_Q = "which file describes how a handover queue lock is held"
 SYSTEM = ("You answer questions about a software repository. Reply briefly. "
           "Finish with exactly one line: ANSWER: [\"path1\", ...] -- a JSON array of at most 3 "
           "repo-relative file paths that answer the question, no other text on that line.")
@@ -245,16 +260,19 @@ class Sweep:
             self.mcp[arm] = path
         return self.mcp[arm]
 
-    def session_argv(self, arm, cap):
-        """A realistic session: everything but --mcp-config and --allowedTools is the same for every arm."""
+    def session_argv(self, arm, cap, sess=None):
+        """A realistic session: everything but --mcp-config and --allowedTools is the same for every arm.
+        A warm session (`sess`) persists: its first call opens the id, the later ones resume it."""
         allowed = SESSION_TOOLS if arm == "vanilla" else "%s,%s" % (SESSION_TOOLS, ROUTE_TOOL)
+        keep = ["--no-session-persistence"] if sess is None else ["--resume" if sess["n"] else "--session-id", sess["id"]]
         return [self.claude, "-p", "--model", self.a.model, "--permission-mode", "dontAsk",
                 "--output-format", "json", "--max-budget-usd", "%.4f" % cap, "--tools", SESSION_TOOLS,
-                "--allowedTools", allowed, "--strict-mcp-config", "--mcp-config", self.mcp_config(arm),
-                "--no-session-persistence", "--append-system-prompt-file", PREFACE]
+                "--allowedTools", allowed, "--strict-mcp-config", "--mcp-config", self.mcp_config(arm)] + keep + [
+                "--append-system-prompt-file", PREFACE]
 
-    def ask(self, q, arm, text, tag=None):
-        """One answerer call -> a result row (labelled `tag` when given), or None when the sweep must stop."""
+    def ask(self, q, arm, text, tag=None, sess=None, pos=1, prime=False):
+        """One answerer call -> a result row (labelled `tag` when given), or None when the sweep must stop.
+        `sess` is a warm session {id, n}: n counts its good calls; a failed first call gets a fresh id."""
         cap = min(PER_RUN_USD, self.a.max_usd - self.spent)
         if cap <= 0:
             self.stopped = "max-usd %s reached before %s/%s" % (self.a.max_usd, q["id"], arm)
@@ -264,7 +282,7 @@ class Sweep:
             return None
         real = arm in REAL_ARMS
         if real:
-            argv, prompt, cwd = self.session_argv(arm, cap), build_session_prompt(q["q"]), self.repo
+            argv, prompt, cwd = self.session_argv(arm, cap, sess), build_session_prompt(q["q"]), self.repo
         else:
             argv = [self.claude, "-p", "--model", self.a.model, "--permission-mode", "dontAsk",
                     "--output-format", "json", "--max-budget-usd", "%.4f" % cap, "--tools", "",
@@ -273,7 +291,7 @@ class Sweep:
             prompt, cwd = build_prompt(q["q"], arm, text), self.scratch
         row = dict(id=q["id"], arm=tag or arm, split=q.get("split", "insample"), correct=False, named=[], tokens=0, weighted=0,
                    cost_usd=0.0, priced_usd=0.0, priced=True, input=0, output=0, cache_read=0, cache_creation=0,
-                   turns=0, retr_tokens=self.ev.tok(text), error=None)
+                   turns=0, retr_tokens=self.ev.tok(text), error=None, pos=pos, prime=prime)
         t0 = time.time()
         try:
             # eval answerer: bank-preflighted above, explicit permission mode (never bypassPermissions)
@@ -292,10 +310,15 @@ class Sweep:
             if real:  # priced from the usage split, never the flat total_cost_usd; unpriced assumes the full cap
                 row["cost_usd"] = usd if priced else cap
             row["correct"] = self.ev.is_hit(row["named"], q["gold"])
+            if sess is not None:
+                sess["n"] += 1
         except (ValueError, OSError, subprocess.TimeoutExpired, TypeError) as e:
             row["error"] = str(e)[:120]
             row["cost_usd"] = cap  # a billed call we cannot read: the spend guard assumes the full cap; the arm cost leaves it out
             self.errors += 1
+            if sess is not None and not sess["n"]:
+                sess.setdefault("old", []).append(sess["id"])
+                sess["id"] = str(uuid.uuid4())  # the failed call may have taken the id: nothing to resume
         row["ms"] = int((time.time() - t0) * 1000)
         self.spent += row["cost_usd"]
         self.rows.append(row)
@@ -357,17 +380,27 @@ def retrieve(ev, a, q, repo, need):
     return out
 
 
+def trim_route(label, files, text, n=ROUTE_FILES, cap=ROUTE_EXCERPT):
+    """The route answer: the top n files, each with at most cap characters of the retrieval text that
+    names it (from its first mention), whitespace collapsed. The raw dumps were about 8k tokens a call."""
+    low, out = text.lower(), []
+    for f in files[:n]:
+        i = low.find(f.lower())
+        ex = " ".join(text[i:i + 4 * cap].split())[:cap] if i >= 0 else ""
+        out.append("- %s: %s" % (f, ex) if ex else "- %s" % f)
+    return "RANKED FILES (%s), top %d:\n%s" % (label, n, "\n".join(out))
+
+
 def route_text(ev, a, kind, repo, query):
     """The text a route tool call returns for its kind."""
     if kind == "fused-cached":
         got = retrieve(ev, a, {"q": query}, repo, {"fused"})
-        return "RANKED FILES (grep + qmd hybrid rerank + graphify, rank-fused):\n%s\n\n%s" % (
-            "\n".join(got["fused-files"]), got["fused"])
+        return trim_route("grep + qmd hybrid rerank + graphify, rank-fused", got["fused-files"], got["fused"])
     types, label = (("lex",), "qmd keyword (BM25) + rerank") if kind == "bm25-rerank" else (("vec",), "qmd vector + rerank")
     files, text, fail = qmd_search(ev, query, types, True, a.retrieval_timeout, a.k, a.collection)
     if fail:
         return "%s: %s" % (label, fail)
-    return "RANKED FILES (%s):\n%s\n\n%s" % (label, "\n".join(files), text)
+    return trim_route(label, files, text)
 
 
 def cmd_route_server(a):
@@ -435,17 +468,58 @@ def arm_stats(rs):
                 turns_mean=statistics.mean(r["turns"] for r in good) if good else None)
 
 
+def with_prime(rs, ps):
+    """(prime_usd, cost_usd_with_prime, cost_per_correct_with_prime) of an arm: its measured calls `rs` plus the
+    cold priming calls `ps`. All None when no prime call ran or any call is unpriced."""
+    s = arm_stats(rs)
+    good = [r for r in ps if not r["error"]]
+    if not good or s["cost_usd"] is None or not all(r["priced"] for r in good):
+        return None, None, None
+    p = sum(r["priced_usd"] for r in good)
+    return p, s["cost_usd"] + p, (s["cost_usd"] + p) / s["correct"] if s["correct"] else None
+
+
+POS_GROUPS = (("1", "pos1", lambda n: n == 1), ("2-k", "pos2k", lambda n: n > 1))
+
+
+def pos_stats(rs):
+    """Mean per-call cost and cache mix of the priced, good calls in `rs`; None when there are none."""
+    good = [r for r in rs if not r["error"] and r["priced"]]
+    if not good:
+        return None
+    n = len(good)
+    inp, cr, cc = (sum(r[k] for r in good) for k in ("input", "cache_read", "cache_creation"))
+    return dict(n=n, cost_mean=sum(r["priced_usd"] for r in good) / n, cache_read_mean=cr / n,
+                cache_creation_mean=cc / n, cached_share=cr / (inp + cr + cc) if inp + cr + cc else None)
+
+
+def warm_table(rows, arms):
+    """Question 1 of a session against questions 2..k, per arm."""
+    lines = ["\t".join(["arm", "position", "n", "cost_mean", "cache_read_mean", "cache_creation_mean", "cached_share"])]
+    for arm in arms:
+        rs = [r for r in rows if r["arm"] == arm and not r["prime"]]
+        for label, _, pick in POS_GROUPS:
+            ps = pos_stats([r for r in rs if pick(r["pos"])])
+            if ps:
+                lines.append("\t".join([arm, label, str(ps["n"]), "%.4f" % ps["cost_mean"], "%.0f" % ps["cache_read_mean"],
+                                        "%.0f" % ps["cache_creation_mean"],
+                                        "-" if ps["cached_share"] is None else "%.3f" % ps["cached_share"]]))
+    return lines
+
+
 def table(rows, arms):
     cols = ["arm", "n", "correct", "tokens_total", "tokens_per_correct", "weighted_total", "cost_usd",
             "retr_tokens_mean", "errors", "priced_usd", "cost_per_correct", "input", "output", "cache_read",
-            "cache_creation", "cached_share", "ms_median", "turns_mean"]
+            "cache_creation", "cached_share", "ms_median", "turns_mean", "prime_usd", "cost_with_prime",
+            "cost_per_correct_with_prime"]
     lines = ["\t".join(cols)]
     dash = lambda v, f: "-" if v is None else f % v  # noqa: E731
     for arm in arms:
-        rs = [r for r in rows if r["arm"] == arm]
+        rs = [r for r in rows if r["arm"] == arm and not r["prime"]]
         if not rs:
             continue
         s = arm_stats(rs)
+        pm = with_prime(rs, [r for r in rows if r["arm"] == arm and r["prime"]])
         ok, tot = s["correct"], s["tokens"]
         lines.append("\t".join([arm, str(len(rs)), str(ok), str(tot), "%.1f" % (tot / ok) if ok else "-",
                                 "%d" % sum(r["weighted"] for r in rs), "%.4f" % sum(r["cost_usd"] for r in rs),
@@ -454,14 +528,15 @@ def table(rows, arms):
                                 "unpriced" if s["cost_usd"] is None else "%.4f" % s["cost_usd"],
                                 dash(s["cost_per_correct"], "%.4f"), str(s["input"]), str(s["output"]),
                                 str(s["cache_read"]), str(s["cache_creation"]), dash(s["cached_share"], "%.3f"),
-                                dash(s["ms_median"], "%d"), dash(s["turns_mean"], "%.1f")]))
+                                dash(s["ms_median"], "%d"), dash(s["turns_mean"], "%.1f"),
+                                dash(pm[0], "%.4f"), dash(pm[1], "%.4f"), dash(pm[2], "%.4f")]))
     return lines
 
 
 def ledger_row(ev, a, sw, arms, repo):
     """The eval-runs row: per-arm metrics, the insample / heldout split, per-question cases."""
     metrics, cases = {}, {}
-    rows = [r for r in sw.rows if r["arm"] in arms]
+    rows = [r for r in sw.rows if r["arm"] in arms and not r["prime"]]
     for arm in arms:
         rs = [r for r in rows if r["arm"] == arm]
         if not rs:
@@ -471,6 +546,15 @@ def ledger_row(ev, a, sw, arms, repo):
                         ("n", "correct", "errors", "cost_usd", "cost_per_correct", "tokens_per_correct", "input", "output",
                          "cache_read", "cache_creation", "cached_share", "ms_median", "turns_mean")})
         metrics[arm + ".unpriced"] = sum(1 for r in rs if not r["priced"])
+        if a.prime:  # the cold priming call, reported apart: the headline cost_usd leaves it out
+            pm = with_prime(rs, [r for r in sw.rows if r["arm"] == arm and r["prime"]])
+            metrics.update(zip(("%s.prime_cost_usd" % arm, "%s.cost_usd_with_prime" % arm,
+                                "%s.cost_per_correct_with_prime" % arm), pm))
+        if a.warm_session:  # question 1 of a session against questions 2..k
+            for _, key, pick in POS_GROUPS:
+                ps = pos_stats([r for r in rs if pick(r["pos"])]) or {}
+                metrics.update({"%s.%s.%s" % (arm, key, m): ps.get(m) for m in
+                                ("n", "cost_mean", "cache_read_mean", "cache_creation_mean", "cached_share")})
         for sl in SPLITS:
             ss = arm_stats([r for r in rs if r["split"] == sl]) if any(r["split"] == sl for r in rs) else None
             pre = "%s.%s." % (arm, sl)
@@ -489,7 +573,8 @@ def ledger_row(ev, a, sw, arms, repo):
     with open(PREFACE, "rb") as fh:
         phash = hashlib.sha256(fh.read()).hexdigest()[:16]
     config = dict(arms=[x for x in arms if any(r["arm"] == x for r in rows)], model=a.model, k=a.k, collection=a.collection,
-                  questions=qhash, pool=a.pool, n=a.n, permission_mode="dontAsk", max_usd=a.max_usd, preface=phash)
+                  questions=qhash, pool=a.pool, n=a.n, permission_mode="dontAsk", max_usd=a.max_usd, preface=phash,
+                  prime=a.prime, warm_session=a.warm_session, route_files=ROUTE_FILES, route_excerpt=ROUTE_EXCERPT)
     meta = dict(questions_path=os.path.abspath(a.questions), spent_usd=round(sw.spent, 4), stopped=sw.stopped or None,
                 n_heldout=len({r["id"] for r in rows if r["split"] == "heldout"}))
     status = "partial" if sw.stopped or sw.errors else "ok"
@@ -497,10 +582,49 @@ def ledger_row(ev, a, sw, arms, repo):
                                  model=a.model, cases=cases, artifact=os.path.abspath(a.out), meta=meta, status=status, repo=repo)
 
 
+def drop_session(sid):
+    """A warm session persists its transcript under the claude config dir; remove what this run created."""
+    base = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+    for f in glob.glob(os.path.join(glob.escape(base), "projects", "*", sid + "*")):
+        if os.path.isdir(f):
+            shutil.rmtree(f, ignore_errors=True)
+        else:
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+
+
+def run_warm(sw, a, real, qsel):
+    """a.warm_session questions in ONE session per arm. Question j of every arm is asked before question j+1,
+    so each arm's cached prefix is touched about once a minute and stays inside the 5-minute cache window."""
+    k = a.warm_session
+    for g, i in enumerate(range(0, len(qsel), k)):
+        sessions = {arm: {"id": str(uuid.uuid4()), "n": 0} for arm in real}
+        try:
+            for j, q in enumerate(qsel[i:i + k]):
+                if sw.stopped:
+                    break
+                r0 = (g + j) % len(real)
+                for arm in real[r0:] + real[:r0]:
+                    if sw.ask(q, arm, "", sess=sessions[arm], pos=j + 1) is None:
+                        break
+                print("%s %s" % (q["id"], " ".join("%s=%d" % (r["arm"], r["correct"]) for r in sw.rows if r["id"] == q["id"] and r["arm"] in real)),
+                      file=sys.stderr)
+        finally:
+            for s in sessions.values():
+                for sid in [s["id"]] + s.get("old", []):
+                    drop_session(sid)
+        if sw.stopped:
+            break
+
+
 def cmd_run(a):
     arms = [x for x in a.arms.split(",") if x]
     if not arms:
         raise Usage("--arms names no arm (known: %s)" % ",".join(ARMS))
+    if a.warm_session < 0:
+        raise Usage("--warm-session is the questions per session, 0 or more")
     for x in arms:
         if x not in ARMS:
             raise Usage("unknown arm '%s' (known: %s)" % (x, ",".join(ARMS)))
@@ -547,20 +671,33 @@ def cmd_run(a):
               file=sys.stderr)
 
     if real:  # the realistic arms take the question sample whole: no closed-book screen
-        for i, q in enumerate(sample(qs, a.pool)[:a.n]):
-            if sw.stopped:
-                break
-            for arm in real[i % len(real):] + real[:i % len(real)]:
-                if sw.ask(q, arm, "") is None:
+        if a.prime:  # one throwaway call per arm writes its prefix cold, so no measured call pays for it
+            for arm in real:
+                if sw.ask({"id": "prime", "q": PRIME_Q, "gold": [], "split": "prime"}, arm, "", prime=True) is None:
                     break
-            print("%s %s" % (q["id"], " ".join("%s=%d" % (r["arm"], r["correct"]) for r in sw.rows if r["id"] == q["id"] and r["arm"] in real)),
-                  file=sys.stderr)
+        qsel = sample(qs, a.pool)[:a.n]
+        if a.warm_session:
+            run_warm(sw, a, real, qsel)
+        else:
+            for i, q in enumerate(qsel):
+                if sw.stopped:
+                    break
+                for arm in real[i % len(real):] + real[:i % len(real)]:
+                    if sw.ask(q, arm, "") is None:
+                        break
+                print("%s %s" % (q["id"], " ".join("%s=%d" % (r["arm"], r["correct"]) for r in sw.rows if r["id"] == q["id"] and r["arm"] in real)),
+                      file=sys.stderr)
 
     sw.sink.close()
     lines = table(sw.rows, arms)
     with open(os.path.join(a.out, "table.tsv"), "w") as fh:
         fh.write("\n".join(lines) + "\n")
     print("\n".join(lines))
+    if a.warm_session and real:
+        wl = warm_table(sw.rows, real)
+        with open(os.path.join(a.out, "warm.tsv"), "w") as fh:
+            fh.write("\n".join(wl) + "\n")
+        print("\n".join(wl))
     if old:
         print("screened %d of %d sampled (the answerer failed them closed-book); spent_usd=%.4f" %
               (len(kept), min(a.pool, len(qs)), sw.spent))
@@ -596,6 +733,8 @@ def main(argv=None):
     r.add_argument("--retrieval-timeout", type=int, default=60)
     r.add_argument("--collection", default="himmel")
     r.add_argument("--no-ledger", action="store_true")
+    r.add_argument("--prime", action="store_true")
+    r.add_argument("--warm-session", type=int, default=0)
     r.error = p.error
     s = sub.add_parser("route-server")
     s.add_argument("--kind", required=True, choices=sorted(ROUTE_DESC))
