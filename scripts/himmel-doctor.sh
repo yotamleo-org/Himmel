@@ -3887,19 +3887,29 @@ check_c50_qmd_fork_stamp() {
 # retrieval gain measured, so a qmd that cannot rerank is worth a WARN. Three ways to
 # lose it: QMD_RERANK=off (or 0/false) in the environment, no remote reranker configured and no local
 # reranker model in the cache (qmd pull never ran or failed), or neither. INFO and skip when qmd is
-# absent or the operator switched it off. Read-only. Seams: HIMMEL_DOCTOR_QMD_BIN (default qmd),
+# absent or the operator switched it off. Read-only. Seams: HIMMEL_DOCTOR_QMD_BIN (default: qmd-bin.sh has_qmd),
 # HIMMEL_DOCTOR_QMD_MODELS_DIR (default ${XDG_CACHE_HOME:-~/.cache}/qmd/models, where the fork keeps
 # its gguf files), QMD_CONFIG_DIR (default ${XDG_CONFIG_HOME:-~/.config}/qmd), QMD_DAEMON_DISABLED
 # and QMD_DAEMON_OFF_FLAG (the same off switch as C40).
 check_c89_qmd_rerank() {
-    local qbin="${HIMMEL_DOCTOR_QMD_BIN:-qmd}" models cfg rerank_env
+    local qbin="${HIMMEL_DOCTOR_QMD_BIN:-qmd}" models cfg rerank_env have_qmd=0
     models="${HIMMEL_DOCTOR_QMD_MODELS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/models}"
     cfg="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/index.yml"
     if [ "${QMD_DAEMON_DISABLED:-}" = "1" ] || [ -e "${QMD_DAEMON_OFF_FLAG:-$HOME/.himmel/state/qmd-daemon.off}" ]; then
         emit INFO C89-qmd-rerank "qmd off by operator (qmd-daemon-off flag) -- rerank check skipped"
         return 0
     fi
-    if ! command -v "$qbin" >/dev/null 2>&1; then
+    # An adopter's qmd is the bun-global script, not always a `qmd` on PATH: ask qmd-bin.sh's own presence test
+    # unless the seam names a binary.
+    if [ -n "${HIMMEL_DOCTOR_QMD_BIN:-}" ]; then
+        command -v "$qbin" >/dev/null 2>&1 && have_qmd=1
+    elif [ -f "$REPO_ROOT/scripts/lib/qmd-bin.sh" ]; then
+        # shellcheck disable=SC1090,SC1091
+        ( . "$REPO_ROOT/scripts/lib/qmd-bin.sh" >/dev/null 2>&1; has_qmd ) && have_qmd=1
+    else
+        command -v qmd >/dev/null 2>&1 && have_qmd=1
+    fi
+    if [ "$have_qmd" -eq 0 ]; then
         emit INFO C89-qmd-rerank "qmd is not installed -- rerank check skipped (qmd is optional)"
         return 0
     fi

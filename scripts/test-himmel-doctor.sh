@@ -8071,6 +8071,13 @@ echo "== C89: a quoted remote reranker value in the config counts as remote =="
 c89_reset; printf 'models:\n  rerank: "openai:cohere/rerank-4-fast"\n' > "$c89_t/cfg/index.yml"
 out="$(c89_run)"
 if grepq "$out" 'OK   C89-qmd-rerank' && grepq "$out" -F 'remote reranker' && ! grepq "$out" 'WARN C89'; then pass "C89 quoted remote reranker -> OK"; else fail "C89 quoted remote reranker -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C89: an adopter's qmd is the bun-global script with no qmd on PATH -> still checked =="
+c89_reset; c89_gguf
+mkdir -p "$c89_t/bun/install/global/node_modules/@tobilu/qmd/dist/cli" "$c89_t/stubbin"
+: > "$c89_t/bun/install/global/node_modules/@tobilu/qmd/dist/cli/qmd.js"
+printf '#!/bin/sh\nexit 0\n' > "$c89_t/stubbin/bun"; chmod +x "$c89_t/stubbin/bun"
+out="$(env -u QMD_RERANK -u QMD_RERANK_MODEL -u QMD_DAEMON_DISABLED -u HIMMEL_DOCTOR_QMD_BIN HOME="$c89_t/home" BUN_INSTALL="$c89_t/bun" PATH="$c89_t/stubbin:$PATH" QMD_CONFIG_DIR="$c89_t/cfg" HIMMEL_DOCTOR_QMD_MODELS_DIR="$c89_t/models" QMD_DAEMON_OFF_FLAG="$c89_t/no-such-flag" QMD_RERANK=off bash "$DOC" --only C89 --no-color 2>&1)"
+if grepq "$out" 'WARN C89-qmd-rerank' && ! grepq "$out" -F 'not installed'; then pass "C89 bun-global qmd -> checked, WARN"; else fail "C89 bun-global qmd -> $(printf '%s' "$out" | head -4)"; fi
 echo "== C89: QMD_RERANK=0 and QMD_RERANK=FALSE also warn =="
 c89_reset; c89_gguf
 out="$(c89_run QMD_RERANK=0)"; out2="$(c89_run QMD_RERANK=FALSE)"
