@@ -101,8 +101,8 @@ if [ "$rc" -eq 0 ]; then
     say "OK — ${#targets[@]} manifest or lock file(s) scanned in one scan, the report passes the policy"
     exit 0
 fi
-if printf '%s\n' "$out" | grep -Eiq "$QUOTA_RE"; then
-    reason="$(printf '%s\n' "$out" | grep -Ei -m1 "$QUOTA_RE" | head -c 300)"
+if grep -Eiq "$QUOTA_RE" <<< "$out"; then
+    reason="$(grep -Ei -m1 "$QUOTA_RE" <<< "$out" | head -c 300)"
     say "SKIP quota — Socket's quota or rate limit is reached, not a finding: $reason"
     exit 0
 fi
