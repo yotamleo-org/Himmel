@@ -24,6 +24,9 @@
 #   fetch:   a missing graph-data branch falls back
 #   fetch:   a host path in the fetched bytes falls back (tamper)
 #   fetch:   a built_at_commit file that disagrees with graph.json falls back
+#   fetch:   a graph-data tip with no built_at_commit file falls back, rc 0
+#   fetch:   a held promote lock falls back and the lock stays
+#   fetch:   the install holds the promote lock with an acquired stamp
 #   fetch:   the publisher station (graphify.semantic_api_ok) never installs
 #   fetch:   --check reports what it would fetch and writes nothing
 
@@ -294,16 +297,22 @@ check_eq "missing branch rc 0" 0 "$UP_RC"
 untouched "missing branch" "$ADO"
 check_has "missing branch says AST-only" "AST-only" "$UP_OUT"
 
-# plant_branch <graph.json content> <built_at_commit content> — a hand-built
-# graph-data tip that skipped the publisher's scan.
+# plant_branch <graph.json content> [<built_at_commit content>] — a hand-built
+# graph-data tip that skipped the publisher's scan; no second argument leaves
+# the built_at_commit file out.
 plant_branch() {
     local gj gr mf ba tree c
     gj="$(printf '%s\n' "$1" | git -C "$BARE" hash-object -w --stdin)"
     gr="$(printf '# r\n' | git -C "$BARE" hash-object -w --stdin)"
     mf="$(printf '{}\n' | git -C "$BARE" hash-object -w --stdin)"
-    ba="$(printf '%s\n' "$2" | git -C "$BARE" hash-object -w --stdin)"
-    tree="$(printf '100644 blob %s\tGRAPH_REPORT.md\n100644 blob %s\tbuilt_at_commit\n100644 blob %s\tgraph.json\n100644 blob %s\tmanifest.json\n' \
-        "$gr" "$ba" "$gj" "$mf" | git -C "$BARE" mktree)"
+    if [ $# -ge 2 ]; then
+        ba="$(printf '%s\n' "$2" | git -C "$BARE" hash-object -w --stdin)"
+        tree="$(printf '100644 blob %s\tGRAPH_REPORT.md\n100644 blob %s\tbuilt_at_commit\n100644 blob %s\tgraph.json\n100644 blob %s\tmanifest.json\n' \
+            "$gr" "$ba" "$gj" "$mf" | git -C "$BARE" mktree)"
+    else
+        tree="$(printf '100644 blob %s\tGRAPH_REPORT.md\n100644 blob %s\tgraph.json\n100644 blob %s\tmanifest.json\n' \
+            "$gr" "$gj" "$mf" | git -C "$BARE" mktree)"
+    fi
     c="$(gitq -C "$BARE" commit-tree "$tree" -m "chore: planted")"
     git -C "$BARE" update-ref refs/heads/graph-data "$c"
 }
@@ -322,8 +331,49 @@ make_adopter "$ADO" "$BARE" || exit 1
 run_update "$ADO" --only graph
 untouched "disagreeing built_at_commit" "$ADO"
 
+echo "fetch: a graph-data tip with no built_at_commit file falls back, rc 0"
+plant_branch "{\"nodes\":[],\"built_at_commit\":\"$SEED_SHA\"}"
+make_adopter "$ADO" "$BARE" || exit 1
+run_update "$ADO" --only graph
+check_eq "no built_at_commit rc 0" 0 "$UP_RC"
+untouched "no built_at_commit" "$ADO"
+check_has "no built_at_commit says AST-only" "AST-only" "$UP_OUT"
+
 # Restore the good branch for the last rows.
 git -C "$BARE" update-ref refs/heads/graph-data "$DATA_TIP"
+
+echo "fetch: a held promote lock falls back and the lock stays"
+make_adopter "$ADO" "$BARE" || exit 1
+mkdir "$ADO/graphify-out/.promote.lock"
+printf 'other-refresh\n' > "$ADO/graphify-out/.promote.lock/owner"
+run_update "$ADO" --only graph
+check_eq "held lock rc 0" 0 "$UP_RC"
+untouched "held lock" "$ADO"
+check_has "held lock says AST-only" "AST-only" "$UP_OUT"
+check_eq "the other holder's lock is left alone" "other-refresh" "$(cat "$ADO/graphify-out/.promote.lock/owner" 2>/dev/null)"
+rm -rf "$ADO/graphify-out/.promote.lock"
+
+echo "fetch: the install holds the promote lock with an acquired stamp"
+# A mv shim records the lock's acquired stamp at the moment graph.json moves in.
+mkdir -p "$TMP/mvshim"
+cat > "$TMP/mvshim/mv" <<'SHIM'
+#!/usr/bin/env bash
+for a in "$@"; do
+    case "$a" in
+        */graphify-out/graph.json) cat "$MV_SHIM_LOCK/acquired" >> "$MV_SHIM_LOG" 2>/dev/null || echo none >> "$MV_SHIM_LOG" ;;
+    esac
+done
+exec "$MV_SHIM_REAL" "$@"
+SHIM
+chmod +x "$TMP/mvshim/mv"
+make_adopter "$ADO" "$BARE" || exit 1
+: > "$TMP/mvshim.log"
+MV_SHIM_REAL="$(command -v mv)" MV_SHIM_LOCK="$ADO/graphify-out/.promote.lock" MV_SHIM_LOG="$TMP/mvshim.log" \
+    PATH="$TMP/mvshim:$PATH" run_update "$ADO" --only graph
+check_eq "stamped install rc 0" 0 "$UP_RC"
+check_eq "stamped install wrote the marker" "$SEED_SHA" "$(cat "$ADO/graphify-out/.graphify_published" 2>/dev/null)"
+if grep -Eqx '[0-9]+' "$TMP/mvshim.log"; then ok "the lock carried an acquired epoch while graph.json moved"; else bad "no acquired stamp under the lock during the install ($(head -n 1 "$TMP/mvshim.log"))"; fi
+if [ -e "$ADO/graphify-out/.promote.lock" ]; then bad "the install left its lock behind"; else ok "the install released its lock"; fi
 
 echo "fetch: the publisher station never installs"
 make_adopter "$ADO" "$BARE" || exit 1

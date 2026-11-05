@@ -2449,9 +2449,11 @@ sync_graph() {
     fi
     git -C "$ROOT" fetch --quiet --no-tags "$remote" refs/heads/graph-data 2>/dev/null \
         || { _graph_ast_only "git fetch $remote graph-data failed"; return 0; }
-    fetched=$(git -C "$ROOT" rev-parse --verify --quiet 'FETCH_HEAD^{commit}') \
+    # The sha ls-remote named, not FETCH_HEAD: a branch moved since gives no commit here.
+    fetched="${ls_out%%[[:space:]]*}"
+    git -C "$ROOT" rev-parse --verify --quiet "$fetched^{commit}" >/dev/null \
         || { _graph_ast_only "the fetched graph-data is not a commit"; return 0; }
-    bac=$(git -C "$ROOT" show "$fetched:built_at_commit" 2>/dev/null | head -n 1)
+    bac=$(git -C "$ROOT" show "$fetched:built_at_commit" 2>/dev/null | head -n 1) || bac=""
     [[ "$bac" =~ ^[0-9a-fA-F]{7,40}$ ]] || { _graph_ast_only "graph-data has no valid built_at_commit"; return 0; }
     short="${bac:0:12}"
     git -C "$ROOT" merge-base --is-ancestor "$bac" HEAD 2>/dev/null \
@@ -2479,6 +2481,11 @@ sync_graph() {
         _graph_ast_only "another graph refresh holds $lock; the next update retries"; return 0
     fi
     printf '%s\n' "himmel-update-$$" > "$lock/owner" 2>/dev/null || true
+    # The shared lock protocol needs the acquired stamp: without it a waiter cannot age the lock.
+    if ! date -u +%s > "$lock/acquired" 2>/dev/null; then
+        rm -rf "$lock"
+        _graph_ast_only "could not stamp $lock"; return 0
+    fi
     # One rename per file, manifest.json (the transaction-complete marker) and
     # the install marker last.
     for f in graph.json GRAPH_REPORT.md manifest.json .graphify_published; do

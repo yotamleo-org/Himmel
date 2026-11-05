@@ -310,7 +310,7 @@ The script refuses to publish when:
 to push, in two ways:
 
 - gitleaks, with the repo's `.gitleaks.toml`;
-- a pattern for host paths, such as home folders, Windows profiles and
+- a pattern for host paths, such as home folders, user-profile folders and
   session scratch folders.
 
 Any hit blocks the push. If gitleaks is missing or errors, the push is
@@ -331,8 +331,8 @@ after `sync_graphify`, and its status table shows a `graph` row. It fetches
 - the fetched bytes contain no host path;
 - the `built_at_commit` file matches the commit inside `graph.json`.
 
-The install is atomic: the files are staged in a temp folder, then renamed
-into `graphify-out/`. The fetch then stamps the semantic manifest
+The files are staged in a temp folder, then moved into `graphify-out/`
+with one rename per file. The fetch then stamps the semantic manifest
 (`semantic-update.sh --seed-manifest`, with no model call) from the docs as
 they stood at the build commit. The next semantic pass then has nothing left
 to do, except for docs that changed after that commit.

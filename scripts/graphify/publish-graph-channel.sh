@@ -12,7 +12,7 @@
 #      graph.html, the cache, semantic-runs.jsonl and semantic-manifest.json are
 #      never published;
 #   3. scans those exact staged bytes: gitleaks (the repo's .gitleaks.toml) and
-#      a host-path regex (home dirs, Windows profiles, scratch dirs). Any hit
+#      a host-path regex (home dirs, user-profile dirs, scratch dirs). Any hit
 #      blocks the publish. No gitleaks, or a gitleaks error, blocks it too;
 #   4. builds ONE orphan commit (no parent) of those four files and pushes it to
 #      refs/heads/graph-data with --force-with-lease on the tip it just read.
