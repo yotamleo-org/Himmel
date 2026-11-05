@@ -161,7 +161,7 @@ each call lands, so a run stopped halfway keeps what it paid for.
 
 The full run is billed (about 300 sessions on Sonnet 5.5) and by hand:
 
-```
+```bash
 HIMMEL_BILLED_OK=1 python3 scripts/eval/retrieval-eval/answer-ab.py run \
   --questions scripts/eval/retrieval-eval/questions.jsonl --out DIR --repo . \
   --arms vanilla,fused-cached,bm25-rerank,vec-rerank --model claude-sonnet-5-5 \

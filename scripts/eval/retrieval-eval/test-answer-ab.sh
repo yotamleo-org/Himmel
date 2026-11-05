@@ -233,8 +233,10 @@ eq "the session flags (system prompt, tools, model, permission mode) are byte-id
 if grep -q -- '--permission-mode dontAsk' "$W/sess-argv-vanilla.log" && grep -q -- '--output-format json' "$W/sess-argv-vanilla.log" && ! grep -q bypassPermissions "$W/sess-argv-vanilla.log"; then pass "sessions run with dontAsk and json output, never bypassPermissions"; else fail "sessions run with dontAsk and json output, never bypassPermissions"; fi
 if grep -q -- '--append-system-prompt-file .*worker-preface.md' "$W/sess-argv-vanilla.log"; then pass "the session carries the himmel worker preface"; else fail "the session carries the himmel worker preface"; fi
 # the rerank arms: lex only + rerank, vec only + rerank (a qmd request each)
-if grep -q '"type": "lex"' "$W/qmd.log" && grep -E '"type": "lex"' "$W/qmd.log" | grep -v '"type": "vec"' | grep -q '"rerank": true'; then pass "bm25-rerank sends a lex-only search with rerank true"; else fail "bm25-rerank sends a lex-only search with rerank true"; fi
-if grep -E '"type": "vec"' "$W/qmd.log" | grep -v '"type": "lex"' | grep -q '"rerank": true'; then pass "vec-rerank sends a vec-only search with rerank true"; else fail "vec-rerank sends a vec-only search with rerank true"; fi
+lexonly="$(grep -E '"type": "lex"' "$W/qmd.log" | grep -v '"type": "vec"' | grep -c '"rerank": true')"
+veconly="$(grep -E '"type": "vec"' "$W/qmd.log" | grep -v '"type": "lex"' | grep -c '"rerank": true')"
+if [ "$lexonly" -gt 0 ]; then pass "bm25-rerank sends a lex-only search with rerank true"; else fail "bm25-rerank sends a lex-only search with rerank true"; fi
+if [ "$veconly" -gt 0 ]; then pass "vec-rerank sends a vec-only search with rerank true"; else fail "vec-rerank sends a vec-only search with rerank true"; fi
 
 # 14. one eval-runs row, eval answer-ab, in the temp ledger; the real ledger is untouched.
 eq "exactly one ledger row was written" "1" "$(wc -l < "$W/ledger.jsonl" | tr -d ' ')"
