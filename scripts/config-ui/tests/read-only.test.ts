@@ -33,8 +33,8 @@ function boot(readOnly: boolean) {
 // every file under the scratch dir with its content hash: a refused write leaves this identical
 function tree(d: string, out: Record<string, string> = {}): Record<string, string> {
   for (const n of readdirSync(d)) {
-    if (n === ".bun") continue; // bun's own package cache, filled by a child process a route starts; not config or state
     const p = join(d, n);
+    if (/\/(\.bun|Library\/Caches|\.local\/state\/gh)$/.test(p)) continue; // bun's package cache and gh's device id, written by a child process a route starts; not config or state
     const st = statSync(p);
     if (st.isDirectory()) tree(p, out); else out[p] = `${createHash("sha256").update(readFileSync(p)).digest("hex")}:${st.mtimeMs}`;
   }
