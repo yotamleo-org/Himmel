@@ -227,3 +227,30 @@ test("a newest report older than 36 hours warns that the cadence has not run", (
   expect(html).toContain("No report since 2026-10-28. The morning-report cadence has not run (doctor: WARN).");
   expect(renderReport(LIST, { state: "none", day: "2026-10-25" }, ui)).not.toContain("No report since");
 });
+
+// the five tiles sit on one line and read their figures after the Commits and Done headings
+const NEW_HEADINGS = GEN.replace("## 💸 Spend per shift", [
+  "## ✅ Completed (3 PRs merged to main)", "", "| PR | Ticket | Summary |", "|---|---|---|", "| #1 | HIMMEL-1 | x |", "", "### Commits (5 on Tue 27 Oct)", "", "```", "abc x", "```", "",
+  "### Moved to Done on Tue 27 Oct (2)", "", "- HIMMEL-2 y", "", "## 🧯 Failure review", "", "Digest window (its own 24 h, not the report day): a to b", "",
+  "| Class | Kind | Rows | Workers | New or recurring | Route |", "|---|---|---|---|---|---|", "| tool/x | tool | 9 | 3 | new | none |", "",
+  "## 💸 Spend per shift"].join("\n"));
+
+test("the five tiles carry the one-line class t5 and no other tile content changes", () => {
+  const html = renderReport(LIST, parseReport(GEN, "2026-10-27"), ui);
+  expect(html).toContain('<div class="tiles t5">');
+});
+
+test("a report with the Commits and Done headings still fills all five tile figures, none a question mark", () => {
+  const html = renderReport(LIST, parseReport(NEW_HEADINGS, "2026-10-27"), ui);
+  const nums = [...html.matchAll(/<span class="num">([^<]*)<\/span>/g)].map((m) => m[1]);
+  expect(nums).toEqual(["3", "1", "2", "4.5", "2"]);
+  expect(html).not.toContain('<span class="num">?</span>');
+});
+
+test("an old report with a Backlog heading draws no Backlog tile, and the failure table gets its own style hook", () => {
+  const old = NEW_HEADINGS.replace("## ▶️ What runs next", "## 📋 Backlog\n\n- **9** Backlog ticket(s)\n\n## ▶️ What runs next");
+  const html = renderReport(LIST, parseReport(old, "2026-10-27"), ui);
+  expect(html).not.toMatch(/<span class="tname">[^<]*Backlog/);
+  expect((html.match(/<div class="tile /g) || []).length).toBe(5);
+  expect(html).toMatch(/<section id="s-\d+" class="p g-carry fr"[^>]*>[\s\S]*?Failure review/);
+});

@@ -50,6 +50,22 @@ test("the Morning report page: day selector, five tiles, per-shift spend, an emp
   await shot(page, "report-no-report");
 });
 
+test("the five tiles share one line at 1280 px and fold to two columns at 760 px", async ({ page }) => {
+  h = await boot();
+  seed();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${h.url}&page=report`);
+  await page.locator(".tiles.t5 .tile").first().waitFor();
+  const tops = await page.locator(".tiles.t5 .tile").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+  expect(tops).toHaveLength(5);
+  expect(new Set(tops).size).toBe(1);
+  await shot(page, "report-1280");
+  await page.setViewportSize({ width: 760, height: 900 });
+  const cols = await page.locator(".tiles.t5").evaluate((e) => getComputedStyle(e).gridTemplateColumns.split(" ").length);
+  expect(cols).toBe(2);
+  await shot(page, "report-760");
+});
+
 test("the four settings show on Configure, save, and land in the himmel config", async ({ page }) => {
   h = await boot();
   await page.goto(h.url);
