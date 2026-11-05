@@ -599,3 +599,9 @@ test('upstreamErrorBody answers a failed upstream call with fixed text, never th
   assert.equal(body, 'upstream request failed');
   assert.equal(upstreamErrorBody('<img src=x onerror=alert(1)>'), 'upstream request failed');
 });
+
+test('the proxy error path answers with upstreamErrorBody and never the error string', () => {
+  const src = readFileSync(join(HERE, '..', 'profile-context-probe.mjs'), 'utf8');
+  assert.match(src, /res\.end\(upstreamErrorBody\(e\)\)/);
+  assert.doesNotMatch(src, /res\.end\(String\(e\)\)/);
+});

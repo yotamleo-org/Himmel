@@ -511,6 +511,15 @@ has "the summary names the triaged rule" "javascript/DOMXSS" "$OUTDIR/2026-10-23
 has "no untriaged High is counted" "- untriaged high: 0" "$OUTDIR/2026-10-23.summary.md"
 hasnt "a triaged finding is not listed as untriaged" "## Untriaged High and Critical findings" "$OUTDIR/2026-10-23.summary.md"
 check "the raw SARIF keeps the triaged finding" 1 "$(jq '.code.runs[0].results | length' "$OUTDIR/2026-10-23.json")"
+# a fixed finding must not come back unnoticed: its id in a scan gates, so the scan is the regression check
+printf '%s\tfixed\tthe flagged call was replaced by fixed text\n' "$FID" > "$TRI"
+run fixedback
+check "a fixed id that appears in a scan is untriaged and exits 1" 1 "$RC"
+has "the returned fixed finding is listed as untriaged" "## Untriaged High and Critical findings" "$OUTDIR/2026-10-23.summary.md"
+has "the returned fixed finding counts as untriaged" "- untriaged high: 1" "$OUTDIR/2026-10-23.summary.md"
+printf '%s\thardened\tthe call site escapes the value, Snyk does not see it\n' "$FID" > "$TRI"
+run hardenedback
+check "a hardened id that appears in a scan stays triaged and exits 0" 0 "$RC"
 STUB_CODE="$FIX/snyk-code-high.json" run noid
 check "a High without a finding id is untriaged and exits 1" 1 "$RC"
 printf '%s\tfalse-positive\t\n' "$FID" > "$TRI"

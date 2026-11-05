@@ -26,7 +26,9 @@
 # Code triage: Snyk Code reads no .snyk ignore block, so a Code High
 # that has been looked at is recorded in scripts/security/snyk-code-triage.tsv, one row per
 # finding: <SARIF fingerprints.identity>, <verdict: fixed|hardened|false-positive>, <reason>. Only
-# an UNTRIAGED Code High (id not in that list, or a result with no id) counts toward the exit code;
+# an UNTRIAGED Code High (id not in that list, or a result with no id) counts toward the exit code.
+# A `fixed` row records a fix and suppresses nothing: that id coming back in a scan gates, so the scan
+# is the regression check. `hardened` and `false-positive` rows stay suppressed while Snyk reports them;
 # the summary lists the untriaged and the triaged findings separately by rule and file:line. The raw
 # SARIF in <date>.json is never changed and nothing is ignored in Snyk. A row with no id, an unknown
 # verdict or no reason exits 2 before any scan runs. Open Source findings are never triaged.
@@ -453,7 +455,7 @@ code_rows="$(jq -r '(.runs // [])[]? | .results[]? | select(.level == "error" or
     | [(if .level == "error" then "high" else "medium" end), .ruleId, (.locations[0].physicalLocation.artifactLocation.uri // "?") + ":" + ((.locations[0].physicalLocation.region.startLine // 0) | tostring), (.message.text // ""), (.fingerprints.identity // "")] | @tsv' "$tmp/code.json")" \
     || { err "cannot read the Code findings from $tmp/code.json"; exit 2; }
 # state <TAB> severity, rule, file:line, message, finding id <TAB> verdict: a result with no id is untriaged
-code_marked="$(printf '%s\n' "$code_rows" | awk -F'\t' -v OFS='\t' 'FILENAME == ARGV[1] { if ($0 !~ /^[[:space:]]*(#|$)/) v[$1] = $2; next }
+code_marked="$(printf '%s\n' "$code_rows" | awk -F'\t' -v OFS='\t' 'FILENAME == ARGV[1] { if ($0 !~ /^[[:space:]]*(#|$)/ && $2 != "fixed") v[$1] = $2; next }
     NF { st = ($5 != "" && ($5 in v)) ? "triaged" : "untriaged"; print st, $1, $2, $3, $4, $5, (st == "triaged" ? v[$5] : "") }' "$TRIAGE_SRC" -)" \
     || { err "cannot match the Code findings against the triage list"; exit 2; }
 
