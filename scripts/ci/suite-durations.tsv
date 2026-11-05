@@ -557,6 +557,7 @@ scripts/himmelctl/test/test-himmelctl-path-shim.sh	3
 scripts/himmelctl/test/test-luna-config-migration.sh	9
 scripts/himmelctl/test/test-provenance-js.sh	4
 scripts/himmelctl/test/test-provenance-session.sh	2
+scripts/himmelctl/test/test-redact.sh	0
 scripts/himmelctl/test/test-report-deep.sh	1
 scripts/himmelctl/test/test-secret-store.sh	0
 scripts/himmelctl/test/test-standalone-bundle-closure.sh	0
