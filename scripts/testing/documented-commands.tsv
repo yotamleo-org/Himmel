@@ -37,6 +37,10 @@ F35	scripts/cr/pr-check-ref/70-step7-nits.md	wt	xfail:HIMMEL-6784	pr_num="" #282
 F36	scripts/cr/pr-check-ref/70-step7-nits.md	wt	ask	bash "<himmel_dir>/scripts/cr/file-deferred-issues.sh" --pr <pr-num> --input '<review-tmpfile>' --dry-run #4263634063	bash scripts/cr/file-deferred-issues.sh --pr 1 --input '@SCRATCH@' --dry-run
 F37	scripts/cr/pr-check-ref/32-step3-reviewers.md	wt	ask	bash "<himmel_dir>/scripts/cr/ledger-append.sh" blast --head <head> --duration-secs <s> #2422875973	bash scripts/cr/ledger-append.sh blast --head @HEAD@ --duration-secs 90
 F38	scripts/cr/pr-check-ref/32-step3-reviewers.md	wt	ask	bash "<himmel_dir>/scripts/cr/ledger-append.sh" blast --head <head> --status off --reason '<why>' #3593067671	bash scripts/cr/ledger-append.sh blast --head @HEAD@ --status off --reason 'why'
+F39	scripts/cr/pr-check-ref/10-step0.md	wt	ask	bash "<himmel_dir>/scripts/cr/pr-check-outside.sh" <pr> #313145915	bash scripts/cr/pr-check-outside.sh 1
+F40	scripts/cr/pr-check-ref/30-step3-panel.md	wt	ask	bash "<himmel_dir>/scripts/cr/panel-first-pass.sh" --head <head> --branch '<headRefName>' --full #1644413060	bash scripts/cr/panel-first-pass.sh --head @HEAD@ --branch '@BRANCH@' --full
+F41	scripts/cr/pr-check-ref/33-step3-impacted.md	wt	ask	bash "<himmel_dir>/scripts/cr/impacted-suites.sh" --check <base>..<head> --from-file <scratch-path> --record --branch '<headRefName>' --head <head> #1531775727	bash scripts/cr/impacted-suites.sh --check @HEAD@..@HEAD@ --from-file @SCRATCH@ --record --branch '@BRANCH@' --head @HEAD@
+F42	scripts/cr/pr-check-ref/33-step3-impacted.md	wt	ask	bash "<himmel_dir>/scripts/cr/ledger-append.sh" blast --branch '<headRefName>' --head <head> --duration-secs <s> #1631286162	bash scripts/cr/ledger-append.sh blast --branch '@BRANCH@' --head @HEAD@ --duration-secs 60
 L37	docs/handover/worker-preface.md	wt	ask	-	bash @ANCHOR@/scripts/handover/chief-kit/append-results.sh @SCRATCH@ "LIVE — ok"
 L38	docs/handover/worker-preface.md	wt	ask	-	bash @WT@/scripts/handover/chief-kit/append-results.sh @SCRATCH@ "LIVE — ok"
 L40	docs/handover/worker-preface.md	wt	ask	-	bash @ANCHOR@/scripts/handover/queue-lock.sh acquire @SCRATCH@
