@@ -5,8 +5,8 @@
 # file kept in step with the checker ticket's Jira links, the newer edit winning). A fake jira
 # (KBS_JIRA) answers `links` and `history --json` from fixture files and records every call, so
 # nothing reaches the live project. DRIFT_SUMMARY and KNOWN_BUGS_SYNC override the scripts under
-# test (the RED control: a missing script fails every row). bash 3.2-safe apart from date -d,
-# which the chief kit may use (Linux only).
+# test (the RED control: a missing script fails every row). bash 3.2-safe; times are set with touch -t
+# (BSD and GNU), so the suite runs on macOS and Linux.
 #
 # Run: bash scripts/handover/chief-kit/test-drift-summary.sh
 set -u
@@ -20,6 +20,7 @@ fail() { printf 'FAIL: %s\n' "$1"; fails=$((fails + 1)); }
 has() { case "$2" in *"$3"*) pass "$1" ;; *) fail "$1 (missing '$3' in: $2)" ;; esac; }
 lacks() { case "$2" in *"$3"*) fail "$1 (found '$3')" ;; *) pass "$1" ;; esac; }
 eq() { [ "$2" = "$3" ] && pass "$1" || fail "$1 (got '$2', want '$3')"; }
+touch_at() { TZ=UTC touch -t "$(TZ=UTC date -d "@$2" +%Y%m%d%H%M.%S 2>/dev/null || TZ=UTC date -r "$2" +%Y%m%d%H%M.%S)" "$1"; }  # GNU date -d @N, BSD date -r N
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/drift-summary-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
@@ -53,7 +54,7 @@ UNOWNED HIMMEL-7588 In Progress, no open PR | writer=a | fix=b
 WORKER-COMMENT HIMMEL-4862 the record's hash differs | writer=a | fix=b
 sdrift=8:abcd1234
 EOF
-touch -d "@$((NOW - 600))" "$DRIFT"
+touch_at "$DRIFT" "$((NOW - 600))"
 
 # shellcheck disable=SC2119,SC2120  # extra arguments are optional; most calls pass none
 sum() { node "$SUM" --json --drift "$DRIFT" --mirror-dir "$MIR" --now "$NOW" "$@" 2>&1; }
@@ -71,15 +72,15 @@ eq 'E15 a readable sdrift is not unknown' "$(jqv "$out" '.unknown')" false
 eq 'E14 the saved run time is reported' "$(jqv "$out" '.file.writtenAt')" "$((NOW - 600))"
 
 # E13: no drift
-printf 'sdrift=0:00000000\n' > "$DRIFT"; touch -d "@$((NOW - 60))" "$DRIFT"
+printf 'sdrift=0:00000000\n' > "$DRIFT"; touch_at "$DRIFT" "$((NOW - 60))"
 out="$(sum)"
 eq 'E13 sdrift=0 counts nothing' "$(jqv "$out" '.counts.real + .counts.known + .counts.transient')" 0
 
 # E15: unknown and stale never read as zero
-printf 'HEALTH - jira: could not read | writer=- | fix=-\nsdrift=unknown\n' > "$DRIFT"; touch -d "@$((NOW - 60))" "$DRIFT"
+printf 'HEALTH - jira: could not read | writer=- | fix=-\nsdrift=unknown\n' > "$DRIFT"; touch_at "$DRIFT" "$((NOW - 60))"
 out="$(sum)"
 eq 'E15 sdrift=unknown is marked unknown' "$(jqv "$out" '.unknown')" true
-printf 'sdrift=0:00000000\n' > "$DRIFT"; touch -d "@$((NOW - 40000))" "$DRIFT"
+printf 'sdrift=0:00000000\n' > "$DRIFT"; touch_at "$DRIFT" "$((NOW - 40000))"
 out="$(sum)"
 eq 'E15 a file older than one focus refresh is marked stale' "$(jqv "$out" '.stale')" true
 out="$(node "$SUM" --json --drift "$WORK/absent.txt" --mirror-dir "$MIR" --now "$NOW" 2>&1)"
@@ -92,7 +93,7 @@ UNOWNED HIMMEL-9001 a row new since the last run | writer=a | fix=b
 DONE-WITH-OPEN-PR HIMMEL-7588 the same key under another class | writer=a | fix=b
 sdrift=3:11111111
 EOF
-touch -d "@$((NOW - 60))" "$DRIFT"
+touch_at "$DRIFT" "$((NOW - 60))"
 out="$(sum)"
 eq 'E23 while the checker ticket is open the paired row is known' "$(jqv "$out" '[.known[].class] | join(",")')" 'UNOWNED'
 eq 'K2 a row with no pairing counts at once' "$(jqv "$out" '[.real[].key] | sort | join(",")')" 'HIMMEL-7588,HIMMEL-9001'
@@ -108,7 +109,7 @@ out="$(sum)"
 eq 'E23 a checker mirror that cannot be read keeps the rows real instead of failing the summary' "$(jqv "$out" '.counts.real')" 3
 rmdir "$MIR/HIMMEL-7980.md"
 cp "$DRIFT" "$WORK/drift.keep"; cp "$KNOWN" "$WORK/known.keep"
-printf 'UNOWNED HIMMEL-7588 x | writer=a | fix=b\nsdrift=1:aaaaaaaa\n' > "$DRIFT"; touch -d "@$((NOW - 60))" "$DRIFT"
+printf 'UNOWNED HIMMEL-7588 x | writer=a | fix=b\nsdrift=1:aaaaaaaa\n' > "$DRIFT"; touch_at "$DRIFT" "$((NOW - 60))"
 printf -- '---\nkey: "HIMMEL-7980"\nstatusCategory: ""\n---\n' > "$MIR/HIMMEL-7980.md"
 out="$(sum)"
 eq 'E23 an empty checker status is unreadable, so the row counts' "$(jqv "$out" '.counts.known')" 0
@@ -117,7 +118,7 @@ mirror HIMMEL-7981 "To Do"
 printf 'HIMMEL-7981\tUNOWNED\tHIMMEL-7588\t2026-10-28T22:00:00Z\n' >> "$KNOWN"
 out="$(sum)"
 eq 'E23 a row paired with a Done checker and an open one stays a known bug' "$(jqv "$out" '[.known[].checker] | join(",")')" HIMMEL-7981
-cp "$WORK/drift.keep" "$DRIFT"; cp "$WORK/known.keep" "$KNOWN"; touch -d "@$((NOW - 600))" "$DRIFT"
+cp "$WORK/drift.keep" "$DRIFT"; cp "$WORK/known.keep" "$KNOWN"; touch_at "$DRIFT" "$((NOW - 600))"
 mirror HIMMEL-7980 "To Do"
 
 # E21: the mode key, default off
@@ -192,7 +193,7 @@ printf '[%s]\n' "$(hist added HIMMEL-7900 2026-10-29T09:30:00.000+0000)" > "$JF/
 run_sync > /dev/null
 eq 'E32 a pair from Jira is written as class unset with its Jira edit time' "$(grep HIMMEL-7900 "$KNOWN")" "$(printf 'HIMMEL-7980\tunset\tHIMMEL-7900\t2026-10-29T09:30:00Z')"
 has 'E32 and logged' "$(cat "$SLOG")" 'HIMMEL-7900'
-printf 'UNOWNED HIMMEL-7900 x | writer=a | fix=b\nsdrift=1:22222222\n' > "$DRIFT"; touch -d "@$((NOW - 60))" "$DRIFT"
+printf 'UNOWNED HIMMEL-7900 x | writer=a | fix=b\nsdrift=1:22222222\n' > "$DRIFT"; touch_at "$DRIFT" "$((NOW - 60))"
 out="$(sum)"
 eq 'E32 an unset pair still leaves the count' "$(jqv "$out" '.counts.known')" 1
 
@@ -238,7 +239,7 @@ run_sync > /dev/null
 eq 'a history listed newest first still reads the removal as the latest event' "$(grep -c HIMMEL-7588 "$KNOWN")" 0
 
 # an sdrift trailer that is not count:signature is an unreadable run
-printf 'UNOWNED HIMMEL-7588 x | writer=a | fix=b\nsdrift=garbage\n' > "$DRIFT"; touch -d "@$((NOW - 60))" "$DRIFT"
+printf 'UNOWNED HIMMEL-7588 x | writer=a | fix=b\nsdrift=garbage\n' > "$DRIFT"; touch_at "$DRIFT" "$((NOW - 60))"
 out="$(sum)"
 eq 'E15 an sdrift trailer that is not count:signature is marked unknown' "$(jqv "$out" '.unknown')" true
 
