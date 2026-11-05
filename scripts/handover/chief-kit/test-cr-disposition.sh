@@ -80,6 +80,9 @@ FHEAD=1080d424a81d7cb754e1abd312fa3d87467863b7
 SHA=2222222222222222222222222222222222222222
 SHA2=3333333333333333333333333333333333333333
 export READY_STUB_HEAD="$SHA" READY_STUB_BRANCH="$BR"
+# ready-check reads the branch from the GraphQL snapshot; a branch other than the fixture's keeps the earlier-head
+# fixture deferral out of its items 7 and 18, so this suite exercises only cr-disposition.sh's own gate
+export READY_STUB_GQL_BRANCH=gql-other
 ready_pass_ledger "$REPO" "$SHA"
 # defer_finding <id> <severity> <text> - a worker-deferred finding at $FHEAD, written
 # through the ledger's single writer (test-pr-check-run invariant 7).

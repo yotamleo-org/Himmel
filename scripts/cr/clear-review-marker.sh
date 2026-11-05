@@ -98,14 +98,31 @@
 #      cleared under the stale-marker fallback with no docs-audit refusal.
 #
 # Usage: clear-review-marker.sh [<branch>] [--dry-run]
+#        clear-review-marker.sh --check-findings --tip <full-sha> [--assume-go] <branch>
 #   branch     optional; defaults to the current branch
 #   --dry-run  run every gate that can be checked without writing, report the
 #              verdict, then STOP (never clears). Skips the
 #              branch-wide still-open check specifically: that check's own
 #              underlying command amends the shared ledger as a side effect
 #              of checking, which --dry-run must never do (see gate 4c).
+#   --check-findings  the GO-time read of gates 4 and 4b, for
+#              ready-check.sh. It runs this script's own ledger verdict, the
+#              review-head rule above and the same blocking predicate, at <tip>,
+#              and writes nothing: no marker, no ledger row, no audit line, no
+#              gh or remote call. It needs no marker and no checked-out branch.
+#              Exit 0 (no blocking or unadjudicated finding), 15 (gate 4),
+#              14 (gate 4b, a malformed ledger, or the 3c family record),
+#              10 usage, 12 the branch has a recorded round head but <tip> is
+#              not a commit in this repository. Gates 3,
+#              3b, 4c, 4d, 4e, 4f and 5 are not part of it.
+#   --assume-go  with --check-findings only: judge as the merge will once the
+#              chief's GO exists. The judge-go lookup counts as accepted, so
+#              the gates run at the recorded round head with `fixed` passing;
+#              its cap and descent checks are not re-run (the caller also reads
+#              the run without this flag, and refuses on either).
 #
-# Exit codes:
+# Exit codes (--check-findings reads, never clears: 0, 10, 12, 14 and 15 mean what
+# its Usage entry above says, and 11 is the same missing tool as below):
 #   0   marker cleared (or --dry-run passed, or no marker — nothing to do)
 #   10  usage error
 #   11  required tool or component missing (git / node / the branch-lock lib)
@@ -192,6 +209,9 @@ fi
 branch=""
 DRY_RUN=0
 check_sweeps=""
+check_findings=0
+check_tip=""
+assume_go=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --dry-run) DRY_RUN=1; shift ;;
@@ -200,6 +220,13 @@ while [ $# -gt 0 ]; do
                 echo "clear-cr-marker: --check-sweeps needs a file" >&2; exit 10
             fi
             check_sweeps="$2"; shift 2 ;;
+        --check-findings) check_findings=1; shift ;;
+        --assume-go) assume_go=1; shift ;;
+        --tip)
+            if [ $# -lt 2 ] || [ -z "$2" ]; then
+                echo "clear-cr-marker: --tip needs a full commit sha" >&2; exit 10
+            fi
+            check_tip="$2"; shift 2 ;;
         -h|--help)
             # Anchored to the `set -uo pipefail` line, not a hardcoded count, so
             # a header edit cannot silently truncate this reference.
@@ -214,6 +241,23 @@ while [ $# -gt 0 ]; do
             branch="$1"; shift ;;
     esac
 done
+
+if [ "$check_findings" -eq 1 ]; then
+    if [ -z "$check_tip" ] || [ "$DRY_RUN" -eq 1 ] || [ -n "$check_sweeps" ]; then
+        echo "clear-cr-marker: --check-findings needs --tip <full commit sha> and cannot be combined with --dry-run or --check-sweeps" >&2
+        exit 10
+    fi
+    case "$check_tip" in
+        *[!0-9a-f]*) echo "clear-cr-marker: --tip must be a full lowercase hex commit sha (got '$check_tip')" >&2; exit 10 ;;
+    esac
+    if [ "${#check_tip}" -ne 40 ] && [ "${#check_tip}" -ne 64 ]; then
+        echo "clear-cr-marker: --tip must be a full commit sha (got '$check_tip')" >&2
+        exit 10
+    fi
+elif [ -n "$check_tip" ] || [ "$assume_go" -eq 1 ]; then
+    echo "clear-cr-marker: --tip and --assume-go belong to --check-findings" >&2
+    exit 10
+fi
 
 command -v git >/dev/null 2>&1 || { echo "clear-cr-marker: required tool 'git' not on PATH" >&2; exit 11; }
 # `node` (ledger read) and `gh` (PR state) are checked LATER, each immediately
@@ -230,6 +274,8 @@ command -v git >/dev/null 2>&1 || { echo "clear-cr-marker: required tool 'git' n
 # must abort — that gate lives in merge-on-green.sh.
 audit() {
     local line ts logf
+    # --check-findings is a read: it leaves no audit line, so the merge's log stays the merge's.
+    [ "$check_findings" -eq 0 ] || return 0
     ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo '?')
     line="$ts clear-cr-marker $*"
     echo "$line"
@@ -301,7 +347,18 @@ if [ -z "$branch" ]; then
     exit 12
 fi
 
-if [ -n "$check_sweeps" ]; then
+if [ "$check_findings" -eq 1 ]; then
+# --check-findings (ready-check.sh, at GO time): judge gates 4 and 4b at <tip> with the
+# code below, nothing else. No marker, remote-head, stale-marker, dotenv or PR gate and
+# nothing is written. The tip is the caller's PR head. A head this repository does not
+# hold cannot be compared with the branch's round head, so a branch that has round state
+# refuses it; with none, the ledger is read at the head by name, as the gates below do.
+tip="$check_tip"
+if ! git cat-file -e "$tip^{commit}" 2>/dev/null && { [ -e "$git_dir/cr-review-rounds/$branch.head" ] || [ -L "$git_dir/cr-review-rounds/$branch.head" ]; }; then
+    echo "clear-cr-marker: --check-findings: $tip is not a commit in this repository and $branch has a recorded round head, so the review head cannot be chosen — fetch the head and re-run." >&2
+    exit 12
+fi
+elif [ -n "$check_sweeps" ]; then
 # --check-sweeps (write-verdicts.sh sweep, at write time): judge the
 # candidate records with gate 4d's own checks and nothing else. No marker,
 # remote-head, stale-marker or dotenv gate; nothing is written or cleared. The
@@ -572,9 +629,10 @@ if [ -f "$_rr_head_file" ] && [ ! -L "$_rr_head_file" ]; then
     # A signed judge GO at the tip stands in for the panel on a post-cap delta
     # review-round.sh judge-go re-verifies the record, the cap and
     # the descent, so the gates below run at the head a critic did review.
+    # --assume-go (--check-findings only) counts the lookup as accepted: the chief's GO is not written yet.
     if [ "$review_head" = "$tip" ] && [ "${#_rr_head}" -ge 40 ] && [ "$_rr_head" != "$tip" ] \
         && git cat-file -e "$_rr_head^{commit}" 2>/dev/null \
-        && _jg_hit=$(bash "$SCRIPT_DIR/review-round.sh" judge-go --branch "$branch" --head "$tip" 2>/dev/null); then # swallow-ok: a failing verb is the no-GO case, the gates below refuse at the tip
+        && { { [ "$assume_go" -eq 1 ] && _jg_hit="assumed-go"; } || _jg_hit=$(bash "$SCRIPT_DIR/review-round.sh" judge-go --branch "$branch" --head "$tip" 2>/dev/null); }; then # swallow-ok: a failing verb is the no-GO case, the gates below refuse at the tip
         review_head="$_rr_head"
         jg_fixed_ok=1
         echo "clear-cr-marker: ${tip:0:8} has no review round of its own but a signed judge GO ($_jg_hit) rules on it - gating on the reviewed head ${review_head:0:8}." >&2
@@ -1187,6 +1245,23 @@ certify_refused=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("d
 # CR_FLOOR_FALLBACK=claude-only eligibility (see gate 3b below).
 floor_fallback_eligible=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(String(JSON.parse(s).floorFallbackEligible?1:0)))' 2>/dev/null)
 exhausted_lanes=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log((JSON.parse(s).exhaustedLanes||[]).join(" ")))' 2>/dev/null)
+if [ "$check_findings" -eq 1 ]; then
+    # The GO-time read of gates 4 and 4b, in the merge's own order: a malformed ledger, a blocking
+    # finding, an unadjudicated one. The fields are the ones the gates below read; nothing is written.
+    if [ "${malformed:-0}" -gt 0 ]; then
+        echo "clear-cr-marker: --check-findings: the CR ledger has ${malformed} unparseable record(s); the review verdict cannot be read (an unknown verdict is not a clean one)." >&2
+        exit 14
+    fi
+    if [ -n "$blocking" ]; then
+        echo "clear-cr-marker: --check-findings: blocking finding(s) at ${review_head:0:8} (gating ${tip:0:8}): $blocking" >&2
+        exit 15
+    fi
+    if [ "${unadjudicated_count:-0}" -gt 0 ]; then
+        echo "clear-cr-marker: --check-findings: ${unadjudicated_count} finding(s) at ${review_head:0:8} (gating ${tip:0:8}) have no recorded verdict." >&2
+        exit 14
+    fi
+    exit 0
+fi
 
 # Provenance of the context-free floor review. claude-floor-review.sh
 # stamps <git-common-dir>/cr-floor/<full-head>.json with the head, the diff base,

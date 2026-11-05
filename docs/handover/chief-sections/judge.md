@@ -20,9 +20,12 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   lives only in your context dies with it; the file is what a successor reads.
   Prefer `bash scripts/handover/chief-kit/verdict-go.sh <qid> <GO|NO-GO> <head>
   --model <id> --effort <level>
-  --pr <n> --evidence-file <path> --doc <chief doc>`: it runs `write-verdict.sh`,
-  `go.sh`, the Results bullet and the board in one call and prints the message to
-  send the worker. The hand steps are for a verdict it refuses.
+  --pr <n> --evidence-file <path> --doc <chief doc> --contract <yes|no>`: it runs
+  `write-verdict.sh`, `go.sh`, the Results bullet and the board in one call and
+  prints the message to send the worker. `--contract` is the brief's
+  `Completes ticket:` answer; `go.sh` refuses a PR titled with a ticket key
+  without it, and `no` leaves `--jira-transition` off the merge line. The hand
+  steps are for a verdict it refuses.
 - **Residuals are depth-gated** (HIMMEL-6115): a ticket labelled `residual-depth-<n>`
   (n >= 1) is a judge, CR or panel residual. `write-verdict.sh --residual-of <KEY>`
   stamps `residual-depth-<depth of KEY + 1>` on each ticket the residual lines cite;

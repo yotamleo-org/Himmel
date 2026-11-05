@@ -261,6 +261,7 @@ cp -R "$HERE/../../lib" "$S10/scripts/lib"
 cp "$HERE/../../ci/ticket-id-internal-authors.txt" "$S10/scripts/ci/ticket-id-internal-authors.txt"
 cp "$HERE/../../cr/anchor-handoff.sh" "$S10/scripts/cr/anchor-handoff.sh"
 cp "$HERE/../../cr/ledger-amend-auth.js" "$S10/scripts/cr/ledger-amend-auth.js"
+cp "$HERE/../../cr/clear-review-marker.sh" "$S10/scripts/cr/clear-review-marker.sh"
 printf 'HANDOVER_DIR=%s\n' "$S10_REAL" > "$S10/.env"
 S10_GO=".locks/go/77.$SHA"
 
@@ -947,6 +948,46 @@ VEXTRA=$'delta: no-op\ndelta-judged: '"$A29"$'\ndelta-class: none\n' verdict "$R
 VEXTRA=$'delta: no-op\ndelta-judged: '"$T29"$'\ndelta-class: none\n' verdict "$ROOT29" J "**GO** for head \`$D29\`." "delta-noop-$D29"
 check "8732-i: a two-hop no-op chain whose second hop (A to T) is a trust delta is refused (exit 10, no GO)" "$(go29 "$D29")" "10:none"
 VPR=
+
+# --- 30. no GO for a PR the merge will refuse (partial-merge remainder, ready-check item 17) ---
+# merge-on-green.sh refuses a contract-no merge whose PR body records no remainder (exit 26). go.sh takes
+# --contract yes|no and passes ready-check --require-contract, so a keyed PR with no contract named is refused too.
+# The READY_STUB_* stubs serve the PR title and body: the default title is unkeyed, the default body lists only `done`.
+cd "$READY_REPO" || { echo "FAIL: cd $READY_REPO" >&2; exit 1; }
+ROOT30="$tmp/root30"; mkdir -p "$ROOT30"
+KEYED30='fix(x): [HIMMEL-1] a partial change'
+go30() { # <stub title> <stub body or "-" for the default> <go.sh args...>
+    local title="$1" body="$2"; shift 2
+    if [ "$body" = "-" ]; then
+        READY_STUB_HEAD="$SHA" READY_STUB_TITLE="$title" HANDOVER_DIR="$ROOT30" bash "$SCRIPT" "$@" 2>&1
+    else
+        READY_STUB_HEAD="$SHA" READY_STUB_TITLE="$title" READY_STUB_BODY="$body" HANDOVER_DIR="$ROOT30" bash "$SCRIPT" "$@" 2>&1
+    fi
+}
+rc=0; out="$(go30 "$KEYED30" - --contract no 77 "$SHA")" || rc=$?
+check    "8918 b-go: contract no and no remainder in the body -> exit 4" "$rc" "4"
+contains "8918 b-go: names item 17" "$out" "[FAIL] 17."
+check    "8918 b-go: nothing written" "$(find "$ROOT30" -type f | wc -l | tr -d ' ')" "0"
+rc=0; out="$(go30 "$KEYED30" $'## Ticket coverage\n- ask: done\n\nRemaining: the docs follow\n\nRED then GREEN: the new row failed before the change\n' --contract no 77 "$SHA" 2>/dev/null)" || rc=$?
+check    "8918 b2: contract no with a Remaining line -> exit 0" "$rc" "0"
+check    "8918 b2: the GO path" "$out" "$ROOT30/.locks/go/77.$SHA"
+rm -rf "$ROOT30"; mkdir -p "$ROOT30"
+rc=0; out="$(go30 "$KEYED30" - --contract yes 77 "$SHA" 2>/dev/null)" || rc=$?
+check    "8918 b3: contract yes with no remainder -> exit 0" "$rc" "0"
+rm -rf "$ROOT30"; mkdir -p "$ROOT30"
+rc=0; out="$(go30 'fix(x): no ticket key in this title' - --contract no 77 "$SHA" 2>/dev/null)" || rc=$?
+check    "8918 b5: an unkeyed title is not a partial merge -> exit 0" "$rc" "0"
+rm -rf "$ROOT30"; mkdir -p "$ROOT30"
+rc=0; out="$(go30 "$KEYED30" - 77 "$SHA")" || rc=$?
+check    "8918 b6: a keyed title and no --contract -> exit 4" "$rc" "4"
+contains "8918 b6: says to name the contract" "$out" "--contract yes|no"
+check    "8918 b6: nothing written" "$(find "$ROOT30" -type f | wc -l | tr -d ' ')" "0"
+rc=0; out="$(go30 "$KEYED30" - --contract maybe 77 "$SHA")" || rc=$?
+check    "8918: --contract maybe -> exit 2" "$rc" "2"
+rc=0; out="$(go30 "$KEYED30" - --contract yes --contract no 77 "$SHA")" || rc=$?
+check    "8918: --contract twice -> exit 2" "$rc" "2"
+rc=0; out="$(go30 "$KEYED30" - --contract no --repo o/f --trust-reviewed J1 77 "$SHA")" || rc=$?
+check    "8918: --contract with --repo -> exit 2" "$rc" "2"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

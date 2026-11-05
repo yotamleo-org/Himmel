@@ -48,6 +48,7 @@ git init -q --bare "$tmp/origin.git"
 git init -q "$ANCHOR"
 mkdir -p "$ANCHOR/scripts/lib"
 cp "$HERE/../../lib/go-gate.sh" "$ANCHOR/scripts/lib/go-gate.sh"
+cp "$HERE/../../lib/pr_remainder.py" "$ANCHOR/scripts/lib/pr_remainder.py"
 git -C "$ANCHOR" add -A
 git -C "$ANCHOR" -c user.name=t -c user.email=t@t commit -q -m init
 git -C "$ANCHOR" remote add origin "$tmp/origin.git"
@@ -66,6 +67,9 @@ case "$*" in
     "repo view --json nameWithOwner"*) printf 'o/r\n'; exit 0 ;;
     "repo view --json defaultBranchRef"*) printf 'main\n'; exit 0 ;;
     "pr view "*"--json title"*) printf '%s\n' "${STUB_TITLE:-fix(x): [HIMMEL-1] t (#1)}"; exit 0 ;;
+    # a keyed title makes ready-check read the head and author; neither stub answers them otherwise and the two bounce the call forever
+    "pr view "*"--json headRefOid --jq"*) printf '%s\n' "$READY_STUB_HEAD"; exit 0 ;;
+    "pr view "*"--json author"*) printf 'someone\n'; exit 0 ;;
     *"contents/scripts/ci/ci-trust-paths.txt"*)
         [ "${STUB_TRUST_LIST_FAIL:-0}" = 1 ] && { echo "boom" >&2; exit 1; }
         printf '^scripts/ci/\n'; exit 0 ;;
@@ -186,6 +190,34 @@ check "ledger: missing doc -> exit 2" "$RC" "2"
 
 # --- 9. read-only --------------------------------------------------------------
 check "read-only: no GO file written" "$(ls -A "$HANDOVER_DIR")" ""
+
+# --- 10. the completion contract: no GO line for a PR the merge will refuse -------------------
+# A keyed title with contract no and no recorded remainder is the merge's exit 26; ready-go passes
+# --require-contract to ready-check, so it FAILs there (exit 4, no NEXT) and both NEXT lines carry --contract.
+export READY_STUB_TITLE='fix(x): [HIMMEL-1] a partial change'
+run --to worker --token tok --contract no 77 "$SHA"
+check "contract no, no remainder: exit 4" "$RC" "4"
+contains "contract no, no remainder: names item 17" "$OUT" "[FAIL] 17."
+lacks "contract no, no remainder: no NEXT" "$OUT" "NEXT:"
+lacks "contract no, no remainder: no GO line" "$OUT" "SENDMESSAGE"
+export READY_STUB_BODY=$'## Ticket coverage\n- ask: done\n\nRemaining: the docs follow\n\nRED then GREEN: the new row failed before the change\n'
+run --to worker --token tok --contract no 77 "$SHA"
+check "contract no, with Remaining: exit 0" "$RC" "0"
+contains "contract no, with Remaining: NEXT carries --contract no" "$OUT" "/go.sh --contract no 77 $SHA"
+unset READY_STUB_BODY
+run --to worker --token tok --contract yes 77 "$SHA"
+contains "contract yes: NEXT carries --contract yes" "$OUT" "/go.sh --contract yes 77 $SHA"
+run --to worker --token tok 77 "$SHA"
+check "keyed title, no --contract: exit 4" "$RC" "4"
+contains "keyed title, no --contract: names the flag" "$OUT" "--contract yes|no"
+lacks "keyed title, no --contract: no NEXT" "$OUT" "NEXT:"
+export STUB_FILE=scripts/ci/ci-trust-paths.txt
+run --to worker --token tok --contract yes 77 "$SHA"
+contains "trust hit: the judge route carries --contract" "$OUT" "go.sh --trust-reviewed <judge qid> --contract yes 77 $SHA"
+unset STUB_FILE
+run --contract maybe 77 "$SHA"
+check "contract maybe: exit 2" "$RC" "2"
+unset READY_STUB_TITLE
 
 echo
 [ "$fails" -eq 0 ] && { echo "test-ready-go: all passed"; exit 0; }
