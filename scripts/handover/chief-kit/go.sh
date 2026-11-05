@@ -102,7 +102,9 @@
 #      go_noop_carry refuses (no real GO at the chain's root, a NO-GO at or after
 #      <head>, an over-long or cyclic chain) or delta-class.sh no longer classifies
 #      every hop of its chain as `none` (a trust-path or judged-finding delta); or any
-#      read error on that path, or an unresolvable verdict scope: a real judge must rule
+#      read error on that path, or an unresolvable verdict scope: a real judge must rule;
+#      also, with --repo, a --checkout <dir> that is not a readable git checkout (the
+#      NO-GO order of a fork PR cannot be read there)
 #
 # A relative entry (`bash scripts/handover/chief-kit/go.sh`, the worker
 # profile's pre-approved literal) hands off to the HIMMEL_REPO anchor's own
