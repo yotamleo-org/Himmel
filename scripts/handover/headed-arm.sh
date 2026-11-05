@@ -1652,7 +1652,19 @@ if [ -n "${HIMMEL_HOLD_KEY:-}" ] && [ -n "${HIMMEL_HOLD_DOC:-}" ] && [ "$ROLE" !
                     printf -v _holds_q_holds '%q' "$_holds_primary/scripts/handover/chief-kit/holds.py"
                     printf -v _holds_q_repo '%q' "$REPO"
                     printf -v _holds_q_path '%q' "${_holds_path:-PATH}"
-                    _holds_grant="to let $HIMMEL_HOLD_KEY write it, the chief runs: python3 -I $_holds_q_holds grant --key $HIMMEL_HOLD_KEY --repo $_holds_q_repo $_holds_q_path" ;;
+                    _holds_cmd="python3 -I $_holds_q_holds grant --key $HIMMEL_HOLD_KEY --repo $_holds_q_repo"
+                    # who may grant it (holds.py grant-route): a trust path needs the chief's own locked doc, a settings or CI path the operator
+                    _holds_route="$(python3 -I "$_holds_py" grant-route --repo "$REPO" "${_holds_path:-PATH}" 2>/dev/null)" || _holds_route=any  # swallow-ok: no route answer prints the plain grant line, which holds.py itself still checks
+                    case "$_holds_route" in
+                        chief)
+                            _holds_q_cdoc=CHIEF_DOC
+                            [ -n "${HIMMEL_CONSOLE_DOC:-}" ] && printf -v _holds_q_cdoc '%q' "$HIMMEL_CONSOLE_DOC"
+                            _holds_grant="$_holds_path is a trust path: to let $HIMMEL_HOLD_KEY write it, the chief stamps it from its own session: $_holds_cmd --chief-doc $_holds_q_cdoc $_holds_q_path (the operator runs the line without --chief-doc only in a real terminal, not a ! line in a Claude window; from a Claude window the operator asks the chief)" ;;
+                        operator)
+                            _holds_grant="$_holds_path is a settings or CI-workflow path: only the operator grants it, in a real terminal, not a ! line in a Claude window: $_holds_cmd $_holds_q_path" ;;
+                        *)
+                            _holds_grant="to let $HIMMEL_HOLD_KEY write it, the chief runs: $_holds_cmd $_holds_q_path" ;;
+                    esac ;;
             esac
             echo "headed-arm: $_holds_grant" >&2
             # the chief reads neither this stderr (a generated launcher keeps it in launch.out, a hand launch sends it to /dev/null) nor
