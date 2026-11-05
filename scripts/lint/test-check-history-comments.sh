@@ -496,6 +496,9 @@ if [ "$RC" -eq 2 ]; then pass "a space-separated row exits 2"; else fail "space-
 { cat "$LIST"; printf 'K9\tdocs/\t\tunknown kind\n'; } > "$MR/scripts/lint/ticket-ref-allow.tsv"
 OUT="$(bash "$MRG" --diff "$T/d.diff" 2>&1)"; RC=$?
 if [ "$RC" -eq 2 ]; then pass "an unknown kind exits 2"; else fail "unknown kind -> rc=$RC: $OUT"; fi
+{ cat "$LIST"; printf 'K1\t\t\tempty path\n'; } > "$MR/scripts/lint/ticket-ref-allow.tsv"
+OUT="$(bash "$MRG" --diff "$T/d.diff" 2>&1)"; RC=$?
+if [ "$RC" -eq 2 ]; then pass "a row with an empty path exits 2"; else fail "empty path row -> rc=$RC: $OUT"; fi
 { cat "$LIST"; printf 'key\t\tZZZ-[0-9]+\tsecond key row\n'; } > "$MR/scripts/lint/ticket-ref-allow.tsv"
 OUT="$(bash "$MRG" --diff "$T/d.diff" 2>&1)"; RC=$?
 if [ "$RC" -eq 2 ]; then pass "a second key row exits 2"; else fail "second key row -> rc=$RC: $OUT"; fi
