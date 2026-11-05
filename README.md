@@ -3,15 +3,13 @@
 > **A control plane for coding agents.**
 
 himmel turns Claude Code into a team you can leave running. The install adds
-checks and handover notes to your sessions; the team is a further step you set
-up. In that setup one session, the *chief*, coordinates the work and oversees
+checks to your sessions; the team is a further step you set up. In that setup one session, the *chief*, coordinates the work and oversees
 it. To plan a big change, the chief starts a subagent or a new session that
 runs [minerva](marketplace/plugins/himmel-ops/skills/minerva/SKILL.md). The
 chief then hands each ticket to a *worker* session of its own, checks every
 result, and approves each merge.
-Work can carry on while you are away and restart after a usage limit. A new
-session reads the note the last one left, and a local UI shows you what all of
-them are doing.
+Work can carry on while you are away and restart after a usage limit, and a
+local UI shows you what all of them are doing.
 
 Still deciding? [Take a short test run](#still-deciding-take-a-short-test-run)
 on a spare project: one command puts himmel on, one takes it off. Ready to use
@@ -99,8 +97,8 @@ at real files, not at facts copied out of them:
 ## Still deciding? Take a short test run
 
 Try himmel on a spare project before you put it on a real one. The test run
-shows the guards, the handover notes and the setup pages of the UI, not the
-fleet or the vault.
+shows the guards, a worktree and the setup pages of the UI, not handover notes,
+the fleet or the vault.
 [Getting Started](docs/getting-started.md) walks through it step by step:
 each step says which folder to run it from and what you should see.
 
@@ -133,13 +131,9 @@ never checks sign-in.
    git merge --ff-only chore/install-himmel
    ```
 
-2. **Pick up where you stopped.** Start a change in its own worktree with
+2. **Start a change in its own worktree.** Run
    `bash scripts/worktree.sh feat/try-himmel`, go into the folder it prints and
-   start `claude` there. Run `/handover-setup` once and choose the `handovers/`
-   folder in this project, then end the session with `/handover`. Open a fresh
-   session and point it at the note, the newest `next-session-N.md` under
-   `handovers/`: it reads the note and carries on from the decisions and reasons
-   the note recorded.
+   start `claude` there.
 3. **Open the UI.** From a terminal outside Claude Code,
    `node ~/himmel/scripts/himmelctl/bin.js ui` (needs `bun`) prints a link to a
    local page that shows what the install set up and what you can turn on next.
@@ -180,8 +174,9 @@ It has four layers, and each one works without the layers above it:
 1. **The guarded session.** Checks run before Claude Code edits a file and
    before a commit or a push, and, in a project-scope install or a himmel
    checkout, before Claude Code merges, and they refuse what breaks the rules.
-2. **Handover and memory.** Plain markdown notes carry the work and its
-   reasons from one session to the next, with a search index to find them.
+2. **Handover and memory.** In a himmel checkout, plain markdown notes carry
+   the work and its reasons from one session to the next, with a search index
+   to find them.
 3. **The chief and its workers.** One session, the *chief*, coordinates the
    work and hands each ticket to a *worker*, another session that owns that
    one change. The chief checks each result and approves its merge; the
@@ -218,9 +213,11 @@ The test run shows a few of these. The rest arrive as you add them, and the
   hook, and without a working scheduler the relaunch never fires, so nothing
   restarts the run
   ([scheduler setup](docs/setup/new-machine.md#4c-scheduler-backend-auto-arm-resume)).
-- **Work carries over between sessions.** `/handover` leaves a plain markdown
-  doc behind. A fresh session you point at it reads it and resumes from the
-  decisions and reasons it recorded.
+- **Work carries over between sessions, in a himmel checkout.** `/handover`
+  leaves a plain markdown doc behind, and `/handover-resume` in a fresh session
+  reads it and resumes from the decisions and reasons it recorded.
+  In your own project handover is not ready yet: its setup and resume call
+  scripts a project install does not copy.
 
 **Keep it right**
 
@@ -316,15 +313,14 @@ can ask an independent judge for a second opinion) and approves the merge in
 writing; only then does the worker merge. The [glossary](docs/glossary.md)
 defines chief, worker, judge and the rest.
 
-**3. Carry work across sessions.** A session that has made decisions writes
-them into a handover doc with `/handover`. The doc lives where you chose with
+**3. Carry work across sessions, in a himmel checkout.** A session that has
+made decisions writes them into a handover doc with `/handover`. The doc lives where you chose with
 `/handover-setup`: a folder in your vault, a separate git repo, or a
-`handovers/` folder in the project. In your own project choose the `handovers/`
-folder: the other two choices call a script the install does not copy yet. On a
-machine set up for it, when a session
+`handovers/` folder in the repo. On a machine set up for it, when a session
 nears its usage limit, himmel schedules a restart. The next session reads the
-doc and continues where the last one stopped: run `/handover-resume` in a himmel
-checkout, or in your own project point the session at the doc.
+doc and continues where the last one stopped: run `/handover-resume`.
+In your own project handover is not ready yet: its setup and resume call
+scripts a project install does not copy.
 
 **4. Find what you already know.** Before improvising, a session looks up
 what is already known. Claude Code's per-project `MEMORY.md` is a short index
@@ -349,7 +345,7 @@ In Claude Code:
 
 ```text
 /himmel-ops:pr-check      # 3. review; `/pr-check` inside a himmel checkout
-/handover                 # 6. write down where you stopped
+/handover                 # 6. write down where you stopped; himmel checkout only for now
 ```
 
 A himmel checkout also has `/worktree` and `/clean` for steps 1 and 5.
@@ -470,7 +466,7 @@ vault, the Telegram bridge and Jira are optional; himmel runs without them.
 | `JIRA_PROJECT_KEY`   | only for Jira | e.g. `HIMMEL`. The project the CLI creates and queries issues in. |
 | `JIRA_BASE_URL`      | only for Jira | Your Atlassian site, e.g. `https://your-site.atlassian.net`. |
 | `JIRA_API_TOKEN` + `JIRA_EMAIL` | only for Jira | API-token credentials. Never commit them; `.env` is gitignored. |
-| `HANDOVER_DIR`       | recommended | Path to your handover folder outside the project (in your vault or a separate repo). Or leave it unset and run `/handover-setup` once. Until one of the two is done there is no handover root, and handover commands stop with a clear message instead of writing to the wrong place. |
+| `HANDOVER_DIR`       | recommended | Path to your handover folder outside the project (in your vault or a separate repo). Or, in a himmel checkout, leave it unset and run `/handover-setup` once. Until one of the two is done there is no handover root, and handover commands stop with a clear message instead of writing to the wrong place. |
 
 The Jira CLI needs only those four Jira variables, no cloud ID.
 `JIRA_CLOUD_ID` is only for the optional Atlassian MCP server. The full list
@@ -487,7 +483,7 @@ node scripts/jira/dist/index.js list      # only if you set up Jira
 From the release tarball, run `gh auth status`, then `himmelctl status`,
 which reports any part of the install that is missing or out of date.
 
-Then run one full loop (worktree, commit, PR, merge, `scripts/clean.sh`, `/handover`)
+Then run one full loop (worktree, commit, PR, merge, `scripts/clean.sh`, and in a himmel checkout `/handover`)
 with [`docs/daily-loop.md`](docs/daily-loop.md) open beside you.
 
 ## Support matrix
@@ -551,11 +547,14 @@ What the memory is made of, all plain files:
   its `MEMORY.md` as a short index that *routes*: one line per theme, each
   pointing to a topic note that holds the detail. A session reads the index,
   then only the notes it needs.
-- **Handover state.** Each piece of work has a markdown handover doc in the
-  place you chose with `/handover-setup`: what was done, what was decided, what
-  comes next. This is how work survives the end of a session. The state can
-  live in your own repo (`handovers/`) or outside it, set with `$HANDOVER_DIR`;
-  see the [handover system](docs/internals/handover-system.md).
+- **Handover state, in a himmel checkout.** Each piece of work has a markdown
+  handover doc in the place you chose with `/handover-setup`: what was done,
+  what was decided, what comes next. This is how work survives the end of a
+  session. The state can live in the repo (`handovers/`) or outside it, set
+  with `$HANDOVER_DIR`; see the
+  [handover system](docs/internals/handover-system.md).
+  In your own project handover is not ready yet: its setup and resume call
+  scripts a project install does not copy.
   With a vault, we recommend a `handovers/` folder inside it (`/handover-setup`
   offers it first). Your handovers then become part of the second brain:
   search finds them beside your other notes, the graph links them to the
@@ -620,12 +619,12 @@ that explains it. [`docs/README.md`](docs/README.md) lists every page.
   [`docs/handover/afk-mode.md`](docs/handover/afk-mode.md)
 - Handover system (multi-repo registry, auto-branch, PR, flush):
   [`docs/internals/handover-system.md`](docs/internals/handover-system.md)
-- Collision preflight: before you start a session,
+- Collision preflight, in a himmel checkout: before you start a session,
   `bash scripts/handover/queue-lock.sh preflight <handover-doc> [file...]`
   warns you when a file you plan to change is already being changed in
   another session. It changes nothing.
 - Handing work to cheaper or stronger Claude models, or to Codex, listed
-  live by `/lanes`: [`docs/tooling-catalog.md`](docs/tooling-catalog.md)
+  live by `/lanes` in a himmel checkout: [`docs/tooling-catalog.md`](docs/tooling-catalog.md)
 - Running sessions in the cloud on your copy of the repo (`claude --cloud`):
   [`docs/setup/cloud-environment.md`](docs/setup/cloud-environment.md)
 - Telegram bridge (start a session, check on it and chat with it from your
