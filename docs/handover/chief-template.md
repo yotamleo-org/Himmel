@@ -250,9 +250,9 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
 5. **Then end your turn: no waiter re-arm, no reads, no tick.** Your waiter is
    spent and muted; the successor's `LIVE` is a message that wakes you. It is
    the only confirmation that ACTION ZERO completed, and it names any workers that
-   did not quote back, and why. On it, relay any worker it names as not relayed,
-   then wrap with **one** command, which writes `WRAPPED` and releases the lock,
-   and stop (never release before the `LIVE`):
+   did not quote back, and why. Relay any worker it names as not relayed, then
+   wrap with **one** command, which writes `WRAPPED` and releases the lock, and
+   stop (never release your lock before the `LIVE`):
    `bash scripts/handover/chief/chief.sh wrap "{{STATE_DIR}}/{{SESSION_NAME}}.md" <release-token> '<one line>'`.
    It refuses (exit 4) while any subagent of yours is
    running: wait, persist the verdict with `write-verdict.sh`, re-run.
