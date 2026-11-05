@@ -222,6 +222,13 @@ def files_in(text):
     return out
 
 MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED)\b')
+TITLE_KEY_RE = re.compile(r'([A-Z]+)-(\d+)((?:\s*[/+,&]\s*\d+\b)*)')
+
+def title_keys(lines):
+    # every ticket a worker doc's H1 title names, `KEY-1 / 2 / 3` shorthand included: a bundle worker owns more tickets than its file name lists
+    h1 = next((l for l in lines if l.startswith('# ')), '')
+    return [('%s-%s' % (p, n)) for p, n, _ in TITLE_KEY_RE.findall(h1)] + \
+           [('%s-%s' % (p, x)) for p, _, rest in TITLE_KEY_RE.findall(h1) for x in re.findall(r'\d+', rest)]
 WRITES_LEAD = '> **Writes:**'
 SERIES_LEAD = '> **Series:**'
 SERIES_ITEM_RE = re.compile(r'(?<![\w.-])\d+\.\s+([A-Z]+-\d+)')  # "1. HIMMEL-9 branch=..." one item of a series worker's block
@@ -851,7 +858,7 @@ if workers_from and os.path.isfile(workers_from):
             marks = [m.group(1) for m in (MARKER_RE.match(l) for l in lines) if m]
             if marks and marks[-1] == 'WRAPPED':  # a wrapped worker holds no files and owns no ticket
                 continue
-            for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)):
+            for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)) + title_keys(lines):
                 worker_keys.add(k); owner.setdefault(k, 'live worker %s' % worker.get('label', '?'))
             def block(i):  # a wrapped line continues on the "> " lines under it, up to the next "> **" field or a blank
                 text = lines[i]
