@@ -72,6 +72,13 @@ wait "$l1_pid" 2>/dev/null
 got=$(lockrun 0)
 assert_eq "L2 a killed import leaves no stale lock" "locked|rc=0" "$(printf '%s' "$got" | tr '\n' '|' | sed 's/|$//')"
 assert_eq "L3 a finished import leaves nothing under the lock path" "0" "$(find "$HIMMEL_CONFIG_DIR" -name 'import-env.*' 2>/dev/null | grep -c .)"
+# L4: twelve imports race for one stale lock; exactly one takes it.
+mkdir "$HIMMEL_CONFIG_DIR/import-env.user.lock.d"
+sleep 0.01 & l4_dead=$!; wait "$l4_dead"
+echo "$l4_dead" >"$HIMMEL_CONFIG_DIR/import-env.user.lock.d/pid"
+for l4_i in 1 2 3 4 5 6 7 8 9 10 11 12; do lockrun 2 >"$TMP/l4.$l4_i" & done
+wait
+assert_eq "L4 twelve imports over one stale lock: exactly one wins" "1" "$(cat "$TMP"/l4.* | grep -c '^locked$')"
 
 if [ "$(uname -s)" = Darwin ]; then
     echo "SKIP S1-S9: the resolver skips the keyring on Darwin (macOS Keychain backend is a follow-up)"
