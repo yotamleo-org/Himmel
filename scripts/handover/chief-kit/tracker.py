@@ -117,8 +117,19 @@ def held_docs():
     return out
 
 
+MARKER_MEMO = None  # a dict while --emit-fp runs: live_legs and actuals both ask for the same docs
+
+
 def leg_marker(path):
     """(marker, pr) from a worker doc's Results bullets: worker-tail-status.sh's rule, and the newest PR a marker bullet names."""
+    if MARKER_MEMO is not None:
+        if path not in MARKER_MEMO:
+            MARKER_MEMO[path] = _leg_marker(path)
+        return MARKER_MEMO[path]
+    return _leg_marker(path)
+
+
+def _leg_marker(path):
     try:
         ls = [l.rstrip('\n') for l in open(path, encoding='utf-8', errors='replace')]
     except OSError:
@@ -1689,6 +1700,8 @@ def main():
     VERSIONS = os.path.abspath(a.versions_file) if a.versions_file else MIRROR + '.versions.tsv'
     HANDOVERS = os.path.abspath(a.handovers) if a.handovers else os.path.join(LUNA, 'handovers', 'yotamleo', 'himmel')
     if a.emit_fp:
+        global MARKER_MEMO
+        MARKER_MEMO = {}  # one short-lived process reads each worker doc's marker once
         print(fingerprint())
         return
     t0 = time.time()
