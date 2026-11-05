@@ -136,13 +136,13 @@ assert "hint installs graphifyy[ollama] from the fork at a 40-hex commit sha, si
   grep -qE "'graphifyy\[ollama\] @ git\+https://github\.com/yotamleo-org/graphify@[0-9a-f]{40}'" <<<"$hint"
 fork_ref="$(env -u GRAPHIFY_FORK_REF bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_fork_ref')"
 assert "hint installs the resolver's own fork commit" grep -qF "yotamleo-org/graphify@$fork_ref'" <<<"$hint"
-# The pin is the fork rebased on upstream v8 (0.9.99) plus the same-file semantic fold fix.
-assert "default fork ref is the fork build with the patched filelock and pypdf floors (HIMMEL-9254)" \
-  test "$fork_ref" = "998e3437019be7950b76b32d082e27e0dad81828"
-assert "default version is the fork stamp 0.9.99+himmel.3 (HIMMEL-9254)" \
-  test "$(env -u GRAPHIFY_VERSION bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_version')" = "0.9.99+himmel.3"
-assert "upstreams.json graphify synced_base is 0.9.99 (HIMMEL-8386)" \
-  test "$(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const l=Array.isArray(r)?r:(r.upstreams||r.entries||[]);console.log(l.find(e=>e.name==="graphify").synced_base)' "$SCRIPT_DIR/../upstreams.json")" = "0.9.99"
+# The pin is the fork rebased on upstream v8 (0.9.102) plus the mcp below-3 lift.
+assert "default fork ref is the fork build with the mcp below-3 bound and the rebase on upstream 0.9.102" \
+  test "$fork_ref" = "61be7f3ea6e964f2ced67d3f85afd13acc8d8045"
+assert "default version is the fork stamp 0.9.102+himmel.2" \
+  test "$(env -u GRAPHIFY_VERSION bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_version')" = "0.9.102+himmel.2"
+assert "upstreams.json graphify synced_base is 0.9.102" \
+  test "$(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const l=Array.isArray(r)?r:(r.upstreams||r.entries||[]);console.log(l.find(e=>e.name==="graphify").synced_base)' "$SCRIPT_DIR/../upstreams.json")" = "0.9.102"
 assert "hint carries --with mcp (HIMMEL-996: upstream keeps the mcp dep optional)" \
   grep -q -- '--with ' <<<"$hint"
 assert "hint binds the patched mcp floor, single-quoted (the extras do not pull mcp in)" \
