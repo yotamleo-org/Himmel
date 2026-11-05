@@ -1686,6 +1686,10 @@ while :; do
                     if unowned_wake "$unowned_val"; then
                         # 8934: an unowned PR is look-only (the chief reads it, a worker owns the fix): every sight joins the
                         # digest and rides the next real wake; HOUSEKEEPING_DIGEST_SECS=0 keeps the unbatched wake
+                        if [ "$housekeeping_secs" -eq 0 ]; then
+                            printf 'WAKE unowned-prs %s\n%s\n' "$unowned_val" "$tick_line"
+                            exit_reason='wake-unowned-prs'; exit 0
+                        fi
                         if housekeeping_add unowned-prs "$unowned_val" "$tick_line"; then
                             exit_reason='wake-unowned-prs'; exit 0
                         fi
@@ -1793,6 +1797,10 @@ while :; do
             if [ "$fail_streak" -ge "$fail_wake" ] && ! fail_woke; then
                 printf '%s\n%s\nfailwoke\n' "$args_hash" "$saved" | atomic_write "$key_file" 2>/dev/null  # swallow-ok: a key file that cannot be written only repeats the wake once
                 # 8934: a failed monitor is look-only (the usual step is tick-timeout under host load): it joins the digest
+                if [ "$housekeeping_secs" -eq 0 ]; then
+                    printf 'WAKE tick-fail samples=%s step=%s\n' "$fail_streak" "$fail_step"
+                    exit_reason='wake-tick-fail'; exit 0
+                fi
                 if housekeeping_add tick-fail "samples=$fail_streak step=$fail_step"; then
                     exit_reason='wake-tick-fail'; exit 0
                 fi
