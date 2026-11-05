@@ -828,12 +828,13 @@ series_workers = {}  # label -> {'doc', 'sid', 'ledger', 'count'} for a live wor
 manifest_docs = set()  # the resolved path of every worker doc the manifest lists (the orphan check asks whether a ledger's writer is among them)
 workers_from = os.environ.get('ND_WORKERS_FROM', '')
 workers_unknown = False
+owners_unknown = False  # only a fleet whose OWNERS are unreadable hides the orphans; a worker whose FILES are unknown still owns the key in its doc name
 live_workers = []  # (label, doc, lines, keys) of every manifest worker not WRAPPED: the register, else holds.py parse, says what it writes
 worker_keys = set(os.environ.get('ND_OWNERS', '').split())
 owner = {k: 'the --owners list' for k in worker_keys}
 resume_only = os.environ.get('ND_RESUME_ONLY') == '1'
 if workers_from and not os.path.isfile(workers_from):
-    workers_unknown = True
+    workers_unknown = owners_unknown = True
 if workers_from and os.path.isfile(workers_from):
     try:
         for worker in manifest_workers(json.load(open(workers_from))):
@@ -867,7 +868,7 @@ if workers_from and os.path.isfile(workers_from):
                 series_workers[worker.get('label', '?')] = {'doc': doc, 'sid': sid_m.group(1) if sid_m else None,
                                                             'ledger': os.path.realpath(sid_m.group(2)) if sid_m else None, 'count': len(items) or None}
     except (OSError, ValueError):
-        workers_unknown = True
+        workers_unknown = owners_unknown = True
 # `chief.sh next` copies the manifest once, so a worker the other chief of this chain arms later is
 # in no manifest but its own. Read the chain's other manifests (same bucket, same prefix and chief name, any
 # letter) for ownership of a ticket only: a doc that is gone, WRAPPED, or untouched for a day holds nothing, and
@@ -908,7 +909,7 @@ if chain_m:
         except (OSError, ValueError, TypeError, AttributeError):
             continue  # swallow-ok: a sibling chief's unreadable or malformed manifest names no worker; this chief's own fleet is still known
 if pool_only and not workers_from and not worker_keys:
-    workers_unknown = True
+    workers_unknown = owners_unknown = True
     print('next-dispatchable: no RESUME rows: --priority-pool-only has no worker source (--owners or --workers-from)', file=sys.stderr)
 # cloud sessions own their ticket too: the same file and 48h window tick reads
 cloud_tsv = os.path.join(os.path.dirname(os.environ['ND_DOC']), 'cloud-sessions.tsv') if os.environ.get('ND_DOC') else ''
@@ -1151,7 +1152,7 @@ merged_unknown = False
 merged_keys = set()
 inci_keys = [i['key'] for i in issues.values() if i['status'] == 'IN CI' and i['type'] not in ('Epic', 'Sub-task')
              and i['key'] not in worker_keys and i['key'] not in pr_keys]
-if inci_keys and not (pr_unknown or pr_files_unknown or workers_unknown or register_unknown):
+if inci_keys and not (pr_unknown or pr_files_unknown or owners_unknown or register_unknown):
     def merged_cites(key):
         out = subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'merged', '--search', key, '--limit', '30', '--json', 'title,headRefName', '--jq', '.[] | [.title, .headRefName] | @tsv'],
                              capture_output=True, text=True, timeout=60, check=True).stdout
@@ -1211,7 +1212,7 @@ for i in issues.values():
         continue
     if i['key'] in worker_keys or i['key'] in pr_keys:
         continue
-    if pr_unknown or pr_files_unknown or workers_unknown or register_unknown:  # an unread PR, PR file set or worker set could hide the ticket's owner
+    if pr_unknown or pr_files_unknown or owners_unknown or register_unknown:  # an unread PR, PR file set or worker set could hide the ticket's owner; a worker with unknown FILES (no Writes line, unreadable doc) still owns its key
         continue
     if i['merged']:  # nothing to dispatch: the ticket only needs closing
         resume.append(i)
