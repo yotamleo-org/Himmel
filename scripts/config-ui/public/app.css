@@ -295,6 +295,7 @@ details.more{margin:6px 0}details.more>summary{cursor:pointer;color:var(--dim);p
 .cpanel details.cat[open]>summary{border-bottom:1px solid var(--rule)}
 .cpanel details.cat>:not(summary){margin-left:var(--s3);margin-right:var(--s3)}
 .cpanel details.cat>:last-child{margin-bottom:var(--s2)}
+.cpanel details.cat>summary+*{margin-top:var(--s2)}
 .cpanel .why{margin:2px 0;color:var(--muted);font-size:var(--fs-sm);grid-column:1/-1;overflow-wrap:anywhere}
 @media (max-width:900px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.cols{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:440px){.tiles{grid-template-columns:minmax(0,1fr)}.cpanel{padding:var(--s3)}}
