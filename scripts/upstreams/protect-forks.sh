@@ -35,9 +35,9 @@
 # Seams: GH (gh binary), PROTECT_FORKS_ADAPTERS (registry path),
 # PROTECT_FORKS_ORG (default yotamleo-org).
 #
-# Exit codes: 0 done | 1 a read, write or verification failed, or the org fork
-# list could not be read | 2 usage, or jq / the registry missing | 3 --apply refused
-# (before any gh call)
+# Exit codes: 0 done | 1 a read, write or verification failed, the org fork list
+# could not be read, or --only named no registry row | 2 usage, jq missing, or the
+# registry unreadable, empty or not an array | 3 --apply refused (before any gh call)
 set -uo pipefail
 
 SELF_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -100,22 +100,33 @@ state() {
   RS_ID=$(printf '%s' "$list" | jq -r --arg n "$RULESET_NAME" '[.[] | select(.name == $n) | .id][0] // empty') || return 1
   if [ -n "$RS_ID" ]; then
     detail=$("$GH" api "repos/$nwo/rulesets/$RS_ID") || return 1
+    # structural compare (jq contains() matches strings by substring): the same refs, bypass actors and
+    # rule types, and every pull_request parameter we set carries our value (GitHub adds its own defaults)
     if printf '%s' "$detail" | jq -e --argjson w "$payload" '
-         . as $e | ($e | contains($w))
-         and (($e.rules | length) == ($w.rules | length))
-         and (($e.conditions.ref_name.include | length) == ($w.conditions.ref_name.include | length))
-         and (($e.bypass_actors | length) == ($w.bypass_actors | length))' >/dev/null; then RS_SAME=1; fi
+         def norm: {enforcement, target,
+                    include: (.conditions.ref_name.include | sort),
+                    exclude: ((.conditions.ref_name.exclude // []) | sort),
+                    bypass: ([.bypass_actors[]? | {actor_id, actor_type, bypass_mode}] | sort_by(.actor_id)),
+                    types: ([.rules[].type] | sort)};
+         def prp: ([.rules[] | select(.type == "pull_request") | .parameters // {}][0] // {})
+                  | if has("allowed_merge_methods") then .allowed_merge_methods |= sort else . end;
+         (norm == ($w | norm))
+         and ((prp) as $ep | ($w | prp) as $wp | ($wp | keys | all(. as $k | $ep[$k] == $wp[$k])))' >/dev/null; then RS_SAME=1; fi
   fi
   repo=$("$GH" api "repos/$nwo") || return 1
   [ "$(printf '%s' "$repo" | jq -r '.pull_request_creation_policy // ""')" = collaborators_only ] && POLICY_SAME=1
   return 0
 }
 
+rows=$(jq -r 'if (type == "array" and length > 0) then .[] | [.nwo, .himmel_branch] | @tsv else error("empty or not an array") end' "$ADAPTERS") \
+  || { echo "protect-forks: $ADAPTERS is not a usable registry" >&2; exit 2; }
 registered=""
+matched=0
 while IFS=$'\t' read -r nwo himmel; do
   [ -n "$nwo" ] || continue
   registered="$registered $(printf '%s' "$nwo" | tr '[:upper:]' '[:lower:]')"
   if [ -n "$ONLY" ] && [ "$(printf '%s' "$nwo" | tr '[:upper:]' '[:lower:]')" != "$ONLY" ]; then continue; fi
+  matched=1
   if ! repo=$("$GH" api "repos/$nwo"); then echo "ERROR $nwo cannot read the repo"; rc=1; continue; fi
   if [ "$(printf '%s' "$repo" | jq -r '.fork')" != true ]; then echo "SKIP $nwo not-a-fork"; continue; fi
   if [ "$(printf '%s' "$repo" | jq -r '.archived')" = true ]; then echo "SKIP $nwo archived (read-only: no push, force push or new PR is possible)"; continue; fi
@@ -141,9 +152,14 @@ while IFS=$'\t' read -r nwo himmel; do
   if [ "$APPLY" = 1 ]; then
     if state "$nwo" "$payload" && [ "$RS_SAME" = 1 ] && [ "$POLICY_SAME" = 1 ]; then echo "VERIFIED $nwo"; else echo "ERROR $nwo read-back does not match"; rc=1; fi
   fi
-done < <(jq -r '.[] | [.nwo, .himmel_branch] | @tsv' "$ADAPTERS")
+done <<EOF
+$rows
+EOF
 
-[ -z "$ONLY" ] || exit "$rc"
+if [ -n "$ONLY" ]; then
+  [ "$matched" = 1 ] || { echo "ERROR --only $ONLY matches no registry row"; exit 1; }
+  exit "$rc"
+fi
 orgforks=$("$GH" api "orgs/$ORG/repos?type=forks&per_page=100" --paginate) || { echo "ERROR cannot list $ORG forks"; exit 1; }
 for f in $(printf '%s' "$orgforks" | jq -r '.[].full_name'); do
   case " $registered " in

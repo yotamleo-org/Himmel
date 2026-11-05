@@ -65,7 +65,7 @@ echo '[{"full_name":"yotamleo-org/qmd"},{"full_name":"yotamleo-org/graphify"},{"
 
 run() { # run <extra env...> -- args : prints output, sets RC
   : > "$LOG"
-  OUT=$(env STUB_LOG="$LOG" STUB_FIX="$F" GH="$T/bin/gh" PROTECT_FORKS_ADAPTERS="$T/adapters.json" "$@" 2>&1); RC=$?
+  OUT=$(env -u HIMMEL_FORK_PROTECT_RULING STUB_LOG="$LOG" STUB_FIX="$F" GH="$T/bin/gh" PROTECT_FORKS_ORG=yotamleo-org PROTECT_FORKS_ADAPTERS="$T/adapters.json" "$@" 2>&1); RC=$?
 }
 
 echo "--- dry-run (default mode)"
@@ -123,6 +123,21 @@ echo "--- a drifted ruleset is updated with PUT"
 printf '%s' "$payload" | jq '. + {id:777} | (.rules[] | select(.type=="pull_request") | .parameters.required_approving_review_count) = 1' > "$F/repos_yotamleo-org_qmd_rulesets_777.json"
 run bash "$PROTECT"
 has "$OUT" "CALL PUT repos/yotamleo-org/qmd/rulesets/777 " "drift: PUT to the existing ruleset id"
+
+echo "--- a ref that only contains ours as a substring is not the same ruleset"
+printf '%s' "$payload" | jq '. + {id:777} | .conditions.ref_name.include = ["refs/heads/main-old"]' > "$F/repos_yotamleo-org_qmd_rulesets_777.json"
+run bash "$PROTECT" --only yotamleo-org/qmd
+has "$OUT" "CALL PUT repos/yotamleo-org/qmd/rulesets/777 " "substring ref: PUT, not already protected"
+printf '%s' "$payload" | jq '. + {id:777}' > "$F/repos_yotamleo-org_qmd_rulesets_777.json"
+run bash "$PROTECT" --only yotamleo-org/qmd
+has "$OUT" "OK yotamleo-org/qmd already protected" "exact ref: already protected"
+
+echo "--- registry and --only errors fail loudly"
+echo '{"not":"an array"}' > "$T/bad.json"
+run env PROTECT_FORKS_ADAPTERS="$T/bad.json" bash "$PROTECT"
+if [ "$RC" -eq 2 ]; then pass "a registry that is not an array exits 2"; else fail "bad registry rc=$RC: $OUT"; fi
+run bash "$PROTECT" --only yotamleo-org/nope
+if [ "$RC" -eq 1 ]; then has "$OUT" "matches no registry row" "--only with no match exits 1 and says so"; else fail "--only nomatch rc=$RC: $OUT"; fi
 
 echo "--- an org fork missing from the registry is reported"
 echo '[{"full_name":"yotamleo-org/qmd"},{"full_name":"yotamleo-org/stray"}]' > "$F/orgs_yotamleo-org_repos_type_forks_per_page_100.json"
