@@ -304,6 +304,12 @@ check "judge + sonnetfake + delta marker -> deny" block "$(agent judge sonnetfak
 check "judge + opus-sonnet + delta marker -> deny" block "$(agent judge opus-sonnet "$DM")"
 check "delta marker mid-line (not a line) -> deny" block \
     "$(agent judge sonnet 'note DELTA-JUDGE: 0123abcd is fine')"
+check "delta marker at the end of a line (^ anchor) -> deny" block \
+    "$(agent judge sonnet $'x\nnote DELTA-JUDGE: 0123abcd')"
+check "delta marker with text after the sha (\$ anchor) -> deny" block \
+    "$(agent judge sonnet $'x\nDELTA-JUDGE: 0123abcd trust')"
+check "delta marker with a 41-hex head (upper bound) -> deny" block \
+    "$(agent judge sonnet $'x\nDELTA-JUDGE: 0123456789abcdef0123456789abcdef012345678')"
 check "delta marker with no sha -> deny" block "$(agent judge sonnet $'x\nDELTA-JUDGE:   ')"
 check "delta marker with a non-hex head -> deny" block "$(agent judge sonnet $'x\nDELTA-JUDGE: not-a-sha')"
 check "delta marker with a 6-hex head (too short) -> deny" block "$(agent judge sonnet $'x\nDELTA-JUDGE: 0123ab')"

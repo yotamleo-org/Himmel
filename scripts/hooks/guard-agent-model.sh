@@ -32,8 +32,8 @@
 # EFFORT WARN (never a deny): any Agent dispatch whose `effort` is
 # high, xhigh or max and whose prompt has no `EFFORT: <reason>` line (same
 # reason-quality test) gets one additionalContext line; it joins the TIER warn
-# when both fire. A dispatch a deny or an ESCALATION rescue already handles gets
-# no effort warn. A missing or non-string `effort` warns on nothing, and so does
+# when both fire. A dispatch a deny, an ESCALATION rescue or a DELTA-JUDGE rescue
+# already handles gets no effort warn. A missing or non-string `effort` warns on nothing, and so does
 # an effort equal to the named agent's own `effort:` frontmatter (judge at high).
 # ponytail: the warned levels are hardcoded here, upgrade path a warn_effort_levels key in agent-model-policy.json.
 #
