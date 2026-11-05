@@ -971,9 +971,15 @@ def op_grant(a):
         return 2
     slug, rel = escape(repo), canon(p, repo)  # the grant is written on rel, so rel is what the trust test must see too
     route = grant_route(p, rel, trust)
-    chief_doc = a.chief_doc or os.environ.get('HIMMEL_CONSOLE_DOC') or ''
+    own_doc = os.environ.get('HIMMEL_CONSOLE_DOC') or ''
+    chief_doc = a.chief_doc or own_doc
     grantor, session = 'unchecked', ''  # a path off every list: any non-worker caller grants it, as before
     if route == 'chief' and chief_doc:
+        # ponytail: a held lock proves a live chief, not that the caller is it; a chief session launched by headed-arm.sh
+        # names its own doc in HIMMEL_CONSOLE_DOC, so it cannot stamp under another chief's doc, upgrade path: bind the grant to the lock's holder pid
+        if own_doc and os.path.abspath(own_doc) != os.path.abspath(chief_doc):
+            sys.stderr.write('holds: --chief-doc %s is not this chief session\'s own doc (HIMMEL_CONSOLE_DOC=%s); no grant\n' % (chief_doc, own_doc))
+            return 1
         session, why = chief_session(os.path.abspath(chief_doc))
         if session is None:
             sys.stderr.write('holds: %s is a trust path; the chief grant is refused: %s\n' % (p, why))

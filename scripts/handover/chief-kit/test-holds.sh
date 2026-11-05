@@ -944,6 +944,11 @@ same "C1 ... the grant file says grantor=chief and the chief's session" "$(cut -
 contains "C1 ... and events.log records the grantor and session" "$(tail -n 1 "$EVENTS")" "grantor=chief session=chief-sess-9218"
 run env HIMMEL_CONSOLE_DOC="$DCH" python3 -I "$SUT" grant --key HIMMEL-9202 --repo "$R" scripts/check-ci.sh
 same "C2 the chief doc defaults to HIMMEL_CONSOLE_DOC, the chief session's own doc" "$RC" 0
+DCX="$(mkdoc HIMMEL-9218-other-chief.md)"
+lock_hold "$DCX" other-chief-sess
+run env HIMMEL_CONSOLE_DOC="$DCH" python3 -I "$SUT" grant --key HIMMEL-9213 --repo "$R" --chief-doc "$DCX" scripts/check-ci.sh
+same "C2 a chief session naming another chief's locked doc: refused" "$RC" 1
+same "C2 ... and writes no grant" "$([ -e "$(grantf scripts/check-ci.sh HIMMEL-9213)" ] && echo grant || echo none)" none
 run hp grant --key HIMMEL-9203 --repo "$R" --chief-doc "$(mkdoc HIMMEL-9218-free.md)" scripts/check-ci.sh
 same "C3 a chief doc whose lock is not held: refused" "$RC" 1
 same "C3 ... and writes no grant" "$([ -e "$(grantf scripts/check-ci.sh HIMMEL-9203)" ] && echo grant || echo none)" none
