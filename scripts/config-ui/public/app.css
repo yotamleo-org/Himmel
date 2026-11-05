@@ -289,6 +289,14 @@ div.tile{cursor:default}.tiles.three{grid-template-columns:repeat(3,minmax(0,1fr
 .dryrun .plan{border:0;background:none;padding:0}
 .chips{display:flex;flex-wrap:wrap;gap:4px 10px;grid-column:span 2}
 details.more{margin:6px 0}details.more>summary{cursor:pointer;color:var(--dim);padding:4px 0}
+/* Configure scope tile (HIMMEL-9235): collapsible categories and the one plain sentence under each setting */
+.cpanel details.cat{border:1px solid var(--rule);border-radius:8px;background:var(--bg);margin:0 0 var(--s2);min-width:0;max-width:100%}
+.cpanel details.cat>summary{cursor:pointer;padding:var(--s2) var(--s3);font:700 13px var(--font-ui);color:var(--ink);overflow-wrap:anywhere}
+.cpanel details.cat[open]>summary{border-bottom:1px solid var(--rule)}
+.cpanel details.cat>:not(summary){margin-left:var(--s3);margin-right:var(--s3)}
+.cpanel details.cat>:last-child{margin-bottom:var(--s2)}
+.cpanel details.cat>summary+*{margin-top:var(--s2)}
+.cpanel .why{margin:2px 0;color:var(--muted);font-size:var(--fs-sm);grid-column:1/-1;overflow-wrap:anywhere}
 @media (max-width:900px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.cols{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:440px){.tiles{grid-template-columns:minmax(0,1fr)}.cpanel{padding:var(--s3)}}
 /* Report page: five tiles on one line, two columns at 760px and under; the failure review table right-aligns Rows and Workers */
