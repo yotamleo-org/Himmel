@@ -114,4 +114,6 @@ jq -rn --slurpfile rows "$T/rows.jsonl" --rawfile tr "$T/tr.tsv" --rawfile logs 
      elif $tt == 0 then "tolerance \($tol)%: n/a, no transcript cost"
      else (if ((($lt - $tt) | fabs) / $tt * 100) <= ($tol | tonumber) then "WITHIN TOLERANCE \($tol)%" else "OUTSIDE TOLERANCE \($tol)%" end) end)
 '
+JQ_RC=$?
+[ "$JQ_RC" -eq 0 ] || exit "$JQ_RC"
 [ "$SKIPPED" -eq 0 ] || exit 1

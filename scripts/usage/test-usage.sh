@@ -428,6 +428,8 @@ printf '{"ts":"2026-11-04T10:01:01Z","kind":"judge","lane":"native","session_id"
 RJBO="$(bash "$RJ" --launches "$RJB/launches.jsonl" --launch-logs "$RJB/none" --projects "$RJB/projects" --tolerance 2 2>/dev/null)" && RJBRC=0 || RJBRC=$?
 check "reconcile: an unreadable transcript gives INCOMPLETE, never WITHIN TOLERANCE, and exit 1" "yes" \
   "$([ "$RJBRC" = 1 ] && grep -qxF "unreadable transcripts skipped: 1  (not in any count or total above)" <<<"$RJBO" && grep -q '^INCOMPLETE: 1 transcript' <<<"$RJBO" && ! grep -q 'WITHIN TOLERANCE' <<<"$RJBO" && echo yes || echo no)"
+bash "$RJ" --launches "$RJD/launches.jsonl" --launch-logs "$RJD/logs" --projects "$RJD/projects" --tolerance abc >/dev/null 2>&1 && RJTRC=0 || RJTRC=$?
+check "reconcile: a failing report (a malformed --tolerance) exits non-zero, never 0" "yes" "$([ "$RJTRC" -ne 0 ] && echo yes || echo no)"
 RJD2="$(HIMMEL_API_CREDIT_STATE="$RJD/ledger.json" bash "$RJ" --launch-logs "$RJD/logs" --projects "$RJD/projects" --tolerance 2)"
 check "reconcile: with no --launches the ledger is the one beside HIMMEL_API_CREDIT_STATE" "$RJ3" "$RJD2"
 
