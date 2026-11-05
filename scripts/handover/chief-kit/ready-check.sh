@@ -307,35 +307,9 @@ if [ "$ONLY7" -eq 0 ]; then
     snapshot=$(GH_CMD="$GH" bash "$SNAPSHOT_SCRIPT" "$nwo" 0 "$PR" 2>/dev/null) || snapshot=""
 fi
 
-# author_class <login>: prints ticket_id_author_class's rc (0 external, 1 internal,
-# 2 unknown) against this checkout's own list; the TICKET_ID_INTERNAL_AUTHORS_FILE
-# override is never honoured, and a missing lib reads 2.
-author_class() {
-    (
-        unset TICKET_ID_INTERNAL_AUTHORS_FILE
-        # shellcheck source=../../lib/ticket-id-internal.sh
-        . "$(dirname "$0")/../../lib/ticket-id-internal.sh" 2>/dev/null || exit 2
-        ticket_id_author_class "$1"
-    ) >/dev/null 2>&1
-    echo "$?"
-}
-
-# outside_pr_of <snapshot>: prints yes for a fork, a deleted author, or a non-Bot
-# author whose class is not internal; no for a same-repo Bot (by type, never by
-# login text) or an internal author. rc 2 when the snapshot cannot say. Reads no
-# body, title, branch name or label.
-outside_pr_of() {
-    local f fork bot login
-    f=$(printf '%s' "$1" | jq -er '.[0] | select((.isCrossRepository | type) == "boolean" and (.authorIsBot | type) == "boolean")
-        | "\(.isCrossRepository) \(.authorIsBot) \(.author // "")"' 2>/dev/null) || return 2
-    read -r fork bot login <<< "$f"
-    if [ "$fork" = true ] || [ -z "$login" ]; then echo yes
-    elif [ "$bot" = true ]; then echo no
-    elif printf '%s' "$login" | grep -qixE 'dependabot(\[bot\])?'; then echo yes
-    elif [ "$(author_class "$login")" = 1 ]; then echo no
-    else echo yes
-    fi
-}
+# author_class and outside_pr_of live in the lib, so scripts/cr/pr-check-outside.sh asks the same question.
+# shellcheck source=../../lib/outside-contributors.sh
+. "$(dirname "$0")/../../lib/outside-contributors.sh" 2>/dev/null || true  # swallow-ok: a missing lib leaves outside_pr_of undefined, which --outside reports as unreadable (exit 2) and item 16 as unknown
 
 if [ "$OUTSIDE_MODE" -eq 1 ]; then
     if ! op=$(outside_pr_of "$snapshot"); then

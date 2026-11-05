@@ -244,6 +244,8 @@ run() {
     case "${RUN_MODE:-}" in
         outside) set -- --outside "$PR" ;;
         only7) set -- --only 7 "$PR" ;;
+        wrapper) set -- "$PR" ;;
+        none) set -- ;;
         *) set -- ${RUN_FLAGS:-} "$PR" "$SHA" ;;
     esac
     (cd "$REPO" && env -u TICKET_ID_PATTERN \
@@ -1792,6 +1794,7 @@ cp "$REPO_ROOT/scripts/lib/gh-pr-snapshot.sh" "$own/scripts/lib/gh-pr-snapshot.s
 cp "$REPO_ROOT/scripts/lib/go-gate.sh" "$own/scripts/lib/go-gate.sh"
 mkdir -p "$own/scripts/ci"
 cp "$REPO_ROOT/scripts/lib/ticket-id-internal.sh" "$own/scripts/lib/ticket-id-internal.sh"
+cp "$REPO_ROOT/scripts/lib/outside-contributors.sh" "$own/scripts/lib/outside-contributors.sh"
 cp "$REPO_ROOT/scripts/ci/ticket-id-internal-authors.txt" "$own/scripts/ci/ticket-id-internal-authors.txt"
 mkdir -p "$own/scripts/cr"
 cp "$REPO_ROOT/scripts/cr/clear-review-marker.sh" "$REPO_ROOT/scripts/cr/anchor-handoff.sh" "$REPO_ROOT/scripts/cr/ledger-amend-auth.js" "$own/scripts/cr/"
@@ -3555,6 +3558,22 @@ check "T1.5 --outside: an unreadable snapshot exits 2" "$rc" "2"
 notcontains "T1.5 --outside: an unreadable snapshot prints no verdict" "$out" "outside-pr:"
 rc=0; out="$(RUN_MODE=outside run 2>&1)" || rc=$?
 check "T1.5 --outside: exit 0" "$rc" "0"
+
+# 6b: scripts/cr/pr-check-outside.sh, the /pr-check step-0 question, answers as --outside does
+WRAP="$HERE/../../cr/pr-check-outside.sh"
+cp "$WRAP" "$OUT_ANCHOR/scripts/cr/pr-check-outside.sh"
+out="$(RUN_SCRIPT="$WRAP" RUN_MODE=wrapper run)"; check "T1.14 wrapper: an internal same-repo author is not outside" "$out" "outside-pr: no"
+out="$(STUB_FORK=true RUN_SCRIPT="$WRAP" RUN_MODE=wrapper run)"; check "T1.14 wrapper: a fork is outside" "$out" "outside-pr: yes"
+out="$(STUB_AUTHOR=Goomal RUN_SCRIPT="$WRAP" RUN_MODE=wrapper run)"; check "T1.14 wrapper: an unlisted same-repo author is outside" "$out" "outside-pr: yes"
+out="$(STUB_AUTHOR=app/github-actions RUN_SCRIPT="$WRAP" RUN_MODE=wrapper run)"; check "T1.14 wrapper: a same-repo Bot is not outside" "$out" "outside-pr: no"
+mv "$OUT_ANCHOR/scripts/ci/ticket-id-internal-authors.txt" "$tmp/internal-aside.txt"
+out="$(RUN_SCRIPT="$OUT_ANCHOR/scripts/cr/pr-check-outside.sh" RUN_MODE=wrapper run)"; check "T1.14 wrapper: an unreadable internal-author list makes the author outside" "$out" "outside-pr: yes"
+mv "$tmp/internal-aside.txt" "$OUT_ANCHOR/scripts/ci/ticket-id-internal-authors.txt"
+rc=0; out="$(STUB_SNAPSHOT_FAIL=1 RUN_SCRIPT="$WRAP" RUN_MODE=wrapper run 2>&1)" || rc=$?
+check "T1.14 wrapper: an unreadable snapshot exits 2" "$rc" "2"
+notcontains "T1.14 wrapper: an unreadable snapshot prints no verdict" "$out" "outside-pr:"
+rc=0; out="$(RUN_SCRIPT="$WRAP" RUN_MODE=none run 2>&1)" || rc=$?
+check "T1.14 wrapper: no pr-number exits 2" "$rc" "2"
 
 # 7b: 16b, the full round at the head
 out_reset; seed_ledger_ok; row_scope delta "$SHA" "$OUT_BRANCH" "$BASE40" "" 2; row_impacted

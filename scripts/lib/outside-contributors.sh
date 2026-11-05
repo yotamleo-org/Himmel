@@ -53,3 +53,36 @@ outside_audit_passed() {
   [ -f "$report" ] && [ -r "$report" ] || return 1
   [ "$(_oc_sha256 "$report")" = "$rsha" ]
 }
+
+# author_class and outside_pr_of: the item 16 predicate, shared by ready-check.sh and
+# scripts/cr/pr-check-outside.sh. Both need ticket-id-internal.sh beside this file.
+
+# author_class <login>: prints ticket_id_author_class's rc (0 external, 1 internal,
+# 2 unknown) against this checkout's own list; the TICKET_ID_INTERNAL_AUTHORS_FILE
+# override is never honoured, and a missing lib reads 2.
+author_class() {
+    (
+        unset TICKET_ID_INTERNAL_AUTHORS_FILE
+        # shellcheck source=ticket-id-internal.sh
+        . "$(dirname "${BASH_SOURCE[0]}")/ticket-id-internal.sh" 2>/dev/null || exit 2
+        ticket_id_author_class "$1"
+    ) >/dev/null 2>&1
+    echo "$?"
+}
+
+# outside_pr_of <snapshot>: prints yes for a fork, a deleted author, or a non-Bot
+# author whose class is not internal; no for a same-repo Bot (by type, never by
+# login text) or an internal author. rc 2 when the snapshot cannot say. Reads no
+# body, title, branch name or label.
+outside_pr_of() {
+    local f fork bot login
+    f=$(printf '%s' "$1" | jq -er '.[0] | select((.isCrossRepository | type) == "boolean" and (.authorIsBot | type) == "boolean")
+        | "\(.isCrossRepository) \(.authorIsBot) \(.author // "")"' 2>/dev/null) || return 2
+    read -r fork bot login <<< "$f"
+    if [ "$fork" = true ] || [ -z "$login" ]; then echo yes
+    elif [ "$bot" = true ]; then echo no
+    elif printf '%s' "$login" | grep -qixE 'dependabot(\[bot\])?'; then echo yes
+    elif [ "$(author_class "$login")" = 1 ]; then echo no
+    else echo yes
+    fi
+}

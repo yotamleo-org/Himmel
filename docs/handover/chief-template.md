@@ -190,19 +190,6 @@ matches a pattern in `scripts/ci/ci-trust-paths.txt`** needs adversarial review 
 tag is `cut-tag.sh <version> <sha>` (`--dry-run` first). These and the
 merged-docs list: `chief-sections/merges.md`.
 
-**16. outside-PR full review.** On an outside PR (`ready-check.sh --outside <pr>`
-prints `outside-pr: yes`: a fork, a deleted author, or an author not on the
-internal-author list), `ready-check.sh` also runs item 16. It needs every record
-at the exact head: a `full` round-scope row (16b), a green `lint` run of `CI`
-(16c), no change to the lint surface in `scripts/ci/outside-lint-surface.txt`
-(16d), every thread resolved by a maintainer (16e), a clean recorded impacted
-run (16f), and a blast row when the diff touches the blast scope (16g). An
-author not in `~/.himmel/outside-contributors.json` (login and id) also needs a
-CodeRabbit success (16h) and a passed outside security audit (16i); a listed
-author prints `[SKIP] 16h/16i`. No `CR_*` env widens 16e or 16h. The operator's
-GitHub code-owner approval comes **last**, after item 16 passes at that head;
-until then `codeowner-review-gate` is red and item 2 FAILs, as expected.
-
 ## Wrapping a worker
 
 `WRAPPED`/merged are bullets only. A `--workers-from` waiter runs

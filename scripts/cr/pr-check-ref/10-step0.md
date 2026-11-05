@@ -74,7 +74,7 @@
 
    **Then ask whether this is an outside PR.** Once the PR is open:
    ```bash
-   bash "<himmel_dir>/scripts/handover/chief-kit/ready-check.sh" --outside <pr>
+   bash "<himmel_dir>/scripts/cr/pr-check-outside.sh" <pr>
    ```
    It prints `outside-pr: yes` or `outside-pr: no`. Yes means a fork, a deleted author, or an author who is not on the internal-author list (a same-repo Bot is no). Exit 2 means the PR snapshot was unreadable: treat that as yes. Carry the value forward. On `outside-pr: yes`, step 3.0 runs with `--full` and step 3.6 records its verdicts, because ready-check item 16 reads those rows at the PR's head. Before a PR exists there is nothing to ask, so run the review as usual and ask again once the PR is open.
 
