@@ -397,7 +397,7 @@ digest_flush() {
     # a scripted GO (`<label> auto-go <pr>`) is counted on its own, never as a wrap
     awk '$2 == "auto-go" { g++; a = a (g > 1 ? "," : "") "#" $3; next }
          { n++; l = l (n > 1 ? "," : "") $1; if ($3 != "-") { m++; p = p (m > 1 ? "," : "") "#" $3 } }
-         END { printf "absorbed since last wake: wraps=%d (%s) merged=%d (%s)%s\n", n, l, m, p, (g ? sprintf(" auto-go=%d (%s)", g, a) : "") }' "$digest_file"
+         END { printf "absorbed since last wake: wraps=%d (%s) merged=%d (%s)%s\n", n, l, m, p, (g ? sprintf(" auto-go=%d (%s)", g, a) : "") }' "$digest_file" || return 1  # a failed write keeps the digest
     : > "$digest_file"
 }
 # Housekeeping has its own persisted buffer: an urgent wake must not discard
@@ -438,7 +438,7 @@ lookonly_carry() {
     [ -s "$housekeeping_file" ] || return 0
     carried="$(grep -E '^(tick|tick-fail|unowned-prs) ' "$housekeeping_file" | sed 's/ TICK .*//' | awk '!seen[$0]++')"  # swallow-ok: no match reads empty, nothing to carry
     [ -n "$carried" ] || return 0
-    printf 'look-only since last wake:\n%s\n' "$carried"
+    printf 'look-only since last wake:\n%s\n' "$carried" || return 1  # a failed write keeps the entries queued
     keep="$(grep -vE '^(tick|tick-fail|unowned-prs) ' "$housekeeping_file")"  # swallow-ok: no other line reads empty
     if [ -n "$keep" ]; then
         printf '%s\n' "$keep" > "$housekeeping_file.tmp" && mv -f "$housekeeping_file.tmp" "$housekeeping_file"
