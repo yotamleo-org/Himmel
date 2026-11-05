@@ -386,11 +386,26 @@ txt="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" CLAUDE_DIR="$t/claude" HOME="$t/home"
 js="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --json --no-color 2>/dev/null)"; rc_js=$?
 n_txt="$(grep -cE '^(FAIL|WARN|INFO|OK) ' <<< "$txt")"
 n_js="$(grep -c . <<< "$js")"
-if jq -e -s 'length > 0 and all(.[]; (keys == ["id","msg","remedy","sev"]) and (.sev | IN("FAIL","WARN","INFO","OK")))' <<< "$js" >/dev/null 2>&1; then
-    pass "--json -> every stdout line is a {sev,id,msg,remedy} object"
+if jq -e -s 'length > 0 and all(.[]; ((keys - ["repo"]) == ["id","msg","remedy","scope","sev"]) and (.sev | IN("FAIL","WARN","INFO","OK")))' <<< "$js" >/dev/null 2>&1; then
+    pass "--json -> every stdout line is a {sev,id,msg,remedy,scope[,repo]} object"
 else
     fail "--json -> stdout is not JSON lines: $(head -3 <<< "$js")"
 fi
+# Each check declares its own scope: the machine checks are shared, the per-repo index checks
+# (C33 graph, C70 semantic graph) are project rows that name the repo they judge, the rest default to project.
+sc="$(jq -r 'select(.id | test("^C(22|38|44|45|52|80|83|86|40|12)-")) | select(.scope != "shared") | .id' <<< "$js")"
+if [ -z "$sc" ] && [ "$(jq -r 'select(.id | test("^C(22|38|44|52|80|86)-")) | .id' <<< "$js" | grep -c .)" -ge 4 ]; then
+    pass "--json -> C22 C38 C44 C45 C52 C80 C83 C86 (and C40, C12) declare scope shared"
+else
+    fail "--json -> machine checks not declared shared: [$sc]"
+fi
+rp="$(jq -r 'select(.id | test("^C(33|70)-")) | select(.scope != "project" or .repo != "himmel") | .id' <<< "$js")"
+if [ -z "$rp" ] && [ "$(jq -r 'select(.id | test("^C(33|70)-")) | .id' <<< "$js" | grep -c .)" -ge 2 ]; then
+    pass "--json -> C33 and C70 are project rows that name the repo they judge"
+else
+    fail "--json -> C33/C70 do not declare project + repo himmel: [$rp]"
+fi
+if [ -z "$(jq -r 'select(.id | test("^C(33|70)-") | not) | select(.repo != null) | .id' <<< "$js")" ]; then pass "--json -> no other check names a repo"; else fail "--json -> a check other than C33/C70 names a repo"; fi
 if [ "$n_js" -eq "$n_txt" ] && [ "$n_txt" -gt 0 ]; then pass "--json -> $n_js rows = $n_txt text emits"; else fail "--json -> $n_js rows vs $n_txt text emits"; fi
 if [ "$rc_js" -eq "$rc_txt" ]; then pass "--json -> exit code matches text run ($rc_js)"; else fail "--json -> rc=$rc_js vs text rc=$rc_txt"; fi
 if grepq "$js" 'Summary:'; then fail "--json -> Summary line leaked to stdout"; else pass "--json -> Summary line kept off stdout"; fi

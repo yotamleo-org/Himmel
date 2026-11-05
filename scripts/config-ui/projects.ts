@@ -10,10 +10,12 @@ import { basename, join } from "node:path";
 
 type Env = Record<string, string | undefined>;
 export type Project = { name: string; path: string };
-export type Slim = { id: string; health: string; scope: string; installed: { detail: string }; fix: { by?: string; tile?: string; remedy?: string } };
+export type Slim = { id: string; health: string; scope: string; repo?: string; bundle?: string; installed: { detail: string }; fix: { by?: string; tile?: string; remedy?: string } };
+// notes: shared index rows (bundle "search") that are failing. They degrade every project that searches, so each project's line
+// names them, but they stay in counts.shared only, never in counts.project (the verdict).
 export type Summary = {
   name: string; path: string; current: boolean; checkedAt: string | null;
-  counts: { project: { fail: number; warn: number }; shared: { fail: number; warn: number } }; broken: Slim[];
+  counts: { project: { fail: number; warn: number }; shared: { fail: number; warn: number } }; broken: Slim[]; notes: Slim[];
 };
 
 const NAME = /^[\w.-]+$/;
@@ -65,8 +67,15 @@ export function boardProjects(env: Env, narrow?: string[]): JiraProject[] {
 }
 
 const cacheFile = (env: Env, name: string) => join(feedsDir(env), `${name}.json`);
+// A row that names the repo it judges (the doctor's C33 and C70) belongs to the project of that repo only. The project's name is
+// the repo's, or the repo's plus the ".<id>" an unregistered checkout of it gets (readProjects).
+const judges = (name: string, repo: unknown) => typeof repo !== "string" || !repo || name === repo || name.startsWith(`${repo}.`);
 export function saveFeed(env: Env, name: string, body: string): void {
   if (!NAME.test(name)) return;
+  try {
+    const feed = JSON.parse(body);
+    if (Array.isArray(feed.rows)) body = JSON.stringify({ ...feed, rows: feed.rows.filter((r: { repo?: unknown } | null) => !r || judges(name, r.repo)) });
+  } catch { /* not JSON: stored as is, loadFeed refuses it */ }
   try {
     mkdirSync(feedsDir(env), { recursive: true });
     const tmp = `${cacheFile(env, name)}.${process.pid}.tmp`; // a reader in another UI never sees a half-written feed
@@ -87,7 +96,7 @@ const count = (rows: Slim[]) => ({ fail: rows.filter((r) => r.health === "fail")
 export function summarize(p: Project, current: boolean, cached: { body: string; at: string } | null): Summary {
   const zero = { fail: 0, warn: 0 };
   const base = { name: p.name, path: p.path, current };
-  const unchecked: Summary = { ...base, checkedAt: null, counts: { project: zero, shared: zero }, broken: [] };
+  const unchecked: Summary = { ...base, checkedAt: null, counts: { project: zero, shared: zero }, broken: [], notes: [] };
   if (!cached) return unchecked;
   let rows: Slim[];
   try {
@@ -96,7 +105,8 @@ export function summarize(p: Project, current: boolean, cached: { body: string; 
     rows = parsed.filter((r) => r && typeof r === "object") as Slim[];
   } catch { return unchecked; }
   const bad = rows.filter((r) => r.health === "fail" || r.health === "warn");
-  const mine = bad.filter((r) => r.scope !== "shared"), shared = bad.filter((r) => r.scope === "shared");
-  const slim = (r: Slim): Slim => ({ id: r.id, health: r.health, scope: r.scope, installed: { detail: r.installed?.detail ?? "" }, fix: { by: r.fix?.by, tile: r.fix?.tile, remedy: r.fix?.remedy } });
-  return { ...base, checkedAt: cached.at, counts: { project: count(mine), shared: count(shared) }, broken: mine.map(slim) };
+  // a row that judges another project's repo is not this project's (a feed cached before saveFeed dropped them)
+  const mine = bad.filter((r) => r.scope !== "shared" && judges(p.name, r.repo)), shared = bad.filter((r) => r.scope === "shared");
+  const slim = (r: Slim): Slim => ({ id: r.id, health: r.health, scope: r.scope, bundle: r.bundle, installed: { detail: r.installed?.detail ?? "" }, fix: { by: r.fix?.by, tile: r.fix?.tile, remedy: r.fix?.remedy } });
+  return { ...base, checkedAt: cached.at, counts: { project: count(mine), shared: count(shared) }, broken: mine.map(slim), notes: shared.filter((r) => r.bundle === "search").map(slim) };
 }
