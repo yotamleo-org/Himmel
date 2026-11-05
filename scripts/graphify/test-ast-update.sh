@@ -532,5 +532,90 @@ out19=$( PATH="$BIN19:$PATH" bash "$SCRIPT" "$CORPUS19" 2>&1 ); rc19=$?
 grep -q '"keep19"' "$OUT19/graph.pre-ast.kept.json" 2>/dev/null && pass "T19 pre-rebuild graph kept" || fail "T19 nothing kept: $(ls -A "$OUT19")"
 echo "$out19" | grep -q "graph.pre-ast.kept.json" && pass "T19 stderr names the kept file" || fail "T19 stderr: $out19"
 
+# --- T20: the hourly rebuild keeps the shell sourcing edges
+echo "T20: graphify update rewrites graph.json -> the harden re-adds the sources edge"
+CORPUS20="$WS/c20"; OUT20="$CORPUS20/graphify-out"; mkdir -p "$CORPUS20/a"
+cat > "$CORPUS20/a/caller.sh" <<'SH'
+#!/usr/bin/env bash
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$HERE/lib.sh"
+SH
+printf '#!/usr/bin/env bash\n' > "$CORPUS20/a/lib.sh"
+BIN20="$WS/bin20"; mkdir -p "$BIN20"
+cat > "$BIN20/graphify" <<STUB
+#!/usr/bin/env bash
+mkdir -p "$OUT20"
+cat > "$OUT20/graph.json" <<'JSON'
+{"directed": false, "multigraph": false, "graph": {}, "hyperedges": [], "links": [],
+ "nodes": [
+  {"id": "a_caller_sh", "label": "caller.sh", "source_file": "a/caller.sh", "file_type": "code", "source_location": "L1", "metadata": {"language": "bash", "kind": "file"}},
+  {"id": "a_lib_sh", "label": "lib.sh", "source_file": "a/lib.sh", "file_type": "code", "source_location": "L1", "metadata": {"language": "bash", "kind": "file"}}]}
+JSON
+exit 0
+STUB
+chmod +x "$BIN20/graphify"
+out20=$( PATH="$BIN20:$PATH" bash "$SCRIPT" "$CORPUS20" 2>&1 ); rc20=$?
+[ "$rc20" -eq 0 ] && pass "T20 exits 0" || fail "T20 should exit 0 (got $rc20): $out20"
+python3 -c 'import json,sys;g=json.load(open(sys.argv[1]));sys.exit(0 if any(e["relation"]=="sources" and e["source"]=="a_caller_sh" and e["target"]=="a_lib_sh" for e in g["links"]) else 1)' "$OUT20/graph.json" \
+  && pass "T20 the rebuilt graph holds the caller to lib sources edge" || fail "T20 no sources edge after the tick: $(cat "$OUT20/graph.json" 2>&1)"
+[ ! -e "$OUT20/.promote.lock" ] && pass "T20 the lock is released" || fail "T20 lock left behind"
+
+# --- T21: a harden that fails (graph.json is not JSON) does not fail the tick
+echo "T21: harden failure -> WARN, the tick still exits 0"
+CORPUS21="$WS/c21"; OUT21="$CORPUS21/graphify-out"; mkdir -p "$CORPUS21"
+BIN21="$WS/bin21"; mkdir -p "$BIN21"
+cat > "$BIN21/graphify" <<STUB
+#!/usr/bin/env bash
+mkdir -p "$OUT21"
+printf 'not json' > "$OUT21/graph.json"
+exit 0
+STUB
+chmod +x "$BIN21/graphify"
+out21=$( PATH="$BIN21:$PATH" bash "$SCRIPT" "$CORPUS21" 2>&1 ); rc21=$?
+[ "$rc21" -eq 0 ] && pass "T21 exits 0 despite the harden failing" || fail "T21 should exit 0 (got $rc21): $out21"
+echo "$out21" | grep -q "WARN harden-graph.py failed" && pass "T21 the failure is a WARN on stderr" || fail "T21 no WARN: $out21"
+[ ! -e "$OUT21/.promote.lock" ] && pass "T21 the lock is released" || fail "T21 lock left behind"
+
+# --- T22: a live worker keeps a heartbeat in the lock so a
+# refresh does not judge a long AST run stale; a killed worker's heartbeat
+# stops, and a clean exit leaves no heartbeat process behind.
+echo "T22: heartbeat advances while the worker runs and stops when it dies"
+CORPUS22="$WS/c22"; mkdir -p "$CORPUS22"
+OUT22="$CORPUS22/graphify-out"
+BIN22="$WS/bin22"; make_stub "$BIN22" 6
+GRAPHIFY_PROMOTE_LOCK_HEARTBEAT_SECONDS=1 PATH="$BIN22:$PATH" bash "$SCRIPT" "$CORPUS22" > "$WS/t22.out" 2> "$WS/t22.err" &
+PID22=$!
+i=0
+while [ ! -d "$OUT22/.promote.lock" ] && [ "$i" -lt 200 ]; do sleep 0.05; i=$((i + 1)); done
+sleep 3
+hb1=$(cat "$OUT22/.promote.lock/heartbeat" 2>/dev/null || echo "")
+acq22=$(cat "$OUT22/.promote.lock/acquired" 2>/dev/null || echo "")
+case "$hb1" in
+  ''|*[!0-9]*) fail "T22 no numeric heartbeat in the held lock: '$hb1'" ;;
+  *) [ "$hb1" -gt "$acq22" ] && pass "T22 heartbeat is newer than the acquired stamp mid-run" \
+       || fail "T22 heartbeat $hb1 not newer than acquired $acq22" ;;
+esac
+sleep 2
+hb2=$(cat "$OUT22/.promote.lock/heartbeat" 2>/dev/null || echo "")
+[ -n "$hb2" ] && [ -n "$hb1" ] && [ "$hb2" -gt "$hb1" ] && pass "T22 heartbeat keeps advancing" || fail "T22 heartbeat did not advance ($hb1 -> $hb2)"
+wait "$PID22"; rc22=$?
+[ "$rc22" -eq 0 ] && pass "T22 worker exits 0" || fail "T22 should exit 0 (got $rc22): $(cat "$WS/t22.err")"
+[ ! -e "$OUT22/.promote.lock" ] && pass "T22 lock released with its heartbeat" || fail "T22 lock left behind"
+
+CORPUS22B="$WS/c22b"; mkdir -p "$CORPUS22B"
+OUT22B="$CORPUS22B/graphify-out"
+GRAPHIFY_PROMOTE_LOCK_HEARTBEAT_SECONDS=1 PATH="$BIN22:$PATH" bash "$SCRIPT" "$CORPUS22B" > /dev/null 2>&1 &
+PID22B=$!
+i=0
+while [ ! -f "$OUT22B/.promote.lock/heartbeat" ] && [ "$i" -lt 200 ]; do sleep 0.05; i=$((i + 1)); done
+kill -9 "$PID22B" 2>/dev/null
+wait "$PID22B" 2>/dev/null
+sleep 3
+hbk1=$(cat "$OUT22B/.promote.lock/heartbeat" 2>/dev/null || echo "")
+sleep 3
+hbk2=$(cat "$OUT22B/.promote.lock/heartbeat" 2>/dev/null || echo "")
+[ -n "$hbk1" ] && [ "$hbk1" = "$hbk2" ] && pass "T22 a killed worker's heartbeat stops advancing" \
+  || fail "T22 heartbeat kept advancing after the worker was killed ($hbk1 -> $hbk2)"
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

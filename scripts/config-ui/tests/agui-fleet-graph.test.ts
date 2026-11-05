@@ -2,6 +2,7 @@
 // token usage (usageOf, from the session JSONL usage records). Pure functions over fixture text; the route suite
 // (agui-fleet.test.ts) drives the same fields end to end.
 import { test, expect } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -77,14 +78,27 @@ test("usage sums each API call once (a call's records share its message id), pri
     calls: 3, input: 17, output: 190, cacheRead: 140000, cacheCreate: 1198,
     // input×1 + cache_read×0.1 + cache_create×1.25 + output×5 (lib/burn-weights.sh, the worker-burn weights)
     costEq: Math.round(17 + 140000 * 0.1 + 1198 * 1.25 + 190 * 5),
-    resident: 50000, ceiling: 200000, ceilingFrom: "autocompact", fill: 25,
+    resident: 50000, ceiling: 1000000, ceilingFrom: "window", fill: 5, // old: ceiling 200000 (autocompact), fill 25
   });
 });
 
-test("the ceiling: a numeric --autocompact; else the model's window (1m for a [1m] model, 200k otherwise)", () => {
+test("the ceiling: the model's real window (1m for [1m], Fable, the aliases and Claude 5 or later, 200k for an older model), never --autocompact", () => {
   const lines = [turn("m1", { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 99999, cache_creation_input_tokens: 0 })];
   expect(usageOf(lines, { autocompact: "auto", model: "claude-opus-5-5[1m]" })).toMatchObject({ ceiling: 1000000, ceilingFrom: "window", fill: 10 });
-  expect(usageOf(lines, { autocompact: "", model: "sonnet" })).toMatchObject({ ceiling: 200000, ceilingFrom: "window", fill: 50 });
+  expect(usageOf(lines, { autocompact: "", model: "sonnet" })).toMatchObject({ ceiling: 1000000, ceilingFrom: "window", fill: 10 }); // old: 200000, 50
+  expect(usageOf(lines, { autocompact: "", model: "claude-opus-4-8" })).toMatchObject({ ceiling: 200000, ceilingFrom: "window", fill: 50 });
+  // lanes.json's haiku lane is 1000000; a session with no --model gets the station default's 1M (lane-calibration.md "What a plain launch reports")
+  for (const model of ["haiku", "claude-haiku-5-5", ""]) expect(usageOf(lines, { autocompact: "", model })).toMatchObject({ ceiling: 1000000, ceilingFrom: "window", fill: 10 });
+});
+
+// context-fill.sh's own formula (scripts/context-fill.sh:309) over the window a plain launch reports (1000000): a Claude 5 launch
+// with --autocompact 200000 is a percent of 1M, not of 200k.
+test("the ceiling: a 200000-autocompact Claude 5 launch fills as context-fill.sh computes it", () => {
+  const tok = 190000;
+  const lines = [turn("m1", { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: tok - 1, cache_creation_input_tokens: 0 })];
+  const script = spawnSync("awk", ["-v", `t=${tok}`, "-v", "w=1000000", 'BEGIN{p = t * 100 / w; if (p > 100) p = 100; printf "%.0f", p}'], { encoding: "utf8" }).stdout;
+  expect(script).toBe("19");
+  expect(usageOf(lines, { autocompact: "200000", model: "claude-opus-5-5" })).toMatchObject({ ceiling: 1000000, ceilingFrom: "window", fill: Number(script) }); // old: 95
 });
 
 // a claudex worker declares its window in its launch env (claude-codex's CLAUDE_CODE_MAX_CONTEXT_TOKENS),
@@ -94,8 +108,8 @@ test("the ceiling: a declared window wins; an unknown model or a fill past 100 %
   const at = (n: number) => [turn("m1", { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: n - 1, cache_creation_input_tokens: 0 })];
   expect(usageOf(at(238000), { autocompact: "200000", model: "gpt-6.1-sol", window: "272000" })).toMatchObject({ ceiling: 272000, ceilingFrom: "window", fill: 87.5 });
   expect(usageOf(at(100000), { autocompact: "", model: "gpt-6.1-sol" })).toMatchObject({ resident: 100000, fill: null });
-  expect(usageOf(at(238000), { autocompact: "200000", model: "opus" })).toMatchObject({ resident: 238000, fill: null });
-  expect(usageOf(at(50000), { autocompact: "200000", model: "opus", window: "" })).toMatchObject({ ceiling: 200000, ceilingFrom: "autocompact", fill: 25 });
+  expect(usageOf(at(238000), { autocompact: "200000", model: "claude-opus-4-8" })).toMatchObject({ resident: 238000, fill: null }); // old: model "opus" (now 1M)
+  expect(usageOf(at(50000), { autocompact: "200000", model: "gpt-6.1-sol", window: "" })).toMatchObject({ ceiling: 200000, ceilingFrom: "autocompact", fill: 25 }); // old: model "opus"
 });
 
 test("a journal with no usage records is not measured, never zero", () => {

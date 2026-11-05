@@ -136,7 +136,8 @@ enters the final CI run, after the local `/pr-check` round is clean. Dispatch
 the trust or docs judge on that head then, in parallel with CI, rather than at
 `READY`; `READY <pr> <head> GREEN` follows CI green. Any push after the judge
 needs a fresh judge and a fresh GO: the trust-reviewed GO is still checked at
-the exact head, so nothing is weakened.
+the exact head, so nothing is weakened. A READY whose head has no judge
+dispatched (no request came, or it was lost): dispatch the judge now, before any GO.
 
 **Anchor behind `origin`.** A trust-path PR needs the anchor checkout to hold
 `origin`'s HEAD, so the gate it runs is current. `merge-on-green.sh` now
@@ -203,8 +204,8 @@ Interfere With Workloads.
 
 Docs PRs do not wait on the operator (decision 286). The `docs-reviewer` skill
 runs once per docs PR, by the docs judge dispatched on `JUDGE-REQUEST` (the
-head that goes `READY`); the docs worker names the changed pages in READY and
-does not run it.
+head that goes `READY`); the page list comes from `docs_remarks.py scope`, run by
+that judge, and the docs worker quotes nothing and does not run the skill.
 Keep a `## Merged docs changes` list in the chief doc, one line per merged docs
 PR (`#<n> <sha> <page> — <one line>`), and show it in every operator report for
 review after the fact. When the operator remarks on one, run the skill's learn

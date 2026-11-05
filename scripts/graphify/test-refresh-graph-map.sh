@@ -1618,6 +1618,24 @@ out=$( GRAPHIFY_MAP_BIN="$HXBIN/graphify" PATH="$HXBIN:$PATH" \
   && pass "T22e a handovers line in .graphify-corpus-ignore keeps handovers/ out of the scratch copy" \
   || fail "T22e scratch copy should hold notes/n.md and no handovers/ file: $(cat "$HXLOG")" # read-sink-ok: fixture log the stub wrote under the suite's own $WS
 
+# --- T22f: templates, testdata, evals, -fixtures and VENDORED.md
+# dirs stay out of the scratch copy with no ignore file at all, while a content
+# note beside them is copied. Scratch fixture only. ---
+NCCORPUS="$WS/nccorpus"; NCMAPS="$WS/ncmaps"; NCLOG="$WS/nc.log"
+mkdir -p "$NCCORPUS/notes" "$NCCORPUS/plugins/p/templates" "$NCCORPUS/scripts/testdata" "$NCCORPUS/plugins/p/evals" "$NCCORPUS/ci/x-fixtures" "$NCCORPUS/vend/skills" "$NCMAPS"
+printf '# n\n' > "$NCCORPUS/notes/n.md"
+for f in plugins/p/templates/t.md scripts/testdata/d.md plugins/p/evals/g.md ci/x-fixtures/f.md vend/skills/s.md vend/VENDORED.md; do printf '# x\n' > "$NCCORPUS/$f"; done
+sed "s#$HXLOG#$NCLOG#g" "$HXBIN/graphify" > "$HXBIN/graphify-nc"; chmod +x "$HXBIN/graphify-nc"
+: > "$NCLOG"
+out=$( GRAPHIFY_MAP_BIN="$HXBIN/graphify-nc" PATH="$HXBIN:$PATH" \
+  bash "$SCRIPT" --name nctest --corpus-root "$NCCORPUS" --backend claude-cli \
+  --maps-dir "$NCMAPS" --title "Nc Map" --slug nc-map --corpus-tag nc 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] || fail "T22f exit 0 (got $rc): $out"
+nc_seen="$(cat "$NCLOG")" # read-sink-ok: fixture log the stub wrote under the suite's own $WS
+[ "$nc_seen" = "./notes/n.md" ] \
+  && pass "T22f only the content note reaches the scratch copy; templates, testdata, evals, -fixtures and VENDORED dirs do not" \
+  || fail "T22f scratch copy should hold only notes/n.md: $nc_seen"
+
 # --- T23: the sideline `mv "$OUT_DIR/cache"
 # "$CACHE_BACKUP"` that makes room for the staged cache was unguarded (no
 # `if !`, no error message, no controlled exit). This script runs under
@@ -2851,13 +2869,13 @@ printf '# model\ncontent\n' > "$MODELCORPUS/notes/a.md"
 for model_case in unset empty haiku; do
   : > "$MODELLOG"
   # Each case also pins the EFFORT expectation: unset
-  # env defaults to low, an operator CLAUDE_CODE_EFFORT_LEVEL wins. The stub
-  # logs "model:effort" per dispatch.
+  # env defaults to high (low drew thin facts), an operator
+  # CLAUDE_CODE_EFFORT_LEVEL wins. The stub logs "model:effort" per dispatch.
   case "$model_case" in
     unset) out=$( env -u GRAPHIFY_CLAUDE_CLI_MODEL -u CLAUDE_CODE_EFFORT_LEVEL GRAPHIFY_MAP_BIN="$MODELBIN/graphify" bash "$SCRIPT" \
-      --backend claude-cli --name model-unset --corpus-root "$MODELCORPUS" --maps-dir "$MODELMAPS" --title Model --slug model-unset 2>&1 ); rc=$?; expected=sonnet:low ;;
+      --backend claude-cli --name model-unset --corpus-root "$MODELCORPUS" --maps-dir "$MODELMAPS" --title Model --slug model-unset 2>&1 ); rc=$?; expected=sonnet:high ;;
     empty) out=$( env -u CLAUDE_CODE_EFFORT_LEVEL GRAPHIFY_CLAUDE_CLI_MODEL='' GRAPHIFY_MAP_BIN="$MODELBIN/graphify" bash "$SCRIPT" \
-      --backend claude-cli --name model-empty --corpus-root "$MODELCORPUS" --maps-dir "$MODELMAPS" --title Model --slug model-empty 2>&1 ); rc=$?; expected=:low ;;
+      --backend claude-cli --name model-empty --corpus-root "$MODELCORPUS" --maps-dir "$MODELMAPS" --title Model --slug model-empty 2>&1 ); rc=$?; expected=:high ;;
     haiku) out=$( GRAPHIFY_CLAUDE_CLI_MODEL=haiku CLAUDE_CODE_EFFORT_LEVEL=medium GRAPHIFY_MAP_BIN="$MODELBIN/graphify" bash "$SCRIPT" \
       --backend claude-cli --name model-haiku --corpus-root "$MODELCORPUS" --maps-dir "$MODELMAPS" --title Model --slug model-haiku 2>&1 ); rc=$?; expected=haiku:medium ;;
   esac
@@ -2872,6 +2890,40 @@ for model_case in unset empty haiku; do
   { [ "$rc" -eq 0 ] && [ "$got_count" -eq 1 ] && [ "$got_lines" = "$expected" ]; } \
     && pass "T41 claude-cli model+effort case $model_case passes '$expected' on every dispatch" \
     || fail "T41 model+effort case $model_case expected '$expected' on every dispatch (got: $(tr '\n' '|' < "$MODELLOG"), rc=$rc): $out"
+done
+
+# --- T41b: claude-cli caps the extract chunk. The --update
+# dispatch carries --token-budget 8000 by default, GRAPHIFY_TOKEN_BUDGET wins,
+# and the cluster-only call never gets the flag. ---
+BUDGETBIN="$WS/budgetbin"; mkdir -p "$BUDGETBIN"
+BUDGETLOG="$WS/budget-args.log"
+cat > "$BUDGETBIN/graphify" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$BUDGETLOG"
+target=""
+if [ "\$1" = "cluster-only" ]; then target="\$2"; else target="\$1"; fi
+mkdir -p "\$target/graphify-out"
+printf '{"nodes":[],"links":[]}' > "\$target/graphify-out/graph.json"
+cat > "\$target/graphify-out/GRAPH_REPORT.md" <<'RPT'
+$REPORT_FIXTURE
+RPT
+exit 0
+STUB
+chmod +x "$BUDGETBIN/graphify"
+for budget_case in unset 4000; do
+  : > "$BUDGETLOG"
+  if [ "$budget_case" = unset ]; then
+    out=$( env -u GRAPHIFY_TOKEN_BUDGET GRAPHIFY_MAP_BIN="$BUDGETBIN/graphify" bash "$SCRIPT" \
+      --backend claude-cli --name budget-unset --corpus-root "$MODELCORPUS" --maps-dir "$MODELMAPS" --title Budget --slug budget-unset 2>&1 ); rc=$?; want=8000
+  else
+    out=$( GRAPHIFY_TOKEN_BUDGET=4000 GRAPHIFY_MAP_BIN="$BUDGETBIN/graphify" bash "$SCRIPT" \
+      --backend claude-cli --name budget-4000 --corpus-root "$MODELCORPUS" --maps-dir "$MODELMAPS" --title Budget --slug budget-4000 2>&1 ); rc=$?; want=4000
+  fi
+  upd=$(grep -c -- '--update' "$BUDGETLOG"); upd_b=$(grep -- '--update' "$BUDGETLOG" | grep -c -- "--token-budget $want\( \|\$\)")
+  clu_b=$(grep '^cluster-only' "$BUDGETLOG" | grep -c -- '--token-budget')
+  { [ "$rc" -eq 0 ] && [ "$upd" -ge 1 ] && [ "$upd_b" -eq "$upd" ] && [ "$clu_b" -eq 0 ]; } \
+    && pass "T41b claude-cli --update dispatch carries --token-budget $want (case $budget_case), cluster-only does not" \
+    || fail "T41b budget case $budget_case expected --token-budget $want on every --update dispatch only (got: $(tr '\n' '|' < "$BUDGETLOG"), rc=$rc): $out"
 done
 
 # --- T42: dirty single-writer corpora are auto-committed before

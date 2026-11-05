@@ -347,6 +347,7 @@ scripts/eval/test-eval-feedback.sh	6
 scripts/eval/test-eval-runs.sh	7
 scripts/eval/test-harness-run.sh	8
 scripts/eval/test-judge-cache-row.sh	0
+scripts/eval/test-lone-comm-count.sh	0
 scripts/eval/test-profile-openings.sh	0
 scripts/eval/test-readme-glossary.sh	0
 scripts/eval/test-review-page.sh	3
@@ -394,6 +395,7 @@ scripts/handover/chief-kit/test-ack-denial.sh	2
 scripts/handover/chief-kit/test-action-zero.sh	6
 scripts/handover/chief-kit/test-append-results.sh	38
 scripts/handover/chief-kit/test-auto-go.sh	25
+scripts/handover/chief-kit/test-board-section.sh	2
 scripts/handover/chief-kit/test-board.sh	52
 scripts/handover/chief-kit/test-brief-lint.sh	7
 scripts/handover/chief-kit/test-chain-graph.sh	3
@@ -510,6 +512,7 @@ scripts/handover/test-konsole-macos.sh	20
 scripts/handover/test-worker-handoff-threshold-docs.sh	0
 scripts/handover/test-worker-resume-brief.sh	2
 scripts/handover/test-worker-timeline.sh	8
+scripts/handover/test-launch-record.sh	1
 scripts/handover/test-lessons-sweep.sh	1
 scripts/handover/test-librarian-cadence.sh	1
 scripts/handover/test-librarian.sh	4
@@ -557,6 +560,7 @@ scripts/himmelctl/test/test-himmelctl-path-shim.sh	3
 scripts/himmelctl/test/test-luna-config-migration.sh	9
 scripts/himmelctl/test/test-provenance-js.sh	4
 scripts/himmelctl/test/test-provenance-session.sh	2
+scripts/himmelctl/test/test-redact.sh	0
 scripts/himmelctl/test/test-report-deep.sh	1
 scripts/himmelctl/test/test-secret-store.sh	0
 scripts/himmelctl/test/test-standalone-bundle-closure.sh	0
@@ -650,6 +654,7 @@ scripts/hooks/test-block-subagent-park.sh	0
 scripts/hooks/test-block-tail-pipe-on-gates.sh	35
 scripts/hooks/test-block-terminal-write-fence.sh	10
 scripts/hooks/test-block-unresolved-cr-merge.sh	444
+scripts/hooks/test-block-vault-sweep.sh	6
 scripts/hooks/test-block-write-into-main-checkout-adopted.sh	13
 scripts/hooks/test-block-write-into-main-checkout-ast.sh	7
 scripts/hooks/test-block-write-into-main-checkout-cd.sh	69
@@ -770,7 +775,6 @@ scripts/hooks/test-redirect-webfetch-walled-hosts.sh	0
 scripts/hooks/test-refresh-statusline-caches.sh	4
 scripts/hooks/test-refresh-where-are-we-on-end.sh	14
 scripts/hooks/test-require-quiet-run.sh	6
-scripts/hooks/test-retrieval-nudge.sh	5
 scripts/hooks/test-rtk-hook-guard.sh	1
 scripts/hooks/test-run-hook-with-bash-unroll.sh	25
 scripts/hooks/test-session-end-timeout-budget.sh	12
@@ -1039,7 +1043,6 @@ scripts/setup/test-onboard-telegram.sh	0
 scripts/setup/test-setup-preflight.sh	0
 scripts/skill-index/test-ensure-skill-index.sh	9
 scripts/skill-index/test-skill-find.sh	0
-scripts/statusline/test-all-sessions-index-parity.sh	0
 scripts/statusline/test-check-hud-drift.sh	2
 scripts/statusline/test-hud-composer-parity.sh	10
 scripts/statusline/test-hud-render-parity.sh	0
@@ -1141,6 +1144,7 @@ scripts/upstreams/test-apply-drift-bump.sh	2
 scripts/upstreams/test-apply-tool-upgrade.sh	2
 scripts/upstreams/test-ci-tool-pins.sh	1
 scripts/upstreams/test-drift-fix-cadence.sh	1
+scripts/upstreams/test-protect-forks.sh	1
 scripts/upstreams/test-resync-fork.sh	3
 scripts/upstreams/test-update-marketplaces.sh	1
 scripts/upstreams/test-upstream-watch-cadence.sh	2

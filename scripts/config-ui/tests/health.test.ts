@@ -1,7 +1,11 @@
 // the one Health verdict (I6) and the page's escaping, as pure functions.
 import { test, expect } from "bun:test";
 // @ts-ignore plain browser ES module, no types
-import { verdict, projectVerdict, parseView, fixAction, renderHealth } from "../public/health.js";
+import { verdict, projectVerdict, parseView, fixAction, renderHealth, chiefLiveFor } from "../public/health.js";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { saveFeed, summarize } from "../projects";
 
 const r = (id: string, health: string, extra: Record<string, unknown> = {}) => ({
   id, source: "item", bundle: "guards", health, installed: { state: "present", detail: `d-${id}` }, fix: { remedy: `fix-${id}`, owner: "user" }, ...extra,
@@ -146,10 +150,10 @@ test("a chief row says whether a chief is running, and never carries a button", 
 // Q1: alerts use the same three answers; a firing alert is the chief's, with no button.
 test("a firing alert carries one who-fixes-it answer, the chief's", () => {
   const health = { bank: { state: "absent" }, monitoring: { state: "ok", prometheus: { state: "ok", alerts: [{ alertname: "HostDown", severity: "warn", summary: "box off" }] }, exporter: { state: "ok" } } };
-  const html = renderHealth(feed(own("a", "ok")), health, { chief: true });
+  const html = renderHealth(feed(own("a", "ok")), health, { himmelChief: true }); // an alert watches the machine: the himmel chief's
   const alert = html.slice(html.indexOf('<div class="alert"'));
   expect([...alert.matchAll(/class="fixact[ "]/g)].length).toBe(1);
-  expect(alert).toContain("chief is on it");
+  expect(alert).toContain("himmel chief is on it");
 });
 
 // Frames 1, 4, 5, 8: four tiles, one panel open at a time; Checks opens by itself only when something is wrong (Q5).
@@ -244,4 +248,144 @@ test("the Usage panel points the worker list at Fleet", () => {
   const html = renderHealth(null, { bank: { state: "absent" }, monitoring: { state: "absent" } }, { fleetHref: "/agui/?t=x", tile: "usage" });
   expect(html).toContain("open Fleet");
   expect(html).toContain('href="/agui/?t=x"');
+});
+
+// The probes declare their scope; the page reads it.
+const cached = (rows: object[]) => ({ body: JSON.stringify({ rows }), at: "2026-11-05T01:00:00Z" });
+const proj = (name: string) => ({ name, path: `/tmp/${name}` });
+
+test("a failing qmd-himmel-collection makes himmel's all-projects line Needs a look", () => {
+  const s = summarize(proj("himmel"), true, cached([own("qmd-himmel-collection", "warn"), shared("doctor:C12-gh-auth", "fail")]));
+  expect(s.counts.project).toEqual({ fail: 0, warn: 1 });
+  const html = renderHealth(feed(), null, { mode: "all", projects: { current: "himmel", projects: [s] } });
+  const line = html.slice(html.indexOf('data-project="himmel"'));
+  expect(line).toContain("Needs a look");
+});
+
+test("a C40 backlog shows under Shared and as a non-counting note on the affected project", () => {
+  const c40 = r("doctor:C40-qmd-vec", "warn", { scope: "shared", bundle: "search", fix: { by: "chief" } });
+  const s = summarize(proj("himmel"), true, cached([c40, own("mine", "ok")]));
+  expect(s.counts.project).toEqual({ fail: 0, warn: 0 });
+  expect(s.counts.shared).toEqual({ fail: 0, warn: 1 });
+  expect(s.notes.map((n: { id: string }) => n.id)).toEqual(["doctor:C40-qmd-vec"]);
+  const html = renderHealth(feed(c40), null, { mode: "all", projects: { current: "himmel", projects: [s] } });
+  const shd = html.slice(html.indexOf('id="shared"'), html.indexOf('class="box prj"'));
+  expect(shd).toContain('data-id="doctor:C40-qmd-vec"');
+  const line = html.slice(html.indexOf('data-project="himmel"'));
+  expect(line).toContain('class="pnote"');
+  expect(line).toContain("doctor:C40-qmd-vec");
+  expect(line).toContain("All clear"); // noted, never counted
+  expect(line).not.toContain('class="hrow br"');
+  expect(summarize(proj("himmel"), true, cached([shared("doctor:C12-gh-auth", "fail")])).notes).toEqual([]); // a machine row that is no index row is no note
+});
+
+test("a feed saved under a non-himmel project carries no C33 or C70 rows", () => {
+  const home = mkdtempSync(join(tmpdir(), "feeds-9073-"));
+  const env = { HOME: home };
+  const body = JSON.stringify({ rows: [
+    r("doctor:C33-graph-stale", "warn", { scope: "project", repo: "himmel" }),
+    r("doctor:C70-graph-semantic", "warn", { scope: "project", repo: "himmel" }),
+    own("mine", "ok"), shared("doctor:C12-gh-auth", "ok"),
+  ] });
+  const ids = (name: string) => JSON.parse(readFileSync(join(home, ".himmel", "state", "config-ui", "feeds", `${name}.json`), "utf8")).rows.map((x: { id: string }) => x.id);
+  saveFeed(env, "luna", body);
+  expect(ids("luna")).toEqual(["mine", "doctor:C12-gh-auth"]);
+  saveFeed(env, "himmel", body);
+  expect(ids("himmel")).toHaveLength(4);
+  saveFeed(env, "himmel.ab12cd", body); // an unregistered himmel checkout is himmel's
+  expect(ids("himmel.ab12cd")).toHaveLength(4);
+});
+
+test("shared rows and alerts name the himmel chief and read on it only while that chief is live", () => {
+  const f = feed(shared("doctor:C12-gh-auth", "fail"), own("mine", "warn"));
+  const health = { bank: { state: "absent" }, monitoring: { state: "ok", prometheus: { state: "ok", alerts: [{ alertname: "HostDown", severity: "warn", summary: "box off" }] }, exporter: { state: "ok" } } };
+  const cell = (html: string, id: string) => html.slice(html.indexOf(`data-id="${id}"`)).split("</div>")[0];
+  // another project's chief is live, the himmel chief is not: shared rows and alerts say none running, the project's own row keeps its chief
+  const html = renderHealth(f, health, { chief: true, himmelChief: false });
+  expect(cell(html, "doctor:C12-gh-auth")).toContain("for the himmel chief · none running");
+  expect(cell(html, "doctor:C12-gh-auth")).not.toContain("chief is on it");
+  expect(html.slice(html.indexOf('<div class="alert"'))).toContain("for the himmel chief · none running");
+  expect(cell(html, "mine")).toContain("chief is on it");
+  const live = renderHealth(f, health, { chief: false, himmelChief: true });
+  expect(cell(live, "doctor:C12-gh-auth")).toContain("himmel chief is on it");
+  expect(cell(live, "mine")).toContain("for the chief · none running");
+  const unknown = renderHealth(f, health, {});
+  expect(cell(unknown, "doctor:C12-gh-auth")).toContain("for the himmel chief");
+  expect(cell(unknown, "doctor:C12-gh-auth")).not.toMatch(/on it|none running/);
+});
+
+test("chiefLiveFor counts only a live console whose name starts with the project key", () => {
+  const sess = (name: string, extra: object = {}) => ({ role: "console", name, live: true, state: "running", lock: "held", ...extra });
+  const data = (...sessions: object[]) => ({ census: "ok", sessions });
+  expect(chiefLiveFor(data(sess("LUNA-nextleg-2026-11-05-roadmap-chief")), "HIMMEL")).toBe(false); // another project's chief does not count
+  expect(chiefLiveFor(data(sess("HIMMEL-nextleg-2026-11-05-roadmap-chief")), "HIMMEL")).toBe(true);
+  expect(chiefLiveFor(data(sess("HIMMELX-chief")), "HIMMEL")).toBe(false); // the dash ends the key
+  expect(chiefLiveFor(data(sess("HIMMEL-a-chief", { live: false }), sess("HIMMEL-b-chief", { state: "wrapped" }), sess("HIMMEL-c-chief", { lock: "released" })), "HIMMEL")).toBe(false);
+  expect(chiefLiveFor(data(sess("HIMMEL-w-9073", { role: "worker" })), "HIMMEL")).toBe(false);
+  expect(chiefLiveFor({ census: "unavailable", sessions: [] }, "HIMMEL")).toBeUndefined();
+  expect(chiefLiveFor(null, "HIMMEL")).toBeUndefined();
+  expect(chiefLiveFor(data(sess("HIMMEL-a-chief")), "himmel.ab12cd")).toBe(true); // an unregistered checkout keys on its repo
+  expect(chiefLiveFor(data(sess("HIMMEL-a-chief")), "luna.ab12cd")).toBe(false);
+});
+
+// One check detail can be a ~5 KB line (the graph-freshness paths, comma-separated, no break inside a path).
+// It must wrap inside its row, bundle table cell and alert, never widen the page, and stay readable whole.
+const longDetail = Array.from({ length: 60 }, (_, i) => `scripts/semantic/refresh/stuck/area-${i}/an-unbroken-file-name-${i}.md`).join(",");
+const count = (html: string, s: string) => html.split(s).length - 1;
+const cssRule = async (selector: string) => {
+  const css = await Bun.file(new URL("../public/app.css", import.meta.url)).text();
+  const m = new RegExp(`(?:^|[}\\n])${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\{([^}]*)\\}`).exec(css);
+  expect(m).not.toBeNull();
+  return m![1];
+};
+
+test("a long detail is rendered whole in every Health path: row, jobs, search, bundle table and alert", () => {
+  expect(longDetail.length).toBeGreaterThan(3000);
+  const f = feed(own("a", "fail"), r("cadence:j", "ok", { source: "cadence", scope: "shared" }), r("s", "ok", { bundle: "search", scope: "shared" }));
+  for (const x of f.rows as any[]) x.installed = { state: "present", detail: longDetail };
+  const health = { bank: { state: "absent" }, monitoring: { state: "ok", prometheus: { state: "ok", alerts: [{ alertname: "A", severity: "warn", summary: longDetail }] }, exporter: { state: "ok" } } };
+  const det = `<span class="det">${longDetail}</span>`;
+  expect(count(renderHealth(f, health, { tile: "checks", tab: "broken" }), det)).toBe(2); // the row and the alert
+  expect(count(renderHealth(f, health, { tile: "jobs" }), det)).toBe(1);
+  expect(count(renderHealth(f, health, { tile: "search" }), det)).toBe(1);
+  expect(renderHealth(f, health, { tile: "checks", tab: "all" })).toContain(`${longDetail}</td>`);
+});
+
+// The nowrap + ellipsis .det made a row's min-content width the whole line, so the page grew sideways; the row and
+// the alert now wrap it anywhere. One rule covers both, so no render path is left out.
+test("a detail in a Health row or an alert wraps anywhere instead of staying on one line", async () => {
+  const rule = await cssRule(".hrow .det,.alert .det");
+  expect(rule).toContain("white-space:normal");
+  expect(rule).toContain("overflow-wrap:anywhere");
+});
+
+// Short details render as before: the same span, the same text, inside the same row.
+test("a short detail renders as before", () => {
+  const html = renderHealth(feed(own("a", "fail")), null, { tile: "checks" });
+  expect(html).toContain('<span class="det">d-a</span>');
+  expect(html).toContain('<div class="hrow br" data-id="a">');
+});
+
+// The bundle table: a 5 KB detail column took all the width, so check and kind squeezed to one letter. The check id and
+// the kind keep a word whole (no wrapping inside them); only the detail column wraps, with a floor.
+test("the bundle table keeps the check and kind columns whole and lets only the detail wrap", async () => {
+  const f = feed(r("doctor:C70-graph-freshness", "warn", { scope: "project", installed: { state: "present", detail: longDetail } }));
+  const html = renderHealth(f, null, { tab: "all" });
+  expect(html).toContain('<table class="data chk">');
+  const tr = /<tr><td><span class="pill[^>]*>[^<]*<\/span><\/td>(.*?)<\/tr>/s.exec(html)![1];
+  expect(tr).toContain('<td class="id">doctor:C70-graph-freshness</td>');
+  expect(tr).toContain(`<td class="wrap">${longDetail}</td>`);
+  expect(tr).toMatch(/<td class="kind">[^<]+<\/td>$/);
+  expect(await cssRule(".data.chk th,.data.chk td")).toContain("overflow-wrap:normal");
+  const wrap = await cssRule(".data.chk td.wrap");
+  expect(wrap).toContain("overflow-wrap:anywhere");
+  expect(wrap).toMatch(/min-width:\d+ch/);
+});
+
+// The tab panels are grid items of .p; a grid item's min width is its content, so a wide table grew the track (the page
+// overflowed at 390px) instead of scrolling inside .scroll. The panels may shrink below their content.
+test("the Health tab panels can shrink below their content so the table scrolls inside its box", async () => {
+  const html = renderHealth(feed(own("a", "fail")), null, { tile: "checks", tab: "all" });
+  expect(html).toContain('role="tabpanel" id="tab-all"');
+  expect(await cssRule('.p>[role="tabpanel"]')).toContain("min-width:0");
 });

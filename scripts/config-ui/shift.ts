@@ -12,6 +12,7 @@
 //
 // ponytail: the last lock release is derived from the last poll that saw a lock held and the newest WRAPPED/HALTED stamp (queue-lock.sh keeps no release record, and a stale-dead lock reads as held until swept), upgrade to a release record read from queue-lock.sh, HIMMEL-8391
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { execFile } from "node:child_process";
 import { findDoc, readBoardFile } from "./agui/board";
@@ -238,7 +239,8 @@ export const appendShift = (file: string, row: Row) => withLock(file, () => appe
 
 // ---- the poll: the Shift route and the report generator call this, nothing else writes ----
 // merged resolves null when the PR list could not be read: a shift is never closed on a list that may be missing PRs
-export type Tick = { root: string; file: string; now: number; opts?: Opts; merged: (fromMs: number, toMs: number) => Promise<Pr[] | null>; boards?: (locks: Lock[], spans: Span[]) => Promise<Live> };
+// readOnly: report the recorded state as it is; no lock, no state file, no shifts.jsonl row, no gh read
+export type Tick = { root: string; file: string; now: number; opts?: Opts; readOnly?: boolean; merged: (fromMs: number, toMs: number) => Promise<Pr[] | null>; boards?: (locks: Lock[], spans: Span[]) => Promise<Live> };
 export type Snapshot = { state: State; spans: Span[]; locks: Lock[]; offsetMin: number };
 
 const stateFile = (file: string) => `${file}.state.json`;
@@ -255,6 +257,7 @@ export async function tick(t: Tick): Promise<Snapshot & { closed: Row[] }> {
   const locks = readLocks(t.root);
   const state0 = readState(t.file);
   const spans = chiefSpans(readChiefDocs(t.root, t.now - 3 * DAY), state0.open?.offsetMin ?? offsetMin, new Set(locks.filter((l) => l.role === "chief").map((l) => l.doc)));
+  if (t.readOnly) return { state: state0, spans, locks, offsetMin, closed: [] };
   const live = liveChiefs(spans, locks).map((s) => s.start);
   const ends = spans.map((s) => s.end).filter((e): e is number => e !== null);
   const obs: Obs = { now: t.now, locks, lastEnd: ends.length ? Math.max(...ends) : null, chiefLiveAt: live.length ? Math.min(...live) : null };
@@ -315,7 +318,8 @@ export async function readMerged(env: Record<string, string | undefined>, cwd: s
 // ---- what the page reads ----
 type Leg = { leg: string; ticket?: string | null; goal?: string | null; description?: string | null; state?: string; stage?: string; stages?: Record<string, string | null>; pr?: { number?: number | null } | null };
 type Need = { leg: string; verb?: string; action?: string; detail?: string; since?: string | null };
-export type Board = { console?: { name?: string }; legs?: Leg[]; needs_you?: Need[] };
+// decisions: the chief doc's open operator decisions (liveBoards adds them); needs_you is the chief's own to-do list
+export type Board = { console?: { name?: string }; legs?: Leg[]; needs_you?: Need[]; decisions?: string[] };
 export type Waiting = { kind: string; ticket: string | null; title: string; detail: string; since: string | null; pr: number | null; chief: string };
 export type Running = { ticket: string | null; title: string; stage: "building" | "in review"; since: string | null; pr: number | null };
 export type Carried = { ticket: string | null; title: string; stage: string; pr: number | null };
@@ -330,22 +334,18 @@ export type View = {
   last: { id: string; name: string; opened: string; closed: string; chiefs: number; shipped: number | null } | null;
 };
 
-const kindOf = (n: Need, l?: Leg) => (l?.state === "ready-for-go" ? "GO" : n.verb === "unblock" ? "question" : (n.verb ?? "act"));
 const prOf = (l?: Leg) => (typeof l?.pr?.number === "number" ? l.pr.number : null);
 const titleOf = (l?: Leg) => String(l?.goal || l?.description || "").slice(0, 200);
 
-// The live boards' rows: Waiting = the board's needs_you, Running = live and PR-open workers that are not waiting (a red CI stays Running: it is the worker's to fix).
+// The live boards' rows: Waiting = what the data marks as the operator's (the chief doc's open decisions); the board's needs_you
+// (go, decide, unblock, act) are the chief's own steps and never Waiting. Running = live and PR-open workers that are not waiting (a red CI stays Running: it is the worker's to fix).
 export function rowsOf(boards: Board[]): { waiting: Waiting[]; running: Running[] } {
   const waiting: Waiting[] = [], running: Running[] = [];
   for (const b of boards) {
-    const legs = new Map((b.legs ?? []).map((l) => [l.leg, l]));
     const chief = b.console?.name ?? "";
     const waits = new Set<string>();
-    for (const n of b.needs_you ?? []) {
-      const l = legs.get(n.leg);
-      waits.add(n.leg);
-      waiting.push({ kind: kindOf(n, l), ticket: l?.ticket ?? null, title: titleOf(l), detail: String(n.action ?? ""), since: n.since ?? null, pr: prOf(l), chief });
-    }
+    for (const n of b.needs_you ?? []) waits.add(n.leg);
+    for (const d of b.decisions ?? []) waiting.push({ kind: "decision", ticket: null, title: d.slice(0, 200), detail: d, since: null, pr: null, chief });
     for (const l of b.legs ?? []) {
       if (waits.has(l.leg) || l.state === "ready-for-go" || l.state === "blocked") continue;
       if (l.stage !== "live" && l.stage !== "pr") continue;
@@ -418,14 +418,37 @@ export type Live = { boards: Board[]; missing: string[]; error: { chief: string;
 export const fileReader: BoardReader = async (doc) => ((await readBoardFile(doc))?.body as Board | undefined) ?? null;
 
 // the boards of the chiefs that hold a queue lock now, one per live chief doc, by NAME under the handover root, read through `read`
-export async function liveBoards(root: string, locks: Lock[], spans: Span[], read: BoardReader): Promise<Live> {
+// A chief whose lock heartbeat is older than the queue-lock TTL is dead (queue-lock.sh status: STALE-DEAD): its rows are not shown.
+// ponytail: age alone (queue-lock.sh's 6 h default TTL), not its pid check, so a live chief silent for 6 h is hidden until it beats again, upgrade path: ask queue-lock.sh status.
+export const LOCK_TTL_MS = 6 * 3_600_000;
+
+// The open operator decisions of a chief doc: its Live-state `decisions:` line, ';'-separated at parenthesis depth 0 (board.mjs's split).
+// An entry that points at a decisions file lists decided entries, not open ones, so it gives none.
+export function decisionsOf(text: string): string[] {
+  const live = text.split(/^## Live state[^\n]*\n/m)[1]?.split(/^## /m)[0] ?? "";
+  const line = /^decisions:[ \t]*(.*)$/m.exec(live)?.[1].trim() ?? "";
+  const out: string[] = [];
+  let depth = 0, cur = "";
+  for (const ch of line + ";") {
+    if (ch === "(") depth++; else if (ch === ")") depth = Math.max(0, depth - 1);
+    if (ch === ";" && depth === 0) { out.push(cur.trim()); cur = ""; } else cur += ch;
+  }
+  return out.filter((d) => d && d !== "none" && !/specs\/decisions\/(?:chief|console)-decisions-[0-9-]+\.md/.test(d));
+}
+
+export async function liveBoards(root: string, locks: Lock[], spans: Span[], read: BoardReader, now = Date.now()): Promise<Live> {
   const out: Live = { boards: [], missing: [], error: [] };
   for (const s of liveChiefs(spans, locks)) {
+    if (locks.some((l) => l.role === "chief" && l.doc === s.name && now - l.at >= LOCK_TTL_MS)) continue;
     const doc = await findDoc(root, s.name);
     const b = doc ? await read(doc) : null;
     if (b === null) out.missing.push(s.name);
     else if ("error" in b) out.error.push({ chief: s.name, error: String(b.error).split("\n")[0].slice(0, 200) });
-    else out.boards.push(b);
+    else {
+      const text = await readFile(doc!, "utf8").catch(() => null);
+      if (text === null) out.error.push({ chief: s.name, error: "chief doc unreadable: its open decisions are not shown" }); // never reads as no decisions
+      out.boards.push({ ...b, decisions: decisionsOf(text ?? "") });
+    }
   }
   return out;
 }

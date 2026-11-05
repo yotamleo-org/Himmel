@@ -126,6 +126,13 @@ run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER" --pr 888
 contains "3: gh asked about PR 888" "$calls" "pr view 888"
 contains "3: bullet names #888" "$(tail -n 1 "$CHIEF")" "MERGED #888"
 
+# --- 3b. the merged PR is printed for the caller --------------------------
+fixture
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 10:00 PR 111 opened\n- 10:30 READY 222 %s GREEN\n- 10:40 WRAPPED\n' "$HEAD_OID" > "$WORKER"
+run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+check "3b: rc 0" "$rc" 0
+contains "3b: prints the merged PR (newest bullet)" "$out" "wrap-merged: merged pr=222 sha="
+
 # --- 4. not merged --------------------------------------------------------
 fixture
 WM_PR_STATE=OPEN run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"

@@ -13,23 +13,14 @@
 # It emits, multiline, the lines hud has NO native equivalent for
 # (§Decisions render-native-map — CUSTOM set):
 #   1. where-are-we  : ⎇ <KEY>[ 📋][ <ledger-status>][ · <EPIC> <done>/<total>]
-#   2. session econ  : session  r:<r>  w:<w>  hit:<h>%
-#                      (renders `session~ r:? w:? hit:?%`
-#                      when the transcript is missing or its per-render parse
-#                      couldn't complete — see read_session_cache_stats. A
-#                      silent zero there is indistinguishable from a session
-#                      that genuinely has no usage yet.)
-#   3. all-sessions  : <all[~]|week|month>  r:<r>  w:<w>  hit:<h>%
-#                      (the `~` is the healing marker)
-#   4. token volume  : total  used:<in+read+creation+out>
+#   2. doctor        : himmel-doctor  <n> FAIL  <n> WARN  (only when non-zero)
+# It prints NO economics rows (session / all-sessions / total used), on any env:
+# the HUD is the same on every machine.
 # hud renders natively (so we do NOT emit): model/ctx/git/duration/effort,
 # 5h/7d usage, credits (balance_label), prompt-cache countdown, session cost.
 #
-# SPAWN-FREE (the whole point of the epic): reads pre-computed caches + the
-# session transcript ONLY. It NEVER rebuilds the all-sessions economics index
-# (that detached rebuild — the orphaned-bash leak class — relocates to the
-# periodic hook scripts/hooks/refresh-statusline-caches-periodic.sh). The one
-# child it runs is the where-are-we segment, SYNCHRONOUSLY and timeout-bounded
+# SPAWN-FREE (the whole point of the epic): reads pre-computed caches ONLY. The
+# one child it runs is the where-are-we segment, SYNCHRONOUSLY and timeout-bounded
 # (reaped, not detached) — no `& disown` / `( … & )` here (static-no-spawn gate).
 #
 # FAIL-OPEN everywhere: any error omits only its own line; never errors/hangs.
@@ -37,15 +28,6 @@
 # Env knobs (relocated onto this composer from the legacy bar):
 #   HIMMEL_WHERE_ARE_WE            off (0|false|off|no) → suppress the WAW line.
 #   HIMMEL_WHERE_ARE_WE_SEG_TIMEOUT  seconds to bound the segment call (default 3).
-#   HIMMEL_STATUSLINE_ECON          off (0|false|off|no) → suppress lines 2-4 (the
-#                                 session/all/total economics rows) as a GROUP.
-#                                 Skips the WORK, not just the printing: gates
-#                                 the read_session_cache_stats call (the
-#                                 expensive whole-transcript parse), not just the
-#                                 emit.
-#   HIMMEL_STATUSLINE_PERIOD      all|week|month → the all-sessions line window.
-#   HIMMEL_STATUSLINE_BACKFILL_MAX / *_NOW → passed through to the lib (unused on
-#                                 the read path; honoured by the hook's rebuild).
 set -uo pipefail
 
 SD="$(cd "$(dirname "$0")" && pwd)"
@@ -55,204 +37,12 @@ ROOT="$(cd "$SD/.." && pwd)"
 input=""
 if [ ! -t 0 ]; then input="$(cat 2>/dev/null || true)"; fi
 
-# --- Parse the native session fields from stdin (same paths as the legacy bar)
-# `.model.id` is no longer read here — its only consumer was the
-# per-model price table behind the removed cache-savings figure.
-transcript_path="" cwd=""
+# --- Parse the session cwd from stdin (the only native field this composer reads)
+cwd=""
 if [ -n "$input" ]; then
-    # US (\037) via join, NOT @tsv: tab is IFS *whitespace*,
-    # so a leading EMPTY field collapses and shifts every later field left.
-    # .transcript_path is legitimately empty (a session with no transcript yet),
-    # which silently handed the where-are-we segment an empty --cwd. Same US
-    # separator the two jq reads below already use, for the same reason.
-    us=$'\037'
-    read_vals="$(printf '%s' "$input" | jq -r --arg sep "$us" '
-        [ (.transcript_path // ""),
-          (.cwd // "") ] | join($sep)' 2>/dev/null || true)"
-    if [ -n "$read_vals" ]; then
-        IFS="$us" read -r transcript_path cwd <<EOF
-$read_vals
-EOF
-    fi
+    cwd="$(printf '%s' "$input" | jq -r '.cwd // ""' 2>/dev/null || true)"
 fi
 [ -n "$cwd" ] || cwd="$PWD"
-
-# ── Economics helpers ───────────────────────────────────────────────────────
-# format_tokens is duplicated (a pure function) from scripts/statusline/bin/
-# statusline.sh so the composer's token figures are byte-identical to the legacy
-# bar. The cache-savings pricing helpers are not part of this composer
-# (the legacy bar keeps its own copy until it is decommissioned — plan Task 5.4),
-# so the two no longer share a money path.
-format_tokens() {
-    local n="${1:-0}"
-    [[ "$n" =~ ^[0-9]+$ ]] || n=0
-    if   [ "$n" -ge 1000000000 ]; then awk -v n="$n" 'BEGIN{printf "%.1fB", n/1000000000}'
-    elif [ "$n" -ge 1000000 ];    then awk -v n="$n" 'BEGIN{printf "%.1fM", n/1000000}'
-    elif [ "$n" -ge 1000 ];       then awk -v n="$n" 'BEGIN{printf "%.0fk", n/1000}'
-    else printf "%s" "$n"
-    fi
-}
-# ── Dual-logging dedup, shared jq prelude ─────────────────────
-# Claude Code writes the same API response into the transcript 2-3 times, so a
-# naive per-row sum over-counts 1.9x-3.3x. Mirrors claude-hud transcript.ts
-# (457-490): primary key message.id (non-empty string <= 128 chars) against a
-# bounded FIFO seen-set (cap 4096, evict-oldest); a row with a missing/invalid
-# id falls back to its usage fingerprint vs the IMMEDIATELY PREVIOUS row and
-# counts only on change; the fallback key resets on EVERY non-assistant /
-# non-usage row. That reset is why the scan runs over the UNFILTERED row
-# stream — pre-filtering destroys adjacency and would merge two distinct
-# id-less messages. foreach (a reduce that also emits), never group_by /
-# unique_by: those reorder the stream, which the consecutive fingerprint
-# cannot survive. dedup_usage emits one compact {t,r,w,i,o} record per COUNTED
-# message; sum4 folds them into [reads, writes, inputs, outputs]. A WINDOWED
-# caller filters the winners on .t between the two — dedup first, then window;
-# UNWINDOWED callers apply no timestamp filter at all (rows legitimately carry
-# no .timestamp, and filtering them would zero the total).
-_HUD_DEDUP_JQ='
-def normcount:
-  if type != "number" then 0
-  elif (isnan or isinfinite) then 0
-  else (floor as $f | if $f < 0 then 0 else $f end)
-  end;
-def normid:
-  if (type == "string") and (length > 0) and (length <= 128) then . else null end;
-def fp:
-  [.input_tokens, .output_tokens, .cache_creation_input_tokens, .cache_read_input_tokens]
-  | map(if . == null then "null" else tostring end) | join("|");
-def dedup_usage:
-  [ foreach .[] as $msg (
-      { seen: {}, queue: [], lastKey: null, hit: false };
-      if ($msg.type == "assistant") and ($msg.message.usage != null) then
-        ($msg.message.id | normid) as $mid
-        | if $mid != null then
-            ( if (.seen[$mid] // false) then .hit = false
-              else ( if (.queue | length) >= 4096
-                     then (.queue[0]) as $old | .seen |= del(.[$old]) | .queue |= .[1:]
-                     else . end )
-                   | .seen[$mid] = true | .queue += [$mid] | .hit = true
-              end )
-            | .lastKey = null
-          else
-            ($msg.message.usage | fp) as $f
-            | .hit = ($f != .lastKey) | .lastKey = $f
-          end
-      else .hit = false | .lastKey = null
-      end;
-      if .hit then
-        { t: ($msg.timestamp // ""),
-          r: ($msg.message.usage.cache_read_input_tokens     | normcount),
-          w: ($msg.message.usage.cache_creation_input_tokens | normcount),
-          i: ($msg.message.usage.input_tokens                | normcount),
-          o: ($msg.message.usage.output_tokens               | normcount) }
-      else empty end ) ];
-def sum4:
-  [ ([.[].r] | add // 0), ([.[].w] | add // 0),
-    ([.[].i] | add // 0), ([.[].o] | add // 0) ];
-'
-# Reads session cache stats from transcript JSONL. Sets: sess_reads sess_writes
-# sess_inputs sess_outputs sess_unknown (last_5m/last_1h timestamps are the TTL
-# lines' concern — hud native promptCache — so we do NOT read them here).
-# Deduped per _HUD_DEDUP_JQ; UNWINDOWED, so no timestamp filter.
-#
-# sess_unknown=1 means "could not be determined" (missing transcript, or the
-# jq parse below failed/timed out) — DISTINCT from a successful parse that
-# legitimately sums to zero (a brand-new session with no assistant turns yet).
-# The caller renders an explicit marker for the former; the latter still shows
-# real (zero) numbers, because they ARE real.
-read_session_cache_stats() {
-    local transcript="$1"
-    sess_reads=0; sess_writes=0; sess_inputs=0; sess_outputs=0; sess_unknown=0
-    if [ -z "$transcript" ] || [ ! -f "$transcript" ]; then
-        sess_unknown=1
-        return
-    fi
-    local stats US=$'\037' rc
-    # BOUNDED: unlike the all-sessions index, this jq -rs slurps
-    # the WHOLE transcript fresh on EVERY render — there is no per-session
-    # cache. On a large/long-running transcript (tens of MB) that alone
-    # measured 6-30s+ on this machine, which blows past hud's OWN 3s render
-    # budget (custom-line-cmd.ts TIMEOUT_MS=3000 — discards ALL stdout on
-    # timeout, see file header). Left unbounded, one slow session silently
-    # blanked the ENTIRE render — including the all/total rows below, which
-    # read a cheap pre-computed cache and have nothing to do with the slow
-    # parse. Bounding it here, well under hud's external budget, converts
-    # "everything vanishes" into "only the session row shows the unknown
-    # marker" — same timeout/gtimeout seam as seg_timeout/prod_timeout above.
-    local sess_timeout="${HIMMEL_SESSION_CACHE_TIMEOUT:-2}"
-    case "$sess_timeout" in ''|*[!0-9]*) sess_timeout=2 ;; esac
-    # CR #1474: GNU `timeout 0` DISABLES the limit — a 0 (or 00) here would
-    # silently reopen the unbounded-parse hole this seam exists to close.
-    [ "$sess_timeout" -gt 0 ] || sess_timeout=2
-    local sess_to=""
-    # CR #1474: validate with --version so a non-GNU `timeout` on PATH is
-    # never used as the seam — GNU coreutils passes, anything else fails and we
-    # fall through to gtimeout/unbounded exactly like a missing binary.
-    if command -v timeout >/dev/null 2>&1 && timeout --version >/dev/null 2>&1; then sess_to="timeout $sess_timeout"
-    elif command -v gtimeout >/dev/null 2>&1; then sess_to="gtimeout $sess_timeout"; fi
-    # shellcheck disable=SC2086  # sess_to is the intentional "timeout N" seam word-split
-    stats=$($sess_to jq -rs --arg sep "$US" "$_HUD_DEDUP_JQ"'
-        (dedup_usage | sum4) | map(tostring) | join($sep)' "$transcript" 2>/dev/null)
-    rc=$?
-    if [ "$rc" -ne 0 ] || [ -z "$stats" ]; then
-        sess_unknown=1
-        return
-    fi
-    IFS="$US" read -r sess_reads sess_writes sess_inputs sess_outputs <<EOF
-$stats
-EOF
-    [ -n "$sess_reads" ]   || sess_reads=0
-    [ -n "$sess_writes" ]  || sess_writes=0
-    [ -n "$sess_inputs" ]  || sess_inputs=0
-    [ -n "$sess_outputs" ] || sess_outputs=0
-}
-# Formats one economics row (plain text). Args: $1=label $2=reads $3=writes
-# $4=inputs. There is no trailing `net <±>$<n>` cache-savings
-# estimate (and no hand-maintained per-model price table): the figure
-# was derived from transcript deltas against rates that drift from live pricing,
-# so it read as a fact while being a guess. The token counts stay — they are
-# measured, not priced.
-format_econ_line() {
-    local label="$1" reads="$2" writes="$3" inputs="$4"
-    local r_fmt w_fmt hit denom
-    r_fmt=$(format_tokens "$reads")
-    w_fmt=$(format_tokens "$writes")
-    denom=$(( inputs + reads ))
-    [ "$denom" -gt 0 ] && hit=$(( reads * 100 / denom )) || hit=0
-    # Pad the label to 7 cols (= "session") so the r: columns of the session and
-    # all-sessions rows align, matching the legacy bar's 9-col label gutter.
-    printf '%-7s  r:%s  w:%s  hit:%s%%' "$label" "$r_fmt" "$w_fmt" "$hit"
-}
-# explicit-unknown counterpart to format_econ_line, for when a
-# row's own figures could not be determined (see read_session_cache_stats'
-# sess_unknown). Renders "?" placeholders rather than silently-zero numbers,
-# which are visually indistinguishable from a row that genuinely computed to
-# zero. Reuses the same 7-col label gutter; the caller passes a `~`-suffixed
-# label, the same "not fully known" marker the all-sessions row already uses
-# for its own pending state.
-format_econ_unknown_line() {
-    local label="$1"
-    printf '%-7s  r:?  w:?  hit:?%%' "$label"
-}
-# Formats the token-volume row (plain text) for the ACTIVE all-sessions window.
-# Args: $1=reads $2=writes $3=inputs $4=outputs.
-#   total used = input + cache_read + cache_creation + output
-# There is no companion
-# `cache:<read+creation>` field. It lands on its OWN row rather than extending
-# the session / all rows: both of those are pinned as regression nets —
-# test-hud-composer-parity.sh case 3 is END-ANCHORED on the all row, and
-# test/golden-all-row.txt is a byte-exact capture of the legacy bar's two rows —
-# and neither should be moved for a display addition. Same 7-col `%-7s` gutter
-# as format_econ_line, so `used:` lines up under the rows' `r:`.
-format_totals_line() {
-    local reads="$1" writes="$2" inputs="$3" outputs="$4"
-    local total_used
-    [[ "$reads"   =~ ^[0-9]+$ ]] || reads=0
-    [[ "$writes"  =~ ^[0-9]+$ ]] || writes=0
-    [[ "$inputs"  =~ ^[0-9]+$ ]] || inputs=0
-    [[ "$outputs" =~ ^[0-9]+$ ]] || outputs=0
-    total_used=$(( inputs + reads + writes + outputs ))
-    printf '%-7s  used:%s' "total" "$(format_tokens "$total_used")"
-}
 
 lines=""
 append() { [ -n "$1" ] && { [ -n "$lines" ] && lines="$lines
@@ -281,7 +71,7 @@ case "$usage_ttl" in ''|*[!0-9]*) usage_ttl=300 ;; esac
 # BOUND the producer drive BELOW hud's whole-composer budget (custom-line-cmd.ts
 # TIMEOUT_MS=3000, which discards ALL stdout on timeout). The producer's OAuth
 # branch curls with --max-time 5; without this cap a slow OAuth round-trip would
-# blank the composer's OWN lines (WAW + econ), not just the usage side-effect.
+# blank the composer's OWN lines (WAW), not just the usage side-effect.
 # Default 2s leaves ≥1s for the render's own (fast, cache-only) lines.
 prod_timeout="${HIMMEL_USAGE_PRODUCER_TIMEOUT:-2}"
 case "$prod_timeout" in ''|*[!0-9]*) prod_timeout=2 ;; esac
@@ -314,14 +104,6 @@ _waw_enabled() {
         *) return 0 ;;
     esac
 }
-# group off-switch for lines 2-4 (the economics rows). Same
-# normalisation + accepted-values contract as _waw_enabled above.
-_econ_enabled() {
-    case "$(printf '%s' "${HIMMEL_STATUSLINE_ECON:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
-        0|false|off|no) return 1 ;;
-        *) return 0 ;;
-    esac
-}
 seg_timeout="${HIMMEL_WHERE_ARE_WE_SEG_TIMEOUT:-3}"
 case "$seg_timeout" in ''|*[!0-9]*) seg_timeout=3 ;; esac
 seg="$ROOT/where-are-we/statusline-segment.sh"
@@ -333,88 +115,6 @@ if _waw_enabled && [ -f "$seg" ]; then
     waw="$(printf '%s' "$input" | $seg_to bash "$seg" --cwd "$cwd" 2>/dev/null || true)"
     append "$waw"
 fi
-
-# ── Lines 2-4: session + all-sessions + token-volume economics, gated as a ────
-# GROUP behind HIMMEL_STATUSLINE_ECON. Early-gated the same way
-# as _waw_enabled above: this skips the read_session_cache_stats CALL, not
-# just its emit — that call is the expensive one (whole-transcript
-# parse on every render), so gating only the append() would still pay the cost
-# and discard the result, which is exactly what this knob exists to avoid.
-if _econ_enabled; then
-
-# ── Lines 2-3: session + all-sessions economics (cache/transcript reads only) ─
-read_session_cache_stats "$transcript_path"
-if [ "$sess_unknown" = "1" ]; then
-    append "$(format_econ_unknown_line "session~")"
-else
-    append "$(format_econ_line "session" "$sess_reads" "$sess_writes" "$sess_inputs")"
-fi
-
-# All-sessions: resolve the window for the active period, READ its pre-computed
-# cache (never rebuild — that's the hook's job), format the row.
-# shellcheck source=scripts/statusline/lib/all-sessions-index.sh
-. "$SD/lib/all-sessions-index.sh" 2>/dev/null || true
-period="${HIMMEL_STATUSLINE_PERIOD:-all}"
-all_reads=0 all_writes=0 all_inputs=0 all_outputs=0 all_pending=0 all_label="all"
-if command -v resolve_window >/dev/null 2>&1; then
-    # resolve_window sets window_id (+ window_start/window_end, unused on the
-    # read path — only the hook's rebuild needs the bounds).
-    window_id="all-stats"
-    resolve_window "$period"
-    case "$period" in week) all_label="week" ;; month) all_label="month" ;; *) all_label="all" ;; esac
-    all_cache="${CLAUDE_ALL_SESSIONS_CACHE_DIR:-/tmp/claude}/cache-${window_id}.json"
-    if [ -f "$all_cache" ]; then
-        # `.outputs` and `.pending` are NEW reads — the pre-1300 jq
-        # selected reads/writes/inputs only. `outputs` feeds the total-used
-        # figure on the totals row; `pending` drives the `all~` healing marker.
-        # Both are `// 0`, so a cache written by an older producer still parses.
-        # The US (\037) separator comes in via --arg rather than a literal
-        # control byte in the program text.
-        us=$'\037'
-        joined="$(jq -r --arg sep "$us" '[(.reads // 0),(.writes // 0),(.inputs // 0),(.outputs // 0),(.pending // 0)] | map(tostring) | join($sep)' "$all_cache" 2>/dev/null || true)"
-        if [ -n "$joined" ]; then
-            IFS="$us" read -r all_reads all_writes all_inputs all_outputs all_pending <<EOF
-$joined
-EOF
-        fi
-    fi
-fi
-# Numeric guards, not merely non-empty ones: every one of these five feeds an
-# arithmetic context downstream (format_econ_line / format_totals_line, and the
-# `-gt 0` test below). A cache written by hand, truncated mid-write, or carrying
-# a jq-stringified float ("1e+30") would otherwise reach `$(( ))` as a syntax
-# error under `set -u`-adjacent strictness. Clamp anything non-integral to 0 —
-# a 0 row is a visibly-wrong number the operator can act on; a broken composer
-# takes the whole statusline down.
-#
-# Matched on the RAW value, never `${x:-0}`: the default would expand an empty
-# var to the literal "0", which matches NEITHER pattern, so the assignment is
-# skipped and the variable stays empty — the exact case the guard exists for.
-# All five are initialised above, so there is no unbound-variable exposure.
-case "$all_reads"   in ''|*[!0-9]*) all_reads=0   ;; esac
-case "$all_writes"  in ''|*[!0-9]*) all_writes=0  ;; esac
-case "$all_inputs"  in ''|*[!0-9]*) all_inputs=0  ;; esac
-case "$all_outputs" in ''|*[!0-9]*) all_outputs=0 ;; esac
-case "$all_pending" in ''|*[!0-9]*) all_pending=0 ;; esac
-
-# while the index still owes work — transcripts it has never
-# indexed, plus carried entries at a stale schema, EXCLUDING the permanently
-# parked v:-1 failures — the `all` row is still MOVING, so it renders as `all~`.
-# The tilde vanishes permanently at pending == 0. `all~` is 4 cols and still
-# fits format_econ_line's 7-col `%-7s` gutter, so nothing realigns. Gated to the
-# `all` period on purpose (spec OQ4): week/month indexes rotate and self-heal
-# within <=7/<=31 days. The legacy bar deliberately gets NO marker — it never
-# renders post-cutover and its row uses a different 9-col gutter.
-all_row_label="$all_label"
-if [ "$all_label" = "all" ] && [ "$all_pending" -gt 0 ]; then
-    all_row_label="all~"
-fi
-append "$(format_econ_line "$all_row_label" "$all_reads" "$all_writes" "$all_inputs")"
-
-# ── Line 4: token volume — total used ──────────────────────────────────────────────────────────
-append "$(format_totals_line "$all_reads" "$all_writes" "$all_inputs" "$all_outputs")"
-
-fi # _econ_enabled
 
 # ── Doctor segment: FAIL/WARN counts from the daily doctor-cadence
 # state file. Read-only and one small file: no doctor run here. Silent when the

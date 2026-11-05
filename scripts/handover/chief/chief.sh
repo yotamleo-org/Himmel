@@ -2458,6 +2458,9 @@ cmd_next() {
 
     if [ "$ARM" -eq 1 ]; then
         do_arm "$session" "$doc" "$fill_signal" "$log"
+        # The whole tail of the outgoing chief, said once and last, and only for an armed
+        # successor: a refused arm exits above, and an unarmed one never reports LIVE.
+        echo "after-next: relay (WAKE relay-on-live, else relay-batch.sh once), send RELAYED, re-arm the muted waiter once, read nothing and end your turn; on the successor's LIVE relay any worker it names as not relayed, then run chief.sh wrap and stop"
     fi
 }
 

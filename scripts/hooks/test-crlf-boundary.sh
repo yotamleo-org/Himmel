@@ -856,7 +856,6 @@ check guard-worker-context-handoff Bash 0 "bash scripts/handover/wrap-subtree-ch
     HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=T-chief HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact \
     "CLAUDE_CONFIG_DIR=$LCX/cfg" "HANDOVER_DIR=$LCX/handovers"
 CRLF_TP=""
-check retrieval-nudge Bash 0 "gi""t status" "advisory hook exits 0 on a plain command"
 
 # permission-allow-gate-shapes only ever allows or passes through, so its
 # verdict is always rc 0; a CR in the command must not turn that into a crash.

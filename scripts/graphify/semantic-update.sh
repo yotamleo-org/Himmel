@@ -177,6 +177,15 @@ if [ "$BACKEND" = "claude-api" ]; then
     exit 1
   fi
 fi
+# claude-cli chunk cap, same knob and default as refresh-graph-map.sh: a 60000-token chunk at one
+# call per directory returned a few facts per doc. An explicitly-empty value passes no --token-budget.
+CLI_CHUNK_TOKENS=""
+if [ "$BACKEND" = "claude-cli" ]; then
+  CLI_CHUNK_TOKENS="${GRAPHIFY_TOKEN_BUDGET-8000}"
+  case "$CLI_CHUNK_TOKENS" in
+    *[!0-9]*|0*) echo "semantic-update: GRAPHIFY_TOKEN_BUDGET must be a positive integer (got '$CLI_CHUNK_TOKENS')" >&2; exit 1 ;;
+  esac
+fi
 MERGE=(python3 "$HERE/semantic-merge.py")
 
 # --backend ollama: local model, zero egress, no bank draw. This
@@ -352,11 +361,17 @@ batch_line() { echo "semantic-update: BATCH id=$(batch_field batch_id) state=$1 
 # Submit the recorded prompts as one batch. A credit-exhausted answer marks the account (the lane's own marker) and an
 # auto route retries once on the other account; a pinned account is not rotated.
 batch_submit() {
-  local acct pick rc tried=0
+  local acct pick rc tried=0 role_accts=""
+  # the role map can narrow the graph pass to some accounts; none, or a broken map, is every configured
+  # account. The retry below re-picks inside the same list, so a mapped role never moves to an account outside it.
+  if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
+    role_accts="$(node "$REPO_ROOT/scripts/lib/api-roles.mjs" accounts graphify)" || role_accts=""
+    case "$role_accts" in *[!ABC,]*) role_accts="" ;; esac
+  fi
   while :; do
     acct="$HIMMEL_API_ACCOUNT"
     if [ "$acct" = auto ]; then
-      pick="$(node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" pick --usd "$API_CALL_BUDGET")"
+      pick="$(node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" pick --usd "$API_CALL_BUDGET" ${role_accts:+--only "$role_accts"})"
       case "$pick" in *'"verdict":"PROCEED"'*) ;; *) echo "semantic-update: refusing the batch: auto routing: no account has room ($pick)" >&2; return 2 ;; esac
       acct="$(printf '%s' "$pick" | sed -n 's/.*"account":"\([ABC]\)".*/\1/p')"
       [ -n "$acct" ] || { echo "semantic-update: refusing the batch: auto routing returned no account" >&2; return 2; }
@@ -403,10 +418,10 @@ if [ "$N_BATCH" -gt 0 ]; then
       fi ;;
   esac
   if [ "$BACKEND" = "claude-cli" ] || [ "$BACKEND" = "claude-api" ]; then
-    # Same pins as refresh-graph-map.sh: sonnet, low effort,
+    # Same pins as refresh-graph-map.sh: sonnet, high effort,
     # raised timeout, and a hook-free config dir.
     export GRAPHIFY_CLAUDE_CLI_MODEL="${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}"
-    export CLAUDE_CODE_EFFORT_LEVEL="${CLAUDE_CODE_EFFORT_LEVEL-low}"
+    export CLAUDE_CODE_EFFORT_LEVEL="${CLAUDE_CODE_EFFORT_LEVEL-high}"
     export GRAPHIFY_API_TIMEOUT="${GRAPHIFY_API_TIMEOUT-900}"
     export GRAPHIFY_CLAUDE_CONFIG_DIR="${GRAPHIFY_CLAUDE_CONFIG_DIR:-$HOME/.claude-graphify}"
     bash "$HERE/seed-claude-config.sh" \
@@ -555,6 +570,7 @@ PY
   # One request at a time: the local model holds the whole GPU.
   if [ "$BACKEND" = "ollama" ]; then EXTRA=(--max-concurrency 1); fi
   if [ "$BACKEND" = "claude-api" ]; then EXTRA=(--token-budget "$CHUNK_TOKENS"); fi
+  if [ -n "$CLI_CHUNK_TOKENS" ]; then EXTRA=(--token-budget "$CLI_CHUNK_TOKENS"); fi
   # GRAPHIFY_NO_AUTO_REFRESH=1: no skill-dir rewrite from a cadence run.
   export GRAPHIFY_NO_AUTO_REFRESH=1
   set +e

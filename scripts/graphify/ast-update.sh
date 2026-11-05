@@ -211,6 +211,7 @@ _promote_lock_release() {
   local cur=""
   if [ "$PROMOTE_LOCK_HELD" -eq 1 ]; then
     PROMOTE_LOCK_HELD=0
+    [ -z "${PROMOTE_HEARTBEAT_PID:-}" ] || kill "$PROMOTE_HEARTBEAT_PID" 2>/dev/null || true
     [ -d "$PROMOTE_LOCK" ] || return 0
     cur=$(cat "$PROMOTE_LOCK/owner" 2>/dev/null) || cur=""
     if [ "$cur" != "$PROMOTE_LOCK_TOKEN" ]; then
@@ -348,6 +349,28 @@ if ! _stamp_err=$( { date -u +%s > "$PROMOTE_LOCK/acquired"; } 2>&1 1>/dev/null 
 fi
 PROMOTE_LOCK_HELD=1
 
+# Heartbeat. This run holds the lock ~18 min (graphify update
+# --force), past refresh-graph-map.sh's 600s stale floor, so without a sign of
+# life a refresh would judge the lock stale and take it over mid-run. A
+# background loop rewrites <lock>/heartbeat every N seconds; refresh-graph-map.sh
+# judges staleness from the newer of `acquired` and `heartbeat`. The loop ends
+# when this script dies (kill -0 on its pid) or the lock stops being ours, so a
+# dead holder's heartbeat stops and it is still taken over after the floor.
+_hb_secs="${GRAPHIFY_PROMOTE_LOCK_HEARTBEAT_SECONDS:-60}"
+case "$_hb_secs" in ''|*[!0-9]*) _hb_secs=60 ;; esac
+[ "$((10#$_hb_secs))" -gt 0 ] || _hb_secs=60
+_hb_parent=$$
+(
+  while kill -0 "$_hb_parent" 2>/dev/null; do
+    sleep "$_hb_secs"
+    [ "$(cat "$PROMOTE_LOCK/owner" 2>/dev/null)" = "$PROMOTE_LOCK_TOKEN" ] || exit 0
+    # Temp file then rename: a plain `>` truncates first, and a refresh reading
+    # the empty file would fall back to the old stamp and take a live lock.
+    { date -u +%s > "$PROMOTE_LOCK/heartbeat.tmp" && mv -f "$PROMOTE_LOCK/heartbeat.tmp" "$PROMOTE_LOCK/heartbeat"; } 2>/dev/null || true
+  done
+) >/dev/null 2>&1 &
+PROMOTE_HEARTBEAT_PID=$!
+
 # Capture graphify's own exit status instead of propagating it unchanged
 # (set -e would otherwise make this script's own exit code just BE whatever
 # `graphify update` exits with) -- graphify can itself exit 4 for reasons of
@@ -396,15 +419,16 @@ if [ -f "$_pre_ast" ]; then
     rm -f "$_pre_ast"
   fi
 fi
-# This does NOT run harden-graph.py. `graphify update --force`
-# rewrites this OUT_DIR in place with no scratch/promote staging (unlike
-# refresh-graph-map.sh), so nothing here guarantees graph.json exists or is
-# well-formed on every hourly tick (confirmed by this script's own hermetic
-# stub, which never produces one) -- wiring a hard-failing harden step to an
-# in-place AST-only write would need touching every existing test double to
-# grow a real fixture graph for a bulk-mechanical harden, for a benefit
-# (surviving the hourly AST refresh) already delivered by the weekly
-# refresh-graph-map.sh cadence re-applying the harden on its own schedule.
+# The rebuild rewrites graph.json in place, which drops the harden's shell
+# sources/calls edges, so re-apply the harden while the promote
+# lock is still held. Fail-soft like semantic-update.sh: harden-graph.py writes
+# graph.json atomically, so a failure leaves the rebuilt graph standing and the
+# tick still succeeds; the next refresh re-hardens it. A graphify that left no
+# graph.json (this suite's older stubs) has nothing to harden.
+if [ "$_graphify_rc" -eq 0 ] && [ -f "$OUT_DIR/graph.json" ]; then
+  python3 "$(dirname "${BASH_SOURCE[0]}")/harden-graph.py" --out "$OUT_DIR" --root "$CORPUS_ROOT" >&2 \
+    || echo "ast-update: WARN harden-graph.py failed; the rebuilt graph stands, the next refresh re-hardens it" >&2
+fi
 if [ "$_graphify_rc" -eq 0 ]; then
   exit 0
 fi

@@ -42,8 +42,8 @@ const INITIATIVE_WORKERS = ['execute', 'prcheck', 'pr', 'ticket', 'merge', 'publ
 const INITIATIVE_GUARD = new Set(['merge', 'public']);
 
 // The five cadences P2 reports (spec §5.2 target list). evidence = what proves
-// the component itself ran (A9): doctor-cadence's last.tsv on every OS; the
-// runner .log on Windows only (cron keeps no run log on Linux/macOS).
+// the component itself ran (A9): doctor-cadence's last.tsv; the runner's own
+// .log (fired time + exit code) for the pipeline, qmd and graphmap cadences.
 const CADENCES = [
   { name: 'pipeline', script: 'scripts/luna/pipeline-cadence.sh', evidence: 'log', cost: 'runs Claude-backed harvest/synthesize and draws the subscription bank' },
   { name: 'qmd', script: 'scripts/luna/qmd-cadence.sh', evidence: 'log', cost: 'none (local qmd reindex)' },
@@ -136,9 +136,11 @@ function fallbackRemedy(o) {
 // Whether a row belongs to this machine or account ('shared', counted once across projects)
 // or to the open project, and who fixes it: 'configure' (a Configure tile writes the setting, fix.tile names
 // it), 'operator' (only the operator can run the command: a login) or 'chief' (the default).
-// ponytail: the shared and operator doctor checks are a hand list, upgrade: each probe declares its own scope and owner.
-const SHARED_DOCTOR = /^(C12|C19|C20|C40|C49|C50|C56|C69)-/;
+// A doctor row carries the scope its check declares (himmel-doctor.sh --json `scope`, `repo`); an item row may carry its
+// manifest item's `healthScope`/`repo`, else its kind decides. An undeclared doctor row is the project's.
+// ponytail: the operator doctor checks are a hand list, upgrade: each probe declares its own owner.
 const OPERATOR_DOCTOR = /^C12-/;
+const SCOPES = new Set(['shared', 'project']);
 const PROJECT_SECRETS = new Set(['JIRA_PROJECT_KEY']);
 const SHARED_ITEM_KINDS = new Set(['dep', 'scheduler', 'lane', 'vault', 'plugin', 'mcp']);
 const CONFIGURE_TILE = { initiative: 'scope', plugin: 'scope', cadence: 'scope', lane: 'review' };
@@ -148,8 +150,8 @@ function classifyRow(o) {
   let scope = 'project';
   if (o.source === 'cadence' || o.source === 'plugin' || o.source === 'lane' || o.source === 'flag') scope = 'shared';
   else if (o.source === 'secret') scope = PROJECT_SECRETS.has(bare) ? 'project' : 'shared';
-  else if (o.source === 'doctor') scope = SHARED_DOCTOR.test(bare) ? 'shared' : 'project';
-  else if (o.source === 'item') scope = SHARED_ITEM_KINDS.has(o.kind) ? 'shared' : 'project';
+  else if (o.source === 'doctor') scope = SCOPES.has(o.scope) ? o.scope : 'project';
+  else if (o.source === 'item') scope = SCOPES.has(o.healthScope) ? o.healthScope : SHARED_ITEM_KINDS.has(o.kind) ? 'shared' : 'project';
   const remedy = String((o.fix && o.fix.remedy) || '').trim();
   if (o.source === 'secret') return { scope, by: 'configure', tile: /^JIRA_/.test(bare) ? 'tracker' : 'secrets' };
   if (CONFIGURE_TILE[o.source] && !(o.control && o.control.class === 'display-only')) return { scope, by: 'configure', tile: CONFIGURE_TILE[o.source] };
@@ -165,6 +167,7 @@ function mkRow(o) {
   const { scope, by, tile } = classifyRow({ ...o, fix });
   return {
     scope,
+    ...(typeof o.repo === 'string' && o.repo ? { repo: o.repo } : {}),
     id: o.id,
     source: o.source,
     group: o.group,
@@ -215,6 +218,8 @@ function itemRows(ctx) {
       id: r.id,
       source: 'item',
       kind: r.kind,
+      healthScope: m.healthScope,
+      repo: m.repo,
       group: itemGroup({ kind: r.kind, id: r.id }),
       declared: { where: `scripts/install/manifest.json#${r.id}`, desired: r.desired === true ? 'wanted' : 'not wanted', profile: (m.profiles || []).join(',') },
       installed: { state: SEVERITY_INSTALLED[r.severity] || 'n/a', detail: r.detail || '' },
@@ -244,6 +249,8 @@ function doctorRows(ctx) {
     rows.push(mkRow({
       id: `doctor:${o.id}`,
       source: 'doctor',
+      scope: o.scope,
+      repo: o.repo,
       group: 'core',
       title: o.msg || o.id,
       declared: { where: `scripts/himmel-doctor.sh#${o.id}`, desired: 'check', profile: 'all' },
@@ -274,6 +281,29 @@ function doctorRows(ctx) {
 }
 
 // ── cadence rows ─────────────────────────────────────────────────────────
+// The last run of a 'log' cadence, read from the .log files its runners write under
+// ~/.claude/<name>-cadence/ (one per task; the runner rotates the previous run to
+// .log.prev, which is ignored). Each run opens with "[fired YYYY-MM-DD HH:MM:SS]" (local
+// time) and ends with "[exit rc=N]"; a run with no exit line is still going or died.
+// Returns the newest run, or null when no log holds one (absent dir, empty log).
+function lastRunFromLogs(name) {
+  const dir = path.join(homeDir(), '.claude', `${name}-cadence`);
+  let files = [];
+  try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.log')).sort(); } catch { /* no log dir: never fired */ }
+  let best = null;
+  for (const file of files) {
+    let raw;
+    try { raw = fs.readFileSync(path.join(dir, file), 'utf8'); } catch { continue; }
+    const fired = [...raw.matchAll(/^\[fired (\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)\]/gm)].pop();
+    if (!fired) continue;
+    const at = new Date(+fired[1], +fired[2] - 1, +fired[3], +fired[4], +fired[5], +fired[6]);
+    if (Number.isNaN(at.getTime()) || (best && best.at >= at)) continue;
+    const exit = /^\[exit rc=(\d+)\]/m.exec(raw.slice(fired.index));
+    best = { at, file, rc: exit ? exit[1] : null };
+  }
+  return best;
+}
+
 function cadenceRow(c, ctx) {
   const { probedAt, manifest } = ctx;
   const id = `${c.name}-cadence`;
@@ -294,6 +324,11 @@ function cadenceRow(c, ctx) {
   if (c.evidence === 'doctor-last') {
     const at = mtimeIso(path.join(homeDir(), '.himmel', 'state', 'doctor-cadence', 'last.tsv'));
     if (at) fires = { state: 'yes', evidence: 'doctor-cadence last.tsv mtime', at };
+  } else if (c.evidence === 'log') {
+    const run = lastRunFromLogs(c.name);
+    fires = run
+      ? { state: 'yes', evidence: `${run.file} run log, ${run.rc === null ? 'no exit line (still running, or died)' : `exit rc=${run.rc}`}`, at: run.at.toISOString() }
+      : { state: 'no-run', evidence: `no run recorded in ~/.claude/${c.name}-cadence/*.log`, at: null };
   }
   const state = broken ? 'n/a' : armed ? 'present' : 'absent';
   return mkRow({
@@ -548,7 +583,7 @@ function foldDoctorRows(rows, probedAt) {
     const ownerHealth = ownerRank === 2 ? 'fail' : ownerRank === 1 ? 'warn' : 'ok';
     const msg = `probes disagree: doctor ${did} says ${r.health}, status ${ownerLabel} says ${ownerHealth}`;
     out.push(mkRow({
-      id: `probe-disagree:${did}`, source: 'doctor', group: 'core', title: msg,
+      id: `probe-disagree:${did}`, source: 'doctor', scope: r.scope, repo: r.repo, group: 'core', title: msg,
       declared: { where: `scripts/himmel-doctor.sh#${did}`, desired: 'agree', profile: 'all' },
       installed: { state: 'degraded', detail: `${msg} (${r.title})` },
       health: r.health,

@@ -1502,6 +1502,29 @@ contains 'chief-template.md step 12: the board is rendered local only' "$CT" 'Re
 # shellcheck disable=SC2016  # literal backticks in the needle
 lacks 'chief-template.md step 12: no Artifact publish step' "$CT" 'publish the file with the `Artifact` tool'
 
+# --- adopted repo: a chief running for another repo (bucket and project differ from himmel)
+# renders the current layout with no template placeholder.
+AB="$W/adopted/bucket"; AP="$W/adopted/project"
+mkdir -p "$AB" "$AP"
+sed -e "s|@ROOT@|$W/adopted|" -e "s|@PROJECT@|$AP|" "$HERE/fixtures/adopted-repo-chief.md" > "$AB/ADOPT-nextleg-2026-01-01A-chief.md"
+: > "$W/adopted-gh-cwd.log"
+# A chief's board sections sidecar, seeded before the render, must survive it byte-identical.
+printf '%s\n' '{"schema":"himmel.board-sections/1","rev":3,"sections":[{"id":"n","title":"N","body":"b","tone":"info","order":10}]}' > "$AB/ADOPT-nextleg-2026-01-01A-chief.sections.json"
+sections_before="$(cksum < "$AB/ADOPT-nextleg-2026-01-01A-chief.sections.json")"
+PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv-adopted.log" \
+    BOARD_SESSIONS="$W/bin/sessions-empty.sh" GH_CWD_LOG="$W/adopted-gh-cwd.log" \
+    GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+    node "$SUT" --doc "$AB/ADOPT-nextleg-2026-01-01A-chief.md" --repo "$W/repo" 2>"$W/stderr-adopted.log" >/dev/null
+adopted_html="$(cat "$AB/chief-board.html" 2>/dev/null)"
+contains 'adopted-repo chief: the board is written next to its own doc' "$adopted_html" '<title>Supervisor Session Board</title>'
+contains 'adopted-repo chief: the current fleet panel renders' "$adopted_html" 'data-fleet="9/15"'
+contains 'adopted-repo chief: the page names the adopted chief session' "$adopted_html" 'ADOPT-nextleg-2026-01-01A-chief'
+lacks 'adopted-repo chief: a placeholder in the doc never reaches the board' "$adopted_html" '&lt;relay escalation'
+lacks 'adopted-repo chief: no angle-bracket placeholder text in the board' "$adopted_html" '&lt;worker&gt;'
+lacks 'adopted-repo chief: no unfilled @token@ in the board' "$adopted_html" '@PROJECT@'
+contains 'adopted-repo chief: PR lookups run in the adopted project, not the himmel checkout' "$(cat "$W/adopted-gh-cwd.log")" "$(cd "$AP" && pwd -P)"
+same 'board.mjs leaves a pre-seeded sidecar byte-identical' "$(cksum < "$AB/ADOPT-nextleg-2026-01-01A-chief.sections.json" 2>/dev/null)" "$sections_before"
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-board.sh'
     exit 0
