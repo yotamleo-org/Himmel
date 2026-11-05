@@ -71,6 +71,9 @@ import json, os, re, subprocess, sys
 d = os.environ["STUB_DIR"]
 argv = sys.argv[1:]
 prompt = sys.stdin.read()
+if os.environ.get("STUB_FAIL_Q") and os.environ["STUB_FAIL_Q"] in prompt:
+    print("not json")
+    sys.exit(0)
 cfg_path = argv[argv.index("--mcp-config") + 1]
 cfg = json.load(open(cfg_path))
 servers = cfg.get("mcpServers") or {}
@@ -111,8 +114,17 @@ m = re.search(r"[A-Za-z0-9_./-]+\.(md|sh|py)", text)
 f = m.group(0) if m else "docs/zeta.md"
 u = ({"input_tokens": 120, "output_tokens": 60, "cache_read_input_tokens": 9000, "cache_creation_input_tokens": 2000} if servers
      else {"input_tokens": 100, "output_tokens": 50, "cache_read_input_tokens": 9000, "cache_creation_input_tokens": 1000})
-print(json.dumps({"type": "result", "is_error": False, "num_turns": 4 if servers else 3,
-                  "result": "Looked around.\nANSWER: " + json.dumps([f]), "usage": u, "total_cost_usd": 9.99}))
+out = {"type": "result", "is_error": False, "num_turns": 4 if servers else 3,
+       "result": "Looked around.\nANSWER: " + json.dumps([f]), "usage": u, "total_cost_usd": 9.99}
+if os.environ.get("STUB_SESS_MODEL"):  # a model with no price row
+    out["modelUsage"] = {os.environ["STUB_SESS_MODEL"]: {"inputTokens": u["input_tokens"], "outputTokens": u["output_tokens"],
+                         "cacheReadInputTokens": u["cache_read_input_tokens"], "cacheCreationInputTokens": u["cache_creation_input_tokens"]}}
+if os.environ.get("STUB_MULTI"):  # a hook's helper call on a second model; the aggregate carries the 5m / 1h write split
+    out["modelUsage"] = {"claude-sonnet-5-5": {"inputTokens": 100, "outputTokens": 50, "cacheReadInputTokens": 9000, "cacheCreationInputTokens": 1000},
+                         "claude-haiku-5-5": {"inputTokens": 1000, "outputTokens": 100, "cacheReadInputTokens": 0, "cacheCreationInputTokens": 2000}}
+    out["usage"] = {"input_tokens": 1100, "output_tokens": 150, "cache_read_input_tokens": 9000, "cache_creation_input_tokens": 3000,
+                    "cache_creation": {"ephemeral_5m_input_tokens": 2000, "ephemeral_1h_input_tokens": 1000}}
+print(json.dumps(out))
 EOF
 printf '#!/usr/bin/env bash\necho PROCEED\n' > "$W/pf-ok"
 printf '#!/usr/bin/env bash\necho REFUSE\n' > "$W/pf-no"
@@ -264,6 +276,39 @@ rm -f "$W"/sess-argv-*.log
 BANK_PREFLIGHT="$W/pf-no" python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-rbank" --arms "$REAL" --model claude-sonnet-5-5 --pool 3 --n 3 > "$W/rbank.txt" 2>&1
 rc=$?
 if [ "$rc" -ne 0 ] && [ -f "$W/out-rbank/STOPPED" ] && ! ls "$W"/sess-argv-*.log > /dev/null 2>&1; then pass "a bank refusal bills no realistic session (rc $rc)"; else fail "a bank refusal bills no realistic session (rc $rc)"; fi
+
+# 16. an errored session is not a priced cost: the cap it books for the spend guard stays out of the arm's cost.
+rm -f "$W/ledger.jsonl"
+STUB_FAIL_Q="relay_batch" python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-err" --arms vanilla --model claude-sonnet-5-5 --pool 3 --n 3 > "$W/err.txt" 2>&1
+rc=$?
+if [ "$rc" -ne 0 ]; then pass "an errored session makes the run exit nonzero (rc $rc)"; else fail "an errored session makes the run exit nonzero (rc $rc)"; fi
+eq "the errored call is counted, not priced" "1" "$(lg 'r["metrics"]["vanilla.errors"]')"
+want_two="$(python3 -I -c 'import sys; i,o,r,w=map(float,sys.argv[1:5]); print("%.4f" % (2*(100*i+50*o+9000*r+1000*w)/1e6))' "$p_in" "$p_out" "$p_cr" "$p_cw")"
+eq "the arm cost is the two good calls (the errored call books no cost)" "$want_two" "$(lg '"%.4f" % r["metrics"]["vanilla.cost_usd"]')"
+eq "the arm cost per correct answer follows" "$want_two" "$(lg '"%.4f" % r["metrics"]["vanilla.cost_per_correct"]')"
+eq "the errored question has no cost in the cases" "None" "$(lg 'r["cases"]["a2"]["vanilla.cost_usd"]')"
+
+# 17. a model with no price row is reported unpriced: no arm cost, never a guess.
+rm -f "$W/ledger.jsonl"
+STUB_SESS_MODEL="unpriced-model-x" python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-unp" --arms vanilla --model claude-sonnet-5-5 --pool 3 --n 3 > "$W/unp.txt" 2>&1
+eq "an unpriced model leaves the arm cost empty" "None" "$(lg 'r["metrics"]["vanilla.cost_usd"]')"
+eq "the unpriced calls are counted" "3" "$(lg 'r["metrics"]["vanilla.unpriced"]')"
+eq "the table says unpriced" "unpriced" "$(awk -F'\t' 'NR>1{print $10}' "$W/out-unp/table.tsv")"
+
+# 18. a call on two models is priced per model at its own row, the aggregate 5m / 1h write split shared out by size.
+rm -f "$W/ledger.jsonl"
+STUB_MULTI=1 python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-multi" --arms vanilla --model claude-sonnet-5-5 --pool 3 --n 3 > "$W/multi.txt" 2>&1
+want_multi="$(python3 -I - "$HERE/../../lanes/lib/model-prices.tsv" <<'PYEOF'
+import sys
+rows = {l.split("\t")[0]: [float(x) for x in l.rstrip("\n").split("\t")[1:]] for l in open(sys.argv[1]) if l.strip() and not l.startswith("#")}
+def cost(m, i, o, r, cc, s1h):
+    p = rows[m]
+    return (i * p[0] + o * p[1] + r * p[2] + cc * (1 - s1h) * p[3] + cc * s1h * p[4]) / 1e6
+s = 1000 / 3000
+print("%.4f" % (3 * (cost("claude-sonnet-5-5", 100, 50, 9000, 1000, s) + cost("claude-haiku-5-5", 1000, 100, 0, 2000, s))))
+PYEOF
+)"
+eq "a two-model call is priced per model with the cache-write split kept" "$want_multi" "$(lg '"%.4f" % r["metrics"]["vanilla.cost_usd"]')"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

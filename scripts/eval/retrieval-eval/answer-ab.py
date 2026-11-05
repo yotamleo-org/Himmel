@@ -29,9 +29,13 @@ Steps:
                 vanilla       a worker session: the himmel worker preface, the repo CLAUDE.md and
                               hooks (cwd = --repo), tools Read, Grep, Glob only, an empty MCP config
                 fused-cached  the same session plus ONE tool, route, that returns grep + qmd
-                              hybrid (reranked) + graphify, rank-fused, as a tool RESULT: the prefix
-                              is the same bytes as vanilla's and is cache-read; the route output is
-                              written to the cache once and read by the later turns
+                              hybrid (reranked) + graphify, rank-fused, as a tool RESULT. The session
+                              flags (preface, CLAUDE.md, hooks, model, permission mode) are vanilla's,
+                              but the extra tool changes the tool block at the front of the cache
+                              prefix, so each arm keeps its OWN prefix cache: written on its first
+                              call, read by its later ones. The route output is unique per question,
+                              so it is written to the cache once per question and read by that
+                              session's later turns
                 bm25-rerank   the same session, route = qmd keyword (BM25) search, reranked
                 vec-rerank    the same session, route = qmd vector search, reranked
               They take the question sample (--pool, --n; --pool 75 --n 75 for the whole file)
@@ -176,10 +180,21 @@ def price_usage(d, model):
     in modelUsage (a hook's helper call) are priced each at its own row."""
     mu = d.get("modelUsage")
     if isinstance(mu, dict) and len(mu) > 1:
-        calls = [{"model": m, "usage": {"input_tokens": x.get("inputTokens", 0), "output_tokens": x.get("outputTokens", 0),
-                                         "cache_read_input_tokens": x.get("cacheReadInputTokens", 0),
-                                         "cache_creation_input_tokens": x.get("cacheCreationInputTokens", 0)}}
-                 for m, x in mu.items() if isinstance(x, dict)]
+        # modelUsage has no 5m / 1h write split: share the aggregate's split out by each model's write size
+        split = (d.get("usage") or {}).get("cache_creation") or {}
+        w5, w1 = split.get("ephemeral_5m_input_tokens") or 0, split.get("ephemeral_1h_input_tokens") or 0
+        share1h = w1 / (w5 + w1) if w5 + w1 > 0 else None
+        calls = []
+        for m, x in mu.items():
+            if not isinstance(x, dict):
+                continue
+            u = {"input_tokens": x.get("inputTokens", 0), "output_tokens": x.get("outputTokens", 0),
+                 "cache_read_input_tokens": x.get("cacheReadInputTokens", 0),
+                 "cache_creation_input_tokens": x.get("cacheCreationInputTokens", 0)}
+            if share1h is not None:
+                w = u["cache_creation_input_tokens"]
+                u["cache_creation"] = {"ephemeral_5m_input_tokens": w * (1 - share1h), "ephemeral_1h_input_tokens": w * share1h}
+            calls.append({"model": m, "usage": u})
     else:
         calls = [{"model": result_model(d) or model, "usage": d.get("usage") or {}}]
     total = 0.0
@@ -279,7 +294,7 @@ class Sweep:
             row["correct"] = self.ev.is_hit(row["named"], q["gold"])
         except (ValueError, OSError, subprocess.TimeoutExpired, TypeError) as e:
             row["error"] = str(e)[:120]
-            row["cost_usd"] = row["priced_usd"] = cap  # a billed call we cannot read: assume the full cap
+            row["cost_usd"] = cap  # a billed call we cannot read: the spend guard assumes the full cap; the arm cost leaves it out
             self.errors += 1
         row["ms"] = int((time.time() - t0) * 1000)
         self.spent += row["cost_usd"]
@@ -402,11 +417,13 @@ def sample(qs, pool):
 
 
 def arm_stats(rs):
-    """Run-level numbers of one arm's rows. Costs are None when a call is unpriced."""
+    """Run-level numbers of one arm's rows. Costs are None when a call is unpriced; an errored call
+    has no usage to price, so it is counted in errors and left out of the cost, turns and time."""
     ok = sum(r["correct"] for r in rs)
     tot = sum(r["tokens"] for r in rs)
-    priced = all(r["priced"] for r in rs)
-    cost = sum(r["priced_usd"] for r in rs) if priced else None
+    good = [r for r in rs if not r["error"]]
+    priced = all(r["priced"] for r in good)
+    cost = sum(r["priced_usd"] for r in good) if priced else None
     inp, out, cr, cc = (sum(r[k] for r in rs) for k in ("input", "output", "cache_read", "cache_creation"))
     denom = inp + cr + cc
     return dict(n=len(rs), correct=ok, errors=sum(1 for r in rs if r["error"]), tokens=tot,
@@ -414,7 +431,8 @@ def arm_stats(rs):
                 cost_per_correct=cost / ok if ok and cost is not None else None,
                 input=inp, output=out, cache_read=cr, cache_creation=cc,
                 cached_share=cr / denom if denom else None,
-                ms_median=statistics.median(r["ms"] for r in rs), turns_mean=statistics.mean(r["turns"] for r in rs))
+                ms_median=statistics.median(r["ms"] for r in good) if good else None,
+                turns_mean=statistics.mean(r["turns"] for r in good) if good else None)
 
 
 def table(rows, arms):
@@ -436,7 +454,7 @@ def table(rows, arms):
                                 "unpriced" if s["cost_usd"] is None else "%.4f" % s["cost_usd"],
                                 dash(s["cost_per_correct"], "%.4f"), str(s["input"]), str(s["output"]),
                                 str(s["cache_read"]), str(s["cache_creation"]), dash(s["cached_share"], "%.3f"),
-                                "%d" % s["ms_median"], "%.1f" % s["turns_mean"]]))
+                                dash(s["ms_median"], "%d"), dash(s["turns_mean"], "%.1f")]))
     return lines
 
 
@@ -462,7 +480,7 @@ def ledger_row(ev, a, sw, arms, repo):
         for r in rs:
             c = cases.setdefault(r["id"], {})
             c[arm + ".correct"] = r["correct"]
-            c[arm + ".cost_usd"] = r["priced_usd"] if r["priced"] else None
+            c[arm + ".cost_usd"] = r["priced_usd"] if r["priced"] and not r["error"] else None
             c["heldout"] = r["split"] == "heldout"
     if not metrics:
         return None
