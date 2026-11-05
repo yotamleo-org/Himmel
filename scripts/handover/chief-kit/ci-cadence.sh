@@ -56,7 +56,8 @@ now() { local n="${CI_CADENCE_NOW:-}"; case "$n" in ''|*[!0-9]*) date +%s ;; *) 
 # gh_run <args...> — gh in the repo checkout, bounded.
 gh_run() {
     local dir="${CI_CADENCE_DIR:-$PWD}"
-    (cd "$dir" 2>/dev/null && ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 25} "$GH_CMD" "$@")
+    # 7 sequential reads at 5 s each stay inside the tick's 40 s bound, so a slow gh cannot starve the cache write
+    (cd "$dir" 2>/dev/null && ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 5} "$GH_CMD" "$@")
 }
 
 # refresh — read every workflow's newest scheduled run into the cache; stop at the first gh failure.
