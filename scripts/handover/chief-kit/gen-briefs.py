@@ -576,11 +576,15 @@ def _glob_re(g):
     while i < len(g):
         if g.startswith('**/', i):
             out, i = out + '(?:.*/)?', i + 3
-        elif g.startswith('**', i):
-            out, i = out + '.*', i + 2
-        else:
+        else:  # a ** not before a slash is two stars, as in git; the ancestor match covers the rest
             out, i = out + ('[^/]*' if g[i] == '*' else '[^/]' if g[i] == '?' else re.escape(g[i])), i + 1
     return re.compile(out + r'\Z')
+
+
+def _self_and_ancestors(path):
+    # 'a/b/c' -> 'a/b/c', 'a/b', 'a'
+    parts = path.split('/')
+    return ['/'.join(parts[:i]) for i in range(len(parts), 0, -1)]
 
 
 def projected_files(writes, repo, base):
@@ -608,8 +612,9 @@ def projected_files(writes, repo, base):
                 if r.returncode != 0:
                     return None
                 listing = r.stdout.split('\n')[:-1]
-            rx = _glob_re(p)
-            hit = [f for f in listing if rx.match(f)]
+            rx = _glob_re(p.rstrip('/'))
+            # a file also hits when an ancestor directory matches (scripts/tree/* names every file under scripts/tree/sub/)
+            hit = [f for f in listing if any(rx.match(d) for d in _self_and_ancestors(f))]
         else:
             r = subprocess.run(['git', '-C', repo, 'ls-tree', '-r', '--name-only', base, '--', p], capture_output=True, text=True)
             if r.returncode != 0:
@@ -641,7 +646,7 @@ def check_pr_size(l, repo, base):
     elif n > bands['soft']:
         print('gen-briefs: warning: worker %s Writes project to %d files, over the %d-file soft max (pr-size-bands.tsv row soft)' % (l['label'], n, bands['soft']), file=sys.stderr)
     if n is not None and tracked == 0:
-        print('gen-briefs: warning: worker %s Writes name no file tracked at base (none named, empty, or only new files); the projection of %d files is unverified (rule: size is checked only against files tracked at base)' % (l['label'], n), file=sys.stderr)
+        print('gen-briefs: warning: worker %s Writes name no file tracked at base (none named, empty, or only new files); the %d file(s) counted are unverified (rule: a path absent at base counts once, so only files tracked at base are counted for real)' % (l['label'], n), file=sys.stderr)
 
 
 SERIES_MAX = 4

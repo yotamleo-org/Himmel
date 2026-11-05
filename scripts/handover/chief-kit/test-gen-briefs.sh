@@ -1128,6 +1128,13 @@ PS="$WORK/ps"; mkdir -p "$PS/scripts/big" "$PS/scripts/mid" "$PS/scripts/few" "$
 for n in $(seq 1 41); do echo "$n" > "$PS/scripts/big/f$n.txt"; echo "$n" > "$PS/scripts/hooks/guard-$n.sh"; echo "$n" > "$PS/src/m$n.py"; done
 for n in $(seq 1 40); do echo "$n" > "$PS/scripts/forty/f$n.txt"; done
 for n in $(seq 1 41); do echo "$n" > "$PS/r$n.rt"; done; echo readme > "$PS/README.md"
+# directory, wildcard-segment and nested shapes: files only under a subdirectory, a g-*.sh glob with a g-dir/ look-alike,
+# a ** with a zero-directory match, and 41 two-character names for ?
+mkdir -p "$PS/scripts/tree/sub" "$PS/scripts/xs/g-dir" "$PS/scripts/dd" "$PS/scripts/hl/a/b" "$PS/scripts/q"
+for n in $(seq 1 41); do echo "$n" > "$PS/scripts/tree/sub/f$n.txt"; echo "$n" > "$PS/scripts/xs/g-dir/f$n.sh"; echo "$n" > "$PS/scripts/hl/a/b/f$n.txt"; done
+for n in 1 2 3; do echo "$n" > "$PS/scripts/xs/g-$n.sh"; done
+echo x > "$PS/scripts/dd/x.sh"; for n in $(seq 1 40); do mkdir -p "$PS/scripts/dd/d$n"; echo x > "$PS/scripts/dd/d$n/x.sh"; done
+for n in $(seq 0 40); do echo "$n" > "$(printf '%s/scripts/q/f%02d.txt' "$PS" "$n")"; done
 for n in $(seq 1 25); do echo "$n" > "$PS/scripts/mid/f$n.txt"; done
 for n in 1 2 3; do echo "$n" > "$PS/scripts/few/f$n.txt"; done
 if git init -q "$PS" && git -C "$PS" add -A && git -C "$PS" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m base && PSBASE="$(git -C "$PS" rev-parse HEAD)"; then
@@ -1146,6 +1153,11 @@ psrun() { python3 "$SUT" "$WORK/ps-$1.json" --base "$PSBASE" --chief HIMMEL-next
 ps_brief() { ls "$WORK/ps-bucket-$1${2:-}"/HIMMEL-9201-*.md 2>/dev/null; }
 ps_workers glob 'scripts/hooks/guard-*.sh' ''; ps_workers mixed 'scripts/few/ src/' ''; ps_workers forty scripts/forty/ ''
 ps_workers rootglob '*.rt' ''; ps_workers rootfile 'README.md' ''
+ps_workers treeglob 'scripts/tree/*' ''; ps_workers segglob 'scripts/xs/g-*.sh' ''; ps_workers ddglob 'scripts/dd/**/x.sh' ''
+ps_workers hlglob 'scripts/hl/**' ''; ps_workers qglob 'scripts/q/f??.txt' ''; ps_workers prose 'scripts/forty/ and/or' ''
+ps_workers dotslash './scripts/big/*' ''; ps_workers slashglob 'scripts/tree/*/' ''; ps_workers paren 'scripts/few/ README.md (src/ and more)' ''
+ps_workers abspath 'scripts/forty/ /abs/path/note.md' ''
+ps_workers new41 "$(for n in $(seq 1 41); do printf 'scripts/newd/n%s.txt ' "$n"; done)" ''
 ps_workers absent 'scripts/new/a.sh scripts/new/b.sh' '';ps_workers nonamed 'none named' ''; ps_workers emptyw '' ''
 ps_workers big scripts/big/ ''; ps_workers bulk scripts/big/ ',"bulk":"mechanical"'; ps_workers mid scripts/mid/ ''; ps_workers few scripts/few/ ''; ps_workers badbulk scripts/few/ ',"bulk":"yes"'
 
@@ -1177,6 +1189,9 @@ PSBASE_GOOD="$PSBASE"; PSBASE="4ccb59dd6de2eba962c75f136096cd7b721ae312"  # a sh
 pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun few nobase)"; rc=$?
 [ "$rc" = 1 ] && pass "pr_size_gate on: a base git cannot read refuses instead of counting one file (rc 1)" || fail "unreadable base, gate on: rc=$rc: $pso"
 has "the unreadable-base refusal says the Writes cannot be projected" "$pso" "cannot be projected"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun glob nobase-glob)"; rc=$?
+[ "$rc" = 1 ] && pass "pr_size_gate on: a glob over a base git cannot read refuses instead of counting one file (rc 1)" || fail "unreadable base, glob worker: rc=$rc: $pso"
+has "the glob unreadable-base refusal says the Writes cannot be projected" "$pso" "cannot be projected"
 pso="$(psrun few nobase-off)"; rc=$?
 [ "$rc" = 0 ] && pass "pr_size_gate off: an unreadable base warns and writes the brief (rc 0)" || fail "unreadable base, gate off: rc=$rc: $pso"
 has "gate off: the unreadable base is a warning" "$pso" "warning: worker N921 Writes cannot be projected"
@@ -1200,6 +1215,31 @@ pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun rootglob)"; rc=$?
 pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun rootfile)"; rc=$?
 [ "$rc" = 0 ] && pass "pr_size_gate on: a tracked repository-root file passes (rc 0)" || fail "root file: rc=$rc: $pso"
 lacks "a tracked repository-root file counts as tracked (no unverified report)" "$pso" "name no file tracked at base"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun treeglob)"; rc=$?
+[ "$rc" = 1 ] && pass "pr_size_gate on: scripts/tree/* counts the 41 files under its subdirectory (rc 1)" || fail "glob matching a directory, gate on: rc=$rc: $pso"
+has "the directory glob counts every file under the match" "$pso" "41 files"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun segglob)"; rc=$?
+[ "$rc" = 0 ] && pass "pr_size_gate on: scripts/xs/g-*.sh does not reach into a g-dir/ look-alike (rc 0)" || fail "star stays inside one segment: rc=$rc: $pso"
+lacks "a star does not cross a slash" "$pso" "hard max"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun ddglob)"; rc=$?
+[ "$rc" = 1 ] && pass "pr_size_gate on: a **/ glob also matches zero directories (41 files, rc 1)" || fail "**/ glob: rc=$rc: $pso"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun hlglob)"; rc=$?
+[ "$rc" = 1 ] && pass "pr_size_gate on: a trailing ** counts the nested files (rc 1)" || fail "trailing **: rc=$rc: $pso"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun qglob)"; rc=$?
+[ "$rc" = 1 ] && pass "pr_size_gate on: a ? glob matches one character each (41 files, rc 1)" || fail "? glob: rc=$rc: $pso"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun prose)"; rc=$?
+[ "$rc" = 0 ] && pass "pr_size_gate on: the word and/or is not a path (40 files, rc 0)" || fail "and/or: rc=$rc: $pso"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun dotslash)"; rc=$?
+[ "$rc" = 1 ] && pass "pr_size_gate on: a ./ prefix is stripped before the projection (rc 1)" || fail "./ prefix: rc=$rc: $pso"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun slashglob)"; rc=$?
+[ "$rc" = 1 ] && pass "pr_size_gate on: a glob with a trailing slash counts the files under its directories (rc 1)" || fail "trailing-slash glob: rc=$rc: $pso"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun paren)"; rc=$?
+[ "$rc" = 0 ] && pass "pr_size_gate on: a parenthetical note names no files (rc 0)" || fail "parenthetical: rc=$rc: $pso"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun abspath)"; rc=$?
+[ "$rc" = 0 ] && pass "pr_size_gate on: an absolute path is not counted (40 files, rc 0)" || fail "absolute path: rc=$rc: $pso"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun new41)"; rc=$?
+[ "$rc" = 1 ] && pass "pr_size_gate on: 41 new files are refused (a path absent at base counts once) (rc 1)" || fail "41 new files, gate on: rc=$rc: $pso"
+has "the 41-new-files refusal says how many files" "$pso" "41 files"
 pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun forty)"; rc=$?
 [ "$rc" = 0 ] && pass "pr_size_gate on: a Writes dir of exactly 40 files passes (rc 0)" || fail "exactly 40 files: rc=$rc: $pso"
 lacks "exactly 40 files: no hard-max message" "$pso" "hard max"
