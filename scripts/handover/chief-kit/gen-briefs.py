@@ -596,7 +596,9 @@ def projected_files(writes, repo, base):
     for t in _PATH_TOK_RE.findall(text):
         t = t.rstrip('.')
         t = t[2:] if t.startswith('./') else t
-        if '/' in t and not t.startswith('/') and t.lower() not in _PROSE_SLASH and t not in toks:
+        # a root file (README.md) or root glob (*.py) has no slash; prose words with a dot (e.g., v1.1.3) must not count
+        pathlike = '/' in t or re.search(r'[*?]', t) or holds.FILE_RE.fullmatch(t)
+        if pathlike and not t.startswith('/') and t.lower() not in _PROSE_SLASH and t not in toks:
             toks.append(t)
     files, tracked, listing = set(), 0, None
     for p in toks:

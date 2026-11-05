@@ -1127,6 +1127,7 @@ if python3 -I "$RDR" HIMMEL-1 extra >/dev/null 2>&1 </dev/null; then fail "reade
 PS="$WORK/ps"; mkdir -p "$PS/scripts/big" "$PS/scripts/mid" "$PS/scripts/few" "$PS/scripts/hooks" "$PS/scripts/forty" "$PS/src"
 for n in $(seq 1 41); do echo "$n" > "$PS/scripts/big/f$n.txt"; echo "$n" > "$PS/scripts/hooks/guard-$n.sh"; echo "$n" > "$PS/src/m$n.py"; done
 for n in $(seq 1 40); do echo "$n" > "$PS/scripts/forty/f$n.txt"; done
+for n in $(seq 1 41); do echo "$n" > "$PS/r$n.rt"; done; echo readme > "$PS/README.md"
 for n in $(seq 1 25); do echo "$n" > "$PS/scripts/mid/f$n.txt"; done
 for n in 1 2 3; do echo "$n" > "$PS/scripts/few/f$n.txt"; done
 if git init -q "$PS" && git -C "$PS" add -A && git -C "$PS" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m base && PSBASE="$(git -C "$PS" rev-parse HEAD)"; then
@@ -1144,7 +1145,8 @@ PSEOF
 psrun() { python3 "$SUT" "$WORK/ps-$1.json" --base "$PSBASE" --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/ps-bucket-$1${2:-}" --date 2026-10-08 --repo "$PS" --handover-root "$WORK/handovers" --work-dir "$WORK/psw-$1${2:-}" --deadline 1791475000 2>&1; }
 ps_brief() { ls "$WORK/ps-bucket-$1${2:-}"/HIMMEL-9201-*.md 2>/dev/null; }
 ps_workers glob 'scripts/hooks/guard-*.sh' ''; ps_workers mixed 'scripts/few/ src/' ''; ps_workers forty scripts/forty/ ''
-ps_workers absent 'scripts/new/a.sh scripts/new/b.sh' ''; ps_workers nonamed 'none named' ''; ps_workers emptyw '' ''
+ps_workers rootglob '*.rt' ''; ps_workers rootfile 'README.md' ''
+ps_workers absent 'scripts/new/a.sh scripts/new/b.sh' '';ps_workers nonamed 'none named' ''; ps_workers emptyw '' ''
 ps_workers big scripts/big/ ''; ps_workers bulk scripts/big/ ',"bulk":"mechanical"'; ps_workers mid scripts/mid/ ''; ps_workers few scripts/few/ ''; ps_workers badbulk scripts/few/ ',"bulk":"yes"'
 
 pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun big)"; rc=$?
@@ -1193,6 +1195,11 @@ has "the glob refusal says the Writes expand to 41 files" "$pso" "41 files"
 pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun mixed)"; rc=$?
 [ "$rc" = 1 ] && pass "pr_size_gate on: scripts/few/ plus src/ (44 files) is refused (rc 1)" || fail "mixed roots, gate on: rc=$rc: $pso"
 has "the mixed-root refusal counts both roots" "$pso" "44 files"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun rootglob)"; rc=$?
+[ "$rc" = 1 ] && pass "pr_size_gate on: a root-level glob over 41 tracked files is refused (rc 1)" || fail "root glob of 41 files, gate on: rc=$rc: $pso"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun rootfile)"; rc=$?
+[ "$rc" = 0 ] && pass "pr_size_gate on: a tracked repository-root file passes (rc 0)" || fail "root file: rc=$rc: $pso"
+lacks "a tracked repository-root file counts as tracked (no unverified report)" "$pso" "name no file tracked at base"
 pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun forty)"; rc=$?
 [ "$rc" = 0 ] && pass "pr_size_gate on: a Writes dir of exactly 40 files passes (rc 0)" || fail "exactly 40 files: rc=$rc: $pso"
 lacks "exactly 40 files: no hard-max message" "$pso" "hard max"
