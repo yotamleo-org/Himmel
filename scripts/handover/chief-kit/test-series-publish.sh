@@ -77,6 +77,7 @@ main_move() { # <file> <content> <subject>: one commit on origin's main, made fr
 mkdir -p "$tmp/bin"
 export GH_LOG="$tmp/gh.log"; : > "$GH_LOG"
 export GH_PRS="$tmp/prs.tsv"; : > "$GH_PRS"
+export GH_CWD_LOG="$tmp/gh-cwd.log"; : > "$GH_CWD_LOG"   # the directory every `pr list` ran in
 cat > "$tmp/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$GH_LOG"
@@ -84,8 +85,9 @@ case "$*" in
     "pr list"*)
         b=""; p=""
         for a in "$@"; do [ "$p" = "--head" ] && b="$a"; p="$a"; done
+        pwd -P >> "$GH_CWD_LOG"
         [ -n "${GH_PR_FAIL:-}" ] && exit 1
-        awk -F'\t' -v b="$b" '$1 == b { print $2 "\t" $3 }' "$GH_PRS"
+        awk -F'\t' -v b="$b" '$1 == b { print $2 "\t" $3 "\t" $4 }' "$GH_PRS"
         exit 0 ;;
     *"auth status"*) exit 0 ;;
     *"repo view"*) echo owner/repo; exit 0 ;;
@@ -135,7 +137,7 @@ land_k1() { # <sid> [ledger-dir]: K1 published and its PR merged, main now holds
     git -C "$REPO" push -q origin "$w:refs/heads/main"
     sl set --ledger "${2:-$tmp/ledgers}/$1.json" --key K1 state=published publish_branch="series-pub/$1/K1" published_head="$w" \
         || { echo "FAIL: fixture land_k1 ledger ($1)"; exit 1; }
-    printf 'series-pub/%s/K1\t1\tMERGED\n' "$1" >> "$GH_PRS"
+    printf 'series-pub/%s/K1\t1\tMERGED\tmain\n' "$1" >> "$GH_PRS"
 }
 
 # --- 1. refusals ----------------------------------------------------------------------------------------------------
@@ -415,19 +417,24 @@ GH_PR_FAIL=1 GH_PRS="$PRS7" sp --ledger "$L7" --doc "$B" K2
 check "7: gh erroring fails closed: K2 refuses rc 2" "$rc" 2
 contains "7: the refusal names K1" "$out" "previous item K1"
 nothing_moved "7 gh errors" s7 "$before"
-printf 'series-pub/s7/K1\t11\tOPEN\n' > "$PRS7"
+printf 'series-pub/s7/K1\t11\tOPEN\tmain\n' > "$PRS7"
 GH_PRS="$PRS7" sp --ledger "$L7" --doc "$B" K2
 check "7: K1's PR open: K2 refuses rc 2" "$rc" 2
 contains "7: the refusal names K1 and its state" "$out" "previous item K1"
 contains "7: the refusal says the PR is open" "$out" "OPEN"
 nothing_moved "7 PR open" s7 "$before"
-printf 'series-pub/s7/K1\t11\tCLOSED\n' > "$PRS7"
+printf 'series-pub/s7/K1\t11\tCLOSED\tmain\n' > "$PRS7"
 GH_PRS="$PRS7" sp --ledger "$L7" --doc "$B" K2
 check "7: K1's PR closed unmerged: K2 refuses rc 2" "$rc" 2
 contains "7: the refusal names K1" "$out" "previous item K1"
 contains "7: the refusal says the PR is closed" "$out" "CLOSED"
 nothing_moved "7 PR closed" s7 "$before"
-printf 'series-pub/s7/K1\t11\tMERGED\n' > "$PRS7"
+printf 'series-pub/s7/K1\t11\tMERGED\trelease\n' > "$PRS7"
+GH_PRS="$PRS7" sp --ledger "$L7" --doc "$B" K2
+check "7: K1's PR merged into another branch than the default: K2 refuses rc 2" "$rc" 2
+contains "7: the refusal names K1 and the branch it merged into" "$out" "previous item K1 has not merged into main (#11 MERGED into release)"
+nothing_moved "7 PR merged elsewhere" s7 "$before"
+printf 'series-pub/s7/K1\t11\tMERGED\tmain\n' > "$PRS7"
 git -C "$REPO" push -q origin "$K1WIP:refs/heads/main"   # the merge itself: main now holds K1
 GH_PRS="$PRS7" sp --ledger "$L7" --doc "$B" K2
 check "7: K1's PR merged: K2 publishes rc 0" "$rc" 0
@@ -538,6 +545,7 @@ check "13: control: the foreign cwd is not a git repository" "$(git -C "$tmp/for
 check "13: a publish run from a foreign cwd rc 0" "$rc" 0
 contains "13: it prints PUBLISHED-BRANCH" "$out" "PUBLISHED-BRANCH K2 series-pub/s14/K2"
 check "13: the branch is on origin" "$(git -C "$REPO" ls-remote --heads origin series-pub/s14/K2 | wc -l | tr -d ' ')" 1
+check "13: gh asked about the previous item from inside the item worktree, not the caller's cwd" "$(tail -n 1 "$GH_CWD_LOG")" "$W2"
 
 # --- 14. the default branch comes from the remote, not from a cached origin/HEAD ---------------------------------------
 # origin's HEAD moves to trunk (main plus one commit); REPO's cached refs/remotes/origin/HEAD still says origin/main

@@ -102,8 +102,17 @@ esac
 ahead="$(git -C "$wt" rev-list --count "$cut..$wip")" || fail "cannot count $cut..$wip in $wt"
 [ "$ahead" -gt 0 ] || refuse "item $KEY has no commits in $cut..$wip"
 
-# the item before this one (the nearest that is not abandoned) must have merged: publishing earlier would leave its commits
-# off the branch. An abandoned previous item never merges and never blocks.
+git -C "$wt" show-ref --verify --quiet "refs/heads/$pub" && refuse "local branch $pub already exists"
+
+# the default branch is what origin says now, never the cached refs/remotes/origin/HEAD (it goes stale when the default moves)
+symref="$(git -C "$wt" ls-remote --symref origin HEAD)" || fail "git ls-remote --symref origin HEAD failed; cannot tell origin's default branch"
+defb="$(printf '%s\n' "$symref" | awk -F'\t' '$2 == "HEAD" && $1 ~ /^ref: refs\/heads\// { sub(/^ref: refs\/heads\//, "", $1); print $1; exit }')"
+[ -n "$defb" ] || fail "origin names no default branch (git ls-remote --symref origin HEAD printed no ref); cannot publish"
+def="origin/$defb"
+
+# the item before this one (the nearest that is not abandoned) must have merged INTO the default branch this item is published
+# onto: publishing earlier, or after a merge into some other branch, would leave its commits off the branch. An abandoned
+# previous item never merges and never blocks. gh runs in the item worktree, so it asks about the repo the item belongs to.
 prev="$(python3 -I -c '
 import json, sys
 d = json.loads(sys.argv[1])
@@ -115,21 +124,14 @@ for it in reversed(d["items"][:keys.index(sys.argv[2])]):
 if [ -n "$prev" ]; then
     pk="${prev%%$'\t'*}"; ppb="${prev#*$'\t'}"
     [ -n "$ppb" ] || refuse "previous item $pk has no recorded PR (it was never published); publish $KEY once $pk has merged or been abandoned"
-    prows="$("$GH" pr list --head "$ppb" --state all --limit 100 --json number,state --jq '.[] | [.number, .state] | @tsv')" \
+    prows="$(cd "$wt" && "$GH" pr list --head "$ppb" --state all --limit 100 --json number,state,baseRefName --jq '.[] | [.number, .state, .baseRefName] | @tsv')" \
         || refuse "cannot read the PR of previous item $pk ($ppb): gh failed; nothing moved, retry once it answers"
-    if [ "$(printf '%s\n' "$prows" | awk -F'\t' '$2 == "MERGED" { f = 1 } END { print f + 0 }')" != 1 ]; then
-        pstates="$(printf '%s\n' "$prows" | awk -F'\t' 'NF { printf "%s#%s %s", (n++ ? ", " : ""), $1, $2 }')"
-        refuse "previous item $pk has not merged (${pstates:-no PR on $ppb}); publish $KEY once it has merged or been abandoned"
+    if [ "$(printf '%s\n' "$prows" | awk -F'\t' -v b="$defb" '$2 == "MERGED" && $3 == b { f = 1 } END { print f + 0 }')" != 1 ]; then
+        pstates="$(printf '%s\n' "$prows" | awk -F'\t' 'NF { printf "%s#%s %s into %s", (n++ ? ", " : ""), $1, $2, $3 }')"
+        refuse "previous item $pk has not merged into $defb (${pstates:-no PR on $ppb}); publish $KEY once it has merged or been abandoned"
     fi
 fi
 
-git -C "$wt" show-ref --verify --quiet "refs/heads/$pub" && refuse "local branch $pub already exists"
-
-# the default branch is what origin says now, never the cached refs/remotes/origin/HEAD (it goes stale when the default moves)
-symref="$(git -C "$wt" ls-remote --symref origin HEAD)" || fail "git ls-remote --symref origin HEAD failed; cannot tell origin's default branch"
-defb="$(printf '%s\n' "$symref" | awk -F'\t' '$2 == "HEAD" && $1 ~ /^ref: refs\/heads\// { sub(/^ref: refs\/heads\//, "", $1); print $1; exit }')"
-[ -n "$defb" ] || fail "origin names no default branch (git ls-remote --symref origin HEAD printed no ref); cannot publish"
-def="origin/$defb"
 git -C "$wt" fetch --quiet origin "$defb" || fail "git fetch origin $defb failed; publishing needs the current $defb"
 base="$(git -C "$wt" rev-parse --verify --quiet "$def^{commit}")" || fail "cannot resolve $def"
 git -C "$wt" ls-remote --exit-code --heads origin "$pub" >/dev/null 2>&1; lsrc=$?   # swallow-ok: the rc is read below
