@@ -62,9 +62,11 @@ function tiles(sections) {
   ].join("")}</div>`;
 }
 
-// The shift timeline and the chief chart (mockup v7.1): the report day cut into 5-minute cells, each segment a table cell whose colspan is its
-// width (the CSP refuses an inline style). Read from the Spend per shift table (a shift's dated span) and the Chiefs table (a chief's HH:MM span,
-// placed on the first such clock time after its shift opened).
+// The shift timeline and the chief chart (mockup v7.1): 24 h cut into 5-minute cells, each segment a table cell whose colspan is its width (the CSP
+// refuses an inline style). The window is the 24 h that end when the last shift in the report closed: a real report is written the morning after
+// and counts shifts that closed before its own day, so the report day itself would hold none of them. Read from the Spend per shift table (a
+// shift's dated span) and the Chiefs table (a chief's HH:MM span, placed on the first such clock time at or after its shift opened). Every Chiefs
+// row is drawn, in as many lanes as its overlaps need.
 // ponytail: the spans carry no year, so a shift is dated in the report day's year; ceiling = a Dec/Jan report places a shift a year out and the chart skips it; upgrade path = the generator writes ISO spans.
 const UNIT = 5, CELLS = 1440 / UNIT;
 const tableIn = (sections, re) => { const s = find(sections, re); return s ? s.blocks.find((b) => b.t === "table") : null; };
@@ -84,9 +86,12 @@ const lane = (label, segs, aria) => {
     at = g.to;
   }
   if (at < CELLS) cells.push(`<td class="cseg gap" colspan="${CELLS - at}"></td>`);
-  return `<div class="rp-tlr"><span class="rp-tll">${esc(label)}</span><div class="chain" role="img" aria-label="${esc(aria)}"><table><tbody><tr>${cells.join("")}</tr></tbody></table></div></div>`;
+  const role = aria === null ? 'aria-hidden="true"' : `role="img" aria-label="${esc(aria)}"`;
+  return `<div class="rp-tlr"><span class="rp-tll">${esc(label)}</span><div class="chain" ${role}><table><tbody><tr>${cells.join("")}</tr></tbody></table></div></div>`;
 };
 const cellOf = (m) => Math.round(Math.min(Math.max(m, 0), 1440) / UNIT);
+const clock = (m) => String(Math.floor((((m % 1440) + 1440) % 1440) / 60)).padStart(2, "0");
+const tag = (name) => (/\d{4}-\d\d-\d\d([A-Za-z]+)-/.exec(name) || [])[1] || name; // HIMMEL-nextleg-2026-11-03PK-roadmap-chief reads PK; the title keeps the whole name
 function timeline(sections, day) {
   const sp = tableIn(sections, /Spend per shift/), ch = tableIn(sections, /Chiefs/);
   if (!sp) return "";
@@ -94,25 +99,35 @@ function timeline(sections, day) {
   for (const r of sp.rows) {
     const m = /^(\d\d-\d\d) (\d\d:\d\d) to (\d\d-\d\d) (\d\d:\d\d)$/.exec(r[1] || "");
     const o = m ? stamp(day, m[1], m[2]) : null, c = m ? stamp(day, m[3], m[4]) : null;
-    if (o === null || c === null || c <= 0 || o >= 1440) continue;
+    if (o === null || c === null || c <= o) continue;
     shifts.push({ key: r[0], name: r[0].split(" ")[0], span: r[1], open: o, close: c });
   }
   if (!shifts.length) return "";
-  const bands = shifts.map((s) => ({ from: cellOf(s.open), to: cellOf(s.close), text: `${s.open < 0 ? "◂ " : ""}${s.name}${s.close > 1440 ? " ▸" : ""}`, title: `${s.name}: ${s.span}` }));
-  const seen = new Set(), chiefs = [];
+  const w1 = Math.max(...shifts.map((s) => s.close)), w0 = w1 - 1440;
+  const inWin = shifts.filter((s) => s.close > w0);
+  const bands = inWin.map((s) => ({ from: cellOf(s.open - w0), to: cellOf(s.close - w0), text: `${s.open < w0 ? "◂ " : ""}${s.name}`, title: `${s.name}: ${s.span}` }));
+  const segs = [];
   for (const r of ch ? ch.rows : []) {
-    const m = /^(\d\d:\d\d) to (\d\d:\d\d|open)/.exec(r[1] || ""), sh = shifts.find((s) => s.key === r[3]);
-    if (!m || !sh || seen.has(r[0])) continue;
-    seen.add(r[0]);
+    const m = /^(\d\d:\d\d) to (\d\d:\d\d|open)/.exec(r[1] || ""), sh = inWin.find((s) => s.key === r[3]);
+    if (!m || !sh) continue;
     const a = minutes(m[1]) + 1440 * Math.ceil((sh.open - minutes(m[1])) / 1440); // the first such clock time at or after the shift opened, which may be the evening before the day
     const z = m[2] === "open" ? sh.close : a + ((minutes(m[2]) - minutes(m[1]) + 1440) % 1440);
-    if (a >= 1440 || z <= 0) continue;
-    const from = cellOf(a);
-    chiefs.push({ from, to: Math.max(cellOf(z), from + 1), text: r[0], title: `${r[0]}: ${r[1]}` });
+    if (a >= w1 || z < w0) continue;
+    const from = Math.min(cellOf(a - w0), CELLS - 1);
+    segs.push({ from, to: Math.min(Math.max(cellOf(z - w0), from + 1), CELLS), text: tag(r[0]), title: `${r[0]}: ${r[1]}` });
+  }
+  const lanes = [];
+  for (const g of segs.sort((a, b) => a.from - b.from)) {
+    const l = lanes.find((x) => x.end <= g.from) || (lanes.push({ end: 0, segs: [] }), lanes[lanes.length - 1]);
+    l.segs.push(g);
+    l.end = g.to;
   }
   const say = (n, what, names) => `${n} ${what}${n === 1 ? "" : "s"}: ${names.join("; ")}`;
-  const axis = `<div class="rp-tlr"><span class="rp-tll"></span><div class="chain-axis"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div></div>`;
-  return `<div class="rp-tl" role="group" aria-label="${esc(`Shifts and chiefs on ${longDay(day)}`)}">${lane("shifts", bands, say(shifts.length, "shift", shifts.map((s) => `${s.name} ${s.span}`)))}${chiefs.length ? lane("chiefs", chiefs, say(chiefs.length, "chief", chiefs.map((c) => c.title))) : ""}${axis}</div>`;
+  const when = (m) => new Date(Date.parse(`${day}T00:00:00Z`) + m * 60000).toISOString().slice(5, 16).replace("T", " ");
+  const win = `${when(w0)} to ${when(w1)}`;
+  const axis = `<div class="rp-tlr"><span class="rp-tll"></span><div class="chain-axis">${[0, 1, 2, 3, 4].map((k) => `<span>${clock(w0 + 360 * k)}</span>`).join("")}</div></div>`;
+  const chiefLanes = lanes.map((l, i) => lane(i ? "" : "chiefs", l.segs, i ? null : say(segs.length, "chief", segs.map((c) => c.title)))).join("");
+  return `<div class="rp-tl" role="group" aria-label="${esc(`Shifts and chiefs from ${win}`)}">${lane("shifts", bands, say(inWin.length, "shift", inWin.map((s) => `${s.name} ${s.span}`)))}${chiefLanes}${axis}</div>`;
 }
 
 function selector(list, day, ui) {

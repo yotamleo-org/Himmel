@@ -152,23 +152,70 @@ test("the TL;DR is a strip right under the tiles, not a boxed group panel", () =
 test("Spend per shift opens with the shift timeline and the chief chart, each segment a table cell sized by colspan", () => {
   const html = page71();
   const spend = html.slice(html.indexOf("Spend per shift</h2>"));
-  expect(spend).toMatch(/<div class="rp-tl" role="group" aria-label="Shifts and chiefs on Tuesday 27 October">/);
+  expect(spend).toMatch(/<div class="rp-tl" role="group" aria-label="Shifts and chiefs from 10-26 20:00 to 10-27 20:00">/);
   expect(spend).toMatch(/<span class="rp-tll">shifts<\/span><div class="chain" role="img"[^>]*>/);
-  expect(spend).toMatch(/<td class="cseg"[^>]*colspan="\d+"[^>]*>◂ night<\/td>/); // opened Mon 20:00, before the day
-  expect(spend).toMatch(/<td class="cseg"[^>]*colspan="\d+"[^>]*>day<\/td>/);
+  expect(spend).toContain('<td class="cseg" colspan="144" title="night: 10-26 20:00 to 10-27 08:00">night</td><td class="cseg" colspan="144" title="day: 10-27 08:00 to 10-27 20:00">day</td>');
   expect(spend).toMatch(/<span class="rp-tll">chiefs<\/span>/);
-  expect(spend).toMatch(/<td class="cseg"[^>]*>HA<\/td>/);
-  expect(spend).toMatch(/<div class="chain-axis"><span>00<\/span><span>06<\/span><span>12<\/span><span>18<\/span><span>24<\/span><\/div>/);
+  expect(spend).toContain('<td class="cseg gap" colspan="3"></td><td class="cseg" colspan="8" title="HA: 00:35 to 01:16">HA</td>'); // 00:35 is 275 min after the window opened, 55 cells; GZ ended at cell 52
+  expect(spend).toContain('<td class="cseg" colspan="132" title="HK: 09:00 to open">HK</td>'); // from 09:00 to the day's close
+  expect(spend).toContain('<div class="chain-axis"><span>20</span><span>02</span><span>08</span><span>14</span><span>20</span></div>');
   expect(spend.indexOf('class="rp-tl"')).toBeLessThan(spend.indexOf("<table"));
   expect(spend).not.toContain("style="); // the CSP (default-src 'self') refuses inline styles
 });
 
-test("a chief of the previous evening is not drawn on the report day", () => {
+test("a chief of the previous evening is drawn at its own clock time, not on the day", () => {
   const gen = GEN71.replace("| HK | 09:00 to open", "| YE | 21:00 to 23:00 | 1 | night 2026-10-26T20:00+01:00 |\n| HK | 09:00 to open"); // ran Mon 21:00 to 23:00, inside the night shift that opened Mon 20:00
   const html = renderReport(LIST71, parseReport(gen, "2026-10-27"), { day: "2026-10-27", shiftHref: "#/shift" });
   const spend = html.slice(html.indexOf("Spend per shift</h2>"));
-  expect(spend).not.toMatch(/<td class="cseg"[^>]*>YE<\/td>/);
-  expect(spend).toMatch(/<td class="cseg"[^>]*>HK<\/td>/);
+  expect(spend).toContain('<tr><td class="cseg gap" colspan="12"></td><td class="cseg" colspan="24" title="YE: 21:00 to 23:00">YE</td>'); // 60 min after the window opened, 120 min long
+});
+
+// the shape of a real report (morning-report-2026-11-05): the report day is 11-05 but its shifts closed on 11-04, a chief on two shifts has two rows, a
+// night chief runs "to open", and the names are the long session names
+const REAL71 = [
+  "# 🌅 Morning Report — 2026-11-05", "", "## ✅ What shipped", "", "**25** PRs merged to main · **30** commits", "",
+  "## 👥 Chiefs", "", "| Chief | Span | PRs merged | Shift |", "|---|---|---|---|",
+  "| HIMMEL-nextleg-2026-11-03PK-roadmap-chief | 20:00 to open (approx) | 25 | night 2026-11-03T20:00+01:00 |",
+  "| HIMMEL-nextleg-2026-11-03PL-roadmap-chief | 20:00 to 20:00 (approx) | 0 | night 2026-11-03T20:00+01:00 |",
+  "| HIMMEL-nextleg-2026-11-03PM-roadmap-chief | 20:02 to 20:55 | 1 | night 2026-11-03T20:00+01:00 |",
+  "| HIMMEL-nextleg-2026-11-03PR-roadmap-chief | 00:12 to 00:32 | 0 | night 2026-11-03T20:00+01:00 |",
+  "| HIMMEL-nextleg-2026-11-04QD-roadmap-chief | 05:45 to 06:18 (approx) | 2 | night 2026-11-03T20:00+01:00 |",
+  "| HIMMEL-nextleg-2026-11-04QD-roadmap-chief | 06:18 to 06:18 (approx) | 2 | night 2026-11-03T20:00+01:00 |",
+  "| HIMMEL-nextleg-2026-11-04QG-roadmap-chief | 07:48 to open | 0 | night 2026-11-03T20:00+01:00 |",
+  "| HIMMEL-nextleg-2026-11-03PK-roadmap-chief | 08:00 to open (approx) | 16 | day 2026-11-04T08:00+01:00 |",
+  "| HIMMEL-nextleg-2026-11-04QG-roadmap-chief | 08:00 to 08:14 | 0 | day 2026-11-04T08:00+01:00 |",
+  "| HIMMEL-nextleg-2026-11-04QX-roadmap-chief | 19:38 to open (approx) | 1 | day 2026-11-04T08:00+01:00 |", "",
+  "## 💸 Spend per shift", "", "| Shift | Span | PRs merged | Chiefs | Claude bank | Codex tokens | Codex bank | API $ | OpenRouter $ |", "|---|---|---|---|---|---|---|---|---|",
+  "| night 2026-11-03T20:00+01:00 | 11-03 20:00 to 11-04 08:00 | 25 | 22 | 52% (cadence ledger) | 0 tokens (codex rollouts) | not available | not available | not available |",
+  "| day 2026-11-04T08:00+01:00 | 11-04 08:00 to 11-04 20:00 | 16 | 19 | 41% (cadence ledger) | 0 tokens (codex rollouts) | not available | not available | not available |", "",
+  "## TL;DR", "", "**27** in-flight · **81** stale branches", "",
+].join("\n");
+const real71 = (gen = REAL71) => {
+  const html = renderReport({ days: ["2026-11-05"], newest: "2026-11-05", ageHours: 5, today: "2026-11-06", soFar: { day: "2026-11-06", shifts: [] } }, parseReport(gen, "2026-11-05"), { day: "2026-11-05", shiftHref: "#/shift" });
+  return html.slice(html.indexOf("Spend per shift</h2>"));
+};
+const PK = "HIMMEL-nextleg-2026-11-03PK-roadmap-chief";
+
+test("a real report, whose shifts closed before its own day, still draws the shift timeline over the 24 h that end at the last close", () => {
+  const spend = real71();
+  expect(spend).toContain('aria-label="Shifts and chiefs from 11-03 20:00 to 11-04 20:00"');
+  expect(spend).toContain('<td class="cseg" colspan="144" title="night: 11-03 20:00 to 11-04 08:00">night</td><td class="cseg" colspan="144" title="day: 11-04 08:00 to 11-04 20:00">day</td>'); // 12 h of 5 min cells each
+  expect(spend).toContain("<span>20</span><span>02</span><span>08</span><span>14</span><span>20</span>");
+});
+
+test("every Chiefs row is drawn, a chief on two shifts twice, none hidden behind a chief that runs to open", () => {
+  const spend = real71();
+  expect(spend.match(/<td class="cseg"[^>]*title="HIMMEL-nextleg-[^"]*"/g)).toHaveLength(10); // one cell per Chiefs row, 10 rows
+  expect(spend).toContain(`title="${PK}: 20:00 to open (approx)">PK</td>`);
+  expect(spend).toContain(`title="${PK}: 08:00 to open (approx)">PK</td>`);
+  expect(spend).toContain('title="HIMMEL-nextleg-2026-11-03PM-roadmap-chief: 20:02 to 20:55">PM</td>'); // the long name is shortened to its two letters, the title keeps it whole
+  expect((spend.match(/>QD<\/td>/g) || []).length).toBe(2);
+  expect((spend.match(/<span class="rp-tll">chiefs<\/span>/g) || []).length).toBe(1); // a chief lane below the first is unlabelled
+});
+
+test("a chief that crosses midnight is drawn for its real length", () => {
+  const gen = REAL71.replace("| HIMMEL-nextleg-2026-11-03PR-roadmap-chief", "| ZZ | 23:50 to 00:10 | 0 | night 2026-11-03T20:00+01:00 |\n| HIMMEL-nextleg-2026-11-03PR-roadmap-chief");
+  expect(real71(gen)).toContain('<td class="cseg" colspan="4" title="ZZ: 23:50 to 00:10">ZZ</td>'); // 20 min of 5 min cells
 });
 
 test("the spend table sits in a scroll box and is the wide kind", () => {
