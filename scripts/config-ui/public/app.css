@@ -260,6 +260,7 @@ div.tile{cursor:default}.tiles.three{grid-template-columns:repeat(3,minmax(0,1fr
 .cpanel .srow>*{grid-column:1/-1;min-width:0}.cpanel .srow>.id{grid-column:1;grid-row:1}.cpanel .srow>.st{grid-column:2;grid-row:1}
 .cpanel .srow .det{white-space:normal;overflow:visible}
 .cpanel .st{font:700 11px var(--font-mono)}
+.cpanel .st.wrap{white-space:normal;overflow-wrap:anywhere}
 .cpanel .sform{display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%}.cpanel .sform input{flex:1 1 120px;width:auto;min-width:0}
 .cpanel .sform .acts{display:flex;gap:6px;justify-content:flex-end;flex:0 0 auto;min-width:8.5rem;margin-left:auto}
 .cpanel .slot label{display:inline-flex;align-items:center;gap:6px}

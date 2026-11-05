@@ -252,7 +252,7 @@ function roleWarningLine(code, roles) {
 
 function accountRows(d) {
   const map = d.roleMap;
-  if (!d.rows) return `<div class="srow"><span class="id">Accounts</span><span class="det"><span class="st fail">account config unreadable${d.accountsReason ? `: ${esc(d.accountsReason)}` : ""}; fix config.json</span></span></div>`;
+  if (!d.rows) return `<div class="srow"><span class="id">Accounts</span><span class="det"><span class="st fail wrap">account config unreadable${d.accountsReason ? `: ${esc(d.accountsReason)}` : ""}; fix config.json</span></span></div>`;
   const body = d.rows.map((r) => {
     const mapped = d.ROLES.filter((role) => (map.roles[role] || []).includes(r.account));
     const roles = mapped.length
