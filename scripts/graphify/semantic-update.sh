@@ -352,11 +352,17 @@ batch_line() { echo "semantic-update: BATCH id=$(batch_field batch_id) state=$1 
 # Submit the recorded prompts as one batch. A credit-exhausted answer marks the account (the lane's own marker) and an
 # auto route retries once on the other account; a pinned account is not rotated.
 batch_submit() {
-  local acct pick rc tried=0
+  local acct pick rc tried=0 role_accts=""
+  # the role map can narrow the graph pass to some accounts; none, or a broken map, is every configured
+  # account. The retry below re-picks inside the same list, so a mapped role never moves to an account outside it.
+  if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
+    role_accts="$(node "$REPO_ROOT/scripts/lib/api-roles.mjs" accounts graphify)" || role_accts=""
+    case "$role_accts" in *[!ABC,]*) role_accts="" ;; esac
+  fi
   while :; do
     acct="$HIMMEL_API_ACCOUNT"
     if [ "$acct" = auto ]; then
-      pick="$(node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" pick --usd "$API_CALL_BUDGET")"
+      pick="$(node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" pick --usd "$API_CALL_BUDGET" ${role_accts:+--only "$role_accts"})"
       case "$pick" in *'"verdict":"PROCEED"'*) ;; *) echo "semantic-update: refusing the batch: auto routing: no account has room ($pick)" >&2; return 2 ;; esac
       acct="$(printf '%s' "$pick" | sed -n 's/.*"account":"\([ABC]\)".*/\1/p')"
       [ -n "$acct" ] || { echo "semantic-update: refusing the batch: auto routing returned no account" >&2; return 2; }
