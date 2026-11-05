@@ -5,6 +5,11 @@
 import { esc, pageHeader, pg } from "./render.js";
 
 const COLS = [["todo", "To do"], ["prog", "In progress"], ["rev", "In review"], ["ci", "CI"], ["done", "Done"], ["wont", "Won't"]];
+// The Board's columns: Review and CI share one (a drop on it sets rev; CI is the pill on the card), and Won't is the narrow lane after them.
+const BOARD_COLS = [["todo", "To do", ["todo"]], ["prog", "In progress", ["prog"]], ["rev", "Review / CI", ["rev", "ci"]], ["done", "Done", ["done"]], ["wont", "Won't", ["wont"]]];
+// A clamped text keeps its full text in data-tip, shown by the CSS bubble on hover and focus. The clamp lives on the inner .rm-clip
+// (overflow:hidden would cut the bubble off the same element); the full text is also what a screen reader gets, so no native title repeats it.
+const tip = (full, inner, cls = "") => `<span class="rm-tip${cls}" data-tip="${esc(full)}"><span class="rm-clip">${inner}</span></span>`;
 const section = (id, title, sub, body) => `<section id="${id}" class="box" aria-labelledby="h-${id}"><h2 id="h-${id}">${esc(title)}</h2><p class="sub">${esc(sub)}</p>${body}</section>`;
 const shq = (a) => (/^[\w.,:@/=-]+$/.test(a) ? a : `"${a.replace(/(["\\$`])/g, "\\$1")}"`); // a word safe to paste: $, backtick, quote and backslash escaped
 const jira = (argv) => "jira " + argv.map(shq).join(" ");
@@ -57,8 +62,10 @@ function chainBadge(t, ch, v) {
   const ct = chainOk(ch) ? ch.tickets[idOf(t)] : null;
   if (!ct || !Array.isArray(ct.badges) || !ct.badges.length) return "";
   const at = encodeURIComponent(idOf(t));
-  const parts = ct.badges.map((id) => ct.chains.find((c) => c.id === id)).filter(Boolean).map((c) =>
-    `<a class="rm-chain" href="#/board?tab=chains${v ? `&amp;v=${esc(encodeURIComponent(v))}` : ""}&amp;at=${esc(at)}" title="Open the ${esc(c.id)} chain on the Chains tab"><span aria-hidden="true">${glyph(c.state)}</span> ${esc(c.id)} ${esc(String(c.step))}/${esc(String(c.steps))} · ${esc(c.state)}</a>`);
+  const parts = ct.badges.map((id) => ct.chains.find((c) => c.id === id)).filter(Boolean).map((c) => {
+    const text = `${glyph(c.state)} ${c.id} ${c.step}/${c.steps} · ${c.state}`.trim();
+    return `<a class="rm-chain" href="#/board?tab=chains${v ? `&amp;v=${esc(encodeURIComponent(v))}` : ""}&amp;at=${esc(at)}" aria-label="Open the ${esc(c.id)} chain on the Chains tab: ${esc(text)}">${tip(text, `<span aria-hidden="true">${glyph(c.state)}</span> ${esc(c.id)} ${esc(String(c.step))}/${esc(String(c.steps))} · ${esc(c.state)}`)}</a>`;
+  });
   return `<div class="rm-chains">${parts.join("")}${ct.more ? ` <span class="ro">+${esc(String(ct.more))}</span>` : ""}</div>`;
 }
 
@@ -71,24 +78,26 @@ function cardHtml(t, d, showVersion, w, ch, v, known) {
   const local = t.backend === "local";
   const attrs = w ? ` draggable="true" data-rm-card="${t.k}"${projAttr(t)}${local ? ` data-rm-id="${esc(t.id)}" data-rm-backend="local"` : ""}` : "";
   const open = ` data-rm-open="${t.k}"${w ? "" : projAttr(t)} tabindex="0"`; // a click, Enter or Space opens the drawer; the project attribute is shared with the drag one
-  return `<div class="rm-card"${attrs}${open}><b>${esc(idOf(t))}</b>${local ? ` <span class="ro pill">local</span>` : ""} <span class="ro pill${t.b === "done" ? " ok" : t.b === "prog" || t.b === "rev" || t.b === "ci" ? " warn" : ""}">${esc(t.s)}</span><div>${esc(t.t)}</div>${chainBadge(t, ch, v)}${kb}
-    <div class="ro">${ver}${theme} ${dr}</div>${lg}</div>`;
+  const ci = t.b === "ci" ? ` <span class="ro pill warn">CI</span>` : ""; // CI shares the Review column: the pill says which of the two the card is in
+  // two lines: the id, status and sector row, then the title clamped to two lines; the card's accessible name is the id and the full title
+  return `<div class="rm-card"${attrs}${open} role="button" aria-label="${esc(idOf(t))}: ${esc(t.t)}"><div class="rm-top"><b>${esc(idOf(t))}</b>${local ? ` <span class="ro pill">local</span>` : ""} <span class="ro pill${t.b === "done" ? " ok" : t.b === "prog" || t.b === "rev" || t.b === "ci" ? " warn" : ""}">${esc(t.s)}</span>${ci} <span class="ro">${ver}${theme} ${dr}</span></div>`
+    + `<div class="rm-tip rm-title" data-tip="${esc(t.t)}"><span class="rm-clip">${esc(t.t)}</span></div>${chainBadge(t, ch, v)}${kb}${lg}</div>`;
 }
 
-// One board: a column per status over the given tickets. Won't and CI stay hidden while empty so a quiet board stays short.
+// One board: a column per status over the given tickets (Review and CI share one). Won't stays hidden while empty so a quiet board stays short.
 // With w every column is a drop target, Won't included: a writable board must be able to receive it.
 // o (the Board's lanes only): scope = every ticket Jira has for these columns before the filters, so each column says "Jira N matches"
 // or "Jira N · M shown"; foldDone = Done is a closed <details> (open while o.find is set, so a find never hides its match).
 function boardHtml(d, tickets, showVersion, w, ch, v, o = {}) {
-  const cols = COLS.filter(([b]) => w || b !== "wont" || tickets.some((t) => t.b === b));
-  return `<div class="rm-board">${cols.map(([b, l]) => {
-    const cards = tickets.filter((t) => t.b === b), n = cards.length;
-    const jn = o.scope ? o.scope.filter((t) => t.b === b).length : null;
+  const cols = BOARD_COLS.filter(([b, , bs]) => w || b !== "wont" || tickets.some((t) => bs.includes(t.b)));
+  return `<div class="rm-board">${cols.map(([b, l, bs]) => {
+    const cards = tickets.filter((t) => bs.includes(t.b)), n = cards.length;
+    const jn = o.scope ? o.scope.filter((t) => bs.includes(t.b)).length : null;
     const jira = jn === null ? "" : `<span class="ro rm-jira">${jn === n ? `Jira ${jn} matches` : `Jira ${jn} · ${n} shown`}</span>`;
     const body = cards.map((t) => cardHtml(t, d, showVersion, w, ch, v, o.known)).join(""), drop = w ? ` data-rm-drop="${b}"` : "";
     const drawerHere = o.drawer && cards.some((t) => t.k === o.drawer.k && (t.project || "") === (o.drawer.project || "")); // closing the drawer focuses its card: it must not sit in a closed <details>
     if (o.foldDone && b === "done") return `<details class="rm-col rm-done"${o.find || drawerHere ? " open" : ""}${drop} data-rm-col="done"><summary><b>${esc(l)}</b> <span class="ro rm-n">${n}</span> ${jira}</summary>${body}</details>`;
-    return `<div class="rm-col"${drop}${o.scope ? ` data-rm-col="${b}"` : ""}><h4>${esc(l)} <span class="ro rm-n">${n}</span></h4>${jira}${body}</div>`;
+    return `<div class="rm-col${b === "wont" ? " rm-lane" : ""}"${drop}${o.scope ? ` data-rm-col="${b}"` : ""}><h4>${tip(l, esc(l))} <span class="ro rm-n">${n}</span> ${jira}</h4>${body}</div>`;
   }).join("")}</div>`;
 }
 
@@ -230,10 +239,11 @@ function stripHtml(d, sel, ch, tab) {
     const c = v.counts, total = Object.values(c).reduce((a, b) => a + b, 0), flight = c.prog + c.rev + c.ci;
     const run = runState(d, v, i), tag = v.rel ? `released${v.date ? " " + v.date : ""}` : run || "planned";
     const inChains = chainOk(ch) ? d.tickets.filter((t) => t.v === i && ch.tickets[idOf(t)]).length : null;
+    const stats = `${c.done} done · ${flight} in flight · ${c.todo} to do${c.wont ? ` · ${c.wont} won't` : ""}${inChains !== null ? ` · ${inChains} in chains` : ""}`;
     const open = v.open.length ? `<span class="ro pill fail">${v.open.length} still open: ${v.open.map((k) => `${v.project || "HIMMEL"}-${k}`).map(esc).join(", ")}</span>` : "";
-    return `<a class="rm-vt${i === sel ? " sel" : ""}" href="${boardHref({ tab: tab === "roadmap" ? "" : tab, v: v.n })}"${i === sel ? ` aria-current="true"` : ""}><span><b>${esc(v.n)}</b> <span class="ro pill${v.rel ? " ok" : run === "running" ? " warn" : ""}">${esc(tag)}</span></span>`
+    return `<a class="rm-vt${i === sel ? " sel" : ""}" href="${boardHref({ tab: tab === "roadmap" ? "" : tab, v: v.n })}"${i === sel ? ` aria-current="true"` : ""}>${tip(`${v.n} · ${tag}`, `<b>${esc(v.n)}</b> <span class="ro pill${v.rel ? " ok" : run === "running" ? " warn" : ""}">${esc(tag)}</span>`)}`
       + `<progress value="${c.done}" max="${total || 1}" aria-label="${esc(v.n)}: ${c.done} of ${total} done"></progress>`
-      + `<span class="ro">${c.done} done · ${flight} in flight · ${c.todo} to do${c.wont ? ` · ${c.wont} won't` : ""}${inChains !== null ? ` · ${inChains} in chains` : ""}</span>${open}</a>`;
+      + tip(stats, `<span class="ro">${esc(stats)}</span>`) + `${open}</a>`;
   }).join("");
   return note + (tiles ? `<div class="rm-vstrip" aria-label="Versions">${tiles}</div>` : `<div class="empty">No train versions.</div>`);
 }
@@ -273,19 +283,23 @@ function laneFilters(d, ui, ch, sel) {
   const only = ONLY.map(([l, f, needs]) => needs && !chainOk(ch) ? `${l} (not read)` : `${l} ${scope.filter((t) => f(t, chainState(t, ch))).length}`);
   const onlySel = `<label>Only <select data-rm-filter="only"><option value="">all</option>${ONLY.map(([, , needs], i) =>
     `<option value="${i}"${needs && !chainOk(ch) ? " disabled" : ui.only === i ? " selected" : ""}>${esc(only[i])}</option>`).join("")}</select></label>`;
-  return fsel("project", "Project", projectsOf(d), ui.project) + fsel("planTheme", "Theme", d.planThemes, ui.planTheme) + onlySel
-    + `<label>Find <input type="search" data-rm-find value="${esc(ui.find || "")}" placeholder="find a ticket or title" aria-label="Find a ticket or title"></label>`;
+  // [stays on the bar line, goes under More ▾]
+  return [`<label>Find <input type="search" data-rm-find value="${esc(ui.find || "")}" placeholder="find a ticket or title" aria-label="Find a ticket or title"></label>`,
+    fsel("project", "Project", projectsOf(d), ui.project) + fsel("planTheme", "Theme", d.planThemes, ui.planTheme) + onlySel];
 }
 
 // The one filter bar and refresh, drawn above every tab: the version links keep the tab, the Sector, Chain and Hide Done filters narrow what the tab lists.
-function barHtml(d, ui, ch, tab, sel) {
+function barHtml(d, ui, ch, tab, sel, fresh = "") {
   const here = d.versions[d.cur] ? d.versions[d.cur].n : d.versions[d.next] ? d.versions[d.next].n : "all";
   const keep = tab === "roadmap" ? "" : tab;
   const lanes = `<a href="${boardHref({ tab: keep, v: here })}">this version</a> · <a href="${boardHref({ tab: keep, v: "all" })}">all versions</a>`;
   const chainSel = chainOk(ch) ? `<label>Chain <select data-rm-chain><option value="">all</option>${ch.chains.map((c) =>
     `<option value="${esc(c.id)}"${ui.chain === c.id ? " selected" : ""}>${esc(c.id)}</option>`).join("")}</select></label>` : "";
-  return `<div class="rm-bar fields"><span>Lanes: ${lanes}</span>${themeSel(d, ui)}${chainSel}${tab === "roadmap" ? laneFilters(d, ui, ch, sel) : tab === "nv" && ui.nv && ui.nv.state === "ok" ? laneFilters(ui.nv, ui, ch, -1) : ""}<label><input type="checkbox" data-rm-hide-done${ui.hideDone ? " checked" : ""}> Hide Done</label>`
-    + `<button class="btn" data-act="refresh-roadmap">refresh</button></div>${writeNote(ui)}`;
+  const [find, more] = tab === "roadmap" ? laneFilters(d, ui, ch, sel) : tab === "nv" && ui.nv && ui.nv.state === "ok" ? laneFilters(ui.nv, ui, ch, -1) : ["", ""];
+  // one line: the lanes, Sector, find, Chain, Hide Done and refresh; the rarer filters wait under More ▾ (a closed <details> keeps them out of the way)
+  return `<div class="rm-bar fields"><span>Lanes: ${lanes}</span>${themeSel(d, ui)}${find}${chainSel}<label><input type="checkbox" data-rm-hide-done${ui.hideDone ? " checked" : ""}> Hide Done</label>`
+    + (more ? `<details class="rm-more"><summary>More ▾</summary><div class="rm-more-pop fields">${more}</div></details>` : "")
+    + `<button class="btn" data-act="refresh-roadmap">refresh</button>${fresh ? tip(fresh, `<span class="ro">${esc(fresh)}</span>`, " rm-fresh") : ""}</div>${writeNote(ui)}`;
 }
 
 // What a ticket must pass to be drawn: the Sector, Hide Done, Chain, Project, Theme, Only and the find box. d is the payload the tickets and the
@@ -572,10 +586,11 @@ function boardPage(data, ui, extras) {
   const sel = selIndex(data, ui);
   const tileSel = tab !== "chains" || !chainOk(tabCh) ? sel : tabCh.version ? versionAt(data, tabCh.version) : -1; // a tile never highlights over totals of another version
   const src = data.source === "github" ? `GitHub issues (${data.mirror.count})` : data.source === "local" ? `the local tracker store (${data.mirror.count} items)`
-    : `the Jira mirror (${data.mirror.count} tickets, newest update ${esc(data.mirror.newest || "unknown")})`;
-  const fresh = `<p class="ro rm-fresh">read live from ${src}${driftOk(dr) && dr.file.exists ? ` · drift: saved run ${esc(dr.file.writtenHm || "unknown")}` : ""}</p>`;
+    : `the Jira mirror (${data.mirror.count} tickets, newest update ${data.mirror.newest || "unknown"})`;
+  // plain text: the bar clips it to what fits and keeps the whole line in its bubble
+  const fresh = `read live from ${src}${driftOk(dr) && dr.file.exists ? ` · drift: saved run ${dr.file.writtenHm || "unknown"}` : ""}`;
   const body = tab === "chains" ? chainsTab(ui, tabCh, data) : tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, ch, dr) : lanesHtml(data, ui, sel, ch, dr);
   const drawer = drawerHtml(data, ui), why = tab === "chains" ? whyHtml(ui, tabCh) : "";
   // with a drawer or the Why panel open the board under it is inert: no drag, select, key or click reaches a card until it closes
-  return [page, `<div class="rm-under"${drawer || why ? " inert" : ""}>`, fresh, driftBanner(dr), stripHtml(data, tileSel, ch, tab), linksHtml(ch), tabsHtml(data, ui, tab, tabCh, dr), barHtml(data, ui, ch, tab, sel), body, `</div>`, drawer, why].join("\n");
+  return [page, `<div class="rm-under"${drawer || why ? " inert" : ""}>`, driftBanner(dr), stripHtml(data, tileSel, ch, tab), `<div class="rm-tabrow">${tabsHtml(data, ui, tab, tabCh, dr)}${linksHtml(ch)}</div>`, barHtml(data, ui, ch, tab, sel, fresh), body, `</div>`, drawer, why].join("\n");
 }

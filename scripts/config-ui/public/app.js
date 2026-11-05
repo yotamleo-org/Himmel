@@ -709,7 +709,7 @@ document.addEventListener("drop", (e) => {
   const card = rmDrag; rmDrag = null;
   const t = rmTicket(card.k, card.project);
   if (t && EVENT_OWNED.has(col.dataset.rmDrop)) { // In review, CI and Done are moved by their event (a PR opening, CI, the merge): a drop there is held, nothing is written (ruling Q4)
-    if (t.b !== col.dataset.rmDrop) { roadmapUi.held = `${t.id || "HIMMEL-" + t.k}: ${COLS_BY_ID[col.dataset.rmDrop]} is moved by its event, not by a drop. Nothing was written.`; paint(); }
+    if (t.b !== col.dataset.rmDrop && !(col.dataset.rmDrop === "rev" && t.b === "ci")) { roadmapUi.held = `${t.id || "HIMMEL-" + t.k}: ${COLS_BY_ID[col.dataset.rmDrop]} is moved by its event, not by a drop. Nothing was written.`; paint(); }
     return;
   }
   if (t && t.b !== col.dataset.rmDrop) writeRoadmap(t, { status: col.dataset.rmDrop });
