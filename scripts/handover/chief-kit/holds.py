@@ -915,11 +915,61 @@ def grant_route(p, rel, trust):
     return 'any'
 
 
+CHIEF_DOC_RE = re.compile(r'-(chief|console)\.md$', re.I)  # the role test of arm-resume.sh and append-results.sh: *-chief.md / *-console.md
+
+
+def lock_dir_for(doc, session):
+    """The queue-lock dir whose owner.json names doc and session: <handover root>/.locks/queue/*.lock, root found by
+    walking up from doc. None when there is none."""
+    d = os.path.dirname(doc)
+    while True:
+        q = os.path.join(d, '.locks', 'queue')
+        if os.path.isdir(q):
+            for n in sorted(os.listdir(q)):
+                try:
+                    with open(os.path.join(q, n, 'owner.json')) as f:
+                        o = json.load(f)
+                except (OSError, ValueError):
+                    continue
+                if isinstance(o, dict) and o.get('handover') == doc and o.get('session') == session:
+                    return os.path.join(q, n)
+            return None
+        up = os.path.dirname(d)
+        if up == d:
+            return None
+        d = up
+
+
+def ancestor_sessions():
+    """The Claude session ids of the caller's ancestor processes: each ancestor pid with a
+    <claude config>/sessions/<pid>.json that names that pid."""
+    sdir = os.path.join(os.environ.get('CLAUDE_CONFIG_DIR') or os.path.join(os.path.expanduser('~'), '.claude'), 'sessions')
+    out, pid, seen = set(), os.getppid(), 0
+    while pid > 1 and seen < 64:
+        seen += 1
+        try:
+            with open(os.path.join(sdir, '%d.json' % pid)) as f:
+                s = json.load(f)
+            if isinstance(s, dict) and s.get('pid') == pid and s.get('sessionId'):
+                out.add(str(s['sessionId']))
+        except (OSError, ValueError):
+            pass  # swallow-ok: an ancestor with no readable session file names no session; it adds nothing
+        res = run_bounded(['ps', '-o', 'ppid=', '-p', str(pid)], QL_TIMEOUT)
+        try:
+            pid = int(res[1].strip()) if res and res[0] == 0 else 0
+        except ValueError:
+            pid = 0
+    return out
+
+
 def chief_session(doc):
-    """(session, '') when doc's queue lock is held, fresh, by this host; else (None, why). The real queue-lock.sh, never
-    HOLDS_QUEUE_LOCK: this check loosens the barrier, so a test seam must not stand in for it."""
+    """(session, '') when doc is a chief doc whose queue lock is held, fresh, on this host, by a Claude session that is
+    an ancestor of the caller; else (None, why). The real queue-lock.sh, never HOLDS_QUEUE_LOCK: this check loosens
+    the barrier, so a test seam must not stand in for it."""
     if not os.path.isfile(doc):
         return None, 'the chief doc %s does not exist' % doc
+    if not CHIEF_DOC_RE.search(os.path.basename(doc)):
+        return None, '%s is not a chief doc (a chief doc is named *-chief.md or *-console.md)' % doc
     res = run_bounded(['bash', os.path.join(HERE, '..', 'queue-lock.sh'), 'status', doc], QL_TIMEOUT)
     if res is None or res[0] != 11:
         return None, 'the queue lock on %s is not held (status rc %s)' % (doc, res[0] if res else 'timeout')
@@ -935,14 +985,36 @@ def chief_session(doc):
         return None, 'the queue lock on %s names no owner' % doc
     if owner.get('host') != socket.gethostname():
         return None, 'the queue lock on %s is held on another host (%s)' % (doc, owner.get('host'))
+    try:
+        time.strptime(str(owner.get('heartbeat')), '%Y-%m-%dT%H:%M:%SZ')
+    except ValueError:
+        # queue-lock.sh reads an unparsable heartbeat as FRESH so it never steals a lock; a grant cannot lean on that
+        return None, 'the queue lock on %s has an unparsable heartbeat' % doc
+    lk = lock_dir_for(doc, owner['session'])
+    holder = ''
+    try:
+        with open(os.path.join(lk, 'liveness')) as f:
+            for l in f:
+                if l.startswith('transcript='):
+                    holder = os.path.basename(l[len('transcript='):].strip())
+                    holder = holder[:-len('.jsonl')] if holder.endswith('.jsonl') else ''
+    except (OSError, TypeError):
+        pass  # swallow-ok: no liveness marker names no holder session; holder stays '' and the grant is refused
+    if not holder:
+        return None, 'the queue lock on %s names no holder Claude session (no liveness marker)' % doc
+    # ponytail: the liveness marker and ~/.claude/sessions/<pid>.json are files of this user, so a same-user process can
+    # forge either; this binds a session that uses the kit's own paths, upgrade path: the lock records the holder claude pid
+    if holder not in ancestor_sessions():
+        return None, 'the queue lock on %s is held by Claude session %s, which is not this caller' % (doc, holder)
     return clean(owner['session']), ''
 
 
 def operator_confirm(p):
     """The operator route: a human at a terminal types the path back. ('ok' | 'no-tty' | 'mismatch', session)."""
-    # ponytail: a terminal plus a typed-back path proves a human only as far as an agent cannot fake a pty with CLAUDECODE
-    # unset; the barrier is a coordination guard and a trust-path PR still needs a trust judge, upgrade path: a TOTP-confirmed operator approval
-    if os.environ.get('CLAUDECODE') or not (sys.stdin.isatty() and sys.stderr.isatty()):
+    # ponytail: a terminal plus a typed-back path proves a human only as far as an agent cannot fake a pty with the Claude
+    # Code markers unset; the barrier is a coordination guard and a trust-path PR still needs a trust judge, upgrade path: a TOTP-confirmed operator approval
+    marked = any(k == 'CLAUDECODE' or k.startswith('CLAUDE_CODE_') for k in os.environ)  # the marker set of chokepoint-seam-guard.sh
+    if marked or not (sys.stdin.isatty() and sys.stderr.isatty()):
         return 'no-tty', ''
     sys.stderr.write('holds: grant a hold on %s. To confirm you are the operator, type the path back: ' % p)
     sys.stderr.flush()
@@ -975,8 +1047,7 @@ def op_grant(a):
     chief_doc = a.chief_doc or own_doc
     grantor, session = 'unchecked', ''  # a path off every list: any non-worker caller grants it, as before
     if route == 'chief' and chief_doc:
-        # ponytail: a held lock proves a live chief, not that the caller is it; a chief session launched by headed-arm.sh
-        # names its own doc in HIMMEL_CONSOLE_DOC, so it cannot stamp under another chief's doc, upgrade path: bind the grant to the lock's holder pid
+        # a chief session launched by headed-arm.sh names its own doc in HIMMEL_CONSOLE_DOC; chief_session binds the rest
         if own_doc and os.path.abspath(own_doc) != os.path.abspath(chief_doc):
             sys.stderr.write('holds: --chief-doc %s is not this chief session\'s own doc (HIMMEL_CONSOLE_DOC=%s); no grant\n' % (chief_doc, own_doc))
             return 1
