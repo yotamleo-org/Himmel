@@ -3,8 +3,11 @@
 > **A control plane for coding agents.**
 
 himmel turns Claude Code into a team you can leave running. One session, the
-*chief*, plans the work and hands each ticket to a *worker* session of its
-own. Work carries on while you are away and restarts by itself after a usage
+*chief*, coordinates the work and oversees it: it has each idea planned with
+[minerva](marketplace/plugins/himmel-ops/skills/minerva/SKILL.md), either
+itself or by starting a design worker. It then hands each ticket to a
+*worker* session of its own, checks every result, and approves each merge.
+Work carries on while you are away and restarts by itself after a usage
 limit. Each session picks up where the last one stopped, and a local UI shows
 you what all of them are doing.
 
@@ -38,6 +41,39 @@ runs that carry on overnight, a second brain that fills itself. Each step is
 optional. The [adoption trail](docs/adoption-trail.html) lays them out as
 levels, and each level says what it gives you, what it costs and how to turn
 it off.
+
+### How the work moves
+
+One ticket travels the same path every time:
+
+1. **Plan.** The chief has a big or core change planned with minerva first:
+   questions, a spec, a plan, each one checked by a critic before the next
+   step.
+2. **Build.** The chief hands the ticket to a worker. The worker gets its own
+   branch and working folder, so parallel workers never touch the same files.
+3. **Review.** The worker runs `/pr-check`: a panel of review agents, one of
+   them from a second model, reads the change. The PR cannot be opened until
+   every serious finding is fixed, ruled out, or moved to a ticket of its own.
+4. **Approve.** The chief checks the result and approves the merge of that
+   one PR at the exact commit that was reviewed. It can ask an independent
+   judge for a second opinion first.
+5. **Merge.** Only then does the worker merge, close the ticket and leave a
+   note for the next session.
+
+### How sessions find what is already known
+
+Before a session improvises, it looks things up, and every answer leads
+back to a real file:
+
+- **A short memory index.** Claude Code's `MEMORY.md` stays a list of one
+  line per topic, each pointing to a note, so it stays small enough to load
+  every time.
+- **Search over your notes.** qmd, a local search engine, finds a handover,
+  a doc or a vault note by its words or its meaning.
+- **A map of the code.** graphify answers questions about how the code fits
+  together: what calls what, and which files belong together.
+
+[Second brain and memory](#second-brain-and-memory) has the detail.
 
 ## Still deciding? Take a short test run
 
@@ -78,8 +114,8 @@ to remember the rules. Each change gets its own branch and a reviewed PR, each c
 its ticket (a Jira issue, or a plain `#number` if you do not use Jira), and
 notes carry the work into the next session. Run several sessions at once and
 they work like a small software factory: tickets go in, reviewed and merged
-PRs come out, and each merge still waits for a GO: a signed approval to merge
-that one PR at the exact commit that was reviewed.
+PRs come out, and each merge still waits for the chief's approval, signed
+for that one PR at the exact commit that was reviewed.
 
 Built for Claude Code. The guardrails also run under Codex CLI, through its
 hooks and an `AGENTS.md` file. Other agents are not supported yet;
@@ -91,10 +127,11 @@ It has four layers, and each one works without the layers above it:
    commits or opens a PR, and refuse what breaks the rules.
 2. **Handover and memory.** Plain markdown notes carry the work and its
    reasons from one session to the next, with a search index to find them.
-3. **Jarvis, the command layer.** One session, the *chief*, plans the work
-   and hands each ticket to a *worker*, another session that owns that one
-   change. The chief checks each result and approves its merge with a GO;
-   the worker then merges. [Jarvis](docs/jarvis-subsystems.md) describes it.
+3. **The chief and its workers.** One session, the *chief*, coordinates the
+   work and hands each ticket to a *worker*, another session that owns that
+   one change. The chief checks each result and approves its merge; the
+   worker then merges. [The command layer](docs/jarvis-subsystems.md)
+   describes it.
 4. **The surface.** The himmel UI (`himmelctl ui`), Telegram, the
    statusline, the morning report and the metrics show you what the sessions
    are doing and let you steer the chief.
@@ -109,33 +146,64 @@ Claude remembering a paragraph of instructions.
 The test run shows a few of these. The rest arrive as you add them, and the
 [adoption trail](docs/adoption-trail.html) says which level brings each one.
 
-- **Many sessions, one chief.** A chief session plans the work and hands
-  each ticket to a worker with its own branch and PR, then checks each
-  result before it merges ([Jarvis](docs/jarvis-subsystems.md)).
-- **Work carries over between sessions.** Each session leaves a plain
-  markdown handover doc behind. A fresh session reads it and resumes where the
-  last one stopped, with the decisions and the reasons for them intact.
+**Run the work**
+
+- **Many sessions, one chief.** A chief session coordinates the work, hands
+  each ticket to a worker with its own branch and PR, and checks each result
+  before it merges ([the command layer](docs/jarvis-subsystems.md)).
 - **Work runs while you sleep.** `/afk-shift` (afk: away from keyboard) hands
   tickets to parallel agents that branch, review themselves and open PRs.
   When a session nears its usage limit, himmel schedules a restart with the
   operating system's scheduler, so the run carries on.
-- **A second brain, not just a memory file.** With the optional notes vault,
-  every session leaves a note, search finds a note by its words or its
-  meaning, and a graph shows which notes connect. It is all plain markdown
-  you can open and fix. [Second brain and memory](#second-brain-and-memory)
-  says what sets it apart.
+- **Work carries over between sessions.** Each session leaves a plain
+  markdown handover doc behind. A fresh session reads it and resumes where the
+  last one stopped, with the decisions and the reasons for them intact.
+
+**Keep it right**
+
 - **Every merge is reviewed by several agents.** `/pr-check` runs a panel of
   review agents plus a first pass from a second model, and the PR cannot merge
   until the result is clean. A finding marked critical must survive an
   adversarial check first, which filters out invented findings. The
   [evals](docs/evals/README.md) publish how often each reviewer is right.
-- **It stays cheap.** A local Jira CLI replaces a Jira MCP (Model Context
-  Protocol) server, a command-line filter shortens noisy output before Claude
-  reads it, and each helper agent gets only the instructions it needs. All
-  three keep the context window and the bill small.
 - **Rules that hold.** Hooks stop edits on `main`, reads of secret files and
   opening a PR without a passing review, at the moment Claude tries the tool
   call, so a rule holds even after it falls out of the context window.
+
+**Remember and find**
+
+- **A second brain, not just a memory file.** With the optional notes vault,
+  every session leaves a note, search finds a note by its words or its
+  meaning, and a graph shows which notes connect. It is all plain markdown
+  you can open and fix. [Second brain and memory](#second-brain-and-memory)
+  says what sets it apart.
+
+**It stays cheap**
+
+- **Sessions start lean.** What every Claude Code session loads up front
+  (`CLAUDE.md` plus the skill and command listings) was cut in half, from
+  43,916 to 21,867 bytes ([measured](docs/token-economy.md#claudemd-lean-invoke-measured-2026-08-23)),
+  and a pre-commit gate now keeps `CLAUDE.md` under 6 KiB. The detail lives
+  in pages a session opens only when it needs them.
+- **Each session loads only what it uses.** A worker starts from a thin
+  profile with only the plugins and the one search server it calls
+  ([session profiles](docs/internals/lane-calibration.md)).
+  [lean-skills](marketplace/plugins/lean-skills/README.md) carries the 14
+  skills himmel calls in place of 26 from two larger plugins, which takes
+  about 2.2k tokens of skill listings out of every session.
+- **The prompt cache does most of the work.** Session openings stay stable,
+  so the cache can reuse them: 98.4% of input tokens were cache reads in the
+  425 sessions measured ([evals](docs/evals/README.md)).
+- **Retrieval is measured next.** An eval prices how many tokens each way of
+  looking things up spends to reach a correct answer
+  ([answer-ab](scripts/eval/README.md#tokens-to-a-correct-answer-answer-ab)).
+  Its full run is still pending, so no saving is claimed here yet.
+- **Smaller tools, shorter output.** A local Jira CLI stands in for a Jira MCP
+  (Model Context Protocol) server, and a command-line filter shortens noisy
+  output before Claude reads it.
+
+**Fit your setup**
+
 - **GitHub or Bitbucket.** The worktree, PR and merge loop works the same on
   GitHub and Bitbucket Cloud. himmel picks the backend from each repo's
   `origin` remote.
@@ -157,16 +225,16 @@ The diagram shows the four flows that make up most of a day with himmel.
 Checks on each commit and push examine the message format, secrets and
 statements of what was tested. `/pr-check` runs a review; once the pull
 request (PR) is approved, continuous integration (CI) tests for the affected
-suites pass and, in a fleet run, the chief has given written approval (a GO)
+suites pass and, in a fleet run, the chief has approved the merge in writing
 for its exact commit, the PR can merge. `/clean` removes the finished
 worktree.
 
 **2. Run a fleet: one chief, many workers.** For bigger runs, one Claude
-session acts as the *chief*. It plans the work and starts *workers*, other
+session acts as the *chief*. It coordinates the work and starts *workers*, other
 Claude sessions that each own one ticket, one worktree and one PR. Each
 worker reports back and never merges on its own. The chief checks the PR (and
-can ask an independent judge for a second opinion) and approves it in writing
-(a GO); only then does the worker merge. The [glossary](docs/glossary.md)
+can ask an independent judge for a second opinion) and approves the merge in
+writing; only then does the worker merge. The [glossary](docs/glossary.md)
 defines chief, worker, judge and the rest.
 
 **3. Carry work across sessions.** A session that has made decisions writes
@@ -397,6 +465,11 @@ What the memory is made of, all plain files:
   comes next. This is how work survives the end of a session. The state can
   live in your own repo or in a separate handover repo; see the
   [handover system](docs/internals/handover-system.md).
+  With a vault, we recommend a `handovers/` folder inside it (`/handover-setup`
+  offers it first). Your handovers then become part of the second brain:
+  search finds them beside your other notes, the graph links them to the
+  notes they mention, and they ride the vault's own git, so there is no extra
+  repo to sync. Pick one place; two copies drift apart.
 - **The luna vault (optional).** An Obsidian vault built from
   [`templates/luna-second-brain/`](templates/luna-second-brain/) holds notes,
   web clippings and daily entries that Claude reads and writes like any other
@@ -433,79 +506,116 @@ it. None of them is needed by the core harness.
   to an upstream release tag:
   skills to ingest, query and save notes, and to lint vault health
   (`wiki-lint`).
-- **[obsidian (kepano)](https://github.com/kepano/obsidian-skills)**, pinned:
-  the `obsidian-markdown` skill for Obsidian-flavored markdown.
 
 Once you turn on the vault schedule (`/pipeline-cadence`), a vault check runs
 every Sunday at 04:00; run `/obsidian-health` any time by hand.
 
-## Features
+## Where each feature is documented
 
-Each feature below links to the page that explains it;
-[`docs/README.md`](docs/README.md) lists every page.
+The same groups as [What you get](#what-you-get), each feature with the page
+that explains it. [`docs/README.md`](docs/README.md) lists every page.
 
-**Core loop and enforcement**
+**Run the work**
+- The chief, its workers and the judge:
+  [`docs/jarvis-subsystems.md`](docs/jarvis-subsystems.md) and
+  [`docs/glossary.md`](docs/glossary.md)
 - Worktree isolation with `/worktree`, `/clean`, `/clean_garden`:
   [`docs/commands-catalog.md`](docs/commands-catalog.md) and
   [`CLAUDE.md`](CLAUDE.md) (`## WORKFLOWS`)
-- Pre-commit and Claude tool-call guardrail hooks, and the multi-agent PR
-  review (`/pr-check`) that gates every merge:
-  [`docs/internals/enforcement.md`](docs/internals/enforcement.md)
+- AFK (unattended) mode runs (`/afk-shift`, `/stop` to halt):
+  [`docs/handover/afk-mode.md`](docs/handover/afk-mode.md)
 - Handover system (multi-repo registry, auto-branch, PR, flush):
   [`docs/internals/handover-system.md`](docs/internals/handover-system.md)
 - Collision preflight: before you start a session,
   `bash scripts/handover/queue-lock.sh preflight <handover-doc> [file...]`
   warns you when a file you plan to change is already being changed in
   another session. It changes nothing.
-- AFK (unattended) mode runs (`/afk-shift`, `/stop` to halt):
-  [`docs/handover/afk-mode.md`](docs/handover/afk-mode.md)
-
-**Lifecycle and delegation**
-- `himmelctl` install, update and uninstall:
-  [`docs/setup/updating.md`](docs/setup/updating.md)
 - Handing work to cheaper or stronger Claude models, or to Codex, listed
   live by `/lanes`: [`docs/tooling-catalog.md`](docs/tooling-catalog.md)
 - Running sessions in the cloud on your copy of the repo (`claude --cloud`):
   [`docs/setup/cloud-environment.md`](docs/setup/cloud-environment.md)
-- Watchers that cost almost no tokens: `/morning-report` (git, GitHub and Jira
-  state) and the `check-ci` merge-gate watcher:
-  [`docs/commands-catalog.md`](docs/commands-catalog.md)
+- Telegram bridge (start a session, check on it and chat with it from your
+  phone): [`docs/telegram-bridge.md`](docs/telegram-bridge.md)
+
+**Keep it right**
+- Pre-commit and Claude tool-call guardrail hooks, and the multi-agent PR
+  review (`/pr-check`) that gates every merge:
+  [`docs/internals/enforcement.md`](docs/internals/enforcement.md)
+- Evals of the review panel, the prompt cache and test-first work:
+  [`docs/evals/README.md`](docs/evals/README.md)
 - Test VMs (osboxes, Multipass) driven by `/vm`:
   [`docs/setup/vms.md`](docs/setup/vms.md)
 
-**Jira and forge**
-- Jira CLI, a token-cheap local replacement for an MCP server:
-  [`scripts/jira/`](scripts/jira/) and
-  [`docs/internals/jira-plugin.md`](docs/internals/jira-plugin.md)
-- GitHub and Bitbucket Cloud, detected from `origin`:
-  [`scripts/bitbucket/`](scripts/bitbucket/) and
-  [`plugins/himmel-gh/`](plugins/himmel-gh/)
-
-**Knowledge (optional)**
+**Remember and find (optional vault)**
+- The second brain: [`docs/luna/README.md`](docs/luna/README.md)
 - Vault capture and the clip pipeline (harvest, triage, synthesize, archive):
   [`marketplace/plugins/obsidian-triage/README.md`](marketplace/plugins/obsidian-triage/README.md)
 - graphify and qmd: see [Second brain and memory](#second-brain-and-memory)
 
-**Comms**
-- Telegram bridge (start a session, check on it and chat with it from your
-  phone): [`docs/telegram-bridge.md`](docs/telegram-bridge.md)
+**It stays cheap**
+- Usage, cost and the measured context savings:
+  [`docs/token-economy.md`](docs/token-economy.md)
+- Watchers that cost almost no tokens: `/morning-report` (git, GitHub and Jira
+  state) and the `check-ci` merge-gate watcher:
+  [`docs/commands-catalog.md`](docs/commands-catalog.md)
+- Jira CLI, a token-cheap local replacement for an MCP server:
+  [`scripts/jira/`](scripts/jira/) and
+  [`docs/internals/jira-plugin.md`](docs/internals/jira-plugin.md)
+
+**Fit your setup**
+- `himmelctl` install, update and uninstall:
+  [`docs/setup/updating.md`](docs/setup/updating.md)
+- The himmel UI: [`docs/ui.md`](docs/ui.md)
+- GitHub and Bitbucket Cloud, detected from `origin`:
+  [`scripts/bitbucket/`](scripts/bitbucket/) and
+  [`plugins/himmel-gh/`](plugins/himmel-gh/)
 
 ## Who is this for
 
 Claude Code use tends to grow through four stages:
 
-1. **Vanilla**: Claude Code as it ships. Boris Cherny, one of its creators,
-   has described his own setup as "surprisingly vanilla".
+1. **Vanilla**: Claude Code as it ships.
 2. **Customized**: your own skills and slash commands.
 3. **Orchestrated**: parallel agents and a harness around them.
 4. **Autonomous**: scheduled runs that work unattended, around the clock.
 
-himmel helps at every stage. At stages 1 and 2 it gives you a simple
-install, a UI for your setup, evals that measure it and rules that hold. At
-stages 3 and 4 it is what
-holds the work together: a chief that runs the parallel sessions, runs that
-carry on overnight, and sessions that build on each other's work without
-re-explaining the context each time.
+The direction is clear. Boris Cherny, who created Claude Code, once described
+his own setup as "surprisingly vanilla". His
+[more recent advice](https://x.com/i/status/2063792263067754658) for long
+work is stage 4: let Claude run for hours or days in auto mode, orchestrate
+hundreds of agents, keep it going until the task is done, and give it a way
+to check its own work end to end. That last step is the hard one. A run that
+goes on without you is only as good as the checks on it.
+
+himmel is built for that move, and it helps before you get there. At stages
+1 and 2 it gives you a simple install, a UI for your setup, evals that
+measure it and rules that hold. At stages 3 and 4 it is what holds the work
+together: a chief that coordinates the parallel sessions, review and
+approval before every merge, runs that carry on overnight, and sessions that
+build on each other's work without re-explaining the context each time.
+
+## Why this approach
+
+- **Structure, not reminders.** A rule written in a prompt can fall out of
+  the context window during a long session. A hook that refuses the tool call
+  cannot, so every rule that matters is a check, not a paragraph.
+- **The check is the product.** Agents can write code fast; whether the code
+  is right is the slow part. himmel spends its effort on review, the chief's
+  approval and evals, so a run that goes on without you still ships work you
+  can trust.
+- **Files you can read.** Memory, handovers and plans are plain markdown in
+  git. You can open what the agent used, fix it, and see when it changed. A
+  search index or a graph is only a way in, and can be rebuilt from the files.
+- **Measure before you claim.** Each number in this README links to the
+  page that measured it, and the evals give each result its sample size.
+  What is not measured yet is marked as pending.
+- **Small by default.** Sessions load only what they use, so the context
+  window holds the work, not the tooling, and the bill stays small.
+- **One step at a time.** Each layer works without the ones above it, and
+  each comes off again. You take on only what pays for itself.
+
+[Why himmel](docs/why-himmel.md) walks the failure modes behind each of
+these, and [System design](docs/system-design.md) the trade-offs.
 
 ## Setup details
 
