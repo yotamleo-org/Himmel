@@ -396,8 +396,9 @@ check "reconcile: the transcript with no row is counted, priced, and shows its l
 check "reconcile: the row with no transcript is counted" "yes" "$(grep -qx 'launch rows with no transcript: 1' <<<"$RJ1" && echo yes || echo no)"
 check "reconcile: class totals are far apart and the verdict says so" "yes" \
   "$(grep -qx 'OUTSIDE TOLERANCE 2%' <<<"$RJ1" && echo yes || echo no)"
+RJU="$(rj --until 2026-11-04T13:00:00Z)"
 check "reconcile: --until bounds both sides (the 13:00 transcript and the 14:00 row drop out)" "yes" \
-  "$(rj --until 2026-11-04T13:00:00Z | grep -qxF "transcripts with no launch row: 0  total \$0  (with a launch-log line: 0)" && echo yes || echo no)"
+  "$(grep -qxF "transcripts with no launch row: 0  total \$0  (with a launch-log line: 0)" <<<"$RJU" && echo yes || echo no)"
 # GREEN: the missing row exists (carrying the session id) and the orphan row is gone
 grep -v '9.990000' "$RJD/launches.jsonl" > "$RJD/launches.green"; mv "$RJD/launches.green" "$RJD/launches.jsonl"
 printf '{"ts":"2026-11-04T13:01:01Z","kind":"judge","lane":"native","session_id":"%s","sub_cost_usd":"2.000000","cost_usd":""}\n' "$S4" >> "$RJD/launches.jsonl"
