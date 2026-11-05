@@ -431,6 +431,14 @@
       ],
       "bypasses": "Lets a chief-spawned worker session launched with the context guard on keep working past its threshold (75 % of its autocompact ceiling) without a CHECKPOINT or RESUME doc first.",
       "remedy": "WORKER_SESSION_CONTEXT_HANDOFF_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+    },
+    {
+      "name": "WRITE_HOLD_OK",
+      "hooks": [
+        "scripts/hooks/check-write-hold.sh"
+      ],
+      "bypasses": "Lets a worker session write a file another live worker or open PR holds, and write into the holds register.",
+      "remedy": "WRITE_HOLD_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     }
   ]
 }

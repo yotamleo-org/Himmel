@@ -268,6 +268,45 @@ promote rr-space
 assert_eq "$rc" "0" "a whitespace-only head row beside a later twin lets promote exit 0"
 assert_has "$out" "skip-blank-head cov-17" "the whitespace-only head row is skipped like a blank one"
 
+# (18) promote --check: the merge's gate 4c verdict as a read. Same decisions as the real verb, nothing written,
+# and it needs no checked-out branch (it is run for a PR branch the caller does not hold).
+# promote_check <branch>: sets out, err, rc, before, after, and lines_before, lines_after.
+promote_check() {
+    before="$(cksum < "$ledger")"; lines_before="$(wc -l < "$ledger")"
+    out="$(cd "$repo" && bash "$RR" promote --check --branch "$1" --head "$head_b" 2>"$tmp/err")"; rc=$?
+    err="$(cat "$tmp/err")"
+    after="$(cksum < "$ledger")"; lines_after="$(wc -l < "$ledger")"
+}
+# (18a) an agreed, un-re-raised finding is promotable: --check reports the verdict (exit 0) and writes nothing.
+real_row rr-chk "$head_a" chk-1 "" "tidy the chk-1 fixture"
+CR_LEDGER="$ledger" bash "$LA" amend --branch rr-chk --head "$head_a" --id chk-1 \
+    --set verdict=agreed --reason "agreed in the fixture" 2>/dev/null || fail "fixture amend failed: chk-1"
+git -C "$repo" checkout -q main 2>/dev/null
+promote_check rr-chk
+assert_eq "$rc" "0" "18a promote --check on a promotable finding exits 0"
+assert_has "$out" "chk-1@" "18a promote --check names the finding"
+assert_eq "$before" "$after" "18a promote --check leaves the ledger byte-identical"
+assert_eq "$lines_before" "$lines_after" "18a promote --check adds no ledger line"
+# control: the real verb on the same fixture still amends the ledger.
+promote rr-chk
+assert_eq "$rc" "0" "18a control: the real promote exits 0"
+assert_has "$out" "promoted chk-1@" "18a control: the real promote promotes the finding"
+if [ "$before" != "$after" ]; then pass "18a control: the real promote rewrites the ledger"; else fail "18a control: the real promote must write"; fi
+# (18b) a finding gate 4c refuses: --check exits 3, writes nothing, and says what the real verb says.
+real_row rr-chk2 "$head_a" chk-2 ""
+promote_check rr-chk2
+assert_eq "$rc" "3" "18b promote --check on an unadjudicated finding exits 3"
+assert_has "$out" "still-open chk-2@" "18b promote --check names the still-open finding"
+assert_eq "$before" "$after" "18b promote --check leaves the ledger byte-identical on a refusal"
+assert_eq "$lines_before" "$lines_after" "18b promote --check adds no ledger line on a refusal"
+check_out="$out"
+promote rr-chk2
+assert_eq "$rc" "3" "18b control: the real promote exits 3 on the same fixture"
+assert_eq "$check_out" "$out" "18b one verdict: --check prints what the real promote prints"
+# (18c) --check belongs to promote.
+bad_rc=0; (cd "$repo" && bash "$RR" from --check --branch rr-chk2 >/dev/null 2>&1) || bad_rc=$?
+assert_eq "$bad_rc" "2" "18c --check on another verb is a usage error"
+
 git -C "$repo" checkout -q main 2>/dev/null
 
 if [ "$fails" -gt 0 ]; then

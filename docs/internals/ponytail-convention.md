@@ -29,7 +29,9 @@ Both halves are required on a **new** marker:
   simplification ("this is simplified") without naming the limitation is not
   a conforming use.
 - **Upgrade path** — the trigger or ticket that would justify revisiting the
-  ceiling: a HIMMEL key, or a concrete condition ("upgrade to per-URL locking
+  ceiling: name the work in words, never by its key (the gate refuses a ticket
+  key on a `ponytail:` line; the open ticket stays findable in Jira by its
+  summary), or a concrete condition ("upgrade to per-URL locking
   if throughput ever makes that a bottleneck",
   `scripts/handover/artifact-sync.sh:72`). "None planned, because X" is a
   valid upgrade path — it is a decision, not silence. What's not valid is
@@ -96,18 +98,35 @@ Comments that stay (the keep list is poteto's `comment-sicko`, MIT, cursor/plugi
 - doc comments that define a public API contract;
 - issue or RFC links explaining a constraint the code cannot express;
 - lint suppressions, only when the rule is faulty or style-only;
-- `ponytail:` markers, the one place a ticket key may appear in a comment.
 
 Every other comment goes. A surprise in our own code is a refactor target, not a
 comment. History does not belong in code: ticket IDs, review rounds, "CR fix" notes
-and judge qids live in git and Jira. A comment that explains a workaround is a
+and judge qids live in git and Jira. A `ponytail:` marker is no exception: it names
+its upgrade path in words, not by key. A comment that explains a workaround is a
 signal to fix the code, or to file one ticket for the workaround.
 
-`scripts/lint/check-history-comments.sh` enforces this on added comment lines and
-user-facing output calls (pre-commit; `--range <base>` for a PR range). Shell
-`echo`/`printf`/`die`/`warn`/`say`, JS/TS `console.log`/`error`/`warn` and
-`process.stdout.write`/`process.stderr.write`, and Python `print`/`sys.stderr.write` must not
-carry a Jira key. Output lines carrying `ponytail:` and output in test files or
-fixtures are exempt; there is no `history-ok` exemption. Detection is line-based,
-not a language parser: split calls and strings on continuation lines are not
-tracked. Existing unchanged comments and output are not touched.
+`scripts/lint/check-history-comments.sh` enforces this at pre-commit (`--staged`)
+and in CI (`--range <base>`, run from the BASE copies). It reads one classifier,
+`scripts/lint/ticket-refs.awk`, and one rule list,
+`scripts/lint/ticket-ref-allow.tsv`, which owns the ticket-key pattern in its `key`
+row. An added line carrying a key in any tracked text file (code, comments, output,
+Markdown, YAML, JSON, TSV) is refused unless a row of the list covers it. The
+other rows are kinds of kept text: K1 dated history records (changelog, release and
+migration docs), K2 fixture inputs a test reads verbatim, K3 ticket mirror copies,
+K4 provenance records and generated trees, K6 data a program reads (one row per
+file and line shape, found by tracing which program parses the key), K7 the list
+itself. A key a program reads needs a K6 row, landed in its own change before the
+change that needs it, because CI judges a PR with the base list. In a test file a
+key is data (K5), refused only on a whole-line comment and in four citation shapes:
+keys in parentheses right before a closing quote, `SKIP` or `FAIL` followed by a
+key, a quoted message that opens with a key and a colon, and a trailing comment
+outside every quote. The escape for a test that asserts product text carrying a key
+is a fixture file or a key built at runtime. Review-round, "CR fix" and judge-qid
+wording is refused on whole-line comments in code files only. Binary files are
+skipped by content; there is no `history-ok` or `ticket-ok` exemption. Detection is
+line-based, not a language parser: split calls and strings on continuation lines
+are not tracked. Existing unchanged lines are not touched; the removal of the keys
+already in the tree is a separate piece of work, checked by hand with
+`scripts/one-shot/check-ticket-refs.sh`, which is never wired into a hook, a suite
+or CI. A missing or unreadable classifier or rule list makes the gate exit 2 (cannot
+evaluate), at pre-commit and in CI.

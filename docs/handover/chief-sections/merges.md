@@ -37,8 +37,10 @@ at `READY <pr> <head> GREEN` and never runs `merge-on-green.sh` (its auto-mode
 classifier refuses merge-path actions, HIMMEL-4097). On that READY run, from
 the primary checkout and in this order: `ready-check.sh <pr> <head>`, the
 judge or trust review the PR needs, then
-`chief-kit/go.sh [--trust-reviewed <qid>] <pr> <head>`, then
+`chief-kit/go.sh --contract yes|no [--trust-reviewed <qid>] <pr> <head>`, then
 `bash scripts/handover/merge-on-green.sh <pr> [--jira-transition] --worker-doc <worker doc>`.
+`--contract` is the worker doc's `Completes ticket:` answer: without it a PR titled
+with a ticket key fails `ready-check.sh` item 17 and `go.sh` writes nothing (exit 4).
 Pass `--jira-transition` unless the worker doc's `Completes ticket:` line says no
 (a brief whose scope states neither value has no such line and takes the yes
 wording, as the worker's own Ship step does); the `--worker-doc` line binds it either way.
@@ -121,8 +123,8 @@ selector and shared libs, the merge gate and GO writer — the list is read
 from the default branch, never the PR head, so a PR cannot shrink it) does
 not merge through `merge-on-green.sh` on an ordinary GO: it exits 21. Such a
 PR needs an independent adversarial review first; only on the judge's GO for
-that exact head run `chief-kit/go.sh --trust-reviewed <qid> <pr>
-<head>`, where `<qid>` is the judge question's id (`[A-Za-z0-9][A-Za-z0-9._-]*`).
+that exact head run `chief-kit/go.sh --contract yes|no --trust-reviewed <qid>
+<pr> <head>`, where `<qid>` is the judge question's id (`[A-Za-z0-9][A-Za-z0-9._-]*`).
 `go.sh` refuses with exit 5 unless `<root>/<user>/<bucket>/verdicts/<qid>/`
 holds a verdict whose first line under `## Verdict` is exactly
 ``**GO** for head `<head>`.``, with no NO-GO for that head and no unparsed

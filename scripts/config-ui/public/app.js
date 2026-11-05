@@ -4,13 +4,13 @@ import { renderHealth, verdict, parseView, projectVerdict, chiefLiveFor } from "
 import { renderToolHealth, toolHealthLoader, toolHealthHref } from "/tool-health.js";
 import { driftSince, renderBoard } from "/roadmap.js";
 import { renderWorkflow, parseWorkflowRoute } from "/workflow.js";
-import { renderConfigure as render } from "/setup.js";
+import { apiRolesDraft, renderConfigure as render } from "/setup.js";
 import { renderShift } from "/shift.js";
 import { renderReport, reportBar } from "/report.js";
 import { fleetDot, healthDot, navLinks, parseLanding, railMarkup } from "/nav.js";
 
 const $ = (s) => document.querySelector(s);
-const state = { open: new Set(), bundles: {}, filt: { health: null, kind: null, q: "", problems: false }, plans: {}, vm: null, reviewGate: null, fleetCap: null, tile: null };
+const state = { open: new Set(), bundles: {}, filt: { health: null, kind: null, q: "", problems: false }, plans: {}, vm: null, reviewGate: null, apiRoles: null, fleetCap: null, tile: null };
 let feed = null;
 let lastProbe = null; // the newest 202 body ({ elapsedMs, progress }) while the first report runs
 
@@ -38,6 +38,7 @@ const reportUi = { day: null }; // from the route: #/report?day=YYYY-MM-DD
 let vmLoadGen = 0; // declared before route() runs: a reload at #/config calls loadVm() from it; only the newest read may land
 let healthGen = 0; // declared before route() runs: a reload at #/health calls loadHealth() from it
 let reviewGateLoadGen = 0, reviewGateSaving = false; // declared before route() runs: a reload at #/config calls loadReviewGate() from it
+let apiRolesLoadGen = 0, apiRolesSaving = false; // likewise for loadApiRoles(): the Multi accounts section
 let fleetCapLoadGen = 0, fleetCapSaving = false; // likewise for loadFleetCap()
 // Tool health: three reads, each keeping its last good answer when a newer one fails (tool-health.js toolHealthLoader).
 const thGet = (path) => async (q) => {
@@ -69,7 +70,7 @@ const shiftUi = { id: null, all: false }; // from the route: #/shift/<id>?all=1
 let wfModel = null, wfStats = null, wfGen = 0, wfAt = 0, wfScrolled = null; // the workflow model and GET /api/phase-stats, null until read
 const wfUi = { tab: "workflow", phase: null, step: null, walk: null, at: 0 }; // from the route: #/workflow[/eval]?phase=|step=|walk=&at=
 const PAGES = [
-  { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify }), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); if (!state.reports || !state.reports.data) loadReportSettings(); loadSetup(); } },
+  { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify }), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.apiRoles || !state.apiRoles.data) loadApiRoles(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); if (!state.reports || !state.reports.data) loadReportSettings(); loadSetup(); } },
   { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => pageBar() + healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => toolHealthPage(), onVisit: () => loadToolHealth(), afterPaint: () => thFocusBack() },
   { id: "board", label: "Board", needsFeed: false, render: trackerPage(() => renderBoard(roadmap, roadmapUi, boardExtras)), afterPaint: () => { whyFocus(null); loadDriftOrigins(); }, onVisit: () => { if (!(sources && !sources.length)) { if (!roadmap) loadRoadmap(); if (!boardExtras) loadBoard(); if (roadmapUi.tab === "nv" && !roadmapUi.nv) loadNoVersion(); } } },
@@ -289,7 +290,7 @@ function toast(t) {
 // this page does; the page shows the banner and disables the write controls so nothing offers a change that cannot land.
 let readOnly = false;
 const WRITE_CONTROLS = [
-  '[data-act="plan"]', '[data-act="run"]', '[data-act="consent"]', '[data-act="vm-save"]', '[data-act="reports-save"]', '[data-act="review-gate-save"]',
+  '[data-act="plan"]', '[data-act="run"]', '[data-act="consent"]', '[data-act="vm-save"]', '[data-act="reports-save"]', '[data-act="review-gate-save"]', '[data-act="role-toggle"]', '[data-act="roles-save"]',
   '[data-act="setup-remove"]', '[data-act="setup-verify"]', '[data-act="drift-refresh"]',
   '[data-vm]', '[data-rs]', '[data-fc]', '[data-rg]', 'select.rm-theme',
   'form[data-setup-form] :is(input,button)', 'form[data-path-form] :is(input,button)', 'form[data-account-form] :is(input,button)',
@@ -468,6 +469,38 @@ async function saveReviewGate() {
   // an edit made while the request was in flight stays in the draft instead of being overwritten by the saved answer.
   const edited = state.reviewGate && state.reviewGate.draft && JSON.stringify(state.reviewGate.draft) !== sent;
   state.reviewGate = ok ? { data: j, error: null, draft: edited ? state.reviewGate.draft : reviewGateDraft(j), msg: { ok: true, text: edited ? "saved; later edits not saved yet" : "saved" } } : { ...state.reviewGate, msg: { ok: false, text: j.error || "save failed" } };
+  paint();
+}
+
+// the Multi accounts section (Configure -> Secrets). The draft is the pending role map; a loaded or saved answer resets it.
+async function loadApiRoles(msg) {
+  const gen = ++apiRolesLoadGen;
+  if (!state.apiRoles || !state.apiRoles.data) state.apiRoles = { data: null, error: null };
+  try {
+    const r = await fetch("/api/api-roles", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    const j = await r.json();
+    if (gen !== apiRolesLoadGen) return;
+    state.apiRoles = r.ok ? { data: j, error: null, draft: apiRolesDraft(j), preview: false, msg: msg || null } : { data: null, error: j.error || `role map failed (${r.status})` };
+  } catch (_) { if (gen !== apiRolesLoadGen) return; state.apiRoles = { data: null, error: "role map: server unreachable" }; }
+  if (currentPage.id === "config") paint();
+}
+async function saveApiRoles() {
+  const ar = state.apiRoles;
+  if (!ar || !ar.draft || apiRolesSaving) return;
+  apiRolesSaving = true;
+  let res;
+  try { res = await post("/api/api-roles", ar.draft); } finally { apiRolesSaving = false; }
+  if (res.ok) return void loadApiRoles({ ok: true, text: "saved" });
+  const errors = Array.isArray(res.j.errors) ? res.j.errors.join(", ") : "";
+  state.apiRoles = { ...state.apiRoles, msg: { ok: false, text: errors ? `not saved: ${errors}` : res.j.error || "save failed" } };
+  paint();
+}
+function toggleApiRole(role, letter) {
+  const ar = state.apiRoles;
+  if (!ar || !ar.draft || apiRolesSaving) return;
+  const now = ar.draft[role] || [], next = now.includes(letter) ? now.filter((l) => l !== letter) : [...now, letter].sort();
+  if (next.length) ar.draft[role] = next; else delete ar.draft[role];
+  ar.msg = null;
   paint();
 }
 
@@ -889,6 +922,10 @@ document.addEventListener("click", (e) => {
   if (b.dataset.act === "reports-save") return void saveReportSettings();
   if (b.dataset.act === "refresh-report") return void loadReport();
   if (b.dataset.act === "review-gate-save") return void saveReviewGate();
+  if (b.dataset.act === "role-toggle") return void toggleApiRole(b.dataset.role, b.dataset.account);
+  if (b.dataset.act === "roles-save") return void saveApiRoles();
+  if (b.dataset.act === "roles-preview" && state.apiRoles) { state.apiRoles.preview = true; return void paint(); }
+  if (b.dataset.act === "roles-cancel" && state.apiRoles && state.apiRoles.data && !apiRolesSaving) { Object.assign(state.apiRoles, { draft: apiRolesDraft(state.apiRoles.data), preview: false, msg: null }); return void paint(); }
   if (b.dataset.act === "fleet-cap-save") return void saveFleetCap();
   if (b.dataset.act === "reveal") {
     e.stopPropagation();

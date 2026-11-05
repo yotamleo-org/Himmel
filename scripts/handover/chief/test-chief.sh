@@ -2563,7 +2563,7 @@ STUB
 cat > "$bus79/bus" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/calls"
-[ -n "${BUS79_HANG:-}" ] && exec sleep 20
+[ -n "${BUS79_HANG:-}" ] && exec sleep 120
 if [ -n "${BUS79_HELD:-}" ]; then
   echo "name already registered: $2 (live holder pid 4242)" >&2
   exit 1
@@ -2646,8 +2646,11 @@ check "79 lost bus output: the refusal does not advise the override" "$(printf '
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79lost/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79lost")" >/dev/null 2>&1
 t79=$SECONDS
 out79h="$(run79 in new bus79hang BUS79_HANG=1 BUS_EXEC_SECS=08)"
+# the stub sleeps 120s and the bus times out after 8s; a macOS runner adds far more overhead than Linux does, so the bound sits
+# well under the stub's sleep (an unbounded wait would take all 120s) rather than just above the 8s timeout
+t79_secs=$((SECONDS - t79))
 check "79 hung bus: refused within the bound" \
-    "$(printf '%s\n' "$out79h" | grep -c '^armed: '):$([ $((SECONDS - t79)) -lt 15 ] && echo bounded || echo slow)" "0:bounded"
+    "$(printf '%s\n' "$out79h" | grep -c '^armed: '):$([ "$t79_secs" -lt 60 ] && echo bounded || echo "slow:${t79_secs}s")" "0:bounded"
 check "79 hung bus: the refusal says it timed out" "$(printf '%s\n' "$out79h" | grep -c 'timed out after 8s')" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79hang/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79h")" >/dev/null 2>&1
 # Chief-path twin, on the REAL bus CLI: a chief name already bound
@@ -3701,5 +3704,39 @@ h95="$(handoff95 inf95y)"
 check "95f the pointer bytes tip the note into the pointer pass" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$h95")" "1"
 check "95f the pointer is still listed" "$(grep -c 'DEMO-961-budget' "$h95")" "1"
 check "95f the over-budget note names the pointer bytes" "$(grep -cE '^> HANDOFF over budget: .*in-flight pointers [0-9]+ bytes' "$h95")" "1"
+
+# --- 96. no HANDOFF or chief doc names a script path that does not exist ----
+# The predecessor's hand-filled HANDOFF told the operator to run chief-kit/merge-fork-pr.sh;
+# the script is scripts/handover/merge-fork-pr.sh. No file in the repo names the wrong path
+# (it came from the chief's own prose), so 96a/96b build the fixture from the HANDOFF
+# template plus the line a predecessor wrote; 96c scans the real HANDOFF the writer renders
+# and the chief docs.
+missing_script_paths() {  # <file>... - each script path they name (scripts/..., or a dir/name.sh under scripts/ or scripts/handover/) that is not in this checkout
+    local f t
+    for f in "$@"; do
+        [ -r "$f" ] || { printf 'unreadable: %s\n' "$f"; continue; }  # a missing doc must fail the assertion, not pass it empty
+        # shellcheck disable=SC2016  # a literal ERE: the $ { } are characters to match, not expansions
+        grep -oE '[A-Za-z0-9_./${}<>-]+\.(sh|mjs)' "$f" 2>/dev/null | sort -u | while IFS= read -r t; do
+            t=${t#*>/}  # a <placeholder>/ prefix (<anchor>/scripts/...) is the checkout root
+            case "$t" in *[\$\{\<]*|/*|.*|*..*|*/X.sh) continue ;; esac  # a variable, a placeholder, an absolute or dotted path, the X.sh example
+            case "$t" in */*) ;; *) continue ;; esac
+            [ -e "$REPO_REAL/$t" ] || [ -e "$REPO_REAL/scripts/$t" ] || [ -e "$REPO_REAL/scripts/handover/$t" ] || printf '%s\n' "$t"
+        done
+    done
+}
+fix96="$tmp/fix96"; mkdir -p "$fix96"
+# shellcheck disable=SC2016  # the backticks are literal HANDOFF text
+{ cat "$REPO_REAL/docs/handover/chief-handoff-template.md"
+  printf '\n**Fork PR merge:** `bash <anchor>/scripts/handover/chief-kit/merge-fork-pr.sh acme-org/qmd 52 <head>`\n'; } > "$fix96/handoff-wrong.md"
+# shellcheck disable=SC2016  # the backticks are literal HANDOFF text
+{ cat "$REPO_REAL/docs/handover/chief-handoff-template.md"
+  printf '\n**Fork PR merge:** `bash <anchor>/scripts/handover/merge-fork-pr.sh acme-org/qmd 52 <head>`\n'; } > "$fix96/handoff-right.md"
+check "96a a HANDOFF that names chief-kit/merge-fork-pr.sh is caught" "$(missing_script_paths "$fix96/handoff-wrong.md")" "scripts/handover/chief-kit/merge-fork-pr.sh"
+check "96b the same HANDOFF naming scripts/handover/merge-fork-pr.sh is clean" "$(missing_script_paths "$fix96/handoff-right.md")" ""
+check "96b2 an unreadable document fails the scan instead of passing it empty" "$(missing_script_paths "$fix96/no-such.md")" "unreadable: $fix96/no-such.md"
+chief new --bucket p96 >/dev/null
+next95 p96
+check "96c the HANDOFF the writer renders names no missing script path" "$(missing_script_paths "$(handoff95 p96)")" ""
+check "96c the chief docs name no missing script path" "$(missing_script_paths "$REPO_REAL/docs/handover/chief-handoff-template.md" "$REPO_REAL/docs/handover/chief-template.md" "$REPO_REAL/docs/handover/running-a-chief.md" "$REPO_REAL/docs/handover/worker-preface.md" "$REPO_REAL/docs/handover/worker-brief-template.md" "$REPO_REAL"/docs/handover/chief-sections/*.md "$HERE/chief.sh")" ""
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

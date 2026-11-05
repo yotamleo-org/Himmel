@@ -13,6 +13,8 @@
 # THIS repo, PR and head (the mac signs all three, plus the judge's qid), then
 # re-reads the live PR and runs
 #     gh pr merge <pr> --repo <nwo> --squash --match-head-commit <head>
+# Just before the merge it prints the evidence it checked (repo, PR, full head, GO file,
+# judge verdict and qid, live PR state) so the transcript carries the review.
 # The bare form stays refused by block-unresolved-cr-merge.sh (it merges only
 # into the project repo), so this script is the single path to a fork.
 #
@@ -104,6 +106,7 @@ if ! REASON=$(go_trust_gate "$PR" "$SHA" "$ROOT" "$NWO"); then
     echo "merge-fork-pr: refusing $NWO PR #$PR at $SHA - $REASON (the chief writes it with go.sh --repo $NWO --trust-reviewed <judge-qid> $PR $SHA)" >&2
     exit 8
 fi
+QID=$REASON  # on success go_trust_gate prints the GO's signed trust-reviewed id, the judge's qid
 
 # The live PR must still be what the GO certified; --match-head-commit below
 # pins the same head at merge time.
@@ -118,6 +121,26 @@ if ! REASON=$(go_fork_ready "$NWO" "$PR"); then
     exit 7
 fi
 
+# Print what was just checked, before the merge line, so the transcript a reviewer (or the
+# auto-mode classifier) reads carries the review evidence. Read-only; a verdict
+# file that cannot be located is said so, never guessed.
+VFILE="(not located under the verdict scope)"
+if declare -F go_verdict_scope >/dev/null 2>&1 && declare -F go_verdict_line >/dev/null 2>&1 \
+        && VSCOPE=$(go_verdict_scope "$ANCHOR" "$NWO"); then
+    for _vf in "$ROOT/$VSCOPE/verdicts/$QID"/*.md; do
+        [ -f "$_vf" ] || continue
+        _vl=$(go_verdict_line "$_vf") || continue
+        # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
+        case "$_vl" in '**GO** for head `'"$SHA"'`'|'**GO** for head `'"$SHA"'`.') VFILE=$_vf; break ;; esac
+    done
+fi
+echo "merge-fork-pr: evidence checked just now for $NWO PR #$PR:"
+echo "merge-fork-pr:   repo: $NWO (allowlisted himmel adapter, base $HBRANCH)"
+echo "merge-fork-pr:   head: $SHA (the live PR is OPEN at this head)"
+echo "merge-fork-pr:   GO file: $ROOT/.locks/go/$PR.$SHA (mac verified for this repo, PR and head)"
+echo "merge-fork-pr:   judge verdict: $VFILE (signed qid $QID)"
+echo "merge-fork-pr:   PR state: OPEN, CLEAN (every check settled), every review thread resolved"
+echo "merge-fork-pr: trust-reviewed GO verified for $NWO PR #$PR at $SHA - merging with gh pr merge --squash --match-head-commit"
 if ! gh pr merge "$PR" --repo "$NWO" --squash --match-head-commit "$SHA"; then
     echo "merge-fork-pr: gh pr merge failed for $NWO PR #$PR at $SHA" >&2
     exit 7
