@@ -117,7 +117,7 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 # yotamleo/qmd is a GitHub redirect to it.
 # ponytail: pinned by SHA, fork tags are labels only (HIMMEL-5952), re-pin on the next /fork-resync.
 _qmd_fork_repo() { printf '%s\n' "${QMD_FORK_REPO:-https://github.com/yotamleo-org/qmd.git}"; } # env-literal-ok: the carried qmd fork identity
-_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-af7f9a967163d72dfb9502416449ae2dc9f12ca5}"; }
+_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-4c2487d1e49c5a94ab5872351ac4e2e23a78b835}"; }
 _qmd_fork_dir() { printf '%s\n' "${QMD_FORK_DIR:-$HOME/.himmel/qmd-fork}"; }
 # An owned clone's origin may be either known qmd remote -- upstream tobi/qmd
 # or the himmel fork yotamleo-org/qmd (or its old name yotamleo/qmd) -- in the forms seen in the wild (with or

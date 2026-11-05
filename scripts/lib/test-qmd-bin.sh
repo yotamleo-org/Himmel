@@ -56,8 +56,8 @@ assert "default QMD_FORK_REF is a full 40-hex SHA" \
 default_repo="$(env -u QMD_FORK_REPO bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; _qmd_fork_repo')"
 assert "default QMD_FORK_REPO is the carried fork yotamleo-org/qmd (decision 517)" \
   test "$default_repo" = "https://github.com/yotamleo-org/qmd.git"
-assert "default QMD_FORK_REF is the fork main merge of fork PR #51" \
-  test "$default_ref" = "af7f9a967163d72dfb9502416449ae2dc9f12ca5"
+assert "default QMD_FORK_REF is the fork main merge of fork PR #52" \
+  test "$default_ref" = "4c2487d1e49c5a94ab5872351ac4e2e23a78b835"
 # shellcheck disable=SC2016
 # Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
 assert "the pin comment names fork PRs #42 and #43 and HIMMEL-5952" \
