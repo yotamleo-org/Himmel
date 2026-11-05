@@ -172,10 +172,10 @@ if stacked_series_on && [ -n "$worker" ]; then
     fout="$(python3 -I "$HERE/series-ledger.py" find --bucket "$(dirname "$FLEET")" --doc "$worker" --manifest "$FLEET" 2>&1)"; frc=$?
     # a ledger that cannot be read could be hiding the series: no guess at a route
     [ "$frc" -eq 0 ] || escalate "series-find-failed rc=$frc $(printf '%s' "$fout" | tr '\n' ' ')"
-    # fields: sid ledger role label
-    [ -z "$fout" ] || read -r _ _ series_role series_label <<EOF
-$fout
-EOF
+    # fields: sid ledger role label, read from the right: the ledger path may hold a space, role and label never do
+    if [ -n "$fout" ]; then
+        series_label="${fout##* }"; fout="${fout% *}"; series_role="${fout##* }"
+    fi
 fi
 
 if [ "$marker" = READY ]; then

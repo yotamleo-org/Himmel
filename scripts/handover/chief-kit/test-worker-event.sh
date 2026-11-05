@@ -540,6 +540,12 @@ check "16.3 writer doc in two manifest entries: rc" "$rc" 10
 check "16.3 writer doc in two manifest entries escalates" "$out" "ESCALATE series-writer-unlisted"
 check "16.3 no auto-go call (two entries)" "$calls" ""
 
+mkser "$W/s sp" "$ROW8,$ROW9"
+LE_AUTOGO_OUT="GO-SENT 2553 $H40 to N9 bus=#7 qid=q1" runf "$W/s sp/fleet.json" "READY 2553 $H40 GREEN N8"
+contains "16.2c a space in the bucket path does not shift the role and label fields" "$calls" "--worker N9 2553 $H40"
+LE_CLOSE_RC=0 runf "$W/s sp/fleet.json" "WRAPPED N8. Lock released."
+check "16.1d a space in the bucket path: a passes-from WRAPPED is still closed" "$out" "HANDLED close-wrapped N8"
+
 HIMMEL_FLAG_STACKED_SERIES=0 LE_AUTOGO_OUT="GO-SENT 2553 $H40 to N8 bus=#7 qid=q1" runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N8"
 contains "16.5 stacked_series off: a READY keeps its own label" "$calls" "--worker N8 2553"
 

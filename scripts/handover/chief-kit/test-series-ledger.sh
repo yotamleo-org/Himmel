@@ -242,6 +242,11 @@ printf '{not json' > "$BK/series/zz-broken.json"
 rc=0; out="$(sl find --bucket "$BK" --doc "$DX" --manifest "$M" 2>&1)" || rc=$?
 check "8: an unreadable ledger is rc 1, never a silent miss" "$rc" 1
 rm -f "$BK/series/zz-broken.json"
+sl create --ledger "$BK/series/s8b.json" --sid s8b --completes-ticket no --writer "$DX" >/dev/null 2>&1
+sl create --ledger "$BK/series/s8c.json" --sid s8c --completes-ticket no --writer "$DX" >/dev/null 2>&1
+rc=0; out="$(sl find --bucket "$BK" --doc "$DX" --manifest "$M" 2>&1)" || rc=$?
+check "8: a doc that is the writer of two ledgers is rc 1, never a first-file guess" "$rc" 1
+rm -f "$BK/series/s8b.json" "$BK/series/s8c.json"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "all passed"; exit 0; fi

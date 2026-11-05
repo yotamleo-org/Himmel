@@ -234,22 +234,24 @@ def cmd_find(a):
     except OSError as e:
         raise Refused(1, "series directory unreadable (%s): %s" % (e, series))
     doc = os.path.realpath(a.doc)
-    best = None
+    hits = {"writer": [], "from": []}
     for n in names:
         path = os.path.join(series, n)
         led = load(path)  # an unreadable ledger could hide the match: refuse, never skip
         if os.path.realpath(led["writer"]) == doc:
-            role = "writer"
+            hits["writer"].append((led, path))
         elif any(isinstance(p, dict) and isinstance(p.get("from"), str) and os.path.realpath(p["from"]) == doc
                  for p in led["passes"]):
-            role = "from"
-        else:
-            continue
-        if best is None or (role == "writer" and best[2] != "writer"):
-            best = (led, path, role)
-    if best is None:
+            hits["from"].append((led, path))
+    for role in ("writer", "from"):
+        if len(hits[role]) > 1:  # which series' writer to address is unknowable: refuse, never take the first file
+            raise Refused(1, "%s is the %s of %d ledgers: %s" % (
+                a.doc, role, len(hits[role]), ", ".join(p for _, p in hits[role])))
+        if hits[role]:
+            led, path = hits[role][0]
+            break
+    else:
         return
-    led, path, role = best
     print("%s %s %s %s" % (led.get("sid"), os.path.realpath(path), role,
                            manifest_label(a.manifest, os.path.realpath(led["writer"]))))
 
