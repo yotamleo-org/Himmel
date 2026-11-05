@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# billed-exempt: subscription claude -p behind a usage-preflight PROCEED on native auth (scripts/lib/native-auth-pin.sh); the API lane runs when CRYSTALLIZE_BACKEND=claude-api or HIMMEL_API_LANE=on, refuses unless HIMMEL_API_ACCOUNT is A|B|auto, and the API-credit ledger meters it
+# billed-exempt: subscription claude -p behind a usage-preflight PROCEED on native auth (scripts/lib/native-auth-pin.sh); the API lane runs when CRYSTALLIZE_BACKEND=claude-api or HIMMEL_API_LANE=on, refuses unless HIMMEL_API_ACCOUNT is A|B|C (never auto), and the API-credit ledger meters it
 # crystallize-note.sh — upgrade a mechanical session note into an LLM synthesis.
 # Reads the session transcript + the just-written note and asks a
 # bounded `claude` run to rewrite the four body sections (Summary / Decisions /
@@ -24,7 +24,7 @@
 #               backend. The launch path is scripts/api-lane/claude-api.sh (one
 #               print-mode call, tools limited to Read,Edit, a per-call budget; its
 #               own fallback covers an empty account). It needs HIMMEL_API_LANE=on and
-#               HIMMEL_API_ACCOUNT=A|B|auto in the launching shell and fails closed
+#               HIMMEL_API_ACCOUNT=A|B|C (never auto) in the launching shell and fails closed
 #               (exit 2) without them: there is no claude-cli fallback from here.
 #
 # Usage: crystallize-note.sh <note_path> <transcript_path>
@@ -84,8 +84,8 @@ case "$BACKEND" in
     claude-api)
         # Explicit opt-in. A refusal leaves the mechanical note untouched and never falls
         # back to the subscription. The test override replaces the launcher, not the gate.
-        { [ "${HIMMEL_API_LANE:-}" = "on" ] && case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) true ;; *) false ;; esac; } \
-            || { echo "crystallize-note: refusing claude-api: the API lane is off (HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto are required) -- note untouched, no claude-cli fallback" >&2; exit 2; }
+        llm_backend_api_ready \
+            || { echo "crystallize-note: refusing claude-api: the API lane is off (HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|C are required; auto is not accepted) -- note untouched, no claude-cli fallback" >&2; exit 2; }
         LAUNCHER="${CRYSTALLIZE_CLAUDE_BIN:-$HIMMEL_ROOT/scripts/api-lane/claude-api.sh}"
         [ -r "$LAUNCHER" ] \
             || { echo "crystallize-note: refusing claude-api: $LAUNCHER is missing -- note untouched" >&2; exit 2; }

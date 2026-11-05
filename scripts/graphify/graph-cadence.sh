@@ -398,8 +398,8 @@ SEMANTIC_BACKEND="$(llm_backend_resolve "${GRAPH_CADENCE_SEMANTIC_BACKEND:-claud
     echo "ERR graph-cadence: GRAPH_CADENCE_SEMANTIC_BACKEND='${GRAPH_CADENCE_SEMANTIC_BACKEND:-}' is not accepted -- claude-cli, claude-api or ollama only" >&2
     exit 1
 }
-if [ "$SEMANTIC" -eq 1 ] && [ "$SEMANTIC_BACKEND" = "claude-api" ] && ! llm_backend_api_ready; then
-    echo "ERR graph-cadence: GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT in the launching environment -- refusing, no claude-cli fallback" >&2
+if [ "$SEMANTIC" -eq 1 ] && [ "$SEMANTIC_BACKEND" = "claude-api" ] && ! llm_backend_api_ready_graph; then
+    echo "ERR graph-cadence: GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT (A, B, C or auto) in the launching environment -- refusing, no claude-cli fallback" >&2
     exit 1
 fi
 CADENCE_ALERT="$REPO_ROOT/scripts/luna/cadence-alert.sh"

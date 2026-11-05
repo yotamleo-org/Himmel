@@ -27,7 +27,26 @@ llm_backend_resolve() {
     esac
 }
 
-# llm_backend_api_ready -> rc 0 when the API lane is switched on for an account.
+# llm_backend_api_account_ok <acct> -> rc 0 for a named API account (A, B or C), rc 1 otherwise.
+# This is the bash owner of the account set; scripts/lib/api-credit-state.mjs ACCOUNTS is the
+# other, and test-llm-backend.sh pins the two equal. `auto` is not a named account.
+llm_backend_api_account_ok() {
+    case "${1:-}" in
+        A|B|C) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# llm_backend_api_ready -> rc 0 when the API lane is on and HIMMEL_API_ACCOUNT names an
+# account (A, B or C). Never `auto`: operator decision 525 limits auto routing to the himmel
+# graph pass, which asks llm_backend_api_ready_graph instead.
 llm_backend_api_ready() {
-    [ "${HIMMEL_API_LANE:-}" = "on" ] && [ -n "${HIMMEL_API_ACCOUNT:-}" ]
+    [ "${HIMMEL_API_LANE:-}" = "on" ] && llm_backend_api_account_ok "${HIMMEL_API_ACCOUNT:-}"
+}
+
+# llm_backend_api_ready_graph -> as llm_backend_api_ready, but `auto` is accepted. Only the
+# himmel graph semantic pass (scripts/graphify/graph-cadence.sh) may call this.
+llm_backend_api_ready_graph() {
+    [ "${HIMMEL_API_LANE:-}" = "on" ] \
+        && { llm_backend_api_account_ok "${HIMMEL_API_ACCOUNT:-}" || [ "${HIMMEL_API_ACCOUNT:-}" = "auto" ]; }
 }

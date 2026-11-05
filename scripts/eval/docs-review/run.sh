@@ -13,7 +13,7 @@
 #   cases from cases.json; C is refused (its learn step needs Edit).
 #   --cap-usd   per-run --max-budget-usd (default 6); the batch refuses past $24.
 #   --canary-only  build the fixtures and run the canaries, never the billed call.
-#   Without --canary-only the run needs HIMMEL_BILLED_OK=1.
+#   Without --canary-only the run needs HIMMEL_BILLED_OK=1 and HIMMEL_API_ACCOUNT=A|B|C (never auto).
 # Exit: 0 every case ran; 2 usage or setup; 3 a canary, the bank gate, an api call or an answer over 3 KB
 # stopped the batch.
 set -uo pipefail
@@ -38,6 +38,12 @@ done
 # billed-opt-in: HIMMEL_BILLED_OK
 [ "$canary_only" = 1 ] || [ "${HIMMEL_BILLED_OK:-}" = 1 ] ||
     { echo "run.sh: one billed api-lane call per case; set HIMMEL_BILLED_OK=1 (on-demand only), or pass --canary-only" >&2; exit 2; }
+# Operator decision 525: only the himmel graph pass asks the API lane for account auto, so a billed run
+# names the account it spends from (A, B or C) before anything else runs. --canary-only makes no billed call.
+# shellcheck source=../../lib/llm-backend.sh
+. "$REPO/scripts/lib/llm-backend.sh"
+[ "$canary_only" = 1 ] || llm_backend_api_account_ok "${HIMMEL_API_ACCOUNT:-}" ||
+    { echo "run.sh: a billed run needs HIMMEL_API_ACCOUNT=A, B or C in the environment (auto is not accepted), or pass --canary-only" >&2; exit 2; }
 seen=" "
 for c in "${cases[@]}"; do
     case "$seen" in *" $c "*) echo "run.sh: case $c is repeated; name each case once" >&2; exit 2 ;; esac
@@ -138,7 +144,7 @@ for c in "${cases[@]}"; do
     echo "case $c: canary clean"
     [ "$canary_only" = 0 ] || continue
 
-    ( cd "$fix" && env -i "${BASE_ENV[@]}" HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto HIMMEL_API_TOOLS=Read,Glob,Grep \
+    ( cd "$fix" && env -i "${BASE_ENV[@]}" HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT="$HIMMEL_API_ACCOUNT" HIMMEL_API_TOOLS=Read,Glob,Grep \
         HIMMEL_API_KIND=eval HIMMEL_API_CALL_TIMEOUT_S=1800 HIMMEL_API_JOB_ID="docs-review-$c-$(date +%s)" \
         bash "$REPO/scripts/api-lane/claude-api.sh" -p "$prompt" --model "$model" --effort high \
           --permission-mode default --max-budget-usd "$cap" --output-format json \

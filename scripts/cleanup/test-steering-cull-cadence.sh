@@ -254,6 +254,11 @@ has "api run still delivers to the chief" "[steering-cull]" "$INB_B"
 
 bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-api >"$W/arm8a.out" 2>&1
 check "arm --backend claude-api without an account is refused" 1 $?
+bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-api --api-account auto >"$W/arm8auto.out" 2>&1
+check "arm --backend claude-api --api-account auto is refused (decision 525)" 1 $?
+has "the auto refusal names the accepted accounts" "A|B|C" "$W/arm8auto.out"
+bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-api --api-account C --dry-run >"$W/arm8c.out" 2>&1
+check "arm --backend claude-api --api-account C is accepted" 0 $?
 bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-api --api-account B >"$W/arm8b.out" 2>&1
 check "arm --backend claude-api --api-account B exits 0" 0 $?
 has "runner bakes the backend" "STEERING_CULL_BACKEND=claude-api" "$W/runner/steering-cull-cadence.sh"
