@@ -104,8 +104,7 @@ function timeline(sections, day) {
     const m = /^(\d\d:\d\d) to (\d\d:\d\d|open)/.exec(r[1] || ""), sh = shifts.find((s) => s.key === r[3]);
     if (!m || !sh || seen.has(r[0])) continue;
     seen.add(r[0]);
-    let a = minutes(m[1]);
-    while (a < sh.open) a += 1440;
+    const a = minutes(m[1]) + 1440 * Math.ceil((sh.open - minutes(m[1])) / 1440); // the first such clock time at or after the shift opened, which may be the evening before the day
     const z = m[2] === "open" ? sh.close : a + ((minutes(m[2]) - minutes(m[1]) + 1440) % 1440);
     if (a >= 1440 || z <= 0) continue;
     const from = cellOf(a);

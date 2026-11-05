@@ -163,6 +163,14 @@ test("Spend per shift opens with the shift timeline and the chief chart, each se
   expect(spend).not.toContain("style="); // the CSP (default-src 'self') refuses inline styles
 });
 
+test("a chief of the previous evening is not drawn on the report day", () => {
+  const gen = GEN71.replace("| HK | 09:00 to open", "| YE | 21:00 to 23:00 | 1 | night 2026-10-26T20:00+01:00 |\n| HK | 09:00 to open"); // ran Mon 21:00 to 23:00, inside the night shift that opened Mon 20:00
+  const html = renderReport(LIST71, parseReport(gen, "2026-10-27"), { day: "2026-10-27", shiftHref: "#/shift" });
+  const spend = html.slice(html.indexOf("Spend per shift</h2>"));
+  expect(spend).not.toMatch(/<td class="cseg"[^>]*>YE<\/td>/);
+  expect(spend).toMatch(/<td class="cseg"[^>]*>HK<\/td>/);
+});
+
 test("the spend table sits in a scroll box and is the wide kind", () => {
   const html = page71();
   expect(html).toMatch(/<div class="tw"><table class="data wide">[\s\S]*?<th>OpenRouter \$<\/th>/);
