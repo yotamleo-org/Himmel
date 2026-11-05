@@ -86,6 +86,7 @@ def simple_command(cmd):
     """The argv of a Bash command that is one plain command, or None (chained, piped, or not parseable)."""
     lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
     lex.whitespace_split = True
+    lex.commenters = ''
     try:
         toks = list(lex)
     except ValueError:
