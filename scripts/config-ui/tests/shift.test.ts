@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULTS, appendShift, attribute, chiefSpans, iso, liveBoards, liveChiefs, mergedIn, nameOf, readLocks, readMerged, readShifts, redactShift, rowsOf, step, tick, viewOf, type Lock, type Row, type Span, type State, type View } from "../shift";
 import { redactDeep } from "../../himmelctl/lib/redact.js";
+import { applySection } from "../../handover/chief-kit/board-section.mjs";
 import { renderShift } from "../public/shift.js";
 import { startServer } from "../server";
 
@@ -686,6 +687,17 @@ test("the Fleet board route and the Shift page share one board build inside the 
   expect(fleet.status).toBe(200);
   await (await getShift(s.port)).json();
   expect(stub.runs()).toBe(1);
+});
+
+test("a Shift payload carries no sections, whatever sits beside the chief's doc", async () => {
+  const dir = tmp(), stub = boardStub(dir);
+  const { s, root, name } = boot({ chief: true, boardScript: stub.script });
+  await applySection(join(root, "yotamleo", "himmel", `${name}.md`), { kind: "set", id: "note", title: "Chief note", body: "SENTINEL-SECTION-BODY" });
+  const fleet = await (await fetch(`http://127.0.0.1:${s.port}/api/agui/board?console=${name}`, { headers: { "X-Himmel-Token": TOKEN } })).json();
+  expect(fleet.sections).toHaveLength(1); // the Fleet route serves it
+  const text = JSON.stringify(await (await getShift(s.port)).json());
+  expect(text).not.toContain("sections");
+  expect(text).not.toContain("SENTINEL-SECTION-BODY");
 });
 
 test("a board build that fails shows on the page as a board error, and the layout still has three tiles", async () => {
