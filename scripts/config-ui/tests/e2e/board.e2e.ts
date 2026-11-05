@@ -203,7 +203,7 @@ test("a drop on a column its event moves (In review, CI, Done) writes nothing an
   await go(page, "#/board");
   await page.locator("#rm-lanes details.rm-done summary").click();
   const sent = await noWrite(page);
-  for (const [col, name] of [["rev", "In Review"], ["ci", "IN CI"], ["done", "Done"]]) {
+  for (const [col, name] of [["rev", "In Review"], ["done", "Done"]]) { // Review and CI are one column now: a drop on it is a drop on rev
     await page.locator(".rm-card", { hasText: "Second chain step" }).dragTo(page.locator(`[data-rm-drop="${col}"]`));
     await expect(page.locator("#main .alert", { hasText: `${name} is moved by its event` })).toBeVisible(); // the note names this drop's column, so the last drop's note cannot satisfy it
   }
@@ -362,6 +362,49 @@ for (const [width, height] of [[1280, 900], [390, 844]]) {
   }
 }
 
+// the dense layout, measured in a real browser
+const LONG_TITLE = "A very long ticket title ".repeat(8).trim();
+async function longTitle(page: Page) {
+  await page.route("**/api/roadmap", async (route) => {
+    const res = await route.fetch();
+    const j = await res.json();
+    j.tickets[0].t = LONG_TITLE;
+    await route.fulfill({ response: res, json: j });
+  });
+}
+
+test("the Board at 1280 px is dense: a one-line bar, the first card near the top, four columns and a Won't lane that takes drops", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await open(page);
+  await go(page, "#/board");
+  const bar = await page.locator(".rm-bar").first().boundingBox();
+  expect(bar && bar.height <= 40).toBe(true);
+  const card = await page.locator(".rm-card").first().boundingBox();
+  expect(card && card.y <= 360).toBe(true);
+  const tracks = await page.locator(".rm-board").first().evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length);
+  expect(tracks).toBe(5); // four columns and the narrow Won't lane
+  await expect(page.locator('[data-rm-drop="wont"]')).toBeVisible();
+  await expect(page.locator('[data-rm-drop="ci"]')).toHaveCount(0);
+  await shot(page, "board-1280-dense");
+});
+
+test("a clamped title shows its full text in a bubble on hover at 1280 px and has none at 390 px", async ({ page }) => {
+  await longTitle(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await open(page);
+  await go(page, "#/board");
+  const title = page.locator(`.rm-title[data-tip="${LONG_TITLE}"]`).first();
+  await title.hover();
+  const after = () => title.evaluate((el) => { const s = getComputedStyle(el, "::after"); return { display: s.display, content: s.content }; });
+  expect((await after()).display).toBe("block");
+  expect((await after()).content).toContain(LONG_TITLE.slice(0, 40));
+  await shot(page, "board-1280-bubble");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await title.hover();
+  expect((await after()).display).toBe("none");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+});
+
 test("the Chains tab draws the link across chains, the change log and the burn-down", async ({ page }) => {
   await open(page);
   await go(page, "#/board?tab=chains");
@@ -494,6 +537,7 @@ test("two projects: both projects' cards show with their keys, the Project filte
   await expect(page.locator(".rm-vstrip .rm-vt", { hasText: "v1.1.3 (HIMMEL)" })).toHaveCount(1);
   await shot(page, "board-1280-two-projects");
   // the Project filter narrows to one
+  await page.locator(".rm-more summary").click(); // Project sits under More ▾
   await page.locator('select[data-rm-filter="project"]').selectOption({ label: "SALUS" });
   await expect(page.locator(".rm-card", { hasText: "Salus intake form" })).toBeVisible();
   await expect(page.locator(".rm-card", { hasText: "Second chain step" })).toHaveCount(0);
