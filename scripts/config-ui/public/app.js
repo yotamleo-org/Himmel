@@ -6,7 +6,7 @@ import { driftSince, renderBoard } from "/roadmap.js";
 import { renderWorkflow, parseWorkflowRoute } from "/workflow.js";
 import { renderConfigure as render } from "/setup.js";
 import { renderShift } from "/shift.js";
-import { renderReport } from "/report.js";
+import { renderReport, reportBar } from "/report.js";
 import { fleetDot, healthDot, navLinks, parseLanding, railMarkup } from "/nav.js";
 
 const $ = (s) => document.querySelector(s);
@@ -155,11 +155,11 @@ function renderPages() {
 }
 
 // The page bar (spec 8044 section 2): the slot under the top of a page for that page's own controls, never the rail.
-// Health holds the project picker, Report an empty slot (its day picker and refresh move in later); Shift has none.
+// Health holds the project picker, Report its day picker and refresh; Shift has none.
 // One line on desktop; at 760 px the controls fold behind "Filters (n on)" (app.css).
 function pageBar() {
   if (currentPage.id !== "health" && currentPage.id !== "report") return "";
-  const ctl = currentPage.id === "health" ? projectPicker() : "";
+  const ctl = currentPage.id === "health" ? projectPicker() : currentPage.id === "report" ? reportBar(reportList, reportView, reportUi) : "";
   const on = currentPage.id === "health" && (healthView.mode === "all" || (healthView.project && projects && healthView.project !== projects.current)) ? 1 : 0;
   const fold = ctl ? `<button type="button" class="pb-fold" aria-expanded="${pagebarOpen}" aria-controls="pb-ctl">Filters (${on} on)</button>` : "";
   return `<div class="pagebar${pagebarOpen ? " open" : ""}" id="pagebar" data-page="${currentPage.id}"${ctl ? "" : " hidden"}>${fold}<div class="pb-ctl" id="pb-ctl">${ctl}</div></div>`;
@@ -917,6 +917,7 @@ document.addEventListener("click", (e) => {
     history.replaceState(null, "", location.pathname + location.search + healthHash(healthView));
     return paint();
   }
+  if (b.dataset.act === "report-refresh") return loadReport();
   if (b.dataset.act === "tile") { // one group open at a time; the open one closes again. The hash keeps it across a reload.
     state.tile = state.tile === b.dataset.tile ? null : b.dataset.tile;
     history.replaceState(null, "", location.pathname + location.search + "#/config" + (state.tile ? "?tile=" + state.tile : ""));

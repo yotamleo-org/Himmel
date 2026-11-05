@@ -1480,3 +1480,125 @@ test('HIMMEL-9052: account C refuses a wrong key id and a key file that is not m
   assert.match(loose.stderr, /key file for account C must be mode 600/);
   assert.equal(g.called(), false);
 });
+
+// --- the role map (roles.json beside config.json) widens or narrows auto routing ---
+const putRoles = (f, roles) => writeFileSync(join(f.dir, 'roles.json'), typeof roles === 'string' ? roles : JSON.stringify({ version: 1, roles }));
+const autoKind = (f, kind, extra = {}) => launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: kind, ...extra });
+const usedKey = (f) => readFileSync(f.paths.env, 'utf8').match(/^key_tail=(.*)$/m)[1];
+const policyLines = (f) => {
+  const p = join(f.env.HIMMEL_API_ALERT_DIR, 'policy-refusals.jsonl');
+  return existsSync(p) ? readFileSync(p, 'utf8').trim().split('\n') : [];
+};
+const commonDirOf = (cwd) => spawnSync('git', ['-C', cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).stdout.trim();
+
+test('HIMMEL-9076: judge mapped to B picks B; with the map removed the same call is refused-policy', () => {
+  const f = fixture();
+  putRoles(f, { judge: ['B'] });
+  const ok = autoKind(f, 'judge');
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.equal(usedKey(f), 'BBBB');
+  assert.equal(JSON.parse(f.record().trim()).account, 'B');
+  assert.deepEqual(policyLines(f), []);
+  const g = fixture();
+  const refused = autoKind(g, 'judge');
+  assert.equal(refused.status, 2, refused.stderr);
+  assert.match(refused.stderr, /policy refusal \(decision 525\): no alert, no fallback/);
+  assert.equal(policyLines(g).length, 1);
+  assert.equal(g.called(), false);
+});
+
+test('HIMMEL-9076: a role mapped to B whose fresh reading has no room is refused, and A is never used', () => {
+  const f = fixture();
+  putRoles(f, { judge: ['B'] });
+  f.snapshot.accounts.B.remaining_usd = '0.05';
+  f.save();
+  const r = autoKind(f, 'judge');
+  assert.notEqual(r.status, 0, r.stderr);
+  assert.match(r.stderr, /auto routing: no account has room for the budget/);
+  assert.equal(f.called(), false);
+  assert.deepEqual(policyLines(f), []);
+});
+
+test('HIMMEL-9076: a partial map narrows graphify by its live entry and ignores the broken judge entry; money commands still answer', () => {
+  const f = fixture();
+  f.snapshot.accounts.B.expires_at += 7200;  // without the map A expires first
+  f.save();
+  putRoles(f, { graphify: ['B'], judge: [] });
+  const g = autoKind(f, 'graphify');
+  assert.equal(g.status, 0, g.stderr);
+  assert.equal(usedKey(f), 'BBBB');
+  const j = fixture();
+  putRoles(j, { graphify: ['B'], judge: [] });
+  const r = autoKind(j, 'judge');
+  assert.equal(r.status, 2, r.stderr);
+  assert.match(r.stderr, /judge entry ignored \(empty-role:judge\)/);
+  assert.match(r.stderr, /auto routing is for the himmel graph pass only/);
+  assert.equal(policyLines(j).length, 1);
+  assert.equal(j.status('A').verdict, 'PROCEED');
+});
+
+test('HIMMEL-9076: judge:[B,D] routes to B and says the entry was kept as [B]', () => {
+  const f = fixture();
+  putRoles(f, { judge: ['B', 'D'] });
+  const r = autoKind(f, 'judge');
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(usedKey(f), 'BBBB');
+  assert.match(r.stderr, /judge entry kept as \[B\]/);
+});
+
+test('HIMMEL-9076: an invalid map routes as decision 525: eval refused-policy, graphify picks the earliest-expiring A', () => {
+  const f = fixture();
+  f.snapshot.accounts.B.expires_at += 7200;
+  f.save();
+  putRoles(f, '{not json');
+  const e = autoKind(f, 'eval');
+  assert.equal(e.status, 2, e.stderr);
+  assert.match(e.stderr, /auto routing is for the himmel graph pass only/);
+  assert.equal(f.called(), false);
+  const g = autoKind(f, 'graphify');
+  assert.equal(g.status, 0, g.stderr);
+  assert.equal(usedKey(f), 'AAAA');
+  assert.match(g.stderr, /role map invalid \(invalid-role-map:not-json\); decision 525 applies/);
+});
+
+test('HIMMEL-9076: a mapped judge from another repo is refused-policy: the map never widens the repo', () => {
+  const f = fixture();
+  putRoles(f, { judge: ['B'] });
+  const r = autoKind(f, 'judge', { HIMMEL_API_AUTO_REPO_DIR: commonDirOf(OTHER_REPO) });
+  assert.equal(r.status, 2, r.stderr);
+  assert.match(r.stderr, /auto routing is for the himmel graph pass only/);
+  assert.equal(f.called(), false);
+  assert.equal(policyLines(f).length, 1);
+});
+
+test('HIMMEL-9076: a named account never reads the role map', () => {
+  const f = fixture();
+  putRoles(f, '{not json');
+  const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'A', HIMMEL_API_KIND: 'judge' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(usedKey(f), 'AAAA');
+  assert.doesNotMatch(r.stderr, /role map/);
+});
+
+test('HIMMEL-9076: a kind that is not a role (constructor, probe, other) is refused-policy although the map is valid', () => {
+  const f = fixture();
+  putRoles(f, { judge: ['B'], graphify: ['A'] });
+  for (const kind of ['constructor', 'probe', 'other']) {
+    const r = autoKind(f, kind);
+    assert.equal(r.status, 2, `${kind}: ${r.stderr}`);
+    assert.match(r.stderr, /auto routing is for the himmel graph pass only/);
+  }
+  assert.equal(f.called(), false);
+});
+
+test('HIMMEL-9076: with no roles.json an auto graphify call still picks over all accounts and eval is refused', () => {
+  const f = fixture();
+  f.snapshot.accounts.A.expires_at += 7200;  // B expires first
+  f.save();
+  const g = autoKind(f, 'graphify');
+  assert.equal(g.status, 0, g.stderr);
+  assert.equal(usedKey(f), 'BBBB');
+  assert.doesNotMatch(g.stderr, /role map/);
+  const e = autoKind(fixture(), 'eval');
+  assert.equal(e.status, 2, e.stderr);
+});

@@ -150,6 +150,21 @@
 #                               tick-timeout:<s>, tick-exit:<rc>, no-tick-line,
 #                               usage-read or missing-field:<name>. Once per streak;
 #                               the re-arm stays quiet until a sample succeeds.
+#   WAKE worker-silent <worker> signal=<capped-waker|succession-partial> [silent=<n>m]
+#                               a worker went silent. capped-waker: with --workers-from, the
+#                               tick lists wakerstate=<worker>:capped (its bus mail went unread) and the
+#                               worker's doc has had no write for CHIEF_WAIT_WORKER_SILENT_MIN minutes
+#                               (default 45); the doc's mtime stands in for its newest Results bullet, as
+#                               the tick's hold and READY ages do. succession-partial: a --succession
+#                               tally that stayed short names the worker (the line follows the partial
+#                               block). One line per worker, once per (worker, signal, doc write time):
+#                               <inbox>.wait.silent holds the keys, so a re-arm on an unchanged state is quiet
+#                               and a worker that wrote and went quiet again wakes again. Each line also
+#                               appends a `WORKER-SILENT` bullet to --doc and sends the operator ONE page
+#                               (the worker, the signal and the action; same sender and budget as
+#                               DENIAL-PAGE). The chief relaunches the worker from a RESUME doc or runs its
+#                               blocked step itself and says which it did (chief-template.md). The tick line
+#                               follows a capped-waker wake.
 #
 # The action key is the tick fields a chief acts on: workers= (an older tick's legs=),
 # livestate=, prs=, tails=, acts= (a worker's newest READY, BLOCKED, FINDING or MERGED bullet and a count:
@@ -1523,6 +1538,55 @@ r0_fold_key() {
     }'
 }
 
+# worker_silent: a worker the chief would otherwise wait on forever. Two signals:
+# the tick lists wakerstate=<worker>:capped (the bus waker typed its cap for mail nobody read) and
+# the worker's doc has had no write for CHIEF_WAIT_WORKER_SILENT_MIN minutes, or a --succession
+# tally that stayed short names it. silent_emit does the three acts once per (worker, signal,
+# doc write time): the WAKE line, a `WORKER-SILENT` bullet in --doc, one operator page.
+# ponytail: the doc's mtime stands in for the newest Results bullet (the same stand-in as the tick's
+# hold and READY ages); a doc touched without a bullet hides a silence, upgrade = parse the bullet's HH:MM.
+silent_file="$inbox.wait.silent"
+silent_worker_min="${CHIEF_WAIT_WORKER_SILENT_MIN:-45}"
+case "$silent_worker_min" in ''|*[!0-9]*|???????*) silent_worker_min=45 ;; *) silent_worker_min=$((10#$silent_worker_min)) ;; esac  # 7+ digits would overflow the *60 a caller may add
+worker_doc_of() { # <label>: the worker's doc from the fleet manifest (--workers-from, else the chief doc's own)
+    local mf="${legs_from:-${console_doc%.md}.fleet.json}"
+    [ -f "$mf" ] || return 0
+    jq -r --arg l "$1" "$JQ_W"'[W[]? | select(.label == $l)][0].doc // empty' "$mf" 2>/dev/null || true  # swallow-ok: an unreadable manifest names no doc, the worker is then keyed without a write time
+}
+silent_emit() { # <label> <signal> <detail>: prints the WAKE line and succeeds when this (worker, signal, doc write time) is new
+    local label signal="$2" detail="$3" ldoc m key act
+    label="$(printf '%s' "$1" | tr -cd 'A-Za-z0-9._#+-')"  # the label goes into an operator message and a marker line
+    [ -n "$label" ] || return 1
+    ldoc="$(worker_doc_of "$label")"
+    m=-
+    [ -z "$ldoc" ] || m="$(stat -c %Y "$ldoc" 2>/dev/null)" || m=-  # gnu-ok: Linux-only kit; swallow-ok: no write time keys the worker on the signal alone
+    key="$label $signal $m"
+    grep -qxF -- "$key" "$silent_file" 2>/dev/null && return 1  # swallow-ok: no marker yet reads empty, so the first sight wakes
+    printf '%s\n' "$key" >> "$silent_file" 2>/dev/null
+    act="the chief relaunches it from a RESUME doc or runs its blocked step itself, and will say which it did"
+    heartbeat sampling
+    [ -z "$console_doc" ] || bash "$HERE/append-results.sh" "$console_doc" "WORKER-SILENT $label signal=$signal$detail: $act; the operator was alerted" >/dev/null 2>&1 9>&- || true  # swallow-ok: a doc that cannot take the bullet still wakes and pages
+    page_send "WORKER-SILENT $label signal=$signal$detail - $act" $(( $(date +%s) + page_timeout ))
+    printf 'WAKE worker-silent %s signal=%s%s\n' "$label" "$signal" "$detail"
+}
+silent_wake() { # prints one WAKE line per worker newly silent and succeeds when there is one
+    local tok label ldoc m age line out=""
+    [ -n "$legs_from" ] || return 1
+    for tok in $(field wakerstate "$tick_line" | tr ',' ' '); do
+        case "$tok" in *:capped) ;; *) continue ;; esac
+        label="${tok%:capped}"
+        ldoc="$(worker_doc_of "$label")"
+        [ -n "$ldoc" ] && [ -f "$ldoc" ] || continue
+        m="$(stat -c %Y "$ldoc" 2>/dev/null)" || continue  # gnu-ok: Linux-only kit; swallow-ok: an unreadable write time cannot show a silence
+        age=$(( ( $(date +%s) - m ) / 60 ))
+        [ "$age" -ge "$silent_worker_min" ] || continue
+        line="$(silent_emit "$label" capped-waker " silent=${age}m")" || continue
+        out="$out$line"$'\n'
+    done
+    [ -n "$out" ] || return 1
+    printf '%s' "$out"
+}
+
 saved=""
 if [ -f "$key_file" ] && [ "$(sed -n 1p "$key_file")" = "$args_hash" ]; then
     saved="$(old_key_names "$(sed -n 2p "$key_file")")"
@@ -1583,6 +1647,9 @@ while :; do
                 if [ $(( $(date +%s) - succ_since )) -ge $(( 10#$silent_min * 60 )) ]; then
                     succ_tally="$(printf '%s' "$succ_sum" | sed -nE 's/^INCOMPLETE ([0-9]+\/[0-9]+).*/\1/p')"
                     printf 'WAKE succession partial %s silent %s min\n%s\n' "${succ_tally:-tracker-error}" "$silent_min" "$succ_out"
+                    # the workers the tally still waits on are silent: one worker-silent line each
+                    printf '%s\n' "$succ_sum" | sed -nE 's/^INCOMPLETE [0-9]+\/[0-9]+ \(waiting on: ([^)]*)\).*/\1/p' | tr ',' '\n' |
+                        while IFS= read -r succ_w; do silent_emit "$succ_w" succession-partial "" || true; done  # swallow-ok: an already-woken worker prints nothing
                     rm -f "$succ_file"; exit_reason='wake-succession-partial'; exit 0
                 fi ;;
         esac
@@ -1657,6 +1724,11 @@ while :; do
                 saved="$(r0_fold_key "$saved" "$key" "$r0_fold")"; save_key "$saved"
             fi
             r0_refold=""
+            # a capped waker on a doc quiet past the bound: wake the chief, alert the operator
+            if silent_out="$(silent_wake)"; then
+                printf '%s\n%s\n' "$silent_out" "$tick_line"
+                exit_reason='wake-worker-silent'; exit 0
+            fi
             case "$cap_val" in
                 UNDERFILLED:*)
                     if [ ! -e "$underfill_file" ]; then
