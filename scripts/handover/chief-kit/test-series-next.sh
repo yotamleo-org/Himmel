@@ -390,4 +390,85 @@ for v in "status --ledger" "start --ledger" "commit --ledger" "pass --ledger" "a
 done
 check "10: series-next.sh reads no flag" "$(grep -c -E 'himmel_flag|flags\.sh|flags\.tsv' "$SCRIPT" 2>/dev/null || true)" 0
 
+# --- 10b. every fenced command in series.md is a plain allow-listed command with an allow row -------------------
+# A series leg runs these commands unattended; a command that no allow row names stops at a prompt nobody reads. The grammar is an
+# ALLOWLIST, `bash <repo-relative .sh path> <word>...` with a word of [A-Za-z0-9._/,:=@+-]+ or one <placeholder>, so every
+# shape it does not list is refused (the accepted shapes are finite). Fenced blocks tagged `text` hold output, not commands.
+SETTINGS="$HERE/../../../.claude/settings.json"
+cat > "$tmp/seriesmd-check.py" <<'PYEOF'
+import json, re, sys
+md, settings = sys.argv[1], sys.argv[2]
+allow = set(json.load(open(settings))["permissions"]["allow"])
+WORD = r"(?:[A-Za-z0-9._/,:=@+-]+|<[A-Za-z][A-Za-z ]*>)"
+CMD = re.compile(r"bash (scripts/[A-Za-z0-9._/-]+\.sh)((?: " + WORD + r")*)")
+FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+bad = n = 0
+fence = None  # (fence char, length, is a command block)
+for no, line in enumerate(open(md).read().split("\n"), 1):
+    if fence is None:
+        m = FENCE.match(line)
+        if m:
+            fence = (m.group(1)[0], len(m.group(1)), m.group(2).strip() != "text")
+        continue
+    if re.fullmatch(" {0,3}" + re.escape(fence[0]) + "{" + str(fence[1]) + r",}\s*", line):
+        fence = None
+        continue
+    if not fence[2] or not line.strip():
+        continue
+    n += 1
+    m = CMD.fullmatch(line)
+    if not m or any(c in ("", ".", "..") for c in m.group(1).split("/")):
+        print("GRAMMAR line %d: %s" % (no, line))
+        bad += 1
+    elif "Bash(bash %s:*)" % m.group(1) not in allow:
+        print("NO-ALLOW-ROW %s (line %d)" % (m.group(1), no))
+        bad += 1
+if n == 0:
+    print("NO-COMMANDS: no fenced command found in " + md)
+    bad += 1
+if bad == 0:
+    print("OK %d commands" % n)
+sys.exit(1 if bad else 0)
+PYEOF
+smc() { rc=0; out="$(python3 -I "$tmp/seriesmd-check.py" "$1" "${2:-$SETTINGS}" 2>&1)" || rc=$?; }   # <series.md> [settings]
+smc "$SM"
+check "10b: every fenced command in series.md matches the grammar and has an allow row (rc 0)" "$rc" 0
+contains "10b: the check counted the commands" "$out" "OK 5 commands"
+GOODLINE='bash scripts/handover/chief-kit/series-next.sh status --ledger <p>'
+# shellcheck disable=SC2016  # the backticks are literal fence text
+smfix() { { cat "$SM"; printf '\n```bash\n%s\n```\n' "$1"; } > "$tmp/series-fixture.md"; }   # the real page plus one more fenced command
+smfix "$GOODLINE"; smc "$tmp/series-fixture.md"
+check "10b: control: a clean extra command passes" "$rc" 0
+# shellcheck disable=SC2016  # the dollar signs and backticks are literal shell text under test
+for shape in \
+    ';@@bash scripts/handover/chief-kit/series-next.sh status --ledger <p> ; touch x' \
+    '&&@@bash scripts/handover/chief-kit/series-next.sh status --ledger <p> && touch x' \
+    '|@@bash scripts/handover/chief-kit/series-next.sh status --ledger <p> | cat' \
+    '&@@bash scripts/handover/chief-kit/series-next.sh status --ledger <p> &' \
+    '$(@@bash scripts/handover/chief-kit/series-next.sh status --ledger $(whoami)' \
+    'backtick@@bash scripts/handover/chief-kit/series-next.sh status --ledger `whoami`' \
+    '<(@@bash scripts/handover/chief-kit/series-next.sh status --ledger <(echo x)' \
+    'redirect@@bash scripts/handover/chief-kit/series-next.sh status --ledger <p> > out.txt' \
+    'heredoc@@bash scripts/handover/chief-kit/series-next.sh status --ledger <p> <<EOF' \
+    'VAR=value@@FOO=1 bash scripts/handover/chief-kit/series-next.sh status --ledger <p>' \
+    "trailing backslash@@bash scripts/handover/chief-kit/series-next.sh status --ledger <p> \\" \
+    'a dot-dot path@@bash scripts/../scripts/handover/chief-kit/series-next.sh status --ledger <p>' \
+    'a quoted word@@bash scripts/handover/chief-kit/series-next.sh status --ledger "<p>"'; do
+    smfix "${shape#*@@}"; smc "$tmp/series-fixture.md"
+    check "10b: refusal: ${shape%%@@*}: rc 1" "$rc" 1
+    contains "10b: refusal: ${shape%%@@*}: names the line as outside the grammar" "$out" "GRAMMAR"
+done
+smfix 'bash scripts/handover/chief-kit/not-a-series-script.sh status'; smc "$tmp/series-fixture.md"
+check "10b: a grammar-clean command with no allow row is refused rc 1" "$rc" 1
+contains "10b: and the refusal names the path" "$out" "NO-ALLOW-ROW scripts/handover/chief-kit/not-a-series-script.sh"
+grep -v -F 'chief-kit/series-' "$SETTINGS" > "$tmp/settings-norows.json"
+smc "$SM" "$tmp/settings-norows.json"
+check "10b: series.md against a permission file without the series rows is refused rc 1" "$rc" 1
+contains "10b: naming series-next.sh" "$out" "NO-ALLOW-ROW scripts/handover/chief-kit/series-next.sh"
+printf '# no commands\n' > "$tmp/series-empty.md"; smc "$tmp/series-empty.md"
+check "10b: a page with no fenced command is refused rc 1 (never a vacuous pass)" "$rc" 1
+for p in series-next series-publish; do
+    contains "10b: the permission file carries the $p.sh row" "$(cat "$SETTINGS")" "\"Bash(bash scripts/handover/chief-kit/$p.sh:*)\""
+done
+
 [ "$fails" -eq 0 ] && echo "ALL OK" || { echo "$fails FAILED"; exit 1; }
