@@ -95,7 +95,10 @@ Run these, in order, and write the result as the first bullet under
 12. **Render the chief board (local only):**
     `node "{{KIT}}/board.mjs" --doc "<this file>" --changed` prints `CHANGED <path>`
     or `UNCHANGED <path>`; record that path on `board:` below. Never publish it
-    (`Artifact` is denied). Tracker (if `tracker:` set): `chief-sections/board-tracker.md`.
+    (`Artifact` is denied). The operator also opens this chief's live board in the AG-UI Fleet
+    page (`himmelctl ui --agui`); `board:` keeps the local path, never a URL or a token.
+    A note you write with `board-section.mjs` shows on that open page within about 5 s, no reload
+    (`chief-sections/board-tracker.md`). Tracker (if `tracker:` set): `chief-sections/board-tracker.md`.
 13. **Never call `AskUserQuestion`:** it hangs you and every waiting worker;
     decide on a stated default instead.
 

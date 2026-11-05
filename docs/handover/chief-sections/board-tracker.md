@@ -34,6 +34,10 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     the redactor and `set` prints `redacted: <n>`. Exit 0 ok, 2 invalid input or a symlinked
     sidecar, 3 `--expect-rev` no longer matches the file's `rev` (nothing written; without the flag the
     last writer wins). Plain text only.
+    The operator sees them as the Chief notes strip above the worker list on the AG-UI Fleet page
+    (`himmelctl ui --agui`, then the Fleet page). The page polls every 5 s, so a `set` or `rm` reaches
+    an open page within about 5 s with no reload (`scripts/config-ui/tests/e2e/board-sections.e2e.ts`
+    proves it). Record no AG-UI URL on the `board:` line: it carries a launch token and an ephemeral port.
 
     The live page stays under 15 KB at 25 live workers: one line per worker card,
     finished judges (last bullet `WRAPPED` or `VERDICT`) go to the archive with
