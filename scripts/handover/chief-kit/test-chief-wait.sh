@@ -256,7 +256,20 @@ wait_exit "$WPID"
 check "(hr) the relay wake still names the successor" "WAKE relay-on-live successor=S2" "$(head -n1 "$WORK/hr.out")"
 check "(hr) control: the relay line is sent and RELAYED stays the last line" "RELAYED 1 of 1" "$(tail -n1 "$WORK/hr.out")"
 check "(hr) control: the wake is printed once" "1" "$(grep -c '^WAKE ' "$WORK/hr.out")"
-check "(hr) the block's second line says: no re-arm, no reads, wrap on LIVE, stop" "1" "$(sed -n 2p "$WORK/hr.out" | grep -c '^AFTER RELAYED: .*no re-arm.*no reads.*LIVE.*chief.sh wrap.*stop')"
+check "(hr) the block's second line says: re-arm once, read nothing, wrap on LIVE, stop" "1" "$(sed -n 2p "$WORK/hr.out" | grep -c '^AFTER RELAYED: re-arm this waiter once.*read nothing.*LIVE.*chief.sh wrap.*stop')"
+check "(hr) and it names the bounded resume" "1" "$(sed -n 2p "$WORK/hr.out" | grep -c 'resumes after CHIEF_WAIT_HANDOVER_MIN minutes')"
+
+# --- (hr2) the one muted re-arm resumes once the marker is stale: a successor that died before LIVE
+# must not leave the outgoing chief without a watcher ---
+reset_stub
+I="$(new_inbox hr2)"
+printf 'S2\n' > "$I.handover"
+touch -d '3 hours ago' "$I.handover"  # gnu-ok: Linux-only kit
+start "$I" "$WORK/hr2.out" --workers "N1.md"
+wait_hb "$I" || fail "(hr2) no baseline heartbeat"
+tick_line "N1:FREE" "ok"
+wait_exit "$WPID"
+check "(hr2) a re-armed waiter whose handover marker is stale wakes on a tick change" "WAKE tick changed=workers usage=PROCEED" "$(head -n1 "$WORK/hr2.out")"
 
 # --- (hso) the retired name CONSOLE_WAIT_TICK never names the tick command --- # old-term-ok
 reset_stub

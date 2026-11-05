@@ -369,8 +369,8 @@ printf '{"legs":[{"label":"N9","doc":"%s"},{"label":"N8","doc":"%s"}]}\n' "$root
 out6next="$(chief next --bucket nextrepo)"
 check "6 next writes successor stub" "$([ -f "$doc6B" ] && echo yes)" "yes"
 # The outgoing chief is told, once, what its tail is: relay, wait for LIVE with no waiter, wrap, stop.
-check "6 next tells the outgoing chief to relay, take no re-arm and no reads, wrap on LIVE and stop" \
-    "$(printf '%s\n' "$out6next" | grep -c '^after-next: .*no re-arm.*no reads.*chief.sh wrap.*stop')" "1"
+check "6 next tells the outgoing chief to relay, re-arm the muted waiter once, read nothing, wrap on LIVE and stop" \
+    "$(printf '%s\n' "$out6next" | grep -c '^after-next: .*re-arm the muted waiter once.*read nothing.*chief.sh wrap.*stop')" "1"
 check "6 next still arms the relay and the handover mode (control)" \
     "$(printf '%s\n' "$out6next" | grep -c '^\(relay-on-live\|handover-mode\): ')" "2"
 check "6 Telegram metadata records the successor bucket" "$(grep -c '"bucket":' "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}B-chief.md.meta.json" 2>/dev/null || true)" "1"
@@ -505,7 +505,22 @@ check "7 arm log carries armed/signal/deadline/session" \
     "$(grep -cE "armed: name=${session7B} doc=.* signal=.*sig-${session7B} deadline=[0-9]+" "$log7B" 2>/dev/null)" "1"
 check "7945 next --arm exports the predecessor's session name to the arm" \
     "$(grep -c "^predecessor=DEMO-nextleg-${today}A-chief\$" "$log7B")" "1"
+check "7 next --arm prints the after-next line once, after the armed: line" \
+    "$(printf '%s\n' "$out7b" | grep -n '^\(armed\|after-next\):' | cut -d: -f2 | tr '\n' ' ')" "armed after-next "
 HANDOVER_DIR="$root" bash "$QL" release "$doc7A" "$token7a" >/dev/null 2>&1
+# a refused arm prints no after-next line: the outgoing chief must not be told to stop for a successor that never launched
+cat > "$tmp/stub-arm-fail.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+chmod +x "$tmp/stub-arm-fail.sh"
+out7fa="$(chief new --bucket armfail)"
+token7fa="$(token_of "$out7fa")"
+out7f="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+    CHIEF_HEADED_ARM="$tmp/stub-arm-fail.sh" CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work" CHIEF_CONTEXT=1m \
+    bash "$C" next --bucket armfail --arm --deadline-min 0 --context standard ) 2>/dev/null || true )"
+check "7 a failed arm prints no after-next line" "$(printf '%s\n' "$out7f" | grep -c '^after-next:')" "0"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/armfail/DEMO-nextleg-${today}A-chief.md" "$token7fa" >/dev/null 2>&1
 
 # --- 8: no private-string leak -----------------------------------------
 # leak-pattern-allow: this line and the next NAME the banned words in order
@@ -540,7 +555,7 @@ leak_free() {
 # every such line must carry a token this run actually saw `new` print — an
 # unrelated
 # leak, or a line that merely LOOKS token-shaped, still fails loudly.
-known_tokens=("$token1" "$token4" "$token6a" "$token6ba" "$token6da" "$token7a" "$tokenInbox" "$tokenOB")
+known_tokens=("$token1" "$token4" "$token6a" "$token6ba" "$token6da" "$token7a" "$token7fa" "$tokenInbox" "$tokenOB")
 token_residual() {
     local token
     for token in "$@"; do
