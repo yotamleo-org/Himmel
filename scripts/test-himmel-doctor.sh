@@ -7976,6 +7976,7 @@ rm -rf "$c88_t"
 
 # --- C87-stub-handover-state: files under <repo>/handovers newer than the operator's baseline marker ---
 c87_t="$(mktemp -d "${TMPDIR:-/tmp}/c87.XXXXXX")" || { echo "FATAL: C87 setup mktemp failed" >&2; exit 1; }
+c87_t="$(cd "$c87_t" && pwd)"  # a TMPDIR with a trailing slash (macOS) would leave "T//" where the doctor prints "T/"
 c87_x="$c87_t/repo"
 mkdir -p "$c87_x/scripts/lib" "$c87_t/home" "$c87_t/claude" "$c87_t/root"
 cp "$REPO_ROOT/scripts/himmel-doctor.sh" "$c87_x/scripts/"
