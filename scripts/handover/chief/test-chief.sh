@@ -1973,7 +1973,7 @@ rm -f "$tmp/claude-argv-63"
 run_launch_line "$out63a"
 row63a="$(cat "$LL63/$S63.log" 2>/dev/null || true)"
 case "$row63a" in
-    "headed-arm: role=chief session=$S63 context=1m source=default autocompact=auto launched="[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) r63a=match ;;
+    "headed-arm: role=chief session=$S63 context=1m source=default autocompact=auto launched="[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z" lane=native") r63a=match ;;
     *) r63a="nomatch: [$row63a]" ;;
 esac
 check "63a running the pasted line writes one chief row: context, source, autocompact, launched" "$r63a" "match"
