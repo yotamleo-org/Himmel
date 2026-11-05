@@ -43,6 +43,8 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/git-clean.sh
 . "$SCRIPT_DIR/../../lib/git-clean.sh" && git_env_scrub
+# shellcheck source=../../lib/timeout-bin.sh
+. "$SCRIPT_DIR/../../lib/timeout-bin.sh"
 GH_CMD="${CI_CADENCE_GH:-$SCRIPT_DIR/../../lib/gh-read.sh}"
 STATE_FILE="${CI_CADENCE_STATE:-${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/ci-cadence.cache}"
 # <workflow file>:<period in hours>. ci.yml fires a nightly and a 7 h main sweep; its period is the nightly's.
@@ -54,7 +56,7 @@ now() { local n="${CI_CADENCE_NOW:-}"; case "$n" in ''|*[!0-9]*) date +%s ;; *) 
 # gh_run <args...> — gh in the repo checkout, bounded.
 gh_run() {
     local dir="${CI_CADENCE_DIR:-$PWD}"
-    (cd "$dir" 2>/dev/null && timeout -k 2 25 "$GH_CMD" "$@")
+    (cd "$dir" 2>/dev/null && ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 25} "$GH_CMD" "$@")
 }
 
 # refresh — read every workflow's newest scheduled run into the cache; stop at the first gh failure.
