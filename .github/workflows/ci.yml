@@ -1201,8 +1201,10 @@ jobs:
       - run: node scripts/install/flag-registry-lint.mjs
       # The history-comment gate also runs as a pre-commit hook, which a session
       # without hooks installed never hits. Run it on the PR range, from the BASE
-      # copy (a PR cannot weaken the gate that judges it); a missing base sha or
-      # base copy is a red job, never a silent pass.
+      # copies of the gate, the classifier and the rule list (a PR cannot widen the
+      # rules that judge it); a missing base sha or base copy is a red job, never a
+      # silent pass. Bootstrap, until a base always holds the rule list: a base that
+      # predates it is judged by its own gate alone.
       - name: history-comment gate (PR range)
         if: github.event_name == 'pull_request'
         env:
@@ -1212,12 +1214,24 @@ jobs:
             echo "history-comment gate: PR base sha missing, cannot evaluate" >&2
             exit 1
           fi
-          gate="$RUNNER_TEMP/check-history-comments.sh"
-          if ! git show "$BASE_SHA:scripts/lint/check-history-comments.sh" > "$gate" || [ ! -s "$gate" ]; then
+          gate="$RUNNER_TEMP/base-history-gate/scripts/lint"
+          mkdir -p "$gate"
+          if ! git show "$BASE_SHA:scripts/lint/check-history-comments.sh" > "$gate/check-history-comments.sh" || [ ! -s "$gate/check-history-comments.sh" ]; then
             echo "history-comment gate: script absent at base $BASE_SHA, cannot evaluate" >&2
             exit 1
           fi
-          bash "$gate" --range "$BASE_SHA"
+          if ! git show "$BASE_SHA:scripts/lint/ticket-ref-allow.tsv" > "$gate/ticket-ref-allow.tsv" 2>/dev/null; then
+            echo "history-comment gate: base predates the rule list, judging with the base gate alone (bootstrap)"
+            bash "$gate/check-history-comments.sh" --range "$BASE_SHA"
+            exit $?
+          fi
+          for f in ticket-refs.awk ticket-ref-allow.tsv; do
+            if ! git show "$BASE_SHA:scripts/lint/$f" > "$gate/$f" || [ ! -s "$gate/$f" ]; then
+              echo "history-comment gate: $f absent at base $BASE_SHA, cannot evaluate" >&2
+              exit 1
+            fi
+          done
+          bash "$gate/check-history-comments.sh" --range "$BASE_SHA"
       # The hardcoded-env-values lint, same two shapes: the PR range from the BASE
       # copy of the script and its allowlist (a PR cannot widen the allowlist that
       # judges it), then the whole tree at the tip from this checkout on every

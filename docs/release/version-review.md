@@ -42,3 +42,8 @@ recorded row had it `ok`, that source's columns keep their recorded values, prov
    are similar.
 4. A line that reads `no data yet` means the version row is missing: run step 1
    with `--versions` large enough to reach it.
+5. Before each release run `bash scripts/one-shot/check-ticket-refs.sh` by hand
+   (read-only; never wire it into a hook, a suite or CI). A hit is a ticket key
+   the diff gate missed or a K6 row the rule list lacks; a hit in a test file
+   outside the four gated citation shapes goes on the follow-up ticket for the
+   test row-name helper.
