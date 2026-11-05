@@ -118,8 +118,8 @@
 set -uo pipefail
 # A relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
-is_dir="$_ah_d"   # anchor-handoff.sh unsets _ah_d
 . "$_ah_d/anchor-handoff.sh" || exit 2
+is_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || exit 2
 
 # io_fail <what> — a step that builds the impacted list or the verdict set did
 # not run; an empty or partial list must never read as "nothing to run".
