@@ -417,7 +417,7 @@ echo "autogo $*" >> "$LE_CALLS"
 exit "${LE_AUTOGO_RC:-0}"
 EOF3
 chmod +x "$W/autogo"
-printf 'auto_go\toff\tfeature\tHIMMEL-8349\tHIMMEL-8404\t2099-01-01\tfixture\n' > "$W/flags.tsv"
+printf 'auto_go\toff\tfeature\tHIMMEL-8349\tHIMMEL-8404\t2099-01-01\tfixture\nstacked_series\toff\tfeature\tHIMMEL-8349\tHIMMEL-8349\t2099-01-01\tfixture\n' > "$W/flags.tsv"
 export HIMMEL_FLAGS_TSV="$W/flags.tsv" HIMMEL_CONFIG_DIR="$W/no-conf" LE_AUTOGO="$W/autogo"
 unset HIMMEL_FLAG_AUTO_GO
 
@@ -515,12 +515,18 @@ lacks "16.1 wrap-merged does not run" "$calls" "wrap --doc"
 
 HIMMEL_FLAG_STACKED_SERIES=0 runf "$W/s-ok/fleet.json" "WRAPPED N8. Lock released."
 contains "16.1b stacked_series off: the same WRAPPED still reaches wrap-merged" "$calls" "wrap --doc $W/doc --fleet $W/s-ok/fleet.json $SA"
+check "16.1b it finishes: rc" "$rc" 0
+check "16.1b it finishes: HANDLED" "$out" "HANDLED wrap-merged N8"
 
 runf "$W/s-ok/fleet.json" "WRAPPED N9. Lock released."
 contains "16.1c a WRAPPED from the current writer still reaches wrap-merged" "$calls" "wrap --doc $W/doc --fleet $W/s-ok/fleet.json $SW"
+check "16.1c it finishes: rc" "$rc" 0
+check "16.1c it finishes: HANDLED" "$out" "HANDLED wrap-merged N9"
 
 runf "$W/s-ok/fleet.json" "WRAPPED N2078. Lock released."
 contains "16.4 a non-series WRAPPED still reaches wrap-merged" "$calls" "wrap --doc $W/doc --fleet $W/s-ok/fleet.json /h/HIMMEL-1-N2078-foo-2026-10-14.md"
+check "16.4 it finishes: rc" "$rc" 0
+check "16.4 it finishes: HANDLED" "$out" "HANDLED wrap-merged N2078"
 
 LE_AUTOGO_OUT="GO-SENT 2553 $H40 to N9 bus=#7 qid=q1" runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N8"
 check "16.2 a READY from the passes-from doc N8: rc" "$rc" 0
@@ -548,6 +554,11 @@ check "16.1d a space in the bucket path: a passes-from WRAPPED is still closed" 
 
 HIMMEL_FLAG_STACKED_SERIES=0 LE_AUTOGO_OUT="GO-SENT 2553 $H40 to N8 bus=#7 qid=q1" runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N8"
 contains "16.5 stacked_series off: a READY keeps its own label" "$calls" "--worker N8 2553"
+
+HIMMEL_FLAG_STACKED_SERIES=bogus LE_AUTOGO_OUT="GO-SENT 2553 $H40 to N8 bus=#7 qid=q1" runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N8"
+check "16.7 a stacked_series flag that cannot be read: rc" "$rc" 10
+contains "16.7 it escalates, never reads as off" "$out" "ESCALATE series-flag-unreadable rc=2"
+check "16.7 no auto-go call" "$calls" ""
 
 mkser "$W/s-bad" "$ROW8,$ROW9"; printf '{not json' > "$W/s-bad/series/zz.json"
 runf "$W/s-bad/fleet.json" "WRAPPED N8. Lock released."
