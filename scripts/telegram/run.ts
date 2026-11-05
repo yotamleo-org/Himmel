@@ -269,7 +269,7 @@ export function withSessionId(cmd: string[], sid: string): string[] {
 // Best-effort: the helper warns and exits 0, and a throw here never stops the run.
 export function writeLaunchRecord(sid: string, model: string, cacheDir?: string): void {
   try {
-    spawnSync(["bash", join(REPO_ROOT, "scripts", "handover", "launch-record.sh"), `telegram-${sid.slice(0, 8)}`, "telegram", "native", "telegram", sid, model],
+    spawnSync([BASH_BIN, join(REPO_ROOT, "scripts", "handover", "launch-record.sh"), `telegram-${sid.slice(0, 8)}`, "telegram", "native", "telegram", sid, model],
       { stdout: "ignore", stderr: "inherit", env: cacheDir ? { ...process.env, HIMMELCTL_CACHE_DIR: cacheDir } : process.env });
   } catch (e) {
     process.stderr.write(`telegram: launch record not written: ${e instanceof Error ? e.message : String(e)}\n`);

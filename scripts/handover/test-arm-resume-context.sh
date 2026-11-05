@@ -523,7 +523,7 @@ case "${OSTYPE:-$(uname -s 2>/dev/null)}" in
             "$(rc_of test "$(sc_launch_context "$CACHE_J/launch-logs" "$TITLE_J1")" = 1m)"
         ROW_J1=$(cat "$CACHE_J/launch-logs/$TITLE_J1.log" 2>/dev/null)
         case "$ROW_J1" in
-            "headed-arm: role=chief session=$TITLE_J1 context=1m source=default autocompact=auto launched="[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z)
+            "headed-arm: role=chief session=$TITLE_J1 context=1m source=default autocompact=auto launched="[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z" lane=native")
                 echo "PASS j1: the row is headed-arm.sh's shape (same prefix and field names)" ;;
             *) echo "FAIL j1: row is not headed-arm.sh's shape: '$ROW_J1'"; FAILED=$((FAILED + 1)) ;;
         esac
