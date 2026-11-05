@@ -10,7 +10,9 @@
 #   a7 lone himmel-bus send                       -> batchable bus
 #   a8 lone SendMessage quoting a RETASK token    -> safety (token-quoting)
 #   a9 a <synthetic> turn                         -> skipped
-# 9 ids minus a9 = 8 turns: 3 batchable (1 bullet, 1 message, 1 bus), 3 safety. Session s2 (record 2020) is out of window.
+#   a10 bullet chained with && pytest             -> not lone;  a12 bullet chained with ;pytest (no spaces) -> not lone
+#   a11 lone SendMessage "READY" quoting a token  -> safety (token-quoting)
+# 12 ids minus a9 = 11 turns: 3 batchable (1 bullet, 1 message, 1 bus), 4 safety. Session s2 (record 2020) is out of window.
 #  1. per-session TSV row and TOTAL line carry the known counts;  2. class rows keep safety apart;
 #  3. the time window and file arguments;  4. no input exits 2.
 #
@@ -46,6 +48,7 @@ mkdir "$TMP/win" "$TMP/empty" || exit 1
   asst a7 "$NOW" '{"type":"tool_use","id":"tu-a7","name":"mcp__himmel-bus__send","input":{"to":"chief","b":"BLOCKED — need a ruling"}}'
   asst a8 "$NOW" "$(send_tu a8 'ruling for RE-N4754-60dbba5b: narrow the scope')"
   asst a10 "$NOW" "$(bash_tu a10 'bash /r/append-results.sh /d.md \"LIVE — x\" && pytest -q')"
+  asst a12 "$NOW" "$(bash_tu a12 'bash /r/append-results.sh /d.md \"LIVE — y\";pytest -q')"
   asst a11 "$NOW" "$(send_tu a11 'READY ruling for RE-N4754-60dbba5b: ship it')"
   printf '{"type":"assistant","timestamp":"%s","message":{"id":"a9","model":"<synthetic>","content":[]}}\n' "$NOW"
   printf 'not json at all\n'
@@ -55,9 +58,9 @@ asst b1 "2020-01-01T00:00:00.000Z" "$(bash_tu b1 'bash /r/append-results.sh /d.m
 echo "1. per-session row and total"
 python3 "$LC" --dir "$TMP/win" --hours 24 >"$TMP/a.out" 2>"$TMP/a.err"; rc=$?
 check "exits 0" '[ "$rc" = 0 ]'
-check "s1 row: 8 turns, 3 batchable (1 bullet, 1 message, 1 bus), 3 safety" 'grep -qxF "s1${T}10${T}3${T}1${T}1${T}1${T}4" "$TMP/a.out"'
+check "s1 row: 11 turns, 3 batchable (1 bullet, 1 message, 1 bus), 4 safety" 'grep -qxF "s1${T}11${T}3${T}1${T}1${T}1${T}4" "$TMP/a.out"'
 check "the out-of-window session prints no row" '! grep -q "^s2" "$TMP/a.out"'
-check "TOTAL line" 'grep -qx "TOTAL sessions=1 turns=10 lone_batchable=3 bullet=1 message=1 bus=1 lone_safety=4" "$TMP/a.out"'
+check "TOTAL line" 'grep -qx "TOTAL sessions=1 turns=11 lone_batchable=3 bullet=1 message=1 bus=1 lone_safety=4" "$TMP/a.out"'
 
 echo "2. class rows"
 check "GO is a safety class" 'grep -qxF "CLASS${T}GO${T}safety${T}1" "$TMP/a.out"'

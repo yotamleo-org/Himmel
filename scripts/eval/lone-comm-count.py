@@ -43,6 +43,7 @@ NOGO_RE = re.compile(r'\bNO-GO\b')
 TOKEN_RE = re.compile(r'\b[A-Z]{1,3}-N\d+[a-z]?-[0-9a-f]{8}\b')
 NUDGE_RE = re.compile(r'\b(nudge|still alive|are you|status\?|heartbeat|no bullet|no LIVE|please report)\b', re.I)
 
+PUNCT = set(';&|<>()')
 SAFETY = {'GO', 'NO-GO', 'token-quoting', 'SUCCESSION', 'RETASK', 'REDIRECT', 'EXPANSION', 'HALT'}
 
 
@@ -83,13 +84,15 @@ def classify(body):
 
 def simple_command(cmd):
     """The argv of a Bash command that is one plain command, or None (chained, piped, or not parseable)."""
+    lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
+    lex.whitespace_split = True
     try:
-        toks = shlex.split(cmd)
+        toks = list(lex)
     except ValueError:
         return None
     if toks and toks[0] == 'bash':
         toks = toks[1:]
-    if not toks or any(t in ('&&', '||', ';', '|', '&') for t in toks):
+    if not toks or any(set(t) <= PUNCT for t in toks):
         return None
     return toks
 
@@ -108,8 +111,8 @@ def comm(name, inp):
         toks = simple_command(i.get('command') or '')
         if not toks:
             return None
-        if toks[0].endswith('append-results.sh') and len(toks) >= 3:
-            return 'bullet', ' '.join(toks[2:]).lstrip('$')
+        if toks[0].endswith('append-results.sh') and len(toks) == 3:
+            return 'bullet', toks[2].lstrip('$')
         if os.path.basename(toks[0]) == 'bus' and toks[1:2] == ['send']:
             return 'bus', ' '.join(toks[2:])
     return None
