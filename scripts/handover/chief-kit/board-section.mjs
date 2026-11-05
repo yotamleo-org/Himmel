@@ -14,6 +14,7 @@
 // applySection(doc, op). The path helper stays private; no other script opens a sidecar (I9).
 import { promises as fs, realpathSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { redact } from './redact.mjs';
 
 const SCHEMA = 'himmel.board-sections/1';
@@ -143,6 +144,7 @@ async function main() {
     if (!['set', 'rm', 'list'].includes(cmd)) throw invalid('usage: --doc <doc> set|rm|list');
     if (extra.length || (cmd === 'list' && id)) throw invalid('unexpected argument');
     if (cmd === 'list') {
+        try { realpathSync(o.doc); } catch (e) { throw invalid(`cannot resolve --doc: ${e.message}`); }
         const r = await readSections(o.doc);
         if (r.error) throw invalid(r.error);
         for (const s of r.sections) console.log(`${s.id}\t${s.order}\t${s.tone}\t${s.title}`);
@@ -167,7 +169,7 @@ async function main() {
     if (cmd === 'set') console.log(`redacted: ${r.redacted}`);
 }
 
-if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(new URL(import.meta.url).pathname)) {
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
     main().catch((e) => {
         console.error(`board-section: ${e.message}`);
         process.exit(e.code === 'REV' ? 3 : 2);

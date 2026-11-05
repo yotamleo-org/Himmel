@@ -131,6 +131,14 @@ case "$(rd "$D6")" in *'does not parse'*) pass 'an unparseable sidecar gives an 
 head -c 70000 /dev/zero | tr '\0' x > "$B6/R-chief.sections.json"
 case "$(rd "$D6")" in *'over 65536'*) pass 'an oversize sidecar gives an error and []' ;; *) fail 'an oversize sidecar gives an error' ;; esac
 
+# a checkout path holding a space still runs the CLI; a mistyped --doc exits 2 on list too
+B7="$W/dir with space"; mkdir -p "$B7"; printf '# c\n' > "$B7/S-chief.md"
+cp "$SUT" "$B7/board-section.mjs"; cp "$HERE/redact.mjs" "$B7/redact.mjs"
+node "$B7/board-section.mjs" --doc "$B7/S-chief.md" set a --title T --body b >/dev/null 2>&1
+same 'the CLI runs from a path holding a space' "$?" 0
+run list >/dev/null; same 'list of a real doc exits 0' "$?" 0
+node "$SUT" --doc "$W/no-such-doc.md" list >/dev/null 2>&1; same 'list of a mistyped --doc exits 2' "$?" 2
+
 # I9: no file under scripts/ or marketplace/ names a sections sidecar except board-section.mjs and its tests.
 # ponytail: a path built from parts passes this; upgrade path: after the state-database flip the record's I6 lint covers it.
 hits="$(cd "$REPO" && git grep -l -e 'sections\.json' -- scripts marketplace 2>/dev/null \
