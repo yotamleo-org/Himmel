@@ -77,8 +77,8 @@ alert() { # <line>: one operator page, one chief-doc bullet, one stdout line
         timeout -k 2 45 "$CHIEF_WAIT_PAGE_CMD" "$1" </dev/null >/dev/null 2>&1  # gnu-ok: Linux-only kit
     else
         # shellcheck disable=SC2016  # $1/$2 expand in the child bash
-        timeout -k 2 45 bash -c '. "$1" && chat="$(_mba_operator_chat)" && [ -n "$chat" ] && _mba_send "$chat" "$2"' \
-            _ "$REPO/scripts/lib/merge-block-alert.sh" "$1" </dev/null >/dev/null 2>&1  # gnu-ok: Linux-only kit
+        send='. "$1" && chat="$(_mba_operator_chat)" && [ -n "$chat" ] && _mba_send "$chat" "$2"'
+        timeout -k 2 45 bash -c "$send" _ "$REPO/scripts/lib/merge-block-alert.sh" "$1" </dev/null >/dev/null 2>&1  # gnu-ok: Linux-only kit
     fi
     bash "$HERE/append-results.sh" "$doc" "$1" >/dev/null 2>&1 || true  # swallow-ok: the page and stdout line still carry it
     printf '%s\n' "$1"
