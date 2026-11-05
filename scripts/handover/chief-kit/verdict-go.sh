@@ -7,6 +7,12 @@
 #
 # Usage: verdict-go.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path>
 #                      [--trust] [--worker <label>] [--doc <chief doc>] [--prior <GO|NO-GO>] [--residual-of <KEY>] [--model <id>] [--effort <level>]
+#                      [--contract yes|no]
+#
+#   --contract is the brief's `Completes ticket:` answer, forwarded to go.sh. go.sh
+#   refuses a PR titled with a [KEY] when none is named (exit 4), so a GO for a
+#   keyed PR needs it. `--contract no` also leaves --jira-transition off the
+#   merge line in the worker message.
 #
 #   1. write-verdict.sh <qid> <answer> <head> --pr <n> --evidence-file <path> [--prior <GO|NO-GO>] [--residual-of <KEY>]
 #      [--model <id>] [--effort <level>]   (the judge's; write-verdict.sh refuses a verdict without both)
@@ -36,15 +42,20 @@ set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 usage() {
-    echo "usage: verdict-go.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--trust] [--worker <label>] [--doc <chief doc>] [--prior <GO|NO-GO>] [--residual-of <KEY>] [--model <id>] [--effort <level>]" >&2
+    echo "usage: verdict-go.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--trust] [--worker <label>] [--doc <chief doc>] [--prior <GO|NO-GO>] [--residual-of <KEY>] [--model <id>] [--effort <level>] [--contract yes|no]" >&2
     exit 2
 }
 
 [ "$#" -ge 3 ] || usage
 QID="$1"; ANSWER="$2"; HEAD_SHA="$3"; shift 3
-PR=""; EVIDENCE=""; TRUST=0; WORKER=""; DOC=""; PRIOR=""; RESIDUAL_OF=""; MODEL=""; EFFORT=""
+PR=""; EVIDENCE=""; TRUST=0; WORKER=""; DOC=""; PRIOR=""; RESIDUAL_OF=""; MODEL=""; EFFORT=""; CONTRACT=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --contract)
+            [ "$#" -ge 2 ] || usage
+            [ -z "$CONTRACT" ] || { echo "verdict-go: --contract given twice" >&2; usage; }
+            case "$2" in yes|no) CONTRACT="$2" ;; *) echo "verdict-go: --contract takes yes or no (got '$2')" >&2; usage ;; esac
+            shift 2 ;;
         --model)         [ "$#" -ge 2 ] || usage; MODEL="$2"; shift 2 ;;
         --effort)        [ "$#" -ge 2 ] || usage; EFFORT="$2"; shift 2 ;;
         --pr)            [ "$#" -ge 2 ] || usage; PR="$2"; shift 2 ;;
@@ -98,9 +109,9 @@ if [ "$ANSWER" = "GO" ]; then
     # go.sh prints the GO file it wrote as its last stdout line; the worker's merge
     # names that file with --go.
     if [ "$TRUST" -eq 1 ]; then
-        GO_OUT=$(bash "$HERE/go.sh" ${MODEL:+--model "$MODEL"} ${EFFORT:+--effort "$EFFORT"} --trust-reviewed "$QID" "$PR" "$HEAD_SHA") || step_fail go.sh $?
+        GO_OUT=$(bash "$HERE/go.sh" ${MODEL:+--model "$MODEL"} ${EFFORT:+--effort "$EFFORT"} ${CONTRACT:+--contract "$CONTRACT"} --trust-reviewed "$QID" "$PR" "$HEAD_SHA") || step_fail go.sh $?
     else
-        GO_OUT=$(bash "$HERE/go.sh" ${MODEL:+--model "$MODEL"} ${EFFORT:+--effort "$EFFORT"} "$PR" "$HEAD_SHA") || step_fail go.sh $?
+        GO_OUT=$(bash "$HERE/go.sh" ${MODEL:+--model "$MODEL"} ${EFFORT:+--effort "$EFFORT"} ${CONTRACT:+--contract "$CONTRACT"} "$PR" "$HEAD_SHA") || step_fail go.sh $?
     fi
     [ -z "$GO_OUT" ] || printf '%s\n' "$GO_OUT"
     GO_LAST=${GO_OUT##*$'\n'}
@@ -124,7 +135,8 @@ if [ "$ANSWER" = "GO" ]; then
     [ -n "$ANCHOR" ] || ANCHOR="$(cd "$HERE/../../.." && pwd)"
     echo
     echo "--- worker message (send to ${WORKER:-the worker}; add its token) ---"
-    printf 'GO %s %s - merge with: bash %q --jira-transition' "$PR" "$HEAD_SHA" "$ANCHOR/scripts/handover/merge-on-green.sh"
+    JT=" --jira-transition"; [ "$CONTRACT" != no ] || JT=""
+    printf 'GO %s %s - merge with: bash %q%s' "$PR" "$HEAD_SHA" "$ANCHOR/scripts/handover/merge-on-green.sh" "$JT"
     if [ -n "$GO_FILE" ]; then printf ' --go %q\n' "$GO_FILE"; else printf '\n'; fi
 fi
 exit 0
