@@ -1476,7 +1476,9 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # build commit is an ancestor of HEAD at most HIMMEL_UPDATE_GRAPH_MAX_BEHIND (default
   # 150, keep in step with GRAPH_MAX_BEHIND in himmel-update.sh) commits behind it, and
   # the station is not the publisher (graphify.semantic_api_ok is true in config.json).
-  # Any doubt (no marker, odd marker, not an ancestor, too old, publisher) runs the row.
+  # No marker, an odd marker, a non-ancestor, an old build or a publisher runs the row.
+  # The publisher test is sync_graph's own (a symlinked, missing or non-JSON config reads
+  # as not-the-publisher), so a station that installed the graph is skipped the same way.
   _pub_marker="$OUT_DIR/.graphify_published"
   if [ -f "$_pub_marker" ] && [ ! -L "$_pub_marker" ]; then
     _pub_sha="$(head -n 1 "$_pub_marker" 2>/dev/null | tr -d '[:space:]')" || _pub_sha=""
