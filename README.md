@@ -20,7 +20,7 @@ branch; make a change there, then remove himmel at the end of the trial.
 The install adds hooks and settings for Claude Code (under `.claude/`), the
 scripts they run (`scripts/`) and `.gitignore` entries to the project.
 Follow [Getting Started](docs/getting-started.md) step by step: it previews
-each change before you make it, and each step tells you which folder to run
+the install before you run it, and each step tells you which folder to run
 it from and what you should see.
 
 That one protected project is a complete result. The rest is optional and
@@ -41,8 +41,8 @@ turn it off.
 
 If you work with a coding agent every day, alone or in a small team, himmel
 is for you. Claude Code still runs your sessions; himmel installs on top of it
-and adds checks before edits, commits and PRs, so nobody has to remember the
-rules. Each change gets its own branch and a reviewed PR, each commit names
+and adds checks before edits, commits and pull requests (PRs), so nobody has
+to remember the rules. Each change gets its own branch and a reviewed PR, each commit names
 its ticket (a Jira issue, or a plain `#number` if you do not use Jira), and
 notes carry the work into the next session. Run several sessions at once and
 they work like a small software factory: tickets go in, reviewed and merged
@@ -69,7 +69,7 @@ It has four layers, and each one works without the layers above it:
 
 The idea is simple: anything you would otherwise repeat by hand (checking a
 commit, reviewing a PR, writing down where you stopped, restarting after a
-usage cap) becomes a tool or a gate. Safety comes from structure, not from
+usage limit) becomes a tool or a gate. Safety comes from structure, not from
 Claude remembering a paragraph of instructions.
 
 ## What you get
@@ -119,11 +119,11 @@ The diagram shows the four flows that make up most of a day with himmel.
 
 **1. Ship a change.** Give your change its own branch and working folder with
 `/worktree`, so you never edit `main` directly. Each commit names its ticket.
-Checks on each commit and push examine the message format, secrets and the
-attestation lines that say what was tested. `/pr-check` runs a review; once
-the pull request (PR) is approved, continuous integration (CI) passes the
-tests for the suites it touches and, in a fleet run, the chief has given its
-GO for the exact commit, the PR can merge. `/clean` removes the finished
+Checks on each commit and push examine the message format, secrets and
+statements of what was tested. `/pr-check` runs a review; once the pull
+request (PR) is approved, continuous integration (CI) tests for the affected
+suites pass and, in a fleet run, the chief has given written approval (a GO)
+for its exact commit, the PR can merge. `/clean` removes the finished
 worktree.
 
 **2. Run a fleet: one chief, many workers.** For bigger runs, one Claude
@@ -163,7 +163,7 @@ In your shell, from the worktree:
 
 ```bash
 git add <files>           # 2. after working with Claude in the worktree
-git commit && git push    # 2. hooks check the message, secrets and attestation lines
+git commit && git push    # 2. hooks check the message, secrets and statements of what was tested
 gh pr create              # 4. then merge once CI is green and the PR is approved
 ```
 
@@ -206,8 +206,8 @@ There are two ways in:
    [adoption trail](docs/adoption-trail.html) (also at
    [yotamleo-org.github.io/Himmel/adoption-trail.html](https://yotamleo-org.github.io/Himmel/adoption-trail.html))
    shows what each later level of adoption changes.
-2. **Working on himmel itself, or installing it for every project on a
-   machine?** The rest of this section covers that: the prerequisites, the
+2. **Working on himmel itself, or installing from the release tarball?** The
+   rest of this section covers that: the prerequisites, the
    release tarball or a clone, the environment and the install check.
 
 **Prerequisites.** `scripts/setup.sh` needs `bash`, `git`, `node`, `npm`,
@@ -316,8 +316,7 @@ himmel runs on Linux and macOS. Windows (Git Bash or WSL) is not supported.
 | brew (Linux tap) | Not supported. |
 | nix, deb, rpm | Not supported; open an issue if you need it. |
 
-The guardrail hooks run on macOS's built-in bash 3.2; a few other scripts
-need a newer bash (`brew install bash`).
+himmel's scripts run on macOS's built-in bash.
 
 ## Memory architecture
 
@@ -381,7 +380,8 @@ it. None of them is needed by the core harness.
 - **[obsidian (kepano)](https://github.com/kepano/obsidian-skills)**, pinned:
   the `obsidian-markdown` skill for Obsidian-flavored markdown.
 
-Once a week (Sundays at 04:00), `/obsidian-health` checks the vault for you.
+Once you turn on the vault schedule (`/pipeline-cadence`), a vault check runs
+every Sunday at 04:00; run `/obsidian-health` any time by hand.
 
 ## Features
 
