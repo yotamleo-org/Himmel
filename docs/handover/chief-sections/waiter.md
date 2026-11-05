@@ -75,6 +75,12 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     waiter replays nothing (`<inbox>.wait.cadence`). `cadence=?` (gh unreadable) wakes nothing. A red
     here is yours to triage: open the link, fix or ticket it, never leave it for the next wake.
 
+    **`WAKE review <date> <reasons>`** (HIMMEL-9247, decision 593): the tick prints the daily failure
+    review as `review=<date>:<age>:<failures>:<new>:<new5+>:<filed>[:CAPPED][:STALE]` (`none` is left off
+    the line). The waiter wakes once per review day when the router filed a ticket, a new class has 5 or
+    more failures, or the create cap was hit, and once per last-review date when the review is STALE (no
+    review for 26 h). A class with a single failure never wakes you (`<inbox>.wait.review`).
+
     **`WAKE pool-stale <KEYS>`** (HIMMEL-6604): the tick re-checks every Live-state
     `pool-disposition: KEY slice|close|question <target>` line whose target names a
     ticket key or `PR <n>` and reports `pool-stale=<n>:<KEY>,...` when every named
