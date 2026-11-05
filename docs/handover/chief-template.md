@@ -78,7 +78,10 @@ Run these, in order, and write the result as the first bullet under
     `absorbed since last wake:` wraps/merges line. **Re-start it in the
     turn that handles each wake and on every dispatch and wrap** (`TaskStop` the
     old one, absolute worker doc paths) or you go deaf. Record the task id in your
-    first bullet; `cat "<inbox>.wait"` is its heartbeat. Wake keys, heartbeat
+    first bullet; `cat "<inbox>.wait"` is its heartbeat. **`WAKE worker-silent <worker>`**
+    means that worker takes no turns and the operator is already paged: that turn,
+    relaunch it from a RESUME doc (close the stale window) or run its one blocked
+    step yourself, and tell the operator which. Wake keys, heartbeat
     states, fleet-manifest arming: `chief-sections/waiter.md`.
     **Your manifest:** `{{FLEET_MANIFEST}}` — {{FLEET_MANIFEST_NOTE}}.
 11. **Open your Telegram inbox.** Operator writes `/chief {{SESSION_NAME}} <text>`; `/chief` or `chief:<project>` reaches
