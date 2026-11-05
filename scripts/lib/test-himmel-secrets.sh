@@ -39,6 +39,40 @@ mkdir -p "$REPO"
 git -C "$REPO" init --quiet
 PROJ=$(cd "$REPO" && pwd -P)
 
+# L1-L3: the import lock works without flock, on every platform. The import verb
+# is unreachable on Darwin (no keyring), so the rows run _hs_import_lock itself,
+# cut out of the script, under a PATH that holds no flock.
+NOFLOCK="$TMP/noflock-bin"
+mkdir -p "$NOFLOCK"
+for _l_t in mkdir rmdir rm mv cat cksum cut kill sleep printf dirname date; do
+    _l_p=$(command -v "$_l_t") && ln -sf "$_l_p" "$NOFLOCK/$_l_t"
+done
+BASH_BIN=$(command -v bash)
+sed -n '/^_hs_import_lock() {$/,/^}$/p' "$HS" >"$TMP/lockfn.sh"
+cat >"$TMP/lockdrv.sh" <<'DRV'
+_hs_die() { printf 'himmel-secrets: %s\n' "$*" >&2; exit 2; }
+_himmel_config_dir() { printf '%s\n' "$HIMMEL_CONFIG_DIR"; }
+HS_SCOPE_PROJECT=""
+. "$LOCKFN"
+_hs_import_lock
+echo locked
+sleep "${HOLD:-0}"
+DRV
+lockrun() { env -i PATH="$NOFLOCK" HIMMEL_CONFIG_DIR="$HIMMEL_CONFIG_DIR" LOCKFN="$TMP/lockfn.sh" HOLD="${1:-0}" "$BASH_BIN" "$TMP/lockdrv.sh" 2>&1; echo "rc=$?"; }
+assert_eq "L0 flock is hidden from the lock's PATH" "" "$(PATH="$NOFLOCK" command -v flock)"
+lockrun 4 >"$TMP/l1.a" &
+l1_pid=$!
+sleep 1
+got=$(lockrun 0)
+assert_eq "L1 a second import is refused while the first runs, with no flock" "1|rc=2" "$(printf '%s' "$got" | grep -c 'another import-env')|$(printf '%s' "$got" | grep rc=)"
+assert_eq "L1 the first import took the lock" "locked" "$(head -n1 "$TMP/l1.a")"
+l1_owner=$(cat "$HIMMEL_CONFIG_DIR/import-env.user.lock.d/pid" 2>/dev/null)
+[ -z "$l1_owner" ] || kill -9 "$l1_owner" 2>/dev/null
+wait "$l1_pid" 2>/dev/null
+got=$(lockrun 0)
+assert_eq "L2 a killed import leaves no stale lock" "locked|rc=0" "$(printf '%s' "$got" | tr '\n' '|' | sed 's/|$//')"
+assert_eq "L3 a finished import leaves nothing under the lock path" "0" "$(find "$HIMMEL_CONFIG_DIR" -name 'import-env.*' 2>/dev/null | grep -c .)"
+
 if [ "$(uname -s)" = Darwin ]; then
     echo "SKIP S1-S9: the resolver skips the keyring on Darwin (macOS Keychain backend is a follow-up)"
 else
