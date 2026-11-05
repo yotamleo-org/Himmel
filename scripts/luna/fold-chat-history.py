@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """fold-chat-history — fold an exported provider chat history into the luna vault.
 
-HIMMEL-832. ChatGPT (conversations-*.json + .dat assets) and Gemini
+ChatGPT (conversations-*.json + .dat assets) and Gemini
 (conversations/*.json) exports fold one note per conversation; enrichment
-is HIMMEL-833. HIMMEL-1170: Telegram Desktop HTML group export
+is enrich-chat-notes.py. Telegram Desktop HTML group export
 (messages*.html + photos/video_files) folds into monthly notes.
 
 Usage:

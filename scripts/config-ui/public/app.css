@@ -292,7 +292,7 @@ div.tile{cursor:default}.tiles.three{grid-template-columns:repeat(3,minmax(0,1fr
 .dryrun .plan{border:0;background:none;padding:0}
 .chips{display:flex;flex-wrap:wrap;gap:4px 10px;grid-column:span 2}
 details.more{margin:6px 0}details.more>summary{cursor:pointer;color:var(--dim);padding:4px 0}
-/* Configure scope tile (HIMMEL-9235): collapsible categories and the one plain sentence under each setting */
+/* Configure scope tile: collapsible categories and the one plain sentence under each setting */
 .cpanel details.cat{border:1px solid var(--rule);border-radius:8px;background:var(--bg);margin:0 0 var(--s2);min-width:0;max-width:100%}
 .cpanel details.cat>summary{cursor:pointer;padding:var(--s2) var(--s3);font:700 13px var(--font-ui);color:var(--ink);overflow-wrap:anywhere}
 .cpanel details.cat[open]>summary{border-bottom:1px solid var(--rule)}
@@ -308,7 +308,7 @@ details.more{margin:6px 0}details.more>summary{cursor:pointer;color:var(--dim);p
 .fr .data th:nth-child(3),.fr .data th:nth-child(4),.fr .data td:nth-child(3),.fr .data td:nth-child(4){text-align:right;font-variant-numeric:tabular-nums}
 .fr .data tbody tr:nth-child(even){background:var(--surface-2)}
 @media (max-width:760px){.rm-board,.rm-board:has(.rm-lane){grid-template-columns:1fr 1fr}}
-/* Health page v2 (HIMMEL-8044): group tiles reuse the Configure tile; rows, tabs, Shared panel, project lines and the rail picker. Tokens only. */
+/* Health page v2: group tiles reuse the Configure tile; rows, tabs, Shared panel, project lines and the rail picker. Tokens only. */
 .g-chk{--gc:var(--accent)}.g-use{--gc:var(--road)}.g-job{--gc:var(--camp)}.g-srch{--gc:var(--alpha)}
 .htiles .tile .pill{justify-self:start;margin-top:4px}
 .fixact{white-space:nowrap}.alert .scope{margin-left:var(--s1)}
@@ -327,7 +327,7 @@ details.bundle>summary{cursor:pointer;padding:6px 0}
 .mini{border:1px solid var(--rule);border-radius:8px;background:var(--bg);padding:var(--s2) var(--s3);display:grid;gap:2px}
 .prj .phead{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2) var(--s3);margin:0 0 var(--s1)}.prj .phead .ro{flex:1 1 200px}
 .picker{display:grid;gap:4px;margin:0 0 var(--s3);font:600 10.5px var(--font-mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
-/* The page bar (HIMMEL-9098, spec 8044 section 2): the slot under the top of a page for that page's own controls; the rail never holds one.
+/* The page bar (the page-bar design, section 2 of the Visibility spec): the slot under the top of a page for that page's own controls; the rail never holds one.
    One line on desktop; at 760 px the controls fold behind the "Filters (n on)" button. An empty slot is hidden. */
 .pagebar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2);margin:0 0 var(--s3);padding:5px 8px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);font:11.5px/1.4 var(--font-mono)}
 .pagebar[hidden]{display:none}
@@ -404,7 +404,7 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .mc.sel{outline:2px solid var(--accent)}.mc:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .th-sort{all:unset;cursor:pointer}.th-sort:focus-visible{outline:1px solid var(--accent)}
 @media (max-width:760px){.th-charts,.th-cols{grid-template-columns:minmax(0,1fr)}}
-/* Tool health tables (HIMMEL-8680): the box wraps anywhere, which squeezes every column to one letter. A short value and a header keep each
+/* Tool health tables: the box wraps anywhere, which squeezes every column to one letter. A short value and a header keep each
    word whole; a column that holds free text takes the wrapping (td.wrap) with a floor; a table wider than its panel scrolls inside .scroll */
 .data.thtab th,.data.thtab td{overflow-wrap:normal}
 .data.thtab th{white-space:nowrap}
@@ -583,7 +583,7 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 @media (max-width:600px){.drawer.rm-why{top:auto;left:0;width:100%;max-height:72vh;border-left:0;border-top:1px solid var(--rule-strong);animation-name:rm-sheetin}}
 .data tr.grp td{font:600 var(--fs-xs) var(--font-mono);color:var(--muted);background:var(--bg)}
 @media (max-width:760px){.rm-vstrip,.rm-links{grid-template-columns:minmax(0,1fr)}}
-/* HIMMEL-9100 dense Board: a one-line filter bar, tabs and links on one row, the clamped text and its hover/focus bubble. Tokens only. */
+/* Dense Board: a one-line filter bar, tabs and links on one row, the clamped text and its hover/focus bubble. Tokens only. */
 .rm-tabrow{display:flex;flex-wrap:wrap;gap:var(--s1) var(--s4);align-items:center;justify-content:space-between}
 .rm-tabrow .rm-links{display:flex;flex:1 1 0;min-width:0;flex-wrap:wrap;justify-content:flex-end;gap:0 var(--s3);font-size:var(--fs-xs)}
 .rm-col h4{margin-bottom:var(--s1)}
@@ -609,7 +609,7 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .rm-col.rm-lane .rm-card{font-size:var(--fs-xs)}
 @media (max-width:760px){.rm-title .rm-clip{-webkit-line-clamp:3;line-clamp:3}.rm-bar{flex-wrap:wrap;white-space:normal}}
 @media (max-width:760px),(hover:none){.rm-tip::after{display:none!important}}
-/* HIMMEL-8681 Tool health shape (mockup v9): the plain tab row, warn tiles, the Tool map All row/column and loaded-never-used mark, and one card per source on a phone */
+/* Tool health shape (mockup v9): the plain tab row, warn tiles, the Tool map All row/column and loaded-never-used mark, and one card per source on a phone */
 .tabs .tab{font-size:.85rem;font-family:var(--font-ui);font-weight:500;padding:6px 12px}
 .tabs .tab[aria-selected="true"]{font-weight:700;text-decoration:underline;text-underline-offset:5px;color:var(--ink)}
 .kpi.warn .kv{color:var(--beta)}

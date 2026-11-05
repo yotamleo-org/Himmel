@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """enrich-chat-notes — provider-pluggable enrichment pass over enriched:false chat-import notes.
 
-HIMMEL-833 (DeepSeek, original); HIMMEL-1167 generalizes the LLM backend to a
+Originally DeepSeek-only; the LLM backend is now a
 selectable provider (--provider deepseek|codex|claude, default claude).
 Sibling of fold-chat-history.py. Per note: one provider call
 (up to 2 attempts on invalid response shape) (summary + vocab-constrained
@@ -138,7 +138,7 @@ def scan_candidates(vault, limit):
 def build_payload(text):
     """Body text for the API: frontmatter stripped, asset pointers dropped.
 
-    Full body is sent (no truncation) per operator directive HIMMEL-833:
+    Full body is sent (no truncation) per operator directive:
     truncation risks losing context for summary/tag inference. An
     over-context-window note fails the API call and is skipped via the
     existing per-note failure path."""
@@ -290,7 +290,7 @@ def primary_root(script_dir):
 def resolve_api_key(script_dir, key_env):
     """Env var named `key_env` wins; then the keyring (himmel-secrets); else
     the PRIMARY checkout's .env.
-    Never resolves from the process CWD (HIMMEL-460 trap). `key_env` is the
+    Never resolves from the process CWD (trap). `key_env` is the
     provider's key env var (DEEPSEEK_API_KEY / OPENAI_API_KEY /
     ANTHROPIC_API_KEY)."""
     key = os.environ.get(key_env)

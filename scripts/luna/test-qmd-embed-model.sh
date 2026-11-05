@@ -328,7 +328,7 @@ rc=0; out=$(run bash "$SCRIPT" check 2>&1) || rc=$?
 assert_rc "check passes after the swap" 0 "$rc"
 if [ ! -e "$H/.cache/qmd/embed-swap.lock" ]; then pass "the swap lock is released after the commit"; else fail "the swap lock is released after the commit"; fi
 
-echo "== swap lock (HIMMEL-4314)"
+echo "== swap lock"
 # A relaunched daemon mid-swap served the old model's query embeddings against
 # the new vectors. The swap holds <cache>/qmd/embed-swap.lock from its liveness
 # check to its commit or rollback; a daemon start path must see it.
@@ -446,7 +446,7 @@ for copy in "$SCRIPT" "$PLUGIN_DAEMON"; do
     else fail "swap_lock_stale in $(basename "$copy") classifies lock dirs" "got: $got"; fi
 done
 
-echo "== remote model (HIMMEL-5756)"
+echo "== remote model"
 REMOTE='openai:qwen/qwen3-embedding-8b'
 new_home 40
 printf 'collections:\n  notes:\n    path: %s\nmodels:\n  openai_base_url: http://127.0.0.1:9\n' "$H" >"$(CFG)"
@@ -461,7 +461,7 @@ printf 'collections:\n  salus:\n    path: /x\nmodels:\n  openai_base_url: https:
 rc=0; out=$(run bash "$SCRIPT" set remote 2>&1) || rc=$?
 assert_rc "set remote on a config holding salus is refused by the egress gate" 2 "$rc"
 
-echo "== env-named remote model runs the gate (HIMMEL-5711)"
+echo "== env-named remote model runs the gate"
 # A recording node shim stands in for the gate: it logs its argv and exits $FAKE_GATE_RC.
 GSTUBS="$TMP_ROOT/gstubs"
 mkdir -p "$GSTUBS"

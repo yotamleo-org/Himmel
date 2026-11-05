@@ -21,7 +21,7 @@ EOF
 cat > "$PLUGINDIR/skills/probe-skill/SKILL.md" <<'EOF'
 ---
 name: probe-skill
-description: Probe skill for HIMMEL-2179 harness testing. Invoke as /probe-skill.
+description: Probe skill for the dispatch-substrate harness tests. Invoke as /probe-skill.
 ---
 
 When invoked, write the word SKILLOK into ./skill-artifact.txt.

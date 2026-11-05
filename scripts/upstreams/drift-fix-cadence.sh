@@ -143,8 +143,8 @@ WORKER_SESSION_RESYNC="HIMMEL-ForkResync"
 
 # Payload invocations; the real runbooks live in
 # .claude/commands/{drift-fix,fork-resync}.md.
-PROMPT_DRIFT="Run /drift-fix to completion. This is the scheduled nightly upstream-drift repair cadence (HIMMEL-1323) - fully autonomous, no user prompts; follow the runbook exactly, STOP at the open PR, and report what landed."
-PROMPT_RESYNC="Run /fork-resync to completion. This is the scheduled nightly carried-fork re-sync cadence (HIMMEL-1323/HIMMEL-1435) - fully autonomous, no user prompts; audit every BEHIND scripts/upstreams.json entry with a fork block (each entry's own note says whether a non-additive result is a regression to report or an expected known gap), then STOP at the end of step 3; NEVER run resync-fork.sh --push and do not open a branch or PR; report every result."
+PROMPT_DRIFT="Run /drift-fix to completion. This is the scheduled nightly upstream-drift repair cadence - fully autonomous, no user prompts; follow the runbook exactly, STOP at the open PR, and report what landed."
+PROMPT_RESYNC="Run /fork-resync to completion. This is the scheduled nightly carried-fork re-sync cadence - fully autonomous, no user prompts; audit every BEHIND scripts/upstreams.json entry with a fork block (each entry's own note says whether a non-additive result is a regression to report or an expected known gap), then STOP at the end of step 3; NEVER run resync-fork.sh --push and do not open a branch or PR; report every result."
 
 # worker_prompt / worker_log / worker_runner <task-name> — the per-worker lookups, kept as
 # functions rather than an associative array (bash 3.2 has none; macOS ships 3.2).

@@ -14,7 +14,7 @@
 # claude-*: Anthropic pricing page https://platform.claude.com/docs/en/about-claude/pricing, with the cache
 #   multipliers of docs/internals/prompt-cache.md (5m write 1.25x, 1h write 2x, read 0.05x on Opus 5.5 and
 #   Sonnet 5.5, 0.025x on Fable 5.1, 0.1x on Haiku 5.5). Opus 5.5 equals the $4/$20/$0.20/$5/$8 the
-#   HIMMEL-9260 cost plan used. Haiku 5.5 is tiered by prompt size ($0.10/$0.50 up to 100K); this table keeps
+#   the cost plan used. Haiku 5.5 is tiered by prompt size ($0.10/$0.50 up to 100K); this table keeps
 #   the over-100K row (ponytail: flat over-100K rate, upgrade path = a per-call tier).
 claude-opus-5-5	4	20	0.20	5	8
 claude-sonnet-5-5	2	10	0.10	2.50	4

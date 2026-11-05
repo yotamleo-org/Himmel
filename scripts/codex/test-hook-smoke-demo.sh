@@ -588,7 +588,7 @@ shadow_smoke() { # <proxy-url|-> -> prints the witness file's content (empty = n
     echo "  [progress] 11a2: shadow_smoke end proxy=$1" >&2
     cat "$w" 2>/dev/null || true
 }
-# ponytail: skipped on macOS, where the shadowed demo hangs with no output (bash 3.2, cause not pinned); re-enable once HIMMEL-7925 finds the cause
+# ponytail: skipped on macOS, where the shadowed demo hangs with no output (bash 3.2, cause not pinned); re-enable once the cause of the macOS hang is found
 if [ "$(uname -s)" = Darwin ]; then
     echo "  SKIP: 11a2 shadowed-builtin rows: the shadowed demo hangs on macOS; tracked by HIMMEL-7925"
 else

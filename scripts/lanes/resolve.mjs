@@ -217,7 +217,7 @@ function hermesInstalled(env) {
   const root  = env.HERMES_HOME || join(local, 'hermes');
   for (const src of [join(root, 'hermes-agent'), root]) {                     // tolerate venv/ at root
     if (isExe(join(src, 'venv', 'bin', 'python'))) return true;
-    const launcher = join(src, '.hermes', 'bin', 'hermes');                    // PM-managed install (HIMMEL-4307): the launcher names the runtime
+    const launcher = join(src, '.hermes', 'bin', 'hermes');                    // PM-managed install: the launcher names the runtime
     if (isExe(launcher)) {
       try {                                                                    // read-only, same as resolve-hermes-py.sh: argv[0] must be a live interpreter
         const argv = JSON.parse(execFileSync(launcher, ['--print-runtime-command'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).split('\n')[0]);

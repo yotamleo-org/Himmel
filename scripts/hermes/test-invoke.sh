@@ -219,7 +219,7 @@ grep -q "test-deny-reason" "$stub_dir/deny.err" || fail "deny-escalation: reason
 grep -q '"outcome":"denied"' "$LEDGER" || fail "deny-escalation: no ledger end row"
 echo "  ok" >&2
 
-echo "test: hermes iteration-budget banner marks the run truncated (HIMMEL-2049)" >&2
+echo "test: hermes iteration-budget banner marks the run truncated" >&2
 export STUB_CAPTURE="$stub_dir/cap9"
 : > "$LEDGER"
 STUB_RESPONSE="some partial answer
@@ -233,7 +233,7 @@ grep -q "150/150" "$stub_dir/budget.err" || fail "iteration-budget: banner numbe
 grep -q '"outcome":"truncated"' "$LEDGER" || fail "iteration-budget: no ledger end row with outcome=truncated"
 echo "  ok" >&2
 
-echo "test: an unwritable --log path refuses instead of silently losing capture (HIMMEL-2049 CR)" >&2
+echo "test: an unwritable --log path refuses instead of silently losing capture" >&2
 export STUB_CAPTURE="$stub_dir/cap10b"
 bash "$INVOKE" --log "$stub_dir/no-such-dir/run.log" "x" >/dev/null 2>"$stub_dir/badlog.err"
 rc=$?
@@ -262,7 +262,7 @@ echo "  ok" >&2
 # The checkout is installed the legacy way: a venv whose site-packages .pth
 # points at it, like the editable install. HERMES_HOME points at an empty
 # root so the real ~/.hermes checkout can never be picked up.
-echo "test: argv[0] is an absolute existing launcher (HIMMEL-3639)" >&2
+echo "test: argv[0] is an absolute existing launcher" >&2
 py3="$(command -v python3 || command -v python || true)"
 legacy_py=""
 no_hermes="$stub_dir/no-hermes"

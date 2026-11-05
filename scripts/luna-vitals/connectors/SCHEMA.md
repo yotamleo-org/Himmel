@@ -38,9 +38,9 @@ Three categories by date source; values often JSON **strings** → coerce.
 | sleep | sleep | (interval; stages[]) | hours | main session | emit sleep_hours (Σ non-AWAKE, only if the rounded value is >0) + sleep_in_bed_hours (in-bed) |
 
 ### Migration note
-Prior to HIMMEL-785 the connector emitted `sleep_hours` = time-in-bed (what is now
+Before the sleep-metric fix the connector emitted `sleep_hours` = time-in-bed (what is now
 `sleep_in_bed_hours`). `writeSeries` only overlays emitted rows onto the existing
-on-disk CSV, so `sleep_hours.csv` values written by pre-HIMMEL-785 artifacts are
+on-disk CSV, so `sleep_hours.csv` values written by artifacts from before that fix are
 **not** auto-reconciled — any vault that ever landed old connector artifacts verbatim
 must one-time repair that series (the operator vault was repaired in salus commit `a1c9456`).
 
@@ -56,7 +56,7 @@ asleep sum, so they do not trigger the degraded path.
 The degraded warning above is now ALSO recorded durably in the review artifact's optional
 `warnings: string[]` field — absent from the JSON when there are no warnings, written by
 `pull` and preserved through `merge` (deduped across inputs). A clean pull keeps producing
-a byte-identical artifact to pre-HIMMEL-794; a pull whose sleep payload triggers a
+a byte-identical artifact to one from before the warnings field; a pull whose sleep payload triggers a
 degraded date carries `warnings: ["sleep <date>: malformed stage timestamps - sleep_hours
 omitted (degraded stage data)"]`. The stderr line is unchanged — the artifact copy is
 additive. A dated warning is recorded on the artifact only when its date falls inside the
@@ -94,14 +94,14 @@ not persisted past the artifact (writeSeries ignores them).
 `writeSeries` only overlays emitted rows onto the existing on-disk CSV — metrics absent
 from artifact rows are never rewritten, so a degraded date's previously written
 `sleep_hours` value is left untouched (the operator must repair that series manually).
-Intentional; noted under HIMMEL-794.
+Intentional.
 
 A merged artifact's warnings record DERIVATION-TIME loss, not final-artifact state — a
 warned (metric, date) gap may have been filled by the other merge pool, so a warning does
 not guarantee the merged rows lack that date.
 
 A sleep dataPoint with no recognizable typed payload field at all is dropped WITHOUT a
-warning (deliberate scope-out — HIMMEL-801).
+warning (deliberate scope-out).
 
 ## Derived
 - `rhr_bpm` ← heart-rate raw samples: per civil day, take a low estimator

@@ -11,6 +11,7 @@ READ="$HERE/usage-read.sh"
 BANK="$HERE/../lib/usage-attribution.sh"
 
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-usage.XXXXXX")"
+T1=HIMMEL-9001; T2=HIMMEL-9002; T7=HIMMEL-7777
 trap 'rm -rf "$ROOT"' EXIT
 PROJ="$ROOT/projects"; SLUG="$PROJ/slug"; mkdir -p "$SLUG"
 FAIL=0
@@ -60,9 +61,9 @@ run() { bash "$COMPUTE" --projects "$PROJ" --ledger "$LEDGER" --range HIMMEL-900
 
 # 1. per-session totals equal usage-attribution.sh on the same fixture
 BA="$(bash "$BANK" "$PROJ")"
-ba_worker="$(printf '%s\n' "$BA" | grep -F '| HIMMEL-9001-N1-thing | slug' | awk -F' [|] ' '{print $4"/"$5"/"$6"/"$7"/"$8}')"
+ba_worker="$(printf '%s\n' "$BA" | grep -F "| $T1-N1-thing | slug" | awk -F' [|] ' '{print $4"/"$5"/"$6"/"$7"/"$8}')"
 OUT="$(run --print)"
-rec="$(printf '%s\n' "$OUT" | jq -c 'select(.ticket=="HIMMEL-9001")')"
+rec="$(printf '%s\n' "$OUT" | jq -c --arg t "$T1" 'select(.ticket==$t)')"
 rec_worker="$(printf '%s' "$rec" | jq -r '.legs[]|select(.name=="HIMMEL-9001-N1-thing")|"\(.turns)/\(.input)/\(.cache_read)/\(.cache_create)/\(.output)"')"
 check "worker totals match bank-attribution" "$ba_worker" "$rec_worker"
 check "worker totals literal (dedup'd turn)" "2/21/201/11/41" "$rec_worker"
@@ -90,11 +91,11 @@ check "fail-closed runs wrote nothing" "no" "$([ -e "$FC" ] && echo yes || echo 
 # selector validation: --tickets as strict as --range, nothing-matches and conflicts fail closed
 sel() { rc=0; bash "$COMPUTE" --projects "$PROJ" --ledger "$LEDGER" --store "$FC" "$@" >/dev/null 2>&1 || rc=$?; echo "$rc"; }
 check "--tickets bad key fails" "1" "$(sel --tickets 'not a key')"
-check "--tickets empty element fails" "1" "$(sel --tickets 'HIMMEL-9001,')"
-check "--tickets matching nothing fails" "1" "$(sel --tickets HIMMEL-7777)"
-check "--tickets valid still works" "0" "$(sel --tickets HIMMEL-9001 --print)"
+check "--tickets empty element fails" "1" "$(sel --tickets "$T1,")"
+check "--tickets matching nothing fails" "1" "$(sel --tickets "$T7")"
+check "--tickets valid still works" "0" "$(sel --tickets "$T1" --print)"
 check "--since empty fails" "1" "$(sel --since '' --print)"
-check "--range with --tickets fails" "1" "$(sel --range HIMMEL-9001..HIMMEL-9002 --tickets HIMMEL-9001 --print)"
+check "--range with --tickets fails" "1" "$(sel --range "$T1..$T2" --tickets "$T1" --print)"
 # every value-taking flag: empty or missing value fails closed
 for flag in --projects --ledger --store --range --tickets --since; do
   check "$flag empty value fails" "1" "$(sel "$flag" '' --print)"
@@ -121,7 +122,7 @@ check "changed input appends one version" "$((before + 1))" "$after"
 
 # 6. consumer read test (no JSONL touched)
 check "read latest turns" "3" "$(bash "$READ" --store "$STORE" --ticket HIMMEL-9001 | jq -r '.legs[]|select(.name=="HIMMEL-9001-N1-thing").turns')"
-check "read all versions" "2" "$(bash "$READ" --store "$STORE" --ticket HIMMEL-9001 --all | wc -l | tr -d ' ')"
+check "read all versions" "2" "$(bash "$READ" --store "$STORE" --ticket "$T1" --all | wc -l | tr -d ' ')"
 
 # 6b. two concurrent runs on a fresh store publish ONE record per ticket
 # (the lock spans compute+append, so the second run sees the first's line)
@@ -176,8 +177,8 @@ cat > "$GHFIX/run-feat_himmel-9001-retry.json" <<'J'
 J
 jrun() { run --repo o/r --gh "$STUB/gh" "$@"; }
 J="$(jrun --print)"
-jrec="$(printf '%s\n' "$J" | jq -c 'select(.ticket=="HIMMEL-9001")')"
-check "pr facts (decoy HIMMEL-90019 excluded, numbers sorted)" '{"closed":1,"merged":1,"numbers":[11,12],"open":0,"state":"found"}' "$(printf '%s' "$jrec" | jq -cS .pr)"
+jrec="$(printf '%s\n' "$J" | jq -c --arg t "$T1" 'select(.ticket==$t)')"
+check "pr facts (a decoy key with extra digits excluded, numbers sorted)" '{"closed":1,"merged":1,"numbers":[11,12],"open":0,"state":"found"}' "$(printf '%s' "$jrec" | jq -cS .pr)"
 check "ci facts (runs deduped by id, secs from startedAt, in_progress not summed)" '{"basis":"startedAt","completed":2,"runs":3,"secs":90,"state":"found"}' "$(printf '%s' "$jrec" | jq -cS .ci)"
 check "no PR: pr is none" '{"state":"none"}' "$(printf '%s\n' "$J" | jq -c 'select(.ticket=="HIMMEL-9002")|.pr')"
 check "no PR: ci is no-pr, not zero runs" '{"state":"no-pr"}' "$(printf '%s\n' "$J" | jq -c 'select(.ticket=="HIMMEL-9002")|.ci')"
@@ -192,7 +193,7 @@ echo '[{"databaseId":9,"status":"completed","conclusion":"success","createdAt":"
 check "missing startedAt falls back to createdAt and says so" '{"basis":"createdAt","completed":1,"runs":1,"secs":45,"state":"found"}' "$(GHFIX="$ROOT/fix3" jrun --print | jq -cS 'select(.ticket=="HIMMEL-9001")|.ci')"
 mkdir -p "$ROOT/fix4"
 echo '[{"number":7,"state":"OPEN","title":"HIMMEL-9001A decoy","headRefName":"b"}]' > "$ROOT/fix4/pr-HIMMEL-9001.json"
-check "a letter after the key is not the key (HIMMEL-9001A)" '{"state":"none"}' "$(GHFIX="$ROOT/fix4" jrun --print | jq -cS 'select(.ticket=="HIMMEL-9001")|.pr')"
+check "a letter after the key is not the key" '{"state":"none"}' "$(GHFIX="$ROOT/fix4" jrun --print | jq -cS --arg t "$T1" 'select(.ticket==$t)|.pr')"
 mkdir -p "$ROOT/fix5"
 echo '[{"number":8,"state":"OPEN","title":"HIMMEL-9001 z","headRefName":"b"}]' > "$ROOT/fix5/pr-HIMMEL-9001.json"
 echo '[{"databaseId":20,"status":"completed","conclusion":"success","createdAt":"2026-01-01T00:00:00Z","startedAt":"2026-01-01T00:01:00Z","updatedAt":"2026-01-01T00:00:50Z"},

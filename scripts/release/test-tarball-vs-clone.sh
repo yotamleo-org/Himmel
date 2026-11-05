@@ -143,7 +143,7 @@ mkdir -p "$tmp/cez1/home/.claude" "$tmp/cez1/prefix" "$tmp/cez2/home/.claude" "$
 echo '{"hooks":{"PreToolUse":[]}}' > "$tmp/cez1/home/.claude/settings.json"
 echo '{"hooks":{"PreToolUse":[]}}' > "$tmp/cez2/home/.claude/settings.json"
 bash "$CONV" --a-home "$tmp/cez1/home" --a-prefix "$tmp/cez1/prefix" --b-home "$tmp/cez2/home" --b-prefix "$tmp/cez2/prefix" >/dev/null 2>&1; rc=$?
-[ "$rc" -eq 3 ] && ok "T7 RED: an empty hook array under a real event key is VACUOUS (rc 3), not 'wired' (HIMMEL-3255)" || bad "T7 empty-hook-array snapshot accepted as wired" "rc=$rc"
+[ "$rc" -eq 3 ] && ok "T7 RED: an empty hook array under a real event key is VACUOUS (rc 3), not 'wired'" || bad "T7 empty-hook-array snapshot accepted as wired" "rc=$rc"
 bash "$CONV" --a-home "$tmp/ca/home" >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 2 ] && ok "T7 missing arguments is a usage error (rc 2)" || bad "T7 usage rc"
 # Identical MALFORMED plugin JSON on both sides (hooks fine) is a broken install, not convergence.
@@ -168,7 +168,7 @@ bash "$CONV" --a-home "$tmp/cs1/home" --a-prefix "$tmp/cs1/prefix" --b-home "$tm
 # genuinely different sibling paths both collapse to "{PREFIX}+old" and false-converge.
 mk_side "$tmp/csp1" "bash $tmp/csp1/prefix+old/g.sh"; mk_side "$tmp/csp2" "bash $tmp/csp2/prefix+old/g.sh"
 bash "$CONV" --a-home "$tmp/csp1/home" --a-prefix "$tmp/csp1/prefix" --b-home "$tmp/csp2/home" --b-prefix "$tmp/csp2/prefix" >/dev/null 2>&1; rc=$?
-[ "$rc" -eq 1 ] && ok "T7 RED: a sibling <prefix>+old path is NOT masked as the prefix (rc 1)" || bad "T7 sibling +old path masked (HIMMEL-3255)" "rc=$rc"
+[ "$rc" -eq 1 ] && ok "T7 RED: a sibling <prefix>+old path is NOT masked as the prefix (rc 1)" || bad "T7 sibling +old path masked" "rc=$rc"
 # The boundary is a DENYLIST of real delimiters, not an allowlist of "safe" chars:
 # '~', '@', ',', '=' and '%' are all legal POSIX filename bytes too, so a sibling
 # suffixed with any of them must diverge the same way.
@@ -176,7 +176,7 @@ for sym in '~' '@' ',' '=' '%'; do
   rm -rf "$tmp/csym1" "$tmp/csym2"
   mk_side "$tmp/csym1" "bash $tmp/csym1/prefix${sym}old/g.sh"; mk_side "$tmp/csym2" "bash $tmp/csym2/prefix${sym}old/g.sh"
   bash "$CONV" --a-home "$tmp/csym1/home" --a-prefix "$tmp/csym1/prefix" --b-home "$tmp/csym2/home" --b-prefix "$tmp/csym2/prefix" >/dev/null 2>&1; rc=$?
-  [ "$rc" -eq 1 ] && ok "T7 RED: a sibling <prefix>${sym}old path is NOT masked as the prefix (rc 1)" || bad "T7 sibling ${sym}old path masked (HIMMEL-3255)" "rc=$rc"
+  [ "$rc" -eq 1 ] && ok "T7 RED: a sibling <prefix>${sym}old path is NOT masked as the prefix (rc 1)" || bad "T7 sibling ${sym}old path masked" "rc=$rc"
 done
 # ':', ';' and whitespace are ALSO legal POSIX filename bytes, and mk_side's
 # command value is itself a quoted JSON string -- a sibling path containing one of these
@@ -186,7 +186,7 @@ for sym in ' ' ':'; do
   rm -rf "$tmp/csq1" "$tmp/csq2"
   mk_side "$tmp/csq1" "bash $tmp/csq1/prefix${sym}old/g.sh"; mk_side "$tmp/csq2" "bash $tmp/csq2/prefix${sym}old/g.sh"
   bash "$CONV" --a-home "$tmp/csq1/home" --a-prefix "$tmp/csq1/prefix" --b-home "$tmp/csq2/home" --b-prefix "$tmp/csq2/prefix" >/dev/null 2>&1; rc=$?
-  [ "$rc" -eq 1 ] && ok "T7 RED: a quoted sibling <prefix>${sym}old path is NOT masked as the prefix (rc 1, HIMMEL-3442)" || bad "T7 quoted sibling ${sym}old path masked (HIMMEL-3442)" "rc=$rc"
+  [ "$rc" -eq 1 ] && ok "T7 RED: a quoted sibling <prefix>${sym}old path is NOT masked as the prefix (rc 1)" || bad "T7 quoted sibling ${sym}old path masked" "rc=$rc"
 done
 # A backslash-escaped quote earlier in the same JSON string (jq's own escaping of a
 # literal '"' inside a value) must not flip the tracked quote state -- an unescaped
@@ -196,17 +196,17 @@ done
 rm -rf "$tmp/cse1" "$tmp/cse2"
 mk_side "$tmp/cse1" 'bash \" '"$tmp"'/cse1/prefix:old/g.sh'; mk_side "$tmp/cse2" 'bash \" '"$tmp"'/cse2/prefix:old/g.sh'
 bash "$CONV" --a-home "$tmp/cse1/home" --a-prefix "$tmp/cse1/prefix" --b-home "$tmp/cse2/home" --b-prefix "$tmp/cse2/prefix" >/dev/null 2>&1; rc=$?
-[ "$rc" -eq 1 ] && ok "T7 RED: a quoted sibling after an escaped quote earlier in the value is NOT masked as the prefix (rc 1, HIMMEL-3442)" || bad "T7 escaped quote corrupted quote-tracking, sibling masked (HIMMEL-3442)" "rc=$rc"
+[ "$rc" -eq 1 ] && ok "T7 RED: a quoted sibling after an escaped quote earlier in the value is NOT masked as the prefix (rc 1)" || bad "T7 escaped quote corrupted quote-tracking, sibling masked" "rc=$rc"
 # Genuine boundaries INSIDE quotes are unaffected: identical content at different
 # prefixes still converges even with the value quoted (the '/' subpath boundary).
 mk_side "$tmp/csq3" "bash $tmp/csq3/prefix/g.sh"; mk_side "$tmp/csq4" "bash $tmp/csq4/prefix/g.sh"
 bash "$CONV" --a-home "$tmp/csq3/home" --a-prefix "$tmp/csq3/prefix" --b-home "$tmp/csq4/home" --b-prefix "$tmp/csq4/prefix" >/dev/null 2>&1; rc=$?
-[ "$rc" -eq 0 ] && ok "T7 a quoted identical command at different prefixes still CONVERGES (HIMMEL-3442)" || bad "T7 quote-awareness broke a genuine convergence" "rc=$rc"
+[ "$rc" -eq 0 ] && ok "T7 a quoted identical command at different prefixes still CONVERGES" || bad "T7 quote-awareness broke a genuine convergence" "rc=$rc"
 # A quoted value that ends EXACTLY at the prefix (closing quote is the real boundary,
 # no trailing subpath) still converges too.
 mk_side "$tmp/csq5" "bash $tmp/csq5/prefix"; mk_side "$tmp/csq6" "bash $tmp/csq6/prefix"
 bash "$CONV" --a-home "$tmp/csq5/home" --a-prefix "$tmp/csq5/prefix" --b-home "$tmp/csq6/home" --b-prefix "$tmp/csq6/prefix" >/dev/null 2>&1; rc=$?
-[ "$rc" -eq 0 ] && ok "T7 a quoted value ending exactly at the prefix still CONVERGES (HIMMEL-3442)" || bad "T7 quote-awareness broke convergence at a closing-quote boundary" "rc=$rc"
+[ "$rc" -eq 0 ] && ok "T7 a quoted value ending exactly at the prefix still CONVERGES" || bad "T7 quote-awareness broke convergence at a closing-quote boundary" "rc=$rc"
 # Git hooks that are SYMLINKS count: present on one side only -> DIVERGED; dangling -> UNREADABLE.
 mk_side "$tmp/cg1" "bash $tmp/cg1/prefix/g.sh"; mk_side "$tmp/cg2" "bash $tmp/cg2/prefix/g.sh"
 for s in cg1 cg2; do git init -q "$tmp/$s/repo" 2>/dev/null; mkdir -p "$tmp/$s/repo/.git/hooks"; done

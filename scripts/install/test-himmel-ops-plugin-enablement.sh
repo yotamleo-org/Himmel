@@ -63,7 +63,7 @@ echo "ok: case a — manifest.json lints clean"
 # ── case b: manifest.json carries an item checking himmel-ops@himmel's LIVE
 # value (not just presence), dispatched to the 'plugins' installer ─────────
 himmelOpsItem=$(jq -c '[.items[] | select(.probe.type == "settings-key" and .probe.key == "enabledPlugins.himmel-ops@himmel")] | .[0] // empty' "$manifest_path")
-[ -n "$himmelOpsItem" ] || fail "case b: manifest.json has no item probing enabledPlugins.himmel-ops@himmel — himmel-ops is not enforced by the installer (HIMMEL-2292 regression)"
+[ -n "$himmelOpsItem" ] || fail "case b: manifest.json has no item probing enabledPlugins.himmel-ops@himmel — himmel-ops is not enforced by the installer (regression)"
 [ "$(echo "$himmelOpsItem" | jq -r '.probe.expect')" = "true" ] \
   || fail "case b: the himmel-ops probe must assert expect:true (a presence-only probe can't catch a false value), got: $himmelOpsItem"
 [ "$(echo "$himmelOpsItem" | jq -r '.install.type')" = "plugins" ] \

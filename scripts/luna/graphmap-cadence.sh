@@ -445,7 +445,7 @@ Flags (arm only, except --dry-run and --luna-only):
                          to resume.
 
 The two claude-api semantic runners above spend the station's own API key, so a
-station must opt in before either one renders the API lane (HIMMEL-9155): set
+station must opt in before either one renders the API lane: set
 graphify.semantic_api_ok to the JSON literal true in ~/.himmel/config.json (an
 operator edit; no env var overrides it). Without it the runners still arm, carry
 no HIMMEL_API_LANE and no claude-api backend, and log a "semantic skipped" line

@@ -93,7 +93,7 @@ CUSTOM_LOW=$("$OVER_BY_DAY" --since 2026-01-01T00:00:00Z --threshold-k 199 2>/de
 check_exit "threshold-k custom: exits 0" "$?" "0"
 check "threshold-k custom: both sessions now over, none under" \
     "$(printf '%s\n' "$CUSTOM_LOW" | grep -v '^coverage:' | awk '{$1=$1; print}' | sort)" "2 2026-08-01 over"
-check "threshold-k custom: coverage triple sits beside the table (HIMMEL-3269)" \
+check "threshold-k custom: coverage triple sits beside the table" \
     "$(printf '%s\n' "$CUSTOM_LOW" | grep '^coverage:')" "coverage: roots=1 discovered=2 parsed=2 skipped=0"
 
 # --- (h) exclusion: chief/relay/other-titled and subagent transcripts are

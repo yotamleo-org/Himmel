@@ -1,7 +1,7 @@
 # scripts/bitbucket — Bitbucket Cloud CLI source
 
 Loads only when working in this subtree. The forge-seam design lives in the
-state-repo handover specs (`…/himmel/specs/design/`, HIMMEL-409); the shell
+state-repo handover specs (`…/himmel/specs/design/`, the central folder for internal specs); the shell
 dispatch seam is `scripts/lib/forge*.sh`.
 
 ## What this is

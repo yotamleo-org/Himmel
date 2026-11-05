@@ -176,7 +176,7 @@ test("?refresh=1 never joins a probe already in flight: it starts its own and th
 }, 20_000);
 
 // A value only the keyring holds, with no token shape: only the literal list masks it, in the report a run serves and in the copy it saves.
-test("a keyring-only value in a report is masked in the body served and in the cache file saved (HIMMEL-8565)", async () => {
+test("a keyring-only value in a report is masked in the body served and in the cache file saved", async () => {
   const kr = "kr-only-" + "q7x2".repeat(2);
   const kdir = mkdtempSync(join(tmpdir(), "cfgui-bg-kr-"));
   dirs.push(kdir);
@@ -193,7 +193,7 @@ test("a keyring-only value in a report is masked in the body served and in the c
 });
 
 // The Setup page's write drops the report and the reused list: the next report is masked with a fresh read, not after the 5 s expire.
-test("a secret the Setup page stores is masked from the next report, not after the reused list expires (HIMMEL-8565)", async () => {
+test("a secret the Setup page stores is masked from the next report, not after the reused list expires", async () => {
   const kr = "kr-only-" + "q7x2".repeat(2);
   const kdir = mkdtempSync(join(tmpdir(), "cfgui-bg-kr-"));
   dirs.push(kdir);

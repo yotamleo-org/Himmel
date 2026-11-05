@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""fetch_url.py - body of scripts/web/fetch-url.sh (HIMMEL-4908).
+"""fetch_url.py - body of scripts/web/fetch-url.sh.
 
 Fetch a pasted link as text. Hosts listed in walled-hosts.conf (x.com,
 instagram.com, reddit.com ... - login-walled, WebFetch gets HTTP 402) go through Scrapling's

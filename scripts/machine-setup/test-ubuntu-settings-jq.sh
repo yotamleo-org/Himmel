@@ -84,9 +84,9 @@ for needle in "$BARE_RTK_RE" "$SWAP_FILTER" "$COUNT_FILTER" "$GUARD_PRESENT_FILT
     fi
 done
 if grep -q 'delegating to himmelctl bootstrap' "$ubuntu_sh"; then
-    assert_pass "ubuntu.sh prints the himmelctl bootstrap delegation NOTICE (HIMMEL-887)"
+    assert_pass "ubuntu.sh prints the himmelctl bootstrap delegation NOTICE"
 else
-    assert_fail "ubuntu.sh missing the himmelctl bootstrap delegation NOTICE (HIMMEL-887)"
+    assert_fail "ubuntu.sh missing the himmelctl bootstrap delegation NOTICE"
 fi
 # The NOTICE alone is not the contract: assert the executable delegation
 # statement too, so removing the exec while keeping the NOTICE fails
@@ -95,7 +95,7 @@ fi
 # machine-setup shims pass (#1130) — allowed, but the exec must still be real.
 # shellcheck disable=SC2016  # single quotes intentional: $HIMMEL_PATH is ubuntu.sh's variable
 if grep -qE -- '^[[:space:]]*(HIMMELCTL_REPO_ROOT="\$HIMMEL_PATH"[[:space:]]+)?exec[[:space:]]+bash[[:space:]]+"\$HIMMEL_PATH/scripts/himmelctl/bootstrap\.sh"([[:space:]]+--default-scope[[:space:]]+[A-Za-z]+)?[[:space:]]*$' "$ubuntu_sh"; then
-    assert_pass "ubuntu.sh execs himmelctl bootstrap.sh (delegation is real, HIMMEL-887)"
+    assert_pass "ubuntu.sh execs himmelctl bootstrap.sh (delegation is real)"
 else
     assert_fail "ubuntu.sh does not exec himmelctl bootstrap.sh (NOTICE without delegation)"
 fi

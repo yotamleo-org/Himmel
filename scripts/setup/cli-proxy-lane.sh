@@ -394,7 +394,7 @@ cmd_register() {
   cfg_unit="${CFG//%/%%}"
   cat > "$UNIT_PATH" <<UNITEOF
 [Unit]
-Description=Himmel claudex lane proxy (CLIProxyAPI, HIMMEL-2778)
+Description=Himmel claudex lane proxy (CLIProxyAPI)
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=600

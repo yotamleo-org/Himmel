@@ -117,7 +117,7 @@ def build_draft(rid, kind, source, cls, auto_verdict, text, note):
 
 def load_lessons(path):
     if not os.path.exists(path):
-        return {'_schema': 'known-findings v1, user-local lessons written by /himmel-report (HIMMEL-7131); '
+        return {'_schema': 'known-findings v1, user-local lessons written by /himmel-report; '
                            'load with KNOWN_FINDINGS_FILE=<this file> known-findings.sh --list', 'classes': []}
     with open(path) as f:
         return json.load(f)

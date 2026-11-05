@@ -153,18 +153,20 @@ else
 fi
 if [ -z "$HALT_LINE" ]; then pass "no halt line when marker absent"; else fail "unexpected halt line" "$HALT_LINE"; fi
 
-expected_9001="HIMMEL-9001=$(model_for_id HIMMEL-9001)"
-expected_9002="HIMMEL-9002=$(model_for_id HIMMEL-9002)"
+id_a=HIMMEL-9001
+id_b=HIMMEL-9002
+expected_9001="$id_a=$(model_for_id "$id_a")"
+expected_9002="$id_b=$(model_for_id "$id_b")"
 case "$DISPATCHED_MODELS" in
     *"$expected_9001"*"$expected_9002"*)
         pass "dispatch loop consumed the plan's model for each dispatched id" ;;
     *)
         fail "expected '$expected_9001' and '$expected_9002' in dispatch order" "got: $DISPATCHED_MODELS" ;;
 esac
-if [ -n "$(model_for_id HIMMEL-9001)" ] && [ -n "$(model_for_id HIMMEL-9002)" ]; then
+if [ -n "$(model_for_id "$id_a")" ] && [ -n "$(model_for_id "$id_b")" ]; then
     pass "fanout-plan.mjs named a non-empty model for both ids"
 else
-    fail "expected a non-empty model for both ids" "9001=$(model_for_id HIMMEL-9001) 9002=$(model_for_id HIMMEL-9002)"
+    fail "expected a non-empty model for both ids" "9001=$(model_for_id "$id_a") 9002=$(model_for_id "$id_b")"
 fi
 
 # Test 3: marker armed MID-LOOP -> per-dispatch poll, not one-time --------

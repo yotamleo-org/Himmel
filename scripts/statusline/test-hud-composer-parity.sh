@@ -117,16 +117,16 @@ econ_row_re='^(session|session~|all|all~|week|month|total) |r:.*w:.*hit:|used:'
 # errors or never matches cannot turn the absence check below into a vacuous pass.
 sample_rows="$(printf 'session  r:2.0M  w:100k  hit:97%%\nall      r:45.0M  w:12.0M  hit:93%%\ntotal    used:60.0M\n')"
 if [ "$(grep -cE "$econ_row_re" <<< "$sample_rows")" = 3 ]; then
-    pass "HIMMEL-9152: positive control -> the matcher flags all three economics rows"
+    pass "positive control -> the matcher flags all three economics rows"
 else
-    fail "HIMMEL-9152: positive control -> the matcher missed a known economics row"
+    fail "positive control -> the matcher missed a known economics row"
 fi
 out="$(run_composer)"
 econ_hits="$(grep -E "$econ_row_re" <<< "$out")"; econ_rc=$?
 if [ "$econ_rc" -eq 1 ]; then
-    pass "HIMMEL-9152: no session / all-sessions / total-used row in the render"
+    pass "no session / all-sessions / total-used row in the render"
 else
-    fail "HIMMEL-9152: grep rc=$econ_rc (0 = a row printed, 2 = matcher error): $econ_hits"
+    fail "grep rc=$econ_rc (0 = a row printed, 2 = matcher error): $econ_hits"
 fi
 
 # ── Case 3c: whole-render negative — no money figure, no `cache:` field ──────

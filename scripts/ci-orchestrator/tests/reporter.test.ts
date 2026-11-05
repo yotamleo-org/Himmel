@@ -79,7 +79,7 @@ describe("classifyGhError", () => {
   });
 });
 
-describe("reporter dead-letter + backoff (HIMMEL-714)", () => {
+describe("reporter dead-letter + backoff", () => {
   test("a permanent (4xx) error dead-letters immediately and never retries gh", async () => {
     const gh = vi.fn<GhStatusFn>(async () => {
       throw Object.assign(new Error("not found"), { status: 404 });

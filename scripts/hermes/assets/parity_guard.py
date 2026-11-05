@@ -24,14 +24,14 @@ git/gh/rm shell blocks. What it enforces is exactly what the senior tier
   WRITE-FENCE     — external-write shapes (git push, remote-URL rewrite, gh
                     PR-mutations, network CLIs) are refused unless the active
                     engine is an affirmed TRUSTED main tier — fail-closed on an
-                    untrusted (z.ai/GLM) or unknown engine (HIMMEL-695).
+                    untrusted (z.ai/GLM) or unknown engine.
 
 Paths are resolved from the environment so this ships to any machine:
 HERMES_HOME (else %LOCALAPPDATA%\\hermes, else ~/.local/share/hermes) and
 ~/.claude. Wire protocol: JSON on stdin; '{}' = allow,
 '{"decision":"block","reason":...}' = block. Fail-CLOSED on any internal error.
 
-Deny-escalation (HIMMEL-2025): a block() verdict here is NOT terminal to
+Deny-escalation: a block() verdict here is NOT terminal to
 hermes — tool_executor.py feeds it back to the model as an ordinary tool
 result and the agent may retry the same/an adjacent action indefinitely. When
 PARITY_GUARD_STATE_DIR is set (scripts/hermes/invoke.sh creates it per-run and
@@ -124,7 +124,7 @@ def _transcript_tree(p: str) -> bool:
     or anything below it, except one slug's `memory/` subtree (block-read-secrets
     is_transcript_tree parity). A `..` anywhere in such a path denies."""
     p = p.rstrip("/")
-    # ponytail: roots above .claude/projects (home, filesystem root) stay allowed, the same limit as the Claude hook; residual coverage, HIMMEL-5940
+    # ponytail: roots above .claude/projects (home, filesystem root) stay allowed, the same limit as the Claude hook; residual coverage: home forms, symlinks, globs and shell builtins
     m = re.search(r"(?:^|/)\.claude/projects(?:/(.*))?$", p)
     if not m:
         return False
@@ -226,8 +226,8 @@ def _with_val(*flags: str) -> tuple:
 # one more flag (+value) after whitespace, and an exit ends the wrapper in
 # command position (a bare one is just the whitespace).
 _WRAPPERS = (
-    (("sudo",), _FLG_VALS, ()),                              # sudo + flags, each with an optional value token (CR r6/r7; quoted HIMMEL-4150)
-    (("env",), _FLG_VALS + _ASSIGNS, ()),                    # env + flags(+value)/assignments (CR r6/r7; quoted HIMMEL-4150)
+    (("sudo",), _FLG_VALS, ()),                              # sudo + flags, each with an optional value token (CR r6/r7; a quoted flag value with a space must not hide the verb)
+    (("env",), _FLG_VALS + _ASSIGNS, ()),                    # env + flags(+value)/assignments (CR r6/r7; a quoted flag value with a space must not hide the verb)
     (("exec",), _with_val("-a") + _FLGS, ()),
     (("timeout",), _FLG_VALS, _VALS),
     (("nohup", r"nohup\s+--"), (), ()),
@@ -367,9 +367,9 @@ _RMPOS_TEXT = re.compile(r"\s*(?:echo|printf|:)(?:\s[^\];&|<>(){}`$\\\"*?\[!#~']
 # Catastrophic / shared-machine / irreversible classes only.
 # Routine git, gh, mv, cp, and non-recursive rm are intentionally NOT here.
 TERMINAL_DESTRUCTIVE = re.compile(
-    r"\brm\b[^|;&\n]*(?:\s|\$\{ifs\})[\"']?-\w*r"   # recursive rm (rm -r/-rf/-Rf); tolerates a quoted flag + ${IFS} separator (HIMMEL-851 U2/U3)
+    r"\brm\b[^|;&\n]*(?:\s|\$\{ifs\})[\"']?-\w*r"   # recursive rm (rm -r/-rf/-Rf); tolerates a quoted flag + ${IFS} separator
     + r"|\brm\b[^|;&\n]*--recursive"
-    + r"|\b(del|erase|rd|rmdir)\b[^|;&\n]*/s(?:[^A-Za-z0-9_.-]|$)"  # recursive Windows delete; /s bound to the switch, not a path prefix like /scripts (HIMMEL-851 U1)
+    + r"|\b(del|erase|rd|rmdir)\b[^|;&\n]*/s(?:[^A-Za-z0-9_.-]|$)"  # recursive del/rd form; /s bound to the switch, not a path prefix like /scripts
     + r"|\bcipher\s+/w"
     # verb split: schtasks /query is read-only (cadence diagnostic),
     # so only the mutating verbs are refused. Mirrors the .sh hook schtasks line.
@@ -422,7 +422,7 @@ TERMINAL_DESTRUCTIVE = re.compile(
 
 
 def _find_delete(raw: str) -> bool:
-    """HIMMEL-4190, twin of the .sh rm scans (HIMMEL-4255: find/fd/xargs
+    """Twin of the .sh rm scans (find/fd/xargs
     running rm too): newlines fold to `;`, a
     backslash-newline pair is dropped on a second copy, and each copy is read
     with its quotes and backslashes kept and dropped, so `"find" d '-delete'`
@@ -543,7 +543,7 @@ def block(reason: str) -> None:
 
 
 def _reset_deny_streak() -> None:
-    """An ALLOW breaks any in-progress identical-deny streak (HIMMEL-2025 CR
+    """An ALLOW breaks any in-progress identical-deny streak (CR
     round 1, codex-2): the escalation counts denies IN A ROW, not total
     occurrences scattered across the run — an intervening successful call
     means the run is making progress, not spinning. Best-effort, matching
@@ -991,7 +991,7 @@ def _usable_dir(cand) -> str:
 
 
 def _agent_cwd(payload: dict, args: dict) -> str:
-    """The dir the AGENT works in, or "" when undeterminable (HIMMEL-2008).
+    """The dir the AGENT works in, or "" when undeterminable.
 
     Ladder, mirroring hermes' own tools/file_tools.py `_resolve_base_dir`:
       1. an explicit per-call `workdir` / `cwd` tool arg;
@@ -1140,7 +1140,7 @@ def _commit_dir(raw_cmd: str, base_cwd: str, gc) -> str:
 
 def _commit_dirs(raw_cmd: str, base_cwd: str):
     """The dir EVERY terminal `git commit` in `raw_cmd` runs in — one per
-    occurrence, not just the first (HIMMEL-2008). `cd <worker> && git commit &&
+    occurrence, not just the first. `cd <worker> && git commit &&
     cd <main> && git commit` ran its SECOND commit on main entirely unchecked,
     because only the text before the FIRST commit was ever walked. Each match
     re-walks from the start, so every commit is judged at its own point in the
@@ -1246,7 +1246,7 @@ def _abs(p: str) -> str:
 def _salus_marked(ap: str) -> bool:
     """True if `ap` (an absolute path) or any ancestor directory holds a
     `.salus` marker — a path anywhere inside a PHI vault is PHI. Also accepts
-    `.salus-profile` (HIMMEL-2173: template machinery dropped by the salus
+    `.salus-profile` (template machinery dropped by the salus
     profile installer) — a defense for deployments that predate the installer
     shipping the real `.salus` guard marker alongside it."""
     d = ap if os.path.isdir(ap) else os.path.dirname(ap)
@@ -1295,7 +1295,7 @@ def phi_egress_reason(path: str):
     if _salus_marked(ap):
         return (f"PHI-marked path refused: {path} is inside a .salus vault. "
                 "Sensitive/PHI material must never reach a cloud engine "
-                "(sensitive-never-cloud, HIMMEL-695).")
+                "(sensitive-never-cloud).")
     for name in PHI_ROOT_LISTS:
         rc = _under_any_root(ap, os.path.join(PHI_CONFIG_DIR, name))
         if rc == "unreadable":
@@ -1303,7 +1303,7 @@ def phi_egress_reason(path: str):
                     "but is not a readable file — failing closed (no cloud egress).")
         if rc == "hit":
             return (f"PHI-marked path refused: {path} is under a {name} root. "
-                    "Sensitive-never-cloud (HIMMEL-695).")
+                    "Sensitive-never-cloud.")
     return None
 
 
@@ -1315,7 +1315,7 @@ def terminal_phi_egress_reason(cmd_norm: str):
     Fail-closed on an unreadable list file."""
     if ".salus" in cmd_norm:
         return ("Shell command references a .salus (PHI) vault — refused to "
-                "prevent cloud egress (HIMMEL-695).")
+                "prevent cloud egress.")
     for name in PHI_ROOT_LISTS:
         listfile = os.path.join(PHI_CONFIG_DIR, name)
         if not os.path.exists(listfile):
@@ -1331,7 +1331,7 @@ def terminal_phi_egress_reason(cmd_norm: str):
             root = root.rstrip("\r").rstrip("/\\").strip()
             if root and norm(root) in cmd_norm:
                 return (f"Shell command references a {name} root — refused to "
-                        "prevent cloud egress (HIMMEL-695).")
+                        "prevent cloud egress.")
     return None
 
 
@@ -1414,7 +1414,7 @@ _ANSI_HEX = {"x": 2, "u": 4, "U": 8}
 
 
 def _ansi_c_decode(s: str) -> str:
-    """Flat decode (HIMMEL-844 round 10): ONE position-free pass over the whole command, no
+    """Flat decode: ONE position-free pass over the whole command, no
     quote state. Drops every dollar-quote opener and decodes every backslash escape wherever it
     sits, so decoys and split segments cannot hide `git` or the key. A NUL escape (\\0 \\x00 \\c@
     \\c`) truncates a segment in bash, so the pass runs twice: NUL kept as `#`, and NUL dropping
@@ -1501,11 +1501,11 @@ def _ansi_c_one(s: str, i: int):
 
 
 def _bash_words(s: str, regions: int = 0) -> str:
-    """HIMMEL-4032, the quote-aware fourth stream: bash decodes escapes ONLY inside a
+    """The quote-aware fourth stream: bash decodes escapes ONLY inside a
     dollar-quote body; outside one a backslash quotes the next char (`ns\\teadOf` is
     `nsteadOf`, not a TAB) and a backslash-newline is deleted. A NUL ends the dollar-quote
     body. Added beside the flat streams, never instead of them: deny-only.
-    HIMMEL-4225: `regions=1` (the fifth stream) also reads a # comment at word start and
+    `regions=1` (the fifth stream) also reads a # comment at word start and
     a heredoc body as text that opens no quote, kept verbatim, so a stray apostrophe there
     cannot desync the rest. A delimiter it cannot classify ($-expansion, backtick, escape in
     a double or dollar quote, open quote) reads no body; no heredoc inside (( )).
@@ -1689,7 +1689,7 @@ def terminal_external_write_reason(cmd_norm: str, raw_cmd: str = ""):
     texts = (cmd_norm, norm(_join_continuations(raw_cmd or cmd_norm)))
     if any(EXT_GIT_PUSH.search(t) for t in texts):
         return ("git push is refused on an untrusted/unknown engine — commit "
-                "locally; the trusted main tier / operator pushes (HIMMEL-695).")
+                "locally; the trusted main tier / operator pushes.")
     # decode every ANSI-C dollar-quote segment (bash's own escape set)
     # from the RAW command (norm() already mangled backslashes), then delete every quote and
     # backslash and lowercase: the words git sees. Blunt rule: `git` AND `insteadof` denies.
@@ -1698,14 +1698,14 @@ def terminal_external_write_reason(cmd_norm: str, raw_cmd: str = ""):
     if (any(EXT_GIT_URL.search(t) for t in texts) or EXT_GIT_URL.search(dq_lc)
             or ("git" in dq_lc and "insteadof" in dq_lc)):
         return ("Rewriting a git remote / push URL is refused on an untrusted/"
-                "unknown engine (HIMMEL-695).")
+                "unknown engine.")
     if any(len(EXT_GH_ANY.findall(t)) > len(EXT_GH_ALLOW.findall(t)) for t in texts):
         return ("gh is limited on an untrusted/unknown engine: issue ops + "
                 "pr/run reads only; PR mutations belong to the trusted main "
-                "tier (HIMMEL-695).")
+                "tier.")
     if any(EXT_NET.search(t) for t in texts):
         return ("Network CLIs are refused on an untrusted/unknown engine — "
-                "chores are repo-local (HIMMEL-695).")
+                "chores are repo-local.")
     return None
 
 
@@ -1737,7 +1737,7 @@ def qmd_scope_reason(tool: str, args: dict):
             return ("qmd query with no 'collections' filter is unscoped "
                     "(falls back to the store's default collections, which "
                     "may include salus) — pass collections=[\"himmel\"] "
-                    "(HIMMEL-1239).")
+                    ".")
         # isinstance-guard each entry — a non-string entry (e.g. a dict) makes
         # `c not in <set-of-str>` raise TypeError, which would otherwise reach
         # the outer fail-closed catch-all (main()'s try/except) instead of
@@ -1746,30 +1746,29 @@ def qmd_scope_reason(tool: str, args: dict):
                if not isinstance(c, str) or c not in QMD_ALLOWED_COLLECTIONS]
         if bad:
             return (f"qmd query is scoped to the 'himmel' collection only "
-                     f"(v1 allow-list, HIMMEL-1239); saw: {bad}.")
+                     f"(v1 allow-list); saw: {bad}.")
         return None
     if tool == "mcp__plugin_qmd_qmd__get":
         file_arg = args.get("file")
         if not isinstance(file_arg, str) or not QMD_HIMMEL_SCOPED.match(file_arg):
             return ("qmd get requires a fully-qualified qmd://himmel/... path "
-                     "(v1 allow-list, HIMMEL-1239) — bare paths and #docids "
+                     "(v1 allow-list) — bare paths and #docids "
                      "are cross-collection-ambiguous and denied fail-closed.")
         return None
     if tool == "mcp__plugin_qmd_qmd__multi_get":
         pattern = args.get("pattern")
         if not isinstance(pattern, str) or not pattern:
             return ("qmd multi_get requires a qmd://himmel/... pattern "
-                     "(HIMMEL-1239).")
+                     ".")
         segs = [s.strip() for s in pattern.split(",")]
         if not all(QMD_HIMMEL_SCOPED.match(s) for s in segs):
             return ("qmd multi_get requires every segment to be a fully-"
-                     "qualified qmd://himmel/... path/glob (v1 allow-list, "
-                     "HIMMEL-1239).")
+                     "qualified qmd://himmel/... path/glob (v1 allow-list).")
         return None
     # status (no scoping input) and any other/future qmd tool: scope cannot
     # be positively determined from the tool-call JSON -> deny fail-closed.
     return (f"qmd tool '{tool}' has no collection-scoping input this guard "
-            f"can verify — denied fail-closed (HIMMEL-1239).")
+            f"can verify — denied fail-closed.")
 
 
 # --- Tool classification ---------------------------------------
@@ -1928,7 +1927,7 @@ def _skill_check(payload: dict, args: dict) -> None:
         if not isinstance(op, dict) or op.get("action") not in SKILL_ACTIONS:
             block(f"skill_manage: action {op.get('action') if isinstance(op, dict) else op!r} "
                   f"is not one of {', '.join(SKILL_ACTIONS)} — refused fail-closed "
-                  "(HIMMEL-2637).")
+                  ".")
         fp = op.get("file_path")
         if isinstance(fp, str) and fp:
             if not os.path.isabs(fp) and not re.match(r"^[A-Za-z]:[\\/]", fp):
@@ -1977,7 +1976,7 @@ def _check_write_targets(payload: dict, args: dict, keys=None) -> None:
 def _command_checks(raw_cmd: str, cmd: str, payload: dict, args: dict) -> None:
     """The terminal deny-guards on one command text — block() on a hit, return
     when clean. `cmd` is norm()-ed `raw_cmd`. Shared by the `terminal` tool and by
-    every tool that carries command text (CODE_TOOL_ARGS, HIMMEL-2637)."""
+    every tool that carries command text (CODE_TOOL_ARGS)."""
     if TERMINAL_FORBIDDEN_PATHS.search(_expand_home(cmd)):
         block("Shell access to secret paths, the guard hook, or Claude "
               "Code's home is forbidden — use the file tools for those.")
@@ -2097,7 +2096,7 @@ def main() -> None:
 
     if classify_tool(tool) is None:
         block(f"tool '{tool}' is not classified by this guard — refused "
-              "fail-closed (HIMMEL-2637). A tool a hermes upgrade added needs "
+              "fail-closed. A tool a hermes upgrade added needs "
               "a class in parity_guard.py; ask the operator.")
 
     if tool in WRITE_TOOLS or tool in DELETE_TOOLS:

@@ -73,7 +73,7 @@ row_1() {
     [ -f "$p/$f" ] || missing="$missing $f"
   done
   if [ -n "$missing" ]; then
-    _find 1 "$nm" "not shipped by adopt.sh (absent from PORTABLE_FILES:$missing); HIMMEL-1570 closed with no code; the adopter route is the himmel-ops:pr-check plugin skill, which needs claude installed and logged in, absent on the credential-free guest"
+    _find 1 "$nm" "not shipped by adopt.sh (absent from PORTABLE_FILES:$missing); no code ships it; the adopter route is the himmel-ops:pr-check plugin skill, which needs claude installed and logged in, absent on the credential-free guest"
     return 0
   fi
   _pass 1 "$nm" "command and both gate scripts are in the project (presence only)"

@@ -491,7 +491,7 @@ rm -f "$CLAUDE_GLM_CONFIG_DIR/phi-roots"
 # [ -e ] reads false on EACCES, so the old existence test turned a permission
 # fault into a miss (fail-OPEN). Skipped where chmod cannot drop traversal
 # (root); dirs are restored before the EXIT trap rm -rf.
-echo "TEST: unreachable PHI list refuses the vault (rc=2), absent list is a miss (HIMMEL-8923)"
+echo "TEST: unreachable PHI list refuses the vault (rc=2), absent list is a miss"
 # The vault is the real $VAULT (sentinels and containment hold), and every list
 # below names it, so a miss would let the run through: rc 0 and a runner worker.
 LOCK_SELF="$TMP_ROOT/lock-self"; mkdir -p "$LOCK_SELF/cfg"
@@ -662,7 +662,7 @@ fi
 # pwd -P do NOT normalize case here, so two case spellings of one dir are one
 # inode, never two different dirs).
 # ============================================================================
-echo "TEST: HOME guard refuses HOME by filesystem identity (HIMMEL-1670)"
+echo "TEST: HOME guard refuses HOME by filesystem identity"
 DV_HOME="$(bash -c "$DV_SRC"$'\n'"resolve_user_home")"
 
 # 16a (case 1): HOME itself -> REFUSED.

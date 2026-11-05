@@ -85,7 +85,7 @@ function held(path: string, mine: string): Lock {
     },
     // Left in place while the action's group still exists: it stays live
     // through that group, and goes stale once the group is gone.
-    // ponytail: a group that survives runChild's bounded wait (a D-state process) keeps the lock until this server exits, upgrade path is a deferred re-release, HIMMEL-4354
+    // ponytail: a group that survives runChild's bounded wait (a D-state process) keeps the lock until this server exits, upgrade path is a deferred re-release
     release() {
       if (done) return;
       done = true;
@@ -105,7 +105,7 @@ const REAP_WAIT_MS = 5000;
 // onSpawn gets the pgid (= the leader's pid) so the caller can record it in the lock. If onSpawn
 // throws, the group is killed and reaped and the promise rejects: the child
 // never runs unsupervised.
-// ponytail: a server crash between spawn and onSpawn leaves that one orphan unrecorded (the window is spawn-to-onSpawn only), upgrade path is spawning through a wrapper that writes its own pgid first, HIMMEL-4354
+// ponytail: a server crash between spawn and onSpawn leaves that one orphan unrecorded (the window is spawn-to-onSpawn only), upgrade path is spawning through a wrapper that writes its own pgid first
 export function runChild(argv: string[], o: { cwd: string; env: Record<string, string | undefined>; timeoutMs: number; onSpawn?: (pgid: number) => void }): Promise<ChildResult> {
   return new Promise((done, fail) => {
     const c = spawn(argv[0], argv.slice(1), { cwd: o.cwd, env: o.env as NodeJS.ProcessEnv, detached: true, shell: false, stdio: ["ignore", "pipe", "pipe"] });

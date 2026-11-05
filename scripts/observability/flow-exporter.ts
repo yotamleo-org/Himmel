@@ -430,7 +430,7 @@ function buildFlowMetrics(
     stats.flatMap((s) => s.lastSuccessTimestamp === undefined ? [] : [sample("flow_run_last_success_timestamp", { flow: s.flow }, s.lastSuccessTimestamp)]));
 
   const outcomes: Array<"complete" | "truncated" | "error" | "stalled" | "abandoned"> = ["complete", "truncated", "error", "stalled", "abandoned"];
-  addFamily(lines, "flow_run_outcome_total", "Runs by outcome in the sliding 14d ledger window; exporter restarts and window slides can reset this counter. `stalled` = an unpaired start past its deadline whose process is alive or unprobeable; `abandoned` = the same, but the pid was confirmed dead on this host (HIMMEL-2211).", "counter",
+  addFamily(lines, "flow_run_outcome_total", "Runs by outcome in the sliding 14d ledger window; exporter restarts and window slides can reset this counter. `stalled` = an unpaired start past its deadline whose process is alive or unprobeable; `abandoned` = the same, but the pid was confirmed dead on this host.", "counter",
     stats.flatMap((s) => s.observed ? outcomes.map((outcome) => sample("flow_run_outcome_total", { flow: s.flow, outcome }, s.outcomes[outcome])) : []));
 
   // Event-time / currently-true families the truncated, error and
@@ -783,7 +783,7 @@ function buildSessionMetrics(path: string, config: ObservabilityConfig, nowMs: n
   }
   const hosts = [...byHost.keys()].sort((a, b) => a.localeCompare(b));
 
-  addFamily(lines, "session_active_total", "Claude Code sessions with an unpaired start row whose transcript is still advancing (HIMMEL-1052).", "gauge",
+  addFamily(lines, "session_active_total", "Claude Code sessions with an unpaired start row whose transcript is still advancing.", "gauge",
     hosts.map((host) => sample("session_active_total", { host }, byHost.get(host)!.active)));
   addFamily(lines, "session_dead_total", "Sessions with an unpaired start row whose transcript went stale — crashed, killed, or wedged. SessionEnd never fires for these, so a purely start/end-paired ledger cannot see them.", "gauge",
     hosts.map((host) => sample("session_dead_total", { host }, byHost.get(host)!.dead)));
@@ -815,7 +815,7 @@ function buildSessionMetrics(path: string, config: ObservabilityConfig, nowMs: n
     const active = !fold.subagentEndIds.has(sub.subagent_id) && parent?.status === "running";
     activeByPair.set(key, current + (active ? 1 : 0));
   }
-  addFamily(lines, "subagent_active_total", "Task-tool subagents with an unpaired start row under a still-running parent session (HIMMEL-1052).", "gauge",
+  addFamily(lines, "subagent_active_total", "Task-tool subagents with an unpaired start row under a still-running parent session.", "gauge",
     [...activeByPair.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, count]) => {
@@ -1193,7 +1193,7 @@ export function hookChainMetrics(paths: string[], nowMs: number): { lines: strin
 
   const lines: string[] = [];
   addFamily(lines, "hook_chain_budget_events_recent",
-    "Hook-chain members that blew their time budget in the last 10 minutes, by action (`skip` = the guard silently did not evaluate the tool call, `deny` = the tool call was refused fail-closed). Folded from the skip log scripts/hooks/run-hook-with-bash.js writes. A GAUGE over a sliding window, deliberately NOT a window-folded counter: a folded counter reads its own window slide as a reset, which is how increase() invents phantom spikes (HIMMEL-2478). Both actions are always emitted, 0 included, so a quiet box renders Normal instead of Grafana NoData.",
+    "Hook-chain members that blew their time budget in the last 10 minutes, by action (`skip` = the guard silently did not evaluate the tool call, `deny` = the tool call was refused fail-closed). Folded from the skip log scripts/hooks/run-hook-with-bash.js writes. A GAUGE over a sliding window, deliberately NOT a window-folded counter: a folded counter reads its own window slide as a reset, which is how increase() invents phantom spikes. Both actions are always emitted, 0 included, so a quiet box renders Normal instead of Grafana NoData.",
     "gauge",
     HOOK_CHAIN_ACTIONS.map((action) => sample("hook_chain_budget_events_recent", { action }, counts.get(action)!)));
   return { lines, comments, unreadableCount: unreadableLogs.length };
@@ -1604,7 +1604,7 @@ async function shippedGraphAgeMetrics(
 
   const lines: string[] = [];
   addFamily(lines, "graphify_shipped_graph_age_seconds",
-    "Seconds since the last commit touching the tracked graphify-out/graph.json (HIMMEL-1129) — the SHIPPED graph's real age, from git commit time, NOT file mtime (a pulled checkout's mtime is checkout time, always reading FRESH regardless of content age).",
+    "Seconds since the last commit touching the tracked graphify-out/graph.json — the SHIPPED graph's real age, from git commit time, NOT file mtime (a pulled checkout's mtime is checkout time, always reading FRESH regardless of content age).",
     "gauge", ageSamples);
   addFamily(lines, "graphify_shipped_graph_commit_timestamp",
     "Epoch seconds of the last commit touching the tracked graphify-out/graph.json.",

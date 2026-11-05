@@ -120,7 +120,7 @@ assert_eq "uninstall rc" 0 "$RC"
 if [ -e "$HOME_DIR/$UNIT_REL" ]; then fail "unit removed"; else pass "unit removed"; fi
 assert_contains "disable" "systemctl --user disable --now himmel-flow-exporter.service" "$(cat "$LOG")"
 
-echo "case 7a: user Bun is preferred in the generated systemd unit (HIMMEL-5383)"
+echo "case 7a: user Bun is preferred in the generated systemd unit"
 setup Linux 200 200 1
 mkdir -p "$HOME_DIR/.bun/bin"
 cp "$BIN/bun" "$HOME_DIR/.bun/bin/bun"
@@ -129,7 +129,7 @@ assert_eq "preferred Bun install rc" 0 "$RC"
 unit="$(cat "$HOME_DIR/$UNIT_REL" 2>/dev/null)"
 assert_contains "unit uses user Bun rather than PATH Bun" "ExecStart=\"$HOME_DIR/.bun/bin/bun\" run " "$unit"
 
-echo "case 7b: a % in the root or bun path is escaped as %% in the unit (HIMMEL-4342)"
+echo "case 7b: a % in the root or bun path is escaped as %% in the unit"
 setup Linux 200 200 1
 PCT_ROOT="$TMP_ROOT/r%t"
 mkdir -p "$PCT_ROOT/scripts/observability" "$PCT_ROOT/b%n"

@@ -12,15 +12,15 @@ Adopt `srt` for claudex workers first (weak-classifier lane, where a physical li
 matters most). The mechanism works on the guest; the changes below are what the
 build tickets carry.
 
-| Change | Why | Ticket |
-|---|---|---|
-| Launcher wraps the worker in `srt claude` with rendered profile settings and asserts the settings loaded | srt starts on built-in defaults when no settings file exists (row F4) | HIMMEL-5397 |
-| AppArmor `userns` profile for `/usr/bin/bwrap` on Ubuntu 24.04+; pin srt, bump VM-first | bwrap fails (`loopback: Failed RTM_NEWADDR`) until the profile is loaded | HIMMEL-5397 |
-| Research profile is a curated domain list | srt rejects `*` and `*.com` as overly broad | HIMMEL-5397 |
-| Push wrapper plus broker is the only push path; credential never in the box | a force push to an origin inside a writable root passes (row B5) | HIMMEL-5398 |
-| Broker answers into a launcher-owned spool, not the worker-writable one | symlink checks on `<id>.out`/`.rc` do not stop a worker swapping the `req` directory between check and write (known POC limit) | HIMMEL-5398 |
-| Chief-approved domain requests, default deny, logged | blocked domain returns a 403 and the box cannot widen itself (rows B12-B14) | HIMMEL-5399 |
-| Real-model step (open POC item, below) | not run, needs an operator decision | HIMMEL-5400 |
+| Change | Why |
+|---|---|
+| Launcher wraps the worker in `srt claude` with rendered profile settings and asserts the settings loaded | srt starts on built-in defaults when no settings file exists (row F4) |
+| AppArmor `userns` profile for `/usr/bin/bwrap` on Ubuntu 24.04+; pin srt, bump VM-first | bwrap fails (`loopback: Failed RTM_NEWADDR`) until the profile is loaded |
+| Research profile is a curated domain list | srt rejects `*` and `*.com` as overly broad |
+| Push wrapper plus broker is the only push path; credential never in the box | a force push to an origin inside a writable root passes (row B5) |
+| Broker answers into a launcher-owned spool, not the worker-writable one | symlink checks on `<id>.out`/`.rc` do not stop a worker swapping the `req` directory between check and write (known POC limit) |
+| Chief-approved domain requests, default deny, logged | blocked domain returns a 403 and the box cannot widen itself (rows B12-B14) |
+| Real-model step (open POC item, below) | not run, needs an operator decision |
 
 ## Open POC item: the real-model claudex step
 
@@ -35,7 +35,7 @@ host gateway reach from the guest, so every row below uses `srt` directly or
    snapshot the VM with it (secret scan before snapshot).
 4. Then run the claudex launcher under `srt claude` and add the rows this POC
    did not cover: a Write-tool write outside the roots, an MCP server touching
-   `~/.ssh` (the HIMMEL-5269 gap), hooks inside the box, and worker plumbing
+   `~/.ssh` (the MCP filesystem gap), hooks inside the box, and worker plumbing
    (SendMessage, queue lock, `~/.himmel`, loopback gateway).
 
 ## Setup on the guest (Ubuntu 24.04)

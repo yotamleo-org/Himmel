@@ -577,7 +577,7 @@ run_test "(23) HIMMEL-3846: an unnamed caller is stamped unknown:pid; a caller n
   [[ "$(jq -r ".produced_by" "$CLAUDE_USAGE_CACHE")" =~ ^a_b___x__c:[0-9]+$ ]] || exit 1;
 '
 
-run_test "(24) HIMMEL-3846: a real account switch STILL reads as a mismatch, an unchanged account never does (HIMMEL-1712 not weakened)" '
+run_test "(24) a real account switch STILL reads as a mismatch, an unchanged account never does (the account-identity guard is not weakened)" '
   W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-24.XXXXXX"); export HOME="$W/home"; mkdir -p "$HOME";
   printf "%s" "{\"oauthAccount\":{\"accountUuid\":\"uuid-account-A\"}}" > "$HOME/.claude.json";
   export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";

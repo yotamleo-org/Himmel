@@ -1,5 +1,5 @@
 {
-  "_comment": "Canonical pluginSet=full enable table (HIMMEL-816, HIMMEL-755 A4). scripts/himmelctl/bin.js loads this file at runtime; every install is --scope user. scripts/machine-setup/install-plugins.sh remains a separate template-driven orchestrator over docs/setup/settings-template.json because that broader enabledPlugins map serves a different purpose.",
+  "_comment": "Canonical pluginSet=full enable table. scripts/himmelctl/bin.js loads this file at runtime; every install is --scope user. scripts/machine-setup/install-plugins.sh remains a separate template-driven orchestrator over docs/setup/settings-template.json because that broader enabledPlugins map serves a different purpose.",
   "plugins": [
     { "spec": "github@claude-plugins-official" },
     { "spec": "feature-dev@claude-plugins-official" },

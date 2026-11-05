@@ -150,7 +150,7 @@ emit_matrix() {
 _is_complete() {
     local run_id="$1"
     local f="$RUNS_DIR/$run_id.json"
-    [ -f "$f" ] || return 1  # fail-open-ok: known candidate (HIMMEL-1776 ask-4 list) — an unreadable manifest reads as complete; bench-reporting only, not a guard
+    [ -f "$f" ] || return 1  # fail-open-ok: known candidate (ask-4 list) — an unreadable manifest reads as complete; bench-reporting only, not a guard
     grep -q '"exit_code": null' "$f" && return 1
     return 0
 }

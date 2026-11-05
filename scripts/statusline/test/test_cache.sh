@@ -132,7 +132,7 @@ assert_eq "usd 2.5e9"   "$(format_usd 2500000000)" "2.5B"
 get_model_savings_rate "claude-sonnet-4-6"
 assert_eq "sonnet read_savings_rate"   "$read_savings_rate"   "0.00000270"
 assert_eq "sonnet write_overhead_rate" "$write_overhead_rate" "0.00000300"
-assert_eq "sonnet model_rate_known (HIMMEL-1316)" "$model_rate_known" "1"
+assert_eq "sonnet model_rate_known" "$model_rate_known" "1"
 
 get_model_savings_rate "claude-opus-4-7"
 assert_eq "opus read_savings_rate"     "$read_savings_rate"   "0.00000450"
@@ -161,7 +161,7 @@ assert_eq "gpt5 write_overhead_rate"   "$write_overhead_rate" "0.00000000"
 
 get_model_savings_rate "unknown-model"
 assert_eq "fallback read_savings_rate" "$read_savings_rate"   "0.00000270"
-assert_eq "fallback model_rate_known flags the guess (HIMMEL-1316)" "$model_rate_known" "0"
+assert_eq "fallback model_rate_known flags the guess" "$model_rate_known" "0"
 
 # ── compute_cache_ttl tests ────────────────────────────────
 NOW=$(date +%s)

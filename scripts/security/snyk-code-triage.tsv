@@ -1,7 +1,7 @@
-# Snyk Code High findings that have been looked at (HIMMEL-9245, HIMMEL-7167). Read by snyk-scan.sh.
+# Snyk Code High findings that have been looked at. Read by snyk-scan.sh.
 # Columns, tab separated: SARIF fingerprints.identity, verdict (fixed, hardened or false-positive), reason.
 # The reason names what the flagged line actually holds and why it cannot be exploited. Snyk Code reads no .snyk
-# ignore block (HIMMEL-7180), so this list is the record; the raw SARIF still reports every finding.
+# ignore block, so this list is the record; the raw SARIF still reports every finding.
 # File:line in a reason is the line at the scan of 523329f23 (2026-11-02); the id is the stable key.
 00a835d5-23ed-4995-baa7-81610939803f	false-positive	docs/adoption-trail-levels.html:860 is var KEY = 'himmel-trail-level', the name of a localStorage key that holds the last opened level; no secret
 e49a250c-45cb-4db2-9ed2-5a1ebb445856	false-positive	scripts/config-ui/login.ts:15 is const KEY = "HIMMEL_UI_LOGIN", the name of the keyring item; the password hash is read from the keyring at run time

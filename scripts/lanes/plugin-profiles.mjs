@@ -59,7 +59,7 @@ const GATE_SUITE_RE = /^Bash\((?:SUITE_LOCK_WAIT=60 )?bash scripts\/quiet-run\.s
 // retired because workers type the ABSOLUTE spelling (the anchor discipline),
 // which this anchor literal matches — the relative form is dead weight, not a
 // spelling any worker still needs. This is the only admitted form.
-// ponytail: unmeasured outside one manual auto-mode check, upgrade path HIMMEL-3549 —
+// ponytail: unmeasured outside one manual auto-mode check, upgrade path: test it in a live session —
 // whether the harness's own permission matcher accepts this quoted
 // "$HIMMEL_REPO/..." literal against literal typed command text.
 const GATE_ANCHOR_LITERAL = 'Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh":*)';

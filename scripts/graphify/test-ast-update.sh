@@ -64,7 +64,7 @@ out2=$( PATH="$BIN2:$PATH" bash "$SCRIPT" "$CORPUS2" 2>&1 ); rc2=$?
 
 [ "$rc2" -eq 0 ] && pass "T2 exits 0 on a free lock" || fail "T2 should exit 0 (got $rc2): $out2"
 grep -qF -- "update $CORPUS2 --force" "$WS/call.log" 2>/dev/null \
-  && pass "T2 graphify was invoked as: update <corpus-root> --force (kept, HIMMEL-1938)" \
+  && pass "T2 graphify was invoked as: update <corpus-root> --force (kept)" \
   || fail "T2 graphify was not invoked with the expected args: $(cat "$WS/call.log" 2>/dev/null)"
 [ -d "$OUT2/.promote.lock" ] && fail "T2 the lock directory was left behind after success" \
   || pass "T2 the lock directory is gone after a successful run"

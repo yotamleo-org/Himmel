@@ -21,7 +21,7 @@ test('bare machine (no keys, no optional CLIs) → only the 4 Claude tiers', () 
   const ids = resolveLanes(REG, ctx()).map((l) => l.id);
   assert.deepEqual(ids, ['haiku', 'sonnet', 'opus', 'fable']);
 });
-test('dropped glm lane never resolves, even with ZAI_API_KEY set (HIMMEL-7481)', () => {
+test('dropped glm lane never resolves, even with ZAI_API_KEY set', () => {
   assert.ok(!resolveLanes(REG, ctx({ env: { ZAI_API_KEY: 'k' } })).some((l) => l.id === 'glm'));
 });
 test('retired glm-subagent wrapper lane is absent from the registry', () => {
@@ -34,7 +34,7 @@ test('codex lane keys off CR_PROFILE=paid', () => {
 test('gemini lane is DE-LISTED (deprecated + out of budget, 2026-07-06) — never resolves even with the CLI on PATH', () => {
   assert.ok(!resolveLanes(REG, ctx({ paths: ['gemini'] })).some((l) => l.id === 'gemini'));
 });
-test('codex-exec lane keys off the codex CLI on PATH (HIMMEL-781)', () => {
+test('codex-exec lane keys off the codex CLI on PATH', () => {
   assert.ok(resolveLanes(REG, ctx({ paths: ['codex'] })).some((l) => l.id === 'codex-exec'));
   assert.ok(!resolveLanes(REG, ctx()).some((l) => l.id === 'codex-exec'));
 });
@@ -44,14 +44,14 @@ test('hermes-critics lane keys off the resolved install', () => {
 });
 // These four rows used probe kind "installed" with tools buildCtx
 // never populates, so they could NEVER resolve; they key off PATH now.
-test('free-bank CLI lanes (copilot/agy/ollama) resolve via PATH (HIMMEL-780)', () => {
+test('free-bank CLI lanes (copilot/agy/ollama) resolve via PATH', () => {
   const onPath = resolveLanes(REG, ctx({ paths: ['copilot', 'agy', 'ollama'] })).map((l) => l.id);
   for (const id of ['copilot-cli', 'antigravity-cli', 'ollama-local', 'ollama-cloud']) {
     assert.ok(onPath.includes(id), `${id} should resolve with its CLI on PATH`);
     assert.ok(!resolveLanes(REG, ctx()).some((l) => l.id === id), `${id} should not resolve on a bare machine`);
   }
 });
-test('buildCtx pathHas does a real PATH lookup (HIMMEL-780 follow-through)', () => {
+test('buildCtx pathHas does a real PATH lookup (follow-through)', () => {
   const bin = makeTmpDir('lanes-bin-');
   writeFileSync(join(bin, 'copilot.cmd'), '@echo off\n');
   writeFileSync(join(bin, 'agy'), '#!/bin/sh\n');
@@ -78,7 +78,7 @@ test('buildCtx reads a behaviour key from himmel.conf: process env > himmel.conf
   assert.equal(buildCtx(repo, { HOME: home }).env.CR_PROFILE, 'from-conf', 'an empty conf line reads as unset');
   assert.equal(buildCtx(repo, { HOME: home, CR_PROFILE: '' }).env.CR_PROFILE, 'from-conf', 'an empty process value reads as unset, as in load_dotenv');
 });
-test('buildCtx preserves the Jira URL across config migration without serving a config token (HIMMEL-8244)', () => {
+test('buildCtx preserves the Jira URL across config migration without serving a config token', () => {
   const repo = makeTmpDir('lanes-jira-repo-');
   const home = makeTmpDir('lanes-jira-home-');
   mkdirSync(join(home, '.himmel'));
@@ -154,7 +154,7 @@ test('buildCtx installed.hermes accepts only a real interpreter, matching resolv
   assert.equal(shimCtx.pathHas('hermes'), true, 'fixture must really put a shim on PATH');
   assert.equal(shimCtx.installed.hermes, false, 'a PATH shim is not an interpreter');
 });
-test('buildCtx installed.hermes accepts a PM-managed install (.hermes/bin/hermes launcher, no venv) (HIMMEL-4307)', () => {
+test('buildCtx installed.hermes accepts a PM-managed install (.hermes/bin/hermes launcher, no venv)', () => {
   const repo = makeTmpDir('lanes-repo-');
   const home = makeTmpDir('lanes-hermes-pm-');
   const bin = join(home, 'hermes-agent', '.hermes', 'bin');
@@ -169,7 +169,7 @@ test('buildCtx installed.hermes accepts a PM-managed install (.hermes/bin/hermes
   assert.equal(buildCtx(repo, { HOME: home, HERMES_HOME: home }).installed.hermes, false,
     'a launcher whose runtime interpreter is gone, with no venv, is not installed (resolver would exit 1)');
 });
-test('every "installed" probe names a tool buildCtx actually populates (HIMMEL-780 lockstep guard)', () => {
+test('every "installed" probe names a tool buildCtx actually populates (lockstep guard)', () => {
   const ctxDir = makeTmpDir('lanes-ctx-');
   const populated = Object.keys(buildCtx(ctxDir, { HOME: ctxDir }).installed);
   for (const l of REG.lanes) {
@@ -270,7 +270,7 @@ test('HIMMEL-1448 (d): an unmarked lane outside the scope is unaffected', () => 
   ]);
   assert.deepEqual(resolveLanes(registry, ctx()).map((l) => l.id), ['unmarked', 'explicit-false']);
 });
-test('HIMMEL-1448: a malformed marker fails CLOSED; unmarked Claude tiers are never constrained', () => {
+test('a malformed marker fails CLOSED; unmarked Claude tiers are never constrained', () => {
   const registry = noneInstall([
     { id: 'str', class: 'impl', profileManaged: 'false', probe: { kind: 'always' } },
     { id: 'num', class: 'impl', profileManaged: 0, probe: { kind: 'always' } },
@@ -279,7 +279,7 @@ test('HIMMEL-1448: a malformed marker fails CLOSED; unmarked Claude tiers are ne
   ]);
   assert.deepEqual(resolveLanes(registry, ctx()).map((l) => l.id), ['tier']);
 });
-test('HIMMEL-1448: every lane the wizard offers carries the profileManaged marker in lanes.json', () => {
+test('every lane the wizard offers carries the profileManaged marker in lanes.json', () => {
   // Derived from the wizard's own table, so a new V1_LANES entry whose
   // lanes.json row lacks the marker turns this RED.
   const { V1_LANES } = createRequire(import.meta.url)('../../himmelctl/lib/adopter-profile.js');
@@ -288,7 +288,7 @@ test('HIMMEL-1448: every lane the wizard offers carries the profileManaged marke
     assert.equal(REG.lanes.find((l) => l.id === id)?.profileManaged, true, `${id} must be profileManaged`);
   }
 });
-test('HIMMEL-1448: a lanes.local.json patch cannot clear the registry profileManaged marker', () => {
+test('a lanes.local.json patch cannot clear the registry profileManaged marker', () => {
   const base = noneInstall([{ id: 'codex-exec', class: 'impl', profileManaged: true, probe: { kind: 'always' } }]);
   const merged = mergeLocalOverlay(base, { lanes: [{ id: 'codex-exec', profileManaged: false }] });
   assert.equal(merged.lanes[0].profileManaged, true);
@@ -301,7 +301,7 @@ const markedRegistryLane = () => {
   const { V1_LANES } = createRequire(import.meta.url)('../../himmelctl/lib/adopter-profile.js');
   return REG.lanes.find((l) => l.id === V1_LANES[0].registryId);
 };
-test('HIMMEL-3927: a local class patch to claude-tier cannot free a registry profileManaged lane', () => {
+test('a local class patch to claude-tier cannot free a registry profileManaged lane', () => {
   const marked = markedRegistryLane();
   assert.equal(marked.profileManaged, true);
   const base = { profileAllowlist: [], profileAllowlistScope: [marked.id], lanes: [{ ...marked, probe: { kind: 'always' } }] };
@@ -310,18 +310,18 @@ test('HIMMEL-3927: a local class patch to claude-tier cannot free a registry pro
   assert.deepEqual(resolveLanes(merged, ctx()).map((l) => l.id), []);
   assert.deepEqual(suppressedIds(merged), [marked.id]);
 });
-test('HIMMEL-3927: an unmarked lane patched to claude-tier keeps today\'s exemption', () => {
+test('an unmarked lane patched to claude-tier keeps today\'s exemption', () => {
   const base = noneInstall([{ id: 'unmarked', class: 'impl', probe: { kind: 'always' } }]);
   const merged = mergeLocalOverlay(base, { lanes: [{ id: 'unmarked', class: 'claude-tier' }] });
   assert.deepEqual(resolveLanes(merged, ctx()).map((l) => l.id), ['unmarked']);
 });
-test('HIMMEL-3927: genuine registry claude-tier lanes stay exempt', () => {
+test('genuine registry claude-tier lanes stay exempt', () => {
   const tiers = REG.lanes.filter((l) => l.class === 'claude-tier');
   assert.ok(tiers.length > 0);
   const registry = noneInstall(tiers.map((l) => ({ ...l, probe: { kind: 'always' } })));
   assert.deepEqual(resolveLanes(registry, ctx()).map((l) => l.id), tiers.map((l) => l.id));
 });
-test('HIMMEL-1448: force-on of a managed lane outside the persisted scope still extends the allowlist', () => {
+test('force-on of a managed lane outside the persisted scope still extends the allowlist', () => {
   const local = { lanes: [], profileAllowlist: [], profileAllowlistScope: ['codex-exec'] };
   const next = applyLaneOverride(local, 'brand-new-lane', 'always', true);
   assert.deepEqual(next.profileAllowlist, ['brand-new-lane']);
@@ -523,13 +523,13 @@ test('context annotations derive from structured window + overflow (no prose dri
   );
   assert.equal(formatContextAnnotation(undefined), '');
 });
-test('context annotation names the tier a dispatch gets and the closed enum (HIMMEL-1907)', () => {
+test('context annotation names the tier a dispatch gets and the closed enum', () => {
   assert.equal(
     formatContextAnnotation({ windowTokens: 900000, overflow: 'compact-continue', tiers: ['272k', '353k', '900k'] }),
     '[ctx: 900k; compacts+continues past window (cost penalty); tier: 272k unless --context-tier 272k|353k|900k]',
   );
 });
-test('the codex dispatcher lanes declare the tiers the shell filter accepts (HIMMEL-1907)', () => {
+test('the codex dispatcher lanes declare the tiers the shell filter accepts', () => {
   const filter = join(TEST_DIR, '..', '..', 'codex', 'codex-arg-filter.sh');
   const shellTiers = execFileSync(BASH_BIN, ['-c', '. "$1"; echo $CAF_CONTEXT_TIERS', '_', filter], { encoding: 'utf8' }).trim().split(' ');
   for (const id of ['claudex', 'codex-exec']) {
@@ -792,20 +792,20 @@ const SHARED_OVERLAY_LANES = [{ id: 'zz-extra', label: 'zz', class: 'impl', best
 const laneIdsFrom = (clone, dir) => JSON.parse(execFileSync(process.execPath, [join(dir, 'scripts', 'lanes', 'resolve.mjs'), '--json'],
   { env: { ...process.env, HIMMELCTL_CACHE_DIR: clone.cache, LANES_REGISTRY: '' }, encoding: 'utf8' })).map((l) => l.id);
 
-test('HIMMEL-1450: an overlay written in the primary checkout is read in a linked worktree', () => {
+test('an overlay written in the primary checkout is read in a linked worktree', () => {
   const clone = makeClonePair();
   writeFileSync(join(clone.primary, 'scripts', 'lanes', 'lanes.local.json'), JSON.stringify({ lanes: SHARED_OVERLAY_LANES }));
   assert.ok(laneIdsFrom(clone, clone.primary).includes('zz-extra'), 'primary reads its own overlay');
   assert.ok(laneIdsFrom(clone, clone.wt).includes('zz-extra'), 'linked worktree reads the primary overlay');
 });
 
-test('HIMMEL-1450: a pre-existing per-worktree overlay is still read when the primary has none', () => {
+test('a pre-existing per-worktree overlay is still read when the primary has none', () => {
   const clone = makeClonePair();
   writeFileSync(join(clone.wt, 'scripts', 'lanes', 'lanes.local.json'), JSON.stringify({ lanes: SHARED_OVERLAY_LANES }));
   assert.ok(laneIdsFrom(clone, clone.wt).includes('zz-extra'), 'legacy in-worktree overlay fallback');
 });
 
-test('HIMMEL-1450: the adopter install targets the primary checkout overlay from a linked worktree', () => {
+test('the adopter install targets the primary checkout overlay from a linked worktree', () => {
   const clone = makeClonePair();
   const { resolveLaneAllowlistFile } = createRequire(import.meta.url)('../../himmelctl/lib/adopter-profile.js');
   const want = join(clone.primary, 'scripts', 'lanes', 'lanes.local.json');
@@ -813,7 +813,7 @@ test('HIMMEL-1450: the adopter install targets the primary checkout overlay from
   assert.equal(resolveLaneAllowlistFile(clone.primary).file, want);
 });
 
-test('the registry ships no WSL lane and the resolver output lists none (HIMMEL-6030)', () => {
+test('the registry ships no WSL lane and the resolver output lists none', () => {
   assert.deepEqual(REG.lanes.filter((l) => /wsl/i.test(JSON.stringify(l))).map((l) => l.id), []);
   const text = execFileSync(process.execPath, [RESOLVER], { encoding: 'utf8' });
   assert.doesNotMatch(text, /wsl/i);

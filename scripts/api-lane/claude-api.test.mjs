@@ -125,7 +125,7 @@ test('funded API account proceeds while the native bank is exhausted; child sees
   assert.equal(row.spent_est_usd, '0.012345');
 });
 
-test('HIMMEL-6490: the launch record carries branch, head and PR; absent keys are empty and null', () => {
+test('the launch record carries branch, head and PR; absent keys are empty and null', () => {
   const f = fixture();
   assert.equal(f.run(f.good, { HIMMEL_API_BRANCH: 'feat/x"y', HIMMEL_API_HEAD: 'abc123def', HIMMEL_API_PR: '3300' }).status, 0);
   const rec = JSON.parse(f.record().trim());
@@ -384,7 +384,7 @@ function promptNowhere(f, r) {
   for (const p of walk(f.dir)) if (!p.includes('stdin.seen')) assert.ok(!readFileSync(p, 'utf8').includes('the-secret-prompt'), `prompt in ${p}`);
 }
 
-test('HIMMEL-8649: a stdin prompt whose API call failed is replayed byte for byte on the subscription fallback', () => {
+test('a stdin prompt whose API call failed is replayed byte for byte on the subscription fallback', () => {
   const f = fixture();
   const r = f.run(STDIN_ONLY, { ...withStdin(f), STUB_OUT: CREDIT_LOW, STUB_RC: '1', STUB_FB_OUT: FB_OK }, { input: PROMPT });
   assert.equal(r.status, 0, r.stderr);
@@ -401,7 +401,7 @@ test('HIMMEL-8649: a stdin prompt whose API call failed is replayed byte for byt
   keyNowhere(f, r);
 });
 
-test('HIMMEL-8649: the scratch prompt file is gone after success, a refusal before and after the buffer, and an ordinary failure', () => {
+test('the scratch prompt file is gone after success, a refusal before and after the buffer, and an ordinary failure', () => {
   const ok = fixture();
   const a = ok.run(STDIN_ONLY, withStdin(ok), { input: PROMPT });
   assert.equal(a.status, 0, a.stderr);
@@ -437,7 +437,7 @@ test('HIMMEL-8649: the scratch prompt file is gone after success, a refusal befo
   assert.deepEqual(promptFiles(off), []);
 });
 
-test('HIMMEL-8649: a stdin prompt on a Bash-granted call that ran is still never replayed; a prompt in argv is untouched', () => {
+test('a stdin prompt on a Bash-granted call that ran is still never replayed; a prompt in argv is untouched', () => {
   const f = fixture();
   const r = f.run(STDIN_ONLY, { ...withStdin(f), HIMMEL_API_TOOLS: 'Bash', STUB_OUT: CALL_FAIL, STUB_RC: '1' }, { input: PROMPT });
   assert.equal(r.status, 1);
@@ -452,14 +452,14 @@ test('HIMMEL-8649: a stdin prompt on a Bash-granted call that ran is still never
   assert.equal(existsSync(join(g.dir, 'stdin.seen.mode')), false);
 });
 
-test('HIMMEL-8649: an argv prompt with a closed stdin still starts the call', () => {
+test('an argv prompt with a closed stdin still starts the call', () => {
   const f = fixture();
   const r = spawnSync('sh', ['-c', 'exec bash "$0" "$@" <&-', LAUNCH, ...f.good], { env: f.env, encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(f.called(), true, 'the API call never started');
 });
 
-test('HIMMEL-8649: a terminal on stdin with no argv prompt is refused with no fallback and no scratch file', (t) => {
+test('a terminal on stdin with no argv prompt is refused with no fallback and no scratch file', (t) => {
   if (spawnSync('python3', ['-I', '-c', 'import pty']).status !== 0) { t.skip('no python3 pty on this host'); return; }
   const f = fixture();
   const runner = join(f.dir, 'pty-run.py');
@@ -478,7 +478,7 @@ test('HIMMEL-8649: a terminal on stdin with no argv prompt is refused with no fa
   assert.deepEqual(promptFiles(f), []);
 });
 
-test('HIMMEL-8649: a stdin prompt over 8 MiB is refused with no call, no fallback and no scratch file; 8 MiB itself is kept', () => {
+test('a stdin prompt over 8 MiB is refused with no call, no fallback and no scratch file; 8 MiB itself is kept', () => {
   const f = fixture();
   const big = f.run(STDIN_ONLY, { ...withStdin(f), STUB_FB_OUT: FB_OK }, { input: Buffer.alloc(8 * 1024 * 1024 + 1, 97), maxBuffer: 1 << 26 });
   assert.equal(big.status, 2, big.stderr);
@@ -492,7 +492,7 @@ test('HIMMEL-8649: a stdin prompt over 8 MiB is refused with no call, no fallbac
   assert.equal(readFileSync(join(g.dir, 'stdin.seen')).length, 8 * 1024 * 1024);
 });
 
-test('HIMMEL-8649: a launcher stopped while it buffers a stdin prompt removes the scratch file', async () => {
+test('a launcher stopped while it buffers a stdin prompt removes the scratch file', async () => {
   const f = fixture();
   const child = spawn('bash', [LAUNCH, ...STDIN_ONLY], { env: { ...f.env, ...withStdin(f) }, stdio: ['pipe', 'ignore', 'ignore'] });
   child.stdin.write('half a prompt');
@@ -508,7 +508,7 @@ test('HIMMEL-8649: a launcher stopped while it buffers a stdin prompt removes th
   assert.equal(f.called(), false);
 });
 
-test('HIMMEL-8649: a launcher stopped during the subscription fallback still writes the fallback launch record', async () => {
+test('a launcher stopped during the subscription fallback still writes the fallback launch record', async () => {
   const f = fixture();
   const hold = join(f.dir, 'fb-hold'); writeFileSync(hold, '');
   const child = spawn('bash', [LAUNCH, ...f.good], { env: { ...f.env, ...FB_ON, HIMMEL_API_LANE: '', STUB_FB_HOLD: hold }, stdio: 'ignore' });
@@ -527,7 +527,7 @@ test('HIMMEL-8649: a launcher stopped during the subscription fallback still wri
   } finally { rmSync(hold, { force: true }); if (child.exitCode === null) child.kill('SIGKILL'); }
 });
 
-test('HIMMEL-8649: a stdin that never closes is cut at the call timeout, refused with no fallback, and leaves no scratch file', async () => {
+test('a stdin that never closes is cut at the call timeout, refused with no fallback, and leaves no scratch file', async () => {
   const f = fixture();
   const child = spawn('bash', [LAUNCH, ...STDIN_ONLY], { env: { ...f.env, ...withStdin(f), HIMMEL_API_CALL_TIMEOUT_S: '1', STUB_FB_OUT: FB_OK }, stdio: ['pipe', 'pipe', 'pipe'] });
   child.stdin.write('half a prompt');
@@ -544,7 +544,7 @@ test('HIMMEL-8649: a stdin that never closes is cut at the call timeout, refused
   assert.deepEqual(promptFiles(f), []);
 });
 
-test('HIMMEL-8649: the scratch prompt file is gone after the launcher is terminated mid-call', async () => {
+test('the scratch prompt file is gone after the launcher is terminated mid-call', async () => {
   const f = fixture();
   const hold = join(f.dir, 'hold'); writeFileSync(hold, '');
   const first = spawn('bash', [LAUNCH, ...STDIN_ONLY], { env: { ...f.env, ...withStdin(f), STUB_HOLD: hold }, stdio: ['pipe', 'ignore', 'ignore'] });
@@ -564,7 +564,7 @@ test('HIMMEL-8649: the scratch prompt file is gone after the launcher is termina
   } finally { rmSync(hold, { force: true }); if (stub && alive(stub)) process.kill(stub, 'SIGKILL'); }
 });
 
-test('HIMMEL-5625: a caller with no HIMMEL_API_TOOLS gets no tools (tool-free default, no --allowedTools, no MCP)', () => {
+test('a caller with no HIMMEL_API_TOOLS gets no tools (tool-free default, no --allowedTools, no MCP)', () => {
   const f = fixture();
   assert.equal(f.run().status, 0);
   const seen = readFileSync(f.paths.env, 'utf8');
@@ -574,7 +574,7 @@ test('HIMMEL-5625: a caller with no HIMMEL_API_TOOLS gets no tools (tool-free de
   assert.match(seen, /--permission-mode plan/);
 });
 
-test('HIMMEL-5625: an opted-in caller gets exactly the named set; the full set is reachable only by naming it', () => {
+test('an opted-in caller gets exactly the named set; the full set is reachable only by naming it', () => {
   const f = fixture();
   assert.equal(f.run(f.good, { HIMMEL_API_TOOLS: 'Read,Edit,Write,Glob,Grep,Bash' }).status, 0);
   const seen = readFileSync(f.paths.env, 'utf8');
@@ -583,7 +583,7 @@ test('HIMMEL-5625: an opted-in caller gets exactly the named set; the full set i
   assert.match(seen, /--strict-mcp-config/);
 });
 
-test('HIMMEL-5544: HIMMEL_API_TOOLS=<empty> runs the call tool-free (no --allowedTools, empty --tools)', () => {
+test('HIMMEL_API_TOOLS=<empty> runs the call tool-free (no --allowedTools, empty --tools)', () => {
   const f = fixture();
   const r = f.run(f.good, { HIMMEL_API_TOOLS: '' });
   assert.equal(r.status, 0, r.stderr);
@@ -593,7 +593,7 @@ test('HIMMEL-5544: HIMMEL_API_TOOLS=<empty> runs the call tool-free (no --allowe
   assert.match(seen, /--strict-mcp-config/);
 });
 
-test('HIMMEL-5544: HIMMEL_API_TOOLS narrows to a subset of the default grant', () => {
+test('HIMMEL_API_TOOLS narrows to a subset of the default grant', () => {
   const f = fixture();
   const r = f.run(f.good, { HIMMEL_API_TOOLS: 'Read,Grep' });
   assert.equal(r.status, 0, r.stderr);
@@ -602,7 +602,7 @@ test('HIMMEL-5544: HIMMEL_API_TOOLS narrows to a subset of the default grant', (
   assert.match(seen, /--tools Read,Grep /);
 });
 
-test('HIMMEL-5544: HIMMEL_API_TOOLS can never widen the grant: an unknown, wider or blank entry is refused before any launch', () => {
+test('HIMMEL_API_TOOLS can never widen the grant: an unknown, wider or blank entry is refused before any launch', () => {
   for (const v of ['Read,WebFetch', 'Bash,Task', 'mcp__x__y', '*', 'Bash(*)', 'Read,*', 'Read,,Grep', ' Read', 'Read,']) {
     const f = fixture();
     const r = f.run(f.good, { HIMMEL_API_TOOLS: v });
@@ -612,7 +612,7 @@ test('HIMMEL-5544: HIMMEL_API_TOOLS can never widen the grant: an unknown, wider
   }
 });
 
-test('HIMMEL-5433: a lane call from inside a Claude Code session drops the session markers, so it bills as -p/Agent SDK usage', () => {
+test('a lane call from inside a Claude Code session drops the session markers, so it bills as -p/Agent SDK usage', () => {
   const f = fixture();
   const env = { ...f.env, CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli', CLAUDE_CODE_SESSION_ID: 's-1',
     CLAUDE_CODE_CHILD_SESSION: '1', CLAUDE_CODE_MESSAGING_TOKEN: 'msg-dummy', CLAUDE_CODE_MESSAGING_SOCKET: '/x/s.sock',
@@ -745,7 +745,7 @@ test('judge: bypass flags in any spelling and caller-supplied tool/settings/mcp 
   assert.equal(f.status().reserved_usd, '0.000000');
 });
 
-test('HIMMEL-5093: only allowlisted caller flags pass; an unknown, attached or clustered flag is refused with no spawn or reservation', () => {
+test('only allowlisted caller flags pass; an unknown, attached or clustered flag is refused with no spawn or reservation', () => {
   const f = fixture();
   const flags = ['--some-future-flag', '--some-future-flag=1', '--SOME_FUTURE_FLAG', '-x', '-pc', '-pp', '-c', '-r', '-', '--print=x',
     '--resume', '--continue', '--fork-session', '--system-prompt', '--append-system-prompt', '--disallowedTools', '--strict-mcp-config',
@@ -759,7 +759,7 @@ test('HIMMEL-5093: only allowlisted caller flags pass; an unknown, attached or c
   assert.equal(f.status().reserved_usd, '0.000000');
 });
 
-test('HIMMEL-5093: --effort, in both spellings, and the positional prompt still pass', () => {
+test('--effort, in both spellings, and the positional prompt still pass', () => {
   for (const [spelled, seen] of [[['--effort', 'high'], /--effort high/], [['--effort=low'], /--effort low/]]) {
     const ok = fixture();
     assert.equal(ok.run([...ok.good, ...spelled]).status, 0);
@@ -772,7 +772,7 @@ test('HIMMEL-5093: --effort, in both spellings, and the positional prompt still 
   }
 });
 
-test('HIMMEL-8410: --append-system-prompt-file, in both spellings, takes a readable regular file and reaches claude unchanged', () => {
+test('--append-system-prompt-file, in both spellings, takes a readable regular file and reaches claude unchanged', () => {
   const FLAG = '--append-system-prompt-file';
   const probe = fixture();
   const file = join(probe.dir, 'system.txt');
@@ -793,7 +793,7 @@ test('HIMMEL-8410: --append-system-prompt-file, in both spellings, takes a reada
   assert.ok(fbArgs(fb).join(' ').includes(`${FLAG} ${file}`), 'the subscription fallback carries the same system prompt');
 });
 
-test('HIMMEL-8410: --append-system-prompt-file refuses anything but a readable regular file, with no spawn or reservation', () => {
+test('--append-system-prompt-file refuses anything but a readable regular file, with no spawn or reservation', () => {
   const FLAG = '--append-system-prompt-file';
   const f = fixture();
   const dir = join(f.dir, 'a-dir');
@@ -831,7 +831,7 @@ test('HIMMEL-8410: --append-system-prompt-file refuses anything but a readable r
   assert.equal(f.status().reserved_usd, '0.000000');
 });
 
-test('HIMMEL-5097: --model and --permission-mode refuse dash-led values and the mode is an allowlist, in both spellings', () => {
+test('--model and --permission-mode refuse dash-led values and the mode is an allowlist, in both spellings', () => {
   const f = fixture();
   const without = (flag) => f.good.filter((_, i, a) => a[i] !== flag && a[i - 1] !== flag);
   const cases = [
@@ -853,7 +853,7 @@ test('HIMMEL-5097: --model and --permission-mode refuse dash-led values and the 
   }
 });
 
-test('HIMMEL-5097: the exact argv shape scripts/eval/lane-quality/run.sh sends still passes', () => {
+test('the exact argv shape scripts/eval/lane-quality/run.sh sends still passes', () => {
   const f = fixture();
   const r = f.run(['-p', 'do the task', '--model', 'claude-haiku-5-5', '--permission-mode', 'auto', '--output-format', 'json',
     '--max-budget-usd', '0.10', '--effort', 'high']);
@@ -911,7 +911,7 @@ test('a non-API child is stripped of the key and every lane selector', () => {
   assert.match(r.stdout, /^PATH=/m);
 });
 
-test('HIMMEL-5433: measure-credit reads the key from a file, refreshes the snapshot and prints only outcome and cost', () => {
+test('measure-credit reads the key from a file, refreshes the snapshot and prints only outcome and cost', () => {
   const f = fixture();
   const keyFile = join(f.dir, 'key.env');
   writeFileSync(keyFile, `ANTHROPIC_API_KEY=${DUMMY}\n`, { mode: 0o600 });
@@ -943,7 +943,7 @@ function keyFiles(f, mode = 0o600) {
 const launch = (env, extra = {}) => spawnSync('bash', [LAUNCH, '-p', 'say hi', '--model', 'claude-haiku-5-5',
   '--permission-mode', 'plan', '--max-budget-usd', '0.10'], { env: { ...env, ...extra }, encoding: 'utf8', cwd: HIMMEL_REPO });
 
-test('HIMMEL-5433: with no key in the caller env the launcher reads key-<account>.env beside the ledger, child env only', () => {
+test('with no key in the caller env the launcher reads key-<account>.env beside the ledger, child env only', () => {
   const f = fixture();
   const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'B' });
   assert.equal(r.status, 0, r.stderr);
@@ -952,7 +952,7 @@ test('HIMMEL-5433: with no key in the caller env the launcher reads key-<account
   for (const text of [r.stdout, r.stderr, f.record()]) assert.ok(!text.includes(KEY_B));
 });
 
-test('HIMMEL-5433: a key file readable by others, or none at all, refuses before any reservation or spawn', () => {
+test('a key file readable by others, or none at all, refuses before any reservation or spawn', () => {
   const f = fixture();
   const loose = launch(keyFiles(f, 0o644), { HIMMEL_API_ACCOUNT: 'A' });
   assert.equal(loose.status, 2);
@@ -966,7 +966,7 @@ test('HIMMEL-5433: a key file readable by others, or none at all, refuses before
   assert.equal(f.status().reserved_usd, '0.000000');
 });
 
-test('HIMMEL-5433: HIMMEL_API_ACCOUNT=auto spends the earliest-expiring grant first, never past its cap', () => {
+test('HIMMEL_API_ACCOUNT=auto spends the earliest-expiring grant first, never past its cap', () => {
   const f = fixture();
   f.snapshot.accounts.A.expires_at += 7200;  // A expires after B
   f.save();
@@ -993,7 +993,7 @@ test('HIMMEL-5433: HIMMEL_API_ACCOUNT=auto spends the earliest-expiring grant fi
   assert.equal(f.called(), false);
 });
 
-test('HIMMEL-7264: auto routing launches on a snapshot older than 24 h and warns', () => {
+test('auto routing launches on a snapshot older than 24 h and warns', () => {
   const f = fixture();
   for (const a of ['A', 'B']) { f.snapshot.accounts[a].starts_at = f.now - 400000; f.snapshot.accounts[a].observed_at = f.now - 90000; }
   f.save();
@@ -1003,7 +1003,7 @@ test('HIMMEL-7264: auto routing launches on a snapshot older than 24 h and warns
   assert.equal(f.called(), true);
 });
 
-test('HIMMEL-7264: auto routing launches with no snapshot file at all, inside the caps', () => {
+test('auto routing launches with no snapshot file at all, inside the caps', () => {
   const f = fixture();
   rmSync(f.paths.snapshot);
   const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-nosnap-1' });
@@ -1021,7 +1021,7 @@ function ledgerAtCap(f) {
   writeFileSync(f.paths.state, JSON.stringify({ version: 1, accounts }));
 }
 
-test('HIMMEL-7264: auto routing goes on past the bank gate when the old reading and the ledger leave no room', () => {
+test('auto routing goes on past the bank gate when the old reading and the ledger leave no room', () => {
   const f = fixture();
   for (const a of ['A', 'B']) { f.snapshot.accounts[a].starts_at = f.now - 400000; f.snapshot.accounts[a].observed_at = f.now - 90000; }
   f.save();
@@ -1032,7 +1032,7 @@ test('HIMMEL-7264: auto routing goes on past the bank gate when the old reading 
   assert.equal(f.called(), true);
 });
 
-test('HIMMEL-7264: a caller-set optional flag does not let an explicit account launch without a credit reading', () => {
+test('a caller-set optional flag does not let an explicit account launch without a credit reading', () => {
   const f = fixture();
   rmSync(f.paths.snapshot);
   const r = f.run(f.good, { HIMMEL_API_SNAPSHOT_OPTIONAL: '1' });
@@ -1041,7 +1041,7 @@ test('HIMMEL-7264: a caller-set optional flag does not let an explicit account l
   assert.equal(f.called(), false);
 });
 
-test('HIMMEL-7264: a credit-exhausted result marks the account and the next auto call rotates to the other', () => {
+test('a credit-exhausted result marks the account and the next auto call rotates to the other', () => {
   const f = fixture();
   const env = keyFiles(f);
   const dead = JSON.stringify({ type: 'result', is_error: true, result: 'API Error: 400 Your credit balance is too low to access the Anthropic API.' });
@@ -1055,7 +1055,7 @@ test('HIMMEL-7264: a credit-exhausted result marks the account and the next auto
   assert.match(readFileSync(f.paths.env, 'utf8'), /^key_tail=BBBB$/m);
 });
 
-test('HIMMEL-7161: a credit-too-low result exits 6, the non-retryable code, and the launch record names it exhausted', () => {
+test('a credit-too-low result exits 6, the non-retryable code, and the launch record names it exhausted', () => {
   const f = fixture();
   const dead = JSON.stringify({ type: 'result', is_error: true, result: 'API Error: 400 Your credit balance is too low to access the Anthropic API.' });
   const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'B', HIMMEL_API_JOB_ID: 'job-dry-3', STUB_OUT: dead, STUB_RC: '1' });
@@ -1064,7 +1064,7 @@ test('HIMMEL-7161: a credit-too-low result exits 6, the non-retryable code, and 
   assert.equal(Number.isInteger(JSON.parse(readFileSync(f.paths.state, 'utf8')).accounts.B.exhausted_at), true);
 });
 
-test('HIMMEL-7161: an invalid-key result flags the account, exits 6 and the next auto pick skips it', () => {
+test('an invalid-key result flags the account, exits 6 and the next auto pick skips it', () => {
   const f = fixture();
   const env = keyFiles(f);
   const bad = JSON.stringify({ type: 'result', is_error: true, result: 'Invalid API key · Fix external API key' });
@@ -1079,14 +1079,14 @@ test('HIMMEL-7161: an invalid-key result flags the account, exits 6 and the next
   assert.match(readFileSync(f.paths.env, 'utf8'), /^key_tail=BBBB$/m);
 });
 
-test('HIMMEL-7161: a plain failure that is neither rejection keeps the call exit code', () => {
+test('a plain failure that is neither rejection keeps the call exit code', () => {
   const f = fixture();
   const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'B', HIMMEL_API_JOB_ID: 'job-plain-1', STUB_OUT: JSON.stringify({ type: 'result', is_error: true, result: 'boom' }), STUB_RC: '1' });
   assert.equal(r.status, 1, r.stderr);
   assert.equal(JSON.parse(f.record().trim().split('\n').pop()).outcome, 'failed');
 });
 
-test('HIMMEL-7161: a failed call whose permission denials quote the phrase, but whose result does not, is not a rejection', () => {
+test('a failed call whose permission denials quote the phrase, but whose result does not, is not a rejection', () => {
   const f = fixture();
   const quoted = JSON.stringify({ type: 'result', is_error: true, result: 'boom', permission_denials: [{ tool_name: 'Bash', tool_input: { command: 'echo invalid api key; echo credit balance is too low' } }] });
   const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'B', HIMMEL_API_JOB_ID: 'job-quote-1', STUB_OUT: quoted, STUB_RC: '1' });
@@ -1095,7 +1095,7 @@ test('HIMMEL-7161: a failed call whose permission denials quote the phrase, but 
   assert.equal(existsSync(f.paths.state) && JSON.parse(readFileSync(f.paths.state, 'utf8')).accounts?.B?.exhausted_at !== undefined, false);
 });
 
-test('HIMMEL-7161: a successful call whose result text mentions an invalid API key is not a rejection', () => {
+test('a successful call whose result text mentions an invalid API key is not a rejection', () => {
   const f = fixture();
   const ok = JSON.stringify({ type: 'result', is_error: false, result: 'The message was: Invalid API key', total_cost_usd: 0.01 });
   const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'B', HIMMEL_API_JOB_ID: 'job-quote-2', STUB_OUT: ok, STUB_RC: '0' });
@@ -1103,7 +1103,7 @@ test('HIMMEL-7161: a successful call whose result text mentions an invalid API k
   assert.notEqual(JSON.parse(f.record().trim().split('\n').pop()).outcome, 'key_invalid');
 });
 
-test('HIMMEL-5433: auto routing refuses a caller-supplied key, which cannot follow the pick', () => {
+test('auto routing refuses a caller-supplied key, which cannot follow the pick', () => {
   const f = fixture();
   const r = f.run(f.good, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify' });
   assert.equal(r.status, 2);
@@ -1111,7 +1111,7 @@ test('HIMMEL-5433: auto routing refuses a caller-supplied key, which cannot foll
   assert.equal(f.called(), false);
 });
 
-test('HIMMEL-5433: a Console refresh does not count already-billed ledger spend twice', () => {
+test('a Console refresh does not count already-billed ledger spend twice', () => {
   const f = fixture();
   assert.equal(f.run().status, 0);  // settles 0.012345 on A
   const keyFile = join(f.dir, 'key.env');
@@ -1125,7 +1125,7 @@ test('HIMMEL-5433: a Console refresh does not count already-billed ledger spend 
   assert.equal(f.status().spent_est_usd, '0.024690');
 });
 
-test('HIMMEL-5433: the key reaches claude through the environment only, never through any argv', () => {
+test('the key reaches claude through the environment only, never through any argv', () => {
   const f = fixture();
   const bin = join(f.dir, 'bin');
   const argv = join(f.dir, 'env-argv');
@@ -1140,7 +1140,7 @@ test('HIMMEL-5433: the key reaches claude through the environment only, never th
   assert.ok(!readFileSync(f.paths.env, 'utf8').split('\n').find((l) => l.startsWith('args=')).includes(KEY_B));
 });
 
-test('HIMMEL-5433: a refresh while the Console lags a fresh settlement still counts that settlement', () => {
+test('a refresh while the Console lags a fresh settlement still counts that settlement', () => {
   const f = fixture();
   // 0.09 spent outside the ledger is already billed and reconciled.
   f.snapshot.accounts.A.remaining_usd = '1.91'; f.save();
@@ -1150,7 +1150,7 @@ test('HIMMEL-5433: a refresh while the Console lags a fresh settlement still cou
   assert.equal(f.status().spent_est_usd, '0.102345');
 });
 
-test('HIMMEL-5433: a refresh holds the ledger lock and refuses while another writer has it', () => {
+test('a refresh holds the ledger lock and refuses while another writer has it', () => {
   const f = fixture();
   mkdirSync(`${f.paths.state}.lock`);
   const r = spawnSync(process.execPath, [join(HERE, 'grant-snapshot.mjs'), 'A', '2.00'], { env: f.env, encoding: 'utf8' });
@@ -1159,7 +1159,7 @@ test('HIMMEL-5433: a refresh holds the ledger lock and refuses while another wri
   assert.equal(JSON.parse(readFileSync(f.paths.snapshot, 'utf8')).accounts.A.observed_at, f.snapshot.accounts.A.observed_at);
 });
 
-test('HIMMEL-5433: a refresh takes the ledger lock before it reads the snapshot', () => {
+test('a refresh takes the ledger lock before it reads the snapshot', () => {
   const f = fixture();
   mkdirSync(`${f.paths.state}.lock`);
   writeFileSync(f.paths.snapshot, '{ not json');
@@ -1167,14 +1167,14 @@ test('HIMMEL-5433: a refresh takes the ledger lock before it reads the snapshot'
   assert.match(r.stdout, /ledger-locked-or-unwritable/);
 });
 
-test('HIMMEL-5519: the child never sees the Admin API org keys', () => {
+test('the child never sees the Admin API org keys', () => {
   const f = fixture();
   const r = f.run(f.good, { ANTHROPIC_ORG_A_KEY: 'admin-a-fixture', ANTHROPIC_ORG_B_KEY: 'admin-b-fixture' });
   assert.equal(r.status, 0, r.stderr);
   assert.match(readFileSync(f.paths.env, 'utf8'), /^org_keys=0$/m);
 });
 
-test('HIMMEL-5519: the reservation lives exactly as long as the call, so the api cap bounds real concurrency', async () => {
+test('the reservation lives exactly as long as the call, so the api cap bounds real concurrency', async () => {
   const f = fixture();
   const hold = join(f.dir, 'hold'); writeFileSync(hold, '');
   const env = { ...f.env, HIMMEL_API_MAX_CONCURRENT: '1', STUB_HOLD: hold };
@@ -1208,7 +1208,7 @@ test('HIMMEL-5519: the reservation lives exactly as long as the call, so the api
   assert.equal(third.status, 0, third.stderr);
 });
 
-test('HIMMEL-5433: a grant date that does not exist on the calendar is refused, not rolled over', () => {
+test('a grant date that does not exist on the calendar is refused, not rolled over', () => {
   const f = fixture();
   const r = spawnSync(process.execPath, [join(HERE, 'grant-snapshot.mjs'), 'A', '2.00', '2.00', '2026-01-01', '2026-02-30'],
     { env: f.env, encoding: 'utf8' });
@@ -1219,13 +1219,13 @@ test('HIMMEL-5433: a grant date that does not exist on the calendar is refused, 
 const USAGE_OUT = JSON.stringify({ type: 'result', is_error: false, total_cost_usd: 0.004, result: 'ok',
   usage: { input_tokens: 12, cache_creation_input_tokens: 3000, cache_read_input_tokens: 9000 } });
 
-test('HIMMEL-5570: the launcher moves per-machine prompt sections out of the cached system prompt', () => {
+test('the launcher moves per-machine prompt sections out of the cached system prompt', () => {
   const f = fixture();
   assert.equal(f.run().status, 0);
   assert.match(readFileSync(f.paths.env, 'utf8'), /--exclude-dynamic-system-prompt-sections/);
 });
 
-test('HIMMEL-5570: the main-conversation cache TTL is 5m by default, 1h on request, and a caller CLAUDE_CODE_PROMPT_CACHE_TTL never wins', () => {
+test('the main-conversation cache TTL is 5m by default, 1h on request, and a caller CLAUDE_CODE_PROMPT_CACHE_TTL never wins', () => {
   const f = fixture();
   // A CLAUDE_CODE_* variable is a session marker, so the call runs under a `claude` argv0 as a real session does.
   const first = spawnSync('bash', [LAUNCH, ...f.good], { env: { ...f.env, CLAUDE_CODE_PROMPT_CACHE_TTL: '1h' }, encoding: 'utf8', argv0: SESSION_ARGV0 });
@@ -1235,7 +1235,7 @@ test('HIMMEL-5570: the main-conversation cache TTL is 5m by default, 1h on reque
   assert.match(readFileSync(f.paths.env, 'utf8'), /^cache_ttl=1h$/m);
 });
 
-test('HIMMEL-5570: a cache TTL or run kind outside the allowlist refuses before any spawn', () => {
+test('a cache TTL or run kind outside the allowlist refuses before any spawn', () => {
   const f = fixture();
   for (const bad of [{ HIMMEL_API_CACHE_TTL: '2h' }, { HIMMEL_API_KIND: 'a b' }, { HIMMEL_API_KIND: '"x' }]) {
     const r = f.run(f.good, bad);
@@ -1245,7 +1245,7 @@ test('HIMMEL-5570: a cache TTL or run kind outside the allowlist refuses before 
   assert.equal(f.called(), false);
 });
 
-test('HIMMEL-5570: the launch record carries kind, TTL and the usage split so a hit rate can be read back', () => {
+test('the launch record carries kind, TTL and the usage split so a hit rate can be read back', () => {
   const f = fixture();
   assert.equal(f.run(f.good, { STUB_OUT: USAGE_OUT, HIMMEL_API_KIND: 'eval', HIMMEL_API_CACHE_TTL: '1h' }).status, 0);
   const row = JSON.parse(f.record().trim().split('\n').pop());
@@ -1256,7 +1256,7 @@ test('HIMMEL-5570: the launch record carries kind, TTL and the usage split so a 
   assert.equal(row.cache_read_tokens, 9000);
 });
 
-test('HIMMEL-5570: a result without a usage object records null token counts, never zeros', () => {
+test('a result without a usage object records null token counts, never zeros', () => {
   const f = fixture();
   assert.equal(f.run().status, 0);
   const row = JSON.parse(f.record().trim().split('\n').pop());
@@ -1267,7 +1267,7 @@ test('HIMMEL-5570: a result without a usage object records null token counts, ne
 const REPORT = join(HERE, 'cache-report.mjs');
 const usageRow = (ts, kind, ttl, i, c, r, model = 'm', org = 'o') => JSON.stringify({ ts, kind, model, organization_id: org, cache_ttl: ttl, input_tokens: i, cache_creation_tokens: c, cache_read_tokens: r });
 
-test('HIMMEL-5570: cache-report prints a per-kind hit rate and picks the TTL from the measured gaps', () => {
+test('cache-report prints a per-kind hit rate and picks the TTL from the measured gaps', () => {
   const f = fixture();
   const log = join(f.dir, 'launches.jsonl');
   writeFileSync(log, [
@@ -1292,7 +1292,7 @@ test('HIMMEL-5570: cache-report prints a per-kind hit rate and picks the TTL fro
 });
 
 // a dead call must not hold its reservation (killed calls on account B kept 20.10 USD reserved).
-test('HIMMEL-7111: a call that exits non-zero settles its reservation instead of leaving it open', () => {
+test('a call that exits non-zero settles its reservation instead of leaving it open', () => {
   const f = fixture();
   const r = f.run(f.good, { STUB_RC: '3', STUB_OUT: 'boom' });
   assert.equal(r.status, 3);
@@ -1302,7 +1302,7 @@ test('HIMMEL-7111: a call that exits non-zero settles its reservation instead of
   assert.equal(rec.cost_usd, '0.000000');
 });
 
-test('HIMMEL-7111: a call killed by a signal settles its reservation too', () => {
+test('a call killed by a signal settles its reservation too', () => {
   const f = fixture();
   const r = f.run(f.good, { STUB_DIE: '1' });
   assert.equal(r.status, 137);
@@ -1311,7 +1311,7 @@ test('HIMMEL-7111: a call killed by a signal settles its reservation too', () =>
 
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
-test('HIMMEL-7111: a launcher terminated mid-call stops the call and settles its reservation', async () => {
+test('a launcher terminated mid-call stops the call and settles its reservation', async () => {
   const f = fixture();
   const hold = join(f.dir, 'hold'); writeFileSync(hold, '');
   const first = spawn('bash', [LAUNCH, ...f.good], { env: { ...f.env, STUB_HOLD: hold }, stdio: 'ignore' });
@@ -1331,7 +1331,7 @@ test('HIMMEL-7111: a launcher terminated mid-call stops the call and settles its
   } finally { rmSync(hold, { force: true }); if (stub && alive(stub)) process.kill(stub, 'SIGKILL'); }
 });
 
-test('HIMMEL-7111: a call that outruns the call timeout is stopped, even one ignoring TERM, and settles', () => {
+test('a call that outruns the call timeout is stopped, even one ignoring TERM, and settles', () => {
   const f = fixture();
   const hold = join(f.dir, 'hold'); writeFileSync(hold, '');
   try {
@@ -1360,7 +1360,7 @@ function withC(f, mode = 0o600) {
   return env;
 }
 
-test('HIMMEL-9052: HIMMEL_API_ACCOUNT=C with a graphify kind runs one stubbed call and bills the ledger row to C', () => {
+test('HIMMEL_API_ACCOUNT=C with a graphify kind runs one stubbed call and bills the ledger row to C', () => {
   const f = fixture();
   const r = launch(withC(f), { HIMMEL_API_ACCOUNT: 'C', HIMMEL_API_KIND: 'graphify' });
   assert.equal(r.status, 0, r.stderr);
@@ -1371,7 +1371,7 @@ test('HIMMEL-9052: HIMMEL_API_ACCOUNT=C with a graphify kind runs one stubbed ca
   for (const text of [r.stdout, r.stderr, f.record()]) assert.ok(!text.includes(KEY_C));
 });
 
-test('HIMMEL-9052: an explicit account C call runs for any kind, like A and B', () => {
+test('an explicit account C call runs for any kind, like A and B', () => {
   for (const kind of ['judge', 'critic', 'bulk', 'cull', 'smoke']) {
     const f = fixture();
     const r = launch(withC(f), { HIMMEL_API_ACCOUNT: 'C', HIMMEL_API_KIND: kind });
@@ -1380,7 +1380,7 @@ test('HIMMEL-9052: an explicit account C call runs for any kind, like A and B', 
   }
 });
 
-test('HIMMEL-9052: auto routes only the himmel graphify kind; any other kind is refused before any spawn', () => {
+test('auto routes only the himmel graphify kind; any other kind is refused before any spawn', () => {
   for (const kind of ['judge', 'critic', 'bulk', 'cull', 'other']) {
     const f = fixture();
     const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: kind });
@@ -1393,7 +1393,7 @@ test('HIMMEL-9052: auto routes only the himmel graphify kind; any other kind is 
   assert.equal(ok.status, 0, ok.stderr);
 });
 
-test('HIMMEL-9052: auto with the graphify kind from another repo is refused before any spawn', () => {
+test('auto with the graphify kind from another repo is refused before any spawn', () => {
   const f = fixture();
   const r = spawnSync('bash', [LAUNCH, '-p', 'say hi', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'],
     { env: { ...keyFiles(f), HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify' }, encoding: 'utf8', cwd: OTHER_REPO });
@@ -1402,7 +1402,7 @@ test('HIMMEL-9052: auto with the graphify kind from another repo is refused befo
   assert.equal(f.called(), false);
 });
 
-test('HIMMEL-9052: the graph shim runs the lane from a scratch directory: the repo it judged rides in HIMMEL_API_AUTO_REPO_DIR', () => {
+test('the graph shim runs the lane from a scratch directory: the repo it judged rides in HIMMEL_API_AUTO_REPO_DIR', () => {
   const commonDir = (cwd) => spawnSync('git', ['-C', cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).stdout.trim();
   const args = ['-p', 'say hi', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'];
   const shim = (f, repoDir) => spawnSync('bash', [LAUNCH, ...args], { env: { ...keyFiles(f), HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify',
@@ -1421,7 +1421,7 @@ test('HIMMEL-9052: the graph shim runs the lane from a scratch directory: the re
   assert.equal(f.called(), false);
 });
 
-test('HIMMEL-9077: a decision-525 policy refusal sends no alert, writes no stamp, runs no fallback and leaves one policy record', () => {
+test('a decision-525 policy refusal sends no alert, writes no stamp, runs no fallback and leaves one policy record', () => {
   const f = fixture();
   const r = spawnSync('bash', [LAUNCH, '-p', 'say hi', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'],
     { env: { ...keyFiles(f), ...FB_ON, STUB_FB_OUT: FB_OK, HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'judge', HIMMEL_API_JOB_ID: 'job-p1',
@@ -1443,7 +1443,7 @@ test('HIMMEL-9077: a decision-525 policy refusal sends no alert, writes no stamp
   assert.equal(f.called(), false);
 });
 
-test('HIMMEL-9077: every refusal but the policy one still alerts, and a graph-pass call failure still alerts', () => {
+test('every refusal but the policy one still alerts, and a graph-pass call failure still alerts', () => {
   const f = fixture();
   const off = f.run(f.good, { HIMMEL_API_LANE: '', HIMMEL_API_KIND: 'judge' });
   assert.equal(off.status, 2, off.stderr);
@@ -1458,7 +1458,7 @@ test('HIMMEL-9077: every refusal but the policy one still alerts, and a graph-pa
   assert.doesNotMatch(fail.stderr, /policy refusal/);
 });
 
-test('HIMMEL-9052: auto ranks account C like A and B', () => {
+test('auto ranks account C like A and B', () => {
   const f = fixture();
   const env = withC(f);
   f.snapshot.accounts.C.expires_at = f.now + 60;
@@ -1468,7 +1468,7 @@ test('HIMMEL-9052: auto ranks account C like A and B', () => {
   assert.equal(JSON.parse(f.record().trim()).account, 'C');
 });
 
-test('HIMMEL-9052: account C refuses a wrong key id and a key file that is not mode 600', () => {
+test('account C refuses a wrong key id and a key file that is not mode 600', () => {
   const f = fixture();
   const env = withC(f);
   const wrong = launch(env, { HIMMEL_API_ACCOUNT: 'C', HIMMEL_API_KIND: 'graphify', HIMMEL_API_KEY_ID: 'key-a' });
@@ -1491,7 +1491,7 @@ const policyLines = (f) => {
 };
 const commonDirOf = (cwd) => spawnSync('git', ['-C', cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).stdout.trim();
 
-test('HIMMEL-9076: judge mapped to B picks B; with the map removed the same call is refused-policy', () => {
+test('judge mapped to B picks B; with the map removed the same call is refused-policy', () => {
   const f = fixture();
   putRoles(f, { judge: ['B'] });
   const ok = autoKind(f, 'judge');
@@ -1507,7 +1507,7 @@ test('HIMMEL-9076: judge mapped to B picks B; with the map removed the same call
   assert.equal(g.called(), false);
 });
 
-test('HIMMEL-9076: a role mapped to B whose fresh reading has no room is refused, and A is never used', () => {
+test('a role mapped to B whose fresh reading has no room is refused, and A is never used', () => {
   const f = fixture();
   putRoles(f, { judge: ['B'] });
   f.snapshot.accounts.B.remaining_usd = '0.05';
@@ -1519,7 +1519,7 @@ test('HIMMEL-9076: a role mapped to B whose fresh reading has no room is refused
   assert.deepEqual(policyLines(f), []);
 });
 
-test('HIMMEL-9076: a partial map narrows graphify by its live entry and ignores the broken judge entry; money commands still answer', () => {
+test('a partial map narrows graphify by its live entry and ignores the broken judge entry; money commands still answer', () => {
   const f = fixture();
   f.snapshot.accounts.B.expires_at += 7200;  // without the map A expires first
   f.save();
@@ -1537,7 +1537,7 @@ test('HIMMEL-9076: a partial map narrows graphify by its live entry and ignores 
   assert.equal(j.status('A').verdict, 'PROCEED');
 });
 
-test('HIMMEL-9076: judge:[B,D] routes to B and says the entry was kept as [B]', () => {
+test('judge:[B,D] routes to B and says the entry was kept as [B]', () => {
   const f = fixture();
   putRoles(f, { judge: ['B', 'D'] });
   const r = autoKind(f, 'judge');
@@ -1546,7 +1546,7 @@ test('HIMMEL-9076: judge:[B,D] routes to B and says the entry was kept as [B]', 
   assert.match(r.stderr, /judge entry kept as \[B\]/);
 });
 
-test('HIMMEL-9076: an invalid map routes as decision 525: eval refused-policy, graphify picks the earliest-expiring A', () => {
+test('an invalid map routes as decision 525: eval refused-policy, graphify picks the earliest-expiring A', () => {
   const f = fixture();
   f.snapshot.accounts.B.expires_at += 7200;
   f.save();
@@ -1561,7 +1561,7 @@ test('HIMMEL-9076: an invalid map routes as decision 525: eval refused-policy, g
   assert.match(g.stderr, /role map invalid \(invalid-role-map:not-json\); decision 525 applies/);
 });
 
-test('HIMMEL-9076: a mapped judge from another repo is refused-policy: the map never widens the repo', () => {
+test('a mapped judge from another repo is refused-policy: the map never widens the repo', () => {
   const f = fixture();
   putRoles(f, { judge: ['B'] });
   const r = autoKind(f, 'judge', { HIMMEL_API_AUTO_REPO_DIR: commonDirOf(OTHER_REPO) });
@@ -1571,7 +1571,7 @@ test('HIMMEL-9076: a mapped judge from another repo is refused-policy: the map n
   assert.equal(policyLines(f).length, 1);
 });
 
-test('HIMMEL-9076: a named account never reads the role map', () => {
+test('a named account never reads the role map', () => {
   const f = fixture();
   putRoles(f, '{not json');
   const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'A', HIMMEL_API_KIND: 'judge' });
@@ -1580,7 +1580,7 @@ test('HIMMEL-9076: a named account never reads the role map', () => {
   assert.doesNotMatch(r.stderr, /role map/);
 });
 
-test('HIMMEL-9076: a kind that is not a role (constructor, probe, other) is refused-policy although the map is valid', () => {
+test('a kind that is not a role (constructor, probe, other) is refused-policy although the map is valid', () => {
   const f = fixture();
   putRoles(f, { judge: ['B'], graphify: ['A'] });
   for (const kind of ['constructor', 'probe', 'other']) {
@@ -1591,7 +1591,7 @@ test('HIMMEL-9076: a kind that is not a role (constructor, probe, other) is refu
   assert.equal(f.called(), false);
 });
 
-test('HIMMEL-9076: with no roles.json an auto graphify call still picks over all accounts and eval is refused', () => {
+test('with no roles.json an auto graphify call still picks over all accounts and eval is refused', () => {
   const f = fixture();
   f.snapshot.accounts.A.expires_at += 7200;  // B expires first
   f.save();

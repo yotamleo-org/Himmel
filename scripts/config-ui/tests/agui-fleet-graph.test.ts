@@ -34,7 +34,7 @@ test("consult children use their dispatch edge and stamped succession overrides 
   expect(graphOf("worker", `your console is **\`${PRIOR}\`**\n- 17:56 SUCCESSION accepted — relay from ${PRIOR}, new console ${CHIEF} (listed live), token kept`).parent).toBe(CHIEF);
 });
 
-test("HIMMEL-8161: a cadence session is told by its cadence fragment or its unit name, an operator session never", () => {
+test("a cadence session is told by its cadence fragment or its unit name, an operator session never", () => {
   const frag = ["claude", "--model", "x", "--settings", "/home/u/.claude/pipeline-cadence/cadence-settings.json", "prompt"];
   expect(cadenceOf("pid 7", frag)).toBe("cadence");
   expect(cadenceOf("luna-fb", ["claude"])).toBe("luna-fb");
