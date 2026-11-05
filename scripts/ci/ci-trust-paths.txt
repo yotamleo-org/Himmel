@@ -25,6 +25,9 @@
 ^scripts/handover/(console|chief)-kit/go\.sh$
 # The scripted GO: auto-go.sh repeats the chief's GO checks and, from slice A1b, writes the GO.
 ^scripts/handover/chief-kit/auto-go\.sh$
+# The silent-worker merge: silent-go-merge.sh runs merge-on-green.sh on a GO'd PR whose worker went silent.
+^scripts/handover/chief-kit/silent-go-merge\.sh$
+^scripts/handover/chief-kit/test-silent-go-merge\.sh$
 # The merge-forward gate and the flag-free planner and graph it runs (the flag-reading planner wrapper stays off).
 ^scripts/handover/merge-forward-check\.sh$
 ^scripts/handover/chief-kit/chain-plan-core\.sh$
