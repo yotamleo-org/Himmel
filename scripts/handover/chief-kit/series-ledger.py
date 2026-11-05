@@ -12,6 +12,7 @@ USAGE
                               [--publish-branch B] [--published-head SHA]
     series-ledger.py set      --ledger P [--key K] field=value ...     (item fields with --key, else top-level)
     series-ledger.py pass     --ledger P --from DOC --to DOC
+    series-ledger.py find     --bucket B --doc DOC --manifest M      (reads <B>/series/*.json; takes no lock)
 
 Ledger fields: sid, completes_ticket, writer, grant, passes[{from,to,at}], items[{key, branch, worktree,
 cut_from, wip, writes[], state, publish_branch, published_head}]. `set` refuses sid, writer, passes and items
@@ -20,7 +21,11 @@ cut_from, wip, writes[], state, publish_branch, published_head}]. `set` refuses 
 Every write takes flock on <P>.lock, reads the ledger, changes it and replaces it by write-temp-then-rename, so
 a reader never sees a half-written file and two writers never lose an update. `read` takes no lock.
 
-Exit: 0 ok, 1 ledger missing or not valid JSON, 2 usage or a refused field/state, 3 lock timeout
+`find` prints one line, `<sid> <ledger realpath> <writer|from> <label|->`, or nothing: the series DOC belongs to,
+as the ledger's writer or as the `from` of a pass, and the label of the one fleet-manifest entry whose doc is the
+ledger's current writer (`-` for no entry or several). Paths are compared by realpath. An unreadable ledger is exit 1.
+
+Exit: 0 ok, 1 ledger missing or not valid JSON or not writable (a read-only directory), 2 usage or a refused field/state, 3 lock timeout
 (SERIES_LEDGER_LOCK_TIMEOUT seconds, default 10), 4 conflict (ledger exists, duplicate or unknown key, `pass`
 from a doc that is not the writer).
 """
@@ -199,6 +204,58 @@ def cmd_pass(a):
         store(a.ledger, data)
 
 
+def manifest_label(manifest, doc):
+    """The manifest `label` of the one entry whose doc is DOC (by realpath), else "-" for no entry or several."""
+    try:
+        with open(manifest, encoding="utf-8") as f:
+            data = json.load(f)
+    except (ValueError, OSError) as e:
+        raise Refused(1, "manifest unreadable (%s): %s" % (e, manifest))
+    rows = data.get("workers") if isinstance(data, dict) else None
+    if rows is None and isinstance(data, dict):
+        rows = data.get("legs")  # a manifest not yet rewritten since the legs-to-workers rename
+    if not isinstance(rows, list):
+        raise Refused(1, "manifest is not a fleet manifest: %s" % manifest)
+    labels = [r.get("label") for r in rows
+              if isinstance(r, dict) and isinstance(r.get("doc"), str) and os.path.realpath(r["doc"]) == doc]
+    if len(labels) == 1 and isinstance(labels[0], str) and labels[0].split() == [labels[0]]:
+        return labels[0]
+    return "-"
+
+
+def cmd_find(a):
+    """<sid> <ledger> <writer|from> <label|->: the series DOC belongs to, as the ledger's writer or as a doc that
+    passed it on, and the manifest label of the ledger's current writer. A writer role wins over a from role."""
+    series = os.path.join(a.bucket, "series")
+    try:
+        names = sorted(n for n in os.listdir(series) if n.endswith(".json"))
+    except FileNotFoundError:
+        return
+    except OSError as e:
+        raise Refused(1, "series directory unreadable (%s): %s" % (e, series))
+    doc = os.path.realpath(a.doc)
+    hits = {"writer": [], "from": []}
+    for n in names:
+        path = os.path.join(series, n)
+        led = load(path)  # an unreadable ledger could hide the match: refuse, never skip
+        if os.path.realpath(led["writer"]) == doc:
+            hits["writer"].append((led, path))
+        elif any(isinstance(p, dict) and isinstance(p.get("from"), str) and os.path.realpath(p["from"]) == doc
+                 for p in led["passes"]):
+            hits["from"].append((led, path))
+    for role in ("writer", "from"):
+        if len(hits[role]) > 1:  # which series' writer to address is unknowable: refuse, never take the first file
+            raise Refused(1, "%s is the %s of %d ledgers: %s" % (
+                a.doc, role, len(hits[role]), ", ".join(p for _, p in hits[role])))
+        if hits[role]:
+            led, path = hits[role][0]
+            break
+    else:
+        return
+    print("%s %s %s %s" % (led.get("sid"), os.path.realpath(path), role,
+                           manifest_label(a.manifest, os.path.realpath(led["writer"]))))
+
+
 class Parser(argparse.ArgumentParser):
     def error(self, message):
         raise Refused(2, message)
@@ -236,6 +293,11 @@ def build():
     s = verb("pass", cmd_pass)
     s.add_argument("--from", dest="from_doc", required=True)
     s.add_argument("--to", dest="to_doc", required=True)
+    s = sub.add_parser("find")
+    s.add_argument("--bucket", required=True)
+    s.add_argument("--doc", required=True)
+    s.add_argument("--manifest", required=True)
+    s.set_defaults(fn=cmd_find)
     return p
 
 
@@ -246,6 +308,9 @@ def main():
     except Refused as e:
         print("series-ledger: %s" % e, file=sys.stderr)
         return e.code
+    except OSError as e:  # a read-only directory or a full disk: a refusal, never a traceback
+        print("series-ledger: cannot write the ledger (%s)" % e, file=sys.stderr)
+        return 1
     return 0
 
 

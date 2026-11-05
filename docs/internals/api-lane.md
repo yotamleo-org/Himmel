@@ -1,7 +1,7 @@
 # The API lane: failure alert and subscription fallback
 
 `scripts/api-lane/claude-api.sh` runs one print-mode `claude` call billed to an
-API account (`HIMMEL_API_ACCOUNT=A|B|C|auto`; auto only for the himmel graph pass) instead of the subscription. It is
+API account (`HIMMEL_API_ACCOUNT=A|B|C|auto`; auto only for the himmel graph pass, or a kind the role map maps) instead of the subscription. It is
 OFF unless the launching shell sets `HIMMEL_API_LANE=on`. This page covers what
 happens when a call on it fails (HIMMEL-8643). The launcher's header lists the
 full argument and environment contract.
@@ -108,6 +108,25 @@ The fallback appends one row to the same `launches.jsonl` as the API call:
 
 The API call's own row and its reservation are settled as before.
 
+### The native release judge row
+
+`launches.jsonl` has a second writer: the release judge's subscription run (`liveJudge` in
+`scripts/jira/src/commands/release.ts`) appends one `kind=judge` row per run, after the call returns. It is not
+an API call, so it takes no reservation and `claude-api.sh` never sees it.
+
+| Field | Value |
+|---|---|
+| `lane` | `native` |
+| `outcome` | `native`, or `native-failed` on a non-zero exit or a timeout |
+| `session_id` | the id passed to `claude --session-id`; the transcript is `<session_id>.jsonl` |
+| `cost_usd` | empty (no API credit spent) |
+| `sub_cost_usd` | the call's verified `total_cost_usd` (six places), empty when the call failed or printed none |
+| `rc` | the call's exit code (1 when it threw without one) |
+
+A reader that sums API dollars skips every row with a `lane` other than `api` (the API launcher's own rows carry
+no `lane`): `shift-spend.mjs` does, so the native and `sub-fallback` rows are neither summed nor counted as unpriced.
+`scripts/usage/release-judge-reconcile.sh` is the read-only check that each release judge transcript has its row.
+
 ## Account C and auto routing (HIMMEL-9052, decision 525 FINAL)
 
 Account C is a third API org with a 200.00 USD cap. A, B and C are treated identically: the same refusals (key from
@@ -116,7 +135,7 @@ the caller `ANTHROPIC_API_KEY` or a mode-600 `key-C.env` beside the ledger, `HIM
 The batch client (`semantic-batch.mjs`) takes C the same way. The lane never reads the keyring or `.env`.
 
 Auto routing is off for every call except the himmel semantic graph pass. `HIMMEL_API_ACCOUNT=auto` is accepted
-only with `HIMMEL_API_KIND=graphify` and a caller whose git common dir is the launcher's own checkout. For the
+only with `HIMMEL_API_KIND=graphify` (or a kind the role map maps, see below) and a caller whose git common dir is the launcher's own checkout. For the
 graph pass, `semantic-update.sh` judges the corpus repo once, before any pick, in both the batch and the synchronous
 path (the shim runs the lane from a scratch directory, so it hands the judged repo over in
 `HIMMEL_API_AUTO_REPO_DIR`). Any other kind, or a graph pass over another repo (the luna graph map), exits 2 before
@@ -125,6 +144,48 @@ works for every kind and every repo, judge, critic, bulk and cull included.
 
 Config name: `ANTHROPIC_API_ORG_ID_C`, matching `ANTHROPIC_API_ORG_ID_A` and `_B`. Every site that unsets the A and B keys before a subscription `claude -p` also unsets
 `ANTHROPIC_ORG_C_KEY`. The key file `key-C.env` is written by the operator, never by a script.
+
+### The role map (HIMMEL-9076, decision 526)
+
+`roles.json` says which accounts auto routing may use for each routable kind. It sits beside the account roster
+`config.json` (default `~/.himmel/state/api-credit/roles.json`; `HIMMEL_API_CREDIT_CONFIG` moves both) and holds no
+secret, only role names and account letters:
+
+```json
+{ "version": 1, "roles": { "judge": ["B"], "graphify": ["A", "C"] } }
+```
+
+- **Known roles** are the `ROLES` export of `scripts/lib/api-roles.mjs`, the one owner of reading, validating and
+  writing the file: `graphify` and `judge`. `probe` and `other` are never roles.
+- **No map is decision 525.** With no file, the graph pass uses every configured account and every other kind is
+  refused (exit 2, no alert, no fallback). A role with no entry stays on decision 525 too.
+- **Four states.** `absent` (no file): decision 525. `valid`: the map. `partial` (the file parses but an entry has an
+  error): the live entries apply, each ignored role falls to decision 525. `invalid` (not JSON, `version` is not 1 or
+  `roles` is not an object): the whole file is ignored, decision 525, with `invalid-role-map:<reason>`. A broken map
+  only takes away widening; it never refuses what decision 525 allows and never touches `config.json`.
+- **Dropped letters.** An unknown role (`unknown-role:<name>`) is ignored. An unknown letter in a list
+  (`unknown-account:<role>:<letter>`) is dropped and the entry stays live with the rest: `judge: ["B", "D"]` routes
+  to B. An empty or non-array list (`empty-role:<role>`) is ignored. A duplicate letter is deduped silently. A known
+  letter with no roster row is valid in the map and skipped at pick time; `api-roles.mjs check` warns
+  `no-configured-account:<role>` when none of a role's letters is configured.
+- **A pick stays inside the role.** The launcher and the graph batch ask `api-roles.mjs accounts <kind>` and pass the
+  answer to `api-credit-state.mjs pick --usd N --only <letters>`. A role mapped to B is served by B or refused
+  (`no account has room`), never by A. The batch's credit-exhausted retry re-picks inside the same list, so a role
+  mapped to one account retries on that account once and then fails. A named account never reads the map.
+- **The judge opt-in.** With `judge` mapped, the release judge tries the mapped account through the launcher first
+  (fallback off, no tools, an empty working directory, a two-dollar cap) and answers from the subscription on any
+  failure. With `judge` unmapped it never touches the launcher. Only the himmel project's mirror reaches this route.
+- **Tools.** `node scripts/lib/api-roles.mjs check` prints the map state, warnings and `ROLES`;
+  `write` takes the full document on stdin, validates it, and writes atomically with mode 600 (an empty `roles`
+  removes the file); `node scripts/lib/api-credit-state.mjs accounts` prints each account's cap and a bank tag.
+- **In the config UI.** Configure, then Secrets, then Multi accounts lists accounts A, B and C with their bank tag and
+  roles, and edits the map through the same `write` command (`GET`/`POST /api/api-roles`). After a change to that
+  section, run `bash scripts/vm/multi-accounts-e2e.sh <vm>` on a free test VM that holds this checkout: it starts the
+  config UI once per role-map state on a throwaway HOME and asserts the route and what auto routing reads.
+
+ponytail: auto routes only from the himmel repo even for a mapped role, upgrade path: plan P1 widens it per repo once the launcher reads the egress matrix (`scripts/guardrails/egress-matrix.json`).
+
+ponytail: nothing stops an agent with Write or Bash from creating `roles.json` and widening auto to the judge; hand edits are supported and validated on read, upgrade path: plan P4's write guard on `~/.himmel/state/api-credit/` plus a sha256 attestation sidecar and a doctor WARN.
 
 ### Caching recommendation for the graph pass
 

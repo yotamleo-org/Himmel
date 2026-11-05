@@ -136,9 +136,11 @@ function fallbackRemedy(o) {
 // Whether a row belongs to this machine or account ('shared', counted once across projects)
 // or to the open project, and who fixes it: 'configure' (a Configure tile writes the setting, fix.tile names
 // it), 'operator' (only the operator can run the command: a login) or 'chief' (the default).
-// ponytail: the shared and operator doctor checks are a hand list, upgrade: each probe declares its own scope and owner.
-const SHARED_DOCTOR = /^(C12|C19|C20|C40|C49|C50|C56|C69)-/;
+// A doctor row carries the scope its check declares (himmel-doctor.sh --json `scope`, `repo`); an item row may carry its
+// manifest item's `healthScope`/`repo`, else its kind decides. An undeclared doctor row is the project's.
+// ponytail: the operator doctor checks are a hand list, upgrade: each probe declares its own owner.
 const OPERATOR_DOCTOR = /^C12-/;
+const SCOPES = new Set(['shared', 'project']);
 const PROJECT_SECRETS = new Set(['JIRA_PROJECT_KEY']);
 const SHARED_ITEM_KINDS = new Set(['dep', 'scheduler', 'lane', 'vault', 'plugin', 'mcp']);
 const CONFIGURE_TILE = { initiative: 'scope', plugin: 'scope', cadence: 'scope', lane: 'review' };
@@ -148,8 +150,8 @@ function classifyRow(o) {
   let scope = 'project';
   if (o.source === 'cadence' || o.source === 'plugin' || o.source === 'lane' || o.source === 'flag') scope = 'shared';
   else if (o.source === 'secret') scope = PROJECT_SECRETS.has(bare) ? 'project' : 'shared';
-  else if (o.source === 'doctor') scope = SHARED_DOCTOR.test(bare) ? 'shared' : 'project';
-  else if (o.source === 'item') scope = SHARED_ITEM_KINDS.has(o.kind) ? 'shared' : 'project';
+  else if (o.source === 'doctor') scope = SCOPES.has(o.scope) ? o.scope : 'project';
+  else if (o.source === 'item') scope = SCOPES.has(o.healthScope) ? o.healthScope : SHARED_ITEM_KINDS.has(o.kind) ? 'shared' : 'project';
   const remedy = String((o.fix && o.fix.remedy) || '').trim();
   if (o.source === 'secret') return { scope, by: 'configure', tile: /^JIRA_/.test(bare) ? 'tracker' : 'secrets' };
   if (CONFIGURE_TILE[o.source] && !(o.control && o.control.class === 'display-only')) return { scope, by: 'configure', tile: CONFIGURE_TILE[o.source] };
@@ -165,6 +167,7 @@ function mkRow(o) {
   const { scope, by, tile } = classifyRow({ ...o, fix });
   return {
     scope,
+    ...(typeof o.repo === 'string' && o.repo ? { repo: o.repo } : {}),
     id: o.id,
     source: o.source,
     group: o.group,
@@ -215,6 +218,8 @@ function itemRows(ctx) {
       id: r.id,
       source: 'item',
       kind: r.kind,
+      healthScope: m.healthScope,
+      repo: m.repo,
       group: itemGroup({ kind: r.kind, id: r.id }),
       declared: { where: `scripts/install/manifest.json#${r.id}`, desired: r.desired === true ? 'wanted' : 'not wanted', profile: (m.profiles || []).join(',') },
       installed: { state: SEVERITY_INSTALLED[r.severity] || 'n/a', detail: r.detail || '' },
@@ -244,6 +249,8 @@ function doctorRows(ctx) {
     rows.push(mkRow({
       id: `doctor:${o.id}`,
       source: 'doctor',
+      scope: o.scope,
+      repo: o.repo,
       group: 'core',
       title: o.msg || o.id,
       declared: { where: `scripts/himmel-doctor.sh#${o.id}`, desired: 'check', profile: 'all' },
@@ -576,7 +583,7 @@ function foldDoctorRows(rows, probedAt) {
     const ownerHealth = ownerRank === 2 ? 'fail' : ownerRank === 1 ? 'warn' : 'ok';
     const msg = `probes disagree: doctor ${did} says ${r.health}, status ${ownerLabel} says ${ownerHealth}`;
     out.push(mkRow({
-      id: `probe-disagree:${did}`, source: 'doctor', group: 'core', title: msg,
+      id: `probe-disagree:${did}`, source: 'doctor', scope: r.scope, repo: r.repo, group: 'core', title: msg,
       declared: { where: `scripts/himmel-doctor.sh#${did}`, desired: 'agree', profile: 'all' },
       installed: { state: 'degraded', detail: `${msg} (${r.title})` },
       health: r.health,

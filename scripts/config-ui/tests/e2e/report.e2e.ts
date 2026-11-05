@@ -33,6 +33,8 @@ test("the Morning report page: day selector, five tiles, per-shift spend, an emp
   await page.goto(`${h.url}&page=report`);
   await page.locator("h1", { hasText: "Morning report" }).waitFor();
   await expect(page.locator("nav.pages a", { hasText: "Morning report" })).toHaveAttribute("aria-current", "page");
+  await expect(page.locator("#pagebar .rp-days")).toBeVisible();
+  await expect(page.locator("#pagebar [data-act=report-refresh]")).toBeVisible();
   const chips = page.locator(".rp-days .chip");
   await expect(chips.filter({ hasText: "Wed 28 Oct" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".tiles .tile")).toHaveCount(5);
@@ -50,11 +52,39 @@ test("the Morning report page: day selector, five tiles, per-shift spend, an emp
   await shot(page, "report-no-report");
 });
 
+test("the five tiles share one line at 1280 px and fold to two columns at 760 px", async ({ page }) => {
+  h = await boot();
+  seed();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${h.url}&page=report`);
+  await page.locator(".tiles.t5 .tile").first().waitFor();
+  const tops = await page.locator(".tiles.t5 .tile").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+  expect(tops).toHaveLength(5);
+  expect(new Set(tops).size).toBe(1);
+  await shot(page, "report-1280");
+  await page.setViewportSize({ width: 760, height: 900 });
+  const cols = await page.locator(".tiles.t5").evaluate((e) => getComputedStyle(e).gridTemplateColumns.split(" ").length);
+  expect(cols).toBe(2);
+  await shot(page, "report-760");
+});
+
+test("the Shift page bar stays empty after the report list has loaded", async ({ page }) => {
+  h = await boot();
+  seed();
+  await page.goto(`${h.url}&page=report`);
+  await expect(page.locator("#pagebar .rp-days")).toBeVisible();
+  await page.evaluate(() => { location.hash = "#/shift"; });
+  await page.locator("h1").first().waitFor();
+  await expect(page.locator(".rp-days")).toHaveCount(0);
+  await expect(page.locator("[data-act=report-refresh]")).toHaveCount(0);
+});
+
 test("the four settings show on Configure, save, and land in the himmel config", async ({ page }) => {
   h = await boot();
   await page.goto(h.url);
   await page.locator("#h-configure").waitFor();
   await page.locator('button.tile[data-tile="scope"]').click();
+  await page.locator('details[data-cat="machine"] > summary').click(); // the scope tile folds into categories; only the first is open
   await expect(page.locator("#reports")).toBeVisible();
   await expect(page.locator('input[data-rs="report_day"][value="local"]')).toBeChecked();
   await expect(page.locator('[data-rs="idle"]')).toHaveValue("60");

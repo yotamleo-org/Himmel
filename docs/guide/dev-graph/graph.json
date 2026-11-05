@@ -3563,7 +3563,10 @@
         "10": "e.verify.fail",
         "11": "e.verify.fail",
         "12": "e.verify.trust",
-        "13": "e.verify.fail"
+        "13": "e.verify.fail",
+        "16": "e.verify.fail",
+        "17": "e.verify.fail",
+        "18": "e.verify.fail"
       },
       "unmapped": {
         "14": "warn only: a Bug-ticket PR with no bug-origin line, never a FAIL, so no workflow decision",
@@ -3598,7 +3601,9 @@
         "pool-stale": "a pool disposition whose blocker shipped: the chief re-rules the parked ticket, operational triage",
         "focus": "FOCUS page refresh failure or stale dirty state: operational",
         "status-sweep": "Jira status sweep moved or missed tickets: operational",
-        "resolve": "a worker's BLOCKED resolve marker: the chief resolves the thread itself, not a workflow decision"
+        "resolve": "a worker's BLOCKED resolve marker: the chief resolves the thread itself, not a workflow decision",
+        "worker-silent": "a worker gone quiet: the chief relaunches it or takes over its one blocked step, operational triage",
+        "silent-go": "a GO'd PR whose worker went silent: the waiter merged it through merge-on-green.sh --go, or held it and paged, operational triage"
       }
     },
     "docs/handover/worker-preface.md": {

@@ -106,8 +106,8 @@ RED first — one assertion that fails *before* the implementation
 exists, pasted, then green. **Impacted suites = every suite that references a
 file you touched**: `bash scripts/cr/impacted-suites.sh`, each run as one literal
 `bash scripts/quiet-run.sh suite -- bash <test-*.sh>` (nothing appended), named
-with counts; which run locally and which go to CI as `SUITE <p> = CI`:
-`scripts/cr/pr-check-ref/33-step3-impacted.md`. Restore-to-HEAD, sandbox and corpus-replay rules (destructive
+with counts; local or `= CI`: `scripts/cr/pr-check-ref/33-step3-impacted.md`.
+Restore-to-HEAD, sandbox and corpus-replay rules (destructive
 commands are VM-only): `worker-sections/shell-and-tests.md`.
 
 ## Shipping
@@ -129,7 +129,7 @@ commands are VM-only): `worker-sections/shell-and-tests.md`.
   `caused-by: unknown`, once). Merge-forward
   (never past a red you introduced), `suite-coverage.sh` and the
   loaded-budget rule: `worker-sections/ci-red.md`. [prose]
-- Verify a finding first (`lean-skills:receiving-code-review`); if agreed,
+- Verify a finding against the code first, never on its word; if agreed,
   **sweep the whole class** across every site and record it with
   `write-verdicts.sh sweep` (`SWEEP [<id>@<head>] class=<text> ::
   sites=<a>, <b>`). Every finding you fix or defer needs a **terminal** ledger

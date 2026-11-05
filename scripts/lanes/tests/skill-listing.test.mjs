@@ -157,12 +157,13 @@ test('resolveProfile: opts.skillEntries adds skillOverrides + budget fraction to
 
 test('resolveProfile: without opts.skillEntries the output is unchanged (goldens stay byte-identical)', () => {
   const r = resolveProfile(registry, 'user', {});
-  assert.deepEqual(Object.keys(r), ['enabledPlugins']);
+  // A profile without artifact: true also carries the default Artifact deny; no listing keys.
+  assert.deepEqual(Object.keys(r), ['enabledPlugins', 'permissions']);
 });
 
 test('resolveProfile: a profile with no required plugins (bare) gets no overrides', () => {
   const r = resolveProfile(registry, 'bare', { skillEntries: [user('find-docs')] });
-  assert.deepEqual(Object.keys(r), ['enabledPlugins']);
+  assert.deepEqual(Object.keys(r), ['enabledPlugins', 'permissions'], 'no skillOverrides; permissions is the default Artifact deny');
 });
 
 // Omitting cwd at either forwarding seam loses project runtime names.

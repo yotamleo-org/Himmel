@@ -2404,6 +2404,24 @@ same 'acts= counts a second BLOCKED so it wakes again (HIMMEL-6292)' "$(acts6292
 printf '%s\n' '# worker' '- 10:00 LIVE — working' > "$d6292"
 same 'acts= is absent for a worker with no actionable bullet (HIMMEL-6292)' "$(acts6292)" ''
 
+# --- (8349 P-A) --pool-dispositions reads stacked-series rows: a stackable ticket and a ticket held by a series
+# are dispositioned (never pool-unresolved), and each key-carrying series row prints one `# pool-keys <line> <first> <keys>`.
+# RED control (pre-change tick.sh): both tickets print `# pool-unresolved`, and no `# pool-keys` line exists.
+pk_rows="$W/pool-series.rows"
+printf 'SERIES\tLOCAL\tHIMMEL-801,HIMMEL-802\tHigh\tv1\tfiles=a.sh\n%s\n%s\n%s\n%s\n%s\n' \
+    'STACKABLE HIMMEL-803 scripts/lib/a.sh' \
+    '# disposition HIMMEL-801 listed SERIES HIMMEL-801' \
+    '# disposition HIMMEL-803 stackable on N9 (2/4)' \
+    '# disposition HIMMEL-804 collision a.sh held by series s1' \
+    'LOCAL	HIMMEL-805	High	v1	plain row' > "$pk_rows"
+pk_out="$(bash "$SUT" --pool-dispositions < "$pk_rows" 2>/dev/null)"
+not_contains '(8349) a stackable-on ticket is not pool-unresolved' "$pk_out" 'pool-unresolved stackable HIMMEL-803 '
+not_contains '(8349) a ticket held by a series is not pool-unresolved' "$pk_out" 'pool-unresolved collision HIMMEL-804 '
+contains '(8349) a SERIES row prints its keys' "$pk_out" '# pool-keys 1 SERIES HIMMEL-801,HIMMEL-802'
+contains '(8349) a STACKABLE row prints its key' "$pk_out" '# pool-keys 2 STACKABLE HIMMEL-803'
+contains '(8349) a held-by-series disposition prints its key' "$pk_out" '# pool-keys 5 # HIMMEL-804'
+same '(8349) a plain row and a listed disposition print no pool-keys line' "$(printf '%s\n' "$pk_out" | grep -c '^# pool-keys ')" '3'
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'
     exit 0

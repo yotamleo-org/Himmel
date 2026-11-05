@@ -1,7 +1,8 @@
 import { beforeEach, expect, test } from "bun:test";
-import { buildRunArgs, DEFAULT_MODEL, detectCap, detectContentFilter, buildPrompt, killTree, REPO_ROOT, sessionEnv, spawnSpec, laneEffort } from "./run";
+import { buildRunArgs, DEFAULT_MODEL, detectCap, detectContentFilter, buildPrompt, killTree, REPO_ROOT, sessionEnv, spawnSpec, laneEffort, withSessionId, writeLaunchRecord } from "./run";
 import { spawn } from "bun";
-import { existsSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // buildRunArgs resolves the model from process.env — reset the
@@ -380,6 +381,52 @@ test("buildPrompt Jira sanction applies only to operator-marked lines", () => {
   const p = buildPrompt("HIMMEL-5", { inbox:"i", outbox:"o", context:"c", cwd:"/r" });
   expect(p).toContain(`operator":true`);
   expect(p).not.toContain("Acting on Jira tickets for the operator is part of your job: when asked,");
+});
+
+test("a bridge run gets a session id and writes a launch record the digest reads back (HIMMEL-9163)", () => {
+  const cache = mkdtempSync(join(tmpdir(), "tg-launch-"));
+  const sid = "9163c0de-0000-4000-8000-0000000000aa";
+  try {
+    const cmd = withSessionId(["claude", "--model", "claude-opus-5-5", "the prompt"], sid);
+    expect(cmd).toEqual(["claude", "--session-id", sid, "--model", "claude-opus-5-5", "the prompt"]);
+    writeLaunchRecord(sid, "claude-opus-5-5", cache);
+    const line = readFileSync(join(cache, "launch-logs", "telegram-9163c0de.log"), "utf8");
+    expect(line).toMatch(new RegExp(`^headed-arm-worker: profile=telegram lane=native model=claude-opus-5-5 role=telegram session=telegram-9163c0de session_id=${sid} launched=\\S+\\n$`));
+  } finally { rmSync(cache, { recursive: true, force: true }); }
+});
+// Drives runSession itself against a stub `claude` on PATH, so deleting the writeLaunchRecord call or the
+// withSessionId call in runSession fails here (the helper-only test above cannot see either).
+test("runSession writes the launch record and passes --session-id to claude (HIMMEL-9163)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "tg-runsession-"));
+  const bin = join(dir, "bin");
+  const cache = join(dir, "cache");
+  const argvOut = join(dir, "argv.txt");
+  mkdirSync(bin);
+  writeFileSync(join(bin, "claude"), `#!/bin/sh\nprintf '%s\\n' "$@" > "$STUB_ARGV_OUT"\n`);
+  chmodSync(join(bin, "claude"), 0o755);
+  const saved = { PATH: process.env.PATH, HIMMELCTL_CACHE_DIR: process.env.HIMMELCTL_CACHE_DIR, STUB_ARGV_OUT: process.env.STUB_ARGV_OUT };
+  process.env.PATH = `${bin}:${process.env.PATH}`;
+  process.env.HIMMELCTL_CACHE_DIR = cache;
+  process.env.STUB_ARGV_OUT = argvOut;
+  try {
+    const { runSession } = await import("./run");
+    const r = await runSession("hello", dir);
+    expect(r.code).toBe(0);
+    const argv = readFileSync(argvOut, "utf8").split("\n");
+    const at = argv.indexOf("--session-id");
+    expect(at).toBeGreaterThanOrEqual(0);
+    const sid = argv[at + 1];
+    expect(sid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    const line = readFileSync(join(cache, "launch-logs", `telegram-${sid.slice(0, 8)}.log`), "utf8");
+    expect(line).toMatch(new RegExp(`^headed-arm-worker: profile=telegram lane=native model=\\S+ role=telegram session=telegram-${sid.slice(0, 8)} session_id=${sid} launched=\\S+\\n$`));
+  } finally {
+    for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+test("buildRunArgs and spawnSpec argv are unchanged: the session id is added at spawn only (HIMMEL-9163)", () => {
+  expect(spawnSpec("p").cmd).not.toContain("--session-id");
+  expect(buildRunArgs("p").cmd).not.toContain("--session-id");
 });
 
 test("run-prompt.md template matches buildPrompt's per-message operator marker (HIMMEL-5832)", () => {

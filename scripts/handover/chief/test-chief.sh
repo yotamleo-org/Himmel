@@ -366,8 +366,13 @@ token6a="$(token_of "$out6a")"
 printf '%s\n' '# worker' '## Results' '- 10:00 READY 5 aaaa GREEN' '- 10:05 WRAPPED — done' > "$root/tester/nextrepo/DEMO-1-N9-wrapped.md"
 printf '%s\n' '# worker' '## Results' '- 10:00 READY 77 bbbb GREEN' '- 10:05 WRAPPED — done' > "$root/tester/nextrepo/DEMO-2-N8-closed.md"
 printf '{"legs":[{"label":"N9","doc":"%s"},{"label":"N8","doc":"%s"}]}\n' "$root/tester/nextrepo/DEMO-1-N9-wrapped.md" "$root/tester/nextrepo/DEMO-2-N8-closed.md" > "$root/tester/nextrepo/DEMO-nextleg-${today}A-chief.fleet.json"
-chief next --bucket nextrepo >/dev/null
+out6next="$(chief next --bucket nextrepo)"
 check "6 next writes successor stub" "$([ -f "$doc6B" ] && echo yes)" "yes"
+# The outgoing chief is told, once, what its tail is: relay, wait for LIVE with no waiter, wrap, stop.
+check "6 next without --arm prints no after-next line: an unarmed successor never reports LIVE" \
+    "$(printf '%s\n' "$out6next" | grep -c '^after-next:')" "0"
+check "6 next still arms the relay and the handover mode (control)" \
+    "$(printf '%s\n' "$out6next" | grep -c '^\(relay-on-live\|handover-mode\): ')" "2"
 check "6 Telegram metadata records the successor bucket" "$(grep -c '"bucket":' "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}B-chief.md.meta.json" 2>/dev/null || true)" "1"
 check "6 next writes predecessor HANDOFF" "$([ -f "$handoff6A" ] && echo yes)" "yes"
 check "6 successor stub names the predecessor" "$(grep -c "DEMO-nextleg-${today}A-chief.md" "$doc6B")" "1"
@@ -500,7 +505,24 @@ check "7 arm log carries armed/signal/deadline/session" \
     "$(grep -cE "armed: name=${session7B} doc=.* signal=.*sig-${session7B} deadline=[0-9]+" "$log7B" 2>/dev/null)" "1"
 check "7945 next --arm exports the predecessor's session name to the arm" \
     "$(grep -c "^predecessor=DEMO-nextleg-${today}A-chief\$" "$log7B")" "1"
+check "7 next --arm tells the outgoing chief to relay, re-arm the muted waiter once, read nothing, wrap on LIVE and stop" \
+    "$(printf '%s\n' "$out7b" | grep -c '^after-next: .*re-arm the muted waiter once.*read nothing.*chief.sh wrap.*stop')" "1"
+check "7 next --arm prints the after-next line once, after the armed: line" \
+    "$(printf '%s\n' "$out7b" | grep -n '^\(armed\|after-next\):' | cut -d: -f2 | tr '\n' ' ')" "armed after-next "
 HANDOVER_DIR="$root" bash "$QL" release "$doc7A" "$token7a" >/dev/null 2>&1
+# a refused arm prints no after-next line: the outgoing chief must not be told to stop for a successor that never launched
+cat > "$tmp/stub-arm-fail.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+chmod +x "$tmp/stub-arm-fail.sh"
+out7fa="$(chief new --bucket armfail)"
+token7fa="$(token_of "$out7fa")"
+out7f="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+    CHIEF_HEADED_ARM="$tmp/stub-arm-fail.sh" CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work" CHIEF_CONTEXT=1m \
+    bash "$C" next --bucket armfail --arm --deadline-min 0 --context standard ) 2>/dev/null || true )"
+check "7 a failed arm prints no after-next line" "$(printf '%s\n' "$out7f" | grep -c '^after-next:')" "0"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/armfail/DEMO-nextleg-${today}A-chief.md" "$token7fa" >/dev/null 2>&1
 
 # --- 8: no private-string leak -----------------------------------------
 # leak-pattern-allow: this line and the next NAME the banned words in order
@@ -535,7 +557,7 @@ leak_free() {
 # every such line must carry a token this run actually saw `new` print — an
 # unrelated
 # leak, or a line that merely LOOKS token-shaped, still fails loudly.
-known_tokens=("$token1" "$token4" "$token6a" "$token6ba" "$token6da" "$token7a" "$tokenInbox" "$tokenOB")
+known_tokens=("$token1" "$token4" "$token6a" "$token6ba" "$token6da" "$token7a" "$token7fa" "$tokenInbox" "$tokenOB")
 token_residual() {
     local token
     for token in "$@"; do
@@ -1951,7 +1973,7 @@ rm -f "$tmp/claude-argv-63"
 run_launch_line "$out63a"
 row63a="$(cat "$LL63/$S63.log" 2>/dev/null || true)"
 case "$row63a" in
-    "headed-arm: role=chief session=$S63 context=1m source=default autocompact=auto launched="[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) r63a=match ;;
+    "headed-arm: role=chief session=$S63 context=1m source=default autocompact=auto launched="[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z" lane=native") r63a=match ;;
     *) r63a="nomatch: [$row63a]" ;;
 esac
 check "63a running the pasted line writes one chief row: context, source, autocompact, launched" "$r63a" "match"
@@ -2061,6 +2083,7 @@ cat > "$tmp/stub-arm-66.sh" <<STUB
     printf 'WORKER_SESSION_LANE=%s\n' "\${WORKER_SESSION_LANE+set}"
     printf 'OPENROUTER_MODEL=%s\n' "\${OPENROUTER_MODEL+set}"
     printf 'HEADED_ARM_REQUIRED_AUTOCOMPACT=%s\n' "\${HEADED_ARM_REQUIRED_AUTOCOMPACT+set}"
+    printf 'HEADED_ARM_LAUNCHER_ENV_LINES=%s\n' "\${HEADED_ARM_LAUNCHER_ENV_LINES+set}"
     printf 'HIMMEL_HOLD_KEY=%s\n' "\${HIMMEL_HOLD_KEY+set}"
     printf 'HIMMEL_HOLD_DOC=%s\n' "\${HIMMEL_HOLD_DOC+set}"
     printf 'HIMMEL_HOLD_LABEL=%s\n' "\${HIMMEL_HOLD_LABEL+set}"
@@ -2093,6 +2116,7 @@ out66b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PR
     HIMMEL_CONSOLE_RELAY=1 HIMMEL_HOLD_KEY=HIMMEL-1 HIMMEL_HOLD_DOC=/leaked-66/doc.md HIMMEL_HOLD_LABEL=N1 WRITE_HOLD_OK=1 \
     HEADED_ARM_LAUNCHER=/leaked-66/worker-claude-launcher.sh HEADED_ARM_RECORDER=1 \
     HEADED_ARM_REQUIRED_AUTOCOMPACT=200000 \
+    HEADED_ARM_LAUNCHER_ENV_LINES=LEAK=1 \
     HEADED_ARM_LAUNCHER_ENV="CLAUDEX_LANE_OK=1 WORKER_SESSION_PROFILE_SETTINGS=/leaked-66/settings.json " \
     HEADED_ARM_UNAME=Darwin \
     CHIEF_CONTEXT=1m \
@@ -2113,6 +2137,8 @@ check "66 armed child's OWN environment still lacks HIMMEL_CONSOLE_LEG (not just
     "$(grep -c '^HIMMEL_CONSOLE_LEG=set$' "$tmp/child-env-66.txt")" "0"
 check "66 armed child's OWN environment still lacks HEADED_ARM_REQUIRED_AUTOCOMPACT (not just unprinted)" \
     "$(grep -c '^HEADED_ARM_REQUIRED_AUTOCOMPACT=set$' "$tmp/child-env-66.txt")" "0"
+check "66 armed child's OWN environment still lacks HEADED_ARM_LAUNCHER_ENV_LINES (not just unprinted)" \
+    "$(grep -c '^HEADED_ARM_LAUNCHER_ENV_LINES=set$' "$tmp/child-env-66.txt")" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc66A" "$token66a" >/dev/null 2>&1
 
 # --- 67: chief_context_worker_env_unset_names must name
@@ -2537,7 +2563,7 @@ STUB
 cat > "$bus79/bus" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/calls"
-[ -n "${BUS79_HANG:-}" ] && exec sleep 20
+[ -n "${BUS79_HANG:-}" ] && exec sleep 120
 if [ -n "${BUS79_HELD:-}" ]; then
   echo "name already registered: $2 (live holder pid 4242)" >&2
   exit 1
@@ -2620,8 +2646,11 @@ check "79 lost bus output: the refusal does not advise the override" "$(printf '
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79lost/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79lost")" >/dev/null 2>&1
 t79=$SECONDS
 out79h="$(run79 in new bus79hang BUS79_HANG=1 BUS_EXEC_SECS=08)"
+# the stub sleeps 120s and the bus times out after 8s; a macOS runner adds far more overhead than Linux does, so the bound sits
+# well under the stub's sleep (an unbounded wait would take all 120s) rather than just above the 8s timeout
+t79_secs=$((SECONDS - t79))
 check "79 hung bus: refused within the bound" \
-    "$(printf '%s\n' "$out79h" | grep -c '^armed: '):$([ $((SECONDS - t79)) -lt 15 ] && echo bounded || echo slow)" "0:bounded"
+    "$(printf '%s\n' "$out79h" | grep -c '^armed: '):$([ "$t79_secs" -lt 60 ] && echo bounded || echo "slow:${t79_secs}s")" "0:bounded"
 check "79 hung bus: the refusal says it timed out" "$(printf '%s\n' "$out79h" | grep -c 'timed out after 8s')" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79hang/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79h")" >/dev/null 2>&1
 # Chief-path twin, on the REAL bus CLI: a chief name already bound
@@ -3675,5 +3704,39 @@ h95="$(handoff95 inf95y)"
 check "95f the pointer bytes tip the note into the pointer pass" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$h95")" "1"
 check "95f the pointer is still listed" "$(grep -c 'DEMO-961-budget' "$h95")" "1"
 check "95f the over-budget note names the pointer bytes" "$(grep -cE '^> HANDOFF over budget: .*in-flight pointers [0-9]+ bytes' "$h95")" "1"
+
+# --- 96. no HANDOFF or chief doc names a script path that does not exist ----
+# The predecessor's hand-filled HANDOFF told the operator to run chief-kit/merge-fork-pr.sh;
+# the script is scripts/handover/merge-fork-pr.sh. No file in the repo names the wrong path
+# (it came from the chief's own prose), so 96a/96b build the fixture from the HANDOFF
+# template plus the line a predecessor wrote; 96c scans the real HANDOFF the writer renders
+# and the chief docs.
+missing_script_paths() {  # <file>... - each script path they name (scripts/..., or a dir/name.sh under scripts/ or scripts/handover/) that is not in this checkout
+    local f t
+    for f in "$@"; do
+        [ -r "$f" ] || { printf 'unreadable: %s\n' "$f"; continue; }  # a missing doc must fail the assertion, not pass it empty
+        # shellcheck disable=SC2016  # a literal ERE: the $ { } are characters to match, not expansions
+        grep -oE '[A-Za-z0-9_./${}<>-]+\.(sh|mjs)' "$f" 2>/dev/null | sort -u | while IFS= read -r t; do
+            t=${t#*>/}  # a <placeholder>/ prefix (<anchor>/scripts/...) is the checkout root
+            case "$t" in *[\$\{\<]*|/*|.*|*..*|*/X.sh) continue ;; esac  # a variable, a placeholder, an absolute or dotted path, the X.sh example
+            case "$t" in */*) ;; *) continue ;; esac
+            [ -e "$REPO_REAL/$t" ] || [ -e "$REPO_REAL/scripts/$t" ] || [ -e "$REPO_REAL/scripts/handover/$t" ] || printf '%s\n' "$t"
+        done
+    done
+}
+fix96="$tmp/fix96"; mkdir -p "$fix96"
+# shellcheck disable=SC2016  # the backticks are literal HANDOFF text
+{ cat "$REPO_REAL/docs/handover/chief-handoff-template.md"
+  printf '\n**Fork PR merge:** `bash <anchor>/scripts/handover/chief-kit/merge-fork-pr.sh acme-org/qmd 52 <head>`\n'; } > "$fix96/handoff-wrong.md"
+# shellcheck disable=SC2016  # the backticks are literal HANDOFF text
+{ cat "$REPO_REAL/docs/handover/chief-handoff-template.md"
+  printf '\n**Fork PR merge:** `bash <anchor>/scripts/handover/merge-fork-pr.sh acme-org/qmd 52 <head>`\n'; } > "$fix96/handoff-right.md"
+check "96a a HANDOFF that names chief-kit/merge-fork-pr.sh is caught" "$(missing_script_paths "$fix96/handoff-wrong.md")" "scripts/handover/chief-kit/merge-fork-pr.sh"
+check "96b the same HANDOFF naming scripts/handover/merge-fork-pr.sh is clean" "$(missing_script_paths "$fix96/handoff-right.md")" ""
+check "96b2 an unreadable document fails the scan instead of passing it empty" "$(missing_script_paths "$fix96/no-such.md")" "unreadable: $fix96/no-such.md"
+chief new --bucket p96 >/dev/null
+next95 p96
+check "96c the HANDOFF the writer renders names no missing script path" "$(missing_script_paths "$(handoff95 p96)")" ""
+check "96c the chief docs name no missing script path" "$(missing_script_paths "$REPO_REAL/docs/handover/chief-handoff-template.md" "$REPO_REAL/docs/handover/chief-template.md" "$REPO_REAL/docs/handover/running-a-chief.md" "$REPO_REAL/docs/handover/worker-preface.md" "$REPO_REAL/docs/handover/worker-brief-template.md" "$REPO_REAL"/docs/handover/chief-sections/*.md "$HERE/chief.sh")" ""
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

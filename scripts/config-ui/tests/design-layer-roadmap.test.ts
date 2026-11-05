@@ -78,3 +78,22 @@ test("roadmap spacing uses tokens and the page introduces no colour or variable 
   }
   expect(drift(PUBLIC)).toEqual([]);
 });
+
+// ---- the dense Board's style block ----
+const appCss = () => readFileSync(join(PUBLIC, "app.css"), "utf8");
+// the body of the first rule whose selector list is exactly `sel` (a later @media override of the same selector does not count)
+const firstRule = (sel: string) => new RegExp(`(?:^|[}{])\\s*${sel.replace(/[.[\]()]/g, "\\$&")}\\s*\\{([^}]*)\\}`).exec(appCss())?.[1] ?? "";
+
+test("the version strip has five columns and the board four, with a narrow lane after them", () => {
+  expect(firstRule(".rm-vstrip")).toContain("repeat(5");
+  expect(firstRule(".rm-board")).toContain("repeat(4");
+});
+
+test("a card title clamps to two lines (three on a phone), and the shared bubble shows on hover and on focus, off at 760 px or with no hover", () => {
+  const css = appCss();
+  expect(firstRule(".rm-title .rm-clip")).toContain("-webkit-line-clamp:2");
+  expect(css).toMatch(/@media\s*\(max-width:760px\)\s*\{[^@]*\.rm-title \.rm-clip\{[^}]*-webkit-line-clamp:3/);
+  expect(css).toContain("[data-tip]:hover::after");
+  expect(css).toMatch(/:focus-visible[^{]*::after/);
+  expect(css).toMatch(/@media\s*\(max-width:760px\)\s*,\s*\(hover:none\)\s*\{[^}]*::after[^}]*display:none/);
+});

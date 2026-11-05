@@ -25,6 +25,20 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     since the last render) means re-run it now; `board=ok` means the LOCAL
     file matches the current state.
 
+    **Board sections.** Write a note onto the chief's AG-UI board with
+    `node "<kit>/board-section.mjs" --doc "<this file>" set <id> --title <t> [--tone info|warn|ok] [--order <n>] [--expect-rev <n>] (--body <text> | --body-file <path>)`;
+    `rm <id>` removes one and `list` prints them. The sections live in
+    `<doc stem>.sections.json` beside your doc (`himmel.board-sections/1`: id `^[a-z0-9][a-z0-9-]{0,40}$`,
+    title at most 80 characters, body at most 4000, at most 20 sections, file at most 64 KB), a file
+    `board.mjs` never touches, so a render does not erase them. Title and body pass through
+    the redactor and `set` prints `redacted: <n>`. Exit 0 ok, 2 invalid input or a symlinked
+    sidecar, 3 `--expect-rev` no longer matches the file's `rev` (nothing written; without the flag the
+    last writer wins). Plain text only.
+    The operator sees them as the Chief notes strip above the worker list on the AG-UI Fleet page
+    (`himmelctl ui --agui`, then the Fleet page). The page polls every 5 s, so a `set` or `rm` reaches
+    an open page within about 5 s with no reload (`scripts/config-ui/tests/e2e/board-sections.e2e.ts`
+    proves it). Record no AG-UI URL on the `board:` line: it carries a launch token and an ephemeral port.
+
     The live page stays under 15 KB at 25 live workers: one line per worker card,
     finished judges (last bullet `WRAPPED` or `VERDICT`) go to the archive with
     the other done work, and the exploration and failures tables show their top

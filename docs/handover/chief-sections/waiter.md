@@ -18,7 +18,9 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     a closing `# pool=<rows>/<slack>` line, `,LOW` when the pool fills fewer slots than the slack, and `POOL-EMPTY` when it has nothing, followed by the next tier (tier-4 To Do rows in rank order) as `NEXT-TIER` rows: then unblock collisions, draft specs for the next priority items, or fill from the NEXT-TIER rows when the operator has ruled so); dispatch it with `gen-briefs.py`; both refuse Windows/WSL work per `chief-kit/platform-dropped.re` unless the ticket is labelled `windows-removal` / the worker sets `platform_removal` and its title says remove/drop/delete/retire/sweep/clean), or
     `WAKE tick-fail samples=<n>` when 3 samples in a row failed (the tick or
     the usage read is broken: fix it, then restart the waiter; it wakes once per
-    failure streak), or, on a successor's first arm only (ACTION ZERO step 9,
+    failure streak; look-only, so it joins the housekeeping digest and rides the next
+    wake as a `look-only since last wake:` block, as do `unowned-prs` and a prs-only tick change),
+    or, on a successor's first arm only (ACTION ZERO step 9,
     `--succession <your session> [--silent-min T]`), `WAKE succession complete
     <k/n>` plus the printed LIVE bullet command when every inherited worker's `SUCCESSION
     accepted` bullet is in, or `WAKE succession partial <k/n> silent <T> min`
@@ -63,6 +65,21 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     usually means a real issue, so work each new id the turn it wakes you: **fix
     it, ticket it, or record a ruling** that it is acceptable. Never leave it
     unread because the next wake will not repeat it.
+
+    **`WAKE cadence <workflow> run=<id> <RED|SKIP|MISSED> <run url> cause: <why>`** (HIMMEL-9247): the
+    tick reads the last *scheduled* run of every workflow with a `schedule:` trigger (about every 30 min,
+    cached; `CI_CADENCE_INTERVAL_SEC`) and prints them as `cadence=<name>:<state>:<age>:<run id>[:flag],...`.
+    The waiter wakes once per run id that is RED (failure or timed_out), SKIP (concluded skipped) or
+    MISSED (no scheduled run inside 1.5 periods), with the run link and the first failing job and step.
+    The first sample is a baseline, so a run that already finished never wakes you, and a re-armed
+    waiter replays nothing (`<inbox>.wait.cadence`). `cadence=?` (gh unreadable) wakes nothing. A red
+    here is yours to triage: open the link, fix or ticket it, never leave it for the next wake.
+
+    **`WAKE review <date> <reasons>`** (HIMMEL-9247, decision 593): the tick prints the daily failure
+    review as `review=<date>:<age>:<failures>:<new>:<new5+>:<filed>[:CAPPED][:STALE]` (`none` is left off
+    the line). The waiter wakes once per review day when the router filed a ticket, a new class has 5 or
+    more failures, or the create cap was hit, and once per last-review date when the review is STALE (no
+    review for 26 h). A class with a single failure never wakes you (`<inbox>.wait.review`).
 
     **`WAKE pool-stale <KEYS>`** (HIMMEL-6604): the tick re-checks every Live-state
     `pool-disposition: KEY slice|close|question <target>` line whose target names a
@@ -203,10 +220,30 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     carry a 40-hex head, still wakes as `WAKE tick changed=tails,acts`. Workers
     write READY as a bullet only, never a message.
 
+    **A GO'd PR whose worker went silent merges without it** (HIMMEL-9132): with `--doc` and `--workers-from`, a READY worker that has had a GO file and no doc write for `CHIEF_WAIT_WORKER_SILENT_MIN` minutes (default 45), and no live process unless its last bullet is a hand-off, is merged by `silent-go-merge.sh` through ready-check at the GO head and `merge-on-green.sh --go`; you wake as `WAKE silent-go` with one `SILENT-WORKER-MERGE`, `-MERGE-FAILED` or `-HELD reason=<why>` line; the operator was already paged with it and your doc carries it as a bullet.
+
     **A hold wakes you once.** `WAKE tick changed=holds` means a worker entered the
     `holds=` set (`BLOCKED`, or a `FINDING` awaiting a ruling, untouched for
     `TICK_HOLD_MIN` minutes, default 20): read its newest bullet and answer it. It
     does not repeat while the hold stands.
+
+    **A silent worker wakes you once, and the operator is already told** (HIMMEL-9133).
+    `WAKE worker-silent <worker> signal=<capped-waker|succession-partial> [silent=<n>m]`
+    means no turn is coming from that worker: the tick lists `wakerstate=<worker>:capped`
+    (its bus mail went unread) and, with `--workers-from`, its doc has had no write for
+    `CHIEF_WAIT_WORKER_SILENT_MIN` minutes (default 45; the doc's mtime stands in for its
+    newest Results bullet), or a `--succession` tally still waits on it (the line follows
+    the partial block). The waiter already appended a `WORKER-SILENT` bullet to your doc and
+    sent the operator one page naming the worker, the signal and the action; it repeats
+    neither while the worker's doc is unchanged (`<inbox>.wait.silent`). Recover the worker
+    in that turn, never wait on it. First confirm it is not working (`queue-lock.sh status
+    <worker doc>`, `ListAgents`, its newest Results bullet). Then do ONE of: **relaunch** it:
+    write a RESUME doc from the worker's doc (`worker-resume-brief.sh <worker doc>` supplies
+    the git facts; name it per `worker-brief-template.md`), end its stale session (one pid
+    per call), release its lock with the worker's token, launch `chief-kit/headed-arm-worker.sh`
+    on the RESUME doc (same branch, worktree and PR) and add it to the fleet manifest; or
+    **take over** its one blocked step yourself (a merge after your GO runs as a claudex PR's
+    does, `merges.md`). Then send the operator one message saying which you did, for which worker.
 
     **Permission.** The tracked `.claude/settings.json` allows exactly the
     step-10 launch shape `bash scripts/handover/chief-kit/chief-wait.sh …`

@@ -115,6 +115,100 @@ start() { # <inbox> <outfile> [tick args...]
     WPID=$!
 }
 
+# --- (ws) a silent worker wakes the chief once and the operator is alerted ---
+# A held worker is silent when its bus waker is capped (wakerstate=<w>:capped: the same unread
+# mail was typed --max-wakes times) and its doc has had no write for CHIEF_WAIT_WORKER_SILENT_MIN
+# minutes, or when a --succession tally names it still out. Every fleet below is a sandbox under
+# $WORK: a chief doc with a Results heading, one worker doc aged with touch, a one-worker manifest,
+# and the suite's page stub (never a real Telegram send). RED control (chief-wait.sh before this
+# change): no WAKE worker-silent line, no page and no chief-doc bullet.
+# Run only these rows with --worker-silent-only.
+ws_fleet() { # <case> <age of the worker doc's last write, as touch -d reads it>: sets I, WD, WL, WM
+    mkdir -p "$WORK/$1/consoles"; I="$WORK/$1/consoles/c.md"; : > "$I"
+    WD="$WORK/$1/chief.md"; printf '# chief\n\n## Results\n' > "$WD"
+    WL="$WORK/$1/HIMMEL-1-N1-a.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$WL"
+    touch -d "$2" "$WL"  # gnu-ok: Linux-only kit
+    WM="$WORK/$1/chief.fleet.json"; printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"}]}\n' "$WL" > "$WM"
+    rm -f "$STUB/pages"
+}
+ws_tick() { # [wakerstate value]: the standing tick line, a held worker with no bus edge
+    tick_line "N1:FRESH" "ok"
+    sed -i "s/ denials=none/ busedge=MISSING:N1${1:+ wakerstate=$1} denials=none/" "$STUB/tick.line"  # gnu-ok: Linux-only kit
+}
+ws_pages() { cat "$STUB/pages" 2>/dev/null | grep -c . || true; }  # pipefail-ok: none set; a missing file counts 0
+ws_bullets() { grep -c '^- [0-9:]* WORKER-SILENT N1 signal=capped-waker' "$WD" 2>/dev/null || true; }
+reset_stub
+ws_fleet ws1 "2 hours ago"
+ws_tick "N1:capped"
+CHIEF_WAIT_WORKER_SILENT_MIN=30 start "$I" "$WORK/ws1.out" --doc "$WD" --workers-from "$WM"
+wait_exit "$WPID"
+check "(ws1) a capped waker on a doc quiet past the bound ends the wait" "0" "$rc"
+check "(ws1) the wake names the worker and the signal" "WAKE worker-silent N1 signal=capped-waker" "$(head -n1 "$WORK/ws1.out" | cut -d' ' -f1-4)"
+check "(ws1) exactly one worker-silent line for the worker" "1" "$(grep -c '^WAKE worker-silent' "$WORK/ws1.out")"
+check "(ws1) the tick line follows it" "1" "$(grep -c '^TICK ' "$WORK/ws1.out")"
+check "(ws1) the operator alert went out once" "1" "$(ws_pages)"
+check "(ws1) and names the worker and the signal" "1" "$(grep -c 'WORKER-SILENT N1 signal=capped-waker' "$STUB/pages" 2>/dev/null)"
+check "(ws1) the chief doc got one bullet naming the action" "1" "$(ws_bullets)"
+check "(ws1) the exit reason is logged" "yes" "$(grep -q 'exit=wake-worker-silent' "$I.wait" && echo yes)"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+# the state is unchanged: a re-arm repeats neither the wake, the page nor the bullet
+CHIEF_WAIT_WORKER_SILENT_MIN=30 timeout 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(ws2) a re-arm on an unchanged silent worker keeps waiting" "124" "$rc"
+check "(ws2) and prints no worker-silent line" "0" "$(grep -c 'worker-silent' "$WORK/ws2.out")"
+check "(ws2) and pages nothing more" "1" "$(ws_pages)"
+check "(ws2) and writes no second bullet" "1" "$(ws_bullets)"
+# the worker wrote, then went quiet again: the state moved, so it is a new silence
+touch -d "90 minutes ago" "$WL"  # gnu-ok: Linux-only kit
+CHIEF_WAIT_WORKER_SILENT_MIN=30 start "$I" "$WORK/ws2b.out" --doc "$WD" --workers-from "$WM"
+wait_exit "$WPID"
+check "(ws2b) a worker that wrote and went quiet again wakes again" "WAKE worker-silent N1 signal=capped-waker" "$(head -n1 "$WORK/ws2b.out" | cut -d' ' -f1-4)"
+check "(ws2b) with a second alert" "2" "$(ws_pages)"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+
+# negative: a Results bullet inside the bound keeps the worker out of the silent set
+reset_stub
+ws_fleet ws3 "1 minute ago"
+ws_tick "N1:capped"
+CHIEF_WAIT_WORKER_SILENT_MIN=30 timeout 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws3.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(ws3) a fresh bullet inside the bound keeps waiting" "124" "$rc"
+check "(ws3) and prints no worker-silent wake" "0" "$(grep -c 'worker-silent' "$WORK/ws3.out")"
+check "(ws3) and sends no alert" "0" "$(ws_pages)"
+# negative: a quiet doc with a waker that is not capped is a worker waiting, not a silent one
+reset_stub
+ws_fleet ws4 "2 hours ago"
+ws_tick
+CHIEF_WAIT_WORKER_SILENT_MIN=30 timeout 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws4.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(ws4) a quiet doc with no capped waker keeps waiting" "124" "$rc"
+check "(ws4) and prints no worker-silent wake" "0" "$(grep -c 'worker-silent' "$WORK/ws4.out")"
+# the bound is a named, overridable value: 20 quiet minutes sit inside the default and outside a 10-minute bound
+reset_stub
+ws_fleet ws5 "20 minutes ago"
+ws_tick "N1:capped"
+timeout 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws5a.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(ws5) 20 quiet minutes are inside the default bound" "0" "$(grep -c 'worker-silent' "$WORK/ws5a.out")"
+CHIEF_WAIT_WORKER_SILENT_MIN=10 start "$I" "$WORK/ws5b.out" --doc "$WD" --workers-from "$WM"
+wait_exit "$WPID"
+check "(ws5) CHIEF_WAIT_WORKER_SILENT_MIN=10 makes them a silent worker" "WAKE worker-silent N1 signal=capped-waker" "$(head -n1 "$WORK/ws5b.out" | cut -d' ' -f1-4)"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+# a succession partial that names the worker is the second signal, with no waker or age needed
+reset_stub
+ws_fleet ws6 "1 minute ago"
+ws_tick
+# shellcheck disable=SC2016  # the stub body expands when the stub runs
+printf '#!/usr/bin/env bash\ncat "$STUB/ws-succ.out"\n' > "$STUB/ws-tracker.sh"
+printf 'N1 missing\nINCOMPLETE 0/1 (waiting on: N1)\n' > "$STUB/ws-succ.out"
+CHIEF_WAIT_TRACKER="$STUB/ws-tracker.sh" CHIEF_WAIT_SUCCESSION_SEC=1 start "$I" "$WORK/ws6.out" --doc "$WD" --succession S2 --silent-min 0 --workers-from "$WM"
+wait_exit "$WPID"
+check "(ws6) the partial wake still comes first" "WAKE succession partial 0/1 silent 0 min" "$(head -n1 "$WORK/ws6.out")"
+check "(ws6) the worker it names gets one worker-silent line" "1" "$(grep -c '^WAKE worker-silent N1 signal=succession-partial' "$WORK/ws6.out")"
+check "(ws6) and one operator alert" "1" "$(ws_pages)"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+rm -f "$STUB/pages"
+if [ "${1:-}" = --worker-silent-only ]; then
+    printf '\n%d failure(s)\n' "$fails"
+    [ "$fails" -eq 0 ]; exit $?
+fi
+
 # A missing ceiling key loses the alarm; saving it must also suppress a re-arm.
 reset_stub
 I="$(new_inbox wt-ceiling)"
@@ -155,6 +249,56 @@ sed -i 's/ cap=v1.1.3:17//' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 wait_exit "$WPID"
 check "(cap) a cap that goes away keeps waiting" "running" "$rc"
 if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+# hreg=<live-no-rows>/<stale>/<asks> is in the key whole: a moved value wakes once, an unchanged one
+# stays silent, hreg=? keeps the saved value and its going away is no wake. RED control (chief-wait.sh before this change):
+# the waiter has no hreg key, so none of these wakes.
+reset_stub
+I="$(new_inbox hreg)"
+start "$I" "$WORK/hreg.out" --workers "N1.md"
+wait_hb "$I" || fail "(hreg) no baseline heartbeat"
+sed -i 's/ denials=none/ hreg=1\/0\/0 denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(hreg) a new hreg value ends the wait" "0" "$rc"
+check "(hreg) the wake names hreg" "WAKE tick changed=hreg usage=PROCEED" "$(head -n1 "$WORK/hreg.out")"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/hreg-rearm.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+check "(hreg) two identical ticks (the same value on a re-arm) keep waiting" "124" "$rc"
+check "(hreg) ... and wake nothing" "" "$(cat "$WORK/hreg-rearm.out")"
+start "$I" "$WORK/hreg-move.out" --workers "N1.md"
+wait_hb "$I" || fail "(hreg) no re-armed heartbeat"
+sed -i 's/ hreg=1\/0\/0/ hreg=?/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(hreg) hreg=? (a failed read) keeps the saved value and wakes nothing" "running" "$rc"
+sed -i 's/ hreg=?/ hreg=1\/2\/0/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(hreg) a moved value wakes as hreg" "WAKE tick changed=hreg usage=PROCEED" "$(head -n1 "$WORK/hreg-move.out")"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+
+# a pending trust-path HOLD-ASK is paged to the operator ONCE, with the paste-ready grant command. The suite owns
+# HOME (the register and events.log are fixtures under $WORK) and the sender stub; the record is <inbox>.wait.holdasks.
+HA_HOME="$WORK/hreg-home"; HA_PRIMARY="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)"; HA_PRIMARY="${HA_PRIMARY%/.git}"
+HA_ESC="${HA_PRIMARY//%/%25}"; HA_ESC="${HA_ESC//\//%2F}"
+HA_DIR="$HA_HOME/.himmel/state/holds/$HA_ESC"; mkdir -p "$HA_DIR"
+printf 'HIMMEL-9941\tlab\t/nowhere/HIMMEL-9941-x.md\tbrief\t\n' > "$HA_DIR/scripts%2Fcheck-ci.sh"
+printf '%s\tdeny\tscripts/check-ci.sh\tHIMMEL-9942\tHIMMEL-9941\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$HA_HOME/.himmel/state/holds/events.log"
+reset_stub
+sed -i 's/ denials=none/ hreg=0\/0\/1 denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+rm -f "$STUB/pages"
+I="$(new_inbox hask)"
+HOME="$HA_HOME" start "$I" "$WORK/hask.out" --workers "N1.md"
+wait_hb "$I" || fail "(hask) no baseline heartbeat"
+n=0; while [ ! -s "$STUB/pages" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+sleep 1
+check "(hask) one trust-path ask records exactly one page line" "1" "$(grep -c . "$STUB/pages" 2>/dev/null)"
+check "(hask) the line carries the full paste-ready grant command" "1" "$(grep -cF -- "python3 -I $HA_PRIMARY/scripts/handover/chief-kit/holds.py grant --key HIMMEL-9942 --repo $HA_PRIMARY scripts/check-ci.sh" "$STUB/pages")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+HOME="$HA_HOME" start "$I" "$WORK/hask2.out" --workers "N1.md"
+wait_hb "$I" || fail "(hask) no re-armed heartbeat"
+sleep 3
+check "(hask) a repeat of the same ask (a re-armed waiter) records nothing" "1" "$(grep -c . "$STUB/pages" 2>/dev/null)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+rm -f "$STUB/pages"
+
 # vmismatch= wakes only as a positive count; 0 and ? stay out of the key.
 reset_stub
 I="$(new_inbox vmismatch-quiet)"
@@ -241,6 +385,35 @@ CHIEF_WAIT_TICK="$STUB/tick-count.sh" CHIEF_WAIT_INTERVAL=1 start "$I" "$WORK/hs
 sleep 3
 check "(hs) a stale handover marker does not suppress ticks" "yes" "$([ -e "$WORK/hs.ticked" ] && echo yes || echo no)"
 kill "$WPID" 2>/dev/null
+
+# --- (hr) the outgoing chief's relay-on-live wake carries its whole tail ---
+# Lock status and relay-batch are stubbed (lock rc 11 = the successor's lock is held fresh).
+reset_stub
+printf '#!/usr/bin/env bash\nexit 11\n' > "$STUB/hr-lock.sh"
+printf '#!/usr/bin/env bash\necho "SENDMESSAGE to=N1 :: relay"\necho "RELAYED 1 of 1"\n' > "$STUB/hr-relay.sh"
+HRD="$WORK/hr-chief.md"; : > "$HRD"
+I="$(new_inbox hr)"
+printf 'S2\n%s\n' "$WORK/hr-succ.md" > "$I.relay-on-live"
+touch "$I.handover"
+CHIEF_WAIT_LOCK_STATUS="$STUB/hr-lock.sh" CHIEF_WAIT_RELAY="$STUB/hr-relay.sh" CHIEF_WAIT_SUCCESSION_SEC=1 start "$I" "$WORK/hr.out" --doc "$HRD" --workers "N1.md"
+wait_exit "$WPID"
+check "(hr) the relay wake still names the successor" "WAKE relay-on-live successor=S2" "$(head -n1 "$WORK/hr.out")"
+check "(hr) control: the relay line is sent and RELAYED stays the last line" "RELAYED 1 of 1" "$(tail -n1 "$WORK/hr.out")"
+check "(hr) control: the wake is printed once" "1" "$(grep -c '^WAKE ' "$WORK/hr.out")"
+check "(hr) the block's second line says: re-arm once, read nothing, wrap on LIVE, stop" "1" "$(sed -n 2p "$WORK/hr.out" | grep -c '^AFTER RELAYED: re-arm this waiter once.*read nothing.*LIVE.*chief.sh wrap.*stop')"
+check "(hr) and it names the bounded resume" "1" "$(sed -n 2p "$WORK/hr.out" | grep -c 'resumes after CHIEF_WAIT_HANDOVER_MIN minutes')"
+
+# --- (hr2) the one muted re-arm resumes once the marker is stale: a successor that died before LIVE
+# must not leave the outgoing chief without a watcher ---
+reset_stub
+I="$(new_inbox hr2)"
+printf 'S2\n' > "$I.handover"
+touch -d '3 hours ago' "$I.handover"  # gnu-ok: Linux-only kit
+start "$I" "$WORK/hr2.out" --workers "N1.md"
+wait_hb "$I" || fail "(hr2) no baseline heartbeat"
+tick_line "N1:FREE" "ok"
+wait_exit "$WPID"
+check "(hr2) a re-armed waiter whose handover marker is stale wakes on a tick change" "WAKE tick changed=workers usage=PROCEED" "$(head -n1 "$WORK/hr2.out")"
 
 # --- (hso) the retired name CONSOLE_WAIT_TICK never names the tick command --- # old-term-ok
 reset_stub
@@ -340,7 +513,7 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 # silent through real changes. Two consecutive samples off the saved key wake.
 reset_stub
 I="$(new_inbox d2)"
-start "$I" "$WORK/d2.out" --workers "N1.md"
+HOUSEKEEPING_DIGEST_SECS=0 start "$I" "$WORK/d2.out" --workers "N1.md"
 wait_hb "$I" || fail "(d2) no baseline heartbeat"
 printf '0\n' > "$STUB/tick.churn"
 wait_exit "$WPID"
@@ -393,21 +566,97 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 # --- (f4) a failure streak wakes once; the re-arm stays quiet until a success -
 reset_stub
 I="$(new_inbox f4)"
-CHIEF_WAIT_FAIL_WAKE=3 start "$I" "$WORK/f4.out" --workers "N1.md"
+HOUSEKEEPING_DIGEST_SECS=0 CHIEF_WAIT_FAIL_WAKE=3 start "$I" "$WORK/f4.out" --workers "N1.md"
 wait_hb "$I" || fail "(f4) no baseline heartbeat"
 printf '1\n' > "$STUB/tick.rc"
 wait_exit "$WPID"
 check "(f4) a streak of failed samples ends the wait" "0" "$rc"
 [ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
 check "(f4) the wake names the failure streak and the failing step" "WAKE tick-fail samples=3 step=tick-exit:1" "$(head -n1 "$WORK/f4.out")"
-CHIEF_WAIT_FAIL_WAKE=3 timeout 6 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/f4b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+HOUSEKEEPING_DIGEST_SECS=0 CHIEF_WAIT_FAIL_WAKE=3 timeout 6 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/f4b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(f4) the re-arm during the same streak runs silent" "124" "$rc"
 check "(f4) the re-arm during the same streak prints nothing" "" "$(cat "$WORK/f4b.out")"
 rm -f "$STUB/tick.rc"
-CHIEF_WAIT_FAIL_WAKE=3 timeout 3 bash "$WAIT" "$I" --workers "N1.md" >/dev/null 2>&1  # gnu-ok: Linux-only kit; pipefail-ok: none set
+HOUSEKEEPING_DIGEST_SECS=0 CHIEF_WAIT_FAIL_WAKE=3 timeout 3 bash "$WAIT" "$I" --workers "N1.md" >/dev/null 2>&1  # gnu-ok: Linux-only kit; pipefail-ok: none set
 printf '1\n' > "$STUB/tick.rc"
-CHIEF_WAIT_FAIL_WAKE=3 timeout 8 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/f4c.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+HOUSEKEEPING_DIGEST_SECS=0 CHIEF_WAIT_FAIL_WAKE=3 timeout 8 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/f4c.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(f4) a new streak after a success wakes again" "WAKE tick-fail samples=3 step=tick-exit:1" "$(head -n1 "$WORK/f4c.out")"
+
+# --- (8934) look-only kinds (tick-fail, unowned-prs, a prs-only tick change) join the
+# digest and ride the next real wake; READY, BLOCKED and Telegram still wake at once ---
+reset_stub
+I="$(new_inbox d1)"
+CHIEF_WAIT_FAIL_WAKE=2 start "$I" "$WORK/d1.out" --workers "N1.md"
+wait_hb "$I" || fail "(8934) no baseline heartbeat"
+printf '1\n' > "$STUB/tick.rc"
+sleep 4
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+check "(8934) a tick-fail streak does not wake, it joins the digest" "0:1" "$(grep -c '^WAKE ' "$WORK/d1.out"):$(grep -c '^tick-fail samples=2 step=tick-exit:1' "$I.wait.housekeeping" 2>/dev/null)"
+
+reset_stub
+sed -i 's/ bank=/ unowned-prs=#2575:120m bank=/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+I="$(new_inbox d2)"
+timeout 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/d2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+check "(8934) the first sight of an unowned PR does not wake, it joins the digest" "124:0:1" "$rc:$(grep -c '^WAKE ' "$WORK/d2.out"):$(grep -c '^unowned-prs #2575:120m' "$I.wait.housekeeping" 2>/dev/null)"
+
+reset_stub
+I="$(new_inbox d3)"
+start "$I" "$WORK/d3.out" --workers "N1.md"
+wait_hb "$I" || fail "(8934) no baseline heartbeat"
+sed -i 's/prs=#10/prs=#10,#11/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+sleep 4
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+check "(8934) a prs-only tick change does not wake, it joins the digest" "0:1" "$(grep -c '^WAKE ' "$WORK/d3.out"):$(grep -c '^tick changed=prs ' "$I.wait.housekeeping" 2>/dev/null)"
+
+# The next real wake carries the buffered look-only lines and drops them from the buffer; other
+# housekeeping (a board-stale line) stays queued for its own window.
+reset_stub
+I="$(new_inbox d4)"
+printf '%s\n' 'tick-fail samples=3 step=tick-timeout:120s' 'unowned-prs #2575:120m TICK 03:00 payload' 'tick changed=prs usage=PROCEED' 'board-stale board=STALE:2h' > "$I.wait.housekeeping"
+date +%s > "$I.wait.housekeeping.since"
+start "$I" "$WORK/d4.out" --workers "N1.md"
+wait_hb "$I" || fail "(8934) no baseline heartbeat"
+printf -- '- 03:10 [telegram from=1 chat=2] hello\n' >> "$I"
+wait_exit "$WPID"
+check "(8934) the telegram wake is first and carries the three look-only lines" "WAKE telegram:1:1:1" "$(head -n1 "$WORK/d4.out"):$(grep -c 'tick-fail samples=3 step=tick-timeout:120s' "$WORK/d4.out"):$(grep -c 'unowned-prs #2575:120m' "$WORK/d4.out"):$(grep -c 'tick changed=prs' "$WORK/d4.out")"
+check "(8934) the carried lines leave the buffer, board-stale stays" "board-stale board=STALE:2h" "$(cat "$I.wait.housekeeping")"
+
+# Controls: a BLOCKED or READY worker event and a Telegram line wake at once with the digest on.
+reset_stub
+I="$(new_inbox d5)"
+start "$I" "$WORK/d5.out" --workers "N1.md"
+wait_hb "$I" || fail "(8934) no baseline heartbeat"
+sed -i 's/tails=N1:LIVE/tails=N1:BLOCKED/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(8934) a BLOCKED event wakes at once with the digest on" "0:WAKE tick changed=tails" "$rc:$(head -n1 "$WORK/d5.out" | cut -d' ' -f1-3)"
+reset_stub
+I="$(new_inbox d6)"
+start "$I" "$WORK/d6.out" --workers "N1.md"
+wait_hb "$I" || fail "(8934) no baseline heartbeat"
+sed -i 's/tails=N1:LIVE/tails=N1:READY/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(8934) a READY event wakes at once with the digest on" "0:WAKE tick changed=tails" "$rc:$(head -n1 "$WORK/d6.out" | cut -d' ' -f1-3)"
+reset_stub
+I="$(new_inbox d7)"
+start "$I" "$WORK/d7.out" --workers "N1.md"
+wait_hb "$I" || fail "(8934) no baseline heartbeat"
+printf -- '- 03:11 [telegram from=1 chat=2] urgent\n' >> "$I"
+wait_exit "$WPID"
+check "(8934) a Telegram line wakes at once with the digest on" "0:WAKE telegram" "$rc:$(head -n1 "$WORK/d7.out")"
+
+# A wake whose stdout cannot be written keeps the look-only buffer and the digest queued: both
+# flushes guard their write (`|| return 1`), so nothing is dropped that was never printed.
+reset_stub
+I="$(new_inbox d8)"
+printf '%s\n' 'tick-fail samples=3 step=tick-timeout:120s' > "$I.wait.housekeeping"
+date +%s > "$I.wait.housekeeping.since"
+printf '%s\n' 'N9 wrapped -' > "$I.wait.digest"
+bash "$WAIT" "$I" --workers "N1.md" > /dev/full 2> "$WORK/d8.err" &
+WPID=$!
+wait_hb "$I" || fail "(8934) no baseline heartbeat"
+sed -i 's/tails=N1:LIVE/tails=N1:BLOCKED/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(8934) a failed write keeps the look-only line and the digest queued" "1:1" "$(grep -c '^tick-fail samples=3' "$I.wait.housekeeping" 2>/dev/null):$(grep -c '^N9 wrapped' "$I.wait.digest" 2>/dev/null)"
 
 # --- (g) a Telegram line wakes at once; a re-arm replays nothing -----------
 reset_stub
@@ -524,7 +773,7 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 # changed-key wake, even across two consecutive malformed samples -----------
 reset_stub
 I="$(new_inbox r)"
-CHIEF_WAIT_FAIL_WAKE=2 start "$I" "$WORK/r.out" --workers "N1.md"
+HOUSEKEEPING_DIGEST_SECS=0 CHIEF_WAIT_FAIL_WAKE=2 start "$I" "$WORK/r.out" --workers "N1.md"
 wait_hb "$I" || fail "(r) no baseline heartbeat"
 sed 's/ tails=N1:LIVE//' "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
 wait_exit "$WPID"
@@ -566,7 +815,7 @@ check "(u) the wake names board" "WAKE tick changed=board usage=PROCEED" "$(head
 reset_stub
 tick_line "N1:FRESH" "STALE:5m"
 I="$(new_inbox v)"
-start "$I" "$WORK/v.out" --workers "N1.md"
+HOUSEKEEPING_DIGEST_SECS=0 start "$I" "$WORK/v.out" --workers "N1.md"
 wait_hb "$I" || fail "(v) no baseline heartbeat"
 tick_line "N1:FRESH" "ok" "1m" "#99"
 wait_exit "$WPID"
@@ -972,6 +1221,120 @@ check "(rdy-txt) the out file carries the READY bullet" "1" "$(grep -cF -- 'rows
 check "(rdy-txt) waiter.md names the bullet in the out file" "1" "$(grep -c 'holds the READY bullet' "$HERE/../../../docs/handover/chief-sections/waiter.md")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 unset CHIEF_WAIT_READY_CHECK CHIEF_WAIT_CI CHIEF_WAIT_DISPOSITION
+
+# --- (cd) a red or wrongly skipped scheduled CI run wakes the chief once ---
+# The tick's cadence= field lists the last scheduled run of each workflow, a flagged one ending :RED,
+# :SKIP or :MISSED. The first sample is a baseline (no wake for a run that already finished); after it a
+# flagged run id the sentinel <inbox>.wait.cadence does not hold wakes once with the run link and the
+# cause, which CHIEF_WAIT_CADENCE (a stub here) prints. RED control (chief-wait.sh before this change):
+# no WAKE cadence line, the waiter keeps waiting.
+cat > "$STUB/cadence-cause.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s run=%s %s https://github.com/x/y/actions/runs/%s cause: build / Run tests\n' "$1" "$2" "$3" "$2"
+EOF
+chmod +x "$STUB/cadence-cause.sh"  # the cause seam is exec'd directly, not run via bash
+export CHIEF_WAIT_CADENCE="$STUB/cadence-cause.sh"
+cd_tick() { # <cadence value>
+    tick_line "N1:FRESH" "ok"
+    sed -i "s/ denials=none/ cadence=$1 denials=none/" "$STUB/tick.line"  # gnu-ok: Linux-only kit
+}
+cd_alive() { sleep 3; if kill -0 "$WPID" 2>/dev/null; then echo running; else echo exited; fi; }
+reset_stub
+cd_base='ci:success:3h:101,macos-cadence:failure:2d:106:RED'
+cd_tick "$cd_base"
+I="$(new_inbox cd1)"
+start "$I" "$WORK/cd1.out"
+wait_hb "$I" || fail "(cd1) no baseline heartbeat"
+check "(cd1) a standing red at the first sample is a baseline, no wake" "running" "$(cd_alive)"
+cd_tick 'ci:success:3h:101,macos-cadence:failure:3h:201:RED'
+wait_exit "$WPID"
+check "(cd2) a new red run ends the wait" "0" "$rc"
+check "(cd2) the wake names the workflow, run, conclusion, link and cause" "WAKE cadence macos-cadence run=201 RED https://github.com/x/y/actions/runs/201 cause: build / Run tests" "$(head -n1 "$WORK/cd1.out")"
+check "(cd2) exactly one cadence line" "1" "$(grep -c '^WAKE cadence' "$WORK/cd1.out")"
+# a re-armed waiter on the same inbox and the same standing red replays nothing
+start "$I" "$WORK/cd3.out"
+wait_hb "$I" || fail "(cd3) no baseline heartbeat"
+check "(cd3) a re-armed waiter wakes nothing for the same run id" "running" "$(cd_alive)"
+cd_tick 'ci:success:3h:101,macos-cadence:failure:4h:201:RED'
+check "(cd3) the same run id a tick later still wakes nothing" "running" "$(cd_alive)"
+# (c) a wrong skip wakes
+cd_tick 'ci:success:3h:101,pages:skipped:4h:301:SKIP'
+wait_exit "$WPID"
+check "(cd4) a wrongly skipped run wakes" "WAKE cadence pages run=301 SKIP" "$(head -n1 "$WORK/cd3.out" | cut -d' ' -f1-5)"
+# a gated run concludes success and is not flagged: a new run id with no flag wakes nothing
+reset_stub
+cd_tick 'ci:success:3h:101,snyk-weekly:success:3d:401'
+I="$(new_inbox cd5)"
+start "$I" "$WORK/cd5.out"
+wait_hb "$I" || fail "(cd5) no baseline heartbeat"
+cd_tick 'ci:success:3h:102,snyk-weekly:success:3d:402'
+check "(cd5) a new unflagged run, a correct skip, wakes nothing" "running" "$(cd_alive)"
+# (e) cadence=? neither wakes nor crashes the waiter
+cd_tick '?'
+check "(cd6) cadence=? wakes nothing and the waiter survives" "running" "$(cd_alive)"
+# a missed schedule wakes once
+cd_tick 'ci:success:3h:102,fork-drift:success:40h:501:MISSED'
+wait_exit "$WPID"
+check "(cd7) a missed schedule wakes" "WAKE cadence fork-drift run=501 MISSED" "$(head -n1 "$WORK/cd5.out" | cut -d' ' -f1-5)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+# a run still in flight at the baseline is not finished: when it later concludes red it wakes
+reset_stub
+cd_tick 'ci:success:3h:101,pages:running:1m:601'
+I="$(new_inbox cd8)"
+start "$I" "$WORK/cd8.out"
+wait_hb "$I" || fail "(cd8) no baseline heartbeat"
+cd_tick 'ci:success:3h:101,pages:failure:5m:601:RED'
+wait_exit "$WPID"
+check "(cd8) a run in flight at the baseline that concludes red wakes" "WAKE cadence pages run=601 RED" "$(head -n1 "$WORK/cd8.out" | cut -d' ' -f1-5)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+unset CHIEF_WAIT_CADENCE
+
+# --- (rv) the daily failure review wakes once per review day (decision 593) ---
+# review=<date>:<age>:<failures>:<new>:<new 5+>:<filed>[:CAPPED][:STALE]. It wakes on a filed key, a new class
+# with 5+ failures or the create cap; STALE wakes once per last-review date; a 1-count class never wakes.
+# RED control (chief-wait.sh before this change): no WAKE review line, the waiter keeps waiting.
+rv_tick() { # <review value>
+    tick_line "N1:FRESH" "ok"
+    sed -i "s/ denials=none/ review=$1 denials=none/" "$STUB/tick.line"  # gnu-ok: Linux-only kit
+}
+reset_stub
+rv_tick '2026-11-05:3h:100:1:0:-'
+I="$(new_inbox rv1)"
+start "$I" "$WORK/rv1.out"
+wait_hb "$I" || fail "(rv1) no baseline heartbeat"
+check "(rv1) a review with only a 1-count class wakes nothing" "running" "$(cd_alive)"
+rv_tick '2026-11-05:3h:100:2:0:-'
+check "(rv1) more 1-count classes still wake nothing" "running" "$(cd_alive)"
+rv_tick '2026-11-05:3h:100:2:1:-'
+wait_exit "$WPID"
+check "(rv2) a new class with 5+ failures wakes" "WAKE review 2026-11-05 new-classes-5+=1" "$(head -n1 "$WORK/rv1.out")"
+check "(rv2) the tick line follows" "1" "$(grep -c '^TICK ' "$WORK/rv1.out")"
+start "$I" "$WORK/rv3.out"
+wait_hb "$I" || fail "(rv3) no baseline heartbeat"
+check "(rv3) a re-armed waiter wakes nothing for the same review day" "running" "$(cd_alive)"
+rv_tick '2026-11-05:5h:100:2:1:HIMMEL-9256+HIMMEL-9257:CAPPED'
+check "(rv3) the same day with more reasons still wakes nothing" "running" "$(cd_alive)"
+rv_tick '2026-11-06:2h:80:0:0:HIMMEL-9300'
+wait_exit "$WPID"
+check "(rv4) the next review day wakes on a filed ticket" "WAKE review 2026-11-06 filed=HIMMEL-9300" "$(head -n1 "$WORK/rv3.out")"
+reset_stub
+rv_tick '2026-11-06:2h:80:0:0:-:CAPPED'
+I="$(new_inbox rv5)"
+start "$I" "$WORK/rv5.out"
+wait_exit "$WPID"
+check "(rv5) the create cap wakes" "WAKE review 2026-11-06 create-cap-hit" "$(head -n1 "$WORK/rv5.out")"
+reset_stub
+rv_tick '2026-11-04:30h:100:0:0:-:STALE'
+I="$(new_inbox rv6)"
+start "$I" "$WORK/rv6.out"
+wait_exit "$WPID"
+check "(rv6) a stale review wakes" "WAKE review 2026-11-04 STALE (no review for 26 h, last 2026-11-04, age 30h)" "$(head -n1 "$WORK/rv6.out")"
+start "$I" "$WORK/rv7.out"
+wait_hb "$I" || fail "(rv7) no baseline heartbeat"
+check "(rv7) a re-armed waiter wakes nothing for the same stale date" "running" "$(cd_alive)"
+rv_tick 'none'
+check "(rv8) review=none wakes nothing and the waiter survives" "running" "$(cd_alive)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 
 printf '\n%d failure(s)\n' "$fails"

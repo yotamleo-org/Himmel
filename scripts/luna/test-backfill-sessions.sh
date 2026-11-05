@@ -936,6 +936,8 @@ reheal_lane_off "lane-off" -u HIMMEL_API_LANE CRYSTALLIZE_BACKEND=claude-api
 # else the subscription. So lane on with a bad account and no explicit backend is the
 # API path, unavailable, and falls back to the mechanical render.
 reheal_lane_off "bad-account" HIMMEL_API_ACCOUNT=invalid
+# decision 525: account auto is the himmel graph pass only; the crystallizer path is unavailable on it
+reheal_lane_off "auto-account" HIMMEL_API_ACCOUNT=auto
 
 # ============================================================================
 # Case 12c: the default backend is the subscription — a launcher and a passing

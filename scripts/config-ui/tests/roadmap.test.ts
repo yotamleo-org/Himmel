@@ -310,7 +310,7 @@ test("Board: one page with the header, the version strip, the three tabs and the
   for (const tab of ["roadmap", "chains", "tidy"]) expect(html).toContain(`href="#/board?tab=${tab}`);
   expect(html).toMatch(/aria-selected="true"[^>]*>Roadmap|>Roadmap[^<]*<\/a>/);
   // no version asked: the running version (v1.1.2) is the board
-  for (const col of ["To do", "In progress", "In review", "Done"]) expect(html).toContain(col);
+  for (const col of ["To do", "In progress", "Review / CI", "Done"]) expect(html).toContain(col);
   expect(html).toContain("Roadmap in the ui");
   expect(html).not.toContain("Shipped thing"); // v1.1.1
   // v=all: every version on the lanes; v=<name> narrows to that one
@@ -443,7 +443,7 @@ test("#/roadmap/<version>: one version's board, four status columns, ticket link
   const r = read(station());
   const html = renderRoadmap(r, { version: null, theme: null, ver: "v1.1.2" });
   expect(html).toContain("v1.1.2");
-  for (const col of ["To do", "In progress", "In review", "Done"]) expect(html).toContain(col);
+  for (const col of ["To do", "In progress", "Review / CI", "Done"]) expect(html).toContain(col);
   expect(html).toContain("Roadmap in the ui"); // HIMMEL-1, v1.1.2
   expect(html).toContain("Resumed work");      // HIMMEL-5, v1.1.2
   expect(html).not.toContain("Shipped thing"); // HIMMEL-3, v1.1.1
@@ -644,11 +644,11 @@ test("Board: the No version tab draws the fetched tickets in columns with a Jira
   expect(html).toContain("Loose ticket");
   expect(html).not.toContain("Roadmap in the ui");
   const c = cols(html);
-  expect(c.map((x) => [x[0], x[1], x[2], x[3]])).toEqual([["todo", 1, 1, "Jira 1 matches"], ["prog", 1, 1, "Jira 1 matches"], ["rev", 0, 0, "Jira 0 matches"], ["ci", 0, 0, "Jira 0 matches"], ["done", 0, 0, "Jira 0 matches"]]);
+  expect(c.map((x) => [x[0], x[1], x[2], x[3]])).toEqual([["todo", 1, 1, "Jira 1 matches"], ["prog", 1, 1, "Jira 1 matches"], ["rev", 0, 0, "Jira 0 matches"], ["done", 0, 0, "Jira 0 matches"]]);
   expect(html).toContain("data-rm-find");
   const found = board(r, { tab: "nv", nv, find: "himmel-9" });
   expect(cols(found).reduce((a, x) => a + x[2], 0)).toBe(1);
-  expect(cols(found).map((x) => x[3])).toEqual(["Jira 1 · 0 shown", "Jira 1 matches", "Jira 0 matches", "Jira 0 matches", "Jira 0 matches"]);
+  expect(cols(found).map((x) => x[3])).toEqual(["Jira 1 · 0 shown", "Jira 1 matches", "Jira 0 matches", "Jira 0 matches"]);
   expect(board(r, { tab: "nv", nv, find: "no such ticket" })).toContain("No tickets match");
   expect(board(r, { tab: "nv", nv: { state: "error", reason: "roadmap failed (500)" } })).toContain("roadmap failed (500)");
 });
@@ -671,10 +671,10 @@ test("Board: Done is a folded column, open while a find is set, and each column'
   const html = board(r);
   expect(html).toMatch(/<details class="rm-col rm-done"(?![^>]*\sopen)[^>]*data-rm-col="done"/);
   const c = cols(html);
-  expect(c.map((x) => x[0])).toEqual(["todo", "prog", "rev", "ci", "done"]);
+  expect(c.map((x) => x[0])).toEqual(["todo", "prog", "rev", "done"]);
   for (const [, n, cards] of c) expect(n).toBe(cards);
-  expect(c.map((x) => x[1])).toEqual([3, 2, 1, 0, 1]);
-  expect(c.map((x) => x[3])).toEqual(["Jira 3 matches", "Jira 2 matches", "Jira 1 matches", "Jira 0 matches", "Jira 1 matches"]);
+  expect(c.map((x) => x[1])).toEqual([3, 2, 1, 1]);
+  expect(c.map((x) => x[3])).toEqual(["Jira 3 matches", "Jira 2 matches", "Jira 1 matches", "Jira 1 matches"]);
   // a filter narrows the cards and the number, and the Jira line keeps Jira's full count
   const f = cols(board(r, { theme: r.themes.indexOf("tracker") }));
   for (const [, n, cards] of f) expect(n).toBe(cards);
@@ -1116,4 +1116,38 @@ test("Chains tab with several Board projects: a version name carrying its projec
   expect(selected(html)).toEqual(["v1.1.3 (HIMMEL)"]);
   for (const v of ["v1.1.3", "v1.1.3 (HIMMEL)"]) expect(chainsHtml({ v }, chainsLinked(), named)).toContain("This tab covers the running version, v1.1.3.");
   expect(chainsHtml({ v: "v1.1.2 (HIMMEL)" }, chainsLinked(), named)).toContain("v1.1.3, not v1.1.2 (HIMMEL).");
+});
+
+// ---- the dense Board. Review and CI share a column, Won't is a lane that takes drops, and every clamped text keeps its full text ----
+test("9100 Board: a writable board has a Won't drop target and a Review / CI drop target and no separate CI target; a ci card sits in Review / CI with a CI pill", () => {
+  const r = read(station());
+  const w = renderBoard(r, { version: null, theme: null, v: "all", writes: true }, null);
+  expect(w).toContain('data-rm-drop="wont"');
+  expect(w).toContain('data-rm-drop="rev"');
+  expect(w).not.toContain('data-rm-drop="ci"');
+  expect(w).not.toContain('data-rm-col="ci"');
+  expect(cols(board(r)).map((x) => x[0])).toEqual(["todo", "prog", "rev", "done"]); // read-only and no Won't card: no lane
+  const ci = { ...r, tickets: r.tickets.map((t, i) => (i === 0 ? { ...t, b: "ci", s: "IN CI" } : t)) };
+  const rev = cols(board(ci)).find((x) => x[0] === "rev")!;
+  expect(rev.slice(1, 3)).toEqual([2, 2]); // HIMMEL-7 in review and HIMMEL-1 in CI
+  expect(board(ci)).toMatch(/class="[^"]*\bpill\b[^"]*">CI<\/span>/);
+  const wont = { ...r, tickets: r.tickets.map((t, i) => (i === 0 ? { ...t, b: "wont", s: "wont do" } : t)) };
+  expect(cols(board(wont)).map((x) => x[0])).toEqual(["todo", "prog", "rev", "done", "wont"]);
+});
+
+test("9100 Board: a 200-character title and a 60-character chain name keep their full text in data-tip, the card is a button named with the full title, and no native title duplicates a tip", () => {
+  const r = read(station());
+  const LONG = "T".repeat(199) + "!", CHAIN = "c".repeat(60);
+  const tickets = r.tickets.map((t) => (t.k === 1 ? { ...t, t: LONG } : t));
+  const ch = { schema: "himmel.chains/1", chains: [{ id: CHAIN, name: CHAIN, total: 1, done: 0, steps: 1, next: null }],
+    tickets: { "HIMMEL-1": { key: "HIMMEL-1", state: "in flight", chains: [{ id: CHAIN, step: 1, steps: 1, state: "in flight" }], badges: [CHAIN], more: 0 } } };
+  const html = renderBoard({ ...r, tickets }, { version: null, theme: null }, { chains: ch });
+  expect(html).toContain(`<div class="rm-tip rm-title" data-tip="${LONG}">`);
+  expect(html).toContain(`data-tip="● ${CHAIN} 1/1 · in flight"`); // the badge's visible text, glyph included
+  const card = [...html.matchAll(/<div class="rm-card"[^>]*>/g)].map((m) => m[0]).find((c) => c.includes(LONG))!;
+  expect(card).toContain('role="button"');
+  expect(card).toContain(`aria-label="HIMMEL-1: ${LONG}"`);
+  expect(html).not.toMatch(/<[^>]*\bdata-tip="[^>]*\btitle="|<[^>]*\btitle="[^>]*\bdata-tip="/);
+  expect(html).not.toContain('title="Open the'); // the link's action is its accessible name now, not a second bubble
+  expect(html).toMatch(/<a class="rm-chain"[^>]*aria-label="Open the c{60} chain on the Chains tab[^"]*"/);
 });

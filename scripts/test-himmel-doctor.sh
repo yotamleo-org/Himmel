@@ -386,11 +386,26 @@ txt="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" CLAUDE_DIR="$t/claude" HOME="$t/home"
 js="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --json --no-color 2>/dev/null)"; rc_js=$?
 n_txt="$(grep -cE '^(FAIL|WARN|INFO|OK) ' <<< "$txt")"
 n_js="$(grep -c . <<< "$js")"
-if jq -e -s 'length > 0 and all(.[]; (keys == ["id","msg","remedy","sev"]) and (.sev | IN("FAIL","WARN","INFO","OK")))' <<< "$js" >/dev/null 2>&1; then
-    pass "--json -> every stdout line is a {sev,id,msg,remedy} object"
+if jq -e -s 'length > 0 and all(.[]; ((keys - ["repo"]) == ["id","msg","remedy","scope","sev"]) and (.sev | IN("FAIL","WARN","INFO","OK")))' <<< "$js" >/dev/null 2>&1; then
+    pass "--json -> every stdout line is a {sev,id,msg,remedy,scope[,repo]} object"
 else
     fail "--json -> stdout is not JSON lines: $(head -3 <<< "$js")"
 fi
+# Each check declares its own scope: the machine checks are shared, the per-repo index checks
+# (C33 graph, C70 semantic graph) are project rows that name the repo they judge, the rest default to project.
+sc="$(jq -r 'select(.id | test("^C(22|38|44|45|52|80|83|86|40|12)-")) | select(.scope != "shared") | .id' <<< "$js")"
+if [ -z "$sc" ] && [ "$(jq -r 'select(.id | test("^C(22|38|44|52|80|86)-")) | .id' <<< "$js" | grep -c .)" -ge 4 ]; then
+    pass "--json -> C22 C38 C44 C45 C52 C80 C83 C86 (and C40, C12) declare scope shared"
+else
+    fail "--json -> machine checks not declared shared: [$sc]"
+fi
+rp="$(jq -r 'select(.id | test("^C(33|70)-")) | select(.scope != "project" or .repo != "himmel") | .id' <<< "$js")"
+if [ -z "$rp" ] && [ "$(jq -r 'select(.id | test("^C(33|70)-")) | .id' <<< "$js" | grep -c .)" -ge 2 ]; then
+    pass "--json -> C33 and C70 are project rows that name the repo they judge"
+else
+    fail "--json -> C33/C70 do not declare project + repo himmel: [$rp]"
+fi
+if [ -z "$(jq -r 'select(.id | test("^C(33|70)-") | not) | select(.repo != null) | .id' <<< "$js")" ]; then pass "--json -> no other check names a repo"; else fail "--json -> a check other than C33/C70 names a repo"; fi
 if [ "$n_js" -eq "$n_txt" ] && [ "$n_txt" -gt 0 ]; then pass "--json -> $n_js rows = $n_txt text emits"; else fail "--json -> $n_js rows vs $n_txt text emits"; fi
 if [ "$rc_js" -eq "$rc_txt" ]; then pass "--json -> exit code matches text run ($rc_js)"; else fail "--json -> rc=$rc_js vs text rc=$rc_txt"; fi
 if grepq "$js" 'Summary:'; then fail "--json -> Summary line leaked to stdout"; else pass "--json -> Summary line kept off stdout"; fi
@@ -4169,6 +4184,20 @@ else
 fi
 rm -rf "$t"
 
+echo "== C33: fresh action=published-channel row (graph-data publish) -> OK =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c33.XXXXXX")" || { fail "C33 published-channel: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/handover/.graph-cadence"; write_settings "$t/claude" "$WRAPPER"
+printf '{"ts":"%s","head":"aaa","graph_head":"bbb","merges_behind":2,"action":"published-channel","pr":null,"duration_s":1,"error":null}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$t/handover/.graph-cadence/ledger.jsonl"
+out="$(CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/handover" bash "$DOC" --no-color 2>&1)"
+c33_line="$(printf '%s' "$out" | grep 'C33-graph-stale')"
+if grepq "$c33_line" 'OK   C33-graph-stale' && grepq "$c33_line" -F '(action=published-channel)'; then
+    pass "C33 -> OK (fresh published-channel row is a known-good action)"
+else
+    fail "C33 published-channel -> $c33_line"
+fi
+rm -rf "$t"
+
 echo "== C33: last recorded action=failed -> WARN immediately, regardless of age =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c33.XXXXXX")" || { fail "C33 failed-action: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude" "$t/handover/.graph-cadence"; write_settings "$t/claude" "$WRAPPER"
@@ -7903,5 +7932,168 @@ echo "== C76: no plugin over the limit -> OK =="
 out="$(C76_DUP=0 c76_run)"
 if grepq "$out" 'OK   C76-duplicate-plugin-installs'; then pass "C76 within the limit -> OK"; else fail "C76 within limit -> $(printf '%s' "$out" | grep -A1 C76)"; fi
 rm -rf "$c76_t"
+
+# --- C88-graph-api-optin: the graph cadence's billed API lane needs a station opt-in ---
+c88_t="$(mktemp -d "${TMPDIR:-/tmp}/c88.XXXXXX")" || { echo "FATAL: C88 setup mktemp failed" >&2; exit 1; }
+mkdir -p "$c88_t/claude" "$c88_t/home/.himmel" "$c88_t/bat"
+c88_key="dummy-not-a-real-key-c88"
+c88_run() { CLAUDE_DIR="$c88_t/claude" HOME="$c88_t/home" GRAPHMAP_BAT_DIR="$c88_t/bat" HIMMEL_DOCTOR_ENV_FILE="$c88_t/env" bash "$DOC" --only C88 --no-color 2>&1; }
+c88_reset() { rm -rf "$c88_t/home/.himmel" "$c88_t/bat" "$c88_t/env"; mkdir -p "$c88_t/home/.himmel" "$c88_t/bat"; }
+c88_optin() { printf '{"graphify":{"semantic_api_ok":true}}\n' > "$c88_t/home/.himmel/config.json"; }
+c88_key_in_env() { printf '# himmel .env\nANTHROPIC_ORG_A_KEY=%s\n' "$c88_key" > "$c88_t/env"; }
+c88_lane_runner() { printf '#!/bin/sh\n_rc=0; HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api graph-cadence.sh --semantic || _rc=$?\n' > "$c88_t/bat/graphmap-publish-himmel.sh"; }
+c88_skip_runner() { printf '#!/bin/sh\n_rc=0; echo "[semantic skipped: API lane not opted in]"; graph-cadence.sh || _rc=$?\n' > "$c88_t/bat/graphmap-publish-himmel.sh"; }
+echo "== C88: no opt-in, a key in .env and an armed runner that bakes the lane -> WARN naming the runner and the re-render =="
+c88_reset; c88_key_in_env; c88_lane_runner
+out="$(c88_run)"
+if grepq "$out" 'WARN C88-graph-api-optin' && grepq "$out" -F 'graphmap-publish-himmel.sh' && grepq "$out" -F 'ANTHROPIC_ORG_A_KEY' && grepq "$out" -F 'graphmap-cadence.sh arm --rewrite-armed' && ! grepq "$out" -F "$c88_key"; then pass "C88 key + baked lane + no opt-in -> WARN, no key value"; else fail "C88 key + baked lane + no opt-in -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: opted in -> OK reporting the state, even with a key and a lane runner =="
+c88_reset; c88_key_in_env; c88_lane_runner; c88_optin
+out="$(c88_run)"
+if grepq "$out" 'OK   C88-graph-api-optin' && grepq "$out" -F 'opted in' && ! grepq "$out" -F 'not opted in'; then pass "C88 opted in -> OK"; else fail "C88 opted in -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: no opt-in and the armed runner carries the skip line, not the lane -> OK reporting the state =="
+c88_reset; c88_key_in_env; c88_skip_runner
+out="$(c88_run)"
+if grepq "$out" 'OK   C88-graph-api-optin' && grepq "$out" -F 'not opted in' && ! grepq "$out" 'WARN C88'; then pass "C88 skip-line runner + key -> OK"; else fail "C88 skip-line runner + key -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: no opt-in, no key in .env, nothing armed -> OK =="
+c88_reset
+out="$(c88_run)"
+if grepq "$out" 'OK   C88-graph-api-optin' && grepq "$out" -F 'not opted in'; then pass "C88 nothing to draw -> OK"; else fail "C88 nothing to draw -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: a baked lane with no key in .env draws nothing -> INFO, never a WARN =="
+c88_reset; c88_lane_runner; printf 'ANTHROPIC_ORG_A_KEY=\nJIRA_EMAIL=a@example.com\n' > "$c88_t/env"
+out="$(c88_run)"
+if grepq "$out" 'INFO C88-graph-api-optin' && ! grepq "$out" 'WARN C88'; then pass "C88 baked lane, empty key -> INFO"; else fail "C88 baked lane, empty key -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: only the JSON literal true opts in: a symlinked config.json and a string value do not =="
+c88_reset; c88_key_in_env; c88_lane_runner
+printf '{"graphify":{"semantic_api_ok":true}}\n' > "$c88_t/real-config.json"; ln -s "$c88_t/real-config.json" "$c88_t/home/.himmel/config.json"
+out="$(c88_run)"
+if grepq "$out" 'WARN C88-graph-api-optin'; then pass "C88 symlinked config.json is no opt-in"; else fail "C88 symlinked config.json -> $(printf '%s' "$out" | head -4)"; fi
+c88_reset; c88_key_in_env; c88_lane_runner; printf '{"graphify":{"semantic_api_ok":"true"}}\n' > "$c88_t/home/.himmel/config.json"
+out="$(c88_run)"
+if grepq "$out" 'WARN C88-graph-api-optin'; then pass "C88 string \"true\" is no opt-in"; else fail "C88 string true -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c88_t"
+
+# --- C87-stub-handover-state: files under <repo>/handovers newer than the operator's baseline marker ---
+c87_t="$(mktemp -d "${TMPDIR:-/tmp}/c87.XXXXXX")" || { echo "FATAL: C87 setup mktemp failed" >&2; exit 1; }
+c87_x="$c87_t/repo"
+mkdir -p "$c87_x/scripts/lib" "$c87_t/home" "$c87_t/claude" "$c87_t/root"
+cp "$REPO_ROOT/scripts/himmel-doctor.sh" "$c87_x/scripts/"
+cp -R "$REPO_ROOT/scripts/lib/." "$c87_x/scripts/lib/"
+c87_age() { python3 -I -c 'import os,sys,time; t=time.time()-int(sys.argv[2]); os.utime(sys.argv[1],(t,t))' "$1" "$2"; }
+c87_base="$c87_t/home/baseline"
+# C87_HD, when set, is the root exported to the doctor's environment; a .env in the fixture repo configures one too.
+c87_run() { env -u HANDOVER_DIR ${C87_HD:+HANDOVER_DIR="$C87_HD"} HOME="$c87_t/home" CLAUDE_DIR="$c87_t/claude" HIMMEL_CONFIG_DIR="" HIMMEL_DOCTOR_STUB_BASELINE="$c87_base" bash "$c87_x/scripts/himmel-doctor.sh" --root "$c87_x" --no-color --only C87 2>&1; }
+c87_reset() { rm -rf "$c87_x/handovers" "$c87_x/.env" "$c87_base" "$c87_t/elsewhere"; unset C87_HD; }
+
+echo "== C87: HANDOVER_DIR unset and no .env -> the stub folder is the root: INFO, never WARN =="
+c87_reset
+mkdir -p "$c87_x/handovers/himmel"; : > "$c87_x/handovers/himmel/new.md"
+out="$(c87_run)"
+if grepq "$out" -F 'INFO C87-stub-handover-state' && ! grepq "$out" -F 'WARN C87'; then pass "C87 no split root -> INFO"; else fail "C87 no split root -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: .env configures a root elsewhere and a stub file older than that .env is still reported (no baseline marker) =="
+c87_reset
+printf 'HANDOVER_DIR=%s\n' "$c87_t/root" > "$c87_x/.env"
+mkdir -p "$c87_x/handovers/himmel"; : > "$c87_x/handovers/himmel/.judge-ladder"; c87_age "$c87_x/handovers/himmel/.judge-ladder" 7200
+out="$(c87_run)"
+if grepq "$out" -F 'WARN C87-stub-handover-state' && grepq "$out" -F 'himmel/.judge-ladder' && grepq "$out" -F "$c87_t/root"; then pass "C87 .env root, old stub file, no marker -> WARN"; else fail "C87 .env root, old stub file -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: a root exported in the environment (no .env) is checked the same way =="
+c87_reset
+mkdir -p "$c87_x/handovers/.locks"; : > "$c87_x/handovers/.locks/arms.jsonl"
+C87_HD="$c87_t/root" out="$(c87_run)"
+if grepq "$out" -F 'WARN C87-stub-handover-state' && grepq "$out" -F '.locks/arms.jsonl'; then pass "C87 exported root -> WARN"; else fail "C87 exported root -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: a root served by ~/.himmel/himmel.conf (no .env) is checked the same way =="
+c87_reset
+mkdir -p "$c87_t/home/.himmel" "$c87_x/handovers/himmel"; printf 'HANDOVER_DIR=%s\n' "$c87_t/root" > "$c87_t/home/.himmel/himmel.conf"
+: > "$c87_x/handovers/himmel/.judge-ladder"
+out="$(c87_run)"
+rm -rf "$c87_t/home/.himmel"
+if grepq "$out" -F 'WARN C87-stub-handover-state' && grepq "$out" -F "$c87_t/root"; then pass "C87 himmel.conf root -> WARN"; else fail "C87 himmel.conf root -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: the baseline marker decides: newer than the stub file -> OK, older -> WARN =="
+c87_reset
+mkdir -p "$c87_x/handovers/himmel"; : > "$c87_x/handovers/himmel/.judge-ladder"; c87_age "$c87_x/handovers/himmel/.judge-ladder" 7200
+: > "$c87_base"; c87_age "$c87_base" 3600
+C87_HD="$c87_t/root" out="$(c87_run)"
+if grepq "$out" -F 'OK   C87-stub-handover-state' && ! grepq "$out" -F 'WARN C87'; then pass "C87 stub file older than the marker -> OK"; else fail "C87 older than marker -> $(printf '%s' "$out" | head -4)"; fi
+c87_age "$c87_base" 10800
+C87_HD="$c87_t/root" out="$(c87_run)"
+if grepq "$out" -F 'WARN C87-stub-handover-state'; then pass "C87 stub file newer than the marker -> WARN"; else fail "C87 newer than marker -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: control: no stub folder at all -> no WARN =="
+c87_reset
+C87_HD="$c87_t/root" out="$(c87_run)"
+if grepq "$out" -F 'OK   C87-stub-handover-state' && ! grepq "$out" -F 'WARN C87'; then pass "C87 no stub folder -> OK"; else fail "C87 no stub folder -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: a stub that is a symlink to another folder is scanned =="
+c87_reset
+mkdir -p "$c87_t/elsewhere"; : > "$c87_t/elsewhere/new.md"; ln -s "$c87_t/elsewhere" "$c87_x/handovers"
+C87_HD="$c87_t/root" out="$(c87_run)"
+if grepq "$out" -F 'WARN C87-stub-handover-state' && grepq "$out" -F 'new.md'; then pass "C87 symlinked stub -> WARN"; else fail "C87 symlinked stub -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: an unreadable folder under the stub is never reported OK =="
+c87_reset
+mkdir -p "$c87_x/handovers/himmel/locked"; chmod 000 "$c87_x/handovers/himmel/locked"
+: > "$c87_base"
+C87_HD="$c87_t/root" out="$(c87_run)"
+chmod 755 "$c87_x/handovers/himmel/locked"
+if [ "$(id -u)" = 0 ]; then pass "C87 unreadable folder -> skipped as root (chmod does not block root)"
+elif grepq "$out" -F 'INFO C87-stub-handover-state' && ! grepq "$out" -F 'OK   C87'; then pass "C87 unreadable folder -> INFO, not OK"; else fail "C87 unreadable folder -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c87_t"
+
+# --- C89-qmd-rerank: a qmd that runs without its reranker ---
+# Fixtures copied from the real station: the model cache file name under ~/.cache/qmd/models and the
+# `models:` block of ~/.config/qmd/index.yml (remote reranker).
+c89_t="$(mktemp -d "${TMPDIR:-/tmp}/c89.XXXXXX")" || { echo "FATAL: C89 setup mktemp failed" >&2; exit 1; }
+c89_reset() { rm -rf "${c89_t:?}/home" "${c89_t:?}/models" "${c89_t:?}/cfg"; mkdir -p "$c89_t/home" "$c89_t/models" "$c89_t/cfg"; printf '#!/bin/sh\nexit 0\n' > "$c89_t/qmd"; chmod +x "$c89_t/qmd"; }
+c89_gguf() { : > "$c89_t/models/hf_ggml-org_qwen3-reranker-0.6b-q8_0.gguf"; }
+c89_remote_cfg() { printf 'models:\n  embed: openai:qwen/qwen3-embedding-8b\n  generate: openai:google/gemini-2.5-flash-lite\n  rerank: openai:cohere/rerank-4-fast\n  openai_base_url: https://openrouter.ai/api/v1\n' > "$c89_t/cfg/index.yml"; }
+c89_run() { env -u QMD_RERANK -u QMD_RERANK_MODEL -u QMD_DAEMON_DISABLED HOME="$c89_t/home" QMD_CONFIG_DIR="$c89_t/cfg" HIMMEL_DOCTOR_QMD_BIN="$c89_t/qmd" HIMMEL_DOCTOR_QMD_MODELS_DIR="$c89_t/models" QMD_DAEMON_OFF_FLAG="$c89_t/no-such-flag" "$@" bash "$DOC" --only C89 --no-color 2>&1; }
+echo "== C89: QMD_RERANK=off -> WARN naming the variable and the remedy =="
+c89_reset; c89_gguf
+out="$(c89_run QMD_RERANK=off)"
+if grepq "$out" 'WARN C89-qmd-rerank' && grepq "$out" -F 'QMD_RERANK=off' && grepq "$out" -F 'unset QMD_RERANK'; then pass "C89 QMD_RERANK=off -> WARN"; else fail "C89 QMD_RERANK=off -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C89: control, local reranker model present and QMD_RERANK unset -> OK, no WARN =="
+c89_reset; c89_gguf
+out="$(c89_run)"
+if grepq "$out" 'OK   C89-qmd-rerank' && grepq "$out" -F 'local reranker' && ! grepq "$out" 'WARN C89'; then pass "C89 local reranker present -> OK"; else fail "C89 local reranker present -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C89: local route and no reranker model in the cache -> WARN with qmd pull =="
+c89_reset
+out="$(c89_run)"
+if grepq "$out" 'WARN C89-qmd-rerank' && grepq "$out" -F 'qmd pull'; then pass "C89 no reranker model -> WARN"; else fail "C89 no reranker model -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C89: remote reranker configured -> OK without a local model =="
+c89_reset; c89_remote_cfg
+out="$(c89_run)"
+if grepq "$out" 'OK   C89-qmd-rerank' && grepq "$out" -F 'remote reranker' && ! grepq "$out" 'WARN C89'; then pass "C89 remote reranker -> OK"; else fail "C89 remote reranker -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C89: a quoted remote reranker value in the config counts as remote =="
+c89_reset; printf 'models:\n  rerank: "openai:cohere/rerank-4-fast"\n' > "$c89_t/cfg/index.yml"
+out="$(c89_run)"
+if grepq "$out" 'OK   C89-qmd-rerank' && grepq "$out" -F 'remote reranker' && ! grepq "$out" 'WARN C89'; then pass "C89 quoted remote reranker -> OK"; else fail "C89 quoted remote reranker -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C89: an adopter's qmd is the bun-global script with no qmd on PATH -> still checked =="
+c89_reset; c89_gguf
+mkdir -p "$c89_t/bun/install/global/node_modules/@tobilu/qmd/dist/cli" "$c89_t/stubbin"
+: > "$c89_t/bun/install/global/node_modules/@tobilu/qmd/dist/cli/qmd.js"
+printf '#!/bin/sh\nexit 0\n' > "$c89_t/stubbin/bun"; chmod +x "$c89_t/stubbin/bun"
+c89_path="$c89_t/stubbin"; c89_ifs="$IFS"; IFS=:
+for c89_d in $PATH; do [ -e "$c89_d/qmd" ] || c89_path="$c89_path:$c89_d"; done
+IFS="$c89_ifs"
+if PATH="$c89_path" command -v qmd >/dev/null 2>&1; then fail "C89 bun-global qmd: a qmd is still on the scrubbed PATH"; fi
+out="$(env -u QMD_RERANK -u QMD_RERANK_MODEL -u QMD_DAEMON_DISABLED -u HIMMEL_DOCTOR_QMD_BIN HOME="$c89_t/home" BUN_INSTALL="$c89_t/bun" PATH="$c89_path" QMD_CONFIG_DIR="$c89_t/cfg" HIMMEL_DOCTOR_QMD_MODELS_DIR="$c89_t/models" QMD_DAEMON_OFF_FLAG="$c89_t/no-such-flag" QMD_RERANK=off bash "$DOC" --only C89 --no-color 2>&1)"
+if grepq "$out" 'WARN C89-qmd-rerank' && ! grepq "$out" -F 'not installed'; then pass "C89 bun-global qmd -> checked, WARN"; else fail "C89 bun-global qmd -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C89: QMD_RERANK=0 and QMD_RERANK=FALSE also warn =="
+c89_reset; c89_gguf
+out="$(c89_run QMD_RERANK=0)"; out2="$(c89_run QMD_RERANK=FALSE)"
+if grepq "$out" 'WARN C89-qmd-rerank' && grepq "$out2" 'WARN C89-qmd-rerank'; then pass "C89 0 and FALSE -> WARN"; else fail "C89 0/FALSE -> $(printf '%s' "$out$out2" | head -4)"; fi
+echo "== C89: qmd not installed -> INFO skip =="
+c89_reset; rm -f "$c89_t/qmd"
+out="$(c89_run)"
+if grepq "$out" 'INFO C89-qmd-rerank' && grepq "$out" -F 'qmd is not installed' && ! grepq "$out" 'WARN C89'; then pass "C89 no qmd -> INFO"; else fail "C89 no qmd -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C89: qmd switched off by the operator -> INFO skip, even with QMD_RERANK=off =="
+c89_reset; : > "$c89_t/off-flag"
+out="$(c89_run QMD_RERANK=off QMD_DAEMON_OFF_FLAG="$c89_t/off-flag")"
+if grepq "$out" 'INFO C89-qmd-rerank' && grepq "$out" -F 'off by operator' && ! grepq "$out" 'WARN C89'; then pass "C89 operator off -> INFO"; else fail "C89 operator off -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c89_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

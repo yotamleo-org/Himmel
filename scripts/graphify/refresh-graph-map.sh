@@ -35,8 +35,10 @@
 # extraction. The MOC is published ONLY with --publish. The workdir is never
 # deleted or quarantined; success prints "promoted; safe to remove <dir>".
 #
-# Exit: 0 ok; 1 usage/IO; 2 fence/graphify failure; 3 extraction skipped (bank
-# at/over threshold — not a failure, graphify-out was left untouched);
+# Exit: 0 ok; 1 usage/IO; 2 fence/graphify failure; 3 extraction skipped, not a
+# failure, graphify-out was left untouched (either the bank is at/over threshold,
+# or an installed published graph within the himmel-update limit covers an
+# adopter: graphify-out/.graphify_published, the stderr line says which);
 # 4 chunk cap reached; 5 hollow chunk failure (give-up or no-progress fallback).
 # Exits 4/5 keep finished chunks cached without promoting a partial graph.
 #
@@ -447,6 +449,7 @@ fi
 # graphify calls a --no-update publish-only run never makes, so an invalid value is
 # irrelevant there and must not fail an unrelated republish (same DO_UPDATE gating as
 # GRAPHIFY_MAX_CONCURRENCY).
+_TOKEN_BUDGET_ARGS=()
 if [ "$DO_EXTRACT" -eq 1 ]; then
   if [ "$BACKEND" = "claude-cli" ]; then
     GRAPHIFY_API_TIMEOUT="${GRAPHIFY_API_TIMEOUT-900}"
@@ -467,12 +470,25 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
     # CLAUDE_CODE_EFFORT_LEVEL from the environment (the documented env channel
     # for --effort; verified present in the installed claude binary 2026-08-12);
     # levels: low|medium|high|xhigh|max. Effort-vs-tier research (luna
-    # 30-Resources/Concepts/"Effort-vs-Tier Tradeoff") found extraction is a
-    # low-reasoning workload, so `low` is the default. `-low` (unset-only): an
-    # operator override wins; an explicitly-empty value falls back to the CLI's
-    # own default (the CLI ignores an empty/unknown value with a warning).
-    CLAUDE_CODE_EFFORT_LEVEL="${CLAUDE_CODE_EFFORT_LEVEL-low}"
+    # 30-Resources/Concepts/"Effort-vs-Tier Tradeoff") called extraction a
+    # low-reasoning workload, but `low` drew ~1 fact per doc against 4-18 before
+    # (a 14-doc sample at high with an 8000-token chunk drew 45.6 per doc),
+    # so `high` is the default. `-high` (unset-only): an operator
+    # override wins; an explicitly-empty value falls back to the CLI's own
+    # default (the CLI ignores an empty/unknown value with a warning).
+    CLAUDE_CODE_EFFORT_LEVEL="${CLAUDE_CODE_EFFORT_LEVEL-high}"
     export CLAUDE_CODE_EFFORT_LEVEL
+    # Chunk cap: graphify packs 60000 tokens of docs into one
+    # call by default, and one call over a whole directory returns a few facts
+    # for it. `-8000` (unset-only); an explicitly-empty value passes no
+    # --token-budget, back to graphify's own default.
+    GRAPHIFY_TOKEN_BUDGET="${GRAPHIFY_TOKEN_BUDGET-8000}"
+    if [ -n "$GRAPHIFY_TOKEN_BUDGET" ]; then
+      case "$GRAPHIFY_TOKEN_BUDGET" in
+        *[!0-9]*|0*) echo "refresh-graph-map: GRAPHIFY_TOKEN_BUDGET must be a positive integer (got '$GRAPHIFY_TOKEN_BUDGET')" >&2; exit 1 ;;
+      esac
+      _TOKEN_BUDGET_ARGS=(--token-budget "$GRAPHIFY_TOKEN_BUDGET")
+    fi
   else
     GRAPHIFY_API_TIMEOUT="${GRAPHIFY_API_TIMEOUT-300}"
   fi
@@ -725,15 +741,23 @@ PATH="$PATH:/usr/local/bin:/usr/bin:/bin" bash "$REPO_ROOT/scripts/lib/test-run-
 # -- just a bounded-wait acquire with stale-by-age
 # takeover (a loud stderr trail either way), released on ANY exit (success
 # or failure) by the same EXIT trap that cleans up SCRATCH below.
-# Residual (accepted): a stale-but-ALIVE holder (machine-sleep
-# mid-promote) that was taken over can still be INSIDE the promote block
+# Residual (accepted): a stale-but-ALIVE holder the pid check below cannot
+# see (another host, another pid namespace) that was taken over can still be INSIDE the promote block
 # when it wakes and interleave with the successor -- inherent to fail-open
 # stale takeover; the 600s stale floor vs a promote block measured in
 # seconds gives the margin. Its RELEASE, however, is owner-tokened (below)
 # so it never deletes the successor's lock.
+# A stale-aged lock whose owner token ("<pid>-<random>") names a LIVE pid is
+# not taken over: an ast-update holds this lock across a full
+# AST rebuild (17 and 12 minutes seen), and a takeover let its closing restore
+# re-add the nodes this refresh had just replaced. The wait on a live holder
+# ends at GRAPHIFY_PROMOTE_LOCK_LIVE_WAIT_SECONDS (default 2700), then rc 2.
+# ponytail: kill -0 trusts the pid in the token, so a reused pid reads as
+# live and costs one wait to the ceiling; upgrade to a pid start-time stamp.
 PROMOTE_LOCK="$OUT_DIR/.promote.lock"
 PROMOTE_LOCK_TIMEOUT_SECONDS="${GRAPHIFY_PROMOTE_LOCK_TIMEOUT_SECONDS:-120}"
 PROMOTE_LOCK_STALE_SECONDS="${GRAPHIFY_PROMOTE_LOCK_STALE_SECONDS:-600}"
+PROMOTE_LOCK_LIVE_WAIT_SECONDS="${GRAPHIFY_PROMOTE_LOCK_LIVE_WAIT_SECONDS:-2700}"
 PROMOTE_LOCK_HELD=0
 PROMOTE_LOCK_TOKEN=""
 PROMOTE_STAGE=""
@@ -1033,7 +1057,7 @@ _promote_lock_takeover() {
   return 1
 }
 
-# _promote_lock_acquire -- bounded mkdir spin (default 120s, 1s poll) with
+# _promote_lock_acquire [ceiling] -- bounded mkdir spin (default 120s, 1s poll; $1 overrides the wait) with
 # single-winner stale takeover (default 600s, loud on stderr). The lock dir
 # carries an "owner" token (release compares against it, above) and an
 # "acquired" epoch-seconds file written by the winner right after mkdir,
@@ -1046,7 +1070,8 @@ _promote_lock_takeover() {
 # the wait budget is exhausted -- the caller exits non-zero rather than
 # silently clobbering.
 _promote_lock_acquire() {
-  local waited=0 missing_polls=0 held_at now age token beat
+  local waited=0 missing_polls=0 held_at now age token beat owner_pid live_holder=""
+  local ceiling="${1:-$PROMOTE_LOCK_TIMEOUT_SECONDS}"
   while :; do
     # prim-ok: ast-update and semantic-update share this owner-token directory and stale-takeover protocol.
     if mkdir "$PROMOTE_LOCK" 2>/dev/null; then
@@ -1079,10 +1104,19 @@ _promote_lock_acquire() {
       now=$(date -u +%s)
       age=$(( now - held_at ))
       if [ "$age" -ge "$PROMOTE_LOCK_STALE_SECONDS" ]; then
-        if _promote_lock_takeover "is stale (age ${age}s >= ${PROMOTE_LOCK_STALE_SECONDS}s)"; then
+        owner_pid=$(cat "$PROMOTE_LOCK/owner" 2>/dev/null) || owner_pid=""
+        owner_pid="${owner_pid%%-*}"
+        case "$owner_pid" in ''|*[!0-9]*) owner_pid="" ;; esac
+        if [ -n "$owner_pid" ] && kill -0 "$owner_pid" 2>/dev/null; then
+          if [ -z "$live_holder" ]; then
+            live_holder="$owner_pid"
+            [ "$PROMOTE_LOCK_LIVE_WAIT_SECONDS" -le "$ceiling" ] || ceiling="$PROMOTE_LOCK_LIVE_WAIT_SECONDS"
+            echo "refresh-graph-map: promote lock $PROMOTE_LOCK is ${age}s old but its holder pid $owner_pid is alive -- waiting up to ${ceiling}s, no takeover" >&2
+          fi
+        elif _promote_lock_takeover "is stale (age ${age}s >= ${PROMOTE_LOCK_STALE_SECONDS}s)"; then
           continue
         fi
-        # lost the takeover to another contender -- fall through and wait.
+        # a live holder, or lost the takeover to another contender -- wait.
       fi
     else
       missing_polls=$((missing_polls + 1))
@@ -1093,8 +1127,12 @@ _promote_lock_acquire() {
         fi
       fi
     fi
-    if [ "$waited" -ge "$PROMOTE_LOCK_TIMEOUT_SECONDS" ]; then
-      echo "refresh-graph-map: promote lock $PROMOTE_LOCK held by another refresh-graph-map run after ${PROMOTE_LOCK_TIMEOUT_SECONDS}s -- giving up (another refresh is in progress against this out dir)" >&2
+    if [ "$waited" -ge "$ceiling" ]; then
+      if [ -n "$live_holder" ]; then
+        echo "refresh-graph-map: promote lock $PROMOTE_LOCK still held by live pid $live_holder after ${ceiling}s -- giving up, no takeover" >&2
+        return 1
+      fi
+      echo "refresh-graph-map: promote lock $PROMOTE_LOCK held by another refresh-graph-map run after ${ceiling}s -- giving up (another refresh is in progress against this out dir)" >&2
       return 1
     fi
     sleep 1
@@ -1431,6 +1469,49 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # below). Preflight it next to the graphify check so a python3-less box fails
   # BEFORE the scratch copy / paid extraction — never after promoting a new graph.
   command -v python3 >/dev/null 2>&1 || { echo "refresh-graph-map: python3 not found (needed to write manifest.json for freshness verification)" >&2; exit 2; }
+  # An adopter that installed the published himmel graph (himmel-update.sh sync_graph
+  # writes the build commit to $OUT_DIR/.graphify_published) does not pay for its own
+  # semantic pass: skip, exit 3 (extraction skipped, not a failure), BEFORE the lock,
+  # the pull, the scratch copy and the bank preflight. Same rule as sync_graph: the
+  # build commit is an ancestor of HEAD at most HIMMEL_UPDATE_GRAPH_MAX_BEHIND (default
+  # 150, keep in step with GRAPH_MAX_BEHIND in himmel-update.sh) commits behind it, and
+  # the station is not the publisher (graphify.semantic_api_ok is true in config.json).
+  # No marker, an odd marker, a non-ancestor, an old build or a publisher runs the row.
+  # The publisher test is stricter than sync_graph's: this script spends the budget, so a
+  # config it cannot read as "not the publisher" counts as the publisher. No config file
+  # at all is an adopter.
+  _pub_marker="$OUT_DIR/.graphify_published"
+  # manifest.json is the install's completion marker: without it the graph is not whole.
+  if [ -f "$OUT_DIR/manifest.json" ] && [ -f "$_pub_marker" ] && [ ! -L "$_pub_marker" ]; then
+    _pub_sha="$(head -n 1 "$_pub_marker" 2>/dev/null | tr -d '[:space:]')" || _pub_sha=""
+    _pub_max="${HIMMEL_UPDATE_GRAPH_MAX_BEHIND:-150}"
+    case "$_pub_max" in ''|*[!0-9]*) _pub_max=150 ;; esac
+    _pub_cfg="$HOME/.himmel/config.json"
+    _pub_publisher=0
+    # A config that cannot prove this is not the publisher (a symlink, unreadable, no jq,
+    # not JSON) runs the row: a publisher must never lose its pass to an unreadable answer.
+    if [ -L "$_pub_cfg" ]; then
+      _pub_publisher=1
+    elif [ -e "$_pub_cfg" ]; then
+      # Only a JSON object whose flag is not true proves an adopter; jq -e fails on a
+      # missing jq, an unreadable, empty or non-JSON file and a wrongly shaped one alike.
+      jq -e 'type == "object" and (.graphify.semantic_api_ok != true)' "$_pub_cfg" >/dev/null 2>&1 \
+        || _pub_publisher=1
+    fi
+    if [ "$_pub_publisher" -eq 0 ] && [[ "$_pub_sha" =~ ^[0-9a-fA-F]{7,40}$ ]] \
+        && git -C "$CORPUS_ROOT" merge-base --is-ancestor "$_pub_sha" HEAD 2>/dev/null; then
+      _pub_behind="$(git -C "$CORPUS_ROOT" rev-list --count "$_pub_sha..HEAD" 2>/dev/null)" || _pub_behind=""
+      case "$_pub_behind" in
+        ''|*[!0-9]*) ;;
+        *)
+          if [ "$_pub_behind" -le "$_pub_max" ]; then
+            echo "refresh-graph-map: the installed published graph (built at ${_pub_sha:0:12}, $_pub_behind commits behind HEAD, limit $_pub_max) covers corpus '$NAME' -- semantic extraction SKIPPED (graphify-out left untouched)" >&2
+            exit 3
+          fi
+          ;;
+      esac
+    fi
+  fi
   # Fence-safe incremental refresh on a scratchpad COPY (never the live corpus).
   # Always work inside a uniquely-named, launcher-OWNED subdir (mktemp-suffixed) so
   # we never rm -rf an operator-supplied --scratch that may point at an existing
@@ -2450,11 +2531,14 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   # live out dir's cache (content-keyed, so adding entries is safe) under the
   # promote lock, and leave a marker so an overridden out dir still proves it
   # is graphify's. Never promotes the graph. $1 = optional failed-chunk line.
+  # The keep waits up to the live-wait ceiling, not the plain promote timeout:
+  # giving up here deletes the run's paid chunks, and the hourly ast-update
+  # holds a fresh lock for minutes.
   _KEEP_FAILED=0
   _keep_finished_chunks() {
     local note="${1:-}"
     [ -d "$SCRATCH_OUT/cache" ] || [ -n "$note" ] || return 0
-    _promote_lock_acquire || exit 2
+    _promote_lock_acquire "$PROMOTE_LOCK_LIVE_WAIT_SECONDS" || exit 2
     if mkdir -p "$OUT_DIR/cache" \
        && { [ ! -d "$SCRATCH_OUT/cache" ] || cp -R "$SCRATCH_OUT/cache/." "$OUT_DIR/cache/"; } \
        && : > "$OUT_DIR/.graphify_resume_cache"; then
@@ -2520,7 +2604,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
       || { echo "refresh-graph-map: could not record the corpus markers in the recent-notes scratch" >&2; exit 1; }
     echo "refresh-graph-map: pre-pass: ${n//[[:space:]]/} notes modified in the last $_RECENT_DAYS days, extracted first (uncached ones only) within the chunk cap ($pre)" >&2
     _rc=0
-    _run_extract "$GRAPHIFY_MAP" "$pre" --update --backend "$BACKEND" --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" || _rc=$?
+    _run_extract "$GRAPHIFY_MAP" "$pre" --update --backend "$BACKEND" ${_TOKEN_BUDGET_ARGS[@]+"${_TOKEN_BUDGET_ARGS[@]}"} --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" || _rc=$?
     [ ! -s "$_DONE_FILE" ] || _PRE_DONE="$(cat "$_DONE_FILE")"
     # The full run deletes $_CKPT_FILE, so keep a pre-pass checkpoint failure.
     [ ! -s "$_CKPT_FILE" ] || _PRE_CKPT_FAILED=1
@@ -2541,7 +2625,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   _rc=0
   _prepass_recent
   if [ "$_SKIP_MAIN" -eq 0 ]; then
-    _run_extract "$GRAPHIFY_MAP" "$SCRATCH" --update --backend "$BACKEND" --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" || _rc=$?
+    _run_extract "$GRAPHIFY_MAP" "$SCRATCH" --update --backend "$BACKEND" ${_TOKEN_BUDGET_ARGS[@]+"${_TOKEN_BUDGET_ARGS[@]}"} --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" || _rc=$?
   fi
   if [ -s "$_FAILED_FILE" ]; then
     echo "refresh-graph-map: hollow chunks failed after bounded retries -- finished chunks cached, graphify-out left unpromoted (exit 5)" >&2

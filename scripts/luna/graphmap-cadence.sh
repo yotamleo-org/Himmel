@@ -163,6 +163,34 @@ resolve_user_home() {
     printf '%s' "${HOME:-/tmp}"
 }
 
+# The billed API lane (HIMMEL_API_LANE=on, the claude-api backend) renders into a
+# runner only on a station that opted in: graphify.semantic_api_ok is the JSON literal true in
+# ~/.himmel/config.json. An API key in .env is NOT an opt-in: an adopter may hold one for a later,
+# explicit use, and a re-render must never turn it into a daily draw (decision 525). The file is
+# operator-owned (block-himmel-config-writes.sh keeps agents off it, the same home as
+# graphify.salus_ollama_cloud_ok) and no env var overrides it. Absent, unreadable, malformed, a
+# symlink, or any value but true means no opt-in. The himmel station opts in once, by hand:
+#   {"graphify": {"semantic_api_ok": true}}
+# ponytail: read at render time, so a runner already armed keeps its lane until the next
+# arm --rewrite-armed; upgrade path: a fire-time read inside the runner.
+SEMANTIC_API_OPTIN_KEY="graphify.semantic_api_ok"
+SEMANTIC_API_SKIP_TEXT="semantic skipped: API lane not opted in ($SEMANTIC_API_OPTIN_KEY in ~/.himmel/config.json)"
+semantic_api_opted_in() {
+    local home f
+    home="$(resolve_user_home)"
+    f="$home/.himmel/config.json"
+    # a link can be planted without writing the operator's own file
+    [ -L "$home/.himmel" ] && return 1
+    [ -L "$f" ] && return 1
+    [ -f "$f" ] && [ -r "$f" ] || return 1
+    command -v jq >/dev/null 2>&1 || return 1
+    jq -e '.graphify.semantic_api_ok == true' "$f" >/dev/null 2>&1
+}
+# One stderr line at arm and rewrite time, so a skipped lane is never a silent downgrade.
+note_semantic_api_off() {
+    echo "NOTE graphmap-cadence: the API lane is not opted in on this station ($SEMANTIC_API_OPTIN_KEY is not true in ~/.himmel/config.json): the semantic runners render without the lane and log a skip line on every fire. After the operator sets the key, re-render with: bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed" >&2
+}
+
 # Persistent runner home (.sh runners) — NOT mktemp: these
 # tasks recur daily and %TEMP% / /tmp are subject to cleanup sweeps that would
 # silently kill the cadence (same rationale as pipeline-cadence's BAT_DIR).
@@ -415,6 +443,13 @@ Flags (arm only, except --dry-run and --luna-only):
                          claude-api semantic-update over the vault. Cron only.
                          Arms PAUSED: arm writes semantic-luna.paused; rm it
                          to resume.
+
+The two claude-api semantic runners above spend the station's own API key, so a
+station must opt in before either one renders the API lane (HIMMEL-9155): set
+graphify.semantic_api_ok to the JSON literal true in ~/.himmel/config.json (an
+operator edit; no env var overrides it). Without it the runners still arm, carry
+no HIMMEL_API_LANE and no claude-api backend, and log a "semantic skipped" line
+on every fire. After setting it, re-render with arm --rewrite-armed.
 
 The structural (AST) pair's offsets (luna daily 00:05, himmel hourly at :15)
 are NOT flags — see WEEKLY_DAY_*/AST_*_TIME in this script.
@@ -1025,6 +1060,11 @@ publish_cron_payload() {
         printf '%s' "$base"
         return 0
     fi
+    # No opt-in: no lane. The fire logs why and runs the free publish worker alone.
+    if ! semantic_api_opted_in; then
+        printf 'echo "[%s]"; %s' "$SEMANTIC_API_SKIP_TEXT" "$base"
+        return 0
+    fi
     # The pause marker is read at fire time: while it exists the fire runs the
     # publish worker without --semantic and without the api-lane env.
     local q_pause
@@ -1037,6 +1077,11 @@ publish_cron_payload() {
 luna_semantic_cron_payload() {
     local q_bash="$1" q_script="$2" q_corpus="$3" q_out_dir="${4:-}"
     local q_pause base
+    # No opt-in: no lane, and semantic-update.sh (claude-api only) is never called.
+    if ! semantic_api_opted_in; then
+        printf 'echo "[%s]"' "$SEMANTIC_API_SKIP_TEXT"
+        return 0
+    fi
     q_pause=$(printf '%q' "$BAT_DIR/$LUNA_SEMANTIC_PAUSE_MARKER")
     base=$(printf '%s %s --name luna --corpus-root %s --corpus-class luna-personal --backend claude-api --max-files %s --max-run-usd %s' \
         "$q_bash" "$q_script" "$q_corpus" "$LUNA_SEMANTIC_MAX_FILES" "$LUNA_SEMANTIC_RUN_USD")
@@ -1316,11 +1361,15 @@ cmd_arm() {
     payload_publish_himmel=$(publish_cron_payload "$q_bash" "$q_publish_script" "$q_himmel")
     # Luna semantic task: writes the same out dir the luna AST worker does.
     payload_semantic_luna=$(luna_semantic_cron_payload "$q_bash" "$q_semantic_script" "$q_vault" "$q_out_dir_ast_luna")
+    # A semantic runner asked for without the opt-in renders without the lane; say so once.
+    if { [ "$PUBLISH_SEMANTIC" -eq 1 ] || [ "$WITH_LUNA_SEMANTIC" -eq 1 ]; } && ! semantic_api_opted_in; then
+        note_semantic_api_off
+    fi
 
     # --rewrite-armed: regenerate only the runner files that already exist, so an armed station
     # picks up a new runner format without any crontab row being added, removed or rescheduled.
     if [ "$REWRITE_ARMED" -eq 1 ]; then
-        local rw_name rw_runner rw_tmp rw_n=0
+        local rw_name rw_runner rw_tmp rw_n=0 rw_noted=0
         for rw_name in luna himmel ast-luna ast-himmel publish-himmel semantic-luna; do
             case "$rw_name" in
                 luna)           rw_runner="$CRON_RUNNER_LUNA" ;;
@@ -1340,10 +1389,16 @@ cmd_arm() {
             fi
             rw_tmp="$rw_runner.tmp.$$"
             # A publish runner armed with --publish-semantic keeps its semantic branch: the mode
-            # lives only in the runner text, so read it from the file being replaced.
-            if [ "$rw_name" = publish-himmel ] && grep -q 'GRAPH_CADENCE_SEMANTIC_BACKEND' "$rw_runner"; then
+            # lives only in the runner text, so read it from the file being replaced. A runner
+            # rendered without the opt-in carries the skip line instead of the lane env, so that
+            # line remembers the mode until the station opts in.
+            if [ "$rw_name" = publish-himmel ] && grep -qF -e 'GRAPH_CADENCE_SEMANTIC_BACKEND' -e "$SEMANTIC_API_SKIP_TEXT" "$rw_runner"; then
                 PUBLISH_SEMANTIC=1
                 payload_publish_himmel=$(publish_cron_payload "$q_bash" "$q_publish_script" "$q_himmel")
+            fi
+            if [ "$rw_noted" -eq 0 ] && { [ "$rw_name" = semantic-luna ] || { [ "$rw_name" = publish-himmel ] && [ "$PUBLISH_SEMANTIC" -eq 1 ]; }; } && ! semantic_api_opted_in; then
+                note_semantic_api_off
+                rw_noted=1
             fi
             if ! {
             case "$rw_name" in
@@ -1618,12 +1673,21 @@ cmd_arm() {
     if [ "$WITH_PUBLISH" -eq 1 ]; then
         publish_lines="  $TASK_PUBLISH_HIMMEL  every ${PUBLISH_EVERY_HOURS}h at :$publish_himmel_mm   -> graph-cadence publish himmel (free, auto-merge)"
         if [ "$PUBLISH_SEMANTIC" -eq 1 ]; then
-            publish_lines="  $TASK_PUBLISH_HIMMEL  every ${PUBLISH_EVERY_HOURS}h at :$publish_himmel_mm   -> graph-cadence publish himmel (+ claude-api semantic, auto-merge)"
+            if semantic_api_opted_in; then
+                publish_lines="  $TASK_PUBLISH_HIMMEL  every ${PUBLISH_EVERY_HOURS}h at :$publish_himmel_mm   -> graph-cadence publish himmel (+ claude-api semantic, auto-merge)"
+            else
+                publish_lines="  $TASK_PUBLISH_HIMMEL  every ${PUBLISH_EVERY_HOURS}h at :$publish_himmel_mm   -> graph-cadence publish himmel (semantic SKIPPED: API lane not opted in, auto-merge)"
+            fi
         fi
     fi
     if [ "$WITH_LUNA_SEMANTIC" -eq 1 ]; then
-        publish_lines="$publish_lines
+        if semantic_api_opted_in; then
+            publish_lines="$publish_lines
   $TASK_SEMANTIC_LUNA  every ${LUNA_SEMANTIC_EVERY_HOURS}h at :$LUNA_SEMANTIC_MINUTE   -> semantic-update luna (claude-api, max ${LUNA_SEMANTIC_MAX_FILES} files / ${LUNA_SEMANTIC_RUN_USD} USD per fire)"
+        else
+            publish_lines="$publish_lines
+  $TASK_SEMANTIC_LUNA  every ${LUNA_SEMANTIC_EVERY_HOURS}h at :$LUNA_SEMANTIC_MINUTE   -> semantic SKIPPED: API lane not opted in (no semantic-update call)"
+        fi
     fi
     # --luna-only armed the Luna rows alone: say so, and offer the matching Luna-only disarm.
     local ast_lines luna_hint="" ast_himmel_line disarm_cmd="disarm"

@@ -273,6 +273,79 @@ out_g=$( GRAPHIFY_MAP_BIN="$FBIN/graphify" PATH="$FBIN:$PATH" GRAPHIFY_PROMOTE_L
 [ "$rc_g" -eq 0 ] && pass "T3b-control refresh takes over a dead holder's lock" || fail "T3b-control should exit 0 (got $rc_g): $out_g"
 grep -qi "taking over" <<<"$out_g" && pass "T3b-control takeover trail present" || fail "T3b-control should log the takeover: $out_g"
 
+# --- T3d: a stale-aged promote lock whose owner token names a
+# LIVE pid (an ast-update still running) is never taken over: refresh waits,
+# proceeds once the holder releases, and gives up rc 2 at the live-wait
+# ceiling. A dead pid is taken over as before. ---
+echo "T3d: a stale-aged lock with a live holder is waited on, never taken over"
+t3d_case() { # <name> <owner-token>; leaves a stale-aged promote lock in a fresh corpus
+  T3B_CORPUS="$WS/$1"; mkdir -p "$T3B_CORPUS/notes" "$WS/$1-maps"
+  printf '# f\ncontent f\n' > "$T3B_CORPUS/notes/f.md"
+  mkdir -p "$T3B_CORPUS/graphify-out/.promote.lock"
+  printf '%s\n' "$(( $(date -u +%s) - 100 ))" > "$T3B_CORPUS/graphify-out/.promote.lock/acquired"
+  printf '%s\n' "$2" > "$T3B_CORPUS/graphify-out/.promote.lock/owner"
+}
+t3d_run() { # <name> <live-wait>
+  GRAPHIFY_MAP_BIN="$EBIN/graphify" PATH="$EBIN:$PATH" GRAPHIFY_PROMOTE_LOCK_STALE_SECONDS=10 \
+    GRAPHIFY_PROMOTE_LOCK_TIMEOUT_SECONDS=1 GRAPHIFY_PROMOTE_LOCK_LIVE_WAIT_SECONDS="$2" \
+    bash "$SCRIPT" --name "$1" --corpus-root "$T3B_CORPUS" --backend claude \
+    --maps-dir "$WS/$1-maps" --title "Lock $1" --slug "$1-map" --corpus-tag "$1" 2>&1
+}
+sleep 600 & HOLDER_PID=$!
+t3d_case t3d-live "$HOLDER_PID-123"
+out_l=$(t3d_run t3d-live 3); rc_l=$?
+{ [ "$rc_l" -eq 2 ] && [ "$(cat "$T3B_CORPUS/graphify-out/.promote.lock/owner" 2>/dev/null)" = "$HOLDER_PID-123" ] \
+  && ! grep -qi "taking over" <<<"$out_l" && grep -q "alive" <<<"$out_l"; } \
+  && pass "T3d live holder: no takeover, rc 2 at the live-wait ceiling, its lock intact" \
+  || fail "T3d live holder should be waited on then rc 2 (got $rc_l, owner=$(cat "$T3B_CORPUS/graphify-out/.promote.lock/owner" 2>/dev/null)): $out_l"
+t3d_case t3d-release "$HOLDER_PID-456"
+( sleep 3; rm -rf "$T3B_CORPUS/graphify-out/.promote.lock" ) &
+out_r=$(t3d_run t3d-release 60); rc_r=$?
+{ [ "$rc_r" -eq 0 ] && ! grep -qi "taking over" <<<"$out_r" && grep -q '"gen":"E"' "$T3B_CORPUS/graphify-out/graph.json" 2>/dev/null; } \
+  && pass "T3d live holder releases: refresh proceeds after the wait, no takeover" \
+  || fail "T3d refresh should proceed after the live holder releases (got $rc_r): $out_r"
+kill "$HOLDER_PID" 2>/dev/null; wait "$HOLDER_PID" 2>/dev/null
+t3d_case t3d-dead "$HOLDER_PID-789"
+out_x=$(t3d_run t3d-dead 60); rc_x=$?
+{ [ "$rc_x" -eq 0 ] && grep -qi "taking over" <<<"$out_x"; } \
+  && pass "T3d dead holder: the stale lock is taken over as before" \
+  || fail "T3d dead holder should be taken over (got $rc_x): $out_x"
+
+# --- T3c: a capped run keeps its finished chunks even when a live holder
+# (the hourly ast-update) keeps a FRESH promote lock past the plain promote
+# timeout: the keep waits up to the live-wait ceiling instead of exiting 2 and
+# discarding the run's paid chunks. ---
+echo "T3c: a capped run waits out a fresh lock past the promote timeout and keeps its chunks"
+CBIN="$WS/cbin"; mkdir -p "$CBIN"
+cat > "$CBIN/graphify" <<'STUB'
+#!/usr/bin/env bash
+if [ "$1" = "--version" ]; then echo "graphify 0.0.0"; exit 0; fi
+if [ "$1" = "cluster-only" ]; then exit 0; fi
+mkdir -p "$1/graphify-out/cache"
+printf '{}' > "$1/graphify-out/cache/t3c-chunk.json"
+echo "[graphify extract] chunk 1/2 done" >&2
+: > "$T3C_CAPPED"
+sleep 5
+echo "[graphify extract] chunk 2/2 done" >&2
+exit 0
+STUB
+chmod +x "$CBIN/graphify"
+T3C="$WS/t3c"; mkdir -p "$T3C/notes" "$WS/t3c-maps" "$T3C/graphify-out/.promote.lock"
+printf '# g\ncontent g\n' > "$T3C/notes/g.md"
+sleep 600 & T3C_PID=$!
+date -u +%s > "$T3C/graphify-out/.promote.lock/acquired"
+printf '%s\n' "$T3C_PID-321" > "$T3C/graphify-out/.promote.lock/owner"
+export T3C_CAPPED="$WS/t3c-capped"
+( until [ -e "$T3C_CAPPED" ]; do sleep 0.2; done; sleep 4; rm -rf "$T3C/graphify-out/.promote.lock" ) &
+out_c=$( GRAPHIFY_MAP_BIN="$CBIN/graphify" PATH="$CBIN:$PATH" GRAPHIFY_MAX_CHUNKS_PER_RUN=1 \
+  GRAPHIFY_PROMOTE_LOCK_TIMEOUT_SECONDS=1 GRAPHIFY_PROMOTE_LOCK_LIVE_WAIT_SECONDS=60 \
+  bash "$SCRIPT" --name t3c --corpus-root "$T3C" --backend claude \
+  --maps-dir "$WS/t3c-maps" --title "Lock t3c" --slug t3c-map --corpus-tag t3c 2>&1 ); rc_c=$?
+kill "$T3C_PID" 2>/dev/null; wait "$T3C_PID" 2>/dev/null
+{ [ "$rc_c" -eq 4 ] && [ -e "$T3C/graphify-out/cache/t3c-chunk.json" ] && grep -q "finished chunks kept" <<<"$out_c"; } \
+  && pass "T3c the capped run waited out the live holder and kept its finished chunk (exit 4)" \
+  || fail "T3c the capped run should keep its chunk and exit 4 (got $rc_c): $out_c"
+
 # --- T4: two SIMULTANEOUS
 # contenders against one stale lock -- the takeover must be single-winner.
 # A naive rm-then-continue takeover would let both contenders judge the same

@@ -124,6 +124,6 @@ test("Shift chain: a hand-over gap shorter than half a percent of the shift is s
 test("the Health project picker sits in the page bar above the page, never in the rail", () => {
   const js = read("app.js");
   expect(js).toMatch(/id: "health"[^\n]*render: \(f\) => pageBar\(\) \+ healthPage\(f\)/);
-  expect(js).toMatch(/const ctl = currentPage\.id === "health" \? projectPicker\(\) : ""/);
+  expect(js).toMatch(/const ctl = currentPage\.id === "health" \? projectPicker\(\) : currentPage\.id === "report" \? reportBar\(reportList, reportView, reportUi\) : ""/);
   expect(js).toMatch(/\$\("#pages"\)\.innerHTML = railMarkup\(/);
 });

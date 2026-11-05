@@ -11,7 +11,7 @@
 # Env:   HIMMEL_API_LANE=on  HIMMEL_API_ACCOUNT=A|B|C|auto  [HIMMEL_API_KEY_ID=<roster id>]
 #        ANTHROPIC_API_KEY, or else <state_dir>/key-<account>.env (mode 600); never printed, logged,
 #        exported or passed on a command line. auto = the earliest-expiring grant with room for the budget,
-#        allowed only for HIMMEL_API_KIND=graphify in the himmel repo.
+#        allowed for HIMMEL_API_KIND=graphify, or a kind the role map maps, in the himmel repo.
 #        [HIMMEL_API_TOOLS=<comma list>]  opt-in tool grant, a subset of Read,Edit,Write,Glob,Grep,Bash; unset/empty = tool-free (default)
 #        [HIMMEL_API_KIND=<label>] run kind for the cache report (eval|judge|bulk|critic|graphify|cull|probe; a caller sets its own, default other)
 #        [HIMMEL_API_CACHE_TTL=5m|1h] prompt-cache lifetime of the call (default 5m)
@@ -344,12 +344,17 @@ case "${HIMMEL_CLAUDE_LANE:-}" in ""|native) ;; *) refuse "conflicting lane HIMM
 # cache lifetime. An API-key call gets 5m unless told otherwise, so the launcher always states the choice itself.
 KIND="${HIMMEL_API_KIND:-other}"
 case "$KIND" in ""|*[!A-Za-z0-9._-]*) refuse "HIMMEL_API_KIND has characters outside [A-Za-z0-9._-]" ;; esac
-# auto routing is for the himmel semantic graph pass only (decision 525 FINAL): any other kind, or the same kind
-# from another repo, must name its account; refused before any spawn, never re-run on the subscription and never an alert
+# auto routing is for the himmel semantic graph pass only (decision 525 FINAL) unless the role map (roles.json beside
+# the account config) maps the kind: any other kind, or the same kind from another repo, must name its
+# account; refused before any spawn, never re-run on the subscription and never an alert. A named account never reads
+# the map. The map only widens kinds and narrows accounts; no map, or a broken one, is decision 525 exactly.
+ROLE_ACCTS=""
 if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
+  ROLE_ACCTS="$(node "$REPO/scripts/lib/api-roles.mjs" accounts "$KIND")" || ROLE_ACCTS=""
+  case "$ROLE_ACCTS" in *[!ABC,]*) ROLE_ACCTS="" ;; esac
   _auto_here="${HIMMEL_API_AUTO_REPO_DIR:-$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)}"
   _auto_own="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
-  [ "$KIND" = graphify ] && [ -n "$_auto_own" ] && [ "$_auto_here" = "$_auto_own" ] ||
+  { [ "$KIND" = graphify ] || [ -n "$ROLE_ACCTS" ]; } && [ -n "$_auto_own" ] && [ "$_auto_here" = "$_auto_own" ] ||
     { POLICY_REPO="${_auto_here:-none}"; refuse_policy "auto routing is for the himmel graph pass only (kind $KIND, repo ${_auto_here:-none}); name HIMMEL_API_ACCOUNT=A, B or C"; }
 fi
 CACHE_TTL="${HIMMEL_API_CACHE_TTL:-5m}"
@@ -357,7 +362,7 @@ case "$CACHE_TTL" in 5m|1h) ;; *) refuse "HIMMEL_API_CACHE_TTL must be 5m or 1h"
 
 # --- auto = the grant that expires first among accounts with room for the whole budget ---
 if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
-  PICK="$(node "$REPO/scripts/lib/api-credit-state.mjs" pick --usd "$BUDGET")"
+  PICK="$(node "$REPO/scripts/lib/api-credit-state.mjs" pick --usd "$BUDGET" ${ROLE_ACCTS:+--only "$ROLE_ACCTS"})"
   case "$PICK" in *'"verdict":"PROCEED"'*) ;; *) refuse "auto routing: no account has room for the budget ($PICK)" ;; esac
   # an absent or old credit reading never blocks an auto route: the per-call budget bounds each call, our own estimate
   # only orders the accounts, Anthropic's own credit answer decides the rest, and a credit-exhausted answer rotates (see below)

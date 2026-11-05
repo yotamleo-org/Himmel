@@ -53,13 +53,28 @@ export function fixAction(r, foreign = false) {
   if (fix.by === "operator" && fix.remedy) return { kind: "copy", cmd: fix.remedy };
   return { kind: "chief" };
 }
+// Is a chief of the project <key> live? The fleet read's live console sessions are named <KEY>-…, so a console session counts
+// only when its name starts with the key and a dash. true/false from the read, undefined until it lands.
+// Liveness as Fleet reads it (fleet-model.ts isLive).
+export function chiefLiveFor(fleetData, key) {
+  if (!fleetData || fleetData.census === "unavailable") return undefined;
+  // an unregistered checkout is named <repo>.<6 hex> (projects.ts readProjects): its key is the repo's
+  const prefix = `${String(key).replace(/\.[0-9a-f]{6}$/, "").toUpperCase()}-`;
+  return (fleetData.sessions || []).some((s) => s.role === "console" && s.live !== false && s.state !== "wrapped" && s.lock !== "released"
+    && String(s.name).toUpperCase().startsWith(prefix));
+}
+
 // chief = is a chief session live for this project (true/false), or unknown (another project, or the fleet not read yet).
-// Only a live one may say "on it"; none of the three is a button.
-const chiefLabel = (chief) => (chief === true ? "chief is on it" : chief === false ? "for the chief · none running" : "for the chief");
-const actionHtml = (a, chief) => a.kind === "configure" ? `<a class="fixact btn primary" href="#/config?tile=${esc(a.tile)}">Open in Configure</a>`
+// Only a live one may say "on it"; none of the three is a button. A shared row or an alert belongs to the machine or himmel
+// itself, so it names the himmel chief and reads "on it" only while that chief is live (view.himmelChief).
+const chiefLabel = (chief, shared = false) => {
+  const who = shared ? "himmel chief" : "chief";
+  return chief === true ? `${who} is on it` : chief === false ? `for the ${who} · none running` : `for the ${who}`;
+};
+const actionHtml = (a, chief, shared = false) => a.kind === "configure" ? `<a class="fixact btn primary" href="#/config?tile=${esc(a.tile)}">Open in Configure</a>`
   : a.kind === "copy" ? `<button class="fixact btn" data-act="copy" data-cmd="${esc(a.cmd)}">Copy command</button>`
   : a.kind === "elsewhere" ? `<span class="fixact chief">set in that project's own UI</span>`
-  : `<span class="fixact chief">${esc(chiefLabel(chief))}</span>`;
+  : `<span class="fixact chief">${esc(chiefLabel(chief, shared))}</span>`;
 
 const nodata = (what) => `<div class="nodata">No data: ${esc(what)}</div>`;
 // cls: "box" (the all-projects view), "sec" (an unboxed block in the project grid) or "p g-*" (the open tile's group panel)
@@ -96,25 +111,26 @@ const whoText = (a, chief) => a.kind === "configure" ? `You, in Configure → ${
   : "The chief session works every new doctor warn. Nothing for you to press; the row leaves this list when a later doctor run finds it ok.";
 
 // one broken row: pill, id, scope tag, what it found, its single fix action, and a "Who fixes it" box that opens on the row.
-function brokenRow(r, open, foreign = false, chief) {
-  const a = fixAction(r, foreign), id = r.id;
-  const who = open ? `<div class="who"><b>Who fixes it</b><p>${esc(whoText(a, chief))}</p>${a.kind === "copy" ? `<code class="remedy">${esc(a.cmd)}</code>` : ""}</div>` : "";
+// A shared row reads the himmel chief (himmelChief), any other row this project's (chief).
+function brokenRow(r, open, foreign = false, chief, himmelChief) {
+  const a = fixAction(r, foreign), id = r.id, shared = r.scope === "shared", c = shared ? himmelChief : chief;
+  const who = open ? `<div class="who"><b>Who fixes it</b><p>${esc(whoText(a, c))}</p>${a.kind === "copy" ? `<code class="remedy">${esc(a.cmd)}</code>` : ""}</div>` : "";
   return `<div class="hrow br" data-id="${esc(id)}"><span class="st ${esc(r.health)}">${esc(r.health)}</span><span class="id">${esc(id)}</span>
-    ${r.scope === "shared" ? `<span class="scope">shared</span>` : ""}<span class="det">${esc(r.installed && r.installed.detail)}</span>
-    ${actionHtml(a, chief)}<button class="btn" data-act="health-row" data-id="${esc(id)}" aria-expanded="${open}">${open ? "close" : "who fixes it"}</button>${who}</div>`;
+    ${shared ? `<span class="scope">shared</span>` : ""}<span class="det">${esc(r.installed && r.installed.detail)}</span>
+    ${actionHtml(a, c, shared)}<button class="btn" data-act="health-row" data-id="${esc(id)}" aria-expanded="${open}">${open ? "close" : "who fixes it"}</button>${who}</div>`;
 }
 
 // Q1: an alert gets the same answer as a row, and the chief fixes alerts (Grafana is where you read one, not where it is fixed).
-const alertHtml = (a, chief) => `<div class="alert"><span class="st ${a.severity === "page" ? "fail" : "warn"}">${esc(a.severity || "alert")}</span><b>${esc(a.alertname)}</b> <span class="det">${esc(a.summary)}</span>
-  <span class="scope">shared</span><span class="fixact chief">${esc(chiefLabel(chief))}</span></div>`;
+const alertHtml = (a, himmelChief) => `<div class="alert"><span class="st ${a.severity === "page" ? "fail" : "warn"}">${esc(a.severity || "alert")}</span><b>${esc(a.alertname)}</b> <span class="det">${esc(a.summary)}</span>
+  <span class="scope">shared</span><span class="fixact chief">${esc(chiefLabel(himmelChief, true))}</span></div>`;
 
 function brokenHtml(feed, health, view) {
   if (!feed) return nodata("the doctor feed is still running");
   const rows = (feed.rows || []).filter(isTriage).sort((a, b) => (a.health === "fail" ? 0 : 1) - (b.health === "fail" ? 0 : 1));
   const alerts = alertsOf(health) || [];
   const chief = view.foreign ? undefined : view.chief;
-  const rowsHtml = rows.map((r) => brokenRow(r, view.row === r.id, view.foreign, chief)).join("");
-  return rowsHtml + alerts.map((a) => alertHtml(a, chief)).join("") || `<div class="empty">Nothing broken.</div>`;
+  const rowsHtml = rows.map((r) => brokenRow(r, view.row === r.id, view.foreign, chief, view.himmelChief)).join("");
+  return rowsHtml + alerts.map((a) => alertHtml(a, view.himmelChief)).join("") || `<div class="empty">Nothing broken.</div>`;
 }
 
 // Every item checked: all rows by bundle, a result each; a bundle with a problem opens by itself.
@@ -171,15 +187,17 @@ function sharedPanel(feed, health, view) {
   const rows = sharedOf(feed).filter(isTriage), alerts = alertsOf(health) || []; // firing alerts watch the machine, so they belong here too
   const mini = GROUPS.map(([g, name]) => { const l = rows.filter((r) => groupOf(r) === g); return `<div class="mini"><b>${name}</b><span class="ro">${l.length ? `${l.length} to look at` : "ok"}</span></div>`; }).join("");
   return `<section id="shared" class="box" aria-labelledby="h-shared"><h2 id="h-shared">Shared</h2><p class="sub">Problems with the machine or himmel itself. Shown once here, never counted against a project.</p>
-    <div class="minis">${mini}</div>${rows.length || alerts.length ? rows.map((r) => brokenRow(r, view.row === r.id, false, view.chief)).join("") + alerts.map((a) => alertHtml(a, view.chief)).join("") : `<div class="empty">Nothing shared is broken.</div>`}</section>`;
+    <div class="minis">${mini}</div>${rows.length || alerts.length ? rows.map((r) => brokenRow(r, view.row === r.id, false, view.chief, view.himmelChief)).join("") + alerts.map((a) => alertHtml(a, view.himmelChief)).join("") : `<div class="empty">Nothing shared is broken.</div>`}</section>`;
 }
 function projectLine(p, view) {
   const c = (p.counts && p.counts.project) || { fail: 0, warn: 0 }, v = projectVerdict(c);
   const head = p.checkedAt ? `<span class="pill ${v.cls}">${esc(v.word)}</span>` : `<span class="pill off">not checked</span>`;
-  const broken = (p.broken || []).map((r) => brokenRow(r, view.row === r.id, !p.current, p.current ? view.chief : undefined)).join("");
+  const broken = (p.broken || []).map((r) => brokenRow(r, view.row === r.id, !p.current, p.current ? view.chief : undefined, view.himmelChief)).join("");
+  // a shared index row degrades this project too; it is named here and counted only under Shared
+  const notes = (p.notes || []).map((n) => `<div class="pnote"><span class="st ${esc(n.health)}">${esc(n.health)}</span><span class="id">${esc(n.id)}</span><span class="ro">shared, counted once under Shared: ${esc(n.installed && n.installed.detail)}</span></div>`).join("");
   return `<div class="box prj" data-project="${esc(p.name)}"><div class="phead"><b>${esc(p.name)}</b>${p.current ? `<span class="scope">this UI</span>` : ""}${head}
     <span class="ro">${p.checkedAt ? `${c.fail} fail · ${c.warn} warn · checked ${esc(String(p.checkedAt).slice(0, 16).replace("T", " "))}` : "no cached check yet: open Health in that project once"}</span>
-    <a class="btn" href="#/health?project=${encodeURIComponent(p.name)}">open ▸</a></div>${broken}</div>`;
+    <a class="btn" href="#/health?project=${encodeURIComponent(p.name)}">open ▸</a></div>${broken}${notes}</div>`;
 }
 const rank = (p) => (p.checkedAt ? ((p.counts && p.counts.project && p.counts.project.fail) || 0) * 1000 + ((p.counts && p.counts.project && p.counts.project.warn) || 0) : -1);
 function allProjectsHtml(feed, health, view) {

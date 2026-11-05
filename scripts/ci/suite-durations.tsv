@@ -396,6 +396,7 @@ scripts/handover/chief-kit/test-ack-denial.sh	2
 scripts/handover/chief-kit/test-action-zero.sh	6
 scripts/handover/chief-kit/test-append-results.sh	38
 scripts/handover/chief-kit/test-auto-go.sh	25
+scripts/handover/chief-kit/test-board-section.sh	2
 scripts/handover/chief-kit/test-board.sh	52
 scripts/handover/chief-kit/test-brief-lint.sh	7
 scripts/handover/chief-kit/test-chain-graph.sh	3
@@ -512,6 +513,7 @@ scripts/handover/test-konsole-macos.sh	20
 scripts/handover/test-worker-handoff-threshold-docs.sh	0
 scripts/handover/test-worker-resume-brief.sh	2
 scripts/handover/test-worker-timeline.sh	8
+scripts/handover/test-launch-record.sh	1
 scripts/handover/test-lessons-sweep.sh	1
 scripts/handover/test-librarian-cadence.sh	1
 scripts/handover/test-librarian.sh	4
@@ -706,6 +708,7 @@ scripts/hooks/test-check-settings-portability.sh	0
 scripts/hooks/test-check-template-himmel-plugins.sh	1
 scripts/hooks/test-check-update-available.sh	7
 scripts/hooks/test-check-worktree-isolation.sh	0
+scripts/hooks/test-check-write-hold.sh	16
 scripts/hooks/test-ci-doc-invariants.sh	17
 scripts/hooks/test-cmdpos-clean.sh	0
 scripts/hooks/test-codex-adapter-e2e.sh	0
@@ -887,6 +890,7 @@ scripts/lib/test-mode-single-owner.sh	0
 scripts/lib/test-native-auth-pin.sh	1
 scripts/lib/test-observability-registry.sh	0
 scripts/lib/test-orphan-branches.sh	7
+scripts/lib/test-outside-contributors.sh	1
 scripts/lib/test-override-env.sh	1
 scripts/lib/test-prim.sh	7
 scripts/lib/test-proc-tree.sh	2
@@ -921,6 +925,7 @@ scripts/lib/test-sha256-bin.sh	0
 scripts/lib/test-shared-branch-lock.sh	1
 scripts/lib/test-suite-semaphore.sh	11
 scripts/lib/test-telemetry.sh	0
+scripts/lib/test-ticket-id-internal.sh	1
 scripts/lib/test-ticket-status.sh	0
 scripts/lib/test-timeout-bin.sh	13
 scripts/lib/test-tracker-contract.sh	4
@@ -1030,6 +1035,7 @@ scripts/report/test-himmel-report.sh	4
 scripts/roadmap/test-plan-graph.sh	1
 scripts/roadmap/test-plan-index.sh	3
 scripts/security/test-snyk-scan.sh	5
+scripts/security/test-socket-scan.sh	1
 scripts/setup/test-check-jira-key.sh	0
 scripts/setup/test-check-user-slug.sh	1
 scripts/setup/test-choose-mode.sh	1
@@ -1042,7 +1048,6 @@ scripts/setup/test-onboard-telegram.sh	0
 scripts/setup/test-setup-preflight.sh	0
 scripts/skill-index/test-ensure-skill-index.sh	9
 scripts/skill-index/test-skill-find.sh	0
-scripts/statusline/test-all-sessions-index-parity.sh	0
 scripts/statusline/test-check-hud-drift.sh	2
 scripts/statusline/test-hud-composer-parity.sh	10
 scripts/statusline/test-hud-render-parity.sh	0
@@ -1144,6 +1149,7 @@ scripts/upstreams/test-apply-drift-bump.sh	2
 scripts/upstreams/test-apply-tool-upgrade.sh	2
 scripts/upstreams/test-ci-tool-pins.sh	1
 scripts/upstreams/test-drift-fix-cadence.sh	1
+scripts/upstreams/test-protect-forks.sh	1
 scripts/upstreams/test-resync-fork.sh	3
 scripts/upstreams/test-update-marketplaces.sh	1
 scripts/upstreams/test-upstream-watch-cadence.sh	2

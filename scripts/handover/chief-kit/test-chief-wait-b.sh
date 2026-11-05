@@ -406,6 +406,7 @@ printf '#!/usr/bin/env bash\nprintf "ARGS %%s\\n" "$*"\n' > "$STUB/dispatch.sh"
 # age never wakes by itself. RED control (chief-wait.sh before this change): none
 # of these woke ("running"). ------------------------------------------------------
 unowned_line() { sed -e "s/ unowned-prs=[^ ]*//" -e "s/ bank=/ unowned-prs=$1 bank=/" "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
+export HOUSEKEEPING_DIGEST_SECS=0  # 8934: these rows prove the marker logic on the unbatched path; the digest rows are in test-chief-wait.sh and test-chief-wait-pool.sh
 reset_stub
 unowned_line "#2575:120m"
 I="$(new_inbox y)"
@@ -470,6 +471,7 @@ wait_hb "$I" || fail "(u5542-5) no baseline heartbeat"
 wait_exit "$WPID"
 check "(u5542-5) a tick line with no unowned-prs= field is still a valid sample" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+unset HOUSEKEEPING_DIGEST_SECS
 
 # --- (7811) procs=...,unwatched=: a live worker the manifest does not list wakes the
 # waiter once on first sight, again when another joins, and again only after

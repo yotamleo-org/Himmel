@@ -27,7 +27,8 @@ export HOME="$W/home" HANDOVER_DIR="$W/h" XDG_RUNTIME_DIR="$W/xdg" HIMMELCTL_CAC
 mkdir -p "$HOME" "$HANDOVER_DIR/u/r/sub" "$XDG_RUNTIME_DIR" "$HIMMELCTL_CACHE_DIR" "$HIMMEL_CONFIG_DIR" "$W/bin"
 chmod 700 "$XDG_RUNTIME_DIR"
 : > "$HIMMELCTL_CACHE_DIR/.env"
-unset HIMMEL_CONSOLE_LEG HIMMEL_HOLD_KEY WRITE_HOLD_OK HOLDS_QUEUE_LOCK HOLDS_GH QUEUE_LOCK_TTL_SECONDS
+unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_DOC HIMMEL_HOLD_KEY WRITE_HOLD_OK HOLDS_QUEUE_LOCK HOLDS_GH QUEUE_LOCK_TTL_SECONDS CLAUDE_CODE_SESSION_ID
+export CLAUDE_CONFIG_DIR="$HOME/.claude"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
 
@@ -43,7 +44,7 @@ owner_set() {
 import json, sys
 p = sys.argv[1] + '/owner.json'
 d = json.load(open(p)); d[sys.argv[2]] = sys.argv[3]
-json.dump(d, open(p, 'w'), separators=(',', ':'))" "$1" "$2" "$3"
+open(p, 'w').write(json.dumps(d, separators=(',', ':')) + '\n')" "$1" "$2" "$3"
 }
 
 hp() { python3 -I "$SUT" "$@"; }
@@ -65,10 +66,10 @@ esc() { local s="${1//%/%25}"; printf '%s' "${s//\//%2F}"; }
 slugdir() { printf '%s/%s' "$REG" "$(esc "${1:-$R}")"; }
 rowf() { printf '%s/%s' "$(slugdir "${2:-$R}")" "$(esc "$1")"; }
 ev_count() { if [ -f "$EVENTS" ]; then wc -l < "$EVENTS" | tr -d ' '; else echo 0; fi; }
-# put_row <path> <key> <label> <doc> [source] [pr]: a row written by hand, aged past the grace
+# put_row <path> <key> <label> <doc> [source] [pr] [repo]: a row written by hand, aged past the grace
 put_row() {
     local f
-    f="$(rowf "$1")"
+    f="$(rowf "$1" "${7:-}")"
     mkdir -p "$(dirname "$f")"
     printf '%s\t%s\t%s\t%s\t%s\n' "$2" "$3" "$4" "${5:-brief}" "${6:-}" > "$f"
     touch -d '2 hours ago' "$f"
@@ -908,6 +909,214 @@ spec = importlib.util.spec_from_file_location("holds", sys.argv[1]); h = importl
 d, n = os.path.split(sys.argv[2]); st, f = h.read_row(sys.argv[2])
 print(h.remove_dead(d, n, f, os.path.getmtime(sys.argv[2]) - 100))' "$SUT" "$(rowf scripts/t3gc3.sh)"
 same "T3 gc keeps a row whose mtime moved since it was judged dead" "$OUT:$([ -e "$(rowf scripts/t3gc3.sh)" ] && echo row || echo none)" "False:row"
+
+# ---- grant routes: the chief grants a trust-path hold from its own locked doc; the operator grants any path at a terminal
+# tty_run <typed answer> <cmd...>: run cmd on a pseudo-terminal (stdin and stderr a TTY, CLAUDECODE unset) and type the
+# answer when it asks for the path; OUT is what it printed, RC its exit code. The Claude Code markers (CLAUDECODE,
+# CLAUDE_CODE_*) are stripped, as in an operator's own terminal
+tty_run() {
+    OUT=$(env -u CLAUDECODE python3 -I -c '
+import os, pty, sys
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvpe(sys.argv[2], sys.argv[2:], {k: v for k, v in os.environ.items() if not (k == "CLAUDECODE" or k.startswith("CLAUDE_CODE_"))})
+out, sent = b"", False
+while True:
+    try:
+        b = os.read(fd, 4096)
+    except OSError:
+        break
+    if not b:
+        break
+    out += b
+    if not sent and b"type the path" in out.lower():
+        os.write(fd, sys.argv[1].encode() + b"\n")
+        sent = True
+st = os.waitpid(pid, 0)[1]
+sys.stdout.write(out.decode("utf-8", "replace"))
+sys.exit(os.waitstatus_to_exitcode(st))' "$@")
+    RC=$?
+}
+grantf() { printf '%s.grant.%s' "$(rowf "$1")" "$2"; }
+# chief_lock <doc> <claude session id> [<lock token>]: hold doc's lock from Claude session <id> (its transcript is the
+# lock's liveness marker); me_session <id>: make <id> the Claude session of this suite's process, an ancestor of every call
+chief_lock() {
+    mkdir -p "$CLAUDE_CONFIG_DIR/projects/p"
+    : > "$CLAUDE_CONFIG_DIR/projects/p/$2.jsonl"
+    CLAUDE_CODE_SESSION_ID="$2" bash "$QL" acquire "$1" "${3:-sess-$(basename "$1")}" > /dev/null 2>&1
+}
+me_session() { mkdir -p "$CLAUDE_CONFIG_DIR/sessions"; printf '{"pid":%d,"sessionId":"%s"}\n' "$$" "$1" > "$CLAUDE_CONFIG_DIR/sessions/$$.json"; }
+# noclaude <cmd...>: run cmd with the Claude Code markers stripped
+noclaude() { python3 -I -c 'import os, sys; os.execvpe(sys.argv[1], sys.argv[1:], {k: v for k, v in os.environ.items() if not (k == "CLAUDECODE" or k.startswith("CLAUDE_CODE_"))})' "$@"; }
+me_session sid-chief
+DCH="$(mkdoc HIMMEL-9218-chief.md)"
+chief_lock "$DCH" sid-chief chief-sess-9218
+run hp grant --key HIMMEL-9201 --repo "$R" --chief-doc "$DCH" scripts/check-ci.sh
+same "C1 a chief holding its own doc's lock grants a trust path" "$RC" 0
+same "C1 ... the grant file says grantor=chief and the chief's session" "$(cut -f3,4 "$(grantf scripts/check-ci.sh HIMMEL-9201)" 2>/dev/null)" "$(printf 'chief\tchief-sess-9218')"
+contains "C1 ... and events.log records the grantor and session" "$(tail -n 1 "$EVENTS")" "grantor=chief session=chief-sess-9218"
+run env HIMMEL_CONSOLE_DOC="$DCH" python3 -I "$SUT" grant --key HIMMEL-9202 --repo "$R" scripts/check-ci.sh
+same "C2 the chief doc defaults to HIMMEL_CONSOLE_DOC, the chief session's own doc" "$RC" 0
+DCX="$(mkdoc HIMMEL-9218-other-chief.md)"
+lock_hold "$DCX" other-chief-sess
+run env HIMMEL_CONSOLE_DOC="$DCH" python3 -I "$SUT" grant --key HIMMEL-9213 --repo "$R" --chief-doc "$DCX" scripts/check-ci.sh
+same "C2 a chief session naming another chief's locked doc: refused" "$RC" 1
+same "C2 ... and writes no grant" "$([ -e "$(grantf scripts/check-ci.sh HIMMEL-9213)" ] && echo grant || echo none)" none
+run hp grant --key HIMMEL-9203 --repo "$R" --chief-doc "$(mkdoc HIMMEL-9218-free-chief.md)" scripts/check-ci.sh
+same "C3 a chief doc whose lock is not held: refused" "$RC" 1
+same "C3 ... and writes no grant" "$([ -e "$(grantf scripts/check-ci.sh HIMMEL-9203)" ] && echo grant || echo none)" none
+DCO="$(mkdoc HIMMEL-9218-otherhost-chief.md)"
+chief_lock "$DCO" sid-chief
+owner_set "$(lock_dir_of "$DCO")" host elsewhere.invalid
+run hp grant --key HIMMEL-9204 --repo "$R" --chief-doc "$DCO" scripts/check-ci.sh
+same "C3 a chief doc locked on another host: refused" "$RC" 1
+DCS="$(mkdoc HIMMEL-9218-stale-chief.md)"
+lock_hold "$DCS"
+owner_set "$(lock_dir_of "$DCS")" heartbeat 2020-01-01T00:00:00Z
+run hp grant --key HIMMEL-9214 --repo "$R" --chief-doc "$DCS" scripts/check-ci.sh
+same "C3 a chief doc whose lock is STALE: refused" "$RC" 1
+contains "C3 ... because the lock is not held fresh" "$ERR" "status rc 12"
+DCU="$(mkdoc HIMMEL-9218-garbled-chief.md)"
+chief_lock "$DCU" sid-chief
+owner_set "$(lock_dir_of "$DCU")" heartbeat not-a-time
+bash "$QL" status "$DCU" > /dev/null 2>&1
+same "C3 control: queue-lock reads an unparsable heartbeat as FRESH" "$?" 11
+run hp grant --key HIMMEL-9215 --repo "$R" --chief-doc "$DCU" scripts/check-ci.sh
+same "C3 a chief lock with an unparsable heartbeat: refused for a grant" "$RC" 1
+contains "C3 ... the refusal names the heartbeat" "$ERR" "unparsable heartbeat"
+DCW="$(mkdoc HIMMEL-9218-N9-worker-2026-11-05.md)"
+chief_lock "$DCW" sid-chief
+run hp grant --key HIMMEL-9216 --repo "$R" --chief-doc "$DCW" scripts/check-ci.sh
+same "C8 a worker naming its own held worker doc: refused" "$RC" 1
+contains "C8 ... because it is not a chief doc" "$ERR" "is not a chief doc"
+DCA="$(mkdoc HIMMEL-9218-another-chief.md)"
+chief_lock "$DCA" sid-another
+run hp grant --key HIMMEL-9217 --repo "$R" --chief-doc "$DCA" scripts/check-ci.sh
+same "C8 a caller whose ancestry lacks the lock's holder session: refused" "$RC" 1
+contains "C8 ... the refusal says the holder is not this caller" "$ERR" "not this caller"
+# a Claude session nested under the chief (a subagent, a nested claude): its own session file is nearer than the chief's
+run bash -c 'f="$CLAUDE_CONFIG_DIR/sessions/$$.json"; printf "{\"pid\":%d,\"sessionId\":\"sid-nested\"}\n" "$$" > "$f"; python3 -I "$1" grant --key HIMMEL-9218 --repo "$2" --chief-doc "$3" scripts/check-ci.sh; rc=$?; rm -f "$f"; exit "$rc"' _ "$SUT" "$R" "$DCH"
+same "C8 a Claude session nested under the chief, naming the chief's held doc: refused" "$RC" 1
+contains "C8 ... the refusal says the holder is not this caller" "$ERR" "not this caller"
+DCN="$(mkdoc HIMMEL-9218-nolive-chief.md)"
+lock_hold "$DCN"
+run hp grant --key HIMMEL-9219 --repo "$R" --chief-doc "$DCN" scripts/check-ci.sh
+same "C8 a chief lock with no holder session marker: refused" "$RC" 1
+same "C8 ... and none of these writes a grant" "$(find "$(slugdir)" -name '*.grant.HIMMEL-921[4-9]' | wc -l | tr -d ' ')" 0
+run hp grant --key HIMMEL-9205 --repo "$R" scripts/check-ci.sh
+same "C4 a trust path with no chief doc and no terminal: refused" "$RC" 1
+contains "C4 ... the refusal prints the chief's command" "$ERR" "--chief-doc"
+run env CLAUDECODE=1 python3 -I "$SUT" grant --key HIMMEL-9205 --repo "$R" scripts/check-ci.sh </dev/null
+same "C4 a ! line (no terminal, CLAUDECODE set) is refused on the operator route" "$RC" 1
+contains "C4 ... the refusal says a ! line is no operator terminal" "$ERR" "not a ! line in a Claude window"
+contains "C4 ... and sends the operator in a Claude window to the chief" "$ERR" "the operator asks the chief, who stamps the grant"
+same "C4 ... and writes no grant" "$([ -e "$(grantf scripts/check-ci.sh HIMMEL-9205)" ] && echo grant || echo none)" none
+run env HIMMEL_CONSOLE_LEG=1 python3 -I "$SUT" grant --key HIMMEL-9206 --repo "$R" --chief-doc "$DCH" scripts/check-ci.sh
+same "C5 a worker session naming a held chief doc is still refused" "$RC" 1
+run hp grant --key HIMMEL-9207 --repo "$R" --chief-doc "$DCH" .claude/settings.json
+same "C6 the chief cannot grant a settings path" "$RC" 1
+contains "C6 ... the refusal says the operator grants it at a terminal" "$ERR" "operator"
+run hp grant --key HIMMEL-9207 --repo "$R" --chief-doc "$DCH" .github/workflows/ci.yml
+same "C6 the chief cannot grant a .github/ path" "$RC" 1
+same "C6 ... and writes no grant" "$(find "$(slugdir)" -name '*.grant.HIMMEL-9207' | wc -l | tr -d ' ')" 0
+same "C7 grant-route: a trust path is the chief's" "$(hp grant-route --repo "$R" scripts/check-ci.sh)" chief
+same "C7 grant-route: a settings path is the operator's" "$(hp grant-route --repo "$R" .claude/settings.json)" operator
+same "C7 grant-route: any other path is any" "$(hp grant-route --repo "$R" scripts/c01.sh)" any
+tty_run scripts/check-ci.sh python3 -I "$SUT" grant --key HIMMEL-9208 --repo "$R" scripts/check-ci.sh
+same "O1 the operator at a terminal who types the path back grants a trust path" "$RC" 0
+same "O1 ... the grant file says grantor=operator" "$(cut -f3 "$(grantf scripts/check-ci.sh HIMMEL-9208)" 2>/dev/null)" operator
+contains "O1 ... and events.log records it" "$(tail -n 1 "$EVENTS")" "grantor=operator"
+tty_run .claude/settings.json python3 -I "$SUT" grant --key HIMMEL-9209 --repo "$R" .claude/settings.json
+same "O2 the operator at a terminal grants a settings path" "$RC" 0
+same "O2 ... recorded grantor=operator" "$(cut -f3 "$(grantf .claude/settings.json HIMMEL-9209)" 2>/dev/null)" operator
+tty_run scripts/other.sh python3 -I "$SUT" grant --key HIMMEL-9210 --repo "$R" scripts/check-ci.sh
+same "O3 a wrong path typed back: refused" "$RC" 1
+same "O3 ... and writes no grant" "$([ -e "$(grantf scripts/check-ci.sh HIMMEL-9210)" ] && echo grant || echo none)" none
+tty_run scripts/check-ci.sh env CLAUDECODE=1 python3 -I "$SUT" grant --key HIMMEL-9211 --repo "$R" scripts/check-ci.sh
+same "O4 a terminal inside a Claude Code session (CLAUDECODE set) is no operator: refused" "$RC" 1
+tty_run scripts/check-ci.sh env HIMMEL_CONSOLE_LEG=1 python3 -I "$SUT" grant --key HIMMEL-9212 --repo "$R" scripts/check-ci.sh
+same "O5 a worker session at a terminal is refused" "$RC" 1
+tty_run scripts/check-ci.sh env CLAUDE_CODE_ENTRYPOINT=cli python3 -I "$SUT" grant --key HIMMEL-9220 --repo "$R" scripts/check-ci.sh
+same "O6 a terminal carrying a CLAUDE_CODE_* marker is no operator: refused" "$RC" 1
+OUT=$(printf 'scripts/check-ci.sh\n' | noclaude python3 -I "$SUT" grant --key HIMMEL-9221 --repo "$R" scripts/check-ci.sh 2>&1); RC=$?
+same "O7 a non-TTY stdin typing the right path, markers unset: refused" "$RC" 1
+same "O7 ... and none of these writes a grant" "$(find "$(slugdir)" -name '*.grant.HIMMEL-922[01]' | wc -l | tr -d ' ')" 0
+
+# ---- the register stays true on its own: on seeds, gc drops Done keys, summary and asks feed the tick
+# (a) `on` runs backfill for the chief's fleet manifest: workers launched while the barrier was off get rows
+R9="$W/repo-9186"; mkdir -p "$R9"; git -C "$R9" init -q -b main
+S1="$(mkdoc HIMMEL-9601-N1-case.md '> **Writes:** scripts/s9601.sh')"
+S2="$(mkdoc HIMMEL-9602-N2-case.md '> **Writes:** scripts/s9602.sh')"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"}]}\n' "$S1" "$S2" > "$W/fleet-9186.json"
+run hp off --reason "9186 seeding"
+same "9186 off writes the sentinel" "$RC" 0
+run hp on --workers-from "$W/fleet-9186.json" --repo "$R9"
+same "9186 on with a manifest exits 0" "$RC" 0
+run hp read --repo "$R9" --keys
+contains "9186 after off then on, the first manifest worker's key has rows" "$OUT" "HIMMEL-9601"
+contains "9186 after off then on, the second manifest worker's key has rows" "$OUT" "HIMMEL-9602"
+run hp on
+same "9186 on with no manifest is the plain sentinel removal (exit 0)" "$RC" 0
+
+# (b) gc drops brief and pr rows of a Done key or a merged PR, and keeps those of an open one (control)
+mkdir -p "$W/mirror9186"
+printf -- '---\nkey: "HIMMEL-9611"\nstatus: "Done"\nstatusCategory: "Done"\n---\n' > "$W/mirror9186/HIMMEL-9611.md"
+printf -- '---\nkey: "HIMMEL-9613"\nstatus: "In Progress"\nstatusCategory: "In Progress"\n---\n' > "$W/mirror9186/HIMMEL-9613.md"
+cat > "$W/bin/gh-bynum" <<'STUB'
+#!/usr/bin/env bash
+case "$3" in 4701) echo MERGED ;; *) echo OPEN ;; esac
+STUB
+chmod +x "$W/bin/gh-bynum"
+G1="$(mkdoc HIMMEL-9611-case.md)"; lock_hold "$G1"   # the Done key's worker still holds its lock: alive to the judge
+G2="$(mkdoc HIMMEL-9612-case.md)"
+G3="$(mkdoc HIMMEL-9613-case.md)"
+put_row scripts/g9611.sh HIMMEL-9611 lab "$G1" brief "" "$R9"
+put_row scripts/g9612.sh HIMMEL-9612 lab "$G2" pr 4701 "$R9"
+put_row scripts/g9613.sh HIMMEL-9613 lab "$G3" pr 4702 "$R9"
+: > "$(rowf scripts/g9611.sh "$R9").grant.HIMMEL-9699"
+run env HOLDS_GH="$W/bin/gh-bynum" HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" gc --repo "$R9"
+same "9186 gc exits 0" "$RC" 0
+same "9186 gc removes the brief row of a key the mirror says is Done, though its worker's lock is held" "$([ -e "$(rowf scripts/g9611.sh "$R9")" ] && echo row || echo none)" none
+same "9186 gc removes the grant siblings of that key's row" "$([ -e "$(rowf scripts/g9611.sh "$R9").grant.HIMMEL-9699" ] && echo grant || echo none)" none
+same "9186 gc removes the pr row whose PR reads merged" "$([ -e "$(rowf scripts/g9612.sh "$R9")" ] && echo row || echo none)" none
+same "9186 gc keeps the row of an open PR on an in-progress key (control)" "$([ -e "$(rowf scripts/g9613.sh "$R9")" ] && echo row || echo none)" row
+
+# (c) summary: live workers with no rows / stale rows / pending trust-path asks, from local state only
+R10="$W/repo-9186-summary"; mkdir -p "$R10/scripts/lib"; git -C "$R10" init -q -b main
+: > "$R10/scripts/lib/rename-aliases.tsv"
+L1="$(mkdoc HIMMEL-9621-N1-case.md '> **Writes:** scripts/s9621.sh')"      # live, has Writes, no rows
+L2="$(mkdoc HIMMEL-9622-N2-case.md '# a doc with no Writes line')"          # live, nothing to hold: not counted
+put_row scripts/s9623.sh HIMMEL-9611 lab "$G1" brief "" "$R10"             # a stale row (Done key)
+put_row scripts/s9624.sh HIMMEL-9613 lab "$G3" pr 4702 "$R10"               # a pr row whose PR is still open
+put_row scripts/check-ci.sh HIMMEL-9625 holder "$(mkdoc HIMMEL-9625-case.md)" brief "" "$R10"
+lock_hold "$(mkdoc HIMMEL-9625-case.md)"
+run hp claim --key HIMMEL-9626 --label asker --doc "$(mkdoc HIMMEL-9626-case.md)" --repo "$R10" scripts/check-ci.sh
+same "9186 a claim on a held trust path is refused (the deny the ask is read from)" "$RC" 1
+OUT=$(printf '%s\n%s\n' "$L1" "$L2" | env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" summary --repo "$R10" --live-docs - --open-prs '#4702' 2>/dev/null)
+same "9186 summary: one live worker with no rows, one stale row, one pending trust-path ask" "$OUT" "1/1/1"
+run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10"
+KIT_P="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)"; KIT_P="${KIT_P%/.git}"  # the checkout holds.py runs from, not the repo --repo names (R10 has no kit)
+same "9186 asks names the key, the path and the full paste-ready grant command, located from the running kit" "$OUT" "$(printf 'HIMMEL-9626\tscripts/check-ci.sh\tHIMMEL-9625\tpython3 -I %s/scripts/handover/chief-kit/holds.py grant --key HIMMEL-9626 --repo %s scripts/check-ci.sh' "$KIT_P" "$R10")"
+OUT=$(printf '%s\n' "$L1" | env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" summary --repo "$R10" --live-docs - --open-prs none 2>/dev/null)
+same "9186 summary: with no open PR the pr row is stale too (2), no other count moves" "$OUT" "1/2/1"
+: > "$(rowf scripts/check-ci.sh "$R10").grant.HIMMEL-9626"
+run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10"
+same "9186 a granted ask is no longer pending" "$OUT" ""
+run hp summary --repo "$W/repo-9186-no-register"
+same "9186 summary prints nothing when this repo has never had a register directory" "$RC:$OUT" "0:"
+if [ "$(id -u)" != 0 ]; then  # root reads a mode-000 directory
+    chmod 000 "$(slugdir "$R10")"
+    run hp summary --repo "$R10"
+    chmod 755 "$(slugdir "$R10")"
+    same "9186 summary on an unreadable register directory exits 3 with no count (the tick shows hreg=?)" "$RC:$OUT" "3:"
+fi
+
+# the refusal text names the route that exists
+put_row scripts/r9186.sh HIMMEL-9628 lab "$(mkdoc HIMMEL-9628-case.md)" brief "" "$R9"
+touch "$(rowf scripts/r9186.sh "$R9")"
+run hp claim --key HIMMEL-9627 --label asker --doc "$(mkdoc HIMMEL-9627-case.md)" --repo "$R9" scripts/r9186.sh
+case "$ERR" in *"ask your chief: HOLD-ASK"*) fail "9186 the refusal no longer names the HOLD-ASK route that has no consumer" ;; *) pass "9186 the refusal no longer names the HOLD-ASK route that has no consumer" ;; esac
+contains "9186 the refusal tells the worker the chief sees the deny on its tick and grants it" "$ERR" "hreg="
 
 # ---- the real register was never touched
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this

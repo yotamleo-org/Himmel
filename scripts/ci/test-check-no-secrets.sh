@@ -91,7 +91,7 @@ allowed_line="      SNYK_TOKEN: ${piece1}secrets.SNYK_TOKEN }}"
 
 echo "== Case D: the real snyk-weekly.yml =="
 dir_d=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
-cp "$REAL_SNYK" "$dir_d/snyk-weekly.yml"
+cp "$REAL_SNYK" "$dir_d/snyk-weekly.yml" || fail "the fixture copy failed"
 bash "$GUARD" "$dir_d" >/dev/null 2>&1
 rc=$?
 if [ "$rc" -eq 0 ]; then pass "snyk-weekly.yml SNYK_TOKEN line -> exit 0"; else fail "snyk-weekly.yml SNYK_TOKEN line -> expected 0 got $rc"; fi
@@ -99,7 +99,7 @@ rm -rf "$dir_d"
 
 echo "== Case E: a second secret in snyk-weekly.yml =="
 dir_e=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
-cp "$REAL_SNYK" "$dir_e/snyk-weekly.yml"
+cp "$REAL_SNYK" "$dir_e/snyk-weekly.yml" || fail "the fixture copy failed"
 printf '      OTHER: %ssecrets.OTHER }}\n' "$piece1" >> "$dir_e/snyk-weekly.yml"
 bash "$GUARD" "$dir_e" >/dev/null 2>&1
 rc=$?
@@ -125,11 +125,84 @@ rm -rf "$dir_g"
 echo "== Case H: snyk-weekly.yml in a subdirectory =="
 dir_h=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
 mkdir "$dir_h/subdir"
-cp "$REAL_SNYK" "$dir_h/subdir/snyk-weekly.yml"
+cp "$REAL_SNYK" "$dir_h/subdir/snyk-weekly.yml" || fail "the fixture copy failed"
 bash "$GUARD" "$dir_h" >/dev/null 2>&1
 rc=$?
 if [ "$rc" -eq 1 ]; then pass "subdir/snyk-weekly.yml -> exit 1"; else fail "subdir/snyk-weekly.yml -> expected 1 got $rc"; fi
 rm -rf "$dir_h"
+
+# Cases I-K: the second allowed interpolation. socket-scan.yml may carry exactly the
+# SOCKET_DEV_API_KEY line; any other secret there, or that line elsewhere, fails.
+REAL_SOCKET="$(cd "$(dirname "$0")/../.." && pwd)/.github/workflows/socket-scan.yml"
+socket_line="      SOCKET_DEV_API_KEY: ${piece1}secrets.SOCKET_DEV_API_KEY }}"
+
+echo "== Case I: the real socket-scan.yml =="
+dir_i=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+cp "$REAL_SOCKET" "$dir_i/socket-scan.yml" || fail "the fixture copy failed"
+bash "$GUARD" "$dir_i" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 0 ]; then pass "socket-scan.yml SOCKET_DEV_API_KEY lines -> exit 0"; else fail "socket-scan.yml SOCKET_DEV_API_KEY lines -> expected 0 got $rc"; fi
+rm -rf "$dir_i"
+
+echo "== Case J: the same line in another workflow =="
+dir_j=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+printf 'name: X\non: [push]\njobs:\n  j:\n    runs-on: ubuntu-latest\n    env:\n%s\n' "$socket_line" > "$dir_j/other.yml"
+bash "$GUARD" "$dir_j" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then pass "SOCKET_DEV_API_KEY line in other.yml -> exit 1"; else fail "SOCKET_DEV_API_KEY line in other.yml -> expected 1 got $rc"; fi
+rm -rf "$dir_j"
+
+echo "== Case K: another secret in socket-scan.yml =="
+dir_k=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+cp "$REAL_SOCKET" "$dir_k/socket-scan.yml" || fail "the fixture copy failed"
+printf '      OTHER: %ssecrets.OTHER }}\n' "$piece1" >> "$dir_k/socket-scan.yml"
+bash "$GUARD" "$dir_k" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then pass "second secret in socket-scan.yml -> exit 1"; else fail "second secret in socket-scan.yml -> expected 1 got $rc"; fi
+rm -rf "$dir_k"
+
+echo "== Case L: the snyk line in socket-scan.yml =="
+dir_l=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+cp "$REAL_SOCKET" "$dir_l/socket-scan.yml" || fail "the fixture copy failed"
+printf '%s\n' "$allowed_line" >> "$dir_l/socket-scan.yml"
+bash "$GUARD" "$dir_l" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then pass "SNYK_TOKEN line in socket-scan.yml -> exit 1"; else fail "SNYK_TOKEN line in socket-scan.yml -> expected 1 got $rc"; fi
+rm -rf "$dir_l"
+
+# Cases M-N: the exact compare. A suffix after the allowed line, inside the allowed file, fails.
+echo "== Case M: a suffix after the SNYK_TOKEN line in snyk-weekly.yml =="
+dir_m=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+printf 'name: X\non: [push]\njobs:\n  j:\n    runs-on: ubuntu-latest\n    env:\n%s %ssecrets.X }}\n' "$allowed_line" "$piece1" > "$dir_m/snyk-weekly.yml"
+bash "$GUARD" "$dir_m" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then pass "suffixed SNYK_TOKEN line in snyk-weekly.yml -> exit 1"; else fail "suffixed SNYK_TOKEN line in snyk-weekly.yml -> expected 1 got $rc"; fi
+rm -rf "$dir_m"
+
+echo "== Case N: a suffix after the SOCKET_DEV_API_KEY line in socket-scan.yml =="
+dir_n=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+printf 'name: X\non: [push]\njobs:\n  j:\n    runs-on: ubuntu-latest\n    env:\n%s %ssecrets.X }}\n' "$socket_line" "$piece1" > "$dir_n/socket-scan.yml"
+bash "$GUARD" "$dir_n" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then pass "suffixed SOCKET_DEV_API_KEY line in socket-scan.yml -> exit 1"; else fail "suffixed SOCKET_DEV_API_KEY line in socket-scan.yml -> expected 1 got $rc"; fi
+rm -rf "$dir_n"
+
+# Cases O-P: a prefix before the allowed line text, inside the allowed file, fails too.
+echo "== Case O: a prefix before the SNYK_TOKEN line in snyk-weekly.yml =="
+dir_o=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+printf 'name: X\non: [push]\njobs:\n  j:\n    runs-on: ubuntu-latest\n    env:\n      OTHER: %ssecrets.X }} %s\n' "$piece1" "${allowed_line#      }" > "$dir_o/snyk-weekly.yml"
+bash "$GUARD" "$dir_o" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then pass "prefixed SNYK_TOKEN line in snyk-weekly.yml -> exit 1"; else fail "prefixed SNYK_TOKEN line in snyk-weekly.yml -> expected 1 got $rc"; fi
+rm -rf "$dir_o"
+
+echo "== Case P: a prefix before the SOCKET_DEV_API_KEY line in socket-scan.yml =="
+dir_p=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+printf 'name: X\non: [push]\njobs:\n  j:\n    runs-on: ubuntu-latest\n    env:\n      OTHER: %ssecrets.X }} %s\n' "$piece1" "${socket_line#      }" > "$dir_p/socket-scan.yml"
+bash "$GUARD" "$dir_p" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then pass "prefixed SOCKET_DEV_API_KEY line in socket-scan.yml -> exit 1"; else fail "prefixed SOCKET_DEV_API_KEY line in socket-scan.yml -> expected 1 got $rc"; fi
+rm -rf "$dir_p"
 
 # Final tally
 if [ "$failures" -eq 0 ]; then

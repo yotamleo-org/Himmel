@@ -179,7 +179,7 @@ chief_context_write_record() {
     case "$1" in ""|*/*) return 1 ;; esac
     [ -n "$CHIEF_CONTEXT_RECORD_DIR" ] || return 1
     ( umask 077 && mkdir -p "$CHIEF_CONTEXT_RECORD_DIR" && \
-        printf 'headed-arm: role=chief session=%s context=%s source=%s autocompact=%s launched=%s\n' \
+        printf 'headed-arm: role=chief session=%s context=%s source=%s autocompact=%s launched=%s lane=native\n' \
             "$1" "$2" "$3" "$4" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             >> "$CHIEF_CONTEXT_RECORD_DIR/$1.log" ) 2>/dev/null
 }
@@ -242,7 +242,8 @@ chief_context_worker_env_unset_names() {
         HEADED_ARM_REQUIRED_AUTOCOMPACT \
         HEADED_ARM_LAUNCHER \
         HEADED_ARM_RECORDER \
-        HEADED_ARM_LAUNCHER_ENV
+        HEADED_ARM_LAUNCHER_ENV \
+        HEADED_ARM_LAUNCHER_ENV_LINES
 }
 
 # chief_context_launch_seam_env_names -- prints, one per line, the names in
@@ -265,5 +266,6 @@ chief_context_launch_seam_env_names() {
         WORKER_SESSION_REMOTE_CONTROL \
         WORKER_SESSION_CLAUDE_BIN \
         HEADED_ARM_LAUNCHER \
-        HEADED_ARM_LAUNCHER_ENV
+        HEADED_ARM_LAUNCHER_ENV \
+        HEADED_ARM_LAUNCHER_ENV_LINES
 }

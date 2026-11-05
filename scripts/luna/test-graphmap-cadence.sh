@@ -1358,6 +1358,12 @@ assert_rc "second --ast-only arm without --force blocked" 3 "$rc"
 assert_contains "dedup message can name the publish task" "HIMMEL-GraphPublish-Himmel" "$out"
 run_cron3 disarm >/dev/null 2>&1
 
+# The API lane renders only on a station that opted in (graphify.semantic_api_ok in
+# ~/.himmel/config.json). Every row from here to the end that asserts the lane runs on this opted-in
+# HOME; the adopter rows at the end of the file run with a HOME that has no opt-in.
+mkdir -p "$HOME/.himmel"
+printf '{"graphify":{"semantic_api_ok":true}}\n' > "$HOME/.himmel/config.json"
+
 echo "TEST: cron arm --with-publish --publish-every-hours 2 --publish-semantic"
 out=$(run_cron3 arm --vault "$VAULT" --ast-only --with-publish --publish-every-hours 2 --publish-semantic 2>&1)
 tab3=$(cat "$CSTATE3/crontab" 2>/dev/null || echo MISSING)
@@ -1528,7 +1534,8 @@ assert_contains "ast_cron_payload unsets GRAPHIFY_OUT when GRAPHIFY_OUT= is omit
 assert_not_contains "ast_cron_payload leaves GRAPHIFY_OUT alone when it is set" "unset GRAPHIFY_OUT" "$acp_with_dir"
 
 # The luna semantic payload reads GRAPHIFY_OUT from its environment too; without an out dir it must clear an ambient one.
-LSP_SRC="$(sed -n '/^luna_semantic_cron_payload()/,/^}/p' "$SCRIPT")"
+# The payload reads the station opt-in, so the extraction carries its reader; HOME is the opted-in fixture above.
+LSP_SRC="$(sed -n '/^resolve_user_home()/,/^}/p' "$SCRIPT"; sed -n '/^semantic_api_opted_in()/,/^}/p' "$SCRIPT"; sed -n '/^luna_semantic_cron_payload()/,/^}/p' "$SCRIPT")"
 run_lsp() { bash -c "BAT_DIR=$TMP_ROOT/no-such-bat LUNA_SEMANTIC_PAUSE_MARKER=semantic-luna.paused"$'\n'"$LSP_SRC"$'\n''luna_semantic_cron_payload "$@"' _ "$@"; }
 lsp_no_dir=$(run_lsp bash script.sh corpus)
 assert_contains "luna_semantic_cron_payload unsets GRAPHIFY_OUT when no out dir is given" "unset GRAPHIFY_OUT" "$lsp_no_dir"
@@ -1917,5 +1924,132 @@ if [ ! -e "$LDIR/graphmap-luna.sh" ] && [ ! -e "$LDIR/graphmap-ast-luna.sh" ] &&
 assert_registry "arm --rewrite-armed registers no Luna name" 'all(.expected_tasks[]; (. | test("Luna")) | not)'
 rc=0; run_luna disarm >/dev/null 2>&1 || rc=$?
 export HIMMEL_OBSERVABILITY_CONFIG="$SAVED_OBS"
+
+# ============================================================================
+# The billed API lane renders only on a station that opted in
+# (graphify.semantic_api_ok is the JSON literal true in ~/.himmel/config.json). An adopter
+# station holds an API key in its .env and no opt-in: no re-render of its wrappers may carry
+# the lane. Fixtures live under TMP_ROOT; the .env key is a dummy and never printed.
+# ============================================================================
+ADOPTER_HOME="$TMP_ROOT/adopter-home"
+OPTIN_HOME="$TMP_ROOT/optin-home"
+ADOPTER_ENV="$TMP_ROOT/adopter-dotenv"
+mkdir -p "$ADOPTER_HOME" "$OPTIN_HOME/.himmel" "$ADOPTER_ENV"
+printf 'ANTHROPIC_ORG_A_KEY=dummy-not-a-real-key\n' > "$ADOPTER_ENV/.env"
+printf '{"graphify":{"semantic_api_ok":true}}\n' > "$OPTIN_HOME/.himmel/config.json"
+run_adopter() { HOME="$ADOPTER_HOME" GRAPHMAP_DOTENV_ROOT="$ADOPTER_ENV" PATH="$CLAUDE_BIN_DIR_PATH:$PATH" run_cron3 "$@"; }
+run_optin() { HOME="$OPTIN_HOME" GRAPHMAP_DOTENV_ROOT="$ADOPTER_ENV" PATH="$CLAUDE_BIN_DIR_PATH:$PATH" run_cron3 "$@"; }
+SKIP_TEXT="semantic skipped: API lane not opted in"
+q9() { printf '%q' "$1"; }
+run_cron3 disarm >/dev/null 2>&1 || true
+rm -f "$CRON_DIR3/semantic.paused" "$CRON_DIR3/semantic-luna.paused"
+
+echo "TEST: HIMMEL-9155 adopter station (key in .env, no opt-in): the publish runner renders no API lane"
+rc=0; out=$(run_adopter arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --semantic-active 2>&1) || rc=$?
+assert_rc "adopter arm --publish-semantic succeeds" 0 "$rc"
+publish_sh=$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)
+assert_not_contains "adopter publish runner sets no api lane" "HIMMEL_API_LANE" "$publish_sh"
+assert_not_contains "adopter publish runner sets no api account" "HIMMEL_API_ACCOUNT" "$publish_sh"
+assert_not_contains "adopter publish runner pins no claude-api backend" "claude-api" "$publish_sh"
+assert_not_contains "adopter publish runner passes no --semantic" "--semantic" "$publish_sh"
+assert_contains "adopter publish runner logs why the semantic pass is skipped" "[$SKIP_TEXT" "$publish_sh"
+assert_contains "adopter publish runner still fires the publish worker" "--corpus-root" "$publish_sh"
+assert_contains "adopter arm says the API lane is not opted in" "API lane is not opted in" "$out"
+stub_gc9="$TMP_ROOT/stub-gc-9155.sh"
+stub_out9="$TMP_ROOT/stub-gc-9155.out"
+# shellcheck disable=SC2016  # the stub body expands at its own run time
+printf '#!/bin/sh\necho "ARGV: $*" >> "%s"\necho "LANE: ${HIMMEL_API_LANE:-unset}" >> "%s"\n' "$stub_out9" "$stub_out9" > "$stub_gc9"
+sed "s#[^ ]* [^ ]*scripts/graphify/graph-cadence.sh#sh $stub_gc9#g" "$CRON_DIR3/graphmap-publish-himmel.sh" > "$TMP_ROOT/publish-9155-stubbed.sh"
+rm -f "$stub_out9" "$CRON_DIR3/graphmap-publish-himmel.log"
+sh "$TMP_ROOT/publish-9155-stubbed.sh" >/dev/null 2>&1 || true
+stub_adopter=$(cat "$stub_out9" 2>/dev/null || echo MISSING)
+assert_contains "adopter fire still runs the publish worker" "ARGV: --corpus-root" "$stub_adopter"
+assert_not_contains "adopter fire passes no --semantic" "--semantic" "$stub_adopter"
+assert_contains "adopter fire sets no api lane" "LANE: unset" "$stub_adopter"
+assert_contains "adopter fire logs the skipped semantic pass" "$SKIP_TEXT" "$(cat "$CRON_DIR3/graphmap-publish-himmel.log" 2>/dev/null || echo MISSING)"
+run_cron3 disarm >/dev/null 2>&1 || true
+
+echo "TEST: HIMMEL-9155 adopter station: the luna semantic runner renders no API lane and never calls semantic-update"
+rc=0; out=$(run_adopter arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic --semantic-active 2>&1) || rc=$?
+assert_rc "adopter arm --with-luna-semantic succeeds" 0 "$rc"
+sem_sh=$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)
+assert_not_contains "adopter luna semantic runner sets no api lane" "HIMMEL_API_LANE" "$sem_sh"
+assert_not_contains "adopter luna semantic runner sets no api account" "HIMMEL_API_ACCOUNT" "$sem_sh"
+assert_not_contains "adopter luna semantic runner pins no claude-api backend" "claude-api" "$sem_sh"
+assert_not_contains "adopter luna semantic runner never calls semantic-update" "semantic-update.sh" "$sem_sh"
+assert_contains "adopter luna semantic runner logs why it is skipped" "[$SKIP_TEXT" "$sem_sh"
+stub_su9="$TMP_ROOT/stub-su-9155.sh"
+stub_su_out9="$TMP_ROOT/stub-su-9155.out"
+printf '#!/bin/sh\necho "ARGV: $*" >> "%s"\n' "$stub_su_out9" > "$stub_su9"
+sed "s#[^ ]* [^ ]*scripts/graphify/semantic-update.sh#sh $stub_su9#g" "$CRON_DIR3/graphmap-semantic-luna.sh" > "$TMP_ROOT/semantic-luna-9155-stubbed.sh"
+rm -f "$stub_su_out9" "$CRON_DIR3/graphmap-semantic-luna.log"
+sh "$TMP_ROOT/semantic-luna-9155-stubbed.sh" >/dev/null 2>&1 || true
+assert_rc "adopter fire does not call semantic-update" "NOT-RUN" "$(cat "$stub_su_out9" 2>/dev/null || echo NOT-RUN)"
+assert_contains "adopter luna fire logs the skipped semantic pass" "$SKIP_TEXT" "$(cat "$CRON_DIR3/graphmap-semantic-luna.log" 2>/dev/null || echo MISSING)"
+run_cron3 disarm >/dev/null 2>&1 || true
+
+echo "TEST: HIMMEL-9155 --rewrite-armed on an adopter station drops a lane a pre-opt-in render baked, and an opt-in brings it back"
+run_optin arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --semantic-active >/dev/null 2>&1 || true
+run_optin arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic --semantic-active >/dev/null 2>&1 || true
+assert_contains "fixture: the opted-in publish runner carries the lane" "HIMMEL_API_LANE=on" "$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)"
+assert_contains "fixture: the opted-in luna semantic runner carries the lane" "HIMMEL_API_LANE=on" "$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)"
+rc=0; out=$(run_adopter arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+assert_rc "adopter arm --rewrite-armed exits 0" 0 "$rc"
+publish_sh=$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)
+sem_sh=$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)
+assert_not_contains "adopter rewrite drops the lane from the publish runner" "HIMMEL_API_LANE" "$publish_sh"
+assert_not_contains "adopter rewrite drops claude-api from the publish runner" "claude-api" "$publish_sh"
+assert_not_contains "adopter rewrite drops the lane from the luna semantic runner" "HIMMEL_API_LANE" "$sem_sh"
+assert_not_contains "adopter rewrite drops claude-api from the luna semantic runner" "claude-api" "$sem_sh"
+assert_contains "adopter rewrite keeps the publish worker's skip line" "[$SKIP_TEXT" "$publish_sh"
+assert_contains "adopter rewrite says the API lane is not opted in" "API lane is not opted in" "$out"
+rc=0; out=$(run_adopter arm --vault "$VAULT" --rewrite-armed --dry-run 2>&1) || rc=$?
+assert_not_contains "adopter --rewrite-armed --dry-run plans no lane" "HIMMEL_API_LANE" "$out"
+# the skip line is what remembers the publish runner's semantic mode, so an opt-in plus a re-render restores it
+rc=0; out=$(run_optin arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+assert_rc "opted-in arm --rewrite-armed exits 0" 0 "$rc"
+publish_sh=$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)
+sem_sh=$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)
+
+echo "TEST: HIMMEL-9155 control: the opted-in render is the render main produced before the gate"
+exp_pub_base="$(q9 "$TMP_ROOT/bin/bash") $(q9 "$HIMMEL_ROOT_EXP/scripts/graphify/graph-cadence.sh") --corpus-root $(q9 "$HIMMEL_ROOT_EXP") --flow-name $(q9 "graph-publish-$_armed_slug")"
+exp_pub="if [ -e $(q9 "$CRON_DIR3/semantic.paused") ]; then echo \"[semantic paused: marker present]\"; $exp_pub_base; else echo \"[semantic active]\"; HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api $exp_pub_base --semantic; fi"
+assert_contains "opted-in publish payload is byte-identical to main's" "$exp_pub" "$publish_sh"
+assert_not_contains "opted-in publish runner has no skip line" "$SKIP_TEXT" "$publish_sh"
+luna_out9=$(printf '%s\n' "$sem_sh" | sed -n 's/.* GRAPHIFY_OUT=\([^ ]*\) .*/\1/p' | head -n 1)
+exp_sem_base="$(q9 "$TMP_ROOT/bin/bash") $(q9 "$HIMMEL_ROOT_EXP/scripts/graphify/semantic-update.sh") --name luna --corpus-root $(q9 "$VAULT") --corpus-class luna-personal --backend claude-api --max-files 20 --max-run-usd 2.00"
+exp_sem="if [ -e $(q9 "$CRON_DIR3/semantic-luna.paused") ]; then echo \"[semantic paused: marker present]\"; else HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPHIFY_OUT=$luna_out9 $exp_sem_base; fi"
+assert_contains "opted-in luna semantic payload is byte-identical to main's" "$exp_sem" "$sem_sh"
+assert_not_contains "opted-in luna semantic runner has no skip line" "$SKIP_TEXT" "$sem_sh"
+run_cron3 disarm >/dev/null 2>&1 || true
+
+echo "TEST: HIMMEL-9155 only the JSON literal true opts in: other values, malformed JSON and links do not"
+OPT_BAD="$TMP_ROOT/optin-bad"
+n9=0
+while IFS= read -r body; do
+    n9=$((n9 + 1))
+    rm -rf "$OPT_BAD"; mkdir -p "$OPT_BAD/.himmel"
+    printf '%s\n' "$body" > "$OPT_BAD/.himmel/config.json"
+    out=$(HOME="$OPT_BAD" run_cron3 arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --dry-run 2>&1) || true
+    assert_not_contains "config variant $n9 ($body) renders no lane" "HIMMEL_API_LANE" "$out"
+done <<'VARIANTS'
+{"graphify":{"semantic_api_ok":false}}
+{"graphify":{"semantic_api_ok":"true"}}
+{"graphify":{"semantic_api_ok":1}}
+{"graphify":{"salus_ollama_cloud_ok":true}}
+{"semantic_api_ok":true}
+{"graphify": not json
+VARIANTS
+rm -rf "$OPT_BAD"; mkdir -p "$OPT_BAD/.himmel"
+ln -s "$OPTIN_HOME/.himmel/config.json" "$OPT_BAD/.himmel/config.json"
+out=$(HOME="$OPT_BAD" run_cron3 arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --dry-run 2>&1) || true
+assert_not_contains "a symlinked config.json is no opt-in" "HIMMEL_API_LANE" "$out"
+rm -rf "$OPT_BAD"; mkdir -p "$OPT_BAD"
+ln -s "$OPTIN_HOME/.himmel" "$OPT_BAD/.himmel"
+out=$(HOME="$OPT_BAD" run_cron3 arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --dry-run 2>&1) || true
+assert_not_contains "a symlinked ~/.himmel is no opt-in" "HIMMEL_API_LANE" "$out"
+out=$(HOME="$OPTIN_HOME" run_cron3 arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --dry-run 2>&1) || true
+assert_contains "the control: the JSON literal true opts in" "HIMMEL_API_LANE=on" "$out"
+rm -rf "$OPT_BAD"
 
 summary

@@ -2904,7 +2904,12 @@ const ADVISORY_CHAIN_MEMBERS = new Map([
   ['allow-thread-resolve.sh', 'allow-only, never denies: a starved skip leaves no decision, which is the default'],
   ['approval-grant-check.sh', 'allow-only, never denies (HIMMEL-7686): a starved skip leaves no decision, so the classifier refuses as before'],
   ['block-fork-sync-pr.sh', 'workflow guard, fails open on its own infra errors: a starved skip lets one sync PR through'],
+  ['check-write-hold.sh', 'coordination guard, fails open: a must-run overrun would fail the chain closed, a starved skip passes one write'],
 ]);
+
+test('check-write-hold.sh is advisory: a must-run overrun fails the chain closed, against I5, and QL_TIMEOUT is 15 s', () => {
+  assert.equal(MUST_RUN_CHAIN_MEMBERS.has('check-write-hold.sh'), false);
+});
 
 function findPluginHooksJsonFiles(repoRoot) {
   const pluginsDir = join(repoRoot, 'marketplace', 'plugins');

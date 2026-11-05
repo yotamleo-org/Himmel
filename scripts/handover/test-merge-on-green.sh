@@ -3473,7 +3473,7 @@ chmod +x "$GO_WRITER_BIN/gh"
 . "$SCRIPT_DIR/chief-kit/testlib-ready-pass.sh"
 GO_READY_REPO=$(mktemp -d "${TMPDIR:-/tmp}/mog-go-repo.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 git -C "$GO_READY_REPO" init -q
-# check 17 fetches origin/main and reads origin/main..<head>: real heads
+# check 19 fetches origin/main and reads origin/main..<head>: real heads
 GO_SHA=$(ready_pass_repo "$GO_READY_REPO") || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 GO_OLD=$(ready_pass_repo "$GO_READY_REPO" old) || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 ready_pass_bin "$GO_READY_REPO/.bin"

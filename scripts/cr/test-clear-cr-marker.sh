@@ -103,6 +103,8 @@ build_repo_template() {
         || { echo "FAIL: cp env-alias.sh and legacy-names.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     cp "$LEDGER_APPEND" "$REPO_TEMPLATE/scripts/cr/ledger-append.sh" \
         || { echo "FAIL: cp ledger-append.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
+    cp "$(dirname "$CLEAR")/blast-scope.cjs" "$REPO_TEMPLATE/scripts/cr/blast-scope.cjs" \
+        || { echo "FAIL: cp blast-scope.cjs into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     cp "$(dirname "$CLEAR")/anchor-handoff.sh" "$REPO_TEMPLATE/scripts/cr/anchor-handoff.sh" \
         || { echo "FAIL: cp anchor-handoff.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     cp "$(dirname "$CLEAR")/set-impl-family.sh" "$REPO_TEMPLATE/scripts/cr/set-impl-family.sh" \
@@ -1211,6 +1213,24 @@ rm -rf "$tmp"
 blast_case scripts/hooks/test-x.sh full 2026-11-01T10:00:00Z
 run_clear "$tmp" 0 "diff changes only a hook test file → exit 0"
 rm -rf "$tmp"
+
+blast_case scripts/hooks/fixtures/guard-x.sh full 2026-11-01T10:00:00Z
+run_clear "$tmp" 0 "diff changes only a hook fixture file → exit 0"
+rm -rf "$tmp"
+
+# The scope lives in blast-scope.cjs: a gate whose module is missing refuses closed.
+blast_case scripts/hooks/guard-x.sh full 2026-11-01T10:00:00Z "$(_bl_row feat/x deadbeef0 ran)"
+rm -f "$tmp/scripts/cr/blast-scope.cjs"
+run_clear "$tmp" 14 "blast-scope.cjs missing → exit 14"
+if grepq "$LAST_CLEAR_OUT" -F 'reason=blast-radius-unreadable'; then pass; else fail "a missing blast-scope.cjs must refuse as unreadable: $LAST_CLEAR_OUT"; fi
+rm -rf "$tmp"
+
+# blast-scope.cjs CLI: NUL-separated paths in, touched or untouched out.
+_bs_cli() { printf '%b' "$1" | node "$(dirname "$CLEAR")/blast-scope.cjs"; }
+if [ "$(_bs_cli 'docs/a.md\0scripts/hooks/guard-x.sh\0')" = touched ]; then pass; else fail "blast-scope CLI: a guard path must print touched"; fi
+if [ "$(_bs_cli 'scripts/hooks/test-x.sh\0scripts/hooks/fixtures/a.sh\0docs/a.md')" = untouched ]; then pass; else fail "blast-scope CLI: test-* and fixture paths must print untouched"; fi
+node "$(dirname "$CLEAR")/blast-scope.cjs" < "$(dirname "$CLEAR")" >/dev/null 2>&1; _bs_rc=$?
+if [ "$_bs_rc" -eq 2 ]; then pass; else fail "blast-scope CLI: an unreadable stdin must exit 2 (got $_bs_rc)"; fi
 
 # A rename out of scope still touches the guard: git's default rename
 # detection would list only the destination.
@@ -4235,6 +4255,133 @@ write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp fixed)"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "12f judge-go at a tip past the fix commit clears a fixed Important -> exit 0"
 if marker_exists "$tmp"; then fail "12f: marker must be cleared"; else pass; fi
+rm -rf "$tmp"
+
+# 13a-13j. --check-findings --tip <sha> [--assume-go] <branch> is the GO-time read of
+# gates 4 and 4b. It runs the merge's own ledger verdict at the head the merge would gate on, and writes
+# nothing (no marker, no ledger row, no audit line). --assume-go reads the head the merge gates on once
+# the chief's GO exists: judge-go counts as accepted, so the gates run at the recorded round head with a
+# `fixed` verdict passing. The PR 4611 shape: an Important raised at the reviewed head A, never ruled,
+# a non-test delta B on top; the merge refused it at gate 4 (exit 15) after ready-check had passed.
+# 13a. the 4611 shape: refused under the assumed GO, as the merge refuses it once the GO is written.
+make_repo || exit 1
+review_b "$tmp" f.txt "echo the fix"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp "")"
+run_clear "$tmp" 15 "13a an unruled Important at the reviewed head refuses under the assumed GO -> exit 15" --check-findings --tip "$B" --assume-go feat/x
+if grepq "$LAST_CLEAR_OUT" -F 'codex-1'; then pass; else fail "13a: the refusal must name the finding: $LAST_CLEAR_OUT"; fi
+# Without the assumed GO the tip is judged on its own rows, as the merge does before a GO exists.
+run_clear "$tmp" 0 "13a2 the same ledger without the assumed GO reads the tip's own rows -> exit 0" --check-findings --tip "$B" feat/x
+rm -rf "$tmp"
+
+# 13b. control: the same finding ruled disproved passes under the assumed GO.
+make_repo || exit 1
+review_b "$tmp" f.txt "echo the fix"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp disproved)"
+run_clear "$tmp" 0 "13b a disproved Important passes under the assumed GO -> exit 0" --check-findings --tip "$B" --assume-go feat/x
+# control: a TRACKED deferral (ticket key and reason) passes, a bare one blocks.
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(printf '{"kind":"finding","head":"%s","model":"codex","finding_id":"codex-1","severity":"imp","file":"a.sh","line":1,"verdict":"deferred","deferred_to":"HIMMEL-1","reason":"out of scope"}' "$sha")"
+run_clear "$tmp" 0 "13b2 a tracked deferral passes under the assumed GO -> exit 0" --check-findings --tip "$B" --assume-go feat/x
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp deferred)"
+run_clear "$tmp" 15 "13b3 a bare deferral still blocks under the assumed GO -> exit 15" --check-findings --tip "$B" --assume-go feat/x
+rm -rf "$tmp"
+
+# 13c. `fixed` passes only under the GO: gate 4's own rule, shared with the merge.
+make_repo || exit 1
+review_b "$tmp" f.txt "echo the fix"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp fixed)"
+run_clear "$tmp" 0 "13c a fixed Important at the reviewed head passes under the assumed GO -> exit 0" --check-findings --tip "$B" --assume-go feat/x
+rm -rf "$tmp"
+make_repo || exit 1
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp fixed)"
+run_clear "$tmp" 15 "13c2 a fixed Important at the tip itself, with no judge GO, refuses -> exit 15" --check-findings --tip "$sha" feat/x
+rm -rf "$tmp"
+
+# 13d. gate 4b: a finding with no verdict at the head, any severity, is refused.
+make_repo || exit 1
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" sug "")"
+run_clear "$tmp" 14 "13d an unadjudicated suggestion refuses -> exit 14" --check-findings --tip "$sha" feat/x
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" sug agreed)"
+run_clear "$tmp" 0 "13d2 a suggestion with a verdict passes -> exit 0" --check-findings --tip "$sha" feat/x
+printf '%s\n' 'not json' >> "$tmp/.git/cr-critic-scores.jsonl"
+run_clear "$tmp" 14 "13d3 a malformed ledger line refuses (an unknown verdict is not a clean one) -> exit 14" --check-findings --tip "$sha" feat/x
+rm -rf "$tmp"
+
+# 13e. the trivial-descendant shape: a test-only delta is gated strictly at the reviewed head, no GO needed.
+make_repo || exit 1
+review_b "$tmp" scripts/cr/test-x.sh "echo renamed"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" crit "")"
+run_clear "$tmp" 15 "13e a blocking finding at the reviewed head of a test-only delta refuses -> exit 15" --check-findings --tip "$B" feat/x
+rm -rf "$tmp"
+
+# 13f. read-only: the ledger, the marker, the audit log and the round state are untouched.
+make_repo || exit 1
+review_b "$tmp" f.txt "echo the fix"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp "")"
+before=$(cksum < "$tmp/.git/cr-critic-scores.jsonl")
+run_clear "$tmp" 15 "13f the read-only run refuses the 4611 shape -> exit 15" --check-findings --tip "$B" --assume-go feat/x
+after=$(cksum < "$tmp/.git/cr-critic-scores.jsonl")
+if [ "$before" = "$after" ]; then pass; else fail "13f: the ledger must be byte-identical after a check"; fi
+if marker_exists "$tmp"; then pass; else fail "13f: the marker must remain"; fi
+if [ ! -e "$tmp/.git/clear-cr-marker.log" ]; then pass; else fail "13f: a check must write no audit line"; fi
+rm -rf "$tmp"
+
+# 13g. usage: the mode needs --tip, and --tip / --assume-go need the mode.
+make_repo || exit 1
+write_ledger "$tmp" "$(avail_ok "$sha")"
+run_clear "$tmp" 10 "13g --check-findings without --tip is a usage error -> exit 10" --check-findings feat/x
+run_clear "$tmp" 10 "13g2 --tip without --check-findings is a usage error -> exit 10" --tip "$sha" feat/x
+run_clear "$tmp" 10 "13g3 --assume-go without --check-findings is a usage error -> exit 10" --assume-go feat/x
+run_clear "$tmp" 10 "13g4 --check-findings with --dry-run is a usage error -> exit 10" --check-findings --tip "$sha" --dry-run feat/x
+run_clear "$tmp" 10 "13g5 a short --tip is a usage error -> exit 10" --check-findings --tip "${sha:0:12}" feat/x
+run_clear "$tmp" 0 "13g6 a head this repository does not hold is read in the ledger by name when the branch has no round head -> exit 0" --check-findings --tip 0000000000000000000000000000000000000000 feat/x
+mkdir -p "$tmp/.git/cr-review-rounds/feat"
+printf '%s\n' "$sha" > "$tmp/.git/cr-review-rounds/feat/x.head"
+run_clear "$tmp" 12 "13g7 the same head with a recorded round head refuses (the review head cannot be chosen) -> exit 12" --check-findings --tip 0000000000000000000000000000000000000000 feat/x
+run_clear "$tmp" 0 "13g8 a clean ledger passes -> exit 0" --check-findings --tip "$sha" feat/x
+rm -rf "$tmp"
+
+# 13h. parity: the same 4611 ledger through the real merge-time clear (a judge GO at the tip, the marker
+# present) and through the GO-time check gives the same verdict, and so does the ruled control.
+make_repo || exit 1
+review_b "$tmp" f.txt "echo the fix"
+stub_judge_go "$tmp"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp "")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 15 "13h the merge-time clear refuses the 4611 shape -> exit 15"
+run_clear "$tmp" 15 "13h2 the GO-time check refuses the same ledger -> exit 15" --check-findings --tip "$B" --assume-go feat/x
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp disproved)"
+run_clear "$tmp" 0 "13h3 the GO-time check passes the ruled ledger -> exit 0" --check-findings --tip "$B" --assume-go feat/x
+run_clear "$tmp" 0 "13h4 the merge-time clear passes the ruled ledger -> exit 0"
+rm -rf "$tmp"
+
+# 13i. gate 4c at GO time: a finding left unadjudicated at an EARLIER round head A, with a clean tip B
+# (its own ok row, no rows of its own), passes gates 4 and 4b and is refused by the merge at gate 4c. The check reads that
+# verdict from review-round.sh promote --check: same still-open line as the merge-time clear, ledger byte-identical.
+# Gate 4c reads only rows stamped with the branch (review-round.sh promote), unlike gates 4 and 4b.
+bfinding() { printf '{"kind":"finding","branch":"feat/x","head":"%s","model":"codex","finding_id":"codex-1","severity":"%s","file":"a.sh","line":1,"verdict":"%s"}' "$1" "$2" "$3"; }
+make_repo || exit 1
+review_b "$tmp" f.txt "echo the fix"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(avail_ok "$B")" "$(bfinding "$sha" imp "")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+before=$(cksum < "$tmp/.git/cr-critic-scores.jsonl"); lines_before=$(wc -l < "$tmp/.git/cr-critic-scores.jsonl")
+run_clear "$tmp" 14 "13i the GO-time check refuses what gate 4c refuses -> exit 14" --check-findings --tip "$B" feat/x
+check_out="$LAST_CLEAR_OUT"
+if [ "$(cksum < "$tmp/.git/cr-critic-scores.jsonl")" = "$before" ] && [ "$(wc -l < "$tmp/.git/cr-critic-scores.jsonl")" = "$lines_before" ]; then pass; else fail "13i: the check must leave the ledger byte-identical with no new line"; fi
+if [ ! -e "$tmp/.git/clear-cr-marker.log" ]; then pass; else fail "13i: a check must write no audit line"; fi
+run_clear "$tmp" 14 "13i3 the merge-time clear refuses the same ledger at gate 4c -> exit 14"
+merge_out="$LAST_CLEAR_OUT"
+check_line=$(printf '%s\n' "$check_out" | grep -F 'still-open codex-1@' || true)
+merge_line=$(printf '%s\n' "$merge_out" | grep -F 'still-open codex-1@' || true)
+if [ -n "$check_line" ] && [ "$check_line" = "$merge_line" ]; then pass; else fail "13i: one verdict - the reason line must be the same (check: '$check_line' merge: '$merge_line')"; fi
+rm -rf "$tmp"
+# 13i4. control: the same finding ruled disproved is accepted by gate 4c, and the check exits 0 with the ledger untouched.
+make_repo || exit 1
+review_b "$tmp" f.txt "echo the fix"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(avail_ok "$B")" "$(bfinding "$sha" imp disproved)"
+before=$(cksum < "$tmp/.git/cr-critic-scores.jsonl")
+run_clear "$tmp" 0 "13i4 a ruled finding at the earlier head passes the GO-time check -> exit 0" --check-findings --tip "$B" feat/x
+run_clear "$tmp" 0 "13i5 and under the assumed GO -> exit 0" --check-findings --tip "$B" --assume-go feat/x
+if [ "$(cksum < "$tmp/.git/cr-critic-scores.jsonl")" = "$before" ]; then pass; else fail "13i4: the check must leave the ledger byte-identical"; fi
 rm -rf "$tmp"
 
 echo

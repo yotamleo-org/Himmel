@@ -77,10 +77,13 @@ verdict() {
 
 BR=chore/himmel-5647-config-ui-playwright-ci
 FHEAD=1080d424a81d7cb754e1abd312fa3d87467863b7
-# check 17 fetches origin/main and reads origin/main..<head>: real heads
+# check 19 fetches origin/main and reads origin/main..<head>: real heads
 SHA=$(ready_pass_repo "$REPO") || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 SHA2=$(ready_pass_repo "$REPO" 2) || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 export READY_STUB_HEAD="$SHA" READY_STUB_BRANCH="$BR"
+# ready-check reads the branch from the GraphQL snapshot; a branch other than the fixture's keeps the earlier-head
+# fixture deferral out of its items 7 and 18, so this suite exercises only cr-disposition.sh's own gate
+export READY_STUB_GQL_BRANCH=gql-other
 ready_pass_ledger "$REPO" "$SHA"
 # defer_finding <id> <severity> <text> - a worker-deferred finding at $FHEAD, written
 # through the ledger's single writer (test-pr-check-run invariant 7).
@@ -188,7 +191,7 @@ rm -rf "$HDIR/.locks"
 TA="$tmp/anchor"; TO="$tmp/origin.git"
 git init -q --bare "$TO"; git init -q "$TA"
 mkdir -p "$TA/scripts/lib"; cp "$HERE/../../lib/go-gate.sh" "$TA/scripts/lib/go-gate.sh"
-# ready-check's check 17 runs the anchor's impacted-suites.sh
+# ready-check's check 19 runs the anchor's impacted-suites.sh
 mkdir -p "$TA/scripts/cr"
 cp "$HERE/../../cr/impacted-suites.sh" "$HERE/../../cr/anchor-handoff.sh" "$TA/scripts/cr/"
 cp "$HERE/../../lib/review-default-base.sh" "$TA/scripts/lib/"

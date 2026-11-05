@@ -33,7 +33,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"; SCRIPT="$HERE/headed-arm.sh"
 # those rows green-from-default to green-from-override. Clear them so the
 # suite's own per-case overrides are the only source, same as
 # chief-kit/test-headed-arm-worker.sh:40.
-unset HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER 2>/dev/null || true
+unset HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_LAUNCHER_ENV_LINES HEADED_ARM_RECORDER 2>/dev/null || true
 # The ticket-duplicate rows (8436*) assert a refusal; HEADED_ARM_ALLOW_TICKET_DUP=1 exported in the
 # operator's launching shell would silently turn them into launches. Rows that want it set it per call.
 unset HEADED_ARM_ALLOW_TICKET_DUP
@@ -1703,6 +1703,104 @@ contains "resolved launcher (recorder branch): clears CLAUDE_CODE_MESSAGING_TOKE
 # quoted the command, regardless of the launching station's own $SHELL.
 contains "resolved launcher: SHELL forced to bash ahead of script(1), independent of the launching shell" "$rec36b" "SHELL=/"
 
+# --- 36e-36j. HEADED_ARM_LAUNCHER_ENV_LINES: a newline-delimited
+# NAME=VALUE channel whose entries become SINGLE argv elements, so a value with a
+# space (a macOS path) survives. The token channel above word-splits and cannot.
+# mk_lines_stub: a konsole stub that records one %q-quoted argv element per line.
+mk_lines_stub() { # <dir> <name>
+  mk_stub "$1" 1 alive "$2"
+  cat > "$1/konsole" <<'KONSOLE_EOF'
+#!/usr/bin/env bash
+printf '%q\n' "$@" >> "$(dirname "$0")/record"
+: > "$(dirname "$0")/confirmable"
+sleep 5
+KONSOLE_EOF
+  chmod 755 "$1/konsole"
+}
+LINE36='HIMMEL_HOLD_DOC=/x/a b/HIMMEL-1-N1-x.md'
+# 36f (I1): var unset and var '' give byte-identical terminal argv (no '' element).
+# N36F=31 is the element count captured on the unmodified script.
+d36f="$tmp/c36f"; mk_lines_stub "$d36f" "HIMMEL-lines36f"
+KONSOLE_CMD="$d36f/konsole" PGREP_CMD="$d36f/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36f/proc" HEADED_ARM_LOCK_DIR="$d36f/locks" \
+  bash "$SCRIPT" "HIMMEL-lines36f" "doc36f.md" "$d36f/signal-never" "$PAST" "$d36f/log" >/dev/null 2>&1
+wait_record "$d36f" || true
+mv "$d36f/record" "$d36f/record.unset"; rm -f "$d36f/confirmable"; rm -rf "$d36f/locks"
+HEADED_ARM_LAUNCHER_ENV_LINES='' KONSOLE_CMD="$d36f/konsole" PGREP_CMD="$d36f/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36f/proc" HEADED_ARM_LOCK_DIR="$d36f/locks" \
+  bash "$SCRIPT" "HIMMEL-lines36f" "doc36f.md" "$d36f/signal-never" "$PAST" "$d36f/log" >/dev/null 2>&1
+wait_record "$d36f" || true
+if cmp -s "$d36f/record.unset" "$d36f/record" && [ -s "$d36f/record" ]; then echo "ok - 36f LINES unset vs '': terminal argv byte-identical"
+else echo "FAIL - 36f LINES unset vs '': terminal argv differs"; fails=$((fails+1)); fi
+not_contains "36f LINES '': no empty argv element" "$(grep -Fx "''" "$d36f/record" 2>/dev/null || true)" "''"
+check "36f LINES '': argv element count unchanged (N36F=31)" "$(wc -l < "$d36f/record" | tr -d ' ')" "31"
+
+# 36e: the spaced value reaches the terminal argv as ONE element.
+d36e="$tmp/c36e"; mk_lines_stub "$d36e" "HIMMEL-lines36e"
+rc36e=0
+HEADED_ARM_LAUNCHER_ENV_LINES="$LINE36" KONSOLE_CMD="$d36e/konsole" PGREP_CMD="$d36e/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36e/proc" HEADED_ARM_LOCK_DIR="$d36e/locks" \
+  bash "$SCRIPT" "HIMMEL-lines36e" "doc36e.md" "$d36e/signal-never" "$PAST" "$d36e/log" >/dev/null 2>&1 || rc36e=$?
+wait_record "$d36e" || true
+check "36e LINES with a space: exit 0" "$rc36e" "0"
+check "36e LINES with a space: ONE argv element" "$(grep -Fxc 'HIMMEL_HOLD_DOC=/x/a\ b/HIMMEL-1-N1-x.md' "$d36e/record" 2>/dev/null || true)" "1"
+
+# 36e2: same through the recorder branch (script -c "<cmd>"): the value is one element of the env part.
+d36e2="$tmp/c36e2"; mk_lines_stub "$d36e2" "HIMMEL-lines36e2"
+rc36e2=0
+HEADED_ARM_LAUNCHER_ENV_LINES="$LINE36" HEADED_ARM_RECORDER=1 HEADED_ARM_UNAME=Linux KONSOLE_CMD="$d36e2/konsole" PGREP_CMD="$d36e2/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36e2/proc" HEADED_ARM_LOCK_DIR="$d36e2/locks" \
+  bash "$SCRIPT" "HIMMEL-lines36e2" "doc36e2.md" "$d36e2/signal-never" "$PAST" "$d36e2/log" >/dev/null 2>&1 || rc36e2=$?
+wait_record "$d36e2" || true
+check "36e2 LINES with a space, RECORDER: exit 0" "$rc36e2" "0"
+check "36e2 LINES with a space, RECORDER: ONE argv element" "$(grep -Fxc 'HIMMEL_HOLD_DOC=/x/a\ b/HIMMEL-1-N1-x.md' "$d36e2/record" 2>/dev/null || true)" "1"
+
+# 36g: a line that is not NAME=VALUE is refused (exit 2) before any launch.
+d36g="$tmp/c36g"; mk_lines_stub "$d36g" "HIMMEL-lines36g"
+rc36g=0
+err36g=$(HEADED_ARM_LAUNCHER_ENV_LINES=$'1BAD=x' KONSOLE_CMD="$d36g/konsole" PGREP_CMD="$d36g/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36g/proc" HEADED_ARM_LOCK_DIR="$d36g/locks" \
+  bash "$SCRIPT" "HIMMEL-lines36g" "doc36g.md" "$d36g/signal-never" "$PAST" "$d36g/log" 2>&1 >/dev/null) || rc36g=$?
+sleep 0.3
+check "36g LINES bad name: exit 2" "$rc36g" "2"
+contains "36g LINES bad name: names the shape" "$err36g" "is not NAME=VALUE"
+if [ -e "$d36g/record" ]; then echo "FAIL - 36g LINES bad name: konsole must not be invoked"; fails=$((fails+1)); else echo "ok - 36g LINES bad name: konsole never invoked"; fi
+
+# 36h: a chief drops HIMMEL_CONSOLE_RELAY from the lines, keeps the rest.
+d36h="$tmp/c36h"; mk_lines_stub "$d36h" "HIMMEL-lines36h"
+rc36h=0
+HEADED_ARM_LAUNCHER_ENV_LINES=$'HIMMEL_CONSOLE_RELAY=1\nHIMMEL_X=a b' KONSOLE_CMD="$d36h/konsole" PGREP_CMD="$d36h/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36h/proc" HEADED_ARM_LOCK_DIR="$d36h/locks" \
+  bash "$SCRIPT" --role chief "HIMMEL-lines36h" "doc36h.md" "$d36h/signal-never" "$PAST" "$d36h/log" >/dev/null 2>&1 || rc36h=$?
+wait_record "$d36h" || true
+check "36h chief LINES: exit 0" "$rc36h" "0"
+check "36h chief LINES: the other line survives as one element" "$(grep -Fxc 'HIMMEL_X=a\ b' "$d36h/record" 2>/dev/null || true)" "1"
+check "36h chief LINES: HIMMEL_CONSOLE_RELAY=1 line dropped" "$(grep -Fxc 'HIMMEL_CONSOLE_RELAY=1' "$d36h/record" 2>/dev/null || true)" "0"
+
+# 36i: --dry-run reports each line.
+d36i="$tmp/c36i"; mk_lines_stub "$d36i" "HIMMEL-lines36i"
+out36i=$(HEADED_ARM_LAUNCHER_ENV_LINES="$LINE36" KONSOLE_CMD="$d36i/konsole" PGREP_CMD="$d36i/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36i/proc" HEADED_ARM_LOCK_DIR="$d36i/locks" \
+  bash "$SCRIPT" --dry-run "HIMMEL-lines36i" "doc36i.md" "$d36i/signal-never" "$PAST" "$d36i/log" 2>&1) || true
+contains "36i dry-run prints the line" "$out36i" "launcher-env-line: $LINE36"
+
+# 36j: headless real run (stubbed CLI + launcher): the spaced value reaches the
+# launch env AND the settings file's env block.
+d36j="$tmp/c36j"; mkdir -p "$d36j"
+printf '{}\n' > "$d36j/settings.json"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$d36j/pgrep"
+cat > "$d36j/cli" <<CLI_EOF
+#!/usr/bin/env bash
+d="$d36j"
+case "\$1" in
+  --version) echo "2.1.296 (Claude Code)" ;;
+  agents) if [ -e "\$d/launched" ]; then echo '[{"name":"HIMMEL-lines36j","pid":4242}]'; else echo '[]'; fi ;;
+  --bg) printenv HIMMEL_HOLD_DOC > "\$d/envfile"; : > "\$d/launched" ;;
+esac
+exit 0
+CLI_EOF
+chmod 755 "$d36j/pgrep" "$d36j/cli"
+rc36j=0
+HEADED_ARM_LAUNCHER_ENV_LINES="$LINE36" HEADED_ARM_HEADLESS=1 WORKER_SESSION_PROFILE_SETTINGS="$d36j/settings.json" \
+  HEADED_ARM_CLAUDE_CLI="$d36j/cli" HEADED_ARM_LAUNCHER="$d36j/cli" PGREP_CMD="$d36j/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36j/proc" HEADED_ARM_LOCK_DIR="$d36j/locks" \
+  bash "$SCRIPT" "HIMMEL-lines36j" "doc36j.md" "$d36j/signal-never" "$PAST" "$d36j/log" >/dev/null 2>&1 || rc36j=$?
+check "36j headless LINES: exit 0" "$rc36j" "0"
+check "36j headless LINES: launch env holds the spaced value" "$(cat "$d36j/envfile" 2>/dev/null || echo MISSING)" "/x/a b/HIMMEL-1-N1-x.md"
+check "36j headless LINES: settings env block holds the spaced value" "$(jq -r '.env.HIMMEL_HOLD_DOC' "$d36j/settings.json" 2>/dev/null || echo MISSING)" "/x/a b/HIMMEL-1-N1-x.md"
+
 # --- 37. RED control: a mutant that always takes the RECORDER=1 branch
 # must fail case 36's "no script(1) wrapper" assertion for the DEFAULT
 # (unset) launcher - proves that assertion is not vacuous. -----------------
@@ -2623,7 +2721,9 @@ check "8464j a same-lineage claim that is never released ends the arm with exit 
 check "8464k that arm launched no konsole" "$([ -e "$tp6/record" ] && echo launched || echo none)" "none"
 check "8464l that arm's own name claim is gone" "$(compgen -G "$tp6/locks/HIMMEL-8464-N7b-*.lock" | grep -c .)" "0"
 check "8464m the held ticket claim is untouched" "$(cat "$tp6/locks/ticket-HIMMEL-8464.lock/holder" 2>/dev/null)" "HIMMEL-8464-N7-first-2026-11-02"
-check "8464n the wait is bounded (under 20s)" "$([ $((tp6_t1 - tp6_t0)) -lt 20 ] && echo yes || echo no)" "yes"
+# a macOS runner takes about four times a Linux one per launch; an unbounded wait runs for minutes, so 60s still tells them apart
+if [ "$(uname -s)" = Darwin ]; then tp6_bound=60; else tp6_bound=20; fi
+check "8464n the wait is bounded (under ${tp6_bound}s)" "$([ $((tp6_t1 - tp6_t0)) -lt "$tp6_bound" ] && echo yes || echo "no:$((tp6_t1 - tp6_t0))s")" "yes"
 # the ticket claim is released once the session is visible, not held through the slow bus bind
 tp7="$tmp/tp7"; mk_pair "$tp7" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8464-N2-second-2026-11-02"
 cat > "$tp7/bus" <<'BUS_EOF'
@@ -2694,6 +2794,19 @@ HB3="$(hdoc HIMMEL-9511-N1-b3.md '# b3' '> **Writes:** scripts/h1.sh' '## Result
 dh1c="$tmp/h1c"; mk_stub "$dh1c" 1 alive "HIMMEL-9511-N1-b3"
 h1cout="$(hlaunch "$dh1c" HIMMEL-9511-N1-b3 "$HB3" N1 "$RSP" 2>&1)"
 contains "grant-quote the printed grant command quotes a repo path with a space" "$h1cout" "holds.py grant --key HIMMEL-9511 --repo $(printf '%q' "$RSP") scripts/h1.sh"
+
+# the grant line follows holds.py grant-route: a trust path names the chief's --chief-doc, a settings path the operator's terminal
+hp claim --key HIMMEL-9513 --label N1 --doc "$(hdoc HIMMEL-9513-N1-t.md '# t')" --repo "$REPO" scripts/check-ci.sh .claude/settings.json >/dev/null 2>&1
+HT="$(hdoc HIMMEL-9514-N1-t2.md '# t2' '> **Writes:** scripts/check-ci.sh' '## Results (newest at the bottom)')"
+dht="$tmp/ht"; mk_stub "$dht" 1 alive "HIMMEL-9514-N1-t2"
+htout="$(HIMMEL_CONSOLE_DOC="$HH/u/r/chief.md" hlaunch "$dht" HIMMEL-9514-N1-t2 "$HT" N1 2>&1)"
+contains "route-a a held trust path: the chief stamps it with its own doc" "$htout" "holds.py grant --key HIMMEL-9514 --repo $REPO --chief-doc $HH/u/r/chief.md scripts/check-ci.sh"
+contains "route-b ... and a ! line is no operator terminal" "$htout" "not a ! line in a Claude window"
+HS="$(hdoc HIMMEL-9515-N1-s.md '# s' '> **Writes:** .claude/settings.json' '## Results (newest at the bottom)')"
+dhs="$tmp/hs"; mk_stub "$dhs" 1 alive "HIMMEL-9515-N1-s"
+hsout="$(hlaunch "$dhs" HIMMEL-9515-N1-s "$HS" N1 2>&1)"
+contains "route-c a held settings path: only the operator grants it" "$hsout" "only the operator grants it, in a real terminal"
+check "route-d ... and no --chief-doc is offered" "$(printf '%s' "$hsout" | grep -c -e '--chief-doc')" "0"
 
 # WRITE_HOLD_OK is the operator's bypass; a worker's own launch (HIMMEL_CONSOLE_LEG set) must not carry it on
 W4DOC="$(hdoc HIMMEL-9512-N1-w4.md '# w4')"
@@ -2777,11 +2890,18 @@ dh11="$tmp/h11"; mk_stub "$dh11" 1 alive "HIMMEL-9512-N1b-none"
 hlaunch "$dh11" HIMMEL-9512-N1b-none "$HR3" N1b >/dev/null 2>&1; h11rc=$?
 check "8725u no Writes anywhere: launches, no row" "$h11rc|$(grep -rlF HIMMEL-9512 "$HOME/.himmel/state/holds" 2>/dev/null | wc -l | tr -d ' ')" "0|0"
 # rows taken over while the successor was parked past 24 hours: the RESUME launch is refused, naming the new holder
+# age_by <seconds> <file>... backdates mtimes. GNU touch takes a relative -d; BSD touch (macOS) refuses it, so fall back to
+# BSD date -v feeding touch -t.
+age_by() {
+  local s="$1"; shift
+  touch -d "$s seconds ago" "$@" 2>/dev/null && return 0  # gnu-ok: the BSD form follows
+  touch -t "$(date -v-"$s"S +%Y%m%d%H%M.%S)" "$@"
+}
 HP3="$(hdoc HIMMEL-9513-N1-pred.md '> **Writes:** scripts/h13.sh')"
 hp seed --key HIMMEL-9513 --label N1 --doc "$HP3" --repo "$REPO" >/dev/null 2>&1
-touch -d '3 days ago' "$HP3" "$(hrow scripts/h13.sh)"
+age_by 259200 "$HP3" "$(hrow scripts/h13.sh)"
 HR4="$(hdoc HIMMEL-9513-N1b-pred-RESUME.md '> **Writes:** scripts/h13.sh')"
-touch -d '3 days ago' "$HR4"
+age_by 259200 "$HR4"
 HT="$(hdoc HIMMEL-9514-N1-thief.md '# thief')"
 hp claim --key HIMMEL-9514 --label N1 --doc "$HT" --repo "$REPO" scripts/h13.sh >/dev/null 2>&1
 dh12="$tmp/h12"; mk_stub "$dh12" 1 alive "HIMMEL-9513-N1b-pred"
@@ -2795,14 +2915,14 @@ hp claim --key HIMMEL-9521 --label N1 --doc "$(hdoc HIMMEL-9521-N1-x.md '# x')" 
 HR5="$(hdoc HIMMEL-9520-N1b-pred-RESUME.md '> **Writes:** scripts/h20b.sh')"
 dh13="$tmp/h13"; mk_stub "$dh13" 1 alive "HIMMEL-9520-N1b-pred"
 hlaunch "$dh13" HIMMEL-9520-N1b-pred "$HR5" N1b >/dev/null 2>&1; h13rc=$?
-touch -d '2 hours ago' "$(hrow scripts/h20a.sh)"
+age_by 7200 "$(hrow scripts/h20a.sh)"
 check "8725x an aborted RESUME launch (exit 2) leaves the re-pointed row on the RESUME doc" "$h13rc|$(cut -f3 "$(hrow scripts/h20a.sh)")" "2|$HR5"
 check "8725y ... and it reads alive past the grace on the RESUME clause" "$(hp alive --repo "$REPO" scripts/h20a.sh)" "alive"
 # a launch that fails after the seed keeps its rows, which read dead past the grace with no lock held
 HW="$(hdoc HIMMEL-9522-N1-w.md '> **Writes:** scripts/h22.sh')"
 dh14="$tmp/h14"; mk_stub "$dh14" 1 dying "HIMMEL-9522-N1-w"
 hlaunch "$dh14" HIMMEL-9522-N1-w "$HW" N1 >/dev/null 2>&1; h14rc=$?
-touch -d '2 hours ago' "$(hrow scripts/h22.sh)"
+age_by 7200 "$(hrow scripts/h22.sh)"
 check "8725z a launch that fails after the seed keeps its row, dead past the grace with no lock held" "$([ "$h14rc" -ne 0 ] && echo failed)|$(hp alive --repo "$REPO" scripts/h22.sh)" "failed|dead"
 
 # a seed fault warns and launches; a stub with no holds: line is a fault, with one it is a refusal; OFF calls neither

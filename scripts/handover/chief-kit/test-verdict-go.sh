@@ -41,7 +41,11 @@ for a in "\$@"; do printf ' [%s]' "\$a" >> "$LOG"; done
 printf '\n' >> "$LOG"
 case "$s" in
     write-verdict) exit "\${WV_RC:-0}" ;;
-    go) echo "\${GO_PATH_OUT:-/fake/root/.locks/go/\$*}"; exit "\${GO_RC:-0}" ;;
+    go) # GO_NEEDS_CONTRACT models go.sh on a PR titled with a [KEY]: no --contract is its exit 4
+        if [ -n "\${GO_NEEDS_CONTRACT:-}" ]; then
+            case " \$* " in *" --contract "*) ;; *) echo "go: a keyed PR needs --contract yes|no" >&2; exit 4 ;; esac
+        fi
+        echo "\${GO_PATH_OUT:-/fake/root/.locks/go/\$*}"; exit "\${GO_RC:-0}" ;;
     *) exit "\${AR_RC:-0}" ;;
 esac
 EOF
@@ -175,5 +179,33 @@ check "8c: keyed and no-ticket residuals rc 0" "$rc" 0
 contains "8c: write-verdict ran" "$log" "write-verdict"
 run q8d GO "$HEAD40" --pr 77 --evidence-file "$tmp/no-such-evidence.md"
 contains "8d: an unreadable evidence file is left to write-verdict" "$log" "write-verdict"
+
+# --- 9. the completion contract is forwarded to go.sh; a keyed PR needs it ----------
+# go.sh refuses a PR titled with a [KEY] when no --contract is named (test-go.sh pins that); the go stub models it.
+GO_NEEDS_CONTRACT=1 run q9a GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
+check    "9a: a keyed PR with no --contract: go.sh's exit 4 passes through" "$rc" 4
+contains "9a: failing step named" "$out" "go.sh failed"
+lacks    "9a: no bullet after the refusal" "$log" "append-results"
+GO_NEEDS_CONTRACT=1 run q9b GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC" --contract yes
+check    "9b: --contract yes: rc 0" "$rc" 0
+contains "9b: go gets --contract yes before the pr" "$log" "go [--contract] [yes] [77] [$HEAD40]"
+contains "9b: the merge line keeps --jira-transition" "$out" "merge-on-green.sh --jira-transition"
+GO_NEEDS_CONTRACT=1 run q9c GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC" --contract no
+check    "9c: --contract no: rc 0" "$rc" 0
+contains "9c: go gets --contract no" "$log" "go [--contract] [no] [77] [$HEAD40]"
+lacks    "9c: the merge line carries no --jira-transition" "$out" "--jira-transition"
+contains "9c: the merge line is still printed" "$out" "merge-on-green.sh"
+GO_NEEDS_CONTRACT=1 run q9d GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC" --contract no --trust
+contains "9d: with --trust the contract rides beside --trust-reviewed" "$log" "go [--contract] [no] [--trust-reviewed] [q9d] [77] [$HEAD40]"
+run q9e GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
+lacks    "9e: no --contract given, none forwarded" "$log" "--contract"
+run q9f GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC" --contract maybe
+check    "9f: --contract maybe rc 2" "$rc" 2
+check    "9f: nothing ran" "$(cat "$LOG")" ""  # read-sink-ok: the test's own sandbox log
+run q9g GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC" --contract yes --contract no
+check    "9g: --contract twice rc 2" "$rc" 2
+run q9h NO-GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC" --contract no
+check    "9h: a NO-GO accepts --contract and never runs go.sh: rc 0" "$rc" 0
+lacks    "9h: go.sh never runs" "$log" "go ["
 
 [ "$fails" -eq 0 ] && echo "all ok" || { echo "$fails failure(s)"; exit 1; }

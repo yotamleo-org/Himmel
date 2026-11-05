@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/cr/suite-fail-ledger.sh [<ledger>] — read the CI failure ledger that
-# ready-check's item 17 appends: how often a suite left to CI
+# ready-check's item 19 appends: how often a suite left to CI
 # failed there, and how often that failure cost an extra round (a new push).
 #
 # Ledger: <ledger>, else ~/.himmel/state/suite-evidence/ci-failures.jsonl. Rows:

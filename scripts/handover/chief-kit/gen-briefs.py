@@ -108,7 +108,7 @@ the manifest (sha256sum format), which Telegram /launch-worker checks (HIMMEL-50
 
 Exit: 0 ok; 1 a worker is invalid or a worktree failed (nothing written for it); 2 usage.
 """
-import argparse, fcntl, hashlib, json, os, re, secrets, shlex, subprocess, sys, tempfile
+import argparse, contextlib, fcntl, hashlib, json, os, re, secrets, shlex, subprocess, sys, tempfile
 from datetime import date as _date, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from salus_marked import salus_marked, is_adapter  # noqa: E402
@@ -566,19 +566,63 @@ def size_bands():
     return out
 
 
+_PATH_TOK_RE = re.compile(r'[\w.+@*?/-]+')
+_PROSE_SLASH = ('and/or', 'w/o', 'either/or')
+
+
+def _glob_re(g):
+    # git's wildmatch as a regex: * and ? stay inside one path segment, ** crosses them.
+    out, i = '', 0
+    while i < len(g):
+        if g.startswith('**/', i):
+            out, i = out + '(?:.*/)?', i + 3
+        else:  # a ** not before a slash is two stars, as in git; the ancestor match covers the rest
+            out, i = out + ('[^/]*' if g[i] == '*' else '[^/]' if g[i] == '?' else re.escape(g[i])), i + 1
+    return re.compile(out + r'\Z')
+
+
+def _self_and_ancestors(path):
+    # 'a/b/c' -> 'a/b/c', 'a/b', 'a'
+    parts = path.split('/')
+    return ['/'.join(parts[:i]) for i in range(len(parts), 0, -1)]
+
+
 def projected_files(writes, repo, base):
-    # Files the Writes list touches: a directory expands to its tracked files at base; a path git does not know
-    # at base (a new file) counts once. None when git cannot read base: a failed read must not pass as a small count.
-    wp = write_paths(writes)
-    if wp in ('', 'none named'):
-        return 0
-    files = set()
-    for p in wp.split():
-        r = subprocess.run(['git', '-C', repo, 'ls-tree', '-r', '--name-only', base, '--', p], capture_output=True, text=True)
-        if r.returncode != 0:
-            return None
-        files.update(r.stdout.split('\n')[:-1] if r.stdout else [p])
-    return len(files)
+    # (files, tracked): the files the Writes list touches, and how many of its paths git tracks at base. The one rule:
+    # a path names itself, a directory its tracked files, a glob the tracked files it matches at base; a path absent at
+    # base (a new file) counts once. Every path-like token counts, whatever its root (src/ as well as scripts/), so it
+    # reads the Writes text itself, not write_paths' fixed roots. None when git cannot read base: a failed read must not
+    # pass as a small count.
+    text = _writes_scope(writes)
+    while re.search(r'\([^()]*\)', text):
+        text = re.sub(r'\([^()]*\)', ' ', text)
+    toks = []
+    for t in _PATH_TOK_RE.findall(text):
+        t = t.rstrip('.')
+        t = t[2:] if t.startswith('./') else t
+        # a root file (README.md) or root glob (*.py) has no slash; prose words with a dot (e.g., v1.1.3) must not count
+        pathlike = '/' in t or re.search(r'[*?]', t) or holds.FILE_RE.fullmatch(t)
+        if pathlike and not t.startswith('/') and t.lower() not in _PROSE_SLASH and t not in toks:
+            toks.append(t)
+    files, tracked, listing = set(), 0, None
+    for p in toks:
+        if re.search(r'[*?]', p):
+            if listing is None:
+                r = subprocess.run(['git', '-C', repo, 'ls-tree', '-r', '--name-only', base], capture_output=True, text=True)
+                if r.returncode != 0:
+                    return None
+                listing = r.stdout.split('\n')[:-1]
+            rx = _glob_re(p.rstrip('/'))
+            # a file also hits when an ancestor directory matches (scripts/tree/* names every file under scripts/tree/sub/)
+            hit = [f for f in listing if any(rx.match(d) for d in _self_and_ancestors(f))]
+        else:
+            r = subprocess.run(['git', '-C', repo, 'ls-tree', '-r', '--name-only', base, '--', p], capture_output=True, text=True)
+            if r.returncode != 0:
+                return None
+            hit = r.stdout.split('\n')[:-1]
+        tracked += bool(hit)
+        files.update(hit or [p])
+    return len(files), tracked
 
 
 def check_pr_size(l, repo, base):
@@ -586,19 +630,23 @@ def check_pr_size(l, repo, base):
     if l.get('bulk') == 'mechanical':
         return  # the line and file bands do not apply to a scripted transform (the 300-file cap still holds at PR open)
     bands = size_bands()
-    n = projected_files(l.get('writes', ''), repo, base)
+    proj = projected_files(l.get('writes', ''), repo, base)
+    n, tracked = proj if proj else (None, 0)
     if n is None or n > bands['hard']:
         if n is None:
             msg = 'worker %s Writes cannot be projected (git ls-tree failed for base %s in %s)' % (l['label'], base, repo)
         else:
             msg = 'worker %s Writes project to %d files, over the %d-file hard max (pr-size-bands.tsv row hard)' % (l['label'], n, bands['hard'])
-        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
-        from flags import himmel_flag  # scripts/lib/flags.py, the registry reader
-        if himmel_flag('pr_size_gate'):
+        with flag_read():
+            from flags import himmel_flag  # scripts/lib/flags.py, the registry reader
+            gate_on = himmel_flag('pr_size_gate')
+        if gate_on:
             die(msg + ('; split the ticket, or set "bulk": "mechanical" on a scripted transform' if n is not None else ''))
         print('gen-briefs: warning: ' + msg + '; pr_size_gate is off, so the brief is written', file=sys.stderr)
     elif n > bands['soft']:
         print('gen-briefs: warning: worker %s Writes project to %d files, over the %d-file soft max (pr-size-bands.tsv row soft)' % (l['label'], n, bands['soft']), file=sys.stderr)
+    if n is not None and tracked == 0:
+        print('gen-briefs: warning: worker %s Writes name no file tracked at base (none named, empty, or only new files); the %d file(s) counted are unverified (rule: a path absent at base counts once, so only files tracked at base are counted for real)' % (l['label'], n), file=sys.stderr)
 
 
 SERIES_MAX = 4
@@ -606,10 +654,25 @@ SERIES_DOC = 'docs/handover/worker-sections/series.md'
 SERIES_LEDGER_PY = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'series-ledger.py')
 
 
-def flag_on(name):
+@contextlib.contextmanager
+def flag_read():
+    # A flag read that cannot complete (flags.py missing from the kit, an unreadable registry, an invalid value) is a
+    # configuration error: exit 2 through die, never a traceback.
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
-    from flags import himmel_flag  # scripts/lib/flags.py, the registry reader
-    return himmel_flag(name)
+    try:
+        yield
+    except ImportError as e:
+        die('cannot read a flag: scripts/lib/flags.py is missing beside this kit (%s)' % e, 2)
+    except Exception as e:
+        if type(e).__name__ != 'FlagError':
+            raise
+        die('cannot read a flag: %s' % e, 2)
+
+
+def flag_on(name):
+    with flag_read():
+        from flags import himmel_flag  # scripts/lib/flags.py, the registry reader
+        return himmel_flag(name)
 
 
 CORE_VERBS = ('CORE', 'NOT-CORE', 'BYPASS', 'UNKNOWN')
@@ -1021,7 +1084,7 @@ template_version: 3
 > 1. LIVE; paste `git log -1 --format=%H` + base-ancestor check via `append-results.sh` (never `>` in a bullet).
 > 2. Do exactly what the ticket asks, smallest correct change. RED first: a failing test row reproducing the defect, shown failing before the fix: run it as `bash scripts/quiet-run.sh suite -- bash <test-*.sh>` with nothing appended (no `>`, `2>&1`, `| tail`, `; echo rc`) and Read the log path its ERR line prints. {extra}{envline}
 > 2a. A new test suite may add exactly one row for itself to scripts/ci/suite-tiers.tsv and scripts/ci/suite-durations.tsv (duration measured locally); name the rows in READY. Rows under a ci-trust-paths pattern still get a trust-reviewed GO.
-> 3. Impacted suites: `scripts/cr/impacted-suites.sh` over your diff, a verdict per suite, by the rule in `scripts/cr/pr-check-ref/33-step3-impacted.md`. Run locally the RED rows of the item you build, the suites you changed or added, JS/TS suites, and every suite `--check` refuses `= CI` for, plus any `Local suites:` line of this brief (copy it into the PR body); a VM-only check goes through the VM queue; write `SUITE <p> = CI` for every other impacted `test-*.sh` you did not change and CI runs (ready-check item 17 reads CI's proof at your head); never run run-shell-tests.sh full or sharded locally.
+> 3. Impacted suites: `scripts/cr/impacted-suites.sh` over your diff, a verdict per suite, by the rule in `scripts/cr/pr-check-ref/33-step3-impacted.md`. Run locally the RED rows of the item you build, the suites you changed or added, JS/TS suites, and every suite `--check` refuses `= CI` for, plus any `Local suites:` line of this brief (copy it into the PR body); a VM-only check goes through the VM queue; write `SUITE <p> = CI` for every other impacted `test-*.sh` you did not change and CI runs (ready-check item 19 reads CI's proof at your head); never run run-shell-tests.sh full or sharded locally.
 > 4. Ship: commit `{commit}`; FIRST-commit trailers `Platforms tested: linux` (shell/script diffs), `Security reviewed: manual — <what you checked>` (non-docs code); `## Ticket coverage` in the PR body (`ready-check.sh --only 7 <pr>`); {shipct}. /pr-check (≤3 rounds; the moment you mark a finding agreed or fixed, write its `SWEEP [<id>@<head>] class=… :: sites=…` line (a one-site finding: `:: single-site search=git grep …`) with `bash scripts/cr/write-verdicts.sh sweep --branch <b> --from-file <f>`, else `clear-review-marker.sh` refuses with exit 14), CI green, `ready-check.sh <pr> <full-head>`, then write the `READY <pr> <full-40-hex-head> GREEN` bullet with `append-results.sh` (a bullet only, never a message, as the preface says: the chief's waiter wakes the chief on it and shows it the bullet's text). {judge} {shipmerge} `bash scripts/handover/wrap-subtree-check.sh --queue-doc {doc}`.
 > 5. CI: a shell-unit shard dying with exit 124 in apt-get before any suite ran is a known mirror flake (HIMMEL-2872); you may `gh run rerun <id> --failed` once per run and report it.
 

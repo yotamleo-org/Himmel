@@ -1,4 +1,5 @@
-import { spawn } from "bun";
+import { spawn, spawnSync } from "bun";
+import { randomUUID } from "node:crypto";
 import { killTree, SPAWN_OWN_GROUP } from "../lib/kill-tree.mjs";
 import { isTicketKey } from "./router";
 import { readFileSync } from "node:fs";
@@ -259,8 +260,28 @@ export function spawnSpec(prompt: string, permissionMode?: PermissionMode, _lane
   return { cmd, env };
 }
 
+// A bridge run has no session title, so the launch record is found by the session id given to claude.
+// Added at spawn, not in buildRunArgs/spawnSpec, whose argv positions callers read (cmd[2] is the model).
+export function withSessionId(cmd: string[], sid: string): string[] {
+  return [cmd[0], "--session-id", sid, ...cmd.slice(1)];
+}
+// The launch record (launch-record.sh): the bridge bills the native subscription (interactive claude, no -p, no API key).
+// Best-effort: the helper warns and exits 0, and a throw here never stops the run.
+export function writeLaunchRecord(sid: string, model: string, cacheDir?: string): void {
+  try {
+    spawnSync([BASH_BIN, join(REPO_ROOT, "scripts", "handover", "launch-record.sh"), `telegram-${sid.slice(0, 8)}`, "telegram", "native", "telegram", sid, model],
+      { stdout: "ignore", stderr: "inherit", env: cacheDir ? { ...process.env, HIMMELCTL_CACHE_DIR: cacheDir } : process.env });
+  } catch (e) {
+    process.stderr.write(`telegram: launch record not written: ${e instanceof Error ? e.message : String(e)}\n`);
+  }
+}
+
 export async function runSession(prompt: string, cwd: string, permissionMode?: PermissionMode, lane?: undefined, modelOverride?: string, settings?: string, observe?: RunObserver, extraEnv?: Record<string, string>, mcpConfig?: string): Promise<{ code: number; capped: boolean; blocked: boolean; timedOut: boolean; pid: number; tail?: string }> {
-  const { cmd, env } = spawnSpec(prompt, permissionMode, lane, modelOverride, settings, extraEnv, mcpConfig);
+  const spec = spawnSpec(prompt, permissionMode, lane, modelOverride, settings, extraEnv, mcpConfig);
+  const sid = randomUUID();
+  writeLaunchRecord(sid, spec.cmd[2]);
+  const cmd = withSessionId(spec.cmd, sid);
+  const env = spec.env;
   // PERMISSION POSTURE:
   // the bounded run inherits the operator's default permission mode (accept-edits)
   // and runs with stdin closed (EOF) so it CANNOT answer a permission prompt. Any

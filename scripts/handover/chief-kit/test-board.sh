@@ -1144,6 +1144,7 @@ jcheck '--json: milestones are done/total per fixVersion' 'M.milestones.length =
 jcheck '--json: roadmap recommendation names the open blockers' 'M.cards.roadmap.recommendation.includes("HIMMEL-9001")'
 jcheck '--json: every live worker is a row with a state and stage' 'M.legs.some((l) => l.leg === "N3" && l.state === "ready-for-go" && l.stage === "ready") && M.legs.every((l) => l.state && l.stage)'
 jcheck '--json: a READY worker is a go need' 'M.needs_you.some((n) => n.leg === "N3" && n.verb === "go")'
+jcheck '--json: the go need command carries the merge contract as one shell word, so a paste is refused by go.sh instead of parsed as a pipeline' 'M.needs_you.some((n) => n.leg === "N3" && n.command === "bash scripts/handover/chief-kit/go.sh --contract yes-or-no 2001 0123456789abcdef")'
 jcheck '--json: finished workers are counted, not listed' 'M.console.archive_legs >= 2 && !M.legs.some((l) => l.leg === "N4" || l.leg === "N5")'
 for secret in aaaa1111 pid111111 pid777777 cafe1919 x8664; do
     lacks "--json: no nonce/lock-token text: $secret" "$jtxt" "$secret"
@@ -1501,6 +1502,29 @@ lacks 'board-tracker.md: no Artifact publish step' "$BT" 'with the `Artifact` to
 contains 'chief-template.md step 12: the board is rendered local only' "$CT" 'Render the chief board (local only)'
 # shellcheck disable=SC2016  # literal backticks in the needle
 lacks 'chief-template.md step 12: no Artifact publish step' "$CT" 'publish the file with the `Artifact` tool'
+
+# --- adopted repo: a chief running for another repo (bucket and project differ from himmel)
+# renders the current layout with no template placeholder.
+AB="$W/adopted/bucket"; AP="$W/adopted/project"
+mkdir -p "$AB" "$AP"
+sed -e "s|@ROOT@|$W/adopted|" -e "s|@PROJECT@|$AP|" "$HERE/fixtures/adopted-repo-chief.md" > "$AB/ADOPT-nextleg-2026-01-01A-chief.md"
+: > "$W/adopted-gh-cwd.log"
+# A chief's board sections sidecar, seeded before the render, must survive it byte-identical.
+printf '%s\n' '{"schema":"himmel.board-sections/1","rev":3,"sections":[{"id":"n","title":"N","body":"b","tone":"info","order":10}]}' > "$AB/ADOPT-nextleg-2026-01-01A-chief.sections.json"
+sections_before="$(cksum < "$AB/ADOPT-nextleg-2026-01-01A-chief.sections.json")"
+PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv-adopted.log" \
+    BOARD_SESSIONS="$W/bin/sessions-empty.sh" GH_CWD_LOG="$W/adopted-gh-cwd.log" \
+    GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+    node "$SUT" --doc "$AB/ADOPT-nextleg-2026-01-01A-chief.md" --repo "$W/repo" 2>"$W/stderr-adopted.log" >/dev/null
+adopted_html="$(cat "$AB/chief-board.html" 2>/dev/null)"
+contains 'adopted-repo chief: the board is written next to its own doc' "$adopted_html" '<title>Supervisor Session Board</title>'
+contains 'adopted-repo chief: the current fleet panel renders' "$adopted_html" 'data-fleet="9/15"'
+contains 'adopted-repo chief: the page names the adopted chief session' "$adopted_html" 'ADOPT-nextleg-2026-01-01A-chief'
+lacks 'adopted-repo chief: a placeholder in the doc never reaches the board' "$adopted_html" '&lt;relay escalation'
+lacks 'adopted-repo chief: no angle-bracket placeholder text in the board' "$adopted_html" '&lt;worker&gt;'
+lacks 'adopted-repo chief: no unfilled @token@ in the board' "$adopted_html" '@PROJECT@'
+contains 'adopted-repo chief: PR lookups run in the adopted project, not the himmel checkout' "$(cat "$W/adopted-gh-cwd.log")" "$(cd "$AP" && pwd -P)"
+same 'board.mjs leaves a pre-seeded sidecar byte-identical' "$(cksum < "$AB/ADOPT-nextleg-2026-01-01A-chief.sections.json" 2>/dev/null)" "$sections_before"
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-board.sh'

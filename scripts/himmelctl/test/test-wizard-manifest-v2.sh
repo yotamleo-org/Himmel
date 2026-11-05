@@ -492,4 +492,31 @@ set -e
 [ "$rcX3" -eq 0 ] || fail "case x: a valid boolean verifyHudConfig with a singular 'key' should lint clean (got rc=$rcX3): $errX3"
 echo "ok: case x (part 3) — a valid verifyHudConfig probe lints clean"
 
+# ── case y: the optional Health-page keys healthScope + repo ──
+caseY_ok="$work/case-y-ok.json"
+mutate_base "$caseY_ok" "m.items[0].healthScope = 'project'; m.items[0].repo = 'himmel';"
+set +e
+errY1=$(run_lint "$caseY_ok" 2>&1); rcY1=$?
+set -e
+[ "$rcY1" -eq 0 ] || fail "case y: a valid healthScope + repo should lint clean (got rc=$rcY1): $errY1"
+echo "ok: case y (part 1) — a valid healthScope + repo lints clean"
+
+caseY_scope="$work/case-y-scope.json"
+mutate_base "$caseY_scope" "m.items[0].healthScope = 'machine';"
+set +e
+errY2=$(run_lint "$caseY_scope" 2>&1); rcY2=$?
+set -e
+[ "$rcY2" -eq 1 ] || fail "case y: healthScope 'machine' should exit 1 (got rc=$rcY2): $errY2"
+grepq "$errY2" -F "'healthScope', when present, must be 'shared' or 'project'" || fail "case y: error should name the healthScope enum (got: $errY2)"
+echo "ok: case y (part 2) — a healthScope outside shared/project exits 1"
+
+caseY_repo="$work/case-y-repo.json"
+mutate_base "$caseY_repo" "m.items[0].repo = '';"
+set +e
+errY3=$(run_lint "$caseY_repo" 2>&1); rcY3=$?
+set -e
+[ "$rcY3" -eq 1 ] || fail "case y: an empty repo should exit 1 (got rc=$rcY3): $errY3"
+grepq "$errY3" -F "'repo', when present, must be a non-empty string" || fail "case y: error should name the repo requirement (got: $errY3)"
+echo "ok: case y (part 3) — an empty repo exits 1"
+
 echo "PASS"

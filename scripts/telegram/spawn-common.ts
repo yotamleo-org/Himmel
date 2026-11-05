@@ -41,6 +41,7 @@ export function resolveProfileSettings(profile: string, addPlugins: string[], cw
   // at module load below; the poller's cachebust loader never reaches this path.
   const configDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
   const settings = resolveProfileByName(profile, {
+    lane: "claudex",
     addPlugins,
     installed: installed ?? readEnabledPluginIds(homedir(), cwd, process.env.CLAUDE_CONFIG_DIR),
     skillEntries: scanSkillCosts({ cwd, configDir }).entries,

@@ -84,6 +84,7 @@ echo "OLLAMA_NUM_CTX=\${GRAPHIFY_OLLAMA_NUM_CTX-unset}" >> "$WS/env.log"
 echo "API_TIMEOUT=\${GRAPHIFY_API_TIMEOUT-unset}" >> "$WS/env.log"
 echo "CLAUDE_BIN=\$(command -v claude || echo none)" >> "$WS/env.log"
 echo "CLAUDE_CONFIG_DIR=\${CLAUDE_CONFIG_DIR-unset}" >> "$WS/env.log"
+echo "EFFORT=\${CLAUDE_CODE_EFFORT_LEVEL-unset}" >> "$WS/env.log"
 # GRAPHIFY_STUB_CACHE_HIT: a seeded entry answers the extract with no call, as graphify's cache does; graphify's
 # real key is content plus its own prompt, so it cannot see which mode wrote the entry, and neither does this one.
 if [ -n "\${GRAPHIFY_STUB_CALL_CLAUDE:-}" ] && [ "\$1" = extract ] && { [ -z "\${GRAPHIFY_STUB_CACHE_HIT:-}" ] || [ ! -e "\$2/graphify-out/cache/semantic/new.json" ]; }; then
@@ -598,11 +599,16 @@ case "$(grep '^graphify extract' "$WS/calls.log")" in *"--token-budget 30000"*) 
 C40B="$WS/c40b"; new_corpus "$C40B"; : > "$WS/calls.log"
 out=$(GRAPHIFY_API_CALL_BUDGET_USD=3.00 run_api --name t40b --corpus-root "$C40B" --corpus-class himmel-code --backend claude-api); rc=$?
 case "$(grep '^graphify extract' "$WS/calls.log")" in *"--token-budget 60000"*) pass "T40 3.00 -> capped at 60000" ;; *) fail "T40 capped: $(grep '^graphify extract' "$WS/calls.log") $out" ;; esac
-C40C="$WS/c40c"; new_corpus "$C40C"; : > "$WS/calls.log"
-out=$(run --name t40c --corpus-root "$C40C" --corpus-class himmel-code --backend claude-cli); rc=$?
+C40C="$WS/c40c"; new_corpus "$C40C"; : > "$WS/calls.log"; : > "$WS/env.log"
+out=$(unset GRAPHIFY_TOKEN_BUDGET CLAUDE_CODE_EFFORT_LEVEL; run --name t40c --corpus-root "$C40C" --corpus-class himmel-code --backend claude-cli); rc=$?
 ext40c="$(grep '^graphify extract' "$WS/calls.log")"
 if [ "$rc" -ne 0 ] || [ -z "$ext40c" ]; then fail "T40 claude-cli control did not reach graphify extract (rc=$rc): $out"
-else case "$ext40c" in *"--token-budget"*) fail "T40 claude-cli got a token budget" ;; *) pass "T40 claude-cli path unchanged" ;; esac; fi
+else case "$ext40c" in *"--token-budget 8000"*) pass "T40 claude-cli caps the chunk at 8000" ;; *) fail "T40 claude-cli expected --token-budget 8000: $ext40c" ;; esac; fi
+[ "$(grep '^EFFORT=' "$WS/env.log" | sort -u)" = "EFFORT=high" ] && pass "T40 claude-cli extract runs at effort high by default" || fail "T40 effort: $(grep '^EFFORT=' "$WS/env.log")"
+C40D="$WS/c40d"; new_corpus "$C40D"; : > "$WS/calls.log"; : > "$WS/env.log"
+out=$(GRAPHIFY_TOKEN_BUDGET=4000 CLAUDE_CODE_EFFORT_LEVEL=medium run --name t40d --corpus-root "$C40D" --corpus-class himmel-code --backend claude-cli); rc=$?
+case "$(grep '^graphify extract' "$WS/calls.log")" in *"--token-budget 4000"*) pass "T40 GRAPHIFY_TOKEN_BUDGET wins on claude-cli" ;; *) fail "T40 claude-cli override (rc=$rc): $(grep '^graphify extract' "$WS/calls.log") $out" ;; esac
+[ "$(grep '^EFFORT=' "$WS/env.log" | sort -u)" = "EFFORT=medium" ] && pass "T40 an operator CLAUDE_CODE_EFFORT_LEVEL wins" || fail "T40 effort override: $(grep '^EFFORT=' "$WS/env.log")"
 
 echo "T41: a failed lane call shows its result and exit code on the shim's stderr (what graphify prints in the chunk-failed line)"
 C41="$WS/c41"; new_corpus "$C41"; : > "$WS/calls.log"; : > "$WS/claude.out"
@@ -714,7 +720,7 @@ real_lane_on() {
   mkdir -p "$RL/alerts" "$RL/slots" "$WS/home"
   cp "$REPO/scripts/api-lane/claude-api.sh" "$WS/claude-api.stub.sh"
   cp "$REAL_REPO/scripts/api-lane/claude-api.sh" "$REAL_REPO/scripts/api-lane/roster.mjs" "$REAL_REPO/scripts/api-lane/usage.mjs" "$REPO/scripts/api-lane/"
-  cp "$REAL_REPO/scripts/lib/api-credit-state.mjs" "$REAL_REPO/scripts/lib/fleet-reservation-key.sh" "$REAL_REPO/scripts/lib/native-auth-pin.sh" "$REPO/scripts/lib/"
+  cp "$REAL_REPO/scripts/lib/api-credit-state.mjs" "$REAL_REPO/scripts/lib/api-roles.mjs" "$REAL_REPO/scripts/lib/fleet-reservation-key.sh" "$REAL_REPO/scripts/lib/native-auth-pin.sh" "$REPO/scripts/lib/"
   local now; now=$(date +%s)
   printf '{"version":1,"ledger_path":"%s","accounts":{"A":{"organization_id":"org-a","cycle_id":"cycle-a","cap_usd":"50.00","key_id":"key-a","reset_at":"2099-01-01T00:00:00Z"}}}' "$RL/ledger.json" > "$RL/config.json"
   printf '{"version":1,"accounts":{"A":{"organization_id":"org-a","cycle_id":"cycle-a","grant_usd":"50.00","remaining_usd":"50.00","reconciled_spent_usd":"0","starts_at":%d,"expires_at":%d,"observed_at":%d,"source":"operator-console-snapshot","exclusive_org":true,"discrepancy":false}}}' $((now-1000)) $((now+3600)) "$now" > "$RL/snapshot.json"
@@ -1003,6 +1009,7 @@ if (process.argv[2] === 'pick') {
   console.log('{}');
 }
 EOF
+: > "$REPO/scripts/lib/api-roles.mjs"  # the stub tree has no role map: an empty module prints no accounts, as no roles.json does
 chmod +x "$REPO/scripts/graphify/semantic-batch-shim.mjs"
 export BATCH_STUB_WS="$WS"
 run_batch() { env HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT="${ACCT:-A}" PATH="$WS/bin:$PATH" bash "$SCRIPT" "$@" 2>&1; }
@@ -1102,6 +1109,72 @@ out=$(GRAPHIFY_API_BATCH=0 GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77 --co
 [ "$rc" -eq 2 ] && [[ "$out" == *"a batch is pending"* ]] && [ "$(ids "$C77")" = "$before" ] && [ -f "$C77/graphify-out/semantic-batch/batch.json" ] \
   && ! grep -q '^graphify extract' "$WS/calls.log" \
   && pass "T77 exit 2, the pending batch and the graph are untouched, nothing extracted" || fail "T77 (rc=$rc): $out / $(cat "$WS/calls.log")"
+
+# --- the role map (roles.json beside the account config) narrows the auto batch pick ---
+# These rows run the REAL api-credit-state.mjs and api-roles.mjs over a temp config and snapshot (A, B and C all
+# roomy, A expiring first); only the batch client stays the stand-in. The stub credit-state is put back afterwards.
+cp "$REPO/scripts/lib/api-credit-state.mjs" "$WS/credit-state.stub.mjs"
+RC="$WS/roles-cfg"
+roles_fixture() {
+  rm -rf "$RC"; mkdir -p "$RC"
+  local now; now=$(date +%s)
+  printf '{"version":1,"ledger_path":"%s","accounts":{"A":{"organization_id":"org-a","cycle_id":"cycle-a","cap_usd":"50.00","reset_at":"2099-01-01T00:00:00Z"},"B":{"organization_id":"org-b","cycle_id":"cycle-b","cap_usd":"50.00","reset_at":"2099-01-01T00:00:00Z"},"C":{"organization_id":"org-c","cycle_id":"cycle-c","cap_usd":"50.00","reset_at":"2099-01-01T00:00:00Z"}}}' "$RC/ledger.json" > "$RC/config.json"
+  local l i=0
+  { printf '{"version":1,"accounts":{'
+    for l in A B C; do
+      [ "$i" -eq 0 ] || printf ','
+      printf '"%s":{"organization_id":"org-%s","cycle_id":"cycle-%s","grant_usd":"50.00","remaining_usd":"50.00","reconciled_spent_usd":"0","starts_at":%d,"expires_at":%d,"observed_at":%d,"source":"operator-console-snapshot","exclusive_org":true,"discrepancy":false}' \
+        "$l" "$(echo "$l" | tr A-C a-c)" "$(echo "$l" | tr A-C a-c)" $((now-1000)) $((now+3600+i*3600)) "$now"
+      i=$((i+1))
+    done
+    printf '}}'; } > "$RC/snapshot.json"
+  export HIMMEL_API_CREDIT_CONFIG="$RC/config.json" HIMMEL_API_CREDIT_SNAPSHOT="$RC/snapshot.json"
+}
+roles_real_on() { cp "$REAL_REPO/scripts/lib/api-credit-state.mjs" "$REAL_REPO/scripts/lib/api-roles.mjs" "$REPO/scripts/lib/"; }
+roles_real_off() { cp "$WS/credit-state.stub.mjs" "$REPO/scripts/lib/api-credit-state.mjs"; : > "$REPO/scripts/lib/api-roles.mjs"; unset HIMMEL_API_CREDIT_CONFIG HIMMEL_API_CREDIT_SNAPSHOT; }
+batch_accounts() { sed -n 's/^submit account=\([A-C]\) .*/\1/p' "$WS/batch.log" | tr '\n' ' '; }
+
+echo "T77a: no roles.json, auto batch submits on A (the earliest-expiring), as before the role map"
+roles_fixture; roles_real_on
+C77A="$REPO/c77a"; new_corpus "$C77A"; batch_reset
+out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77a --corpus-root "$C77A" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "A " ] && pass "T77a one submit, on A" || fail "T77a (rc=$rc) accounts '$(batch_accounts)': $out"
+
+echo "T77b: a non-JSON roles.json is decision 525 too: the batch submits on A"
+roles_fixture; roles_real_on; printf '{not json' > "$RC/roles.json"
+C77B="$REPO/c77b"; new_corpus "$C77B"; batch_reset
+out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77b --corpus-root "$C77B" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "A " ] && pass "T77b one submit, on A" || fail "T77b (rc=$rc) accounts '$(batch_accounts)': $out"
+
+echo "T77c: graphify mapped to C narrows the auto batch to C"
+roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["C"]}}' > "$RC/roles.json"
+C77C="$REPO/c77c"; new_corpus "$C77C"; batch_reset
+out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77c --corpus-root "$C77C" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "C " ] && pass "T77c one submit, on C" || fail "T77c (rc=$rc) accounts '$(batch_accounts)': $out"
+
+echo "T77d: graphify mapped to C and C credit-exhausted: exactly two submits, both on C, none on A or B, rc 5"
+roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["C"]}}' > "$RC/roles.json"
+C77D="$REPO/c77d"; new_corpus "$C77D"; batch_reset
+out=$(ACCT=auto BATCH_STUB_EXHAUSTED=C GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77d --corpus-root "$C77D" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 2 ] && [[ "$out" == *"submitting the batch failed (rc 5)"* ]] && [ "$(batch_accounts)" = "C C " ] \
+  && pass "T77d two submits, both on C, the batch failed with rc 5" || fail "T77d (rc=$rc) accounts '$(batch_accounts)': $out"
+
+echo "T77e: a role mapped to a letter with no roster row refuses the batch, never widening to A or B"
+roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["C"]}}' > "$RC/roles.json"
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); del d["accounts"]["C"]; json.dump(d, open(p,"w"))' "$RC/config.json"
+C77E="$REPO/c77e"; new_corpus "$C77E"; batch_reset
+out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77e --corpus-root "$C77E" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 2 ] && [ ! -s "$WS/batch.log" ] && [[ "$out" == *"no-role-account-configured"* ]] \
+  && pass "T77e refused, nothing submitted" || fail "T77e (rc=$rc) log '$(cat "$WS/batch.log")': $out"
+
+echo "T77f: RED control: the real role reader and fixture over a credit-state that ignores --only submits the C-mapped batch on A"
+roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["C"]}}' > "$RC/roles.json"
+sed 's/!only?.length || only.includes(account)/true/' "$REAL_REPO/scripts/lib/api-credit-state.mjs" > "$REPO/scripts/lib/api-credit-state.mjs"
+cmp -s "$REAL_REPO/scripts/lib/api-credit-state.mjs" "$REPO/scripts/lib/api-credit-state.mjs" && fail "T77f the control copy still filters by --only"
+C77F="$REPO/c77f"; new_corpus "$C77F"; batch_reset
+out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77f --corpus-root "$C77F" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$(batch_accounts)" = "A " ] && pass "T77f without the --only filter the batch submits on A, so T77c is a real check" || fail "T77f accounts '$(batch_accounts)' (rc=$rc): $out"
+roles_real_off
 
 echo "T78: a .graphifyignore naming a planned file strands nothing: the planner is the only selector"
 C78="$WS/c78"; new_corpus "$C78"; printf 'b.md\n' > "$C78/.graphifyignore"

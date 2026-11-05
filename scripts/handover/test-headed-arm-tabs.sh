@@ -19,7 +19,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"; SCRIPT="$HERE/headed-arm.sh"
-unset HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER HIMMEL_WORKER_SESSION_TABS HIMMEL_CONSOLE_NAME 2>/dev/null || true
+unset HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_LAUNCHER_ENV_LINES HEADED_ARM_RECORDER HIMMEL_WORKER_SESSION_TABS HIMMEL_CONSOLE_NAME 2>/dev/null || true
 export HEADED_ARM_UNAME=Linux
 export UNGUARDED_LAUNCH_OK=1  # scratch fixtures are not a guarded folder
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/headed-arm-tabs-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }

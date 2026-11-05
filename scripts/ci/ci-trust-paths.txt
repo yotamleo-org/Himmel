@@ -25,12 +25,18 @@
 ^scripts/handover/(console|chief)-kit/go\.sh$
 # The scripted GO: auto-go.sh repeats the chief's GO checks and, from slice A1b, writes the GO.
 ^scripts/handover/chief-kit/auto-go\.sh$
+# The silent-worker merge: silent-go-merge.sh runs merge-on-green.sh on a GO'd PR whose worker went silent.
+^scripts/handover/chief-kit/silent-go-merge\.sh$
+^scripts/handover/chief-kit/test-silent-go-merge\.sh$
 # The merge-forward gate and the flag-free planner and graph it runs (the flag-reading planner wrapper stays off).
 ^scripts/handover/merge-forward-check\.sh$
 ^scripts/handover/chief-kit/chain-plan-core\.sh$
 ^scripts/handover/chief-kit/chain-graph\.py$
 # The list of files the holds register never holds; chain-graph.py reads its row registries from it, so a line added there loosens a trust decision.
 ^scripts/handover/chief-kit/holds-exempt\.txt$
+# The single-writer barrier: the register's CLI, and the write hook that answers from it.
+^scripts/handover/chief-kit/holds\.py$
+^scripts/hooks/check-write-hold\.sh$
 # The fork and adopted-repo allowlists a go.sh --repo GO is signed against.
 ^scripts/guardrails/himmel-(adapters|adopted)\.json$
 ^scripts/check-ci\.sh$
@@ -38,6 +44,8 @@
 ^scripts/cr/anchor-handoff\.sh$
 ^scripts/cr/clear-review-marker\.sh$
 ^scripts/cr/ledger-amend-auth\.js$
+^scripts/cr/blast-scope\.cjs$
+^scripts/ci/outside-lint-surface\.txt$
 ^scripts/hooks/check-commit-msg\.sh$
 
 # Hook wiring and the pre-commit gate set.

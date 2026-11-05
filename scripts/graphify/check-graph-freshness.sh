@@ -65,6 +65,10 @@
 #
 # Usage:
 #   check-graph-freshness.sh --out <graphify-out dir> [--max-age-days N] [--corpus-root <path>]
+#   check-graph-freshness.sh --out <graphify-out dir> --print-built-at
+#     prints graph.json's built_at_commit when it is a literal commit SHA and
+#     exits 0; prints nothing and exits 2 otherwise. No other check runs
+#     (himmel-update.sh's graph-data fetch reads it).
 #
 # Exit: 0 ok; 1 stale (warn) / usage; 2 fail (missing/orphaned/unparseable); 3 semantic refresh stuck.
 set -euo pipefail
@@ -72,18 +76,42 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REFRESH="$HERE/refresh-graph-map.sh"
 
-OUT="" MAX_AGE_DAYS=7 CORPUS_ROOT=""
-usage() { echo "usage: check-graph-freshness.sh --out <graphify-out dir> [--max-age-days N] [--corpus-root <path>]" >&2; exit 1; }
+OUT="" MAX_AGE_DAYS=7 CORPUS_ROOT="" PRINT_BUILT_AT=0
+usage() { echo "usage: check-graph-freshness.sh --out <graphify-out dir> [--max-age-days N] [--corpus-root <path>] | --print-built-at" >&2; exit 1; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --out) OUT="${2:-}"; shift 2 ;;
     --max-age-days) MAX_AGE_DAYS="${2:-}"; shift 2 ;;
     --corpus-root) CORPUS_ROOT="${2:-}"; shift 2 ;;
+    --print-built-at) PRINT_BUILT_AT=1; shift ;;
     -h|--help) usage ;;
     *) echo "check-graph-freshness: unknown flag: $1" >&2; usage ;;
   esac
 done
 [ -n "$OUT" ] || usage
+
+# built_at_commit is UNTRUSTED graph.json content (codex CR): must look
+# like a literal commit SHA (hex, 7-40 chars) before it ever reaches git,
+# or a value like "HEAD" (a ref, not the actual built commit) or "--all"
+# (a git OPTION, not a revision — `git log --all` silently swallows it)
+# would resolve to an unrelated, often-fresher timestamp and falsely mark
+# a stale graph as fresh. Prints nothing for anything else.
+built_at_commit() {
+  python3 -c 'import json,re,sys
+try:
+    d = json.load(open(sys.argv[1], encoding="utf-8"))
+except (OSError, ValueError, UnicodeError):
+    sys.exit(0)
+c = d.get("built_at_commit") if isinstance(d, dict) else None
+if isinstance(c, str) and re.fullmatch(r"[0-9a-fA-F]{7,40}", c):
+    print(c)' "$1" 2>/dev/null || true
+}
+if [ "$PRINT_BUILT_AT" -eq 1 ]; then
+  _bac="$(built_at_commit "$OUT/graph.json")"
+  [ -n "$_bac" ] || exit 2
+  printf '%s\n' "$_bac"
+  exit 0
+fi
 case "$MAX_AGE_DAYS" in
   ''|*[!0-9]*) echo "check-graph-freshness: --max-age-days must be a non-negative integer, got: $MAX_AGE_DAYS" >&2; exit 1 ;;
 esac
@@ -342,20 +370,8 @@ AGE_FILE="$OUT/graph.json"
 
 AGE_EPOCH=""
 if [ -f "$OUT/graph.json" ]; then
-  # built_at_commit is UNTRUSTED graph.json content (codex CR): must look
-  # like a literal commit SHA (hex, 7-40 chars) before it ever reaches git,
-  # or a value like "HEAD" (a ref, not the actual built commit) or "--all"
-  # (a git OPTION, not a revision — `git log --all` silently swallows it)
-  # would resolve to an unrelated, often-fresher timestamp and falsely mark
-  # a stale graph as fresh. Reject anything else here, before it's used.
-  BUILT_COMMIT="$(python3 -c 'import json,re,sys
-try:
-    d = json.load(open(sys.argv[1], encoding="utf-8"))
-except (OSError, ValueError, UnicodeError):
-    sys.exit(0)
-c = d.get("built_at_commit") if isinstance(d, dict) else None
-if isinstance(c, str) and re.fullmatch(r"[0-9a-fA-F]{7,40}", c):
-    print(c)' "$OUT/graph.json" 2>/dev/null || true)"
+  # built_at_commit() rejects anything but a literal SHA before it is used.
+  BUILT_COMMIT="$(built_at_commit "$OUT/graph.json")"
   if [ -n "$BUILT_COMMIT" ]; then
     AGE_EPOCH="$(git -C "$CORPUS_RESOLVED" log -1 --format=%ct "$BUILT_COMMIT" -- 2>/dev/null || true)"
   fi

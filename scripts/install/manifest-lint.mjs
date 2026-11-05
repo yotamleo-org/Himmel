@@ -234,7 +234,9 @@ const ITEM_KEYS = ['id', 'kind', 'scopes', 'profiles', 'deps', 'probe'];
 // `noNetwork` declares that the item's OWN install primitive was
 // traced to local file writes only, so `himmelctl ensure --no-network` may run
 // it. Deny by default: absent means refused. Only `wire` installs qualify.
-const OPTIONAL_ITEM_KEYS = ['install', 'unwire', 'removable', 'offboard', 'contributorScopes', 'provenance', 'noNetwork'];
+// `healthScope` ('shared' | 'project') and `repo` (the repo a project-scope
+// item judges) feed the config UI's Health page; both optional.
+const OPTIONAL_ITEM_KEYS = ['install', 'unwire', 'removable', 'offboard', 'contributorScopes', 'provenance', 'noNetwork', 'healthScope', 'repo'];
 const INSTALL_TYPES = ['adopt', 'setup', 'wire', 'plugins', 'qmd', 'dep', 'build', 'config', 'observability'];
 const UNWIRE_TYPES = ['wire'];
 const SCOPES_ENUM = ['project', 'user'];
@@ -927,6 +929,12 @@ function lint(manifest) {
       } else {
         errors.push(`${label}: 'contributorScopes' must be an array`);
       }
+    }
+    if (Object.prototype.hasOwnProperty.call(it, 'healthScope') && !['shared', 'project'].includes(it.healthScope)) {
+      errors.push(`${label}: 'healthScope', when present, must be 'shared' or 'project'`);
+    }
+    if (Object.prototype.hasOwnProperty.call(it, 'repo') && !(typeof it.repo === 'string' && it.repo !== '')) {
+      errors.push(`${label}: 'repo', when present, must be a non-empty string`);
     }
     if (Array.isArray(it.profiles)) {
       for (const p of it.profiles) {

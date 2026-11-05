@@ -55,10 +55,11 @@ git init -q --bare "$tmp/origin.git"
 git init -q "$ANCHOR"
 mkdir -p "$ANCHOR/scripts/lib" "$ANCHOR/scripts/guardrails"
 cp "$HERE/../../lib/go-gate.sh" "$ANCHOR/scripts/lib/go-gate.sh"
-# ready-check's check 17 runs the anchor's impacted-suites.sh
+# ready-check's check 19 runs the anchor's impacted-suites.sh
 mkdir -p "$ANCHOR/scripts/cr"
 cp "$HERE/../../cr/impacted-suites.sh" "$HERE/../../cr/anchor-handoff.sh" "$ANCHOR/scripts/cr/"
 cp "$HERE/../../lib/review-default-base.sh" "$ANCHOR/scripts/lib/"
+cp "$HERE/../../lib/pr_remainder.py" "$ANCHOR/scripts/lib/pr_remainder.py"
 printf '[]\n' > "$ANCHOR/scripts/guardrails/himmel-adapters.json"
 printf '[]\n' > "$ANCHOR/scripts/guardrails/himmel-adopted.json"
 git -C "$ANCHOR" add -A
@@ -84,6 +85,9 @@ case "$*" in
             "${STUB_PR_STATE:-OPEN}" "${STUB_PR_HEAD:-$READY_STUB_HEAD}" "${STUB_PR_BASE:-main}"; exit 0 ;;
     "pr view "*"--json headRefOid,state"*) cat "$STUB_GC/head-$3.json" 2>/dev/null || exit 1; exit 0 ;;  # read-sink-ok: the stub reads its own fixture dir
     "pr view "*"--json title"*) printf '%s\n' "${STUB_TITLE:-fix(x): [HIMMEL-1] t (#1)}"; exit 0 ;;
+    # a keyed title makes ready-check read the head and author; neither stub answers them otherwise and the two bounce the call forever
+    "pr view "*"--json headRefOid --jq"*) printf '%s\n' "$READY_STUB_HEAD"; exit 0 ;;
+    "pr view "*"--json author"*) printf 'someone\n'; exit 0 ;;
     *"contents/scripts/ci/ci-trust-paths.txt"*) printf '^scripts/ci/\n'; exit 0 ;;
     "api repos/"*"/pulls/"*"/commits"*)
         [ "${STUB_COMMITS_FAIL:-0}" = 1 ] && exit 1
@@ -176,7 +180,7 @@ printf 'c\n' > "$READY_REPO/docs/c.md"
 rgit add -A && rgit commit -qm base
 JUDGED=$(rgit rev-parse HEAD)
 rgit update-ref refs/remotes/origin/main "$JUDGED"
-# check 17 fetches origin/main and reads origin/main..<head>: real heads on JUDGED
+# check 19 fetches origin/main and reads origin/main..<head>: real heads on JUDGED
 ready_pass_origin "$READY_REPO" "$JUDGED"
 SHA=$(ready_pass_repo "$READY_REPO") || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 SHA2=$(ready_pass_repo "$READY_REPO" 2) || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
@@ -325,6 +329,26 @@ check    "clean: no GO written, so no qid, delta, go_file or bus" "$(last_row | 
 nogo     "clean"
 run --dry-run 77 "$SHA"
 check    "a second run appends a second row" "$(audit_rows)" "2"
+
+# --- 3b. the completion contract: the brief's `Completes ticket:` line, read before any record or GO is written ---
+# A keyed PR under contract no with no recorded remainder is the merge's exit 26; ready-go refuses it at check 3,
+# so no delta no-op record and no GO file exist. The same PR with `Completes ticket: yes` passes.
+export READY_STUB_TITLE='fix(x): [HIMMEL-1] a partial change'
+run --dry-run 77 "$SHA"
+esc      "contract no, no remainder" 3
+contains "contract no, no remainder: the escalation names item 17" "$OUT" "17."
+check    "contract no, no remainder: no verdict record written" "$(find "$VDIR" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
+export READY_STUB_BODY=$'## Ticket coverage\n- ask: done\n\nRemaining: the docs follow\n\nRED then GREEN: the new row failed before the change\n'
+run --dry-run 77 "$SHA"
+check    "contract no, with a Remaining line: exit 0" "$RC" "0"
+check    "contract no, with a Remaining line: WOULD-GO" "$OUT" "WOULD-GO 77 $SHA"
+unset READY_STUB_BODY
+write_fixtures native "" "" ; printf '# worker\n\n> **Completes ticket:** yes\n' > "$WORKER"
+run --dry-run 77 "$SHA"
+check    "contract yes, no remainder: exit 0" "$RC" "0"
+check    "contract yes, no remainder: WOULD-GO" "$OUT" "WOULD-GO 77 $SHA"
+unset READY_STUB_TITLE
+reset
 
 # --- 4/1. check 1: a lane the chief merges for -----------------------------------------
 write_fixtures claudex;  run --dry-run 77 "$SHA";  esc "check 1 claudex worker" 1
@@ -644,7 +668,7 @@ would() { # <label> <head>
 }
 # delta-class.sh and the NO-GO order check read the anchor checkout's git, not the cwd's.
 # Check 5 alone, with ready-go.sh stubbed (a symlinked tree copy whose ready-go.sh prints a pass):
-# the real ready-go's check 17 fetches the PR head into the cwd, so only here does the cwd never hold it.
+# the real ready-go's check 19 fetches the PR head into the cwd, so only here does the cwd never hold it.
 RGK="$tmp/rgk"; mkdir -p "$RGK/scripts/handover/chief-kit"
 for rgkd in "$HERE/../.."/*; do [ "$(basename "$rgkd")" = handover ] || ln -s "$rgkd" "$RGK/scripts/$(basename "$rgkd")"; done
 for rgkf in "$HERE/.."/*; do [ "$(basename "$rgkf")" = chief-kit ] || ln -s "$rgkf" "$RGK/scripts/handover/$(basename "$rgkf")"; done
@@ -658,7 +682,7 @@ gofresh; verdict qj "**GO** for head \`$NDOC2\`."
 rgk_keep="$SCRIPT"; SCRIPT="$RGK/scripts/handover/chief-kit/auto-go.sh"
 drun "$ASIDE"; would "8478 check 5 alone classifies the delta in the anchor checkout (the cwd never holds the head)" "$ASIDE"
 SCRIPT="$rgk_keep"
-# the two rows below run the real ready-go: its check 17 fetches the head as GitHub serves it, refs/pull/77/head
+# the two rows below run the real ready-go: its check 19 fetches the head as GitHub serves it, refs/pull/77/head
 git -C "$SIDE" push -q "$READY_REPO/.git/ready-pass-origin.git" "$ASIDE:refs/pull/77/head"
 gofresh; verdict qj "**GO** for head \`$NDOC2\`."
 drun "$ASIDE"; would "8478 the delta is classified in the anchor checkout (a head only it holds)" "$ASIDE"

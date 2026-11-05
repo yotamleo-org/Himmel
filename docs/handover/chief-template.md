@@ -74,12 +74,13 @@ Run these, in order, and write the result as the first bullet under
     re-invokes you when it exits:
     `bash scripts/handover/chief-kit/chief-wait.sh "{{INBOX}}" --doc "<this file>" --token <your token> --workers "<absolute worker docs>" [--succession {{SESSION_NAME}}]`
     It exits on the first real event (`WAKE telegram | tick | underfilled |
-    tick-fail`), so an idle chief takes **zero** turns; a WAKE may add an
+    tick-fail | worker-silent`), so an idle chief takes **zero** turns; a WAKE may add an
     `absorbed since last wake:` wraps/merges line. **Re-start it in the
     turn that handles each wake and on every dispatch and wrap** (`TaskStop` the
-    old one, absolute worker doc paths) or you go deaf. Record the task id in your
-    first bullet; `cat "<inbox>.wait"` is its heartbeat. Wake keys, heartbeat
-    states, fleet-manifest arming: `chief-sections/waiter.md`.
+    old one, absolute worker doc paths) or you go deaf. On `worker-silent` relaunch
+    that worker from a RESUME doc or run its blocked step yourself, then tell the
+    operator which. Record the task id in your first bullet (`cat "<inbox>.wait"` is the
+    heartbeat); wake keys, states, fleet-manifest arming: `chief-sections/waiter.md`.
     **Your manifest:** `{{FLEET_MANIFEST}}` — {{FLEET_MANIFEST_NOTE}}.
 11. **Open your Telegram inbox.** Operator writes `/chief {{SESSION_NAME}} <text>`; `/chief` or `chief:<project>` reaches
     the newest chief, who owns it, asking older ones by bus. The bridge appends only to an
@@ -93,8 +94,9 @@ Run these, in order, and write the result as the first bullet under
     and is never a GO: read `chief-sections/voice-lines.md` first.
 12. **Render the chief board (local only):**
     `node "{{KIT}}/board.mjs" --doc "<this file>" --changed` prints `CHANGED <path>`
-    or `UNCHANGED <path>`; record that path on `board:` below. Never publish it
-    (`Artifact` is denied). Tracker (if `tracker:` set): `chief-sections/board-tracker.md`.
+    or `UNCHANGED <path>`; record it on `board:`, never publish it (`Artifact` is denied).
+    The operator opens it live in the AG-UI Fleet page (`himmelctl ui --agui`); a
+    `board-section.mjs` note shows there in about 5 s, no reload. Notes, tracker: `chief-sections/board-tracker.md`.
 13. **Never call `AskUserQuestion`:** it hangs you and every waiting worker;
     decide on a stated default instead.
 
@@ -189,16 +191,10 @@ matches a pattern in `scripts/ci/ci-trust-paths.txt`** needs adversarial review 
 tag is `cut-tag.sh <version> <sha>` (`--dry-run` first). These and the
 merged-docs list: `chief-sections/merges.md`.
 
-**17. suite evidence.** Every impacted suite of `origin/main..<head>` (the anchor's
-`impacted-suites.sh`) needs proof at the exact head: a `local_pass` or ruled SKIP
-in the head's `impacted` ledger row, or an exact `ran 0 <path>` line in a shard
-manifest of the CI run behind the latest `SUCCESS` `shell-unit (ubuntu-latest)`
-check-run, whose run is at the head. A PR-body `Local suites: <path>` line needs
-the local PASS even when CI proved the suite. The PASS line names every ruled SKIP
-(`SUITE <p> = SKIP ruled <chief-session> <reason>`): read each one before GO. With
-no row, run pr-check step 3.6 for that head yourself. A red CI run at the head adds
-one row per failed suite left to CI to `~/.himmel/state/suite-evidence/ci-failures.jsonl`;
-`scripts/cr/suite-fail-ledger.sh` prints the failure count and extra-round rate.
+**19. suite evidence.** Every impacted suite of `origin/main..<head>` needs proof at the
+exact head: `local_pass` or a ruled SKIP in the head's `impacted` ledger row, or a `ran 0 <path>`
+line in the CI shard manifests (`docs/internals/validation-gates.md`). Read each ruled SKIP the
+PASS line names before GO. No row: run pr-check step 3.6 for that head yourself.
 
 ## Wrapping a worker
 
@@ -239,8 +235,8 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
 
 1. `/chief next --arm --doc "{{STATE_DIR}}/{{SESSION_NAME}}.md" --bucket {{BUCKET}} --prefix {{PREFIX}} --model '{{MODEL}}'`
    writes the successor stub and this chief's `-HANDOFF.md` skeleton and arms
-   the successor. **Name your own document, bucket, prefix and model**, or `next`
-   picks the wrong doc, bucket or model (continue on **{{MODEL}}**). The `armed:`
+   the successor. **Name your own document, bucket, prefix and model** (continue on
+   **{{MODEL}}**), or `next` picks wrong ones. The `armed:`
    line prints the successor's signal path: step 3 touches **that**, not
    `{{FILL_SIGNAL}}`.
 2. `next` seeds `## Live state` into the successor doc. Fill in the HANDOFF by hand:
@@ -258,13 +254,14 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
    Never re-run it (it resends). It carries no fresh token: native and claudex
    workers are not rotated; `--fresh` hands one. Then send the successor
    `RELAYED <n> of <m>` naming any still unrelayed.
-5. **Wait for the successor's `LIVE` before you release your lock and stop**: it is
-   the only confirmation that ACTION ZERO completed, and it names any workers that
-   did not quote back, and why. Relay any worker it names as not relayed, then
-   wrap with **one** command, which writes `WRAPPED` and releases the lock:
+5. **Re-arm the muted waiter once, read nothing, end your turn; the successor's
+   `LIVE` wakes you, then release your lock and stop**: it alone
+   confirms ACTION ZERO completed and names workers that did not quote back,
+   and why. Relay any worker it names as not relayed, then
+   wrap with **one** command (writes `WRAPPED`, releases the lock):
    `bash scripts/handover/chief/chief.sh wrap "{{STATE_DIR}}/{{SESSION_NAME}}.md" <release-token> '<one line>'`.
-   It refuses (exit 4) while any subagent of yours is
-   running: wait, persist the verdict with `write-verdict.sh`, re-run.
+   It refuses (exit 4) while a subagent of yours
+   runs: wait, persist the verdict with `write-verdict.sh`, re-run.
 
 Write every bullet below with
 `bash scripts/handover/chief-kit/append-results.sh <doc> '<text>'`. A bullet

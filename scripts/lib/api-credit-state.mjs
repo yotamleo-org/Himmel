@@ -19,7 +19,7 @@ const MAX_AGE = 600;
 // A config account may override it with reset_at for the next cycle.
 export const GRANT_RESET_AT = { A: '2026-11-01T00:00:00Z', B: '2026-11-01T00:00:00Z' };
 // C ranks like A and B; its config row carries its own reset_at (no default date).
-const ACCOUNTS = ['A', 'B', 'C'];
+export const ACCOUNTS = ['A', 'B', 'C'];
 // Auto routing prefers a snapshot younger than this: the ledger cannot see spend billed outside it.
 // An older operator snapshot still routes (flagged snapshot_stale) while its estimate has headroom.
 const ROUTE_MAX_AGE = 86400;
@@ -241,7 +241,7 @@ function save(statePath, state, lock, sentinels) {
 }
 
 const stateRoot = () => join(userInfo().homedir, '.himmel/state/api-credit');
-const configPathFor = (env) => resolve(env.HIMMEL_API_CREDIT_CONFIG || join(stateRoot(), 'config.json'));
+export const configPathFor = (env) => resolve(env.HIMMEL_API_CREDIT_CONFIG || join(stateRoot(), 'config.json'));
 
 // the secret-free roster entry for HIMMEL_API_ACCOUNT, or a refusal.
 export function configuredAccount(env = process.env) {
@@ -381,18 +381,24 @@ export function creditState(command, options = {}, env = process.env) {
 // serves, so a pick is never refused for that. An account with an old or no reading whose own estimate has no
 // room still serves (over_estimate): the estimate never refuses a start, only the API's credit answer does.
 // A fresh reading with too little left still refuses.
-export function pickAccount(budget, env = process.env) {
+// A credit-exhausted marker still in force: within the TTL and no newer reading.
+const markedExhausted = (r, now) => Number.isInteger(r.exhausted_at) && now - r.exhausted_at < EXHAUSTED_TTL
+  && !(Number.isInteger(r.observed_at) && r.observed_at > r.exhausted_at);
+
+// `only` narrows the candidates to a role's accounts; ranking inside the list is unchanged.
+export function pickAccount(budget, env = process.env, only) {
   try {
     const need = money(budget);
     const config = read(configPathFor(env));
     configs(config);
     const pickEnv = { ...env, HIMMEL_API_SNAPSHOT_OPTIONAL: '1' };
     const now = Math.floor(Date.now() / 1000);
-    const all = Object.keys(config.accounts).sort()
+    const letters = Object.keys(config.accounts).sort().filter((account) => !only?.length || only.includes(account));
+    if (letters.length === 0) return { verdict: 'SKIPPED-BANK', reason: 'no-role-account-configured' };
+    const all = letters
       .map((account) => creditState('status', { usd: budget }, { ...pickEnv, HIMMEL_API_ACCOUNT: account }));
     const roomy = all.filter((r) => r.verdict === 'PROCEED' && money(r.available_est_usd) >= need);
-    const marked = (r) => Number.isInteger(r.exhausted_at) && now - r.exhausted_at < EXHAUSTED_TTL
-      && !(Number.isInteger(r.observed_at) && r.observed_at > r.exhausted_at);
+    const marked = (r) => markedExhausted(r, now);
     const byExpiry = (x, y) => x.expires_at - y.expires_at;
     const open = roomy.filter((r) => !marked(r));
     const fresh = open.filter((r) => !r.snapshot_stale).sort(byExpiry);
@@ -414,6 +420,37 @@ export function pickAccount(budget, env = process.env) {
   } catch (e) {
     return { verdict: e.verdict || 'BANK-UNKNOWN', reason: e.verdict ? e.message : 'state-io-failure' };
   }
+}
+
+// The letters with a roster row; throws through refuse on an unreadable or invalid config.
+export function configuredLetters(env = process.env) {
+  const config = read(configPathFor(env));
+  configs(config);
+  return Object.keys(config.accounts);
+}
+
+// One row per account letter for the config UI: configured, cap and a bank tag (spec 5). Secret-free: no
+// organization, cycle or key id leaves this function. An unreadable roster is one object, not rows.
+export function accountTags(env = process.env) {
+  let config;
+  try { config = read(configPathFor(env)); configs(config); } catch (e) {
+    return { accounts: 'unreadable', reason: e.verdict ? e.message : 'state-io-failure' };
+  }
+  let snapshot = null;
+  try { snapshot = read(env.HIMMEL_API_CREDIT_SNAPSHOT || join(stateRoot(), 'snapshot.json')); } catch { /* no reading */ }
+  const now = Math.floor(Date.now() / 1000);
+  return ACCOUNTS.map((account) => {
+    if (!own(config.accounts, account)) return { account, configured: false, cap_usd: null, tag: 'not configured' };
+    const base = { account, configured: true, cap_usd: usd(money(config.accounts[account].cap_usd)) };
+    const r = creditState('status', {}, { ...env, HIMMEL_API_ACCOUNT: account, HIMMEL_API_SNAPSHOT_OPTIONAL: '1' });
+    if (r.verdict !== 'PROCEED' && r.verdict !== 'SKIPPED-BANK') return { ...base, tag: 'unknown', reason: r.reason };
+    if (markedExhausted(r, now)) return { ...base, tag: 'marked exhausted' };
+    if (r.verdict === 'SKIPPED-BANK') return { ...base, tag: 'no room' };
+    if (r.over_estimate) return { ...base, tag: 'last resort' };
+    const row = object(snapshot) && object(snapshot.accounts) && own(snapshot.accounts, account) ? snapshot.accounts[account] : null;
+    if (!object(row)) return { ...base, tag: 'no reading' };
+    return { ...base, tag: r.snapshot_stale ? 'stale reading' : 'room' };
+  });
 }
 
 // operator snapshot refresh from a Console reading. The reading
@@ -595,10 +632,12 @@ export async function pullSnapshot(env, account, { fetchImpl = globalThis.fetch 
 function main() {
   const [command, ...args] = process.argv.slice(2);
   if (command === 'pick') {
-    const ok = args.length === 2 && args[0] === '--usd';
-    console.log(JSON.stringify(ok ? pickAccount(args[1]) : { verdict: 'BANK-UNKNOWN', reason: 'invalid-arguments' }));
+    const only = args[2] === '--only' && args.length === 4 ? args[3].split(',') : undefined;
+    const ok = args[0] === '--usd' && (args.length === 2 || (only && only.every((l) => ACCOUNTS.includes(l))));
+    console.log(JSON.stringify(ok ? pickAccount(args[1], process.env, only) : { verdict: 'BANK-UNKNOWN', reason: 'invalid-arguments' }));
     return;
   }
+  if (command === 'accounts') { console.log(JSON.stringify(accountTags(process.env))); return; }
   const options = {};
   for (let i = 0; i < args.length; i += 2) {
     const name = args[i]?.slice(2);

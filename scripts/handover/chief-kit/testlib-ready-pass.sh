@@ -16,6 +16,9 @@ ready_pass_bin() {
     mkdir -p "$1" || return 1
     cat > "$1/gh" <<'STUB'
 #!/usr/bin/env bash
+# READY_STUB_BODY / READY_STUB_TITLE (set, even to empty) replace the PR body and title a suite's GO is written for;
+# the default title carries no [KEY], so a suite that does not care is not a partial merge (ready-check item 17).
+DEFAULT_BODY='## Ticket coverage\n- ask: done\n\nRED then GREEN: the new row failed before the change\n'
 case "$*" in
     "repo view --json owner,name"*) printf '%s main\n' "${READY_STUB_NWO:-o/r}"; exit 0 ;;
     # cr-disposition.sh check (go.sh): the PR's head branch.
@@ -32,13 +35,14 @@ case "$*" in
     *"--json commits"*)
         printf '%s' '[{"messageHeadline":"fix(x): [HIMMEL-1] t (#1)","messageBody":"Platforms tested: linux\nSecurity reviewed: manual"}]'
         exit 0 ;;
-    *"--json body"*) printf '## Ticket coverage\n- ask: done\n\nRED then GREEN: the new row failed before the change\n'; exit 0 ;;
+    *"--json body"*) printf '%b' "${READY_STUB_BODY-$DEFAULT_BODY}"; exit 0 ;;
     'api repos/'*'/pulls/'*) printf '%s\n' "${READY_STUB_HEAD:-}"; exit 0 ;;
     *':pullRequest(number:'*)
-        jq -n --arg h "${READY_STUB_HEAD:-}" --arg args "$*" '
+        jq -n --arg h "${READY_STUB_HEAD:-}" --arg args "$*" --arg b "${READY_STUB_GQL_BRANCH-${READY_STUB_BRANCH:-b}}" --arg t "${READY_STUB_TITLE-fix(x): t (#1)}" \
+            --arg body "$(printf '%b' "${READY_STUB_BODY-$DEFAULT_BODY}")" '
             ($args | capture("p(?<n>[0-9]+):pullRequest").n) as $n |
-            {data:{repository:{("p"+$n):{number:($n|tonumber),headRefOid:$h,mergeStateStatus:"CLEAN",reviewDecision:null,
-                body:"## Ticket coverage\n- ask: done\n\nRED then GREEN: the new row failed before the change\n",
+            {data:{repository:{("p"+$n):{number:($n|tonumber),headRefOid:$h,headRefName:$b,title:$t,mergeStateStatus:"CLEAN",reviewDecision:null,isCrossRepository:false,author:{__typename:"User",login:"yotamleo",id:"U_stub"},
+                body:$body,
                 commits:{nodes:[{commit:{oid:$h,messageHeadline:"fix(x): [HIMMEL-1] t (#1)",messageBody:"Platforms tested: linux\nSecurity reviewed: manual",parents:{totalCount:1}}}],pageInfo:{hasNextPage:false,endCursor:null}},
                 reviewThreads:{nodes:[],pageInfo:{hasNextPage:false,endCursor:null}},
                 statusCheckRollup:{contexts:{nodes:[{__typename:"CheckRun",name:"build",status:"COMPLETED",conclusion:"SUCCESS"}],pageInfo:{hasNextPage:false,endCursor:null}}}
@@ -80,7 +84,7 @@ ready_pass_ledger() {
 }
 
 # ready_pass_origin <repo> [<base>] - give <repo> a bare origin under its
-# git-common-dir whose main is <base> (default HEAD), as ready-check's check 17
+# git-common-dir whose main is <base> (default HEAD), as ready-check's check 19
 # fetches origin/main. A repo with no commit first gets an empty root commit as
 # HEAD, so commits the suite makes later share its history. No-op with an origin.
 ready_pass_origin() {
@@ -98,14 +102,14 @@ ready_pass_origin() {
     git -C "$repo" fetch -q origin "+refs/heads/main:refs/remotes/origin/main"
 }
 
-# ready_pass_repo <repo> [label] - print a real head commit for check 17, which
+# ready_pass_repo <repo> [label] - print a real head commit for check 19, which
 # reads the impacted list of origin/main..<head>: an empty commit on origin's main
 # (0 impacted suites), built with commit-tree, so HEAD never moves past the base.
 # Gives <repo> an origin first (ready_pass_origin). A distinct label, a distinct head.
 ready_pass_repo() {
-    local repo="$1" label="${2:-head}" base
+    local repo="$1" label="${2:-head}" base key=HIMMEL  # the subject's key is data, so it is built here
     ready_pass_origin "$repo" || return 1
     base=$(git -C "$repo" rev-parse refs/remotes/origin/main) || return 1
     GIT_AUTHOR_DATE="@1 +0000" GIT_COMMITTER_DATE="@1 +0000" git -C "$repo" -c user.name=t -c user.email=t@example.com \
-        commit-tree -p "$base" -m "feat(x): [HIMMEL-1] ready-pass $label" "$base^{tree}"
+        commit-tree -p "$base" -m "feat(x): [$key-1] ready-pass $label" "$base^{tree}"
 }

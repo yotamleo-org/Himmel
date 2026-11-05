@@ -156,6 +156,14 @@ out="$(run_shim "$b3" -- --separate --workdir "$wd" \
     -e /bin/sh -c "printf '%s' \"\$1\" > '$spaced'" sh "load handover doc #4 now")"
 check "2e argv value with spaces survives as ONE element" "$(cat "$spaced" 2>/dev/null)" "load handover doc #4 now"
 
+# 2e2: an `env NAME=<value with spaces>` element, the shape headed-arm.sh
+# builds from HEADED_ARM_LAUNCHER_ENV_LINES, reaches the command intact.
+b3b="$tmp/b3b"; mk_open_stub "$b3b" "$tmp/open3b.log"
+spaced2="$tmp/spaced2.txt"; rm -f "$spaced2"
+out="$(run_shim "$b3b" -- --separate --workdir "$wd" \
+    -e env 'HIMMEL_HOLD_DOC=/x/a b/doc.md' /bin/sh -c "printf %s \"\$HIMMEL_HOLD_DOC\" > '$spaced2'")"
+check "2e2 env NAME=<value with spaces> survives as ONE element" "$(cat "$spaced2" 2>/dev/null)" "/x/a b/doc.md"
+
 # --- 2f. ENVIRONMENT: PATH must reach the launched command -------------------
 # codex-review S9: `open -a` does not inherit the launching shell's env, so
 # the shim exports PATH into the generated body. That is one of the two

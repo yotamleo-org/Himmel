@@ -139,6 +139,10 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   'guard-relay-writes.sh',
   // The file-tool twin of the Bash entry above (bus store guard).
   'guard-bus-store.sh',
+  // The single-writer barrier's write hook. LAST in this chain, because it
+  // publishes a row: the chain's first deny short-circuits, so an earlier deny
+  // leaves no row.
+  'check-write-hold.sh',
   // PreToolUse `Edit|Write|NotebookEdit` — its own entry, NOT folded into the
   // chain above: it does not guard MultiEdit, and widening a guard's matcher is
   // not something a launch-count refactor gets to do.

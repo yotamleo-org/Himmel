@@ -153,7 +153,7 @@ export STUB_NWO="o/r"
 . "$HERE/../handover/chief-kit/testlib-ready-pass.sh"
 ready_pass_bin "$ROOT/ready-bin"
 git init -q "$ROOT/ready-repo"
-# check 17 fetches origin/main and reads origin/main..<head>: a real head
+# check 19 fetches origin/main and reads origin/main..<head>: a real head
 SHA=$(ready_pass_repo "$ROOT/ready-repo") || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 export PATH="$ROOT/ready-bin:$PATH" READY_STUB_HEAD="$SHA"
 ready_pass_ledger "$ROOT/ready-repo" "$SHA"

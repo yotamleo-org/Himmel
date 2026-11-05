@@ -352,3 +352,14 @@ a.bd-link{margin-right:10px}.bd-link+.bd-link,.bd-chip+.bd-link{margin-left:10px
 .bd-table{width:100%;font:12.5px var(--mono);border-collapse:collapse}.bd-table th,.bd-table td{text-align:left;padding:4px 6px;border-bottom:1px dashed var(--line);vertical-align:top}
 .bd-brief{white-space:pre-wrap;overflow-wrap:anywhere;font:12px var(--mono)}
 @media (max-width:700px){.bd-trends{grid-template-columns:1fr}.bd-drawer{width:100vw}}
+/* Chief notes strip: density rules of spec 8044 section 3 - a one-line header, a title clamped to two lines with its full text in a data-tip bubble. */
+.bd-notes{margin:6px 0 10px}
+.bd-notes>summary{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;font:600 var(--fs-xs) var(--font-ui);color:var(--dim)}
+.bd-notes-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:var(--s2);margin-top:6px}
+.bd-note{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:var(--s2) var(--s3);min-width:0}
+.bd-note header{display:flex;gap:var(--s2);justify-content:space-between;align-items:flex-start}
+.bd-tip{position:relative;min-width:0;font-weight:600;font-size:13px}
+.bd-note-title .bd-clip{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
+.bd-tip[data-tip]::after{content:attr(data-tip);display:none;position:absolute;left:0;top:100%;z-index:25;width:max-content;max-width:min(320px,80vw);padding:var(--s1) var(--s2);border-radius:6px;background:var(--fg);color:var(--surface);font:var(--fs-xs) var(--font-ui);line-height:1.35;white-space:normal;overflow-wrap:anywhere;pointer-events:none}
+.bd-tip[data-tip]:hover::after,.bd-tip[data-tip]:focus-visible::after{display:block}
+.bd-note-body{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12.5px;max-height:12em;overflow:auto}

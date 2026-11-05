@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
 import { parseReport } from "../reports";
-import { renderReport } from "../public/report.js";
+import { renderReport, reportBar } from "../public/report.js";
 import { renderReports } from "../public/render.js";
 // @ts-expect-error CommonJS module without types
 import { defaultConfig } from "../../himmelctl/lib/luna-config.js";
@@ -201,7 +201,8 @@ const ui = { day: null, shiftHref: "#/shift" };
 
 test("a report draws the day selector, the window bar, five tiles, the open PRs apart and a degraded banner", () => {
   const html = renderReport(LIST, parseReport(GEN, "2026-10-27"), ui);
-  expect(html).toContain('href="#/report?day=2026-10-27"');
+  expect(html).not.toContain("rp-days");
+  expect(reportBar(LIST, parseReport(GEN, "2026-10-27"), ui)).toContain('href="#/report?day=2026-10-27"');
   expect(html).toContain("Day starts: local midnight on the station");
   expect(html).toContain("covers each shift over its own [opened, closed)");
   expect((html.match(/<div class="tile /g) || []).length).toBe(5);
@@ -219,11 +220,46 @@ test("a day with no report says so, and today shows the so-far view instead", ()
   const so = renderReport({ ...LIST, days: ["2026-10-27"], newest: "2026-10-27" }, { state: "none", day: "2026-10-28" }, ui);
   expect(so).toContain("So far today");
   expect(so).toContain("is not a report and is never saved");
-  expect(so).toContain(">so far</a>");
+  expect(reportBar({ ...LIST, days: ["2026-10-27"], newest: "2026-10-27" }, { state: "none", day: "2026-10-28" }, ui)).toContain(">so far</a>");
+});
+
+test("the page bar holds the day picker and a refresh button, empty while the list loads or on an error", () => {
+  const bar = reportBar(LIST, parseReport(GEN, "2026-10-27"), ui);
+  expect(bar).toContain('class="rp-days"');
+  expect(bar).toContain('data-act="report-refresh"');
+  expect(reportBar(null, null, ui)).toBe("");
+  expect(reportBar({ error: "x" }, null, ui)).toBe("");
 });
 
 test("a newest report older than 36 hours warns that the cadence has not run", () => {
   const html = renderReport({ ...LIST, ageHours: 40 }, { state: "none", day: "2026-10-25" }, ui);
   expect(html).toContain("No report since 2026-10-28. The morning-report cadence has not run (doctor: WARN).");
   expect(renderReport(LIST, { state: "none", day: "2026-10-25" }, ui)).not.toContain("No report since");
+});
+
+// the five tiles sit on one line and read their figures after the Commits and Done headings
+const NEW_HEADINGS = GEN.replace("## 💸 Spend per shift", [
+  "## ✅ Completed (3 PRs merged to main)", "", "| PR | Ticket | Summary |", "|---|---|---|", "| #1 | HIMMEL-1 | x |", "", "### Commits (5 on Tue 27 Oct)", "", "```", "abc x", "```", "",
+  "### Moved to Done on Tue 27 Oct (2)", "", "- HIMMEL-2 y", "", "## 🧯 Failure review", "", "Digest window (its own 24 h, not the report day): a to b", "",
+  "| Class | Kind | Rows | Workers | New or recurring | Route |", "|---|---|---|---|---|---|", "| tool/x | tool | 9 | 3 | new | none |", "",
+  "## 💸 Spend per shift"].join("\n"));
+
+test("the five tiles carry the one-line class t5 and no other tile content changes", () => {
+  const html = renderReport(LIST, parseReport(GEN, "2026-10-27"), ui);
+  expect(html).toContain('<div class="tiles t5">');
+});
+
+test("a report with the Commits and Done headings still fills all five tile figures, none a question mark", () => {
+  const html = renderReport(LIST, parseReport(NEW_HEADINGS, "2026-10-27"), ui);
+  const nums = [...html.matchAll(/<span class="num">([^<]*)<\/span>/g)].map((m) => m[1]);
+  expect(nums).toEqual(["3", "1", "2", "4.5", "2"]);
+  expect(html).not.toContain('<span class="num">?</span>');
+});
+
+test("an old report with a Backlog heading draws no Backlog tile, and the failure table gets its own style hook", () => {
+  const old = NEW_HEADINGS.replace("## ▶️ What runs next", "## 📋 Backlog\n\n- **9** Backlog ticket(s)\n\n## ▶️ What runs next");
+  const html = renderReport(LIST, parseReport(old, "2026-10-27"), ui);
+  expect(html).not.toMatch(/<span class="tname">[^<]*Backlog/);
+  expect((html.match(/<div class="tile /g) || []).length).toBe(5);
+  expect(html).toMatch(/<section id="s-\d+" class="p g-carry fr"[^>]*>[\s\S]*?Failure review/);
 });

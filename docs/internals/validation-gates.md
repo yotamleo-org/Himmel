@@ -265,9 +265,32 @@ with publication subject to its permission classifier. The chief's
 `scripts/handover/chief-kit/ready-check.sh` separately refuses a head without
 an `ok` CR-ledger row. These cover publication authorization and automated review readiness.
 
-**17. suite evidence.** A suite CI runs is run once, in CI (HIMMEL-9183): pr-check
+**16. outside-PR full review.** For an outside PR (a fork, a deleted author, or
+an author not on `scripts/ci/ticket-id-internal-authors.txt`; a same-repo Bot is
+not outside), `ready-check.sh` item 16 needs every record at the exact head, so
+a new head starts over:
+
+| Row | Passes when |
+|---|---|
+| 16b | a `round-scope` row with scope `full` for this branch and head (a delta or post-cap delta row FAILs) |
+| 16c | the latest `lint` run of workflow `CI` at the head is `SUCCESS` |
+| 16d | no changed path (either side of a rename) starts with a line of `scripts/ci/outside-lint-surface.txt` |
+| 16e | zero unresolved threads, each resolved by a maintainer, and `check-ci.sh --threads-only` exits 0 within 20 s |
+| 16f | the newest `impacted` row at the head reads exit 0 with no SKIP |
+| 16g | a diff touching the blast scope (`scripts/cr/blast-scope.cjs`) has a `blast` row with status `ran` |
+| 16h | a CodeRabbit commit status of `success` at the head, read within 20 s |
+| 16i | a passed (or flagged) `security-audit` row for this PR and head whose report hash and perspective hash still match |
+
+16h and 16i apply only to an author not in `~/.himmel/outside-contributors.json`
+by login and id; a listed author prints `[SKIP] 16h/16i listed author <login>`.
+16e and 16h run with the `CR_*` overrides unset, so no env widens them. Item 16
+reads its lists from the script's own checkout and fails closed when it cannot
+read one. It is outside `--only 7`, and an org-member PR's output is unchanged.
+The operator's GitHub code-owner approval comes last, after item 16 passes.
+
+**19. suite evidence.** A suite CI runs is run once, in CI: pr-check
 step 3.6 records it `SUITE <p> = CI` (`scripts/cr/pr-check-ref/33-step3-impacted.md`),
-and `ready-check.sh` item 17 needs proof for every impacted suite of
+and `ready-check.sh` item 19 needs proof for every impacted suite of
 `origin/main..<head>` at the exact head:
 
 | Proof | Counts when |
@@ -277,7 +300,7 @@ and `ready-check.sh` item 17 needs proof for every impacted suite of
 | CI | an exact `ran 0 <path>` line in a shard manifest of the run behind the latest `SUCCESS` `shell-unit (ubuntu-latest)` check-run of workflow `CI`, whose `head_sha` is the head |
 
 A PR-body `Local suites: <path>` line needs the local proof even when CI proved
-the suite. Every read is bounded; a read that fails or times out FAILs item 17.
+the suite. Every read is bounded; a read that fails or times out FAILs item 19.
 A red CI run at the head appends one `fail` row per failed suite left to CI to
 `~/.himmel/state/suite-evidence/ci-failures.jsonl`, and a later head of that PR one
 `round` row; `scripts/cr/suite-fail-ledger.sh` prints the failure count and the

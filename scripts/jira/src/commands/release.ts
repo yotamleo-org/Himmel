@@ -1,8 +1,9 @@
 // billed-exempt: the release manager rm-run judge; run by the chief on purpose, bank-preflight gated
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Command } from 'commander';
 import { authHeader, baseUrl, projectKey, request } from '../client.js';
@@ -310,16 +311,136 @@ export const liveJudge: Judge = async (input) => {
   if (!settings) throw new Error('rm-run: profile-settings.sh bare printed no settings path; nothing ruled');
   // An empty cwd, so no project instructions load beside the skill.
   const cwd = mkdtempSync(join(tmpdir(), 'rm-run-judge-'));
+  // A headless run has no session title, so the launch record is found by the session id given here.
+  // The record is best-effort (the helper warns and exits 0); the lane is native, as the code above bills it.
+  const sid = randomUUID();
   try {
-    const out = execFileSync('claude', [
-      '-p', '--settings', settings, '--model', 'opus', '--effort', 'high', '--output-format', 'json', '--permission-mode', 'plan',
+    execFileSync('bash', [join(repoRoot, 'scripts', 'handover', 'launch-record.sh'), `rm-judge-${sid.slice(0, 8)}`, 'bare', 'native', 'release-manager', sid, 'opus'], { stdio: ['ignore', 'ignore', 'inherit'] });
+  } catch (e) {
+    process.stderr.write(`rm-run: launch record not written: ${e instanceof Error ? e.message : String(e)}\n`);
+  }
+  let out: string | undefined;
+  let rc = 1;
+  try {
+    out = execFileSync('claude', [
+      '-p', '--session-id', sid, '--settings', settings, '--model', 'opus', '--effort', 'high', '--output-format', 'json', '--permission-mode', 'plan',
       '--tools', '', '--max-turns', '1', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
-    ], { input: judgePrompt(input, skill), cwd, env: judgeEnv(process.env), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 900_000, stdio: ['pipe', 'pipe', 'inherit'] });
+    ], { input: judgePrompt(input, skill), cwd, env: judgeEnv(process.env), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: JUDGE_TIMEOUT_S * 1000, stdio: ['pipe', 'pipe', 'inherit'] });
+    rc = 0;
     return parseDecisions(out);
+  } catch (e) {
+    rc = typeof (e as { status?: unknown }).status === 'number' ? (e as { status: number }).status : 1;
+    throw e;
   } finally {
+    recordJudgeLaunch(sid, rc, out);
     rmSync(cwd, { recursive: true, force: true });
   }
 };
+
+// The ledger directory the API launcher writes launches.jsonl to (claude-api.sh launch_dir): beside the credit state
+// path when the seam names one, else beside the credit config's ledger_path, else the default state dir.
+function launchLedgerDir(env: NodeJS.ProcessEnv = process.env): string {
+  const home = env.HOME ?? homedir();
+  const stateDir = join(home, '.himmel', 'state', 'api-credit');
+  if (env.HIMMEL_API_CREDIT_STATE) return dirname(resolve(env.HIMMEL_API_CREDIT_STATE));
+  try {
+    const ledger = (JSON.parse(readFileSync(env.HIMMEL_API_CREDIT_CONFIG || join(stateDir, 'config.json'), 'utf8')) as { ledger_path?: unknown }).ledger_path;
+    if (typeof ledger === 'string' && isAbsolute(ledger)) return dirname(ledger);
+  } catch { /* no readable config: the default state dir */ }
+  return stateDir;
+}
+
+// The native judge run's row in launches.jsonl, the one ledger the cost page reads, carrying the session id so the run
+// reconciles with its transcript (scripts/usage/release-judge-reconcile.sh). The cost is the call's own verified
+// total_cost_usd (scripts/api-lane/outcome.mjs's rule), empty when the call failed or printed none. Best-effort like the launch
+// record: a row that cannot be written is said on stderr and the judge goes on.
+function recordJudgeLaunch(sid: string, rc: number, out: string | undefined): void {
+  let cost = '';
+  try {
+    const r = JSON.parse(out ?? '') as { type?: unknown; is_error?: unknown; total_cost_usd?: unknown };
+    if (r && r.type === 'result' && r.is_error === false && typeof r.total_cost_usd === 'number' && Number.isFinite(r.total_cost_usd) && r.total_cost_usd >= 0) cost = r.total_cost_usd.toFixed(6);
+  } catch { /* unparseable output: cost stays empty */ }
+  const row = {
+    ts: new Date().toISOString().slice(0, 19) + 'Z', job_id: '', session_id: sid, account: '', lane: 'native', model: 'opus', budget_usd: '',
+    outcome: rc === 0 ? 'native' : 'native-failed', cost_usd: '', sub_cost_usd: cost, rc, kind: 'judge',
+    input_tokens: null, cache_creation_tokens: null, cache_read_tokens: null, branch: '', head: '', pr: null,
+  };
+  try {
+    const dir = launchLedgerDir();
+    mkdirSync(dir, { recursive: true });
+    appendFileSync(join(dir, 'launches.jsonl'), `${JSON.stringify(row)}\n`);
+  } catch (e) {
+    process.stderr.write(`rm-run: judge launch row not written: ${e instanceof Error ? e.message : String(e)}\n`);
+  }
+}
+
+// The judge reaches the API lane only when the role map (roles.json beside the account config) maps
+// `judge`. The cap and the one timeout every judge call shares (liveJudge's kill, routedJudge's spawn kill and the
+// launcher's own call timeout, so a killed call never holds its reservation for the default hour).
+export const JUDGE_API_BUDGET_USD = 2;
+export const JUDGE_TIMEOUT_S = 900;
+// The outer spawn timeout outlasts the launcher's own call timeout plus its five-second kill grace, so the launcher
+// stops its call and releases the reservation before this process would kill it alone.
+export const JUDGE_SPAWN_TIMEOUT_MS = (JUDGE_TIMEOUT_S + 30) * 1000;
+// judgeEnv strips every HIMMEL_API_ name; these seven pass back: the roster path (it anchors the role map path) and
+// the binary, snapshot, ledger-state, alert and lock-wait seams the launcher's own tests set. Unset, the launcher uses
+// its default. No other name from the caller's API env reaches the judge.
+export const JUDGE_API_PASS_ENV = ['HIMMEL_API_CREDIT_CONFIG', 'HIMMEL_API_CLAUDE_BIN', 'HIMMEL_API_CREDIT_SNAPSHOT',
+  'HIMMEL_API_CREDIT_STATE', 'HIMMEL_API_ALERT_DIR', 'HIMMEL_API_ALERT_CMD', 'HIMMEL_API_LOCK_WAIT_MS'];
+
+// The launcher's repo test compares git common dirs; the call runs from an empty temp cwd, so the judge hands over the
+// one it is: this checkout's, never an input of the call.
+function autoRepoDir(): string {
+  try {
+    return execFileSync('git', ['-C', repoRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch { return ''; }
+}
+
+// The one env for both the role pre-read and the launcher spawn.
+export function judgeApiEnv(processEnv: NodeJS.ProcessEnv, repoDir: string = autoRepoDir()): NodeJS.ProcessEnv {
+  const passed = Object.fromEntries(JUDGE_API_PASS_ENV.filter((k) => processEnv[k] !== undefined).map((k) => [k, processEnv[k]]));
+  return {
+    ...judgeEnv(processEnv), ...passed,
+    HIMMEL_API_LANE: 'on', HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'judge', HIMMEL_API_FALLBACK: 'off', HIMMEL_API_TOOLS: '',
+    HIMMEL_API_CALL_TIMEOUT_S: String(JUDGE_TIMEOUT_S), HIMMEL_API_AUTO_REPO_DIR: repoDir,
+  };
+}
+
+// ponytail: the API judge loads the operator's full plugin set and user memory and has no turn cap (the launcher refuses
+// --settings, --max-turns and --mcp-config); its budget cap (JUDGE_API_BUDGET_USD) and plan mode bound the cost; plan P5
+// proposes a launcher allowlist entry for --settings under the profile settings dir, with a mutation test.
+// ponytail: the pre-read and the launcher read roles.json separately; a hand edit between the two reads can make the
+// launcher refuse on policy after routedJudge saw "mapped", which writes one policy-refusals line and lands on liveJudge;
+// the window is one node start; a UI save landing in that window has the same effect; plan P4's write guard covers
+// agent writes only, not that race.
+// `fallback` is the test seam; production passes nothing and gets liveJudge. Any API-route failure (a policy refusal, no
+// room, an API error, an unparseable reply) ends in the fallback, once: the judge always gets an answer.
+export function makeRoutedJudge(fallback: Judge = liveJudge): Judge {
+  return async (input) => {
+    const env = judgeApiEnv(process.env);
+    const mapped = spawnSync('node', [join(repoRoot, 'scripts', 'lib', 'api-roles.mjs'), 'accounts', 'judge'], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
+    if (mapped.status !== 0 || !(mapped.stdout ?? '').trim()) return fallback(input);
+    const skill = readFileSync(join(repoRoot, 'marketplace', 'plugins', 'himmel-ops', 'skills', 'release-manager', 'SKILL.md'), 'utf8');
+    // An empty cwd, so no project instructions load beside the skill.
+    const cwd = mkdtempSync(join(tmpdir(), 'rm-run-judge-'));
+    try {
+      const r = spawnSync('bash', [join(repoRoot, 'scripts', 'api-lane', 'claude-api.sh'),
+        '-p', '--model', 'opus', '--effort', 'high', '--permission-mode', 'plan', '--max-budget-usd', String(JUDGE_API_BUDGET_USD), '--output-format', 'json',
+      ], { input: judgePrompt(input, skill), cwd, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: JUDGE_SPAWN_TIMEOUT_MS, stdio: ['pipe', 'pipe', 'inherit'] });
+      if (r.status !== 0) return fallback(input);
+      try { return parseDecisions(r.stdout); } catch { return fallback(input); }
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  };
+}
+export const routedJudge: Judge = makeRoutedJudge();
+
+// The API route is for the himmel project only: the judged project is the mirror the prompt is built from, so a salus
+// or adopter batch (or a run with no mirror) never reaches the API lane, whatever the role map says.
+export function judgeFor(ctx: Ctx): Judge {
+  return ctx.mirrorRoot === defaultRoot('HIMMEL') ? routedJudge : liveJudge;
+}
 
 // The budget lives on the Jira version; an unreachable Jira shows the count alone.
 async function admissionBudgets(versions: string[]): Promise<Record<string, number>> {
@@ -554,7 +675,8 @@ export function registerRelease(program: Command): void {
     .option('--ruling <ref>', 'Decision ref that covers a run moving more than 20 open tickets in the current version')
     .option('--chief-override <reason>', 'Same, console session only (HIMMEL_CONSOLE=1); the reason and the count go to the admissions ledger')
     .action(async (release: string, o: { doc?: string; mirrorRoot?: string; ruling?: string; chiefOverride?: string }) => {
-      const lines = await rmRun(ctxFor(release, o.mirrorRoot), liveJudge, {
+      const ctx = ctxFor(release, o.mirrorRoot);
+      const lines = await rmRun(ctx, judgeFor(ctx), {
         doc: o.doc, session: `rm-run-${process.pid}`, ruling: o.ruling, chiefOverride: chiefOverrideOf(o),
       });
       for (const l of lines) console.log(l);

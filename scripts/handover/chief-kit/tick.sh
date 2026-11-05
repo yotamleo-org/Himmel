@@ -142,6 +142,14 @@ leg parked on a ruling the console may not know it owes, which a repeated BLOCKE
 shows in tails=. chief-wait.sh keys on the names only, so each leg ENTERING the set wakes
 the console once; the age growing or a leg leaving never does.
 
+hreg=<n>/<n>/<n> (HIMMEL-9186) follows holds= and is ABSENT at 0/0/0, with no register directory for this repo
+and when holds.py is missing: <live workers with no rows>/<stale rows>/<pending trust-path asks>. A live worker
+(lock held or lockless, newest marker not WRAPPED) counts when its doc has a Writes file and its key holds no row;
+a row is stale when its brief or pr key is Done in the Jira mirror or its PR is not in prs=; an ask is a trust-path
+(settings, CI workflow) deny from the last day that no grant answers. holds.py summary reads local files only: no
+gh call, no Jira call. hreg=? when it fails. In chief-wait's action key whole: the value moving wakes once, and
+chief-wait pages each new ask once with its paste-ready grant command (monitors.md). Seam: HOLDS_MIRROR.
+
 focus=<state> sdrift=<n>:<sig8> (HIMMEL-6829) follow wt-ceiling= and are ABSENT unless a
 focus-state file sits beside the console doc and --status does not read skip: focus= is
 focus-refresh.sh --status (FAILED:<stage> or DIRTY:<age>), sdrift= the drift line of the
@@ -416,6 +424,15 @@ when there is no mirror. The waiter wakes on a
 positive value only; the console resets each row (version-status-audit.sh prints them).
 In compact output, a non-zero count also prints an `ACTION versionless-done=<n>: bash …/versionless-done.sh --backfill`
 line after the TICK line (HIMMEL-6416); chief-wait reads only the TICK line.
+cadence=<name>:<state>:<age>:<run id>[:RED|:SKIP|:MISSED],... (HIMMEL-9247) is the last SCHEDULED run of every workflow
+with a schedule: trigger, from ci-cadence.sh (gh read at most once per CI_CADENCE_INTERVAL_SEC, default 1800, else the
+cache beside the other tick state). RED = failure or timed_out, SKIP = concluded skipped, MISSED = no scheduled run inside 1.5
+periods; a running run flags nothing. ? = gh unreadable. Always on the line; the waiter wakes once per flagged run id.
+review=<date>:<age>:<failures>:<new classes>:<new 5+>:<filed keys joined by +, or ->[:CAPPED][:STALE] (decision 593) is the
+daily failure review (ci-cadence.sh review: a local read of the newest failure-review-<date>.md and its .json sidecar,
+HIMMEL_FAILURE_REVIEW_DIR). STALE = no review for 26 h; CAPPED = the router hit its daily create cap. Hidden when there is no
+review file. The waiter wakes once per review day on a filed key, a new class with 5+ failures or CAPPED, and once per
+last-review date on STALE; never on a 1-count class.
 leaks=<n|?> (HIMMEL-7153) counts the LEAK lines of one bounded `jira release leaks <active version>`
 read (TICK_LEAKS_PROBE gets the version and the mirror directory as its arguments; TICK_LEAKS_TIMEOUT, default 30 s): open tickets
 in a frozen version with no frozen-set membership and no admissions-ledger row. Shown only when non-zero
@@ -494,6 +511,17 @@ for line in text.splitlines():
     m = re.fullmatch(r"# disposition ([A-Z]+-\d+) (.+)", line)
     if m:
         rows[m[1]] = m[2]
+# one line per key-carrying series row, joined to its row by the row's 1-based line number on stdin
+for idx, line in enumerate(text.splitlines(), 1):
+    f = line.split("\t")
+    m = re.fullmatch(r"# disposition ([A-Z]+-\d+) .* held by series [\w.-]+", line)
+    s = re.match(r"STACKABLE ([A-Z]+-\d+)(?: |$)", line)
+    if f[0] == "SERIES" and len(f) > 2 and re.fullmatch(r"[A-Z]+-\d+(?:,[A-Z]+-\d+)*", f[2]):
+        print("# pool-keys %d SERIES %s" % (idx, f[2]))
+    elif s:
+        print("# pool-keys %d STACKABLE %s" % (idx, s[1]))
+    elif m:
+        print("# pool-keys %d # %s" % (idx, m[1]))
 decisions, invalid = {}, {}
 if sys.argv[1]:
     try:
@@ -522,7 +550,7 @@ unresolved = []
 for key, reason in rows.items():
     owned = bool(re.match(r"(?:in-flight )?owned by (?!a live worker$).+", reason))
     inflight += int(owned)
-    holder = bool(re.search(r" held by (?:(?:live )?worker [\w.-]+|PR #\d+)(?:$|\s)", reason))
+    holder = bool(re.search(r" held by (?:(?:live )?worker [\w.-]+|PR #\d+|series [\w.-]+)(?:$|\s)", reason)) or reason.startswith("stackable on ")
     blocker = bool(re.match(r"blocker-unknown [A-Z]+-\d+", reason)) or (reason.startswith("blocker ") and bool(re.search(r"[A-Z]+-\d+ \((?:(?!Done,|Closed,)[^()]+, live|reopened live)\)", reason)))
     if key in invalid:
         unresolved.append(("invalid", key, invalid[key]))
@@ -1859,6 +1887,20 @@ done <<< "$pr_out"
 # A failed read is not an all-clear: `?` lets the waiter keep its marker instead of counting it as none.
 [ -z "${pr_read_failed:-}" ] || { prs='?'; unowned_prs='?'; ext_prs='?'; }
 
+# hreg=<live workers with no rows>/<stale rows>/<pending trust-path asks>: the holds register's own
+# state, read from local files by holds.py summary (no gh, no Jira call; the open PRs are the prs= read above).
+hreg_summary=""
+if [ -r "$HERE/holds.py" ] && command -v python3 >/dev/null 2>&1; then
+    hreg_docs=""
+    while IFS=$'\t' read -r h_label h_lock _; do
+        case "$h_lock" in FRESH|STALE|NOLOCK) ;; *) continue ;; esac
+        case ",$tails_summary," in *",$h_label:WRAPPED,"*) continue ;; esac
+        h_doc="$(printf '%s' "$leg_docmap" | sed -n "s/^$h_label=//p" | head -n 1)"
+        [ -z "$h_doc" ] || hreg_docs="$hreg_docs$h_doc"$'\n'
+    done <<< "$leg_candmap"
+    hreg_summary="$(printf '%s' "$hreg_docs" | timeout -k 2 10 python3 -I "$HERE/holds.py" summary --repo "$REPO" --live-docs - --open-prs "$prs" 2>/dev/null)" || hreg_summary='?'  # gnu-ok: Linux-only kit; swallow-ok: a failed read shows as hreg=?, never as an all-clear
+fi
+
 # dispatch=<run>:<worker>:<elapsed>/<timeout>m:<jobs done>/<jobs>@<head7>[:late][:idle][:orphan][:stale-head]:
 # an in-flight workflow_dispatch run on a worker's branch (a run a worker started by hand never shows on
 # the PR page). One runs list per tick, then one jobs read per run (at most TICK_DISPATCH_MAX,
@@ -1925,6 +1967,13 @@ if [ "$dispatch_summary" = none ] && [ -n "$dispatch_runs" ]; then
     done <<< "$dispatch_runs"
     [ -z "$dispatch_list" ] || dispatch_summary="$dispatch_list"
 fi
+
+# cadence=: the last scheduled run of every scheduled workflow, one helper call that
+# reads gh at most once per CI_CADENCE_INTERVAL_SEC and serves its cache between.
+cadence_summary="$(cd "$pr_repo" 2>/dev/null && CI_CADENCE_DIR="$pr_repo" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 40)"} bash "$HERE/ci-cadence.sh" field 2>/dev/null)" || cadence_summary='?'  # swallow-ok: an unreadable cadence renders as cadence=?
+# review=: the daily failure review as one more scheduled row (operator decision 593), a local file read.
+review_summary="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 10)"} bash "$HERE/ci-cadence.sh" review 2>/dev/null)" || review_summary='?'  # swallow-ok: an unreadable review renders as review=?
+[ -n "$review_summary" ] || review_summary='?'
 
 # the board fingerprint -- what chief-board.html shows that the
 # chief authors or a tick already reads: worker locks, worker tails, open PRs, and
@@ -3546,6 +3595,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$cachettl_summary" ] || printf 'cachettl: %s\n' "$cachettl_summary"
     printf 'worker-session newest actionable bullets: %s\n' "$acts_summary"
     [ -z "$holds_summary" ] || printf 'worker-session holds: %s\n' "$holds_summary"
+    case "$hreg_summary" in ''|0/0/0) ;; *) printf 'holds register (live-no-rows/stale/asks): %s\n' "$hreg_summary" ;; esac
     printf 'inbox size/cursor: %s\n' "$inbox_summary"
     printf 'tick monitor: %s\n' "$tick_status"
     # Printed only under --burn, so a plain --verbose tick is unchanged. An if,
@@ -3567,6 +3617,8 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$focus_summary" ] || printf 'focus: %s\n' "$focus_summary"
     [ -z "$sdrift_summary" ] || printf 'sdrift: %s\n' "$sdrift_summary"
     printf 'denials: %s\n' "$denials_summary"
+    printf 'ci cadence: %s\n' "$cadence_summary"
+    printf 'failure review: %s\n' "$review_summary"
     printf 'ci queue: %s\n' "$ciq_summary"
     printf 'ci guardrail: %s%s\n' "$ciguard_summary" "${ciguard_age:+ (read $ciguard_age ago)}"
     [ -z "$deadline_over" ] || printf 'deadline over: %s\n' "$deadline_over"
@@ -3619,10 +3671,10 @@ else
     compact_field() {
         case "$1=$2" in
             *=|hb=ok|hb=skip|effort=ok|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
-            ext-prs=none|dispatch=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
+            ext-prs=none|dispatch=none|review=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
             versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|rm-queue=0|rm-queue=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*|prio=skip|pool-stale=skip|INTAKE=0|INTAKE=skip|chains=ok|chains=skip|residual-unversioned=skip|residual-unversioned=0|\
-            focus=ok|sdrift=0:*) return ;;
+            focus=ok|sdrift=0:*|hreg=0/0/0) return ;;
         esac
         printf ' %s=%s' "$1" "$2"
     }
@@ -3639,6 +3691,8 @@ else
     compact_field unowned-prs "$unowned_prs"
     compact_field ext-prs "$ext_prs"
     compact_field dispatch "$dispatch_summary"
+    compact_field cadence "$cadence_summary"
+    compact_field review "$review_summary"
     compact_field usage "$bank"
     compact_field vmspend "$vmspend"
     compact_field fill "$fill"
@@ -3646,6 +3700,7 @@ else
     compact_field cachettl "$cachettl_summary"
     compact_field acts "$acts_summary"
     compact_field holds "$holds_summary"
+    compact_field hreg "$hreg_summary"
     compact_field effort "$effort_summary"
     compact_field inbox "$inbox_summary"
     compact_field tick "$tick_status"

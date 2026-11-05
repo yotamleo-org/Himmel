@@ -10,11 +10,15 @@
 # NOT read the three-dot diff — that judgement call stays the chief's own,
 # and the script says so on its last line.
 #
-# Usage: ready-check.sh <pr-number> <full-40-hex-head-sha>
+# Usage: ready-check.sh [--contract yes|no] [--require-contract] <pr-number> <full-40-hex-head-sha>
 #        ready-check.sh --only 7 <pr-number>
 #   --only 7 runs check 7 — a worker's own pre-READY lint of its PR body, the
 #   same code the chief runs — plus the warn-only check 14. Prints
 #   COVERAGE-LINT PASS|FAIL.
+#   --contract yes|no names the merge contract for check 17: yes when the merge
+#   completes the ticket (merge-on-green.sh --jira-transition), no for a partial
+#   merge. --require-contract (go.sh, ready-go.sh, auto-go.sh pass it) makes a
+#   keyed title with no --contract a FAIL; without it check 17 only warns.
 #
 # Checks:
 #   1. Shared snapshot: headRefOid == <head-sha> (full 40 chars); mergeStateStatus
@@ -141,7 +145,7 @@
 #      is success + "Review rate limited" prints one [WARN] line saying no review was
 #      posted. Never a FAIL, never the marker or the exit code; nothing prints for any
 #      other state or an unreadable status. Not part of `--only 7`.
-# 17. suite evidence: every suite the anchor's impacted-suites.sh lists for
+# 19. suite evidence: every suite the anchor's impacted-suites.sh lists for
 #      merge-base..SHA has proof. Local proof is the head's `impacted` ledger row
 #      (`local_pass`, `ruled_skip`); CI proof is an exact `ran 0 <path>` manifest
 #      line of the run behind the latest SUCCESS `shell-unit (ubuntu-latest)`
@@ -149,6 +153,35 @@
 #      `Local suites: <path>` line needs local proof. Every read is bounded; an
 #      unresolvable range, no timeout binary or a timed-out read FAILs. Not part
 #      of `--only 7`.
+#
+# 16. outside-PR full review: for an outside PR (a fork, a deleted author, or a
+#      non-Bot author not in scripts/ci/ticket-id-internal-authors.txt; the same
+#      predicate `--outside <pr>` prints as `outside-pr: yes|no`, exit 2 when the
+#      snapshot is unreadable), every record must sit at the head itself, keyed to
+#      headRefName: 16b a full round-scope row, 16c the latest `lint` CheckRun of
+#      workflow CI SUCCESS, 16d no path under scripts/ci/outside-lint-surface.txt,
+#      16e no open or non-maintainer-resolved thread and check-ci.sh --threads-only
+#      green, 16f an impacted row with rc 0 and skip_n 0, 16g a ran blast row when
+#      scripts/cr/blast-scope.cjs says the diff touches the scope; for an author not
+#      in ~/.himmel/outside-contributors.json, 16h a CodeRabbit success and 16i a
+#      passed security audit (scripts/lib/outside-contributors.sh). CR_* overrides
+#      are unset for 16e and 16h. Prints nothing for any other PR. Not part of `--only 7`.
+#
+# 17. Partial-merge remainder, the merge's exit 26 read at GO time: for a PR
+#      title with a [KEY] (ticket_key_from_title, the merge's reader) and `--contract no`,
+#      the PR body read through scripts/lib/pr_remainder.py (the merge's reader, run from
+#      the anchor) must record a remainder, a `Remaining:` line or a `deferred -> KEY` line
+#      under `## Ticket coverage`; `none`, a missing reader or no answer FAILs. `--contract
+#      yes` and a title with no key pass. No `--contract` on a keyed title FAILs under
+#      --require-contract and warns otherwise. Not part of `--only 7`.
+#
+# 18. Open findings, the merge's gates 4 and 4b read at GO time: the head the
+#      merge gates on can be an earlier round head (a judge GO moves it), where an Important
+#      nobody ruled blocks a PR whose tip has green rows. This runs scripts/cr/
+#      clear-review-marker.sh --check-findings (the merge's own ledger verdict, nothing
+#      written) at the PR head as the merge reads it now and as it reads it once the GO
+#      exists (--assume-go); a blocking finding, an undecided one, a malformed ledger, an
+#      unreadable branch or any other exit FAILs. Not part of `--only 7`.
 #
 # Owner/repo are derived from `gh repo view --json owner,name`, never hard-
 # coded (so this runs the same in any clone/fork). It writes nothing — no
@@ -166,12 +199,30 @@ usage() {
     local rc_primary
     rc_primary=$(git -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || rc_primary=""
     case "$rc_primary" in */.git) rc_primary="${rc_primary%/.git}" ;; *) rc_primary="<primary-checkout>" ;; esac
-    echo "usage: ready-check.sh <pr-number> <full-40-hex-head-sha>" >&2
+    echo "usage: ready-check.sh [--contract yes|no] [--require-contract] <pr-number> <full-40-hex-head-sha>" >&2
     echo "       ready-check.sh --only 7 <pr-number>   (ticket-coverage lint, for a worker before READY)" >&2
+    echo "       ready-check.sh --outside <pr-number>  (prints outside-pr: yes|no, the item 16 predicate)" >&2
     echo "run it from the primary checkout, not a worktree (check 12 needs an up-to-date anchor): cd '$rc_primary' && bash '$rc_primary/scripts/handover/chief-kit/ready-check.sh' <pr-number> <full-40-hex-head-sha>" >&2
 }
 
+CONTRACT=""
+REQUIRE_CONTRACT=0
+while :; do
+    case "${1:-}" in
+        --contract)
+            case "${2:-}" in
+                yes|no) ;;
+                *) usage; echo "ready-check: --contract takes yes or no (got '${2:-}')" >&2; exit 2 ;;
+            esac
+            [ -z "$CONTRACT" ] || { usage; echo "ready-check: --contract is given once" >&2; exit 2; }
+            CONTRACT="$2"; shift 2 ;;
+        --require-contract) REQUIRE_CONTRACT=1; shift ;;
+        *) break ;;
+    esac
+done
+
 ONLY7=0
+OUTSIDE_MODE=0
 if [ "${1:-}" = "--only" ]; then
     if [ "$#" -ne 3 ] || [ "$2" != "7" ]; then
         usage
@@ -180,6 +231,14 @@ if [ "${1:-}" = "--only" ]; then
     fi
     ONLY7=1
     PR="$3"; SHA=""
+elif [ "${1:-}" = "--outside" ]; then
+    if [ "$#" -ne 2 ]; then
+        usage
+        echo "ready-check: --outside takes exactly one <pr-number>" >&2
+        exit 2
+    fi
+    OUTSIDE_MODE=1
+    PR="$2"; SHA=""
 elif [ "$#" -ne 2 ]; then
     usage
     exit 2
@@ -197,7 +256,7 @@ case "$SHA" in
     *[!0123456789abcdef]*) SHA_OK=0 ;;
     *) SHA_OK=1 ;;
 esac
-if [ "$ONLY7" -eq 0 ] && { [ "$SHA_OK" -ne 1 ] || [ "${#SHA}" -ne 40 ]; }; then
+if [ "$ONLY7" -eq 0 ] && [ "$OUTSIDE_MODE" -eq 0 ] && { [ "$SHA_OK" -ne 1 ] || [ "${#SHA}" -ne 40 ]; }; then
     usage
     echo "ready-check: head sha must be the full 40-char lowercase hex sha (got '$SHA')" >&2
     exit 2
@@ -256,6 +315,66 @@ if [ "$ONLY7" -eq 0 ]; then
     snapshot=$(GH_CMD="$GH" bash "$SNAPSHOT_SCRIPT" "$nwo" 0 "$PR" 2>/dev/null) || snapshot=""
 fi
 
+# author_class and outside_pr_of live in the lib, so scripts/cr/pr-check-outside.sh asks the same question.
+# shellcheck source=../../lib/outside-contributors.sh
+. "$(dirname "$0")/../../lib/outside-contributors.sh" 2>/dev/null || true  # swallow-ok: a missing lib leaves outside_pr_of undefined, which --outside reports as unreadable (exit 2) and item 16 as unknown
+
+if [ "$OUTSIDE_MODE" -eq 1 ]; then
+    if ! op=$(outside_pr_of "$snapshot"); then
+        echo "ready-check: cannot read PR #$PR's author or fork flag (PR snapshot unreadable)" >&2
+        exit 2
+    fi
+    echo "outside-pr: $op"
+    exit 0
+fi
+
+# The latest run per check identity, shared by check 2 and 16c. Identity =
+# CheckRun name plus workflowName when present, else StatusContext context.
+# Latest = greatest startedAt/completedAt (CheckRun) or createdAt/startedAt
+# (StatusContext), falling back to the row's array position when neither
+# timestamp is present. A run with no timestamp at all (e.g. QUEUED, not yet
+# started) has no completed/started time to compare, but it can only exist
+# because GitHub created it after every already-timestamped run for that
+# identity, so it always outranks them, never the reverse. An entry with no
+# identifiable name is judged alone: it never merges into another group (fail closed).
+# shellcheck disable=SC2016  # jq program text, expanded by jq
+ROLLUP_LATEST_DEFS='
+    def key_of(e):
+        if e.name == null then "unk:\(e.idx)"
+        elif e.is_checkrun then "cr:\(e.name)\u0001\(e.workflow)"
+        else "sc:\(e.name)" end;
+    def rollup_rows:
+        [ to_entries[] |
+            .value as $row | .key as $idx |
+            ($row | has("conclusion")) as $is_checkrun |
+            {
+                idx: $idx,
+                is_checkrun: $is_checkrun,
+                name: (if $is_checkrun then ($row.name // $row.context) else ($row.context // $row.name) end),
+                workflow: ($row.workflowName // ""),
+                ts: (if $is_checkrun then ($row.startedAt // $row.completedAt // null)
+                     else ($row.createdAt // $row.startedAt // null) end),
+                ok: (if $is_checkrun then
+                        ($row.status == "COMPLETED" and ($row.conclusion == "SUCCESS" or $row.conclusion == "SKIPPED" or $row.conclusion == "NEUTRAL"))
+                     else
+                        ($row.state == "SUCCESS")
+                     end),
+                detail: (if $is_checkrun then (($row.status // "?") + "/" + ($row.conclusion // "null"))
+                         else ($row.state // "?") end),
+                success: ($is_checkrun and $row.conclusion == "SUCCESS"),
+                cancelled: ($is_checkrun and $row.status == "COMPLETED" and $row.conclusion == "CANCELLED"),
+                run: (if $is_checkrun and (($row.detailsUrl | type) == "string") then
+                          ([$row.detailsUrl | scan("^https://[^/]+/[^/]+/[^/]+/actions/runs/([0-9]+)/job/[0-9]+$")[0] | tonumber] | first // null)
+                      else null end)
+            }
+        ];
+    def latest_per_check:
+        map(.key = key_of(.))
+        | map(.sort_key = [(.ts == null), (.ts // .idx)])
+        | group_by(.key)
+        | map(max_by(.sort_key));
+'
+
 if [ "$ONLY7" -eq 0 ]; then
 
 # ── 1. head + mergeStateStatus ──────────────────────────────────────────────
@@ -289,45 +408,10 @@ if [ -n "$rollup" ] && [ "$rollup" != "null" ]; then
     # Judge each check IDENTITY by its LATEST run, not any matching row — a
     # superseded CANCELLED run must not fail a check whose later run at the
     # same head is green (evidence: PR #1317's pr-title-lint
-    # CANCELLED 08:19:58Z then SUCCESS 08:26:47Z). Identity = CheckRun `name`
-    # plus `workflowName` when present, else StatusContext `context`. Latest
-    # = greatest startedAt/completedAt (CheckRun) or createdAt/startedAt
-    # (StatusContext), falling back to the row's array position when neither
-    # timestamp is present. A run with no timestamp at all (e.g. QUEUED,
-    # not yet started) has no completed/started time to compare, but it can
-    # only exist because GitHub created it after every already-timestamped
-    # run for that identity — so it always outranks them, never the reverse.
-    # An entry with no identifiable name is judged alone — it never merges
-    # into another group (fail closed).
-    grouped=$(printf '%s' "$rollup" | jq -c --argjson ng "$ng_json" '
-        def key_of(e):
-            if e.name == null then "unk:\(e.idx)"
-            elif e.is_checkrun then "cr:\(e.name)\u0001\(e.workflow)"
-            else "sc:\(e.name)" end;
-        [ to_entries[] |
-            .value as $row | .key as $idx |
-            ($row | has("conclusion")) as $is_checkrun |
-            {
-                idx: $idx,
-                is_checkrun: $is_checkrun,
-                name: (if $is_checkrun then ($row.name // $row.context) else ($row.context // $row.name) end),
-                workflow: ($row.workflowName // ""),
-                ts: (if $is_checkrun then ($row.startedAt // $row.completedAt // null)
-                     else ($row.createdAt // $row.startedAt // null) end),
-                ok: (if $is_checkrun then
-                        ($row.status == "COMPLETED" and ($row.conclusion == "SUCCESS" or $row.conclusion == "SKIPPED" or $row.conclusion == "NEUTRAL"))
-                     else
-                        ($row.state == "SUCCESS")
-                     end),
-                detail: (if $is_checkrun then (($row.status // "?") + "/" + ($row.conclusion // "null"))
-                         else ($row.state // "?") end),
-                success: ($is_checkrun and $row.conclusion == "SUCCESS"),
-                cancelled: ($is_checkrun and $row.status == "COMPLETED" and $row.conclusion == "CANCELLED"),
-                run: (if $is_checkrun and (($row.detailsUrl | type) == "string") then
-                          ([$row.detailsUrl | scan("^https://[^/]+/[^/]+/[^/]+/actions/runs/([0-9]+)/job/[0-9]+$")[0] | tonumber] | first // null)
-                      else null end)
-            }
-        ]
+    # CANCELLED 08:19:58Z then SUCCESS 08:26:47Z). Identity and latest are
+    # ROLLUP_LATEST_DEFS above, shared with 16c.
+    grouped=$(printf '%s' "$rollup" | jq -c --argjson ng "$ng_json" "$ROLLUP_LATEST_DEFS"'
+        rollup_rows
         # A skipped job reports its unevaluated name: expression, so a fresh green
         # run never re-reports a job (fail-fast-lint) an older run of the same
         # workflow left CANCELLED. Only a COMPLETED/CANCELLED row is dropped, and
@@ -343,10 +427,7 @@ if [ -n "$rollup" ] && [ "$rollup" != "null" ]; then
            | map(select(all(.[]; .ok) and any(.[]; .success)) | {workflow: .[0].workflow, run: .[0].run})) as $green
         | map(select(. as $e | ($e.cancelled and $e.run != null and $e.workflow != "" and
               ($green | any(.workflow == $e.workflow and .run > $e.run))) | not))
-        | map(.key = key_of(.))
-        | map(.sort_key = [(.ts == null), (.ts // .idx)])
-        | group_by(.key)
-        | map(max_by(.sort_key))
+        | latest_per_check
         | map(.listed = (.is_checkrun | not) and (.name != null and (.name as $n | $ng | index($n)) != null))
         | {total: length,
            gated: (map(select(.listed | not)) | length),
@@ -528,7 +609,7 @@ else
         # lands the PR TITLE as main's subject. Exempt only when the PR author
         # is external per the allowlist AND the title is keyed. Every unreadable
         # input keeps the FAIL; the allowlist is read, never written.
-        ext_login=$("$GH" pr view "$PR" --repo "$nwo" --json author --jq '.author.login' 2>/dev/null | tr -d '[:space:]') || ext_login=""  # swallow-ok: an unreadable author never takes the exemption
+        ext_login=$(printf '%s' "$snapshot" | jq -r '.[0].author // empty' 2>/dev/null | tr -d '[:space:]') || ext_login=""  # swallow-ok: an unreadable author never takes the exemption
         ext_title=$(printf '%s' "$snapshot" | jq -r '.[0].title // empty' 2>/dev/null) || ext_title=""  # swallow-ok: an unreadable title never takes the exemption
         ext_ok=0
         # gh reports a GitHub App author as "app/<name>" (e.g. app/dependabot): a bot is never a contributor.
@@ -801,7 +882,7 @@ fi
 
 # pr_fetch — fetch origin/main, and the PR head when it is not here. pr_merge_base
 # — pr_fetch, then set pr_mb to merge-base(origin/main, SHA). Each runs once and is
-# kept for every later caller (checks 9 and 17); a failure sets pr_mb_err and
+# kept for every later caller (checks 9 and 19); a failure sets pr_mb_err and
 # returns 1. Each fetch is bounded at 15 s when a timeout binary resolves.
 pr_mb=""
 pr_mb_err=""
@@ -809,7 +890,7 @@ pr_fetch_done=0
 pr_mb_done=0
 _TIMEOUT_BIN=""
 # shellcheck source=../../lib/timeout-bin.sh
-. "$(cd "$(dirname "$0")/../../lib" && pwd)/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN leaves the fetches unbounded, and item 17 FAILs on it
+. "$(cd "$(dirname "$0")/../../lib" && pwd)/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN leaves the fetches unbounded, and item 19 FAILs on it
 pr_mb_git() { ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 15} git "$@"; }
 pr_fetch() {
     if [ "$pr_fetch_done" -eq 0 ]; then
@@ -1545,7 +1626,321 @@ check_cr_rate_limited() {
 }
 check_cr_rate_limited
 
-# --- 17. suite evidence. Each impacted suite needs local proof (the head's
+# --- 16. outside-PR full review. outside_pr_of no prints nothing, so an org-member
+# PR's output is unchanged. For yes, every record must sit at the head itself (an
+# ancestor's never counts), keyed to headRefName; no body, title, label, branch-name
+# or trailer text is read. An unreadable input, an empty files list, a missing node
+# or timeout binary, or a network read past its bound FAILs.
+o16_fail() { echo "[FAIL] 16$1. $2"; o16_missing=$((o16_missing + 1)); }
+# o16_ledger <kind> <jq projection>: rows of <kind> at this head and branch, oldest first
+o16_ledger() {
+    jq -R -r --arg k "$1" --arg h "$SHA" --arg b "$o16_branch" --argjson p "$PR" '
+        fromjson? | select(type == "object" and .kind == $k and .head == $h and .branch == $b and (.pr == null or .pr == $p))
+        | '"$2" "$o16_ledger" 2>/dev/null
+}
+check_outside_pr() {
+    local op o_anchor o_lib o_h7 o_rows o_last o_round o_from o_lint o_files o_frc=0 o_surf o_hits f p
+    local o_thr o_unres o_res o_bad o_why o_crc o_scope o_cr o_login o_id o_rep
+    o16_missing=0
+    [ "$ONLY7" -eq 0 ] || return 0
+    op=$(outside_pr_of "$snapshot") || op=unknown
+    [ "$op" != no ] || return 0
+    o_h7="${SHA:0:7}"
+    if [ "$op" != yes ]; then
+        echo "[FAIL] 16. outside-PR full review: cannot tell whether #$PR is an outside PR (PR snapshot unreadable)"
+        mark_fail
+        return 0
+    fi
+    o_anchor="$(cd "$(dirname "$0")/../../.." && pwd)"
+    o_lib="$o_anchor/scripts/lib"
+    _TIMEOUT_BIN=""
+    # shellcheck source=/dev/null
+    [ ! -f "$o_lib/timeout-bin.sh" ] || . "$o_lib/timeout-bin.sh" 2>/dev/null  # swallow-ok: an empty _TIMEOUT_BIN fails item 16 just below
+    if [ -z "$_TIMEOUT_BIN" ]; then
+        echo "[FAIL] 16. outside-PR full review: no timeout binary, so no read here can be bounded"
+        mark_fail
+        return 0
+    fi
+    if ! command -v node >/dev/null 2>&1; then
+        echo "[FAIL] 16. outside-PR full review: node not found (16g reads the blast scope with it)"
+        mark_fail
+        return 0
+    fi
+    # shellcheck source=../../lib/outside-contributors.sh
+    if ! . "$o_lib/outside-contributors.sh" 2>/dev/null; then
+        echo "[FAIL] 16. outside-PR full review: cannot load scripts/lib/outside-contributors.sh"
+        mark_fail
+        return 0
+    fi
+    o16_branch=$(printf '%s' "$snapshot" | jq -r '.[0].headRefName // empty' 2>/dev/null) || o16_branch=""  # swallow-ok: an empty branch fails every ledger sub-check below
+    o16_ledger=""
+    if [ -n "$common_dir" ] && [ -f "$common_dir/cr-critic-scores.jsonl" ] && [ -r "$common_dir/cr-critic-scores.jsonl" ] && [ -n "$o16_branch" ]; then
+        o16_ledger="$common_dir/cr-critic-scores.jsonl"
+    fi
+
+    # 16b: a full round-scope row at the head
+    if [ -z "$o16_ledger" ] || ! o_rows=$(o16_ledger round-scope 'select(.status == "ok") | "\(.scope) \(.round) \(.from // "-")"'); then
+        o16_fail b "cannot read the CR ledger or the PR branch: run /pr-check at $o_h7 (step 3 runs panel-first-pass.sh --full)"
+    elif grep -q '^full ' <<< "$o_rows"; then
+        echo "[PASS] 16b. a full review round is recorded at $o_h7 on $o16_branch"
+    else
+        o_last=$(grep '^delta ' <<< "$o_rows" | tail -n 1)
+        read -r _ o_round o_from <<< "$o_last"
+        case "$o_round" in ''|*[!0-9]*) o_round=0 ;; esac
+        if [ -z "$o_last" ]; then
+            o16_fail b "no full review round at $o_h7 on $o16_branch: run /pr-check at $o_h7 (step 3 runs panel-first-pass.sh --full)"
+        elif [ "$o_round" -gt 3 ]; then
+            o16_fail b "only a post-cap delta round at $o_h7: past its three full rounds, hand it to a maintainer takeover (HIMMEL-9019)"
+        else
+            o16_fail b "only a delta round (from ${o_from:0:7}) at $o_h7: run /pr-check at $o_h7 (step 3 runs panel-first-pass.sh --full)"
+        fi
+    fi
+
+    # 16c: the latest lint CheckRun of workflow CI succeeded
+    if [ -z "$rollup" ] || [ "$rollup" = "null" ]; then
+        o16_fail c "statusCheckRollup unreadable: the CI run, or a maintainer's approve-and-run for a fork"
+    elif ! o_lint=$(printf '%s' "$rollup" | jq -er "$ROLLUP_LATEST_DEFS"'
+            rollup_rows | latest_per_check
+            | map(select(.is_checkrun and .name == "lint" and .workflow == "CI")) | first
+            | if . == null then "none" elif .success then "ok" else .detail end' 2>/dev/null); then
+        o16_fail c "statusCheckRollup unreadable: the CI run, or a maintainer's approve-and-run for a fork"
+    elif [ "$o_lint" = ok ]; then
+        echo "[PASS] 16c. the latest lint run of workflow CI at $o_h7 is SUCCESS"
+    elif [ "$o_lint" = none ]; then
+        o16_fail c "no lint run of workflow CI at $o_h7: the CI run, or a maintainer's approve-and-run for a fork"
+    else
+        o16_fail c "the latest lint run of workflow CI at $o_h7 is $o_lint, want SUCCESS: the CI run, or a maintainer's approve-and-run for a fork"
+    fi
+
+    # 16d: no path (either side of a rename) under the anchor's lint surface
+    o_files=$("$_TIMEOUT_BIN" -k 5 20 "$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' 2>/dev/null) || o_frc=1  # swallow-ok: a failed read fails 16d and 16g just below
+    [ -n "$o_files" ] || o_frc=1
+    o_surf=$(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$o_anchor/scripts/ci/outside-lint-surface.txt" 2>/dev/null) || o_surf=""  # swallow-ok: an unreadable or empty list fails 16d just below
+    if [ "$o_frc" -ne 0 ]; then
+        o16_fail d "cannot read the PR's files (or the list is empty): re-run ready-check"
+    elif [ -z "$o_surf" ]; then
+        o16_fail d "cannot read scripts/ci/outside-lint-surface.txt (missing or empty)"
+    else
+        o_hits=""
+        while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            while IFS= read -r p; do
+                case "$f" in "$p"*) o_hits="$o_hits $f"; break ;; esac
+            done <<< "$o_surf"
+        done <<< "$o_files"
+        if [ -z "$o_hits" ]; then
+            echo "[PASS] 16d. the PR touches no lint surface"
+        else
+            o16_fail d "the PR touches the lint surface, so CI's lint verdict is not trusted:$o_hits: the HIMMEL-9019 takeover"
+        fi
+    fi
+
+    # 16e: no unresolved thread, every resolver internal, check-ci --threads-only green
+    o_why=""
+    if ! o_thr=$(printf '%s' "$snapshot" | jq -er '.[0].reviewThreads.nodes | select(type == "array")
+            | "\([.[] | select(.isResolved | not)] | length) \([.[] | select(.isResolved) | (.resolvedBy.login // "(unknown)")] | unique | join(","))"' 2>/dev/null); then
+        o_why="review threads unreadable"
+    else
+        read -r o_unres o_res <<< "$o_thr"
+        [ "$o_unres" = 0 ] || o_why="$o_unres unresolved thread(s)"
+        o_bad=""
+        while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            if [ "$f" = "(unknown)" ] || [ "$(author_class "$f")" != 1 ]; then o_bad="$o_bad $f"; fi
+        done <<< "${o_res//,/$'\n'}"
+        [ -z "$o_bad" ] || o_why="${o_why:+$o_why; }thread(s) resolved by a non-maintainer:$o_bad (unresolve, then resolve as a maintainer)"
+    fi
+    if [ ! -f "$o_anchor/scripts/check-ci.sh" ]; then
+        o_why="${o_why:+$o_why; }scripts/check-ci.sh not found"
+    else
+        o_crc=0
+        env -u CR_APP -u CR_PROFILE -u CR_BOT_USER_ID "$_TIMEOUT_BIN" -k 5 20 bash "$o_anchor/scripts/check-ci.sh" "$PR" --threads-only </dev/null >/dev/null 2>&1 || o_crc=$?
+        [ "$o_crc" -eq 0 ] || o_why="${o_why:+$o_why; }check-ci.sh $PR --threads-only exited $o_crc (124 or 137: past its 20s bound)"
+    fi
+    if [ -z "$o_why" ]; then
+        echo "[PASS] 16e. no open or outsider-resolved thread, check-ci.sh --threads-only green"
+    else
+        o16_fail e "$o_why: resolve or re-raise each thread, then re-run check-ci.sh $PR --threads-only"
+    fi
+
+    # 16f: an impacted row with rc 0 and nothing skipped
+    if [ -z "$o16_ledger" ] || ! o_rows=$(o16_ledger impacted 'select(.status == "ok") | "\(.rc) \(.skip_n)"'); then
+        o_last="unreadable"
+    else
+        o_last=$(tail -n 1 <<< "$o_rows")
+    fi
+    if [ "$o_last" = "0 0" ]; then
+        echo "[PASS] 16f. impacted suites recorded green at $o_h7, none skipped"
+    else
+        o16_fail f "no impacted row at $o_h7 on ${o16_branch:-?} with rc 0 and skip_n 0 (newest: ${o_last:-none}): impacted-suites.sh --check <base>..$SHA --from-file <f> --record --branch ${o16_branch:-<branch>} --head $SHA; when an impacted suite has no CI job and no VM run can host it, the HIMMEL-9019 takeover"
+    fi
+
+    # 16g: a diff touching the blast scope owes a ran blast row
+    o_scope=""
+    [ "$o_frc" -ne 0 ] || o_scope=$(printf '%s\n' "$o_files" | tr '\n' '\0' | node "$o_anchor/scripts/cr/blast-scope.cjs" 2>/dev/null) || o_scope=""  # swallow-ok: an unreadable scope fails 16g just below
+    if [ "$o_scope" = untouched ]; then
+        echo "[PASS] 16g. the diff does not touch the blast scope"
+    elif [ "$o_scope" != touched ]; then
+        o16_fail g "cannot tell whether the diff touches the blast scope (files list or scripts/cr/blast-scope.cjs unreadable)"
+    elif [ -n "$o16_ledger" ] && o_rows=$(o16_ledger blast '.status') && [ "$(tail -n 1 <<< "$o_rows")" = ran ]; then
+        echo "[PASS] 16g. a blast run is recorded at $o_h7"
+    else
+        o16_fail g "the diff touches the blast scope and no ran blast row is at $o_h7: ledger-append.sh blast --branch ${o16_branch:-<headRefName>} --head $SHA --duration-secs <s>"
+    fi
+
+    # 16h/16i: an unlisted author owes a CodeRabbit success and a passed audit
+    o_login=$(printf '%s' "$snapshot" | jq -r '.[0].author // empty' 2>/dev/null) || o_login=""  # swallow-ok: an empty login is unlisted
+    o_id=$(printf '%s' "$snapshot" | jq -r '.[0].authorId // empty' 2>/dev/null) || o_id=""  # swallow-ok: an empty id is unlisted
+    if outside_contributor_allowed "$o_login" "$o_id"; then
+        echo "[SKIP] 16h/16i listed author $o_login"
+    else
+        # A fresh child with every CodeRabbit pattern override unset: the lib binds them at source time.
+        # shellcheck disable=SC2016  # the body expands in the child shell
+        o_cr=$(env -u CR_OK_DESC_RE -u CR_SKIP_DESC_RE -u CR_BOT_USER_ID -u CR_STATUS_CONTEXT GH_CMD="$GH" \
+            "$_TIMEOUT_BIN" -k 5 20 bash -c '. "$1" 2>/dev/null || exit 3; cr_signal_state "$2" "$3" "$4"' \
+            _ "$o_lib/coderabbit-signal.sh" "$owner" "$repo" "$SHA" 2>/dev/null </dev/null) || o_cr="unreadable"  # read-sink-ok: $1 is this checkout's own lib path
+        if [ "$o_cr" = success ]; then
+            echo "[PASS] 16h. CodeRabbit reviewed $o_h7 (success)"
+        else
+            o16_fail h "CodeRabbit at $o_h7 is ${o_cr:-unreadable}, want success: stage 1, comment \`@coderabbitai review\` on the PR and wait for the status at $o_h7"
+        fi
+        if outside_audit_passed "$PR" "$SHA" "$o16_branch"; then
+            echo "[PASS] 16i. the outside security audit passed at $o_h7"
+        else
+            o_rep=""
+            [ -z "$o16_ledger" ] || o_rep=$(jq -R -r --arg h "$SHA" --argjson p "$PR" 'fromjson? | select(type == "object" and .kind == "security-audit" and .pr == $p and .head == $h and .verdict == "fail") | .report // "?"' "$o16_ledger" 2>/dev/null | tail -n 1)  # swallow-ok: no readable fail row names the audit run instead
+            if [ -n "$o_rep" ]; then
+                o16_fail i "the outside security audit FAILED at $o_h7 (report $o_rep): the only way out is a new head"
+            elif [ -f "$o_anchor/scripts/cr/outside-security-audit.sh" ]; then
+                o16_fail i "no passed outside security audit at $o_h7: stage 2, outside-security-audit.sh --pr $PR --head $SHA"
+            else
+                o16_fail i "no passed outside security audit at $o_h7: stage 2, outside-security-audit.sh --pr $PR --head $SHA, which this checkout does not carry yet, so the PR waits for it"
+            fi
+        fi
+    fi
+
+    if [ "$o16_missing" -eq 0 ]; then
+        echo "[PASS] 16. outside-PR full review: every record present at $o_h7"
+    else
+        echo "[FAIL] 16. outside-PR full review: $o16_missing record(s) missing at $o_h7"
+        mark_fail
+    fi
+}
+check_outside_pr
+
+# --- 17. a partial merge records what remains: merge-on-green.sh's exit 26, read at GO time.
+# The merge refuses a contract-`no` merge (part of the ticket stays undone) whose PR body carries neither a `Remaining:` line
+# nor a `deferred -> <KEY>` line under `## Ticket coverage`, so a GO for such a PR is a GO the merge refuses. This reads
+# the title's key with the merge's own reader (ticket_key_from_title) and the body with the merge's own remainder reader
+# (scripts/lib/pr_remainder.py, run from the anchor with python3 -I, never from the checkout under review). The contract is
+# the merge line's (--jira-transition, or the brief's `Completes ticket:`), so the caller names it: --contract yes|no.
+# With no --contract, a GO writer (--require-contract) FAILs on a keyed title and an observer gets a WARN.
+check_partial_remainder() {
+    local pr_title lib key rc anchor reader ans
+    [ "$ONLY7" -eq 0 ] || return 0
+    lib="$(cd "$(dirname "$0")/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir leaves the key unread, reported just below
+    pr_title=$(printf '%s' "$snapshot" | jq -r '.[0].title // empty' 2>/dev/null) || pr_title=""  # swallow-ok: an unreadable title is reported just below
+    key=""; rc=0
+    if [ -n "$pr_title" ] && ! printf '%s' "$pr_title" | grep -Eq '[A-Za-z][A-Za-z0-9]*-[0-9]+'; then
+        # No KEY-n anywhere in the title, so the merge's reader finds no key (its rc 1): skip the library load.
+        rc=1
+    elif [ -n "$pr_title" ] && [ -f "$lib/ticket-status.sh" ]; then
+        # A subshell: that lib sources three more into this trust-path script.
+        key=$(
+            # shellcheck source=/dev/null
+            . "$lib/ticket-status.sh" 2>/dev/null  # swallow-ok: declare -F on the next line decides, rc 70 is unreadable
+            declare -F ticket_key_from_title >/dev/null || exit 70
+            ticket_key_from_title "$pr_title"
+        ) || rc=$?
+    else
+        rc=70
+    fi
+    if [ "$rc" -eq 1 ]; then
+        echo "[PASS] 17. partial-merge remainder: not applicable (the PR title carries no [KEY], as at the merge)"
+        return 0
+    fi
+    if [ "$rc" -ne 0 ] || [ -z "$key" ]; then
+        if [ "$REQUIRE_CONTRACT" -eq 1 ]; then
+            echo "[FAIL] 17. partial-merge remainder: cannot read the PR title or its ticket key, so the merge contract cannot be checked"
+            mark_fail
+        else
+            echo "[WARN] 17. partial-merge remainder not checked: the PR title or the key reader is unreadable"
+        fi
+        return 0
+    fi
+    case "$CONTRACT" in
+        '')
+            if [ "$REQUIRE_CONTRACT" -eq 1 ]; then
+                echo "[FAIL] 17. the PR title names $key and no merge contract was given — re-run with --contract yes|no (yes: this merge completes $key; no: a partial merge, and the body must say what remains)"
+                mark_fail
+            else
+                echo "[WARN] 17. partial-merge remainder not checked: no --contract given for $key (a GO writer names it)"
+            fi
+            return 0 ;;
+        yes)
+            echo "[PASS] 17. contract yes: this merge completes $key, so no remainder is read"
+            return 0 ;;
+    esac
+    anchor="${READY_CHECK_ANCHOR:-$(cd "$(dirname "$0")/../../.." && pwd)}"
+    reader="$anchor/scripts/lib/pr_remainder.py"
+    ans=""; rc=0
+    if [ -f "$reader" ]; then
+        ans=$(printf '%s' "${cov_body:-}" | python3 -I "$reader" "$key" 2>/dev/null) || rc=$?  # swallow-ok: a non-zero rc or empty answer FAILs item 17 below
+    else
+        rc=3
+    fi
+    if [ "$rc" -ne 0 ] || [ -z "$ans" ]; then
+        echo "[FAIL] 17. cannot read the remainder of partial merge $key: the anchor's scripts/lib/pr_remainder.py is missing or gave no answer ($reader)"
+        mark_fail
+    elif [ "${ans%%$'\t'*}" = none ]; then
+        echo "[FAIL] 17. $key is a partial merge (--contract no) but the PR body has no \`Remaining:\` line and no \`<ask>: deferred -> <KEY>\` line under \`## Ticket coverage\` — the merge refuses it (exit 26); add one (gh pr edit $PR --body-file <file>)"
+        mark_fail
+    else
+        echo "[PASS] 17. partial merge $key records what remains (${ans%%$'\t'*})"
+    fi
+}
+check_partial_remainder
+
+# --- 18. open blocking findings: the merge's gates 4 and 4b, read at GO time.
+# clear-review-marker.sh refuses a merge when the ledger holds a blocking finding (gate 4) or an undecided one (gate 4b) at
+# the head it gates on. That head is not always the PR head: after a judge GO it is the round head the panel last ran at,
+# so an Important never ruled there blocks a PR whose tip has its own green rows (PR 4611: items 4 and 7 passed, the merge
+# refused with exit 15). The GO is not written yet, so the head is read twice, as the merge reads it now and as it reads it
+# once the chief's GO exists. The read is the marker's own --check-findings mode (one reader, no copy, nothing written).
+check_open_findings() {
+    local of_branch of_marker of_lib of_assume of_rc of_out
+    [ "$ONLY7" -eq 0 ] || return 0
+    of_branch=$(printf '%s' "$snapshot" | jq -r '.[0].headRefName // empty' 2>/dev/null) || of_branch=""  # swallow-ok: an unreadable branch fails just below
+    if [ -z "$of_branch" ]; then
+        echo "[FAIL] 18. open findings: cannot read the PR's head branch, so the head the merge gates on cannot be chosen"
+        mark_fail
+        return 0
+    fi
+    of_marker="$(cd "$(dirname "$0")/../../cr" 2>/dev/null && pwd)/clear-review-marker.sh"  # swallow-ok: no cr dir fails the -f test below
+    if [ ! -f "$of_marker" ]; then
+        echo "[FAIL] 18. open findings: scripts/cr/clear-review-marker.sh is missing ($of_marker)"
+        mark_fail
+        return 0
+    fi
+    _TIMEOUT_BIN=""
+    of_lib="$(cd "$(dirname "$0")/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir leaves the read unbounded, never unread
+    # shellcheck source=/dev/null
+    [ ! -f "$of_lib/timeout-bin.sh" ] || . "$of_lib/timeout-bin.sh" 2>/dev/null  # swallow-ok: an empty _TIMEOUT_BIN runs the read unbounded
+    for of_assume in "" "--assume-go"; do
+        of_rc=0
+        # shellcheck disable=SC2086  # intentional word-split: absent -> no extra token
+        of_out=$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 90} bash "$of_marker" --check-findings --tip "$SHA" $of_assume "$of_branch" 2>&1 </dev/null) || of_rc=$?
+        if [ "$of_rc" -ne 0 ]; then
+            echo "[FAIL] 18. open findings: the merge refuses this head (clear-review-marker.sh --check-findings${of_assume:+ $of_assume} exit $of_rc): $(printf '%s' "$of_out" | tr '\n' ' ' | cut -c1-400)"
+            mark_fail
+            return 0
+        fi
+    done
+    echo "[PASS] 18. no blocking or undecided finding at the head the merge gates on (read as the merge reads it, with and without the GO)"
+}
+check_open_findings
+
+# --- 19. suite evidence. Each impacted suite needs local proof (the head's
 # `impacted` ledger row) or CI proof (an exact `ran 0 <path>` line in a shard
 # manifest of the run behind the latest SUCCESS `shell-unit (ubuntu-latest)`
 # check-run in workflow CI, whose run head_sha is SHA). The manifests are read
@@ -1553,11 +1948,11 @@ check_cr_rate_limited
 # 4690's o16_ledger (head, headRefName, .pr null or this PR) and the latest-run
 # pick mirrors check 2's; both fold into those shared readers once 4690 merges.
 S17_AGG="shell-unit (ubuntu-latest)"
-s17_bound() {  # <default seconds>: READY_CHECK_ITEM17_BOUND wins only when lower
-    local b="${READY_CHECK_ITEM17_BOUND:-}"
+s17_bound() {  # <default seconds>: READY_CHECK_ITEM19_BOUND wins only when lower
+    local b="${READY_CHECK_ITEM19_BOUND:-}"
     case "$b" in ''|*[!0-9]*) printf '%s' "$1" ;; *) if [ "$b" -lt "$1" ]; then printf '%s' "$b"; else printf '%s' "$1"; fi ;; esac
 }
-s17_fail() { echo "[FAIL] 17. suite evidence: $1"; mark_fail; }
+s17_fail() { echo "[FAIL] 19. suite evidence: $1"; mark_fail; }
 # s17_run <name> <seconds> <out> <cmd...>: bounded; rc 124/137 is a timeout, said by name
 s17_run() {
     local name="$1" n="$2" out="$3" rc=0
@@ -1618,7 +2013,7 @@ s17_fl_failures() {  # <dir> <run id>: one `fail` row per suite in <dir>/need wi
 check_suite_evidence() {
     local d
     [ "$ONLY7" -eq 0 ] || return 0
-    d=$(mktemp -d "${TMPDIR:-/tmp}/ready-check-17.XXXXXX") || { s17_fail "mktemp failed"; return 0; }  # prim-ok: ready-check sources no prim.sh; a failed mktemp FAILs item 17
+    d=$(mktemp -d "${TMPDIR:-/tmp}/ready-check-19.XXXXXX") || { s17_fail "mktemp failed"; return 0; }  # prim-ok: ready-check sources no prim.sh; a failed mktemp FAILs item 19
     s17_body "$d"
     s17_fl_rounds
     rm -rf "$d"
@@ -1628,7 +2023,7 @@ s17_body() {
     s17_why=""
     _TIMEOUT_BIN=""
     # shellcheck source=../../lib/timeout-bin.sh
-    . "$(cd "$(dirname "$0")/../../lib" && pwd)/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN FAILs item 17 just below
+    . "$(cd "$(dirname "$0")/../../lib" && pwd)/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN FAILs item 19 just below
     if [ -z "$_TIMEOUT_BIN" ]; then
         s17_fail "no timeout binary, so no read here can be bounded"
         return 0
@@ -1647,7 +2042,7 @@ s17_body() {
     grep -v '^$' "$d/imp.raw" | sort -u > "$d/imp" || : > "$d/imp"  # swallow-ok: no line is grep rc 1, an empty list
     n_imp=$(wc -l < "$d/imp" | tr -d ' ')
     if [ "$n_imp" -eq 0 ]; then
-        echo "[PASS] 17. suite evidence: 0 impacted, nothing to prove"
+        echo "[PASS] 19. suite evidence: 0 impacted, nothing to prove"
         return 0
     fi
 
@@ -1742,7 +2137,7 @@ s17_body() {
         return 0
     fi
     ruled_names=$(comm -12 "$d/imp" "$d/rs" 2>/dev/null | paste -sd, - | sed 's/,/, /g')  # swallow-ok: no ruled SKIP prints none
-    echo "[PASS] 17. suite evidence: $n_imp impacted, $n_ci from CI run ${run_id:--}, $n_local local${ruled_names:+; ruled SKIP: $ruled_names}"
+    echo "[PASS] 19. suite evidence: $n_imp impacted, $n_ci from CI run ${run_id:--}, $n_local local${ruled_names:+; ruled SKIP: $ruled_names}"
 }
 check_suite_evidence
 

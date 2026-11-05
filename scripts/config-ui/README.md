@@ -52,14 +52,21 @@ Configure ▸ Tracker.
 **Project picker and Shared (HIMMEL-8044).** The page bar at the top of the Health page carries a picker (the rail holds the same links on every page; at 760 px the bar folds behind "Filters (n on)", HIMMEL-9098): the project this UI runs in
 (the page opens on it), the other registered projects (`~/.claude/handover/registry.json`, `repos{name:{path}}`),
 and **All my projects** (`#/health?view=all`). Every feed row carries a `scope` (`shared` for the machine or
-himmel itself, `project` for the rest) and a `fix.by`, classified once in `config-feed.js` `classifyRow`:
-`configure` (a setting a Configure tile writes, `fix.tile` names it: **Open in Configure**), `operator` (only
-you can run it: **Copy command**) or `chief` (no button). A chief row reads **chief is on it** only while the
-Fleet read finds a live chief session, **for the chief · none running** when it finds none, and **for the
-chief** until the read lands or on another project's page. A firing alert carries the same chief answer and a
-`shared` tag. Any live chief on the station counts for the project this UI runs in (no fleet row names its
-project yet). The all-projects view shows the
-Shared rows once, never counted in a project's own verdict, then each project worst first. `GET /api/projects`
+himmel itself, `project` for the rest) and a `fix.by`. The probe declares the scope, `config-feed.js` `classifyRow`
+reads it: a doctor check emits `scope` in `himmel-doctor.sh --json` (C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56
+C69 C80 C83 C86 are `shared`, every other check is `project`), a manifest item may carry `healthScope` (else its
+kind decides). A row that judges one repo carries `repo`: the doctor's C33 and C70 and the manifest item
+`qmd-himmel-collection` are `project` rows with `repo: himmel`, and a feed saved under another project drops them,
+so they count only toward himmel. The `fix.by` is `configure` (a setting a Configure tile writes, `fix.tile` names it:
+**Open in Configure**), `operator` (only you can run it: **Copy command**) or `chief` (no button). A project's chief
+row reads **chief is on it** only while the Fleet read finds a live chief session of that project (a console session
+named `<KEY>-…`, the key being the project's name uppercased), **for the chief · none running** when it finds none, and
+**for the chief** until the read lands or on another project's page. A shared row and a firing alert (`shared` tag)
+name the himmel chief the same way: **himmel chief is on it** only while a `HIMMEL-…` chief is live, **for the himmel
+chief · none running** when only another project's chief is. The all-projects view shows the
+Shared rows once, never counted in a project's own verdict, then each project worst first. A failing shared index
+row (the `search` bundle: a C40 backlog, a missing collection, a dead graphmap leg) is also named as a `shared, counted
+once under Shared` note on each project's line without entering its verdict. `GET /api/projects`
 answers each project from its own cached feed (`~/.himmel/state/config-ui/feeds/<name>.json`, written by the UI
 that ran in it) or `not checked`; it never runs a doctor. `GET /api/feed?project=<name>` answers one of them
 (404 `not-checked` otherwise). A project's data is only as fresh as its own last UI run.
