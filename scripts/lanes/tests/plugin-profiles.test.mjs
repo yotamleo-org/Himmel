@@ -129,8 +129,6 @@ for (const name of ['operator', 'user', 'bare']) {
       // the design profile.
       'handover@himmel', 'himmel-ops@himmel', 'qmd@himmel',
       'lean-skills@himmel',
-      // i-have-adhd@himmel rides base beside lean-skills.
-      'i-have-adhd@himmel',
       // pstack@himmel and himmel-guard@himmel are user-only and added below.
       // find-docs was a user-scope skill; the user profile carries it.
       'find-docs@himmel',
@@ -1676,14 +1674,17 @@ test('HIMMEL-4024: no non-kit profile enables a code kit plugin; the kit compose
   for (const id of kitIds) assert.equal(both[id], true, id);
 });
 
-test('HIMMEL-4017: the code kit does not hand a worker its dropped base plugins back; other members keep them', () => {
-  const dropped = ['i-have-adhd@himmel'];
-  for (const list of ['worker-impl,code', 'worker-impl,code-ui', 'worker-impl,code,code-ui', 'worker-e2e,code']) {
-    const p = resolveProfile(REG, list, { installed: [] }).enabledPlugins;
-    for (const id of dropped) assert.notEqual(p[id], true, `${list} must not enable ${id}`);
+test('HIMMEL-9023: i-have-adhd is in no base and no profile except telegram, alone or composed', () => {
+  const id = 'i-have-adhd@himmel';
+  assert.ok(!REG.base.includes(id), 'base no longer carries i-have-adhd');
+  assert.ok(REG.catalog.includes(id), 'it stays in the catalog so a lane still turns an installed copy off');
+  for (const [name, spec] of Object.entries(REG.profiles)) {
+    if (spec === null || name === 'telegram') continue;
+    assert.equal(resolveProfile(REG, name, { installed: [] }).enabledPlugins[id], false, `${name} does not enable ${id}`);
+    assert.ok(!(spec.drop ?? []).includes(id), `${name} needs no drop entry: nothing enables it`);
   }
-  for (const list of ['user,code', 'user,code-ui']) {
-    assert.equal(resolveProfile(REG, list, { installed: [] }).enabledPlugins['i-have-adhd@himmel'], true, `${list} keeps i-have-adhd`);
+  for (const list of ['worker-impl,code', 'worker-impl,code-ui', 'worker-e2e,code', 'user,code', 'user,design']) {
+    assert.notEqual(resolveProfile(REG, list, { installed: [] }).enabledPlugins[id], true, `${list} must not enable ${id}`);
   }
 });
 
