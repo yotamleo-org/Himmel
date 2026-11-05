@@ -565,6 +565,20 @@ printf -- '- 03:11 [telegram from=1 chat=2] urgent\n' >> "$I"
 wait_exit "$WPID"
 check "(8934) a Telegram line wakes at once with the digest on" "0:WAKE telegram" "$rc:$(head -n1 "$WORK/d7.out")"
 
+# A wake whose stdout cannot be written keeps the look-only buffer and the digest queued: both
+# flushes guard their write (`|| return 1`), so nothing is dropped that was never printed.
+reset_stub
+I="$(new_inbox d8)"
+printf '%s\n' 'tick-fail samples=3 step=tick-timeout:120s' > "$I.wait.housekeeping"
+date +%s > "$I.wait.housekeeping.since"
+printf '%s\n' 'N9 wrapped -' > "$I.wait.digest"
+bash "$WAIT" "$I" --workers "N1.md" > /dev/full 2> "$WORK/d8.err" &
+WPID=$!
+wait_hb "$I" || fail "(8934) no baseline heartbeat"
+sed -i 's/tails=N1:LIVE/tails=N1:BLOCKED/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(8934) a failed write keeps the look-only line and the digest queued" "1:1" "$(grep -c '^tick-fail samples=3' "$I.wait.housekeeping" 2>/dev/null):$(grep -c '^N9 wrapped' "$I.wait.digest" 2>/dev/null)"
+
 # --- (g) a Telegram line wakes at once; a re-arm replays nothing -----------
 reset_stub
 I="$(new_inbox g)"
