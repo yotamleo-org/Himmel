@@ -994,6 +994,10 @@ chief_lock "$DCA" sid-another
 run hp grant --key HIMMEL-9217 --repo "$R" --chief-doc "$DCA" scripts/check-ci.sh
 same "C8 a caller whose ancestry lacks the lock's holder session: refused" "$RC" 1
 contains "C8 ... the refusal says the holder is not this caller" "$ERR" "not this caller"
+# a Claude session nested under the chief (a subagent, a nested claude): its own session file is nearer than the chief's
+run bash -c 'f="$CLAUDE_CONFIG_DIR/sessions/$$.json"; printf "{\"pid\":%d,\"sessionId\":\"sid-nested\"}\n" "$$" > "$f"; python3 -I "$1" grant --key HIMMEL-9218 --repo "$2" --chief-doc "$3" scripts/check-ci.sh; rc=$?; rm -f "$f"; exit "$rc"' _ "$SUT" "$R" "$DCH"
+same "C8 a Claude session nested under the chief, naming the chief's held doc: refused" "$RC" 1
+contains "C8 ... the refusal says the holder is not this caller" "$ERR" "not this caller"
 DCN="$(mkdoc HIMMEL-9218-nolive-chief.md)"
 lock_hold "$DCN"
 run hp grant --key HIMMEL-9219 --repo "$R" --chief-doc "$DCN" scripts/check-ci.sh

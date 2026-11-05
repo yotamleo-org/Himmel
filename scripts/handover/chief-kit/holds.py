@@ -940,31 +940,31 @@ def lock_dir_for(doc, session):
         d = up
 
 
-def ancestor_sessions():
-    """The Claude session ids of the caller's ancestor processes: each ancestor pid with a
-    <claude config>/sessions/<pid>.json that names that pid."""
+def caller_session():
+    """The Claude session id of the caller's nearest ancestor with a <claude config>/sessions/<pid>.json naming that
+    pid, or ''. Only the nearest: a Claude session nested under the chief is not the chief."""
     sdir = os.path.join(os.environ.get('CLAUDE_CONFIG_DIR') or os.path.join(os.path.expanduser('~'), '.claude'), 'sessions')
-    out, pid, seen = set(), os.getppid(), 0
+    pid, seen = os.getppid(), 0
     while pid > 1 and seen < 64:
         seen += 1
         try:
             with open(os.path.join(sdir, '%d.json' % pid)) as f:
                 s = json.load(f)
             if isinstance(s, dict) and s.get('pid') == pid and s.get('sessionId'):
-                out.add(str(s['sessionId']))
+                return str(s['sessionId'])
         except (OSError, ValueError):
-            pass  # swallow-ok: an ancestor with no readable session file names no session; it adds nothing
+            pass  # swallow-ok: an ancestor with no readable session file is no Claude session; the walk goes on up
         res = run_bounded(['ps', '-o', 'ppid=', '-p', str(pid)], QL_TIMEOUT)
         try:
             pid = int(res[1].strip()) if res and res[0] == 0 else 0
         except ValueError:
             pid = 0
-    return out
+    return ''
 
 
 def chief_session(doc):
-    """(session, '') when doc is a chief doc whose queue lock is held, fresh, on this host, by a Claude session that is
-    an ancestor of the caller; else (None, why). The real queue-lock.sh, never HOLDS_QUEUE_LOCK: this check loosens
+    """(session, '') when doc is a chief doc whose queue lock is held, fresh, on this host, by the caller's own
+    (nearest) Claude session; else (None, why). The real queue-lock.sh, never HOLDS_QUEUE_LOCK: this check loosens
     the barrier, so a test seam must not stand in for it."""
     if not os.path.isfile(doc):
         return None, 'the chief doc %s does not exist' % doc
@@ -1004,7 +1004,7 @@ def chief_session(doc):
         return None, 'the queue lock on %s names no holder Claude session (no liveness marker)' % doc
     # ponytail: the liveness marker and ~/.claude/sessions/<pid>.json are files of this user, so a same-user process can
     # forge either; this binds a session that uses the kit's own paths, upgrade path: the lock records the holder claude pid
-    if holder not in ancestor_sessions():
+    if holder != caller_session():
         return None, 'the queue lock on %s is held by Claude session %s, which is not this caller' % (doc, holder)
     return clean(owner['session']), ''
 
