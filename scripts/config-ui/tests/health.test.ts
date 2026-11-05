@@ -324,6 +324,8 @@ test("chiefLiveFor counts only a live console whose name starts with the project
   expect(chiefLiveFor(data(sess("HIMMEL-w-9073", { role: "worker" })), "HIMMEL")).toBe(false);
   expect(chiefLiveFor({ census: "unavailable", sessions: [] }, "HIMMEL")).toBeUndefined();
   expect(chiefLiveFor(null, "HIMMEL")).toBeUndefined();
+  expect(chiefLiveFor(data(sess("HIMMEL-a-chief")), "himmel.ab12cd")).toBe(true); // an unregistered checkout keys on its repo
+  expect(chiefLiveFor(data(sess("HIMMEL-a-chief")), "luna.ab12cd")).toBe(false);
 });
 
 // One check detail can be a ~5 KB line (the graph-freshness paths, comma-separated, no break inside a path).

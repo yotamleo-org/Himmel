@@ -58,7 +58,8 @@ export function fixAction(r, foreign = false) {
 // Liveness as Fleet reads it (fleet-model.ts isLive).
 export function chiefLiveFor(fleetData, key) {
   if (!fleetData || fleetData.census === "unavailable") return undefined;
-  const prefix = `${String(key).toUpperCase()}-`;
+  // an unregistered checkout is named <repo>.<6 hex> (projects.ts readProjects): its key is the repo's
+  const prefix = `${String(key).replace(/\.[0-9a-f]{6}$/, "").toUpperCase()}-`;
   return (fleetData.sessions || []).some((s) => s.role === "console" && s.live !== false && s.state !== "wrapped" && s.lock !== "released"
     && String(s.name).toUpperCase().startsWith(prefix));
 }
