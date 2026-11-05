@@ -369,7 +369,7 @@ _RMPOS_TEXT = re.compile(r"\s*(?:echo|printf|:)(?:\s[^\];&|<>(){}`$\\\"*?\[!#~']
 TERMINAL_DESTRUCTIVE = re.compile(
     r"\brm\b[^|;&\n]*(?:\s|\$\{ifs\})[\"']?-\w*r"   # recursive rm (rm -r/-rf/-Rf); tolerates a quoted flag + ${IFS} separator
     + r"|\brm\b[^|;&\n]*--recursive"
-    + r"|\b(del|erase|rd|rmdir)\b[^|;&\n]*/s(?:[^A-Za-z0-9_.-]|$)"  # recursive Windows delete; /s bound to the switch, not a path prefix like /scripts
+    + r"|\b(del|erase|rd|rmdir)\b[^|;&\n]*/s(?:[^A-Za-z0-9_.-]|$)"  # recursive del/rd form; /s bound to the switch, not a path prefix like /scripts
     + r"|\bcipher\s+/w"
     # verb split: schtasks /query is read-only (cadence diagnostic),
     # so only the mutating verbs are refused. Mirrors the .sh hook schtasks line.

@@ -92,7 +92,7 @@ def _end_body(node: str, repo: str) -> str:
     """The `on_session_finalize` sub-block, 2-space indented.
 
     ONE entry, not one per member: run-hook-with-bash.js --chain runs every
-    member from a single node launch and resolves Git Bash
+    member from a single node launch and resolves the right bash
     itself, which a bare `bash` from hermes on Windows would not (the
     System32 WSL-stub trap). --lifecycle marks the chain ADVISORY: every member
     runs, stderr is forwarded, and the chain always exits 0, so an end hook can

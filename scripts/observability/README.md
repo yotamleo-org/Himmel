@@ -28,8 +28,7 @@ then briefly overcount around a slide. For the war-room panels (7d ranges over
 a 14d window, low row churn) that artifact is small and accepted; if it ever
 misleads, the fix is in-process monotonic accumulation in the collector child, not a family rename here.
 
-The truncated / error / stalled alerts do NOT read `flow_run_outcome_total`
-. They read two event-time families built from the same fold:
+The truncated / error / stalled alerts do NOT read `flow_run_outcome_total`. They read two event-time families built from the same fold:
 `flow_run_last_failure_timestamp{flow,outcome}` (epoch seconds of the newest
 `truncated` or `error` end row in the window; absent when there is none, so an
 expiring old failure simply disappears and cannot page) and
