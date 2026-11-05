@@ -68,6 +68,17 @@ test("the five tiles share one line at 1280 px and fold to two columns at 760 px
   await shot(page, "report-760");
 });
 
+test("the Shift page bar stays empty after the report list has loaded", async ({ page }) => {
+  h = await boot();
+  seed();
+  await page.goto(`${h.url}&page=report`);
+  await expect(page.locator("#pagebar .rp-days")).toBeVisible();
+  await page.evaluate(() => { location.hash = "#/shift"; });
+  await page.locator("h1").first().waitFor();
+  await expect(page.locator(".rp-days")).toHaveCount(0);
+  await expect(page.locator("[data-act=report-refresh]")).toHaveCount(0);
+});
+
 test("the four settings show on Configure, save, and land in the himmel config", async ({ page }) => {
   h = await boot();
   await page.goto(h.url);

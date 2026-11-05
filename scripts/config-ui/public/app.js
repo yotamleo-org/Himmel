@@ -159,7 +159,7 @@ function renderPages() {
 // One line on desktop; at 760 px the controls fold behind "Filters (n on)" (app.css).
 function pageBar() {
   if (currentPage.id !== "health" && currentPage.id !== "report") return "";
-  const ctl = currentPage.id === "health" ? projectPicker() : reportBar(reportList, reportView, reportUi);
+  const ctl = currentPage.id === "health" ? projectPicker() : currentPage.id === "report" ? reportBar(reportList, reportView, reportUi) : "";
   const on = currentPage.id === "health" && (healthView.mode === "all" || (healthView.project && projects && healthView.project !== projects.current)) ? 1 : 0;
   const fold = ctl ? `<button type="button" class="pb-fold" aria-expanded="${pagebarOpen}" aria-controls="pb-ctl">Filters (${on} on)</button>` : "";
   return `<div class="pagebar${pagebarOpen ? " open" : ""}" id="pagebar" data-page="${currentPage.id}"${ctl ? "" : " hidden"}>${fold}<div class="pb-ctl" id="pb-ctl">${ctl}</div></div>`;
