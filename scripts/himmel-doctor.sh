@@ -123,9 +123,19 @@ ledger_registry_path() {
     printf '%s\n' "$p"
 }
 
+# Each check declares the scope its --json row carries: "shared" = the machine or himmel itself (one
+# answer for every project), "project" = the default. The per-repo index checks (graph freshness, semantic graph)
+# are project rows that name the repo they judge, so a feed saved under another project does not carry them.
+# A check id is its Cn prefix (C40-qmd-vec -> C40).
+DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 "
+DOCTOR_REPO_CHECKS=" C33 C70 "
+DOCTOR_REPO_NAME="himmel"
+
 # emit <SEV> <id> <msg> <remedy>
 emit() {
-    local sev="$1" id="$2" msg="$3" remedy="${4:-}" col=""
+    local sev="$1" id="$2" msg="$3" remedy="${4:-}" col="" cn="${2%%-*}" scope="project" repo=""
+    case "$DOCTOR_SHARED_CHECKS" in *" $cn "*) scope="shared" ;; esac
+    case "$DOCTOR_REPO_CHECKS" in *" $cn "*) repo="$DOCTOR_REPO_NAME" ;; esac
     case "$sev" in
         FAIL) col="$C_RED"; n_fail=$((n_fail+1)) ;;
         WARN) col="$C_YEL"; n_warn=$((n_warn+1)) ;;
@@ -133,8 +143,8 @@ emit() {
         OK)   col="$C_GRN" ;;
     esac
     if [ "$DO_JSON" = 1 ]; then
-        jq -cn --arg sev "$sev" --arg id "$id" --arg msg "$msg" --arg remedy "$remedy" \
-            '{sev: $sev, id: $id, msg: $msg, remedy: $remedy}' >&3
+        jq -cn --arg sev "$sev" --arg id "$id" --arg msg "$msg" --arg remedy "$remedy" --arg scope "$scope" --arg repo "$repo" \
+            '{sev: $sev, id: $id, msg: $msg, remedy: $remedy, scope: $scope} + (if $repo == "" then {} else {repo: $repo} end)' >&3
     else
         printf '%s%-4s%s %s: %s\n' "$col" "$sev" "$C_0" "$id" "$msg"
         [ -n "$remedy" ] && printf '       %s→ %s%s\n' "$C_DIM" "$remedy" "$C_0"
