@@ -43,7 +43,8 @@ export async function readSections(doc) {
     let p;
     try { p = sectionsPathOf(doc); } catch { return { sections: [] }; }
     let st;
-    try { st = await fs.stat(p); } catch { cache.delete(p); return { sections: [] }; }
+    try { st = await fs.lstat(p); } catch { cache.delete(p); return { sections: [] }; }
+    if (st.isSymbolicLink()) return { sections: [], error: 'sidecar is a symlink' };
     const key = `${st.mtimeMs}:${st.size}`;
     const hit = cache.get(p);
     if (hit && hit.key === key) return hit.result;
@@ -70,7 +71,7 @@ async function loadForWrite(p) {
     if (lst.size > MAX_FILE) throw invalid('sections file is over 64 KB');
     try {
         const j = JSON.parse(await fs.readFile(p, 'utf8'));
-        if (!j || !Array.isArray(j.sections) || !Number.isInteger(j.rev)) throw new Error('bad shape');
+        if (!j || j.schema !== SCHEMA || !Array.isArray(j.sections) || !Number.isInteger(j.rev)) throw new Error('bad shape');
         return { rev: j.rev, sections: j.sections };
     } catch (e) {
         throw invalid(`existing sections file does not parse (${e.message}); not overwriting`);
@@ -147,7 +148,7 @@ async function main() {
         try { realpathSync(o.doc); } catch (e) { throw invalid(`cannot resolve --doc: ${e.message}`); }
         const r = await readSections(o.doc);
         if (r.error) throw invalid(r.error);
-        for (const s of r.sections) console.log(`${s.id}\t${s.order}\t${s.tone}\t${s.title}`);
+        for (const s of r.sections) console.log(`${s.id}\t${s.order}\t${s.tone}\t${String(s.title).replace(/[\t\r\n]/g, ' ')}`);
         return;
     }
     const expectRev = o['expect-rev'] === undefined ? undefined : intOf(o['expect-rev'], '--expect-rev');

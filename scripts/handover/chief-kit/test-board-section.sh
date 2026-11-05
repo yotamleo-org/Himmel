@@ -118,6 +118,11 @@ node "$SUT" --doc "$D4" set two --title Two --body b --expect-rev 1 >/dev/null 2
 rc2=$?
 wait "$p1"
 case "$rc2" in 0|3) pass "the --expect-rev call exits 0 or 3 ($rc2)" ;; *) fail "the --expect-rev call exited $rc2" ;; esac
+same 'the plain interleaved set is stored' "$(jget "$B4/Q-chief.sections.json" 'j.sections.some(s=>s.id==="one")')" true
+case "$rc2" in
+    0) same 'a succeeding --expect-rev set is stored' "$(jget "$B4/Q-chief.sections.json" 'j.sections.some(s=>s.id==="two")')" true ;;
+    3) same 'a refused --expect-rev set is not stored' "$(jget "$B4/Q-chief.sections.json" 'j.sections.some(s=>s.id==="two")')" false ;;
+esac
 same 'the interleaved file parses with base kept' "$(jget "$B4/Q-chief.sections.json" 'j.sections.some(s=>s.id==="base")')" true
 same 'no tmp file is left behind' "$(find "$B4" -name '*tmp*' | wc -l | tr -d ' ')" 0
 
@@ -130,6 +135,19 @@ printf '{not json' > "$B6/R-chief.sections.json"
 case "$(rd "$D6")" in *'does not parse'*) pass 'an unparseable sidecar gives an error and []' ;; *) fail 'an unparseable sidecar gives an error' ;; esac
 head -c 70000 /dev/zero | tr '\0' x > "$B6/R-chief.sections.json"
 case "$(rd "$D6")" in *'over 65536'*) pass 'an oversize sidecar gives an error and []' ;; *) fail 'an oversize sidecar gives an error' ;; esac
+
+# list refuses a symlinked sidecar and a foreign schema blocks a write
+B8="$W/b8"; mkdir -p "$B8"; printf '# c\n' > "$B8/L-chief.md"
+printf '{"schema":"himmel.board-sections/1","rev":1,"sections":[]}\n' > "$W/real-sidecar.json"
+ln -s "$W/real-sidecar.json" "$B8/L-chief.sections.json"
+node "$SUT" --doc "$B8/L-chief.md" list >/dev/null 2>&1; same 'list of a symlinked sidecar exits 2' "$?" 2
+B9="$W/b9"; mkdir -p "$B9"; printf '# c\n' > "$B9/M-chief.md"
+printf '{"schema":"himmel.board-sections/2","rev":4,"sections":[]}\n' > "$B9/M-chief.sections.json"
+node "$SUT" --doc "$B9/M-chief.md" set a --title T --body b >/dev/null 2>&1; same 'a foreign schema blocks a write (exit 2)' "$?" 2
+same 'the foreign-schema file is untouched' "$(jget "$B9/M-chief.sections.json" 'j.rev')" 4
+run set tabbed --title "$(printf 'a\tb')" --body b >/dev/null
+same 'list keeps a tabbed title on one line' "$(run list | grep -c '^tabbed')" 1
+run rm tabbed >/dev/null
 
 # a checkout path holding a space still runs the CLI; a mistyped --doc exits 2 on list too
 B7="$W/dir with space"; mkdir -p "$B7"; printf '# c\n' > "$B7/S-chief.md"
