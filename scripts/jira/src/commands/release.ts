@@ -1,5 +1,6 @@
 // billed-exempt: the release manager rm-run judge; run by the chief on purpose, bank-preflight gated
 import { execFileSync, spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -310,9 +311,17 @@ export const liveJudge: Judge = async (input) => {
   if (!settings) throw new Error('rm-run: profile-settings.sh bare printed no settings path; nothing ruled');
   // An empty cwd, so no project instructions load beside the skill.
   const cwd = mkdtempSync(join(tmpdir(), 'rm-run-judge-'));
+  // A headless run has no session title, so the launch record is found by the session id given here.
+  // The record is best-effort (the helper warns and exits 0); the lane is native, as the code above bills it.
+  const sid = randomUUID();
+  try {
+    execFileSync('bash', [join(repoRoot, 'scripts', 'handover', 'launch-record.sh'), `rm-judge-${sid.slice(0, 8)}`, 'bare', 'native', 'release-manager', sid, 'opus'], { stdio: ['ignore', 'ignore', 'inherit'] });
+  } catch (e) {
+    process.stderr.write(`rm-run: launch record not written: ${e instanceof Error ? e.message : String(e)}\n`);
+  }
   try {
     const out = execFileSync('claude', [
-      '-p', '--settings', settings, '--model', 'opus', '--effort', 'high', '--output-format', 'json', '--permission-mode', 'plan',
+      '-p', '--session-id', sid, '--settings', settings, '--model', 'opus', '--effort', 'high', '--output-format', 'json', '--permission-mode', 'plan',
       '--tools', '', '--max-turns', '1', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
     ], { input: judgePrompt(input, skill), cwd, env: judgeEnv(process.env), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 900_000, stdio: ['pipe', 'pipe', 'inherit'] });
     return parseDecisions(out);

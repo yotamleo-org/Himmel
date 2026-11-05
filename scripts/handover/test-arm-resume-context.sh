@@ -557,12 +557,18 @@ case "${OSTYPE:-$(uname -s 2>/dev/null)}" in
         out=$(arm_j "$CACHE_J4" "$HO_J4")
         rc=$?
         assert_rc "j4: precondition, the non-chief real arm succeeds" 0 "$rc"
-        assert_contains "j4: a non-chief arm writes no record" "absent" "$([ -e "$CACHE_J4/launch-logs" ] && echo present || echo absent)"
+        # A non-chief arm writes the worker-format launch record (profile, lane, role), never a chief row
+        # (the one log in the fresh cache dir is this arm's; its name is the session title)
+        ROW_J4=$(cat "$CACHE_J4"/launch-logs/*.log 2>/dev/null)
+        assert_contains "j4: a non-chief arm writes a worker launch record with profile, lane native and role" "headed-arm-worker: profile=user lane=native model=opus role=resume session=" "$ROW_J4"
+        assert_contains "j4: the non-chief record is not a chief row" "0" "$(printf '%s\n' "$ROW_J4" | grep -c '^headed-arm: ')"
         HO_J5=$(make_handover "arm-context-dry-chief.md")
-        out=$(HIMMELCTL_CACHE_DIR="$CACHE_J4" run_arm --time "$(future_time)" --handover "$HO_J5" --dry-run 2>&1)
+        CACHE_J5="$TMP/cache-j5"
+        mkdir -p "$CACHE_J5"
+        out=$(HIMMELCTL_CACHE_DIR="$CACHE_J5" run_arm --time "$(future_time)" --handover "$HO_J5" --dry-run 2>&1)
         rc=$?
         assert_rc "j5: precondition, the chief dry-run succeeds" 0 "$rc"
-        assert_contains "j5: a dry-run arm writes no record" "absent" "$([ -e "$CACHE_J4/launch-logs" ] && echo present || echo absent)"
+        assert_contains "j5: a dry-run arm writes no record" "absent" "$([ -e "$CACHE_J5/launch-logs" ] && echo present || echo absent)"
 
         # best-effort: an unwritable record dir never fails the arm, and says so
         printf 'x' > "$TMP/not-a-dir"

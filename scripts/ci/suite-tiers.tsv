@@ -510,6 +510,7 @@ scripts/handover/test-konsole-macos.sh	local	behaviour suite, 0 catches in the 4
 scripts/handover/test-worker-handoff-threshold-docs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-worker-resume-brief.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-worker-timeline.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/test-launch-record.sh	local	behaviour suite, new in HIMMEL-9163
 scripts/handover/test-lessons-sweep.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-librarian-cadence.sh	local	behaviour suite, new in HIMMEL-6915
 scripts/handover/test-librarian.sh	local	behaviour suite, new in HIMMEL-6915

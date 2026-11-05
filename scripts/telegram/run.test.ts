@@ -1,7 +1,8 @@
 import { beforeEach, expect, test } from "bun:test";
-import { buildRunArgs, DEFAULT_MODEL, detectCap, detectContentFilter, buildPrompt, killTree, REPO_ROOT, sessionEnv, spawnSpec, laneEffort } from "./run";
+import { buildRunArgs, DEFAULT_MODEL, detectCap, detectContentFilter, buildPrompt, killTree, REPO_ROOT, sessionEnv, spawnSpec, laneEffort, withSessionId, writeLaunchRecord } from "./run";
 import { spawn } from "bun";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // buildRunArgs resolves the model from process.env — reset the
@@ -380,6 +381,22 @@ test("buildPrompt Jira sanction applies only to operator-marked lines", () => {
   const p = buildPrompt("HIMMEL-5", { inbox:"i", outbox:"o", context:"c", cwd:"/r" });
   expect(p).toContain(`operator":true`);
   expect(p).not.toContain("Acting on Jira tickets for the operator is part of your job: when asked,");
+});
+
+test("a bridge run gets a session id and writes a launch record the digest reads back (HIMMEL-9163)", () => {
+  const cache = mkdtempSync(join(tmpdir(), "tg-launch-"));
+  const sid = "9163c0de-0000-4000-8000-0000000000aa";
+  try {
+    const cmd = withSessionId(["claude", "--model", "claude-opus-5-5", "the prompt"], sid);
+    expect(cmd).toEqual(["claude", "--session-id", sid, "--model", "claude-opus-5-5", "the prompt"]);
+    writeLaunchRecord(sid, "claude-opus-5-5", cache);
+    const line = readFileSync(join(cache, "launch-logs", "telegram-9163c0de.log"), "utf8");
+    expect(line).toMatch(new RegExp(`^headed-arm-worker: profile=telegram lane=native model=claude-opus-5-5 role=telegram session=telegram-9163c0de session_id=${sid} launched=\\S+\\n$`));
+  } finally { rmSync(cache, { recursive: true, force: true }); }
+});
+test("buildRunArgs and spawnSpec argv are unchanged: the session id is added at spawn only (HIMMEL-9163)", () => {
+  expect(spawnSpec("p").cmd).not.toContain("--session-id");
+  expect(buildRunArgs("p").cmd).not.toContain("--session-id");
 });
 
 test("run-prompt.md template matches buildPrompt's per-message operator marker (HIMMEL-5832)", () => {

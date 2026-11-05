@@ -243,6 +243,12 @@ check "a chief launch line gives its role as the profile" 'jq -e "select(.run_id
 check "a -RESUME launch name finds the launch record filed without the suffix" 'jq -e "select(.run_id == \"$LZ\") | .meta.profile == \"worker-impl\"" "$LE" >/dev/null'
 check "a native launch gets its lane from the launch record" 'jq -e "select(.run_id == \"$LP\") | .lane == \"native\" and all(.meta.tool_health[]; .lane == \"native\")" "$LE" >/dev/null'
 check "a claudex launch record gives claudex" 'jq -e "select(.run_id == \"$LX\") | .lane == \"claudex\"" "$LE" >/dev/null'
+# the chief row the launchers really write (chief_context_write_record) carries the lane, so a chief reads native, not unknown
+LK=4670c1a5-0000-4000-8000-0000000000fc
+( HIMMELCTL_CACHE_DIR="$TMP/cache"; . "$HERE/../../lib/chief-context.sh"; chief_context_write_record lp-chief-real 1m default auto )
+jq -c --arg s "$LK" '.session = $s | del(.lane)' "$TMP/digest.json" >"$TMP/lp-$LK.json"
+lrec --digest "$TMP/lp-$LK.json" --launch-name lp-chief-real >/dev/null 2>&1
+check "a chief row written by chief_context_write_record gives lane native and profile chief" 'jq -e "select(.run_id == \"$LK\") | .lane == \"native\" and .meta.profile == \"chief\" and (.meta | has(\"launch_gap\") | not)" "$LE" >/dev/null'
 
 # A session with no launch name still finds its launch record by the session id the launcher writes, then by its doc's stem;
 # a session found by neither names the kind of session it was; a later record fills an unknown lane once the launch record exists.
