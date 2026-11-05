@@ -7904,4 +7904,44 @@ out="$(C76_DUP=0 c76_run)"
 if grepq "$out" 'OK   C76-duplicate-plugin-installs'; then pass "C76 within the limit -> OK"; else fail "C76 within limit -> $(printf '%s' "$out" | grep -A1 C76)"; fi
 rm -rf "$c76_t"
 
+# --- C88-graph-api-optin: the graph cadence's billed API lane needs a station opt-in ---
+c88_t="$(mktemp -d "${TMPDIR:-/tmp}/c88.XXXXXX")" || { echo "FATAL: C88 setup mktemp failed" >&2; exit 1; }
+mkdir -p "$c88_t/claude" "$c88_t/home/.himmel" "$c88_t/bat"
+c88_key="dummy-not-a-real-key-c88"
+c88_run() { CLAUDE_DIR="$c88_t/claude" HOME="$c88_t/home" GRAPHMAP_BAT_DIR="$c88_t/bat" HIMMEL_DOCTOR_ENV_FILE="$c88_t/env" bash "$DOC" --only C88 --no-color 2>&1; }
+c88_reset() { rm -rf "$c88_t/home/.himmel" "$c88_t/bat" "$c88_t/env"; mkdir -p "$c88_t/home/.himmel" "$c88_t/bat"; }
+c88_optin() { printf '{"graphify":{"semantic_api_ok":true}}\n' > "$c88_t/home/.himmel/config.json"; }
+c88_key_in_env() { printf '# himmel .env\nANTHROPIC_ORG_A_KEY=%s\n' "$c88_key" > "$c88_t/env"; }
+c88_lane_runner() { printf '#!/bin/sh\n_rc=0; HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api graph-cadence.sh --semantic || _rc=$?\n' > "$c88_t/bat/graphmap-publish-himmel.sh"; }
+c88_skip_runner() { printf '#!/bin/sh\n_rc=0; echo "[semantic skipped: API lane not opted in]"; graph-cadence.sh || _rc=$?\n' > "$c88_t/bat/graphmap-publish-himmel.sh"; }
+echo "== C88: no opt-in, a key in .env and an armed runner that bakes the lane -> WARN naming the runner and the re-render =="
+c88_reset; c88_key_in_env; c88_lane_runner
+out="$(c88_run)"
+if grepq "$out" 'WARN C88-graph-api-optin' && grepq "$out" -F 'graphmap-publish-himmel.sh' && grepq "$out" -F 'ANTHROPIC_ORG_A_KEY' && grepq "$out" -F 'graphmap-cadence.sh arm --rewrite-armed' && ! grepq "$out" -F "$c88_key"; then pass "C88 key + baked lane + no opt-in -> WARN, no key value"; else fail "C88 key + baked lane + no opt-in -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: opted in -> OK reporting the state, even with a key and a lane runner =="
+c88_reset; c88_key_in_env; c88_lane_runner; c88_optin
+out="$(c88_run)"
+if grepq "$out" 'OK   C88-graph-api-optin' && grepq "$out" -F 'opted in' && ! grepq "$out" -F 'not opted in'; then pass "C88 opted in -> OK"; else fail "C88 opted in -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: no opt-in and the armed runner carries the skip line, not the lane -> OK reporting the state =="
+c88_reset; c88_key_in_env; c88_skip_runner
+out="$(c88_run)"
+if grepq "$out" 'OK   C88-graph-api-optin' && grepq "$out" -F 'not opted in' && ! grepq "$out" 'WARN C88'; then pass "C88 skip-line runner + key -> OK"; else fail "C88 skip-line runner + key -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: no opt-in, no key in .env, nothing armed -> OK =="
+c88_reset
+out="$(c88_run)"
+if grepq "$out" 'OK   C88-graph-api-optin' && grepq "$out" -F 'not opted in'; then pass "C88 nothing to draw -> OK"; else fail "C88 nothing to draw -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: a baked lane with no key in .env draws nothing -> INFO, never a WARN =="
+c88_reset; c88_lane_runner; printf 'ANTHROPIC_ORG_A_KEY=\nJIRA_EMAIL=a@example.com\n' > "$c88_t/env"
+out="$(c88_run)"
+if grepq "$out" 'INFO C88-graph-api-optin' && ! grepq "$out" 'WARN C88'; then pass "C88 baked lane, empty key -> INFO"; else fail "C88 baked lane, empty key -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: only the JSON literal true opts in: a symlinked config.json and a string value do not =="
+c88_reset; c88_key_in_env; c88_lane_runner
+printf '{"graphify":{"semantic_api_ok":true}}\n' > "$c88_t/real-config.json"; ln -s "$c88_t/real-config.json" "$c88_t/home/.himmel/config.json"
+out="$(c88_run)"
+if grepq "$out" 'WARN C88-graph-api-optin'; then pass "C88 symlinked config.json is no opt-in"; else fail "C88 symlinked config.json -> $(printf '%s' "$out" | head -4)"; fi
+c88_reset; c88_key_in_env; c88_lane_runner; printf '{"graphify":{"semantic_api_ok":"true"}}\n' > "$c88_t/home/.himmel/config.json"
+out="$(c88_run)"
+if grepq "$out" 'WARN C88-graph-api-optin'; then pass "C88 string \"true\" is no opt-in"; else fail "C88 string true -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c88_t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi
