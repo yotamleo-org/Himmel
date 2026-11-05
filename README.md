@@ -30,15 +30,18 @@ and how to turn it off.
 
 Along with that you get:
 
-- **A simple install.** One command. It shows what it will add before it
-  adds anything, then asks a few questions, each with a default answer
-  ([install profiles](docs/setup/profiles/README.md)). One command takes it
-  off again.
+- **A simple install.** One command. Preview it first with `--dry-run`. Without
+  `--scope` it asks a few questions, each with a default answer, prints the plan
+  and waits for your yes; with `--scope` it installs from a shipped profile
+  without asking ([install profiles](docs/setup/profiles/README.md)). One
+  command takes it off again.
 - **A UI that shows the fleet.** `himmelctl ui` opens a local page. The part
-  that stands out is the AG-UI Fleet page: it lists every live session with its
-  ticket, PR and state, and opens the run of any one of them. The other pages
-  show what is installed and whether it is healthy, and turn features on and
-  off, with a preview before each change ([the himmel UI](docs/ui.md)).
+  that stands out is the Fleet page, built on AG-UI, an open protocol that
+  streams an agent's events to a web page. After a one-time build it lists every
+  live session with its ticket, PR and state, and opens the run of any one of
+  them. The other pages show what is installed and whether it is healthy, and
+  turn features on and off, with a preview before each change
+  ([the himmel UI](docs/ui.md)).
 - **Evals, not promises.** himmel measures itself: how often the review
   panel catches planted bugs, how often its findings are right and what the
   prompt cache saves, each number with its sample size
@@ -58,8 +61,8 @@ One ticket travels the same path every time:
    checks that no two of them plan to change the same files; an overlap with an
    open PR can pass if it is small and merges clean
    ([parallel waves](docs/handover/running-a-chief.md#parallel-waves)).
-3. **Review.** The worker runs `/pr-check`: a second model reads the change,
-   if you have one set up, and the worker checks each finding against the
+3. **Review.** The worker runs `/pr-check` (`/himmel-ops:pr-check` in your own
+   project): a second model reads the change, if you have one set up, and the worker checks each finding against the
    code, then fixes it, rules it out or moves it to a ticket of its own. With
    no second model, the worker reviews the change itself, so nobody independent
    reads it. In a himmel checkout a push marks the review as owed, and the PR
@@ -95,8 +98,10 @@ fleet or the vault.
 [Getting Started](docs/getting-started.md) walks through it step by step:
 each step says which folder to run it from and what you should see.
 
-You need git, node with npm, jq, python3 and Claude Code, signed in. The
-installer checks for them and stops with install hints if one is missing.
+You need git, node with npm, jq and python3: the installer stops with install
+hints if one is missing. Install Claude Code and sign in first too. The
+installer only warns if `claude` is missing, then skips the plugins, and it
+never checks sign-in.
 
 1. **Install it.** Make the spare project, download himmel, preview the
    install, then run it:
@@ -210,12 +215,13 @@ The test run shows a few of these. The rest arrive as you add them, and the
 
 **Keep it right**
 
-- **Review before merge.** `/pr-check` has a second model read the change, if
-  you have one set up, and the session rules on each finding against the code,
+- **Review before merge.** `/pr-check` (`/himmel-ops:pr-check` in your own
+  project) has a second model read the change, if you have one set up, and the session rules on each finding against the code,
   so a finding that misreads the code is disproved, not fixed. The merge gate
   refuses while CI is red or pending or a reviewer finding is open. Review is
-  not proof: the required reviewer caught 9 of 12 planted bugs, and the PR's
-  author ruled 79.5% of its 5,388 ruled findings right
+  not proof: the required reviewer caught 75% of planted bugs (likely range 46.8
+  to 91.1, from 9 of 12), and the PR's author ruled 79.5% of its 5,388 ruled
+  findings right
   ([evals](docs/evals/README.md)).
 - **Rules that hold.** Hooks stop edits on `main` and reads of secret files, and
   in a himmel checkout opening a PR while a review is owed, at the moment Claude
@@ -225,8 +231,8 @@ The test run shows a few of these. The rest arrive as you add them, and the
 **Remember and find**
 
 - **A second brain, not just a memory file.** With the optional notes vault, a
-  hook leaves a note when a session ends normally, search finds a note by its words or its
-  meaning, and a graph shows which notes connect. It is all plain markdown
+  hook you register by hand leaves a note when a session ends normally, search
+  finds a note by its words or its meaning, and a graph shows which notes connect. It is all plain markdown
   you can open and fix. [Second brain and memory](#second-brain-and-memory)
   says what sets it apart.
 
@@ -279,12 +285,13 @@ The diagram shows the four flows that make up most of a day with himmel.
 
 **1. Ship a change.** Give your change its own branch and working folder with
 `scripts/worktree.sh`, so you never edit `main` directly. Each commit names its ticket.
-Checks on each commit and push examine the message format, secrets and
-statements of what was tested. `/pr-check` runs a review; once the pull
-request (PR) is approved, continuous integration (CI) tests for the affected
-suites pass and, in a fleet run, the chief has approved the merge in writing
-for its exact commit, the PR can merge. `scripts/clean.sh` removes the finished
-worktree.
+Git hooks check each commit message and refuse a push to `main` and a
+force-push; a himmel checkout also checks for secrets and statements of what was
+tested. `/himmel-ops:pr-check` runs a review (`/pr-check` in a himmel checkout).
+Once the pull request (PR) is open, the merge gate refuses while continuous
+integration (CI) is red or pending or a reviewer finding is open and, in a fleet
+run, until the chief has approved the merge in writing for its exact commit.
+`scripts/clean.sh` removes the finished worktree.
 
 **2. Run a fleet: one chief, many workers.** For bigger runs, one Claude
 session acts as the *chief*. It coordinates the work and starts *workers*, other
@@ -297,16 +304,17 @@ defines chief, worker, judge and the rest.
 **3. Carry work across sessions.** A session that has made decisions writes
 them into a handover doc with `/handover`. The doc lives where you chose with
 `/handover-setup`: a folder in your vault, a separate git repo, or a
-`handovers/` folder in the project. When a session nears its usage
-limit, himmel schedules a restart. The next session runs `/handover-resume`,
-reads the doc, and continues where the last one stopped.
+`handovers/` folder in the project. On a machine set up for it, when a session
+nears its usage limit, himmel schedules a restart. The next session reads the
+doc and continues where the last one stopped: run `/handover-resume` in a himmel
+checkout, or in your own project ask the session to resume.
 
 **4. Find what you already know.** Before improvising, a session looks up
 what is already known. Claude Code's per-project `MEMORY.md` is a short index
-that routes a keyword to a topic note. `qmd`, a local search engine, searches
-the markdown itself (notes, handovers, docs) by keyword and meaning.
-`graphify`, a map of the code, answers questions about how the code fits
-together. These tools point at real files, and a lesson learned on the way
+that routes a keyword to a topic note. `qmd`, a local search engine the installer
+skips without `bun`, searches the markdown itself (notes, handovers, docs) by
+keyword and meaning. `graphify`, an optional map of the code, answers questions
+about how the code fits together. These tools point at real files, and a lesson learned on the way
 can be written back to memory for the next session.
 
 The commands behind flow 1, numbered in the order you run them. In your shell,
@@ -315,8 +323,8 @@ from the project:
 ```bash
 bash scripts/worktree.sh feat/my-thing   # 1. its own branch and worktree (never edit on main); cd into it
 git add <files>                          # 2. after working with Claude in the worktree
-git commit && git push                   # 2. hooks check the message, secrets and statements of what was tested
-gh pr create                             # 4. then merge once CI is green and the PR is approved
+git commit && git push                   # 2. hooks check the message and refuse a push to main or a force-push
+gh pr create                             # 4. then merge once CI is green and no reviewer finding is open
 bash scripts/clean.sh                    # 5. after the merge: prune merged worktrees
 ```
 
@@ -439,7 +447,7 @@ vault, the Telegram bridge and Jira are optional; himmel runs without them.
 
 | Variable             | Required? | Notes                                                              |
 |----------------------|-----------|--------------------------------------------------------------------|
-| `USER_SLUG`          | recommended | Your kebab-case handle, e.g. `jane-doe`. Names your folder in the handover repo (`handovers/<USER_SLUG>/`) and your worktree folders. If unset, it is derived from `git config user.name`; setup fails only if both are unset. |
+| `USER_SLUG`          | recommended | Your kebab-case handle, e.g. `jane-doe`. Names your folder in the handover repo (`handovers/<USER_SLUG>/`). If unset, it is derived from `git config user.name`; if that is unset too, setup warns and carries on. |
 | `JIRA_PROJECT_KEY`   | only for Jira | e.g. `HIMMEL`. The project the CLI creates and queries issues in. |
 | `JIRA_BASE_URL`      | only for Jira | Your Atlassian site, e.g. `https://your-site.atlassian.net`. |
 | `JIRA_API_TOKEN` + `JIRA_EMAIL` | only for Jira | API-token credentials. Never commit them; `.env` is gitignored. |
@@ -494,9 +502,10 @@ an LLM wiki. Claude writes and keeps them up, search finds the relevant ones
 when a session needs them, and you can read or edit them in
 [Obsidian](https://obsidian.md). With it, five things set himmel's memory apart:
 
-- **It fills itself.** A hook writes a note when a Claude Code session ends
-  normally, so an interrupted session can leave none: what it did, what it
-  decided, what comes next
+- **It fills itself.** Once you
+  [register the hook by hand](docs/setup/new-machine.md#7-end-session-wiki-hook-auto-capture-to-luna-vault),
+  it writes a note when a Claude Code session ends normally, so an interrupted
+  session can leave none: what it did, what it decided, what comes next
   ([end-session hook](docs/luna/end-session-wiki.md)). `/luna-ingest` saves a
   GitHub repo or issue as a note, and pages you clip in the browser are filed
   by the [clip pipeline](docs/luna/compounding.md).
@@ -573,8 +582,9 @@ it. None of them is needed by the core harness.
   skills to ingest, query and save notes, and to lint vault health
   (`wiki-lint`).
 
-In a himmel clone, once you turn on the vault schedule (`/pipeline-cadence`), a vault check runs
-every Sunday at 04:00; run `/obsidian-health` any time by hand.
+In a himmel clone, once you turn on the vault schedule (`/pipeline-cadence`), a vault check
+(`obsidian-triage:vault-lint`) runs every day at 04:00; run that skill any time
+by hand.
 
 ## Where each feature is documented
 
