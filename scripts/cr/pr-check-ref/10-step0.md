@@ -72,9 +72,9 @@
 
    **Carry every printed value forward as a LITERAL (HIMMEL-2226).** Every later ```bash``` fence runs as its own process and inherits no shell variables — the rule this runbook already stated for `$head`, `$branch` and `$db_sha` now covers `$himmel_dir` too, and the worktree-isolation guard makes it mandatory rather than merely correct (a runtime value in a dash-flag operand is refused outright; see the fence contract above). Substitute the printed `himmel_dir=` / `branch=` / `head=` / `marker=` values into each later fence; never re-derive them there. **Every later fence therefore spells the himmel root `<himmel_dir>`** — the same placeholder notation as `<head>` and `<branch>`, marking a value the session substitutes rather than a shell variable the fence will expand (it would expand to nothing: no fence ever assigns one — the value comes from this script's stdout). On the adopter lane, re-deriving `$himmel_dir` with `--show-toplevel` in a later fence would resolve the ADOPTER's checkout and run their `scripts/cr/`, not himmel's — which is why step 0 resolves it once, from the `HIMMEL_REPO` anchor, and every later fence substitutes the printed literal.
 
-   **Then ask whether this is an outside PR.** Once the PR is open, run the ANCHOR's copy, never `<himmel_dir>`'s (on the himmel lane that is the branch under review, which must not decide whether it is outside):
+   **Then ask whether this is an outside PR.** Once the PR is open:
    ```bash
-   bash "$HIMMEL_REPO/scripts/handover/chief-kit/ready-check.sh" --outside <pr>
+   bash "<himmel_dir>/scripts/handover/chief-kit/ready-check.sh" --outside <pr>
    ```
    It prints `outside-pr: yes` or `outside-pr: no`. Yes means a fork, a deleted author, or an author who is not on the internal-author list (a same-repo Bot is no). Exit 2 means the PR snapshot was unreadable: treat that as yes. Carry the value forward. On `outside-pr: yes`, step 3.0 runs with `--full` and step 3.6 records its verdicts, because ready-check item 16 reads those rows at the PR's head. Before a PR exists there is nothing to ask, so run the review as usual and ask again once the PR is open.
 
