@@ -4184,6 +4184,20 @@ else
 fi
 rm -rf "$t"
 
+echo "== C33: fresh action=published-channel row (graph-data publish) -> OK =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c33.XXXXXX")" || { fail "C33 published-channel: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/handover/.graph-cadence"; write_settings "$t/claude" "$WRAPPER"
+printf '{"ts":"%s","head":"aaa","graph_head":"bbb","merges_behind":2,"action":"published-channel","pr":null,"duration_s":1,"error":null}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$t/handover/.graph-cadence/ledger.jsonl"
+out="$(CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/handover" bash "$DOC" --no-color 2>&1)"
+c33_line="$(printf '%s' "$out" | grep 'C33-graph-stale')"
+if grepq "$c33_line" 'OK   C33-graph-stale' && grepq "$c33_line" -F '(action=published-channel)'; then
+    pass "C33 -> OK (fresh published-channel row is a known-good action)"
+else
+    fail "C33 published-channel -> $c33_line"
+fi
+rm -rf "$t"
+
 echo "== C33: last recorded action=failed -> WARN immediately, regardless of age =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c33.XXXXXX")" || { fail "C33 failed-action: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude" "$t/handover/.graph-cadence"; write_settings "$t/claude" "$WRAPPER"

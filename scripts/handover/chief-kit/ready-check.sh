@@ -10,11 +10,15 @@
 # NOT read the three-dot diff — that judgement call stays the chief's own,
 # and the script says so on its last line.
 #
-# Usage: ready-check.sh <pr-number> <full-40-hex-head-sha>
+# Usage: ready-check.sh [--contract yes|no] [--require-contract] <pr-number> <full-40-hex-head-sha>
 #        ready-check.sh --only 7 <pr-number>
 #   --only 7 runs check 7 — a worker's own pre-READY lint of its PR body, the
 #   same code the chief runs — plus the warn-only check 14. Prints
 #   COVERAGE-LINT PASS|FAIL.
+#   --contract yes|no names the merge contract for check 17: yes when the merge
+#   completes the ticket (merge-on-green.sh --jira-transition), no for a partial
+#   merge. --require-contract (go.sh, ready-go.sh, auto-go.sh pass it) makes a
+#   keyed title with no --contract a FAIL; without it check 17 only warns.
 #
 # Checks:
 #   1. Shared snapshot: headRefOid == <head-sha> (full 40 chars); mergeStateStatus
@@ -142,6 +146,22 @@
 #      posted. Never a FAIL, never the marker or the exit code; nothing prints for any
 #      other state or an unreadable status. Not part of `--only 7`.
 #
+# 17. Partial-merge remainder, the merge's exit 26 read at GO time: for a PR
+#      title with a [KEY] (ticket_key_from_title, the merge's reader) and `--contract no`,
+#      the PR body read through scripts/lib/pr_remainder.py (the merge's reader, run from
+#      the anchor) must record a remainder, a `Remaining:` line or a `deferred -> KEY` line
+#      under `## Ticket coverage`; `none`, a missing reader or no answer FAILs. `--contract
+#      yes` and a title with no key pass. No `--contract` on a keyed title FAILs under
+#      --require-contract and warns otherwise. Not part of `--only 7`.
+#
+# 18. Open findings, the merge's gates 4 and 4b read at GO time: the head the
+#      merge gates on can be an earlier round head (a judge GO moves it), where an Important
+#      nobody ruled blocks a PR whose tip has green rows. This runs scripts/cr/
+#      clear-review-marker.sh --check-findings (the merge's own ledger verdict, nothing
+#      written) at the PR head as the merge reads it now and as it reads it once the GO
+#      exists (--assume-go); a blocking finding, an undecided one, a malformed ledger, an
+#      unreadable branch or any other exit FAILs. Not part of `--only 7`.
+#
 # Owner/repo are derived from `gh repo view --json owner,name`, never hard-
 # coded (so this runs the same in any clone/fork). It writes nothing — no
 # ledger rows, no GO files, no PR comments.
@@ -158,10 +178,26 @@ usage() {
     local rc_primary
     rc_primary=$(git -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || rc_primary=""
     case "$rc_primary" in */.git) rc_primary="${rc_primary%/.git}" ;; *) rc_primary="<primary-checkout>" ;; esac
-    echo "usage: ready-check.sh <pr-number> <full-40-hex-head-sha>" >&2
+    echo "usage: ready-check.sh [--contract yes|no] [--require-contract] <pr-number> <full-40-hex-head-sha>" >&2
     echo "       ready-check.sh --only 7 <pr-number>   (ticket-coverage lint, for a worker before READY)" >&2
     echo "run it from the primary checkout, not a worktree (check 12 needs an up-to-date anchor): cd '$rc_primary' && bash '$rc_primary/scripts/handover/chief-kit/ready-check.sh' <pr-number> <full-40-hex-head-sha>" >&2
 }
+
+CONTRACT=""
+REQUIRE_CONTRACT=0
+while :; do
+    case "${1:-}" in
+        --contract)
+            case "${2:-}" in
+                yes|no) ;;
+                *) usage; echo "ready-check: --contract takes yes or no (got '${2:-}')" >&2; exit 2 ;;
+            esac
+            [ -z "$CONTRACT" ] || { usage; echo "ready-check: --contract is given once" >&2; exit 2; }
+            CONTRACT="$2"; shift 2 ;;
+        --require-contract) REQUIRE_CONTRACT=1; shift ;;
+        *) break ;;
+    esac
+done
 
 ONLY7=0
 if [ "${1:-}" = "--only" ]; then
@@ -1505,6 +1541,118 @@ check_cr_rate_limited() {
     fi
 }
 check_cr_rate_limited
+
+# --- 17. a partial merge records what remains: merge-on-green.sh's exit 26, read at GO time.
+# The merge refuses a contract-`no` merge (part of the ticket stays undone) whose PR body carries neither a `Remaining:` line
+# nor a `deferred -> <KEY>` line under `## Ticket coverage`, so a GO for such a PR is a GO the merge refuses. This reads
+# the title's key with the merge's own reader (ticket_key_from_title) and the body with the merge's own remainder reader
+# (scripts/lib/pr_remainder.py, run from the anchor with python3 -I, never from the checkout under review). The contract is
+# the merge line's (--jira-transition, or the brief's `Completes ticket:`), so the caller names it: --contract yes|no.
+# With no --contract, a GO writer (--require-contract) FAILs on a keyed title and an observer gets a WARN.
+check_partial_remainder() {
+    local pr_title lib key rc anchor reader ans
+    [ "$ONLY7" -eq 0 ] || return 0
+    lib="$(cd "$(dirname "$0")/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir leaves the key unread, reported just below
+    pr_title=$(printf '%s' "$snapshot" | jq -r '.[0].title // empty' 2>/dev/null) || pr_title=""  # swallow-ok: an unreadable title is reported just below
+    key=""; rc=0
+    if [ -n "$pr_title" ] && ! printf '%s' "$pr_title" | grep -Eq '[A-Za-z][A-Za-z0-9]*-[0-9]+'; then
+        # No KEY-n anywhere in the title, so the merge's reader finds no key (its rc 1): skip the library load.
+        rc=1
+    elif [ -n "$pr_title" ] && [ -f "$lib/ticket-status.sh" ]; then
+        # A subshell: that lib sources three more into this trust-path script.
+        key=$(
+            # shellcheck source=/dev/null
+            . "$lib/ticket-status.sh" 2>/dev/null  # swallow-ok: declare -F on the next line decides, rc 70 is unreadable
+            declare -F ticket_key_from_title >/dev/null || exit 70
+            ticket_key_from_title "$pr_title"
+        ) || rc=$?
+    else
+        rc=70
+    fi
+    if [ "$rc" -eq 1 ]; then
+        echo "[PASS] 17. partial-merge remainder: not applicable (the PR title carries no [KEY], as at the merge)"
+        return 0
+    fi
+    if [ "$rc" -ne 0 ] || [ -z "$key" ]; then
+        if [ "$REQUIRE_CONTRACT" -eq 1 ]; then
+            echo "[FAIL] 17. partial-merge remainder: cannot read the PR title or its ticket key, so the merge contract cannot be checked"
+            mark_fail
+        else
+            echo "[WARN] 17. partial-merge remainder not checked: the PR title or the key reader is unreadable"
+        fi
+        return 0
+    fi
+    case "$CONTRACT" in
+        '')
+            if [ "$REQUIRE_CONTRACT" -eq 1 ]; then
+                echo "[FAIL] 17. the PR title names $key and no merge contract was given — re-run with --contract yes|no (yes: this merge completes $key; no: a partial merge, and the body must say what remains)"
+                mark_fail
+            else
+                echo "[WARN] 17. partial-merge remainder not checked: no --contract given for $key (a GO writer names it)"
+            fi
+            return 0 ;;
+        yes)
+            echo "[PASS] 17. contract yes: this merge completes $key, so no remainder is read"
+            return 0 ;;
+    esac
+    anchor="${READY_CHECK_ANCHOR:-$(cd "$(dirname "$0")/../../.." && pwd)}"
+    reader="$anchor/scripts/lib/pr_remainder.py"
+    ans=""; rc=0
+    if [ -f "$reader" ]; then
+        ans=$(printf '%s' "${cov_body:-}" | python3 -I "$reader" "$key" 2>/dev/null) || rc=$?  # swallow-ok: a non-zero rc or empty answer FAILs item 17 below
+    else
+        rc=3
+    fi
+    if [ "$rc" -ne 0 ] || [ -z "$ans" ]; then
+        echo "[FAIL] 17. cannot read the remainder of partial merge $key: the anchor's scripts/lib/pr_remainder.py is missing or gave no answer ($reader)"
+        mark_fail
+    elif [ "${ans%%$'\t'*}" = none ]; then
+        echo "[FAIL] 17. $key is a partial merge (--contract no) but the PR body has no \`Remaining:\` line and no \`<ask>: deferred -> <KEY>\` line under \`## Ticket coverage\` — the merge refuses it (exit 26); add one (gh pr edit $PR --body-file <file>)"
+        mark_fail
+    else
+        echo "[PASS] 17. partial merge $key records what remains (${ans%%$'\t'*})"
+    fi
+}
+check_partial_remainder
+
+# --- 18. open blocking findings: the merge's gates 4 and 4b, read at GO time.
+# clear-review-marker.sh refuses a merge when the ledger holds a blocking finding (gate 4) or an undecided one (gate 4b) at
+# the head it gates on. That head is not always the PR head: after a judge GO it is the round head the panel last ran at,
+# so an Important never ruled there blocks a PR whose tip has its own green rows (PR 4611: items 4 and 7 passed, the merge
+# refused with exit 15). The GO is not written yet, so the head is read twice, as the merge reads it now and as it reads it
+# once the chief's GO exists. The read is the marker's own --check-findings mode (one reader, no copy, nothing written).
+check_open_findings() {
+    local of_branch of_marker of_lib of_assume of_rc of_out
+    [ "$ONLY7" -eq 0 ] || return 0
+    of_branch=$(printf '%s' "$snapshot" | jq -r '.[0].headRefName // empty' 2>/dev/null) || of_branch=""  # swallow-ok: an unreadable branch fails just below
+    if [ -z "$of_branch" ]; then
+        echo "[FAIL] 18. open findings: cannot read the PR's head branch, so the head the merge gates on cannot be chosen"
+        mark_fail
+        return 0
+    fi
+    of_marker="$(cd "$(dirname "$0")/../../cr" 2>/dev/null && pwd)/clear-review-marker.sh"  # swallow-ok: no cr dir fails the -f test below
+    if [ ! -f "$of_marker" ]; then
+        echo "[FAIL] 18. open findings: scripts/cr/clear-review-marker.sh is missing ($of_marker)"
+        mark_fail
+        return 0
+    fi
+    _TIMEOUT_BIN=""
+    of_lib="$(cd "$(dirname "$0")/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir leaves the read unbounded, never unread
+    # shellcheck source=/dev/null
+    [ ! -f "$of_lib/timeout-bin.sh" ] || . "$of_lib/timeout-bin.sh" 2>/dev/null  # swallow-ok: an empty _TIMEOUT_BIN runs the read unbounded
+    for of_assume in "" "--assume-go"; do
+        of_rc=0
+        # shellcheck disable=SC2086  # intentional word-split: absent -> no extra token
+        of_out=$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 90} bash "$of_marker" --check-findings --tip "$SHA" $of_assume "$of_branch" 2>&1 </dev/null) || of_rc=$?
+        if [ "$of_rc" -ne 0 ]; then
+            echo "[FAIL] 18. open findings: the merge refuses this head (clear-review-marker.sh --check-findings${of_assume:+ $of_assume} exit $of_rc): $(printf '%s' "$of_out" | tr '\n' ' ' | cut -c1-400)"
+            mark_fail
+            return 0
+        fi
+    done
+    echo "[PASS] 18. no blocking or undecided finding at the head the merge gates on (read as the merge reads it, with and without the GO)"
+}
+check_open_findings
 
 if [ "$ONLY7" -eq 1 ]; then
     if [ "$RESULT" -eq 0 ]; then echo "COVERAGE-LINT PASS"; exit 0; fi

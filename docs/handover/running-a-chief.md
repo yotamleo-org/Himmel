@@ -404,6 +404,37 @@ line in its prompt draws a warning from `guard-agent-model.sh` (warn only, never
 a deny; the reason must pass the same length and placeholder test as
 `ESCALATION:`). Opus is for the one hard call: put the reason on that line.
 
+**Operator-ruled Opus classes (HIMMEL-8926).** The table is not the whole rule.
+Standing operator rulings keep four helper classes on Opus at high effort, and
+a chief that follows the table over them is wrong: audits (backlog, version,
+done, collision or drift audits, decision explainers, spend measurement),
+docs work, mockups and HTML renders, and spec critics. Over 2026-11-01 and
+2026-11-02 these classes were about 87 % of the chief `general-purpose` Opus
+spend (22.98 $-eq a day, measured in
+`specs/audits/HIMMEL-8926-chief-helper-spend-2026-11-05.md` in the state
+repo); the rest was one root-cause investigation (a hard call) and a 0.07
+triage. A tier move alone therefore cannot bring that spend under 15 a day.
+The rules:
+
+1. **Ruled class: `general-purpose`, Opus, high.** Dispatch it as
+   `general-purpose`, not as a named agent. The named agents' rows above stay as
+   they are: 9 of 29 Opus helper dispatches from 2026-11-01 to 2026-11-05 were a named agent
+   (`ticket-auditor`, `page-reviewer`, `brief-drafter`, `edit-runner`) passed
+   `model: opus`, which contradicts its own row. Put `TIER: operator-ruling
+   <decision or ruling> (<class>)` and `EFFORT: operator-ruling, <class> runs at
+   high` in the prompt so both warnings pass with a real reason.
+2. **One audit per question per window.** Before dispatching an audit, list
+   the state repo's `specs/audits/` and query it for the same question and
+   window. If another chief already has a report, read it and do not dispatch a
+   second. On 2026-11-02 two chiefs each paid for a spend audit of overlapping
+   windows (7.14 and 6.73 $-eq).
+3. **A research read that is not an audit, docs work, a mockup or a spec
+   critic goes to `general-purpose` on `sonnet` at high.** Reading a Slack
+   thread and an upstream repo to judge a proposal cost 7.70 $-eq on Opus with
+   no `TIER:` line (2026-11-04). Add `EFFORT: high, a research read needs depth`
+   (or a better reason) because high effort draws its own warning. Opus stays
+   for the one hard call.
+
 A native worker launched with no model runs `claude-opus-5-5`, so
 `headed-arm-worker.sh` holds it to the same Tier line as a named Opus launch.
 
