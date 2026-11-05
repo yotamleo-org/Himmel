@@ -340,7 +340,7 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 # silent through real changes. Two consecutive samples off the saved key wake.
 reset_stub
 I="$(new_inbox d2)"
-start "$I" "$WORK/d2.out" --workers "N1.md"
+HOUSEKEEPING_DIGEST_SECS=0 start "$I" "$WORK/d2.out" --workers "N1.md"
 wait_hb "$I" || fail "(d2) no baseline heartbeat"
 printf '0\n' > "$STUB/tick.churn"
 wait_exit "$WPID"
@@ -393,21 +393,83 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 # --- (f4) a failure streak wakes once; the re-arm stays quiet until a success -
 reset_stub
 I="$(new_inbox f4)"
-CHIEF_WAIT_FAIL_WAKE=3 start "$I" "$WORK/f4.out" --workers "N1.md"
+HOUSEKEEPING_DIGEST_SECS=0 CHIEF_WAIT_FAIL_WAKE=3 start "$I" "$WORK/f4.out" --workers "N1.md"
 wait_hb "$I" || fail "(f4) no baseline heartbeat"
 printf '1\n' > "$STUB/tick.rc"
 wait_exit "$WPID"
 check "(f4) a streak of failed samples ends the wait" "0" "$rc"
 [ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
 check "(f4) the wake names the failure streak and the failing step" "WAKE tick-fail samples=3 step=tick-exit:1" "$(head -n1 "$WORK/f4.out")"
-CHIEF_WAIT_FAIL_WAKE=3 timeout 6 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/f4b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+HOUSEKEEPING_DIGEST_SECS=0 CHIEF_WAIT_FAIL_WAKE=3 timeout 6 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/f4b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(f4) the re-arm during the same streak runs silent" "124" "$rc"
 check "(f4) the re-arm during the same streak prints nothing" "" "$(cat "$WORK/f4b.out")"
 rm -f "$STUB/tick.rc"
-CHIEF_WAIT_FAIL_WAKE=3 timeout 3 bash "$WAIT" "$I" --workers "N1.md" >/dev/null 2>&1  # gnu-ok: Linux-only kit; pipefail-ok: none set
+HOUSEKEEPING_DIGEST_SECS=0 CHIEF_WAIT_FAIL_WAKE=3 timeout 3 bash "$WAIT" "$I" --workers "N1.md" >/dev/null 2>&1  # gnu-ok: Linux-only kit; pipefail-ok: none set
 printf '1\n' > "$STUB/tick.rc"
-CHIEF_WAIT_FAIL_WAKE=3 timeout 8 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/f4c.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+HOUSEKEEPING_DIGEST_SECS=0 CHIEF_WAIT_FAIL_WAKE=3 timeout 8 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/f4c.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(f4) a new streak after a success wakes again" "WAKE tick-fail samples=3 step=tick-exit:1" "$(head -n1 "$WORK/f4c.out")"
+
+# --- (8934) look-only kinds (tick-fail, unowned-prs, a prs-only tick change) join the
+# digest and ride the next real wake; READY, BLOCKED and Telegram still wake at once ---
+reset_stub
+I="$(new_inbox d1)"
+CHIEF_WAIT_FAIL_WAKE=2 start "$I" "$WORK/d1.out" --workers "N1.md"
+wait_hb "$I" || fail "(8934) no baseline heartbeat"
+printf '1\n' > "$STUB/tick.rc"
+sleep 4
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+check "(8934) a tick-fail streak does not wake, it joins the digest" "0:1" "$(grep -c '^WAKE ' "$WORK/d1.out"):$(grep -c '^tick-fail samples=2 step=tick-exit:1' "$I.wait.housekeeping" 2>/dev/null)"
+
+reset_stub
+sed -i 's/ bank=/ unowned-prs=#2575:120m bank=/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+I="$(new_inbox d2)"
+timeout 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/d2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+check "(8934) the first sight of an unowned PR does not wake, it joins the digest" "124:0:1" "$rc:$(grep -c '^WAKE ' "$WORK/d2.out"):$(grep -c '^unowned-prs #2575:120m' "$I.wait.housekeeping" 2>/dev/null)"
+
+reset_stub
+I="$(new_inbox d3)"
+start "$I" "$WORK/d3.out" --workers "N1.md"
+wait_hb "$I" || fail "(8934) no baseline heartbeat"
+sed -i 's/prs=#10/prs=#10,#11/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+sleep 4
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+check "(8934) a prs-only tick change does not wake, it joins the digest" "0:1" "$(grep -c '^WAKE ' "$WORK/d3.out"):$(grep -c '^tick changed=prs ' "$I.wait.housekeeping" 2>/dev/null)"
+
+# The next real wake carries the buffered look-only lines and drops them from the buffer; other
+# housekeeping (a board-stale line) stays queued for its own window.
+reset_stub
+I="$(new_inbox d4)"
+printf '%s\n' 'tick-fail samples=3 step=tick-timeout:120s' 'unowned-prs #2575:120m TICK 03:00 payload' 'tick changed=prs usage=PROCEED' 'board-stale board=STALE:2h' > "$I.wait.housekeeping"
+date +%s > "$I.wait.housekeeping.since"
+start "$I" "$WORK/d4.out" --workers "N1.md"
+wait_hb "$I" || fail "(8934) no baseline heartbeat"
+printf -- '- 03:10 [telegram from=1 chat=2] hello\n' >> "$I"
+wait_exit "$WPID"
+check "(8934) the telegram wake is first and carries the three look-only lines" "WAKE telegram:1:1:1" "$(head -n1 "$WORK/d4.out"):$(grep -c 'tick-fail samples=3 step=tick-timeout:120s' "$WORK/d4.out"):$(grep -c 'unowned-prs #2575:120m' "$WORK/d4.out"):$(grep -c 'tick changed=prs' "$WORK/d4.out")"
+check "(8934) the carried lines leave the buffer, board-stale stays" "board-stale board=STALE:2h" "$(cat "$I.wait.housekeeping")"
+
+# Controls: a BLOCKED or READY worker event and a Telegram line wake at once with the digest on.
+reset_stub
+I="$(new_inbox d5)"
+start "$I" "$WORK/d5.out" --workers "N1.md"
+wait_hb "$I" || fail "(8934) no baseline heartbeat"
+sed -i 's/tails=N1:LIVE/tails=N1:BLOCKED/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(8934) a BLOCKED event wakes at once with the digest on" "0:WAKE tick changed=tails" "$rc:$(head -n1 "$WORK/d5.out" | cut -d' ' -f1-3)"
+reset_stub
+I="$(new_inbox d6)"
+start "$I" "$WORK/d6.out" --workers "N1.md"
+wait_hb "$I" || fail "(8934) no baseline heartbeat"
+sed -i 's/tails=N1:LIVE/tails=N1:READY/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(8934) a READY event wakes at once with the digest on" "0:WAKE tick changed=tails" "$rc:$(head -n1 "$WORK/d6.out" | cut -d' ' -f1-3)"
+reset_stub
+I="$(new_inbox d7)"
+start "$I" "$WORK/d7.out" --workers "N1.md"
+wait_hb "$I" || fail "(8934) no baseline heartbeat"
+printf -- '- 03:11 [telegram from=1 chat=2] urgent\n' >> "$I"
+wait_exit "$WPID"
+check "(8934) a Telegram line wakes at once with the digest on" "0:WAKE telegram" "$rc:$(head -n1 "$WORK/d7.out")"
 
 # --- (g) a Telegram line wakes at once; a re-arm replays nothing -----------
 reset_stub
@@ -524,7 +586,7 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 # changed-key wake, even across two consecutive malformed samples -----------
 reset_stub
 I="$(new_inbox r)"
-CHIEF_WAIT_FAIL_WAKE=2 start "$I" "$WORK/r.out" --workers "N1.md"
+HOUSEKEEPING_DIGEST_SECS=0 CHIEF_WAIT_FAIL_WAKE=2 start "$I" "$WORK/r.out" --workers "N1.md"
 wait_hb "$I" || fail "(r) no baseline heartbeat"
 sed 's/ tails=N1:LIVE//' "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
 wait_exit "$WPID"
@@ -566,7 +628,7 @@ check "(u) the wake names board" "WAKE tick changed=board usage=PROCEED" "$(head
 reset_stub
 tick_line "N1:FRESH" "STALE:5m"
 I="$(new_inbox v)"
-start "$I" "$WORK/v.out" --workers "N1.md"
+HOUSEKEEPING_DIGEST_SECS=0 start "$I" "$WORK/v.out" --workers "N1.md"
 wait_hb "$I" || fail "(v) no baseline heartbeat"
 tick_line "N1:FRESH" "ok" "1m" "#99"
 wait_exit "$WPID"
