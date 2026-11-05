@@ -72,7 +72,7 @@ running but typed its wake 5 times (`--max-wakes`) for the same unread mail and 
 read it, so it types no more until a new message arrives. The worker is finished, stuck
 or over its context fill line and cannot read: check its newest Results bullet, then send
 it what it needs (a new bus message wakes it once more), relaunch it from its RESUME doc,
-or close it. The chief is not woken by it; read it at the next tick. Absent when no waker
+or close it. A `capped` worker whose doc has had no write for `CHIEF_WAIT_WORKER_SILENT_MIN` minutes wakes the chief as `WAKE worker-silent` (`waiter.md`); rc 3 and rc 4 wake nothing, read them at the next tick. Absent when no waker
 left a state file.
 
 `chief-kit/denied-launch-alert.sh` sends the operator ONE `DENIED-LAUNCH <worker>` Telegram per classifier-denied `headed-arm-worker.sh` launch (worker, tool and the local log path only; the denied command and reason stay on the host). Run it by hand after a launch that stalls; the waiter call is HIMMEL-6461.

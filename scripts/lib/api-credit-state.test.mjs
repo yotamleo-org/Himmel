@@ -817,3 +817,114 @@ test('HIMMEL-9052: auto ranks C like A and B: the earliest-expiring funded accou
   assert.equal(r.status, 0, r.stderr);
   assert.ok(['A', 'B'].includes(JSON.parse(r.stdout).account), r.stdout);
 });
+
+// A role narrows the auto pick to its own accounts; ranking inside the list is unchanged.
+const pickOnly = (f, usd, only) => JSON.parse(spawnSync(process.execPath, [SUT, 'pick', '--usd', usd, ...(only ? ['--only', only] : [])], { env: f.env, encoding: 'utf8' }).stdout);
+
+test('HIMMEL-9076: pick --only B returns B although A expires first; with no --only A still wins', () => {
+  const f = fixture();
+  f.snapshot.accounts.B.expires_at = f.now + 7200;
+  f.save();
+  assert.equal(pickOnly(f, '0.01').account, 'A');
+  assert.equal(pickOnly(f, '0.01', 'B').account, 'B');
+  assert.equal(pickOnly(f, '0.01', 'B,A').account, 'A');
+});
+
+test('HIMMEL-9076: pick --only C with no C row is no-role-account-configured, never A or B', () => {
+  const f = fixture();
+  assert.deepEqual(pickOnly(f, '0.01', 'C'), { verdict: 'SKIPPED-BANK', reason: 'no-role-account-configured' });
+});
+
+test('HIMMEL-9076: a stale B short of the budget still answers B for a role mapped to B, never A', () => {
+  const f = fixture();
+  f.config.accounts.A.cap_usd = '5.00';
+  f.snapshot.accounts.A.grant_usd = '5.00';
+  f.snapshot.accounts.A.remaining_usd = '5.00';
+  Object.assign(f.snapshot.accounts.B, { starts_at: f.now - 400000, observed_at: f.now - 90000 });
+  f.save();
+  assert.equal(pickOnly(f, '3.00').account, 'A');
+  const r = pickOnly(f, '3.00', 'B');
+  assert.equal(r.account, 'B');
+  assert.equal(r.over_estimate, true);
+});
+
+test('HIMMEL-9076: a fresh B short of the budget is refused for a role mapped to B, never served by A', () => {
+  const f = fixture();
+  f.snapshot.accounts.B.remaining_usd = '0.20';
+  f.save();
+  assert.equal(pickOnly(f, '0.50').account, 'A');
+  assert.equal(pickOnly(f, '0.50', 'B').verdict, 'SKIPPED-BANK');
+});
+
+test('HIMMEL-9076: pick --only with an unknown letter or a bare flag is invalid-arguments', () => {
+  const f = fixture();
+  assert.deepEqual(pickOnly(f, '0.01', 'D'), { verdict: 'BANK-UNKNOWN', reason: 'invalid-arguments' });
+  const r = spawnSync(process.execPath, [SUT, 'pick', '--usd', '0.01', '--only'], { env: f.env, encoding: 'utf8' });
+  assert.deepEqual(JSON.parse(r.stdout), { verdict: 'BANK-UNKNOWN', reason: 'invalid-arguments' });
+});
+
+const accountsOut = (f) => {
+  const r = spawnSync(process.execPath, [SUT, 'accounts'], { env: f.env, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  return JSON.parse(r.stdout);
+};
+const tagOf = (f, account = 'A') => accountsOut(f).find((x) => x.account === account);
+const mark = (f, account = 'A') => spawnSync(process.execPath, [SUT, 'exhausted'], { env: { ...f.env, HIMMEL_API_ACCOUNT: account }, encoding: 'utf8' });
+
+test('HIMMEL-9076: the accounts CLI tags a funded fresh account room and an absent C not configured', () => {
+  const f = fixture();
+  const rows = accountsOut(f);
+  assert.deepEqual(rows.map((x) => x.account), ['A', 'B', 'C']);
+  assert.deepEqual(rows[0], { account: 'A', configured: true, cap_usd: '1.000000', tag: 'room' });
+  assert.deepEqual(rows[2], { account: 'C', configured: false, cap_usd: null, tag: 'not configured' });
+});
+
+test('HIMMEL-9076: the accounts CLI tags a reading older than 24 h stale reading and a missing row no reading', () => {
+  const f = fixture();
+  Object.assign(f.snapshot.accounts.A, { starts_at: f.now - 400000, observed_at: f.now - 90000 });
+  delete f.snapshot.accounts.B;
+  f.save();
+  assert.equal(tagOf(f, 'A').tag, 'stale reading');
+  assert.equal(tagOf(f, 'B').tag, 'no reading');
+});
+
+test('HIMMEL-9076: the accounts CLI tags last resort, marked exhausted and no room', () => {
+  const f = fixture();
+  assert.equal(JSON.parse(spawnSync(process.execPath, [SUT, 'reserve', '--id', 'j1', '--usd', '1.00'], { env: f.env, encoding: 'utf8' }).stdout).verdict, 'PROCEED');
+  Object.assign(f.snapshot.accounts.A, { starts_at: f.now - 400000, observed_at: f.now - 90000 });
+  f.save();
+  assert.equal(tagOf(f, 'A').tag, 'last resort');
+  const g = fixture();
+  assert.equal(mark(g, 'B').status, 0);
+  assert.equal(tagOf(g, 'B').tag, 'marked exhausted');
+  const h = fixture();
+  h.snapshot.accounts.A.remaining_usd = '0';
+  h.save();
+  assert.equal(tagOf(h, 'A').tag, 'no room');
+});
+
+test('HIMMEL-9076: the accounts CLI tags an identity mismatch unknown and shows the reason', () => {
+  const f = fixture();
+  f.snapshot.accounts.A.organization_id = 'someone-else';
+  f.save();
+  const row = tagOf(f, 'A');
+  assert.equal(row.tag, 'unknown');
+  assert.equal(row.reason, 'identity-or-cycle-mismatch');
+});
+
+test('HIMMEL-9076: the accounts CLI output carries no organization, key or cycle id', () => {
+  const f = fixture();
+  f.config.accounts.A.key_id = 'key-secret-looking';
+  f.save();
+  const text = spawnSync(process.execPath, [SUT, 'accounts'], { env: f.env, encoding: 'utf8' }).stdout;
+  for (const word of ['organization_id', 'key_id', 'cycle_id', 'org-a', 'cycle-a', 'key-secret-looking']) assert.ok(!text.includes(word), word);
+});
+
+test('HIMMEL-9076: the accounts CLI reports an unreadable account config with the reason the read returned', () => {
+  const f = fixture();
+  writeFileSync(f.paths.config, '{not json');
+  assert.deepEqual(accountsOut(f), { accounts: 'unreadable', reason: 'unreadable-state' });
+  f.config.accounts.D = { organization_id: 'org-d', cycle_id: 'cycle-d', cap_usd: '1.00' };
+  f.save();
+  assert.deepEqual(accountsOut(f), { accounts: 'unreadable', reason: 'invalid-account-config' });
+});

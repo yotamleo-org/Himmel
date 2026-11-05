@@ -7944,4 +7944,74 @@ out="$(c88_run)"
 if grepq "$out" 'WARN C88-graph-api-optin'; then pass "C88 string \"true\" is no opt-in"; else fail "C88 string true -> $(printf '%s' "$out" | head -4)"; fi
 rm -rf "$c88_t"
 
+# --- C87-stub-handover-state: files under <repo>/handovers newer than the operator's baseline marker ---
+c87_t="$(mktemp -d "${TMPDIR:-/tmp}/c87.XXXXXX")" || { echo "FATAL: C87 setup mktemp failed" >&2; exit 1; }
+c87_x="$c87_t/repo"
+mkdir -p "$c87_x/scripts/lib" "$c87_t/home" "$c87_t/claude" "$c87_t/root"
+cp "$REPO_ROOT/scripts/himmel-doctor.sh" "$c87_x/scripts/"
+cp -R "$REPO_ROOT/scripts/lib/." "$c87_x/scripts/lib/"
+c87_age() { python3 -I -c 'import os,sys,time; t=time.time()-int(sys.argv[2]); os.utime(sys.argv[1],(t,t))' "$1" "$2"; }
+c87_base="$c87_t/home/baseline"
+# C87_HD, when set, is the root exported to the doctor's environment; a .env in the fixture repo configures one too.
+c87_run() { env -u HANDOVER_DIR ${C87_HD:+HANDOVER_DIR="$C87_HD"} HOME="$c87_t/home" CLAUDE_DIR="$c87_t/claude" HIMMEL_CONFIG_DIR="" HIMMEL_DOCTOR_STUB_BASELINE="$c87_base" bash "$c87_x/scripts/himmel-doctor.sh" --root "$c87_x" --no-color --only C87 2>&1; }
+c87_reset() { rm -rf "$c87_x/handovers" "$c87_x/.env" "$c87_base" "$c87_t/elsewhere"; unset C87_HD; }
+
+echo "== C87: HANDOVER_DIR unset and no .env -> the stub folder is the root: INFO, never WARN =="
+c87_reset
+mkdir -p "$c87_x/handovers/himmel"; : > "$c87_x/handovers/himmel/new.md"
+out="$(c87_run)"
+if grepq "$out" -F 'INFO C87-stub-handover-state' && ! grepq "$out" -F 'WARN C87'; then pass "C87 no split root -> INFO"; else fail "C87 no split root -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: .env configures a root elsewhere and a stub file older than that .env is still reported (no baseline marker) =="
+c87_reset
+printf 'HANDOVER_DIR=%s\n' "$c87_t/root" > "$c87_x/.env"
+mkdir -p "$c87_x/handovers/himmel"; : > "$c87_x/handovers/himmel/.judge-ladder"; c87_age "$c87_x/handovers/himmel/.judge-ladder" 7200
+out="$(c87_run)"
+if grepq "$out" -F 'WARN C87-stub-handover-state' && grepq "$out" -F 'himmel/.judge-ladder' && grepq "$out" -F "$c87_t/root"; then pass "C87 .env root, old stub file, no marker -> WARN"; else fail "C87 .env root, old stub file -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: a root exported in the environment (no .env) is checked the same way =="
+c87_reset
+mkdir -p "$c87_x/handovers/.locks"; : > "$c87_x/handovers/.locks/arms.jsonl"
+C87_HD="$c87_t/root" out="$(c87_run)"
+if grepq "$out" -F 'WARN C87-stub-handover-state' && grepq "$out" -F '.locks/arms.jsonl'; then pass "C87 exported root -> WARN"; else fail "C87 exported root -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: a root served by ~/.himmel/himmel.conf (no .env) is checked the same way =="
+c87_reset
+mkdir -p "$c87_t/home/.himmel" "$c87_x/handovers/himmel"; printf 'HANDOVER_DIR=%s\n' "$c87_t/root" > "$c87_t/home/.himmel/himmel.conf"
+: > "$c87_x/handovers/himmel/.judge-ladder"
+out="$(c87_run)"
+rm -rf "$c87_t/home/.himmel"
+if grepq "$out" -F 'WARN C87-stub-handover-state' && grepq "$out" -F "$c87_t/root"; then pass "C87 himmel.conf root -> WARN"; else fail "C87 himmel.conf root -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: the baseline marker decides: newer than the stub file -> OK, older -> WARN =="
+c87_reset
+mkdir -p "$c87_x/handovers/himmel"; : > "$c87_x/handovers/himmel/.judge-ladder"; c87_age "$c87_x/handovers/himmel/.judge-ladder" 7200
+: > "$c87_base"; c87_age "$c87_base" 3600
+C87_HD="$c87_t/root" out="$(c87_run)"
+if grepq "$out" -F 'OK   C87-stub-handover-state' && ! grepq "$out" -F 'WARN C87'; then pass "C87 stub file older than the marker -> OK"; else fail "C87 older than marker -> $(printf '%s' "$out" | head -4)"; fi
+c87_age "$c87_base" 10800
+C87_HD="$c87_t/root" out="$(c87_run)"
+if grepq "$out" -F 'WARN C87-stub-handover-state'; then pass "C87 stub file newer than the marker -> WARN"; else fail "C87 newer than marker -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: control: no stub folder at all -> no WARN =="
+c87_reset
+C87_HD="$c87_t/root" out="$(c87_run)"
+if grepq "$out" -F 'OK   C87-stub-handover-state' && ! grepq "$out" -F 'WARN C87'; then pass "C87 no stub folder -> OK"; else fail "C87 no stub folder -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: a stub that is a symlink to another folder is scanned =="
+c87_reset
+mkdir -p "$c87_t/elsewhere"; : > "$c87_t/elsewhere/new.md"; ln -s "$c87_t/elsewhere" "$c87_x/handovers"
+C87_HD="$c87_t/root" out="$(c87_run)"
+if grepq "$out" -F 'WARN C87-stub-handover-state' && grepq "$out" -F 'new.md'; then pass "C87 symlinked stub -> WARN"; else fail "C87 symlinked stub -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C87: an unreadable folder under the stub is never reported OK =="
+c87_reset
+mkdir -p "$c87_x/handovers/himmel/locked"; chmod 000 "$c87_x/handovers/himmel/locked"
+: > "$c87_base"
+C87_HD="$c87_t/root" out="$(c87_run)"
+chmod 755 "$c87_x/handovers/himmel/locked"
+if [ "$(id -u)" = 0 ]; then pass "C87 unreadable folder -> skipped as root (chmod does not block root)"
+elif grepq "$out" -F 'INFO C87-stub-handover-state' && ! grepq "$out" -F 'OK   C87'; then pass "C87 unreadable folder -> INFO, not OK"; else fail "C87 unreadable folder -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c87_t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi
