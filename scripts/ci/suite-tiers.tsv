@@ -1173,6 +1173,7 @@ scripts/upstreams/test-apply-drift-bump.sh	pr	static-gate
 scripts/upstreams/test-apply-tool-upgrade.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/upstreams/test-ci-tool-pins.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/upstreams/test-drift-fix-cadence.sh	pr	static-gate
+scripts/upstreams/test-protect-forks.sh	local	behaviour suite, new in HIMMEL-9271 (stubbed gh, no live API)
 scripts/upstreams/test-resync-fork.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/upstreams/test-update-marketplaces.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/upstreams/test-upstream-watch-cadence.sh	local	behaviour suite, 0 catches in the 400-PR audit window
