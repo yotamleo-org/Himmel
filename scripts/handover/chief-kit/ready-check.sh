@@ -1555,7 +1555,10 @@ check_partial_remainder() {
     lib="$(cd "$(dirname "$0")/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir leaves the key unread, reported just below
     pr_title=$(printf '%s' "$snapshot" | jq -r '.[0].title // empty' 2>/dev/null) || pr_title=""  # swallow-ok: an unreadable title is reported just below
     key=""; rc=0
-    if [ -n "$pr_title" ] && [ -f "$lib/ticket-status.sh" ]; then
+    if [ -n "$pr_title" ] && ! printf '%s' "$pr_title" | grep -Eq '[A-Za-z][A-Za-z0-9]*-[0-9]+'; then
+        # No KEY-n anywhere in the title, so the merge's reader finds no key (its rc 1): skip the library load.
+        rc=1
+    elif [ -n "$pr_title" ] && [ -f "$lib/ticket-status.sh" ]; then
         # A subshell: that lib sources three more into this trust-path script.
         key=$(
             # shellcheck source=/dev/null
@@ -1631,6 +1634,22 @@ check_open_findings() {
     if [ ! -f "$of_marker" ]; then
         echo "[FAIL] 18. open findings: scripts/cr/clear-review-marker.sh is missing ($of_marker)"
         mark_fail
+        return 0
+    fi
+    # A branch the ledger holds no finding for has nothing to block or leave undecided, so the read below can only
+    # return 0: skip it then, and only then. Every other shape runs it: a ledger line that does not parse, an amend
+    # that names the branch, a recorded round head (an unheld tip is refused with it), a missing node, an unreadable
+    # ledger or git dir.
+    of_gd=$(git rev-parse --git-common-dir 2>/dev/null) || of_gd=""  # swallow-ok: no git dir skips nothing
+    if [ -n "$of_gd" ] && [ -f "$of_gd/cr-critic-scores.jsonl" ] && command -v node >/dev/null 2>&1 \
+        && [ ! -e "$of_gd/cr-review-rounds/$of_branch.head" ] && [ ! -L "$of_gd/cr-review-rounds/$of_branch.head" ] \
+        && [ "$(jq -R -n -r --arg b "$of_branch" '[inputs | (fromjson? // "BAD")] as $r
+            | ($r | all(type == "object"))
+              and ($r | map(select(type == "object" and (
+                    (.kind == "finding" and .branch == $b)
+                    or (.kind == "amend" and (.branch == $b or ((.set | type) == "object" and .set.branch == $b)))
+                 ))) | length == 0)' "$of_gd/cr-critic-scores.jsonl" 2>/dev/null)" = true ]; then
+        echo "[PASS] 18. no blocking or undecided finding at the head the merge gates on (the ledger holds no finding for $of_branch)"
         return 0
     fi
     _TIMEOUT_BIN=""

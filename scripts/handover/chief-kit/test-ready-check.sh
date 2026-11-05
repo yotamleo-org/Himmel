@@ -3478,6 +3478,17 @@ r18_ledger ""
 R18_BEFORE=$(cksum < "$LEDGER")
 run >/dev/null 2>&1 || true
 check "18f the check writes nothing to the ledger" "$(cksum < "$LEDGER")" "$R18_BEFORE"
+# a branch with no finding row in the ledger skips the read (same PASS the full read gives); one finding row runs it
+rm -f "$REPO/.git/cr-review-rounds/feat/himmel-100-thing.head"
+printf '{"kind":"avail","ts":"2026-01-01T00:00:00Z","branch":"%s","head":"%s","model":"codex","status":"ok"}\n' "$R18_BRANCH" "$R18_B" > "$LEDGER"
+R18_RC=0; R18_OUT="$(run)" || R18_RC=$?
+check "18g no finding row for the branch: exit 0" "$R18_RC" "0"
+contains "18g: item 18 passes by the skip" "$R18_OUT" "holds no finding for $R18_BRANCH"
+r18_ledger "disproved"
+R18_RC=0; R18_OUT="$(run)" || R18_RC=$?
+check "18h a finding row for the branch: exit 0" "$R18_RC" "0"
+contains "18h: item 18 passes" "$R18_OUT" "[PASS] 18."
+notcontains "18h: the read ran, no skip" "$R18_OUT" "holds no finding for"
 rm -f "$REPO/.git/cr-review-rounds/feat/himmel-100-thing.head"
 SHA="$SHA_SAVE"
 reset_stubs
