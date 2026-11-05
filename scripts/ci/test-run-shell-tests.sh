@@ -1200,6 +1200,9 @@ else
   # PR 4300 shard 3: every assertion passing, killed at 603s against the 600s
   # default (CAP EXCEEDED); 508s on the ledger. 603s is a truncation floor, so
   # 1200s is that x2 (the loaded-budget rule).
+  # test-ready-check.sh: 802s alone, killed at 1206s under CI load against the 600s default (loaded figure x2).
+  check_timeout_2267 "scripts/handover/chief-kit/test-ready-check.sh" "2700"
+  check_timeout_2267 "/repo/scripts/handover/chief-kit/test-ready-check.sh" "2700"
   check_timeout_2267 "scripts/test-himmel-doctor.sh" "1200"
   check_timeout_2267 "/repo/scripts/test-himmel-doctor.sh" "1200"
 
