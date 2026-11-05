@@ -1325,7 +1325,7 @@ rm -rf "$cg9247"
 sr="$W/station9247"
 mkdir -p "$sr/home"
 # shellcheck disable=SC2016  # the stubs' own $-expressions must stay literal
-printf '#!/usr/bin/env bash\nif [ "${1:-}" = "-l" ]; then cat "$SR_TAB"; [ -z "${SR_SLOW:-}" ] || sleep 1; else cat > "$SR_TAB"; fi\n' > "$sr/crontab"
+printf '#!/usr/bin/env bash\nif [ "${1:-}" = "-l" ]; then cat "$SR_TAB"; [ -z "${SR_SLOW:-}" ] || sleep 1; else cat > "$SR_TAB"; fi\n' > "$sr/crontab"  # read-sink-ok: a stub crontab written into the test sandbox, the suite names the file
 # shellcheck disable=SC2016  # the stub's own $-expressions must stay literal
 printf '#!/usr/bin/env bash\necho "ledger-drift ran" ; exit "${SR_RC:-0}"\n' > "$sr/ledger.sh"
 # shellcheck disable=SC2016  # the stub's own $-expressions must stay literal
