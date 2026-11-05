@@ -15,6 +15,9 @@ export const ROLES = ['graphify', 'judge'];
 export const rolesPathFor = (env = process.env) => join(dirname(configPathFor(env)), 'roles.json');
 
 const object = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+// An error names the value it refused. String() throws for an object such as {"toString":null}, and one bad letter
+// must never discard the valid entries beside it, so any non-string is named by its JSON text.
+const show = (v) => (typeof v === 'string' ? v : JSON.stringify(v));
 
 // Lenient read. state: absent | valid | partial | invalid.
 export function roleMap(env = process.env) {
@@ -35,7 +38,7 @@ export function roleMap(env = process.env) {
     if (Array.isArray(value)) {
       for (const letter of value) {
         if (ACCOUNTS.includes(letter)) { if (!live.includes(letter)) live.push(letter); }
-        else { const e = `unknown-account:${role}:${String(letter)}`; if (!errors.includes(e)) errors.push(e); }
+        else { const e = `unknown-account:${role}:${show(letter)}`; if (!errors.includes(e)) errors.push(e); }
       }
     }
     if (live.length === 0) { errors.push(`empty-role:${role}`); continue; }
@@ -59,7 +62,7 @@ export function validateStrict(doc) {
     if (!ROLES.includes(role)) { errors.push(`unknown-role:${role}`); continue; }
     if (!Array.isArray(value) || value.length === 0) { errors.push(`empty-role:${role}`); continue; }
     for (const letter of value) {
-      const e = `unknown-account:${role}:${String(letter)}`;
+      const e = `unknown-account:${role}:${show(letter)}`;
       if (!ACCOUNTS.includes(letter) && !errors.includes(e)) errors.push(e);
     }
   }

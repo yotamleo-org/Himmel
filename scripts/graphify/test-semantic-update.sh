@@ -1161,11 +1161,13 @@ out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77e --corpus-root 
 [ "$rc" -eq 2 ] && [ ! -s "$WS/batch.log" ] && [[ "$out" == *"no-role-account-configured"* ]] \
   && pass "T77e refused, nothing submitted" || fail "T77e (rc=$rc) log '$(cat "$WS/batch.log")': $out"
 
-echo "T77f: RED control: against the old credit-state (it ignores --only) the C-mapped batch submits on A"
-roles_fixture; printf '{"version":1,"roles":{"graphify":["C"]}}' > "$RC/roles.json"; roles_real_off
+echo "T77f: RED control: the real role reader and fixture over a credit-state that ignores --only submits the C-mapped batch on A"
+roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["C"]}}' > "$RC/roles.json"
+sed 's/!only?.length || only.includes(account)/true/' "$REAL_REPO/scripts/lib/api-credit-state.mjs" > "$REPO/scripts/lib/api-credit-state.mjs"
+cmp -s "$REAL_REPO/scripts/lib/api-credit-state.mjs" "$REPO/scripts/lib/api-credit-state.mjs" && fail "T77f the control copy still filters by --only"
 C77F="$REPO/c77f"; new_corpus "$C77F"; batch_reset
 out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77f --corpus-root "$C77F" --corpus-class himmel-code --backend claude-api); rc=$?
-[ "$(batch_accounts)" = "A " ] && pass "T77f the old stub submits on A, so T77c is a real check" || fail "T77f accounts '$(batch_accounts)' (rc=$rc): $out"
+[ "$(batch_accounts)" = "A " ] && pass "T77f without the --only filter the batch submits on A, so T77c is a real check" || fail "T77f accounts '$(batch_accounts)' (rc=$rc): $out"
 roles_real_off
 
 echo "T78: a .graphifyignore naming a planned file strands nothing: the planner is the only selector"

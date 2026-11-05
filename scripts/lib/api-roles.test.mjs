@@ -109,6 +109,21 @@ test('not JSON, version 2 and roles:[] are invalid: no roles and an invalid-role
   }
 });
 
+test('a list entry that is a JSON object with a null toString never throws: the valid entries stay enforced', () => {
+  const f = fixture('{"version":1,"roles":{"graphify":["C"],"judge":["B",{"toString":null},["A"],7,null]}}');
+  assert.equal(f.cli(['accounts', 'graphify']).stdout.trim(), 'C');
+  const r = f.cli(['accounts', 'judge']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim(), 'B');
+  const m = JSON.parse(f.cli(['check']).stdout).roleMap;
+  assert.equal(m.state, 'partial');
+  assert.deepEqual(m.roles, { graphify: ['C'], judge: ['B'] });
+  assert.equal(m.errors.length, 4);
+  const w = f.cli(['write'], '{"version":1,"roles":{"judge":["B",{"toString":null}]}}');
+  assert.equal(w.status, 3, w.stderr);
+  assert.equal(existsSync(f.roles) && readFileSync(f.roles, 'utf8').includes('toString'), true, 'the hand-written file is untouched');
+});
+
 test('accounts graphify with no file prints nothing, nothing on stderr', () => {
   const f = fixture();
   const r = f.cli(['accounts', 'graphify']);
