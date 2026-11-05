@@ -1,7 +1,7 @@
 # model-prices.tsv - list price in USD per million tokens, per model.
 # Columns (TAB): model-id prefix, input, output, cache read, cache write 5m, cache write 1h.
 # First prefix match wins; a model with no row is UNPRICED (it never falls back to another model's rate).
-# Reader: scripts/lanes/model-price.mjs.
+# Reader: scripts/lanes/model-price.mjs (a price function, a one-call CLI and a transcripts mode)
 #
 # Sources, each read 2026-11-05:
 # gpt-6.1-sol: OpenAI pricing page https://developers.openai.com/api/docs/pricing ("Standard", short context,
