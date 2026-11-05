@@ -1771,7 +1771,7 @@ if command -v node >/dev/null 2>&1; then
     fi
     contains 'a board rendered from the current state reads board=ok (HIMMEL-3361)' "$(t3361)" ' board=ok'
     # The freshness is read from board.json, so a board with no static page on disk is not a stale board.
-    [ -z "$(find "$W/handover" -maxdepth 1 -name '*.html')" ] || fail 'board.mjs left an html page in the bucket'
+    if compgen -G "$W/handover/*.html" >/dev/null; then fail 'board.mjs left an html page in the bucket'; fi
     contains 'a board with no static page on disk still reads board=ok' "$(t3361)" ' board=ok'
     # A Results bullet is not a state change: the board stays ok.
     write_console3361 none '- 12:05 RULING nothing about state'
