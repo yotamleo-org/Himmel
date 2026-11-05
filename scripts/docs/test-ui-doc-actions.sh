@@ -42,7 +42,7 @@ for p in README.md docs/why-himmel.md docs/getting-started.md docs/setup/install
   case "$p" in
     *.html) ;;
     # The README speaks to its reader; its audience lives in the owner table, not in an Audience: label.
-    README.md) if grep -qE '^Audience:' "$ROOT/$p"; then bad "README.md carries an Audience: label for the writer"; else ok; fi ;;
+    README.md) if [ -r "$ROOT/$p" ] && ! grep -qE '^Audience:' "$ROOT/$p"; then ok; else bad "README.md is missing or carries an Audience: label for the writer"; fi ;;
     *) if grep -qE '^Audience: (newcomer|contributor)' "$ROOT/$p"; then ok; else bad "$p has no Audience: newcomer|contributor line"; fi ;;
   esac
 done
