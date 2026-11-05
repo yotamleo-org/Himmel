@@ -1195,6 +1195,64 @@ change scripts/lib/clo-lib.sh
 out="$( cd "$FX" && bash "$IS" "$range" 2>"$SHIM4/long.err" )"; rc=$?
 if [ "$rc" -ne 0 ] && grepq "$(cat "$SHIM4/long.err")" -F 'scratch copy of'; then pass "uncreatable scratch copy: exits $rc naming the file, not a short list at 0"; else fail "uncreatable scratch copy: rc=$rc err=$(cat "$SHIM4/long.err") out=$out"; fi
 
+# --- 38. `SUITE <p> = CI` hands an untouched PR-CI suite on to CI -------------
+# A fresh repo with real copies of run-shell-tests.sh (its SKIP_LIST gains one
+# fixture suite) and suite-coverage.sh, so the pre-filter reads real tables.
+CX="$(fixture_mktemp_dir)" || exit 1
+trap 'rm -rf "$FX" "$CX"' EXIT
+(
+    fixture_enter_git_init_dir "$CX" || exit 1
+    git init -q
+    git config user.email t@e
+    git config user.name t
+)
+mkdir -p "$CX/scripts/ci" "$CX/scripts/handover" "$CX/scripts/lib"
+awk '{print} $0 == "SKIP_LIST=\"" {print "scripts/test-cx-vm.sh  # fixture: drives a VM"}' \
+    "$REPO_ROOT/scripts/ci/run-shell-tests.sh" > "$CX/scripts/ci/run-shell-tests.sh"
+cp "$REPO_ROOT/scripts/handover/suite-coverage.sh" "$CX/scripts/handover/suite-coverage.sh"
+printf '# lib\n' > "$CX/scripts/lib/cx-lib.sh"
+for s in test-cx-a test-cx-b test-cx-c test-cx-vm; do printf 'bash "$d/lib/cx-lib.sh"\n' > "$CX/scripts/$s.sh"; done
+printf '// cx-lib.sh\n' > "$CX/scripts/lib/cx.test.mjs"
+git -C "$CX" add -A
+git -C "$CX" commit -q -m "chore: base"
+printf '# changed\n' >> "$CX/scripts/lib/cx-lib.sh"
+printf '# changed\n' >> "$CX/scripts/test-cx-b.sh"
+git -C "$CX" add -A
+git -C "$CX" commit -q -m "fix: lib and one suite"
+crange="$(git -C "$CX" rev-parse HEAD~1)..$(git -C "$CX" rev-parse HEAD)"
+cx_check() { ( cd "$CX" && printf '%s\n' "$V_C" "$@" | bash "$IS" --check "$crange" 2>&1 ); }
+V_A='SUITE scripts/test-cx-a.sh = CI'
+V_B='SUITE scripts/test-cx-b.sh = PASS'
+V_VM='SUITE scripts/test-cx-vm.sh = PASS'
+V_JS='SUITE scripts/lib/cx.test.mjs = PASS'
+V_C='SUITE scripts/test-cx-c.sh = PASS'
+# T1: an untouched PR-CI test-*.sh given = CI is accepted and counted
+out="$(cx_check "$V_A" "$V_B" "$V_VM" "$V_JS")"; rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" -F 'impacted-suites: 5 impacted, 0 without a verdict, 1 to CI'; then pass "T1 = CI accepted for an untouched PR-CI suite (1 to CI)"; else fail "T1 = CI: rc=$rc out=$out"; fi
+# T2: a SKIP_LIST suite given = CI is refused (DoD-2)
+out="$(cx_check "$V_A" "$V_B" 'SUITE scripts/test-cx-vm.sh = CI' "$V_JS")"; rc=$?
+if [ "$rc" -eq 1 ] && grepq "$out" -F 'impacted-suites: CI NOT ACCEPTED scripts/test-cx-vm.sh (not run in CI (SKIP_LIST)'; then pass "T2 a SKIP_LIST suite given = CI is refused"; else fail "T2 SKIP_LIST = CI: rc=$rc out=$out"; fi
+# T2b: a suite the PR changed given = CI is refused (DoD-2)
+out="$(cx_check "$V_A" 'SUITE scripts/test-cx-b.sh = CI' "$V_VM" "$V_JS")"; rc=$?
+if [ "$rc" -eq 1 ] && grepq "$out" -F 'impacted-suites: CI NOT ACCEPTED scripts/test-cx-b.sh (the PR changed it'; then pass "T2b a changed suite given = CI is refused"; else fail "T2b changed = CI: rc=$rc out=$out"; fi
+# T3: a JS/TS suite given = CI is refused
+out="$(cx_check "$V_A" "$V_B" "$V_VM" 'SUITE scripts/lib/cx.test.mjs = CI')"; rc=$?
+if [ "$rc" -eq 1 ] && grepq "$out" -F 'impacted-suites: CI NOT ACCEPTED scripts/lib/cx.test.mjs (not a test-*.sh'; then pass "T3 a *.test.mjs given = CI is refused"; else fail "T3 mjs = CI: rc=$rc out=$out"; fi
+# T4: HIMMEL_SUITES_LOCAL=1 turns = CI off (DoD-3)
+out="$( cd "$CX" && printf '%s\n' "$V_A" "$V_B" "$V_C" "$V_VM" "$V_JS" | HIMMEL_SUITES_LOCAL=1 bash "$IS" --check "$crange" 2>&1 )"; rc=$?
+if [ "$rc" -eq 1 ] && grepq "$out" -F 'impacted-suites: CI NOT ACCEPTED scripts/test-cx-a.sh (HIMMEL_SUITES_LOCAL=1'; then pass "T4 HIMMEL_SUITES_LOCAL=1 refuses every = CI"; else fail "T4 local flag: rc=$rc out=$out"; fi
+# T2c: a path suite-coverage.sh calls unknown (rc 3) is refused as unknown
+mv "$CX/scripts/test-cx-a.sh" "$CX/test-cx-a.sh.off"
+out="$(cx_check "$V_A" "$V_B" "$V_VM" "$V_JS")"; rc=$?
+mv "$CX/test-cx-a.sh.off" "$CX/scripts/test-cx-a.sh"
+if [ "$rc" -eq 1 ] && grepq "$out" -F 'impacted-suites: CI NOT ACCEPTED scripts/test-cx-a.sh (unknown'; then pass "T2c a suite suite-coverage.sh calls unknown is refused"; else fail "T2c unknown: rc=$rc out=$out"; fi
+# T2d: a truncated suite-coverage.sh answer (one line for two = CI paths) fails closed
+cp "$CX/scripts/handover/suite-coverage.sh" "$CX/sc.real"
+printf '#!/usr/bin/env bash\necho "scripts/test-cx-a.sh: runs in PR CI (cap 60s)"\n' > "$CX/scripts/handover/suite-coverage.sh"
+out="$(cx_check "$V_A" "$V_B" "$V_VM" "$V_JS" 'SUITE scripts/test-cx-c.sh = CI')"; rc=$?
+cp "$CX/sc.real" "$CX/scripts/handover/suite-coverage.sh"
+if [ "$rc" -eq 1 ] && grepq "$out" -F 'impacted-suites: CI NOT ACCEPTED scripts/test-cx-c.sh (unknown' && ! grepq "$out" -F 'NOT ACCEPTED scripts/test-cx-a.sh'; then pass "T2d a path with no coverage line is refused as unknown"; else fail "T2d truncated coverage: rc=$rc out=$out"; fi
+
 echo
 if [ "$failures" -eq 0 ]; then echo "OK: all cases passed"; exit 0; fi
 echo "FAIL: $failures case(s) failed"
