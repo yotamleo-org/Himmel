@@ -107,5 +107,41 @@ check 'TICK_HOLD_MIN=3 moves the threshold (5 min reads as a hold)' 'N922:5m' "$
 out="$(TICK_HOLD_MIN=bad run_from "$(manifest "$young" "$old")")"
 check 'a non-numeric TICK_HOLD_MIN falls back to 20' 'N921:35m' "$(field holds "$out")"
 
+# ---- hreg=<live workers with no rows>/<stale rows>/<pending trust-path asks> (holds= above stays the BLOCKED field)
+# lockless_manifest <doc>...: a manifest whose workers are lockless rows (NOLOCK = live) so the stub lock script need not say FRESH
+lockless_manifest() {
+    local m="$W/handover/chief.fleet.json" workers="" d t
+    t="$(/bin/date -u -d "60 minutes ago" +%Y-%m-%dT%H:%M:%SZ)"
+    for d in "$@"; do workers="$workers${workers:+,}{\"doc\":\"$d\",\"label\":\"x\",\"added\":\"$t\",\"lockless\":true}"; done
+    printf '{"schema":1,"workers":[%s]}\n' "$workers" > "$m"
+    printf '%s' "$m"
+}
+hesc() { local s="${1//%/%25}"; printf '%s' "${s//\//%2F}"; }
+HREG="$HOME/.himmel/state/holds"
+m="$(lockless_manifest "$(mkleg 931-N931-hreg 90 '> **Writes:** scripts/h9931.sh' '- 10:00 LIVE — working')")"
+out="$(run_from "$m")"
+check 'hreg: no register directory at all: no hreg= field (an adopter that never used the barrier)' '' "$(field hreg "$out")"
+
+mkdir -p "$HREG/$(hesc "$REPO")"
+printf 'HIMMEL-9951\tlab\t/nowhere/HIMMEL-9951-x.md\tbrief\t\n' > "$HREG/$(hesc "$REPO")/$(hesc scripts/h9951.sh)"
+touch -d '2 hours ago' "$HREG/$(hesc "$REPO")/$(hesc scripts/h9951.sh)"
+printf 'HIMMEL-9941\tlab\t/nowhere/HIMMEL-9941-x.md\tbrief\t\n' > "$HREG/$(hesc "$REPO")/$(hesc scripts/check-ci.sh)"
+printf '%s\tdeny\tscripts/check-ci.sh\tHIMMEL-9942\tHIMMEL-9941\n' "$(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)" > "$HREG/events.log"
+mkdir -p "$W/mirror"
+printf -- '---\nkey: "HIMMEL-9951"\nstatusCategory: "Done"\n---\n' > "$W/mirror/HIMMEL-9951.md"
+export HOLDS_MIRROR="$W/mirror"
+out="$(run_from "$m")"
+check 'hreg: one live worker with no rows, one stale row (a Done key), one pending trust-path ask' 'hreg=1/1/1' "hreg=$(field hreg "$out")"
+printf '%s\n' "$out" | grep -o 'hreg=[0-9]*/[0-9]*/[0-9]*' > /dev/null
+check 'hreg: grep -o hreg=N/N/N exits 0 on that line' '0' "$?"
+check 'the old holds= field is untouched by the new one' '' "$(field holds "$out")"
+
+: > "$HREG/$(hesc "$REPO")/$(hesc scripts/check-ci.sh).grant.HIMMEL-9942"
+printf 'HIMMEL-9931\tlab\t/nowhere/HIMMEL-9931-x.md\tbrief\t\n' > "$HREG/$(hesc "$REPO")/$(hesc scripts/h9931.sh)"
+rm -f "$HREG/$(hesc "$REPO")/$(hesc scripts/h9951.sh)"
+out="$(run_from "$m")"
+check 'hreg: with the worker seeded, the Done row gone and the ask granted, the field is absent (0/0/0 is elided)' '' "$(field hreg "$out")"
+unset HOLDS_MIRROR
+
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

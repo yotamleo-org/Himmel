@@ -142,6 +142,14 @@ leg parked on a ruling the console may not know it owes, which a repeated BLOCKE
 shows in tails=. chief-wait.sh keys on the names only, so each leg ENTERING the set wakes
 the console once; the age growing or a leg leaving never does.
 
+hreg=<n>/<n>/<n> (HIMMEL-9186) follows holds= and is ABSENT at 0/0/0, with no register directory for this repo
+and when holds.py is missing: <live workers with no rows>/<stale rows>/<pending trust-path asks>. A live worker
+(lock held or lockless, newest marker not WRAPPED) counts when its doc has a Writes file and its key holds no row;
+a row is stale when its brief or pr key is Done in the Jira mirror or its PR is not in prs=; an ask is a trust-path
+(settings, CI workflow) deny from the last day that no grant answers. holds.py summary reads local files only: no
+gh call, no Jira call. hreg=? when it fails. In chief-wait's action key whole: the value moving wakes once, and
+chief-wait pages each new ask once with its paste-ready grant command (monitors.md). Seam: HOLDS_MIRROR.
+
 focus=<state> sdrift=<n>:<sig8> (HIMMEL-6829) follow wt-ceiling= and are ABSENT unless a
 focus-state file sits beside the console doc and --status does not read skip: focus= is
 focus-refresh.sh --status (FAILED:<stage> or DIRTY:<age>), sdrift= the drift line of the
@@ -1879,6 +1887,20 @@ done <<< "$pr_out"
 # A failed read is not an all-clear: `?` lets the waiter keep its marker instead of counting it as none.
 [ -z "${pr_read_failed:-}" ] || { prs='?'; unowned_prs='?'; ext_prs='?'; }
 
+# hreg=<live workers with no rows>/<stale rows>/<pending trust-path asks>: the holds register's own
+# state, read from local files by holds.py summary (no gh, no Jira call; the open PRs are the prs= read above).
+hreg_summary=""
+if [ -r "$HERE/holds.py" ] && command -v python3 >/dev/null 2>&1; then
+    hreg_docs=""
+    while IFS=$'\t' read -r h_label h_lock _; do
+        case "$h_lock" in FRESH|STALE|NOLOCK) ;; *) continue ;; esac
+        case ",$tails_summary," in *",$h_label:WRAPPED,"*) continue ;; esac
+        h_doc="$(printf '%s' "$leg_docmap" | sed -n "s/^$h_label=//p" | head -n 1)"
+        [ -z "$h_doc" ] || hreg_docs="$hreg_docs$h_doc"$'\n'
+    done <<< "$leg_candmap"
+    hreg_summary="$(printf '%s' "$hreg_docs" | timeout -k 2 10 python3 -I "$HERE/holds.py" summary --repo "$REPO" --live-docs - --open-prs "$prs" 2>/dev/null)" || hreg_summary='?'  # gnu-ok: Linux-only kit; swallow-ok: a failed read shows as hreg=?, never as an all-clear
+fi
+
 # dispatch=<run>:<worker>:<elapsed>/<timeout>m:<jobs done>/<jobs>@<head7>[:late][:idle][:orphan][:stale-head]:
 # an in-flight workflow_dispatch run on a worker's branch (a run a worker started by hand never shows on
 # the PR page). One runs list per tick, then one jobs read per run (at most TICK_DISPATCH_MAX,
@@ -3573,6 +3595,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$cachettl_summary" ] || printf 'cachettl: %s\n' "$cachettl_summary"
     printf 'worker-session newest actionable bullets: %s\n' "$acts_summary"
     [ -z "$holds_summary" ] || printf 'worker-session holds: %s\n' "$holds_summary"
+    case "$hreg_summary" in ''|0/0/0) ;; *) printf 'holds register (live-no-rows/stale/asks): %s\n' "$hreg_summary" ;; esac
     printf 'inbox size/cursor: %s\n' "$inbox_summary"
     printf 'tick monitor: %s\n' "$tick_status"
     # Printed only under --burn, so a plain --verbose tick is unchanged. An if,
@@ -3651,7 +3674,7 @@ else
             ext-prs=none|dispatch=none|review=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
             versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|rm-queue=0|rm-queue=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*|prio=skip|pool-stale=skip|INTAKE=0|INTAKE=skip|chains=ok|chains=skip|residual-unversioned=skip|residual-unversioned=0|\
-            focus=ok|sdrift=0:*) return ;;
+            focus=ok|sdrift=0:*|hreg=0/0/0) return ;;
         esac
         printf ' %s=%s' "$1" "$2"
     }
@@ -3677,6 +3700,7 @@ else
     compact_field cachettl "$cachettl_summary"
     compact_field acts "$acts_summary"
     compact_field holds "$holds_summary"
+    compact_field hreg "$hreg_summary"
     compact_field effort "$effort_summary"
     compact_field inbox "$inbox_summary"
     compact_field tick "$tick_status"
