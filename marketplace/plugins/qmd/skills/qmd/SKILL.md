@@ -120,9 +120,13 @@ Measured on a 38-query golden set with `scripts/eval/qmd-quality/qmd-quality.sh`
 3. **Keep a `-flag` out of `vec` and `hyde`.** A `vec` sub-query containing
    `--no-verify` is refused outright. Write `no-verify`, or move the term to
    `lex`.
-4. **Leave rerank on (the default) and pass `intent`.** Once scoped, rerank is
+4. **Keep rerank on and pass `intent`.** Once scoped, rerank is
    neutral to slightly positive (hit@5 0.92 vs 0.90) at about 1.5 s per query.
-   Unscoped, it lowered MRR.
+   Unscoped, it lowered MRR. The MCP `query` tool reranks by default only when
+   the reranker is remote (OpenRouter); with a local reranker (no OpenRouter
+   key) an unset `rerank` answers unreranked, so **pass `rerank: true`** there.
+   The first call can be slow on a cold model load; a hung rerank falls back to
+   the unreranked order and says so. The bounded CLI query below reranks by default.
 
 ## Other MCP Tools
 

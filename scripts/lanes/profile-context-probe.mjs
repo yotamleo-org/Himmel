@@ -551,6 +551,9 @@ function bankPreflightSkip() {
   return token === 'PROCEED' ? null : `bank-preflight verdict ${token || '(none)'}`;
 }
 
+// The proxy's answer when the upstream call fails: fixed text, never the error string (an error can carry request-derived text).
+export function upstreamErrorBody(_err) { return 'upstream request failed'; }
+
 // One turn through a logging proxy; resolves the captured /v1/messages requests.
 // Async because the proxy must serve while the child runs (spawnSync would block it).
 async function captureRequests(extraArgs, prompt = BASELINE_PROMPT) {
@@ -567,7 +570,7 @@ async function captureRequests(extraArgs, prompt = BASELINE_PROMPT) {
         res.writeHead(ur.statusCode, ur.headers);
         ur.pipe(res);
       });
-      up.on('error', (e) => { if (!res.headersSent) res.writeHead(502); res.end(String(e)); });
+      up.on('error', (e) => { if (!res.headersSent) res.writeHead(502); res.end(upstreamErrorBody(e)); });
       res.on('close', () => up.destroy());
       up.end(body);
     });

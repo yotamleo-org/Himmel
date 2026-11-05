@@ -1172,6 +1172,120 @@ check "(rdy-txt) waiter.md names the bullet in the out file" "1" "$(grep -c 'hol
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 unset CHIEF_WAIT_READY_CHECK CHIEF_WAIT_CI CHIEF_WAIT_DISPOSITION
 
+# --- (cd) a red or wrongly skipped scheduled CI run wakes the chief once ---
+# The tick's cadence= field lists the last scheduled run of each workflow, a flagged one ending :RED,
+# :SKIP or :MISSED. The first sample is a baseline (no wake for a run that already finished); after it a
+# flagged run id the sentinel <inbox>.wait.cadence does not hold wakes once with the run link and the
+# cause, which CHIEF_WAIT_CADENCE (a stub here) prints. RED control (chief-wait.sh before this change):
+# no WAKE cadence line, the waiter keeps waiting.
+cat > "$STUB/cadence-cause.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s run=%s %s https://github.com/x/y/actions/runs/%s cause: build / Run tests\n' "$1" "$2" "$3" "$2"
+EOF
+chmod +x "$STUB/cadence-cause.sh"  # the cause seam is exec'd directly, not run via bash
+export CHIEF_WAIT_CADENCE="$STUB/cadence-cause.sh"
+cd_tick() { # <cadence value>
+    tick_line "N1:FRESH" "ok"
+    sed -i "s/ denials=none/ cadence=$1 denials=none/" "$STUB/tick.line"  # gnu-ok: Linux-only kit
+}
+cd_alive() { sleep 3; if kill -0 "$WPID" 2>/dev/null; then echo running; else echo exited; fi; }
+reset_stub
+cd_base='ci:success:3h:101,macos-cadence:failure:2d:106:RED'
+cd_tick "$cd_base"
+I="$(new_inbox cd1)"
+start "$I" "$WORK/cd1.out"
+wait_hb "$I" || fail "(cd1) no baseline heartbeat"
+check "(cd1) a standing red at the first sample is a baseline, no wake" "running" "$(cd_alive)"
+cd_tick 'ci:success:3h:101,macos-cadence:failure:3h:201:RED'
+wait_exit "$WPID"
+check "(cd2) a new red run ends the wait" "0" "$rc"
+check "(cd2) the wake names the workflow, run, conclusion, link and cause" "WAKE cadence macos-cadence run=201 RED https://github.com/x/y/actions/runs/201 cause: build / Run tests" "$(head -n1 "$WORK/cd1.out")"
+check "(cd2) exactly one cadence line" "1" "$(grep -c '^WAKE cadence' "$WORK/cd1.out")"
+# a re-armed waiter on the same inbox and the same standing red replays nothing
+start "$I" "$WORK/cd3.out"
+wait_hb "$I" || fail "(cd3) no baseline heartbeat"
+check "(cd3) a re-armed waiter wakes nothing for the same run id" "running" "$(cd_alive)"
+cd_tick 'ci:success:3h:101,macos-cadence:failure:4h:201:RED'
+check "(cd3) the same run id a tick later still wakes nothing" "running" "$(cd_alive)"
+# (c) a wrong skip wakes
+cd_tick 'ci:success:3h:101,pages:skipped:4h:301:SKIP'
+wait_exit "$WPID"
+check "(cd4) a wrongly skipped run wakes" "WAKE cadence pages run=301 SKIP" "$(head -n1 "$WORK/cd3.out" | cut -d' ' -f1-5)"
+# a gated run concludes success and is not flagged: a new run id with no flag wakes nothing
+reset_stub
+cd_tick 'ci:success:3h:101,snyk-weekly:success:3d:401'
+I="$(new_inbox cd5)"
+start "$I" "$WORK/cd5.out"
+wait_hb "$I" || fail "(cd5) no baseline heartbeat"
+cd_tick 'ci:success:3h:102,snyk-weekly:success:3d:402'
+check "(cd5) a new unflagged run, a correct skip, wakes nothing" "running" "$(cd_alive)"
+# (e) cadence=? neither wakes nor crashes the waiter
+cd_tick '?'
+check "(cd6) cadence=? wakes nothing and the waiter survives" "running" "$(cd_alive)"
+# a missed schedule wakes once
+cd_tick 'ci:success:3h:102,fork-drift:success:40h:501:MISSED'
+wait_exit "$WPID"
+check "(cd7) a missed schedule wakes" "WAKE cadence fork-drift run=501 MISSED" "$(head -n1 "$WORK/cd5.out" | cut -d' ' -f1-5)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+# a run still in flight at the baseline is not finished: when it later concludes red it wakes
+reset_stub
+cd_tick 'ci:success:3h:101,pages:running:1m:601'
+I="$(new_inbox cd8)"
+start "$I" "$WORK/cd8.out"
+wait_hb "$I" || fail "(cd8) no baseline heartbeat"
+cd_tick 'ci:success:3h:101,pages:failure:5m:601:RED'
+wait_exit "$WPID"
+check "(cd8) a run in flight at the baseline that concludes red wakes" "WAKE cadence pages run=601 RED" "$(head -n1 "$WORK/cd8.out" | cut -d' ' -f1-5)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+unset CHIEF_WAIT_CADENCE
+
+# --- (rv) the daily failure review wakes once per review day (decision 593) ---
+# review=<date>:<age>:<failures>:<new>:<new 5+>:<filed>[:CAPPED][:STALE]. It wakes on a filed key, a new class
+# with 5+ failures or the create cap; STALE wakes once per last-review date; a 1-count class never wakes.
+# RED control (chief-wait.sh before this change): no WAKE review line, the waiter keeps waiting.
+rv_tick() { # <review value>
+    tick_line "N1:FRESH" "ok"
+    sed -i "s/ denials=none/ review=$1 denials=none/" "$STUB/tick.line"  # gnu-ok: Linux-only kit
+}
+reset_stub
+rv_tick '2026-11-05:3h:100:1:0:-'
+I="$(new_inbox rv1)"
+start "$I" "$WORK/rv1.out"
+wait_hb "$I" || fail "(rv1) no baseline heartbeat"
+check "(rv1) a review with only a 1-count class wakes nothing" "running" "$(cd_alive)"
+rv_tick '2026-11-05:3h:100:2:0:-'
+check "(rv1) more 1-count classes still wake nothing" "running" "$(cd_alive)"
+rv_tick '2026-11-05:3h:100:2:1:-'
+wait_exit "$WPID"
+check "(rv2) a new class with 5+ failures wakes" "WAKE review 2026-11-05 new-classes-5+=1" "$(head -n1 "$WORK/rv1.out")"
+check "(rv2) the tick line follows" "1" "$(grep -c '^TICK ' "$WORK/rv1.out")"
+start "$I" "$WORK/rv3.out"
+wait_hb "$I" || fail "(rv3) no baseline heartbeat"
+check "(rv3) a re-armed waiter wakes nothing for the same review day" "running" "$(cd_alive)"
+rv_tick '2026-11-05:5h:100:2:1:HIMMEL-9256+HIMMEL-9257:CAPPED'
+check "(rv3) the same day with more reasons still wakes nothing" "running" "$(cd_alive)"
+rv_tick '2026-11-06:2h:80:0:0:HIMMEL-9300'
+wait_exit "$WPID"
+check "(rv4) the next review day wakes on a filed ticket" "WAKE review 2026-11-06 filed=HIMMEL-9300" "$(head -n1 "$WORK/rv3.out")"
+reset_stub
+rv_tick '2026-11-06:2h:80:0:0:-:CAPPED'
+I="$(new_inbox rv5)"
+start "$I" "$WORK/rv5.out"
+wait_exit "$WPID"
+check "(rv5) the create cap wakes" "WAKE review 2026-11-06 create-cap-hit" "$(head -n1 "$WORK/rv5.out")"
+reset_stub
+rv_tick '2026-11-04:30h:100:0:0:-:STALE'
+I="$(new_inbox rv6)"
+start "$I" "$WORK/rv6.out"
+wait_exit "$WPID"
+check "(rv6) a stale review wakes" "WAKE review 2026-11-04 STALE (no review for 26 h, last 2026-11-04, age 30h)" "$(head -n1 "$WORK/rv6.out")"
+start "$I" "$WORK/rv7.out"
+wait_hb "$I" || fail "(rv7) no baseline heartbeat"
+check "(rv7) a re-armed waiter wakes nothing for the same stale date" "running" "$(cd_alive)"
+rv_tick 'none'
+check "(rv8) review=none wakes nothing and the waiter survives" "running" "$(cd_alive)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

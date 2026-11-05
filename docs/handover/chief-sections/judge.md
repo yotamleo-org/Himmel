@@ -20,9 +20,12 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   lives only in your context dies with it; the file is what a successor reads.
   Prefer `bash scripts/handover/chief-kit/verdict-go.sh <qid> <GO|NO-GO> <head>
   --model <id> --effort <level>
-  --pr <n> --evidence-file <path> --doc <chief doc>`: it runs `write-verdict.sh`,
-  `go.sh`, the Results bullet and the board in one call and prints the message to
-  send the worker. The hand steps are for a verdict it refuses.
+  --pr <n> --evidence-file <path> --doc <chief doc> --contract <yes|no>`: it runs
+  `write-verdict.sh`, `go.sh`, the Results bullet and the board in one call and
+  prints the message to send the worker. `--contract` is the brief's
+  `Completes ticket:` answer; `go.sh` refuses a PR titled with a ticket key
+  without it, and `no` leaves `--jira-transition` off the merge line. The hand
+  steps are for a verdict it refuses.
 - **Residuals are depth-gated** (HIMMEL-6115): a ticket labelled `residual-depth-<n>`
   (n >= 1) is a judge, CR or panel residual. `write-verdict.sh --residual-of <KEY>`
   stamps `residual-depth-<depth of KEY + 1>` on each ticket the residual lines cite;
@@ -91,9 +94,14 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   qid's signed GO; a no-op is never itself a judged head, so each later push is classified against
   the last real judge and the delta stays cumulative. `go.sh --trust-reviewed` re-runs the
   classifier whenever a head's only GO is a no-op and refuses (exit 10) unless it still prints
-  `none`, so a trust-path delta cannot merge on a no-op. Running the delta judge on Sonnet needs a
-  model-guard change that is not made here (HIMMEL-7650); until it lands, a delta judge runs at the
-  tier the guard allows.
+  `none`, so a trust-path delta cannot merge on a no-op.
+  **A delta judge may run on Sonnet** (HIMMEL-7637): the re-judge of a LATER push whose
+  `delta-class.sh` prints `finding` puts one line of its own in the judge's prompt,
+  `DELTA-JUDGE: <the head sha it judges, 7 to 40 lowercase hex>`, and `guard-agent-model.sh`
+  then allows `model: sonnet` on a `judge` or `judge-ro` dispatch with no `ESCALATION:` line
+  (it echoes `agent-model-delta-judge: …` on stderr). The marker rescues Sonnet only: haiku and
+  fable stay denied. The first full judge of a PR keeps Opus, and so does a delta that prints
+  `trust`: the guard only reads the declaration and cannot check the class, so the chief does.
 - **A deferred Critical or Important finding needs a disposition before GO**
   (HIMMEL-6377): past the round cap such a finding is never dropped. `go.sh` runs
   `cr-disposition.sh check <pr> <head>` and refuses (exit 9) while any

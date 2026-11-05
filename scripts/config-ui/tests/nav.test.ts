@@ -65,12 +65,12 @@ async function landedOn(hash: string) {
   const painted: unknown[] = [];
   const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
   const g = globalThis as Record<string, unknown>;
-  const names = ["render", "renderInventory", "renderTriage", "renderHeader", "renderProbe", "reviewGateDraft", "renderHealth", "verdict", "parseView", "projectVerdict", "renderToolHealth", "renderBoard", "renderKanban", "renderRoadmap", "renderWorkflow",
+  const names = ["render", "renderInventory", "renderTriage", "renderHeader", "renderProbe", "reviewGateDraft", "renderHealth", "verdict", "parseView", "projectVerdict", "chiefLiveFor", "renderToolHealth", "renderBoard", "renderKanban", "renderRoadmap", "renderWorkflow",
     "parseLanding", "navLinks", "railMarkup", "fleetDot", "healthDot", "document", "location", "history", "fetch", "addEventListener"];
   const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
   Object.assign(g, {
     render: (_f: unknown, c: unknown) => { painted.push(c); return ""; }, renderInventory: () => "", renderTriage: () => "", renderHeader: () => "", renderProbe: () => "", reviewGateDraft: () => [],
-    renderHealth: () => "", parseView: () => ({ mode: "project", project: null, tab: "broken", row: null }), projectVerdict: () => ({ word: "All clear" }), verdict: () => ({ cls: "off", word: "No data" }), renderToolHealth: () => "", renderBoard: () => "", renderKanban: () => "", renderRoadmap: () => "", renderWorkflow: () => "",
+    renderHealth: () => "", parseView: () => ({ mode: "project", project: null, tab: "broken", row: null }), projectVerdict: () => ({ word: "All clear" }), chiefLiveFor: () => undefined, verdict: () => ({ cls: "off", word: "No data" }), renderToolHealth: () => "", renderBoard: () => "", renderKanban: () => "", renderRoadmap: () => "", renderWorkflow: () => "",
     parseLanding: () => null, navLinks: () => [], railMarkup: () => "", fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }),
     document: { querySelector: el, querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
     location: { hash, pathname: "/", search: "", host: "x" }, history: { replaceState: (_a: unknown, _b: unknown, u: string) => urls.push(u) },

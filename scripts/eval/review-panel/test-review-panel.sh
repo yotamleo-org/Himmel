@@ -391,7 +391,24 @@ eq "run: no stub refusal" "$(grep -c 'STUB:' "$TMP"/run1/*.err 2>/dev/null | awk
 eq "run: the tier set reaches the panel" "$(cat "$TMP/stublog/tiers" 2>/dev/null)" "paid"
 eq "run: triviality override on, known-findings off" "$(cat "$TMP/stublog/env" 2>/dev/null)" "full 0"
 cj="$(cat "$TMP/stublog/critics_json" 2>/dev/null)"
-eq "run: CRITICS_JSON pins the swept tree's critics.json" "$([ -n "$cj" ] && cmp -s "$cj" "$HERE/../../cr/critics.json" && echo same)" "same"
+slugs() { python3 -c 'import json,sys; print(",".join(r["slug"] for r in json.load(open(sys.argv[1]))["panel"]))' "$1" 2>&1; }
+codexrow() { python3 -c 'import json,sys; print([r for r in json.load(open(sys.argv[1]))["panel"] if r["slug"]=="codex"])' "$1" 2>&1; }
+# --critics cuts the roster the panel runs, not just the report.
+eq "run: --critics codex hands the panel a roster of codex only" "$(slugs "$cj")" "codex"
+# A27 control: the roster is the swept tree's own critics.json row, not a local overlay.
+eq "run: the roster row is the swept tree's critics.json row" "$(codexrow "$cj")" "$(codexrow "$HERE/../../cr/critics.json")"
+# A sweep that would reach a claude-api critic with no opt-in refuses before any case.
+: > "$TMP/stublog/tiers"
+STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
+  bash "$RUN" --out "$TMP/run-nopt" --no-ledger >"$TMP/run-nopt.txt" 2>&1; rc=$?
+eq "run: a default sweep (claude-api in the tier) refuses" "$rc" "2"
+has "run: the refusal names the claude critic and the flag" "$(cat "$TMP/run-nopt.txt")" "--allow-claude-api"
+eq "run: no panel call on a refused claude sweep" "$(cat "$TMP/stublog/tiers")" ""
+# Control: with the opt-in both critics run.
+STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
+  bash "$RUN" --out "$TMP/run-opt" --no-ledger --allow-claude-api --only case-01 >/dev/null 2>&1; rc=$?
+eq "run: --allow-claude-api lets the sweep run" "$rc" "0"
+eq "run: --allow-claude-api hands the panel codex and claude" "$(slugs "$TMP/run-opt/critics.run.json")" "codex,claude"
 eq "run: one ledger row" "$(grep -c . "$TMP/run-ledger.jsonl" 2>/dev/null)" "1"
 eq "run: --model reaches the row" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["model"])' "$TMP/run-ledger.jsonl")" "stub-critic"
 eq "run: an empty review scores recall 0" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["metrics"]["codex.recall"])' "$TMP/run-ledger.jsonl")" "0.0"
@@ -488,11 +505,11 @@ EOF
 printf '__pycache__/\n' > "$RR/.gitignore"
 rr() { git -C "$RR" -c user.name=t -c user.email=t@example.invalid -c core.hooksPath=/dev/null -c commit.gpgsign=false "$@"; }
 git init -q "$RR" && rr add -A && rr commit -q -m base
-REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$RR/scripts/eval/review-panel/run.sh" --out "$TMP/run-rr1" --no-ledger >/dev/null 2>&1; rc=$?
+REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$RR/scripts/eval/review-panel/run.sh" --out "$TMP/run-rr1" --no-ledger --critics codex >/dev/null 2>&1; rc=$?
 eq "run: a sweep of a clean tree through its own panel exits 0" "$rc" "0"
 eq "run: every panel call read its case's diff on stdin and exited 0" "$(cat "$TMP/run-rr1/"case-*.rc | sort -u | tr '\n' ' ')" "0 "
 eq "run: a sweep of a clean tree through its own panel is stamped clean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run-rr1/swept.json" 2>&1)" "True"
-STUB_DIRTY=1 REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$RR/scripts/eval/review-panel/run.sh" --out "$TMP/run-rr2" --no-ledger >/dev/null 2>&1
+STUB_DIRTY=1 REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$RR/scripts/eval/review-panel/run.sh" --out "$TMP/run-rr2" --no-ledger --critics codex >/dev/null 2>&1
 eq "run: a CBS file edited during the sweep leaves the stamp unclean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run-rr2/swept.json" 2>&1)" "False"
 
 # --- the merge gate: cbs.txt, cbs-hash, export-row, verify-row, gate -------------------------
@@ -584,6 +601,27 @@ python3 "$SCORE" verify-row "$(doctor 'r["responded"]={"scored": 99, "critics": 
 eq "verify-row: a doctored responded roster exits 1" "$rc" "1"
 python3 "$SCORE" verify-row "$(doctor 'del r["responded"]')" "$O" --repo "$G" >/dev/null 2>&1; rc=$?
 eq "verify-row: a row without a responded key is not held to one" "$rc" "0"
+# The responded roster is the sweep's own critics.run.json, not the tree's paid roster. The file is
+# the shape run.sh writes (a real codex-only one from 2026-11-05-pr4690-base-r1, _compliance cut): the tree's
+# critics.json cut to the --critics slugs.
+rcrit() { python3 -c 'import json,sys
+slugs=sys.argv[2].split(",")
+reg=json.load(open(sys.argv[3])); reg["panel"]=[r for r in reg["panel"] if r["slug"] in slugs]; reg["_compliance"]="panel/router lanes default to per-token ..."
+json.dump(reg, open(sys.argv[1], "w"))' "$1" "$2" "$G/scripts/cr/critics.json"; }
+rresp() { python3 -c 'import json,sys; print(json.dumps(json.loads(open(sys.argv[1]).readlines()[-1])["responded"]["critics"], sort_keys=True))' "$1"; }
+OC="$TMP/out-cx"; cp -r "$O" "$OC"; rcrit "$OC/critics.run.json" codex
+gstamp "$OC" >/dev/null; gstamp "$OC" --recheck >/dev/null
+python3 "$SCORE" export-row "$OC" --repo "$G" --results "$TMP/results-cx.jsonl" >/dev/null 2>&1; rc=$?
+eq "export-row: a codex-only sweep exports" "$rc" "0"
+eq "responded: a codex-only sweep (critics.run.json lists codex) records codex only, no claude" "$(rresp "$TMP/results-cx.jsonl")" '{"codex": 5}'
+python3 "$SCORE" verify-row "$(tail -1 "$TMP/results-cx.jsonl")" "$OC" --repo "$G" >/dev/null 2>&1; rc=$?
+eq "verify-row: the codex-only row matches its outputs" "$rc" "0"
+eq "confighash: a codex-only sweep keeps the tree's confighash" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readlines()[-1])["confighash"])' "$TMP/results-cx.jsonl")" "$(python3 "$SCORE" confighash HEAD --repo "$G")"
+OF="$TMP/out-full"; cp -r "$O" "$OF"; rcrit "$OF/critics.run.json" codex,claude
+gstamp "$OF" >/dev/null; gstamp "$OF" --recheck >/dev/null
+python3 "$SCORE" export-row "$OF" --repo "$G" --results "$TMP/results-full.jsonl" >/dev/null 2>&1
+eq "responded: a full-roster sweep (critics.run.json lists codex and claude) still records both" "$(rresp "$TMP/results-full.jsonl")" '{"claude": 5, "codex": 5}'
+eq "responded: a sweep with no critics.run.json keeps the tree's paid roster" "$(rresp "$TMP/results.jsonl")" '{"claude": 5, "codex": 5}'
 
 # gate over GB..HEAD of the gate repo; grows <rid:recall:fp:logic[:status]>... writes rows at B (b*) or H (h*).
 B=$(python3 "$SCORE" cbs-hash "$GB" --repo "$G"); H=$(python3 "$SCORE" cbs-hash HEAD --repo "$G"); C=$(python3 "$SCORE" confighash HEAD --repo "$G")

@@ -7,7 +7,11 @@
 # SendMessage and go.sh stay the chief's own, so no trust is widened.
 #
 # Usage: ready-go.sh [--to <worker> --token <nonce>] [--ledger <chief doc>]
-#                    <pr-number> <full-40-hex-head-sha>
+#                    [--contract yes|no] <pr-number> <full-40-hex-head-sha>
+# --contract is the brief's `Completes ticket:` answer; ready-check runs with
+# --require-contract, so a PR titled with a [KEY] and no --contract FAILs item 17
+# (exit 4, no NEXT line), and `no` needs a recorded remainder, as the merge does.
+# Both NEXT lines carry the same --contract into go.sh.
 #
 # Output, one section per line:
 #   the ready-check.sh output, verbatim, then READY-GO PASS|FAIL
@@ -37,11 +41,16 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/../../lib/git-clean.sh"
 git_env_scrub
 ANCHOR="${READY_GO_ANCHOR:-$(cd "$HERE/../../.." && pwd)}"
-usage() { echo "usage: ready-go.sh [--to <worker session> --token <nonce>] [--ledger <chief doc>] <pr-number> <full-40-hex-head-sha>" >&2; exit 2; }
+usage() { echo "usage: ready-go.sh [--to <worker session> --token <nonce>] [--ledger <chief doc>] [--contract yes|no] <pr-number> <full-40-hex-head-sha>" >&2; exit 2; }
 
-TO=""; TOKEN=""; LEDGER=""
+TO=""; TOKEN=""; LEDGER=""; CONTRACT=""
 while :; do
     case "${1:-}" in
+        --contract)
+            [ "$#" -ge 2 ] || usage
+            [ -z "$CONTRACT" ] || { echo "ready-go: --contract given twice" >&2; exit 2; }
+            case "$2" in yes|no) CONTRACT="$2" ;; *) echo "ready-go: --contract takes yes or no" >&2; exit 2 ;; esac
+            shift 2 ;;
         --to) [ "$#" -ge 2 ] || usage; TO="$2"; shift 2 ;;
         --token) [ "$#" -ge 2 ] || usage; TOKEN="$2"; shift 2 ;;
         --ledger) [ "$#" -ge 2 ] || usage; LEDGER="$2"; shift 2 ;;
@@ -62,7 +71,10 @@ GH_BIN="${GH_CMD:-gh}"
 
 # 1. the gate go.sh runs: head, CI, threads, CR-ledger ok row, trailers, tickets, coverage
 rc=0
-READY_OUT=$(bash "$HERE/ready-check.sh" "$PR" "$SHA" 2>&1) || rc=$?
+RC_ARGS="--require-contract"; CONTRACT_ARG=""
+[ -z "$CONTRACT" ] || { RC_ARGS="$RC_ARGS --contract $CONTRACT"; CONTRACT_ARG=" --contract $CONTRACT"; }
+# shellcheck disable=SC2086  # RC_ARGS is a fixed word list built above
+READY_OUT=$(bash "$HERE/ready-check.sh" $RC_ARGS "$PR" "$SHA" 2>&1) || rc=$?
 printf '%s\n' "$READY_OUT"
 if [ "$rc" -ne 0 ]; then
     echo "READY-GO FAIL (ready-check exit $rc) - no GO line; the worker fixes what is named above"
@@ -117,10 +129,10 @@ fi
 # 4. the GO: file by go.sh (chief only), notification by SendMessage (chief only)
 case "$TRUST_OUT" in
     "hit "*)
-        printf 'NEXT: trust-path hit (%s) - no plain GO. Dispatch the opus judge; on its GO verdict for this head run: bash %q/go.sh --trust-reviewed <judge qid> %s %s\n' \
-            "${TRUST_OUT#hit }" "$HERE" "$PR" "$SHA" ;;
+        printf 'NEXT: trust-path hit (%s) - no plain GO. Dispatch the opus judge; on its GO verdict for this head run: bash %q/go.sh --trust-reviewed <judge qid>%s %s %s\n' \
+            "${TRUST_OUT#hit }" "$HERE" "$CONTRACT_ARG" "$PR" "$SHA" ;;
     *)
-        printf 'NEXT: bash %q/go.sh %s %s\n' "$HERE" "$PR" "$SHA"
+        printf 'NEXT: bash %q/go.sh%s %s %s\n' "$HERE" "$CONTRACT_ARG" "$PR" "$SHA"
         if [ -n "$TO" ]; then
             printf 'SENDMESSAGE to=%s :: GO %s %s, token %s\n' "$TO" "$PR" "$SHA" "$TOKEN"
         else

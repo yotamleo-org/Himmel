@@ -7,15 +7,20 @@
 #
 # usage: run.sh --out <dir> [--fixtures <dir>] [--key <file>] [--tiers <t>]
 #               [--critics a,b] [--only case-01,...] [--meta-json <json>]
-#               [--ledger <path> | --no-ledger] [--model <m>] [--delta]
+#               [--ledger <path> | --no-ledger] [--model <m>] [--delta] [--allow-claude-api]
+#   --allow-claude-api  the explicit opt-in to run a claude-api critic (billed per API token,
+#              operator decision 525); without it a sweep whose roster holds one refuses before
+#              the first case.
 #   --delta    sweep only the delta cases (a subset sweep, like --only; exclusive with it).
 #              A delta case (key "delta": true, files <id>.patch + <id>.delta.patch) is fed as
 #              diff = the fix delta, with --context-file = the round-1 diff then the delta; any
 #              sweep feeds delta cases that way, with or without --delta.
-#   --tiers   CRITIC_PANEL_TIERS for the panel (default paid: the codex row).
+#   --tiers   CRITIC_PANEL_TIERS for the panel (default paid: the codex row AND the claude row,
+#              a claude-api critic billed per token, so a default sweep refuses without --allow-claude-api).
 #   --model    the critic model, recorded on the row and in its config.
-#   --critics  critic slugs to report even when they file nothing (default:
-#              the critics.json rows in --tiers).
+#   --critics  the critics the sweep runs and reports (default: the critics.json rows in --tiers).
+#              The panel roster is the swept tree's critics.json cut to these slugs, so
+#              "--critics codex" never calls the claude row.
 #
 #   --src      the repo real cases' base and fix commits live in (default this checkout).
 #
@@ -32,7 +37,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PANEL="${REVIEW_PANEL_CMD:-$HERE/../../cr/critic-panel.sh}"
 fixtures="$HERE/fixtures"; key="$HERE/key/seeds.json"
-out=""; tiers="paid"; critics=""; only=""; meta="{}"; ledger_args=(); model=""; case_repo=""; src=""; delta_only=0
+out=""; tiers="paid"; critics=""; only=""; meta="{}"; ledger_args=(); model=""; case_repo=""; src=""; delta_only=0; allow_claude=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -52,6 +57,7 @@ while [ $# -gt 0 ]; do
         --ledger) ledger_args=(--ledger "${2:-}"); shift 2 ;;
         --no-ledger) ledger_args=(--no-ledger); shift ;;
         --delta) delta_only=1; shift ;;
+        --allow-claude-api) allow_claude=1; shift ;;
         --model) model="${2:-}"; shift 2 ;;
         *) echo "run.sh: unknown argument: $1" >&2; exit 2 ;;
     esac
@@ -133,6 +139,18 @@ if git -C "$scratch" rev-parse --git-dir >/dev/null 2>&1; then
     exit 2
 fi
 
+# The roster the panel runs: the swept tree's critics.json (A27, never a local overlay) cut to the
+# --critics slugs. A claude-api critic left in it needs --allow-claude-api (decision 525).
+roster="$out/critics.run.json"
+python3 -c 'import json,sys
+src,dst,critics,tiers,allow=sys.argv[1:6]
+reg=json.load(open(src)); keep=set(critics.split(","))
+reg["panel"]=[r for r in reg["panel"] if r["slug"] in keep]
+bill=[r["slug"] for r in reg["panel"] if r.get("tier") in set(tiers.split(",")) and str(r.get("provider","")).startswith("claude")]
+if bill and allow != "1":
+    sys.exit("run.sh: the roster holds a billed claude-api critic (%s) - pass --allow-claude-api or drop it from --critics - no panel call made" % ",".join(bill))
+json.dump(reg, open(dst, "w"))' "$HERE/../../cr/critics.json" "$roster" "$critics" "$tiers" "$allow_claude" || exit 2
+
 python3 "$HERE/score.py" stamp "$out" --fixtures "$fixtures" --key "$key" --panel "$PANEL" --tiers "$tiers" --only "$only" || exit 2
 
 for patch in "$fixtures"/case-*.patch "$fixtures"/real-*.patch "$fixtures"/delta-*.patch; do
@@ -157,10 +175,10 @@ for patch in "$fixtures"/case-*.patch "$fixtures"/real-*.patch "$fixtures"/delta
     # The panel reads its tier set from CRITIC_PANEL_TIERS only when CR_PROFILE
     # is unset; the triviality gate would skip the paid tier on a small diff,
     # and known-findings would inject himmel's own dispositions into the prompt.
-    # CRITICS_JSON pins the roster to the swept tree's critics.json (A27): the panel run from a
-    # scratch dir would otherwise read a local overlay.
+    # CRITICS_JSON pins the roster to the swept tree's critics.json cut to --critics (A27): the panel
+    # run from a scratch dir would otherwise read a local overlay, and the whole tier.
     (cd "$dir" && env -u CR_PROFILE CRITIC_PANEL_TIERS="$tiers" CR_TRIVIALITY_OVERRIDE=full \
-        CRITIC_KNOWN_FINDINGS=0 CRITICS_JSON="$HERE/../../cr/critics.json" \
+        CRITIC_KNOWN_FINDINGS=0 CRITICS_JSON="$roster" \
         bash "$PANEL" ${ctx_args[@]+"${ctx_args[@]}"} < diff.patch > "$out/$cid.md" 2> "$out/$cid.err")
     echo "$?" > "$out/$cid.rc"
 done

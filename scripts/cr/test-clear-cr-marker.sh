@@ -4237,6 +4237,103 @@ run_clear "$tmp" 0 "12f judge-go at a tip past the fix commit clears a fixed Imp
 if marker_exists "$tmp"; then fail "12f: marker must be cleared"; else pass; fi
 rm -rf "$tmp"
 
+# 13a-13j. --check-findings --tip <sha> [--assume-go] <branch> is the GO-time read of
+# gates 4 and 4b. It runs the merge's own ledger verdict at the head the merge would gate on, and writes
+# nothing (no marker, no ledger row, no audit line). --assume-go reads the head the merge gates on once
+# the chief's GO exists: judge-go counts as accepted, so the gates run at the recorded round head with a
+# `fixed` verdict passing. The PR 4611 shape: an Important raised at the reviewed head A, never ruled,
+# a non-test delta B on top; the merge refused it at gate 4 (exit 15) after ready-check had passed.
+# 13a. the 4611 shape: refused under the assumed GO, as the merge refuses it once the GO is written.
+make_repo || exit 1
+review_b "$tmp" f.txt "echo the fix"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp "")"
+run_clear "$tmp" 15 "13a an unruled Important at the reviewed head refuses under the assumed GO -> exit 15" --check-findings --tip "$B" --assume-go feat/x
+if grepq "$LAST_CLEAR_OUT" -F 'codex-1'; then pass; else fail "13a: the refusal must name the finding: $LAST_CLEAR_OUT"; fi
+# Without the assumed GO the tip is judged on its own rows, as the merge does before a GO exists.
+run_clear "$tmp" 0 "13a2 the same ledger without the assumed GO reads the tip's own rows -> exit 0" --check-findings --tip "$B" feat/x
+rm -rf "$tmp"
+
+# 13b. control: the same finding ruled disproved passes under the assumed GO.
+make_repo || exit 1
+review_b "$tmp" f.txt "echo the fix"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp disproved)"
+run_clear "$tmp" 0 "13b a disproved Important passes under the assumed GO -> exit 0" --check-findings --tip "$B" --assume-go feat/x
+# control: a TRACKED deferral (ticket key and reason) passes, a bare one blocks.
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(printf '{"kind":"finding","head":"%s","model":"codex","finding_id":"codex-1","severity":"imp","file":"a.sh","line":1,"verdict":"deferred","deferred_to":"HIMMEL-1","reason":"out of scope"}' "$sha")"
+run_clear "$tmp" 0 "13b2 a tracked deferral passes under the assumed GO -> exit 0" --check-findings --tip "$B" --assume-go feat/x
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp deferred)"
+run_clear "$tmp" 15 "13b3 a bare deferral still blocks under the assumed GO -> exit 15" --check-findings --tip "$B" --assume-go feat/x
+rm -rf "$tmp"
+
+# 13c. `fixed` passes only under the GO: gate 4's own rule, shared with the merge.
+make_repo || exit 1
+review_b "$tmp" f.txt "echo the fix"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp fixed)"
+run_clear "$tmp" 0 "13c a fixed Important at the reviewed head passes under the assumed GO -> exit 0" --check-findings --tip "$B" --assume-go feat/x
+rm -rf "$tmp"
+make_repo || exit 1
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp fixed)"
+run_clear "$tmp" 15 "13c2 a fixed Important at the tip itself, with no judge GO, refuses -> exit 15" --check-findings --tip "$sha" feat/x
+rm -rf "$tmp"
+
+# 13d. gate 4b: a finding with no verdict at the head, any severity, is refused.
+make_repo || exit 1
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" sug "")"
+run_clear "$tmp" 14 "13d an unadjudicated suggestion refuses -> exit 14" --check-findings --tip "$sha" feat/x
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" sug agreed)"
+run_clear "$tmp" 0 "13d2 a suggestion with a verdict passes -> exit 0" --check-findings --tip "$sha" feat/x
+printf '%s\n' 'not json' >> "$tmp/.git/cr-critic-scores.jsonl"
+run_clear "$tmp" 14 "13d3 a malformed ledger line refuses (an unknown verdict is not a clean one) -> exit 14" --check-findings --tip "$sha" feat/x
+rm -rf "$tmp"
+
+# 13e. the trivial-descendant shape: a test-only delta is gated strictly at the reviewed head, no GO needed.
+make_repo || exit 1
+review_b "$tmp" scripts/cr/test-x.sh "echo renamed"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" crit "")"
+run_clear "$tmp" 15 "13e a blocking finding at the reviewed head of a test-only delta refuses -> exit 15" --check-findings --tip "$B" feat/x
+rm -rf "$tmp"
+
+# 13f. read-only: the ledger, the marker, the audit log and the round state are untouched.
+make_repo || exit 1
+review_b "$tmp" f.txt "echo the fix"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp "")"
+before=$(cksum < "$tmp/.git/cr-critic-scores.jsonl")
+run_clear "$tmp" 15 "13f the read-only run refuses the 4611 shape -> exit 15" --check-findings --tip "$B" --assume-go feat/x
+after=$(cksum < "$tmp/.git/cr-critic-scores.jsonl")
+if [ "$before" = "$after" ]; then pass; else fail "13f: the ledger must be byte-identical after a check"; fi
+if marker_exists "$tmp"; then pass; else fail "13f: the marker must remain"; fi
+if [ ! -e "$tmp/.git/clear-cr-marker.log" ]; then pass; else fail "13f: a check must write no audit line"; fi
+rm -rf "$tmp"
+
+# 13g. usage: the mode needs --tip, and --tip / --assume-go need the mode.
+make_repo || exit 1
+write_ledger "$tmp" "$(avail_ok "$sha")"
+run_clear "$tmp" 10 "13g --check-findings without --tip is a usage error -> exit 10" --check-findings feat/x
+run_clear "$tmp" 10 "13g2 --tip without --check-findings is a usage error -> exit 10" --tip "$sha" feat/x
+run_clear "$tmp" 10 "13g3 --assume-go without --check-findings is a usage error -> exit 10" --assume-go feat/x
+run_clear "$tmp" 10 "13g4 --check-findings with --dry-run is a usage error -> exit 10" --check-findings --tip "$sha" --dry-run feat/x
+run_clear "$tmp" 10 "13g5 a short --tip is a usage error -> exit 10" --check-findings --tip "${sha:0:12}" feat/x
+run_clear "$tmp" 0 "13g6 a head this repository does not hold is read in the ledger by name when the branch has no round head -> exit 0" --check-findings --tip 0000000000000000000000000000000000000000 feat/x
+mkdir -p "$tmp/.git/cr-review-rounds/feat"
+printf '%s\n' "$sha" > "$tmp/.git/cr-review-rounds/feat/x.head"
+run_clear "$tmp" 12 "13g7 the same head with a recorded round head refuses (the review head cannot be chosen) -> exit 12" --check-findings --tip 0000000000000000000000000000000000000000 feat/x
+run_clear "$tmp" 0 "13g8 a clean ledger passes -> exit 0" --check-findings --tip "$sha" feat/x
+rm -rf "$tmp"
+
+# 13h. parity: the same 4611 ledger through the real merge-time clear (a judge GO at the tip, the marker
+# present) and through the GO-time check gives the same verdict, and so does the ruled control.
+make_repo || exit 1
+review_b "$tmp" f.txt "echo the fix"
+stub_judge_go "$tmp"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp "")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 15 "13h the merge-time clear refuses the 4611 shape -> exit 15"
+run_clear "$tmp" 15 "13h2 the GO-time check refuses the same ledger -> exit 15" --check-findings --tip "$B" --assume-go feat/x
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp disproved)"
+run_clear "$tmp" 0 "13h3 the GO-time check passes the ruled ledger -> exit 0" --check-findings --tip "$B" --assume-go feat/x
+run_clear "$tmp" 0 "13h4 the merge-time clear passes the ruled ledger -> exit 0"
+rm -rf "$tmp"
+
 echo
 echo "clear-cr-marker: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
