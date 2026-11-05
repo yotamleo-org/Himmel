@@ -2869,7 +2869,7 @@ check_c33_graph_stale() {
     # just because it also isn't literally "failed". Only the pipeline's own
     # KNOWN-GOOD action values earn an OK verdict.
     case "$action" in
-        skipped|refreshed|published|merged)
+        skipped|refreshed|published|published-channel|merged)
             # codex-4 (cont.): ...and even a known-good action only earns OK
             # when its age was actually established. "Cannot tell how old
             # this is" must never render as "recent enough to be healthy".
