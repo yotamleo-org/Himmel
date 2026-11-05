@@ -311,7 +311,7 @@ cim() { # fixture-dir store args...
   local fx="$1" st="$2"; shift 2
   CIM_FIX="$fx" CIM_LOG="$CD/gh.log" bash "$CIM" "$@" --repo o/r --days 7 --until "$UNTIL" --store "$st" --gh "$CD/bin/gh"
 }
-nrows() { cat "$1" 2>/dev/null | wc -l | tr -d ' '; }
+nrows() { cat "$1" 2>/dev/null | wc -l | tr -d ' '; }   # read-sink-ok: callers pass only ledger paths under the suite's own mktemp dir
 circ() { local rc=0; cim "$@" >/dev/null 2>&1 || rc=$?; echo "$rc"; }
 
 # (a) pagination: 2,500 runs over a window the API caps at 1,000 rows, all land
