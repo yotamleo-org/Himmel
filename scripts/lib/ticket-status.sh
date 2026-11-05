@@ -48,6 +48,8 @@
 #       filter is no-write + miss
 #   D6  no PR, the owner WRAPPED or HALTED       To Do (the resume state)
 #       and no other recorded worker holds its lock
+#   D6n as D6, but the ticket is In Progress and the owner's brief says Completes ticket: no
+#       above ## Results: derived equals current, so no move
 #   D7  no PR, never owned                       no-write
 #
 # Env: TICKET_STATUS_STATE_DIR (default ~/.himmel/state), WORKER_SESSION_JIRA_CLI (the Jira
@@ -401,6 +403,27 @@ ts_done_pending() {
 
 _ts_no_write() { TS_DERIVED="no-write"; TS_RESULT="$1"; TS_RULE="$2"; TS_STAGE="${3:-}"; }
 
+# _ts_brief_completes_no <doc> — rc 0 when the owner's brief (the doc, else the record's resume_brief) says
+# `> **Completes ticket:** no` above `## Results`. Same read as merge-on-green.sh; a missing or unreadable
+# brief or flag line is rc 1, never read as "no".
+_ts_brief_completes_no() {
+    local brief=$1 flag
+    [ -r "$brief" ] || brief=$(jq -r '.resume_brief // ""' <<<"$TS_REC")
+    [ -n "$brief" ] && [ -r "$brief" ] || return 1
+    flag=$(sed -nE '/^## Results/q; s/^> \*\*Completes ticket:\*\* (yes|no)[[:space:]]*$/\1/p' "$brief" | sort | head -n 1)
+    [ "$flag" = no ]
+}
+
+# _ts_derive_d6 <doc> — the wrapped worker with nothing else to hold the ticket: To Do (D6), except that
+# an In Progress ticket whose brief says Completes ticket: no stays where it is (D6n, a noop).
+_ts_derive_d6() {
+    if [ "$TS_J_STATUS" = "In Progress" ] && _ts_brief_completes_no "$1"; then
+        TS_DERIVED="In Progress"; TS_RULE=D6n
+    else
+        TS_DERIVED="To Do"; TS_RULE=D6
+    fi
+}
+
 ts_derive() {
     local key="$1" num head base rd class latch threads s rule best=9 r doc rc other owner=""
     TS_DERIVED=""; TS_RULE=""; TS_RESULT=""; TS_STAGE=""; TS_PR_STATE=""; TS_HEADS=""; TS_WORKER_STATE=none; TS_MERGED_PR=""
@@ -476,10 +499,10 @@ ts_derive() {
                 rc=0; ts_merged_no_row "$key" || rc=$?
                 if [ "$rc" -eq 0 ]; then TS_DERIVED="In Progress"; TS_RULE=D5c; TS_STAGE=merged-no-row
                 elif [ "$rc" -eq 2 ]; then _ts_no_write miss "" gh
-                else TS_DERIVED="To Do"; TS_RULE=D6
+                else _ts_derive_d6 "$doc"
                 fi
             elif [ "$rc" -eq 2 ]; then _ts_no_write miss "" log
-            else TS_DERIVED="To Do"; TS_RULE=D6
+            else _ts_derive_d6 "$doc"
             fi
         fi
     fi
