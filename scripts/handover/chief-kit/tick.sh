@@ -494,6 +494,17 @@ for line in text.splitlines():
     m = re.fullmatch(r"# disposition ([A-Z]+-\d+) (.+)", line)
     if m:
         rows[m[1]] = m[2]
+# one line per key-carrying series row, joined to its row by the row's 1-based line number on stdin
+for idx, line in enumerate(text.splitlines(), 1):
+    f = line.split("\t")
+    m = re.fullmatch(r"# disposition ([A-Z]+-\d+) .* held by series [\w.-]+", line)
+    s = re.match(r"STACKABLE ([A-Z]+-\d+)(?: |$)", line)
+    if f[0] == "SERIES" and len(f) > 2 and re.fullmatch(r"[A-Z]+-\d+(?:,[A-Z]+-\d+)*", f[2]):
+        print("# pool-keys %d SERIES %s" % (idx, f[2]))
+    elif s:
+        print("# pool-keys %d STACKABLE %s" % (idx, s[1]))
+    elif m:
+        print("# pool-keys %d # %s" % (idx, m[1]))
 decisions, invalid = {}, {}
 if sys.argv[1]:
     try:
@@ -522,7 +533,7 @@ unresolved = []
 for key, reason in rows.items():
     owned = bool(re.match(r"(?:in-flight )?owned by (?!a live worker$).+", reason))
     inflight += int(owned)
-    holder = bool(re.search(r" held by (?:(?:live )?worker [\w.-]+|PR #\d+)(?:$|\s)", reason))
+    holder = bool(re.search(r" held by (?:(?:live )?worker [\w.-]+|PR #\d+|series [\w.-]+)(?:$|\s)", reason)) or reason.startswith("stackable on ")
     blocker = bool(re.match(r"blocker-unknown [A-Z]+-\d+", reason)) or (reason.startswith("blocker ") and bool(re.search(r"[A-Z]+-\d+ \((?:(?!Done,|Closed,)[^()]+, live|reopened live)\)", reason)))
     if key in invalid:
         unresolved.append(("invalid", key, invalid[key]))
