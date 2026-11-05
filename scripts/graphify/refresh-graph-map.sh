@@ -35,8 +35,10 @@
 # extraction. The MOC is published ONLY with --publish. The workdir is never
 # deleted or quarantined; success prints "promoted; safe to remove <dir>".
 #
-# Exit: 0 ok; 1 usage/IO; 2 fence/graphify failure; 3 extraction skipped (bank
-# at/over threshold — not a failure, graphify-out was left untouched);
+# Exit: 0 ok; 1 usage/IO; 2 fence/graphify failure; 3 extraction skipped, not a
+# failure, graphify-out was left untouched (either the bank is at/over threshold,
+# or an installed published graph within the himmel-update limit covers an
+# adopter: graphify-out/.graphify_published, the stderr line says which);
 # 4 chunk cap reached; 5 hollow chunk failure (give-up or no-progress fallback).
 # Exits 4/5 keep finished chunks cached without promoting a partial graph.
 #
