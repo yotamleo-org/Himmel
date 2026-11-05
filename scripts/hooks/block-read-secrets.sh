@@ -39,8 +39,11 @@
 # docker config, gh hosts.yml, ~/.claude/.credentials.json, terraform.tfstate,
 # ~/.ssh/* (not .pub/known_hosts/config) and /proc/*/environ. `systemctl
 # show-environment` (with or without --user), `systemctl show` with no operand
-# or naming Environment, and a busctl/gdbus/dbus-send read of the systemd
-# Manager's environment are denied the same way. Another entry adds
+# or a -p / -P / --property list naming Environment, and a busctl/gdbus/dbus-send
+# clause on the systemd Manager with Environment, GetAll or introspect are denied
+# the same way. This is an open list of shapes, not a closed class: `show -P NAME`,
+# wrappers and relays (ssh, systemd-run, machinectl, rtk proxy, ...) are not read;
+# the ponytail by the systemctl arm names them. Another entry adds
 # shell tracing that can print the inherited environment (`bash -x`, `-o xtrace`,
 # `set -x`, SHELLOPTS=xtrace, BASH_XTRACEFD; denied even under `env -i`). Another entry adds
 # a python/node/bun/deno command that prints the whole environment or reads
@@ -1292,13 +1295,16 @@ g4_scan() {
             if [ "$pflag" = 1 ] && [ "$nnames" = 0 ]; then hit=1; note="$cmd -p dumps variables"; fi ;;
         gh) if [ "$a1" = auth ] && { [ "$a2" = token ] || [ "$showtok" = 1 ]; }; then hit=1; note="gh auth token prints a credential"; fi ;;
         # ponytail: the shapes covered are `systemctl [flags] show-environment`, `systemctl
-        # show` with no operand or a property list naming Environment (so a unit's own
-        # Environment is denied too), and a busctl, gdbus or dbus-send clause naming
-        # org.freedesktop.systemd1 with Environment, GetAll or introspect. A variable-built
+        # show` with no operand or a -p / --property list naming Environment (so a unit's
+        # own Environment is denied too, an accepted false positive), and a busctl, gdbus or
+        # dbus-send clause naming org.freedesktop.systemd1 with Environment, GetAll or
+        # introspect. Open list, NOT read: `show -P NAME` (and `-PNAME`), a variable-built
         # command, an alias, a short flag glued to others (`-ap Environment`), a flag value
-        # before the verb (`-H host show`) and `systemctl show -p Foo` forms not listed are
-        # not read. Upgrade path: stop importing credentials into the manager (the install
-        # side of this fix), so no dump has anything to print, instead of parsing more shapes.
+        # before the verb (`-H host show`) or after it (`show -n 1`, `show -o json`), an
+        # abbreviated long option (`show --prop`), and a wrapper or relay: rtk proxy, ssh,
+        # run0, systemd-run, machinectl, watch, script -c, a heredoc, xargs from stdin.
+        # Upgrade path: stop importing credentials into the manager (the install side of this
+        # fix), so no dump has anything to print, instead of parsing more shapes.
         busctl|gdbus|dbus-send)
             if [ "$sd1" = 1 ] && [ "$sdenv" = 1 ]; then
                 hit=1; note="$cmd read of the systemd manager environment prints credentials. $G4_SD_HINT"
