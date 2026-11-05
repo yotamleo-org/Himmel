@@ -286,7 +286,7 @@ test("stage 1: warn threshold without invariant -> refusal names ticket, rounds,
   expect(r.refusal).toContain("names no invariant");
   expect(r.refusal).toContain("second drift");
   expect(r.refusal).toContain("INVARIANT:");
-  expect(r.refusal).toContain("HIMMEL-1553");
+  expect(r.refusal).toContain("round guard");
 });
 
 test("stage 1: warn threshold WITH substantive invariant -> pass, note warns of the escalate stage", () => {
@@ -303,7 +303,7 @@ test("stage 2: escalate threshold refuses the CHEAP LANE even with a perfect inv
   expect(r.refusal).toContain("buying another cheap-lane round is the failure mode itself");
   expect(r.refusal).toContain("judgment-tier lane");
   expect(r.refusal).toContain("--rounds-override");
-  expect(r.refusal).toContain("HIMMEL-1553");
+  expect(r.refusal).toContain("round guard");
 });
 
 test("stage 2: refusal names the abstraction as the escalation task, never the newest defect", () => {

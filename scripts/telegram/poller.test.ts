@@ -10,6 +10,9 @@ import { describeEnabledOps, KNOWN_OPS } from "./auto-action";
 import type { TriageVerdict } from "./triage";
 import { makeConfigRestoreGate } from "./config-restore-route";
 
+// sessions are keyed by ticket id; the message text must open with the same key as the session it targets
+const k = (n: number) => `HIMMEL-${n}`;
+
 const root = () => mkdtempSync(join(tmpdir(), "poller-"));
 const allowAll = () => true;
 const spawnHighTriage = async (): Promise<TriageVerdict> => "spawn-high";
@@ -538,7 +541,7 @@ test("dispatch creates session, enqueues, sets chat_id; running session only enq
   const m = await readMeta(r, "HIMMEL-5"); expect(m?.chat_id).toBe(7);
   expect(ran).toEqual(["HIMMEL-5"]);
   await writeMeta(r, "HIMMEL-5", { ...(m as any), status:"running", last_run_pid: 999999 });
-  await handleInbound(r, { from:1, chat_id:7, text:"ABC-5: more" }, fakeRun, undefined, undefined, isOperator);
+  await handleInbound(r, { from:1, chat_id:7, text:`${k(5)}: more` }, fakeRun, undefined, undefined, isOperator);
   expect(ran).toEqual(["HIMMEL-5"]);   // no 2nd RUN while in-flight
 });
 
@@ -591,7 +594,7 @@ test("operator stop on a failed ticket session, then work on it through handleIn
   expect(notes).toEqual(["nothing running for HIMMEL-7"]);
   const prompts: string[] = [];
   const runFn = makeRunFn(r, "/repo", async (prompt) => { prompts.push(prompt); return { code: 0, capped: false, pid: 1 }; }, 5000);
-  await handleInbound(r, { from: 5, chat_id: -50, text: "ABC-7: retry" }, async (s) => { ran.push(s); await runFn(s); }, undefined, undefined, isOperator);
+  await handleInbound(r, { from: 5, chat_id: -50, text: `${k(7)}: retry` }, async (s) => { ran.push(s); await runFn(s); }, undefined, undefined, isOperator);
   expect(ran).toEqual(["HIMMEL-7"]);
   expect(prompts.length).toBe(1);
   expect(readdirSync(sessionDir(r, "HIMMEL-7"))).not.toContain("stop");
@@ -626,12 +629,12 @@ test("non-operator work on <KEY> creates no session, spawns nothing, never un-pa
   await handleInbound(r, { from: 9, chat_id: -50, text: "work on HIMMEL-9" }, run, undefined, undefined, isOperator);
   expect(await readMeta(r, "HIMMEL-9")).toBeNull();
   // 2. `KEY: text` from a member with no session: still no session
-  await handleInbound(r, { from: 9, chat_id: -50, text: "ABC-9: do it" }, run, undefined, undefined, isOperator);
+  await handleInbound(r, { from: 9, chat_id: -50, text: `${k(9)}: do it` }, run, undefined, undefined, isOperator);
   expect(await readMeta(r, "HIMMEL-9")).toBeNull();
   // 3. a member's follow-up to a FAILED session: appended untrusted, parked stays parked, nothing spawns
   await ensureSession(r, "HIMMEL-8");
   await writeMeta(r, "HIMMEL-8", { ...freshMeta(-50), status: "failed", fail_count: 3 });
-  await handleInbound(r, { from: 9, chat_id: -50, text: "ABC-8: try again", update_id: 1 }, run, undefined, undefined, isOperator);
+  await handleInbound(r, { from: 9, chat_id: -50, text: `${k(8)}: try again`, update_id: 1 }, run, undefined, undefined, isOperator);
   expect((await readMeta(r, "HIMMEL-8"))?.status).toBe("failed");
   expect((await readMeta(r, "HIMMEL-8"))?.fail_count).toBe(3);
   const lines = readFileSync(join(sessionDir(r, "HIMMEL-8"), "inbox.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
@@ -640,10 +643,10 @@ test("non-operator work on <KEY> creates no session, spawns nothing, never un-pa
   // 4. a member's follow-up to an IDLE session is appended but does not spawn
   await ensureSession(r, "HIMMEL-6");
   await writeMeta(r, "HIMMEL-6", freshMeta(-50));
-  await handleInbound(r, { from: 9, chat_id: -50, text: "ABC-6: hi" }, run, undefined, undefined, isOperator);
+  await handleInbound(r, { from: 9, chat_id: -50, text: `${k(6)}: hi` }, run, undefined, undefined, isOperator);
   expect(ran).toEqual([]);
   // 5. the operator still creates, spawns and un-parks
-  await handleInbound(r, { from: 5, chat_id: -50, text: "ABC-8: retry" }, run, undefined, undefined, isOperator);
+  await handleInbound(r, { from: 5, chat_id: -50, text: `${k(8)}: retry` }, run, undefined, undefined, isOperator);
   expect((await readMeta(r, "HIMMEL-8"))?.status).not.toBe("failed");
   await handleInbound(r, { from: 5, chat_id: -50, text: "work on HIMMEL-9" }, run, undefined, undefined, isOperator);
   expect(ran).toEqual(["HIMMEL-8", "HIMMEL-9"]);
@@ -1242,7 +1245,7 @@ test("ticket session chat_id is pinned by its creator; a group followup does not
   const r = root();
   const fakeRun = async (_s:string)=>{};
   await handleInbound(r, { from:1, chat_id:7, text:"work on HIMMEL-5" }, fakeRun, undefined, undefined, (f: number) => f === 1);
-  await handleInbound(r, { from:9, chat_id:-50, text:"ABC-5: from the group" }, fakeRun, undefined, undefined, (f: number) => f === 1);
+  await handleInbound(r, { from:9, chat_id:-50, text:`${k(5)}: from the group` }, fakeRun, undefined, undefined, (f: number) => f === 1);
   expect((await readMeta(r, "HIMMEL-5"))?.chat_id).toBe(7);
 });
 
@@ -1521,7 +1524,7 @@ test("deliverAllPending: runs idle + due-capped sessions; skips not-due-capped",
   // idle session with a pending inbox line
   await ensureSession(r, "IDLE");
   await writeMeta(r, "IDLE", { ...baseMeta, chat_id: 1, status: "idle", retry_at: null });
-  await appendLine(join(sessionDir(r, "IDLE"), "inbox.jsonl"), JSON.stringify({ text: "ABC-9: do it" }));
+  await appendLine(join(sessionDir(r, "IDLE"), "inbox.jsonl"), JSON.stringify({ text: `${k(9)}: do it` }));
 
   // capped with FUTURE retry_at (not due) with a pending line
   await ensureSession(r, "CAPPED-FUTURE");
