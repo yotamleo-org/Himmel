@@ -260,10 +260,13 @@ div.tile{cursor:default}.tiles.three{grid-template-columns:repeat(3,minmax(0,1fr
 .cpanel .srow>*{grid-column:1/-1;min-width:0}.cpanel .srow>.id{grid-column:1;grid-row:1}.cpanel .srow>.st{grid-column:2;grid-row:1}
 .cpanel .srow .det{white-space:normal;overflow:visible}
 .cpanel .st{font:700 11px var(--font-mono)}
+.cpanel .st.wrap{white-space:normal;overflow-wrap:anywhere}
 .cpanel .sform{display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%}.cpanel .sform input{flex:1 1 120px;width:auto;min-width:0}
 .cpanel .sform .acts{display:flex;gap:6px;justify-content:flex-end;flex:0 0 auto;min-width:8.5rem;margin-left:auto}
 .cpanel .slot label{display:inline-flex;align-items:center;gap:6px}
 .cpanel .chips{gap:6px}.cpanel .chips .ro{border:1px solid var(--rule-strong);border-radius:999px;background:var(--surface-2);padding:0 10px;font:11px var(--font-mono)}
+.cpanel .roles-table{width:100%;border-collapse:collapse;font-size:var(--fs-sm);margin:var(--s2) 0}.cpanel .roles-table th,.cpanel .roles-table td{text-align:left;padding:var(--s1) var(--s2);border-top:1px solid var(--rule);vertical-align:middle}
+.cpanel .roles-table thead th{font:600 var(--fs-xs) var(--font-ui);color:var(--muted);border-top:0}.cpanel .role-card{margin:var(--s2) 0}.cpanel .role-card.crit{border-color:var(--crit);background:var(--crit-soft)}.cpanel .role-card.warn{border-color:var(--beta);background:var(--beta-soft)}.cpanel .role-card ul{margin:0;padding-left:var(--s4)}
 .cpanel .id{font-weight:600}.cpanel .det,.cpanel .ro{color:var(--muted);font-size:var(--fs-xs)}
 .cpanel a,.chk a,.not a{color:var(--accent)}
 .not{font:var(--fs-xs)/1.5 var(--font-ui);color:var(--muted);border-top:1px dashed var(--rule);padding-top:var(--s2);margin:var(--s3) 0 0;overflow-wrap:anywhere}.not b{color:var(--ink)}.not code{font-family:var(--font-mono);font-size:.92em}
