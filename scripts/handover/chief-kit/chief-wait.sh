@@ -1131,12 +1131,14 @@ cadence_file="$inbox.wait.cadence"
 # cause line per new flagged run and succeeds; the marker then holds the id (missed-<id> for MISSED), so the
 # same run never wakes twice, not even after a re-arm.
 cadence_wake() {
-    local e name id flag key base=0 out="" line
+    local e name state id flag key base=0 out="" line
     [ -e "$cadence_file" ] || { base=1; : > "$cadence_file" 2>/dev/null; }
     while IFS= read -r e; do
         [ -n "$e" ] || continue
-        IFS=: read -r name _ _ id flag <<< "$e"
+        IFS=: read -r name state _ id flag <<< "$e"
         case "$id" in ''|0|*[!0-9]*) continue ;; esac
+        # a run still in flight at the baseline has not finished: leave it out so a red end still wakes
+        if [ "$base" -eq 1 ] && [ "$state" = running ]; then continue; fi
         key="$id"; [ "$flag" != MISSED ] || key="missed-$id"
         grep -qxF -- "$key" "$cadence_file" 2>/dev/null && continue
         if [ "$base" -eq 0 ] && [ -z "$flag" ]; then continue; fi

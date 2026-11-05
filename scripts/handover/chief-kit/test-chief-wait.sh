@@ -1227,6 +1227,16 @@ cd_tick 'ci:success:3h:102,fork-drift:success:40h:501:MISSED'
 wait_exit "$WPID"
 check "(cd7) a missed schedule wakes" "WAKE cadence fork-drift run=501 MISSED" "$(head -n1 "$WORK/cd5.out" | cut -d' ' -f1-5)"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+# a run still in flight at the baseline is not finished: when it later concludes red it wakes
+reset_stub
+cd_tick 'ci:success:3h:101,pages:running:1m:601'
+I="$(new_inbox cd8)"
+start "$I" "$WORK/cd8.out"
+wait_hb "$I" || fail "(cd8) no baseline heartbeat"
+cd_tick 'ci:success:3h:101,pages:failure:5m:601:RED'
+wait_exit "$WPID"
+check "(cd8) a run in flight at the baseline that concludes red wakes" "WAKE cadence pages run=601 RED" "$(head -n1 "$WORK/cd8.out" | cut -d' ' -f1-5)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 unset CHIEF_WAIT_CADENCE
 
 # --- (rv) the daily failure review wakes once per review day (decision 593) ---
