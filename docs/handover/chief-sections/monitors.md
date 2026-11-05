@@ -37,6 +37,25 @@ it. The waiter keys on the names, so each worker entering the set wakes you once
 (`WAKE tick changed=holds`); the age growing, a worker leaving and the set emptying wake
 nothing. Absent when no worker holds.
 
+`hreg=<a>/<b>/<c>` is the holds register's own state and is conditional: absent at
+`0/0/0`, when this repo has no register directory, and from an older tick. `<a>` is live
+workers whose doc names Writes files but whose key holds no row (a worker launched while
+the barrier was off); `<b>` is stale rows (a brief or pr row whose key the Jira mirror
+reads Done, or a pr row whose PR is no longer in `prs=`); `<c>` is pending trust-path
+HOLD-ASKs (a deny from the last day on a trust, settings or CI-workflow path that no grant
+answers). The tick reads local files only: no `gh` or Jira call. `chief-wait.sh` keys on
+the whole value, so a moved count wakes you once (`WAKE tick changed=hreg`); `hreg=?` is a
+failed read and keeps the saved value. Act on it: `a` → `holds.py on --workers-from
+<fleet.json> --repo <repo>` seeds the rows (`holds.py on` runs the backfill itself); `b` →
+`holds.py gc --repo <repo>` drops them; `c` → the operator is already paged.
+
+A pending HOLD-ASK reaches the operator on Telegram once, through the same sender as
+`DENIAL-PAGE`: `HOLD-ASK <key> wants <path> (held by <holder>). Paste in a real terminal,
+not a Claude window, and type the path back: python3 -I <primary>/scripts/handover/chief-kit/holds.py
+grant --key <key> --repo <primary> <path>`. The page record is `<inbox>.wait.holdasks`
+(one `<key>\t<path>` line per page, written before the send); delete the line to page again.
+You can stamp a trust path yourself with the same command plus `--chief-doc <your doc>`.
+
 `workers=<label>:IDLE-HELD` means a held lock with no session transcript activity
 for `TICK_IDLE_MIN` minutes (default 45), without an armed task/Monitor or an
 unfinished foreground Bash/Agent call. Missing/unreadable activity evidence leaves

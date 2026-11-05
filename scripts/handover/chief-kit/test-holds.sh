@@ -66,10 +66,10 @@ esc() { local s="${1//%/%25}"; printf '%s' "${s//\//%2F}"; }
 slugdir() { printf '%s/%s' "$REG" "$(esc "${1:-$R}")"; }
 rowf() { printf '%s/%s' "$(slugdir "${2:-$R}")" "$(esc "$1")"; }
 ev_count() { if [ -f "$EVENTS" ]; then wc -l < "$EVENTS" | tr -d ' '; else echo 0; fi; }
-# put_row <path> <key> <label> <doc> [source] [pr]: a row written by hand, aged past the grace
+# put_row <path> <key> <label> <doc> [source] [pr] [repo]: a row written by hand, aged past the grace
 put_row() {
     local f
-    f="$(rowf "$1")"
+    f="$(rowf "$1" "${7:-}")"
     mkdir -p "$(dirname "$f")"
     printf '%s\t%s\t%s\t%s\t%s\n' "$2" "$3" "$4" "${5:-brief}" "${6:-}" > "$f"
     touch -d '2 hours ago' "$f"
@@ -1041,6 +1041,82 @@ same "O6 a terminal carrying a CLAUDE_CODE_* marker is no operator: refused" "$R
 OUT=$(printf 'scripts/check-ci.sh\n' | noclaude python3 -I "$SUT" grant --key HIMMEL-9221 --repo "$R" scripts/check-ci.sh 2>&1); RC=$?
 same "O7 a non-TTY stdin typing the right path, markers unset: refused" "$RC" 1
 same "O7 ... and none of these writes a grant" "$(find "$(slugdir)" -name '*.grant.HIMMEL-922[01]' | wc -l | tr -d ' ')" 0
+
+# ---- the register stays true on its own: on seeds, gc drops Done keys, summary and asks feed the tick
+# (a) `on` runs backfill for the chief's fleet manifest: workers launched while the barrier was off get rows
+R9="$W/repo-9186"; mkdir -p "$R9"; git -C "$R9" init -q -b main
+S1="$(mkdoc HIMMEL-9601-N1-case.md '> **Writes:** scripts/s9601.sh')"
+S2="$(mkdoc HIMMEL-9602-N2-case.md '> **Writes:** scripts/s9602.sh')"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"}]}\n' "$S1" "$S2" > "$W/fleet-9186.json"
+run hp off --reason "9186 seeding"
+same "9186 off writes the sentinel" "$RC" 0
+run hp on --workers-from "$W/fleet-9186.json" --repo "$R9"
+same "9186 on with a manifest exits 0" "$RC" 0
+run hp read --repo "$R9" --keys
+contains "9186 after off then on, the first manifest worker's key has rows" "$OUT" "HIMMEL-9601"
+contains "9186 after off then on, the second manifest worker's key has rows" "$OUT" "HIMMEL-9602"
+run hp on
+same "9186 on with no manifest is the plain sentinel removal (exit 0)" "$RC" 0
+
+# (b) gc drops brief and pr rows of a Done key or a merged PR, and keeps those of an open one (control)
+mkdir -p "$W/mirror9186"
+printf -- '---\nkey: "HIMMEL-9611"\nstatus: "Done"\nstatusCategory: "Done"\n---\n' > "$W/mirror9186/HIMMEL-9611.md"
+printf -- '---\nkey: "HIMMEL-9613"\nstatus: "In Progress"\nstatusCategory: "In Progress"\n---\n' > "$W/mirror9186/HIMMEL-9613.md"
+cat > "$W/bin/gh-bynum" <<'STUB'
+#!/usr/bin/env bash
+case "$3" in 4701) echo MERGED ;; *) echo OPEN ;; esac
+STUB
+chmod +x "$W/bin/gh-bynum"
+G1="$(mkdoc HIMMEL-9611-case.md)"; lock_hold "$G1"   # the Done key's worker still holds its lock: alive to the judge
+G2="$(mkdoc HIMMEL-9612-case.md)"
+G3="$(mkdoc HIMMEL-9613-case.md)"
+put_row scripts/g9611.sh HIMMEL-9611 lab "$G1" brief "" "$R9"
+put_row scripts/g9612.sh HIMMEL-9612 lab "$G2" pr 4701 "$R9"
+put_row scripts/g9613.sh HIMMEL-9613 lab "$G3" pr 4702 "$R9"
+: > "$(rowf scripts/g9611.sh "$R9").grant.HIMMEL-9699"
+run env HOLDS_GH="$W/bin/gh-bynum" HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" gc --repo "$R9"
+same "9186 gc exits 0" "$RC" 0
+same "9186 gc removes the brief row of a key the mirror says is Done, though its worker's lock is held" "$([ -e "$(rowf scripts/g9611.sh "$R9")" ] && echo row || echo none)" none
+same "9186 gc removes the grant siblings of that key's row" "$([ -e "$(rowf scripts/g9611.sh "$R9").grant.HIMMEL-9699" ] && echo grant || echo none)" none
+same "9186 gc removes the pr row whose PR reads merged" "$([ -e "$(rowf scripts/g9612.sh "$R9")" ] && echo row || echo none)" none
+same "9186 gc keeps the row of an open PR on an in-progress key (control)" "$([ -e "$(rowf scripts/g9613.sh "$R9")" ] && echo row || echo none)" row
+
+# (c) summary: live workers with no rows / stale rows / pending trust-path asks, from local state only
+R10="$W/repo-9186-summary"; mkdir -p "$R10/scripts/lib"; git -C "$R10" init -q -b main
+: > "$R10/scripts/lib/rename-aliases.tsv"
+L1="$(mkdoc HIMMEL-9621-N1-case.md '> **Writes:** scripts/s9621.sh')"      # live, has Writes, no rows
+L2="$(mkdoc HIMMEL-9622-N2-case.md '# a doc with no Writes line')"          # live, nothing to hold: not counted
+put_row scripts/s9623.sh HIMMEL-9611 lab "$G1" brief "" "$R10"             # a stale row (Done key)
+put_row scripts/s9624.sh HIMMEL-9613 lab "$G3" pr 4702 "$R10"               # a pr row whose PR is still open
+put_row scripts/check-ci.sh HIMMEL-9625 holder "$(mkdoc HIMMEL-9625-case.md)" brief "" "$R10"
+lock_hold "$(mkdoc HIMMEL-9625-case.md)"
+run hp claim --key HIMMEL-9626 --label asker --doc "$(mkdoc HIMMEL-9626-case.md)" --repo "$R10" scripts/check-ci.sh
+same "9186 a claim on a held trust path is refused (the deny the ask is read from)" "$RC" 1
+OUT=$(printf '%s\n%s\n' "$L1" "$L2" | env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" summary --repo "$R10" --live-docs - --open-prs '#4702' 2>/dev/null)
+same "9186 summary: one live worker with no rows, one stale row, one pending trust-path ask" "$OUT" "1/1/1"
+run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10"
+KIT_P="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)"; KIT_P="${KIT_P%/.git}"  # the checkout holds.py runs from, not the repo --repo names (R10 has no kit)
+same "9186 asks names the key, the path and the full paste-ready grant command, located from the running kit" "$OUT" "$(printf 'HIMMEL-9626\tscripts/check-ci.sh\tHIMMEL-9625\tpython3 -I %s/scripts/handover/chief-kit/holds.py grant --key HIMMEL-9626 --repo %s scripts/check-ci.sh' "$KIT_P" "$R10")"
+OUT=$(printf '%s\n' "$L1" | env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" summary --repo "$R10" --live-docs - --open-prs none 2>/dev/null)
+same "9186 summary: with no open PR the pr row is stale too (2), no other count moves" "$OUT" "1/2/1"
+: > "$(rowf scripts/check-ci.sh "$R10").grant.HIMMEL-9626"
+run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10"
+same "9186 a granted ask is no longer pending" "$OUT" ""
+run hp summary --repo "$W/repo-9186-no-register"
+same "9186 summary prints nothing when this repo has never had a register directory" "$RC:$OUT" "0:"
+if [ "$(id -u)" != 0 ]; then  # root reads a mode-000 directory
+    chmod 000 "$(slugdir "$R10")"
+    run hp summary --repo "$R10"
+    chmod 755 "$(slugdir "$R10")"
+    same "9186 summary on an unreadable register directory exits 3 with no count (the tick shows hreg=?)" "$RC:$OUT" "3:"
+fi
+
+# the refusal text names the route that exists
+put_row scripts/r9186.sh HIMMEL-9628 lab "$(mkdoc HIMMEL-9628-case.md)" brief "" "$R9"
+touch "$(rowf scripts/r9186.sh "$R9")"
+run hp claim --key HIMMEL-9627 --label asker --doc "$(mkdoc HIMMEL-9627-case.md)" --repo "$R9" scripts/r9186.sh
+case "$ERR" in *"ask your chief: HOLD-ASK"*) fail "9186 the refusal no longer names the HOLD-ASK route that has no consumer" ;; *) pass "9186 the refusal no longer names the HOLD-ASK route that has no consumer" ;; esac
+contains "9186 the refusal tells the worker the chief sees the deny on its tick and grants it" "$ERR" "hreg="
 
 # ---- the real register was never touched
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
