@@ -3413,19 +3413,14 @@ contains "31b caller-preset value wins on a name clash (HIMMEL_CONSOLE_LEG)" "$l
 not_contains "31b the wrapper's own HIMMEL_CONSOLE_LEG=1 is not also added" "$lenv29b" "HIMMEL_CONSOLE_LEG=1"
 contains "31b the wrapper still appends its own vars after the caller's" "$lenv29b" "IMPL_GUARD_OK=1"
 
-# 31c. A worker-process value containing whitespace is refused loudly (exit 12)
-# rather than silently mis-split into extra bogus HEADED_ARM_LAUNCHER_ENV
-# tokens - the var is a whitespace-split token list with no quoting scheme
-# (same contract as CODEX_USAGE_PROBE_CMD). (case 32):
-# this refusal is Darwin-only, so pin the seam explicitly rather than rely on
-# the test runner's real platform (this box happens to be Darwin too, but
-# case 32c below proves the non-Darwin branch takes a different path).
+# 31c. On Darwin a worker-process value containing a space is carried on the
+# line channel (HEADED_ARM_LAUNCHER_ENV_LINES) instead of being refused: the
+# token list cannot hold it, the line channel can. Pin the seam explicitly.
 mkdir -p "$tmp/space dir"
 rc=0
 err29c="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker-31c some/doc.md /tmp/nosig 99999999999 "$tmp/space dir/worker.log" claude-sonnet-5 2>&1)" || rc=$?
-check "31c a whitespace-carrying worker-process value is refused with exit 12" "$rc" "12"
-contains "31c the refusal names the offending var" "$err29c" "WORKER_SESSION_PROFILE_SETTINGS"
-contains "31c the refusal explains why (HEADED_ARM_LAUNCHER_ENV cannot carry a spacey value)" "$err29c" "cannot carry"
+check "31c a space-carrying worker-process value is carried, not refused" "$rc" "0"
+contains "31c the value rides the line channel" "$err29c" "launcher-env-line: WORKER_SESSION_PROFILE_SETTINGS=$tmp/space dir/"
 
 # 32a. (GAP): a caller-preset HANDOVER_DIR - the normal
 # case for a grouped chief, which sets it before this wrapper ever runs -
@@ -3436,12 +3431,11 @@ out32a="$(HANDOVER_DIR="$tmp/preset-hd-32a" bash "$SCRIPT" --dry-run --no-profil
 lenv30a="$(printf '%s\n' "$out32a" | grep '^headed-arm-worker: lane=')"
 contains "32a a caller-preset HANDOVER_DIR reaches launcher-env=" "$lenv30a" "HANDOVER_DIR=$tmp/preset-hd-32a"
 
-# 32b. Darwin: the whitespace refusal is unchanged (regression guard for the
-# restructured worker_propagate_env - same outcome as 31c, pinned explicitly).
+# 32b. Darwin: same outcome as 31c, pinned explicitly.
 rc=0
 err30b="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker-32b some/doc.md /tmp/nosig 99999999999 "$tmp/space dir/leg32b.log" claude-sonnet-5 2>&1)" || rc=$?
-check "32b Darwin still refuses a whitespace-carrying value with exit 12" "$rc" "12"
-contains "32b the refusal still names the offending var" "$err30b" "WORKER_SESSION_PROFILE_SETTINGS"
+check "32b Darwin carries a spaced value on the line channel (exit 0)" "$rc" "0"
+contains "32b the line names the offending var" "$err30b" "launcher-env-line: WORKER_SESSION_PROFILE_SETTINGS="
 
 # 32c. (REGRESSION RISK): on any platform other than
 # Darwin, plain-export inheritance already carried a whitespace-carrying
@@ -3457,6 +3451,75 @@ not_contains "32c non-Darwin: no WORKER_SESSION_PROFILE_SETTINGS token is added"
 contains "32c non-Darwin: the wrapper still appends its other, non-spacey vars" "$lenv30c" "HIMMEL_CONSOLE_LEG=1"
 contains "32c non-Darwin: a stderr warning explains the value was left to inheritance" "$out32c" "leaving it to plain-export inheritance"
 contains "32c non-Darwin: the warning names the platform" "$out32c" "harmless on Linux"
+not_contains "32c non-Darwin: no launcher-env-line is written" "$out32c" "launcher-env-line:"
+
+# 31d-31j. The line channel on Darwin (HEADED_ARM_LAUNCHER_ENV_LINES).
+mkdir -p "$tmp/space hd"
+doc31d="$tmp/space dir/HIMMEL-9999-N1-x.md"
+fx_brief '# line-channel fixture' > "$doc31d"
+stub31d="$tmp/stub31d.sh"
+# shellcheck disable=SC2016  # deliberately unexpanded: evaluated when the stub runs.
+printf '%s\n' '#!/usr/bin/env bash' 'printf "%s" "${HEADED_ARM_LAUNCHER_ENV_LINES-UNSET}" > "$STUB31D_OUT"' 'exit 0' > "$stub31d"
+chmod 755 "$stub31d"
+run31d() { # run31d <outfile> <uname> [VAR=VAL...]
+  local _o="$1" _u="$2"; shift 2
+  env ${1+"$@"} STUB31D_OUT="$_o" HEADED_ARM_UNAME="$_u" HEADED_ARM_WORKER_TARGET="$stub31d" \
+    HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" bash "$SCRIPT" --no-profile \
+    HIMMEL-9999-N1-x "$doc31d" "$tmp/sig31d" 99999999999 "$tmp/leg31d.log" claude-sonnet-5 2>&1
+}
+# 31d. The ticket's case: a brief under a spaced directory reaches the worker.
+rc=0; run31d "$tmp/out31d" Darwin >/dev/null || rc=$?
+check "31d a spaced brief path launches (exit 0)" "$rc" "0"
+if grep -Fxq "HIMMEL_HOLD_DOC=$doc31d" "$tmp/out31d" 2>/dev/null; then check "31d HIMMEL_HOLD_DOC rides the line channel verbatim" ok ok
+else check "31d HIMMEL_HOLD_DOC rides the line channel verbatim" "$(cat "$tmp/out31d" 2>/dev/null)" "HIMMEL_HOLD_DOC=$doc31d"; fi
+# 31e. A spaced HANDOVER_DIR is carried too.
+out31e="$(HANDOVER_DIR="$tmp/space hd" HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker-31e some/doc.md /tmp/nosig 99999999999 "$tmp/leg31e.log" claude-sonnet-5 2>&1)"
+contains "31e a spaced HANDOVER_DIR rides the line channel" "$out31e" "launcher-env-line: HANDOVER_DIR=$tmp/space hd"
+# 31f. A caller-preset line channel never reaches the worker.
+rc=0; run31d "$tmp/out31f" Darwin HEADED_ARM_LAUNCHER_ENV_LINES='BOGUS=1' >/dev/null || rc=$?
+check "31f a preset line channel does not break the launch" "$rc" "0"
+if grep -Fxq "HIMMEL_HOLD_DOC=$doc31d" "$tmp/out31f" 2>/dev/null; then check "31f the wrapper's own line is still written" ok ok
+else check "31f the wrapper's own line is still written" "$(cat "$tmp/out31f" 2>/dev/null)" "HIMMEL_HOLD_DOC=$doc31d"; fi
+not_contains "31f the preset BOGUS=1 line is cleared" "$(cat "$tmp/out31f" 2>/dev/null)" "BOGUS=1"
+# 31g. A caller token for the same name wins; no line is added for it.
+rc=0
+out31g="$(HEADED_ARM_LAUNCHER_ENV='HANDOVER_DIR=/preset' HANDOVER_DIR="$tmp/space hd" HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker-31g some/doc.md /tmp/nosig 99999999999 "$tmp/leg31g.log" claude-sonnet-5 2>&1)" || rc=$?
+check "31g token-preset HANDOVER_DIR with a spaced env value launches" "$rc" "0"
+contains "31g the caller token is kept" "$(printf '%s\n' "$out31g" | grep 'launcher-env=')" "HANDOVER_DIR=/preset"
+not_contains "31g no line is written for that name" "$out31g" "launcher-env-line: HANDOVER_DIR"
+# 31h. Whitespace other than a space is still refused on Darwin.
+for _c31h in tab cr lf vt ff sp_tab; do
+  case "$_c31h" in tab) _ch=$'\t';; cr) _ch=$'\r';; lf) _ch=$'\n';; vt) _ch=$'\v';; ff) _ch=$'\f';; sp_tab) _ch=$' \t';; esac
+  _d31h="$tmp/ws${_ch}dir"; mkdir -p "$_d31h"
+  rc=0
+  err31h="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker-31h some/doc.md /tmp/nosig 99999999999 "$_d31h/w.log" claude-sonnet-5 2>&1)" || rc=$?
+  check "31h $_c31h in a value is refused with exit 12" "$rc" "12"
+  contains "31h $_c31h refusal says other than a space" "$err31h" "other than a space"
+done
+# 31j. Linux never writes the line channel.
+rc=0; run31d "$tmp/out31j" Linux >/dev/null || rc=$?
+check "31j Linux launches with a spaced brief path" "$rc" "0"
+check "31j Linux leaves the line channel unset" "$(cat "$tmp/out31j" 2>/dev/null)" "UNSET"
+# 31i. End to end: the real headed-arm.sh on Darwin carries the spaced brief
+# path to the terminal launcher as one argument (rc 0 needs the launch confirmed).
+d31i="$tmp/d31i"; mk_launch_stubs "$d31i" "HIMMEL-9999-N1-x"; mkdir -p "$tmp/repo31i"
+cat > "$d31i/konsole" <<'KONSOLE_EOF'
+#!/usr/bin/env bash
+printf '%q\n' "$@" >> "$(dirname "$0")/record"
+: > "$(dirname "$0")/confirmable"
+sleep 5
+KONSOLE_EOF
+chmod 755 "$d31i/konsole"
+rc=0
+HEADED_ARM_UNAME=Darwin KONSOLE_MACOS_STARTUP_TICKS=2 some_doc="$doc31d" RUN_WORKER_ARGS='--no-profile' \
+  run_worker "$d31i" "$tmp/repo31i" "HIMMEL-9999-N1-x" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+check "31i a spaced brief path launches through the real headed-arm.sh (exit 0)" "$rc" "0"
+wait_record "$d31i" || true
+if grep -Fxq "HIMMEL_HOLD_DOC=${doc31d// /\\ }" "$d31i/record" 2>/dev/null; then
+  check "31i the launcher gets HIMMEL_HOLD_DOC as one escaped element" ok ok
+else
+  check "31i the launcher gets HIMMEL_HOLD_DOC as one escaped element" "$(cat "$d31i/record" 2>/dev/null)" "HIMMEL_HOLD_DOC=${doc31d// /\\ }"
+fi
 
 # 33. HIMMEL_CONSOLE_NAME is a
 # worker-process var too - #1121 routed a worker's merge-block alert to the owning
