@@ -386,11 +386,26 @@ txt="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" CLAUDE_DIR="$t/claude" HOME="$t/home"
 js="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --json --no-color 2>/dev/null)"; rc_js=$?
 n_txt="$(grep -cE '^(FAIL|WARN|INFO|OK) ' <<< "$txt")"
 n_js="$(grep -c . <<< "$js")"
-if jq -e -s 'length > 0 and all(.[]; (keys == ["id","msg","remedy","sev"]) and (.sev | IN("FAIL","WARN","INFO","OK")))' <<< "$js" >/dev/null 2>&1; then
-    pass "--json -> every stdout line is a {sev,id,msg,remedy} object"
+if jq -e -s 'length > 0 and all(.[]; ((keys - ["repo"]) == ["id","msg","remedy","scope","sev"]) and (.sev | IN("FAIL","WARN","INFO","OK")))' <<< "$js" >/dev/null 2>&1; then
+    pass "--json -> every stdout line is a {sev,id,msg,remedy,scope[,repo]} object"
 else
     fail "--json -> stdout is not JSON lines: $(head -3 <<< "$js")"
 fi
+# Each check declares its own scope: the machine checks are shared, the per-repo index checks
+# (C33 graph, C70 semantic graph) are project rows that name the repo they judge, the rest default to project.
+sc="$(jq -r 'select(.id | test("^C(22|38|44|45|52|80|83|86|40|12)-")) | select(.scope != "shared") | .id' <<< "$js")"
+if [ -z "$sc" ] && [ "$(jq -r 'select(.id | test("^C(22|38|44|52|80|86)-")) | .id' <<< "$js" | grep -c .)" -ge 4 ]; then
+    pass "--json -> C22 C38 C44 C45 C52 C80 C83 C86 (and C40, C12) declare scope shared"
+else
+    fail "--json -> machine checks not declared shared: [$sc]"
+fi
+rp="$(jq -r 'select(.id | test("^C(33|70)-")) | select(.scope != "project" or .repo != "himmel") | .id' <<< "$js")"
+if [ -z "$rp" ] && [ "$(jq -r 'select(.id | test("^C(33|70)-")) | .id' <<< "$js" | grep -c .)" -ge 2 ]; then
+    pass "--json -> C33 and C70 are project rows that name the repo they judge"
+else
+    fail "--json -> C33/C70 do not declare project + repo himmel: [$rp]"
+fi
+if [ -z "$(jq -r 'select(.id | test("^C(33|70)-") | not) | select(.repo != null) | .id' <<< "$js")" ]; then pass "--json -> no other check names a repo"; else fail "--json -> a check other than C33/C70 names a repo"; fi
 if [ "$n_js" -eq "$n_txt" ] && [ "$n_txt" -gt 0 ]; then pass "--json -> $n_js rows = $n_txt text emits"; else fail "--json -> $n_js rows vs $n_txt text emits"; fi
 if [ "$rc_js" -eq "$rc_txt" ]; then pass "--json -> exit code matches text run ($rc_js)"; else fail "--json -> rc=$rc_js vs text rc=$rc_txt"; fi
 if grepq "$js" 'Summary:'; then fail "--json -> Summary line leaked to stdout"; else pass "--json -> Summary line kept off stdout"; fi
@@ -7903,6 +7918,46 @@ echo "== C76: no plugin over the limit -> OK =="
 out="$(C76_DUP=0 c76_run)"
 if grepq "$out" 'OK   C76-duplicate-plugin-installs'; then pass "C76 within the limit -> OK"; else fail "C76 within limit -> $(printf '%s' "$out" | grep -A1 C76)"; fi
 rm -rf "$c76_t"
+
+# --- C88-graph-api-optin: the graph cadence's billed API lane needs a station opt-in ---
+c88_t="$(mktemp -d "${TMPDIR:-/tmp}/c88.XXXXXX")" || { echo "FATAL: C88 setup mktemp failed" >&2; exit 1; }
+mkdir -p "$c88_t/claude" "$c88_t/home/.himmel" "$c88_t/bat"
+c88_key="dummy-not-a-real-key-c88"
+c88_run() { CLAUDE_DIR="$c88_t/claude" HOME="$c88_t/home" GRAPHMAP_BAT_DIR="$c88_t/bat" HIMMEL_DOCTOR_ENV_FILE="$c88_t/env" bash "$DOC" --only C88 --no-color 2>&1; }
+c88_reset() { rm -rf "$c88_t/home/.himmel" "$c88_t/bat" "$c88_t/env"; mkdir -p "$c88_t/home/.himmel" "$c88_t/bat"; }
+c88_optin() { printf '{"graphify":{"semantic_api_ok":true}}\n' > "$c88_t/home/.himmel/config.json"; }
+c88_key_in_env() { printf '# himmel .env\nANTHROPIC_ORG_A_KEY=%s\n' "$c88_key" > "$c88_t/env"; }
+c88_lane_runner() { printf '#!/bin/sh\n_rc=0; HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api graph-cadence.sh --semantic || _rc=$?\n' > "$c88_t/bat/graphmap-publish-himmel.sh"; }
+c88_skip_runner() { printf '#!/bin/sh\n_rc=0; echo "[semantic skipped: API lane not opted in]"; graph-cadence.sh || _rc=$?\n' > "$c88_t/bat/graphmap-publish-himmel.sh"; }
+echo "== C88: no opt-in, a key in .env and an armed runner that bakes the lane -> WARN naming the runner and the re-render =="
+c88_reset; c88_key_in_env; c88_lane_runner
+out="$(c88_run)"
+if grepq "$out" 'WARN C88-graph-api-optin' && grepq "$out" -F 'graphmap-publish-himmel.sh' && grepq "$out" -F 'ANTHROPIC_ORG_A_KEY' && grepq "$out" -F 'graphmap-cadence.sh arm --rewrite-armed' && ! grepq "$out" -F "$c88_key"; then pass "C88 key + baked lane + no opt-in -> WARN, no key value"; else fail "C88 key + baked lane + no opt-in -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: opted in -> OK reporting the state, even with a key and a lane runner =="
+c88_reset; c88_key_in_env; c88_lane_runner; c88_optin
+out="$(c88_run)"
+if grepq "$out" 'OK   C88-graph-api-optin' && grepq "$out" -F 'opted in' && ! grepq "$out" -F 'not opted in'; then pass "C88 opted in -> OK"; else fail "C88 opted in -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: no opt-in and the armed runner carries the skip line, not the lane -> OK reporting the state =="
+c88_reset; c88_key_in_env; c88_skip_runner
+out="$(c88_run)"
+if grepq "$out" 'OK   C88-graph-api-optin' && grepq "$out" -F 'not opted in' && ! grepq "$out" 'WARN C88'; then pass "C88 skip-line runner + key -> OK"; else fail "C88 skip-line runner + key -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: no opt-in, no key in .env, nothing armed -> OK =="
+c88_reset
+out="$(c88_run)"
+if grepq "$out" 'OK   C88-graph-api-optin' && grepq "$out" -F 'not opted in'; then pass "C88 nothing to draw -> OK"; else fail "C88 nothing to draw -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: a baked lane with no key in .env draws nothing -> INFO, never a WARN =="
+c88_reset; c88_lane_runner; printf 'ANTHROPIC_ORG_A_KEY=\nJIRA_EMAIL=a@example.com\n' > "$c88_t/env"
+out="$(c88_run)"
+if grepq "$out" 'INFO C88-graph-api-optin' && ! grepq "$out" 'WARN C88'; then pass "C88 baked lane, empty key -> INFO"; else fail "C88 baked lane, empty key -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: only the JSON literal true opts in: a symlinked config.json and a string value do not =="
+c88_reset; c88_key_in_env; c88_lane_runner
+printf '{"graphify":{"semantic_api_ok":true}}\n' > "$c88_t/real-config.json"; ln -s "$c88_t/real-config.json" "$c88_t/home/.himmel/config.json"
+out="$(c88_run)"
+if grepq "$out" 'WARN C88-graph-api-optin'; then pass "C88 symlinked config.json is no opt-in"; else fail "C88 symlinked config.json -> $(printf '%s' "$out" | head -4)"; fi
+c88_reset; c88_key_in_env; c88_lane_runner; printf '{"graphify":{"semantic_api_ok":"true"}}\n' > "$c88_t/home/.himmel/config.json"
+out="$(c88_run)"
+if grepq "$out" 'WARN C88-graph-api-optin'; then pass "C88 string \"true\" is no opt-in"; else fail "C88 string true -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c88_t"
 
 # --- C87-stub-handover-state: files under <repo>/handovers newer than the operator's baseline marker ---
 c87_t="$(mktemp -d "${TMPDIR:-/tmp}/c87.XXXXXX")" || { echo "FATAL: C87 setup mktemp failed" >&2; exit 1; }
