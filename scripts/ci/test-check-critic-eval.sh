@@ -149,7 +149,8 @@ gate "a head-tree cbs.txt tag cannot exempt the critic file the same PR edits" 1
 fixture unexec-head-untag
 python3 -c 'import sys
 p = sys.argv[1]
-open(p, "w").writelines(l for l in open(p) if not l.startswith("# unexecuted:"))' "$R/scripts/eval/review-panel/cbs.txt"
+keep = [l for l in open(p) if not l.startswith("# unexecuted:")]
+open(p, "w").writelines(keep)' "$R/scripts/eval/review-panel/cbs.txt"
 printf '# a pr-check flow change\n' >> "$R/scripts/cr/panel-first-pass.sh"
 gitc add -A && gitc commit -q -m "drop the tags and edit"
 gate "a head-tree cbs.txt that drops the tags does not change the base's verdict" 0 "a judge GO covers them"
@@ -177,12 +178,13 @@ CHECK_CRITIC_EVAL_PR=4690 gate "a bypass row for another head is ignored" 1 "no 
 # CI hands the gate the merge ref: its second parent is the PR head the row names.
 with_bypass "$(brow 4690 "${H:0:7}" 592 'noise on an unexecuted path')"
 M="$(gitc commit-tree "$(gitc rev-parse "$H^{tree}")" -p "$BASE" -p "$H" -m merge-ref)"; gitc checkout -q "$M"
-CHECK_CRITIC_EVAL_PR=4690 gate "a bypass row naming the PR head is honoured on the merge ref" 0 "BYPASS honoured"
+GITHUB_REF=refs/pull/4690/merge gate "a bypass row naming the PR head is honoured on the merge ref" 0 "BYPASS honoured"
+CHECK_CRITIC_EVAL_PR=4690 gate "a second parent counts only on CI's merge ref, not on any merge commit" 1 "no eval rows"
 # A PR cannot add its own bypass: the merge ref's tree carries a row for the PR head, the base does not.
 gitc checkout -q "$H"; brow 4690 "${H:0:7}" 592 'self-granted' > "$R/$BYP"; gitc add -A && gitc commit -q -m "own bypass"
 H2="$(gitc rev-parse HEAD)"
 M2="$(gitc commit-tree "$(gitc rev-parse "$H2^{tree}")" -p "$BASE0" -p "$H" -m merge-ref)"; BASE="$BASE0"; gitc checkout -q "$M2"
-CHECK_CRITIC_EVAL_PR=4690 gate "a bypass row added by the PR itself is ignored" 1 "no eval rows"
+GITHUB_REF=refs/pull/4690/merge gate "a bypass row added by the PR itself is ignored" 1 "no eval rows"
 
 fixture bypass-bad
 BASE0="$BASE"

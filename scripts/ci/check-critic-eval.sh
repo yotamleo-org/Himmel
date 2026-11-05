@@ -47,7 +47,11 @@ bypass_rows="$(git -C "$repo" cat-file blob "$base:$BYPASS_REL" 2>/dev/null)" # 
 if [ -n "$bypass_rows" ]; then
     pr="${CHECK_CRITIC_EVAL_PR:-}"
     if [ -z "$pr" ] && [[ "${GITHUB_REF:-}" =~ ^refs/pull/([0-9]+)/merge$ ]]; then pr="${BASH_REMATCH[1]}"; fi
-    cands="$(git -C "$repo" rev-parse --verify -q "$head^{commit}"; git -C "$repo" rev-parse --verify -q "$head^2" 2>/dev/null)" # swallow-ok: a head that is not a merge has no second parent
+    cands="$(git -C "$repo" rev-parse --verify -q "$head^{commit}")"
+    # The second parent is the PR head only on CI's merge ref; on any other merge commit it is arbitrary history.
+    if [[ "${GITHUB_REF:-}" =~ ^refs/pull/[0-9]+/merge$ ]]; then
+        cands="$cands"$'\n'"$(git -C "$repo" rev-parse --verify -q "$head^2")" || true # swallow-ok: a merge ref without a second parent leaves only the head itself
+    fi
     tab=$'\t'
     row_re="^([0-9]+)${tab}([0-9a-f]{7,40})${tab}([^${tab}[:space:]]+)${tab}([^${tab}]*[^${tab}[:space:]][^${tab}]*)\$"
     n=0; matched=""

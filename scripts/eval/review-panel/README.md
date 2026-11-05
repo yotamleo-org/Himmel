@@ -340,8 +340,8 @@ merged into the branch.
    bypass: `pr`, a `head` sha prefix of 7 or more hex digits, the `decision` id,
    and the `reason`, separated by tabs. The gate honours a row only for its PR
    number (`CHECK_CRITIC_EVAL_PR`, else the `refs/pull/<n>/merge` of
-   `GITHUB_REF`) at its head (the head given, or the second parent of the merge
-   ref), and prints a `BYPASS honoured` line with the decision and reason. A row
+   `GITHUB_REF`) at its head (the head given; on CI's `refs/pull/<n>/merge`
+   also the merge ref's second parent, which is the PR head), and prints a `BYPASS honoured` line with the decision and reason. A row
    for another PR or another head does nothing. A malformed row (wrong column
    count, a non-numeric PR, a prefix under 7 hex digits, an empty decision or
    reason) fails the gate closed. A row lands by a chief-ruled change of its own.
