@@ -1477,8 +1477,9 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # 150, keep in step with GRAPH_MAX_BEHIND in himmel-update.sh) commits behind it, and
   # the station is not the publisher (graphify.semantic_api_ok is true in config.json).
   # No marker, an odd marker, a non-ancestor, an old build or a publisher runs the row.
-  # The publisher test is sync_graph's own (a symlinked, missing or non-JSON config reads
-  # as not-the-publisher), so a station that installed the graph is skipped the same way.
+  # The publisher test is stricter than sync_graph's: this script spends the budget, so a
+  # config it cannot read as "not the publisher" counts as the publisher. No config file
+  # at all is an adopter.
   _pub_marker="$OUT_DIR/.graphify_published"
   if [ -f "$_pub_marker" ] && [ ! -L "$_pub_marker" ]; then
     _pub_sha="$(head -n 1 "$_pub_marker" 2>/dev/null | tr -d '[:space:]')" || _pub_sha=""
@@ -1486,10 +1487,16 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
     case "$_pub_max" in ''|*[!0-9]*) _pub_max=150 ;; esac
     _pub_cfg="$HOME/.himmel/config.json"
     _pub_publisher=0
-    # An unreadable config cannot prove this is not the publisher: run the row.
-    if [ -f "$_pub_cfg" ] && [ ! -L "$_pub_cfg" ] && { [ ! -r "$_pub_cfg" ] \
-        || { command -v jq >/dev/null 2>&1 && jq -e '.graphify.semantic_api_ok == true' "$_pub_cfg" >/dev/null 2>&1; }; }; then
+    # A config that cannot prove this is not the publisher (a symlink, unreadable, no jq,
+    # not JSON) runs the row: a publisher must never lose its pass to an unreadable answer.
+    if [ -L "$_pub_cfg" ]; then
       _pub_publisher=1
+    elif [ -e "$_pub_cfg" ]; then
+      # jq empty fails on a missing jq, an unreadable file and non-JSON alike.
+      if ! jq empty "$_pub_cfg" >/dev/null 2>&1 \
+          || jq -e '.graphify.semantic_api_ok == true' "$_pub_cfg" >/dev/null 2>&1; then
+        _pub_publisher=1
+      fi
     fi
     if [ "$_pub_publisher" -eq 0 ] && [[ "$_pub_sha" =~ ^[0-9a-fA-F]{7,40}$ ]] \
         && git -C "$CORPUS_ROOT" merge-base --is-ancestor "$_pub_sha" HEAD 2>/dev/null; then
