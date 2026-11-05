@@ -121,7 +121,8 @@
 #              its cap and descent checks are not re-run (the caller also reads
 #              the run without this flag, and refuses on either).
 #
-# Exit codes:
+# Exit codes (--check-findings reads, never clears: 0, 10, 12, 14 and 15 mean what
+# its Usage entry above says, and 11 is the same missing tool as below):
 #   0   marker cleared (or --dry-run passed, or no marker — nothing to do)
 #   10  usage error
 #   11  required tool or component missing (git / node / the branch-lock lib)
