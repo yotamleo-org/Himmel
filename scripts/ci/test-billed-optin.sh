@@ -231,6 +231,20 @@ refuse scripts/eval/graphify-ab/run.sh bash 2 "HIMMEL_BILLED_OK" run
 refuse scripts/eval/retrieval-eval/answer-ab.py python3 64 "HIMMEL_BILLED_OK" run --questions q.jsonl --out o
 refuse scripts/eval/review-panel/run.sh bash 2 "HIMMEL_BILLED_OK" --out "$tmp/rp"
 refuse scripts/eval/docs-review/run.sh bash 2 "HIMMEL_BILLED_OK" --out "$tmp/dr" A
+# decision 525: a billed docs-review run names its API account (A, B or C); auto is never accepted
+account_refusal() { # <label> [VAR=value...] -- opted in, the account is missing or auto: exit 2, no preflight, no model call
+  local label="$1"; shift
+  rm -f "$tmp/called"
+  (cd "$tmp" && env -i PATH="$stubs:/usr/bin:/bin" HOME="$tmp/home" TMPDIR="$tmp" HIMMEL_BILLED_OK=1 "$@" \
+    bash "$REPO_ROOT/scripts/eval/docs-review/run.sh" --out "$tmp/dr-acct" A) > "$tmp/out" 2>&1; rc=$?
+  if [ "$rc" -ne 2 ]; then fail "docs-review run.sh with $label -> expected exit 2 got $rc ($(head -1 "$tmp/out"))"; return; fi
+  if ! grep -qF -- "HIMMEL_API_ACCOUNT" "$tmp/out"; then fail "docs-review run.sh with $label -> output does not name HIMMEL_API_ACCOUNT"; return; fi
+  if grep -qF -- "usage-preflight" "$tmp/out"; then fail "docs-review run.sh with $label -> reached the usage preflight"; return; fi
+  if [ -e "$tmp/called" ]; then fail "docs-review run.sh with $label -> a model binary was invoked"; return; fi
+  pass "docs-review run.sh refuses $label"
+}
+account_refusal "HIMMEL_API_ACCOUNT=auto" HIMMEL_API_ACCOUNT=auto
+account_refusal "no HIMMEL_API_ACCOUNT"
 refuse scripts/codex/hook-smoke-demo.sh bash 2 "HIMMEL_BILLED_OK"
 refuse scripts/handover/chief-kit/smoke-consult-sandbox.sh bash 0 "HIMMEL_BILLED_OK"
 
