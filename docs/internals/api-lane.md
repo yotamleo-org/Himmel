@@ -159,6 +159,8 @@ secret, only role names and account letters:
 - **Tools.** `node scripts/lib/api-roles.mjs check` prints the map state, warnings and `ROLES`;
   `write` takes the full document on stdin, validates it, and writes atomically with mode 600 (an empty `roles`
   removes the file); `node scripts/lib/api-credit-state.mjs accounts` prints each account's cap and a bank tag.
+- **In the config UI.** Configure, then Secrets, then Multi accounts lists accounts A, B and C with their bank tag and
+  roles, and edits the map through the same `write` command (`GET`/`POST /api/api-roles`).
 
 ponytail: auto routes only from the himmel repo even for a mapped role, upgrade path: plan P1 widens it per repo once the launcher reads the egress matrix (`scripts/guardrails/egress-matrix.json`).
 
