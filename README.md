@@ -72,8 +72,9 @@ One ticket travels the same path every time:
    one PR at the exact commit that was reviewed. It can ask an independent
    judge for a second opinion first.
 5. **Merge.** Only then does the worker merge, close the ticket and leave a
-   note for the next session. Merging has its own gate, which refuses while CI
-   is red or pending or a reviewer finding is open.
+   note for the next session. In a project-scope install or a himmel checkout,
+   merging has its own gate, which refuses while CI is red or pending or a
+   reviewer finding is open.
 
 ### How sessions find what is already known
 
@@ -98,8 +99,8 @@ fleet or the vault.
 [Getting Started](docs/getting-started.md) walks through it step by step:
 each step says which folder to run it from and what you should see.
 
-You need git, node with npm, jq and python3: the installer stops with install
-hints if one is missing. Install Claude Code and sign in first too. The
+You need node to start the installer; it then stops with install hints if git,
+jq, python3 or a package manager (npm or bun) is missing. Install Claude Code and sign in first too. The
 installer only warns if `claude` is missing, then skips the plugins, and it
 never checks sign-in.
 
@@ -155,8 +156,8 @@ before the file changes, not only when you push.
 
 If you work with a coding agent every day, alone or in a small team, himmel
 is for you. Claude Code still runs your sessions; himmel installs on top of it
-and adds checks before edits, commits, pushes and merges, so nobody has
-to remember those rules. Each change gets its own branch and pull request (PR), each commit names
+and adds checks before edits, commits and pushes, and before merges in a
+project-scope install, so nobody has to remember those rules. Each change gets its own branch and pull request (PR), each commit names
 its ticket (a Jira issue, or a plain `#number` if you do not use Jira), and
 notes carry the work into the next session. Run several sessions at once and
 they work like a small software factory: tickets go in, reviewed and merged
@@ -170,7 +171,8 @@ hooks and an `AGENTS.md` file. Other agents are not supported yet;
 It has four layers, and each one works without the layers above it:
 
 1. **The guarded session.** Checks run before Claude Code edits a file and
-   before a commit, a push or a merge, and refuse what breaks the rules.
+   before a commit or a push, and before a merge in a project-scope install or
+   a himmel checkout, and refuse what breaks the rules.
 2. **Handover and memory.** Plain markdown notes carry the work and its
    reasons from one session to the next, with a search index to find them.
 3. **The chief and its workers.** One session, the *chief*, coordinates the
@@ -217,8 +219,9 @@ The test run shows a few of these. The rest arrive as you add them, and the
 
 - **Review before merge.** `/pr-check` (`/himmel-ops:pr-check` in your own
   project) has a second model read the change, if you have one set up, and the session rules on each finding against the code,
-  so a finding that misreads the code is disproved, not fixed. The merge gate
-  refuses while CI is red or pending or a reviewer finding is open. Review is
+  so a finding that misreads the code is disproved, not fixed. In a project-scope
+  install or a himmel checkout, the merge gate refuses while CI is red or
+  pending or a reviewer finding is open. Review is
   not proof: the required reviewer caught 75% of planted bugs (likely range 46.8
   to 91.1, from 9 of 12), and the PR's author ruled 79.5% of its 5,388 ruled
   findings right
@@ -288,9 +291,10 @@ The diagram shows the four flows that make up most of a day with himmel.
 Git hooks check each commit message and refuse a push to `main` and a
 force-push; a himmel checkout also checks for secrets and statements of what was
 tested. `/himmel-ops:pr-check` runs a review (`/pr-check` in a himmel checkout).
-Once the pull request (PR) is open, the merge gate refuses while continuous
-integration (CI) is red or pending or a reviewer finding is open and, in a fleet
-run, until the chief has approved the merge in writing for its exact commit.
+Once the pull request (PR) is open, in a project-scope install or a himmel
+checkout the merge gate refuses while continuous integration (CI) is red or
+pending or a reviewer finding is open and, in a fleet run, until the chief has
+approved the merge in writing for its exact commit.
 `scripts/clean.sh` removes the finished worktree.
 
 **2. Run a fleet: one chief, many workers.** For bigger runs, one Claude
@@ -369,8 +373,10 @@ There are two ways in:
    node ~/himmel/scripts/himmelctl/bin.js install --scope project
    ```
 
-   Use `--scope user` to wire every project on the machine, or leave out
-   `--scope` and the installer asks. What each scope and install profile
+   Use `--scope user` to wire Claude Code's guards for every project on the
+   machine: the git hooks go only into the repo you run it from, it adds no
+   merge gate, and the worktree script runs from your himmel download. Or
+   leave out `--scope` and the installer asks. What each scope and install profile
    brings, and the checklist for your own repo, is in
    [`docs/setup/install.md`](docs/setup/install.md). The
    [adoption trail](docs/adoption-trail.html) (also at
@@ -447,7 +453,7 @@ vault, the Telegram bridge and Jira are optional; himmel runs without them.
 
 | Variable             | Required? | Notes                                                              |
 |----------------------|-----------|--------------------------------------------------------------------|
-| `USER_SLUG`          | recommended | Your kebab-case handle, e.g. `jane-doe`. Names your folder in the handover repo (`handovers/<USER_SLUG>/`). If unset, it is derived from `git config user.name`; if that is unset too, setup warns and carries on. |
+| `USER_SLUG`          | recommended | Your kebab-case handle, e.g. `jane-doe`. Names your folder in the handover repo (`handovers/<USER_SLUG>/`). If unset, it comes from your forge login, or else `git config user.name`; if neither resolves, setup warns and carries on. |
 | `JIRA_PROJECT_KEY`   | only for Jira | e.g. `HIMMEL`. The project the CLI creates and queries issues in. |
 | `JIRA_BASE_URL`      | only for Jira | Your Atlassian site, e.g. `https://your-site.atlassian.net`. |
 | `JIRA_API_TOKEN` + `JIRA_EMAIL` | only for Jira | API-token credentials. Never commit them; `.env` is gitignored. |
@@ -583,8 +589,8 @@ it. None of them is needed by the core harness.
   (`wiki-lint`).
 
 In a himmel clone, once you turn on the vault schedule (`/pipeline-cadence`), a vault check
-(`obsidian-triage:vault-lint`) runs every day at 04:00; run that skill any time
-by hand.
+(`obsidian-triage:vault-lint`) runs every Sunday at 04:00; run that skill any
+time by hand.
 
 ## Where each feature is documented
 
