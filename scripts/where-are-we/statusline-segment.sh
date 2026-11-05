@@ -21,7 +21,7 @@
 #
 # Test seams: --branch / --cwd ; HANDOVER_DIR (breadcrumb root, existing) ;
 #   --ledger (provision.mjs ledger path) ; HIMMEL_WHERE_ARE_WE_ROLLUP_DIR
-#   (rollup cache dir, default /tmp/claude) ; HIMMEL_WHERE_ARE_WE_ROLLUP_CMD
+#   (rollup AND ledger-slice cache dir, default /tmp/claude) ; HIMMEL_WHERE_ARE_WE_ROLLUP_CMD
 #   (refresh command, default the sibling statusline-rollup.sh) ;
 #   HIMMEL_WHERE_ARE_WE_REFRESH_SYNC (run the refresh foreground, deterministic).
 set -uo pipefail
@@ -125,8 +125,37 @@ if command -v timeout >/dev/null 2>&1; then seg_to="timeout"
 elif command -v gtimeout >/dev/null 2>&1; then seg_to="gtimeout"; fi
 node_to="${HIMMEL_WHERE_ARE_WE_NODE_TIMEOUT:-3}"
 case "$node_to" in ''|*[!0-9]*) node_to=3 ;; esac
+# The slice is cached per key on the ledger's path, size, mtime and inode:
+# a slice re-reads the whole ledger and the ledger changes rarely, so an unchanged
+# ledger starts NO node. An entry's first line is that stamp, the rest the slice.
+# A missing, foreign-owned, symlinked or unmatched entry is a miss, never an error.
+cachedir="${HIMMEL_WHERE_ARE_WE_ROLLUP_DIR:-/tmp/claude}"
 if [ -n "$node_bin" ] && [ -f "$ledger" ] && [ -n "$seg_to" ]; then
-    slice="$("$seg_to" "$node_to" "$node_bin" "$ROOT/scripts/where-are-we/provision.mjs" slice --ledger "$ledger" --for "$key" 2>/dev/null || true)"
+    slice_cache="$cachedir/where-are-we-slice-$key.txt"
+    stamp=""
+    # size, mtime seconds and inode: a compaction replaces the file, so it never matches an old stamp.
+    lst="$(stat -c '%s %Y %i' "$ledger" 2>/dev/null || stat -f '%z %m %i' "$ledger" 2>/dev/null || true)"
+    [ -n "$lst" ] && stamp="$ledger|$lst"
+    hit=0
+    slice=""
+    if [ -n "$stamp" ] && [ -f "$slice_cache" ] && [ ! -L "$slice_cache" ] && [ -O "$slice_cache" ]; then
+        raw="$(<"$slice_cache")" 2>/dev/null || raw=""
+        if [ "${raw%%$'\n'*}" = "$stamp" ]; then
+            hit=1
+            [ "$raw" != "$stamp" ] && slice="${raw#*$'\n'}"
+        fi
+    fi
+    if [ "$hit" -eq 0 ]; then
+        slice="$("$seg_to" "$node_to" "$node_bin" "$ROOT/scripts/where-are-we/provision.mjs" slice --ledger "$ledger" --for "$key" 2>/dev/null)"
+        slice_rc=$?
+        # Cache only a finished slice (a timeout or crash is not an answer).
+        # atomic_write publishes a private temp file by rename: a reader never
+        # sees half an entry and a planted symlink at the target is replaced.
+        if [ "$slice_rc" -eq 0 ] && [ -n "$stamp" ] && mkdir -p "$cachedir" 2>/dev/null \
+           && . "$ROOT/scripts/lib/prim.sh" 2>/dev/null; then
+            printf '%s\n%s\n' "$stamp" "$slice" | atomic_write "$slice_cache" 2>/dev/null || true
+        fi
+    fi
     if [ -n "$slice" ]; then
         st="$(printf '%s\n' "$slice" | sed -n 's/^- status: //p' | head -n1)"
         case "$st" in ""|"—") st="" ;; esac
@@ -135,7 +164,6 @@ if [ -n "$node_bin" ] && [ -f "$ledger" ] && [ -n "$seg_to" ]; then
 fi
 
 # --- Epic rollup (cached read; refresh detached + lock-gated) ---------------
-cachedir="${HIMMEL_WHERE_ARE_WE_ROLLUP_DIR:-/tmp/claude}"
 cache="$cachedir/where-are-we-rollup-$key.json"
 epic_part=""
 if [ -f "$cache" ]; then
