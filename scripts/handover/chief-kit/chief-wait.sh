@@ -283,7 +283,10 @@
 #                        successor=<s>` block (relay-batch.sh's output, ending with
 #                        `RELAYED <n> of <m>`: n counts the SENDMESSAGE lines, so the
 #                        chief sends those first, then RELAYED to the successor,
-#                        whose LIVE follows it), removes the marker and exits 0. It works in handover mode. Seams:
+#                        whose LIVE follows it), removes the marker and exits 0. Line 2 of the block
+#                        is `AFTER RELAYED: re-arm this waiter once, read nothing, ...`: the chief
+#                        re-arms once (muted, resumes after the marker's age bound), ends its turn,
+#                        the successor's LIVE message wakes it, one `chief.sh wrap` ends it. It works in handover mode. Seams:
 #                        CHIEF_WAIT_LOCK_STATUS, CHIEF_WAIT_RELAY (tests).
 #
 # Exit: 0 = a WAKE block was printed; 1 = the inbox could not be drained;
@@ -1669,10 +1672,14 @@ while :; do
                 # relay-batch may deliver a claudex worker by inbox-send (never re-run it: a retry
                 # would resend), so a failure still wakes, carrying its rc and output for the chief.
                 rol_out="$(timeout -k 2 60 bash "${CHIEF_WAIT_RELAY:-$HERE/relay-batch.sh}" "$console_doc" --successor "$rol_succ" </dev/null 2>&1 9>&-)"; rol_brc=$?  # gnu-ok: Linux-only kit
+                # The second line is the whole tail: one muted re-arm (bounded by the handover marker's age,
+                # so a successor that dies before LIVE cannot leave this chief unmonitored), then the successor's
+                # LIVE message wakes the chief and the wrap is one command.
+                rol_tail="AFTER RELAYED: re-arm this waiter once with no --succession (handover mode keeps it silent; it resumes after CHIEF_WAIT_HANDOVER_MIN minutes if the successor never goes live), read nothing and end your turn; on the successor's LIVE relay any worker it names as not relayed, then run chief.sh wrap <your doc> <release-token> '<one line>', then stop"
                 if [ "$rol_brc" -eq 0 ]; then
-                    printf 'WAKE relay-on-live successor=%s\n%s\n' "$rol_succ" "$rol_out"
+                    printf 'WAKE relay-on-live successor=%s\n%s\n%s\n' "$rol_succ" "$rol_tail" "$rol_out"
                 else
-                    printf 'WAKE relay-on-live successor=%s relay-failed rc=%s\n%s\n' "$rol_succ" "$rol_brc" "$rol_out"
+                    printf 'WAKE relay-on-live successor=%s relay-failed rc=%s\n%s\n%s\n' "$rol_succ" "$rol_brc" "$rol_tail" "$rol_out"
                 fi
                 rm -f "$inbox.relay-on-live"; exit_reason='wake-relay-on-live'; exit 0
             fi
