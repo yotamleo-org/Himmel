@@ -5309,13 +5309,16 @@ check_c86_morning_report() {
 
 # --- C87-stub-handover-state: state written under the stub handover folder after the root was configured ---
 # The stub folder is <checkout>/handovers, the root a script falls back to when HANDOVER_DIR is
-# unset. With the root configured elsewhere (the checkout's .env), a chief script that skipped
-# load_dotenv writes its state (a judge ladder, an arm record, a new doc) under the stub, where
-# nothing reads it. WARN names the files newer than the baseline: the mtime of the .env that
-# configures HANDOVER_DIR (state written after the root was set). No .env file (the variable was
-# exported) means no baseline: any file counts. INFO with no split root, OK with nothing newer.
+# unset. With the root configured elsewhere (any layer load_dotenv reads), a chief script that
+# skipped load_dotenv writes its state (a judge ladder, an arm record, a new doc) under the stub,
+# where nothing reads it. WARN names the files newer than the baseline: the mtime of the marker
+# file the operator touches once the stub is dealt with (default ~/.himmel/state/stub-handover-baseline,
+# seam HIMMEL_DOCTOR_STUB_BASELINE). No marker means no baseline: any file counts. The baseline is not
+# the config time: a config layer is touched after the strays it should catch. INFO with no split root.
 check_c87_stub_handover_state() {
-    local stub="$REPO_ROOT/handovers" root envfile new n names
+    local stub="$REPO_ROOT/handovers" root new n names baseline baseline_word
+    baseline="${HIMMEL_DOCTOR_STUB_BASELINE:-${HOME:-}/.himmel/state/stub-handover-baseline}"
+    baseline_word="(none yet)"; [ ! -f "$baseline" ] || baseline_word="$baseline"
     load_dotenv --root "$REPO_ROOT" HANDOVER_DIR >/dev/null 2>&1 || true
     if [ -z "${HANDOVER_DIR:-}" ]; then
         emit INFO C87-stub-handover-state "HANDOVER_DIR is not configured -- the stub folder is the handover root, no split to check"
@@ -5333,11 +5336,10 @@ check_c87_stub_handover_state() {
         emit INFO C87-stub-handover-state "HANDOVER_DIR is the stub folder itself -- no split root"
         return 0
     fi
-    envfile="$(_load_dotenv_primary_for "$REPO_ROOT" 2>/dev/null)/.env"
-    if [ -f "$envfile" ]; then
-        new="$(find "$stub" -type f -newer "$envfile" 2>/dev/null)" || new="unreadable"
+    if [ -f "$baseline" ]; then
+        new="$(find -H "$stub" -type f -newer "$baseline" 2>/dev/null)" || new="unreadable"
     else
-        new="$(find "$stub" -type f 2>/dev/null)" || new="unreadable"
+        new="$(find -H "$stub" -type f 2>/dev/null)" || new="unreadable"
     fi
     if [ "$new" = unreadable ]; then
         emit INFO C87-stub-handover-state "the stub folder $stub could not be fully read -- not judged clean"
@@ -5345,13 +5347,13 @@ check_c87_stub_handover_state() {
     fi
     new="$(printf '%s\n' "$new" | sort)"
     if [ -z "$new" ]; then
-        emit OK C87-stub-handover-state "nothing under $stub is newer than the configured root"
+        emit OK C87-stub-handover-state "nothing under $stub is newer than the baseline"
         return 0
     fi
     n="$(printf '%s\n' "$new" | wc -l | tr -d ' ')"
     names="$(printf '%s\n' "$new" | head -n 3 | sed "s|^$stub/||" | paste -sd, - | sed 's/,/, /g')"
-    emit WARN C87-stub-handover-state "$n file(s) under the stub folder $stub were written after HANDOVER_DIR=$root was configured ($names), so a script ran without the configured root" \
-        "move them under $root and make the script load HANDOVER_DIR (load_dotenv --root <primary checkout> HANDOVER_DIR, as focus-refresh.sh does)"
+    emit WARN C87-stub-handover-state "$n file(s) under the stub folder $stub are newer than the baseline ${baseline_word} ($names), state a script wrote without the configured root $root" \
+        "move what you need under $root, make the script load HANDOVER_DIR (load_dotenv --root <primary checkout> HANDOVER_DIR, as focus-refresh.sh does), then touch $baseline"
 }
 
 # --- C82-mcp-sources: every MCP server with the layer it comes from ---
