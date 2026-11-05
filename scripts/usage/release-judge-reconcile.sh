@@ -11,6 +11,8 @@
 # the unused transcript with the same cost (to 1e-6) whose run ended within [-120s, +5s] of the row's ts.
 # A zero-cost row (a refused API-route attempt) matches a zero-cost transcript the same way; a zero-cost
 # transcript left over spent nothing, so it is counted apart and is never "unmatched".
+# A transcript that cannot be read is skipped with a WARN and counted: the report then says INCOMPLETE instead
+# of a tolerance verdict, and the exit is 1. Exit 2 = bad argument or unreadable launches file.
 # --since/--until bound both sides by the row ts and the transcript's last record. --tolerance <pct> adds
 # a verdict line on |ledger - transcripts| / transcripts. Defaults: the real paths of this station.
 set -uo pipefail
@@ -19,11 +21,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
 . "$HERE/../lib/prim.sh" || exit 1
 
 # The default ledger is where the writers put it: beside HIMMEL_API_CREDIT_STATE, else beside the credit config's ledger_path.
-LAUNCHES="$HOME/.himmel/state/api-credit/launches.jsonl"
+CREDIT_DIR="$HOME/.himmel/state/api-credit"
+LAUNCHES="$CREDIT_DIR/launches.jsonl"
 if [ -n "${HIMMEL_API_CREDIT_STATE:-}" ]; then
     LAUNCHES="$(dirname "$HIMMEL_API_CREDIT_STATE")/launches.jsonl"
 else
-    lp="$(jq -r '.ledger_path // empty' "${HIMMEL_API_CREDIT_CONFIG:-$HOME/.himmel/state/api-credit/config.json}" 2>/dev/null)" || lp=""
+    lp="$(jq -r '.ledger_path // empty' "${HIMMEL_API_CREDIT_CONFIG:-$CREDIT_DIR/config.json}" 2>/dev/null)" || lp=""
     [ "${lp#/}" = "$lp" ] || LAUNCHES="$(dirname "$lp")/launches.jsonl"
 fi
 LOGS="${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/launch-logs"
@@ -49,6 +52,7 @@ trap 'rm -rf "$T"' EXIT
 # one TSV line per transcript: session id, first timestamp, last timestamp, cost
 shopt -s nullglob
 : > "$T/tr.tsv"
+SKIPPED=0
 for f in "$PROJECTS"/*rm-run-judge*/*.jsonl; do
     sid="$(basename "$f" .jsonl)"
     if ! jq -rn --arg sid "$sid" 'reduce inputs as $r ({c:0,s:"",e:""};
@@ -56,6 +60,7 @@ for f in "$PROJECTS"/*rm-run-judge*/*.jsonl; do
           | (($r.timestamp? // "") as $t | if ($t | type) == "string" and $t != "" then (if .s == "" then .s = $t else . end) | .e = $t else . end))
         | [$sid, .s, .e, .c] | @tsv' "$f" >> "$T/tr.tsv" 2>/dev/null; then
         echo "release-judge-reconcile: WARN transcript $sid unreadable, skipped" >&2
+        SKIPPED=$((SKIPPED + 1))
     fi
 done
 jq -c 'select(type == "object" and .kind == "judge")' "$LAUNCHES" > "$T/rows.jsonl" || { echo "release-judge-reconcile: launches file is not JSON lines: $LAUNCHES" >&2; exit 2; }
@@ -65,7 +70,7 @@ for f in "$LOGS"/*.log; do
 done
 
 jq -rn --slurpfile rows "$T/rows.jsonl" --rawfile tr "$T/tr.tsv" --rawfile logs "$T/logids.txt" \
-    --arg since "$SINCE" --arg until "$UNTIL" --arg tol "$TOL" '
+    --arg since "$SINCE" --arg until "$UNTIL" --arg tol "$TOL" --argjson skipped "$SKIPPED" '
   def ep: if . == "" or . == null then null else sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601 end;
   def ok($mode; $r; $t):
     if $mode == 1 then ($r.session_id // "") == $t.sid
@@ -103,7 +108,10 @@ jq -rn --slurpfile rows "$T/rows.jsonl" --rawfile tr "$T/tr.tsv" --rawfile logs 
     "zero-cost transcripts (no spend, not counted as unmatched): \($zero)",
     "launch rows with no transcript: \($R | length - $matched)",
     "class totals: ledger $\($lt | usd), transcripts $\($tt | usd), difference \(if $tt == 0 then "n/a" else (($lt - $tt) / $tt * 10000 | round / 100 | tostring) + "%" end)",
+    (if $skipped > 0 then "unreadable transcripts skipped: \($skipped)  (not in any count or total above)" else empty end),
     (if $tol == "" then empty
+     elif $skipped > 0 then "INCOMPLETE: \($skipped) transcript(s) could not be read, so the totals are not the class totals and no tolerance verdict is given"
      elif $tt == 0 then "tolerance \($tol)%: n/a, no transcript cost"
      else (if ((($lt - $tt) | fabs) / $tt * 100) <= ($tol | tonumber) then "WITHIN TOLERANCE \($tol)%" else "OUTSIDE TOLERANCE \($tol)%" end) end)
 '
+[ "$SKIPPED" -eq 0 ] || exit 1

@@ -420,6 +420,14 @@ printf '{"ts":"2026-11-04T15:00:10Z","kind":"judge","lane":"sub-fallback","sub_c
 RJEO="$(bash "$RJ" --launches "$RJE/launches.jsonl" --launch-logs "$RJE/none" --projects "$RJE/projects")"
 check "reconcile: a row stamped 20s before the run ended does not match it" "yes" \
   "$(grep -qx "matched: 0  (by session id 0, by cost and time 0)" <<<"$RJEO" && grep -qxF "launch rows with no transcript: 1" <<<"$RJEO" && echo yes || echo no)"
+# an unreadable transcript is never a green verdict: it is counted, the verdict reads INCOMPLETE and the exit is 1
+RJB="$ROOT/rj-bad"; mkdir -p "$RJB/projects/-tmp-rm-run-judge-CCC"
+cp "$RJD/projects/-tmp-rm-run-judge-AAA/$S1.jsonl" "$RJB/projects/-tmp-rm-run-judge-CCC/$S1.jsonl"
+printf '{"type":"assistant","timestamp":"2026-11-04T10:00:00.000Z"}\n{"type":"cost-st' > "$RJB/projects/-tmp-rm-run-judge-CCC/$S2.jsonl"
+printf '{"ts":"2026-11-04T10:01:01Z","kind":"judge","lane":"native","session_id":"%s","sub_cost_usd":"1.500000","cost_usd":""}\n' "$S1" > "$RJB/launches.jsonl"
+RJBO="$(bash "$RJ" --launches "$RJB/launches.jsonl" --launch-logs "$RJB/none" --projects "$RJB/projects" --tolerance 2 2>/dev/null)" && RJBRC=0 || RJBRC=$?
+check "reconcile: an unreadable transcript gives INCOMPLETE, never WITHIN TOLERANCE, and exit 1" "yes" \
+  "$([ "$RJBRC" = 1 ] && grep -qxF "unreadable transcripts skipped: 1  (not in any count or total above)" <<<"$RJBO" && grep -q '^INCOMPLETE: 1 transcript' <<<"$RJBO" && ! grep -q 'WITHIN TOLERANCE' <<<"$RJBO" && echo yes || echo no)"
 RJD2="$(HIMMEL_API_CREDIT_STATE="$RJD/ledger.json" bash "$RJ" --launch-logs "$RJD/logs" --projects "$RJD/projects" --tolerance 2)"
 check "reconcile: with no --launches the ledger is the one beside HIMMEL_API_CREDIT_STATE" "$RJ3" "$RJD2"
 
