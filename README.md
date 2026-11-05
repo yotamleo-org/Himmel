@@ -27,9 +27,10 @@ evals have little to show.
 Along with that you get:
 
 - **An easy start, then more as you learn what you want.** Clone himmel and
-  run the installer in your project with its starter answers. Sessions can then
-  no longer edit `main`, and each change goes in a worktree of its own. One
-  command takes it off again. When you want more, add one thing at a time:
+  run the installer in your project with its starter answers. Claude's edit
+  tools can then no longer change `main`, and each change goes in a worktree of
+  its own. One command takes it off again. When you want more, add one thing at
+  a time:
 
   1. **A notes vault** that fills and links itself on a schedule.
   2. **Your phone**, to send notes to the vault and get alerts.
