@@ -38,7 +38,8 @@
 # `gh auth token`). g4_secret_path adds .netrc, .npmrc, ~/.aws, ~/.kube,
 # docker config, gh hosts.yml, ~/.claude/.credentials.json, terraform.tfstate,
 # ~/.ssh/* (not .pub/known_hosts/config) and /proc/*/environ. `systemctl
-# show-environment` (with or without --user) and a busctl read of the systemd
+# show-environment` (with or without --user), `systemctl show` with no operand
+# or naming Environment, and a busctl/gdbus/dbus-send read of the systemd
 # Manager's environment are denied the same way. Another entry adds
 # shell tracing that can print the inherited environment (`bash -x`, `-o xtrace`,
 # `set -x`, SHELLOPTS=xtrace, BASH_XTRACEFD; denied even under `env -i`). Another entry adds
@@ -1015,12 +1016,16 @@ g4_segments() {
 }
 
 # g4_scan: scan the words in g4w (set by the caller) for ONE clause.
+# The replacement named when the systemd manager's environment is read.
+# status lists the keyring's item names (names only) when the keyring is unlocked.
+G4_SD_HINT='Check one setting with: printenv NAME (a non-credential name, e.g. printenv DISPLAY); list the secret names the keyring holds with: himmel-secrets status (names only, no values)'
+
 g4_scan() {
     local w d cmd="" wrap="" wrap_val=0 need_dur=0 redir=0
     local nargs=0 nflags=0 pflag=0 nnames=0 hit=0 note="" cls=""
     local last_secret=0 tdir=0 skip_out=0 skipv=0 a1="" a2="" showtok=0 rest name
     local herecred=0 zc=0 zsec=0 xt=0 xo=0 xend=0 dsc=0 msgv=0 xskip=0 gmsg=0 gcfg=0 gsub=0 gskip=0 rdr=0
-    local gsc="" kflag=0 fv=0 bx=0 sd1=0 sdenv=0
+    local gsc="" kflag=0 fv=0 bx=0 sd1=0 sdenv=0 scprop=0 scpv=0 scenv=0 scv=""
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     set -f
     local nw i nx
@@ -1219,10 +1224,24 @@ g4_scan() {
             busctl|gdbus|dbus-send)
                 case "$d" in
                     *GetSecret*) hit=1; note="$cmd GetSecret prints a keyring secret" ;;
-                    org.freedesktop.systemd1*) sd1=1 ;;      # judged after the loop (busctl only)
-                    Environment|GetAll|introspect) sdenv=1 ;;
+                    # judged after the loop: the systemd Manager named, and its Environment read
+                    org.freedesktop.systemd1*|--dest=org.freedesktop.systemd1*) sd1=1 ;;
+                    Environment|string:Environment|GetAll|*.GetAll|introspect) sdenv=1 ;;
                 esac ;;
-            systemctl) case "$d" in show-environment) hit=1; note="systemctl show-environment prints the whole systemd manager environment, credentials included. Check one setting with: printenv NAME (a non-credential name, e.g. printenv DISPLAY); list stored secrets by name with: himmel-secrets names" ;; esac ;;
+            systemctl)
+                # -p / --property takes a property list; show-environment is itself a dump.
+                if [ "$scpv" = 1 ]; then
+                    scpv=0; scprop=1
+                    case ",$d," in *,Environment,*) scenv=1 ;; esac
+                else
+                    case "$d" in
+                        show-environment) hit=1; note="systemctl show-environment prints the whole systemd manager environment, credentials included. $G4_SD_HINT" ;;
+                        -p|--property) scpv=1 ;;
+                        -p?*|--property=*)
+                            scprop=1; scv="${d#--property=}"; scv="${scv#-p}"
+                            case ",$scv," in *,Environment,*) scenv=1 ;; esac ;;
+                    esac
+                fi ;;
             sops|age|rage) case "$d" in -d|--decrypt) kflag=1 ;; esac ;;
         esac
         case "$cls" in
@@ -1272,15 +1291,21 @@ g4_scan() {
             if [ "$nargs" = 0 ] && [ "$nflags" = 0 ]; then hit=1; note="bare $cmd dumps variables"; fi
             if [ "$pflag" = 1 ] && [ "$nnames" = 0 ]; then hit=1; note="$cmd -p dumps variables"; fi ;;
         gh) if [ "$a1" = auth ] && { [ "$a2" = token ] || [ "$showtok" = 1 ]; }; then hit=1; note="gh auth token prints a credential"; fi ;;
-        # ponytail: the shapes covered are `systemctl [flags] show-environment` and a busctl
-        # clause naming org.freedesktop.systemd1 with Environment, GetAll or introspect; a
-        # bare `systemctl --user show` (manager properties), gdbus/dbus-send reads of the
-        # Manager, a variable-built command and an alias are not read. Upgrade path: stop
-        # importing credentials into the manager (the install side of this fix), so no dump has
-        # anything to print, instead of parsing more command shapes.
-        busctl)
+        # ponytail: the shapes covered are `systemctl [flags] show-environment`, `systemctl
+        # show` with no operand or a property list naming Environment (so a unit's own
+        # Environment is denied too), and a busctl, gdbus or dbus-send clause naming
+        # org.freedesktop.systemd1 with Environment, GetAll or introspect. A variable-built
+        # command, an alias, a short flag glued to others (`-ap Environment`), a flag value
+        # before the verb (`-H host show`) and `systemctl show -p Foo` forms not listed are
+        # not read. Upgrade path: stop importing credentials into the manager (the install
+        # side of this fix), so no dump has anything to print, instead of parsing more shapes.
+        busctl|gdbus|dbus-send)
             if [ "$sd1" = 1 ] && [ "$sdenv" = 1 ]; then
-                hit=1; note="busctl read of the systemd manager environment prints credentials. Check one setting with: printenv NAME (a non-credential name, e.g. printenv DISPLAY); list stored secrets by name with: himmel-secrets names"
+                hit=1; note="$cmd read of the systemd manager environment prints credentials. $G4_SD_HINT"
+            fi ;;
+        systemctl)
+            if [ "$a1" = show ] && { [ "$scenv" = 1 ] || { [ "$nargs" = 1 ] && [ "$scprop" = 0 ]; }; }; then
+                hit=1; note="systemctl show reads the systemd manager environment, credentials included. $G4_SD_HINT"
             fi ;;
         secret-tool)
             case "$a1" in lookup|search|store) hit=1; note="secret-tool $a1 reads or writes a keyring secret" ;; esac ;;
