@@ -24,15 +24,19 @@ Classes, two seeded cases each: `logic`, `quoting`, `fail-open`, `toctou`,
 
 ## Running a sweep (chief only: draws codex usage)
 
-Every case in the key is one paid panel call (the codex row, `tier: paid`), so a
-sweep is 94 panel calls; that is a floor, because the second paid critic runs only
-with the API lane on and each critic can take up to 3 attempts. Workers never run
-it. From the primary checkout, after
+The `paid` tier holds two critics: `codex` (bank) and `claude` (provider
+`claude-api`, billed per API token). `--critics` cuts the roster the panel runs
+(the swept tree's `critics.json` minus every other slug), so `--critics codex` is
+a codex-only sweep. A roster that still holds the claude row refuses before the
+first case unless `--allow-claude-api` is passed (operator decision 525). Every
+case in the key is one panel call per critic in the roster, so a codex-only sweep
+is 94 panel calls; that is a floor, because each critic can take up to 3 attempts.
+Workers never run it. From the primary checkout, after
 `bash scripts/lib/usage-preflight.sh` says PROCEED and with the codex
 `used_percent` noted:
 
 ```bash
-bash scripts/eval/review-panel/run.sh --out ~/.himmel/eval/review-panel/2026-10-07 --no-ledger
+bash scripts/eval/review-panel/run.sh --out ~/.himmel/eval/review-panel/2026-10-07 --no-ledger --critics codex
 ```
 
 Then note codex `used_percent` again and record the row with the bank cost
@@ -241,6 +245,14 @@ citation guard drops its finding, and the gate ignores partial rows. The baselin
 rows are `8429-head-b` and `8429-head-e` at `status=ok`: the partial bundles of those
 runs, re-scored after HIMMEL-8596 made the scorer count that finding. A sweep can
 still go partial on a nonzero panel exit.
+
+**Spend note, 2026-11-04 (HIMMEL-9214).** The four PR 4690 sweeps
+(`~/.himmel/eval/review-panel/2026-11-04-pr4690-{base,head}-r{1,2}`) were meant as
+codex only (decision 557) but ran **claude plus codex**: `--critics codex` then only
+filtered scoring, and the panel ran the whole paid tier. They made about 375
+claude-opus-5-5 API calls against decision 525. Their rows are claude plus codex,
+not codex-only, and the cost reports must count that spend; operator decision 571
+has the rows re-run codex-only after the HIMMEL-9214 fix.
 
 ### Delta cases (`delta-*`, HIMMEL-8429)
 
