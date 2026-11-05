@@ -273,7 +273,9 @@ test("a closed shift draws the pager and Carried to the next shift", () => {
 const TOKEN = "t".repeat(64);
 const MIN_MS = 60_000;
 const STUB = join(import.meta.dir, "stub-himmelctl.js");
-function boot(opts: { rows?: Row[]; chief?: boolean; prs?: unknown[]; ghFails?: boolean; boardScript?: string }) {
+// board: the chief's board file, written beside its doc as board.mjs does; none = the chief has not rendered one.
+// boardScript is not a server option any more: the one row that passes it proves the server never runs it.
+function boot(opts: { rows?: Row[]; chief?: boolean; prs?: unknown[]; ghFails?: boolean; board?: unknown; boardScript?: string }) {
   const dir = tmp();
   let name = "";
   const root = join(dir, "root"), home = join(dir, "home");
@@ -286,6 +288,7 @@ function boot(opts: { rows?: Row[]; chief?: boolean; prs?: unknown[]; ghFails?: 
     name = `HIMMEL-nextleg-${at.getFullYear()}-${p2(at.getMonth() + 1)}-${p2(at.getDate())}A-roadmap-chief`;
     mkdirSync(join(root, "yotamleo", "himmel"), { recursive: true });
     writeFileSync(join(root, "yotamleo", "himmel", `${name}.md`), doc("x", [`- ${p2(at.getHours())}:${p2(at.getMinutes())} LIVE — up`]));
+    if (opts.board !== undefined) writeFileSync(join(root, "yotamleo", "himmel", `${name}.board.json`), JSON.stringify(opts.board));
     const lock = join(root, ".locks", "queue", `yotamleo__himmel__${name}.lock`);
     mkdirSync(lock, { recursive: true });
     writeFileSync(join(lock, "owner.json"), JSON.stringify({ session: "s", handover: join(root, "yotamleo", "himmel", `${name}.md`), heartbeat: new Date().toISOString() }));
@@ -293,10 +296,8 @@ function boot(opts: { rows?: Row[]; chief?: boolean; prs?: unknown[]; ghFails?: 
   writeFileSync(join(dir, "prs.json"), JSON.stringify(opts.prs ?? []));
   const gh = join(dir, "gh.sh");
   writeFileSync(gh, opts.ghFails ? "#!/bin/sh\nexit 1\n" : "#!/bin/sh\necho x >> " + join(dir, "gh-calls") + "\ncat " + join(dir, "prs.json") + "\n", { mode: 0o755 });
-  // the Shift route builds a board when a live chief has no file: unless a test brings its own, the build is a stub that prints an empty board, never the real board.mjs (gh, Jira)
-  const emptyBoard = join(dir, "board-empty.mjs");
-  writeFileSync(emptyBoard, 'import { writeFileSync } from "node:fs"; const a = process.argv; writeFileSync(a[a.indexOf("--json") + 1], JSON.stringify({ legs: [], needs_you: [] }));\n');
-  const s = startServer({ port: 0, token: TOKEN, boardScript: opts.boardScript ?? emptyBoard, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root, SHIFTS_FILE: file, GH_CMD: gh } });
+  const serverOpts = { port: 0, token: TOKEN, boardScript: opts.boardScript, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root, SHIFTS_FILE: file, GH_CMD: gh } };
+  const s = startServer(serverOpts);
   cleanups.push(() => s.stop());
   return { s, file, dir, root, name };
 }
@@ -567,24 +568,16 @@ test("a closed shift has no shift-open pill and no updated line", () => {
   expect(html).not.toContain("updated ");
 });
 
-// ---- the Shift page reads the board through the Fleet route's reader ----
-// a stub board.mjs: counts its runs beside itself and writes one live leg to the --json path
-function boardStub(dir: string): { script: string; runs: () => number } {
-  const script = join(dir, "board-stub.mjs"), log = join(dir, "board-runs");
-  writeFileSync(script, `import { appendFileSync, writeFileSync } from "node:fs";
-const a = process.argv, out = a[a.indexOf("--json") + 1];
-appendFileSync(${JSON.stringify(log)}, "x\\n");
-writeFileSync(out, JSON.stringify({ console: { name: "stub-chief" }, legs: [{ leg: "L1", ticket: "HIMMEL-1", goal: "one live leg", state: "working", stage: "live", stages: { live: "2026-10-27T08:00:00Z" } }], needs_you: [] }));
-`);
-  return { script, runs: () => { try { return readFileSync(log, "utf8").trim().split("\n").length; } catch { return 0; } } };
-}
+// ---- the Shift page reads the board through the Fleet route's reader: the chief's board file ----
+// a board file with one live leg, as board.mjs writes it beside the chief doc
+const fileBoard = { console: { name: "stub-chief" }, legs: [{ leg: "L1", ticket: "HIMMEL-1", goal: "one live leg", state: "working", stage: "live", stages: { live: "2026-10-27T08:00:00Z" } }], needs_you: [] };
 
-test("GET /api/shift: a live chief with no board file shows the legs the board build returns, not an empty Running list", async () => {
-  const dir = tmp(), stub = boardStub(dir);
-  const { s } = boot({ chief: true, boardScript: stub.script });
+test("GET /api/shift: a live chief with a board file shows the legs in it, not an empty Running list", async () => {
+  const { s } = boot({ chief: true, board: fileBoard });
   const v = await (await getShift(s.port)).json();
   expect(v.running.length).toBe(1);
   expect(v.running[0].ticket).toBe("HIMMEL-1");
+  expect(v.boardMissing).toEqual([]);
 });
 
 const chiefLocks = (name: string, at = Date.now()): Lock[] => [{ bucket: "himmel", role: "chief", doc: name, at }];
@@ -678,20 +671,17 @@ test("the CLI poll spawns no board build: a live chief without a board file is r
   expect(() => readFileSync(join(dir, "node-spawns"))).toThrow();
 });
 
-test("the Fleet board route and the Shift page share one board build inside the TTL", async () => {
-  const dir = tmp(), stub = boardStub(dir);
-  const { s, name } = boot({ chief: true, boardScript: stub.script });
+test("the Fleet board route and the Shift page serve the same board file", async () => {
+  const { s, name } = boot({ chief: true, board: fileBoard });
   const shift = await (await getShift(s.port)).json();
   expect(shift.running.length).toBe(1);
   const fleet = await fetch(`http://127.0.0.1:${s.port}/api/agui/board?console=${name}`, { headers: { "X-Himmel-Token": TOKEN } });
   expect(fleet.status).toBe(200);
-  await (await getShift(s.port)).json();
-  expect(stub.runs()).toBe(1);
+  expect((await fleet.json()).console.name).toBe("stub-chief");
 });
 
 test("a Shift payload carries no sections, whatever sits beside the chief's doc", async () => {
-  const dir = tmp(), stub = boardStub(dir);
-  const { s, root, name } = boot({ chief: true, boardScript: stub.script });
+  const { s, root, name } = boot({ chief: true, board: fileBoard });
   await applySection(join(root, "yotamleo", "himmel", `${name}.md`), { kind: "set", id: "note", title: "Chief note", body: "SENTINEL-SECTION-BODY" });
   const fleet = await (await fetch(`http://127.0.0.1:${s.port}/api/agui/board?console=${name}`, { headers: { "X-Himmel-Token": TOKEN } })).json();
   expect(fleet.sections).toHaveLength(1); // the Fleet route serves it
@@ -700,15 +690,25 @@ test("a Shift payload carries no sections, whatever sits beside the chief's doc"
   expect(text).not.toContain("SENTINEL-SECTION-BODY");
 });
 
-test("a board build that fails shows on the page as a board error, and the layout still has three tiles", async () => {
-  const dir = tmp(), script = join(dir, "bad.mjs");
-  writeFileSync(script, `console.error("board.mjs: Jira is down"); process.exit(3);\n`);
-  const { s } = boot({ chief: true, boardScript: script });
+test("a board file that does not parse shows on the page as a missing board, and the layout still has three tiles", async () => {
+  const { s, root, name } = boot({ chief: true });
+  writeFileSync(join(root, "yotamleo", "himmel", `${name}.board.json`), "{ not json");
   const v = await (await getShift(s.port)).json();
-  expect(v.boardError.length).toBe(1);
-  expect(v.boardError[0].error).toContain("Jira is down");
+  expect(v.boardMissing).toEqual([name]);
+  expect(v.boardError).toEqual([]);
   const html = renderShift(v, {});
-  expect(html).toContain("failed to build");
+  expect(html).toContain(`No board for ${name} yet`);
   expect(html.match(/class="tile /g)?.length).toBe(3);
   expect(html).toContain('id="sh-chiefs"');
+});
+
+// The Shift page reads the chief's board file and nothing else. RED control (pre-fix server): the missing file ran the boardScript stub, which left the marker.
+test("a live chief with no board file shows no leg, a missing-board note, and runs no build", async () => {
+  const dir = tmp(), marker = join(dir, "build-ran"), script = join(dir, "marker-board.mjs");
+  writeFileSync(script, `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(marker)}, "x");\n`);
+  const { s, name } = boot({ chief: true, boardScript: script });
+  const v = await (await getShift(s.port)).json();
+  expect(v.running).toEqual([]);
+  expect(v.boardMissing).toEqual([name]);
+  expect(existsSync(marker)).toBe(false);
 });

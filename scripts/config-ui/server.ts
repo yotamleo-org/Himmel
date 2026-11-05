@@ -27,10 +27,10 @@ import { busRootOf, journalStream, resolveJournal } from "./agui/sse";
 import { readFleet } from "./agui/fleet";
 import { readRollup } from "./rollup";
 import { readPhaseStats } from "./phase-stats";
-import { liveBoards, readMerged, type Board, type BoardReader, type Live, type Lock, type Span, readShifts, redactShift, shiftsFile, tick as tickShifts, viewOf } from "./shift";
+import { fileReader, liveBoards, readMerged, type Live, type Lock, type Span, readShifts, redactShift, shiftsFile, tick as tickShifts, viewOf } from "./shift";
 import { readReviewers } from "./reviewers";
 import { eligibleFromInventory, readToolInventory } from "./tool-inventory";
-import { findDoc, readBoard, readBoardFile, readSectionsFile, scrub, validName } from "./agui/board";
+import { findDoc, readBoardFile, readSectionsFile, scrub, validName } from "./agui/board";
 import { readOrCreateToken } from "./token-file";
 import { DRIFT_REFRESH_MS, driftCheck, driftFile, readBoardExtras, refreshDrift, type DriftRefresh } from "./board";
 import { legSync, readRoadmap } from "./roadmap";
@@ -212,7 +212,7 @@ export type ServerOpts = {
   root?: string; projectRoot?: string; projects?: string[]; /* the Board's Jira projects (--project KEY, repeatable); none = every mirrored project */ now?: () => number; actionTimeoutMs?: number; reprobeBudgetMs?: number; feedWaitMs?: number; feedTimeoutMs?: number; verifyTimeoutMs?: number;
   backgroundFeed?: boolean; feedRefreshMs?: number; noIdle?: boolean;
   readOnly?: boolean; /* himmelctl ui --read-only: set once at start, every non-GET/HEAD request is refused with 403 before any route runs */
-  legsScript?: string; legsTimeoutMs?: number; fleetScript?: string; boardScript?: string; aguiPollMs?: number; aguiIdleMs?: number; aguiMaxMs?: number; aguiDist?: string; aguiWeb?: string;
+  legsScript?: string; legsTimeoutMs?: number; fleetScript?: string; aguiPollMs?: number; aguiIdleMs?: number; aguiMaxMs?: number; aguiDist?: string; aguiWeb?: string;
 };
 type Preview = Resolved & { expires: number };
 type Probe = Record<string, { installed: string; health: string }>;
@@ -641,16 +641,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   let lastSeen = -Infinity;
   const refreshMs = opts.feedRefreshMs ?? FEED_REFRESH_MS;
   const refresher = opts.backgroundFeed ? setInterval(() => { if (now() - lastSeen < refreshMs) feedStart(true); }, refreshMs) : undefined;
-  // The one board reader of the Fleet board route and the Shift page: the chief's board file, else a board.mjs build (cached, so one build serves both routes).
-  // `built` marks a body that came from a build, not from the file.
-  const boardOf = async (doc: string): Promise<{ body: unknown; built?: true } | { error: string }> =>
-    (await readBoardFile(doc)) ?? { ...(await readBoard({ script: opts.boardScript ?? join(CHECKOUT, "scripts/handover/chief-kit/board.mjs"), doc, checkout: CHECKOUT, env: { ...env }, now: now() })), built: true as const };
-  // The Shift page's live boards through boardOf; `from` says whether any of them was built.
-  const shiftBoards = (handover: string) => {
-    let built = false;
-    const read: BoardReader = async (doc) => { const r = await boardOf(doc); if ("built" in r) built = true; return "error" in r ? { error: r.error } : (r.body as Board); };
-    return async (locks: Lock[], spans: Span[]): Promise<Live> => ({ ...(await liveBoards(handover, locks, spans, read)), from: built ? "built" : "file" });
-  };
+  // The Fleet board route and the Shift page serve the chief's board file (board.mjs writes it on every render) and nothing else: a chief with none is reported missing, never built here.
+  const shiftBoards = (handover: string) =>
+    async (locks: Lock[], spans: Span[]): Promise<Live> => ({ ...(await liveBoards(handover, locks, spans, fileReader)), from: "file" });
   let fleetRun: ReturnType<typeof readFleet> | null = null;
   // The page polls every 5 s and every navigation asks too: requests that arrive during a read share it (never a cached body).
   function fleetOnce(): ReturnType<typeof readFleet> {
@@ -836,11 +829,11 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const doc = await findDoc(env.HANDOVER_DIR || "", name);
         if (!doc) return new Response("no such doc", { status: 404 });
         if (!board) return new Response(String(scrub(readFileSync(doc, "utf8").slice(0, 200_000), (v) => redactOut(v))), { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
-        // The chief's sections join in the route, not in boardOf, so the Shift page never gets them (I7); they do not depend on the build,
-        // so a 502 carries them too. `sections_error` is set for an oversize or unparseable sidecar.
-        const [r, { sections, error: sections_error }] = await Promise.all([boardOf(doc), readSectionsFile(doc)]);
+        // The chief's sections join in the route, not in the shared reader, so the Shift page never gets them (I7); they do not depend on the board file,
+        // so the no-board answer carries them too. `sections_error` is set for an oversize or unparseable sidecar.
+        const [r, { sections, error: sections_error }] = await Promise.all([readBoardFile(doc), readSectionsFile(doc)]);
         const extra = { sections, ...(sections_error ? { sections_error } : {}) };
-        return "error" in r ? json(scrub({ error: "the board could not be built", detail: r.error, ...extra }, (v) => redactOut(v)), 502) : json(scrub({ ...(r.body as object), ...extra }, (v) => redactOut(v)));
+        return r ? json(scrub({ ...(r.body as object), ...extra }, (v) => redactOut(v))) : json(scrub({ error: "no board file for this console", ...extra }, (v) => redactOut(v)), 503);
       }
       if (path.startsWith("/api/agui/")) {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });

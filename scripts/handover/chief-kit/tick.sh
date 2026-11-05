@@ -288,17 +288,17 @@ an accepted relay). UNCONFIRMED wins the field when both occur.
 unknown = the doc name carries no console letter or has no `legs:` line.
 
 board=<ok|STALE:<age>|MISSING|skip> (HIMMEL-3361) is the freshness of the
-console's progress board, chief-board.html next to the console doc (rendered
+console's progress board, <console doc stem>.board.json next to the console doc (rendered
 by board.mjs -- the ACTION ZERO board step + the standing rule: on every dispatch, GO,
-MERGED and WRAPPED, re-render and republish it). ok = the board's embedded
-fingerprint equals the one recomputed here from what a board shows (leg locks,
+MERGED and WRAPPED, re-render it). ok = the board file's freshness.board_fp
+equals the one recomputed here from what a board shows (leg locks,
 leg tails, open PRs, the queue:, last GO:, epics: and decisions: lines) -- NOT the doc's mtime,
 which every Results bullet bumps. STALE:<age> = the board shows an older state
 (age = the file's mtime); MISSING = no board was ever rendered; skip = no --doc.
 --emit-fp prints a second line, board-fp=<16 hex>, the fingerprint board.mjs
-embeds -- one derivation, so the generator and this field cannot disagree.
+writes into the board file -- one derivation, so the generator and this field cannot disagree.
 ponytail: board=ok says the LOCAL file matches the state; tick cannot see
-whether the artifact was republished from it -- that stays the console's step.
+whether anything was republished from it -- that stays the console's step.
 
 station=BEHIND:<component>,... (HIMMEL-5945) appears only when the last station-sync.sh
 run left a component behind main (state file TICK_STATION_STATE, default
@@ -2004,7 +2004,7 @@ cadence_summary="$(cd "$pr_repo" 2>/dev/null && CI_CADENCE_DIR="$pr_repo" ${_TIM
 review_summary="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 10)"} bash "$HERE/ci-cadence.sh" review 2>/dev/null)" || review_summary='?'  # swallow-ok: an unreadable review renders as review=?
 [ -n "$review_summary" ] || review_summary='?'
 
-# the board fingerprint -- what chief-board.html shows that the
+# the board fingerprint -- what the board file (<doc stem>.board.json) shows that the
 # chief authors or a tick already reads: worker locks, worker tails, open PRs, and
 # the queue:, last GO:, epics: and decisions: lines. Not the doc mtime (every
 # Results bullet bumps that). board.mjs embeds this exact value via --emit-fp.
@@ -2019,11 +2019,11 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     board_epics="$(grep -m1 '^epics:' "$console_doc" 2>/dev/null)" || board_epics=""
     board_decisions="$(grep -m1 '^decisions:' "$console_doc" 2>/dev/null)" || board_decisions=""
     board_fp="$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$legs_summary" "$tails_summary" "$prs" "$board_queue" "$board_lastgo" "$board_epics" "$board_decisions" | sha256sum | cut -c1-16)"
-    board_file="${console_doc%/*}/chief-board.html"
+    board_file="${console_doc%.md}.board.json"
     if [ ! -f "$board_file" ]; then
         board_summary=MISSING
     else
-        board_have="$(sed -n 's/.*name="chief-board-fp" content="\([0-9a-f]*\)".*/\1/p' "$board_file" 2>/dev/null | head -n 1)"
+        board_have="$(sed -n 's/^ *"board_fp": "\([0-9a-f]*\)".*/\1/p' "$board_file" 2>/dev/null | head -n 1)"
         if [ -n "$board_have" ] && [ "$board_have" = "$board_fp" ]; then
             board_summary=ok
         else

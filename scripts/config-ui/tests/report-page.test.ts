@@ -36,14 +36,8 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-// The Shift route builds a board for a live chief that has no board file: a stub that prints an empty board, never the real board.mjs (gh, Jira).
-const boardStub = () => {
-  const script = join(dir, "board-stub.mjs");
-  writeFileSync(script, 'import { writeFileSync } from "node:fs"; const a = process.argv; writeFileSync(a[a.indexOf("--json") + 1], JSON.stringify({ legs: [], needs_you: [] }));\n');
-  return script;
-};
-function boot(extra: Record<string, string> = {}, boardScript?: string) {
-  const s = startServer({ port: 0, token: TOKEN, boardScript, env: { PATH: process.env.PATH, HOME: process.env.HOME, HANDOVER_DIR: handover, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", ...extra } });
+function boot(extra: Record<string, string> = {}) {
+  const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, HOME: process.env.HOME, HANDOVER_DIR: handover, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", ...extra } });
   stop = () => s.stop();
   return s.port;
 }
@@ -61,12 +55,13 @@ test("the Shift page route names its next cut from the saved cut times, not the 
   const docDir = join(handover, "yotamleo", "himmel"), docPath = join(docDir, `${name}.md`);
   mkdirSync(docDir, { recursive: true });
   writeFileSync(docPath, `# X — CHIEF (x)\n\n## Results\n- ${p2(at.getHours())}:${p2(at.getMinutes())} LIVE — up\n`);
+  writeFileSync(join(docDir, `${name}.board.json`), JSON.stringify({ legs: [], needs_you: [] })); // the chief's board file: an empty board, so the page has no missing-board note
   const lock = join(handover, ".locks", "queue", `yotamleo__himmel__${name}.lock`);
   mkdirSync(lock, { recursive: true });
   writeFileSync(join(lock, "owner.json"), JSON.stringify({ session: "s", handover: docPath, heartbeat: new Date().toISOString() }));
   const gh = join(dir, "gh.sh");
   writeFileSync(gh, "#!/bin/sh\necho '[]'\n", { mode: 0o755 });
-  const port = boot({ SHIFTS_FILE: join(dir, "shifts.jsonl"), GH_CMD: gh }, boardStub());
+  const port = boot({ SHIFTS_FILE: join(dir, "shifts.jsonl"), GH_CMD: gh });
   expect((await post(port, GOOD)).status).toBe(200);
   const v = await (await get(port, "/api/shift")).json();
   expect(v.state).toBe("open");

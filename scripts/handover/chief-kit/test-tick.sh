@@ -1722,18 +1722,18 @@ contains 'a past-TTL dead-owner lock reads STALE-DEAD (HIMMEL-5541)' "$out5541" 
 not_contains 'a STALE-DEAD lock is not folded into STALE (HIMMEL-5541)' "$out5541" 'workers=N390:STALE '
 
 # --- board=<ok|STALE:<age>|MISSING|skip> -- the chief's progress
-# board (chief-board.html, written by board.mjs next to the chief doc) must be
+# board (<doc stem>.board.json, written by board.mjs next to the chief doc) must be
 # structurally checked, not remembered. RED control (pre-fix tick.sh): the line
 # carries no board= field at all, so a chief that never rendered one, or whose
 # board is days old, is invisible to its own tick. The freshness reference is a
 # fingerprint of the state a board shows (workers, tails, open PRs, queue, last GO),
-# embedded in the board by board.mjs and recomputed here -- not the doc's mtime,
+# stored in the board JSON by board.mjs and recomputed here -- not the doc's mtime,
 # which every Results bullet bumps and would read STALE all day.
 b3361="HIMMEL-3361-N361-board-2026-09-21-RESUME"
 printf '%s\n' '# worker' '- 12:00 LIVE — working' > "$W/handover/$b3361.md"
 mkcmdline 361 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-3361-N361-board work
 mk_pgrep_x "$W/bin-3361" 361
-board3361="$W/handover/chief-board.html"
+board3361="$W/handover/chief.board.json"
 rm -f "$board3361"
 # shellcheck disable=SC2016  # backtick worker spans, literal fixture text
 write_console3361() {  # write_console3361 <last GO value> [extra Results bullet]
@@ -1755,7 +1755,7 @@ case "$fp3361" in
     *) fail "--emit-fp line 2 is not board-fp=<16 hex> ('$fp3361')" ;;
 esac
 # A board whose fingerprint is not the current one is STALE, aged by its mtime.
-printf '%s\n' '<meta name="chief-board-fp" content="0000000000000000">' > "$board3361"
+printf '%s\n' '{' ' "freshness": {' '  "board_fp": "0000000000000000"' ' }' '}' > "$board3361"
 touch -d '3 hours ago' "$board3361"  # gnu-ok: chief kit is Linux-only
 contains 'a board with another fingerprint reads board=STALE:<age> (HIMMEL-3361)' "$(t3361)" ' board=STALE:3h'
 touch -d '12 minutes ago' "$board3361"  # gnu-ok: chief kit is Linux-only
@@ -1765,11 +1765,14 @@ contains 'a young stale board ages in minutes (HIMMEL-3361)' "$(t3361)" ' board=
 if command -v node >/dev/null 2>&1; then
     bpath3361="$(PATH="$W/bin-3361:$PATH" BOARD_TICK="$SUT" node "$HERE/board.mjs" --doc "$W/handover/chief.md" --workers "$W/handover/$b3361.md" --repo "$REPO" 2>&1)"
     if [ "$bpath3361" = "$board3361" ] && [ -f "$board3361" ]; then
-        pass 'board.mjs writes chief-board.html next to the chief doc (HIMMEL-3361)'
+        pass 'board.mjs writes the board JSON next to the chief doc'
     else
         fail "board.mjs did not write the board ($bpath3361)"
     fi
     contains 'a board rendered from the current state reads board=ok (HIMMEL-3361)' "$(t3361)" ' board=ok'
+    # The freshness is read from board.json, so a board with no static page on disk is not a stale board.
+    [ -z "$(find "$W/handover" -maxdepth 1 -name '*.html')" ] || fail 'board.mjs left an html page in the bucket'
+    contains 'a board with no static page on disk still reads board=ok' "$(t3361)" ' board=ok'
     # A Results bullet is not a state change: the board stays ok.
     write_console3361 none '- 12:05 RULING nothing about state'
     contains 'a Results bullet does not stale the board (HIMMEL-3361)' "$(t3361)" ' board=ok'
@@ -1802,8 +1805,8 @@ if command -v node >/dev/null 2>&1; then
         'queue: none' 'last GO: none' 'acked: none' '' '## Results' '- 12:00 DISPATCH' \
         > "$W/handover/chief.md"
     tickset3366="$(PATH="$W/bin-3361:$PATH" bash "$SUT" --doc "$W/handover/chief.md" | sed -n 's/.* workerset=STALE:unarmed=\([^ ;]*\).*/\1/p' | tr '+' '\n' | sort)"
-    PATH="$W/bin-3361:$PATH" BOARD_TICK="$SUT" node "$HERE/board.mjs" --doc "$W/handover/chief.md" --repo "$REPO" >/dev/null 2>&1
-    boardset3366="$(grep -o 'data-label="[^"]*"' "$W/handover/chief-board.html" | sed 's/^data-label="//; s/"$//' | sort)"
+    PATH="$W/bin-3361:$PATH" BOARD_TICK="$SUT" node "$HERE/board.mjs" --doc "$W/handover/chief.md" --repo "$REPO" --out "$W/handover/board-3366.html" >/dev/null 2>&1
+    boardset3366="$(grep -o 'data-label="[^"]*"' "$W/handover/board-3366.html" | sed 's/^data-label="//; s/"$//' | sort)"
     contains 'the tick reads a label with _ . - as a worker (HIMMEL-3366)' "$tickset3366" 'N3_x.y-z'
     if [ -n "$tickset3366" ] && [ "$tickset3366" = "$boardset3366" ]; then
         pass 'tick.sh and board.mjs read one Live-state block as the same worker set (HIMMEL-3366)'
