@@ -181,6 +181,44 @@ if [ "$rc" -eq 1 ]; then pass "an unknown verdict word is not a verdict (rc1)"; 
 ( cd "$FX" && printf '%s\n' 'SUITE scripts/test-uninstall.sh = PASS' 'SUITE scripts/test-elsewhere.sh = PASS' | bash "$IS" --check "$range" >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -eq 1 ]; then pass "a verdict for a suite that is not impacted does not cover the one that is (rc1)"; else fail "stray verdict covered a missing suite: rc=$rc"; fi
 
+# --- T1.41. --check --record appends one impacted row; without it nothing changes.
+REC_LEDGER="$(git -C "$FX" rev-parse --path-format=absolute --git-common-dir)/cr-critic-scores.jsonl"
+rec_head="${range##*..}"
+git -C "$FX" update-ref refs/remotes/origin/main "${range%%..*}"
+rm -rf "$REC_LEDGER"
+plain_out="$( cd "$FX" && printf '%s\n%s\n' "$V1" "$V2" | bash "$IS" --check "$range" 2>&1 )"; plain_rc=$?
+rec_out="$( cd "$FX" && printf '%s\n%s\n' "$V1" "$V2" | bash "$IS" --check "$range" --record --branch feat/x --head "$rec_head" 2>&1 )"; rec_rc=$?
+rows="$(grep -F '"kind":"impacted"' "$REC_LEDGER" 2>/dev/null)"
+if [ "$rec_rc" -eq "$plain_rc" ] && [ "$rec_out" = "$plain_out" ]; then pass "T1.41 --record keeps --check's output and rc"; else fail "T1.41 --record changed the output or rc ($plain_rc to $rec_rc): $rec_out"; fi
+if [ "$(printf '%s\n' "$rows" | grep -c .)" -eq 1 ] && grepq "$rows" -F '"impacted_n":2' && grepq "$rows" -F '"unverdicted_n":0' \
+    && grepq "$rows" -F '"skip_n":1' && grepq "$rows" -F '"rc":0' && grepq "$rows" -F "\"head\":\"$rec_head\"" && grepq "$rows" -F '"branch":"feat/x"'; then
+    pass "T1.41 one impacted row with its counts and skip_n"
+else
+    fail "T1.41 impacted row: $rows"
+fi
+rm -rf "$REC_LEDGER"
+( cd "$FX" && printf '%s\n' "$V1" | bash "$IS" --check "$range" --record --branch feat/x --head "$rec_head" >/dev/null 2>&1 ); rc=$?
+rows="$(grep -F '"kind":"impacted"' "$REC_LEDGER" 2>/dev/null)"
+if [ "$rc" -eq 1 ] && grepq "$rows" -F '"unverdicted_n":1' && grepq "$rows" -F '"rc":1'; then pass "T1.41 a missing verdict is recorded with rc 1"; else fail "T1.41 missing-verdict row: rc=$rc $rows"; fi
+rm -rf "$REC_LEDGER"
+( cd "$FX" && printf '' | bash "$IS" --check "$range" >/dev/null 2>&1 )
+if [ ! -e "$REC_LEDGER" ]; then pass "T1.41 --check without --record writes no row"; else fail "T1.41 --check without --record wrote the ledger"; fi
+mkdir -p "$REC_LEDGER"
+( cd "$FX" && printf '%s\n%s\n' "$V1" "$V2" | bash "$IS" --check "$range" --record --branch feat/x --head "$rec_head" >/dev/null 2>&1 ); rc=$?
+rmdir "$REC_LEDGER"
+if [ "$rc" -eq 4 ]; then pass "T1.41 a failed append exits 4"; else fail "T1.41 failed append rc=$rc (want 4)"; fi
+( cd "$FX" && printf '' | bash "$IS" "$range" --record --branch feat/x --head "$rec_head" >/dev/null 2>&1 ); rc=$?
+if [ "$rc" -eq 2 ]; then pass "T1.41 --record without --check refuses (rc2)"; else fail "T1.41 --record without --check rc=$rc"; fi
+( cd "$FX" && printf '' | bash "$IS" --check "$range" --record --branch feat/x >/dev/null 2>&1 ); rc=$?
+if [ "$rc" -eq 2 ]; then pass "T1.41 --record without --head refuses (rc2)"; else fail "T1.41 --record without --head rc=$rc"; fi
+rm -rf "$REC_LEDGER"
+other_head="${range%%..*}"
+( cd "$FX" && printf '%s\n%s\n' "$V1" "$V2" | bash "$IS" --check "$range" --record --branch feat/x --head "$other_head" >/dev/null 2>&1 ); rc=$?
+if [ "$rc" -eq 2 ] && [ ! -e "$REC_LEDGER" ]; then pass "T1.41 --record refuses a --head the range does not end at (rc2, no row)"; else fail "T1.41 head mismatch: rc=$rc"; fi
+( cd "$FX" && printf '' | bash "$IS" --check "$rec_head..$rec_head" --record --branch feat/x --head "$rec_head" >/dev/null 2>&1 ); rc=$?
+if [ "$rc" -eq 2 ] && [ ! -e "$REC_LEDGER" ]; then pass "T1.41 --record refuses a range not from the default branch's merge-base (rc2, no row)"; else fail "T1.41 partial range: rc=$rc"; fi
+git -C "$FX" update-ref -d refs/remotes/origin/main
+
 # --- 9. --check with nothing impacted is clean, and says so -----------------
 change docs/foo/other.md
 out="$( cd "$FX" && printf '' | bash "$IS" --check "$range" 2>&1 )"; rc=$?

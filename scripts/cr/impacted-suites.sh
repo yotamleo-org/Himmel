@@ -55,6 +55,11 @@
 #       each on stderr, when any is missing; exit 3 when every suite has a
 #       verdict but one is BLOCKED — accounted for, yet the suite did not run,
 #       so the /pr-check row is NOT clean until the chief/operator rules.
+#       With --record --branch <b> --head <40-hex>, it first appends one
+#       `impacted` row (counts, SKIP count, that exit code) to the git-common
+#       CR ledger; the exit code is unchanged, and a failed append exits 4.
+#       The range must end at --head and start from its merge-base with the
+#       remote default branch, else exit 2 and no row.
 #   impacted-suites.sh --runner <path>
 #       Print the ONE command CI uses to run a JS/TS suite path,
 #       e.g. `node --test scripts/hooks/foo.test.mjs` or
@@ -94,7 +99,8 @@
 # two distinct checks that never run in the same invocation, so the meaning
 # of exit 1 is fixed by which flag was passed; 2 usage, an unresolvable
 # range, a failed search, --runner found no mapping, or --run's dep install
-# failed; 3 --check found a BLOCKED suite. A range that cannot be resolved
+# failed; 3 --check found a BLOCKED suite; 4 --record could not append its
+# row. A range that cannot be resolved
 # (or searched) is an ERROR, never an empty list: an empty impacted set reads
 # as "nothing to run". --run otherwise exits with the suite's own exit code.
 #
@@ -113,6 +119,7 @@ set -uo pipefail
 # A relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
 . "$_ah_d/anchor-handoff.sh" || exit 2
+is_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || exit 2
 
 # io_fail <what> — a step that builds the impacted list or the verdict set did
 # not run; an empty or partial list must never read as "nothing to run".
@@ -361,9 +368,19 @@ from_file=""
 selector_miss=0
 red_file=""
 paths_file=""
+record=0
+rec_branch=""
+rec_head=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --check) check=1; shift ;;
+        --record) record=1; shift ;;
+        --branch)
+            [ "$#" -ge 2 ] || { echo "impacted-suites.sh: --branch requires a name" >&2; exit 2; }
+            rec_branch="$2"; shift 2 ;;
+        --head)
+            [ "$#" -ge 2 ] || { echo "impacted-suites.sh: --head requires a SHA" >&2; exit 2; }
+            rec_head="$2"; shift 2 ;;
         --shell) shell_only=1; shift ;;
         --from-file)
             [ "$#" -ge 2 ] || { echo "impacted-suites.sh: --from-file requires a path" >&2; exit 2; }
@@ -402,6 +419,12 @@ if [ -n "$paths_file" ]; then
     case "$paths_file" in /*) ;; *) paths_file="$PWD/$paths_file" ;; esac
 fi
 
+if [ "$record" -eq 1 ] && { [ "$check" -eq 0 ] || [ -z "$rec_branch" ] || [ -z "$rec_head" ]; }; then
+    echo "impacted-suites.sh: --record requires --check, --branch <name> and --head <sha>" >&2; exit 2
+fi
+if [ "$record" -eq 0 ] && { [ -n "$rec_branch" ] || [ -n "$rec_head" ]; }; then
+    echo "impacted-suites.sh: --branch and --head require --record" >&2; exit 2
+fi
 if [ -n "$from_file" ] && [ "$check" -eq 0 ]; then
     echo "impacted-suites.sh: --from-file requires --check" >&2; exit 2
 fi
@@ -516,6 +539,20 @@ fi
 # and exited 0. -z output is raw; tr turns it into the one-per-line lists the
 # loops below read. ponytail: a name holding a newline still splits in two (a
 # bogus path, never a missed one); upgrade path is NUL-reading loops if one ever appears.
+# --record certifies the whole PR at --head: the range must end at that head
+# and start from its merge-base with the remote default branch.
+if [ "$record" -eq 1 ]; then
+    if [ "$head_sha" != "$rec_head" ]; then
+        echo "impacted-suites.sh: --record --head ${rec_head} is not the range's head (${head_sha})" >&2; exit 2
+    fi
+    case "${BASH_SOURCE[0]}" in */*) _is_d="${BASH_SOURCE[0]%/*}" ;; *) _is_d=. ;; esac
+    # shellcheck source=scripts/lib/review-default-base.sh
+    # shellcheck disable=SC1091
+    . "$_is_d/../lib/review-default-base.sh" || exit 2
+    if ! rec_ref=$(cr_default_base_ref) || ! rec_mb=$(git merge-base "$rec_ref" "$head_sha") || [ "$rec_mb" != "$mb" ]; then
+        echo "impacted-suites.sh: --record needs a range from the merge-base of the remote default branch and ${head_sha}" >&2; exit 2
+    fi
+fi
 if ! changed=$(git diff -z --name-only --no-renames "$mb" "$head_sha" | tr '\0' '\n'); then
     echo "impacted-suites.sh: git diff ${mb}..${head_sha} failed" >&2; exit 2
 fi
@@ -1245,8 +1282,10 @@ fi
 # --check: every impacted suite needs a valid verdict line on stdin.
 have="$work/have"
 blocked_raw="$work/blocked.raw"
+skip_raw="$work/skip.raw"
 : > "$blocked_raw"
-awk -v blockedf="$blocked_raw" '
+: > "$skip_raw"
+awk -v blockedf="$blocked_raw" -v skipf="$skip_raw" '
     # The path is everything between "SUITE " and the FIRST " = " (a suite path
     # may contain spaces); the verdict word and reason rules follow it.
     /^SUITE +/ {
@@ -1265,6 +1304,7 @@ awk -v blockedf="$blocked_raw" '
         if (verdict == "PASS" || reason ~ /[^ \t\r]/) {
             print path
             if (verdict == "BLOCKED") print path > blockedf
+            if (verdict == "SKIP") print path > skipf
         }
     }
 ' | sort -u > "$have" || io_fail "reading the verdicts"
@@ -1272,12 +1312,26 @@ missing="$work/missing"
 comm -23 "$impacted" "$have" > "$missing" || io_fail "comparing verdicts to the impacted list"
 n_impacted=$(wc -l < "$impacted" | tr -d ' ')
 n_missing=$(wc -l < "$missing" | tr -d ' ')
+# check_exit <rc>: with --record, one impacted row on the git-common ledger
+# first (ready-check item 16 reads it); a failed append exits 4.
+check_exit() {
+    if [ "$record" -eq 1 ]; then
+        n_skip=$(sort -u "$skip_raw" | comm -12 "$impacted" - | wc -l | tr -d ' ') || io_fail "counting SKIP verdicts"
+        rec_ledger="$(git rev-parse --path-format=absolute --git-common-dir)/cr-critic-scores.jsonl" || exit 4
+        if ! CR_LEDGER="$rec_ledger" bash "$is_dir/ledger-append.sh" impacted --branch "$rec_branch" --head "$rec_head" \
+            --impacted "$n_impacted" --unverdicted "$n_missing" --skip "$n_skip" --rc "$1" >/dev/null; then
+            echo "impacted-suites.sh: could not record the impacted row (ledger-append.sh, reason above)" >&2
+            exit 4
+        fi
+    fi
+    exit "$1"
+}
 printf 'impacted-suites: %s impacted, %s without a verdict\n' "$n_impacted" "$n_missing"
 if [ "$n_missing" -gt 0 ]; then
     while IFS= read -r s; do
         printf 'impacted-suites: MISSING VERDICT %s\n' "$s" >&2
     done < "$missing"
-    exit 1
+    check_exit 1
 fi
 # Every suite has a verdict; a BLOCKED one is accounted for but did not run.
 blocked="$work/blocked"
@@ -1287,6 +1341,6 @@ if [ -s "$blocked" ]; then
     while IFS= read -r s; do
         printf 'impacted-suites: BLOCKED %s\n' "$s" >&2
     done < "$blocked"
-    exit 3
+    check_exit 3
 fi
-exit 0
+check_exit 0

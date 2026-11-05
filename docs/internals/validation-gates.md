@@ -265,6 +265,29 @@ with publication subject to its permission classifier. The chief's
 `scripts/handover/chief-kit/ready-check.sh` separately refuses a head without
 an `ok` CR-ledger row. These cover publication authorization and automated review readiness.
 
+**16. outside-PR full review.** For an outside PR (a fork, a deleted author, or
+an author not on `scripts/ci/ticket-id-internal-authors.txt`; a same-repo Bot is
+not outside), `ready-check.sh` item 16 needs every record at the exact head, so
+a new head starts over:
+
+| Row | Passes when |
+|---|---|
+| 16b | a `round-scope` row with scope `full` for this branch and head (a delta or post-cap delta row FAILs) |
+| 16c | the latest `lint` run of workflow `CI` at the head is `SUCCESS` |
+| 16d | no changed path (either side of a rename) starts with a line of `scripts/ci/outside-lint-surface.txt` |
+| 16e | zero unresolved threads, each resolved by a maintainer, and `check-ci.sh --threads-only` exits 0 within 20 s |
+| 16f | the newest `impacted` row at the head reads exit 0 with no SKIP |
+| 16g | a diff touching the blast scope (`scripts/cr/blast-scope.cjs`) has a `blast` row with status `ran` |
+| 16h | a CodeRabbit commit status of `success` at the head, read within 20 s |
+| 16i | a passed (or flagged) `security-audit` row for this PR and head whose report hash and perspective hash still match |
+
+16h and 16i apply only to an author not in `~/.himmel/outside-contributors.json`
+by login and id; a listed author prints `[SKIP] 16h/16i listed author <login>`.
+16e and 16h run with the `CR_*` overrides unset, so no env widens them. Item 16
+reads its lists from the script's own checkout and fails closed when it cannot
+read one. It is outside `--only 7`, and an org-member PR's output is unchanged.
+The operator's GitHub code-owner approval comes last, after item 16 passes.
+
 Lane-rubric verdict persistence remains behavioral (validating-session
 discipline); structural `cheap-codex` provenance enforcement waits on a hermes
 task→branch record. See §1 enforcement-honesty.
