@@ -20,6 +20,7 @@ import json
 import os
 import re
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -905,6 +906,127 @@ def worker_session():
     return bool(os.environ.get('HIMMEL_CONSOLE_LEG'))
 
 
+def grant_route(p, rel, trust):
+    """Who may grant a path: 'operator' (settings or CI workflow), 'chief' (a trust path) or 'any' (every other path)."""
+    if any(GRANT_PATH_REFUSED_RE.search(x) for x in (p, rel)):
+        return 'operator'
+    if any(r.search(x) for r in trust for x in (p, rel)):
+        return 'chief'
+    return 'any'
+
+
+CHIEF_DOC_RE = re.compile(r'-(chief|console)\.md$', re.I)  # the role test of arm-resume.sh and append-results.sh: *-chief.md / *-console.md
+
+
+def lock_dir_for(doc, session):
+    """The queue-lock dir whose owner.json names doc and session: <handover root>/.locks/queue/*.lock, root found by
+    walking up from doc. None when there is none."""
+    d = os.path.dirname(doc)
+    for _ in range(64):
+        q = os.path.join(d, '.locks', 'queue')
+        if os.path.isdir(q):
+            for n in sorted(os.listdir(q)):
+                try:
+                    with open(os.path.join(q, n, 'owner.json')) as f:
+                        o = json.load(f)
+                except (OSError, ValueError):
+                    continue
+                if isinstance(o, dict) and o.get('handover') == doc and o.get('session') == session:
+                    return os.path.join(q, n)
+            return None
+        up = os.path.dirname(d)
+        if up == d:
+            return None
+        d = up
+    return None
+
+
+def caller_session():
+    """The Claude session id of the caller's nearest ancestor with a <claude config>/sessions/<pid>.json naming that
+    pid, or ''. Only the nearest: a Claude session nested under the chief is not the chief."""
+    sdir = os.path.join(os.environ.get('CLAUDE_CONFIG_DIR') or os.path.join(os.path.expanduser('~'), '.claude'), 'sessions')
+    pid, seen = os.getppid(), 0
+    while pid > 1 and seen < 64:
+        seen += 1
+        try:
+            with open(os.path.join(sdir, '%d.json' % pid)) as f:
+                s = json.load(f)
+            if isinstance(s, dict) and s.get('pid') == pid and s.get('sessionId'):
+                return str(s['sessionId'])
+        except (OSError, ValueError):
+            pass  # swallow-ok: an ancestor with no readable session file is no Claude session; the walk goes on up
+        res = run_bounded(['ps', '-o', 'ppid=', '-p', str(pid)], QL_TIMEOUT)
+        try:
+            pid = int(res[1].strip()) if res and res[0] == 0 else 0
+        except ValueError:
+            pid = 0
+    return ''
+
+
+def chief_session(doc):
+    """(session, '') when doc is a chief doc whose queue lock is held, fresh, on this host, by the caller's own
+    (nearest) Claude session; else (None, why). The real queue-lock.sh, never HOLDS_QUEUE_LOCK: this check loosens
+    the barrier, so a test seam must not stand in for it."""
+    if not os.path.isfile(doc):
+        return None, 'the chief doc %s does not exist' % doc
+    if not CHIEF_DOC_RE.search(os.path.basename(doc)):
+        return None, '%s is not a chief doc (a chief doc is named *-chief.md or *-console.md)' % doc
+    res = run_bounded(['bash', os.path.join(HERE, '..', 'queue-lock.sh'), 'status', doc], QL_TIMEOUT)
+    if res is None or res[0] != 11:
+        return None, 'the queue lock on %s is not held (status rc %s)' % (doc, res[0] if res else 'timeout')
+    owner = None
+    for l in res[1].splitlines():
+        if l.startswith('{'):
+            try:
+                owner = json.loads(l)
+            except ValueError:
+                pass  # swallow-ok: an unparsable owner is no proof of a holder; owner stays None and the grant is refused
+            break
+    if not isinstance(owner, dict) or not owner.get('session'):
+        return None, 'the queue lock on %s names no owner' % doc
+    if owner.get('host') != socket.gethostname():
+        return None, 'the queue lock on %s is held on another host (%s)' % (doc, owner.get('host'))
+    try:
+        time.strptime(str(owner.get('heartbeat')), '%Y-%m-%dT%H:%M:%SZ')
+    except ValueError:
+        # queue-lock.sh reads an unparsable heartbeat as FRESH so it never steals a lock; a grant cannot lean on that
+        return None, 'the queue lock on %s has an unparsable heartbeat' % doc
+    lk = lock_dir_for(doc, owner['session'])
+    holder = ''
+    try:
+        with open(os.path.join(lk, 'liveness')) as f:
+            for l in f:
+                if l.startswith('transcript='):
+                    holder = os.path.basename(l[len('transcript='):].strip())
+                    holder = holder[:-len('.jsonl')] if holder.endswith('.jsonl') else ''
+    except (OSError, TypeError):
+        pass  # swallow-ok: no liveness marker names no holder session; holder stays '' and the grant is refused
+    if not holder:
+        return None, 'the queue lock on %s names no holder Claude session (no liveness marker)' % doc
+    # ponytail: the liveness marker and ~/.claude/sessions/<pid>.json are files of this user, so a same-user process can
+    # forge either; this binds a session that uses the kit's own paths, upgrade path: the lock records the holder claude pid
+    if holder != caller_session():
+        return None, 'the queue lock on %s is held by Claude session %s, which is not this caller' % (doc, holder)
+    return clean(owner['session']), ''
+
+
+def operator_confirm(p):
+    """The operator route: a human at a terminal types the path back. ('ok' | 'no-tty' | 'mismatch', session)."""
+    # ponytail: a terminal plus a typed-back path proves a human only as far as an agent cannot fake a pty with the Claude
+    # Code markers unset; the barrier is a coordination guard and a trust-path PR still needs a trust judge, upgrade path: a TOTP-confirmed operator approval
+    marked = any(k == 'CLAUDECODE' or k.startswith('CLAUDE_CODE_') for k in os.environ)  # the marker set of chokepoint-seam-guard.sh
+    if marked or not (sys.stdin.isatty() and sys.stderr.isatty()):
+        return 'no-tty', ''
+    sys.stderr.write('holds: grant a hold on %s. To confirm you are the operator, type the path back: ' % p)
+    sys.stderr.flush()
+    typed = sys.stdin.readline().strip()
+    try:
+        tty = os.ttyname(0)
+    except OSError:
+        tty = 'tty'
+    return ('ok' if typed == p else 'mismatch'), clean('%s@%s:%s' % (os.environ.get('USER', '?'), socket.gethostname(), tty))
+
+
 def op_grant(a):
     if worker_session():
         sys.stderr.write('holds: grant is refused for a worker session (HIMMEL_CONSOLE_LEG is set); only the chief grants\n')
@@ -921,17 +1043,53 @@ def op_grant(a):
         sys.stderr.write('holds: cannot read the trust paths; a grant cannot be checked against them\n')
         return 2
     slug, rel = escape(repo), canon(p, repo)  # the grant is written on rel, so rel is what the trust test must see too
-    if any(GRANT_PATH_REFUSED_RE.search(x) or any(r.search(x) for r in trust) for x in (p, rel)):
-        sys.stderr.write('holds: %s is a settings, CI-workflow or trust path; only the operator can grant it\n' % p)
-        return 1
+    route = grant_route(p, rel, trust)
+    own_doc = os.environ.get('HIMMEL_CONSOLE_DOC') or ''
+    chief_doc = a.chief_doc or own_doc
+    grantor, session = 'unchecked', ''  # a path off every list: any non-worker caller grants it, as before
+    if route == 'chief' and chief_doc:
+        # a chief session launched by headed-arm.sh names its own doc in HIMMEL_CONSOLE_DOC; chief_session binds the rest
+        if own_doc and os.path.abspath(own_doc) != os.path.abspath(chief_doc):
+            sys.stderr.write('holds: --chief-doc %s is not this chief session\'s own doc (HIMMEL_CONSOLE_DOC=%s); no grant\n' % (chief_doc, own_doc))
+            return 1
+        session, why = chief_session(os.path.abspath(chief_doc))
+        if session is None:
+            sys.stderr.write('holds: %s is a trust path; the chief grant is refused: %s\n' % (p, why))
+            return 1
+        grantor = 'chief'
+    elif route != 'any':
+        st, session = operator_confirm(p)
+        if st != 'ok':
+            line = 'python3 -I %s grant --key %s --repo %s' % (os.path.abspath(__file__), a.key, a.repo)
+            if route == 'chief':
+                sys.stderr.write('holds: %s is a trust path. The chief stamps it from its own session, naming its own doc (its '
+                                 'queue lock held on this host): %s --chief-doc CHIEF_DOC %s . The operator grants it only in a real '
+                                 'terminal, not a ! line in a Claude window: %s %s . From a Claude window, the operator asks the '
+                                 'chief, who stamps the grant.\n' % (p, line, p, line, p))
+            else:
+                sys.stderr.write('holds: %s is a settings or CI-workflow path; only the operator grants it, and only in a real '
+                                 'terminal, not a ! line in a Claude window (the chief cannot stamp it): %s %s\n' % (p, line, p))
+            if st == 'mismatch':
+                sys.stderr.write('holds: the path typed back did not match; no grant\n')
+            return 1
+        grantor = 'operator'
     d = slug_dir(repo, slug)
     try:
         os.makedirs(d, exist_ok=True)
-        publish(d, '%s.grant.%s' % (escape(rel), a.key), 'granted\t%s\n' % now_iso())
+        publish(d, '%s.grant.%s' % (escape(rel), a.key), 'granted\t%s\t%s\t%s\n' % (now_iso(), grantor, session))
     except OSError as e:
         sys.stderr.write('holds: cannot write the grant: %s\n' % (e.strerror or e))
         return 2
-    log_event('grant', rel, a.key, '')
+    log_event('grant', rel, a.key, 'grantor=%s session=%s' % (grantor, session))
+    return 0
+
+
+def op_grant_route(a):
+    repo = primary_of(a.repo)
+    trust = load_trust()
+    if trust is None or not literal_repo_path(a.path, repo):
+        return 2
+    print(grant_route(a.path, canon(a.path, repo), trust))
     return 0
 
 
@@ -1260,8 +1418,12 @@ def build_parser():
     sp = add('backfill', op_backfill, help='seed rows for every manifest worker not WRAPPED')
     sp.add_argument('--manifest', required=True)
     sp.add_argument('--repo', required=True)
-    sp = add('grant', op_grant, help='let a key write a held file (chief only)')
+    sp = add('grant', op_grant, help='let a key write a held file: a trust path needs --chief-doc or the operator at a terminal')
     sp.add_argument('--key', required=True)
+    sp.add_argument('--repo', required=True)
+    sp.add_argument('--chief-doc', help='the chief\'s own doc, its queue lock held on this host (default: $HIMMEL_CONSOLE_DOC)')
+    sp.add_argument('path', metavar='PATH')
+    sp = add('grant-route', op_grant_route, help='who may grant a path: operator, chief or any')
     sp.add_argument('--repo', required=True)
     sp.add_argument('path', metavar='PATH')
     sp = add('off', op_off, help='write the sentinel that folds the barrier (chief only)')

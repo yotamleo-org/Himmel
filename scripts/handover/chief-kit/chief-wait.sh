@@ -109,6 +109,16 @@
 #                               chief reads the diff and rules; GO stays go.sh. Seams (tests):
 #                               CHIEF_WAIT_READY_CHECK, CHIEF_WAIT_CI (prints the CI word),
 #                               CHIEF_WAIT_DISPOSITION.
+#   WAKE silent-go              with --doc and --workers-from: silent-go-merge.sh found a GO'd
+#   <SILENT-WORKER-... line>... READY PR whose worker has been silent past
+#                               CHIEF_WAIT_WORKER_SILENT_MIN (default 45) since its doc or GO
+#                               was last written, and either merged it through
+#                               merge-on-green.sh --go or says why not. It alerts the operator
+#                               and writes a chief-doc bullet for each; once per (worker, PR,
+#                               head, outcome), the keys in <inbox>.wait.silentgo. A merge is
+#                               bounded by CHIEF_SILENT_GO_TIMEOUT (default 900 s) and
+#                               ready-check by 90 s; the heartbeat says sampling meanwhile.
+#                               Seam: CHIEF_WAIT_SILENT_GO.
 #   WAKE succession complete <k/n>   with --succession <successor> --doc <chief doc>
 #   <tracker output>            (the successor's waiter): every inherited worker quoted
 #                               back; the block carries succession-tracker.sh's table
@@ -1484,6 +1494,16 @@ $(jq -r "$JQ_W"'W[]? | [.label, .doc] | @tsv' "$legs_from")
 EOF
     return 1
 }
+# silent_go_wake: with --doc and --workers-from, silent-go-merge.sh merges a GO'd READY PR
+# whose worker went silent past CHIEF_WAIT_WORKER_SILENT_MIN (or alerts why not), once per
+# (worker, PR, head, outcome); its lines follow `WAKE silent-go`. Seam: CHIEF_WAIT_SILENT_GO.
+silent_go_wake() {
+    local out
+    [ -n "$legs_from" ] && [ -n "$console_doc" ] || return 1
+    heartbeat sampling
+    out="$(bash "${CHIEF_WAIT_SILENT_GO:-$HERE/silent-go-merge.sh}" --doc "$console_doc" --workers-from "$legs_from" --state "$inbox.wait.silentgo" </dev/null 2>/dev/null 9>&-)" || return 1  # swallow-ok: a failed run reads as no wake; the helper alerts on its own outcomes
+    printf 'WAKE silent-go\n%s\n' "$out"
+}
 # ready_ci <pr> <head>: GREEN, RED or PENDING from one bounded, non-blocking read; a failed read is PENDING.
 ready_ci() {
     local b
@@ -1740,6 +1760,7 @@ while :; do
             if resolve_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-resolve'; exit 0; fi
             # a READY is checked before it wakes; a repeat of a woken head folds into the baseline
             if ready_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-ready'; exit 0; fi
+            if silent_go_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-silent-go'; exit 0; fi
             if [ -n "$ready_fold" ] && [ -n "$saved" ]; then
                 ready_new="$(ready_fold_key "$saved" "$key" "$ready_fold")"
                 [ "$ready_new" = "$saved" ] || { saved="$ready_new"; save_key "$saved"; }

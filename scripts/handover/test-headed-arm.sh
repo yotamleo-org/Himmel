@@ -2793,6 +2793,19 @@ dh1c="$tmp/h1c"; mk_stub "$dh1c" 1 alive "HIMMEL-9511-N1-b3"
 h1cout="$(hlaunch "$dh1c" HIMMEL-9511-N1-b3 "$HB3" N1 "$RSP" 2>&1)"
 contains "grant-quote the printed grant command quotes a repo path with a space" "$h1cout" "holds.py grant --key HIMMEL-9511 --repo $(printf '%q' "$RSP") scripts/h1.sh"
 
+# the grant line follows holds.py grant-route: a trust path names the chief's --chief-doc, a settings path the operator's terminal
+hp claim --key HIMMEL-9513 --label N1 --doc "$(hdoc HIMMEL-9513-N1-t.md '# t')" --repo "$REPO" scripts/check-ci.sh .claude/settings.json >/dev/null 2>&1
+HT="$(hdoc HIMMEL-9514-N1-t2.md '# t2' '> **Writes:** scripts/check-ci.sh' '## Results (newest at the bottom)')"
+dht="$tmp/ht"; mk_stub "$dht" 1 alive "HIMMEL-9514-N1-t2"
+htout="$(HIMMEL_CONSOLE_DOC="$HH/u/r/chief.md" hlaunch "$dht" HIMMEL-9514-N1-t2 "$HT" N1 2>&1)"
+contains "route-a a held trust path: the chief stamps it with its own doc" "$htout" "holds.py grant --key HIMMEL-9514 --repo $REPO --chief-doc $HH/u/r/chief.md scripts/check-ci.sh"
+contains "route-b ... and a ! line is no operator terminal" "$htout" "not a ! line in a Claude window"
+HS="$(hdoc HIMMEL-9515-N1-s.md '# s' '> **Writes:** .claude/settings.json' '## Results (newest at the bottom)')"
+dhs="$tmp/hs"; mk_stub "$dhs" 1 alive "HIMMEL-9515-N1-s"
+hsout="$(hlaunch "$dhs" HIMMEL-9515-N1-s "$HS" N1 2>&1)"
+contains "route-c a held settings path: only the operator grants it" "$hsout" "only the operator grants it, in a real terminal"
+check "route-d ... and no --chief-doc is offered" "$(printf '%s' "$hsout" | grep -c -e '--chief-doc')" "0"
+
 # WRITE_HOLD_OK is the operator's bypass; a worker's own launch (HIMMEL_CONSOLE_LEG set) must not carry it on
 W4DOC="$(hdoc HIMMEL-9512-N1-w4.md '# w4')"
 w4_lead="$(HIMMEL_CONSOLE_LEG='' WRITE_HOLD_OK=1 bash "$HERE/chief-kit/headed-arm-worker.sh" --dry-run --no-profile --no-prior-art-check HIMMEL-9512-N1-w4 "$W4DOC" /tmp/nosig 99999999999 "$tmp/w4.log" claude-sonnet-5 2>&1)"
