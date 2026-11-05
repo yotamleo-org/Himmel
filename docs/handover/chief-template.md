@@ -247,10 +247,12 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
    Never re-run it (it resends). It carries no fresh token: native and claudex
    workers are not rotated; `--fresh` hands one. Then send the successor
    `RELAYED <n> of <m>` naming any still unrelayed.
-5. **Wait for the successor's `LIVE` before you release your lock and stop**: it is
+5. **Then end your turn: no waiter re-arm, no reads, no tick.** Your waiter is
+   spent and muted; the successor's `LIVE` is a message that wakes you. It is
    the only confirmation that ACTION ZERO completed, and it names any workers that
-   did not quote back, and why. Relay any worker it names as not relayed, then
-   wrap with **one** command, which writes `WRAPPED` and releases the lock:
+   did not quote back, and why. On it, relay any worker it names as not relayed,
+   then wrap with **one** command, which writes `WRAPPED` and releases the lock,
+   and stop (never release before the `LIVE`):
    `bash scripts/handover/chief/chief.sh wrap "{{STATE_DIR}}/{{SESSION_NAME}}.md" <release-token> '<one line>'`.
    It refuses (exit 4) while any subagent of yours is
    running: wait, persist the verdict with `write-verdict.sh`, re-run.

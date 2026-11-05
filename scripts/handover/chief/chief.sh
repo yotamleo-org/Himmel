@@ -2456,6 +2456,9 @@ cmd_next() {
         fi
     fi
 
+    # The whole tail of the outgoing chief, said once and last.
+    echo "after-next: relay (WAKE relay-on-live, else relay-batch.sh once), send RELAYED, then end your turn with no re-arm and no reads; on the successor's LIVE run chief.sh wrap and stop"
+
     if [ "$ARM" -eq 1 ]; then
         do_arm "$session" "$doc" "$fill_signal" "$log"
     fi

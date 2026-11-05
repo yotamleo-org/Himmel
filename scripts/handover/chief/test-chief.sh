@@ -366,8 +366,13 @@ token6a="$(token_of "$out6a")"
 printf '%s\n' '# worker' '## Results' '- 10:00 READY 5 aaaa GREEN' '- 10:05 WRAPPED — done' > "$root/tester/nextrepo/DEMO-1-N9-wrapped.md"
 printf '%s\n' '# worker' '## Results' '- 10:00 READY 77 bbbb GREEN' '- 10:05 WRAPPED — done' > "$root/tester/nextrepo/DEMO-2-N8-closed.md"
 printf '{"legs":[{"label":"N9","doc":"%s"},{"label":"N8","doc":"%s"}]}\n' "$root/tester/nextrepo/DEMO-1-N9-wrapped.md" "$root/tester/nextrepo/DEMO-2-N8-closed.md" > "$root/tester/nextrepo/DEMO-nextleg-${today}A-chief.fleet.json"
-chief next --bucket nextrepo >/dev/null
+out6next="$(chief next --bucket nextrepo)"
 check "6 next writes successor stub" "$([ -f "$doc6B" ] && echo yes)" "yes"
+# The outgoing chief is told, once, what its tail is: relay, wait for LIVE with no waiter, wrap, stop.
+check "6 next tells the outgoing chief to relay, take no re-arm and no reads, wrap on LIVE and stop" \
+    "$(printf '%s\n' "$out6next" | grep -c '^after-next: .*no re-arm.*no reads.*chief.sh wrap.*stop')" "1"
+check "6 next still arms the relay and the handover mode (control)" \
+    "$(printf '%s\n' "$out6next" | grep -c '^\(relay-on-live\|handover-mode\): ')" "2"
 check "6 Telegram metadata records the successor bucket" "$(grep -c '"bucket":' "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}B-chief.md.meta.json" 2>/dev/null || true)" "1"
 check "6 next writes predecessor HANDOFF" "$([ -f "$handoff6A" ] && echo yes)" "yes"
 check "6 successor stub names the predecessor" "$(grep -c "DEMO-nextleg-${today}A-chief.md" "$doc6B")" "1"

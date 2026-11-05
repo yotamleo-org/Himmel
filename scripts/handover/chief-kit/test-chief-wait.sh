@@ -242,6 +242,22 @@ sleep 3
 check "(hs) a stale handover marker does not suppress ticks" "yes" "$([ -e "$WORK/hs.ticked" ] && echo yes || echo no)"
 kill "$WPID" 2>/dev/null
 
+# --- (hr) the outgoing chief's relay-on-live wake carries its whole tail ---
+# Lock status and relay-batch are stubbed (lock rc 11 = the successor's lock is held fresh).
+reset_stub
+printf '#!/usr/bin/env bash\nexit 11\n' > "$STUB/hr-lock.sh"
+printf '#!/usr/bin/env bash\necho "SENDMESSAGE to=N1 :: relay"\necho "RELAYED 1 of 1"\n' > "$STUB/hr-relay.sh"
+HRD="$WORK/hr-chief.md"; : > "$HRD"
+I="$(new_inbox hr)"
+printf 'S2\n%s\n' "$WORK/hr-succ.md" > "$I.relay-on-live"
+touch "$I.handover"
+CHIEF_WAIT_LOCK_STATUS="$STUB/hr-lock.sh" CHIEF_WAIT_RELAY="$STUB/hr-relay.sh" CHIEF_WAIT_SUCCESSION_SEC=1 start "$I" "$WORK/hr.out" --doc "$HRD" --workers "N1.md"
+wait_exit "$WPID"
+check "(hr) the relay wake still names the successor" "WAKE relay-on-live successor=S2" "$(head -n1 "$WORK/hr.out")"
+check "(hr) control: the relay line is sent and RELAYED stays the last line" "RELAYED 1 of 1" "$(tail -n1 "$WORK/hr.out")"
+check "(hr) control: the wake is printed once" "1" "$(grep -c '^WAKE ' "$WORK/hr.out")"
+check "(hr) the block's second line says: no re-arm, no reads, wrap on LIVE, stop" "1" "$(sed -n 2p "$WORK/hr.out" | grep -c '^AFTER RELAYED: .*no re-arm.*no reads.*LIVE.*chief.sh wrap.*stop')"
+
 # --- (hso) the retired name CONSOLE_WAIT_TICK never names the tick command --- # old-term-ok
 reset_stub
 I="$(new_inbox hso)"
