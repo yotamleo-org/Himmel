@@ -315,8 +315,8 @@ test("9.the fleet landing lists 3 live sessions and 1 wrapped one, and a row ope
   await expect(worker.locator(".fleet-lineage .fleet-graph")).toHaveText(`operator › ${shortName(FLEET.console.name)} › ${shortName(FLEET.worker.name)}`);
   await expect(live.nth(0).locator(".fleet-graph")).toHaveText(`operator › ${shortName(FLEET.console.name)}`);
   await expect(live.nth(0).locator(".fleet-succession")).toHaveText(`succeeds ${shortName(PRIOR_CHIEF)} (not live)`);
-  await expect(worker.locator(".fleet-context")).toHaveText("context 20% of 200.0k");
-  await expect(worker.locator(".fleet-usage")).toHaveText("context 20% of 200.0k (autocompact) · 3 calls · in 30 · out 300 · cache read 120.0k · cache write 0 · cost-eq 13.5k");
+  await expect(worker.locator(".fleet-context")).toHaveText("context 4% of 1.0M");
+  await expect(worker.locator(".fleet-usage")).toHaveText("context 4% of 1.0M (model window) · 3 calls · in 30 · out 300 · cache read 120.0k · cache write 0 · cost-eq 13.5k");
   await expect(worker.locator(".fleet-agent")).toHaveCount(1);
   await expect(card(page, FLEET.idle.name).locator(".fleet-usage")).toHaveText(/not measured/);
   await worker.locator(".fleet-rel").click();
@@ -669,5 +669,5 @@ test("18. a claudex worker's cost-eq reads not priced", async ({ page }) => {
   });
   await page.goto(h.url);
   await expand(page, FLEET.worker.name);
-  await expect(card(page, FLEET.worker.name).locator(".fleet-usage")).toHaveText("context 20% of 200.0k (autocompact) · 3 calls · in 30 · out 300 · cache read 120.0k · cache write 0 · cost-eq not priced");
+  await expect(card(page, FLEET.worker.name).locator(".fleet-usage")).toHaveText("context 4% of 1.0M (model window) · 3 calls · in 30 · out 300 · cache read 120.0k · cache write 0 · cost-eq not priced");
 });

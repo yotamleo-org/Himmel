@@ -135,19 +135,28 @@ function tallyOf(lines: string[]): Tally | null {
   return t.calls ? t : null;
 }
 
-// The ceiling is the window the launch declared (claude-codex's CLAUDE_CODE_MAX_CONTEXT_TOKENS, which a
-// claudex session honours over --autocompact); else the session's numeric --autocompact; else a Claude model's window.
-// A non-Claude model nobody declared a window for, or a fill past 100 % (so the ceiling is wrong), is not measured.
+// The fill is context-fill.sh's: the newest main-thread turn's input + cache read + cache create (its last_assistant_input_tokens,
+// scripts/context-fill.sh:270-286, subagent calls left out) over the model's window (the HUD's context_window_size, :439), as
+// p = t * 100 / w (:309); this keeps one decimal where the script prints an integer.
+// The ceiling is the model's real window, the one context-fill.sh divides by: the
+// window the launch declared (claude-codex's CLAUDE_CODE_MAX_CONTEXT_TOKENS, which a claudex session honours), else a
+// Claude model's own window. --autocompact only moves where a session compacts, never its window (a plain launch
+// with --autocompact 200000 still reports 1M), so it is the ceiling only for a non-Claude model nobody declared a
+// window for; with none of these, or a fill past 100 % (the ceiling is wrong), the fill is not measured.
+// ponytail: the window comes from the model name (1M for [1m], Fable, the opus, sonnet and haiku aliases, any Claude 5 or later and a session with no --model, else 200k), upgrade path: read the HUD snapshot's context_window_size.
+// A session with no --model gets the station default's 1M: lane-calibration.md "What a plain launch reports" measured the window as 1M everywhere on this station.
 const num = (s: string | undefined) => (s && /^\d+$/.test(s) ? Number(s) : 0);
+const windowOf = (model: string) =>
+  model === "" || /\[1m\]$/i.test(model) || /fable|^(?:opus|sonnet|haiku)$/i.test(model) || Number(/(?:opus|sonnet|haiku)-(\d+)/i.exec(model)?.[1]) >= 5 ? WINDOW_1M : WINDOW;
 function finish(t: Tally | null, c: { autocompact: string; model: string; window?: string; priced?: boolean }): Usage | null {
   if (!t) return null;
   const declared = num(c.window), ac = num(c.autocompact);
   const claude = /claude|opus|sonnet|haiku|fable/i.test(c.model) || c.model === "";
-  const ceiling = declared || ac || (/\[1m\]$/i.test(c.model) ? WINDOW_1M : WINDOW);
+  const ceiling = declared || (claude ? windowOf(c.model) : ac || WINDOW);
   const fill = t.resident === null || (!declared && !ac && !claude) ? null : Math.round((t.resident / ceiling) * 1000) / 10;
   return {
     ...t, costEq: c.priced === false ? null : Math.round(t.input * W.input + t.cacheRead * W.cacheRead + t.cacheCreate * W.cacheCreate + t.output * W.output),
-    ceiling, ceilingFrom: !declared && ac ? "autocompact" : "window",
+    ceiling, ceilingFrom: !declared && !claude ? "autocompact" : "window",
     fill: fill !== null && fill > 100 ? null : fill,
   };
 }

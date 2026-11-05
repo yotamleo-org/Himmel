@@ -251,6 +251,7 @@ test("J7. cancel runs nothing, and ticket-ID required is off-limits while the tr
 
 test("J8. a handover-root change shows its dry-run first and only confirm runs it", async ({ page }) => {
   await open(page, undefined, "scope");
+  await page.locator('details[data-cat="folders"] > summary').click(); // the scope tile folds into categories; only the first is open
   await page.locator('input[data-path="handover-root"]').fill("/srv/state/handovers");
   await page.locator('[data-path-form][data-target="handover-root"] button[type="submit"]').click();
   const plan = page.locator("#main .plan");
@@ -263,6 +264,7 @@ test("J8. a handover-root change shows its dry-run first and only confirm runs i
 
 test("J8. a refused path shows the reason and runs nothing", async ({ page }) => {
   await open(page, undefined, "scope");
+  await page.locator('details[data-cat="folders"] > summary').click(); // the scope tile folds into categories; only the first is open
   await page.locator('input[data-path="luna-vault"]').fill("../vault");
   await page.locator('[data-path-form][data-target="luna-vault"] button[type="submit"]').click();
   await expect(page.locator("#main .plan")).toContainText("absolute path");

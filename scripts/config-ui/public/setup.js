@@ -1,8 +1,8 @@
 // The Setup page: which secrets are set (presence only, never a value), a form to set or remove one, the commit rules, and the Verify step.
 // A value lives in the password field until the request is sent and the field is cleared at once: it is never kept in
 // page state, localStorage or the markup, and the server answers with the name and the new status only.
-import { copyCommand, esc, pg, planHtml, renderFleetCap, renderReports, renderReviewGate, renderSettingsGroups, renderVm } from "./render.js";
-import { TILES } from "./nav.js";
+import { category, copyCommand, esc, pg, planHtml, renderFleetCap, renderReports, renderReviewGate, renderSettingsGroups, renderVm } from "./render.js";
+import { TILES, docsHref } from "./nav.js";
 
 const STATUS = { set: "set", "not-set": "not set", placeholder: "placeholder", probe: "checked in the terminal" };
 const TRACKERS = [["jira", "Jira"], ["local", "Local"], ["none", "None"]];
@@ -72,15 +72,19 @@ function commitRules(c, plans) {
 }
 
 const PATH_LABEL = { "handover-root": "Handover root", "luna-vault": "luna vault path" };
+const PATH_WHY = { "handover-root": "The folder where himmel keeps the notes that let one session pick up from another.", "luna-vault": "The folder of your luna note vault." };
 
 // Where handover state and the luna vault live, each change a dry run first; the forge is shown as detected; the
 // remaining choices are the Settings page's toggles, linked here rather than repeated.
-function pathRows(c, plans) {
+// plain: the Configure scope tile's look, one sentence and no key name or default path.
+function pathRows(c, plans, plain = false) {
   return c.paths.map((p) => {
     const k = `setup|${p.target}`;
     const shown = (plans[k] && plans[k].req && plans[k].req.value) || p.value || "";
+    const det = plain ? (p.value ? "takes effect on the next Claude launch" : "not set yet · himmel uses its default folder")
+      : p.value ? `${esc(p.key)} · takes effect on the next Claude launch` : `not set · default: ${esc(p.fallback)}`;
     return `<div class="srow"><span class="id">${esc(PATH_LABEL[p.target] || p.target)}</span>
-      <span class="det">${p.value ? `${esc(p.key)} · takes effect on the next Claude launch` : `not set · default: ${esc(p.fallback)}`}</span>
+      <span class="det">${det}</span>${plain ? `<p class="why">${esc(PATH_WHY[p.target] || "")}</p>` : ""}
       <form class="sform" data-path-form data-target="${esc(p.target)}" autocomplete="off">
         <input type="text" data-path="${esc(p.target)}" value="${esc(shown)}" spellcheck="false" placeholder="/absolute/path" aria-label="${esc(PATH_LABEL[p.target] || p.target)}">
         <button class="btn" type="submit">preview</button></form></div>
@@ -88,8 +92,16 @@ function pathRows(c, plans) {
   }).join("");
 }
 
-function forgeRow(c) {
+// plain: the Configure scope tile's look. The source code host is where the repository lives, GitHub or Bitbucket; the
+// Bitbucket credentials are secrets, so they are entered in the Secrets tab and this row only points there.
+function forgeRow(c, plain = false) {
   const f = c.forge || {};
+  if (plain) {
+    return `<div class="srow"><span class="id">Source code host</span>
+    <span class="det">${f.error ? esc(f.error) : `detected: ${esc(f.value)}`}</span>
+    <p class="why">Where your repository lives: GitHub or Bitbucket. Bitbucket sign-in details are entered in the <a href="#/config?tile=secrets">Secrets tab</a>, like every other secret.</p>
+    <span class="ro">Read-only here; <a class="learn" href="${docsHref("/configuration/")}" target="_blank" rel="noopener">learn how to change it</a>.</span></div>`;
+  }
   return `<div class="srow"><span class="id">Forge</span>
     <span class="det">${f.error ? esc(f.error) : `detected: ${esc(f.value)}`}</span>
     <span class="ro">set <code>FORGE</code> or Git's <code>himmel.forge</code> setting in the terminal</span></div>`;
@@ -140,6 +152,9 @@ function verifyStep(v) {
 const TILE_NAME = { secrets: "Secrets", review: "Review", tracker: "Tracker", scope: "Project scope" };
 const TILE_ICON = { secrets: "⚿", review: "✓", tracker: "#", scope: "▶" };
 const isJira = (s) => s.name.startsWith("JIRA_");
+// With the tracker on Local or None no Jira connection is needed, so its rows go; one that still holds a value stays so it can be removed.
+const jiraShown = (setup, s) => (setup.commit.tracker !== "local" && setup.commit.tracker !== "none") || s.status === "set";
+const savedHere = (setup) => setup.secrets.filter((s) => s.collect === "file" && (!isJira(s) || jiraShown(setup, s)));
 const TRACKER_NAME = Object.fromEntries(TRACKERS);
 const REVIEWER_NAME = { codex: "GPT", claude: "Claude", coderabbit: "CodeRabbit" };
 
@@ -147,7 +162,7 @@ const REVIEWER_NAME = { codex: "GPT", claude: "Claude", coderabbit: "CodeRabbit"
 function tileValue(id, { setup, state }) {
   const ok = setup && !setup.error;
   if (id === "secrets") {
-    const own = ok ? setup.secrets.filter((s) => s.collect === "file" && !isJira(s)) : [];
+    const own = ok ? savedHere(setup) : [];
     const login = ok && setup.account ? (setup.account.status === "set" ? " · login set" : " · no login yet") : "";
     return ok ? `${own.filter((s) => s.status === "set").length} of ${own.length} set${login}` : "";
   }
@@ -192,11 +207,14 @@ const setupFailed = (setup) => (setup ? `<div class="nodata" role="alert">${esc(
 function secretsPanel({ setup, msgs }) {
   if (!setup || setup.error) return setupFailed(setup);
   const own = setup.secrets.filter((s) => !isJira(s));
+  const jira = setup.secrets.filter((s) => isJira(s) && jiraShown(setup, s)).sort((a, b) => JIRA_ORDER.indexOf(a.name) - JIRA_ORDER.indexOf(b.name));
   return `<p class="sub">A secret you save here goes to this machine over a loopback connection, bound to this launch's token; it is never shown again. This page shows only whether each secret is set, never its value. With no browser available, ${copyCommand("himmelctl install")} asks for secrets in the terminal instead.</p>
     ${account(setup.account, msgs.account, true)}
     ${own.filter((s) => s.collect === "file").sort((a, b) => (a.required !== "required") - (b.required !== "required")).map((s) => secretRow(s, msgs[s.name], true)).join("")}
+    ${jira.length ? `<h3>Jira · where tickets live</h3>${jira.map((s) => secretRow(s, msgs[s.name], true)).join("")}
+      <p class="sub">Shown while the tracker is Jira; a value already saved stays listed so you can remove it. The tracker itself is chosen in the <a href="#/config?tile=tracker">Tracker tile</a>.</p>` : ""}
     <div class="srow"><span class="id">Set in the terminal <span class="tag">read-only</span></span><span class="det">These are collected by their feature's own setup card, so the page shows only whether each is set.</span><span class="chips">${own.filter((s) => s.collect !== "file").map((s) => `<span class="ro" title="${esc(s.feature)}">${esc(s.name)} · ${esc(STATUS[s.status] || s.status)}</span>`).join(" ")}</span></div>
-    <p class="foot"><b>Saved to</b> the store each secret names · takes effect the next time the feature reads it · <b>Jira values:</b> now in the <a href="#/config?tile=tracker">Tracker tile</a></p>`;
+    <p class="foot"><b>Saved to</b> the store each secret names · takes effect the next time the feature reads it</p>`;
 }
 
 // CodeRabbit is reviewer 1's install state, so it sits with the reviewers rather than in a step of its own.
@@ -216,33 +234,36 @@ function reviewPanel({ setup, feed, state }) {
 function trackerPanel({ setup, state, msgs }) {
   if (!setup || setup.error) return setupFailed(setup);
   const c = setup.commit, plans = state.plans || {};
-  const connected = c.tracker !== "local" && c.tracker !== "none";
-  const connection = setup.secrets.filter(isJira).filter((s) => connected || s.status === "set").sort((a, b) => JIRA_ORDER.indexOf(a.name) - JIRA_ORDER.indexOf(b.name)).map((s) => secretRow(s, msgs[s.name], true)).join("");
   const open = [TK, RK, MK].filter((k) => plans[k]);
   return `<p class="sub">Where your tickets live, and what every commit must carry. Each change shows a dry run before it writes.</p>
     <div class="cols">
-    <div class="col"><h3>Connection · where tickets live</h3>${trackerRow(c)}${connection}
-      <p class="sub">Hidden when the tracker is Local or None, because those need no connection; a value already saved stays listed so you can remove it. A save here uses the same writer as Secrets.</p></div>
+    <div class="col"><h3>Connection · where tickets live</h3>${trackerRow(c)}
+      <p class="sub">Jira's site, email, API token and project key are entered in the <a href="#/config?tile=secrets">Secrets tab</a>, like every other secret.</p></div>
     <div class="col"><h3>Commit rules · what a commit carries</h3>${ticketRow(c, true)}
       <div class="srow"><span class="id">Ticket pattern <span class="tag">read-only</span></span><span class="det">From <code>JIRA_PROJECT_KEY</code>; your own <code>TICKET_ID_PATTERN</code> in <code>~/.himmel/himmel.conf</code> wins. Typed in the terminal.</span></div>
       <h3>Board · who edits this Jira project</h3>
       <div class="srow"><span class="id">Team mode</span><span class="det">Off: only you and himmel edit this project, so a real drift on the Board is a himmel bug and the doctor WARNs. On: several people edit Jira, so a drift is ordinary tidy-up and the doctor only reports it.</span>
         <span>${ON_OFF.map(([v, l]) => choice(l, "config.tracker", "team-mode", v, c.teamMode, MK)).join(" ")}</span></div></div></div>
     ${open.length ? `<div class="dryrun">${open.map((k) => planHtml(k, plans[k])).join("")}</div>` : ""}
-    <p class="foot"><b>Saved to</b> <code>~/.himmel/himmel.conf</code> (tracker, rule, Team mode) and the himmel <code>.env</code> (the four Jira values) after a dry run you confirm · takes effect on your next commit; Team mode on the next Board read and doctor run</p>`;
+    <p class="foot"><b>Saved to</b> <code>~/.himmel/himmel.conf</code> (tracker, rule, Team mode) after a dry run you confirm · takes effect on your next commit; Team mode on the next Board read and doctor run</p>`;
 }
 
 function scopePanel({ setup, feed, state }) {
   const plans = state.plans || {};
-  const group = (ids, fold) => (feed ? renderSettingsGroups(feed, state, ids, fold) : loading("the station report"));
+  const group = (ids, fold) => (feed ? renderSettingsGroups(feed, state, ids, fold, true) : loading("the station report"));
   const choices = setup && setup.choices;
-  const paths = !setup || setup.error ? setupFailed(setup)
-    : choices ? `<div class="setgroup"><h3>Paths</h3><p class="sub">Each path is written to <code>~/.himmel/himmel.conf</code> by the path config writer after a dry run you confirm. A path is absolute, with no <code>.</code> or <code>..</code> part, quote, <code>#</code>, <code>$</code> or backslash.</p>${pathRows(choices, plans)}${forgeRow(choices)}</div>` : "";
+  const unread = !setup || setup.error;
+  // Five categories, the first open; each opens and closes on its own and keeps that for the session (render.js category()).
+  const host = unread ? setupFailed(setup) : choices ? `<div class="setgroup">${forgeRow(choices, true)}</div>` : "";
+  const folders = unread ? setupFailed(setup)
+    : choices ? `<div class="setgroup"><p class="sub">Each folder change shows a dry run you confirm before it writes. A folder is an absolute path, with no <code>.</code> or <code>..</code> part, quote, <code>#</code>, <code>$</code> or backslash.</p>${pathRows(choices, plans, true)}</div>` : "";
   return `<p class="sub">What himmel does on its own in this install, which plugins and jobs it runs, and where its state lives. Each switch shows a dry run before it writes.</p>
-    ${group(["auto-ship"])}${group(["plugins"], 3)}${group(["scheduled-jobs"])}${paths}
-    <div class="setgroup"><h3>This machine</h3>${renderFleetCap(state.fleetCap)}${renderVm(state.vm)}${renderReports(state.reports)}</div>
-    ${group(["install-answers"])}
-    <p class="foot"><b>Saved to</b> the himmel <code>.env</code> (auto-ship, fleet cap), <code>~/.himmel/himmel.conf</code> (paths), <code>~/.himmel/config.json</code> (VM, reports and shifts), your crontab (jobs), the plugins' user-scope state · each change takes effect as its row says</p>`;
+    ${category("automation", "Automation: auto-ship, plugins and scheduled jobs", `${group(["auto-ship"])}${group(["plugins"], 3)}${group(["scheduled-jobs"])}`, true)}
+    ${category("source-host", "Source code host: GitHub or Bitbucket", host)}
+    ${category("folders", "Folders: handover notes and the luna vault", folders)}
+    ${category("machine", "This machine: worker limit, VM mode and reports", `<div class="setgroup">${renderFleetCap(state.fleetCap, true)}${renderVm(state.vm, true)}${renderReports(state.reports, true)}</div>`)}
+    ${category("answers", "Saved answers", group(["install-answers"]))}
+    <p class="foot">Each change takes effect as its row says; a switch shows a dry run before it writes.</p>`;
 }
 
 const PANELS = { secrets: secretsPanel, review: reviewPanel, tracker: trackerPanel, scope: scopePanel };

@@ -1451,6 +1451,8 @@ STATUS_luna_template="not-attempted"; DETAIL_luna_template=""
 # it has no fixed row: print_status_table adds one only when sync_graphify set
 # STATUS_graphify — today only for the uv-missing skip.
 STATUS_graphify="";                   DETAIL_graphify=""
+# The graph-data fetch (sync_graph) is advisory too: its row prints once it ran.
+STATUS_graph="";                      DETAIL_graph=""
 # The .env migration is not a chain item either: its row prints only when the
 # step ran and found a .env.
 STATUS_env_migration="";              DETAIL_env_migration=""
@@ -1978,6 +1980,9 @@ EOF
     if [ -n "$STATUS_graphify" ]; then
         printf '    %-14s %-14s %s\n' "graphify" "$STATUS_graphify" "$DETAIL_graphify"
     fi
+    if [ -n "$STATUS_graph" ]; then
+        printf '    %-14s %-14s %s\n' "graph" "$STATUS_graph" "$DETAIL_graph"
+    fi
     if [ -n "$STATUS_env_migration" ]; then
         printf '    %-14s %-14s %s\n' "env_migration" "$STATUS_env_migration" "$DETAIL_env_migration"
     fi
@@ -2397,6 +2402,124 @@ sync_graphify() {
     # (which the operator is told to do in several places) re-adds the stock,
     # unpriced entries; this recurring sweep heals that.
     graphify_price_hooks
+    return 0
+}
+
+# sync_graph [apply|check] — install the published himmel graph from the
+# graph-data branch so this station skips its own
+# paid semantic pass. Best-effort like sync_graphify: every outcome returns 0
+# and a station that cannot use the branch stays AST-only and says why.
+# Installs only when graph-data's built_at_commit is an ancestor of HEAD and at
+# most GRAPH_MAX_BEHIND commits behind it, and the fetched bytes pass the same
+# host-path check the publisher ran. A stale, foreign, missing or tampered graph
+# leaves graphify-out/ untouched. check fetches nothing: it reads the branch tip
+# with ls-remote and says what apply would fetch.
+GRAPH_MAX_BEHIND=150
+sync_graph() {
+    local mode="${1:-apply}" remote="${HIMMEL_UPDATE_GRAPH_REMOTE:-origin}"
+    local max="${HIMMEL_UPDATE_GRAPH_MAX_BEHIND:-$GRAPH_MAX_BEHIND}"
+    local out="$ROOT/graphify-out" cfg="$HOME/.himmel/config.json"
+    local host_re='(/Users/|[A-Za-z]:\\Users\\|[A-Za-z]:/Users/|\\Users\\|/home/[^/]+/|(^|[/\\])AppData([/\\]|$)|/tmp/claude-[0-9]+/|/var/folders/)'
+    local ls_out ls_rc=0 fetched bac gbac behind short stage="" lock f snap seeded
+    local -a snap_paths
+    echo "==> graph-data fetch (the published himmel graph)"
+    case "$max" in ''|*[!0-9]*) max=$GRAPH_MAX_BEHIND ;; esac
+    _graph_ast_only() {
+        [ -z "$stage" ] || rm -rf "$stage"
+        echo "    $1 — staying AST-only, graphify-out/ untouched"
+        STATUS_graph="skipped"; DETAIL_graph="AST-only: $1"
+    }
+    # The publishing station builds its own semantic graph: never overwrite it.
+    if [ -f "$cfg" ] && [ ! -L "$cfg" ] && command -v jq >/dev/null 2>&1 \
+        && jq -e '.graphify.semantic_api_ok == true' "$cfg" >/dev/null 2>&1; then
+        echo "    skip: this station runs its own semantic pass (graphify.semantic_api_ok in $cfg)"
+        STATUS_graph="skipped"; DETAIL_graph="this station builds its own semantic graph"
+        return 0
+    fi
+    ls_out=$(git -C "$ROOT" ls-remote --exit-code "$remote" refs/heads/graph-data 2>/dev/null) || ls_rc=$?
+    case "$ls_rc" in
+        0) ;;
+        2) _graph_ast_only "no graph-data branch on $remote"; return 0 ;;
+        *) _graph_ast_only "could not reach $remote (ls-remote exit $ls_rc)"; return 0 ;;
+    esac
+    if [ "$mode" = "check" ]; then
+        echo "    would fetch graph-data ${ls_out%%[[:space:]]*} from $remote and install it if it was built at most $max commits behind HEAD, on an ancestor"
+        STATUS_graph="skipped"; DETAIL_graph="check: graph-data ${ls_out:0:12} available, nothing fetched"
+        return 0
+    fi
+    git -C "$ROOT" fetch --quiet --no-tags "$remote" refs/heads/graph-data 2>/dev/null \
+        || { _graph_ast_only "git fetch $remote graph-data failed"; return 0; }
+    # The sha ls-remote named, not FETCH_HEAD: a branch moved since gives no commit here.
+    fetched="${ls_out%%[[:space:]]*}"
+    git -C "$ROOT" rev-parse --verify --quiet "$fetched^{commit}" >/dev/null \
+        || { _graph_ast_only "the fetched graph-data is not a commit"; return 0; }
+    bac=$(git -C "$ROOT" show "$fetched:built_at_commit" 2>/dev/null | head -n 1) || bac=""
+    [[ "$bac" =~ ^[0-9a-fA-F]{7,40}$ ]] || { _graph_ast_only "graph-data has no valid built_at_commit"; return 0; }
+    short="${bac:0:12}"
+    git -C "$ROOT" merge-base --is-ancestor "$bac" HEAD 2>/dev/null \
+        || { _graph_ast_only "the graph was built at $short, which is not an ancestor of HEAD"; return 0; }
+    behind=$(git -C "$ROOT" rev-list --count "$bac..HEAD" 2>/dev/null) || behind=""
+    case "$behind" in ''|*[!0-9]*) _graph_ast_only "could not count the commits since $short"; return 0 ;; esac
+    [ "$behind" -le "$max" ] || { _graph_ast_only "the graph was built at $short, $behind commits behind HEAD (limit $max)"; return 0; }
+    mkdir -p "$out" || { _graph_ast_only "could not create $out"; return 0; }
+    # prim-ok: the staging dir must sit inside graphify-out/ so each install step is a same-filesystem rename
+    stage=$(mktemp -d "$out/.graph-fetch.XXXXXX") || { _graph_ast_only "could not create a staging dir in $out"; return 0; }
+    for f in graph.json GRAPH_REPORT.md manifest.json; do
+        git -C "$ROOT" show "$fetched:$f" > "$stage/$f" 2>/dev/null \
+            || { _graph_ast_only "graph-data has no $f"; return 0; }
+        if grep -Eq -- "$host_re" "$stage/$f"; then
+            _graph_ast_only "the fetched $f holds a host path (rule host-path)"; return 0
+        fi
+    done
+    gbac=$(bash "$ROOT/scripts/graphify/check-graph-freshness.sh" --out "$stage" --print-built-at 2>/dev/null) || gbac=""
+    [ "$gbac" = "$bac" ] || { _graph_ast_only "the fetched graph.json was not built at the commit graph-data names"; return 0; }
+    printf '%s\n' "$bac" > "$stage/.graphify_published" || { _graph_ast_only "could not write the install marker"; return 0; }
+    # The promote lock the AST and semantic passes share: never write under them.
+    lock="$out/.promote.lock"
+    # prim-ok: the lock must be the mkdir directory ast-update.sh and semantic-update.sh take; with_lock's flock record would not exclude them
+    if ! mkdir "$lock" 2>/dev/null; then
+        _graph_ast_only "another graph refresh holds $lock; the next update retries"; return 0
+    fi
+    printf '%s\n' "himmel-update-$$" > "$lock/owner" 2>/dev/null || true
+    # The shared lock protocol needs the acquired stamp: without it a waiter cannot age the lock.
+    if ! date -u +%s > "$lock/acquired" 2>/dev/null; then
+        rm -rf "$lock"
+        _graph_ast_only "could not stamp $lock"; return 0
+    fi
+    # One rename per file, manifest.json (the transaction-complete marker) and
+    # the install marker last.
+    for f in graph.json GRAPH_REPORT.md manifest.json .graphify_published; do
+        if ! mv -f "$stage/$f" "$out/$f"; then
+            rm -rf "$lock"
+            _graph_ast_only "could not install $f (graphify-out/ may be partly updated; the next update retries)"; return 0
+        fi
+    done
+    rm -rf "$lock" "$stage"; stage=""
+    # Stamp the corpus as it stood at the build commit as the semantic baseline
+    # (model-free): the installed graph covers those bytes, and a doc changed
+    # since then stays owed to the next semantic-update.sh run. The snapshot sits
+    # outside the checkout: inside it, git ls-files would see an empty corpus.
+    snap_paths=('*.md')
+    for f in .graphifyignore .graphify-corpus-ignore; do
+        if git -C "$ROOT" cat-file -e "$bac:$f" 2>/dev/null; then snap_paths+=("$f"); fi
+    done
+    seeded=0
+    # prim-ok: the himmel-update suites run a copy of this script in a clone with no prim.sh
+    if snap=$(mktemp -d "${TMPDIR:-/tmp}/himmel-graph-seed.XXXXXX"); then
+        if git -C "$ROOT" archive --format=tar "$bac" -- "${snap_paths[@]}" 2>/dev/null | tar -x -C "$snap" 2>/dev/null \
+            && GRAPHIFY_OUT="$out" bash "$ROOT/scripts/graphify/semantic-update.sh" --name himmel --corpus-root "$snap" \
+                --corpus-class himmel-code --seed-manifest >/dev/null 2>&1; then
+            seeded=1
+        fi
+        rm -rf "$snap"
+    fi
+    if [ "$seeded" -eq 1 ]; then
+        echo "    installed the graph built at $short ($behind commits behind HEAD); the local semantic pass is skipped"
+        STATUS_graph="updated"; DETAIL_graph="installed graph built at $short, $behind behind; semantic pass skipped"
+    else
+        echo "    installed the graph built at $short, but could not mark the semantic pass skipped (semantic-update.sh --seed-manifest failed)" >&2
+        STATUS_graph="updated"; DETAIL_graph="installed graph built at $short; semantic pass NOT marked skipped"
+    fi
     return 0
 }
 
@@ -3399,7 +3522,7 @@ Modes:
                       marked; read-only. Exit 0 all current, 1 any behind,
                       3 none behind but some could not be determined
   --only <item>       run ONE step: pull marketplace jira_cli qmd_fork hermes
-                      luna_template graphify cli_proxy marketplaces toolchain tools
+                      luna_template graphify graph cli_proxy marketplaces toolchain tools
                       drift drift-check (installer-drift pass; -check is read-only)
                       plugin-refresh (reinstall a same-version plugin cache that
                       differs from the checkout; exit 1 if a reinstall fails)
@@ -3532,7 +3655,7 @@ fi
 if [ "${1:-}" = "--only" ]; then
     only_item="${2:-}"
     if [ -z "$only_item" ]; then
-        echo "update --only: needs an item — one of: pull marketplace jira_cli qmd_fork hermes luna_template graphify cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration" >&2
+        echo "update --only: needs an item — one of: pull marketplace jira_cli qmd_fork hermes luna_template graphify graph cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration" >&2
         exit 2
     fi
     branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
@@ -3562,6 +3685,7 @@ if [ "${1:-}" = "--only" ]; then
         # exit code, so a failed roll propagates here even though the advisory
         # block still swallows it.
         graphify)      sync_graphify ;;
+        graph)         sync_graph apply ;;
         cli_proxy)     sync_cli_proxy || only_rc=1 ;;
         marketplaces)  sync_marketplaces ;;
         toolchain)     report_toolchain apply ;;
@@ -3576,7 +3700,7 @@ if [ "${1:-}" = "--only" ]; then
         drift-check)   report_drift check ;;
         env_migration) run_env_migration apply || only_rc=1 ;;
         *)
-            echo "update --only: unknown item '$only_item' — one of: pull marketplace jira_cli qmd_fork hermes luna_template graphify cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration" >&2
+            echo "update --only: unknown item '$only_item' — one of: pull marketplace jira_cli qmd_fork hermes luna_template graphify graph cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration" >&2
             exit 2 ;;
     esac
     report_qmd_daemon_restart
@@ -3659,6 +3783,7 @@ if [ "${1:-}" = "--check" ] || [ "${1:-}" = "--dry-run" ]; then
     # claude CLI, so --check stays the zero-mutation dry-run it promises to be.
     sync_cli_proxy check || true
     sync_marketplaces check || true
+    sync_graph check || true
     install_missing_himmel_plugins check || true
     update_installed_plugins check || true
     refresh_drifted_plugin_caches check || true
@@ -3862,6 +3987,7 @@ sync_agent_clis apply || true
 rewire_statusline
 wire_self_heartbeat
 sync_graphify
+sync_graph apply || true
 # `|| true`: a failed cli-proxy roll must never abort a himmel update. The
 # function now returns non-zero so `--only cli_proxy` can report it (above);
 # here the advisory contract still applies.

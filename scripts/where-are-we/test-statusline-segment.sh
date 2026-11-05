@@ -222,7 +222,9 @@ hangnode="$TMP/hangnode.sh"
 printf '%s\n' '#!/usr/bin/env bash' 'exec sleep 30' > "$hangnode"; chmod +x "$hangnode"
 if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; then
     start="$(date +%s)"
-    o="$(HIMMEL_WHERE_ARE_WE=1 HANDOVER_DIR="$HROOT" HIMMEL_WHERE_ARE_WE_ROLLUP_DIR="$ROLLDIR_COLD" \
+    # A fresh cache dir: an earlier case's slice for this ledger would otherwise be a hit.
+    ROLLDIR_HANG="$TMP/roll-hang"; mkdir -p "$ROLLDIR_HANG"
+    o="$(HIMMEL_WHERE_ARE_WE=1 HANDOVER_DIR="$HROOT" HIMMEL_WHERE_ARE_WE_ROLLUP_DIR="$ROLLDIR_HANG" \
          HIMMEL_WHERE_ARE_WE_ROLLUP_CMD="true" HIMMEL_WHERE_ARE_WE_NODE_BIN="$hangnode" \
          HIMMEL_WHERE_ARE_WE_NODE_TIMEOUT=1 \
          bash "$SUT" --branch feat/HIMMEL-538-x --ledger "$LEDGER_INPROG" </dev/null 2>/dev/null)"
@@ -280,6 +282,88 @@ if [ -n "$exp_key" ]; then
     fi
 else
     pass "stdin .cwd + git branch detection -> SKIPPED (branch '$wt_branch' has no ticket key)"
+fi
+
+# --- Cases 18-21: the ledger-slice cache -------------------------------------
+# A stub node that counts its calls then runs the real node, so a cache hit is
+# observable as "no new call". The cache key is the ledger path + size + mtime.
+REALNODE="$(command -v node 2>/dev/null || true)"
+COUNTER="$TMP/node-calls"
+COUNTNODE="$TMP/countnode.sh"
+printf '%s\n' '#!/usr/bin/env bash' "echo x >> \"$COUNTER\"" "exec \"$REALNODE\" \"\$@\"" > "$COUNTNODE"; chmod +x "$COUNTNODE"
+calls() { if [ -f "$COUNTER" ]; then wc -l < "$COUNTER" | tr -d ' '; else echo 0; fi; }
+crun() { HIMMEL_WHERE_ARE_WE=1 HANDOVER_DIR="$HROOT" HIMMEL_WHERE_ARE_WE_ROLLUP_DIR="$1" \
+         HIMMEL_WHERE_ARE_WE_NODE_BIN="$COUNTNODE" \
+         bash "$SUT" --branch feat/HIMMEL-538-x --ledger "$2" </dev/null 2>/dev/null; }
+
+if [ -n "$REALNODE" ] && { command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; }; then
+    # 18: an unchanged ledger is sliced once; the second render starts no node.
+    CDIR="$TMP/slice-cache"; mkdir -p "$CDIR"
+    CLEDGER="$TMP/ledger-cache.jsonl"; cp "$LEDGER_INPROG" "$CLEDGER"
+    rm -f "$COUNTER"
+    o1="$(crun "$CDIR" "$CLEDGER")"; n1="$(calls)"
+    o2="$(crun "$CDIR" "$CLEDGER")"; n2="$(calls)"
+    if [ "$n1" = 1 ] && [ "$n2" = 1 ] && [ "$o1" = "$o2" ] && grepq "$o2" -F 'in-progress'; then
+        pass "unchanged ledger -> node started once across two renders, same output"
+    else
+        fail "unchanged ledger -> calls after 1st=$n1 after 2nd=$n2 o1='$o1' o2='$o2'"
+    fi
+
+    # 19: an appended entry changes size+mtime, so the cache misses and the new entry shows.
+    printf '%s\n' '{"ts":"2026-01-02T00:00:00Z","source":"jira","key":"HIMMEL-538","kind":"ticket","status":"in-review"}' >> "$CLEDGER"
+    o3="$(crun "$CDIR" "$CLEDGER")"; n3="$(calls)"
+    if [ "$n3" = 2 ] && grepq "$o3" -F 'in-review' && ! grepq "$o3" -F 'in-progress'; then
+        pass "appended entry -> cache miss, output shows the new status"
+    else
+        fail "appended entry -> calls=$n3 out='$o3'"
+    fi
+
+    # 20: a corrupt cache entry is a miss, never an error; the entry is rewritten.
+    printf '%s\n' 'garbage with no header' > "$CDIR/where-are-we-slice-HIMMEL-538.txt"
+    rm -f "$COUNTER"
+    o4="$(crun "$CDIR" "$CLEDGER")"; rc4=$?; n4="$(calls)"
+    o5="$(crun "$CDIR" "$CLEDGER")"; n5="$(calls)"
+    if [ "$rc4" -eq 0 ] && [ "$n4" = 1 ] && [ "$n5" = 1 ] && grepq "$o4" -F 'in-review' && [ "$o4" = "$o5" ]; then
+        pass "corrupt cache entry -> miss, render works, entry repaired"
+    else
+        fail "corrupt cache entry -> rc=$rc4 calls=$n4/$n5 o4='$o4' o5='$o5'"
+    fi
+
+    # 21: a symlinked cache entry is never trusted, even with a matching header,
+    # and the symlink target is never written through.
+    SDIR="$TMP/slice-link"; mkdir -p "$SDIR"
+    SLEDGER="$TMP/ledger-link.jsonl"; cp "$LEDGER_INPROG" "$SLEDGER"
+    ssz="$(stat -c %s "$SLEDGER" 2>/dev/null || stat -f %z "$SLEDGER")"
+    smt="$(stat -c %Y "$SLEDGER" 2>/dev/null || stat -f %m "$SLEDGER")"
+    sino="$(stat -c %i "$SLEDGER" 2>/dev/null || stat -f %i "$SLEDGER")"
+    printf '%s\n%s\n' "$SLEDGER|$ssz $smt $sino" '- status: FORGED' > "$TMP/forged-target"
+    ln -s "$TMP/forged-target" "$SDIR/where-are-we-slice-HIMMEL-538.txt"
+    before="$(cat "$TMP/forged-target")"
+    rm -f "$COUNTER"
+    o6="$(crun "$SDIR" "$SLEDGER")"; n6="$(calls)"
+    if grepq "$o6" -F 'in-progress' && ! grepq "$o6" -F 'FORGED' && [ "$n6" = 1 ] && [ "$(cat "$TMP/forged-target")" = "$before" ]; then
+        pass "symlinked cache entry -> not trusted, target untouched"
+    else
+        fail "symlinked cache entry -> calls=$n6 out='$o6'"
+    fi
+
+    # 22: a replacement with the same size and mtime but a new inode (a compaction)
+    # is a miss.
+    RDIR="$TMP/slice-replace"; mkdir -p "$RDIR"
+    RLEDGER="$TMP/ledger-replace.jsonl"; cp "$LEDGER_INPROG" "$RLEDGER"
+    rm -f "$COUNTER"
+    o7="$(crun "$RDIR" "$RLEDGER")"
+    sed 's/in-progress/on-progress/' "$RLEDGER" > "$RLEDGER.new"
+    touch -r "$RLEDGER" "$RLEDGER.new"
+    mv "$RLEDGER.new" "$RLEDGER"
+    o8="$(crun "$RDIR" "$RLEDGER")"; n8="$(calls)"
+    if grepq "$o7" -F 'in-progress' && grepq "$o8" -F 'on-progress' && [ "$n8" = 2 ]; then
+        pass "same size and mtime, new inode -> cache miss, new content shown"
+    else
+        fail "same size and mtime, new inode -> calls=$n8 o7='$o7' o8='$o8'"
+    fi
+else
+    pass "ledger-slice cache cases -> SKIPPED (no node or no timeout/gtimeout on this host)"
 fi
 
 echo "---"
