@@ -1366,7 +1366,7 @@ const mapLabels = (html: string) => [...html.matchAll(/<span class="mr">(?:<butt
 
 test("the tab row is the mockup's plain text row with the active tab bold and underlined", () => {
   const css = readFileSync(resolve(import.meta.dir, "../public/app.css"), "utf8");
-  const block = css.slice(css.indexOf("/* HIMMEL-8681"));
+  const block = css.slice(css.indexOf("/* Tool health shape (mockup v9)"));
   expect(block).toMatch(/\.tabs \.tab\{[^}]*font-size:\.85rem/);
   expect(block).toMatch(/\.tabs \.tab\[aria-selected="true"\]\{[^}]*font-weight:700[^}]*text-decoration:underline/);
 });
@@ -1420,7 +1420,7 @@ test("the Tool map has every kind as a column, an All column and row, sort heade
   const desc = mapLabels(await page(data, { tab: "map", sorts: { map: { col: 0, desc: true } } }, { inventory: SHAPE_INV }));
   expect(desc).toEqual([...labels].sort((a, b) => b.localeCompare(a)));
   const css = readFileSync(resolve(import.meta.dir, "../public/app.css"), "utf8");
-  expect(css.slice(css.indexOf("/* HIMMEL-8681"))).toMatch(/\.thcards\{display:none\}/);
+  expect(css.slice(css.indexOf("/* Tool health shape (mockup v9)"))).toMatch(/\.thcards\{display:none\}/);
 });
 
 test("the guard drill-in shows the This week cards: Refused, rate over eligible attempts, Busiest day, Days with none", async () => {
