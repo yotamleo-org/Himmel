@@ -391,7 +391,24 @@ eq "run: no stub refusal" "$(grep -c 'STUB:' "$TMP"/run1/*.err 2>/dev/null | awk
 eq "run: the tier set reaches the panel" "$(cat "$TMP/stublog/tiers" 2>/dev/null)" "paid"
 eq "run: triviality override on, known-findings off" "$(cat "$TMP/stublog/env" 2>/dev/null)" "full 0"
 cj="$(cat "$TMP/stublog/critics_json" 2>/dev/null)"
-eq "run: CRITICS_JSON pins the swept tree's critics.json" "$([ -n "$cj" ] && cmp -s "$cj" "$HERE/../../cr/critics.json" && echo same)" "same"
+slugs() { python3 -c 'import json,sys; print(",".join(r["slug"] for r in json.load(open(sys.argv[1]))["panel"]))' "$1" 2>&1; }
+codexrow() { python3 -c 'import json,sys; print([r for r in json.load(open(sys.argv[1]))["panel"] if r["slug"]=="codex"])' "$1" 2>&1; }
+# --critics cuts the roster the panel runs, not just the report.
+eq "run: --critics codex hands the panel a roster of codex only" "$(slugs "$cj")" "codex"
+# A27 control: the roster is the swept tree's own critics.json row, not a local overlay.
+eq "run: the roster row is the swept tree's critics.json row" "$(codexrow "$cj")" "$(codexrow "$HERE/../../cr/critics.json")"
+# A sweep that would reach a claude-api critic with no opt-in refuses before any case.
+: > "$TMP/stublog/tiers"
+STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
+  bash "$RUN" --out "$TMP/run-nopt" --no-ledger >"$TMP/run-nopt.txt" 2>&1; rc=$?
+eq "run: a default sweep (claude-api in the tier) refuses" "$rc" "2"
+has "run: the refusal names the claude critic and the flag" "$(cat "$TMP/run-nopt.txt")" "--allow-claude-api"
+eq "run: no panel call on a refused claude sweep" "$(cat "$TMP/stublog/tiers")" ""
+# Control: with the opt-in both critics run.
+STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
+  bash "$RUN" --out "$TMP/run-opt" --no-ledger --allow-claude-api --only case-01 >/dev/null 2>&1; rc=$?
+eq "run: --allow-claude-api lets the sweep run" "$rc" "0"
+eq "run: --allow-claude-api hands the panel codex and claude" "$(slugs "$TMP/run-opt/critics.run.json")" "codex,claude"
 eq "run: one ledger row" "$(grep -c . "$TMP/run-ledger.jsonl" 2>/dev/null)" "1"
 eq "run: --model reaches the row" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["model"])' "$TMP/run-ledger.jsonl")" "stub-critic"
 eq "run: an empty review scores recall 0" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["metrics"]["codex.recall"])' "$TMP/run-ledger.jsonl")" "0.0"
@@ -488,11 +505,11 @@ EOF
 printf '__pycache__/\n' > "$RR/.gitignore"
 rr() { git -C "$RR" -c user.name=t -c user.email=t@example.invalid -c core.hooksPath=/dev/null -c commit.gpgsign=false "$@"; }
 git init -q "$RR" && rr add -A && rr commit -q -m base
-REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$RR/scripts/eval/review-panel/run.sh" --out "$TMP/run-rr1" --no-ledger >/dev/null 2>&1; rc=$?
+REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$RR/scripts/eval/review-panel/run.sh" --out "$TMP/run-rr1" --no-ledger --critics codex >/dev/null 2>&1; rc=$?
 eq "run: a sweep of a clean tree through its own panel exits 0" "$rc" "0"
 eq "run: every panel call read its case's diff on stdin and exited 0" "$(cat "$TMP/run-rr1/"case-*.rc | sort -u | tr '\n' ' ')" "0 "
 eq "run: a sweep of a clean tree through its own panel is stamped clean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run-rr1/swept.json" 2>&1)" "True"
-STUB_DIRTY=1 REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$RR/scripts/eval/review-panel/run.sh" --out "$TMP/run-rr2" --no-ledger >/dev/null 2>&1
+STUB_DIRTY=1 REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$RR/scripts/eval/review-panel/run.sh" --out "$TMP/run-rr2" --no-ledger --critics codex >/dev/null 2>&1
 eq "run: a CBS file edited during the sweep leaves the stamp unclean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run-rr2/swept.json" 2>&1)" "False"
 
 # --- the merge gate: cbs.txt, cbs-hash, export-row, verify-row, gate -------------------------
