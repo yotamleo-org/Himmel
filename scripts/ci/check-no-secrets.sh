@@ -4,8 +4,9 @@
 #
 # Greps .github/workflows/ (or $1) for ${{ secrets.* }} patterns.
 # If any match is found, prints the offending lines and exits 1.
-# One line is allowed: `SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}` in the file named
-# snyk-weekly.yml (the scheduled Snyk scan). Every other match still fails.
+# Two lines are allowed: `SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}` in the file named
+# snyk-weekly.yml (the scheduled Snyk scan) and `SOCKET_DEV_API_KEY: ${{ secrets.SOCKET_DEV_API_KEY }}`
+# in socket-scan.yml (the Socket dependency scan). Every other match still fails.
 # If the scan directory does not exist, exits 0 (nothing to leak).
 #
 # Usage:
@@ -31,23 +32,32 @@ matches=$(grep -rnE '\$\{\{[^}]*secrets\.' \
   --include='*.yml' --include='*.yaml' \
   "$scan" 2>/dev/null || true)
 
-# The one allowed interpolation: the SNYK_TOKEN line of snyk-weekly.yml. Any other
-# secret in that file, or that line in any other file, still fails.
-allowed_file='snyk-weekly.yml'
+# The allowed interpolations, one line text per file: the SNYK_TOKEN line of snyk-weekly.yml
+# and the SOCKET_DEV_API_KEY line of socket-scan.yml. Any other secret in those files, or
+# either line in any other file, still fails.
 # shellcheck disable=SC2016  # single quotes intentional: a literal interpolation
-allowed_text='SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}'
+allowed=(
+  'snyk-weekly.yml|SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}'
+  'socket-scan.yml|SOCKET_DEV_API_KEY: ${{ secrets.SOCKET_DEV_API_KEY }}'
+)
 kept=""
 while IFS= read -r m; do
   [ -n "$m" ] || continue
-  case "$m" in
-    "${scan%/}/$allowed_file:"*)
-      rest="${m#"${scan%/}/$allowed_file:"}"
-      if [[ "$rest" =~ ^[0-9]+:[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]] \
-        && [ "${BASH_REMATCH[1]}" = "$allowed_text" ]; then
-        continue
-      fi
-      ;;
-  esac
+  ok=0
+  for pair in "${allowed[@]}"; do
+    allowed_file="${pair%%|*}"
+    allowed_text="${pair#*|}"
+    case "$m" in
+      "${scan%/}/$allowed_file:"*)
+        rest="${m#"${scan%/}/$allowed_file:"}"
+        if [[ "$rest" =~ ^[0-9]+:[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]] \
+          && [ "${BASH_REMATCH[1]}" = "$allowed_text" ]; then
+          ok=1
+        fi
+        ;;
+    esac
+  done
+  [ "$ok" -eq 1 ] && continue
   kept+="$m"$'\n'
 done <<< "$matches"
 matches="${kept%$'\n'}"

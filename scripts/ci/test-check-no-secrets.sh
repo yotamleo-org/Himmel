@@ -131,6 +131,45 @@ rc=$?
 if [ "$rc" -eq 1 ]; then pass "subdir/snyk-weekly.yml -> exit 1"; else fail "subdir/snyk-weekly.yml -> expected 1 got $rc"; fi
 rm -rf "$dir_h"
 
+# Cases I-K: the second allowed interpolation. socket-scan.yml may carry exactly the
+# SOCKET_DEV_API_KEY line; any other secret there, or that line elsewhere, fails.
+REAL_SOCKET="$(cd "$(dirname "$0")/../.." && pwd)/.github/workflows/socket-scan.yml"
+socket_line="      SOCKET_DEV_API_KEY: ${piece1}secrets.SOCKET_DEV_API_KEY }}"
+
+echo "== Case I: the real socket-scan.yml =="
+dir_i=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+cp "$REAL_SOCKET" "$dir_i/socket-scan.yml"
+bash "$GUARD" "$dir_i" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 0 ]; then pass "socket-scan.yml SOCKET_DEV_API_KEY lines -> exit 0"; else fail "socket-scan.yml SOCKET_DEV_API_KEY lines -> expected 0 got $rc"; fi
+rm -rf "$dir_i"
+
+echo "== Case J: the same line in another workflow =="
+dir_j=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+printf 'name: X\non: [push]\njobs:\n  j:\n    runs-on: ubuntu-latest\n    env:\n%s\n' "$socket_line" > "$dir_j/other.yml"
+bash "$GUARD" "$dir_j" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then pass "SOCKET_DEV_API_KEY line in other.yml -> exit 1"; else fail "SOCKET_DEV_API_KEY line in other.yml -> expected 1 got $rc"; fi
+rm -rf "$dir_j"
+
+echo "== Case K: another secret in socket-scan.yml =="
+dir_k=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+cp "$REAL_SOCKET" "$dir_k/socket-scan.yml"
+printf '      OTHER: %ssecrets.OTHER }}\n' "$piece1" >> "$dir_k/socket-scan.yml"
+bash "$GUARD" "$dir_k" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then pass "second secret in socket-scan.yml -> exit 1"; else fail "second secret in socket-scan.yml -> expected 1 got $rc"; fi
+rm -rf "$dir_k"
+
+echo "== Case L: the snyk line in socket-scan.yml =="
+dir_l=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+cp "$REAL_SOCKET" "$dir_l/socket-scan.yml"
+printf '%s\n' "$allowed_line" >> "$dir_l/socket-scan.yml"
+bash "$GUARD" "$dir_l" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then pass "SNYK_TOKEN line in socket-scan.yml -> exit 1"; else fail "SNYK_TOKEN line in socket-scan.yml -> expected 1 got $rc"; fi
+rm -rf "$dir_l"
+
 # Final tally
 if [ "$failures" -eq 0 ]; then
   echo "OK: all cases passed"
