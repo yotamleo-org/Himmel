@@ -10,8 +10,8 @@
 # this script and decide every line; the key pattern lives only in the list's `key` row.
 #   an added line carrying a key, in any text file, is refused unless a rule row covers
 #   it; in a test file a key is data except on a comment line and in four citation shapes
-#   an added whole-line comment in a code file (.sh .bash .zsh .ps1 .psm1 .py .js .mjs .cjs
-#   .ts .tsx .mts .cts) that is a review-fix note, a bot-review round, "round <n>" or a
+#   an added whole-line comment in a code file (the extensions are is_code() in
+#   ticket-refs.awk) that is a review-fix note, a bot-review round, "round <n>" or a
 #   judge qid (j + 4 digits + letter) is refused; docs and YAML are not judged for these
 # Binary files (index blob `-text`) are skipped; the diff keeps --text so a .gitattributes
 # `-diff` entry cannot hide an added text line. history-ok and ticket-ok markers do not exist.
@@ -65,8 +65,8 @@ case "$mode" in
     staged) base=HEAD
             # during a merge, only lines our side adds relative to the merged-in parent are new
             git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1 && base=MERGE_HEAD
-            git diff --cached "$base" -U0 --text --no-color --no-ext-diff --find-renames --diff-filter=ACMR > "$DIFF" || { echo "check-history-comments: git diff failed" >&2; exit 2; } ;;
-    range)  git diff -U0 --text --no-color --no-ext-diff --find-renames --diff-filter=ACMR "$arg" "$tip" > "$DIFF" || { echo "check-history-comments: git diff failed" >&2; exit 2; } ;;
+            git diff --cached "$base" -U0 --text --no-color --no-ext-diff --find-renames --diff-filter=ACMRT > "$DIFF" || { echo "check-history-comments: git diff failed" >&2; exit 2; } ;;
+    range)  git diff -U0 --text --no-color --no-ext-diff --find-renames --diff-filter=ACMRT "$arg" "$tip" > "$DIFF" || { echo "check-history-comments: git diff failed" >&2; exit 2; } ;;
     diff)   cp "$arg" "$DIFF" ;;
 esac
 

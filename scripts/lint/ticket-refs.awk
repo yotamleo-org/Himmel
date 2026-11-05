@@ -175,7 +175,11 @@ BEGIN {
     while ((rc = (getline line < allow)) > 0) {
         if (line ~ /^[ \t]*#/ || line ~ /^[ \t]*$/) continue
         split(line, f, "\t")
-        if (f[1] == "key") { keyre = f[3]; continue }
+        if (f[1] == "key") {
+            if (keyre != "") fatal("the rule list has more than one key row")
+            keyre = f[3]; continue
+        }
+        if (f[1] !~ /^K[1-7]$/ || f[2] == "") fatal("malformed rule row: " line)
         nrow++; rp[nrow] = f[2]; rl[nrow] = f[3]
     }
     if (rc < 0) fatal("cannot read the rule list " allow)

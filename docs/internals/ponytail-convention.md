@@ -98,6 +98,7 @@ Comments that stay (the keep list is poteto's `comment-sicko`, MIT, cursor/plugi
 - doc comments that define a public API contract;
 - issue or RFC links explaining a constraint the code cannot express;
 - lint suppressions, only when the rule is faulty or style-only;
+
 Every other comment goes. A surprise in our own code is a refactor target, not a
 comment. History does not belong in code: ticket IDs, review rounds, "CR fix" notes
 and judge qids live in git and Jira. A `ponytail:` marker is no exception: it names

@@ -30,6 +30,8 @@
 #   33-35. the one-shot tree check on a temp repo, the pre-commit entry, --root on every call
 #   36.   non-key refusals stay on code files
 #   39.   --range with --tip on a branch HEAD is not on
+#   40.   a malformed rule row or a second key row exits 2 (never an exempt-everything row)
+#   41.   a symlink replaced by a regular file is judged
 #
 # Exit: 0 all passed, 1 any failed. bash 3.2-safe.
 
@@ -479,6 +481,37 @@ OUT="$(cd "$TP" && bash "$GATE" --range "$tip_base" --tip b --count-comments 2>&
 if [ "$RC" -eq 0 ] && [ "$OUT" = "1" ]; then pass "--tip b counts the comment added on b"; else fail "--tip count -> rc=$RC out=$OUT"; fi
 OUT="$(cd "$TP" && bash "$GATE" --range "$tip_base" --count-comments 2>&1)"; RC=$?
 if [ "$RC" -eq 0 ] && [ "$OUT" = "0" ]; then pass "default tip is HEAD, which has no new comment"; else fail "default tip count -> rc=$RC out=$OUT"; fi
+
+echo "== 40. a malformed rule row cannot turn the gate off =="
+MR="$T/malformed"; mkdir -p "$MR/scripts/lint"
+cp "$GATE" "$AWKF" "$MR/scripts/lint/"
+mkdiff docs/x.md "+see ${H}-1"
+MRG="$MR/scripts/lint/check-history-comments.sh"
+cp "$LIST" "$MR/scripts/lint/ticket-ref-allow.tsv"
+OUT="$(bash "$MRG" --diff "$T/d.diff" 2>&1)"; RC=$?
+if [ "$RC" -eq 1 ]; then pass "control: the real list refuses a doc key"; else fail "control -> rc=$RC: $OUT"; fi
+{ cat "$LIST"; printf 'K7 docs/ whole file by spaces\n'; } > "$MR/scripts/lint/ticket-ref-allow.tsv"
+OUT="$(bash "$MRG" --diff "$T/d.diff" 2>&1)"; RC=$?
+if [ "$RC" -eq 2 ]; then pass "a space-separated row exits 2"; else fail "space-separated row -> rc=$RC: $OUT"; fi
+{ cat "$LIST"; printf 'K9\tdocs/\t\tunknown kind\n'; } > "$MR/scripts/lint/ticket-ref-allow.tsv"
+OUT="$(bash "$MRG" --diff "$T/d.diff" 2>&1)"; RC=$?
+if [ "$RC" -eq 2 ]; then pass "an unknown kind exits 2"; else fail "unknown kind -> rc=$RC: $OUT"; fi
+{ cat "$LIST"; printf 'key\t\tZZZ-[0-9]+\tsecond key row\n'; } > "$MR/scripts/lint/ticket-ref-allow.tsv"
+OUT="$(bash "$MRG" --diff "$T/d.diff" 2>&1)"; RC=$?
+if [ "$RC" -eq 2 ]; then pass "a second key row exits 2"; else fail "second key row -> rc=$RC: $OUT"; fi
+
+echo "== 41. a symlink replaced by a regular file is judged =="
+SL="$T/symlink"; mkdir -p "$SL/scripts"; git -C "$SL" init -q
+git -C "$SL" config user.email t@t; git -C "$SL" config user.name t
+printf 'echo a\n' > "$SL/scripts/real.sh"
+ln -s real.sh "$SL/scripts/a.sh"
+git -C "$SL" add -A; git -C "$SL" commit -q -m base
+sl_base="$(git -C "$SL" rev-parse HEAD)"
+rm "$SL/scripts/a.sh"
+printf 'echo a\n# why: %s-1 x\n' "$H" > "$SL/scripts/a.sh"
+git -C "$SL" add -A; git -C "$SL" commit -q -m typechange
+OUT="$(cd "$SL" && bash "$GATE" --range "$sl_base" 2>&1)"; RC=$?
+if [ "$RC" -eq 1 ]; then pass "a key in a file that replaced a symlink is refused"; else fail "symlink replaced -> rc=$RC: $OUT"; fi
 
 echo "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]
