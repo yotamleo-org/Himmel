@@ -222,6 +222,19 @@ has "workflow skips with the gh secret set command" "gh secret set SOCKET_DEV_AP
 has "workflow reads the key from the repo secret" "secrets.SOCKET_DEV_API_KEY" "$WF"
 has "workflow runs the gate script" "scripts/security/socket-scan.sh" "$WF"
 hasnt "workflow never puts the key in a with: block" "token: \${{ secrets.SOCKET_DEV_API_KEY" "$WF"
+# --- socket.yml: the GitHub app scans a pull request only when the same files change ------
+SY="$ROOT/socket.yml"
+[ -r "$SY" ] && pass "socket.yml exists at the repo root" || fail "socket.yml exists at the repo root"
+has "socket.yml is version 2" "version: 2" "$SY"
+has "socket.yml sets triggerPaths" "triggerPaths:" "$SY"
+hasnt "socket.yml never falls back to the match-everything trigger" '- "*"' "$SY"
+wf_names="$(sed -n "s/^      - '\*\*\/\(.*\)'\$/\1/p" "$WF")"
+check "the workflow paths filter holds 17 manifest names" 17 "$(printf '%s\n' "$wf_names" | grep -c .)"
+while IFS= read -r n; do
+    [ -n "$n" ] || continue
+    has "socket.yml triggerPaths holds $n, as the workflow filter does" "  - \"$n\"" "$SY"
+done <<< "$wf_names"
+check "socket.yml triggerPaths holds exactly the workflow's names" "$(printf '%s\n' "$wf_names" | grep -c .)" "$(grep -c '^  - "' "$SY")"
 bash "$ROOT/scripts/ci/check-actions-pinned.sh" "$WF" > "$W/pinned.log" 2>&1
 check "every action in the workflow is SHA-pinned" 0 "$?"
 bash "$ROOT/scripts/ci/check-ci-install-locks.sh" "$ROOT" > "$W/locks.log" 2>&1
