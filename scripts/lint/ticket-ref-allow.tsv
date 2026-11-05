@@ -1,0 +1,41 @@
+# Rows: kind <TAB> path-regex <TAB> line-regex (empty = the whole file) <TAB> reason. `#` starts a comment line.
+# `key` is the one row that owns the ticket-key pattern for himmel repo text (word boundaries written out,
+# awk ERE has no \b). Every other row exempts the lines it matches from the key refusal and, when the
+# line-regex is empty, from every refusal of the gate.
+# Kinds: K1 history record, K2 fixture, K3 mirror copy, K4 provenance or generated, K6 data value a program
+# reads, K7 this list. A test file key that is not a comment or a citation is test data and needs no row.
+# CI judges a pull request with the BASE copy of this list, so a new row lands in its own change first.
+key	-	(^|[^A-Za-z0-9])(HIMMEL|LUNA|SALUS)-[0-9]+([^0-9]|$)	the ticket key pattern, with word boundaries written out
+K1	^CHANGELOG\.md$		generated from commit titles
+K1	^templates/luna-second-brain/CHANGELOG\.md$		generated from commit titles
+K1	^docs/release/		a dated release record whose subject is the ticket
+K1	^docs/migration/		a dated migration record whose subject is the ticket
+K1	^archive/		archived history
+K2	(^|/)[^/]*fixtures?/		input a test reads verbatim
+K2	(^|/)testdata/		input a test reads verbatim
+K2	^scripts/lanes/bench/runs/		recorded bench runs a test reads
+K3	(^|/)mirror/		a copy of a ticket, keyed by the ticket
+K4	^THIRD-PARTY-NOTICES\.md$		a provenance record
+K4	(^|/)VENDORED\.md$		a provenance record
+K4	\.md$	[Vv]endored.*pinned	the provenance line of a vendored file
+K4	^graphify-out/		generated output
+K4	(^|/)node_modules/		generated output
+K4	\.obsidian/plugins/		generated output
+K6	^scripts/handover/chief-kit/known-checker-bugs\.tsv$	^[A-Z]+-[0-9]+[[:space:]]	known-bugs-sync.sh and drift-summary.mjs read the key columns of each row
+K6	^scripts/cr/known-findings\.json$	"learning_match":	cr-round-metrics.sh and known-findings.sh match this field as a regex against review learnings
+K6	^scripts/cr/class-recurrence\.sh$	^(BUILTIN_MEMBERS=")?[a-z0-9-]+ [A-Z]+-[0-9]+"?$	the class to epic-member table the script reads
+K6	^scripts/ci/suite-tiers\.tsv$	flow-miss:	test-suite-tiers.sh requires the reason flow-miss: plus a key
+K6	^scripts/testing/documented-commands\.tsv$	xfail:	test-documented-commands.sh reads the xfail: verdict and prints its ticket
+K6	^scripts/eval/bug-origin/line-table\.tsv$	residual:	the residual: class the bug-origin parsers accept; the table is their test input
+K6	^scripts/one-shot/leg-term-allow\.tsv$	legs=\|legset=\|lacks	a K5 row whose regex mirrors a test line that carries a key
+K6	^scripts/himmelctl/tbd-delta\.json$	"ticket":	bin.js loads this map and the wizard prints the ticket
+K6	^docs/guide/dev-graph/graph\.json$	"ticket":	dev-graph.js links each node to its ticket
+K6	^docs/ui\.md$	^\| `[^|]*` \| [a-z ]+ \| 	test-ui-doc-actions.sh requires an owner on each entry-page row
+K6	^docs/setup/operator-profile-tbd-delta\.md$	^\| [0-9]+ \| 	test-wizard-gaps.sh checks each table row against tbd-delta.json
+K6	^scripts/config-ui/agui-web/src/fixture\.json$	"agent":|/ticket"	agui-reducer.test.ts asserts the agent name and the finding ticket this stream carries
+K6	^scripts/eval/lane-quality/tasks/real-[^/]+/task\.json$	"ticket":	lane-quality/run.sh reads the mined task record
+K6	^scripts/eval/routing/cases/open\.jsonl$	"request":	routing/run.sh hashes the case set, so a rewritten request changes the baseline
+K6	^scripts/eval/routing/results/baseline-[a-z]+\.json$	"request":	recorded results keyed to the case set hash
+K6	^scripts/eval/steering-cull/probes\.json$	"prompt":|"must":	the probe prompt and the regex its answer must match
+K6	^scripts/eval/retrieval-eval/questions\.jsonl$	^\{"id":"q[0-9]+"	the question set test-retrieval-eval.sh checks
+K7	^scripts/lint/ticket-ref-allow\.tsv$		this list names the key pattern itself
