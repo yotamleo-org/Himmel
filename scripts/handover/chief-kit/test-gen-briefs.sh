@@ -1124,8 +1124,9 @@ if python3 -I "$RDR" HIMMEL-1 extra >/dev/null 2>&1 </dev/null; then fail "reade
 # ---- the PR size projection (own block) ----
 # A Writes list that expands to more than the hard max of scripts/ci/pr-size-bands.tsv (40 files) is refused with
 # pr_size_gate on, unless the worker carries bulk: mechanical; flag off, or past only the soft max (20), is a warning.
-PS="$WORK/ps"; mkdir -p "$PS/scripts/big" "$PS/scripts/mid" "$PS/scripts/few"
-for n in $(seq 1 41); do echo "$n" > "$PS/scripts/big/f$n.txt"; done
+PS="$WORK/ps"; mkdir -p "$PS/scripts/big" "$PS/scripts/mid" "$PS/scripts/few" "$PS/scripts/hooks" "$PS/scripts/forty" "$PS/src"
+for n in $(seq 1 41); do echo "$n" > "$PS/scripts/big/f$n.txt"; echo "$n" > "$PS/scripts/hooks/guard-$n.sh"; echo "$n" > "$PS/src/m$n.py"; done
+for n in $(seq 1 40); do echo "$n" > "$PS/scripts/forty/f$n.txt"; done
 for n in $(seq 1 25); do echo "$n" > "$PS/scripts/mid/f$n.txt"; done
 for n in 1 2 3; do echo "$n" > "$PS/scripts/few/f$n.txt"; done
 if git init -q "$PS" && git -C "$PS" add -A && git -C "$PS" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m base && PSBASE="$(git -C "$PS" rev-parse HEAD)"; then
@@ -1137,11 +1138,13 @@ fi
 export HIMMEL_CONFIG_DIR="$WORK/no-conf"; unset HIMMEL_FLAG_PR_SIZE_GATE
 ps_workers() { # <name> <dir/> [extra json members]
     cat > "$WORK/ps-$1.json" <<PSEOF
-[{"label":"N921","keys":["HIMMEL-9201"],"slug":"size","branch":"fix/himmel-9201-size","title":"a sized fix","desc":"d","why":"w","prior":"HIMMEL-9000 (the earlier fix). Source: \`git log -3 -- scripts/x\`.","writes":"$2","scope":"\`$2\`","scope_short":"$2","commit":"fix(x): [HIMMEL-9201] f"$3}]
+[{"label":"N921","keys":["HIMMEL-9201"],"slug":"size","branch":"fix/himmel-9201-size","title":"a sized fix","desc":"d","why":"w","prior":"HIMMEL-9000 (the earlier fix). Source: \`git log -3 -- scripts/x\`.","writes":"$2","scope":"\`$2\`","scope_short":"${2:-none}","commit":"fix(x): [HIMMEL-9201] f"$3}]
 PSEOF
 }
 psrun() { python3 "$SUT" "$WORK/ps-$1.json" --base "$PSBASE" --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/ps-bucket-$1${2:-}" --date 2026-10-08 --repo "$PS" --handover-root "$WORK/handovers" --work-dir "$WORK/psw-$1${2:-}" --deadline 1791475000 2>&1; }
 ps_brief() { ls "$WORK/ps-bucket-$1${2:-}"/HIMMEL-9201-*.md 2>/dev/null; }
+ps_workers glob 'scripts/hooks/guard-*.sh' ''; ps_workers mixed 'scripts/few/ src/' ''; ps_workers forty scripts/forty/ ''
+ps_workers absent 'scripts/new/a.sh scripts/new/b.sh' ''; ps_workers nonamed 'none named' ''; ps_workers emptyw '' ''
 ps_workers big scripts/big/ ''; ps_workers bulk scripts/big/ ',"bulk":"mechanical"'; ps_workers mid scripts/mid/ ''; ps_workers few scripts/few/ ''; ps_workers badbulk scripts/few/ ',"bulk":"yes"'
 
 pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun big)"; rc=$?
@@ -1178,7 +1181,43 @@ has "gate off: the unreadable base is a warning" "$pso" "warning: worker N921 Wr
 PSBASE="$PSBASE_GOOD"
 
 pso="$(psrun badbulk)"; rc=$?
-[ "$rc" = 1 ] && has "bulk other than mechanical is refused" "$pso" "bulk" || fail "bulk yes: rc=$rc: $pso"
+[ "$rc" = 1 ] && pass "bulk other than mechanical is refused (rc 1)" || fail "bulk yes: rc=$rc: $pso"
+[ "$rc" != 1 ] || has "the bulk refusal names the bulk key" "$pso" "bulk"
+
+# The projection counts what a Writes list really touches. The one rule: a path names itself, a directory
+# its tracked files, a glob the tracked files it matches at base; a Writes list with no path tracked at base (none named,
+# empty, only new files) cannot be size-checked, so it is reported with the rule, never passed silently.
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun glob)"; rc=$?
+[ "$rc" = 1 ] && pass "pr_size_gate on: a Writes glob over 41 tracked files is refused (rc 1)" || fail "glob of 41 files, gate on: rc=$rc: $pso"
+has "the glob refusal says the Writes expand to 41 files" "$pso" "41 files"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun mixed)"; rc=$?
+[ "$rc" = 1 ] && pass "pr_size_gate on: scripts/few/ plus src/ (44 files) is refused (rc 1)" || fail "mixed roots, gate on: rc=$rc: $pso"
+has "the mixed-root refusal counts both roots" "$pso" "44 files"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun forty)"; rc=$?
+[ "$rc" = 0 ] && pass "pr_size_gate on: a Writes dir of exactly 40 files passes (rc 0)" || fail "exactly 40 files: rc=$rc: $pso"
+lacks "exactly 40 files: no hard-max message" "$pso" "hard max"
+for pw in absent nonamed emptyw; do
+    pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun $pw)"; rc=$?
+    [ "$rc" = 0 ] && pass "pr_size_gate on: $pw Writes list is reported, not refused (rc 0)" || fail "$pw: rc=$rc: $pso"
+    has "$pw: the report names the rule" "$pso" "warning: worker N921 Writes name no file tracked at base"
+done
+
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=maybe psrun big gv)"; rc=$?
+[ "$rc" = 2 ] && pass "an invalid pr_size_gate value exits 2 (configuration error)" || fail "invalid flag value: rc=$rc: $pso"
+lacks "an invalid pr_size_gate value prints no traceback" "$pso" "Traceback"
+has "an invalid pr_size_gate value is named" "$pso" "pr_size_gate"
+pso="$(HIMMEL_FLAGS_TSV="$WORK/no-such-registry.tsv" psrun big gr)"; rc=$?
+[ "$rc" = 2 ] && pass "an unreadable flag registry exits 2 (configuration error)" || fail "unreadable registry: rc=$rc: $pso"
+lacks "an unreadable flag registry prints no traceback" "$pso" "Traceback"
+
+# the adopted-kit fixture holds the flags.py copy, so the size gate is reached there; a kit without it exits 2, not a traceback
+[ -f "$KIT/scripts/lib/flags.py" ] && pass "the adopted-kit fixture holds the flags.py copy" || fail "the adopted-kit fixture has no flags.py copy"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/ps-big.json" --base "$PSBASE" --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/ps-bucket-kit" --date 2026-10-08 --repo "$PS" --handover-root "$WORK/handovers" --work-dir "$WORK/psw-kit" --deadline 1791475000 2>&1)"; rc=$?
+[ "$rc" = 1 ] && has "an adopted kit reaches the size gate and refuses" "$pso" "40-file hard max" || fail "adopted kit, gate on: rc=$rc: $pso"
+KIT2="$WORK/kit2"; cp -r "$KIT" "$KIT2"; rm -f "$KIT2/scripts/lib/flags.py"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 python3 "$KIT2/scripts/handover/chief-kit/gen-briefs.py" "$WORK/ps-big.json" --base "$PSBASE" --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/ps-bucket-kit2" --date 2026-10-08 --repo "$PS" --handover-root "$WORK/handovers" --work-dir "$WORK/psw-kit2" --deadline 1791475000 2>&1)"; rc=$?
+[ "$rc" = 2 ] && pass "an adopted kit without flags.py exits 2 (configuration error)" || fail "kit without flags.py: rc=$rc: $pso"
+lacks "an adopted kit without flags.py prints no traceback" "$pso" "Traceback"
 unset HIMMEL_CONFIG_DIR
 
 # --- S2a: with stacked_series on, a writer's `series: [<label>, ...]` writes ONE brief (Series line, grant line, the union of

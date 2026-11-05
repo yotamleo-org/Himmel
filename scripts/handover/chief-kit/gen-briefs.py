@@ -566,19 +566,56 @@ def size_bands():
     return out
 
 
+_PATH_TOK_RE = re.compile(r'[\w.+@*?/-]+')
+_PROSE_SLASH = ('and/or', 'w/o', 'either/or')
+
+
+def _glob_re(g):
+    # git's wildmatch as a regex: * and ? stay inside one path segment, ** crosses them.
+    out, i = '', 0
+    while i < len(g):
+        if g.startswith('**/', i):
+            out, i = out + '(?:.*/)?', i + 3
+        elif g.startswith('**', i):
+            out, i = out + '.*', i + 2
+        else:
+            out, i = out + ('[^/]*' if g[i] == '*' else '[^/]' if g[i] == '?' else re.escape(g[i])), i + 1
+    return re.compile(out + r'\Z')
+
+
 def projected_files(writes, repo, base):
-    # Files the Writes list touches: a directory expands to its tracked files at base; a path git does not know
-    # at base (a new file) counts once. None when git cannot read base: a failed read must not pass as a small count.
-    wp = write_paths(writes)
-    if wp in ('', 'none named'):
-        return 0
-    files = set()
-    for p in wp.split():
-        r = subprocess.run(['git', '-C', repo, 'ls-tree', '-r', '--name-only', base, '--', p], capture_output=True, text=True)
-        if r.returncode != 0:
-            return None
-        files.update(r.stdout.split('\n')[:-1] if r.stdout else [p])
-    return len(files)
+    # (files, tracked): the files the Writes list touches, and how many of its paths git tracks at base. The one rule:
+    # a path names itself, a directory its tracked files, a glob the tracked files it matches at base; a path absent at
+    # base (a new file) counts once. Every path-like token counts, whatever its root (src/ as well as scripts/), so it
+    # reads the Writes text itself, not write_paths' fixed roots. None when git cannot read base: a failed read must not
+    # pass as a small count.
+    text = _writes_scope(writes)
+    while re.search(r'\([^()]*\)', text):
+        text = re.sub(r'\([^()]*\)', ' ', text)
+    toks = []
+    for t in _PATH_TOK_RE.findall(text):
+        t = t.rstrip('.')
+        t = t[2:] if t.startswith('./') else t
+        if '/' in t and not t.startswith('/') and t.lower() not in _PROSE_SLASH and t not in toks:
+            toks.append(t)
+    files, tracked, listing = set(), 0, None
+    for p in toks:
+        if re.search(r'[*?]', p):
+            if listing is None:
+                r = subprocess.run(['git', '-C', repo, 'ls-tree', '-r', '--name-only', base], capture_output=True, text=True)
+                if r.returncode != 0:
+                    return None
+                listing = r.stdout.split('\n')[:-1]
+            rx = _glob_re(p)
+            hit = [f for f in listing if rx.match(f)]
+        else:
+            r = subprocess.run(['git', '-C', repo, 'ls-tree', '-r', '--name-only', base, '--', p], capture_output=True, text=True)
+            if r.returncode != 0:
+                return None
+            hit = r.stdout.split('\n')[:-1]
+        tracked += bool(hit)
+        files.update(hit or [p])
+    return len(files), tracked
 
 
 def check_pr_size(l, repo, base):
@@ -586,19 +623,20 @@ def check_pr_size(l, repo, base):
     if l.get('bulk') == 'mechanical':
         return  # the line and file bands do not apply to a scripted transform (the 300-file cap still holds at PR open)
     bands = size_bands()
-    n = projected_files(l.get('writes', ''), repo, base)
+    proj = projected_files(l.get('writes', ''), repo, base)
+    n, tracked = proj if proj else (None, 0)
     if n is None or n > bands['hard']:
         if n is None:
             msg = 'worker %s Writes cannot be projected (git ls-tree failed for base %s in %s)' % (l['label'], base, repo)
         else:
             msg = 'worker %s Writes project to %d files, over the %d-file hard max (pr-size-bands.tsv row hard)' % (l['label'], n, bands['hard'])
-        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
-        from flags import himmel_flag  # scripts/lib/flags.py, the registry reader
-        if himmel_flag('pr_size_gate'):
+        if flag_on('pr_size_gate'):
             die(msg + ('; split the ticket, or set "bulk": "mechanical" on a scripted transform' if n is not None else ''))
         print('gen-briefs: warning: ' + msg + '; pr_size_gate is off, so the brief is written', file=sys.stderr)
     elif n > bands['soft']:
         print('gen-briefs: warning: worker %s Writes project to %d files, over the %d-file soft max (pr-size-bands.tsv row soft)' % (l['label'], n, bands['soft']), file=sys.stderr)
+    if n is not None and tracked == 0:
+        print('gen-briefs: warning: worker %s Writes name no file tracked at base (none named, empty, or only new files); the projection of %d files is unverified (rule: size is checked only against files tracked at base)' % (l['label'], n), file=sys.stderr)
 
 
 SERIES_MAX = 4
@@ -608,8 +646,13 @@ SERIES_LEDGER_PY = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ser
 
 def flag_on(name):
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
-    from flags import himmel_flag  # scripts/lib/flags.py, the registry reader
-    return himmel_flag(name)
+    try:
+        from flags import himmel_flag, FlagError  # scripts/lib/flags.py, the registry reader
+        return himmel_flag(name)
+    except ImportError as e:
+        die('cannot read flag %s: scripts/lib/flags.py is missing beside this kit (%s)' % (name, e), 2)
+    except FlagError as e:
+        die('cannot read flag %s: %s' % (name, e), 2)
 
 
 CORE_VERBS = ('CORE', 'NOT-CORE', 'BYPASS', 'UNKNOWN')
