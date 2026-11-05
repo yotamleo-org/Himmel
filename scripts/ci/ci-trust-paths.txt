@@ -34,6 +34,9 @@
 ^scripts/handover/chief-kit/chain-graph\.py$
 # The list of files the holds register never holds; chain-graph.py reads its row registries from it, so a line added there loosens a trust decision.
 ^scripts/handover/chief-kit/holds-exempt\.txt$
+# The single-writer barrier: the register's CLI, and the write hook that answers from it.
+^scripts/handover/chief-kit/holds\.py$
+^scripts/hooks/check-write-hold\.sh$
 # The fork and adopted-repo allowlists a go.sh --repo GO is signed against.
 ^scripts/guardrails/himmel-(adapters|adopted)\.json$
 ^scripts/check-ci\.sh$
