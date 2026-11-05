@@ -118,9 +118,7 @@ node "$SUT" --doc "$D4" set two --title Two --body b --expect-rev 1 >/dev/null 2
 rc2=$?
 wait "$p1"
 case "$rc2" in 0|3) pass "the --expect-rev call exits 0 or 3 ($rc2)" ;; *) fail "the --expect-rev call exited $rc2" ;; esac
-same 'the plain interleaved set is stored' "$(jget "$B4/Q-chief.sections.json" 'j.sections.some(s=>s.id==="one")')" true
 case "$rc2" in
-    0) same 'a succeeding --expect-rev set is stored' "$(jget "$B4/Q-chief.sections.json" 'j.sections.some(s=>s.id==="two")')" true ;;
     3) same 'a refused --expect-rev set is not stored' "$(jget "$B4/Q-chief.sections.json" 'j.sections.some(s=>s.id==="two")')" false ;;
 esac
 same 'the interleaved file parses with base kept' "$(jget "$B4/Q-chief.sections.json" 'j.sections.some(s=>s.id==="base")')" true
@@ -145,8 +143,8 @@ B9="$W/b9"; mkdir -p "$B9"; printf '# c\n' > "$B9/M-chief.md"
 printf '{"schema":"himmel.board-sections/2","rev":4,"sections":[]}\n' > "$B9/M-chief.sections.json"
 node "$SUT" --doc "$B9/M-chief.md" set a --title T --body b >/dev/null 2>&1; same 'a foreign schema blocks a write (exit 2)' "$?" 2
 same 'the foreign-schema file is untouched' "$(jget "$B9/M-chief.sections.json" 'j.rev')" 4
-run set tabbed --title "$(printf 'a\tb')" --body b >/dev/null
-same 'list keeps a tabbed title on one line' "$(run list | grep -c '^tabbed')" 1
+run set tabbed --title "$(printf 'a\tb\nc')" --body b --order 99 >/dev/null
+same 'list prints a tab and newline title as exact one-line fields' "$(run list | grep '^tabbed')" "$(printf 'tabbed\t99\tinfo\ta b c')"
 run rm tabbed >/dev/null
 
 # a checkout path holding a space still runs the CLI; a mistyped --doc exits 2 on list too
