@@ -10,7 +10,7 @@ himmel's evals: each one measures one thing and writes its own output.
 | `guard-corpus/` | a hook change, base vs head, over a command corpus | `diff` stdout plus a `JSON` line |
 | `scrape-bench/` | scrape providers on a fixed URL set | one JSONL row per URL |
 | `retrieval-eval/` | `retrieval-eval.py`: grep, qmd-lex, qmd-hybrid, graphify and combined (plus opt-in qmd-hybrid-norerank) on transcript-mined questions: recall@k, reason-carried, tokens and ms; `census` counts qmd and graphify use per session role | `results.jsonl`, `scores.tsv` |
-| `retrieval-eval/answer-ab.py` | tokens to a correct answer, end to end: a haiku answerer on the questions it fails closed-book, with no retrieval, grep, path + ident-grep, graphify or fused output pasted in; total session tokens per correct answer per arm | `table.tsv`, `results.jsonl` (no ledger row) |
+| `retrieval-eval/answer-ab.py` | tokens to a correct answer, end to end: a haiku answerer on the questions it fails closed-book, with no retrieval, grep, path + ident-grep, graphify or fused output pasted in; total session tokens per correct answer per arm; opt-in realistic worker-session arms (vanilla, fused-cached, bm25-rerank, vec-rerank) priced per call from usage | `table.tsv`, `results.jsonl`, ledger row `answer-ab` |
 | `handover-cost.py` | the per-handover chief price from session JSONLs: prep, relay+wrap, successor ACTION ZERO and worker-relay turns and cost, gross and net (HIMMEL-6491 method); `--workers-after` counts only newer workers | one `HANDOVER` row per pair plus a `MEAN` row on stdout (no ledger row) |
 | `chief-wake-classes.py` | the chief wake mix for one date from session JSONLs: wakes, requests and eq per class (operator, relay-only, escalate) and per wake kind, priced with `handover-cost.py` (HIMMEL-2975 plan method); `--exclude` drops live chiefs | `CLASS` and `KIND` rows on stdout (no ledger row) |
 | `lone-comm-count.py` | report-only count of the turns whose only tool call is one comm tool (an `append-results.sh` bullet, a `SendMessage`, an himmel-bus send) per session JSONL, by marker class; GO, NO-GO, token-quoting, SUCCESSION and RETASK rows are counted apart as safety, never batchable; files as arguments, or `--dir D --hours N` | a TSV per session, `CLASS` rows and a `TOTAL` line on stdout (no ledger row) |
@@ -124,6 +124,49 @@ after failing all 15 in the screen, so a cell is noisy by about one question); t
 retrieval output is pasted into one turn rather than reached by tool calls, so it
 does not price a session that searches in several steps; fused uses qmd-hybrid, which
 returns nothing when the qmd server is down.
+
+### Realistic arms (HIMMEL-9314)
+
+The pasted-context arms above are one-turn prompts with no tools, so a fused arm pays
+cache writes on its whole output for every question. Four opt-in arms ask the same of a
+session as a worker runs it (`--arms vanilla,fused-cached,bm25-rerank,vec-rerank`):
+
+| arm | the session |
+|---|---|
+| `vanilla` | the himmel worker preface (`docs/handover/worker-preface.md`), the repo `CLAUDE.md` and hooks (the session runs in `--repo`), tools Read, Grep and Glob only, an empty MCP config |
+| `fused-cached` | the same, plus one MCP tool, `route`: grep + qmd hybrid (reranked) + graphify, rank-fused, returned as a tool result |
+| `bm25-rerank` | the same, `route` = qmd keyword (BM25) search, reranked |
+| `vec-rerank` | the same, `route` = qmd vector search, reranked |
+
+Every arm uses the same model, `--permission-mode dontAsk` and the same flags except the
+MCP config and the allowed-tool list. The route server is `answer-ab.py route-server`;
+the route output is never in the prompt. Adding a tool changes the tool block, which is
+the front of the cache prefix, so each arm keeps its own prefix cache; within an arm
+the prefix is written once and read by every later call.
+
+These arms take the question sample whole (`--pool 75 --n 75` is all 75 questions; the
+`split` field keeps the 25 held-out ones apart in the row) with no closed-book screen.
+Cost is priced per call from the usage split (input, output, cache read, cache
+creation) through `scripts/lanes/model-price.mjs`, never from `total_cost_usd`; a model
+with no price row is reported `unpriced`. The table adds `priced_usd`,
+`cost_per_correct`, the token mix, `cached_share` (cache read over input + cache read +
+cache creation), `ms_median` and `turns_mean`.
+
+The run now writes one `answer-ab` row to the eval-runs ledger (`--no-ledger` writes
+none): per arm `<arm>.correct`, `.cost_usd`, `.cost_per_correct`, `.tokens_per_correct`,
+`.input`, `.output`, `.cache_read`, `.cache_creation`, `.cached_share`, `.ms_median`,
+`.turns_mean`, the same under `<arm>.insample.` and `<arm>.heldout.` (`n`, `correct`,
+`cost_usd`, `cost_per_correct`), and per-question cases. `results.jsonl` gains a row as
+each call lands, so a run stopped halfway keeps what it paid for.
+
+The full run is billed (about 300 sessions on Sonnet 5.5) and by hand:
+
+```bash
+HIMMEL_BILLED_OK=1 python3 scripts/eval/retrieval-eval/answer-ab.py run \
+  --questions scripts/eval/retrieval-eval/questions.jsonl --out DIR --repo . \
+  --arms vanilla,fused-cached,bm25-rerank,vec-rerank --model claude-sonnet-5-5 \
+  --pool 75 --n 75 --max-usd 32
+```
 
 ## eval-compare
 
