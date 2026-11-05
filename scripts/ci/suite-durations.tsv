@@ -395,6 +395,7 @@ scripts/handover/chief-kit/test-ack-denial.sh	2
 scripts/handover/chief-kit/test-action-zero.sh	6
 scripts/handover/chief-kit/test-append-results.sh	38
 scripts/handover/chief-kit/test-auto-go.sh	25
+scripts/handover/chief-kit/test-board-section.sh	2
 scripts/handover/chief-kit/test-board.sh	52
 scripts/handover/chief-kit/test-brief-lint.sh	7
 scripts/handover/chief-kit/test-chain-graph.sh	3
