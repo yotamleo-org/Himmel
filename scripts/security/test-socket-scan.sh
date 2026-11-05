@@ -174,6 +174,14 @@ has "the quota skip shows in the job summary" "SKIP quota" "$SUMMARY"
 STUB_RC=1 STUB_ERR="HTTP 429 Too Many Requests" run tooMany "site/package-lock.json"
 check "a bare 429 reply exits 0" 0 "$RC"
 has "a bare 429 reply reads as a skip" "SKIP quota" "$OUT"
+STUB_RC=1 STUB_ERR="HTTP/1.1 429" run http11 "site/package-lock.json"
+check "an HTTP/1.1 429 status line reads as a skip" 0 "$RC"
+STUB_RC=1 STUB_ERR="request failed, status code: 429" run statuscode "site/package-lock.json"
+check "a status code: 429 reply reads as a skip" 0 "$RC"
+# a policy report that merely mentions a rate-limit package, a count of 429 or the word quota stays a failure
+STUB_RC=1 STUB_ERR="Socket scan is not healthy: package rate-limit-redis has 1 alert with policy action error; 429 files scanned; quota of 500 noted" run policyquota "site/package-lock.json"
+check "a policy failure that mentions rate-limit, 429 and quota exits 1, not a skip" 1 "$RC"
+hasnt "that policy failure is not read as a quota skip" "SKIP quota" "$OUT"
 STUB_RC=2 STUB_ERR="getaddrinfo ENOTFOUND api.socket.dev" run neterr "site/package-lock.json"
 check "a network error exits 2, not a skip" 2 "$RC"
 
@@ -201,6 +209,12 @@ cat "$OUT" "$SUMMARY" "$W/calls.log" > "$W/all-res.txt"
 hasnt "a resolver key is never printed" "$KEY" "$W/all-res.txt"
 run nogate_nokey ""
 check "a no-manifest change set never asks the resolver for the key" 0 "$([ -f "$W/secrets.log" ] && echo 1 || echo 0)"
+
+# --- a local run: no --repo, no GITHUB_* variables --------------------------------
+printf 'site/package-lock.json\n' > "$W/local.list"; : > "$W/calls.log"
+SOCKET_DEV_API_KEY="$KEY" env -u GITHUB_REPOSITORY -u GITHUB_HEAD_REF bash "$SCAN" --files "$W/local.list" --root "$R" > "$W/local.log" 2>&1
+check "a local run without --repo and GITHUB_REPOSITORY exits 0" 0 "$?"
+has "the repo name falls back to the root directory's name" "--repo repo " "$W/calls.log"
 
 # --- usage ----------------------------------------------------------------------
 bash "$SCAN" --bogus > "$W/bogus.log" 2>&1

@@ -33,7 +33,10 @@ SECRETS="${SOCKET_SCAN_SECRETS_BIN:-$SCRIPT_DIR/../lib/himmel-secrets}"
 # ecosystems Socket reads: npm, bun, PyPI (requirements, pyproject, uv, poetry, pipenv), Go, Ruby
 MANIFEST_RE='(^|/)(package\.json|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|uv\.lock|requirements[^/]*\.txt|pyproject\.toml|poetry\.lock|Pipfile|Pipfile\.lock|go\.mod|go\.sum|Gemfile|Gemfile\.lock)$'
 EXCL_RE='(^|/)(node_modules|fixtures|worktrees|graphify-out|\.venv)/'
-QUOTA_RE='(^|[^0-9])429([^0-9]|$)|too many requests|rate.?limit|quota'
+# only the API's own quota reply: an HTTP 429 status, "Too Many Requests", the documented body
+# "Insufficient quota for API route". A policy report that names a rate-limit package, a count
+# of 429 files or the word quota is a finding, never a skip.
+QUOTA_RE='(HTTP[/0-9. ]*|status( code)?[ :=]*)429([^0-9]|$)|too many requests|insufficient quota'
 
 err() { printf 'ERR socket-scan: %s\n' "$*" >&2; }
 say() { # a result line, on stdout and in the job summary
@@ -55,7 +58,8 @@ done
 [ -n "$files" ] || { err "--files <list> is required"; exit 2; }
 [ -r "$files" ] || { err "cannot read the change list $files"; exit 2; }
 root="$(cd "$root" 2>/dev/null && pwd)" || { err "--root does not exist"; exit 2; }
-[ -n "$repo" ] || repo="${GITHUB_REPOSITORY##*/}"
+[ -n "$repo" ] || repo="${GITHUB_REPOSITORY:-}"
+repo="${repo##*/}"
 [ -n "$repo" ] || repo="$(basename "$root")"
 [ -n "$branch" ] || branch="${GITHUB_HEAD_REF:-}"
 [ -n "$branch" ] || branch="$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
