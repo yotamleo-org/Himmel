@@ -91,7 +91,7 @@ allowed_line="      SNYK_TOKEN: ${piece1}secrets.SNYK_TOKEN }}"
 
 echo "== Case D: the real snyk-weekly.yml =="
 dir_d=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
-cp "$REAL_SNYK" "$dir_d/snyk-weekly.yml"
+cp "$REAL_SNYK" "$dir_d/snyk-weekly.yml" || fail "the fixture copy failed"
 bash "$GUARD" "$dir_d" >/dev/null 2>&1
 rc=$?
 if [ "$rc" -eq 0 ]; then pass "snyk-weekly.yml SNYK_TOKEN line -> exit 0"; else fail "snyk-weekly.yml SNYK_TOKEN line -> expected 0 got $rc"; fi
@@ -99,7 +99,7 @@ rm -rf "$dir_d"
 
 echo "== Case E: a second secret in snyk-weekly.yml =="
 dir_e=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
-cp "$REAL_SNYK" "$dir_e/snyk-weekly.yml"
+cp "$REAL_SNYK" "$dir_e/snyk-weekly.yml" || fail "the fixture copy failed"
 printf '      OTHER: %ssecrets.OTHER }}\n' "$piece1" >> "$dir_e/snyk-weekly.yml"
 bash "$GUARD" "$dir_e" >/dev/null 2>&1
 rc=$?
@@ -125,7 +125,7 @@ rm -rf "$dir_g"
 echo "== Case H: snyk-weekly.yml in a subdirectory =="
 dir_h=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
 mkdir "$dir_h/subdir"
-cp "$REAL_SNYK" "$dir_h/subdir/snyk-weekly.yml"
+cp "$REAL_SNYK" "$dir_h/subdir/snyk-weekly.yml" || fail "the fixture copy failed"
 bash "$GUARD" "$dir_h" >/dev/null 2>&1
 rc=$?
 if [ "$rc" -eq 1 ]; then pass "subdir/snyk-weekly.yml -> exit 1"; else fail "subdir/snyk-weekly.yml -> expected 1 got $rc"; fi
@@ -138,7 +138,7 @@ socket_line="      SOCKET_DEV_API_KEY: ${piece1}secrets.SOCKET_DEV_API_KEY }}"
 
 echo "== Case I: the real socket-scan.yml =="
 dir_i=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
-cp "$REAL_SOCKET" "$dir_i/socket-scan.yml"
+cp "$REAL_SOCKET" "$dir_i/socket-scan.yml" || fail "the fixture copy failed"
 bash "$GUARD" "$dir_i" >/dev/null 2>&1
 rc=$?
 if [ "$rc" -eq 0 ]; then pass "socket-scan.yml SOCKET_DEV_API_KEY lines -> exit 0"; else fail "socket-scan.yml SOCKET_DEV_API_KEY lines -> expected 0 got $rc"; fi
@@ -154,7 +154,7 @@ rm -rf "$dir_j"
 
 echo "== Case K: another secret in socket-scan.yml =="
 dir_k=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
-cp "$REAL_SOCKET" "$dir_k/socket-scan.yml"
+cp "$REAL_SOCKET" "$dir_k/socket-scan.yml" || fail "the fixture copy failed"
 printf '      OTHER: %ssecrets.OTHER }}\n' "$piece1" >> "$dir_k/socket-scan.yml"
 bash "$GUARD" "$dir_k" >/dev/null 2>&1
 rc=$?
@@ -163,7 +163,7 @@ rm -rf "$dir_k"
 
 echo "== Case L: the snyk line in socket-scan.yml =="
 dir_l=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
-cp "$REAL_SOCKET" "$dir_l/socket-scan.yml"
+cp "$REAL_SOCKET" "$dir_l/socket-scan.yml" || fail "the fixture copy failed"
 printf '%s\n' "$allowed_line" >> "$dir_l/socket-scan.yml"
 bash "$GUARD" "$dir_l" >/dev/null 2>&1
 rc=$?
