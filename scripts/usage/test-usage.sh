@@ -268,4 +268,98 @@ for st in queued in_progress completed waiting requested pending; do
   check "gh status $st is accepted" "0" "$(GHFIX="$ROOT/fix-status" frc jrun --print)"
 done
 
+# --- ci-minutes.sh: billed minutes per run, listing paged past 1,000 ---
+# A stub gh serves a runs listing like the real one: --paginate returns pages of 100
+# rows, a filtered window returns at most 1,000 rows however large total_count is,
+# and /timing answers 404 for a run with no billing answer. REAL is one real
+# run's /timing answer (yotamleo-org/Himmel run 41372286597, 2026-11-05).
+CIM="$HERE/ci-minutes.sh"
+CD="$ROOT/cim"; mkdir -p "$CD/bin"
+UNTIL="2026-11-05T12:00:00Z"
+FROM_E="$(jq -nr '"2026-10-29T12:00:00Z" | fromdateiso8601')"
+REAL='{"billable":{"UBUNTU":{"total_ms":0,"jobs":2,"job_runs":[{"job_id":125045113057,"duration_ms":0},{"job_id":125045598141,"duration_ms":0}]}},"run_duration_ms":127000}'
+cat > "$CD/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+set -u
+[ "${1:-}" = api ] || exit 2
+ep="$2"; shift 2
+pag=0; for a in "$@"; do [ "$a" = --paginate ] && pag=1; done
+echo "api $ep" >> "$CIM_LOG"
+case "$ep" in
+  repos/o/r/actions/runs/*/timing)
+    id="${ep#repos/o/r/actions/runs/}"; id="${id%/timing}"
+    [ ! -e "$CIM_FIX/timing-fail" ] || { echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1; }
+    jq -ce --arg id "$id" '.[$id]' "$CIM_FIX/timing.json" 2>/dev/null || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
+    ;;
+  repos/o/r/actions/runs\?*)
+    rng="${ep##*created=}"; rng="${rng%%&*}"; from="${rng%%..*}"; to="${rng##*..}"
+    jq -c --arg f "$from" --arg t "$to" --argjson pag "$pag" '
+      [.[] | select(.created_at >= $f and .created_at <= $t)] as $m
+      | ($m | length) as $n | $m[0:1000] as $cap | ($cap | length) as $c
+      | if $pag == 1 then [range(0; ([$c, 1] | max); 100)] | map({total_count: $n, workflow_runs: $cap[.:. + 100]}) | .[]
+        else {total_count: $n, workflow_runs: $cap[0:100]} end' "$CIM_FIX/runs.json"
+    ;;
+  *) echo "stub gh: unexpected $ep" >&2; exit 2 ;;
+esac
+STUB
+chmod +x "$CD/bin/gh"
+gen_runs() { # first_id count spacing_secs wall_secs -> runs.json on stdout (created_at = window start + n*spacing)
+  jq -nc --argjson id0 "$1" --argjson n "$2" --argjson sp "$3" --argjson w "$4" --argjson base "$FROM_E" \
+    '[range(0; $n) | ($base + . * $sp) as $s | {id: ($id0 + .), name: "CI", created_at: ($s | todate), run_started_at: ($s | todate), updated_at: ($s + $w | todate)}]'
+}
+cim() { # fixture-dir store args...
+  local fx="$1" st="$2"; shift 2
+  CIM_FIX="$fx" CIM_LOG="$CD/gh.log" bash "$CIM" "$@" --repo o/r --days 7 --until "$UNTIL" --store "$st" --gh "$CD/bin/gh"
+}
+nrows() { cat "$1" 2>/dev/null | wc -l | tr -d ' '; }   # read-sink-ok: callers pass only ledger paths under the suite's own mktemp dir
+circ() { local rc=0; cim "$@" >/dev/null 2>&1 || rc=$?; echo "$rc"; }
+
+# (a) pagination: 2,500 runs over a window the API caps at 1,000 rows, all land
+F1="$CD/fx-2500"; mkdir -p "$F1"; gen_runs 100000 2500 241 60 > "$F1/runs.json"; echo '{}' > "$F1/timing.json"
+S1="$CD/store-2500"; : > "$CD/gh.log"
+check "2,500 runs: writer exits 0" "0" "$(circ "$F1" "$S1" write)"
+check "2,500 runs: 2,500 distinct run ids stored" "2500" "$(jq -r '.run_id' "$S1/ci-minutes.jsonl" 2>/dev/null | sort -u | wc -l | tr -d ' ')"
+check "2,500 runs: one row per run" "2500" "$(nrows "$S1/ci-minutes.jsonl")"
+: > "$CD/gh.log"
+check "rerun on the same window exits 0" "0" "$(circ "$F1" "$S1" write)"
+check "rerun appends no second row for a run id" "2500" "$(nrows "$S1/ci-minutes.jsonl")"
+# control: a 40-run window is one listing call, 40 rows
+F2="$CD/fx-40"; mkdir -p "$F2"; gen_runs 200000 40 1000 60 > "$F2/runs.json"; echo '{}' > "$F2/timing.json"
+S2="$CD/store-40"; : > "$CD/gh.log"
+check "40 runs: writer exits 0" "0" "$(circ "$F2" "$S2" write)"
+check "40 runs: 40 rows" "40" "$(nrows "$S2/ci-minutes.jsonl")"
+check "40 runs: one listing call" "1" "$(grep -c 'actions/runs?' "$CD/gh.log")"
+# a second that holds more runs than the API will ever return fails closed, stores nothing
+F3="$CD/fx-dense"; mkdir -p "$F3"; gen_runs 300000 1200 0 60 > "$F3/runs.json"; echo '{}' > "$F3/timing.json"
+check "1,200 runs in one second: fails closed" "1" "$(circ "$F3" "$CD/store-dense" write)"
+check "truncated window stored nothing" "0" "$(nrows "$CD/store-dense/ci-minutes.jsonl")"
+
+# (b) billed minutes beside wall minutes; (c) absent billing is "unknown", a real 0 stays 0
+F4="$CD/fx-bill"; mkdir -p "$F4"
+jq -nc '[{id: 7001, name: "CI", created_at: "2026-11-01T10:00:00Z", run_started_at: "2026-11-01T10:00:00Z", updated_at: "2026-11-01T10:04:00Z"},
+         {id: 7002, name: "CI", created_at: "2026-11-02T10:00:00Z", run_started_at: "2026-11-02T10:00:00Z", updated_at: "2026-11-02T10:05:00Z"},
+         {id: 7003, name: "CI", created_at: "2026-11-03T10:00:00Z", run_started_at: "2026-11-03T10:00:00Z", updated_at: "2026-11-03T10:03:00Z"},
+         {id: 7004, name: "CI", created_at: "2026-11-04T10:00:00Z", run_started_at: "2026-11-04T10:00:00Z", updated_at: "2026-11-04T10:02:00Z"}]' > "$F4/runs.json"
+jq -nc --argjson real "$REAL" '{"7001": ($real | .billable.UBUNTU.total_ms = 420000), "7002": ($real | .billable.UBUNTU.total_ms = 720000), "7004": $real}' > "$F4/timing.json"
+S4="$CD/store-bill"
+check "billing run: writer exits 0" "0" "$(circ "$F4" "$S4" write)"
+LG="$S4/ci-minutes.jsonl"
+check "run A: billed 7 beside wall 4" "7/4" "$(jq -r 'select(.run_id==7001) | "\(.billed_min)/\(.wall_min)"' "$LG")"
+check "run B: billed 12 beside wall 5" "12/5" "$(jq -r 'select(.run_id==7002) | "\(.billed_min)/\(.wall_min)"' "$LG")"
+check "A+B billed sum 19, wall sum 9" "19/9" "$(jq -rs '[.[] | select(.run_id==7001 or .run_id==7002)] | "\(map(.billed_min) | add)/\(map(.wall_min) | add)"' "$LG")"
+check "run with no billing answer is the string unknown, not 0" '"unknown"' "$(jq -c 'select(.run_id==7003) | .billed_min' "$LG")"
+check "real answer of 0 billed ms stays the number 0" "0" "$(jq -c 'select(.run_id==7004) | .billed_min' "$LG")"
+
+# (d) report: billed next to wall, unknowns on their own line, run count beside gh's total_count
+REP="$(CIM_FIX="$F4" CIM_LOG="$CD/gh.log" bash "$CIM" report --repo o/r --days 7 --until "$UNTIL" --store "$S4" --gh "$CD/bin/gh" 2>&1)" || REP="rc=$? $REP"
+check "report: minutes line, billed beside wall" "yes" "$(grep -qx 'minutes: billed=19 wall=14' <<<"$REP" && echo yes || echo no)"
+check "report: unknown runs on their own line" "yes" "$(grep -qx 'billed_unknown_runs: 1' <<<"$REP" && echo yes || echo no)"
+check "report: run count beside gh total_count" "yes" "$(grep -qx 'runs: 4  gh_total_count: 4' <<<"$REP" && echo yes || echo no)"
+# a timing failure that is not a 404/410 (rate limit, server error) aborts, never becomes unknown
+F5="$CD/fx-502"; mkdir -p "$F5"; gen_runs 400000 3 1000 60 > "$F5/runs.json"; echo '{}' > "$F5/timing.json"; : > "$F5/timing-fail"
+check "non-404 timing failure aborts the run" "1" "$(circ "$F5" "$CD/store-502" write)"
+check "non-404 timing failure stored no unknown row" "0" "$(nrows "$CD/store-502/ci-minutes.jsonl")"
+# a flag typo or a missing repo is refused
+check "no --repo is refused" "1" "$(CIM_FIX="$F4" CIM_LOG="$CD/gh.log" bash "$CIM" write --store "$CD/store-x" --gh "$CD/bin/gh" >/dev/null 2>&1; echo $?)"
+
 if [ "$FAIL" -eq 0 ]; then echo "PASS"; else echo "FAILED" >&2; exit 1; fi
