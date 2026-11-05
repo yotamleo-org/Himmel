@@ -922,7 +922,7 @@ def lock_dir_for(doc, session):
     """The queue-lock dir whose owner.json names doc and session: <handover root>/.locks/queue/*.lock, root found by
     walking up from doc. None when there is none."""
     d = os.path.dirname(doc)
-    while True:
+    for _ in range(64):
         q = os.path.join(d, '.locks', 'queue')
         if os.path.isdir(q):
             for n in sorted(os.listdir(q)):
@@ -938,6 +938,7 @@ def lock_dir_for(doc, session):
         if up == d:
             return None
         d = up
+    return None
 
 
 def caller_session():
