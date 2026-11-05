@@ -159,6 +159,23 @@ none): per arm `<arm>.correct`, `.cost_usd`, `.cost_per_correct`, `.tokens_per_c
 `cost_usd`, `cost_per_correct`), and per-question cases. `results.jsonl` gains a row as
 each call lands, so a run stopped halfway keeps what it paid for.
 
+A route call returns the top 5 files with at most 400 characters of excerpt each
+(about 600 tokens), not the raw grep, qmd and graphify dumps (about 8k tokens).
+
+Two opt-in flags measure the cache the way a user meets it:
+
+- `--prime` asks one throwaway question per arm before the measured ones, so no
+  measured call pays an arm's cold prefix write. The headline `<arm>.cost_usd` leaves
+  it out; `<arm>.prime_cost_usd`, `.cost_usd_with_prime` and
+  `.cost_per_correct_with_prime` report it.
+- `--warm-session K` asks K questions in ONE persisted session per arm (the first call
+  `--session-id`, later calls `--resume`), question j of every arm before question j+1 so
+  each arm stays inside the 5-minute cache window. Question 1 pays the prefix; questions
+  2..k read it and the earlier tool results. `<arm>.pos1.*` against `<arm>.pos2k.*`
+  (`n`, `cost_mean`, `cache_read_mean`, `cache_creation_mean`, `cached_share`) and
+  `warm.tsv` show the difference. The run removes the session transcripts it created
+  under the claude config dir.
+
 The full run is billed (about 300 sessions on Sonnet 5.5) and by hand:
 
 ```bash
