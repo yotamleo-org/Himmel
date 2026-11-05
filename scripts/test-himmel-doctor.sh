@@ -8067,6 +8067,10 @@ echo "== C89: remote reranker configured -> OK without a local model =="
 c89_reset; c89_remote_cfg
 out="$(c89_run)"
 if grepq "$out" 'OK   C89-qmd-rerank' && grepq "$out" -F 'remote reranker' && ! grepq "$out" 'WARN C89'; then pass "C89 remote reranker -> OK"; else fail "C89 remote reranker -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C89: a quoted remote reranker value in the config counts as remote =="
+c89_reset; printf 'models:\n  rerank: "openai:cohere/rerank-4-fast"\n' > "$c89_t/cfg/index.yml"
+out="$(c89_run)"
+if grepq "$out" 'OK   C89-qmd-rerank' && grepq "$out" -F 'remote reranker' && ! grepq "$out" 'WARN C89'; then pass "C89 quoted remote reranker -> OK"; else fail "C89 quoted remote reranker -> $(printf '%s' "$out" | head -4)"; fi
 echo "== C89: QMD_RERANK=0 and QMD_RERANK=FALSE also warn =="
 c89_reset; c89_gguf
 out="$(c89_run QMD_RERANK=0)"; out2="$(c89_run QMD_RERANK=FALSE)"

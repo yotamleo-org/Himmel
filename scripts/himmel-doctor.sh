@@ -3913,7 +3913,7 @@ check_c89_qmd_rerank() {
     case "$(printf '%s' "${QMD_RERANK_MODEL:-}" | tr '[:upper:]' '[:lower:]')" in
         openai:*) emit OK C89-qmd-rerank "qmd reranks with a remote reranker (QMD_RERANK_MODEL)"; return 0 ;;
     esac
-    if grep -Eqis '^[[:space:]]*rerank:[[:space:]]*openai:' "$cfg" 2>/dev/null; then
+    if grep -Eqis "^[[:space:]]*rerank:[[:space:]]*[\"']?openai:" "$cfg" 2>/dev/null; then
         emit OK C89-qmd-rerank "qmd reranks with the remote reranker set in $cfg"
         return 0
     fi

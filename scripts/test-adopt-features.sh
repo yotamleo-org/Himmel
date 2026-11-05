@@ -440,7 +440,7 @@ rr_run() {
   rm -rf "${h:?}" "${t:?}"; mkdir -p "$h" "$t"
   HOME="$h" git -C "$t" init -q
   set +e
-  rr_out=$( unset QMD_RERANK QMD_RERANK_MODEL; export RR_STUB_MODEL="$stub_model"
+  rr_out=$( unset QMD_RERANK QMD_RERANK_MODEL XDG_CACHE_HOME XDG_CONFIG_HOME QMD_CONFIG_DIR; export RR_STUB_MODEL="$stub_model"
     [ -z "$rerank_val" ] || export QMD_RERANK="$rerank_val"
     PATH="$rrbin:$work/bin:$native_free_path" HOME="$h" bash "$adopt" \
     --profile core --scope project --target "$t" 2>&1 ); rr_rc=$?

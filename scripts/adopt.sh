@@ -769,7 +769,7 @@ verify_qmd_reranker() {
   case "$(printf '%s' "${QMD_RERANK_MODEL:-}" | tr '[:upper:]' '[:lower:]')" in
     openai:*) echo "  qmd rerank: remote reranker configured (QMD_RERANK_MODEL)."; return 0 ;;
   esac
-  if grep -Eqis '^[[:space:]]*rerank:[[:space:]]*openai:' "$cfg" 2>/dev/null; then
+  if grep -Eqis "^[[:space:]]*rerank:[[:space:]]*[\"']?openai:" "$cfg" 2>/dev/null; then
     echo "  qmd rerank: remote reranker configured ($cfg)."
     return 0
   fi
