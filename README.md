@@ -2,23 +2,30 @@
 
 > **A control plane for coding agents.**
 
-Audience: newcomer. The page opens with the first task for someone new to
-himmel; the path for running or developing himmel itself is
-[its own part of the Quickstart](#quickstart).
+New to himmel? Start with the trial below. Here to run or work on himmel
+itself? Go to the [Quickstart](#quickstart).
+
+himmel earns its keep once you run several Claude Code sessions at once, want
+work done while you are away, or want each session to pick up where the last
+one stopped. If Claude Code as it ships serves you well, you do not need it;
+[Who is this for](#who-is-this-for) says more.
 
 ## Start here: protect one project
 
-The first thing to do with himmel is protect one project you can throw away.
-You install it into a spare git repository, ask Claude Code to edit a file on
-`main` and see the edit refused, keep the install, make one change in its own
-worktree, and then undo everything.
-**[Getting Started](docs/getting-started.md) is that trial, step by step.**
-Each step names the folder to run it from and what you should see, and the
-last step removes the install again.
+Try himmel on a project you can throw away. Install it, then ask Claude Code
+to edit a file on `main`, the main branch, and watch the edit get refused.
+Commit the install before creating a worktree, a separate working folder and
+branch; make a change there, then remove himmel at the end of the trial.
 
-That one protected project is a complete result. Everything else on this page
-is optional and comes later: a second-brain vault, unattended runs, a fleet of
-parallel sessions. The [adoption trail](docs/adoption-trail.html) lays these
+The install adds hooks and settings for Claude Code (under `.claude/`), the
+scripts they run (`scripts/`) and `.gitignore` entries to the project.
+Follow [Getting Started](docs/getting-started.md) step by step: it previews
+each change before you make it, and each step tells you which folder to run
+it from and what you should see.
+
+That one protected project is a complete result. The rest is optional and
+comes later: a notes vault, runs that carry on while you are away, many
+sessions in parallel. The [adoption trail](docs/adoption-trail.html) lays these
 out as levels, and each level says what it gives you, what it costs and how to
 turn it off.
 
@@ -26,36 +33,39 @@ turn it off.
 > the failure modes it exists for and what each one costs. Want the design
 > in one read? [**System design**](docs/system-design.md) explains the parts,
 > one ticket's flow, the trust model and the trade-offs. Want the wiring?
-> [**Architecture**](docs/architecture.md) draws the enforcement layers,
-> handover, fleet, Jira seam and observability chain.
+> [**Architecture**](docs/architecture.md) shows how the guardrails, the
+> handover notes, the parallel sessions, the Jira link and the logs fit
+> together.
 
 ## What himmel is
 
-himmel is a control plane for coding agents, for a solo operator or a small
-team who works with one every day. The agent's own harness keeps running each
-session; himmel installs on top of it and governs those sessions without
-replacing it. It adds hooks, guardrails, slash commands, a local Jira CLI and
-a handover system, so the work follows a worktree-isolated, PR-gated,
-Jira-tracked workflow without anyone having to remember the rules. Its fleet
-of sessions is the software factory: tickets go in, reviewed and merged PRs
-come out, and each merge still waits for a GO: a signed approval to merge
+If you work with a coding agent every day, alone or in a small team, himmel
+is for you. Claude Code still runs your sessions; himmel installs on top of it
+and adds checks before edits, commits and PRs, so nobody has to remember the
+rules. Each change gets its own branch and a reviewed PR, each commit names
+its ticket (a Jira issue, or a plain `#number` if you do not use Jira), and
+notes carry the work into the next session. Run several sessions at once and
+they work like a small software factory: tickets go in, reviewed and merged
+PRs come out, and each merge still waits for a GO: a signed approval to merge
 that one PR at the exact commit that was reviewed.
 
-Runs on Claude Code today; under Codex the guardrails fire through the hook
-adapter and AGENTS.md; other harnesses are audited, not ported.
+Built for Claude Code. The guardrails also run under Codex CLI, through its
+hooks and an `AGENTS.md` file. Other agents are not supported yet;
+[harness compatibility](docs/internals/harness-compat.md) has the detail.
 
 It has four layers, and each one works without the layers above it:
 
-1. **The guarded session.** Hooks and gates make one Claude Code session
-   follow the rules.
-2. **Handover and memory.** Plain markdown docs carry the work and its reasons
-   across sessions, with a search index on top.
-3. **Jarvis, the command layer.** The chief hands tickets to workers,
-   has each result judged and merges on GO. [Jarvis](docs/jarvis-subsystems.md)
-   describes it.
-4. **The surface.** The himmel UI (`himmelctl ui`) and its Fleet page, the
-   chief's board, Telegram, the statusline, the morning report and the
-   metrics let you watch the fleet and steer the chief.
+1. **The guarded session.** Checks run before Claude Code edits a file,
+   commits or opens a PR, and refuse what breaks the rules.
+2. **Handover and memory.** Plain markdown notes carry the work and its
+   reasons from one session to the next, with a search index to find them.
+3. **Jarvis, the command layer.** One session, the *chief*, plans the work
+   and hands each ticket to a *worker*, another session that owns that one
+   change. The chief checks each result and approves its merge with a GO;
+   the worker then merges. [Jarvis](docs/jarvis-subsystems.md) describes it.
+4. **The surface.** The himmel UI (`himmelctl ui`), Telegram, the
+   statusline, the morning report and the metrics show you what the sessions
+   are doing and let you steer the chief.
 
 The idea is simple: anything you would otherwise repeat by hand (checking a
 commit, reviewing a PR, writing down where you stopped, restarting after a
@@ -64,17 +74,18 @@ Claude remembering a paragraph of instructions.
 
 ## What you get
 
-The trial above shows the first of these: the edit refused on `main`, the
-commit gate and the worktree. The rest arrive as you add them, and the
-[adoption trail](docs/adoption-trail-levels.html) says which level brings each one.
+The trial above shows the first of these: the refused edit on `main`, a
+check before each commit and the separate worktree. The rest arrive as you
+add them, and the [adoption trail](docs/adoption-trail.html) says which level
+brings each one.
 
 - **Work carries over between sessions.** Each session leaves a plain
   markdown handover doc behind. A fresh session reads it and resumes where the
   last one stopped, with the decisions and the reasons for them intact.
-- **Work runs while you sleep.** `/afk-shift` hands scoped tickets to
-  parallel agents that branch, review themselves and open PRs. When a session
-  nears its usage cap, a usage-cap auto-relaunch schedules a relaunch with the operating
-  system's scheduler, so a long run survives the cap.
+- **Work runs while you sleep.** `/afk-shift` (afk: away from keyboard) hands
+  tickets to parallel agents that branch, review themselves and open PRs.
+  When a session nears its usage limit, himmel schedules a restart with the
+  operating system's scheduler, so the run carries on.
 - **Mistakes are blocked, not just discouraged.** Hooks stop edits on `main`,
   reads of secret files, and opening a PR without a passing review, at the
   moment Claude tries the tool call.
@@ -83,9 +94,9 @@ commit gate and the worktree. The rest arrive as you add them, and the
   until the result is clean. A finding marked critical must survive an
   adversarial check first, which filters out invented findings.
 - **It stays cheap.** A local Jira CLI replaces a Jira MCP (Model Context
-  Protocol) server, a CLI proxy summarizes noisy command output, and each
-  subagent gets a lean brief. All three keep the context window and the bill
-  small.
+  Protocol) server, a command-line filter shortens noisy output before Claude
+  reads it, and each helper agent gets only the instructions it needs. All
+  three keep the context window and the bill small.
 - **Memory you can read and edit.** Everything Claude remembers is a markdown
   file you can open. The search index on top is disposable and always points
   back at the file. [Memory architecture](#memory-architecture) explains how
@@ -94,8 +105,7 @@ commit gate and the worktree. The rest arrive as you add them, and the
   GitHub and Bitbucket Cloud. himmel picks the backend from each repo's
   `origin` remote.
 - **Linux and macOS.** Linux is checked on every PR, macOS on a scheduled
-  run. Windows is not supported. Details in the
-  [Support matrix](#support-matrix).
+  run. Details in the [Support matrix](#support-matrix).
 
 ## How it flows
 
@@ -103,65 +113,72 @@ commit gate and the worktree. The rest arrive as you add them, and the
   <img src="docs/assets/flows.svg" alt="Four himmel flows, each a row of six steps: shipping a change, running a fleet of workers from a chief, carrying work across sessions, and finding what you already know" width="960">
 </p>
 
-The graph walks four flows that make up most of a day with himmel. Each box
-lights up in order. The graph is rendered by
-[`scripts/docs/render-flows.py`](scripts/docs/render-flows.py); edit the
-script, not the image.
+<!-- The diagram is rendered by scripts/docs/render-flows.py: edit the script, not the image. -->
 
-**1. Ship a change.** Every change starts from a Jira ticket, and every commit
-names it. `/worktree` gives the change its own branch and directory, because
-nobody edits `main` directly. Hooks check each commit and push: message
-format, secrets, the attestation lines that say what was tested. `/pr-check`
-then runs the review panel. Once CI is green on the suites the change touches,
-the PR merges and `/clean` prunes the finished worktree.
+The diagram shows the four flows that make up most of a day with himmel.
+
+**1. Ship a change.** Give your change its own branch and working folder with
+`/worktree`, so you never edit `main` directly. Each commit names its ticket.
+Checks on each commit and push examine the message format, secrets and the
+attestation lines that say what was tested. `/pr-check` runs a review; once
+the pull request (PR) is approved, continuous integration (CI) passes the
+tests for the suites it touches and, in a fleet run, the chief has given its
+GO for the exact commit, the PR can merge. `/clean` removes the finished
+worktree.
 
 **2. Run a fleet: one chief, many workers.** For bigger runs, one Claude
 session acts as the *chief*. It plans the work and starts *workers*, other
-Claude sessions that each own one ticket, one worktree and one PR. A worker
-reports back with short status markers (`LIVE`, `READY`) and never merges on
-its own. The chief checks the PR (and can ask an independent judge subagent
-for a second opinion), writes a GO file (merge approval) to sign off, and the
-worker merges through `merge-on-green.sh`. The [glossary](docs/glossary.md)
+Claude sessions that each own one ticket, one worktree and one PR. Each
+worker reports back and never merges on its own. The chief checks the PR (and
+can ask an independent judge for a second opinion) and approves it in writing
+(a GO); only then does the worker merge. The [glossary](docs/glossary.md)
 defines chief, worker, judge and the rest.
 
 **3. Carry work across sessions.** A session that has made decisions writes
-them into a handover doc with `/handover`. The doc lives in your handover
-state repo, not in the project, so it survives anything that happens to the
-session. If the session hits its usage cap, himmel arms a relaunch. The next
-session runs `/handover-resume`, reads the doc, and continues where the last
-one stopped.
+them into a handover doc with `/handover`. The doc lives in a separate git
+repo for your notes (set with `HANDOVER_DIR`), not in the project, so it
+survives anything that happens to the session. If the session hits its usage
+limit, himmel schedules a restart. The next session runs `/handover-resume`,
+reads the doc, and continues where the last one stopped.
 
 **4. Find what you already know.** Before improvising, a session looks up
 what is already known. Claude Code's per-project `MEMORY.md` is a short index
-that routes a keyword to a topic note. `qmd` searches the markdown itself
-(notes, handovers, docs) by keyword and meaning. `graphify` answers questions
-about how the code fits together. Each hop ends at a real file, and a lesson
-learned on the way is written back to memory for the next session.
+that routes a keyword to a topic note. `qmd`, a local search engine, searches
+the markdown itself (notes, handovers, docs) by keyword and meaning.
+`graphify`, a map of the code, answers questions about how the code fits
+together. Every answer points at a real file, and a lesson learned on the way
+is written back to memory for the next session.
 
-The commands behind flow 1:
+The commands behind flow 1, numbered in the order you run them. In Claude
+Code:
 
-```bash
-/worktree feat/my-thing   # isolated branch + worktree (never edit on main)
-#   … work with Claude in the worktree …
-git commit && git push    # hooks gate the message, secrets and attestation lines
-/pr-check                 # review panel; clears the merge gate when clean
-gh pr create              # then merge once CI is green and the PR is approved
-/clean                    # prune merged worktrees
-/handover                 # write down where you stopped
+```text
+/worktree feat/my-thing   # 1. its own branch and worktree (never edit on main)
+/pr-check                 # 3. review panel; clears the merge gate when clean
+/clean                    # 5. after the merge: prune merged worktrees
+/handover                 # 6. write down where you stopped
 ```
 
-Going unattended:
+In your shell, from the worktree:
 
 ```bash
-/afk-shift --limit 5   # five scoped tickets to parallel agents, each ending in a PR
-/stop                        # ask an overnight run to halt gracefully
+git add <files>           # 2. after working with Claude in the worktree
+git commit && git push    # 2. hooks check the message, secrets and attestation lines
+gh pr create              # 4. then merge once CI is green and the PR is approved
+```
+
+Going unattended, in Claude Code:
+
+```text
+/afk-shift --limit 5   # five tickets to parallel agents, each ending in a PR
+/stop                  # ask an overnight run to halt gracefully
 ```
 
 [`docs/daily-loop.md`](docs/daily-loop.md) walks flow 1 end to end and
 explains every hook at the moment it fires.
 [`docs/configuration.md`](docs/configuration.md) lists every gate, knob and
-off switch in one place. A language model (or a new session) should start
-from [`llms.txt`](llms.txt), the machine-readable map of the repo.
+off switch in one place. Pointing an AI assistant at this repo? Give it
+[`llms.txt`](llms.txt), a map of the repo written for language models.
 
 ## Quickstart
 
@@ -171,29 +188,44 @@ install Claude Code first:
 
 There are two ways in:
 
-1. **Add himmel to a project** (newcomer; the usual case). This brings over
+1. **Protecting your own project?** This is the usual case. It brings over
    the portable core: hooks, guardrails, the worktree workflow and the
    marketplace plugins and skills. Do the trial in
    [`docs/getting-started.md`](docs/getting-started.md) on a spare project
-   first. The [adoption trail](docs/adoption-trail.html) (also at
+   first, then run this from your project's folder:
+
+   ```bash
+   git clone https://github.com/yotamleo-org/Himmel ~/himmel   # once
+   node ~/himmel/scripts/himmelctl/bin.js install --scope project
+   ```
+
+   Use `--scope user` to wire every project on the machine, or leave out
+   `--scope` and the installer asks. What each scope and install profile
+   brings, and the checklist for your own repo, is in
+   [`docs/setup/install.md`](docs/setup/install.md). The
+   [adoption trail](docs/adoption-trail.html) (also at
    [yotamleo-org.github.io/Himmel/adoption-trail.html](https://yotamleo-org.github.io/Himmel/adoption-trail.html))
    shows what each later level of adoption changes.
-2. **Run or develop himmel itself** (contributor). This path has more
-   prerequisites, and the rest of this section covers it.
+2. **Working on himmel itself, or installing it for every project on a
+   machine?** The rest of this section covers that: the prerequisites, the
+   release tarball or a clone, the environment and the install check.
 
-**Prerequisites.** `bash`, `git`, `node`, `npm`, `bun`, `python3`, `jq`, `gh`
-and `mktemp`; `scripts/setup.sh` checks for them first and stops with install
-hints if one is missing. You also need one of `uv`, `pipx` or an installed
-`pre-commit`: setup uses it to install `pre-commit` and then wires the git
-hooks. `bun` runs the handover resume resolver, the qmd search index, the
-Telegram bridge and the vault triage tools. Per-platform install steps are in
+**Prerequisites.** `scripts/setup.sh` needs `bash`, `git`, `node`, `npm`,
+`bun`, `python3`, `jq`, `gh` and `mktemp`. It installs the missing ones it
+can, and stops with install hints for the rest. `bun` is required even though
+everything it runs is optional: the qmd search index, the Telegram bridge, the
+vault tools and resuming a scheduled session. You also need one of `uv`,
+`pipx` or an installed `pre-commit`: setup uses it to install `pre-commit` and
+then wires the git hooks. Per-platform install steps are in
 [`docs/setup/new-machine.md`](docs/setup/new-machine.md).
 
 **Linux, from the release tarball** (checksummed and pre-built: no clone, no
-`npm install`):
+`npm install`). Pick a release from the
+[releases page](https://github.com/yotamleo-org/Himmel/releases) and put its
+version in place of `X.Y.Z`:
 
 ```bash
-V=X.Y.Z   # a release that ships the tarball: https://github.com/yotamleo-org/Himmel/releases
+V=X.Y.Z   # a release that ships the tarball
 curl -fsSLO "https://github.com/yotamleo-org/Himmel/releases/download/v$V/himmel-$V-linux.tar.gz"
 curl -fsSLO "https://github.com/yotamleo-org/Himmel/releases/download/v$V/himmel-$V-linux.tar.gz.sha256"
 sha256sum -c "himmel-$V-linux.tar.gz.sha256" \
@@ -204,23 +236,22 @@ sha256sum -c "himmel-$V-linux.tar.gz.sha256" \
 ```
 
 The `&&` chain matters: if the tarball does not match its published
-`.sha256`, `sha256sum -c` fails and nothing is extracted or installed. With
-`gh` you can also check that this repo's CI built it:
-`gh attestation verify himmel-$V-linux.tar.gz -R yotamleo/Himmel`. CI builds
-the tarball on each `v*` tag ([`release.yml`](.github/workflows/release.yml)).
+`.sha256`, `sha256sum -c` fails and nothing is extracted or installed. Every
+release tarball is built by this repo's CI, and with `gh` you can check that:
+`gh attestation verify himmel-$V-linux.tar.gz -R yotamleo-org/Himmel`.
 
 Each release unpacks into its own `~/.local/share/himmel/<version>/` (no root
 needed), and `~/.local/share/himmel/current` points at the live one.
 `himmelctl install` wires everything through `current` and puts a `himmelctl`
 launcher in `~/.local/bin`.
 
-To upgrade, run `himmelctl update`. It downloads the latest release, verifies
-it, unpacks it next to the old one and only then switches `current`, so a
-failed download changes nothing. To roll back, point `current` at the previous
-version: `ln -sfn <previous-version> ~/.local/share/himmel/current`. After
-`himmelctl uninstall`, deleting `~/.local/share/himmel` removes every version.
-An older install that unpacked straight into `~/.local/share/himmel` predates
-this layout: move it aside and install once with the recipe above.
+To upgrade, run `himmelctl update` from a shell. It downloads the latest
+release, verifies it, unpacks it next to the old one and only then switches
+`current`, so a failed download changes nothing. To roll back, point `current`
+at the previous version: `ln -sfn <previous-version> ~/.local/share/himmel/current`.
+After `himmelctl uninstall`, deleting `~/.local/share/himmel` removes every
+version. An older install that unpacked straight into `~/.local/share/himmel`
+predates this layout: move it aside and install once with the recipe above.
 
 **Linux or macOS, from a clone:**
 
@@ -230,16 +261,18 @@ cd himmel
 node scripts/himmelctl/bin.js install
 ```
 
-No node on the machine yet? Run `bash scripts/himmelctl/bootstrap.sh` first,
-then `install`. The wizard runs `scripts/setup.sh` under the hood; call that
-directly for a manual or CI install.
+No node on the machine yet? From the cloned himmel folder, run
+`bash scripts/himmelctl/bootstrap.sh` instead: it installs node with apt
+(Linux) or Homebrew (macOS), then runs `node scripts/himmelctl/bin.js install`
+for you. `install` asks a few questions, then runs `scripts/setup.sh`; run
+that directly for a scripted or CI install.
 
-**Environment.** Set these in the shell that launches Claude. luna, Telegram,
-hermes and Jira are all optional; the harness runs without them.
+**Environment.** Set these in the shell that launches Claude. The notes
+vault, the Telegram bridge and Jira are optional; himmel runs without them.
 
 | Variable             | Required? | Notes                                                              |
 |----------------------|-----------|--------------------------------------------------------------------|
-| `USER_SLUG`          | recommended | Your kebab-case handle, e.g. `jane-doe`. Names your handover bucket (`handovers/<USER_SLUG>/`) and worktree dirs. If unset, it is derived from `git config user.name`; setup fails only if both are unset. |
+| `USER_SLUG`          | recommended | Your kebab-case handle, e.g. `jane-doe`. Names your folder in the handover repo (`handovers/<USER_SLUG>/`) and your worktree folders. If unset, it is derived from `git config user.name`; setup fails only if both are unset. |
 | `JIRA_PROJECT_KEY`   | only for Jira | e.g. `HIMMEL`. The project the CLI creates and queries issues in. |
 | `JIRA_BASE_URL`      | only for Jira | Your Atlassian site, e.g. `https://your-site.atlassian.net`. |
 | `JIRA_API_TOKEN` + `JIRA_EMAIL` | only for Jira | API-token credentials. Never commit them; `.env` is gitignored. |
@@ -249,28 +282,28 @@ The Jira CLI needs only those four Jira variables, no cloud ID.
 `JIRA_CLOUD_ID` is only for the optional Atlassian MCP server. The full list
 is in [`.env.example`](.env.example).
 
-Check the install:
+Check the install. From the cloned himmel folder:
 
 ```bash
-node scripts/jira/dist/index.js list      # talk to Jira
 gh auth status                            # talk to GitHub
 pre-commit run --all-files                # all hooks green
+node scripts/jira/dist/index.js list      # only if you set up Jira
 ```
+
+From the release tarball, run `gh auth status`, then `himmelctl status`,
+which reports any part of the install that is missing or out of date.
 
 Then run one full loop (worktree, commit, PR, merge, `/clean`, `/handover`)
 with [`docs/daily-loop.md`](docs/daily-loop.md) open beside you.
 
 ## Support matrix
 
-himmel is developed on Linux and macOS. **Windows (Git Bash, WSL) is not
-supported.** Windows support was dropped; nothing about Windows is claimed as
-working.
+himmel runs on Linux and macOS. Windows (Git Bash or WSL) is not supported.
 
 | Tier | Platforms | What it promises |
 |---|---|---|
-| **Supported** | Linux | Checked on every PR as a required check ([CI runs on `main`](https://github.com/yotamleo-org/Himmel/actions/workflows/ci.yml?query=branch%3Amain)). The adopter round trip is verified. |
-| **Supported** | macOS | Checked on a scheduled run twice a week, not on every PR ([scheduled macOS runs](https://github.com/yotamleo-org/Himmel/actions/workflows/macos-cadence.yml?query=event%3Aschedule)). A macOS-only failure is fixed as its own change ([`docs/internals/testing.md`](docs/internals/testing.md)). |
-| **Dropped** | Windows (Git Bash), WSL | Support was dropped: no CI gate, no guarantee. |
+| **Supported** | Linux | Checked on every PR as a required check ([CI runs on `main`](https://github.com/yotamleo-org/Himmel/actions/workflows/ci.yml?query=branch%3Amain)). Installing into your own project and removing it again is tested. |
+| **Supported** | macOS | Checked twice a week, not on every PR ([scheduled macOS runs](https://github.com/yotamleo-org/Himmel/actions/workflows/macos-cadence.yml?query=event%3Aschedule)). |
 
 **Install channels:**
 
@@ -279,35 +312,25 @@ working.
 | Release tarball (`himmel-<version>-linux.tar.gz` + `.sha256`) | **Supported** on Linux: the recipe above. A fresh machine installing from it is tested end to end. |
 | `git clone` + `himmelctl install` | **Supported** on Linux and macOS. |
 | Plugin marketplace (`marketplace/plugins/*`, one directory per plugin) | **Supported.** Installed, updated and removed by Claude Code itself (`claude plugin install/update/uninstall`), not by `himmelctl`. Includes [`himmel-ops`](marketplace/plugins/himmel-ops/README.md) (skills that load when a guardrail stops you and explain the way out), [`himmel-bus`](docs/himmel-bus.md) (a local message bus between sessions, early) and [`luna-correlate`](marketplace/plugins/luna-correlate/README.md) (an opt-in, offline health-factor correlation MCP). |
-| AUR (`himmel`, recipe in [`packaging/aur/`](packaging/aur/)) | **Supported after the first AUR push** (Arch). `pacman` installs to `/opt/himmel`; each user then runs `himmelctl install --scope user`, and `himmelctl update` defers to `pacman -Syu`. To remove: `himmelctl uninstall` for each user, then `pacman -R himmel`. |
-| brew (Linux tap) | Not supported. Reconsidered if a tap shared with macOS becomes worthwhile. |
-| nix, deb, rpm | Not supported. Reconsidered when users ask for a given channel. |
+| AUR (`himmel`) | **Not on the AUR yet**; the recipe is in [`packaging/aur/`](packaging/aur/) (Arch). A package built from it installs to `/opt/himmel`; each user then runs `himmelctl install --scope user`, and `himmelctl update` defers to `pacman -Syu`. To remove: `himmelctl uninstall` for each user, then `pacman -R himmel`. |
+| brew (Linux tap) | Not supported. |
+| nix, deb, rpm | Not supported; open an issue if you need it. |
 
-New shell scripts target bash and stay bash 3.2-safe, so they run on macOS's
-default bash. See
-[`docs/internals/harness-compat.md`](docs/internals/harness-compat.md) for how
-himmel behaves under other harnesses.
+The guardrail hooks run on macOS's built-in bash 3.2; a few other scripts
+need a newer bash (`brew install bash`).
 
 ## Memory architecture
 
-There are two broad ways to give an AI agent memory.
+Your agent's working memory lives in files you can open, edit and correct.
+Search indexes help it find those files; they do not replace them. The agent
+can read a note alongside its links, decisions and reasons, then write back
+to it.
 
-The first is a **memory backend**: software pulls facts out of your
-conversations and files, stores them in a separate database (usually as
-vector embeddings), and later retrieves the closest-matching facts *instead
-of* the files they came from. Writing about agent memory sometimes calls this
-"Camp 1".
-
-The second is a **context substrate** ("Camp 2"): the files themselves are
-the memory. The agent reads them, reasons over them and writes back to them.
-Any index exists only to find the right file faster.
-
-himmel is firmly in the second camp. The reason is that a single operator is
-the source of truth and should be able to open, read and fix what the agent
-remembers. Pulling one fact out of a file throws away the context that made
-it useful: the links, the surrounding decisions, the reason it was written.
-A memory backend wins when the corpus is too large to read and nobody needs
-to inspect it, as in enterprise document search. That is not himmel's case.
+Another approach extracts facts from conversations and files into a separate
+database and retrieves matching facts rather than their source files. That
+can be useful for very large collections where readers do not need to
+inspect the originals. himmel instead keeps the files as the source so you
+can inspect and fix what the agent uses.
 
 What the memory is made of today, all plain files:
 
@@ -330,13 +353,14 @@ Two search tools sit on top. Neither replaces a file:
 - **[qmd](https://www.npmjs.com/package/@tobilu/qmd)** is a local search
   engine over the markdown, using keyword ranking (BM25) and vectors. It
   returns a pointer to the source file, never a fact in its place. The index
-  can be deleted and rebuilt at any time. That is the line between the two
-  camps: not whether embeddings are used, but whether you get the file back.
+  can be deleted and rebuilt at any time. The distinction is not whether
+  search uses embeddings, but whether it leads back to the file.
 - **graphify** builds a knowledge graph of the code (which file and function
   relates to which) and answers structure questions with `graphify query` and
-  `graphify explain`. The graph is rebuilt from the source on a schedule. A
-  data-egress fence ([`docs/internals/egress-matrix.md`](docs/internals/egress-matrix.md))
-  decides which files may reach which extraction provider.
+  `graphify explain`. The graph is rebuilt from the source on a schedule.
+  Building the graph can send code to an outside model; the
+  [egress matrix](docs/internals/egress-matrix.md) lists which files may go to
+  which provider.
 
 ### Companion vault tooling (optional)
 
@@ -357,13 +381,12 @@ it. None of them is needed by the core harness.
 - **[obsidian (kepano)](https://github.com/kepano/obsidian-skills)**, pinned:
   the `obsidian-markdown` skill for Obsidian-flavored markdown.
 
-A weekly vault-health pass (`/obsidian-health`, Sundays at 04:00) is
-scheduled by [`pipeline-cadence`](.claude/commands/pipeline-cadence.md).
+Once a week (Sundays at 04:00), `/obsidian-health` checks the vault for you.
 
 ## Features
 
-Every feature has one doc that owns its detail; the full map is
-[`docs/README.md`](docs/README.md).
+Each feature below links to the page that explains it;
+[`docs/README.md`](docs/README.md) lists every page.
 
 **Core loop and enforcement**
 - Worktree isolation with `/worktree`, `/clean`, `/clean_garden`:
@@ -374,18 +397,19 @@ Every feature has one doc that owns its detail; the full map is
   [`docs/internals/enforcement.md`](docs/internals/enforcement.md)
 - Handover system (multi-repo registry, auto-branch, PR, flush):
   [`docs/internals/handover-system.md`](docs/internals/handover-system.md)
-- Collision preflight before starting a session: `bash scripts/handover/queue-lock.sh preflight <handover-doc> [file...]`
-  warns (exit 20) when a file you intend to touch is already changed in another
-  live session's checkout; read-only, `queue-lock.sh` header lists the contract
+- Collision preflight: before you start a session,
+  `bash scripts/handover/queue-lock.sh preflight <handover-doc> [file...]`
+  warns you when a file you plan to change is already being changed in
+  another session. It changes nothing.
 - AFK (unattended) mode runs (`/afk-shift`, `/stop` to halt):
   [`docs/handover/afk-mode.md`](docs/handover/afk-mode.md)
 
 **Lifecycle and delegation**
 - `himmelctl` install, update and uninstall:
   [`docs/setup/updating.md`](docs/setup/updating.md)
-- Delegation across Claude model tiers, plus an optional Codex lane,
-  listed live by `/lanes`: [`docs/tooling-catalog.md`](docs/tooling-catalog.md)
-- Cloud lane (`claude --cloud` sessions on your fork):
+- Handing work to cheaper or stronger Claude models, or to Codex, listed
+  live by `/lanes`: [`docs/tooling-catalog.md`](docs/tooling-catalog.md)
+- Running sessions in the cloud on your copy of the repo (`claude --cloud`):
   [`docs/setup/cloud-environment.md`](docs/setup/cloud-environment.md)
 - Watchers that cost almost no tokens: `/morning-report` (git, GitHub and Jira
   state) and the `check-ci` merge-gate watcher:
@@ -407,8 +431,8 @@ Every feature has one doc that owns its detail; the full map is
 - graphify and qmd: see [Memory architecture](#memory-architecture)
 
 **Comms**
-- Telegram bridge (arm a session, check status, chat from your phone):
-  [`docs/telegram-bridge.md`](docs/telegram-bridge.md)
+- Telegram bridge (start a session, check on it and chat with it from your
+  phone): [`docs/telegram-bridge.md`](docs/telegram-bridge.md)
 
 ## Who is this for
 
@@ -430,16 +454,16 @@ build on itself across sessions without re-explaining the context each time.
 - **A new machine, step by step:**
   [`docs/setup/new-machine.md`](docs/setup/new-machine.md) (required
   environment and per-platform notes).
-- **Adopting himmel in your own repo:** `git clone
-  https://github.com/yotamleo-org/Himmel himmel`, then
-  `node himmel/scripts/himmelctl/bin.js install --scope project` (or
-  `--scope user`). Leave out `--scope` to walk the wizard. What each scope and
-  install profile brings, and the checklist for a repo that is not himmel:
+- **Adopting himmel in your own repo:** the commands are in the
+  [Quickstart](#quickstart); what each scope and install profile brings, and
+  the checklist for your own repo:
   [`docs/setup/install.md`](docs/setup/install.md). Coming from an older
   install: [`docs/setup/migrating.md`](docs/setup/migrating.md).
-- **Updating:** `/himmel-update` updates the harness (a `git pull` plus a
-  marketplace re-sync; Claude Code's own `autoUpdate` does not deliver
-  himmel). `/luna-upgrade` upgrades a companion vault separately.
+- **Updating:** `/himmel-update` inside Claude Code, or `himmelctl update`
+  from a shell. On a clone both run a `git pull` plus a marketplace re-sync;
+  on the release tarball, use `himmelctl update`. Claude Code's own
+  `autoUpdate` does not deliver himmel. `/luna-upgrade` upgrades a companion
+  vault separately.
 - **Uninstalling:** `node scripts/himmelctl/bin.js uninstall`. Preview it first
   with `uninstall --dry-run`, which touches nothing. It removes himmel's wiring and keeps your state unless you
   pass `--purge-state` ([details](docs/setup/install.md#uninstalling)). All of
@@ -469,6 +493,8 @@ The workflow is in [`docs/contributing.md`](docs/contributing.md). In short:
 3. One worktree per branch (`/worktree <type>/<slug>`); never edit on `main`.
 4. Pre-commit and pre-push hooks must pass.
 5. A new shell script comes with a smoke test (`scripts/<area>/test-<thing>.sh`).
+6. New shell scripts target bash and stay bash 3.2-safe, so they run on
+   macOS's default bash.
 
 ## Project conventions
 
