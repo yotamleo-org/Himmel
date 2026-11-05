@@ -77,7 +77,7 @@ if [ -f "$HIMMEL_ROOT/scripts/lib/gh-read.sh" ]; then _RR_GH=(bash "$HIMMEL_ROOT
 usage() {
     echo "usage: review-round.sh start --branch <name> [--head <sha> [--base-sha <sha>]]" >&2
     echo "       review-round.sh defer --branch <name> --head <sha> [--defer-to <ticket>] [--fu-why <code>]" >&2
-    echo "       review-round.sh promote --branch <name> --head <sha>" >&2
+    echo "       review-round.sh promote [--check] --branch <name> --head <sha>   (--check: the same verdict, read only, nothing written)" >&2
     echo "       review-round.sh judge-go --branch <name> --head <sha>   (after the cap: a signed judge GO at <sha> stands in for the review)" >&2
     echo "       review-round.sh evidence --branch <name> --head <sha>   (ledger ok row for a tests-only head after a reviewed head; spends no round)" >&2
     echo "       review-round.sh abort --branch <name> --head <sha>   (give back the round started at <sha> when its panel reviewed nothing)" >&2
@@ -235,8 +235,10 @@ head_sha=""
 base_sha=""
 defer_to="${CR_DEFER_TO:-}"
 fu_why_arg=""
+check_only=0
 while [ $# -gt 0 ]; do
     case "$1" in
+        --check) check_only=1; shift ;;
         --branch) [ $# -ge 2 ] || usage; branch="$2"; shift 2 ;;
         --head) [ $# -ge 2 ] || usage; head_sha="$2"; shift 2 ;;
         --base-sha) [ $# -ge 2 ] || usage; base_sha="$2"; shift 2 ;;
@@ -246,6 +248,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 [ -n "$branch" ] || usage
+[ "$check_only" -eq 0 ] || [ "$verb" = "promote" ] || usage
 case "$verb" in
     start) [ -n "$head_sha" ] || [ -z "$base_sha" ] || usage ;;
     defer) [ -n "$head_sha" ] || usage ;;
@@ -266,7 +269,8 @@ fi
 # worker's worktree - so only the branch checked out in cwd may be written. A
 # detached HEAD has no branch and is refused too.
 current_branch="$(git branch --show-current 2>/dev/null)" || current_branch=""
-if [ -z "$current_branch" ] || [ "$current_branch" != "$branch" ]; then
+# promote --check writes nothing, so it may read a branch this directory does not hold.
+if [ "$check_only" -eq 0 ] && { [ -z "$current_branch" ] || [ "$current_branch" != "$branch" ]; }; then
     echo "review-round: --branch '$branch' is not the branch checked out in this directory ('${current_branch:-detached HEAD}') - run it from that branch's worktree" >&2
     exit 2
 fi
@@ -1731,6 +1735,11 @@ fi
 # one is skipped and counted and that row decides; the match is a heuristic and
 # can pass a blank row that was not a retry; exit 2 = --head does not resolve to a commit;
 # exit 5 = the CR ledger file itself is missing.
+# `promote --check` is the same verdict as a read: every decision above is made from the ledger as it
+# stands, then the amends are skipped (a promotable row prints `would-promote` and counts as promoted,
+# as it will once the real verb runs), so it exits 0, 3, 1, 2 or 5 exactly as the real verb would on
+# that ledger and writes nothing. The branch need not be the one checked out in cwd. Callers: the
+# marker's --check-findings (the GO-time read of gate 4c), through which ready-check.sh item 18 reads it.
 if [ "$verb" = "promote" ]; then
     if ! full_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$full_head" ]; then
         echo "review-round: --head $head_sha does not resolve to a commit" >&2
@@ -1959,6 +1968,11 @@ process.stdout.write(JSON.stringify({malformed: 0, blank: blankRefused.join(", "
         row_head8="$(printf '%s' "$row_head" | cut -c1-8)"
         case "$action" in
             promote)
+                if [ "$check_only" -eq 1 ]; then
+                    echo "would-promote ${id}@${row_head8}"
+                    promoted=$((promoted + 1))
+                    continue
+                fi
                 if ! CR_LEDGER="$ledger" bash "$SCRIPT_DIR/ledger-append.sh" amend \
                     --branch "$row_branch" --head "$row_head" --id "$id" \
                     --artifact "$row_artifact" --perspective "$row_perspective" \

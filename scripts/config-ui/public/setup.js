@@ -164,7 +164,7 @@ function tileValue(id, { setup, state }) {
   if (id === "secrets") {
     const own = ok ? savedHere(setup) : [];
     const login = ok && setup.account ? (setup.account.status === "set" ? " · login set" : " · no login yet") : "";
-    return ok ? `${own.filter((s) => s.status === "set").length} of ${own.length} set${login}` : "";
+    return ok ? `${own.filter((s) => s.status === "set").length} of ${own.length} set${login}${rolesTileText(state)}` : "";
   }
   if (id === "review") {
     const d = state.reviewGate && state.reviewGate.data;
@@ -179,7 +179,9 @@ function tileValue(id, { setup, state }) {
 function tileChip(id, { state, setup }) {
   if (id === "secrets") {
     const t = setup && !setup.error && setup.secrets.find((s) => s.name === "TELEGRAM_BOT_TOKEN");
-    return t && t.status !== "set" ? `<span class="m diff">Telegram not set</span>` : "";
+    if (t && t.status !== "set") return `<span class="m diff">Telegram not set</span>`;
+    const m = state.apiRoles && state.apiRoles.data && state.apiRoles.data.roleMap;
+    return m && (m.state === "partial" || m.state === "invalid") ? `<span class="m diff">check</span>` : "";
   }
   const d = id === "review" && state.reviewGate && state.reviewGate.data;
   if (!d) return "";
@@ -204,7 +206,117 @@ function checkStrip(v) {
 const loading = (what) => `<p class="sub" role="status">loading ${what}…</p>`;
 const setupFailed = (setup) => (setup ? `<div class="nodata" role="alert">${esc(setup.error)}</div>` : loading("this install's setup"));
 
-function secretsPanel({ setup, msgs }) {
+// ---- Multi accounts: which API account may serve each kind of run on auto. The data is GET /api/api-roles:
+// the role map's state and live roles, ROLES, one row per account and the account letters. The page holds no role list.
+const ROLE_NOTE = { graphify: "every configured account (the himmel graph pass)", judge: "subscription judge (decision 525)" };
+const BANK_STYLE = { "not configured": "off", unknown: "warn", "marked exhausted": "fail", "no room": "fail", "last resort": "warn", "no reading": "warn", "stale reading": "warn", room: "ok" };
+const ROLES_FILE = "~/.himmel/state/api-credit/roles.json";
+
+// the editor's starting map: the live entries, so saving a partial or invalid file repairs it
+export function apiRolesDraft(data) {
+  const out = {};
+  for (const [role, letters] of Object.entries((data && data.roleMap && data.roleMap.roles) || {})) out[role] = [...letters];
+  return out;
+}
+
+const roleLine = (role, letters) => `"${role}": [${letters.map((l) => JSON.stringify(l)).join(", ")}]`;
+
+// The file text before and after a save, computed in the page from the stored and the pending map: no server call.
+export function rolesPreview(current, draft) {
+  const text = (roles) => (Object.keys(roles).length ? JSON.stringify({ version: 1, roles }, null, 2) : null);
+  const diff = [];
+  let changes = 0;
+  for (const role of new Set([...Object.keys(current), ...Object.keys(draft)])) {
+    const was = current[role] ? roleLine(role, current[role]) : null, now = draft[role] ? roleLine(role, draft[role]) : null;
+    if (was === now) { diff.push({ sign: " ", text: was }); continue; }
+    changes++;
+    if (was) diff.push({ sign: "-", text: was });
+    if (now) diff.push({ sign: "+", text: now });
+  }
+  return { before: text(current) || "no file", after: text(draft) || (Object.keys(current).length ? "file removed" : "no file"), diff, changes };
+}
+
+function roleErrorLine(code, roles) {
+  let m;
+  if ((m = /^unknown-account:([^:]+):(.*)$/.exec(code))) return `${m[1]} → "${m[2]}" dropped: not an account${roles[m[1]] ? `; ${m[1]} is kept as [${roles[m[1]].join(",")}]` : ""} (${code})`;
+  if ((m = /^unknown-role:(.*)$/.exec(code))) return `"${m[1]}" is not a role, entry ignored (${code})`;
+  if ((m = /^empty-role:(.*)$/.exec(code))) return `${m[1]} has no account, entry ignored (${code})`;
+  if ((m = /^invalid-role-map:(.*)$/.exec(code))) return `the file cannot be used: ${m[1]} (${code})`;
+  return code;
+}
+
+function roleWarningLine(code, roles) {
+  const role = code.replace(/^no-configured-account:/, ""), letters = roles[role] || [], many = letters.length > 1;
+  return `${role} is mapped only to ${letters.join(", ")}, which ${many ? "are" : "is"} not configured: every auto ${role} call is refused until ${many ? "one is" : "it is"} configured or the entry changes (${code})`;
+}
+
+function accountRows(d) {
+  const map = d.roleMap;
+  if (!d.rows) return `<div class="srow"><span class="id">Accounts</span><span class="det"><span class="st fail wrap">account config unreadable${d.accountsReason ? `: ${esc(d.accountsReason)}` : ""}; fix config.json</span></span></div>`;
+  const body = d.rows.map((r) => {
+    const mapped = d.ROLES.filter((role) => (map.roles[role] || []).includes(r.account));
+    const roles = mapped.length
+      ? `<span class="chips">${mapped.map((role) => `<span class="ro">${esc(role)}</span>`).join(" ")}</span>${r.configured === false ? ` <span class="det">skipped at pick time</span>` : ""}`
+      : map.state === "absent" && r.configured ? `<span class="det">graph pass (525 default)</span>` : "—";
+    const tag = `<span class="st ${BANK_STYLE[r.tag] || "warn"}">${esc(r.tag)}${r.reason ? ` (${esc(r.reason)})` : ""}</span>`;
+    const cap = r.cap_usd == null ? "—" : `$${esc(String(Number(r.cap_usd)))} cap`;
+    return `<tr data-account-row="${esc(r.account)}"><th scope="row">${esc(r.account)}</th><td>${r.configured == null ? "unknown" : r.configured ? "configured" : "not configured"}</td><td>${cap}</td><td>${tag}</td><td>${roles}</td></tr>`;
+  }).join("");
+  return `<div class="scroll"><table class="roles-table"><thead><tr><th>Account</th><th>Configured</th><th>Cap</th><th>Bank</th><th>Roles</th></tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+function roleEditor(d, ar) {
+  const draft = ar.draft || {};
+  const toggles = (role) => (d.letters || []).map((l) => {
+    const on = (draft[role] || []).includes(l);
+    return `<button class="btn${on ? " primary" : ""}" type="button" data-act="role-toggle" data-role="${esc(role)}" data-account="${esc(l)}" aria-pressed="${on}">${esc(l)}</button>`;
+  }).join(" ");
+  const rows = d.ROLES.map((role) => `<tr><th scope="row">${esc(role)}</th><td>${toggles(role)}</td><td class="det">${esc(ROLE_NOTE[role] || "its decision 525 default")}</td></tr>`).join("");
+  const p = rolesPreview(apiRolesDraft(d), draft);
+  const missing = (d.rows || []).filter((r) => r.configured === false && Object.values(draft).some((ls) => ls.includes(r.account))).map((r) => r.account);
+  const preview = ar.preview ? `<div class="dryrun"><b>Preview (in the page, not saved)</b> <code>${ROLES_FILE}</code>
+      <pre>${p.diff.map((l) => `${l.sign} ${esc(l.text)}`).join("\n") || esc(p.after)}</pre>
+      ${p.after === "file removed" ? `<p class="sub">An empty map removes the file: decision 525 applies.</p>` : ""}
+      ${missing.map((l) => `<p class="sub">${esc(l)} is not configured: it is kept and skipped at pick time until a ${esc(l)} row exists.</p>`).join("")}</div>` : "";
+  const msg = ar.msg ? `<span class="${ar.msg.ok ? "ok-t" : "bad-t"}" role="status">${esc(ar.msg.text)}</span>` : "";
+  return `<h4>Edit roles</h4>
+    <p class="sub">Press an account to let it serve that kind of run on auto. Leaving a row with no account means its decision 525 default.</p>
+    <div class="scroll"><table class="roles-table roles-edit"><thead><tr><th>Role</th><th>Accounts</th><th>With no account</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="sub">critic, eval, bulk and cull get a row when their callers route auto (P2).</p>
+    ${preview}
+    <div class="srow"><span class="det">${p.changes ? `${p.changes} change${p.changes === 1 ? "" : "s"} · not saved` : "no changes"}</span>
+      <span class="acts"><button class="btn" type="button" data-act="roles-preview">Preview</button> <button class="btn primary" type="button" data-act="roles-save">Save</button> <button class="btn" type="button" data-act="roles-cancel">Cancel</button></span>${msg}</div>`;
+}
+
+function multiAccounts({ state }) {
+  const head = `<h3>Multi accounts</h3>`, ar = state && state.apiRoles;
+  if (!ar || (!ar.data && !ar.error)) return `${head}${loading("the role map")}`;
+  if (!ar.data) return `${head}<div class="nodata" role="alert">${esc(ar.error)}</div>`;
+  const d = ar.data, map = d.roleMap;
+  const intro = `<p class="sub">Which API account may serve each kind of run when a caller asks for <code>auto</code>. A run that names its account (A, B or C) is not affected. Roles never widen auto beyond the himmel repo.</p>`;
+  let card = "";
+  if (map.state === "absent") card = `<div class="card role-card"><h3>No role map: decision 525 default</h3><p class="sub">Only the himmel graph pass uses auto, on any configured account. The judge runs on the subscription. A run that names A, B or C is not affected. To let an account serve a role, use Edit roles.</p></div>`;
+  else if (map.state === "partial" || map.state === "invalid") {
+    const n = map.errors.length;
+    card = `<div class="card crit role-card" role="alert"><h3>${map.state === "partial" ? `Role map: ${n} error${n === 1 ? "" : "s"}; the other entries still apply` : "Role map: the whole file is ignored, decision 525 applies"}</h3>
+      <p class="sub">An ignored role falls back to its decision 525 default. Nothing else is refused, and the account money config is untouched.</p>
+      <ul>${map.errors.map((e) => `<li>${esc(roleErrorLine(e, map.roles))}</li>`).join("")}</ul></div>`;
+  }
+  const warn = (d.warnings || []).length ? `<div class="card warn role-card" role="status"><ul>${d.warnings.map((w) => `<li>${esc(roleWarningLine(w, map.roles))}</li>`).join("")}</ul></div>` : "";
+  return `${head}${intro}${card}${warn}${accountRows(d)}${roleEditor(d, ar)}
+    <p class="sub">Roles are saved to <code>${ROLES_FILE}</code> (no secret in it; the account money config is never written) · takes effect on the next auto call</p>`;
+}
+
+// the Secrets tile's role text: up to two roles, "525 default" with no map, "role map error" for a broken one; "" until loaded
+function rolesTileText(state) {
+  const d = state.apiRoles && state.apiRoles.data;
+  if (!d) return "";
+  const { state: s, roles } = d.roleMap, entries = Object.entries(roles);
+  if (s === "partial" || s === "invalid") return " · role map error";
+  return entries.length ? ` · ${entries.slice(0, 2).map(([role, letters]) => `${role}→${letters.join(",")}`).join(" · ")}` : " · 525 default";
+}
+
+function secretsPanel({ setup, msgs, state }) {
   if (!setup || setup.error) return setupFailed(setup);
   const own = setup.secrets.filter((s) => !isJira(s));
   const jira = setup.secrets.filter((s) => isJira(s) && jiraShown(setup, s)).sort((a, b) => JIRA_ORDER.indexOf(a.name) - JIRA_ORDER.indexOf(b.name));
@@ -214,6 +326,7 @@ function secretsPanel({ setup, msgs }) {
     ${jira.length ? `<h3>Jira · where tickets live</h3>${jira.map((s) => secretRow(s, msgs[s.name], true)).join("")}
       <p class="sub">Shown while the tracker is Jira; a value already saved stays listed so you can remove it. The tracker itself is chosen in the <a href="#/config?tile=tracker">Tracker tile</a>.</p>` : ""}
     <div class="srow"><span class="id">Set in the terminal <span class="tag">read-only</span></span><span class="det">These are collected by their feature's own setup card, so the page shows only whether each is set.</span><span class="chips">${own.filter((s) => s.collect !== "file").map((s) => `<span class="ro" title="${esc(s.feature)}">${esc(s.name)} · ${esc(STATUS[s.status] || s.status)}</span>`).join(" ")}</span></div>
+    ${multiAccounts({ state })}
     <p class="foot"><b>Saved to</b> the store each secret names · takes effect the next time the feature reads it</p>`;
 }
 

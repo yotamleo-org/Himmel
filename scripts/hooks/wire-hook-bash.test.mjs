@@ -543,6 +543,35 @@ test('accepts the live repo settings shape (foreign event keys + interleaved for
   });
 });
 
+// A Read call never reaches the write hook, and the hook runs last in its
+// chain, so an earlier deny leaves no row.
+const WRITE_HOLD = 'check-write-hold.sh';
+const chainMembers = (command) => [...command.matchAll(/scripts\/hooks\/([A-Za-z0-9._-]+\.sh)/g)].map((m) => m[1]);
+
+test('check-write-hold.sh is wired only for the write tools, last in its chain', () => {
+  const groups = JSON.parse(readFileSync(SETTINGS, 'utf8')).hooks.PreToolUse
+    .filter((g) => g.hooks.some((h) => String(h.command).includes(WRITE_HOLD)));
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].matcher, 'Edit|Write|MultiEdit|NotebookEdit');
+  const command = groups[0].hooks.find((h) => h.command.includes(WRITE_HOLD)).command;
+  const [first, second] = command.split('; else ').map(chainMembers);
+  assert.equal(first.at(-1), WRITE_HOLD);
+  assert.equal(second.at(-1), WRITE_HOLD);
+  assert.equal(first.filter((s) => s === WRITE_HOLD).length, 1);
+});
+
+test('a chain that moves check-write-hold.sh off the last place is refused', () => {
+  withFixture((fixture) => {
+    const settings = JSON.parse(readFileSync(fixture, 'utf8'));
+    const group = settings.hooks.PreToolUse.find((g) => g.hooks.some((h) => String(h.command).includes(WRITE_HOLD)));
+    const at = group.hooks.findIndex((h) => h.command.includes(WRITE_HOLD));
+    [group.hooks[at - 1], group.hooks[at]] = [group.hooks[at], group.hooks[at - 1]];
+    writeFileSync(fixture, `${JSON.stringify(settings, null, 2)}\n`);
+    const result = invoke('--check', fixture);
+    assert.notEqual(result.status, 0, 'the swapped order must be refused');
+  });
+});
+
 test('still refuses an impostor scripts/hooks/*.sh script under an owned event', () => {
   withFixture((fixture) => {
     const settings = JSON.parse(readFileSync(fixture, 'utf8'));

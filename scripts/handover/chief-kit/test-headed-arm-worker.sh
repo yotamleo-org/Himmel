@@ -5038,13 +5038,16 @@ check "9071h the refusal does not advise the override" "$(printf '%s\n' "$bus907
 rc=0; HIMMEL_LAUNCH_UNBOUND_OK=1 run45 in HIMMEL-45-in HIMMEL-chief-45-other || rc=$?
 check "9071f the override never launches over a held name" "$rc:$([ -e "$bus45/seen" ] && echo launched || echo none)" "2:none"
 bus45_hung="$bus45/bus-hung-stub"
-printf '#!/usr/bin/env bash\nexec sleep 20\n' > "$bus45_hung"; chmod +x "$bus45_hung"
+printf '#!/usr/bin/env bash\nexec sleep 120\n' > "$bus45_hung"; chmod +x "$bus45_hung"
 rm -f "$bus45/seen"; rc=0; bus9071_t0=$SECONDS
 bus9071_out="$(BUS_EXEC_SECS=08 HEADED_ARM_BUS_CLI="$bus45_hung" XDG_STATE_HOME="$bus45/state" \
   HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
   HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
     bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45 HIMMEL-9071-hung "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 2>&1)" || rc=$?
-check "9071g hung bus: refused within the bound" "$rc:$([ $((SECONDS - bus9071_t0)) -lt 15 ] && echo bounded || echo slow)" "2:bounded"
+# the stub sleeps 120s and the bus times out after 8s; a macOS runner adds far more launch overhead than Linux does, so the bound
+# sits well under the stub's sleep (an unbounded wait would take all 120s) rather than just above the 8s timeout
+bus9071_secs=$((SECONDS - bus9071_t0))
+check "9071g hung bus: refused within the bound" "$rc:$([ "$bus9071_secs" -lt 60 ] && echo bounded || echo "slow:${bus9071_secs}s")" "2:bounded"
 contains "9071g hung bus: the refusal says it timed out, a leading zero read as decimal" "$bus9071_out" "timed out after 8s"
 # an opted-out profile launched from a shell that carries a live
 # bind flag and an extra HIMMEL_BUS_* leaks neither to the launched env.

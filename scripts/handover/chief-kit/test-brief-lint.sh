@@ -718,5 +718,42 @@ for t in qmd-bounded.sh worker-graph.sh 'graph-qmd:' '-c jira-himmel' '-c luna';
     grep -Fq -- "$t" "$tmp/filled_worker.md" && ok "9j the worker brief template carries $t" || bad "9j the worker brief template lacks $t"
 done
 
+# bash 3.2 (macOS) finds the end of a $( ... ) by counting raw quotes and parentheses and knows nothing of a heredoc
+# or a comment, so one apostrophe in a comment inside the core-gate python heredoc ran the substitution on past its real end.
+# Emulate that count and require it to end where the block does, on the line that starts with the closing parenthesis.
+# The heredoc is a statement of its own, not inside a $( ... ), for the same reason.
+rc=0; python3 -I - "$LINT" > "$tmp/m32.out" 2>&1 <<'PY' || rc=$?
+import sys
+lines = open(sys.argv[1], encoding='utf-8').read().split('\n')
+start = next(n for n, l in enumerate(lines, 1) if l.startswith('    core_err="$(python3'))
+real = next(n for n in range(start + 1, len(lines) + 1) if lines[n - 1].startswith(')"'))
+i = lines[start - 1].index('$(') + 2
+depth, quote, ln = 1, None, start
+while True:
+    s = lines[ln - 1]
+    while i < len(s):
+        c = s[i]
+        if quote:
+            if quote == '"' and c == '\\':
+                i += 1
+            elif c == quote:
+                quote = None
+        elif c == '\\':
+            i += 1
+        elif c in '\'"`':
+            quote = c
+        elif c == '(':
+            depth += 1
+        elif c == ')':
+            depth -= 1
+            if depth == 0:
+                print('line %d (real end line %d)' % (ln, real))
+                sys.exit(0 if ln == real else 1)
+        i += 1
+    i, ln = 0, ln + 1
+PY
+out="$(cat "$tmp/m32.out")"
+[ "$rc" = 0 ] && ok "11a the core-gate command substitution ends where bash 3.2 counts it to end ($out)" || bad "11a bash 3.2 would end the core-gate command substitution early: $out"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

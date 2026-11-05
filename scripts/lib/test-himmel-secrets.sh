@@ -53,7 +53,7 @@ cat >"$TMP/lockdrv.sh" <<'DRV'
 _hs_die() { printf 'himmel-secrets: %s\n' "$*" >&2; exit 2; }
 _himmel_config_dir() { printf '%s\n' "$HIMMEL_CONFIG_DIR"; }
 HS_SCOPE_PROJECT=""
-. "$LOCKFN"
+. "$LOCKFN"  # read-sink-ok: this suite's own extract, written under its mktemp dir just above
 _hs_import_lock
 echo locked
 sleep "${HOLD:-0}"

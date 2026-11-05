@@ -180,8 +180,10 @@ function parseHookArgs(argv) {
 // stay one Git Bash each, deliberately (no extra wrapper shell). Twin of the
 // Codex-side dispatcher in
 // .codex/codex-hook-adapter.sh; same invariants: whole-chain
-// validation before any member runs, first deny short-circuits, and the one
-// side-effecting hook (auto-arm-on-cap.sh) stays OUT of every chain.
+// validation before any member runs, first deny short-circuits, and a
+// side-effecting hook either stays OUT of every chain (auto-arm-on-cap.sh) or
+// runs LAST in its chain, so an earlier deny leaves no side effect
+// (check-write-hold.sh).
 // Its pin-drift skip (watchdogSkip) lives only in main's single-hook integrity branch.
 
 // Claude Code reads our stdout as ONE JSON object (or nothing). These are the

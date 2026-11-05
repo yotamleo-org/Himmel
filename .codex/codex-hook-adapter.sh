@@ -217,9 +217,11 @@ esac
 # The chain runs in declared order and the FIRST deny wins and
 # SHORT-CIRCUITS — emit_deny/emit_context exit, so later members do not run.
 # Codex's own semantics ran every matched hook and then honoured the deny; that
-# difference is safe here because every himmel PreToolUse guardrail is a pure
-# check. The one side-effecting PreToolUse hook, auto-arm-on-cap, deliberately
+# difference is safe here because a himmel PreToolUse guardrail is a pure check
+# or runs last in its chain. auto-arm-on-cap has side effects, and deliberately
 # stays in its own `.*` entry so it fires regardless of an earlier deny.
+# check-write-hold also has side effects and runs last in the Claude Code chain,
+# but .codex/hooks.json does not list it: this lane has no write barrier.
 advisory=""
 for script in "${scripts[@]}"; do
   captured="$( { printf '%s' "$input" | bash "$script" 2>&1; printf 'EXIT:%s' "${PIPESTATUS[1]}"; } )"

@@ -3869,8 +3869,17 @@ contains "18b: item 18 passes" "$R18_OUT" "[PASS] 18."
 r18_ledger ""
 rm -f "$REPO/.git/cr-review-rounds/feat/himmel-100-thing.head"
 R18_RC=0; R18_OUT="$(run)" || R18_RC=$?
-check "18c with no recorded round head the tip is read on its own rows: exit 0" "$R18_RC" "0"
-contains "18c: item 18 passes" "$R18_OUT" "[PASS] 18."
+check "18c with no recorded round head, gates 4 and 4b read the tip's own rows, but gate 4c (promote --check) still refuses the unruled Important at A: exit 1" "$R18_RC" "1"
+contains "18c: item 18 fails" "$R18_OUT" "[FAIL] 18."
+contains "18c: names the still-open finding gate 4c reports" "$R18_OUT" "still-open codex-1@"
+# control: the same shape with the Important ruled passes, and the check leaves the ledger as it was
+r18_ledger "disproved"
+R18_BEFORE=$(cksum < "$LEDGER"); R18_LINES=$(wc -l < "$LEDGER")
+R18_RC=0; R18_OUT="$(run)" || R18_RC=$?
+check "18c2 with no recorded round head and the Important ruled: exit 0" "$R18_RC" "0"
+contains "18c2: item 18 passes" "$R18_OUT" "[PASS] 18."
+check "18c2 the check leaves the ledger byte-identical" "$(cksum < "$LEDGER")" "$R18_BEFORE"
+check "18c2 the check adds no ledger line" "$(wc -l < "$LEDGER")" "$R18_LINES"
 printf '%s\n' "$R18_A" > "$REPO/.git/cr-review-rounds/feat/himmel-100-thing.head"
 r18_ledger "disproved"
 printf 'not json\n' >> "$LEDGER"
