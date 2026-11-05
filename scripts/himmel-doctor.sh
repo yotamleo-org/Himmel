@@ -3892,9 +3892,9 @@ check_c50_qmd_fork_stamp() {
 # its gguf files), QMD_CONFIG_DIR (default ${XDG_CONFIG_HOME:-~/.config}/qmd), QMD_DAEMON_DISABLED
 # and QMD_DAEMON_OFF_FLAG (the same off switch as C40).
 check_c89_qmd_rerank() {
-    local qbin="${HIMMEL_DOCTOR_QMD_BIN:-qmd}" models cfg rerank_env have_qmd=0
+    local qbin="${HIMMEL_DOCTOR_QMD_BIN:-qmd}" models qcfg rerank_env have_qmd=0
     models="${HIMMEL_DOCTOR_QMD_MODELS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/models}"
-    cfg="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/index.yml"
+    qcfg="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/index.yml"
     if [ "${QMD_DAEMON_DISABLED:-}" = "1" ] || [ -e "${QMD_DAEMON_OFF_FLAG:-$HOME/.himmel/state/qmd-daemon.off}" ]; then
         emit INFO C89-qmd-rerank "qmd off by operator (qmd-daemon-off flag) -- rerank check skipped"
         return 0
@@ -3923,8 +3923,8 @@ check_c89_qmd_rerank() {
     case "$(printf '%s' "${QMD_RERANK_MODEL:-}" | tr '[:upper:]' '[:lower:]')" in
         openai:*) emit OK C89-qmd-rerank "qmd reranks with a remote reranker (QMD_RERANK_MODEL)"; return 0 ;;
     esac
-    if grep -Eqis "^[[:space:]]*rerank:[[:space:]]*[\"']?openai:" "$cfg" 2>/dev/null; then
-        emit OK C89-qmd-rerank "qmd reranks with the remote reranker set in $cfg"
+    if grep -Eqis "^[[:space:]]*rerank:[[:space:]]*[\"']?openai:" "$qcfg" 2>/dev/null; then
+        emit OK C89-qmd-rerank "qmd reranks with the remote reranker set in $qcfg"
         return 0
     fi
     if compgen -G "$models/*reranker*.gguf" >/dev/null 2>&1; then
