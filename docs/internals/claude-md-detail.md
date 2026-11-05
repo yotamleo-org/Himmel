@@ -85,7 +85,7 @@ examples:
 `ponytail: <ceiling>, <upgrade path>` marks a known, deliberate simplification
 (limitation AND the ticket or trigger to revisit it) →
 [`docs/internals/ponytail-convention.md`](ponytail-convention.md).
-Other code comments: keep list only, never ticket/review history (gate: `check-history-comments`, same doc).
+Other code comments: keep list only, never ticket/review history. No added line of any tracked text file carries a ticket key unless a row of `scripts/lint/ticket-ref-allow.tsv` covers it (gate: `check-history-comments`, same doc).
 
 ### Renaming a name
 A rename lands as one finished change: alias row first, one shared reader, writers

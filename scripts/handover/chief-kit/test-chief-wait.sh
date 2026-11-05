@@ -249,6 +249,56 @@ sed -i 's/ cap=v1.1.3:17//' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 wait_exit "$WPID"
 check "(cap) a cap that goes away keeps waiting" "running" "$rc"
 if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+# hreg=<live-no-rows>/<stale>/<asks> is in the key whole: a moved value wakes once, an unchanged one
+# stays silent, hreg=? keeps the saved value and its going away is no wake. RED control (chief-wait.sh before this change):
+# the waiter has no hreg key, so none of these wakes.
+reset_stub
+I="$(new_inbox hreg)"
+start "$I" "$WORK/hreg.out" --workers "N1.md"
+wait_hb "$I" || fail "(hreg) no baseline heartbeat"
+sed -i 's/ denials=none/ hreg=1\/0\/0 denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(hreg) a new hreg value ends the wait" "0" "$rc"
+check "(hreg) the wake names hreg" "WAKE tick changed=hreg usage=PROCEED" "$(head -n1 "$WORK/hreg.out")"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/hreg-rearm.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+check "(hreg) two identical ticks (the same value on a re-arm) keep waiting" "124" "$rc"
+check "(hreg) ... and wake nothing" "" "$(cat "$WORK/hreg-rearm.out")"
+start "$I" "$WORK/hreg-move.out" --workers "N1.md"
+wait_hb "$I" || fail "(hreg) no re-armed heartbeat"
+sed -i 's/ hreg=1\/0\/0/ hreg=?/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(hreg) hreg=? (a failed read) keeps the saved value and wakes nothing" "running" "$rc"
+sed -i 's/ hreg=?/ hreg=1\/2\/0/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(hreg) a moved value wakes as hreg" "WAKE tick changed=hreg usage=PROCEED" "$(head -n1 "$WORK/hreg-move.out")"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+
+# a pending trust-path HOLD-ASK is paged to the operator ONCE, with the paste-ready grant command. The suite owns
+# HOME (the register and events.log are fixtures under $WORK) and the sender stub; the record is <inbox>.wait.holdasks.
+HA_HOME="$WORK/hreg-home"; HA_PRIMARY="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)"; HA_PRIMARY="${HA_PRIMARY%/.git}"
+HA_ESC="${HA_PRIMARY//%/%25}"; HA_ESC="${HA_ESC//\//%2F}"
+HA_DIR="$HA_HOME/.himmel/state/holds/$HA_ESC"; mkdir -p "$HA_DIR"
+printf 'HIMMEL-9941\tlab\t/nowhere/HIMMEL-9941-x.md\tbrief\t\n' > "$HA_DIR/scripts%2Fcheck-ci.sh"
+printf '%s\tdeny\tscripts/check-ci.sh\tHIMMEL-9942\tHIMMEL-9941\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$HA_HOME/.himmel/state/holds/events.log"
+reset_stub
+sed -i 's/ denials=none/ hreg=0\/0\/1 denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+rm -f "$STUB/pages"
+I="$(new_inbox hask)"
+HOME="$HA_HOME" start "$I" "$WORK/hask.out" --workers "N1.md"
+wait_hb "$I" || fail "(hask) no baseline heartbeat"
+n=0; while [ ! -s "$STUB/pages" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+sleep 1
+check "(hask) one trust-path ask records exactly one page line" "1" "$(grep -c . "$STUB/pages" 2>/dev/null)"
+check "(hask) the line carries the full paste-ready grant command" "1" "$(grep -cF -- "python3 -I $HA_PRIMARY/scripts/handover/chief-kit/holds.py grant --key HIMMEL-9942 --repo $HA_PRIMARY scripts/check-ci.sh" "$STUB/pages")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+HOME="$HA_HOME" start "$I" "$WORK/hask2.out" --workers "N1.md"
+wait_hb "$I" || fail "(hask) no re-armed heartbeat"
+sleep 3
+check "(hask) a repeat of the same ask (a re-armed waiter) records nothing" "1" "$(grep -c . "$STUB/pages" 2>/dev/null)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+rm -f "$STUB/pages"
+
 # vmismatch= wakes only as a positive count; 0 and ? stay out of the key.
 reset_stub
 I="$(new_inbox vmismatch-quiet)"

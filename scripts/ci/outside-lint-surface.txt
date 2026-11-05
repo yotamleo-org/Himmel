@@ -1,0 +1,14 @@
+# outside-lint-surface.txt — ready-check item 16d reads this file from its own
+# checkout. An outside PR touching a path that starts with any line below (either
+# side of a rename) cannot be trusted by CI's lint verdict and FAILs 16d.
+# One path prefix per line; blank lines and # comments are ignored.
+.github/
+.shellcheckrc
+.bun-version
+.pre-commit-config.yaml
+.coderabbit.yaml
+.coderabbit.yml
+scripts/ci/
+scripts/lint/
+scripts/hooks/check-
+scripts/install/

@@ -60,6 +60,7 @@ case " $* " in
                     $pr[0] as $p
                     | {data: {repository: {("p\($p.number)"): ($p + {
                         body: "", state: "OPEN", title: "recorded", headRefName: "recorded", isDraft: false, mergedAt: null,
+                        isCrossRepository: false, author: null,
                         commits: {nodes: [{commit: {oid: $p.headRefOid, messageHeadline: "recorded", messageBody: null, parents: {totalCount: 1}}}],
                                   pageInfo: {hasNextPage: false, endCursor: null}},
                         reviewThreads: {nodes: [], pageInfo: {hasNextPage: false, endCursor: null}},

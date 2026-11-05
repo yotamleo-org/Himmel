@@ -1776,4 +1776,74 @@ check "HIMMEL-8870: the same finding with a head still writes" "$(grep -c '"head
 check "no \$set_pairs pipeline into grep remains in ledger-append.sh" \
   "$(grep -cE 'printf .*\$set_pairs.*\| *grep' "$LA")" "0"
 
+# ── T1.40: round-scope and impacted rows (ready-check item 16 reads them) ──
+RS="$tmp/round-scope.jsonl"; : > "$RS"
+A40=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; B40=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb; C40=cccccccccccccccccccccccccccccccccccccccc
+rs_rc() { CR_LEDGER="$RS" bash "$LA" "$@" >/dev/null 2>&1; echo $?; }
+rs_n() { grep -c "\"kind\":\"$1\"" "$RS"; }
+check "T1.40 round-scope: a short head is refused" "$(rs_rc round-scope --branch b --head aaaa --scope full --base-sha "$B40" --round 1 --source panel-first-pass)" "2"
+check "T1.40 round-scope: delta without --from is refused" "$(rs_rc round-scope --branch b --head "$A40" --scope delta --base-sha "$B40" --round 2 --source panel-first-pass)" "2"
+check "T1.40 round-scope: full with --from is refused" "$(rs_rc round-scope --branch b --head "$A40" --scope full --base-sha "$B40" --from "$C40" --round 1 --source panel-first-pass)" "2"
+check "T1.40 round-scope: --round 0 is refused" "$(rs_rc round-scope --branch b --head "$A40" --scope full --base-sha "$B40" --round 0 --source panel-first-pass)" "2"
+check "T1.40 round-scope: pr-diff without --pr is refused" "$(rs_rc round-scope --branch b --head "$A40" --scope full --base-sha "$B40" --round 1 --source pr-diff)" "2"
+check "T1.40 round-scope: --pr with panel-first-pass is refused" "$(rs_rc round-scope --branch b --head "$A40" --scope full --base-sha "$B40" --round 1 --source panel-first-pass --pr 7)" "2"
+check "T1.40 round-scope: an unknown scope is refused" "$(rs_rc round-scope --branch b --head "$A40" --scope wide --base-sha "$B40" --round 1 --source panel-first-pass)" "2"
+check "T1.40 round-scope: a short base sha is refused" "$(rs_rc round-scope --branch b --head "$A40" --scope full --base-sha bbbb --round 1 --source panel-first-pass)" "2"
+check "T1.40 round-scope: refusals write nothing" "$(rs_n round-scope)" "0"
+check "T1.40 round-scope: a full row is accepted" "$(rs_rc round-scope --branch b --head "$A40" --scope full --base-sha "$B40" --round 1 --source panel-first-pass)" "0"
+check "T1.40 round-scope: a delta row is accepted" "$(rs_rc round-scope --branch b --head "$A40" --scope delta --base-sha "$B40" --from "$C40" --round 2 --source panel-first-pass)" "0"
+check "T1.40 round-scope: a pr-diff row is accepted" "$(rs_rc round-scope --branch b --head "$A40" --scope full --base-sha "$B40" --round 1 --source pr-diff --pr 7)" "0"
+check "T1.40 round-scope: rows carry their fields, never deduped" "$(jq -c 'select(.kind=="round-scope") | [.branch,.head==$a,.scope,.base_sha==$b,.from,.round,.source,.pr,.status]' --arg a "$A40" --arg b "$B40" "$RS" | tr '\n' '|')" \
+  "[\"b\",true,\"full\",true,null,1,\"panel-first-pass\",null,\"ok\"]|[\"b\",true,\"delta\",true,\"$C40\",2,\"panel-first-pass\",null,\"ok\"]|[\"b\",true,\"full\",true,null,1,\"pr-diff\",7,\"ok\"]|"
+check "T1.40 round-scope: key order starts kind, ts" "$(head -n1 "$RS" | jq -r 'keys_unsorted[0:2] | join(",")')" "kind,ts"
+check "T1.40 impacted: an rc outside 0-3 is refused" "$(rs_rc impacted --branch b --head "$A40" --impacted 3 --unverdicted 0 --skip 0 --rc 4)" "2"
+check "T1.40 impacted: a short head is refused" "$(rs_rc impacted --branch b --head aaaa --impacted 3 --unverdicted 0 --skip 0 --rc 0)" "2"
+check "T1.40 impacted: a non-digit count is refused" "$(rs_rc impacted --branch b --head "$A40" --impacted x --unverdicted 0 --skip 0 --rc 0)" "2"
+check "T1.40 impacted: a missing count is refused" "$(rs_rc impacted --branch b --head "$A40" --impacted 3 --unverdicted 0 --rc 0)" "2"
+check "T1.40 impacted: a valid row is accepted" "$(rs_rc impacted --branch b --head "$A40" --impacted 3 --unverdicted 1 --skip 2 --rc 1)" "0"
+check "T1.40 impacted: the row carries its counts" "$(jq -c 'select(.kind=="impacted") | [.branch,.impacted_n,.unverdicted_n,.skip_n,.rc,.status]' "$RS")" '["b",3,1,2,1,"ok"]'
+
+# ── T1.45: security-audit rows (the verdict follows the counts) ──
+SA="$tmp/security-audit.jsonl"; : > "$SA"
+GCD="$(git rev-parse --path-format=absolute --git-common-dir)"
+P64=$(printf 'p%.0s' $(seq 64) | tr p 1); R64=$(printf 'r%.0s' $(seq 64) | tr r 2)
+RPT="$GCD/outside-audits/7-$A40-20261104T101500Z.md"
+sa_rc() { # sa_rc <verdict> <hard> <crit> <imp> <dropped> <critic_exit> [extra args...]
+  local v="$1" h="$2" c="$3" i="$4" d="$5" x="$6"; shift 6
+  CR_LEDGER="$SA" bash "$LA" security-audit --pr 7 --branch b --head "$A40" --base-sha "$B40" --verdict "$v" --hard "$h" \
+    --critical-n "$c" --important-n "$i" --dropped-n "$d" --critic-exit "$x" --model gpt-5-codex \
+    --perspective-sha256 "$P64" --report "$RPT" --report-sha256 "$R64" "$@" >/dev/null 2>&1; echo $?; }
+check "T1.45 fail with no hard hit and zero Critical is refused" "$(sa_rc fail '' 0 0 0 0)" "2"
+check "T1.45 pass with important_n 1 is refused" "$(sa_rc pass '' 0 1 0 0)" "2"
+check "T1.45 pass with dropped_n 1 is refused" "$(sa_rc pass '' 0 0 1 0)" "2"
+check "T1.45 pass with critic_exit 4 is refused" "$(sa_rc pass '' 0 0 0 4)" "2"
+check "T1.45 pass with a hard hit is refused" "$(sa_rc pass H2 0 0 0 0)" "2"
+check "T1.45 pass with critical_n 1 is refused" "$(sa_rc pass '' 1 0 0 0)" "2"
+check "T1.45 flagged with a hard hit is refused" "$(sa_rc flagged H1 0 1 0 0)" "2"
+check "T1.45 flagged with critical_n 1 is refused" "$(sa_rc flagged '' 1 1 0 0)" "2"
+check "T1.45 flagged with every count zero and critic_exit 0 is refused" "$(sa_rc flagged '' 0 0 0 0)" "2"
+check "T1.45 a hard token outside H1-H5 is refused" "$(sa_rc fail H6 0 0 0 0)" "2"
+check "T1.45 a claude model is refused" "$(sa_rc pass '' 0 0 0 0 --model claude-opus-5-5)" "2"
+check "T1.45 a short head is refused" "$(sa_rc pass '' 0 0 0 0 --head aaaa)" "2"
+check "T1.45 a short base sha is refused" "$(sa_rc pass '' 0 0 0 0 --base-sha bbbb)" "2"
+check "T1.45 a non-digit pr is refused" "$(sa_rc pass '' 0 0 0 0 --pr 7a)" "2"
+check "T1.45 a critic_exit of 1 is refused" "$(sa_rc pass '' 0 0 0 1)" "2"
+check "T1.45 a 63-hex perspective sha is refused" "$(sa_rc pass '' 0 0 0 0 --perspective-sha256 "${P64:1}")" "2"
+check "T1.45 a 63-hex report sha is refused" "$(sa_rc pass '' 0 0 0 0 --report-sha256 "${R64:1}")" "2"
+check "T1.45 a report outside outside-audits/ is refused" "$(sa_rc pass '' 0 0 0 0 --report "$GCD/7-$A40-20261104T101500Z.md")" "2"
+check "T1.45 a report naming another PR is refused" "$(sa_rc pass '' 0 0 0 0 --report "$GCD/outside-audits/8-$A40-20261104T101500Z.md")" "2"
+check "T1.45 a report naming another head is refused" "$(sa_rc pass '' 0 0 0 0 --report "$GCD/outside-audits/7-$C40-20261104T101500Z.md")" "2"
+check "T1.45 a report with no run timestamp is refused" "$(sa_rc pass '' 0 0 0 0 --report "$GCD/outside-audits/7-$A40.md")" "2"
+check "T1.45 a report with a malformed run timestamp is refused" "$(sa_rc pass '' 0 0 0 0 --report "$GCD/outside-audits/7-$A40-2026-11-04T101500Z.md")" "2"
+check "T1.45 a relative report is refused" "$(sa_rc pass '' 0 0 0 0 --report "outside-audits/7-$A40-20261104T101500Z.md")" "2"
+check "T1.45 refusals write nothing" "$(grep -c . "$SA")" "0"
+check "T1.45 a pass row is accepted" "$(sa_rc pass '' 0 0 0 0)" "0"
+check "T1.45 a flagged row is accepted" "$(sa_rc flagged '' 0 1 0 0)" "0"
+check "T1.45 a fail row is accepted" "$(sa_rc fail H1,H3 2 0 0 0)" "0"
+check "T1.45 a fail row by a hard hit only is accepted" "$(sa_rc fail H5 0 0 0 0)" "0"
+check "T1.45 a fail row by critical_n only is accepted" "$(sa_rc fail '' 1 0 0 0)" "0"
+check "T1.45 rows stamp auditor codex, status ok and the hard list" "$(jq -c '[.verdict,.hard,.auditor,.status,.pr]' "$SA" | tr '\n' '|')" \
+  '["pass",[],"codex","ok",7]|["flagged",[],"codex","ok",7]|["fail",["H1","H3"],"codex","ok",7]|["fail",["H5"],"codex","ok",7]|["fail",[],"codex","ok",7]|'
+check "T1.45 the row keeps its shas and report" "$(head -n1 "$SA" | jq -r '[.perspective_sha256==$p, .report_sha256==$r, .report==$f, .base_sha==$b, .critic_exit] | map(tostring) | join(",")' --arg p "$P64" --arg r "$R64" --arg f "$RPT" --arg b "$B40")" "true,true,true,true,0"
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

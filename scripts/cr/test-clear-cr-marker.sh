@@ -103,6 +103,8 @@ build_repo_template() {
         || { echo "FAIL: cp env-alias.sh and legacy-names.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     cp "$LEDGER_APPEND" "$REPO_TEMPLATE/scripts/cr/ledger-append.sh" \
         || { echo "FAIL: cp ledger-append.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
+    cp "$(dirname "$CLEAR")/blast-scope.cjs" "$REPO_TEMPLATE/scripts/cr/blast-scope.cjs" \
+        || { echo "FAIL: cp blast-scope.cjs into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     cp "$(dirname "$CLEAR")/anchor-handoff.sh" "$REPO_TEMPLATE/scripts/cr/anchor-handoff.sh" \
         || { echo "FAIL: cp anchor-handoff.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     cp "$(dirname "$CLEAR")/set-impl-family.sh" "$REPO_TEMPLATE/scripts/cr/set-impl-family.sh" \
@@ -1211,6 +1213,24 @@ rm -rf "$tmp"
 blast_case scripts/hooks/test-x.sh full 2026-11-01T10:00:00Z
 run_clear "$tmp" 0 "diff changes only a hook test file → exit 0"
 rm -rf "$tmp"
+
+blast_case scripts/hooks/fixtures/guard-x.sh full 2026-11-01T10:00:00Z
+run_clear "$tmp" 0 "diff changes only a hook fixture file → exit 0"
+rm -rf "$tmp"
+
+# The scope lives in blast-scope.cjs: a gate whose module is missing refuses closed.
+blast_case scripts/hooks/guard-x.sh full 2026-11-01T10:00:00Z "$(_bl_row feat/x deadbeef0 ran)"
+rm -f "$tmp/scripts/cr/blast-scope.cjs"
+run_clear "$tmp" 14 "blast-scope.cjs missing → exit 14"
+if grepq "$LAST_CLEAR_OUT" -F 'reason=blast-radius-unreadable'; then pass; else fail "a missing blast-scope.cjs must refuse as unreadable: $LAST_CLEAR_OUT"; fi
+rm -rf "$tmp"
+
+# blast-scope.cjs CLI: NUL-separated paths in, touched or untouched out.
+_bs_cli() { printf '%b' "$1" | node "$(dirname "$CLEAR")/blast-scope.cjs"; }
+if [ "$(_bs_cli 'docs/a.md\0scripts/hooks/guard-x.sh\0')" = touched ]; then pass; else fail "blast-scope CLI: a guard path must print touched"; fi
+if [ "$(_bs_cli 'scripts/hooks/test-x.sh\0scripts/hooks/fixtures/a.sh\0docs/a.md')" = untouched ]; then pass; else fail "blast-scope CLI: test-* and fixture paths must print untouched"; fi
+node "$(dirname "$CLEAR")/blast-scope.cjs" < "$(dirname "$CLEAR")" >/dev/null 2>&1; _bs_rc=$?
+if [ "$_bs_rc" -eq 2 ]; then pass; else fail "blast-scope CLI: an unreadable stdin must exit 2 (got $_bs_rc)"; fi
 
 # A rename out of scope still touches the guard: git's default rename
 # detection would list only the destination.
@@ -4332,6 +4352,36 @@ run_clear "$tmp" 15 "13h2 the GO-time check refuses the same ledger -> exit 15" 
 write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp disproved)"
 run_clear "$tmp" 0 "13h3 the GO-time check passes the ruled ledger -> exit 0" --check-findings --tip "$B" --assume-go feat/x
 run_clear "$tmp" 0 "13h4 the merge-time clear passes the ruled ledger -> exit 0"
+rm -rf "$tmp"
+
+# 13i. gate 4c at GO time: a finding left unadjudicated at an EARLIER round head A, with a clean tip B
+# (its own ok row, no rows of its own), passes gates 4 and 4b and is refused by the merge at gate 4c. The check reads that
+# verdict from review-round.sh promote --check: same still-open line as the merge-time clear, ledger byte-identical.
+# Gate 4c reads only rows stamped with the branch (review-round.sh promote), unlike gates 4 and 4b.
+bfinding() { printf '{"kind":"finding","branch":"feat/x","head":"%s","model":"codex","finding_id":"codex-1","severity":"%s","file":"a.sh","line":1,"verdict":"%s"}' "$1" "$2" "$3"; }
+make_repo || exit 1
+review_b "$tmp" f.txt "echo the fix"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(avail_ok "$B")" "$(bfinding "$sha" imp "")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+before=$(cksum < "$tmp/.git/cr-critic-scores.jsonl"); lines_before=$(wc -l < "$tmp/.git/cr-critic-scores.jsonl")
+run_clear "$tmp" 14 "13i the GO-time check refuses what gate 4c refuses -> exit 14" --check-findings --tip "$B" feat/x
+check_out="$LAST_CLEAR_OUT"
+if [ "$(cksum < "$tmp/.git/cr-critic-scores.jsonl")" = "$before" ] && [ "$(wc -l < "$tmp/.git/cr-critic-scores.jsonl")" = "$lines_before" ]; then pass; else fail "13i: the check must leave the ledger byte-identical with no new line"; fi
+if [ ! -e "$tmp/.git/clear-cr-marker.log" ]; then pass; else fail "13i: a check must write no audit line"; fi
+run_clear "$tmp" 14 "13i3 the merge-time clear refuses the same ledger at gate 4c -> exit 14"
+merge_out="$LAST_CLEAR_OUT"
+check_line=$(printf '%s\n' "$check_out" | grep -F 'still-open codex-1@' || true)
+merge_line=$(printf '%s\n' "$merge_out" | grep -F 'still-open codex-1@' || true)
+if [ -n "$check_line" ] && [ "$check_line" = "$merge_line" ]; then pass; else fail "13i: one verdict - the reason line must be the same (check: '$check_line' merge: '$merge_line')"; fi
+rm -rf "$tmp"
+# 13i4. control: the same finding ruled disproved is accepted by gate 4c, and the check exits 0 with the ledger untouched.
+make_repo || exit 1
+review_b "$tmp" f.txt "echo the fix"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(avail_ok "$B")" "$(bfinding "$sha" imp disproved)"
+before=$(cksum < "$tmp/.git/cr-critic-scores.jsonl")
+run_clear "$tmp" 0 "13i4 a ruled finding at the earlier head passes the GO-time check -> exit 0" --check-findings --tip "$B" feat/x
+run_clear "$tmp" 0 "13i5 and under the assumed GO -> exit 0" --check-findings --tip "$B" --assume-go feat/x
+if [ "$(cksum < "$tmp/.git/cr-critic-scores.jsonl")" = "$before" ]; then pass; else fail "13i4: the check must leave the ledger byte-identical"; fi
 rm -rf "$tmp"
 
 echo

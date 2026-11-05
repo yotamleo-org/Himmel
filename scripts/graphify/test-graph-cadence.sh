@@ -1535,7 +1535,7 @@ assert_contains "unknown backend names the accepted values" "claude-cli, claude-
 assert_eq "unknown backend never calls semantic-update" "" "$(cat "$FAKE_SEM_LOG")"
 # (g) claude-api (and the api alias) reach semantic-update when the API lane is
 # on; with the lane off the cadence refuses before any work (no cli fallback).
-for tag in api apialias apioff; do
+for tag in api apialias apiauto apioff; do
     mkdir -p "$TMP_ROOT/t9-$tag-home" "$TMP_ROOT/t9-$tag-ledger"
     seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20
 done
@@ -1547,6 +1547,11 @@ assert_contains "backend=claude-api is passed through to semantic-update" "--bac
 out=$(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A GRAPH_CADENCE_SEMANTIC_BACKEND=api run_sem apialias --semantic) || rc=$?
 assert_eq "backend=api alias rc=0" "0" "$rc"
 assert_contains "backend=api resolves to claude-api" "--backend claude-api" "$(cat "$FAKE_SEM_LOG")"
+# the himmel graph pass is the one caller decision 525 lets ask for account auto
+: > "$FAKE_SEM_LOG"; rc=0
+out=$(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api run_sem apiauto --semantic) || rc=$?
+assert_eq "backend=claude-api with account auto (graph pass) rc=0" "0" "$rc"
+assert_contains "backend=claude-api with account auto reaches semantic-update" "--backend claude-api" "$(cat "$FAKE_SEM_LOG")"
 : > "$FAKE_SEM_LOG"; rc=0
 out=$(HIMMEL_API_LANE=off HIMMEL_API_ACCOUNT=A GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api run_sem apioff --semantic) || rc=$?
 assert_eq "claude-api with the lane off refuses rc=1" "1" "$rc"

@@ -231,6 +231,11 @@
 # holds= (tick.sh: `<worker>:<age>m,...`, BLOCKED workers past TICK_HOLD_MIN; names only, so the
 # age never re-wakes) wakes when a worker ENTERS the set, once per hold: a worker leaving or the
 # set emptying wakes nothing; absent when no worker holds, never a failure),
+# hreg= (tick.sh: `<live workers with no rows>/<stale rows>/<pending trust-path asks>`) is in the key whole: a
+# moved value wakes once (`WAKE tick changed=hreg`), an unchanged one does not; hreg=? keeps the saved value; absent
+# (0/0/0, no register, an older tick) is never a failure and its going away wakes nothing. Every sample that reads a
+# non-zero third count also pages each pending ask ONCE: `HOLD-ASK <key> wants <path> ... <paste-ready grant command>`
+# through the same sender as DENIAL-PAGE; the record `<inbox>.wait.holdasks` (`<key>\t<path>`) is written BEFORE the send.
 # stall= (tick.sh: `<pr>:<class>,...` from pr-stall.sh) wakes ONCE per new
 # conflict or no-ci token (a PR, a class): ci-slow and idle are report-only, an unchanged set
 # and a stall resolving do not wake; stall=? (a probe outage) keeps the saved set; absent
@@ -583,7 +588,7 @@ sample() {
     bank="$(bank_word)" || { fail_step=usage-read; tick_state=fail; return; }
     tick_state=ok
     cap_val="$(field capacity "$tick_line")"
-    for f in workers livestate prs tails acts holds workerset board tracker vault cloud orphans-wip wt-ceiling vmismatch cap vmrun parked stall dispatch denials closable deadwin; do
+    for f in workers livestate prs tails acts holds hreg workerset board tracker vault cloud orphans-wip wt-ceiling vmismatch cap vmrun parked stall dispatch denials closable deadwin; do
         v="$(field "$f" "$tick_line")"
         # An older tick.sh prints legs= and legset=; field() matches whole tokens, so max_workers= is never workers=.
         if [ -z "$v" ]; then
@@ -595,7 +600,7 @@ sample() {
         # tracker= is newer than the other fields; a tick line
         # without it (an older kit) just has no tracker key, not a failed sample.
         # vault= is newer still, the same way.
-        if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = holds ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = wt-ceiling ] || [ "$f" = vmismatch ] || [ "$f" = cap ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = stall ] || [ "$f" = closable ] || [ "$f" = deadwin ] || [ "$f" = dispatch ]; } && [ -z "$v" ]; then continue; fi
+        if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = holds ] || [ "$f" = hreg ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = wt-ceiling ] || [ "$f" = vmismatch ] || [ "$f" = cap ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = stall ] || [ "$f" = closable ] || [ "$f" = deadwin ] || [ "$f" = dispatch ]; } && [ -z "$v" ]; then continue; fi
         # A field missing from a malformed/partial tick line is a failed
         # sample, never a key with an empty value baked in.
         if [ -z "$v" ]; then fail_step="missing-field:$f"; tick_state=fail; key=""; return; fi
@@ -607,6 +612,11 @@ sample() {
         if [ "$f" = vmismatch ]; then
             [ "$v" != '?' ] || v="$(key_field vmismatch "$saved")"
             case "$v" in ''|0) continue ;; esac
+        fi
+        # hreg= stays in the key whole; hreg=? (a failed read) keeps the saved value, so a blip is no change.
+        if [ "$f" = hreg ]; then
+            [ "$v" != '?' ] || v="$(key_field hreg "$saved")"
+            [ -n "$v" ] || continue
         fi
         # parked= keeps the worker names only: the age grows every tick and must not re-wake.
         # The names are sorted: the doc order must not decide the key.
@@ -846,6 +856,22 @@ page_denials() {
             page_send "DENIAL-PAGE $worker $cls x$n - a classifier denial parked this worker. Review it, then: ack-denial.sh $worker" "$end"
         fi
     done
+}
+
+# page_hold_asks — page each pending trust-path HOLD-ASK once (holds.py asks: key, path, holder, paste-ready grant
+# command). The record line is written FIRST, so an ask is never paged twice even when the send fails; both steps fail open.
+holdask_file="$inbox.wait.holdasks"
+page_hold_asks() {
+    local asks key path holder cmd end
+    asks="$(timeout -k 2 20 python3 -I "$HERE/holds.py" asks --repo "$REPO" 2>/dev/null </dev/null 9>&-)" || return 0  # gnu-ok: Linux-only kit; swallow-ok: an unreadable register pages nothing this sample, the next one asks again
+    end=$(( $(date +%s) + page_timeout ))
+    while IFS=$'\t' read -r key path holder cmd; do
+        [ -n "$cmd" ] || continue
+        ! grep -qxF -- "$key"$'\t'"$path" "$holdask_file" 2>/dev/null || continue
+        printf '%s\t%s\n' "$key" "$path" >> "$holdask_file" 2>/dev/null || true  # swallow-ok: no record means a repeat page, never a lost one
+        page_send "HOLD-ASK $key wants $path (held by $holder). Paste in a real terminal, not a Claude window, and type the path back: $cmd" "$end"
+    done <<< "$asks"
+    return 0
 }
 
 # rc_session_for: <worker label> - prints the Remote Control session name of the live
@@ -1844,6 +1870,7 @@ while :; do
                 saved="$(r0_fold_key "$saved" "$key" "$r0_fold")"; save_key "$saved"
             fi
             r0_refold=""
+            case "$(field hreg "$tick_line")" in ''|'?'|*/*/0) ;; *) page_hold_asks ;; esac
             # a capped waker on a doc quiet past the bound: wake the chief, alert the operator
             if silent_out="$(silent_wake)"; then
                 printf '%s\n%s\n' "$silent_out" "$tick_line"

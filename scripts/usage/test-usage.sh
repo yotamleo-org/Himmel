@@ -268,4 +268,169 @@ for st in queued in_progress completed waiting requested pending; do
   check "gh status $st is accepted" "0" "$(GHFIX="$ROOT/fix-status" frc jrun --print)"
 done
 
+# --- ci-minutes.sh: billed minutes per run, listing paged past 1,000 ---
+# A stub gh serves a runs listing like the real one: --paginate returns pages of 100
+# rows, a filtered window returns at most 1,000 rows however large total_count is,
+# and /timing answers 404 for a run with no billing answer. REAL is one real
+# run's /timing answer (yotamleo-org/Himmel run 41372286597, 2026-11-05).
+CIM="$HERE/ci-minutes.sh"
+CD="$ROOT/cim"; mkdir -p "$CD/bin"
+UNTIL="2026-11-05T12:00:00Z"
+FROM_E="$(jq -nr '"2026-10-29T12:00:00Z" | fromdateiso8601')"
+REAL='{"billable":{"UBUNTU":{"total_ms":0,"jobs":2,"job_runs":[{"job_id":125045113057,"duration_ms":0},{"job_id":125045598141,"duration_ms":0}]}},"run_duration_ms":127000}'
+cat > "$CD/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+set -u
+[ "${1:-}" = api ] || exit 2
+ep="$2"; shift 2
+pag=0; for a in "$@"; do [ "$a" = --paginate ] && pag=1; done
+echo "api $ep" >> "$CIM_LOG"
+case "$ep" in
+  repos/o/r/actions/runs/*/timing)
+    id="${ep#repos/o/r/actions/runs/}"; id="${id%/timing}"
+    [ ! -e "$CIM_FIX/timing-fail" ] || { echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1; }
+    jq -ce --arg id "$id" '.[$id]' "$CIM_FIX/timing.json" 2>/dev/null || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
+    ;;
+  repos/o/r/actions/runs\?*)
+    rng="${ep##*created=}"; rng="${rng%%&*}"; from="${rng%%..*}"; to="${rng##*..}"
+    jq -c --arg f "$from" --arg t "$to" --argjson pag "$pag" '
+      [.[] | select(.created_at >= $f and .created_at <= $t)] as $m
+      | ($m | length) as $n | $m[0:1000] as $cap | ($cap | length) as $c
+      | if $pag == 1 then [range(0; ([$c, 1] | max); 100)] | map({total_count: $n, workflow_runs: $cap[.:. + 100]}) | .[]
+        else {total_count: $n, workflow_runs: $cap[0:100]} end' "$CIM_FIX/runs.json"
+    ;;
+  *) echo "stub gh: unexpected $ep" >&2; exit 2 ;;
+esac
+STUB
+chmod +x "$CD/bin/gh"
+gen_runs() { # first_id count spacing_secs wall_secs -> runs.json on stdout (created_at = window start + n*spacing)
+  jq -nc --argjson id0 "$1" --argjson n "$2" --argjson sp "$3" --argjson w "$4" --argjson base "$FROM_E" \
+    '[range(0; $n) | ($base + . * $sp) as $s | {id: ($id0 + .), name: "CI", created_at: ($s | todate), run_started_at: ($s | todate), updated_at: ($s + $w | todate)}]'
+}
+cim() { # fixture-dir store args...
+  local fx="$1" st="$2"; shift 2
+  CIM_FIX="$fx" CIM_LOG="$CD/gh.log" bash "$CIM" "$@" --repo o/r --days 7 --until "$UNTIL" --store "$st" --gh "$CD/bin/gh"
+}
+nrows() { cat "$1" 2>/dev/null | wc -l | tr -d ' '; }   # read-sink-ok: callers pass only ledger paths under the suite's own mktemp dir
+circ() { local rc=0; cim "$@" >/dev/null 2>&1 || rc=$?; echo "$rc"; }
+
+# (a) pagination: 2,500 runs over a window the API caps at 1,000 rows, all land
+F1="$CD/fx-2500"; mkdir -p "$F1"; gen_runs 100000 2500 241 60 > "$F1/runs.json"; echo '{}' > "$F1/timing.json"
+S1="$CD/store-2500"; : > "$CD/gh.log"
+check "2,500 runs: writer exits 0" "0" "$(circ "$F1" "$S1" write)"
+check "2,500 runs: 2,500 distinct run ids stored" "2500" "$(jq -r '.run_id' "$S1/ci-minutes.jsonl" 2>/dev/null | sort -u | wc -l | tr -d ' ')"
+check "2,500 runs: one row per run" "2500" "$(nrows "$S1/ci-minutes.jsonl")"
+: > "$CD/gh.log"
+check "rerun on the same window exits 0" "0" "$(circ "$F1" "$S1" write)"
+check "rerun appends no second row for a run id" "2500" "$(nrows "$S1/ci-minutes.jsonl")"
+# control: a 40-run window is one listing call, 40 rows
+F2="$CD/fx-40"; mkdir -p "$F2"; gen_runs 200000 40 1000 60 > "$F2/runs.json"; echo '{}' > "$F2/timing.json"
+S2="$CD/store-40"; : > "$CD/gh.log"
+check "40 runs: writer exits 0" "0" "$(circ "$F2" "$S2" write)"
+check "40 runs: 40 rows" "40" "$(nrows "$S2/ci-minutes.jsonl")"
+check "40 runs: one listing call" "1" "$(grep -c 'actions/runs?' "$CD/gh.log")"
+# a second that holds more runs than the API will ever return fails closed, stores nothing
+F3="$CD/fx-dense"; mkdir -p "$F3"; gen_runs 300000 1200 0 60 > "$F3/runs.json"; echo '{}' > "$F3/timing.json"
+check "1,200 runs in one second: fails closed" "1" "$(circ "$F3" "$CD/store-dense" write)"
+check "truncated window stored nothing" "0" "$(nrows "$CD/store-dense/ci-minutes.jsonl")"
+
+# (b) billed minutes beside wall minutes; (c) absent billing is "unknown", a real 0 stays 0
+F4="$CD/fx-bill"; mkdir -p "$F4"
+jq -nc '[{id: 7001, name: "CI", created_at: "2026-11-01T10:00:00Z", run_started_at: "2026-11-01T10:00:00Z", updated_at: "2026-11-01T10:04:00Z"},
+         {id: 7002, name: "CI", created_at: "2026-11-02T10:00:00Z", run_started_at: "2026-11-02T10:00:00Z", updated_at: "2026-11-02T10:05:00Z"},
+         {id: 7003, name: "CI", created_at: "2026-11-03T10:00:00Z", run_started_at: "2026-11-03T10:00:00Z", updated_at: "2026-11-03T10:03:00Z"},
+         {id: 7004, name: "CI", created_at: "2026-11-04T10:00:00Z", run_started_at: "2026-11-04T10:00:00Z", updated_at: "2026-11-04T10:02:00Z"}]' > "$F4/runs.json"
+jq -nc --argjson real "$REAL" '{"7001": ($real | .billable.UBUNTU.total_ms = 420000), "7002": ($real | .billable.UBUNTU.total_ms = 720000), "7004": $real}' > "$F4/timing.json"
+S4="$CD/store-bill"
+check "billing run: writer exits 0" "0" "$(circ "$F4" "$S4" write)"
+LG="$S4/ci-minutes.jsonl"
+check "run A: billed 7 beside wall 4" "7/4" "$(jq -r 'select(.run_id==7001) | "\(.billed_min)/\(.wall_min)"' "$LG")"
+check "run B: billed 12 beside wall 5" "12/5" "$(jq -r 'select(.run_id==7002) | "\(.billed_min)/\(.wall_min)"' "$LG")"
+check "A+B billed sum 19, wall sum 9" "19/9" "$(jq -rs '[.[] | select(.run_id==7001 or .run_id==7002)] | "\(map(.billed_min) | add)/\(map(.wall_min) | add)"' "$LG")"
+check "run with no billing answer is the string unknown, not 0" '"unknown"' "$(jq -c 'select(.run_id==7003) | .billed_min' "$LG")"
+check "real answer of 0 billed ms stays the number 0" "0" "$(jq -c 'select(.run_id==7004) | .billed_min' "$LG")"
+
+# (d) report: billed next to wall, unknowns on their own line, run count beside gh's total_count
+REP="$(CIM_FIX="$F4" CIM_LOG="$CD/gh.log" bash "$CIM" report --repo o/r --days 7 --until "$UNTIL" --store "$S4" --gh "$CD/bin/gh" 2>&1)" || REP="rc=$? $REP"
+check "report: minutes line, billed beside wall" "yes" "$(grep -qx 'minutes: billed=19 wall=14' <<<"$REP" && echo yes || echo no)"
+check "report: unknown runs on their own line" "yes" "$(grep -qx 'billed_unknown_runs: 1' <<<"$REP" && echo yes || echo no)"
+check "report: run count beside gh total_count" "yes" "$(grep -qx 'runs: 4  gh_total_count: 4' <<<"$REP" && echo yes || echo no)"
+# a timing failure that is not a 404/410 (rate limit, server error) aborts, never becomes unknown
+F5="$CD/fx-502"; mkdir -p "$F5"; gen_runs 400000 3 1000 60 > "$F5/runs.json"; echo '{}' > "$F5/timing.json"; : > "$F5/timing-fail"
+check "non-404 timing failure aborts the run" "1" "$(circ "$F5" "$CD/store-502" write)"
+check "non-404 timing failure stored no unknown row" "0" "$(nrows "$CD/store-502/ci-minutes.jsonl")"
+# a flag typo or a missing repo is refused
+check "no --repo is refused" "1" "$(CIM_FIX="$F4" CIM_LOG="$CD/gh.log" bash "$CIM" write --store "$CD/store-x" --gh "$CD/bin/gh" >/dev/null 2>&1; echo $?)"
+
+# --- release-judge-reconcile.sh: release judge transcripts against launch rows --------------------------
+RJ="$HERE/release-judge-reconcile.sh"
+RJD="$ROOT/rj"; mkdir -p "$RJD/projects/-tmp-rm-run-judge-AAA" "$RJD/logs"
+rj_tr() { # sid first-ts last-ts cost
+  { printf '{"type":"user","timestamp":"%s","message":{"content":"x"}}\n' "$2"
+    printf '{"type":"assistant","timestamp":"%s"}\n' "$3"
+    printf '{"type":"cost-state","sessionId":"%s","totalCostUSD":%s}\n' "$1" "$4"; } > "$RJD/projects/-tmp-rm-run-judge-AAA/$1.jsonl"
+}
+S1=11111111-1111-4111-8111-111111111111; S2=22222222-2222-4222-8222-222222222222
+S3=33333333-3333-4333-8333-333333333333; S4=44444444-4444-4444-8444-444444444444
+rj_tr $S1 2026-11-04T10:00:00.000Z 2026-11-04T10:01:00.000Z 1.5
+rj_tr $S2 2026-11-04T11:00:00.000Z 2026-11-04T11:00:30.500Z 1.3725738
+rj_tr $S3 2026-11-04T12:00:00.000Z 2026-11-04T12:00:01.000Z 0
+rj_tr $S4 2026-11-04T13:00:00.000Z 2026-11-04T13:01:00.000Z 2
+printf 'headed-arm-worker: profile=bare lane=native model=opus role=release-manager session=rm-judge-44444444 session_id=%s launched=2026-11-04T13:00:00Z\n' "$S4" > "$RJD/logs/rm-judge-44444444.log"
+{
+  printf '{"ts":"2026-11-04T10:01:01Z","kind":"judge","lane":"native","session_id":"%s","sub_cost_usd":"1.500000","cost_usd":""}\n' "$S1"
+  printf '{"ts":"2026-11-04T11:00:31Z","kind":"judge","lane":"sub-fallback","sub_cost_usd":"1.372574","cost_usd":""}\n'
+  printf '{"ts":"2026-11-04T12:00:02Z","kind":"judge","lane":"api","cost_usd":"0.000000"}\n'
+  printf '{"ts":"2026-11-04T14:00:00Z","kind":"judge","lane":"sub-fallback","sub_cost_usd":"9.990000","cost_usd":""}\n'
+  printf '{"ts":"2026-11-04T10:01:02Z","kind":"critic","lane":"api","cost_usd":"1.500000"}\n'
+  echo null
+} > "$RJD/launches.jsonl"
+rj() { bash "$RJ" --launches "$RJD/launches.jsonl" --launch-logs "$RJD/logs" --projects "$RJD/projects" "$@"; }
+RJ1="$(rj --tolerance 2)"
+check "reconcile: rows and transcripts counted, the critic row and the null line ignored" "yes" \
+  "$(grep -qxF "launch rows (kind=judge): 4  total \$12.86" <<<"$RJ1" && grep -qxF "transcripts: 4  total \$4.87" <<<"$RJ1" && echo yes || echo no)"
+check "reconcile: matched by session id and by cost and time (a zero-cost row too)" "yes" \
+  "$(grep -qx 'matched: 3  (by session id 1, by cost and time 2)' <<<"$RJ1" && echo yes || echo no)"
+check "reconcile: the transcript with no row is counted, priced, and shows its launch-log line" "yes" \
+  "$(grep -qxF "transcripts with no launch row: 1  total \$2  (with a launch-log line: 1)" <<<"$RJ1" && echo yes || echo no)"
+check "reconcile: the row with no transcript is counted" "yes" "$(grep -qx 'launch rows with no transcript: 1' <<<"$RJ1" && echo yes || echo no)"
+check "reconcile: class totals are far apart and the verdict says so" "yes" \
+  "$(grep -qx 'OUTSIDE TOLERANCE 2%' <<<"$RJ1" && echo yes || echo no)"
+RJU="$(rj --until 2026-11-04T13:00:00Z)"
+check "reconcile: --until bounds both sides (the 13:00 transcript and the 14:00 row drop out)" "yes" \
+  "$(grep -qxF "transcripts with no launch row: 0  total \$0  (with a launch-log line: 0)" <<<"$RJU" && echo yes || echo no)"
+# GREEN: the missing row exists (carrying the session id) and the orphan row is gone
+grep -v '9.990000' "$RJD/launches.jsonl" > "$RJD/launches.green"; mv "$RJD/launches.green" "$RJD/launches.jsonl"
+printf '{"ts":"2026-11-04T13:01:01Z","kind":"judge","lane":"native","session_id":"%s","sub_cost_usd":"2.000000","cost_usd":""}\n' "$S4" >> "$RJD/launches.jsonl"
+RJ2="$(rj --tolerance 2)"
+check "reconcile green: no unmatched transcript, all four matched" "yes" \
+  "$(grep -qxF "matched: 4  (by session id 2, by cost and time 2)" <<<"$RJ2" && grep -qxF "transcripts with no launch row: 0  total \$0  (with a launch-log line: 0)" <<<"$RJ2" && echo yes || echo no)"
+check "reconcile green: the class totals agree inside the tolerance" "yes" \
+  "$(grep -qx 'WITHIN TOLERANCE 2%' <<<"$RJ2" && grep -q 'difference 0%' <<<"$RJ2" && echo yes || echo no)"
+# idempotent control: a second run changes nothing, in the ledger or in the output
+SUM1="$(cksum < "$RJD/launches.jsonl")"; RJ3="$(rj --tolerance 2)"
+check "reconcile is read-only and repeatable: ledger bytes and output unchanged" "yes" \
+  "$([ "$SUM1" = "$(cksum < "$RJD/launches.jsonl")" ] && [ "$RJ2" = "$RJ3" ] && echo yes || echo no)"
+# a row written before the run ended cannot be that run's row; the default ledger follows the writers' state path
+S5=55555555-5555-4555-8555-555555555555
+RJE="$ROOT/rj-early"; mkdir -p "$RJE/projects/-tmp-rm-run-judge-BBB"
+{ printf '{"type":"user","timestamp":"2026-11-04T15:00:00.000Z"}\n{"type":"assistant","timestamp":"2026-11-04T15:00:30.000Z"}\n'
+  printf '{"type":"cost-state","sessionId":"%s","totalCostUSD":3}\n' "$S5"; } > "$RJE/projects/-tmp-rm-run-judge-BBB/$S5.jsonl"
+printf '{"ts":"2026-11-04T15:00:10Z","kind":"judge","lane":"sub-fallback","sub_cost_usd":"3.000000","cost_usd":""}\n' > "$RJE/launches.jsonl"
+RJEO="$(bash "$RJ" --launches "$RJE/launches.jsonl" --launch-logs "$RJE/none" --projects "$RJE/projects")"
+check "reconcile: a row stamped 20s before the run ended does not match it" "yes" \
+  "$(grep -qx "matched: 0  (by session id 0, by cost and time 0)" <<<"$RJEO" && grep -qxF "launch rows with no transcript: 1" <<<"$RJEO" && echo yes || echo no)"
+# an unreadable transcript is never a green verdict: it is counted, the verdict reads INCOMPLETE and the exit is 1
+RJB="$ROOT/rj-bad"; mkdir -p "$RJB/projects/-tmp-rm-run-judge-CCC"
+cp "$RJD/projects/-tmp-rm-run-judge-AAA/$S1.jsonl" "$RJB/projects/-tmp-rm-run-judge-CCC/$S1.jsonl"
+printf '{"type":"assistant","timestamp":"2026-11-04T10:00:00.000Z"}\n{"type":"cost-st' > "$RJB/projects/-tmp-rm-run-judge-CCC/$S2.jsonl"
+printf '{"ts":"2026-11-04T10:01:01Z","kind":"judge","lane":"native","session_id":"%s","sub_cost_usd":"1.500000","cost_usd":""}\n' "$S1" > "$RJB/launches.jsonl"
+RJBO="$(bash "$RJ" --launches "$RJB/launches.jsonl" --launch-logs "$RJB/none" --projects "$RJB/projects" --tolerance 2 2>/dev/null)" && RJBRC=0 || RJBRC=$?
+check "reconcile: an unreadable transcript gives INCOMPLETE, never WITHIN TOLERANCE, and exit 1" "yes" \
+  "$([ "$RJBRC" = 1 ] && grep -qxF "unreadable transcripts skipped: 1  (not in any count or total above)" <<<"$RJBO" && grep -q '^INCOMPLETE: 1 transcript' <<<"$RJBO" && ! grep -q 'WITHIN TOLERANCE' <<<"$RJBO" && echo yes || echo no)"
+bash "$RJ" --launches "$RJD/launches.jsonl" --launch-logs "$RJD/logs" --projects "$RJD/projects" --tolerance abc >/dev/null 2>&1 && RJTRC=0 || RJTRC=$?
+check "reconcile: a failing report (a malformed --tolerance) exits non-zero, never 0" "yes" "$([ "$RJTRC" -ne 0 ] && echo yes || echo no)"
+RJD2="$(HIMMEL_API_CREDIT_STATE="$RJD/ledger.json" bash "$RJ" --launch-logs "$RJD/logs" --projects "$RJD/projects" --tolerance 2)"
+check "reconcile: with no --launches the ledger is the one beside HIMMEL_API_CREDIT_STATE" "$RJ3" "$RJD2"
+
 if [ "$FAIL" -eq 0 ]; then echo "PASS"; else echo "FAILED" >&2; exit 1; fi

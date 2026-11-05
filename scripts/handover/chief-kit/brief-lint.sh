@@ -88,7 +88,7 @@ keys = list(dict.fromkeys(re.findall(r'\b[A-Z][A-Z0-9]*-[0-9]+\b', title)))
 if not keys:
     sys.exit(0)
 doc_state_root = os.path.realpath(sys.argv[3]) if sys.argv[3] else ''
-# The ticket's own file mentions, read the way next-dispatchable.sh reads them: a relative Writes token is a path only when it reads as one of these.
+# The file mentions of the ticket itself, read the way next-dispatchable.sh reads them: a relative Writes token is a path only when it reads as one of these.
 FILE_RE = re.compile(r"(?<![\w./-])((?:scripts|docs|marketplace|plugins|templates|tools|\.claude|\.github|\.codex)/[\w.+@-]+(?:/[\w.+@-]+)*/?|CLAUDE\.md|AGENTS\.md|README\.md|package\.json|package-lock\.json|bun\.lock|uv\.lock|pyproject\.toml|\.gitignore|\.pre-commit-config\.yaml)")
 DOCS_FILLER = {'writes', 'write', 'and', 'or', 'plus', 'also', 'the', 'a', 'an', 'only', 'new', 'edit', 'update', 'add', 'in', 'under', 'of', 'to', 'doc', 'docs', 'file', 'files', 'section', 'sections'}
 
@@ -105,7 +105,7 @@ for i, line in enumerate(lines):
             if not nxt.startswith('> ') or nxt.startswith('> **'):
                 break
             text += ' ' + nxt[2:]
-# The path list comes from holds.py's one parser, so the single-writer barrier and this core check read a Writes line the same
+# The path list comes from the one parser in holds.py, so the single-writer barrier and this core check read a Writes line the same
 # way; `text` above stays raw, because raw_docs_only needs the prose tokens.
 sys.path.insert(0, sys.argv[4])
 try:
@@ -187,7 +187,7 @@ def run(args):
     if not os.path.isfile(cli):
         failed('no built jira CLI at %s' % cli)
     try:
-        # cwd inside the CLI's own checkout: it runs `git rev-parse` from its cwd
+        # cwd inside the checkout that holds the CLI: it runs `git rev-parse` from its cwd
         return subprocess.run(['node', cli] + args, capture_output=True, text=True, timeout=120, cwd=os.path.dirname(os.path.abspath(cli)))
     except (OSError, subprocess.SubprocessError) as e:
         failed('node could not run %s (%s)' % (cli, e))

@@ -105,16 +105,19 @@
 #              branch-wide still-open check specifically: that check's own
 #              underlying command amends the shared ledger as a side effect
 #              of checking, which --dry-run must never do (see gate 4c).
-#   --check-findings  the GO-time read of gates 4 and 4b, for
+#   --check-findings  the GO-time read of gates 4, 4b and 4c, for
 #              ready-check.sh. It runs this script's own ledger verdict, the
 #              review-head rule above and the same blocking predicate, at <tip>,
 #              and writes nothing: no marker, no ledger row, no audit line, no
 #              gh or remote call. It needs no marker and no checked-out branch.
-#              Exit 0 (no blocking or unadjudicated finding), 15 (gate 4),
-#              14 (gate 4b, a malformed ledger, or the 3c family record),
-#              10 usage, 12 the branch has a recorded round head but <tip> is
-#              not a commit in this repository. Gates 3,
-#              3b, 4c, 4d, 4e, 4f and 5 are not part of it.
+#              Gate 4c is read from `review-round.sh promote --check`, the
+#              merge's own reader with its ledger amends skipped (a <tip> this
+#              repository does not hold is not read there).
+#              Exit 0 (no blocking, unadjudicated or still-open finding), 15
+#              (gate 4), 14 (gate 4b, gate 4c, a malformed ledger, or the 3c
+#              family record), 10 usage, 12 the branch has a recorded round
+#              head but <tip> is not a commit in this repository. Gates 3,
+#              3b, 4d, 4e, 4f and 5 are not part of it.
 #   --assume-go  with --check-findings only: judge as the merge will once the
 #              chief's GO exists. The judge-go lookup counts as accepted, so
 #              the gates run at the recorded round head with `fixed` passing;
@@ -1245,6 +1248,52 @@ certify_refused=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("d
 # CR_FLOOR_FALLBACK=claude-only eligibility (see gate 3b below).
 floor_fallback_eligible=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(String(JSON.parse(s).floorFallbackEligible?1:0)))' 2>/dev/null)
 exhausted_lanes=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log((JSON.parse(s).exhaustedLanes||[]).join(" ")))' 2>/dev/null)
+# Gate 4c, one reader for the merge and for the GO-time read: review-round.sh promote. <$1> is empty for the
+# merge (promote amends the ledger as it checks) or --check for the read (the same verdict, nothing written).
+# Exits 14 on a still-open finding or a promote error, returns on a pass.
+gate_4c_promote() {
+    local _promote_out _promote_rc _stillopen_count _pline
+    # --check only: a tip this repository does not hold cannot be compared with the branch's rounds; it is
+    # read in the ledger by name, as gates 4 and 4b do, and promote has no commit to resolve.
+    if [ -n "$1" ] && ! git cat-file -e "$tip^{commit}" 2>/dev/null; then
+        return 0
+    fi
+    _promote_out="$(mktemp 2>/dev/null || true)"
+    if [ -n "$_promote_out" ]; then
+        bash "$SCRIPT_DIR/review-round.sh" promote ${1:+"$1"} --branch "$branch" --head "$tip" >"$_promote_out" 2>&1
+        _promote_rc=$?
+    else
+        _promote_rc=1
+    fi
+    if [ "$_promote_rc" -eq 3 ]; then
+        echo "clear-cr-marker: review-round.sh promote found still-open finding(s) at an earlier round head on $branch — refusing. Every round's ledger rows must carry a decision before the branch can clear, not just the tip's." >&2
+        _stillopen_count=0
+        if [ -n "$_promote_out" ] && [ -f "$_promote_out" ]; then
+            while IFS= read -r _pline; do
+                case "$_pline" in
+                    "still-open "*)
+                        echo "  $_pline" >&2
+                        _stillopen_count=$((_stillopen_count + 1))
+                        ;;
+                esac
+            done < "$_promote_out"
+        fi
+        echo "  Record a decision for each row above at its OWN head with the amend verb:" >&2
+        echo "    scripts/cr/ledger-append.sh amend --head <head-from-above> --id <finding-id> --artifact <artifact> --perspective <perspective> --set verdict=<agreed-or-disproved> --reason \"<one line>\"" >&2
+        rm -f "$_promote_out"
+        audit "REFUSED reason=unadjudicated-earlier-round branch=$branch sha=$tip count=$_stillopen_count"
+        exit 14
+    elif [ "$_promote_rc" -ne 0 ]; then
+        echo "clear-cr-marker: review-round.sh promote exited $_promote_rc (malformed ledger, bad head, or missing ledger) for $branch@${tip_short:-$tip} — refusing closed rather than clearing on a broken ledger." >&2
+        if [ -n "$_promote_out" ] && [ -f "$_promote_out" ]; then
+            cat "$_promote_out" >&2
+        fi
+        rm -f "$_promote_out"
+        audit "REFUSED reason=promote-error branch=$branch sha=$tip code=$_promote_rc"
+        exit 14
+    fi
+    rm -f "$_promote_out"
+}
 if [ "$check_findings" -eq 1 ]; then
     # The GO-time read of gates 4 and 4b, in the merge's own order: a malformed ledger, a blocking
     # finding, an unadjudicated one. The fields are the ones the gates below read; nothing is written.
@@ -1260,6 +1309,8 @@ if [ "$check_findings" -eq 1 ]; then
         echo "clear-cr-marker: --check-findings: ${unadjudicated_count} finding(s) at ${review_head:0:8} (gating ${tip:0:8}) have no recorded verdict." >&2
         exit 14
     fi
+    # Gate 4c: the branch-wide still-open verdict, read from the merge's own reader without its ledger writes.
+    gate_4c_promote --check
     exit 0
 fi
 
@@ -1653,8 +1704,8 @@ fi
 # gate file (a rename counts at both paths) needs a `blast` row stamped with
 # this branch, at any head: one pass per branch, and a row written late still
 # counts. An `off` row with a reason is the audited opt-out. The scope lives
-# here only; the gate runs from the anchor, so a branch cannot narrow the
-# scope it is judged by. A marker minted before BLAST_GATE_SINCE is exempt,
+# only in blast-scope.cjs beside this script; the gate runs from the anchor, so
+# a branch cannot narrow the scope it is judged by. A marker minted before BLAST_GATE_SINCE is exempt,
 # and, as in 4e, so is a branch whose first `score` row predates it (or
 # carries no ts); a branch with no `score` row at all (a Claude-floor-only
 # review) is not. Read-only, so it runs under --dry-run too.
@@ -1666,11 +1717,10 @@ if [ "$marker_lane" = "full" ]; then
     _blastdiff="$(mktemp "${TMPDIR:-/tmp}/blast-diff.XXXXXX" 2>/dev/null || true)" # swallow-ok: an empty path keeps blast_verdict=error and gate 4f refuses (fail-closed)
     if [ -n "$_blastdiff" ] && git diff --no-renames --name-only -z --end-of-options "$marker_base...$tip" > "$_blastdiff" 2>/dev/null; then
         _marker_ts=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$1); print $1; exit}' "$marker" 2>/dev/null || true) # swallow-ok: an empty ts parses as NaN and earns no exemption (fail-closed)
-        blast_verdict=$(LEDGER="$ledger" BRANCH="$branch" DIFF="$_blastdiff" MARKER_TS="$_marker_ts" BLAST_GATE_SINCE="2026-10-26T00:00:00Z" node -e '
+        blast_verdict=$(LEDGER="$ledger" BRANCH="$branch" DIFF="$_blastdiff" MARKER_TS="$_marker_ts" BLAST_GATE_SINCE="2026-10-26T00:00:00Z" BLAST_SCOPE="$SCRIPT_DIR/blast-scope.cjs" node -e '
           const fs = require("fs"), e = process.env;
-          const scope = [/^scripts\/hooks\//, /^scripts\/ci\/check-/, /^scripts\/cr\/clear-(cr|review)-marker\.sh$/,
-                         /^scripts\/testing\/check-/, /^scripts\/handover\/chief-kit\/ready-check\.sh$/];
-          const inScope = (p) => scope.some((r) => r.test(p)) && !/(^|\/)test-[^\/]*$/.test(p) && !/\/fixtures\//.test(p);
+          // A missing or broken scope module throws, so the verdict is "error" and the gate refuses closed.
+          const { inScope } = require(e.BLAST_SCOPE);
           const touched = fs.readFileSync(e.DIFF, "utf8").split("\0").some(inScope);
           const rows = fs.existsSync(e.LEDGER)
               ? fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean) : [];
@@ -1717,51 +1767,14 @@ fi
 # PR #743) — fine on a real run (a real run's whole job is to converge the
 # ledger, and the chief's own pre-merge check makes this exact call), but
 # `--dry-run`'s contract is "run every gate, report the verdict, never write".
-# `review-round.sh` has no check-only mode to ask for instead (out of scope
-# to add one here, since a check-only mode would touch review-round.sh), and the
-# ledger it amends is a single shared file other branches/workers append to
-# concurrently, so a snapshot-and-restore around the call would risk
-# clobbering a concurrent writer's row. Skip the mutating call under
-# --dry-run instead: the branch-wide verdict is simply not previewed, same as
-# any other real-run-only side effect a dry run intentionally does not take.
+# `review-round.sh promote --check` is the read-only form, used by --check-findings
+# (gate_4c_promote above); --dry-run still skips the mutating call and does not
+# preview this verdict, the ledger it amends being a single shared file other
+# branches/workers append to concurrently.
 if [ "$DRY_RUN" -eq 1 ]; then
     echo "clear-cr-marker: [dry-run] skipping the branch-wide still-open check — scripts/cr/review-round.sh promote amends the shared ledger as a side effect of checking, and --dry-run must never write. Run without --dry-run, or run 'scripts/cr/review-round.sh promote --branch $branch --head $tip' directly, for the branch-wide verdict." >&2
 else
-    _promote_out="$(mktemp 2>/dev/null || true)"
-    if [ -n "$_promote_out" ]; then
-        bash "$SCRIPT_DIR/review-round.sh" promote --branch "$branch" --head "$tip" >"$_promote_out" 2>&1
-        _promote_rc=$?
-    else
-        _promote_rc=1
-    fi
-    if [ "$_promote_rc" -eq 3 ]; then
-        echo "clear-cr-marker: review-round.sh promote found still-open finding(s) at an earlier round head on $branch — refusing. Every round's ledger rows must carry a decision before the branch can clear, not just the tip's." >&2
-        _stillopen_count=0
-        if [ -n "$_promote_out" ] && [ -f "$_promote_out" ]; then
-            while IFS= read -r _pline; do
-                case "$_pline" in
-                    "still-open "*)
-                        echo "  $_pline" >&2
-                        _stillopen_count=$((_stillopen_count + 1))
-                        ;;
-                esac
-            done < "$_promote_out"
-        fi
-        echo "  Record a decision for each row above at its OWN head with the amend verb:" >&2
-        echo "    scripts/cr/ledger-append.sh amend --head <head-from-above> --id <finding-id> --artifact <artifact> --perspective <perspective> --set verdict=<agreed-or-disproved> --reason \"<one line>\"" >&2
-        rm -f "$_promote_out"
-        audit "REFUSED reason=unadjudicated-earlier-round branch=$branch sha=$tip count=$_stillopen_count"
-        exit 14
-    elif [ "$_promote_rc" -ne 0 ]; then
-        echo "clear-cr-marker: review-round.sh promote exited $_promote_rc (malformed ledger, bad head, or missing ledger) for $branch@${tip_short:-$tip} — refusing closed rather than clearing on a broken ledger." >&2
-        if [ -n "$_promote_out" ] && [ -f "$_promote_out" ]; then
-            cat "$_promote_out" >&2
-        fi
-        rm -f "$_promote_out"
-        audit "REFUSED reason=promote-error branch=$branch sha=$tip code=$_promote_rc"
-        exit 14
-    fi
-    rm -f "$_promote_out"
+    gate_4c_promote ""
 fi
 
 # 5. Post-PR / pre-merge gate — when a PR already exists, the review threads and
