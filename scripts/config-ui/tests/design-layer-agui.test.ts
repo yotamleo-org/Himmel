@@ -67,3 +67,24 @@ test("Fleet cards and status pills carry the shared component shape and soft sta
     expect(rule(`.state.${state}`), state).toContain(`background:var(--${token}-soft)`);
   }
 });
+
+// The Chief notes strip follows the signed Board density rules (spec 8044 section 3).
+test("the Chief notes strip holds its header to one line, clamps a card title to two lines and keeps the full text in a data-tip bubble", () => {
+  expect(rule(".bd-notes>summary")).toContain("white-space:nowrap");
+  expect(rule(".bd-note-title .bd-clip")).toContain("-webkit-line-clamp:2");
+  expect(css()).toContain("[data-tip]:hover::after");
+  expect(css()).toContain("[data-tip]::after{content:attr(data-tip)");
+});
+
+// The unit job installs nothing for agui-web, so React cannot render here: the strip's source and the model carry the guarantee.
+test("the Chief notes strip draws a body as a text child only: no HTML sink, no markup parsed, nothing without sections", async () => {
+  const src = readFileSync(join(SRC, "Board.tsx"), "utf8");
+  const strip = src.slice(src.indexOf("export function SectionsStrip"), src.indexOf("export const StateChip"));
+  expect(strip).toContain("{s.body}</p>");
+  expect(strip).toContain("if (!sections.length) return null;");
+  expect(src).not.toMatch(/dangerouslySetInnerHTML|innerHTML|insertAdjacentHTML/);
+  const { normalizeBoard } = await import("../agui-web/src/board-model");
+  const body = "<img src=x onerror=1>\n<a href=x>go</a>";
+  const board = normalizeBoard({ workers: [], needs_you: [], trends: {}, sections: [{ id: "a", title: "<b>t</b>", body, tone: "warn" }] });
+  expect(board.sections[0]).toMatchObject({ title: "<b>t</b>", body }); // kept as the literal strings the strip prints
+});
