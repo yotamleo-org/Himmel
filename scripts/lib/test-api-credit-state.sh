@@ -3,4 +3,4 @@
 # Platform guard: local filesystem accounting; Linux verified.
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-exec node --test "$REPO/scripts/lib/api-credit-state.test.mjs"
+exec node --test "$REPO/scripts/lib/api-credit-state.test.mjs" "$REPO/scripts/lib/api-roles.test.mjs"

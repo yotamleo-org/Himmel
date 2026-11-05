@@ -211,6 +211,7 @@ _promote_lock_release() {
   local cur=""
   if [ "$PROMOTE_LOCK_HELD" -eq 1 ]; then
     PROMOTE_LOCK_HELD=0
+    [ -z "${PROMOTE_HEARTBEAT_PID:-}" ] || kill "$PROMOTE_HEARTBEAT_PID" 2>/dev/null || true
     [ -d "$PROMOTE_LOCK" ] || return 0
     cur=$(cat "$PROMOTE_LOCK/owner" 2>/dev/null) || cur=""
     if [ "$cur" != "$PROMOTE_LOCK_TOKEN" ]; then
@@ -347,6 +348,28 @@ if ! _stamp_err=$( { date -u +%s > "$PROMOTE_LOCK/acquired"; } 2>&1 1>/dev/null 
   exit 3
 fi
 PROMOTE_LOCK_HELD=1
+
+# Heartbeat. This run holds the lock ~18 min (graphify update
+# --force), past refresh-graph-map.sh's 600s stale floor, so without a sign of
+# life a refresh would judge the lock stale and take it over mid-run. A
+# background loop rewrites <lock>/heartbeat every N seconds; refresh-graph-map.sh
+# judges staleness from the newer of `acquired` and `heartbeat`. The loop ends
+# when this script dies (kill -0 on its pid) or the lock stops being ours, so a
+# dead holder's heartbeat stops and it is still taken over after the floor.
+_hb_secs="${GRAPHIFY_PROMOTE_LOCK_HEARTBEAT_SECONDS:-60}"
+case "$_hb_secs" in ''|*[!0-9]*) _hb_secs=60 ;; esac
+[ "$((10#$_hb_secs))" -gt 0 ] || _hb_secs=60
+_hb_parent=$$
+(
+  while kill -0 "$_hb_parent" 2>/dev/null; do
+    sleep "$_hb_secs"
+    [ "$(cat "$PROMOTE_LOCK/owner" 2>/dev/null)" = "$PROMOTE_LOCK_TOKEN" ] || exit 0
+    # Temp file then rename: a plain `>` truncates first, and a refresh reading
+    # the empty file would fall back to the old stamp and take a live lock.
+    { date -u +%s > "$PROMOTE_LOCK/heartbeat.tmp" && mv -f "$PROMOTE_LOCK/heartbeat.tmp" "$PROMOTE_LOCK/heartbeat"; } 2>/dev/null || true
+  done
+) >/dev/null 2>&1 &
+PROMOTE_HEARTBEAT_PID=$!
 
 # Capture graphify's own exit status instead of propagating it unchanged
 # (set -e would otherwise make this script's own exit code just BE whatever
