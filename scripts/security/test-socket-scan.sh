@@ -182,6 +182,12 @@ check "a status code: 429 reply reads as a skip" 0 "$RC"
 STUB_RC=1 STUB_ERR="Socket scan is not healthy: package rate-limit-redis has 1 alert with policy action error; 429 files scanned; quota of 500 noted" run policyquota "site/package-lock.json"
 check "a policy failure that mentions rate-limit, 429 and quota exits 1, not a skip" 1 "$RC"
 hasnt "that policy failure is not read as a quota skip" "SKIP quota" "$OUT"
+# package names that embed the quota phrases without a separator are findings, never a skip
+STUB_RC=1 STUB_ERR="$(printf 'npm/http429@1.0.0 has 1 alert with policy action error\n@http/429 deprecated\nstatus429 has 1 alert with policy action error')" run pkg429 "site/package-lock.json"
+check "a policy failure naming http429, @http/429 and status429 packages exits 1" 1 "$RC"
+hasnt "package names with 429 are not read as a quota skip" "SKIP quota" "$OUT"
+STUB_RC=1 STUB_ERR="$(printf 'too-many-requests@2.0.0 has 1 alert with policy action error\ninsufficient-quota-check@1.0.0 flagged')" run pkgphrase "site/package-lock.json"
+check "a policy failure naming too-many-requests and insufficient-quota packages exits 1" 1 "$RC"
 STUB_RC=2 STUB_ERR="getaddrinfo ENOTFOUND api.socket.dev" run neterr "site/package-lock.json"
 check "a network error exits 2, not a skip" 2 "$RC"
 

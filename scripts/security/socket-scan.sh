@@ -33,10 +33,12 @@ SECRETS="${SOCKET_SCAN_SECRETS_BIN:-$SCRIPT_DIR/../lib/himmel-secrets}"
 # ecosystems Socket reads: npm, bun, PyPI (requirements, pyproject, uv, poetry, pipenv), Go, Ruby
 MANIFEST_RE='(^|/)(package\.json|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|uv\.lock|requirements[^/]*\.txt|pyproject\.toml|poetry\.lock|Pipfile|Pipfile\.lock|go\.mod|go\.sum|Gemfile|Gemfile\.lock)$'
 EXCL_RE='(^|/)(node_modules|fixtures|worktrees|graphify-out|\.venv)/'
-# only the API's own quota reply: an HTTP 429 status, "Too Many Requests", the documented body
-# "Insufficient quota for API route". A policy report that names a rate-limit package, a count
-# of 429 files or the word quota is a finding, never a skip.
-QUOTA_RE='(HTTP[/0-9. ]*|status( code)?[ :=]*)429([^0-9]|$)|too many requests|insufficient quota'
+# only the API's own quota reply, each form anchored by a word boundary and a mandatory
+# separator: an "HTTP 429" or "HTTP/1.1 429" status, "status: 429" or "status code = 429", the
+# phrase "Too Many Requests", the documented body "Insufficient quota for API route". The
+# phrases hold spaces, so a package name (http429, @http/429, status429, too-many-requests,
+# insufficient-quota-check) in a policy report never matches: that is a finding, not a skip.
+QUOTA_RE='(^|[[:space:],;({"])(HTTP(/[0-9.]+)?[[:space:]]+429|status( code)?[[:space:]]*[:=][[:space:]]*429)([^0-9]|$)|(^|[^[:alnum:]_/@.-])(too many requests|insufficient quota)'
 
 err() { printf 'ERR socket-scan: %s\n' "$*" >&2; }
 say() { # a result line, on stdout and in the job summary

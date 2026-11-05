@@ -170,6 +170,23 @@ rc=$?
 if [ "$rc" -eq 1 ]; then pass "SNYK_TOKEN line in socket-scan.yml -> exit 1"; else fail "SNYK_TOKEN line in socket-scan.yml -> expected 1 got $rc"; fi
 rm -rf "$dir_l"
 
+# Cases M-N: the exact compare. A suffix after the allowed line, inside the allowed file, fails.
+echo "== Case M: a suffix after the SNYK_TOKEN line in snyk-weekly.yml =="
+dir_m=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+printf 'name: X\non: [push]\njobs:\n  j:\n    runs-on: ubuntu-latest\n    env:\n%s %ssecrets.X }}\n' "$allowed_line" "$piece1" > "$dir_m/snyk-weekly.yml"
+bash "$GUARD" "$dir_m" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then pass "suffixed SNYK_TOKEN line in snyk-weekly.yml -> exit 1"; else fail "suffixed SNYK_TOKEN line in snyk-weekly.yml -> expected 1 got $rc"; fi
+rm -rf "$dir_m"
+
+echo "== Case N: a suffix after the SOCKET_DEV_API_KEY line in socket-scan.yml =="
+dir_n=$(mktemp -d "${TMPDIR:-/tmp}/no-secrets.XXXXXX") || exit 1
+printf 'name: X\non: [push]\njobs:\n  j:\n    runs-on: ubuntu-latest\n    env:\n%s %ssecrets.X }}\n' "$socket_line" "$piece1" > "$dir_n/socket-scan.yml"
+bash "$GUARD" "$dir_n" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then pass "suffixed SOCKET_DEV_API_KEY line in socket-scan.yml -> exit 1"; else fail "suffixed SOCKET_DEV_API_KEY line in socket-scan.yml -> expected 1 got $rc"; fi
+rm -rf "$dir_n"
+
 # Final tally
 if [ "$failures" -eq 0 ]; then
   echo "OK: all cases passed"
