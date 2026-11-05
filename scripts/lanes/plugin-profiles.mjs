@@ -262,6 +262,7 @@ function validateProfileSpec(errors, name, spec, catalogSet, floorSet) {
     if (spec.disableWorkflows !== undefined) errors.push('profile "bare" must not declare disableWorkflows — bare has no base capability to restrict');
   }
   validateToolTrim(errors, name, spec);
+  if (spec.artifact !== undefined && typeof spec.artifact !== 'boolean') errors.push(`profile "${name}" artifact must be a boolean`);
   if (spec.gateAllow !== undefined && typeof spec.gateAllow !== 'boolean') {
     errors.push(`profile "${name}" gateAllow must be a boolean`);
   }
@@ -578,7 +579,12 @@ export function resolveProfile(registry, name, opts = {}) {
   return { enabledPlugins, ...(Object.keys(permissions).length ? { permissions } : {}), ...disableOf(spec), ...listingSettings(registry, [name], enabledPlugins, opts) };
 }
 
-const denyOf = (spec) => (Array.isArray(spec?.denyTools) && spec.denyTools.length ? { deny: [...spec.denyTools] } : {});
+// The Artifact tool is denied in every profile unless it sets artifact: true.
+const denyOf = (spec) => {
+  const deny = Array.isArray(spec?.denyTools) ? [...spec.denyTools] : [];
+  if (spec?.artifact !== true && !deny.includes('Artifact')) deny.push('Artifact');
+  return deny.length ? { deny } : {};
+};
 const disableOf = (spec) => (spec?.disableWorkflows === true ? { disableWorkflows: true } : {});
 
 // Sibling output, never extra Claude settings keys. Resolve the

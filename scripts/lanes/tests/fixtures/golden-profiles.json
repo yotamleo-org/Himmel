@@ -358,6 +358,11 @@
       "humanizer@himmel": false,
       "himmel-guard@himmel": false,
       "domain-modeling@himmel": false
+    },
+    "permissions": {
+      "deny": [
+        "Artifact"
+      ]
     }
   }
 }

@@ -150,6 +150,7 @@
   "profiles": {
     "operator": null,
     "user": {
+      "artifact": true,
       "_comment": "HIMMEL-3064: lean-skills@himmel replaces superpowers@claude-plugins-official + mattpocock-skills@claude-plugins-official (restated here for audit-clarity though base already carries it). plannotator-effective-html@himmel moved OUT to the new design profile -- its 6 skills cost ~630 tok every session for 1 invocation in 1628 transcripts, so design/UI work now opts in via --profile design instead of every session paying for it. HIMMEL-8416: the vault-note plugin was removed from the catalog and every profile; obsidian-triage covers its used pieces.",
       "enable": [
         "lean-skills@himmel",
@@ -164,6 +165,7 @@
       "_comment_contextBudget": "HIMMEL-4021 audit 2026-10-02: n=0 attributable merged workers in PR bodies (#643-#1604, merged 2026-09-12 to 2026-10-02 UTC); keep contextBudget under n<3. Existing observations and source PRs, if any, are recorded in the registry-level _comment_contextBudget and docs/internals/lane-calibration.md."
     },
     "design": {
+      "artifact": true,
       "_comment": "HIMMEL-3064: plannotator-effective-html@himmel is deliberately NOT in the always-on `user` tier -- its 6 skills (design-artifact, html, html-diagram, html-plan, html-prototype, html-wireframe) cost ~630 tok of session-start listing every session, and across 1628 local transcripts it was invoked exactly once. Design/UI work opts in via this profile instead. HIMMEL-4012: the profile now enables the full design pack (plannotator-effective-html, frontend-design, ui-ux-pro-max, impeccable) - it shipped with plannotator only and its test pinned exactly that, so a design worker ran with almost no design tooling. design workers also launch on the 1m context (headed-arm-worker.sh, operator ruling 2026-10-01). HIMMEL-4012 PR2b: the core is 7 members (adds taste-skill-core, shadcn-mcp, context7; ui-ux-pro-max is now the pinned himmel entry). The kit add-ons after this profile (design-motion ... design-trial) each stack on base ONLY, never on this core: until HIMMEL-4014 composes profiles, a design worker adds one with `--profile design --add-plugins <ids>`. Root-skill repos (animejs, ai-image-prompts, design-dna, anydesign: `skills: [\"./\"]`, install shape UNPROVEN) live only in add-ons so an unproven shape cannot break `--profile design`.",
       "enable": [
         "domain-modeling@himmel",
@@ -182,6 +184,7 @@
       "_comment_contextBudget": "HIMMEL-4021 audit 2026-10-02: n=0 attributable merged workers in PR bodies (#643-#1604, merged 2026-09-12 to 2026-10-02 UTC); keep contextBudget under n<3. No existing profile-specific measurement; see docs/internals/lane-calibration.md."
     },
     "design-motion": {
+      "artifact": true,
       "_comment": "HIMMEL-4012 PR2b design kit add-on. Stacks on base only, not on the design core; launch as `--profile design --add-plugins <these ids>` until HIMMEL-4014 composes profiles.",
       "enable": [
         "emilkowalski-skills@himmel",
@@ -197,6 +200,7 @@
       "_comment_contextBudget": "HIMMEL-4021 audit 2026-10-02: n=0 attributable merged workers in PR bodies (#643-#1604, merged 2026-09-12 to 2026-10-02 UTC); keep contextBudget under n<3. Existing observations and source PRs, if any, are recorded in the registry-level _comment_contextBudget and docs/internals/lane-calibration.md."
     },
     "design-3d": {
+      "artifact": true,
       "_comment": "HIMMEL-4012 PR2b design kit add-on. Stacks on base only, not on the design core; launch as `--profile design --add-plugins <these ids>` until HIMMEL-4014 composes profiles.",
       "enable": [
         "threejs-skills@himmel"
@@ -207,6 +211,7 @@
       "_comment_contextBudget": "HIMMEL-4021 audit 2026-10-02: n=0 attributable merged workers in PR bodies (#643-#1604, merged 2026-09-12 to 2026-10-02 UTC); keep contextBudget under n<3. Existing observations and source PRs, if any, are recorded in the registry-level _comment_contextBudget and docs/internals/lane-calibration.md."
     },
     "design-imagegen": {
+      "artifact": true,
       "_comment": "HIMMEL-4012 PR2b design kit add-on. Stacks on base only, not on the design core; launch as `--profile design --add-plugins <these ids>` until HIMMEL-4014 composes profiles. HIMMEL-7826: higgsfield-skills@himmel loads the Higgsfield image and video skills (they run the higgsfield CLI through Bash; the operator installs the CLI and signs in once); it rides this add-on, not the core, because generation is this add-on's role and the CLI sends prompts and files off the machine.",
       "enable": [
         "taste-skill-core@himmel",
@@ -219,6 +224,7 @@
       "_comment_contextBudget": "HIMMEL-4021 audit 2026-10-02: n=0 attributable merged workers in PR bodies (#643-#1604, merged 2026-09-12 to 2026-10-02 UTC); keep contextBudget under n<3. Existing observations and source PRs, if any, are recorded in the registry-level _comment_contextBudget and docs/internals/lane-calibration.md."
     },
     "design-a11y": {
+      "artifact": true,
       "_comment": "HIMMEL-4012 PR2b design kit add-on. Stacks on base only, not on the design core; launch as `--profile design --add-plugins <these ids>` until HIMMEL-4014 composes profiles.",
       "enable": [
         "platform-design-skills@himmel"
@@ -229,6 +235,7 @@
       "_comment_contextBudget": "HIMMEL-4021 audit 2026-10-02: n=0 attributable merged workers in PR bodies (#643-#1604, merged 2026-09-12 to 2026-10-02 UTC); keep contextBudget under n<3. Existing observations and source PRs, if any, are recorded in the registry-level _comment_contextBudget and docs/internals/lane-calibration.md."
     },
     "design-diagram": {
+      "artifact": true,
       "_comment": "HIMMEL-4012 PR2b design kit add-on. Stacks on base only, not on the design core; launch as `--profile design --add-plugins <these ids>` until HIMMEL-4014 composes profiles.",
       "enable": [
         "diagram-design@himmel",
@@ -240,6 +247,7 @@
       "_comment_contextBudget": "HIMMEL-4021 audit 2026-10-02: n=0 attributable merged workers in PR bodies (#643-#1604, merged 2026-09-12 to 2026-10-02 UTC); keep contextBudget under n<3. Existing observations and source PRs, if any, are recorded in the registry-level _comment_contextBudget and docs/internals/lane-calibration.md."
     },
     "design-slides": {
+      "artifact": true,
       "_comment": "HIMMEL-4012 PR2b design kit add-on. Stacks on base only, not on the design core; launch as `--profile design --add-plugins <these ids>` until HIMMEL-4014 composes profiles.",
       "enable": [
         "frontend-slides@himmel"
@@ -250,6 +258,7 @@
       "_comment_contextBudget": "HIMMEL-4021 audit 2026-10-02: n=0 attributable merged workers in PR bodies (#643-#1604, merged 2026-09-12 to 2026-10-02 UTC); keep contextBudget under n<3. Existing observations and source PRs, if any, are recorded in the registry-level _comment_contextBudget and docs/internals/lane-calibration.md."
     },
     "design-reference": {
+      "artifact": true,
       "_comment": "HIMMEL-4012 PR2b design kit add-on. Stacks on base only, not on the design core; launch as `--profile design --add-plugins <these ids>` until HIMMEL-4014 composes profiles.",
       "enable": [
         "taste-skill-core@himmel",
@@ -266,6 +275,7 @@
       "_comment_contextBudget": "HIMMEL-4021 audit 2026-10-02: n=0 attributable merged workers in PR bodies (#643-#1604, merged 2026-09-12 to 2026-10-02 UTC); keep contextBudget under n<3. Existing observations and source PRs, if any, are recorded in the registry-level _comment_contextBudget and docs/internals/lane-calibration.md."
     },
     "design-trial": {
+      "artifact": true,
       "_comment": "HIMMEL-4012 PR2b design kit add-on. Stacks on base only, not on the design core; launch as `--profile design --add-plugins <these ids>` until HIMMEL-4014 composes profiles.",
       "enable": [
         "hallmark@himmel"
@@ -472,7 +482,7 @@
       "_comment_lean": "HIMMEL-8201 (operator ruling 10-31 LE): the chief launches lean. lean-skills is dropped (0 chief invocations in 231 sessions) and i-have-adhd is dropped for himmel's own 1 KB docs/handover/chief-adhd-brief.md, which headed-arm.sh and chief.sh append with --append-system-prompt-file. denyTools removes the schemas a chief never calls; Artifact is opt-in, and the board stays local. AskUserQuestion and Cron* stay: the chief never calls AskUserQuestion (chief-template.md), and it waits on Cron. Design: specs/design/2026-10-31-HIMMEL-8201-chief-lean-profile-design.md.",
       "enable": [],
       "drop": ["lean-skills@himmel", "i-have-adhd@himmel"],
-      "denyTools": ["Artifact", "ScheduleWakeup", "ReportFindings", "SendFeedback", "NotebookEdit", "DesignSync", "RemoteTrigger"],
+      "denyTools": ["ScheduleWakeup", "ReportFindings", "SendFeedback", "NotebookEdit", "DesignSync", "RemoteTrigger"],
       "disableWorkflows": true,
       "_comment_mcpServers": "HIMMEL-5241: himmel-bus here is what makes chief.sh register the chief on the bus (role chief) and headed-arm.sh bind its claude pid; without it the edge table (worker to chief) has no chief end and every worker send fails with 'no edge'. A chief launches through headed-arm.sh (and chief.sh's printed line), which passes --mcp-config built from this list plus --strict-mcp-config (HIMMEL-5310), so only these servers load; an unresolvable entry refuses the launch.",
       "mcpServers": ["qmd", "himmel-bus"],

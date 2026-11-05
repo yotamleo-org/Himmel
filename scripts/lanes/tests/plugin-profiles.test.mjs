@@ -105,7 +105,8 @@ for (const name of WORKER_SESSION_PROFILES) {
     const settings = resolveProfile(REG, name);
     assert.ok(Array.isArray(settings.permissions?.allow), 'missing permissions.allow');
     assert.ok(settings.permissions.allow.length > 0);
-    assert.deepEqual(settings.permissions, { allow: expectedAllow(name), ...(BUS_PROFILES.includes(name) ? { deny: REG.profiles[name].denyTools } : {}) });
+    // Every one of these profiles denies Artifact, by name or by the default.
+    assert.deepEqual(settings.permissions, { allow: expectedAllow(name), deny: BUS_PROFILES.includes(name) ? REG.profiles[name].denyTools : ['Artifact'] });
     assert.notEqual(settings.permissions.allow, REG.gateAllow, 'callers must not mutate the registry');
   });
 }
@@ -138,10 +139,12 @@ for (const name of ['operator', 'user', 'bare']) {
     ];
     const expected = name === 'operator' ? null : {
       enabledPlugins: Object.fromEntries(REG.catalog.map((id) => [id, on.includes(id) || (name === 'user' && (id === 'pstack@himmel' || id === 'himmel-guard@himmel'))])),
+      // bare is the one of the three that does not publish, so it carries the default Artifact deny.
+      ...(name === 'bare' ? { permissions: { deny: ['Artifact'] } } : {}),
     };
     const settings = resolveProfile(REG, name);
     assert.equal(JSON.stringify(settings), JSON.stringify(expected));
-    assert.ok(settings === null || !Object.hasOwn(settings, 'permissions'));
+    assert.ok(settings === null || name === 'bare' || !Object.hasOwn(settings, 'permissions'));
   });
 }
 
@@ -157,7 +160,7 @@ test('absent/false gateAllow does not inject permissions into a worker', () => {
   for (const value of [undefined, false]) {
     const registry = structuredClone(REG);
     registry.profiles['lane-impl'].gateAllow = value;
-    assert.ok(!Object.hasOwn(resolveProfile(registry, 'lane-impl'), 'permissions'));
+    assert.deepEqual(resolveProfile(registry, 'lane-impl').permissions, { deny: ['Artifact'] }, 'no gate rule: only the default Artifact deny');
     registry.profiles['worker-impl'].gateAllow = value;
     assert.deepEqual(resolveProfile(registry, 'worker-impl').permissions, { allow: BUS_TOOL_ALLOW, deny: REG.profiles['worker-impl'].denyTools }, 'only the bus tools, no gate rule');
   }
@@ -1310,7 +1313,7 @@ test('golden baseline — resolveProfile output for shipped profiles is pinned (
     if (WORKER_SESSION_PROFILES.includes(name)) {
       // The worker profiles deliberately add this field. Pin its exact rule set
       // separately, keeping the historical plugin/output fixture unchanged.
-      assert.deepEqual(actual[name].permissions, { allow: actual[name].permissions.allow });
+      assert.deepEqual(actual[name].permissions, { allow: actual[name].permissions.allow, deny: ['Artifact'] });
       assert.deepEqual([...actual[name].permissions.allow].sort(), [...GATE_RULES, ...SUITE_RULES].sort());
       delete actual[name].permissions;
     }
@@ -1352,7 +1355,7 @@ test('console-judge resolves via resolveProfileByName/resolveProfile to the floo
   assert.deepEqual(resolveProfile(REG, 'console-judge').enabledPlugins, settings.enabledPlugins);
   assert.deepEqual(REG.profiles['console-judge'].enable, []);
   assert.deepEqual(mcpServersForProfile(REG, 'console-judge'), ['qmd']);
-  assert.ok(!Object.hasOwn(settings, 'permissions'), 'console-judge must not emit gateAllow permissions');
+  assert.equal(settings.permissions?.allow, undefined, 'console-judge must not emit gateAllow permissions');
   assert.ok(!REG.profiles['console-judge'].gateAllow, 'console-judge must not set gateAllow');
 });
 
@@ -1364,7 +1367,7 @@ test('release-manager resolves to the floor plus qmd, no gateAllow, and requires
   const enabled = Object.entries(settings.enabledPlugins).filter(([, v]) => v).map(([id]) => id);
   assert.deepEqual(enabled.sort(), [...REG.floor].sort());
   assert.deepEqual(mcpServersForProfile(REG, 'release-manager'), ['qmd']);
-  assert.ok(!Object.hasOwn(settings, 'permissions'), 'release-manager must not emit gateAllow permissions');
+  assert.equal(settings.permissions?.allow, undefined, 'release-manager must not emit gateAllow permissions');
   assert.ok(PP.NON_ADDITIVE_PROFILES.includes('release-manager'));
   assert.ok(enabled.includes('himmel-ops@himmel'), 'the guard ships in himmel-ops');
 });
@@ -1533,14 +1536,16 @@ for (const name of WORKER_SESSION_PROFILES) {
 }
 
 for (const name of ['operator', 'user', 'bare']) {
-  test(`HIMMEL-3567: ${name} gets no permissions even with an anchor`, () => {
+  // bare carries the default Artifact deny and nothing else.
+  test(`HIMMEL-3567: ${name} gets no allow rules even with an anchor`, () => {
     const out = resolveProfile(REG, name, { anchor: ANCHOR, installed: [] });
-    assert.equal(out?.permissions, undefined);
+    assert.equal(out?.permissions?.allow, undefined);
+    assert.deepEqual(out?.permissions, name === 'bare' ? { deny: ['Artifact'] } : undefined);
   });
 
-  test(`HIMMEL-3572: ${name} gets no clear-cr-marker literal even with an anchor (no permissions at all)`, () => {
+  test(`HIMMEL-3572: ${name} gets no clear-cr-marker literal even with an anchor (no allow rules at all)`, () => {
     const out = resolveProfile(REG, name, { anchor: ANCHOR, installed: [] });
-    assert.equal(out?.permissions, undefined);
+    assert.equal(out?.permissions?.allow, undefined);
   });
 }
 
@@ -1847,7 +1852,7 @@ test('HIMMEL-4830: an opted-in profile allows both tool-name forms of each tool;
     assert.ok(allow.includes(`mcp__fx-bus__${tool}`), `standalone form of ${tool}`);
     assert.ok(allow.includes(`mcp__plugin_fx-bus_fx-bus__${tool}`), `plugin form of ${tool}`);
   }
-  assert.equal(resolveProfile(BUS_REG, 'optout').permissions, undefined);
+  assert.deepEqual(resolveProfile(BUS_REG, 'optout').permissions, { deny: ['Artifact'] }, 'opted out of the bus: only the default Artifact deny');
   assert.deepEqual(busDefs('optout', '/srv/himmel'), { mcpServers: {} });
 });
 
@@ -2148,13 +2153,13 @@ test('HIMMEL-4983: no shipped profile denies a tool a worker needs, and non-work
   for (const [name, spec] of Object.entries(REG.profiles)) {
     for (const t of spec?.denyTools ?? []) assert.ok(!TRIM_NEVER.includes(t), `${name} denies ${t}`);
     if (!BUS_PROFILES.includes(name) && name !== 'chief') {
-      assert.equal(spec?.denyTools, undefined, `${name} must not carry denyTools`);
+      assert.equal(spec?.denyTools, undefined, `${name} must not carry denyTools (the Artifact default is the resolver's, HIMMEL-8384)`);
       assert.equal(spec?.disableWorkflows, undefined, `${name} must not carry disableWorkflows`);
     }
   }
   for (const name of ['chief-relay', 'console-judge', 'release-manager', 'lane-impl']) {
     const settings = resolveProfile(REG, name, { installed: [] });
-    assert.ok(!settings.permissions?.deny, `${name} must not emit permissions.deny`);
+    assert.deepEqual(settings.permissions?.deny, ['Artifact'], `${name} emits only the default Artifact deny`);
     assert.ok(!Object.hasOwn(settings, 'disableWorkflows'), `${name} must keep Workflow`);
   }
 });
@@ -2191,6 +2196,48 @@ test('HIMMEL-4983: a profile list denies a tool only when every member does', ()
   const mixed = resolveProfile(REG, 'worker-impl,design', { installed: [] });
   assert.ok(!mixed.permissions?.deny, 'design may need Artifact: one member without the deny keeps every tool');
   assert.ok(!Object.hasOwn(mixed, 'disableWorkflows'));
+});
+
+// Artifact is denied in every profile unless the profile sets artifact: true.
+const ARTIFACT_PROFILES = ['user', 'design', 'design-motion', 'design-3d', 'design-imagegen', 'design-a11y', 'design-diagram', 'design-slides', 'design-reference', 'design-trial'];
+const denies = (settings, tool) => (settings.permissions?.deny ?? []).includes(tool);
+
+test('HIMMEL-8384: a profile without artifact: true resolves with Artifact denied, one with it does not', () => {
+  for (const [name, spec] of Object.entries(REG.profiles)) {
+    if (spec === null) continue;
+    const settings = resolveProfile(REG, name, { installed: [] });
+    assert.equal(denies(settings, 'Artifact'), spec.artifact !== true, `${name}: Artifact denied exactly when artifact is not true`);
+  }
+  for (const name of ARTIFACT_PROFILES) assert.equal(REG.profiles[name].artifact, true, `${name} publishes: artifact: true`);
+  for (const name of ['lane-impl', 'lane-review', 'lane-content', 'telegram', 'bare', 'chief-relay', 'console-judge', 'release-manager', 'code', 'code-ui']) {
+    assert.ok(denies(resolveProfile(REG, name, { installed: [] }), 'Artifact'), `${name} denies Artifact by default`);
+  }
+});
+
+test('HIMMEL-8384: the default deny leaves the other denyTools and adds no duplicate', () => {
+  assert.deepEqual(resolveProfile(REG, 'lane-impl', { installed: [] }).permissions.deny, ['Artifact']);
+  const chief = resolveProfile(REG, 'chief', { installed: [] }).permissions.deny;
+  assert.equal(chief.filter((t) => t === 'Artifact').length, 1);
+  assert.ok(!REG.profiles.chief.denyTools.includes('Artifact'), 'the chief no longer names Artifact: the default covers it');
+  const worker = resolveProfile(REG, 'worker-impl', { installed: [] }).permissions.deny;
+  assert.equal(worker.filter((t) => t === 'Artifact').length, 1);
+});
+
+test('HIMMEL-8384: a profile list keeps Artifact when any member opts in', () => {
+  assert.ok(denies(resolveProfile(REG, 'lane-impl,code', { installed: [] }), 'Artifact'), 'no member opts in: denied');
+  assert.ok(!denies(resolveProfile(REG, 'lane-impl,design', { installed: [] }), 'Artifact'), 'design opts in: kept');
+  assert.ok(!denies(resolveProfile(REG, 'worker-impl,design-motion', { installed: [] }), 'Artifact'), 'a design add-on opts in: kept');
+});
+
+test('HIMMEL-8384: validateRegistry accepts artifact as a boolean only', () => {
+  const errs = (artifact, name = 'lane-impl') => {
+    const reg = structuredClone(REG);
+    reg.profiles[name] = { ...reg.profiles[name], artifact };
+    return validateRegistry(reg);
+  };
+  assert.deepEqual(errs(true), []);
+  assert.deepEqual(errs(false), []);
+  for (const bad of ['yes', 1, null, ['Artifact']]) assert.ok(errs(bad).some((e) => /artifact must be a boolean/.test(e)), `refuses ${JSON.stringify(bad)}`);
 });
 
 test('resolveProfile hides the skills the chief never invokes as user-invocable-only; worker-impl hides none', async () => {
