@@ -27,7 +27,7 @@ export HOME="$W/home" HANDOVER_DIR="$W/h" XDG_RUNTIME_DIR="$W/xdg" HIMMELCTL_CAC
 mkdir -p "$HOME" "$HANDOVER_DIR/u/r/sub" "$XDG_RUNTIME_DIR" "$HIMMELCTL_CACHE_DIR" "$HIMMEL_CONFIG_DIR" "$W/bin"
 chmod 700 "$XDG_RUNTIME_DIR"
 : > "$HIMMELCTL_CACHE_DIR/.env"
-unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_DOC HIMMEL_HOLD_KEY WRITE_HOLD_OK HOLDS_QUEUE_LOCK HOLDS_GH QUEUE_LOCK_TTL_SECONDS CLAUDE_CODE_SESSION_ID
+unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_DOC HIMMEL_HOLD_KEY HIMMEL_HOLD_DOC HIMMEL_HOLD_LABEL WRITE_HOLD_OK HOLDS_QUEUE_LOCK HOLDS_GH QUEUE_LOCK_TTL_SECONDS CLAUDE_CODE_SESSION_ID
 export CLAUDE_CONFIG_DIR="$HOME/.claude"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
@@ -1117,6 +1117,247 @@ touch "$(rowf scripts/r9186.sh "$R9")"
 run hp claim --key HIMMEL-9627 --label asker --doc "$(mkdoc HIMMEL-9627-case.md)" --repo "$R9" scripts/r9186.sh
 case "$ERR" in *"ask your chief: HOLD-ASK"*) fail "9186 the refusal no longer names the HOLD-ASK route that has no consumer" ;; *) pass "9186 the refusal no longer names the HOLD-ASK route that has no consumer" ;; esac
 contains "9186 the refusal tells the worker the chief sees the deny on its tick and grants it" "$ERR" "hreg="
+
+# ---- 8725 Task 5: git-check --staged and --push read git's own file lists (I2, I7, I12)
+# A real repo with an origin and linked worktrees; the commit and push hooks are the real entries of .pre-commit-config.yaml,
+# so `git commit -a` and `git commit <path>` run the check against git's temporary index.
+CFG="$HERE/../../../.pre-commit-config.yaml"
+cat > "$W/entry.py" <<'PY'
+import re, sys
+lines = open(sys.argv[1], encoding='utf-8').read().split('\n')
+want = re.compile(r'\s*- id: ' + re.escape(sys.argv[2]) + r'\s*$')
+i = next((n for n, l in enumerate(lines) if want.match(l)), None)
+if i is None:
+    sys.exit(1)
+for j in range(i + 1, len(lines)):
+    if re.match(r'\s*- id: ', lines[j]):
+        sys.exit(1)
+    m = re.match(r'(\s*)entry:\s*(>-|\|-?)?\s*(.*)$', lines[j])
+    if not m:
+        continue
+    if not m.group(2):
+        print(m.group(3))
+        sys.exit(0)
+    body = []
+    for l in lines[j + 1:]:
+        if l.strip() and len(l) - len(l.lstrip()) <= len(m.group(1)):
+            break
+        body.append(l.strip())
+    print(' '.join(body))
+    sys.exit(0)
+sys.exit(1)
+PY
+ENTRY_C="$(python3 -I "$W/entry.py" "$CFG" write-hold-commit)"
+ENTRY_P="$(python3 -I "$W/entry.py" "$CFG" write-hold-push)"
+same "T5 the config has a write-hold-commit entry" "$([ -n "$ENTRY_C" ] && echo yes || echo no)" yes
+same "T5 the config has a write-hold-push entry" "$([ -n "$ENTRY_P" ] && echo yes || echo no)" yes
+
+GC="$W/gc" GCO="$W/gc-origin.git"
+git init -q --bare "$GCO"
+git init -q -b main "$GC"
+git -C "$GC" remote add origin "$GCO"
+mkdir -p "$GC/scripts/lib" "$GC/scripts/handover/chief-kit"
+: > "$GC/scripts/lib/rename-aliases.tsv"
+cp "$SUT" "$GC/scripts/handover/chief-kit/holds.py"
+for n in a1 c1 d1 f1 g1 m1 h1 j1 j2 q1 hs hs2 st1; do echo "$n" > "$GC/$n.txt"; done
+git -C "$GC" add -A
+git -C "$GC" commit -q -m base
+git -C "$GC" push -q origin main
+BASE0="$(git -C "$GC" rev-parse HEAD)"
+printf '#!/bin/sh\n%s\n' "$ENTRY_C" > "$GC/.git/hooks/pre-commit"
+printf '#!/bin/sh\n%s\n' "$ENTRY_P" > "$GC/.git/hooks/pre-push"
+chmod +x "$GC/.git/hooks/pre-commit" "$GC/.git/hooks/pre-push"
+cat > "$W/bin/gh-base" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in *baseRefName*) echo "${GH_BASE:-main}" ;; *) echo OPEN ;; esac
+STUB
+chmod +x "$W/bin/gh-base"
+export GH_BASE=main
+export HOLDS_QUEUE_LOCK="$QL"  # the temp repo's holds.py copy has no queue-lock.sh beside it
+
+gcwt() { git -C "$GC" worktree add -q "$W/gcw-$1" -b "feat/$1" "${2:-origin/main}" > /dev/null 2>&1; printf '%s' "$W/gcw-$1"; }
+# asw <worktree> <key> <doc or ""> <label> <command...>: run in the worktree as that holder
+# shellcheck disable=SC2086,SC2329  # the doc path has no whitespace and an empty doc drops the variable; asw is called through run
+asw() { local wt=$1 key=$2 doc=$3 label=$4; shift 4; ( cd "$wt" && env HIMMEL_HOLD_KEY="$key" ${doc:+HIMMEL_HOLD_DOC="$doc"} HIMMEL_HOLD_LABEL="$label" "$@" ); }
+gcdoc_a="$(mkdoc "$K1-gc.md")"; lock_hold "$gcdoc_a"
+gcdoc_b="$(mkdoc "$K2-gc.md")"; lock_hold "$gcdoc_b"
+GCQ=(python3 -I "$SUT" git-check)
+
+# a shell write (sed -i) then a commit by key B on a file key A holds: git's own list, no shell text involved
+GW="$(gcwt sed)"
+put_row a1.txt $K1 alpha "$gcdoc_a" brief "" "$GC"
+( cd "$GW" && sed -i 's/^/x/' a1.txt && git add a1.txt )  # gnu-ok: this suite is Linux-only (header)
+run asw "$GW" $K2 "$gcdoc_b" beta git commit -q -m sed-change
+same "T5 an in-place shell rewrite then a commit by B on a file A holds is refused" "$((RC != 0))" 1
+contains "T5 the refusal names the holder" "$ERR" "$K1"
+same "T5 the refused file is not committed" "$(git -C "$GW" log --format=%s -1)" base
+git -C "$GW" reset -q; git -C "$GW" checkout -q -- a1.txt
+
+# an unheld file: the commit passes and claims a row carrying doc and label
+GW="$(gcwt claim)"
+( cd "$GW" && echo b >> c1.txt && git add c1.txt )
+run asw "$GW" $K2 "$gcdoc_b" beta git commit -q -m claim-it
+same "T5 an unheld commit passes" "$RC" 0
+same "T5 the commit claims a row with doc and label" "$(cut -f1-4 "$(rowf c1.txt "$GC")" 2>/dev/null | tr '\t' ' ')" "$K2 beta $gcdoc_b claim"
+
+# I12: that row aged past the grace, the holder's real lock held: a rival's commit is refused
+touch -d '2 hours ago' "$(rowf c1.txt "$GC")"
+GW="$(gcwt rival)"
+( cd "$GW" && echo r >> c1.txt && git add c1.txt )
+run asw "$GW" $K1 "$gcdoc_a" alpha git commit -q -m rival
+same "T5 I12 an aged own row with the holder's lock held refuses a rival" "$((RC != 0))" 1
+contains "T5 I12 the refusal names the holder" "$ERR" "$K2"
+
+# HIMMEL_HOLD_KEY with no HIMMEL_HOLD_DOC: the commit passes and publishes no row
+GW="$(gcwt nodoc)"
+( cd "$GW" && echo b >> d1.txt && git add d1.txt )
+run asw "$GW" $K2 "" beta git commit -q -m nodoc
+same "T5 no HIMMEL_HOLD_DOC: the commit passes" "$RC" 0
+same "T5 no HIMMEL_HOLD_DOC: no row" "$([ -e "$(rowf d1.txt "$GC")" ] && echo row || echo none)" none
+
+# I2: two keys on disjoint files both commit and push
+GW1="$(gcwt disj-a)"; GW2="$(gcwt disj-b)"
+( cd "$GW1" && echo 1 > e1.txt && git add e1.txt )
+( cd "$GW2" && echo 2 > e2.txt && git add e2.txt )
+run asw "$GW1" $K1 "$gcdoc_a" alpha git commit -q -m e1
+same "T5 I2 key A commits its file" "$RC" 0
+run asw "$GW2" $K2 "$gcdoc_b" beta git commit -q -m e2
+same "T5 I2 key B commits its file" "$RC" 0
+run asw "$GW1" $K1 "$gcdoc_a" alpha git push -q origin HEAD
+same "T5 I2 key A pushes" "$RC" 0
+run asw "$GW2" $K2 "$gcdoc_b" beta git push -q origin HEAD
+same "T5 I2 key B pushes" "$RC" 0
+
+# git mv and git rm claim both names
+GW="$(gcwt mvrm)"
+( cd "$GW" && git mv f1.txt f2.txt && git rm -q g1.txt )
+run asw "$GW" $K2 "$gcdoc_b" beta git commit -q -m mvrm
+same "T5 git mv and git rm commit" "$RC" 0
+same "T5 git mv claims the old name" "$(cut -f1 "$(rowf f1.txt "$GC")" 2>/dev/null)" $K2
+same "T5 git mv claims the new name" "$(cut -f1 "$(rowf f2.txt "$GC")" 2>/dev/null)" $K2
+same "T5 git rm claims the removed name" "$(cut -f1 "$(rowf g1.txt "$GC")" 2>/dev/null)" $K2
+
+# a conflicted merge-forward carries a third party's files: the commit passes and claims nothing
+GW="$(gcwt merge "$BASE0")"
+( cd "$GW" && echo mine > m1.txt && git add m1.txt && git commit -q -m mine )
+( cd "$GC" && echo theirs > m1.txt && echo x > x1.txt && echo y > y1.txt && git add -A && git commit -q -m main-moves && git push -q origin main )
+put_row x1.txt $K1 alpha "$gcdoc_a" brief "" "$GC"
+( cd "$GW" && git merge -q origin/main > /dev/null 2>&1; echo resolved > m1.txt; git add -A )
+run asw "$GW" $K2 "$gcdoc_b" beta git commit -q --no-edit
+same "T5 a conflicted merge-forward commit passes (a rival holds a file of main's delta)" "$RC" 0
+same "T5 a conflicted merge-forward claims nothing of main's delta" "$([ -e "$(rowf y1.txt "$GC")" ] && echo row || echo none)" none
+
+# a rebase in progress is skipped (control: the same staged file is refused once it is over)
+GW="$(gcwt rebase)"
+put_row h1.txt $K1 alpha "$gcdoc_a" brief "" "$GC"
+( cd "$GW" && echo z >> h1.txt && git add h1.txt && mkdir "$(git rev-parse --git-path rebase-merge)" )
+run asw "$GW" $K2 "$gcdoc_b" beta "${GCQ[@]}" --staged
+same "T5 a rebase in progress is skipped" "$RC" 0
+( cd "$GW" && rmdir "$(git rev-parse --git-path rebase-merge)" )
+run asw "$GW" $K2 "$gcdoc_b" beta "${GCQ[@]}" --staged
+same "T5 control: the staged held file is refused once the rebase is over" "$RC" 1
+
+# a push after a rebase lists only the worker's files (main's delta holds x1.txt, which a rival holds)
+GW="$(gcwt rebased "$BASE0")"
+( cd "$GW" && echo r > r1.txt && git add r1.txt && git commit -q -m r1 && git rebase -q origin/main > /dev/null 2>&1 )
+run asw "$GW" $K2 "$gcdoc_b" beta "${GCQ[@]}" --push
+same "T5 a push after a rebase lists only the worker's files" "$RC" 0
+
+# pr rows on push: a fresh row refuses, over 30 minutes passes, the own branch's row passes
+GW="$(gcwt prrow)"
+( cd "$GW" && echo q >> q1.txt && git add q1.txt && WRITE_HOLD_OK=1 git commit -q -m q1 )
+put_row q1.txt $K1 branch:feat/other "" pr 55 "$GC"; touch "$(rowf q1.txt "$GC")"
+run asw "$GW" $K2 "$gcdoc_b" beta env HOLDS_GH="$W/bin/gh-base" "${GCQ[@]}" --push
+same "T5 a push over a file a fresh pr row holds is refused" "$RC" 1
+contains "T5 the push refusal names the holder" "$ERR" "$K1"
+touch -d '31 minutes ago' "$(rowf q1.txt "$GC")"
+run asw "$GW" $K2 "$gcdoc_b" beta env HOLDS_GH="$W/bin/gh-base" "${GCQ[@]}" --push
+same "T5 a pr row over 30 minutes old passes" "$RC" 0
+put_row q1.txt $K1 branch:feat/prrow "" pr 55 "$GC"; touch "$(rowf q1.txt "$GC")"
+run asw "$GW" $K2 "$gcdoc_b" beta env HOLDS_GH="$W/bin/gh-base" "${GCQ[@]}" --push
+same "T5 a pr row of the own branch passes" "$RC" 0
+
+# git commit -a and git commit <path> run the hook against a temporary index
+GW="$(gcwt tmpidx)"
+put_row j1.txt $K1 alpha "$gcdoc_a" brief "" "$GC"; put_row j2.txt $K1 alpha "$gcdoc_a" brief "" "$GC"
+( cd "$GW" && echo 1 >> j1.txt )
+run asw "$GW" $K2 "$gcdoc_b" beta git commit -q -a -m all
+same "T5 git commit -a on a file a rival holds is refused" "$((RC != 0))" 1
+contains "T5 git commit -a names the holder" "$ERR" "$K1"
+git -C "$GW" checkout -q -- j1.txt
+( cd "$GW" && echo 2 >> j2.txt )
+run asw "$GW" $K2 "$gcdoc_b" beta git commit -q -m path j2.txt
+same "T5 git commit <path> on a file a rival holds is refused" "$((RC != 0))" 1
+contains "T5 git commit <path> names the holder" "$ERR" "$K1"
+
+# a stacked child with a live parent PR: the base is the parent branch, so its files are not the child's
+( cd "$GC" && git checkout -q -b feat/parent origin/main && echo p > p1.txt && git add p1.txt && git commit -q -m parent && git push -q origin feat/parent && git checkout -q main )
+GW="$(gcwt child origin/feat/parent)"
+( cd "$GW" && echo c > c9.txt && git add c9.txt && git commit -q -m child )
+put_row p1.txt $K1 branch:feat/parent "" pr 77 "$GC"; touch "$(rowf p1.txt "$GC")"
+run asw "$GW" $K2 "$gcdoc_b" beta env HOLDS_GH="$W/bin/gh-base" GH_BASE=feat/parent "${GCQ[@]}" --push
+same "T5 a stacked child with a live parent PR passes its push" "$RC" 0
+run asw "$GW" $K2 "$gcdoc_b" beta env HOLDS_GH="$W/bin/gh-base" GH_BASE=main "${GCQ[@]}" --push
+same "T5 control: the same push against origin/main lists the parent's file and is refused" "$RC" 1
+
+# the bypass, the OFF sentinel and the marker each pass both checks
+GW="$(gcwt bypass)"
+put_row hs.txt $K1 alpha "$gcdoc_a" brief "" "$GC"; put_row hs2.txt $K1 alpha "$gcdoc_a" brief "" "$GC"
+( cd "$GW" && echo 1 >> hs.txt && git add hs.txt && WRITE_HOLD_OK=1 git commit -q -m hs && echo 2 >> hs2.txt && git add hs2.txt )
+run asw "$GW" $K2 "$gcdoc_b" beta "${GCQ[@]}" --staged
+same "T5 control: --staged refuses a held file" "$RC" 1
+run asw "$GW" $K2 "$gcdoc_b" beta "${GCQ[@]}" --push
+same "T5 control: --push refuses a held file" "$RC" 1
+run asw "$GW" $K2 "$gcdoc_b" beta env WRITE_HOLD_OK=1 "${GCQ[@]}" --staged
+same "T5 WRITE_HOLD_OK=1 passes --staged" "$RC" 0
+run asw "$GW" $K2 "$gcdoc_b" beta env WRITE_HOLD_OK=1 "${GCQ[@]}" --push
+same "T5 WRITE_HOLD_OK=1 passes --push" "$RC" 0
+: > "$REG/OFF"
+run asw "$GW" $K2 "$gcdoc_b" beta "${GCQ[@]}" --staged
+same "T5 the OFF sentinel passes --staged" "$RC" 0
+run asw "$GW" $K2 "$gcdoc_b" beta "${GCQ[@]}" --push
+same "T5 the OFF sentinel passes --push" "$RC" 0
+rm -f "$REG/OFF"
+: > "$GC/.single-writer"
+run asw "$GW" $K2 "$gcdoc_b" beta "${GCQ[@]}" --staged
+same "T5 the marker at the primary passes --staged" "$RC" 0
+run asw "$GW" $K2 "$gcdoc_b" beta "${GCQ[@]}" --push
+same "T5 the marker at the primary passes --push" "$RC" 0
+rm -f "$GC/.single-writer"
+
+# faults pass: an unreadable register, and origin/main missing
+if [ "$(id -u)" != 0 ]; then
+    chmod 000 "$(slugdir "$GC")"
+    run asw "$GW" $K2 "$gcdoc_b" beta "${GCQ[@]}" --staged
+    chmod 755 "$(slugdir "$GC")"
+    same "T5 an unreadable register exits 0" "$RC" 0
+fi
+GN="$W/gc-noremote"
+git init -q -b main "$GN"; echo n > "$GN/n1.txt"; git -C "$GN" add -A; git -C "$GN" commit -q -m base
+git -C "$GN" checkout -q -b feat/n; echo m >> "$GN/n1.txt"; git -C "$GN" add -A; git -C "$GN" commit -q -m n
+put_row n1.txt $K1 alpha "$gcdoc_a" brief "" "$GN"
+run asw "$GN" $K2 "$gcdoc_b" beta "${GCQ[@]}" --push
+same "T5 origin/main missing exits 0" "$RC" 0
+git -C "$GN" update-ref refs/remotes/origin/main "$(git -C "$GN" rev-parse main)"
+run asw "$GN" $K2 "$gcdoc_b" beta "${GCQ[@]}" --push
+same "T5 control: with origin/main present the same push is refused" "$RC" 1
+
+# the real entry: a holds.py that exits 1 with no holds: line lets the commit pass; a holds: line refuses; OFF is read first
+GW="$(gcwt entry)"
+( cd "$GW" && printf 'import sys\nsys.exit(1)\n' > scripts/handover/chief-kit/holds.py && echo e >> st1.txt && git add st1.txt )
+run asw "$GW" $K2 "$gcdoc_b" beta git commit -q -m stub
+same "T5 a holds.py stub exiting 1 with no holds: line lets the commit pass" "$RC" 0
+( cd "$GW" && printf 'def (:\n' > scripts/handover/chief-kit/holds.py && echo e >> st1.txt && git add st1.txt )
+run asw "$GW" $K2 "$gcdoc_b" beta git commit -q -m syntax
+same "T5 a holds.py with a SyntaxError lets the commit pass" "$RC" 0
+( cd "$GW" && printf 'import sys\nsys.stderr.write("holds: stub refusal\\n")\nsys.exit(1)\n' > scripts/handover/chief-kit/holds.py && echo e >> st1.txt && git add st1.txt )
+run asw "$GW" $K2 "$gcdoc_b" beta git commit -q -m refuse
+same "T5 control: a stub exiting 1 with a holds: line refuses the commit" "$((RC != 0))" 1
+: > "$REG/OFF"
+run asw "$GW" $K2 "$gcdoc_b" beta git commit -q -m off
+same "T5 the entry stats OFF first: the refusing stub is never run" "$RC" 0
+rm -f "$REG/OFF"
+unset HOLDS_QUEUE_LOCK GH_BASE
 
 # ---- the real register was never touched
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
