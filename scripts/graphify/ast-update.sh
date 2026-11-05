@@ -357,13 +357,16 @@ PROMOTE_LOCK_HELD=1
 # when this script dies (kill -0 on its pid) or the lock stops being ours, so a
 # dead holder's heartbeat stops and it is still taken over after the floor.
 _hb_secs="${GRAPHIFY_PROMOTE_LOCK_HEARTBEAT_SECONDS:-60}"
-case "$_hb_secs" in ''|*[!0-9]*|0) _hb_secs=60 ;; esac
+case "$_hb_secs" in ''|*[!0-9]*) _hb_secs=60 ;; esac
+[ "$((10#$_hb_secs))" -gt 0 ] || _hb_secs=60
 _hb_parent=$$
 (
   while kill -0 "$_hb_parent" 2>/dev/null; do
     sleep "$_hb_secs"
     [ "$(cat "$PROMOTE_LOCK/owner" 2>/dev/null)" = "$PROMOTE_LOCK_TOKEN" ] || exit 0
-    date -u +%s > "$PROMOTE_LOCK/heartbeat" 2>/dev/null || true
+    # Temp file then rename: a plain `>` truncates first, and a refresh reading
+    # the empty file would fall back to the old stamp and take a live lock.
+    { date -u +%s > "$PROMOTE_LOCK/heartbeat.tmp" && mv -f "$PROMOTE_LOCK/heartbeat.tmp" "$PROMOTE_LOCK/heartbeat"; } 2>/dev/null || true
   done
 ) >/dev/null 2>&1 &
 PROMOTE_HEARTBEAT_PID=$!
