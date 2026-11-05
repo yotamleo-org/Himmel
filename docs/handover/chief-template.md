@@ -229,8 +229,8 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
 
 1. `/chief next --arm --doc "{{STATE_DIR}}/{{SESSION_NAME}}.md" --bucket {{BUCKET}} --prefix {{PREFIX}} --model '{{MODEL}}'`
    writes the successor stub and this chief's `-HANDOFF.md` skeleton and arms
-   the successor. **Name your own document, bucket, prefix and model**, or `next`
-   picks the wrong doc, bucket or model (continue on **{{MODEL}}**). The `armed:`
+   the successor. **Name your own document, bucket, prefix and model** (continue on
+   **{{MODEL}}**), or `next` picks wrong ones. The `armed:`
    line prints the successor's signal path: step 3 touches **that**, not
    `{{FILL_SIGNAL}}`.
 2. `next` seeds `## Live state` into the successor doc. Fill in the HANDOFF by hand:
@@ -248,13 +248,14 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
    Never re-run it (it resends). It carries no fresh token: native and claudex
    workers are not rotated; `--fresh` hands one. Then send the successor
    `RELAYED <n> of <m>` naming any still unrelayed.
-5. **Wait for the successor's `LIVE` before you release your lock and stop**: it is
-   the only confirmation that ACTION ZERO completed, and it names any workers that
-   did not quote back, and why. Relay any worker it names as not relayed, then
-   wrap with **one** command, which writes `WRAPPED` and releases the lock:
+5. **Re-arm the muted waiter once, read nothing, end your turn; the successor's
+   `LIVE` wakes you, then release your lock and stop**: it alone
+   confirms ACTION ZERO completed and names workers that did not quote back,
+   and why. Relay any worker it names as not relayed, then
+   wrap with **one** command (writes `WRAPPED`, releases the lock):
    `bash scripts/handover/chief/chief.sh wrap "{{STATE_DIR}}/{{SESSION_NAME}}.md" <release-token> '<one line>'`.
-   It refuses (exit 4) while any subagent of yours is
-   running: wait, persist the verdict with `write-verdict.sh`, re-run.
+   It refuses (exit 4) while a subagent of yours
+   runs: wait, persist the verdict with `write-verdict.sh`, re-run.
 
 Write every bullet below with
 `bash scripts/handover/chief-kit/append-results.sh <doc> '<text>'`. A bullet

@@ -1,12 +1,12 @@
 // thin DOM glue. All markup comes from render.js.
 import { renderInventory, renderTriage, renderHeader, renderProbe, reviewGateDraft } from "/render.js";
-import { renderHealth, verdict, parseView, projectVerdict } from "/health.js";
+import { renderHealth, verdict, parseView, projectVerdict, chiefLiveFor } from "/health.js";
 import { renderToolHealth, toolHealthLoader, toolHealthHref } from "/tool-health.js";
 import { driftSince, renderBoard } from "/roadmap.js";
 import { renderWorkflow, parseWorkflowRoute } from "/workflow.js";
 import { renderConfigure as render } from "/setup.js";
 import { renderShift } from "/shift.js";
-import { renderReport } from "/report.js";
+import { renderReport, reportBar } from "/report.js";
 import { fleetDot, healthDot, navLinks, parseLanding, railMarkup } from "/nav.js";
 
 const $ = (s) => document.querySelector(s);
@@ -155,11 +155,11 @@ function renderPages() {
 }
 
 // The page bar (spec 8044 section 2): the slot under the top of a page for that page's own controls, never the rail.
-// Health holds the project picker, Report an empty slot (its day picker and refresh move in later); Shift has none.
+// Health holds the project picker, Report its day picker and refresh; Shift has none.
 // One line on desktop; at 760 px the controls fold behind "Filters (n on)" (app.css).
 function pageBar() {
   if (currentPage.id !== "health" && currentPage.id !== "report") return "";
-  const ctl = currentPage.id === "health" ? projectPicker() : "";
+  const ctl = currentPage.id === "health" ? projectPicker() : currentPage.id === "report" ? reportBar(reportList, reportView, reportUi) : "";
   const on = currentPage.id === "health" && (healthView.mode === "all" || (healthView.project && projects && healthView.project !== projects.current)) ? 1 : 0;
   const fold = ctl ? `<button type="button" class="pb-fold" aria-expanded="${pagebarOpen}" aria-controls="pb-ctl">Filters (${on} on)</button>` : "";
   return `<div class="pagebar${pagebarOpen ? " open" : ""}" id="pagebar" data-page="${currentPage.id}"${ctl ? "" : " hidden"}>${fold}<div class="pb-ctl" id="pb-ctl">${ctl}</div></div>`;
@@ -182,17 +182,16 @@ function healthPage(f) {
   const other = healthView.project && cur && healthView.project !== cur;
   const fleetLink = navLinks({ here: "console", token, current: "health", sources }).find((l) => l.id === "fleet");
   const shown = other ? (otherFeed && otherFeed !== "none" ? otherFeed : null) : f;
-  const view = { ...healthView, projects, project: healthView.project || cur, foreign: Boolean(other), fleetHref: fleetLink && fleetLink.href, unchecked: Boolean(other) && otherFeed === "none", chief: chiefLive() };
+  const view = { ...healthView, projects, project: healthView.project || cur, foreign: Boolean(other), fleetHref: fleetLink && fleetLink.href, unchecked: Boolean(other) && otherFeed === "none", chief: chiefLive(cur), himmelChief: chiefLive("himmel") };
   // the filterable Inventory stays below the v2 page until its e2e is ported to the Every item checked tab; Triage is the broken tab now.
   const legacy = shown && !other && healthView.mode !== "all" ? renderInventory(shown, state) : "";
   return renderHealth(shown, health, view) + legacy + (!shown && !other && healthView.mode !== "all" ? probeStatus() : "");
 }
-// Is a chief session live? true/false from the fleet read, undefined until it lands (the row then says only "for the chief").
-// Liveness as Fleet reads it (fleet-model.ts isLive). ponytail: any live chief on this station counts for the project this
-// UI runs in; upgrade path: a project field on each fleet row, matched against projects.current.
-function chiefLive() {
-  if (!fleet.data || fleet.data.census === "unavailable") return undefined;
-  return (fleet.data.sessions || []).some((s) => s.role === "console" && s.live !== false && s.state !== "wrapped" && s.lock !== "released");
+// Is a chief session of this project live? true/false from the fleet read, undefined until it lands (the row then says only
+// "for the chief"). A chief is named <KEY>-…, the key being the project's name uppercased (health.js chiefLiveFor); shared rows
+// ask for "himmel", the harness's own project. ponytail: a name prefix, upgrade path: a project field on each fleet row.
+function chiefLive(project) {
+  return project ? chiefLiveFor(fleet.data, project) : undefined;
 }
 const healthHash = (v) => {
   const q = new URLSearchParams();
@@ -710,7 +709,7 @@ document.addEventListener("drop", (e) => {
   const card = rmDrag; rmDrag = null;
   const t = rmTicket(card.k, card.project);
   if (t && EVENT_OWNED.has(col.dataset.rmDrop)) { // In review, CI and Done are moved by their event (a PR opening, CI, the merge): a drop there is held, nothing is written (ruling Q4)
-    if (t.b !== col.dataset.rmDrop) { roadmapUi.held = `${t.id || "HIMMEL-" + t.k}: ${COLS_BY_ID[col.dataset.rmDrop]} is moved by its event, not by a drop. Nothing was written.`; paint(); }
+    if (t.b !== col.dataset.rmDrop && !(col.dataset.rmDrop === "rev" && t.b === "ci")) { roadmapUi.held = `${t.id || "HIMMEL-" + t.k}: ${COLS_BY_ID[col.dataset.rmDrop]} is moved by its event, not by a drop. Nothing was written.`; paint(); }
     return;
   }
   if (t && t.b !== col.dataset.rmDrop) writeRoadmap(t, { status: col.dataset.rmDrop });
@@ -917,6 +916,7 @@ document.addEventListener("click", (e) => {
     history.replaceState(null, "", location.pathname + location.search + healthHash(healthView));
     return paint();
   }
+  if (b.dataset.act === "report-refresh") return loadReport();
   if (b.dataset.act === "tile") { // one group open at a time; the open one closes again. The hash keeps it across a reload.
     state.tile = state.tile === b.dataset.tile ? null : b.dataset.tile;
     history.replaceState(null, "", location.pathname + location.search + "#/config" + (state.tile ? "?tile=" + state.tile : ""));
