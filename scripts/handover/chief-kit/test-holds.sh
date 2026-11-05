@@ -27,7 +27,7 @@ export HOME="$W/home" HANDOVER_DIR="$W/h" XDG_RUNTIME_DIR="$W/xdg" HIMMELCTL_CAC
 mkdir -p "$HOME" "$HANDOVER_DIR/u/r/sub" "$XDG_RUNTIME_DIR" "$HIMMELCTL_CACHE_DIR" "$HIMMEL_CONFIG_DIR" "$W/bin"
 chmod 700 "$XDG_RUNTIME_DIR"
 : > "$HIMMELCTL_CACHE_DIR/.env"
-unset HIMMEL_CONSOLE_LEG HIMMEL_HOLD_KEY WRITE_HOLD_OK HOLDS_QUEUE_LOCK HOLDS_GH QUEUE_LOCK_TTL_SECONDS
+unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_DOC HIMMEL_HOLD_KEY WRITE_HOLD_OK HOLDS_QUEUE_LOCK HOLDS_GH QUEUE_LOCK_TTL_SECONDS
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
 
@@ -908,6 +908,83 @@ spec = importlib.util.spec_from_file_location("holds", sys.argv[1]); h = importl
 d, n = os.path.split(sys.argv[2]); st, f = h.read_row(sys.argv[2])
 print(h.remove_dead(d, n, f, os.path.getmtime(sys.argv[2]) - 100))' "$SUT" "$(rowf scripts/t3gc3.sh)"
 same "T3 gc keeps a row whose mtime moved since it was judged dead" "$OUT:$([ -e "$(rowf scripts/t3gc3.sh)" ] && echo row || echo none)" "False:row"
+
+# ---- grant routes: the chief grants a trust-path hold from its own locked doc; the operator grants any path at a terminal
+# tty_run <typed answer> <cmd...>: run cmd on a pseudo-terminal (stdin and stderr a TTY, CLAUDECODE unset) and type the
+# answer when it asks for the path; OUT is what it printed, RC its exit code
+tty_run() {
+    OUT=$(env -u CLAUDECODE python3 -I -c '
+import os, pty, sys
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvp(sys.argv[2], sys.argv[2:])
+out, sent = b"", False
+while True:
+    try:
+        b = os.read(fd, 4096)
+    except OSError:
+        break
+    if not b:
+        break
+    out += b
+    if not sent and b"type the path" in out.lower():
+        os.write(fd, sys.argv[1].encode() + b"\n")
+        sent = True
+st = os.waitpid(pid, 0)[1]
+sys.stdout.write(out.decode("utf-8", "replace"))
+sys.exit(os.waitstatus_to_exitcode(st))' "$@")
+    RC=$?
+}
+grantf() { printf '%s.grant.%s' "$(rowf "$1")" "$2"; }
+DCH="$(mkdoc HIMMEL-9218-chief.md)"
+lock_hold "$DCH" chief-sess-9218
+run hp grant --key HIMMEL-9201 --repo "$R" --chief-doc "$DCH" scripts/check-ci.sh
+same "C1 a chief holding its own doc's lock grants a trust path" "$RC" 0
+same "C1 ... the grant file says grantor=chief and the chief's session" "$(cut -f3,4 "$(grantf scripts/check-ci.sh HIMMEL-9201)" 2>/dev/null)" "$(printf 'chief\tchief-sess-9218')"
+contains "C1 ... and events.log records the grantor and session" "$(tail -n 1 "$EVENTS")" "grantor=chief session=chief-sess-9218"
+run env HIMMEL_CONSOLE_DOC="$DCH" python3 -I "$SUT" grant --key HIMMEL-9202 --repo "$R" scripts/check-ci.sh
+same "C2 the chief doc defaults to HIMMEL_CONSOLE_DOC, the chief session's own doc" "$RC" 0
+run hp grant --key HIMMEL-9203 --repo "$R" --chief-doc "$(mkdoc HIMMEL-9218-free.md)" scripts/check-ci.sh
+same "C3 a chief doc whose lock is not held: refused" "$RC" 1
+same "C3 ... and writes no grant" "$([ -e "$(grantf scripts/check-ci.sh HIMMEL-9203)" ] && echo grant || echo none)" none
+DCO="$(mkdoc HIMMEL-9218-otherhost.md)"
+lock_hold "$DCO"
+owner_set "$(lock_dir_of "$DCO")" host elsewhere.invalid
+run hp grant --key HIMMEL-9204 --repo "$R" --chief-doc "$DCO" scripts/check-ci.sh
+same "C3 a chief doc locked on another host: refused" "$RC" 1
+run hp grant --key HIMMEL-9205 --repo "$R" scripts/check-ci.sh
+same "C4 a trust path with no chief doc and no terminal: refused" "$RC" 1
+contains "C4 ... the refusal prints the chief's command" "$ERR" "--chief-doc"
+run env CLAUDECODE=1 python3 -I "$SUT" grant --key HIMMEL-9205 --repo "$R" scripts/check-ci.sh </dev/null
+same "C4 a ! line (no terminal, CLAUDECODE set) is refused on the operator route" "$RC" 1
+contains "C4 ... the refusal says a ! line is no operator terminal" "$ERR" "not a ! line in a Claude window"
+contains "C4 ... and sends the operator in a Claude window to the chief" "$ERR" "the operator asks the chief, who stamps the grant"
+same "C4 ... and writes no grant" "$([ -e "$(grantf scripts/check-ci.sh HIMMEL-9205)" ] && echo grant || echo none)" none
+run env HIMMEL_CONSOLE_LEG=1 python3 -I "$SUT" grant --key HIMMEL-9206 --repo "$R" --chief-doc "$DCH" scripts/check-ci.sh
+same "C5 a worker session naming a held chief doc is still refused" "$RC" 1
+run hp grant --key HIMMEL-9207 --repo "$R" --chief-doc "$DCH" .claude/settings.json
+same "C6 the chief cannot grant a settings path" "$RC" 1
+contains "C6 ... the refusal says the operator grants it at a terminal" "$ERR" "operator"
+run hp grant --key HIMMEL-9207 --repo "$R" --chief-doc "$DCH" .github/workflows/ci.yml
+same "C6 the chief cannot grant a .github/ path" "$RC" 1
+same "C6 ... and writes no grant" "$(find "$(slugdir)" -name '*.grant.HIMMEL-9207' | wc -l | tr -d ' ')" 0
+same "C7 grant-route: a trust path is the chief's" "$(hp grant-route --repo "$R" scripts/check-ci.sh)" chief
+same "C7 grant-route: a settings path is the operator's" "$(hp grant-route --repo "$R" .claude/settings.json)" operator
+same "C7 grant-route: any other path is any" "$(hp grant-route --repo "$R" scripts/c01.sh)" any
+tty_run scripts/check-ci.sh python3 -I "$SUT" grant --key HIMMEL-9208 --repo "$R" scripts/check-ci.sh
+same "O1 the operator at a terminal who types the path back grants a trust path" "$RC" 0
+same "O1 ... the grant file says grantor=operator" "$(cut -f3 "$(grantf scripts/check-ci.sh HIMMEL-9208)" 2>/dev/null)" operator
+contains "O1 ... and events.log records it" "$(tail -n 1 "$EVENTS")" "grantor=operator"
+tty_run .claude/settings.json python3 -I "$SUT" grant --key HIMMEL-9209 --repo "$R" .claude/settings.json
+same "O2 the operator at a terminal grants a settings path" "$RC" 0
+same "O2 ... recorded grantor=operator" "$(cut -f3 "$(grantf .claude/settings.json HIMMEL-9209)" 2>/dev/null)" operator
+tty_run scripts/other.sh python3 -I "$SUT" grant --key HIMMEL-9210 --repo "$R" scripts/check-ci.sh
+same "O3 a wrong path typed back: refused" "$RC" 1
+same "O3 ... and writes no grant" "$([ -e "$(grantf scripts/check-ci.sh HIMMEL-9210)" ] && echo grant || echo none)" none
+tty_run scripts/check-ci.sh env CLAUDECODE=1 python3 -I "$SUT" grant --key HIMMEL-9211 --repo "$R" scripts/check-ci.sh
+same "O4 a terminal inside a Claude Code session (CLAUDECODE set) is no operator: refused" "$RC" 1
+tty_run scripts/check-ci.sh env HIMMEL_CONSOLE_LEG=1 python3 -I "$SUT" grant --key HIMMEL-9212 --repo "$R" scripts/check-ci.sh
+same "O5 a worker session at a terminal is refused" "$RC" 1
 
 # ---- the real register was never touched
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
