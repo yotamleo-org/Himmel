@@ -74,15 +74,13 @@ Run these, in order, and write the result as the first bullet under
     re-invokes you when it exits:
     `bash scripts/handover/chief-kit/chief-wait.sh "{{INBOX}}" --doc "<this file>" --token <your token> --workers "<absolute worker docs>" [--succession {{SESSION_NAME}}]`
     It exits on the first real event (`WAKE telegram | tick | underfilled |
-    tick-fail`), so an idle chief takes **zero** turns; a WAKE may add an
+    tick-fail | worker-silent`), so an idle chief takes **zero** turns; a WAKE may add an
     `absorbed since last wake:` wraps/merges line. **Re-start it in the
     turn that handles each wake and on every dispatch and wrap** (`TaskStop` the
-    old one, absolute worker doc paths) or you go deaf. Record the task id in your
-    first bullet; `cat "<inbox>.wait"` is its heartbeat. **`WAKE worker-silent <worker>`**
-    means that worker takes no turns and the operator is already paged: that turn,
-    relaunch it from a RESUME doc (close the stale window) or run its one blocked
-    step yourself, and tell the operator which. Wake keys, heartbeat
-    states, fleet-manifest arming: `chief-sections/waiter.md`.
+    old one, absolute worker doc paths) or you go deaf. On `worker-silent` relaunch
+    that worker from a RESUME doc or run its blocked step yourself, then tell the
+    operator which. Record the task id in your first bullet (`cat "<inbox>.wait"` is the
+    heartbeat); wake keys, states, fleet-manifest arming: `chief-sections/waiter.md`.
     **Your manifest:** `{{FLEET_MANIFEST}}` — {{FLEET_MANIFEST_NOTE}}.
 11. **Open your Telegram inbox.** Operator writes `/chief {{SESSION_NAME}} <text>`; `/chief` or `chief:<project>` reaches
     the newest chief, who owns it, asking older ones by bus. The bridge appends only to an
