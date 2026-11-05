@@ -39,6 +39,7 @@ test("judge: lockdown blocks every inbound agent route for every sender", async 
     expect(ran).toEqual([]);
     expect(fired).toEqual([]);
     expect(existsSync(join(r, "sessions", "HIMMEL-1", "inbox.jsonl"))).toBe(false);
+    expect(existsSync(join(r, "sessions", "ABC-1", "inbox.jsonl"))).toBe(false);
     // Station policy: only the operator is told; others get silence.
     expect(replies).toHaveLength(from === 1 ? 6 : 0);
     expect(replies.every(t => t.includes("locked, reset at the station"))).toBe(true);

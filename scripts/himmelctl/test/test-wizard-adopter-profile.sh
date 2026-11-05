@@ -994,7 +994,7 @@ grepq "$out" 'full plugin set enabled' \
   && fail "caseL: must NOT claim the full plugin set was enabled — the step no longer runs: $out"
 grepq "$out" 'plugin command(s) FAILED' \
   && fail "caseL: must NOT report a plugin-command failure — no plugin command was ever invoked: $out"
-grepq "$out" 'retired' \
+grepq "$out" 'was retired' \
   || fail "caseL: the summary should say pluginSet=full was retired: $out"
 echo "ok: caseL a legacy pluginSet=full profile -> retired, never reported as enabled or failed"
 
@@ -1015,7 +1015,7 @@ grepq "$out" 'full plugin set enabled' \
   && fail "caseL2: --dry-run must not claim the retired enable step ran: $out"
 grepq "$out" 'would be enabled' \
   && fail "caseL2: --dry-run must not preview a retired enable step as planned work: $out"
-grepq "$out" 'retired' \
+grepq "$out" 'was retired' \
   || fail "caseL2: --dry-run should also say pluginSet=full was retired: $out"
 echo "ok: caseL2 --dry-run also reports pluginSet=full as retired, never planned or done"
 

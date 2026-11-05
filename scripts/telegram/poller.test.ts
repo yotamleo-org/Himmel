@@ -1524,7 +1524,7 @@ test("deliverAllPending: runs idle + due-capped sessions; skips not-due-capped",
   // idle session with a pending inbox line
   await ensureSession(r, "IDLE");
   await writeMeta(r, "IDLE", { ...baseMeta, chat_id: 1, status: "idle", retry_at: null });
-  await appendLine(join(sessionDir(r, "IDLE"), "inbox.jsonl"), JSON.stringify({ text: `${k(9)}: do it` }));
+  await appendLine(join(sessionDir(r, "IDLE"), "inbox.jsonl"), JSON.stringify({ text: "do it" }));
 
   // capped with FUTURE retry_at (not due) with a pending line
   await ensureSession(r, "CAPPED-FUTURE");
