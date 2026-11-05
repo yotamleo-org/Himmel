@@ -37,10 +37,14 @@ export function priceCall(call, rows, asModel) {
   if (!row) return { priced: false, model: call.model, usd: null };
   const u = call.usage ?? {};
   const split = u.cache_creation;
-  const w5 = split ? (split.ephemeral_5m_input_tokens ?? 0) : (u.cache_creation_input_tokens ?? 0);
-  const w1h = split ? (split.ephemeral_1h_input_tokens ?? 0) : 0;
-  const usd = ((u.input_tokens ?? 0) * row.input + (u.output_tokens ?? 0) * row.output
-    + (u.cache_read_input_tokens ?? 0) * row.cacheRead + w5 * row.cacheWrite5m + w1h * row.cacheWrite1h) / M;
+  const counts = [u.input_tokens, u.output_tokens, u.cache_read_input_tokens,
+    split ? split.ephemeral_5m_input_tokens : u.cache_creation_input_tokens, split ? split.ephemeral_1h_input_tokens : 0];
+  // a missing count is 0; a count that is not a finite non-negative number makes the call malformed, never NaN
+  if (counts.some((n) => n != null && !(typeof n === 'number' && Number.isFinite(n) && n >= 0))) {
+    return { priced: false, malformed: true, model: call.model, usd: null };
+  }
+  const [inp, out, read, w5, w1h] = counts.map((n) => n ?? 0);
+  const usd = (inp * row.input + out * row.output + read * row.cacheRead + w5 * row.cacheWrite5m + w1h * row.cacheWrite1h) / M;
   return { priced: true, model: call.model, priceRow: row.prefix, usd };
 }
 
@@ -56,8 +60,10 @@ function* jsonlFiles(dir) {
 export function priceTranscripts(dir, rows, { since, priceAs } = {}) {
   const sinceMs = since === undefined ? null : Date.parse(since);
   if (Number.isNaN(sinceMs)) throw new Error(`--since is not a date: ${since}`);
+  if (priceAs !== undefined && !priceFor(priceAs, rows)) throw new Error(`--price-as has no price row: ${priceAs}`);
   const perModel = {};
   const unpriced = {};
+  let malformed = 0;
   let total = 0;
   let opusCalls = 0;
   for (const file of jsonlFiles(dir)) {
@@ -75,6 +81,7 @@ export function priceTranscripts(dir, rows, { since, priceAs } = {}) {
     }
     for (const m of calls.values()) {
       const res = priceCall({ model: m.model, usage: m.usage }, rows, priceAs);
+      if (res.malformed) { malformed += 1; continue; }
       if (!res.priced) { unpriced[m.model] = (unpriced[m.model] ?? 0) + 1; continue; }
       const p = perModel[m.model] ??= { calls: 0, usd: 0 };
       p.calls += 1;
@@ -83,7 +90,7 @@ export function priceTranscripts(dir, rows, { since, priceAs } = {}) {
       if (res.priceRow.startsWith('claude-opus')) opusCalls += 1;
     }
   }
-  return { perModel, unpriced, total, opusCalls };
+  return { perModel, unpriced, malformed, total, opusCalls };
 }
 
 function flags(argv) {
@@ -102,7 +109,7 @@ function main(argv) {
     const f = flags(rest);
     const count = (k) => {
       const n = Number(f[k] ?? 0);
-      if (!Number.isFinite(n) || n < 0) throw new Error(`--${k} must be a non-negative number: ${f[k]}`);
+      if (String(f[k] ?? 0).trim() === '' || !Number.isFinite(n) || n < 0) throw new Error(`--${k} must be a non-negative number: ${f[k]}`);
       return n;
     };
     const usage = {
@@ -119,6 +126,7 @@ function main(argv) {
     const res = priceTranscripts(rest[0], rows, { since: f.since, priceAs: f['price-as'] });
     for (const [model, p] of Object.entries(res.perModel).sort()) console.log(`${model} calls=${p.calls} usd=${p.usd.toFixed(2)}`);
     for (const [model, n] of Object.entries(res.unpriced).sort()) console.log(`unpriced model=${model} calls=${n}`);
+    if (res.malformed) console.log(`malformed calls=${res.malformed}`);
     console.log(`opus-priced calls=${res.opusCalls}`);
     console.log(`total usd=${res.total.toFixed(2)} (priced calls only)`);
     return 0;

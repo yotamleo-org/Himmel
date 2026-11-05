@@ -147,3 +147,31 @@ test('a malformed token count or --since date is an argument error, never a succ
     assert.equal(r.status, 64, `${args.join(' ')}: ${r.stdout}${r.stderr}`);
   }
 });
+
+test('a transcript record with a malformed usage count is excluded and reported, never summed into the total as NaN', () => {
+  const root = mkdtempSync(join(tmpdir(), 'model-price-'));
+  try {
+    writeTranscript(join(root, 'proj'), 's1.jsonl', [
+      rec(1, 'gpt-6.1-sol', FIXTURE_USAGE),
+      rec(2, 'gpt-6.1-sol', { input_tokens: 'bad', output_tokens: 5 }),
+      rec(3, 'gpt-6.1-sol', { input_tokens: -1 }),
+    ]);
+    const res = priceTranscripts(root, rows);
+    assert.equal(res.perModel['gpt-6.1-sol'].calls, 1);
+    assert.ok(Number.isFinite(res.total));
+    assert.equal(res.malformed, 2);
+    const cli = spawnSync('node', [CLI, 'transcripts', root], { encoding: 'utf8' });
+    assert.match(cli.stdout, /^malformed calls=2$/m);
+    assert.doesNotMatch(cli.stdout, /NaN/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('--price-as with no price row and an empty token count are argument errors', () => {
+  for (const args of [['transcripts', tmpdir(), '--price-as', 'gpt-9-imaginary'], ['call', '--model', 'gpt-6.1-sol', '--input', ''],
+    ['call', '--model', 'gpt-6.1-sol', '--input', '1', '--output', ' ']]) {
+    const r = spawnSync('node', [CLI, ...args], { encoding: 'utf8' });
+    assert.equal(r.status, 64, `${JSON.stringify(args)}: ${r.stdout}${r.stderr}`);
+  }
+});
