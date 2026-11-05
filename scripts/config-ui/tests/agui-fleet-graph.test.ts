@@ -87,6 +87,8 @@ test("the ceiling: the model's real window (1m for [1m], Fable, the aliases and 
   expect(usageOf(lines, { autocompact: "auto", model: "claude-opus-5-5[1m]" })).toMatchObject({ ceiling: 1000000, ceilingFrom: "window", fill: 10 });
   expect(usageOf(lines, { autocompact: "", model: "sonnet" })).toMatchObject({ ceiling: 1000000, ceilingFrom: "window", fill: 10 }); // old: 200000, 50
   expect(usageOf(lines, { autocompact: "", model: "claude-opus-4-8" })).toMatchObject({ ceiling: 200000, ceilingFrom: "window", fill: 50 });
+  // lanes.json's haiku lane is 1000000; a session with no --model gets the station default's 1M (lane-calibration.md "What a plain launch reports")
+  for (const model of ["haiku", "claude-haiku-5-5", ""]) expect(usageOf(lines, { autocompact: "", model })).toMatchObject({ ceiling: 1000000, ceilingFrom: "window", fill: 10 });
 });
 
 // context-fill.sh's own formula (scripts/context-fill.sh:309) over the window a plain launch reports (1000000): a Claude 5 launch
