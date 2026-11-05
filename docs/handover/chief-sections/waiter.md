@@ -18,7 +18,9 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     a closing `# pool=<rows>/<slack>` line, `,LOW` when the pool fills fewer slots than the slack, and `POOL-EMPTY` when it has nothing, followed by the next tier (tier-4 To Do rows in rank order) as `NEXT-TIER` rows: then unblock collisions, draft specs for the next priority items, or fill from the NEXT-TIER rows when the operator has ruled so); dispatch it with `gen-briefs.py`; both refuse Windows/WSL work per `chief-kit/platform-dropped.re` unless the ticket is labelled `windows-removal` / the worker sets `platform_removal` and its title says remove/drop/delete/retire/sweep/clean), or
     `WAKE tick-fail samples=<n>` when 3 samples in a row failed (the tick or
     the usage read is broken: fix it, then restart the waiter; it wakes once per
-    failure streak), or, on a successor's first arm only (ACTION ZERO step 9,
+    failure streak; look-only, so it joins the housekeeping digest and rides the next
+    wake as a `look-only since last wake:` block, as do `unowned-prs` and a prs-only tick change),
+    or, on a successor's first arm only (ACTION ZERO step 9,
     `--succession <your session> [--silent-min T]`), `WAKE succession complete
     <k/n>` plus the printed LIVE bullet command when every inherited worker's `SUCCESSION
     accepted` bullet is in, or `WAKE succession partial <k/n> silent <T> min`
