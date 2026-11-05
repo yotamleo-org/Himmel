@@ -49,16 +49,44 @@ test("J3. every Project scope row shows its command, when it takes effect and a 
   const rows = page.locator('#tile-scope .setgroup:has(h3[id^="sg-"]) .setrow'); // the Fleet cap and VM rows are machine settings, with no command or Learn more link
   await expect.poll(() => rows.count(), SETUP_WAIT).toBeGreaterThanOrEqual(5);
   for (const r of await rows.all()) {
-    await expect(r.locator('button[data-act="copy"], code').first()).not.toBeEmpty();
+    // Machine settings has no command to copy: its only content was the config file path, which decision 578 hides
+    if ((await r.locator(".id").first().textContent())?.trim() !== "Machine settings") await expect(r.locator('button[data-act="copy"], code').first()).not.toBeEmpty();
     await expect(r.locator("pre code")).toHaveCount(0);
     for (const copy of await r.locator('button[data-act="copy"]').all()) {
-      expect(await copy.getAttribute("data-cmd")).toBe(await copy.getAttribute("title"));
+      // decision 578: the tooltip is plain text, never the command with its key names and paths
+      const tip = await copy.getAttribute("title");
+      expect(tip).toBeTruthy();
+      expect(tip).not.toBe(await copy.getAttribute("data-cmd"));
+      expect(tip).not.toMatch(/[A-Z_]{4,}|\.json|\.conf|\.env|config set|~\//);
     }
     await expect(r).toContainText("takes effect: ");
     await expect(r.locator("a.learn")).toHaveAttribute("href", /^https:\/\/yotamleo-org\.github\.io\/Himmel\/[a-z/-]+$/);
     await expect(r.locator("a.learn")).toHaveAttribute("target", "_blank");
   }
   await expect(page.locator("#tile-scope .setgroup h3").filter({ hasText: /^(Plugins|Auto-ship steps|Scheduled jobs|Your install answers)$/ })).toHaveText(SCOPE_GROUPS);
+});
+
+// Proof shots: the Project scope categories at 1280 and 390 wide, light and dark, all folded and the first expanded.
+// Writes nothing unless E2E_SHOTS names a folder, so it never leaves files in the tree.
+test("J3. the Project scope categories fold, and expand on a click (proof shots with E2E_SHOTS)", async ({ page }) => {
+  const shots = process.env.E2E_SHOTS;
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: width === 1280 ? 900 : 800 });
+    await open(page, "jira", "scope");
+    const cats = page.locator("#tile-scope details.cat");
+    await expect(cats).toHaveCount(5, SETUP_WAIT);
+    await expect(cats.first()).toHaveAttribute("open", "");
+    await expect(page.locator("#tile-scope details.cat[open]")).toHaveCount(1);
+    for (const scheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: scheme });
+      await cats.first().locator("> summary").click();
+      await expect(page.locator("#tile-scope details.cat[open]")).toHaveCount(0);
+      if (shots) await page.locator("#tile-scope").screenshot({ path: `${shots}/configure-scope-${width}-${scheme}-collapsed.png` });
+      await cats.first().locator("> summary").click();
+      await expect(page.locator("#tile-scope details.cat[open]")).toHaveCount(1);
+      if (shots) await page.locator("#tile-scope").screenshot({ path: `${shots}/configure-scope-${width}-${scheme}-expanded.png` });
+    }
+  }
 });
 
 test("J3. the Tracker tile's Team mode switch shows off when unset, previews a dry run, and writes tracker.teamMode", async ({ page }) => {

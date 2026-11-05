@@ -157,6 +157,9 @@ export function costField(file, since, until) {
     const t = ms(r?.ts);
     if (!Number.isFinite(t)) { unreadable++; continue; }
     if (!(t >= s && t < u)) continue;
+    // A native-lane judge row or a sub-fallback row is subscription spend: no API call, so neither a priced nor an unpriced run.
+    // The API launcher's own rows carry no lane.
+    if (typeof r.lane === 'string' && r.lane !== '' && r.lane !== 'api') continue;
     for (const [k, v] of [['input', r.input_tokens], ['cache_creation', r.cache_creation_tokens], ['cache_read', r.cache_read_tokens]]) {
       if (Number.isInteger(v) && v >= 0) tokens[k] += v;
     }

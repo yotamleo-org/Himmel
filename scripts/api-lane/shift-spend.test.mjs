@@ -196,6 +196,25 @@ test('api cost: launch records inside [since, until) are summed per account in m
   assert.deepEqual(f.tokens, { input: 7, cache_creation: 156884, cache_read: 1318 });
 });
 
+test('api cost: a native-lane or sub-fallback row is not an API run: it is neither summed nor an unpriced run', () => {
+  const file = join(T, 'launches-lanes.jsonl');
+  const native = (ts) => launch(ts, '', '', [null, null, null], { lane: 'native', outcome: 'native', sub_cost_usd: '1.200000', session_id: 'x' });
+  const fallback = (ts) => launch(ts, 'auto', '', [null, null, null], { lane: 'sub-fallback', outcome: 'sub-fallback', sub_cost_usd: '1.100000' });
+  writeFileSync(file, [launch('2026-10-31T01:00:00Z', 'A', '0.250000'), native('2026-10-31T02:00:00Z'), fallback('2026-10-31T03:00:00Z')].join('\n'));
+  const f = costField(file, SINCE, UNTIL);
+  assert.equal(f.status, 'ok');
+  assert.equal(f.value, '0.250000');
+  assert.equal(f.runs, 1);
+  assert.equal(f.unpriced_runs, 0);
+  assert.equal(f.partial, undefined);
+  // a shift with only subscription rows made no API call: a measured zero, not "carry no cost"
+  writeFileSync(file, `${native('2026-10-31T02:00:00Z')}\n`);
+  const g = costField(file, SINCE, UNTIL);
+  assert.equal(g.status, 'ok');
+  assert.equal(g.value, '0.000000');
+  assert.equal(g.runs, 0);
+});
+
 test('api cost: a run with no cost is counted apart, never as zero; no launch log reads not available', () => {
   const file = join(T, 'launches-b.jsonl');
   writeFileSync(file, [launch('2026-10-31T01:00:00Z', 'A', '0.250000'), launch('2026-10-31T02:00:00Z', 'A', '', [null, null, null], { outcome: 'unknown' })].join('\n'));

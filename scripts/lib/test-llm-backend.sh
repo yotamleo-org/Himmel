@@ -26,6 +26,24 @@ ready() { ( HIMMEL_API_LANE="$1"; HIMMEL_API_ACCOUNT="$2"; export HIMMEL_API_LAN
 check "api ready: lane on + account" "0" "$(ready on A)"
 check "api not ready: lane off" "1" "$(ready off A)"
 check "api not ready: no account" "1" "$(ready on "")"
+check "api not ready: account auto (decision 525)" "1" "$(ready on auto)"
+check "api ready: account C" "0" "$(ready on C)"
+check "api not ready: account D" "1" "$(ready on D)"
+
+ready_graph() { ( HIMMEL_API_LANE="$1"; HIMMEL_API_ACCOUNT="$2"; export HIMMEL_API_LANE HIMMEL_API_ACCOUNT; llm_backend_api_ready_graph >/dev/null 2>&1; echo $? ); }
+check "graph ready: account auto" "0" "$(ready_graph on auto)"
+check "graph ready: account B" "0" "$(ready_graph on B)"
+check "graph not ready: lane off" "1" "$(ready_graph off auto)"
+check "graph not ready: no account" "1" "$(ready_graph on "")"
+check "graph not ready: account D" "1" "$(ready_graph on D)"
+
+# the bash account set equals the real ACCOUNTS of scripts/lib/api-credit-state.mjs
+mjs_accounts="$(node -e "import('$REPO/scripts/lib/api-credit-state.mjs').then((m) => console.log([...m.ACCOUNTS].sort().join(',')))" 2>/dev/null)"
+bash_accounts=""
+for a in A B C D E auto a "" ; do
+    if llm_backend_api_account_ok "$a" 2>/dev/null; then bash_accounts="${bash_accounts:+$bash_accounts,}$a"; fi
+done
+check "account set equals ACCOUNTS of api-credit-state.mjs" "$mjs_accounts" "$bash_accounts"
 
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]

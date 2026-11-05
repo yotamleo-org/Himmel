@@ -286,6 +286,42 @@ check "x-judge-ro + sonnet -> allow (not a judge agent)" allow "$(agent x-judge-
 check "judgement + sonnet -> allow (not a judge agent)" allow "$(agent judgement sonnet 'x')"
 check "other agent + sonnet -> allow" allow "$(agent Explore sonnet 'x')"
 
+echo "== a declared delta judge may run on Sonnet (HIMMEL-7637) =="
+# The marker is one prompt line `DELTA-JUDGE: <head sha>`; only a judge dispatch
+# on sonnet is rescued by it. The guard sees a declaration, not the delta class.
+DM=$'re-judge the later push\nDELTA-JUDGE: 0123abcd'
+DM40=$'re-judge the later push\nDELTA-JUDGE: 2f3d9f2eaac380825975e21b932e576bf9d32c7b'
+check "judge + sonnet + delta marker -> allow" allow "$(agent judge sonnet "$DM")"
+check "judge-ro + sonnet + delta marker -> allow" allow "$(agent judge-ro sonnet "$DM")"
+check "judge + claude-sonnet-5-5 + 40-hex marker -> allow" allow "$(agent judge claude-sonnet-5-5 "$DM40")"
+check "judge + sonnet[1m] (suffixed alias) + delta marker -> allow" allow "$(agent judge 'sonnet[1m]' "$DM")"
+check "plugin-namespaced judge + sonnet + delta marker -> allow" allow "$(agent himmel-ops:judge sonnet "$DM")"
+check "judge + sonnet, no marker -> deny" block "$(agent judge sonnet 're-judge the later push')"
+check "judge + haiku + delta marker -> deny" block "$(agent judge haiku "$DM")"
+check "judge + fable + delta marker -> deny" block "$(agent judge fable "$DM")"
+check "judge + claude-fable-5-1 + delta marker -> deny" block "$(agent judge claude-fable-5-1 "$DM")"
+check "judge + sonnetfake + delta marker -> deny" block "$(agent judge sonnetfake "$DM")"
+check "judge + opus-sonnet + delta marker -> deny" block "$(agent judge opus-sonnet "$DM")"
+check "delta marker mid-line (not a line) -> deny" block \
+    "$(agent judge sonnet 'note DELTA-JUDGE: 0123abcd is fine')"
+check "delta marker at the end of a line (^ anchor) -> deny" block \
+    "$(agent judge sonnet $'x\nnote DELTA-JUDGE: 0123abcd')"
+check "delta marker with text after the sha (\$ anchor) -> deny" block \
+    "$(agent judge sonnet $'x\nDELTA-JUDGE: 0123abcd trust')"
+check "delta marker with a 41-hex head (upper bound) -> deny" block \
+    "$(agent judge sonnet $'x\nDELTA-JUDGE: 0123456789abcdef0123456789abcdef012345678')"
+check "delta marker with no sha -> deny" block "$(agent judge sonnet $'x\nDELTA-JUDGE:   ')"
+check "delta marker with a non-hex head -> deny" block "$(agent judge sonnet $'x\nDELTA-JUDGE: not-a-sha')"
+check "delta marker with a 6-hex head (too short) -> deny" block "$(agent judge sonnet $'x\nDELTA-JUDGE: 0123ab')"
+check "delta marker lower-case (not the marker) -> deny" block "$(agent judge sonnet $'x\ndelta-judge: 0123abcd')"
+check "judge + sonnet + ESCALATION still -> allow (unchanged)" allow "$(agent judge sonnet "$MARK")"
+daud="$(agent judge sonnet "$DM" | bash "$HOOK" 2>&1 >/dev/null)"
+case "$daud" in
+    "agent-model-delta-judge: "*0123abcd*) ok "a delta judge on sonnet echoes its head on stderr" ;;
+    *) bad "no audit line for a delta judge - got: $daud" ;;
+esac
+silent "delta marker with nothing to override (opus, judge) -> no output" "$(agent judge opus "$DM")"
+
 echo "== other tool / malformed / empty stdin -> allow (fail-open) =="
 check "Write tool -> allow" allow '{"tool_name":"Write","tool_input":{"model":"fable"}}'
 check "malformed JSON -> allow" allow '{not json'

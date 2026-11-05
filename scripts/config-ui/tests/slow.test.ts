@@ -120,8 +120,8 @@ test("page: a slower, older feed load never repaints over a newer one", async ()
     parseLanding: () => null, navLinks: () => [], railMarkup: () => "", fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
     document: { querySelector: el, querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
     location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
-    // nor is the vm form's or the report settings' or the review gate's or the fleet cap's or the setup read (Configure's onVisit) or the tracker sources' read: none may take the feed's fetch slot.
-    fetch: (url: string) => url === "/api/agui/fleet" || url === "/api/vm" || url === "/api/review-gate" || url === "/api/fleet-cap" || url === "/api/report-settings" || url === "/api/setup" || url === "/api/sources" ? Promise.resolve({ status: 401, ok: false, json: async () => ({ error: "stub" }) }) : new Promise((res) => {
+    // nor is the read-only mode probe or the vm form's or the report settings' or the review gate's or the fleet cap's or the setup read (Configure's onVisit) or the tracker sources' read: none may take the feed's fetch slot.
+    fetch: (url: string) => url === "/api/agui/fleet" || url === "/api/mode" || url === "/api/vm" || url === "/api/review-gate" || url === "/api/fleet-cap" || url === "/api/report-settings" || url === "/api/setup" || url === "/api/sources" || url === "/api/api-roles" ? Promise.resolve({ status: 401, ok: false, json: async () => ({ error: "stub" }) }) : new Promise((res) => {
       const ok = (b: string) => res({ status: 200, ok: true, json: async () => ({ id: b }) });
       if (first) { first = false; ok("initial"); } else waiting.push(ok);
     }),
@@ -239,7 +239,7 @@ test("a server idle after a feed still exits on time (an in-flight report does n
 // the Health picker lives in the page bar (the top of #main) only on the Health page, and a refreshed feed re-reads it (no route change).
 type PickerHarness = { main: () => string; refresh: () => Promise<void>; seed: (f: object) => void; go: (hash: string) => void; setFail: (n: number) => void };
 async function pickerHarness(hash: string, run: (h: PickerHarness) => Promise<void>) {
-  const { parseView, projectVerdict } = await import("../public/health.js");
+  const { parseView, projectVerdict, chiefLiveFor } = await import("../public/health.js");
   const src = readFileSync(join(import.meta.dir, "../public/app.js"), "utf8")
     .replace(/^import .*$/gm, "").concat("\nglobalThis.__refresh = refreshFeed;\nglobalThis.__seed = (f) => { feed = f; };\nglobalThis.__route = route;\n");
   let fail = 0, main = "";
@@ -247,11 +247,11 @@ async function pickerHarness(hash: string, run: (h: PickerHarness) => Promise<vo
   const mainEl = { textContent: "", hidden: false, focus() {}, setSelectionRange() {}, set innerHTML(v: string) { main = v; }, get innerHTML() { return main; } };
   const loc = { hash, pathname: "/", search: "" };
   const g = globalThis as Record<string, unknown>;
-  const names = ["render", "renderNav", "renderHeader", "renderHealth", "renderInventory", "renderProbe", "parseView", "projectVerdict", "parseLanding", "navLinks", "railMarkup", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "addEventListener", "__refresh", "__seed", "__route"];
+  const names = ["render", "renderNav", "renderHeader", "renderHealth", "renderInventory", "renderProbe", "parseView", "projectVerdict", "chiefLiveFor", "parseLanding", "navLinks", "railMarkup", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "addEventListener", "__refresh", "__seed", "__route"];
   const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
   const json = (b: object) => Promise.resolve({ status: 200, ok: true, json: async () => b });
   Object.assign(g, {
-    render: () => "", renderNav: () => "", renderHeader: () => "", renderHealth: () => "", renderInventory: () => "", renderProbe: () => "", parseView, projectVerdict,
+    render: () => "", renderNav: () => "", renderHeader: () => "", renderHealth: () => "", renderInventory: () => "", renderProbe: () => "", parseView, projectVerdict, chiefLiveFor,
     parseLanding: () => null, navLinks: () => [], railMarkup: () => "", fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
     document: { querySelector: (q: string) => (q === "#main" ? mainEl : el()), querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
     location: loc, history: { replaceState() {} }, addEventListener() {},

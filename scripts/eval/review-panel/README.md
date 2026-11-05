@@ -321,6 +321,31 @@ change lost nothing.
    - **no-loss** / **keep** (pass): within noise; `keep` when every
      `--target-class` recall also beats the baseline maximum.
 
+Two rules sit in front of that eval check (HIMMEL-9259). Both read their input
+from the PR's **base** tree, never its head, so a PR cannot retag its own files
+or add its own bypass; a tag or row a change needs must already be on main and
+merged into the branch.
+
+4. **A path the sweep never executes needs no eval rows.** `run.sh` feeds
+   `critic-panel.sh` directly, so a change to a file the sweep never runs gives
+   the base and head sweeps identical critics and the eval can only read noise.
+   `cbs.txt` marks each such path with a comment line `# unexecuted: <path>`
+   (`score.py` ignores comments, so the hash and the path list are unchanged).
+   When every changed CBS path is tagged, the gate passes and prints "only paths
+   the sweep never executes changed: ...; a judge GO covers them": the review is
+   a judge GO, not eval rows. One changed CBS path that is not tagged puts the
+   whole diff back on the eval check. Tag a path only after tracing that no
+   sweep call reaches it.
+5. **An operator bypass is a recorded row.** `gate-bypass.tsv` holds one row per
+   bypass: `pr`, a `head` sha prefix of 7 or more hex digits, the `decision` id,
+   and the `reason`, separated by tabs. The gate honours a row only for its PR
+   number (`CHECK_CRITIC_EVAL_PR`, else the `refs/pull/<n>/merge` of
+   `GITHUB_REF`) at its head (the head given; on CI's `refs/pull/<n>/merge`
+   also the merge ref's second parent, which is the PR head), and prints a `BYPASS honoured` line with the decision and reason. A row
+   for another PR or another head does nothing. A malformed row (wrong column
+   count, a non-numeric PR, a prefix under 7 hex digits, an empty decision or
+   reason) fails the gate closed. A row lands by a chief-ruled change of its own.
+
 The hashes are of the merge ref: a later critic change on main changes the head
 `cbs_hash`, so the rows no longer count and the PR is swept again. Every CBS
 path, this directory and `scripts/eval/lib/` (every module `score.py` can import) are trust paths

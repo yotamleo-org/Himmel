@@ -20,7 +20,7 @@ bad() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
 python3 - "$HERE/plugin-profiles.json" "$TMP/registry-b.json" <<'E'
 import json, sys
 d = json.load(open(sys.argv[1]))
-d["profiles"]["user"]["drop"] = ["i-have-adhd@himmel"]
+d["profiles"]["user"]["enable"] = d["profiles"]["user"]["enable"] + ["hallmark@himmel"]
 json.dump(d, open(sys.argv[2], "w"))
 E
 

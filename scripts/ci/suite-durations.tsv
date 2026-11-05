@@ -888,6 +888,7 @@ scripts/lib/test-mode-single-owner.sh	0
 scripts/lib/test-native-auth-pin.sh	1
 scripts/lib/test-observability-registry.sh	0
 scripts/lib/test-orphan-branches.sh	7
+scripts/lib/test-outside-contributors.sh	1
 scripts/lib/test-override-env.sh	1
 scripts/lib/test-prim.sh	7
 scripts/lib/test-proc-tree.sh	2
@@ -922,6 +923,7 @@ scripts/lib/test-sha256-bin.sh	0
 scripts/lib/test-shared-branch-lock.sh	1
 scripts/lib/test-suite-semaphore.sh	11
 scripts/lib/test-telemetry.sh	0
+scripts/lib/test-ticket-id-internal.sh	1
 scripts/lib/test-ticket-status.sh	0
 scripts/lib/test-timeout-bin.sh	13
 scripts/lib/test-tracker-contract.sh	4
@@ -1031,6 +1033,7 @@ scripts/report/test-himmel-report.sh	4
 scripts/roadmap/test-plan-graph.sh	1
 scripts/roadmap/test-plan-index.sh	3
 scripts/security/test-snyk-scan.sh	5
+scripts/security/test-socket-scan.sh	1
 scripts/setup/test-check-jira-key.sh	0
 scripts/setup/test-check-user-slug.sh	1
 scripts/setup/test-choose-mode.sh	1
@@ -1144,6 +1147,7 @@ scripts/upstreams/test-apply-drift-bump.sh	2
 scripts/upstreams/test-apply-tool-upgrade.sh	2
 scripts/upstreams/test-ci-tool-pins.sh	1
 scripts/upstreams/test-drift-fix-cadence.sh	1
+scripts/upstreams/test-protect-forks.sh	1
 scripts/upstreams/test-resync-fork.sh	3
 scripts/upstreams/test-update-marketplaces.sh	1
 scripts/upstreams/test-upstream-watch-cadence.sh	2

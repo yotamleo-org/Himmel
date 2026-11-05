@@ -369,8 +369,8 @@ fi
 rm -rf "$SB"
 
 # 9b-2 (regression-only, also passes on main): lane env set -> the spawned crystallizer
-# receives both variables unchanged (A and auto).
-for ACC in A auto; do
+# receives both variables unchanged (A and B).
+for ACC in A B; do
     lane_sandbox
     LANE_DUMP="$SB/lane.txt"
     lane_run HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT="$ACC" LANE_DUMP="$LANE_DUMP" CRYSTALLIZE_CLAUDE_BIN="$WRAP"

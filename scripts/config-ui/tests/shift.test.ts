@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULTS, appendShift, attribute, chiefSpans, iso, liveBoards, liveChiefs, mergedIn, nameOf, readLocks, readMerged, readShifts, redactShift, rowsOf, step, tick, viewOf, type Lock, type Row, type Span, type State, type View } from "../shift";
 import { redactDeep } from "../../himmelctl/lib/redact.js";
+import { applySection } from "../../handover/chief-kit/board-section.mjs";
 import { renderShift } from "../public/shift.js";
 import { startServer } from "../server";
 
@@ -175,10 +176,18 @@ const open = { opened: T("2026-10-27T08:00+01:00"), lastHeld: T("2026-10-27T12:0
 const snap = (o: typeof open | null) => ({ state: { open: o, closedAt: null } as State, spans: [{ name: "chief-A", bucket: "himmel", start: T("2026-10-27T08:05+01:00"), end: null, approx: false }], locks: [], offsetMin: OFF });
 const NOW = T("2026-10-27T12:00+01:00");
 
-test("rowsOf: Waiting is the board's needs_you, Running is live and PR-open work that is not waiting, oldest first", () => {
-  const r = rowsOf([board]);
-  expect(r.waiting.map((w) => [w.kind, w.ticket, w.pr])).toEqual([["question", "HIMMEL-2", null], ["GO", "HIMMEL-1", 12]]);
+test("rowsOf: Waiting is only what the data marks as the operator's, Running is live and PR-open work that is not waiting, oldest first", () => {
+  const r = rowsOf([{ ...board, decisions: ["pick the v1.1.3 cut?", "approve the spend"] }]);
+  expect(r.waiting.map((w) => [w.kind, w.ticket, w.pr, w.detail])).toEqual([["decision", null, null, "pick the v1.1.3 cut?"], ["decision", null, null, "approve the spend"]]);
   expect(r.running.map((x) => [x.ticket, x.stage])).toEqual([["HIMMEL-4", "in review"], ["HIMMEL-3", "building"]]);
+});
+
+test("rowsOf: a go, decide, unblock or act row addressed to the chief never lands in Waiting on you", () => {
+  const legs = [1, 2, 3, 4].map((n) => ({ leg: `L${n}`, ticket: `HIMMEL-${n}`, goal: "g", state: "working", stage: "live" }));
+  const needs_you = [{ leg: "L1", verb: "go", action: "judge and GO PR #12" }, { leg: "L2", verb: "decide", action: "rule on the FINDING" }, { leg: "L3", verb: "unblock", action: "clear the BLOCKED worker" }, { leg: "L4", verb: "act", action: "close the worker window" }];
+  const r = rowsOf([{ console: { name: "chief-A" }, legs, needs_you }]);
+  expect(r.waiting).toEqual([]);
+  expect(r.running).toEqual([]); // a worker the chief owes a step is not Running either
 });
 
 test("viewOf: an open shift lists chiefs, Waiting, Running and the PRs merged inside it, named for the chief whose span holds the merge", () => {
@@ -187,7 +196,7 @@ test("viewOf: an open shift lists chiefs, Waiting, Running and the PRs merged in
   expect(v.state).toBe("open");
   expect(v.shift?.name).toBe("day");
   expect(v.shift?.id).toBe("2026-10-27T08:00+01:00");
-  expect(v.waiting.length).toBe(2);
+  expect(v.waiting.length).toBe(0); // the fixture board's go and question rows are the chief's
   expect(v.shipped.map((s) => s.number)).toEqual([20]); // 21 merged at 07:00+01:00, before the shift opened
   expect(v.shipped[0].chief).toBe("chief-A");
 });
@@ -209,12 +218,14 @@ test("viewOf: a closed shift by id carries its record, its merges are half-open 
   expect(v.pager).toEqual({ prev: "2026-10-26T20:00+01:00", next: "2026-10-27T20:00+01:00" });
 });
 
-const pageView = (over: Partial<View> = {}): View => ({ ...viewOf({ now: NOW, rows: [], snap: snap(open), id: null, merged: [{ number: 20, title: "feat: a", mergedAt: "2026-10-27T09:00:00Z" }], boards: [board] }), ...over });
+const pageView = (over: Partial<View> = {}): View => ({ ...viewOf({ now: NOW, rows: [], snap: snap(open), id: null, merged: [{ number: 20, title: "feat: a", mergedAt: "2026-10-27T09:00:00Z" }], boards: [{ ...board, decisions: ["pick the v1.1.3 cut?"] }] }), ...over });
 
 test("the Shift page draws Waiting, Running and Shipped over a mid-shift fixture, Waiting rows only link out", () => {
   const html = renderShift(pageView(), {});
   for (const id of ["sh-waiting", "sh-running", "sh-shipped"]) expect(html).toContain(`id="${id}"`);
-  expect(html).toContain("HIMMEL-2");
+  expect(html).toContain("pick the v1.1.3 cut?");
+  expect(html).toContain('<h2 id="h-sh-waiting">Waiting on you <b>1</b></h2>'); // the operator-owned rows only; the fixture board's go and question rows are the chief's
+  expect(html).not.toContain("judge and GO");
   expect(html).toContain("#20");
   expect(html).not.toContain("<button"); // Waiting rows link out; nothing here acts
   expect(html).not.toContain("No shift is open");
@@ -576,7 +587,7 @@ test("GET /api/shift: a live chief with no board file shows the legs the board b
   expect(v.running[0].ticket).toBe("HIMMEL-1");
 });
 
-const chiefLocks = (name: string): Lock[] => [{ bucket: "himmel", role: "chief", doc: name, at: 0 }];
+const chiefLocks = (name: string, at = Date.now()): Lock[] => [{ bucket: "himmel", role: "chief", doc: name, at }];
 const chiefSpan = (name: string): Span[] => [{ name, bucket: "himmel", start: 0, end: null, approx: false }];
 const liveLeg = { leg: "L1", ticket: "HIMMEL-1", goal: "one live leg", state: "working", stage: "live", stages: { live: "2026-10-27T08:00:00Z" } };
 function chiefDocIn(root: string, name: string) {
@@ -594,6 +605,41 @@ test("liveBoards: the injected reader decides: a board gives rows, null gives bo
   expect([none.boards, none.missing]).toEqual([[], [name]]);
   const bad = await liveBoards(root, chiefLocks(name), chiefSpan(name), async () => ({ error: "board.mjs: gh is down\nat line 2" }));
   expect([bad.boards, bad.missing, bad.error]).toEqual([[], [], [{ chief: name, error: "board.mjs: gh is down" }]]);
+});
+
+test("liveBoards: the chief doc's Live-state decisions: line is the operator's Waiting; a decisions file pointer and none are not", async () => {
+  const root = tmp(), name = "HIMMEL-nextleg-2026-10-27A-roadmap-chief";
+  const docWith = (line: string) => { chiefDocIn(root, name); writeFileSync(join(root, "yotamleo", "himmel", `${name}.md`), `# c\n\n## Live state\n\nepics: HIMMEL-1=2\n${line}\n\n## Results\n- 09:00 LIVE\n`); };
+  const waiting = async () => rowsOf((await liveBoards(root, chiefLocks(name), chiefSpan(name), async () => ({ legs: [liveLeg] }))).boards).waiting.map((w) => w.detail);
+  docWith("decisions: first (x; y)?; second?");
+  expect(await waiting()).toEqual(["first (x; y)?", "second?"]);
+  docWith("decisions: none");
+  expect(await waiting()).toEqual([]);
+  docWith("decisions: carried verbatim in specs/decisions/console-decisions-2026-10-25.md (read it before ruling)");
+  expect(await waiting()).toEqual([]);
+  docWith("decisions: specs/decisions/console-decisions-2026-10-25.md; approve new spend?");
+  expect(await waiting()).toEqual(["approve new spend?"]);
+});
+
+test("liveBoards: a chief doc that cannot be read is a boardError, never an empty decisions list", async () => {
+  const root = tmp(), name = "HIMMEL-nextleg-2026-10-27A-roadmap-chief";
+  chiefDocIn(root, name);
+  const lv = await liveBoards(root, chiefLocks(name), chiefSpan(name), async () => {
+    rmSync(join(root, "yotamleo", "himmel", `${name}.md`)); // gone between the board read and the doc read
+    return { legs: [liveLeg] };
+  });
+  expect(lv.error).toEqual([{ chief: name, error: "chief doc unreadable: its open decisions are not shown" }]);
+  expect(rowsOf(lv.boards).running.length).toBe(1);
+});
+
+test("liveBoards: a chief whose lock heartbeat is past the queue-lock TTL is dead: its board and decisions are not shown, and it is not reported missing", async () => {
+  const root = tmp(), name = "HIMMEL-nextleg-2026-10-27A-roadmap-chief";
+  chiefDocIn(root, name);
+  writeFileSync(join(root, "yotamleo", "himmel", `${name}.md`), "# c\n\n## Live state\n\ndecisions: a dead chief's question?\n");
+  const dead = await liveBoards(root, chiefLocks(name, Date.now() - 2 * 24 * 3_600_000), chiefSpan(name), async () => ({ legs: [liveLeg] }));
+  expect([dead.boards, dead.missing, dead.error]).toEqual([[], [], []]);
+  const alive = await liveBoards(root, chiefLocks(name), chiefSpan(name), async () => ({ legs: [liveLeg] }));
+  expect(rowsOf(alive.boards).waiting.map((w) => w.detail)).toEqual(["a dead chief's question?"]);
 });
 
 test("the Shift page says a board is missing or failed instead of Nothing is running", () => {
@@ -641,6 +687,17 @@ test("the Fleet board route and the Shift page share one board build inside the 
   expect(fleet.status).toBe(200);
   await (await getShift(s.port)).json();
   expect(stub.runs()).toBe(1);
+});
+
+test("a Shift payload carries no sections, whatever sits beside the chief's doc", async () => {
+  const dir = tmp(), stub = boardStub(dir);
+  const { s, root, name } = boot({ chief: true, boardScript: stub.script });
+  await applySection(join(root, "yotamleo", "himmel", `${name}.md`), { kind: "set", id: "note", title: "Chief note", body: "SENTINEL-SECTION-BODY" });
+  const fleet = await (await fetch(`http://127.0.0.1:${s.port}/api/agui/board?console=${name}`, { headers: { "X-Himmel-Token": TOKEN } })).json();
+  expect(fleet.sections).toHaveLength(1); // the Fleet route serves it
+  const text = JSON.stringify(await (await getShift(s.port)).json());
+  expect(text).not.toContain("sections");
+  expect(text).not.toContain("SENTINEL-SECTION-BODY");
 });
 
 test("a board build that fails shows on the page as a board error, and the layout still has three tiles", async () => {

@@ -113,3 +113,31 @@ missing or unreadable exits non-zero before anything is written; the default
 projects dir and default ledger may be absent (a note on stderr, treated as
 empty). `cr.rounds` counts heads with a responding review
 (`unavailable` availability rows are not rounds).
+
+## CI minutes (billed beside wall)
+
+`scripts/usage/ci-minutes.sh` is the one writer of `<store>/ci-minutes.jsonl`
+(same store as above): one row per Actions run, the run id is the idempotence
+key, so a rerun on the same window appends nothing for a run it already holds.
+
+```bash
+bash scripts/usage/ci-minutes.sh write  --repo OWNER/NAME [--days 7] [--until <iso>] [--store <dir>]
+bash scripts/usage/ci-minutes.sh report --repo OWNER/NAME [--days 7] [--until <iso>] [--store <dir>]
+```
+
+Row: `{schema, repo, run_id, workflow, created_at, wall_min, billed_min}`.
+`wall_min` is `run_started_at` to `updated_at` of the run list. `billed_min` is
+`GET /repos/{repo}/actions/runs/{id}/timing`, `.billable.<OS>.total_ms` summed
+over every OS. A run whose billing answer is absent (HTTP 404/410, or no
+`.billable` entry) is stored as the string `"unknown"`, never 0; an answer of 0
+ms is a real 0 (this public repo bills 0). Any other gh failure aborts the run
+and rows already written stay. `report` prints runs beside the `gh api`
+total_count for the window, billed beside wall minutes, and the unknown runs on
+their own line (unknowns are left out of the billed sum).
+
+The runs endpoint returns at most 1,000 rows for a filtered window however large
+`total_count` is, and `gh run list --limit` stops there too. The writer pages
+each window with `--paginate`, and halves a window whose listing is short of
+`total_count` until each half is complete; a single second that holds more than
+the API returns fails closed rather than storing a partial window. Cost: one
+`timing` call per new run.

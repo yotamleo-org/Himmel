@@ -41,6 +41,8 @@
 ^scripts/cr/anchor-handoff\.sh$
 ^scripts/cr/clear-review-marker\.sh$
 ^scripts/cr/ledger-amend-auth\.js$
+^scripts/cr/blast-scope\.cjs$
+^scripts/ci/outside-lint-surface\.txt$
 ^scripts/hooks/check-commit-msg\.sh$
 
 # Hook wiring and the pre-commit gate set.

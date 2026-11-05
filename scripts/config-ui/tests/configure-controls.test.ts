@@ -58,8 +58,8 @@ test("copy buttons escape command attributes and never turn command text into ma
   expect(html).not.toContain("<fixture>");
 });
 
-test("Jira email, site and project are text; tokens stay password fields with local reveal controls", () => {
-  const html = cfg("tracker");
+test("Jira email, site and project are text; tokens stay password fields with local reveal controls (in the Secrets tile)", () => {
+  const html = cfg("secrets");
   for (const name of ["JIRA_EMAIL", "JIRA_BASE_URL", "JIRA_PROJECT_KEY"]) {
     expect(html).toContain(`type="text" data-secret="${name}"`);
     expect(html).not.toContain(`data-reveal="${name}"`);
@@ -70,7 +70,7 @@ test("Jira email, site and project are text; tokens stay password fields with lo
 });
 
 test("every Setup and Configure password has an accessible show/hide button", () => {
-  for (const html of [cfg("secrets"), cfg("tracker"), renderSetup(setup, {}, {})]) {
+  for (const html of [cfg("secrets"), renderSetup(setup, {}, {})]) {
     const passwords = [...html.matchAll(/<input type="password"[^>]*>/g)];
     expect(passwords.length).toBeGreaterThan(0);
     for (const [input] of passwords) {
@@ -138,4 +138,79 @@ test("timeout and tier rows name real config, operator-policy and launching-shel
   }
   expect(html).not.toContain("set in .env or the launching shell, read-only here");
   expect(html).toContain("not critics.json");
+});
+
+// ---- the scope tile folds into categories, explains each setting, and hides internal names ----
+const feedRow = (id: string, action: string, target: string, detail: string) => ({
+  id, source: "item", health: "ok", installed: { state: "present", detail }, fires: { state: "unverified" }, fix: { remedy: "" },
+  control: { class: "toggle", action, target, consent: "plain" },
+});
+const scopeFeed = {
+  rows: [
+    feedRow("plugin:himmel-guard@himmel", "plugin.enable", "himmel-guard@himmel", "enabled in the user-scope file"),
+    feedRow("initiative:prcheck", "config.initiative", "prcheck", "HIMMEL_INITIATIVE has prcheck in .env"),
+    feedRow("initiative:merge", "config.initiative", "merge", "HIMMEL_INITIATIVE has merge in .env"),
+    ...["pipeline", "graphmap", "qmd", "doctor"].map((t) => feedRow(`${t}-cadence`, "cadence.arm", t, `crontab line for ${t}`)),
+  ],
+};
+const scopeSetup = { ...setup, choices: { paths: [
+  { target: "handover-root", key: "HANDOVER_DIR", value: "/srv/h", fallback: "~/.himmel/handovers" },
+  { target: "luna-vault", key: "LUNA_VAULT_PATH", value: null, fallback: "~/.himmel/vault" },
+], forge: { value: "github" } } };
+const scopeState = {
+  ...state,
+  fleetCap: { data: { cap: 3, min: 1, max: 50, default: 3, source: "config.json", configFile: "/h/.himmel/config.json", envFile: "/h/.env", edit: "~/.himmel/config.json .policy.HIMMEL_FLEET_CAP" } },
+  vm: { data: { mode: "remote" }, draft: { mode: "remote", ssh: "", port: "", identity: "" } },
+  reports: { data: { report_day: "local", shift_idle_min: 60, shift_cuts: ["08:00", "20:00"], shift_min_run_h: 4 } },
+};
+const tileHtml = (tile: string, data = scopeSetup) => renderConfigure(scopeFeed, { tile, setup: data, state: scopeState, msgs: {} });
+const scope = () => tileHtml("scope");
+// What a reader can see: the text outside the copy buttons plus every attribute a tooltip or screen reader shows.
+const seen = (html: string) => [visible(html), ...[...html.matchAll(/\s(?:title|aria-label|placeholder)="([^"]*)"/g)].map((m) => m[1])].join("\n");
+const cats = (html: string) => html.split('<details class="cat"').slice(1);
+
+test("no scope setting shows an internal key name or a settings file in its text or tooltips", () => {
+  const text = seen(scope());
+  const hidden = ["HIMMEL_INITIATIVE", "HIMMEL_FLEET_CAP", "HANDOVER_DIR", "LUNA_VAULT_PATH", "FORGE", "himmel.forge", "vm.mode", "report_day", "shift_idle_min", "shift_cuts", "shift_min_run_h",
+    "config.json", "himmel.conf", "project.conf", ".env", "crontab", "initiative:", "plugin:", "-cadence", "@himmel", "~/", "config set", "policy."];
+  for (const key of hidden) expect(text, key).not.toContain(key);
+});
+
+test("every scope setting row carries a plain explanation line", () => {
+  const rows = scope().split(/<div class="(?:setrow|srow)"/).slice(1);
+  expect(rows.length).toBeGreaterThanOrEqual(12);
+  for (const row of rows) expect(row, row.slice(0, 80)).toMatch(/<p class="why">[^<\s][\s\S]*?<\/p>/);
+});
+
+test("the scope tile folds into collapsible categories: the first open, the rest closed", () => {
+  const c = cats(scope());
+  expect(c.length).toBeGreaterThanOrEqual(4);
+  expect(c[0].startsWith(" open")).toBe(true);
+  for (const rest of c.slice(1)) expect(rest.startsWith(" open")).toBe(false);
+  for (const one of c) expect(one).toMatch(/<summary>[^<]+<\/summary>/);
+});
+
+test("the Forge row is labelled and explained as the source code host", () => {
+  const text = visible(scope());
+  expect(text).toContain("Source code host");
+  expect(text).toMatch(/where your repository lives/i);
+  expect(text).toContain("detected: github");
+});
+
+test("GitHub and Bitbucket sit together in one category", () => {
+  const holding = cats(scope()).filter((c) => /GitHub|Bitbucket/.test(visible(c)));
+  expect(holding).toHaveLength(1);
+  expect(visible(holding[0])).toMatch(/GitHub/);
+  expect(visible(holding[0])).toMatch(/Bitbucket/);
+});
+
+test("no secret field renders outside the Secrets tile, and the Secrets tile holds every one", () => {
+  const field = /type="password"|data-secret=|data-setup-form|data-account|data-act="reveal"|data-act="setup-remove"/;
+  const stored = { ...scopeSetup, secrets: scopeSetup.secrets.map((s) => ({ ...s, status: "set" })) };
+  for (const tile of ["review", "tracker", "scope"]) {
+    expect(tileHtml(tile, stored), tile).not.toMatch(field);
+    expect(tileHtml(tile), tile).not.toMatch(field);
+  }
+  const mine = tileHtml("secrets");
+  for (const name of ["TELEGRAM_BOT_TOKEN", "JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN", "JIRA_PROJECT_KEY"]) expect(mine, name).toContain(`data-secret="${name}"`);
 });

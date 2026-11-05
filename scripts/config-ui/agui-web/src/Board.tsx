@@ -2,7 +2,7 @@
 // its table in the drawer) and the per-stage drill-in drawer. Everything here renders himmel.board/1; the colours and
 // their labels come from its `legend`, the recommendations from its `cards`. Read-only.
 import { createContext, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
-import { applyKey, BOARD_URL, BRIEF_IDLE, BRIEF_URL, briefNext, normalizeBoard, openAt, ROLLUP_URL, stageSegments, STAGES, type Board, type BoardWorker, type Drawer, type Joined, type Rollup, type RollupCard, type Stage } from "./board-model";
+import { applyKey, BOARD_URL, BRIEF_IDLE, BRIEF_URL, briefNext, normalizeBoard, openAt, ROLLUP_URL, stageSegments, STAGES, type Board, type BoardWorker, type Drawer, type Joined, type Rollup, type RollupCard, type Section, type Stage } from "./board-model";
 import { runHash } from "./fleet-model";
 
 const POLL_MS = 5_000;
@@ -76,7 +76,24 @@ export function StageDots({ worker, board, onPick }: { worker: BoardWorker; boar
   })}</span>;
 }
 
-export const StateChip = ({ board, state }: { board: Board; state: string }) => <Swatch board={board} group="state" k={state} />;
+// The chief's notes above the worker list: one card per section, text children only (a body is never parsed as markup).
+// The title clamps to two lines with its full text in data-tip; nothing renders when the chief has written none.
+const SECTION_TONE: Record<string, string> = { info: TOKEN.acc, warn: TOKEN.warn, ok: TOKEN.ok };
+export function SectionsStrip({ sections }: { sections: Section[] }) {
+  if (!sections.length) return null;
+  return <details className="bd-notes" open>
+    <summary>{`Chief notes (${sections.length})`}</summary>
+    <div className="bd-notes-list">
+      {sections.map((s) => <article key={s.id} className="bd-note">
+        <header><span className="bd-tip bd-note-title" data-tip={s.title} tabIndex={0}><span className="bd-clip">{s.title}</span></span>
+          <span className="bd-chip" style={{ ["--c" as string]: SECTION_TONE[s.tone] ?? TOKEN.acc }}>{s.tone}</span></header>
+        <p className="bd-note-body">{s.body}</p>
+      </article>)}
+    </div>
+  </details>;
+}
+
+export const StateChip =({ board, state }: { board: Board; state: string }) => <Swatch board={board} group="state" k={state} />;
 
 // ---------------------------------------------------------------- Trends
 type CardId = "velocity" | "health" | "tools" | "roadmap";

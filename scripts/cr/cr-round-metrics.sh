@@ -23,7 +23,8 @@
 # attempt of that branch and head by key; a row without them (older rows) joins only when
 # the timestamps (both written at call end) are within 60s; a branch with no joined launch reports cost unjoined, never a zero. Default launches
 # file: the api-lane state dir's launches file under ~/.himmel (absent = cost unjoined; an
-# explicit --launches must load). A reader only: claude-api.sh owns that ledger.
+# explicit --launches must load). A reader only: claude-api.sh and the release judge (liveJudge in
+# scripts/jira/src/commands/release.ts, kind judge rows) write that ledger.
 #
 # ponytail: classes come from the keyword table below, not a model, ceiling = text that
 # names none of them lands in `other`; upgrade path = grow the table from by_class.other.

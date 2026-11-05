@@ -55,6 +55,7 @@ git init -q --bare "$tmp/origin.git"
 git init -q "$ANCHOR"
 mkdir -p "$ANCHOR/scripts/lib" "$ANCHOR/scripts/guardrails"
 cp "$HERE/../../lib/go-gate.sh" "$ANCHOR/scripts/lib/go-gate.sh"
+cp "$HERE/../../lib/pr_remainder.py" "$ANCHOR/scripts/lib/pr_remainder.py"
 printf '[]\n' > "$ANCHOR/scripts/guardrails/himmel-adapters.json"
 printf '[]\n' > "$ANCHOR/scripts/guardrails/himmel-adopted.json"
 git -C "$ANCHOR" add -A
@@ -80,6 +81,9 @@ case "$*" in
             "${STUB_PR_STATE:-OPEN}" "${STUB_PR_HEAD:-$READY_STUB_HEAD}" "${STUB_PR_BASE:-main}"; exit 0 ;;
     "pr view "*"--json headRefOid,state"*) cat "$STUB_GC/head-$3.json" 2>/dev/null || exit 1; exit 0 ;;  # read-sink-ok: the stub reads its own fixture dir
     "pr view "*"--json title"*) printf '%s\n' "${STUB_TITLE:-fix(x): [HIMMEL-1] t (#1)}"; exit 0 ;;
+    # a keyed title makes ready-check read the head and author; neither stub answers them otherwise and the two bounce the call forever
+    "pr view "*"--json headRefOid --jq"*) printf '%s\n' "$READY_STUB_HEAD"; exit 0 ;;
+    "pr view "*"--json author"*) printf 'someone\n'; exit 0 ;;
     *"contents/scripts/ci/ci-trust-paths.txt"*) printf '^scripts/ci/\n'; exit 0 ;;
     "api repos/"*"/pulls/"*"/commits"*)
         [ "${STUB_COMMITS_FAIL:-0}" = 1 ] && exit 1
@@ -319,6 +323,26 @@ check    "clean: no GO written, so no qid, delta, go_file or bus" "$(last_row | 
 nogo     "clean"
 run --dry-run 77 "$SHA"
 check    "a second run appends a second row" "$(audit_rows)" "2"
+
+# --- 3b. the completion contract: the brief's `Completes ticket:` line, read before any record or GO is written ---
+# A keyed PR under contract no with no recorded remainder is the merge's exit 26; ready-go refuses it at check 3,
+# so no delta no-op record and no GO file exist. The same PR with `Completes ticket: yes` passes.
+export READY_STUB_TITLE='fix(x): [HIMMEL-1] a partial change'
+run --dry-run 77 "$SHA"
+esc      "contract no, no remainder" 3
+contains "contract no, no remainder: the escalation names item 17" "$OUT" "17."
+check    "contract no, no remainder: no verdict record written" "$(find "$VDIR" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
+export READY_STUB_BODY=$'## Ticket coverage\n- ask: done\n\nRemaining: the docs follow\n\nRED then GREEN: the new row failed before the change\n'
+run --dry-run 77 "$SHA"
+check    "contract no, with a Remaining line: exit 0" "$RC" "0"
+check    "contract no, with a Remaining line: WOULD-GO" "$OUT" "WOULD-GO 77 $SHA"
+unset READY_STUB_BODY
+write_fixtures native "" "" ; printf '# worker\n\n> **Completes ticket:** yes\n' > "$WORKER"
+run --dry-run 77 "$SHA"
+check    "contract yes, no remainder: exit 0" "$RC" "0"
+check    "contract yes, no remainder: WOULD-GO" "$OUT" "WOULD-GO 77 $SHA"
+unset READY_STUB_TITLE
+reset
 
 # --- 4/1. check 1: a lane the chief merges for -----------------------------------------
 write_fixtures claudex;  run --dry-run 77 "$SHA";  esc "check 1 claudex worker" 1

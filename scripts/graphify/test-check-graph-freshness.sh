@@ -407,5 +407,15 @@ out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
 [ "$rc" -eq 3 ] && [[ "$out" == *"SEMANTIC-STALE"* ]] && [[ "$out" == *"age unknown"* ]] \
   && pass "T11i a merge row without a ts -> SEMANTIC-STALE (age unknown), never OK" || fail "T11i (rc=$rc): $out"
 
+# --- T12: --print-built-at prints the validated built_at_commit, rc 2 when none ---
+OUT="$WS/t12/graphify-out"; mkdir -p "$OUT"
+printf '{"nodes":[],"built_at_commit":"5b13e5f169046cf285a51ca21ad47f44064218b5"}\n' > "$OUT/graph.json"
+out=$( bash "$SCRIPT" --out "$OUT" --print-built-at 2>/dev/null ); rc=$?
+[ "$rc" -eq 0 ] && [ "$out" = "5b13e5f169046cf285a51ca21ad47f44064218b5" ] \
+  && pass "T12 --print-built-at prints the commit" || fail "T12 print (rc=$rc): $out"
+printf '{"nodes":[],"built_at_commit":"--all"}\n' > "$OUT/graph.json"
+out=$( bash "$SCRIPT" --out "$OUT" --print-built-at 2>/dev/null ); rc=$?
+[ "$rc" -eq 2 ] && [ -z "$out" ] && pass "T12 a non-SHA built_at_commit prints nothing, rc 2" || fail "T12 invalid (rc=$rc): $out"
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

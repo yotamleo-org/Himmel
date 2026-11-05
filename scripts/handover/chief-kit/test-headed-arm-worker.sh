@@ -2140,8 +2140,8 @@ WORKER_SESSION_REPO="$tmp/repo17r" HEADED_ARM_LOCK_DIR="$d17r/locks" HEADED_ARM_
   bash "$SCRIPT" --relay "HIMMEL-9999-relay" "$fixture17b" "$d17r/signal-never" "$PAST" "$d17r/log" >/dev/null 2>&1 || rc=$?
 wait_record "$d17r" || true
 check "full launch --relay: exit 0" "$rc" "0"
-check "full launch --relay: settings deny nothing" \
-  "$(jq -c '.permissions.deny // "none"' "$d17r/HIMMEL-9999-relay.leg-settings.json" 2>/dev/null)" '"none"'
+check "full launch --relay: settings deny only the default Artifact" \
+  "$(jq -c '.permissions.deny // "none"' "$d17r/HIMMEL-9999-relay.leg-settings.json" 2>/dev/null)" '["Artifact"]'
 
 rc=0
 node "$HERE/../../lanes/plugin-profiles.mjs" worker-impl > "$tmp/resolved-leg.json" || rc=$?
@@ -2159,8 +2159,8 @@ rc=0
 node "$HERE/../../lanes/plugin-profiles.mjs" bare > "$tmp/resolved-bare.json" || rc=$?
 check "--dry-run bare: resolver succeeds" "$rc" "0"
 rc=0
-node -e 'const j=require(process.argv[1]); if (Object.hasOwn(j,"permissions")) process.exit(1)' "$tmp/resolved-bare.json" || rc=$?
-check "--dry-run bare: resolved settings have no permissions" "$rc" "0"
+node -e 'const j=require(process.argv[1]); if (JSON.stringify(j.permissions) !== "{\"deny\":[\"Artifact\"]}") process.exit(1)' "$tmp/resolved-bare.json" || rc=$?
+check "--dry-run bare: resolved settings carry only the default Artifact deny" "$rc" "0"
 
 # WORKER_SESSION_PROFILE is the env equivalent, and the flag wins over it.
 envprof="$(WORKER_SESSION_PROFILE=worker-impl bash "$SCRIPT" --dry-run HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 "$tmp/worker.log" claude-sonnet-5 2>&1)"
@@ -2185,6 +2185,23 @@ contains "composed dry-run: profile settings reported" "$out" "profile=worker-im
 contains "composed dry-run: claudex lane retained" "$out" "lane=claudex"
 rc=0; out="$(WORKER_SESSION_LANE=claudex WORKER_SESSION_PROFILE=worker-impl bash "$SCRIPT" --dry-run HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "composition via the env equivalents: exit 0" "$rc" "0"
+
+# 17e. the launcher tells the resolver its lane, so a profile's nativeDrop applies on the native
+# lane only. A recording resolver stands in for plugin-profiles.mjs.
+lane17e="$tmp/lane17e"; mkdir -p "$lane17e"
+cat > "$lane17e/profiles.mjs" <<'PROFILE_EOF'
+import { appendFileSync } from 'node:fs';
+switch (process.argv[3]) {
+  case '--context': console.log('{"contextMode":"standard","autocompact":200000}'); break;
+  case '--mcp-servers': console.log('["qmd"]'); break;
+  case '--mcp-config': console.log('{"mcpServers":{}}'); break;
+  default: appendFileSync(new URL('./calls', import.meta.url), process.argv.slice(2).join(' ') + '\n'); console.log('{"enabledPlugins":{}}');
+}
+PROFILE_EOF
+HEADED_ARM_WORKER_PROFILES="$lane17e/profiles.mjs" bash "$SCRIPT" --dry-run --lane native --profile worker-impl HIMMEL-9998-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 >/dev/null 2>&1 || true
+HEADED_ARM_WORKER_PROFILES="$lane17e/profiles.mjs" bash "$SCRIPT" --dry-run --lane claudex --profile worker-impl HIMMEL-9998-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log >/dev/null 2>&1 || true
+check "17e launcher passes its lane to the resolver" "$(cat "$lane17e/calls" 2>/dev/null)" "worker-impl --lane native
+worker-impl --lane claudex"
 
 composed="$tmp/composed-launch"; mkdir -p "$composed"
 cat > "$composed/headed" <<'HEADED_EOF'

@@ -272,8 +272,15 @@ fi
 add_check 2 pass
 
 # --- 3. ready-go.sh: the output the chief reads by hand ------------------------------------------------
+# The completion contract comes from the brief and drives both the checks and the merge line the worker is told to run:
+# --jira-transition present exactly when the contract is yes. Anything but a `Completes ticket: yes` line (no, no line,
+# a read error) is contract no, so a partial merge must record its remainder before any GO is written.
+JT=""; CONTRACT=no
+BRIEF_YES_RC=0
+grep -qE '^> \*\*Completes ticket:\*\* yes([^A-Za-z0-9_-]|$)' "$WORKER_DOC" || BRIEF_YES_RC=$?
+[ "$BRIEF_YES_RC" -ne 0 ] || { JT=" --jira-transition"; CONTRACT=yes; }
 RG_RC=0
-RG=$(bash "$HERE/ready-go.sh" "$PR" "$SHA" 2>&1) || RG_RC=$?
+RG=$(bash "$HERE/ready-go.sh" --contract "$CONTRACT" "$PR" "$SHA" 2>&1) || RG_RC=$?
 if [ "$RG_RC" -ne 0 ] || ! printf '%s\n' "$RG" | grep -qx 'READY-GO PASS'; then
     RG_WHY=$(printf '%s\n' "$RG" | grep -m1 -E '^\[FAIL\]|^TRUST: refused') || RG_WHY=""
     [ -n "$RG_WHY" ] || RG_WHY=$(printf '%s\n' "$RG" | tail -n 1)
@@ -499,7 +506,7 @@ if [ -n "$CARRY_FROM" ]; then
 fi
 # b. the GO file: go.sh re-runs ready-check and every gate of its own
 GO_RC=0
-GO_OUT=$(bash "$HERE/go.sh" --model auto-go --effort script ${GO_QID:+--trust-reviewed "$GO_QID"} "$PR" "$SHA" 2>&1) || GO_RC=$?
+GO_OUT=$(bash "$HERE/go.sh" --model auto-go --effort script --contract "$CONTRACT" ${GO_QID:+--trust-reviewed "$GO_QID"} "$PR" "$SHA" 2>&1) || GO_RC=$?
 if [ "$GO_RC" -ne 0 ]; then
     GO_WHY=$(printf '%s\n' "$GO_OUT" | grep -m1 -E '^go: ') || GO_WHY=$(first_line "$GO_OUT")  # swallow-ok: no go: line falls back to the first output line
     fail 9 "go.sh exit $GO_RC: $GO_WHY${CARRY_FROM:+ (the delta no-op record for $GO_QID at ${SHA:0:8}, written before go.sh ran, stays under verdicts/$GO_QID)}"
@@ -529,10 +536,6 @@ live_token() { # <key>: the RETASK token of $WORKER from the chief doc's ## Live
 }
 TOKEN=$(live_token workers) || TOKEN=""  # swallow-ok: no token is reported as a failed bus send below, the GO file stands
 if [ -z "$TOKEN" ] && legacy_names_on; then TOKEN=$(live_token legs) || TOKEN=""; fi  # swallow-ok: as above
-JT=""
-BRIEF_YES_RC=0
-grep -qE '^> \*\*Completes ticket:\*\* yes([^A-Za-z0-9_-]|$)' "$WORKER_DOC" || BRIEF_YES_RC=$?
-[ "$BRIEF_YES_RC" -ne 0 ] || JT=" --jira-transition"  # anything else (no, no line, a read error) leaves the ticket open
 MSG=$(printf 'GO %s %s - merge with: bash %q%s --go %q' "$PR" "$SHA" "$ANCHOR/scripts/handover/merge-on-green.sh" "$JT" "$GO_FILE")
 [ -z "$TOKEN" ] || MSG="$MSG"$'\n'"Your token \`$TOKEN\`."
 # shellcheck source=scripts/lib/worker-identity.sh

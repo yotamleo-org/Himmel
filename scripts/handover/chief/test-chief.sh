@@ -3702,4 +3702,38 @@ check "95f the pointer bytes tip the note into the pointer pass" "$(grep -c 'ove
 check "95f the pointer is still listed" "$(grep -c 'DEMO-961-budget' "$h95")" "1"
 check "95f the over-budget note names the pointer bytes" "$(grep -cE '^> HANDOFF over budget: .*in-flight pointers [0-9]+ bytes' "$h95")" "1"
 
+# --- 96. no HANDOFF or chief doc names a script path that does not exist ----
+# The predecessor's hand-filled HANDOFF told the operator to run chief-kit/merge-fork-pr.sh;
+# the script is scripts/handover/merge-fork-pr.sh. No file in the repo names the wrong path
+# (it came from the chief's own prose), so 96a/96b build the fixture from the HANDOFF
+# template plus the line a predecessor wrote; 96c scans the real HANDOFF the writer renders
+# and the chief docs.
+missing_script_paths() {  # <file>... - each script path they name (scripts/..., or a dir/name.sh under scripts/ or scripts/handover/) that is not in this checkout
+    local f t
+    for f in "$@"; do
+        [ -r "$f" ] || { printf 'unreadable: %s\n' "$f"; continue; }  # a missing doc must fail the assertion, not pass it empty
+        # shellcheck disable=SC2016  # a literal ERE: the $ { } are characters to match, not expansions
+        grep -oE '[A-Za-z0-9_./${}<>-]+\.(sh|mjs)' "$f" 2>/dev/null | sort -u | while IFS= read -r t; do
+            t=${t#*>/}  # a <placeholder>/ prefix (<anchor>/scripts/...) is the checkout root
+            case "$t" in *[\$\{\<]*|/*|.*|*..*|*/X.sh) continue ;; esac  # a variable, a placeholder, an absolute or dotted path, the X.sh example
+            case "$t" in */*) ;; *) continue ;; esac
+            [ -e "$REPO_REAL/$t" ] || [ -e "$REPO_REAL/scripts/$t" ] || [ -e "$REPO_REAL/scripts/handover/$t" ] || printf '%s\n' "$t"
+        done
+    done
+}
+fix96="$tmp/fix96"; mkdir -p "$fix96"
+# shellcheck disable=SC2016  # the backticks are literal HANDOFF text
+{ cat "$REPO_REAL/docs/handover/chief-handoff-template.md"
+  printf '\n**Fork PR merge:** `bash <anchor>/scripts/handover/chief-kit/merge-fork-pr.sh acme-org/qmd 52 <head>`\n'; } > "$fix96/handoff-wrong.md"
+# shellcheck disable=SC2016  # the backticks are literal HANDOFF text
+{ cat "$REPO_REAL/docs/handover/chief-handoff-template.md"
+  printf '\n**Fork PR merge:** `bash <anchor>/scripts/handover/merge-fork-pr.sh acme-org/qmd 52 <head>`\n'; } > "$fix96/handoff-right.md"
+check "96a a HANDOFF that names chief-kit/merge-fork-pr.sh is caught" "$(missing_script_paths "$fix96/handoff-wrong.md")" "scripts/handover/chief-kit/merge-fork-pr.sh"
+check "96b the same HANDOFF naming scripts/handover/merge-fork-pr.sh is clean" "$(missing_script_paths "$fix96/handoff-right.md")" ""
+check "96b2 an unreadable document fails the scan instead of passing it empty" "$(missing_script_paths "$fix96/no-such.md")" "unreadable: $fix96/no-such.md"
+chief new --bucket p96 >/dev/null
+next95 p96
+check "96c the HANDOFF the writer renders names no missing script path" "$(missing_script_paths "$(handoff95 p96)")" ""
+check "96c the chief docs name no missing script path" "$(missing_script_paths "$REPO_REAL/docs/handover/chief-handoff-template.md" "$REPO_REAL/docs/handover/chief-template.md" "$REPO_REAL/docs/handover/running-a-chief.md" "$REPO_REAL/docs/handover/worker-preface.md" "$REPO_REAL/docs/handover/worker-brief-template.md" "$REPO_REAL"/docs/handover/chief-sections/*.md "$HERE/chief.sh")" ""
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

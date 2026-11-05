@@ -14,7 +14,7 @@ import {
   parseStreamJsonLines, findInitEvent, findResultEvent, firstTurnTokens,
   pluginSourceDiff, namespaceExtras, evaluateProfile, formatNote, roleCoverageProblems, countLoadedSkills,
   parseProbeArgs, resolveLedgerTarget, buildLedgerRow, rankToolBytes, pickMainRequest, untrimmedSettings, formatToolBytes, trimmedProfileNames,
-  findContextUsage, userScopeSkillDirs, isNameOnlySkill, listingProblems, expectedSkillNames, installedVersionsOf, listingReport, requiredBudget, runtimeNamesOf, listingTokensByPlugin,
+  upstreamErrorBody, findContextUsage, userScopeSkillDirs, isNameOnlySkill, listingProblems, expectedSkillNames, installedVersionsOf, listingReport, requiredBudget, runtimeNamesOf, listingTokensByPlugin,
 } from '../profile-context-probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -592,4 +592,16 @@ test('trimmedProfileNames skips null registry entries and keeps only profiles th
   const reg = { profiles: { operator: null, 'leg-impl': { denyTools: ['NotebookEdit'] }, user: {} } };
   assert.deepEqual(trimmedProfileNames(reg), ['leg-impl']);
   assert.deepEqual(trimmedProfileNames({}), []);
+});
+
+test('upstreamErrorBody answers a failed upstream call with fixed text, never the error string (HIMMEL-9245, Snyk XSS)', () => {
+  const body = upstreamErrorBody(new Error('<script>alert(1)</script> connect ECONNREFUSED'));
+  assert.equal(body, 'upstream request failed');
+  assert.equal(upstreamErrorBody('<img src=x onerror=alert(1)>'), 'upstream request failed');
+});
+
+test('the proxy error path answers with upstreamErrorBody and never the error string', () => {
+  const src = readFileSync(join(HERE, '..', 'profile-context-probe.mjs'), 'utf8');
+  assert.match(src, /res\.end\(upstreamErrorBody\(e\)\)/);
+  assert.doesNotMatch(src, /res\.end\(String\(e\)\)/);
 });

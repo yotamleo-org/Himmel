@@ -600,6 +600,19 @@ def tree_roster(repo, rev):
     return sorted(r["slug"] for r in panel if isinstance(r, dict) and r.get("tier") == ROSTER_TIER and r.get("slug"))
 
 
+def sweep_roster(outputs, fallback):
+    """The critics the sweep ran: the slugs of <outputs>/critics.run.json (run.sh writes the tree's critics.json
+    cut to --critics), else `fallback` for a sweep that predates the file. Only the responded block reads it: the
+    config hash keeps the tree's paid roster, so a codex-only sweep still grades at the gate's hash."""
+    try:
+        with open(os.path.join(outputs, "critics.run.json"), encoding="utf-8") as fh:
+            panel = json.load(fh).get("panel", [])
+    except (OSError, ValueError, AttributeError):
+        return fallback
+    slugs = sorted(r["slug"] for r in panel if isinstance(r, dict) and r.get("slug")) if isinstance(panel, list) else []
+    return slugs or fallback
+
+
 def confighash(repo, rev):
     """eval_runs.config_hash of <rev>'s fixture set and key, its paid roster, the default window and the
     classes; no model (A34). The same function grades export-row and gate."""
@@ -680,7 +693,7 @@ def gate_row(repo, rev, outputs):
     with tempfile.NamedTemporaryFile(suffix=".json") as kf:
         kf.write(tree_key(repo, rev))
         kf.flush()
-        res = score(outputs, None, kf.name, tree_roster(repo, rev))
+        res = score(outputs, None, kf.name, sweep_roster(outputs, tree_roster(repo, rev)))
     m = res["metrics"]
     keep = ("cases", "defects", "unscored", "leaked")
     return {"run_id": os.path.basename(os.path.abspath(outputs)), "tree": _git(repo, "rev-parse", rev).decode().strip(),

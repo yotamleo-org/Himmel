@@ -1,0 +1,23 @@
+# model-prices.tsv - list price in USD per million tokens, per model.
+# Columns (TAB): model-id prefix, input, output, cache read, cache write 5m, cache write 1h.
+# First prefix match wins; a model with no row is UNPRICED (it never falls back to another model's rate).
+# Reader: scripts/lanes/model-price.mjs (a price function, a one-call CLI and a transcripts mode)
+#
+# Sources, each read 2026-11-05:
+# gpt-6.1-sol: OpenAI pricing page https://developers.openai.com/api/docs/pricing ("Standard", short context,
+#   prompts up to 272K tokens) and model page https://developers.openai.com/api/docs/models/gpt-6.1-sol:
+#   input $2.00, cached input $0.10, output $10.00, cache write $2.50 (page column "30m write", stored
+#   under 5m) and $5.00 (page column "12h write", stored under 1h). Above 272K input the page prices
+#   2x input and cache, 1.5x output; this table keeps the short-context rate (ponytail: flat short-context rate,
+#   the codex lane draws the ChatGPT subscription which has no long-context surcharge; upgrade path = a
+#   per-call tier when a lane bills the API).
+# claude-*: Anthropic pricing page https://platform.claude.com/docs/en/about-claude/pricing, with the cache
+#   multipliers of docs/internals/prompt-cache.md (5m write 1.25x, 1h write 2x, read 0.05x on Opus 5.5 and
+#   Sonnet 5.5, 0.025x on Fable 5.1, 0.1x on Haiku 5.5). Opus 5.5 equals the $4/$20/$0.20/$5/$8 the
+#   HIMMEL-9260 cost plan used. Haiku 5.5 is tiered by prompt size ($0.10/$0.50 up to 100K); this table keeps
+#   the over-100K row (ponytail: flat over-100K rate, upgrade path = a per-call tier).
+claude-opus-5-5	4	20	0.20	5	8
+claude-sonnet-5-5	2	10	0.10	2.50	4
+claude-fable-5-1	10	50	0.25	12.50	20
+claude-haiku-5-5	0.50	2.50	0.05	0.625	1
+gpt-6.1-sol	2	10	0.10	2.50	5
