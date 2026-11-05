@@ -22,7 +22,6 @@ check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"
 contains() { grepq "$2" -F -e "$3" && echo "ok - $1" || { echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)); }; }
 notcontains() { grepq "$2" -F -e "$3" && { echo "FAIL - $1: output contains [$3]"; fails=$((fails+1)); } || echo "ok - $1"; }
 
-SHA=0123456789abcdef0123456789abcdef01234567
 PR=77
 NWO=acme/repo
 
@@ -35,6 +34,12 @@ git -C "$REPO" config user.email t@example.com
 git -C "$REPO" config user.name tester
 git -C "$REPO" commit -q --allow-empty -m "chore: init"
 LEDGER="$REPO/.git/cr-critic-scores.jsonl"
+# check 17 fetches origin/main and reads the range from it to a real head commit
+git init -q --bare "$tmp/repo-origin.git"
+git -C "$REPO" remote add origin "$tmp/repo-origin.git"
+git -C "$REPO" push -q origin HEAD:refs/heads/main
+git -C "$REPO" commit -q --allow-empty -m "feat(x): [HIMMEL-1] the PR head"
+SHA=$(git -C "$REPO" rev-parse HEAD)
 
 # ── gh PATH stub ─────────────────────────────────────────────────────────
 mkdir -p "$tmp/bin"
@@ -68,6 +73,18 @@ case "$args" in
     *"contents/scripts/ci/ci-trust-paths.txt"*)
         [ -z "${STUB_TRUST_LIST_FAIL:-}" ] || { echo "boom" >&2; exit 1; }
         cat "$STUB_TRUST_LIST_FILE" ;;
+    "api repos/"*"/actions/runs/"*)
+        # check 17: the run's head_sha (STUB_RUN_HEAD_SHA, default the PR head), through the script's own --jq
+        [ -z "${STUB_RUN_SLEEP:-}" ] || sleep "$STUB_RUN_SLEEP"
+        id="${args#*/actions/runs/}"; id="${id%% *}"
+        jq -n --argjson id "$id" --arg h "${STUB_RUN_HEAD_SHA:-$STUB_HEAD}" '{id:$id,head_sha:$h,status:"completed",conclusion:"success"}' | jq -r "${args#*--jq }" ;;
+    "run download "*)
+        # check 17: copy STUB_MANIFEST_DIR's artifact dirs into -D <dir>; none = gh's no-artifact reply
+        [ -z "${STUB_DL_SLEEP:-}" ] || sleep "$STUB_DL_SLEEP"
+        [ -z "${STUB_DL_FAIL:-}" ] || { echo "HTTP 500" >&2; exit 1; }
+        d="${args#* -D }"; d="${d%% *}"
+        [ -d "${STUB_MANIFEST_DIR:-/nonexistent}" ] || { echo "no valid artifacts found to download" >&2; exit 1; }
+        cp -R "$STUB_MANIFEST_DIR"/. "$d"/ ;;
     "api repos/"*"/pulls/"*"/files --paginate"*)
         printf '%s\n' "${STUB_FILES:-README.md}" | while IFS= read -r f; do printf '%s\t\n' "$f"; done ;;
     "api repos/"*"/pulls/"*"changed_files"*)
@@ -186,6 +203,15 @@ git init -q --bare "$tmp/tp-origin.git"
 git init -q "$TP_ANCHOR"
 mkdir -p "$TP_ANCHOR/scripts/lib"
 cp "$HERE/../../lib/go-gate.sh" "$TP_ANCHOR/scripts/lib/go-gate.sh"
+# check 17 runs the anchor's impacted-suites.sh: here a stub printing STUB_IMPACTED
+# (default none); the check-17 rows bring an anchor with the real one
+mkdir -p "$TP_ANCHOR/scripts/cr"
+# shellcheck disable=SC2016  # the stub's own $vars stay literal
+printf '%s\n' '#!/usr/bin/env bash' \
+    '[ -z "${STUB_IMPACTED_REAL:-}" ] || exec bash "$STUB_IMPACTED_REAL" "$@"' \
+    '[ -z "${STUB_IMPACTED_SLEEP:-}" ] || sleep "$STUB_IMPACTED_SLEEP"' \
+    'printf "%b" "${STUB_IMPACTED:-}"' \
+    'exit "${STUB_IMPACTED_RC:-0}"' > "$TP_ANCHOR/scripts/cr/impacted-suites.sh"
 git -C "$TP_ANCHOR" add -A
 git -C "$TP_ANCHOR" -c user.name=t -c user.email=t@t commit -q -m init
 git -C "$TP_ANCHOR" remote add origin "$tmp/tp-origin.git"
@@ -239,6 +265,10 @@ run() {
         STUB_SNAPSHOT_FAIL="${STUB_SNAPSHOT_FAIL:-}" \
         STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_TRUST_LIST_FAIL="${STUB_TRUST_LIST_FAIL:-}" \
         STUB_DEFAULT_BRANCH_FAIL="${STUB_DEFAULT_BRANCH_FAIL:-}" \
+        STUB_MANIFEST_DIR="${STUB_MANIFEST_DIR:-}" STUB_DL_FAIL="${STUB_DL_FAIL:-}" STUB_DL_SLEEP="${STUB_DL_SLEEP:-}" \
+        STUB_RUN_SLEEP="${STUB_RUN_SLEEP:-}" STUB_RUN_HEAD_SHA="${STUB_RUN_HEAD_SHA:-}" \
+        READY_CHECK_ITEM17_BOUND="${READY_CHECK_ITEM17_BOUND:-}" \
+        READY_CHECK_FAIL_LEDGER="${READY_CHECK_FAIL_LEDGER:-$tmp/ci-failures.jsonl}" \
         READY_CHECK_ANCHOR="${READY_CHECK_ANCHOR:-$TP_ANCHOR}" \
         bash "$SCRIPT" "$PR" "$SHA")
 }
@@ -1769,9 +1799,11 @@ out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
     STUB_COMMITS="$STUB_COMMITS" STUB_FILES="$GREEN_FILES" \
     STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
     STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" \
-    PATH="$PATH" GH_LOG="$GH_LOG" \
+    PATH="$PATH" GH_LOG="$GH_LOG" READY_CHECK_ANCHOR="$TP_ANCHOR" \
     bash "$own/scripts/handover/chief-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
-check "own-checkout .env: exit 0" "$rc" "0"
+# the copy has no scripts/lib/timeout-bin.sh, so check 17 fails closed and is the only FAIL
+check "own-checkout .env: only check 17 fails" "$(printf '%s\n' "$out" | grep '^\[FAIL\]' | grep -vc '^\[FAIL\] 17\. suite evidence: no timeout binary')" "0"
+contains "own-checkout .env: check 17 fails closed without a timeout lib" "$out" "[FAIL] 17. suite evidence: no timeout binary"
 contains "own-checkout .env: check 6 (ticket ID) passes" "$out" "[PASS] 6."
 
 # --- 9. a PR that changes a plugin bumps that plugin's version above the
@@ -2312,7 +2344,7 @@ HP_HEAD_DIGIT=$(anc_commit "$HP_HEAD" "$B_WF2" "$B_PDIGIT" "$B_MAIN2")
 HP_ORPHAN=$(anc_commit - "$B_WF" "$B_P0" "$B_MAIN2")
 ANC_ORIGIN="$tmp/anc-origin.git"
 git init -q --bare "$ANC_ORIGIN"
-git -C "$REPO" remote add origin "$ANC_ORIGIN"
+git -C "$REPO" remote set-url origin "$ANC_ORIGIN"
 anc_main() { git -C "$REPO" push -q -f origin "$1:refs/heads/main"; }  # <commit> -> origin/main
 anc_row 40073661474 "$HP_PR1" "$ANC_BRANCH" > "$RUNDIR/macos-cadence.yml.pr-branch.json"
 anc_main "$HP_M1"
@@ -2346,6 +2378,7 @@ git -C "$REPO" remote remove origin
 anc_run "$HP_HEAD"
 check "origin/main cannot be fetched: exit 1" "$rc" "1"
 notcontains "origin/main cannot be fetched: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+git -C "$REPO" remote add origin "$tmp/repo-origin.git"  # the default origin, for check 17 in the rows below
 rm -f "$RUNDIR"/*.json
 
 real_run in_progress "" "$SHA" > "$RUNDIR/ci.yml.json"
@@ -3260,7 +3293,8 @@ for bo_m in run run7; do
     STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_BUG" bo_row "bug-origin present" "$bo_m" "$BO_PRESENT"
     STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_BUG" STUB_JIRA_DOWN=1 bo_row "bug-origin jira down" "$bo_m" "$BO_NOTCHECKED"
     STUB_BODY="$BO_GOOD" bo_row "bug-origin empty type" "$bo_m" "$BO_NOTCHECKED"
-    STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_BUG" PATH="$tmp/no-timeout:$PATH" bo_row "bug-origin no timeout binary" "$bo_m" "$BO_NOTCHECKED"
+    # a full run with no timeout binary also fails check 17 closed (its own row), so only --only 7 pins this one
+    [ "$bo_m" = run ] || STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_BUG" PATH="$tmp/no-timeout:$PATH" bo_row "bug-origin no timeout binary" "$bo_m" "$BO_NOTCHECKED"
     # an empty body also fails check 7 on its own, so this row pins the line, not the control's marker
     contains "bug-origin empty body warns none ($bo_m)" "$(STUB_BODY='' STUB_RED='' STUB_PR_TITLE="$BO_BUG" "$bo_m" || true)" '[WARN] 14. bug-origin: none'
     STUB_BODY="$BO_NONE" STUB_PR_TITLE="$BO_TASK" bo_row "bug-origin non-Bug passes" "$bo_m" "$BO_NOTBUG"
@@ -3306,9 +3340,9 @@ rc=0; out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
     STUB_COMMITS="$GREEN_COMMITS" STUB_FILES="$GREEN_FILES" \
     STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
     STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_PR_TITLE="$BO_BUG" \
-    PATH="$PATH" GH_LOG="$GH_LOG" \
+    PATH="$PATH" GH_LOG="$GH_LOG" READY_CHECK_ANCHOR="$TP_ANCHOR" \
     bash "$own/scripts/handover/chief-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
-check "bug-origin partial copy: exit 0" "$rc" "0"
+check "bug-origin partial copy: only check 17 fails (no timeout lib)" "$(printf '%s\n' "$out" | grep '^\[FAIL\]' | grep -vc '^\[FAIL\] 17\. suite evidence: no timeout binary')" "0"
 contains "bug-origin partial copy: not checked" "$out" "$BO_NOTCHECKED"
 
 # A lib present and defining nothing is not checked, never the no-key PASS.
@@ -3320,7 +3354,7 @@ rc=0; out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
     STUB_COMMITS="$GREEN_COMMITS" STUB_FILES="$GREEN_FILES" \
     STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
     STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_PR_TITLE="$BO_BUG" \
-    PATH="$PATH" GH_LOG="$GH_LOG" \
+    PATH="$PATH" GH_LOG="$GH_LOG" READY_CHECK_ANCHOR="$TP_ANCHOR" \
     bash "$own/scripts/handover/chief-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
 check "bug-origin broken lib: exit 0" "$rc" "0"
 contains "bug-origin broken lib: not checked" "$out" "$BO_NOTCHECKED"
@@ -3366,6 +3400,221 @@ cr_stub_rc=0; STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_CR_DESC='Review rate limited
 check "cr stub: a read of another head is refused" "$cr_stub_rc" "1"
 cr_stub_rc=0; STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_CR_DESC='Review rate limited' GH_LOG="$GH_LOG" "$tmp/bin/gh" api "repos/other/repo/commits/$SHA/statuses?per_page=100" >/dev/null 2>&1 || cr_stub_rc=$?
 check "cr stub: a read of another repository is refused" "$cr_stub_rc" "1"
+
+# --- 17. suite evidence. A repo whose PR head changes scripts/lib/s17-lib.sh, which
+# two shell suites run, and (H_JS) scripts/lib/s17-dep.mjs, which one JS suite names.
+# The anchor stub hands the range to the real impacted-suites.sh.
+S17_REAL="$HERE/../../cr/impacted-suites.sh"
+S17R="$tmp/s17-repo"
+S17_A=scripts/test-s17-a.sh
+S17_B=scripts/test-s17-b.sh
+S17_JS=scripts/lib/s17.test.mjs
+git init -q --bare "$tmp/s17-origin.git"
+git init -q "$S17R"
+git -C "$S17R" config user.email t@example.com
+git -C "$S17R" config user.name tester
+mkdir -p "$S17R/scripts/lib"
+printf 'v1\n' > "$S17R/scripts/lib/s17-lib.sh"
+printf 'v1\n' > "$S17R/scripts/lib/s17-dep.mjs"
+printf '#!/usr/bin/env bash\n. scripts/lib/s17-lib.sh\n' > "$S17R/$S17_A"
+printf '#!/usr/bin/env bash\n. scripts/lib/s17-lib.sh\n' > "$S17R/$S17_B"
+printf "import './s17-dep.mjs';\n" > "$S17R/$S17_JS"
+git -C "$S17R" add -A
+git -C "$S17R" commit -q -m "chore: base"
+git -C "$S17R" remote add origin "$tmp/s17-origin.git"
+git -C "$S17R" push -q origin HEAD:refs/heads/main
+S17_BASE=$(git -C "$S17R" rev-parse HEAD)
+printf 'v2\n' > "$S17R/scripts/lib/s17-lib.sh"
+git -C "$S17R" commit -q -am "feat(x): [HIMMEL-1] change the lib"
+S17_H1=$(git -C "$S17R" rev-parse HEAD)
+git -C "$S17R" checkout -q "$S17_BASE"
+printf 'v2\n' > "$S17R/scripts/lib/s17-dep.mjs"
+git -C "$S17R" commit -q -am "build(deps): bump the dep"
+S17_HJS=$(git -C "$S17R" rev-parse HEAD)
+git -C "$S17R" checkout -q --orphan s17-orphan
+git -C "$S17R" commit -q -m "chore: unrelated history"
+S17_ORPHAN=$(git -C "$S17R" rev-parse HEAD)
+git -C "$S17R" checkout -q "$S17_H1"
+s17_agg() {  # <status> <conclusion|null> <startedAt> <run id> [name]: one check-run of the aggregator
+    local c="$2"
+    [ "$c" = null ] || c="\"$c\""
+    printf '{"name":"%s","workflowName":"CI","status":"%s","conclusion":%s,"startedAt":"%s","completedAt":"%s","detailsUrl":"https://github.com/acme/repo/actions/runs/%s/job/9%s"}' \
+        "${5:-shell-unit (ubuntu-latest)}" "$1" "$c" "$3" "$3" "$4" "$4"
+}
+S17_GREEN="[{\"name\":\"build\",\"status\":\"COMPLETED\",\"conclusion\":\"SUCCESS\"},$(s17_agg COMPLETED SUCCESS 2026-11-05T01:00:00Z 555)]"
+s17_man() {  # <dir> <line>...: one shard's manifest, as the CI artifact lays it out
+    local d="$1/shell-unit-manifest-ubuntu-latest-shard1"
+    shift
+    mkdir -p "$d"
+    { printf 'head 1111111111111111111111111111111111111111\nmode impacted\nshard 1/1\n'; printf '%s\n' "$@"; } > "$d/manifest-shard1.txt"
+}
+S17_MAN_AB="$tmp/s17-man-ab"; s17_man "$S17_MAN_AB" "ran 0 $S17_A" "ran 0 $S17_B"
+S17_MAN_ASKIPB="$tmp/s17-man-askipb"; s17_man "$S17_MAN_ASKIPB" "ran 0 $S17_A" "skip $S17_B"
+S17_MAN_A="$tmp/s17-man-a"; s17_man "$S17_MAN_A" "ran 0 $S17_A"
+S17_MAN_NEAR="$tmp/s17-man-near"; s17_man "$S17_MAN_NEAR" "ran 0 $S17_A" "ran 00 $S17_B" "ran 10 $S17_B" "ran 0 $S17_B.bak"
+# s17_at <sha>: run in the check-17 repo. S17_LP / S17_RS (JSON arrays), when set,
+# write the head's impacted row; S17_ROLLUP replaces the green rollup.
+s17_at() {
+    local keep_sha="$SHA" keep_repo="$REPO" keep_ledger="$LEDGER"
+    SHA="$1"; REPO="$S17R"; LEDGER="$S17R/.git/cr-critic-scores.jsonl"
+    seed_ledger_ok
+    if [ -n "${S17_LP:-}${S17_RS:-}" ]; then
+        printf '{"kind":"impacted","ts":"2026-11-05T00:00:00Z","source":"pr-check","branch":"%s","head":"%s","pr":77,"status":"ok","impacted_n":2,"unverdicted_n":0,"skip_n":0,"rc":0,"local_pass":%s,"ruled_skip":%s}\n' \
+            "${STUB_PR_BRANCH:-feat/himmel-100-thing}" "$SHA" "${S17_LP:-[]}" "${S17_RS:-[]}" >> "$LEDGER"
+    fi
+    : > "$GH_LOG"
+    rc=0; out="$(STUB_IMPACTED_REAL="$S17_REAL" STUB_ROLLUP="${S17_ROLLUP-$S17_GREEN}" run)" || rc=$?
+    SHA="$keep_sha"; REPO="$keep_repo"; LEDGER="$keep_ledger"
+}
+line17() { printf '%s\n' "$1" | grep -F '] 17. ' || true; }
+s17_clear() { unset S17_LP S17_RS S17_ROLLUP STUB_MANIFEST_DIR STUB_DL_FAIL STUB_DL_SLEEP STUB_RUN_SLEEP STUB_RUN_HEAD_SHA READY_CHECK_ITEM17_BOUND; reset_stubs; }
+
+# T6 / T21: every suite has a ran-0 row in the head's run; the PR touches no plugin file
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
+s17_at "$S17_H1"
+check "17 T6 every suite ran 0 in CI: exit 0" "$rc" "0"
+contains "17 T6: PASS with the CI count and run" "$out" "[PASS] 17. suite evidence: 2 impacted, 2 from CI run 555, 0 local"
+contains "17 T21: check 9 has no plugin files" "$out" "[PASS] 9. no plugin files touched"
+contains "17 T6: the manifests of the head's run are downloaded" "$(cat "$GH_LOG")" "run download 555"
+notcontains "17 T6: never lists runs" "$(cat "$GH_LOG")" "run list"
+
+# T7 / T8: a suite CI skipped needs a local PASS
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_ASKIPB"
+s17_at "$S17_H1"
+check "17 T7 CI skipped a suite: exit 1" "$rc" "1"
+contains "17 T7: names the skipped suite" "$out" "[FAIL] 17. suite evidence: 1 suite(s) proven nowhere: $S17_B (CI skipped it)"
+contains "17 T7: no row prints the chief's remediation" "$out" "the chief runs pr-check step 3.6"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_ASKIPB"; S17_LP="[\"$S17_B\"]"
+s17_at "$S17_H1"
+check "17 T8 that suite passed locally: exit 0" "$rc" "0"
+contains "17 T8: one from CI, one local" "$out" "[PASS] 17. suite evidence: 2 impacted, 1 from CI run 555, 1 local"
+
+# T9: a suite CI cannot run (no manifest row) needs a local PASS
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"
+s17_at "$S17_H1"
+contains "17 T9 a suite CI never ran, no row: FAIL" "$(line17 "$out")" "$S17_B (no ran-0 row in run 555)"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; S17_LP="[\"$S17_B\"]"
+s17_at "$S17_H1"
+check "17 T9 with the row listing it: exit 0" "$rc" "0"
+
+# T10 / T10b: a Local suites line needs a local PASS even when CI proved the suite
+for s17_body in "Local suites: $S17_A\n" "Local suites: $S17_A \r\n"; do
+    s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_BODY="${GREEN_BODY}${s17_body}"
+    s17_at "$S17_H1"
+    contains "17 T10 Local suites line [$s17_body], no local PASS: FAIL" "$(line17 "$out")" "$S17_A (Local suites line, no local PASS)"
+    s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_BODY="${GREEN_BODY}${s17_body}"; S17_LP="[\"$S17_A\"]"
+    s17_at "$S17_H1"
+    check "17 T10 Local suites line [$s17_body] with the local PASS: exit 0" "$rc" "0"
+done
+
+# T15: local proof for every suite: CI is never read
+s17_clear; STUB_DL_FAIL=1; S17_LP="[\"$S17_A\",\"$S17_B\"]"
+s17_at "$S17_H1"
+check "17 T15 every suite local: exit 0" "$rc" "0"
+contains "17 T15: all local" "$out" "[PASS] 17. suite evidence: 2 impacted, 0 from CI run -, 2 local"
+notcontains "17 T15: the manifests are never downloaded" "$(cat "$GH_LOG")" "run download"
+
+# T19: a Dependabot PR with a JS/TS suite and no row: FAIL, with the chief's remediation
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_AUTHOR=app/dependabot; STUB_PR_BRANCH=dependabot/npm_and_yarn/dep-2
+s17_at "$S17_HJS"
+contains "17 T19 Dependabot JS/TS suite, no row: FAIL" "$(line17 "$out")" "$S17_JS (no ran-0 row in run 555)"
+contains "17 T19: names the chief's remediation" "$out" "no impacted row at ${S17_HJS:0:7} on dependabot/npm_and_yarn/dep-2: the chief runs pr-check step 3.6"
+
+# T20: a ruled SKIP counts and is named; the same suite as a bare SKIP fails
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; S17_RS="[\"$S17_B\"]"
+s17_at "$S17_H1"
+check "17 T20 ruled SKIP: exit 0" "$rc" "0"
+contains "17 T20: the ruled SKIP is named" "$out" "1 from CI run 555, 1 local; ruled SKIP: $S17_B"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; S17_LP="[\"$S17_A\"]"; S17_RS="[]"
+s17_at "$S17_H1"
+contains "17 T20 a bare SKIP (in neither list): FAIL" "$(line17 "$out")" "$S17_B (no ran-0 row in run 555)"
+
+# T22: only an exact `ran 0 <path>` proves a suite
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_NEAR"
+s17_at "$S17_H1"
+contains "17 T22 ran 00, ran 10, a .bak path: not proof" "$(line17 "$out")" "1 suite(s) proven nowhere: $S17_B (no ran-0 row in run 555)"
+
+# T11-T14b, T16: CI evidence only from the latest SUCCESS aggregator whose run is at the head
+S17_OLDOK=$(s17_agg COMPLETED SUCCESS 2026-11-05T01:00:00Z 554)
+for s17_case in "T11 cancelled after a SUCCESS|$(s17_agg COMPLETED CANCELLED 2026-11-05T02:00:00Z 555)" \
+                "T12 in progress after a SUCCESS|$(s17_agg IN_PROGRESS null 2026-11-05T02:00:00Z 555)"; do
+    s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
+    S17_ROLLUP="[$S17_OLDOK,${s17_case#*|}]"
+    s17_at "$S17_H1"
+    contains "17 ${s17_case%%|*}: no settled CI run" "$(line17 "$out")" "[FAIL] 17. suite evidence: 2 suite(s) proven nowhere: $S17_A (no settled CI run"
+done
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
+# shellcheck disable=SC2016  # the unevaluated matrix name is literal on purpose
+S17_ROLLUP="[$(s17_agg COMPLETED SUCCESS 2026-11-05T01:00:00Z 555 'shell-unit (${{ matrix.os }})')]"
+s17_at "$S17_H1"
+contains "17 T13 only the unevaluated matrix name: no settled CI run" "$(line17 "$out")" "(no settled CI run (latest shell-unit (ubuntu-latest): none))"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_RUN_HEAD_SHA="$S17_BASE"
+s17_at "$S17_H1"
+contains "17 T14 the run's head_sha is not SHA: FAIL" "$(line17 "$out")" "(no settled CI run (run 555 is not at ${S17_H1:0:7}))"
+notcontains "17 T14: its manifests are never read" "$(cat "$GH_LOG")" "run download"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_RUN_HEAD_SHA="$S17_BASE"; S17_ROLLUP="[$S17_OLDOK]"
+s17_at "$S17_H1"
+contains "17 T14b the only SUCCESS run belongs to an older SHA: FAIL" "$(line17 "$out")" "(no settled CI run (run 554 is not at ${S17_H1:0:7}))"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
+S17_ROLLUP="[$(s17_agg COMPLETED SUCCESS 2026-11-05T01:00:00Z 555),$(s17_agg COMPLETED SUCCESS 2026-11-05T03:00:00Z 600 'label-gate')]"
+s17_at "$S17_H1"
+check "17 T16 a later label run with no aggregator: exit 0" "$rc" "0"
+contains "17 T16: the go run stands" "$out" "2 from CI run 555"
+
+# T17 / T17b / T18: every read is bounded; no timeout binary FAILs
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_DL_SLEEP=10; READY_CHECK_ITEM17_BOUND=2
+s17_t0=$SECONDS; s17_at "$S17_H1"; s17_dt=$((SECONDS - s17_t0))
+contains "17 T17 a stalled download: names the read" "$(line17 "$out")" "[FAIL] 17. suite evidence: gh run download 555 timed out after 2s"
+check "17 T17: bounded (${s17_dt}s)" "$((s17_dt < 9))" "1"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_RUN_SLEEP=10; READY_CHECK_ITEM17_BOUND=2
+s17_at "$S17_H1"
+contains "17 T17b a stalled run read: names the read" "$(line17 "$out")" "[FAIL] 17. suite evidence: gh api actions/runs/555 timed out after 2s"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; READY_CHECK_ITEM17_BOUND=99
+s17_at "$S17_H1"
+check "17 a higher bound override is ignored: exit 0" "$rc" "0"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
+PATH="$tmp/no-timeout:$PATH" s17_at "$S17_H1"
+contains "17 T18 no timeout binary: FAIL" "$(line17 "$out")" "[FAIL] 17. suite evidence: no timeout binary"
+
+# T23: an unresolvable range FAILs, never an empty list
+s17_clear
+s17_at fedcba9876543210fedcba9876543210fedcba98
+contains "17 T23 an unfetchable head: FAIL" "$(line17 "$out")" "[FAIL] 17. suite evidence: cannot resolve the range: cannot fetch PR head"
+s17_clear
+s17_at "$S17_ORPHAN"
+contains "17 T23 no merge-base: FAIL" "$(line17 "$out")" "[FAIL] 17. suite evidence: cannot read the impacted list"
+notcontains "17 T23: never a PASS" "$out" "[PASS] 17."
+s17_clear
+
+# T24-T25: the CI failure ledger (spec 7a). A suite left to CI that fails there at the
+# head is one row; a later head of the same PR records the extra round, once.
+S17_FL="$tmp/s17-ci-failures.jsonl"; rm -f "$S17_FL"
+s17_fl() { jq -c "select($1)" "$S17_FL" 2>/dev/null | wc -l | tr -d ' '; }
+S17_MAN_BRED="$tmp/s17-man-bred"; s17_man "$S17_MAN_BRED" "ran 0 $S17_A" "ran 1 $S17_B"
+S17_RED="[$(s17_agg COMPLETED FAILURE 2026-11-05T02:00:00Z 556)]"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_BRED"; S17_ROLLUP="$S17_RED"
+READY_CHECK_FAIL_LEDGER="$S17_FL" s17_at "$S17_H1"
+contains "17 T24 a red CI run: still no settled CI run" "$(line17 "$out")" "(no settled CI run (latest shell-unit (ubuntu-latest): COMPLETED/FAILURE 556))"
+check "17 T24: one fail row, for the suite CI failed" "$(s17_fl ".kind == \"fail\" and .repo == \"$NWO\" and .pr == 77 and .head == \"$S17_H1\" and .suite == \"$S17_B\" and .run == 556 and .rc == 1")" "1"
+check "17 T24: the suite that ran 0 has no row" "$(s17_fl ".suite == \"$S17_A\"")" "0"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_BRED"; S17_ROLLUP="$S17_RED"
+READY_CHECK_FAIL_LEDGER="$S17_FL" s17_at "$S17_H1"
+check "17 T24b the same run read twice: still one row" "$(s17_fl '.kind == "fail"')" "1"
+check "17 T24b: no round at the same head" "$(s17_fl '.kind == "round"')" "0"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_BRED"; S17_ROLLUP="$S17_RED"; S17_LP="[\"$S17_B\"]"
+READY_CHECK_FAIL_LEDGER="$tmp/s17-fl-local.jsonl" s17_at "$S17_H1"
+check "17 T24c a suite with a local PASS is not left to CI: no row" "$(cat "$tmp/s17-fl-local.jsonl" 2>/dev/null | wc -l | tr -d ' ')" "0"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
+READY_CHECK_FAIL_LEDGER="$S17_FL" s17_at "$S17_HJS"
+check "17 T25 a later head of the PR: one round row" "$(s17_fl ".kind == \"round\" and .repo == \"$NWO\" and .pr == 77 and .head == \"$S17_H1\" and .next == \"$S17_HJS\"")" "1"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
+READY_CHECK_FAIL_LEDGER="$S17_FL" s17_at "$S17_HJS"
+check "17 T25b read again: still one round row" "$(s17_fl '.kind == "round"')" "1"
+printf '{"kind":"fail","repo":"other/x","pr":77,"head":"%s","suite":"a","run":1,"rc":1}\n' "$S17_BASE" > "$tmp/s17-fl-other.jsonl"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
+READY_CHECK_FAIL_LEDGER="$tmp/s17-fl-other.jsonl" s17_at "$S17_H1"
+check "17 T25c a fail row of another repo's PR 77: no round" "$(jq -c 'select(.kind == "round")' "$tmp/s17-fl-other.jsonl" | wc -l | tr -d ' ')" "0"
+s17_clear
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

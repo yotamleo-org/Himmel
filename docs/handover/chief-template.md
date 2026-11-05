@@ -171,7 +171,7 @@ rule; batch rulings per decision point.
 ## Merges — READY → GO → merge
 
 A worker reports `READY <pr> <head> GREEN`. Verify with
-`chief-kit/ready-check.sh <pr> <full-40-hex-head-sha>` (`timeout 90 bash`; all check-runs success
+`chief-kit/ready-check.sh <pr> <full-40-hex-head-sha>` (`timeout 180 bash`; all check-runs success
 at that head, zero unresolved threads, trailers in the first commit; the diff stays
 your judgement), then `chief-kit/go.sh <pr> <head>`: that write IS the GO
 (`gh pr merge` is gated on the file; `GO` over SendMessage only notifies). `go.sh`
@@ -188,6 +188,17 @@ matches a pattern in `scripts/ci/ci-trust-paths.txt`** needs adversarial review 
 `go.sh --trust-reviewed <qid> <pr> <head>` (an ordinary GO exits 21); a pre-release
 tag is `cut-tag.sh <version> <sha>` (`--dry-run` first). These and the
 merged-docs list: `chief-sections/merges.md`.
+
+**17. suite evidence.** Every impacted suite of `origin/main..<head>` (the anchor's
+`impacted-suites.sh`) needs proof at the exact head: a `local_pass` or ruled SKIP
+in the head's `impacted` ledger row, or an exact `ran 0 <path>` line in a shard
+manifest of the CI run behind the latest `SUCCESS` `shell-unit (ubuntu-latest)`
+check-run, whose run is at the head. A PR-body `Local suites: <path>` line needs
+the local PASS even when CI proved the suite. The PASS line names every ruled SKIP
+(`SUITE <p> = SKIP ruled <chief-session> <reason>`): read each one before GO. With
+no row, run pr-check step 3.6 for that head yourself. A red CI run at the head adds
+one row per failed suite left to CI to `~/.himmel/state/suite-evidence/ci-failures.jsonl`;
+`scripts/cr/suite-fail-ledger.sh` prints the failure count and extra-round rate.
 
 ## Wrapping a worker
 
