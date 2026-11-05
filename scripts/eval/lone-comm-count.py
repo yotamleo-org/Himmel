@@ -28,6 +28,7 @@ import collections
 import json
 import os
 import re
+import shlex
 import sys
 import time
 
@@ -41,8 +42,6 @@ GO_RE = re.compile(r'\bGO\s+(?:PR\s*)?#?\d{3,5}\b|\bGO file\b|\.go\b')
 NOGO_RE = re.compile(r'\bNO-GO\b')
 TOKEN_RE = re.compile(r'\b[A-Z]{1,3}-N\d+[a-z]?-[0-9a-f]{8}\b')
 NUDGE_RE = re.compile(r'\b(nudge|still alive|are you|status\?|heartbeat|no bullet|no LIVE|please report)\b', re.I)
-BUS_CLI_RE = re.compile(r'himmel-bus/bin/bus\s+send\b|(?<![\w-])bus send\b')
-BULLET_RE = re.compile(r'append-results\.sh\s+\S+\s+(.*)', re.S)
 
 SAFETY = {'GO', 'NO-GO', 'token-quoting', 'SUCCESSION', 'RETASK', 'REDIRECT', 'EXPANSION', 'HALT'}
 
@@ -68,6 +67,33 @@ def marker(body):
     return 'prose'
 
 
+def classify(body):
+    """The marker class, except that a safety signal anywhere in the text wins over a leading marker."""
+    head = (body or '')[:400]
+    if SUCC_RE.search(head):
+        return 'SUCCESSION'
+    if NOGO_RE.search(head[:160]):
+        return 'NO-GO'
+    if GO_RE.search(head[:160]):
+        return 'GO'
+    if TOKEN_RE.search((body or '')[:2000]):
+        return 'token-quoting'
+    return marker(body)
+
+
+def simple_command(cmd):
+    """The argv of a Bash command that is one plain command, or None (chained, piped, or not parseable)."""
+    try:
+        toks = shlex.split(cmd)
+    except ValueError:
+        return None
+    if toks and toks[0] == 'bash':
+        toks = toks[1:]
+    if not toks or any(t in ('&&', '||', ';', '|', '&') for t in toks):
+        return None
+    return toks
+
+
 def comm(name, inp):
     """(kind, text) when this tool use is a comm act, else None."""
     i = inp if isinstance(inp, dict) else {}
@@ -79,12 +105,13 @@ def comm(name, inp):
     if name == 'mcp__himmel-bus__send':
         return 'bus', str(i.get('b') or '')
     if name == 'Bash':
-        cmd = i.get('command') or ''
-        m = BULLET_RE.search(cmd)
-        if m:
-            return 'bullet', m.group(1).lstrip('$\'" ')
-        if BUS_CLI_RE.search(cmd):
-            return 'bus', cmd
+        toks = simple_command(i.get('command') or '')
+        if not toks:
+            return None
+        if toks[0].endswith('append-results.sh') and len(toks) >= 3:
+            return 'bullet', ' '.join(toks[2:]).lstrip('$')
+        if os.path.basename(toks[0]) == 'bus' and toks[1:2] == ['send']:
+            return 'bus', ' '.join(toks[2:])
     return None
 
 
@@ -120,7 +147,7 @@ def count_file(path, since):
         (name, inp), = tools.values()
         c = comm(name, inp)
         if c:
-            mk = marker(c[1])
+            mk = classify(c[1])
             rows[(c[0], mk, mk in SAFETY)] += 1
     return len(turns), rows
 

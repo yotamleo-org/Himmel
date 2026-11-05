@@ -45,6 +45,8 @@ mkdir "$TMP/win" "$TMP/empty" || exit 1
   asst a6 "$NOW" "$(bash_tu a6 'ls /x')"
   asst a7 "$NOW" '{"type":"tool_use","id":"tu-a7","name":"mcp__himmel-bus__send","input":{"to":"chief","b":"BLOCKED — need a ruling"}}'
   asst a8 "$NOW" "$(send_tu a8 'ruling for RE-N4754-60dbba5b: narrow the scope')"
+  asst a10 "$NOW" "$(bash_tu a10 'bash /r/append-results.sh /d.md \"LIVE — x\" && pytest -q')"
+  asst a11 "$NOW" "$(send_tu a11 'READY ruling for RE-N4754-60dbba5b: ship it')"
   printf '{"type":"assistant","timestamp":"%s","message":{"id":"a9","model":"<synthetic>","content":[]}}\n' "$NOW"
   printf 'not json at all\n'
 } >"$TMP/win/s1.jsonl"
@@ -53,15 +55,17 @@ asst b1 "2020-01-01T00:00:00.000Z" "$(bash_tu b1 'bash /r/append-results.sh /d.m
 echo "1. per-session row and total"
 python3 "$LC" --dir "$TMP/win" --hours 24 >"$TMP/a.out" 2>"$TMP/a.err"; rc=$?
 check "exits 0" '[ "$rc" = 0 ]'
-check "s1 row: 8 turns, 3 batchable (1 bullet, 1 message, 1 bus), 3 safety" 'grep -qxF "s1${T}8${T}3${T}1${T}1${T}1${T}3" "$TMP/a.out"'
+check "s1 row: 8 turns, 3 batchable (1 bullet, 1 message, 1 bus), 3 safety" 'grep -qxF "s1${T}10${T}3${T}1${T}1${T}1${T}4" "$TMP/a.out"'
 check "the out-of-window session prints no row" '! grep -q "^s2" "$TMP/a.out"'
-check "TOTAL line" 'grep -qx "TOTAL sessions=1 turns=8 lone_batchable=3 bullet=1 message=1 bus=1 lone_safety=3" "$TMP/a.out"'
+check "TOTAL line" 'grep -qx "TOTAL sessions=1 turns=10 lone_batchable=3 bullet=1 message=1 bus=1 lone_safety=4" "$TMP/a.out"'
 
 echo "2. class rows"
 check "GO is a safety class" 'grep -qxF "CLASS${T}GO${T}safety${T}1" "$TMP/a.out"'
 check "SUCCESSION is a safety class" 'grep -qxF "CLASS${T}SUCCESSION${T}safety${T}1" "$TMP/a.out"'
-check "token-quoting is a safety class" 'grep -qxF "CLASS${T}token-quoting${T}safety${T}1" "$TMP/a.out"'
+check "token-quoting is a safety class" 'grep -qxF "CLASS${T}token-quoting${T}safety${T}2" "$TMP/a.out"'
 check "LIVE bullet is batchable" 'grep -qxF "CLASS${T}LIVE${T}batchable${T}1" "$TMP/a.out"'
+check "a READY that quotes a token is safety, so READY stays at the one plain message" 'grep -qxF "CLASS${T}READY${T}batchable${T}1" "$TMP/a.out"'
+check "a bullet chained with another command is not lone (LIVE stays at the one plain bullet)" 'grep -qxF "CLASS${T}LIVE${T}batchable${T}1" "$TMP/a.out"'
 check "a batched bullet (FINDING + Read) is not counted" '! grep -qF "CLASS${T}FINDING${T}" "$TMP/a.out"'
 check "a safety row never shows as batchable" '! grep -qE "^CLASS${T}(GO|SUCCESSION|token-quoting)${T}batchable" "$TMP/a.out"'
 
