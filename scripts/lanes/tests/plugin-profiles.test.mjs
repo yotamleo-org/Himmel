@@ -418,6 +418,72 @@ test('CLI arg parsing: unknown/dangling args die instead of being silently ignor
   assert.equal(p['obsidian-triage@himmel'], true);
 });
 
+// A profile's nativeDrop turns a plugin off on the native lane only; claudex keeps it.
+const LEAN = 'lean-skills@himmel';
+const NATIVE_DROP_PROFILES = ['worker-impl', 'worker-eval', 'worker-bus', 'worker-vm', 'worker-e2e', 'code', 'code-ui'];
+
+test('HIMMEL-8772: a native worker drops lean-skills, a claudex worker keeps it', () => {
+  for (const name of NATIVE_DROP_PROFILES) {
+    assert.deepEqual(REG.profiles[name].nativeDrop, [LEAN], `${name} declares nativeDrop`);
+    assert.equal(resolveProfile(REG, name, { installed: [] }).enabledPlugins[LEAN], false, `${name}: no lane means native`);
+    assert.equal(resolveProfile(REG, name, { installed: [], lane: 'native' }).enabledPlugins[LEAN], false, `${name}: native drops`);
+    for (const lane of ['claudex', 'openrouter', 'deepseek']) {
+      assert.equal(resolveProfile(REG, name, { installed: [], lane }).enabledPlugins[LEAN], true, `${name}: ${lane} keeps`);
+    }
+  }
+});
+
+test('HIMMEL-8772: spec workers (worker-docs) and every other profile keep lean-skills on both lanes', () => {
+  assert.equal(REG.profiles['worker-docs'].nativeDrop, undefined);
+  for (const [name, spec] of Object.entries(REG.profiles)) {
+    if (spec === null || NATIVE_DROP_PROFILES.includes(name)) continue;
+    for (const lane of [undefined, 'native', 'claudex']) {
+      const base = resolveProfile(REG, name, { installed: [] }).enabledPlugins[LEAN];
+      assert.equal(resolveProfile(REG, name, { installed: [], lane }).enabledPlugins[LEAN], base, `${name}: lane ${lane} changes nothing`);
+    }
+  }
+  for (const name of ['worker-docs', 'lane-impl', 'user', 'telegram']) {
+    assert.equal(resolveProfile(REG, name, { installed: [] }).enabledPlugins[LEAN], true, `${name} keeps ${LEAN}`);
+  }
+});
+
+test('HIMMEL-8772: a profile list drops lean-skills on native only when every member does', () => {
+  for (const list of ['worker-impl,code', 'worker-impl,code-ui', 'worker-impl,code,code-ui', 'worker-impl,worker-bus']) {
+    assert.equal(resolveProfile(REG, list, { installed: [] }).enabledPlugins[LEAN], false, `${list} drops on native`);
+  }
+  assert.equal(resolveProfile(REG, 'worker-impl,worker-docs', { installed: [] }).enabledPlugins[LEAN], true, 'a member that keeps it wins');
+  assert.equal(resolveProfile(REG, 'worker-impl,code', { installed: [], lane: 'claudex' }).enabledPlugins[LEAN], true);
+});
+
+test('HIMMEL-8772: validateRegistry holds the nativeDrop contract', () => {
+  const errs = (spec, name = 'worker-impl') => {
+    const reg = structuredClone(REG);
+    reg.profiles[name] = { ...reg.profiles[name], ...spec };
+    return validateRegistry(reg);
+  };
+  assert.deepEqual(errs({ nativeDrop: [LEAN] }), []);
+  assert.ok(errs({ nativeDrop: LEAN }).some((e) => /nativeDrop must be an array/.test(e)));
+  assert.ok(errs({ nativeDrop: ['nope@nowhere'] }).some((e) => /nativeDrop id "nope@nowhere" is missing from catalog/.test(e)));
+  assert.ok(errs({ nativeDrop: ['qmd@himmel'] }).some((e) => /nativeDrop id "qmd@himmel" is a floor id/.test(e)));
+  assert.ok(errs({ nativeDrop: [LEAN], enable: [LEAN] }).some((e) => /nativeDrop id .* is also in enable/.test(e)));
+});
+
+test('HIMMEL-8772: the CLI takes --lane and defaults to native', () => {
+  const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
+  const env = { ...process.env, PLUGIN_PROFILES_ADAPTERS: join(dirname(cli), '..', 'guardrails', 'himmel-adapters.json') };
+  const run = (args) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8', env });
+  const lean = (args) => JSON.parse(run(args).stdout).enabledPlugins[LEAN];
+  assert.equal(lean(['worker-impl']), false, 'no flag: native');
+  assert.equal(lean(['worker-impl', '--lane', 'native']), false);
+  assert.equal(lean(['worker-impl', '--lane', 'claudex']), true);
+  const dangling = run(['worker-impl', '--lane']);
+  assert.equal(dangling.status, 2);
+  assert.match(dangling.stderr, /--lane requires a value/);
+  const bad = run(['worker-impl', '--lane', 'Not A Lane']);
+  assert.equal(bad.status, 2);
+  assert.match(bad.stderr, /--lane/);
+});
+
 test('parseAddPlugins splits, trims, drops empties', () => {
   assert.deepEqual(parseAddPlugins('a@m, b@m ,,c@m'), ['a@m', 'b@m', 'c@m']);
   assert.deepEqual(parseAddPlugins(''), []);
@@ -1658,7 +1724,8 @@ test('HIMMEL-4024: each code kit profile enables its set on base and nothing els
     assert.deepEqual([...REG.profiles[name].enable].sort(), [...ids].sort(), `${name} members`);
     const { enabledPlugins: p } = resolveProfile(REG, name, { installed: [] });
     for (const id of ids) assert.equal(p[id], true, `${name} must enable ${id}`);
-    assert.equal(p['lean-skills@himmel'], true, `${name} inherits base`);
+    assert.equal(p['lean-skills@himmel'], false, `${name} inherits base but drops lean-skills on native`);
+    assert.equal(resolveProfile(REG, name, { installed: [], lane: 'claudex' }).enabledPlugins['lean-skills@himmel'], true, `${name} inherits base on claudex`);
     assert.equal(REG.profiles[name].contextMode, 'standard');
   }
 });
@@ -2064,13 +2131,15 @@ test('vmLaunch is restricted to worker-vm', () => {
   assert.ok(validateRegistry(registry).some((e) => e.includes('vmLaunch')));
 });
 
-test('worker family drops i-have-adhd, keeps the floor and lean-skills (HIMMEL-4017)', () => {
+test('worker family drops i-have-adhd, keeps the floor, and keeps lean-skills only on worker-docs on native (HIMMEL-4017, HIMMEL-8772)', () => {
   const workers = Object.keys(REG.profiles).filter((n) => n.startsWith('worker-'));
   assert.deepEqual(workers.sort(), ['worker-bus', 'worker-docs', 'worker-e2e', 'worker-eval', 'worker-impl', 'worker-vm']);
   for (const name of workers) {
     const p = resolveProfile(REG, name, { installed: [] }).enabledPlugins;
     for (const id of ['i-have-adhd@himmel']) assert.equal(p[id], false, `${name}: ${id}`);
-    for (const id of [...REG.floor, 'lean-skills@himmel']) assert.equal(p[id], true, `${name}: ${id}`);
+    for (const id of REG.floor) assert.equal(p[id], true, `${name}: ${id}`);
+    assert.equal(p['lean-skills@himmel'], name === 'worker-docs', `${name}: lean-skills on native only where spec workers launch`);
+    assert.equal(resolveProfile(REG, name, { installed: [], lane: 'claudex' }).enabledPlugins['lean-skills@himmel'], true, `${name}: claudex keeps lean-skills`);
     assert.deepEqual(ROLE_REQUIRES[name], ['himmel-ops@himmel'], `${name}: requires the floor plugin whose skills workers call`);
   }
   // The chief swaps the plugin for its own 1 KB brief (docs/handover/chief-adhd-brief.md).

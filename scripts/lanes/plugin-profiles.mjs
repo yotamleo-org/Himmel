@@ -285,6 +285,17 @@ function validateProfileSpec(errors, name, spec, catalogSet, floorSet) {
       }
     }
   }
+  if (spec.nativeDrop !== undefined) {
+    if (!Array.isArray(spec.nativeDrop)) {
+      errors.push(`profile "${name}" nativeDrop must be an array`);
+    } else {
+      validateIdList(errors, spec.nativeDrop, catalogSet, `profile "${name}" nativeDrop`);
+      for (const id of spec.nativeDrop) {
+        if (floorSet.has(id)) errors.push(`profile "${name}" nativeDrop id "${id}" is a floor id (the floor is inviolable)`);
+        if (spec.enable.includes(id)) errors.push(`profile "${name}" nativeDrop id "${id}" is also in enable (nativeDrop and enable are mutually exclusive)`);
+      }
+    }
+  }
   // disallowedTools is SCHEMA-ONLY here — nothing consumes it yet. The
   // producer is T2.3 (a --disallowedTools CLI flag threaded through the
   // claudex builder via a second resolver export, deliberately NOT by
@@ -555,6 +566,8 @@ export function resolveProfile(registry, name, opts = {}) {
   // Defensive: a malformed non-operator null/other spec yields the lean floor
   // (Array.isArray guard), never a crash or a silent no-inject.
   for (const id of (Array.isArray(spec?.drop) ? spec.drop : [])) enabledPlugins[id] = false;   // 2. profile.drop off
+  // 2b. profile.nativeDrop off on the native lane only; a caller that names no lane is native.
+  if ((opts.lane ?? 'native') === 'native') for (const id of (Array.isArray(spec?.nativeDrop) ? spec.nativeDrop : [])) enabledPlugins[id] = false;
   for (const id of (Array.isArray(spec?.enable) ? spec.enable : [])) enabledPlugins[id] = true; // 3. profile.enable on
   for (const id of addPlugins) enabledPlugins[id] = true;                 // 4. per-dispatch overlay on
   for (const id of (registry.floor ?? [])) enabledPlugins[id] = true;     // 5. floor forced on, LAST (inviolable)
@@ -998,7 +1011,14 @@ if (isMain(import.meta.url)) {
     // opposite of the fail-closed contract the rest of this resolver keeps.
     // Repeated --add-plugins accumulate (parity with the spawn parsers).
     const addPlugins = [];
+    let lane;
     for (let i = 1; i < argv.length; i++) {
+      if (argv[i] === '--lane') {
+        if (argv[i + 1] === undefined) die(2, 'plugin-profiles: --lane requires a value');
+        lane = argv[++i];
+        if (!/^[a-z]+$/.test(lane)) die(2, `plugin-profiles: --lane "${lane}" must be a lane name such as native or claudex`);
+        continue;
+      }
       if (argv[i] !== '--add-plugins') die(2, `plugin-profiles: unknown argument "${argv[i]}"`);
       if (argv[i + 1] === undefined) die(2, 'plugin-profiles: --add-plugins requires a value');
       addPlugins.push(...parseAddPlugins(argv[++i]));
@@ -1026,7 +1046,7 @@ if (isMain(import.meta.url)) {
     // unless the launching environment names a registry file (a suite testing a registry change).
     const adaptersPath = process.env.PLUGIN_PROFILES_ADAPTERS || (anchor ? join(anchor, 'scripts', 'guardrails', 'himmel-adapters.json') : null);
     const forkNwos = adaptersPath ? forkNwosFromAdapters(adaptersPath) : [];
-    const settings = resolveProfileByName(name, { addPlugins, installed, anchor: anchor ?? undefined, forkNwos, skillEntries, configDir, cwd: process.cwd() });
+    const settings = resolveProfileByName(name, { addPlugins, lane, installed, anchor: anchor ?? undefined, forkNwos, skillEntries, configDir, cwd: process.cwd() });
     if (settings === null) process.exit(0); // operator: nothing to inject
     process.stdout.write(JSON.stringify(settings) + '\n');
   } catch (e) {

@@ -128,7 +128,9 @@ commands are VM-only): `worker-sections/shell-and-tests.md`.
   `caused-by: unknown`, once). Merge-forward
   (never past a red you introduced), `suite-coverage.sh` and the
   loaded-budget rule: `worker-sections/ci-red.md`. [prose]
-- Verify a finding first (`lean-skills:receiving-code-review`); if agreed,
+- Verify a finding first: check it against the code before you change anything,
+  never agree or fix on the reviewer's word alone, and answer a wrong one with
+  the evidence; if agreed,
   **sweep the whole class** across every site and record it with
   `write-verdicts.sh sweep` (`SWEEP [<id>@<head>] class=<text> ::
   sites=<a>, <b>`). Every finding you fix or defer needs a **terminal** ledger

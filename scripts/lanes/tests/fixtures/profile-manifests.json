@@ -137,7 +137,6 @@
     "enabled": [
       "handover@himmel",
       "himmel-ops@himmel",
-      "lean-skills@himmel",
       "qmd@himmel"
     ],
     "contextBudget": 55000
@@ -146,7 +145,6 @@
     "enabled": [
       "handover@himmel",
       "himmel-ops@himmel",
-      "lean-skills@himmel",
       "qmd@himmel"
     ],
     "contextBudget": 55000
@@ -164,7 +162,6 @@
     "enabled": [
       "handover@himmel",
       "himmel-ops@himmel",
-      "lean-skills@himmel",
       "qmd@himmel"
     ],
     "contextBudget": 53000
@@ -173,7 +170,6 @@
     "enabled": [
       "handover@himmel",
       "himmel-ops@himmel",
-      "lean-skills@himmel",
       "qmd@himmel"
     ],
     "contextBudget": 35000
@@ -182,7 +178,6 @@
     "enabled": [
       "handover@himmel",
       "himmel-ops@himmel",
-      "lean-skills@himmel",
       "qmd@himmel"
     ],
     "contextBudget": 40000
@@ -262,7 +257,6 @@
       "code-simplifier@claude-plugins-official",
       "handover@himmel",
       "himmel-ops@himmel",
-      "lean-skills@himmel",
       "pyright-lsp@claude-plugins-official",
       "qmd@himmel",
       "typescript-lsp@claude-plugins-official"
@@ -273,7 +267,6 @@
     "enabled": [
       "handover@himmel",
       "himmel-ops@himmel",
-      "lean-skills@himmel",
       "playwright@claude-plugins-official",
       "qmd@himmel"
     ],

@@ -1950,7 +1950,7 @@ if [ -n "$PROFILE" ]; then
     # catalog (deny-by-default beyond CATALOG). Resolve from the worker's repo.
     _worker_resolve_cwd="${HEADED_ARM_REPO:-$HERE/../../..}"
     [ -d "$_worker_resolve_cwd" ] || _worker_resolve_cwd="$HERE"
-    if ! PROFILE_JSON="$(cd "$_worker_resolve_cwd" && node "$PROFILES_MJS" "$PROFILE" 2>&1)"; then
+    if ! PROFILE_JSON="$(cd "$_worker_resolve_cwd" && node "$PROFILES_MJS" "$PROFILE" --lane "$LANE" 2>&1)"; then
         echo "headed-arm-worker: --profile $PROFILE: resolver failed: $PROFILE_JSON" >&2
         exit 2
     fi
