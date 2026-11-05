@@ -222,7 +222,7 @@ def files_in(text):
     return out
 
 MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED)\b')
-TITLE_KEY_RE = re.compile(r'([A-Z]+)-(\d+)((?:\s*[/+,&]\s*\d+\b)*)')
+TITLE_KEY_RE = re.compile(r'([A-Z]+)-(\d+)((?:\s*\(?\s*(?:[/+,&]\s*)+\(?\s*\d+\b)*)')  # KEY-1 / 2, KEY-1 + 2, KEY-1 (+2, +3)
 
 def title_keys(lines):
     # every ticket a worker doc's H1 title names, `KEY-1 / 2 / 3` shorthand included: a bundle worker owns more tickets than its file name lists
@@ -230,6 +230,30 @@ def title_keys(lines):
     return [('%s-%s' % (p, n)) for p, n, _ in TITLE_KEY_RE.findall(h1)] + \
            [('%s-%s' % (p, x)) for p, _, rest in TITLE_KEY_RE.findall(h1) for x in re.findall(r'\d+', rest)]
 WRITES_LEAD = '> **Writes:**'
+OWN_LINE_RE = re.compile(r'^\W*Tickets?\b|^description:')  # the lines of a doc that name the tickets it carries
+PRIOR_LINE_RE = re.compile(r'Original brief|Read first|successor of|Prior art', re.I)
+DOC_NAME_RE = re.compile(r'[\w.+@-]+\.md')
+
+def owned_keys(doc, lines):
+    # the tickets a live worker's doc claims. A worker with no Writes line is scope-less, so its doc says all it owns: the full keys on its
+    # Ticket and description lines, and the title keys of the predecessor doc it names, count too. Over-holding a parent or prior-art key
+    # costs liveness while the worker lives, never safety.
+    keys = title_keys(lines)
+    if any(l.startswith(WRITES_LEAD) for l in lines):
+        return keys
+    for l in lines:
+        if OWN_LINE_RE.match(l):
+            keys += re.findall(r'[A-Z]+-\d+', l)
+    for l in lines:
+        if PRIOR_LINE_RE.search(l):
+            for name in DOC_NAME_RE.findall(l):
+                prior = os.path.join(os.path.dirname(doc), os.path.basename(name))
+                if os.path.isfile(prior) and os.path.realpath(prior) != os.path.realpath(doc):
+                    try:
+                        keys += title_keys(open(prior, encoding='utf-8', errors='replace').read().splitlines())
+                    except OSError:
+                        pass  # swallow-ok: an unreadable prior doc adds no key; the worker still owns the rest
+    return keys
 SERIES_LEAD = '> **Series:**'
 SERIES_ITEM_RE = re.compile(r'(?<![\w.-])\d+\.\s+([A-Z]+-\d+)')  # "1. HIMMEL-9 branch=..." one item of a series worker's block
 SERIES_ID_RE = re.compile(r'(?!\d+\.\s)(\S+)\s+(\S+)')  # "<sid> <ledger path> - read ...": what follows the lead on the Series line S2a writes
@@ -858,7 +882,7 @@ if workers_from and os.path.isfile(workers_from):
             marks = [m.group(1) for m in (MARKER_RE.match(l) for l in lines) if m]
             if marks and marks[-1] == 'WRAPPED':  # a wrapped worker holds no files and owns no ticket
                 continue
-            for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)) + title_keys(lines):
+            for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)) + owned_keys(doc, lines):
                 worker_keys.add(k); owner.setdefault(k, 'live worker %s' % worker.get('label', '?'))
             def block(i):  # a wrapped line continues on the "> " lines under it, up to the next "> **" field or a blank
                 text = lines[i]
@@ -911,7 +935,7 @@ if chain_m:
                 smarks = [m.group(1) for m in (MARKER_RE.match(l) for l in slines) if m]
                 if smarks and smarks[-1] == 'WRAPPED':
                     continue
-                for k in re.findall(r'[A-Z]+-\d+', os.path.basename(sdoc)) + title_keys(slines):
+                for k in re.findall(r'[A-Z]+-\d+', os.path.basename(sdoc)) + owned_keys(sdoc, slines):
                     worker_keys.add(k); owner.setdefault(k, 'live worker %s of the chief on %s' % (worker.get('label', '?'), sib[:-len('.fleet.json')]))
         except (OSError, ValueError, TypeError, AttributeError):
             continue  # swallow-ok: a sibling chief's unreadable or malformed manifest names no worker; this chief's own fleet is still known
