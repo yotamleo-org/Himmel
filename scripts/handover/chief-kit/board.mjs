@@ -1247,7 +1247,7 @@ const legRows = liveLegs.map((l) => ({ l, m: legModel(l) }));
 const needOf = ({ l, m }) => {
     const readyB = [...(legInfo.get(l.label)?.bullets || [])].reverse().find((b) => markerOf(b) === 'READY') || '';
     const head = (/READY\s+#?\d{2,}\s+([0-9a-f]{7,40})\b/.exec(readyB) || [])[1];
-    const [verb, action, command] = m.state === 'ready-for-go' ? ['go', `judge and GO PR #${l.prNum}`, head ? `bash scripts/handover/chief-kit/go.sh ${l.prNum} ${head}` : null]
+    const [verb, action, command] = m.state === 'ready-for-go' ? ['go', `judge and GO PR #${l.prNum}`, head ? `bash scripts/handover/chief-kit/go.sh --contract yes-or-no ${l.prNum} ${head}` : null]
         : m.state === 'blocked' ? ['unblock', 'clear the BLOCKED worker', null]
             : m.state === 'needs-decision' ? ['decide', 'rule on the FINDING', null]
                 : l.lostLock ? ['act', `lock ${l.lock.toLowerCase()}: re-arm or wrap the worker`, null]
