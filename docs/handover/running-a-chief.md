@@ -754,8 +754,8 @@ whether a PR can merge; never infer it from the check runs. The latest run of
 each check is right for reporting that check's state, never for deciding
 mergeability.
 
-`scripts/handover/chief-kit/ready-go.sh [--to <worker> --token <nonce>] [--ledger <chief doc>] <pr> <sha>`
-is the whole mechanical READY turn in one call: the `ready-check.sh` output, the coverage line, the trust-path result, the ticket state and the exact GO line to send. It is read-only (no GO file, no message): `go.sh` and the SendMessage stay yours.
+`scripts/handover/chief-kit/ready-go.sh [--to <worker> --token <nonce>] [--ledger <chief doc>] --contract yes|no <pr> <sha>`
+is the whole mechanical READY turn in one call: the `ready-check.sh` output, the coverage line, the trust-path result, the ticket state and the exact GO line to send. `--contract` is the brief's `Completes ticket:` answer and goes into the GO line it prints. It is read-only (no GO file, no message): `go.sh` and the SendMessage stay yours.
 
 At each `READY`, run `scripts/handover/chief-kit/auto-go.sh --dry-run --doc <chief doc> --fleet <manifest> --worker <label> <pr> <head>` and record its one answer line (`WOULD-GO` or `ESCALATE auto-go <check#> <reason>`) in your own notes beside the GO you send by hand. The dry run acts on nothing: no GO file, no verdict record, no message. It writes one `auto-go.jsonl` row, so the record builds up the evidence of how often a script would have given the same GO.
 
@@ -776,13 +776,16 @@ ticket except 2973), a found line whose status is not PASS is also not READY.
 The chief pulls the primary and the worker wraps (closing its ticket only if the
 brief's `completes-ticket: yes` says the PR completes it).
 The chief sends the GO file (merge approval) by first running `bash scripts/handover/chief-kit/go.sh
-<pr> <full head sha>`. The file IS the GO; the SendMessage is the
+--contract yes|no <pr> <full head sha>`, or `go.sh --contract yes|no --trust-reviewed <qid> <pr> <full head sha>`
+on a trust path. `--contract` is the brief's `Completes ticket:` answer. The file IS the GO; the SendMessage is the
 notification: a worker launched by `headed-arm-worker.sh` carries
 `HIMMEL_CONSOLE_LEG=1`, and `merge-on-green.sh` refuses it (exit 17) without a
 GO for the exact head it certifies, so a push after GO needs a fresh one.
 `go.sh` runs `ready-check.sh` itself and writes nothing unless
-it passes (exit 4). A `--trust-reviewed <qid>` GO also needs the
+it passes (exit 4); a PR titled with a ticket key and no `--contract` fails its item 17.
+A `--trust-reviewed <qid>` GO also needs the
 judge's ``**GO** for head `<sha>`.`` verdict under `verdicts/<qid>/` (exit 5).
+A worker's `--go` merge that resolves no open PR merged nothing and exits 27.
 
 An opt-in auto-merge stops at "awaiting approval" wherever branch protection requires
 a review the automation identity cannot give. On a single-maintainer repo the

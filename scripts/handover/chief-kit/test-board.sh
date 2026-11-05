@@ -1144,6 +1144,7 @@ jcheck '--json: milestones are done/total per fixVersion' 'M.milestones.length =
 jcheck '--json: roadmap recommendation names the open blockers' 'M.cards.roadmap.recommendation.includes("HIMMEL-9001")'
 jcheck '--json: every live worker is a row with a state and stage' 'M.legs.some((l) => l.leg === "N3" && l.state === "ready-for-go" && l.stage === "ready") && M.legs.every((l) => l.state && l.stage)'
 jcheck '--json: a READY worker is a go need' 'M.needs_you.some((n) => n.leg === "N3" && n.verb === "go")'
+jcheck '--json: the go need command carries the merge contract' 'M.needs_you.some((n) => n.leg === "N3" && n.command === "bash scripts/handover/chief-kit/go.sh --contract yes|no 2001 0123456789abcdef")'
 jcheck '--json: finished workers are counted, not listed' 'M.console.archive_legs >= 2 && !M.legs.some((l) => l.leg === "N4" || l.leg === "N5")'
 for secret in aaaa1111 pid111111 pid777777 cafe1919 x8664; do
     lacks "--json: no nonce/lock-token text: $secret" "$jtxt" "$secret"
