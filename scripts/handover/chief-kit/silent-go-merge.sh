@@ -8,7 +8,8 @@
 # manifest worker this checks the following, in order, and stops at the first
 # that fails:
 #   - the newest marker bullet is `READY <pr> <head40> GREEN`, or the last bullet
-#     is a hand-off (`handoff` / `hand-off`) and the newest READY gives pr and head;
+#     is a hand-off (`handoff` / `hand-off`), no HALTED, BLOCKED, PARKED-*, WRAPPED
+#     or MERGED marker is newer than the newest READY, and that READY gives pr and head;
 #   - the GO file <GO root>/.locks/go/<pr>.<head> exists and carries head=<head>;
 #   - neither the worker doc nor the GO file has been written for
 #     CHIEF_WAIT_WORKER_SILENT_MIN minutes (default 45, the waiter's worker-silent bound);
@@ -109,7 +110,16 @@ while IFS=$'\t' read -r label wdoc; do
     last="$(grep -E '^- ' "$wdoc" | tail -n 1)"
     handoff=0
     printf '%s\n' "$last" | grep -qiE 'hand-?off' && handoff=1
-    [ "$handoff" -eq 1 ] && marker="$(grep -E '^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?READY[[:space:]]' "$wdoc" | tail -n 1)"
+    if [ "$handoff" -eq 1 ]; then
+        # The waiver holds only when no stop marker is newer than the newest READY.
+        ready_ln="$(grep -nE '^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?READY[[:space:]]' "$wdoc" | tail -n 1 | cut -d: -f1)"
+        stop_ln="$(grep -nE '^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?(HALTED|BLOCKED|PARKED-[A-Z]+|WRAPPED|MERGED)([^A-Za-z0-9_]|$)' "$wdoc" | tail -n 1 | cut -d: -f1)"
+        if [ -n "$ready_ln" ] && [ "${stop_ln:-0}" -lt "$ready_ln" ]; then
+            marker="$(sed -n "${ready_ln}p" "$wdoc")"
+        else
+            handoff=0
+        fi
+    fi
     rest="$(printf '%s\n' "$marker" | sed -E 's/^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?//')"
     [[ $rest =~ ^READY[[:space:]]+#?([0-9]+)[[:space:]]+([0-9a-f]{40})[[:space:]]+GREEN([^A-Za-z0-9_]|$) ]] || continue
     pr="${BASH_REMATCH[1]}"; head="${BASH_REMATCH[2]}"

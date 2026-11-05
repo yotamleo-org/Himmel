@@ -170,6 +170,14 @@ reset yes; go_file "$SHA"; touch "$STUB/ps.fail"; run
 check "(n11) a failing process table: no merge" "0" "$(n "$STUB/merges")"
 check "(n11) it is held as alive" "1" "$(n "$STUB/pages" "reason=alive")"
 
+# --- (n12) a stop marker after the READY voids the hand-off waiver: no merge ---
+reset yes "- 03:00 HALTED — chief halt; hand-off RESUME written"; go_file "$SHA"; run
+check "(n12) a HALTED last bullet that mentions hand-off: no merge" "0" "$(n "$STUB/merges")"
+reset yes "- 03:00 BLOCKED — no hand-off possible"; go_file "$SHA"; run
+check "(n12) a BLOCKED last bullet that mentions hand-off: no merge" "0" "$(n "$STUB/merges")"
+reset yes "- 02:00 HALTED — chief halt" "- 03:00 LIVE — handoff written"; go_file "$SHA"; run
+check "(n12) a HALTED between the READY and a hand-off: no merge" "0" "$(n "$STUB/merges")"
+
 # --- (w1) the waiter runs the helper each sample and wakes on its lines ---
 # The helper is a seam here (its rows are above); the waiter's tick and bank are stubbed.
 WAIT="$HERE/chief-wait.sh"
