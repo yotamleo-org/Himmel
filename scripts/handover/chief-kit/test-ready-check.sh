@@ -1490,7 +1490,9 @@ reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done\n'
 printf 'not json\n' >> "$LEDGER"
 rc=0; out="$(run)" || rc=$?
-check "ledger: a malformed ledger line is skipped: exit 0" "$rc" "0"
+check "ledger: a malformed ledger line is skipped by item 4 but fails item 18 as the merge does: exit 1" "$rc" "1"
+contains "ledger: a malformed ledger line: item 4 still passes" "$out" "[PASS] 4."
+contains "ledger: a malformed ledger line: item 18 fails" "$out" "[FAIL] 18."
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done\n'
@@ -1761,6 +1763,10 @@ cp "$SCRIPT" "$own/scripts/handover/chief-kit/ready-check.sh"
 cp "$REPO_ROOT/scripts/lib/load-dotenv.sh" "$own/scripts/lib/load-dotenv.sh"
 cp "$REPO_ROOT/scripts/lib/gh-pr-snapshot.sh" "$own/scripts/lib/gh-pr-snapshot.sh"
 cp "$REPO_ROOT/scripts/lib/go-gate.sh" "$own/scripts/lib/go-gate.sh"
+mkdir -p "$own/scripts/cr"
+cp "$REPO_ROOT/scripts/cr/clear-review-marker.sh" "$REPO_ROOT/scripts/cr/anchor-handoff.sh" "$REPO_ROOT/scripts/cr/ledger-amend-auth.js" "$own/scripts/cr/"
+cp "$REPO_ROOT/scripts/lib/chokepoint-seam-guard.sh" "$own/scripts/lib/chokepoint-seam-guard.sh"
+cp "$REPO_ROOT/scripts/chokepoints.json" "$own/scripts/chokepoints.json"
 printf 'JIRA_PROJECT_KEY=HIMMEL\n' > "$own/.env"
 
 reset_stubs
@@ -1770,7 +1776,7 @@ out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
     STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_MSS=CLEAN \
     STUB_ROLLUP="$GREEN_ROLLUP" STUB_UNRESOLVED=0 \
     STUB_COMMITS="$STUB_COMMITS" STUB_FILES="$GREEN_FILES" \
-    STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
+    STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" STUB_PR_BRANCH=feat/himmel-100-thing JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
     STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" \
     PATH="$PATH" GH_LOG="$GH_LOG" \
     bash "$own/scripts/handover/chief-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
@@ -3307,7 +3313,7 @@ rc=0; out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
     STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_MSS=CLEAN \
     STUB_ROLLUP="$GREEN_ROLLUP" STUB_UNRESOLVED=0 \
     STUB_COMMITS="$GREEN_COMMITS" STUB_FILES="$GREEN_FILES" \
-    STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
+    STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" STUB_PR_BRANCH=feat/himmel-100-thing JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
     STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_PR_TITLE="$BO_BUG" \
     PATH="$PATH" GH_LOG="$GH_LOG" \
     bash "$own/scripts/handover/chief-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
@@ -3321,7 +3327,7 @@ rc=0; out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
     STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_MSS=CLEAN \
     STUB_ROLLUP="$GREEN_ROLLUP" STUB_UNRESOLVED=0 \
     STUB_COMMITS="$GREEN_COMMITS" STUB_FILES="$GREEN_FILES" \
-    STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
+    STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" STUB_PR_BRANCH=feat/himmel-100-thing JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
     STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_PR_TITLE="$BO_BUG" \
     PATH="$PATH" GH_LOG="$GH_LOG" \
     bash "$own/scripts/handover/chief-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
