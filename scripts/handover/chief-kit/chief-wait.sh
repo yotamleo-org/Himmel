@@ -109,6 +109,16 @@
 #                               chief reads the diff and rules; GO stays go.sh. Seams (tests):
 #                               CHIEF_WAIT_READY_CHECK, CHIEF_WAIT_CI (prints the CI word),
 #                               CHIEF_WAIT_DISPOSITION.
+#   WAKE silent-go              with --doc and --workers-from: silent-go-merge.sh found a GO'd
+#   <SILENT-WORKER-... line>... READY PR whose worker has been silent past
+#                               CHIEF_WAIT_WORKER_SILENT_MIN (default 45) since its doc or GO
+#                               was last written, and either merged it through
+#                               merge-on-green.sh --go or says why not. It alerts the operator
+#                               and writes a chief-doc bullet for each; once per (worker, PR,
+#                               head, outcome), the keys in <inbox>.wait.silentgo. A merge is
+#                               bounded by CHIEF_SILENT_GO_TIMEOUT (default 900 s) and
+#                               ready-check by 90 s; the heartbeat says sampling meanwhile.
+#                               Seam: CHIEF_WAIT_SILENT_GO.
 #   WAKE succession complete <k/n>   with --succession <successor> --doc <chief doc>
 #   <tracker output>            (the successor's waiter): every inherited worker quoted
 #                               back; the block carries succession-tracker.sh's table
@@ -139,7 +149,11 @@
 #                               broken. step= names the last sample's failure:
 #                               tick-timeout:<s>, tick-exit:<rc>, no-tick-line,
 #                               usage-read or missing-field:<name>. Once per streak;
-#                               the re-arm stays quiet until a sample succeeds.
+#                               the re-arm stays quiet until a sample succeeds. Look-only
+#                               (8934): queued in the digest, a wake only with
+#                               HOUSEKEEPING_DIGEST_SECS=0. The usual step is
+#                               tick-timeout:120s under host load (tick.sh costs about 62 s
+#                               of CPU), not a broken monitor.
 #   WAKE worker-silent <worker> signal=<capped-waker|succession-partial> [silent=<n>m]
 #                               a worker went silent. capped-waker: with --workers-from, the
 #                               tick lists wakerstate=<worker>:capped (its bus mail went unread) and the
@@ -176,7 +190,8 @@
 # wt-ceiling= (the live/cap alarm) is in the key whole: reaching the ceiling
 # wakes once, while an unchanged alarm stays silent; absent is not a failure. cap= (`<version>:<n>`, past 15 open residuals) likewise.
 # unowned-prs= is NOT in the action key (its minutes grow every tick): a
-# non-empty list wakes on first sight (`WAKE unowned-prs <list>`), again at once when
+# non-empty list is queued on first sight (`unowned-prs <list>`, look-only: see below; with
+# HOUSEKEEPING_DIGEST_SECS=0 it is `WAKE unowned-prs <list>`), again when
 # a PR joins it, and again every CHIEF_WAIT_UNOWNED_REWAKE_MIN (default 60) while it
 # stays non-empty. The marker `<inbox>.wait.unowned` (its body the PR numbers last
 # woken for) outlives the waiter like the underfill one; it clears after two
@@ -305,10 +320,16 @@
 # Worker messages (SendMessage) wake a chief on their own; only the Telegram
 # and tick paths depend on this waiter.
 #
-# A pool-unresolved or unowned-prs wake joins the housekeeping digest unless its value
-# changed since the last one: for pool-unresolved the capacity, the dispatchable keys or the
-# unresolved lines (marker <inbox>.wait.poolhk, cleared when the pool resolves); for unowned-prs
-# a PR new to the marker. First sight and any change wake at once.
+# A pool-unresolved wake joins the housekeeping digest unless its value changed since the last
+# one: the capacity, the dispatchable keys or the unresolved lines (marker <inbox>.wait.poolhk,
+# cleared when the pool resolves). First sight and any change wake at once.
+#
+# Look-only kinds (8934) never wake the chief on their own: an unowned-prs sight, a tick-fail
+# streak and a tick whose change is prs/board/tails-routine/acts only join the housekeeping buffer.
+# The next real wake (Telegram, a worker event, succession, ...) ends with a `look-only since last
+# wake:` block carrying those lines and empties them from the buffer; otherwise the window's own
+# `WAKE housekeeping` prints them. READY, BLOCKED, FINDING, Telegram, succession, GO and rulings
+# are never look-only. HOUSEKEEPING_DIGEST_SECS=0 keeps every look-only wake unbatched.
 #
 # ponytail: upgrade path HIMMEL-3510. An external SIGKILL of the waiter re-invokes the session (task
 # notification, measured); the harness-internal "low memory" kill
@@ -404,7 +425,7 @@ digest_flush() {
     # a scripted GO (`<label> auto-go <pr>`) is counted on its own, never as a wrap
     awk '$2 == "auto-go" { g++; a = a (g > 1 ? "," : "") "#" $3; next }
          { n++; l = l (n > 1 ? "," : "") $1; if ($3 != "-") { m++; p = p (m > 1 ? "," : "") "#" $3 } }
-         END { printf "absorbed since last wake: wraps=%d (%s) merged=%d (%s)%s\n", n, l, m, p, (g ? sprintf(" auto-go=%d (%s)", g, a) : "") }' "$digest_file"
+         END { printf "absorbed since last wake: wraps=%d (%s) merged=%d (%s)%s\n", n, l, m, p, (g ? sprintf(" auto-go=%d (%s)", g, a) : "") }' "$digest_file" || return 1  # a failed write keeps the digest
     : > "$digest_file"
 }
 # Housekeeping has its own persisted buffer: an urgent wake must not discard
@@ -436,7 +457,24 @@ housekeeping_flush() {
     rm -f "$housekeeping_file" "$housekeeping_file.since"
     return 0
 }
-trap 'digest_flush; heartbeat exited "$exit_reason"' EXIT
+# lookonly_carry (8934): the next real wake ends with the buffered look-only lines (tick, tick-fail,
+# unowned-prs: kind and detail, not the tick payload) and takes them out of the buffer; other
+# housekeeping stays queued for its own window. The window's own wake prints the whole buffer.
+lookonly_carry() {
+    local carried keep
+    case "$exit_reason" in wake-housekeeping) return 0 ;; wake-*) ;; *) return 0 ;; esac
+    [ -s "$housekeeping_file" ] || return 0
+    carried="$(grep -E '^(tick|tick-fail|unowned-prs) ' "$housekeeping_file" | sed 's/ TICK .*//' | awk '!seen[$0]++')"  # swallow-ok: no match reads empty, nothing to carry
+    [ -n "$carried" ] || return 0
+    printf 'look-only since last wake:\n%s\n' "$carried" || return 1  # a failed write keeps the entries queued
+    keep="$(grep -vE '^(tick|tick-fail|unowned-prs) ' "$housekeeping_file")"  # swallow-ok: no other line reads empty
+    if [ -n "$keep" ]; then
+        printf '%s\n' "$keep" > "$housekeeping_file.tmp" && mv -f "$housekeeping_file.tmp" "$housekeeping_file"
+    else
+        rm -f "$housekeeping_file" "$housekeeping_file.since"
+    fi
+}
+trap 'lookonly_carry; digest_flush; heartbeat exited "$exit_reason"' EXIT
 trap "exit_reason='signal-TERM'; exit 143" TERM
 trap "exit_reason='signal-INT'; exit 130" INT
 trap "exit_reason='signal-HUP'; exit 129" HUP
@@ -625,7 +663,7 @@ worker_changes_routine() { # <old key> <new key>
 tick_housekeeping() { # <changed fields> <old key> <new key>
     local f
     for f in $(printf '%s' "$1" | tr ',' ' '); do
-        case "$f" in board|tails|acts) ;; *) return 1 ;; esac
+        case "$f" in board|tails|acts|prs) ;; *) return 1 ;; esac  # 8934: a moved PR set is look-only (a new unowned PR has its own wake)
     done
     worker_changes_routine "$2" "$3"
 }
@@ -971,16 +1009,8 @@ underfill_repool() {
 # new to the marker, holds a PR the marker lacks, or the marker is older than the re-wake
 # window.
 unowned_wake() {
-    local nums num
+    local nums
     nums="$(printf '%s\n' "$1" | tr ',' '\n' | sed 's/:.*//')"
-    # unowned_rewake: the wake is the re-wake window alone, the same set the marker already holds
-    unowned_rewake=1
-    if [ ! -e "$unowned_file" ]; then unowned_rewake=""
-    else
-        for num in $nums; do
-            grep -qxF -- "$num" "$unowned_file" 2>/dev/null || { unowned_rewake=""; break; }
-        done
-    fi
     set_wake "$nums" "$unowned_file" "${CHIEF_WAIT_UNOWNED_REWAKE_MIN:-60}"
 }
 # set_wake: <newline-separated items> <marker file> <re-wake minutes> — the shared marker
@@ -1464,6 +1494,16 @@ $(jq -r "$JQ_W"'W[]? | [.label, .doc] | @tsv' "$legs_from")
 EOF
     return 1
 }
+# silent_go_wake: with --doc and --workers-from, silent-go-merge.sh merges a GO'd READY PR
+# whose worker went silent past CHIEF_WAIT_WORKER_SILENT_MIN (or alerts why not), once per
+# (worker, PR, head, outcome); its lines follow `WAKE silent-go`. Seam: CHIEF_WAIT_SILENT_GO.
+silent_go_wake() {
+    local out
+    [ -n "$legs_from" ] && [ -n "$console_doc" ] || return 1
+    heartbeat sampling
+    out="$(bash "${CHIEF_WAIT_SILENT_GO:-$HERE/silent-go-merge.sh}" --doc "$console_doc" --workers-from "$legs_from" --state "$inbox.wait.silentgo" </dev/null 2>/dev/null 9>&-)" || return 1  # swallow-ok: a failed run reads as no wake; the helper alerts on its own outcomes
+    printf 'WAKE silent-go\n%s\n' "$out"
+}
 # ready_ci <pr> <head>: GREEN, RED or PENDING from one bounded, non-blocking read; a failed read is PENDING.
 ready_ci() {
     local b
@@ -1720,6 +1760,7 @@ while :; do
             if resolve_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-resolve'; exit 0; fi
             # a READY is checked before it wakes; a repeat of a woken head folds into the baseline
             if ready_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-ready'; exit 0; fi
+            if silent_go_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-silent-go'; exit 0; fi
             if [ -n "$ready_fold" ] && [ -n "$saved" ]; then
                 ready_new="$(ready_fold_key "$saved" "$key" "$ready_fold")"
                 [ "$ready_new" = "$saved" ] || { saved="$ready_new"; save_key "$saved"; }
@@ -1762,13 +1803,13 @@ while :; do
                 *)
                     unowned_none_streak=0
                     if unowned_wake "$unowned_val"; then
-                        # a re-wake of a set the marker already holds is housekeeping; a first sight or a joining PR wakes at once
-                        if [ -n "$unowned_rewake" ] && [ "$housekeeping_secs" -gt 0 ]; then
-                            if housekeeping_add unowned-prs "$unowned_val" "$tick_line"; then
-                                exit_reason='wake-unowned-prs'; exit 0
-                            fi
-                        else
+                        # 8934: an unowned PR is look-only (the chief reads it, a worker owns the fix): every sight joins the
+                        # digest and rides the next real wake; HOUSEKEEPING_DIGEST_SECS=0 keeps the unbatched wake
+                        if [ "$housekeeping_secs" -eq 0 ]; then
                             printf 'WAKE unowned-prs %s\n%s\n' "$unowned_val" "$tick_line"
+                            exit_reason='wake-unowned-prs'; exit 0
+                        fi
+                        if housekeeping_add unowned-prs "$unowned_val" "$tick_line"; then
                             exit_reason='wake-unowned-prs'; exit 0
                         fi
                     fi ;;
@@ -1874,8 +1915,14 @@ while :; do
             # streak: the re-arm stays quiet until a sample succeeds.
             if [ "$fail_streak" -ge "$fail_wake" ] && ! fail_woke; then
                 printf '%s\n%s\nfailwoke\n' "$args_hash" "$saved" | atomic_write "$key_file" 2>/dev/null  # swallow-ok: a key file that cannot be written only repeats the wake once
-                printf 'WAKE tick-fail samples=%s step=%s\n' "$fail_streak" "$fail_step"
-                exit_reason='wake-tick-fail'; exit 0
+                # 8934: a failed monitor is look-only (the usual step is tick-timeout under host load): it joins the digest
+                if [ "$housekeeping_secs" -eq 0 ]; then
+                    printf 'WAKE tick-fail samples=%s step=%s\n' "$fail_streak" "$fail_step"
+                    exit_reason='wake-tick-fail'; exit 0
+                fi
+                if housekeeping_add tick-fail "samples=$fail_streak step=$fail_step"; then
+                    exit_reason='wake-tick-fail'; exit 0
+                fi
             fi
         fi
     fi
