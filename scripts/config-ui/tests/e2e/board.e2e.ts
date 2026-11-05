@@ -364,11 +364,12 @@ for (const [width, height] of [[1280, 900], [390, 844]]) {
 
 // the dense layout, measured in a real browser
 const LONG_TITLE = "A very long ticket title ".repeat(9).trim(); // 224 characters
-async function longTitle(page: Page, ticket = "Second chain step") {
+const TWO_LINE_TITLE = "Two line title text Two line title text"; // wraps to two lines in a Board column at 1280 px
+async function longTitle(page: Page, titles: Record<string, string> = { "Second chain step": LONG_TITLE }) {
   await page.route("**/api/roadmap", async (route) => {
     const res = await route.fetch();
     const j = await res.json();
-    j.tickets.find((t: { t: string }) => t.t === ticket).t = LONG_TITLE; // a To Do card, shown on the Board (the first ticket is a folded Done)
+    for (const [from, to] of Object.entries(titles)) j.tickets.find((t: { t: string }) => t.t === from).t = to; // cards the Board shows on a fresh browser (the first ticket is a folded Done)
     await route.fulfill({ response: res, json: j });
   });
 }
@@ -416,15 +417,14 @@ const tabTo = async (page: Page, sel: string) => { // Tab until the focused elem
 const longCard = '.rm-card:has(.rm-title[data-tip^="A very long ticket title"])';
 
 test("at 1280 px a 200-character card is no taller than a two-line card, Tab shows the bubble and the ticket key is never cut", async ({ page }) => {
-  await longTitle(page, "Next version work");
+  await longTitle(page, { "Work in flight": LONG_TITLE, "Waiting for review": TWO_LINE_TITLE });
   await page.setViewportSize({ width: 1280, height: 900 });
   await open(page);
   await go(page, "#/board");
-  const height = async (title: string) => (await page.locator(".rm-card", { hasText: title }).first().boundingBox())!.height;
+  const clip = (card: string) => page.locator(`${card} .rm-title .rm-clip`).evaluate((el) => el.clientHeight);
   const long = (await page.locator(longCard).boundingBox())!.height;
-  const two = await height("Left open on a released version"); // a title that fills two lines
-  const one = await height("Old shipped work"); // a title on one line
-  expect(two).toBeGreaterThan(one + 4); // the control: two lines really are taller than one
+  const two = (await page.locator(".rm-card", { hasText: TWO_LINE_TITLE }).boundingBox())!.height;
+  expect(await clip(".rm-card:has-text(\"Two line title\")")).toBeGreaterThan(await clip(".rm-card:has-text(\"Not in any chain\")") + 4); // the control: two lines really are taller than one
   expect(Math.abs(long - two)).toBeLessThanOrEqual(2);
   const key = await page.locator(`${longCard} .rm-top b`).evaluate((el) => el.scrollWidth <= el.clientWidth && getComputedStyle(el).textOverflow !== "ellipsis");
   expect(key).toBe(true);
@@ -435,7 +435,7 @@ test("at 1280 px a 200-character card is no taller than a two-line card, Tab sho
 });
 
 test("at 390 px a long title clamps to three lines with no bubble on focus, and a tap opens the drawer with the full title", async ({ page }) => {
-  await longTitle(page, "Next version work");
+  await longTitle(page, { "Work in flight": LONG_TITLE });
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page);
   await go(page, "#/board");
