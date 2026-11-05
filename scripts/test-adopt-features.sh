@@ -413,4 +413,65 @@ dir_is_empty "$cr2771r6dirempty/plain-empty" \
   || fail "HIMMEL-2771 CR6 dir-is-empty-dangling: dir_is_empty reported a genuinely empty directory as non-empty"
 echo "ok: HIMMEL-2771 CR6 dir-is-empty-dangling: dir_is_empty sees a dangling symlink as an occupied entry and a genuinely empty dir as empty"
 
+# An adopter with no OpenRouter key searches on qmd's local models, so wire_qmd_core
+# checks the local reranker model is really in the cache after `qmd pull`, and says so when it is not
+# (or when QMD_RERANK turns the reranker off). The stub qmd's `pull` fabricates the model file under the
+# fake HOME only when RR_STUB_MODEL=1; the file name is the one the real station keeps in ~/.cache/qmd/models.
+rrbin="$work/rr9265-bin"; mkdir -p "$rrbin"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$rrbin/bun"
+cat > "$rrbin/qmd" <<'STUB'
+#!/usr/bin/env bash
+if [ "$1" = "pull" ] && [ "${RR_STUB_MODEL:-0}" = "1" ]; then
+  mkdir -p "$HOME/.cache/qmd/models"
+  : > "$HOME/.cache/qmd/models/hf_ggml-org_qwen3-reranker-0.6b-q8_0.gguf"
+fi
+exit 0
+STUB
+cat > "$rrbin/git" <<STUB
+#!/usr/bin/env bash
+[ "\$1" = "clone" ] && exit 1
+exec "$(command -v git)" "\$@"
+STUB
+chmod +x "$rrbin/bun" "$rrbin/qmd" "$rrbin/git"
+rr_run() {
+  # rr_run <tag> <1 when the stub pull fabricates the model, else 0> [QMD_RERANK value]
+  local tag="$1" stub_model="$2" rerank_val="${3:-}"
+  local h="$work/rr9265-home-$tag" t="$work/rr9265-target-$tag"
+  rm -rf "${h:?}" "${t:?}"; mkdir -p "$h" "$t"
+  HOME="$h" git -C "$t" init -q
+  set +e
+  rr_out=$( unset QMD_RERANK QMD_RERANK_MODEL XDG_CACHE_HOME XDG_CONFIG_HOME QMD_CONFIG_DIR; export RR_STUB_MODEL="$stub_model"
+    [ -z "$rerank_val" ] || export QMD_RERANK="$rerank_val"
+    PATH="$rrbin:$work/bin:$native_free_path" HOME="$h" bash "$adopt" \
+    --profile core --scope project --target "$t" 2>&1 ); rr_rc=$?
+  set -e
+}
+rr_run nomodel 0
+[ "$rr_rc" -eq 0 ] || fail "HIMMEL-9265 no-model: adopt exited $rr_rc: $rr_out"
+grepq "$rr_out" -E 'WARNING.*no local reranker model' \
+  || fail "HIMMEL-9265 no-model: no WARNING that the local reranker model is missing: $rr_out"
+grepq "$rr_out" -F 'Pull it: qmd pull' \
+  || fail "HIMMEL-9265 no-model: the WARNING carries no remedy line: $rr_out"
+echo "ok: HIMMEL-9265 a pull that leaves no reranker model WARNs and adopt still exits 0"
+rr_run model 1
+[ "$rr_rc" -eq 0 ] || fail "HIMMEL-9265 model: adopt exited $rr_rc: $rr_out"
+grepq "$rr_out" -F 'qmd rerank: local reranker model present' \
+  || fail "HIMMEL-9265 model: missing the local reranker present line: $rr_out"
+grepq "$rr_out" -E 'no local reranker model|QMD_RERANK' \
+  && fail "HIMMEL-9265 model: control warned although the reranker model is present: $rr_out"
+echo "ok: HIMMEL-9265 control: a reranker model in the cache gives no WARNING"
+rr_run off 1 off
+[ "$rr_rc" -eq 0 ] || fail "HIMMEL-9265 off: adopt exited $rr_rc: $rr_out"
+grepq "$rr_out" -E 'WARNING.*QMD_RERANK=off' \
+  || fail "HIMMEL-9265 off: no WARNING that QMD_RERANK=off disables the reranker: $rr_out"
+echo "ok: HIMMEL-9265 QMD_RERANK=off in the adopter's environment WARNs"
+rr_dry_t="$work/rr9265-dry"; mkdir -p "$rr_dry_t"; HOME="$work/rr9265-home-dry" git -C "$rr_dry_t" init -q 2>/dev/null || git -C "$rr_dry_t" init -q
+set +e
+rr_out=$(PATH="$rrbin:$work/bin:$native_free_path" HOME="$work/rr9265-home-dry" bash "$adopt" \
+  --profile core --scope project --target "$rr_dry_t" --dry-run 2>&1); rr_rc=$?
+set -e
+[ "$rr_rc" -eq 0 ] || fail "HIMMEL-9265 dry-run: adopt exited $rr_rc: $rr_out"
+grepq "$rr_out" -F 'DRY: verify the qmd reranker' || fail "HIMMEL-9265 dry-run: missing the reranker DRY line: $rr_out"
+echo "ok: HIMMEL-9265 dry-run names the reranker check"
+
 echo "PASS"

@@ -19,7 +19,20 @@ export const pg = (html) => `<div class="pg">${html}</div>`; // the mockup main 
 export const pageHeader = (title, sub) => `<header class="ph"><h1>${esc(title)}</h1><p>${esc(sub)}</p></header>`;
 
 // One compact command control; the full command is available on hover and to the existing copy handler.
-export const copyCommand = (command, label = "copy command") => `<button class="btn" type="button" data-act="copy" data-cmd="${esc(command)}" title="${esc(command)}">${esc(label)}</button>`;
+// tip: the tooltip; it defaults to the command itself, and a plain page passes a sentence so no key name shows.
+export const copyCommand = (command, label = "copy command", tip = command) => `<button class="btn" type="button" data-act="copy" data-cmd="${esc(command)}" title="${esc(tip)}">${esc(label)}</button>`;
+
+// A collapsible category on the Configure scope tile. The first is open on a fresh page; after that the reader's own
+// choice is kept in this module variable for the session (no storage write), so a repaint never folds what they opened.
+const catOpen = {};
+export const category = (id, title, body, first = false) =>
+  `<details class="cat"${(id in catOpen ? catOpen[id] : first) ? " open" : ""} data-cat="${esc(id)}"><summary>${esc(title)}</summary>${body}</details>`;
+if (typeof document !== "undefined") {
+  document.addEventListener("toggle", (e) => {
+    const id = e.target.dataset && e.target.dataset.cat;
+    if (id) catOpen[id] = e.target.open;
+  }, true);
+}
 
 const kindOf = (r) => ({ doctor: "check", item: "item" }[r.source] || r.source);
 const remedyOf = (r) => (r.fix && r.fix.remedy) || "";
@@ -178,53 +191,69 @@ export function renderNav(feed, current) {
     .map(([id, label, n, key]) => `<button data-go="${id}" aria-current="${id === current}"><span>${label} ${n}</span><kbd>${key}</kbd></button>`).join("");
 }
 
+// A machine-setting card. The Settings page draws it as a section with its heading; the Configure scope tile (plain) draws it
+// as one row under a category, with the sentence on top and no internal key name or file in any text or tooltip.
+const machineBox = (plain, id, title, why, full, inner) => plain
+  ? `<div class="setrow" id="${id}"><div class="sethead"><span class="id">${title}</span></div><p class="why">${why}</p>${inner}</div>`
+  : `<section id="${id}" aria-labelledby="h-${id}"><h2 id="h-${id}">${title}</h2><p class="sub">${full}</p>${inner}</section>`;
+
 // the vm.mode / vm.remote form. vm = { data: GET /api/vm, error, draft: { mode, ssh, port, identity }, msg }.
 // The server validates; this only shows its answer.
-export function renderVm(vm) {
-  const head = `<h2 id="h-vm">VM mode</h2><p class="sub">Whether VM proof runs on the local test VM, a remote one, or not at all (vm.mode in the himmel config).</p>`;
-  if (!vm || (!vm.data && !vm.error)) return `<section id="vm" aria-labelledby="h-vm">${head}<div class="empty">loading…</div></section>`;
-  if (!vm.data) return `<section id="vm" aria-labelledby="h-vm">${head}<div class="nodata">${esc(vm.error)}</div></section>`;
+export function renderVm(vm, plain = false) {
+  const box = (inner) => machineBox(plain, "vm", "VM mode", "Whether VM proof runs on the local test VM, a remote one, or not at all.",
+    "Whether VM proof runs on the local test VM, a remote one, or not at all (vm.mode in the himmel config).", inner);
+  if (!vm || (!vm.data && !vm.error)) return box(`<div class="empty">loading…</div>`);
+  if (!vm.data) return box(`<div class="nodata">${esc(vm.error)}</div>`);
   const d = vm.draft || { mode: vm.data.mode, ssh: "", port: "", identity: "" };
   const opts = ["local", "remote", "none"].map((m) => `<option value="${m}"${d.mode === m ? " selected" : ""}>${m}</option>`).join("");
   const remote = d.mode === "remote"
     ? `<label>ssh target <input data-vm="ssh" value="${esc(d.ssh)}" placeholder="user@host" aria-label="ssh target"></label>
        <label>port <input data-vm="port" value="${esc(d.port)}" placeholder="22" inputmode="numeric" aria-label="port"></label>
-       <label>identity <input data-vm="identity" value="${esc(d.identity)}" placeholder="~/.ssh/id_ed25519" aria-label="identity"></label>`
+       <label>identity <input data-vm="identity" value="${esc(d.identity)}" placeholder="${plain ? "your ssh key" : "~/.ssh/id_ed25519"}" aria-label="identity"></label>`
     : "";
   const msg = vm.msg ? `<div class="${vm.msg.ok ? "ro" : "nodata"}" role="status">${esc(vm.msg.text)}</div>` : "";
-  return `<section id="vm" aria-labelledby="h-vm">${head}<div class="card">
+  return box(`<div class="card">
     <label>mode <select data-vm="mode" aria-label="vm mode">${opts}</select></label>${remote}
-    <button class="btn" data-act="vm-save">save</button>${msg}</div></section>`;
+    <button class="btn" data-act="vm-save">save</button>${msg}</div>`);
 }
 
 // the Reports and shifts card: the four settings behind the Morning report and the Shift page.
 // rs = { data: GET /api/report-settings, error, draft: { report_day, idle, cut1, cut2, minrun }, msg }. The server validates; this only shows its answer.
-export function renderReports(rs) {
-  const head = `<h2 id="h-reports">Reports and shifts</h2><p class="sub">Where the Morning report's day starts and how a shift is cut (reports.* in the himmel config). A new day start applies from the next report on; past reports keep the window they were made with.</p>`;
-  if (!rs || (!rs.data && !rs.error)) return `<section id="reports" aria-labelledby="h-reports">${head}<div class="empty">loading…</div></section>`;
-  if (!rs.data) return `<section id="reports" aria-labelledby="h-reports">${head}<div class="nodata">${esc(rs.error)}</div></section>`;
+export function renderReports(rs, plain = false) {
+  const box = (inner) => machineBox(plain, "reports", "Reports and shifts", "Where the Morning report's day starts and how a shift is cut. A new day start applies from the next report on; past reports keep the window they were made with.",
+    "Where the Morning report's day starts and how a shift is cut (reports.* in the himmel config). A new day start applies from the next report on; past reports keep the window they were made with.", inner);
+  if (!rs || (!rs.data && !rs.error)) return box(`<div class="empty">loading…</div>`);
+  if (!rs.data) return box(`<div class="nodata">${esc(rs.error)}</div>`);
   const d = rs.draft || { report_day: rs.data.report_day, idle: String(rs.data.shift_idle_min), cut1: rs.data.shift_cuts[0], cut2: rs.data.shift_cuts[1], minrun: String(rs.data.shift_min_run_h) };
   const radio = (v, label) => `<label><input type="radio" name="report_day" data-rs="report_day" value="${v}"${d.report_day === v ? " checked" : ""}> ${label}</label>`;
   const msg = rs.msg ? `<div class="${rs.msg.ok ? "ro" : "nodata"}" role="status">${esc(rs.msg.text)}</div>` : "";
-  return `<section id="reports" aria-labelledby="h-reports">${head}<div class="card">
-    <fieldset><legend>report_day: where the day starts</legend>${radio("local", "local midnight on the station (default)")} ${radio("utc", "UTC midnight")}</fieldset>
-    <label>shift_idle_min <input data-rs="idle" value="${esc(d.idle)}" inputmode="numeric" aria-label="shift_idle_min"> minutes idle close a shift (default 60)</label>
-    <label>shift_cuts <input data-rs="cut1" value="${esc(d.cut1)}" placeholder="08:00" aria-label="shift_cuts day cut"> <input data-rs="cut2" value="${esc(d.cut2)}" placeholder="20:00" aria-label="shift_cuts night cut"> day and night cut, HH:MM (default 08:00 and 20:00)</label>
-    <label>shift_min_run_h <input data-rs="minrun" value="${esc(d.minrun)}" inputmode="decimal" aria-label="shift_min_run_h"> hours a chief must run to count (default 4)</label>
-    <button class="btn" data-act="reports-save">save</button>${msg}</div></section>`;
+  const t = (words, tech) => (plain ? words : tech);
+  return box(`<div class="card">
+    <fieldset><legend>${t("Where the day starts", "report_day: where the day starts")}</legend>${radio("local", "local midnight on the station (default)")} ${radio("utc", "UTC midnight")}</fieldset>
+    <label>${t("Idle minutes that close a shift", "shift_idle_min")} <input data-rs="idle" value="${esc(d.idle)}" inputmode="numeric" aria-label="${t("idle minutes that close a shift", "shift_idle_min")}"> ${t("(default 60)", "minutes idle close a shift (default 60)")}</label>
+    <label>${t("Day and night cut", "shift_cuts")} <input data-rs="cut1" value="${esc(d.cut1)}" placeholder="08:00" aria-label="${t("day cut", "shift_cuts day cut")}"> <input data-rs="cut2" value="${esc(d.cut2)}" placeholder="20:00" aria-label="${t("night cut", "shift_cuts night cut")}"> ${t("as HH:MM (default 08:00 and 20:00)", "day and night cut, HH:MM (default 08:00 and 20:00)")}</label>
+    <label>${t("Hours a chief must run to count", "shift_min_run_h")} <input data-rs="minrun" value="${esc(d.minrun)}" inputmode="decimal" aria-label="${t("hours a chief must run to count", "shift_min_run_h")}"> ${t("(default 4)", "hours a chief must run to count (default 4)")}</label>
+    <button class="btn" data-act="reports-save">save</button>${msg}</div>`);
 }
 
 // the fleet cap card. fc = { data: GET /api/fleet-cap, error }. Read-only: the cap is gate policy, edited by hand in config.json.
-export function renderFleetCap(fc) {
-  const head = `<h2 id="h-fleet-cap">Fleet cap</h2><p class="sub">How many workers may run at once. Launching one more than this is refused.</p>`;
-  if (!fc || (!fc.data && !fc.error)) return `<section id="fleet-cap" aria-labelledby="h-fleet-cap">${head}<div class="empty">loading…</div></section>`;
-  if (!fc.data) return `<section id="fleet-cap" aria-labelledby="h-fleet-cap">${head}<div class="nodata">${esc(fc.error)}</div></section>`;
+export function renderFleetCap(fc, plain = false) {
+  const why = "How many workers may run at once. Launching one more than this is refused.";
+  const box = (inner) => machineBox(plain, "fleet-cap", plain ? "Worker limit" : "Fleet cap", why, why, inner);
+  if (!fc || (!fc.data && !fc.error)) return box(`<div class="empty">loading…</div>`);
+  if (!fc.data) return box(`<div class="nodata">${esc(fc.error)}</div>`);
   const d = fc.data;
+  if (plain) {
+    const where = d.source === ".env" ? "It is still set in a legacy place; move it to the machine settings." : d.source === "config.json" ? "It is set in the machine settings." : "It is not set.";
+    return box(`<div class="sethead"><span class="id">Limit</span><span class="det">read-only here</span>
+      <span class="slot"><label>limit <input type="text" data-fc="cap" value="${esc(d.cap)}" readonly aria-label="worker limit"></label></span></div>
+      <div class="ro">now: ${esc(d.cap)} · default: ${esc(d.default)} · ${where} To change it, edit the machine settings by hand; the launching shell does not count.</div>`);
+  }
   const from = d.source === "config.json" ? `set in <code>${esc(d.configFile)}</code>` : d.source === ".env" ? `set in the legacy <code>${esc(d.envFile)}</code>; move it to <code>${esc(d.configFile)}</code>` : "not set";
-  return `<section id="fleet-cap" aria-labelledby="h-fleet-cap">${head}<div class="card">
+  return box(`<div class="card">
     <div class="setrow"><div class="sethead"><span class="id">HIMMEL_FLEET_CAP</span><span class="det">gate policy, read-only here</span>
     <span class="slot"><label>cap <input type="text" data-fc="cap" value="${esc(d.cap)}" readonly aria-label="fleet cap"></label></span></div>
-    <div class="ro">now: ${esc(d.cap)} · default: ${esc(d.default)} · ${from}. To change it, edit <code>${esc(d.edit)}</code> by hand; the launching shell does not count.</div></div></div></section>`;
+    <div class="ro">now: ${esc(d.cap)} · default: ${esc(d.default)} · ${from}. To change it, edit <code>${esc(d.edit)}</code> by hand; the launching shell does not count.</div></div></div>`);
 }
 
 // the review gate card. rg = { data: GET /api/review-gate, error, draft: [{ slug, mode, required, enabled }], msg }.
@@ -319,19 +348,61 @@ const feedCommand = (r) => {
   return settingsCommand(r.control, HIMMEL_HOME, r.control.action === "config.initiative" ? (on ? "off" : "on") : undefined);
 };
 
-const SHOWN = (title, detail, cmd, effect) => ({ title, detail, cmd, effect, slot: `<span class="ro">shown here, set in the terminal</span>` });
+const SHOWN = (title, detail, cmd, effect, why) => ({ title, detail, cmd, effect, why, slot: `<span class="ro">shown here, set in the terminal</span>` });
+
+// The plain page (the Configure scope tile) shows a friendly title and one sentence for each switch the feed offers,
+// never the feed's own row id or its detail line, which name internal keys and files. A switch the tables below do not
+// know falls back to its group's sentence, so no row is ever left without an explanation.
+const STEP = {
+  execute: ["Build the plan", "Hands a signed-off plan to a worker to build it."],
+  prcheck: ["Review the code", "Runs the code review and fixes what it finds until it is clean."],
+  pr: ["Open the pull request", "Opens or refreshes the pull request once the review is clean."],
+  ticket: ["Update the ticket", "Moves the ticket to the right status when the work is done."],
+  merge: ["Merge", "Merges the pull request once its checks are green."],
+  public: ["Publish", "A retired step: merging already publishes, so nothing more runs."],
+  handover: ["Write the handover", "Writes the handover note so the next session can pick up."],
+};
+const JOB = {
+  pipeline: ["Clip pipeline", "Runs the clip pipeline on a schedule, so new clips are processed without you asking."],
+  graphmap: ["Code map refresh", "Refreshes the code map on a schedule, so it keeps up with your changes."],
+  qmd: ["Search index refresh", "Refreshes the note search index on a schedule, so recent notes can be found."],
+  doctor: ["Daily health check", "Runs the health checks each day and tells you when it finds something new."],
+};
+const PLUGIN_WHY = {
+  handover: "Saves where a session stopped, so another one can carry on.",
+  "himmel-ops": "The operator commands for running himmel: updates, health and fleet work.",
+  qmd: "Searches your local notes and docs.",
+  "himmel-guard": "Blocks risky actions such as editing the main branch or reading secret files.",
+  "himmel-bus": "Lets Claude sessions send each other messages.",
+  "lean-skills": "Everyday engineering skills: planning, debugging and review.",
+  graphify: "Builds a map of the code to answer questions about its structure.",
+};
+function plainFed(r, g) {
+  const [kind, rest = ""] = r.id.split(":");
+  if (kind === "initiative" && STEP[rest]) return { title: STEP[rest][0], why: STEP[rest][1] };
+  const job = JOB[r.id.replace(/-cadence$/, "")];
+  if (job && /-cadence$/.test(r.id)) return { title: job[0], why: job[1] };
+  if (kind === "plugin") {
+    const name = rest.split("@")[0];
+    return { title: name, why: PLUGIN_WHY[name] || "A Claude Code plugin that adds commands, skills or checks to your sessions." };
+  }
+  return { title: r.id.replace(/[:@_-]+/g, " "), why: g.fedWhy };
+}
+const PLAIN_TIP = "Copy this command, then paste it in your own terminal.";
+
 const SETTINGS_GROUPS = [
-  { id: "plugins", title: "Plugins", feed: ["plugin.enable", "plugin.disable"], learn: "/himmelctl/",
+  { id: "plugins", title: "Plugins", feed: ["plugin.enable", "plugin.disable"], learn: "/himmelctl/", fedWhy: "A Claude Code plugin that adds commands, skills or checks to your sessions.",
     intro: "Claude Code plugins himmel installed. Three cannot be switched off, because the rest depends on them: handover, himmel-ops and qmd.",
-    first: [{ id: "profile-set", title: "Plugin set", detail: "lean or full; asks you to type the name to confirm", effect: EFFECT["profile.set"],
+    first: [{ id: "profile-set", title: "Plugin set", detail: "lean or full; asks you to type the name to confirm", why: "Chooses the lean or the full set of plugins; you type the name to confirm.", effect: EFFECT["profile.set"],
       cmd: ["lean", "full"].map((t) => settingsCommand({ action: "profile.set", target: t })).join("\n"),
       keys: ["lean", "full"].map((t) => `settings|profile-set-${t}`),
       slot: ["lean", "full"].map((t) => `<button class="btn" data-act="plan" data-k="settings|profile-set-${t}" data-action="profile.set" data-target="${t}">${t}</button>`).join(" ") }] },
-  { id: "review", title: "Review by a second model", feed: ["config.lanes"], learn: "/setup/codex/",
+  { id: "review", title: "Review by a second model", feed: ["config.lanes"], learn: "/setup/codex/", fedWhy: "Adds this reviewer to the code review.",
     intro: "Which extra reviewers join Claude on /pr-check. Off unless you turn one on." },
-  { id: "auto-ship", title: "Auto-ship steps", feed: ["config.initiative"], learn: "/configuration/",
-    intro: "Each step is its own switch; merging is never one of them here. Saved as HIMMEL_INITIATIVE in the .env of the himmel download." },
-  { id: "scheduled-jobs", title: "Scheduled jobs", feed: ["cadence.arm", "cadence.disarm"], learn: "/cadences/",
+  { id: "auto-ship", title: "Auto-ship steps", feed: ["config.initiative"], learn: "/configuration/", fedWhy: "Runs this step on its own when you ship.",
+    intro: "Each step is its own switch; merging is never one of them here. Saved as HIMMEL_INITIATIVE in the .env of the himmel download.",
+    plainIntro: "Each step is its own switch; merging is never one of them here." },
+  { id: "scheduled-jobs", title: "Scheduled jobs", feed: ["cadence.arm", "cadence.disarm"], learn: "/cadences/", fedWhy: "Runs on a schedule.",
     intro: "Arming or disarming asks you to type a confirmation, and says what the job costs." },
   { id: "commit-rules", title: "Commit rules", learn: "/configuration/",
     intro: "Read by the git gates in your project. Set them in ~/.himmel/himmel.conf.",
@@ -352,13 +423,20 @@ const SETTINGS_GROUPS = [
     shown: [
       SHOWN("Saved answers", "replay them elsewhere, or move the install between user and project scope",
         `${CTL} install --from-profile <file>\n${CTL} scope set user --dry-run`, "when you run the command"),
-      SHOWN("Machine settings", "where himmel keeps your machine-wide answers", "~/.himmel/config.json", "your next Claude launch"),
+      SHOWN("Machine settings", "where himmel keeps your machine-wide answers", "~/.himmel/config.json", "your next Claude launch", "Where himmel keeps your machine-wide answers, such as the worker limit and the report settings."),
     ] },
 ];
 
-function setRow(g, state, { id, title, detail, cmd, effect, slot, health, keys }) {
+function setRow(g, state, { id, title, detail, cmd, effect, slot, health, keys, why }, plain) {
   const ks = keys || [`settings|${id}`];
   const open = ks.filter((k) => state.plans && state.plans[k]);
+  if (plain) {
+    // one plain sentence instead of the detail line, a copy button with a plain tooltip, and no bare path or key in sight
+    const copies = open.length || !(cmd.includes(" ") || cmd.includes("=")) ? "" : [...new Set(cmd.split("\n"))].map((c, i, all) => copyCommand(c, all.length > 1 ? `copy command ${i + 1}` : "copy command", PLAIN_TIP)).join(" ");
+    return `<div class="setrow"><div class="sethead">${health ? `<span class="st ${esc(health)}">${ST[health] || esc(health)}</span>` : ""}<span class="id">${esc(title)}</span><span class="slot">${slot}</span></div>
+    <p class="why">${esc(why || detail)}</p>${copies}
+    <div class="ro">takes effect: ${esc(effect)} · <a class="learn" href="${docsHref(g.learn)}" target="_blank" rel="noopener">Learn more</a></div>${open.map((k) => planHtml(k, state.plans[k])).join("")}</div>`;
+  }
   return `<div class="setrow"><div class="sethead">${health ? `<span class="st ${esc(health)}">${ST[health] || esc(health)}</span>` : ""}<span class="id">${esc(title)}</span><span class="det">${esc(detail)}</span><span class="slot">${slot}</span></div>
     ${open.length ? "" : cmd.includes(" ") || cmd.includes("=") ? [...new Set(cmd.split("\n"))].map((c, i, all) => copyCommand(c, all.length > 1 ? `copy command ${i + 1}` : "copy command")).join(" ") : `<code>${esc(cmd)}</code>`}
     <div class="ro">takes effect: ${esc(effect)} · <a class="learn" href="${docsHref(g.learn)}" target="_blank" rel="noopener">Learn more</a></div>${open.map((k) => planHtml(k, state.plans[k])).join("")}</div>`;
@@ -366,20 +444,22 @@ function setRow(g, state, { id, title, detail, cmd, effect, slot, health, keys }
 
 // The Settings groups by id, in page order; the Configure page draws its tiles from them. ids = all when omitted.
 // fold: show a group's first N rows and put the rest under a "M more" disclosure.
-export function renderSettingsGroups(feed, state, ids, fold) {
+// plain: the Configure scope tile's look, a friendly title and one sentence per row, no key name or file.
+export function renderSettingsGroups(feed, state, ids, fold, plain = false) {
   const toggles = (feed.rows || []).filter((r) => r.control.class === "toggle");
   return SETTINGS_GROUPS.filter((g) => !ids || ids.includes(g.id)).map((g) => {
     const fed = toggles.filter((r) => g.feed && g.feed.includes(r.control.action)).map((r) => ({
       id: r.id, title: r.id, detail: (r.installed && r.installed.detail) || "", cmd: feedCommand(r), effect: settingsEffect(r.control.action), slot: slot(r, "settings"), health: r.health,
+      ...(plain ? plainFed(r, g) : {}),
     }));
     const all = [...(g.first || []), ...fed, ...(g.shown || [])];
-    const rowsHtml = all.map((x) => setRow(g, state, x));
+    const rowsHtml = all.map((x) => setRow(g, state, x, plain));
     // a row folded away that holds an open plan keeps the disclosure open, so a pending confirm is never hidden.
     const planOpen = (x) => (x.keys || [`settings|${x.id}`]).some((k) => state.plans && state.plans[k]);
     const body = fold && rowsHtml.length > fold + 1
       ? `${rowsHtml.slice(0, fold).join("")}<details class="more"${all.slice(fold).some(planOpen) ? " open" : ""}><summary>${rowsHtml.length - fold} more</summary>${rowsHtml.slice(fold).join("")}</details>`
       : rowsHtml.join("");
-    return `<div class="setgroup"><h3 id="sg-${g.id}">${esc(g.title)}</h3><p class="sub">${esc(g.intro)}</p>
+    return `<div class="setgroup"><h3 id="sg-${g.id}">${esc(g.title)}</h3><p class="sub">${esc((plain && g.plainIntro) || g.intro)}</p>
     ${body}</div>`;
   }).join("");
 }

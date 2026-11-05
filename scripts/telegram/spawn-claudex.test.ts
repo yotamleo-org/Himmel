@@ -46,7 +46,7 @@ import {
   refuseNonPrimaryCwd,
 } from "./spawn-claudex";
 import { BASH_BIN } from "./run";
-import { resolveFailfastWindowMs, transcriptDirFor } from "./spawn-common";
+import { resolveFailfastWindowMs, resolveProfileSettings, transcriptDirFor } from "./spawn-common";
 
 // runClaudexSharedDispatch trust-seeds
 // UNCONDITIONALLY (needsWorktreeAdd true or false), so every test below that
@@ -1585,6 +1585,11 @@ test("buildClaudexRunArgs: injects --settings before the prompt when set; omits 
   expect(buildClaudexRunArgs("/repo/scripts/claude-codex", "go", "bypassPermissions", s).cmd)
     .toEqual([BASH_BIN, "/repo/scripts/claude-codex", "--permission-mode", "bypassPermissions", "--settings", s, "go"]);
   expect(buildClaudexRunArgs("/repo/scripts/claude-codex", "go").cmd).not.toContain("--settings");
+});
+
+test("resolveProfileSettings: a claudex spawn on a worker profile keeps lean-skills (nativeDrop is native-lane only)", () => {
+  const plugins = JSON.parse(resolveProfileSettings("worker-impl", [], process.cwd(), []) as string).enabledPlugins;
+  expect(plugins["lean-skills@himmel"]).toBe(true);
 });
 
 test("parseClaudexArgs: profile defaults to lane-impl, addPlugins empty; flags parse + accumulate", () => {

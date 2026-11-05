@@ -1,9 +1,10 @@
 // GET /api/agui/board (the himmel.board/1 JSON from board.mjs --json) and GET /api/agui/brief (a worker doc, read-only).
 // board.mjs is replaced by a stub through the `boardScript` seam; the real one needs gh and Jira.
 import { test, expect, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { applySection } from "../../handover/chief-kit/board-section.mjs";
 import { findDoc } from "../agui/board";
 import { startServer } from "../server";
 import { stubKeyring } from "./keyring-stub";
@@ -16,7 +17,7 @@ const NONCE = "BE-N2368-8eba92e8", LOCK = "cachyos-x8664-pid392282";
 const cleanups: (() => void)[] = [];
 afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
 
-function boot() {
+function boot(readOnly = false) {
   const dir = mkdtempSync(join(tmpdir(), "agui-board-"));
   const handovers = join(dir, "handovers");
   const bucket = join(handovers, "op", "himmel");
@@ -31,9 +32,9 @@ const at = (f) => a[a.indexOf(f) + 1];
 writeFileSync(at("--json"), JSON.stringify({ schema: "himmel.board/1", console: { name: "seen:" + at("--doc").split("/").pop() },
   workers: [{ worker: "${WORKER}", timeline: [{ text: "RETASK ${NONCE} lock ${LOCK}" }] }] }));
 `);
-  const s = startServer({ port: 0, token: TOKEN, boardScript: script, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: handovers, HOME: dir } });
+  const s = startServer({ port: 0, token: TOKEN, boardScript: script, readOnly, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: handovers, HOME: dir } });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
-  return s;
+  return Object.assign(s, { bucket });
 }
 const get = (port: number, path: string, headers: Record<string, string> = { "X-Himmel-Token": TOKEN }, method = "GET") =>
   fetch(`http://127.0.0.1:${port}${path}`, { headers, method });
@@ -141,4 +142,112 @@ test("findDoc: a doc symlinked outside the handover root is null; one that resol
     expect(await findDoc(root, "escape")).toBeNull();
     expect(await findDoc(root, "alias")).toBe(realpathSync(join(bucket, "real.md"))); // the validated target, not the symlink
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ---- the chief's sections: the route reads the sidecar through board-section.mjs's readSections ----
+// These rows never spell the sidecar's file name (only board-section.mjs and its tests may, I9): the command writes it, and sidecarOf finds it.
+const chiefDoc = (bucket: string) => join(bucket, `${CHIEF}.md`);
+const seed = (bucket: string, id = "next-up", body = "ship the route") => applySection(chiefDoc(bucket), { kind: "set", id, title: "Next up", body });
+const sidecarOf = (bucket: string) => join(bucket, readdirSync(bucket).find((f) => f.startsWith(CHIEF) && f.includes(".sections") && !f.includes(".tmp"))!);
+const board = async (port: number) => { const r = await get(port, `/api/agui/board?console=${CHIEF}`); return { r, b: await r.json() }; };
+
+test("sections: a sidecar beside the doc comes back under sections, in the stored order", async () => {
+  const { port, bucket } = boot();
+  await seed(bucket, "b-second", "two");
+  await applySection(chiefDoc(bucket), { kind: "set", id: "a-first", title: "First", body: "one", order: 1 });
+  const { r, b } = await board(port);
+  expect(r.status).toBe(200);
+  expect(b.schema).toBe("himmel.board/1"); // the board itself is still served
+  expect(b.sections.map((s: { id: string }) => s.id)).toEqual(["a-first", "b-second"]);
+  expect(b.sections[0]).toMatchObject({ id: "a-first", title: "First", body: "one", tone: "info", order: 1 });
+  expect(b.sections_error).toBeUndefined();
+});
+
+test("sections: no sidecar gives [] and no error; an unparseable one and a 70 KB one give [] and a sections_error (size bound)", async () => {
+  const { port, bucket } = boot();
+  const none = (await board(port)).b;
+  expect(none.sections).toEqual([]);
+  expect(none.sections_error).toBeUndefined();
+  await seed(bucket);
+  const p = sidecarOf(bucket);
+  writeFileSync(p, "{ not json");
+  const bad = (await board(port)).b;
+  expect(bad.sections).toEqual([]);
+  expect(bad.sections_error).toContain("does not parse");
+  writeFileSync(p, JSON.stringify({ sections: [{ id: "x", title: "t", body: "y".repeat(70_000) }] }));
+  const big = (await board(port)).b;
+  expect(big.sections).toEqual([]);
+  expect(big.sections_error).toContain("over");
+});
+
+test("sections: a rewrite with the same mtime and a new size is re-read", async () => {
+  const { port, bucket } = boot();
+  await seed(bucket, "note", "short");
+  const p = sidecarOf(bucket), at = new Date("2026-01-01T00:00:00Z");
+  utimesSync(p, at, at);
+  expect((await board(port)).b.sections[0].body).toBe("short");
+  const next = JSON.parse(readFileSync(p, "utf8"));
+  next.sections[0].body = "a much longer body than before";
+  writeFileSync(p, JSON.stringify(next));
+  utimesSync(p, at, at);
+  expect((await board(port)).b.sections[0].body).toBe("a much longer body than before");
+});
+
+test("sections: a section string holding a nonce or a lock token is served redacted", async () => {
+  const { port, bucket } = boot();
+  await seed(bucket);
+  writeFileSync(sidecarOf(bucket), JSON.stringify({ schema: "himmel.board-sections/1", rev: 1, sections: [{ id: "leak", title: `lock ${LOCK}`, body: `RETASK ${NONCE}`, tone: "warn", order: 10 }] }));
+  const { b } = await board(port);
+  expect(b.sections).toHaveLength(1);
+  const text = JSON.stringify(b);
+  expect(text).not.toContain(NONCE);
+  expect(text).not.toContain(LOCK);
+});
+
+for (const readOnly of [false, true]) {
+  test(`sections: no accepted request changes the sidecar (${readOnly ? "read-only" : "normal"} start)`, async () => {
+    const { port, bucket } = boot(readOnly);
+    await seed(bucket);
+    const p = sidecarOf(bucket), before = statSync(p), bytes = readFileSync(p, "utf8");
+    for (const method of ["GET", "POST", "PUT", "DELETE"]) {
+      const r = await get(port, `/api/agui/board?console=${CHIEF}`, { "X-Himmel-Token": TOKEN }, method);
+      expect(r.status).toBe(method === "GET" ? 200 : readOnly ? 403 : 405);
+    }
+    const after = statSync(p);
+    expect([after.ino, after.mtimeMs, after.size]).toEqual([before.ino, before.mtimeMs, before.size]);
+    expect(readFileSync(p, "utf8")).toBe(bytes);
+    expect(readdirSync(bucket).filter((f) => f.includes(".tmp"))).toEqual([]);
+  });
+}
+
+test("sections: an unknown console is 404 with no sections, and a start with no HANDOVER_DIR is 404 too", async () => {
+  const { port, bucket } = boot();
+  await seed(bucket);
+  const unknown = await get(port, `/api/agui/board?console=HIMMEL-nope-chief`);
+  expect(unknown.status).toBe(404);
+  expect(await unknown.text()).not.toContain("sections");
+  const dir = mkdtempSync(join(tmpdir(), "agui-board-nohd-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: dir } });
+  cleanups.push(() => s.stop());
+  const none = await get(s.port, `/api/agui/board?console=${CHIEF}`);
+  expect(none.status).toBe(404);
+  expect(await none.text()).not.toContain("sections");
+});
+
+test("sections: a failed board build (502) still carries the sections that were read", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "agui-board-502-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const bucket = join(dir, "handovers", "op", "himmel");
+  mkdirSync(bucket, { recursive: true });
+  writeFileSync(chiefDoc(bucket), "# console\n");
+  await seed(bucket);
+  const script = join(dir, "board.mjs");
+  writeFileSync(script, `console.error("jira is down");\nprocess.exit(1);\n`);
+  const s = startServer({ port: 0, token: TOKEN, boardScript: script, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: join(dir, "handovers"), HOME: dir } });
+  cleanups.push(() => s.stop());
+  const { r, b } = await board(s.port);
+  expect(r.status).toBe(502);
+  expect(b.error).toBe("the board could not be built");
+  expect(b.sections.map((x: { id: string }) => x.id)).toEqual(["next-up"]);
 });

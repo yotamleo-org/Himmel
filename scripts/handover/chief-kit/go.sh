@@ -9,7 +9,7 @@
 # scripts/lib/go-gate.sh). The chief's SendMessage GO is only the
 # notification. A GO binds ONE head: a push after it needs a fresh GO.
 #
-# Usage: go.sh [--trust-reviewed <reviewer-id>] <pr-number> <full-40-hex-head-sha>
+# Usage: go.sh [--contract yes|no] [--trust-reviewed <reviewer-id>] <pr-number> <full-40-hex-head-sha>
 #        go.sh --fix-main-red <red-run-id> <pr-number> <full-40-hex-head-sha>
 #        go.sh --repo <owner/repo> --trust-reviewed <judge-qid> <pr-number> <full-40-hex-head-sha>
 # Prints the written path. Re-running overwrites (idempotent).
@@ -54,6 +54,13 @@
 # go_adopted_entry): the PR must be based on that repo's default branch, and the
 # judge's record must be written with write-verdict.sh --repo <owner/name>, so it
 # lives under that repo's bucket and names that repo.
+#
+# --contract yes|no: the merge contract of the merge this GO lets through - yes when the
+# merge completes the ticket (merge-on-green.sh --jira-transition), no for a partial merge.
+# A himmel merge GO needs it (ready-check.sh runs with --require-contract: a keyed PR title
+# and no contract is a refusal), because merge-on-green.sh refuses a contract-no merge whose
+# PR body records no remainder (exit 26) and a GO must not be written for a merge that
+# refuses. Not for --repo; optional for --fix-main-red.
 #
 # every himmel GO, trust-reviewed or not, first runs this directory's
 # ready-check.sh <pr> <head> from the caller's cwd and refuses (exit 4) unless
@@ -128,7 +135,7 @@ GH_READ="$(cd "$_csg_dir/../../lib" 2>/dev/null && pwd)/gh-read.sh"  # swallow-o
 [ -f "$GH_READ" ] || GH_READ=gh
 
 usage() {
-    echo "usage: go.sh [--model <id>] [--effort <level>] [--trust-reviewed <reviewer-id>] <pr-number> <full-40-hex-head-sha>" >&2
+    echo "usage: go.sh [--model <id>] [--effort <level>] [--contract yes|no] [--trust-reviewed <reviewer-id>] <pr-number> <full-40-hex-head-sha>" >&2
     echo "       go.sh --fix-main-red <red-run-id> <pr-number> <full-40-hex-head-sha>" >&2
     echo "       go.sh --repo <owner/repo> --trust-reviewed <judge-qid> <pr-number> <full-40-hex-head-sha>" >&2
 }
@@ -143,6 +150,8 @@ GO_MODEL=""
 GO_MODEL_SET=0
 GO_EFFORT=""
 GO_EFFORT_SET=0
+CONTRACT=""
+CONTRACT_SET=0
 # Each option, in any order, at most once (a repeat is a usage error).
 while :; do
     case "${1:-}" in
@@ -153,6 +162,10 @@ while :; do
         --effort)
             [ "$GO_EFFORT_SET" -eq 0 ] || { usage; exit 2; }
             GO_EFFORT="${2:-}"; GO_EFFORT_SET=1
+            shift 2 2>/dev/null || shift "$#" ;;
+        --contract)
+            [ "$CONTRACT_SET" -eq 0 ] || { usage; exit 2; }
+            CONTRACT="${2:-}"; CONTRACT_SET=1
             shift 2 2>/dev/null || shift "$#" ;;
         --trust-reviewed)
             [ "$TRUST_SET" -eq 0 ] || { usage; exit 2; }
@@ -174,6 +187,17 @@ if [ "$#" -ne 2 ]; then
     exit 2
 fi
 PR="$1"; SHA="$2"
+if [ "$CONTRACT_SET" -eq 1 ]; then
+    case "$CONTRACT" in
+        yes|no) ;;
+        *) usage; echo "go: --contract takes yes or no (got '$CONTRACT')" >&2; exit 2 ;;
+    esac
+    if [ "$FORK_SET" -eq 1 ]; then
+        usage
+        echo "go: --contract belongs to a himmel merge GO and cannot be combined with --repo" >&2
+        exit 2
+    fi
+fi
 if [ "$FIX_SET" -eq 1 ]; then
     case "$FIXRUN" in
         ''|0*|*[!0123456789]*)
@@ -377,7 +401,13 @@ fi
 # CR-ledger ok row at this head (read from this cwd's git-common-dir, as when
 # the chief runs it by hand), so a push after /pr-check cannot get a GO
 # without a fresh review. Run from $HERE: the anchor's copy, never a worktree's.
-if [ "$FORK_SET" -eq 0 ] && ! READY_OUT=$(bash "$HERE/ready-check.sh" "$PR" "$SHA" 2>&1); then
+# The merge contract is named by the caller (--contract): a merge GO that does not name it is refused
+# by ready-check item 17 (--require-contract), because merge-on-green.sh's remainder refusal depends on it.
+RC_ARGS=""
+[ "$FIX_SET" -eq 1 ] || RC_ARGS="--require-contract"
+[ "$CONTRACT_SET" -eq 0 ] || RC_ARGS="$RC_ARGS --contract $CONTRACT"
+# shellcheck disable=SC2086  # RC_ARGS is fixed words built just above, never caller text
+if [ "$FORK_SET" -eq 0 ] && ! READY_OUT=$(bash "$HERE/ready-check.sh" $RC_ARGS "$PR" "$SHA" 2>&1); then
     printf '%s\n' "$READY_OUT" >&2
     echo "go: refusing - ready-check.sh did not PASS for PR #$PR at $SHA (above); fix what it names, re-run /pr-check for a new head, then re-run go.sh. No GO written." >&2
     exit 4

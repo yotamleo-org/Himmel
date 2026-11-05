@@ -23,6 +23,16 @@
 # Code runs `snyk code test --json` (SARIF; level error = High, warning = Medium).
 # An org without Snyk Code reports `SKIPPED not-enabled` and does not fail the run.
 #
+# Code triage: Snyk Code reads no .snyk ignore block, so a Code High
+# that has been looked at is recorded in scripts/security/snyk-code-triage.tsv, one row per
+# finding: <SARIF fingerprints.identity>, <verdict: fixed|hardened|false-positive>, <reason>. Only
+# an UNTRIAGED Code High (id not in that list, or a result with no id) counts toward the exit code.
+# A `fixed` row records a fix and suppresses nothing: that id coming back in a scan gates, so the scan
+# is the regression check. `hardened` and `false-positive` rows stay suppressed while Snyk reports them;
+# the summary lists the untriaged and the triaged findings separately by rule and file:line. The raw
+# SARIF in <date>.json is never changed and nothing is ignored in Snyk. A row with no id, an unknown
+# verdict or no reason exits 2 before any scan runs. Open Source findings are never triaged.
+#
 # Quota: the free plan allows 400 Open Source, 100 Code, 300 IaC and 100
 # Container tests per period (docs.snyk.io/snyk-platform-administration/
 # groups-and-organizations/usage-settings). Open Source counts ONE TEST PER
@@ -52,7 +62,7 @@
 #
 # Seams (tests): SNYK_BIN, SNYK_SCAN_STATE_DIR, SNYK_SCAN_OUT_DIR, SNYK_SCAN_OS_CAP, SNYK_SCAN_CODE_CAP,
 # SNYK_SCAN_FORKS (rows `name|repo-url|ref|up-or-dash` replacing the pin table), SNYK_SCAN_OSV_URL,
-# SNYK_SCAN_UV (the uv binary).
+# SNYK_SCAN_UV (the uv binary), SNYK_SCAN_TRIAGE (the Code triage list).
 # Platform: Linux station (needs jq).
 set -uo pipefail
 
@@ -61,6 +71,7 @@ SNYK="${SNYK_BIN:-snyk}"
 STATE_DIR="${SNYK_SCAN_STATE_DIR:-${HOME:-}/.himmel/state/snyk-scan}"
 OS_CAP="${SNYK_SCAN_OS_CAP:-200}"
 CODE_CAP="${SNYK_SCAN_CODE_CAP:-50}"
+TRIAGE="${SNYK_SCAN_TRIAGE:-$SCRIPT_DIR/snyk-code-triage.tsv}"
 # directory names snyk must not walk: dependencies, test fixtures, other worktrees, generated graphs
 EXCLUDES="node_modules,fixtures,worktrees,graphify-out,.venv"
 # build files snyk --all-projects would run a tool for; a third-party tree (pinned fork or upstream HEAD) that has one is not scanned
@@ -121,6 +132,16 @@ if [ -z "$out_dir" ]; then
     root="$(handover_root 2>/dev/null)" || { err "no handover root; pass --out-dir"; exit 2; }
     scope="$(go_verdict_scope "$repo")" || { err "cannot resolve the state-repo bucket; pass --out-dir"; exit 2; }
     out_dir="$root/$scope/specs/security/snyk"
+fi
+
+# --- Code triage list: a malformed row stops the run before it spends any quota -----
+TRIAGE_SRC=/dev/null
+if [ -e "$TRIAGE" ]; then
+    { [ -f "$TRIAGE" ] && [ -r "$TRIAGE" ]; } || { err "the triage list $TRIAGE is not a readable regular file"; exit 2; }
+    TRIAGE_SRC="$TRIAGE"
+    tri_bad="$(awk -F'\t' '$0 !~ /^[[:space:]]*(#|$)/ && ($1 == "" || $2 !~ /^(fixed|hardened|false-positive)$/ || $3 == "" || ($1 in seen)) {print "line " NR ": " $0; exit} $0 !~ /^[[:space:]]*(#|$)/ {seen[$1] = 1}' "$TRIAGE")" \
+        || { err "cannot validate the triage list $TRIAGE"; exit 2; }
+    [ -z "$tri_bad" ] || { err "triage list $TRIAGE has a row without an id, a verdict (fixed, hardened or false-positive) or a reason, or an id that repeats an earlier row: $tri_bad"; exit 2; }
 fi
 
 # --- quota guard --------------------------------------------------------------
@@ -432,13 +453,19 @@ jq -n --arg date "$date" --arg repo "$repo" --arg head "$head_sha" --arg code_st
 os_rows="$(jq -r "$ROWS_JQ" "$tmp/os.json")" \
     || { err "cannot read the Open Source findings from $tmp/os.json"; exit 2; }
 code_rows="$(jq -r '(.runs // [])[]? | .results[]? | select(.level == "error" or .level == "warning")
-    | [(if .level == "error" then "high" else "medium" end), .ruleId, (.locations[0].physicalLocation.artifactLocation.uri // "?") + ":" + ((.locations[0].physicalLocation.region.startLine // 0) | tostring), (.message.text // "")] | @tsv' "$tmp/code.json")" \
+    | [(if .level == "error" then "high" else "medium" end), .ruleId, (.locations[0].physicalLocation.artifactLocation.uri // "?") + ":" + ((.locations[0].physicalLocation.region.startLine // 0) | tostring), (.message.text // ""), (.fingerprints.identity // "")] | @tsv' "$tmp/code.json")" \
     || { err "cannot read the Code findings from $tmp/code.json"; exit 2; }
+# state <TAB> severity, rule, file:line, message, finding id <TAB> verdict: a result with no id is untriaged
+code_marked="$(printf '%s\n' "$code_rows" | awk -F'\t' -v OFS='\t' 'FILENAME == ARGV[1] { if ($0 !~ /^[[:space:]]*(#|$)/ && $2 != "fixed") v[$1] = $2; next }
+    NF { st = ($5 != "" && ($5 in v)) ? "triaged" : "untriaged"; print st, $1, $2, $3, $4, $5, (st == "triaged" ? v[$5] : "") }' "$TRIAGE_SRC" -)" \
+    || { err "cannot match the Code findings against the triage list"; exit 2; }
 
 os_crit="$(count "$os_rows" critical)"; os_high="$(count "$os_rows" high)"
 os_med="$(count "$os_rows" medium)"; os_low="$(count "$os_rows" low)"
 code_high="$(count "$code_rows" high)"; code_med="$(count "$code_rows" medium)"
-gate=$((os_crit + os_high + code_high))
+code_untri="$(printf '%s\n' "$code_marked" | awk -F'\t' '$1=="untriaged" && $2=="high" {n++} END {print n+0}')"
+code_tri=$((code_high - code_untri))
+gate=$((os_crit + os_high + code_untri))
 
 {
     printf '# Snyk scan %s\n\n' "$date"
@@ -447,20 +474,24 @@ gate=$((os_crit + os_high + code_high))
     printf '## Open Source\n\n- critical: %s\n- high: %s\n- medium: %s\n- low: %s\n\n' "$os_crit" "$os_high" "$os_med" "$os_low"
     printf '## Code\n\n'
     case "$code_status" in
-        ok) printf -- '- high: %s\n- medium: %s\n\n' "$code_high" "$code_med" ;;
+        ok) printf -- '- high: %s\n- untriaged high: %s\n- triaged high: %s\n- medium: %s\n\n' "$code_high" "$code_untri" "$code_tri" "$code_med" ;;
         not-enabled) printf 'SKIPPED not-enabled: Snyk Code is off for this org; enable it in the Snyk org settings.\n\n' ;;
         quota) printf 'SKIPPED quota: the monthly Code cap of %s tests is reached.\n\n' "$CODE_CAP" ;;
         no-supported-files) printf 'SKIPPED no-supported-files: Snyk Code found nothing it can scan.\n\n' ;;
         *) printf 'ERROR: snyk code test failed or printed no SARIF.\n\n' ;;
     esac
     if [ "$gate" -gt 0 ]; then
-        printf '## High and Critical findings\n\n'
+        printf '## Untriaged High and Critical findings\n\n'
         printf '%s\n' "$os_rows" | awk -F'\t' '$1=="critical"||$1=="high" {printf "- [%s] %s %s — %s (%s)\n", $1, $2, $3, $4, $5}'
-        printf '%s\n' "$code_rows" | awk -F'\t' '$1=="high" {printf "- [code high] %s %s — %s\n", $2, $3, $4}'
+        printf '%s\n' "$code_marked" | awk -F'\t' '$1=="untriaged" && $2=="high" {printf "- [code high] %s %s — %s (finding %s)\n", $3, $4, $5, ($6 == "" ? "has no id" : $6)}'
     fi
-} > "$out_dir/$date.summary.md" || { err "cannot write the summary"; exit 2; }
+    if [ "$code_tri" -gt 0 ]; then
+        printf '\n## Triaged Code findings (listed, not gating)\n\n'
+        printf '%s\n' "$code_marked" | awk -F'\t' '$1=="triaged" && $2=="high" {printf "- [code high triaged: %s] %s %s — finding %s\n", $7, $3, $4, $6}'
+    fi
+} >"$out_dir/$date.summary.md" || { err "cannot write the summary"; exit 2; }
 
-echo "snyk-scan: $os_projects projects, open source critical=$os_crit high=$os_high; code $code_status high=$code_high -> $out_dir/$date.summary.md"
+echo "snyk-scan: $os_projects projects, open source critical=$os_crit high=$os_high; code $code_status high=$code_high untriaged=$code_untri ->$out_dir/$date.summary.md"
 [ "$gate" -eq 0 ] || exit 1
 # an incomplete scan is never a clean pass: a Code skip (not-enabled, quota, no files) is intended, an error is not
 if [ "$code_status" = error ] || [ "$usage_failed" -ne 0 ]; then exit 2; fi

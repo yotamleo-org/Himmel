@@ -220,9 +220,9 @@ setup, and is exactly what `--scope project` gives you.
 
 The plugin profile toggles with `/profile`; its registry is
 `scripts/lanes/plugin-profiles.json`. The always-on `base` carries
-`lean-skills@himmel` (vendored workflow skills) and `i-have-adhd@himmel`
-(vendored; the installer and updater create its flag file unless
-`HIMMEL_NO_ADHD_ALWAYS=1`). `design` adds the HTML/UI design kit and
+`lean-skills@himmel` (vendored workflow skills); `i-have-adhd@himmel` is
+on-demand (`/profile enable`) and in no plugin profile but `telegram`.
+`design` adds the HTML/UI design kit and
 `domain-modeling@himmel` per dispatch, `user` enables the opt-in `pstack@himmel`,
 and `humanizer@himmel` is in no plugin profile.
 

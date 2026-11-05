@@ -4184,6 +4184,20 @@ else
 fi
 rm -rf "$t"
 
+echo "== C33: fresh action=published-channel row (graph-data publish) -> OK =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c33.XXXXXX")" || { fail "C33 published-channel: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/handover/.graph-cadence"; write_settings "$t/claude" "$WRAPPER"
+printf '{"ts":"%s","head":"aaa","graph_head":"bbb","merges_behind":2,"action":"published-channel","pr":null,"duration_s":1,"error":null}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$t/handover/.graph-cadence/ledger.jsonl"
+out="$(CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/handover" bash "$DOC" --no-color 2>&1)"
+c33_line="$(printf '%s' "$out" | grep 'C33-graph-stale')"
+if grepq "$c33_line" 'OK   C33-graph-stale' && grepq "$c33_line" -F '(action=published-channel)'; then
+    pass "C33 -> OK (fresh published-channel row is a known-good action)"
+else
+    fail "C33 published-channel -> $c33_line"
+fi
+rm -rf "$t"
+
 echo "== C33: last recorded action=failed -> WARN immediately, regardless of age =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c33.XXXXXX")" || { fail "C33 failed-action: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude" "$t/handover/.graph-cadence"; write_settings "$t/claude" "$WRAPPER"
@@ -8028,5 +8042,58 @@ chmod 755 "$c87_x/handovers/himmel/locked"
 if [ "$(id -u)" = 0 ]; then pass "C87 unreadable folder -> skipped as root (chmod does not block root)"
 elif grepq "$out" -F 'INFO C87-stub-handover-state' && ! grepq "$out" -F 'OK   C87'; then pass "C87 unreadable folder -> INFO, not OK"; else fail "C87 unreadable folder -> $(printf '%s' "$out" | head -4)"; fi
 rm -rf "$c87_t"
+
+# --- C89-qmd-rerank: a qmd that runs without its reranker ---
+# Fixtures copied from the real station: the model cache file name under ~/.cache/qmd/models and the
+# `models:` block of ~/.config/qmd/index.yml (remote reranker).
+c89_t="$(mktemp -d "${TMPDIR:-/tmp}/c89.XXXXXX")" || { echo "FATAL: C89 setup mktemp failed" >&2; exit 1; }
+c89_reset() { rm -rf "${c89_t:?}/home" "${c89_t:?}/models" "${c89_t:?}/cfg"; mkdir -p "$c89_t/home" "$c89_t/models" "$c89_t/cfg"; printf '#!/bin/sh\nexit 0\n' > "$c89_t/qmd"; chmod +x "$c89_t/qmd"; }
+c89_gguf() { : > "$c89_t/models/hf_ggml-org_qwen3-reranker-0.6b-q8_0.gguf"; }
+c89_remote_cfg() { printf 'models:\n  embed: openai:qwen/qwen3-embedding-8b\n  generate: openai:google/gemini-2.5-flash-lite\n  rerank: openai:cohere/rerank-4-fast\n  openai_base_url: https://openrouter.ai/api/v1\n' > "$c89_t/cfg/index.yml"; }
+c89_run() { env -u QMD_RERANK -u QMD_RERANK_MODEL -u QMD_DAEMON_DISABLED HOME="$c89_t/home" QMD_CONFIG_DIR="$c89_t/cfg" HIMMEL_DOCTOR_QMD_BIN="$c89_t/qmd" HIMMEL_DOCTOR_QMD_MODELS_DIR="$c89_t/models" QMD_DAEMON_OFF_FLAG="$c89_t/no-such-flag" "$@" bash "$DOC" --only C89 --no-color 2>&1; }
+echo "== C89: QMD_RERANK=off -> WARN naming the variable and the remedy =="
+c89_reset; c89_gguf
+out="$(c89_run QMD_RERANK=off)"
+if grepq "$out" 'WARN C89-qmd-rerank' && grepq "$out" -F 'QMD_RERANK=off' && grepq "$out" -F 'unset QMD_RERANK'; then pass "C89 QMD_RERANK=off -> WARN"; else fail "C89 QMD_RERANK=off -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C89: control, local reranker model present and QMD_RERANK unset -> OK, no WARN =="
+c89_reset; c89_gguf
+out="$(c89_run)"
+if grepq "$out" 'OK   C89-qmd-rerank' && grepq "$out" -F 'local reranker' && ! grepq "$out" 'WARN C89'; then pass "C89 local reranker present -> OK"; else fail "C89 local reranker present -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C89: local route and no reranker model in the cache -> WARN with qmd pull =="
+c89_reset
+out="$(c89_run)"
+if grepq "$out" 'WARN C89-qmd-rerank' && grepq "$out" -F 'qmd pull'; then pass "C89 no reranker model -> WARN"; else fail "C89 no reranker model -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C89: remote reranker configured -> OK without a local model =="
+c89_reset; c89_remote_cfg
+out="$(c89_run)"
+if grepq "$out" 'OK   C89-qmd-rerank' && grepq "$out" -F 'remote reranker' && ! grepq "$out" 'WARN C89'; then pass "C89 remote reranker -> OK"; else fail "C89 remote reranker -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C89: a quoted remote reranker value in the config counts as remote =="
+c89_reset; printf 'models:\n  rerank: "openai:cohere/rerank-4-fast"\n' > "$c89_t/cfg/index.yml"
+out="$(c89_run)"
+if grepq "$out" 'OK   C89-qmd-rerank' && grepq "$out" -F 'remote reranker' && ! grepq "$out" 'WARN C89'; then pass "C89 quoted remote reranker -> OK"; else fail "C89 quoted remote reranker -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C89: an adopter's qmd is the bun-global script with no qmd on PATH -> still checked =="
+c89_reset; c89_gguf
+mkdir -p "$c89_t/bun/install/global/node_modules/@tobilu/qmd/dist/cli" "$c89_t/stubbin"
+: > "$c89_t/bun/install/global/node_modules/@tobilu/qmd/dist/cli/qmd.js"
+printf '#!/bin/sh\nexit 0\n' > "$c89_t/stubbin/bun"; chmod +x "$c89_t/stubbin/bun"
+c89_path="$c89_t/stubbin"; c89_ifs="$IFS"; IFS=:
+for c89_d in $PATH; do [ -e "$c89_d/qmd" ] || c89_path="$c89_path:$c89_d"; done
+IFS="$c89_ifs"
+if PATH="$c89_path" command -v qmd >/dev/null 2>&1; then fail "C89 bun-global qmd: a qmd is still on the scrubbed PATH"; fi
+out="$(env -u QMD_RERANK -u QMD_RERANK_MODEL -u QMD_DAEMON_DISABLED -u HIMMEL_DOCTOR_QMD_BIN HOME="$c89_t/home" BUN_INSTALL="$c89_t/bun" PATH="$c89_path" QMD_CONFIG_DIR="$c89_t/cfg" HIMMEL_DOCTOR_QMD_MODELS_DIR="$c89_t/models" QMD_DAEMON_OFF_FLAG="$c89_t/no-such-flag" QMD_RERANK=off bash "$DOC" --only C89 --no-color 2>&1)"
+if grepq "$out" 'WARN C89-qmd-rerank' && ! grepq "$out" -F 'not installed'; then pass "C89 bun-global qmd -> checked, WARN"; else fail "C89 bun-global qmd -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C89: QMD_RERANK=0 and QMD_RERANK=FALSE also warn =="
+c89_reset; c89_gguf
+out="$(c89_run QMD_RERANK=0)"; out2="$(c89_run QMD_RERANK=FALSE)"
+if grepq "$out" 'WARN C89-qmd-rerank' && grepq "$out2" 'WARN C89-qmd-rerank'; then pass "C89 0 and FALSE -> WARN"; else fail "C89 0/FALSE -> $(printf '%s' "$out$out2" | head -4)"; fi
+echo "== C89: qmd not installed -> INFO skip =="
+c89_reset; rm -f "$c89_t/qmd"
+out="$(c89_run)"
+if grepq "$out" 'INFO C89-qmd-rerank' && grepq "$out" -F 'qmd is not installed' && ! grepq "$out" 'WARN C89'; then pass "C89 no qmd -> INFO"; else fail "C89 no qmd -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C89: qmd switched off by the operator -> INFO skip, even with QMD_RERANK=off =="
+c89_reset; : > "$c89_t/off-flag"
+out="$(c89_run QMD_RERANK=off QMD_DAEMON_OFF_FLAG="$c89_t/off-flag")"
+if grepq "$out" 'INFO C89-qmd-rerank' && grepq "$out" -F 'off by operator' && ! grepq "$out" 'WARN C89'; then pass "C89 operator off -> INFO"; else fail "C89 operator off -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c89_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

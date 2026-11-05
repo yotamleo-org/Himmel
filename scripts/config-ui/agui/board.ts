@@ -11,6 +11,7 @@ import { execFile } from "node:child_process";
 import { mkdtemp, readdir, readFile, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
+import { readSections } from "../../handover/chief-kit/board-section.mjs";
 import { redact } from "../../handover/chief-kit/redact.mjs";
 
 export const BOARD_TTL_MS = 30_000;
@@ -52,6 +53,11 @@ export async function readBoardFile(doc: string): Promise<{ body: unknown } | nu
     return { body };
   } catch { return null; }
 }
+
+// The chief's sections: a thin wrapper over board-section.mjs's readSections, which owns the sidecar path, the mtime+size cache and the
+// 64 KB / parse bounds, so this file never opens or names the sidecar (I9). `error` is set for an oversize or unparseable file.
+export type Section = { id: string; title: string; body: string; tone: "info" | "warn" | "ok"; order: number };
+export const readSectionsFile = (doc: string): Promise<{ sections: Section[]; error?: string }> => readSections(doc);
 
 // every string in the model passes the chief's own redactor (nonces, lock tokens, keys), then the server's.
 export const scrub = (v: unknown, extra: (v: unknown) => unknown = (x) => x): unknown =>

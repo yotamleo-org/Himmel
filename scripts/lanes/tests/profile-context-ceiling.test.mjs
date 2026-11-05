@@ -48,7 +48,8 @@ test('context resolver keeps legacy defaults without widening settings JSON', ()
   assert.equal(typeof PP.contextForProfile, 'function');
   assert.deepEqual(PP.contextForProfile(r, 'worker-impl'), { contextMode: 'standard', autocompact: 200000 });
   assert.deepEqual(PP.contextForProfile(r, 'operator'), { contextMode: 'standard', autocompact: 200000 });
-  assert.deepEqual(PP.resolveProfile(r, 'worker-impl'), { enabledPlugins: { 'qmd@himmel': true } });
+  // No context field leaks into the settings; the only addition is the default Artifact deny.
+  assert.deepEqual(PP.resolveProfile(r, 'worker-impl'), { enabledPlugins: { 'qmd@himmel': true }, permissions: { deny: ['Artifact'] } });
 });
 test('composed profile ceiling takes the explicitly declared 1m member', () => {
   assert.equal(typeof PP.contextForProfile, 'function');

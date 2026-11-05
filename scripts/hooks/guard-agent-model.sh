@@ -32,8 +32,8 @@
 # EFFORT WARN (never a deny): any Agent dispatch whose `effort` is
 # high, xhigh or max and whose prompt has no `EFFORT: <reason>` line (same
 # reason-quality test) gets one additionalContext line; it joins the TIER warn
-# when both fire. A dispatch a deny or an ESCALATION rescue already handles gets
-# no effort warn. A missing or non-string `effort` warns on nothing, and so does
+# when both fire. A dispatch a deny, an ESCALATION rescue or a DELTA-JUDGE rescue
+# already handles gets no effort warn. A missing or non-string `effort` warns on nothing, and so does
 # an effort equal to the named agent's own `effort:` frontmatter (judge at high).
 # ponytail: the warned levels are hardcoded here, upgrade path a warn_effort_levels key in agent-model-policy.json.
 #
@@ -54,6 +54,14 @@
 #
 # Bypass: the `ESCALATION: <reason>` prompt line is the per-dispatch bypass; it
 # is a line of its own (a mid-sentence mention or an empty reason does not count).
+#
+# DELTA JUDGE: a judge or judge-ro dispatch on model sonnet whose
+# prompt carries a line of its own `DELTA-JUDGE: <head sha, 7 to 40 lowercase hex>`
+# is allowed with no ESCALATION line (stderr `agent-model-delta-judge: …`, exit 0),
+# for the re-judge of a LATER push. Only sonnet is rescued: haiku and fable stay
+# denied. The guard sees a declaration, it cannot verify the delta class (the chief
+# runs delta-class.sh; docs/handover/chief-sections/judge.md).
+# ponytail: a declaration is trusted, upgrade path a verdict-file probe of the head.
 #
 # Platform guard: jq only, no git/path work beyond the sibling policy file; any
 # POSIX bash 3.2+.
@@ -111,6 +119,7 @@ verdict=$(printf '%s' "$input" | jq -r --slurpfile pol "$policy" --arg fe "$agen
     | (if $status == "ok" then $good[0] else ($rs[0] // "") end) as $reason
     | [$ti.prompt | s | split("\n")[] | capture("^[ \\t]*TIER:[ \\t]*(?<r>.*)$")? | .r | clean
        | select(length >= $min and norm != "" and (norm as $n | $ph | any(. == $n) | not))] as $tgood
+    | ([$ti.prompt | s | split("\n")[] | capture("^[ \\t]*DELTA-JUDGE:[ \\t]*(?<r>[0-9a-f]{7,40})[ \\t]*$")? | .r]) as $dj
     | ($ti.effort | s | ascii_downcase | clean) as $e
     | [$ti.prompt | s | split("\n")[] | capture("^[ \\t]*EFFORT:[ \\t]*(?<r>.*)$")? | .r | clean
        | select(length >= $min and norm != "" and (norm as $n | $ph | any(. == $n) | not))] as $egood
@@ -118,12 +127,15 @@ verdict=$(printf '%s' "$input" | jq -r --slurpfile pol "$policy" --arg fe "$agen
        and $e != ($fe | ascii_downcase | clean)) as $ewarn
     | (if $tool != "Agent" or $m == "" then "allow"
        elif ($pats | any(. as $r | $m | test($r))) then "blocked"
+       elif ($t | test("(^|:)(console-)?judge(-[a-z0-9-]+)?$")) and ($dj | length) > 0
+            and ($m | test("^(claude-)?sonnet(-[0-9][0-9a-z.-]*)?(\\[[^\\]]*\\])?$")) then "delta"
        elif ($t | test("(^|:)(console-)?judge(-[a-z0-9-]+)?$")) and ($m | test("^(claude-)?opus(-[0-9][0-9a-z.-]*)?(\\[[^\\]]*\\])?$") | not) then "judge"
        elif ($t | test("(^|:)(console-)?judge(-[a-z0-9-]+)?$") | not) and ($tgood | length) == 0 and ($wpats | any(. as $r | $m | test($r))) then "warn"
        else "allow" end) as $kind
     | if $kind == "allow" and ($ewarn | not) then "allow"
       else [$kind, (if $ewarn then "effort" else "-" end), $status,
-            (if $m == "" then "-" else $m end), (if $e == "" then "-" else $e end), $reason] | join("\t") end' 2>/dev/null) || exit 0
+            (if $m == "" then "-" else $m end), (if $e == "" then "-" else $e end),
+            (if $kind == "delta" then $dj[0] else $reason end)] | join("\t") end' 2>/dev/null) || exit 0
 
 IFS=$'\t' read -r kind eflag status model effort reason <<EOF
 $verdict
@@ -137,6 +149,11 @@ if [ "$kind" = "warn" ] || [ "$kind" = "allow" ]; then
     [ "$eflag" = "effort" ] && warn_msg="${warn_msg:+$warn_msg }agent-model-effort-warn: a dispatch at effort '${effort}' with no EFFORT: line. Each helper kind has a default effort (docs/handover/running-a-chief.md, helper table): drop the effort override, or add a prompt line 'EFFORT: <reason>' with a real reason."
     [ -n "$warn_msg" ] || exit 0
     jq -nc --arg ctx "$warn_msg" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$ctx}}' 2>/dev/null
+    exit 0
+fi
+
+if [ "$kind" = "delta" ]; then
+    printf 'agent-model-delta-judge: judge on %s allowed by a DELTA-JUDGE declaration for head %s\n' "$model" "$reason" >&2
     exit 0
 fi
 

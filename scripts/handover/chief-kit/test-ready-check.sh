@@ -186,6 +186,8 @@ git init -q --bare "$tmp/tp-origin.git"
 git init -q "$TP_ANCHOR"
 mkdir -p "$TP_ANCHOR/scripts/lib"
 cp "$HERE/../../lib/go-gate.sh" "$TP_ANCHOR/scripts/lib/go-gate.sh"
+# item 17 runs the merge's remainder reader from the anchor, never from the checkout under review
+cp "$HERE/../../lib/pr_remainder.py" "$TP_ANCHOR/scripts/lib/pr_remainder.py"
 git -C "$TP_ANCHOR" add -A
 git -C "$TP_ANCHOR" -c user.name=t -c user.email=t@t commit -q -m init
 git -C "$TP_ANCHOR" remote add origin "$tmp/tp-origin.git"
@@ -220,6 +222,7 @@ seed_deferral() {
 run() {
     local cache="${RUN_CACHE:-}"
     [ -n "$cache" ] || cache=$(mktemp -d "$tmp/cache.XXXXXX") || return 1
+    # shellcheck disable=SC2086  # RUN_FLAGS is a fixed word list the suite sets
     (cd "$REPO" && env -u TICKET_ID_PATTERN \
         JIRA_PROJECT_KEY=HIMMEL HOME="${RUN_HOME:-$HOME}" \
         STUB_NWO="$NWO" \
@@ -240,7 +243,7 @@ run() {
         STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_TRUST_LIST_FAIL="${STUB_TRUST_LIST_FAIL:-}" \
         STUB_DEFAULT_BRANCH_FAIL="${STUB_DEFAULT_BRANCH_FAIL:-}" \
         READY_CHECK_ANCHOR="${READY_CHECK_ANCHOR:-$TP_ANCHOR}" \
-        bash "$SCRIPT" "$PR" "$SHA")
+        bash "$SCRIPT" ${RUN_FLAGS:-} "$PR" "$SHA")
 }
 
 reset_stubs() {
@@ -1487,7 +1490,9 @@ reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done\n'
 printf 'not json\n' >> "$LEDGER"
 rc=0; out="$(run)" || rc=$?
-check "ledger: a malformed ledger line is skipped: exit 0" "$rc" "0"
+check "ledger: a malformed ledger line is skipped by item 4 but fails item 18 as the merge does: exit 1" "$rc" "1"
+contains "ledger: a malformed ledger line: item 4 still passes" "$out" "[PASS] 4."
+contains "ledger: a malformed ledger line: item 18 fails" "$out" "[FAIL] 18."
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done\n'
@@ -1758,6 +1763,10 @@ cp "$SCRIPT" "$own/scripts/handover/chief-kit/ready-check.sh"
 cp "$REPO_ROOT/scripts/lib/load-dotenv.sh" "$own/scripts/lib/load-dotenv.sh"
 cp "$REPO_ROOT/scripts/lib/gh-pr-snapshot.sh" "$own/scripts/lib/gh-pr-snapshot.sh"
 cp "$REPO_ROOT/scripts/lib/go-gate.sh" "$own/scripts/lib/go-gate.sh"
+mkdir -p "$own/scripts/cr"
+cp "$REPO_ROOT/scripts/cr/clear-review-marker.sh" "$REPO_ROOT/scripts/cr/anchor-handoff.sh" "$REPO_ROOT/scripts/cr/ledger-amend-auth.js" "$own/scripts/cr/"
+cp "$REPO_ROOT/scripts/lib/chokepoint-seam-guard.sh" "$own/scripts/lib/chokepoint-seam-guard.sh"
+cp "$REPO_ROOT/scripts/chokepoints.json" "$own/scripts/chokepoints.json"
 printf 'JIRA_PROJECT_KEY=HIMMEL\n' > "$own/.env"
 
 reset_stubs
@@ -1767,7 +1776,7 @@ out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
     STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_MSS=CLEAN \
     STUB_ROLLUP="$GREEN_ROLLUP" STUB_UNRESOLVED=0 \
     STUB_COMMITS="$STUB_COMMITS" STUB_FILES="$GREEN_FILES" \
-    STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
+    STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" STUB_PR_BRANCH=feat/himmel-100-thing JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
     STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" \
     PATH="$PATH" GH_LOG="$GH_LOG" \
     bash "$own/scripts/handover/chief-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
@@ -3304,7 +3313,7 @@ rc=0; out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
     STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_MSS=CLEAN \
     STUB_ROLLUP="$GREEN_ROLLUP" STUB_UNRESOLVED=0 \
     STUB_COMMITS="$GREEN_COMMITS" STUB_FILES="$GREEN_FILES" \
-    STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
+    STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" STUB_PR_BRANCH=feat/himmel-100-thing JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
     STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_PR_TITLE="$BO_BUG" \
     PATH="$PATH" GH_LOG="$GH_LOG" \
     bash "$own/scripts/handover/chief-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
@@ -3318,7 +3327,7 @@ rc=0; out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
     STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_MSS=CLEAN \
     STUB_ROLLUP="$GREEN_ROLLUP" STUB_UNRESOLVED=0 \
     STUB_COMMITS="$GREEN_COMMITS" STUB_FILES="$GREEN_FILES" \
-    STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
+    STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" STUB_PR_BRANCH=feat/himmel-100-thing JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
     STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_PR_TITLE="$BO_BUG" \
     PATH="$PATH" GH_LOG="$GH_LOG" \
     bash "$own/scripts/handover/chief-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
@@ -3366,6 +3375,118 @@ cr_stub_rc=0; STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_CR_DESC='Review rate limited
 check "cr stub: a read of another head is refused" "$cr_stub_rc" "1"
 cr_stub_rc=0; STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_CR_DESC='Review rate limited' GH_LOG="$GH_LOG" "$tmp/bin/gh" api "repos/other/repo/commits/$SHA/statuses?per_page=100" >/dev/null 2>&1 || cr_stub_rc=$?
 check "cr stub: a read of another repository is refused" "$cr_stub_rc" "1"
+
+# --- 17. a partial merge records what remains: the merge's exit 26, read at GO time ---
+# Item 17 reads the PR body through the merge's own reader (scripts/lib/pr_remainder.py, from the anchor) for the key
+# the merge's own reader (ticket_key_from_title) finds in the title. GREEN_BODY lists only `done` asks, no `Remaining:`.
+reset_stubs
+RUN_FLAGS="--contract no --require-contract"
+R17_RC=0; R17_OUT="$(run)" || R17_RC=$?
+check "17a contract no, keyed title, no Remaining line: exit 1" "$R17_RC" "1"
+contains "17a: item 17 fails" "$R17_OUT" "[FAIL] 17."
+contains "17a: names the missing remainder" "$R17_OUT" "Remaining:"
+contains "17a: the verdict is FAIL" "$R17_OUT" "READY-CHECK FAIL"
+# controls
+R17_RC=0; R17_OUT="$(STUB_BODY="$GREEN_BODY"'\nRemaining: the docs follow in a later PR\n' run)" || R17_RC=$?
+check "17b a Remaining line passes: exit 0" "$R17_RC" "0"
+contains "17b: item 17 passes" "$R17_OUT" "[PASS] 17."
+RUN_FLAGS="--contract yes --require-contract"
+R17_RC=0; R17_OUT="$(run)" || R17_RC=$?
+check "17c contract yes needs no remainder: exit 0" "$R17_RC" "0"
+contains "17c: item 17 passes" "$R17_OUT" "[PASS] 17."
+RUN_FLAGS="--contract no --require-contract"
+R17_RC=0; R17_OUT="$(STUB_PR_TITLE='chore: no ticket key in this title' run)" || R17_RC=$?
+check "17d a title with no key is not a partial merge: exit 0" "$R17_RC" "0"
+contains "17d: item 17 passes as not applicable" "$R17_OUT" "[PASS] 17."
+# the merge's key reader, not a grep of the title: a bare KEY-n without brackets is no key
+R17_RC=0; R17_OUT="$(STUB_PR_TITLE='feat(x): HIMMEL-100 thing without brackets' run)" || R17_RC=$?
+check "17e an unbracketed key is no key to the merge, so no remainder is read: exit 0" "$R17_RC" "0"
+RUN_FLAGS="--require-contract"
+R17_RC=0; R17_OUT="$(run)" || R17_RC=$?
+check "17f a keyed title with no contract named, from a GO writer: exit 1" "$R17_RC" "1"
+contains "17f: item 17 fails" "$R17_OUT" "[FAIL] 17."
+contains "17f: says to name the contract" "$R17_OUT" "--contract yes|no"
+RUN_FLAGS=""
+R17_RC=0; R17_OUT="$(run)" || R17_RC=$?
+check "17g a keyed title with no contract named, from an observer: exit 0 (a warning, not a verdict)" "$R17_RC" "0"
+contains "17g: item 17 warns" "$R17_OUT" "[WARN] 17."
+# a reader the anchor lacks refuses, as the merge refuses on a broken anchor
+NR_ORIGIN="$tmp/tp-origin-nr.git"; NR_ANCHOR="$tmp/tp-nr"
+git init -q --bare "$NR_ORIGIN"
+git clone -q "$TP_ANCHOR" "$NR_ANCHOR" 2>/dev/null
+git -C "$NR_ANCHOR" rm -q scripts/lib/pr_remainder.py
+git -C "$NR_ANCHOR" -c user.name=t -c user.email=t@t commit -q -m "no reader"
+git -C "$NR_ANCHOR" remote set-url origin "$NR_ORIGIN"
+git -C "$NR_ANCHOR" push -q origin HEAD:refs/heads/main 2>/dev/null
+git -C "$NR_ORIGIN" symbolic-ref HEAD refs/heads/main
+RUN_FLAGS="--contract no --require-contract"
+R17_RC=0; R17_OUT="$(STUB_BODY="$GREEN_BODY"'\nRemaining: x\n' READY_CHECK_ANCHOR="$NR_ANCHOR" run)" || R17_RC=$?
+check "17h the anchor has no remainder reader: exit 1" "$R17_RC" "1"
+contains "17h: item 17 fails naming the reader" "$R17_OUT" "pr_remainder.py"
+# --only 7 is the worker's body lint: it never runs items 17 or 18
+RUN_FLAGS=""
+R17_OUT="$(run7 || true)"
+notcontains "17i --only 7 does not run item 17" "$R17_OUT" "] 17."
+notcontains "17i --only 7 does not run item 18" "$R17_OUT" "] 18."
+
+# --- 18. open blocking findings: the merge's gates 4 and 4b, read at GO time ---
+# Item 18 asks scripts/cr/clear-review-marker.sh --check-findings, the merge's own ledger verdict, at the head the
+# merge will gate on, with and without the chief's GO assumed. The PR 4611 shape: an Important raised at the reviewed
+# head A and never ruled; B (a non-test delta on top of A) carries its own ok row, so item 4 passes at B.
+RUN_FLAGS=""
+SHA_SAVE="$SHA"
+R18_A=$(git -C "$REPO" rev-parse HEAD)
+printf 'b\n' > "$REPO/f18.txt"
+git -C "$REPO" add f18.txt
+git -C "$REPO" commit -q -m "feat: B on top of A"
+R18_B=$(git -C "$REPO" rev-parse HEAD)
+R18_BRANCH="feat/himmel-100-thing"
+mkdir -p "$REPO/.git/cr-review-rounds/feat"
+r18_ledger() { # <verdict of the finding at A>: ok rows at A and B, one Important at A
+    printf '{"kind":"avail","ts":"2026-01-01T00:00:00Z","branch":"%s","head":"%s","model":"codex","status":"ok"}\n' "$R18_BRANCH" "$R18_A" "$R18_BRANCH" "$R18_B" > "$LEDGER"
+    printf '{"kind":"finding","ts":"2026-01-01T00:00:01Z","branch":"%s","head":"%s","model":"codex","finding_id":"codex-1","severity":"imp","file":"a.sh","line":1,"verdict":"%s"}\n' "$R18_BRANCH" "$R18_A" "$1" >> "$LEDGER"
+}
+SHA="$R18_B"
+reset_stubs
+r18_ledger ""
+printf '%s\n' "$R18_A" > "$REPO/.git/cr-review-rounds/feat/himmel-100-thing.head"
+R18_RC=0; R18_OUT="$(run)" || R18_RC=$?
+check "18a an unruled Important at the reviewed head, tip with its own ok row: exit 1" "$R18_RC" "1"
+contains "18a: item 18 fails" "$R18_OUT" "[FAIL] 18."
+contains "18a: names the finding" "$R18_OUT" "codex-1"
+contains "18a: item 4 passed at the tip (the 4611 shape: the old gates were green)" "$R18_OUT" "[PASS] 4."
+# controls
+r18_ledger "disproved"
+R18_RC=0; R18_OUT="$(run)" || R18_RC=$?
+check "18b the same finding ruled disproved: exit 0" "$R18_RC" "0"
+contains "18b: item 18 passes" "$R18_OUT" "[PASS] 18."
+r18_ledger ""
+rm -f "$REPO/.git/cr-review-rounds/feat/himmel-100-thing.head"
+R18_RC=0; R18_OUT="$(run)" || R18_RC=$?
+check "18c with no recorded round head the tip is read on its own rows: exit 0" "$R18_RC" "0"
+contains "18c: item 18 passes" "$R18_OUT" "[PASS] 18."
+printf '%s\n' "$R18_A" > "$REPO/.git/cr-review-rounds/feat/himmel-100-thing.head"
+r18_ledger "disproved"
+printf 'not json\n' >> "$LEDGER"
+R18_RC=0; R18_OUT="$(run)" || R18_RC=$?
+check "18d a malformed ledger line is an unknown verdict: exit 1" "$R18_RC" "1"
+contains "18d: item 18 fails" "$R18_OUT" "[FAIL] 18."
+r18_ledger "disproved"
+R18_RC=0; R18_OUT="$(STUB_PR_BRANCH="" run)" || R18_RC=$?
+contains "18e an unreadable head branch cannot be judged: item 18 fails" "$R18_OUT" "[FAIL] 18."
+r18_ledger ""
+R18_BEFORE=$(cksum < "$LEDGER")
+run >/dev/null 2>&1 || true
+check "18f the check writes nothing to the ledger" "$(cksum < "$LEDGER")" "$R18_BEFORE"
+# the marker reads findings by head, not by branch: an unruled Important at the tip filed under ANOTHER branch still blocks
+rm -f "$REPO/.git/cr-review-rounds/feat/himmel-100-thing.head"
+printf '{"kind":"avail","ts":"2026-01-01T00:00:00Z","branch":"%s","head":"%s","model":"codex","status":"ok"}\n' "$R18_BRANCH" "$R18_B" > "$LEDGER"
+printf '{"kind":"finding","ts":"2026-01-01T00:00:01Z","branch":"other/branch","head":"%s","model":"codex","finding_id":"codex-9","severity":"imp","file":"a.sh","line":1}\n' "$R18_B" >> "$LEDGER"
+R18_RC=0; R18_OUT="$(run)" || R18_RC=$?
+check "18g an unruled Important at the tip under another branch: exit 1" "$R18_RC" "1"
+contains "18g: item 18 fails" "$R18_OUT" "[FAIL] 18."
+SHA="$SHA_SAVE"
+reset_stubs
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

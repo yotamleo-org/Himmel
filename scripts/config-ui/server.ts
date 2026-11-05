@@ -30,7 +30,7 @@ import { readPhaseStats } from "./phase-stats";
 import { liveBoards, readMerged, type Board, type BoardReader, type Live, type Lock, type Span, readShifts, redactShift, shiftsFile, tick as tickShifts, viewOf } from "./shift";
 import { readReviewers } from "./reviewers";
 import { eligibleFromInventory, readToolInventory } from "./tool-inventory";
-import { findDoc, readBoard, readBoardFile, scrub, validName } from "./agui/board";
+import { findDoc, readBoard, readBoardFile, readSectionsFile, scrub, validName } from "./agui/board";
 import { readOrCreateToken } from "./token-file";
 import { DRIFT_REFRESH_MS, driftCheck, driftFile, readBoardExtras, refreshDrift, type DriftRefresh } from "./board";
 import { legSync, readRoadmap } from "./roadmap";
@@ -835,8 +835,11 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const doc = await findDoc(env.HANDOVER_DIR || "", name);
         if (!doc) return new Response("no such doc", { status: 404 });
         if (!board) return new Response(String(scrub(readFileSync(doc, "utf8").slice(0, 200_000), (v) => redactOut(v))), { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
-        const r = await boardOf(doc);
-        return "error" in r ? json({ error: "the board could not be built", detail: String(scrub(r.error, (v) => redactOut(v))) }, 502) : json(scrub(r.body, (v) => redactOut(v)));
+        // The chief's sections join in the route, not in boardOf, so the Shift page never gets them (I7); they do not depend on the build,
+        // so a 502 carries them too. `sections_error` is set for an oversize or unparseable sidecar.
+        const [r, { sections, error: sections_error }] = await Promise.all([boardOf(doc), readSectionsFile(doc)]);
+        const extra = { sections, ...(sections_error ? { sections_error } : {}) };
+        return "error" in r ? json(scrub({ error: "the board could not be built", detail: r.error, ...extra }, (v) => redactOut(v)), 502) : json(scrub({ ...(r.body as object), ...extra }, (v) => redactOut(v)));
       }
       if (path.startsWith("/api/agui/")) {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });

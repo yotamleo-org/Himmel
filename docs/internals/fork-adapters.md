@@ -39,6 +39,22 @@ is left out of the third-party credits page.
    are the pre-commit core in `docs/internals/fork-precommit.md`; a gap is a
    follow-up ticket, not a registry field.
 
+## Branch protection
+
+`bash scripts/upstreams/protect-forks.sh` plans (dry-run by default, GET only) one
+repository ruleset `himmel-fork-protect` per live fork: the default branch and the
+registry's `himmel_branch` take no deletion, no force push and no direct push; a PR
+is required (0 approvals, squash only, threads resolved), and the repository admin
+role bypasses with mode `always`. That bypass is the operator account that runs
+`resync-fork.sh --sync` (a `--force-with-lease` push to the himmel branch and
+`gh repo sync`) and `merge-fork-pr.sh`. Approvals stay at 0 because
+`go_fork_ready` needs `mergeStateStatus` CLEAN, which an unmet required review
+never gives and the one account cannot approve its own PR; the chief GO and the
+trust judge are the review. The same run sets `pull_request_creation_policy` to
+`collaborators_only`. Archived forks are read-only already and are skipped.
+`--apply` refuses unless `HIMMEL_FORK_PROTECT_RULING` carries the chief's ruling
+reference; `--only <owner/repo>` limits a run to one fork.
+
 ## Sync rule
 
 Syncing a fork with its upstream is upkeep, never a PR (HIMMEL-8334):

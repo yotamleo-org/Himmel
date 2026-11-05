@@ -1,0 +1,97 @@
+name: socket-scan
+
+# HIMMEL-9270: a socket.dev dependency scan (typosquats, malicious installs) that starts only
+# when a pull request changes a dependency manifest or lock file. Never on every PR: the free
+# plan is a small quota. The paths filter below keeps the workflow from starting at all for any
+# other change, and scripts/security/socket-scan.sh re-checks the change set, so a PR that only
+# deletes a lock file, or touches a fixtures dir, still starts no scan. One run makes one
+# `socket scan create --report` call over every changed manifest and lock file.
+#
+# This check is advisory and is deliberately NOT a required check: a required check behind a
+# paths filter never reports on a PR that skips it (see lockfile-release-age.yml). Do not add
+# it to branch protection. A red run means the Socket report does not pass the org policy; a
+# quota or rate-limit reply from Socket is a skip with a reason in the job summary, never red.
+#
+# The key is the repo secret SOCKET_DEV_API_KEY. A PR from a fork (and Dependabot) gets no
+# secrets, and with no secret the job skips with a notice naming the command that adds it.
+# The key sits in the env of the one scan step only; socket reads it as SOCKET_CLI_API_TOKEN.
+#
+# Docs: https://docs.socket.dev/docs/socket-scan and https://docs.socket.dev/reference/quota
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '**/package.json'
+      - '**/package-lock.json'
+      - '**/npm-shrinkwrap.json'
+      - '**/yarn.lock'
+      - '**/pnpm-lock.yaml'
+      - '**/bun.lock'
+      - '**/bun.lockb'
+      - '**/uv.lock'
+      - '**/requirements*.txt'
+      - '**/pyproject.toml'
+      - '**/poetry.lock'
+      - '**/Pipfile'
+      - '**/Pipfile.lock'
+      - '**/go.mod'
+      - '**/go.sum'
+      - '**/Gemfile'
+      - '**/Gemfile.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: socket-scan-${{ github.event.pull_request.number || github.ref }}
+  # a newer push replaces the older run: every scan costs quota
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Gate on the key
+        id: gate
+        env:
+          SOCKET_DEV_API_KEY: ${{ secrets.SOCKET_DEV_API_KEY }}
+        run: |
+          if [ -z "$SOCKET_DEV_API_KEY" ]; then
+            echo "::notice title=socket-scan skipped::SOCKET_DEV_API_KEY is not available (not set, or a fork or Dependabot pull request); the operator adds it with: gh secret set SOCKET_DEV_API_KEY --repo ${{ github.repository }}"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.gate.outputs.enabled == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The merge commit and its first parent (the base tip).
+          fetch-depth: 2
+          persist-credentials: false
+
+      - if: steps.gate.outputs.enabled == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.4'
+
+      - name: Install the Socket CLI
+        if: steps.gate.outputs.enabled == 'true'
+        run: npm install -g --ignore-scripts socket@1.13.1
+
+      - name: List the changed files
+        if: steps.gate.outputs.enabled == 'true'
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --name-only --diff-filter=d HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
+          else
+            git ls-files > "$RUNNER_TEMP/changed.txt"
+          fi
+
+      - name: Run the Socket scan
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          SOCKET_DEV_API_KEY: ${{ secrets.SOCKET_DEV_API_KEY }}
+        run: bash scripts/security/socket-scan.sh --files "$RUNNER_TEMP/changed.txt" --root "$GITHUB_WORKSPACE"

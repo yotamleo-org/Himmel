@@ -1,0 +1,27 @@
+# Socket GitHub app configuration (https://docs.socket.dev/docs/socket-yml). The app scans a
+# pull request only when one of these files changes; its default is every file ("*"), which
+# would spend the free plan's scans on changes that touch no dependency. The names are the
+# same set as the paths filter of .github/workflows/socket-scan.yml: keep the two in step
+# (scripts/security/test-socket-scan.sh fails when they drift). Patterns work like .gitignore
+# entries, so a bare name matches at any depth. A manifest under a fixtures directory also
+# triggers the app; the workflow's gate script leaves fixtures out, triggerPaths cannot.
+version: 2
+
+triggerPaths:
+  - "package.json"
+  - "package-lock.json"
+  - "npm-shrinkwrap.json"
+  - "yarn.lock"
+  - "pnpm-lock.yaml"
+  - "bun.lock"
+  - "bun.lockb"
+  - "uv.lock"
+  - "requirements*.txt"
+  - "pyproject.toml"
+  - "poetry.lock"
+  - "Pipfile"
+  - "Pipfile.lock"
+  - "go.mod"
+  - "go.sum"
+  - "Gemfile"
+  - "Gemfile.lock"
