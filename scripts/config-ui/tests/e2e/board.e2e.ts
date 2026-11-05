@@ -363,12 +363,12 @@ for (const [width, height] of [[1280, 900], [390, 844]]) {
 }
 
 // the dense layout, measured in a real browser
-const LONG_TITLE = "A very long ticket title ".repeat(8).trim();
-async function longTitle(page: Page) {
+const LONG_TITLE = "A very long ticket title ".repeat(9).trim(); // 224 characters
+async function longTitle(page: Page, ticket = "Second chain step") {
   await page.route("**/api/roadmap", async (route) => {
     const res = await route.fetch();
     const j = await res.json();
-    j.tickets[0].t = LONG_TITLE;
+    j.tickets.find((t: { t: string }) => t.t === ticket).t = LONG_TITLE; // a To Do card, shown on the Board (the first ticket is a folded Done)
     await route.fulfill({ response: res, json: j });
   });
 }
@@ -403,6 +403,50 @@ test("a clamped title shows its full text in a bubble on hover at 1280 px and ha
   await title.hover();
   expect((await after()).display).toBe("none");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+});
+
+// the same ticket, long and not: a 200-character title takes no more room than a two-line one
+const tabTo = async (page: Page, sel: string) => { // Tab until the focused element is the one wanted, as a keyboard user would
+  for (let i = 0; i < 80; i++) {
+    await page.keyboard.press("Tab");
+    if (await page.evaluate((q) => !!document.activeElement?.matches(q), sel)) return;
+  }
+  throw new Error("Tab never reached " + sel);
+};
+const longCard = '.rm-card:has(.rm-title[data-tip^="A very long ticket title"])';
+
+test("at 1280 px a 200-character card is no taller than a two-line card, Tab shows the bubble and the ticket key is never cut", async ({ page }) => {
+  await longTitle(page, "Next version work");
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await open(page);
+  await go(page, "#/board");
+  const height = async (title: string) => (await page.locator(".rm-card", { hasText: title }).first().boundingBox())!.height;
+  const long = (await page.locator(longCard).boundingBox())!.height;
+  const two = await height("Left open on a released version"); // a title that fills two lines
+  const one = await height("Old shipped work"); // a title on one line
+  expect(two).toBeGreaterThan(one + 4); // the control: two lines really are taller than one
+  expect(Math.abs(long - two)).toBeLessThanOrEqual(2);
+  const key = await page.locator(`${longCard} .rm-top b`).evaluate((el) => el.scrollWidth <= el.clientWidth && getComputedStyle(el).textOverflow !== "ellipsis");
+  expect(key).toBe(true);
+  await tabTo(page, longCard);
+  const bubble = await page.locator(`${longCard} .rm-title`).evaluate((el) => { const s = getComputedStyle(el, "::after"); return { display: s.display, content: s.content }; });
+  expect(bubble.display).toBe("block");
+  expect(bubble.content).toContain(LONG_TITLE.slice(0, 40));
+});
+
+test("at 390 px a long title clamps to three lines with no bubble on focus, and a tap opens the drawer with the full title", async ({ page }) => {
+  await longTitle(page, "Next version work");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page);
+  await go(page, "#/board");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  const clip = page.locator(`${longCard} .rm-title .rm-clip`);
+  const lines = await clip.evaluate((el) => { const s = getComputedStyle(el); return { clamp: s.webkitLineClamp, rows: Math.round(el.clientHeight / parseFloat(s.lineHeight)), cut: el.scrollHeight > el.clientHeight }; });
+  expect(lines).toEqual({ clamp: "3", rows: 3, cut: true });
+  await tabTo(page, longCard);
+  expect(await page.locator(`${longCard} .rm-title`).evaluate((el) => getComputedStyle(el, "::after").display)).toBe("none");
+  await page.locator(`${longCard} .rm-title`).click();
+  await expect(page.locator("aside.drawer")).toContainText(LONG_TITLE);
 });
 
 test("the Chains tab draws the link across chains, the change log and the burn-down", async ({ page }) => {
@@ -544,7 +588,7 @@ test("two projects: both projects' cards show with their keys, the Project filte
   // a drag of the SALUS card posts a body naming project SALUS
   const sent: string[] = [];
   await page.route("**/api/roadmap/write", async (route) => { sent.push(route.request().postData() || ""); await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) }); });
-  await page.locator(".rm-card", { hasText: "Salus intake form" }).dragTo(page.locator('[data-rm-drop="prog"]'));
+  await page.locator(".rm-card", { hasText: "Salus intake form" }).locator(".rm-title").dragTo(page.locator('[data-rm-drop="prog"]')); // grab the title: the card centre is the Sector select
   await expect.poll(() => sent.length).toBe(1);
   expect(JSON.parse(sent[0])).toMatchObject({ key: "SALUS-2", status: "prog" });
   // a keyboard move posts the SALUS key too, not a HIMMEL default

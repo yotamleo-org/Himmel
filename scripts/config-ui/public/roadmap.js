@@ -296,10 +296,9 @@ function barHtml(d, ui, ch, tab, sel, fresh = "") {
   const chainSel = chainOk(ch) ? `<label>Chain <select data-rm-chain><option value="">all</option>${ch.chains.map((c) =>
     `<option value="${esc(c.id)}"${ui.chain === c.id ? " selected" : ""}>${esc(c.id)}</option>`).join("")}</select></label>` : "";
   const [find, more] = tab === "roadmap" ? laneFilters(d, ui, ch, sel) : tab === "nv" && ui.nv && ui.nv.state === "ok" ? laneFilters(ui.nv, ui, ch, -1) : ["", ""];
-  // one line: the lanes, Sector, find, Hide Done and refresh; the rarer filters wait under More ▾ (a closed <details> keeps them out of the way)
-  const rest = chainSel + more;
-  return `<div class="rm-bar fields"><span>Lanes: ${lanes}</span>${themeSel(d, ui)}${find}<label><input type="checkbox" data-rm-hide-done${ui.hideDone ? " checked" : ""}> Hide Done</label>`
-    + (rest ? `<details class="rm-more"><summary>More ▾</summary><div class="rm-more-pop fields">${rest}</div></details>` : "")
+  // one line: the lanes, Sector, find, Chain, Hide Done and refresh; the rarer filters wait under More ▾ (a closed <details> keeps them out of the way)
+  return `<div class="rm-bar fields"><span>Lanes: ${lanes}</span>${themeSel(d, ui)}${find}${chainSel}<label><input type="checkbox" data-rm-hide-done${ui.hideDone ? " checked" : ""}> Hide Done</label>`
+    + (more ? `<details class="rm-more"><summary>More ▾</summary><div class="rm-more-pop fields">${more}</div></details>` : "")
     + `<button class="btn" data-act="refresh-roadmap">refresh</button>${fresh ? tip(fresh, `<span class="ro">${esc(fresh)}</span>`, " rm-fresh") : ""}</div>${writeNote(ui)}`;
 }
 
