@@ -103,6 +103,7 @@ This is the full set, each mapped to the code that handles it:
 | Fleet cap | `/api/fleet-cap` | `scripts/config-ui/fleet-cap.ts` |
 | VM mode | `/api/vm` | `scripts/config-ui/vm-config.ts` |
 | Reports and shifts settings (Configure) | `/api/report-settings` | `writeReports` in `scripts/config-ui/report-settings.ts` |
+| Role map for the API accounts (Configure, Secrets, Multi accounts) | `/api/api-roles` | `saveRoles` in `scripts/config-ui/api-roles-settings.ts` |
 | Board lane move, card Sector | `/api/roadmap/write` | `roadmapWriteRoute` in `scripts/config-ui/server.ts` (a local card: `localWriteRoute`, `scripts/config-ui/local-tracker.ts`) |
 
 ```bash
