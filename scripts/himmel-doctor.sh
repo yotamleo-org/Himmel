@@ -5317,6 +5317,48 @@ check_c86_morning_report() {
     fi
 }
 
+# --- C88-graph-api-optin: the graph cadence's billed API lane needs a station opt-in ---
+# graphmap-cadence.sh renders the semantic runners on the API lane (HIMMEL_API_LANE=on, claude-api) only
+# when graphify.semantic_api_ok is the JSON literal true in ~/.himmel/config.json (semantic_api_opted_in
+# there; a symlink, a malformed file or any other value is off). This row reports that state. WARN when
+# the opt-in is off, a lane-key name has a value in the himmel .env, and an armed runner still bakes
+# HIMMEL_API_LANE=on: that cadence draws the key without an opt-in until it is re-rendered. A baked lane
+# with no key in .env draws nothing (INFO). Key NAMES only: no .env value is printed.
+# Seams: HIMMEL_DOCTOR_ENV_FILE (the .env, as C74), GRAPHMAP_BAT_DIR (the runner dir).
+check_c88_graph_api_optin() {
+    command -v jq >/dev/null 2>&1 || { emit INFO C88-graph-api-optin "jq not on PATH -- API lane opt-in not checked"; return 0; }
+    local cfg="${HOME:-}/.himmel/config.json" envfile bat keys="" lanes="" f optin=0
+    envfile="${HIMMEL_DOCTOR_ENV_FILE:-$(_load_dotenv_envfile "")}"
+    bat="${GRAPHMAP_BAT_DIR:-${HOME:-}/.claude/graphmap-cadence}"
+    if [ ! -L "${HOME:-}/.himmel" ] && [ ! -L "$cfg" ] && [ -f "$cfg" ] && [ -r "$cfg" ] \
+        && jq -e '.graphify.semantic_api_ok == true' "$cfg" >/dev/null 2>&1; then
+        optin=1
+    fi
+    if [ -f "$envfile" ] && [ -r "$envfile" ]; then
+        keys="$(awk '{ sub(/\r$/, "") } /^[[:space:]]*#/ { next } {
+            i = index($0, "="); if (i == 0) next
+            k = substr($0, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k); sub(/^export[[:space:]]+/, "", k)
+            v = substr($0, i + 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", v); gsub("\"", "", v); gsub("\047", "", v)
+            if (v != "" && !(k in seen) && (k == "ANTHROPIC_API_KEY" || k ~ /^ANTHROPIC_ORG_[ABC]_KEY$/)) { seen[k] = 1; printf "%s%s", (n++ ? ", " : ""), k }
+        }' "$envfile")"
+    fi
+    for f in "$bat"/graphmap-*.sh; do
+        [ -f "$f" ] || continue
+        grep -qF 'HIMMEL_API_LANE=on' "$f" 2>/dev/null && lanes="${lanes:+$lanes, }$(basename "$f")"
+    done
+    if [ "$optin" = 1 ]; then
+        emit OK C88-graph-api-optin "the graph cadence's API lane is opted in (graphify.semantic_api_ok is true in ~/.himmel/config.json)"
+    elif [ -n "$lanes" ] && [ -n "$keys" ]; then
+        emit WARN C88-graph-api-optin "the API lane is not opted in, but $keys is in $envfile and an armed runner still bakes HIMMEL_API_LANE=on ($lanes): the cadence draws that key without an opt-in until it is re-rendered" \
+            "bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed  (drops the lane); a station meant to draw it sets graphify.semantic_api_ok to true in ~/.himmel/config.json first"
+    elif [ -n "$lanes" ]; then
+        emit INFO C88-graph-api-optin "the API lane is not opted in and an armed runner bakes HIMMEL_API_LANE=on ($lanes), but .env holds no API key, so the cadence draws no key from .env (a key in the runner's own environment is not checked)" \
+            "bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed  (drops the lane)"
+    else
+        emit OK C88-graph-api-optin "the API lane is not opted in (graphify.semantic_api_ok is not true in ~/.himmel/config.json) and no armed runner carries it${keys:+; $keys in .env is never drawn by the cadence}"
+    fi
+}
+
 # --- C87-stub-handover-state: state written under the stub handover folder after the root was configured ---
 # The stub folder is <checkout>/handovers, the root a script falls back to when HANDOVER_DIR is
 # unset. With the root configured elsewhere (any layer load_dotenv reads), a chief script that
@@ -5582,6 +5624,7 @@ run_check C83 check_c83_qmd_embed_backlog
 run_check C84 check_c84_release_queue
 run_check C85 check_c85_self_heartbeat
 run_check C86 check_c86_morning_report
+run_check C88 check_c88_graph_api_optin
 run_check C87 check_c87_stub_handover_state
 heavy_join
 echo
