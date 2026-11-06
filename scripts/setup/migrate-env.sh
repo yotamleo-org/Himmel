@@ -35,6 +35,14 @@
 # the names still held, and a manager that cannot be reached or read, or still holds a name,
 # fails the run (exit 1). Printed commands carry the --env of this run.
 #
+# What an entry is is decided in one place, the entry table below: a line with an `=` outside any
+# quoted value, and a quoted value that does not close on its line runs on to the line that closes
+# it, whatever the name before the `=`. The plan, the readers, the private copy of the secrets and
+# the removal all take their entries from it. A key whose quote never closes stays whole on every
+# route (a behaviour, policy or secret key, with a keyring or without, a later duplicate too), and
+# no line after it is moved or removed. With no keyring, a secret whose value runs over several
+# lines stays in .env as well: the legacy file takes one line per entry.
+#
 # Order: plan, backup (~/.himmel/env-backups, mode 600), copy, secrets to the
 # keyring, verify, and only then remove the moved lines from .env. Verify runs the
 # real readers (shell load_dotenv and load_policy, the Jira CLI's config,
@@ -73,7 +81,8 @@
 # A commented-out secret stays in .env and the backups: it has no key the readers read.
 # A quoted value over several lines moves whole with its entry (see --keys). The backups
 # keep the entries of every name stored by value (named, unowned and several-line ones):
-# the scrub covers single-line manifest secrets only, and the run names those entries.
+# the scrub covers single-line manifest secrets only, and the run names those entries, the
+# older backups that hold them included; a later run names a several-line one it finds there.
 # An unquoted value with " #" in it is cut there by the readers, at import too: quote it first.
 # Every gate-policy key is compared, moved or not. A behaviour key whose .env
 # line has an inline comment stays (the loader drops the comment, the node
@@ -110,11 +119,14 @@
 # current directory's git root, so inside another repository it refuses (exit 3).
 # The e/h answer above stays typed: it picks one of two values and moves nothing.
 #
-# Exit: 0 moved, nothing to move, no .env or a dry run; 1 a step failed: no
-# node, the account's home could not be read from its passwd entry, or the
-# backup, copy, secrets or verify step failed (no line removed from .env), or
-# the final rewrite of .env failed (restore it from the printed backup); 2
-# usage; 3 nothing written: an agent session or no terminal without the consent
+# Exit: 0 moved, nothing to move, no .env or a dry run (a name `held` because the keyring
+# holds another value is no failure: its entry stays); 1 a step failed: no node, the
+# account's home could not be read from its passwd entry, or the backup, copy, secrets or
+# verify step failed (no line removed from .env), or the final rewrite of .env failed
+# (restore it from the printed backup), or the move finished but not clean: an entry did not reach the keyring
+# (it stays in .env), a backup scrub failed, or the systemd user manager could not be reached
+# or read, or still holds a name it was told to unset; 2 usage (also a --keys name the file
+# does not hold); 3 nothing written: an agent session or no terminal without the consent
 # key, or no -y (also: a scrub-only run without -y), or -y with no --env on a
 # .env outside this checkout; 4 moved, but incomplete: no
 # unlocked keyring for the secrets (also when nothing else moves);
@@ -200,45 +212,59 @@ CLOSEAT='function closeat(s, q,   n, j, c) {
     }
     return 0
 }'
-# Key names only: the text before '=' on each uncommented line. The lines inside a
-# quoted value that runs over several lines are that value's, never a key.
-key_names() {  # <file>
-    awk "$CLOSEAT"'
-    { sub(/\r$/, "") }
-    inq { if (closeat($0, q)) inq = 0; next }
-    /^[[:space:]]*#/ { next }
-    {
-        i = index($0, "="); if (i == 0) next
-        k = substr($0, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k)
-        v = substr($0, i + 1); sub(/^[[:space:]]+/, "", v); c = substr(v, 1, 1)
-        if (k ~ /^[A-Za-z_][A-Za-z0-9_]*$/ && (c == "\"" || c == "\047") && !closeat(substr(v, 2), c)) { q = c; inq = 1 }
-        if (k ~ /^[A-Za-z_][A-Za-z0-9_]*$/ && !(k in seen)) { seen[k] = 1; print k }
-    }' "$1"
-}
-# The first entry of a key. mode=span prints "<first line> <last line>" (or "open" when
-# its quote never closes); mode=value prints a quoted value, its lines joined by newlines.
+# The one reader of an env file's structure: plan, read, removal and the private copy of the
+# secrets all take their entries from this table, so none of them can disagree about where an
+# entry ends. One record per entry, in file order: "<first line> <last line> <name>". An entry is
+# a line with an `=` outside any quoted value. A value that opens a quote its line does not close
+# runs on to the line that closes it, whatever the name before the `=` (`export A='x` and
+# `my-key='x` open one too): the lines inside are that value's, never entries. A quote that never
+# closes runs to the end of the file, and <last line> is `open`. <name> is the key when it is a
+# valid name, `export:KEY` for an `export KEY=` line, and `-` for any other.
 # shellcheck disable=SC2016 # awk program text, not shell
-ENTRY_AWK="$CLOSEAT"'
+ENTRY_TABLE="$CLOSEAT"'
 { l = $0; sub(/\r$/, "", l) }
-inq { p = closeat(l, q); if (p) { val = val "\n" substr(l, 1, p - 1); last = NR; done = 1; exit } val = val "\n" l; next }
-oq != "" { if (closeat(l, oq)) oq = ""; next }
+inq { if (closeat(l, q)) { print first, NR, name; inq = 0 } next }
 l ~ /^[[:space:]]*#/ { next }
 {
     i = index(l, "="); if (!i) next
     n = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", n)
-    v = substr(l, i + 1); sub(/^[[:space:]]+/, "", v); c = substr(v, 1, 1)
-    # another key whose quoted value runs on: its lines are not entries of any key
-    if (n != k) { if (n ~ /^[A-Za-z_][A-Za-z0-9_]*$/ && (c == "\"" || c == "\047") && !closeat(substr(v, 2), c)) oq = c; next }
-    first = NR
-    if (c == "\"" || c == "\047") {
-        q = c; rest = substr(v, 2); p = closeat(rest, q)
-        if (p) { val = substr(rest, 1, p - 1); last = NR; done = 1; exit }
-        val = rest; inq = 1; next
+    if (n !~ /^[A-Za-z_][A-Za-z0-9_]*$/) {
+        if (n ~ /^export[[:space:]]+[A-Za-z_][A-Za-z0-9_]*$/) { sub(/^export[[:space:]]+/, "", n); n = "export:" n } else n = "-"
     }
-    last = NR; done = 1; exit
+    v = substr(l, i + 1); sub(/^[[:space:]]+/, "", v); c = substr(v, 1, 1)
+    if ((c == "\"" || c == "\047") && !closeat(substr(v, 2), c)) { name = n; first = NR; q = c; inq = 1; next }
+    print NR, NR, n
 }
-END { if (!first) exit 1; if (!done) { print "open"; exit } if (mode == "span") print first, last; else printf "%s", val }'
-entry_span() { awk -v k="$2" -v mode=span "$ENTRY_AWK" "$1"; }  # <file> <key>
+END { if (inq) print first, "open", name }'
+entry_table() { awk "$ENTRY_TABLE" "$1"; }  # <file>
+# Key names: the valid names of the entries, once each.
+# shellcheck disable=SC2016 # awk program text, not shell
+key_names() { entry_table "$1" | awk '$3 !~ /^(-|export:)/ && !($3 in seen) { seen[$3] = 1; print $3 }'; }  # <file>
+# The first entry of a key: "<first line> <last line>", or `open` when any entry of the key never
+# closes; 1 when the key has none.
+# shellcheck disable=SC2016 # awk program text, not shell
+entry_span() {  # <file> <key>
+    entry_table "$1" | awk -v k="$2" '$3 == k { if ($2 == "open") o = 1; if (s == "") s = $1 " " $2 }
+        END { if (s == "") exit 1; print (o ? "open" : s) }'
+}
+several_lines() {  # <file> <key>: the key's first entry runs over several lines, or an entry of it never closes
+    local span
+    span=$(entry_span "$1" "$2") || return 1
+    [ "$span" = open ] || [ "${span% *}" != "${span#* }" ]
+}
+# The file's lines with only (mode only) or without (mode drop) the entries named in <set> (" A B "). An
+# entry goes whole, a quoted value over several lines included. An entry of the set whose quote never
+# closes fails the call: nothing is copied or cut past a span the table did not close.
+# shellcheck disable=SC2016 # awk program text, not shell
+entry_filter() {  # <only|drop> <set> <file>
+    entry_table "$3" > "$work/entries" || return 1
+    awk -v mode="$1" -v set="$2" -v tab="$work/entries" '
+        BEGIN { while ((getline t < tab) > 0) {
+            split(t, f, " "); if (!index(set, " " f[3] " ")) continue
+            if (f[2] == "open") bad = 1; else for (j = f[1]; j <= f[2]; j++) pick[j] = 1 } }
+        { if (((NR in pick) ? 1 : 0) == (mode == "only")) print }
+        END { exit bad }' "$3"
+}
 entry_line() {  # <file> <key>: the first line of the key's real entry (never a line inside another key's quoted value); 1 when none
     local span
     span=$(entry_span "$1" "$2") || return 1
@@ -264,11 +290,23 @@ entry_value() {  # <file> <key>: the value the reader would see, one quote pair 
         fi
         printf '%s' "$v"
     else
-        awk -v k="$2" -v mode=value "$ENTRY_AWK" "$1"
+        # the lines of the span: after the opening quote, the lines between, then up to the closing quote
+        awk -v first="${span% *}" -v last="${span#* }" "$CLOSEAT"'
+            NR < first || NR > last { next }
+            { l = $0; sub(/\r$/, "", l) }
+            NR == first { v = substr(l, index(l, "=") + 1); sub(/^[[:space:]]+/, "", v); q = substr(v, 1, 1); val = substr(v, 2); next }
+            NR == last { val = val "\n" substr(l, 1, closeat(l, q) - 1); exit }
+            { val = val "\n" l }
+            END { printf "%s", val }' "$1"
     fi
 }
-names=""
-[ "$no_env" -eq 1 ] || names=$(key_names "$envfile")
+names="" open_key="" open_line=""
+if [ "$no_env" -eq 0 ]; then
+    names=$(key_names "$envfile")
+    # The entry whose quote never closes runs to the end of the file: the key that holds it stays whole on every route.
+    open_rec=$(entry_table "$envfile" | awk '$2 == "open" { print $1, $3 }')
+    open_line=${open_rec% *} open_key=${open_rec#* }
+fi
 
 keep=" "
 if [ -f "$confdir/env-keep.txt" ]; then
@@ -298,7 +336,7 @@ export_keys=""
 if [ "$no_env" -eq 0 ]; then
     while IFS= read -r key; do
         if is_owned "$key"; then export_keys="$export_keys $key"; fi
-    done < <(sed -n 's/^[[:space:]]*export[[:space:]]\{1,\}\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$envfile" | sort -u)
+    done < <(entry_table "$envfile" | awk '$3 ~ /^export:/ { print substr($3, 8) }' | sort -u)
 fi
 
 # The secret key set and the keyring state both come from the resolver, the one
@@ -391,7 +429,15 @@ for key in $names; do
         fi
         continue
     fi
-    case "$(_himmel_key_class "$key")" in
+    class=$(_himmel_key_class "$key")
+    if [ "$key" = "$open_key" ]; then
+        # Its quote never closes, so every line after it is its value: it stays, and no line of it or after it is moved or removed.
+        [ "$class" != secret ] || stay_secrets="$stay_secrets $key"
+        case "$class" in policy) label="config (policy)" ;; *) label=$class ;; esac
+        plan="$plan  $key  $label  stays (its quote never closes)"$'\n'
+        continue
+    fi
+    case "$class" in
         config)
             # An env-only key has no himmel.conf reader: it stays in .env, as in migrate-env-config.sh.
             if _himmel_env_only_key "$key"; then plan="$plan  $key  config  stays (env-only: no himmel.conf reader)"$'\n'
@@ -414,10 +460,7 @@ for key in $names; do
                 stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  stays (blank in .env: no value)"$'\n'
             elif [ "$backend_ok" -eq 1 ]; then
                 # A quoted value over several lines is read whole and removed whole, so it takes the same road as a named key.
-                span=$(entry_span "$envfile" "$key")
-                if [ "$span" = open ]; then
-                    stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  stays (its quote never closes)"$'\n'
-                elif [ "${span% *}" != "${span#* }" ]; then
+                if several_lines "$envfile" "$key"; then
                     own_keys[${#own_keys[@]}]="$key"; plan="$plan  $key  secret  → keyring (value over several lines)"$'\n'
                 else
                     secret_keys[${#secret_keys[@]}]="$key"; plan="$plan  $key  secret  → keyring"$'\n'
@@ -428,6 +471,9 @@ for key in $names; do
                     stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  stays (no keyring; its readers could not be searched)"$'\n'
                 elif [ -n "$reader" ]; then
                     stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  stays (no keyring; read by $reader)"$'\n'
+                elif several_lines "$envfile" "$key"; then
+                    # the legacy file takes one line per entry: a value over several lines stays whole in .env
+                    stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  stays (no keyring; its value runs over several lines)"$'\n'
                 else
                     file_keys[${#file_keys[@]}]="$key"; plan="$plan  $key  secret  → $store_rel (no keyring)"$'\n'
                 fi
@@ -457,7 +503,7 @@ if [ "$empty_env" -eq 0 ]; then
         echo "not himmel's and not in the secrets manifest (unowned), left in place:$unowned_left"
         printf 'to move the ones you name:  bash %q --env %q -y --keys NAME[,NAME]\n' "$HERE/migrate-env.sh" "$envfile"
         printf 'to move all of them (the one command for the secrets you placed in this file):  bash %q --env %q -y --unowned\n' "$HERE/migrate-env.sh" "$envfile"
-        echo "read the list first: --unowned moves every name above, a plain setting too. Check it with --dry-run --unowned."
+        printf 'read that list first: --unowned moves every name in it, a plain setting too. Check it with:  bash %q --env %q --dry-run --unowned\n' "$HERE/migrate-env.sh" "$envfile"
     fi
     [ "${#own_keys[@]}" -eq 0 ] || echo "these names move to the keyring (a plain setting among them is not a secret; name only the ones that are with --keys):  ${own_keys[*]}"
     if [ "$incomplete" -eq 1 ]; then
@@ -465,6 +511,7 @@ if [ "$empty_env" -eq 0 ]; then
         echo "unlock the keyring or install a Secret Service, then run this again."
     fi
 fi
+[ -z "$open_line" ] || echo "migrate-env: WARN the quote opened at line $open_line of $envfile never closes, so every line after it is read as part of that value and none of them moves; close the quote and run this again."
 
 umask 077
 # shellcheck source=../lib/prim.sh
@@ -552,7 +599,8 @@ covered_in() {  # <file>...: sets covered, the keys these files may lose: every 
 # ponytail: one set covers all config copies, so a differing value in any copy keeps the key in all; a per-copy scrub set in config-audit is the upgrade path.
 # ponytail: a kill between the two renames in config-audit's scrub leaves that manifest's checksum stale until the next write; a journaled rename in config-audit is the upgrade path.
 name_kept() {  # names the keys the backups keep, or says why they cannot be compared; prints no value
-    local f n k s all="" would id reason="the keyring's user-scope item does not hold that value, or env-keep names the key, so the line stays."
+    local f n k m s all="" would id reason="the keyring's user-scope item does not hold that value, or env-keep names the key, so the line stays."
+    local wide_reason="they run over several lines, and the scrub compares single-line entries only, so they stay; remove that copy by hand once the keyring serves the values."
     list_backups
     if [ "$backend_ok" -ne 1 ]; then
         for f in ${env_backups[@]+"${env_backups[@]}"} ${ca_backups[@]+"${ca_backups[@]}"}; do
@@ -569,13 +617,16 @@ name_kept() {  # names the keys the backups keep, or says why they cannot be com
     for f in ${env_backups[@]+"${env_backups[@]}"}; do
         if [ ! -r "$f" ]; then echo "migrate-env: WARN $f cannot be read, so it was not checked; check it by hand."; continue; fi
         covered_in "$f"
-        k=""
+        k="" m=""
         for n in $(real_names "$f"); do
             # a name this run stored by value is named by the plaintext WARN, not compared line by line
             case "${own_stored:- }" in *" $n "*) continue ;; esac
-            case "$covered" in *" $n "*) ;; *) k="$k $n" ;; esac
+            # an earlier run's value over several lines is never compared with the item: say so, not that the keyring lacks it
+            if several_lines "$f" "$n"; then m="$m $n"
+            else case "$covered" in *" $n "*) ;; *) k="$k $n" ;; esac; fi
         done
         [ -z "$k" ] || echo "migrate-env: WARN $f keeps a line for$k: $reason"
+        [ -z "$m" ] || echo "migrate-env: WARN $f keeps the entries for$m: $wide_reason"
     done
     [ "${#ca_backups[@]}" -gt 0 ] || return 0
     covered_in "${ca_backups[@]}"
@@ -583,12 +634,14 @@ name_kept() {  # names the keys the backups keep, or says why they cannot be com
     for f in "${ca_backups[@]}"; do
         id=${f%/.env}; id=${id##*/}
         if [ ! -r "$f" ]; then echo "migrate-env: WARN config backup $id cannot be read, so it was not checked; check it by hand."; continue; fi
-        k="" s=""
+        k="" m="" s=""
         for n in $(real_names "$f"); do
             case "${own_stored:- }" in *" $n "*) continue ;; esac
-            case "$covered" in *" $n "*) s="$s $n" ;; *) k="$k $n" ;; esac
+            if several_lines "$f" "$n"; then m="$m $n"
+            else case "$covered" in *" $n "*) s="$s $n" ;; *) k="$k $n" ;; esac; fi
         done
         [ -z "$k" ] || echo "migrate-env: WARN config backup $id keeps a line for$k: $reason"
+        [ -z "$m" ] || echo "migrate-env: WARN config backup $id keeps the entries for$m: $wide_reason"
         if [ -n "$s" ] && ! grep -Fxq "would-scrub $id" <<<"$would"; then
             echo "migrate-env: WARN config backup $id keeps a line for$s: the scrub skips that backup (its manifest cannot be read); remove it by hand."
         fi
@@ -642,7 +695,7 @@ if [ "$moving" -eq 0 ]; then
     [ "$backend_ok" -ne 1 ] || pending_scrub
     if [ "$pend" -eq 0 ]; then
         if [ "$no_env" -eq 1 ]; then echo "migrate-env: no .env found; nothing to migrate."; exit "$final_rc"; fi
-        if [ "$empty_env" -eq 1 ]; then echo "migrate-env: $envfile holds no keys; nothing to migrate."; exit "$final_rc"; fi
+        if [ "$empty_env" -eq 1 ]; then echo "migrate-env: $envfile holds no keys${open_line:+ before that quote}; nothing to migrate."; exit "$final_rc"; fi
         echo "nothing to move: every key stays in .env."
         [ "$final_rc" -eq 0 ] || exit 1
         [ "$dry" -eq 1 ] || [ "$incomplete" -eq 0 ] || exit 4
@@ -736,7 +789,7 @@ if ! { mkdir -p "$bdir" && chmod 700 "$bdir" && cp "$envfile" "$backup" && chmod
 fi
 echo "backup: $backup (mode 600)"
 restore_hint() {
-    local plain
+    local plain f n copies rmlist older=()
     # shellcheck disable=SC2086 # word-split key names
     plain=$(printf '%s\n' ${own_stored:-} | grep . | tr '\n' ' ')
     if [ "${scrubbed:-0}" -eq 1 ]; then
@@ -747,7 +800,16 @@ restore_hint() {
     fi
     # The scrub knows the manifest's single-line secrets only: a named or several-line value stays in every copy.
     if [ -n "$plain" ]; then
-        echo "migrate-env: WARN $backup, and the .env copies in the config backups (~/.himmel/state/config-audit/backups), still hold the entries for ${plain% } in plaintext: the scrub covers single-line manifest secrets only. Delete those copies by hand once the keyring serves the values: rm $backup"
+        # every earlier run copied .env first, so the older backups hold these entries too
+        for f in "$bdir"/*; do
+            [ -f "$f" ] && [ ! -L "$f" ] && [ "$f" != "$backup" ] || continue
+            for n in $plain; do
+                if entry_span "$f" "$n" >/dev/null 2>&1; then older[${#older[@]}]="$f"; break; fi
+            done
+        done
+        copies=$backup rmlist=$backup
+        for f in ${older[@]+"${older[@]}"}; do copies="$copies, $f"; rmlist="$rmlist $f"; done
+        echo "migrate-env: WARN $copies, and the .env copies in the config backups (~/.himmel/state/config-audit/backups), still hold the entries for ${plain% } in plaintext: the scrub covers single-line manifest secrets only. Delete those copies by hand once the keyring serves the values: rm $rmlist"
     fi
 }
 ca_bid=$(HIMMEL_CONFIG_AUDIT_ENV_FILE="$envfile" config_audit_pre "$poldir/config.json" migrate-env.sh)
@@ -870,8 +932,7 @@ fi
 # imported into the keyring on the first run after one appears.
 store_secret() {  # <key>
     local line have
-    line=$(awk -v k="$1" '{ sub(/\r$/, "") } /^[[:space:]]*#/ { next } { i = index($0, "=")
-        n = substr($0, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", n) } i && n == k { print; exit }' "$envfile")
+    line=$(entry_line "$envfile" "$1" | tr -d '\r') || return 1
     have=$(_load_dotenv_extract "$store" "$1" 2>/dev/null)
     if [ -n "$have" ]; then
         [ "$have" = "$(env_extract "$envfile" "$1")" ]
@@ -923,15 +984,7 @@ run_import() {  # <file> <var for the stored names>: sets imp_out; returns 1 whe
 }
 if [ "${#secret_keys[@]}" -gt 0 ]; then
     secret_set=" ${secret_keys[*]} "
-    if ! awk -v set="$secret_set" "$CLOSEAT"'
-        { l = $0; sub(/\r$/, "", l) }
-        oq != "" { if (closeat(l, oq)) oq = ""; next }
-        l ~ /^[[:space:]]*#/ { next }
-        { i = index(l, "="); if (!i) next; k = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k)
-          v = substr(l, i + 1); sub(/^[[:space:]]+/, "", v); c = substr(v, 1, 1)
-          open = ((c == "\"" || c == "\047") && !closeat(substr(v, 2), c)) }
-        index(set, " " k " ") { print }
-        open { oq = c }' "$envfile" > "$work/secrets.env" 2>/dev/null; then
+    if ! entry_filter only "$secret_set" "$envfile" > "$work/secrets.env" 2>/dev/null; then
         echo "migrate-env: could not write the private copy of the secrets; no lines were removed from .env."
         restore_hint
         exit 1
@@ -960,11 +1013,16 @@ for key in ${own_keys[@]+"${own_keys[@]}"}; do
     own_err="" own_state=""
     if ! own_val=$(entry_value "$envfile" "$key"); then
         own_err="its quote never closes"
+    elif case "$own_val" in *$'\n'*) true ;; *) false ;; esac; then
+        # same-value compares line by line, so a value that repeats the item's line would pass as the same one
+        own_err="a value with a newline inside it cannot be one keyring item"
     else
         # same-value with nothing on stdin only asks whether the item exists: 0 yes, 1 no
         probe_err=$(printf '' | bash "$hs" same-value "$key" 2>&1 >/dev/null); probe_rc=$?
         if [ "$probe_rc" -eq 0 ]; then
-            if printf '%s\n' "$own_val" | bash "$hs" same-value "$key" 2>/dev/null; then own_state=same; else own_state=held; fi
+            # 0 the same value, 1 another value (held); anything else is a keyring that did not answer
+            printf '%s\n' "$own_val" | bash "$hs" same-value "$key" 2>/dev/null; cmp_rc=$?
+            case "$cmp_rc" in 0) own_state=same ;; 1) own_state=held ;; *) own_err="the keyring did not answer" ;; esac
         elif [ "$probe_rc" -ne 1 ] || [ -n "$probe_err" ]; then
             own_err="the keyring did not answer"
         fi
@@ -1119,19 +1177,8 @@ fi
 moved=" ${config_keys[*]-} ${policy_keys[*]-}${stored_keys}${own_stored}${file_keys[*]-} "
 # shellcheck disable=SC2086 # word-split key names
 moved_n=$(printf '%s\n' $moved | grep -c .)
-# A moved key's whole entry goes: a quoted value over several lines too, closing quote included.
-awk -v moved="$moved" "$CLOSEAT"'
-    { l = $0; sub(/\r$/, "", l) }
-    skipq != "" { if (closeat(l, skipq)) skipq = ""; next }
-    keepq != "" { print; if (closeat(l, keepq)) keepq = ""; next }
-    l ~ /^[[:space:]]*#/ { print; next }
-    {
-        i = index(l, "="); k = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k)
-        v = substr(l, i + 1); sub(/^[[:space:]]+/, "", v); c = substr(v, 1, 1)
-        open = (i && k != "" && (c == "\"" || c == "\047") && !closeat(substr(v, 2), c))
-    }
-    i && k != "" && index(moved, " " k " ") { if (open) skipq = c; next }
-    { if (open) keepq = c; print }' "$backup" > "$work/env.new" || {
+# A moved key's whole entry goes: a quoted value over several lines too, closing quote included. Never a span the table did not close.
+entry_filter drop "$moved" "$backup" > "$work/env.new" || {
     echo "migrate-env: could not build the new .env; no lines were removed from .env." >&2
     restore_hint
     exit 1

@@ -1290,7 +1290,7 @@ mkdir -p "$TMP/failbin"
 real_awk=$(command -v awk)
 cat > "$TMP/failbin/awk" <<EOF
 #!/usr/bin/env bash
-case "\$*" in *'index(set, " " k " ") { print }'*) exit 1 ;; esac
+case "\$*" in *'mode=only'*) exit 1 ;; esac
 exec "$real_awk" "\$@"
 EOF
 chmod +x "$TMP/failbin/awk"
@@ -1558,6 +1558,134 @@ has "N7 the entry with a newline inside stays" "TWO_LINE_VALUE='CANARY-a-" "$(ca
 lacks "N7 the other named entry moved" "GGS_MQTT_PASS" "$(cat "$TMP/st/.env")"
 if [ "$rc" != 0 ]; then pass "N7 the run reports the entry it kept (exit $rc)"; else fail "N7 the run exited 0"; fi
 no_canary "N7 no value printed" "$out"
+
+# --- one entry parser: a quote that never closes, names that are not valid, a several-line value with no keyring ---
+quote_stays() {  # <label> <env file> <plan row>: the file is byte-identical to the fixture, the plan says why the key stays, nothing is reported moved
+    if cmp -s "$2" "$TMP/st.orig"; then pass "$1: .env is byte-identical"; else fail "$1: .env changed"; fi
+    has "$1: the plan says why it stays" "$3" "$out"
+    lacks "$1: nothing is reported moved" "removed their lines" "$out"
+    no_canary "$1: no value printed" "$out"
+}
+n18_env() {  # <path>: USER_SLUG opens a quote that never closes, so the lines after it are inside its value
+    fxput "$1" "USER_SLUG='%s\nREAD_SECRET=%s\nOTHER_TOOL_TOKEN=%s\n" "$(canary slug)" "$(canary read)" "$(canary other)"
+    cp -p "$1" "$TMP/st.orig"
+}
+# N18: a key whose quote never closes stays on every route, and no line after it is removed.
+fixture_env
+n18_env "$TMP/st/.env"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "N18 -y: the run exits 0"; else fail "N18 -y: exited $rc: $out"; fi
+quote_stays "N18 -y" "$TMP/st/.env" "  USER_SLUG  config  stays (its quote never closes)"
+consent_fixture '{"version":1,"policy":{"ENV_MIGRATION_CONSENT":"1"}}'
+n18_env "$FX/.env"
+out=$(CLAUDECODE=1 bash "$SCRIPT" --env "$FX/.env" < /dev/null 2>&1); rc=$?
+if [ "$rc" = 0 ]; then pass "N18 consent: the run exits 0"; else fail "N18 consent: exited $rc: $out"; fi
+quote_stays "N18 consent" "$FX/.env" "  USER_SLUG  config  stays (its quote never closes)"
+fixture_env
+fxput "$TMP/st/.env" "UNREAD_SECRET=%s\nOTHER_TOOL_TOKEN=%s\nUNREAD_SECRET='%s\nBITBUCKET_API_TOKEN=%s\n" "$(canary unread)" "$(canary other)" "$(canary dup)" "$(canary bb)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y "HIMMEL_SECRETS_KEYRING=off "
+quote_stays "N18 no keyring" "$TMP/st/.env" "  UNREAD_SECRET  secret  stays (its quote never closes)"
+lacks "N18 no keyring: the legacy file holds no line of it" "UNREAD_SECRET" "$(cat "$store" 2>/dev/null)"
+fixture_env
+fxput "$TMP/st/.env" "CR_REQUIRE_CROSS_MODEL=1\nOTHER_TOOL_TOKEN=%s\nCR_REQUIRE_CROSS_MODEL='%s\nREAD_SECRET=%s\n" "$(canary other)" "$(canary dup)" "$(canary read)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "N18 a later duplicate: the run exits 0"; else fail "N18 a later duplicate: exited $rc: $out"; fi
+quote_stays "N18 a later duplicate" "$TMP/st/.env" "  CR_REQUIRE_CROSS_MODEL  config (policy)  stays (its quote never closes)"
+has "N18 a later duplicate: the WARN names the line where the quote opens" "WARN the quote opened at line 3 of $TMP/st/.env never closes" "$out"
+# a holder that is no key (an export line) that never closes hides the lines after it: none moves, and the report says why
+fixture_env
+fxput "$TMP/st/.env" "export NOTE='%s\nREAD_SECRET=%s\n" "$(canary note)" "$(canary read)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y
+if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "N18 an export holder: .env is byte-identical"; else fail "N18 an export holder: .env changed"; fi
+has "N18 an export holder: the WARN names the line where the quote opens" "WARN the quote opened at line 1 of $TMP/st/.env never closes" "$out"
+lacks "N18 an export holder: nothing is reported moved" "removed their lines" "$out"
+if ! grep -q 'CANARY-read' "$KSTUB_STORE" 2>/dev/null; then pass "N18 an export holder: the hidden secret reached no store"; else fail "N18 an export holder: a hidden line was stored"; fi
+# N19: a name that is not a valid key opens a quote too: the lines inside it are never entries.
+fixture_9360
+fxadd "$TMP/st/.env" "export NOTE='first\nTOK=EMBEDDED-ONE\nlast'\nmy-note=\"second\nTOK=EMBEDDED-TWO\nend\"\nTOK=%s\n" "$(canary tok)"
+APPLY_ARGS="-y --keys TOK" apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N19 the apply exits 0"; else fail "N19 exited $rc: $out"; fi
+if grep -q 'CANARY-tok' "$KSTUB_STORE" 2>/dev/null && ! grep -q 'EMBEDDED' "$KSTUB_STORE" 2>/dev/null; then pass "N19 the real TOK entry is the one stored"; else fail "N19 the keyring holds the wrong TOK value"; fi
+has "N19 the export holder keeps its embedded line" "TOK=EMBEDDED-ONE" "$(cat "$TMP/st/.env")"
+has "N19 the export holder keeps its last line" "last'" "$(cat "$TMP/st/.env")"
+has "N19 the invalid-name holder keeps its embedded line" "TOK=EMBEDDED-TWO" "$(cat "$TMP/st/.env")"
+has "N19 the invalid-name holder keeps its last line" "end\"" "$(cat "$TMP/st/.env")"
+lacks "N19 the real TOK entry left" "TOK=CANARY-tok" "$(cat "$TMP/st/.env")"
+no_canary "N19 no value printed" "$out"
+# N20: with no keyring a value over several lines stays whole in .env; the legacy file takes one line per entry, so nothing leaves on a one-line store.
+fixture_env
+fxput "$TMP/st/.env" "UNREAD_SECRET='%s\n%s'\n" "$(canary a)" "$(canary b)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y "HIMMEL_SECRETS_KEYRING=off "
+quote_stays "N20" "$TMP/st/.env" "  UNREAD_SECRET  secret  stays (no keyring; its value runs over several lines)"
+lacks "N20 the legacy file holds no line of it" "UNREAD_SECRET" "$(cat "$store" 2>/dev/null)"
+# N21: a value with a newline inside is not the keyring's one-line item because every line of it equals that item.
+fixture_env
+n21v=$(canary rep)
+fxput "$TMP/st/.env" "REPEATED='%s\n%s'\n" "$n21v" "$n21v"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+kitem REPEATED "$n21v"
+APPLY_ARGS="-y --keys REPEATED" apply_tty y "$SYSPATH"
+if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "N21 the several-line entry stays whole"; else fail "N21 the entry left .env"; fi
+if [ "$rc" != 0 ]; then pass "N21 the run reports the entry it kept (exit $rc)"; else fail "N21 the run exited 0"; fi
+no_canary "N21 no value printed" "$out"
+# N22: a keyring that stops answering between the probe and the compare is a failure, not a held name.
+mv "$FX/scripts/lib/himmel-secrets" "$FX/scripts/lib/himmel-secrets.real"
+cat > "$FX/scripts/lib/himmel-secrets" <<'STUB' || fail "fixture write of the silent-keyring wrapper failed"
+#!/usr/bin/env bash
+# same-value: the first call (the probe) is answered, a later one finds the keyring silent
+if [ "$1" = same-value ]; then
+    n=$(cat "$SV_COUNT" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "$SV_COUNT"
+    [ "$n" -le 1 ] || { echo "himmel-secrets: the keyring did not answer" >&2; exit 2; }
+fi
+exec bash "${BASH_SOURCE[0]}.real" "$@"
+STUB
+chmod +x "$FX/scripts/lib/himmel-secrets"
+fixture_env
+fxput "$TMP/st/.env" "GGS_MQTT_PASS='%s\n'\n" "$(canary mq)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+kitem GGS_MQTT_PASS "$(canary newer)"
+rm -f "$TMP/sv.count"
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "SV_COUNT=$TMP/sv.count $SYSPATH"
+mv "$FX/scripts/lib/himmel-secrets.real" "$FX/scripts/lib/himmel-secrets"
+lacks "N22 a silent keyring is not called held" "held GGS_MQTT_PASS" "$out"
+has "N22 the report says the keyring did not answer" "failed GGS_MQTT_PASS (the keyring did not answer)" "$out"
+if [ "$rc" != 0 ]; then pass "N22 the run fails (exit $rc)"; else fail "N22 the run exited 0"; fi
+if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "N22 the entry stays"; else fail "N22 the entry left .env"; fi
+# N23: the command that checks the --unowned list carries this run's --env, and the list is the one printed above it.
+fixture_9360
+out=$(bash "$SCRIPT" --dry-run --env "$TMP/st/.env" 2>&1)
+has "N23 the check command carries --env" "--env $TMP/st/.env --dry-run --unowned" "$out"
+lacks "N23 the list is not 'every name above'" "every name above" "$out"
+# N24: the plaintext WARN names the older backups that hold the entry, and none that does not.
+fixture_9360
+mkdir -p "$HOME/.himmel/env-backups"
+n24old="$HOME/.himmel/env-backups/env.20260101T000000Z.1"
+n24other="$HOME/.himmel/env-backups/env.20260102T000000Z.1"
+fxput "$n24old" "GGS_MQTT_PASS='%s\n'\n" "$(canary old)"
+fxput "$n24other" 'HIMMEL_FLEET_CAP=7\n'
+chmod 600 "$n24old" "$n24other"
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "$SYSPATH"
+n24warn=$(printf '%s\n' "$out" | grep 'still hold the entries for')
+has "N24 the WARN names the older backup that holds the entry" "$n24old" "$n24warn"
+lacks "N24 it does not name an older backup without the entry" "$n24other" "$n24warn"
+# N25: a later run names a several-line manifest entry an earlier run stored, and gives the real reason.
+fixture_env
+fxput "$TMP/st/.env" "BITBUCKET_API_TOKEN='%s\n'\n" "$(canary bb3)"
+apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ] && ! grep -q BITBUCKET_API_TOKEN "$TMP/st/.env"; then pass "N25 the first run stores the entry and removes it"; else fail "N25 the first run exited $rc: $out"; fi
+out=$(bash "$SCRIPT" --dry-run --env "$TMP/st/.env" 2>&1)
+has "N25 the backup is named with the real reason" "keeps the entries for BITBUCKET_API_TOKEN: they run over several lines" "$out"
+has "N25 the config copy is named with the real reason" "keeps the entries for BITBUCKET_API_TOKEN: they run over several lines" "$(printf '%s\n' "$out" | grep 'config backup')"
+lacks "N25 the keyring is not blamed for a value it holds" "keeps a line for BITBUCKET_API_TOKEN" "$out"
+no_canary "N25 no value printed" "$out"
+# N26: the header's exit list names what fails a run.
+out=$(bash "$SCRIPT" --help 2>&1)
+has "N26 --help names an entry that did not reach the keyring" "an entry did not reach the keyring" "$out"
+has "N26 --help names the manager failure" "the systemd user manager could not be reached" "$out"
 
 if [ "$FAILED" -gt 0 ]; then
     echo "test-migrate-env: $FAILED FAILED"
