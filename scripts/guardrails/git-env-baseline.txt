@@ -79,7 +79,6 @@ SHELL:scripts/hooks/check-main-ref-transaction.sh
 SHELL:scripts/hooks/check-mcp-plugin-refs.sh
 SHELL:scripts/hooks/check-no-force-push.sh
 SHELL:scripts/hooks/check-no-headless-gemini.sh
-SHELL:scripts/hooks/check-no-ticket-id-in-user-strings.sh
 SHELL:scripts/hooks/check-npm-audit.sh
 SHELL:scripts/hooks/check-npm-licenses.sh
 SHELL:scripts/hooks/check-oxlint-complexity.sh

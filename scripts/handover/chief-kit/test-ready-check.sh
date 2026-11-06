@@ -48,6 +48,7 @@ export GH_PR_SNAPSHOT_CACHE_DIR="$tmp/snapshot-cache"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 echo "$*" >> "$GH_LOG"
+[ -z "${STUB_GH_STALL:-}" ] || sleep "$STUB_GH_STALL"
 args="$*"
 case "$args" in
     "repo view --json owner,name"*)
@@ -4208,6 +4209,41 @@ s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
 READY_CHECK_FAIL_LEDGER="$tmp/s17-fl-other.jsonl" s17_at "$S17_H1"
 check "19 T25c a fail row of another repo's PR 77: no round" "$(jq -c 'select(.kind == "round")' "$tmp/s17-fl-other.jsonl" | wc -l | tr -d ' ')" "0"
 s17_clear
+
+# --- the self-armed deadline, so no caller needs a `timeout` prefix ---
+# READY_CHECK_DEADLINE (whole seconds, default 150, 0 = none): argv unchanged; a stalled gh
+# read ends in a named FAIL, never a hang, and the override reaches the wrapper.
+reset_stubs
+# shellcheck source=scripts/lib/timeout-bin.sh
+. "$HERE/../../lib/timeout-bin.sh"  # the same GNU timeout (timeout or gtimeout) ready-check resolves
+REAL_TIMEOUT="$_TIMEOUT_BIN"
+if [ -z "$REAL_TIMEOUT" ]; then
+  echo "ok - deadline rows skipped: no GNU timeout on this host (ready-check runs without the deadline there)"
+else
+mkdir -p "$tmp/dl-bin"
+cat > "$tmp/dl-bin/timeout" <<STUB
+#!/usr/bin/env bash
+[ "\$1" = "--version" ] || echo "\$*" >> "$tmp/timeout.log"
+exec "$REAL_TIMEOUT" "\$@"
+STUB
+chmod +x "$tmp/dl-bin/timeout"
+: > "$tmp/timeout.log"
+rc=0; out="$(PATH="$tmp/dl-bin:$PATH" run)" || rc=$?
+check "deadline: default run still passes" "$rc" "0"
+check "deadline: the default is 150 s" "$(grep -c -E '^-k 5 150 bash .*ready-check\.sh ' "$tmp/timeout.log" | tr -d ' ')" "1"
+: > "$tmp/timeout.log"
+rc=0; out="$(READY_CHECK_DEADLINE=7 PATH="$tmp/dl-bin:$PATH" run)" || rc=$?
+check "deadline: the override reaches the wrapper" "$(grep -c -E '^-k 5 7 bash .*ready-check\.sh ' "$tmp/timeout.log" | tr -d ' ')" "1"
+check "deadline: the override run passes" "$rc" "0"
+: > "$tmp/timeout.log"
+rc=0; out="$(READY_CHECK_DEADLINE=0 PATH="$tmp/dl-bin:$PATH" run)" || rc=$?
+check "deadline: 0 means no wrapper" "$(grep -c -E '^-k 5 [0-9]+ bash [^ ]*ready-check\.sh ' "$tmp/timeout.log" | tr -d ' ')" "0"
+check "deadline: 0 still passes" "$rc" "0"
+rc=0; out="$(READY_CHECK_DEADLINE=2 STUB_GH_STALL=30 run 2>&1)" || rc=$?
+check "deadline: a stalled gh read exits 1" "$rc" "1"
+contains "deadline: the FAIL line names the deadline and its variable" "$out" "READY-CHECK FAIL: no verdict within the 2 s deadline (READY_CHECK_DEADLINE)"
+fi
+reset_stubs
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

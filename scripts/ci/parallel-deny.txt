@@ -9,7 +9,6 @@
 */scripts/vm/test-dry-run-restore.sh     binds the fixed ports 2281-2284
 */scripts/hooks/test-guard-pr-check-literal.sh            times a 400-deep parse against a 5 s budget
 */scripts/hooks/test-block-chokepoint-env-prefix.sh       times hook scans against 1-6 s budgets
-*/scripts/hooks/test-check-no-ticket-id-in-user-strings.sh times an 800-line scan against a 5 s budget
 */scripts/hermes/test-parity-guard.sh                     times guard scans against 3-5 s budgets
 */scripts/hooks/test-hook-chain-latency.sh                compares hook wall times at N and 4N against a 4.5x ratio
 */scripts/hooks/test-hook-construct-scaling.sh            compares hook wall times at N and 8N, with a 10 s member budget

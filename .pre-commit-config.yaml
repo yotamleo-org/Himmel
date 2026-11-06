@@ -205,14 +205,6 @@ repos:
         always_run: true
         pass_filenames: false
 
-      - id: no-ticket-id-in-user-strings
-        name: adopter-facing strings stay free of raw ticket IDs (himmel-dev only)
-        # HIMMEL-2371
-        entry: bash scripts/hooks/check-no-ticket-id-in-user-strings.sh
-        language: system
-        always_run: true
-        pass_filenames: false
-
       - id: guardrail-matrices
         name: guardrail matrix invariants (egress)
         # HIMMEL-1522

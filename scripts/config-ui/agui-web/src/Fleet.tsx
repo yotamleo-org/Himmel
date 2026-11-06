@@ -211,7 +211,7 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
         {fleet && s.waits.length > 0 && <Section id="waits" title="Long-lived waits" count={s.waits.length} initial={false} className="fleet-waits">
           <Waits waits={s.waits} />
         </Section>}
-        {fleet && !unavailable && <Section id="running" title="Running" count={s.running.reduce((n, g) => n + g.rows.length + (g.showConsole ? 1 : 0), 0)} initial={true}>
+        {fleet && !unavailable && <Section id="running" title="Running" count={s.running.reduce((n, g) => n + g.rows.length, 0)} initial={true}>
           {s.running.length === 0 && <p className="quiet">{`No running sessions${filtering(filters) ? " match the filters" : ""}.${counts.finished > 0 ? ` ${counts.finished} finished below.` : ""}`}</p>}
           {s.running.map((g) => <ConsoleGroup key={g.console?.name ?? "-"} group={g} all={all} hops={s.hops} token={token} now={now}
             counts={g.console ? chiefCounts(all, g.console.name, fleet.processOrphans ?? []) : null} selected={selected} />)}

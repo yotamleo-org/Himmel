@@ -646,7 +646,7 @@ function mapTab(data, inv, ui) {
     const calls = outside ? null : sumOf(counts, (c) => c.calls);
     const failed = outside ? (data ? items.reduce((n, r) => n + (isNum(r.refused) ? r.refused : 0), 0) : null) : sumOf(counts, (c) => c.failures);
     const rate = ratio(failed, calls);
-    const tint = outside ? "" : !isNum(calls) || calls === 0 || !isNum(failed) ? " zero" : failed === 0 ? " ok-t" : rate >= 0.1 ? " bad-t" : rate >= 0.05 ? " warn-t" : " ok-t";
+    const tint = outside ? "" : !isNum(calls) || calls === 0 || !isNum(failed) ? " zero" : failed === 0 ? " good-t" : rate >= 0.1 ? " bad-t" : rate >= 0.05 ? " warn-t" : " ok-t";
     const runs = k === "hook" ? items.reduce((n, r) => (n === null || !isNum(r.runs) ? null : n + r.runs), 0) : null;
     const unused = items.filter((r, i) => (r.kind === "hook" ? r.runs === 0 : !outsideKind(r.kind) && counts[i].calls === 0)).length;
     const line = k === "hook" ? `${num(runs)} runs ${items.every((r) => r.runsMeasured) ? "measured" : items.some((r) => r.runsMeasured) ? "measured and derived" : "derived"} · ${num(failed)} refused` : k === "cli" ? "outside call total" : `${num(calls)} calls · ${num(failed)} failed${isNum(calls) && calls > 0 && calls < 10 ? " · few calls" : ""}`;
@@ -677,7 +677,7 @@ function mapTab(data, inv, ui) {
     }).join("");
     return `<div class="thcard"><button class="mcard" data-act="th-pick" data-src="${s}" data-kind="">${esc(SRC_LABEL[s])}</button><p class="sub">${esc(summary)}</p><div class="mlgrid">${tiles}</div></div>`;
   }).join("")}</div>`;
-  const legend = `<div class="legend"><span class="tag fail">≥10%</span><span class="tag warn">5–10%</span><span class="tag ok">under 5%</span><span class="tag">0 failed</span><span class="tag">few calls: under 10</span><span class="tag">○ loaded, never used</span><span class="tag">outside call total: hooks, CLIs</span></div>`;
+  const legend = `<div class="legend"><span class="tag fail">≥10%</span><span class="tag warn">5–10%</span><span class="tag">under 5%</span><span class="tag ok">0 failed</span><span class="tag">few calls: under 10</span><span class="tag">○ loaded, never used</span><span class="tag">outside call total: hooks, CLIs</span></div>`;
   const picked = ui.src || ui.kind ? box("map-list", `Tools: ${[ui.src && SRC_LABEL[ui.src], ui.kind && KIND_LABEL[ui.kind]].filter(Boolean).join(" · ")}`, "The tiles you picked; each name opens its drill-in.", toolList(data, inv, ui, { withOutside: true })) : "";
   return `${box("map", "Tool map", "Every kind and source at a glance; click a tile to filter the list below. Hook runs are measured where the hook chain logged them; any other hook's runs are derived from matchers × matching calls.", `${wait}<p class="sub"><span class="tag">hook runs: measured or derived, as each tile says</span></p>${legend}${grid}${cards}`, "First build")}${picked}`;
 }

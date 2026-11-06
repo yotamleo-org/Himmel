@@ -800,7 +800,7 @@ true in `scripts/guardrails/himmel-adapters.json` (read from the default branch,
 so a worktree edit cannot widen it) and the PR targets that entry's
 `himmel_branch`. Run the judge, then, from the primary checkout:
 
-1. `bash <anchor>/scripts/handover/chief-kit/go.sh --repo <owner/repo> --trust-reviewed <judge-qid> <pr> <head>`
+1. `bash scripts/handover/chief-kit/go.sh --repo <owner/repo> --trust-reviewed <judge-qid> <pr> <head>`
    (exit 6 not allowlisted or the harness repo itself, 7 PR not OPEN, CLEAN and on the adapter branch at that head
    or a review thread still open, 5 no signed judge GO).
 2. `bash <anchor>/scripts/handover/merge-fork-pr.sh [--jira-transition] <owner/repo> <pr> <head>`

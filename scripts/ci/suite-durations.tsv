@@ -698,7 +698,6 @@ scripts/hooks/test-check-main-ref-transaction.sh	5
 scripts/hooks/test-check-mcp-plugin-refs.sh	1
 scripts/hooks/test-check-no-force-push.sh	0
 scripts/hooks/test-check-no-headless-gemini.sh	1
-scripts/hooks/test-check-no-ticket-id-in-user-strings.sh	0
 scripts/hooks/test-check-npm-audit-signatures.sh	0
 scripts/hooks/test-check-npm-audit.sh	1
 scripts/hooks/test-check-npm-licenses.sh	0

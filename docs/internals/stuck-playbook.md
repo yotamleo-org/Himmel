@@ -230,7 +230,7 @@ attempt cannot be read). Retry shortly; never edit the gate to skip it.
    is audited as an advisory instead of `via=<declaration>`. Trailers belong in the FIRST commit; a
    late declaration costs a new commit, never `--amend`.
    **Or the chief writes a fix-GO**, when a commit line is not
-   an option: `bash <anchor>/scripts/handover/chief-kit/go.sh --fix-main-red
+   an option: `bash scripts/handover/chief-kit/go.sh --fix-main-red
    <red run id> <pr> <full head sha>`, from the chief (a worker cannot; it needs
    the same ready-check PASS as any GO). The signed file names ONE red run, one
    PR and one head, and the gate accepts it only while that run is still

@@ -53,6 +53,7 @@ doc() { # <name> <disposition line>...: a chief doc whose Live state holds those
     { printf '# chief\n\n## Live state\n'; for l in "$@"; do printf '%s\n' "$l"; done; printf '\n## Results\npool-disposition: HIMMEL-120 slice HIMMEL-901 outside the live state\n'; } > "$f"
     printf '%s' "$f"
 }
+pd='pool-disposition:'
 field() { # <field> <doc>: the value of one --pool-stale output field
     TOKEN='' bash "$SUT" --pool-stale --doc "$2" 2>/dev/null | sed -n "s/^$1=//p"
 }
@@ -72,10 +73,11 @@ d="$(doc quiet \
     'pool-disposition: HIMMEL-103 question waits on PR 5002' \
     'pool-disposition: HIMMEL-104 question waits on HIMMEL-902' \
     'pool-disposition: HIMMEL-106 question operator decision 268' \
-    'pool-disposition: HIMMEL-107 question waits on PR 5002 and HIMMEL-901' \
-    'pool-disposition: HIMMEL-108 question waits on PR 5004')"
-check 'open or closed-unmerged targets, a still-open co-blocker and a ref-less target stay quiet' '0' "$(field pool-stale "$d")"
+    'pool-disposition: HIMMEL-107 question waits on PR 5002 and HIMMEL-901')"
+check 'open targets, a still-open co-blocker and a ref-less target stay quiet' '0' "$(field pool-stale "$d")"
 check 'one batched gh read serves all PR targets' '1' "$(wc -l < "$PS_GH_LOG" | tr -d ' ')"
+l="$pd HIMMEL-108 question waits on PR 5004"; d="$(doc closedpr "$l")"
+check 'a target naming a closed-unmerged PR reports it stale: its cause is gone' '1:HIMMEL-108' "$(field pool-stale "$d")"
 
 d="$(doc prlist 'pool-disposition: HIMMEL-117 question waits on PR 5001 and 5002, HIMMEL-901')"
 check 'every PR of a blocker list counts: a merged first PR and a still-open second stay quiet' '0' "$(field pool-stale "$d")"
@@ -116,6 +118,23 @@ d="$(doc rerule2 'pool-disposition: HIMMEL-101 question waits on HIMMEL-902' 'po
 check 'the later of two dispositions decides: an older open one does not mask a stale one' '1:HIMMEL-101' "$(field pool-stale "$d")"
 d="$(doc rerule3 'pool-disposition: HIMMEL-101 slice HIMMEL-901' 'pool-disposition: HIMMEL-101 question operator decision 268')"
 check 'a later ref-less disposition of the same key supersedes an older stale one' '0' "$(field pool-stale "$d")"
+
+# a disposition carries the head sha it was ruled at (`@<sha>`); one more than TICK_POOL_MAX_MERGES
+# commits behind main is stale though its named blocker is still open, so a copied-forward hold expires
+R="$WORK/repo"; git init -q "$R"
+for n in 1 2 3 4 5; do git -C "$R" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "c$n"; done
+old="$(git -C "$R" rev-parse --short=10 HEAD~4)"; young="$(git -C "$R" rev-parse --short=10 HEAD~1)"
+afield() { TOKEN='' TICK_POOL_MAX_MERGES=3 bash "$SUT" --pool-stale --doc "$2" --repo "$R" 2>/dev/null | sed -n "s/^$1=//p"; }
+l="$pd HIMMEL-120 question waits on HIMMEL-902 @$old"; d="$(doc aged "$l")"
+check 'a disposition ruled 4 merges ago is stale though its blocker is open' '1:HIMMEL-120' "$(afield pool-stale "$d")"
+l="$pd HIMMEL-120 question waits on HIMMEL-902 @$young"; d="$(doc young "$l")"
+check 'a disposition ruled 1 merge ago stays quiet' '0' "$(afield pool-stale "$d")"
+l="$pd HIMMEL-121 question operator decision 268 @$old"; d="$(doc agedbare "$l")"
+check 'a ref-less disposition ruled long ago is stale too' '1:HIMMEL-121' "$(afield pool-stale "$d")"
+l="$pd HIMMEL-120 question waits on HIMMEL-902 @deadbeef01"; d="$(doc unknownsha "$l")"
+check 'a sha the repo does not know prints ?, never stale' '?' "$(afield pool-stale "$d")"
+l="$pd HIMMEL-101 slice HIMMEL-901 @deadbeef01"; d="$(doc unknownshadone "$l")"
+check 'an unknown sha leaves a line with only Done blockers unjudged: ?, not stale' '?' "$(afield pool-stale "$d")"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
