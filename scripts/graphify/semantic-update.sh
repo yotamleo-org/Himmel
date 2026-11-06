@@ -399,6 +399,8 @@ if [ "$RESUME" -eq 1 ]; then
   fi
   node "$BATCH_CLIENT" results --dir "$PENDING" --out "$PENDING/results" >&2 \
     || { echo "semantic-update: reading the results of batch $(batch_field batch_id) failed -- graph untouched, the next run retries" >&2; exit 2; }
+  # a retried resume reuses this directory: only this attempt's match lines may count
+  rm -f "$PENDING/results/replay-matches.log"
   export GRAPHIFY_BATCH_MODE=replay GRAPHIFY_BATCH_DIR="$PENDING/results"
 fi
 if [ "$N_BATCH" -gt 0 ]; then
@@ -580,6 +582,11 @@ PY
   rc=$?
   set -e
   cat "$WORK/extract.log" >&2
+  # A chunk answered through its chunk-body key is an answer made under an older template or addendum landing now: say so.
+  if [ "$RESUME" -eq 1 ]; then
+    _m="$PENDING/results/replay-matches.log"; [ -f "$_m" ] || _m=/dev/null
+    echo "semantic-update: replay answered $(awk '$0 == "full" { n++ } END { print n + 0 }' "$_m") chunk(s) by full prompt hash and $(awk '$0 == "body" { n++ } END { print n + 0 }' "$_m") by chunk-body key (an answer made under an older template or addendum)" >&2
+  fi
   FAILED_CHUNKS="$(sed -n 's|.*WARNING: \([0-9]*/[0-9]*\) semantic chunk(s) failed.*|\1|p' "$WORK/extract.log" | tail -1)"
   # The first lane refusal (its reason, else its text) rides the closing line, which is what the cadence ledger keeps.
   REFUSED="$(sed -n 's/.*claude-api: refused: //p' "$WORK/extract.log" | head -n 1)"

@@ -5,7 +5,9 @@
 // <dir>/batch.json so a later run resumes it and never resubmits.
 //
 //   submit  --dir D --prompts P --account A|B --model M --effort E [--max-tokens N]
-//           P holds one file per chunk prompt, named <sha256 of the prompt>.txt (the custom_id). Refuses when
+//           P holds one file per chunk prompt, named <sha256 of the prompt>.txt (the custom_id), and optionally a
+//           <sha256>.key sidecar with the shim's chunk-body key (kept in batch.json, written back by results as
+//           R/bodies.json for the replay shim). Refuses when
 //           D/batch.json exists. Prints {batch_id, request_count, status}.
 //   poll    --dir D
 //           Prints {batch_id, status: in_progress|ended, counts}; exit 0 either way.
@@ -152,6 +154,14 @@ async function submit(o) {
     if (createHash('sha256').update(text).digest('hex') !== id) refuse(`prompt file '${f}' does not hash to its name`);
     return { id, text };
   });
+  // The shim's chunk-body key per prompt (sidecar <sha>.key), kept so a replay after a template or addendum change
+  // still finds the answer; a prompt recorded without one (no instruction boundary) is matched by its hash alone.
+  const bodies = {};
+  for (const { id } of prompts) {
+    const side = join(o.prompts, `${id}.key`);
+    const key = existsSync(side) ? readFileSync(side, 'utf8').trim() : '';
+    if (ID.test(key)) bodies[key] = id;
+  }
   // The hash above covers the whole recorded text; the split below only changes how the same bytes are carried.
   const prefix = sharedPrefix(prompts.map((p) => p.text));
   const requests = prompts.map(({ id, text }) => ({ custom_id: id, params: { model, max_tokens: maxTokens, output_config: { effort },
@@ -162,7 +172,7 @@ async function submit(o) {
   if (typeof made.id !== 'string' || !made.id) refuse('the create reply carries no batch id', 3);
   mkdirSync(dir, { recursive: true });
   const state = { version: 1, batch_id: made.id, account: o.account, model, effort, request_count: requests.length,
-    custom_ids: requests.map((r) => r.custom_id), created_at: made.created_at ?? null, status: made.processing_status ?? 'in_progress' };
+    custom_ids: requests.map((r) => r.custom_id), bodies, created_at: made.created_at ?? null, status: made.processing_status ?? 'in_progress' };
   save(dir, state);
   out({ batch_id: state.batch_id, request_count: state.request_count, status: state.status });
 }
@@ -208,6 +218,9 @@ async function results(o) {
     writeFileSync(join(o.out, `${r.custom_id}.json`), `${JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: text,
       stop_reason: m?.stop_reason ?? '', usage, modelUsage: { [m?.model ?? state.model]: {} }, total_cost_usd: Number(usd.toFixed(6)) })}\n`, { mode: 0o600 });
   }
+  // the chunk-body key map for the replay shim, limited to chunks that have an answer file
+  const answered = Object.fromEntries(Object.entries(state.bodies ?? {}).filter(([, id]) => existsSync(join(o.out, `${id}.json`))));
+  if (Object.keys(answered).length > 0) writeFileSync(join(o.out, 'bodies.json'), `${JSON.stringify(answered)}\n`, { mode: 0o600 });
   state.cost_usd = total.toFixed(6);
   state.succeeded = succeeded;
   save(dir, state);
