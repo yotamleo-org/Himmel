@@ -127,8 +127,10 @@ if [ "$FIRST_TIP" != none ] && [ "$(tip)" != "$FIRST_TIP" ]; then ok "the second
 # The flags reach every ref of a push, so the publisher's push must name exactly one:
 # [-C <repo>] push --quiet --force-with-lease=<ref>:<old> <remote> <sha>:refs/heads/graph-data
 check_eq "the publisher pushed twice" 2 "$(wc -l < "$TMP/pushes.log" | tr -d ' ')"
+AWK_RC=0
 BAD_PUSHES="$(awk '{ for (i = 1; i <= NF; i++) if ($i == "push") break; n = NF - i
-    if (n != 4 || $NF !~ /^[0-9a-f]{40}:refs\/heads\/graph-data$/) print }' "$TMP/pushes.log")"
+    if (n != 4 || $NF !~ /^[0-9a-f]{40}:refs\/heads\/graph-data$/) print }' "$TMP/pushes.log")" || AWK_RC=$?
+check_eq "the push check read the logged pushes" 0 "$AWK_RC"
 check_eq "each publisher push names one remote and one refspec, the literal graph-data ref" "" "$BAD_PUSHES"
 
 echo "controls: the flags the publisher sets reach nothing else"
