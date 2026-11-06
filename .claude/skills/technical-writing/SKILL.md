@@ -4,7 +4,7 @@ description: "Docs/PR/commit writing standard."
 disable-model-invocation: true
 ---
 
-> **Vendored, pinned to a commit (HIMMEL-7622).** Source: `cursor/plugins`
+> **Vendored, pinned to a commit.** Source: `cursor/plugins`
 > (pstack), commit `99743e9c151c8537cbbf1f98bb38f34ef3368453`, path
 > `pstack/skills/technical-writing/SKILL.md`, fetched 2026-10-27. License: MIT,
 > (c) 2026 Lauren Tan (`pstack/LICENSE` at that commit; full text in
