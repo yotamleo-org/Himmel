@@ -145,7 +145,9 @@ lock_token_held() {
     # rc 0 and 20 (a flagged lock) are answers; anything else could not read the locks, so a worker
     # is never proven closed by it (it stays missing)
     case "$sweep_rc" in 0|20) ;; *) return 0 ;; esac
-    printf '%s\n' "$sweep" | grep -F -- " session=$1 " | grep -qv -- 'status=STALE-DEAD'
+    local live
+    live="$(printf '%s\n' "$sweep" | grep -F -- " session=$1 " | grep -v -- 'status=STALE-DEAD')"
+    [ -n "$live" ]
 }
 
 # entry_token <label>: the lock token of the label's Live-state entry (empty when it has none)
