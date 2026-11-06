@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# test-wizard-himmel-clone-target.sh — the himmel checkout is not
+# test-wizard-himmel-clone-target.sh: the himmel checkout is not
 # a project TARGET, and the project-scope items a CONTRIBUTOR station really
 # carries stop reading n/a.
 #
 # Platform guard: any POSIX bash 3.2+. Pure bash + node.
 #
-# WHY: 2026-09-09 dogfood — `himmelctl install --scope project` run inside the
+# WHY: 2026-09-09 dogfood, `himmelctl install --scope project` run inside the
 # himmel checkout regenerated the repo's own tracked .claude/settings.json hook
 # block from the manifest (98+/38-) and dropped a hud config inside the repo.
 # That file is the SOURCE the installer generates from; the checkout is not an
@@ -13,26 +13,26 @@
 # ticket: refuse project scope there, and let the user-scope record of a
 # CONTRIBUTOR station probe the five scopes:["project"] items that
 # scripts/setup.sh genuinely installs, instead of printing
-# "n/a — not enabled for this target (profile/scope)" for things that are green.
+# n/a "not enabled for this target (profile/scope)" for things that are green.
 #
 # Covers:
-#   a. RED control — `install --scope project` with cwd INSIDE the himmel clone
+#   a. RED control: `install --scope project` with cwd INSIDE the himmel clone
 #      exits non-zero, names the checkout, and prints the remedy (setup.sh +
 #      `install --scope user`). No install-profile cache is written: a refused
 #      install must leave no `scope: project` record behind.
-#   b. negative control (load-bearing) — an ORDINARY adopter repo that VENDORS
+#   b. negative control (load-bearing): an ORDINARY adopter repo that VENDORS
 #      himmel's portable core (scripts/hooks/*, scripts/guardrails/lib.sh, even
 #      a copy of adopt.sh) is NOT caught: `install --scope project` there
 #      proceeds. A content heuristic would have failed this.
-#   c. scope control — `install --scope user` from inside the himmel clone is
+#   c. scope control: `install --scope user` from inside the himmel clone is
 #      unaffected: the refusal is project-scope only, not a blanket refusal.
-#   d. contributor membership — a user-scope report over an item carrying
+#   d. contributor membership: a user-scope report over an item carrying
 #      contributorScopes:["user"] reads desired + PROBED on a devOverlay:true
 #      (contributor) record...
 #   e. ...and still reads n/a on a devOverlay:false (plain adopter) record, and
 #      an item WITHOUT contributorScopes reads n/a on both. Without (e) the
 #      change would be a blanket turn-everything-on.
-#   a4. platform control — the remedy assertion in a/a2 follows uname, so Git
+#   a4. platform control: the remedy assertion in a/a2 follows uname, so Git
 #      Bash asserts the pwsh rendering the diagnostic actually prints there
 #      instead of reddening on correct behaviour.
 
@@ -49,7 +49,7 @@ command -v jq >/dev/null 2>&1 || { echo "FAIL: jq required" >&2; exit 1; }
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline (printf-into-`grep -q` is a pipefail trap: grep exits on the first
 # match, the producer takes SIGPIPE, and pipefail reports the PIPELINE failed).
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
@@ -59,8 +59,8 @@ node_bin=$(command -v node)
 work_raw=$(mktemp -d "${TMPDIR:-/tmp}/wizard-himmel-clone-target.XXXXXX") || exit 1
 cleanup() { chmod -R u+w "$work_raw" 2>/dev/null || true; command rm -rf -- "$work_raw"; }
 trap cleanup EXIT
-# bin.js names the checkout by the path node sees for its cwd — the
-# PHYSICAL, native spelling (macOS /private/var/..., Git Bash C:/Users/...) —
+# bin.js names the checkout by the path node sees for its cwd: the
+# PHYSICAL, native spelling (macOS /private/var/..., Git Bash C:/Users/...),
 # and macOS TMPDIR ("/var/folders/../T/") is a symlink with a trailing slash.
 # Build every fixture path from that one spelling, not the raw mktemp one.
 . "$repo_root/scripts/lib/canon-path.sh"
@@ -69,7 +69,7 @@ work=$(canon_path_native "$work_raw") || fail "cannot canonicalise $work_raw"
 STATUS_REPORT_LIB="$(winpath "$status_report_lib")"
 export STATUS_REPORT_LIB
 
-# make_clone_fixture <dir> — a throwaway HIMMELCTL_REPO_ROOT standing in for a
+# make_clone_fixture <dir>: a throwaway HIMMELCTL_REPO_ROOT standing in for a
 # himmel clone: the no-op adopt.sh + setup.sh the installer shells out to, and
 # the lane registry probeLane resolves through.
 make_clone_fixture() {
@@ -84,7 +84,7 @@ PLUGINS
   cp "$repo_root/scripts/lanes/lanes.json" "$_d/scripts/lanes/lanes.json"
 }
 
-# run_install <cwd> <home> <repo_root_fixture> [args...] — bin.js install
+# run_install <cwd> <home> <repo_root_fixture> [args...]: bin.js install
 # --dry-run under a fake HOME + redirected cache/config seams. Every write
 # seam is redirected: nothing on the real machine is touched.
 run_install() {
@@ -96,7 +96,7 @@ run_install() {
       "$node_bin" "$wizard" install --dry-run "$@" </dev/null 2>&1 )
 }
 
-# ── case a: RED control — project scope inside the himmel clone is refused ──
+# ── case a: RED control, project scope inside the himmel clone is refused ──
 cloneA="$work/a-clone"; make_clone_fixture "$cloneA"
 homeA="$work/a-home"; mkdir -p "$homeA"
 set +e
@@ -112,20 +112,20 @@ grepq "$outA" 'not valid inside the himmel checkout' \
 # which under Git Bash on Windows is `C:/Users/...` while the raw shell
 # variable is the POSIX `/tmp/...`. winpath() is the suite-wide `cygpath -m`
 # bridge that produces exactly that forward-slashed native form, and is the
-# identity on Linux — so ONE normalisation makes every assertion below a plain
+# identity on Linux, so ONE normalisation makes every assertion below a plain
 # full-path comparison on both platforms. Do not hand-roll a per-assertion
 # workaround instead; that is what kept regressing.
 cloneA_w=$(winpath "$cloneA")
 grepq "$outA" -F "$cloneA_w" \
   || fail "case a: the refusal must NAME the checkout it refused ($cloneA_w): $outA"
-# The contributor primitive is NOT hardcoded in bin.js — it is rendered from
+# The contributor primitive is NOT hardcoded in bin.js. It is rendered from
 # deriveOverlayCommand(), the same derivation that would actually spawn it, so
 # the line carries `bash <clone>/scripts/setup.sh`.
 grepq "$outA" -F -- "bash $cloneA_w/scripts/setup.sh" \
   || fail "case a: the remedy must name the checkout's own scripts/setup.sh (the contributor primitive): $outA"
 # The node command must be ABSOLUTE: the refusal fires from
-# whatever subdirectory the operator ran it in — which is where they paste it
-# back — and a relative `node scripts/himmelctl/bin.js` only resolves from the
+# whatever subdirectory the operator ran it in (which is where they paste it
+# back) and a relative `node scripts/himmelctl/bin.js` only resolves from the
 # checkout root.
 grepq "$outA" -F "node $cloneA_w/scripts/himmelctl/bin.js install --scope user" \
   || fail "case a: the remedy's node command must be ABSOLUTE, rooted at the checkout, so it resolves from any subdirectory: $outA"
@@ -133,7 +133,7 @@ grepq "$outA" -F "node $cloneA_w/scripts/himmelctl/bin.js install --scope user" 
   || fail "case a: a REFUSED install must not write an install-profile cache (a 'scope: project' record would survive it)"
 echo "ok: case a — --scope project inside the himmel clone is refused with the remedy, and writes no cache"
 
-# ── case b: negative control — a VENDORING adopter repo still installs ──────
+# ── case b: negative control, a VENDORING adopter repo still installs ──────
 # This is the load-bearing half: the detector keys off the clone THIS
 # himmelctl runs from, not off file content, so an adopter who copied himmel's
 # portable core (or even adopt.sh) into their own repo must not be caught.
@@ -173,7 +173,7 @@ grepq "$outA2" -F "node '$cloneA2_w/scripts/himmelctl/bin.js'" \
   || fail "case a2: the bin.js path containing a space must be SHELL-QUOTED in the remedy too: $outA2"
 echo "ok: case a2 — a checkout path with a space is refused and both remedy commands stay shell-quoted"
 
-# ── case c: scope control — user scope inside the clone is unaffected ───────
+# ── case c: scope control, user scope inside the clone is unaffected ───────
 cloneC="$work/c-clone"; make_clone_fixture "$cloneC"
 homeC="$work/c-home"; mkdir -p "$homeC"
 set +e
@@ -187,7 +187,7 @@ echo "ok: case c — the refusal is project-scope only (--scope user inside the 
 
 # ── case c2: a SIBLING worktree of the clone is caught too ─────────────────
 # himmel keeps its own worktrees.claude/worktrees/,
-# so the path tests cover them — but `git worktree add ../sibling` puts one
+# so the path tests cover them, but `git worktree add ../sibling` puts one
 # OUTSIDE repoRoot() while its .claude/settings.json is the very same tracked
 # file. The git-common-dir test is what closes that; this case is its control.
 if command -v git >/dev/null 2>&1; then
@@ -212,7 +212,7 @@ fi
 # ── cases d/e: contributor membership ──────────────────────────────────────
 # Two items, identical but for contributorScopes, both scopes:["project"]:
 # only the one carrying contributorScopes:["user"] may be enabled by a
-# devOverlay (contributor) record — and only on a contributor record.
+# devOverlay (contributor) record, and only on a contributor record.
 manifestD="$work/manifestD.json"
 cat > "$manifestD" <<'JSON'
 {
@@ -249,7 +249,7 @@ printf 'built\n' > "$fixtureRepoD/built.txt"
 homeD="$work/d-home"; mkdir -p "$homeD"
 cacheD="$work/d-cache"; mkdir -p "$cacheD"
 
-# run_report <devOverlay:true|false> — a user-scope statusReport with no
+# run_report <devOverlay:true|false>: a user-scope statusReport with no
 # persisted state.json, so membership comes from the recorded answers alone.
 run_report() {
   DEV_OVERLAY="$1" HOME="$homeD" USERPROFILE="$(winpath "$homeD")" \

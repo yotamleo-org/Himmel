@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-versioned-layout.sh — the release tarball's versioned
+# test-versioned-layout.sh: the release tarball's versioned
 # layout (~/.local/share/himmel/<version>/ + a `current` symlink) and the
 # non-git branch of `himmelctl update` (design -linux-packaging.md
 # §1.4 / §8 row S4).
@@ -7,13 +7,13 @@
 # Drives the REAL bin.js from a fixture tree laid out exactly as the README
 # recipe lays it out, invoked THROUGH `current` (as the launcher and the README
 # do). Only scripts/adopt.sh + scripts/setup.sh are stubbed, and `curl` / `gh`
-# are PATH stubs serving a locally built release pair — no network, and no
+# are PATH stubs serving a locally built release pair: no network, and no
 # environment seam steering the download URL (release-check.sh's integrity
 # note: the URL is a constant).
 #
 #   A  install through `current`: the wiring (the root adopt.sh/setup.sh derive
 #      HIMMEL_REPO from, the PATH launcher's target) is the `current` path,
-#      never the versioned dir — while the ledger's himmel_root records the
+#      never the versioned dir, while the ledger's himmel_root records the
 #      versioned dir (the bytes that wrote the rows). §1.4's canonicalisation
 #      risk.
 #   B  `update --dry-run` on the versioned layout names the tarball plan and
@@ -56,7 +56,7 @@ git -C "$repo_root" ls-files -co --exclude-standard -z \
   | tar -xf - -C "$tree_src" || fail "could not copy the working tree"
 [ -f "$tree_src/scripts/himmelctl/bin.js" ] || fail "working-tree copy has no bin.js"
 # Stubs derive their root exactly as scripts/adopt.sh does (logical pwd), and
-# log it — that root is what adopt.sh writes into env.HIMMEL_REPO and every
+# log it. That root is what adopt.sh writes into env.HIMMEL_REPO and every
 # hook command.
 for s in adopt.sh setup.sh; do
   # shellcheck disable=SC2016 # expands when the stub RUNS
@@ -121,7 +121,7 @@ new_layout() { # <case-dir> <version>
   : > "$1/curl.log"
 }
 
-run_ctl() { # <case-dir> <args...>  — always through `current`
+run_ctl() { # <case-dir> <args...>: always through `current`
   local td="$1"; shift
   (cd "$td/home" && HOME="$td/home" USERPROFILE="$(winpath "$td/home")" \
     PATH="$stubbin:$PATH" \
@@ -221,7 +221,7 @@ grep -Fq 'gh attestation verify' "$td/curl.log" || fail "caseE: attestation was 
 [ ! -e "$td/share/0.4.0" ] || fail "caseE: share/0.4.0 extracted despite a failed attestation"
 echo "ok: caseE failed attestation -> rc $rc, nothing extracted, current unchanged"
 
-# ── F: up to date — nothing downloaded, nothing changed ──────────────────────
+# ── F: up to date, nothing downloaded, nothing changed ──────────────────────
 td="$work/caseF"
 new_layout "$td" 0.4.0
 out=$(run_ctl "$td" update); rc=$?
@@ -231,7 +231,7 @@ grepq "$out" -i 'up to date' || fail "caseF: no up-to-date status: $out"
 [ "$(readlink "$td/share/current")" = 0.4.0 ] || fail "caseF: current moved"
 echo "ok: caseF up to date -> nothing fetched, current unchanged"
 
-# ── G: the new version dir already exists — refused ─────────────────────────
+# ── G: the new version dir already exists, refused ─────────────────────────
 td="$work/caseG"
 new_layout "$td" 0.3.0
 make_release 0.4.0 "$td/rel"
@@ -243,7 +243,7 @@ out=$(run_ctl "$td" update); rc=$?
 [ -s "$td/curl.log" ] && fail "caseG: downloaded although the target exists"
 echo "ok: caseG existing share/0.4.0 -> refused before any download, left untouched"
 
-# ── H: a tarball whose top dir is not himmel-<version>/ — refused ────────────
+# ── H: a tarball whose top dir is not himmel-<version>/, refused ────────────
 td="$work/caseH"
 new_layout "$td" 0.3.0
 make_release 0.4.0 "$td/rel" himmel-9.9.9

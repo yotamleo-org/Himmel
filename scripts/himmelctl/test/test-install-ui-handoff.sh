@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-install-ui-handoff.sh — `himmelctl install` hands off to the UI's Setup page.
+# test-install-ui-handoff.sh: `himmelctl install` hands off to the UI's Setup page.
 #
 # After a real install the one setup path is the UI: install reuses a running UI or starts a
 # token-bound one, and prints http://127.0.0.1:<port>/#t=<token>&page=setup. A machine with no
@@ -58,7 +58,7 @@ srv.listen(0, '127.0.0.1', () => { console.log(`http://127.0.0.1:${srv.address()
 setInterval(() => {}, 1000);
 JS
 
-# new_case <name> — fixture repo root, sandbox HOME, fake bun + systemctl; sets $c
+# new_case <name>: fixture repo root, sandbox HOME, fake bun + systemctl; sets $c
 new_case() {
   c="$work/$1"
   mkdir -p "$c/home" "$c/fx/scripts/config-ui" "$c/stub" "$c/units"; : > "$c/fx/scripts/config-ui/server.ts"

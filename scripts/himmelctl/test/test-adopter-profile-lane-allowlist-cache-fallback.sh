@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# test-adopter-profile-lane-allowlist-cache-fallback.sh — S3:
+# test-adopter-profile-lane-allowlist-cache-fallback.sh (S3):
 # when the install prefix's scripts/lanes/ is NOT writable (a packaged,
-# root-owned tree), persistProfileLaneAllowlist must not throw — it falls
+# root-owned tree), persistProfileLaneAllowlist must not throw. It falls
 # back to $HIMMELCTL_CACHE_DIR/lanes.local.json instead of the in-tree file.
 # A WRITABLE repoRoot keeps today's behaviour byte-for-byte (in-tree, scope
 # 'clone'). readLaneRegistries() must find the cache-dir overlay too.

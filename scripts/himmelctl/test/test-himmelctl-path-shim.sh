@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-himmelctl-path-shim.sh — hermetic coverage for the
+# test-himmelctl-path-shim.sh: hermetic coverage for the
 # himmelctl launcher written by both `install` and `update`.
 #
 # Covers: checkout-targeted creation, idempotent rewrite, moved-checkout
@@ -146,7 +146,7 @@ cat > "$fixtureF/scripts/himmelctl/bin.js" <<'STUB'
 const fs = require('fs');
 fs.appendFileSync(process.env.SHIM_CALL_LOG, `install:${process.argv.slice(2).join('|')}\n`);
 STUB
-# ONE execution engine now — deriveCommand always targets
+# ONE execution engine now. deriveCommand always targets
 # adopt.sh, with the dev overlay's setup.sh as an ADDITIONAL step
 # on top. A silent no-op (never touching INSTALL_CALL_LOG) so the assertion
 # below still sees exactly the overlay's own 'setup' line.
@@ -201,10 +201,10 @@ mode_f2() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 [ ! -e "$homeF/.local/state" ] || fail "caseF2: install wrote the fake HOME's .local/state"
 echo "ok: caseF2 install creates the himmel XDG state home and bus at 0700"
 
-# ── G: ownership marker — refuse unmarked/symlink collisions, replace marked, ─
+# ── G: ownership marker. Refuse unmarked/symlink collisions, replace marked, ─
 # ── atomic tmp+rename. ───────────────────────────────────────────────────────
 # These cases deliberately exercise FAILURE paths (refusals) and assert the rc
-# explicitly with `[ ] || fail`, so run them under errexit OFF — caseF above
+# explicitly with `[ ] || fail`, so run them under errexit OFF. caseF above
 # leaves `set -e` on, under which an expected non-zero `out=$(run_update …)`
 # would abort silently before the assertion.
 set +e
@@ -212,7 +212,7 @@ set +e
 # G1: an unmarked third-party himmelctl.js is refused and left byte-untouched;
 # no wrapper is written (the shim aborts on the first refusal). The update
 # engine itself succeeded, so cmdUpdate keeps rc 0 and WARNS that the launcher
-# is missing — the launcher is a best-effort rider.
+# is missing. The launcher is a best-effort rider.
 fixG1="$work/caseG1-checkout"; binG1="$work/caseG1-bin"; mkdir -p "$binG1"
 build_update_fixture "$fixG1"
 printf 'third-party\n' > "$binG1/himmelctl.js"
@@ -225,7 +225,7 @@ grepq "$out" 'refusing to overwrite' || fail "caseG1: refusal message absent: $o
 grepq "$out" 'WARN: update succeeded' || fail "caseG1: launcher-failure WARN absent (best-effort rider): $out"
 echo "ok: caseG1 unmarked third-party file refused (untouched); shim aborts; update rc stays 0 + WARN"
 
-# G2: a symlink to an EXISTING target (a valid symlink) is refused — lstat,
+# G2: a symlink to an EXISTING target (a valid symlink) is refused: lstat,
 # never followed/clobbered. This path already worked; it stays covered so a
 # regression to an existsSync-follows-links guard is caught. The update engine
 # succeeded, so rc stays 0 + WARN.
@@ -243,13 +243,13 @@ else
   echo "ok: caseG2 symlink refusal SKIPPED (host 'ln -s' produced no real symlink — e.g. MSYS without winsymlinks:nativestrict)"
 fi
 
-# G2b: a BROKEN (dangling) symlink — target absent — is refused too. fs.existsSync
+# G2b: a BROKEN (dangling) symlink (target absent) is refused too. fs.existsSync
 # FOLLOWS symlinks and returns false for a dangling link, so the pre-fix guard
-# skipped the symlink check and renameSync clobbered the link — violating the
+# skipped the symlink check and renameSync clobbered the link, violating the
 # never-clobber-a-symlink contract. The lstat-based guard
 # refuses ANY symlink, broken included. rc stays 0 + WARN (the update engine
 # succeeded; glm-5). Hosts that cannot create a real symlink (MSYS without
-# winsymlinks:nativestrict) skip — this runs on Linux CI.
+# winsymlinks:nativestrict) skip. This runs on Linux CI.
 fixG2b="$work/caseG2b-checkout"; binG2b="$work/caseG2b-bin"; mkdir -p "$binG2b"
 build_update_fixture "$fixG2b"
 if ln -s "$work/caseG2b-does-not-exist" "$binG2b/himmelctl.js" 2>/dev/null && [ -L "$binG2b/himmelctl.js" ]; then
@@ -315,7 +315,7 @@ echo "ok: caseG4a successful write leaves no orphaned tmp"
 # G4b: a failed write leaves the existing marked dest untouched (no partial).
 # POSIX-native only: 'chmod a-w' reliably denies node's file creation on
 # Linux/macOS; on MSYS/Cygwin chmod is a no-op against NTFS ACLs, so the failure
-# can't be injected there — skip with a note. The update engine succeeded, so a
+# can't be injected there. Skip with a note. The update engine succeeded, so a
 # failed launcher write keeps rc 0 + WARN; the dest-
 # untouched guarantee is the part this case actually locks.
 case "$(uname -s)" in
@@ -346,7 +346,7 @@ esac
 # A real git fixture: install from a linked worktree must target the PRIMARY
 # root; install from a non-worktree primary targets itself (unchanged).
 
-# H1: linked worktree — loader targets the primary, never the worktree.
+# H1: linked worktree. Loader targets the primary, never the worktree.
 primaryH="$work/caseH-primary"
 mkdir -p "$primaryH"
 build_update_fixture "$primaryH"
@@ -364,7 +364,7 @@ else
   echo "ok: caseH1 linked-worktree SKIPPED (git worktree add unavailable on this host)"
 fi
 
-# H2: non-worktree primary — loader targets repoRoot itself (unchanged).
+# H2: non-worktree primary. Loader targets repoRoot itself (unchanged).
 primaryH2="$work/caseH2-repo"
 mkdir -p "$primaryH2"
 build_update_fixture "$primaryH2"
@@ -428,11 +428,11 @@ echo "ok: caseI failed adopt.sh still applies the PATH shim and points the adopt
 # ── J: the generated launcher RE-EXECS bin.js, so bin.js's own
 # `require.main === module` guard still fires. Pre-fix the
 # generated himmelctl.js did `require(target)`, which runs with
-# require.main === himmelctl.js (the launcher), not the target — so a
+# require.main === himmelctl.js (the launcher), not the target. So a
 # guarded main() never ran: silent no-op, empty stdout, rc 0. The other
 # fixtures in this file stub bin.js with UNGUARDED top-level code (it runs
-# the instant it's require()'d), which would mask exactly this bug class —
-# this fixture mirrors the real guard shape instead.
+# the instant it's require()'d), which would mask exactly this bug class.
+# This fixture mirrors the real guard shape instead.
 fixtureJ="$work/caseJ-checkout"; binJ="$work/caseJ-bin"; mkdir -p "$binJ"
 build_update_fixture "$fixtureJ"
 cat > "$fixtureJ/scripts/himmelctl/bin.js" <<'STUB'

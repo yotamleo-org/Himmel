@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-qmd-himmel-collection.sh — hermetic tests for the
+# test-wizard-qmd-himmel-collection.sh: hermetic tests for the
 # `qmd-himmel-collection` install item: a core-profile install
 # with qmd on the machine registers the himmel qmd collection, as adopt.sh's
 # wire_qmd_core already does. Drives the REAL manifest + REAL qmd-bin.sh

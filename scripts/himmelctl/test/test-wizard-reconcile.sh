@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# test-wizard-reconcile.sh — hermetic tests for
+# test-wizard-reconcile.sh: hermetic tests for
 # scripts/himmelctl/lib/state.js's reconcileTarget: the
 # state re-derivation path ensureTarget() deliberately lacks (it never
 # re-derives an existing entry). Mirrors sibling test-wizard-state.sh
 # conventions: a fake HOME + HIMMELCTL_CACHE_DIR fixture, node launched by
 # absolute path, winpath for node.exe's MSYS-path blindness. state.js has no
-# shell-out surface, so no HIMMELCTL_REPO_ROOT fixture is needed — the REAL
+# shell-out surface, so no HIMMELCTL_REPO_ROOT fixture is needed: the REAL
 # scripts/install/manifest.json is read (read-only reference, safe).
 #
 # Covers:
@@ -24,7 +24,7 @@
 #      JSON, not dropped) while preserving any genuinely-stored STRING
 #      value unchanged.
 #   f. a malformed `overrides` on an existing
-#      item — a truthy NON-object (a string, an array) — normalizes to {} on
+#      item, a truthy NON-object (a string, an array), normalizes to {} on
 #      rebuild instead of persisting through (the SAME bug class as e's
 #      lastEnsured; state.js, item 1). Valid-override preservation
 #      stays case b's concern; this case covers ONLY the malformed shapes.
@@ -49,7 +49,7 @@ cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
 # paths passed via the ENVIRONMENT (STATE_LIB_PATH/MANIFEST_PATH),
-# never interpolated into the node -e source string — a checkout path
+# never interpolated into the node -e source string. A checkout path
 # containing an apostrophe or backslash would otherwise break the inline JS
 # on Windows Git Bash, macOS, or Linux alike.
 STATE_LIB_PATH="$(winpath "$state_lib")"
@@ -78,7 +78,7 @@ let s = state.load();
 const target = state.ensureTarget(s, manifest, answers);
 
 // sanity: under profile 'core', qmd-binary/qmd-index (profiles:['luna','all'])
-// should be disabled before reconcile — fixture-drift guard.
+// should be disabled before reconcile, fixture-drift guard.
 if (target.items['qmd-binary'].enabled !== false) throw new Error('fixture drift: qmd-binary should start disabled under profile core');
 if (target.items['handover-wiring'].enabled !== true) throw new Error('fixture drift: handover-wiring should start enabled (handover.mode=external)');
 
@@ -89,7 +89,7 @@ state.save(s);
 const before = JSON.parse(JSON.stringify(s));
 
 const reconciled = state.reconcileTarget(s, manifest, answers, { profile: 'luna', scope: 'project' });
-// persist THIS reconcile immediately — case d's round-trip
+// persist THIS reconcile immediately: case d's round-trip
 // assertions below now read back exactly this result, instead of a second,
 // redundant reconcile+save performed later in a separate node invocation.
 state.save(s);
@@ -120,7 +120,7 @@ echo "ok: case c — handover-wiring keeps tracking cachedAnswers.handover.mode 
 
 # ── case d: mutate-in-place + round-trip through save()/load() ─────────────
 # reads back the SAME reconcile already persisted above (inside the
-# first node invocation, right after reconcileTarget()) — no second,
+# first node invocation, right after reconcileTarget()), no second,
 # redundant reconcile+save.
 echo "$out" | jq -e '.after.targets | to_entries[0].value.profile == "luna"' >/dev/null \
   || fail "case d: reconcileTarget should mutate the passed state object in place (got: $out)"
@@ -140,13 +140,13 @@ echo "ok: case d — reconcile mutates state in place and round-trips through sa
 # ── case e: lastEnsured normalizes to
 # null when missing, but is preserved when a real value is stored. The bug:
 # `existing ? existing.lastEnsured : null` only guards the "no existing
-# entry at all" case — an existing entry that itself lacks the field (a
+# entry at all" case: an existing entry that itself lacks the field (a
 # state file written before lastEnsured existed, or a malformed one) reads
 # back `undefined`, which the ternary carries straight through. An
 # `undefined` value is DROPPED by JSON.stringify, so the key vanishes from
 # the serialized state entirely, violating the schema's `lastEnsured`
-# contract. This test FAILS against the unfixed ternary — verified
-# empirically during development (stash/pop the fix, rerun) — because that
+# contract. This test FAILS against the unfixed ternary, verified
+# empirically during development (stash/pop the fix, rerun), because that
 # ternary never inspects `existing.lastEnsured` itself, only whether
 # `existing` is truthy.
 outE=$(cd "$target_dir" && HOME="$home_dir" USERPROFILE="$(winpath "$home_dir")" HIMMELCTL_CACHE_DIR="$(winpath "$cache_dir")" "$node_bin" -e "
@@ -207,14 +207,14 @@ echo "$outE" | jq -e '.r3lastEnsured == null' >/dev/null \
 echo "ok: case e — lastEnsured normalizes missing/undefined/non-string to null (present in serialized JSON) while preserving any real stored string value"
 
 # ── case f: a malformed `overrides` on an
-# existing item — a truthy NON-object (a string, an array) — must normalize
+# existing item, a truthy NON-object (a string, an array), must normalize
 # to a genuine plain object {} on rebuild, not persist through. This is the
 # SAME bug class as case e's lastEnsured normalization: state.js,
 # item 1 narrowed `|| {}` (which only caught FALSY overrides) to a real
 # typeof-object && !Array.isArray check, because a malformed truthy
 # non-object used to pass straight through reconcileTarget into the rebuilt
 # entry, violating the schema's `overrides` object contract. The valid
-# override on pre-commit-hooks survives unchanged (case b) — this case
+# override on pre-commit-hooks survives unchanged (case b). This case
 # covers ONLY the malformed shapes. ──────────────────────────────────────
 outF=$(cd "$target_dir" && HOME="$home_dir" USERPROFILE="$(winpath "$home_dir")" HIMMELCTL_CACHE_DIR="$(winpath "$cache_dir")" "$node_bin" -e "
 const state = require(process.env.STATE_LIB_PATH);
@@ -230,7 +230,7 @@ const target = state.ensureTarget(s, manifest, answers);
 const key = Object.keys(s.targets)[0];
 
 // sub-case f1: a STRING overrides (truthy, non-object) must normalize to {}.
-// Same aliasing caveat as case e — reconcileTarget assigns state.targets[key]
+// Same aliasing caveat as case e: reconcileTarget assigns state.targets[key]
 // = entry AND returns that SAME object, so snapshot the reconciled overrides
 // into a plain value HERE, before f2's mutation touches s.targets[key]
 // (== r1) directly.
@@ -239,7 +239,7 @@ const r1 = state.reconcileTarget(s, manifest, answers, { profile: 'core', scope:
 const r1Overrides = JSON.parse(JSON.stringify(r1.items['pre-commit-hooks'].overrides));
 
 // sub-case f2: an ARRAY overrides (typeof 'object' but Array.isArray) must
-// normalize to {} too — the round-17 guard explicitly excludes arrays.
+// normalize to {} too: the round-17 guard explicitly excludes arrays.
 s.targets[key].items['pre-commit-hooks'].overrides = ['malformed', 'array'];
 const r2 = state.reconcileTarget(s, manifest, answers, { profile: 'luna', scope: 'project' });
 const r2Overrides = JSON.parse(JSON.stringify(r2.items['pre-commit-hooks'].overrides));

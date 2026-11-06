@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-status-multitarget.sh — himmelctl `status` against a state.json
+# test-wizard-status-multitarget.sh: himmelctl `status` against a state.json
 # carrying TWO coexisting targets: one project-scope temp
 # repo target (keyed by path.resolve(cwd), lib/state.js's targetKeyForScope)
 # and one "user" target (the literal "user" key). Mirrors sibling
@@ -8,14 +8,14 @@
 # launched by absolute path, winpath for node.exe's MSYS-path blindness.
 #
 # Both targets share ONE cache dir (HIMMELCTL_CACHE_DIR), so ONE state.json
-# accumulates both entries — install-profile.json's `scope` field is the
+# accumulates both entries: install-profile.json's `scope` field is the
 # ONLY thing that picks which target a given `status` invocation resolves
 # against (project scope -> cwd-keyed; user scope -> the "user" key), and
 # it's overwritten between runs the same way a real adopter would re-run
 # `install` with a different scope answer. wiring-statusline (settings-key,
 # resolves against ctx.targetPath for project scope / $HOME for user scope)
 # is the shared litmus item: authored desired-enabled on BOTH target
-# entries directly (state.json's own documented schema — see
+# entries directly (state.json's own documented schema: see
 # lib/state.js's module header), independent of the manifest's own
 # scopes:["project"] restriction, which gates deriveTarget()'s natural
 # derivation, not the probe or the hand-authored state read here.
@@ -23,23 +23,23 @@
 # Covers:
 #   a. status against target A reports A's red/green set; flipping the
 #      wiring on B's scope (adding statusLine.command to the user-scope
-#      $HOME/.claude/settings.json) does NOT change A's report — and the
+#      $HOME/.claude/settings.json) does NOT change A's report, and the
 #      reverse (flipping A's targetPath-relative settings.json) does NOT
 #      change B's report either. Both directions re-probed live (not a
 #      cached/stale read) at each step.
 #   b. --items subset scoping works per target (each target's run returns
 #      exactly the requested ids, scoped to THAT target's own state).
 #   c. the state file's OTHER target entry is byte-untouched (jq -S
-#      comparison, plus a whole-file sha256) after a run against one target
-#      — running against A only ever touches state.targets[[A's key]].
+#      comparison, plus a whole-file sha256) after a run against one target:
+#      running against A only ever touches state.targets[[A's key]].
 
 set -euo pipefail
 
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
 # `set -o pipefail`: grep -q exits the instant it matches, the producer
 # then takes SIGPIPE writing the remainder, and pipefail reports the
-# PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
+# PIPELINE as failed, so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
 # so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
@@ -64,7 +64,7 @@ cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
 # write_cache <path> <role> <scope> <vault-mode> <vault-path> <handover-mode>
-#             <handover-path> <plugin-set> — a minimal valid Draft-A profile
+#             <handover-path> <plugin-set>: a minimal valid Draft-A profile
 #             (same shape test-wizard-status-cmd.sh's write_cache writes).
 write_cache() {
   cat > "$1" <<JSON
@@ -77,7 +77,7 @@ fixtureRepo="$work/repo"
 mkdir -p "$fixtureRepo/scripts/install" "$fixtureRepo/scripts/lib"
 cp "$manifest_path" "$fixtureRepo/scripts/install/manifest.json"
 # wiring-statusline's verifyScript resolution target for the two
-# flips below — a real, non-empty, readable file (never executed).
+# flips below: a real, non-empty, readable file (never executed).
 printf '// fixture stub\n' > "$fixtureRepo/scripts/lib/statusline-stub.js"
 statuslineStub_w="$(winpath "$fixtureRepo/scripts/lib/statusline-stub.js")"
 fixtureRepo_w="$(winpath "$fixtureRepo")"
@@ -87,24 +87,24 @@ targetA="$work/targetA"; mkdir -p "$targetA/.claude"
 baselineSettings='{"statusLine":{},"hooks":{"PreToolUse":[]}}'
 printf '%s' "$baselineSettings" > "$targetA/.claude/settings.json"
 
-# ── target B (user scope — $HOME/.claude/settings.json) ────────────────────
+# ── target B (user scope: $HOME/.claude/settings.json) ────────────────────
 homeDir="$work/home"; mkdir -p "$homeDir/.claude"
 printf '%s' "$baselineSettings" > "$homeDir/.claude/settings.json"
 
 cacheDir="$work/cache"; mkdir -p "$cacheDir"
 cacheDir_w="$(winpath "$cacheDir")"
 
-# runA <items-csv> — status against target A (project scope, cwd=targetA).
+# runA <items-csv>: status against target A (project scope, cwd=targetA).
 # Rewrites install-profile.json's scope to 'project' first (shared cache
-# dir — the profile records whichever scope a real adopter answered last).
+# dir: the profile records whichever scope a real adopter answered last).
 runA() {
   write_cache "$cacheDir/install-profile.json" adopter project none "" inline "" lean
   ( cd "$targetA" && HIMMELCTL_REPO_ROOT="$fixtureRepo_w" HIMMELCTL_CACHE_DIR="$cacheDir_w" HIMMEL_LUNA_CONFIG_PATH="$cacheDir_w-luna-config.json" HOME="$homeDir" USERPROFILE="$(winpath "$homeDir")" \
       "$node_bin" "$wizard" status --json --items "$1" )
 }
 
-# runB <items-csv> — status against target B (user scope; targetPath =
-# repoRoot() regardless of cwd, per bin.js's cmdStatus — cwd is irrelevant
+# runB <items-csv>: status against target B (user scope; targetPath =
+# repoRoot() regardless of cwd, per bin.js's cmdStatus: cwd is irrelevant
 # here, so no `cd` is needed).
 runB() {
   write_cache "$cacheDir/install-profile.json" adopter user none "" inline "" lean
@@ -113,7 +113,7 @@ runB() {
 }
 
 # ── seed both target entries (derive-and-save, once each), then patch
-# wiring-statusline desired-enabled directly on BOTH entries — state.json is
+# wiring-statusline desired-enabled directly on BOTH entries: state.json is
 # himmelctl's own documented-schema artifact (lib/state.js), authored here
 # independent of the manifest's scopes:["project"] gate (which governs
 # deriveTarget()'s natural derivation, not this hand-authored read).
@@ -161,7 +161,7 @@ sevOf() { # <json>
   echo "$1" | jq -r '.items[0].severity'
 }
 
-# ── case (a): baseline — both red (neither settings.json carries the key) ──
+# ── case (a): baseline, both red (neither settings.json carries the key) ──
 sevA0=$(sevOf "$(runA wiring-statusline)")
 sevB0=$(sevOf "$(runB wiring-statusline)")
 [ "$sevA0" = "red" ] || fail "case a: expected target A baseline severity=red (got: $sevA0)"

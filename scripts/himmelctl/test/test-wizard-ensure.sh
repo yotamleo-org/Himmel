@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-ensure.sh — hermetic tests for the himmelctl `ensure` subcommand
+# test-wizard-ensure.sh: hermetic tests for the himmelctl `ensure` subcommand
 # converges a target toward its desired manifest state via
 # statusReport (pre-check) -> installEngineLib.planInstall/runInstall ->
 # statusReport (post-check), fail-closed on anything still not converged that
@@ -7,7 +7,7 @@
 # libs directly) via a HIMMELCTL_REPO_ROOT fixture carrying a small, purpose-
 # built manifest.json + STUB primitive scripts (never the real adopt.sh/
 # wire-*.sh/install-plugins.sh/qmd-bin.sh) that log their own invocation to a
-# shared ENSURE_LOG file — a spy proving invocation count/order without
+# shared ENSURE_LOG file: a spy proving invocation count/order without
 # depending on any real toolchain. Mirrors sibling test-wizard-*.sh
 # conventions: fake HOME + HIMMELCTL_CACHE_DIR/HIMMELCTL_REPO_ROOT, node
 # launched by absolute path, winpath for node.exe's MSYS-path blindness,
@@ -34,22 +34,22 @@
 #      entry), and do NOT make ensure fail-close (exit 0).
 #   p/q/r. --items must not break dependency closure: item-b deps
 #      on item-a. p: `--items item-b` (item-a, its red prereq, excluded) is
-#      REJECTED — exit 2, names the excluded prereq, zero mutation (no
+#      REJECTED: exit 2, names the excluded prereq, zero mutation (no
 #      primitive invoked, state.json never written). q: `--items
 #      item-a,item-b` (the full closure) proceeds and converges both in
 #      dependency order. r: item-a already GREEN (converged in a prior
-#      step) and excluded from a follow-up `--items item-b` — no false
+#      step) and excluded from a follow-up `--items item-b`: no false
 #      rejection, since an already-satisfied dep is exactly what the
 #      "excluded == already satisfied" assumption legitimately covers.
 #   s. (update, was the manifest-authoring-bug
 #      regression test) pre-commit-hooks now carries `install:{type:"adopt"}`
-#      in the real manifest (reproduced here) — adopt.sh's own
+#      in the real manifest (reproduced here). adopt.sh's own
 #      install_precommit_hooks() genuinely wires the git-hooks probe's target
 #      (pre-commit/commit-msg/pre-push under .git/hooks), so dispatching
 #      adopt.sh for a red pre-commit-hooks item is no longer the
 #      fail-forever bug (a real adopt.sh converges it; test-adopt.sh proves
-#      that end-to-end). This spy-only fixture proves DISPATCH — adopt.sh IS
-#      invoked for a red pre-commit-hooks item — mirroring case f's
+#      that end-to-end). This spy-only fixture proves DISPATCH: adopt.sh IS
+#      invoked for a red pre-commit-hooks item, mirroring case f's
 #      dispatch-only style; the spy stub never touches .git/hooks, so
 #      convergence itself is intentionally out of scope here (case f's own
 #      rationale) and the exit code is not asserted.
@@ -57,22 +57,22 @@
 #      case k's bug in test-wizard-ensure-disable.sh) `--items
 #      dependent-item,hint-prereq`, where hint-prereq is desired+red but
 #      hint-only (no runnable install descriptor, so it can never actually
-#      converge) — `itemsSet.has(depId)` membership alone is NOT proof a
-#      dep will really be installed this run. REJECTED — exit 2, names
+#      converge). `itemsSet.has(depId)` membership alone is NOT proof a
+#      dep will really be installed this run. REJECTED: exit 2, names
 #      both items, zero mutation (dependent.marker never created).
 #   u. the same hint-only prerequisite,
 #      this time EXCLUDED from --items entirely (`--items dependent-item`
-#      alone) — must give the SAME "converge it manually" guidance as case
+#      alone), must give the SAME "converge it manually" guidance as case
 #      t, never the "add it: --items ..." advice (which would resolve
 #      nothing, since hint-prereq still could never converge once added).
 
 set -euo pipefail
 
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
 # `set -o pipefail`: grep -q exits the instant it matches, the producer
 # then takes SIGPIPE writing the remainder, and pipefail reports the
-# PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
+# PIPELINE as failed, so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
 # so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
@@ -87,7 +87,7 @@ command -v jq >/dev/null 2>&1 || { echo "FAIL: jq required" >&2; exit 1; }
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
-# sha256_hash <file> — sha256sum when present, else macOS's shasum -a 256
+# sha256_hash <file>: sha256sum when present, else macOS's shasum -a 256
 # (no sha256sum binary there by default). Resolved once so snapshot_dir uses
 # one consistent hasher.
 if command -v sha256sum >/dev/null 2>&1; then
@@ -110,7 +110,7 @@ cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
 # write_cache <path> <role> <scope> <vault-mode> <vault-path> <handover-mode>
-#             <handover-path> <plugin-set> — same minimal valid Draft-A
+#             <handover-path> <plugin-set>: same minimal valid Draft-A
 #             profile shape every sibling suite's write_cache writes.
 write_cache() {
   cat > "$1" <<JSON
@@ -118,14 +118,14 @@ write_cache() {
 JSON
 }
 
-# snapshot_dir <dir> — sorted lines, one per file/dir/symlink, byte-identity
+# snapshot_dir <dir>: sorted lines, one per file/dir/symlink, byte-identity
 # check. the original file-only version was blind to an empty
-# directory create/remove or a symlink change — neither shows up as a
+# directory create/remove or a symlink change. Neither shows up as a
 # "file", so a mutation limited to either would slip through every
 # zero-mutation assertion undetected. Now every filesystem-object TYPE is
 # represented: a regular file as its existing `sha256_hash` line
 # (unchanged format), a directory as `dir <path>`, a symlink as
-# `symlink <path> -> <target>` (readlink, not the dereferenced content —
+# `symlink <path> -> <target>` (readlink, not the dereferenced content:
 # proves the LINK itself, not what it happens to point at today, is
 # unchanged). Deterministic LC_ALL=C sort ordering, same as before.
 snapshot_dir() {
@@ -142,7 +142,7 @@ snapshot_dir() {
 
 # ── hermetic stub PATH: bash (real, needed to launch every stub primitive)
 # + brew/sudo (stubs, intercept the dep-a darwin/linux install
-# lines respectively — install-engine.js's `dep` dispatch is platform-
+# lines respectively. install-engine.js's `dep` dispatch is platform-
 # branched, so BOTH possible host package managers must be
 # intercepted, not just whichever this CI host happens to be, or the case
 # is not actually hermetic: a darwin run would reach the REAL `brew`, a
@@ -311,7 +311,7 @@ offerCount2=$(echo "$outG2" | grep -c 'about to ' || true)
 echo "ok: case g — the consolidated offer prints exactly once without --yes; --yes suppresses it; neither hangs"
 
 # ── case j: a NON-interactive ensure without --yes
-# must NOT proceed to convergence — exit 2, zero mutation, BEFORE any
+# must NOT proceed to convergence: exit 2, zero mutation, BEFORE any
 # install/unwire. Reuses repoD's manifest/stub (one runnable red item). ────
 targetJ="$work/targetJ"; mkdir -p "$targetJ"
 cacheJ="$work/cacheJ"; mkdir -p "$cacheJ"
@@ -398,7 +398,7 @@ cacheC="$work/cacheC"; mkdir -p "$cacheC"
 # vault.mode=existing + a REAL vault path so
 # ctx.vaultPath is non-empty and the qmd install flow actually exercises the
 # luna-collection registration it is meant to (a no-vault profile now hits the
-# empty-path guard in install-engine.js instead — see case x). profileForVault
+# empty-path guard in install-engine.js instead, see case x). profileForVault
 # ('existing') is still 'core', so luna-item (profiles:["luna","all"]) stays
 # NOT desired under the DERIVED profile; only --profile luna desires it.
 vaultC="$work/vaultC"; mkdir -p "$vaultC"
@@ -431,13 +431,13 @@ echo "$outC2" | jq -e '.items[] | select(.id=="luna-item") | .severity == "green
   || fail "case c: post-reconcile status should read luna-item green (got: $outC2)"
 echo "ok: case c — ensure --profile luna reconciles then converges the luna work list; post-check green"
 
-# ── case i: --profile + --dry-run TOGETHER — the
+# ── case i: --profile + --dry-run TOGETHER. The
 # preview must reflect the in-memory reconcile, not the stale on-disk entry.
 # Reuses repoC's manifest/stub (read-only) with a FRESH target/cache so it
 # doesn't interact with case c's own (already-converged) state. ───────────
 targetI="$work/targetI"; mkdir -p "$targetI"
 cacheI="$work/cacheI"; mkdir -p "$cacheI"
-# REAL vault path (same reason as case c) — case i
+# REAL vault path (same reason as case c). Case i
 # previews --profile luna, which desires luna-item (a qmd install); without a
 # vault path buildEntry's empty-path guard turns that preview into an
 # unrunnable hint instead of the DRY plan line this case asserts.
@@ -451,7 +451,7 @@ runEnsureI() {
       "$node_bin" "$wizard" ensure "$@" </dev/null )
 }
 # Seed under core (the ONE sanctioned derive-if-missing write) BEFORE the
-# purity snapshot — luna-item is not yet desired, same as case c's setup.
+# purity snapshot: luna-item is not yet desired, same as case c's setup.
 outI0=$(runEnsureI --yes)
 grepq "$outI0" -F 'already at the desired state' || fail "case i setup: under profile core, luna-item should not be desired yet (got: $outI0)"
 
@@ -472,8 +472,8 @@ echo "ok: case i — ensure --profile X --dry-run previews the reconciled profil
 # under --profile luna luna-item IS desired+red even with NO vault. The
 # install-engine.js 'qmd' guard returns a hint-only unrunnable entry instead
 # of building the broken `qmd_register_collection "" luna` command, so the
-# stub spy log (QMD_REG_LOG_C) stays EMPTY — proving no corrupt empty-path
-# registration was attempted — and ensure surfaces the hint. Reuses repoC's
+# stub spy log (QMD_REG_LOG_C) stays EMPTY (proving no corrupt empty-path
+# registration was attempted) and ensure surfaces the hint. Reuses repoC's
 # manifest/stub (read-only) with a FRESH no-vault target/cache so it never
 # touches case c/i state. ────────────────────────────────────────────────────
 targetX="$work/targetX"; mkdir -p "$targetX"
@@ -488,23 +488,23 @@ set -e
 # assert the run
 # FAILED CLOSED (rcX nonzero). rcX was captured but never checked, so a
 # regression that printed the hint below AND returned 0 would sail past every
-# text-only assertion in this case — the exact false-green class this whole
+# text-only assertion in this case: the exact false-green class this whole
 # PR has been fighting (an unrunnable qmd entry reported as success). rcX is
 # nonzero BY DESIGN here, not a section-4.5 hint-only exemption: luna-item is
 # a runnable-type item (qmd) whose buildEntry returns {unrunnable} for the
 # empty vault path, so runInstall records it in failed[] and ensure exits 1
-# at the post-check — the established winget-precedent fail-closed behaviour.
+# at the post-check: the established winget-precedent fail-closed behaviour.
 # Assert the EXIT, not just the printed text.
 [ "$rcX" -ne 0 ] \
   || fail "case x: a no-vault --profile luna run must FAIL CLOSED (nonzero exit) after surfacing the hint — got rc=0 (the hint printed but ensure returned success: a false green). out: $outX"
 # The guard must surface the hint naming the missing vault path...
 grepq "$outX" -F 'no luna vault path configured' \
   || fail "case x: a no-vault --profile luna run must surface the 'no luna vault path configured' hint (got: $outX)"
-# ...and must NEVER invoke qmd_register_collection (empty path or otherwise) —
-# the spy log stays empty, proving no corrupt registration was attempted.
+# ...and must NEVER invoke qmd_register_collection (empty path or otherwise).
+# The spy log stays empty, proving no corrupt registration was attempted.
 [ ! -s "$qmdRegLogX" ] || fail "case x: qmd_register_collection must NOT be invoked with an empty path (spy log: $(cat "$qmdRegLogX"))"
 # qmd_install (which creates luna.marker) lives in the SAME unrunnable command,
-# so it must not have fired either — the whole qmd entry is hint-only.
+# so it must not have fired either. The whole qmd entry is hint-only.
 [ ! -f "$targetX/luna.marker" ] || fail "case x: the unrunnable qmd entry must not have spawned qmd_install (luna.marker exists)"
 echo "ok: case x — a no-vault --profile luna run surfaces the hint and never invokes qmd_register_collection with an empty path (rc=$rcX)"
 
@@ -512,7 +512,7 @@ echo "ok: case x — a no-vault --profile luna run surfaces the hint and never i
 # 6 primitive invocations in deps[] order. the item DECLARATIONS
 # below are in scrambled/reverse order (build-a first, wire-a last) while
 # every `deps` relationship (and the expected wire-a..build-a invocation
-# sequence below) is UNCHANGED — a planner that just iterated declaration
+# sequence below) is UNCHANGED. A planner that just iterated declaration
 # order instead of actually resolving deps[] would emit build-a first and
 # fail this test; the original items-already-in-dependency-order fixture
 # could never have caught that class of bug. ───────────────────────────────
@@ -587,7 +587,7 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$repoE/scripts/skill-index/ensure-skil
 
 targetE="$work/targetE"; mkdir -p "$targetE"
 cacheE="$work/cacheE"; mkdir -p "$cacheE"
-# REAL vault path — this fixture includes qmd-a (a
+# REAL vault path. This fixture includes qmd-a (a
 # qmd install item) to exercise the qmd dispatch in the 6-invocation order; a
 # no-vault profile now hits the empty-path guard instead, so qmd-a would never
 # dispatch and the 6-count assertion below would break. profileForVault
@@ -597,14 +597,14 @@ write_cache "$cacheE/install-profile.json" adopter project existing "$vaultE" in
 logE="$work/ensure-log-e.txt"; : > "$logE"
 
 # exit code deliberately not captured: dep-a/build-a never actually converge
-# to green in this spy-only fixture (expected, irrelevant here) — the
+# to green in this spy-only fixture (expected, irrelevant here). The
 # ASSERTION is the invocation log, not the exit code.
 outE=$( cd "$targetE" && HIMMELCTL_REPO_ROOT="$(winpath "$repoE")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheE")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheE")-luna-config.json" HOME="$work/home" USERPROFILE="$(winpath "$work/home")" \
     PATH="$hermeticPath" ENSURE_LOG="$(winpath "$logE")" \
     "$node_bin" "$wizard" ensure --yes </dev/null ) || true
 lineCountE=$(wc -l < "$logE" | tr -d ' ')
 [ "$lineCountE" -eq 6 ] || fail "case e: expected EXACTLY 6 primitive invocations (got $lineCountE); log: $(cat "$logE"); ensure output: $outE"
-# mapfile is bash 4+ (macOS ships bash 3.2) — a portable
+# mapfile is bash 4+ (macOS ships bash 3.2): a portable
 # read-append loop instead.
 logLinesE=()
 while IFS= read -r _l; do logLinesE+=("$_l"); done < "$logE"
@@ -646,7 +646,7 @@ write_cache "$cacheF/install-profile.json" adopter project none "" inline "" lea
 logF="$work/ensure-log-f.txt"; : > "$logF"
 
 # exit code deliberately not captured (adopt-1/adopt-2 never actually
-# converge in this spy-only fixture) — same rationale as case e above.
+# converge in this spy-only fixture), same rationale as case e above.
 outF=$( cd "$targetF" && HIMMELCTL_REPO_ROOT="$(winpath "$repoF")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheF")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheF")-luna-config.json" HOME="$work/home" USERPROFILE="$(winpath "$work/home")" \
     ENSURE_LOG="$(winpath "$logF")" \
     "$node_bin" "$wizard" ensure --yes </dev/null ) || true
@@ -654,8 +654,8 @@ lineCountF=$(wc -l < "$logF" | tr -d ' ')
 [ "$lineCountF" -eq 1 ] || fail "case f: 2 adopt-type reds should coalesce to EXACTLY 1 invocation (got $lineCountF); log: $(cat "$logF"); ensure output: $outF"
 echo "ok: case f — 2 adopt-type red items coalesce to exactly 1 adopt.sh invocation"
 
-# ── case h: a red config-type item AND a red no-install item are hint-only
-# — never dispatched, never fail-close ensure ──────────────────────────────
+# ── case h: a red config-type item AND a red no-install item are hint-only,
+# never dispatched, never fail-close ensure ──────────────────────────────
 repoH="$work/repoH"; mkdir -p "$repoH/scripts/install"
 cat > "$repoH/scripts/install/manifest.json" <<'JSON'
 {
@@ -692,7 +692,7 @@ echo "ok: case h — a red config-type item and a red no-install item are hint-o
 
 # ── case l: a genuinely FAILED install must
 # fail ensure even when the post-check probe coincidentally reads green
-# (the stub touches its marker THEN exits 1 — a realistic "partially
+# (the stub touches its marker THEN exits 1: a realistic "partially
 # applied, then crashed" primitive). Previously runInstall's own failed[]
 # report was computed but never consulted in the final outcome. ───────────
 repoL="$work/repoL"; mkdir -p "$repoL/scripts/install" "$repoL/scripts/lib"
@@ -728,7 +728,7 @@ grepq "$outL" -F 'coincidence-item' || fail "case l: the failure should name coi
 echo "ok: case l — a failed install fails ensure even when the post-check probe coincidentally passes"
 
 # ── case m: the toward-disabled loop must
-# respect item.scopes — a project-scope run must NEVER process a
+# respect item.scopes. A project-scope run must NEVER process a
 # user-only removable item (scope bleed), even though it reads present
 # and is not desired. ──────────────────────────────────────────────────────
 repoM="$work/repoM"; mkdir -p "$repoM/scripts/install" "$repoM/scripts/lib"
@@ -754,7 +754,7 @@ rm -f user-only.marker
 exit 0
 SH
 targetM="$work/targetM"; mkdir -p "$targetM"
-# user-only-item's probe reads present (physically "there") — under a
+# user-only-item's probe reads present (physically "there"). Under a
 # scope-correct run this alone (not desired, present) would trigger
 # toward-disabled; the scope filter must exclude it here regardless.
 : > "$targetM/user-only.marker"
@@ -772,7 +772,7 @@ grepq "$outM" -F 'already at the desired state' || fail "case m: a project-scope
 echo "ok: case m — the toward-disabled loop respects item.scopes; a project-scope run never touches a user-only removable item"
 
 # ── case n: hints must be surfaced on EVERY
-# path, not only the early "nothing to converge" return — a run that ALSO
+# path, not only the early "nothing to converge" return. A run that ALSO
 # does real convergence work must still print the hint-only items. ───────
 repoN="$work/repoN"; mkdir -p "$repoN/scripts/install" "$repoN/scripts/lib"
 cat > "$repoN/scripts/install/manifest.json" <<'JSON'
@@ -813,7 +813,7 @@ echo "ok: case n — hints are surfaced even on a run that also does real conver
 
 # ── case o: reconcile must run whenever
 # --profile is EXPLICITLY supplied, even when it matches the target's
-# already-stored profile — a target's per-item enables can go stale (a
+# already-stored profile. A target's per-item enables can go stale (a
 # hand-edited state.json here stands in for that; the same code path also
 # covers a manifest that gained a new same-profile item since the target
 # was last derived) without the profile NAME itself changing. ────────────
@@ -855,7 +855,7 @@ set -e
 [ -f "$targetO/stale.marker" ] || fail "case o setup: stale.marker should exist after the initial bootstrap converge"
 
 # Hand-corrupt state.json: flip stale-item's enabled to false WITHOUT
-# changing the target's stored profile ('core' stays 'core') — simulates
+# changing the target's stored profile ('core' stays 'core'), simulates
 # staleness that a profile-string comparison alone can't detect. Also
 # remove the marker (simulating the wiring having drifted/reverted
 # out-of-band) so re-converging it is observable.
@@ -888,7 +888,7 @@ echo "ok: case o — an explicit --profile matching the target's stored profile 
 
 # ── cases p/q/r: --items must not break dependency
 # closure. planInstall's DFS treats a dep OUTSIDE the given item set as
-# already-satisfied — valid for a full run, false under --items when a red
+# already-satisfied, valid for a full run, false under --items when a red
 # prerequisite is excluded by the filter alone. item-b deps on item-a; both
 # desired under profile core (matches write_cache's vault.mode=none). ─────
 repoPQR="$work/repoPQR"; mkdir -p "$repoPQR/scripts/install" "$repoPQR/scripts/lib"
@@ -924,7 +924,7 @@ exit 0
 SH
 
 # ── case p: --items item-b alone (item-a, its red prereq, excluded) must be
-# REJECTED — exit 2, message names the excluded prereq, and ZERO mutation:
+# REJECTED: exit 2, message names the excluded prereq, and ZERO mutation:
 # no marker created, no primitive invoked, state.json never even written
 # (the validation runs before ensureTarget's derive-if-missing save). ──────
 targetP="$work/targetP"; mkdir -p "$targetP"
@@ -967,7 +967,7 @@ while IFS= read -r _l; do logLinesQ+=("$_l"); done < "$logQ"
 echo "ok: case q — --items naming the FULL closure proceeds and converges both, in dependency order"
 
 # ── case r: item-a is already GREEN (converged in a prior run) and excluded
-# from --items — no false rejection, since an already-satisfied dep is
+# from --items: no false rejection, since an already-satisfied dep is
 # exactly what the "excluded == already satisfied" assumption legitimately
 # covers. Same target/cache reused across both steps. ──────────────────────
 targetR="$work/targetR"; mkdir -p "$targetR"
@@ -997,15 +997,15 @@ echo "ok: case r — an already-GREEN excluded dep does not trigger a false clos
 
 # ── case s (update, was manifest-authoring-bug
 # regression test): pre-commit-hooks now carries install:{type:"adopt"} in
-# the real manifest — install_precommit_hooks() in the real adopt.sh
+# the real manifest. install_precommit_hooks() in the real adopt.sh
 # genuinely wires the git-hooks probe's target, so dispatching adopt.sh for
 # a red pre-commit-hooks item is no longer the fail-forever bug
 # fixed by stripping the install key. Reproduces the item's exact real shape
 # (id/kind/scopes/profiles/probe/install/removable) with an adopt.sh SPY
-# stub that proves DISPATCH — adopt.sh IS invoked for a red pre-commit-hooks
-# item — mirroring case f's dispatch-only style above. The spy never
+# stub that proves DISPATCH: adopt.sh IS invoked for a red pre-commit-hooks
+# item, mirroring case f's dispatch-only style above. The spy never
 # touches .git/hooks, so it can't converge the probe; exit code is
-# deliberately not captured (case f's own rationale) — convergence with a
+# deliberately not captured (case f's own rationale). Convergence with a
 # REAL adopt.sh is proven end-to-end by test-adopt.sh, not here. ───────────
 repoS="$work/repoS"; mkdir -p "$repoS/scripts/install" "$repoS/scripts"
 cat > "$repoS/scripts/install/manifest.json" <<'JSON'
@@ -1033,7 +1033,7 @@ write_cache "$cacheS/install-profile.json" adopter project none "" inline "" lea
 logS="$work/ensure-log-s.txt"; : > "$logS"
 
 # exit code deliberately not captured (the spy never converges the git-hooks
-# probe) — same rationale as case f above.
+# probe), same rationale as case f above.
 outS=$( cd "$targetS" && HIMMELCTL_REPO_ROOT="$(winpath "$repoS")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheS")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheS")-luna-config.json" HOME="$work/homeS" USERPROFILE="$(winpath "$work/homeS")" \
     ENSURE_LOG="$(winpath "$logS")" \
     "$node_bin" "$wizard" ensure --yes 2>&1 </dev/null ) || true
@@ -1042,9 +1042,9 @@ grepq "$(cat "$logS")" 'adopt.sh-INVOKED' || fail "case s: spy log missing the a
 grepq "$outS" -F 'pre-commit-hooks' || fail "case s: ensure output should name pre-commit-hooks (got: $outS)"
 echo "ok: case s — pre-commit-hooks (install:{type:\"adopt\"}) dispatches adopt.sh for a red item"
 
-# ── case t (MAJOR — the toward-ENABLED mirror of case k's bug):
+# ── case t (MAJOR, the toward-ENABLED mirror of case k's bug):
 # being NAMED in --items does NOT mean a dependency will actually be
-# installed this run — a hint-only prerequisite (no runnable install
+# installed this run. A hint-only prerequisite (no runnable install
 # descriptor, e.g. a config-type item) NEVER lands in towardEnabled no
 # matter how it's selected, so a dependent naming it as a dep must still be
 # REJECTED even when the prereq is explicitly included in --items. ────────
@@ -1090,14 +1090,14 @@ grepq "$outT" -F 'hint-prereq' || fail "case t: the rejection should name hint-p
 [ ! -f "$targetT/dependent.marker" ] || fail "case t: dependent.marker must NOT exist (zero mutation — dependent-item was never installed)"
 echo "ok: case t — --items naming a hint-only prerequisite is REJECTED too (membership alone was never sufficient on the enabled side either), zero mutation"
 
-# ── case u (Suggestion — audit of the toward-enabled
+# ── case u (Suggestion, audit of the toward-enabled
 # sibling message): a hint-only prerequisite EXCLUDED from --items entirely
 # (never named at all) must give the SAME useful "converge it manually"
 # guidance as case t's included-but-hint-only variant, not the "add it:
-# --items ..." advice — that advice would resolve nothing (hint-prereq
+# --items ..." advice. That advice would resolve nothing (hint-prereq
 # would still never land in towardEnabled after being added, only walking
 # the operator into case t's rejection on a second attempt instead of
-# telling them the real fix immediately). Reuses repoT/targetT — case t's
+# telling them the real fix immediately). Reuses repoT/targetT. Case t's
 # run above was a zero-mutation rejection, so the fixture is still clean.
 set +e
 outU=$( cd "$targetT" && HIMMELCTL_REPO_ROOT="$(winpath "$repoT")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheT")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheT")-luna-config.json" HOME="$homeT" USERPROFILE="$(winpath "$homeT")" \
@@ -1115,13 +1115,13 @@ echo "ok: case u — a hint-only prerequisite excluded from --items entirely get
 
 # ── case v: --profile reconcile must
 # key off the AUTHORITATIVE invocation scope (cachedAnswers.scope), not the
-# target entry's PERSISTED scope field — which can drift from the key it lives
+# target entry's PERSISTED scope field, which can drift from the key it lives
 # under (a hand-edited state.json, or an entry predating a schema change).
 # reconcileTarget() recomputes its OWN key via targetKeyForScope(scope), so a
 # stale target.scope made the pre-fix call write to a DIFFERENT entry than the
 # one being ensured: a project-scope `ensure --profile core` run from /foo
 # whose persisted entry claimed scope:'user' would reconcile the USER target
-# (writing project-derived membership into it) and leave /foo's entry stale —
+# (writing project-derived membership into it) and leave /foo's entry stale:
 # a silent false-no-op on exactly the items the operator asked to reconcile,
 # PLUS collateral damage to the other scope's entry. This case builds exactly
 # that drift (a project entry whose persisted scope field says 'user') and
@@ -1150,7 +1150,7 @@ SH
 targetV="$work/targetV"; mkdir -p "$targetV"
 cacheV="$work/cacheV"; mkdir -p "$cacheV"
 homeV="$work/homeV"; mkdir -p "$homeV"
-# project scope (cachedAnswers.scope) — the authoritative target key is the
+# project scope (cachedAnswers.scope). The authoritative target key is the
 # absolute cwd (<abs targetV>).
 write_cache "$cacheV/install-profile.json" adopter project none "" inline "" lean
 
@@ -1159,7 +1159,7 @@ runEnsureV() {
       "$node_bin" "$wizard" ensure "$@" </dev/null )
 }
 # Bootstrap: derive + converge the project entry at <abs targetV> (its scope
-# field is 'project' here — the corruption below introduces the drift).
+# field is 'project' here: the corruption below introduces the drift).
 set +e
 outV_setup=$(runEnsureV --yes); rcV_setup=$?
 set -e
@@ -1169,7 +1169,7 @@ set -e
 # Hand-corrupt state.json: leave the entry at the PROJECT key <abs targetV>
 # but overwrite its PERSISTED scope field to 'user' (the drift a hand-edit or
 # a pre-schema-change entry can introduce), AND flip drift-item's enabled to
-# false WITHOUT changing the stored profile ('core' stays 'core') — so a
+# false WITHOUT changing the stored profile ('core' stays 'core'), so a
 # correct reconcile (keyed off the authoritative project scope) re-enables +
 # converges it, while a stale-scope-keyed reconcile does not. Then remove the
 # marker so re-convergence is observable.
@@ -1186,24 +1186,24 @@ state.save(s);
 rm -f "$targetV/drift.marker"
 
 # Sanity: with the corruption in place and NO --profile, drift-item reads as
-# not-desired — a fixture-drift guard for the corruption step itself.
+# not-desired: a fixture-drift guard for the corruption step itself.
 outV0=$(runEnsureV --yes)
 grepq "$outV0" -F 'already at the desired state' \
   || fail "case v setup: after corrupting state.json, a plain ensure (no --profile) should see nothing to converge (got: $outV0)"
 [ ! -f "$targetV/drift.marker" ] || fail "case v setup: drift.marker should not exist yet (fixture drift)"
 
 # case v: --profile core must reconcile the PROJECT entry (re-enable +
-# converge drift-item), keyed off the AUTHORITATIVE scope — never create a
+# converge drift-item), keyed off the AUTHORITATIVE scope, never create a
 # spurious 'user' entry.
 set +e
 outV1=$(runEnsureV --profile core --yes); rcV1=$?
 set -e
 [ "$rcV1" -eq 0 ] || fail "case v: ensure --profile core should reconcile + converge (got rc=$rcV1): $outV1"
-# Assertion 1: the PROJECT entry got reconciled — drift-item is enabled again
+# Assertion 1: the PROJECT entry got reconciled. drift-item is enabled again
 # and converged (marker recreated).
 [ -f "$targetV/drift.marker" ] \
   || fail "case v: --profile core should have reconciled drift-item back to enabled:true and converged it (drift.marker missing — reconcile wrote to the WRONG entry)"
-# Assertion 2 (THE discriminator): no spurious 'user' entry may exist — a
+# Assertion 2 (THE discriminator): no spurious 'user' entry may exist. A
 # pre-fix reconcile keyed off the stale target.scope:'user' would have CREATED
 # one here, while statusReport (which already uses the authoritative scope)
 # kept reading the untouched project entry.
@@ -1216,7 +1216,7 @@ echo "ok: case v — --profile reconcile keys off the authoritative scope; the p
 # ── case w: the "N converged" count reports
 # MANIFEST ITEMS, not plan ENTRIES. Two COALESCE_TYPES (adopt) items collapse
 # to ONE adopt.sh invocation (case f proves the invocation count is 1), yet
-# BOTH items converged — so the summary must read "2 converged". The pre-fix
+# BOTH items converged, so the summary must read "2 converged". The pre-fix
 # shape derived the count from runInstall's per-entry report (ran.length=1)
 # and silently under-reported. The stub adopt.sh creates BOTH markers so the
 # post-check goes green and the success summary actually prints. ───────────
@@ -1263,15 +1263,15 @@ grepq "$outW" -F 'ensure complete (2 converged)' \
   || fail "case w: 2 coalesced adopt items must report '2 converged' (manifest items), not '1 converged' (the single plan entry / ran.length) (got: $outW)"
 echo "ok: case w — coalesced adopt items report the manifest-item count (2 converged), not the plan-entry count"
 
-# ── case y (MAJOR — toward-ENABLED TRANSITIVE
+# ── case y (MAJOR, toward-ENABLED TRANSITIVE
 # closure): the prerequisite walk must be TRANSITIVE, not direct-edges-only.
 # Topology A(red,desired) <- B(green) <- C(red,desired): converging C alone
 # via `--items C` must be REJECTED naming A, even though C's DIRECT dep B is
 # already green. The prior direct-edge loop inspected only C.deps=[B],
 # skipped green B via its `severity !== red` guard, and never examined A
-# (which lives in B's deps, not C's) — so C installed atop a genuinely
+# (which lives in B's deps, not C's), so C installed atop a genuinely
 # missing desired+red prerequisite. Reachable state per the CR thread: A
-# and B converged earlier, then A removed afterwards — reproduced here by
+# and B converged earlier, then A removed afterwards. Reproduced here by
 # deleting a.marker out-of-band between the two runs, leaving B green but
 # A red. ─────────────────────────────────────────────────────────────────
 repoY="$work/repoY"; mkdir -p "$repoY/scripts/install" "$repoY/scripts/lib"
@@ -1312,7 +1312,7 @@ SH
 # crisp: under the OLD direct-edges-only code the closure check let
 # `--items item-c` proceed, dispatched install-plugins.sh, and C installed
 # atop the missing A (rc=0, c.marker created). Under the FIXED code the
-# transitive walk rejects BEFORE dispatch (rc=2, c.marker stays absent) —
+# transitive walk rejects BEFORE dispatch (rc=2, c.marker stays absent),
 # so this stub is present-but-unused on the green path, like case s's
 # adopt.sh spy.
 mkdir -p "$repoY/scripts/machine-setup"
@@ -1331,7 +1331,7 @@ runEnsureY() {
       "$node_bin" "$wizard" ensure "$@" </dev/null )
 }
 
-# Setup: converge item-a AND item-b together (the full chain — the closure
+# Setup: converge item-a AND item-b together (the full chain: the closure
 # check allows it), so both markers exist and both read green.
 set +e
 outY0=$(runEnsureY --items item-a,item-b --yes); rcY0=$?
@@ -1340,14 +1340,14 @@ set -e
 [ -f "$targetY/a.marker" ] || fail "case y setup: a.marker should exist after converging item-a,item-b"
 [ -f "$targetY/b.marker" ] || fail "case y setup: b.marker should exist after converging item-a,item-b"
 
-# Reproduce the CR thread's reachable state — "A removed afterwards": delete
+# Reproduce the CR thread's reachable state ("A removed afterwards"): delete
 # a.marker out-of-band. Now item-a is red (missing) while item-b is STILL
 # green (its marker is present): the GREEN MIDDLE that hid A from the old
 # direct-edge loop.
 rm -f "$targetY/a.marker"
 
 # case y: `--items item-c` alone. item-c's DIRECT dep item-b is green, but
-# item-b's own dep item-a is red+desired+not converging this run — the
+# item-b's own dep item-a is red+desired+not converging this run. The
 # transitive walk must catch A and REJECT (rc=2, naming A), not install C
 # atop the missing A.
 set +e

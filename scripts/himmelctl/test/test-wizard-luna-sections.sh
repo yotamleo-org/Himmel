@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# test-wizard-luna-sections.sh — hermetic tests for PR-C
+# test-wizard-luna-sections.sh: hermetic tests for PR-C
 # Task 8: the himmelctl wizard's three new sections (luna cadence, secrets
-# walk, telegram bridge) — lib/cadence-emit.js's config->CLI-flag mapping,
+# walk, telegram bridge): lib/cadence-emit.js's config->CLI-flag mapping,
 # bin.js's askQuestions()/buildAnswers()/loadProfile()/runPlan() wiring, and
 # lib/adopter-profile.js's buildSummary() honest-bucket contribution.
 # Mirrors sibling test-wizard-*.sh conventions: node launched by absolute
@@ -26,7 +26,7 @@
 #     - the cadence arm step actually spawns pipeline-cadence.sh with the
 #       expected argv (end-to-end wiring, not just the emitter unit).
 #     - secrets walk: an unconfigured secret reports 'unconfigured', not an
-#       error — the run still exits 0.
+#       error. The run still exits 0.
 #     - V12: TELEGRAM_AUTO_ACTIONS is absent from the bridge .env and from
 #       the printed profile JSON, both before and after the run.
 #   V11   adopter-profile.js's buildSummary(): a skipped secret + a
@@ -54,7 +54,7 @@ node_bin=$(command -v node)
 
 # pin bin.js's bash spawns to the bare, PATH-honoring `bash`
 # this suite links into its stub dir (see test-wizard-questions.sh's own
-# comment on this — same reasoning applies verbatim here).
+# comment on this: same reasoning applies verbatim here).
 export HIMMELCTL_BASH=bash
 
 # shellcheck source=lib/hermetic-path.sh
@@ -111,20 +111,20 @@ STUB
   chmod +x "$_d/git"
 }
 
-# make_python_stub <destdir> — a fake `python` (AND `python3`, a byte-
-# identical copy — see below) mimicking BOTH real consumers
+# make_python_stub <destdir>: a fake `python` (AND `python3`, a byte-
+# identical copy: see below) mimicking BOTH real consumers
 # this suite's fixtures exercise, never a live interpreter or network call
 # (RETASK stage1-build-6d2e): probePythonInterpreter's `-c "<script>"` shape
-# (args: -c, script — replies with the fixed marker probePythonInterpreter
+# (args: -c, script, replies with the fixed marker probePythonInterpreter
 # checks for) AND probeLunaSources' `<fetch-health.py> --probe <source>`
-# shape (args: script-path, --probe, source — replies with fetch-health.py's
+# shape (args: script-path, --probe, source, replies with fetch-health.py's
 # own {"status":..., "reason":...} JSON contract). Per-source canned replies
 # below intentionally cover all three luna-sources verdicts: bitbucket=ok
 # (configured+healthy), firecrawl=blocked-or-rate-limited (configured but
-# broken — reason does NOT end in "missing", so probes.js's own
+# broken: reason does NOT end in "missing", so probes.js's own
 # UNCONFIGURED_REASON_RE does not reclassify it), reddit=auth-or-cookie-
 # expired with a reason ending in "missing" (the adopter never configured
-# it — probes.js's own unconfigured bucket). Any other source falls through
+# it: probes.js's own unconfigured bucket). Any other source falls through
 # to a generic "missing" reason (unconfigured), matching a real never-
 # configured credential.
 #
@@ -198,7 +198,7 @@ grepq() { local _tt="$1"; shift; grep -q "$@" <<< "$_tt"; }
 extract_profile_json() { printf '%s\n' "$1" | sed -n '/{$/,/^}$/p' | sed '1s/.*{/{/'; }
 
 # ═══════════════════════════════════════════════════════════════════════════
-# V9 — cadence-emit.js: config -> pipeline-cadence.sh CLI flags
+# V9 (cadence-emit.js): config -> pipeline-cadence.sh CLI flags
 # ═══════════════════════════════════════════════════════════════════════════
 
 outV9a=$("$node_bin" -e "
@@ -265,8 +265,8 @@ done
 echo "ok: V9c cadence-emit — a day on fetchHealth/harvest/synthesize is a loud validation error, never silently dropped"
 
 # ═══════════════════════════════════════════════════════════════════════════
-# V11 — adopter-profile.js buildSummary(): skipped/manual bucketing, never
-# installed (pure unit test — no wizard invocation, no spawn).
+# V11 (adopter-profile.js buildSummary()): skipped/manual bucketing, never
+# installed (pure unit test: no wizard invocation, no spawn).
 # ═══════════════════════════════════════════════════════════════════════════
 
 outV11=$("$node_bin" -e "
@@ -302,7 +302,7 @@ echo "$outV11" | jq -e '.manual | any(.[]; (.what | contains("whisperReady")) an
   || fail "V11: the trust-class bridge probe result should be listed under manual (got: $outV11)"
 echo "ok: V11 buildSummary — a skipped secret + a trust-class bridge-probe result land under skipped/manual, never under installed"
 
-# ── V11b — pure unit tests of buildSummary's
+# ── V11b: pure unit tests of buildSummary's
 # two coordinator-mandated wording distinctions:
 #   1. an UNTOUCHED section (no luna/bridge key at all) reads "left as-is",
 #      never "you answered ... =off" (codex-1 honesty fix).
@@ -317,7 +317,7 @@ const answers = {
   handover: { mode: 'inline', path: '' },
   pluginSet: 'lean',
   secretsWalk: 'skip',
-  // luna/bridge DELIBERATELY absent — the legacy-profile shape.
+  // luna/bridge DELIBERATELY absent, the legacy-profile shape.
 };
 console.log(JSON.stringify(ap.buildSummary(answers, [], { dryRun: false })));
 ")
@@ -358,10 +358,10 @@ echo "$outV11b_skip" | jq -e '.summaryFail.manual | any(.[]; .what | contains("S
   && fail "V11b: a genuine failure must not be worded as a deliberate SKIPPED (got: $outV11b_skip)"
 echo "ok: V11b buildSummary — a deliberate persistence skip (probes not ready) and a genuine install failure render DIFFERENT wording"
 
-# ── V11c — pure unit tests, same style as
+# ── V11c: pure unit tests, same style as
 # V11/V11b, for the two findings that have no safe/deterministic end-to-end
 # trigger (a genuine thrown probe exception, and a real Linux unit-succeeds-
-# linger-fails partial state — neither reproducible hermetically on this
+# linger-fails partial state, neither reproducible hermetically on this
 # Windows test host without spawning a real systemd/network dependency):
 #   1. [codex-3] a secret result with status:'error' (the shape bin.js's
 #      probeOneSecret catch now returns for a thrown probe exception) must
@@ -369,7 +369,7 @@ echo "ok: V11b buildSummary — a deliberate persistence skip (probes not ready)
 #      'unconfigured' or be told to "go configure" something we never
 #      actually checked.
 #   2. [codex-4] a bridgePersistence result with partial:true (unit running,
-#      linger not set) must land under still-manual — never installed — and
+#      linger not set) must land under still-manual (never installed) and
 #      say PARTIAL, not the blanket "NOT installed" a total failure gets.
 outV11c_error=$("$node_bin" -e "
 const ap = require('$adopter_profile_lib_w');
@@ -425,7 +425,7 @@ echo "$outV11c_partial" | jq -e '.manual | any(.[]; (.what | contains("persisten
   && fail "V11c [codex-4]: a PARTIAL success must not be worded the same as a total failure (NOT installed) (got: $outV11c_partial)"
 echo "ok: V11c [codex-4] a partial persistence state (unit running, linger not set) reports PARTIAL under still-manual, names the exact remediation, never installed"
 
-# ── V11d — pure unit
+# ── V11d: pure unit
 # test, same style as V11b's luna/bridge pin: a not-asked secretsWalk
 # (answers.secretsWalk undefined -- the shape the earlier fix produces for
 # vaultMode=='none'/contributor) must read "left as-is", distinct from a
@@ -452,7 +452,7 @@ echo "$outV11d" | jq -e '.declined.skipped | map(select(contains("secrets walk")
   && fail "V11d [codex-1 follow-up]: a genuinely-declined secretsWalk must NOT read 'left as-is' -- it WAS asked (got: $outV11d)"
 echo "ok: V11d [codex-1 follow-up] a not-asked secretsWalk reads 'left as-is', distinct from a genuinely-declined secretsWalk=skip"
 
-# ── V11e — pure unit test,
+# ── V11e: pure unit test,
 # same style as V11b/V11c/V11d: the --dry-run "would install" text for bridge
 # persistence must platform-branch, exactly like attemptBridgePersistence()
 # itself does. process.platform is overridden in-process (the same technique
@@ -485,7 +485,7 @@ echo "$outV11e" | jq -e '.mac.planned | any(.[]; contains("would install (system
   && fail "V11e [codex-2]: an unsupported platform must NEVER claim it would install persistence (got: $outV11e)"
 echo "ok: V11e [codex-2] the --dry-run bridge-persistence text platform-branches (linux systemd+linger / other unsupported), never claims the wrong artifact"
 
-# ── V11f — a paired credential
+# ── V11f: a paired credential
 # reported 'unconfigured' must name the pair and say the shared probe cannot
 # tell them apart, rather than pinning the blame on whichever one happens to
 # be listed; an UNPAIRED secret (control) keeps the plain wording.
@@ -516,7 +516,7 @@ echo "$outV11f" | jq -e '.skipped | map(select(contains("FIRECRAWL_BASE_URL"))) 
   && fail "V11f [codex-1] control: an UNPAIRED secret must NOT get the paired wording (got: $outV11f)"
 echo "ok: V11f [codex-1] a paired credential's unconfigured wording names the pair and admits the probe can't tell them apart; an unpaired secret keeps the plain wording"
 
-# ── V11g — the PHI checklist
+# ── V11g: the PHI checklist
 # text must describe what luna.phi.declared ACTUALLY records (the adopter's
 # yes/no answer to the PHI question), never the old "checklist was shown"
 # phrasing -- every adopter with a vault sees the checklist regardless of
@@ -552,7 +552,7 @@ echo "$outV11g_summary" | jq -e '.manual | any(.[]; (.what | contains("PHI trust
 echo "ok: V11g [codex-2] the PHI checklist text (both phiChecklistLines() and buildSummary's manual entry) describes the adopter's DECLARATION/answer, never the false 'checklist was shown'"
 
 # ── V11h (RETASK stage1-build-6d2e -- CR finding treated as more than a
-# Suggestion) — the bridge-persistence CONSENT PROMPT (bin.js's interactive
+# Suggestion): the bridge-persistence CONSENT PROMPT (bin.js's interactive
 # "install bridge persistence now (...)" question) must name the artifact
 # THIS platform actually installs, not a hardcoded "systemd --user unit" --
 # it was the third site in this family (ed the preview
@@ -589,7 +589,7 @@ echo "$outV11h" | jq -e '.mac == null' >/dev/null \
 echo "ok: V11h the bridge-persistence consent prompt names the systemd unit + linger on linux, and promises no install (prompt skipped) on an unsupported platform"
 
 # ═══════════════════════════════════════════════════════════════════════════
-# V1 — two --from-profile --dry-run replays produce byte-identical output
+# V1: two --from-profile --dry-run replays produce byte-identical output
 # ═══════════════════════════════════════════════════════════════════════════
 
 stubV1="$work/stubV1"; mkdir -p "$stubV1"
@@ -661,7 +661,7 @@ grepq "$outV1a" 'DRY: bridge config' \
 echo "ok: V1 two --from-profile --dry-run replays produce byte-identical output"
 
 # ═══════════════════════════════════════════════════════════════════════════
-# caseApply — a full --from-profile APPLY run against hermetic fixtures.
+# caseApply: a full --from-profile APPLY run against hermetic fixtures.
 # Covers: 8a persistence, bridge.envPath/whisper.{cli,model} actually
 # written, cadence arm end-to-end wiring, secrets walk 'unconfigured' (not
 # an error), and V12 (TELEGRAM_AUTO_ACTIONS untouched).
@@ -670,7 +670,7 @@ echo "ok: V1 two --from-profile --dry-run replays produce byte-identical output"
 stubApply="$work/stubApply"; mkdir -p "$stubApply"
 # RETASK stage1-build-6d2e: a working `python`/`python3` stub (shadows the
 # scrubbed real `python` and the real `python3` build_path would otherwise
-# link in below — the stub dir is always PATH-first) so the luna-sources
+# link in below: the stub dir is always PATH-first) so the luna-sources
 # secrets walk actually probes instead of reading rc=127 "not found" for
 # every entry; see make_python_stub's own comment for the exact per-source
 # replies and for WHY this must run BEFORE build_path.
@@ -800,11 +800,11 @@ grepq "$(cat "$profileApply")" 'TELEGRAM_AUTO_ACTIONS' \
 echo "ok: V12 TELEGRAM_AUTO_ACTIONS is absent from the bridge .env and the profile, both before and after the run"
 
 # ═══════════════════════════════════════════════════════════════════════════
-# caseArmRc3 — pipeline-cadence.sh arm exits rc=3 (its own
+# caseArmRc3: pipeline-cadence.sh arm exits rc=3 (its own
 # dedup refusal: the unit is already armed) on an otherwise-healthy machine.
-# RED (pre-fix): rc=3 was treated as a failure — overall install rc=1, and
+# RED (pre-fix): rc=3 was treated as a failure, overall install rc=1, and
 # the cadence landed in `still manual` with a "re-run to retry" loop. Fixed:
-# rc=3 reads as already-converged — overall rc=0, cadence lands in `skipped`.
+# rc=3 reads as already-converged, overall rc=0, cadence lands in `skipped`.
 # ═══════════════════════════════════════════════════════════════════════════
 
 stubArmRc3="$work/stubArmRc3"; mkdir -p "$stubArmRc3"
@@ -859,16 +859,16 @@ grepq "$manualBlockArmRc3" -F -- 'arm exited rc=3' \
 echo "ok: caseArmRc3 cadence arm rc=3 (already armed) reads as skipped/converged; overall install rc stays 0"
 
 # ═══════════════════════════════════════════════════════════════════════════
-# caseSecretsProbe (RETASK stage1-build-6d2e) — the luna-sources secrets
+# caseSecretsProbe (RETASK stage1-build-6d2e): the luna-sources secrets
 # walk verdicts, precisely: a configured+healthy source reports ok/configured;
 # a configured-but-broken source surfaces the PROBE'S OWN reason and is never
 # flattened to 'unconfigured'; a never-configured source reports
 # 'unconfigured'; and a failing source never aborts the install (rc stays 0).
 # Drives the REAL secrets-manifest.json (BITBUCKET_API_TOKEN -> bitbucket,
 # FIRECRAWL_API_KEY -> firecrawl) against the
-# hermetic `python` stub above — NO live network call, no real fetch-health.py
+# hermetic `python` stub above, NO live network call, no real fetch-health.py
 # execution. this ONLY holds because make_python_stub is called
-# BEFORE build_path below — probeLunaSources resolves `pythonCmd`
+# BEFORE build_path below: probeLunaSources resolves `pythonCmd`
 # to `python3`, and build_path's link_hermetic_tool links in the REAL `python3`
 # unless a `python3` already sits in the stub dir when it runs (see
 # make_python_stub's own header comment for the full mechanics); calling it
@@ -886,13 +886,13 @@ fixtureRepoSecrets="$work/fixture-repo-secrets"; mkdir -p "$fixtureRepoSecrets/s
 printf '#!/usr/bin/env bash\nexit 0\n' > "$fixtureRepoSecrets/scripts/adopt.sh"
 chmod +x "$fixtureRepoSecrets/scripts/adopt.sh"
 # probeLunaSources only needs a resolvable PATH (ctx.repoRoot + item.probe.script);
-# the file's own contents are never read — the hermetic `python` stub replies
+# the file's own contents are never read. The hermetic `python` stub replies
 # without ever executing it. An empty placeholder keeps path.resolve() honest.
 : > "$fixtureRepoSecrets/scripts/luna/fetch-health.py"
 
 configPathSecrets="$(winpath "$work/config-secrets.json")"
 # the secrets walk now scopes OUT a feature's secrets when it
-# was never selected — vault=none used to be irrelevant to this fixture (it
+# was never selected: vault=none used to be irrelevant to this fixture (it
 # only exists to exercise the luna-sources verdict rendering below), but
 # BITBUCKET_API_TOKEN/FIRECRAWL_API_KEY are all tagged
 # feature:vault, so vault must actually be selected for them to be walked
@@ -959,7 +959,7 @@ echo "ok: caseSecretsProbe a configured source whose probe fails (firecrawl=bloc
 # ═══════════════════════════════════════════════════════════════════════════
 
 stubDedup="$work/stubDedup"; mkdir -p "$stubDedup"
-# BEFORE build_path — see make_python_stub's own comment.
+# BEFORE build_path: see make_python_stub's own comment.
 make_python_stub "$stubDedup"
 pathDedup=$(build_path "$stubDedup" bash jq python3 npm -- python)
 make_git_stub "$stubDedup" "https://github.com/someone/other-repo.git"
@@ -1068,7 +1068,7 @@ stubNB="$work/stubNB"; mkdir -p "$stubNB"
 # `bun` must resolve for real: TELEGRAM_BOT_TOKEN's probe below
 # shells out to a real `bun` to dynamic-import telegram-api.ts. On a station
 # where `bun` sits in the same directory as the scrubbed `python`
-# (e.g. /usr/bin on stock Ubuntu/Arch-family boxes — the exact
+# (e.g. /usr/bin on stock Ubuntu/Arch-family boxes, the exact
 # hazard this suite's own build_path/scrub_path exists to avoid), scrubbing
 # that directory for `python` silently took `bun` down with it too. Listing
 # it as PRESENT links the real binary into the stub dir ahead of the
@@ -1085,7 +1085,7 @@ chmod +x "$fixtureRepoNB/scripts/adopt.sh"
 # bridgeEnvProbeCtx used to resolve an absent/empty
 # bridge.envPath to the EMPTY string (`(bridge && bridge.envPath) || ''`),
 # which resolves to CWD (`path.dirname('')` is `.`) instead of the
-# documented bridge default (~/.claude/channels/telegram/.env) — so
+# documented bridge default (~/.claude/channels/telegram/.env), so
 # TELEGRAM_BOT_TOKEN silently probed the wrong path and always read
 # 'unconfigured', even with a real bridge .env sitting where it belongs.
 # A fixture .env AT the default location (relative to $homeNB, this run's
@@ -1216,7 +1216,7 @@ grepq "$outScoping" -F -- 'WHISPER_MODEL' \
 echo "ok: caseSecretsWalkScoping — vault=none + no bridge section scopes EVERY secret out, printing one honest line and zero instruction cards"
 
 # ═══════════════════════════════════════════════════════════════════════════
-# caseLegacyProfile (RETASK stage1-build-6d2e [codex-1]) — a profile with NO
+# caseLegacyProfile (RETASK stage1-build-6d2e [codex-1]): a profile with NO
 # luna/bridge sections at all (the pre-Task-8 shape) must NEVER disarm an
 # existing config: cadence.enabled/phi.declared/bridge.enabled must survive
 # the run UNCHANGED, never coerced from `undefined` to `false`.
@@ -1233,8 +1233,8 @@ chmod +x "$fixtureRepoLegacy/scripts/adopt.sh"
 
 configPathLegacy="$(winpath "$work/config-legacy.json")"
 
-# Seed a config that is ALREADY armed (cadence on, PHI declared, bridge on)
-# — the exact state a legacy --from-profile replay must leave untouched.
+# Seed a config that is ALREADY armed (cadence on, PHI declared, bridge on),
+# the exact state a legacy --from-profile replay must leave untouched.
 "$node_bin" -e "
 process.env.HIMMEL_LUNA_CONFIG_PATH = '$configPathLegacy';
 const lc = require('$luna_config_lib_w');
@@ -1245,7 +1245,7 @@ d.bridge.enabled = true;
 lc.save(d);
 "
 
-# A LEGACY profile — the exact pre-Task-8 shape: no luna/secretsWalk/bridge
+# A LEGACY profile, the exact pre-Task-8 shape: no luna/secretsWalk/bridge
 # keys at all. loadProfile() must still accept it (those sections are
 # optional), and the apply step must leave the seeded config alone.
 profileLegacy="$work/profileLegacy.json"
@@ -1306,12 +1306,12 @@ echo "ok: caseLegacyProfile the rendered summary says 'left as-is', never the fa
 # keys (a legacy file). This case covers the path that PRODUCES such a
 # profile in the first place: an INTERACTIVE adopter run answering
 # vault=none, where the luna/secrets/bridge questions are never asked at
-# all (they are gated behind vault!=none — see askQuestions' own comment).
+# all (they are gated behind vault!=none: see askQuestions' own comment).
 # Before the fix, buildAnswers() still serialized answer-shaped "off"
 # defaults for a section nobody was asked about, so lunaSectionSupplied()/
 # bridgeSectionSupplied() read that manufactured presence as genuine
 # consent and a LATER replay of that innocuous cache would silently disarm
-# an already-armed config — exactly the codex-1 class, arriving through the
+# an already-armed config, exactly the codex-1 class, arriving through the
 # interactive->cache path instead of a hand-authored legacy file.
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -1412,10 +1412,10 @@ grepq "$outVNReplay" -F -- 'profile carries no bridge section' \
 echo "ok: caseVaultNoneNoOp [codex-1] replaying a vault=none-produced cache against an already-armed config leaves cadence/PHI/bridge fully untouched"
 
 # ═══════════════════════════════════════════════════════════════════════════
-# caseDistinctTokensSameFile (RETASK stage1-build-6d2e [codex-4]) — when
+# caseDistinctTokensSameFile (RETASK stage1-build-6d2e [codex-4]): when
 # bridge.envPath resolves to the SAME file as the repo-root .env, the
-# distinct-tokens probe must NEVER read green (nothing distinct to compare)
-# — it must report degraded, not a vacuous pass.
+# distinct-tokens probe must NEVER read green (nothing distinct to compare).
+# It must report degraded, not a vacuous pass.
 # ═══════════════════════════════════════════════════════════════════════════
 
 stubDT="$work/stubDT"; mkdir -p "$stubDT"
@@ -1427,7 +1427,7 @@ fixtureRepoDT="$work/fixture-repo-dt"; mkdir -p "$fixtureRepoDT/scripts"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$fixtureRepoDT/scripts/adopt.sh"
 chmod +x "$fixtureRepoDT/scripts/adopt.sh"
 # The repo-root .env AND the configured bridge.envPath point at this SAME
-# file — the exact misconfiguration codex-4 must never read as a pass.
+# file, the exact misconfiguration codex-4 must never read as a pass.
 printf 'SOME_KEY=1\n' > "$fixtureRepoDT/.env"
 
 configPathDT="$(winpath "$work/config-dt.json")"
@@ -1473,7 +1473,7 @@ echo "ok: caseDistinctTokensSameFile [codex-4] bridge.envPath resolving to the r
 
 # ═══════════════════════════════════════════════════════════════════════════
 # caseBridgePersistenceSkipRc (RETASK stage1-build-6d2e, coordinator
-# ruling on codex-2) — end-to-end pin: when the bridge readiness probes are
+# ruling on codex-2). End-to-end pin: when the bridge readiness probes are
 # NOT green, installPersistence=true must skip the arm/enable step (never
 # spawn a real installer) AND leave rc at 0 -- a deliberate, designed skip is
 # NOT an install failure. Probes are left genuinely unhealthy here (no real
@@ -1533,16 +1533,16 @@ grepq "$bridgePersistenceLineSkipRc" -F -- 'NOT installed' \
 echo "ok: caseBridgePersistenceSkipRc [codex-2 ruling] probes-not-ready skips arm/enable, rc stays 0, wording says SKIPPED not NOT-installed"
 
 # ═══════════════════════════════════════════════════════════════════════════
-# caseWhisperModelBareFilename
-# — the exact adopter scenario the bug broke: a whisper model correctly
+# caseWhisperModelBareFilename,
+# the exact adopter scenario the bug broke: a whisper model correctly
 # installed at ~/.himmel/whisper/<name>, with only the BARE FILENAME
 # configured (matching the schema default's own shape, e.g. "ggml-small.bin").
 # Before the fix, the bare filename was handed straight through as
 # WHISPER_MODEL (a probe-side COMPLETE-PATH env var), so it was checked
-# against the process CWD instead of the whisper dir and read absent — which
+# against the process CWD instead of the whisper dir and read absent, which
 # then blocked bridge persistence entirely via the round-1 readiness gate.
 # whisperCli is given as a full path directly here (deliberately isolating
-# the test to the model bug this round is about — cli's own full-path
+# the test to the model bug this round is about: cli's own full-path
 # handling was verified unchanged by inspection, not by this fixture).
 #
 # installPersistence stays FALSE here, deliberately, even though the
@@ -1551,21 +1551,21 @@ echo "ok: caseBridgePersistenceSkipRc [codex-2 ruling] probes-not-ready skips ar
 # attemptBridgePersistence() FOR REAL. On a real Linux box with systemctl present it
 # would write a real unit file and call `systemctl --user enable --now
 # telegram-bridge.service` against the operator's REAL systemd user
-# session — if that operator already runs himmel's own bridge via systemd
+# session. If that operator already runs himmel's own bridge via systemd
 # persistence (a realistic case for anyone running this suite locally), that
 # call would re-enable/restart their ACTUAL running bridge. No fixture trick
 # closes that on every platform, so the safe design proves "not blocked" via
 # the readiness probe's own verdict instead: with installPersistence=false,
 # nothing downstream can be gated OR attempted, so a healthy whisperReady
 # probe (present, not absent/degraded) IS the direct, complete proof that
-# the model-resolution bug no longer produces a false negative — the
+# the model-resolution bug no longer produces a false negative. The
 # gate-skip and real-attempt code paths this proves are safe are already
 # covered by other cases (caseBridgePersistenceSkipRc, caseApply) without
 # needing to re-run them here.
 # ═══════════════════════════════════════════════════════════════════════════
 
 stubWM="$work/stubWM"; mkdir -p "$stubWM"
-# BEFORE build_path — see make_python_stub's own comment.
+# BEFORE build_path: see make_python_stub's own comment.
 make_python_stub "$stubWM"
 pathWM=$(build_path "$stubWM" bash jq python3 npm -- python)
 make_git_stub "$stubWM" "https://github.com/someone/other-repo.git"
@@ -1607,13 +1607,13 @@ JSON
 
 set +e
 # WHISPER_CLI/WHISPER_MODEL are documented process-env overrides
-# (resolveWhisperEnvOverrides in bin.js — `process.env.WHISPER_MODEL ||
+# (resolveWhisperEnvOverrides in bin.js: `process.env.WHISPER_MODEL ||
 # configuredModelFull`) that WIN over this fixture's carefully-configured
 # bare-filename model. A station that exports either for its own local
 # whisper/voice tooling (observed here: a real `WHISPER_MODEL` pointing at a
 # real ~/.himmel/whisper/*.bin) leaks straight through this invocation and
 # defeats the exact bare-filename-resolution property this case exists to
-# prove — cleared here so the case is deterministic regardless of the
+# prove, cleared here so the case is deterministic regardless of the
 # invoking shell's ambient environment.
 outWM=$(PATH="$pathWM" HOME="$homeWM" USERPROFILE="$(winpath "$homeWM")" HIMMELCTL_INTERACTIVE=0 \
   WHISPER_CLI="" WHISPER_MODEL="" \
@@ -1636,7 +1636,7 @@ grepq "$skippedBlockWM" -F -- 'already ready' \
 # nothing downstream (gate or real install attempt) can fail, so a healthy
 # whisper probe should produce a completely clean run. rc=1 would mean
 # something else broke (e.g. the model bug regressing into a 'degraded'
-# probe result that then poisoned the summary/rc some other way) — this is
+# probe result that then poisoned the summary/rc some other way). This is
 # the "correctly-configured adopter is not blocked" signal in full, not just
 # the probe verdict on its own.
 [ "$rcWM" -eq 0 ] \
@@ -1644,11 +1644,11 @@ grepq "$skippedBlockWM" -F -- 'already ready' \
 echo "ok: caseWhisperModelBareFilename [codex-1] a bare-filename model correctly installed under ~/.himmel/whisper reads present, rc=0 confirms the adopter is not blocked"
 
 # ═══════════════════════════════════════════════════════════════════════════
-# caseCadenceDisarm — two cases:
+# caseCadenceDisarm (two cases):
 #   A. cadence=off + disarmCadence=true (consented) actually spawns
 #      `pipeline-cadence.sh disarm` (end-to-end wiring, like caseApply's own
 #      arm-wiring proof).
-#   B. cadence=off + disarmCadence NOT set (declined/not-applicable — the
+#   B. cadence=off + disarmCadence NOT set (declined/not-applicable, the
 #      default) NEVER silently no-ops: still-manual names the exact disarm
 #      command so the adopter knows any existing armed jobs keep firing.
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1742,7 +1742,7 @@ echo "ok: caseCadenceDisarm B [codex-1] cadence=off without consent NEVER silent
 # precedence probes.js's own resolveBridgeEnvFilePath() already implements.
 # bridge.envPath is deliberately set to hold the SAME token as the repo-root
 # .env (would read degraded/collision if bridge.envPath were used); TELEGRAM_ENV
-# points at a THIRD file with a genuinely different token — a green
+# points at a THIRD file with a genuinely different token. A green
 # (non-colliding) result proves TELEGRAM_ENV was actually read.
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -1801,9 +1801,9 @@ grepq "$manualBlockTE" -F -- 'distinctTokens' \
 echo "ok: caseTelegramEnvOverride [codex-2] TELEGRAM_ENV process-env override wins over a colliding bridge.envPath for distinct-tokens"
 
 # ═══════════════════════════════════════════════════════════════════════════
-# caseConfigSaveFailure — a
+# caseConfigSaveFailure: a
 # config save() failure must stop the SUBSEQUENT machine-state mutations
-# (cadence arm, bridge persistence install) — never arm/install against a
+# (cadence arm, bridge persistence install), never arm/install against a
 # config that was never recorded. HIMMEL_LUNA_CONFIG_PATH is pointed INSIDE
 # a plain FILE (not a directory) so save()'s own mkdirSync(dir) genuinely
 # fails -- a real, deterministic save() failure, not a simulated one.
@@ -2124,11 +2124,11 @@ set -e
 echo "ok: caseLegacyReplayNoOp B [codex-1] a no-op legacy replay does not create ~/.himmel/config.json when none existed"
 
 # ═══════════════════════════════════════════════════════════════════════════
-# casePhiVault — the wizard's PHI/consent surface gains a
+# casePhiVault: the wizard's PHI/consent surface gains a
 # personal/medical-vault-path question and WIRES it to the guard surface
 # (~/.config/claude-glm/phi-roots + an offered .salus marker) the guardrails
 # already read (graph-refresh.sh:75/403, refresh-graph-map.sh:339,
-# graphify-fence.sh:330) — closing the inertness class those
+# graphify-fence.sh:330), closing the inertness class those
 # guards have been silently exposed to since nothing in the installer ever
 # created either input. HOME and CLAUDE_GLM_CONFIG_DIR are BOTH redirected
 # into this suite's own fixtures on every invocation below (belt + suspenders
@@ -2141,16 +2141,16 @@ echo "ok: caseLegacyReplayNoOp B [codex-1] a no-op legacy replay does not create
 # alongside test-wizard-questions.sh case10's source-level check), and
 # answering with a path + consenting to the marker records BOTH in the
 # printed profile. --dry-run no longer writes the T3 cache
-# (same as caseVaultNoneNoOp's own step 1 below) — PV2 below extracts the
+# (same as caseVaultNoneNoOp's own step 1 below). PV2 below extracts the
 # equivalent JSON from this run's own stdout instead of reading it off disk
-# — without touching any real file — proven again explicitly in PV6.
+# (without touching any real file), proven again explicitly in PV6.
 stubPV1="$work/stubPV1"; mkdir -p "$stubPV1"
 # `dirname` must resolve for real: every `install` invocation
 # unconditionally shells out to the real scripts/preflight-adopter.sh
 # (bin.js's runPreflight(), step 2), which resolves its own SCRIPT_DIR via
 # the external `dirname` command under `set -euo pipefail`. On a station
 # where `dirname` sits in the same directory as the scrubbed `python`
-# (e.g. /usr/bin on stock Ubuntu/Arch-family boxes — the same
+# (e.g. /usr/bin on stock Ubuntu/Arch-family boxes, the same
 # hazard as the `bun` fix above), scrubbing that directory took `dirname`
 # down with it too, and this case's rc=0 assertion (verified by direct
 # repro: rc=1 with `dirname` missing, rc=0 once it resolves) is what
@@ -2171,7 +2171,7 @@ cachePV1="$work/cache-pv1"; mkdir -p "$cachePV1"
 glmPV1="$work/glm-pv1"; mkdir -p "$glmPV1"
 # NOT pre-created: vaultMode=default-template scaffolds it fresh, and an
 # already-existing-but-unstamped directory trips the adopter preflight's own
-# "carries no luna-second-brain stamp" refusal — unrelated to this ticket.
+# "carries no luna-second-brain stamp" refusal, unrelated to this ticket.
 vaultPV1="$(winpath "$work/vault-pv1")"
 phiVaultPV1="$(winpath "$work/personal-vault-pv1")"; mkdir -p "$work/personal-vault-pv1"
 
@@ -2210,7 +2210,7 @@ grepq "$outPV1" -F '"createSalusMarker": true' \
 echo "ok: PV1 the personal/medical-vault question is literal-only (a bare digit re-prompts) and records path + marker-consent in the profile"
 
 # ── PV2 (apply via --from-profile, non-dry, replaying PV1's own cache): the
-# declaration MATERIALIZES the guard inputs — phi-roots gets the path
+# declaration MATERIALIZES the guard inputs: phi-roots gets the path
 # appended in the LF-terminated, one-path-per-line format graph-refresh.sh's
 # _under_any_list (and refresh-graph-map.sh's twin) parse, and the .salus
 # marker is created at the vault root. A second identical apply proves the
@@ -2262,14 +2262,14 @@ grepq "$outPV2b" -F 'already present' \
   || fail "PV2: the second apply should report the path as already present, not re-add it (got: $outPV2b)"
 echo "ok: PV2 applying the recorded declaration appends phi-roots (LF-only) and creates the consented .salus marker; a repeat apply merges append-if-absent, never duplicating the entry"
 
-# ── PV3 — the merge rule preserves an existing CRLF-saved file's OTHER
+# ── PV3: the merge rule preserves an existing CRLF-saved file's OTHER
 # entries (never truncates what an operator or another tool put there) while
 # normalizing the rewrite to LF and deduping without a CRLF-vs-LF false
 # mismatch.
 glmPV3="$work/glm-pv3"; mkdir -p "$glmPV3"
 priorEntryPV3="$(winpath "$work/some-other-declared-root")"
 printf '%s\r\n' "$priorEntryPV3" > "$glmPV3/phi-roots"
-vaultPV3="$(winpath "$work/vault-pv3")"  # not pre-created — matches caseApply's vaultPathApply convention
+vaultPV3="$(winpath "$work/vault-pv3")"  # not pre-created, matches caseApply's vaultPathApply convention
 
 profilePV3="$work/profilePV3.json"
 cat > "$profilePV3" <<JSON
@@ -2303,18 +2303,18 @@ grepq "$phiRootsBodyPV3" -F "$vaultPV3" \
 [ "$(python -c "print(open(r'$(winpath "$glmPV3/phi-roots")','rb').read().count(b'\r'))")" -eq 0 ] \
   || fail "PV3 [HIMMEL-1680 class]: the rewritten phi-roots must be LF-only even though the pre-existing file was CRLF-saved (got: $phiRootsBodyPV3)"
 # mergePhiRoot now writes via a sibling tmp file +
-# rename() (atomic write, torn-write fix) — this listing proves the tmp file
+# rename() (atomic write, torn-write fix). This listing proves the tmp file
 # never survives a normal run: exactly one entry (phi-roots itself), no
 # `.phi-roots.<pid>.tmp` litter left behind in the config dir. NOTE this does
 # NOT discriminate pre-/post-fix (same as PV9d's own note): the pre-fix code
 # wrote `file` directly with no tmp file at all, so "no .tmp litter" was
-# already trivially true before this change too — it's a regression guard
+# already trivially true before this change too. It's a regression guard
 # against a FUTURE tmp-cleanup bug, not proof the atomic-write fix itself
 # exists. An interruption-mid-write is inherently hard to simulate
 # behaviorally in a hermetic test; the actual discriminating proof that fix 3
 # landed is source-level: test-wizard-noinstall-guard.sh's caseC pin on
 # `fs.writeFileSync(tmp, lines.join('` (was `fs.writeFileSync(file, ...`
-# pre-fix — that exact string is absent before this change).
+# pre-fix: that exact string is absent before this change).
 glmPV3Listing=$(ls -a "$glmPV3")
 [ "$(printf '%s\n' "$glmPV3Listing" | grep -c '^phi-roots$')" -eq 1 ] \
   || fail "PV3 [HIMMEL-2347 CR fix 3]: expected exactly one phi-roots file, got: $glmPV3Listing"
@@ -2322,10 +2322,10 @@ grep -q '\.tmp$' <<<"$glmPV3Listing" \
   && fail "PV3 [HIMMEL-2347 CR fix 3]: the atomic-write tmp file must be renamed away, never left behind in the config dir (got: $glmPV3Listing)"
 echo "ok: PV3 a CRLF-saved phi-roots file's existing entries survive the merge, the rewrite normalizes to LF-only, and the atomic-write tmp file is never left behind"
 
-# ── PV4 — declining the .salus offer still records the declaration (phi-
+# ── PV4: declining the .salus offer still records the declaration (phi-
 # roots is written regardless; only the consented marker write is gated).
 glmPV4="$work/glm-pv4"; mkdir -p "$glmPV4"
-vaultPV4="$(winpath "$work/vault-pv4")"  # not pre-created — matches caseApply's vaultPathApply convention
+vaultPV4="$(winpath "$work/vault-pv4")"  # not pre-created, matches caseApply's vaultPathApply convention
 profilePV4="$work/profilePV4.json"
 cat > "$profilePV4" <<JSON
 {
@@ -2355,7 +2355,7 @@ grepq "$(cat "$glmPV4/phi-roots")" -F "$vaultPV4" \
   && fail "PV4: declining the .salus offer must NOT create the marker (got a .salus file at $work/vault-pv4/.salus)"
 echo "ok: PV4 declining the .salus marker offer still records the declaration and still writes phi-roots"
 
-# ── PV5 — a declared vault path that does not YET exist is still a valid
+# ── PV5: a declared vault path that does not YET exist is still a valid
 # declaration (design constraint: a not-yet-created vault is not a reason to
 # drop it): phi-roots is written regardless, and the consented .salus offer
 # is honestly deferred (never silently claimed) rather than crashing.
@@ -2390,7 +2390,7 @@ grepq "$outPV5" -F 'does not exist yet' \
   || fail "PV5: the run should say honestly that the .salus marker was NOT created, rather than silently claiming it (got: $outPV5)"
 echo "ok: PV5 a declared vault path that does not yet exist still writes phi-roots; the consented .salus marker is honestly deferred, never silently claimed"
 
-# ── PV6 (not-asked discipline, the regression that matters most) — a run
+# ── PV6 (not-asked discipline, the regression that matters most): a run
 # that never reaches the personal-vault question must leave phi-roots
 # UNTOUCHED and fabricate no phiVaultPath. Two angles: (a) the interactive
 # vault=none cache never serializes the field at all (extends
@@ -2433,11 +2433,11 @@ after:  $phiRootsAfterPV6"
   || fail "PV6b [HIMMEL-2347]: a run whose profile carries no luna section must leave phi-roots' mtime untouched (never rewritten) -- before=$mtimeBeforePV6 after=$mtimeAfterPV6"
 echo "ok: PV6b a legacy replay with no luna section leaves an existing phi-roots file byte-identical -- not-asked never fabricates a write"
 
-# ── PV7 — --dry-run's unconditional zero-mutation guarantee covers phi-roots
+# ── PV7: --dry-run's unconditional zero-mutation guarantee covers phi-roots
 # and the .salus marker too: the DRY: preview lines print, but neither file
 # is created.
 glmPV7="$work/glm-pv7"; mkdir -p "$glmPV7"
-vaultPV7="$(winpath "$work/vault-pv7")"  # not pre-created — matches caseApply's vaultPathApply convention
+vaultPV7="$(winpath "$work/vault-pv7")"  # not pre-created, matches caseApply's vaultPathApply convention
 profilePV7="$work/profilePV7.json"
 cat > "$profilePV7" <<JSON
 {
@@ -2467,7 +2467,7 @@ grepq "$outPV7" -F 'DRY: .salus marker ->' \
   && fail "PV7 [--dry-run zero-mutation]: --dry-run must NOT actually create the .salus marker (found: $work/vault-pv7/.salus)"
 echo "ok: PV7 --dry-run prints the intended phi-roots write and .salus offer and creates neither file"
 
-# ── PV8 — an existing `.salus` marker WITH CONTENT
+# ── PV8: an existing `.salus` marker WITH CONTENT
 # must survive a re-consented offer byte-for-byte: the pre-fix code did an
 # unconditional fs.writeFileSync(path, '') on every consenting run, which
 # truncates whatever an operator or another tool had already put in the
@@ -2513,7 +2513,7 @@ grepq "$outPV8" -F "himmelctl: created" \
   && fail "PV8: the run must NOT claim it created a marker that already existed (got: $outPV8)"
 echo "ok: PV8 an existing .salus marker with content survives a consented offer byte-for-byte; the run reports it as already present, never created"
 
-# ── PV9 — profile validation on luna.phiVaultPath:
+# ── PV9 (profile validation on luna.phiVaultPath):
 # the pre-fix validator only checked `typeof === 'string'`, so a blank,
 # whitespace-only, or RELATIVE path was silently accepted -- a relative
 # entry never matches the guards' absolute-path comparison (silently inert,
@@ -2586,7 +2586,7 @@ grepq "$(cat "$glmPV9d/phi-roots" 2>/dev/null)" -F "personal-vault-tilde" \
   || fail "PV9d: the expanded ~-path should land in phi-roots (got: $(cat "$glmPV9d/phi-roots" 2>/dev/null))"
 echo "ok: PV9d a '~'-prefixed luna.phiVaultPath is accepted by validation and expanded before being recorded"
 
-# ── PV10 — a phi-roots READ failure must not discard
+# ── PV10: a phi-roots READ failure must not discard
 # existing entries, and must not abort the whole install: pre-fix,
 # mergePhiRoot()'s unconditional `catch (_e) { lines = []; }` treated ANY
 # read failure (not just "no file yet") as "empty file", then the
@@ -2659,15 +2659,15 @@ echo "ok: PV10 a phi-roots read failure (EISDIR) is surfaced honestly (non-zero 
 # added to PV3 above, alongside its existing preserve/append/LF-only checks.
 # ═══════════════════════════════════════════════════════════════════════════
 
-# ── PV11 — the INTERACTIVE personal/medical vault
+# ── PV11: the INTERACTIVE personal/medical vault
 # path question re-prompts on a RELATIVE answer instead of accepting it:
 # pre-fix, loadProfile() was the ONLY enforcement point (PV9a-c above), so an
 # operator typing a relative path AT THE WIZARD ITSELF sailed straight
-# through — the same inertness bug PV9 already closed for
+# through, the same inertness bug PV9 already closed for
 # --from-profile, reopened for the live question. Same convention as
 # PV1's own bare-digit reprompt proof: count the prompt header occurrences.
 stubPV11="$work/stubPV11"; mkdir -p "$stubPV11"
-# `dirname` + `git`: same PV1 fixture gap — see PV1's own
+# `dirname` + `git`: same PV1 fixture gap. See PV1's own
 # comment above for the full mechanics (real `dirname`/`git` collide with the
 # scrubbed `python` in the same PATH dir on some stations).
 pathPV11=$(build_path "$stubPV11" bash jq python3 npm dirname basename cat chmod cmp cp find grep install mkdir mv readlink realpath rm sed sort tail touch tr -- python)
@@ -2716,11 +2716,11 @@ grepq "$outPV11" -F "\"phiVaultPath\": \"$relativeAnswerPV11\"" \
   && fail "PV11: the rejected relative answer must NEVER be recorded as luna.phiVaultPath (got: $outPV11)"
 echo "ok: PV11 the interactive personal/medical-vault-path question re-prompts on a relative answer and records only the later absolute one"
 
-# ── PV12 (1, continued) — materializing PV11's own
+# ── PV12 (1, continued): materializing PV11's own
 # recorded declaration never writes the rejected relative string into
 # phi-roots; only the absolute path that was ultimately accepted lands
 # there. (This step's own cache already carries the fixed value by
-# construction — PV11 above is the case that actually discriminates
+# construction. PV11 above is the case that actually discriminates
 # pre-/post-fix behavior at the wizard; this closes the loop end-to-end.)
 # --dry-run no longer WRITES the T3 cache -- extract the
 # printed profile JSON from PV11's own stdout instead (see the identical
@@ -2748,17 +2748,17 @@ grepq "$phiRootsBodyPV11" -F "$relativeAnswerPV11" \
   && fail "PV12: phi-roots must never contain the rejected RELATIVE answer (got: $phiRootsBodyPV11)"
 echo "ok: PV12 materializing the wizard's own recorded declaration writes only the accepted absolute path into phi-roots, never the rejected relative one"
 
-# ── PV13 — a CONSENTED.salus creation that genuinely
+# ── PV13: a CONSENTED.salus creation that genuinely
 # fails must surface as a non-zero rc, not a silent WARN-and-exit-0. EEXIST
 # (PV8) is NOT this case (a directory named .salus was tried and, verified by
-# hand on this Windows/Node host, produces EEXIST — success/"already
+# hand on this Windows/Node host, produces EEXIST: success/"already
 # present", not a failure). What DOES reliably fail here: making
-# luna.phiVaultPath itself an existing FILE (not a directory) — fs.existsSync
+# luna.phiVaultPath itself an existing FILE (not a directory). fs.existsSync
 # is true (so the marker-creation branch is reached, not the "does not exist
 # yet" deferral), but fs.writeFileSync(path.join(fileAsVault, '.salus'), '',
 # {flag:'wx'}) then fails with ENOENT (verified by hand: `node -e` against
 # this exact shape on this host). phi-roots is written BEFORE the marker
-# attempt (independent write), so it should still record the declaration —
+# attempt (independent write), so it should still record the declaration,
 # only the marker half fails.
 glmPV13="$work/glm-pv13"; mkdir -p "$glmPV13"
 phiVaultFilePV13="$(winpath "$work/phivault-pv13-as-file")"
@@ -2793,10 +2793,10 @@ grepq "$(cat "$glmPV13/phi-roots" 2>/dev/null)" -F "$phiVaultFilePV13" \
   || fail "PV13: phi-roots should still record the declaration even though the marker failed (got: $(cat "$glmPV13/phi-roots" 2>/dev/null))"
 echo "ok: PV13 a consented .salus creation that genuinely fails sets a non-zero rc while still recording phi-roots"
 
-# ── PV14 — createSalusMarker:true with NO
+# ── PV14: createSalusMarker:true with NO
 # phiVaultPath is a marker request that can never be applied
 # (applyLunaSectionsStep only reaches the marker block when phiVaultPath is
-# truthy) — reject it in profile validation, same rc=2/field-naming shape as
+# truthy). Reject it in profile validation, same rc=2/field-naming shape as
 # PV9a-c, rather than silently accepting a request that will silently no-op.
 fixtureRepoPV14="$work/fixture-repo-pv14"; mkdir -p "$fixtureRepoPV14/scripts"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$fixtureRepoPV14/scripts/adopt.sh"
@@ -2825,7 +2825,7 @@ grepq "$outPV14" -i "field 'luna.createSalusMarker'" \
   || fail "PV14: should name luna.createSalusMarker in the rejection (got: $outPV14)"
 echo "ok: PV14 createSalusMarker:true without a declared phiVaultPath is rejected by profile validation (rc=2, names the field)"
 
-# ── PV15 — an existing phi-roots file's permissions
+# ── PV15: an existing phi-roots file's permissions
 # survive the atomic tmp+rename replace introduced by fix 3. Fix 3 replaced
 # an in-place fs.writeFileSync (which preserves the target's existing mode)
 # with a fresh tmp file + rename, and a fresh tmp file gets the platform
@@ -2884,7 +2884,7 @@ modeAfterPV15=$(python -c "import os,sys; print(oct(os.stat(sys.argv[1]).st_mode
   || fail "PV15 [HIMMEL-2347 CR fix 7]: phi-roots' mode must survive the atomic replace (before=$modeBeforePV15 after=$modeAfterPV15)"
 echo "ok: PV15 an existing phi-roots' permissions survive the atomic tmp+rename replace when a new root is appended (see NOTE above: non-discriminating on this Windows/Git-Bash host)"
 
-# ── PV16 — a root differing from an already-listed
+# ── PV16: a root differing from an already-listed
 # one ONLY by a trailing space is a genuinely DISTINCT POSIX path and must
 # be appended, not silently treated as "already present". The pre-fix
 # norm() trimmed the INCOMING root before comparing, so "/vault" and
@@ -2927,7 +2927,7 @@ phiRootsBodyPV16=$(cat "$glmPV16/phi-roots")
   || fail "PV16 [HIMMEL-1773 class]: a root differing only by a trailing space must be treated as DISTINCT and appended, not silently skipped as 'already present' (got: $phiRootsBodyPV16)"
 echo "ok: PV16 a root differing from a listed one only by a trailing space is treated as distinct and is appended, never silently merged away"
 
-# ── PV17 — stripping trailing separators for the
+# ── PV17: stripping trailing separators for the
 # dedupe comparison must not collapse a root to the empty string: pre-fix,
 # norm("/") stripped the lone "/" down to "", so a declared root of "/"
 # spuriously compared equal to any blank line already in the file and was
@@ -2966,7 +2966,7 @@ grepq "$phiRootsBodyPV17" -F "$priorOtherPV17" \
   || fail "PV17: the pre-existing entry must survive (got: $phiRootsBodyPV17)"
 echo "ok: PV17 a root of '/' is appended as itself, not collapsed to empty by the trailing-separator strip, and does not match a pre-existing blank line"
 
-# ── PV18 — a trailing separator is not
+# ── PV18: a trailing separator is not
 # semantically significant, so it must be stripped on the INCOMING root too
 # (stripped it on the stored side only): a stored "/vault" and a
 # declared "/vault/" name the same directory and must dedupe as one entry in
@@ -3008,13 +3008,13 @@ grepq "$outPV18" -F 'already present' \
   || fail "PV18: should report the slash-suffixed declaration as already present (got: $outPV18)"
 echo "ok: PV18 a trailing-separator-only difference from an already-stored root ('/vault' stored, '/vault/' declared) appends nothing"
 
-# ── PV19 — same as PV18, reverse order: stored WITH the trailing separator,
+# ── PV19 (same as PV18, reverse order): stored WITH the trailing separator,
 # declared WITHOUT one. The comparison is symmetric (same normalization on
 # both sides), so this must dedupe identically to PV18. NOTE this direction
 # does NOT discriminate pre-/post-fix, verified by hand: the earlier
 # normStored() already stripped a trailing separator off the STORED side, so
 # a bare (unsuffixed) declared root already matched a slash-suffixed stored
-# one before this fix too — the round-4 bug (PV18) only bit when the
+# one before this fix too. The round-4 bug (PV18) only bit when the
 # separator was on the INCOMING side, which normStored never touched. Kept
 # as a regression guard proving the new symmetric rule doesn't regress the
 # direction that already worked, same non-discriminating precedent as
@@ -3052,7 +3052,7 @@ linesPV19=$(printf '%s\n' "$phiRootsBodyPV19" | grep -c -v '^$')
   || fail "PV19 [HIMMEL-2347 CR fix 8, symmetric]: declaring '/vault' when '/vault/' is already stored must append NOTHING, expected 1 line, got $linesPV19: $phiRootsBodyPV19"
 echo "ok: PV19 the reverse order (stored '/vault/', declared '/vault') also dedupes to nothing appended — the rule is symmetric"
 
-# ── PV20 — whitespace is NOT a separator: a stored
+# ── PV20: whitespace is NOT a separator: a stored
 # entry with a trailing space must NOT suppress a distinct incoming root
 # that lacks one. the earlier `.trim` on the stored side alone made this
 # false-suppress; the fix drops trimming entirely so both survive as two
@@ -3092,10 +3092,10 @@ phiRootsBodyPV20=$(cat "$glmPV20/phi-roots")
   || fail "PV20 [HIMMEL-2347 CR fix 8]: a stored '/vault ' (trailing space) must NOT suppress a distinct incoming '/vault' — both must end up present (got: $phiRootsBodyPV20)"
 echo "ok: PV20 a stored entry with a trailing space does not falsely suppress a genuinely distinct incoming root without one; both are recorded"
 
-# ── PV21 — a replay that adds nothing (root already
+# ── PV21: a replay that adds nothing (root already
 # present) must not touch the file at all: no tmp+rename, no metadata bump.
 # Compared via python's st_mtime_ns rather than a raw `stat -c`/`stat -f`
-# pair — this file already leans on python for stat-shaped assertions
+# pair: this file already leans on python for stat-shaped assertions
 # (PV15's st_mode) because it is the one reliable cross-platform reader on
 # this Windows/Git-Bash host.
 glmPV21="$work/glm-pv21"; mkdir -p "$glmPV21"
@@ -3133,14 +3133,14 @@ mtimeAfterPV21=$(python -c "import os,sys; print(os.stat(sys.argv[1]).st_mtime_n
   || fail "PV21 [HIMMEL-2347 CR fix 9]: a no-op replay (root already present) must not rewrite phi-roots at all (mtime_ns before=$mtimeBeforePV21 after=$mtimeAfterPV21)"
 echo "ok: PV21 a replay that adds nothing (root already present) does not rewrite phi-roots — mtime is unchanged"
 
-# ── PV22 — a first-time phi-roots (no existing file,
+# ── PV22: a first-time phi-roots (no existing file,
 # nothing to preserve) is created owner-only rather than keeping whatever the
 # platform default mode would otherwise be; PV15 already covers the other
 # half (an EXISTING file's mode surviving the atomic replace). NOTE like
 # PV15: fs.chmodSync()/fs.statSync() on this Windows/Git-Bash host only
 # round-trip a binary "has any write bit" -> the DOS read-only attribute, so
 # 0o600 (has the owner-write bit) reads back identically to the platform
-# default here and this assertion does NOT discriminate on this host —
+# default here and this assertion does NOT discriminate on this host,
 # verified by hand. On POSIX, a fresh file's umask-restricted default
 # (typically 0644) genuinely differs from 0600, so there it does.
 glmPV22="$work/glm-pv22"; mkdir -p "$glmPV22"
@@ -3174,7 +3174,7 @@ modePV22=$(python -c "import os,sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o
   || echo "note: PV22 [HIMMEL-2347 CR fix 10]: first-time phi-roots mode is $modePV22, not 0o600 -- non-discriminating on this Windows/Git-Bash host per the NOTE above, not a failure"
 echo "ok: PV22 a first-time phi-roots is created owner-only where this host's chmod semantics can show it (see NOTE above)"
 
-# ── PV23 — luna.phiVaultPath carrying an embedded CR or LF is
+# ── PV23: luna.phiVaultPath carrying an embedded CR or LF is
 # rejected by profile validation, not silently split into two phi-roots
 # lines. mergePhiRoot() writes phi-roots ONE PATH PER LINE and the PHI
 # guards (graph-refresh.sh, refresh-graph-map.sh) read it back line-wise, so
@@ -3263,7 +3263,7 @@ JSON
 done
 echo "ok: PV23a-b a luna.phiVaultPath containing an embedded CR or LF is rejected (rc=2, names the field, phi-roots stays absent)"
 
-# ── PV23c — positive control: a legitimate absolute path with none of
+# ── PV23c (positive control): a legitimate absolute path with none of
 # PV23's forbidden bytes still passes (guards against the fix over-
 # rejecting; PV1/PV2/PV5/PV22 above already cover this shape too, but this
 # one sits right next to the new check as a direct before/after contrast).
@@ -3288,7 +3288,7 @@ grepq "$(cat "$glmPV23c/phi-roots" 2>/dev/null)" -F "$vaultBasePV23" \
   || fail "PV23c: the accepted path should land in phi-roots (got: $(cat "$glmPV23c/phi-roots" 2>/dev/null))"
 echo "ok: PV23c a clean absolute luna.phiVaultPath with no forbidden byte is still accepted (guards against over-rejecting)"
 
-# ── PV24 — a NON-STRING luna.phiVaultPath still produces
+# ── PV24: a NON-STRING luna.phiVaultPath still produces
 # the 'must be a string' validation error, not a raw TypeError. A reviewer
 # raised this as Critical: loadProfile() reads phiVaultPathBadByte(v)
 # -- which does v.indexOf(...) -- inside the isValidPhiVaultPathAnswer()
@@ -3342,7 +3342,7 @@ JSON
 done
 echo "ok: PV24a-c a non-string luna.phiVaultPath (number/boolean/object) is rejected with the string-type message, never a TypeError/indexOf crash (pins profileError()'s no-return contract; not a bug reproduction)"
 
-# ── PV25 — luna.phiVaultPath carrying an embedded NUL byte is
+# ── PV25: luna.phiVaultPath carrying an embedded NUL byte is
 # rejected the same way PV23a/b reject CR/LF (phiVaultPathBadByte()
 # checks NUL too). Same JSON \u0000 escape-sequence approach as PV23's
 # \n/\r -- a raw NUL byte threaded through argv risks the same kind of
@@ -3397,7 +3397,7 @@ grepq "$outPV25" -i "truncat" \
   && fail "PV25 [HIMMEL-2424]: a rejected declaration must add NO line to phi-roots -- expected the file to stay absent (got: $(cat "$glmPV25/phi-roots"))"
 echo "ok: PV25 a luna.phiVaultPath containing an embedded NUL byte is rejected (rc=2, names the field, phi-roots stays absent)"
 
-# ── PV26 — a luna.phiVaultPath carrying BOTH bytes (an LF
+# ── PV26: a luna.phiVaultPath carrying BOTH bytes (an LF
 # and a CR, in either order) must report LF's IMMEDIATE-split reason, not
 # CR's DELAYED-split one. phiVaultPathBadByte() checked CR before LF, so a
 # value containing both always matched the CR branch first and got CR's
@@ -3460,7 +3460,7 @@ done
 echo "ok: PV26a-b a luna.phiVaultPath containing BOTH an LF and CR (either order) reports LF's immediate-split reason, never CR's delayed-split reason"
 
 # ═══════════════════════════════════════════════════════════════════════════
-# ask-first — non-interactive with no --from-profile still refuses (rc 1);
+# ask-first: non-interactive with no --from-profile still refuses (rc 1);
 # nothing derived, nothing installed.
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -3544,7 +3544,7 @@ grepq "$outStatus2436" 'no himmelctl install profile found' \
   && fail "case2436a: 'status' should find the cache the install just wrote, not report it missing (got: $outStatus2436)"
 echo "ok: case2436a 'status' succeeds immediately after a --from-profile install in the same sandboxed HOME, with no hand-seeded cache"
 
-# case2436c — a --dry-run --from-profile install must leave the profile
+# case2436c: a --dry-run --from-profile install must leave the profile
 # cache ABSENT (the guard). Fresh cache dir so caseApply's own cache above
 # cannot mask a broken guard here.
 stub2436c="$work/stub2436c"; mkdir -p "$stub2436c"
@@ -3565,7 +3565,7 @@ set -e
   && fail "case2436c: --from-profile --dry-run must NOT write the profile cache (found $cache2436c_posix/install-profile.json)"
 echo "ok: case2436c a --from-profile --dry-run install leaves the profile cache absent"
 
-# case2436d — RETASK widening: the SAME guard covers the interactive branch
+# case2436d (RETASK widening): the SAME guard covers the interactive branch
 # too. shouldPrompt() ignores dryRun entirely, so an interactive
 # `install --dry-run` (HIMMELCTL_INTERACTIVE=1, the minimal starter stdin
 # sequence -- same shape as test-wizard-questions.sh's case1/case5) reaches

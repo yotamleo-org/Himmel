@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-luna-config.sh — hermetic tests for
+# test-wizard-luna-config.sh: hermetic tests for
 # scripts/himmelctl/lib/luna-config.js (externalization Stage 1
 # PR-B): the adopter's shared config document at ~/.himmel/config.json.
 # Mirrors sibling test-wizard-*.sh suites: node launched by absolute path,
@@ -8,31 +8,31 @@
 # lib/state.js) so nothing ever touches the real ~/.himmel/config.json.
 #
 # Covers design §7 V7 (all four mandatory) + the chief's validator ruling:
-#   A. round-trip — save() then load() returns an equivalent document.
-#   B. atomic-write interruption — a deterministic fs.renameSync failure
+#   A. round-trip: save() then load() returns an equivalent document.
+#   B. atomic-write interruption: a deterministic fs.renameSync failure
 #      (monkey-patched, NOT a real signal) between the temp write and the
 #      rename leaves the ORIGINAL file byte-identical, exactly ONE .bak
 #      present, and NO leftover.tmp-* file.
-#   B2. atomic-write interruption, the WRITE itself — a deterministic
+#   B2. atomic-write interruption, the WRITE itself: a deterministic
 #      fs.writeFileSync failure (3, retask
 #      stage1-build-6d2e: the write sat outside the cleanup handling B
 #      landed) proves the same three properties for a failed write, not just
 #      a failed rename.
 #   B3. PARTIAL write interruption (9, retask
 #      stage1-build-6d2e): writeFileSync actually CREATES the tmp file (a
-#      real O_CREAT|O_EXCL success) and only then throws — distinct from B2,
+#      real O_CREAT|O_EXCL success) and only then throws, distinct from B2,
 #      whose stub throws before anything lands on disk. The old cleanup
 #      flag was set true only after writeFileSync returned, so this exact
 #      shape leaked the tmp file.
-#   C. version:99 refusal — load() throws loudly naming the version, and the
+#   C. version:99 refusal: load() throws loudly naming the version, and the
 #      file is byte-identical afterwards (load() never writes on any path).
-#   D. malformed JSON refusal — the thrown error names the offending file
+#   D. malformed JSON refusal: the thrown error names the offending file
 #      path.
 #   E. validator: a valid fixture passes (zero errors); a deliberately
 #      invalid fixture is rejected with a message naming the offending field.
 #   F. symlink guard: a
 #      pre-existing symlink at the predictable `.tmp-<pid>` path must NOT be
-#      followed — save() refuses, the original config and the symlink's
+#      followed: save() refuses, the original config and the symlink's
 #      target both stay untouched. SKIPS with an explicit message (never a
 #      silent pass) if this host can't create filesystem symlinks (observed:
 #      EPERM on this Windows checkout without Developer Mode / the
@@ -40,33 +40,33 @@
 #   G. stale temp file recovery (5, retask
 #      stage1-build-6d2e): a plain leftover regular file already sitting at
 #      the tmp path (simulating a previous crashed save() run, e.g. a reused
-#      pid) must NOT permanently wedge save() with EEXIST — it is cleared and
+#      pid) must NOT permanently wedge save() with EEXIST. It is cleared and
 #      the write retried once.
 #   H. backup-before-prune:
 #      a deterministic fs.copyFileSync failure while backupExisting() is
 #      taking the fresh backup must leave the PREVIOUS .bak intact and the
-#      original config untouched — backupExisting() now creates the new .bak
+#      original config untouched. backupExisting() now creates the new .bak
 #      before pruning older ones, so a failed copy can never destroy the last
 #      good backup.
 #   I. exactly ONE .bak survives a successful save (the steady-state case H's
 #      failure path is contrasted against).
-#   J. non-object parsed JSON (null, an array, a bare scalar) — all valid
-#      JSON, none a valid config document — must produce this module's named,
+#   J. non-object parsed JSON (null, an array, a bare scalar), all valid
+#      JSON, none a valid config document, must produce this module's named,
 #      file-identifying schema error from migrate(), not a raw TypeError.
 #   K. backup-path symlink guard (11, retask
 #      stage1-build-6d2e): a pre-existing symlink at the predictable backup
-#      path (freshPath in backupExisting()) must NOT be followed — mirrors
+#      path (freshPath in backupExisting()) must NOT be followed, mirrors
 #      case F, but for the backup path rather than the temp path. SKIPS with
 #      an explicit message if this host can't create filesystem symlinks.
 #   L. same-timestamp backup collision (11, retask
 #      stage1-build-6d2e): two saves whose backup stamp collides against a
 #      PLAIN regular file (not a symlink) must refresh that backup to the
 #      pre-collision snapshot rather than erroring or silently keeping the
-#      stale one — and must never leave zero (or more than one) .bak file.
+#      stale one, and must never leave zero (or more than one) .bak file.
 #   M. same-timestamp collision whose REPLACEMENT copy fails
 # retask stage1-build-6d2e): the earlier collision handling
-#      unlinked the stale backup before retrying the copy at the same name —
-#      if that retry failed, the adopter was left with ZERO backups. Proves
+#      unlinked the stale backup before retrying the copy at the same name.
+#      If that retry failed, the adopter was left with ZERO backups. Proves
 #      the round-12 fix (stage-then-rename) never reaches that state: the
 #      pre-collision backup must survive a failed replacement copy intact.
 
@@ -91,7 +91,7 @@ trap cleanup EXIT
 
 lib_w="$(winpath "$lib")"
 
-# ── Case A: round-trip — save() then load() returns an equivalent doc ──────
+# ── Case A: round-trip, save() then load() returns an equivalent doc ──────
 caseA_dir="$work/caseA"; mkdir -p "$caseA_dir"
 cfgA="$caseA_dir/config.json"
 cfgA_w="$(winpath "$cfgA")"
@@ -109,13 +109,13 @@ grep -q '"same":true' <<<"$outA" || fail "caseA: save()->load() should round-tri
 [ -f "$cfgA" ] || fail "caseA: config.json should exist after save() (got: missing at $cfgA)"
 echo "ok: caseA save()->load() round-trips an equivalent document"
 
-# ── Case B: atomic-write interruption — deterministic renameSync failure ──
+# ── Case B: atomic-write interruption, deterministic renameSync failure ──
 # Simulated by monkey-patching fs.renameSync (same require-cache singleton
-# luna-config.js itself uses) to throw BEFORE it ever runs — deterministic,
+# luna-config.js itself uses) to throw BEFORE it ever runs, deterministic,
 # no reliance on real signal timing. Proves: (1) the ORIGINAL file survives
 # byte-identical, (2) EXACTLY ONE .bak of the pre-interruption content is
 # present, (3) no PID-named.tmp-* file is left
-# behind — renameSync used to sit OUTSIDE the cleanup handling, so a failed
+# behind. renameSync used to sit OUTSIDE the cleanup handling, so a failed
 # rename leaked the temp file.
 caseB_dir="$work/caseB"; mkdir -p "$caseB_dir"
 cfgB="$caseB_dir/config.json"
@@ -133,7 +133,7 @@ lc.save(original);
 const before = fs.readFileSync(lc.configPath(), 'utf8');
 
 // Interrupt: renameSync throws before the new content ever becomes visible
-// at the real path — simulates a process kill in the temp-write->rename
+// at the real path, simulates a process kill in the temp-write->rename
 // window without relying on real signal timing.
 const origRename = fs.renameSync;
 fs.renameSync = () => { throw new Error('simulated interruption'); };
@@ -163,13 +163,13 @@ grep -q '"bakCount":1' <<<"$outB" || fail "caseB: exactly ONE .bak must remain a
 grep -q '"hasTmp":false' <<<"$outB" || fail "caseB: a failed rename must not leave a PID-named .tmp-* file behind (got: $outB)"
 echo "ok: caseB interrupted save() leaves the original intact with a .bak present"
 
-# ── Case B2: atomic-write interruption — deterministic writeFileSync failure ─
+# ── Case B2: atomic-write interruption, deterministic writeFileSync failure ─
 # an earlier fix wrapped the
 # RENAME in cleanup handling (case B above) but left the temp-file WRITE
-# itself outside it — a failure mid-write (ENOSPC, permission-denied) still
+# itself outside it. A failure mid-write (ENOSPC, permission-denied) still
 # left a partial .tmp-<pid> file behind, contradicting save()'s own "cleaned
 # up on any failure" contract. Same structure as case B, but monkey-patches
-# fs.writeFileSync (not fs.renameSync) to throw BEFORE it ever writes a byte —
+# fs.writeFileSync (not fs.renameSync) to throw BEFORE it ever writes a byte,
 # deterministic, no reliance on real disk-full timing.
 caseB2_dir="$work/caseB2"; mkdir -p "$caseB2_dir"
 cfgB2="$caseB2_dir/config.json"
@@ -186,7 +186,7 @@ original.luna.vaultPath = '/original/vault';
 lc.save(original);
 const before = fs.readFileSync(lc.configPath(), 'utf8');
 
-// Interrupt: writeFileSync throws before the temp file is ever created —
+// Interrupt: writeFileSync throws before the temp file is ever created,
 // simulates ENOSPC/permission-denied mid-write.
 const origWrite = fs.writeFileSync;
 fs.writeFileSync = () => { throw new Error('simulated write failure'); };
@@ -216,12 +216,12 @@ grep -q '"bakCount":1' <<<"$outB2" || fail "caseB2: exactly ONE .bak must remain
 grep -q '"hasTmp":false' <<<"$outB2" || fail "caseB2: a failed WRITE must not leave a PID-named .tmp-* file behind (got: $outB2)"
 echo "ok: caseB2 interrupted (write-failure) save() leaves the original intact with a .bak present, no leftover .tmp-*"
 
-# ── Case B3: PARTIAL write interruption — writeFileSync creates the tmp file
+# ── Case B3: PARTIAL write interruption, writeFileSync creates the tmp file
 # then throws. Distinct
 # from B2: B2's stub throws BEFORE anything is created (e.g. EACCES on the
 # directory); this stub calls through to the REAL writeFileSync first (so the
 # temp file genuinely exists on disk, mirroring O_CREAT|O_EXCL succeeding)
-# and only then throws — the exact shape of an ENOSPC/I/O error mid-flush.
+# and only then throws, the exact shape of an ENOSPC/I/O error mid-flush.
 # save()'s old `tmpIsOurs` flag was set true only AFTER writeFileSync
 # returned, so this shape slipped past the cleanup guard and leaked the tmp
 # file; this case is RED against that code and GREEN after the round-9 fix.
@@ -241,7 +241,7 @@ lc.save(original);
 const before = fs.readFileSync(lc.configPath(), 'utf8');
 
 // Interrupt: the FIRST writeFileSync call actually creates the target file
-// (a real, partial write landing on disk) and THEN throws — never reachable
+// (a real, partial write landing on disk) and THEN throws, never reachable
 // by a stub that throws pre-creation. Only the first call is intercepted so
 // a save() that legitimately retries after clearing a stale file is not
 // itself broken by this stub.
@@ -281,7 +281,7 @@ grep -q '"bakCount":1' <<<"$outB3" || fail "caseB3: exactly ONE .bak must remain
 grep -q '"hasTmp":false' <<<"$outB3" || fail "caseB3: a write that CREATES the tmp file then throws must not leak it — the old tmpIsOurs-gated cleanup missed exactly this case (got: $outB3)"
 echo "ok: caseB3 a write that creates the tmp file and then throws (partial write) leaves the original intact, no leftover .tmp-*"
 
-# ── Case C: version:99 refusal — loud throw, no write ──────────────────────
+# ── Case C: version:99 refusal, loud throw, no write ──────────────────────
 caseC_dir="$work/caseC"; mkdir -p "$caseC_dir"
 cfgC="$caseC_dir/config.json"
 cfgC_w="$(winpath "$cfgC")"
@@ -303,7 +303,7 @@ after_hash=$(cksum "$cfgC")
 [ "$before_hash" = "$after_hash" ] || fail "caseC: config.json must be byte-identical after a version:99 refusal"
 echo "ok: caseC version:99 refuses loudly and writes nothing"
 
-# ── Case D: malformed JSON refusal — error names the file path ────────────
+# ── Case D: malformed JSON refusal, error names the file path ────────────
 caseD_dir="$work/caseD"; mkdir -p "$caseD_dir"
 cfgD="$caseD_dir/config.json"
 cfgD_w="$(winpath "$cfgD")"
@@ -322,7 +322,7 @@ grep -q '"threw":true' <<<"$outD" || fail "caseD: load() on malformed JSON shoul
 grep -q '"namesPath":true' <<<"$outD" || fail "caseD: thrown error should name the offending file path (got: $outD)"
 echo "ok: caseD malformed JSON refusal names the offending file path"
 
-# ── Case E: validator — valid fixture passes, invalid fixture names field ──
+# ── Case E: validator, valid fixture passes, invalid fixture names field ──
 outE=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$work/caseE-unused.json")" HIMMEL_LUNA_CONFIG_LIB="$lib_w" "$node_bin" -e "
 const lc = require(process.env.HIMMEL_LUNA_CONFIG_LIB);
 
@@ -344,7 +344,7 @@ grep -q '"invalidCount":0' <<<"$outE" && fail "caseE: a deliberately-invalid fix
 grep -q '"namesField":true' <<<"$outE" || fail "caseE: the invalid-fixture error should name the offending field 'luna.cadence.enabled' (got: $outE)"
 echo "ok: caseE validator passes a valid fixture and names the offending field on an invalid one"
 
-# ── Case F: symlink guard — a pre-existing symlink at the tmp path must NOT
+# ── Case F: symlink guard, a pre-existing symlink at the tmp path must NOT
 # be followed. Skips
 # loudly (not a silent pass) if this host can't create symlinks at all.
 caseF_dir="$work/caseF"; mkdir -p "$caseF_dir"
@@ -361,7 +361,7 @@ original.luna.vaultPath = '/original/vault';
 lc.save(original);
 const beforeCfg = fs.readFileSync(lc.configPath(), 'utf8');
 
-// A victim file elsewhere in the same dir — what a symlink at the
+// A victim file elsewhere in the same dir, what a symlink at the
 // predictable tmp path could redirect this write into.
 const victim = path.join(path.dirname(lc.configPath()), 'victim.json');
 fs.writeFileSync(victim, 'VICTIM-UNTOUCHED');
@@ -406,7 +406,7 @@ else
   echo "ok: caseF save() refuses a pre-existing symlink at the predictable tmp path rather than writing through it"
 fi
 
-# ── Case G: stale temp file recovery — a plain leftover regular file at the
+# ── Case G: stale temp file recovery, a plain leftover regular file at the
 # tmp path (simulating a previous crashed save() run) must not permanently
 # wedge save. ─────────
 caseG_dir="$work/caseG"; mkdir -p "$caseG_dir"
@@ -422,7 +422,7 @@ original.luna.vaultPath = '/original/vault';
 lc.save(original);
 
 // Simulate a leftover PID-named tmp file from a previous crashed save()
-// (e.g. a reused pid) — a plain regular file, not a symlink.
+// (e.g. a reused pid), a plain regular file, not a symlink.
 const tmpPath = lc.configPath() + '.tmp-' + process.pid;
 fs.writeFileSync(tmpPath, 'STALE-LEFTOVER-FROM-A-CRASHED-RUN');
 
@@ -447,7 +447,7 @@ grep -q '"recoveredVaultPath":"/recovered-after-stale-tmp"' <<<"$outG" || fail "
 grep -q '"tmpLeftBehind":false' <<<"$outG" || fail "caseG: the stale tmp file must not be left behind after a successful recovery save() (got: $outG)"
 echo "ok: caseG a stale regular leftover at the tmp path is cleared and retried, not a permanent wedge"
 
-# ── Case H: backup-before-prune — a failed fs.copyFileSync during
+# ── Case H: backup-before-prune, a failed fs.copyFileSync during
 # backupExisting() must leave the PREVIOUS .bak intact and the original
 # config untouched. ─────
 caseH_dir="$work/caseH"; mkdir -p "$caseH_dir"
@@ -464,7 +464,7 @@ const first = lc.defaultConfig();
 first.luna.vaultPath = '/first/vault';
 lc.save(first);
 
-// Second save creates the first real .bak — this is the backup that must
+// Second save creates the first real .bak. This is the backup that must
 // survive a copyFileSync failure on the NEXT save.
 const second = lc.defaultConfig();
 second.luna.vaultPath = '/second/vault';
@@ -475,7 +475,7 @@ const base = path.basename(lc.configPath());
 const bakNameBefore = fs.readdirSync(dir).find((f) => f.startsWith(base + '.bak-'));
 const bakContentBefore = fs.readFileSync(path.join(dir, bakNameBefore), 'utf8');
 
-// Interrupt: copyFileSync throws before the fresh backup is ever written —
+// Interrupt: copyFileSync throws before the fresh backup is ever written,
 // simulates ENOSPC/permission-denied/a locked file during backupExisting().
 const origCopy = fs.copyFileSync;
 fs.copyFileSync = () => { throw new Error('simulated backup failure'); };
@@ -533,7 +533,7 @@ console.log(JSON.stringify({ bakCount }));
 grep -q '"bakCount":1' <<<"$outI" || fail "caseI: exactly ONE .bak should remain after repeated successful saves (got: $outI)"
 echo "ok: caseI exactly one .bak survives repeated successful saves"
 
-# ── Case J: non-object parsed JSON — null, an array, a bare scalar — must
+# ── Case J: non-object parsed JSON (null, an array, a bare scalar) must
 # raise this module's named schema error, not a raw TypeError
 # retask stage1-build-6d2e). ────────────────────────────────────
 for shape in null array scalar; do
@@ -565,12 +565,12 @@ try {
 done
 echo "ok: caseJ null/array/scalar JSON documents raise the module's named schema error, not a TypeError"
 
-# ── Case K: backup-path symlink guard — a pre-existing symlink at the
+# ── Case K: backup-path symlink guard, a pre-existing symlink at the
 # predictable backup path must NOT be followed (11,
 # retask stage1-build-6d2e). Mirrors case F, but for backupExisting()'s
 # freshPath rather than save()'s tmp path. The clock is frozen so the test
 # knows the exact freshPath backupExisting() will compute, ahead of calling
-# it, in order to plant the symlink there first. Skips loudly (never a
+# it, to plant the symlink there first. Skips loudly (never a
 # silent pass) if this host can't create symlinks at all.
 caseK_dir="$work/caseK"; mkdir -p "$caseK_dir"
 cfgK="$caseK_dir/config.json"
@@ -598,7 +598,7 @@ const beforeCfg = fs.readFileSync(lc.configPath(), 'utf8');
 const dir = path.dirname(lc.configPath());
 const base = path.basename(lc.configPath());
 
-// A victim file elsewhere in the same dir — what a symlink at the
+// A victim file elsewhere in the same dir, what a symlink at the
 // predictable backup path could redirect backupExisting()'s copy into.
 const victim = path.join(dir, 'victim.json');
 fs.writeFileSync(victim, 'VICTIM-UNTOUCHED');
@@ -645,7 +645,7 @@ else
   echo "ok: caseK save() refuses a pre-existing symlink at the predictable backup path rather than backing up through it"
 fi
 
-# ── Case L: same-timestamp backup collision — two saves whose backup stamp
+# ── Case L: same-timestamp backup collision, two saves whose backup stamp
 # collides against a PLAIN regular file, not a symlink
 # 11, retask stage1-build-6d2e). Now that backupExisting() refuses to
 # overwrite via COPYFILE_EXCL, this collision must still resolve: the stale
@@ -688,7 +688,7 @@ const dir = path.dirname(lc.configPath());
 const base = path.basename(lc.configPath());
 const bakNameMid = fs.readdirSync(dir).find((f) => f.startsWith(base + '.bak-'));
 
-// Third save: STILL the same frozen stamp — backupExisting() now hits the
+// Third save: STILL the same frozen stamp. backupExisting() now hits the
 // exact freshPath a plain regular file (the previous backup, not a symlink)
 // already occupies. p currently holds the second save's content, so a
 // correctly-resolved collision refreshes that backup to the second save's
@@ -711,18 +711,18 @@ grep -q '"sameName":true' <<<"$outL" || fail "caseL: the collided backup keeps t
 grep -q '"refreshedToSecond":true' <<<"$outL" || fail "caseL: a same-timestamp collision against a plain file must refresh the backup to the pre-collision snapshot, not silently keep the stale one (got: $outL)"
 echo "ok: caseL a same-timestamp backup collision refreshes the single .bak rather than erroring or leaving zero backups"
 
-# ── Case M: same-timestamp collision whose REPLACEMENT copy fails —
+# ── Case M: same-timestamp collision whose REPLACEMENT copy fails,
 # retask stage1-build-6d2e. the earlier collision
 # handling unlinked the stale backup at freshPath BEFORE retrying the copy at
 # that same name; if the retry then failed (ENOSPC, permissions, a transient
-# I/O error), the adopter was left with ZERO backups — the exact defect round
+# I/O error), the adopter was left with ZERO backups, the exact defect round
 # 7 already closed one layer up, reintroduced inside the EEXIST branch. Clock
 # frozen so the mid-save backup and the failing third save compute the
 # identical stamp deterministically, exactly like case L. The mock lets the
 # FIRST copyFileSync call in the failing backupExisting() invocation run for
 # real (so the collision's initial EEXIST occurs naturally against the real
-# freshPath) and only fails the SECOND call — the collision-retry copy,
-# wherever it targets — so the same test body reproduces the round-11 defect
+# freshPath) and only fails the SECOND call (the collision-retry copy,
+# wherever it targets), so the same test body reproduces the round-11 defect
 # unmodified (RED) and proves the round-12 fix (GREEN) without hardcoding
 # either version's staging-path naming.
 caseM_dir="$work/caseM"; mkdir -p "$caseM_dir"
@@ -749,7 +749,7 @@ first.luna.vaultPath = '/first/vault';
 lc.save(first);
 
 // Second save: creates the ONLY backup, at the frozen stamp, holding a copy
-// of the first save's content — this is the backup that must survive a
+// of the first save's content. This is the backup that must survive a
 // failed collision-retry copy on the NEXT save.
 const second = lc.defaultConfig();
 second.luna.vaultPath = '/second/vault';
@@ -762,7 +762,7 @@ const bakContentBefore = fs.readFileSync(path.join(dir, bakNameBefore), 'utf8');
 
 // Third save: same frozen stamp, so backupExisting() hits the same-timestamp
 // collision at freshPath. The first copyFileSync call is left alone (real
-// EEXIST occurs naturally); the second call — the collision-retry copy — is
+// EEXIST occurs naturally); the second call (the collision-retry copy) is
 // made to fail regardless of its destination.
 const origCopy = fs.copyFileSync;
 let copyCalls = 0;
@@ -800,14 +800,14 @@ grep -q '"bakCountAfter":1' <<<"$outM" || fail "caseM: a failed collision-retry 
 grep -q '"previousBakSurvived":true' <<<"$outM" || fail "caseM: the pre-collision backup must survive a failed collision-retry copy untouched (got: $outM)"
 echo "ok: caseM a same-timestamp collision whose replacement copy fails leaves the pre-collision backup intact, never zero"
 
-# ── Case N: staged-rename failure — deterministic renameSync failure during
+# ── Case N: staged-rename failure, deterministic renameSync failure during
 # the collision-handling staged rename.
 # After the staged copy succeeds, backupExisting() renames the stage file to
 # freshPath. If that rename fails (locked destination, permissions, transient
-# I/O), the staging file must be cleaned up — never left behind — while the
+# I/O), the staging file must be cleaned up (never left behind) while the
 # pre-existing backup must survive intact. The mock intercepts the RENAME
 # (distinct from M's copyFileSync interception) to fail deterministically on
-# the second renameSync call — the first one being save()'s own temp->real
+# the second renameSync call, the first one being save()'s own temp->real
 # rename, which we allow to succeed so the test focus stays on the backup's
 # staged rename.
 caseN_dir="$work/caseN"; mkdir -p "$caseN_dir"
@@ -834,7 +834,7 @@ first.luna.vaultPath = '/first/vault';
 lc.save(first);
 
 // Second save: creates the ONLY backup, at the frozen stamp, holding a copy
-// of the first save's content — this is the backup that must survive a
+// of the first save's content. This is the backup that must survive a
 // failed staged rename on the NEXT save.
 const second = lc.defaultConfig();
 second.luna.vaultPath = '/second/vault';

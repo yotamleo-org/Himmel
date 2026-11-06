@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# test-wizard-guardrail-consent.sh — hermetic tests for the
+# test-wizard-guardrail-consent.sh: hermetic tests for the
 # ask-first gate: `himmelctl ensure` can now actually WIRE
 # guardrail-block-global (install-engine.js's 'guardrail-block-global' wire
 # target, dispatching to guardrail-block.mjs's own `install` verb), but the
 # round-3 ruling forbids ever doing so without an explicit, RECORDED
-# consent — that item writes the OPERATOR'S GLOBAL ~/.claude/settings.json,
+# consent. That item writes the OPERATOR'S GLOBAL ~/.claude/settings.json,
 # outside the blast radius of the ordinary per-run --yes consent.
 #
 # Unlike sibling test-wizard-ensure*.sh suites, this one drives bin.js
 # against the REAL scripts/install/manifest.json and the REAL
-# scripts/hooks/guardrail-block.mjs (not a synthetic fixture) — the
+# scripts/hooks/guardrail-block.mjs (not a synthetic fixture). The
 # ask-first gate IS the behavior under test, and guardrail-block.mjs's own
 # install/status contract is exactly what it gates, so faking either would
 # test the fake, not the gate. Every case still stays fully hermetic:
 # CLAUDE_USER_SETTINGS points every guardrail-block.mjs invocation (probe
-# AND install) at a THROWAWAY settings.json — the operator's real
-# ~/.claude/settings.json is NEVER read or written by this suite — and
+# AND install) at a THROWAWAY settings.json (the operator's real
+# ~/.claude/settings.json is NEVER read or written by this suite) and
 # HIMMELCTL_CACHE_DIR points install-profile.json/state.json at a throwaway
 # dir. `--items guardrail-block-global` scopes every ensure run to just this
 # one manifest item, so no other real machine state (qmd, hermes, plugins,
@@ -33,7 +33,7 @@
 #      --json reading mode=global), exit 0.
 #   c. recorded consent 'no' (pre-seeded) + non-interactive + --yes ->
 #      stays unconverged, settings.json stays absent/unwired, exit 0 (no
-#      nag — the operator already decided).
+#      nag: the operator already decided).
 #   d. interactive, no recorded consent, answer 'y' (blank accepts the
 #      recommended default) -> prompts ONCE for this item specifically,
 #      records consent=yes in state.json, and (fed `--yes` to skip the
@@ -42,7 +42,7 @@
 #      does NOT install, settings.json stays absent.
 #   f. --dry-run + no recorded consent -> never prompts (dry-run must not
 #      block on stdin), prints the honest "staying manual" advisory (not
-#      the DRY: plan line — nothing was consented to), zero mutation of
+#      the DRY: plan line, nothing was consented to), zero mutation of
 #      BOTH settings.json and state.json.
 #   g. --dry-run + recorded consent 'yes' (pre-seeded) -> the plan SURFACES
 #      the step (a `DRY: <node> .../guardrail-block.mjs install ...` line),
@@ -63,7 +63,7 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 node_bin=$(command -v node)
 
 # Hermeticity: guardrail-block.mjs's trust anchor defaults to HIMMEL_REPO
-# when set (see its own resolveAnchor()) — an inherited HIMMEL_REPO from the
+# when set (see its own resolveAnchor()). An inherited HIMMEL_REPO from the
 # LAUNCHING shell (e.g. an operator's dev environment pointing it at a
 # primary checkout while this suite runs from a worktree) would bake a
 # WRONG anchor path into every hook this suite installs, permanently
@@ -78,8 +78,8 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/wizard-guardrail-consent.XXXXXX") || fail "mkt
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
-# write_cache <cache_dir> — a minimal valid Draft-A install-profile.json,
-# scope:"user" (guardrail-block-global's ONLY scope — see manifest.json).
+# write_cache <cache_dir>: a minimal valid Draft-A install-profile.json,
+# scope:"user" (guardrail-block-global's ONLY scope: see manifest.json).
 write_cache() {
   mkdir -p "$1"
   cat > "$1/install-profile.json" <<'JSON'
@@ -87,9 +87,9 @@ write_cache() {
 JSON
 }
 
-# write_state <cache_dir> <consent|""> — a state.json carrying ONLY the
+# write_state <cache_dir> <consent|"">: a state.json carrying ONLY the
 # guardrail-block-global override this gate reads/writes. Empty consent ->
-# overrides:{} (never asked) — used to prove the gate DERIVES a fresh entry
+# overrides:{} (never asked), used to prove the gate DERIVES a fresh entry
 # just as well as reading a pre-existing one.
 write_state() {
   local dir="$1" consent="$2"
@@ -101,7 +101,7 @@ write_state() {
   fi
 }
 
-# guardrail_mode <settings_json_path> — 'global'/'project'/'absent' (no file)
+# guardrail_mode <settings_json_path>: 'global'/'project'/'absent' (no file)
 # via the REAL guardrail-block.mjs `status --json`.
 guardrail_mode() {
   local settings="$1"

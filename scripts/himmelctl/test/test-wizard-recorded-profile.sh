@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-recorded-profile.sh — hermetic tests for the
+# test-wizard-recorded-profile.sh: hermetic tests for the
 # recorded install-profile.json must reach desired-state computation
 # (additive-only), and `ensure`'s disable/prune consent must be split from
 # its converge consent with per-item evidence and an under-recorded guard.
@@ -15,7 +15,7 @@
 #
 # Covers:
 #   a. two live, recorded-but-undeclared items (luna-a/luna-b) resolve
-#      desired:true / severity:green via the additive overlay — never n/a —
+#      desired:true / severity:green via the additive overlay (never n/a)
 #      and `status --json`'s detail names the recorded-install-profile
 #      reason.
 #   b. an item carrying an explicit override (luna-override, no `removable`
@@ -26,23 +26,23 @@
 #   c. the converge-only path still fixes a genuinely-missing item
 #      (core-item, himmel-ops-plugin-shaped): `ensure --yes` (no --prune)
 #      installs it, exit 0.
-#   d. default `ensure` (no --prune) NEVER disables anything — a genuine,
+#   d. default `ensure` (no --prune) NEVER disables anything: a genuine,
 #      undeclared-but-live, no-override disable candidate (stale-item) is
 #      only described (per-item evidence line: recorded profile/scope,
 #      live probe result, the exact command disabling would run) and left
 #      untouched; luna-a/luna-b (fixed by the additive overlay) are not
 #      even mentioned. ALSO (codex-3, re-raise): this fixture's recorded
 #      profile ('operator', in install-profile.json) and its persisted
-#      target category ('core', stale in state.json) genuinely differ —
+#      target category ('core', stale in state.json) genuinely differ:
 #      the evidence line must attribute 'operator' to install-profile.json
 #      (the truth), never 'core' (a different, resolved fact), though the
 #      resolved category is still shown, honestly labeled as such.
 #   e. --prune opts in and the same candidate genuinely disables (its
 #      unwire primitive runs, marker removed, "converged" count includes
-#      it) — the positive control paired with case d's negative one.
+#      it), the positive control paired with case d's negative one.
 #   f. the under-recorded guard: when the record simply doesn't declare a
 #      HANDFUL of live items (a thin/legacy vault.mode='none' record, not
-#      an override), `ensure` — with OR without --prune — refuses to touch
+#      an override), `ensure` (with OR without --prune) refuses to touch
 #      any of them, names, and points at the fix (now also
 #      naming the --profile escape hatch), instead of offering a mass
 #      disable. The converge-only phase still proceeds independently.
@@ -50,11 +50,11 @@
 #      wedge: WITHOUT --profile, the same thin-record/3-present shape still
 #      blocks (negative control); WITH an explicit --profile (even the SAME
 #      category value), the guard defers and --prune genuinely unwinds
-#      every item — proving the disable actually completes, not merely
+#      every item, proving the disable actually completes, not merely
 #      that the warning is skipped.
 #   j. (codex-1, Critical, cross-run) an explicit, consented downgrade
 #      (`ensure --profile core --prune --yes`) must survive the VERY NEXT
-#      ordinary `ensure` — the additive overlay, seeing the recorded
+#      ordinary `ensure`: the additive overlay, seeing the recorded
 #      profile still covers the just-disabled item, must NOT silently
 #      re-enable and reinstall it one run later. Two invocations against
 #      the SAME persisted state; the bug only appears across the boundary
@@ -62,9 +62,9 @@
 
 set -euo pipefail
 
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline (a piped `... | grep -q` false-negatives under `set -o pipefail`
-# whenever the match lands early —). Matches every sibling
+# whenever the match lands early). Matches every sibling
 # test-wizard-*.sh suite's own helper verbatim.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
@@ -85,22 +85,22 @@ cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
 # ── HERMETICITY (load-bearing): USERPROFILE, not just
-# HOME, redirected — os.homedir() reads USERPROFILE first on Windows, so HOME
+# HOME, redirected: os.homedir() reads USERPROFILE first on Windows, so HOME
 # alone is a no-op for node.exe children under Git Bash. HIMMELCTL_CACHE_DIR
 # and HIMMEL_LUNA_CONFIG_PATH are ALSO redirected (statusReport() calls
-# lunaConfig.load() unconditionally on every run) — this suite never reads or
+# lunaConfig.load() unconditionally on every run): this suite never reads or
 # writes the operator's real ~/.himmel or ~/.claude/himmel. ────────────────
 homeDir="$work/home"; mkdir -p "$homeDir"
 lunaConfigPath="$work/himmel-config.json"
 
 # ═══════════════════════════════════════════════════════════════════════
-# Phase 1 — additive overlay, override preserved, split consent, per-item
+# Phase 1: additive overlay, override preserved, split consent, per-item
 # evidence (cases a-e).
 # ═══════════════════════════════════════════════════════════════════════
 fixtureRepo="$work/repo1"
 mkdir -p "$fixtureRepo/scripts/install" "$fixtureRepo/scripts/lib"
 # stale-item's `profiles: []` is deliberate: helpers.js's profileForVault()
-# only ever returns 'core' or 'all' (never 'luna') — so the ONLY category
+# only ever returns 'core' or 'all' (never 'luna'), so the ONLY category
 # value that can flip an item luna-a/luna-b's shape (["luna","all"]) on via
 # the additive overlay is 'all', and 'all' is a member of every category any
 # OTHER item declares too. Giving stale-item an empty profiles list is the
@@ -161,14 +161,14 @@ SH
 cacheDir="$work/cache1"; mkdir -p "$cacheDir"
 
 # The recorded install-profile: schemaVersion 2, profile 'operator', scope
-# 'user', vault.mode 'default-template' — the concrete value that makes
+# 'user', vault.mode 'default-template', the concrete value that makes
 # helpers.js's profileForVault(cachedAnswers) return manifest category
-# 'all' (every manifest item's `profiles` list includes 'all' — verified
+# 'all' (every manifest item's `profiles` list includes 'all', verified
 # against the real scripts/install/manifest.json). ASSUMPTION (stated
 # explicitly, per the ticket's own evidence not naming vault.mode
 # literally): the operator's real vault.mode may instead be 'existing',
 # for which profileForVault ALSO returns 'core' (a separate, narrower,
-# pre-existing gap in that function's own mode->category mapping — NOT
+# pre-existing gap in that function's own mode->category mapping, NOT
 # touched by this fix; see the final report).
 cat > "$cacheDir/install-profile.json" <<JSON
 {
@@ -180,10 +180,10 @@ cat > "$cacheDir/install-profile.json" <<JSON
 }
 JSON
 
-# state.json: 'user' target persisted at profile 'core' (stale — derived
+# state.json: 'user' target persisted at profile 'core' (stale, derived
 # before this operator's vault existed) with EVERY item enabled:false.
 # luna-override carries a deliberate recorded per-item override
-# (overrides.consent — the ONE populated `overrides` shape this codebase
+# (overrides.consent, the ONE populated `overrides` shape this codebase
 # has today, guardrail-block-global's ask-first gate; a non-empty
 # `overrides` bag is what state.js's own hasDeliberateOverride() treats as
 # "a deliberate choice was recorded, never second-guess it").
@@ -209,11 +209,11 @@ JSON
 
 # HIMMELCTL_CACHE_DIR points at cacheDir (install-profile.json), but
 # state.json itself is only ever resolved via cacheDir() too (same
-# helpers.js function) — so state.json must live in cacheDir, NOT under
+# helpers.js function), so state.json must live in cacheDir, NOT under
 # $homeDir/.claude/himmel. Move it there and drop the now-empty stand-in.
 mv "$claudeHimmelDir/state.json" "$cacheDir/state.json"
 
-# luna-a/luna-b/stale-item/override are already "live" — created directly,
+# luna-a/luna-b/stale-item/override are already "live", created directly,
 # standing in for a luna feature the operator installed independently of
 # himmelctl (qmd/graphify/etc in the real incident).
 ( cd "$fixtureRepo" && : > luna-a.marker && : > luna-b.marker && : > override.marker && : > stale.marker )
@@ -230,7 +230,7 @@ runStatus() {
 }
 
 # ── case a: luna-a/luna-b resolve desired:true, severity:green (never
-# n/a), via the additive overlay — the detail names the recorded-profile
+# n/a), via the additive overlay: the detail names the recorded-profile
 # reason. ────────────────────────────────────────────────────────────────
 outStatus1=$(runStatus --json)
 for id in luna-a luna-b; do
@@ -242,7 +242,7 @@ done
 echo "ok: case a — recorded-but-undeclared live items (luna-a, luna-b) resolve desired:true/severity:green, detail names why"
 
 # ── negative control for case a: luna-override (the SAME shape, but with a
-# recorded override) stays desired:false/n/a — proves the additive overlay
+# recorded override) stays desired:false/n/a, proves the additive overlay
 # is not simply "every item that's live goes green". ───────────────────────
 echo "$outStatus1" | jq -e '.items[] | select(.id=="luna-override") | .desired == false and .severity == "n/a"' >/dev/null \
   || fail "negative control: luna-override (overridden) should stay desired:false/n/a (got: $outStatus1)"
@@ -266,9 +266,9 @@ echo "ok: case a (surfaced) — ensure's own output names which items the record
 
 # ── case d: default ensure (no --prune) NEVER disables anything. luna-a/
 # luna-b (fixed by the overlay) are not even mentioned; stale-item (a
-# genuine, undeclared+live+no-override candidate) is only DESCRIBED — a
+# genuine, undeclared+live+no-override candidate) is only DESCRIBED (a
 # per-item evidence line naming the recorded profile/scope, the live probe
-# result, and the exact disable command — and left untouched. ─────────────
+# result, and the exact disable command) and left untouched. ─────────────
 grepq "$outEnsure1" -F 'converge-only by default' || fail "case d: default ensure should say converge-only by default (got: $outEnsure1)"
 grepq "$outEnsure1" -F 'stale-item: recorded install-profile says' || fail "case d: should print stale-item's per-item evidence line (got: $outEnsure1)"
 grepq "$outEnsure1" -F 'live state says present' || fail "case d: the evidence line should name the live probe result (got: $outEnsure1)"
@@ -276,10 +276,10 @@ grepq "$outEnsure1" -F 'disabling would run' || fail "case d: the evidence line 
 # (codex-3, re-raise) THIS fixture's whole point: install-profile.json
 # genuinely records profile='operator', while state.json's persisted
 # target category is the STALE 'core' (derived long ago, per the fixture's
-# own header comment) — a fixture where the two agreed would prove
+# own header comment): a fixture where the two agreed would prove
 # nothing. The evidence line must attribute 'operator' to install-
 # profile.json (what it actually says), never 'core' (the resolved
-# manifest category, a DIFFERENT fact) — that mix-up was the bug.
+# manifest category, a DIFFERENT fact). That mix-up was the bug.
 grepq "$outEnsure1" -F 'profile=operator scope=' || fail "case d: the evidence line must name the GENUINELY recorded profile (operator, from install-profile.json), not the persisted-but-stale category (got: $outEnsure1)"
 if grepq "$outEnsure1" -F 'profile=core scope='; then
   fail "case d: the evidence line must NOT attribute state.json's stale persisted category ('core') to install-profile.json as if it were the recorded profile (got: $outEnsure1)"
@@ -287,8 +287,8 @@ fi
 # the resolved category is still honestly shown, just correctly labeled.
 grepq "$outEnsure1" -F "resolves to manifest category 'core'" || fail "case d: the resolved manifest category should still be shown, honestly labeled as distinct from the recorded profile (got: $outEnsure1)"
 # luna-a/luna-b must never get a per-item disable-evidence line of their
-# own (that line format is always "<id>: recorded install-profile says..." —
-# see describeDisableCandidate() in bin.js) — they're fully green now, so
+# own (that line format is always "<id>: recorded install-profile says...":
+# see describeDisableCandidate() in bin.js). They're fully green now, so
 # the towardDisabled loop never even reaches them.
 if grepq "$outEnsure1" -F 'luna-a: recorded install-profile says' || grepq "$outEnsure1" -F 'luna-b: recorded install-profile says'; then
   fail "case d: luna-a/luna-b (fixed by the overlay) must never get their own disable-evidence line (got: $outEnsure1)"
@@ -298,7 +298,7 @@ echo "ok: case d — default ensure describes the one genuine disable candidate 
 
 # ── case b: luna-override's persisted state.json entry is byte-unchanged
 # by the ensure run above (the additive reconcile never touched it, and
-# the ordinary disable path never reaches it — it carries no `removable`).
+# the ordinary disable path never reaches it: it carries no `removable`).
 # ────────────────────────────────────────────────────────────────────────
 overrideEntry=$(jq -c '.targets.user.items["luna-override"]' "$cacheDir/state.json")
 [ "$overrideEntry" = '{"enabled":false,"overrides":{"consent":"no"}}' ] \
@@ -317,7 +317,7 @@ grepq "$outEnsure2" -F 'converged' || fail "case e: the completion summary shoul
 echo "ok: case e — --prune genuinely disables the described candidate (positive control for case d)"
 
 # luna-override must STILL be untouched after the --prune run too (it was
-# never a disable candidate to begin with — no `removable`).
+# never a disable candidate to begin with: no `removable`).
 overrideEntry2=$(jq -c '.targets.user.items["luna-override"]' "$cacheDir/state.json")
 [ "$overrideEntry2" = '{"enabled":false,"overrides":{"consent":"no"}}' ] \
   || fail "case b (post --prune): luna-override's persisted entry should still be byte-unchanged (got: $overrideEntry2)"
@@ -325,8 +325,8 @@ overrideEntry2=$(jq -c '.targets.user.items["luna-override"]' "$cacheDir/state.j
 echo "ok: case b (post --prune) — the overridden item survives a --prune run too"
 
 # ═══════════════════════════════════════════════════════════════════════
-# Phase 2 — under-recorded guard (case f): a thin/legacy record simply
-# doesn't declare a HANDFUL of live items (no override involved) — ensure
+# Phase 2 (under-recorded guard, case f): a thin/legacy record simply
+# doesn't declare a HANDFUL of live items (no override involved): ensure
 # must refuse to touch them, WITH or WITHOUT --prune, and point at the fix.
 # ═══════════════════════════════════════════════════════════════════════
 fixtureRepo2="$work/repo2"
@@ -367,7 +367,7 @@ cacheDir2="$work/cache2"; mkdir -p "$cacheDir2"
 
 # A genuinely THIN record: vault.mode 'none' -> profileForVault gives
 # category 'core' -> the luna-only items are NOT declared, honestly (no
-# override involved — this is the "no usable record" residual case Fix B3
+# override involved: this is the "no usable record" residual case Fix B3
 # names, distinct from Fix A's "record exists and is richer than the
 # target" case in phase 1 above).
 cat > "$cacheDir2/install-profile.json" <<'JSON'
@@ -422,7 +422,7 @@ outUR2=$(runEnsure2 --yes --prune 2>&1); rcUR2=$?
 set -e
 [ "$rcUR2" -eq 0 ] || fail "case f (--prune): should still exit 0 (got rc=$rcUR2): $outUR2"
 grepq "$outUR2" -F 'UNDER-RECORDED' || fail "case f (--prune): should STILL refuse via the under-recorded guard (got: $outUR2)"
-# (codex-2, re-raise) the guard's own message must name the way forward —
+# (codex-2, re-raise) the guard's own message must name the way forward:
 # a block that doesn't say how to proceed is the anti-pattern this ticket
 # is about. It already pointed at re-recording the profile; it must ALSO
 # name the --profile escape hatch for a genuinely deliberate downgrade.
@@ -432,18 +432,18 @@ for id in luna-x luna-y luna-z; do
 done
 echo "ok: case f (--prune) — the under-recorded guard overrides an explicit --prune too, WITHOUT --profile (negative control for case f2 below); its message names the --profile escape hatch"
 
-# ── case f2 (codex-2, re-raise — THE ESCAPE HATCH + WEDGE PROOF): the SAME
+# ── case f2 (codex-2, re-raise, THE ESCAPE HATCH + WEDGE PROOF): the SAME
 # guard, on a fixture whose items CAN actually be unwound (removable:
-# per-item, unlike repo2's full-offboard-only items above — a real
+# per-item, unlike repo2's full-offboard-only items above: a real
 # escape-hatch proof needs the disable to actually SUCCEED, not just avoid
 # the guard's message). Mirrors repo2's exact mechanism (`desired` is the
-# PERSISTED `enabled` flag — state.js: `desired = Boolean(entry &&
-# entry.enabled)` — recomputed only by an explicit reconcile, never
+# PERSISTED `enabled` flag (state.js: `desired = Boolean(entry &&
+# entry.enabled)`) recomputed only by an explicit reconcile, never
 # implicitly from category on every run): 3 items persisted enabled:false
 # under category 'core' (both recorded and persisted), genuinely present.
 # The negative-control run below passes NO --profile at all (identical
 # shape/mechanism to case f); the positive-control run passes --profile
-# core (the SAME category value — deference is keyed on --profile being
+# core (the SAME category value: deference is keyed on --profile being
 # PASSED, not on it changing anything). Proves there is no permanent
 # wedge: the escape hatch genuinely unwinds every item, not merely skips
 # the warning. ─────────────────────────────────────────────────────────
@@ -532,7 +532,7 @@ runEnsure2b() {
 }
 
 # negative control (paired with case f/f2, same shape): WITHOUT --profile,
-# the guard still blocks — 3 live-undeclared items, present, --prune asked
+# the guard still blocks: 3 live-undeclared items, present, --prune asked
 # for -> UNDER-RECORDED, nothing unwound.
 set +e
 outF2neg=$(runEnsure2b --yes --prune 2>&1); rcF2neg=$?
@@ -562,13 +562,13 @@ done
 echo "ok: case f2 (escape hatch) — an explicit --profile defers the under-recorded guard and --prune genuinely disables every item; no wedge"
 
 # ═══════════════════════════════════════════════════════════════════════
-# Phase 3 — RETASK 01S-A-2349-b73d: the membership CATEGORY the additive
+# Phase 3 (RETASK 01S-A-2349-b73d): the membership CATEGORY the additive
 # overlay checks must come from the recorded schema-v2 `profile` field
-# (starter->core, luna/operator->all), not from profileForVault(vault.mode)
-# — which maps vault.mode:'existing' the same as 'none' (category 'core'),
+# (starter->core, luna/operator->all), not from profileForVault(vault.mode),
+# which maps vault.mode:'existing' the same as 'none' (category 'core'),
 # silently dropping every luna-category item for an operator who already
 # has a real vault. Small shared manifest: two luna-only items (no `all`-
-# only escape hatch — this is what actually distinguishes the mapping from
+# only escape hatch. This is what actually distinguishes the mapping from
 # "everything goes green regardless").
 # ═══════════════════════════════════════════════════════════════════════
 fixtureRepo3="$work/repo3"
@@ -624,7 +624,7 @@ runEnsure3() {
 }
 
 # ── case g (THE TICKET'S LITERAL ACCEPTANCE CRITERION): the operator's own
-# exact shape — recorded profile 'operator', vault.mode 'existing', scope
+# exact shape: recorded profile 'operator', vault.mode 'existing', scope
 # 'user'; state.json target 'core' with the luna items enabled:false; both
 # live. Must resolve desired:true/severity:green (not n/a), and `ensure`
 # must offer ZERO disables. ─────────────────────────────────────────────
@@ -655,7 +655,7 @@ fi
 echo "ok: case g — THE TICKET'S DONE-CHECK: recorded profile='operator' + vault.mode='existing' + live-green items => desired:true/green, ensure offers zero disables"
 
 # ── case h (negative control for case g): profile 'starter' + the SAME
-# vault.mode 'existing' — the luna items must stay NOT desired. Without
+# vault.mode 'existing': the luna items must stay NOT desired. Without
 # this, case g passing would prove nothing (the overlay could just be
 # turning everything on unconditionally). ─────────────────────────────────
 cacheDir3h="$work/cache3h"; mkdir -p "$cacheDir3h"
@@ -678,7 +678,7 @@ done
 echo "ok: case h — negative control: profile='starter' (even with the SAME existing vault) leaves the luna items undesired — the mapping does the work, not a blanket turn-everything-on"
 
 # ── case i: a v1 record (no schemaVersion/profile field at all) falls back
-# to profileForVault(cachedAnswers) — unchanged behaviour. vault.mode
+# to profileForVault(cachedAnswers), unchanged behaviour. vault.mode
 # 'existing' -> profileForVault's own fallback ('core') -> luna items stay
 # undesired, exactly as before this retask.  ──────────────────────────────
 cacheDir3i="$work/cache3i"; mkdir -p "$cacheDir3i"
@@ -701,17 +701,17 @@ echo "ok: case i — a v1 record (no profile field) falls back to profileForVaul
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# Phase 4 —: an explicit downgrade must
+# Phase 4: an explicit downgrade must
 # survive the NEXT ordinary ensure. The additive overlay is additive-only
 # by VALUE, but a target's `profile` value alone can't tell "derived once,
 # never revisited" (the incident this whole ticket exists to fix) apart
-# from "explicitly reconciled" (an operator decision) — reconcileTarget()
+# from "explicitly reconciled" (an operator decision). reconcileTarget()
 # now stamps profileSource:'explicit' so the overlay can tell them apart.
 # case j is the cross-run proof (the bug only appears across TWO
 # invocations, never within one); case a/g above (unmodified, no
 # profileSource in their fixtures) are the standing regression guard that
 # this fix does NOT disable the overlay for a genuinely derived-stale
-# target — the actual incident.
+# target, the actual incident.
 # ═══════════════════════════════════════════════════════════════════════
 fixtureRepoJ="$work/repoJ"
 mkdir -p "$fixtureRepoJ/scripts/install" "$fixtureRepoJ/scripts/lib"
@@ -742,7 +742,7 @@ exit 0
 SH
 
 cacheDirJ="$work/cacheJ"; mkdir -p "$cacheDirJ"
-# recorded profile 'operator' -> category 'all' (covers wedge-item) — the
+# recorded profile 'operator' -> category 'all' (covers wedge-item): the
 # overlay WOULD cover this item were it not for the provenance guard.
 cat > "$cacheDirJ/install-profile.json" <<'JSON'
 {
@@ -754,10 +754,10 @@ cat > "$cacheDirJ/install-profile.json" <<'JSON'
 }
 JSON
 # state.json: 'user' target already wired (wedge-item enabled:true, some
-# prior converge — how it got there doesn't matter), persisted at profile
-# 'all' — recorded profile and persisted category AGREE before the
+# prior converge: how it got there doesn't matter), persisted at profile
+# 'all': recorded profile and persisted category AGREE before the
 # downgrade (this fixture is about what happens to an explicit downgrade
-# AFTER it, not a stale-derivation scenario — case a/g already cover
+# AFTER it, not a stale-derivation scenario: case a/g already cover
 # that). No profileSource yet: the first run below is what stamps it.
 cat > "$cacheDirJ/state.json" <<'JSON'
 {
@@ -784,7 +784,7 @@ runEnsureJ() {
       "$node_bin" "$wizard" ensure "$@" </dev/null )
 }
 
-# ── case j (part 1): explicit, consented downgrade — --profile core
+# ── case j (part 1): explicit, consented downgrade, --profile core
 # excludes wedge-item's category, --prune actually unwinds it. ────────────
 set +e
 outJ1=$(runEnsureJ --profile core --prune --yes 2>&1); rcJ1=$?
@@ -797,11 +797,11 @@ jq -e '.targets.user.items["wedge-item"].enabled == false' "$cacheDirJ/state.jso
   || fail "case j (part 1): wedge-item should be persisted disabled after the explicit downgrade (got: $(cat "$cacheDirJ/state.json"))"
 echo "ok: case j (part 1) — an explicit, consented downgrade genuinely unwinds wedge-item and stamps profileSource:'explicit'"
 
-# ── case j (part 2, THE BUG): a PLAIN ensure (no --profile, no --prune) —
+# ── case j (part 2, THE BUG): a PLAIN ensure (no --profile, no --prune),
 # the recorded profile is STILL 'operator'/'all', which STILL covers
 # wedge-item. Without the provenance guard, the additive overlay would see
 # wedge-item.enabled==false and the recorded category 'all' covering it,
-# flip it back to enabled:true, and the converge pass would REINSTALL it —
+# flip it back to enabled:true, and the converge pass would REINSTALL it,
 # reversing the operator's explicit decision one run later. ───────────────
 set +e
 outJ2=$(runEnsureJ --yes 2>&1); rcJ2=$?

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-bootstrap.sh — hermetic tests for the himmelctl bootstrap
+# test-wizard-bootstrap.sh: hermetic tests for the himmelctl bootstrap
 # shim: scripts/himmelctl/bootstrap.sh (darwin
 # brew / linux apt). A throwaway HIMMELCTL_REPO_ROOT fixture (the
 # same env-var seam bin.js itself honors) carries a stub bin.js so the
@@ -19,7 +19,7 @@
 #   D. node absent, non-dry-run, install DOES make node resolvable ->
 #      chains to bin.js with "install".
 #   F. CR r1 FIX 1/2: the package-manager install plan/line no longer asks
-#      for `bun` on non-darwin apt (bun is not an apt package) — apt gets
+#      for `bun` on non-darwin apt (bun is not an apt package). apt gets
 #      `nodejs npm` only; a bun-is-optional note is printed instead.
 #   G. CR r1 FIX 1/2: the platform installer itself EXITS
 #      NONZERO (a genuine apt failure, not just a not-yet-refreshed-PATH)
@@ -28,11 +28,11 @@
 
 set -euo pipefail
 
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
 # `set -o pipefail`: grep -q exits the instant it matches, the producer
 # then takes SIGPIPE writing the remainder, and pipefail reports the
-# PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
+# PIPELINE as failed, so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
 # so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
@@ -75,7 +75,7 @@ build_path() {
   printf '%s:%s' "$_stub" "$_scrubbed"
 }
 
-# build_bin_js_fixture <dir> — a throwaway HIMMELCTL_REPO_ROOT target
+# build_bin_js_fixture <dir>: a throwaway HIMMELCTL_REPO_ROOT target
 # carrying a stub scripts/himmelctl/bin.js that logs its argv (never the
 # real wizard) to bin-js-calls.log alongside it.
 build_bin_js_fixture() {
@@ -91,7 +91,7 @@ fs.appendFileSync(
 STUB
 }
 
-# build_sudo_stub <dir> <restore_node:0|1> — a fake `sudo` that logs its
+# build_sudo_stub <dir> <restore_node:0|1>: a fake `sudo` that logs its
 # argv to install-calls.log; when restore_node=1 it also places a WORKING
 # copy of the real node binary (captured before any scrub) into <dir>,
 # simulating an install that successfully refreshes PATH.
@@ -112,7 +112,7 @@ STUB
   build_brew_stub "$_dir" "$_restore" 0
 }
 
-# build_brew_stub <dir> <restore_node:0|1> <rc> — bootstrap.sh's Darwin branch
+# build_brew_stub <dir> <restore_node:0|1> <rc>: bootstrap.sh's Darwin branch
 # runs `brew install node bun`, not `sudo apt-get`; on a macOS host the sudo stub
 # is never reached, so the install-calls.log contract needs a `brew` twin (same
 # log file, same node-restore switch, same exit code). Inert on Linux.
@@ -132,10 +132,10 @@ STUB
   chmod +x "$_dir/brew"
 }
 
-# build_aptget_stub <dir> — a no-op `apt-get` so bootstrap.sh's non-Darwin
+# build_aptget_stub <dir>: a no-op `apt-get` so bootstrap.sh's non-Darwin
 # `command -v apt-get` presence guard passes on hosts that lack
 # apt-get (macOS/MINGW), letting the sudo stub intercept `sudo apt-get install`
-# as before. It is never actually invoked — sudo receives apt-get as an arg.
+# as before. It is never actually invoked. sudo receives apt-get as an arg.
 build_aptget_stub() {
   local _dir="$1"
   cat > "$_dir/apt-get" <<'STUB'
@@ -145,7 +145,7 @@ STUB
   chmod +x "$_dir/apt-get"
 }
 
-# ── bootstrap.sh — Case A: node present -> short-circuit, no installer ─────
+# ── bootstrap.sh, Case A: node present -> short-circuit, no installer ─────
 stubA="$work/shA"; mkdir -p "$stubA"
 cA=$(build_path "$stubA" uname node -- )
 fixtureA="$work/shA-fixture"; build_bin_js_fixture "$fixtureA"
@@ -164,7 +164,7 @@ grep -q '^bin.js: install --default-scope user$' "$fixtureA/scripts/himmelctl/bi
   && fail "caseA(sh): node-present short-circuit must NOT invoke the platform installer"
 echo "ok: caseA(sh) node present -> short-circuits straight to hand-off, installer never invoked"
 
-# ── bootstrap.sh — Case B: --dry-run, node absent -> plan+hand-off only ────
+# ── bootstrap.sh, Case B: --dry-run, node absent -> plan+hand-off only ────
 stubB="$work/shB"; mkdir -p "$stubB"
 build_sudo_stub "$stubB" 0
 cB=$(build_path "$stubB" uname dirname bash ln cp -- node)
@@ -184,7 +184,7 @@ grepq "$out" 'hand-off after install' \
   && fail "caseB(sh): --dry-run must NOT invoke bin.js"
 echo "ok: caseB(sh) --dry-run node-absent -> plan+hand-off printed, nothing mutated"
 
-# ── bootstrap.sh — Case C: node absent, install doesn't refresh PATH ───────
+# ── bootstrap.sh, Case C: node absent, install doesn't refresh PATH ───────
 stubC="$work/shC"; mkdir -p "$stubC"
 build_sudo_stub "$stubC" 0
 build_aptget_stub "$stubC"
@@ -204,7 +204,7 @@ reruns=$(printf '%s' "$out" | grep -c 're-run')
   && fail "caseC(sh): must NOT chain to bin.js when node is still unresolvable"
 echo "ok: caseC(sh) node absent, install doesn't refresh PATH -> single re-run line, no blind chain"
 
-# ── bootstrap.sh — Case D (bonus): install DOES refresh PATH -> chains ─────
+# ── bootstrap.sh, Case D (bonus): install DOES refresh PATH -> chains ─────
 stubD="$work/shD"; mkdir -p "$stubD"
 build_sudo_stub "$stubD" 1
 build_aptget_stub "$stubD"
@@ -223,7 +223,7 @@ grep -q 'install' "$fixtureD/scripts/himmelctl/bin-js-calls.log" \
   || fail "caseD(sh): expected bin.js invoked with the 'install' arg"
 echo "ok: caseD(sh) node absent, install refreshes PATH -> chains to bin.js"
 
-# ── bootstrap.sh — Case F: FIX 1 -- apt plan no longer asks for bun ────────
+# ── bootstrap.sh, Case F: FIX 1 -- apt plan no longer asks for bun ────────
 stubF="$work/shF"; mkdir -p "$stubF"
 build_sudo_stub "$stubF" 0
 cF=$(build_path "$stubF" uname dirname bash ln cp -- node)
@@ -247,7 +247,7 @@ case "$(uname -s)" in
 esac
 echo "ok: caseF(sh) install plan no longer asks apt for a nonexistent bun package"
 
-# ── bootstrap.sh — Case G: FIX 1 -- a genuine install failure aborts loud ──
+# ── bootstrap.sh, Case G: FIX 1 -- a genuine install failure aborts loud ──
 stubG="$work/shG"; mkdir -p "$stubG"
 build_aptget_stub "$stubG"
 cat > "$stubG/sudo" <<STUB
@@ -274,7 +274,7 @@ grepq "$out" 're-run' \
   && fail "caseG(sh): a genuine install failure must NOT chain to bin.js"
 echo "ok: caseG(sh) a genuinely failed apt/brew install -> 'node install failed' printed, aborts immediately, no chain"
 
-# ── bootstrap.sh — Case H: non-Darwin host WITHOUT apt-get fails closed ─────
+# ── bootstrap.sh, Case H: non-Darwin host WITHOUT apt-get fails closed ─────
 # / CR #1126: the non-Darwin branch assumes apt. A host that is
 # neither Darwin nor apt-based must fail closed with a manual-install pointer
 # naming the detected platform, not silently mis-run `sudo apt-get`. A fake

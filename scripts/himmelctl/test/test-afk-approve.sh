@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-afk-approve.sh — `himmelctl approve <id>`, `himmelctl deny <id>` and `himmelctl approve status <id>`
+# test-afk-approve.sh: `himmelctl approve <id>`, `himmelctl deny <id>` and `himmelctl approve status <id>`
 # answer an AFK request from an SSH shell.
 #
 # WHY: after a classifier denial an operator working over SSH had no way to say "allow this one". The verb

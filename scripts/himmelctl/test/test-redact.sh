@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-redact.sh — redact.js keeps hyphen-separated session names
+# test-redact.sh: redact.js keeps hyphen-separated session names
 # readable (a chief or worker name is 32+ chars of word segments), while every
 # token shape, secret assignment, .env literal and random run still masks.
 #

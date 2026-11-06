@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-deps.sh — hermetic tests for `himmelctl deps status|ensure|
+# test-wizard-deps.sh: hermetic tests for `himmelctl deps status|ensure|
 # upgrade`: the version-aware
 # toolchain manager over scripts/install/deps.json, kept SEPARATE from the
 # manifest's presence-only kind:"dep" items (see deps.json's own header /
@@ -10,13 +10,13 @@
 # scripts/lib/hermetic-path.sh for the e2e cases, HIMMELCTL_REPO_ROOT pointed
 # at a throwaway fixture. NEVER exercises a real package manager (apt/dnf/
 # brew/pip) or the real ensure-tools.sh/qmd-bin.sh, and NEVER hits the
-# network — every plan-shape assertion runs the ENGINE directly (node -e +
+# network. Every plan-shape assertion runs the ENGINE directly (node -e +
 # require, mirrors test-wizard-install-engine.sh's own pattern for exactly
 # this reason: buildDepEntry accepts a ctx.platform override, so the macos/
 # linux branches are all exercised deterministically regardless of
 # this suite's own host OS), and every e2e execution case (`deps ensure`/
 # `deps upgrade` actually running something) uses manager:"script" against a
-# throwaway stub script that only appends to a log file — never a real
+# throwaway stub script that only appends to a log file, never a real
 # installer.
 #
 # Covers (lib-level plan-shape, cases a-i):
@@ -32,7 +32,7 @@
 #   e. buildDepEntry manager:"pip": install has no `--upgrade`; upgrade adds
 #      it.
 #   f. buildDepEntry manager:"script": the SAME entry (script path + args)
-#      for both install and upgrade — idempotent/converging by construction.
+#      for both install and upgrade: idempotent/converging by construction.
 #   g. buildDepEntry manager:"hint": {unrunnable: detail}, never a spawnable
 #      entry.
 #   h. buildDepEntry with no recipe declared for the current OS ->
@@ -54,8 +54,8 @@
 #      the stub install script never runs.
 #   p. `deps ensure --yes`: both missing deps' manager:"script" installs run
 #      (log file written); the post-install re-probe KEEP the one
-#      that converged (qmd — creates its presence marker) and FAIL-CLOSE the
-#      one that didn't land (redtool — still off PATH) -> exit 1,
+#      that converged (qmd: creates its presence marker) and FAIL-CLOSE the
+#      one that didn't land (redtool: still off PATH) -> exit 1,
 #      "1 installed, 1 failed", redtool reported "installed but still not
 #      found on PATH".
 #   q. `deps ensure` when nothing is missing -> "nothing to converge",
@@ -64,18 +64,18 @@
 #      recipe runs (log file written); the qmd model pull is SKIPPED
 #      (non-interactive, no --with-models) with the "skipping" message.
 #   s. `deps upgrade --yes --with-models`: the qmd model-pull entry ALSO
-#      runs (its own log file written) — no prompt shown.
+#      runs (its own log file written), no prompt shown.
 #   t. `deps upgrade --dry-run` (no --with-models): prints the upgrade DRY
 #      line(s) plus a DRY line for the (skipped) model-pull prompt; nothing
 #      executed.
 
 set -euo pipefail
 
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
 # `set -o pipefail`: grep -q exits the instant it matches, the producer
 # then takes SIGPIPE writing the remainder, and pipefail reports the
-# PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
+# PIPELINE as failed, so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
 # so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
@@ -104,10 +104,10 @@ trap cleanup EXIT
 DEPS_ENGINE_LIB="$(winpath "$deps_engine_lib")"
 export DEPS_ENGINE_LIB
 
-# write_version_stub <dir> <name> <version> — a fake "<name> --version"
+# write_version_stub <dir> <name> <version>: a fake "<name> --version"
 # binary printing a fixed version, as a plain bash shebang script. Safe on
 # every platform (including Windows) because deps-engine.js's probeVersion
-# always shells out via `bash -c` (never a raw spawnSync(dep.cmd, ...)) —
+# always shells out via `bash -c` (never a raw spawnSync(dep.cmd, ...)).
 # bash's own PATH search + exec resolves an extensionless shebang script
 # regardless of platform, matching every other tool-stub convention this
 # codebase's test suites already use (see hermetic-path.sh's own header).
@@ -484,10 +484,10 @@ console.log(JSON.stringify(buildDepEntry(dep, ctx, { upgrade: true })));
 ")
 grepq "$(echo "$outC2" | jq -er '.args[1]')" -F 'brew upgrade' \
   || fail "case c (upgrade): expected 'brew upgrade' in the line (got: $outC2)"
-# CodeRabbit: assert the COMPLETE documented upgrade shape — brew upgrade
+# CodeRabbit: assert the COMPLETE documented upgrade shape: brew upgrade
 # with its `|| brew install "$1"` fallback (and the literal "$1" placeholder),
 # not just the 'brew upgrade' verb. (The "$1" is the literal positional-arg
-# placeholder text, matched with grep -F — single-quoted so the shell never
+# placeholder text, matched with grep -F, single-quoted so the shell never
 # expands it.)
 # shellcheck disable=SC2016
 grepq "$(echo "$outC2" | jq -er '.args[1]')" -F 'brew upgrade "$1" 2>/dev/null || brew install "$1"' \
@@ -513,7 +513,7 @@ echo "$outE2" | jq -e '.args == ["-c","python3 -m pip install --user --upgrade \
   || fail "case e (upgrade): expected --upgrade added (got: $outE2)"
 echo "ok: case e — manager:pip: install has no --upgrade, upgrade adds it"
 
-# ── case f: manager:"script" — same entry for install and upgrade ──────────
+# ── case f: manager:"script", same entry for install and upgrade ──────────
 outF1=$("$node_bin" -e "
 const { buildDepEntry } = require(process.env.DEPS_ENGINE_LIB);
 const dep = { id: 'qmd', cmd: 'qmd', install: { linux: { manager: 'script', script: 'scripts/lib/qmd-bin.sh', args: ['install'] } } };
@@ -596,7 +596,7 @@ echo "ok: case k — 'deps' with no verb or an unknown verb exits 2"
 
 # ── shared fixture repo: a green dep (stubbed on PATH), a red dep (missing,
 # manager:"script" pointing at a log-writing stub), and qmd (manager:
-# "script" pointing at a SEPARATE log-writing stub — models pull target) ───
+# "script" pointing at a SEPARATE log-writing stub: models pull target) ───
 fixtureRepo="$work/repo"
 mkdir -p "$fixtureRepo/scripts/install" "$fixtureRepo/scripts/lib"
 installLog="$work/install-calls.log"
@@ -605,12 +605,12 @@ qmdResolver="$fixtureRepo/scripts/lib/fake-qmd-bin.sh"
 # qmd's simulated presence is a MARKER FILE (not hardcoded), so the same
 # fixture can prove both "qmd absent" (cases l/m/n/o/p, before the marker
 # exists) and "qmd present" (cases q/r/s/t, after case q creates it) without
-# needing a second resolver stub — has_qmd checks the marker, never PATH.
+# needing a second resolver stub. has_qmd checks the marker, never PATH.
 qmdPresentMarker="$work/qmd-present-marker"
 
 # The "green" dep is a real stub binary on the hermetic PATH (built below);
 # its --version output is fixed so status's detail is assertable. "red" and
-# "qmd" are NOT on PATH — "red" is genuinely absent (which() fails); qmd's
+# "qmd" are NOT on PATH: "red" is genuinely absent (which() fails); qmd's
 # presence is controlled by qmdPresentMarker via the resolver's has_qmd, so
 # it starts absent and its install/upgrade/model-pull commands still
 # exercise real spawns against this stub either way.
@@ -626,7 +626,7 @@ if [ "\${BASH_SOURCE[0]:-}" = "\${0:-}" ]; then
   case "\${1:-}" in
     # CR-fix companion: a CONVERGING qmd install creates the presence marker,
     # so cmdDepsEnsure's post-install re-probe (depStatus) reads qmd green and
-    # KEEPS it in the installed count — the genuine-install path case p asserts
+    # KEEPS it in the installed count: the genuine-install path case p asserts
     # alongside redtool's non-converging fail-closed path.
     install) printf 'install\n' >> "$(winpath "$installLog")"; printf 'present\n' > "$(winpath "$qmdPresentMarker")" ;;
     *) exit 2 ;;
@@ -692,7 +692,7 @@ depsPath="$stub:$(scrub_path "$PATH" redtool-does-not-exist)"
 
 runDeps() {
   # HIMMELCTL_INTERACTIVE is forced to 0 (never inherited from the test
-  # host's own env) — hermeticity: a test host with an interactive TTY (or
+  # host's own env). Hermeticity: a test host with an interactive TTY (or
   # a stray HIMMELCTL_INTERACTIVE=1 in the caller's shell) must not be able
   # to change these cases' non-interactive assertions mid-suite.
   HIMMELCTL_REPO_ROOT="$(winpath "$fixtureRepo")" HIMMELCTL_INTERACTIVE=0 PATH="$depsPath" \
@@ -701,7 +701,7 @@ runDeps() {
     "$node_bin" "$wizard" deps "$@"
 }
 
-# ── case l: status — green/red rows + summary ───────────────────────────────
+# ── case l: status, green/red rows + summary ───────────────────────────────
 set +e
 outL=$(runDeps status </dev/null 2>&1); rcL=$?
 set -e
@@ -724,14 +724,14 @@ echo "$outM1" | jq -e . >/dev/null || fail "case m: --json output should be vali
 echo "$outM1" | jq -e '.deps | length == 3' >/dev/null || fail "case m: expected 3 deps in --json output (got: $outM1)"
 echo "ok: case m — deps status --json: valid, deterministic JSON"
 
-# ── case n: ensure --dry-run — DRY lines only, nothing executed ───────────
+# ── case n: ensure --dry-run, DRY lines only, nothing executed ───────────
 rm -f "$installLog"
 set +e
 outN=$(runDeps ensure --dry-run </dev/null 2>&1); rcN=$?
 set -e
 [ "$rcN" -eq 0 ] || fail "case n: ensure --dry-run should exit 0 (both missing recipes are runnable — got rc=$rcN): $outN"
 grepq "$outN" -F 'DRY:' || fail "case n: expected DRY: lines (got: $outN)"
-# Assert the SPECIFIC planned actions, not just "some DRY line" — one line
+# Assert the SPECIFIC planned actions, not just "some DRY line": one line
 # per missing dep (redtool, qmd), each naming its script recipe + args.
 grepq "$outN" -F 'fake-install.sh' || fail "case n: expected redtool's install script path in the DRY plan (got: $outN)"
 grepq "$outN" -E 'fake-install\.sh[^[:space:]]* redtool' || fail "case n: expected redtool's script arg in the DRY plan (got: $outN)"
@@ -750,14 +750,14 @@ grepq "$errO" -F 'requires --yes' || fail "case o: error should name the --yes r
 [ -f "$installLog" ] && fail "case o: a refused ensure must NOT execute the install script"
 echo "ok: case o — ensure non-interactive without --yes exits 2, nothing executed"
 
-# ── case p: ensure --yes — recipes run; re-probe fail-closes the one that
+# ── case p: ensure --yes, recipes run; re-probe fail-closes the one that
 # didn't land, keeps the one that did. (CodeRabbit MAJOR): an install
 # that exits 0 but leaves the tool off PATH must now be re-probed and reported
 # FAILED, not silently counted as installed. redtool's stub writes its log
 # line but never puts 'redtool-does-not-exist' on PATH -> re-probe red ->
 # 'installed but still not found on PATH', exit 1. qmd's stub CONVERGES
 # (creates the presence marker) -> re-probe green -> stays installed. So the
-# summary reads '1 installed, 1 failed' and exit is 1 — exercising BOTH the
+# summary reads '1 installed, 1 failed' and exit is 1, exercising BOTH the
 # genuine-install (kept) and non-converging (fail-closed) paths in one case. ─
 rm -f "$installLog" "$qmdPresentMarker"
 set +e
@@ -766,7 +766,7 @@ set -e
 [ "$rcP" -eq 1 ] || fail "case p: ensure --yes should exit 1 when an install didn't land (got rc=$rcP): $outP"
 [ -f "$installLog" ] || fail "case p: expected the install script to have run (no log file)"
 grep -qF 'redtool' "$installLog" || fail "case p: install log should reference redtool (got: $(cat "$installLog"))"
-# qmd's OWN distinct install entry — fake-qmd-bin.sh writes a bare 'install'
+# qmd's OWN distinct install entry. fake-qmd-bin.sh writes a bare 'install'
 # line, separate from redtool's 'install redtool'. Whole-line match (-x) so
 # 'install redtool' doesn't satisfy it.
 grep -qxF 'install' "$installLog" || fail "case p: install log should contain qmd's distinct 'install' entry (got: $(cat "$installLog"))"
@@ -781,7 +781,7 @@ echo "ok: case p — ensure --yes re-probes: qmd kept (converged), redtool fail-
 
 # ── case q: ensure when nothing is missing -> nothing to converge ──────────
 # Creates qmdPresentMarker (qmd now reads present, for THIS and every
-# subsequent case — the upgrade cases r/s/t rely on qmd being present so
+# subsequent case. The upgrade cases r/s/t rely on qmd being present so
 # their upgrade recipe + model-pull gating actually exercise something) and
 # builds a PATH where redtool is ALSO present, so every declared dep reads
 # green and ensure has nothing left to converge.
@@ -791,11 +791,11 @@ write_version_stub "$stubQ" redtool-does-not-exist 1.0.0
 link_hermetic_tool bash "$stubQ"
 echo present > "$qmdPresentMarker"
 rm -f "$installLog"
-# PREPEND stubQ to the real PATH (never stub-only) — link_hermetic_tool's
+# PREPEND stubQ to the real PATH (never stub-only). link_hermetic_tool's
 # `ln -s` fallback can silently produce a same-effect COPY of bash rather
 # than a real symlink (observed on this host: no admin/dev-mode symlink
 # privilege), and a copied bash.exe needs its sibling DLLs (msys-2.0.dll
-# etc.) discoverable via Windows' PATH-based DLL search — which only works
+# etc.) discoverable via Windows' PATH-based DLL search, which only works
 # when bash's REAL original directory stays somewhere on PATH. Mirrors
 # every sibling suite's own build_path() (stub + scrubbed real PATH, never
 # stub-only) for exactly this reason.
@@ -811,7 +811,7 @@ grepq "$outQ" -F 'nothing to converge' || fail "case q: expected the nothing-to-
 [ -f "$installLog" ] && fail "case q: nothing should have been installed (got: $(cat "$installLog"))"
 echo "ok: case q — ensure with every declared dep present prints 'nothing to converge', exit 0, no install run"
 
-# ── case r: upgrade --yes — recipe runs, qmd model pull skipped (no prompt,
+# ── case r: upgrade --yes, recipe runs, qmd model pull skipped (no prompt,
 # not --with-models) ────────────────────────────────────────────────────────
 rm -f "$installLog" "$modelsLog"
 set +e
@@ -819,7 +819,7 @@ outR=$(runDeps upgrade --yes </dev/null 2>&1); rcR=$?
 set -e
 [ "$rcR" -eq 0 ] || fail "case r: upgrade --yes should exit 0 (got rc=$rcR): $outR"
 # redtool stays absent on depsPath (not present-side), so the present set is
-# exactly [greentool, qmd] — both manager:script, so upgrading them appends
+# exactly [greentool, qmd]: both manager:script, so upgrading them appends
 # to installLog (qmd's marker was set present by case q, above).
 [ -f "$installLog" ] || fail "case r: expected greentool/qmd's upgrade scripts to have run (no log file)"
 grep -qF 'greentool' "$installLog" || fail "case r: install log should reference greentool (got: $(cat "$installLog"))"
@@ -831,7 +831,7 @@ grepq "$outR" -F 'skipping qmd model pull' \
 [ -f "$modelsLog" ] && fail "case r: the model pull must NOT have run without --with-models (got: $(cat "$modelsLog"))"
 echo "ok: case r — upgrade --yes runs present deps' recipes, skips the qmd model pull without --with-models"
 
-# ── case s: upgrade --yes --with-models — the model pull ALSO runs ────────
+# ── case s: upgrade --yes --with-models, the model pull ALSO runs ────────
 rm -f "$installLog" "$modelsLog"
 set +e
 outS=$(runDeps upgrade --yes --with-models </dev/null 2>&1); rcS=$?
@@ -840,7 +840,7 @@ set -e
 [ -f "$modelsLog" ] || fail "case s: expected the qmd model-pull stub to have run (no log file)"
 grep -qF 'pull' "$modelsLog" || fail "case s: models log should record the pull (got: $(cat "$modelsLog"))"
 # CodeRabbit: --with-models runs EACH present dep's upgrade recipe (-> installLog)
-# as well as the model pull (-> modelsLog) — assert qmd's distinct upgrade entry
+# as well as the model pull (-> modelsLog). Assert qmd's distinct upgrade entry
 # in installLog too, not only the pull line in modelsLog.
 [ -f "$installLog" ] || fail "case s: expected greentool/qmd's upgrade scripts to have run (no install log file)"
 grep -qxF 'install' "$installLog" || fail "case s: install log should contain qmd's distinct 'install' entry (got: $(cat "$installLog"))"
@@ -848,14 +848,14 @@ grepq "$outS" -F 'skipping qmd model pull' \
   && fail "case s: --with-models must NOT print the skip message (got: $outS)"
 echo "ok: case s — upgrade --yes --with-models also runs the qmd model pull, no prompt shown"
 
-# ── case t: upgrade --dry-run — DRY lines only, nothing executed ──────────
+# ── case t: upgrade --dry-run, DRY lines only, nothing executed ──────────
 rm -f "$installLog" "$modelsLog"
 set +e
 outT=$(runDeps upgrade --dry-run </dev/null 2>&1); rcT=$?
 set -e
 [ "$rcT" -eq 0 ] || fail "case t: upgrade --dry-run should exit 0 for these runnable recipes (got rc=$rcT): $outT"
 grepq "$outT" -F 'DRY:' || fail "case t: expected DRY: lines (got: $outT)"
-# Assert the SPECIFIC planned actions — present set is [greentool, qmd]
+# Assert the SPECIFIC planned actions: present set is [greentool, qmd]
 # (redtool stays absent on depsPath), plus the qmd model-pull prompt DRY
 # line (no --with-models passed).
 grepq "$outT" -F 'fake-install.sh' || fail "case t: expected greentool's upgrade script path in the DRY plan (got: $outT)"
@@ -876,7 +876,7 @@ echo "ok: case t — upgrade --dry-run prints DRY lines naming every planned dep
 # converged-but-off-PATH install was double-counted as both "installed" and
 # "failed". Cases u-aa below cover the five fixes.
 
-# ── case u: deps.json's declared order keeps bun before qmd — the plan order
+# ── case u: deps.json's declared order keeps bun before qmd. The plan order
 # `missing.map(...)` in cmdDepsEnsure derives from is order-preserving by
 # construction (deps.map(...).filter(...)), so this is a property of the
 # DECLARATION, not something cmdDepsEnsure computes itself. Asserted against
@@ -891,7 +891,7 @@ echo "$outU" | jq -e '. == ["bun","qmd"]' >/dev/null \
   || fail "case u: expected deps.json's declared order to place bun before qmd (preserved by the order-preserving filter/map construction ensure's plan uses) (got: $outU)"
 echo "ok: case u — deps.json declares bun before qmd; the order-preserving plan construction keeps it that way"
 
-# ── case cc: depStatus — a present dep whose version probe prints no x.y
+# ── case cc: depStatus, a present dep whose version probe prints no x.y
 # token (Ubuntu's apt gitleaks: "version is set by build process") is green
 # when no minVersion is declared, and stays degraded when one is. ──────────
 stubV="$work/bin-versionless"; mkdir -p "$stubV"
@@ -912,7 +912,7 @@ echo "$outV" | jq -e '.[1].severity == "degraded" and (.[1].detail | contains("c
   || fail "case cc: versionless dep WITH a declared minVersion must stay degraded (got: $outV)"
 echo "ok: case cc — versionless present dep is green without a minVersion, degraded with one"
 
-# ── case bb: deps.json — gitleaks installs via the package manager on linux
+# ── case bb: deps.json, gitleaks installs via the package manager on linux
 # (it used to be manager:"hint" with no apt recipe at
 # all, despite shellcheck already using the same apt-get path), keeping its
 # macos brew recipe untouched. ─────────────────────────────
@@ -927,14 +927,14 @@ echo "ok: case bb — deps.json: gitleaks installs via ensure-tools on linux, br
 # ═════════════ ensure-tools.sh cases (sourced in a fresh subshell) ═════════
 #
 # Every case below sources scripts/setup/ensure-tools.sh in a NEW bash
-# process under a stub-prepended PATH — real sudo/apt-get/curl on THIS
+# process under a stub-prepended PATH. Real sudo/apt-get/curl on THIS
 # station are never reached because the stub dir is prepended ahead of the
 # real PATH, so `command -v` always resolves the stub first. Coreutils
-# (mktemp/grep/tail/rm/chmod/cat) are left to resolve from the real PATH —
+# (mktemp/grep/tail/rm/chmod/cat) are left to resolve from the real PATH:
 # only the specific privileged/network primitives are stubbed.
 ensureToolsScript="$repo_root/scripts/setup/ensure-tools.sh"
 
-# run_ensure_tools <PATH> <HOME> <tool...> — sources ensure-tools.sh in a
+# run_ensure_tools <PATH> <HOME> <tool...>: sources ensure-tools.sh in a
 # fresh bash -c and calls ensure_tools "$@" with the given tools; combined
 # stdout+stderr.
 run_ensure_tools() {
@@ -942,15 +942,15 @@ run_ensure_tools() {
   PATH="$_path" HOME="$_home" bash -c '. "$1"; shift; ensure_tools "$@"' _ "$ensureToolsScript" "$@" 2>&1
 }
 
-# mk_ensure_tools_path <target-tool> <dest-dir> — links bash/mktemp/grep/
+# mk_ensure_tools_path <target-tool> <dest-dir>: links bash/mktemp/grep/
 # tail/rm into <dest-dir> (created here) from the CURRENT real PATH, then
 # echoes "<dest-dir>:<PATH with every dir carrying <target-tool> dropped>".
 # Needed because THIS station has git/jq/python3/shellcheck/gitleaks all
-# genuinely installed (same merged /usr/bin as every coreutil) — a bare
+# genuinely installed (same merged /usr/bin as every coreutil). A bare
 # stub-dir PREPEND (test-setup-preflight.sh's simpler convention) would let
 # `command -v "$t"` still resolve the REAL tool further down PATH, so
 # ensure_tools' own "already present" guard would skip the install path
-# before ever reaching sudo/apt-get — proving nothing. Dropping the whole
+# before ever reaching sudo/apt-get, proving nothing. Dropping the whole
 # dir that carries <target-tool> takes the coreutils sourced from that same
 # dir down with it, hence relinking the specific ones ensure_tools' own
 # privileged path needs.
@@ -963,7 +963,7 @@ mk_ensure_tools_path() {
   printf '%s' "$_dir:$(scrub_path "$PATH" "$_target")"
 }
 
-# ── case v: privilege probe — non-root, sudo present but NOT passwordless
+# ── case v: privilege probe, non-root, sudo present but NOT passwordless
 # (`sudo -n true` fails, e.g. a password is required) -> the adopter is told
 # the EXACT privileged command to run themselves, and apt-get is NEVER
 # invoked (apt-get used to run unprivileged and fail
@@ -975,7 +975,7 @@ vlog="$work/case-v-priv.log"
 printf '#!/bin/sh\necho 1000\n' > "$vdir/id"; chmod +x "$vdir/id"
 # sudo exists but refuses the non-interactive probe. ANY invocation is
 # logged; a call OTHER than the "-n true" probe proves the probe was
-# skipped and a privileged call was attempted anyway — fail loud.
+# skipped and a privileged call was attempted anyway. Fail loud.
 cat > "$vdir/sudo" <<SUDO
 #!/usr/bin/env bash
 echo "sudo \$*" >> "$(winpath "$vlog")"
@@ -1030,7 +1030,7 @@ echo "ok: case w — passwordless sudo: the real install call is routed through 
 
 # ── case x: apt-get install FAILS (package genuinely missing on this distro)
 # -> the failure message surfaces apt-get's own last non-empty stderr line
-# instead of swallowing it, and — for a tool with no fallback hint — still
+# instead of swallowing it, and (for a tool with no fallback hint) still
 # ends with the honest "install manually" (stderr used
 # to be redirected straight to /dev/null, so the adopter never learned WHY
 # the install failed). ─────────────────────────────────────────────────────
@@ -1060,7 +1060,7 @@ grepq "$outX" -F 'E: Unable to locate package shellcheck' \
 grepq "$outX" -F "install 'shellcheck' manually" || fail "case x: shellcheck has no fallback hint -- expected the generic manual-install fallback (got: $outX)"
 echo "ok: case x — apt-get install failure surfaces its own stderr tail instead of swallowing it"
 
-# ── case y: gitleaks — installable via the SAME apt-get path shellcheck
+# ── case y: gitleaks, installable via the SAME apt-get path shellcheck
 # uses, and its failure message (older distro, no
 # package) carries the old 'hint' manager's tarball guidance as a per-tool
 # fallback, not a bare "install manually". ─────────────────────────────────
@@ -1122,7 +1122,7 @@ echo "ok: case z — bun already installed: idempotent, no reinstall, PATH hint 
 # official installer) is invisible to the caller's PATH, but the
 # post-install re-probe must resolve it via the augmented PATH instead of
 # reporting the CR-fixed "installed but still not found on PATH" false
-# failure — and must say so explicitly (present via the augmented PATH, not
+# failure, and must say so explicitly (present via the augmented PATH, not
 # the caller's own), not just silently count it a win. A SEPARATE, isolated
 # fixture repo (not the shared one cases l-t use) so this doesn't perturb
 # their counts. ─────────────────────────────────────────────────────────────
@@ -1180,7 +1180,7 @@ echo "ok: case aa — cmdDepsEnsure re-resolves PATH mid-run; a dep landing in ~
 
 # ── case cc: a dep a PRIOR run already installed into $HOME/.bun/bin (CR
 # present via the augmented PATH from the START of the
-# run, never on the caller's own PATH — must NOT appear in the `--dry-run`
+# run, never on the caller's own PATH, must NOT appear in the `--dry-run`
 # plan or the "about to install" list; `ensure --yes` (it's the only
 # declared dep) reports "nothing to converge" and NEVER invokes the install
 # script. Distinct from case aa: there, the binary doesn't exist until the
@@ -1246,13 +1246,13 @@ grepq "$outCC" -F 'about to install' && fail "case cc: must NEVER print 'about t
 echo "ok: case cc — a dep a PRIOR run already installed into ~/.bun/bin reads present from the START of the run (never replanned, never re-installed)"
 
 # ── case dd: augmentPathForRun (the extracted pure PATH-augmentation
-# helper) — an EMPTY originalPath must not leave a trailing path.delimiter
+# helper). An EMPTY originalPath must not leave a trailing path.delimiter
 # or an empty PATH segment
 # `dirsToAdd.join(delim) + delim + originalPath` formula did exactly that
 # whenever originalPath was ""; a trailing/empty segment means an implicit-
-# cwd PATH lookup). Unit-tested directly via require() — bin.js's own CLI
+# cwd PATH lookup). Unit-tested directly via require(). bin.js's own CLI
 # auto-run is guarded behind `require.main === module`, so requiring it here
-# never triggers main() — because the trailing-delimiter shape is NOT
+# never triggers main(), because the trailing-delimiter shape is NOT
 # observable from a live e2e invocation: the "PATH for this run also
 # includes" announcement only lists dirsToAdd by NAME, never the joined PATH
 # string itself, so a PATH="" e2e run cannot prove this one way or the
@@ -1286,7 +1286,7 @@ echo "ok: case dd — augmentPathForRun: an empty originalPath never leaves a tr
 #
 # The shellcheck and gitleaks deps now install via `sudo -n apt-get` (proven above), but
 # bun's official installer failed on stock Ubuntu 24.04 with "error: unzip is
-# required to install bun" (curl+tar ship by default, unzip does not) —
+# required to install bun" (curl+tar ship by default, unzip does not).
 # ensure-tools printed only a bare "installer failed" with no cause, qmd then
 # failed downstream on "bun not found", and the counter still printed "bun:
 # installed but still not found on PATH" for a recipe that actually FAILED
@@ -1417,7 +1417,7 @@ grepq "$outHH" -F 'fatal: unsupported platform xyz' \
 grepq "$outHH" -F 'install bun manually' || fail "case hh: expected the existing manual-install fallback to remain (got: $outHH)"
 echo "ok: case hh — bun installer BODY failure surfaces its own stderr tail, keeps the manual-install fallback"
 
-# ── case gg: bin.js honest counter — an ensure-tools-manager recipe ALWAYS
+# ── case gg: bin.js honest counter. An ensure-tools-manager recipe ALWAYS
 # exits 0 (ensure_tools() is documented to "always return 0; the caller
 # re-checks `command -v`"), so its OWN exit code can never prove "claimed
 # success" the way a script/brew/pip recipe's exit code does (case p,

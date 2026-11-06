@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# test-trust-clean-checkout.sh — `himmelctl trust on|status|off` succeed in a
+# test-trust-clean-checkout.sh: `himmelctl trust on|status|off` succeed in a
 # clean himmel checkout.
 #
-# WHY: wire-trust-hooks.mjs fails closed on two preconditions — (1) no entry
+# WHY: wire-trust-hooks.mjs fails closed on two preconditions: (1) no entry
 # may MIX a shadow-ledger command with other hooks, (2) the settings file must
 # round-trip byte-for-byte through its fixed 2-space serializer, or `--off`
 # could not restore it. Both guards are correct; the bug was that the TRACKED
@@ -38,10 +38,10 @@ fail=0
 # public-mirror case the message names); fail, naming the real cause, when it
 # is tracked but the working copy is missing.
 #
-# is_settings_tracked <repo-dir> <path> — prints tracked|untracked|unknown.
+# is_settings_tracked <repo-dir> <path>: prints tracked|untracked|unknown.
 # NOTE: this function's body is intentionally duplicated verbatim in
 # scripts/codex/test-codex-hook-parity.sh (same defect, same fix
-# codex-1/codex-2) rather than shared from a lib — the brief fixing this
+# codex-1/codex-2) rather than shared from a lib. The brief fixing this
 # restricted edits to those two files only, so extracting a shared
 # scripts/lib/*.sh would itself be a scope violation. Keep the two bodies
 # byte-identical if either ever needs to change.
@@ -49,7 +49,7 @@ fail=0
 # `git ls-files --error-unmatch` alone reads the INDEX, not HEAD
 # codex-1): a STAGED deletion (`git rm --cached`) removes the index entry
 # while HEAD still carries it, so an index-only probe misreports a genuinely
-# tracked, merely-mid-deletion file as untracked — the exact hole this probe
+# tracked, merely-mid-deletion file as untracked: the exact hole this probe
 # exists to close, moved one step along rather than closed (proven in a
 # scratch repo: commit the file, `git rm --cached` it, `ls-files
 # --error-unmatch` -> rc=1 while `git cat-file -e HEAD:<path>` -> rc=0). A
@@ -57,26 +57,26 @@ fail=0
 # in the index, absent from HEAD, and still legitimately tracked. So
 # "tracked" means present in EITHER the index OR HEAD.
 #
-# HEAD may not exist yet (a fresh repo with no commits) — `git rev-parse
+# HEAD may not exist yet (a fresh repo with no commits). `git rev-parse
 # --verify -q HEAD` failing there is a LOOKUP FAILURE for the HEAD probe, not
 # evidence the path is absent from HEAD, so it must never be read as "not in
 # HEAD"; only the index answer counts while HEAD is unborn.
 #
 # Callers must not conflate "prints untracked" with "the probe could not run":
 # only a probe that genuinely ran and confirmed absence on both index and HEAD
-# may report "untracked" — an unresolved git/work-tree precondition prints
+# may report "untracked". An unresolved git/work-tree precondition prints
 # "unknown" instead, and the caller (below) treats unknown the same as tracked
 # (fail-closed toward FAIL, never toward SKIP).
 #
 # second pass: every probe above
 # was written as `if git ...; then yes; else no; fi`, which collapsed "git
 # ran and confirmed absence" and "git failed to run at all" into the same
-# `no`/`unborn` branch — a corrupted index or an unreadable ref would then
+# `no`/`unborn` branch. A corrupted index or an unreadable ref would then
 # read as confirmed absence, and the elif below would call that "untracked".
 # Fixed by keying off the exit STATUS: `git ls-files --error-unmatch` and
 # `git rev-parse --verify -q ...` both use rc=1 for a genuine "not found" and
 # any OTHER nonzero for a real lookup failure (corrupt index, unreadable
-# object, garbage ref) — measured directly, not assumed: a truncated
+# object, garbage ref). Measured directly, not assumed: a truncated
 # `.git/index` gives ls-files rc=128; a `.git/HEAD` overwritten with garbage
 # gives rev-parse rc=128 even under `-q`; a corrupted tree/commit object
 # reached via `HEAD:<path>` gives rc=128. Only rc=1 maps to a genuine `no`
@@ -85,7 +85,7 @@ fail=0
 #
 # One deliberate departure from the literal instrument this fix was scoped
 # to: `git cat-file -e HEAD:<path>` does NOT give rc=1 for "not present" on
-# this git (2.55.0) — measured directly: `cat-file -e HEAD:<nonexistent>`
+# this git (2.55.0). Measured directly: `cat-file -e HEAD:<nonexistent>`
 # gives rc=128 ("fatal: path '<path>' does not exist in '<ref>'"), the SAME
 # rc a corrupted tree object gives. rc alone cannot discriminate genuine
 # absence from corruption through cat-file, so mapping rc==1 to `no` there
@@ -94,7 +94,7 @@ fail=0
 # "HEAD:<path>"` is the equivalent existence check that DOES carry the
 # needed rc=1-for-absence / rc=128-for-corruption split (measured: absent ->
 # rc=1, corrupt tree -> rc=128, corrupt commit object reached via HEAD:path
-# -> rc=128) — same question, an instrument that actually answers it.
+# -> rc=128). Same question, an instrument that actually answers it.
 is_settings_tracked() {
   local dir="$1" path="$2" in_index in_head rc
   command -v git >/dev/null 2>&1 || { echo unknown; return; }
@@ -137,12 +137,12 @@ if [ ! -f "$settings" ]; then
   exit 1
 fi
 
-# Snapshot the tracked file BEFORE any trust invocation — the final
+# Snapshot the tracked file BEFORE any trust invocation. The final
 # never-written check compares against this.
 cp "$settings" "$work/original.json"
 # Now that a snapshot exists, upgrade the cleanup trap: restore the tracked
 # file first if anything left it dirty (including a mid-suite crash), THEN
-# remove the scratch dir — so the checkout is never left modified.
+# remove the scratch dir, so the checkout is never left modified.
 trap 'cmp -s "$settings" "$work/original.json" || cp "$work/original.json" "$settings"; rm -rf "$work"' EXIT
 
 # The recorder's capability handshake and any hook it might run must never
@@ -152,14 +152,14 @@ HIMMEL_TRUST_LEDGER_DIR="$(winpath "$work/ledger")"
 export HIMMEL_TRUST_LEDGER_DIR
 
 # Every real bin.js `trust` invocation below pins its own cache dir + luna
-# config path — test-suite-hermeticity.sh's check_dir() flags any bin.js
+# config path. test-suite-hermeticity.sh's check_dir() flags any bin.js
 # spawn missing HIMMELCTL_CACHE_DIR/HIMMEL_LUNA_CONFIG_PATH as a leak onto the
 # operator's real home (Windows: os.homedir() follows USERPROFILE, not HOME,
 # so this is not optional cosmetics).
 cache="$work/himmelctl-cache"
 mkdir -p "$cache"
 
-# 1. Precondition A — no mixed entry. Mirrors the guard: an entry carrying a
+# 1. Precondition A: no mixed entry. Mirrors the guard: an entry carrying a
 #    shadow-ledger command must carry ONLY that command.
 # shellcheck disable=SC2016
 mixed=$("$node_bin" -e '
@@ -179,7 +179,7 @@ if [ -n "$mixed" ]; then
   fail=1
 fi
 
-# 2. Precondition B — byte-stable round trip through the wiring script's own
+# 2. Precondition B: byte-stable round trip through the wiring script's own
 #    serializer (JSON.stringify(_, null, 2) + "\n").
 # shellcheck disable=SC2016
 if ! "$node_bin" -e '
@@ -210,12 +210,12 @@ cmp -s "$settings" "$work/original.json" \
   || { echo "FAIL - trust status modified the tracked settings.json (--check must write nothing); restored from snapshot"; cp "$work/original.json" "$settings"; fail=1; }
 
 # 4. The shipped settings.json ships WIRED, so the script's reversibility
-#    claim — `on` then `off` restores the file byte-for-byte — is a claim
+#    claim (`on` then `off` restores the file byte-for-byte) is a claim
 #    about an UNWIRED baseline, not about the wired file as tracked. Produce
 #    that baseline with a first `off`, then prove `on -> off` round-trips it.
 #    `off -> on` from a WIRED file is NOT byte-stable by design (an emptied
-#    event key is deleted, and `install()` re-adds it — and re-appends any
-#    array entry it repairs — at the END rather than in its original
+#    event key is deleted, and `install()` re-adds it (and re-appends any
+#    array entry it repairs) at the END rather than in its original
 #    position), so that direction is deliberately not asserted here. The copy
 #    carries the recorder so assertRecorderPresent/Capable pass; the tracked
 #    checkout is never written.

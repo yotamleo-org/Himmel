@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# test-update-autostash.sh — HIMMEL_UPDATE_AUTOSTASH opt-in for himmel-update.sh
+# test-update-autostash.sh: HIMMEL_UPDATE_AUTOSTASH opt-in for himmel-update.sh
 #
 # himmel-update.sh resolves its own repo root via BASH_SOURCE/.. and cd's there,
 # so we test it by COPYING it (+ the libs it sources) into throwaway mock clones
 # and either running it as a subprocess (T1/T1b, the top-level dirty pre-check)
 # or sourcing it via the HIMMEL_UPDATE_LIB=1 seam and calling update_pull
-# directly (T2/T3, the autostash pull mechanics) — the same two patterns
+# directly (T2/T3, the autostash pull mechanics): the same two patterns
 # scripts/test-himmel-update.sh already uses. Hermetic: local bare upstreams
 # only, no network.
 #
@@ -28,11 +28,11 @@
 
 set -euo pipefail
 
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
 # `set -o pipefail`: grep -q exits the instant it matches, the producer
 # then takes SIGPIPE writing the remainder, and pipefail reports the
-# PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
+# PIPELINE as failed, so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
 # so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
@@ -103,7 +103,7 @@ build_scenario() {
     git init --bare --quiet -b main "$bare"
 
     # -c core.autocrlf=false at checkout time: a global autocrlf=true would smudge
-    # files to CRLF on clone, and a per-repo config set afterward comes too late —
+    # files to CRLF on clone, and a per-repo config set afterward comes too late.
     # git would then see every tracked file as CRLF-vs-LF "modified" and a
     # `commit -am` would spuriously re-commit them, producing bogus autostash
     # conflicts. Pin it at init/clone so the mocks are line-ending-neutral.
@@ -168,7 +168,7 @@ run_update_pull() {   # <clone> ; caller sets HIMMEL_UPDATE_AUTOSTASH in env
 }
 
 # --selftest-hermetic builds one scenario and replays it through
-# run_update_pull, printing the result line — used only by the guard case
+# run_update_pull, printing the result line, used only by the guard case
 # below, recursing into THIS file once with a controlled ambient env, never
 # the full suite.
 if [ "${1:-}" = "--selftest-hermetic" ]; then
@@ -187,7 +187,7 @@ fi
 
 echo "== suite hermeticity =="
 # A station's real install-profile.json (channel: stable) must not leak into
-# these plain-pull scenarios via an inherited HIMMELCTL_CACHE_DIR — this
+# these plain-pull scenarios via an inherited HIMMELCTL_CACHE_DIR. This
 # recurses with a station-like profile ambient exactly the way a caller's
 # shell would carry it, before this file's own preamble override (above) runs.
 STATION_DIR="$TMP/station-profile"

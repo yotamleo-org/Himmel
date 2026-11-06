@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-standalone-bundle.sh — hermetic coverage for S13's bundle
+# test-standalone-bundle.sh: hermetic coverage for S13's bundle
 # writer, launcher fallback and standalone.js (plan
 # install-provenance-plan.md S13, design
 # standalone-undo.md §3, §6, §7). Drives the REAL bin.js through
@@ -97,7 +97,7 @@ row_count=$(grep -c '"manifest_row":"standalone-uninstaller"' "$td/prov/provenan
 [ "$row_count" -eq 1 ] || fail "caseA: expected exactly one standalone-uninstaller ledger row, got $row_count"
 echo "ok: caseA writes exactly one tree ledger row for this session"
 
-# ── B: RED (then fixed) — once the clone is gone, the launcher falls back ───
+# ── B: RED (then fixed). Once the clone is gone, the launcher falls back ───
 # ── to the bundle's standalone.js: `uninstall --dry-run` works, `status` ────
 # ── reports the checkout as not present. ─────────────────────────────────────
 rm -rf "$td/himmel"

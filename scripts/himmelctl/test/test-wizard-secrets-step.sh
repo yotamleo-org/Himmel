@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-secrets-step.sh — the install wizard collects secrets with a
+# test-wizard-secrets-step.sh: the install wizard collects secrets with a
 # masked prompt, keep/set/skip per key, and records STATUS ONLY in the answers.
 #
 # Each case runs the real `himmelctl install` on a PTY (pty-drive.py), so the
@@ -39,7 +39,7 @@ scrub=(-u CLAUDECODE); for v in $(compgen -e | grep -E "^(CLAUDE_CODE_|JIRA_|TEL
 mode_of() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 sha_of() { sha256sum "$1" | cut -d' ' -f1; }
 
-# run_case <name> <rules-json> [extra env KEY=VAL...] — fresh sandbox per case.
+# run_case <name> <rules-json> [extra env KEY=VAL...]: fresh sandbox per case.
 # Leaves $c (case dir), $c/transcript, $c/himmel (HIMMELCTL_REPO_ROOT), $c/proj.
 run_case() {
   local name="$1" rules="$2"; shift 2

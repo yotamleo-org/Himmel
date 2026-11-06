@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-ensure-scope.sh — `himmelctl ensure --items <id>` runs ONLY that
+# test-wizard-ensure-scope.sh: `himmelctl ensure --items <id>` runs ONLY that
 # item. himmel-update calls `ensure --items pre-commit-hooks
 # --yes`; that used to run a full adopt, persist every other recorded-profile
 # item into the target's state, and fail on an unrelated step.
@@ -71,7 +71,7 @@ cat > "$cache/install-profile.json" <<'JSON'
 {"role":"adopter","tier":"standard","scope":"project","vault":{"mode":"none","path":""},"handover":{"mode":"inline","path":""},"pluginSet":"lean","lanes":[],"lanesMeaningful":true,"alwaysOn":false}
 JSON
 
-# fresh_target <name> — a target dir whose recorded state has pre-commit-hooks
+# fresh_target <name>: a target dir whose recorded state has pre-commit-hooks
 # on and other-item recorded-but-off (what the operator's station looked like).
 fresh_target() {
   local t="$work/$1"; mkdir -p "$t"

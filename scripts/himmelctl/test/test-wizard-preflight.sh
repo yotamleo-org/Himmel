@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-preflight.sh — hermetic tests for the himmelctl install wizard's
+# test-wizard-preflight.sh: hermetic tests for the himmelctl install wizard's
 # preflight-first gate. Mirrors scripts/test-adopt.sh
 # conventions: a stub PATH built via scripts/lib/hermetic-path.sh, a fake HOME,
 # node launched by absolute path so the wizard's tool detection sees ONLY the
@@ -23,11 +23,11 @@
 
 set -euo pipefail
 
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
 # `set -o pipefail`: grep -q exits the instant it matches, the producer
 # then takes SIGPIPE writing the remainder, and pipefail reports the
-# PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
+# PIPELINE as failed, so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
 # so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }

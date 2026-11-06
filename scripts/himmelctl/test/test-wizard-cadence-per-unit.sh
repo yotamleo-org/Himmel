@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# test-wizard-cadence-per-unit.sh — hermetic tests for (per-
+# test-wizard-cadence-per-unit.sh: hermetic tests for (per-
 # cadence wizard selection). Covers the NEW behavior that sits on top of
 # test-wizard-luna-sections.sh's existing pipeline-only cadence coverage
 # (which continues to prove the legacy `luna.cadenceEnabled` fallback, byte-
-# stable round-trips, and disarm-consent wiring — none of that is repeated
+# stable round-trips, and disarm-consent wiring. None of that is repeated
 # here):
 #
-#   a. a top-level `cadences` section (no `luna` section at all — the
+#   a. a top-level `cadences` section (no `luna` section at all: the
 #      operator-capture shape, docs/setup/profiles/operator.install-
 #      profile.json) arms qmd/graphmap via their OWN scripts with the
 #      documented minimal argv, and does NOT spawn pipeline-cadence.sh when
@@ -15,7 +15,7 @@
 #      boolean when both are present on the same profile: cadenceEnabled=true
 #      + cadences.pipeline='off' must NOT arm pipeline.
 #   e. the cadences question is PER-ROW gated, not whole-question vault
-#      gated — offeredCadenceRows() filters each row by its own `requires`,
+#      gated. offeredCadenceRows() filters each row by its own `requires`,
 #      so vault=none still asks it, offering only the requires:'none' rows;
 #      declining them records every offered row off, with the vault- and
 #      env-requiring rows genuinely absent.
@@ -177,7 +177,7 @@ echo "ok: case a — a cadences-only profile (no luna section) arms qmd + graphm
 
 # ═══════════════════════════════════════════════════════════════════════════
 # case b: `cadences` is AUTHORITATIVE over the legacy luna.cadenceEnabled
-# boolean when both are present — cadenceEnabled=true + cadences.pipeline=
+# boolean when both are present: cadenceEnabled=true + cadences.pipeline=
 # 'off' must NOT arm pipeline.
 # ═══════════════════════════════════════════════════════════════════════════
 

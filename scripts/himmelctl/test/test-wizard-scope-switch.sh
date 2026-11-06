@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# test-wizard-scope-switch.sh — hermetic tests for the himmelctl `scope`
+# test-wizard-scope-switch.sh: hermetic tests for the himmelctl `scope`
 # subcommand (scope-switch MVP): `scope get` / `scope status`
 # read the current scope; `scope set <project|user>` re-projects the install
 # to the target scope (wires the target scope, UNWIRES the old scope, refuses
 # to leave any item wired in BOTH scopes). Drives bin.js end-to-end via a
 # HIMMELCTL_REPO_ROOT fixture carrying a small manifest + STUB wire/unwire
 # primitives (never the real wire-*.sh) that set/del a statusLine.command key
-# the settings-key probe reads — so a single wire item genuinely RELOCATES
+# the settings-key probe reads, so a single wire item genuinely RELOCATES
 # its settings.json by scope (project: target/.claude, user: $HOME/.claude).
 # Mirrors sibling test-wizard-*.sh conventions (fake HOME +
 # HIMMELCTL_CACHE_DIR/HIMMELCTL_REPO_ROOT, node by absolute path, winpath for
@@ -16,12 +16,12 @@
 #   a. project->user switch: the OLD (project) scope's wiring is GONE and the
 #      NEW (user) scope's is PRESENT.
 #   b. state.json is re-keyed to the target scope (the old project key is
-#      DELETED, the user key is present — so no item is enabled in both
+#      DELETED, the user key is present, so no item is enabled in both
 #      scopes); the recorded scope (install-profile cache) is flipped to
 #      'user' and `scope get` returns 'user'.
 #   c. FAIL-CLOSED: a full-offboard-only item that exists in BOTH scopes with
 #      NO runnable unwire descriptor, present in the old scope, REFUSES the
-#      whole switch (exit 3, zero mutation — distinct from a real
+#      whole switch (exit 3, zero mutation, distinct from a real
 #      mid-switch error) and is named; the UNWIREABLE wire item is NOT named
 #      (correctly excluded).
 #   c2. the fail-closed pre-flight runs BEFORE the --dry-run check, so
@@ -33,11 +33,11 @@
 
 set -euo pipefail
 
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
 # `set -o pipefail`: grep -q exits the instant it matches, the producer
 # then takes SIGPIPE writing the remainder, and pipefail reports the
-# PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
+# PIPELINE as failed, so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
 # so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
@@ -57,9 +57,9 @@ work=$(mktemp -d)
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
-# snapshot_dir <dir> — sorted sha256 lines, one per file under <dir>. The
+# snapshot_dir <dir>: sorted sha256 lines, one per file under <dir>. The
 # zero-mutation assertions (cases c/d/e) run BEFORE any primitive dispatch,
-# so no .tmp residue is left behind — a file-only snapshot is sufficient.
+# so no .tmp residue is left behind: a file-only snapshot is sufficient.
 # sha256 of a file, portably: sha256sum (Linux/Git-Bash) or `shasum -a 256`
 # (macOS, where sha256sum is not installed by default).
 _sha256() {
@@ -67,7 +67,7 @@ _sha256() {
 }
 snapshot_dir() {
   # Include DIRECTORY entries too (as bare `dir <path>` lines), not just file
-  # hashes — otherwise creating an empty dir (e.g. $HOME/.claude before a
+  # hashes: otherwise creating an empty dir (e.g. $HOME/.claude before a
   # refusal) would slip past the zero-mutation assertions (CR).
   ( cd "$1" && find . | LC_ALL=C sort | while IFS= read -r p; do
       if [ -d "$p" ]; then printf 'dir %s\n' "$p"; else _sha256 "$p"; fi
@@ -75,7 +75,7 @@ snapshot_dir() {
 }
 
 # write_cache <path> <role> <scope> <vault-mode> <vault-path> <handover-mode>
-#             <handover-path> <plugin-set> — same minimal valid Draft-A
+#             <handover-path> <plugin-set>: same minimal valid Draft-A
 #             profile shape every sibling suite's write_cache writes.
 write_cache() {
   cat > "$1" <<JSON
@@ -86,7 +86,7 @@ JSON
 # ── shared clean-switch fixture: ONE unwireable wire item (statusline) that
 # relocates its settings.json by scope. The stub wire/unwire primitives
 # set/del the statusLine.command key the settings-key probe reads (mirrors
-# the real wire-statusline.sh / unwire-statusline.sh jq+dirname+mv shape —
+# the real wire-statusline.sh / unwire-statusline.sh jq+dirname+mv shape:
 # Git Bash dirname handles the Windows backslash settings path node passes). ─
 repo="$work/repo"; mkdir -p "$repo/scripts/install" "$repo/scripts/lib"
 cat > "$repo/scripts/install/manifest.json" <<'JSON'
@@ -176,7 +176,7 @@ grepq "$switchOut" -F "scope switched 'project' -> 'user'" \
   || fail "case a: user settings statusLine.command should be 'himmel' (wired) after the switch (got: $(cat "$home/.claude/settings.json"))"
 echo "ok: case a — project->user switch unwires the old scope and wires the new"
 # (b) state.json re-keyed: the project (cwd) key is DELETED, the 'user' key is
-# present — so no item is enabled in both scopes (only one target exists).
+# present, so no item is enabled in both scopes (only one target exists).
 [ "$(jq '.targets | has("user")' "$cache/state.json")" = "true" ] \
   || fail "case b: state.json should have the 'user' target after the switch (got: $(jq -c '.targets|keys' "$cache/state.json"))"
 [ "$(jq '.targets | length' "$cache/state.json")" = "1" ] \
@@ -233,14 +233,14 @@ cacheC="$work/cacheC"; mkdir -p "$cacheC"
 homeC="$work/homeC"; mkdir -p "$homeC"
 write_cache "$cacheC/install-profile.json" adopter project none "" inline "" lean
 # Seed BOTH wire-item (statusLine.command) AND stuck-item (enabledPlugins) as
-# present in the PROJECT scope directly (no ensure run — keeps the zero-
+# present in the PROJECT scope directly (no ensure run: keeps the zero-
 # mutation snapshot tight). stuck-item is the unhandleable blocker (full-
 # offboard-only, no unwire); wire-item is the unwireable pair that must be
 # EXCLUDED from the fail-closed list.
 printf '{"statusLine":{"command":"himmel"},"enabledPlugins":{"foo":"true"}}' > "$targetC/.claude/settings.json"
 # A real project install records BOTH settings.json wiring AND a state.json
 # target entry keyed by the project path. The CWD guard (CR bin.js:59) requires
-# that entry — without it `scope set` fail-closes on the directory check before
+# that entry: without it `scope set` fail-closes on the directory check before
 # it can reach the item-level fail-closed this case exercises. Seed it keyed by
 # the resolved cwd exactly as bin.js computes it (path.resolve(process.cwd())).
 ( cd "$targetC" && HIMMELCTL_CACHE_DIR="$(winpath "$cacheC")" "$node_bin" -e '
@@ -256,7 +256,7 @@ outC=$( cd "$targetC" && HIMMELCTL_REPO_ROOT="$(winpath "$repoC")" HIMMELCTL_CAC
   "$node_bin" "$wizard" scope set user --yes 2>&1 </dev/null ); rcC=$?
 set -e
 # a fail-closed refusal (zero mutation) exits 3, distinct from a
-# real mid-switch error (1) — this fixture never mutates, so it always hits
+# real mid-switch error (1): this fixture never mutates, so it always hits
 # the refusal path added by that fix.
 [ "$rcC" -eq 3 ] || fail "case c: fail-closed refusal should exit 3 (got rc=$rcC): $outC"
 grepq "$outC" -F 'stuck-item' || fail "case c: the refusal should name stuck-item (got: $outC)"
@@ -265,7 +265,7 @@ if grepq "$outC" -F 'wire-item'; then
 fi
 grepq "$outC" -F 'per-item unwire extension' || fail "case c: the refusal should name the per-item unwire extension (got: $outC)"
 grepq "$outC" -i 'both scopes' || fail "case c: the refusal should explain the both-scopes risk (got: $outC)"
-# zero mutation: fail-closed returns BEFORE any state save or dispatch — the
+# zero mutation: fail-closed returns BEFORE any state save or dispatch. The
 # seeded project state entry must survive UN-re-keyed (no 'user' target added).
 [ "$(jq '.targets | has("user")' "$cacheC/state.json")" = "false" ] \
   || fail "case c: state.json must NOT be re-keyed to user on a fail-closed refusal (got: $(jq -c '.targets|keys' "$cacheC/state.json"))"
@@ -360,10 +360,10 @@ snapEAfter=$(snapshot_dir "$work")
 [ "$snapEBefore" = "$snapEAfter" ] || fail "case e: a refused non-interactive switch should make ZERO mutations"
 echo "ok: case e — non-interactive scope switch without --yes refuses (exit 2), zero mutation"
 
-# ── case g: CWD guard — `scope set` from the WRONG directory fails closed ────
+# ── case g: CWD guard, `scope set` from the WRONG directory fails closed ────
 # (CR bin.js:59) A project install is recorded at its project path. Running
 # `scope set` from any OTHER directory must refuse (exit 2) rather than treat
-# the wrong cwd as the old install — which would delete the wrong state key and
+# the wrong cwd as the old install, which would delete the wrong state key and
 # never unwire the real project, leaving BOTH scopes wired.
 targetG="$work/targetG"; mkdir -p "$targetG"
 wrongG="$work/wrongG";  mkdir -p "$wrongG"

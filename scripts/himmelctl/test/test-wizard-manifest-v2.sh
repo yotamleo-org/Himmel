@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# test-wizard-manifest-v2.sh — hermetic tests for scripts/install/manifest-lint.mjs's
+# test-wizard-manifest-v2.sh: hermetic tests for scripts/install/manifest-lint.mjs's
 # schema-v2 extension: optional install/unwire/removable item
 # keys, INSTALL_TYPES closed vocab + shape checks, the removable<=>unwire
 # biconditional, scopes/profiles value-enums, and a deps[] DAG check (dep-cycle
 # detector). Mirrors sibling test-wizard-*.sh conventions but needs no node
-# process of its own beyond the lint script (ESM, run directly by node) — no
+# process of its own beyond the lint script (ESM, run directly by node), no
 # HOME/HIMMELCTL_CACHE_DIR fixture needed, since manifest-lint.mjs is a pure
 # fs-read validator with no cache/state surface.
 #
@@ -18,7 +18,7 @@
 #   g. a non-array 'scopes' (a bare string, not [...]) -> exit 1 with a
 #      "'scopes' must be an array" message, not a silently-skipped enum check.
 #   h. a non-string deps[] entry (a number) -> exit 1 with a clear per-item
-#      message (not a crash/stack trace) — the DFS cycle detector must
+#      message (not a crash/stack trace). The DFS cycle detector must
 #      reject it before building the graph, not choke on it.
 #   i. install.type:"config" with BOTH 'key' and 'keys' -> exit 1
 #      (the same key XOR keys shape probe type settings-key already
@@ -34,10 +34,10 @@
 #      (the real jira-env-keys shape).
 #   m. install:{type:"wire",target:"statusline"} + unwire:
 #      {type:"wire",target:"pretooluse-hooks"} (mismatched targets) -> exit
-#      1, naming both targets — the two independent shape checks alone
+#      1, naming both targets. The two independent shape checks alone
 #      would each pass this incoherent pairing.
 #   n. install/unwire both target:"statusline" (matching) ->
-#      accepted — the real wiring-statusline/wiring-pretooluse items use
+#      accepted: the real wiring-statusline/wiring-pretooluse items use
 #      this exact shape (case f's real-manifest check already covers them
 #      by content; this fixture pins the cross-check itself).
 #   o. the REVERSE half of the removable<=>unwire biconditional
@@ -48,11 +48,11 @@
 
 set -euo pipefail
 
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
 # `set -o pipefail`: grep -q exits the instant it matches, the producer
 # then takes SIGPIPE writing the remainder, and pipefail reports the
-# PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
+# PIPELINE as failed, so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
 # so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
@@ -116,10 +116,10 @@ run_lint() {
   "$node_bin" "$lint_w" "$(winpath "$1")"
 }
 
-# mutate_base <out-path> <js-mutation-expr-on-m> — load the base fixture,
+# mutate_base <out-path> <js-mutation-expr-on-m>: load the base fixture,
 # apply a JS mutation to `m`, write it to <out-path>. the base/out
 # paths are passed as process.argv args (node -e "script" argv1 argv2),
-# never interpolated into the JS source string — a checkout path carrying
+# never interpolated into the JS source string. A checkout path carrying
 # an apostrophe or space would otherwise break the quoting.
 mutate_base() {
   local out="$1" mutation="$2"
@@ -304,12 +304,12 @@ echo "ok: case n — matching install/unwire wire targets are accepted"
 
 # ── case o: the REVERSE half of the
 # removable<=>unwire biconditional case b pins. Case b only asserts
-# removable:'per-item' WITHOUT unwire exits 1 — a one-directional check
+# removable:'per-item' WITHOUT unwire exits 1. A one-directional check
 # never catches the converse: an `unwire` someone added and forgot to mark
 # removable:'per-item' (a removable item the disable planner could never
 # pick up, since towardDisabled keys on item.removable === 'per-item'). Both
 # shapes here lint-exit 1 AND the message must NAME the biconditional
-# relationship, not just the item — so a reader (or a grep) can tell this is
+# relationship, not just the item, so a reader (or a grep) can tell this is
 # the removable<=>unwire rule firing, not some other violation.
 # part 1: unwire present, `removable` MISSING entirely ───────────────────────
 caseO_missing="$work/case-o-missing.json"
@@ -320,8 +320,8 @@ set -e
 [ "$rcO1" -eq 1 ] || fail "case o: unwire present with NO removable should exit 1 (got rc=$rcO1): $errO1"
 grepq "$errO1" -F "removable === 'per-item' iff 'unwire' is present" \
   || fail "case o: error should identify the removable<=>unwire relationship (got: $errO1)"
-# hasUnwire=true distinguishes THIS direction from case b's (hasUnwire=false) —
-# proves the message carries the converse half, not just the one case b pins.
+# hasUnwire=true distinguishes THIS direction from case b's (hasUnwire=false).
+# Proves the message carries the converse half, not just the one case b pins.
 grepq "$errO1" -F "hasUnwire=true" \
   || fail "case o: error should report hasUnwire=true (the unwire-present direction, distinct from case b) (got: $errO1)"
 echo "ok: case o (part 1) — unwire present with no removable exits 1, naming the biconditional"
@@ -353,7 +353,7 @@ grepq "$errP" -F "offboard 'bogus' not in [unwire, advise, keep]" \
   || fail "case p: error should name the bad offboard value and the closed vocabulary (got: $errP)"
 echo "ok: case p (part 1) — offboard:'bogus' (not in the closed vocabulary) exits 1"
 
-# part 2: a valid offboard value ('advise') lints clean — pins the positive
+# part 2: a valid offboard value ('advise') lints clean, pins the positive
 # path so case p isn't just "any offboard value fails". ────────────────────
 caseP_valid="$work/case-p-valid.json"
 mutate_base "$caseP_valid" "m.items[0].offboard = 'advise';"
@@ -363,7 +363,7 @@ set -e
 [ "$rcP2" -eq 0 ] || fail "case p: offboard:'advise' (a valid value) should lint clean (got rc=$rcP2): $errP2"
 echo "ok: case p (part 2) — offboard:'advise' (a valid closed-vocabulary value) is accepted"
 
-# ── case q: probe type 'settings-key' field 'expect' — a
+# ── case q: probe type 'settings-key' field 'expect', a
 # non-boolean value exits 1, 'expect' paired with 'keys' (not 'key') exits 1,
 # and a valid boolean 'expect' paired with 'key' lints clean. ─────────────
 caseQ_type="$work/case-q-type.json"
@@ -464,7 +464,7 @@ set -e
 echo "ok: case w — provenance is shape-checked wherever it appears"
 
 # ── case x: probe type 'settings-key' field 'verifyHudConfig'
-# shape — non-boolean -> exit 1; paired with 'keys' -> exit 1 (same key XOR
+# shape: non-boolean -> exit 1; paired with 'keys' -> exit 1 (same key XOR
 # keys constraint as verifyPluginSet/verifyScript) ─────────────────────────
 caseX_bool="$work/case-x-bool.json"
 mutate_base "$caseX_bool" "m.items[0].probe = { type: 'settings-key', file: '.claude/settings.json', key: 'A', verifyHudConfig: 'yes' };"

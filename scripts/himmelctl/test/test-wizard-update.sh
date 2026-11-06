@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-update.sh — hermetic tests for the himmelctl `update` subcommand
+# test-wizard-update.sh: hermetic tests for the himmelctl `update` subcommand
 # Mirrors test-wizard-uninstall.sh's conventions: a stub PATH
 # via scripts/lib/hermetic-path.sh, a fake HOME, node launched by absolute
 # path, HIMMELCTL_REPO_ROOT pointed at a throwaway fixture carrying a no-op
@@ -10,9 +10,9 @@
 #   A. --dry-run -> prints the derived plan (bash .../scripts/himmel-update.sh)
 #      without executing anything (the stub's call log stays absent).
 #   B. no --dry-run -> the derived command IS invoked verbatim, no confirm
-#      prompt (unlike uninstall — update has none, matching /himmel-update's
+#      prompt (unlike uninstall: update has none, matching /himmel-update's
 #      own established no-confirm behavior), its exit code propagates, and
-#      it is invoked with EXACTLY the expected args (none — deriveUpdateCommand
+#      it is invoked with EXACTLY the expected args (none: deriveUpdateCommand
 #      passes only [<bash>, script], nothing extra).
 #   C. a failing update propagates its exact (non-standard) exit code
 #      unchanged back through himmelctl, not just "any" non-zero.
@@ -21,17 +21,17 @@
 #   F. resolveBash() falls through to bare `bash` when HIMMELCTL_BASH is unset.
 #
 # Cases A–D pin HIMMELCTL_BASH=bash so they exercise the update WRAPPER
-# in isolation — argv[0] stays the bare 'bash' those assertions
+# in isolation: argv[0] stays the bare 'bash' those assertions
 # expect, independent of whichever bash resolveBash would pick on the host.
 # Case F drops the pin to exercise resolveBash()'s real resolution.
 
 set -euo pipefail
 
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
 # `set -o pipefail`: grep -q exits the instant it matches, the producer
 # then takes SIGPIPE writing the remainder, and pipefail reports the
-# PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
+# PIPELINE as failed, so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
 # so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
@@ -58,7 +58,7 @@ trap cleanup EXIT
 # prints the resolved binDir; the accept cases B/C write the launcher into it).
 # Without a pin, himmelctlBinDir() resolves to the operator's REAL ~/.local/bin
 # (os.homedir() can ignore HOME), so caseB has been
-# writing a launcher there on every suite run since the shim landed — and now
+# writing a launcher there on every suite run since the shim landed, and now
 # refuses (rc=1) on the unmarked pre-r2 file a prior run left behind. Isolate
 # binDir for the WHOLE suite, mirroring test-wizard-uninstall.sh's convention,
 # so no case ever touches the real bin dir. winpath'd so node resolves it.
@@ -82,10 +82,10 @@ build_path() {
   printf '%s:%s' "$_stub" "$_scrubbed"
 }
 
-# build_fixture <dir> <exit-code> — a throwaway HIMMELCTL_REPO_ROOT target: a
+# build_fixture <dir> <exit-code>: a throwaway HIMMELCTL_REPO_ROOT target: a
 # no-op scripts/himmel-update.sh stub logging its argv, exiting <exit-code>.
 # Args are recorded ONE PER LINE (not a "$*"-joined string) so an exact-args
-# assertion can't be fooled by word-splitting/quoting — each received arg is
+# assertion can't be fooled by word-splitting/quoting: each received arg is
 # its own line in update-args.log, with a leading "argc:" line so a call with
 # zero args is still distinguishable from the file simply not existing.
 build_fixture() {
@@ -135,7 +135,7 @@ grepq "$out" 'Proceed?' \
 [ -f "$fixtureB/update-calls.log" ] \
   || fail "caseB: expected himmel-update.sh to be invoked (out: $out)"
 # Exact-args check: deriveUpdateCommand (bin.js) derives ONLY ['bash', script]
-# — no extra argv — so the stub must have received zero args (argc:0, no
+# (no extra argv), so the stub must have received zero args (argc:0, no
 # further lines). A future regression that starts passing e.g. --yes or
 # --items would flip this from "argc:0" to a non-empty argc, catching drift
 # between bin.js's deriveUpdateCommand and this test's expectation.
@@ -146,7 +146,7 @@ echo "ok: caseB no --dry-run -> himmel-update.sh invoked verbatim with exact (ze
 
 # ── Case C: a failing update propagates its EXACT exit code ────────────────
 # A non-standard code (42, not 1) proves himmelctl forwards the real rc
-# rather than collapsing any failure to a generic 1 — 1 alone wouldn't catch
+# rather than collapsing any failure to a generic 1: 1 alone wouldn't catch
 # a wrapper that just does `return cmd_failed ? 1 : 0`.
 stubC="$work/caseC"; mkdir -p "$stubC"
 cC=$(build_path "$stubC" bash git jq python3 npm -- )
@@ -182,7 +182,7 @@ grepq "$out" -- '--items is not valid' \
 echo "ok: caseD update rejects options outside its whitelist (--items), stub never invoked"
 
 # ── Case F: resolveBash falls through to bare 'bash' ─
-# No HIMMELCTL_BASH — that seam would short-circuit the resolution under test.
+# No HIMMELCTL_BASH: that seam would short-circuit the resolution under test.
 stubF="$work/caseF"; mkdir -p "$stubF"
 cF=$(build_path "$stubF" bash git jq python3 npm -- )
 hF="$work/hF"; mkdir -p "$hF"
@@ -202,7 +202,7 @@ grepq "$derived_lineF" -E 'derived: bash .*himmel-update\.sh$' \
 echo "ok: caseF resolveBash -> bare 'bash' fallback"
 
 # ── Case G: a launcher write failure does not mask a ──
-# ── successful update — rc stays 0 with a LOUD warning. ──────────────────────
+# ── successful update, rc stays 0 with a LOUD warning. ──────────────────────
 # The PATH launcher is a best-effort rider on `update`: when the update engine
 # (himmel-update.sh) succeeds but applyHimmelctlPathShim() refuses/fails (here:
 # an unmarked third-party himmelctl.js collision at the loader dest), cmdUpdate

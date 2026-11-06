@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-derive.sh — hermetic tests for the himmelctl install wizard's
+# test-wizard-derive.sh: hermetic tests for the himmelctl install wizard's
 # derivation + shell-out, vault-profile mapping (T5a), and
 # handover/pluginSet consumption (T4.5). Mirrors test-wizard-preflight.sh /
 # test-wizard-questions.sh conventions: a stub PATH via
@@ -45,41 +45,41 @@
 #   N. STAMPED, interactive decline -> neither script invoked, no footer.
 #   Q. CR r1 FIX 5: STAMPED existing-vault honors handover.mode=external
 #      exactly like the main path (dry-run DRY-line preview + real handover
-#      write on accept) — previously dropped. A legacy pluginSet=full profile
+#      write on accept), previously dropped. A legacy pluginSet=full profile
 #      no-ops on this branch too.
 # Covers (T4.5):
 #   I. pluginSet=full is a legacy-accepted --from-profile value
 #      whose documented per-plugin ENABLE step no-ops exactly like lean now.
 #      RP: the retired-plugin-removal
 #      offer is NOT tied to that enable step and still fires for a legacy
-#      full profile, decoupled from it — a machine previously provisioned
+#      full profile, decoupled from it. A machine previously provisioned
 #      with full is exactly the population most likely to still carry the
 #      retired plugin.
 #   J. handover.mode=external writes HANDOVER_DIR + prints the one summary
 #      line (both in ~/.himmel/himmel.conf); handover.mode=inline is a no-op.
 #   K. --dry-run never mutates anything (combined legacy-full/external/
 #      default-template plan): no adopt.sh call, no claude call, no .env
-#      write, no plugin DRY line — only the HANDOVER_DIR preview line.
+#      write, no plugin DRY line, only the HANDOVER_DIR preview line.
 #   R. a FAILED config write aborts fail-closed BEFORE the core install
 #      shell-out (adopt.sh never invoked).
 #   R2. a FAILED external handover directory aborts before the core install
 #       even when the config directory is valid.
-#   S. there is no plugin-enable step left to fail — a legacy
+#   S. there is no plugin-enable step left to fail. A legacy
 #      pluginSet=full profile against a `claude` stub that always exits 1
 #      still succeeds (rc=0), because `claude` is never invoked at all.
 #   T. CR r5: --from-profile validates the FULL schema before ANY side
-#      effect — a truncated profile (missing scope), a bogus vault.mode,
+#      effect: a truncated profile (missing scope), a bogus vault.mode,
 #      and handover.mode=external without a path each hard-error rc=2
 #      naming the bad field, with ZERO shell-outs (no adopt.sh/setup.sh
 #      stub invoked). Valid replays (every other case here) stay green.
 
 set -euo pipefail
 
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
 # `set -o pipefail`: grep -q exits the instant it matches, the producer
 # then takes SIGPIPE writing the remainder, and pipefail reports the
-# PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
+# PIPELINE as failed, so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
 # so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
@@ -122,7 +122,7 @@ derive_cwd="$work/suite-cwd"; mkdir -p "$derive_cwd"; cd "$derive_cwd"
 # a non-dry-run install (the stamped accept cases, e.g. caseM)
 # reaches applyHimmelctlPathShim(), whose default binDir is the operator's REAL
 # ~/.local/bin. Isolate binDir for the WHOLE
-# suite so no case touches the real bin dir — mirrors test-wizard-update.sh /
+# suite so no case touches the real bin dir. Mirrors test-wizard-update.sh /
 # test-wizard-uninstall.sh. winpath'd so node resolves it cleanly.
 HIMMELCTL_BIN_DIR="$(winpath "$work/isolated-bin")"
 export HIMMELCTL_BIN_DIR
@@ -149,17 +149,17 @@ build_path() {
 }
 
 # write_cache <path> <role> <scope> <vault-mode> <vault-path> <handover-mode>
-#             <handover-path> <plugin-set> — a minimal valid Draft-A profile.
+#             <handover-path> <plugin-set>: a minimal valid Draft-A profile.
 write_cache() {
   cat > "$1" <<JSON
 {"role":"$2","tier":"standard","scope":"$3","vault":{"mode":"$4","path":"$5"},"handover":{"mode":"$6","path":"$7"},"pluginSet":"$8","lanes":[],"lanesMeaningful":true,"alwaysOn":false}
 JSON
 }
 
-# build_fixture <dir> — a throwaway HIMMELCTL_REPO_ROOT target: no-op
+# build_fixture <dir>: a throwaway HIMMELCTL_REPO_ROOT target: no-op
 # adopt.sh/setup.sh/wire-luna-vault.sh/luna-upgrade-all.sh stubs
 # (each logs its argv to <dir>/*-calls.log) plus a real copy of
-# scripts/handover/set-handover-dir.sh (self-contained — no further sourcing —
+# scripts/handover/set-handover-dir.sh (self-contained, no further sourcing,
 # so the T4.5 handover-write case exercises the actual production script
 # against a fixture path, not a reimplementation). The luna-upgrade-all.sh
 # stub also echoes a BACKUP line (mirrors cmd_apply's real output) so the T5b
@@ -201,14 +201,14 @@ STUB
   chmod +x "$_d/scripts/luna-upgrade-all.sh"
 }
 
-# stamp_vault <dir> — write a STAMPED .vault-template.json (the same signal
+# stamp_vault <dir>: write a STAMPED .vault-template.json (the same signal
 # scripts/luna-upgrade-all.sh's classify_vault() treats as "luna-family").
 stamp_vault() {
   mkdir -p "$1"
   printf '{"template":"luna-second-brain"}' > "$1/.vault-template.json"
 }
 
-# ── Case A: flag-assertion guard — script-flag drift ───────────────────────
+# ── Case A: flag-assertion guard, script-flag drift ───────────────────────
 adopt_help=$(bash "$repo_root/scripts/adopt.sh" --help 2>&1)
 setup_help=$(bash "$repo_root/scripts/setup.sh" --help 2>&1)
 for f in '--profile' '--scope' '--luna-target'; do
@@ -217,7 +217,7 @@ for f in '--profile' '--scope' '--luna-target'; do
 done
 grepq "$setup_help" 'Usage' \
   || fail "flag-assertion: setup.sh --help did not produce a usage line"
-# T5b: wire-luna-vault.sh takes 2 positional args (settings, vault) — no
+# T5b: wire-luna-vault.sh takes 2 positional args (settings, vault). No
 # --help support, so its own usage line (printed on arg-count mismatch)
 # is the script-drift signal.
 wire_usage=$(bash "$repo_root/scripts/lib/wire-luna-vault.sh" 2>&1 || true)
@@ -358,7 +358,7 @@ out=$(PATH="$cL" HOME="$hL" USERPROFILE="$(winpath "$hL")" HIMMELCTL_CACHE_DIR="
 set -e
 [ "$rc" -eq 0 ] || fail "caseL: stamped dry-run should exit 0 (got rc=$rc): $out"
 # vault.mode=existing was a parallel re-implementation of the
-# main install path that never reached deriveCommand()/adopt.sh at all — the
+# main install path that never reached deriveCommand()/adopt.sh at all. The
 # derived plan carried ONLY the wire/apply pair. adopt.sh must now derive
 # exactly like every other vault mode (profile=core: existing never implies
 # default-template's --luna-target), with wire/apply layered on top as an
@@ -390,7 +390,7 @@ grepq "$out" -- '--force-unstamped' \
 grep -q -- '--profile core --scope user --dry-run' "$fixtureL/adopt-calls.log" \
   || fail "caseL: adopt.sh should have been called with --profile core --scope user --dry-run (got: $(cat "$fixtureL/adopt-calls.log"))"
 # the epilogue must name the command that actually installs
-# himmel (adopt.sh) — not luna-upgrade-all.sh's apply command, which only
+# himmel (adopt.sh), not luna-upgrade-all.sh's apply command, which only
 # upgrades the vault.
 grepq "$out" -E -- '— would run .*adopt\.sh --profile core --scope user' \
   || fail "caseL: epilogue must preview adopt.sh as the installer command (got: $out)"
@@ -414,7 +414,7 @@ out=$(PATH="$cM" HOME="$hM" USERPROFILE="$(winpath "$hM")" HIMMELCTL_CACHE_DIR="
 set -e
 [ "$rc" -eq 0 ] || fail "caseM: stamped accept should exit 0 (got rc=$rc): $out"
 # adopt.sh must actually run for vault.mode=existing (the bug:
-# it was structurally unreachable — this branch returned before
+# it was structurally unreachable: this branch returned before
 # deriveCommand()/adopt.sh's shell-out ever ran).
 [ -f "$fixtureM/adopt-calls.log" ] \
   || fail "caseM: accept should invoke adopt.sh -- the core install must not be skipped for vault.mode=existing"
@@ -547,7 +547,7 @@ grep -qE 'HANDOVER_DIR=.*caseQ-handover-target' "$hQ2/.himmel/himmel.conf.local"
 echo "ok: caseQ2 a himmel.conf.local HANDOVER_DIR override receives the wizard write"
 
 # ── Case E: a legacy contributor cache migrates to devOverlay ─
-# =true — deriveCommand ALWAYS derives adopt.sh now (ONE execution engine);
+# =true. deriveCommand ALWAYS derives adopt.sh now (ONE execution engine);
 # the old contributor role's setup.sh is layered on TOP as the dev
 # overlay's OWN additional command, never a substitute for adopt.sh.
 stubE="$work/caseE"; mkdir -p "$stubE"
@@ -713,7 +713,7 @@ echo "ok: caseH non-interactive --from-profile -> confirm skipped, adopt.sh auto
 
 # ── Case O: closed stdin (no answer) at the main-path confirm -> declines ───
 # (CR r1 FIX 8 companion: exercises the main-path 'Proceed? [Y/n]' confirm,
-# already routed through the EOF-safe askConfirmSafe — mirrors
+# already routed through the EOF-safe askConfirmSafe, mirrors
 # test-wizard-uninstall.sh Case E for the install flow.)
 stubO="$work/caseO"; mkdir -p "$stubO"
 cO=$(build_path "$stubO" bash git jq python3 npm -- )
@@ -736,15 +736,15 @@ echo "ok: caseO closed stdin at 'Proceed? [Y/n]' -> declines safely, adopt.sh ne
 
 # ── Case I: pluginSet=full's ENABLE step is a legacy-accepted ─
 # NO-OP now; lean triggers no plugin step either. Before, a
-# `full` profile ran the documented 13-plugin/1-marketplace enable step —
-# that "wiring" is what the ticket dropped along with the wizard's 'full'
+# `full` profile ran the documented 13-plugin/1-marketplace enable step.
+# That "wiring" is what the ticket dropped along with the wizard's 'full'
 # choice. 'full' stays a VALID --from-profile value (loadProfile's checkEnum
-# still accepts it — an old cached profile must not hard-error) but
+# still accepts it: an old cached profile must not hard-error) but
 # applyPluginStep()'s enable step is now unconditionally a no-op, so a legacy
 # 'full' cache's ENABLE behavior replays exactly like 'lean': this fixture
 # carries no remove-retired-plugin.sh (build_fixture doesn't copy it), so
 # the offer restored below also no-ops
-# here (see caseRP for the case where the script IS present) — net zero
+# here (see caseRP for the case where the script IS present), net zero
 # `claude` invocations either way.
 stubI="$work/caseI"; mkdir -p "$stubI"
 cI=$(build_path "$stubI" bash git jq python3 npm -- )
@@ -830,10 +830,10 @@ set -e
 echo "ok: caseI(lean) pluginSet=lean -> no plugin-enable step"
 
 # ── Case S: applyPluginStep never runs a command, so it can
-# never fail either — a `claude` stub that always exits 1 must have zero
+# never fail either. A `claude` stub that always exits 1 must have zero
 # effect on a legacy pluginSet=full install (rc=0, no WARN line, no plugin
 # calls at all). Pre-2304 this asserted the OPPOSITE (a failed plugin-enable
-# command propagated rc=1 with a WARN summary) — that whole failure surface
+# command propagated rc=1 with a WARN summary). That whole failure surface
 # no longer exists once the enable step itself is removed.
 stubS="$work/caseS"; mkdir -p "$stubS"
 cS=$(build_path "$stubS" bash git jq python3 npm -- )
@@ -964,19 +964,19 @@ cT=$(build_path "$stubT" bash git jq python3 npm -- )
 hT="$work/hT"; mkdir -p "$hT"
 fixtureT="$work/caseT-fixture"; build_fixture "$fixtureT"
 
-# T1: truncated profile — object valid JSON but missing `scope` entirely.
+# T1: truncated profile, object valid JSON but missing `scope` entirely.
 badT1="$work/caseT-noscope.json"
 cat > "$badT1" <<'JSON'
 {"role":"adopter","tier":"standard","vault":{"mode":"none","path":""},"handover":{"mode":"inline","path":""},"pluginSet":"lean","lanes":[],"alwaysOn":false}
 JSON
-# T2: bogus vault.mode — the old role-only check silently fell back to core.
+# T2: bogus vault.mode. The old role-only check silently fell back to core.
 badT2="$work/caseT-badvault.json"
 write_cache "$badT2" adopter project bogus-mode "" inline "" lean
 # T3: handover.mode=external with no path.
 badT3="$work/caseT-nohandoverpath.json"
 write_cache "$badT3" adopter project none "" external "" lean
 
-runT() { # runT <profile> — replay under the stubbed fixture, echo rc
+runT() { # runT <profile>: replay under the stubbed fixture, echo rc
   set +e
   outT=$(PATH="$cT" HOME="$hT" USERPROFILE="$(winpath "$hT")" HIMMELCTL_CACHE_DIR="$(winpath "$hT.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$hT.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=0 \
         HIMMELCTL_REPO_ROOT="$(winpath "$fixtureT")" \
@@ -1009,7 +1009,7 @@ grepq "$outT" "field 'handover.path'" \
 echo "ok: caseT malformed --from-profile replays (missing scope / bogus vault.mode / external without path) -> rc=2 naming the field, zero shell-outs"
 
 # ── Case K: --dry-run never mutates (combined legacy-full/external/ ─────────
-# default-template) — no DRY plugin-enable line for pluginSet=
+# default-template), no DRY plugin-enable line for pluginSet=
 # full anymore, since the step it would have previewed no longer exists.
 stubK="$work/caseK"; mkdir -p "$stubK"
 cK=$(build_path "$stubK" bash git jq python3 npm -- )
@@ -1098,7 +1098,7 @@ echo "ok: caseU simulated settings EACCES -> friendly fail before wire/plugin st
 
 # ── Case V: a v2 devOverlay=true cache runs BOTH commands ──────
 # on an APPLIED (non-dry-run) install: adopt.sh first, then the overlay's
-# setup.sh, in that order — and if adopt.sh fails the overlay must never run.
+# setup.sh, in that order, and if adopt.sh fails the overlay must never run.
 stubV="$work/caseV"; mkdir -p "$stubV"
 cV=$(build_path "$stubV" bash git jq python3 npm -- )
 hV="$work/hV"; mkdir -p "$hV"
@@ -1144,8 +1144,8 @@ echo "ok: caseV2 a failed adopt.sh aborts before the dev overlay ever runs"
 
 # ── Case W: --contribute outside a himmel checkout -> clear ────
 # error, nothing shells out. HIMMELCTL_REPO_ROOT points at a fixture that
-# carries NO setup.sh — the exact signal contributeCheckoutOk()
-# reads — so this is a targeted unit of the "clear error elsewhere" spec line,
+# carries NO setup.sh (the exact signal contributeCheckoutOk()
+# reads), so this is a targeted unit of the "clear error elsewhere" spec line,
 # independent of whatever the real host's own himmel checkout looks like.
 stubW="$work/caseW"; mkdir -p "$stubW"
 cW=$(build_path "$stubW" bash git jq python3 npm -- )

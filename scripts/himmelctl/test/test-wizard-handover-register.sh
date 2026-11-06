@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-handover-register.sh — the install wizard registers /
+# test-wizard-handover-register.sh: the install wizard registers /
 # initializes the handover state through scripts/handover/register-state.sh
 # (the single writer of registry.json) when handover.mode=external AND the
 # recorded answer handover.register=yes. Ask-first: no recorded answer, or
@@ -33,7 +33,7 @@ derive_cwd="$work/suite-cwd"; mkdir -p "$derive_cwd"; cd "$derive_cwd"
 HIMMELCTL_BIN_DIR="$(winpath "$work/isolated-bin")"
 export HIMMELCTL_BIN_DIR
 
-# build_fixture <dir> — a git repo standing in for HIMMELCTL_REPO_ROOT with
+# build_fixture <dir>: a git repo standing in for HIMMELCTL_REPO_ROOT with
 # no-op adopt/setup stubs and REAL copies of the handover scripts under test.
 build_fixture() {
   local _d="$1"
@@ -56,7 +56,7 @@ write_profile() {
   printf '{"schemaVersion":2,"profile":"starter","devOverlay":false,"scope":"project","vault":{"mode":"none","path":""},"handover":{"mode":"external","path":"%s"%s},"pluginSet":"lean","lanes":[],"lanesMeaningful":true,"alwaysOn":false}\n' "$2" "${3:-}" > "$1"
 }
 
-# run_wizard <case> <profile> [extra wizard args...] — sets $out, $rc; the
+# run_wizard <case> <profile> [extra wizard args...]: sets $out, $rc; the
 # fixture is $work/<case>-fx, the registry $work/<case>-reg.json.
 run_wizard() {
   local _c="$1" _p="$2"; shift 2
