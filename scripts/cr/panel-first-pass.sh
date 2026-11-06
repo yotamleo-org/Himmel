@@ -59,19 +59,25 @@
 # Exit codes:
 #   0 - ran to completion (panel invoked, skipped, or failed open to
 #       claude-only). Findings, if any, are on stdout.
-#   2 - usage error: missing --head or --branch.
-#   3 - the branch has no preflight row and the step 2.8 known-findings pass
+#   2 - usage error: missing --head or --branch, or (--pr) a PR number or --head that is
+#       not a plain number / full 40-hex sha, or outside-contributors.sh cannot be loaded.
+#   5 - (--pr only) review-round.sh start --pr refused: the PR's author is not authorized
+#       for a no-checkout review, or the round state could not be written. Nothing was
+#       reviewed or recorded.
+#   3 -the branch has no preflight row and the step 2.8 known-findings pass
 #       it ran first has open hits: no round was started. Close the hits and
 #       record the pass (the message names both commands), then re-run.
 #   9 - that preflight could not be run or recorded: no round was started.
 #   8 - review-round.sh refused another round: the three-round cap, or,
 #       with --full, an outside PR past its three full rounds (the
 #       maintainer-takeover line). Nothing was reviewed.
-#   7 - input-pin failure. Two causes, both ABORT: (a) the
+#   7 - input-pin failure. Causes, all ABORT: (a) the
 #       --head this script was given names no commit in this repo, detected
 #       here before any git command consumes it; (b)
 #       pin MISMATCH reported by critic-panel.sh, on the FIRST attempt or
-#       independently on the rtk retry. ABORT: nothing was reviewed, nothing
+#       independently on the rtk retry; (c) the diff base cannot be fetched or
+#       resolved; (d) (--pr only) critic-panel.sh has no --pin-ref, refs/himmel/outside/<n>
+#       is not at --head, or the PR's base branch or merge base cannot be read. ABORT: nothing was reviewed, nothing
 #       was recorded, and a round already started is given back
 #       (review-round.sh abort). Never degrades to claude-only - re-run
 #       /pr-check from step 1.
