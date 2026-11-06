@@ -1690,8 +1690,9 @@ assert_rc "8401 Read a plain file is allowed"    0 "$(run_case "$(j_read "$CALIN
 rm -rf "$CALINK"
 
 # 8319: the guard refuses tracing turned on, not quoted text that names the option or merely holds a brace, and a
-# grep pattern after boolean flags is a pattern. 331 refusals in 3 days; the replay sorted 232 of 403 in 7 days to
-# the tracing word or a brace in quoted text. Real shapes: a Jira search quoted JQL, a Telegram reply JSON.
+# grep pattern after boolean flags is a pattern. 331 refusals in 3 days; the replay sorted 241 of 411 in 7 days (window
+# ending 2026-11-06T02:57Z) to the tracing word or a brace in quoted text. Real shapes: a Jira search quoted JQL, a
+# Telegram reply JSON.
 assert_rc "8319 jira list JQL quotes the tracing option"        0 "$(run_case "$(j_bash "node scripts/jira/dist/index.js list --jql 'project = HIMMEL AND text ~ \"xtrace\" ORDER BY created DESC'")")"
 assert_rc "8319 jira search JQL quotes it with other words"      0 "$(run_case "$(j_bash "node scripts/jira/dist/index.js search --jql 'text ~ \"xtrace\" AND status = Done'")")"
 assert_rc "8319 reply JSON with spaces (printf)"                 0 "$(run_case "$(j_bash "printf '%s\\n' '{\"text\":\"Filed the Instagram reel as a clip (type=instagram, link-only stub). Transcript pending, extract later.\"}'")")"
@@ -1761,6 +1762,16 @@ assert_rc "8319 ctl sed '.env' --expression=p (flagless slot)"                  
 assert_rc "8319 ctl awk '.env' -f prog (flagless slot)"                               2 "$(run_case "$(j_bash "awk '.env' -f prog")")"
 assert_rc "8319 grep -n '.env' f --color (a later option that supplies no pattern)"   0 "$(run_case "$(j_bash "grep -n '.env' f --color")")"
 assert_rc "8319 grep -n '.env' f -m 1 (a later count)"                                0 "$(run_case "$(j_bash "grep -n '.env' f -m 1")")"
+# A later token that holds an expansion may expand to a pattern option (O=-e), so the quoted word is a file the command
+# reads: the slot closes and the word is scanned, as with a literal later -e. A literal $ inside single quotes counts too,
+# which only denies more.
+assert_rc "8319 ctl grep -n '.env' \$O TOKEN (a later variable may expand to -e)"      2 "$(run_case "$(j_bash "grep -n '.env' \$O TOKEN")")"
+assert_rc "8319 ctl grep -n '.env' \"\$O\" TOKEN (double-quoted variable)"               2 "$(run_case "$(j_bash "grep -n '.env' \"\$O\" TOKEN")")"
+assert_rc "8319 ctl grep -n '.env' \$(printf %s x) TOKEN (command substitution)"       2 "$(run_case "$(j_bash "grep -n '.env' \$(printf %s x) TOKEN")")"
+assert_rc "8319 ctl grep -n '.env' \`cat opt\` TOKEN (backtick substitution)"           2 "$(run_case "$(j_bash "grep -n '.env' \`cat opt\` TOKEN")")"
+assert_rc "8319 ctl grep '.env' \$O TOKEN (flagless slot, later variable)"             2 "$(run_case "$(j_bash "grep '.env' \$O TOKEN")")"
+assert_rc "8319 ctl rg '.env' \$O TOKEN (flagless slot, later variable)"               2 "$(run_case "$(j_bash "rg '.env' \$O TOKEN")")"
+assert_rc "8319 grep -n 'TOKEN' \"\$f\" (an expansion beside a pattern that names no secret)"  0 "$(run_case "$(j_bash "grep -n 'TOKEN' \"\$f\"")")"
 
 # 8319: the clause split reads quotes through the tokenizer, so a separator inside a quoted word stays in its word and
 # a real separator splits. A closing quote followed by a later opening quote is not one quoted span.
@@ -1793,6 +1804,10 @@ assert_rc "8319 ctl heredoc body line cat .env keeps the plain split"           
 assert_rc "8319 ctl # right after a substitution is no comment, the cat runs"        2 "$(run_case "$(j_bash 'echo $(true)#; cat .env')")"
 # shellcheck disable=SC2016
 assert_rc "8319 ctl # right after a backtick substitution, the cat runs"             2 "$(run_case "$(j_bash 'echo `true`#; cat .env')")"
+# shellcheck disable=SC2016
+assert_rc "8319 ctl # right after an arithmetic expansion, the cat runs"             2 "$(run_case "$(j_bash 'echo $((1+1))#; cat .env')")"
+# shellcheck disable=SC2016
+assert_rc "8319 ctl # right after a process substitution, the cat runs"              2 "$(run_case "$(j_bash 'echo <(true)#; cat .env')")"
 # shellcheck disable=SC2016
 assert_rc "8319 ctl substitution inside an unmodelled expansion reads an ssh key"    2 "$(run_case "$(j_bash 'echo ${V:-$(cat ~/.ssh/id_ecdsa)}')")"
 # shellcheck disable=SC2016

@@ -174,14 +174,21 @@
 #     with a later -e, -f, -eVAL, --regexp or --file (sed's --expression, awk's
 #     --source) the quoted word is a file the command reads and is scanned
 #     (rs_pattern_from_option), flagless slot included: `grep -n '.env' -e TOKEN`
-#     reads .env. A `|`, `;`, `&` or `(` inside a quoted word does not split the
+#     reads .env. A later token that holds an expansion (`$O`, `$(...)`, a
+#     backtick body) counts as well, because it may expand to one of those
+#     options. A `|`, `;`, `&` or `(` inside a quoted word does not split the
 #     clause: a command the tokenizer read is cut at its own segments
 #     (rs_segment_clauses), so `grep -nE '\.env|x' f` is one clause,
 #     `cat 'a|b' .env` reads .env and `echo 'grep '; cat .env; echo 'b'` is
 #     three clauses. A command the tokenizer did not read, one with a
 #     heredoc or a comment, and one whose `${...}` guard_unwrap had to rewrite
 #     before it could read it, keep the plain split above, which ignores
-#     quotes. A nested shell body (bash -c, eval) is one quoted word there,
+#     quotes. That split cuts at a backtick and leaves no mark of it, and a
+#     brace expansion can build an option from words that are not one
+#     (`{-,}e`), so a backtick substitution after the quoted word in a command
+#     that also has a comment or a heredoc, and `grep -n '.env' {-,}e TOKEN`,
+#     still leave the quoted word as the pattern: accepted and ticketed gaps.
+#     A nested shell body (bash -c, eval) is one quoted word there,
 #     and guard_unwrap reads it again from its own words. A quoted string that
 #     another program runs or reads is one word too, and nothing reads it
 #     again. Main refused some of these only because its plain split cut the
@@ -563,9 +570,12 @@ rs_clause_word() {
 # (`echo ${V:-$(cat ~/.ssh/id_ecdsa)}`). The plain split over-denies a real comment
 # and a quoted separator in such a command, as it did before this function. A nested
 # shell body (bash -c, eval) is one word here, and guard_unwrap reads it again from
-# its own words.
+# its own words. A segment the tokenizer ends at a substitution opener ($( or the
+# opening backtick) is the command up to that substitution; the clause carries the
+# opener as its last word, so rs_pattern_from_option sees that the command goes on
+# with an expansion.
 rs_segment_clauses() {
-    local s k op line out='' nl=$'\n'
+    local s k op line out='' nl=$'\n' bt=0
     local -a idx
     [ "${GU_TOKENIZED:-0}" = 1 ] || return 1
     [ "${ST_HEREDOC:-0}" = 0 ] || return 1
@@ -586,6 +596,11 @@ rs_segment_clauses() {
             rs_clause_word "$k"
             line=$line${line:+ }$op$RS_CW
         done
+        # shellcheck disable=SC2016 # literal $( and ` bytes
+        case "${ST_SEP[s]:-}" in
+            '$(') line=$line${line:+ }'$(' ;;
+            '`') if [ "$bt" = 0 ]; then line=$line${line:+ }'`'; bt=1; else bt=0; fi ;;
+        esac
         out=$out$line$nl
         s=$((s + 1))
     done
@@ -610,16 +625,20 @@ is_quoted_pattern_tok() {
 
 # rs_pattern_from_option: 0 when a token after the current one in scan_clause's
 # clause supplies the pattern, script or program by an option (-e, -f, -eVAL, a
-# cluster holding either, --regexp, --file, sed's --expression, awk's --source).
+# cluster holding either, --regexp, --file, sed's --expression, awk's --source),
+# or may supply it: a token that holds an expansion (`$O`, `"$O"`, `$(...)`, a
+# backtick body) can expand to such an option, so its text proves nothing.
 # The first operand is then a file, not the pattern: GNU grep permutes its
-# arguments, so `grep -n '.env' -e TOKEN` reads .env. Reads scan_clause's toks
-# and ti. A later cluster is counted whole, and so is anything after `--`; both
-# only deny more.
+# arguments, so `grep -n '.env' -e TOKEN` reads .env, and so does
+# `grep -n '.env' $O TOKEN` with O=-e. Reads scan_clause's toks and ti. A later
+# cluster is counted whole, and so is anything after `--` and a `$` inside single
+# quotes; all only deny more.
 rs_pattern_from_option() {
     local i=$ti t
     while [ "$i" -lt "${#toks[@]}" ]; do
         t=${toks[i]//[\'\"\\]/}
         case "$t" in
+            *'$'* | *'`'*) return 0 ;;
             --reg* | --file | --file=* | --expression* | --source*) return 0 ;;
             --*) ;;
             -*[ef]*) return 0 ;;
