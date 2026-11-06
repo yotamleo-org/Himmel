@@ -448,9 +448,11 @@ explicit chief decisions. Malformed, duplicate or unknown decisions stay unresol
 --pool-dispositions reads a dispatcher snapshot on stdin and prints these counts
 and unresolved keys by class; it does not take a tick or perform network reads.
 pool-stale=<n>:<KEY>,... (HIMMEL-6604) re-checks each pool-disposition: line whose target
-names a ticket key or `PR <n>`: when every named blocker is Done (Jira mirror) or merged
-(one batched gh read) the line is stale, `?` marks an unreadable target (never stale), and
-the waiter wakes once per newly stale key. The line is never rewritten. residual-unversioned=
+names a ticket key or `PR <n>`: when every named blocker is Done (Jira mirror) or its PR merged
+or closed (one batched gh read) the line is stale, `?` marks an unreadable target (never stale), and
+the waiter wakes once per newly stale key. A line may end `@<sha>`, the head the chief
+ruled at: more than TICK_POOL_MAX_MERGES (30) commits behind origin/main (else HEAD) it is stale
+whatever its blockers say, and an unknown sha prints `?`. The line is never rewritten. residual-unversioned=
 <n>:<KEY>,... lists open residual tickets of an open focus-version ticket with no fixVersion.
 residual-unversioned hides when 0 or skip. pool-stale hides only on skip (no --doc, or a failed
 read): an explicit pool-stale=0 is the all-clear the waiter needs to clear its marker, so it stays
@@ -630,11 +632,22 @@ for line in open(doc).read().splitlines():
         if m:
             refs = {k for k in re.findall(r"\b[A-Z]+-\d+\b", m[2]) if k != m[1]}
             prs = {n for g in re.findall(r"\bPRs?\s*#?(\d+(?:\s*(?:,|and|&)\s*#?\d+)*)", m[2]) for n in re.findall(r"\d+", g)}
-            latest[m[1]] = (refs, prs)
-lines = [(k, refs, prs) for k, (refs, prs) in latest.items() if refs or prs]
+            sha = re.search(r"(?<![\w-])@([0-9a-f]{7,40})\b", m[2])
+            latest[m[1]] = (refs, prs, sha[1] if sha else "")
+lines = [(k, refs, prs, sha) for k, (refs, prs, sha) in latest.items() if refs or prs or sha]
+
+# `@<sha>` is the head the chief ruled at; a ruling more than TICK_POOL_MAX_MERGES (30) commits behind
+# main is stale whatever its blocker says, so a disposition copied forward from a predecessor expires
+maxmerges = int(os.environ.get("TICK_POOL_MAX_MERGES") or 30)
+def age(sha):
+    for ref in ("origin/main", "HEAD"):
+        r = subprocess.run(["git", "-C", repo, "rev-list", "--count", sha + ".." + ref], capture_output=True, text=True)
+        if r.returncode == 0:
+            return int(r.stdout.strip())
+    return None
 
 prstate = None
-if any(prs for _, _, prs in lines):
+if any(prs for _, _, prs, _ in lines):
     try:
         r = subprocess.run([gh, "pr", "list", "--state", "all", "--limit", "300", "--json", "number,state",
                             "--jq", ".[] | [.number, .state] | @tsv"],
@@ -654,11 +667,21 @@ def state(kind, ref):
             return "?"
         return "done" if f.get("statusCategory", "").strip('"') == "Done" else "open"
     s = (prstate or {}).get(ref)
-    return "?" if s is None else ("done" if s == "MERGED" else "open")
+    return "?" if s is None else ("done" if s in ("MERGED", "CLOSED") else "open")
 
 stale, unreadable = [], False
-for key, refs, prs in lines:
+for key, refs, prs, sha in lines:
     states = [state("key", k) for k in sorted(refs)] + [state("pr", p) for p in sorted(prs)]
+    if sha:
+        n = age(sha)
+        if n is not None and n > maxmerges:
+            if key not in stale:
+                stale.append(key)
+            continue
+        if n is None:
+            unreadable = True
+    if not states:
+        continue
     if "open" in states:
         continue
     if "?" in states:

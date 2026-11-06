@@ -973,7 +973,7 @@ underfill_wake() {
     printf '%s\n' "$blk"
 }
 underfill_block() { # prints the WAKE block for the pool pool_probe just read; fail-open on the dispatchable list
-    local back="" back_keys="" extra="" count="" intake_ver="" wake=underfilled
+    local back="" back_keys="" extra="" count="" dkeys="" intake_ver="" wake=underfilled
     if [ -n "$pool_unresolved" ]; then wake=pool-unresolved
     else
         case "$pool_counts" in ''|'?') ;; *) return 1 ;; esac
@@ -993,12 +993,16 @@ underfill_block() { # prints the WAKE block for the pool pool_probe just read; f
             NR in sk { m = split(sk[NR], a, ","); all = 1; for (j = 1; j <= m; j++) if (!seen[a[j]]) all = 0; if (all) next; print; next }
             $0 == "" || seen[$2] { next }
             { print }')"
-        count="$({ printf '%s\n' "$pool_out" | pool_row_keys "$pool_keys"; printf '%s\n' "$back" | pool_row_keys "$back_keys"; } | sort -u | wc -l | tr -d ' ')"
+        dkeys="$({ printf '%s\n' "$pool_out" | pool_row_keys "$pool_keys"; printf '%s\n' "$back" | pool_row_keys "$back_keys"; } | sort -u)"
+        count="$(printf '%s\n' "$dkeys" | grep -c . || true)"  # swallow-ok: grep -c prints 0 and exits 1 on no key
+        # the wake line names the keys the count is of, so the chief acts on the tick's own set, never a carried list
+        [ "$count" = 0 ] || dkeys="$(printf '%s\n' "$dkeys" | paste -sd, -)"
     fi
     if [ "$wake" = pool-unresolved ]; then
         printf 'WAKE pool-unresolved capacity=%s%s%s\n%s\n' "$cap_val" "${pool_counts:+ pool=$pool_counts}" "${count:+ dispatchable=$count}" "$tick_line"
     else
-        printf 'WAKE underfilled capacity=%s%s%s\n%s\n' "$cap_val" "${pool_counts:+ pool=$pool_counts}" "${count:+ dispatchable=$count}" "$tick_line"
+        [ "${count:-0}" != 0 ] || dkeys=""
+        printf 'WAKE underfilled capacity=%s%s%s%s\n%s\n' "$cap_val" "${pool_counts:+ pool=$pool_counts}" "${count:+ dispatchable=$count}" "${dkeys:+ keys=$dkeys}" "$tick_line"
     fi
     [ -z "$pool_out" ] || printf '%s\n' "$pool_out" | pool_view
     [ -z "$pool_unresolved" ] || printf '%s\n' "$pool_unresolved"

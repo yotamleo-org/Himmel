@@ -2409,6 +2409,25 @@ lacks "OFF folds the barrier: no register verb runs, so a failing register is no
 lacks "OFF reads the worker from its doc: its Writes-only file stays held" "$f_off" "HIMMEL-9600	"
 printf '4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
 
+# the waiter counts the pool with --top <slack>; a bare `--doc <doc> --why` kept the default --top 8, which nine
+# worker-less In Progress rows fill, so it listed no To Do row while the tick read dispatchable above 0. --why with no --top
+# lists the same set and names a reason per listed key.
+M9="$WORK/m9181/HIMMEL"; mkdir -p "$M9"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/m9181/HIMMEL.versions.tsv"
+M_SAVE="$M"; M="$M9"
+for n in 1 2 3 4 5 6 7 8 9; do mk "HIMMEL-970$n" "In Progress" Medium '[]' '["v1.0.1"]' '[]' "orphan $n" "Edit scripts/lib/o9181-$n.sh."; done
+for n in 1 2 3; do mk "HIMMEL-971$n" "To Do" Medium '[]' '["v1.0.1"]' '[]' "startable $n" "Edit scripts/lib/s9181-$n.sh."; done
+M="$M_SAVE"
+D9181="$WORK/chief-9181.md"; printf '# chief\n\n## Live state\npriority:\n' > "$D9181"
+run9181() { NEXT_DISPATCH_MIRROR="$M9" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-from "$WORK/fleet5.json" --doc "$D9181" "$@" 2>/dev/null; }
+w9="$(run9181 --why)"
+w9keys="$(printf '%s\n' "$w9" | grep -E '^(LOCAL|CLOUD)' | cut -f2 | sort | paste -sd, -)"
+[ "$w9keys" = "HIMMEL-9711,HIMMEL-9712,HIMMEL-9713" ] && pass "9181: --doc --why lists the startable To Do rows though nine RESUME rows come first" || fail "9181: --why listed '$w9keys'"
+pool9="$(run9181 --priority-pool-only --top 50 | grep -E '^(LOCAL|CLOUD)' | cut -f2 | sort | paste -sd, -)"
+[ "$w9keys" = "$pool9" ] && pass "9181: --why lists the keys the waiter's pool pass counts" || fail "9181: --why '$w9keys' vs the pool pass '$pool9'"
+for k in HIMMEL-9711 HIMMEL-9712 HIMMEL-9713; do has "9181: --why gives a reason for $k" "$w9" "# why $k listed LOCAL tier 4"; done
+w9t="$(run9181 --why --top 2 | grep -E '^(LOCAL|CLOUD)' | grep -c .)"
+[ "$w9t" = 0 ] && pass "9181: an explicit --top is still the cap (two slots, both RESUME rows)" || fail "9181: --why --top 2 listed $w9t To Do rows"
+
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
 real_hits="$(grep -rlF "$WORK" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"

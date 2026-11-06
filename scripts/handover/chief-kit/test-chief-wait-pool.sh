@@ -641,6 +641,7 @@ printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\nLOCAL\tHIMMEL-9005\tL
 I="$(new_inbox golden)"
 arm "$I" "$WORK/golden.out" 8
 check "(8349) a pool with no series row is byte-identical to the base golden" "same" "$(cmp -s "$WORK/golden.out" "$HERE/test-chief-wait-pool.golden" && echo same || echo differs)"
+check "(9181) the underfilled wake line names the dispatchable keys its count is of" "WAKE underfilled capacity=UNDERFILLED:7 pool=? dispatchable=3 keys=HIMMEL-9001,HIMMEL-9002,HIMMEL-9005" "$(head -n1 "$WORK/golden.out")"
 rm -f "$STUB/pool.rows" "$STUB/pass2.rows"
 
 printf '\n%d failure(s)\n' "$fails"

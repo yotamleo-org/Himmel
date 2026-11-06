@@ -114,7 +114,9 @@
 # is counted by reason on a `# dropped from <version>:` line (owned, collision,
 # blocker, type, label, platform, residual-depth, classification, below --top ...);
 # --why adds one `# drop <KEY> <reason>` line each, the collision naming the file and
-# its holder. --dispositions adds `# disposition <KEY> <class> <holder, blocker or question>`
+# its holder, and one `# why <KEY> listed <lane> tier <n>` line each for the listed ones; --why with no
+# --top lists up to 50 rows (the fleet cap), so the RESUME rows do not fill the default 8 slots and hide the
+# To Do rows the waiter counts. --dispositions adds `# disposition <KEY> <class> <holder, blocker or question>`
 # for EVERY open ticket of that version (To Do or in work), listed ones too (`listed LOCAL`,
 # `listed RESUME`), so no ticket is silent. --resume-only prints neither.
 #
@@ -151,7 +153,7 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 
-top=8; mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
+top=8; top_set=0; mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
 workers_from="${WORKERS_FROM:-}"; held=""; classify=1; resume_only=0; owners=""; doc=""; pool_only=0; why=0; dispo=0
 workers="${TICKET_STATUS_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/workers"
 while [ "$#" -gt 0 ]; do
@@ -159,7 +161,7 @@ while [ "$#" -gt 0 ]; do
         --workers-dir) workers="${2:-}"; shift 2 || exit 2 ;;
         --resume-only) resume_only=1; classify=0; shift ;;
         --owners) owners="${2:-}"; shift 2 || exit 2 ;;
-        --top) top="${2:-}"; shift 2 || exit 2 ;;
+        --top) top="${2:-}"; top_set=1; shift 2 || exit 2 ;;
         --mirror) mirror="${2:-}"; shift 2 || exit 2 ;;
         --workers-from) workers_from="${2:-}"; shift 2 || exit 2 ;;
         --held) held="${2:-}"; shift 2 || exit 2 ;;
@@ -172,6 +174,9 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 case "$top" in ''|*[!0-9]*|0*) echo "next-dispatchable: --top needs a positive number" >&2; exit 2 ;; esac
+# --why with no --top asks for the whole list, not the first 8 slots the worker-less RESUME rows fill; the
+# waiter counts dispatchable work against the free slots, and 50 is the fleet cap
+[ "$why" != 1 ] || [ "$top_set" = 1 ] || top=50
 ledger="${HIMMEL_ADMISSIONS_LEDGER:-}"
 # shellcheck source=scripts/lib/handover-path.sh
 # shellcheck disable=SC1091
@@ -1470,6 +1475,11 @@ def print_intake(intake):
 
 def drop_summary():
     # every To Do ticket of the active version that is not listed, by reason (--why: one line each)
+    if os.environ.get('ND_WHY') == '1':
+        # a listed key says why too, so the list reads as the set the waiter counts
+        for k in sorted(lane_of, key=lambda k: int(k.split('-')[1])):
+            if k in issues:
+                print('# why %s listed %s tier %d' % (k, lane_of[k], tier_of(issues[k])))
     if first_ver is None:
         return
     listed = {i['key'] for i in emitted}
