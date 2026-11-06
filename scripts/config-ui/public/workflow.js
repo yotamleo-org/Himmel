@@ -202,7 +202,7 @@ function linePoints(vals, x0, x1, y0, y1) {
 }
 function sparkline(name, vals) {
   const pts = linePoints(vals, 2, 94, 3, 19), last = pts[pts.length - 1];
-  return `<svg class="wf-sp" viewBox="0 0 96 22" width="96" height="22" role="img" aria-label="${esc(name)} entered per day: ${vals.join(", ")}"><polyline points="${pts.map((p) => p.join(",")).join(" ")}" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="${last[0]}" cy="${last[1]}" r="2.4" fill="currentColor"/></svg>`;
+  return `<svg class="wf-sp" viewBox="0 0 96 22" width="96" height="22" fill="currentColor" role="img" aria-label="${esc(name)} entered per day: ${vals.join(", ")}"><polyline points="${pts.map((p) => p.join(",")).join(" ")}" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="${last[0]}" cy="${last[1]}" r="2.4" fill="currentColor"/></svg>`;
 }
 function trendChart(name, vals, days) {
   const pts = linePoints(vals, 22, 212, 14, 66), max = Math.max(...vals, 1);

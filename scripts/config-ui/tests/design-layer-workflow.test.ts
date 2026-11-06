@@ -45,6 +45,7 @@ test("the Eval tab's sparklines and trend charts paint only currentColor and car
     for (const svg of svgs) {
       expect(svg).not.toMatch(/style=|#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|oklch)\(/);
       expect(svg).toContain('stroke="currentColor"');
+      expect(svg.slice(0, svg.indexOf(">"))).toContain('fill="currentColor"'); // an svg root with no fill paints the UA default black
     }
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
