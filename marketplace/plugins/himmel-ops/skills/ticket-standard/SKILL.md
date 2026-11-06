@@ -3,7 +3,7 @@ name: ticket-standard
 description: Check a ticket draft before filing.
 ---
 
-# ticket-standard — no plan, no done-condition, no proof: no ticket (HIMMEL-5702)
+# ticket-standard — no plan, no done-condition, no proof: no ticket
 
 Lean-invoke: run it when you are about to file a ticket, or to complete a
 draft that was parked. Not always-on. The checker is a script, so the verdict
@@ -33,9 +33,9 @@ the stability-scorecard metric it moves (columns: `specs/research/stability-scor
 `Metric:` may be bare, bulleted (`- Metric:`) or bold (`**Metric:**`), in any case.
 Without one it is refused like a missing section.
 
-A **Plan** that names two or more ticket keys also needs an `Edges:` line (HIMMEL-7754):
+A **Plan** that names two or more ticket keys also needs an `Edges:` line:
 which ticket blocks which and whether hard or soft, e.g.
-`Edges: HIMMEL-100 blocks HIMMEL-101 (hard)`, or `Edges: none` when they are independent.
+`Edges: PROJ-100 blocks PROJ-101 (hard)`, or `Edges: none` when they are independent.
 The chain graph orders dispatch from it. It may be bare, bulleted or bold, in any case; a
 multi-ticket Plan without one is refused like a missing section (the message names the
 line). A Plan naming one key or none is unaffected. Any `ABC-123`-shaped token counts as a
@@ -48,7 +48,7 @@ A **Bug** draft also asks for two labels, so the weekly escape report
 a Bug; a Bug missing either is listed as UNLABELLED in the report. This is a request,
 not a refusal: the checker does not gate on it.
 
-## The title (HIMMEL-6968)
+## The title
 
 One of two kinds:
 
@@ -141,10 +141,10 @@ JIRA_PROJECT_KEY=HIMMEL node <repo-root>/scripts/jira/dist/index.js create --typ
 ```
 
 `create` also refuses a Task, Story or Bug with no `--sector`, or with neither
-`--parent <EPIC-KEY>` nor `--labels standalone` (HIMMEL-6223); an Epic or Subtask
+`--parent <EPIC-KEY>` nor `--labels standalone`; an Epic or Subtask
 only warns. Sectors: Fleet orchestration, Ship loop, Safety & enforcement, Cost &
 efficiency, Visibility, Quality & proof, Deployment, Knowledge & steering,
 Planning & tracking.
 
-HIMMEL-5643 enforces Plan and DoD inside `jira create` as well; this skill is the
+`jira create` enforces Plan and DoD as well; this skill is the
 earlier step that also checks the named Proof and keeps what it refuses.

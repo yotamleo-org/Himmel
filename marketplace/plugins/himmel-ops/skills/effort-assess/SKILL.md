@@ -3,12 +3,12 @@ name: effort-assess
 description: Estimate ticket or version effort.
 ---
 
-# effort-assess — an estimate says how sure it is (HIMMEL-3995)
+# effort-assess — an estimate says how sure it is
 
 An estimate here is a **log-normal record**, not a number: the median is the
 size you would bet on, sigma says how wrong the real cost tends to be, and the
-mean (median x exp(sigma^2/2)) is what versions must add up. Formulas and
-calibration: HIMMEL-3992 (variant B). Every number lives in
+mean (median x exp(sigma^2/2)) is what versions must add up. The model is
+log-normal (variant B). Every number lives in
 `effort-model.json` beside this file; the script holds formulas only.
 
 **Status: PILOT-MEASURE** (`docs/tool-adoption/rubric.md`, measure-during
@@ -23,8 +23,8 @@ survivorship biases it low.
 
 - Sizing a ticket before a worker is dispatched or a roadmap slot is chosen.
 - Checking that a version still fits (`version` mode) before adding a ticket.
-- Not for: Jira writes, picking a model tier, or a placer re-run (HIMMEL-3997
-  routing reads the record; HIMMEL-4001 moves the placer onto the config).
+- Not for: Jira writes, picking a model tier, or a placer re-run (routing
+  will read the record, and the placer will move onto the config).
 
 ## Run it
 

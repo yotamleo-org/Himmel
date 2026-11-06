@@ -3,16 +3,16 @@ name: memory-compound
 description: Use when memory nears the first 200 lines or 25 KB, whichever comes first — compound it into qmd notes
 ---
 
-# memory-compound — distil auto-memory into searchable substrate (HIMMEL-569)
+# memory-compound — distil auto-memory into searchable substrate
 
 Lean-invoke skill. Run it when `MEMORY.md` approaches its load limit (the
 first 200 lines or 25 KB, whichever comes first — Claude Code loads no more of
 the index) or when `audit-memory-capture.sh --structure` reports an over-cap
 topic file. The session-load size-limit warning and the SessionStart
-index-state notice are the natural cues. It encodes the HIMMEL-564 compaction as ONE pass. Do **not**
+index-state notice are the natural cues. It encodes the by-hand 56KB → 16KB compaction as ONE pass. Do **not**
 wire this as an
 always-on hook — the classification (durable vs disposable), dedupe, and
-placement are judgement-heavy, which is exactly why HIMMEL-177 puts it at the
+placement are judgement-heavy, which is exactly why it sits at the
 lean-invoke layer.
 
 The documented move it automates: [`docs/luna/compounding.md` §"A second loop:
@@ -25,7 +25,7 @@ These are non-negotiable. The pass is zero-loss **only** if you keep this order.
 1. **Read-many, write-once (single-writer rule).** Fan out reader subagents
    **READ-ONLY** to mine the topic files in parallel. Exactly ONE writer (you,
    the parent) appends synthesized content to the vault. Never fan parallel
-   writes at a shared note. (Single-writer rule: HIMMEL-166 / root `CLAUDE.md`.)
+   writes at a shared note. (Single-writer rule: root `CLAUDE.md`.)
    **All landings go on a BRANCH in a worktree — vault AND repo** (operator
    directive 2026-07-14): himmel docs through the normal worktree → PR flow,
    and vault notes via a vault worktree on a `chore/memory-compound-<date>`
@@ -157,7 +157,7 @@ existing line rather than appending a near-duplicate.
 
 **The propagation review is mandatory, per item, BEFORE writing.** Auto-memory
 and the luna vault never reach another himmel user; defaulting everything to
-luna is the documented failure mode (HIMMEL-900). Classify each durable item:
+luna is the documented failure mode. Classify each durable item:
 operator-specific → luna vault; adopter-generic → himmel docs via the normal
 worktree → PR flow (**when in doubt, himmel docs**); rule/restriction
 candidate → file a ticket for the promotion. Then triage by SHAPE (fact /
@@ -206,7 +206,7 @@ for the collection scoping and the split gate.
 ### 5. Slim `MEMORY.md`
 Snapshot the whole store first, before the first write of the pass. Snapshot
 directories are `<date>-<key>` under `~/.himmel/state/memory-snapshots/` and are
-kept until the change they back is accepted (for HIMMEL-8004, the epic close).
+kept until the change they back is accepted.
 **Abort the slim if the snapshot did not write or does not verify** — same
 land-before-trim discipline: never edit the index without a recoverable copy:
 
@@ -252,7 +252,7 @@ Then, in the index — matching the shipped post-migration format (`- [Title](to
   no local topic file for it to point at.
 - **Directive-shaped** entry → a resident bare `- <directive> …` line ≤200 chars
   (no topic-file link; it must fire unprompted — see the shape triage in step 3).
-- **Compound is NOT exempt from `guard-memory-capture.sh`** (HIMMEL-1088) and
+- **Compound is NOT exempt from `guard-memory-capture.sh`** and
   must **not** be launched with its bypass (`MEMORY_CAPTURE_OK=1`) set — that
   would reduce it to prose-governed, the layer this design rejects. The snapshot
   script writes through the shell, not the Write tool, so its restore needs no
@@ -269,8 +269,7 @@ for durability + reach.
 
 ### 6. Trim topic files; delete only when fully graduated (after the gate)
 
-**Graduate, do NOT delete a fact you can only recall by symptom (spike
-HIMMEL-1086).** The 2026-07-17 spike measured symptom-shaped qmd recall at
+**Graduate, do NOT delete a fact you can only recall by symptom.** The 2026-07-17 spike measured symptom-shaped qmd recall at
 **4/10** even inside a scoped collection, while reading the
 theme topic file the routing line names is **3/3 deterministic**. So the topic
 file is the primary (tier-2) recall path, and folding a fact to luna is a
@@ -281,7 +280,7 @@ the `himmel` collection *and* path-addressable), or its fact is fully carried by
 a **resident** directive line. For a fact whose only home is a `luna` note,
 **keep a trimmed topic file** (routing line + the distilled body) rather than
 deleting it. (The full fold-and-trim semantics + the inverted orphan-topic-file
-audit ride **HIMMEL-1090**; this guard is the safe floor until then.)
+audit run separately from this pass; this guard is the safe floor.)
 
 For each remaining topic file whose durable content is **confirmed findable**
 (step 4), whose index entry is now a pointer (step 5), AND which has **fully
@@ -296,7 +295,7 @@ rm "$MEMDIR/<compounded-topic>.md"
 step-4 qmd gate: a check, not a hope. After the deletions, every
 `[Title](file.md)` link in the store must point at a file that still exists, and
 every topic file must be reachable from `MEMORY.md` — a link to a just-deleted
-topic file is exactly the drift this guard catches (HIMMEL-641). Run the audit
+topic file is exactly the drift this guard catches. Run the audit
 and the lost-line check against the pre-pass snapshot:
 
 ```bash
@@ -322,7 +321,7 @@ pointer line) until the post-merge `himmel`-collection re-index finds them
 snapshot directories until the operator accepts the change they back, then they
 can be removed.
 
-## Lesson provenance carry (HIMMEL-767)
+## Lesson provenance carry
 
 A mined memory that qualifies as a **lesson** carries its provenance forward:
 a trailing `^lesson:<id>` anchor on the landed line, a record appended to the
@@ -348,6 +347,5 @@ unattended auto-compaction.
 ## Reference
 
 - Documented pass: [`docs/luna/compounding.md`](../../../../../docs/luna/compounding.md#a-second-loop-auto-memory--vault).
-- Worked precedent: HIMMEL-564 (the by-hand 56KB → 16KB compaction this automates).
-- Lesson provenance schema + validator: [`docs/internals/lesson-provenance.md`](../../../../../docs/internals/lesson-provenance.md) (HIMMEL-767).
-- Layer choice (lean-invoke, not a hook): HIMMEL-177; single-writer rule: HIMMEL-166.
+- Worked precedent: the by-hand 56KB → 16KB compaction this automates.
+- Lesson provenance schema + validator: [`docs/internals/lesson-provenance.md`](../../../../../docs/internals/lesson-provenance.md).
