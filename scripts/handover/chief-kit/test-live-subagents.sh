@@ -105,6 +105,122 @@ if [ "$(id -u)" -ne 0 ]; then
     check "detector: unlistable subagents/ registry -> rc 2 (cannot decide)" "$rc" "2"
 fi
 
+# --- a foreground child resumed by SendMessage ------------------------------
+# Record shapes copied from the real chief RB transcript of 2026-11-04 (ids and
+# stamps changed, no text): the resume finishes with an <agent-message from=...>
+# hand-back enqueue and a tool_result for the SendMessage's own tool-use id, never
+# a <task-notification> and never the registry's toolUseId.
+# handback <agent-id> <ts> - the parent's enqueue of a resumed child's hand-back
+handback() {
+    jq -nc --arg a "$1" --arg ts "$2" --arg s "$SID" --arg q "${3:-}" '{type:"queue-operation",operation:"enqueue",timestamp:$ts,sessionId:$s,
+        content:("<agent-message from=\"" + $a + "\">\n[Subagent hand-back] The text below is the final report of a subagent" + $q)}' >> "$PARENT"
+}
+# send_use <tool-use-id> <to> <ts> - the parent's SendMessage tool_use
+send_use() {
+    jq -nc --arg t "$1" --arg to "$2" --arg ts "$3" --arg m "${4:-go on}" '{type:"assistant",timestamp:$ts,message:{content:[{type:"tool_use",id:$t,name:"SendMessage",input:{to:$to,message:$m}}]}}' >> "$PARENT"
+}
+# send_result <tool-use-id> <ts> <message> - the parent's tool_result for a SendMessage: a
+# text block holding the harness JSON, as in the RB transcript. The inline hand-back text is
+# copied from it; the queued and non-inline texts are the 2.1.318 binary's, read not observed.
+INLINE='Resumed agent. Its final report follows this JSON, framed by the harness.'
+QUEUED='Message queued for delivery to the agent at its next tool round.'
+NONINLINE='Resuming agent. Its final report is not in this message.'
+send_result() {
+    jq -nc --arg t "$1" --arg ts "$2" --arg m "$3" '{type:"user",timestamp:$ts,message:{content:[{type:"tool_result",tool_use_id:$t,
+        content:[{type:"text",text:({success:true,message:$m}|tojson)}]}]}}' >> "$PARENT"
+}
+# agentmsg <agent-id> <ts> - an <agent-message> from a child that is NOT its final hand-back
+agentmsg() {
+    jq -nc --arg a "$1" --arg ts "$2" --arg s "$SID" '{type:"queue-operation",operation:"enqueue",timestamp:$ts,sessionId:$s,
+        content:("<agent-message from=\"" + $a + "\">\nstill working, one question")}' >> "$PARENT"
+}
+reset_session
+launch rb1 toolu_RB1 foreground 2026-11-04T22:00:00.000Z
+fg_result toolu_RB1 2026-11-04T22:02:48.000Z
+rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
+check "resumed fg: first run closed by its toolUseId result -> rc 0" "$rc" "0"
+send_use toolu_SM1 rb1 2026-11-04T22:09:47.054Z
+child_runs rb1 2026-11-04T22:09:50.000Z
+rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
+check "resumed fg: running again (newest own record after every completion) -> rc 1" "$rc" "1"
+contains "resumed fg: names the running child" "$out" "LIVE-SUBAGENT rb1"
+handback rb1 2026-11-04T22:10:03.034Z
+child_runs rb1 2026-11-04T22:10:03.125Z
+rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
+check "resumed fg: hand-back older than the child's last record, no result yet -> rc 1" "$rc" "1"
+send_result toolu_SM1 2026-11-04T22:10:03.231Z "$INLINE"
+rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
+check "resumed fg: RB shape (hand-back + SendMessage tool_result, no task-notification) -> rc 0" "$rc" "0"
+contains "resumed fg: RB shape -> count 0" "$out" "live-subagents=0"
+
+# the hand-back alone, newer than the child's last record
+reset_session
+launch rb2 toolu_RB2 foreground 2026-11-04T22:00:00.000Z
+fg_result toolu_RB2 2026-11-04T22:02:48.000Z
+child_runs rb2 2026-11-04T22:10:03.000Z
+handback rb2 2026-11-04T22:10:03.100Z
+rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
+check "resumed fg: hand-back newer than the child's last record -> rc 0" "$rc" "0"
+
+# controls: neither a stranger's hand-back nor a stranger's SendMessage result clears a running child
+reset_session
+launch rb3 toolu_RB3 foreground 2026-11-04T22:00:00.000Z
+fg_result toolu_RB3 2026-11-04T22:02:48.000Z
+send_use toolu_SM3 rb3 2026-11-04T22:09:47.054Z
+child_runs rb3 2026-11-04T22:10:03.125Z
+# each stranger line names rb3 (as a report quoting it, a message about it), so it passes the
+# detector's grep prefilter and only the agent-identity checks keep it from clearing rb3
+handback other 2026-11-04T22:10:03.200Z " ... it quotes rb3 ..."
+send_use toolu_SM4 other 2026-11-04T22:10:03.210Z "tell rb3 to stop"
+send_result toolu_SM4 2026-11-04T22:10:03.231Z "$INLINE (for rb3)"
+rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
+check "resumed fg: another agent's hand-back and SendMessage result do not clear it -> rc 1" "$rc" "1"
+contains "resumed fg: control still names the child" "$out" "LIVE-SUBAGENT rb3"
+# a resume that is still running: its own record is newer than the hand-back and the result
+child_runs rb3 2026-11-04T22:11:00.000Z
+handback rb3 2026-11-04T22:10:03.300Z
+send_result toolu_SM3 2026-11-04T22:10:03.400Z "$INLINE"
+rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
+check "resumed fg: own record newer than hand-back and result (running) -> rc 1" "$rc" "1"
+
+# a SendMessage to a running BACKGROUND child returns at once, so its result proves nothing
+reset_session
+launch bg1 toolu_BG1 background 2026-11-04T22:00:00.000Z
+send_use toolu_SMB bg1 2026-11-04T22:09:47.054Z
+child_runs bg1 2026-11-04T22:10:00.000Z
+send_result toolu_SMB 2026-11-04T22:10:03.231Z "$INLINE"
+rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
+check "background child: SendMessage tool_result newer than its last record does not clear it -> rc 1" "$rc" "1"
+
+# a foreground-shape child still running: a queued send, or a non-inline resume, is not a finish
+reset_session
+launch rb4 toolu_RB4 foreground 2026-11-04T22:00:00.000Z
+fg_result toolu_RB4 2026-11-04T22:02:48.000Z
+send_use toolu_SM5 rb4 2026-11-04T22:09:47.054Z
+child_runs rb4 2026-11-04T22:10:00.000Z
+send_result toolu_SM5 2026-11-04T22:10:03.231Z "$QUEUED"
+rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
+check "foreground-shape child: queued send result newer than its last record -> rc 1" "$rc" "1"
+contains "foreground-shape child: queued send -> still named live" "$out" "LIVE-SUBAGENT rb4"
+reset_session
+launch rb5 toolu_RB5 foreground 2026-11-04T22:00:00.000Z
+fg_result toolu_RB5 2026-11-04T22:02:48.000Z
+send_use toolu_SM6 rb5 2026-11-04T22:09:47.054Z
+child_runs rb5 2026-11-04T22:10:00.000Z
+send_result toolu_SM6 2026-11-04T22:10:03.231Z "$NONINLINE"
+rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
+check "foreground-shape child: non-inline resume result newer than its last record -> rc 1" "$rc" "1"
+
+# an <agent-message> from the child that is not its hand-back does not finish it
+reset_session
+launch rb6 toolu_RB6 foreground 2026-11-04T22:00:00.000Z
+fg_result toolu_RB6 2026-11-04T22:02:48.000Z
+child_runs rb6 2026-11-04T22:10:00.000Z
+agentmsg rb6 2026-11-04T22:10:03.100Z
+rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
+check "resumed fg: an agent-message without the hand-back marker newer than its last record -> rc 1" "$rc" "1"
+reset_session
+
 # --- the wrap gate: chief.sh wrap ------------------------------------------
 # A predecessor chief with a fake live judge child: wrap refused, nothing
 # written, lock still held; the child stops: wrap writes WRAPPED and releases.
@@ -159,6 +275,21 @@ check "wrap: lock released" "$rc" "0"
 
 rc=0; wrap "$DOC" >/dev/null 2>&1 || rc=$?
 check "wrap: usage (missing token) -> rc 1" "$rc" "1"
+
+# the 2026-11-04 RB shape: a foreground child resumed by SendMessage that handed back
+DOC2="$ROOT/u/b/HIMMEL-nextleg-2026-10-09B-demo-chief.md"
+printf '# A chief\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - chief up\n' > "$DOC2"
+acq=$(HANDOVER_DIR="$ROOT" bash "$QL" acquire "$DOC2" lsa-test-chief2 2>&1)
+TOKEN2=$(printf '%s\n' "$acq" | sed -n "s/^release-token: \`\(.*\)\`\$/\\1/p")
+reset_session
+launch rb1 toolu_RB1 foreground 2026-11-04T22:00:00.000Z
+fg_result toolu_RB1 2026-11-04T22:02:48.000Z
+send_use toolu_SM1 rb1 2026-11-04T22:09:47.054Z
+handback rb1 2026-11-04T22:10:03.034Z
+child_runs rb1 2026-11-04T22:10:03.125Z
+send_result toolu_SM1 2026-11-04T22:10:03.231Z "$INLINE"
+rc=0; out=$(wrap "$DOC2" "$TOKEN2" "handed to B" 2>&1) || rc=$?
+check "wrap: resumed foreground child that handed back (RB shape) -> rc 0" "$rc" "0"
 
 if [ "$fails" -ne 0 ]; then
     echo "FAILED: $fails"
