@@ -104,10 +104,10 @@ this ran:
 
 - **A himmel checkout** (`<repo-root>/marketplace/plugins/handover/` exists):
   `/handover new-epic <name>`.
-- **A project install** (that folder is absent): `new-epic` and the other `new-*`
-  commands stay in the himmel checkout, so do not suggest them. Say that an item
-  is created from a himmel checkout, and that `/handover-resume` here picks up an
-  item already in this state root.
+- **A project install** (that folder is absent): do not suggest `new-epic` or the
+  other `new-*` commands, because only a himmel checkout has been shown running
+  them. Say that `/handover-resume` here picks up an item already in this repo's
+  bucket of the state root.
 
 ### Notes
 

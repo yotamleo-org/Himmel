@@ -216,7 +216,7 @@ bash scripts/lib/wire-luna-vault.sh ~/.claude/settings.json ~/Documents/my-vault
 export LUNA_VAULT_PATH=~/Documents/my-vault
 ```
 
-The helper also wires the session end hook into the same settings file, as one `SessionEnd` entry for `end-session-wiki.sh`, so a vault install (`adopt.sh --profile all`, or `--profile luna --luna-target <vault>`, and the wizard's existing-vault step) needs no hand registration. The `export` line sets the vault only. The per-repo tiers of `/end-session-wiki-setup` write only `.claude/end-session-wiki.json`, so for those, and for a machine installed before the install wired it, add the block in [new-machine.md](../setup/new-machine.md#7-end-session-wiki-hook-auto-capture-to-luna-vault).
+The helper also wires the session end hook into the same settings file, as one `SessionEnd` entry for `end-session-wiki.sh`, so a vault install (`adopt.sh --profile all`, or `--profile luna --luna-target <vault>`, and the wizard's existing-vault step) needs no hand registration. The `export` line sets the vault only. The per-repo tiers of `/end-session-wiki-setup` pick the vault and do not register the hook, so for those, and for a machine installed before the install wired it, add the block in [new-machine.md](../setup/new-machine.md#7-end-session-wiki-hook-auto-capture-to-luna-vault).
 
 ## Logs
 

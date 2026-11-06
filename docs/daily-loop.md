@@ -550,9 +550,10 @@ command: it recovers an interrupted session. `/handover repos` browses the
 registry.
 
 In your own project, the install copies the resume and storage-setup scripts, so
-`/handover-setup` and `/handover-resume` run. The commands that create an item or
-write or ship a note (`new-*`, end-session, PR open and merge, flush) stay in the
-himmel checkout, so a fresh project has no item for `/handover` to write into.
+`/handover-setup` and `/handover-resume` run. Only a himmel checkout has been shown
+running the commands that create an item or write a note (`new-*`, end-session),
+and the PR open, merge and flush scripts are not copied. A fresh project has no
+item for `/handover` to write into.
 
 Full handover internals:
 [docs/internals/handover-system.md](internals/handover-system.md).

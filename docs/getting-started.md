@@ -24,7 +24,7 @@ step 10 undoes the install. A different result means stop and read
 > model too, once you add one), and merges through one gate. Hooks refuse
 > risky actions before they run, so the rules hold even when nobody remembers
 > them. In a himmel checkout, handover notes carry the work across sessions; in
-> your own project, the setup and resume of those notes run. See the
+> your own project, only their setup and resume have been shown running. See the
 > [README](../README.md) for the full pitch and the
 > [advantages](../README.md#what-you-get).
 
@@ -259,9 +259,9 @@ git add -A && git commit -m "feat: my change #2" && git push -u origin feat/my-t
 /pr-check                    # multi-agent review; clears the merge gate when clean
 #   gh pr create / gh pr merge --squash
 /clean                       # prune merged-PR worktrees
-/handover                    # himmel checkout only, on an item you already track: save notes
-                             #   on what you did + where you left off, so the next session
-                             #   (or a teammate) resumes with full context; see below
+/handover                    # on an item you already track, shown running in a himmel checkout:
+                             #   save notes on what you did + where you left off, so the next
+                             #   session (or a teammate) resumes with full context; see below
 ```
 
 > **Handover in your own project.** The install copies the resume and
@@ -269,11 +269,12 @@ git add -A && git commit -m "feat: my change #2" && git push -u origin feat/my-t
 > `/handover-setup` asks where notes live: a folder in your vault or a separate
 > git repo (either through `HANDOVER_DIR`), or an inline `handovers/` folder in
 > the repo. `/handover` has no default: it writes into an existing tracked item,
-> and a fresh project has none. The commands that create an item or write or ship
-> a note (`new-*`, end-session, PR open and merge, flush) stay in the himmel
-> checkout, so `/handover-resume` here picks up an item already in the store you
-> chose. In a himmel checkout the note lands in a `handover/<slug>` worktree off
-> `main`, not in the folder you are in. With the inline folder, `/handover-resume`
+> and a fresh project has none. Only a himmel checkout has been shown running the
+> commands that create an item or write a note (`new-*`, end-session), and the PR
+> open, merge and flush scripts are not copied. `/handover-resume` here picks up an
+> item already in this repo's bucket of the store you chose. In a himmel checkout
+> the note lands in a `handover/<slug>` worktree off `main`, not in the folder you
+> are in. With the inline folder, `/handover-resume`
 > sees it from that worktree, or from the main folder once the branch merges.
 
 **How to tell it's working:** if you try to edit a file on `main` you'll get a

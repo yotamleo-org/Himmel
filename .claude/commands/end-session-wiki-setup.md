@@ -12,7 +12,7 @@ Point the `end-session-wiki` SessionEnd hook (`scripts/hooks/end-session-wiki.{s
 
 A leading `~/` is expanded. An invalid/unresolvable `vault` name, or a config that isn't a valid JSON object, **fails closed** (skips the capture, never misroutes). Full options + examples: [`docs/luna/end-session-wiki.md`](../../docs/luna/end-session-wiki.md) ("Choosing the target vault").
 
-A vault install (`adopt.sh --profile all`, or `--profile luna --luna-target <vault>`, and the wizard's existing-vault step) already wires the session end hook, as one `SessionEnd` entry. The GLOBAL choice below wires it too. BY-NAME and BY-PATH write only `.claude/end-session-wiki.json`: they pick the vault and do not register the hook, so on a machine without it, add the block in [`docs/setup/new-machine.md`](../../docs/setup/new-machine.md) (section 7).
+A vault install (`adopt.sh --profile all`, or `--profile luna --luna-target <vault>`, and the wizard's existing-vault step) already wires the session end hook, as one `SessionEnd` entry. The GLOBAL choice below wires it too. BY-NAME and BY-PATH pick the vault and do not register the hook, so on a machine without it, add the block in [`docs/setup/new-machine.md`](../../docs/setup/new-machine.md) (section 7).
 
 Run this from the **code repo** whose sessions you want captured. Be idempotent — re-running should update, not duplicate.
 
