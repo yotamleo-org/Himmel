@@ -442,7 +442,7 @@ hs=json.load(open(p)).get("holds",[]) if p and os.path.exists(p) else []
 n=lambda v:str(v).lstrip("vV")
 t=lambda s:d.datetime.strptime(s,"%Y-%m-%dT%H:%MZ")
 h=next((h for h in hs if h.get("eco")==e and h.get("key")==k and n(h.get("current",""))==n(c) and n(h.get("latest_reviewed",""))==n(l)),None)
-if h is not None and h.get("eligible") and t(h["eligible"])<=(t(now) if now else d.datetime.now(d.timezone.utc).replace(tzinfo=None)):h=None
+if h is not None and "eligible" in h and t(h["eligible"])<=(t(now) if now else d.datetime.now(d.timezone.utc).replace(tzinfo=None)):h=None
 r=h and h.get("release")
 print("" if h is None else (h.get("reason") or "-")+("" if not r else "; release: "+(vm if r=="vm-proof" else "%s (unrecognised condition, stays HELD)"%r)),end="")' \
     "${DRIFT_PIN_HOLDS-$ROOT/scripts/upstreams/pin-holds.json}" "$@" "$VM_PROOF_RELEASE" "${DRIFT_NOW-}" 2>/dev/null

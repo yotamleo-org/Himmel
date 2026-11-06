@@ -1905,7 +1905,7 @@ H_REV=1111222233334444555566667777888899990000
 H_NEW=ffffeeeeddddcccc999988887777666655554444
 H_OLD2=9999888877776666555544443333222211110000
 printf 'o/pin-held=%s\no/pin-moved=%s\no/pin-free=%s\no/pin-shifted=%s\no/pin-eco=%s\no/ch-held=%s\no/ch-moved=%s\no/ch-free=%s\n' "$H_REV" "$H_NEW" "$H_REV" "$H_REV" "$H_REV" "$H_REV" "$H_NEW" "$H_REV" >"$W18/state/heads"
-printf 'o/fork-held=v1.0.0,v2.0.0\no/fork-moved=v1.0.0,v3.0.0\no/fork-free=v1.0.0,v2.0.0\no/fork-waiting=v1.0.0,v2.0.0\no/fork-expired=v1.0.0,v2.0.0\n' >"$W18/state/tags"
+printf 'o/fork-held=v1.0.0,v2.0.0\no/fork-moved=v1.0.0,v3.0.0\no/fork-free=v1.0.0,v2.0.0\no/fork-waiting=v1.0.0,v2.0.0\no/fork-expired=v1.0.0,v2.0.0\no/fork-badtime=v1.0.0,v2.0.0\n' >"$W18/state/tags"
 cat >"$W18/m.json" <<JSON
 {"plugins":[
  {"name":"pin-held","source":{"source":"url","url":"https://github.com/o/pin-held.git","sha":"$H_OLD"}},
@@ -1917,7 +1917,8 @@ cat >"$W18/m.json" <<JSON
  {"name":"fork-moved","source":{"source":"url","url":"https://github.com/me/fork-moved.git","ref":"v1.0.0"}},
  {"name":"fork-free","source":{"source":"url","url":"https://github.com/me/fork-free.git","ref":"v1.0.0"}},
  {"name":"fork-waiting","source":{"source":"url","url":"https://github.com/me/fork-waiting.git","ref":"v1.0.0"}},
- {"name":"fork-expired","source":{"source":"url","url":"https://github.com/me/fork-expired.git","ref":"v1.0.0"}}
+ {"name":"fork-expired","source":{"source":"url","url":"https://github.com/me/fork-expired.git","ref":"v1.0.0"}},
+ {"name":"fork-badtime","source":{"source":"url","url":"https://github.com/me/fork-badtime.git","ref":"v1.0.0"}}
 ]}
 JSON
 cat >"$W18/u.json" <<'JSON'
@@ -1926,7 +1927,8 @@ cat >"$W18/u.json" <<'JSON'
  "fork-moved":{"upstream_repo":"o/fork-moved","track":"release","synced_base":"v1.0.0"},
  "fork-free":{"upstream_repo":"o/fork-free","track":"release","synced_base":"v1.0.0"},
  "fork-waiting":{"upstream_repo":"o/fork-waiting","track":"release","synced_base":"v1.0.0"},
- "fork-expired":{"upstream_repo":"o/fork-expired","track":"release","synced_base":"v1.0.0"}
+ "fork-expired":{"upstream_repo":"o/fork-expired","track":"release","synced_base":"v1.0.0"},
+ "fork-badtime":{"upstream_repo":"o/fork-badtime","track":"release","synced_base":"v1.0.0"}
 }
 JSON
 cat >"$W18/reg.json" <<JSON
@@ -1946,6 +1948,7 @@ cat >"$W18/holds.json" <<JSON
  {"eco":"upstream","key":"pin-eco","current":"$H_OLD","latest_reviewed":"$H_REV","reason":"fixture hold under the wrong eco"},
  {"eco":"plugin","key":"fork-waiting","current":"v1.0.0","latest_reviewed":"v2.0.0","eligible":"2026-12-01T00:00Z","reason":"fixture timed hold, not yet eligible"},
  {"eco":"plugin","key":"fork-expired","current":"v1.0.0","latest_reviewed":"v2.0.0","eligible":"2026-11-06T08:00Z","reason":"fixture timed hold, eligible time passed"},
+ {"eco":"plugin","key":"fork-badtime","current":"v1.0.0","latest_reviewed":"v2.0.0","eligible":"","reason":"fixture hold whose eligible time is empty"},
  {"eco":"upstream","key":"ch-held","current":"$H_OLD","latest_reviewed":"$H_REV","reason":"fixture commit_head hold"},
  {"eco":"upstream","key":"ch-moved","current":"$H_OLD","latest_reviewed":"$H_REV","reason":"fixture commit_head hold"}
 ]}
@@ -1957,8 +1960,8 @@ done
 # BEHIND by mutation of one field of an otherwise matching row: the upstream
 # moved past latest_reviewed (pin-moved, fork-moved, ch-moved), OUR pin moved
 # off current (pin-shifted), the same key under another eco (pin-eco), the
-# eligible time passed (fork-expired), or no row at all (*-free).
-for behind in pin-moved pin-free pin-shifted pin-eco fork-moved fork-free fork-expired ch-moved ch-free; do
+# eligible time passed (fork-expired) or empty (fork-badtime), or no row at all (*-free).
+for behind in pin-moved pin-free pin-shifted pin-eco fork-moved fork-free fork-expired fork-badtime ch-moved ch-free; do
   if grepq "$out18" "^  $behind: BEHIND"; then ok "hold: $behind with no row or a non-matching row -> BEHIND"; else bad "$behind not BEHIND; $(grep "$behind" <<< "$out18")"; fi
 done
 # A holds file that is not JSON must not hold anything: every row reads BEHIND.
