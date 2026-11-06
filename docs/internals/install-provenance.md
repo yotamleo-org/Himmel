@@ -116,6 +116,11 @@ prov_end ok
   `container_created`, `file_created`, `preexisted`, `elem_sha`. The keys named
   in the table above are reserved. A repeated key keeps its first position and
   takes its last value.
+- **One exception, the session end hook.** `wire_sessionend_hook`
+  (`scripts/lib/wire-pretooluse-hooks.sh`) records no entry row, only the `/hooks`
+  container when it creates one. A recorded replace of a hand-wired entry would
+  mask the trio helper at uninstall, and an entry the ledger never saw falls to
+  `unwire_sessionend_hook`, which uninstall calls on its own line.
 - **Dry runs** (`DRY_RUN=1`, `--dry-run`) write nothing and print
   `DRY: record <op> <kind> <path>`; `begin`/`end` stay silent.
 - **Failures**: usage errors are rc 2 (bash/node CLI) and I/O or missing-tool

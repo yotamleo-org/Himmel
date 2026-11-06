@@ -63,4 +63,12 @@ run --repo-path "$tmp/beta" --state-host "$state2" --user tester --registry "$tm
 [ "$rc" -eq 0 ] && [ ! -e "$tmp/reg2.json.lock" ] || fail "lock must be released after a run (rc=$rc: $out)"
 echo "ok: registry lock held -> refused, released after use"
 
+# init_templates_from_himmel_repo: a copy with no marketplace/ beside it, as a project install has.
+root="$(cd "$here/../.." && pwd)"
+cp_dir="$tmp/projcopy"; mkdir -p "$cp_dir/scripts/handover" "$cp_dir/scripts/lib" "$tmp/state3"
+cp "$script" "$cp_dir/scripts/handover/"; cp "$root/scripts/lib/git-clean.sh" "$root/scripts/lib/user-slug.sh" "$cp_dir/scripts/lib/"
+out=$(env -u CLAUDE_PLUGIN_ROOT HIMMEL_REPO="$root" bash "$cp_dir/scripts/handover/register-state.sh" --repo-path "$tmp/alpha" --state-host "$tmp/state3" --user tester --registry "$tmp/reg4.json" --init 2>&1) && rc=0 || rc=$?
+[ "$rc" -eq 0 ] && [ -f "$tmp/state3/tester/_templates/standalone-brief.md" ] || fail "init_templates_from_himmel_repo: --init from a project copy must find templates under HIMMEL_REPO (rc=$rc: $out)"
+echo "ok: init_templates_from_himmel_repo"
+
 echo "PASS"

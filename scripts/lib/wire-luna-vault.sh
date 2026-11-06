@@ -13,6 +13,10 @@
 #   .env.LUNA_VAULT_PATH = "<vault-path forward-slashed>"   (all other .env keys
 #   preserved -- HIMMEL_REPO / HIMMEL_INITIATIVE etc. are never clobbered).
 #
+# It also wires the session end hook (end-session-wiki.sh) into the same settings
+# file through wire-pretooluse-hooks.sh --sessionend; a failure there warns and
+# leaves the vault path wired.
+#
 # Idempotent (re-setting the same value is a no-op), atomic (temp file + mv),
 # non-destructive (other keys preserved; file + parent dir created if absent).
 # Requires jq. Source it to call wire_luna_vault directly, or invoke via bash
@@ -96,6 +100,12 @@ wire_luna_vault() {
     return 1   # the write failed: never echo success (matches the pre-record `&&` under set -e)
   fi
   echo "  set env.LUNA_VAULT_PATH -> $settings"
+  # The vault path is what the session end hook writes to, so the hook is wired
+  # beside it. A failed hook wire warns by name and leaves the vault path wired.
+  local here clone
+  here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; clone="$(dirname "$(dirname "$here")")"
+  bash "$here/wire-pretooluse-hooks.sh" --sessionend "$settings" "$clone" \
+    || echo "wire-luna-vault: warning: wiring the SessionEnd hook (end-session-wiki.sh) failed; env.LUNA_VAULT_PATH stays wired" >&2
 }
 
 # Allow both `source wire-luna-vault.sh` (to call wire_luna_vault directly) and

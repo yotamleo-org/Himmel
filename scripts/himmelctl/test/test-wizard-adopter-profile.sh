@@ -2464,4 +2464,33 @@ if (/your permissions\.allow/.test(ft)) fail(`the trust row must not claim the i
   || fail "caseAU: the summary does not state that an empty permissions.allow is intended"
 echo "ok: caseAU an adopter install states that permissions.allow is intentionally empty (applied + --dry-run), never on profile=luna"
 
-echo "PASS: test-wizard-adopter-profile.sh (37 cases)"
+# ── Case AV: summary_names_session_end ─────────────────────────────────────
+# A vault install wires the session end hook (wire-luna-vault.sh), so the
+# summary row for the vault says so, in the applied and the --dry-run wording; vault=none says nothing.
+# shellcheck disable=SC2016
+"$node_bin" -e '
+const a = require(process.argv[1]);
+const fail = (m) => { console.error(m); process.exit(1); };
+const mk = (vault) => ({ role:"adopter", scope:"project", vault, handover:{mode:"inline",path:""},
+                         pluginSet:"lean", lanes:[], alwaysOn:false });
+const rowsOf = (s) => [].concat(s.installed, s.planned);
+const vaultRows = (ans, dryRun) => rowsOf(a.buildSummary(ans, [], { derived:"x", dryRun })).filter((l) => /luna vault/.test(l));
+for (const vault of [{ mode:"existing", path:"/v" }, { mode:"default-template", path:"/v" }]) {
+  for (const dryRun of [false, true]) {
+    const rows = vaultRows(mk(vault), dryRun);
+    if (!rows.some((l) => /session end hook/i.test(l)))
+      fail(`${vault.mode} dryRun=${dryRun}: the vault row must name the session end hook, got: ${JSON.stringify(rows)}`);
+  }
+}
+// a reused stamped vault is not scaffolded, but adopt.sh still wires the hook into the settings file
+const reused = a.buildSummary(mk({ mode:"default-template", path:"/v" }), [], { derived:"x", dryRun:false, vaultScaffolded:false });
+if (![].concat(reused.skipped, rowsOf(reused)).some((l) => /luna vault/.test(l) && /session end hook/i.test(l)))
+  fail(`a reused stamped vault must say the session end hook is wired, got: ${JSON.stringify(reused.skipped)}`);
+const none = a.buildSummary(mk({ mode:"none", path:"" }), [], { derived:"x", dryRun:false });
+if ([].concat(rowsOf(none), none.skipped).some((l) => /session end hook/i.test(l)))
+  fail("vault=none installs no vault, so it must not claim a session end hook");
+' "$(winpath "$repo_root/scripts/himmelctl/lib/adopter-profile.js")" \
+  || fail "caseAV: the install summary does not name the session end hook for a vault install"
+echo "ok: caseAV summary_names_session_end (applied + --dry-run, never on vault=none)"
+
+echo "PASS: test-wizard-adopter-profile.sh (38 cases)"

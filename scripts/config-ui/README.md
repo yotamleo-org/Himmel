@@ -388,7 +388,7 @@ fragment, never a request line); `/api/agui/<run>` stays gated.
 From your own terminal, outside Claude, in the himmel checkout:
 
 ```bash
-# 1. build the page once (and again after agui-web/src changes)
+# 1. the first `himmelctl ui` builds the page; build it by hand after agui-web/src changes
 cd scripts/config-ui/agui-web
 bun install
 bun run build

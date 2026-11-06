@@ -1,10 +1,10 @@
 // Service mode (`server.ts --service`): a token that survives restarts, no idle exit, and the board read from the
 // JSON file the chief writes beside its doc. Real server processes; the feed is the stub himmelctl.
 import { test, expect, afterEach, beforeAll } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { rebuildAguiIfStale, startServer } from "../server";
+import { buildAguiIfMissing, rebuildAguiIfStale, startServer } from "../server";
 
 const SERVER = join(import.meta.dir, "..", "server.ts");
 const STUB = join(import.meta.dir, "stub-himmelctl.js");
@@ -82,6 +82,61 @@ test("rebuildAguiIfStale: a node_modules left half-installed is installed again 
   process.env.PATH = `${bin}:${path}`;
   try { rebuildAguiIfStale(() => {}, join(web, "dist"), web); } finally { process.env.PATH = path; }
   expect(readFileSync(calls, "utf8").split("\n").filter(Boolean)).toEqual(["install --frozen-lockfile", "run build"]);
+});
+
+// First use (`himmelctl ui` in the foreground): a stub bun on PATH, a real dist and web under tmp. `body` is the
+// shell the stub runs for `bun run build`, in the web dir; `install` always succeeds.
+function firstUse(opts: { body: string; before?: (dist: string) => void }) {
+  const dir = tmp();
+  const web = join(dir, "web");
+  const dist = join(web, "dist");
+  mkdirSync(join(web, "src"), { recursive: true });
+  opts.before?.(dist);
+  const bin = join(dir, "bin");
+  mkdirSync(bin);
+  const calls = join(dir, "calls");
+  writeFileSync(join(bin, "bun"), `#!/bin/sh\necho "$*" >> ${JSON.stringify(calls)}\n[ "$1" = run ] || exit 0\n${opts.body}\n`, { mode: 0o755 });
+  const logs: string[] = [];
+  const path = process.env.PATH;
+  process.env.PATH = `${bin}:${path}`;
+  let threw: unknown = null;
+  try { buildAguiIfMissing((m) => logs.push(m), dist, web); } catch (e) { threw = e; } finally { process.env.PATH = path; }
+  return { dist, logs, calls, threw };
+}
+const PAGE = "<!doctype html><title>page</title>";
+
+test("first_use_failure_returns_and_removes_no_page: a failed build returns, names the step, and leaves no half-built dist", () => {
+  const r = firstUse({ body: `mkdir -p dist; echo '${PAGE}' > dist/index.html; exit 1` });
+  expect(r.threw).toBeNull();
+  expect(r.logs.some((l) => /bun run build/.test(l))).toBe(true);
+  expect(existsSync(r.dist)).toBe(false);
+});
+
+test("first_use_failure_cleanup_never_throws: a dist that cannot be removed does not stop the start", () => {
+  const r = firstUse({ body: `mkdir -p dist; echo '${PAGE}' > dist/index.html; chmod 555 .; exit 1` });
+  chmodSync(join(r.dist, ".."), 0o755);
+  expect(r.threw).toBeNull();
+  expect(r.logs.some((l) => /bun run build/.test(l))).toBe(true);
+});
+
+test("first_use_failure_keeps_older_build: a failed build leaves an older page that was already in dist", () => {
+  const r = firstUse({ body: "exit 1", before: (d) => { mkdirSync(d, { recursive: true }); writeFileSync(join(d, "index.html"), "OLD"); } });
+  expect(r.threw).toBeNull();
+  expect(readFileSync(join(r.dist, "index.html"), "utf8")).toBe("OLD");
+});
+
+test("first_use_failure_keeps_finished_build: a build another start finished meanwhile survives this one's failure", () => {
+  const r = firstUse({ body: `mkdir -p dist; echo '${PAGE}' > dist/index.html; echo '[]' > dist/.agui-sources; exit 1` });
+  expect(r.threw).toBeNull();
+  expect(existsSync(join(r.dist, "index.html"))).toBe(true);
+  expect(existsSync(join(r.dist, ".agui-sources"))).toBe(true);
+});
+
+test("first_use_marker_present_skips_build: dist/.agui-sources means built, so bun never runs", () => {
+  const r = firstUse({ body: "exit 1", before: (d) => { mkdirSync(d, { recursive: true }); writeFileSync(join(d, ".agui-sources"), "[]"); } });
+  expect(r.threw).toBeNull();
+  expect(existsSync(r.calls)).toBe(false);
+  expect(r.logs).toEqual([]);
 });
 
 test("service: two starts on one token file serve the same token, and the file is mode 600", async () => {

@@ -531,6 +531,43 @@ run_uninstall_fx --yes --skip-tasks --skip-plugins --skip-hooks >/dev/null; chec
 check "RED19d: with no ledger, the trust key is kept exactly as today" \
   "$(jq -c . "$CFG19D")" "$(jq -c . "$SUITE_TMP/red19d-before.json")"
 
+echo "==== sessionend: uninstall removes the session end hook a vault wire added ===="
+# sessionend_fresh_luna_clean: a real wire-luna-vault.sh run (vault path, SessionEnd hook and the
+# /hooks container it created), read back through the real provenance-read.sh at uninstall.
+new_case sefresh
+bash "$lib/wire-luna-vault.sh" "$CASE_SETTINGS" "C:/fake/vault" >/dev/null
+check "sessionend_fresh_luna_clean precondition: the wire added a SessionEnd entry" \
+  "$(jq '[.hooks.SessionEnd[]?.hooks[]?] | length' "$CASE_SETTINGS")" "1"
+run_uninstall --yes --keep-telegram-state --skip-tasks --skip-plugins --skip-hooks >/dev/null
+check "sessionend_fresh_luna_clean: no SessionEnd key and the himmel-created hooks object is dropped" \
+  "$(jq -c '[(.hooks // "ABSENT"), (.env.LUNA_VAULT_PATH // "ABSENT")]' "$CASE_SETTINGS")" '["ABSENT","ABSENT"]'
 
+# sessionend_removed_under_mask: a user-modified trio element protects /hooks/PreToolUse (_mask_hooks=1);
+# the session end hook has no ledger unit, so it goes anyway and the modified element stays.
+new_case semask
+bash "$lib/wire-pretooluse-hooks.sh" "$CASE_SETTINGS" "C:/fake/himmel" >/dev/null
+bash "$lib/wire-pretooluse-hooks.sh" --sessionend "$CASE_SETTINGS" "C:/fake/himmel" >/dev/null
+jq '.hooks.PreToolUse[0].hooks[0].timeout = 77' "$CASE_SETTINGS" > "$CASE_SETTINGS.new" && mv "$CASE_SETTINGS.new" "$CASE_SETTINGS"
+run_uninstall --yes --keep-telegram-state --skip-tasks --skip-plugins --skip-hooks >/dev/null
+check "sessionend_removed_under_mask: SessionEnd entry removed, the user-modified PreToolUse element kept" \
+  "$(jq -c '[(.hooks.SessionEnd // "ABSENT"), .hooks.PreToolUse[0].hooks[0].timeout]' "$CASE_SETTINGS")" '["ABSENT",77]'
+
+# sessionend_dry_run_previews: --dry-run prints the row and writes nothing.
+new_case sedry
+bash "$lib/wire-luna-vault.sh" "$CASE_SETTINGS" "C:/fake/vault" >/dev/null
+cp "$CASE_SETTINGS" "$SUITE_TMP/sedry-before.json"
+out_sedry=$(run_uninstall --dry-run --yes --keep-telegram-state --skip-tasks --skip-plugins --skip-hooks)
+check "sessionend_dry_run_previews: the DRY row is printed" \
+  "$(printf '%s\n' "$out_sedry" | grep -c "^DRY: remove himmel SessionEnd hook from $CASE_SETTINGS\$")" "1"
+check "sessionend_dry_run_previews: the settings file is untouched" \
+  "$(jq -cS . "$CASE_SETTINGS")" "$(jq -cS . "$SUITE_TMP/sedry-before.json")"
+
+# sessionend_hooks_null: an explicit `"hooks": null` is restored to null, not left as {}.
+new_case senull
+printf '{"hooks":null}\n' > "$CASE_SETTINGS"
+bash "$lib/wire-luna-vault.sh" "$CASE_SETTINGS" "C:/fake/vault" >/dev/null
+run_uninstall --yes --keep-telegram-state --skip-tasks --skip-plugins --skip-hooks >/dev/null
+check "sessionend_hooks_null: an explicit hooks null is restored to null after uninstall" \
+  "$(jq -c 'if has("hooks") then .hooks else "ABSENT" end' "$CASE_SETTINGS")" 'null'
 
 uninstall_prov_finish

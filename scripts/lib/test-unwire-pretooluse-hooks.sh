@@ -110,5 +110,82 @@ check "new shape: trio removed (block-edit)"   "$(jq -r '[.hooks.PreToolUse[].ho
 check "new shape: trio removed (block-read)"   "$(jq -r '[.hooks.PreToolUse[].hooks[].command | select(test("block-read-secrets"))] | length' "$s9")" "0"
 check "new shape: inject-initiative removed"   "$(jq -r '[.hooks.SessionStart[].hooks[].command | select(test("inject-initiative"))] | length' "$s9")" "0"
 
+# 10. SessionEnd. Cases run from a tmp cwd: a CLI that read --sessionend as a settings path would write there.
+mkdir -p "$td/cwd"
+unse() { ( cd "$td/cwd" && bash "$unwire" --sessionend "$@" ); }
+se_cmds() { jq -c '[.hooks.SessionEnd[]?.hooks[]?.command]' "$1"; }
+mk_se() {
+  printf '%s' '{
+    "hooks": {
+      "PreToolUse": [{"matcher":"Bash","hooks":[{"type":"command","command":"bash C:/h/scripts/hooks/auto-approve-safe-bash.sh"}]}],
+      "SessionEnd": [
+        {"hooks":[{"type":"command","command":"echo theirs"}]},
+        {"hooks":[{"type":"command","command":"bash C:/h/scripts/hooks/end-session-wiki.sh","timeout":99}]},
+        {"hooks":[{"type":"command","command":"if [ -f \"C:/h/scripts/hooks/end-session-wiki.sh\" ]; then bash \"C:/h/scripts/hooks/end-session-wiki.sh\"; fi","shell":"bash","timeout":30}]}
+      ]
+    }
+  }' > "$1"
+}
+
+# sessionend_unwire_only_ours: hand-wired and fresh entries go with the trio; the foreign hook stays.
+sa="$td/sa.json"; mk_se "$sa"
+bash "$unwire" "$sa" >/dev/null; unse "$sa" >/dev/null
+check "sessionend_unwire_only_ours: theirs kept, both ours gone" "$(se_cmds "$sa")" '["echo theirs"]'
+check "sessionend_unwire_only_ours: trio gone with it" "$(jq '[.hooks.PreToolUse[]?.hooks[]?] | length' "$sa")" "0"
+sb="$td/sb.json"
+printf '%s' '{"hooks":{"SessionEnd":[{"hooks":[{"type":"command","command":"bash C:/h/scripts/hooks/end-session-wiki.sh"}]}]}}' > "$sb"
+unse "$sb" >/dev/null
+check "sessionend_unwire_only_ours: an emptied SessionEnd is deleted" "$(jq -c '.hooks | has("SessionEnd")' "$sb")" "false"
+
+# sessionend_toggle_off_leaves_it / sessionend_remediation_leaves_it: the trio helper, called as
+# install-engine.js (settings path) and detect-hook-dup.sh (--scope project --target) call it, never touches SessionEnd.
+st="$td/st.json"; mk_se "$st"
+bash "$unwire" "$st" >/dev/null
+check "sessionend_toggle_off_leaves_it" "$(jq '[.hooks.SessionEnd[].hooks[]] | length' "$st")" "3"
+mkdir -p "$td/rem/.claude"; mk_se "$td/rem/.claude/settings.json"
+( cd "$td/cwd" && bash "$unwire" --scope project --target "$td/rem" >/dev/null )
+check "sessionend_remediation_leaves_it" "$(jq '[.hooks.SessionEnd[].hooks[]] | length' "$td/rem/.claude/settings.json")" "3"
+
+# sessionend_shared_group_kept: the himmel entry shares a group with a foreign hook; the group and the foreign hook stay.
+sg="$td/sg.json"
+printf '%s' '{"hooks":{"SessionEnd":[{"matcher":"x","hooks":[{"type":"command","command":"echo a"},{"type":"command","command":"bash C:/h/scripts/hooks/end-session-wiki.sh"}]}]}}' > "$sg"
+unse "$sg" >/dev/null
+check "sessionend_shared_group_kept" "$(jq -c '[.hooks.SessionEnd[0].matcher, (.hooks.SessionEnd[0].hooks | map(.command))]' "$sg")" '["x",["echo a"]]'
+
+# one row per call, even with nothing to remove (uninstall's dry-run preview counts rows), and absent file is a no-op.
+sn="$td/sn.json"; printf '%s' '{"hooks":{}}' > "$sn"
+check "sessionend: a row when nothing is there" "$(unse "$sn")" "  removed himmel SessionEnd hook (if present) -> $sn"
+check "sessionend: dry-run row" "$(unse "$sn" 1)" "DRY: remove himmel SessionEnd hook from $sn"
+check "sessionend: absent file is a no-op" "$(unse "$td/none.json"; echo "rc=$?")" "rc=0"
+check "sessionend: absent file is not created" "$([ -e "$td/none.json" ] && echo yes || echo no)" "no"
+
+# sessionend_nonobject_hooks_untouched: a `hooks` that is not an object leaves the file byte-identical, never empty.
+# The fixtures are written the way jq prints them, so a rewrite of unchanged JSON is still byte-identical.
+for hv in '[]' '"x"' '1'; do
+  sh="$td/nonobj.json"; jq -n --argjson h "$hv" '{hooks: $h}' > "$sh"; cp "$sh" "$sh.before"
+  unse "$sh" >/dev/null; rc=$?
+  check "sessionend_nonobject_hooks_untouched: hooks=$hv file byte-identical" "$(cmp -s "$sh" "$sh.before" && echo same || echo changed)" "same"
+  check "sessionend_nonobject_hooks_untouched: hooks=$hv rc" "$rc" "0"
+  check "sessionend_nonobject_hooks_untouched: hooks=$hv no temp left" "$([ -e "$sh.unwirehooks.tmp" ] && echo yes || echo no)" "no"
+  bash "$unwire" "$sh" >/dev/null; rc=$?
+  check "trio_nonobject_hooks_untouched: hooks=$hv file byte-identical" "$(cmp -s "$sh" "$sh.before" && echo same || echo changed)" "same"
+  check "trio_nonobject_hooks_untouched: hooks=$hv rc" "$rc" "0"
+done
+
+# sessionend_jq_failure_not_success / trio_jq_failure_not_success: when the jq program fails the helper says so,
+# exits non-zero, leaves the file as it was and leaves no temp file behind.
+sf="$td/jqfail.json"; printf '%s\n' '{"hooks":{"SessionEnd":[1]}}' > "$sf"; cp "$sf" "$sf.before"
+out=$(unse "$sf" 2>/dev/null); rc=$?
+check "sessionend_jq_failure_not_success: rc" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+check "sessionend_jq_failure_not_success: no success row" "$(printf '%s' "$out" | grep -c 'removed himmel SessionEnd hook')" "0"
+check "sessionend_jq_failure_not_success: file untouched" "$(cmp -s "$sf" "$sf.before" && echo same || echo changed)" "same"
+check "sessionend_jq_failure_not_success: no temp left" "$([ -e "$sf.unwirehooks.tmp" ] && echo yes || echo no)" "no"
+tf="$td/jqfail-trio.json"; printf '%s\n' '{"hooks":{"PreToolUse":"x"}}' > "$tf"; cp "$tf" "$tf.before"
+out=$(bash "$unwire" "$tf" 2>/dev/null); rc=$?
+check "trio_jq_failure_not_success: rc" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+check "trio_jq_failure_not_success: no success row" "$(printf '%s' "$out" | grep -c 'removed UNIVERSAL himmel hooks')" "0"
+check "trio_jq_failure_not_success: file untouched" "$(cmp -s "$tf" "$tf.before" && echo same || echo changed)" "same"
+check "trio_jq_failure_not_success: no temp left" "$([ -e "$tf.unwirehooks.tmp" ] && echo yes || echo no)" "no"
+
 rm -rf "$td"
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

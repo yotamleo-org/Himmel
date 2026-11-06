@@ -253,6 +253,13 @@ PORTABLE_FILES=(
   scripts/worktree.sh
   scripts/clean.sh
   scripts/_new-worktree.sh
+  scripts/handover/resume.sh
+  scripts/handover/resume-context.sh
+  scripts/handover/bug.sh
+  scripts/handover/set-handover-dir.sh
+  scripts/handover/register-state.sh
+  scripts/lib/env-append.sh
+  .claude/commands/handover-resume.md
 )
 
 seed_merge_trust_paths() {
@@ -656,7 +663,7 @@ wire_luna_vault_path() {
     settings="$HOME/.claude/settings.json"
   fi
   if [[ $DRY_RUN -eq 1 ]]; then
-    echo "DRY: wire env.LUNA_VAULT_PATH → $settings (vault: $dest)"
+    echo "DRY: wire env.LUNA_VAULT_PATH and the SessionEnd hook → $settings (vault: $dest)"
     return
   fi
   bash "$HIMMEL_ROOT/scripts/lib/wire-luna-vault.sh" "$settings" "$dest"

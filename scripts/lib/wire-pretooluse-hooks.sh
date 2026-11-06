@@ -3,7 +3,7 @@
 # settings.json idempotently (HIMMEL install/uninstall symmetry). Extracted from
 # adopt.sh's wire_settings so setup.sh and adopt.sh share ONE implementation.
 #
-# Two functions:
+# Three functions (wire_sessionend_hook, below, is the third):
 #   wire_pretooluse_hooks <settings> <prefix> [<dry_run>]
 #       Wire the PreToolUse trio (auto-approve-safe-bash, block-edit-on-main,
 #       block-read-secrets), each as its own matcher stanza.
@@ -347,6 +347,61 @@ wire_sessionstart_hook() {
   echo "  wired SessionStart $basename -> $settings"
 }
 
+# wire_sessionend_hook <settings> <clone> [<dry_run>]: wire the one himmel
+# SessionEnd hook (end-session-wiki.sh) with `shell: bash` and `timeout: 30`, as
+# docs/setup/settings-template.json carries it. An entry that already matches
+# _UNWIRE_SE_PAT (adopters registered it by hand) keeps its other keys and gets
+# only `command` rewritten; a repeat of it in a later group is dropped; no match
+# appends a new group. Every other SessionEnd hook, and a group shared with one,
+# survives. The wire writes no entry row (docs/internals/install-provenance.md):
+# a recorded replace of a hand-wired entry would mask the trio helper at
+# uninstall. It does record the `/hooks` container it creates.
+wire_sessionend_hook() {
+  local settings="$1" clone="$2" dry_run="${3:-0}" se_pat
+  command -v jq >/dev/null 2>&1 || { echo "wire-pretooluse-hooks: jq required" >&2; return 1; }
+  # shellcheck disable=SC1003
+  local pfx="${clone//'\'//}"
+  if [[ "$dry_run" -eq 1 ]]; then
+    echo "DRY: merge SessionEnd hook end-session-wiki.sh into $settings (prefix: $clone)"
+    return
+  fi
+  # The pattern lives in the unwire lib, which sets `set -euo pipefail` when sourced.
+  se_pat="$( . "$(dirname "${BASH_SOURCE[0]}")/unwire-pretooluse-hooks.sh" >/dev/null 2>&1; printf '%s' "${_UNWIRE_SE_PAT:-}" )"
+  [ -n "$se_pat" ] || { echo "wire-pretooluse-hooks: no SessionEnd pattern from unwire-pretooluse-hooks.sh" >&2; return 1; }
+  mkdir -p "$(dirname "$settings")"
+  local base="{}"
+  [[ -f "$settings" ]] && base=$(cat "$settings") # read-sink-ok: the caller-named settings.json under the operator-selected target, merged in place
+  if [ -n "$(printf '%s' "$base" | tr -d '[:space:]')" ] && ! printf '%s' "$base" | jq -e . >/dev/null 2>&1; then
+    echo "wire-pretooluse-hooks: $settings is not valid JSON -- refusing to overwrite" >&2
+    return 1
+  fi
+  [ -z "$(printf '%s' "$base" | tr -d '[:space:]')" ] && base="{}"
+  # shellcheck disable=SC2016  # a jq program: $pfx/$pat/$cmd/$acc/$g/$h are jq bindings
+  if printf '%s' "$base" | jq --arg pfx "$pfx" --arg pat "$se_pat" \
+    "$WIRE_HOOK_CMD_JQ"'
+    hookcmd($pfx; "end-session-wiki.sh") as $cmd
+    | .hooks = (.hooks // {})
+    | (reduce (.hooks.SessionEnd // [])[] as $g ({seen: false, out: []};
+        (reduce ($g.hooks // [])[] as $h ({seen: .seen, hooks: []};
+            if (($h.command // "") | test($pat))
+            then (if .seen then . else {seen: true, hooks: (.hooks + [$h | .command = $cmd])} end)
+            else {seen: .seen, hooks: (.hooks + [$h])}
+            end)) as $r
+        | {seen: $r.seen,
+           out: (.out + (if ($r.hooks | length) > 0 or ($g.hooks // [] | length) == 0 then [$g | .hooks = $r.hooks] else [] end))}
+      )) as $acc
+    | .hooks.SessionEnd = (if $acc.seen then $acc.out
+        else ($acc.out + [{"hooks":[{"type":"command","command":$cmd,"shell":"bash","timeout":30}]}]) end)
+  ' > "$settings.wirehooks.tmp" && mv "$settings.wirehooks.tmp" "$settings"; then
+    _wire_hooks_record_container "$settings" "$base" \
+      || echo "wire-pretooluse-hooks: warning: provenance record failed (the SessionEnd hook is wired; uninstall will keep the hooks object)" >&2
+  else
+    rm -f "$settings.wirehooks.tmp"
+    return 1
+  fi
+  echo "  wired SessionEnd end-session-wiki.sh -> $settings"
+}
+
 # Allow both `source wire-pretooluse-hooks.sh` (to call the functions directly,
 # e.g. from adopt.sh which is already `set -euo pipefail`) and direct invocation.
 # Callers that DON'T want this lib's `set -euo pipefail` to leak into their shell
@@ -354,7 +409,14 @@ wire_sessionstart_hook() {
 #   bash wire-pretooluse-hooks.sh <settings> <prefix> [<dry>]            # PreToolUse trio
 #   bash wire-pretooluse-hooks.sh --sessionstart <settings> <prefix> <basename> [<dry>]
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-  if [ "${1:-}" = "--sessionstart" ]; then
+  if [ "${1:-}" = "--sessionend" ]; then
+    shift
+    if [ "$#" -lt 2 ]; then
+      echo "usage: wire-pretooluse-hooks.sh --sessionend <settings> <clone> [<dry_run>]" >&2
+      exit 2
+    fi
+    wire_sessionend_hook "$1" "$2" "${3:-0}"
+  elif [ "${1:-}" = "--sessionstart" ]; then
     shift
     if [ "$#" -lt 3 ]; then
       echo "usage: wire-pretooluse-hooks.sh --sessionstart <settings> <prefix> <hook-basename> [<dry_run>]" >&2

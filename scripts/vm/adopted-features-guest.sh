@@ -2,14 +2,15 @@
 # adopted-features-guest.sh -- GUEST side of the VM e2e adopted-features stage.
 #
 # Runs ON a test VM against a staged himmel tree (scripts/vm/adopted-features-e2e.sh
-# stages it and calls this). For each of the ten clone-only feature rows it adopts himmel into
+# stages it and calls this). For each of the thirteen feature rows it adopts himmel into
 # a scratch git project with scripts/adopt.sh, then HIDES the staged himmel tree
 # (mv <tree> <tree>.away) so that nothing a row runs can reach the clone, and runs one
 # check per row from the project:
 #   1 /pr-check + review-owed gates   2 /cr-scores /cr-tune   3 no force push
 #   4 check-ci.sh                     5 merge gate            6 merge-on-green solo
 #   7 usage preflight                 8 /morning-report       9 inject-initiative
-#  10 /afk-shift
+#  10 /afk-shift                     11 handover resume      12 session end hook
+#  13 Fleet page (himmelctl ui)
 # Each row prints `ROW <n> PASS|FINDING|FAIL <name>: <detail>`. A FINDING is a row that
 # cannot run from an adopted project, with the cause; it never fails the stage, and a
 # row is never skipped silently. gh is a stub on PATH (the credential-free guest has no
@@ -19,7 +20,7 @@
 #      anywhere but the VM driver); ADOPTED_E2E_RED=1 (RED control: row 3's adopted
 #      gate is deleted before it runs, so row 3 must FAIL).
 # Usage: HIMMEL_ADOPTED_E2E_GUEST=1 bash scripts/vm/adopted-features-guest.sh [tree-root]
-# Exit: 0 no FAIL row and all ten rows reported; 1 a row failed; 2 not on the VM.
+# Exit: 0 no FAIL row and all thirteen rows reported; 1 a row failed; 2 not on the VM.
 # The final line is `RESULT: N failure(s), M finding(s)`.
 #
 # Sourced (BASH_SOURCE != $0) it defines only the helpers and row functions, for the
@@ -28,11 +29,11 @@
 row_report() { printf 'ROW %s %s %s: %s\n' "$1" "$3" "$2" "$4"; }
 
 # rows_tally <file> -- prints the RESULT line; rc 1 on any FAIL row or unless each of the
-# rows 1..10 reported exactly once (a row that never ran must not read as a pass).
+# rows 1..13 reported exactly once (a row that never ran must not read as a pass).
 rows_tally() {
   local f="$1" fails findings n complete=1
   fails=$(grep -c '^ROW [0-9]* FAIL ' "$f"); findings=$(grep -c '^ROW [0-9]* FINDING ' "$f")
-  for n in 1 2 3 4 5 6 7 8 9 10; do
+  for n in 1 2 3 4 5 6 7 8 9 10 11 12 13; do
     [ "$(grep -c "^ROW $n \(PASS\|FINDING\|FAIL\) " "$f")" -eq 1 ] || complete=0
   done
   echo "RESULT: $fails failure(s), $findings finding(s)"
@@ -47,16 +48,19 @@ _fail() { row_report "$1" "$2" FAIL "$3"; }
 _pass() { row_report "$1" "$2" PASS "$3"; }
 _find() { row_report "$1" "$2" FINDING "$3"; }
 
-# adopt_project <name> -- a fresh git project adopted from the staged tree; prints its path.
-adopt_project() {
-  local d="$WORK/proj-$1"
+# _adopt_project <name> <adopt flags...> -- a fresh git project adopted from the staged tree; prints its path.
+_adopt_project() {
+  local d="$WORK/proj-$1"; local name="$1"; shift
   mkdir -p "$d"
   git init -q -b main "$d" || return 1
   git -C "$d" config user.name stage; git -C "$d" config user.email stage@vm.invalid
-  HOME="$FH" bash "$TREE/scripts/adopt.sh" --profile core --scope project --target "$d" >"$WORK/adopt-$1.log" 2>&1 || {
-    echo "adopt rc!=0 for project $1; log tail:" >&2; tail -n 15 "$WORK/adopt-$1.log" >&2; return 1; }
+  HOME="$FH" bash "$TREE/scripts/adopt.sh" "$@" --scope project --target "$d" >"$WORK/adopt-$name.log" 2>&1 || {
+    echo "adopt rc!=0 for project $name; log tail:" >&2; tail -n 15 "$WORK/adopt-$name.log" >&2; return 1; }
   printf '%s\n' "$d"
 }
+adopt_project() { _adopt_project "$1" --profile core; }
+# adopt_project_vault <name> -- the same with a luna vault at $WORK/vault-<name>, absent beforehand so adopt scaffolds it from templates/luna-second-brain.
+adopt_project_vault() { _adopt_project "$1" --profile all --luna-target "$WORK/vault-$1"; }
 
 _copies_match() { # <row> <name> <project> <file>... -- every file present and byte-identical
   local n="$1" nm="$2" p="$3" f ref="$SRC"; shift 3
@@ -357,6 +361,82 @@ row_10() {
   _pass 10 "$nm" "per-project key $key, stop marker and shift report under the project's own state paths, not the clone's"
 }
 
+# _settings_env <settings> -- one NAME=value line per entry of the project's settings env, the env its hooks and commands run under.
+_settings_env() { jq -r '.env // {} | to_entries[] | "\(.key)=\(.value)"' "$1"; }
+
+row_11() {
+  local nm="handover resume" p="$P11" h="$WORK/handover-11" bucket id item out rc line envs=()
+  while IFS= read -r line; do envs+=("$line"); done < <(_settings_env "$p/.claude/settings.json")
+  _r11() { (cd "$p" && env -u CLAUDE_PLUGIN_ROOT HOME="$FH" ${envs[@]+"${envs[@]}"} "$@" 2>&1); }
+  mkdir -p "$h"
+  out=$(_r11 bash scripts/handover/set-handover-dir.sh "$h") \
+    || { _fail 11 "$nm" "set-handover-dir.sh failed in the project: $(head -c 300 <<<"$out")"; return 0; }
+  out=$(_r11 bash scripts/handover/register-state.sh --init --repo-path "$p" --state-host "$h" --user stage) \
+    || { _fail 11 "$nm" "register-state.sh --init failed in the project: $(head -c 300 <<<"$out")"; return 0; }
+  bucket=$(basename "$p"); id="$(printf '%s-1' "$bucket" | tr '[:lower:]' '[:upper:]')"
+  item="$h/stage/$bucket/standalones/$id-resume"
+  mkdir -p "$item"
+  printf '# Resume fixture\n\n**Status:** in-progress\n' > "$item/brief.md"
+  printf '# Session 1\n\n## Cold-Start Prompt\n\nCOLDSTART-ROW11 pick up here.\n' > "$item/next-session-1.md"
+  printf -- '---\ntemplate_version: 2\n---\n# Bug Log\n\n### BUG-1 — BUGLINE-ROW11 <!-- status: open -->\n- **Symptom:** BUGLINE-ROW11\n- **Fixes tried:**\n- **Resolution:** —\n- **CR link:** —\n- **CR finding:** —\n' > "$item/bugs.md"
+  out=$(_r11 bash scripts/handover/resume.sh "$id"); rc=$?
+  [ "$rc" -eq 0 ] || { _fail 11 "$nm" "the project's resume.sh $id exited $rc: $(head -c 300 <<<"$out")"; return 0; }
+  ! grep -q 'No such file' <<<"$out" || { _fail 11 "$nm" "resume.sh output names a missing file: $(grep -m1 'No such file' <<<"$out")"; return 0; }
+  grep -q 'COLDSTART-ROW11' <<<"$out" || { _fail 11 "$nm" "resume.sh did not print the item's cold-start prompt: $(head -c 300 <<<"$out")"; return 0; }
+  grep -q 'BUGLINE-ROW11' <<<"$out" || { _fail 11 "$nm" "resume.sh did not print the item's open bug (bug.sh or resume-context.sh not run): $(head -c 300 <<<"$out")"; return 0; }
+  [ -f "$p/.claude/commands/handover-resume.md" ] || { _fail 11 "$nm" ".claude/commands/handover-resume.md was not copied into the project"; return 0; }
+  _pass 11 "$nm" "set-handover-dir.sh, register-state.sh --init and resume.sh $id ran from the project; the cold start and the open bug printed; /handover-resume is in the project"
+}
+
+row_12() {
+  local nm="session end hook" p="$P12" v="$WORK/vault-12" s n cmd tr ts note="" i line envs=()
+  s="$p/.claude/settings.json"
+  n=$(jq '[.hooks.SessionEnd[]?.hooks[]? | select((.command // "") | contains("end-session-wiki"))] | length' "$s")
+  [ "${n:-0}" -ge 1 ] || { _fail 12 "$nm" "no SessionEnd entry for end-session-wiki.sh in $s (adopt --profile all did not wire the session end hook)"; return 0; }
+  [ "$n" -eq 1 ] || { _fail 12 "$nm" "$n SessionEnd entries for end-session-wiki.sh in $s, want exactly one"; return 0; }
+  cmd=$(jq -r '[.hooks.SessionEnd[]?.hooks[]? | .command | select(contains("end-session-wiki"))] | .[0]' "$s")
+  while IFS= read -r line; do envs+=("$line"); done < <(_settings_env "$s")
+  # crystallize off: the proof is the note write, not a detached LLM pass the credential-free guest cannot run.
+  [ -e "$p/.claude/end-session-wiki.json" ] || printf '{"crystallize":false}\n' > "$p/.claude/end-session-wiki.json"
+  ts=$(date -u -d '10 minutes ago' +%Y-%m-%dT%H:%M:%SZ)
+  tr="$WORK/transcript-12.jsonl"
+  jq -nc --arg ts "$ts" '{type:"user",timestamp:$ts,message:{role:"user",content:"ROW12-MARKER please note this session"}}' > "$tr"
+  jq -nc --arg ts "$ts" '{type:"assistant",timestamp:$ts,message:{role:"assistant",content:[{type:"text",text:"ROW12-MARKER noted."}]}}' >> "$tr"
+  jq -nc --arg t "$tr" --arg c "$p" '{session_id:"row12-session",transcript_path:$t,cwd:$c,hook_event_name:"SessionEnd",reason:"other"}' > "$WORK/payload-12.json"
+  (cd "$p" && env HOME="$FH" CLAUDE_PROJECT_DIR="$p" ${envs[@]+"${envs[@]}"} timeout 30 bash -c "$cmd" < "$WORK/payload-12.json" > "$WORK/row12.out" 2>&1)
+  for ((i = 0; i < 30; i++)); do
+    note=$(grep -rl 'ROW12-MARKER' "$v/sessions" 2>/dev/null | head -n1)
+    [ -n "$note" ] && break
+    sleep 1
+  done
+  [ -n "$note" ] || { _fail 12 "$nm" "no note holding the transcript marker under $v/sessions within 30 s; hook output: $(head -c 200 "$WORK/row12.out"); log: $(tail -qn 3 "$FH"/.claude/logs/end-session-wiki/*.log 2>&1 | head -c 300)"; return 0; }
+  _pass 12 "$nm" "one SessionEnd entry; its command, run from the project's settings env on a SessionEnd payload, wrote ${note#"$v"/} holding the transcript marker"
+}
+
+row_13() {
+  local nm="Fleet page (himmelctl ui)" dist="$TREE/scripts/config-ui/agui-web/dist" out="$WORK/ui-13.out" err="$WORK/ui-13.err" pid first="" base code i
+  rm -rf "$dist"; : > "$out"; : > "$err"
+  HOME="$FH" node "$TREE/scripts/himmelctl/bin.js" ui --port 0 >"$out" 2>"$err" </dev/null &
+  pid=$!
+  for ((i = 0; i < 360; i++)); do
+    [ "$(wc -l < "$out")" -ge 1 ] && break
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 1
+  done
+  first=$(head -n1 "$out")
+  _r13_stop() { kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; }
+  case "$first" in
+    http://*/agui/#t=*) ;;
+    *) _r13_stop; _fail 13 "$nm" "the first stdout line is not the /agui/ URL after ${i}s: '${first:-<nothing>}' (stderr: $(head -c 200 "$err"))"; return 0 ;;
+  esac
+  base="${first%%/agui/*}"
+  code=$(curl -s -o "$WORK/ui-13.body" -w '%{http_code}' --max-time 20 "$base/agui/")
+  _r13_stop
+  [ "$code" = 200 ] || { _fail 13 "$nm" "GET /agui/ answered $code, want 200"; return 0; }
+  ! grep -q 'not built' "$WORK/ui-13.body" || { _fail 13 "$nm" "GET /agui/ served the 'not built' page"; return 0; }
+  _pass 13 "$nm" "with dist/ absent, the first himmelctl ui printed the /agui/ URL after ${i}s and GET /agui/ answered 200 with the built page"
+}
+
 # Sourced for the helpers and rows only: stop here.
 if [ "${BASH_SOURCE[0]}" != "$0" ]; then
   # shellcheck disable=SC2317  # reached when sourced
@@ -386,21 +466,22 @@ done
 
 # Adopt every project first, while the staged tree is still in place.
 adopt_failed=""
-for n in 1 2 3 4 5 6 7 8 9 10; do
-  if p=$(adopt_project "$n"); then printf -v "P$n" '%s' "$p"; else adopt_failed="$adopt_failed $n"; printf -v "P$n" '%s' ""; fi
+for n in 1 2 3 4 5 6 7 8 9 10 11 12 13; do
+  if [ "$n" = 12 ]; then adopt_fn=adopt_project_vault; else adopt_fn=adopt_project; fi
+  if p=$("$adopt_fn" "$n"); then printf -v "P$n" '%s' "$p"; else adopt_failed="$adopt_failed $n"; printf -v "P$n" '%s' ""; fi
 done
 # From here on nothing may reach the staged himmel tree: the rows run from the projects.
 mv "$TREE" "$SRC" || { echo "adopted-features-guest: cannot hide the staged tree" >&2; exit 2; }
 cd "$WORK" || exit 2
 
-for n in 1 2 3 4 5 6 7 8 9 10; do
+for n in 1 2 3 4 5 6 7 8 9 10 11 12 13; do
   case " $adopt_failed " in
     *" $n "*) row_report "$n" "adopt" FAIL "adopt.sh failed for this row's project (see $WORK/adopt-$n.log)" | tee -a "$LOG"; continue ;;
   esac
-  # Rows 6 and 9 are clone-anchored by design (adopt wires the hook and the merge anchor to the clone path): bring it back for those rows only.
-  case "$n" in 6|9) mv "$SRC" "$TREE" ;; esac
+  # Rows 6, 9, 11, 12 and 13 need the clone: 6 and 9 are anchored on it by design (adopt wires the hook and the merge anchor to its path), 11 reads its templates through env.HIMMEL_REPO, 12 runs a hook command that names it, 13 runs its himmelctl. Put it back for those rows only.
+  case "$n" in 6|9|11|12|13) mv "$SRC" "$TREE" ;; esac
   "row_$n" | tee -a "$LOG"
-  case "$n" in 6|9) mv "$TREE" "$SRC" ;; esac
+  case "$n" in 6|9|11|12|13) mv "$TREE" "$SRC" ;; esac
 done
 
 rows_tally "$LOG"

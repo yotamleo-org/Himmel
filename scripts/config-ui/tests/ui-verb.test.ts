@@ -1,8 +1,12 @@
-import { test, expect } from "bun:test";
+import { test, expect, beforeAll } from "bun:test";
 import { join } from "node:path";
+import { rebuildAguiIfStale } from "../server";
 
 const BIN = join(import.meta.dir, "..", "..", "himmelctl", "bin.js");
 const STUB = join(import.meta.dir, "stub-himmelctl.js");
+
+// `himmelctl ui` builds a missing page on first use; a cold CI tree would do that inside a test's budget.
+beforeAll(() => rebuildAguiIfStale(() => {}), 120_000);
 
 // A suite run from inside a Claude session must not trip the agent-session refusal, so the Claude markers are dropped.
 const cleanEnv = () => {

@@ -661,6 +661,18 @@ out=$(project_uninstall --yes); rc=$?
 assert_rc "SC6P invalid project halts" 2 "$rc"
 assert_not_has "SC6P invalid project never claims unwired" "project settings: unwired" "$out"
 assert_not_has "SC6P invalid project never completes" "Uninstall complete." "$out"
+# SC6P-NO: a project settings.json whose `hooks` is not an object keeps its bytes through the real uninstall; the
+# session end unwire once wrote an empty file here.
+for hv in '[]' '"x"' '1'; do
+    jq -n --argjson h "$hv" '{hooks: $h}' > "$PROJECT/.claude/settings.json"
+    cp "$PROJECT/.claude/settings.json" "$TMP/project-nonobj.json"
+    out=$(project_uninstall --yes); rc=$?
+    # a string or number `hooks` makes the step's read-back halt (exit 2): loud, and the file is still untouched.
+    assert_rc "SC6P-NO hooks=$hv exits clean or halted" 1 "$([ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] && echo 1 || echo 0)"
+    assert_rc "SC6P-NO hooks=$hv project settings not emptied" 1 "$([ -s "$PROJECT/.claude/settings.json" ] && echo 1 || echo 0)"
+    cmp -s "$TMP/project-nonobj.json" "$PROJECT/.claude/settings.json"; rc=$?
+    assert_rc "SC6P-NO hooks=$hv project settings byte-identical" 0 "$rc"
+done
 # Identity controls use a disposable source checkout, never live repo settings.
 # Removing the own-checkout exemption must change these seeded bytes.
 REAL_CLI="$CLI"
@@ -2817,15 +2829,15 @@ assert_not_has 'U21g dry-run does NOT show the legacy config as kept (statusLine
 u_same 'U21g dry-run left the legacy hud config alone (preview only)' "$U_HOME/.claude/plugins/claude-hud/config.json" "$TMP/u21g-legacy"
 
 # U22 — dry and wet print the SAME number of user-settings unwire rows: one per
-# helper (statusLine, HIMMEL_REPO, LUNA_VAULT_PATH, HANDOVER_DIR, hooks).
+# helper (statusLine, HIMMEL_REPO, LUNA_VAULT_PATH, HANDOVER_DIR, hooks, session end hook).
 u_residue_fixture u22
 u_run --dry-run
 u22_dry=$(printf '%s\n' "$out" | grep -c "^DRY: .* from $HIMMEL_USER_SETTINGS\$")
 u_residue_fixture u22w
 u_run_fx
 u22_wet=$(printf '%s\n' "$out" | grep -c -- "-> $HIMMEL_USER_SETTINGS\$")
-assert_rc 'U22 wet run prints 5 user-settings unwire rows' 5 "$u22_wet"
-assert_rc 'U22 dry-run prints the same 5 rows' 5 "$u22_dry"
+assert_rc 'U22 wet run prints 6 user-settings unwire rows' 6 "$u22_wet"
+assert_rc 'U22 dry-run prints the same 6 rows' 6 "$u22_dry"
 
 # U23 — --skip-settings leaves the rule-file blocks and hud config alone (step 6).
 u_residue_fixture u23

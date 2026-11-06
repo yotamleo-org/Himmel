@@ -6,7 +6,7 @@
 // that bound argv under the machine-wide write lock, re-probes the row and
 // appends one audit line.
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { scrubProviderKeys } from "./scrub-provider-keys";
@@ -113,15 +113,17 @@ const AGUI_TYPES: Record<string, string> = {
 };
 const AGUI_MISSING = `<!doctype html><meta charset="utf-8"><title>AG-UI page not built</title>
 <h1>The AG-UI page is not built</h1>
-<p>Build it once from your himmel checkout, then reload this page:</p>
+<p>Run <code>himmelctl ui</code> once in your terminal: it builds this page on first use. Then reload this page.</p>
+<p>If that build failed, build it by hand from your himmel checkout:</p>
 <pre>cd scripts/config-ui/agui-web
 bun install
 bun run build</pre>
 `;
 
-// dist is untracked and nothing rebuilds it, so a page built before the source last changed is served
-// as is, but says so: on the launcher's stderr and in a banner the server puts into index.html (the stale bundle
-// cannot know it is stale). Detect and say, never rebuild: a rebuild on start would run bun under the operator's server.
+// dist is untracked, so a page built before the source last changed is served as is, but says so: on the
+// launcher's stderr and in a banner the server puts into index.html (the stale bundle cannot know it is stale).
+// A start detects and says, and never rebuilds a stale page under the operator's server: only `--service` rebuilds
+// (rebuildAguiIfStale), and a foreground `himmelctl ui` builds a page that was never built (buildAguiIfMissing).
 const BUILD_STEP = "cd scripts/config-ui/agui-web && bun run build";
 function aguiSourceGone(dist: string, web: string): boolean {
   let listed: unknown;
@@ -944,9 +946,31 @@ export function launchUrl(base: string, token: string, o: { landing: "fleet" | "
 export function rebuildAguiIfStale(log: (m: string) => void, dist = AGUI_DIST, web = AGUI_WEB): void {
   if (existsSync(join(dist, "index.html")) && !aguiStale(dist, web)) return;
   log("himmelctl: ui: rebuilding the AG-UI page");
+  buildAgui(web);
+}
+
+function buildAgui(web: string): void {
   // never keyed on node_modules existing: a start killed mid-install leaves it half-populated, and the build would die on it.
   execFileSync("bun", ["install", "--frozen-lockfile"], { cwd: web, stdio: ["ignore", 2, 2] });
   execFileSync("bun", ["run", "build"], { cwd: web, stdio: ["ignore", 2, 2] });
+}
+
+// A foreground `himmelctl ui` (--build-if-missing) builds the page that was never built. dist/.agui-sources is the
+// build's last write, so an interrupted build has none and is retried. There is no deadline: the line below shows,
+// and Ctrl-C stops it. A failure warns naming the step and returns, so the server starts on the config page.
+export function buildAguiIfMissing(log: (m: string) => void, dist = AGUI_DIST, web = AGUI_WEB): void {
+  if (existsSync(join(dist, ".agui-sources"))) return;
+  const hadPage = existsSync(join(dist, "index.html"));
+  log("himmelctl: ui: building the AG-UI page (first use, about a minute)");
+  try {
+    buildAgui(web);
+  } catch (e) {
+    log(`himmelctl: ui: building the AG-UI page failed (${(e as Error).message}); the server starts without it. Build it by hand: ${BUILD_STEP}`);
+    // an older build, or one another start finished meanwhile, stays; only a half-built page with no marker goes.
+    if (!hadPage && !existsSync(join(dist, ".agui-sources"))) {
+      try { rmSync(dist, { recursive: true, force: true }); } catch { /* a dist that cannot be removed stays; the server still starts */ }
+    }
+  }
 }
 
 // The password for --set-login: one stdin line, echo off on a terminal and asked twice there.
@@ -999,6 +1023,8 @@ if (import.meta.main) {
       process.exit(1);
     }
   }
+  // himmelctl ui (foreground) passes --build-if-missing; the URL line below is printed after the build, stdout stays the URL alone.
+  if (process.argv.includes("--build-if-missing")) buildAguiIfMissing((m) => console.error(m));
   // the operator lands on Fleet (another page); the config report loads meanwhile.
   // --project KEY (repeatable, or --project=KEY): narrow the Board to these Jira projects; with none it covers every mirrored project.
   const only = projectFlags(process.argv);

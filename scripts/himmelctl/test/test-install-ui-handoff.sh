@@ -66,7 +66,8 @@ new_case() {
   printf '#!/usr/bin/env bash\nexit 0\n' > "$c/fx/scripts/adopt.sh"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$c/fx/scripts/setup.sh"
   chmod +x "$c/fx"/scripts/*.sh
-  printf '#!/bin/sh\necho x >> "%s"\nexec "%s" "%s"\n' "$c/launches" "$node_bin" "$work/fake-server.js" > "$c/stub/bun"
+  # shellcheck disable=SC2016
+  printf '#!/bin/sh\necho "$*" >> "%s"\nexec "%s" "%s"\n' "$c/launches" "$node_bin" "$work/fake-server.js" > "$c/stub/bun"
   # shellcheck disable=SC2016
   printf '#!/bin/sh\ncase "$2" in is-active) echo %s;; is-enabled) echo enabled;; esac\nexit 0\n' "${2:-inactive}" > "$c/stub/systemctl"
   chmod +x "$c/stub/bun" "$c/stub/systemctl"
@@ -97,7 +98,8 @@ run_install /dev/null DISPLAY=:0 --
 linkA=$(printf '%s\n' "$out" | grep -oE "$setup_link_re" | head -1)
 [ -n "$linkA" ] || fail "A: no Setup link in the output: $out"
 [ "$(wc -l < "$c/launches")" -eq 1 ] || fail "A: expected exactly one UI server started, got $(wc -l < "$c/launches")"
-echo "ok: A no UI running -> one server started, Setup link printed"
+grep -qF -- '--build-if-missing' "$c/launches" && fail "A: the hand-off's ad-hoc server was given --build-if-missing: $(cat "$c/launches")"
+echo "ok: A no UI running -> one server started, Setup link printed, no first-use build"
 
 # ── B: a second install reuses the running UI ──────────────────────────────
 run_install /dev/null DISPLAY=:0 --
@@ -162,6 +164,33 @@ run_install /dev/null DISPLAY=:0 --
 [ "$rc" -eq 0 ] || fail "G: a failing handoff turned a good install into rc=$rc: $out"
 grep -qF 'UI handoff failed' <<< "$out" || fail "G: no warning that the handoff failed: $out"
 echo "ok: G a throwing handoff warns and leaves the install rc untouched"
+
+# ── H: first-use build flag: foreground `ui` passes it; --read-only, the ad-hoc hand-off (A) and --service never do ──
+# run_ui [ui args...]; the stub bun records its argv in $c/launches and exits, so `ui` returns at once.
+run_ui() {
+  rc=0
+  # shellcheck disable=SC2016
+  printf '#!/bin/sh\necho "$*" >> "%s"\n' "$c/launches" > "$c/stub/bun"
+  out=$(env "${scrub[@]}" PATH="$c/stub:$PATH" HOME="$c/home" USERPROFILE="$(winpath "$c/home")" \
+    HIMMELCTL_CACHE_DIR="$(winpath "$c/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$c/cache/luna-config.json")" \
+    HIMMELCTL_REPO_ROOT="$(winpath "$c/fx")" \
+    HIMMELCTL_SYSTEMD_USER_UNIT_DIR="$c/units" HANDOVER_DIR="$c/handover" \
+    ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 5} "$node_bin" "$wizard" ui "$@" < /dev/null 2>&1) || rc=$?  # read-sink-ok: /dev/null
+}
+new_case H
+run_ui --port 0
+grep -qF -- '--build-if-missing' "$c/launches" || fail "H: foreground ui did not pass --build-if-missing: $(cat "$c/launches") / $out"
+new_case H2
+run_ui --port 0 --read-only
+[ "$(wc -l < "$c/launches")" -eq 1 ] || fail "H2: --read-only ui did not launch the server once: $out"
+grep -qF -- '--build-if-missing' "$c/launches" && fail "H2: --read-only ui passed --build-if-missing: $(cat "$c/launches")"
+new_case H3 inactive
+mkdir -p "$c/handover"
+run_ui --service install
+[ "$(wc -l < "$c/launches")" -eq 0 ] || fail "H3: --service install launched a server: $out"
+[ -f "$c/units/himmel-ui.service" ] || fail "H3: --service install wrote no unit: $out"
+grep -qF -- '--build-if-missing' "$c/units/himmel-ui.service" && fail "H3: the always-on unit passes --build-if-missing: $(cat "$c/units/himmel-ui.service")"
+echo "ok: H foreground ui passes --build-if-missing; --read-only, the hand-off and --service never do"
 
 # ── F: copy never names the retired link forms ─────────────────────────────
 files=(docs/ui.md docs/setup/install.md scripts/config-ui/public scripts/config-ui/setup.ts)

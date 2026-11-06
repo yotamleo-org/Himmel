@@ -114,8 +114,8 @@ p4bk="$(jq -r '.pre.backup' <<< "$row")"
 row="$(prov_row "$p4led/provenance.jsonl" /scripts/hooks/block-edit-on-main.sh)"
 [ "$(jq -r '[.op,.pre.state,.class]|join(",")' <<< "$row")" = "create,absent,code" ] \
   || fail "HIMMEL-3332 S4: a copy into a clean target must be a create row: $row"
-[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "92" ] \
-  || fail "HIMMEL-3332 S4: expected 92 file rows (91 portable entries plus the trust policy seed)"
+[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "99" ] \
+  || fail "S4: expected 99 file rows (98 portable entries plus the trust policy seed)"
 echo "ok: HIMMEL-3332 S4 copy_portable records create + replace rows; the user's bytes and mode are backed up"
 
 # a re-run finds our own bytes already there: noop rows, and NO new backups
@@ -248,5 +248,21 @@ row="$(jq -c 'select(.kind=="json-key" and .unit=="/env/HANDOVER_DIR")' "$p4led/
 [ "$(jq -r '.env.HANDOVER_DIR' "$p4hd/.claude/settings.json")" = "/some/operator/chosen/handovers" ] \
   || fail "HIMMEL-3332 S4: the recorded skip must not change the operator's HANDOVER_DIR"
 echo "ok: HIMMEL-3332 S4 a preserved HANDOVER_DIR is recorded as noop preexisted"
+
+# sessionend_profile_luna_wired: a luna-profile install wires the session end hook, once, over a re-run.
+pse="$work/p4-se"; mkdir -p "$pse"
+for _run in 1 2; do HOME="$p4home" HIMMEL_PROVENANCE_DIR="$p4led" bash "$adopt" --profile luna --target "$pse" >/dev/null; done
+se_n="$(jq '[.hooks.SessionEnd[]?.hooks[]? | select((.command // "") | test("scripts/hooks/end-session-wiki[.]sh"))] | length' "$pse/.claude/settings.json")"
+[ "$se_n" = "1" ] || fail "sessionend_profile_luna_wired: want one SessionEnd entry after two luna installs, got $se_n"
+[ "$(jq -r '.hooks.SessionEnd[0].hooks[0].timeout' "$pse/.claude/settings.json")" = "30" ] \
+  || fail "sessionend_profile_luna_wired: the entry must carry timeout 30"
+echo "ok: sessionend_profile_luna_wired"
+
+# sessionend_dry_line: the DRY line names the hook and writes nothing.
+psd="$work/p4-se-dry"; mkdir -p "$psd"
+dry_out="$(HOME="$p4home" HIMMEL_PROVENANCE_DIR="$p4led" bash "$adopt" --profile luna --target "$psd" --dry-run 2>&1)" || true
+grep -q '^DRY: .*SessionEnd' <<< "$dry_out" || fail "sessionend_dry_line: no DRY line names the SessionEnd hook: $dry_out"
+[ ! -e "$psd/.claude/settings.json" ] || fail "sessionend_dry_line: a dry run wrote settings.json"
+echo "ok: sessionend_dry_line"
 
 echo "PASS"

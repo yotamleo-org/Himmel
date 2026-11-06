@@ -44,8 +44,8 @@ Along with that you get:
 - **A UI that shows the fleet.** `himmelctl ui`, run outside Claude Code, prints a link
   to a local page. The part
   that stands out is the Fleet page, built on AG-UI, an open protocol that
-  streams an agent's events to a web page. After a one-time build it lists every
-  live session with its ticket, PR and state, and opens the run of any one of
+  streams an agent's events to a web page. The first `himmelctl ui` builds it,
+  then it lists every live session with its ticket, PR and state, and opens the run of any one of
   them. The other pages show what is installed and whether it is healthy, and
   turn features on and off, with a preview before each change
   ([the himmel UI](docs/ui.md)).
@@ -231,8 +231,13 @@ The test run shows a few of these. The rest arrive as you add them, and the
   `/handover new-standalone <name>`), `/handover` leaves a plain markdown doc
   behind, and `/handover-resume` in a fresh session reads it and resumes from
   the decisions and reasons it recorded.
-  In your own project handover is not ready yet: its setup and resume call
-  scripts a project install does not copy.
+  In your own project, setup and resume work; the commands that write or ship
+  a handover (end-session, PR open and merge, flush, `new-*`) stay in the himmel
+  checkout, and so does `overnight` on `/handover-resume`. A project installed
+  earlier gets the resume scripts by re-running `adopt.sh` with `--profile core`
+  or `--profile all` (`--profile luna` copies none); the session end hook comes
+  from `--profile all`, or `--profile luna --luna-target <vault>`.
+  `himmel-update.sh` copies nothing.
 
 **Keep it right**
 
@@ -257,7 +262,7 @@ The test run shows a few of these. The rest arrive as you add them, and the
 **Remember and find**
 
 - **A second brain, not just a memory file.** With the optional notes vault, a
-  hook you register by hand leaves a note when a session ends normally, search
+  hook the install wires leaves a note when a session ends normally, search
   finds a note by its words or its meaning, and a graph shows which notes connect. It is all plain markdown
   you can open and fix. [Second brain and memory](#second-brain-and-memory)
   says what sets it apart.
@@ -338,8 +343,8 @@ made decisions on a tracked item writes them into a handover doc with `/handover
 `handovers/` folder in the repo. On a machine set up for it, when a session
 nears its usage limit, himmel schedules a restart. The next session reads the
 doc and continues where the last one stopped: run `/handover-resume`.
-In your own project handover is not ready yet: its setup and resume call
-scripts a project install does not copy.
+In your own project, setup and resume work; the commands that write or ship a
+handover stay in the himmel checkout.
 
 **4. Find what you already know.** Before improvising, a session looks up
 what is already known. Claude Code's per-project `MEMORY.md` is a short index
@@ -534,9 +539,9 @@ an LLM wiki. Claude writes and keeps them up, search finds the relevant ones
 when a session needs them, and you can read or edit them in
 [Obsidian](https://obsidian.md). With it, five things set himmel's memory apart:
 
-- **It fills itself.** Once you
-  [register the hook by hand](docs/setup/new-machine.md#7-end-session-wiki-hook-auto-capture-to-luna-vault),
-  it writes a note when a Claude Code session ends normally, so an interrupted
+- **It fills itself.** A vault install wires a
+  [hook](docs/setup/new-machine.md#7-end-session-wiki-hook-auto-capture-to-luna-vault)
+  that writes a note when a Claude Code session ends normally, so an interrupted
   session can leave none: what it did, what it decided, what comes next
   ([end-session hook](docs/luna/end-session-wiki.md)). `/luna-ingest` saves a
   GitHub repo or issue as a note, and pages you clip in the browser are filed
@@ -572,8 +577,8 @@ What the memory is made of, all plain files:
   session. The state can live in the repo (`handovers/`) or outside it, set
   with `$HANDOVER_DIR`; see the
   [handover system](docs/internals/handover-system.md).
-  In your own project handover is not ready yet: its setup and resume call
-  scripts a project install does not copy.
+  In your own project, setup and resume work; the commands that write or ship a
+  handover stay in the himmel checkout.
   With a vault, we recommend a `handovers/` folder inside it (`/handover-setup`
   offers it first). Your handovers then become part of the second brain:
   search finds them beside your other notes, the graph links them to the

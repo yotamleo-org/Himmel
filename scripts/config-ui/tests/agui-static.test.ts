@@ -1,10 +1,12 @@
-import { test, expect, afterEach } from "bun:test";
+import { test, expect, afterEach, beforeAll } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { aguiStaleWarning, startServer } from "../server";
+import { aguiStaleWarning, rebuildAguiIfStale, startServer } from "../server";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// The tests that spawn `himmelctl ui` would build a missing page on first use inside a test's budget on a cold tree.
+beforeAll(() => rebuildAguiIfStale(() => {}), 120_000);
 
 // GET /agui/ serves the built AG-UI page (agui-web/dist), and
 // `himmelctl ui --agui` prints its live URL.
@@ -86,6 +88,13 @@ test("a missing dist answers 404 with the build steps", async () => {
   expect(r.status).toBe(404);
   expect(r.headers.get("content-type")).toBe("text/html; charset=utf-8");
   expect(await r.text()).toContain("bun run build");
+});
+
+test("agui_missing_names_first_use: the page a failed first-use build lands on says to run himmelctl ui", async () => {
+  const base = boot(join(tmp("agui-nodist-"), "dist"));
+  const html = await (await fetch(`${base}/agui/`)).text();
+  expect(html).toContain("himmelctl ui");
+  expect(html).toMatch(/first use|first time/i);
 });
 
 test("the API stays token-gated", async () => {

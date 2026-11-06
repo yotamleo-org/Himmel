@@ -3,8 +3,9 @@
 #
 # Takes the vm-lock on <vm>, restores it to the clean snapshot, stages THIS worktree's
 # tracked scripts/.claude tree onto it, and runs scripts/vm/adopted-features-guest.sh
-# there: himmel is adopted into scratch git projects (adopt.sh) and each of the ten
-# clone-only features is checked from the project, never from the clone. The VM is
+# there: himmel is adopted into scratch git projects (adopt.sh) and each of the thirteen
+# features (ten clone-only ones, then handover resume, the session end hook and the Fleet
+# page) is checked from the project, never from the clone. The VM is
 # restored and powered off afterwards, and the lock released, on every exit path.
 #
 # Usage: bash scripts/vm/adopted-features-e2e.sh [--expect-red] <vm>
@@ -32,7 +33,7 @@ esac
 
 SNAPSHOT="${HIMMEL_ADOPTED_E2E_SNAPSHOT:-suite-ready-v4}"
 REMOTE_DIR="/tmp/himmel-adopted-vm"
-STAGE_PATHS=(scripts .claude docs/setup marketplace .nvmrc)
+STAGE_PATHS=(scripts .claude docs/setup marketplace .nvmrc templates/luna-second-brain)
 
 vmsdk() {
   if [ -n "${HIMMEL_ADOPTED_VMSDK:-}" ]; then "$HIMMEL_ADOPTED_VMSDK" "$VM" "$@"
@@ -93,7 +94,7 @@ vm_guest_assert_clean gx_run "$REMOTE_DIR" full || exit 3
 
 OUT="$(mktemp "$STAGE_TMP/adopted-features-out.XXXXXX")" || exit 3
 red=""; [ "$EXPECT_RED" = 1 ] && red="ADOPTED_E2E_RED=1 "
-gx --timeout 1800 -- "${red}HIMMEL_ADOPTED_E2E_GUEST=1 bash $REMOTE_DIR/scripts/vm/adopted-features-guest.sh $REMOTE_DIR" 2>&1 | tee "$OUT"
+gx --timeout 2400 -- "${red}HIMMEL_ADOPTED_E2E_GUEST=1 bash $REMOTE_DIR/scripts/vm/adopted-features-guest.sh $REMOTE_DIR" 2>&1 | tee "$OUT"
 rc="${PIPESTATUS[0]}"
 
 if grep -q ' FINDING ' "$OUT"; then
@@ -103,7 +104,7 @@ fi
 
 if [ "$EXPECT_RED" = 1 ]; then
   rows_seen=$(grep -o '^ROW [0-9]*' "$OUT" | sort -u | wc -l)
-  if [ "$rc" -ne 0 ] && grep -q '^ROW 3 FAIL .*check-no-force-push.sh was not copied' "$OUT" && grep -q '^RESULT: 1 failure(s)' "$OUT" && [ "$rows_seen" -eq 10 ]; then
+  if [ "$rc" -ne 0 ] && grep -q '^ROW 3 FAIL .*check-no-force-push.sh was not copied' "$OUT" && grep -q '^RESULT: 1 failure(s)' "$OUT" && [ "$rows_seen" -eq 13 ]; then
     echo "==> RED control PASSED: the stage failed on row 3 only (rc=$rc)"
     exit 0
   fi

@@ -57,9 +57,11 @@ the stage fails on that assertion. Run it on a disposable `himmel-ar-N` clone an
 restore `suite-ready-v4` + power off after.
 **Adopted-features stage (opt-in).** `bash scripts/vm/adopted-features-e2e.sh <vm>`
 takes the vm-lock, restores `suite-ready-v4`, stages this tree on the clone, adopts
-himmel into ten scratch git projects and checks one clone-only feature per row from the
-project, with the staged tree hidden. Rows 6 (merge-on-green) and 9 (the SessionStart
-hook) are anchored on the clone by design and get it back for their row only; row 1
+himmel into thirteen scratch git projects and checks one feature per row from the
+project (rows 1 to 10 the clone-only features; row 11 handover resume, row 12 the session
+end hook writing a note into a project vault, row 13 the first `himmelctl ui` serving the
+Fleet page), with the staged tree hidden. Rows 6 (merge-on-green), 9 (the SessionStart
+hook), 11, 12 and 13 need the clone and get it back for their row only; row 1
 (`/pr-check`) is reported as a FINDING because `adopt.sh` does not ship it. `gh` is a
 stub, so a live authenticated verdict is not proven. `--expect-red` deletes the adopted
 no-force-push gate and passes only when row 3 alone fails. The VM is restored and powered

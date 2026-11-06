@@ -253,5 +253,72 @@ out10=$(bash -c "$cmd10" 2>&1 1>/dev/null); rc10=$?
 check "missing script: exits 0" "$rc10" "0"
 check "missing script: warns on stderr" "$out10" "$(warn_expect "$td/gone-clone/scripts/hooks/auto-approve-safe-bash.sh")"
 
+# 11. SessionEnd. Every case runs from a tmp cwd, so a CLI that read --sessionend
+# as a settings path would write a file there instead of in the repo.
+mkdir -p "$td/cwd" "$td/home"
+se() { ( cd "$td/cwd" && bash "$wire" --sessionend "$@" >/dev/null 2>&1 ); }
+se_n() { jq '[.hooks.SessionEnd[]?.hooks[]? | select((.command // "") | test("scripts/hooks/end-session-wiki[.]sh"))] | length' "$1"; }
+
+# sessionend_wired_once: two project-scope wires and two user-scope wires leave one entry each.
+sep="$td/se-proj/.claude/settings.json"
+# shellcheck disable=SC2016  # the literal, UNEXPANDED $CLAUDE_PROJECT_DIR is the argument
+pd='$CLAUDE_PROJECT_DIR'
+se "$sep" "$pd"; se "$sep" "$pd"
+check "sessionend_wired_once: project scope" "$(se_n "$sep")" "1"
+# shellcheck disable=SC2016  # the literal, UNEXPANDED $CLAUDE_PROJECT_DIR is the assertion
+check "sessionend_wired_once: project command" "$(jq -r '.hooks.SessionEnd[0].hooks[0].command' "$sep")" "$(hookcmd_expect '$CLAUDE_PROJECT_DIR/scripts/hooks/end-session-wiki.sh')"
+check "sessionend_wired_once: shell and timeout" "$(jq -c '.hooks.SessionEnd[0].hooks[0] | [.type, .shell, .timeout]' "$sep")" '["command","bash",30]'
+seu="$td/home/.claude/settings.json"
+( cd "$td/cwd" && env -u CLAUDE_CONFIG_DIR HOME="$td/home" bash "$wire" --sessionend "$seu" /opt/himmel >/dev/null 2>&1
+  env -u CLAUDE_CONFIG_DIR HOME="$td/home" bash "$wire" --sessionend "$seu" /opt/himmel >/dev/null 2>&1 )
+check "sessionend_wired_once: user scope" "$(se_n "$seu")" "1"
+check "sessionend_wired_once: nothing written in the cwd" "$(ls -A "$td/cwd")" ""
+
+# sessionend_keeps_timeout: a hand-wired entry keeps its timeout; only the command is rewritten.
+ses="$td/se-timeout.json"
+printf '%s' '{"hooks":{"SessionEnd":[{"hooks":[{"type":"command","command":"bash /old/scripts/hooks/end-session-wiki.sh","timeout":99,"statusMessage":"mine"}]}]}}' > "$ses"
+se "$ses" /opt/himmel
+check "sessionend_keeps_timeout: timeout" "$(jq '.hooks.SessionEnd[0].hooks[0].timeout' "$ses")" "99"
+check "sessionend_keeps_timeout: other key" "$(jq -r '.hooks.SessionEnd[0].hooks[0].statusMessage' "$ses")" "mine"
+check "sessionend_keeps_timeout: command moved" "$(jq -r '.hooks.SessionEnd[0].hooks[0].command' "$ses")" "$(hookcmd_expect '/opt/himmel/scripts/hooks/end-session-wiki.sh')"
+check "sessionend_keeps_timeout: still one" "$(se_n "$ses")" "1"
+
+# sessionend_keeps_others: another SessionEnd hook survives, and the himmel one is appended once.
+seo="$td/se-others.json"
+printf '%s' '{"hooks":{"SessionEnd":[{"hooks":[{"type":"command","command":"echo theirs"}]}]}}' > "$seo"
+se "$seo" /opt/himmel; se "$seo" /opt/himmel
+check "sessionend_keeps_others: theirs kept" "$(jq '[.hooks.SessionEnd[].hooks[] | select(.command == "echo theirs")] | length' "$seo")" "1"
+check "sessionend_keeps_others: ours once" "$(se_n "$seo")" "1"
+
+# sessionend_shared_group_wire_kept: the himmel entry sits in a group with a foreign hook; both stay, in place.
+sesg="$td/se-shared.json"
+printf '%s' '{"hooks":{"SessionEnd":[{"matcher":"x","hooks":[{"type":"command","command":"echo a"},{"type":"command","command":"bash /old/scripts/hooks/end-session-wiki.sh"}]}]}}' > "$sesg"
+se "$sesg" /opt/himmel
+check "sessionend_shared_group_wire_kept: one group" "$(jq '.hooks.SessionEnd | length' "$sesg")" "1"
+check "sessionend_shared_group_wire_kept: both hooks, matcher kept" "$(jq -c '[.hooks.SessionEnd[0].matcher, (.hooks.SessionEnd[0].hooks | length), .hooks.SessionEnd[0].hooks[0].command]' "$sesg")" '["x",2,"echo a"]'
+
+# sessionend_two_hand_entries: two hand-wired entries in two groups collapse to one.
+se2="$td/se-two.json"
+printf '%s' '{"hooks":{"SessionEnd":[{"hooks":[{"type":"command","command":"bash /a/scripts/hooks/end-session-wiki.sh","timeout":5}]},{"hooks":[{"type":"command","command":"bash /b/scripts/hooks/end-session-wiki.sh"}]}]}}' > "$se2"
+se "$se2" /opt/himmel
+check "sessionend_two_hand_entries: one entry" "$(se_n "$se2")" "1"
+check "sessionend_two_hand_entries: first kept (timeout)" "$(jq '.hooks.SessionEnd[0].hooks[0].timeout' "$se2")" "5"
+
+# sessionend_path_with_space: a clone path with a space runs under a shell.
+mkdir -p "$td/a b/scripts/hooks"; printf 'echo ran-with-space\n' > "$td/a b/scripts/hooks/end-session-wiki.sh"
+sesp="$td/se-space.json"
+se "$sesp" "$td/a b"
+check "sessionend_path_with_space: runs" "$(bash -c "$(jq -r '.hooks.SessionEnd[0].hooks[0].command' "$sesp")" 2>&1)" "ran-with-space"
+
+# sessionend_nonobject_hooks_no_temp: a `hooks` that is not an object fails the wire, leaves the file as it was
+# and leaves no empty temp file next to it.
+for hv in '[]' '"x"' '1'; do
+  sen="$td/se-nonobj.json"; jq -n --argjson h "$hv" '{hooks: $h}' > "$sen"; cp "$sen" "$sen.before"
+  ( cd "$td/cwd" && bash "$wire" --sessionend "$sen" /opt/himmel >/dev/null 2>&1 ); rc=$?
+  check "sessionend_nonobject_hooks_no_temp: hooks=$hv rc" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+  check "sessionend_nonobject_hooks_no_temp: hooks=$hv file untouched" "$(cmp -s "$sen" "$sen.before" && echo same || echo changed)" "same"
+  check "sessionend_nonobject_hooks_no_temp: hooks=$hv no temp left" "$([ -e "$sen.wirehooks.tmp" ] && echo yes || echo no)" "no"
+done
+
 rm -rf "$td"
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

@@ -2828,8 +2828,8 @@ echo "[6/8] Unwiring ~/.claude/settings.json (statusLine, HIMMEL_REPO, LUNA_VAUL
 # sourced. The read-back re-reads the settings file with jq; it never trusts a
 # helper's return code, because a helper that exits 0 without removing anything
 # is the failure this guards against.
-HIMMEL_HOOK_PAT="$( . "$SCRIPT_DIR/lib/unwire-pretooluse-hooks.sh" >/dev/null 2>&1; printf '%s|%s' "${_UNWIRE_PRE_PAT:-}" "${_UNWIRE_SS_PAT:-}" )"
-[ "$HIMMEL_HOOK_PAT" = "|" ] && HIMMEL_HOOK_PAT=""
+HIMMEL_HOOK_PAT="$( . "$SCRIPT_DIR/lib/unwire-pretooluse-hooks.sh" >/dev/null 2>&1; printf '%s|%s|%s' "${_UNWIRE_PRE_PAT:-}" "${_UNWIRE_SS_PAT:-}" "${_UNWIRE_SE_PAT:-}" )"
+[ "$HIMMEL_HOOK_PAT" = "||" ] && HIMMEL_HOOK_PAT=""
 HIMMEL_SL_PAT="$( . "$SCRIPT_DIR/lib/unwire-statusline.sh" >/dev/null 2>&1; printf '%s' "${_UNWIRE_SL_PAT:-}" )"
 
 # himmel_wiring_lines <settings> [mask_hooks mask_sl mask_repo mask_vault
@@ -2933,7 +2933,7 @@ EOF
     # whether the ledger already handled it. Without this fall-through, a
     # --dry-run under a ledger silently under-reported HIMMEL_REPO /
     # LUNA_VAULT_PATH / hook removals the wet run still performs (caught by
-    # U22: 5 rows expected, only the hooks line was printed).
+    # U22: 6 rows expected, only the hooks line was printed).
   fi
   # ponytail (S6, spec §4 six rows): a pre-existing statusLine or
   # env.HANDOVER_DIR cannot be told from himmel's own without a ledger unit
@@ -2999,13 +2999,18 @@ EOF
     # whether the key was actually present, since the helpers are idempotent
     # no-ops), and the no-ledger branch's "kept (no ledger)" checks above only
     # fire when the value IS present, leaving an absent-and-unmasked case with
-    # no preview line at all otherwise (caught by U22: 3 rows instead of 5).
+    # no preview line at all otherwise (caught by U22: 3 rows instead of 6).
     [ "$_mask_sl" -eq 0 ]    && echo "DRY: unwire statusLine (himmel) from $settings"
     [ "$_mask_repo" -eq 0 ]  && echo "DRY: unwire env.HIMMEL_REPO from $settings"
     [ "$_mask_vault" -eq 0 ] && echo "DRY: unwire env.LUNA_VAULT_PATH from $settings"
     [ "$_mask_hd" -eq 0 ]    && echo "DRY: unwire env.HANDOVER_DIR from $settings"
     if [ "$_mask_hooks" -eq 0 ] && ! bash "$REPO_ROOT/scripts/lib/unwire-pretooluse-hooks.sh" "$settings" 1; then
       fail_step "[6/8] settings unwire: unwire-pretooluse-hooks dry-run failed"
+    fi
+    # The session end hook has its own call, outside the _mask_hooks skip: the
+    # ledger records no entry row for it, so no protected unit can govern it.
+    if ! bash "$REPO_ROOT/scripts/lib/unwire-pretooluse-hooks.sh" --sessionend "$settings" 1; then
+      fail_step "[6/8] settings unwire: unwire-pretooluse-hooks --sessionend dry-run failed"
     fi
     return
   fi
@@ -3031,6 +3036,17 @@ EOF
       fail_step "[6/8] settings unwire: $helper failed"
     fi
   done
+  [ "$HALTED" -eq 0 ] || return 0
+  # The session end hook is its own call, not a loop entry: detect-hook-dup.sh
+  # and install-engine.js call the trio helper above and must never reach it.
+  # It runs even when _mask_hooks skipped the helper (no ledger unit governs
+  # it) and before the container drop below, so an emptied `hooks` can go.
+  if ! rh_helper_ok "unwire-pretooluse-hooks --sessionend" "$settings"; then
+    fail_step "[6/8] settings unwire: unwire-pretooluse-hooks --sessionend skipped — $settings fails the real-home check"
+  elif ! bash "$REPO_ROOT/scripts/lib/unwire-pretooluse-hooks.sh" --sessionend "$settings"; then
+    echo "  WARN: unwire-pretooluse-hooks --sessionend reported a problem; setup-state may remain." >&2
+    fail_step "[6/8] settings unwire: unwire-pretooluse-hooks --sessionend failed"
+  fi
   [ "$HALTED" -eq 0 ] || return 0
   for _c in env hooks enabledPlugins extraKnownMarketplaces; do
     if [ "$LEDGER_OK" -eq 1 ] && rh_helper_ok "ledger /$_c drop" "$settings" && ! prov_read_drop_empty_if_ours "$settings" "$_c"; then

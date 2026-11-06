@@ -263,7 +263,7 @@
           { "kind": "p", "html": "Open it in your browser. The port and the key after <code>#t=</code> change each launch, and the page only answers on your own machine. It stops after 30 idle minutes or on Ctrl-C." }
         ]
       },
-      "prereqs": ["Levels 1, 5 and 6.", "bun, and a one-time build of the fleet page.", "A ticket tracker the chief can read."],
+      "prereqs": ["Levels 1, 5 and 6.", "bun; the first launch builds the fleet page.", "A ticket tracker the chief can read."],
       "setup_time": null,
       "cost": ["Each worker is a full Claude session: a fleet spends your usage several times faster, and the preflight holds new workers back when it runs low."],
       "turn_off": "Close the chief and its workers; Ctrl-C stops the fleet view. Nothing keeps running on its own.",
