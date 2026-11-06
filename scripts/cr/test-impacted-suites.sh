@@ -1240,6 +1240,37 @@ out="$(run_is "$range")"; rc=$?
 elapsed=$((SECONDS - t0))
 if [ "$rc" -eq 0 ] && [ "$elapsed" -le 90 ] && grepq "$out" '^scripts/test-bulk-1\.sh$' && grepq "$out" '^scripts/test-bulk-120\.sh$'; then pass "a $LARGE_N-file diff finishes in ${elapsed}s (budget 90s) and lists its impacted suites"; else fail "large diff: rc=$rc elapsed=${elapsed}s lines=$(printf '%s\n' "$out" | wc -l)"; fi
 
+# --- 37a2. the read spawns a bounded number of `git show` processes -----------
+# ready-check item 19 gives the read 30 s, so its time must not grow with one process
+# per narrowing candidate or per importer file. Here 120 candidate suites and 40
+# importer files sit around ONE changed file: the count of `git show` calls must not
+# follow them.
+for i in $(seq 1 40); do mkf "vendor/imp/m$i.js" "import x from './clo-lib'; // m$i"; done
+git -C "$FX" add -A
+git -C "$FX" commit -q -m "chore: importer files"
+change scripts/lib/clo-lib.sh
+SC="$SHIM4/showcount"
+mkdir -p "$SC"
+printf '#!/usr/bin/env bash\nif [ "${1:-}" = show ]; then echo x >> "%s/shows"; fi\nexec "%s" "$@"\n' "$SC" "$REAL_GIT" > "$SC/git"
+chmod +x "$SC/git"
+ctl="$(run_is "$range")"
+: > "$SC/shows"
+out="$( cd "$FX" && PATH="$SC:$PATH" bash "$IS" "$range" 2>"$SC/stderr" )"
+n_show="$(wc -l < "$SC/shows" | tr -d ' ')"
+if [ "$out" = "$ctl" ] && grepq "$out" '^scripts/test-bulk-120\.sh$'; then pass "git show shim: same list, a bulk suite listed (37a2 control)"; else fail "37a2 control: $out [stderr: $(head -c 600 "$SC/stderr")]"; fi
+if [ "$n_show" -le 12 ]; then pass "160 candidates and importers cost $n_show git show calls (bound 12)"; else fail "git show calls follow the candidate count: $n_show (bound 12)"; fi
+
+# A suite that `git archive` leaves out (export-ignore) is not in the unpacked copy,
+# so it takes the per-file path: its text still names the changed file, so it is
+# still listed.
+mkf scripts/test-export-ignored.sh 'bash "$d/lib/clo-lib.sh"'
+printf 'scripts/test-export-ignored.sh export-ignore\n' > "$FX/.gitattributes"
+git -C "$FX" add -A
+git -C "$FX" commit -q -m "chore: export-ignored suite"
+change scripts/lib/clo-lib.sh
+out="$(run_is "$range")"
+if grepq "$out" '^scripts/test-export-ignored\.sh$' && grepq "$out" '^scripts/test-bulk-120\.sh$'; then pass "a suite git archive leaves out is listed beside the unpacked ones"; else fail "export-ignored suite not listed: $out"; fi
+
 # --- 37b. a candidate whose scratch copy cannot be created fails closed ------
 # The narrowing writes each candidate's matching lines to a scratch file; a
 # failed open of that file is rc 1, the code `grep` uses for "no match", so
