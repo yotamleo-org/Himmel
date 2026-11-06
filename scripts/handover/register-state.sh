@@ -148,6 +148,8 @@ if [ "$DO_INIT" -eq 1 ]; then
     fi
     TPL="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/templates}"
     [ -d "${TPL:-}" ] || TPL="$SCRIPT_DIR/../../marketplace/plugins/handover/templates"
+    # A project install has neither: its settings env names the himmel clone.
+    [ -d "$TPL" ] || { [ -z "${HIMMEL_REPO:-}" ] || [ ! -d "$HIMMEL_REPO/marketplace/plugins/handover/templates" ] || TPL="$HIMMEL_REPO/marketplace/plugins/handover/templates"; }
     [ -d "$TPL" ] || { echo "ERR register-state: handover templates not found ($TPL); reinstall the handover plugin" >&2; exit 2; }
     mkdir -p "$STATE_ROOT/epics" "$STATE_ROOT/standalones" "$STATE_ROOT/_templates"
     cp "$TPL"/*.md "$STATE_ROOT/_templates/"

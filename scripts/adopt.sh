@@ -253,6 +253,13 @@ PORTABLE_FILES=(
   scripts/worktree.sh
   scripts/clean.sh
   scripts/_new-worktree.sh
+  scripts/handover/resume.sh
+  scripts/handover/resume-context.sh
+  scripts/handover/bug.sh
+  scripts/handover/set-handover-dir.sh
+  scripts/handover/register-state.sh
+  scripts/lib/env-append.sh
+  .claude/commands/handover-resume.md
 )
 
 seed_merge_trust_paths() {
