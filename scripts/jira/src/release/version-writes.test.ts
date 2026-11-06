@@ -42,7 +42,7 @@ function outsideAllowlist(dir: string): string | null {
   return null;
 }
 
-describe('repair fixtures (HIMMEL-8724 S0)', () => {
+describe('repair fixtures', () => {
   it('the six captured tickets are present', () => {
     expect(filesIn(FIXTURES)).toEqual(['HIMMEL-3084.json', 'HIMMEL-6691.json', 'HIMMEL-7044.json', 'HIMMEL-7804.json', 'HIMMEL-8231.json', 'HIMMEL-8706.json']);
   });
@@ -109,7 +109,7 @@ function writingFiles(): string[] {
 // The files of `files` that are neither a writer in the table nor a named read-only file.
 const unlisted = (files: string[]): string[] => files.filter((f) => !WRITER_TABLE.some((w) => w.site === f) && !READ_ONLY.includes(f));
 
-describe('writer table (HIMMEL-8724 S3, I17)', () => {
+describe('writer table', () => {
   it('every writing file is in the writer table', () => {
     expect(unlisted(writingFiles())).toEqual([]);
   });

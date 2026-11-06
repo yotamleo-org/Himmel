@@ -223,7 +223,7 @@ test("bare-code hold does not consume ordinary numbers or numbers sent as text",
   }
 });
 
-test("HIMMEL-8375: a spaced or hyphenated six or seven digit code sent as a new message with no prompt is held, never forwarded", () => {
+test("a spaced or hyphenated six or seven digit code sent as a new message with no prompt is held, never forwarded", () => {
   for (const text of ["123 456", "123-456", " 12 34 56 ", "123 - 456", "1234 567", "123-4567", "1234567", "\t123\n456\n", "123‐456", "123‑456"]) {
     const { deps, calls, replies, logs } = fake();
     expect(makeAfkSudoGate(deps, makeAfkSudoPrompts())(dm(text))).toBe(true);
@@ -256,15 +256,15 @@ const shapes: Record<string, string> = {
   "extended arabic-indic digits": "۱۲۳۴۵۶", "trailing period": "123 456.", "trailing bang": "123456!", "leading and trailing": "(123 456)",
 };
 for (const [name, text] of Object.entries(shapes)) {
-  test(`HIMMEL-8737: ${name} code is held`, () => held(dm(text)));
+  test(`${name} code is held`, () => held(dm(text)));
 }
-test("HIMMEL-8737: a code sent as a caption is held", () => held(dm("123456", { caption: true })));
-test("HIMMEL-8737: a forwarded code is held", () => held(dm("123456", { forwarded: true })));
-test("HIMMEL-8737: a NONCE CODE pair as a reply to a message that is not the bot's, no prompt live, is held", () => {
+test("a code sent as a caption is held", () => held(dm("123456", { caption: true })));
+test("a forwarded code is held", () => held(dm("123456", { forwarded: true })));
+test("a NONCE CODE pair as a reply to a message that is not the bot's, no prompt live, is held", () => {
   held(dm("K7QF 123456", { reply_to_message_id: 77, reply_to_bot: false }));
   held(dm("K7QF 123456.", { reply_to_message_id: 77 }));
 });
-test("HIMMEL-8737: controls stay ordinary text", () => {
+test("controls stay ordinary text", () => {
   for (const text of ["ticket 123-456 is done", "do 8276 8277 next", "12345", "text: 123456", "number 123456.", "hello"]) {
     const { deps } = fake();
     expect(makeAfkSudoGate(deps, makeAfkSudoPrompts())(dm(text))).toBe(false);
@@ -354,7 +354,7 @@ test("button: a prompt is single use", async () => {
   expect([...b.replies, ...b.logs].join("\n")).not.toContain("654321");
 });
 
-test("HIMMEL-8067 slice 2: two waiting requests get their own prompts and each reply approves its own id", async () => {
+test("two waiting requests get their own prompts and each reply approves its own id", async () => {
   const b = buttons({ promptIds: [77, 78] });
   b.tap(tapOf("afk:approve:aaaaaaaa"));
   b.tap(tapOf("afk:approve:bbbbbbbb"));
@@ -367,7 +367,7 @@ test("HIMMEL-8067 slice 2: two waiting requests get their own prompts and each r
   expect(b.calls.map((c) => c.stdin)).toEqual(["K7QF 123456\n", "M2PX 654321\n"]);
 });
 
-test("HIMMEL-8067 slice 2: a code sent without replying while two prompts wait names both requests", async () => {
+test("a code sent without replying while two prompts wait names both requests", async () => {
   const b = buttons({ promptIds: [77, 78] });
   b.tap(tapOf("afk:approve:aaaaaaaa"));
   b.tap(tapOf("afk:approve:bbbbbbbb"));
@@ -718,7 +718,7 @@ test("slice 4: handleInbound consumes /afk-lockdown, so it never reaches an inbo
   expect(existsSync(join(sessionDir(r, "__chat__"), "inbox.jsonl"))).toBe(false);
 });
 
-test("HIMMEL-8203: the operator's /op reaches the helper as op-request with the name and key=value words, quotes kept as one word", async () => {
+test("the operator's /op reaches the helper as op-request with the name and key=value words, quotes kept as one word", async () => {
   const { deps, calls, replies } = fake();
   deps.runHelper = async (args, stdin) => { calls.push({ args, stdin }); return { code: 0, stdout: "result=pending id=abcdefgh expires=1 operator=4242\n" }; };
   expect(makeAfkSudoGate(deps)(dm('/op cron-entry action=set tag=ping schedule="0 5 * * *" command=/usr/local/libexec/himmel/bin/open-session'))).toBe(true);
@@ -727,7 +727,7 @@ test("HIMMEL-8203: the operator's /op reaches the helper as op-request with the 
   expect(replies).toEqual(["✅ afk-sudo op cron-entry: result=pending id=abcdefgh expires=1 operator=4242"]);
 });
 
-test("HIMMEL-8203: a malformed /op line is refused before the helper, with the reason", async () => {
+test("a malformed /op line is refused before the helper, with the reason", async () => {
   for (const [text, why] of [["/op", "usage"], ["/op Bad_Name", "op name"], ["/op cron-entry tag", "not key=value"], ['/op cron-entry tag="a', "unbalanced"], ["/op cron-entry a=1 b=2 c=3 d=4 e=5 f=6 g=7 h=8 i=9", "too many"]] as const) {
     const { deps, calls, replies } = fake();
     expect(makeAfkSudoGate(deps)(dm(text))).toBe(true);
@@ -737,7 +737,7 @@ test("HIMMEL-8203: a malformed /op line is refused before the helper, with the r
   }
 });
 
-test("HIMMEL-8203: /op from a forwarded message, a group or another sender is consumed and runs nothing; an uninstalled helper leaves it alone", async () => {
+test("/op from a forwarded message, a group or another sender is consumed and runs nothing; an uninstalled helper leaves it alone", async () => {
   for (const extra of [{ forwarded: true }, { caption: true }, { from: 999, chat_id: 999 }, { chat_id: -100123 }]) {
     const { deps, calls, logs } = fake();
     expect(makeAfkSudoGate(deps)(dm("/op system-update", extra))).toBe(true);

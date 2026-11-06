@@ -532,7 +532,7 @@ export function refuseTestKeyMint(release: string): void {
 const JIRA_POSTING_VERBS = new Set(['apply', 'rm-run']);
 
 export function registerRelease(program: Command): void {
-  const rel = program.command('release').description('Release ledger: placement rulings, lease and burn-down state (HIMMEL-6796)');
+  const rel = program.command('release').description('Release ledger: placement rulings, lease and burn-down state');
   rel.hook('preAction', (_release, action) => {
     // leaks reads unless --comment is set: that posts a real Jira comment and updates the breadcrumb state.
     const verb = action.name();

@@ -21,7 +21,7 @@ interface JiraVersion {
 }
 
 /**
- * The default fixVersion for a new Bug (HIMMEL-4489): the earliest version, in
+ * The default fixVersion for a new Bug: the earliest version, in
  * the project's sequence order, that is neither released nor archived.
  */
 export function earliestUnreleased(

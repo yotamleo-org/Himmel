@@ -44,7 +44,7 @@ test("getUpdates returns [] on a malformed ok:true with no result array (no thro
   const r = await getUpdates("TOKEN", 0, 30, fakeFetch as any);
   expect(r).toEqual([]);
 });
-test("getUpdates THROWS on a non-ok response (HIMMEL-1401) so the poller's catch can back off instead of hot-looping", async () => {
+test("getUpdates THROWS on a non-ok response so the poller's catch can back off instead of hot-looping", async () => {
   const fakeFetch = async () => new Response(JSON.stringify({ ok: false, description: "Bad Gateway" }), { status: 502 });
   await expect(getUpdates("TOKEN", 0, 30, fakeFetch as any)).rejects.toThrow(/Bad Gateway/);
 });
@@ -52,7 +52,7 @@ test("getUpdates non-ok error falls back to the HTTP status when description is 
   const fakeFetch = async () => new Response(JSON.stringify({ ok: false }), { status: 502 });
   await expect(getUpdates("TOKEN", 0, 30, fakeFetch as any)).rejects.toThrow(/502/);
 });
-test("getUpdates aborts a stalled request within its client-side deadline (HIMMEL-1401 CR round 2) — a transport that never resolves must still REJECT, not hang forever, so the poller's catch/backoff fires", async () => {
+test("getUpdates aborts a stalled request within its client-side deadline — a transport that never resolves must still REJECT, not hang forever, so the poller's catch/backoff fires", async () => {
   // Models a stuck transport: the fetch promise never resolves on its own, only
   // rejecting when the AbortSignal getUpdates wires up actually fires — exactly
   // what a real fetch implementation does under an AbortSignal (this is the same

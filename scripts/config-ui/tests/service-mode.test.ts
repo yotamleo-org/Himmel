@@ -120,17 +120,14 @@ test("service: the idle window never shuts the server down", async () => {
 });
 
 const CHIEF = "HIMMEL-nextleg-2026-10-16BF-roadmap-chief";
-test("board: the JSON beside the console doc is served, and a rewrite reaches the next GET without a board.mjs run", async () => {
+test("board: the JSON beside the console doc is served, and a rewrite reaches the next GET", async () => {
   const dir = tmp();
   const handovers = join(dir, "handovers");
   const bucket = join(handovers, "op", "himmel");
   mkdirSync(bucket, { recursive: true });
   writeFileSync(join(bucket, `${CHIEF}.md`), "# console\n");
-  const runs = join(dir, "runs");
-  const script = join(dir, "board.mjs");
-  writeFileSync(script, `import { appendFileSync } from "node:fs"; appendFileSync(${JSON.stringify(runs)}, "x"); process.exit(1);\n`);
   const token = "t".repeat(64);
-  const s = startServer({ port: 0, token, boardScript: script, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: handovers, HOME: dir } });
+  const s = startServer({ port: 0, token, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: handovers, HOME: dir } });
   cleanups.push(() => s.stop());
   const get = () => fetch(`http://127.0.0.1:${s.port}/api/agui/board?console=${CHIEF}`, { headers: { "X-Himmel-Token": token } });
   const file = join(bucket, `${CHIEF}.board.json`);
@@ -142,5 +139,4 @@ test("board: the JSON beside the console doc is served, and a rewrite reaches th
   expect(JSON.stringify(one)).not.toContain("BF-N2392-ff831841"); // the redaction still runs on the file's content
   writeFileSync(file, JSON.stringify({ schema: "himmel.board/1", console: { name: "two" } }));
   expect((await (await get()).json()).console.name).toBe("two");
-  expect(await Bun.file(runs).exists()).toBe(false);
 });

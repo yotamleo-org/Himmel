@@ -38,10 +38,7 @@ PENDING='
 # read -d '' not $(cat <<EOF): bash 3.2 (macOS) scans a heredoc inside $( ) for
 # balanced backticks and parens and dies on this page text.
 IFS= read -r -d '' ALLOW <<'EOF' || true
-README.md	  run. Windows is not supported. Details in the
-README.md	himmel is developed on Linux and macOS. **Windows (Git Bash, WSL) is not
-README.md	supported.** Windows support was dropped; nothing about Windows is claimed as
-README.md	| **Dropped** | Windows (Git Bash), WSL | Support was dropped: no CI gate, no guarantee. |
+README.md	himmel runs on Linux and macOS. Windows (Git Bash or WSL) is not supported.
 docs/daily-loop.md	arch mac darwin wsl posix gitbash git-bash powershell pwsh`.
 docs/evals/README.md	| `codex:gpt-5.6-sol` | 2026-09-04 to 2026-09-05 | **84.1%** | 76.2 to 89.7 | 74.2 to 91.7 | as of 2026-10-27, n = 113 ruled findings over 27 PRs |
 docs/evals/README.md	| `codex:gpt-6-astra` | 2026-09-05 to 2026-09-23 | **89.3%** | 87.4 to 90.9 | 86.1 to 92.0 | as of 2026-10-27, n = 1,231 ruled findings over 362 PRs |

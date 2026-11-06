@@ -116,7 +116,7 @@ describe('MCP server wiring', () => {
     expect(result.tools).toHaveLength(TOOL_NAMES.length);
   });
 
-  it('CallTool error path: non-Error throwable yields String() text (HIMMEL-292)', async () => {
+  it('CallTool error path: non-Error throwable yields String() text', async () => {
     // Make the `get` tool's request throw a plain string — not an Error instance.
     const throwingRequest = vi.fn(async () => {
       // oxlint-disable-next-line no-throw-literal -- deliberate non-Error throw; the test verifies String() fallback
@@ -189,7 +189,7 @@ describe('MCP tool happy-path routing', () => {
     expect(out).toBe('Created HIMMEL-9');
   });
 
-  it('create refuses a body without the plain Impact/What/Why block (HIMMEL-5226)', async () => {
+  it('create refuses a body without the plain Impact/What/Why block', async () => {
     const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
     await expect(
       tool('create').handler({ type: 'Task', title: 'New', desc: 'agent notes', project: 'ABC' }, deps),
@@ -197,7 +197,7 @@ describe('MCP tool happy-path routing', () => {
     expect(request).not.toHaveBeenCalled();
   });
 
-  it('create refuses a Task with no Sector or no epic/standalone marker (HIMMEL-6223)', async () => {
+  it('create refuses a Task with no Sector or no epic/standalone marker', async () => {
     const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
     await expect(
       tool('create').handler({ type: 'Task', title: 'New', desc: PLAIN_FILLED, project: 'ABC', parent: 'ABC-1' }, deps),
@@ -208,7 +208,7 @@ describe('MCP tool happy-path routing', () => {
     expect(request.mock.calls.some((c) => c[0] === 'POST')).toBe(false);
   });
 
-  it('create takes the Sector from a valid title prefix, and refuses an unknown one (HIMMEL-8659)', async () => {
+  it('create takes the Sector from a valid title prefix, and refuses an unknown one', async () => {
     const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
     await tool('create').handler(
       { type: 'Task', title: 'Ship loop: x', desc: PLAIN_FILLED, project: 'ABC', parent: 'ABC-1' },
@@ -221,7 +221,7 @@ describe('MCP tool happy-path routing', () => {
     ).rejects.toThrow(/"Billing:".*not a Sector/s);
   });
 
-  it('create with JIRA_SECTOR_FIELD unset files without a Sector and sends no Sector field (HIMMEL-6277)', async () => {
+  it('create with JIRA_SECTOR_FIELD unset files without a Sector and sends no Sector field', async () => {
     delete process.env.JIRA_SECTOR_FIELD;
     const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
     await tool('create').handler({ type: 'Task', title: 'New', desc: PLAIN_FILLED, project: 'ABC', parent: 'ABC-1' }, deps);
@@ -230,7 +230,7 @@ describe('MCP tool happy-path routing', () => {
     expect(Object.keys(body.fields).filter((k) => k.startsWith('customfield_'))).toEqual([]);
   });
 
-  it('create with a Sector and a parent or the standalone label writes the Sector field (HIMMEL-6223)', async () => {
+  it('create with a Sector and a parent or the standalone label writes the Sector field', async () => {
     const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
     await tool('create').handler(
       { type: 'Task', title: 'New', desc: PLAIN_FILLED, project: 'ABC', sector: 'ship loop', labels: 'standalone' },
@@ -240,7 +240,7 @@ describe('MCP tool happy-path routing', () => {
     expect(fields.fields['customfield_10212']).toEqual({ value: 'Ship loop' });
   });
 
-  it('create only warns-exempts an Epic with no body (HIMMEL-5226)', async () => {
+  it('create only warns-exempts an Epic with no body', async () => {
     delete process.env.JIRA_SECTOR_FIELD;
     const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
     const out = await tool('create').handler({ type: 'Epic', title: 'E', project: 'ABC' }, deps);
@@ -248,7 +248,7 @@ describe('MCP tool happy-path routing', () => {
     expect(out).toMatch(/warning: .*no home/);
   });
 
-  it('create warns about a title that breaks the template and still files (HIMMEL-6968)', async () => {
+  it('create warns about a title that breaks the template and still files', async () => {
     vi.stubEnv('JIRA_PROJECT_KEY', 'HIMMEL');
     const { deps, request } = mockDeps({ key: 'HIMMEL-11', id: '3' });
     const out = await tool('create').handler(
@@ -425,7 +425,7 @@ describe('MCP tool happy-path routing', () => {
   });
 });
 
-describe('roadmap + rank tools (HIMMEL-3890)', () => {
+describe('roadmap + rank tools', () => {
   const FIELDS = [
     ['Readiness', 'customfield_10171'],
     ['Theme', 'customfield_10172'],
@@ -476,7 +476,7 @@ describe('roadmap + rank tools (HIMMEL-3890)', () => {
   });
 });
 
-describe('release tool (HIMMEL-6796)', () => {
+describe('release tool', () => {
   const saved = { ...process.env };
   beforeEach(() => {
     const root = mkdtempSync(join(tmpdir(), 'mcp-release-'));
@@ -535,7 +535,7 @@ describe('release tool (HIMMEL-6796)', () => {
   });
 });
 
-describe('MCP SDK v2 (HIMMEL-4864)', () => {
+describe('MCP SDK v2', () => {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   const src = readFileSync(new URL('./mcp.ts', import.meta.url), 'utf8');
 

@@ -129,7 +129,7 @@ export function hasSkipMarker(commentBodies) {
 }
 
 /**
- * Second authoritative "already adjudicated" source, per the HIMMEL-374
+ * Second authoritative "already adjudicated" source, per the auto-transition
  * resume doc's SCOPE-gap fix (2026-09-16): the concurrent hygiene sweep
  * dispositioned some tickets (its LEFT ALONE table, "evidence mismatch"
  * rows especially) WITHOUT ever posting a Jira comment. Those keys are just
@@ -151,7 +151,7 @@ export function hasHygieneSweepDisposition(key, hygieneKeys) {
  * A subject match with no bracketed [KEY] tag AND where the subject carries
  * a *different* bracketed ticket tag is a cross-reference, not a delivery of
  * this ticket — demoted to bodyOnlyCommits (weaker evidence), matching the
- * HIMMEL-1833-inside-an-[HIMMEL-1887]-commit case.
+ * ticket-A-inside-a-[ticket-B]-commit case.
  */
 export function findMatches(commits, key) {
   const re = ticketKeyPattern(key);
@@ -178,7 +178,7 @@ export function findMatches(commits, key) {
 
 /**
  * The evidence rule. Every input is already resolved by the caller (no I/O):
- *   key             ticket key, e.g. "HIMMEL-374"
+ *   key             ticket key, e.g. "PROJ-374"
  *   issueType       "Epic" | "Story" | "Task" | "Bug" | ...
  *   status          current Jira status name
  *   targetStatus    configured target for this project, or undefined/null if unconfigured
@@ -190,7 +190,7 @@ export function findMatches(commits, key) {
  * Returns { disposition: 'CLOSE'|'RESCOPE'|'STALE-PREMISE'|'LEAVE', reason, evidence }.
  * `evidence` is the deciding commit ({sha,date,subject}) or null.
  *
- * STALE-PREMISE has no automated trigger in this rule (HIMMEL-374 SCOPE note,
+ * STALE-PREMISE has no automated trigger in this rule (the auto-transition SCOPE note,
  * BLOCKED section of the 2026-09-16 resume doc): inventing a heuristic for
  * "this ticket's premise no longer exists" would be guessing at semantics the
  * commit corpus cannot prove. The disposition exists in the type for schema
@@ -257,7 +257,7 @@ export function classifyTicket({
 /**
  * Comment-before-transition, enforced structurally: this is the only place
  * that sequences the two mutating calls, and it always comments first — so a
- * transition failure (a missing transition-screen field, HIMMEL-373's scope)
+ * transition failure (a missing transition-screen field, not handled here)
  * still leaves the evidence behind. `jiraClient` is injected ({comment,
  * transition} async functions) so this is testable without a subprocess.
  */

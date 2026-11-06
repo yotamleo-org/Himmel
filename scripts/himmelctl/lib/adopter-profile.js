@@ -1182,7 +1182,7 @@ function buildSummary(answers, laneRows, opts) {
     manual.push({
       what: 'USER_SLUG — did NOT resolve; handover bucket paths, registry.json and scratch dir names cannot be derived until it does',
       how: 'set ONE of: USER_SLUG in your shell or .env, an authenticated forge CLI (`gh auth login`), or `git config --global user.name`',
-      note: 'setup.sh no longer aborts on this (HIMMEL-2537) — no re-run is needed either, because every consumer resolves the slug at the moment it runs',
+      note: 'setup.sh no longer aborts on this — no re-run is needed either, because every consumer resolves the slug at the moment it runs',
     });
   }
 
@@ -1270,7 +1270,7 @@ function buildSummary(answers, laneRows, opts) {
   // around a step that can no longer run or fail would just be a new way to
   // fabricate "enabled" for work that never happened.
   if (answers.pluginSet === 'full') {
-    skipped.push('full plugin set — this profile answers pluginSet=full, but that option was retired (HIMMEL-2304); no plugin-enable step ran');
+    skipped.push('full plugin set — this profile answers pluginSet=full, but that option was retired; no plugin-enable step ran');
   } else {
     skipped.push('full plugin set — you answered pluginSet=lean (the documented adopter default)');
   }

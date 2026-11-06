@@ -26,7 +26,7 @@ type ListItem = {
 /**
  * Convert inline markdown markup (bold, italic, code, link) into ADF inline nodes.
  *
- * KNOWN LIMITATIONS (HIMMEL-101 §9):
+ * KNOWN LIMITATIONS:
  * - No recursion: `**bold *with italic* inside**` is parsed as a single strong run;
  *   the inner italic asterisks are consumed by the outer regex and not re-tokenized.
  * - No escaped delimiters: `\*literal\*` is treated like `*literal*` (parsed as italic).

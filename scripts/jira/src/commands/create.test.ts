@@ -50,7 +50,7 @@ afterEach(() => {
 // A Sector and a parent epic: the home a Task, Story or Bug needs to be filed.
 const HOME = ['--sector', 'Ship loop', '--parent', 'HIMMEL-9'];
 
-describe('create — resolveTitle (HIMMEL-1188)', () => {
+describe('create — resolveTitle', () => {
   it('accepts --title', () => {
     expect(resolveTitle({ title: 'From title' })).toBe('From title');
   });
@@ -227,7 +227,7 @@ describe('create — Bug default fixVersion wiring', () => {
   });
 });
 
-describe('create --fix-version (HIMMEL-3713)', () => {
+describe('create --fix-version', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -296,7 +296,7 @@ describe('create --fix-version (HIMMEL-3713)', () => {
 });
 
 // A body without the plain Impact/What/Why block is refused.
-describe('create — plain block rule (HIMMEL-5226)', () => {
+describe('create — plain block rule', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -323,7 +323,7 @@ describe('create — plain block rule (HIMMEL-5226)', () => {
     expect(msg).toContain('## Agent detail');
   });
 
-  it('refuses a Task with every section but no DoD, naming DoD (HIMMEL-5643)', async () => {
+  it('refuses a Task with every section but no DoD, naming DoD', async () => {
     const noDod = PLAIN.replace(/## DoD\n[^\n]*\n\n/, '');
     await expect(run(['--type', 'Task', '--desc', noDod])).rejects.toThrow(/exit 1/);
     expect(posted()).toBe(false);
@@ -331,20 +331,20 @@ describe('create — plain block rule (HIMMEL-5226)', () => {
     expect(msg).toMatch(/missing "## DoD"/);
   });
 
-  it('refuses a Task whose Plan and DoD are only the skeleton placeholders (HIMMEL-5643)', async () => {
+  it('refuses a Task whose Plan and DoD are only the skeleton placeholders', async () => {
     await expect(run(['--type', 'Task', '--desc', PLAIN_BLOCK_TEMPLATE])).rejects.toThrow(/exit 1/);
     expect(posted()).toBe(false);
     const msg = (console.error as unknown as ReturnType<typeof vi.fn>).mock.calls.flat().join('\n');
     expect(msg).toMatch(/"## Plan" has no bullet.*"## DoD" has no bullet/s);
   });
 
-  it('warns, and still files, a Task whose title breaks the template (HIMMEL-6968)', async () => {
+  it('warns, and still files, a Task whose title breaks the template', async () => {
     await run(['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test', '--title', 'feat(jira): add a thing', '--desc', PLAIN, ...HOME]);
     expect(posted()).toBe(true);
     expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/warning: title.*commit prefix/s));
   });
 
-  it('does not warn about the title of a fitting Task (HIMMEL-6968)', async () => {
+  it('does not warn about the title of a fitting Task', async () => {
     await run(['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test', '--title', 'Ship loop: merge waits for the signed GO', '--desc', PLAIN, ...HOME]);
     expect(posted()).toBe(true);
     expect(console.error).not.toHaveBeenCalledWith(expect.stringMatching(/warning: title/));
@@ -381,7 +381,7 @@ describe('create — plain block rule (HIMMEL-5226)', () => {
     expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/warning.*Impact.*Epic is exempt/s));
   });
 
-  it('only warns for an Epic that lacks Plan and DoD (HIMMEL-5643)', async () => {
+  it('only warns for an Epic that lacks Plan and DoD', async () => {
     const noPlanDod = PLAIN.replace(/## Plan\n[^\n]*\n\n## DoD\n[^\n]*\n\n/, '');
     await run(['--type', 'Epic', '--desc', noPlanDod]);
     expect(posted()).toBe(true);
@@ -403,7 +403,7 @@ describe('create — plain block rule (HIMMEL-5226)', () => {
 });
 
 // create refuses a ticket with no Sector and no epic / standalone marker.
-describe('create — Sector and home rule (HIMMEL-6223, HIMMEL-6277)', () => {
+describe('create — Sector and home rule', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetSectorCache();
@@ -441,7 +441,7 @@ describe('create — Sector and home rule (HIMMEL-6223, HIMMEL-6277)', () => {
 
   const FILE = ['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test', '--parent', 'HIMMEL-9'];
 
-  it('files a Task titled "Visibility: x" with no --sector under the Sector Visibility (HIMMEL-8659)', async () => {
+  it('files a Task titled "Visibility: x" with no --sector under the Sector Visibility', async () => {
     const p = new Command();
     p.exitOverride();
     registerCreate(p);
@@ -450,7 +450,7 @@ describe('create — Sector and home rule (HIMMEL-6223, HIMMEL-6277)', () => {
     expect(body.fields['customfield_10212']).toEqual({ value: 'Visibility' });
   });
 
-  it('refuses a Task whose title prefix names no live Sector, listing the options (HIMMEL-8659)', async () => {
+  it('refuses a Task whose title prefix names no live Sector, listing the options', async () => {
     const p = new Command();
     p.exitOverride();
     registerCreate(p);
@@ -685,7 +685,7 @@ describe('create --residual-of', () => {
 // The residual verb places each residual (plan 9.1 as corrected by 10.5) and
 // stamps its class. The mock plays Jira: versions (v1.1.3 optionally frozen), a
 // parent and a --blocks target with a status and a fixVersion.
-describe('create --residual-of placement (HIMMEL-6919)', () => {
+describe('create --residual-of placement', () => {
   type Ticket = { done?: boolean; version?: string };
   type Opts = { frozen?: boolean; nextFrozen?: boolean; noNext?: boolean; parentLabels?: string[]; parent?: Ticket; target?: Ticket; open?: number };
   let dir: string;
@@ -1203,7 +1203,7 @@ describe('HIMMEL-6924 residual rank slots', () => {
 });
 
 // A follow-up or residual with no version is queued to the release manager or refused, never filed unplaced.
-describe('create — unplaced follow-up (HIMMEL-8723)', () => {
+describe('create — unplaced follow-up', () => {
   let root: string;
   let errs: string[];
   const posted = () => mockRequest.mock.calls.some((x) => x[0] === 'POST' && x[1] === '/issue');
@@ -1395,7 +1395,7 @@ describe('create — unplaced follow-up (HIMMEL-8723)', () => {
 // Filing into the current unreleased version at the cap warns and labels
 // over-cap; an operator-directed ticket is exempt. The mock plays Jira: a version list and
 // a search whose hit count is the open residuals in the current version.
-describe('create — cap gate (HIMMEL-6485)', () => {
+describe('create — cap gate', () => {
   type Opts = { open?: number; budgetDesc?: string; noNext?: boolean; searchFails?: boolean };
   let searches: string[];
   const play = (o: Opts = {}) => {
@@ -1553,7 +1553,7 @@ describe('create — cap gate (HIMMEL-6485)', () => {
 
 // A Bug is placed at filing: backlog, or the active version for a Highest or
 // gated one; the chief can overrule with a reason that lands in the ledger.
-describe('create — Bug placement (HIMMEL-6776)', () => {
+describe('create — Bug placement', () => {
   let dir: string;
   const saved: Record<string, string | undefined> = {};
   const ENV = ['HANDOVER_DIR', 'HIMMEL_ADMISSIONS_LEDGER', 'HIMMEL_CONSOLE', 'HIMMEL_CONSOLE_NAME'];
@@ -1710,7 +1710,7 @@ describe('create — Bug placement (HIMMEL-6776)', () => {
   });
 });
 
-describe('create — intake gate for a frozen version (HIMMEL-6775)', () => {
+describe('create — intake gate for a frozen version', () => {
   let dir: string;
   const saved: Record<string, string | undefined> = {};
   const ENV = ['HANDOVER_DIR', 'HIMMEL_ADMISSIONS_LEDGER', 'HIMMEL_CONSOLE', 'HIMMEL_CONSOLE_NAME'];
@@ -2046,7 +2046,7 @@ describe('create — blocker version placement', () => {
 
 // A Task or Story is placed at filing like a Bug, and a backlog filing under a
 // declared release queues an INTAKE request for the release manager.
-describe('create — Task/Story placement and backlog INTAKE (HIMMEL-7152)', () => {
+describe('create — Task/Story placement and backlog INTAKE', () => {
   let root: string;
   let errs: string[];
 
@@ -2265,7 +2265,7 @@ describe('create — Task/Story placement and backlog INTAKE (HIMMEL-7152)', () 
 });
 
 // A core ticket is marked core when it is filed: the Agent detail's paths go to coreMatch.
-describe('create — core label from the Agent detail (HIMMEL-8353)', () => {
+describe('create — core label from the Agent detail', () => {
   let out: string[];
   const body = (detail: string) => PLAIN.replace(/## Agent detail\n[^\n]*$/, `## Agent detail\n${detail}`);
 

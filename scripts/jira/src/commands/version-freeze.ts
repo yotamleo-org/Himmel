@@ -33,7 +33,7 @@ export function parseFrozen(description: string | undefined): { date: string; ke
 }
 
 // Same marker as `create --chief-override`.
-// ponytail: any same-uid caller can set HIMMEL_CONSOLE, upgrade path: the RM signed-row design (HIMMEL-6796)
+// ponytail: any same-uid caller can set HIMMEL_CONSOLE, upgrade path: the RM signed-row design
 export function hasConsoleMarker(): boolean {
   return process.env.HIMMEL_CONSOLE === '1';
 }

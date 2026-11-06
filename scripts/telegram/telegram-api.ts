@@ -32,7 +32,7 @@ export async function getUpdates(token: string, offset: number, timeout = 30, f:
   if (!j.ok) throw new Error(`getUpdates not ok: ${j.description ?? res.status}`);
   return j.result ?? [];   // tolerate a malformed ok:true with no result array (never throw downstream)
 }
-// Resolve the bridge's own bot username (LUNA-158): the require-mention gate
+// Resolve the bridge's own bot username: the require-mention gate
 // needs it to recognize `@<botusername>` in group text. Best-effort — null on
 // any failure (network, non-ok, malformed result), so the caller can fail
 // open rather than the whole bridge refusing to start over a transient

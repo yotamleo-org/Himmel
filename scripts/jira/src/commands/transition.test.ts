@@ -80,7 +80,7 @@ async function run(...args: string[]) {
 
 const puts = () => mockRequest.mock.calls.filter((c) => c[0] === 'PUT');
 
-describe('transition to Done stamps the current fixVersion (HIMMEL-6416)', () => {
+describe('transition to Done stamps the current fixVersion', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -139,7 +139,7 @@ describe('transition to Done stamps the current fixVersion (HIMMEL-6416)', () =>
   });
 });
 
-describe('transition to Done respects the intake gate of a frozen version (HIMMEL-6796)', () => {
+describe('transition to Done respects the intake gate of a frozen version', () => {
   const FROZEN = [
     { id: '1', name: 'v1.1.2', released: true },
     { id: '2', name: 'v1.1.3', released: false, description: 'frozen: 2026-10-20\nfrozen-keys: HIMMEL-2, HIMMEL-3' },
@@ -173,12 +173,13 @@ describe('transition to Done respects the intake gate of a frozen version (HIMME
   });
 
   it('a deferred ticket closes unstamped, fails loudly on stderr and exits 3', async () => {
-    ledger({ ts: 't', version: 'v1.1.3', key: 'HIMMEL-1', kind: 'deferral', actor: 'a' });
+    const key = 'HIMMEL-1';
+    ledger({ ts: 't', version: 'v1.1.3', key, kind: 'deferral', actor: 'a' });
     wire([], FROZEN);
-    await run('HIMMEL-1', 'Done');
+    await run(key, 'Done');
     expect(puts()).toHaveLength(0);
     expect(mockRequest.mock.calls.some((c) => c[0] === 'POST')).toBe(true);
-    expect(vi.mocked(console.error).mock.calls.flat().join('\n')).toMatch(/^FAIL HIMMEL-1 closed with no fixVersion: .*deferral/m);
+    expect(vi.mocked(console.error).mock.calls.flat().join('\n')).toMatch(new RegExp(`^FAIL ${key} closed with no fixVersion: .*deferral`, 'm'));
     expect(process.exitCode).toBe(3);
   });
 

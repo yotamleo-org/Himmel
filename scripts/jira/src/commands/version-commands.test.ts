@@ -80,19 +80,19 @@ describe('version commands + fix-version', () => {
     expect(console.log).toHaveBeenCalledWith('Edited version v2');
   });
 
-  it('version-edit --name: PUTs the new name in place (HIMMEL-4872)', async () => {
+  it('version-edit --name: PUTs the new name in place', async () => {
     mockRequest.mockImplementation(async (m: string) => (m === 'GET' ? VERSIONS : {}));
     await run(['version-edit', 'v2', '--name', 'v1.1.0']);
     expect(mockRequest).toHaveBeenCalledWith('PUT', '/version/101', { name: 'v1.1.0' });
     expect(console.log).toHaveBeenCalledWith('Edited version v2');
   });
 
-  it('version-edit --name refuses a non-semver name before any request (HIMMEL-4872)', async () => {
+  it('version-edit --name refuses a non-semver name before any request', async () => {
     await expect(run(['version-edit', 'v2', '--name', 'v1.0.2b'])).rejects.toThrow(/semver/);
     expect(mockRequest).not.toHaveBeenCalled();
   });
 
-  it('version-create refuses a non-semver name before any request (HIMMEL-4872)', async () => {
+  it('version-create refuses a non-semver name before any request', async () => {
     await expect(run(['version-create', 'v1.0.2i'])).rejects.toThrow(/semver/);
     expect(mockRequest).not.toHaveBeenCalled();
   });
@@ -152,7 +152,7 @@ describe('version commands + fix-version', () => {
   });
 });
 
-describe('fix-version --add into a frozen version (HIMMEL-7153)', () => {
+describe('fix-version --add into a frozen version', () => {
   const FROZEN = [{ id: '300', name: 'v1.1.3', description: 'frozen: 2026-10-20\nfrozen-keys: HIM-1' }, ...VERSIONS];
   const saved = { key: process.env.JIRA_PROJECT_KEY, ledger: process.env.HIMMEL_ADMISSIONS_LEDGER, console: process.env.HIMMEL_CONSOLE };
   let dir: string;
