@@ -1890,7 +1890,7 @@ function positiveEnvInt(raw: string | undefined, fallback: number): number {
 // Both ends fall back rather than clamp, for the same reason: an
 // out-of-range period is a typo, and a typo means default.
 // A FRACTIONAL period falls back too. Not because it is a
-// new hot-loop class, setInterval truncates, so 1.5 becomes 1, which is no
+// new hot-loop class — setInterval truncates, so 1.5 becomes 1, which is no
 // worse than the 1 this function already permits outright, but because
 // silently truncating is the one input shape that did not follow the contract
 // the rest of the function states: a period that is not a whole millisecond is
