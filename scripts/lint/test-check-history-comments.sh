@@ -29,6 +29,7 @@
 #   32.   a binary file is skipped by content
 #   33-35. the one-shot tree check on a temp repo, the pre-commit entry, --root on every call
 #   36.   non-key refusals stay on code files
+#   37-39b. a key in a pre-commit name, a hook deny message and a command description is refused, each proven live by a mutated copy of the classifier
 #   39.   --range with --tip on a branch HEAD is not on
 #   40.   a malformed rule row or a second key row exits 2 (never an exempt-everything row)
 #   41.   a symlink replaced by a regular file is judged
@@ -465,6 +466,26 @@ echo "== 36. non-key refusals stay on code files =="
 expect_allow "round word in a doc" docs/x.md "+## Review round 2"
 expect_allow "CR fix note in YAML" x.yaml "+# CR fix: y"
 expect_block "round note in code" scripts/a.sh "+# round 2"
+
+echo "== 37-39b. the surfaces the retired user-strings hook scanned =="
+expect_block "37 a key in a pre-commit name value" .pre-commit-config.yaml "+        name: guard that stops ${H}-1 from landing"
+expect_block "38 a key in a hook deny message" scripts/hooks/x.sh "+    echo \"refused, see ${H}-1\" >&2"
+expect_block "39b a key on a command description line" .claude/commands/x.md "+description: runs the ${H}-1 flow"
+live() { # <label> <awk edit, as a sed script> <path> <line> <expected rc>
+    local d="$T/live-$$-$RANDOM"
+    mkdir -p "$d"
+    cp "$GATE" "$LIST" "$d/"
+    sed "$2" "$AWKF" > "$d/ticket-refs.awk"
+    mkdiff "$3" "$4"
+    OUT="$(bash "$d/check-history-comments.sh" --diff "$T/d.diff" 2>&1)"; RC=$?
+    if [ "$RC" -eq "$5" ]; then pass "liveness: $1"; else fail "liveness $1 -> rc=$RC (want $5): $OUT"; fi
+}
+KEYCODE='s/if (!is_test(p)) return 1/if (!is_test(p)) return is_code(p)/'
+KEYNONE='s/if (!is_test(p)) return 1/if (!is_test(p)) return 0/'
+live "37 passes when the key refusal covers only code files" "$KEYCODE" .pre-commit-config.yaml "+        name: guard that stops ${H}-1 from landing" 0
+live "39b passes when the key refusal covers only code files" "$KEYCODE" .claude/commands/x.md "+description: runs the ${H}-1 flow" 0
+live "38 passes when the key refusal is removed" "$KEYNONE" scripts/hooks/x.sh "+    echo \"refused, see ${H}-1\" >&2" 0
+live "38 is still refused when the refusal covers code files" "$KEYCODE" scripts/hooks/x.sh "+    echo \"refused, see ${H}-1\" >&2" 1
 
 echo "== 39. --range --tip with HEAD on another branch =="
 TP="$T/tip"; mkdir -p "$TP/scripts"; git -C "$TP" init -q

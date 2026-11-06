@@ -27,7 +27,7 @@ upstream does not enforce them would see a diff on every touched file.
 
 | Hook | Why it stays |
 |---|---|
-| `shellcheck`, `fail-open-lint`, `no-history-comments`, `no-ticket-id-in-user-strings`, `vacuous-path-assert` | himmel's lint and style; a fork's code is upstream's |
+| `shellcheck`, `fail-open-lint`, `no-history-comments`, `vacuous-path-assert` | himmel's lint and style; a fork's code is upstream's |
 | `worktree-isolation`, `merged-branch-check` | fork edits already go through a himmel branch; the core's default-branch refusal covers the real risk |
 | `plugin-version-bump-required`, `template-version`, `doc-guard`, `agents-md-fresh`, `claude-md-budget`, `lanes-inventory-guard`, `guardrail-matrices`, `hook-lib-node-suites`, `trust-node-suites` | check himmel's own files (plugins, templates, docs, hook inventory); no meaning in a fork |
 | `conventional-commit-msg` (`check-commit-msg.sh`) | reads himmel's `.env` ticket config and `scripts/lib`; the core's `himmel-ticket-id` is the portable subset |

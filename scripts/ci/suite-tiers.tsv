@@ -696,7 +696,6 @@ scripts/hooks/test-check-main-ref-transaction.sh	pr	guard
 scripts/hooks/test-check-mcp-plugin-refs.sh	pr	guard
 scripts/hooks/test-check-no-force-push.sh	pr	guard
 scripts/hooks/test-check-no-headless-gemini.sh	pr	guard
-scripts/hooks/test-check-no-ticket-id-in-user-strings.sh	pr	guard
 scripts/hooks/test-check-npm-audit-signatures.sh	pr	guard
 scripts/hooks/test-check-npm-audit.sh	pr	guard
 scripts/hooks/test-check-npm-licenses.sh	pr	guard
