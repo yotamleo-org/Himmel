@@ -1540,6 +1540,25 @@ assert_rc "9341 ctl busctl StartUnit on the Manager"       0 "$(run_case "$(j_ba
 assert_rc "9341 ctl grep for show-environment in a script" 0 "$(run_case "$(j_bash 'grep -n show-environment scripts/telegram/restart-bridge.sh')")"
 assert_rc "9341 ctl commit message naming show-environment" 0 "$(run_case "$(j_bash "git commit -m 'docs: systemctl --user show-environment is denied'")")"
 
+# A variable named for a password (pass, X_PASS, X_PASS_Y, PASS_X) is a
+# credential name, word-bounded so COMPASS and BYPASS are not. Hook input only: the
+# names are fed to the guard, never read from the environment.
+# shellcheck disable=SC2016 # the $NAME is literal hook input
+{
+assert_rc "9350 printenv GGS_MQTT_PASS"            2 "$(run_case "$(j_bash 'printenv GGS_MQTT_PASS')")"
+assert_rc "9350 echo \$GGS_MQTT_PASS"              2 "$(run_case "$(j_bash 'echo $GGS_MQTT_PASS')")"
+assert_rc "9350 printenv PASS (bare word)"         2 "$(run_case "$(j_bash 'printenv PASS')")"
+assert_rc "9350 echo \${DB_PASS_FILE} (middle)"    2 "$(run_case "$(j_bash 'echo ${DB_PASS_FILE}')")"
+assert_rc "9350 printenv PASS_DB (leading)"        2 "$(run_case "$(j_bash 'printenv PASS_DB')")"
+assert_rc "9350 declare -p GGS_MQTT_PASS"          2 "$(run_case "$(j_bash 'declare -p GGS_MQTT_PASS')")"
+assert_rc "9350 ctl printenv DISPLAY"              0 "$(run_case "$(j_bash 'printenv DISPLAY')")"
+assert_rc "9350 ctl echo \$PATH"                   0 "$(run_case "$(j_bash 'echo $PATH')")"
+assert_rc "9350 ctl printenv COMPASS"              0 "$(run_case "$(j_bash 'printenv COMPASS')")"
+assert_rc "9350 ctl echo \$BYPASS"                 0 "$(run_case "$(j_bash 'echo $BYPASS')")"
+assert_rc "9350 ctl echo \$MY_BYPASS_MODE"         0 "$(run_case "$(j_bash 'echo $MY_BYPASS_MODE')")"
+assert_rc "9350 ctl printenv PASSTHRU"             0 "$(run_case "$(j_bash 'printenv PASSTHRU')")"
+}
+
 # A short mirror query expands thousands of filenames even when the raw
 # clause's command is rtk, not a reader. It must finish in the real chain's
 # unchanged member window; the query is hook input, never executed.

@@ -880,6 +880,8 @@ g4_envish_name() {
     case "$_TOLOWER_OUT" in
         *token*|*secret*|*passw*|*apikey*|*api_key*|*credential*|*private*) return 0 ;;
         key|*_key|*_key_*|pat|*_pat|auth|*_auth)                            return 0 ;;
+        # Word-bounded, so COMPASS and BYPASS are not names.
+        pass|pass_*|*_pass|*_pass_*)                                        return 0 ;;
     esac
     return 1
 }
