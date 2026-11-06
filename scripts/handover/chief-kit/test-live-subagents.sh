@@ -119,6 +119,21 @@ handback() {
 send_use() {
     jq -nc --arg t "$1" --arg to "$2" --arg ts "$3" '{type:"assistant",timestamp:$ts,message:{content:[{type:"tool_use",id:$t,name:"SendMessage",input:{to:$to,message:"go on"}}]}}' >> "$PARENT"
 }
+# send_result <tool-use-id> <ts> <message> - the parent's tool_result for a SendMessage: a
+# text block holding the harness JSON, as in the RB transcript. The inline hand-back text is
+# copied from it; the queued and non-inline texts are the 2.1.318 binary's, read not observed.
+INLINE='Resumed agent. Its final report follows this JSON, framed by the harness.'
+QUEUED='Message queued for delivery to the agent at its next tool round.'
+NONINLINE='Resuming agent. Its final report is not in this message.'
+send_result() {
+    jq -nc --arg t "$1" --arg ts "$2" --arg m "$3" '{type:"user",timestamp:$ts,message:{content:[{type:"tool_result",tool_use_id:$t,
+        content:[{type:"text",text:({success:true,message:$m}|tojson)}]}]}}' >> "$PARENT"
+}
+# agentmsg <agent-id> <ts> - an <agent-message> from a child that is NOT its final hand-back
+agentmsg() {
+    jq -nc --arg a "$1" --arg ts "$2" --arg s "$SID" '{type:"queue-operation",operation:"enqueue",timestamp:$ts,sessionId:$s,
+        content:("<agent-message from=\"" + $a + "\">\nstill working, one question")}' >> "$PARENT"
+}
 reset_session
 launch rb1 toolu_RB1 foreground 2026-11-04T22:00:00.000Z
 fg_result toolu_RB1 2026-11-04T22:02:48.000Z
@@ -133,7 +148,7 @@ handback rb1 2026-11-04T22:10:03.034Z
 child_runs rb1 2026-11-04T22:10:03.125Z
 rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
 check "resumed fg: hand-back older than the child's last record, no result yet -> rc 1" "$rc" "1"
-fg_result toolu_SM1 2026-11-04T22:10:03.231Z
+send_result toolu_SM1 2026-11-04T22:10:03.231Z "$INLINE"
 rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
 check "resumed fg: RB shape (hand-back + SendMessage tool_result, no task-notification) -> rc 0" "$rc" "0"
 contains "resumed fg: RB shape -> count 0" "$out" "live-subagents=0"
@@ -155,14 +170,14 @@ send_use toolu_SM3 rb3 2026-11-04T22:09:47.054Z
 child_runs rb3 2026-11-04T22:10:03.125Z
 handback other 2026-11-04T22:10:03.200Z
 send_use toolu_SM4 other 2026-11-04T22:10:03.210Z
-fg_result toolu_SM4 2026-11-04T22:10:03.231Z
+send_result toolu_SM4 2026-11-04T22:10:03.231Z "$INLINE"
 rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
 check "resumed fg: another agent's hand-back and SendMessage result do not clear it -> rc 1" "$rc" "1"
 contains "resumed fg: control still names the child" "$out" "LIVE-SUBAGENT rb3"
 # a resume that is still running: its own record is newer than the hand-back and the result
 child_runs rb3 2026-11-04T22:11:00.000Z
 handback rb3 2026-11-04T22:10:03.300Z
-fg_result toolu_SM3 2026-11-04T22:10:03.400Z
+send_result toolu_SM3 2026-11-04T22:10:03.400Z "$INLINE"
 rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
 check "resumed fg: own record newer than hand-back and result (running) -> rc 1" "$rc" "1"
 
@@ -171,9 +186,37 @@ reset_session
 launch bg1 toolu_BG1 background 2026-11-04T22:00:00.000Z
 send_use toolu_SMB bg1 2026-11-04T22:09:47.054Z
 child_runs bg1 2026-11-04T22:10:00.000Z
-fg_result toolu_SMB 2026-11-04T22:10:03.231Z
+send_result toolu_SMB 2026-11-04T22:10:03.231Z "$INLINE"
 rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
 check "background child: SendMessage tool_result newer than its last record does not clear it -> rc 1" "$rc" "1"
+
+# a foreground-shape child still running: a queued send, or a non-inline resume, is not a finish
+reset_session
+launch rb4 toolu_RB4 foreground 2026-11-04T22:00:00.000Z
+fg_result toolu_RB4 2026-11-04T22:02:48.000Z
+send_use toolu_SM5 rb4 2026-11-04T22:09:47.054Z
+child_runs rb4 2026-11-04T22:10:00.000Z
+send_result toolu_SM5 2026-11-04T22:10:03.231Z "$QUEUED"
+rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
+check "foreground-shape child: queued send result newer than its last record -> rc 1" "$rc" "1"
+contains "foreground-shape child: queued send -> still named live" "$out" "LIVE-SUBAGENT rb4"
+reset_session
+launch rb5 toolu_RB5 foreground 2026-11-04T22:00:00.000Z
+fg_result toolu_RB5 2026-11-04T22:02:48.000Z
+send_use toolu_SM6 rb5 2026-11-04T22:09:47.054Z
+child_runs rb5 2026-11-04T22:10:00.000Z
+send_result toolu_SM6 2026-11-04T22:10:03.231Z "$NONINLINE"
+rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
+check "foreground-shape child: non-inline resume result newer than its last record -> rc 1" "$rc" "1"
+
+# an <agent-message> from the child that is not its hand-back does not finish it
+reset_session
+launch rb6 toolu_RB6 foreground 2026-11-04T22:00:00.000Z
+fg_result toolu_RB6 2026-11-04T22:02:48.000Z
+child_runs rb6 2026-11-04T22:10:00.000Z
+agentmsg rb6 2026-11-04T22:10:03.100Z
+rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
+check "resumed fg: an agent-message without the hand-back marker newer than its last record -> rc 1" "$rc" "1"
 reset_session
 
 # --- the wrap gate: chief.sh wrap ------------------------------------------
@@ -242,7 +285,7 @@ fg_result toolu_RB1 2026-11-04T22:02:48.000Z
 send_use toolu_SM1 rb1 2026-11-04T22:09:47.054Z
 handback rb1 2026-11-04T22:10:03.034Z
 child_runs rb1 2026-11-04T22:10:03.125Z
-fg_result toolu_SM1 2026-11-04T22:10:03.231Z
+send_result toolu_SM1 2026-11-04T22:10:03.231Z "$INLINE"
 rc=0; out=$(wrap "$DOC2" "$TOKEN2" "handed to B" 2>&1) || rc=$?
 check "wrap: resumed foreground child that handed back (RB shape) -> rc 0" "$rc" "0"
 

@@ -23,10 +23,13 @@
 #     same agent id. A background child's notice then names the SendMessage's
 #     tool-use-id (why the match is on <task-id>). A FOREGROUND child resumed by
 #     SendMessage gets no task-notification: the parent gets an enqueue of an
-#     <agent-message from="<agent-id>"> hand-back and a tool_result for the
-#     SendMessage's own tool-use id, so both also count, the
-#     tool_result only for a foreground child and a SendMessage whose input.to
-#     is this agent id (a send to a running background child returns at once). A
+#     <agent-message from="<agent-id>"> hand-back (marked "[Subagent hand-back]")
+#     and a tool_result for the SendMessage's own tool-use id, so both also
+#     count. The tool_result counts only for a foreground child, a SendMessage
+#     whose input.to is this agent id, and a result that says the resume ran to
+#     its report ("Resumed agent. Its final report follows"): a send to a live
+#     child returns "Message queued for delivery" at once, and a non-inline
+#     resume returns "Resuming agent", and neither proves the child stopped. A
 #     child counts as finished only when its newest completion record is no
 #     older than the newest record in its own transcript.
 # Rejected: the process tree (an in-process subagent is not a process; only the
@@ -112,11 +115,13 @@ EOF
         select(
             (.type == "queue-operation" and .operation == "enqueue"
                 and ((.content // "") | tostring
-                    | (contains("<task-id>" + $a + "</task-id>") or contains("<agent-message from=\"" + $a + "\">"))))
+                    | (contains("<task-id>" + $a + "</task-id>")
+                        or (contains("<agent-message from=\"" + $a + "\">") and contains("[Subagent hand-back]")))))
             or ($s == "foreground" and .type == "user"
                 and any(.message.content[]?; .type == "tool_result" and .tool_use_id == $t))
             or ($s == "foreground" and .type == "user"
-                and any(.message.content[]?; .type == "tool_result" and (.tool_use_id as $u | $sm | index($u))))
+                and any(.message.content[]?; .type == "tool_result" and (.tool_use_id as $u | $sm | index($u))
+                    and ((.content // "") | tostring | contains("Resumed agent. Its final report follows"))))
         ) | .timestamp // empty' 2>/dev/null | sort | tail -n 1)
     child_at=""
     if [ -f "${meta%.meta.json}.jsonl" ]; then
