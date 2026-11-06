@@ -4,7 +4,7 @@ description: Write or tighten CLAUDE.md, memory, skills.
 disable-model-invocation: true
 ---
 
-> **Vendored, pinned to a commit — POC (HIMMEL-5631).** Source: `mattpocock/skills`,
+> **Vendored, pinned to a commit — POC.** Source: `mattpocock/skills`,
 > commit `49dd158d1076134a641b33efb035946536778336`, path
 > `skills/productivity/writing-for-agents/` (`SKILL.md`, `SKILL-MECHANICS.md`),
 > fetched 2026-10-14. License: MIT, (c) 2026 Matt Pocock (`LICENSE` beside this file).
