@@ -605,7 +605,7 @@ same 'a run directory older than 15 minutes is a lost run and a new one starts (
 cpu9342() {  # cpu9342 <stdout-file> <cmd...>: the CPU ms of the children the command reaped
     local out="$1" t; shift
     t="$( { TIMEFORMAT='%U %S'; time "$@" >"$out" 2>/dev/null; } 2>&1 )"
-    printf '%s\n' "$t" | LC_ALL=C awk 'END { printf "%d", ($1 + $2) * 1000 }'
+    printf '%s\n' "$t" | tr , . | LC_ALL=C awk 'END { printf "%d", ($1 + $2) * 1000 }'  # a de_DE station prints 2,987
 }
 # shellcheck disable=SC2016  # the stub's own $vars expand when it runs, not here
 spin9342='i=0; while [ $i -lt 2000000 ]; do i=$((i+1)); done'
@@ -620,6 +620,7 @@ same 'the control tick harvests the doctor run' "$(doctor_of < "$dr9342/line")" 
 rm -f "$dr9342/cache"
 dr_spin9342="$(dr_run9342 1)"
 same 'the spinning doctor run is harvested in the tick' "$(doctor_of < "$dr9342/line")" 'C9-spin'
+same 'the doctor launch prints no pid line on the tick stdout' "$(grep -c '^[0-9][0-9]*$' "$dr9342/line")" '0'
 if [ $((dr_spin9342 - dr_base9342)) -lt 1000 ]; then pass 'a harvested doctor run adds none of its CPU to the tick'; else fail "a harvested doctor run added $((dr_spin9342 - dr_base9342)) ms of CPU to the tick (spin ${dr_spin9342} ms, control ${dr_base9342} ms)"; fi
 
 cg9342="$W/cg9342"; mkdir -p "$cg9342"
@@ -876,6 +877,16 @@ if [ -n "$_TIMEOUT_BIN" ]; then
     contains 'the tick reads pool=? until the slow snapshot lands (HIMMEL-7609)' "$pd_slow_out" ' pool=? '
     for _ in $(seq 1 40); do [ -z "$(find "$W/pd-slow-state" -name 'tick-pool-*.rows' 2>/dev/null)" ] || break; sleep 0.5; done
     contains 'the next tick counts from the finished snapshot (HIMMEL-7609)' "$(pd_slow)" ' pool=3/1/2/1 '
+    # A snapshot that ends while the tick waits for it adds none of its CPU to the tick: the same
+    # wrapper spins about 2 s on the pool call, the control does not.
+    # shellcheck disable=SC2016  # the wrapper's own $vars expand when it runs, not here
+    printf '#!/usr/bin/env bash\ncase " $* " in *" --dispositions "*) [ -z "${SPIN:-}" ] || { %s; } ;; esac\nexec bash %q "$@"\n' "$spin9342" "$HERE/next-dispatchable.sh" > "$sk/handover/chief-kit/next-dispatchable.sh"
+    pd_cpu9342() { rm -rf "$W/pd-cpu-state"; cpu9342 "$W/pd-cpu-line" env SPIN="$1" TOKEN= NEXT_DISPATCH_MIRROR="$PD" NEXT_DISPATCH_GH_CMD="$W/ow-gh" NEXT_DISPATCH_CLASSIFY_CMD="$W/pd-classify" OW_PR_ROWS='4001\tfix: [HIMMEL-901] x\tfix/himmel-901-x\n' TICK_POOL_WAIT=30 TICK_STATE_DIR="$W/pd-cpu-state" bash "$sk/handover/chief-kit/tick.sh" --doc "$pd_doc"; }
+    pd_base9342="$(pd_cpu9342 '')"
+    contains 'the control tick counts from the snapshot it waited for' "$(cat "$W/pd-cpu-line")" ' pool=3/1/2/1 '
+    pd_spin9342="$(pd_cpu9342 1)"
+    contains 'the spinning snapshot lands in the tick that launched it' "$(cat "$W/pd-cpu-line")" ' pool=3/1/2/1 '
+    if [ $((pd_spin9342 - pd_base9342)) -lt 1000 ]; then pass 'a pool snapshot the tick waits out adds none of its CPU to the tick'; else fail "a pool snapshot added $((pd_spin9342 - pd_base9342)) ms of CPU to the tick (spin ${pd_spin9342} ms, control ${pd_base9342} ms)"; fi
 else
     skip 'a slow pool snapshot never holds the tick: no timeout'
 fi
