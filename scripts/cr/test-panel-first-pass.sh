@@ -1112,6 +1112,25 @@ mkdir -p "$prrepo"
     git reset -q --hard refs/himmel/outside/7
     git checkout -q main
     git branch -q -D prside
+    # two PRs whose diff is exactly the cap (9) and one byte over it (10): a one-line new file off main,
+    # measured as the critics count it (git's diff output, one trailing newline), the line length adjusted by the gap
+    for pad_spec in "9 204800" "10 204801"; do
+        pad_ref="${pad_spec%% *}"; pad_want="${pad_spec##* }"
+        pad_n=1000
+        for _pass in 1 2; do
+            git checkout -q -B padside main
+            head -c "$pad_n" /dev/zero | tr '\0' 'a' > pad.txt
+            echo >> pad.txt
+            git add pad.txt
+            git commit -q -m "pr-pad-$pad_ref"
+            pad_sz="$(git diff main...HEAD | wc -c | tr -d ' ')"
+            [ "$_pass" = 1 ] && pad_n=$((pad_n + pad_want - pad_sz))
+        done
+        [ "$pad_sz" = "$pad_want" ] || { echo "FAIL: pad fixture $pad_ref is $pad_sz bytes, want $pad_want" >&2; exit 1; }
+        git update-ref "refs/himmel/outside/$pad_ref" HEAD
+        git checkout -q main
+    done
+    git branch -q -D padside
     git checkout -q -b elsewhere
 ) || { echo "FAIL: --pr fixture repo setup failed" >&2; exit 1; }
 pr_oid="$(git -C "$prrepo" rev-parse refs/himmel/outside/7)"
@@ -1201,6 +1220,26 @@ pr_run_x PR_OID="$pr_oid8" -- --pr 8 --head "$pr_oid8" --branch feat/outside-thi
 if [ "$pr_rc" -eq 7 ]; then ok "--pr with a diff over the cap exits 7"; else bad "--pr over-cap exit (got $pr_rc)"; fi
 assert_has "$pr_err" "204800" "--pr over-cap: the refusal names the cap"
 if [ ! -f "$CALL_LOG" ] && [ "$(pr_rounds)" = "$n_before" ] && [ "$(rs_rows "$prrepo" | wc -l | tr -d ' ')" = "$rs_before" ]; then ok "--pr over-cap: no panel, no round, no row"; else bad "--pr over-cap: the panel ran or state was written"; fi
+# the cap is measured as the critics count it: a diff of exactly the cap passes, one byte more is refused
+pr_oid9="$(git -C "$prrepo" rev-parse refs/himmel/outside/9)"
+pr_oid10="$(git -C "$prrepo" rev-parse refs/himmel/outside/10)"
+if [ "$(git -C "$prrepo" diff "$pr_base...$pr_oid9" | wc -c | tr -d ' ')" = 204800 ] && [ "$(git -C "$prrepo" diff "$pr_base...$pr_oid10" | wc -c | tr -d ' ')" = 204801 ]; then ok "cap fixtures: refs 9 and 10 diff to 204800 and 204801 bytes"; else bad "cap fixtures have the wrong size"; fi
+pr_run_x PR_OID="$pr_oid9" PR_BRANCH=feat/outside-pad9 -- --pr 9 --head "$pr_oid9" --branch feat/outside-pad9
+if [ "$pr_rc" -eq 0 ]; then ok "--pr with a diff of exactly the cap passes (exit 0)"; else bad "--pr at-cap exit (got $pr_rc; err: $pr_err)"; fi
+pr_run_x PR_OID="$pr_oid10" PR_BRANCH=feat/outside-pad10 -- --pr 10 --head "$pr_oid10" --branch feat/outside-pad10
+if [ "$pr_rc" -eq 7 ]; then ok "--pr with a diff one byte over the cap exits 7"; else bad "--pr cap+1 exit (got $pr_rc)"; fi
+if [ ! -f "$CALL_LOG" ]; then ok "--pr cap+1: the panel never ran"; else bad "--pr cap+1: the panel ran"; fi
+# the rtk retry is measured the same way: an over-cap retry diff exits 7 and sends nothing to the panel
+mkdir -p "$tmp/rtkbig"
+cat > "$tmp/rtkbig/rtk" <<'RTKBIGEOF'
+#!/usr/bin/env bash
+head -c 300000 /dev/zero | tr '\0' 'b'
+RTKBIGEOF
+chmod +x "$tmp/rtkbig/rtk"
+pr_run_x PR_BRANCH=feat/outside-retry FAKE_RC=1 PATH="$tmp/rtkbig:$tmp/prbin:$PATH" -- --pr 7 --head "$pr_oid" --branch feat/outside-retry
+if [ "$pr_rc" -eq 7 ]; then ok "--pr: an over-cap rtk retry diff exits 7"; else bad "--pr over-cap retry exit (got $pr_rc)"; fi
+assert_has "$pr_err" "204800" "--pr over-cap retry: the refusal names the cap"
+if [ "$(wc -l < "$CALL_LOG" 2>/dev/null | tr -d ' ')" = 1 ]; then ok "--pr over-cap retry: the panel ran once, never on the retry diff"; else bad "--pr over-cap retry: panel calls (got $(wc -l < "$CALL_LOG" 2>/dev/null))"; fi
 # authorization comes before the preflight: a refused author leaves no preflight row
 pr_run_x PR_LOGIN=Stranger PR_ID=U_stranger PR_BRANCH=feat/other-thing -- --pr 7 --head "$pr_oid" --branch feat/other-thing
 if [ "$pr_rc" -eq 5 ]; then ok "--pr for an unlisted author exits 5 before the preflight"; else bad "--pr unlisted author exit (got $pr_rc)"; fi

@@ -81,7 +81,8 @@
 #       resolved; (d) (--pr only) critic-panel.sh has no --pin-ref, refs/himmel/outside/<n>
 #       is not at --head, --branch is not the PR's headRefName, or the PR's base branch
 #       or merge base cannot be read, or (e) the PR diff is over the 204800 bytes the
-#       critics read (CRITIC_FIRST_PASS_CAP_BYTES), refused before a round starts. ABORT: nothing was reviewed, nothing was recorded,
+#       critics read (CRITIC_FIRST_PASS_CAP_BYTES), refused before a round starts; the rtk
+#       retry's diff is measured the same way (that round stays counted). ABORT: nothing was reviewed, nothing was recorded,
 #       and for a branch review a round already started is given back
 #       (review-round.sh abort). A --pr round started before an abort stays counted;
 #       a retry at the same head reuses it. Never degrades to claude-only - re-run
@@ -262,15 +263,20 @@ diff_rc=0
 diff_range="$db_sha...$HEAD_SHA"
 scoped_from=""   # the last round's head, once a round 2 or 3 reviews only the change since it
 diff_out=$(git diff "$diff_range") || diff_rc=$?
-if [ -n "$PR" ] && [ "$diff_rc" -eq 0 ]; then
-    # The critics read only the first cap bytes of a diff: a full-scope row over a longer one would certify text nobody read.
+# Bytes the critics count in a diff: they measure the diff text plus one trailing newline.
+pr_over_cap() { # diff text: sets pr_diff_bytes and pr_cap; true when over the cap
     pr_cap="${CRITIC_FIRST_PASS_CAP_BYTES:-204800}"
     case "$pr_cap" in ''|*[!0-9]*) pr_cap=204800 ;; esac
-    pr_diff_bytes="$(printf '%s' "$diff_out" | wc -c | tr -d ' ')"
-    if [ "$pr_diff_bytes" -gt "$pr_cap" ]; then
-        echo "panel-first-pass ABORT - PR #$PR's diff is $pr_diff_bytes bytes, over the $pr_cap-byte cap the critics read, so a full review row would certify text nobody read. Nothing was reviewed and nothing was recorded; hand the PR to a maintainer takeover." >&2
-        exit 7
-    fi
+    pr_diff_bytes="$(printf '%s\n' "$1" | wc -c | tr -d ' ')"
+    [ "$pr_diff_bytes" -gt "$pr_cap" ]
+}
+pr_over_cap_abort() {
+    echo "panel-first-pass ABORT - PR #$PR's diff is $pr_diff_bytes bytes, over the $pr_cap-byte cap the critics read, so a full review row would certify text nobody read. Nothing was reviewed and nothing was recorded; hand the PR to a maintainer takeover." >&2
+    exit 7
+}
+if [ -n "$PR" ] && [ "$diff_rc" -eq 0 ]; then
+    # The critics read only the first cap bytes of a diff: a full-scope row over a longer one would certify text nobody read.
+    if pr_over_cap "$diff_out"; then pr_over_cap_abort; fi
 fi
 panel_avail_lines=""   # "panel-availability: <slug> ok|unavailable (rc=N)" lines
 panel_findings=""      # the merged findings block
@@ -493,6 +499,8 @@ PINABORT
         if [ "$panel_rc" -eq 1 ] && command -v rtk >/dev/null 2>&1; then
             # Same captured-base rule as the first attempt.
             retry_diff=$(rtk proxy git diff "$diff_range" 2>/dev/null) || retry_diff=""
+            # the retry diff is a second diff the panel would read: measure it like the first
+            if [ -n "$PR" ] && [ -n "$retry_diff" ] && pr_over_cap "$retry_diff"; then pr_over_cap_abort; fi
             if [ -n "$retry_diff" ]; then
                 retry_tmp=$(mktemp -t cr-panel-avail.XXXXXX)
                 panel_findings=$(printf '%s' "$retry_diff" | CR_USAGE_LOG=1 CR_REVIEW_ROUND="$review_round" bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --head "$HEAD_SHA" --branch "$BRANCH" ${PR:+--pin-ref "refs/himmel/outside/$PR"} --base "$db" --base-sha "$db_sha" --context-file "$CONTEXT_FILE" 2>"$retry_tmp")

@@ -301,7 +301,8 @@ that head. `review-round.sh start --pr` owns the cap (state `outside-<n>`, no de
 `panel-first-pass.sh --pr` and `pr-check-context.sh --pr` then run on the ref; the panel must be
 pinned to it, and a panel without a pin option is refused before a round is spent,
 so item 16b never passes on a review of a tree the panel did not pin. A diff over the 204800
-bytes the critics read is refused before a round starts, so a full-scope row never covers text
+bytes the critics read, counted as they count it, is refused before a round starts, and so is an
+over-cap diff from the rtk retry (that round stays counted), so a full-scope row never covers text
 nobody read. **Status: built but refused today.** `critic-panel.sh` has no pin option yet,
 so `panel-first-pass.sh --pr` exits 7 and no review row is written for any PR; the pin option,
 the approve verb that writes the approval row and the hook rows that protect the two files
