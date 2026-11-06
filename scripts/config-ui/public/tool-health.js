@@ -385,6 +385,7 @@ ${box("unused", "Loaded, never used", "Costs usage in every session; could load 
 // ---- drill-ins
 const back = (ui) => `<a class="btn quiet" href="${esc(toolHealthHref(ui))}">Back to overview</a>`;
 const stat = (id, label, v) => `<div><dt>${esc(label)}</dt><dd data-stat="${id}">${esc(v)}</dd></div>`;
+const weekCard = (id, label, v) => `<div class="kpi"><span class="k">${esc(label)}</span><b class="kv" data-stat="${id}">${esc(v)}</b></div>`;
 
 // ---- hook-chain incidents (the `chain` section of GET /api/tool-health): why a guard refused one exact call, with the recorded timing.
 const REASON_ROWS = [
@@ -489,7 +490,7 @@ function trendTable(trend, attr) {
 }
 // mockup v9 "Failures by cause": one stacked bar over five cards. The server refuses inline style attributes, so the bar is an SVG
 // whose segment widths are percent attributes and whose fills are tokens. rtk filter has no data yet (rtk logs no call id): it reads —.
-const CAUSE_FILL = { command: "var(--crit)", rtk_hook: "var(--beta)", guard: "var(--alpha)", classifier: "var(--note)", other: "var(--rule-strong)" };
+const CAUSE_FILL = { command: "var(--crit)", rtk_hook: "var(--beta)", guard: "var(--road)", classifier: "var(--alpha)", other: "var(--rule-strong)" };
 function causeView(totals) {
   const failed = Object.values(totals).reduce((n, v) => n + v, 0);
   let at = 0;
@@ -500,14 +501,14 @@ function causeView(totals) {
   }).join("");
   const bar = `<svg class="thcausebar" viewBox="0 0 100 18" width="100%" height="18" preserveAspectRatio="none" role="img" aria-label="${esc(`${failed} failed Bash calls by cause`)}"><rect x="0" y="0" width="100" height="18" fill="var(--surface-2)"/>${segs}</svg>`;
   const swatch = (k) => `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect width="10" height="10" fill="${CAUSE_FILL[k]}"/></svg> `;
-  const card = (id, label, value, k, title = "") => `<div data-cause-card="${id}"><dt>${k ? swatch(k) : ""}${esc(label)}</dt><dd${title ? ` title="${esc(title)}"` : ""}>${value}</dd></div>`;
-  const cards = `<dl class="stats">${[
+  const card = (id, label, value, k, title = "") => `<div class="kpi" data-cause-card="${id}"><span class="k">${k ? swatch(k) : ""}${esc(label)}</span><b class="kv"${title ? ` title="${esc(title)}"` : ""}>${value}</b></div>`;
+  const cards = `<div class="kpis">${[
     card("command", "Command", String(totals.command), "command"),
     card("rtk-filter", "rtk filter", "—", null, "rtk's parse failures carry no call id until upstream rtk logs one; these failures count under Command for now"),
     card("rtk-hook", "rtk hook", String(totals.rtk_hook), "rtk_hook"),
     card("guard", "himmel guard", String(totals.guard), "guard"),
     card("classifier", "Classifier", String(totals.classifier), "classifier"),
-  ].join("")}</dl>`;
+  ].join("")}</div>`;
   return `${bar}${cards}${totals.other > 0 ? `<p class="sub">${totals.other} other: a failure with no named cause.</p>` : ""}`;
 }
 function bashSections(data) {
@@ -549,7 +550,7 @@ function guardDrill(data, ui, token) {
   const max = Math.max(0, ...days.map((d) => d.n || 0));
   // The mockup's This week cards lead; the rest of the facts stay in the second list.
   const peak = days.reduce((b, d) => (isNum(d.n) && d.n > 0 && (!b || d.n > b.n) ? d : b), null), counted = days.filter((d) => isNum(d.n));
-  const cards = `<h3>${data.selected && data.selected.days === 30 ? "This window (30 days)" : "This week"}</h3><dl class="stats">${stat("refused", "Refused", num(h.failures))}${stat("rate", "Rate ÷ eligible call attempts", pct2(h.eligible_rate))}${stat("busiest", "Busiest day", peak ? `${dayLabel(peak.day)} · ${peak.n}` : "—")}${stat("none", "Days with none", counted.length ? num(counted.filter((d) => d.n === 0).length) : "—")}</dl>`;
+  const cards = `<h3>${data.selected && data.selected.days === 30 ? "This window (30 days)" : "This week"}</h3><div class="kpis">${weekCard("refused", "Refused", num(h.failures))}${weekCard("rate", "Rate ÷ eligible call attempts", pct2(h.eligible_rate))}${weekCard("busiest", "Busiest day", peak ? `${dayLabel(peak.day)} · ${peak.n}` : "—")}${weekCard("none", "Days with none", counted.length ? num(counted.filter((d) => d.n === 0).length) : "—")}</div>`;
   const counting = box("guard-counts", "How the rate is counted", "The eligible call attempts behind the rate, the older Bash-only rate kept for comparison, and how often a refused call was retried and recovered.", `<dl class="stats">${stat("eligible", "Eligible call attempts", num(h.eligible_calls))}${stat("legacy-rate", "Rate ÷ Bash calls (legacy)", pct(h.rate))}${stat("bash", "Bash calls", num(h.calls))}${stat("recovery", "Recovery", `${pct(h.recovery_rate)} (${num(h.recovered)} of ${num(h.known)} known)`)}</dl>`);
   // mockup v9: Refusals per day and the four This week cards sit side by side.
   const perDay = `<figure class="card"><h3>Refusals per day <span class="tag">refused calls</span></h3>${sub("Refusals per UTC day; a gap is a day with no calls recorded.")}${chart(days.map((d) => ({ day: d.day, n: d.n })), (d) => d.n, max, String, "bar")}<details><summary>Exact values per day</summary>${table(["Day (UTC)", "Refused"], days.map((d) => `<tr data-guard-day="${d.day}">${td(esc(dayLabel(d.day)))}${td(num(d.n))}</tr>`))}</details></figure>`;

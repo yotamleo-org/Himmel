@@ -1443,8 +1443,11 @@ test("the Bash drill-in draws Failures by cause as a stacked bar over five cause
   const seg = [...box.matchAll(/<rect [^>]*data-cause-seg="([a-z_]+)" [^>]*width="([0-9.]+)"/g)];
   expect(seg.map((m) => m[1])).toEqual(["command", "guard", "classifier", "other"]); // the empty rtk hook cause draws no segment
   expect(seg.every((m) => Math.abs(Number(m[2]) - 25) < 0.01)).toBe(true); // 1 of 4 failures each, in percent of the bar
-  expect(box).toMatch(/data-cause-card="command"[^>]*>[\s\S]*?<dd[^>]*>1</);
-  expect(box).toMatch(/data-cause-card="rtk-filter"[^>]*>[\s\S]*?<dd[^>]*>—</);
+  expect(box).toMatch(/class="kpi" data-cause-card="command"[^>]*>[\s\S]*?<b class="kv">1</);
+  expect(box).toMatch(/class="kpi" data-cause-card="rtk-filter"[^>]*>[\s\S]*?<b class="kv"[^>]*>—</);
+  // the mockup's colours: command red, rtk hook amber, himmel guard purple, classifier teal
+  const fill = (k: string) => new RegExp(`data-cause-seg="${k}"[^>]*fill="([^"]+)"`).exec(box)![1];
+  expect([fill("command"), fill("guard"), fill("classifier")]).toEqual(["var(--crit)", "var(--road)", "var(--alpha)"]);
   expect(box).toContain("1 other");
   expect(html).not.toMatch(/\sstyle=/);
 });
@@ -1456,6 +1459,7 @@ test("the guard drill-in puts Refusals per day beside a four-card This week; the
   expect(row.indexOf("<h3>This week</h3>")).toBeGreaterThan(row.indexOf("Refusals per day"));
   const week = row.slice(row.indexOf("<h3>This week</h3>"));
   expect([...week.matchAll(/data-stat="([a-z-]+)"/g)].map((m) => m[1])).toEqual(["refused", "rate", "busiest", "none"]);
+  expect((week.match(/class="kpi"/g) || []).length).toBe(4); // four boxed cards, as in the mockup
   for (const id of ["eligible", "legacy-rate", "bash", "recovery"]) { expect(html).toContain(`data-stat="${id}"`); expect(week).not.toContain(`data-stat="${id}"`); }
   expect(html.indexOf('id="th-guard-why"')).toBeGreaterThan(html.indexOf("<h3>This week</h3>"));
 });
