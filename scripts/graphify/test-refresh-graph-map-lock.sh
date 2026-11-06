@@ -375,7 +375,8 @@ fi
 
 # --- T3f: GRAPHIFY_PROMOTE_LOCK_LIVE_WAIT_SECONDS=abc is not a number: the
 # script warns and uses the 2700 default instead of feeding it to the wait
-# arithmetic. The live holder releases after 3s so the 2700 s wait is not paid. ---
+# arithmetic. The live holder releases as soon as the waiting message shows
+# (polled, at most 60 s), so the 2700 s wait is not paid. ---
 t3f_live_wait() { # <name> <live-wait value>; sets out_f3 / rc_f3. Releases the holder once the wait message shows (bounded poll, no fixed timer).
   local name="$1" value="$2" holder poller i=0
   sleep 600 & holder=$!
@@ -406,21 +407,26 @@ t3f_live_wait t3g 99999999999999999999
 
 # --- T3h: the timeout and stale values are validated the same way. ---
 echo "T3h: a non-integer promote-lock timeout / stale value warns and takes its default"
-t3h_run() { # <name> <ENV_VAR>; runs a plain refresh with ENV_VAR=abc
+t3h_run() { # <name> <ENV_VAR> <value>; runs a plain refresh with ENV_VAR=value
   mkdir -p "$WS/$1/notes" "$WS/$1-maps"
   printf '# h\ncontent h\n' > "$WS/$1/notes/h.md"
-  env "$2=abc" GRAPHIFY_MAP_BIN="$EBIN/graphify" PATH="$EBIN:$PATH" \
+  env "$2=$3" GRAPHIFY_MAP_BIN="$EBIN/graphify" PATH="$EBIN:$PATH" \
     bash "$SCRIPT" --name "$1" --corpus-root "$WS/$1" --backend claude \
     --maps-dir "$WS/$1-maps" --title "Lock $1" --slug "$1-map" --corpus-tag "$1" 2>&1
 }
-out_h1=$(t3h_run t3h-timeout GRAPHIFY_PROMOTE_LOCK_TIMEOUT_SECONDS); rc_h1=$?
+out_h1=$(t3h_run t3h-timeout GRAPHIFY_PROMOTE_LOCK_TIMEOUT_SECONDS abc); rc_h1=$?
 { [ "$rc_h1" -eq 0 ] && grep -q "WARN GRAPHIFY_PROMOTE_LOCK_TIMEOUT_SECONDS='abc'.*default 120" <<<"$out_h1"; } \
   && pass "T3h timeout 'abc' warns and takes the 120 default" \
   || fail "T3h timeout 'abc' should warn and use 120 (got rc $rc_h1): $out_h1"
-out_h2=$(t3h_run t3h-stale GRAPHIFY_PROMOTE_LOCK_STALE_SECONDS); rc_h2=$?
+out_h2=$(t3h_run t3h-stale GRAPHIFY_PROMOTE_LOCK_STALE_SECONDS abc); rc_h2=$?
 { [ "$rc_h2" -eq 0 ] && grep -q "WARN GRAPHIFY_PROMOTE_LOCK_STALE_SECONDS='abc'.*default 600" <<<"$out_h2"; } \
   && pass "T3h stale 'abc' warns and takes the 600 default" \
   || fail "T3h stale 'abc' should warn and use 600 (got rc $rc_h2): $out_h2"
+# A value set but EMPTY is an override that is not a number too: it warns (an unset one stays silent).
+out_h3=$(t3h_run t3h-empty GRAPHIFY_PROMOTE_LOCK_TIMEOUT_SECONDS ''); rc_h3=$?
+{ [ "$rc_h3" -eq 0 ] && grep -q "WARN GRAPHIFY_PROMOTE_LOCK_TIMEOUT_SECONDS=''.*default 120" <<<"$out_h3"; } \
+  && pass "T3h an explicitly empty timeout warns and takes the 120 default" \
+  || fail "T3h an explicitly empty timeout should warn and use 120 (got rc $rc_h3): $out_h3"
 
 # --- T4: two SIMULTANEOUS
 # contenders against one stale lock -- the takeover must be single-winner.

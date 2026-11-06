@@ -759,7 +759,7 @@ PATH="$PATH:/usr/local/bin:/usr/bin:/bin" bash "$REPO_ROOT/scripts/lib/test-run-
 # (999999 s): anything else warns and takes the default, because the wait loop's
 # [ -ge ] tests error forever on text or on a number past the shell's range.
 _promote_lock_seconds() { # <env-var-name> <default>
-  local v="${!1:-$2}"
+  local v="${!1-$2}" # no colon: a variable set but empty reaches the case below and warns
   case "$v" in
     ''|*[!0-9]*|???????*)
       echo "refresh-graph-map: WARN $1='$v' is not a whole number of at most 6 digits -- using the default $2" >&2
