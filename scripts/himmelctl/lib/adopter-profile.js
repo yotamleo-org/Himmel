@@ -1237,14 +1237,14 @@ function buildSummary(answers, laneRows, opts) {
       skipped.push(`luna vault — existing STAMPED vault reused at ${vaultPath}; no scaffolding ran (adopt.sh skips the copy when the destination exists)`);
     } else {
       actions.push(did(
-        `luna vault scaffolded from templates/luna-second-brain -> ${vaultPath}`,
-        `luna vault — would scaffold from templates/luna-second-brain -> ${vaultPath}`,
+        `luna vault scaffolded from templates/luna-second-brain -> ${vaultPath}; session end hook wired`,
+        `luna vault — would scaffold from templates/luna-second-brain -> ${vaultPath}; would wire the session end hook`,
       ));
     }
   } else if (vaultMode === 'existing') {
     actions.push(did(
-      `luna vault upgraded in place -> ${vaultPath}`,
-      `luna vault — would upgrade in place -> ${vaultPath}`,
+      `luna vault upgraded in place -> ${vaultPath}; session end hook wired`,
+      `luna vault — would upgrade in place -> ${vaultPath}; would wire the session end hook`,
     ));
   } else {
     skipped.push('luna vault — you answered vault=none');

@@ -663,7 +663,7 @@ wire_luna_vault_path() {
     settings="$HOME/.claude/settings.json"
   fi
   if [[ $DRY_RUN -eq 1 ]]; then
-    echo "DRY: wire env.LUNA_VAULT_PATH → $settings (vault: $dest)"
+    echo "DRY: wire env.LUNA_VAULT_PATH and the SessionEnd hook → $settings (vault: $dest)"
     return
   fi
   bash "$HIMMEL_ROOT/scripts/lib/wire-luna-vault.sh" "$settings" "$dest"

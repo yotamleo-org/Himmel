@@ -26,6 +26,10 @@ set -euo pipefail
 # Regexes (extended) matching the UNIVERSAL hook commands by basename path.
 _UNWIRE_PRE_PAT='scripts/hooks/(auto-approve-safe-bash|block-edit-on-main|block-read-secrets)[.]sh'
 _UNWIRE_SS_PAT='scripts/hooks/inject-initiative[.]sh'
+# The session-end hook is NOT in the trio helper: detect-hook-dup.sh and
+# install-engine.js call unwire_pretooluse_hooks to drop a duplicate, which must
+# never take the one SessionEnd entry. unwire_sessionend_hook is its own call.
+_UNWIRE_SE_PAT='scripts/hooks/end-session-wiki[.]sh'
 
 unwire_pretooluse_hooks() {
   local settings="$1" dry_run="${2:-0}"
@@ -63,8 +67,49 @@ unwire_pretooluse_hooks() {
   echo "  removed UNIVERSAL himmel hooks -> $settings"
 }
 
+# unwire_sessionend_hook <settings> [<dry_run>]: remove the himmel SessionEnd
+# entry, hand-wired or not, keep every other hook, and delete a SessionEnd
+# array that this leaves empty. It prints one row even when nothing was there,
+# because the uninstall dry-run preview counts one row per helper.
+unwire_sessionend_hook() {
+  local settings="$1" dry_run="${2:-0}" base
+  command -v jq >/dev/null 2>&1 || { echo "unwire-pretooluse-hooks: jq required" >&2; return 1; }
+  if [ ! -f "$settings" ]; then
+    [ "$dry_run" -eq 1 ] && echo "DRY: $settings absent -> no-op"
+    return 0
+  fi
+  base=$(cat "$settings")
+  if [ -z "$(printf '%s' "$base" | tr -d '[:space:]')" ]; then
+    [ "$dry_run" -eq 1 ] && echo "DRY: $settings empty -> no-op"
+    return 0
+  fi
+  if ! printf '%s' "$base" | jq -e . >/dev/null 2>&1; then
+    echo "unwire-pretooluse-hooks: $settings is not valid JSON -- refusing to modify" >&2
+    return 1
+  fi
+  if [ "$dry_run" -eq 1 ]; then
+    echo "DRY: remove himmel SessionEnd hook from $settings"
+    return 0
+  fi
+  # shellcheck disable=SC2016  # a jq program: $se is a jq binding
+  printf '%s' "$base" | jq --arg se "$_UNWIRE_SE_PAT" '
+    if ((.hooks? // {}) | .SessionEnd? | type) == "array" then
+      .hooks.SessionEnd = (.hooks.SessionEnd
+        | map(.hooks = ((.hooks // []) | map(select((.command // "") | test($se) | not))))
+        | map(select((.hooks | length) > 0)))
+      | if (.hooks.SessionEnd | length) == 0 then del(.hooks.SessionEnd) else . end
+    else . end
+  ' > "$settings.unwirehooks.tmp" && mv "$settings.unwirehooks.tmp" "$settings"
+  echo "  removed himmel SessionEnd hook (if present) -> $settings"
+}
+
 # Allow both `source` and direct invocation (incl. --scope project --target).
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+  if [ "${1:-}" = "--sessionend" ]; then
+    [ "$#" -ge 2 ] || { echo "usage: unwire-pretooluse-hooks.sh --sessionend <settings> [<dry_run>]" >&2; exit 2; }
+    unwire_sessionend_hook "$2" "${3:-0}"
+    exit $?
+  fi
   _settings=""; _scope=""; _target=""; _dry=0
   while [ $# -gt 0 ]; do
     case "$1" in

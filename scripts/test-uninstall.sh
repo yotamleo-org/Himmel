@@ -2817,15 +2817,15 @@ assert_not_has 'U21g dry-run does NOT show the legacy config as kept (statusLine
 u_same 'U21g dry-run left the legacy hud config alone (preview only)' "$U_HOME/.claude/plugins/claude-hud/config.json" "$TMP/u21g-legacy"
 
 # U22 — dry and wet print the SAME number of user-settings unwire rows: one per
-# helper (statusLine, HIMMEL_REPO, LUNA_VAULT_PATH, HANDOVER_DIR, hooks).
+# helper (statusLine, HIMMEL_REPO, LUNA_VAULT_PATH, HANDOVER_DIR, hooks, session end hook).
 u_residue_fixture u22
 u_run --dry-run
 u22_dry=$(printf '%s\n' "$out" | grep -c "^DRY: .* from $HIMMEL_USER_SETTINGS\$")
 u_residue_fixture u22w
 u_run_fx
 u22_wet=$(printf '%s\n' "$out" | grep -c -- "-> $HIMMEL_USER_SETTINGS\$")
-assert_rc 'U22 wet run prints 5 user-settings unwire rows' 5 "$u22_wet"
-assert_rc 'U22 dry-run prints the same 5 rows' 5 "$u22_dry"
+assert_rc 'U22 wet run prints 6 user-settings unwire rows' 6 "$u22_wet"
+assert_rc 'U22 dry-run prints the same 6 rows' 6 "$u22_dry"
 
 # U23 — --skip-settings leaves the rule-file blocks and hud config alone (step 6).
 u_residue_fixture u23

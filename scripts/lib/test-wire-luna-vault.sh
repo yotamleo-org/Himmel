@@ -106,5 +106,16 @@ fi
 
 if [ "$prev_lvp" = "__UNSET__" ]; then unset LUNA_VAULT_PATH; else export LUNA_VAULT_PATH="$prev_lvp"; fi
 
+# sessionend_wired_with_vault: the vault wire also wires the session end hook, once.
+s10="$td/s10.json"
+bash "$wire" "$s10" "C:/Documents/luna" >/dev/null; bash "$wire" "$s10" "C:/Documents/luna" >/dev/null
+check "sessionend_wired_with_vault" "$(jq '[.hooks.SessionEnd[].hooks[] | select(.command | test("end-session-wiki[.]sh"))] | length' "$s10")" "1"
+
+# vault_survives_hook_failure: a hook wire that cannot write warns by name and the vault path stays wired.
+s11="$td/s11.json"; mkdir "$s11.wirehooks.tmp"
+err11="$(bash "$wire" "$s11" "C:/Documents/luna" 2>&1 >/dev/null)"
+check "vault_survives_hook_failure: vault path wired" "$(jq -r '.env.LUNA_VAULT_PATH' "$s11")" "C:/Documents/luna"
+case "$err11" in *"SessionEnd hook (end-session-wiki.sh)"*) echo "ok - vault_survives_hook_failure: warns by name" ;; *) echo "FAIL - vault_survives_hook_failure: no warning naming the hook: [$err11]"; fails=$((fails+1)) ;; esac
+
 rm -rf "$td"
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
