@@ -182,15 +182,15 @@ a session. The install must already be committed on the default branch (see
 **What the starter refuses on the default branch, and what it does not.** The
 starter install refuses Claude's *edit tools* (`Edit`, `Write`, `MultiEdit`,
 `NotebookEdit`) there. It does **not** refuse a shell command that writes a
-file: with the starter hooks wired, `echo x > a.txt` on the default branch runs
-and the file is written. What stops that file reaching the branch is the git
-side: on a test VM with a full starter install and no `pre-commit` tool, the
-installed `pre-commit` hook refused a commit on the default branch and the
-`pre-push` hook refused a direct push to it. With the `pre-commit` tool present
-the commit hook depends on your `.pre-commit-config.yaml` (see
-[Persist](#persist-commit-it-before-you-branch)); that case was not checked
-here. The file itself stays in your working tree until you move it to a
-worktree branch.
+file: no starter hook stops `echo x > a.txt` on the default branch, so it
+reaches Claude Code's normal permission flow, and once allowed the file is
+written. The installed git hooks refuse a commit on `main` or `master` and a
+direct push to either, but they do not cover a default branch with another
+name, a fast-forward merge, or `--no-verify`. A project with its own
+`.pre-commit-config.yaml` gets the `pre-commit` framework instead, whose hooks
+run only what that file lists (see
+[Persist](#persist-commit-it-before-you-branch)). The file itself stays in your
+working tree until you move it to a worktree branch.
 
 Then walk one real loop: [getting-started.md](../getting-started.md#your-first-loop).
 
