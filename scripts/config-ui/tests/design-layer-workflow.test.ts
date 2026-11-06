@@ -49,3 +49,24 @@ test("the Eval tab's sparklines and trend charts paint only currentColor and car
     }
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+// The judge diamond sits on the Check and approve line and is named in the legend.
+test("Workflow: the story map's Check and approve line draws the judge diamond and the legend names it", () => {
+  const html = renderWorkflow(MODEL, { tab: "workflow" }, null);
+  const phases = html.split('<li class="wf-ph').slice(1);
+  const check = phases[MODEL.stages.findIndex((s) => s.id === "check")];
+  const line = check.slice(check.indexOf('class="wf-line"'), check.indexOf("</div>", check.indexOf('class="wf-line"')));
+  expect(line).toContain('<span class="wf-g wf-j" aria-hidden="true"></span>');
+  expect(html).toContain('<span class="wf-g wf-j" aria-hidden="true"></span>the judge, only on a trust path');
+  expect(html).toContain('<span class="wf-chip wf-j">◆ judge, on a trust path</span>');
+});
+
+// The two shipped gates the chief ruled in: each is a solid check mark on its phase's line and names itself in the marks list.
+test("Workflow: the story map's Start line marks the signed spec gate and the Check line marks ci:go, solid", () => {
+  const html = renderWorkflow(MODEL, { tab: "workflow" }, null);
+  const phases = html.split('<li class="wf-ph').slice(1);
+  const at = (id: string) => phases[MODEL.stages.findIndex((s) => s.id === id)];
+  const marks = (ph: string) => ph.slice(ph.indexOf('<ul class="wf-marks">'), ph.indexOf("</ul>", ph.indexOf('<ul class="wf-marks">')));
+  expect(marks(at("start"))).toContain('<span class="wf-g wf-k" aria-hidden="true"></span><span>signed spec for a core ticket</span>');
+  expect(marks(at("check"))).toContain('<span class="wf-g wf-k" aria-hidden="true"></span><span>ci:go (this version)</span>');
+});
