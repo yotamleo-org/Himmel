@@ -112,12 +112,12 @@ fi
 # a <task-notification> and never the registry's toolUseId.
 # handback <agent-id> <ts> - the parent's enqueue of a resumed child's hand-back
 handback() {
-    jq -nc --arg a "$1" --arg ts "$2" --arg s "$SID" '{type:"queue-operation",operation:"enqueue",timestamp:$ts,sessionId:$s,
-        content:("<agent-message from=\"" + $a + "\">\n[Subagent hand-back] The text below is the final report of a subagent")}' >> "$PARENT"
+    jq -nc --arg a "$1" --arg ts "$2" --arg s "$SID" --arg q "${3:-}" '{type:"queue-operation",operation:"enqueue",timestamp:$ts,sessionId:$s,
+        content:("<agent-message from=\"" + $a + "\">\n[Subagent hand-back] The text below is the final report of a subagent" + $q)}' >> "$PARENT"
 }
 # send_use <tool-use-id> <to> <ts> - the parent's SendMessage tool_use
 send_use() {
-    jq -nc --arg t "$1" --arg to "$2" --arg ts "$3" '{type:"assistant",timestamp:$ts,message:{content:[{type:"tool_use",id:$t,name:"SendMessage",input:{to:$to,message:"go on"}}]}}' >> "$PARENT"
+    jq -nc --arg t "$1" --arg to "$2" --arg ts "$3" --arg m "${4:-go on}" '{type:"assistant",timestamp:$ts,message:{content:[{type:"tool_use",id:$t,name:"SendMessage",input:{to:$to,message:$m}}]}}' >> "$PARENT"
 }
 # send_result <tool-use-id> <ts> <message> - the parent's tool_result for a SendMessage: a
 # text block holding the harness JSON, as in the RB transcript. The inline hand-back text is
@@ -168,9 +168,11 @@ launch rb3 toolu_RB3 foreground 2026-11-04T22:00:00.000Z
 fg_result toolu_RB3 2026-11-04T22:02:48.000Z
 send_use toolu_SM3 rb3 2026-11-04T22:09:47.054Z
 child_runs rb3 2026-11-04T22:10:03.125Z
-handback other 2026-11-04T22:10:03.200Z
-send_use toolu_SM4 other 2026-11-04T22:10:03.210Z
-send_result toolu_SM4 2026-11-04T22:10:03.231Z "$INLINE"
+# each stranger line names rb3 (as a report quoting it, a message about it), so it passes the
+# detector's grep prefilter and only the agent-identity checks keep it from clearing rb3
+handback other 2026-11-04T22:10:03.200Z " ... it quotes rb3 ..."
+send_use toolu_SM4 other 2026-11-04T22:10:03.210Z "tell rb3 to stop"
+send_result toolu_SM4 2026-11-04T22:10:03.231Z "$INLINE (for rb3)"
 rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
 check "resumed fg: another agent's hand-back and SendMessage result do not clear it -> rc 1" "$rc" "1"
 contains "resumed fg: control still names the child" "$out" "LIVE-SUBAGENT rb3"
