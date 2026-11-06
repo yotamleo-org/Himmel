@@ -156,6 +156,10 @@ case "$OUT" in *"2 times"*) ok "denial, hook-changed-input no-verdict, denial co
 # Only a result that BEGINS with the sentence, and is an error, is neutral.
 f="$TMP/nvm1.jsonl"; : >"$f"; dn "$f" "$HOOK_MSG $NV_MSG"; dn "$f" "$HOOK_MSG $NV_MSG"
 run "$f" "$C"; expect_deny "a hook denial carrying the sentence mid-text still counts: DENIED"
+f="$TMP/nvw.jsonl"; : >"$f"; nv "$f" "
+  $NV_MSG"; nv "$f" "
+  $NV_MSG"
+run "$f" "$C"; expect_allow "a no-verdict behind leading whitespace is still neutral, twice allowed"
 f="$TMP/nvm2.jsonl"; : >"$f"; dn "$f" "$DENY_MSG"; dn "$f" "$DENY_MSG"
 n=$((n + 1)); tu "t$n" "$C" >>"$f"; res "t$n" false "$NV_MSG" >>"$f"
 run "$f" "$C"; expect_allow "a non-error result carrying the sentence ran: resets, allowed"
