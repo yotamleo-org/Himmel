@@ -18,6 +18,7 @@ K3	(^|/)mirror/		a copy of a ticket, keyed by the ticket
 K4	^THIRD-PARTY-NOTICES\.md$		a provenance record
 K4	(^|/)VENDORED\.md$		a provenance record
 K4	\.md$	[Vv]endored.*pinned	the provenance line of a vendored file
+K4	\.md$	^<!-- Vendored from .* at [0-9a-f]+ 	the provenance comment of a vendored file
 K4	^graphify-out/		generated output
 K4	(^|/)node_modules/		generated output
 K4	\.obsidian/plugins/		generated output
