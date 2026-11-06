@@ -116,6 +116,31 @@ if [ "$rc" -eq 1 ]; then pass "PRE_COMMIT_TO_REF is the scanned tip (rc=$rc)"; e
 out=$(cd "$repo" && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.noprefix GIT_CONFIG_VALUE_0=true PRE_COMMIT_TO_REF="$tipsha" bash "$LINT" "$base" 2>&1); rc=$?
 if [ "$rc" -eq 1 ]; then pass "diff.noprefix does not hide the file (rc=$rc)"; else fail "diff.noprefix does not hide the file: want rc=1 got rc=$rc: $out"; fi
 case "$out" in scripts/tip.sh:1:*|*$'\n'scripts/tip.sh:1:*) pass "diff.noprefix finding names the file" ;; *) fail "diff.noprefix finding names the file: $out" ;; esac
+# A parentless tip (the graph-data channel's publish commit) shares no history with the base, so
+# the base diff has no merge base. Only the exact destination refs/heads/graph-data may skip it.
+orphan=$(cd "$repo" && GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid git commit-tree "$(git rev-parse "$tipsha^{tree}")" -m orphan) || { echo "FAIL: orphan commit failed"; exit 1; }
+out=$(cd "$repo" && PRE_COMMIT_TO_REF="$orphan" bash "$LINT" "$base" 2>&1); rc=$?
+if [ "$rc" -eq 2 ]; then pass "a parentless tip with no destination fails closed (rc=$rc)"; else fail "a parentless tip with no destination fails closed: want rc=2 got rc=$rc: $out"; fi
+out=$(cd "$repo" && PRE_COMMIT_TO_REF="$orphan" PRE_COMMIT_REMOTE_BRANCH=refs/heads/feat/other bash "$LINT" "$base" 2>&1); rc=$?
+if [ "$rc" -eq 2 ]; then pass "a parentless tip bound for another ref fails closed (rc=$rc)"; else fail "a parentless tip bound for another ref fails closed: want rc=2 got rc=$rc: $out"; fi
+out=$(cd "$repo" && PRE_COMMIT_TO_REF="$orphan" PRE_COMMIT_REMOTE_BRANCH=refs/heads/graph-data-2 bash "$LINT" "$base" 2>&1); rc=$?
+if [ "$rc" -eq 2 ]; then pass "a ref that only starts with graph-data fails closed (rc=$rc)"; else fail "a ref that only starts with graph-data fails closed: want rc=2 got rc=$rc: $out"; fi
+out=$(cd "$repo" && PRE_COMMIT_TO_REF="$orphan" PRE_COMMIT_REMOTE_BRANCH=refs/heads/graph-data bash "$LINT" "$base" 2>&1); rc=$?
+if [ "$rc" -eq 0 ]; then pass "a parentless tip bound for refs/heads/graph-data is skipped (rc=$rc)"; else fail "a parentless tip bound for refs/heads/graph-data is skipped: want rc=0 got rc=$rc: $out"; fi
+out=$(cd "$repo" && PRE_COMMIT_TO_REF="$tipsha" PRE_COMMIT_REMOTE_BRANCH=refs/heads/graph-data bash "$LINT" "$base" 2>&1); rc=$?
+if [ "$rc" -eq 1 ]; then pass "a graph-data tip that shares history with the base is still scanned (rc=$rc)"; else fail "a graph-data tip that shares history with the base is still scanned: want rc=1 got rc=$rc: $out"; fi
+out=$(cd "$repo" && PRE_COMMIT_TO_REF=0000000000000000000000000000000000000001 PRE_COMMIT_REMOTE_BRANCH=refs/heads/graph-data bash "$LINT" "$base" 2>&1); rc=$?
+if [ "$rc" -eq 2 ]; then pass "a graph-data tip that is not a commit fails closed (rc=$rc)"; else fail "a graph-data tip that is not a commit fails closed: want rc=2 got rc=$rc: $out"; fi
+# merge-base exits 1 for "no merge base" but 128 for an error. A git on PATH whose merge-base fails
+# with 128 (how git versions differ on a missing parent object, so a stub is the stable way to ask)
+# must not read as "no merge base": the scan is not skipped.
+mkdir -p "$tmp/mbbin"
+real_git=$(command -v git)
+# shellcheck disable=SC2016  # literal stub text, nothing should expand
+printf '#!/bin/sh\nif [ "$1" = merge-base ]; then echo "fatal: simulated merge-base error" >&2; exit 128; fi\nexec "%s" "$@"\n' "$real_git" > "$tmp/mbbin/git"
+chmod +x "$tmp/mbbin/git"
+out=$(cd "$repo" && PATH="$tmp/mbbin:$PATH" PRE_COMMIT_TO_REF="$orphan" PRE_COMMIT_REMOTE_BRANCH=refs/heads/graph-data bash "$LINT" "$base" 2>&1); rc=$?
+if [ "$rc" -ne 0 ]; then pass "a graph-data tip whose merge-base lookup errors fails closed (rc=$rc)"; else fail "a graph-data tip whose merge-base lookup errors fails closed: want rc!=0 got rc=0: $out"; fi
 git -C "$repo" checkout -q -B case "$base"
 mkdir -p "$repo/scripts/eval/scrape-bench/results"
 printf '%s\n' "$SLUG_LINE" > "$repo/scripts/eval/scrape-bench/results/tip.json"

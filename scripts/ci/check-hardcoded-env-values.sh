@@ -48,6 +48,20 @@ case "$mode" in
         fi
         [ -n "$base" ] || { echo "check-hardcoded-env-values: no usable base ref" >&2; exit 2; }
         git rev-parse --verify -q "$base^{commit}" >/dev/null || { echo "check-hardcoded-env-values: unknown base '$base'" >&2; exit 2; }
+        # The graph-data channel branch is a parentless data commit with no history shared with
+        # main, so the base diff below has no merge base; its publisher scans the bytes. Only
+        # that exact destination, only when the tip is a real commit and merge-base answers
+        # "no merge base" (exit 1, not an error such as 128), skips. Every other failure on it,
+        # and every other ref, still fails.
+        # ponytail: reads the first pushed ref only (pre-commit exposes no more), so a push naming
+        # graph-data first skips this scan for the refs after it, upgrade path = read git's full
+        # ref stream in a pre-push.legacy gate as check-push-target.sh does.
+        if [ "${PRE_COMMIT_REMOTE_BRANCH:-}" = "refs/heads/graph-data" ] \
+            && git rev-parse --verify -q "$tip^{commit}" >/dev/null; then
+            mb_rc=0
+            git merge-base "$base" "$tip" >/dev/null 2>&1 || mb_rc=$?
+            [ "$mb_rc" -eq 1 ] && exit 0
+        fi
         diff_cmd=(git diff "${diff_args[@]}" "$base...$tip")
         ;;
 esac
