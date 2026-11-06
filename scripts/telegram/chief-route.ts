@@ -526,7 +526,7 @@ async function markedSource(page: string): Promise<string | null> {
   return real;
 }
 
-export type VerdictLine ={ kind: "spec" | "plan"; round: number; file: string; verdict: string };
+export type VerdictLine = { kind: "spec" | "plan"; round: number; file: string; verdict: string };
 
 // null = not a signature page (sends as before); throws, naming the verdict file, when the page may not be sent.
 // `bytes` are the page's bytes as read once here: the caller sends THOSE, so an edit after the check cannot slip through.
