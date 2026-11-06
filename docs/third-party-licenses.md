@@ -115,7 +115,7 @@ families are `@img/sharp-libvips` and `@img/sharp`:
 
 ## Docs-site bundle: `pele` (MIT, kepano)
 
-`site/package.json` pins `pele` `1.10.0` exactly (devDependency, no
+`site/package.json` pins `pele` `1.13.0` exactly (devDependency, no
 dependencies of its own; source `https://github.com/obsidianmd/pele`). It draws
 the docs site's diagrams, and its lazy chunk is bundled into `site/dist/_astro/`,
 so the deployed Pages artifact carries pele's code. Its licence text, which
@@ -443,7 +443,7 @@ Regenerate and check with `node scripts/docs/generate-credits.mjs` and
 | plugin:platform-design-skills | — | — | MIT | — |
 | plugin:diagram-design | — | — | MIT | — |
 | plugin:builder-visual | — | — | MIT | — |
-| plugin:higgsfield-skills | https://github.com/higgsfield-ai/skills | Higgsfield AI | MIT | 4d0757471a704dac8729ea3c2ef0f3f330e0d9b6 |
+| plugin:higgsfield-skills | https://github.com/higgsfield-ai/skills | Higgsfield AI | MIT | 27000402070db19d958789d05b3b52b6f4718d7c |
 | plugin:frontend-slides | — | — | MIT | — |
 | plugin:design-dna | — | — | MIT | — |
 | plugin:anydesign | — | — | MIT | — |
