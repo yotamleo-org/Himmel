@@ -15,6 +15,14 @@ pass=0
 fail=0
 n=0
 DENY_MSG="This command requires approval"
+# Real tool_result texts copied from session transcripts under ~/.claude/projects.
+# NV_MSG: the 2026-11 auto mode no-verdict (it says "denied" and so matched DENIAL_RE).
+# NV_OLD_MSG: the 2026-09 no-verdict wording (matches no DENIAL_RE word).
+# CLS_MSG: a real classifier denial (first two sentences). HOOK_MSG: a real hook denial (head).
+NV_MSG="The server-side auto mode classifier gave no verdict for Bash: another call in this response was changed by a hook after auto mode reviewed it, or could not be confirmed unchanged, so this call's review no longer applies. This is not a judgment that the action is unsafe. Issue the Bash call again in a response of its own, exactly as this conversation records it, after you have seen the results of the other calls. If it is denied again, do not retry; continue with other tasks and tell the user that auto mode could not evaluate it. Note: reading files, searching code, and other read-only operations do not require the classifier and can still be used."
+NV_OLD_MSG="The server-side auto mode classifier gave no verdict (the response ended before its verdict arrived), so auto mode cannot determine the safety of Bash. This is a transient failure of the check, not a judgment about the action: a later response may get a verdict. You may try the action again once, as-is."
+CLS_MSG="Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Out-of-Place Publication]. If you have other tasks that do not depend on this action, continue working on those."
+HOOK_MSG="PreToolUse:Bash hook error: [if [ -f \"\$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" ]; then command -p sh run-hook-with-bash.js --chain guard.sh"
 
 ok() { echo "  PASS  $1"; pass=$((pass + 1)); }
 bad() { echo "  FAIL  $1"; fail=$((fail + 1)); }
@@ -105,6 +113,37 @@ run "$f" "$C"; expect_allow "a NON-error result that mentions a denial keyword i
 f="$TMP/t5f.jsonl"; : >"$f"; denied_n "$f" 2 "$C"
 n=$((n + 1)); tu "t$n" "$C" >>"$f"; res "t$n" true "Command timed out after 120s" >>"$f"
 run "$f" "$C"; expect_allow "an error result with no denial keyword is not a denial, resets"
+
+echo "== HIMMEL-9348: an auto mode no-verdict is not a denial =="
+# nv <file> <msg>: append one attempt of $C whose result is a no-verdict message.
+nv() { n=$((n + 1)); tu "t$n" "$C" >>"$1"; res "t$n" true "$2" >>"$1"; }
+# dn <file> <msg>: append one attempt of $C denied with <msg>.
+dn() { n=$((n + 1)); tu "t$n" "$C" >>"$1"; res "t$n" true "$2" >>"$1"; }
+
+f="$TMP/nv1.jsonl"; : >"$f"; nv "$f" "$NV_MSG"
+run "$f" "$C"; expect_allow "a no-verdict once, reissued unchanged: allowed"
+f="$TMP/nv2.jsonl"; : >"$f"; nv "$f" "$NV_MSG"; nv "$f" "$NV_MSG"
+run "$f" "$C"; expect_allow "a no-verdict twice, reissued unchanged: allowed"
+f="$TMP/nv2o.jsonl"; : >"$f"; nv "$f" "$NV_OLD_MSG"; nv "$f" "$NV_OLD_MSG"
+run "$f" "$C"; expect_allow "the older no-verdict wording twice: allowed"
+
+f="$TMP/nv3.jsonl"; : >"$f"; dn "$f" "$DENY_MSG"; nv "$f" "$NV_MSG"
+run "$f" "$C"; expect_allow "one denial plus one no-verdict is below the threshold: allowed"
+f="$TMP/nv4.jsonl"; : >"$f"; dn "$f" "$DENY_MSG"; dn "$f" "$DENY_MSG"; nv "$f" "$NV_MSG"
+run "$f" "$C"; expect_deny "two denials then a no-verdict: still DENIED"
+case "$OUT" in *"2 times"*) ok "the no-verdict does not inflate the count (2)";; *) bad "the no-verdict does not inflate the count (2) - $OUT";; esac
+f="$TMP/nv5.jsonl"; : >"$f"; dn "$f" "$DENY_MSG"; nv "$f" "$NV_MSG"; dn "$f" "$DENY_MSG"
+run "$f" "$C"; expect_deny "denial, no-verdict, denial: the no-verdict neither adds nor resets, DENIED"
+case "$OUT" in *"2 times"*) ok "denial, no-verdict, denial counts 2";; *) bad "denial, no-verdict, denial counts 2 - $OUT";; esac
+f="$TMP/nv5o.jsonl"; : >"$f"; dn "$f" "$DENY_MSG"; nv "$f" "$NV_OLD_MSG"; dn "$f" "$DENY_MSG"
+run "$f" "$C"; expect_deny "denial, older-wording no-verdict, denial: the no-verdict does not reset, DENIED"
+
+f="$TMP/cls2.jsonl"; : >"$f"; dn "$f" "$CLS_MSG"; dn "$f" "$CLS_MSG"
+run "$f" "$C"; expect_deny "a real classifier denial twice, then the same command: DENIED"
+f="$TMP/hook2.jsonl"; : >"$f"; dn "$f" "$HOOK_MSG"; dn "$f" "$HOOK_MSG"
+run "$f" "$C"; expect_deny "a real hook denial twice, then the same command: DENIED"
+f="$TMP/mix2.jsonl"; : >"$f"; dn "$f" "$CLS_MSG"; dn "$f" "$HOOK_MSG"
+run "$f" "$C"; expect_deny "a classifier denial and a hook denial, then the same command: DENIED"
 
 echo "== call identity: run_in_background / timeout / sandbox =="
 f="$TMP/t9.jsonl"; : >"$f"; denied_n "$f" 2 "$C"

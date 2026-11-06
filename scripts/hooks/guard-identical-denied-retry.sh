@@ -18,6 +18,14 @@
 # identical-retry meaning is denial_list() there. A result that is NOT a denial means
 # the command ran, so it resets the count. Deny when the count is 2 or more.
 #
+# NO-VERDICT: an auto mode result that begins "The server-side auto mode
+# classifier gave no verdict" is a transient failure of the check, not a judgment, and
+# tells the session to reissue the call exactly. It is neutral: it neither adds to the
+# count nor resets it (the command was never judged and never ran). The check keys on that
+# one fixed classifier sentence, not on shell text. If the classifier wording changes, the
+# result is judged by the denial rules above, exactly as before this fix: the guard is
+# no worse than it was, and every other fail-open rule below still holds.
+#
 # FAIL-OPEN: it runs on every Bash call and may only ever deny the precisely detected
 # third identical command. Missing jq, an empty or unparseable payload, a missing or
 # unreadable transcript, a tail window with no parseable rows (e.g. one oversized
@@ -56,6 +64,9 @@ count=$(
       def txt: if (.content|type) == "string" then .content
                elif (.content|type) == "array" then ([.content[]? | .text? // ""] | join(""))
                else "" end;
+      def noverdict:
+        (.is_error == true)
+        and (txt | sub("^\\s+"; "") | startswith("The server-side auto mode classifier gave no verdict"));
       def denied:
         (.is_error == true)
         and ((txt | sub("^\\s+"; "") | startswith("Exit code")) | not)
@@ -66,7 +77,8 @@ count=$(
              and ({b: ($it.input.run_in_background? // false), t: ($it.input.timeout? // null), s: ($it.input.dangerouslyDisableSandbox? // false)} == $params)
           then .ids[$it.id] = true
           elif ($it.type? == "tool_result") and (.ids[$it.tool_use_id? // ""] // false)
-          then (if ($it | denied) then .n += 1 else .n = 0 end)
+          then (if ($it | noverdict) then .
+                elif ($it | denied) then .n += 1 else .n = 0 end)
           else . end)
       | .n' 2>/dev/null
 ) || exit 0
