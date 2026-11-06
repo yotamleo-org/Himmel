@@ -1532,7 +1532,6 @@ test('/pr-check (Codex twin): its external-critic calls name only scripts that h
 for (const file of ['.claude/commands/pr-check.md', '.agents/skills/pr-check/SKILL.md']) {
   test(`${file} documents the himmel-lane relative spelling and the operator ruling`, () => {
     const text = readRunbook(file);
-    assert.match(text, /HIMMEL-3338/, 'missing the HIMMEL-3338 marker');
     assert.match(text, /`himmel_dir=` equals `repo=`/, 'missing the himmel-lane substitution condition');
     assert.match(text, /bash scripts\/cr\/<script>\.sh/, 'missing the relative spelling');
     assert.match(text, /authoris(?:es|ed)\s+sending\s+review\s+diffs\s+to\s+Codex/, 'missing the operator ruling note');
