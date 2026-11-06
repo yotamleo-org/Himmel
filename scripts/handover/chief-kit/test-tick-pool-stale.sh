@@ -112,6 +112,25 @@ check 'no mirror reports residual-unversioned=skip' 'skip' "$(NEXT_DISPATCH_MIRR
 mk 115 "To Do" "To Do" '[]' '["other", "residual-depth-1"]' '["relates to HIMMEL-110"]'
 check 'a label list with spaces after the commas still counts the residual' '1:HIMMEL-115' "$(field residual-unversioned "$d")"
 
+# a release-manager BACKLOG ruling places a versionless residual in the backlog: it is not unversioned
+# The latest [release-ruling ...] comment of the ticket decides.
+rr() { # <num> <R-id> <verb> <op> <from>-<to> <outcome> <destination>: append one ruling comment
+    printf '\n## Comments\n\n### Yotam Leopold — 2026-11-05T17:28:32.880+0100\n\n[release-ruling %s] RULING %s Q-v1.1.3-0001 %s HIMMEL-%s %s %s %s %s sector=Quality & proof — defer:test: RM ruling.\nAuthority: rm. Audit copy; the release ledger is the record.\n' \
+        "$2" "$2" "$3" "$1" "$4" "$5" "$6" "$7" >> "$M/HIMMEL-$1.md"
+}
+mk 118 "To Do" "To Do" '[]' '["residual","residual-depth-1"]' '["relates to HIMMEL-110"]'
+rr 118 R-v1.1.3-0002 INTAKE none backlog→backlog BACKLOG backlog
+mk 119 "To Do" "To Do" '[]' '["residual","residual-depth-1"]' '["relates to HIMMEL-110"]'
+check 'a BACKLOG-ruled versionless residual is not counted; an unruled one and a spaced-label one are' '2:HIMMEL-115,HIMMEL-119' "$(field residual-unversioned "$d")"
+rr 119 R-v1.1.3-0003 INTAKE none backlog→backlog BACKLOG backlog
+check 'a second BACKLOG ruling leaves only the unruled ticket counted' '1:HIMMEL-115' "$(field residual-unversioned "$d")"
+rr 119 R-v1.1.3-0004 INTAKE none backlog→v1.1.3 DEFER stays
+check 'a later non-backlog ruling reopens the count: only the latest ruling decides' '2:HIMMEL-115,HIMMEL-119' "$(field residual-unversioned "$d")"
+mk 121 "To Do" "To Do" '[]' '["residual-depth-1"]' '["relates to HIMMEL-110"]'
+rr 121 R-v1.1.3-0005 REVERSION remove v1.1.4→backlog MOVE backlog
+check 'a ticket moved to the backlog by a ruling is not counted either' '2:HIMMEL-115,HIMMEL-119' "$(field residual-unversioned "$d")"
+rm -f "$M/HIMMEL-118.md" "$M/HIMMEL-119.md" "$M/HIMMEL-121.md"
+
 d="$(doc rerule 'pool-disposition: HIMMEL-101 slice HIMMEL-901' 'pool-disposition: HIMMEL-101 question waits on HIMMEL-902')"
 check 'a later disposition of the same key supersedes an older stale one' '0' "$(field pool-stale "$d")"
 d="$(doc rerule2 'pool-disposition: HIMMEL-101 question waits on HIMMEL-902' 'pool-disposition: HIMMEL-101 slice HIMMEL-901')"

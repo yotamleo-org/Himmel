@@ -457,7 +457,8 @@ or closed (one batched gh read) the line is stale, `?` marks an unreadable targe
 the waiter wakes once per newly stale key. A line may end `@<sha>`, the head the chief
 ruled at: more than TICK_POOL_MAX_MERGES (30) commits behind origin/main (else HEAD) it is stale
 whatever its blockers say, and an unknown sha prints `?`. The line is never rewritten. residual-unversioned=
-<n>:<KEY>,... lists open residual tickets of an open focus-version ticket with no fixVersion.
+<n>:<KEY>,... lists open residual tickets of an open focus-version ticket with no fixVersion
+and no latest release-manager ruling whose destination is backlog.
 residual-unversioned hides when 0 or skip. pool-stale hides only on skip (no --doc, or a failed
 read): an explicit pool-stale=0 is the all-clear the waiter needs to clear its marker, so it stays
 on the compact line. --pool-stale --doc <doc> prints just these two fields.
@@ -601,7 +602,8 @@ PY
 # whose target names a ticket key or `PR <n>`; a line is stale only when every named blocker
 # is Done or merged, and an unreadable blocker prints `?`, never stale. The PR states come
 # from ONE batched gh read, made only when some target names a PR. residual-unversioned lists
-# open residual tickets of an open focus-version ticket that carry no fixVersion. It never
+# open residual tickets of an open focus-version ticket that carry no fixVersion and are not
+# ruled into the backlog by their latest release-ruling comment. It never
 # rewrites the doc.
 pool_stale() { # <doc> <mirror> <gh command> <repo dir>
     python3 -I - "$@" <<'PY'
@@ -721,6 +723,10 @@ if focus:
         if not f or f.get("statusCategory", "").strip('"') == "Done" or f.get("fixVersions", "[]") != "[]":
             continue
         if not any(l == '"residual"' or re.fullmatch(r'"residual-depth-[1-9]\d*"', l) for l in (x.strip() for x in f.get("labels", "").strip("[]").split(","))):
+            continue
+        # the release manager's latest ruling on the ticket names the backlog as its destination: it is placed there, not unversioned
+        rulings = re.findall(r"^\[release-ruling [^\]]*\] RULING \S+ \S+ [A-Z]+ \S+ \S+ \S+ \S+ (\S+)", open(os.path.join(mirror, name)).read(), re.M)
+        if rulings and rulings[-1] == "backlog":
             continue
         for target in re.findall(r"HIMMEL-\d+", f.get("relates", "")) + re.findall(r"[A-Z]+-\d+", f.get("parent", "")):
             p = front(target)
