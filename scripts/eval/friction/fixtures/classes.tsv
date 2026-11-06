@@ -91,3 +91,5 @@ hook:block-read-secrets	read-secrets-env-dump	true-positive
 hook:block-read-secrets	read-secrets-real-read	true-positive
 hook:block-read-secrets	read-secrets-quoted-pattern	over-deny
 hook:block-read-secrets	read-secrets-quoted-pattern	over-deny
+hook:block-read-secrets	read-secrets-other	unclear
+hook:block-read-secrets	read-secrets-real-read	true-positive

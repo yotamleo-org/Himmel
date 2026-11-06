@@ -80,7 +80,7 @@ while IFS="$(printf '\t')" read -r n src cls verdict; do
     "$(field3 '[[c["count"], c["verdicts"]] for c in d["by_class"] if c["source"]=="'"$src"'" and c["class"]=="'"$cls"'"]')" "[[$n, {'$verdict': $n}]]"
 done <"$TMP/classes.counts"
 eq "read-secrets refusals carry more than one verdict" \
-  "$(field3 'sorted(set(v for c in d["by_class"] if c["source"]=="hook:block-read-secrets" for v in c["verdicts"]))')" "['over-deny', 'true-positive']"
+  "$(field3 'sorted(set(v for c in d["by_class"] if c["source"]=="hook:block-read-secrets" for v in c["verdicts"]))')" "['over-deny', 'true-positive', 'unclear']"
 NROWS="$(wc -l <"$FIX/classes.tsv" | tr -d ' ')"
 NUNC="$(grep -c "$(printf '\t')unclear\$" "$FIX/classes.tsv")"
 eq "no other-* catch-all class from the fixtures" \

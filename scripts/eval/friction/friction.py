@@ -275,6 +275,10 @@ RS_TRACE_ON = re.compile(r'(?i)(?:^|[\s;&|(`])(?:set\s+[-+]\w*x|(?:set|shopt|set
                          r'|(?:ba|z|da|k|)sh\s+(?:-\S+\s+)*-[a-z]*x|(?:SHELLOPTS|BASHOPTS)=|BASH_XTRACEFD=)')
 RS_GREP = ('grep', 'egrep', 'fgrep')
 RS_GREP_VALUE_LETTERS = 'ABCDdefm'
+RS_WRAPPERS = ('sudo', 'doas', 'rtk', 'proxy', 'command', 'time', 'nice', 'env', 'exec', 'nohup')
+RS_READERS = frozenset('cat tac head tail less more nl wc cut sort uniq od xxd hexdump strings base64 jq yq sed awk '
+                       'gawk bat batcat cp scp rsync tar zip gzip xz bzip2 curl wget source . diff cmp paste column '
+                       'rg ag tr fold fmt rev file stat openssl'.split())
 RS_GREP_LONG_VALUE = ('--file', '--regexp', '--max-count', '--after-context', '--before-context', '--context',
                       '--binary-files', '--devices', '--directories', '--exclude', '--exclude-from', '--exclude-dir',
                       '--include', '--label')
@@ -292,10 +296,12 @@ def _rs_clause_reads_secret(clause):
         toks = shlex.split(clause, comments=False, posix=True)
     except ValueError:
         toks = clause.split()
+    while toks and (re.match(r'[A-Za-z_]\w*=', toks[0]) or os.path.basename(toks[0]) in RS_WRAPPERS):
+        toks = toks[1:]
     if not toks:
         return False
     if os.path.basename(toks[0]) not in RS_GREP:
-        return any(RS_SECRET_TOK.search(t) for t in toks[1:])
+        return os.path.basename(toks[0]) in RS_READERS and any(RS_SECRET_TOK.search(t) for t in toks[1:])
     # grep's own reading: an option that takes a value consumes it (attached or the next word), the first
     # operand is the pattern unless -e/-f/--regexp/--file already gave one, and every later operand is a file.
     need_pattern, rest, i, only_operands = True, toks[1:], 0, False
