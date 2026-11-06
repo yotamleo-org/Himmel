@@ -396,6 +396,7 @@ wire_sessionend_hook() {
     _wire_hooks_record_container "$settings" "$base" \
       || echo "wire-pretooluse-hooks: warning: provenance record failed (the SessionEnd hook is wired; uninstall will keep the hooks object)" >&2
   else
+    rm -f "$settings.wirehooks.tmp"
     return 1
   fi
   echo "  wired SessionEnd end-session-wiki.sh -> $settings"

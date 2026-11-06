@@ -967,7 +967,9 @@ export function buildAguiIfMissing(log: (m: string) => void, dist = AGUI_DIST, w
   } catch (e) {
     log(`himmelctl: ui: building the AG-UI page failed (${(e as Error).message}); the server starts without it. Build it by hand: ${BUILD_STEP}`);
     // an older build, or one another start finished meanwhile, stays; only a half-built page with no marker goes.
-    if (!hadPage && !existsSync(join(dist, ".agui-sources"))) rmSync(dist, { recursive: true, force: true });
+    if (!hadPage && !existsSync(join(dist, ".agui-sources"))) {
+      try { rmSync(dist, { recursive: true, force: true }); } catch { /* a dist that cannot be removed stays; the server still starts */ }
+    }
   }
 }
 

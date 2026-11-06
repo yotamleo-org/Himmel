@@ -1234,7 +1234,7 @@ function buildSummary(answers, laneRows, opts) {
     // that is not a stamped luna vault never reaches here at all — runPlan
     // refuses it before the shell-out.
     if (o.vaultScaffolded === false) {
-      skipped.push(`luna vault — existing STAMPED vault reused at ${vaultPath}; no scaffolding ran (adopt.sh skips the copy when the destination exists)`);
+      skipped.push(`luna vault — existing STAMPED vault reused at ${vaultPath}; no scaffolding ran (adopt.sh skips the copy when the destination exists); session end hook wired`);
     } else {
       actions.push(did(
         `luna vault scaffolded from templates/luna-second-brain -> ${vaultPath}; session end hook wired`,

@@ -52,19 +52,27 @@ unwire_pretooluse_hooks() {
     echo "DRY: remove UNIVERSAL himmel hooks (PreToolUse trio + SessionStart inject-initiative) from $settings"
     return 0
   fi
-  printf '%s' "$base" | jq --arg pre "$_UNWIRE_PRE_PAT" --arg ss "$_UNWIRE_SS_PAT" '
-    if (.hooks // {} | has("PreToolUse")) then
-      .hooks.PreToolUse = ((.hooks.PreToolUse)
-        | map(.hooks = ((.hooks // []) | map(select((.command // "") | test($pre) | not))))
-        | map(select((.hooks | length) > 0)))
-    else . end
-    | if (.hooks // {} | has("SessionStart")) then
-        .hooks.SessionStart = ((.hooks.SessionStart)
-          | map(.hooks = ((.hooks // []) | map(select((.command // "") | test($ss) | not))))
+  # A `hooks` that is not an object is left as it is: `has` on it is a jq error, and a failed jq must not read as success.
+  if printf '%s' "$base" | jq --arg pre "$_UNWIRE_PRE_PAT" --arg ss "$_UNWIRE_SS_PAT" '
+    if (type == "object") and ((.hooks | type) == "object") then
+      if (.hooks | has("PreToolUse")) then
+        .hooks.PreToolUse = ((.hooks.PreToolUse)
+          | map(.hooks = ((.hooks // []) | map(select((.command // "") | test($pre) | not))))
           | map(select((.hooks | length) > 0)))
       else . end
-  ' > "$settings.unwirehooks.tmp" && mv "$settings.unwirehooks.tmp" "$settings"
-  echo "  removed UNIVERSAL himmel hooks -> $settings"
+      | if (.hooks | has("SessionStart")) then
+          .hooks.SessionStart = ((.hooks.SessionStart)
+            | map(.hooks = ((.hooks // []) | map(select((.command // "") | test($ss) | not))))
+            | map(select((.hooks | length) > 0)))
+        else . end
+    else . end
+  ' > "$settings.unwirehooks.tmp" && mv "$settings.unwirehooks.tmp" "$settings"; then
+    echo "  removed UNIVERSAL himmel hooks -> $settings"
+  else
+    rm -f "$settings.unwirehooks.tmp"
+    echo "unwire-pretooluse-hooks: could not rewrite $settings -- left unchanged" >&2
+    return 1
+  fi
 }
 
 # unwire_sessionend_hook <settings> [<dry_run>]: remove the himmel SessionEnd
@@ -92,15 +100,21 @@ unwire_sessionend_hook() {
     return 0
   fi
   # shellcheck disable=SC2016  # a jq program: $se is a jq binding
-  printf '%s' "$base" | jq --arg se "$_UNWIRE_SE_PAT" '
-    if ((.hooks? // {}) | .SessionEnd? | type) == "array" then
+  # A `hooks` that is not an object (or a file that is not an object) is left as it is, never emptied.
+  if printf '%s' "$base" | jq --arg se "$_UNWIRE_SE_PAT" '
+    if (type == "object") and ((.hooks | type) == "object") and ((.hooks.SessionEnd | type) == "array") then
       .hooks.SessionEnd = (.hooks.SessionEnd
         | map(.hooks = ((.hooks // []) | map(select((.command // "") | test($se) | not))))
         | map(select((.hooks | length) > 0)))
       | if (.hooks.SessionEnd | length) == 0 then del(.hooks.SessionEnd) else . end
     else . end
-  ' > "$settings.unwirehooks.tmp" && mv "$settings.unwirehooks.tmp" "$settings"
-  echo "  removed himmel SessionEnd hook (if present) -> $settings"
+  ' > "$settings.unwirehooks.tmp" && mv "$settings.unwirehooks.tmp" "$settings"; then
+    echo "  removed himmel SessionEnd hook (if present) -> $settings"
+  else
+    rm -f "$settings.unwirehooks.tmp"
+    echo "unwire-pretooluse-hooks: could not rewrite $settings -- left unchanged" >&2
+    return 1
+  fi
 }
 
 # Allow both `source` and direct invocation (incl. --scope project --target).

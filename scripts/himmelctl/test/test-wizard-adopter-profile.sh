@@ -2482,6 +2482,10 @@ for (const vault of [{ mode:"existing", path:"/v" }, { mode:"default-template", 
       fail(`${vault.mode} dryRun=${dryRun}: the vault row must name the session end hook, got: ${JSON.stringify(rows)}`);
   }
 }
+// a reused stamped vault is not scaffolded, but adopt.sh still wires the hook into the settings file
+const reused = a.buildSummary(mk({ mode:"default-template", path:"/v" }), [], { derived:"x", dryRun:false, vaultScaffolded:false });
+if (![].concat(reused.skipped, rowsOf(reused)).some((l) => /luna vault/.test(l) && /session end hook/i.test(l)))
+  fail(`a reused stamped vault must say the session end hook is wired, got: ${JSON.stringify(reused.skipped)}`);
 const none = a.buildSummary(mk({ mode:"none", path:"" }), [], { derived:"x", dryRun:false });
 if ([].concat(rowsOf(none), none.skipped).some((l) => /session end hook/i.test(l)))
   fail("vault=none installs no vault, so it must not claim a session end hook");

@@ -112,6 +112,13 @@ test("first_use_failure_returns_and_removes_no_page: a failed build returns, nam
   expect(existsSync(r.dist)).toBe(false);
 });
 
+test("first_use_failure_cleanup_never_throws: a dist that cannot be removed does not stop the start", () => {
+  const r = firstUse({ body: `mkdir -p dist; echo '${PAGE}' > dist/index.html; chmod 555 .; exit 1` });
+  chmodSync(join(r.dist, ".."), 0o755);
+  expect(r.threw).toBeNull();
+  expect(r.logs.some((l) => /bun run build/.test(l))).toBe(true);
+});
+
 test("first_use_failure_keeps_older_build: a failed build leaves an older page that was already in dist", () => {
   const r = firstUse({ body: "exit 1", before: (d) => { mkdirSync(d, { recursive: true }); writeFileSync(join(d, "index.html"), "OLD"); } });
   expect(r.threw).toBeNull();

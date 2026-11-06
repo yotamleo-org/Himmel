@@ -233,8 +233,10 @@ The test run shows a few of these. The rest arrive as you add them, and the
   the decisions and reasons it recorded.
   In your own project, setup and resume work; the commands that write or ship
   a handover (end-session, PR open and merge, flush, `new-*`) stay in the himmel
-  checkout. A project installed earlier gets the resume scripts by re-running
-  `adopt.sh` with its profile (a vault install needs `--profile all` or `luna`);
+  checkout, and so does `overnight` on `/handover-resume`. A project installed
+  earlier gets the resume scripts by re-running `adopt.sh` with `--profile core`
+  or `--profile all` (`--profile luna` copies none); the session end hook comes
+  from `--profile all`, or `--profile luna --luna-target <vault>`.
   `himmel-update.sh` copies nothing.
 
 **Keep it right**

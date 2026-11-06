@@ -49,10 +49,11 @@ skill path incurred. The script resolves the target repo + bucket from
    from the item's stop-point.
 
 4. **If the overnight flag was set** (e.g. `/handover-resume HIMMEL-1033 overnight`):
-   after loading the item, treat this as the AFK-mode trigger for that item's
-   latest `next-session-*.md` and run the autonomous pipeline per
-   [`docs/handover/afk-mode.md`](../../docs/handover/afk-mode.md)
-   without pausing between phases.
+   if `docs/handover/afk-mode.md` is not in this repo (a project install does
+   not carry it), say that `overnight` stays in the himmel checkout and resume
+   normally. Otherwise, after loading the item, treat this as the AFK-mode
+   trigger for that item's latest `next-session-*.md` and run the autonomous
+   pipeline per `docs/handover/afk-mode.md` without pausing between phases.
 
 ## Not yet implemented (phase 2 — HIMMEL-1034)
 

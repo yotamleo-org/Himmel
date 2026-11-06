@@ -310,5 +310,15 @@ sesp="$td/se-space.json"
 se "$sesp" "$td/a b"
 check "sessionend_path_with_space: runs" "$(bash -c "$(jq -r '.hooks.SessionEnd[0].hooks[0].command' "$sesp")" 2>&1)" "ran-with-space"
 
+# sessionend_nonobject_hooks_no_temp: a `hooks` that is not an object fails the wire, leaves the file as it was
+# and leaves no empty temp file next to it.
+for hv in '[]' '"x"' '1'; do
+  sen="$td/se-nonobj.json"; jq -n --argjson h "$hv" '{hooks: $h}' > "$sen"; cp "$sen" "$sen.before"
+  ( cd "$td/cwd" && bash "$wire" --sessionend "$sen" /opt/himmel >/dev/null 2>&1 ); rc=$?
+  check "sessionend_nonobject_hooks_no_temp: hooks=$hv rc" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+  check "sessionend_nonobject_hooks_no_temp: hooks=$hv file untouched" "$(cmp -s "$sen" "$sen.before" && echo same || echo changed)" "same"
+  check "sessionend_nonobject_hooks_no_temp: hooks=$hv no temp left" "$([ -e "$sen.wirehooks.tmp" ] && echo yes || echo no)" "no"
+done
+
 rm -rf "$td"
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

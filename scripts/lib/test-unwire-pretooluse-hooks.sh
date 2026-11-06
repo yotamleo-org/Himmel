@@ -159,5 +159,33 @@ check "sessionend: dry-run row" "$(unse "$sn" 1)" "DRY: remove himmel SessionEnd
 check "sessionend: absent file is a no-op" "$(unse "$td/none.json"; echo "rc=$?")" "rc=0"
 check "sessionend: absent file is not created" "$([ -e "$td/none.json" ] && echo yes || echo no)" "no"
 
+# sessionend_nonobject_hooks_untouched: a `hooks` that is not an object leaves the file byte-identical, never empty.
+# The fixtures are written the way jq prints them, so a rewrite of unchanged JSON is still byte-identical.
+for hv in '[]' '"x"' '1'; do
+  sh="$td/nonobj.json"; jq -n --argjson h "$hv" '{hooks: $h}' > "$sh"; cp "$sh" "$sh.before"
+  unse "$sh" >/dev/null; rc=$?
+  check "sessionend_nonobject_hooks_untouched: hooks=$hv file byte-identical" "$(cmp -s "$sh" "$sh.before" && echo same || echo changed)" "same"
+  check "sessionend_nonobject_hooks_untouched: hooks=$hv rc" "$rc" "0"
+  check "sessionend_nonobject_hooks_untouched: hooks=$hv no temp left" "$([ -e "$sh.unwirehooks.tmp" ] && echo yes || echo no)" "no"
+  bash "$unwire" "$sh" >/dev/null; rc=$?
+  check "trio_nonobject_hooks_untouched: hooks=$hv file byte-identical" "$(cmp -s "$sh" "$sh.before" && echo same || echo changed)" "same"
+  check "trio_nonobject_hooks_untouched: hooks=$hv rc" "$rc" "0"
+done
+
+# sessionend_jq_failure_not_success / trio_jq_failure_not_success: when the jq program fails the helper says so,
+# exits non-zero, leaves the file as it was and leaves no temp file behind.
+sf="$td/jqfail.json"; printf '%s\n' '{"hooks":{"SessionEnd":[1]}}' > "$sf"; cp "$sf" "$sf.before"
+out=$(unse "$sf" 2>/dev/null); rc=$?
+check "sessionend_jq_failure_not_success: rc" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+check "sessionend_jq_failure_not_success: no success row" "$(printf '%s' "$out" | grep -c 'removed himmel SessionEnd hook')" "0"
+check "sessionend_jq_failure_not_success: file untouched" "$(cmp -s "$sf" "$sf.before" && echo same || echo changed)" "same"
+check "sessionend_jq_failure_not_success: no temp left" "$([ -e "$sf.unwirehooks.tmp" ] && echo yes || echo no)" "no"
+tf="$td/jqfail-trio.json"; printf '%s\n' '{"hooks":{"PreToolUse":"x"}}' > "$tf"; cp "$tf" "$tf.before"
+out=$(bash "$unwire" "$tf" 2>/dev/null); rc=$?
+check "trio_jq_failure_not_success: rc" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+check "trio_jq_failure_not_success: no success row" "$(printf '%s' "$out" | grep -c 'removed UNIVERSAL himmel hooks')" "0"
+check "trio_jq_failure_not_success: file untouched" "$(cmp -s "$tf" "$tf.before" && echo same || echo changed)" "same"
+check "trio_jq_failure_not_success: no temp left" "$([ -e "$tf.unwirehooks.tmp" ] && echo yes || echo no)" "no"
+
 rm -rf "$td"
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
