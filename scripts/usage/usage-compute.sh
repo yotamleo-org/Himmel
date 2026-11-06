@@ -380,8 +380,9 @@ PHASE_FILTER='"type":"(assistant|custom-title|ai-title)"|"subtype":"compact_boun
 for f in "$PROJECTS"/*/*.jsonl "$PROJECTS"/*/*/subagents/*.jsonl; do
   [ -f "$f" ] || continue
   rel="${f#"$PROJECTS"/}"; key="${rel//[^A-Za-z0-9._-]/_}"
-  off=0; [ ! -f "$PSTATE/$key.off" ] || off="$(<"$PSTATE/$key.off")"
+  # the byte offset lives inside the state file, so the totals and the offset they cover move together
   st=null; [ ! -f "$PSTATE/$key.json" ] || st="$(<"$PSTATE/$key.json")"
+  off=0; [ "$st" = null ] || off="$(jq -r '.off // 0' <<<"$st")"
   size="$(wc -c < "$f" | tr -d ' ')"
   if [ "$size" -lt "$off" ]; then off=0; st=null; fi   # shrunk: the file was replaced, read it again
   [ "$size" -gt "$off" ] || continue
@@ -404,7 +405,6 @@ for f in "$PROJECTS"/*/*.jsonl "$PROJECTS"/*/*/subagents/*.jsonl; do
   { head -c "$consumed" "$WORK/chunk" | { grep -a -E "$PHASE_FILTER" || true; } \
       | jq -nRc --argjson st "$st" --argjson prices "$PRICES" --argjson meta "$meta" --arg fp "$fp" --argjson off "$((off + consumed))" "$PHASE_FILE_JQ"; } \
     > "$WORK/pnew/$key.json" || die "phase-cost pass failed on $f"
-  printf '%s' "$((off + consumed))" > "$WORK/pnew/$key.off"
 done
 rm -f "$WORK/chunk"
 # every saved state (the new one where this run made one), then the rows that changed
@@ -440,6 +440,10 @@ done < "$WORK/records.jsonl"
 # phase-cost rows: append, then keep the offsets and the emitted map that produced them (still under the lock)
 phase_added="$(wc -l < "$WORK/phase-rows.jsonl" | tr -d ' ')"
 cat "$WORK/phase-rows.jsonl" >> "$FILE"
-for p in "$WORK/pnew"/*; do [ ! -f "$p" ] || mv "$p" "$PSTATE/"; done
-mv "$WORK/phase-emitted.json" "$PSTATE/emitted.json"
+# copy into the store first, then rename within it: a state file is replaced whole or not at all
+for p in "$WORK/pnew"/*.json "$WORK/phase-emitted.json"; do
+  [ -f "$p" ] || continue
+  name="$(basename "$p")"; [ "$name" != phase-emitted.json ] || name=emitted.json
+  cp "$p" "$PSTATE/.$name.new" && mv "$PSTATE/.$name.new" "$PSTATE/$name"
+done
 echo "usage-compute: appended $added, unchanged $kept, phase-cost rows $phase_added ($FILE)"
