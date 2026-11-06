@@ -1959,7 +1959,7 @@ JSON
 GHSTATE="$W18/state" PATH="$W18/bin:$PATH" DRIFT_PIN_HOLDS="$W18/holds.json" DRIFT_MJSON="$W18/m.json" DRIFT_UPSTREAMS="$W18/u.json" DRIFT_REGISTRY="$W18/reg.json" DRIFT_KNOWN_MARKETPLACES=/dev/null bash "$SCRIPT" >"$W18/held.txt" 2>&1; rc18=$?
 # (The stubbed gh cannot serve the vendored-fork and fork-branch sections, so
 # the run ends INCOMPLETE (3); a held row must not add DRIFT (2).)
-if [ "$rc18" -ne 2 ] && ! grep -q 'DRIFT DETECTED' "$W18/held.txt"; then ok "hold: held rows alone raise no drift"; else bad "all-held run rc=$rc18 reports drift; $(grep BEHIND "$W18/held.txt")"; fi
+if { [ "$rc18" -eq 0 ] || [ "$rc18" -eq 3 ]; } && ! grep -q 'DRIFT DETECTED' "$W18/held.txt"; then ok "hold: held rows alone raise no drift"; else bad "all-held run rc=$rc18 (expected 0 or 3, no drift); $(grep BEHIND "$W18/held.txt")"; fi
 rm -rf "$W18"
 
 echo ""
