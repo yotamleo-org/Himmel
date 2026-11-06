@@ -638,6 +638,11 @@ imports, so its suite runs in CI without an install.
   console error and no `securitypolicyviolation` at 1280 and 390 px, light and dark, under the server's
   `default-src 'self'`. `agui-web/src/zod-jitless.ts` is imported first so zod skips its `new Function` probe, which the
   policy would otherwise report as a `script-src` eval violation.
+- Shell consistency e2e (`shell-consistency.e2e.ts`, same opt-in suite, needs `agui-web/dist`): Shift, Morning report,
+  Fleet, a Fleet chief page and Health draw the same rail entries and position and the same identity header (version
+  line, Build details, host and scope line); a chief page has a "Back to Fleet" link and browser Back does the same. A
+  failed report or one with no himmel identity still draws the rail and an unknown-version header, and the console and
+  the AG-UI page opened together share one report probe. `E2E_SHOTS=<dir>` saves `shell-<page>.png`.
 
 ## Manual pass (the same 7 items)
 
