@@ -288,6 +288,21 @@ reads its lists from the script's own checkout and fails closed when it cannot
 read one. It is outside `--only 7`, and an org-member PR's output is unchanged.
 The operator's GitHub code-owner approval comes last, after item 16 passes.
 
+**The no-checkout route.** An outside PR is reviewed from its diff at its head, with no checkout
+of its code on the station, so none of its files run there. `scripts/cr/pr-check-outside.sh`
+with `--pr <n> --head <40-hex>` refuses unless the PR is outside, open and at that head, asks
+`review-round.sh check --pr` whether the author may be reviewed, refuses a local branch of the
+PR's head name, and fetches the head into `refs/himmel/outside/<n>`. `outside_pr_authorize`
+(`scripts/lib/outside-contributors.sh`) reads the author, node id, head branch and head from
+the forge itself and decides: a listed author gets 3 full rounds; any other round needs an
+approval row for exactly that PR and head with stage `review` in
+`~/.himmel/outside-pr-approvals.jsonl` and, for an unlisted author, a `security-audit` pass at
+that head. `review-round.sh start --pr` owns the cap (state `outside-<n>`, no delta round).
+`panel-first-pass.sh --pr` and `pr-check-context.sh --pr` then run on the ref; the panel is
+pinned to it (`--pin-ref`), and a panel without that flag is refused before a round is spent,
+so item 16b never passes on a review of a tree the panel did not pin. The approve verb that
+writes the approval row ships separately.
+
 **19. suite evidence.** A suite CI runs is run once, in CI: pr-check
 step 3.6 records it `SUITE <p> = CI` (`scripts/cr/pr-check-ref/33-step3-impacted.md`),
 and `ready-check.sh` item 19 needs proof for every impacted suite of

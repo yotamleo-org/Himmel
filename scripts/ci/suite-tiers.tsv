@@ -257,6 +257,7 @@ scripts/cr/test-orphan-check.sh	pr	trust-path
 scripts/cr/test-panel-first-pass.sh	pr	trust-path
 scripts/cr/test-pr-check-context.sh	pr	trust-path
 scripts/cr/test-pr-check-env.sh	pr	trust-path
+scripts/cr/test-pr-check-outside.sh	pr	trust-path
 scripts/cr/test-pr-check-pair.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-pr-check-rounds.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-pr-check-run.sh	local	behaviour suite, 0 catches in the 400-PR audit window
