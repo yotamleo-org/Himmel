@@ -753,11 +753,23 @@ PATH="$PATH:/usr/local/bin:/usr/bin:/bin" bash "$REPO_ROOT/scripts/lib/test-run-
 # re-add the nodes this refresh had just replaced. The wait on a live holder
 # ends at GRAPHIFY_PROMOTE_LOCK_LIVE_WAIT_SECONDS (default 2700), then rc 2.
 # ponytail: kill -0 trusts the pid in the token, so a reused pid reads as
-# live and costs one wait to the ceiling; upgrade to a pid start-time stamp.
+# live and costs the wait (up to 2700 s) on EVERY run while that pid lives,
+# which also delays a capped run's keep step; upgrade to a pid start-time stamp.
+# The three seconds values below must be whole numbers: anything else warns and
+# takes the default, because the wait loop's [ -ge ] tests never end on text.
+_promote_lock_seconds() { # <env-var-name> <default>
+  local v="${!1:-$2}"
+  case "$v" in
+    ''|*[!0-9]*)
+      echo "refresh-graph-map: WARN $1='$v' is not a non-negative integer -- using the default $2" >&2
+      v="$2" ;;
+  esac
+  printf '%s' "$v"
+}
 PROMOTE_LOCK="$OUT_DIR/.promote.lock"
-PROMOTE_LOCK_TIMEOUT_SECONDS="${GRAPHIFY_PROMOTE_LOCK_TIMEOUT_SECONDS:-120}"
-PROMOTE_LOCK_STALE_SECONDS="${GRAPHIFY_PROMOTE_LOCK_STALE_SECONDS:-600}"
-PROMOTE_LOCK_LIVE_WAIT_SECONDS="${GRAPHIFY_PROMOTE_LOCK_LIVE_WAIT_SECONDS:-2700}"
+PROMOTE_LOCK_TIMEOUT_SECONDS=$(_promote_lock_seconds GRAPHIFY_PROMOTE_LOCK_TIMEOUT_SECONDS 120)
+PROMOTE_LOCK_STALE_SECONDS=$(_promote_lock_seconds GRAPHIFY_PROMOTE_LOCK_STALE_SECONDS 600)
+PROMOTE_LOCK_LIVE_WAIT_SECONDS=$(_promote_lock_seconds GRAPHIFY_PROMOTE_LOCK_LIVE_WAIT_SECONDS 2700)
 PROMOTE_LOCK_HELD=0
 PROMOTE_LOCK_TOKEN=""
 PROMOTE_STAGE=""
