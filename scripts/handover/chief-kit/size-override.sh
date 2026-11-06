@@ -170,6 +170,6 @@ pending)
     [ ! -f "$LEDGER" ] || total=$(grep -c '^SIZE-ESCALATE'"$(printf '\t')" "$LEDGER" 2>/dev/null)  # swallow-ok: grep -c prints 0 and exits 1 for none
     echo "total=${total:-0}"
     [ "${total:-0}" -gt "$SINCE" ] || exit 1
-    grep '^SIZE-ESCALATE'"$(printf '\t')" "$LEDGER" | tail -n +"$((SINCE + 1))"
+    grep '^SIZE-ESCALATE'"$(printf '\t')" "$LEDGER" | tail -n +"$((10#$SINCE + 1))"
     ;;
 esac
