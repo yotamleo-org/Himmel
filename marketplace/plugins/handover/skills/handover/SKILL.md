@@ -5,9 +5,9 @@ description: Handover system — new epic/task, wrap up/end session, update stat
 
 # Handover System
 
-Tracks epics, tasks, and standalones across sessions. Multi-repo capable: state lives per registered repo under `<repo-root>/handovers/<user>/`, optionally bucketed by source repo under `<repo-root>/handovers/<user>/<bucket>/` (HIMMEL-129 layout — see `references/resolution.md`).
+Tracks epics, tasks, and standalones across sessions. Multi-repo capable: state lives per registered repo under `<repo-root>/handovers/<user>/`, optionally bucketed by source repo under `<repo-root>/handovers/<user>/<bucket>/` (see `references/resolution.md`).
 
-**This SKILL.md is a thin router (HIMMEL-1041).** It carries only the op index + invariant rules. Each op's mechanics live in `references/<op>.md`, loaded on demand — so invoking one op never loads the other ~19. The read path (`handover-resume`) is fully script-driven and skips the skill entirely (HIMMEL-1038).
+**This SKILL.md is a thin router.** It carries only the op index + invariant rules. Each op's mechanics live in `references/<op>.md`, loaded on demand — so invoking one op never loads the other ~19. The read path (`handover-resume`) is fully script-driven and skips the skill entirely.
 
 ## Before any mutation op — load the shared substrate
 
@@ -30,7 +30,7 @@ Tracks epics, tasks, and standalones across sessions. Multi-repo capable: state 
 - **`/handover hygiene [triage|consolidate|analyse]`** · **`/handover consolidate apply <N>`** → `references/hygiene.md`
 
 ### Resume (read-only, script-driven — no skill load)
-- **`handover-resume #N`** — the `/handover-resume` command calls `scripts/handover/resume.sh` directly and does NOT load this skill (HIMMEL-1038). If reached via skill trigger: → `references/resume.md`
+- **`handover-resume #N`** — the `/handover-resume` command calls `scripts/handover/resume.sh` directly and does NOT load this skill. If reached via skill trigger: → `references/resume.md`
 
 ### Setup & registry
 - **`/handover-setup`** — first-time bootstrap (Mode A inline / Mode B external state repo). Full runbook: the plugin's `commands/handover-setup.md`.
@@ -41,7 +41,7 @@ Tracks epics, tasks, and standalones across sessions. Multi-repo capable: state 
 ## Critical Rules
 
 - **Resolve target repo before any read or write.** Never assume a single repo.
-- **Resolve target bucket** (HIMMEL-129) before any read or write when the bucket layer is active under `<state-root>`. Bucket layer = any **recognized source bucket** exists directly under `<state-root>` — the four built-ins `himmel/`, `luna/`, `luna_brain/`, `cross/` plus any names in the host repo's `source_buckets_extra` (HIMMEL-307). See `references/resolution.md`.
+- **Resolve target bucket** before any read or write when the bucket layer is active under `<state-root>`. Bucket layer = any **recognized source bucket** exists directly under `<state-root>` — the four built-ins `himmel/`, `luna/`, `luna_brain/`, `cross/` plus any names in the host repo's `source_buckets_extra`. See `references/resolution.md`.
 - **Scan for ID:** Never trust `counter.md` alone — always reconcile against filesystem max.
 - **Worktree always:** All file writes **to the target repo's `<state-root>`** happen in a worktree of the target repo — never on `main`. The machine-global registry (`~/.claude/handover/registry.json`, written only by `defaults`/`repos`) is not a target-repo write, so it needs no worktree (see the op index above).
 - **context.md ≤1 page.**

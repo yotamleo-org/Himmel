@@ -16,7 +16,7 @@ Grep the log if more detail is needed. See `.claude/commands/quiet-run.md`.
 
 Run a third-party tool (`uv run … pyright`, `npx`, a checkout under `/tmp`)
 directly, not under quiet-run: wrapping gets it no allow rule. Label `suite` refuses a directory option aimed
-outside the worktree and prints the direct form (HIMMEL-8315).
+outside the worktree and prints the direct form.
 
 A background quiet-run is a live child of your session: count it (and any `tail -f`
 or `Monitor` on its log) as a live child before closing or wrapping, not just

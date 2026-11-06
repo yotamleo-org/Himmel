@@ -108,8 +108,8 @@ Omit to search all collections.
 
 ### What works here (himmel fork, measured)
 
-Measured on a 38-query golden set with `scripts/eval/qmd-quality/qmd-quality.sh`
-(HIMMEL-4184). Re-run it before changing this advice.
+Measured on a 38-query golden set with `scripts/eval/qmd-quality/qmd-quality.sh`.
+Re-run it before changing this advice.
 
 1. **Always scope `collections`.** This is the largest lever measured: hybrid
    MRR rose from 0.57 unscoped to 0.83 scoped. Unscoped vector hits are swamped

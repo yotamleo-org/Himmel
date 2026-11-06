@@ -16,7 +16,7 @@ for THIS SAME handover is already scheduled (`--force` replaces the matched
 job). Arming a DIFFERENT handover while another is queued SUCCEEDS —
 independent tickets are meant to run concurrently, so never serialise them
 or `--force` over one to queue the other. "Same handover" means the same
-*derived task name*, which since HIMMEL-1304 is built from the CANONICAL
+*derived task name*, which is built from the CANONICAL
 path plus a hash of it: every spelling of one file (relative, absolute,
 `..`, symlink, and on Windows `C:/` vs `/c/` vs case) collapses to ONE
 identity, and two distinct paths no longer collide just because punctuation
@@ -24,7 +24,7 @@ was stripped. A `--force` replace is also transactional — the old slot is
 deleted only after the new job is registered and verified, so a later
 refusal or failure can no longer leave you with no arm at all.
 `--dedup-any` opts into the broad "any existing slot blocks" mode the
-unattended auto-arm watchdogs use. `--context 1m|standard` (HIMMEL-2658) is
+unattended auto-arm watchdogs use. `--context 1m|standard` is
 an arming-time choice, never inherited from the operator's model setting —
 defaults to `1m` on a `*-chief.md` handover, `standard` on every other
 arm. This shells the SANCTIONED arm path —
