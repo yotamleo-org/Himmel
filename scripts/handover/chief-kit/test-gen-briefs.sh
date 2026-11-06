@@ -1324,7 +1324,22 @@ srnd="$(HIMMEL_FLAG_STACKED_SERIES=1 NEXT_DISPATCH_JIRA_CLI="$GEN_BRIEFS_JIRA_CL
 has "S2a: next-dispatchable lists the series writer as the holder a colliding candidate stacks on" "$srnd" "STACKABLE HIMMEL-9390 $SRD"
 lacks "S2a: next-dispatchable reports no unreadable ledger or doc for the written series" "$(cat "$WORK/srnd.err")" "unreadable"
 
-srbad mixed 'w[2]["scope"] = "scripts/sa/c.sh completes-ticket: yes"' "completes-ticket"
+# Each follow-on worker's own scope, "Do not" lines and commit text reach its ledger item (series-next.sh start prints
+# them from there); the writer's item and a follow-on with no "Do not" line record no do_not key
+srmut itemscope 'w[1]["scope"] = "scripts/sa/b.sh Do not touch scripts/x. Never edit scripts/y. completes-ticket: no"'
+sro="$(srrun itemscope)"; rc=$?
+[ "$rc" = 0 ] && pass "8583: a follow-on worker whose scope carries Do-not lines generates (rc 0)" || fail "8583: itemscope rc=$rc: $sro"
+SRIL="$(ls "$WORK"/sr-b-itemscope/series/*.json)"
+srit() { srledger "$SRIL" | python3 -I -c 'import json, sys; d = json.load(sys.stdin); print(eval(sys.argv[1]))' "$1"; }
+check_eq() { [ "$2" = "$3" ] && pass "$1" || fail "$1: [$2] != [$3]"; }
+check_eq "8583: follow-on B's ledger item records its do-not lines, one entry each" "$(srit 'd["items"][1].get("do_not")')" "['Do not touch scripts/x.', 'Never edit scripts/y.']"
+check_eq "8583: follow-on B's ledger item records its scope without the do-not lines" "$(srit 'd["items"][1].get("scope")')" 'scripts/sa/b.sh completes-ticket: no'
+check_eq "8583: follow-on B's ledger item records its commit text" "$(srit 'd["items"][1].get("commit_text")')" "feat(sa): [HIMMEL-9302] b"
+check_eq "8583: follow-on C with no Do-not line records scope and commit text and no do_not key" "$(srit '(d["items"][2].get("scope"), d["items"][2].get("commit_text"), "do_not" in d["items"][2])')" "('\`scripts/sa/c.sh\` completes-ticket: no', 'feat(sa): [HIMMEL-9303] c', False)"
+check_eq "8583: the writer's own item records none of the three (its brief carries them)" "$(srit '[k for k in ("scope", "do_not", "commit_text") if k in d["items"][0]]')" "[]"
+check_eq "8583: the Writes of the items are unchanged by the scope text" "$(srsummary "$(srledger "$SRIL")" | cut -d'|' -f3)" "scripts/sa/a.sh,scripts/sa/b.sh,scripts/sa/c.sh"
+
+srbad mixed 'w[2]["scope"] ="scripts/sa/c.sh completes-ticket: yes"' "completes-ticket"
 srbad nogrant 'w[0]["series_grant"] = {"family": "scripts/sa/"}' "decision"
 srbad nograntkey 'del w[0]["series_grant"]' "decision"
 srbad compact 'w[0]["context_guard"] = "compact"' "compact mode"
