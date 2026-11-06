@@ -277,8 +277,9 @@ test('the project list carries every gateAllow quiet-run suite rule, so a consol
 // as-is, so the printed form must be the relative `bash scripts/...` shape a project
 // allow rule matches: no cd, timeout, VAR= prefix or absolute path (those fall to the
 // auto-mode classifier, which refuses a merge-path GO). The hit set is mechanical:
-// a backticked span starting `bash ` that names one of the three scripts in a docs
-// page, a `NEXT:` printf in the chief kit, and the NEXT lines of a real ready-go run.
+// a backticked span starting `bash ` that names one of the three scripts in any text
+// file under docs/, marketplace/ or scripts/, a `NEXT:` or `GO ` printf under scripts/,
+// and the NEXT lines of a real ready-go run.
 // ponytail: this models the `:*` matcher (ruleMatches above), not the harness matcher;
 // upgrade path a live allow probe in a test VM (spec R12).
 const CHIEF_KIT_SCRIPT = /chief-kit\/(go|ready-check|ready-go)\.sh/;
@@ -291,24 +292,40 @@ function printedFormProblems(command) {
   return problems;
 }
 const gitLines = (args) => execFileSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
+// A hit is excluded only by an entry here: { file, text (a substring of the span), reason }.
+// None today: every backticked bash span naming the three scripts in docs/, marketplace/
+// and scripts/ is a printed command.
+const SPAN_EXCLUDES = [];
+const SCAN_ROOTS = ['docs', 'marketplace', 'scripts'];
+const SPAN_RE = /`((?:(?:cd \S+ && |timeout \d+ |[A-Za-z_]\w*=\S+ ))*bash [^`]+)`/g;
+// the backticked spans of one text that start with `bash ` (after an optional cd, timeout or VAR= prefix)
+// and name one of the three scripts, each with its line number
+function spansIn(text) {
+  const out = [];
+  for (const m of text.matchAll(SPAN_RE)) {
+    const command = m[1].replace(/\s+/g, ' ').trim();
+    if (CHIEF_KIT_SCRIPT.test(command)) out.push({ line: text.slice(0, m.index).split('\n').length, command });
+  }
+  return out;
+}
 const docSpans = () => {
   const out = [];
-  for (const f of gitLines(['ls-files', '--', 'docs/*.md', ':!docs/guide'])) {
-    const text = readFileSync(join(REPO_ROOT, f), 'utf8');
-    for (const m of text.matchAll(/`((?:(?:cd \S+ && |timeout \d+ |[A-Za-z_]\w*=\S+ ))*bash [^`]+)`/g)) {
-      const command = m[1].replace(/\s+/g, ' ').trim();
-      if (CHIEF_KIT_SCRIPT.test(command)) out.push({ where: `${f}:${text.slice(0, m.index).split('\n').length}`, command });
+  // every tracked text file under the three roots that names one of the scripts
+  for (const f of gitLines(['grep', '-I', '-l', '-E', CHIEF_KIT_SCRIPT.source, '--', ...SCAN_ROOTS])) {
+    for (const { line, command } of spansIn(readFileSync(join(REPO_ROOT, f), 'utf8'))) {
+      if (SPAN_EXCLUDES.some((x) => x.file === f && command.includes(x.text))) continue;
+      out.push({ where: `${f}:${line}`, command });
     }
   }
   return out;
 };
-// the NEXT-line printf formats of the chief kit: %q becomes a word, %s a separate argument
+// the NEXT:/GO printf formats under scripts/: %q becomes a word, %s a separate argument
 const printfNextCommands = () => {
   const out = [];
-  for (const f of gitLines(['ls-files', '--', 'scripts/handover/chief-kit/*.sh', ':!scripts/handover/chief-kit/test-*.sh'])) {
+  for (const f of gitLines(['ls-files', '--', 'scripts/*.sh', ':!*/test-*.sh', ':!*/tests/*'])) {
     readFileSync(join(REPO_ROOT, f), 'utf8').split('\n').forEach((line, i) => {
-      const m = /printf '(NEXT:[^']*)'/.exec(line);
-      const cmd = m && /\bbash \S*go\.sh.*$/.exec(m[1].replace(/%q/g, 'X').replace(/%s/g, ' X').replace(/ +/g, ' '));
+      const m = /printf '((?:NEXT:|GO )[^']*)'/.exec(line);
+      const cmd = m && /\bbash \S*(?:go|ready-check|ready-go)\.sh.*$/.exec(m[1].replace(/%q/g, 'X').replace(/%s/g, ' X').replace(/ +/g, ' '));
       if (cmd) out.push({ where: `${f}:${i + 1}`, command: cmd[0].replace(/\\n$/, '').trim() });
     });
   }
@@ -369,4 +386,10 @@ test('the printed-form check refuses a leading cd, timeout, VAR= or absolute pat
     'bash <anchor>/scripts/handover/chief-kit/go.sh 1 a',
   ]) assert.notDeepEqual(printedFormProblems(command), [], command);
   assert.deepEqual(printedFormProblems('bash scripts/handover/chief-kit/go.sh --contract no 1 a'), []);
+  // a prefixed span in any scanned file is a hit, whatever the file type
+  // (the fixture is assembled so this file carries no backticked span of its own)
+  const tick = String.fromCharCode(96);
+  const hits = spansIn(['see ', tick, 'timeout 90 bash scripts/handover/chief-kit/go.sh 1 a', tick, ' and ', tick, 'cd /x && bash scripts/handover/chief-kit/ready-check.sh 1 a', tick].join(''));
+  assert.equal(hits.length, 2);
+  for (const { command } of hits) assert.notDeepEqual(printedFormProblems(command), [], command);
 });
