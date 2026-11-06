@@ -13,6 +13,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSy
 import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { env as hostEnv } from 'node:process';
+import { BASH_BIN } from './lib/resolve-bash.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -329,7 +330,7 @@ function readyGoNextCommands() {
     writeFileSync(join(dir, 'jira'), '#!/usr/bin/env bash\nprintf "%s\\tTask\\tIn Review\\tsummary\\n" "$2"\n', { mode: 0o755 });
     const out = [];
     for (const trust of ['none', 'hit scripts/ci/x.sh']) {
-      const r = spawnSync('bash', [join(kit, 'ready-go.sh'), '--contract', 'no', '77', 'a'.repeat(40)], {
+      const r = spawnSync(BASH_BIN, [join(kit, 'ready-go.sh'), '--contract', 'no', '77', 'a'.repeat(40)], {
         encoding: 'utf8',
         env: { ...hostEnv, READY_GO_ANCHOR: dir, GH_CMD: join(dir, 'gh'), JIRA_CMD: join(dir, 'jira'), STUB_TRUST: trust },
       });
