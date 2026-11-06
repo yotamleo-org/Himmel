@@ -34,6 +34,9 @@
 ^scripts/handover/chief-kit/chain-graph\.py$
 # The list of files the holds register never holds; chain-graph.py reads its row registries from it, so a line added there loosens a trust decision.
 ^scripts/handover/chief-kit/holds-exempt\.txt$
+# The single-writer barrier: the register's CLI, and the write hook that answers from it.
+^scripts/handover/chief-kit/holds\.py$
+^scripts/hooks/check-write-hold\.sh$
 # The fork and adopted-repo allowlists a go.sh --repo GO is signed against.
 ^scripts/guardrails/himmel-(adapters|adopted)\.json$
 ^scripts/check-ci\.sh$
@@ -41,6 +44,8 @@
 ^scripts/cr/anchor-handoff\.sh$
 ^scripts/cr/clear-review-marker\.sh$
 ^scripts/cr/ledger-amend-auth\.js$
+^scripts/cr/blast-scope\.cjs$
+^scripts/ci/outside-lint-surface\.txt$
 ^scripts/hooks/check-commit-msg\.sh$
 
 # Hook wiring and the pre-commit gate set.
@@ -51,6 +56,8 @@
 ^scripts/hooks/(block|guard|cadence-deny)-
 ^scripts/hooks/(auto-approve-safe-bash|permission-allow-gate-shapes|narrow-allow|cadence-approve-engines|require-quiet-run|read-clamp|orchestrator-inline-guard|rtk-hook-guard|hook-integrity|record-hook-integrity|guardrail-|run-hook-with-bash|wire-|mcp-policy|redirect-webfetch-walled-hosts|detect-token-in-output|infra-destroy-verbs)
 ^marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts\.sh$
+# The plugin's vendored launcher twins (byte-identical to run-hook-with-bash and hook-integrity above; test-plugin-hook-bash-wiring.sh).
+^marketplace/plugins/himmel-ops/hooks/(run-hook-with-bash|hook-integrity)\.js$
 # Commit/push gates and CR triggers.
 ^scripts/hooks/(check-(cr-|security-reviewed|platforms-tested|push-target|no-force-push|main-ref|merged-branch|pr-mergeable|single-writer|pr-lane|worktree-isolation|hookspath|lockfile|settings-portability|fail-open|trust-suites|guardrail)|trigger-cr-on-|install-(single-writer-floor|main-ref-transaction|cr-pre-push-legacy))
 # RED suites for the trust-path hook denials, allow logic and commit/push gates.

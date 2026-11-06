@@ -3563,7 +3563,10 @@
         "10": "e.verify.fail",
         "11": "e.verify.fail",
         "12": "e.verify.trust",
-        "13": "e.verify.fail"
+        "13": "e.verify.fail",
+        "16": "e.verify.fail",
+        "17": "e.verify.fail",
+        "18": "e.verify.fail"
       },
       "unmapped": {
         "14": "warn only: a Bug-ticket PR with no bug-origin line, never a FAIL, so no workflow decision",

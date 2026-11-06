@@ -2140,8 +2140,8 @@ WORKER_SESSION_REPO="$tmp/repo17r" HEADED_ARM_LOCK_DIR="$d17r/locks" HEADED_ARM_
   bash "$SCRIPT" --relay "HIMMEL-9999-relay" "$fixture17b" "$d17r/signal-never" "$PAST" "$d17r/log" >/dev/null 2>&1 || rc=$?
 wait_record "$d17r" || true
 check "full launch --relay: exit 0" "$rc" "0"
-check "full launch --relay: settings deny nothing" \
-  "$(jq -c '.permissions.deny // "none"' "$d17r/HIMMEL-9999-relay.leg-settings.json" 2>/dev/null)" '"none"'
+check "full launch --relay: settings deny only the default Artifact" \
+  "$(jq -c '.permissions.deny // "none"' "$d17r/HIMMEL-9999-relay.leg-settings.json" 2>/dev/null)" '["Artifact"]'
 
 rc=0
 node "$HERE/../../lanes/plugin-profiles.mjs" worker-impl > "$tmp/resolved-leg.json" || rc=$?
@@ -2159,8 +2159,8 @@ rc=0
 node "$HERE/../../lanes/plugin-profiles.mjs" bare > "$tmp/resolved-bare.json" || rc=$?
 check "--dry-run bare: resolver succeeds" "$rc" "0"
 rc=0
-node -e 'const j=require(process.argv[1]); if (Object.hasOwn(j,"permissions")) process.exit(1)' "$tmp/resolved-bare.json" || rc=$?
-check "--dry-run bare: resolved settings have no permissions" "$rc" "0"
+node -e 'const j=require(process.argv[1]); if (JSON.stringify(j.permissions) !== "{\"deny\":[\"Artifact\"]}") process.exit(1)' "$tmp/resolved-bare.json" || rc=$?
+check "--dry-run bare: resolved settings carry only the default Artifact deny" "$rc" "0"
 
 # WORKER_SESSION_PROFILE is the env equivalent, and the flag wins over it.
 envprof="$(WORKER_SESSION_PROFILE=worker-impl bash "$SCRIPT" --dry-run HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 "$tmp/worker.log" claude-sonnet-5 2>&1)"
@@ -2185,6 +2185,23 @@ contains "composed dry-run: profile settings reported" "$out" "profile=worker-im
 contains "composed dry-run: claudex lane retained" "$out" "lane=claudex"
 rc=0; out="$(WORKER_SESSION_LANE=claudex WORKER_SESSION_PROFILE=worker-impl bash "$SCRIPT" --dry-run HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "composition via the env equivalents: exit 0" "$rc" "0"
+
+# 17e. the launcher tells the resolver its lane, so a profile's nativeDrop applies on the native
+# lane only. A recording resolver stands in for plugin-profiles.mjs.
+lane17e="$tmp/lane17e"; mkdir -p "$lane17e"
+cat > "$lane17e/profiles.mjs" <<'PROFILE_EOF'
+import { appendFileSync } from 'node:fs';
+switch (process.argv[3]) {
+  case '--context': console.log('{"contextMode":"standard","autocompact":200000}'); break;
+  case '--mcp-servers': console.log('["qmd"]'); break;
+  case '--mcp-config': console.log('{"mcpServers":{}}'); break;
+  default: appendFileSync(new URL('./calls', import.meta.url), process.argv.slice(2).join(' ') + '\n'); console.log('{"enabledPlugins":{}}');
+}
+PROFILE_EOF
+HEADED_ARM_WORKER_PROFILES="$lane17e/profiles.mjs" bash "$SCRIPT" --dry-run --lane native --profile worker-impl HIMMEL-9998-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 >/dev/null 2>&1 || true
+HEADED_ARM_WORKER_PROFILES="$lane17e/profiles.mjs" bash "$SCRIPT" --dry-run --lane claudex --profile worker-impl HIMMEL-9998-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log >/dev/null 2>&1 || true
+check "17e launcher passes its lane to the resolver" "$(cat "$lane17e/calls" 2>/dev/null)" "worker-impl --lane native
+worker-impl --lane claudex"
 
 composed="$tmp/composed-launch"; mkdir -p "$composed"
 cat > "$composed/headed" <<'HEADED_EOF'
@@ -5021,13 +5038,16 @@ check "9071h the refusal does not advise the override" "$(printf '%s\n' "$bus907
 rc=0; HIMMEL_LAUNCH_UNBOUND_OK=1 run45 in HIMMEL-45-in HIMMEL-chief-45-other || rc=$?
 check "9071f the override never launches over a held name" "$rc:$([ -e "$bus45/seen" ] && echo launched || echo none)" "2:none"
 bus45_hung="$bus45/bus-hung-stub"
-printf '#!/usr/bin/env bash\nexec sleep 20\n' > "$bus45_hung"; chmod +x "$bus45_hung"
+printf '#!/usr/bin/env bash\nexec sleep 120\n' > "$bus45_hung"; chmod +x "$bus45_hung"
 rm -f "$bus45/seen"; rc=0; bus9071_t0=$SECONDS
 bus9071_out="$(BUS_EXEC_SECS=08 HEADED_ARM_BUS_CLI="$bus45_hung" XDG_STATE_HOME="$bus45/state" \
   HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
   HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
     bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45 HIMMEL-9071-hung "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 2>&1)" || rc=$?
-check "9071g hung bus: refused within the bound" "$rc:$([ $((SECONDS - bus9071_t0)) -lt 15 ] && echo bounded || echo slow)" "2:bounded"
+# the stub sleeps 120s and the bus times out after 8s; a macOS runner adds far more launch overhead than Linux does, so the bound
+# sits well under the stub's sleep (an unbounded wait would take all 120s) rather than just above the 8s timeout
+bus9071_secs=$((SECONDS - bus9071_t0))
+check "9071g hung bus: refused within the bound" "$rc:$([ "$bus9071_secs" -lt 60 ] && echo bounded || echo "slow:${bus9071_secs}s")" "2:bounded"
 contains "9071g hung bus: the refusal says it timed out, a leading zero read as decimal" "$bus9071_out" "timed out after 8s"
 # an opted-out profile launched from a shell that carries a live
 # bind flag and an extra HIMMEL_BUS_* leaks neither to the launched env.

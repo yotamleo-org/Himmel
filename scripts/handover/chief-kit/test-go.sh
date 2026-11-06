@@ -251,15 +251,17 @@ check "3437: unset HIMMEL_REPO exits 2" "$rc" "2"
 # go.sh + scripts/lib + anchor-handoff.sh, a handovers/ stub, and a .env
 # naming a real root outside it. go.sh runs by ABSOLUTE path (no hand-off).
 S10="$tmp/s10"; S10_REAL="$tmp/s10-real"
-mkdir -p "$S10/scripts/handover/chief-kit" "$S10/scripts/cr" "$S10/handovers" "$S10_REAL"
+mkdir -p "$S10/scripts/handover/chief-kit" "$S10/scripts/cr" "$S10/scripts/ci" "$S10/handovers" "$S10_REAL"
 git init -q "$S10"
 cp "$SCRIPT" "$S10/scripts/handover/chief-kit/go.sh"
 cp "$HERE/ready-check.sh" "$S10/scripts/handover/chief-kit/ready-check.sh"
 cp "$HERE/cr-disposition.sh" "$S10/scripts/handover/chief-kit/cr-disposition.sh"
 ready_pass_ledger "$S10" "$SHA"
 cp -R "$HERE/../../lib" "$S10/scripts/lib"
+cp "$HERE/../../ci/ticket-id-internal-authors.txt" "$S10/scripts/ci/ticket-id-internal-authors.txt"
 cp "$HERE/../../cr/anchor-handoff.sh" "$S10/scripts/cr/anchor-handoff.sh"
 cp "$HERE/../../cr/ledger-amend-auth.js" "$S10/scripts/cr/ledger-amend-auth.js"
+cp "$HERE/../../cr/clear-review-marker.sh" "$S10/scripts/cr/clear-review-marker.sh"
 printf 'HANDOVER_DIR=%s\n' "$S10_REAL" > "$S10/.env"
 S10_GO=".locks/go/77.$SHA"
 
@@ -870,6 +872,37 @@ rc=0; (cd "$fx27" && A23_HEAD="$N27d" PATH="$A23_BIN:$PATH" HANDOVER_DIR="$ROOT2
 check "adopter delta no-op over a none delta is accepted (exit 0)" "$rc" "0"
 check "...and its GO file is written" "$([ -e "$ROOT23/.locks/go/88.$N27d" ] && echo yes || echo no)" "yes"
 
+# --- 28b. --repo reads the NO-GO order in the repo's own checkout, not the cwd (9272) ---
+# Section 28's run starts in the fork fixture. The chief runs from the himmel
+# checkout (here an empty repo that holds none of the fork's commits): go.sh must
+# find the fork checkout itself (HIMMEL_FORK_ROOTS lists the dirs to search, default
+# the parent of the harness checkout; a checkout whose origin names the repo) or take
+# --checkout <dir>, and fail closed (exit 10, no GO) when neither yields a readable one.
+him28b="$tmp/him28b"; git init -q "$him28b"
+roots28b="$tmp/roots28b"; mkdir -p "$roots28b"
+git clone -q "$fx27" "$roots28b/widget-clone"
+git -C "$roots28b/widget-clone" remote set-url origin https://github.com/acme/widget.git
+git -C "$roots28b/widget-clone" update-ref refs/remotes/origin/main "$J27"
+cp "$fx27/.git/cr-critic-scores.jsonl" "$roots28b/widget-clone/.git/cr-critic-scores.jsonl"  # delta-class.sh reads the CR ledger from the checkout's git dir
+run28b() {  # <HIMMEL_FORK_ROOTS value> <go.sh args...> - from the himmel checkout, no GO left behind
+  local roots=$1; shift
+  rm -f "$ROOT23/.locks/go/88.$N27d"
+  ( cd "$him28b" && env HIMMEL_FORK_ROOTS="$roots" A23_HEAD="$N27d" PATH="$A23_BIN:$PATH" HANDOVER_DIR="$ROOT23" bash "$SCRIPT" --repo acme/widget --trust-reviewed W6 "$@" 88 "$N27d" >/dev/null 2>&1 )
+}
+rc=0; run28b "$roots28b" || rc=$?
+check "9272: from the himmel checkout the fork checkout is found by its origin (exit 0)" "$rc" "0"
+check "9272: ...and its GO file is written" "$([ -e "$ROOT23/.locks/go/88.$N27d" ] && echo yes || echo no)" "yes"
+rc=0; run28b "$tmp/no-such-root" || rc=$?
+check "9272: no fork checkout found -> exit 10" "$rc" "10"
+check "9272: ...and no GO file is written" "$([ -e "$ROOT23/.locks/go/88.$N27d" ] && echo yes || echo no)" "no"
+rc=0; run28b "$tmp/no-such-root" --checkout "$fx27" || rc=$?
+check "9272: --checkout names the fork checkout (exit 0)" "$rc" "0"
+rc=0; run28b "$roots28b" --checkout "$tmp/not-a-checkout" || rc=$?
+check "9272: --checkout that is not a git checkout -> exit 10" "$rc" "10"
+check "9272: ...and no GO file is written" "$([ -e "$ROOT23/.locks/go/88.$N27d" ] && echo yes || echo no)" "no"
+rc=0; ( cd "$him28b" && A23_HEAD="$N27d" PATH="$A23_BIN:$PATH" HANDOVER_DIR="$ROOT23" bash "$SCRIPT" --checkout "$fx27" --trust-reviewed W6 88 "$N27d" >/dev/null 2>&1 ) || rc=$?
+check "9272: --checkout without --repo -> exit 2" "$rc" "2"
+
 # --- 29. a judge's NO-GO vetoes a trust GO, from any qid -----------
 # P - A - B on one branch, S a sibling of A off P. Judge J ruled GO at A (a
 # finding on src/a.txt:3-4); B only touches docs, so delta-class.sh says none.
@@ -946,6 +979,46 @@ VEXTRA=$'delta: no-op\ndelta-judged: '"$A29"$'\ndelta-class: none\n' verdict "$R
 VEXTRA=$'delta: no-op\ndelta-judged: '"$T29"$'\ndelta-class: none\n' verdict "$ROOT29" J "**GO** for head \`$D29\`." "delta-noop-$D29"
 check "8732-i: a two-hop no-op chain whose second hop (A to T) is a trust delta is refused (exit 10, no GO)" "$(go29 "$D29")" "10:none"
 VPR=
+
+# --- 30. no GO for a PR the merge will refuse (partial-merge remainder, ready-check item 17) ---
+# merge-on-green.sh refuses a contract-no merge whose PR body records no remainder (exit 26). go.sh takes
+# --contract yes|no and passes ready-check --require-contract, so a keyed PR with no contract named is refused too.
+# The READY_STUB_* stubs serve the PR title and body: the default title is unkeyed, the default body lists only `done`.
+cd "$READY_REPO" || { echo "FAIL: cd $READY_REPO" >&2; exit 1; }
+ROOT30="$tmp/root30"; mkdir -p "$ROOT30"
+KEYED30='fix(x): [HIMMEL-1] a partial change'
+go30() { # <stub title> <stub body or "-" for the default> <go.sh args...>
+    local title="$1" body="$2"; shift 2
+    if [ "$body" = "-" ]; then
+        READY_STUB_HEAD="$SHA" READY_STUB_TITLE="$title" HANDOVER_DIR="$ROOT30" bash "$SCRIPT" "$@" 2>&1
+    else
+        READY_STUB_HEAD="$SHA" READY_STUB_TITLE="$title" READY_STUB_BODY="$body" HANDOVER_DIR="$ROOT30" bash "$SCRIPT" "$@" 2>&1
+    fi
+}
+rc=0; out="$(go30 "$KEYED30" - --contract no 77 "$SHA")" || rc=$?
+check    "8918 b-go: contract no and no remainder in the body -> exit 4" "$rc" "4"
+contains "8918 b-go: names item 17" "$out" "[FAIL] 17."
+check    "8918 b-go: nothing written" "$(find "$ROOT30" -type f | wc -l | tr -d ' ')" "0"
+rc=0; out="$(go30 "$KEYED30" $'## Ticket coverage\n- ask: done\n\nRemaining: the docs follow\n\nRED then GREEN: the new row failed before the change\n' --contract no 77 "$SHA" 2>/dev/null)" || rc=$?
+check    "8918 b2: contract no with a Remaining line -> exit 0" "$rc" "0"
+check    "8918 b2: the GO path" "$out" "$ROOT30/.locks/go/77.$SHA"
+rm -rf "$ROOT30"; mkdir -p "$ROOT30"
+rc=0; out="$(go30 "$KEYED30" - --contract yes 77 "$SHA" 2>/dev/null)" || rc=$?
+check    "8918 b3: contract yes with no remainder -> exit 0" "$rc" "0"
+rm -rf "$ROOT30"; mkdir -p "$ROOT30"
+rc=0; out="$(go30 'fix(x): no ticket key in this title' - --contract no 77 "$SHA" 2>/dev/null)" || rc=$?
+check    "8918 b5: an unkeyed title is not a partial merge -> exit 0" "$rc" "0"
+rm -rf "$ROOT30"; mkdir -p "$ROOT30"
+rc=0; out="$(go30 "$KEYED30" - 77 "$SHA")" || rc=$?
+check    "8918 b6: a keyed title and no --contract -> exit 4" "$rc" "4"
+contains "8918 b6: says to name the contract" "$out" "--contract yes|no"
+check    "8918 b6: nothing written" "$(find "$ROOT30" -type f | wc -l | tr -d ' ')" "0"
+rc=0; out="$(go30 "$KEYED30" - --contract maybe 77 "$SHA")" || rc=$?
+check    "8918: --contract maybe -> exit 2" "$rc" "2"
+rc=0; out="$(go30 "$KEYED30" - --contract yes --contract no 77 "$SHA")" || rc=$?
+check    "8918: --contract twice -> exit 2" "$rc" "2"
+rc=0; out="$(go30 "$KEYED30" - --contract no --repo o/f --trust-reviewed J1 77 "$SHA")" || rc=$?
+check    "8918: --contract with --repo -> exit 2" "$rc" "2"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

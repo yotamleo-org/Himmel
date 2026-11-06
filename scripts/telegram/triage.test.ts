@@ -43,7 +43,7 @@ test("classifyForSpawn shells through the cheap classifier and parses its verdic
 // Asserted on the CONSTRUCTED argv rather than on a live spawn so it runs on
 // every platform: the interpreter must exist and must not be the stub, and the
 // script path must resolve.
-test("classifyForSpawn spawns a real non-WSL bash against an existing script (HIMMEL-1279)", async () => {
+test("classifyForSpawn spawns a real non-WSL bash against an existing script", async () => {
   const calls: any[] = [];
   await classifyForSpawn("hi", { invoke: async (args) => { calls.push(args); return "ack"; }, timeoutMs: 1000 });
 
@@ -71,7 +71,7 @@ test("classifyForSpawn spawns a real non-WSL bash against an existing script (HI
 // the model picked it for messages it had understood were addressed to the
 // agent, and the poller threw them away. Both halves are asserted here; the
 // measured verdict shift they produce is recorded above triagePrompt().
-test("triage prompt frames the channel AND names each verdict's effect (HIMMEL-1296)", async () => {
+test("triage prompt frames the channel AND names each verdict's effect", async () => {
   let prompt = "";
   await classifyForSpawn("try again..", {
     invoke: async (_args, input) => { prompt = input; return "spawn-low"; },
@@ -95,7 +95,7 @@ test("triage prompt frames the channel AND names each verdict's effect (HIMMEL-1
 // the operator" for an ordinary member would widen the very spam gate
 // the triage gate exists to keep — and the branch's own measurements show framing
 // moves verdicts, so this is not a harmless inaccuracy.
-test("a NON-operator gets shared-group framing, never the operator framing (HIMMEL-1296)", async () => {
+test("a NON-operator gets shared-group framing, never the operator framing", async () => {
   let prompt = "";
   await classifyForSpawn("lol nice", {
     invoke: async (_args, input) => { prompt = input; return "ack"; },
@@ -114,7 +114,7 @@ test("a NON-operator gets shared-group framing, never the operator framing (HIMM
 
 // Absence of the flag must fall to the SAFE side: an unwired caller gets the
 // shared-group framing, never the operator's.
-test("triage prompt defaults to shared-group framing when the role is unset (HIMMEL-1296)", async () => {
+test("triage prompt defaults to shared-group framing when the role is unset", async () => {
   let prompt = "";
   await classifyForSpawn("hello", {
     invoke: async (_args, input) => { prompt = input; return "ack"; },
@@ -176,7 +176,7 @@ test("TELEGRAM_TRIAGE_TIMEOUT_MS falls back to the default on garbage / non-posi
 // not the injected deps.invoke path used by the other tests above -- the
 // injected path never touches the code under test here, so it would not be a
 // control over the spawn path.
-test("defaultInvoke reports stdout+argv on a stderr-empty non-zero exit (HIMMEL-2751)", async () => {
+test("defaultInvoke reports stdout+argv on a stderr-empty non-zero exit", async () => {
   // #!/usr/bin/env bash stubs are not directly executable on win32.
   if (process.platform === "win32") return;
 
@@ -237,7 +237,7 @@ test("cancelable timeout: a fast-resolving invoke leaves no unhandled rejection"
   }
 });
 
-test("a throwing invoke increments fail-open and total, not the spawn-high verdict count (HIMMEL-948)", async () => {
+test("a throwing invoke increments fail-open and total, not the spawn-high verdict count", async () => {
   resetTriageCounters();
   const errs: string[] = [];
   const orig = console.error;
@@ -252,14 +252,14 @@ test("a throwing invoke increments fail-open and total, not the spawn-high verdi
   expect(errs.join("\n")).toContain("fail-open 1/1");
 });
 
-test("a legit spawn-high verdict increments the verdict count only (HIMMEL-948)", async () => {
+test("a legit spawn-high verdict increments the verdict count only", async () => {
   resetTriageCounters();
   const v = await classifyForSpawn("hi", { invoke: async () => "spawn-high\n", timeoutMs: 1000 });
   expect(v).toBe("spawn-high");
   expect(getTriageCounters()).toEqual({ spawnHighVerdict: 1, failOpen: 0, total: 1 });
 });
 
-test("garbage classifier output counts as fail-open, a non-spawn-high verdict as neither (HIMMEL-948)", async () => {
+test("garbage classifier output counts as fail-open, a non-spawn-high verdict as neither", async () => {
   resetTriageCounters();
   await classifyForSpawn("a", { invoke: async () => "maybe", timeoutMs: 1000 });
   await classifyForSpawn("b", { invoke: async () => "ack", timeoutMs: 1000 });

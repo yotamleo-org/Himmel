@@ -305,7 +305,7 @@ case "$out" in
     *) fail "C6: the halt cleared the quarantine silently" "$out" ;;
 esac
 
-echo "RUN C-TZ: end-to-end stop of a live process under a non-UTC TZ (HIMMEL-3791 judge J1396B)"
+echo "RUN C-TZ: end-to-end stop of a live process under a non-UTC TZ (judge J1396B)"
 
 # proc_tree_process_identity (proc-tree.sh) pins TZ=UTC when it samples
 # `ps -o lstart=`, so identity_started_epoch (stop-worker.sh) must parse that
@@ -526,7 +526,7 @@ else
     echo "  SKIP: F7-F9 require the Windows/MSYS _PROC_TREE_PROC_ROOT liveness seam (proc_tree_process_alive uses kill -0 on this platform and ignores it)"
 fi
 
-echo "RUN G: registry-root override gating (HIMMEL-1693 CR, codex-1)"
+echo "RUN G: registry-root override gating (CR, codex-1)"
 
 # G1: a plain BRIDGE_ROOT env WITHOUT the explicit STOP_WORKER_BRIDGE_ROOT_OVERRIDE
 # flag must be IGNORED -- the canonical root (~/.claude/handover/bridge) is used
@@ -565,7 +565,7 @@ case "$out" in
     *) fail "G4: no TEST OVERRIDE banner printed" "$out" ;;
 esac
 
-echo "RUN H: STOP_WORKER_GRACE_SECS validation (HIMMEL-1693 CR round 2)"
+echo "RUN H: STOP_WORKER_GRACE_SECS validation (CR round 2)"
 
 # H1: a non-numeric GRACE must be rejected BEFORE it ever reaches
 # proc_tree_terminate's `sleep "$grace"` -- a bad value there fails sleep at

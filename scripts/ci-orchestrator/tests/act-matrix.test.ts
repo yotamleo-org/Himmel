@@ -18,7 +18,7 @@ describe("act-matrix", () => {
     }
   });
 
-  test("shell-unit-shard is the heavy multi-OS matrix job; shell-unit is the cheap aggregator (HIMMEL-2880)", () => {
+  test("shell-unit-shard is the heavy multi-OS matrix job; shell-unit is the cheap aggregator", () => {
     const m = loadMatrix();
     expect(m["ci:shell-unit-shard"].os).toEqual(["linux", "windows", "macos"]);
     expect(m["ci:shell-unit-shard"].heavy).toBe(true);

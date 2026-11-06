@@ -57,6 +57,25 @@ for marker in PARKED-USAGE PARKED-BANK; do
     check "$marker second owner is recorded as the lock holder" "$TS_OWNER_DOC" "$tmp/parked.md"
 done
 
+# A wrapped owner with no PR and no merge row: an In Progress ticket stays In Progress (D6n) only when
+# the brief says Completes ticket: no above ## Results; every other brief keeps D6 (To Do).
+brief() { # <flag-line|-> - the owner doc: the Completes ticket line (when given) above ## Results
+    { [ "$1" = - ] || printf '> **Completes ticket:** %s\n\n' "$1"
+      printf '## Results (newest at the bottom)\n- 10:00 WRAPPED — ended\n'; } > "$tmp/owner.md"
+    jq -nc --arg doc "$tmp/owner.md" '{doc:$doc,docs:[$doc],prs:{}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9001.json"
+    ts_derive HIMMEL-9001
+}
+brief no
+check "completes no: an In Progress ticket stays In Progress" "$TS_RULE/$TS_DERIVED" 'D6n/In Progress'
+brief yes
+check "completes yes: To Do" "$TS_RULE/$TS_DERIVED" 'D6/To Do'
+brief -
+check "no flag line: To Do" "$TS_RULE/$TS_DERIVED" 'D6/To Do'
+printf 'HIMMEL-9001\tTask\tIn Review\n' > "$TS_SNAPSHOT_DIR/jira.tsv"
+brief no
+check "completes no with Jira In Review: To Do" "$TS_RULE/$TS_DERIVED" 'D6/To Do'
+printf 'HIMMEL-9001\tTask\tIn Progress\n' > "$TS_SNAPSHOT_DIR/jira.tsv"
+
 # ts_merge_rows drops a pre-merge row whose PR did not merge; ts_partial_merge and
 # ts_done_pending read through it. The gh seam answers: PR 11 OPEN, PR 12 MERGED at h12, PR 13 never asked.
 cat > "$tmp/mrgh" <<'EOF'

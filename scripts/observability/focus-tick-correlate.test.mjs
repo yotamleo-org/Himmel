@@ -1,4 +1,4 @@
-// LUNA-131 Task 9d (acceptance 2 / D16). node:test suite for
+// Sweeper plan Task 9d (acceptance 2 / D16). node:test suite for
 // focus-tick-correlate.mjs -- the correlator is the only thing in the plan
 // that computes acceptance 2's PASS/FAIL statistic, so this suite proves it
 // actually discriminates: C1 plants a real correlation and requires the

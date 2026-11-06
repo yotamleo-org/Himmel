@@ -11,7 +11,7 @@ import { request } from '../client.js';
 
 const mockRequest = request as unknown as ReturnType<typeof vi.fn>;
 
-describe('jqlStatusClause (HIMMEL-112)', () => {
+describe('jqlStatusClause', () => {
   it('defaults to the open statuses when status is undefined', () => {
     expect(jqlStatusClause(undefined)).toBe('status in ("To Do","Planning","Ready","In Progress")');
   });
@@ -63,7 +63,7 @@ describe('jqlStatusClause (HIMMEL-112)', () => {
   });
 });
 
-describe('resolveListJql (HIMMEL-215)', () => {
+describe('resolveListJql', () => {
   it('passes --jql through verbatim, ignoring project/status/type', () => {
     expect(
       resolveListJql({
@@ -112,7 +112,7 @@ describe('resolveListJql (HIMMEL-215)', () => {
   });
 });
 
-describe('resolveListJql --label (HIMMEL-243)', () => {
+describe('resolveListJql --label', () => {
   it('composes a labels clause into the built JQL', () => {
     expect(resolveListJql({ project: 'HIMMEL', label: 'ai-tasklist' })).toBe(
       'project=HIMMEL AND status in ("To Do","Planning","Ready","In Progress") AND labels = "ai-tasklist" ORDER BY created DESC',
@@ -158,7 +158,7 @@ describe('resolveListJql --label (HIMMEL-243)', () => {
   });
 });
 
-describe('list --labels display flag (HIMMEL-3610)', () => {
+describe('list --labels display flag', () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {

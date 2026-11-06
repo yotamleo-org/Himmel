@@ -255,7 +255,7 @@ class FetchHealthTests(unittest.TestCase):
         # bare mid-token `#` (kept), and an unmatched opening quote (verbatim).
         clean = fetch_health._clean_dotenv_value
         self.assertEqual(clean('"secret"'), "secret")
-        self.assertEqual(clean(r'"abc\"def"'), r'abc\"def')  # HIMMEL-1476: escaped quote is not the delimiter
+        self.assertEqual(clean(r'"abc\"def"'), r'abc\"def')  # an escaped quote is not the delimiter
         self.assertEqual(clean("'secret'"), "secret")
         self.assertEqual(clean('"value" # trailing comment'), "value")
         self.assertEqual(clean("tok_abc # scoped to fetch-health"), "tok_abc")
@@ -608,7 +608,7 @@ class KeyringReaderTests(unittest.TestCase):
 
 
 class InstagramScraplingProbeTests(unittest.TestCase):
-    """HIMMEL-4675: the cookieless Scrapling path the media rung now tries first."""
+    """the cookieless Scrapling path the media rung now tries first."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -668,7 +668,7 @@ class InstagramScraplingProbeTests(unittest.TestCase):
 
 
 class XYouTubeScraplingProbeTests(unittest.TestCase):
-    """HIMMEL-4677: the cookieless Scrapling paths X and YouTube use."""
+    """the cookieless Scrapling paths X and YouTube use."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -760,7 +760,7 @@ class XYouTubeScraplingProbeTests(unittest.TestCase):
         self.assertIn("yt_dlp_error", r.reason)
 
 class InstagramGuardTests(unittest.TestCase):
-    """HIMMEL-4306: the Instagram probes share the throttle and cache their
+    """the Instagram probes share the throttle and cache their
     verdict, so status/doctor runs stop hitting the operator's account."""
 
     def setUp(self):

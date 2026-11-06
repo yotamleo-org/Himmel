@@ -14,7 +14,7 @@ import { pageHref } from "../../public/nav.js";
 import { FLEET_URL } from "./stream";
 import { FleetFilterBar } from "./FleetMenu";
 import { chainKey, chiefCounts, cloudPhase, consoleHash, fleetSections, NO_FILTERS, rowHref, runHash, shortName, type Filters, type ProcessOrphan, type Row } from "./fleet-model";
-import { BoardContext, cardOf, DrawerView, Legend, StageDots, StateChip, Swatch, Trends, RollupCards, useBoard, useBoardCtx, useDrawerKeys, useRollup, type BoardCtx, type Panel } from "./Board";
+import { BoardContext, cardOf, DrawerView, Legend, SectionsStrip, StageDots, StateChip, Swatch, Trends, RollupCards, useBoard, useBoardCtx, useDrawerKeys, useRollup, type BoardCtx, type Panel } from "./Board";
 import { joinBoard, needsShown, openAt, parseView, viewHash, type Drawer, type Stage } from "./board-model";
 export { rowHref, orphanReason, visibleRows, consoleGroups, type Row } from "./fleet-model";
 type Node = { row: Row; kids: Node[] };
@@ -190,6 +190,7 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
         {tab === "trends" && board && <Trends board={board} rollup={rollup} onCard={(card) => setPanel({ kind: "card", card })} />}
         {tab === "trends" && !board && <><p className="quiet">{boardError ? `The board could not be read: ${boardError}.` : "Loading the board…"}</p><div className="bd-trends"><RollupCards rollup={rollup} /></div></>}
         {tab === "fleet" && board && <Legend board={board} groups={["verb", "stage", "state"]} />}
+        {tab === "fleet" && board && <SectionsStrip sections={board.sections} />}
         {tab === "fleet" && <>
         {fleet && <FleetFilterBar rows={all} procs={fleet.processOrphans} />}
         <details className="bd-legend">

@@ -237,7 +237,7 @@ test("a secret straddling the summary cut is redacted whole, not left as a fragm
   expect(c.activity.summary).not.toContain(secret.slice(0, 20));
 });
 
-test("a value only the keyring holds is masked in the census (HIMMEL-8565)", async () => {
+test("a value only the keyring holds is masked in the census", async () => {
   const kdir = mkdtempSync(join(tmpdir(), "agui-fleet-kr-"));
   cleanups.push(() => rmSync(kdir, { recursive: true, force: true }));
   const kr = "kr-only-" + "q7x2".repeat(2);
@@ -501,15 +501,31 @@ test("graph: the worker hangs under its console, the console names its predecess
 test("usage: summed per API call across the journal and its subagents, filled against the session's own ceiling", async () => {
   const { port } = boot();
   const by = Object.fromEntries((await (await fleet(port)).json()).sessions.map((s: any) => [s.name, s]));
-  // Worker: 2 main calls + 1 subagent call, each 10 in / 100 out / 40000 cache read; --autocompact 200000.
+  // Worker: 2 main calls + 1 subagent call, each 10 in / 100 out / 40000 cache read; --autocompact 200000 on a plain
+  // model, whose real window is 1M (what context-fill.sh divides by): autocompact is where it compacts, not its window.
   expect(by[FLEET.worker.name].usage).toEqual({
     calls: 3, input: 30, output: 300, cacheRead: 120000, cacheCreate: 0, costEq: Math.round(30 + 12000 + 1500),
-    resident: 40010, ceiling: 200000, ceilingFrom: "autocompact", fill: 20,
+    resident: 40010, ceiling: 1000000, ceilingFrom: "window", fill: 4,
   });
   // Chief: --autocompact auto on a [1m] model runs against the 1m window.
   expect(by[FLEET.console.name].usage).toMatchObject({ calls: 1, ceiling: 1000000, ceilingFrom: "window", fill: 4 });
   // The idle session's journal carries no usage record: not measured, not zero.
   expect(by[FLEET.idle.name].usage).toBeNull();
+});
+
+test("usage: the context percent shown equals context-fill.sh --percent on the same transcript, a subagent's usage left out", async () => {
+  const { port, journal, dir } = boot();
+  const by = Object.fromEntries((await (await fleet(port)).json()).sessions.map((s: any) => [s.name, s]));
+  // the script's estimate path: a stale snapshot for the transcript (window 1M, as a plain launch reports) plus the transcript's newest turn
+  const cfg = join(dir, "claude-config"), env = { PATH: process.env.PATH!, CLAUDE_CONFIG_DIR: cfg, CONTEXT_FILL_TRANSCRIPT: journal(FLEET.worker) };
+  const cache = spawnSync("bash", [join(import.meta.dir, "../../context-fill.sh"), "--cache-path"], { env, encoding: "utf8" }).stdout.trim();
+  mkdirSync(join(cfg, "plugins", "claude-hud", "context-cache"), { recursive: true });
+  writeFileSync(cache, JSON.stringify({ used_percentage: 4, remaining_percentage: 96, context_window_size: 1000000, saved_at: 1 }));
+  const r = spawnSync("bash", [join(import.meta.dir, "../../context-fill.sh"), "--percent"], { env, encoding: "utf8" });
+  expect(r.stdout.trim()).toBe("~4% (est)");
+  expect(by[FLEET.worker.name].usage.fill).toBe(Number(/\d+/.exec(r.stdout)![0]));
+  // 40010 resident tokens: the same figure over a 200k ceiling is the 20 % that main showed
+  expect(by[FLEET.worker.name].usage.resident).toBe(40010);
 });
 
 // a cloud session has no local process, so its node comes from the chief bucket's cloud-route.jsonl
@@ -579,7 +595,7 @@ test("the codex bank row reads CODEX_USAGE_CACHE", async () => {
   expect((await (await fleet(s.port)).json()).banks.codex).toMatchObject({ weeklyPct: 47 });
 });
 
-test("HIMMEL-4817: a claudex worker renders lane, backend model, codex-bank cost row and eval row", async () => {
+test("a claudex worker renders lane, backend model, codex-bank cost row and eval row", async () => {
   const now = Date.now();
   const bankDir = mkdtempSync(join(tmpdir(), "agui-bank-")), bank = join(bankDir, "codex-bank.json");
   cleanups.push(() => rmSync(bankDir, { recursive: true, force: true }));

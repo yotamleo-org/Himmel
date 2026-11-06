@@ -282,6 +282,24 @@ fp_ok 'worker phase moved' fp6
 if [ "$fp5" != "$fp6" ]; then pass 'a worker phase change moves the fingerprint (HIMMEL-3990)'; else fail 'a worker phase change left the fingerprint'; fi
 fp_ok 'worker phase unchanged' fp7
 if [ "$fp6" = "$fp7" ]; then pass 'the fingerprint is stable when nothing moved (HIMMEL-3990)'; else fail 'the fingerprint moved with no input change'; fi
+# one --emit-fp run reads each worker doc's marker once (live_legs and actuals both ask for it)
+leg_reads="$(python3 -I -c '
+import collections, contextlib, io, sys
+sys.path.insert(0, sys.argv[1])
+import tracker
+reads = collections.Counter()
+real_open = open
+def counting_open(p, *a, **k):
+    if sys._getframe(1).f_code.co_name in ("leg_marker", "_leg_marker"):
+        reads[p] += 1
+    return real_open(p, *a, **k)
+tracker.open = counting_open
+sys.argv = ["tracker.py"] + sys.argv[2:]
+with contextlib.redirect_stdout(io.StringIO()):
+    tracker.main()
+print(max(reads.values()) if reads else 0)
+' "$HERE" --plan-dir "$plan" --out "$out" --luna-map "$W/luna-map.json" --mirror-dir "$mir" --luna-root "$W/luna" --handovers "$W/luna/handovers/tester/himmel" --emit-fp)"
+equals 'one --emit-fp run reads each worker doc marker once' "$leg_reads" 1
 rm -rf "$hb/.locks/queue/live.lock"
 render >/dev/null
 not_contains 'a released lock clears the live worker (HIMMEL-3990)' "$(cat "$out")" '"1":["N55"'

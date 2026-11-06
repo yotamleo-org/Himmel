@@ -1,9 +1,9 @@
 // billed-exempt: the release manager rm-run judge; run by the chief on purpose, bank-preflight gated
 import { execFileSync, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Command } from 'commander';
 import { authHeader, baseUrl, projectKey, request } from '../client.js';
@@ -319,16 +319,60 @@ export const liveJudge: Judge = async (input) => {
   } catch (e) {
     process.stderr.write(`rm-run: launch record not written: ${e instanceof Error ? e.message : String(e)}\n`);
   }
+  let out: string | undefined;
+  let rc = 1;
   try {
-    const out = execFileSync('claude', [
+    out = execFileSync('claude', [
       '-p', '--session-id', sid, '--settings', settings, '--model', 'opus', '--effort', 'high', '--output-format', 'json', '--permission-mode', 'plan',
       '--tools', '', '--max-turns', '1', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
     ], { input: judgePrompt(input, skill), cwd, env: judgeEnv(process.env), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: JUDGE_TIMEOUT_S * 1000, stdio: ['pipe', 'pipe', 'inherit'] });
+    rc = 0;
     return parseDecisions(out);
+  } catch (e) {
+    rc = typeof (e as { status?: unknown }).status === 'number' ? (e as { status: number }).status : 1;
+    throw e;
   } finally {
+    recordJudgeLaunch(sid, rc, out);
     rmSync(cwd, { recursive: true, force: true });
   }
 };
+
+// The ledger directory the API launcher writes launches.jsonl to (claude-api.sh launch_dir): beside the credit state
+// path when the seam names one, else beside the credit config's ledger_path, else the default state dir.
+function launchLedgerDir(env: NodeJS.ProcessEnv = process.env): string {
+  const home = env.HOME ?? homedir();
+  const stateDir = join(home, '.himmel', 'state', 'api-credit');
+  if (env.HIMMEL_API_CREDIT_STATE) return dirname(resolve(env.HIMMEL_API_CREDIT_STATE));
+  try {
+    const ledger = (JSON.parse(readFileSync(env.HIMMEL_API_CREDIT_CONFIG || join(stateDir, 'config.json'), 'utf8')) as { ledger_path?: unknown }).ledger_path;
+    if (typeof ledger === 'string' && isAbsolute(ledger)) return dirname(ledger);
+  } catch { /* no readable config: the default state dir */ }
+  return stateDir;
+}
+
+// The native judge run's row in launches.jsonl, the one ledger the cost page reads, carrying the session id so the run
+// reconciles with its transcript (scripts/usage/release-judge-reconcile.sh). The cost is the call's own verified
+// total_cost_usd (scripts/api-lane/outcome.mjs's rule), empty when the call failed or printed none. Best-effort like the launch
+// record: a row that cannot be written is said on stderr and the judge goes on.
+function recordJudgeLaunch(sid: string, rc: number, out: string | undefined): void {
+  let cost = '';
+  try {
+    const r = JSON.parse(out ?? '') as { type?: unknown; is_error?: unknown; total_cost_usd?: unknown };
+    if (r && r.type === 'result' && r.is_error === false && typeof r.total_cost_usd === 'number' && Number.isFinite(r.total_cost_usd) && r.total_cost_usd >= 0) cost = r.total_cost_usd.toFixed(6);
+  } catch { /* unparseable output: cost stays empty */ }
+  const row = {
+    ts: new Date().toISOString().slice(0, 19) + 'Z', job_id: '', session_id: sid, account: '', lane: 'native', model: 'opus', budget_usd: '',
+    outcome: rc === 0 ? 'native' : 'native-failed', cost_usd: '', sub_cost_usd: cost, rc, kind: 'judge',
+    input_tokens: null, cache_creation_tokens: null, cache_read_tokens: null, branch: '', head: '', pr: null,
+  };
+  try {
+    const dir = launchLedgerDir();
+    mkdirSync(dir, { recursive: true });
+    appendFileSync(join(dir, 'launches.jsonl'), `${JSON.stringify(row)}\n`);
+  } catch (e) {
+    process.stderr.write(`rm-run: judge launch row not written: ${e instanceof Error ? e.message : String(e)}\n`);
+  }
+}
 
 // The judge reaches the API lane only when the role map (roles.json beside the account config) maps
 // `judge`. The cap and the one timeout every judge call shares (liveJudge's kill, routedJudge's spawn kill and the
@@ -488,7 +532,7 @@ export function refuseTestKeyMint(release: string): void {
 const JIRA_POSTING_VERBS = new Set(['apply', 'rm-run']);
 
 export function registerRelease(program: Command): void {
-  const rel = program.command('release').description('Release ledger: placement rulings, lease and burn-down state (HIMMEL-6796)');
+  const rel = program.command('release').description('Release ledger: placement rulings, lease and burn-down state');
   rel.hook('preAction', (_release, action) => {
     // leaks reads unless --comment is set: that posts a real Jira comment and updates the breadcrumb state.
     const verb = action.name();

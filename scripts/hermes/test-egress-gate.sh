@@ -80,7 +80,7 @@ check "handover brief x anthropic allowed" 0 "$rc"
 gate "$BRIEF" ollama
 check "handover brief x ollama (local-ollama alias) allowed" 0 "$rc"
 gate "$BRIEF" openrouter
-check "handover brief x openrouter allowed (HIMMEL-1774 inference cell)" 0 "$rc"
+check "handover brief x openrouter allowed (inference cell)" 0 "$rc"
 check "each permitted gated dispatch wrote one ledger line" 4 "$(wc -l < "$HIMMEL_HERMES_EGRESS_LEDGER" | tr -d ' ')"
 check_contains "ledger line carries corpus+verdict" '"corpus":"handover-state"' "$(cat "$HIMMEL_HERMES_EGRESS_LEDGER")"
 
@@ -99,9 +99,9 @@ gate "$TMP/salusproj/p.md" deepseek
 check "salus x deepseek refused" 4 "$rc"
 # Operator ruling 2026-10-08: codex inference is allowed on luna and salus.
 gate "$TMP/salusproj/p.md" openai-codex
-check "salus x openai-codex allowed (HIMMEL-5002 ruling)" 0 "$rc"
+check "salus x openai-codex allowed (ruling)" 0 "$rc"
 gate "$TMP/luna/journal/n.md" openai-codex
-check "luna-personal x openai-codex allowed (HIMMEL-5002 ruling)" 0 "$rc"
+check "luna-personal x openai-codex allowed (ruling)" 0 "$rc"
 gate "$TMP/salusproj/p.md" ollama
 check "salus x ollama (conditional opt-in) refused — gate cannot verify the opt-in" 4 "$rc"
 

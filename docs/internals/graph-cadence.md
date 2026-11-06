@@ -157,7 +157,10 @@ Two ledgers, both written every run:
    {"ts":"2026-09-06T14:34:57Z","head":"<origin/main sha>","graph_head":"<built_at_commit>","merges_behind":21,"action":"merged","pr":"https://github.com/.../pull/42","duration_s":36,"error":null}
    ```
 
-   `action` is one of `skipped | failed | refreshed | published | merged` —
+   `action` is one of `skipped | failed | refreshed | published | published-channel | merged` —
+   `published-channel` means the run pushed its graph to the `graph-data`
+   branch (see [Sharing the graph](#sharing-the-graph--the-graph-data-branch-himmel-9156)).
+   For the other actions,
    see `graph-cadence.sh`'s header for the full classification (in short:
    `published`, not `failed`, ONLY when `merge-on-green.sh` exits with a
    documented time-resolving deferral — check-ci gate not green, or an
@@ -282,6 +285,63 @@ explicit `GRAPHIFY_MAX_CONCURRENCY` wins, and an ollama-cloud model keeps 6.
   recorded action is `failed`, or the row's action is unrecognized/
   undetermined (a missing `jq`, or an unparseable row — "cannot tell" must
   never render as "healthy").
+
+## Sharing the graph — the graph-data branch (HIMMEL-9156)
+
+One station pays for the semantic pass. Every other station gets the result
+for free.
+
+**Publishing (the one station).** A `--semantic` run that promotes its graph
+then runs `scripts/graphify/publish-graph-channel.sh`. The script publishes
+four files to the `graph-data` branch: `graph.json`, `GRAPH_REPORT.md`,
+`manifest.json`, and a one-line `built_at_commit`. Nothing else is
+published: no `graph.html`, no cache, no run log. The branch holds one commit
+with no parent, and each publish replaces it (`--force-with-lease`). The
+ledger row reads `action=published-channel`.
+
+The script refuses to publish when:
+
+- one of the files is missing;
+- `graph.json` names no exact commit;
+- the graph has no semantic layer, meaning `semantic-manifest.json` is
+  missing or lists no files.
+
+**The scan.** Before it pushes, the script scans the exact bytes it is about
+to push, in two ways:
+
+- gitleaks, with the repo's `.gitleaks.toml`;
+- a pattern for host paths, such as home folders, user-profile folders and
+  session scratch folders.
+
+Any hit blocks the push. If gitleaks is missing or errors, the push is
+blocked too. A blocked push fails the run with `action=failed` and exit 3.
+
+**The alert.** Every refusal raises a cadence alert on the worker
+`graph-channel-publish`. The alert and the ledger name the file and the
+rule, for example `file=graph.json rule=host-path`, and never the matched
+text. The next clean publish clears the alert.
+
+**Fetching (every other station).** `himmel-update.sh` runs `sync_graph`
+after `sync_graphify`, and its status table shows a `graph` row. It fetches
+`graph-data` and installs the graph only when all of these hold:
+
+- the graph's build commit is in this checkout's history;
+- the build commit is at most 150 commits behind `HEAD`
+  (`HIMMEL_UPDATE_GRAPH_MAX_BEHIND` changes the limit);
+- the fetched bytes contain no host path;
+- the `built_at_commit` file matches the commit inside `graph.json`.
+
+The files are staged in a temp folder, then moved into `graphify-out/`
+with one rename per file. The fetch then stamps the semantic manifest
+(`semantic-update.sh --seed-manifest`, with no model call) from the docs as
+they stood at the build commit. The next semantic pass then has nothing left
+to do, except for docs that changed after that commit.
+
+If the graph is stale, off this checkout's history, missing or tampered
+with, the station stays AST-only and `graphify-out/` is not touched.
+`--check` reports what it would fetch and writes nothing. A station with
+`graphify.semantic_api_ok` set to true in `~/.himmel/config.json` is the
+publisher, so it never fetches.
 
 ## Luna graph freshness (HIMMEL-6551)
 

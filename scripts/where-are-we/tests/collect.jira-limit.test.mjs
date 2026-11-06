@@ -25,7 +25,7 @@ test('jiraQueries: reads In Progress project-wide (no combined comma filter)', (
   assert.ok(!statuses.some((s) => s.includes(',')), 'must NOT use a combined comma status filter (the truncation source)');
 });
 
-test('jiraQueries: does NOT issue a blanket To-Do status read (HIMMEL-679 flood fix)', () => {
+test('jiraQueries: does NOT issue a blanket To-Do status read (the backlog-flood fix)', () => {
   const statuses = jiraQueries([]).filter(isStatusQuery).map(statusOf);
   assert.ok(!statuses.includes('To Do'), 'the whole-backlog To-Do read is dropped; To-Do surfaces only by footprint key');
 });

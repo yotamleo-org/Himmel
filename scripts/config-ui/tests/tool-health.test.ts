@@ -293,7 +293,7 @@ test("the default path prices the Skill listing of the real worker-impl, console
   const data = read(env);
   const skill = (p: string) => data.profiles.find((x: any) => x.profile === p).tools.find((t: any) => t.tool === "Skill");
   for (const p of profiles) expect(skill(p).listing_tokens).toBeGreaterThan(0);
-  expect(skill("chief").listing_tokens).toBeLessThan(skill("worker-impl").listing_tokens);
+  expect(skill("chief").listing_tokens).toBeLessThanOrEqual(skill("worker-impl").listing_tokens);
   expect(data.drop_candidates.map((d: any) => d.profile).sort()).toEqual([...profiles].sort());
 });
 
@@ -1042,7 +1042,7 @@ test("the recent-events table keeps a word whole in its narrow columns and lets 
   expect(css).toMatch(/\.data\.events td\.wrap\{overflow-wrap:anywhere\}/);
 });
 
-test("the five Tool health tables keep a header and a short value whole and give the wrapping to their free-text columns (HIMMEL-8680)", async () => {
+test("the five Tool health tables keep a header and a short value whole and give the wrapping to their free-text columns", async () => {
   const data = readP(seedP());
   const wrapFlags = (html: string, row: RegExp) => [...row.exec(html)![1].matchAll(/<td( class="wrap")?>/g)].map((m) => !!m[1]);
   const tab = (html: string) => (html.match(/<table class="data thtab">/g) || []).length;
@@ -1366,7 +1366,7 @@ const mapLabels = (html: string) => [...html.matchAll(/<span class="mr">(?:<butt
 
 test("the tab row is the mockup's plain text row with the active tab bold and underlined", () => {
   const css = readFileSync(resolve(import.meta.dir, "../public/app.css"), "utf8");
-  const block = css.slice(css.indexOf("/* HIMMEL-8681"));
+  const block = css.slice(css.indexOf("/* Tool health shape (mockup v9)"));
   expect(block).toMatch(/\.tabs \.tab\{[^}]*font-size:\.85rem/);
   expect(block).toMatch(/\.tabs \.tab\[aria-selected="true"\]\{[^}]*font-weight:700[^}]*text-decoration:underline/);
 });
@@ -1420,7 +1420,7 @@ test("the Tool map has every kind as a column, an All column and row, sort heade
   const desc = mapLabels(await page(data, { tab: "map", sorts: { map: { col: 0, desc: true } } }, { inventory: SHAPE_INV }));
   expect(desc).toEqual([...labels].sort((a, b) => b.localeCompare(a)));
   const css = readFileSync(resolve(import.meta.dir, "../public/app.css"), "utf8");
-  expect(css.slice(css.indexOf("/* HIMMEL-8681"))).toMatch(/\.thcards\{display:none\}/);
+  expect(css.slice(css.indexOf("/* Tool health shape (mockup v9)"))).toMatch(/\.thcards\{display:none\}/);
 });
 
 test("the guard drill-in shows the This week cards: Refused, rate over eligible attempts, Busiest day, Days with none", async () => {

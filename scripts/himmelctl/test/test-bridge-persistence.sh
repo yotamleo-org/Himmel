@@ -308,7 +308,7 @@ process.env.BRIDGE_PERSISTENCE_STUB_STATE = STUB_STATE;
   // template would violate exactly that, which is the structural reason this
   // fix does not live in the unit file.
   const execStartLines = content.split('\n').filter((l) => l.startsWith('ExecStart='));
-  check('install: ExecStart routes through restart-bridge.sh (carries the HIMMEL-2582 PATH prepend)',
+  check('install: ExecStart routes through restart-bridge.sh (carries the PATH prepend)',
     true, execStartLines.length === 1 && /restart-bridge\.sh/.test(execStartLines[0]));
   check('install: unit declares no Environment=PATH= (the tool dirs are the launcher\'s job, not the template\'s)',
     false, /^Environment=PATH=/m.test(content));

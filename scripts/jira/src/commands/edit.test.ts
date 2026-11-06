@@ -94,7 +94,7 @@ describe('edit', () => {
     expect((fields.description as { type: string }).type).toBe('doc');
   });
 
-  it('maps --labels to a full-replace labels array (HIMMEL-243)', () => {
+  it('maps --labels to a full-replace labels array', () => {
     const fields = buildEditFields({ labels: 'a, b ,c' });
     expect(fields).toEqual({ labels: ['a', 'b', 'c'] });
   });
@@ -148,7 +148,7 @@ describe('edit', () => {
     expect(buildEditFields({ removeLabels: 'held' })).toEqual({});
   });
 
-  it('maps --fix-version to a full-replace fixVersions array (HIMMEL-3713)', () => {
+  it('maps --fix-version to a full-replace fixVersions array', () => {
     const fields = buildEditFields({ fixVersion: 'v1.0.0' });
     expect(fields).toEqual({ fixVersions: [{ name: 'v1.0.0' }] });
   });
@@ -172,7 +172,7 @@ describe('edit', () => {
   });
 });
 
-describe('edit --add-labels (HIMMEL-3610)', () => {
+describe('edit --add-labels', () => {
   let mockRequest: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
@@ -259,7 +259,7 @@ describe('edit --add-labels (HIMMEL-3610)', () => {
   });
 });
 
-describe('edit --fix-version / --add-fix-version (HIMMEL-3713)', () => {
+describe('edit --fix-version / --add-fix-version', () => {
   let mockRequest: ReturnType<typeof vi.fn>;
   const origProject = process.env.JIRA_PROJECT_KEY;
 
@@ -316,7 +316,7 @@ describe('edit --fix-version / --add-fix-version (HIMMEL-3713)', () => {
     expect((putCall?.[2] as { fields?: unknown }).fields).toBeUndefined();
   });
 
-  it('validates against the ISSUE KEY\'s own project, not the configured default (HIMMEL-3713 CR fix)', async () => {
+  it('validates against the ISSUE KEY\'s own project, not the configured default', async () => {
     const { registerEdit } = await import('./edit.js');
     const p = freshProgram(registerEdit);
     await p.parseAsync(['node', 'jira', 'edit', 'OTHER-1', '--fix-version', 'v1.0.0']);
@@ -361,7 +361,7 @@ describe('edit --fix-version / --add-fix-version (HIMMEL-3713)', () => {
   });
 });
 
-describe('edit read-back of every field it sends (HIMMEL-4644)', () => {
+describe('edit read-back of every field it sends', () => {
   let mockRequest: ReturnType<typeof vi.fn>;
   const origProject = process.env.JIRA_PROJECT_KEY;
   const origSeverity = process.env.JIRA_SEVERITY_FIELD;
@@ -549,7 +549,7 @@ describe('edit read-back of every field it sends (HIMMEL-4644)', () => {
   });
 });
 
-describe('edit into a frozen version (HIMMEL-6918)', () => {
+describe('edit into a frozen version', () => {
   let mockRequest: ReturnType<typeof vi.fn>;
   let dir: string;
   const ENV = ['JIRA_PROJECT_KEY', 'HANDOVER_DIR', 'HIMMEL_ADMISSIONS_LEDGER', 'HIMMEL_CONSOLE', 'HIMMEL_CONSOLE_NAME'];
@@ -681,7 +681,7 @@ describe('edit into a frozen version (HIMMEL-6918)', () => {
   });
 });
 
-describe('edit --residual-of (HIMMEL-6544)', () => {
+describe('edit --residual-of', () => {
   let mockRequest: ReturnType<typeof vi.fn>;
   type Issue = { labels?: string[]; fixVersions?: Array<{ name: string }> };
   let issues: Record<string, Issue>;
@@ -733,7 +733,7 @@ describe('edit --residual-of (HIMMEL-6544)', () => {
     expect(put.body.update?.['fixVersions']).toBeUndefined();
   });
 
-  it('a residual dropped to the backlog queues an INTAKE under a declared release (HIMMEL-7152)', async () => {
+  it('a residual dropped to the backlog queues an INTAKE under a declared release', async () => {
     const root = mkdtempSync(join(tmpdir(), 'edit-intake-'));
     vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(root, 'state'));
     vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(root, 'keys'));

@@ -753,6 +753,35 @@ fill_env_core() {
   fi
 }
 
+# verify_qmd_reranker — report whether qmd can rerank on this machine. Rerank is the
+# largest single retrieval gain measured, and an adopter with no OpenRouter key takes the
+# local route: the reranker gguf that `qmd pull` fetches. Three outcomes, none fatal: QMD_RERANK=off in
+# the environment (WARN), a remote reranker set by QMD_RERANK_MODEL or the qmd config (OK), the local
+# reranker model in the cache (OK) or missing (WARN with the remedy). The doctor's C89 check runs the same test.
+verify_qmd_reranker() {
+  case "$(printf '%s' "${QMD_RERANK:-}" | tr '[:upper:]' '[:lower:]')" in
+    off|0|false)
+      echo "  WARNING: QMD_RERANK=${QMD_RERANK} turns qmd's reranker off for every search — unset it so searches rerank." >&2
+      return 0 ;;
+  esac
+  local cfg="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/index.yml"
+  local models="${XDG_CACHE_HOME:-$HOME/.cache}/qmd/models"
+  case "$(printf '%s' "${QMD_RERANK_MODEL:-}" | tr '[:upper:]' '[:lower:]')" in
+    openai:*) echo "  qmd rerank: remote reranker configured (QMD_RERANK_MODEL)."; return 0 ;;
+  esac
+  if grep -Eqis "^[[:space:]]*rerank:[[:space:]]*[\"']?openai:" "$cfg" 2>/dev/null; then
+    echo "  qmd rerank: remote reranker configured ($cfg)."
+    return 0
+  fi
+  if compgen -G "$models/*reranker*.gguf" >/dev/null 2>&1; then
+    echo "  qmd rerank: local reranker model present (pass rerank:true on the MCP query tool; see the qmd skill)."
+  else
+    echo "  WARNING: no local reranker model under $models — qmd searches will be unreranked." >&2
+    echo "  Pull it: qmd pull" >&2
+  fi
+  return 0
+}
+
 # wire_qmd_core — wire the qmd search stack end-to-end:
 # fix the broken plugin-cache stub, install the qmd CLI if missing (qmd_install
 # clones the himmel qmd fork, builds it with bun, and junctions/symlinks it
@@ -798,6 +827,13 @@ wire_qmd_core() {
       echo "  WARNING: qmd pull failed — semantic search needs the models." >&2
       echo "  Pull manually: qmd pull" >&2
     fi
+  fi
+  # An adopter with no OpenRouter key searches on the local models, so confirm the local
+  # reranker really is there after the pull. WARN-not-fail like the pull.
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "DRY: verify the qmd reranker (local reranker model present, QMD_RERANK not off)"
+  elif has_qmd; then
+    verify_qmd_reranker
   fi
   # Register the himmel clone itself as a collection.
   if [[ $DRY_RUN -eq 1 ]]; then

@@ -81,7 +81,19 @@ out=$(bash "$LINT" "$REPO" 2>&1); rc=$?
 [ "$rc" -eq 0 ] && ok "A1 every hook-named script in this checkout is wired or allowlisted" || no "A1 real repo: $out"
 al="$REPO/scripts/testing/unwired-hooks-allowlist.txt"
 n=0; for b in bus-deliver-hook.sh bus-deliver-sessionstart.sh; do grep -q "^$b|" "$al" && n=$((n+1)); done
-[ "$n" -eq 0 ] && grep -q "^bus-deliver-run.js|.*HIMMEL-5030" "$al" && ok "A2 the two wired bus-deliver hooks are off the allowlist; bus-deliver-run.js stays listed" || no "A2 bus-deliver allowlist entries: hooks listed $n/2, run.js not listed citing HIMMEL-5030"
+[ "$n" -eq 0 ] && grep -q "^bus-deliver-run.js|" "$al" && ok "A2 the two wired bus-deliver hooks are off the allowlist; bus-deliver-run.js stays listed" || no "A2 bus-deliver allowlist entries: hooks listed $n/2, run.js not listed"
+cfg="$REPO/.pre-commit-config.yaml"
+# stage_of <hook id>: the stages line of that local hook (the first `stages:` after its `- id:` and before the next id)
+stage_of() { awk -v id="$1" '$0 ~ "^ *- id: " id "$" {on=1; next} on && /^ *- id: / {exit} on && /stages:/ {print; exit}' "$cfg"; }
+# merge-on-green runs this suite in a minimal fixture repo with no holds.py and a stub pre-commit config: the rows below apply only where holds.py ships
+if [ -f "$REPO/scripts/handover/chief-kit/holds.py" ]; then
+case "$(stage_of write-hold-commit)" in *'[pre-commit]'*) ok "A3 write-hold-commit is a pre-commit hook" ;; *) no "A3 write-hold-commit is not wired at pre-commit" ;; esac
+case "$(stage_of write-hold-push)" in *'[pre-push]'*) ok "A4 write-hold-push is a pre-push hook" ;; *) no "A4 write-hold-push is not wired at pre-push" ;; esac
+n=$(grep -c 'holds.py git-check --staged' "$cfg"); m=$(grep -c 'holds.py git-check --push' "$cfg")
+[ "$n" -eq 1 ] && [ "$m" -eq 1 ] && ok "A5 each hook calls its own git-check verb exactly once" || no "A5 git-check --staged x$n, --push x$m in the config"
+else
+echo "  SKIP  A3-A5 no holds.py in this tree"
+fi
 
 echo; if [ "$fail" -eq 0 ]; then echo "ALL PASSED ($pass)"; exit 0; fi
 echo "FAILED: $fail"; exit 1

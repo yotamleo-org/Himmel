@@ -59,7 +59,7 @@ const CLOUD_FIXTURES = [
   { key: 'HIMMEL-4688', title: 'Scrapling YT/X extraction refinements from PR 1982 round 3', description: 'Follow-up from PR #1982.\n1. Unavailable video without videoDetails (codex-2)\nmarketplace/plugins/obsidian-triage/tools/yt-scrapling-meta.py player_response() accepts a ytInitialPlayerResponse only when its videoDetails.videoId matches.\n2. Non-English caption tracks (codex-3)\nfetch_transcript asks yt-dlp for en.*,en only.\n3. Focal-post media after a quoted post (codex-4)\nmarketplace/plugins/obsidian-triage/tools/x-scrapling-media.py main_article() keeps the focal article only up to its first nested article.' },
 ];
 
-test('LOCAL-NATIVE: station-bound ticket (HIMMEL-4660: ~/.himmel state, live ledger, test VM, cadence arming)', () => {
+test('LOCAL-NATIVE: station-bound ticket (~/.himmel state, live ledger, test VM, cadence arming)', () => {
   const v = classifyTicket(T4660, ctx());
   assert.equal(v.class, 'LOCAL-NATIVE');
   assert.match(v.reason, /run-time/);
@@ -79,7 +79,7 @@ test('CLOUD-OK: the tickets launched with HIMMEL-4660 and a passing VM-suite men
   for (const t of ['Edit scripts/vm/test-vm-e2e.sh.', 'Fix the cadence field in scripts/a.sh output.', 'It is a live-reload hook in scripts/a.sh.']) assert.equal(classifyTicket(tk({ description: t }), ctx()).class, 'CLOUD-OK', t);
 });
 
-test('CLOUD-OK: graphify and repo-only qmd search no longer route local (HIMMEL-4726: the cloud setup installs both)', () => {
+test('CLOUD-OK: graphify and repo-only qmd search no longer route local (the cloud setup installs both)', () => {
   for (const need of ['It runs graphify update.', 'It calls graphify query at run time.', 'It uses qmd search over the repo docs.', 'It reads the skills/graphify/SKILL.md text.', 'It runs qmd search "cloud" -c himmel.', "It runs qmd search -c 'himmel' x."]) {
     const v = classifyTicket(tk({ description: `Edit scripts/a.sh. ${need}` }), ctx());
     assert.equal(v.class, 'CLOUD-OK', need);
@@ -207,7 +207,7 @@ test('parseJiraGet splits the header and keeps the body verbatim', () => {
   assert.match(p.description, /Body line/);
 });
 
-test('brief does not promise the context7 MCP (HIMMEL-4971: not enabled in a cloud session)', () => {
+test('brief does not promise the context7 MCP (not enabled in a cloud session)', () => {
   const t = { ...parseJiraGet('HIMMEL-9001\tTask\tTo Do\tt\n\nFix versions: v1.0.1'), files: ['a.sh'] };
   const b = buildBrief(t, { date: '2026-10-08' });
   assert.doesNotMatch(b, /Use the context7 MCP for current library docs\./);
@@ -256,7 +256,7 @@ test('brief carries every template section, in order', () => {
 });
 
 test('launch line is exactly the konsole shape and quotes odd paths', () => {
-  assert.equal(launchLine('/b/cloud-brief-HIMMEL-1.md'), 'konsole --separate -e claude --cloud "$(cat /b/cloud-brief-HIMMEL-1.md)" --permission-mode auto');
+  assert.equal(launchLine('/b/cloud-brief-PROJ-1.md'), 'konsole --separate -e claude --cloud "$(cat /b/cloud-brief-PROJ-1.md)" --permission-mode auto');
   assert.match(launchLine('/b dir/x.md'), /cat '\/b dir\/x\.md'/);
 });
 
@@ -362,7 +362,7 @@ const STATE_SPEC = 'Spec, threat model, token budget and plan: state repo handov
 const T4827 = { key: 'HIMMEL-4827', type: 'Task', status: 'To Do', title: 'himmel-bus T4: MCP server', description: `Add the server in scripts/bus/server.mjs.\n${STATE_SPEC}` };
 const T4836 = { key: 'HIMMEL-4836', type: 'Task', status: 'To Do', title: 'himmel-bus T13: docs', description: `Document it in docs/internals/bus.md.\n${STATE_SPEC}` };
 
-test('LOCAL-NATIVE: a ticket that cites the state-repo spec (HIMMEL-4827, HIMMEL-4836)', () => {
+test('LOCAL-NATIVE: a ticket that cites the state-repo spec', () => {
   for (const t of [T4827, T4836]) {
     const v = classifyTicket(t, ctx());
     assert.equal(v.class, 'LOCAL-NATIVE', t.key);
@@ -380,7 +380,7 @@ test('CLOUD-OK: repo paths that merely resemble handover state stay cloud', () =
   for (const t of ['Edit scripts/handover/chief-kit/tick.sh.', 'Edit docs/handover/afk-mode.md.', 'Edit scripts/a.sh and scripts/lanes/specs/foo.sh.']) assert.equal(classifyTicket(tk({ description: t }), ctx()).class, 'CLOUD-OK', t);
 });
 
-test('brief makes every Jira step conditional on the Atlassian tools, with a PR-body fallback (HIMMEL-5029)', () => {
+test('brief makes every Jira step conditional on the Atlassian tools, with a PR-body fallback', () => {
   const t = { ...parseJiraGet('HIMMEL-9001\tTask\tTo Do\tt\n\nFix versions: v1.0.1'), files: ['a.sh'] };
   const b = buildBrief(t, { date: '2026-10-09' });
   assert.match(b, /If the Atlassian MCP tools are listed in this session, use them; otherwise do not try a workaround/);
@@ -401,7 +401,7 @@ const PR1982 = {
 };
 const T4686 = { key: 'HIMMEL-4686', type: 'Task', status: 'To Do', title: 'x-media-fetch: HLS segment-host allowlist', description: 'Edit marketplace/plugins/obsidian-triage/tools/x-media-fetch.py.', created: '2026-10-06T21:00:00Z' };
 
-test('VERIFY-LOCAL: a merged PR cites the ticket key after its creation (HIMMEL-4686 / PR 1982)', () => {
+test('VERIFY-LOCAL: a merged PR cites the ticket key after its creation (/ PR 1982)', () => {
   const v = classifyTicket(T4686, ctx({ merged: [PR1982] }));
   assert.equal(v.class, 'VERIFY-LOCAL');
   assert.deepEqual(v.prs, [1982]);
@@ -415,7 +415,7 @@ test('VERIFY-LOCAL: a merged PR touching a named file after the ticket was creat
   assert.deepEqual(v.prs, [1982]);
 });
 
-test('CLOUD-OK: a PR merged BEFORE the ticket existed does not count, nor does a longer key (HIMMEL-46860)', () => {
+test('CLOUD-OK: a PR merged BEFORE the ticket existed does not count, nor does a longer key', () => {
   const old = { ...PR1982, mergedAt: '2026-10-05T00:00:00Z' };
   assert.equal(classifyTicket(T4686, ctx({ merged: [old] })).class, 'CLOUD-OK');
   const longer = { ...PR1982, files: [], body: 'Deferred → HIMMEL-46860', title: 'x' };
@@ -473,7 +473,7 @@ const T4653 = {
   description: 'The fleet scorecard (scripts/lanes/bench/scorecard/) measures production.\nAsk. On a VM snapshot with a scratch repo: seed one or two frozen fixture tickets, arm a console and let it run unattended.\nEst. 3 worker-days plus heavy bank per run. VM-only (standing rule).',
 };
 
-test('HIMMEL-5218: a bare hook name in the title resolves to its path and routes HOOK-BYPASS (4503, 4517 shaped)', () => {
+test('a bare hook name in the title resolves to its path and routes HOOK-BYPASS (4503, 4517 shaped)', () => {
   for (const t of [T4503, T4517]) {
     const v = classifyTicket(t, ctx({ tree: TREE }));
     assert.equal(v.class, 'HOOK-BYPASS', t.key);
@@ -481,7 +481,7 @@ test('HIMMEL-5218: a bare hook name in the title resolves to its path and routes
   }
 });
 
-test('HIMMEL-5218: a bare hook name hits the held-file check (open PR holds the hook)', () => {
+test('a bare hook name hits the held-file check (open PR holds the hook)', () => {
   const held = [{ file: 'scripts/hooks/guard-pr-check-literal.sh', why: 'open PR 2353' }];
   for (const t of [T4503, T4517]) {
     const v = classifyTicket(t, ctx({ tree: TREE, held }));
@@ -490,7 +490,7 @@ test('HIMMEL-5218: a bare hook name hits the held-file check (open PR holds the 
   }
 });
 
-test('HIMMEL-5218: bare names resolve with or without the extension, never as part of a path or a word', () => {
+test('bare names resolve with or without the extension, never as part of a path or a word', () => {
   const v = (d) => classifyTicket(tk({ title: 't', description: `Edit docs/x.md. ${d}` }), ctx({ tree: TREE }));
   assert.equal(v('See block-destructive-commands.').class, 'HOOK-BYPASS');
   assert.equal(v('See block-destructive-commands.sh.').class, 'HOOK-BYPASS');
@@ -498,7 +498,7 @@ test('HIMMEL-5218: bare names resolve with or without the extension, never as pa
   assert.equal(v('A well-scoped, read-only change.').class, 'CLOUD-OK');
 });
 
-test('HIMMEL-5218: VM-only / on a VM / VM snapshot wording is a LOCAL-NATIVE run-time need (4653 shaped)', () => {
+test('VM-only / on a VM / VM snapshot wording is a LOCAL-NATIVE run-time need (4653 shaped)', () => {
   const v = classifyTicket(T4653, ctx({ tree: TREE }));
   assert.equal(v.class, 'LOCAL-NATIVE');
   assert.match(v.reason, /run-time need/);
@@ -507,7 +507,7 @@ test('HIMMEL-5218: VM-only / on a VM / VM snapshot wording is a LOCAL-NATIVE run
   }
 });
 
-test('HIMMEL-5218: a named file the router cannot resolve never gets CLOUD-OK', () => {
+test('a named file the router cannot resolve never gets CLOUD-OK', () => {
   const v = classifyTicket(tk({ description: 'Edit scripts/gone-dir/missing.sh.' }), ctx({ tree: TREE }));
   assert.equal(v.class, 'LOCAL-NATIVE');
   assert.match(v.reason, /scripts\/gone-dir\/missing\.sh/);
@@ -515,7 +515,7 @@ test('HIMMEL-5218: a named file the router cannot resolve never gets CLOUD-OK', 
   assert.equal(classifyTicket(tk({ description: 'Edit docs/x.md.' }), ctx({ tree: TREE })).class, 'CLOUD-OK');
 });
 
-test('HIMMEL-5218: an unavailable file tree is BLOCKED, never CLOUD-OK', () => {
+test('an unavailable file tree is BLOCKED, never CLOUD-OK', () => {
   const v = classifyTicket(tk(), ctx({ treeUnknown: true }));
   assert.equal(v.class, 'BLOCKED');
   assert.match(v.reason, /file tree unavailable/);
@@ -650,7 +650,7 @@ test('matrix: a matrix with no match rows has no run-time need', () => {
   assert.equal(classifyTicket(tk({ description: 'Edit scripts/a.sh. It reads the luna vault.' }), ctx({ matrix })).class, 'CLOUD-OK');
 });
 
-test('HIMMEL-7574: a ticket naming a directory with a held file under it is BLOCKED, naming the file and its holder', () => {
+test('a ticket naming a directory with a held file under it is BLOCKED, naming the file and its holder', () => {
   const dirTicket = tk({ description: 'Tidy the helpers under scripts/lanes/.' });
   const v = classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/lanes/other.sh', why: 'open PR 77' }] }));
   assert.equal(v.class, 'BLOCKED');

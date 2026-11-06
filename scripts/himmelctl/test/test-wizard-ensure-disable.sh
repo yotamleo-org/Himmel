@@ -142,7 +142,7 @@ grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
 # shellcheck disable=SC1091
-. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # HIMMEL-2350: shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
+. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
 wizard="$repo_root/scripts/himmelctl/bin.js"
 state_lib="$repo_root/scripts/himmelctl/lib/state.js"
 [ -f "$wizard" ] || { echo "FAIL: $wizard not found" >&2; exit 1; }
@@ -1663,7 +1663,7 @@ grepq "$outS1" -F 'item-s-a' || fail "case s: the hazard message should name ite
 grepq "$outS1" -F 'item-s-c' || fail "case s: the hazard message should name item-s-c (got: $outS1)"
 [ ! -s "$logS" ] || fail "case s: item-s-a's unwire must NOT have run (spy log: $(cat "$logS"))"
 [ -f "$targetS/s-a.marker" ] || fail "case s: s-a.marker must still exist -- item-s-a was never unwired despite the rejected prune"
-[ -f "$targetS/s-d.marker" ] || fail "case s: s-d.marker MUST exist -- the unrelated, safe converge must still have run despite the rejected prune pass (this is the exact incident HIMMEL-2349 v2 fixes)"
+[ -f "$targetS/s-d.marker" ] || fail "case s: s-d.marker MUST exist -- the unrelated, safe converge must still have run despite the rejected prune pass (this is the exact incident the split converge/prune consent fixes)"
 # The hazard message must land on STDERR specifically, not merely somewhere
 # in combined output.
 set +e

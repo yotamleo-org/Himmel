@@ -202,7 +202,7 @@ test("GET /api/board: the chain read runs on the running version, so a blocker o
   expect(days[0]).toBe("2026-10-30");
   expect(days.at(-1)).toBe(r.now.slice(0, 10));
   expect(new Set(days).size).toBe(days.length);
-  expect(r.burn.points[0]).toEqual({ day: "2026-10-30", open: 3, merged: 1 }); // HIMMEL-2, 6, 7 are open; 8 is done and undated, so it leaves the total
+  expect(r.burn.points[0]).toEqual({ day: "2026-10-30", open: 3, merged: 1 }); // tickets 2, 6, 7 are open; 8 is done and undated, so it leaves the total
   expect(r.burn).toMatchObject({ total: 4, undated: 1 });
 });
 
@@ -222,7 +222,7 @@ test("GET /api/board: the saved drift file and the chain registry named in the e
   expect(r.drift.mode).toBe("single-user");
   expect(r.chains.schema).toBe("himmel.chains/1");
   expect(r.chains.chains.map((c: { id: string }) => c.id)).toEqual(["memory"]);
-  expect(r.chains.tickets["HIMMEL-2"].state).toBe("can launch"); // its only blocker, HIMMEL-1, is Done
+  expect(r.chains.tickets["HIMMEL-2"].state).toBe("can launch"); // its only blocker is Done
   expect(r.chains.tickets["HIMMEL-1"].chains[0]).toMatchObject({ id: "memory", step: 1, steps: 2 });
 });
 
@@ -456,13 +456,23 @@ test("5494: a drop on a SALUS card posts SALUS-1, not HIMMEL-1, though both card
   const roadmap = { state: "ok", themes: ["(no sector)"], tickets: [
     { k: 1, project: "HIMMEL", id: "HIMMEL-1", b: "todo", s: "To Do", backend: "jira" }, { k: 1, project: "SALUS", id: "SALUS-1", b: "todo", s: "To Do", backend: "jira" }] };
   const post = async (path: string, body: Record<string, unknown>) => { posted.push({ path, body }); return { ok: true, j: { ok: true, status: "prog", name: "In Progress", mirror: "stale" } }; };
-  new Function("roadmap", "roadmapUi", "post", "paint", "loadRoadmap", "document", block)(roadmap, {}, post, () => {}, () => {}, { addEventListener: (n: string, f: (e: unknown) => void) => { on[n] = f; } });
+  new Function("roadmap", "roadmapUi", "post", "paint", "loadRoadmap", "document", "readOnly", block)(roadmap, {}, post, () => {}, () => {}, { addEventListener: (n: string, f: (e: unknown) => void) => { on[n] = f; } }, false);
   const target = (data: Record<string, string>) => ({ closest: () => ({ dataset: data }) });
   on.dragstart({ target: target({ rmCard: "1", rmProject: "SALUS" }), dataTransfer: { setData() {} } });
   on.drop({ target: target({ rmDrop: "prog" }), preventDefault() {} });
   await new Promise((r) => setTimeout(r, 0));
   expect(posted).toEqual([{ path: "/api/roadmap/write", body: { key: "SALUS-1", status: "prog" } }]);
   expect(roadmap.tickets.map((t) => t.b)).toEqual(["todo", "prog"]); // only the SALUS card moved
+});
+
+// Guard for 5494: the evaluated slice reads app.js's top-level readOnly, so a harness that withholds it must fail loudly, not pass vacuously.
+test("5494 guard: the evaluated drop slice throws a ReferenceError when readOnly is not in its scope", () => {
+  const src = readFileSync(join(import.meta.dir, "../public/app.js"), "utf8");
+  const block = src.slice(src.indexOf("let rmWriting = false;"), src.indexOf('document.addEventListener("dragend"'));
+  const on: Record<string, (e: unknown) => void> = {};
+  new Function("roadmap", "roadmapUi", "post", "paint", "loadRoadmap", "document", block)({}, {}, async () => ({}), () => {}, () => {}, { addEventListener: (n: string, f: (e: unknown) => void) => { on[n] = f; } });
+  const target = { closest: () => ({ dataset: { rmCard: "1", rmProject: "SALUS" } }) };
+  expect(() => on.dragstart({ target, dataTransfer: { setData() {} }, preventDefault() {} })).toThrow(ReferenceError);
 });
 
 // The whole Board reads every version; the Chains tab alone reads the running one, and only that read carries the burn-down.

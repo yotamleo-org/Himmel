@@ -75,8 +75,8 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 _kf_default="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/known-findings.json"
 kind="${1:-}"; shift || true
 case "$kind" in
-  finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight|blast|disposition|dependabot-go) ;;
-  *) echo "ledger-append.sh: kind must be finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight|blast|disposition|dependabot-go" >&2; exit 2;;
+  finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight|blast|disposition|dependabot-go|round-scope|impacted|security-audit) ;;
+  *) echo "ledger-append.sh: kind must be finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight|blast|disposition|dependabot-go|round-scope|impacted|security-audit" >&2; exit 2;;
 esac
 
 branch="" caller_branch="" head="" model="" responding_model="" id="" severity="" file="" line="" verdict="" status="" artifact="diff" perspective="off"
@@ -84,6 +84,7 @@ prompt_chars="" response_chars="" reason="" detail="" deferred_to="" fu_class=""
 round="" disposition_round="" hit_pairs=""
 crit_n="" imp_n="" sug_n="" dropped_n="" raw_path=""
 target_head="" disposition="" source="" attest="" pr="" mac=""
+scope="" base_sha="" from_sha="" impacted_n="" unverdicted_n="" skip_n="" rc_n="" hard="-" critic_exit="" persp_sha="" report="" report_sha=""
 while [ $# -gt 0 ]; do case "$1" in
   --branch) branch="$2"; shift 2;; --head) head="$2"; shift 2;;
   --model) model="$2"; shift 2;; --responding-model) responding_model="$2"; shift 2;;
@@ -110,6 +111,13 @@ while [ $# -gt 0 ]; do case "$1" in
   --target-head) target_head="$2"; shift 2;; --disposition) disposition="$2"; shift 2;;
   --source) source="$2"; shift 2;; --attest) attest="$2"; shift 2;;
   --pr) pr="$2"; shift 2;; --mac) mac="$2"; shift 2;;
+  --scope) scope="$2"; shift 2;; --base-sha) base_sha="$2"; shift 2;; --from) from_sha="$2"; shift 2;;
+  --impacted) impacted_n="$2"; shift 2;; --unverdicted) unverdicted_n="$2"; shift 2;;
+  --skip) skip_n="$2"; shift 2;; --rc) rc_n="$2"; shift 2;;
+  --hard) hard="$2"; shift 2;; --critical-n) crit_n="$2"; shift 2;;
+  --important-n) imp_n="$2"; shift 2;; --dropped-n) dropped_n="$2"; shift 2;;
+  --critic-exit) critic_exit="$2"; shift 2;; --perspective-sha256) persp_sha="$2"; shift 2;;
+  --report) report="$2"; shift 2;; --report-sha256) report_sha="$2"; shift 2;;
   *) echo "ledger-append.sh: unknown $1" >&2; exit 2;;
 esac; done
 
@@ -492,6 +500,58 @@ if [ "$kind" = "blast" ]; then
   fi
 fi
 
+# round-scope / impacted / security-audit: the records ready-check
+# item 16 reads for an outside PR. One row per call, never deduped; every bad
+# field refuses with exit 2 and writes nothing.
+_la9050_die() { echo "ledger-append.sh: $kind $1 - NOTHING was written" >&2; exit 2; }
+_la9050_hex() { LC_ALL=C expr "$2" : "^[0-9a-f]\{$1\}\$" >/dev/null 2>&1; }
+_la9050_num() { LC_ALL=C expr "$1" : '^[0-9][0-9]*$' >/dev/null 2>&1; }
+if [ "$kind" = "round-scope" ] || [ "$kind" = "impacted" ] || [ "$kind" = "security-audit" ]; then
+  [ -n "$branch" ] || _la9050_die "needs --branch"
+  _la9050_hex 40 "$head" || _la9050_die "--head must be a full 40-hex sha (got '$head')"
+fi
+if [ "$kind" = "round-scope" ]; then
+  _la9050_hex 40 "$base_sha" || _la9050_die "--base-sha must be a full 40-hex sha"
+  case "$scope" in
+    full) [ -z "$from_sha" ] || _la9050_die "--scope full takes no --from" ;;
+    delta) _la9050_hex 40 "$from_sha" || _la9050_die "--scope delta needs --from <40-hex sha>" ;;
+    *) _la9050_die "--scope must be full|delta (got '$scope')" ;;
+  esac
+  [ -n "$round" ] || _la9050_die "needs --round <n>"
+  case "$source" in
+    panel-first-pass) [ -z "$pr" ] || _la9050_die "--source panel-first-pass takes no --pr" ;;
+    pr-diff) LC_ALL=C expr "$pr" : '^[1-9][0-9]*$' >/dev/null 2>&1 || _la9050_die "--source pr-diff needs --pr <n>" ;;
+    *) _la9050_die "--source must be panel-first-pass|pr-diff (got '$source')" ;;
+  esac
+fi
+if [ "$kind" = "impacted" ]; then
+  for _v in "$impacted_n" "$unverdicted_n" "$skip_n"; do _la9050_num "$_v" || _la9050_die "--impacted, --unverdicted and --skip must be non-negative integers"; done
+  case "$rc_n" in 0|1|2|3) ;; *) _la9050_die "--rc must be 0-3 (got '$rc_n')" ;; esac
+fi
+if [ "$kind" = "security-audit" ]; then
+  LC_ALL=C expr "$pr" : '^[1-9][0-9]*$' >/dev/null 2>&1 || _la9050_die "--pr must be a positive integer (got '$pr')"
+  _la9050_hex 40 "$base_sha" || _la9050_die "--base-sha must be a full 40-hex sha"
+  [ "$hard" != "-" ] || _la9050_die "needs --hard <csv of H1-H5, may be empty>"
+  if [ -n "$hard" ]; then
+    [[ "$hard" =~ ^H[1-5](,H[1-5])*$ ]] || _la9050_die "--hard must be a comma list of H1-H5 (got '$hard')"
+  fi
+  for _v in "$crit_n" "$imp_n" "$dropped_n"; do _la9050_num "$_v" || _la9050_die "--critical-n, --important-n and --dropped-n must be non-negative integers"; done
+  case "$critic_exit" in 0|4) ;; *) _la9050_die "--critic-exit must be 0 or 4 (got '$critic_exit')" ;; esac
+  [ -n "$model" ] || _la9050_die "needs --model"
+  case "$model" in [Cc][Ll][Aa][Uu][Dd][Ee]*) _la9050_die "the audit model may not be a Claude model (got '$model')" ;; esac
+  _la9050_hex 64 "$persp_sha" || _la9050_die "--perspective-sha256 must be 64 hex"
+  _la9050_hex 64 "$report_sha" || _la9050_die "--report-sha256 must be 64 hex"
+  _la9050_gcd=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || _la9050_die "cannot resolve the git common dir"  # swallow-ok: a failed read refuses the row
+  _la9050_base="$_la9050_gcd/outside-audits/$pr-$head-"
+  case "$report" in "$_la9050_base"*.md) ;; *) _la9050_die "--report must be $_la9050_base<YYYYMMDDTHHMMSSZ>.md (got '$report')" ;; esac
+  _la9050_ts="${report#"$_la9050_base"}"; _la9050_ts="${_la9050_ts%.md}"
+  LC_ALL=C expr "$_la9050_ts" : '^[0-9]\{8\}T[0-9]\{6\}Z$' >/dev/null 2>&1 || _la9050_die "--report run timestamp must be YYYYMMDDTHHMMSSZ (got '$_la9050_ts')"
+  if [ -n "$hard" ] || [ "$crit_n" -gt 0 ]; then _la9050_want=fail
+  elif [ "$imp_n" -gt 0 ] || [ "$dropped_n" -gt 0 ] || [ "$critic_exit" = 4 ]; then _la9050_want=flagged
+  else _la9050_want=pass; fi
+  [ "$verdict" = "$_la9050_want" ] || _la9050_die "--verdict $verdict does not follow the counts (they give $_la9050_want)"
+fi
+
 # disposition: cr-disposition.sh record's signed row. It is an `amend` row
 # (set.disposition) on the finding at --target-head, bound to the PR (--pr) and
 # the PR head (--head) it was recorded at; cr-disposition.sh computes --mac over
@@ -650,7 +710,7 @@ FILE="$file" LINE="$line" VERDICT="$verdict" STATUS="$status" BATCH_FILE="$batch
 PROMPT_CHARS="$prompt_chars" RESPONSE_CHARS="$response_chars" TS="$ts" LEDGER="$ledger" ARTIFACT="$artifact" PERSPECTIVE="$perspective" \
 ATTEMPT_NUM="$attempt_num" DURATION_SECS="$duration_secs" ROUND="$round" DISPOSITION_ROUND="$disposition_round" \
 CRIT_N="$crit_n" IMP_N="$imp_n" SUG_N="$sug_n" DROPPED_N="$dropped_n" RAW_PATH="$raw_path" \
-REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class" FU_WHY="$fu_why" TEXT="$text" RAW_TEXT="$raw_text" SET_PAIRS="$set_pairs" HIT_PAIRS="$hit_pairs" TARGET_HEAD="$target_head" DISPOSITION="$disposition" SOURCE="$source" ATTEST="$attest" PR="$pr" MAC="$mac" KF_FILE="${KNOWN_FINDINGS_FILE:-$_kf_default}" AMEND_AUTH="${_kf_default%/*}/ledger-amend-auth.js" DISPROVAL_JS="$DISPROVAL_JS" node - <<'JS'
+REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class" FU_WHY="$fu_why" TEXT="$text" RAW_TEXT="$raw_text" SET_PAIRS="$set_pairs" HIT_PAIRS="$hit_pairs" TARGET_HEAD="$target_head" DISPOSITION="$disposition" SOURCE="$source" ATTEST="$attest" PR="$pr" MAC="$mac" SCOPE="$scope" BASE_SHA="$base_sha" FROM_SHA="$from_sha" IMPACTED_N="$impacted_n" UNVERDICTED_N="$unverdicted_n" SKIP_N="$skip_n" RC_N="$rc_n" HARD="$hard" CRITIC_EXIT="$critic_exit" PERSP_SHA="$persp_sha" REPORT="$report" REPORT_SHA="$report_sha" KF_FILE="${KNOWN_FINDINGS_FILE:-$_kf_default}" AMEND_AUTH="${_kf_default%/*}/ledger-amend-auth.js" DISPROVAL_JS="$DISPROVAL_JS" node - <<'JS'
   const fs=require("fs"), cp=require("child_process"), crypto=require("crypto"), e=process.env;
   // The disproved-verdict bar's text test (see DISPROVAL_JS above).
   const {measured,scan}=new Function(e.DISPROVAL_JS+"; return {measured,scan};")();
@@ -1365,6 +1425,21 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     rec={kind:"blast",ts:e.TS,branch:e.BRANCH,head:e.HEAD_,status:e.STATUS};
     if(e.DURATION_SECS!=="") rec.duration_secs=Number(e.DURATION_SECS)||0;
     if(e.REASON) rec.reason=e.REASON;
+    dup=false;
+  } else if(e.KIND==="round-scope"){
+    // One row per panel round (or pr-diff review). NEVER deduped.
+    rec={kind:"round-scope",ts:e.TS,branch:e.BRANCH,head:e.HEAD_,scope:e.SCOPE,base_sha:e.BASE_SHA,
+         from:e.FROM_SHA||null,round:Number(e.ROUND),source:e.SOURCE,pr:e.PR?Number(e.PR):null,status:"ok"};
+    dup=false;
+  } else if(e.KIND==="impacted"){
+    rec={kind:"impacted",ts:e.TS,branch:e.BRANCH,head:e.HEAD_,impacted_n:Number(e.IMPACTED_N),
+         unverdicted_n:Number(e.UNVERDICTED_N),skip_n:Number(e.SKIP_N),rc:Number(e.RC_N),status:"ok"};
+    dup=false;
+  } else if(e.KIND==="security-audit"){
+    rec={kind:"security-audit",ts:e.TS,pr:Number(e.PR),branch:e.BRANCH,head:e.HEAD_,base_sha:e.BASE_SHA,
+         verdict:e.VERDICT,hard:e.HARD?e.HARD.split(","):[],critical_n:Number(e.CRIT_N),important_n:Number(e.IMP_N),
+         dropped_n:Number(e.DROPPED_N),critic_exit:Number(e.CRITIC_EXIT),model:e.MODEL,auditor:"codex",
+         perspective_sha256:e.PERSP_SHA,report:e.REPORT,report_sha256:e.REPORT_SHA,status:"ok"};
     dup=false;
   } else if(e.KIND==="disposition"){
     // The amend row cr-disposition.sh check reads (set.disposition, keyed on

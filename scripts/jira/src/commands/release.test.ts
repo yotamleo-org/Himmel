@@ -101,7 +101,7 @@ describe.skipIf(process.platform !== 'linux')('jira release from a test on the s
   });
 });
 
-describe('jira release (HIMMEL-6796)', () => {
+describe('jira release', () => {
   it('repair --apply hands the request refusal check to the repair', async () => {
     await run('repair', 'R1', '--repo', 'o/r', '--apply', '--mirror-root', join(root, 'no-mirror')).catch(() => undefined);
     process.exitCode = undefined;
@@ -149,7 +149,7 @@ describe('jira release (HIMMEL-6796)', () => {
       '--sector', 's', '--ground', 'regression', '--authority', 'RM')).rejects.toThrow(/--authority is rm, operator or import/);
   });
 
-  it('folds a batch file, prints every skipped key with its terminal and resolution, and reopens (HIMMEL-7158)', async () => {
+  it('folds a batch file, prints every skipped key with its terminal and resolution, and reopens', async () => {
     const vf = join(root, 'verbatim.txt');
     await run('operator', 'declare', 'R1', '--versions', 'v1,v2', '--decision', '106', '--verbatim-file', vf);
     const mir = join(root, 'mirror');
@@ -187,12 +187,14 @@ describe('jira release (HIMMEL-6796)', () => {
   });
 });
 
-describe('jira release rm-run (HIMMEL-7201)', () => {
+describe('jira release rm-run', () => {
   beforeEach(() => {
     // rm-run posts to Jira; a loopback Jira is a stub, so the post door stays open.
     vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
     // profile-settings.sh bare runs for real and writes its settings file here.
     vi.stubEnv('HIMMEL_PROFILE_SETTINGS_DIR', join(root, 'profiles'));
+    // the judge run appends its launch row beside this path, never under the real HOME
+    vi.stubEnv('HIMMEL_API_CREDIT_STATE', join(root, 'credit', 'ledger.json'));
   });
 
   async function oneRequest() {
@@ -203,7 +205,7 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
     out = [];
   }
 
-  it('with no usable API account the judge rules the batch on the subscription (HIMMEL-9077)', async () => {
+  it('with no usable API account the judge rules the batch on the subscription', async () => {
     // the station since PR 4669: the API launcher refuses a judge's auto request on policy, with no fallback
     vi.stubEnv('HIMMEL_API_LANE', 'on');
     vi.stubEnv('HIMMEL_API_ACCOUNT', 'auto');
@@ -225,7 +227,7 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
     for (const k of ['WORKER_SESSION_LANE', 'CADENCE_USAGE_LAUNCH', 'CADENCE_USAGE_CALLER_PID']) expect(pre?.env).not.toHaveProperty(k);
   });
 
-  it('the judge run writes a launch record the digest reads back by the session id (HIMMEL-9163)', async () => {
+  it('the judge run writes a launch record the digest reads back by the session id', async () => {
     const cache = join(root, 'cache');
     vi.stubEnv('HIMMELCTL_CACHE_DIR', cache);
     await oneRequest();
@@ -235,6 +237,19 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
     expect(sid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     const log = readFileSync(join(cache, 'launch-logs', `rm-judge-${sid.slice(0, 8)}.log`), 'utf8');
     expect(log).toMatch(new RegExp(`^headed-arm-worker: profile=bare lane=native model=opus role=release-manager session=rm-judge-${sid.slice(0, 8)} session_id=${sid} launched=\\S+\\n$`));
+  });
+
+  it('the judge run writes exactly one launches.jsonl row carrying its session id and its real cost', async () => {
+    await oneRequest();
+    const d = { req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 's', ground: 'g', reason: 'r' };
+    judgeReply.out = JSON.stringify({ type: 'result', is_error: false, total_cost_usd: 1.2345678, result: JSON.stringify([d]) });
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    const call = judgeReply.calls.find((c) => c.file === 'claude');
+    const sid = call?.args[(call?.args.indexOf('--session-id') ?? -2) + 1] ?? '';
+    const rows = readFileSync(join(root, 'credit', 'launches.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: 'judge', lane: 'native', model: 'opus', session_id: sid, sub_cost_usd: '1.234568', cost_usd: '', outcome: 'native', rc: 0 });
+    expect(rows[0].ts).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
   });
 
   it.each(['SKIPPED-BANK', 'BANK-UNKNOWN'])('the judge stops on preflight %s and names the token', async (token) => {
@@ -259,7 +274,7 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
     expect(out.some((l) => /summary/.test(l))).toBe(false);
   });
 
-  it('a run that refused a request ends with the refusal count (HIMMEL-8761)', async () => {
+  it('a run that refused a request ends with the refusal count', async () => {
     await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', join(root, 'verbatim.txt'));
     await run('request', 'R1', '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'found work');
     const other = { req: 'Q-R1-0099', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 's', ground: 'g', reason: 'r' };
@@ -272,7 +287,7 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
     process.exitCode = 0;
   });
 
-  it('rm-run takes --ruling and --chief-override; the override needs a reason and the console marker, and the old --console-override is an unknown option (HIMMEL-6778)', async () => {
+  it('rm-run takes --ruling and --chief-override; the override needs a reason and the console marker, and the old --console-override is an unknown option', async () => {
     vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(root, 'admissions-ledger.jsonl'));
     await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', join(root, 'verbatim.txt'));
     const mirror = join(root, 'no-mirror');
@@ -313,7 +328,7 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
     expect(parseDecisions(JSON.stringify({ is_error: false, result: JSON.stringify([d]) }))).toEqual([d]);
   });
 
-  it('accepts a HOLD decision that carries no ground, op or sector (HIMMEL-6796)', () => {
+  it('accepts a HOLD decision that carries no ground, op or sector', () => {
     const hold = { req: 'Q-R1-0001', outcome: 'HOLD', ground: null, reason: 'no sector for K-2' };
     expect(parseDecisions(JSON.stringify({ is_error: false, result: '```json\n' + JSON.stringify([hold]) + '\n```' }))).toEqual([hold]);
     expect(parseDecisions(JSON.stringify({ is_error: false, result: JSON.stringify([{ req: 'Q-R1-0001', outcome: 'HOLD', reason: 'r' }]) }))).toHaveLength(1);
@@ -423,7 +438,7 @@ function jiraAnswers(versions: Array<{ name: string; description?: string }>, co
   }) as never);
 }
 
-describe('jira release leaks (HIMMEL-7153)', () => {
+describe('jira release leaks', () => {
   beforeEach(() => {
     vi.mocked(request).mockReset();
     // The mock never connects; a loopback Jira is how the post door tells a local stub from the real one.
@@ -473,7 +488,7 @@ describe('jira release leaks (HIMMEL-7153)', () => {
   });
 });
 
-describe('jira release state admissions budget (HIMMEL-7153)', () => {
+describe('jira release state admissions budget', () => {
   const stateOut = (n: number) => ({
     release: 'R1', status: 'OK', mode: 'observe', inputs: {}, burndown: {}, admissions_today: { v1: n },
     leaks: { unauthorized: [], ruled_in_non_member: [] }, requests: { open: [], claimed: [] }, integrity: [],
@@ -512,7 +527,7 @@ describe('jira release state admissions budget (HIMMEL-7153)', () => {
   });
 });
 
-describe('jira release request refuses junk (HIMMEL-7434)', () => {
+describe('jira release request refuses junk', () => {
   const vf = () => join(root, 'verbatim.txt');
   const declared = () => run('operator', 'declare', 'R1', '--versions', 'v1,v2', '--decision', '106', '--verbatim-file', vf());
   const ask = (mirror: string, ...a: string[]) => run('request', 'R1', '--mirror-root', mirror, ...a);
@@ -558,7 +573,7 @@ describe('jira release request refuses junk (HIMMEL-7434)', () => {
   });
 });
 
-describe('jira release pull (HIMMEL-8350)', () => {
+describe('jira release pull', () => {
   const issue = (key: string, fixVersions: string[], blockedBy: string[] = []) =>
     writeFileSync(join(root, 'mirror', `${key}.md`), [
       '---', `key: "${key}"`, 'type: "Task"', 'status: "To Do"', 'priority: "Medium"', `fixVersions: ${JSON.stringify(fixVersions)}`,
@@ -587,7 +602,7 @@ describe('jira release pull (HIMMEL-8350)', () => {
   });
 });
 
-describe('jira release under vitest (HIMMEL-7434)', () => {
+describe('jira release under vitest', () => {
   it('refuses a release state dir outside the temp dir', async () => {
     vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', '/srv/handovers/release');
     await expect(run('state', 'R1')).rejects.toThrow(/outside the temp dir/);
@@ -662,7 +677,7 @@ describe('liveJira.newestFixVersionEntry', () => {
 // The judge reaches the API launcher only when the role map maps `judge`. A temp launcher world
 // (roster, snapshot, key files, a fake claude, an alert recorder) and a recording fallback: no row reaches the real
 // liveJudge, a real claude or the real alert sender, and no row reads the station's role map.
-describe('routedJudge (HIMMEL-9076)', () => {
+describe('routedJudge', () => {
   const INPUT = { release: 'R1', current: 'v1', versions: ['v1'], requests: [], records: [], operator: [], rulings: [], issues: [] } as unknown as JudgeInput;
   const decision = (reason: string) => ({ req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 's', ground: 'g', reason });
   const envelope = (reason: string) => JSON.stringify({ is_error: false, result: JSON.stringify([decision(reason)]) });
@@ -772,7 +787,7 @@ describe('routedJudge (HIMMEL-9076)', () => {
   });
 });
 
-describe('RM apply names its writer (HIMMEL-8823 S3)', () => {
+describe('RM apply names its writer', () => {
   it('RM apply names rm-apply', async () => {
     vi.mocked(request).mockImplementation((async (method: string) =>
       method === 'GET' ? { fields: { fixVersions: [{ name: 'v1' }] } } : {}) as never);

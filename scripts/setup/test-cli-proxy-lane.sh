@@ -345,7 +345,7 @@ else
     fi
 fi
 
-echo "TEST 18: --restart with a stale version stamp warns and names --roll (HIMMEL-3051)"
+echo "TEST 18: --restart with a stale version stamp warns and names --roll"
 F18="$(fixture restart-stale --with-exe-config)"
 printf '7.2.158\n' > "$F18/.cli-proxy-api/cli-proxy-api.version"
 HOME="$F18" STUB_HTTP_CODE="200" STUB_SYSTEMCTL_ENABLED="0" STUB_SYSTEMCTL_MAINPID="4321" STUB_SS_LISTEN_PID="4321" run --restart
@@ -358,7 +358,7 @@ else
     pass "stale-stamp restart suppresses the clean back-up message"
 fi
 
-echo "TEST 19: --roll against a running unit ends at the pinned version (HIMMEL-3051)"
+echo "TEST 19: --roll against a running unit ends at the pinned version"
 F19="$(fixture roll-running --with-exe-config)"
 STOPFILE19="$TMPROOT/stopfile-19"
 HOME="$F19" STUB_SHA256="$STUB_SHA256" STUB_SYSTEMCTL_STOPFILE="$STOPFILE19" STUB_SYSTEMCTL_STATE="active" STUB_SYSTEMCTL_ACTIVE="0" STUB_SYSTEMCTL_ENABLED="0" STUB_SYSTEMCTL_MAINPID="5555" STUB_SS_LISTEN_PID="5555" STUB_HTTP_CODE="200" run --roll
@@ -386,7 +386,7 @@ assert_contains "roll no-op message names the pin" "already at pinned v8.0.48" "
 assert_contains "roll no-op names itself" "--roll is a no-op" "$OUT"
 if [ -f "$SYSTEMCTL_LOG21" ]; then fail "roll no-op never touches systemctl" "log: $(cat "$SYSTEMCTL_LOG21")"; else pass "roll no-op never touches systemctl"; fi
 
-echo "TEST 22 (RED control): a failed --roll restores the previous binary+stamp (CR finding, HIMMEL-3051)"
+echo "TEST 22 (RED control): a failed --roll restores the previous binary+stamp (CR finding)"
 F22="$(fixture roll-recover --with-exe-config)"
 printf '7.2.158\n' > "$F22/.cli-proxy-api/cli-proxy-api.version"
 HOME="$F22" STUB_SHA256="$STUB_SHA256" STUB_HTTP_CODE="200" STUB_SYSTEMCTL_ENABLED="0" STUB_SS_LISTEN_PID="9999" run --roll
@@ -400,7 +400,7 @@ else
     pass "roll-recover cleans up its backup files"
 fi
 
-echo "TEST 23 (RED control): --status reports staleness independently of an HTTP 401 auth failure (CR finding, HIMMEL-3051)"
+echo "TEST 23 (RED control): --status reports staleness independently of an HTTP 401 auth failure (CR finding)"
 F23="$(fixture status-401-stale --with-exe-config --with-oauth)"
 printf '7.2.158\n' > "$F23/.cli-proxy-api/cli-proxy-api.version"
 HOME="$F23" STUB_HTTP_CODE="401" STUB_SYSTEMCTL_ENABLED="0" run --status
@@ -414,7 +414,7 @@ assert_contains "401-and-stale status still names --roll" "--roll" "$OUT"
 V8_SHA="744000a1a4f9ce19f5964774f853d029797b87ef53796d054389258c66cb1224"
 ZERO_SHA="0000000000000000000000000000000000000000000000000000000000000000"
 
-echo "TEST 24 (RED first): CLIPROXY_API_VERSION + CLIPROXY_API_SHA256 override the pin for --install (HIMMEL-5267)"
+echo "TEST 24 (RED first): CLIPROXY_API_VERSION + CLIPROXY_API_SHA256 override the pin for --install"
 F24="$(fixture override)"
 HOME="$F24" CLIPROXY_API_KEY="stub-key-24" CLIPROXY_API_VERSION="8.0.23" CLIPROXY_API_SHA256="$V8_SHA" STUB_SHA256="$V8_SHA" run --install
 assert_rc "override install exit code" 0 "$RC"

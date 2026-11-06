@@ -3,9 +3,11 @@
 #
 # WHY: Snyk is a second scanner beside pip-audit and the lockfile work, and the
 # free plan caps tests per month, so it runs once a week on the station, never
-# per PR. A High/Critical finding or a failed scan (snyk missing, not
+# per PR. An untriaged High/Critical finding (a Code High listed in
+# snyk-code-triage.tsv does not count) or a failed scan (snyk missing, not
 # authenticated, quota reached) is raised through the shared cadence-alert.sh
-# sink so it is never silent; a clean run clears the alert.
+# sink so it is never silent; a clean or fully triaged run clears the alert.
+# arm and disarm rewrite the crontab under crontab_locked_rmw.
 #
 #   snyk-scan-cadence.sh run   [--repo <path>]    one pass (what cron fires)
 #   snyk-scan-cadence.sh arm   [--day 0-6] [--time HH:MM] [--force] [--dry-run]
@@ -33,6 +35,8 @@ SCAN="${SNYKCAD_SCAN:-$SCRIPT_DIR/snyk-scan.sh}"
 STATE_DIR="${SNYK_SCAN_STATE_DIR:-${HOME:-}/.himmel/state/snyk-scan}"
 CRONTAB_BIN="${SNYKCAD_CRONTAB:-crontab}"
 RUNNER_DIR="${SNYKCAD_RUNNER_DIR:-${HOME:-}/.claude/snyk-scan-cadence}"
+# shellcheck source=../lib/crontab-locked-rmw.sh
+. "$SCRIPT_DIR/../lib/crontab-locked-rmw.sh" || { echo "ERR snyk-scan-cadence: cannot source crontab-locked-rmw.sh" >&2; exit 2; }
 
 resolve_primary() {
     local common
@@ -78,6 +82,17 @@ cron_read() {
     esac
 }
 cron_entry() { printf '%s\n' "$CRON_TAB" | grep -F "# $TASK_NAME" || true; }
+
+# The edit steps run under crontab_locked_rmw on the table it just read;
+# $force and $entry are cmd_arm's locals, visible because cmd_arm is on the call stack.
+arm_edit() {
+    if [ -n "$(cron_entry)" ] && [ "$force" -eq 0 ]; then
+        echo "ERR snyk-scan-cadence: already armed: $TASK_NAME (use --force to replace)" >&2
+        return 3
+    fi
+    { printf '%s\n' "$CRON_TAB" | { grep -vF "# $TASK_NAME" || true; } | sed '/^$/d'; printf '%s\n' "$entry"; }
+}
+disarm_edit() { { printf '%s\n' "$CRON_TAB" | grep -vF "# $TASK_NAME" || true; }; }
 
 cmd_arm() {
     local day=1 time="06:30" force=0 dry=0 root runner bash_bin entry
@@ -125,8 +140,7 @@ cmd_arm() {
             "$bash_bin" "$root/scripts/security/snyk-scan-cadence.sh" "$root"
     } > "$runner" || { echo "ERR snyk-scan-cadence: cannot write the runner $runner" >&2; return 4; }
     chmod +x "$runner" || { echo "ERR snyk-scan-cadence: cannot chmod the runner $runner" >&2; return 4; }
-    { printf '%s\n' "$CRON_TAB" | { grep -vF "# $TASK_NAME" || true; } | sed '/^$/d'; printf '%s\n' "$entry"; } | "$CRONTAB_BIN" - \
-        || { echo "ERR snyk-scan-cadence: crontab install failed" >&2; return 4; }
+    crontab_locked_rmw "$CRONTAB_BIN" arm_edit || return $?
     echo "snyk-scan-cadence ARMED: weekly day $day $time — $runner (status: bash scripts/security/snyk-scan-cadence.sh status)"
 }
 
@@ -146,7 +160,7 @@ cmd_disarm() {
     cron_read || return 4
     if [ -z "$(cron_entry)" ]; then echo "snyk-scan-cadence: nothing armed — disarm is a no-op"; return 0; fi
     if [ "$dry" -eq 1 ]; then echo "DRY snyk-scan-cadence: would remove the $TASK_NAME crontab entry"; return 0; fi
-    { printf '%s\n' "$CRON_TAB" | grep -vF "# $TASK_NAME" || true; } | "$CRONTAB_BIN" - || return 4
+    crontab_locked_rmw "$CRONTAB_BIN" disarm_edit || return $?
     rm -f "$RUNNER_DIR/snyk-scan-cadence.sh"
     echo "snyk-scan-cadence: disarmed"
 }

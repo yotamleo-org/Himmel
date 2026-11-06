@@ -84,6 +84,7 @@ test("the four settings show on Configure, save, and land in the himmel config",
   await page.goto(h.url);
   await page.locator("#h-configure").waitFor();
   await page.locator('button.tile[data-tile="scope"]').click();
+  await page.locator('details[data-cat="machine"] > summary').click(); // the scope tile folds into categories; only the first is open
   await expect(page.locator("#reports")).toBeVisible();
   await expect(page.locator('input[data-rs="report_day"][value="local"]')).toBeChecked();
   await expect(page.locator('[data-rs="idle"]')).toHaveValue("60");

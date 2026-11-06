@@ -372,7 +372,7 @@ else
     fail "--no-cleanup call sequence" "got: $got_calls"
 fi
 
-echo "TEST: a successful reindex writes a refresh stamp (HIMMEL-1307)"
+echo "TEST: a successful reindex writes a refresh stamp"
 reset_state
 rm -rf "$HOME/.cache/qmd" 2>/dev/null || true
 touch "$STATE/did-work"
@@ -591,7 +591,7 @@ else
     fail "failed embed writes no refresh stamp" "stamp exists after a failed embed"
 fi
 
-echo "TEST: a PRE-EXISTING stamp is invalidated when this run mutates the index but fails before verified-complete (HIMMEL-1307 [codex-1])"
+echo "TEST: a PRE-EXISTING stamp is invalidated when this run mutates the index but fails before verified-complete ([codex-1])"
 # 'qmd update' has already re-indexed changed files by the time 'qmd embed'
 # fails -- the on-disk index is no longer what the OLD stamp certified, so
 # that stamp must not survive to be read as this run's freshness.
@@ -608,7 +608,7 @@ else
     fail "a failed embed invalidates a pre-existing stamp from an earlier run" "the 2020 stamp survived a run that mutated the index and then failed"
 fi
 
-echo "TEST: a successful reindex invalidates a stale stamp it fails to overwrite (HIMMEL-1307 codex-2)"
+echo "TEST: a successful reindex invalidates a stale stamp it fails to overwrite (codex-2)"
 reset_state
 rm -rf "$HOME/.cache/qmd" 2>/dev/null || true
 mkdir -p "$HOME/.cache/qmd"
@@ -632,7 +632,7 @@ else
 fi
 
 rm -rf "$HOME/.cache/qmd" 2>/dev/null || true
-echo "TEST: an INCOMPLETE embed exits 5 (this is the whole point of HIMMEL-568)"
+echo "TEST: an INCOMPLETE embed exits 5 (this is the whole point of the periodic reindex)"
 # A `qmd embed` that hits its session cap exits 0 having embedded only PART of
 # the pending set. Without the completeness assert the cadence would report
 # success while vectors lag lex — the silently-stale state the ticket exists to

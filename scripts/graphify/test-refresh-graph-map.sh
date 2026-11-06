@@ -2821,7 +2821,7 @@ out=$( ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic GRAPHIFY_LEDGER="$CLAUD
 # to the verdict; no graphify call and no ledger line may be produced.
 { [ "$rc" -eq 2 ] && [ ! -s "$CLAUDE_PREFLIGHT_CALLS" ] && [ ! -e "$CLAUDE_PREFLIGHT_LEDGER" ] \
   && grep -qF 'DENY luna-personal x zai-glm x extraction' <<< "$out"; } \
-  && pass "T40j claude-cli exact Z.ai endpoint is classified zai-glm and denied (HIMMEL-2224; anthropic would have allowed)" \
+  && pass "T40j claude-cli exact Z.ai endpoint is classified zai-glm and denied (anthropic would have allowed)" \
   || fail "T40j claude-cli Z.ai endpoint should deny rc=2 naming zai-glm, no call, no ledger (rc=$rc): $out ledger=$(cat "$CLAUDE_PREFLIGHT_LEDGER" 2>/dev/null)"
 
 : > "$CLAUDE_PREFLIGHT_CALLS"; rm -f "$CLAUDE_PREFLIGHT_LEDGER"
@@ -3774,13 +3774,13 @@ out=$( GRAPHIFY_MAP_BIN="$GOBIN/graphify" bash "$SCRIPT" \
 # actually CALL them — not just define them unused.
 grep -q '^_fs_id()' "$SCRIPT" && grep -q '^_verify_fs_id()' "$SCRIPT" \
   && pass "T48a _fs_id/_verify_fs_id are defined in source" \
-  || fail "T48a _fs_id/_verify_fs_id definition missing (HIMMEL-1704)"
+  || fail "T48a _fs_id/_verify_fs_id definition missing"
 grep -Fq '_verify_fs_id "corpus-root" "." "$CORPUS_ID"' "$SCRIPT" \
   && pass "T48b the corpus-root copy re-verifies identity after cd, before find/tar" \
-  || fail "T48b copy site does not call _verify_fs_id (HIMMEL-1704 TOCTOU reopened)"
+  || fail "T48b copy site does not call _verify_fs_id (TOCTOU reopened)"
 grep -Fq '_verify_fs_id "maps-dir" "." "$MAPS_ID"' "$SCRIPT" \
   && pass "T48c the maps-dir publish re-verifies identity before the write" \
-  || fail "T48c publish site does not call _verify_fs_id (HIMMEL-1704 TOCTOU reopened)"
+  || fail "T48c publish site does not call _verify_fs_id (TOCTOU reopened)"
 # T48d (codex-2 r1): the identity check must be BOUND to the cd'd directory
 # (a relative "." probed from inside a `cd "$MAPS_DIR" && ...` subshell,
 # where the process's cwd is fixed to the directory's INODE), not merely a
@@ -3788,7 +3788,7 @@ grep -Fq '_verify_fs_id "maps-dir" "." "$MAPS_ID"' "$SCRIPT" \
 # separate node process -- the latter still races node's own open().
 grep -Fq 'cd "$MAPS_DIR" && _verify_fs_id "maps-dir" "."' "$SCRIPT" \
   && pass "T48d the maps-dir check is bound to a cd'd cwd, not a re-stat of the pathname" \
-  || fail "T48d publish identity check is not cwd-bound (HIMMEL-1704 codex-2 residual reopened)"
+  || fail "T48d publish identity check is not cwd-bound"
 
 # T49 (behavioural): the TOCTOU scenario — an actor with
 # write access to the corpus-root's PARENT directory swaps the accepted
@@ -3829,7 +3829,7 @@ if ln -s "$TOCTOU_REAL_A" "$TOCTOU_PARENT/vault" 2>/dev/null && [ -L "$TOCTOU_PA
     --corpus-root "$TOCTOU_PARENT/vault" --corpus-id "$TOCTOU_ID" \
     --backend claude-cli --maps-dir "$TOCTOU_MAPS" --title Guard --slug toctou-map 2>&1 ); rc=$?
   if [ "$rc" -eq 1 ] && grep -q "TOCTOU guard" <<< "$out" && [ ! -s "$TOCTOU_CALLS" ]; then
-    pass "T49b a corpus-root swapped after preflight is refused before any copy (TOCTOU closed, HIMMEL-1704)"
+    pass "T49b a corpus-root swapped after preflight is refused before any copy (TOCTOU closed)"
   else
     fail "T49b the TOCTOU guard must refuse before graphify runs (rc=$rc, graphify called=$( [ -s "$TOCTOU_CALLS" ] && echo yes || echo NO )): $out"
   fi
@@ -3846,13 +3846,13 @@ fi
 # than left to node's own unguarded mkdirSync.
 grep -q -- '--maps-parent-id' "$SCRIPT" \
   && pass "T50a --maps-parent-id flag is accepted" \
-  || fail "T50a --maps-parent-id flag missing (HIMMEL-1704 round 3 reopened)"
+  || fail "T50a --maps-parent-id flag missing"
 grep -Fq 'cd "$VAULT_DIR" && _verify_fs_id "maps-dir parent" "." "$MAPS_PARENT_ID"' "$SCRIPT" \
   && pass "T50b first-publish path re-verifies the vault parent identity before mkdir" \
-  || fail "T50b first-publish parent-identity check missing (HIMMEL-1704 round 3 reopened)"
+  || fail "T50b first-publish parent-identity check missing"
 grep -Fq '&& mkdir "$MAPS_LEAF"' "$SCRIPT" \
   && pass "T50c first-publish creates 60-Maps via a TOCTOU-safe mkdir, not node's mkdirSync" \
-  || fail "T50c mkdir-based safe-create missing (HIMMEL-1704 round 3 reopened)"
+  || fail "T50c mkdir-based safe-create missing"
 
 # T51 (behavioural): the first-ever-publish case -- 60-
 # Maps does not exist at preflight time, so no --maps-id was pinned, only
@@ -3891,7 +3891,7 @@ if ln -s "$T51_REAL_A" "$T51_OUTER/vault" 2>/dev/null && [ -L "$T51_OUTER/vault"
     --maps-dir "$T51_OUTER/vault/60-Maps" --maps-parent-id "$T51_PARENT_ID" \
     --title Guard --slug t51-race-map --no-update 2>&1 ); rc=$?
   if [ "$rc" -eq 1 ] && grep -q "TOCTOU guard" <<< "$out" && [ ! -e "$T51_OUTER/vault/60-Maps" ]; then
-    pass "T51b a vault swapped after pinning is refused before mkdir, no 60-Maps created (TOCTOU closed, HIMMEL-1704)"
+    pass "T51b a vault swapped after pinning is refused before mkdir, no 60-Maps created (TOCTOU closed)"
   else
     fail "T51b the parent-identity guard must refuse before mkdir (rc=$rc, 60-Maps exists=$( [ -e "$T51_OUTER/vault/60-Maps" ] && echo yes || echo NO )): $out"
   fi
@@ -4668,6 +4668,150 @@ recent_corpus "x y z"
 out=$(recent_run 2); rc=$?
 [ "$(recent_calls)" = "notes/x.md notes/y.md " ] && [ "$rc" -eq 4 ] \
   && pass "T-recent cap 2 with three changed notes stops inside the pre-pass (exit 4)" || fail "T-recent cap 2 with x y z expected x y and exit 4, got: $(recent_calls) rc=$rc"
+
+echo "T-adopter-skip: an installed fresh published graph stops the paid semantic row"
+# The marker graphify-out/.graphify_published holds the build commit himmel-update.sh
+# sync_graph installed. graphify is stubbed and logs every call: no model call here.
+ADCORPUS="$WS/adopter-corpus"; ADMAPS="$WS/adopter-maps"; mkdir -p "$ADMAPS"
+git_corpus "$ADCORPUS"
+AD_BUILD=$(git -C "$ADCORPUS" rev-parse HEAD)
+for ad_i in 1 2 3; do
+  printf '# c%s\n' "$ad_i" > "$ADCORPUS/c$ad_i.md"
+  git -C "$ADCORPUS" add -A >/dev/null 2>&1
+  git -C "$ADCORPUS" -c core.hooksPath=/dev/null commit -qm "c$ad_i" >/dev/null 2>&1
+done
+mkdir -p "$ADCORPUS/graphify-out"
+ad_run() { # <marker sha> — one refresh of the adopter corpus; the call log tells whether graphify ran
+  printf '%s\n' "$1" > "$ADCORPUS/graphify-out/.graphify_published"
+  # manifest.json is the install's completion marker; AD_NOMANIFEST=1 models a half-installed graph.
+  if [ -n "${AD_NOMANIFEST:-}" ]; then rm -f "$ADCORPUS/graphify-out/manifest.json"; else printf '{}\n' > "$ADCORPUS/graphify-out/manifest.json"; fi
+  : > "$WS/adopter-calls.log"
+  GRAPHIFY_CALL_LOG="$WS/adopter-calls.log" GRAPHIFY_MAP_BIN="$BIN/graphify" bash "$SCRIPT" --name adopter \
+    --corpus-root "$ADCORPUS" --backend claude-cli --maps-dir "$ADMAPS" --title "Adopter" --slug adopter-map 2>&1
+}
+out=$( ad_run "$AD_BUILD" ); rc=$?
+if [ "$rc" -eq 3 ] && [ ! -s "$WS/adopter-calls.log" ] && grep -q "installed published graph" <<< "$out" \
+   && [ "$(grep -c "installed published graph" <<< "$out")" -eq 1 ]; then
+  pass "T-adopter-skip (a) fresh installed graph on a non-publisher: rc=3, one-line reason, graphify never called"
+else
+  fail "T-adopter-skip (a) expected rc=3, one reason line, no graphify call (rc=$rc, calls=$(wc -l < "$WS/adopter-calls.log")): $out"
+fi
+mkdir -p "$HERMETIC_HOME/.himmel"
+printf '{"graphify":{"semantic_api_ok":true}}\n' > "$HERMETIC_HOME/.himmel/config.json"
+out=$( ad_run "$AD_BUILD" ); rc=$?
+if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ] && ! grep -q "installed published graph" <<< "$out"; then
+  pass "T-adopter-skip (b) the publisher (graphify.semantic_api_ok true) keeps its semantic row"
+else
+  fail "T-adopter-skip (b) expected rc=0 and a graphify call (rc=$rc): $out"
+fi
+rm -f "$HERMETIC_HOME/.himmel/config.json"
+out=$( HIMMEL_UPDATE_GRAPH_MAX_BEHIND=2 ad_run "$AD_BUILD" ); rc=$?
+if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ]; then
+  pass "T-adopter-skip (c1) a marker 3 commits behind with a limit of 2 runs the row"
+else
+  fail "T-adopter-skip (c1) expected rc=0 and a graphify call (rc=$rc): $out"
+fi
+out=$( HIMMEL_UPDATE_GRAPH_MAX_BEHIND=3 ad_run "$AD_BUILD" ); rc=$?
+if [ "$rc" -eq 3 ] && [ ! -s "$WS/adopter-calls.log" ]; then
+  pass "T-adopter-skip (c2) the limit is inclusive: 3 behind with a limit of 3 skips"
+else
+  fail "T-adopter-skip (c2) expected rc=3 and no graphify call (rc=$rc): $out"
+fi
+out=$( ad_run "0123456789abcdef0123456789abcdef01234567" ); rc=$?
+if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ]; then
+  pass "T-adopter-skip (c3) a marker that is not an ancestor of HEAD runs the row"
+else
+  fail "T-adopter-skip (c3) expected rc=0 and a graphify call (rc=$rc): $out"
+fi
+out=$( ad_run "not-a-sha" ); rc=$?
+if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ]; then
+  pass "T-adopter-skip (c4) a malformed marker runs the row"
+else
+  fail "T-adopter-skip (c4) expected rc=0 and a graphify call (rc=$rc): $out"
+fi
+rm -f "$ADCORPUS/graphify-out/.graphify_published"
+: > "$WS/adopter-calls.log"
+out=$( GRAPHIFY_CALL_LOG="$WS/adopter-calls.log" GRAPHIFY_MAP_BIN="$BIN/graphify" bash "$SCRIPT" --name adopter \
+  --corpus-root "$ADCORPUS" --backend claude-cli --maps-dir "$ADMAPS" --title "Adopter" --slug adopter-map 2>&1 ); rc=$?
+if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ]; then
+  pass "T-adopter-skip (c5) no marker (no installed graph) runs the row"
+else
+  fail "T-adopter-skip (c5) expected rc=0 and a graphify call (rc=$rc): $out"
+fi
+# A config that cannot prove "not the publisher" runs the row (a publisher whose config is
+# dotfile-managed, unparsable, unreadable or read with no jq must never lose its pass).
+AD_CFG="$HERMETIC_HOME/.himmel/config.json"
+ad_cfg_run() { # <expected> <label> [PATH override] — fresh marker at the build commit, one run
+  local want="$1" label="$2" run_path="${3:-$PATH}"
+  out=$( PATH="$run_path" ad_run "$AD_BUILD" ); rc=$?
+  if [ "$want" = skip ]; then
+    if [ "$rc" -eq 3 ] && [ ! -s "$WS/adopter-calls.log" ]; then pass "T-adopter-skip $label skips"; else fail "T-adopter-skip $label expected rc=3 and no graphify call (rc=$rc): $out"; fi
+  else
+    if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ]; then pass "T-adopter-skip $label runs the row"; else fail "T-adopter-skip $label expected rc=0 and a graphify call (rc=$rc): $out"; fi
+  fi
+}
+mkdir -p "$HERMETIC_HOME/.himmel"
+# Every config row needs jq on the test host: without it a config reads as the publisher
+# and (d5) could not skip, while (d2) and (d3) would pass for the wrong reason.
+if ! command -v jq >/dev/null 2>&1; then
+  skip "T-adopter-skip (d1-d5, d8-d11) the config rows need jq on the test host"
+else
+printf '{"graphify":{"semantic_api_ok":false}}\n' > "$AD_CFG"
+ad_cfg_run skip "(d5) a valid config that is not the publisher"
+rm -f "$AD_CFG"; printf '{"graphify":{"semantic_api_ok":false}}\n' > "$WS/adopter-real-config.json"
+ln -s "$WS/adopter-real-config.json" "$AD_CFG"
+ad_cfg_run run "(d1) a symlinked config"
+rm -f "$AD_CFG"; printf 'this is not json\n' > "$AD_CFG"
+ad_cfg_run run "(d2) a non-JSON config"
+: > "$AD_CFG"
+ad_cfg_run run "(d8) an empty config"
+printf '[]\n' > "$AD_CFG"
+ad_cfg_run run "(d9) a config that is JSON but not an object"
+printf '{"graphify":"x"}\n' > "$AD_CFG"
+ad_cfg_run run "(d10) a config whose graphify key is not an object"
+printf '{}\n' > "$AD_CFG"
+ad_cfg_run skip "(d11) an empty JSON object"
+printf '{"graphify":{"semantic_api_ok":false}}\n' > "$AD_CFG"
+NOJQ_BIN="$WS/nojq-bin"; mkdir -p "$NOJQ_BIN"
+for ad_dir in $(printf '%s' "$PATH" | tr ':' ' '); do
+  for ad_tool in "$ad_dir"/*; do
+    [ -x "$ad_tool" ] && [ "${ad_tool##*/}" != jq ] && ln -sf "$ad_tool" "$NOJQ_BIN/${ad_tool##*/}" 2>/dev/null
+  done
+done
+ad_cfg_run run "(d3) a config on a host with no jq" "$NOJQ_BIN"
+chmod 000 "$AD_CFG"
+if [ -r "$AD_CFG" ]; then
+  skip "T-adopter-skip (d4) an unreadable config (this user reads a mode-000 file)"
+else
+  ad_cfg_run run "(d4) an unreadable config"
+fi
+fi
+chmod 600 "$AD_CFG" 2>/dev/null; rm -f "$AD_CFG"
+# A symlinked marker is never trusted, and a non-numeric limit falls back to the 150 default.
+printf '%s\n' "$AD_BUILD" > "$WS/adopter-real-marker"
+rm -f "$ADCORPUS/graphify-out/.graphify_published"; ln -s "$WS/adopter-real-marker" "$ADCORPUS/graphify-out/.graphify_published"
+: > "$WS/adopter-calls.log"
+out=$( GRAPHIFY_CALL_LOG="$WS/adopter-calls.log" GRAPHIFY_MAP_BIN="$BIN/graphify" bash "$SCRIPT" --name adopter \
+  --corpus-root "$ADCORPUS" --backend claude-cli --maps-dir "$ADMAPS" --title "Adopter" --slug adopter-map 2>&1 ); rc=$?
+if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ]; then
+  pass "T-adopter-skip (d6) a symlinked marker runs the row"
+else
+  fail "T-adopter-skip (d6) expected rc=0 and a graphify call (rc=$rc): $out"
+fi
+rm -f "$ADCORPUS/graphify-out/.graphify_published"
+out=$( HIMMEL_UPDATE_GRAPH_MAX_BEHIND=abc ad_run "$AD_BUILD" ); rc=$?
+if [ "$rc" -eq 3 ] && [ ! -s "$WS/adopter-calls.log" ]; then
+  pass "T-adopter-skip (d7) a non-numeric limit falls back to 150 and skips"
+else
+  fail "T-adopter-skip (d7) expected rc=3 and no graphify call (rc=$rc): $out"
+fi
+# A marker without manifest.json is a half-installed graph: it never skips the row.
+out=$( AD_NOMANIFEST=1 ad_run "$AD_BUILD" ); rc=$?
+if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ]; then
+  pass "T-adopter-skip (d12) a marker with no manifest.json runs the row"
+else
+  fail "T-adopter-skip (d12) expected rc=0 and a graphify call (rc=$rc): $out"
+fi
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 if [ "$SKIPS" -ne 0 ]; then echo "ALL PASS ($SKIPS skipped)"; else echo "ALL PASS"; fi

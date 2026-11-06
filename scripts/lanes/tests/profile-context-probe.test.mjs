@@ -14,7 +14,7 @@ import {
   parseStreamJsonLines, findInitEvent, findResultEvent, firstTurnTokens,
   pluginSourceDiff, namespaceExtras, evaluateProfile, formatNote, roleCoverageProblems, countLoadedSkills,
   parseProbeArgs, resolveLedgerTarget, buildLedgerRow, rankToolBytes, pickMainRequest, untrimmedSettings, formatToolBytes, trimmedProfileNames,
-  findContextUsage, userScopeSkillDirs, isNameOnlySkill, listingProblems, expectedSkillNames, installedVersionsOf, listingReport, requiredBudget, runtimeNamesOf, listingTokensByPlugin,
+  upstreamErrorBody, findContextUsage, userScopeSkillDirs, isNameOnlySkill, listingProblems, expectedSkillNames, installedVersionsOf, listingReport, requiredBudget, runtimeNamesOf, listingTokensByPlugin,
 } from '../profile-context-probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -40,7 +40,7 @@ test('findInitEvent / findResultEvent locate the right lines regardless of posit
   assert.equal(findResultEvent([{ type: 'system', subtype: 'init' }]), null);
 });
 
-test('firstTurnTokens sums input + cache_creation + cache_read (measured HIMMEL-2189 schema)', () => {
+test('firstTurnTokens sums input + cache_creation + cache_read (measured schema)', () => {
   const events = parseStreamJsonLines(SAMPLE);
   const tokens = firstTurnTokens(findResultEvent(events));
   assert.equal(tokens, 10 + 12960 + 22128); // == 35098, matching the measured bare baseline
@@ -162,7 +162,7 @@ test('parseProbeArgs: malformed/unknown/conflicting flags throw', () => {
   assert.throws(() => parseProbeArgs(['--ledger', 'live', '--no-ledger']), /mutually exclusive/);
 });
 
-test('resolveLedgerTarget: the safe default is NO ledger write (HIMMEL-2189 corrective — a casual/dev run must never page the operator)', () => {
+test('resolveLedgerTarget: the safe default is NO ledger write (corrective — a casual/dev run must never page the operator)', () => {
   assert.equal(resolveLedgerTarget({ ledgerFlag: undefined, noLedger: false }, {}), null);
 });
 
@@ -220,7 +220,7 @@ test('roleCoverageProblems: an MCP-only plugin counts as loaded (HIMMEL-4067), n
   assert.deepEqual(roleCoverageProblems(init, ['shadcn-mcp@himmel', 'context7@claude-plugins-official']), []);
 });
 
-test('roleCoverageProblems: an un-namespaced user MCP server does not count for a plugin (HIMMEL-4067)', () => {
+test('roleCoverageProblems: an un-namespaced user MCP server does not count for a plugin', () => {
   const init = { ...LOADED, skills: [], mcp_servers: [{ name: 'context7', status: 'connected' }] };
   assert.equal(roleCoverageProblems(init, ['context7@claude-plugins-official']).length, 1);
 });
@@ -592,4 +592,16 @@ test('trimmedProfileNames skips null registry entries and keeps only profiles th
   const reg = { profiles: { operator: null, 'leg-impl': { denyTools: ['NotebookEdit'] }, user: {} } };
   assert.deepEqual(trimmedProfileNames(reg), ['leg-impl']);
   assert.deepEqual(trimmedProfileNames({}), []);
+});
+
+test('upstreamErrorBody answers a failed upstream call with fixed text, never the error string (Snyk XSS)', () => {
+  const body = upstreamErrorBody(new Error('<script>alert(1)</script> connect ECONNREFUSED'));
+  assert.equal(body, 'upstream request failed');
+  assert.equal(upstreamErrorBody('<img src=x onerror=alert(1)>'), 'upstream request failed');
+});
+
+test('the proxy error path answers with upstreamErrorBody and never the error string', () => {
+  const src = readFileSync(join(HERE, '..', 'profile-context-probe.mjs'), 'utf8');
+  assert.match(src, /res\.end\(upstreamErrorBody\(e\)\)/);
+  assert.doesNotMatch(src, /res\.end\(String\(e\)\)/);
 });

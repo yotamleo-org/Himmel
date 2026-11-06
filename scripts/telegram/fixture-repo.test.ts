@@ -28,7 +28,7 @@ function foreignZeroCommitWorktree(): { repo: string; wt: string } {
   return { repo, wt };
 }
 
-test("HIMMEL-1888: removeFixture REFUSES a zero-commit dirty worktree this run did not create — the work survives", () => {
+test("removeFixture REFUSES a zero-commit dirty worktree this run did not create — the work survives", () => {
   const { repo, wt } = foreignZeroCommitWorktree();
   const stderr = spyOn(console, "error").mockImplementation(() => {});
   try {
@@ -52,7 +52,7 @@ test("HIMMEL-1888: removeFixture REFUSES a zero-commit dirty worktree this run d
   }
 }, GIT_TEST_TIMEOUT_MS);
 
-test("HIMMEL-1888: a registered fixture IS removed, and the removal is announced with its path", () => {
+test("a registered fixture IS removed, and the removal is announced with its path", () => {
   const { repo } = initHermeticRepo("fixture-registered-");
   const stderr = spyOn(console, "error").mockImplementation(() => {});
   try {
@@ -67,7 +67,7 @@ test("HIMMEL-1888: a registered fixture IS removed, and the removal is announced
   } finally { stderr.mockRestore(); }
 }, GIT_TEST_TIMEOUT_MS);
 
-test("HIMMEL-1786: shared-dispatch fixtures are hermetic — the host's global hooks never fire inside them", () => {
+test("shared-dispatch fixtures are hermetic — the host's global hooks never fire inside them", () => {
   const { repo, wt, run } = makeSharedFixtureRepo("hermetic-shared-", "glm+feat-live-pr", "feat/live-pr");
   try {
     // Ratchet: without this, a global core.hooksPath (tokensave installs one)

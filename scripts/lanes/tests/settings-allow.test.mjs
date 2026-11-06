@@ -254,7 +254,7 @@ test('every path-naming Bash allow rule is a per-file literal, a step-0 literal 
   }
 });
 
-test('vm-runner.sh is allowed by exactly its five literals and never a wildcard (HIMMEL-5037)', () => {
+test('vm-runner.sh is allowed by exactly its five literals and never a wildcard', () => {
   const vm = PROJECT_EXACT_LITERALS.filter((l) => l.includes('vm-runner.sh'));
   assert.equal(vm.length, 5, 'anti-vacuity: five vm-runner literals');
   for (const lit of vm) assert.ok(ALLOW.includes(`Bash(${lit})`), `missing allow rule: ${lit}`);

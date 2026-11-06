@@ -32,7 +32,7 @@ line endings). It is **idempotent** and **non-destructive**:
    --bearer-token-env-var QMD_HTTP_TOKEN` (`QMD_MCP_URL` overrides the URL). Codex
    reads a bearer only from an env var, so the environment that launches Codex must
    `export QMD_HTTP_TOKEN="$(cat ~/.config/qmd/http-token)"`; without it qmd answers
-   401, and the installer prints a WARN naming that line (HIMMEL-8118).
+   401, and the installer prints a WARN naming that line.
 
 The installer does **not** touch external plugins' `hooks.json`. A few of them
 (warp, hookify, ralph-loop, security-guidance) ship a top-level `description`

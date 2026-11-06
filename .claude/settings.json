@@ -73,6 +73,8 @@
       "Bash(bash scripts/handover/chief-kit/cut-tag.sh:*)",
       "Bash(bash scripts/handover/chief-kit/close-wrapped-worker.sh:*)",
       "Bash(bash scripts/handover/chief-kit/launch-cloud.sh:*)",
+      "Bash(bash scripts/handover/chief-kit/series-next.sh:*)",
+      "Bash(bash scripts/handover/chief-kit/series-publish.sh:*)",
       "Bash(bash scripts/ci/gcp-runners.sh down)",
       "Bash(bash scripts/ci/gcp-runners.sh status)",
       "Bash(bash scripts/handover/chief-kit/vm-runner.sh on)",
@@ -250,7 +252,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" ]; then command -p sh \"$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" --chain \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-edit-on-main.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-edit-live-settings.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-memory-capture.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-bank-lift-writes.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-himmel-config-writes.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-relay-writes.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-bus-store.sh\"; else node \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" --chain \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-edit-on-main.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-edit-live-settings.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-memory-capture.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-bank-lift-writes.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-himmel-config-writes.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-relay-writes.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-bus-store.sh\"; fi",
+            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" ]; then command -p sh \"$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" --chain \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-edit-on-main.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-edit-live-settings.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-memory-capture.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-bank-lift-writes.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-himmel-config-writes.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-relay-writes.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-bus-store.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/check-write-hold.sh\"; else node \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" --chain \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-edit-on-main.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-edit-live-settings.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-memory-capture.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-bank-lift-writes.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/block-himmel-config-writes.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-relay-writes.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-bus-store.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/check-write-hold.sh\"; fi",
             "timeout": 60
           }
         ]

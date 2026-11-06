@@ -35,10 +35,11 @@ test("judge: lockdown blocks every inbound agent route for every sender", async 
   await inbound(r, fresh("/lockdown"));
   for (const from of [1, 999]) {
     const replies: string[] = []; const ran: string[] = []; const fired: string[] = [];
-    for (const text of ["hello", "work on HIMMEL-1", "HIMMEL-1: x", "HIMMEL-1: delete lockdown", "/restart", "/restart full"]) await inbound(r, fresh(text, { from }), replies, ran, fired);
+    for (const text of ["hello", "work on HIMMEL-1", "ABC-1: x", "ABC-1: delete lockdown", "/restart", "/restart full"]) await inbound(r, fresh(text, { from }), replies, ran, fired);
     expect(ran).toEqual([]);
     expect(fired).toEqual([]);
     expect(existsSync(join(r, "sessions", "HIMMEL-1", "inbox.jsonl"))).toBe(false);
+    expect(existsSync(join(r, "sessions", "ABC-1", "inbox.jsonl"))).toBe(false);
     // Station policy: only the operator is told; others get silence.
     expect(replies).toHaveLength(from === 1 ? 6 : 0);
     expect(replies.every(t => t.includes("locked, reset at the station"))).toBe(true);
@@ -268,7 +269,7 @@ test("bare /chief with zero or two live chiefs lists the problem without queuing
   }
 });
 
-test("HIMMEL-7573: the pick-a-chief prompts tell the operator to send /chief, never /console", async () => {
+test("the pick-a-chief prompts tell the operator to send /chief, never /console", async () => {
   for (const text of ["/chief halt", "/chief HIMMEL halt"]) {
     const r = root(); const replies: string[] = [];
     heartbeat(r); heartbeat(r, "HIMMEL-second-chief");
@@ -278,7 +279,7 @@ test("HIMMEL-7573: the pick-a-chief prompts tell the operator to send /chief, ne
   }
 });
 
-test("HIMMEL-8381: /chief queues the line; the dropped /console alias queues nothing", async () => {
+test("/chief queues the line; the dropped /console alias queues nothing", async () => {
   const r = root(); const f = armInbox(r); const replies: string[] = [];
   await handleInbound(r, say(`/chief ${NAME} go ahead`), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
   expect(readFileSync(f, "utf8").replace(/^- \d\d:\d\d /, "")).toBe("[telegram from=1 chat=1] go ahead\n");
@@ -440,7 +441,7 @@ test("first waiter arm queues one announcement per identity, including successor
 });
 
 test("trusted console outbox receipt routes a Telegram reply to that console, even with two live chiefs", async () => {
-  for (const text of ["thanks, halt", "HIMMEL-123: halt"]) {
+  for (const text of ["thanks, halt", "ABC-123: halt"]) {
     const r = root(); const f = heartbeat(r); heartbeat(r, "second");
     await replyViaOutbox(r, 1, "chief answer", NAME);
     await flushOutboxes(r, async () => 777);
@@ -590,7 +591,7 @@ async function routeText(r: string, text: string) {
   return replies.join("\n");
 }
 
-test("HIMMEL-5125: bare /chief queues to the only armed console whose waiter is stale within the busy TTL", async () => {
+test("bare /chief queues to the only armed console whose waiter is stale within the busy TTL", async () => {
   const r = root(); const f = heartbeat(r, NAME, "waiting", 900);
   const reply = await routeText(r, "/chief halt the wave");
   expect(readFileSync(f, "utf8")).toContain("[telegram from=1 chat=1] halt the wave");
@@ -598,7 +599,7 @@ test("HIMMEL-5125: bare /chief queues to the only armed console whose waiter is 
   expect(reply).toContain(BUSY_SAY);
 });
 
-test("HIMMEL-5125: a waiter that exited on a wake reason is busy, not released", async () => {
+test("a waiter that exited on a wake reason is busy, not released", async () => {
   const r = root(); const f = armInbox(r);
   writeFileSync(f + ".wait", `hb=${Math.floor(Date.now() / 1000) - 60} pid=123 key=- tick=ok state=exited exit=wake-tick\n`);
   const reply = await routeText(r, "/chief halt the wave");
@@ -606,14 +607,14 @@ test("HIMMEL-5125: a waiter that exited on a wake reason is busy, not released",
   expect(reply).toContain(BUSY_SAY);
 });
 
-test("HIMMEL-5125: a fleet verb queues to a busy console", async () => {
+test("a fleet verb queues to a busy console", async () => {
   const r = root(); const f = heartbeat(r, NAME, "sampling", 900); const replies: string[] = [];
   await inbound(r, fresh("/fleet"), replies);
   expect(readFileSync(f, "utf8")).toContain("] fleet status\n");
   expect(replies.join("\n")).toContain(BUSY_SAY);
 });
 
-test("HIMMEL-5125: a unique name fragment routes to its console and is stripped from the text", async () => {
+test("a unique name fragment routes to its console and is stripped from the text", async () => {
   const r = root(); const a = heartbeat(r, "HIMMEL-nextleg-2026-10-10CO-roadmap-chief"); const b = heartbeat(r, "HIMMEL-nextleg-2026-10-10V-other-chief", "waiting", 900);
   for (const frag of ["CO", "roadmap-chi", "ROADMAP"]) {
     writeFileSync(a, ""); writeFileSync(b, "");
@@ -625,7 +626,7 @@ test("HIMMEL-5125: a unique name fragment routes to its console and is stripped 
   }
 });
 
-test("HIMMEL-5125: an ambiguous fragment lists the candidates and sends nothing", async () => {
+test("an ambiguous fragment lists the candidates and sends nothing", async () => {
   const r = root(); const a = heartbeat(r, "x-chief-aa"); const b = heartbeat(r, "x-chief-bb");
   const reply = await routeText(r, "/chief console do it");
   expect(readFileSync(a, "utf8")).toBe("");
@@ -634,7 +635,7 @@ test("HIMMEL-5125: an ambiguous fragment lists the candidates and sends nothing"
   expect(reply).toContain("x-chief-bb");
 });
 
-test("HIMMEL-5125: a dead or released console still bounces", async () => {
+test("a dead or released console still bounces", async () => {
   const stale = (r: string) => heartbeat(r, NAME, "waiting", 4000);
   const released = (r: string) => { const f = armInbox(r); writeFileSync(f + ".wait", `hb=${Math.floor(Date.now() / 1000) - 60} pid=123 key=- tick=- state=exited exit=signal-TERM\n`); return f; };
   for (const mk of [stale, released]) {
@@ -699,7 +700,7 @@ test("reply without --satellite never calls Home Assistant", async () => {
 const OLD = "HIMMEL-nextleg-2026-10-30KE-roadmap-chief";
 const NEWEST = "HIMMEL-nextleg-2026-10-30KH-roadmap-chief";
 
-test("HIMMEL-8196: bare /chief with two live chiefs of one lineage reaches the newest", async () => {
+test("bare /chief with two live chiefs of one lineage reaches the newest", async () => {
   for (const [older, newer] of [[OLD, NEWEST], ["HIMMEL-nextleg-2026-10-29Z-roadmap-chief", "HIMMEL-nextleg-2026-10-30A-roadmap-chief"], ["HIMMEL-nextleg-2026-10-30Z-roadmap-chief", "HIMMEL-nextleg-2026-10-30AA-roadmap-chief"]]) {
     for (const order of [[older, newer], [newer, older]]) {
       const r = root(); for (const n of order) heartbeat(r, n);
@@ -714,14 +715,14 @@ test("HIMMEL-8196: bare /chief with two live chiefs of one lineage reaches the n
   }
 });
 
-test("HIMMEL-8196: two live chiefs of different lineages are still refused", async () => {
+test("two live chiefs of different lineages are still refused", async () => {
   const r = root(); heartbeat(r, NEWEST); heartbeat(r, "HIMMEL-nextleg-2026-10-30B-other-chief");
   const reply = await routeText(r, "/chief halt");
   expect(reply).toContain("More than one chief is live");
   expect(readFileSync(join(r, "consoles", `${NEWEST}.md`), "utf8")).toBe("");
 });
 
-test("HIMMEL-8196: an explicit name or unique fragment still pins the older chief", async () => {
+test("an explicit name or unique fragment still pins the older chief", async () => {
   const r = root(); const old = heartbeat(r, OLD); heartbeat(r, NEWEST);
   await routeText(r, `/chief ${OLD} keep it`);
   expect(readFileSync(old, "utf8")).toContain("] keep it");
@@ -731,7 +732,7 @@ test("HIMMEL-8196: an explicit name or unique fragment still pins the older chie
   expect(readFileSync(join(r, "consoles", `${NEWEST}.md`), "utf8")).toBe("");
 });
 
-test("HIMMEL-8196: the alias chief:himmel resolves to the newest chief across a simulated handover", async () => {
+test("the alias chief:himmel resolves to the newest chief across a simulated handover", async () => {
   const r = root(); const old = heartbeat(r, OLD);
   await routeText(r, "/chief chief:himmel before the handover");
   expect(readFileSync(old, "utf8")).toContain("[telegram from=1 chat=1] before the handover\n");
@@ -743,7 +744,7 @@ test("HIMMEL-8196: the alias chief:himmel resolves to the newest chief across a 
   expect(reply).toContain(NEWEST);
 });
 
-test("HIMMEL-8196: an alias with no live chief, or two lineages, queues nothing", async () => {
+test("an alias with no live chief, or two lineages, queues nothing", async () => {
   const r = root(); const a = heartbeat(r, NEWEST); const b = heartbeat(r, "HIMMEL-nextleg-2026-10-30B-other-chief");
   expect(await routeText(r, "/chief chief:nobody hi")).toContain("no live chief");
   expect(await routeText(r, "/chief chief:himmel hi")).toContain("More than one chief");
@@ -765,7 +766,7 @@ async function tapHarness(r: string) {
 }
 const tapOf = (data: string, extra: Record<string, unknown> = {}) => ({ callback_id: "cb1", from: 1, chat_id: 1, data, ...extra });
 
-test("HIMMEL-8196: a Send-to-chief tap from outside allowFrom is refused and writes nothing", async () => {
+test("a Send-to-chief tap from outside allowFrom is refused and writes nothing", async () => {
   const r = root(); const old = heartbeat(r, OLD); const next = heartbeat(r, NEWEST);
   const { tap, answers, prompts, pickers } = await tapHarness(r);
   for (const extra of [{ from: 999 }, { chat_id: -99 }]) {
@@ -781,7 +782,7 @@ test("HIMMEL-8196: a Send-to-chief tap from outside allowFrom is refused and wri
   expect(readFileSync(next, "utf8")).toBe("");
 });
 
-test("HIMMEL-8196: an allowed Send-to-chief tap prompts for the text and the reply lands in the newest chief's inbox", async () => {
+test("an allowed Send-to-chief tap prompts for the text and the reply lands in the newest chief's inbox", async () => {
   const r = root(); const old = heartbeat(r, OLD); const next = heartbeat(r, NEWEST);
   const { tap, prompts } = await tapHarness(r);
   expect(tap(tapOf("chief:send"))).toBe(true);
@@ -794,7 +795,7 @@ test("HIMMEL-8196: an allowed Send-to-chief tap prompts for the text and the rep
   expect(readFileSync(old, "utf8")).toBe("");
 });
 
-test("HIMMEL-8196: the picker lists the newest chief first and a pick pins that chief", async () => {
+test("the picker lists the newest chief first and a pick pins that chief", async () => {
   const r = root(); const old = heartbeat(r, OLD); heartbeat(r, NEWEST);
   const { tap, prompts, pickers } = await tapHarness(r);
   expect(tap(tapOf("chief:pick"))).toBe(true);
@@ -807,7 +808,7 @@ test("HIMMEL-8196: the picker lists the newest chief first and a pick pins that 
   expect(readFileSync(old, "utf8")).toContain("] old context please\n");
 });
 
-test("HIMMEL-8196: a tap that is not a chief button falls through, and with no live chief nothing is prompted", async () => {
+test("a tap that is not a chief button falls through, and with no live chief nothing is prompted", async () => {
   const r = root();
   const { tap, answers, prompts } = await tapHarness(r);
   expect(tap(tapOf("afk:approve:abcdefgh"))).toBe(false);

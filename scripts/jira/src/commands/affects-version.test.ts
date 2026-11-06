@@ -35,7 +35,7 @@ async function run(register: (p: Command) => void, args: string[]): Promise<void
 
 const call = (method: string) => mockRequest.mock.calls.find((c) => c[0] === method)?.[2];
 
-describe('--affects-version (HIMMEL-6236)', () => {
+describe('--affects-version', () => {
   const savedKey = process.env.JIRA_PROJECT_KEY;
 
   beforeEach(() => {

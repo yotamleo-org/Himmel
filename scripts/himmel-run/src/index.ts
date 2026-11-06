@@ -5,7 +5,7 @@ import { run } from './run.js';
 /**
  * Resolve the recovery command from CLI options.
  *
- * HIMMEL-101 §8: --then-cmd-json accepts a JSON array of strings, which handles
+ * --then-cmd-json accepts a JSON array of strings, which handles
  * args containing commas and avoids shell-quoting hazards. --then-cmd is retained
  * for compatibility but warns the operator to migrate.
  *

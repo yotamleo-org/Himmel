@@ -1,7 +1,12 @@
 // scripts/where-are-we/tests/provision.test.mjs — unit tests for lib/provision.mjs (pure)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { writeFileSync, readFileSync, statSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { fold } from '../lib/fold.mjs';
+import { readRecords } from '../lib/ledger.mjs';
+import { main } from '../provision.mjs';
+import { makeTmpDir } from '../../lib/test-tmpdir.mjs';
 import { UsageError } from '../lib/errors.mjs';
 import { renderSlice, buildEmitRecord } from '../lib/provision.mjs';
 
@@ -146,4 +151,128 @@ test('authority guard: a status from source=handover does NOT win (emit is scope
   const stray = { ts: NOW, source: 'handover', key: 'HIMMEL-1', kind: 'ticket', status: 'in-progress' };
   const state = fold([stray]);
   assert.equal(state.items['HIMMEL-1'].status, undefined);
+});
+
+// --- compact: bound the ledger's growth, slice byte-identical ----------------
+// Fixture ledgers only, in temp dirs; never the live ledger.
+
+const jl = (recs) => recs.map((r) => JSON.stringify(r)).join('\n') + '\n';
+const slices = (ledger, keys) => keys.map((k) => main(['slice', '--ledger', ledger, '--for', k]));
+
+function churnedLedger() {
+  const recs = [];
+  for (let i = 0; i < 40; i++) {
+    const ts = `2026-06-22T10:${String(i).padStart(2, '0')}:00Z`;
+    recs.push({ ts, source: 'jira', key: 'HIMMEL-1', kind: 'ticket', status: i < 39 ? 'in-progress' : 'in-review' });
+    recs.push({ ts, source: 'handover', key: 'HIMMEL-1', kind: 'ticket', next_action: `step ${i}` });
+    recs.push({ ts, source: 'pr', key: '#42', kind: 'pr', status: i % 2 ? 'open' : 'draft', pr: 42 });
+    recs.push({ ts, source: 'git', key: '#42', kind: 'pr', branch: `fix/b${i}` });
+  }
+  recs.push({ ts: '2026-06-22T11:00:00Z', source: 'handover', key: 'HIMMEL-1', kind: 'ticket', blockers: ['vm'] });
+  recs.push({ ts: '2026-06-22T11:01:00Z', source: 'handover', key: 'HIMMEL-1', kind: 'ticket', blockers: [] });
+  recs.push({ ts: '2026-06-22T11:02:00Z', source: 'handover', key: 'HIMMEL-1', kind: 'ticket', status: 'ignored' }); // not authoritative
+  recs.push({ ts: '2026-06-22T11:03:00Z', source: 'handover', key: 'HIMMEL-2', kind: 'ticket', awaiting_operator: ['decide'] });
+  recs.push({ ts: '2026-06-22T11:04:00Z', source: 'jira', key: 'HIMMEL-3', kind: 'ticket', status: 'blocked', lock: 'vm-1' });
+  recs.push({ ts: '2026-06-22T11:05:00Z', source: 'jira', key: 'HIMMEL-4', kind: 'ticket' }); // contentless
+  recs.push({ ts: '2026-06-22T11:07:00Z', source: 'jira', key: 'HIMMEL-5' }); // no kind: fold skips it
+  return recs;
+}
+
+test('compact: every key slice is byte-identical before and after, and the ledger shrinks', () => {
+  const dir = makeTmpDir('waw-compact-');
+  const ledger = join(dir, 'ledger.jsonl');
+  writeFileSync(ledger, jl(churnedLedger()));
+  const keys = ['HIMMEL-1', '#42', 'HIMMEL-2', 'HIMMEL-3', 'HIMMEL-4', 'HIMMEL-5', 'HIMMEL-404'];
+  const before = slices(ledger, keys);
+  const stateBefore = fold(readRecords(ledger));
+  const sizeBefore = statSync(ledger).size;
+  assert.match(before[0], /- status: in-review/);
+
+  const out = main(['compact', '--ledger', ledger]);
+  assert.match(out, /^kept=\d+ dropped=\d+$/);
+
+  assert.deepEqual(slices(ledger, keys), before);
+  const stateAfter = fold(readRecords(ledger));
+  assert.deepEqual(stateAfter, stateBefore);
+  assert.deepEqual(Object.keys(stateAfter.items), Object.keys(stateBefore.items));
+  assert.ok(statSync(ledger).size < sizeBefore / 4, 'the churned ledger shrinks to a fraction');
+});
+
+test('compact: a record appended after compaction folds as it would have on the full ledger', () => {
+  const dir = makeTmpDir('waw-compact-');
+  const full = join(dir, 'full.jsonl');
+  const comp = join(dir, 'comp.jsonl');
+  writeFileSync(full, jl(churnedLedger()));
+  writeFileSync(comp, jl(churnedLedger()));
+  main(['compact', '--ledger', comp]);
+  // an older-than-latest ts: it must beat only what it beat before
+  for (const l of [full, comp]) {
+    main(['emit', '--ledger', l, '--key', 'HIMMEL-1', '--next-action', 'late write', '--now', '2026-06-22T10:20:30Z']);
+  }
+  assert.deepEqual(slices(comp, ['HIMMEL-1', '#42']), slices(full, ['HIMMEL-1', '#42']));
+});
+
+test('compact: random churn (ties, out-of-order ts, clears, kind changes) keeps the whole fold identical', () => {
+  let seed = 12345;
+  const rnd = (n) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
+  const pick = (a) => a[rnd(a.length)];
+  const recs = [];
+  for (let i = 0; i < 600; i++) {
+    const r = {
+      ts: `2026-06-22T10:00:${String(rnd(30)).padStart(2, '0')}Z`,
+      source: pick(['jira', 'handover', 'pr', 'git']),
+      key: pick(['A-1', 'A-2', 'A-3', '#7']),
+      kind: pick(['ticket', 'ticket', 'pr', 'handover-item']),
+    };
+    if (rnd(2)) r.status = pick(['todo', 'doing', 'done', null]);
+    if (rnd(3) === 0) r.next_action = pick(['x', 'y', null]);
+    if (rnd(3) === 0) r.blockers = pick([['b'], ['c', 'd'], []]);
+    if (rnd(4) === 0) r.awaiting_operator = pick([['q'], []]);
+    if (rnd(5) === 0) r.lock = pick(['l1', null]);
+    if (rnd(5) === 0) r.branch = pick(['b1', 'b2', null]);
+    recs.push(r);
+  }
+  const dir = makeTmpDir('waw-compact-');
+  const ledger = join(dir, 'ledger.jsonl');
+  writeFileSync(ledger, jl(recs));
+  const keys = ['A-1', 'A-2', 'A-3', '#7'];
+  const before = slices(ledger, keys);
+  const stateBefore = fold(readRecords(ledger));
+  main(['compact', '--ledger', ledger]);
+  assert.deepEqual(slices(ledger, keys), before);
+  const stateAfter = fold(readRecords(ledger));
+  assert.deepEqual(stateAfter, stateBefore);
+  assert.deepEqual(Object.keys(stateAfter.items), Object.keys(stateBefore.items));
+  assert.ok(readRecords(ledger).length < recs.length);
+});
+
+test('compact: keeps the original beside it, and a second run changes nothing', () => {
+  const dir = makeTmpDir('waw-compact-');
+  const ledger = join(dir, 'ledger.jsonl');
+  writeFileSync(ledger, jl(churnedLedger()));
+  const original = readFileSync(ledger, 'utf8');
+  main(['compact', '--ledger', ledger]);
+  assert.equal(readFileSync(ledger + '.pre-compact', 'utf8'), original);
+  const once = readFileSync(ledger, 'utf8');
+  const mtime = statSync(ledger).mtimeMs;
+  assert.match(main(['compact', '--ledger', ledger]), /dropped=0$/);
+  assert.equal(readFileSync(ledger, 'utf8'), once);
+  assert.equal(statSync(ledger).mtimeMs, mtime, 'a no-op compaction does not touch the ledger');
+});
+
+test('compact: a malformed ledger is left untouched, and a missing one is not created', () => {
+  const dir = makeTmpDir('waw-compact-');
+  const bad = join(dir, 'bad.jsonl');
+  writeFileSync(bad, '{"ts":"2026-06-22T10:00:00Z","source":"jira","key":"A-1","kind":"ticket"}\nnot json\n');
+  assert.throws(() => main(['compact', '--ledger', bad]), /malformed JSON/);
+  assert.equal(readFileSync(bad, 'utf8').split('\n')[1], 'not json');
+  assert.ok(!existsSync(bad + '.pre-compact'));
+  assert.ok(!existsSync(bad + '.lock'), 'the lock is released on failure');
+  const none = join(dir, 'none.jsonl');
+  assert.match(main(['compact', '--ledger', none]), /kept=0 dropped=0/);
+  assert.ok(!existsSync(none));
+});
+
+test('compact: --ledger is required', () => {
+  assert.throws(() => main(['compact']), UsageError);
 });

@@ -67,14 +67,14 @@ test('a Tests: trailer also satisfies the receipt check', () => {
 // origin/main gets a push-block hint — the GLM lane cannot push by design, so
 // this is often "the parent hasn't pushed yet", not "the work is missing".
 
-test('no-upstream + branch exists with commits ahead of origin/main: push-block hint (HIMMEL-1641)', () => {
+test('no-upstream + branch exists with commits ahead of origin/main: push-block hint', () => {
   const r = verifyReturn('glm/himmel-1640-x', {
     exec: stubExec({ 'for-each-ref': '\n', 'rev-parse --verify': 'abc123\n', 'rev-list': '2\n' }),
   });
   assert.equal(r.verdict, 'FAILED');
   assert.equal(r.failedCheck, 'no-upstream');
   assert.match(r.hint, /GLM lane push-block/);
-  assert.match(r.hint, /HIMMEL-1641/);
+  assert.match(r.hint, /GLM lane push-block/);
 });
 
 test('no-upstream + branch does NOT exist locally: no hint (the plain no-upstream case)', () => {

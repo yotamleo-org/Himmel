@@ -319,7 +319,7 @@ assert_contains "ledger merges_behind is the true distance (seed-graph commit + 
 # unlike Test 1's below-threshold skip, there is no graph.json on origin/main
 # to diff against in the first place.
 # =============================================================================
-echo "TEST: origin/main missing graphify-out/graph.json entirely -> the worktree rebuild is skipped, publish/merge never run (HIMMEL-2705)"
+echo "TEST: origin/main missing graphify-out/graph.json entirely -> the worktree rebuild is skipped, publish/merge never run"
 REPO1B="$TMP_ROOT/t1b-primary"; BARE1B="$TMP_ROOT/t1b-origin.git"
 HOME1B="$TMP_ROOT/t1b-home"; LEDGER1B="$TMP_ROOT/t1b-ledger"
 mkdir -p "$HOME1B" "$LEDGER1B"
@@ -364,13 +364,55 @@ assert_contains "ledger error=null (not the _fail/exit-3 path)" '"error":null' "
 # Controls: the rebuild still runs where something consumes it.
 # (a) retired fixture + --semantic: the semantic step builds on the worktree's AST output.
 FAKE_SEM1B="$TMP_ROOT/t1b-semantic-fake.sh"
-printf '#!/usr/bin/env bash\nexit 0\n' > "$FAKE_SEM1B"; chmod +x "$FAKE_SEM1B"
-: > "$AST_REC_LOG"; rc=0
+# shellcheck disable=SC2016  # the fake expands its exit code when it runs
+printf '#!/usr/bin/env bash\nexit "${FAKE_SEM1B_RC:-0}"\n' > "$FAKE_SEM1B"; chmod +x "$FAKE_SEM1B"
+# The graph-data publisher: a recorder, never the real push.
+FAKE_CH="$TMP_ROOT/t1b-channel-fake.sh"; FAKE_CH_LOG="$TMP_ROOT/t1b-channel.log"
+cat > "$FAKE_CH" <<'FAKECH'
+#!/usr/bin/env bash
+echo "channel-call: $*" >> "$FAKE_CH_LOG"
+if [ "${FAKE_CH_RC:-0}" -ne 0 ]; then
+    echo "publish-graph-channel: BLOCKED file=graph.json rule=host-path" >&2
+    exit "$FAKE_CH_RC"
+fi
+echo "publish-graph-channel: published graph-data deadbeef (built at abc1234)"
+FAKECH
+chmod +x "$FAKE_CH"
+: > "$AST_REC_LOG"; : > "$FAKE_CH_LOG"; rc=0
 out=$(HOME="$HOME1B" GRAPH_CADENCE_HIMMEL_ROOT="$REPO1B" GRAPH_CADENCE_LEDGER_ROOT="$LEDGER1B" \
       GRAPH_CADENCE_AST_UPDATE="$AST_REC" AST_REC_LOG="$AST_REC_LOG" GRAPH_CADENCE_SEMANTIC_UPDATE="$FAKE_SEM1B" \
+      GRAPH_CADENCE_CHANNEL_PUBLISH="$FAKE_CH" FAKE_CH_LOG="$FAKE_CH_LOG" \
       run_gc --threshold 10 --semantic 2>&1) || rc=$?
 assert_eq "retired + --semantic rc=0" "0" "$rc"
 assert_eq "retired + --semantic still rebuilds once" "1" "$(grep -c '^ast-update-call: ' "$AST_REC_LOG")"
+# A promoted semantic graph is published to graph-data, not dropped as a no-op.
+assert_eq "retired + --semantic + promote calls the graph-data publisher once" "1" "$(grep -c '^channel-call: ' "$FAKE_CH_LOG")"
+assert_contains "the publisher gets the worktree graph and the worktree checkout" \
+    "--src $WT1B/graphify-out --repo $WT1B --remote origin" "$(cat "$FAKE_CH_LOG")"
+LEDGER_LINE1BP=$(tail -n1 "$LEDGER1B/.graph-cadence/ledger.jsonl" 2>/dev/null || echo MISSING)
+assert_contains "ledger action=published-channel after a channel publish" '"action":"published-channel"' "$LEDGER_LINE1BP"
+assert_contains "a channel publish records no error" '"error":null' "$LEDGER_LINE1BP"
+assert_not_contains "a channel publish is no longer the no-op" "publish/merge have nothing to do" "$out"
+# A blocked publish fails the run (exit 3) and the ledger names the reason, file and rule only.
+: > "$FAKE_CH_LOG"; rc=0
+out=$(HOME="$HOME1B" GRAPH_CADENCE_HIMMEL_ROOT="$REPO1B" GRAPH_CADENCE_LEDGER_ROOT="$LEDGER1B" \
+      GRAPH_CADENCE_AST_UPDATE="$AST_REC" AST_REC_LOG="$AST_REC_LOG" GRAPH_CADENCE_SEMANTIC_UPDATE="$FAKE_SEM1B" \
+      GRAPH_CADENCE_CHANNEL_PUBLISH="$FAKE_CH" FAKE_CH_LOG="$FAKE_CH_LOG" FAKE_CH_RC=3 \
+      run_gc --threshold 10 --semantic 2>&1) || rc=$?
+assert_eq "a blocked graph-data publish fails the run rc=3" "3" "$rc"
+LEDGER_LINE1BF=$(tail -n1 "$LEDGER1B/.graph-cadence/ledger.jsonl" 2>/dev/null || echo MISSING)
+assert_contains "ledger action=failed after a blocked publish" '"action":"failed"' "$LEDGER_LINE1BF"
+assert_contains "the ledger error names the publish exit and the file and rule" \
+    "graph-data publish failed (exit 3): publish-graph-channel: BLOCKED file=graph.json rule=host-path" "$LEDGER_LINE1BF"
+# A benign semantic skip promotes nothing: no publish, the no-op stands.
+: > "$FAKE_CH_LOG"; rc=0
+out=$(HOME="$HOME1B" GRAPH_CADENCE_HIMMEL_ROOT="$REPO1B" GRAPH_CADENCE_LEDGER_ROOT="$LEDGER1B" \
+      GRAPH_CADENCE_AST_UPDATE="$AST_REC" AST_REC_LOG="$AST_REC_LOG" GRAPH_CADENCE_SEMANTIC_UPDATE="$FAKE_SEM1B" \
+      GRAPH_CADENCE_CHANNEL_PUBLISH="$FAKE_CH" FAKE_CH_LOG="$FAKE_CH_LOG" FAKE_SEM1B_RC=3 \
+      run_gc --threshold 10 --semantic 2>&1) || rc=$?
+assert_eq "a benign semantic skip keeps rc=0" "0" "$rc"
+assert_eq "a benign semantic skip never calls the graph-data publisher" "" "$(cat "$FAKE_CH_LOG")"
+assert_contains "a benign semantic skip keeps the no-op" "publish/merge have nothing to do" "$out"
 # (b) tracked, stale graph: the publish path needs the origin/main rebuild.
 REPO1BT="$TMP_ROOT/t1bt-primary"; BARE1BT="$TMP_ROOT/t1bt-origin.git"
 HOME1BT="$TMP_ROOT/t1bt-home"; LEDGER1BT="$TMP_ROOT/t1bt-ledger"
@@ -1309,6 +1351,7 @@ run_sem() { # <tag> [run_gc args...] -- one fixture per tag, seams pinned
     local tag="$1"; shift
     FAKE_SEM_LOG="$FAKE_SEM_LOG" FAKE_SEND_LOG="$FAKE_SEND_LOG" \
     GRAPH_CADENCE_SEMANTIC_UPDATE="$FAKE_SEM" \
+    GRAPH_CADENCE_CHANNEL_PUBLISH="$FAKE_CH" FAKE_CH_LOG="$TMP_ROOT/t9-$tag-channel.log" \
     GRAPH_CADENCE_SEMANTIC_BACKEND="${GRAPH_CADENCE_SEMANTIC_BACKEND-}" \
     HIMMEL_API_LANE="${HIMMEL_API_LANE-on}" HIMMEL_API_ACCOUNT="${HIMMEL_API_ACCOUNT-A}" \
     CADENCE_ALERT_FILE="$TMP_ROOT/t9-$tag-alerts.log" CADENCE_ALERT_DEDUPE_DIR="$TMP_ROOT/t9-$tag-dedupe" \
@@ -1334,7 +1377,7 @@ assert_eq "semantic opt-in rc=0" "0" "$rc"
 sem_log=$(cat "$FAKE_SEM_LOG")
 assert_contains "semantic step runs with --semantic on the subscription by default" "--backend claude-cli" "$sem_log"
 assert_not_contains "semantic step defaults to claude-cli, never the API" "--backend claude-api" "$sem_log"
-assert_not_contains "semantic step defaults to the API, not ollama (HIMMEL-5367)" "--backend ollama" "$sem_log"
+assert_not_contains "semantic step defaults to the API, not ollama" "--backend ollama" "$sem_log"
 assert_contains "semantic step targets the dedicated worktree as himmel-code" "--corpus-root $TMP_ROOT/t9-on-home/.claude/graph-cadence/$SLUG9 --corpus-class himmel-code" "$sem_log"
 if [ -e "$TMP_ROOT/t9-on-dedupe/graph-semantic-$SLUG9.stale" ]; then
     fail "a successful semantic step clears its cadence alert"
@@ -1492,7 +1535,7 @@ assert_contains "unknown backend names the accepted values" "claude-cli, claude-
 assert_eq "unknown backend never calls semantic-update" "" "$(cat "$FAKE_SEM_LOG")"
 # (g) claude-api (and the api alias) reach semantic-update when the API lane is
 # on; with the lane off the cadence refuses before any work (no cli fallback).
-for tag in api apialias apioff; do
+for tag in api apialias apiauto apioff; do
     mkdir -p "$TMP_ROOT/t9-$tag-home" "$TMP_ROOT/t9-$tag-ledger"
     seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20
 done
@@ -1504,6 +1547,11 @@ assert_contains "backend=claude-api is passed through to semantic-update" "--bac
 out=$(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A GRAPH_CADENCE_SEMANTIC_BACKEND=api run_sem apialias --semantic) || rc=$?
 assert_eq "backend=api alias rc=0" "0" "$rc"
 assert_contains "backend=api resolves to claude-api" "--backend claude-api" "$(cat "$FAKE_SEM_LOG")"
+# the himmel graph pass is the one caller decision 525 lets ask for account auto
+: > "$FAKE_SEM_LOG"; rc=0
+out=$(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api run_sem apiauto --semantic) || rc=$?
+assert_eq "backend=claude-api with account auto (graph pass) rc=0" "0" "$rc"
+assert_contains "backend=claude-api with account auto reaches semantic-update" "--backend claude-api" "$(cat "$FAKE_SEM_LOG")"
 : > "$FAKE_SEM_LOG"; rc=0
 out=$(HIMMEL_API_LANE=off HIMMEL_API_ACCOUNT=A GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api run_sem apioff --semantic) || rc=$?
 assert_eq "claude-api with the lane off refuses rc=1" "1" "$rc"

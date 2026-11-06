@@ -208,8 +208,8 @@ assert_has "$out" "block" "resync prompt scopes to entries with a fork block (no
 assert_has "$out" "regression" "resync prompt defers a non-additive result's regression-or-known-gap call to each entry's own note"
 assert_has "$out" "--push" "unattended resync prompt explicitly forbids the push path"
 assert_has "$out" "< /dev/null" "runner gives the session stdin EOF"
-assert_lacks "$out" "--print" "runner never uses --print (HIMMEL-128 billing)"
-assert_lacks "$out" " -p " "runner never uses -p (HIMMEL-128 billing)"
+assert_lacks "$out" "--print" "runner never uses --print (subscription billing)"
+assert_lacks "$out" " -p " "runner never uses -p (subscription billing)"
 assert_has "$out" "--model sonnet" "runner pins the model explicitly"
 assert_has "$out" "himmel-cadence-runner-format:" "runner carries the format stamp"
 if [ ! -f "$state/tab" ]; then pass "dry-run installed no crontab"; else fail "dry-run wrote a crontab"; fi

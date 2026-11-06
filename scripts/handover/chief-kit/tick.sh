@@ -142,6 +142,14 @@ leg parked on a ruling the console may not know it owes, which a repeated BLOCKE
 shows in tails=. chief-wait.sh keys on the names only, so each leg ENTERING the set wakes
 the console once; the age growing or a leg leaving never does.
 
+hreg=<n>/<n>/<n> (HIMMEL-9186) follows holds= and is ABSENT at 0/0/0, with no register directory for this repo
+and when holds.py is missing: <live workers with no rows>/<stale rows>/<pending trust-path asks>. A live worker
+(lock held or lockless, newest marker not WRAPPED) counts when its doc has a Writes file and its key holds no row;
+a row is stale when its brief or pr key is Done in the Jira mirror or its PR is not in prs=; an ask is a trust-path
+(settings, CI workflow) deny from the last day that no grant answers. holds.py summary reads local files only: no
+gh call, no Jira call. hreg=? when it fails. In chief-wait's action key whole: the value moving wakes once, and
+chief-wait pages each new ask once with its paste-ready grant command (monitors.md). Seam: HOLDS_MIRROR.
+
 focus=<state> sdrift=<n>:<sig8> (HIMMEL-6829) follow wt-ceiling= and are ABSENT unless a
 focus-state file sits beside the console doc and --status does not read skip: focus= is
 focus-refresh.sh --status (FAILED:<stage> or DIRTY:<age>), sdrift= the drift line of the
@@ -280,17 +288,17 @@ an accepted relay). UNCONFIRMED wins the field when both occur.
 unknown = the doc name carries no console letter or has no `legs:` line.
 
 board=<ok|STALE:<age>|MISSING|skip> (HIMMEL-3361) is the freshness of the
-console's progress board, chief-board.html next to the console doc (rendered
+console's progress board, <console doc stem>.board.json next to the console doc (rendered
 by board.mjs -- the ACTION ZERO board step + the standing rule: on every dispatch, GO,
-MERGED and WRAPPED, re-render and republish it). ok = the board's embedded
-fingerprint equals the one recomputed here from what a board shows (leg locks,
+MERGED and WRAPPED, re-render it). ok = the board file's freshness.board_fp
+equals the one recomputed here from what a board shows (leg locks,
 leg tails, open PRs, the queue:, last GO:, epics: and decisions: lines) -- NOT the doc's mtime,
 which every Results bullet bumps. STALE:<age> = the board shows an older state
 (age = the file's mtime); MISSING = no board was ever rendered; skip = no --doc.
 --emit-fp prints a second line, board-fp=<16 hex>, the fingerprint board.mjs
-embeds -- one derivation, so the generator and this field cannot disagree.
+writes into the board file -- one derivation, so the generator and this field cannot disagree.
 ponytail: board=ok says the LOCAL file matches the state; tick cannot see
-whether the artifact was republished from it -- that stays the console's step.
+whether anything was republished from it -- that stays the console's step.
 
 station=BEHIND:<component>,... (HIMMEL-5945) appears only when the last station-sync.sh
 run left a component behind main (state file TICK_STATION_STATE, default
@@ -416,6 +424,15 @@ when there is no mirror. The waiter wakes on a
 positive value only; the console resets each row (version-status-audit.sh prints them).
 In compact output, a non-zero count also prints an `ACTION versionless-done=<n>: bash …/versionless-done.sh --backfill`
 line after the TICK line (HIMMEL-6416); chief-wait reads only the TICK line.
+cadence=<name>:<state>:<age>:<run id>[:RED|:SKIP|:MISSED],... (HIMMEL-9247) is the last SCHEDULED run of every workflow
+with a schedule: trigger, from ci-cadence.sh (gh read at most once per CI_CADENCE_INTERVAL_SEC, default 1800, else the
+cache beside the other tick state). RED = failure or timed_out, SKIP = concluded skipped, MISSED = no scheduled run inside 1.5
+periods; a running run flags nothing. ? = gh unreadable. Always on the line; the waiter wakes once per flagged run id.
+review=<date>:<age>:<failures>:<new classes>:<new 5+>:<filed keys joined by +, or ->[:CAPPED][:STALE] (decision 593) is the
+daily failure review (ci-cadence.sh review: a local read of the newest failure-review-<date>.md and its .json sidecar,
+HIMMEL_FAILURE_REVIEW_DIR). STALE = no review for 26 h; CAPPED = the router hit its daily create cap. Hidden when there is no
+review file. The waiter wakes once per review day on a filed key, a new class with 5+ failures or CAPPED, and once per
+last-review date on STALE; never on a 1-count class.
 leaks=<n|?> (HIMMEL-7153) counts the LEAK lines of one bounded `jira release leaks <active version>`
 read (TICK_LEAKS_PROBE gets the version and the mirror directory as its arguments; TICK_LEAKS_TIMEOUT, default 30 s): open tickets
 in a frozen version with no frozen-set membership and no admissions-ledger row. Shown only when non-zero
@@ -1005,18 +1022,57 @@ leg_start_epoch() {
     printf '%s' "$t"
 }
 
+# tick_title_index: the transcripts in the fork window and the customTitle strings each names,
+# one `<file>:"customTitle":"<title>"` line apiece, built by ONE find|grep pass per tick and shared
+# by leg_forked and leg_cachettl (each used to rerun the pass per candidate name per
+# worker, 3 to 4 CPU-s of a tick). Same window and same exact-title test as before, read at the first
+# use in the tick; tick_tdirs is the roots it covers (leg_cachettl's list; leg_forked filters to its own).
+tick_title_idx_built=0
+tick_title_idx=""
+tick_tdirs=()
+tick_title_index() {
+    [ "$tick_title_idx_built" = 0 ] || return 0
+    tick_title_idx_built=1
+    local dir live=()
+    tick_tdirs=("$HOME/.claude/projects" "$HOME/.claude-codex/projects")
+    if [ -n "${TICK_PROJECTS_DIR:-}" ]; then
+        tick_tdirs=("$TICK_PROJECTS_DIR")
+    elif [ -n "${CLAUDE_CONFIG_DIR:-}" ] && [ "$CLAUDE_CONFIG_DIR" != "$HOME/.claude" ] && [ "$CLAUDE_CONFIG_DIR" != "$HOME/.claude-codex" ]; then
+        tick_tdirs+=("$CLAUDE_CONFIG_DIR/projects")
+    fi
+    for dir in "${tick_tdirs[@]}"; do
+        [ -d "$dir" ] && live+=("$dir")
+    done
+    [ "${#live[@]}" -gt 0 ] || return 0
+    tick_title_idx="$(find "${live[@]}" -maxdepth 2 -name '*.jsonl' -mmin "-${TICK_FORK_WINDOW_MIN:-1440}" -exec grep -HoE '"customTitle":"([^"\\]|\\.)*"' {} + 2>/dev/null | sort -u)" || true  # gnu-ok: Linux-only kit; swallow-ok: grep exits 1 on a batch with no title and find passes that on, but the lines it did print are kept; an unreadable root leaves the index empty, so no transcript is found
+}
+
+# tick_title_newest <candidate name> [root]: sets tick_title_hit to the newest indexed transcript
+# naming exactly that customTitle (under <root> when given); empty when none.
+tick_title_hit=""
+tick_title_newest() {
+    local line f
+    tick_title_hit=""
+    tick_title_index
+    while IFS= read -r line; do
+        case "$line" in *':"customTitle":"'"$1"'"') ;; *) continue ;; esac
+        f="${line%:\"customTitle\":*}"
+        [ -z "${2:-}" ] || case "$f" in "$2"/*) ;; *) continue ;; esac
+        if [ -z "$tick_title_hit" ] || [ "$f" -nt "$tick_title_hit" ]; then tick_title_hit="$f"; fi
+    done <<<"$tick_title_idx"
+}
+
 # leg_forked <candidate names, comma list> -- succeeds when the newest session
 # transcript whose custom-title IS one of the names ends in a continued-in
 # record. The title is the only link (the harness writes it from `claude -n`);
 # no transcript found = not forked, never a guess.
 leg_forked() {
-    local dir="${TICK_PROJECTS_DIR:-$HOME/.claude/projects}" cand f newest=""
+    local dir="${TICK_PROJECTS_DIR:-$HOME/.claude/projects}" cand newest=""
     [ -d "$dir" ] || return 1
     for cand in ${1//,/ }; do
-        while IFS= read -r f; do
-            [ -n "$f" ] || continue
-            if [ -z "$newest" ] || [ "$f" -nt "$newest" ]; then newest="$f"; fi
-        done < <(find "$dir" -maxdepth 2 -name '*.jsonl' -mmin "-${TICK_FORK_WINDOW_MIN:-1440}" -exec grep -lF "\"customTitle\":\"$cand\"" {} + 2>/dev/null)  # gnu-ok: Linux-only kit
+        tick_title_newest "$cand" "$dir"
+        [ -n "$tick_title_hit" ] || continue
+        if [ -z "$newest" ] || [ "$tick_title_hit" -nt "$newest" ]; then newest="$tick_title_hit"; fi
     done
     [ -n "$newest" ] || return 1
     # the last record that is not a trailing cost-state: a resumed session appends
@@ -1030,21 +1086,11 @@ leg_forked() {
 # Mirror guard-worker-cache-ttl.sh's task signal; factoring it out would change
 # the Stop hook as well as this read-only view.
 leg_cachettl() {
-    local dir cand f newest="" stamp epoch running
-    local dirs=("$HOME/.claude/projects" "$HOME/.claude-codex/projects")
-    if [ -n "${TICK_PROJECTS_DIR:-}" ]; then
-        dirs=("$TICK_PROJECTS_DIR")
-    elif [ -n "${CLAUDE_CONFIG_DIR:-}" ] && [ "$CLAUDE_CONFIG_DIR" != "$HOME/.claude" ] && [ "$CLAUDE_CONFIG_DIR" != "$HOME/.claude-codex" ]; then
-        dirs+=("$CLAUDE_CONFIG_DIR/projects")
-    fi
-    for dir in "${dirs[@]}"; do
-        [ -d "$dir" ] || continue
-        for cand in ${1//,/ }; do
-            while IFS= read -r f; do
-                [ -n "$f" ] || continue
-                if [ -z "$newest" ] || [ "$f" -nt "$newest" ]; then newest="$f"; fi
-            done < <(find "$dir" -maxdepth 2 -name '*.jsonl' -mmin "-${TICK_FORK_WINDOW_MIN:-1440}" -exec grep -lF "\"customTitle\":\"$cand\"" {} + 2>/dev/null)  # gnu-ok: Linux-only kit
-        done
+    local cand newest="" stamp epoch running
+    for cand in ${1//,/ }; do
+        tick_title_newest "$cand"
+        [ -n "$tick_title_hit" ] || continue
+        if [ -z "$newest" ] || [ "$tick_title_hit" -nt "$newest" ]; then newest="$tick_title_hit"; fi
     done
     [ -n "$newest" ] || return 1
     stamp="$(tail -n 1 "$newest" | jq -r '.timestamp // empty' 2>/dev/null)" || return 1  # swallow-ok: unreadable activity cannot establish an idle leg
@@ -1870,6 +1916,20 @@ done <<< "$pr_out"
 # A failed read is not an all-clear: `?` lets the waiter keep its marker instead of counting it as none.
 [ -z "${pr_read_failed:-}" ] || { prs='?'; unowned_prs='?'; ext_prs='?'; }
 
+# hreg=<live workers with no rows>/<stale rows>/<pending trust-path asks>: the holds register's own
+# state, read from local files by holds.py summary (no gh, no Jira call; the open PRs are the prs= read above).
+hreg_summary=""
+if [ -r "$HERE/holds.py" ] && command -v python3 >/dev/null 2>&1; then
+    hreg_docs=""
+    while IFS=$'\t' read -r h_label h_lock _; do
+        case "$h_lock" in FRESH|STALE|NOLOCK) ;; *) continue ;; esac
+        case ",$tails_summary," in *",$h_label:WRAPPED,"*) continue ;; esac
+        h_doc="$(printf '%s' "$leg_docmap" | sed -n "s/^$h_label=//p" | head -n 1)"
+        [ -z "$h_doc" ] || hreg_docs="$hreg_docs$h_doc"$'\n'
+    done <<< "$leg_candmap"
+    hreg_summary="$(printf '%s' "$hreg_docs" | timeout -k 2 10 python3 -I "$HERE/holds.py" summary --repo "$REPO" --live-docs - --open-prs "$prs" 2>/dev/null)" || hreg_summary='?'  # gnu-ok: Linux-only kit; swallow-ok: a failed read shows as hreg=?, never as an all-clear
+fi
+
 # dispatch=<run>:<worker>:<elapsed>/<timeout>m:<jobs done>/<jobs>@<head7>[:late][:idle][:orphan][:stale-head]:
 # an in-flight workflow_dispatch run on a worker's branch (a run a worker started by hand never shows on
 # the PR page). One runs list per tick, then one jobs read per run (at most TICK_DISPATCH_MAX,
@@ -1937,7 +1997,14 @@ if [ "$dispatch_summary" = none ] && [ -n "$dispatch_runs" ]; then
     [ -z "$dispatch_list" ] || dispatch_summary="$dispatch_list"
 fi
 
-# the board fingerprint -- what chief-board.html shows that the
+# cadence=: the last scheduled run of every scheduled workflow, one helper call that
+# reads gh at most once per CI_CADENCE_INTERVAL_SEC and serves its cache between.
+cadence_summary="$(cd "$pr_repo" 2>/dev/null && CI_CADENCE_DIR="$pr_repo" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 40)"} bash "$HERE/ci-cadence.sh" field 2>/dev/null)" || cadence_summary='?'  # swallow-ok: an unreadable cadence renders as cadence=?
+# review=: the daily failure review as one more scheduled row (operator decision 593), a local file read.
+review_summary="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 10)"} bash "$HERE/ci-cadence.sh" review 2>/dev/null)" || review_summary='?'  # swallow-ok: an unreadable review renders as review=?
+[ -n "$review_summary" ] || review_summary='?'
+
+# the board fingerprint -- what the board file (<doc stem>.board.json) shows that the
 # chief authors or a tick already reads: worker locks, worker tails, open PRs, and
 # the queue:, last GO:, epics: and decisions: lines. Not the doc mtime (every
 # Results bullet bumps that). board.mjs embeds this exact value via --emit-fp.
@@ -1952,11 +2019,11 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     board_epics="$(grep -m1 '^epics:' "$console_doc" 2>/dev/null)" || board_epics=""
     board_decisions="$(grep -m1 '^decisions:' "$console_doc" 2>/dev/null)" || board_decisions=""
     board_fp="$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$legs_summary" "$tails_summary" "$prs" "$board_queue" "$board_lastgo" "$board_epics" "$board_decisions" | sha256sum | cut -c1-16)"
-    board_file="${console_doc%/*}/chief-board.html"
+    board_file="${console_doc%.md}.board.json"
     if [ ! -f "$board_file" ]; then
         board_summary=MISSING
     else
-        board_have="$(sed -n 's/.*name="chief-board-fp" content="\([0-9a-f]*\)".*/\1/p' "$board_file" 2>/dev/null | head -n 1)"
+        board_have="$(sed -n 's/^ *"board_fp": "\([0-9a-f]*\)".*/\1/p' "$board_file" 2>/dev/null | head -n 1)"
         if [ -n "$board_have" ] && [ "$board_have" = "$board_fp" ]; then
             board_summary=ok
         else
@@ -3557,6 +3624,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$cachettl_summary" ] || printf 'cachettl: %s\n' "$cachettl_summary"
     printf 'worker-session newest actionable bullets: %s\n' "$acts_summary"
     [ -z "$holds_summary" ] || printf 'worker-session holds: %s\n' "$holds_summary"
+    case "$hreg_summary" in ''|0/0/0) ;; *) printf 'holds register (live-no-rows/stale/asks): %s\n' "$hreg_summary" ;; esac
     printf 'inbox size/cursor: %s\n' "$inbox_summary"
     printf 'tick monitor: %s\n' "$tick_status"
     # Printed only under --burn, so a plain --verbose tick is unchanged. An if,
@@ -3578,6 +3646,8 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$focus_summary" ] || printf 'focus: %s\n' "$focus_summary"
     [ -z "$sdrift_summary" ] || printf 'sdrift: %s\n' "$sdrift_summary"
     printf 'denials: %s\n' "$denials_summary"
+    printf 'ci cadence: %s\n' "$cadence_summary"
+    printf 'failure review: %s\n' "$review_summary"
     printf 'ci queue: %s\n' "$ciq_summary"
     printf 'ci guardrail: %s%s\n' "$ciguard_summary" "${ciguard_age:+ (read $ciguard_age ago)}"
     [ -z "$deadline_over" ] || printf 'deadline over: %s\n' "$deadline_over"
@@ -3630,10 +3700,10 @@ else
     compact_field() {
         case "$1=$2" in
             *=|hb=ok|hb=skip|effort=ok|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
-            ext-prs=none|dispatch=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
+            ext-prs=none|dispatch=none|review=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
             versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|rm-queue=0|rm-queue=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*|prio=skip|pool-stale=skip|INTAKE=0|INTAKE=skip|chains=ok|chains=skip|residual-unversioned=skip|residual-unversioned=0|\
-            focus=ok|sdrift=0:*) return ;;
+            focus=ok|sdrift=0:*|hreg=0/0/0) return ;;
         esac
         printf ' %s=%s' "$1" "$2"
     }
@@ -3650,6 +3720,8 @@ else
     compact_field unowned-prs "$unowned_prs"
     compact_field ext-prs "$ext_prs"
     compact_field dispatch "$dispatch_summary"
+    compact_field cadence "$cadence_summary"
+    compact_field review "$review_summary"
     compact_field usage "$bank"
     compact_field vmspend "$vmspend"
     compact_field fill "$fill"
@@ -3657,6 +3729,7 @@ else
     compact_field cachettl "$cachettl_summary"
     compact_field acts "$acts_summary"
     compact_field holds "$holds_summary"
+    compact_field hreg "$hreg_summary"
     compact_field effort "$effort_summary"
     compact_field inbox "$inbox_summary"
     compact_field tick "$tick_status"

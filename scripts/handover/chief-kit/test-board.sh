@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-board.sh — Hermetic tests for board.mjs, the generator of the
-# chief's progress board (chief-board.html). tick.sh and gh are stubbed (a
+# chief's progress board (<doc stem>.board.json, plus a page with --out). tick.sh and gh are stubbed (a
 # BOARD_TICK override and a PATH stub), so the suite reads no queue, process,
 # scheduler or GitHub state. The board<->tick freshness round trip (board.mjs
 # output read back by the REAL tick.sh) is pinned in test-tick.sh, where the tick
@@ -208,13 +208,14 @@ run() {  # run <extra args...> -- prints board.mjs stdout; rc in $rc
     PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv.log" \
         BOARD_SESSIONS="${BOARD_SESSIONS:-$W/bin/sessions-empty.sh}" \
         GH_OPEN="${BOARD_TEST_GH_OPEN:-$W/open.json}" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
-        node "$SUT" --doc "$DOC" --repo "$W/repo" "$@" 2>"$W/stderr.log"
+        node "$SUT" --doc "$DOC" --repo "$W/repo" --out "$B/chief-board.html" "$@" 2>"$W/stderr.log"
 }
 
+# The page is opt-in (--out), so every row below that reads it renders one by default.
 out="$(run)"; rc=$?
 board="$B/chief-board.html"
 if [ "$rc" -eq 0 ] && [ "$out" = "$board" ] && [ -f "$board" ]; then
-    pass 'prints the path of chief-board.html written next to the console doc'
+    pass 'prints the path of the page written with --out'
 else
     fail "board path (rc=$rc out='$out' stderr=$(cat "$W/stderr.log" 2>/dev/null))"
 fi
@@ -222,6 +223,27 @@ html="$(cat "$board" 2>/dev/null)"
 # a healthy lookup warns of nothing (the failure cases are pinned below).
 lacks 'a healthy label lookup prints no stderr warning (HIMMEL-3369)' "$(cat "$W/stderr.log")" 'worker labels unavailable'
 lacks 'a healthy label lookup renders no unavailable banner (HIMMEL-3369)' "$html" 'labels-unavailable'
+
+# --- the freshness the next call compares against lives in board.json, so
+# a render with no --out writes no chief-board.html and --changed works without one.
+# RED control (pre-fix board.mjs): the first render printed and wrote chief-board.html and
+# --changed read its previous values back from that page.
+NH="$W/nohtml"
+mkdir -p "$NH"
+cp "$DOC" "$NH/chief-nh.md"
+run_nh() {  # run_nh <extra args...> -- board.mjs on a bucket that has never held a board page
+    PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv-nh.log" \
+        BOARD_SESSIONS="$W/bin/sessions-empty.sh" \
+        GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+        node "$SUT" --doc "$NH/chief-nh.md" --repo "$W/repo" "$@" 2>"$W/stderr.log"
+}
+same 'no --out: the first --changed render reports CHANGED and names board.json' "$(run_nh --changed)" "CHANGED $NH/chief-nh.board.json"
+same 'no --out: no chief-board.html is written into the bucket' "$([ -e "$NH/chief-board.html" ] && echo present || echo absent)" 'absent'
+same 'no --out: --changed with no board page on disk reads UNCHANGED on an identical re-render' "$(run_nh --changed)" "UNCHANGED $NH/chief-nh.board.json"
+contains 'board.json carries the tick fingerprint tick.sh compares against' "$(cat "$NH/chief-nh.board.json")" '"board_fp": "deadbeefdeadbeef"'
+same 'no --out: the tick fingerprint going unavailable flips --changed with no board page' "$(TICK_STUB_FAIL=1 run_nh --changed)" "CHANGED $NH/chief-nh.board.json"
+same 'no --out: still no chief-board.html after the re-renders' "$([ -e "$NH/chief-board.html" ] && echo present || echo absent)" 'absent'
+contains 'a failing tick stores no fingerprint that would read ok' "$(cat "$NH/chief-nh.board.json")" '"board_fp": null'
 
 # Current-version pool counts come from the tick, not a second Jira census.
 cat > "$W/bin/tick-stub-pool" <<'STUB'
@@ -370,7 +392,8 @@ contains 'idle capacity is highlighted' "$html" 'data-idle="6"'
 
 # --- merged this shift + fingerprint + title
 contains 'merged PRs this shift are listed in the archive' "$(cat "$B/chief-board-archive.html")" 'PR #1995 merged'
-contains 'the tick fingerprint is embedded for tick.sh board=' "$html" '<meta name="chief-board-fp" content="deadbeefdeadbeef">'
+run --json "$W/fp-board.json" >/dev/null
+contains 'the tick fingerprint is stored in the board JSON for tick.sh board=' "$(cat "$W/fp-board.json")" '"board_fp": "deadbeefdeadbeef"'
 contains 'the page has a name title, not a summary' "$html" '<title>Supervisor Session Board</title>'
 contains 'the page themes for dark mode' "$html" 'prefers-color-scheme: dark'
 
@@ -385,10 +408,10 @@ contains 'an explicit --workers is passed through, not re-discovered' "$(cat "$W
 lacks 'an explicit --workers is not widened by discovery' "$(cat "$W/argv.log")" 'N3-gamma'
 
 # --- degraded: a failing tick still leaves a board, marked as such (fp empty)
-out="$(TICK_STUB_FAIL=1 run)"; rc=$?
+out="$(TICK_STUB_FAIL=1 run --json "$W/fail-board.json")"; rc=$?
 contains 'a failing tick still renders a board (rc 0)' "rc=$rc" 'rc=0'
 contains 'and says the tick was unavailable' "$(cat "$board")" 'tick unavailable'
-lacks 'and embeds no fingerprint that would read ok' "$(cat "$board")" 'name="chief-board-fp" content="deadbeef'
+contains 'and stores no fingerprint that would read ok' "$(cat "$W/fail-board.json")" '"board_fp": null'
 
 # --- the follow-ups deferred from the first board
 # Results parse is section-bounded: a later section's bullet is not the worker's Results.
@@ -498,36 +521,36 @@ lacks 'never flags "still open" on a census it could not read' "$n5failhtml" 'da
 # so a chief can call ONE kit command after every Live-state mutation; the Artifact
 # publish stays a separate model step.
 rm -f "$W/changed-board.html"
-out1="$(run --out "$W/changed-board.html" --changed)"; rc1=$?
+out1="$(run --out "$W/changed-board.html" --json "$W/changed-board.json" --changed)"; rc1=$?
 same '--changed on the first render (nothing to compare against) reports CHANGED' "$out1" "CHANGED $W/changed-board.html"
 contains '--changed rc is still 0' "rc=$rc1" 'rc=0'
-out2="$(run --out "$W/changed-board.html" --changed)"
+out2="$(run --out "$W/changed-board.html" --json "$W/changed-board.json" --changed)"
 same '--changed on an identical re-render reports UNCHANGED' "$out2" "UNCHANGED $W/changed-board.html"
-out3="$(TICK_STUB_FAIL=1 run --out "$W/changed-board.html" --changed)"
+out3="$(TICK_STUB_FAIL=1 run --out "$W/changed-board.html" --json "$W/changed-board.json" --changed)"
 same '--changed after tick goes unavailable (fp now empty, prior fp was real) reports CHANGED' "$out3" "CHANGED $W/changed-board.html"
 
 # --- (Ask 3 x Ask 1): the WRAPPED-window census is read independently
 # of tick's --emit-fp, so a window opening on an otherwise-unchanged tick
 # fingerprint must still flip --changed to CHANGED.
 rm -f "$W/changed-census-board.html"
-out4="$(run --out "$W/changed-census-board.html" --changed)"; rc4=$?
+out4="$(run --out "$W/changed-census-board.html" --json "$W/changed-census-board.json" --changed)"; rc4=$?
 same 'census --changed: first render reports CHANGED' "$out4" "CHANGED $W/changed-census-board.html"
 contains 'census --changed: rc is still 0' "rc=$rc4" 'rc=0'
-out5="$(BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" run --out "$W/changed-census-board.html" --changed)"
+out5="$(BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" run --out "$W/changed-census-board.html" --json "$W/changed-census-board.json" --changed)"
 same 'a WRAPPED worker gaining a live window flips CHANGED although tick-fp is unchanged' "$out5" "CHANGED $W/changed-census-board.html"
-out6="$(BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" run --out "$W/changed-census-board.html" --changed)"
+out6="$(BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" run --out "$W/changed-census-board.html" --json "$W/changed-census-board.json" --changed)"
 same 'the same still-open worker on a re-render reports UNCHANGED' "$out6" "UNCHANGED $W/changed-census-board.html"
 
 # --- tick keeps CI colour and fleet capacity out of board-fp on purpose,
 # but the page SHOWS them, so --changed folds a signature of those cells in separately.
 rm -f "$W/changed-cf.html"
-run --out "$W/changed-cf.html" --changed >/dev/null
-same 'ci/fleet --changed: an identical re-render reports UNCHANGED' "$(run --out "$W/changed-cf.html" --changed)" "UNCHANGED $W/changed-cf.html"
+run --out "$W/changed-cf.html" --json "$W/changed-cf.json" --changed >/dev/null
+same 'ci/fleet --changed: an identical re-render reports UNCHANGED' "$(run --out "$W/changed-cf.html" --json "$W/changed-cf.json" --changed)" "UNCHANGED $W/changed-cf.html"
 sed 's/"conclusion":"FAILURE"/"conclusion":"SUCCESS"/' "$W/open.json" > "$W/open-ci-moved.json"
-same 'only a PR CI colour moving (failing to pending) flips --changed' "$(BOARD_TEST_GH_OPEN="$W/open-ci-moved.json" run --out "$W/changed-cf.html" --changed)" "CHANGED $W/changed-cf.html"
-same 'and the moved CI colour, re-rendered again, reads UNCHANGED' "$(BOARD_TEST_GH_OPEN="$W/open-ci-moved.json" run --out "$W/changed-cf.html" --changed)" "UNCHANGED $W/changed-cf.html"
-same 'only fleet capacity moving flips --changed' "$(BOARD_TEST_GH_OPEN="$W/open-ci-moved.json" TICK_STUB_FLEET=10/15 run --out "$W/changed-cf.html" --changed)" "CHANGED $W/changed-cf.html"
-contains 'the tick fingerprint meta is still exactly tick'"'"'s' "$(cat "$W/changed-cf.html")" '<meta name="chief-board-fp" content="deadbeefdeadbeef">'
+same 'only a PR CI colour moving (failing to pending) flips --changed' "$(BOARD_TEST_GH_OPEN="$W/open-ci-moved.json" run --out "$W/changed-cf.html" --json "$W/changed-cf.json" --changed)" "CHANGED $W/changed-cf.html"
+same 'and the moved CI colour, re-rendered again, reads UNCHANGED' "$(BOARD_TEST_GH_OPEN="$W/open-ci-moved.json" run --out "$W/changed-cf.html" --json "$W/changed-cf.json" --changed)" "UNCHANGED $W/changed-cf.html"
+same 'only fleet capacity moving flips --changed' "$(BOARD_TEST_GH_OPEN="$W/open-ci-moved.json" TICK_STUB_FLEET=10/15 run --out "$W/changed-cf.html" --json "$W/changed-cf.json" --changed)" "CHANGED $W/changed-cf.html"
+contains 'the stored tick fingerprint is still exactly tick'"'"'s' "$(cat "$W/changed-cf.json")" '"board_fp": "deadbeefdeadbeef"'
 
 # --- `versions: v1.0.0, v1.0.1` renders one Release panel per fixVersion,
 # from ONE stubbed Jira CLI call per version (BOARD_JIRA seam, mirrors BOARD_TICK). The
@@ -572,7 +595,7 @@ runv() {  # runv <extra args...> -- like run, on the console doc that carries a 
         node "$SUT" --doc "$DOCV" --repo "$W/repo" "$@" 2>"$W/stderr.log"
 }
 rm -f "$W/jira-argv.log"
-runv --out "$W/v-board.html" >/dev/null; rc=$?
+runv --out "$W/v-board.html" --json "$W/v-board.json" >/dev/null; rc=$?
 vhtml="$(cat "$W/v-board.html" 2>/dev/null)"
 jargv="$(cat "$W/jira-argv.log" 2>/dev/null)"
 contains 'a versions: line still renders a board (rc 0)' "rc=$rc" 'rc=0'
@@ -592,7 +615,7 @@ contains 'v1.0.0 breakdown: IN CI count' "$vhtml" 'data-status="IN CI" data-coun
 contains 'v1.0.0 breakdown: Done count' "$vhtml" 'data-status="Done" data-count="3"'
 contains 'v1.0.0 breakdown: To Do count (zero shown)' "$vhtml" 'data-status="To Do" data-count="0"'
 contains 'v1.0.1 breakdown: its own To Do count' "$vhtml" 'data-status="To Do" data-count="1"'
-contains 'the versions fingerprint meta is present' "$vhtml" 'chief-board-versions-fp'
+contains 'the versions fingerprint is stored in the board JSON' "$(cat "$W/v-board.json")" '"versions": "v1.0.0'
 same 'one Jira call per version' "$(printf '%s\n' "$jargv" | grep -c .)" '2'
 contains 'the CLI is asked by fixVersion JQL' "$jargv" 'fixVersion = "v1.0.0"'
 contains 'the CLI is asked for labels' "$jargv" '--labels'
@@ -612,27 +635,27 @@ contains 'a missing Jira CLI reads unavailable' "$(cat "$W/v-missing-board.html"
 
 # No versions: line -> nothing extra, and Jira is never called.
 rm -f "$W/jira-argv.log"
-JIRA_ARGV_LOG="$W/jira-argv.log" BOARD_JIRA="$W/bin/jira-stub" run --out "$W/nov-board.html" >/dev/null
+JIRA_ARGV_LOG="$W/jira-argv.log" BOARD_JIRA="$W/bin/jira-stub" run --out "$W/nov-board.html" --json "$W/nov-board.json" >/dev/null
 lacks 'no versions: line renders no Release panel' "$(cat "$W/nov-board.html")" 'data-release'
-lacks 'no versions: line renders no release fingerprint' "$(cat "$W/nov-board.html")" 'chief-board-versions-fp'
+contains 'no versions: line stores no release fingerprint' "$(cat "$W/nov-board.json")" '"versions": ""'
 if [ ! -e "$W/jira-argv.log" ]; then pass 'no versions: line makes no Jira call'; else fail 'no versions: line made a Jira call'; fi
 
 # The version rows fold into --changed: a count moving flips it, an identical render does not.
 rm -f "$W/v-changed.html"
-vc1="$(runv --out "$W/v-changed.html" --changed)"
+vc1="$(runv --out "$W/v-changed.html" --json "$W/v-changed.json" --changed)"
 same 'versions --changed: first render reports CHANGED' "$vc1" "CHANGED $W/v-changed.html"
-vc2="$(runv --out "$W/v-changed.html" --changed)"
+vc2="$(runv --out "$W/v-changed.html" --json "$W/v-changed.json" --changed)"
 same 'versions --changed: an identical re-render reports UNCHANGED' "$vc2" "UNCHANGED $W/v-changed.html"
 write_v100 4
-vc3="$(runv --out "$W/v-changed.html" --changed)"
+vc3="$(runv --out "$W/v-changed.html" --json "$W/v-changed.json" --changed)"
 same 'a done count moving flips --changed although tick-fp is unchanged' "$vc3" "CHANGED $W/v-changed.html"
-contains 'the tick fingerprint meta is left as tick computed it' "$(cat "$W/v-changed.html")" '<meta name="chief-board-fp" content="deadbeefdeadbeef">'
-vc4="$(JIRA_STUB_FAIL=1 runv --out "$W/v-changed.html" --changed)"
+contains 'the stored tick fingerprint is left as tick computed it' "$(cat "$W/v-changed.json")" '"board_fp": "deadbeefdeadbeef"'
+vc4="$(JIRA_STUB_FAIL=1 runv --out "$W/v-changed.html" --json "$W/v-changed.json" --changed)"
 same 'the CLI going unavailable flips --changed' "$vc4" "CHANGED $W/v-changed.html"
 # A blocker retitled in Jira changes what the panel shows, so it flips --changed too.
-runv --out "$W/v-changed.html" --changed >/dev/null
+runv --out "$W/v-changed.html" --json "$W/v-changed.json" --changed >/dev/null
 sed -i 's/fix the blocker/renamed blocker/' "$JD/v1.0.0.tsv"  # gnu-ok: console kit is Linux-only
-vc5="$(runv --out "$W/v-changed.html" --changed)"
+vc5="$(runv --out "$W/v-changed.html" --json "$W/v-changed.json" --changed)"
 same 'a retitled blocker flips --changed' "$vc5" "CHANGED $W/v-changed.html"
 # A partial answer (one row that does not parse among valid ones) is not complete totals.
 write_v100 3
@@ -675,7 +698,7 @@ runr() {  # runr <extra args...> -- like run, on the console doc that carries a 
         node "$SUT" --doc "$DOCR" --repo "$W/repo" "$@" 2>"$W/stderr.log"
 }
 rm -f "$W/jira-argv.log"
-RM_STATE="$W/rm-state.json" runr --out "$W/r-board.html" >/dev/null; rc=$?
+RM_STATE="$W/rm-state.json" runr --out "$W/r-board.html" --json "$W/r-board.json" >/dev/null; rc=$?
 rhtml="$(cat "$W/r-board.html" 2>/dev/null)"
 contains 'a release: line still renders a board (rc 0)' "rc=$rc" 'rc=0'
 same 'one release state call' "$(cat "$W/jira-argv.log" 2>/dev/null)" 'args=release state R1 --json'
@@ -685,11 +708,11 @@ contains 'M4: and admitted, emergency and deferred counts' "$rhtml" 'admitted op
 contains 'M4: every version of the release has a line' "$rhtml" 'data-burndown="v2"'
 contains 'a leak is listed by key and version' "$rhtml" 'data-leak="HIMMEL-9201@v1"'
 contains 'M1 trend: one row per day, by kind' "$rhtml" 'data-trend="2026-10-21">2026-10-21: out-of-band 1 · ruled 1'
-contains 'the release fingerprint meta is present' "$rhtml" 'chief-board-versions-fp'
-RM_STATE="$W/rm-state.json" runr --out "$W/r-chg.html" --changed >/dev/null
-same 'an unchanged release state: --changed reports UNCHANGED' "$(RM_STATE="$W/rm-state.json" runr --out "$W/r-chg.html" --changed)" "UNCHANGED $W/r-chg.html"
+lacks 'the release fingerprint is stored in the board JSON' "$(cat "$W/r-board.json")" '"versions": ""'
+RM_STATE="$W/rm-state.json" runr --out "$W/r-chg.html" --json "$W/r-chg.json" --changed >/dev/null
+same 'an unchanged release state: --changed reports UNCHANGED' "$(RM_STATE="$W/rm-state.json" runr --out "$W/r-chg.html" --json "$W/r-chg.json" --changed)" "UNCHANGED $W/r-chg.html"
 sed 's/"out-of-band":1/"out-of-band":2/' "$W/rm-state.json" > "$W/rm-state-trend.json"
-same 'a trend-only change: --changed reports CHANGED' "$(RM_STATE="$W/rm-state-trend.json" runr --out "$W/r-chg.html" --changed)" "CHANGED $W/r-chg.html"
+same 'a trend-only change: --changed reports CHANGED' "$(RM_STATE="$W/rm-state-trend.json" runr --out "$W/r-chg.html" --json "$W/r-chg.json" --changed)" "CHANGED $W/r-chg.html"
 RM_STATE="$W/rm-state.json" RM_RC=3 runr --out "$W/r-unknown.html" >/dev/null; rc=$?
 contains 'a not-OK state (exit 3) still renders the board (rc 0)' "rc=$rc" 'rc=0'
 contains 'a not-OK state still shows its JSON' "$(cat "$W/r-unknown.html")" 'data-rm-release="R1" data-status="OK"'
@@ -713,9 +736,9 @@ contains 'one row per class: hand with its two keys' "$rphtml" 'data-repair-clas
 contains 'one row per class: unbound with its one key' "$rphtml" 'data-repair-class="unbound" data-keys="1"'
 contains 'one row per class: the question is shown' "$rphtml" 'Who owns these hand edits?'
 same 'one row per class: exactly two rows' "$(printf '%s' "$rphtml" | grep -o 'data-repair-class=' | wc -l | tr -d ' ')" 2
-RM_STATE="$W/rm-state.json" runr --out "$W/rp-chg.html" --changed >/dev/null
+RM_STATE="$W/rm-state.json" runr --out "$W/rp-chg.html" --json "$W/rp-chg.json" --changed >/dev/null
 printf '%s\n' '{"release":"R1","held":2,"unfiled":0,"held_signature":"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789","classes":[{"class":"unbound","question":"Keep, add or move?","keys":["HIMMEL-9303"],"commands":[]},{"class":"hand","question":"Who owns these hand edits?","keys":["HIMMEL-9399"],"commands":[]}]}' > "$B/release/R1/repair-held.json"
-same 'the panel is display only: a held-file change leaves --changed UNCHANGED' "$(RM_STATE="$W/rm-state.json" runr --out "$W/rp-chg.html" --changed)" "UNCHANGED $W/rp-chg.html"
+same 'the panel is display only: a held-file change leaves --changed UNCHANGED' "$(RM_STATE="$W/rm-state.json" runr --out "$W/rp-chg.html" --json "$W/rp-chg.json" --changed)" "UNCHANGED $W/rp-chg.html"
 printf '%s\n' '{"release":"R1","held":1,"unfiled":0,"held_signature":"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789","classes":[{"class":"unbound","question":"Keep, add or move?","keys":["HIMMEL-9303"],"commands":[]}]}' > "$B/release/R1/repair-held.json"
 RM_STATE="$W/rm-state.json" runr --out "$W/rp-answered.html" >/dev/null
 lacks 'answered class disappears' "$(cat "$W/rp-answered.html")" 'data-repair-class="hand"'
@@ -1044,7 +1067,7 @@ contains 'cloud: a ticket is matched literally, never as a pattern (HIMMEL-7167)
 
 # --- the published board shows live work only; WRAPPED/MERGED workers and
 # merged PRs go to a local, never-published, grep-friendly archive beside it.
-out="$(run --out "$W/live-only-board.html")"; rc=$?
+out="$(run --out "$W/live-only-board.html" --json "$W/live-only-board.json")"; rc=$?
 lhtml="$(cat "$W/live-only-board.html" 2>/dev/null)"
 arch="$W/live-only-board-archive.html"
 if [ -f "$arch" ]; then ahtml="$(cat "$arch")"; else ahtml=''; fail 'the archive file is written beside the board'; fi
@@ -1057,7 +1080,7 @@ contains 'live page: a live worker stays (N1)' "$lhtml" 'data-label="N1" data-ph
 contains 'live page: a READY worker stays (N3)' "$lhtml" 'data-label="N3" data-phase="READY"'
 contains 'live page: open PRs stay' "$lhtml" '<b>#2001</b>'
 contains 'live page: the phase ladder stays' "$lhtml" 'data-ladder="READY" data-count="1"'
-contains 'live page: the tick fingerprint meta stays' "$lhtml" '<meta name="chief-board-fp" content="deadbeefdeadbeef">'
+contains 'live page: the tick fingerprint stays in the board JSON' "$(cat "$W/live-only-board.json")" '"board_fp": "deadbeefdeadbeef"'
 contains 'live page: points at the archive by file name' "$lhtml" 'live-only-board-archive.html'
 lacks 'live page: carries none of the archive prose (N4 last bullet)' "$lhtml" '0123abc'
 contains 'archive: names the MERGED worker on ONE line with ticket, PR and last bullet' "$ahtml" 'N4 HIMMEL-3348 MERGED PR #1995 — 12:00 MERGED #1995'
@@ -1066,7 +1089,7 @@ contains 'archive: names the WRAPPED worker' "$ahtml" 'N5 HIMMEL-3300 WRAPPED'
 contains 'archive: lists merged PRs, one per line' "$ahtml" 'PR #1995 merged — fix(w): [HIMMEL-3348] harden'
 lacks 'archive: holds no live worker' "$ahtml" 'N1 HIMMEL-3340 LIVE'
 lacks 'archive: nonces and lock tokens are redacted too' "$ahtml" 'pid111111'
-lacks 'archive: carries no fingerprint meta (it is never the tick board)' "$ahtml" 'chief-board-fp'
+lacks 'archive: carries no fingerprint (it is never the tick board)' "$ahtml" 'deadbeefdeadbeef'
 lbytes="$(printf '%s' "$lhtml" | wc -c)"
 if [ "$lbytes" -lt 15000 ]; then pass "live page stays under 15 KB ($lbytes bytes)"; else fail "live page is $lbytes bytes, want under 15000"; fi
 
@@ -1133,7 +1156,7 @@ rm -f "${DOCV%.md}.board.json"
 runv --out "$W/j-board.html" --json "$W/board.json" >/dev/null; rc=$?
 contains '--json: rc 0' "rc=$rc" 'rc=0'
 jtxt="$(cat "$W/board.json" 2>/dev/null)"
-contains '--json <path> leaves no board.json beside the console doc (the server fallback must not seed a stale sibling)' "$([ -e "${DOCV%.md}.board.json" ] && echo present || echo absent)" 'absent'
+contains '--json <path> leaves no board.json beside the console doc (only the named path is written)' "$([ -e "${DOCV%.md}.board.json" ] && echo present || echo absent)" 'absent'
 jcheck() {  # jcheck <name> <js expression over M> -- passes when the expression is true
     if printf '%s' "$jtxt" | node -e 'let s="";process.stdin.on("data",(d)=>s+=d).on("end",()=>{let M;try{M=JSON.parse(s)}catch{process.exit(1)}process.exit(eval(process.argv[1])?0:1)})' "$2"; then pass "$1"; else fail "$1"; fi
 }
@@ -1144,6 +1167,7 @@ jcheck '--json: milestones are done/total per fixVersion' 'M.milestones.length =
 jcheck '--json: roadmap recommendation names the open blockers' 'M.cards.roadmap.recommendation.includes("HIMMEL-9001")'
 jcheck '--json: every live worker is a row with a state and stage' 'M.legs.some((l) => l.leg === "N3" && l.state === "ready-for-go" && l.stage === "ready") && M.legs.every((l) => l.state && l.stage)'
 jcheck '--json: a READY worker is a go need' 'M.needs_you.some((n) => n.leg === "N3" && n.verb === "go")'
+jcheck '--json: the go need command carries the merge contract as one shell word, so a paste is refused by go.sh instead of parsed as a pipeline' 'M.needs_you.some((n) => n.leg === "N3" && n.command === "bash scripts/handover/chief-kit/go.sh --contract yes-or-no 2001 0123456789abcdef")'
 jcheck '--json: finished workers are counted, not listed' 'M.console.archive_legs >= 2 && !M.legs.some((l) => l.leg === "N4" || l.leg === "N5")'
 for secret in aaaa1111 pid111111 pid777777 cafe1919 x8664; do
     lacks "--json: no nonce/lock-token text: $secret" "$jtxt" "$secret"
@@ -1330,7 +1354,7 @@ crchanged() {
 rm -f "$CL/cap-board.html"
 out="$(crchanged)"; rc=$?
 same 'cap --changed: first render reports CHANGED' "$out rc=$rc" "CHANGED $CL/cap-board.html rc=0"
-contains 'cap: an over-cap version is embedded as a board signature' "$(cat "$CL/cap-board.html")" 'name="chief-board-cap-fp" content="v1.1.4=16"'
+contains 'cap: an over-cap version is stored as a board signature' "$(cat "$CL/cap-board.json")" '"cap": "v1.1.4=16"'
 out="$(crchanged)"; rc=$?
 same 'cap --changed: a re-render with the same over-run reports UNCHANGED' "$out rc=$rc" "UNCHANGED $CL/cap-board.html rc=0"
 rm -f "$CL/mirror/HIMMEL/HIMMEL-9124.md" "$CL/mirror/HIMMEL/HIMMEL-9125.md"
@@ -1398,7 +1422,7 @@ lacks 'overdue-classes html: an unreadable ladder renders no panel' "$(cat "$CL/
 # --- the operator board is byte-identical: golden of the base render on the main fixture
 # (html + archive, the minute stamp normalised, a hermetic env: no operator ledger, HOME or
 # handover root). A deliberate operator-board change updates GOLDEN_OPERATOR_SHA.
-GOLDEN_OPERATOR_SHA='693e760f5d4518c0fcbb7ac6900538ce7478eae3c36e0abe51cfe76407fa2341'  # current-version pool availability and fingerprint
+GOLDEN_OPERATOR_SHA='451b8f483c54dafb760ec144a3cb61f7dc19a56fe82a8b9faf2a17e5400f3744'  # the page carries no fingerprint metas (they live in board.json)
 mkdir -p "$W/home"
 ( unset HANDOVER_DIR CR_TUNE_DIR; export HOME="$W/home"; run --out "$W/golden.html" >/dev/null )
 golden_sha="$(cat "$W/golden.html" "$W/golden-archive.html" | sed 's/rendered [0-9-]* [0-9:]*/rendered STAMP/' | sha256sum | cut -d' ' -f1)"
@@ -1427,7 +1451,7 @@ contains 'an open operator decision is a waiting row (HIMMEL-6879)' "$(section_o
 contains 'a running row names the ticket (HIMMEL-6879)' "$(section_of running)" 'HIMMEL-3340'
 contains 'a running worker with no PR shows its description as the goal (HIMMEL-4749)' "$(section_of running)" 'Add a login form'
 contains 'a shipped row names the merged PR (HIMMEL-6879)' "$(section_of shipped)" 'PR #1995'
-for hidden in 'Failure classes' 'Phase ladder' 'data-label=' 'data-phase=' 'data-need=' 'Fleet' 'lane' '>N3<' '>N12<' 'READY-TO-OPEN' 'chief-board-fp'; do
+for hidden in 'Failure classes' 'Phase ladder' 'data-label=' 'data-phase=' 'data-need=' 'Fleet' 'lane' '>N3<' '>N12<' 'READY-TO-OPEN' 'deadbeefdeadbeef'; do
     lacks "the user view leaves out '$hidden' (HIMMEL-6879)" "$uhtml" "$hidden"
 done
 for secret in aaaa1111 bbbb2222 cccc3333 pid111111 pid830420 'V-N1-' 'x8664' abcdef12 cafe0123 cafe1919 pid181818; do
@@ -1514,7 +1538,7 @@ sections_before="$(cksum < "$AB/ADOPT-nextleg-2026-01-01A-chief.sections.json")"
 PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv-adopted.log" \
     BOARD_SESSIONS="$W/bin/sessions-empty.sh" GH_CWD_LOG="$W/adopted-gh-cwd.log" \
     GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
-    node "$SUT" --doc "$AB/ADOPT-nextleg-2026-01-01A-chief.md" --repo "$W/repo" 2>"$W/stderr-adopted.log" >/dev/null
+    node "$SUT" --doc "$AB/ADOPT-nextleg-2026-01-01A-chief.md" --repo "$W/repo" --out "$AB/chief-board.html" 2>"$W/stderr-adopted.log" >/dev/null
 adopted_html="$(cat "$AB/chief-board.html" 2>/dev/null)"
 contains 'adopted-repo chief: the board is written next to its own doc' "$adopted_html" '<title>Supervisor Session Board</title>'
 contains 'adopted-repo chief: the current fleet panel renders' "$adopted_html" 'data-fleet="9/15"'

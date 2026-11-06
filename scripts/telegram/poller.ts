@@ -172,9 +172,9 @@ type MsgCtx = {
 // Gate one update: null = skip it (no message, automatic forward, no chat,
 // media-less, or gated out).
 function acceptMessage(u: any, allow: AllowFn): MsgCtx | null {
-  const m = u.message ?? u.channel_post;                 // channel posts arrive as channel_post (HIMMEL-238)
+  const m = u.message ?? u.channel_post;                 // channel posts arrive as channel_post
   if (!m) return null;
-  if (m.is_automatic_forward === true) return null;      // drop linked-group duplicates (HIMMEL-244)
+  if (m.is_automatic_forward === true) return null;      // drop linked-group duplicates
   const chatId = m.chat?.id;
   if (chatId == null) return null;
   // photos arrive as an array of sizes, smallest→largest — take the largest
@@ -447,7 +447,7 @@ const mfaRouteConsumed = (root: string, auto: AutoGate | undefined, msg: Deliver
 // "status === running" in-flight check needs no atomic CAS.
 // isOperator defaults to "nobody is the operator" so every existing caller keeps
 // the pure triage-gate behaviour; main() is the one production wiring.
-// A LEADING `model:<value>` tag pins the bounded run's model (LUNA-101 spec
+// A LEADING `model:<value>` tag pins the bounded run's model (spec
 // §3.A.5). Anchored at the start, so "model railway question" and "use
 // model:sonnet please" are prose, not tags. The key is case-insensitive; the
 // VALUE is strict — an unrecognised one is reported back rather than silently
@@ -462,7 +462,7 @@ export function parseModelTag(text: string): { model: ModelOverride | null; rest
   return MODEL_VALUES.has(val) ? { model: val, rest, unknown: false } : { model: null, rest, unknown: true };
 }
 
-// notifyChat (LUNA-101): out-of-band reply channel for the DISPATCHER's own
+// notifyChat: out-of-band reply channel for the DISPATCHER's own
 // notices — things the session cannot report because they are decided before it
 // spawns. Optional; unwired callers simply get no notice.
 export type NotifyChatFn = (chatId: number, text: string) => Promise<void>;
@@ -472,7 +472,7 @@ export type NotifyChatFn = (chatId: number, text: string) => Promise<void>;
 // and test stub is unaffected.
 export type InboundRunFn = (session: string, modelOverride?: ModelOverride, explicit?: boolean) => Promise<void>;
 
-// requireMention (LUNA-158): does THIS chat's access.json group entry opt into
+// requireMention: does THIS chat's access.json group entry opt into
 // @mention-only mode (gate.ts GroupPolicy.requireMention)? Defaults to "no
 // group requires it" so every existing caller/test keeps today's behaviour;
 // main() is the one production wiring, over the loaded Access.
@@ -484,7 +484,7 @@ export type RequireMentionFn = (chatId: number) => boolean;
 // (CR codex-2) to stop email-like embeds (`user@foobot`) reading as a mention.
 // No message-entities check here — DeliveredMsg carries no entities field
 // (poller.ts never asked getUpdates for them); a regex over the text is what
-// LUNA-158 asked for as the fallback and is all there currently is to check.
+// the require-mention feature asked for as the fallback and is all there currently is to check.
 // Telegram's standard command addressing (`/cmd@botusername`) is also
 // accepted — the leading boundary above would
 // otherwise reject it too, since the char before `@` is a word char.
@@ -621,13 +621,13 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   // Non-DM chats (negative chat_id = group/channel) get their own session keyed
   // by chat_id so meta.chat_id pins replies to that chat, not the operator DM.
   // "_" not ":" — the session id is an NTFS directory name.
-  // Hoisted ahead of the control/auto branches below (LUNA-158): the
+  // Hoisted ahead of the control/auto branches below: the
   // require-mention gate needs `session` for its log line and must run before
   // BOTH of them — a pure derivation, so moving it costs nothing.
   const chatSession = msg.chat_id < 0 ? `group_${msg.chat_id}` : "__chat__";
   // A non-eligible auto-command (group / caption / disabled-op) routes as chat.
   const session = (route.kind === "chat" || route.kind === "auto" || route.kind === "console") ? chatSession : ("ticket" in route ? route.ticket : chatSession);
-  // REQUIRE-MENTION GATE (LUNA-158). access.json's per-group `requireMention`
+  // REQUIRE-MENTION GATE. access.json's per-group `requireMention`
   // flag (gate.ts GroupPolicy) opts a group into @mention-only mode — the
   // grow-tent groups share their chat with luna_grow_bot (a hermes gateway)
   // and a message not addressed to THIS bot by @mention is not ours to answer.
@@ -661,7 +661,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   // — the agent never sees it. The forwarded-refuse decision lives in handleAutoCommand.
   // Any condition false ⇒ falls through to ordinary (powerless) chat below (so a
   // non-operator/caption/disabled-op /arm is just chat).
-  // `!tagged` (LUNA-101): the auto gate's safety rests on a WHOLE-message match
+  // `!tagged`: the auto gate's safety rests on a WHOLE-message match
   // by the operator. Consuming a leading tag and then matching the remainder
   // would turn `model:x /arm …` into an accepted /arm, quietly widening what
   // counts as a whole message. A tagged auto-command falls through to ordinary
@@ -746,7 +746,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
     meta = { ...meta, status: "idle", fail_count: null };
     await writeMeta(root, session, meta);
   }
-  // PRECEDENCE (LUNA-101): an explicit operator tag > triage's override >
+  // PRECEDENCE: an explicit operator tag > triage's override >
   // the TELEGRAM_CLAUDE_MODEL default. Applied after triage so the tag wins;
   // triage's cheap-model verdict is a cost heuristic, the tag is an instruction.
   if (tag.model) modelOverride = tag.model;
@@ -1063,7 +1063,7 @@ export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDo
       const curFile = file + ".cursor";
       let start = 0; try { start = Number(await readFile(curFile, "utf8")) || 0; } catch {}
       let buf = ""; try { buf = await readFile(file, "utf8"); } catch { continue; }
-      if (start >= Buffer.byteLength(buf, "utf8")) { await truncateFullyConsumed(file, curFile); continue; }   // fully sent → reclaim (HIMMEL-221)
+      if (start >= Buffer.byteLength(buf, "utf8")) { await truncateFullyConsumed(file, curFile); continue; }   // fully sent → reclaim
       const slice = Buffer.from(buf, "utf8").subarray(start).toString("utf8");
       const lastNl = slice.lastIndexOf("\n");
       if (lastNl < 0) continue;
@@ -1207,7 +1207,7 @@ export async function deliverAllPending(root: string, runFn: (session: string) =
     const m = await readMeta(root, s);
     if (!m) continue;
     if (m.status === "capped" && !isRetryDue(m, now)) continue;
-    if (m.status === "failed") continue;   // retry cap exhausted (HIMMEL-263) — only a new message un-parks
+    if (m.status === "failed") continue;   // retry cap exhausted — only a new message un-parks
     if (isHeld(s)) continue;               // burst still landing — the coalescer owns this dispatch
     await runFn(s);
   }
@@ -1324,7 +1324,7 @@ const MAX_RETRIES = Number(process.env.TELEGRAM_MAX_RETRIES ?? 3);
 // are filed into, from its meta.chat_id (gate.vaultForChat over loaded access).
 // Optional — when absent or it returns null, the prompt carries no file-into-vault clause.
 export type VaultForFn = (chatId: number) => string | null;
-// cwdFor (LUNA-101): resolves the REPO a session spawns in, from its meta.chat_id
+// cwdFor: resolves the REPO a session spawns in, from its meta.chat_id
 // (gate.cwdForChat over loaded access). Optional — absent or null means the
 // session keeps the himmel checkout, exactly as before.
 export type CwdForFn = (chatId: number) => string | null;
@@ -1538,7 +1538,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
       return;
     }
     const { count, nextPos } = await peekPending(root, session);
-    if (count === 0) {                                          // inbox fully consumed → reclaim (HIMMEL-221)
+    if (count === 0) {                                          // inbox fully consumed → reclaim
       const inbox = join(sd, "inbox.jsonl");
       await truncateFullyConsumed(inbox, inbox + ".consumed");
       await unlink(join(sd, "stop")).catch(() => {});           // a stop with nothing to stop is moot
@@ -1577,7 +1577,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     // Jira-CLI path stays on repoCwd (himmel) — `dist/` only exists there. Vault
     // sessions get bypassPermissions because himmel's auto-approve hook isn't loaded
     // under the vault cwd; the vault's hooks still enforce containment.
-    // LUNA-101: a cwd-routed chat (the GGS grow tents) spawns in that REPO instead,
+    // a cwd-routed chat (the GGS grow tents) spawns in that REPO instead,
     // read-only. Same bypass rationale — himmel's auto-approve hook isn't loaded
     // there either — with the repo's own default-deny PreToolUse hook as the floor,
     // keyed on the markers below. The cwd route wins over the vault for the spawn
@@ -1810,7 +1810,7 @@ export function makeDispatcher(runFn: RunFn, cap: number = positiveEnvInt(proces
 // Auto-ops (/arm, /mergepub, /restart) never reach here: handleInbound fires
 // them and returns before the run call, so a privileged op is never buffered.
 // That is asserted by test, not just by reading.
-// `explicit` (LUNA-101) marks a modelOverride the OPERATOR typed as a `model:`
+// `explicit` marks a modelOverride the OPERATOR typed as a `model:`
 // tag, as opposed to one triage derived. Only the coalescer needs the
 // distinction — it decides which of a burst's models survives — so it stays off
 // RunFn, whose callers have no such choice to express.
@@ -1954,7 +1954,7 @@ export function makeBurstCoalescer(
       // then spawn-high must not run as haiku because the cheap line arrived
       // first. undefined (spawn-high) outranks an explicit downgrade.
       //
-      // An OPERATOR tag is exempt (LUNA-101). The rule above exists to undo a
+      // An OPERATOR tag is exempt. The rule above exists to undo a
       // TRIAGE downgrade; applied to `model:sonnet`, it would silently discard a
       // choice the operator typed the moment any untagged line joined the burst —
       // and a burst is the normal shape of chat. An explicit tag later in the
@@ -2297,7 +2297,7 @@ export async function main(): Promise<void> {
   const access = await loadAccess();
   const allow = makeAllow(access);
   // require-mention gate needs the bridge's own username to recognize a
-  // mention (LUNA-158). Resolved at startup, not per-message — best effort:
+  // mention. Resolved at startup, not per-message — best effort:
   // a failed lookup fails OPEN (every group behaves exactly as before)
   // rather than the bridge refusing to start. A transient startup failure is
   // retried on an unref'd timer (CR codex-1) so one flaky getMe cannot
@@ -2329,7 +2329,7 @@ export async function main(): Promise<void> {
   };
   // documents sent to a chat are filed into the vault resolved from access.json
   const vaultFor: VaultForFn = (chatId) => vaultForChat(access, chatId);
-  // a chat with an access.json `cwd` spawns its bounded run in that repo (LUNA-101)
+  // a chat with an access.json `cwd` spawns its bounded run in that repo
   const cwdFor: CwdForFn = (chatId) => cwdForChat(access, chatId);
   // runFn -> dispatch -> coalesce -> isHolding -> runFn is a cycle, so the
   // hold predicate is late-bound. It reads false until `coalesce` exists a few
@@ -2523,7 +2523,7 @@ export async function main(): Promise<void> {
   const heartbeatAlerted: AlertedState = new Map();
   const heartbeatAlert: AlertFn = async (name, ageSec) => {
     if (operatorChat === null) { console.error(`[poller] console ${name}'s wait heartbeat is stale (${ageSec}s) but there is no operator chat to alert`); return; }
-    await replyViaOutbox(root, operatorChat, `⚠️ chief "${name}"'s wait heartbeat has been stale for ${ageSec}s while its session is still running — the background waiter may have been silently killed (HIMMEL-3097). Check it.`);
+    await replyViaOutbox(root, operatorChat, `⚠️ chief "${name}"'s wait heartbeat has been stale for ${ageSec}s while its session is still running — the background waiter may have been silently killed. Check it.`);
   };
   const heartbeatTimer = setInterval(guarded(() => checkStaleHeartbeats(root, Date.now(), HEARTBEAT_STALE_MS, heartbeatAlerted, censusSessionAlive, heartbeatAlert)), HEARTBEAT_CHECK_MS); // t13b-ok: unref'd periodic check in the existing poller process, no new service
   if (typeof heartbeatTimer.unref === "function") heartbeatTimer.unref();

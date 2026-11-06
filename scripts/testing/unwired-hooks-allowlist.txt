@@ -3,7 +3,7 @@
 # which fails on an unlisted unwired script AND on an entry that is now wired.
 #
 # Known unwired, tracked, NOT to be wired here:
-bus-deliver-run.js|HIMMEL-5030: node runner for the bus-deliver hooks, never wired on its own
+bus-deliver-run.js|node runner for the bus-deliver hooks, never wired on its own
 #
 # Called only from another script (the audit's "called only from other scripts"):
 block-mcp-when-plugin-exists.sh|called from block-backend-tier.sh and check-mcp-plugin-refs.sh, not a registered hook itself
@@ -20,10 +20,10 @@ hook-integrity.js|module required by the himmel-ops plugin hook runner and block
 guardrail-skip-in-himmel.js|module required by guardrail-block.mjs, himmel-update.sh and himmelctl probes
 guardrail-block.mjs|CLI invoked by himmel-doctor.sh, himmel-update.sh and himmelctl, not a registered hook
 simulate-memory-edit.js|module required by guard-memory-capture.sh
-narrow-allow.mjs|operator-run settings narrowing chokepoint (HIMMEL-1513), invoked by hand
+narrow-allow.mjs|operator-run settings narrowing chokepoint, invoked by hand
 #
 # Shipped unwired on purpose, activation is an operator step:
-block-pr-check-args.sh|HIMMEL-2306: UserPromptExpansion fence shipped unwired, see docs/internals/enforcement.md
+block-pr-check-args.sh|UserPromptExpansion fence shipped unwired, see docs/internals/enforcement.md
 check-single-writer-push-floor.sh|pre-push floor run by the shim install-single-writer-floor.sh writes into .single-writer repos, not a registered hook
-install-single-writer-floor.sh|operator-run installer for .single-writer repos (HIMMEL-5284), not a hook
+install-single-writer-floor.sh|operator-run installer for .single-writer repos, not a hook
 guard-worker-cache-ttl.sh|Stop hook wired by headed-arm-worker.sh into the native worker profile, not a project hook

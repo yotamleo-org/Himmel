@@ -148,7 +148,7 @@ export async function main(opts: { root?: string; rotate?: boolean; call?: RamCa
     const create = await ramCall(ak, sk, "CreateUser", {
       UserName: USER_NAME,
       DisplayName: USER_NAME,
-      Comments: "himmel quota-gauge read-only monitoring (HIMMEL-729); scoped key, no console login",
+      Comments: "himmel quota-gauge read-only monitoring; scoped key, no console login",
     });
     if (!create.ok) {
       console.error(`create-monitoring-key: CreateUser failed (${create.status} ${create.code ?? "?"}): ${create.body?.Message ?? ""}`);

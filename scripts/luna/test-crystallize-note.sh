@@ -159,6 +159,9 @@ lane_refusal "lane-no-account" -u HIMMEL_API_ACCOUNT CRYSTALLIZE_BACKEND=claude-
 lane_refusal "lane-not-on" CRYSTALLIZE_BACKEND=claude-api HIMMEL_API_LANE=off
 lane_refusal "lane-bad-account" CRYSTALLIZE_BACKEND=claude-api HIMMEL_API_ACCOUNT=invalid
 lane_refusal "api-alias" -u HIMMEL_API_LANE CRYSTALLIZE_BACKEND=api
+# decision 525: only the himmel graph pass asks the API lane for auto; the crystallizer names an account
+lane_refusal "lane-auto-account" CRYSTALLIZE_BACKEND=claude-api HIMMEL_API_ACCOUNT=auto
+lane_refusal "lane-auto-implicit-backend" -u CRYSTALLIZE_BACKEND HIMMEL_API_ACCOUNT=auto
 
 # --- Case S: the subscription lane is the default backend -----------------------
 # No backend set, lane off, every API-key variable exported: the crystallizer runs
@@ -302,6 +305,15 @@ env -u CRYSTALLIZE_BACKEND HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A CRYSTALLIZE_C
 if [ "$RC" = "0" ] && grep -qxF 'HIMMEL_API_KIND=bulk' "$SB/lane.txt" 2>/dev/null && grep -q '^crystallized: true$' "$SB/vault/note.md"; then pass "backend-rule: lane on and no explicit backend keeps the API path"; else fail "backend-rule: lane-on session left the API path (rc=$RC)"; fi
 rm -rf "$SB"
 
+# (vii-c) a named account C (the third API account) runs the lane launcher.
+cli_sandbox
+RC=0
+env -u CRYSTALLIZE_BACKEND HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=C CRYSTALLIZE_CLAUDE_BIN="$LANE_STUB" STUB_MODE=success \
+    CRYSTALLIZE_LANE_DUMP="$SB/lane.txt" CRYSTALLIZE_PREFLIGHT_CMD="$PF_SKIP" CRYSTALLIZE_PID_DIR="$SB/pids" \
+    bash "$CRYS" "$SB/vault/note.md" "$SB/t.jsonl" 2>"$SB/stderr.txt" || RC=$?
+if [ "$RC" = "0" ] && grep -qxF 'HIMMEL_API_KIND=bulk' "$SB/lane.txt" 2>/dev/null && grep -q '^crystallized: true$' "$SB/vault/note.md"; then pass "backend-rule: account C runs the lane launcher"; else fail "backend-rule: account C did not run the launcher (rc=$RC)"; fi
+rm -rf "$SB"
+
 # (viii) the preflight is pinned to the native bank, whatever lane the session runs in.
 PF_DUMP="$LANE_DIR/pf-dump.sh"
 cat > "$PF_DUMP" <<'EOF'
@@ -384,7 +396,7 @@ if grep -q '_Crystallized by stub' "$NOTE"; then pass "success: Summary section 
 if grep -q '^crystallized_at: 2026-06-28T12:00:00Z$' "$NOTE"; then pass "success: crystallized_at set"; else fail "success: crystallized_at not set"; fi
 if [ "$ID_BEFORE" = "$(identity_lines "$NOTE")" ]; then pass "success: identity frontmatter byte-stable"; else fail "success: identity frontmatter changed"; fi
 if grep -q '^CLAUDE_END_SESSION_WIKI=0$' "$ENVD" 2>/dev/null; then pass "recursion-guard: CLAUDE_END_SESSION_WIKI=0 exported to claude"; else fail "recursion-guard: end-session-wiki env not set"; fi
-if grep -q '^HIMMEL_WHERE_ARE_WE=0$' "$ENVD" 2>/dev/null; then pass "recursion-guard: HIMMEL_WHERE_ARE_WE=0 exported (HIMMEL-572 fold-in)"; else fail "recursion-guard: where-are-we env not set"; fi
+if grep -q '^HIMMEL_WHERE_ARE_WE=0$' "$ENVD" 2>/dev/null; then pass "recursion-guard: HIMMEL_WHERE_ARE_WE=0 exported (fold-in)"; else fail "recursion-guard: where-are-we env not set"; fi
 rm -rf "$SB"
 
 # --- Case 2: fail — note unchanged, crystallized stays false -----------------

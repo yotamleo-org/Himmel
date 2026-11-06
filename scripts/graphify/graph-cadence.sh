@@ -145,6 +145,11 @@
 #                here. Any OTHER non-zero merge-on-green.sh rc is `failed`,
 #                not `published`.
 #   merged    -- the full pipeline landed: refreshed, published, merged.
+#   published-channel -- origin/main does not track the graph, --semantic ran
+#                clean and promoted, and publish-graph-channel.sh pushed the
+#                graph to the graph-data branch. A blocked or
+#                failed channel publish is `failed`; its error names the file
+#                and the rule, never the matched text.
 #
 # Usage:
 #   graph-cadence.sh [--threshold N] [--corpus-root <path>] [--flow-name <name>] [--semantic]
@@ -224,7 +229,7 @@
 # rationale. Set it via /handover-setup, or docs/internals/handover-system.md.
 #
 # Exit codes:
-#   0  skipped (below threshold), refreshed, published, or merged
+#   0  skipped (below threshold), refreshed, published, published-channel, or merged
 #   1  usage error
 #   2  environment unusable (HOME unresolvable, required tool missing,
 #      HANDOVER_DIR unset or unresolvable)
@@ -381,6 +386,8 @@ AST_UPDATE="${GRAPH_CADENCE_AST_UPDATE:-$SCRIPT_DIR/ast-update.sh}"
 GRAPH_PUBLISH="${GRAPH_CADENCE_GRAPH_PUBLISH:-$SCRIPT_DIR/graph-publish.sh}"
 MERGE_ON_GREEN="${GRAPH_CADENCE_MERGE_ON_GREEN:-$REPO_ROOT/scripts/handover/merge-on-green.sh}"
 SEMANTIC_UPDATE="${GRAPH_CADENCE_SEMANTIC_UPDATE:-$SCRIPT_DIR/semantic-update.sh}"
+CHANNEL_PUBLISH="${GRAPH_CADENCE_CHANNEL_PUBLISH:-$SCRIPT_DIR/publish-graph-channel.sh}"
+CHANNEL_REMOTE="${GRAPH_CADENCE_CHANNEL_REMOTE:-origin}"
 # the semantic backend is claude-cli unless opted into claude-api (or the `api`
 # alias) or ollama, resolved by the shared scripts/lib/llm-backend.sh.
 # Anything else refuses before any work (fail closed, no silent fallback), and
@@ -391,8 +398,8 @@ SEMANTIC_BACKEND="$(llm_backend_resolve "${GRAPH_CADENCE_SEMANTIC_BACKEND:-claud
     echo "ERR graph-cadence: GRAPH_CADENCE_SEMANTIC_BACKEND='${GRAPH_CADENCE_SEMANTIC_BACKEND:-}' is not accepted -- claude-cli, claude-api or ollama only" >&2
     exit 1
 }
-if [ "$SEMANTIC" -eq 1 ] && [ "$SEMANTIC_BACKEND" = "claude-api" ] && ! llm_backend_api_ready; then
-    echo "ERR graph-cadence: GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT in the launching environment -- refusing, no claude-cli fallback" >&2
+if [ "$SEMANTIC" -eq 1 ] && [ "$SEMANTIC_BACKEND" = "claude-api" ] && ! llm_backend_api_ready_graph; then
+    echo "ERR graph-cadence: GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT (A, B, C or auto) in the launching environment -- refusing, no claude-cli fallback" >&2
     exit 1
 fi
 CADENCE_ALERT="$REPO_ROOT/scripts/luna/cadence-alert.sh"
@@ -583,7 +590,7 @@ _write_ledger() {
     case "$ACTION" in
         failed)             outcome=error ;;
         skipped)             outcome=complete ;;
-        refreshed|published|merged) outcome=complete ;;
+        refreshed|published|published-channel|merged) outcome=complete ;;
         *)                   outcome=error ;;
     esac
     # PR-B panel r1, codex-6: a failed append to LEDGER_FILE must never be
@@ -781,6 +788,8 @@ fi
 SEM_PROMOTE_LOCK="$HIMMEL_ROOT/graphify-out/.promote.lock"
 SEM_PROMOTE_LOCK_HELD=0
 SEM_PROMOTE_LOCK_TOKEN=""
+# 1 once this run promoted a semantic graph: step 6a then publishes it.
+SEM_PROMOTED=0
 _sem_promote_lock_release() {
     local cur=""
     [ "$SEM_PROMOTE_LOCK_HELD" -eq 1 ] || return 0
@@ -1088,6 +1097,7 @@ _promote_semantic_to_primary() {
         fi
     done
     _sem_promote_lock_release
+    SEM_PROMOTED=1
     echo "graph-cadence: promoted the semantic graph to $dest (graph.json, semantic-manifest.json, semantic-runs.jsonl)"
 }
 
@@ -1163,8 +1173,21 @@ fi
 # steady state. The local refresh above still ran (that IS the point
 # of decoupling it from this check); there is simply nothing left to open a
 # PR against or merge. This is a clean no-op of steps 7-8, not an error and
-# not ACTION="skipped" -- real work happened this run.
+# not ACTION="skipped" -- real work happened this run. A run that promoted a
+# semantic graph publishes it to the graph-data branch instead:
+# publish-graph-channel.sh scans the exact bytes and alerts on its own failures.
 if [ "$PUBLISH_POSSIBLE" -eq 0 ]; then
+    if [ "$SEM_PROMOTED" -eq 1 ]; then
+        _ch_rc=0
+        _ch_out=$(bash "$CHANNEL_PUBLISH" --src "$WORKTREE_DIR/graphify-out" --repo "$WORKTREE_DIR" \
+            --remote "$CHANNEL_REMOTE" --log "${_run_log:-$LOG_FILE}" 2>&1) || _ch_rc=$?
+        printf '%s\n' "$_ch_out"
+        [ "$_ch_rc" -eq 0 ] || _fail "graph-data publish failed (exit $_ch_rc): $(printf '%s\n' "$_ch_out" | grep '^publish-graph-channel: BLOCKED ' | tail -n 1)"
+        ACTION="published-channel"
+        FINAL_RC=0
+        _write_ledger
+        exit 0
+    fi
     FINAL_RC=0
     echo "graph-cadence: local refresh complete; origin/main does not track graphify-out/graph.json, so publish/merge have nothing to do -- no-op"
     _write_ledger

@@ -807,7 +807,7 @@ fi
 # bypasses) itself. CODEX_BIN is a registered chokepoint seam (scripts/
 # chokepoints.json), and here a resolved script (shebang) naming a refused flag
 # is refused before launch, as is any such flag in the argv finally passed.
-# ponytail: a static text scan of a script wrapper (HIMMEL-5347) - a compiled wrapper or a
+# ponytail: a static text scan of a script wrapper - a compiled wrapper or a
 # flag assembled at run time evades it; upgrade path is pinning CODEX_BIN to the
 # resolved codex install (basename + realpath allowlist, no own CODEX_HOME).
 CODEX_RESOLVED="$(command -v "$CODEX" 2>/dev/null || true)"

@@ -144,6 +144,21 @@
 #                               or DIRTY:<n>m with n of 10 or more; once per state.
 #                               Each tick also starts one background refresh of a
 #                               DIRTY or FAILED page (none while one runs); no wake.
+#   WAKE cadence <workflow> run=<id> <RED|SKIP|MISSED> <run url> cause: <why>   the tick's
+#                               cadence= field flags the last scheduled run of a workflow: RED (failure or
+#                               timed_out), SKIP (concluded skipped) or MISSED (no scheduled run inside 1.5
+#                               periods). Urgent, never digested. Once per run id: <inbox>.wait.cadence holds
+#                               every run id woken or seen at the first sample (the baseline, so installing the
+#                               field wakes nothing for runs that already finished), a MISSED one as
+#                               missed-<last run id>; a re-armed waiter replays nothing. cadence=? wakes
+#                               nothing. The cause line comes from `ci-cadence.sh cause` (the first failing job
+#                               and step), CHIEF_WAIT_CADENCE replaces it (tests). More than one new run: one
+#                               line each under one WAKE, then the tick line.
+#   WAKE review <date> <reasons>  (decision 593) the tick's review= field, the daily failure review as one more
+#                               scheduled row. Reasons: filed=<keys> (the router filed a ticket),
+#                               new-classes-5+=<n>, create-cap-hit, and STALE (no review for 26 h). Once per
+#                               review day (and once per last-review date for STALE): <inbox>.wait.review holds
+#                               `<date>` and `stale-<date>`. A 1-count class never wakes; review=none or ? wakes nothing.
 #   WAKE tick-fail samples=<n> step=<step>  CHIEF_WAIT_FAIL_WAKE consecutive samples
 #                               failed (tick or bank read): the monitor is
 #                               broken. step= names the last sample's failure:
@@ -216,6 +231,11 @@
 # holds= (tick.sh: `<worker>:<age>m,...`, BLOCKED workers past TICK_HOLD_MIN; names only, so the
 # age never re-wakes) wakes when a worker ENTERS the set, once per hold: a worker leaving or the
 # set emptying wakes nothing; absent when no worker holds, never a failure),
+# hreg= (tick.sh: `<live workers with no rows>/<stale rows>/<pending trust-path asks>`) is in the key whole: a
+# moved value wakes once (`WAKE tick changed=hreg`), an unchanged one does not; hreg=? keeps the saved value; absent
+# (0/0/0, no register, an older tick) is never a failure and its going away wakes nothing. Every sample that reads a
+# non-zero third count also pages each pending ask ONCE: `HOLD-ASK <key> wants <path> ... <paste-ready grant command>`
+# through the same sender as DENIAL-PAGE; the record `<inbox>.wait.holdasks` (`<key>\t<path>`) is written BEFORE the send.
 # stall= (tick.sh: `<pr>:<class>,...` from pr-stall.sh) wakes ONCE per new
 # conflict or no-ci token (a PR, a class): ci-slow and idle are report-only, an unchanged set
 # and a stall resolving do not wake; stall=? (a probe outage) keeps the saved set; absent
@@ -568,7 +588,7 @@ sample() {
     bank="$(bank_word)" || { fail_step=usage-read; tick_state=fail; return; }
     tick_state=ok
     cap_val="$(field capacity "$tick_line")"
-    for f in workers livestate prs tails acts holds workerset board tracker vault cloud orphans-wip wt-ceiling vmismatch cap vmrun parked stall dispatch denials closable deadwin; do
+    for f in workers livestate prs tails acts holds hreg workerset board tracker vault cloud orphans-wip wt-ceiling vmismatch cap vmrun parked stall dispatch denials closable deadwin; do
         v="$(field "$f" "$tick_line")"
         # An older tick.sh prints legs= and legset=; field() matches whole tokens, so max_workers= is never workers=.
         if [ -z "$v" ]; then
@@ -580,7 +600,7 @@ sample() {
         # tracker= is newer than the other fields; a tick line
         # without it (an older kit) just has no tracker key, not a failed sample.
         # vault= is newer still, the same way.
-        if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = holds ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = wt-ceiling ] || [ "$f" = vmismatch ] || [ "$f" = cap ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = stall ] || [ "$f" = closable ] || [ "$f" = deadwin ] || [ "$f" = dispatch ]; } && [ -z "$v" ]; then continue; fi
+        if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = holds ] || [ "$f" = hreg ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = wt-ceiling ] || [ "$f" = vmismatch ] || [ "$f" = cap ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = stall ] || [ "$f" = closable ] || [ "$f" = deadwin ] || [ "$f" = dispatch ]; } && [ -z "$v" ]; then continue; fi
         # A field missing from a malformed/partial tick line is a failed
         # sample, never a key with an empty value baked in.
         if [ -z "$v" ]; then fail_step="missing-field:$f"; tick_state=fail; key=""; return; fi
@@ -592,6 +612,11 @@ sample() {
         if [ "$f" = vmismatch ]; then
             [ "$v" != '?' ] || v="$(key_field vmismatch "$saved")"
             case "$v" in ''|0) continue ;; esac
+        fi
+        # hreg= stays in the key whole; hreg=? (a failed read) keeps the saved value, so a blip is no change.
+        if [ "$f" = hreg ]; then
+            [ "$v" != '?' ] || v="$(key_field hreg "$saved")"
+            [ -n "$v" ] || continue
         fi
         # parked= keeps the worker names only: the age grows every tick and must not re-wake.
         # The names are sorted: the doc order must not decide the key.
@@ -831,6 +856,22 @@ page_denials() {
             page_send "DENIAL-PAGE $worker $cls x$n - a classifier denial parked this worker. Review it, then: ack-denial.sh $worker" "$end"
         fi
     done
+}
+
+# page_hold_asks — page each pending trust-path HOLD-ASK once (holds.py asks: key, path, holder, paste-ready grant
+# command). The record line is written FIRST, so an ask is never paged twice even when the send fails; both steps fail open.
+holdask_file="$inbox.wait.holdasks"
+page_hold_asks() {
+    local asks key path holder cmd end
+    asks="$(timeout -k 2 20 python3 -I "$HERE/holds.py" asks --repo "$REPO" 2>/dev/null </dev/null 9>&-)" || return 0  # gnu-ok: Linux-only kit; swallow-ok: an unreadable register pages nothing this sample, the next one asks again
+    end=$(( $(date +%s) + page_timeout ))
+    while IFS=$'\t' read -r key path holder cmd; do
+        [ -n "$cmd" ] || continue
+        ! grep -qxF -- "$key"$'\t'"$path" "$holdask_file" 2>/dev/null || continue
+        printf '%s\t%s\n' "$key" "$path" >> "$holdask_file" 2>/dev/null || true  # swallow-ok: no record means a repeat page, never a lost one
+        page_send "HOLD-ASK $key wants $path (held by $holder). Paste in a real terminal, not a Claude window, and type the path back: $cmd" "$end"
+    done <<< "$asks"
+    return 0
 }
 
 # rc_session_for: <worker label> - prints the Remote Control session name of the live
@@ -1109,6 +1150,65 @@ doctor_wake() {
     printf '%s\n' "$ids" > "$doctor_file" 2>/dev/null
     [ -n "$new" ] || return 1
     printf '%s\n' "$new"
+}
+cadence_file="$inbox.wait.cadence"
+# cadence_wake: <cadence= value, comma-joined entries name:state:age:id[:flag]> — a flagged run id the
+# marker does not hold. The first sample (no marker yet) records every run id and wakes nothing. Prints one
+# cause line per new flagged run and succeeds; the marker then holds the id (missed-<id> for MISSED), so the
+# same run never wakes twice, not even after a re-arm.
+cadence_wake() {
+    local e name state id flag key base=0 out="" line
+    [ -e "$cadence_file" ] || { base=1; : > "$cadence_file" 2>/dev/null; }
+    while IFS= read -r e; do
+        [ -n "$e" ] || continue
+        IFS=: read -r name state _ id flag <<< "$e"
+        case "$id" in ''|0|*[!0-9]*) continue ;; esac
+        # a run still in flight at the baseline has not finished: leave it out so a red end still wakes
+        if [ "$base" -eq 1 ] && [ "$state" = running ]; then continue; fi
+        key="$id"; [ "$flag" != MISSED ] || key="missed-$id"
+        grep -qxF -- "$key" "$cadence_file" 2>/dev/null && continue
+        if [ "$base" -eq 0 ] && [ -z "$flag" ]; then continue; fi
+        printf '%s\n' "$key" >> "$cadence_file" 2>/dev/null
+        [ "$base" -eq 0 ] || continue
+        if [ -n "${CHIEF_WAIT_CADENCE:-}" ]; then
+            line="$(timeout -k 2 30 "$CHIEF_WAIT_CADENCE" "$name" "$id" "$flag" 2>/dev/null)"  # gnu-ok: Linux-only kit # swallow-ok: an unreadable cause still wakes, with the fallback line below
+        else
+            line="$(timeout -k 2 30 bash "$HERE/ci-cadence.sh" cause "$name" "$id" "$flag" 2>/dev/null)"  # gnu-ok: Linux-only kit # swallow-ok: an unreadable cause still wakes, with the fallback line below
+        fi || true  # swallow-ok: a cause that cannot be read still wakes, with the line below
+        [ -n "$line" ] || line="$name run=$id $flag cause: unreadable, open the run"
+        out="${out:+$out
+}$line"
+    done <<< "$(printf '%s\n' "$1" | tr ',' '\n')"
+    [ -n "$out" ] || return 1
+    printf '%s\n' "$out"
+}
+review_file="$inbox.wait.review"
+# review_wake: <review= value date:age:failures:new:new5+:filed[:CAPPED][:STALE]> — the daily failure review
+# (decision 593). Wakes once per review day when the router filed a ticket, a new class has 5 or more
+# failures, or the router hit its create cap; and once per last-review date when the review is STALE (26 h).
+# A 1-count class never wakes. The marker <inbox>.wait.review holds `<date>` and `stale-<date>`, so a
+# re-armed waiter replays nothing. Prints `review <date> <reasons>` and succeeds when something is new.
+review_wake() {
+    local day age big filed f1 f2 reasons="" stale=""
+    IFS=: read -r day age _ _ big filed f1 f2 <<< "$1"
+    case "$day" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) return 1 ;; esac
+    case ":$f1:$f2:" in *:STALE:*) stale=1 ;; esac
+    if [ -n "$stale" ] && ! grep -qxF -- "stale-$day" "$review_file" 2>/dev/null; then
+        printf '%s\n' "stale-$day" >> "$review_file" 2>/dev/null
+        reasons="STALE (no review for 26 h, last $day, age $age)"
+    fi
+    if ! grep -qxF -- "$day" "$review_file" 2>/dev/null; then
+        local r=""
+        case "$filed" in ''|-|'?') ;; *) r="$r filed=$filed" ;; esac
+        case "$big" in ''|0|*[!0-9]*) ;; *) r="$r new-classes-5+=$big" ;; esac
+        case ":$f1:$f2:" in *:CAPPED:*) r="$r create-cap-hit" ;; esac
+        if [ -n "$r" ]; then
+            printf '%s\n' "$day" >> "$review_file" 2>/dev/null
+            reasons="${reasons:+$reasons }${r# }"
+        fi
+    fi
+    [ -n "$reasons" ] || return 1
+    printf 'review %s %s\n' "$day" "$reasons"
 }
 # tracker_stale_wake: <tracker= value> — a tracker that STAYS stale. A class change
 # wakes once (above); after the first STALE the class never moves again, so the
@@ -1770,6 +1870,7 @@ while :; do
                 saved="$(r0_fold_key "$saved" "$key" "$r0_fold")"; save_key "$saved"
             fi
             r0_refold=""
+            case "$(field hreg "$tick_line")" in ''|'?'|*/*/0) ;; *) page_hold_asks ;; esac
             # a capped waker on a doc quiet past the bound: wake the chief, alert the operator
             if silent_out="$(silent_wake)"; then
                 printf '%s\n%s\n' "$silent_out" "$tick_line"
@@ -1830,6 +1931,24 @@ while :; do
                     if doctor_new="$(doctor_wake "$doctor_val")"; then
                         printf 'WAKE doctor %s\n%s\n' "$doctor_new" "$tick_line"
                         exit_reason='wake-doctor'; exit 0
+                    fi ;;
+            esac
+            cadence_val="$(field cadence "$tick_line")"
+            case "$cadence_val" in
+                ''|'?') ;;
+                *)
+                    if cadence_out="$(cadence_wake "$cadence_val")"; then
+                        printf '%s\n%s\n' "$(printf '%s\n' "$cadence_out" | sed '1s/^/WAKE cadence /')" "$tick_line"
+                        exit_reason='wake-cadence'; exit 0
+                    fi ;;
+            esac
+            review_val="$(field review "$tick_line")"
+            case "$review_val" in
+                ''|none|'?') ;;
+                *)
+                    if review_out="$(review_wake "$review_val")"; then
+                        printf 'WAKE %s\n%s\n' "$review_out" "$tick_line"
+                        exit_reason='wake-review'; exit 0
                     fi ;;
             esac
             stale_val="$(field pool-stale "$tick_line")"

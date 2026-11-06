@@ -243,6 +243,9 @@ else
 fi
 
 # T6: stubbed panel exit 1 -> fail-open, loud message, empty findings.
+# T1.64: a claude-only fallback (panel rc 1, 2 or 6) writes no round-scope row.
+t164_count() { grep -cF '"kind":"round-scope"' "$repo/.git/cr-critic-scores.jsonl" 2>/dev/null | tr -d ' '; }
+t164_before="$(t164_count)"
 rm -f "$CALL_LOG" "$tmp/err"
 out="$( (cd "$repo" && FAKE_RC=1 FAKE_OUT='PHANTOM-FINDING-MUST-NOT-SURVIVE' \
     FAKE_ERR='panel-availability: codex unavailable (rc=1)' \
@@ -288,6 +291,7 @@ out="$( (cd "$repo" && FAKE_RC=2 FAKE_ERR='usage: critic-panel.sh [--worktree <p
 err="$(cat "$tmp/err")"
 assert_has "$err" "critic panel unavailable (exit 2: usage error: usage: critic-panel.sh [--worktree <path>]) - claude-only review" "T6e usage cause named on stderr"
 assert_lacks "$err" "mktemp" "T6e usage-error exit 2 does not claim mktemp"
+if [ "$(t164_count)" = "$t164_before" ]; then ok "T1.64 panel rc 1, 6 and 2 write no round-scope row"; else bad "T1.64 a claude-only fallback wrote a round-scope row ($t164_before before, $(t164_count) after)"; fi
 # Every panel run advances the branch's 3-round counter; T6b is an extra run
 # the later cases were not budgeted for, so give them a fresh counter.
 rm -rf "$repo/.git/cr-review-rounds"
@@ -820,7 +824,7 @@ r5_from() { ( cd "$1" && bash "$fx/scripts/cr/review-round.sh" from --branch fea
 r5_round() {
     rm -f "$CALL_LOG" "$ARGS_LOG" "$tmp/stdin-log" "$tmp/ctx-copy" "$tmp/err"
     r5_out="$( (cd "$1" && STDIN_LOG="$tmp/stdin-log" CTX_COPY="$tmp/ctx-copy" FAKE_RC=0 FAKE_OUT="${R5_FAKE_OUT:-}" \
-        bash "$SCRIPT" --head "$2" --branch feature) 2>"$tmp/err" )"; r5_rc=$?
+        bash "$SCRIPT" --head "$2" --branch feature "${@:3}") 2>"$tmp/err" )"; r5_rc=$?
     r5_err="$(cat "$tmp/err")"
     r5_stdin="$(cat "$tmp/stdin-log" 2>/dev/null)"
     r5_args="$(cat "$ARGS_LOG" 2>/dev/null)"
@@ -920,6 +924,143 @@ r5_round "$r6" "$r6_h2"
 assert_has "$r5_out" "- [codex-1]: the old line is wrong [pre-existing] [f.txt:1]" "T27 round 2 tags an Important on code older than the PR"
 assert_has "$(cat "$r6/.git/cr-critic-scores.jsonl")" '"pre_existing":true' "T27 round 2 sets the pre_existing ledger field"
 R5_FAKE_OUT=""
+
+# T1.30-T1.38: one round-scope row per run whose panel ran, its scope read from
+# the final diff range; --full skips the since-last-round scoping and refuses past the cap.
+rs_rows() { grep -F '"kind":"round-scope"' "$1/.git/cr-critic-scores.jsonl" 2>/dev/null; }
+rs_last() { rs_rows "$1" | tail -n 1; }
+rs_count() { rs_rows "$1" | grep -c . | tr -d ' '; }
+
+# T1.30: the first run writes full.
+rs1="$tmp/repo-rs1"; r5_new "$rs1"
+rs1_main="$(git -C "$rs1" rev-parse main)"; rs1_h1="$(git -C "$rs1" rev-parse HEAD)"
+r5_round "$rs1" "$rs1_h1"
+row="$(rs_last "$rs1")"
+assert_has "$row" '"scope":"full"' "T1.30 round 1 writes a full row"
+assert_has "$row" "\"head\":\"$rs1_h1\"" "T1.30 the row carries the head"
+assert_has "$row" "\"base_sha\":\"$rs1_main\"" "T1.30 the row carries the captured base"
+assert_has "$row" '"from":null' "T1.30 a full row has no from"
+assert_has "$row" '"round":1' "T1.30 the row carries round 1"
+assert_has "$row" '"source":"panel-first-pass"' "T1.30 the row names its source"
+assert_has "$row" '"pr":null' "T1.30 the checkout route has no pr"
+assert_has "$row" '"branch":"feature"' "T1.30 the row carries the branch"
+if [ "$(rs_count "$rs1")" = 1 ]; then ok "T1.30 exactly one row"; else bad "T1.30 row count (got $(rs_count "$rs1"))"; fi
+
+# T1.31: a round-2 scoped run writes delta with from.
+r5_avail "$rs1" "$rs1_h1"
+rs1_h2="$(r5_commit "$rs1" g.txt second)"
+r5_round "$rs1" "$rs1_h2"
+row="$(rs_last "$rs1")"
+assert_has "$r5_err" "round 2 reviews $rs1_h1..$rs1_h2" "T1.31 round 2 is scoped"
+assert_has "$row" '"scope":"delta"' "T1.31 a scoped round 2 writes delta"
+assert_has "$row" "\"from\":\"$rs1_h1\"" "T1.31 from is the range's left side"
+assert_has "$row" '"round":2' "T1.31 the row carries round 2"
+
+# T1.33: the doubt fallbacks write full (B: empty from, C: from = HEAD, D: non-ancestor from).
+assert_has "$(rs_last "$r5b")" '"scope":"full"' "T1.33 an empty start point writes full"
+assert_has "$(rs_last "$r5c")" '"scope":"full"' "T1.33 a start point equal to HEAD writes full"
+assert_has "$(rs_last "$r5d")" '"scope":"full"' "T1.33 a non-ancestor start point writes full"
+assert_has "$(rs_last "$r5d")" '"round":2' "T1.33 the fallback row keeps its round"
+
+# T1.34: --full on the second run writes full and reviews the whole branch.
+rs2="$tmp/repo-rs2"; r5_new "$rs2"
+rs2_h1="$(git -C "$rs2" rev-parse HEAD)"
+r5_round "$rs2" "$rs2_h1" --full
+r5_avail "$rs2" "$rs2_h1"
+rs2_h2="$(r5_commit "$rs2" g.txt second)"
+r5_round "$rs2" "$rs2_h2" --full
+row="$(rs_last "$rs2")"
+if [ "$r5_rc" -eq 0 ]; then ok "T1.34 --full round 2 exits 0"; else bad "T1.34 exit (got $r5_rc; err: $r5_err)"; fi
+assert_has "$r5_out" "round 2 of 3" "T1.34 --full still counts round 2"
+assert_has "$r5_stdin" "+change" "T1.34 --full round 2 reviews the whole branch"
+assert_lacks "$r5_err" "round 2 reviews" "T1.34 --full skips the since-last-round scoping"
+assert_has "$row" '"scope":"full"' "T1.34 --full round 2 writes full"
+assert_has "$row" '"round":2' "T1.34 the row carries round 2"
+
+# T1.32 / T1.35: a fixture tree whose review-round.sh hands back the post-cap
+# delta round (or the cap refusal) the real one returns after three full rounds.
+fx2="$tmp/fx2"; cp -R "$fx" "$fx2"
+cat > "$fx2/scripts/cr/review-round.sh" <<'RREOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+    start)
+        if [ -n "${RR_START_RC:-}" ]; then echo "review-round: cap reached" >&2; exit "$RR_START_RC"; fi
+        printf '4 delta %s\n' "$RR_FROM" ;;
+    abort) printf 'given back\n'; printf 'abort\n' >> "$RR_LOG" ;;
+    from) printf '%s\n' "$RR_FROM" ;;
+esac
+exit 0
+RREOF
+SCRIPT2="$fx2/scripts/cr/panel-first-pass.sh"
+RR_LOG="$tmp/rr.log"; export RR_LOG
+rs3="$tmp/repo-rs3"; r5_new "$rs3"
+rs3_h1="$(git -C "$rs3" rev-parse HEAD)"
+rs3_h2="$(r5_commit "$rs3" g.txt second)"
+rs3_run() {
+    rm -f "$CALL_LOG" "$RR_LOG" "$tmp/err"
+    r5_out="$( (cd "$rs3" && RR_FROM="$rs3_h1" FAKE_RC=0 bash "$SCRIPT2" --head "$rs3_h2" --branch feature "$@") 2>"$tmp/err" )"; r5_rc=$?
+    r5_err="$(cat "$tmp/err")"
+}
+# T1.32: the post-cap "<n> delta <from>" round writes delta.
+rs3_run
+row="$(rs_last "$rs3")"
+assert_has "$r5_out" "delta round 4" "T1.32 the post-cap delta round ran"
+assert_has "$row" '"scope":"delta"' "T1.32 the post-cap delta round writes delta"
+assert_has "$row" "\"from\":\"$rs3_h1\"" "T1.32 from is the delta start"
+assert_has "$row" '"round":4' "T1.32 the row carries the post-cap round"
+# T1.35: --full past the cap refuses with the takeover line.
+n_before="$(rs_count "$rs3")"
+rs3_run --full
+if [ "$r5_rc" -eq 8 ]; then ok "T1.35 --full on the post-cap delta round exits 8"; else bad "T1.35 delta exit (got $r5_rc; err: $r5_err)"; fi
+assert_has "$r5_err" "outside PR past its three full rounds: hand it to a maintainer takeover (HIMMEL-9019)" "T1.35 the takeover line on the delta round"
+if [ -f "$CALL_LOG" ]; then bad "T1.35 panel invoked past the cap"; else ok "T1.35 panel never invoked on the delta round"; fi
+assert_has "$(cat "$RR_LOG" 2>/dev/null)" "abort" "T1.35 the refused delta round is given back"
+rm -f "$CALL_LOG" "$tmp/err"
+r5_out="$( (cd "$rs3" && RR_START_RC=8 RR_FROM="$rs3_h1" FAKE_RC=0 bash "$SCRIPT2" --head "$rs3_h2" --branch feature --full) 2>"$tmp/err" )"; r5_rc=$?
+r5_err="$(cat "$tmp/err")"
+if [ "$r5_rc" -eq 8 ]; then ok "T1.35 --full on a cap refusal exits 8"; else bad "T1.35 cap exit (got $r5_rc; err: $r5_err)"; fi
+assert_has "$r5_err" "outside PR past its three full rounds: hand it to a maintainer takeover (HIMMEL-9019)" "T1.35 the takeover line on a cap refusal"
+if [ "$(rs_count "$rs3")" = "$n_before" ]; then ok "T1.35 a refused --full run writes no row"; else bad "T1.35 row count moved ($n_before to $(rs_count "$rs3"))"; fi
+
+# T1.36: the rtk retry writes one row.
+mkdir -p "$tmp/rtkbin"
+cat > "$tmp/rtkbin/rtk" <<'RTKEOF'
+#!/usr/bin/env bash
+[ "$1" = proxy ] && shift
+exec "$@"
+RTKEOF
+chmod +x "$tmp/rtkbin/rtk"
+rs4="$tmp/repo-rs4"; r5_new "$rs4"
+rs4_h1="$(git -C "$rs4" rev-parse HEAD)"
+rm -f "$CALL_LOG" "$tmp/err"
+out="$( (cd "$rs4" && PATH="$tmp/rtkbin:$PATH" FAKE_RC=1 FAKE_RC_RETRY=0 bash "$SCRIPT" --head "$rs4_h1" --branch feature) 2>"$tmp/err" )"; rc=$?
+if [ "$(wc -l < "$CALL_LOG" | tr -d ' ')" = 2 ]; then ok "T1.36 the panel was retried through rtk"; else bad "T1.36 panel calls (got $(wc -l < "$CALL_LOG"))"; fi
+if [ "$(rs_count "$rs4")" = 1 ]; then ok "T1.36 the rtk retry writes one row"; else bad "T1.36 row count (got $(rs_count "$rs4"); err: $(cat "$tmp/err"))"; fi
+
+# T1.37: one critic ok and one failed writes the row; all critics failed (a claude-only fallback) writes none.
+rs5="$tmp/repo-rs5"; r5_new "$rs5"
+rs5_h1="$(git -C "$rs5" rev-parse HEAD)"
+rm -f "$CALL_LOG" "$tmp/err"
+out="$( (cd "$rs5" && FAKE_RC=0 FAKE_ERR='panel-availability: codex ok
+panel-availability: gemini unavailable (rc=1)' bash "$SCRIPT" --head "$rs5_h1" --branch feature) 2>"$tmp/err" )"; rc=$?
+if [ "$(rs_count "$rs5")" = 1 ]; then ok "T1.37 one ok and one failed critic writes the row"; else bad "T1.37 mixed row count (got $(rs_count "$rs5"))"; fi
+rs6="$tmp/repo-rs6"; r5_new "$rs6"
+rs6_h1="$(git -C "$rs6" rev-parse HEAD)"
+rm -f "$CALL_LOG" "$tmp/err"
+out="$( (cd "$rs6" && FAKE_RC=1 FAKE_ERR='panel-availability: codex unavailable (rc=1)' bash "$SCRIPT" --head "$rs6_h1" --branch feature) 2>"$tmp/err" )"; rc=$?
+assert_has "$(cat "$tmp/err")" "all critics failed" "T1.37 the all-failed run degraded"
+if [ "$(rs_count "$rs6")" = 0 ]; then ok "T1.37 all critics failed writes no row"; else bad "T1.37 all-failed row count (got $(rs_count "$rs6"))"; fi
+
+# T1.38: a run whose panel did not run writes nothing.
+rs7="$tmp/repo-rs7"; r5_new "$rs7"
+rs7_h1="$(git -C "$rs7" rev-parse HEAD)"
+out="$( (cd "$rs7" && CR_PROFILE=none bash "$SCRIPT" --head "$rs7_h1" --branch feature --full) 2>/dev/null )"
+if [ "$(rs_count "$rs7")" = 0 ]; then ok "T1.38 CR_PROFILE=none writes no row"; else bad "T1.38 CR_PROFILE=none wrote a row"; fi
+out="$( (cd "$tmp/wt-empty" && bash "$SCRIPT" --head "$empty_sha" --branch feature-empty --full) 2>/dev/null )"
+rs_empty="$(rs_rows "$repo" | grep -F '"branch":"feature-empty"')"
+if [ -n "$rs_empty" ]; then bad "T1.38 an empty diff wrote a row"; else ok "T1.38 an empty diff writes no row"; fi
+out="$( (cd "$rs7" && bash "$SCRIPT" --head 0000000000000000000000000000000000000000 --branch feature --full) 2>/dev/null )"
+if [ "$(rs_count "$rs7")" = 0 ]; then ok "T1.38 an early refusal writes no row"; else bad "T1.38 an early refusal wrote a row"; fi
 
 # --- no writes outside the mktemp fixture -----------------------------------
 # panel-first-pass.sh's only persistent writes are mktemp -t cr-panel-avail.*

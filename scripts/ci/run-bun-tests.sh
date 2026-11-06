@@ -14,6 +14,14 @@ logs=$(tmpdir) || exit 1
 trap 'rm -rf "$logs"' EXIT
 run_attempt() {
   bun test "$@" 2>&1 | tee "$logs/$attempt.log"
+  local rc=${PIPESTATUS[0]}
+  # bun can exit 0 mid-run (a test calls process.exit(0)) with fail rows and no
+  # summary; an attempt only passes when it also printed its `Ran N tests` line.
+  if [ "$rc" -eq 0 ] && ! grep -Eq 'Ran [0-9]+ tests? across [0-9]+ files?' "$logs/$attempt.log"; then
+    printf 'attempt %s: bun exited 0 without a "Ran N tests" line, counted as a failure\n' "$attempt" >&2
+    return 1
+  fi
+  return "$rc"
 }
 attempt=1
 if run_attempt "$@"; then

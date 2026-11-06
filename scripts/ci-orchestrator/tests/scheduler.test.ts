@@ -209,7 +209,7 @@ describe("tick — stale snapshot and lease expiry during dispatch", () => {
     vi.useRealTimers();
   });
 
-  test("HIMMEL-8440: a job completed during the scheduler's await stays done after the tick", async () => {
+  test("a job completed during the scheduler's await stays done after the tick", async () => {
     const p = freshLedger();
     const gated = gatedAdapter("act-exec");
     const j1 = job({ id: "j1", required: true, heavy: true, enqueuedAt: new Date(T0 - 60_000).toISOString() });
@@ -232,7 +232,7 @@ describe("tick — stale snapshot and lease expiry during dispatch", () => {
     expect(st.conclusion).toBe("success");
   });
 
-  test("HIMMEL-8441: a local /claim during an in-flight dispatch gets nothing, even past the TTL", async () => {
+  test("a local /claim during an in-flight dispatch gets nothing, even past the TTL", async () => {
     vi.useFakeTimers({ now: T0 });
     const p = freshLedger();
     const gated = gatedAdapter("act-exec");
@@ -276,7 +276,7 @@ describe("tick — stale snapshot and lease expiry during dispatch", () => {
     expect(await settled).toBeInstanceOf(SyntaxError); // surfaced by tick, not by the timer
   });
 
-  test("HIMMEL-8441: a dispatch that lost its claim does not append dispatch over another claimant's claim", async () => {
+  test("a dispatch that lost its claim does not append dispatch over another claimant's claim", async () => {
     const p = freshLedger();
     const gated = gatedAdapter("act-exec");
     const ticking = tick(

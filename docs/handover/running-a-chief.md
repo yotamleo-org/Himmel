@@ -404,6 +404,37 @@ line in its prompt draws a warning from `guard-agent-model.sh` (warn only, never
 a deny; the reason must pass the same length and placeholder test as
 `ESCALATION:`). Opus is for the one hard call: put the reason on that line.
 
+**Operator-ruled Opus classes (HIMMEL-8926).** The table is not the whole rule.
+Standing operator rulings keep four helper classes on Opus at high effort, and
+a chief that follows the table over them is wrong: audits (backlog, version,
+done, collision or drift audits, decision explainers, spend measurement),
+docs work, mockups and HTML renders, and spec critics. Over 2026-11-01 and
+2026-11-02 these classes were about 87 % of the chief `general-purpose` Opus
+spend (22.98 $-eq a day, measured in
+`specs/audits/HIMMEL-8926-chief-helper-spend-2026-11-05.md` in the state
+repo); the rest was one root-cause investigation (a hard call) and a 0.07
+triage. A tier move alone therefore cannot bring that spend under 15 a day.
+The rules:
+
+1. **Ruled class: `general-purpose`, Opus, high.** Dispatch it as
+   `general-purpose`, not as a named agent. The named agents' rows above stay as
+   they are: 9 of 29 Opus helper dispatches from 2026-11-01 to 2026-11-05 were a named agent
+   (`ticket-auditor`, `page-reviewer`, `brief-drafter`, `edit-runner`) passed
+   `model: opus`, which contradicts its own row. Put `TIER: operator-ruling
+   <decision or ruling> (<class>)` and `EFFORT: operator-ruling, <class> runs at
+   high` in the prompt so both warnings pass with a real reason.
+2. **One audit per question per window.** Before dispatching an audit, list
+   the state repo's `specs/audits/` and query it for the same question and
+   window. If another chief already has a report, read it and do not dispatch a
+   second. On 2026-11-02 two chiefs each paid for a spend audit of overlapping
+   windows (7.14 and 6.73 $-eq).
+3. **A research read that is not an audit, docs work, a mockup or a spec
+   critic goes to `general-purpose` on `sonnet` at high.** Reading a Slack
+   thread and an upstream repo to judge a proposal cost 7.70 $-eq on Opus with
+   no `TIER:` line (2026-11-04). Add `EFFORT: high, a research read needs depth`
+   (or a better reason) because high effort draws its own warning. Opus stays
+   for the one hard call.
+
 A native worker launched with no model runs `claude-opus-5-5`, so
 `headed-arm-worker.sh` holds it to the same Tier line as a named Opus launch.
 
@@ -723,8 +754,8 @@ whether a PR can merge; never infer it from the check runs. The latest run of
 each check is right for reporting that check's state, never for deciding
 mergeability.
 
-`scripts/handover/chief-kit/ready-go.sh [--to <worker> --token <nonce>] [--ledger <chief doc>] <pr> <sha>`
-is the whole mechanical READY turn in one call: the `ready-check.sh` output, the coverage line, the trust-path result, the ticket state and the exact GO line to send. It is read-only (no GO file, no message): `go.sh` and the SendMessage stay yours.
+`scripts/handover/chief-kit/ready-go.sh [--to <worker> --token <nonce>] [--ledger <chief doc>] --contract yes|no <pr> <sha>`
+is the whole mechanical READY turn in one call: the `ready-check.sh` output, the coverage line, the trust-path result, the ticket state and the exact GO line to send. `--contract` is the brief's `Completes ticket:` answer and goes into the `go.sh` command on the `NEXT:` line. It is read-only (no GO file, no message): `go.sh` and the SendMessage stay yours.
 
 At each `READY`, run `scripts/handover/chief-kit/auto-go.sh --dry-run --doc <chief doc> --fleet <manifest> --worker <label> <pr> <head>` and record its one answer line (`WOULD-GO` or `ESCALATE auto-go <check#> <reason>`) in your own notes beside the GO you send by hand. The dry run acts on nothing: no GO file, no verdict record, no message. It writes one `auto-go.jsonl` row, so the record builds up the evidence of how often a script would have given the same GO.
 
@@ -745,13 +776,16 @@ ticket except 2973), a found line whose status is not PASS is also not READY.
 The chief pulls the primary and the worker wraps (closing its ticket only if the
 brief's `completes-ticket: yes` says the PR completes it).
 The chief sends the GO file (merge approval) by first running `bash scripts/handover/chief-kit/go.sh
-<pr> <full head sha>`. The file IS the GO; the SendMessage is the
+--contract yes|no <pr> <full head sha>`, or `go.sh --contract yes|no --trust-reviewed <qid> <pr> <full head sha>`
+on a trust path. `--contract` is the brief's `Completes ticket:` answer. The file IS the GO; the SendMessage is the
 notification: a worker launched by `headed-arm-worker.sh` carries
 `HIMMEL_CONSOLE_LEG=1`, and `merge-on-green.sh` refuses it (exit 17) without a
 GO for the exact head it certifies, so a push after GO needs a fresh one.
 `go.sh` runs `ready-check.sh` itself and writes nothing unless
-it passes (exit 4). A `--trust-reviewed <qid>` GO also needs the
+it passes (exit 4); a PR titled with a ticket key and no `--contract` fails its item 17.
+A `--trust-reviewed <qid>` GO also needs the
 judge's ``**GO** for head `<sha>`.`` verdict under `verdicts/<qid>/` (exit 5).
+A worker's `--go` merge that resolves no open PR merged nothing and exits 27.
 
 An opt-in auto-merge stops at "awaiting approval" wherever branch protection requires
 a review the automation identity cannot give. On a single-maintainer repo the

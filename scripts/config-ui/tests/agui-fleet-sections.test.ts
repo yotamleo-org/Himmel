@@ -129,7 +129,7 @@ test("a console filter scopes every section, and its process orphans, to that co
   expect(fleetSections(rows, BU, NO_FILTERS, procs).processOrphans.map((p) => p.pid)).toEqual([7, 8]);
 });
 
-test("HIMMEL-8161: a worker whose recorded chief wrapped sits under the live successor, never in Orphans or Other sessions", () => {
+test("a worker whose recorded chief wrapped sits under the live successor, never in Orphans or Other sessions", () => {
   const KA = "HIMMEL-nextleg-2026-10-30KA-roadmap-chief", KB = "HIMMEL-nextleg-2026-10-30KB-roadmap-chief";
   const inherited: any[] = [
     row(KA, "console", KA, { state: "wrapped", live: false, lock: "released" }),
@@ -157,7 +157,7 @@ test("HIMMEL-8161: a worker whose recorded chief wrapped sits under the live suc
   expect(chiefOf(forked[4], forked)).toBe(K3);
 });
 
-test("HIMMEL-8161: a cadence session is a Cadences row with its id, never in Other sessions", () => {
+test("a cadence session is a Cadences row with its id, never in Other sessions", () => {
   const withCadence: any[] = [...rows, row("luna-fb", "interactive", null, { cadence: "luna-fb", state: "running", ...at(6) })];
   const s = fleetSections(withCadence);
   expect(s.cadences.map((r) => r.name)).toEqual(["luna-fb"]);
@@ -269,7 +269,7 @@ test("short names drop the ticket and date: a worker keeps its id and slug, a co
   expect(shortName("scratch-session")).toBe("scratch-session");
 });
 
-test("HIMMEL-9099: a chief's header counts are fleetSections' counts for it: one running and one waiting for GO", () => {
+test("a chief's header counts are fleetSections' counts for it: one running and one waiting for GO", () => {
   const C = "HIMMEL-nextleg-2026-11-04QM-roadmap-chief";
   const mine = [row(C, "console", C, { state: "idle" }), row("run-w", "worker", C, { state: "running" }), row("go-w", "worker", C, { state: "waiting for GO" })];
   const c = fleetSections(mine, C, NO_FILTERS, []).counts;
@@ -277,7 +277,7 @@ test("HIMMEL-9099: a chief's header counts are fleetSections' counts for it: one
   expect(chiefCounts(mine, C, [])).toEqual({ running: 1, go: 1, attention: 0, orphaned: 0 });
 });
 
-test("HIMMEL-9099: a process orphan with no owner is in no chief's header count, one owned by a chief only in its own", () => {
+test("a process orphan with no owner is in no chief's header count, one owned by a chief only in its own", () => {
   const A = "HIMMEL-nextleg-2026-11-04QM-roadmap-chief";
   const B = "HIMMEL-nextleg-2026-11-04QN-roadmap-chief";
   const rows = [row(A, "console", A, { state: "idle" }), row(B, "console", B, { state: "idle" }), row("a-w", "worker", A, { state: "running" })];
@@ -286,7 +286,7 @@ test("HIMMEL-9099: a process orphan with no owner is in no chief's header count,
   expect(chiefCounts(rows, B, procs).orphaned).toBe(0);
 });
 
-test("HIMMEL-9099: the AG-UI rail list hides Board with no readable tracker, exactly as navLinks does", () => {
+test("the AG-UI rail list hides Board with no readable tracker, exactly as navLinks does", () => {
   const ids = (sources?: string[]) => (nav as any).railItems("fleet", sources);
   expect(ids([])).not.toContain("board");
   expect(ids([])).toEqual((nav as any).navLinks({ here: "agui", token: "a".repeat(64), current: "fleet", run: null, sources: [] }).map((l: any) => l.id));

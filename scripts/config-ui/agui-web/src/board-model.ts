@@ -18,8 +18,11 @@ export type Succession = {
   tool: string; from: string; to: string; started: string | null; live_at: string | null; wall_min: number | null; turns: number; eq: number;
   legs_quoted: number; legs_silent: number; target: { eq: number; turns: number }; pass: boolean; recommendation: string;
 };
+// A note the chief writes with board-section.mjs; the route serves them in the stored order.
+export type Section = { id: string; title: string; body: string; tone: string; order?: number };
 export type Board = {
   schema: "himmel.board/1"; generated_at: string; console: { name: string };
+  sections: Section[]; sections_error?: string;
   headline: { live: number; cap: number | null; merged_today: number; needs_you: number; blocked: number };
   bank: { week_pct: number | null; five_hour_pct: number | null };
   ci: { open: number; green: number; pending: number; no_checks: number; red: number };
@@ -36,15 +39,22 @@ export type Board = {
   legend: Legend; cards: Record<"velocity" | "health" | "tools" | "roadmap", { recommendation: string }>;
 };
 
+// Shape only: a non-array is no sections, a section with a non-string field is dropped, the order is the writer's.
+const sectionsOf = (raw: unknown): Section[] => !Array.isArray(raw) ? [] : raw.flatMap((s: any) =>
+  typeof s?.id === "string" && typeof s.title === "string" && typeof s.body === "string" && typeof s.tone === "string"
+    ? [{ id: s.id, title: s.title, body: s.body, tone: s.tone, ...(typeof s.order === "number" ? { order: s.order } : {}) }] : []);
+
 // The one reader of board.mjs's old wire keys, which it emits until its writer flips. The browser has no
 // HIMMEL_LEGACY_NAMES switch, so the fallback is always on. The removal of the legacy names deletes this whole function.
 export function normalizeBoard(raw: any): Board {
-  const { legs: oldWorkers, ...rest } = raw; // legacy wire fallback
+  const { legs: oldWorkers, sections: rawSections, sections_error: rawError, ...rest } = raw; // legacy wire fallback
   const workerOf = ({ leg: oldName, ...r }: any) => ({ ...r, worker: r.worker ?? oldName }); // legacy wire fallback
   const { leg_time: oldTime, ...trends } = raw.trends; // legacy wire fallback
   const time = trends.worker_time ?? oldTime ?? { unit: "min", today: [] }; // legacy wire fallback
   return {
     ...rest,
+    sections: sectionsOf(rawSections),
+    ...(typeof rawError === "string" ? { sections_error: rawError } : {}),
     workers: (rest.workers ?? oldWorkers).map(workerOf), // legacy wire fallback
     needs_you: raw.needs_you.map(workerOf),
     trends: { ...trends, worker_time: { ...time, today: time.today.map(workerOf) } },

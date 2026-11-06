@@ -11,7 +11,7 @@ export type TriageVerdict = "ignore" | "ack" | "spawn-low" | "spawn-high";
 export type TriageModelOverride = "haiku";
 // The models the RUN path can be pinned to. Wider than TriageModelOverride on
 // purpose: triage still only ever emits "haiku", but the operator's explicit
-// `model:` tag (LUNA-101) can name any of these. Keeping the two types distinct
+// `model:` tag can name any of these. Keeping the two types distinct
 // preserves the compile-time guarantee above at the triage producer while
 // letting the run path carry an operator choice.
 export type ModelOverride = "haiku" | "sonnet" | "opus";

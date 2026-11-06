@@ -108,6 +108,25 @@ The fallback appends one row to the same `launches.jsonl` as the API call:
 
 The API call's own row and its reservation are settled as before.
 
+### The native release judge row
+
+`launches.jsonl` has a second writer: the release judge's subscription run (`liveJudge` in
+`scripts/jira/src/commands/release.ts`) appends one `kind=judge` row per run, after the call returns. It is not
+an API call, so it takes no reservation and `claude-api.sh` never sees it.
+
+| Field | Value |
+|---|---|
+| `lane` | `native` |
+| `outcome` | `native`, or `native-failed` on a non-zero exit or a timeout |
+| `session_id` | the id passed to `claude --session-id`; the transcript is `<session_id>.jsonl` |
+| `cost_usd` | empty (no API credit spent) |
+| `sub_cost_usd` | the call's verified `total_cost_usd` (six places), empty when the call failed or printed none |
+| `rc` | the call's exit code (1 when it threw without one) |
+
+A reader that sums API dollars skips every row with a `lane` other than `api` (the API launcher's own rows carry
+no `lane`): `shift-spend.mjs` does, so the native and `sub-fallback` rows are neither summed nor counted as unpriced.
+`scripts/usage/release-judge-reconcile.sh` is the read-only check that each release judge transcript has its row.
+
 ## Account C and auto routing (HIMMEL-9052, decision 525 FINAL)
 
 Account C is a third API org with a 200.00 USD cap. A, B and C are treated identically: the same refusals (key from
@@ -159,6 +178,10 @@ secret, only role names and account letters:
 - **Tools.** `node scripts/lib/api-roles.mjs check` prints the map state, warnings and `ROLES`;
   `write` takes the full document on stdin, validates it, and writes atomically with mode 600 (an empty `roles`
   removes the file); `node scripts/lib/api-credit-state.mjs accounts` prints each account's cap and a bank tag.
+- **In the config UI.** Configure, then Secrets, then Multi accounts lists accounts A, B and C with their bank tag and
+  roles, and edits the map through the same `write` command (`GET`/`POST /api/api-roles`). After a change to that
+  section, run `bash scripts/vm/multi-accounts-e2e.sh <vm>` on a free test VM that holds this checkout: it starts the
+  config UI once per role-map state on a throwaway HOME and asserts the route and what auto routing reads.
 
 ponytail: auto routes only from the himmel repo even for a mapped role, upgrade path: plan P1 widens it per repo once the launcher reads the egress matrix (`scripts/guardrails/egress-matrix.json`).
 

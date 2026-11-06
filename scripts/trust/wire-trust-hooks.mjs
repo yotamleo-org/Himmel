@@ -447,7 +447,7 @@ function assertRecorderPresent(settingsPath) {
   if (!existsSync(recorder)) {
     fail(
       `no recorder at ${recorder} — the trust ledger is not part of the portable core yet `
-      + '(HIMMEL-2756 tracks shipping it for adopted projects). '
+      + '(shipping it for adopted projects is a follow-up). '
       + 'Trust is currently supported in a himmel checkout; run this there, or pass that checkout\'s settings path.',
     );
   }
@@ -705,7 +705,7 @@ async function main() {
         // the operator is actually going to get.
         + (!args.off && !recorderPresent
           ? `  ⚠ no recorder at ${recorderPathFor(settingsPath)} — \`trust on\` would REFUSE here; `
-            + 'the trust ledger is not part of the portable core yet (HIMMEL-2756 tracks shipping it for adopted projects). '
+            + 'the trust ledger is not part of the portable core yet (shipping it for adopted projects is a follow-up). '
             + 'Trust is currently supported in a himmel checkout; run this there, or pass that checkout\'s settings path.\n'
           : '')
         + (unverified

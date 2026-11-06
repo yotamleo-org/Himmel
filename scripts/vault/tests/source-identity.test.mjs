@@ -228,7 +228,7 @@ describe("patchFrontmatter — additive write + idempotence", () => {
   });
 });
 
-describe("classifyMovement (HIMMEL-3063)", () => {
+describe("classifyMovement", () => {
   const none = { existingCommit: null, newCommit: null, existingPushedAtFull: null, newPushedAtFull: null, existingPushedAtDate: null, newPushedAtDate: null };
 
   test("full timestamps: same UTC day but different instants is moved; equal instants is unchanged", () => {
@@ -252,7 +252,7 @@ describe("classifyMovement (HIMMEL-3063)", () => {
     expect(classifyMovement({ ...none, existingPushedAtDate: "2026-09-10", newPushedAtDate: "2026-09-11" })).toBe("moved");
   });
 
-  test("a date-only upstream_pushed_at is calendar evidence, never full precision (HIMMEL-3212)", () => {
+  test("a date-only upstream_pushed_at is calendar evidence, never full precision", () => {
     const sameDay = { ...none, existingPushedAtDate: "2026-09-10", newPushedAtDate: "2026-09-10" };
     // hand-edited note holds only the date; live value is that day's 00:00:00Z — Date.parse says equal instants
     expect(classifyMovement({ ...sameDay, existingPushedAtFull: "2026-09-10", newPushedAtFull: "2026-09-10T00:00:00Z" })).toBe("date-only");
@@ -269,7 +269,7 @@ describe("classifyMovement (HIMMEL-3063)", () => {
   });
 });
 
-describe("CRLF frontmatter (HIMMEL-3063)", () => {
+describe("CRLF frontmatter", () => {
   const crlf = "---\r\ntype: tech-ingest\r\nsource: https://github.com/owner/repo\r\nstars: 5\r\ntrust_tier_reason: \"pushed_at=2026-05-21\"\r\n---\r\n\r\n# repo\r\n";
 
   test("extractFrontmatterField reads a value off a CRLF line without the trailing CR", () => {

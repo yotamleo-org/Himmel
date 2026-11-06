@@ -519,7 +519,7 @@ start_fake_daemon() { # <unwind secs> -> sets fake_pid, writes the pidfile
   while [ ! -f "$state/alive" ] && [ "$i" -lt 50 ]; do i=$((i + 1)); sleep 0.1; done
   [ -f "$state/alive" ] || fail "precondition: fake daemon never came alive"
   [ "$QMD_TEST_FORCE_FAIL_AFTER" != "start_fake_daemon" ] || \
-    fail "forced failure after start_fake_daemon (HIMMEL-3775 leak-test hook)"
+    fail "forced failure after start_fake_daemon (leak-test hook)"
 }
 
 # run_ceiling <rss_kb> [<ceiling_mb>] -> sets rc/out/dur; the hook's own wall time

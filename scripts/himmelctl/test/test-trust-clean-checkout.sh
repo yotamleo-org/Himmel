@@ -292,7 +292,7 @@ for verb in on status off; do
     fail=1
   fi
   if [ "$verb" != off ]; then
-    for message in 'not part of the portable core yet' 'HIMMEL-2756' 'himmel checkout'; do
+    for message in 'not part of the portable core yet' 'is a follow-up' 'himmel checkout'; do
       if ! grep -qF "$message" <<< "$out"; then
         echo "FAIL - adopted project trust $verb omits: $message"
         fail=1

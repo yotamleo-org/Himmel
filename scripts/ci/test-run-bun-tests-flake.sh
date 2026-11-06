@@ -44,4 +44,30 @@ printf 'PASS: double failure stays FAIL with no flake row\n'
 run_case 0
 [ "$rc" -eq 0 ] && [ "$(<"$tmp/count")" = 1 ] && [ ! -s "$tmp/ledger.jsonl" ] || exit 1
 printf 'PASS: first-pass success runs once without a flake row\n'
-printf '3 passed, 0 failed\n'
+# bun can exit 0 mid-run (a test calls process.exit(0)) with fail rows and no
+# `Ran N tests` line; an rc of 0 alone must never read as a pass.
+cat > "$tmp/exit-early.test.ts" <<'TS'
+import { test } from "bun:test";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+const path = process.env.BUN_FLAKE_COUNT!;
+const count = existsSync(path) ? Number(readFileSync(path, "utf8")) + 1 : 1;
+writeFileSync(path, String(count));
+test("exits 0 before the summary", () => { if (count <= Number(process.env.EXIT_RUNS)) process.exit(0); });
+TS
+run_exit_case() {
+  rm -f "$tmp/count" "$tmp/ledger.jsonl" "$tmp/summary"
+  export EXIT_RUNS="$1"
+  rc=0
+  bash "$ROOT/scripts/ci/run-bun-tests.sh" scripts/config-ui "$tmp/exit-early.test.ts" > "$tmp/output" 2>&1 || rc=$?
+}
+run_exit_case 2
+[ "$rc" -ne 0 ] && [ "$(<"$tmp/count")" = 2 ] && [ ! -s "$tmp/ledger.jsonl" ] || { printf 'FAIL: a run that exits 0 with no Ran line on both attempts must fail (rc=%s)\n' "$rc"; exit 1; }
+grep -q '\[FAIL\]' "$tmp/output" || exit 1
+! grep -q '\[PASS\]' "$tmp/output" || exit 1
+printf 'PASS: a run killed before its Ran line is FAIL, never PASS\n'
+run_exit_case 1
+[ "$rc" -eq 0 ] && [ "$(<"$tmp/count")" = 2 ] && [ -s "$tmp/ledger.jsonl" ] || { printf 'FAIL: exit-0-then-complete must retry once and pass as FLAKE (rc=%s)\n' "$rc"; exit 1; }
+grep -q '\[FLAKE\]' "$tmp/output" || exit 1
+grep -q 'Ran 1 test' "$tmp/output" || exit 1
+printf 'PASS: a retry that prints its Ran line still passes as FLAKE\n'
+printf '5 passed, 0 failed\n'

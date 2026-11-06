@@ -111,7 +111,7 @@ usage() {
 usage: graph-publish.sh [--dry-run] [--base <branch>] [--no-fetch] [--ticket <ID>]
 
 Publishes a freshly-refreshed graphify-out/graph.json (+ GRAPH_REPORT.md) by
-opening/refreshing a PR — the operator-invoked step HIMMEL-1123's tracked
+opening/refreshing a PR — the operator-invoked step a tracked
 graph needed and never got. Refuses cleanly when there is nothing newer than
 the shipped (committed) graph to publish.
 
@@ -125,7 +125,7 @@ Optional:
                   is already known locally (offline mode).
   --ticket <ID>   Ticket ID carried in the commit subject (this repo's
                   commit-range gate requires one on every commit). Default:
-                  $GRAPH_PUBLISH_TICKET or HIMMEL-2095.
+                  $GRAPH_PUBLISH_TICKET or the standing graph-publish ticket.
 EOF
 }
 

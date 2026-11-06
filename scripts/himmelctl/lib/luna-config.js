@@ -351,25 +351,25 @@ function migrate(doc, filePath) {
   // error style. `typeof null === 'object'` also makes a naive typeof check
   // insufficient here — isPlainObject() already excludes both null and arrays.
   if (!isPlainObject(doc)) {
-    throw new Error(`luna-config: ${filePath} does not contain a config object (got ${JSON.stringify(doc)}) (HIMMEL-2176)`);
+    throw new Error(`luna-config: ${filePath} does not contain a config object (got ${JSON.stringify(doc)})`);
   }
   let current = doc;
   let hops = 0;
   while (current.version < CURRENT_VERSION) {
     const step = MIGRATIONS[current.version];
     if (!step) {
-      throw new Error(`luna-config: no migration path from version ${current.version} in ${filePath} (HIMMEL-2176)`);
+      throw new Error(`luna-config: no migration path from version ${current.version} in ${filePath}`);
     }
     current = step(current);
     hops += 1;
     if (hops > 100) {
-      throw new Error(`luna-config: migration did not converge for ${filePath} after ${hops} hops (HIMMEL-2176)`);
+      throw new Error(`luna-config: migration did not converge for ${filePath} after ${hops} hops`);
     }
   }
   if (current.version > CURRENT_VERSION) {
     throw new Error(
       `luna-config: ${filePath} declares version ${current.version}, newer than the highest version `
-      + `this himmelctl build understands (${CURRENT_VERSION}) — HIMMEL-2176; upgrade himmelctl before touching this file`
+      + `this himmelctl build understands (${CURRENT_VERSION}); upgrade himmelctl before touching this file`
     );
   }
   return current;
@@ -398,7 +398,7 @@ function inspect() {
     doc = JSON.parse(raw);
   } catch (err) {
     // the file is the user's and is left exactly as it is: the fix is theirs
-    throw new Error(`luna-config: malformed JSON in ${p}: ${err.message} (HIMMEL-2176) — the file was NOT touched; `
+    throw new Error(`luna-config: malformed JSON in ${p}: ${err.message} — the file was NOT touched; `
       // $EDITOR stays unquoted: it often carries arguments (`code --wait`) that
       // the shell must split; only the path is quoted.
       + `hand-fix: cp "${p}" "${p}.hand-fix.bak" && \${EDITOR:-vi} "${p}", then re-run himmelctl`);
@@ -408,7 +408,7 @@ function inspect() {
 
   const errors = validateConfig(filledDoc);
   if (errors.length > 0) {
-    throw new Error(`luna-config: ${p} fails schema validation (HIMMEL-2176):\n  - ${errors.join('\n  - ')}`);
+    throw new Error(`luna-config: ${p} fails schema validation:\n  - ${errors.join('\n  - ')}`);
   }
   return { doc: filledDoc, existed: true, filled, unknown: unknownKeys(filledDoc) };
 }
@@ -474,7 +474,7 @@ function backupExisting(p) {
   } catch (err) {
     if (err.code !== 'EEXIST') throw err;
     if (fs.lstatSync(freshPath).isSymbolicLink()) {
-      throw new Error(`luna-config: a symlink already exists at ${freshPath} — refusing to back up through it (HIMMEL-2176)`);
+      throw new Error(`luna-config: a symlink already exists at ${freshPath} — refusing to back up through it`);
     }
     const stagePath = `${freshPath}.stage-${process.pid}`;
     // `stageRemovalRefused` mirrors save()'s own `tmpRemovalRefused` below —
@@ -495,7 +495,7 @@ function backupExisting(p) {
       }
     } catch (stageFailure) {
       if (!stageRemovalRefused) removeTempBestEffort(stagePath);
-      throw new Error(`luna-config: refusing to refresh the backup at ${freshPath} — staging copy to ${stagePath} failed: ${stageFailure.message} (HIMMEL-2176)`);
+      throw new Error(`luna-config: refusing to refresh the backup at ${freshPath} — staging copy to ${stagePath} failed: ${stageFailure.message}`);
     }
     // renameSync used to sit
     // OUTSIDE the cleanup handling — a failed rename (locked/permission-denied
@@ -508,7 +508,7 @@ function backupExisting(p) {
       fs.renameSync(stagePath, freshPath);
     } catch (err) {
       if (!stageRemovalRefused) removeTempBestEffort(stagePath);
-      throw new Error(`luna-config: refusing to refresh the backup at ${freshPath} — rename from ${stagePath} failed: ${err.message} (HIMMEL-2176)`);
+      throw new Error(`luna-config: refusing to refresh the backup at ${freshPath} — rename from ${stagePath} failed: ${err.message}`);
     }
   }
   // Prune everything ELSE named `${base}.bak-*`. Excluding `freshName` by
@@ -644,7 +644,7 @@ function save(doc) {
     }
   } catch (err) {
     if (!tmpRemovalRefused) removeTempBestEffort(tmp);
-    throw new Error(`luna-config: refusing to save ${p} — write to ${tmp} failed: ${err.message} (HIMMEL-2176)`);
+    throw new Error(`luna-config: refusing to save ${p} — write to ${tmp} failed: ${err.message}`);
   }
 
   let written;
@@ -652,12 +652,12 @@ function save(doc) {
     written = JSON.parse(fs.readFileSync(tmp, 'utf8'));
   } catch (err) {
     removeTempBestEffort(tmp);
-    throw new Error(`luna-config: internal error — just-written ${tmp} failed to parse: ${err.message} (HIMMEL-2176)`);
+    throw new Error(`luna-config: internal error — just-written ${tmp} failed to parse: ${err.message}`);
   }
   const errors = validateConfig(written);
   if (errors.length > 0) {
     removeTempBestEffort(tmp);
-    throw new Error(`luna-config: refusing to save ${p} — schema violation(s) (HIMMEL-2176):\n  - ${errors.join('\n  - ')}`);
+    throw new Error(`luna-config: refusing to save ${p} — schema violation(s):\n  - ${errors.join('\n  - ')}`);
   }
 
   // renameSync used to sit OUTSIDE the
@@ -668,7 +668,7 @@ function save(doc) {
     fs.renameSync(tmp, p);
   } catch (err) {
     removeTempBestEffort(tmp);
-    throw new Error(`luna-config: refusing to save ${p} — rename from ${tmp} failed: ${err.message} (HIMMEL-2176)`);
+    throw new Error(`luna-config: refusing to save ${p} — rename from ${tmp} failed: ${err.message}`);
   }
   configAudit().post(auditId, p, existed ? 'write' : 'create', 'himmelctl luna-config');
   if (preKnown) recordSections(p, prior, doc, !existed);

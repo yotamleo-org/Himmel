@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""plan_docs.py — HIMMEL-4000. Turn the roadmap plan dir (HIMMEL-3882) into one
+"""plan_docs.py — turn the roadmap plan dir into one
 markdown doc per ticket / version / theme / epic, for a qmd collection, and
 compute the change fingerprint plan-index.sh gates a rebuild on.
 

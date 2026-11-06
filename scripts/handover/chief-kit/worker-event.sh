@@ -29,6 +29,13 @@
 #                        `ESCALATE auto-go-error rc=<n> ...`. Flag off: ESCALATE marker-READY, as before.
 #   anything else     -> ESCALATE (READY with the flag off, and FINDING, need a judge or the chief)
 #
+#   stacked_series on: series-ledger.py find (the bucket is the manifest's directory) says whether the worker's
+#   doc is a series' writer or passed it on (`from`). A WRAPPED from a `from` doc goes to close-wrapped-worker,
+#   never wrap-merged; a READY from either role addresses the writer's one manifest label, else
+#   ESCALATE series-writer-unlisted and no auto-go call; a ledger that cannot be read is
+#   ESCALATE series-find-failed rc=<n>; a stacked_series flag that cannot be read is
+#   ESCALATE series-flag-unreadable rc=<n>, never off. A doc in no ledger routes as before.
+#
 #   after a MERGED with a PR, or a WRAPPED whose merged PR wrap-merged.sh printed, station-sync.sh --pr <n> runs detached to bring the
 #   station back to main: ` station=pending log=<file>` is appended at once, its
 #   output goes to the log and its verdict to the state file tick.sh shows.
@@ -66,6 +73,8 @@ if [ -n "${LE_LIST:-}" ]; then LIST=("$LE_LIST"); else LIST=(bash "$HERE/fleet-m
 if [ -n "${LE_AUTOGO:-}" ]; then AUTOGO=("$LE_AUTOGO"); else AUTOGO=(bash "$HERE/auto-go.sh"); fi
 # the auto_go flag (scripts/lib/flags.sh): an unregistered flag reads as off
 auto_go_on() { ( . "$HERE/../../lib/flags.sh" && himmel_flag auto_go ) >/dev/null 2>&1; }
+# exit 0 on, 1 off, 2 the flag could not be read (an unknown name, an unreadable registry or an invalid value)
+stacked_series_state() { ( . "$HERE/../../lib/flags.sh" && himmel_flag stacked_series ) >/dev/null 2>&1; }
 
 usage() { echo "usage: worker-event.sh --doc <chief doc> --fleet <manifest> <message-file | ->" >&2; exit 2; }
 escalate() { echo "ESCALATE $1"; exit 10; }
@@ -158,7 +167,28 @@ EOF
     [[ $stem =~ -(N[0-9]+)- ]] && label="${BASH_REMATCH[1]}"
 fi
 
+# stacked_series only: the ledger says whether this worker's doc is a series' writer or passed it on, and who the
+# writer's manifest label is. This script reads series-ledger.py find's one line and nothing else of the ledger.
+series_role=""; series_label=""
+series_flag=0; stacked_series_state || series_flag=$?
+# an unreadable flag is not an off flag: off routes a series READY to the doc that sent it
+[ "$series_flag" -le 1 ] || escalate "series-flag-unreadable rc=$series_flag"
+if [ "$series_flag" -eq 0 ] && [ -n "$worker" ]; then
+    fout="$(python3 -I "$HERE/series-ledger.py" find --bucket "$(dirname "$FLEET")" --doc "$worker" --manifest "$FLEET" 2>&1)"; frc=$?
+    # a ledger that cannot be read could be hiding the series: no guess at a route
+    [ "$frc" -eq 0 ] || escalate "series-find-failed rc=$frc $(printf '%s' "$fout" | tr '\n' ' ')"
+    # fields: sid ledger role label, read from the right: the ledger path may hold a space, role and label never do
+    if [ -n "$fout" ]; then
+        series_label="${fout##* }"; fout="${fout% *}"; series_role="${fout##* }"
+    fi
+fi
+
 if [ "$marker" = READY ]; then
+    # a series READY addresses the ledger writer's one manifest label, whoever sent it
+    if [ -n "$series_role" ]; then
+        [ -n "$series_label" ] && [ "$series_label" != "-" ] || escalate "series-writer-unlisted"
+        label="$series_label"
+    fi
     [[ $line =~ ^READY[[:space:]]+#?([0-9]+)[[:space:]]+([0-9a-f]{40})([^0-9a-f]|$) ]] || escalate "ready-unparsed"
     rpr="${BASH_REMATCH[1]}"; rhead="${BASH_REMATCH[2]}"
     aout="$("${AUTOGO[@]}" --doc "$DOC" --fleet "$FLEET" --worker "$label" "$rpr" "$rhead" 2>&1)"; arc=$?
@@ -197,7 +227,10 @@ fi
 # close its window directly. close-wrapped-worker.sh itself refuses unless the worker's
 # queue lock is free and its tail marker is WRAPPED.
 close_only=""
-if [ "$marker" = WRAPPED ] && [ -r "$worker" ] \
+if [ "$marker" = WRAPPED ] && [ "$series_role" = from ]; then
+    # a doc that passed its series on has nothing to merge: the PRs belong to the series' writer
+    close_only=1
+elif [ "$marker" = WRAPPED ] && [ -r "$worker" ] \
     && ! grep -qE '^- .*(READY|PR) #?[0-9]+' "$worker"; then
     close_only=1
     # a resumed worker's PR may be named only in the doc of the worker it continues (or of a

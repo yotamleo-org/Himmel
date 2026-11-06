@@ -41,6 +41,7 @@ export function resolveProfileSettings(profile: string, addPlugins: string[], cw
   // at module load below; the poller's cachebust loader never reaches this path.
   const configDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
   const settings = resolveProfileByName(profile, {
+    lane: "claudex",
     addPlugins,
     installed: installed ?? readEnabledPluginIds(homedir(), cwd, process.env.CLAUDE_CONFIG_DIR),
     skillEntries: scanSkillCosts({ cwd, configDir }).entries,
@@ -207,7 +208,7 @@ export function composeRetaskBlock(nonce: string): string {
 // Lane-agnostic (imported into spawn-claudex.ts) so both worker twins carry
 // it verbatim.
 export function composeBashShapeWarning(outbox: string): string {
-  return `BASH SHAPE (HIMMEL-203/1378): this session runs under --permission-mode dontAsk with a narrow allow-list (worktree file access, a curated set of literal commands) — a Bash command shaped with $var/$(...)/backticks/pipes/redirects/compound operators, or ANY command outside the allow-list, is auto-DENIED FAST (check run.log/outbox for the deny message) rather than prompted. Prefer literal single commands for everything inside your worktree; for ${outbox} and other session-dir files, see the OUTBOX WRITE note below — do not retry a denied step blindly, note it and move on.`;
+  return `BASH SHAPE: this session runs under --permission-mode dontAsk with a narrow allow-list (worktree file access, a curated set of literal commands) — a Bash command shaped with $var/$(...)/backticks/pipes/redirects/compound operators, or ANY command outside the allow-list, is auto-DENIED FAST (check run.log/outbox for the deny message) rather than prompted. Prefer literal single commands for everything inside your worktree; for ${outbox} and other session-dir files, see the OUTBOX WRITE note below — do not retry a denied step blindly, note it and move on.`;
 }
 
 // the Write/Edit TOOL is
@@ -225,7 +226,7 @@ export function composeBashShapeWarning(outbox: string): string {
 // + reasoning).
 export function composeOutboxWriteHint(outbox: string): string {
   const posix = outbox.replace(/\\/g, "/");
-  return `OUTBOX WRITE (HIMMEL-1378): the Write/Edit tool is OFTEN DENIED for ${outbox} (a Claude Code safety boundary on dot-directory paths outside your worktree — no permission rule can override it). If Write/Edit there is denied, use this literal Bash command instead (a forward-slash path, exactly as shown): node -e "require('fs').appendFileSync('${posix}', JSON.stringify({text:'<note>'})+'\\n')"`;
+  return `OUTBOX WRITE: the Write/Edit tool is OFTEN DENIED for ${outbox} (a Claude Code safety boundary on dot-directory paths outside your worktree — no permission rule can override it). If Write/Edit there is denied, use this literal Bash command instead (a forward-slash path, exactly as shown): node -e "require('fs').appendFileSync('${posix}', JSON.stringify({text:'<note>'})+'\\n')"`;
 }
 
 // ── permission hardening (prevention, not just detection) ─────

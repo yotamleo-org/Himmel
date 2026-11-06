@@ -97,7 +97,7 @@ function scanDescending(
  *     STRICT date decrease seen in or across pages (directionProven).
  * Undetectable disorder (in-window data hidden beyond two verified-ordered,
  * pre-window pages) would defeat any client short of full-history paging,
- * which is the structural failure this early-stop exists to fix (HIMMEL-771).
+ * which is the structural failure this early-stop exists to fix.
  */
 async function fetchList(
   args: {

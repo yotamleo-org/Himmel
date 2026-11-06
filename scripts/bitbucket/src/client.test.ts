@@ -414,7 +414,7 @@ describe('bitbucket client', () => {
     expect(urls[1]).toContain('page=2');
   });
 
-  it('listPrComments sets truncated when it hits PAGE_CAP (HIMMEL-344)', async () => {
+  it('listPrComments sets truncated when it hits PAGE_CAP', async () => {
     // Every page advertises a next link, so the walk hits the 20-page cap and
     // breaks with truncated=true rather than looping forever or silently
     // returning a partial list as if it were complete.

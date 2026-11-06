@@ -490,5 +490,99 @@ bash "$CAD" disarm > "$W/disarm.log" 2>&1
 check "disarm exits 0" 0 "$?"
 hasnt "disarm removes exactly the entry" "HIMMEL-SnykScan" "$W/crontab.txt"
 
+# --- Snyk Code triage: only an untriaged High gates -----------------
+# The triage list is keyed by the SARIF fingerprints.identity; a finding without one is untriaged.
+TRI="$W/triage.tsv"; export SNYK_SCAN_TRIAGE="$TRI"
+FID="11111111-aaaa-bbbb-cccc-000000000001"
+jq --arg id "$FID" '.runs[0].results[0].fingerprints = {identity: $id}' "$FIX/snyk-code-high.json" > "$W/code-id.json"
+export STUB_OS="$FIX/snyk-os-clean.json" STUB_OS_RC=0 STUB_CODE="$W/code-id.json" STUB_CODE_RC=1
+: > "$TRI"
+run untri
+check "an untriaged Code High exits 1" 1 "$RC"
+has "the summary has an untriaged section" "## Untriaged High and Critical findings" "$OUTDIR/2026-10-23.summary.md"
+has "the summary counts the untriaged High" "- untriaged high: 1" "$OUTDIR/2026-10-23.summary.md"
+has "the summary names the untriaged finding id" "$FID" "$OUTDIR/2026-10-23.summary.md"
+printf '# comment\n%s\tfalse-positive\tthe flagged line holds an env var name, not a secret\n' "$FID" > "$TRI"
+run tri
+check "the same Code High, triaged, exits 0" 0 "$RC"
+has "the summary has a triaged section" "## Triaged Code findings" "$OUTDIR/2026-10-23.summary.md"
+has "the triaged finding shows its verdict" "triaged: false-positive" "$OUTDIR/2026-10-23.summary.md"
+has "the summary names the triaged rule" "javascript/DOMXSS" "$OUTDIR/2026-10-23.summary.md"
+has "no untriaged High is counted" "- untriaged high: 0" "$OUTDIR/2026-10-23.summary.md"
+hasnt "a triaged finding is not listed as untriaged" "## Untriaged High and Critical findings" "$OUTDIR/2026-10-23.summary.md"
+check "the raw SARIF keeps the triaged finding" 1 "$(jq '.code.runs[0].results | length' "$OUTDIR/2026-10-23.json")"
+# a fixed finding must not come back unnoticed: its id in a scan gates, so the scan is the regression check
+printf '%s\tfixed\tthe flagged call was replaced by fixed text\n' "$FID" > "$TRI"
+run fixedback
+check "a fixed id that appears in a scan is untriaged and exits 1" 1 "$RC"
+has "the returned fixed finding is listed as untriaged" "## Untriaged High and Critical findings" "$OUTDIR/2026-10-23.summary.md"
+has "the returned fixed finding counts as untriaged" "- untriaged high: 1" "$OUTDIR/2026-10-23.summary.md"
+printf '%s\thardened\tthe call site escapes the value, Snyk does not see it\n' "$FID" > "$TRI"
+run hardenedback
+check "a hardened id that appears in a scan stays triaged and exits 0" 0 "$RC"
+STUB_CODE="$FIX/snyk-code-high.json" run noid
+check "a High without a finding id is untriaged and exits 1" 1 "$RC"
+printf '%s\tfalse-positive\t\n' "$FID" > "$TRI"
+run noreason
+check "a triage row without a reason exits 2" 2 "$RC"
+has "the bad triage row is named" "$FID" "$OUT"
+check "a bad triage list stops the run before any scan" 0 "$(grep -c '^[^|]*|test' "$W/calls.log")"
+printf '%s\tmaybe\tsome reason\n' "$FID" > "$TRI"
+run badverdict
+check "a triage row with an unknown verdict exits 2" 2 "$RC"
+# a repeated id could let a suppressing row hide a fixed one, whatever the row order
+printf '%s\tfixed\tthe flagged call was replaced\n%s\tfalse-positive\tthe flagged line holds a name\n' "$FID" "$FID" > "$TRI"
+run dupid
+check "a triage id that repeats an earlier row exits 2" 2 "$RC"
+has "the repeated triage row is named" "repeats" "$OUT"
+check "a repeated triage id stops the run before any scan" 0 "$(grep -c '^[^|]*|test' "$W/calls.log")"
+# the triage source must be a regular file: a directory used to pass the checks and fail after the quota was spent
+mkdir -p "$W/triage-dir"
+SNYK_SCAN_TRIAGE="$W/triage-dir" run dirtriage
+check "a triage list that is a directory exits 2" 2 "$RC"
+check "a triage directory stops the run before any scan" 0 "$(grep -c '^[^|]*|test' "$W/calls.log")"
+
+# the cadence over the real scan: an untriaged finding alerts once, a triaged one clears it
+rm -rf "$W/alert-sent" "$W/alerts.log" "$W/sent.log"
+export SNYK_SCAN_OUT_DIR="$W/cad-out"
+: > "$TRI"
+SNYKCAD_SCAN="$SCAN" bash "$CAD" run --repo "$R" > "$W/cad-tri1.log" 2>&1
+check "cadence run with a seeded untriaged finding exits 1" 1 "$?"
+SNYKCAD_SCAN="$SCAN" bash "$CAD" run --repo "$R" > "$W/cad-tri2.log" 2>&1
+check "the sink sends one message for the untriaged finding" 1 "$(grep -c . "$W/sent.log" 2>/dev/null || echo 0)"
+has "the alert names the high-findings reason" "snyk-scan high-findings" "$W/alerts.log"
+check "the delivered alert leaves one dedupe sentinel" 1 "$(find "$W/alert-sent" -type f 2>/dev/null | grep -c .)"
+printf '%s\tfalse-positive\tthe flagged line holds an env var name, not a secret\n' "$FID" > "$TRI"
+SNYKCAD_SCAN="$SCAN" bash "$CAD" run --repo "$R" > "$W/cad-tri3.log" 2>&1
+check "cadence run with the finding triaged exits 0" 0 "$?"
+check "the triaged run clears the alert sentinel" 0 "$(find "$W/alert-sent" -type f 2>/dev/null | grep -c .)"
+unset SNYK_SCAN_OUT_DIR SNYK_SCAN_TRIAGE
+
+# the crontab lock: arming this cadence and another at once on a slow crontab loses neither entry nor any other line
+SLOW_TAB="$W/slow-tab.txt"; export SLOW_TAB
+cat > "$W/slowcron" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = "-l" ]; then
+    out="$(cat "$SLOW_TAB")"
+    [ -z "${STUB_READ_DELAY:-}" ] || sleep "$STUB_READ_DELAY"
+    printf '%s\n' "$out"
+elif [ "${1:-}" = "-" ]; then
+    cat > "$SLOW_TAB"
+else
+    echo "slowcron: unexpected argument: ${1:-}" >&2; exit 2
+fi
+SH
+chmod +x "$W/slowcron"
+"$W/slowcron" -bad < /dev/null > /dev/null 2>&1
+check "the slow crontab stub rejects an install argument other than -" 2 "$?"
+printf '0 1 * * * /other/job # HIMMEL-Other\n30 2 * * * /keep/me # HIMMEL-Keep\n' > "$SLOW_TAB"
+mkdir -p "$W/ho"
+STUB_READ_DELAY=1.5 SNYKCAD_CRONTAB="$W/slowcron" SNYKCAD_RUNNER_DIR="$W/runner-lock-a" bash "$CAD" arm > "$W/lock-a.log" 2>&1 & lock_p1=$!
+STUB_READ_DELAY=0.2 MORNINGREPORT_CRONTAB="$W/slowcron" MORNINGREPORT_RUNNER_DIR="$W/runner-lock-b" HANDOVER_DIR="$W/ho" bash "$DIR/../handover/morning-report-cadence.sh" arm > "$W/lock-b.log" 2>&1 & lock_p2=$!
+wait "$lock_p1" "$lock_p2"
+check "two cadences armed at once: the snyk entry is kept" 1 "$(grep -c '# HIMMEL-SnykScan' "$SLOW_TAB")"
+check "two cadences armed at once: the other cadence entry is kept" 1 "$(grep -c '# HIMMEL-MorningReport' "$SLOW_TAB")"
+check "two cadences armed at once: every unrelated line is kept" 2 "$(grep -c '# HIMMEL-Other\|# HIMMEL-Keep' "$SLOW_TAB")"
+
 echo "passed=$PASSED failed=$FAILED"
 [ "$FAILED" -eq 0 ]

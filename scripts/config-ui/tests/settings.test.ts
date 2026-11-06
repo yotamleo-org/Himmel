@@ -174,22 +174,22 @@ test("the Check this install strip sits under the tile row, runs the old Verify,
 
 test("a Jira value already saved can still be removed when the tracker is Local or None", () => {
   const stored = { ...setupData, commit: { tracker: "local", ticketIdRequired: true }, secrets: setupData.secrets.map((s) => (s.name === "JIRA_API_TOKEN" ? { ...s, status: "set" } : s)) };
-  const p = panel(cfg("tracker", { setup: stored }));
-  expect([...p.matchAll(/data-setup-form data-name="([A-Z_]+)"/g)].map((m) => m[1])).toEqual(["JIRA_API_TOKEN"]);
+  const p = panel(cfg("secrets", { setup: stored }));
+  expect([...p.matchAll(/data-setup-form data-name="(JIRA_[A-Z_]+)"/g)].map((m) => m[1])).toEqual(["JIRA_API_TOKEN"]);
   expect(p).toContain('data-act="setup-remove" data-name="JIRA_API_TOKEN"');
 });
 
 test("the Jira rows read Site, Email, API token, Project key whatever order the server sent", () => {
   const byName = (n: string) => setupData.secrets.find((s) => s.name === n)!;
   const shuffled = { ...setupData, secrets: [byName("JIRA_API_TOKEN"), byName("JIRA_PROJECT_KEY"), byName("JIRA_EMAIL"), byName("JIRA_BASE_URL")] };
-  const p = panel(cfg("tracker", { setup: shuffled }));
+  const p = panel(cfg("secrets", { setup: shuffled }));
   expect([...p.matchAll(/data-setup-form data-name="([A-Z_]+)"/g)].map((m) => m[1])).toEqual(["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN", "JIRA_PROJECT_KEY"]);
 });
 
 test("a secret row keeps save and remove in one actions box so every input ends on the same edge", () => {
   const stored = { ...setupData, secrets: setupData.secrets.map((s) => (s.name === "TELEGRAM_BOT_TOKEN" ? { ...s, status: "set" } : s)) };
   const forms = [...panel(cfg("secrets", { setup: stored })).matchAll(/<form class="sform" data-setup-form[\s\S]*?<\/form>/g)].map((m) => m[0]);
-  expect(forms.length).toBe(3);
+  expect(forms.length).toBe(7);
   for (const f of forms) expect(f).toMatch(/<span class="acts">(<button class="btn"[^>]*data-act="reveal"[^>]*>show<\/button>)?<button class="btn primary" type="submit">save<\/button>(<button class="btn"[^>]*>remove<\/button>)?<\/span><\/form>/);
   expect(forms.filter((f) => f.includes("remove")).length).toBe(1);
 });
@@ -197,17 +197,16 @@ test("a secret row keeps save and remove in one actions box so every input ends 
 test("the Secrets tile says Telegram is not set and whether a login exists; the Review tile names who must pass", () => {
   const html = cfg(null);
   expect(html).toContain("Telegram not set");
-  expect(html).toContain("0 of 3 set · login set");
+  expect(html).toContain("0 of 7 set · login set");
   expect(cfg(null, { setup: { ...setupData, secrets: setupData.secrets.map((s) => (s.name === "TELEGRAM_BOT_TOKEN" ? { ...s, status: "set" } : s)) } })).not.toContain("Telegram not set");
   expect(html).toContain("Claude must pass");
 });
 
-test("the Secrets tile has the account, 3 saveable entries and the terminal-only ones read-only, and no 0600 anywhere", () => {
+test("the Secrets tile has the account, 7 saveable entries (Jira last) and the terminal-only ones read-only, and no 0600 anywhere", () => {
   const html = cfg("secrets"), p = panel(html);
   expect(p).toContain("me");
-  expect([...p.matchAll(/data-setup-form data-name="([A-Z_]+)"/g)].map((m) => m[1])).toEqual(["TELEGRAM_BOT_TOKEN", "BITBUCKET_API_TOKEN", "BITBUCKET_EMAIL"]);
+  expect([...p.matchAll(/data-setup-form data-name="([A-Z_]+)"/g)].map((m) => m[1])).toEqual(["TELEGRAM_BOT_TOKEN", "BITBUCKET_API_TOKEN", "BITBUCKET_EMAIL", "JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN", "JIRA_PROJECT_KEY"]);
   for (const n of ["FIRECRAWL_API_KEY", "FIRECRAWL_BASE_URL", "WHISPER_MODEL", "GEMINI_API_KEY", "PERPLEXITY_API_KEY", "XAI_API_KEY"]) expect(p).toContain(n);
-  expect(p).not.toContain("JIRA_");
   expect(html).not.toContain("0600");
 });
 
@@ -236,9 +235,10 @@ test("the Review tile says matches our pick only while no reviewer is switched o
   expect(cfg(null, { state: gate(["coderabbit"]) })).not.toContain("matches our pick");
 });
 
-test("the Tracker tile has the JIRA connection rows and commit rules in two columns, under one dry-run box", () => {
+test("the Tracker tile has the tracker choice and commit rules in two columns, under one dry-run box, and points to the Secrets tab for the Jira values", () => {
   const p = panel(cfg("tracker", { state: { ...cfgState, plans: { "setup|tracker": { stage: "plan", command: "c1", output: "o1", effect: "e", typed: "", consent: { kind: "plain" } }, "setup|ticket-id-required": { stage: "plan", command: "c2", output: "o2", effect: "e", typed: "", consent: { kind: "plain" } } } } }));
-  expect([...p.matchAll(/data-setup-form data-name="([A-Z_]+)"/g)].map((m) => m[1])).toEqual(["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN", "JIRA_PROJECT_KEY"]);
+  expect(p).not.toContain("data-setup-form");
+  expect(p).toContain('href="#/config?tile=secrets"');
   expect(p).toContain('data-action="config.commitRules" data-target="tracker"');
   expect(p).toContain('data-action="config.commitRules" data-target="ticket-id-required"');
   expect(p.match(/class="col"/g)).toHaveLength(2);
@@ -248,14 +248,14 @@ test("the Tracker tile has the JIRA connection rows and commit rules in two colu
   expect(p).toContain("c2");
 });
 
-test("the Tracker tile hides the JIRA rows when the tracker is Local or None", () => {
+test("the Secrets tile hides the JIRA rows when the tracker is Local or None", () => {
   const local = { ...setupData, commit: { tracker: "local", ticketIdRequired: true } };
-  expect(panel(cfg("tracker", { setup: local }))).not.toContain("JIRA_BASE_URL");
+  expect(panel(cfg("secrets", { setup: local }))).not.toContain("JIRA_BASE_URL");
 });
 
 test("the Project scope tile has plugins, auto-ship, scheduled jobs, paths, forge, fleet cap and VM mode", () => {
   const p = panel(cfg("scope"));
-  for (const s of ['id="sg-plugins"', 'id="sg-auto-ship"', 'id="sg-scheduled-jobs"', 'data-target="handover-root"', 'data-target="luna-vault"', "Forge", 'data-fc="cap"', 'data-vm="mode"']) expect(p, s).toContain(s);
+  for (const s of ['id="sg-plugins"', 'id="sg-auto-ship"', 'id="sg-scheduled-jobs"', 'data-target="handover-root"', 'data-target="luna-vault"', "Source code host", 'data-fc="cap"', 'data-vm="mode"']) expect(p, s).toContain(s);
   expect(p).not.toContain('id="sg-review"');
 });
 

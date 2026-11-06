@@ -687,17 +687,20 @@ printf '{"mergeStateStatus":"CLEAN"}\n' > "$FG_PRVIEW"
 rc=0; out=$(GH="$FG/bin/gh" bash -c '. "$1"; go_fork_ready o/r 5' _ "$GO_GATE_SRC") || rc=$?
 [ "$rc" = 2 ] || fail "10f: an answer with no statusCheckRollup field must refuse (rc=$rc)"
 
-# 11. The real scripts/ci/ci-trust-paths.txt flags a path under each audited guard line and the two hooks.json files, and passes an unlisted file.
+# 11. The real scripts/ci/ci-trust-paths.txt flags a path under each audited guard line and the two hooks.json files and the two plugin launcher twins, and passes an unlisted file and two plugin-directory near misses.
 TL="$ROOT/tprepo"; mkdir -p "$TL/scripts/ci"
 lg -C "$TL" init -q -b main
 cp "$HERE/../ci/ci-trust-paths.txt" "$TL/scripts/ci/ci-trust-paths.txt"
 lg -C "$TL" add -A && lg -C "$TL" commit -q -m list
 TLID="local:$(cd "$TL/.git" && pwd -P)"
 n=0
+# A twin rename must re-list the new name in ci-trust-paths.txt and keep this literal (the existence check goes RED otherwise).
 for tp in scripts/hooks/block-x.sh scripts/hooks/read-clamp.sh scripts/hooks/check-cr-x.sh \
     scripts/handover/chief-kit/verdict-go.sh scripts/handover/chief-kit/go.sh scripts/cr/write-verdicts.sh \
-    .codex/hooks.json marketplace/plugins/p/hooks/hooks.json; do
+    .codex/hooks.json marketplace/plugins/p/hooks/hooks.json \
+    marketplace/plugins/himmel-ops/hooks/run-hook-with-bash.js marketplace/plugins/himmel-ops/hooks/hook-integrity.js; do
     n=$((n + 1))
+    case "$tp" in marketplace/plugins/himmel-ops/hooks/*.js) [ -f "$HERE/../../$tp" ] || fail "11: $tp is not a file in the repo" ;; esac
     lg -C "$TL" checkout -q -b "feat/tp$n" main
     mkdir -p "$TL/$(dirname "$tp")"; printf 'x\n' > "$TL/$tp"
     lg -C "$TL" add -A && lg -C "$TL" commit -q -m "tp$n"
@@ -709,6 +712,16 @@ printf 'x\n' > "$TL/docs-unlisted.md"; mkdir -p "$TL/scripts/hooks"; printf 'x\n
 lg -C "$TL" add -A && lg -C "$TL" commit -q -m miss
 got=$(tpc "$TLID" br-feat-tpmiss "$(lg -C "$TL" rev-parse HEAD)" "$TL")
 [ "$got" = "0:none" ] || fail "11: unlisted files are not none: $got"
+m=0
+for mp in marketplace/plugins/himmel-ops/hooks/inject-minerva-critic.sh marketplace/plugins/himmel-ops/hooks/hook-integrity.js.bak; do
+    m=$((m + 1))
+    lg -C "$TL" checkout -q -b "feat/tpmiss-$m" main
+    mkdir -p "$TL/$(dirname "$mp")"; printf 'x\n' > "$TL/$mp"
+    lg -C "$TL" add -A && lg -C "$TL" commit -q -m "tpmiss$m"
+    [ "$(lg -C "$TL" diff --name-only main...HEAD)" = "$mp" ] || fail "11: miss commit lacks $mp"
+    got=$(tpc "$TLID" "br-feat-tpmiss-$m" "$(lg -C "$TL" rev-parse HEAD)" "$TL")
+    [ "$got" = "0:none" ] || fail "11: $mp is not none: $got"
+done
 
 # --- 12. the one no-op carry rule (go_pr_qids, go_noop_chain, go_nogo_after, go_noop_carry)
 # P - A - B on one branch, S a sibling of A off P.

@@ -720,7 +720,7 @@ _find_transcript() { # <session_id>
 # claude-cli. A launcher (the test override or a `claude` binary) is needed either way.
 # The subscription path also needs a passing bank preflight, pinned to the native bank
 # as crystallize-note.sh pins it; `--no-preflight` (a dry run only counts) skips that
-# call, so a dry run never runs one per note. claude-api needs the lane on with an account.
+# call, so a dry run never runs one per note. claude-api needs the lane on with a named account (A, B or C; never auto).
 _claude_available() { # [--no-preflight]
     local backend want pf
     [ -n "${CRYSTALLIZE_CLAUDE_BIN:-}" ] || command -v claude >/dev/null 2>&1 || return 1
@@ -738,8 +738,7 @@ _claude_available() { # [--no-preflight]
     }
     case "$backend" in
         claude-api)
-            [ "${HIMMEL_API_LANE:-}" = "on" ] || return 1
-            case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) ;; *) return 1 ;; esac
+            llm_backend_api_ready || return 1
             ;;
         claude-cli)
             [ "${1:-}" = "--no-preflight" ] && return 0

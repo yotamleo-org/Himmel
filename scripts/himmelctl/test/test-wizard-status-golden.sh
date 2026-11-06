@@ -60,7 +60,7 @@ set -euo pipefail
 
 repo_root=$(git rev-parse --show-toplevel)
 # shellcheck disable=SC1091
-. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # HIMMEL-2350: shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
+. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
 wizard="$repo_root/scripts/himmelctl/bin.js"
 manifest_path="$repo_root/scripts/install/manifest.json"
 lint_script="$repo_root/scripts/install/manifest-lint.mjs"

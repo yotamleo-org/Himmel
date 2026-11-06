@@ -15,10 +15,12 @@ Exit codes: 0 ok, 1 refused (the holder on stderr), 2 usage, a crash or any fail
 (seed and repoint also: a claim fault, or the launch deadline passed).
 """
 import argparse
+import calendar
 import fcntl
 import json
 import os
 import re
+import shlex
 import signal
 import socket
 import subprocess
@@ -242,6 +244,31 @@ def exempt_set():
     except OSError:
         pass  # swallow-ok: no list means nothing is exempt, which holds more, not less
     return out
+
+
+_DONE = {}
+
+
+def mirror_done(key):
+    """True when the local Jira mirror (HOLDS_MIRROR, else ~/.himmel/state/jira-mirror/<PROJECT>) reads the key's
+    statusCategory as Done. A key with no mirror file is not Done: the row stays. No network call."""
+    if key in _DONE:
+        return _DONE[key]
+    done = False
+    if KEY_RE.fullmatch(key):
+        d = os.environ.get('HOLDS_MIRROR') or os.path.join(os.path.expanduser('~'), '.himmel', 'state', 'jira-mirror', key.split('-')[0])
+        try:
+            with open(os.path.join(d, key + '.md'), encoding='utf-8', errors='replace') as fh:
+                for i, l in enumerate(fh):
+                    if i > 30:
+                        break
+                    if l.startswith('statusCategory:'):
+                        done = l.split(':', 1)[1].strip().strip('"') == 'Done'
+                        break
+        except OSError:
+            pass  # swallow-ok: no mirror file proves nothing, so the row is not called stale
+    _DONE[key] = done
+    return done
 
 
 def normalize(repo, p):
@@ -558,8 +585,9 @@ def successor_of(resume, rest):
 
 
 def refusal(path, fields, key):
-    return ('holds: %s is held by %s (%s, %s). Keep working on other files, and ask your chief: HOLD-ASK %s %s'
-            % (path, fields[0], fields[1], fields[3], path, key))
+    return ('holds: %s is held by %s (%s, %s). Keep working on other files. This deny is logged: on a trust path your '
+            'chief sees it on its tick (hreg=) and the operator is paged with the grant command. For any other path, '
+            'message your chief: HOLD-ASK %s %s' % (path, fields[0], fields[1], fields[3], path, key))
 
 
 def claim_one(repo, judge, path, key, label, doc, source, pr, created=None):
@@ -1117,13 +1145,21 @@ def op_on(a):
         return 1
     try:
         os.unlink(os.path.join(holds_root(), 'OFF'))
+        log_event('on', '', '', '')
     except FileNotFoundError:
-        return 0
+        pass  # swallow-ok: the barrier was already on; a backfill below still seeds the workers launched meanwhile
     except OSError as e:
         sys.stderr.write('holds: cannot remove the sentinel: %s\n' % (e.strerror or e))
         return 2
-    log_event('on', '', '', '')
-    return 0
+    # workers launched while the barrier was off hold no rows: seed them from the chief's fleet manifest
+    manifest = a.workers_from
+    doc = os.environ.get('HIMMEL_CONSOLE_DOC') or ''
+    if not manifest and doc.endswith('.md') and os.path.isfile(doc[:-3] + '.fleet.json'):
+        manifest = doc[:-3] + '.fleet.json'
+    if not manifest:
+        return 0
+    a.manifest, a.repo = manifest, a.repo or os.getcwd()
+    return op_backfill(a)
 
 
 def op_release(a):
@@ -1325,8 +1361,8 @@ def remove_dead(d, n, fields, mtime):
 
 
 def op_gc(a):
-    """Remove the rows whose holder is dead, with their grant siblings; a dead key's grants go too. Rows inside the arm grace
-    are not judged. A fault or a row it cannot read keeps the row. Stops at the BOX with exit 0."""
+    """Remove the rows whose holder is dead, with their grant siblings; a dead key's grants go too. A brief or pr row of a key
+    the Jira mirror reads Done goes too, whatever its lock says. Rows inside the arm grace are not judged. A fault or a row it cannot read keeps the row. Stops at the BOX with exit 0."""
     repo = primary_of(a.repo)
     deadline = time.time() + BOX
     judge = Judge(repo, deadline)
@@ -1353,6 +1389,13 @@ def op_gc(a):
                 mt = os.path.getmtime(full)
             except OSError:
                 continue
+            if f[3] in ('brief', 'pr') and mt < time.time() - GRACE and mirror_done(f[0]):
+                # a Done key holds nothing, whatever its worker's lock or RESUME doc still says
+                key_state[f[0]] = 'dead'
+                if remove_dead(d, n, f, mt):
+                    removed += 1
+                    log_event('gc', unescape(n), f[0], 'key Done')
+                continue
             state = judge.row_state(f, mt)
             rank = {'alive': 0, 'unknown': 1, 'dead': 2}
             if f[0] not in key_state or rank[state] < rank[key_state[f[0]]]:
@@ -1373,6 +1416,124 @@ def op_gc(a):
     return 0
 
 
+ASK_AGE = 24 * 3600      # a deny older than this is not an ask the chief still owes
+ASK_TAIL = 256 * 1024    # bytes of events.log read for the asks: the log grows without bound, a day of denies is far under this
+
+
+def pending_asks(repo):
+    """[(key, path, holder)]: a trust-path (or settings or CI workflow) deny from the last day that no grant answers, whose
+    holder's row still holds the path here, whose asker's key is not Done. Local files only."""
+    trust = load_trust()
+    if trust is None:
+        return []
+    asks = {}
+    try:
+        with open(os.path.join(holds_root(), 'events.log'), 'rb') as fh:
+            size = fh.seek(0, os.SEEK_END)
+            fh.seek(max(0, size - ASK_TAIL))
+            data = fh.read().decode('utf-8', 'replace')
+    except FileNotFoundError:
+        return []  # no log, no denies; any other read error propagates as a fault (the tick shows hreg=?)
+    lines = data.split('\n')
+    if size > ASK_TAIL:
+        lines = lines[1:]  # the first line of the tail is cut
+    for l in lines:
+        c = l.split('\t')
+        if len(c) < 5 or c[1] not in ('deny', 'grant'):
+            continue
+        if c[1] == 'grant':
+            asks.pop((c[2], c[3]), None)
+            continue
+        try:
+            asks[(c[2], c[3])] = (c[4], calendar.timegm(time.strptime(c[0], '%Y-%m-%dT%H:%M:%SZ')))
+        except ValueError:
+            continue
+    out = []
+    d = slug_dir(repo)
+    for (path, key), (holder, ts) in sorted(asks.items()):
+        if time.time() - ts >= ASK_AGE or not KEY_RE.fullmatch(key) or mirror_done(key):
+            continue
+        if grant_route(path, canon(path, repo), trust) == 'any':
+            continue
+        name = escape(path)
+        if os.path.exists(os.path.join(d, '%s.grant.%s' % (name, key))):
+            continue
+        st, f = read_row(os.path.join(d, name))
+        if st == 'ok' and f[0] == holder:
+            out.append((key, path, holder))
+    return out
+
+
+def op_asks(a):
+    """TSV key path holder command, one per pending trust-path ask: the command is the paste-ready grant."""
+    repo = primary_of(a.repo)
+    kit = os.path.abspath(os.path.join(HERE, '..', '..', '..'))  # the checkout this holds.py runs from, whatever --repo names
+    try:
+        kit = primary_of(kit)
+    except RepoFault:
+        pass  # swallow-ok: no git identity for the kit checkout; its own path is the best command there is
+    script = os.path.join(kit, 'scripts', 'handover', 'chief-kit', 'holds.py')
+    for key, path, holder in pending_asks(repo):
+        print('\t'.join([key, path, holder, 'python3 -I %s grant --key %s --repo %s %s'
+                         % (shlex.quote(script), key, shlex.quote(repo), shlex.quote(path))]))
+    return 0
+
+
+def op_summary(a):
+    """live-no-rows/stale/pending-asks, from local state only (no gh, no network): the tick's hreg= field. Nothing is
+    printed when this repo has no register directory. --live-docs names (one per line, - for stdin) the docs of the
+    chief's live workers; one counts when it carries a Writes file and its key holds no row. A row is stale when its key
+    is Done in the Jira mirror, or it is a pr row whose PR is not in --open-prs (a comma list; absent or ? skips that test)."""
+    repo = primary_of(a.repo)
+    d0 = slug_dir(repo)
+    if not os.path.isdir(d0):
+        return 0
+    open_prs = None
+    if a.open_prs and a.open_prs != '?':
+        open_prs = {x.strip().lstrip('#') for x in a.open_prs.split(',') if x.strip()} - {'none'}
+    have, stale = set(), 0
+    for d in (d0, slug_dir(repo, '_abs')):
+        try:
+            names = os.listdir(d)
+        except FileNotFoundError:
+            continue
+        except OSError as e:
+            sys.stderr.write('holds: cannot read %s: %s\n' % (d, e.strerror or e))
+            return 3  # an unreadable register is hreg=?, never a clean 0
+        for n in names:
+            if n.startswith(TMP_PREFIX) or GRANT_RE.search(n):
+                continue
+            full = os.path.join(d, n)
+            st, f = read_row(full)
+            if st == 'ok':
+                have.add(f[0])
+                if f[3] in ('brief', 'pr') and (mirror_done(f[0]) or (f[3] == 'pr' and f[4] and open_prs is not None and f[4] not in open_prs)):
+                    stale += 1
+            elif st == 'bad':
+                have.add(row_key(full))
+    docs = []
+    if a.live_docs:
+        try:
+            docs = [l.strip() for l in (sys.stdin if a.live_docs == '-' else open(a.live_docs, encoding='utf-8')) if l.strip()]
+        except OSError as e:
+            sys.stderr.write('holds: cannot read %s: %s\n' % (a.live_docs, e.strerror or e))
+            return 3
+    norows, seen = 0, set()
+    for doc in docs:
+        km = re.search(r'[A-Z][A-Z0-9]*-[0-9]+', os.path.basename(doc))
+        if not km or km.group(0) in have or km.group(0) in seen:
+            continue
+        seen.add(km.group(0))
+        try:
+            text = open(doc, encoding='utf-8', errors='replace').read()
+        except OSError:
+            continue  # swallow-ok: a worker doc that is gone or unreadable is no live worker to seed
+        if any(kind == 'file' for kind, _p in parse_text(text, repo)):
+            norows += 1
+    print('%d/%d/%d' % (norows, stale, len(pending_asks(repo))))
+    return 0
+
+
 def op_parse(a):
     repo = os.path.abspath(a.repo) if a.repo else os.getcwd()
     try:
@@ -1383,6 +1544,87 @@ def op_parse(a):
     for kind, p in parse_text(text, repo):
         print('%s\t%s' % (kind, p))
     return 0
+
+
+PR_STALE = 30 * 60       # a pr row not freshened by sync-prs for this long no longer holds a push
+CHECK_BUDGET = 15        # seconds a git-check run may spend judging holders; past it a holder reads unknown and passes
+BASE_RE = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9._/-]*$')
+
+
+def git_text(args, cwd):
+    """The stdout of one git call in cwd with the caller's GIT_* kept (GIT_INDEX_FILE names the temporary index of
+    `git commit -a` and `git commit <path>`), or None on any failure."""
+    try:
+        r = subprocess.run(['git'] + args, capture_output=True, timeout=10, cwd=cwd)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return os.fsdecode(r.stdout) if r.returncode == 0 else None
+
+
+def git_names(args, cwd):
+    out = git_text(args, cwd)
+    return None if out is None else [n for n in out.split('\0') if n]
+
+
+def pr_base(cwd):
+    """The base branch of this branch's open PR as HOLDS_GH reads it, else ''."""
+    res = run_bounded([os.environ.get('HOLDS_GH') or 'gh', 'pr', 'view', '--json', 'baseRefName', '-q', '.baseRefName'], GH_TIMEOUT, cwd=cwd)
+    b = res[1].strip() if res and res[0] == 0 else ''
+    return b if BASE_RE.match(b) else ''
+
+
+def op_git_check(a):
+    """Refuse (exit 1, the holder on stderr) when git's own list of staged files (--staged) or of files the branch adds over
+    its base (--push) names a file another live holder holds. It reads no command text, so no shape of write dodges it.
+    A file nobody holds is claimed. Every fault, and every worker the barrier does not know, exits 0."""
+    key, doc, label = (os.environ.get(k) or '' for k in ('HIMMEL_HOLD_KEY', 'HIMMEL_HOLD_DOC', 'HIMMEL_HOLD_LABEL'))
+    if os.environ.get('WRITE_HOLD_OK') == '1' or not KEY_RE.fullmatch(key) or not os.path.isabs(doc):
+        return 0
+    if os.path.exists(os.path.join(holds_root(), 'OFF')):
+        return 0
+    cwd = os.getcwd()
+    repo = primary_of(cwd)
+    if os.path.exists(os.path.join(repo, '.single-writer')):
+        return 0
+    branch = (git_text(['rev-parse', '--abbrev-ref', 'HEAD'], cwd) or '').strip()
+    if a.staged:
+        for n in ('rebase-merge', 'rebase-apply', 'MERGE_HEAD'):  # a replayed or merged-forward commit carries other workers' files
+            p = (git_text(['rev-parse', '--git-path', n], cwd) or '').strip()
+            if p and os.path.exists(os.path.join(cwd, p)):
+                return 0
+        files = git_names(['diff', '--cached', '--name-only', '--no-renames', '-z'], cwd)
+    else:
+        base = pr_base(cwd) or 'main'
+        if base != 'main' and git_text(['rev-parse', '--verify', '-q', 'refs/remotes/origin/' + base], cwd) is None:
+            base = 'main'
+        if git_text(['rev-parse', '--verify', '-q', 'refs/remotes/origin/' + base], cwd) is None:
+            return 0
+        files = git_names(['diff', 'origin/%s...HEAD' % base, '--name-only', '--no-renames', '-z'], cwd)
+    if not files:
+        return 0
+    judge = Judge(repo, time.time() + CHECK_BUDGET)
+    refused = []
+    for f in files:
+        norm = normalize(repo, f)
+        if norm is None:
+            continue
+        row = os.path.join(slug_dir(repo, norm[0]), escape(norm[1]))
+        st, fields = read_row(row)
+        if st == 'ok' and fields[3] == 'pr' and fields[0] != key:
+            try:
+                age = time.time() - os.path.getmtime(row)
+            except OSError:
+                age = 0
+            if fields[1] == 'branch:%s' % branch or age > PR_STALE:
+                continue  # this branch's own PR row, or a PR row sync-prs stopped freshening: it holds nothing
+        r = claim_one(repo, judge, f, key, label, doc, 'claim', '')
+        if r.startswith('refused:'):
+            refused.append(r[len('refused:'):])
+    for m in refused:
+        sys.stderr.write(m + '\n')
+    if refused:
+        sys.stderr.write('holds: refused by the %s check. Bypass: WRITE_HOLD_OK=1 in the launching shell\n' % ('commit' if a.staged else 'push'))
+    return 1 if refused else 0
 
 
 def abs_doc(s):
@@ -1428,7 +1670,9 @@ def build_parser():
     sp.add_argument('path', metavar='PATH')
     sp = add('off', op_off, help='write the sentinel that folds the barrier (chief only)')
     sp.add_argument('--reason', required=True)
-    add('on', op_on, help='remove the sentinel (chief only)')
+    sp = add('on', op_on, help='remove the sentinel, then backfill the fleet manifest (chief only)')
+    sp.add_argument('--workers-from', metavar='MANIFEST', help='the chief\'s fleet manifest (default: $HIMMEL_CONSOLE_DOC minus .md, plus .fleet.json, when it exists)')
+    sp.add_argument('--repo', help='the repo the rows belong to (default: the current directory)')
     sp = add('release', op_release, help='remove a doc\'s brief rows, for a launch that aborts')
     for o in ('--key', '--repo', '--doc'):
         sp.add_argument(o, required=True, type=abs_doc if o == '--doc' else str)
@@ -1443,6 +1687,16 @@ def build_parser():
     sp.add_argument('--repo', required=True)
     sp.add_argument('--files-from', required=True, metavar='TSV')
     sp = add('gc', op_gc, help='remove dead rows and their grants')
+    sp.add_argument('--repo', required=True)
+    sp = add('summary', op_summary, help='live-workers-with-no-rows/stale-rows/pending-asks (the tick\'s hreg= field)')
+    sp.add_argument('--repo', required=True)
+    sp.add_argument('--live-docs', metavar='FILE', help='live worker docs, one per line (- for stdin)')
+    sp.add_argument('--open-prs', metavar='LIST', help='open PR numbers, comma separated (#12,#34 or none); absent or ? skips the PR test')
+    sp = add('git-check', op_git_check, help='refuse a commit or push whose git file list holds a file another live holder holds')
+    g = sp.add_mutually_exclusive_group(required=True)
+    g.add_argument('--staged', action='store_true', help='the staged files (the commit hook)')
+    g.add_argument('--push', action='store_true', help='the files the branch adds over its base (the push hook)')
+    sp = add('asks', op_asks, help='TSV key path holder command: pending trust-path asks with the paste-ready grant')
     sp.add_argument('--repo', required=True)
     return ap
 

@@ -209,7 +209,7 @@ test("censusSessionAlive is false (never throws) when the census itself fails", 
   expect(alive).toBe(false);
 });
 
-test("censusSessionAlive is false on a degraded scan even when a matching row printed (rc=3, HIMMEL-3510 codex-1)", async () => {
+test("censusSessionAlive is false on a degraded scan even when a matching row printed (rc=3)", async () => {
   // One live pid the census CAN read (matches consoleName) plus one it
   // CANNOT (unreadable cmdline) makes claude_sessions() print the matching
   // row and still return rc=3 (degraded) — that rc must win, never the row.
@@ -225,7 +225,7 @@ test("censusSessionAlive is false on a degraded scan even when a matching row pr
   expect(alive).toBe(false);
 });
 
-test("censusSessionAlive kills a hung child at the timeout and returns false without hanging the caller (HIMMEL-3514)", async () => {
+test("censusSessionAlive kills a hung child at the timeout and returns false without hanging the caller", async () => {
   const proc = join(tmp, "proc"); // must EXIST so claude_sessions() takes the `pgrep -x claude` path, not the -af lossy fallback
   const bin = join(tmp, "bin");
   mkdirSync(proc, { recursive: true });

@@ -171,7 +171,7 @@ test("dispatchAutoAction maps the auto-action.sh rc namespace to operator messag
   expect(failed.message).toContain("scheduler boom");
 });
 
-test("dispatchAutoAction maps merge-public-on-green.sh's passed-through rc to operator messages (HIMMEL-1213)", async () => {
+test("dispatchAutoAction maps merge-public-on-green.sh's passed-through rc to operator messages", async () => {
   const stub = (code: number, stdout = "", stderr = "") =>
     ({ runScript: async () => ({ code, stdout, stderr }) });
 
@@ -259,7 +259,7 @@ test("describeEnabledOps: deliberately-off values are silent, not warnings", () 
   }
 });
 
-test("describeEnabledOps: the shipped .env.example typo warns and names the bad token (HIMMEL-1270)", () => {
+test("describeEnabledOps: the shipped .env.example typo warns and names the bad token", () => {
   // `arm` is what .env.example taught; KNOWN_OPS has `arm-resume`. It parsed to
   // the empty set and the poller logged NOTHING — indistinguishable from "off",
   // which is why the misconfiguration survived four days.

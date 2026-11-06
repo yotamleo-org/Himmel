@@ -51,7 +51,7 @@ function fixture(events: Ev[] = EVENTS, rounds: Record<string, [number, string]>
 
 const phase = (s: ReturnType<typeof readPhaseStats>, id: string) => s.phases.find((p) => p.id === id)!;
 
-test("phase-stats: a merge row written before the merge call, or retired by a not-merged row, is not the merge (HIMMEL-8616)", () => {
+test("phase-stats: a merge row written before the merge call, or retired by a not-merged row, is not the merge", () => {
   // one ticket: CI starts 08:00, the row written before the merge call lands 08:10, the real merge 09:00
   const row = (ts: string, extra: Record<string, string> = {}): Ev => ({ ...ev("merge", "HIMMEL-7", ts, "7"), ...extra } as Ev);
   const ci = ev("ci-start", "HIMMEL-7", "2026-10-27T08:00:00Z", "7");

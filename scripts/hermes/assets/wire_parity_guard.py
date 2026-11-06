@@ -6,19 +6,19 @@ Two modes:
   set    — replace (or insert) the top-level `hooks:` block with our canonical
            parity_guard pre_tool_call hook. Used for the `himmel_agent`
            profile, whose hooks block this installer owns.
-  ensure — universal-guard mode (HIMMEL-744): guarantee the profile carries
+  ensure — universal-guard mode: guarantee the profile carries
            parity_guard, whatever guard state it starts in. Already on
            parity_guard -> no-op; has NO parity_guard hook -> ADD the
            canonical parity_guard pre_tool_call entry
            WITHOUT clobbering any other hooks the profile already has. Also
-           rewrites the one legacy hand-listed matcher to `.*` (HIMMEL-2637),
+           rewrites the one legacy hand-listed matcher to `.*`,
            and sets `fail_closed: true` on every parity_guard entry.
 
 Every parity_guard entry this writes carries `fail_closed: true`: hermes
 defaults a shell hook to fail open, so a guard that crashed or could not start
 would let the tool call through.
 
-`set` optionally also wires the END-side hook (HIMMEL-2021): pass
+`set` optionally also wires the END-side hook: pass
 <node_bin> <repo_root> and the block gains an `on_session_finalize` entry
 running himmel's end-side hooks through run-hook-with-bash.js --chain
 --lifecycle. on_session_finalize (not on_session_end) is the once-per-identity
@@ -92,7 +92,7 @@ def _end_body(node: str, repo: str) -> str:
     """The `on_session_finalize` sub-block, 2-space indented.
 
     ONE entry, not one per member: run-hook-with-bash.js --chain runs every
-    member from a single node launch (HIMMEL-2002/2003) and resolves Git Bash
+    member from a single node launch and resolves the right bash
     itself, which a bare `bash` from hermes on Windows would not (the
     System32 WSL-stub trap). --lifecycle marks the chain ADVISORY: every member
     runs, stderr is forwarded, and the chain always exits 0, so an end hook can
@@ -197,7 +197,7 @@ def _insignificant(line: str) -> bool:
 
 
 def migrate_matcher(cfg_path: str) -> None:
-    """Rewrite the pre-HIMMEL-2637 hand-listed matcher to MATCHER (idempotent).
+    """Rewrite the older hand-listed matcher to MATCHER (idempotent).
 
     Only an entry whose own `command:` runs parity_guard.py is touched: another
     hook that happens to carry the same pattern keeps it, so it is not widened

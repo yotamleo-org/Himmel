@@ -120,6 +120,7 @@ export SCORECARD_PROJECTS_DIR="$HERE/fixtures/context-record/projects"
 unset SCORECARD_LAUNCH_LOG_DIR
 export HIMMELCTL_CACHE_DIR="$HERE/fixtures/context-record/cache"
 CTX_LOGS="$HERE/fixtures/context-record/cache/launch-logs"
+KP=HIMMEL  # the fixture log names carry a ticket-key prefix
 
 # preconditions: all five sessions are discovered without the filter, the
 # fixture really has a record for 9201 and none for 9203, and 9205 really holds
@@ -129,13 +130,13 @@ CTX_ALL=$("$POSTPIN" --since 2026-01-01T00:00:00Z --role chief 2>/dev/null)
 check "context-record: precondition, all six chiefs are counted without --context" \
     "$(session_count "$CTX_ALL" chief)" "6"
 check "context-record: precondition, 9206 has one row with two context= fields" \
-    "$(grep -c '^headed-arm:.* context=standard context=1m ' "$CTX_LOGS/HIMMEL-9206-fixture-console-2026-09-20.log")" "1"
+    "$(grep -c '^headed-arm:.* context=standard context=1m ' "$CTX_LOGS/${KP}-9206-fixture-console-2026-09-20.log")" "1"
 check "context-record: precondition, 9205 has a valid standard row AND a malformed headed-arm row" \
-    "$(grep -c '^headed-arm:' "$CTX_LOGS/HIMMEL-9205-fixture-console-2026-09-20.log") $(grep -c 'context=standard ' "$CTX_LOGS/HIMMEL-9205-fixture-console-2026-09-20.log") $(grep -c 'context=1$' "$CTX_LOGS/HIMMEL-9205-fixture-console-2026-09-20.log")" "2 1 1"
+    "$(grep -c '^headed-arm:' "$CTX_LOGS/${KP}-9205-fixture-console-2026-09-20.log") $(grep -c 'context=standard ' "$CTX_LOGS/${KP}-9205-fixture-console-2026-09-20.log") $(grep -c 'context=1$' "$CTX_LOGS/${KP}-9205-fixture-console-2026-09-20.log")" "2 1 1"
 check "context-record: precondition, 9201 has a durable record" \
-    "$(grep -c 'context=standard' "$CTX_LOGS/HIMMEL-9201-fixture-console-2026-09-20.log")" "1"
+    "$(grep -c 'context=standard' "$CTX_LOGS/${KP}-9201-fixture-console-2026-09-20.log")" "1"
 check "context-record: precondition, 9203 has no record" \
-    "$([ -e "$CTX_LOGS/HIMMEL-9203-fixture-console-2026-09-20.log" ] && echo present || echo absent)" "absent"
+    "$([ -e "$CTX_LOGS/${KP}-9203-fixture-console-2026-09-20.log" ] && echo present || echo absent)" "absent"
 
 CTX_STD=$("$POSTPIN" --since 2026-01-01T00:00:00Z --role chief --context standard 2>/dev/null)
 check "context-record: --context standard attributes 1 session FROM its record" \
@@ -266,7 +267,7 @@ mkgo "$RGL_TMP/g1" 78 ccccccc 202610011030
 mkgo "$RGL_TMP/g1" 83 7654321 202610011130
 G1_OUT=$(TZ=UTC HANDOVER_DIR="$RGL_TMP/g1" READY_GO_NOW=1790856000 "$RGL" --doc "$RGL_TMP/g1/chief-2026-10-01.md" --since 2026-10-01T00:00:00Z 2>&1)
 check "rgl g1: events/median/missed summary" "$(printf '%s\n' "$G1_OUT" | head -1)" "events=4 median_min=22.5 missed=1"
-check "rgl g1: coverage names the READYs that were neither paired nor missed (HIMMEL-3269)" \
+check "rgl g1: coverage names the READYs that were neither paired nor missed" \
     "$(printf '%s\n' "$G1_OUT" | grep '^coverage:')" "coverage: discovered=7 parsed=5 skipped=2 (held=1 pending=1)"
 check "rgl g1: exactly one MISSED line (80 eeeeeee 10:20)" "$(printf '%s\n' "$G1_OUT" | grep '^MISSED')" "MISSED 80 eeeeeee 10:20"
 

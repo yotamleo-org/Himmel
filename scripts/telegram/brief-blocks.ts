@@ -60,7 +60,7 @@ export function composeRetaskBlock(nonce: string): string {
 // allow-list now fails FAST (visible in run.log/outbox), never hangs.
 // Lane-agnostic so both worker twins can carry it verbatim.
 export function composeBashShapeWarning(outbox: string): string {
-  return `BASH SHAPE (HIMMEL-203/1378): this session runs under --permission-mode dontAsk with a narrow allow-list (worktree file access, a curated set of literal commands) — a Bash command shaped with $var/$(...)/backticks/pipes/redirects/compound operators, or ANY command outside the allow-list, is auto-DENIED FAST (check run.log/outbox for the deny message) rather than prompted. Prefer literal single commands for everything inside your worktree; for ${outbox} and other session-dir files, see the OUTBOX WRITE note below — do not retry a denied step blindly, note it and move on.`;
+  return `BASH SHAPE: this session runs under --permission-mode dontAsk with a narrow allow-list (worktree file access, a curated set of literal commands) — a Bash command shaped with $var/$(...)/backticks/pipes/redirects/compound operators, or ANY command outside the allow-list, is auto-DENIED FAST (check run.log/outbox for the deny message) rather than prompted. Prefer literal single commands for everything inside your worktree; for ${outbox} and other session-dir files, see the OUTBOX WRITE note below — do not retry a denied step blindly, note it and move on.`;
 }
 
 // The worker-14 waiter protocol, stated in full — this is
@@ -84,7 +84,7 @@ export function composeBashShapeWarning(outbox: string): string {
 //      the background: chunk it, or run it in the foreground instead.
 export function composeWaiterBlock(): string {
   return [
-    `WAITER PROTOCOL (HIMMEL-1734, worker-14 lesson — 5 phantom-parks in one worker):`,
+    `WAITER PROTOCOL (worker-14 lesson — 5 phantom-parks in one worker):`,
     `- Verify liveness against a LIVE CLOCK: artifact mtime advancing PLUS the`,
     `  child process actually present. A block-buffered log file repeating the`,
     `  same line is NOT evidence of life.`,

@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
  * newlines (and often `;` `|` `>` prose), which makes the whole Bash command
  * un-vettable by the `auto-approve-safe-bash` hook → it falls through to the
  * auto-mode classifier and the jira write is DENIED. A `--*-file` flag keeps
- * the command a single line, so the hook can grant it (HIMMEL-209 complement).
+ * the command a single line, so the hook can grant it.
  *
  * Mirrors the existing `--adf-file` error handling: a read failure prints a
  * one-line diagnostic to stderr and exits 1.
