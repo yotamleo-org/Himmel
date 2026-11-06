@@ -22,7 +22,7 @@
 # --judge skips it: a judge brief writes nothing, so no spec stands behind it.
 #
 # Exit 0 pass, 1 fail (reason on stderr), 2 usage, 3 refusal no flag clears: the core gate, a salus-marked
-# brief that names a search, or a resume_cwd the classifier cannot answer for.
+# brief that names a search, a resume_cwd the classifier cannot answer for, or front matter that does not parse as YAML.
 set -u
 
 core_only=0
@@ -296,6 +296,128 @@ if [ "$is_salus" -eq 1 ] && grep -Eq -- 'qmd-bounded|worker-graph|graphify|-c[[:
     exit 3
 fi
 
+# The front matter must parse as YAML, the way qmd reads it: a fresh brief whose block does not parse, repeats a key or
+# wraps a quoted value over lines is invisible to metadata-filtered search. Like the refusal above it runs before the
+# --core-only exit, so --no-prior-art-check cannot clear it, and it exits 3 so the launcher offers no flag. A doc that
+# has run is exempt, and so is one with no description (its own message below); the session_ids: line is blanked
+# because the lock writer owns it and heals it at launch. The refusal is exactly two lines, the problem and the fix,
+# because a generated launcher prints only the last two. Each refusal appends a row to front-matter-refusals.jsonl
+# beside the brief. No PyYAML passes and says so, on a line the launcher shows.
+# shellcheck source=../../lib/worker-identity.sh
+. "$(dirname "$0")/../../lib/worker-identity.sh"
+IFS= read -r -d '' FM_PY <<'PY' || true  # swallow-ok: read -d '' returns 1 at the end of the text, by design
+import json, os, re, sys
+from datetime import datetime
+
+doc = sys.argv[1]
+raw = open(doc, encoding='utf-8', errors='replace').read()
+if raw.startswith('﻿'):
+    raw = raw[1:]
+lines = raw.split('\n')
+
+def cmp(s):
+    return s.rstrip(' \t\r')
+
+# the block as qmd slices it: opens on ---, closes on the first --- or ...; no complete block, nothing to parse
+if cmp(lines[0]) != '---':
+    sys.exit(0)
+close = next((i for i in range(1, len(lines)) if cmp(lines[i]) in ('---', '...')), None)
+if close is None:
+    sys.exit(0)
+blk = [l.rstrip('\r') for l in lines[1:close]]
+blk = ['' if l.startswith('session_ids:') else l for l in blk]
+text = '\n'.join(blk)
+try:
+    import yaml
+except ImportError:
+    print('brief-lint: bypass=no-pyyaml %s' % doc, file=sys.stderr)
+    sys.exit(0)
+
+def fm_scalar(s):
+    return json.dumps(' '.join(s.split()), ensure_ascii=False)
+
+d = next((i for i, l in enumerate(blk) if l.startswith('description:')), None)
+e = None
+if d is not None:
+    e = next((i for i in range(d + 1, len(blk)) if re.match(r'[\w.-]+:(\s|$)', blk[i])), len(blk))
+    while e - 1 > d and not blk[e - 1].strip():
+        e -= 1
+
+def walk(node, seen):
+    # a repeated scalar key, or a quoted scalar that spans lines; seen ends a recursive alias
+    if id(node) in seen:
+        return None
+    seen.add(id(node))
+    if isinstance(node, yaml.ScalarNode):
+        if node.style in ('"', "'") and node.start_mark.line != node.end_mark.line:
+            return ('wrap', node)
+    elif isinstance(node, yaml.MappingNode):
+        keys = set()
+        for k, v in node.value:
+            if isinstance(k, yaml.ScalarNode) and k.tag != 'tag:yaml.org,2002:merge':
+                ident = (k.tag, k.value)
+                if ident in keys:
+                    return ('dup', k)
+                keys.add(ident)
+            for child in (k, v):
+                found = walk(child, seen)
+                if found:
+                    return found
+    elif isinstance(node, yaml.SequenceNode):
+        for child in node.value:
+            found = walk(child, seen)
+            if found:
+                return found
+    return None
+
+problem = fix = None
+line = 2
+generic = 'double-quote a value holding a colon and keep it on one line; remove a repeated key'
+try:
+    yaml.safe_load(text)
+    root = yaml.compose(text, Loader=yaml.SafeLoader)
+    found = walk(root, set()) if root is not None else None
+    if found is None:
+        sys.exit(0)
+    kind, node = found
+    line = node.start_mark.line + 2
+    if kind == 'dup':
+        problem = 'repeated key %s' % node.value
+    else:
+        problem = 'a quoted value wraps over lines'
+        if d is not None:
+            top = root.value if isinstance(root, yaml.MappingNode) else []
+            for k, v in top:
+                if v is node and k.value == 'description':
+                    fix = 'replace lines %d-%d with: description: %s' % (k.start_mark.line + 2, node.end_mark.line + 2, fm_scalar(node.value))
+except Exception as ex:
+    marks = [m for m in (getattr(ex, 'problem_mark', None), getattr(ex, 'context_mark', None)) if m is not None]
+    msg = getattr(ex, 'problem', None) or (str(ex).splitlines() or [type(ex).__name__])[0]
+    problem = ' '.join(str(msg).split())
+    if marks:
+        line = marks[0].line + 2
+        if d is not None and any(d <= m.line < e for m in marks):
+            first = blk[d][len('description:'):]
+            body = ' '.join([first] + blk[d + 1:e])
+            fix = 'replace lines %d-%d with: description: %s' % (d + 2, e + 1, fm_scalar(body))
+print('%s:%d: %s' % (doc, line, problem))
+print(fix or generic)
+try:
+    with open(os.path.join(os.path.dirname(os.path.abspath(doc)), 'front-matter-refusals.jsonl'), 'a', encoding='utf-8') as f:
+        f.write(json.dumps(dict(ts=datetime.now().astimezone().isoformat(timespec='seconds'), brief=os.path.abspath(doc), line=line)) + '\n')
+except OSError:
+    pass
+sys.exit(1)
+PY
+if [ -n "$(worker_description_field "$doc")" ] && ! worker_doc_has_run "$doc"; then
+    fm_rc=0
+    fm_out="$(python3 -I -c "$FM_PY" "$doc")" || fm_rc=$?
+    if [ "$fm_rc" -ne 0 ]; then
+        printf '%s\n' "$fm_out" >&2
+        exit 3
+    fi
+fi
+
 if [ "$core_only" -eq 1 ]; then
     core_rule
     exit 0
@@ -365,10 +487,8 @@ fi
 # plain-language line every surface shows next to the worker's label. A doc whose
 # Results section already holds a bullet has run, and was briefed before the
 # field existed, so it passes without one.
-# shellcheck source=../../lib/worker-identity.sh
-. "$(dirname "$0")/../../lib/worker-identity.sh"
 if [ -z "$(worker_description_field "$doc")" ] && ! worker_doc_has_run "$doc"; then
-    fail "no front-matter 'description:' line (required: one plain-language line saying what this worker is doing and why, e.g. 'description: Add a description line to every worker brief'; put it between the leading '---' lines, the first of which must be the file's first line with no blank line or BOM before it; see docs/handover/worker-brief-template.md)"
+    fail "no front-matter 'description:' line (required: one plain-language line saying what this worker is doing and why, e.g. 'description: \"Add a description line to every worker brief\"'; put it between the leading '---' lines, the first of which must be the file's first line with no blank line or BOM before it; see docs/handover/worker-brief-template.md)"
 fi
 
 # A worker brief (one with a `> **Contract:**` line) tells its worker to search the notes (both collections) and the
