@@ -114,10 +114,10 @@ run --store "$STORE" >/dev/null
 check "store byte-identical on rerun" "$h1" "$(cksum < "$STORE/records.jsonl")"
 
 # 5. append-only: changed input appends a new version, old lines kept
-before="$(wc -l < "$STORE/records.jsonl" | tr -d ' ')"
+before="$(jq -c 'select(.ticket != null)' "$STORE/records.jsonl" | wc -l | tr -d ' ')"
 row $WORKER false 2026-01-01T00:00:09.000Z r3 1 1 1 1 >> "$SLUG/$WORKER.jsonl"
 run --store "$STORE" >/dev/null
-after="$(wc -l < "$STORE/records.jsonl" | tr -d ' ')"
+after="$(jq -c 'select(.ticket != null)' "$STORE/records.jsonl" | wc -l | tr -d ' ')"
 check "changed input appends one version" "$((before + 1))" "$after"
 
 # 6. consumer read test (no JSONL touched)
@@ -460,5 +460,180 @@ bash "$RJ" --launches "$RJD/launches.jsonl" --launch-logs "$RJD/logs" --projects
 check "reconcile: a failing report (a malformed --tolerance) exits non-zero, never 0" "yes" "$([ "$RJTRC" -ne 0 ] && echo yes || echo no)"
 RJD2="$(HIMMEL_API_CREDIT_STATE="$RJD/ledger.json" bash "$RJ" --launch-logs "$RJD/logs" --projects "$RJD/projects" --tolerance 2)"
 check "reconcile: with no --launches the ledger is the one beside HIMMEL_API_CREDIT_STATE" "$RJ3" "$RJD2"
+
+# 9. phase-cost rows: one row per (day, session, phase), priced from scripts/lanes/lib/model-prices.tsv.
+# Synthetic transcripts, a sandboxed HOME and TZ=UTC (the day is the local day); never the real store.
+PCH="$ROOT/pc-home"; mkdir -p "$PCH"
+PCP="$ROOT/pc/projects"; PCS="$PCP/slug"; mkdir -p "$PCS"
+PCW=11111111-1111-4111-8111-111111111111; PCC=22222222-2222-4222-8222-222222222222
+PCU=33333333-3333-4333-8333-333333333333
+arow() { # sid ts msgid model in out cr c5 c1 [toolname toolinput-json]
+  jq -nc --arg s "$1" --arg ts "$2" --arg id "$3" --arg m "$4" --argjson i "$5" --argjson o "$6" --argjson cr "$7" \
+    --argjson c5 "$8" --argjson c1 "$9" --arg tn "${10:-}" --argjson ti "${11:-null}" \
+    '{type:"assistant",sessionId:$s,timestamp:$ts,requestId:("req_"+$id),message:{id:$id,model:$m,
+      content:(if $tn == "" then [{type:"text",text:"x"}] else [{type:"tool_use",name:$tn,input:$ti}] end),
+      usage:{input_tokens:$i,output_tokens:$o,cache_read_input_tokens:$cr,cache_creation_input_tokens:($c5+$c1),
+             cache_creation:{ephemeral_5m_input_tokens:$c5,ephemeral_1h_input_tokens:$c1}}}}'
+}
+OP=claude-opus-5-5
+{
+  echo '{"type":"custom-title","customTitle":"HIMMEL-9999-N1-pc","sessionId":"'$PCW'"}'
+  arow $PCW 2026-11-04T10:00:00.000Z m1 $OP 1000 100 10000 2000 1000                                  # no tool before: boot
+  arow $PCW 2026-11-04T10:00:01.000Z m1 $OP 1000 100 10000 2000 1000 Bash '{"command":"bash scripts/cr/pr-check-context.sh"}'
+  arow $PCW 2026-11-04T10:00:05.000Z m2 $OP 2000 200 20000 0 0 Read '{"file_path":"/x"}'              # after a cr script: review
+  arow $PCW 2026-11-04T10:00:10.000Z m3 $OP 500 50 5000 0 0 Bash '{"command":"git commit -m x"}'      # after a Read: build
+  arow $PCW 2026-11-05T09:00:00.000Z m4 $OP 100 10 1000 0 0                                           # after a commit: ship, next day
+} > "$PCS/$PCW.jsonl"
+mkdir -p "$PCS/$PCW/subagents"
+arow $PCW 2026-11-04T10:00:07.000Z j1 claude-sonnet-5-5 1000 100 0 0 0 > "$PCS/$PCW/subagents/agent-j1.jsonl"
+echo '{"agentType":"judge"}' > "$PCS/$PCW/subagents/agent-j1.meta.json"
+{
+  echo '{"type":"custom-title","customTitle":"HIMMEL-9998-N2-codex","sessionId":"'$PCC'"}'
+  arow $PCC 2026-11-04T11:00:00.000Z g1 gpt-6.1-sol 1000 100 10000 0 0
+} > "$PCS/$PCC.jsonl"
+{
+  echo '{"type":"custom-title","customTitle":"HIMMEL-9997-N3-mystery","sessionId":"'$PCU'"}'
+  arow $PCU 2026-11-04T12:00:00.000Z u1 mystery-model-9 1000 100 10000 0 0
+} > "$PCS/$PCU.jsonl"
+PCSTORE="$ROOT/pc-store"
+pcrun() { HOME="$PCH" TZ=UTC bash "$COMPUTE" --projects "$PCP" --ledger "$LEDGER" --store "$PCSTORE"; }
+# the stub nice/ionice record that the pass asked for idle priority
+PCBIN="$ROOT/pc-bin"; mkdir -p "$PCBIN"
+for t in renice ionice nice; do printf '#!/bin/sh\necho "%s $*" >> "%s/idle.log"\nexit 0\n' "$t" "$PCBIN" > "$PCBIN/$t"; chmod +x "$PCBIN/$t"; done
+pcphase() { jq -c 'select(.kind=="phase-cost")' "$PCSTORE/records.jsonl" 2>/dev/null || true; }
+PATH="$PCBIN:$PATH" pcrun >/dev/null
+PC1="$(pcphase)"
+check "phase-cost: one row per (day, session, phase), 4 for the worker" "4" \
+  "$(printf '%s\n' "$PC1" | jq -rs --arg s "$PCW" '[.[] | select(.session==$s)] | length')"
+check "phase-cost: the rows exist for the worker, codex, mystery and judge sessions (7)" "7" "$(printf '%s\n' "$PC1" | jq -s 'length')"
+check "phase-cost: the review row, every field" \
+  '{"kind":"phase-cost","day":"2026-11-04","session":"'$PCW'","parent":null,"lane":"claude","class":"worker","model":"claude-opus-5-5","phase":"review","phase_rule":"v1","calls":1,"in":2000,"out":200,"cache_read":20000,"cc_5m":0,"cc_1h":0,"usd":0.016,"mark":"derived"}' \
+  "$(printf '%s\n' "$PC1" | jq -c --arg s "$PCW" 'select(.session==$s and .phase=="review")')"
+check "phase-cost: the day changes the row (ship on 11-05)" "2026-11-05" \
+  "$(printf '%s\n' "$PC1" | jq -r --arg s "$PCW" 'select(.session==$s and .phase=="ship") | .day')"
+check "phase-cost: calls before any tool are boot" "1" \
+  "$(printf '%s\n' "$PC1" | jq -r --arg s "$PCW" 'select(.session==$s and .phase=="boot") | .calls')"
+check "phase-cost: a streamed message (two rows, one id) is one call with the cache-write split" \
+  "1/2000/1000" "$(printf '%s\n' "$PC1" | jq -r --arg s "$PCW" 'select(.session==$s and .phase=="boot") | "\(.calls)/\(.cc_5m)/\(.cc_1h)"')"
+check "phase-cost: the judge subagent has its own session, the worker as parent, class judge, counted" \
+  "agent-j1/$PCW/judge/judge/counted/0.003" \
+  "$(printf '%s\n' "$PC1" | jq -r 'select(.class=="judge") | "\(.session)/\(.parent)/\(.class)/\(.phase)/\(.mark)/\(.usd)"')"
+# reconcile: the priced total of the worker equals the fixture's hand-priced sum
+# m1 26000 + m2 16000 + m3 4000 + m4 800 micro-dollars = 0.0468
+check "phase-cost: the worker's priced total reconciles to the fixture (0.0468)" "0.0468" \
+  "$(printf '%s\n' "$PC1" | jq -rs --arg s "$PCW" '[.[] | select(.session==$s) | .usd] | add | . * 1000000 | round / 1000000')"
+# a codex-lane session is priced at its own row, never Opus; an unpriced model is null, never a fallback
+check "phase-cost: a gpt-6.1-sol session is codex lane at its own price (0.004, not the Opus 0.008)" \
+  "codex/gpt-6.1-sol/0.004/derived" \
+  "$(printf '%s\n' "$PC1" | jq -r --arg s "$PCC" 'select(.session==$s) | "\(.lane)/\(.model)/\(.usd)/\(.mark)"')"
+check "phase-cost: a model with no price row is usd null and marked unpriced" "null/unpriced" \
+  "$(printf '%s\n' "$PC1" | jq -r --arg s "$PCU" 'select(.session==$s) | "\(.usd)/\(.mark)"')"
+# the pass asked for idle priority
+check "phase-cost: the run asked for idle cpu and io priority" "yes" \
+  "$(grep -q 'renice -n 19' "$PCBIN/idle.log" 2>/dev/null && grep -q 'ionice -c3' "$PCBIN/idle.log" 2>/dev/null && echo yes || echo no)"
+# a reader without --ticket still works with phase-cost rows in the store
+rc=0; PCREAD="$(bash "$READ" --store "$PCSTORE" 2>"$ROOT/pc-read.err")" || rc=$?
+check "usage-read with no --ticket works with phase-cost rows present" "0" "$rc"
+check "usage-read returns only ticket records" "0" "$(printf '%s\n' "$PCREAD" | jq -s '[.[] | select(.kind=="phase-cost")] | length')"
+# a second run adds nothing
+pc_h="$(cksum < "$PCSTORE/records.jsonl")"
+pcrun >/dev/null
+check "phase-cost: a second run adds nothing (store byte-identical)" "$pc_h" "$(cksum < "$PCSTORE/records.jsonl")"
+# byte offset: new bytes (a repeat of m4's id, as when a message streams across two runs, and a new call)
+# change one row only; a re-read from byte 0 would double every call
+pc_n="$(pcphase | wc -l | tr -d ' ')"
+{ arow $PCW 2026-11-05T09:00:00.500Z m4 $OP 100 10 1000 0 0
+  arow $PCW 2026-11-05T09:30:00.000Z m5 $OP 100 10 1000 0 0; } >> "$PCS/$PCW.jsonl"
+pcrun >/dev/null
+check "phase-cost: new bytes append exactly one changed row" "$((pc_n + 1))" "$(pcphase | wc -l | tr -d ' ')"
+check "phase-cost: the changed row counts the repeated id once and the new call once (2 calls, 200 in)" "2/200" \
+  "$(pcphase | jq -sr --arg s "$PCW" '[.[] | select(.session==$s and .phase=="ship")] | last | "\(.calls)/\(.in)"')"
+check "phase-cost: the unchanged rows were not re-counted (review still 1 call)" "1" \
+  "$(pcphase | jq -sr --arg s "$PCW" '[.[] | select(.session==$s and .phase=="review")] | last | .calls')"
+# --print touches no store
+PCPRINT="$(HOME="$PCH" TZ=UTC bash "$COMPUTE" --projects "$PCP" --ledger "$LEDGER" --print | jq -c 'select(.kind=="phase-cost")' | wc -l | tr -d ' ')"
+check "phase-cost: --print shows the rows and writes no store" "7/no" "$PCPRINT/$([ -e "$PCH/.himmel" ] && echo yes || echo no)"
+
+# 10. phase-cost: classes, the live-file and replaced-file cases, repeated ids, long paths, and what the state keeps.
+PC2P="$ROOT/pc2/projects"; PC2S="$PC2P/slug"; mkdir -p "$PC2S"
+PC2STORE="$ROOT/pc2-store"
+pc2run() { HOME="$PCH" TZ=UTC bash "$COMPUTE" --projects "$PC2P" --ledger "$LEDGER" --store "$PC2STORE" >/dev/null; }
+pc2() { # session -> "class/phase/mark/calls" for each phase's latest row, comma-joined
+  jq -sr --arg s "$1" '[.[] | select(.kind=="phase-cost" and .session==$s)] | group_by(.phase) | map(last) | map("\(.class)/\(.phase)/\(.mark)/\(.calls)") | join(",")' "$PC2STORE/records.jsonl"
+}
+uprow() { jq -nc --arg t "$1" '{type:"user",message:{content:$t}}'; }
+SCH=aaaaaaaa-2222-4222-8222-000000000001; SW2=aaaaaaaa-2222-4222-8222-000000000002; SCR=aaaaaaaa-2222-4222-8222-000000000003
+SRM=aaaaaaaa-2222-4222-8222-000000000004; SNA=aaaaaaaa-2222-4222-8222-000000000005; SPL=aaaaaaaa-2222-4222-8222-000000000006
+SSH=aaaaaaaa-2222-4222-8222-000000000007; SCL=aaaaaaaa-2222-4222-8222-000000000008; SLG=aaaaaaaa-2222-4222-8222-000000000009
+T=2026-11-04T10:00
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-nextleg-chief"}'; arow $SCH $T:00.000Z h1 $OP 10 1 100 0 0 Read '{"file_path":"/x"}'; } > "$PC2S/$SCH.jsonl"
+mkdir -p "$PC2S/$SCH/subagents"
+arow $SCH $T:05.000Z h2 $OP 10 1 100 0 0 > "$PC2S/$SCH/subagents/agent-c1.jsonl"; echo '{"agentType":"general-purpose"}' > "$PC2S/$SCH/subagents/agent-c1.meta.json"
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-9996-N4-w"}'; arow $SW2 $T:00.000Z w1 $OP 10 1 100 0 0; } > "$PC2S/$SW2.jsonl"
+mkdir -p "$PC2S/$SW2/subagents"
+arow $SW2 $T:05.000Z w2 $OP 10 1 100 0 0 > "$PC2S/$SW2/subagents/agent-w1.jsonl"; echo '{"agentType":"general-purpose"}' > "$PC2S/$SW2/subagents/agent-w1.meta.json"
+arow $SW2 $T:06.000Z w3 $OP 10 1 100 0 0 > "$PC2S/$SW2/subagents/agent-b1.jsonl"; echo '{"agentType":"brief-drafter"}' > "$PC2S/$SW2/subagents/agent-b1.meta.json"
+{ uprow "Read ./review-prompt.md SECRETSENTINEL2"; arow $SCR $T:00.000Z r1 $OP 10 1 100 0 0; } > "$PC2S/$SCR.jsonl"
+{ uprow "You are the release manager for SECRETSENTINEL2"; arow $SRM $T:00.000Z m1 $OP 10 1 100 0 0; } > "$PC2S/$SRM.jsonl"
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-9995-N5-na"}'
+  arow $SNA $T:00.000Z n1 $OP 10 1 100 0 0 Read '{"file_path":"/x"}'; arow $SNA $T:01.000Z n2 $OP 10 1 100 0 0
+  arow $SNA $T:02.000Z n1 $OP 10 1 100 0 0; } > "$PC2S/$SNA.jsonl"
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-9994-N6-pl"}'; arow $SPL $T:00.000Z p1 $OP 10 1 100 0 0; } > "$PC2S/$SPL.jsonl"
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-9993-N7-sh"}'; arow $SSH $T:00.000Z s1 $OP 10 1 100 0 0; arow $SSH $T:01.000Z s2 $OP 10 1 100 0 0; } > "$PC2S/$SSH.jsonl"
+arow $SCL $T:00.000Z c1 $OP 10 1 100 0 0 > "$PC2S/$SCL.jsonl"
+LONGSLUG="$(printf '%0190d' 0 | tr 0 a)"; mkdir -p "$PC2P/$LONGSLUG/$SLG/subagents"
+arow $SLG $T:00.000Z l1 $OP 10 1 100 0 0 > "$PC2P/$LONGSLUG/$SLG/subagents/agent-aaaaaaaaaaaaaaaaa.jsonl"
+rc=0; pc2run || rc=$?
+check "phase-cost: a path of about 270 characters does not fail the run" "0" "$rc"
+check "phase-cost: a subagent under a 190-character project slug is priced" "1" \
+  "$(jq -sr '[.[] | select(.kind=="phase-cost" and .session=="agent-aaaaaaaaaaaaaaaaa")] | length' "$PC2STORE/records.jsonl")"
+check "phase-cost: a chief session is all chief-turns, counted" "chief/chief-turns/counted/1" "$(pc2 $SCH)"
+check "phase-cost: a chief's subagent goes to chief-turns, counted" "subagent/chief-turns/counted/1" "$(pc2 agent-c1)"
+check "phase-cost: a worker's subagent is phase agent, counted" "subagent/agent/counted/1" "$(pc2 agent-w1)"
+check "phase-cost: a brief-drafter is chief-turns, counted" "brief-drafter/chief-turns/counted/1" "$(pc2 agent-b1)"
+check "phase-cost: a critic (first prompt Read ./review-prompt.md) is its own phase, counted" "critic/critic/counted/1" "$(pc2 $SCR)"
+check "phase-cost: a release manager (first prompt) is its own phase, counted" "release-mgr/release-mgr/counted/1" "$(pc2 $SRM)"
+check "phase-cost: a message id repeated non-adjacently counts once" "worker/boot/derived/1,worker/build/derived/1" "$(pc2 $SNA)"
+# a live transcript: a last line with no newline is still being written, so it waits for its newline
+# (the row is whole JSON, which usage-attribution accepts; the half-JSON case stops that script first)
+r2="$(arow $SPL $T:05.000Z p2 $OP 10 1 100 0 0)"
+printf '%s' "$r2" >> "$PC2S/$SPL.jsonl"
+pc2run
+check "phase-cost: a last line with no newline is not read yet" "worker/boot/derived/1" "$(pc2 $SPL)"
+printf '\n' >> "$PC2S/$SPL.jsonl"
+pc2run
+check "phase-cost: once its newline arrives the line is counted, once" "worker/boot/derived/2" "$(pc2 $SPL)"
+# a replaced (shorter) transcript is read again from its start
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-9993-N7-sh"}'; arow $SSH $T:00.000Z s9 $OP 10 1 100 0 0; } > "$PC2S/$SSH.jsonl"
+pc2run
+check "phase-cost: a file that shrank is read again, not skipped" "worker/boot/derived/1" "$(pc2 $SSH)"
+# a class that changes closes the rows it moved: the old key gets a zero row, the new one the calls
+check "phase-cost: before a title the session is class other, phase boot" "other/boot/derived/1" "$(pc2 $SCL)"
+echo '{"type":"custom-title","customTitle":"HIMMEL-9992-chief"}' >> "$PC2S/$SCL.jsonl"
+pc2run
+check "phase-cost: a later title moves the calls and closes the old row with zero" "other/boot/derived/0,chief/chief-turns/counted/1" "$(pc2 $SCL)"
+check "phase-cost: the closed row has zero tokens and zero dollars" "0/0" \
+  "$(jq -sr --arg s $SCL '[.[] | select(.kind=="phase-cost" and .session==$s and .phase=="boot")] | last | "\(.in)/\(.usd)"' "$PC2STORE/records.jsonl")"
+# the state holds ids, counts and class words only: no title and no message text
+check "phase-cost: the state directory holds no title and no message text" "0" \
+  "$(grep -rlE 'N4-w|N5-na|SECRETSENTINEL2' "$PC2STORE/phase-cost-state" | wc -l | tr -d ' ')"
+check "phase-cost: the store holds no message text" "0" "$(grep -c 'SECRETSENTINEL2' "$PC2STORE/records.jsonl" || true)"
+
+# the phase-cost dollars equal the repo's other price reader (model-price.mjs transcripts) on the same directory:
+# one table, the same per-message dedupe, and the sums reach cents
+PC3P="$ROOT/pc3/projects"; PC3S="$PC3P/slug"; mkdir -p "$PC3S"
+SQ=aaaaaaaa-3333-4333-8333-000000000001
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-9991-N8-q"}'
+  arow $SQ 2026-11-04T10:00:00.000Z q1 $OP 1000000 100000 5000000 200000 100000 Read '{"file_path":"/x"}'
+  arow $SQ 2026-11-04T10:00:01.000Z q2 claude-sonnet-5-5 2000000 50000 1000000 0 400000
+  arow $SQ 2026-11-04T10:00:02.000Z q1 $OP 1000000 100000 5000000 200000 100000
+  arow $SQ 2026-11-04T10:00:03.000Z q3 gpt-6.1-sol 3000000 30000 0 0 0; } > "$PC3S/$SQ.jsonl"
+mkdir -p "$PC3S/$SQ/subagents"
+arow $SQ 2026-11-04T10:00:04.000Z q4 $OP 500000 20000 2500000 0 300000 > "$PC3S/$SQ/subagents/agent-q.jsonl"
+PC3STORE="$ROOT/pc3-store"
+HOME="$PCH" TZ=UTC bash "$COMPUTE" --projects "$PC3P" --ledger "$LEDGER" --store "$PC3STORE" >/dev/null
+MP_CENTS="$(node "$HERE/../lanes/model-price.mjs" transcripts "$PC3P" | sed -n 's/^total usd=\([0-9]*\)\.\([0-9][0-9]\).*/\1\2/p')"
+check "phase-cost: the dollars equal model-price.mjs on the same directory, in cents (non-adjacent repeat included)" "$((10#$MP_CENTS))" \
+  "$(jq -sr '[.[] | select(.kind=="phase-cost") | .usd] | add | . * 100 | round' "$PC3STORE/records.jsonl")"
 
 if [ "$FAIL" -eq 0 ]; then echo "PASS"; else echo "FAILED" >&2; exit 1; fi
