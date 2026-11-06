@@ -16,7 +16,7 @@ with the `lean` plugin set, see [setup/install.md](setup/install.md)).
 | Wait for CI and review threads on a PR | `/check-ci` | Checkout. Adopted repo: `bash scripts/check-ci.sh <pr>` |
 | See how each reviewer is scoring, and tune them | `/cr-scores`, `/cr-tune`, `/cr-learnings-refresh` | Adopted repo (copied in by the install) and checkout |
 | Say where cross-session notes live | `/handover-setup` | Plugin `handover`, in the `lean` set |
-| Resume a tracked handover item | `/handover-resume` | Checkout. Adopted repo: ask for the `handover` skill of the `handover` plugin to resume it |
+| Resume a tracked handover item | `/handover-resume` | Checkout, and an adopted repo (copied in by the install) |
 | Recover an armed session | `/handover-resume-armed` | Checkout only |
 | Run the session-end consolidation sweep | `/handover-flush` | Checkout only |
 | Run a chief that dispatches workers | `/chief` | Plugin `himmel-ops`, in the `lean` set |
@@ -32,8 +32,8 @@ with the `lean` plugin set, see [setup/install.md](setup/install.md)).
 An adopted repo gets three kinds of command, and everything else in this
 catalog needs a checkout.
 
-1. **Copied in by the install:** `/cr-scores`, `/cr-tune` and
-   `/cr-learnings-refresh` (the `.claude/commands/` files listed in
+1. **Copied in by the install:** `/cr-scores`, `/cr-tune`,
+   `/cr-learnings-refresh` and `/handover-resume` (the `.claude/commands/` files listed in
    `PORTABLE_FILES` in [`scripts/adopt.sh`](../scripts/adopt.sh)).
 2. **Scripts with no slash command:** `scripts/worktree.sh`,
    `scripts/clean.sh` and `scripts/check-ci.sh` come with the install, but

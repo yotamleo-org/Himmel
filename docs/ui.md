@@ -181,9 +181,10 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   the same graph as the docs page), and **Fleet** at `/agui/`.
 - **Fleet and run view (AG-UI).** `/agui/` lists every live Claude session
   with its ticket, PR and state; clicking one opens its run page: assistant
-  text, tool-call cards, subagents, failures. The page needs a one-time build
-  (`cd scripts/config-ui/agui-web && bun install && bun run build`); without it
-  `himmelctl ui` prints the config page instead.
+  text, tool-call cards, subagents, failures. The first `himmelctl ui` builds the page
+  (it needs bun and takes about a minute); if that build fails, `himmelctl ui`
+  prints the config page instead, and you can build the page by hand with
+  `cd scripts/config-ui/agui-web && bun install && bun run build`.
 - **The chief's board on the Fleet page.** Start `himmelctl ui` with `HANDOVER_DIR` set and open
   `/agui/#t=<token>&console=<chief doc name>`. The page then shows the
   chief's board (the `board.mjs --json` output, served read-only and redacted at the

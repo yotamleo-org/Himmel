@@ -1682,7 +1682,7 @@ claude plugin install claude-obsidian@himmel --scope user
 
 Every Claude Code session is auto-captured to the Luna vault as a structured note under `sessions/YYYY/MM/YYYY-MM-DD-HHMM-<repo>-<branch>.md` via a `SessionEnd` hook. Built by epic #7; full schema + opt-out in [`docs/luna/end-session-wiki.md`](../luna/end-session-wiki.md).
 
-**Register it by hand.** `bash scripts/setup.sh` hands off to `himmel install`, whose wire targets do not include `SessionEnd`, so add the block to `~/.claude/settings.json` yourself (back the file up first):
+A vault install wires this hook for you: `adopt.sh --profile all` or `luna`, and the wizard's existing-vault step. The per-repo tiers of `/end-session-wiki-setup` write only `.claude/end-session-wiki.json`, so for those, and for a machine installed before the install wired it, add the block to `~/.claude/settings.json` yourself (back the file up first):
 
 ```json
 "SessionEnd": [

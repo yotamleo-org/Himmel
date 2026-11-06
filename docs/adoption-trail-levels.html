@@ -816,7 +816,7 @@ Open a PR from a worktree branch instead.</code></pre></div>
 <div class="io cmd"><span class="lab">Run from your own terminal, not inside Claude</span><pre><code><span class="p">$ </span>node ~/himmel/scripts/himmelctl/bin.js ui</code></pre></div>
 <div class="io out"><span class="lab">You see one link</span><pre><code>http://127.0.0.1:37931/agui/#t=…</code></pre></div>
 <p>Open it in your browser. The port and the key after <code>#t=</code> change each launch, and the page only answers on your own machine. It stops after 30 idle minutes or on Ctrl-C.</p></dd>
-<dt>You need</dt><dd><ul><li>Levels 1, 5 and 6.</li><li>bun, and a one-time build of the fleet page.</li><li>A ticket tracker the chief can read.</li></ul></dd>
+<dt>You need</dt><dd><ul><li>Levels 1, 5 and 6.</li><li>bun; the first launch builds the fleet page.</li><li>A ticket tracker the chief can read.</li></ul></dd>
 <dt>Setup time</dt><dd><p>Not measured yet.</p></dd>
 <dt>What it costs</dt><dd><ul><li>Each worker is a full Claude session: a fleet spends your usage several times faster, and the preflight holds new workers back when it runs low.</li></ul></dd>
 <dt>Turn it off</dt><dd><p>Close the chief and its workers; Ctrl-C stops the fleet view. Nothing keeps running on its own.</p></dd>
