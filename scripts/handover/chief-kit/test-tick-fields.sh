@@ -657,6 +657,7 @@ db_base9342="$(db_run9342 '')"
 contains 'the control tick launches the dependabot sweep' "$(cat "$db9342/line")" ' dbot=none,run'
 db_spin9342="$(db_run9342 1)"
 contains 'the spinning tick launches the dependabot sweep' "$(cat "$db9342/line")" ' dbot=none,run'
+same 'the dependabot sweep ended before the spinning tick did' "$([ -e "$db9342/done" ] && echo yes || echo no)" 'yes'
 wait9342 "$db9342/state"/tick-dbot-*.log
 same 'the dependabot sweep still moves its tmp log to the log' "$(cat "$db9342/state"/tick-dbot-*.log 2>/dev/null)" 'dependabot-go sweep: merged=1 skipped=2'
 if [ $((db_spin9342 - db_base9342)) -lt 1000 ]; then pass 'a dependabot sweep that ends inside the tick adds none of its CPU to the tick'; else fail "a dependabot sweep added $((db_spin9342 - db_base9342)) ms of CPU to the tick (spin ${db_spin9342} ms, control ${db_base9342} ms)"; fi
@@ -675,6 +676,7 @@ if command -v python3 >/dev/null 2>&1; then
     contains 'the control tick launches the plan-index refresh' "$(cat "$pi9342/line")" ' plan-index=REFRESHING'
     pi_spin9342="$(pi_run9342 1)"
     contains 'the spinning tick launches the plan-index refresh' "$(cat "$pi9342/line")" ' plan-index=REFRESHING'
+    same 'the plan-index refresh ended before the spinning tick did' "$([ -e "$pi9342/done" ] && echo yes || echo no)" 'yes'
     if [ $((pi_spin9342 - pi_base9342)) -lt 1000 ]; then pass 'a plan-index refresh that ends inside the tick adds none of its CPU to the tick'; else fail "a plan-index refresh added $((pi_spin9342 - pi_base9342)) ms of CPU to the tick (spin ${pi_spin9342} ms, control ${pi_base9342} ms)"; fi
 else
     skip 'plan-index CPU row: no python3'
