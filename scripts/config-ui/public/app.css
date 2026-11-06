@@ -481,6 +481,7 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .wf-walk{border:1px solid var(--note);border-radius:8px;padding:var(--s3) var(--s4);background:var(--surface);margin:0 0 var(--s4)}
 .wf-walk h2,.wf-panel h2{margin:0 0 var(--s1);font-size:var(--fs-lg)}
 .wf-purpose{font-size:var(--fs-sm);color:var(--muted);margin:0 0 var(--s2)}
+.box>.wf-purpose{margin:var(--s1) 0 var(--s3);padding:6px 10px;border-left:3px solid var(--accent);background:var(--accent-soft);color:var(--ink)}
 .wf-ctl{display:flex;flex-wrap:wrap;gap:6px;margin:var(--s2) 0}
 .wf-ctl a.btn{text-decoration:none}
 .wf-ctl a[aria-current]{border-color:var(--accent);color:var(--accent);font-weight:700}
@@ -542,6 +543,9 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .wf-sum,.wf-rev,.wf-out{width:100%;border-collapse:collapse;font-size:var(--fs-sm);margin:0 0 var(--s2)}
 .wf-sum th,.wf-sum td,.wf-rev th,.wf-rev td,.wf-out th,.wf-out td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--rule);font-variant-numeric:tabular-nums}
 .wf-sum thead th,.wf-rev thead th,.wf-out thead th{font:600 11px var(--font-mono);color:var(--muted)}
+.wf-wrapx{overflow-x:auto}
+.wf-wrapx table{min-width:34rem}
+.wf-wrapx th,.wf-wrapx td{overflow-wrap:normal}
 .wf-cost .wf-v{display:inline;margin-right:6px}
 /* the Eval tab's charts: sparkline, Distributions bars with the slow tail apart, Trends lines; colours are tokens */
 .wf-egrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s3);align-items:start;margin:0 0 var(--s3)}

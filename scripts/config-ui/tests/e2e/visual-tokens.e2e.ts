@@ -76,12 +76,22 @@ async function offTokens(page: Page) {
   }).map(([w, p, v]) => `${w} ${p}: ${v}`);
 }
 
+// a seeded run for the Eval tab: three tickets that went LIVE, opened a PR, ran CI, merged and wrapped on the last three
+// days, with build times of 20, 120 and 220 minutes, so the bar charts and trend lines are painted and scanned
+function seedRun(h: Harness) {
+  const day = 86_400_000, today = Math.floor(Date.now() / day) * day;
+  mkdirSync(join(h.home, ".himmel", "state"), { recursive: true });
+  writeFileSync(join(h.home, ".himmel", "state", "status-events.jsonl"), [0, 1, 2].flatMap((i) => [["live", 0], ["pr-open", 20 + i * 100], ["ci-start", 225], ["merge", 300], ["wrapped", 310]]
+    .map(([event, min]) => JSON.stringify({ ts: new Date(today - (i + 1) * day + 8 * 3600_000 + Number(min) * 60_000).toISOString(), event, key: `HIMMEL-${i + 1}`, pr: String(i + 1) }))).join("\n") + "\n");
+}
+
 let h: Harness;
 test.afterEach(async () => { await h?.stop(); });
 
 for (const scheme of ["light", "dark"] as const) {
   test(`every config-ui page paints only token colours (${scheme})`, async ({ browser }) => {
     h = await boot();
+    seedRun(h); // BEFORE the first load: the page reads GET /api/phase-stats once and caches it for a minute
     const ctx = await browser.newContext({ colorScheme: scheme, viewport: { width: 1280, height: 900 } });
     const page = await ctx.newPage();
     const bad: string[] = [];
@@ -91,20 +101,31 @@ for (const scheme of ["light", "dark"] as const) {
       if (process.env.E2E_BREAK === "colour") await plant(page);
       for (const o of await offTokens(page)) bad.push(`${id}: ${o}`);
     }
-    // the Eval tab with a seeded run, so its sparklines, bar charts and trend lines are painted and scanned too
-    const day = 86_400_000, today = Math.floor(Date.now() / day) * day;
-    mkdirSync(join(h.home, ".himmel", "state"), { recursive: true });
-    writeFileSync(join(h.home, ".himmel", "state", "status-events.jsonl"), [0, 1, 2].flatMap((i) => [["live", 0], ["pr-open", 20], ["ci-start", 25], ["merge", 70], ["wrapped", 80]]
-      .map(([event, min]) => JSON.stringify({ ts: new Date(today - (i + 1) * day + 8 * 3600_000 + Number(min) * 60_000).toISOString(), event, key: `HIMMEL-${i + 1}`, pr: String(i + 1) }))).join("\n") + "\n");
+    // the Eval tab of the seeded run, so its sparklines, bar charts and trend lines are painted and scanned too
     await page.evaluate(() => { location.hash = "#/workflow/eval"; });
     await page.locator("nav.wf-tabs a[aria-current='page'][href$='#/workflow/eval']").waitFor();
     await page.locator("svg.wf-trend").first().waitFor();
+    // the scan must have charts to read: bars, and a slow-tail bar among them (an unseeded tab has neither)
+    expect(await page.locator("rect.wf-bar").count(), "bar chart rects on the Eval tab").toBeGreaterThan(0);
+    expect(await page.locator("rect.wf-bar.wf-hi").count(), "slow-tail bars on the Eval tab").toBeGreaterThan(0);
     if (process.env.E2E_BREAK === "colour") await plant(page);
     for (const o of await offTokens(page)) bad.push(`workflow/eval: ${o}`);
     await ctx.close();
     expect(bad, "colours outside tokens.css").toEqual([]);
   });
 }
+
+// the same control on a chart: an off-token fill on a bar of the seeded Eval tab is reported by that bar's own name
+test("a colour planted on a chart bar is reported", async ({ page }) => {
+  h = await boot();
+  seedRun(h);
+  await page.goto(`${h.url}&page=workflow`);
+  await show(page, "workflow");
+  await page.evaluate(() => { location.hash = "#/workflow/eval"; });
+  await page.locator("rect.wf-bar.wf-hi").first().waitFor();
+  await page.evaluate(() => (document.querySelector("rect.wf-bar") as SVGElement).style.setProperty("fill", "#ff00aa"));
+  expect((await offTokens(page)).some((o) => o.startsWith("rect.wf-bar fill: rgb(255, 0, 170)"))).toBe(true);
+});
 
 // the check itself: a planted colour is reported, so a scan that reads nothing cannot pass for a clean page
 test("a colour planted outside tokens.css is reported", async ({ page }) => {

@@ -227,7 +227,10 @@ function histChart(p) {
 }
 const histCaption = (p) => p.unit === "rounds"
   ? `<b>${esc(p.name)}</b>: branches by their highest round, n ${p.n}. Red: 3 or more rounds.`
-  : `<b>${esc(p.name)}</b>: % of ${p.n} changes by time. Red: from the bucket holding the 8-in-10 line (${esc(fmtValue(p.p80, p.unit))}).`;
+  : `<b>${esc(p.name)}</b>: % of ${p.n} changes by time. Red: from the bucket holding the 8-in-10 line (${esc(fmtValue(p.p80, p.unit))}), or from the second bucket when that line is under 10 min.`;
+
+// what each phase's entered-per-day count counts (Review counts branches by the last write of their round file, not tickets)
+const ENTERS = { build: "tickets that went live", review: "branches, by the day their review round was last written", check: "tickets whose first CI run started", merge: "tickets that merged" };
 
 // what the build can say about the ways back out of a phase: Review's 3-or-more-rounds share is recorded; the rest is not
 function waysBack(p, stats) {
@@ -246,25 +249,26 @@ function evalTab(model, stats) {
   const n = (s) => Object.fromEntries(model.stages.map((x) => [x.id, x.n]))[s];
   const cells = (p) => p.state === "nosource" ? Array(4).fill(esc("no source yet"))
     : [p.unit === "rounds" ? `${p.n} branches` : String(p.n), fmtValue(p.median, p.unit), fmtValue(p.p80, p.unit)].map(esc).concat(sparkline(p.name, p.perDay));
-  const trended = stats.phases.filter((p) => p.perDay.length === 7), spread = stats.phases.filter((p) => p.hist && p.hist.length);
+  // a phase with no source has no per-day counts; one that read nothing has seven zeros, which would draw a flat line for "unknown"
+  const trended = stats.phases.filter((p) => p.perDay.length === 7 && (p.state !== "nodata" || p.perDay.some((v) => v > 0))), spread = stats.phases.filter((p) => p.hist && p.hist.length);
   const name = (id) => (stats.phases.find((p) => p.id === id) || {}).name || id;
   const r = stats.review;
   return intro
     + `<p class="wf-win">Window: ${esc(day(stats.from))} 00:00 to ${esc(day(stats.to))} 00:00 UTC, 7 full days. A ticket counts in a phase when it enters the phase in the window.</p>`
-    + `<section class="box"><h2>Phase summary</h2>${answers("for each phase, how many changes passed through it, how long the typical one took, and how often one went back. It is the first table the chief reads in a review of the system.")}<table class="wf-sum"><thead><tr><th>Phase</th><th>n</th><th>Median</th><th>8 in 10 under</th><th>Entered per day</th><th>Ways back</th></tr></thead><tbody>`
+    + `<section class="box"><h2>Phase summary</h2>${answers("for each phase, how many changes passed through it, how long the typical one took, and how often one went back. It is the first table the chief reads in a review of the system.")}<div class="wf-wrapx"><table class="wf-sum"><thead><tr><th>Phase</th><th>n</th><th>Median</th><th>8 in 10 under</th><th>Entered per day</th><th>Ways back</th></tr></thead><tbody>`
     + stats.phases.map((p) => `<tr><th>${n(p.id)} ${esc(p.name)}</th>${cells(p).map((c) => `<td>${c}</td>`).join("")}<td>${esc(waysBack(p, stats))}</td></tr>`).join("")
-    + `</tbody></table><ul class="wf-list">${stats.phases.map((p) => `<li><b>${esc(p.name)}:</b> ${esc(p.counts)}.</li>`).join("")}</ul></section>`
+    + `</tbody></table></div><ul class="wf-list">${stats.phases.map((p) => `<li><b>${esc(p.name)}:</b> ${esc(p.counts)}.</li>`).join("")}</ul></section>`
     + (spread.length || trended.length ? `<div class="wf-egrid">`
       + (spread.length ? `<section class="box"><h2>Distributions</h2>${answers("is a phase's time tight, or does it have a long tail? It is for spotting a phase whose median looks fine while its slowest changes do not.")}<div class="wf-mult">${spread.map((p) => `<div>${histChart(p)}<p class="sub">${histCaption(p)}</p></div>`).join("")}</div>`
-        + `<p class="empty"><b>Start, Plan and design, Assign:</b> no source yet. Nothing records when an idea arrives, a ticket is picked, an estimate is made or a design is approved.</p></section>` : "")
-      + (trended.length ? `<section class="box"><h2>Trends</h2>${answers("how many changes entered each phase per day, and is that rising or falling? It is for seeing a slowdown before it turns into a backlog.")}<div class="wf-mult">${trended.map((p) => `<div>${trendChart(p.name, p.perDay, stats.days)}<p class="sub"><b>${esc(p.name)}</b>: tickets entering the phase, per day</p></div>`).join("")}</div></section>` : "")
+        + `<p class="sub"><b>Start, Plan and design, Assign:</b> no source yet. Nothing records when an idea arrives, a ticket is picked, an estimate is made or a design is approved.</p></section>` : "")
+      + (trended.length ? `<section class="box"><h2>Trends</h2>${answers("how many changes entered each phase per day, and is that rising or falling? It is for seeing a slowdown before it turns into a backlog.")}<div class="wf-mult">${trended.map((p) => `<div>${trendChart(p.name, p.perDay, stats.days)}<p class="sub"><b>${esc(p.name)}</b>: ${esc(ENTERS[p.id] || "entering the phase")}, per day</p></div>`).join("")}</div></section>` : "")
       + `</div>` : "")
-    + `<section class="box"><h2>Review: merged or not, by rounds</h2>${answers("do the branches that need many review rounds still get merged? It is for judging whether extra rounds are fixing changes or stalling them.")}<table class="wf-rev"><thead><tr><th>Branches</th><th>Merged</th><th>Not merged</th><th>All</th></tr></thead><tbody>`
+    + `<section class="box"><h2>Review: merged or not, by rounds</h2>${answers("do the branches that need many review rounds still get merged? It is for judging whether extra rounds are fixing changes or stalling them.")}<div class="wf-wrapx"><table class="wf-rev"><thead><tr><th>Branches</th><th>Merged</th><th>Not merged</th><th>All</th></tr></thead><tbody>`
     + [["3 or more rounds", r.threeUp], ["under 3 rounds", r.under]].map(([label, x]) => `<tr><th>${label}</th><td>${x.merged}</td><td>${x.notMerged}</td><td>${x.merged + x.notMerged}</td></tr>`).join("")
-    + `</tbody></table></section>`
-    + `<section class="box"><h2>Outliers</h2>${answers("which changes took much longer than most, and in which phase? It is for the chief, deciding what to look into.")}${stats.outliers.length ? `<table class="wf-out"><thead><tr><th>Change</th><th>Phase</th><th>Time or rounds</th><th>vs the 8-in-10 line</th></tr></thead><tbody>`
+    + `</tbody></table></div></section>`
+    + `<section class="box"><h2>Outliers</h2>${answers("which changes took much longer than most, and in which phase? It is for the chief, deciding what to look into.")}${stats.outliers.length ? `<div class="wf-wrapx"><table class="wf-out"><thead><tr><th>Change</th><th>Phase</th><th>Time or rounds</th><th>vs the 8-in-10 line</th></tr></thead><tbody>`
       + stats.outliers.map((o) => { const p = statRow(stats, o.phase); return `<tr><th>${o.pr ? `PR ${esc(o.pr)}` : "a branch with no PR"}</th><td>${esc(name(o.phase))}</td><td>${esc(fmtValue(o.value, o.unit))}</td><td>${o.times} × ${esc(fmtValue(p && p.p80, o.unit))}</td></tr>`; }).join("")
-      + `</tbody></table><p class="sub">A ticket that was parked and resumed counts its wait, so the longest rows are often a pause, not slow work. An 8-in-10 line under 1 minute counts as 1 minute here.</p>` : `<p class="sub">No change was far outside its phase's 8-in-10 line.</p>`}</section>`
+      + `</tbody></table></div><p class="sub">A ticket that was parked and resumed counts its wait, so the longest rows are often a pause, not slow work. An 8-in-10 line under 1 minute counts as 1 minute here.</p>` : `<p class="sub">No change was far outside its phase's 8-in-10 line.</p>`}</section>`
     + `<section class="box"><h2>Cost per ticket</h2>${answers("what does one ticket cost, and how much of it is spent before the build starts? It is for estimating later tickets from tickets like them.")}<p class="wf-cost"><span class="wf-v wf-none">${esc(stats.cost.say)}</span> What one ticket costs, and how much of it is spent before the build starts, is not joined to the ticket yet.</p></section>`;
 }
 
