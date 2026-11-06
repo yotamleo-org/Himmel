@@ -27,7 +27,8 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const json = (file, value) => put(file, JSON.stringify(value));
 const plugin = { name: 'alpha', source: { source: 'url', url: 'https://github.com/example/alpha.git', ref: 'v1.0.0' }, author: { name: 'Alpha author' }, license: 'MIT' };
 const fork = { nwo: 'fixture-org/fork', upstream: 'example/original', himmel_branch: 'main', pin_site: null, role: 'dormant', merge_allowed: false };
-const metadata = rows => put(metadataPath, '# Licences\n\n<!-- credits-metadata:start -->\n| Item | Source | Author | Licence | Pin |\n|---|---|---|---|---|\n' + rows + '\n<!-- credits-metadata:end -->\n');
+const passages = rows => '\n<!-- credits-passages:start -->\n| What | Source | Author | Licence | How used | Where |\n|---|---|---|---|---|---|\n' + rows + '\n<!-- credits-passages:end -->\n';
+const metadata = (rows, passageRows = '') => put(metadataPath, '# Licences\n\n<!-- credits-metadata:start -->\n| Item | Source | Author | Licence | Pin |\n|---|---|---|---|---|\n' + rows + '\n<!-- credits-metadata:end -->\n' + passages(passageRows));
 const forkMetadata = '| fork:fixture-org/fork | — | Original author | Apache-2.0 | — |';
 function fixture() {
   root = fs.mkdtempSync(path.join(tmp, 'case-'));
@@ -172,6 +173,41 @@ test('explicit unknown licence is reported, never silently converted to MIT', ()
 
 test('missing output is a failing check, not an empty pass', () => {
   red(run('--check'), /missing|stale/i);
+});
+
+test('a passage row renders with how it was used', () => {
+  put('skill.md', 'x');
+  metadata(forkMetadata, '| A rule | https://example.com/a | Author | MIT | inspired by | skill.md |');
+  green(run());
+  assert.match(read(pagePath), /\| A rule \| https:\/\/example.com\/a \| Author \| MIT \| inspired by \| skill.md \|/);
+});
+
+test('a passage must say vendored or inspired by', () => {
+  put('skill.md', 'x');
+  metadata(forkMetadata, '| A rule | https://example.com/a | Author | MIT | copied | skill.md |');
+  red(run(), /vendored or inspired by/);
+});
+
+test('a passage source must be HTTPS', () => {
+  put('skill.md', 'x');
+  metadata(forkMetadata, '| A rule | none | Author | MIT | inspired by | skill.md |');
+  red(run(), /source must be an HTTPS URL/);
+});
+
+test('a passage must point at a file that exists', () => {
+  metadata(forkMetadata, '| A rule | https://example.com/a | Author | MIT | inspired by | gone.md |');
+  red(run(), /does not exist/);
+});
+
+test('a passage row with a missing cell is refused', () => {
+  put('skill.md', 'x');
+  metadata(forkMetadata, '| A rule | https://example.com/a | MIT | inspired by | skill.md |');
+  red(run(), /malformed credits passage/);
+});
+
+test('a licence page with no passages block is refused', () => {
+  put(metadataPath, '# Licences\n\n<!-- credits-metadata:start -->\n| Item | Source | Author | Licence | Pin |\n|---|---|---|---|---|\n' + forkMetadata + '\n<!-- credits-metadata:end -->\n');
+  red(run(), /missing credits passages/);
 });
 
 test('the checked-in credits page matches the real shipped inventories', () => {
