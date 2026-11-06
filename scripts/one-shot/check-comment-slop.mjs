@@ -29,6 +29,10 @@ const SELF = fileURLToPath(import.meta.url);
 const ROOT = resolve(dirname(SELF), '../..');
 const HELPER = 'scripts/one-shot/check-comment-slop.mjs';
 const KEEP = 'scripts/one-shot/comment-slop-keep.tsv';
+// The doc line that wires this helper for the added-file check. It is the one
+// change `filter` allows in that doc, in either direction.
+const WIRING_DOC = 'docs/internals/testing.md';
+const WIRING_LINE = '`scripts/one-shot/check-comment-slop.mjs` is the helper of the sweep that takes em dashes out of comments and docs, run by hand and deleted when that sweep ends.';
 const RELEASE = 'scripts/jira/src/release/';
 const LEDGER = 'scripts/jira/src/release/ledger.ts';
 // Seeds read this commit, since the real lines lose their dashes slice by slice.
@@ -700,6 +704,16 @@ function compareDocstring(path, base, head, result) {
   if (!(b[1] ?? '').startsWith('"""')) result.fail.push(`${path}:2: the docstring no longer opens with three quotes`);
 }
 
+function onlyWiringLine(path, base, head) {
+  if (path !== WIRING_DOC) return false;
+  const [shorter, longer] = base.length < head.length ? [base, head] : [head, base];
+  const lines = longer.split('\n');
+  const at = lines.indexOf(WIRING_LINE);
+  if (at < 0) return false;
+  lines.splice(at, 1);
+  return lines.join('\n') === shorter;
+}
+
 function filterFile(path, base, head, planted = []) {
   const result = { a7ok: [], fail: [], headings: [] };
   const kind = kindOf(path);
@@ -708,7 +722,7 @@ function filterFile(path, base, head, planted = []) {
   else if (kind === 'unit') compareLinesWhere(path, base, head, (l) => !/^\s*#/.test(l), result);
   else if (kind === 'docstring') compareDocstring(path, base, head, result);
   else if (kind === 'json') compareJson(path, base, head, result);
-  else if (base !== head) result.fail.push(`${path}: this file type holds no comment the helper can read`);
+  else if (base !== head && !onlyWiringLine(path, base, head)) result.fail.push(`${path}: this file type holds no comment the helper can read`);
   return result;
 }
 
@@ -1026,6 +1040,13 @@ function selfCheck(noopRuntime) {
   for (const [path, n] of [[JIRA_DOC, 1], ...[1, 134, 259, 311, 492, 582, 653, 734].map((l) => [TG_README, l])]) {
     filterSeed(`real heading ${path}:${n} dash replaced`, 0, path, (t) => editLine(t, n, dashToComma), { listed: 1 });
   }
+
+  // The wiring doc line: the exact sentence passes both ways, any other change fails.
+  const withWiring = (t) => editLine(t, 40, (l) => `${l}\n${WIRING_LINE}`);
+  filterSeed('wiring sentence added', 0, WIRING_DOC, withWiring);
+  filterSeed('wiring sentence removed', 0, WIRING_DOC, () => seed(WIRING_DOC), { base: withWiring(seed(WIRING_DOC)) });
+  filterSeed('a different line in the wiring doc', 1, WIRING_DOC, (t) => editLine(t, 40, (l) => `${l}\n${WIRING_LINE} Extra.`));
+  filterSeed('wiring sentence beside another edit', 1, WIRING_DOC, (t) => editLine(withWiring(t), 1, (l) => `${l} edited`));
 
   // words.
   wordsSeed('dash to comma', 0, BIN, (t) => editLine(t, binComment, dashToComma));
