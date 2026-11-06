@@ -1,4 +1,4 @@
-import { join, dirname, basename, resolve } from "node:path";
+import { join, dirname, basename, resolve, isAbsolute } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { readdir, readFile, stat, mkdir, open, unlink, copyFile, rm, realpath } from "node:fs/promises";
 import { appendIfExists, atomicWrite, defaultRoot } from "./bus";
@@ -510,6 +510,22 @@ async function governingSpec(page: string): Promise<{ spec: string; role: Role }
   return null;
 }
 
+// The .md a page names as its source, or null for a page that names none. A marker that is not an absolute path, or names a file that is not there, refuses.
+async function markedSource(page: string): Promise<string | null> {
+  if (!/\.html?$/i.test(page)) return null;
+  let named: string | null = null;
+  for (const tag of (await readFile(page)).toString("utf8").matchAll(/<meta\b[^>]*>/gi)) {
+    const attrs = new Map<string, string>();
+    for (const a of tag[0].matchAll(/([a-z][\w-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi)) attrs.set(a[1].toLowerCase(), a[2] ?? a[3] ?? a[4]);
+    if (attrs.get("name")?.toLowerCase() === "spec-source") { named = (attrs.get("content") ?? "").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"); break; }
+  }
+  if (named === null) return null;
+  if (!isAbsolute(named)) throw new Error(`${basename(page)} names its source as '${named}', which is not an absolute path; the page is not sent`);
+  const real = await realpath(named).catch(() => null);
+  if (!real || !await isFile(real)) throw new Error(`${basename(page)} names its source as ${named}, which is not there; the page is not sent`);
+  return real;
+}
+
 export type VerdictLine = { kind: "spec" | "plan"; round: number; file: string; verdict: string };
 
 // null = not a signature page (sends as before); throws, naming the verdict file, when the page may not be sent.
@@ -517,7 +533,10 @@ export type VerdictLine = { kind: "spec" | "plan"; round: number; file: string; 
 export async function checkSignaturePage(abs: string): Promise<{ verdicts: VerdictLine[]; bytes: Buffer } | null> {
   const page = await realpath(abs).catch(() => abs);
   await refuseIfPlanCriticFailed(page);
-  let g = await governingSpec(page);
+  // A page that names its source (`<meta name="spec-source" content="<abs path of the .md>">`) is governed by that spec wherever the copy sits.
+  // ponytail: a hand-built page with no marker, outside the registered folders, reads as a report, upgrade path: one shared spec page generator writes the marker
+  const source = await markedSource(page);
+  let g = source ? { spec: source, role: "render" as Role } : await governingSpec(page);
   if (!g) {
     if (![abs, page].some(underSignaturePath)) return null;
     const md = siblingMd(page);
@@ -526,6 +545,7 @@ export async function checkSignaturePage(abs: string): Promise<{ verdicts: Verdi
   const { spec, role } = g;
   const specReal = await realpath(spec).catch(() => spec);
   const bytes = await readFile(page);
+  if (/not for signature/i.test(bytes.toString("utf8"))) throw new Error(`${basename(page)} still says "Not for signature"; a page a critic passed must not, and the critic must read the final bytes; the page is not sent`);
   const critics = await latestCritics(spec);
   const verdicts: VerdictLine[] = [];
   for (const kind of ["spec", "plan"] as const) {
@@ -548,7 +568,8 @@ export async function checkSignaturePage(abs: string): Promise<{ verdicts: Verdi
       sealed.add(file);
     }
     if (kind === "spec" && !sealed.has(specReal)) throw new Error(`${c.path} does not seal ${basename(spec)}`);
-    if (kind === "spec" && role === "render" && !sealed.has(page)) throw new Error(`${c.path} has no seal naming ${basename(page)}: the critic of the latest round never read this page`);
+    if (kind === "spec" && source && !seals.some(s => s.sha === sha256(bytes))) throw new Error(`${c.path} has no seal for the bytes of ${basename(page)}: the critic of the latest round never read this page`);
+    if (kind === "spec" && role === "render" && !source && !sealed.has(page)) throw new Error(`${c.path} has no seal naming ${basename(page)}: the critic of the latest round never read this page`);
     if (kind === "plan" && role === "plan" && !sealed.has(page)) throw new Error(`${c.path} does not seal ${basename(page)}`);
     verdicts.push({ kind, round: c.round, file: basename(c.path), verdict: last });
   }
