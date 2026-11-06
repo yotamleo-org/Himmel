@@ -120,8 +120,9 @@ test("probe: writeLogin with an unstubbed env never reaches a keyring", async ()
   const map = process.env.KR_MAP !== "0" ? { ...(process.env.KR_MAP === "2" ? { NODE_ENV: "development" } : {}), PATH: process.env.PATH, HOME: join(dir, "home"), DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS, KR_LOG: process.env.KR_LOG } : undefined;
   let err = "";
   try { writeLogin(join(dir, "login"), "operator", "correct-horse-battery", { createOnly: true, ...(map ? { env: map } : {}) }); } catch (e) { err = (e as Error).message; }
-  // the closed keyring refuses the write; any other failure (or none) means the call never reached the keyring path.
-  expect(err).toMatch(/^the keyring could not be written/);
+  // the pinned-off keyring refuses the write with its own reason; on macOS an unguarded call reports "unsupported"
+  // under the same prefix, so the prefix alone cannot tell the guard from its absence.
+  expect(err).toMatch(/^the keyring could not be written: the keyring is off; nothing was changed/);
 });
 TS
 searches() { grep -c '^secret-tool' "$KR_LOG" || true; }
