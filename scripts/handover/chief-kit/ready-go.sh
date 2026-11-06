@@ -129,10 +129,11 @@ fi
 # 4. the GO: file by go.sh (chief only), notification by SendMessage (chief only)
 case "$TRUST_OUT" in
     "hit "*)
-        printf 'NEXT: trust-path hit (%s) - no plain GO. Dispatch the opus judge; on its GO verdict for this head run: bash %q/go.sh --trust-reviewed <judge qid>%s %s %s\n' \
-            "${TRUST_OUT#hit }" "$HERE" "$CONTRACT_ARG" "$PR" "$SHA" ;;
+        printf 'NEXT: trust-path hit (%s) - no plain GO. Dispatch the opus judge; on its GO verdict for this head run: bash scripts/handover/chief-kit/go.sh --trust-reviewed <judge qid>%s %s %s\n' \
+            "${TRUST_OUT#hit }" "$CONTRACT_ARG" "$PR" "$SHA" ;;
     *)
-        printf 'NEXT: bash %q/go.sh%s %s %s\n' "$HERE" "$CONTRACT_ARG" "$PR" "$SHA"
+        # the relative form from the himmel checkout root: the project allow rule matches it, an absolute path or a cd falls to the classifier
+        printf 'NEXT: bash scripts/handover/chief-kit/go.sh%s %s %s\n' "$CONTRACT_ARG" "$PR" "$SHA"
         if [ -n "$TO" ]; then
             printf 'SENDMESSAGE to=%s :: GO %s %s, token %s\n' "$TO" "$PR" "$SHA" "$TOKEN"
         else
