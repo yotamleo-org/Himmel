@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-exempt: no model call of its own; it sources the backend resolver only to validate an API account name, and the runners it writes call the billed workers
 # graphmap-cadence.sh — arm/status/disarm the recurring graphify curated-map
 # cadence.
 #

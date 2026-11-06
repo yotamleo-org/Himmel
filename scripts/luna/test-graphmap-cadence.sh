@@ -1638,19 +1638,20 @@ assert_not_contains "the luna payload names no auto" "HIMMEL_API_ACCOUNT=auto" "
 assert_contains "the luna payload keeps the claude-api backend" "--backend claude-api" "$sem_sh"
 
 echo "TEST: --rewrite-armed keeps the armed luna account and refuses a runner armed with auto or none"
-rc=0; out=$(run_cron3 arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+# the rewrite of a luna semantic runner resolves the claude CLI, so these rows carry the stub dir
+rc=0; out=$(PATH="$CLAUDE_BIN_DIR_PATH:$PATH" run_cron3 arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
 assert_rc "arm --rewrite-armed over an account C runner exits 0" 0 "$rc"
 sem_sh=$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)
 assert_contains "the rewritten luna runner keeps account C" "HIMMEL_API_ACCOUNT=C " "$sem_sh"
 assert_not_contains "the rewritten luna runner names no auto" "HIMMEL_API_ACCOUNT=auto" "$sem_sh"
 # fixtures/graphmap-semantic-luna-old-auto.txt is the runner the OLD arm wrote (HIMMEL_API_ACCOUNT=auto)
 cp "$SCRIPT_DIR/fixtures/graphmap-semantic-luna-old-auto.txt" "$CRON_DIR3/graphmap-semantic-luna.sh"
-rc=0; out=$(run_cron3 arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+rc=0; out=$(PATH="$CLAUDE_BIN_DIR_PATH:$PATH" run_cron3 arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
 assert_rc "arm --rewrite-armed over a runner armed with auto exits 2" 2 "$rc"
 assert_contains "the auto refusal names --api-account" "--api-account" "$out"
 assert_contains "the refused rewrite leaves the old runner as it was" "HIMMEL_API_ACCOUNT=auto" "$(cat "$CRON_DIR3/graphmap-semantic-luna.sh")"
 sed 's/HIMMEL_API_ACCOUNT=auto //' "$SCRIPT_DIR/fixtures/graphmap-semantic-luna-old-auto.txt" > "$CRON_DIR3/graphmap-semantic-luna.sh"
-rc=0; out=$(run_cron3 arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+rc=0; out=$(PATH="$CLAUDE_BIN_DIR_PATH:$PATH" run_cron3 arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
 assert_rc "arm --rewrite-armed over a runner armed with no account exits 2" 2 "$rc"
 assert_contains "the no-account refusal names --api-account" "--api-account" "$out"
 run_cron3 disarm >/dev/null 2>&1
