@@ -1218,3 +1218,11 @@ test("Board versions: the pins ride in the URL's query string, and roadmap.js st
   const src = readFileSync(join(import.meta.dir, "../public/roadmap.js"), "utf8").replace(/\/\/.*$/gm, "");
   expect(/\b(localStorage|sessionStorage|indexedDB|document\.cookie)\b/.test(src)).toBe(false);
 });
+
+test("Board versions: with a pin set, Show all exposes the unpinned versions so a second pin is possible", () => {
+  const html = renderBoard(many(), { version: null, theme: null, pins: ["v2.1"], showAll: true }, null);
+  expect(tiles(html).length).toBe(12);
+  expect(html).toContain("showing 12 of 12 versions");
+  expect(html).toContain('data-rm-pin="v2.1" aria-pressed="true"');
+  expect(html).toContain('data-rm-pin="v2.2" aria-pressed="false"');
+});

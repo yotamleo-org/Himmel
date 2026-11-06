@@ -256,7 +256,7 @@ export function searchWithPins(search, pins) {
 function windowOf(d, ui) {
   const n = d.versions.length, anchor = d.cur >= 0 ? d.cur : d.next >= 0 ? d.next : n - 1;
   const pinned = [...new Set((ui.pins || []).map((name) => d.versions.findIndex((v) => v.n === name)).filter((i) => i >= 0))].sort((x, y) => x - y);
-  if (pinned.length) return { idx: pinned.slice(0, MAX_VERSIONS), capped: pinned.length > MAX_VERSIONS, pinned };
+  if (pinned.length && !ui.showAll) return { idx: pinned.slice(0, MAX_VERSIONS), capped: pinned.length > MAX_VERSIONS, pinned }; // Show all lifts the pins' cap on the strip, so another version can be pinned
   const open = d.versions.map((v, i) => i).filter((i) => !(ui.hidePrev && d.versions[i].rel) && !(ui.hideFuture && i > anchor + 2));
   return { idx: ui.showAll ? open : open.filter((i) => Math.abs(i - anchor) <= 2), capped: false, pinned };
 }
