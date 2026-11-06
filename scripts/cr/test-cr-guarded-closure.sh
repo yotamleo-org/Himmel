@@ -113,7 +113,9 @@ edges() {
 # block-fork-sync-pr.sh names resync-fork.sh in its deny message, as the command to run instead.
 # suite-coverage.sh (run by impacted-suites.sh --check) only READS run-shell-tests.sh's SKIP_LIST and timeout tables as text; it never runs it.
 # merge-on-green.sh runs bug-origin-report.py only after a merge, from the anchor's bytes (HIMMEL_REPO), never a /pr-check run's branch.
+# pr-check-outside.sh runs ready-check.sh only in its --pr form, the no-checkout route for an outside PR (a "yes" run, never a "no" run): that route reviews the PR's diff and runs no file from the PR's branch.
 NOT_RUN="scripts/cr/install-cr-gate.sh -> scripts/hooks/check-cr-before-push.sh
+scripts/cr/pr-check-outside.sh -> scripts/handover/chief-kit/ready-check.sh
 scripts/lib/wire-statusline.sh -> marketplace/plugins/claude-hud/dist/index.js
 scripts/lib/usage-preflight.sh -> scripts/lanes/codex-usage-probe.ts
 scripts/lanes/bank-status-core.mjs -> scripts/lanes/codex-usage-probe.ts
