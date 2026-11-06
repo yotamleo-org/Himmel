@@ -428,19 +428,24 @@ if lines:
 # pin_hold_reason <eco> <key> <current> <latest_reviewed> — the reason of the
 # scripts/upstreams/pin-holds.json row for this pin, or nothing. A row applies
 # only while the pin is still at `current` AND upstream's newest is still
-# `latest_reviewed` (a leading v is ignored on both sides), as in pin-scan.py;
-# anything newer re-raises BEHIND. eco "plugin" = a marketplace pin by plugin
-# name (current/latest_reviewed are SHAs for a plain pin, versions for a fork
+# `latest_reviewed` (a leading v is ignored on both sides) and the row's optional
+# `eligible` time (UTC, YYYY-MM-DDTHH:MMZ) has not passed; anything newer, or a
+# passed time, re-raises BEHIND. An unreadable file, row or time prints nothing,
+# so it reads BEHIND, never HELD. DRIFT_NOW (same format) stands in for the
+# clock in tests. eco "plugin" = a marketplace pin by plugin name
+# (current/latest_reviewed are SHAs for a plain pin, versions for a fork
 # override); eco "upstream" = a scripts/upstreams.json row by its name.
 pin_hold_reason() {
-  python3 -c 'import json,os,sys
-p,e,k,c,l,vm=sys.argv[1:7]
+  python3 -c 'import datetime as d,json,os,sys
+p,e,k,c,l,vm,now=sys.argv[1:8]
 hs=json.load(open(p)).get("holds",[]) if p and os.path.exists(p) else []
 n=lambda v:str(v).lstrip("vV")
+t=lambda s:d.datetime.strptime(s,"%Y-%m-%dT%H:%MZ")
 h=next((h for h in hs if h.get("eco")==e and h.get("key")==k and n(h.get("current",""))==n(c) and n(h.get("latest_reviewed",""))==n(l)),None)
+if h is not None and h.get("eligible") and t(h["eligible"])<=(t(now) if now else d.datetime.now(d.timezone.utc).replace(tzinfo=None)):h=None
 r=h and h.get("release")
 print("" if h is None else (h.get("reason") or "-")+("" if not r else "; release: "+(vm if r=="vm-proof" else "%s (unrecognised condition, stays HELD)"%r)),end="")' \
-    "${DRIFT_PIN_HOLDS-$ROOT/scripts/upstreams/pin-holds.json}" "$@" "$VM_PROOF_RELEASE" 2>/dev/null
+    "${DRIFT_PIN_HOLDS-$ROOT/scripts/upstreams/pin-holds.json}" "$@" "$VM_PROOF_RELEASE" "${DRIFT_NOW-}" 2>/dev/null
 }
 
 if ! command -v gh >/dev/null 2>&1 || ! gh auth status >/dev/null 2>&1; then

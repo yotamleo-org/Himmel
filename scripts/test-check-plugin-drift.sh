@@ -1903,23 +1903,30 @@ chmod +x "$W18/bin/gh"
 H_OLD=aaaabbbbccccdddd000011112222333344445555
 H_REV=1111222233334444555566667777888899990000
 H_NEW=ffffeeeeddddcccc999988887777666655554444
-printf 'o/pin-held=%s\no/pin-moved=%s\no/pin-free=%s\no/ch-held=%s\no/ch-moved=%s\no/ch-free=%s\n' "$H_REV" "$H_NEW" "$H_REV" "$H_REV" "$H_NEW" "$H_REV" >"$W18/state/heads"
-printf 'o/fork-held=v1.0.0,v2.0.0\no/fork-moved=v1.0.0,v3.0.0\no/fork-free=v1.0.0,v2.0.0\n' >"$W18/state/tags"
+H_OLD2=9999888877776666555544443333222211110000
+printf 'o/pin-held=%s\no/pin-moved=%s\no/pin-free=%s\no/pin-shifted=%s\no/pin-eco=%s\no/ch-held=%s\no/ch-moved=%s\no/ch-free=%s\n' "$H_REV" "$H_NEW" "$H_REV" "$H_REV" "$H_REV" "$H_REV" "$H_NEW" "$H_REV" >"$W18/state/heads"
+printf 'o/fork-held=v1.0.0,v2.0.0\no/fork-moved=v1.0.0,v3.0.0\no/fork-free=v1.0.0,v2.0.0\no/fork-waiting=v1.0.0,v2.0.0\no/fork-expired=v1.0.0,v2.0.0\n' >"$W18/state/tags"
 cat >"$W18/m.json" <<JSON
 {"plugins":[
  {"name":"pin-held","source":{"source":"url","url":"https://github.com/o/pin-held.git","sha":"$H_OLD"}},
  {"name":"pin-moved","source":{"source":"url","url":"https://github.com/o/pin-moved.git","sha":"$H_OLD"}},
  {"name":"pin-free","source":{"source":"url","url":"https://github.com/o/pin-free.git","sha":"$H_OLD"}},
+ {"name":"pin-shifted","source":{"source":"url","url":"https://github.com/o/pin-shifted.git","sha":"$H_OLD2"}},
+ {"name":"pin-eco","source":{"source":"url","url":"https://github.com/o/pin-eco.git","sha":"$H_OLD"}},
  {"name":"fork-held","source":{"source":"url","url":"https://github.com/me/fork-held.git","ref":"v1.0.0"}},
  {"name":"fork-moved","source":{"source":"url","url":"https://github.com/me/fork-moved.git","ref":"v1.0.0"}},
- {"name":"fork-free","source":{"source":"url","url":"https://github.com/me/fork-free.git","ref":"v1.0.0"}}
+ {"name":"fork-free","source":{"source":"url","url":"https://github.com/me/fork-free.git","ref":"v1.0.0"}},
+ {"name":"fork-waiting","source":{"source":"url","url":"https://github.com/me/fork-waiting.git","ref":"v1.0.0"}},
+ {"name":"fork-expired","source":{"source":"url","url":"https://github.com/me/fork-expired.git","ref":"v1.0.0"}}
 ]}
 JSON
 cat >"$W18/u.json" <<'JSON'
 {
  "fork-held":{"upstream_repo":"o/fork-held","track":"release","synced_base":"v1.0.0"},
  "fork-moved":{"upstream_repo":"o/fork-moved","track":"release","synced_base":"v1.0.0"},
- "fork-free":{"upstream_repo":"o/fork-free","track":"release","synced_base":"v1.0.0"}
+ "fork-free":{"upstream_repo":"o/fork-free","track":"release","synced_base":"v1.0.0"},
+ "fork-waiting":{"upstream_repo":"o/fork-waiting","track":"release","synced_base":"v1.0.0"},
+ "fork-expired":{"upstream_repo":"o/fork-expired","track":"release","synced_base":"v1.0.0"}
 }
 JSON
 cat >"$W18/reg.json" <<JSON
@@ -1935,16 +1942,30 @@ cat >"$W18/holds.json" <<JSON
  {"eco":"plugin","key":"pin-moved","current":"$H_OLD","latest_reviewed":"$H_REV","reason":"fixture plain-pin hold"},
  {"eco":"plugin","key":"fork-held","current":"v1.0.0","latest_reviewed":"v2.0.0","reason":"fixture skill-fork hold"},
  {"eco":"plugin","key":"fork-moved","current":"v1.0.0","latest_reviewed":"v2.0.0","reason":"fixture skill-fork hold"},
+ {"eco":"plugin","key":"pin-shifted","current":"$H_OLD","latest_reviewed":"$H_REV","reason":"fixture plain-pin hold, pin moved since"},
+ {"eco":"upstream","key":"pin-eco","current":"$H_OLD","latest_reviewed":"$H_REV","reason":"fixture hold under the wrong eco"},
+ {"eco":"plugin","key":"fork-waiting","current":"v1.0.0","latest_reviewed":"v2.0.0","eligible":"2026-12-01T00:00Z","reason":"fixture timed hold, not yet eligible"},
+ {"eco":"plugin","key":"fork-expired","current":"v1.0.0","latest_reviewed":"v2.0.0","eligible":"2026-11-06T08:00Z","reason":"fixture timed hold, eligible time passed"},
  {"eco":"upstream","key":"ch-held","current":"$H_OLD","latest_reviewed":"$H_REV","reason":"fixture commit_head hold"},
  {"eco":"upstream","key":"ch-moved","current":"$H_OLD","latest_reviewed":"$H_REV","reason":"fixture commit_head hold"}
 ]}
 JSON
-out18="$(GHSTATE="$W18/state" PATH="$W18/bin:$PATH" DRIFT_PIN_HOLDS="$W18/holds.json" DRIFT_MJSON="$W18/m.json" DRIFT_UPSTREAMS="$W18/u.json" DRIFT_REGISTRY="$W18/reg.json" DRIFT_KNOWN_MARKETPLACES=/dev/null bash "$SCRIPT" 2>&1)"
-for held in pin-held fork-held ch-held; do
-  if grepq "$out18" "^  $held: HELD "; then ok "hold: $held with a matching pin-holds row -> HELD, not BEHIND"; else bad "$held not HELD; $(grep "$held" <<< "$out18")"; fi
+out18="$(DRIFT_NOW=2026-11-06T12:00Z GHSTATE="$W18/state" PATH="$W18/bin:$PATH" DRIFT_PIN_HOLDS="$W18/holds.json" DRIFT_MJSON="$W18/m.json" DRIFT_UPSTREAMS="$W18/u.json" DRIFT_REGISTRY="$W18/reg.json" DRIFT_KNOWN_MARKETPLACES=/dev/null bash "$SCRIPT" 2>&1)"
+for held in pin-held fork-held ch-held fork-waiting; do
+  if grepq "$out18" "^  $held: HELD "; then ok "hold: $held with a matching pin-holds row (eligible time not reached) -> HELD, not BEHIND"; else bad "$held not HELD; $(grep "$held" <<< "$out18")"; fi
 done
-for behind in pin-moved pin-free fork-moved fork-free ch-moved ch-free; do
-  if grepq "$out18" "^  $behind: BEHIND"; then ok "hold: $behind with no row or a stale row -> BEHIND"; else bad "$behind not BEHIND; $(grep "$behind" <<< "$out18")"; fi
+# BEHIND by mutation of one field of an otherwise matching row: the upstream
+# moved past latest_reviewed (pin-moved, fork-moved, ch-moved), OUR pin moved
+# off current (pin-shifted), the same key under another eco (pin-eco), the
+# eligible time passed (fork-expired), or no row at all (*-free).
+for behind in pin-moved pin-free pin-shifted pin-eco fork-moved fork-free fork-expired ch-moved ch-free; do
+  if grepq "$out18" "^  $behind: BEHIND"; then ok "hold: $behind with no row or a non-matching row -> BEHIND"; else bad "$behind not BEHIND; $(grep "$behind" <<< "$out18")"; fi
+done
+# A holds file that is not JSON must not hold anything: every row reads BEHIND.
+printf '{"holds": [ not json' >"$W18/holds-bad.json"
+out18b="$(DRIFT_NOW=2026-11-06T12:00Z GHSTATE="$W18/state" PATH="$W18/bin:$PATH" DRIFT_PIN_HOLDS="$W18/holds-bad.json" DRIFT_MJSON="$W18/m.json" DRIFT_UPSTREAMS="$W18/u.json" DRIFT_REGISTRY="$W18/reg.json" DRIFT_KNOWN_MARKETPLACES=/dev/null bash "$SCRIPT" 2>&1)"
+for row in pin-held fork-held ch-held fork-waiting; do
+  if grepq "$out18b" "^  $row: BEHIND" && ! grepq "$out18b" "^  $row: HELD"; then ok "hold: a corrupt holds file leaves $row BEHIND, never HELD"; else bad "$row not BEHIND under a corrupt holds file; $(grep "$row" <<< "$out18b")"; fi
 done
 # Only held rows: they must not count as drift.
 cat >"$W18/m.json" <<JSON
