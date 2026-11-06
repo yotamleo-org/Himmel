@@ -88,7 +88,7 @@ outside_pr_authorize() {
   [ -r "$ap" ] || return 1
   mid=$(jq -nRr --argjson pr "$pr" --arg h "$head" '
       [inputs | fromjson? | select(type == "object" and .pr == $pr and .head == $h and .stage == "review")]
-      | last | select(. != null) | (.message_id | tostring)' "$ap" 2>/dev/null) || return 1
+      | last | select(. != null and .message_id != null) | (.message_id | tostring)' "$ap" 2>/dev/null) || return 1
   [ -n "$mid" ] || return 1
   outside_contributor_allowed "$login" "$id" || outside_audit_passed "$pr" "$head" "$branch" || return 1
   echo "approval:$mid"

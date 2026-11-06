@@ -1159,6 +1159,11 @@ pr_run --pr 7 --head "$pr_base" --branch feat/outside-thing
 if [ "$pr_rc" -eq 7 ]; then ok "--pr with a head that is not the PR ref exits 7"; else bad "--pr head mismatch exit (got $pr_rc)"; fi
 pr_run --pr x --head "$pr_oid" --branch feat/outside-thing
 if [ "$pr_rc" -eq 2 ]; then ok "--pr with a non-numeric PR exits 2"; else bad "--pr non-numeric exit (got $pr_rc)"; fi
+n_before="$(pr_rounds)"; rs_before="$(rs_rows "$prrepo" | wc -l | tr -d ' ')"
+pr_run --pr 7 --head "$pr_oid" --branch some/other-branch
+if [ "$pr_rc" -eq 7 ]; then ok "--pr with a --branch that is not the PR's headRefName exits 7"; else bad "--pr wrong branch exit (got $pr_rc)"; fi
+assert_has "$pr_err" "headRefName" "--pr wrong branch: the refusal names headRefName"
+if [ ! -f "$CALL_LOG" ] && [ "$(pr_rounds)" = "$n_before" ] && [ "$(rs_rows "$prrepo" | wc -l | tr -d ' ')" = "$rs_before" ]; then ok "--pr wrong branch: no panel, no round, no row"; else bad "--pr wrong branch: the panel ran or state was written"; fi
 
 # --- no writes outside the mktemp fixture -----------------------------------
 # panel-first-pass.sh's only persistent writes are mktemp -t cr-panel-avail.*

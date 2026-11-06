@@ -77,7 +77,9 @@
 #       pin MISMATCH reported by critic-panel.sh, on the FIRST attempt or
 #       independently on the rtk retry; (c) the diff base cannot be fetched or
 #       resolved; (d) (--pr only) critic-panel.sh has no --pin-ref, refs/himmel/outside/<n>
-#       is not at --head, or the PR's base branch or merge base cannot be read. ABORT: nothing was reviewed, nothing
+#       is not at --head, --branch is not the PR's headRefName, or the PR's base branch
+#       or merge base cannot be read. A --pr round is NOT given back by an abort after it
+#       started, so a retry may spend a further round. ABORT: nothing was reviewed, nothing
 #       was recorded, and a round already started is given back
 #       (review-round.sh abort). Never degrades to claude-only - re-run
 #       /pr-check from step 1.
@@ -190,16 +192,24 @@ if [ -n "$PR" ]; then
     . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
     pr_gh=(gh)
     [ ! -f "$HIMMEL_ROOT/scripts/lib/gh-read.sh" ] || pr_gh=(bash "$HIMMEL_ROOT/scripts/lib/gh-read.sh")
-    db=""
+    db=""; pr_head_name=""; pr_names=""
     if [ -n "${_TIMEOUT_BIN:-}" ]; then
-        db="$("$_TIMEOUT_BIN" -k 5 20 "${pr_gh[@]}" pr view "$PR" --json baseRefName --jq .baseRefName 2>/dev/null)" || db=""   # swallow-ok: an empty name is refused on the next line (exit 7)
+        pr_names="$("$_TIMEOUT_BIN" -k 5 20 "${pr_gh[@]}" pr view "$PR" --json baseRefName,headRefName --jq '.baseRefName, .headRefName' 2>/dev/null)" || pr_names=""   # swallow-ok: empty names are refused below (exit 7)
+    fi
+    case "$pr_names" in
+        *$'\n'*) db="${pr_names%%$'\n'*}"; pr_head_name="${pr_names#*$'\n'}" ;;
+    esac
+    # The ledger rows are keyed on --branch, so it must be the branch the forge names for this PR.
+    if [ -n "$pr_head_name" ] && [ "$pr_head_name" != "$BRANCH" ]; then
+        echo "panel-first-pass ABORT - --branch '$BRANCH' is not PR #$PR's headRefName '$pr_head_name'. Nothing was reviewed and nothing was recorded." >&2
+        exit 7
     fi
     db_sha=""
     if [ -n "$db" ]; then
         db_sha="$(outside_pr_merge_base "$PR" "$db")" || db_sha=""   # swallow-ok: an empty merge base is refused on the next line (exit 7)
     fi
-    if [ -z "$db_sha" ]; then
-        echo "panel-first-pass ABORT - could not read PR #$PR's base branch or its merge base with refs/himmel/outside/$PR. Nothing was reviewed and nothing was recorded." >&2
+    if [ -z "$db_sha" ] || [ -z "$pr_head_name" ]; then
+        echo "panel-first-pass ABORT - could not read PR #$PR's base and head branch names, or its merge base with refs/himmel/outside/$PR. Nothing was reviewed and nothing was recorded." >&2
         exit 7
     fi
 else

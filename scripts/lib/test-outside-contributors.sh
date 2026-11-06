@@ -166,6 +166,8 @@ rm -f "$APPR"; approve 8 "$H" review 44
 check 'authz: an approval for another PR' "$(authz 7 "$H" 3)" '1:'
 rm -f "$APPR"; printf '{"pr":"7","head":"%s","stage":"review","message_id":1}\nnot json\n' "$H" > "$APPR"
 check 'authz: a string pr and a junk line never approve' "$(authz 7 "$H" 3)" '1:'
+rm -f "$APPR"; printf '{"pr":7,"head":"%s","stage":"review"}\n' "$H" > "$APPR"
+check 'authz: an approval row with no message_id never approves' "$(authz 7 "$H" 3)" '1:'
 rm -f "$APPR"; approve 7 "$H" ci 45
 check 'authz: T2.46 an approval with stage ci' "$(authz 7 "$H" 3)" '1:'
 rm -f "$APPR"; approve 7 "$H" "" 46
