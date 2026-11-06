@@ -61,7 +61,7 @@ const SECRETS_MANIFEST = require('./lib/secrets-manifest.json');
 const secretStoreLib = require('./lib/secret-store.js');
 const secretPromptLib = require('./lib/secret-prompt.js');
 // per-cadence wizard registry (pipeline/qmd/graphmap and the
-// rest, see the file's own $comment for why ggs-cadence.sh is excluded). The
+// rest. See the file's own $comment for why ggs-cadence.sh is excluded). The
 // wizard enumerates cadence UNITS from here, never a hardcoded list.
 const CADENCE_REGISTRY = require('./lib/cadence-registry.json').cadences;
 const RETIRED_CADENCE_IDS = ['codex-sweep', 'repo-sync'];
@@ -138,7 +138,7 @@ function provBefore(p, spec) {
     '--scope', spec.scope, '--class', spec.cls, ...(spec.row ? ['--row', spec.row] : [])]);
 }
 
-// Tools every himmel adopter needs before any question makes sense, mirrors
+// Tools every himmel adopter needs before any question makes sense. Mirrors
 // adopt.sh require_tools (bash/git/jq/python3) PLUS at least one JS package
 // manager (npm or bun). npm is the recommended install when both are absent.
 const HARD_GATE_TOOLS = ['bash', 'git', 'jq', 'python3'];
@@ -346,8 +346,8 @@ options:
 // pass below. Kept beside parseArgs (not inline in the function) so the
 // three tables stay visually paired: which options a subcommand allows,
 // what flag text to name in an error, and what "not passed" looks like for
-// each option (so passing the DEFAULT value explicitly is never flagged,
-// only a genuinely-set option outside the whitelist is).
+// each option (so passing the DEFAULT value explicitly is never flagged.
+// Only a genuinely-set option outside the whitelist is).
 const ALLOWED_OPTIONS = {
   install: ['fromProfile', 'defaultScope', 'scope', 'contribute', 'dryRun', 'lanes', 'withCodex', 'withHermes'],
   uninstall: ['dryRun', 'yes', 'purgeState'],
@@ -370,7 +370,7 @@ const ALLOWED_OPTIONS = {
   // subcommand, never a `status` mode (see the function's own header
   // comment for why: status's flags are a shipped, golden-tested contract).
   gaps: ['fromProfile', 'preset', 'json'],
-  // 'deps' itself is validated per-VERB, not from this table, see
+  // 'deps' itself is validated per-VERB, not from this table. See
   // DEPS_VERB_ALLOWED_OPTIONS below (CodeRabbit wanted `deps status
   // --with-models`/`deps ensure --json`/etc rejected, not silently accepted
   // the way a single shared set would). No entry needed here; the
@@ -381,7 +381,7 @@ const ALLOWED_OPTIONS = {
 // (keyed by args.depsVerb, not args.subcommand): status only reads json;
 // ensure only reads dryRun/yes; upgrade reads dryRun/yes/withModels. Same
 // table shape/lookup pattern as ALLOWED_OPTIONS, just keyed by verb for
-// this one subcommand, `deps status --with-models` or `deps ensure --json`
+// this one subcommand. `deps status --with-models` or `deps ensure --json`
 // now gets the SAME "not valid with" rejection every other subcommand's
 // mismatched flag already gets, instead of silently parsing fine and never
 // being consulted.
@@ -423,7 +423,7 @@ const AGUI_RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 
 // Parse the CLI args into a plain object. Unknown args are a hard error (exit
 // 2) so a typo doesn't silently fall through to a no-op install. A second
-// subcommand (even a repeat) is the same class of hard error, previously
+// subcommand (even a repeat) is the same class of hard error. Previously
 // `himmelctl install uninstall` silently ran uninstall (the later token won).
 function parseArgs(argv) {
   const args = {
@@ -447,7 +447,7 @@ function parseArgs(argv) {
     lanes: null,       // install: --lanes csv (null = ask, or take the default)
     withCodex: false,  // install: --with-codex (opt-in lane)
     withHermes: false, // install: --with-hermes (opt-in lane)
-    prune: false,      // ensure: --prune (opt-in, disable/unwire candidates require this)
+    prune: false,      // ensure: --prune (opt-in: disable/unwire candidates require this)
     noNetwork: false,  // ensure: --no-network (only manifest-declared local paths)
     preset: null,      // gaps: --preset <name> (null = default 'operator' reference)
     purgeState: false, // uninstall: --purge-state (also remove operator state; default keeps it)
@@ -798,7 +798,7 @@ function parseArgs(argv) {
     }
   }
   // per-subcommand option validation. Every flag above is parsed
-  // GLOBALLY (order-independent, a flag can appear before or after its
+  // GLOBALLY (order-independent: a flag can appear before or after its
   // subcommand token), but each subcommand only READS a specific subset of
   // them (see cmdInstall/cmdUninstall/cmdStatus/cmdEnsure's own args.*
   // reads). Before this, a misdirected combo like `status --profile core`
@@ -812,8 +812,8 @@ function parseArgs(argv) {
   // flags, unchanged.
   if (args.subcommand !== null) {
     // 'deps' validates against its VERB's whitelist (DEPS_VERB_ALLOWED_OPTIONS,
-    // keyed by args.depsVerb) instead of ALLOWED_OPTIONS[args.subcommand],
-    // see that table's own comment for why a single shared set isn't precise
+    // keyed by args.depsVerb) instead of ALLOWED_OPTIONS[args.subcommand].
+    // See that table's own comment for why a single shared set isn't precise
     // enough. Every other subcommand is unaffected.
     const isDeps = args.subcommand === 'deps';
     const allowed = isDeps ? (DEPS_VERB_ALLOWED_OPTIONS[args.depsVerb] || []) : (ALLOWED_OPTIONS[args.subcommand] || []);
@@ -824,7 +824,7 @@ function parseArgs(argv) {
         console.error(`himmelctl: ${OPTION_FLAGS[key]} is not valid with '${label}'`);
         console.error("Run 'himmelctl --help' for usage.");
         // Same exitCode-not-exit() pattern as the --profile validation
-        // above, see its own comment for why.
+        // above. See its own comment for why.
         process.exitCode = 2;
         return args;
       }
@@ -1010,8 +1010,8 @@ async function handleMissing(missing, args) {
 //   - profile     starter|luna|operator|custom (default starter), SEEDS the
 //                 defaults below; every question is still asked regardless of
 //                 which preset is picked (see PROFILE_PRESETS).
-//   - devOverlay  set ONLY via the --contribute CLI flag, never a question,
-//                 layers the contributor-dev setup.sh primitive on top of
+//   - devOverlay  set ONLY via the --contribute CLI flag, never a question.
+//                 Layers the contributor-dev setup.sh primitive on top of
 //                 whichever profile answers the operator gave (see
 //                 deriveOverlayCommand()/runPlan()).
 // raw `readline` only, zero npm deps. Question order:
@@ -1044,7 +1044,7 @@ async function handleMissing(missing, args) {
 // `whisperModel` seeds the whisper-model question below (bare
 // filename, per the BARE FILENAME contract documented at whisperDirPath()'s
 // neighbor comment ~L1930). Only `operator` diverges from the schema default
-// ('ggml-small.bin', same as lunaConfigLib's defaultConfig), the
+// ('ggml-small.bin', same as lunaConfigLib's defaultConfig). The
 // capture proved the maintainer machine actually runs large-v3-turbo, so the
 // operator preset seeds that instead of silently falling through to small.
 const PROFILE_PRESETS = {
@@ -1056,7 +1056,7 @@ const PROFILE_PRESETS = {
 
 // Per-option help text for every numbered-enum question in the wizard
 // (generalized from the profile-only PROFILE_HELP that
-// shipped in part A, see askNumberedEnum's helpMap param). One
+// shipped in part A. See askNumberedEnum's helpMap param). One
 // factual line per option, verified against what the code right below
 // actually does, never a claim the implementation doesn't back.
 const PROFILE_HELP = {
@@ -1308,7 +1308,7 @@ function buildAnswers(profile, devOverlay, scope, vaultMode, vaultPath, handover
     secretsWalk: secretsWalk,
     bridge: bridge,
     // `cadences` is a TOP-LEVEL optional section, same pattern
-    // as luna/secretsWalk/bridge (not nested under `luna`), a flow that
+    // as luna/secretsWalk/bridge (not nested under `luna`). A flow that
     // never asks it (vault=none) round-trips as genuinely absent, never a
     // fabricated {}.
     cadences: cadences,
@@ -1402,11 +1402,11 @@ async function askEnum(ask, prompt, opts, defaultVal) {
     const t = (ans || '').trim();
     if (t === '') return defaultVal;
     if (opts.indexOf(t) !== -1) return t;
-    // invalid, loop re-emits the prompt header so the re-prompt is visible
+    // invalid. Loop re-emits the prompt header so the re-prompt is visible
   }
 }
 
-// ask a NUMBERED enum question, options printed 1..n, the
+// ask a NUMBERED enum question. Options printed 1..n, the
 // recommended default clearly marked, Enter accepts it; the operator may
 // answer with the number OR the literal option word. Scoped to the install
 // wizard's own enum questions (profile, scope, vault, handover, pluginSet,
@@ -1422,7 +1422,7 @@ async function askEnum(ask, prompt, opts, defaultVal) {
 // literal-only again, so the three consent/PHI call sites (which still call
 // askEnum() directly, unchanged) can never be satisfied by a digit.
 //
-// `helpMap`: optional { option: 'one-line help' }, when
+// `helpMap`: optional { option: 'one-line help' }. When
 // given, every menu line gets a <help> suffix, same convention
 // askProfile() pioneered (PROFILE_HELP) and now generalized here so every
 // enum question in the wizard can carry per-option help without a
@@ -1439,7 +1439,7 @@ async function askNumberedEnum(ask, title, opts, defaultVal, helpMap) {
       const idx = Number(t) - 1;
       if (idx >= 0 && idx < opts.length) return opts[idx];
     }
-    // invalid, loop re-emits the prompt header so the re-prompt is visible
+    // invalid. Loop re-emits the prompt header so the re-prompt is visible
   }
 }
 
@@ -1523,12 +1523,12 @@ function isValidPhiVaultPathAnswer(v) {
   return typeof v === 'string' && v.trim() !== '' && phiVaultPathBadByte(v) === null && (v.charAt(0) === '~' || path.isAbsolute(v));
 }
 
-// ask the lane subset. Free-form CSV (not askEnum, the
+// ask the lane subset. Free-form CSV (not askEnum: the
 // answer is a SET, not one value), re-prompting on an invalid id the same way
 // askEnum re-emits its header. Empty accepts the default; 'none' selects
 // nothing.
 //
-// ALL_LANE_IDS is codex/hermes ONLY in v1, ollama
+// ALL_LANE_IDS is codex/hermes ONLY in v1. ollama
 // and copilot were dropped from V1_LANES entirely (they never appear in this
 // menu, and the wizard never probes them; see adopter-profile.js's own
 // comment on that table). The menu therefore reads exactly "codex | hermes |
@@ -1546,7 +1546,7 @@ async function askLanes(ask, defaultLanes) {
   // (options 1..n, recommended default marked), extended for a multi-select:
   // "none" and a comma-separated list of names both still work (unchanged
   // CLI/hermetic-test surface); a comma-separated list of the printed numbers
-  // is accepted too (translated to names below, BEFORE parseLaneList, the
+  // is accepted too (translated to names below, BEFORE parseLaneList. The
   // CLI --lanes flag and adopter-profile.js's own tests keep validating
   // names/'none' only, never bare digits).
   const menu = ids.map((id, i) => `  ${i + 1}) ${id}${defaultLanes.indexOf(id) !== -1 ? ' (recommended)' : ''} — ${adopterProfileLib.LANE_HELP[id]}`).join('\n');
@@ -1606,7 +1606,7 @@ function offeredCadenceRows(vaultMode, registry) {
 // per-cadence multi-select, replacing the old binary luna-
 // cadence question at the same position. Same numbered-menu conventions as
 // askLanes() above: numbers or names, comma-separated, 'none' = explicit
-// none, Enter accepts `defaultIds` (the profile-preset-seeded set, see
+// none, Enter accepts `defaultIds` (the profile-preset-seeded set. See
 // PROFILE_PRESETS' own comment). Returns `{ <id>: 'armed'|'off' }` for every
 // OFFERED row (asked-and-declined records an honest 'off', never a fabricated
 // answer). A row filtered out by offeredCadenceRows() above is simply absent
@@ -1802,11 +1802,11 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
   const alwaysOn = ao === 'yes';
 
   // 8 (installer v1 fix, spec deviation): cadences is PER-ROW
-  // gated, not whole-question vault gated, offeredCadenceRows() above
+  // gated, not whole-question vault gated. offeredCadenceRows() above
   // already filters each row by its own `requires` (vault vs env vs none), so
   // the question itself must sit outside the vaultMode!=='none' gate too, or
   // a vault=none machine could never reach a 'requires:none' row at all.
-  // Asked only when at least one row is actually offered, zero offered rows
+  // Asked only when at least one row is actually offered. Zero offered rows
   // = never asked, `cadences` stays genuinely undefined (round-8 discipline). `cadences` is a TOP-LEVEL answer
   // (buildAnswers below), same pattern as luna/secretsWalk/bridge, not
   // nested inside `luna`.
@@ -1832,7 +1832,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
     // RETASK stage1-build-6d2e an earlier fix (extended to
     // every declined UNIT, not just pipeline): declining a unit writes its
     // disposition as 'off' but does NOT, by itself, disarm anything already
-    // armed on the machine (deliberate, disarming is machine-state
+    // armed on the machine (deliberate: disarming is machine-state
     // mutation, and this design requires consent for that, same as bridge
     // persistence below). Ask ONE consent question, covering every declined
     // unit by name, ONLY when at least one was actually declined; a decline
@@ -1869,7 +1869,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
     // a trust/consent declaration keeps its explicit yes/no wording.
     const phiAns = await askEnum(ask, '? does this vault handle Protected Health Information (PHI)? [yes|no] (default: no)\n> ', ['yes', 'no'], 'no'); // step: privacy
 
-    // a SEPARATE declaration, the vault being installed above
+    // a SEPARATE declaration. The vault being installed above
     // may itself carry no PHI, but the operator can still keep an unrelated
     // personal/medical vault elsewhere on the same machine that every local
     // agent/cloud-backend guard must steer around. This is the wizard half of
@@ -1880,7 +1880,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
     // silently inert on a freshly-adopted machine. Consent-grade, askEnum()
     // literal-only, NOT askNumberedEnum: a bare digit must
     // not silently answer this either. Optional: 'no' (the default) or a
-    // blank path leaves phiVaultPath genuinely absent, "not asked" and
+    // blank path leaves phiVaultPath genuinely absent. "not asked" and
     // "asked but declined" both collapse to undefined here, and buildAnswers'
     // JSON.stringify drops it, so a declined/never-reached answer never
     // fabricates an empty path on disk (same discipline as phiDeclared next
@@ -1909,7 +1909,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
       }
       if (p.trim() !== '') {
         phiVaultPath = p;
-        // Offer, not an automatic write, creating `.salus` mutates a file
+        // Offer, not an automatic write. Creating `.salus` mutates a file
         // INSIDE the operator's own vault, so it gets its own explicit
         // consent, same class as the disarm-cadence/bridge-persistence
         // prompts above/below (consent wording, literal-only).
@@ -2044,7 +2044,7 @@ function writeCache(answers) {
 
 // Hard-error exit for a profile that fails schema validation: clear stderr
 // naming the bad field, exit 2 (the same posture parseArgs takes for a bad
-// arg line, the operator handed us an explicit input and it is wrong).
+// arg line: the operator handed us an explicit input and it is wrong).
 function profileError(p, msg) {
   console.error(`himmelctl: invalid profile ${p}: ${msg}`);
   process.exit(2);
@@ -2180,7 +2180,7 @@ function loadProfile(p, persist = false) {
   // lanes is asked UNIVERSALLY now, so a v2 profile's lanes:[]
   // must always carry lanesMeaningful=true. There is no role left to exempt.
   // the OLD lanes question was
-  // adopter-only, buildAnswers gave a contributor lanes:[] and
+  // adopter-only. buildAnswers gave a contributor lanes:[] and
   // applyLaneProfileStep short-circuited non-adopter, so the
   // legacy-placeholder refusal must still NOT fire for a legacy contributor
   // cache (its [] is a harmless placeholder from a role that never answered
@@ -2199,7 +2199,7 @@ function loadProfile(p, persist = false) {
     profileError(p, "legacy profile has lanes:[] without lanesMeaningful=true; the accepted spelling of an explicit empty allowlist is \"lanes\": [] with \"lanesMeaningful\": true ('--lanes none' is the CLI flag for this, not a profile value) — or re-run the installer and reconfirm lane selection");
   }
   // optional, like the luna/secretsWalk/bridge sections just
-  // below, a contributor cache (askQuestions() never asks alwaysOn for that
+  // below. A contributor cache (askQuestions() never asks alwaysOn for that
   // role, so buildAnswers() now leaves the key genuinely absent) must keep
   // validating rather than being exit-2'd over a field its role never
   // answers. When present it is still closed/strict, same as every other
@@ -2208,7 +2208,7 @@ function loadProfile(p, persist = false) {
     profileError(p, `field 'alwaysOn' must be a boolean when present (got ${JSON.stringify(obj.alwaysOn)})`);
   }
   // luna/secretsWalk/bridge are OPTIONAL WHOLE SECTIONS
-  // (unlike every other field above), a pre-Task-8 cached profile carries
+  // (unlike every other field above). A pre-Task-8 cached profile carries
   // none of them, and that must keep validating so this task never breaks
   // an existing --from-profile fixture elsewhere in the suite. When a
   // section IS present, it gets the same closed, loud-on-mismatch treatment
@@ -2219,7 +2219,7 @@ function loadProfile(p, persist = false) {
       profileError(p, "field 'luna' must be an object when present");
     }
     // fix: cadenceEnabled/phiDeclared are each individually
-    // optional WITHIN the (already-optional) luna section, a vault=none
+    // optional WITHIN the (already-optional) luna section. A vault=none
     // interactive run can now reach the disarm-consent question (a declined
     // 'requires:none' cadence row) without vault/PHI ever being asked, producing
     // a partial `luna = { disarmCadence }` with neither field. Same
@@ -2232,7 +2232,7 @@ function loadProfile(p, persist = false) {
       profileError(p, `field 'luna.phiDeclared' must be a boolean (got ${JSON.stringify(obj.luna.phiDeclared)})`);
     }
     // disarmCadence is itself
-    // optional WITHIN the (already-optional) luna section, a profile saved
+    // optional WITHIN the (already-optional) luna section. A profile saved
     // before this field existed still validates; absent means "not
     // answered", handled the same as an explicit decline downstream.
     if (obj.luna.disarmCadence !== undefined && typeof obj.luna.disarmCadence !== 'boolean') {
@@ -2240,24 +2240,24 @@ function loadProfile(p, persist = false) {
     }
     // phiVaultPath/createSalusMarker are each individually
     // optional WITHIN the (already-optional) luna section, same treatment as
-    // cadenceEnabled/phiDeclared/disarmCadence just above, absent means
+    // cadenceEnabled/phiDeclared/disarmCadence just above. Absent means
     // "never declared" (or declared with no marker consent), never coerced.
     if (obj.luna.phiVaultPath !== undefined) {
       if (typeof obj.luna.phiVaultPath !== 'string') {
         profileError(p, `field 'luna.phiVaultPath' must be a string (got ${JSON.stringify(obj.luna.phiVaultPath)})`);
       }
       // a blank/whitespace-only or RELATIVE value was
-      // silently accepted, path.join(phiVaultAbs, '.salus') on a relative
+      // silently accepted. path.join(phiVaultAbs, '.salus') on a relative
       // path resolves against the installer's cwd (marker lands somewhere
       // arbitrary), and a relative entry in phi-roots never matches the
       // guards' absolute-path comparison, so the guard goes silently inert
       // (the class this ticket exists to fix structurally).
       // Require non-blank + absolute (or '~'-prefixed; expandHome() resolves
-      // it later), isValidPhiVaultPathAnswer() is the SAME predicate the
+      // it later). isValidPhiVaultPathAnswer() is the SAME predicate the
       // interactive askPath() site above now enforces, so the two paths can
       // never drift apart again.
       // CR/LF/NUL are rejected too (phiVaultPathBadByte
-      // inside isValidPhiVaultPathAnswer()), a profile is arbitrary JSON, so
+      // inside isValidPhiVaultPathAnswer()). A profile is arbitrary JSON, so
       // "who would type a newline into a path" doesn't apply; profiles are
       // generated and copied between machines. Give that case its own
       // message (JSON.stringify below already escapes the byte as text, so
@@ -2275,7 +2275,7 @@ function loadProfile(p, persist = false) {
     }
     // createSalusMarker:true with no phiVaultPath is a
     // marker request that can never be applied (applyLunaSectionsStep only
-    // reaches the marker block when luna.phiVaultPath is truthy), reject it
+    // reaches the marker block when luna.phiVaultPath is truthy). Reject it
     // loudly here rather than silently accepting a request that will
     // silently no-op. createSalusMarker:false with no path is fine. That's
     // just "not asked", the ordinary case.
@@ -2349,10 +2349,10 @@ function loadProfile(p, persist = false) {
     }
   }
   // `cadences` is an OPTIONAL WHOLE SECTION, same pattern as
-  // luna/secretsWalk/bridge just above, absent means never asked (a
+  // luna/secretsWalk/bridge just above. Absent means never asked (a
   // older cache, or a vault=none flow that never unlocks the
   // question). When present, ids must be known CADENCE_REGISTRY ids and
-  // values strictly 'armed'|'off', a malformed/stale id must fail loud
+  // values strictly 'armed'|'off'. A malformed/stale id must fail loud
   // before any side effect, exactly like every other field here.
   const droppedRetired = [];
   if (obj.cadences !== undefined) {
@@ -2361,14 +2361,14 @@ function loadProfile(p, persist = false) {
     }
     // the wizard never writes `{}` (an
     // unasked question leaves the whole section absent, per the comment
-    // above), an empty object here can only be hand-authored, and
+    // above). An empty object here can only be hand-authored, and
     // resolveCadenceDispositions() treats ANY present `cadences` section as
     // authoritative, silently suppressing a legacy `luna.cadenceEnabled`
     // answer with no cadence actually named. Fail loud rather than let that
     // silent-suppression class through --from-profile.
     // the wizard never writes `{}` (an
     // unasked question leaves the whole section absent, per the comment
-    // above), an empty object here can only be hand-authored, and
+    // above). An empty object here can only be hand-authored, and
     // resolveCadenceDispositions() treats ANY present `cadences` section as
     // authoritative, silently suppressing a legacy `luna.cadenceEnabled`
     // answer with no cadence actually named. Fail loud rather than let that
@@ -2415,7 +2415,7 @@ function loadProfile(p, persist = false) {
     if (vmErrors.length > 0) profileError(p, `field 'vm' is invalid: ${vmErrors.join('; ')}`);
   }
   // migrate a validated legacy v1 (role-based) profile to the
-  // v2 profile/devOverlay shape IN MEMORY, every downstream reader
+  // v2 profile/devOverlay shape IN MEMORY. Every downstream reader
   // (deriveCommand, runPlan, buildSummary, ...) speaks profile/devOverlay
   // only now. role='contributor' -> devOverlay=true (the dev overlay is
   // layered on top, same effective behavior as before this ticket for a
@@ -2467,7 +2467,7 @@ function dropRetiredFromProfileFile(p, raw, ids) {
   }
 }
 
-// ── save-your-profile, offer to persist the answered profile
+// ── save-your-profile: offer to persist the answered profile
 // as a NAMED, reusable file `--from-profile` can replay on another machine,
 // at the end of a SUCCESSFUL, non-dry-run install/ensure. Landing dir mirrors
 // cacheDir()'s own seam (lib/helpers.js) and the WHISPER_DIR pattern
@@ -2495,7 +2495,7 @@ function isValidProfileName(name) {
 
 // A free-text prompt that behaves like askConfirmSafe (own header comment
 // above, ~line 2043) across the same three stdin shapes, except it resolves
-// '' (not 'n') both on a blank Enter AND on EOF, for a name/overwrite
+// '' (not 'n') both on a blank Enter AND on EOF. For a name/overwrite
 // prompt, "no answer" and "declined" are the same outcome, so a single empty
 // string covers both without a caller having to special-case EOF.
 function askLineSafe(prompt) {
@@ -2515,14 +2515,14 @@ function askLineSafe(prompt) {
 
 // Offer to save `answers` as a named profile. Called only when the caller has
 // already decided the run was a SUCCESS worth offering to save (cmdInstall:
-// runPlan returned 0 and !args.dryRun; cmdEnsure: converge completed), this
+// runPlan returned 0 and !args.dryRun; cmdEnsure: converge completed). This
 // function itself makes no exit-code decision and never throws: a declined
 // save (empty name, EOF, a declined overwrite) or a failed write WARNS and
 // returns, never changing the caller's result. serialize(answers)+'\n' is the
 // exact byte sequence writeCache() writes, so a saved profile round-trips
 // through --from-profile identically to the cache.
 async function offerSaveProfile(answers) {
-  // cleanup: do NOT pre-trim here, isValidProfileName below
+  // cleanup: do NOT pre-trim here. isValidProfileName below
   // does its own trim check (trimmed !== name rejects leading/trailing
   // whitespace) and is a trust-boundary validator other callers (e.g.
   // `gaps --preset`) also rely on; pre-trimming at this one call site made
@@ -2547,7 +2547,7 @@ async function offerSaveProfile(answers) {
   }
 
   // Existence check first, purely to decide whether the "overwrite?" prompt
-  // is needed, a create still needs no prompt, an existing name still gates
+  // is needed. A create still needs no prompt, an existing name still gates
   // on confirmation. The actual write below never opens `dest` directly, so
   // nothing here is a trust boundary by itself.
   let destExists = true;
@@ -2592,7 +2592,7 @@ async function offerSaveProfile(answers) {
   // to and including the write leaves a previously-saved profile intact.
   // renameSync then replaces the destination NAME atomically without
   // following a symlink, so there is no window between a check and a write
-  // for something to swap the path underneath, the symlink-swap race the
+  // for something to swap the path underneath. The symlink-swap race the
   // old lstat-then-open('w') shape had is closed, not just narrowed.
   const tmpDest = path.join(dir, `.${name}.install-profile.json.${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`);
   let tmpCreated = false;
@@ -2619,7 +2619,7 @@ async function offerSaveProfile(answers) {
 
 // ── T4/T5a/T4.5: derivation, vault profile, handover/pluginSet, shell-out ────
 //
-// ONE execution engine now, every install derives
+// ONE execution engine now. Every install derives
 //   bash scripts/adopt.sh --profile <core|all> --scope <project|user>
 //     [--luna-target <path>]
 // (profile from the T5a vault mapping below; adopt.sh is bash-native and
@@ -2637,7 +2637,7 @@ async function offerSaveProfile(answers) {
 // T5a (locked Q4): map a vault mode to an adopt.sh profile.
 //   none             → core
 //   default-template → all (adopt.sh itself scaffolds the vault from
-//                      templates/luna-second-brain, the wizard must NOT call
+//                      templates/luna-second-brain. The wizard must NOT call
 //                      luna-upgrade-all.sh or wire-luna-vault.sh here).
 //   existing         → handled BEFORE this is reached (see the runPlan gate
 //                       below), T5b, STAMPED-only (see isStampedLunaVault).
@@ -2649,7 +2649,7 @@ async function offerSaveProfile(answers) {
 // "luna-second-brain", rather than inventing a second heuristic. A pure fs
 // read (never a shell-out), so the UNSTAMPED refusal path in runPlan stays
 // truly zero-shell-outs. Any read/parse failure (missing file, bad JSON,
-// vault dir absent) resolves to "not stamped", refuse, don't guess.
+// vault dir absent) resolves to "not stamped". Refuse, don't guess.
 function isStampedLunaVault(vaultPath) {
   const stampFile = path.join(vaultPath, '.vault-template.json');
   let raw;
@@ -2667,7 +2667,7 @@ function isStampedLunaVault(vaultPath) {
 }
 
 // T5b: the settings.json wire-luna-vault.sh should target, mirroring
-// adopt.sh's wire_luna_vault_path() exactly, project scope -> this process's
+// adopt.sh's wire_luna_vault_path() exactly: project scope -> this process's
 // cwd (adopt.sh's own --target default is $PWD, so this is byte-for-byte the
 // same resolution), user scope -> ~/.claude/settings.json. Honors $HOME first
 // (tests fake it, same convention as expandHome), else os.homedir().
@@ -2706,7 +2706,7 @@ function settingsTargetsWritable(answers) {
 // T5b STAMPED plan (locked O1): wire env.LUNA_VAULT_PATH into the
 // scope-appropriate settings.json, THEN run luna-upgrade-all.sh apply against
 // the vault. Backup is built into apply itself (its own BACKUP\t<path> line,
-// surfaced verbatim by runSpawn's inherited stdio below, restore stays one
+// surfaced verbatim by runSpawn's inherited stdio below. Restore stays one
 // command away). The unstamped-override flag is never derived here: apply is
 // only ever reached once isStampedLunaVault has already confirmed the
 // luna-family stamp.
@@ -2831,8 +2831,8 @@ function projectTargetIsHimmelCheckout() {
 // status (read-only): scope stays project so the project-scope items are still
 // checked against the checkout; only the three settings-key items are read from
 // user scope (probes.setLegacyUserSettings).
-// ensure (writes, readOnly=false): resolved wholly as user scope in memory,
-// project scope would let it install into himmel's tracked settings file.
+// ensure (writes, readOnly=false): resolved wholly as user scope in memory.
+// Project scope would let it install into himmel's tracked settings file.
 function resolveLegacyProjectScope(answers, readOnly) {
   if (answers.scope === 'project' && projectTargetIsHimmelCheckout()) {
     if (readOnly) probesLib.setLegacyUserSettings(true);
@@ -2850,7 +2850,7 @@ function displayCommand(cmd) {
 // after a declined confirm or a failed shell-out (both return before this
 // is reached).
 //
-// the path is this running bin.js, absolute and quoted, the
+// the path is this running bin.js, absolute and quoted. The
 // operator pastes the line from whatever project the install summary was
 // printed for, where a clone-relative `scripts/himmelctl/bin.js` is not found.
 function printUninstallFooter() {
@@ -2947,10 +2947,10 @@ function registerHandoverState(p) {
 
 // Load the documented full-plugin-enable table from data, rather than keeping
 // a second inline copy that can drift. the wizard no longer
-// offers pluginSet=full (its enable step is gone, applyPluginStep() is now
+// offers pluginSet=full (its enable step is gone: applyPluginStep() is now
 // unconditionally a no-op), but this table's plugin NAMES are still the
 // canonical vocabulary the `config set hooks.plugin.<name>` toggle validates
-// against (hookPluginNames() below), that command is independent of the
+// against (hookPluginNames() below). That command is independent of the
 // wizard's pluginSet question, so this loader stays.
 let fullPluginEnableCache = null;
 function fullPluginEnable() {
@@ -2964,7 +2964,7 @@ function fullPluginEnable() {
 
 // A confirm that behaves safely across the three ways runPlan reaches it:
 //   - a real interactive TTY: waits for a real answer; a blank Enter (an
-//     explicit 'line' with no text) resolves '', the caller applies its own
+//     explicit 'line' with no text) resolves ''. The caller applies its own
 //     default (most prompts are [Y/n], proceed; uninstall is [y/N], decline).
 //   - the tail of an interactive session whose stdin already ran out (e.g.
 //     the T2 question engine hit EOF mid-flow under a forced
@@ -3009,12 +3009,12 @@ function previewHandoverAndPlugins(answers) {
 //
 // Shared plumbing for the three new adopter-wizard sections (design §3.4,
 // A9/A10/A14/A15/A17). Config persistence goes through lib/luna-config.js
-// (a CLOSED schema, every field written below already exists in its
+// (a CLOSED schema: every field written below already exists in its
 // SCHEMA/defaultConfig()); cadence emission goes through lib/cadence-emit.js
-// (a pure config->CLI-flag mapping, it never talks to schtasks/cron
+// (a pure config->CLI-flag mapping: it never talks to schtasks/cron
 // itself); the three previously-unreachable bridge-only probes
 // (cmd:whisper_ready, cmd:python_interpreter, distinct-tokens) are dispatched
-// via probes.js's runProbe() with a SYNTHESIZED descriptor, no
+// via probes.js's runProbe() with a SYNTHESIZED descriptor. No
 // scripts/install/manifest.json item names them (that table belongs to a
 // sibling task), and A17 puts them inside the OPTIONAL bridge section
 // specifically so a cadence-only install never warns about voice tooling.
@@ -3033,7 +3033,7 @@ function previewHandoverAndPlugins(answers) {
 // ignoring ctx.targetPath entirely. The bridge env file is conventionally
 // ALSO named `.env`, so handing its bare basename ('.env') as the `envFile`/
 // `envFileA` value collided with that special case and silently resolved to
-// the wrong file (repoRoot/.env) regardless of ctx.targetPath, in
+// the wrong file (repoRoot/.env) regardless of ctx.targetPath. In
 // distinct-tokens this made A and B the SAME file (a vacuous always-pass);
 // in cmd:telegram_getme it silently probed the wrong .env entirely. `file`
 // below is prefixed with `./` (any non-'.env' string bypasses the special
@@ -3049,13 +3049,13 @@ function previewHandoverAndPlugins(answers) {
 // .env")`) and probes.js's own resolveBridgeEnvFilePath() (used by
 // cmd:telegram_getme/telegram-access/bridge-health) already honors it ahead
 // of bridge.envPath. distinct-tokens has no such awareness built into
-// probes.js, it just resolves whatever envFileA/envFileB strings it's
+// probes.js. It just resolves whatever envFileA/envFileB strings it's
 // given, so the SAME three-tier precedence (process-env override >
 // configured value > hardcoded default) has to be applied on THIS side too,
 // here in the one shared helper, rather than invented a second way for one
 // call site. `runBridgeReadinessProbes`'s distinct-tokens call gets this via
 // this function; probeOneSecret's cmd:telegram_getme call gets it too (a
-// harmless no-op agreement, probes.js's own TELEGRAM_ENV check already
+// harmless no-op agreement. probes.js's own TELEGRAM_ENV check already
 // wins there regardless of what `file` says).
 //
 // `(bridge && bridge.envPath) || ''` skipped straight
@@ -3094,7 +3094,7 @@ function envOverrideOrConfigured(envKey, configuredValue) {
 // shapes: `bridge.whisper.cli` is stored as a full path already (matches
 // probeWhisperReady's own `configuredCli`, used as-is), while
 // `bridge.whisper.model` is stored as a BARE FILENAME (the schema default
-// is literally `ggml-small.bin`), probeWhisperReady's own `configuredModel`
+// is literally `ggml-small.bin`). probeWhisperReady's own `configuredModel`
 // joins it with the whisper dir before comparing
 // (`path.join(dir, whisperConfig.model)`). Handing the bare filename
 // straight through as WHISPER_MODEL skipped that join, so a correctly-
@@ -3102,7 +3102,7 @@ function envOverrideOrConfigured(envKey, configuredValue) {
 // ~/.himmel/whisper and read absent, which then blocked bridge persistence
 // entirely via the round-1 [codex-2] readiness gate. `cli` has no such bug
 // (verified: both this file and probes.js already treat it as a full path,
-// never joined), only `model` needs the join, and it needs it applied
+// never joined). Only `model` needs the join, and it needs it applied
 // BEFORE the value is handed over as an env override, since WHISPER_MODEL
 // itself carries no "join with dir" semantics on the reading side.
 // ONE shared helper, both call sites (runBridgeReadinessProbes below AND
@@ -3209,7 +3209,7 @@ function normalizePathForCompare(p) {
 // a THROWN exception used to be
 // folded into 'unconfigured' too, but 'unconfigured' means "the adopter
 // has not set this up", and telling someone their probe threw an exception
-// by saying "go configure this" (when it may already BE configured, we
+// by saying "go configure this" (when it may already BE configured: we
 // never got far enough to check) is exactly the conflation this ticket
 // already ruled against for the ok/skipped-vs-failed distinction elsewhere.
 // A thrown exception gets its OWN status ('error'), naming the failure, so
@@ -3242,11 +3242,11 @@ function probeOneSecret(entry, bridge) {
     }
     // RETASK stage1-build-6d2e: 'luna-sources' entries are actively probed
     // too, via each entry's own `sources` field (the manifest ids that
-    // credential unlocks, see secrets-manifest.json). Reuses
+    // credential unlocks. See secrets-manifest.json). Reuses
     // probesLib.runProbe's existing 'luna-sources' aggregator (the SAME
     // fetch-health.py `--probe <source>` invocation manifest.json's own
-    // luna-sources item drives) rather than re-implementing the spawn,
-    // that aggregator already tells "adopter never configured this"
+    // luna-sources item drives) rather than re-implementing the spawn.
+    // That aggregator already tells "adopter never configured this"
     // (actual:'absent', A15's skippable-unconfigured case) apart from
     // "configured but the probe itself failed" (actual:'degraded', whose
     // detail already carries fetch-health.py's own reason,
@@ -3332,7 +3332,7 @@ async function collectSecrets(ask, answers) {
 // can never disagree on the count. `answers` drives
 // adopterProfileLib.resolveActiveFeatures(); see that function's own header
 // for its never-asked/fail-open contract (a fail-open `null` scopes nothing
-// out here either, every secret stays in `scoped`).
+// out here either: every secret stays in `scoped`).
 function scopeSecretsByFeature(answers) {
   const configNames = new Set(require(path.join(__dirname, 'lib', SECRETS_MANIFEST.configKeys)).keys.filter(r => r.class === 'config' && !r.envOnly).map(r => r.name));
   const secrets = SECRETS_MANIFEST.secrets.filter(entry => !configNames.has(entry.name));
@@ -3360,7 +3360,7 @@ function scopedOutLine(skipped) {
 // NEVER harvests the credential itself) then immediately probe it. Returns
 // the per-secret result rows buildSummary folds into skipped/manual.
 // walks only the secrets whose feature the recorded selections
-// (vault/cadences/bridge/lanes) actually cover, an unselected feature's
+// (vault/cadences/bridge/lanes) actually cover. An unselected feature's
 // secrets are skipped, with one honest line naming how many and why.
 function runSecretsWalk(bridge, answers) {
   const results = [];
@@ -3373,7 +3373,7 @@ function runSecretsWalk(bridge, answers) {
   // EXTERNAL health probe (fetch-health.py --probe <source>) twice per walk
   // for zero new information, wasteful against a quota-limited service
   // (firecrawl). Memoized per source id, scoped to this ONE walk only (not a
-  // persistent cache, cleared every call), the second credential naming an
+  // persistent cache, cleared every call). The second credential naming an
   // already-probed source reuses that result. Verdicts/wording are
   // unaffected: every entry still gets its own printed line and its own row
   // in `results`, including the paired-credential wording that names the
@@ -3413,7 +3413,7 @@ function runSecretsWalk(bridge, answers) {
 // are shared by the dry-run preview and the real apply step so the two can
 // never drift on what "supplied" means.
 // fix: keyed on `phiDeclared` specifically (not mere presence of
-// `luna`), the cadences question now moves off the vault gate, so a
+// `luna`). The cadences question now moves off the vault gate, so a
 // vault=none run that still asks cadences (a 'requires:none' row) can build a
 // partial `luna = { disarmCadence }` with NO phiDeclared field (PHI was never
 // asked). Checking bare `luna !== undefined` there would wrongly read as
@@ -3437,12 +3437,12 @@ function bridgeSectionSupplied(answers) {
 // existing persisted config->flag mapping (~/.himmel/config.json's
 // luna.cadence.*, untouched by this ticket, see luna-config.js SCHEMA).
 // qmd/graphmap have NO persisted per-adopter schedule surface
-// (explicitly NOT IN SCOPE for), arm them with the script's own
+// (explicitly NOT IN SCOPE for). Arm them with the script's own
 // all-default invocation: verified in-tree against each script's own
 // usage()/cmd_arm() that every flag is genuinely optional with a sane
 // script-side default (qmd-cadence.sh: --time/--hourly/--ship-to all
 // optional; graphmap-cadence.sh: --luna-time/--himmel-time/--vault all
-// optional), none of these registry units needed a guessed schedule, so
+// optional). None of these registry units needed a guessed schedule, so
 // none is preview-only. graphmap-cadence.sh accepts the same --vault flag
 // pipeline does; qmd takes none.
 function cadenceArmFlags(id, { doc, vaultPath }) {
@@ -3524,7 +3524,7 @@ function lunaConfigUnknownKeysWarning(unknown) {
 // one line per field a pre-schema config gained. `filled` is what
 // luna-config.js added from the defaults; a value the wizard then set from this
 // run's own answer says so instead of claiming the default.
-// `supplied` is the set of dotted paths the wizard wrote, whether it answered
+// `supplied` is the set of dotted paths the wizard wrote. Whether it answered
 // is tracked, not inferred from the value (an answer equal to the default is
 // still an answer).
 function lunaConfigMigrationLines(filled, doc, supplied) {
@@ -3536,7 +3536,7 @@ function lunaConfigMigrationLines(filled, doc, supplied) {
 }
 
 // phi-roots location, mirroring graph-refresh.sh:75/refresh-
-// graph-map.sh's own $HOME/.config/claude-glm, CLAUDE_GLM_CONFIG_DIR
+// graph-map.sh's own $HOME/.config/claude-glm. CLAUDE_GLM_CONFIG_DIR
 // overrides (graph-refresh.sh honors it; refresh-graph-map.sh hardcodes
 // $HOME instead, a PRE-EXISTING quirk of that consumer, not something this
 // ticket touches). $HOME first, then os.homedir(), same convention as
@@ -3548,17 +3548,17 @@ function phiRootsPath() {
 }
 
 // Merge `root` (an absolute path) into the phi-roots list file: append-if-
-// absent, LF-only (class, graph-refresh.sh/refresh-graph-
+// absent, LF-only (class: graph-refresh.sh/refresh-graph-
 // map.sh's own consumers read this line-wise, including on this Windows
 // host). MERGE RULE: never truncate/rewrite entries an operator or another
-// tool put there, an existing file is read first and every line preserved,
+// tool put there. An existing file is read first and every line preserved,
 // only a genuinely new (not-already-present) root is appended. An existing
 // CRLF-saved file is read tolerantly (both readers already strip a trailing
 // \r themselves, graph-refresh.sh:228/refresh-graph-map.sh:228's own
 // `%$'\r'`, so this rewrite normalizing to bare LF changes nothing they
 // read; the split below already drops that \r before either side of the
 // comparison sees a line). BOTH sides of the comparison get the SAME
-// normalization, see the dedupe comment below for the rule and why it must
+// normalization. See the dedupe comment below for the rule and why it must
 // be symmetric.
 function mergePhiRoot(root) {
   const file = phiRootsPath();
@@ -3577,7 +3577,7 @@ function mergePhiRoot(root) {
   // path, and the CRLF-tolerant split above already strips it before this
   // function ever sees the line. Stripping trailing separators must not
   // collapse a line to '' either (a lone "/" or a drive root like "C:\"
-  // would then spuriously match a blank line), keep the original whenever
+  // would then spuriously match a blank line). Keep the original whenever
   // stripping would empty it out.
   const normPath = (s) => {
     const stripped = s.replace(/[\\/]+$/, '');
@@ -3588,7 +3588,7 @@ function mergePhiRoot(root) {
     lines = fs.readFileSync(file, 'utf8').split(/\r\n|\r|\n/);
     if (lines.length && lines[lines.length - 1] === '') lines.pop();
   } catch (e) {
-    // only ENOENT means "no file yet, start empty", any
+    // only ENOENT means "no file yet, start empty". Any
     // other read failure (EACCES/EISDIR/EIO/a transient lock) must NOT fall
     // through to the rewrite below, which would treat "couldn't read it" as
     // "it's empty" and discard every already-recorded PHI root. Throw so the
@@ -3601,8 +3601,8 @@ function mergePhiRoot(root) {
   const already = lines.some((l) => normPath(l) === normPath(root));
   if (already) {
     // nothing to add means the file's
-    // content would come out byte-identical, so return before any write,
-    // a tmp+rename for a no-op replay was pointless I/O, needlessly bumped
+    // content would come out byte-identical, so return before any write.
+    // A tmp+rename for a no-op replay was pointless I/O, needlessly bumped
     // the file's metadata, and could fail outright against an otherwise
     // perfectly readable read-only phi-roots even though there was nothing
     // to do.
@@ -3619,7 +3619,7 @@ function mergePhiRoot(root) {
   // means this is the first declaration, nothing to preserve) and
   // re-apply it to tmp before the rename carries it onto `file`.
   // Best-effort on Windows only: chmodSync there only maps to the
-  // read-only attribute from the POSIX write bits, it does not restore
+  // read-only attribute from the POSIX write bits. It does not restore
   // Windows ACLs, and there is no mechanism here that does.
   let mode = null;
   try {
@@ -3641,7 +3641,7 @@ function mergePhiRoot(root) {
   // ponytail: last rename wins under concurrent writers, upgrade path: take a lock around the phi-roots read-modify-write.
   //
   // create tmp owner-only (mode 0o600) from
-  // the very first write, not via a chmod afterward, a default-mode create
+  // the very first write, not via a chmod afterward. A default-mode create
   // followed by a later chmod leaves the sensitive list briefly
   // world/group-readable under a permissive umask. When `file` already
   // existed its mode is re-applied over this default right below, same as
@@ -3652,7 +3652,7 @@ function mergePhiRoot(root) {
   try {
     fs.writeFileSync(tmp, lines.join('\n') + '\n', { mode: 0o600 });
     // If this throws, the catch below discards tmp and the whole merge
-    // fails loudly, never rename a wider-than-original file into place.
+    // fails loudly. Never rename a wider-than-original file into place.
     if (mode !== null) fs.chmodSync(tmp, mode);
     fs.renameSync(tmp, file);
   } catch (e) {
@@ -3665,7 +3665,7 @@ function mergePhiRoot(root) {
 }
 
 // A17 (RETASK stage1-build-6d2e [codex-2]): "a failed readiness probe blocks
-// ONLY bridge arming" means exactly that, installSystemdUnit's own
+// ONLY bridge arming" means exactly that. installSystemdUnit's own
 // `systemctl --user enable --now` (and the Windows scheduled-task
 // equivalent) IS arming, so it must not run while any of the three probes
 // reads anything other than 'present'.
@@ -3698,15 +3698,15 @@ function attemptBridgePersistence({ dryRun }) {
     if (linger.ok) {
       return { ok: true, actions: unit.actions.concat(linger.actions), detail: `${unit.detail}; ${linger.detail}` };
     }
-    // unit.ok is true here, the
+    // unit.ok is true here. The
     // unit IS installed and running (enable --now already happened inside
-    // installSystemdUnit), only linger failed. Do NOT attempt an automatic
+    // installSystemdUnit). Only linger failed. Do NOT attempt an automatic
     // rollback (unwinding machine state on a partial failure is its own
     // risk; this design's posture is honest reporting over clever
     // recovery). `partial:true` lets buildSummary say plainly what IS true
     // (unit running) and what is NOT (linger, so it stops at logout),
     // rather than folding this into the same "NOT installed" wording a
-    // total failure gets, that would be false for the half that worked.
+    // total failure gets. That would be false for the half that worked.
     return {
       ok: false,
       partial: true,
@@ -3735,7 +3735,7 @@ function previewLunaSections(answers) {
       doc = cfg.doc;
     } catch (e) {
       // applyLunaSectionsStep refuses ALL cadence/secrets/bridge
-      // work on a load failure (see its own early return), manufacturing a
+      // work on a load failure (see its own early return). Manufacturing a
       // default document here to keep planning against previewed actions
       // the apply step will never perform, so the preview must report the
       // same refusal instead and stop, exactly like the apply path does.
@@ -3756,7 +3756,7 @@ function previewLunaSections(answers) {
     if (lunaSupplied) {
       console.log(`DRY: luna.phi.declared -> ${Boolean(luna.phiDeclared)} (~/.himmel/config.json)`);
       // materializing the guard inputs is its own preview line,
-      // independent of phi.declared's own true/false, the phi-roots entry
+      // independent of phi.declared's own true/false. The phi-roots entry
       // and the .salus offer only exist when a vault path was actually
       // declared (phiVaultAns==='yes' + a non-blank path in askQuestions()).
       if (luna.phiVaultPath) {
@@ -3770,7 +3770,7 @@ function previewLunaSections(answers) {
       console.log('DRY: profile carries no luna section — luna.phi.declared would be left untouched on disk');
     }
     // per-cadence dispositions replace the old single
-    // lunaSupplied+cadenceEnabled gate, resolveCadenceDispositions() covers
+    // lunaSupplied+cadenceEnabled gate. resolveCadenceDispositions() covers
     // both a fresh `cadences` section (authoritative) and a legacy profile
     // that only ever carried `luna.cadenceEnabled` (derives pipeline only).
     if (answers.vm !== undefined && applyVmAnswer(JSON.parse(JSON.stringify(doc)), answers.vm)) {
@@ -3825,7 +3825,7 @@ function previewLunaSections(answers) {
 // The real apply step, called AFTER the core install succeeds (same
 // positioning as applyPluginStep), non-fatal: a failure here WARNs and the
 // install still completes. Returns { rc, cadenceArm, secretsWalkResults,
-// bridgeProbes, bridgePersistence }, rc is OR'd into the overall exit code
+// bridgeProbes, bridgePersistence }. rc is OR'd into the overall exit code
 // the same way pluginResult.rc already is, never on its own aborting
 // anything upstream (this function runs after adopt.sh/setup.sh already
 // exited 0).
@@ -3846,7 +3846,7 @@ function applyLunaSectionsStep(answers) {
     console.error(lunaConfigLoadFailureWarning(e));
     result.rc = 1;
     // this early return means `result.configSaveOk` is never set at
-    // all (the save step below never runs), buildSummary's own comment
+    // all (the save step below never runs). buildSummary's own comment
     // treats undefined configSaveOk as "not gated" (true), which used to let
     // the bridge-config claim in `installed:` survive a load failure it
     // never actually persisted. `configLoadFailed` is the same signal
@@ -3873,7 +3873,7 @@ function applyLunaSectionsStep(answers) {
     doc.luna.vaultPath = expandHome(answers.vault.path);
     supplied.add('luna.vaultPath');
   }
-  // [codex-1] only write a field the profile ACTUALLY supplied, an absent
+  // [codex-1] only write a field the profile ACTUALLY supplied. An absent
   // section/answer is left exactly as loaded, never coerced to
   // Boolean(undefined).
   if (lunaSupplied) {
@@ -3883,7 +3883,7 @@ function applyLunaSectionsStep(answers) {
     // vault path implies. Independent of phi.declared above (a SEPARATE
     // vault from the one being installed) and of configSaveOk below (these
     // two files are not tracked inside ~/.himmel/config.json at all, so a
-    // save() failure there creates no drift risk for them, see
+    // save() failure there creates no drift risk for them. See
     // buildAnswers' round-8 comment for the class of bug that reasoning
     // guards against elsewhere). Only runs when a path was actually
     // declared; "not asked"/"declined" both leave phiVaultPath undefined
@@ -3896,7 +3896,7 @@ function applyLunaSectionsStep(answers) {
       } catch (e) {
         // mergePhiRoot now throws instead of silently
         // treating a genuine read failure (EACCES/EISDIR/a lock) as "empty
-        // file", a fall-through there would have rewritten phi-roots and
+        // file". A fall-through there would have rewritten phi-roots and
         // discarded every already-recorded root. Surface it loudly (rc=1,
         // surfaced via the pluginResult.rc||lunaResult.rc caller return) and
         // skip the marker block below. We don't know whether this root
@@ -3939,10 +3939,10 @@ function applyLunaSectionsStep(answers) {
             }
           } else {
             // Design constraint: a not-yet-created vault is
-            // not a reason to drop the declaration, phi-roots above is
+            // not a reason to drop the declaration. phi-roots above is
             // written regardless; only the marker (which requires the
             // directory to exist) is deferred, reported honestly rather than
-            // silently skipped. 2: this stays rc=0 deliberately, it
+            // silently skipped. 2: this stays rc=0 deliberately. It
             // is NOT a failure to create something that was never attempted
             // (existing PV5 test pins rc=0 here); only a genuine creation
             // error in the branch above sets result.rc = 1.
@@ -3972,7 +3972,7 @@ function applyLunaSectionsStep(answers) {
     supplied.add('bridge.enabled');
     if (bridge.enabled) {
       // Explicit acceptance (task brief): bridge.envPath/whisper.{cli,model}
-      // are otherwise-inert schema fields, write the operator's actual
+      // are otherwise-inert schema fields. Write the operator's actual
       // chosen/defaulted values so the round-trip is real, not just defined.
       doc.bridge.envPath = bridge.envPath;
       doc.bridge.whisper.cli = bridge.whisperCli || null;
@@ -3983,26 +3983,26 @@ function applyLunaSectionsStep(answers) {
     console.log('himmelctl: profile carries no bridge section — bridge.* left untouched on disk');
   }
   // the vm answer is written only when it changes what the
-  // resolver would read, a declined/unchanged answer (and local over an
+  // resolver would read. A declined/unchanged answer (and local over an
   // absent vm) leaves the file as it is.
   const vmChanged = answers.vm !== undefined && applyVmAnswer(doc, answers.vm);
   if (vmChanged) supplied.add('vm.mode');
 
   // a save failure must stop
   // every SUBSEQUENT machine-state mutation (cadence arm/disarm, bridge
-  // persistence install), otherwise the machine ends up in a state the
+  // persistence install). Otherwise the machine ends up in a state the
   // config document never recorded, the exact drift S1/S6 exist to detect.
   // Pure REPORTING (secrets walk, bridge readiness probes) still runs below:
   // neither mutates anything, and the operator still deserves the read-only
   // information even when the write failed.
   //
   // `docChanged` gates the write
-  // itself, a legacy profile (nothing supplied) or an unchanged replay
+  // itself. A legacy profile (nothing supplied) or an unchanged replay
   // leaves the file untouched (no rewrite, no mtime bump, and critically no
   // CREATE when it didn't already exist), matching the "left untouched on
   // disk" lines just printed above. `configSaveOk` stays true for a skipped-
   // because-unchanged write: nothing failed, there is simply nothing to
-  // record that the on-disk document doesn't already say, downstream steps
+  // record that the on-disk document doesn't already say. Downstream steps
   // proceed exactly as if the (unnecessary) save had succeeded.
   // a file that lacked a required field is rewritten (backed up
   // first, by save()) even when this run supplied nothing; once written it is
@@ -4052,7 +4052,7 @@ function applyLunaSectionsStep(answers) {
           const cmd = { argv: argv };
           const armRc = runSpawn(cmd);
           result.cadenceResults = result.cadenceResults || {};
-          // rc 3 is the script's own dedup refusal, the unit is
+          // rc 3 is the script's own dedup refusal. The unit is
           // ALREADY armed, which is the converged state install wanted. Never
           // pass --force here (that would re-arm/re-time the operator's
           // existing crontab); read rc 3 as already-converged, not a failure.
@@ -4111,7 +4111,7 @@ function applyLunaSectionsStep(answers) {
       // (still-manual) into a nonzero exit would make "voice tooling isn't
       // installed yet" read as an install FAILURE. An actual attempt that
       // comes back ok:false (the installer ran and failed) is a real
-      // failure and keeps rc=1, `skipped:true` is what tells the two apart,
+      // failure and keeps rc=1. `skipped:true` is what tells the two apart,
       // both in this result and in buildSummary's rendered text.
       if (!configSaveOk) {
         result.bridgePersistence = {
@@ -4123,8 +4123,8 @@ function applyLunaSectionsStep(answers) {
       } else if (bridgeProbesHealthy(result.bridgeProbes)) {
         // attemptBridgePersistence's own
         // primitives are contracted to return {ok,actions,detail} rather
-        // than throw, but this is a machine-state MUTATION, not a read,
-        // an unexpected throw here must never crash the rest of the apply
+        // than throw, but this is a machine-state MUTATION, not a read.
+        // An unexpected throw here must never crash the rest of the apply
         // step (or the "declared but never ran"/exception-mid-step class
         // this whole retask thread is about resurfaces one layer up).
         try {
@@ -4150,8 +4150,8 @@ function applyLunaSectionsStep(answers) {
 // the epilogue, lane probe report, the always-on hardening
 // CHECKLIST, and the final honest summary. Printed at the END of EVERY run
 // now (the old role==='adopter' gate on
-// printAdopterEpilogue below is gone), dry-run included: every part of it is a READ,
-// it mutates nothing, so it is equally truthful before and after the install
+// printAdopterEpilogue below is gone), dry-run included: every part of it is a READ.
+// It mutates nothing, so it is equally truthful before and after the install
 // shell-out, and a --dry-run preview is worth exactly as much. (An earlier
 // version claimed "probeLane never spawns", which is false:
 // buildCtx shells out to `git`, and the manifest-backed readiness probes may
@@ -4160,11 +4160,11 @@ function applyLunaSectionsStep(answers) {
 //
 // `dryRun` is threaded in (not re-derived from args) so the summary's
 // installed-vs-planned bucket can never drift from what the caller actually
-// did, the summary used to claim `installed:` under
+// did. The summary used to claim `installed:` under
 // --dry-run, when nothing had run at all.
 // `pluginResult` is the {rc, failed, total} applyPluginStep returned, or null
 // when the step never ran (dry-run, lean plugin set, or the T5b branch's own
-// ordering), without it the summary would claim the
+// ordering). Without it the summary would claim the
 // full plugin set was enabled even when its commands had failed.
 //
 // async because the lane probe now loads the CANONICAL ESM resolver rather
@@ -4196,7 +4196,7 @@ async function printContributorProfile(answers, derived, dryRun) {
     // buildReport() is third-party-shaped and could reject with null/undefined
     // (a non-Error rejection), in which case reading e.message would itself
     // throw and re-escape as exit 1, the exact abort the guard exists to prevent.
-    // stringifying the rejection is the last throw site, coercing
+    // stringifying the rejection is the last throw site. Coercing
     // a {message: Symbol()} or Object.create(null) (no toString) rejection would
     // throw, re-escaping as exit 1. Build the detail via a template inside its
     // own try/catch (a template always yields a string when it doesn't throw, so
@@ -4235,7 +4235,7 @@ async function printContributorProfile(answers, derived, dryRun) {
 //
 // a git probe that FAILS is not the same fact as a
 // non-repo target, so the two no longer collapse to one return shape. An
-// unverifiable state is reported as unverifiable, silently suppressing the
+// unverifiable state is reported as unverifiable. Silently suppressing the
 // warning is the failure mode this whole function exists to remove.
 // The project-scope target when it sits on main/master, where the git gates
 // refuse a plain commit and adopt.sh offers the one allowed commit
@@ -4291,7 +4291,7 @@ function gitWouldRunHook(hookPath) {
 
 // did the dev overlay's setup.sh step [0.5/9] leave USER_SLUG
 // unresolved? That step used to `exit 1`, which aborted runPlan before this
-// epilogue ever ran, the summary could not have been wrong because there was
+// epilogue ever ran. The summary could not have been wrong because there was
 // no summary. Now that it is advisory, the silence becomes possible, and a
 // summary that reports nothing left undone while the slug is unset is the
 // defect on a different step.
@@ -4299,7 +4299,7 @@ function gitWouldRunHook(hookPath) {
 // A REPLAY of the same check rather than a parse of setup.sh's output, for
 // 2536's reason: the overlay runs with stdio inherited, so its lines never
 // reach this process. Replayed with cwd = repoRoot(), which is where setup.sh
-// ran it, the forge source resolves against the checkout's own origin, so a
+// ran it. The forge source resolves against the checkout's own origin, so a
 // probe from the adopter's target dir could disagree with the step it reports on.
 //
 // --dotenv-root repoRoot: without it, this replay
@@ -4327,7 +4327,7 @@ function userSlugState() {
 
 // himmelctl wires permissions.allow / permissions.additionalDirectories
 // into .claude/settings.json, but Claude Code ignores both until the workspace
-// is trusted (projects[<dir>].hasTrustDialogAccepted in ~/.claude.json), a
+// is trusted (projects[<dir>].hasTrustDialogAccepted in ~/.claude.json). A
 // human has to run `claude` interactively there once and accept the trust
 // dialog first. scripts/lib/ensure-workspace-trust.sh already owns
 // that exact read-modify-write and is called by arm-resume.sh and the luna
@@ -4336,7 +4336,7 @@ function userSlugState() {
 // as install-plugins.sh (deriveCommand()) and the two probes above.
 //
 // A trust-seed failure is NOT fatal to the install (the helper's own
-// contract, see its header), the caller reports it as a still-manual row
+// contract, see its header). The caller reports it as a still-manual row
 // instead of aborting. Not called under --dry-run (see the call site): a
 // preview must never write to ~/.claude.json.
 function applyWorkspaceTrust() {
@@ -4347,7 +4347,7 @@ function applyWorkspaceTrust() {
     return { applied: false, dir: dir, reason: 'scripts/lib/ensure-workspace-trust.sh not found' };
   }
   // learn BEFORE the helper runs whether the key was already
-  // true, afterwards the two cases are indistinguishable. The helper's own
+  // true. Afterwards the two cases are indistinguishable. The helper's own
   // config path: $WORKSPACE_TRUST_CONFIG, else $HOME/.claude.json.
   const trustCfg = process.env.WORKSPACE_TRUST_CONFIG || path.join(process.env.HOME || process.env.USERPROFILE || os.homedir(), '.claude.json');
   let preexisted = false;
@@ -4413,7 +4413,7 @@ async function printAdopterEpilogue(answers, derived, dryRun, pluginResult, vaul
 
   // an adopter run always asks alwaysOn (askQuestions), so this
   // branch only matters for a hand-edited/legacy --from-profile that omits
-  // the now-optional field, never claim "you answered no" for a question
+  // the now-optional field. Never claim "you answered no" for a question
   // this profile carries no answer to.
   const alwaysOnSupplied = answers.alwaysOn !== undefined && answers.alwaysOn !== null;
   const hardening = !alwaysOnSupplied
@@ -4444,24 +4444,24 @@ async function printAdopterEpilogue(answers, derived, dryRun, pluginResult, vaul
     bridgeProbes: lr.bridgeProbes,
     bridgePersistence: lr.bridgePersistence,
     // undefined under --dry-run
-    // (save() never runs there at all), buildSummary treats undefined the
+    // (save() never runs there at all). buildSummary treats undefined the
     // same as true (only an explicit `false` gates a claim), so a dry-run
     // preview is unaffected.
     configSaveOk: lr.configSaveOk,
     // previewLunaSections sets this on a --dry-run whose
-    // ~/.himmel/config.json failed to load, buildSummary must not then
+    // ~/.himmel/config.json failed to load. buildSummary must not then
     // claim cadence/secrets/bridge as `planned` for a load that never
     // succeeded (applyLunaSectionsStep performs none of that work either).
     configLoadFailed: lr.configLoadFailed,
-    // null under --dry-run, this epilogue also renders the
+    // null under --dry-run. This epilogue also renders the
     // PREVIEW, which runs before adopt.sh has been spawned at all, so a probe
     // there would report the hooks the machine happened to already have.
     gitHooks: dryRun ? null : gitGateHooksState(),
-    // null when nothing resolved a slug, a --dry-run (the
+    // null when nothing resolved a slug. A --dry-run (the
     // preview renders through this same epilogue, before anything is spawned)
     // or an install with no dev overlay, whose adopt.sh never runs the check.
     userSlug: (dryRun || !answers.devOverlay) ? null : userSlugState(),
-    // null under --dry-run, a preview must never write to
+    // null under --dry-run. A preview must never write to
     // ~/.claude.json (this epilogue also renders the PREVIEW, before adopt.sh
     // has been spawned at all, same reasoning as gitHooks/userSlug above).
     workspaceTrust: dryRun ? null : applyWorkspaceTrust(),
@@ -4482,10 +4482,10 @@ function applyHandoverStep(answers) {
   return true;
 }
 
-// lanes:[] is ambiguous on its own, it
+// lanes:[] is ambiguous on its own. It
 // means either an explicit "no optional lanes" (lanesMeaningful=true) or "the
 // lanes question was never asked" (a migrated legacy contributor cache, whose
-// old v1 role-gated lanes question never ran, see loadProfile's own !isV2
+// old v1 role-gated lanes question never ran. See loadProfile's own !isV2
 // role==='adopter' exemption above, which lets exactly this shape validate).
 // Mirrors that exemption exactly: a never-asked answer must never be treated
 // as an authoritative empty selection. Named lanes (length > 0) stay
@@ -4497,8 +4497,8 @@ function lanesAnswerNeverAsked(answers) {
 // Validate predictable profile-persistence failures before any installer,
 // handover or vault mutation. The post-install write stays authoritative and
 // repeats these checks to catch changes during the core install.
-// universal now, lanes is asked to every profile, so this always runs...
-// except when lanesAnswerNeverAsked (see above), nothing will be persisted,
+// universal now. lanes is asked to every profile, so this always runs...
+// except when lanesAnswerNeverAsked (see above): nothing will be persisted,
 // so there is nothing here to preflight.
 async function preflightLaneProfileStep(answers) {
   if (lanesAnswerNeverAsked(answers)) return true;
@@ -4516,7 +4516,7 @@ async function preflightLaneProfileStep(answers) {
 // silently leaving every detected backend routable would violate the consent
 // boundary the profile selection now represents. universal now
 // lanes is asked to every profile. EXCEPT when
-// lanesAnswerNeverAsked, persisting an authoritative empty allowlist for a
+// lanesAnswerNeverAsked. Persisting an authoritative empty allowlist for a
 // question nobody was asked would silently suppress every optional lane
 // (the consent-fabrication class exists to prevent), so skip
 // with an honest message instead of writing anything.
@@ -4534,7 +4534,7 @@ async function applyLaneProfileStep(answers) {
   }
   try {
     // the write may land under the himmelctl cache dir instead
-    // of in-tree when the install prefix is not writable, the ledger must
+    // of in-tree when the install prefix is not writable. The ledger must
     // snapshot the file that is ACTUALLY written, with the matching scope, or
     // `himmelctl uninstall` reverses the wrong path.
     const { file: laneAllowlistFile, scope: laneAllowlistScope } = adopterProfileLib.resolveLaneAllowlistFile(repoRoot());
@@ -4567,23 +4567,23 @@ function offerRetiredPluginRemoval() {
 }
 
 // T4.5 helper: pluginSet=full's ENABLE step used to live here.
-// drops the 'full' option entirely, the full-plugin-enable.json set does
+// drops the 'full' option entirely. The full-plugin-enable.json set does
 // not reflect what himmel actually runs; the reconciler whitelist
 // is the truth, so the enable step is unconditionally a no-op
 // for every role/answer now.
 //
 // the retired-plugin-removal offer is NOT
-// tied to the enable step's success/failure, it exists because a machine
+// tied to the enable step's success/failure. It exists because a machine
 // PREVIOUSLY provisioned with pluginSet=full may still carry the retired
 // plugin, and a legacy 'full' --from-profile cache (still accepted for
-// backward compat, loadProfile's checkEnum is unchanged) is exactly the
+// backward compat: loadProfile's checkEnum is unchanged) is exactly the
 // population most likely to. `himmelctl update`/`/himmel-update` call the
 // same underlying script independently (scripts/himmel-update.sh's own
 // offer_retired_plugin_removal(), untouched by this ticket) and would catch
 // it eventually, but dropping the install-time offer entirely left a gap
 // for an operator replaying an old profile right now. Keep offering it,
-// decoupled from the (removed) enable step, scoped to pluginSet=full only,
-// a lean install never carried the retired plugin, so it never offers this.
+// decoupled from the (removed) enable step, scoped to pluginSet=full only.
+// A lean install never carried the retired plugin, so it never offers this.
 //
 // Kept as a thin function (not inlined at both call sites) so the T4.5 shape
 // stays the same for the main path and the T5b existing-vault path (FIX 5).
@@ -4608,7 +4608,7 @@ async function runPlan(answers, args) {
   const vaultExisting = Boolean(answers.vault && answers.vault.mode === 'existing');
   let existingVaultPlan = null;
 
-  // T5b (locked O1): vault.mode=existing, STAMPED vaults only, non-luna→luna
+  // T5b (locked O1): vault.mode=existing, STAMPED vaults only. Non-luna→luna
   // conversion stays deferred. vault is universal now (the old
   // role==='adopter' gate died with role), so this branch is scoped purely on
   // vault.mode.
@@ -4632,7 +4632,7 @@ async function runPlan(answers, args) {
   // --luna-target, and adopt.sh's do_luna() SKIPS the template copy whenever
   // the destination already EXISTS (`[[ -e "$dest" ]]`), printing a notice and
   // continuing with rc 0. So pointing default-template at an occupied,
-  // unrelated directory quietly promoted that directory to "your vault", the
+  // unrelated directory quietly promoted that directory to "your vault". The
   // run succeeded and the summary claimed it had been scaffolded.
   //
   // Fail closed on exactly the case that is unsafe: destination exists and is
@@ -4698,7 +4698,7 @@ async function runPlan(answers, args) {
 
   // The confirm is only meaningful when someone is actually there to answer
   // it. Non-interactive is only reachable here via --from-profile (cmdInstall
-  // refuses non-interactive without one), that IS the explicit unattended-
+  // refuses non-interactive without one). That IS the explicit unattended-
   // execution consent, so skip the prompt entirely rather than block on (or
   // mis-resolve) a stream with nobody to answer it.
   if (isInteractive(args)) {
@@ -4792,7 +4792,7 @@ async function runPlan(answers, args) {
     if (await interrupted()) return 130;
     provStep = 'adopt';
     const rc = runSpawn(cmd);
-    // write the PATH shim BEFORE checking adopt.sh's rc, a failed
+    // write the PATH shim BEFORE checking adopt.sh's rc. A failed
     // core install (e.g. a plugin SSH-clone failure)
     // must not leave the adopter with no `himmelctl` on PATH to run
     // `himmelctl ensure` and resume. Best-effort, same posture as adopt.sh's own
@@ -4921,7 +4921,7 @@ async function installUiHandoff(answers) {
 
 async function cmdInstall(args) {
   // 0. --from-profile: load + validate the FULL schema BEFORE any side
-  //    effect (CR r6), previously the missing-tool install offer (step 3,
+  //    effect (CR r6). Previously the missing-tool install offer (step 3,
   //    which can run package-manager installs after a y/N) preceded profile
   //    validation, so a malformed profile could still trigger installs
   //    before being rejected. loadProfile is a pure read+validate: invalid
@@ -4931,7 +4931,7 @@ async function cmdInstall(args) {
   if (args.fromProfile) {
     profileAnswers = loadProfile(args.fromProfile, !args.dryRun);
     // --scope + --from-profile overrides the profile's own
-    // scope rather than being ignored, the profile stays the single
+    // scope rather than being ignored. The profile stays the single
     // authority for everything else, same posture as the lane flags above.
     if (args.scope) profileAnswers.scope = args.scope;
   } else if (args.scope) {
@@ -5028,7 +5028,7 @@ async function cmdInstall(args) {
     return 1;
   }
 
-  // cache the resolved answers regardless of source, replaying a
+  // cache the resolved answers regardless of source. Replaying a
   // profile (--from-profile) is still an install, and the resulting machine
   // should be as introspectable via `status`/`ensure` as an interactively-
   // installed one. Gated on !dryRun (one guard, one source of truth for every
@@ -5047,7 +5047,7 @@ async function cmdInstall(args) {
   //
   // A re-install (isNewAdopter=false) with channel-less incoming answers
   // must carry the STATION's existing channel forward rather than dropping
-  // it, writeCache below replaces the whole file, so doing nothing here
+  // it. writeCache below replaces the whole file, so doing nothing here
   // would silently erase a stable/pre station's setting on every reinstall
   // that doesn't happen to restate it. Read the prior
   // cache's channel best-effort; an unreadable/malformed prior cache just
@@ -5061,7 +5061,7 @@ async function cmdInstall(args) {
         try {
           const prior = JSON.parse(fs.readFileSync(cachePath(), 'utf8'));
           // Same enum loadProfile()'s checkEnum('channel', ...) enforces on
-          // a --from-profile file, this raw cache read bypasses that
+          // a --from-profile file. This raw cache read bypasses that
           // validator, so re-check it here rather than trusting any string.
           if (['stable', 'pre'].includes(prior.channel)) answers.channel = prior.channel;
         } catch {
@@ -5098,7 +5098,7 @@ async function cmdInstall(args) {
   // (rc !== 0 must reach the caller untouched, no prompt), never on
   // --dry-run (zero mutations), never non-interactively (--from-profile
   // must not block on stdin). This is a NEW call site alongside the
-  // existing writeCache(answers) above, that cache write's own ordering is
+  // existing writeCache(answers) above. That cache write's own ordering is
   // untouched.
   if (rc === 0 && !args.dryRun && shouldPrompt(args)) {
     await offerSaveProfile(answers);
@@ -5118,7 +5118,7 @@ async function cmdInstall(args) {
 // A THIN wrapper: summary + one confirm (default-No, only y/yes
 // consents; runPlan's `Proceed?` is default-Yes), then exec uninstall.sh
 // verbatim. Passes through NOTHING speculative from the cached install
-// profile, uninstall.sh's own scope flags (--skip-plugins etc.) have
+// profile. uninstall.sh's own scope flags (--skip-plugins etc.) have
 // no analog in the Draft-A answer schema and this subcommand does not even
 // read a profile. The one flag ALWAYS added is --yes/-Yes: the wizard's own
 // confirm above IS the one confirm, so the delegate script must not ask
@@ -5129,7 +5129,7 @@ async function cmdInstall(args) {
 // HIMMELCTL_REPO_ROOT seam as deriveCommand.
 //
 // --dry-run runs the executor's OWN dry-run (never with --yes, so
-// it can never be mistaken for a wet run), the executor is what knows every
+// it can never be mistaken for a wet run). The executor is what knows every
 // path/hook/settings key, and reading it from one place keeps the preview and
 // the teardown from drifting. --purge-state is the code-vs-state switch; the
 // default (absent) keeps operator state.
@@ -5139,7 +5139,7 @@ async function cmdInstall(args) {
 
 // sub-ticket E (uninstall-completeness, operator LOCKED
 // 2026-07-17): uninstall.sh already tears down himmel's OWN wiring
-// symmetrically, that stays untouched (§ header above: "Keep uninstall.sh
+// symmetrically. That stays untouched (§ header above: "Keep uninstall.sh
 // as the executor"). What was missing is that cmdUninstall was manifest-
 // BLIND: it never told the operator what SHARED items (toolchain, global
 // tools, plugins other projects may use) himmel installs/requires, and never
@@ -5164,7 +5164,7 @@ function partitionOffboard(manifest) {
 }
 
 // Print the manifest-driven plan: what uninstall.sh is about to tear down
-// (himmel-owned), the shared-item ADVISORY (never removed, the operator
+// (himmel-owned), the shared-item ADVISORY (never removed: the operator
 // decides), and the keep set (left untouched, one line). Printed BEFORE the
 // confirm gate (and unconditionally under --dry-run) so the operator sees
 // the full picture before consenting to anything.
@@ -5177,7 +5177,7 @@ function partitionOffboard(manifest) {
 // (jira-cli-dist-build, guardrail-scope, doc-guard-map, hermes-lanes,
 // telegram-bridge, ...) are repo-local files/artifacts uninstall.sh
 // deliberately leaves in place (its own "NOT touched" footer: "the himmel
-// clone itself"), those that live in the himmel clone go away when the clone
+// clone itself"). Those that live in the himmel clone go away when the clone
 // itself is deleted, not because uninstall.sh removed them one by one. That is
 // NOT true of what a project-scope adopt copied into the ADOPTER's repo
 // (scripts/) or of Claude's workspace-trust entry: deleting a
@@ -5185,7 +5185,7 @@ function partitionOffboard(manifest) {
 // footer. The header below must not claim otherwise; it states what
 // uninstall.sh's machine-level steps do and where the rest stays.
 // the ids manifest.json prints for qmd (qmd-binary, qmd-index)
-// carry no path of their own, the resolved on-disk location only lives in
+// carry no path of their own. The resolved on-disk location only lives in
 // scripts/install/uninstall-manifest.tsv's one 'qmd'-surface row (qmd-fork:
 // the checkout + bun-global symlink + index collection both ids point at).
 // Reuses expandHome() for the {HOME} token, the same convention bin.js
@@ -5280,7 +5280,7 @@ function printOffboardPlan(unwireItems, adviseItems, keepItems) {
 // an earlier version of this comment claimed "uninstall.sh
 // reverses the wiring at whichever settings.json it wired, and for a machine
 // offboard that's this himmel checkout's OWN project-scope .claude/
-// settings.json as well as the operator's user-scope one", that premise is
+// settings.json as well as the operator's user-scope one". That premise is
 // FALSE against the actual script. scripts/uninstall.sh's [6/6] step
 // ("Unwiring ~/.claude/settings.json...") unwires exactly ONE file,
 // USER_SETTINGS ("${HIMMEL_USER_SETTINGS:-$HOME/.claude/settings.json}");
@@ -5296,20 +5296,20 @@ function printOffboardPlan(unwireItems, adviseItems, keepItems) {
 // when repoRoot() identity-matches himmel's own canonical checkout;
 // 'user' is always probed, since user-scope residue is the only kind
 // uninstall.sh could actually leave behind. Do NOT re-widen this to
-// "probe project unconditionally", that was tried once already (the
+// "probe project unconditionally". That was tried once already (the
 // sentence this replaces) and reintroduces the exact false positive
 // fixes; do NOT narrow it to "probe project only when the
-// settings.json isn't git-tracked" either, an adopter who commits their
+// settings.json isn't git-tracked" either. An adopter who commits their
 // own .claude/settings.json would then be silently exempted from real
 // leftover-wiring detection.
 //
-// Non-fatal: never changes cmdUninstall's own exit code, that stays the
+// Non-fatal: never changes cmdUninstall's own exit code. That stays the
 // teardown's rc.
 function checkUninstallCompleteness(unwireItems) {
   const convergeable = unwireItems.filter((item) => item.unwire);
   const root = repoRoot();
   // True iff `root` (the project-scope probe target) IS himmel's own
-  // canonical checkout, not a separate adopter project, see the
+  // canonical checkout, not a separate adopter project. See the
   // comment above. Compared by identity (git-common-dir, then dev+ino), not
   // by string equality, so a trailing separator, a linked worktree, a
   // symlinked path segment, POSIX-vs-Windows slash style, or Windows
@@ -5331,7 +5331,7 @@ function checkUninstallCompleteness(unwireItems) {
     const scopes = item.scopes && item.scopes.length > 0 ? item.scopes : ['user'];
     for (const scope of scopes) {
       // skip the project-scope probe when `root` IS himmel's
-      // own checkout, uninstall.sh never had a project-scope target to
+      // own checkout. uninstall.sh never had a project-scope target to
       // reverse there (see the comment above), so probing it only ever
       // reads himmel's own tracked repo source. 'user' is never skipped.
       if (scope === 'project' && isHimmelOwnCheckout) continue;
@@ -5447,7 +5447,7 @@ function printHimmelctlPathInstruction(binDir) {
 // stay quoted. Re-running install/update
 // rewrites only the loader's absolute target, which re-points a moved checkout.
 //
-//  • The loader target is the PRIMARY checkout, not repoRoot(), a launcher
+//  • The loader target is the PRIMARY checkout, not repoRoot(). A launcher
 //    written from a linked feature worktree must not bind to the disposable
 //    worktree (see primaryCheckoutRoot).
 //  • Every generated file carries SHIM_MARKER; an existing destination is
@@ -5486,7 +5486,7 @@ function primaryCheckoutRoot(dir) {
 // Node equivalent of shell `test -ef`. Trailing-separator- and
 // slash-style-insensitive (fs.statSync resolves the real on-disk file, unlike
 // a bare fs.realpathSync string compare, which can preserve the CALLER's input
-// casing instead of normalizing it, realpath
+// casing instead of normalizing it. realpath
 // alone is not a safe discriminator here). Symlinked path segments resolve
 // correctly too, since statSync (unlike lstatSync) follows symlinks. Returns
 // false, never throws, when either path can't be stat'd.
@@ -5545,14 +5545,14 @@ function applyHimmelctlPathShim(args) {
 
   // The bundle is written BEFORE the launcher (design §3.3): a launcher must
   // never point at a fallback that does not exist yet. Best-effort, same
-  // posture as the launcher write itself, a failed bundle write WARNs
+  // posture as the launcher write itself. A failed bundle write WARNs
   // (inside writeStandaloneBundle) and never blocks the PATH launcher.
   standaloneBundleLib.writeStandaloneBundle(repoRootPath);
 
   try {
     fs.mkdirSync(binDir, { recursive: true });
     // re-exec bin.js as a child process rather than requireing
-    // it, a require() runs with require.main === himmelctl.js, so bin.js's
+    // it. A require() runs with require.main === himmelctl.js, so bin.js's
     // own `if (require.main === module)` guard never fires and
     // main() silently never runs (rc 0, no output). A child process always
     // has its own require.main === itself, so the guard passes as intended.
@@ -5591,8 +5591,8 @@ function applyHimmelctlPathShim(args) {
 // template, per-item status + abort-on-first-failure) lives ENTIRELY in
 // scripts/himmel-update.sh, so `himmelctl update` and the `/himmel-update`
 // skill run the SAME engine and never drift apart. No confirm prompt (unlike
-// uninstall): matches /himmel-update's own established no-confirm behavior,
-// an update is not the destructive, one-way action uninstall is. --dry-run
+// uninstall): matches /himmel-update's own established no-confirm behavior.
+// An update is not the destructive, one-way action uninstall is. --dry-run
 // prints the derived plan and executes nothing, same contract as
 // install/uninstall's own --dry-run.
 
@@ -5618,7 +5618,7 @@ async function cmdUpdate(args) {
   // applyHimmelctlPathShim has already printed the
   // specific refusal/error. A failed launcher write must NOT mask the update's
   // success in this exit code (automation keys off rc 0/!=0), so surface a LOUD
-  // warning and keep rc 0, the launcher is best-effort, never a hard dependency.
+  // warning and keep rc 0. The launcher is best-effort, never a hard dependency.
   if (!applyHimmelctlPathShim(args)) {
     console.error('himmelctl: WARN: update succeeded, but the PATH launcher could not be written (see above); the update is complete — the launcher is best-effort');
   }
@@ -5657,7 +5657,7 @@ async function cmdUpdateVersioned(args, layout) {
 // argvRest VERBATIM to plugin-profile.sh and propagate its exit code. The
 // script owns its own verb/flag grammar (list/lean/full/enable/disable,
 // --json, --dry-run, --template PATH, a bare-or-full <spec>) plus every bit
-// of the resolution/refusal logic, none of that is reimplemented here.
+// of the resolution/refusal logic. None of that is reimplemented here.
 function cmdProfile(argvRest) {
   const script = path.join(repoRoot(), 'scripts', 'machine-setup', 'plugin-profile.sh');
   return runSpawn({ argv: [resolveBash(), script, ...argvRest] });
@@ -5668,7 +5668,7 @@ function cmdProfile(argvRest) {
 // A read-only severity diff: desired = the target's manifest-derived
 // `enabled` flags (lib/state.js), actual = a fresh probe run (lib/probes.js)
 // for every desired-enabled item. NEVER prompts (no readline anywhere in
-// this section) and NEVER mutates, ever, a target with no
+// this section) and NEVER mutates, ever. A target with no
 // state.json entry yet, or one whose entry predates a manifest update, is
 // derived/migrated in memory only (statusReportLib's own stateLib.load()/
 // deriveTarget() fallback, never ensureTarget()/save()). Persisting that
@@ -5717,7 +5717,7 @@ async function cmdStatus(args) {
   const scope = cachedAnswers.scope;
   const baseTargetPath = scope === 'user' ? repoRoot() : path.resolve(process.cwd());
 
-  // status is documented read-only and must stay that way, the
+  // status is documented read-only and must stay that way. The
   // derive-or-migrate comparison lives entirely in statusReportLib's own
   // in-memory stateLib.load()/deriveTarget() fallback (its module header),
   // which never calls stateLib.save()/ensureTarget(). Persisting a
@@ -5741,7 +5741,7 @@ async function cmdStatus(args) {
   // an n/a row is either "not wanted here" (desired:false) or a
   // wanted item downgraded from red because it is optional/not initialized yet
   // (desired:true). "0 red" alone hides that second kind, so name it. Text
-  // only, the --json summary shape above is byte-stable.
+  // only. The --json summary shape above is byte-stable.
   const notSetUp = report.items.filter((r) => r.desired === true && r.severity === 'n/a').length;
   console.log(`${report.summary.red} red, ${report.summary.degraded} degraded, ${report.summary.green} green, ${report.summary.na} n/a${notSetUp > 0 ? ` (${notSetUp} of them desired but not set up: see the n/a rows above)` : ''}`);
   printOrphanedBundleInfo();
@@ -5750,7 +5750,7 @@ async function cmdStatus(args) {
 
 // `report --json`. Read-only; composes the existing engines
 // (lib/config-feed.js). Row ids are free-form (doctor:C24-x, flag:NAME), so
-// --items is NOT validated against the manifest here, an unknown id yields no
+// --items is NOT validated against the manifest here. An unknown id yields no
 // row. No install profile is not an error: the feed says profileCache:false.
 function cmdReport(args) {
   if (!args.json) {
@@ -5835,11 +5835,11 @@ function cmdUi(args) {
 }
 
 // the health-check surface for
-// a machine that already deleted its clone is `himmelctl status`, there is
+// a machine that already deleted its clone is `himmelctl status`. There is
 // no separate `doctor` verb in this CLI. A bundle whose ledger-recorded
 // himmel_root is gone is not itself a fault (that IS the standalone path's
 // whole point), so it stays out of the red/degraded/green/n/a item report
-// (and out of --json, whose shape test-wizard-status-golden.sh pins), this
+// (and out of --json, whose shape test-wizard-status-golden.sh pins). This
 // is a one-line INFO surfaced only in the text report.
 function printOrphanedBundleInfo() {
   try {
@@ -5866,19 +5866,19 @@ function printOrphanedBundleInfo() {
 // gaps diffs THIS setup's saved profile (default cachePath(), or
 // --from-profile) against a reference profile (default docs/setup/profiles/
 // operator.install-profile.json, or --preset <name>) and prints four
-// DISTINCT groups, conflating them is exactly what makes this tribal
+// DISTINCT groups. Conflating them is exactly what makes this tribal
 // knowledge today:
-//   (a) answered off/none, the reference has it on, this setup turned it
+//   (a) answered off/none: the reference has it on, this setup turned it
 //       off. The operator's OWN CHOICE, explicitly labelled so it never
 //       reads as a deficiency.
-//   (b) not recorded, the field is genuinely absent from this profile (a
+//   (b) not recorded: the field is genuinely absent from this profile (a
 //       profile written before the question existed), never a false "off"
 //       answer the operator never made.
-//   (c) reference-only, no wizard question can produce this yet. Rendered
+//   (c) reference-only: no wizard question can produce this yet. Rendered
 //       from the checked-in tbd-delta.json map (itself checked against
 //       docs/setup/operator-profile-tbd-delta.md by test-wizard-gaps.sh, a
-//       structural doc<->map agreement test, never hand-sync those two).
-//   (d) present but unverified, this setup's answer matches the reference
+//       structural doc<->map agreement test. Never hand-sync those two).
+//   (d) present but unverified: this setup's answer matches the reference
 //       (both "on"), but gaps is a static profile diff, never a live probe;
 //       named as still-manual (run `himmelctl status` to confirm it's
 //       actually wired).
@@ -5896,10 +5896,10 @@ function getPath(obj, p) {
 }
 
 // The comparable v2-schema leaves group (a)/(c) diff over. `isOff(v)`
-// answers "does this value mean not-using-the-feature" for THAT field,
+// answers "does this value mean not-using-the-feature" for THAT field.
 // pluginSet is deliberately absent (v2 fixes it to 'lean' on both sides, so
 // it can never differ) and vault.path/handover.path/bridge.envPath etc are
-// deliberately absent (personal/placeholder values, not toggles, only
+// deliberately absent (personal/placeholder values, not toggles. Only
 // vault.mode/handover.mode/bridge.enabled, the actual on/off signal, are
 // compared).
 const GAPS_FIELDS = [
@@ -5951,7 +5951,7 @@ function diffProfiles(thisProfile, reference) {
     if (thisValRaw === undefined) {
       // Same collapse as GAPS_FIELDS above: a profile written before this
       // cadence existed (or before cadences were tracked at all) round-trips
-      // as a missing key, not a false "off" answer, report it as not
+      // as a missing key, not a false "off" answer. Report it as not
       // recorded rather than as a choice the operator never made.
       notRecorded.push({ field: `cadences.${row.id}`, label, referenceValue: refVal });
       continue;
@@ -5966,7 +5966,7 @@ function diffProfiles(thisProfile, reference) {
   const refLanes = new Set(reference.lanes || []);
   const thisLanes = new Set(thisProfile.lanes || []);
   // Same collapse as GAPS_FIELDS/cadences above: a legacy v1 non-adopter
-  // (contributor) profile round-trips lanes:[] with no lanesMeaningful, the
+  // (contributor) profile round-trips lanes:[] with no lanesMeaningful. The
   // lanes question was never asked of it (loadProfile's own !isV2
   // role==='adopter' exemption lets exactly this shape validate), so an
   // absent lane here must not be reported as a choice the operator never
@@ -5990,7 +5990,7 @@ function diffProfiles(thisProfile, reference) {
 
 // referenceOnlyList() -> group (b), sorted by doc row number for a stable
 // rendering/JSON order matching the doc's own table order (numeric sort,
-// not lexicographic, row keys are numeric strings, and "10" < "2"
+// not lexicographic: row keys are numeric strings, and "10" < "2"
 // lexicographically would misorder the doc's own row sequence).
 function referenceOnlyList() {
   return Object.keys(TBD_DELTA)
@@ -6093,20 +6093,20 @@ async function cmdGaps(args) {
 // converged that DID have a runnable descriptor.
 //
 // Bookkeeping writes (the sanctioned derive-if-missing entry, same as
-// status's own; a --profile reconcile) are gated behind `!args.dryRun`,
-// the global "--dry-run makes ZERO mutations" constraint covers every
+// status's own; a --profile reconcile) are gated behind `!args.dryRun`.
+// The global "--dry-run makes ZERO mutations" constraint covers every
 // state.json write, not only primitive execution (planInstall/runInstall/
 // unwireCommand's spawnSync calls, which are ALSO gated). Skipping the save
 // under --dry-run does NOT mean the preview loses the reconcile: the
 // in-memory (possibly unsaved) `state` object is passed explicitly into
-// BOTH statusReport calls below (pre-check and post-check), statusReport's
+// BOTH statusReport calls below (pre-check and post-check). statusReport's
 // own independent stateLib.load() would otherwise read the STALE on-disk
 // entry for an EXISTING target reconciled-but-not-yet-saved (its no-entry
 // fallback only happens to agree for the FIRST-derive case, not a reconcile
-// of an already-persisted entry, this bit ensure once).
+// of an already-persisted entry: this bit ensure once).
 
 // what running the disable actually DOES, for the per-item
-// evidence line below, a per-item removable item names its real unwire
+// evidence line below. A per-item removable item names its real unwire
 // command (installEngineLib.unwireCommand()); a full-offboard-only item has
 // no unwire descriptor by definition, so the honest answer is the manual
 // `himmelctl uninstall` path (same wording cmdEnsure's own Step 4 already
@@ -6114,13 +6114,13 @@ async function cmdGaps(args) {
 //
 // returns the WHOLE clause (verb
 // included), not just a command string the caller prefixes with a fixed
-// "disabling would run: ", the verb differs by case. A full-offboard-only
+// "disabling would run: ". The verb differs by case. A full-offboard-only
 // item is NEVER run here: cmdEnsure's Step 4 disable dispatch takes the
 // else-branch for it, and on a 'present' probe pushes a disableErrors
-// entry, sets disableAborted, and BREAKS (see ~line 4536 below), the run
+// entry, sets disableAborted, and BREAKS (see ~line 4536 below). The run
 // STOPS rather than executing 'himmelctl uninstall'. The old fixed
 // "disabling would run: 'himmelctl uninstall' (...)" wording was false for
-// exactly the case it's shown in (a present item), consenting doesn't run
+// exactly the case it's shown in (a present item). Consenting doesn't run
 // that command, it aborts the run and tells the operator to run it
 // themselves. Same false-consent-evidence class this ticket exists to fix,
 // reproduced inside the fix itself.
@@ -6129,7 +6129,7 @@ function describeDisableAction(item, ctx) {
     const spec = installEngineLib.unwireCommand(item, ctx);
     if (spec.unrunnable) return `disabling has no automated unwire path (${spec.unrunnable}) — manual`;
     // this line is consent evidence the operator reads
-    // before allowing a disable, an unquoted arg containing a space (the
+    // before allowing a disable. An unquoted arg containing a space (the
     // common case on Windows, not the edge case) renders ambiguously, so
     // reuse the same display-only shellQuote() displayCommand() already
     // uses for the derived: line.
@@ -6142,13 +6142,13 @@ function describeDisableAction(item, ctx) {
 
 // one evidence line per
 // disable candidate. "not enabled for this target (profile/scope)" is not
-// something an operator can meaningfully consent to, this names what the
+// something an operator can meaningfully consent to. This names what the
 // recorded profile actually says, what's live right now, and exactly what
 // disabling would run.
 //
 // `recordedProfile` MUST be
 // cachedAnswers.profile (the schema-v2 field actually written into
-// install-profile.json), the call site used to pass `target.profile`
+// install-profile.json). The call site used to pass `target.profile`
 // instead, which is the RESOLVED manifest membership category persisted in
 // state.json (core|luna|all, derived from the recorded profile via
 // helpers.js's profileForVault, or set directly by an explicit `--profile`
@@ -6161,7 +6161,7 @@ function describeDisableCandidate(item, probe, ctx, recordedProfile, resolvedCat
   const action = describeDisableAction(item, ctx);
   const when = profileMtime || 'unknown time';
   // A v1 record (no schema-v2 `profile` field) genuinely has nothing
-  // recorded here, say so rather than printing "profile=undefined".
+  // recorded here. Say so rather than printing "profile=undefined".
   const recordedLabel = recordedProfile || 'none (v1 record — no profile field)';
   return `${item.id}: recorded install-profile says profile=${recordedLabel} scope=${ctx.scope} `
     + `(recorded ${when} in install-profile.json; resolves to manifest category '${resolvedCategory}'); `
@@ -6183,7 +6183,7 @@ async function cmdEnsure(args) {
   const cachedAnswers = loadProfile(profilePath, !args.dryRun);
   resolveLegacyProjectScope(cachedAnswers);
   // install-profile.json carries no "recorded at" field of its
-  // own (writeCache() just serializes the answers), the file's own mtime is
+  // own (writeCache() just serializes the answers). The file's own mtime is
   // the best available "when" for the per-item disable-evidence lines below.
   let profileMtime;
   try {
@@ -6207,7 +6207,7 @@ async function cmdEnsure(args) {
   const baseTargetPath = scope === 'user' ? repoRoot() : path.resolve(process.cwd());
 
   // Bookkeeping writes (the sanctioned derive-if-missing entry, a --profile
-  // reconcile) are gated behind !args.dryRun, the global "--dry-run makes
+  // reconcile) are gated behind !args.dryRun. The global "--dry-run makes
   // ZERO mutations" constraint covers ALL writes, not only primitive
   // execution. Skipping the save under dry-run is safe: statusReport's own
   // no-persisted-entry fallback (a pure, unsaved deriveTarget() call) gives
@@ -6216,7 +6216,7 @@ async function cmdEnsure(args) {
   //
   // the save itself is DEFERRED past the
   // consent gate below (`stateChanged` tracks whether ensureTarget/
-  // reconcileTarget actually mutated `state`), an operator who declines
+  // reconcileTarget actually mutated `state`). An operator who declines
   // the confirm, or a non-interactive run refused for lacking --yes, must
   // leave state.json byte-untouched. The ONE exception is the "nothing to
   // converge" early return further down: nothing is being consented to
@@ -6235,18 +6235,18 @@ async function cmdEnsure(args) {
   // root-cause fix: the recorded install-profile (cachedAnswers)
   // is loaded above for every `ensure` run, but until now nothing ever fed
   // it back into this target's persisted `enabled` flags UNLESS the operator
-  // passed an explicit --profile (Step 0 below), a target derived once
+  // passed an explicit --profile (Step 0 below). A target derived once
   // (ensureTarget's first-run derive, possibly against a stale/thin
   // cachedAnswers) stayed wrong forever even after the recorded profile grew
   // richer. Additive-only (state.js's own additiveReconcile, mirrors
   // migrateTargetItems: turns items ON, never off, and never touches one
   // carrying a deliberate override, or a target carrying an explicit
-  // reconcile stamp, see reconcileTarget()'s own comment): every item the
+  // reconcile stamp. See reconcileTarget()'s own comment): every item the
   // CURRENTLY recorded profile would enable, that this target doesn't
   // already have enabled, gets turned on right here.
   //
   // SKIPPED
-  // ENTIRELY when args.profile is supplied THIS run, Step 0's reconcile
+  // ENTIRELY when args.profile is supplied THIS run. Step 0's reconcile
   // moments later is authoritative and would discard whatever this overlay
   // just did anyway (turning items on here only for Step 0 to immediately
   // turn some back off is wasted work, not merely harmless), and printing
@@ -6284,7 +6284,7 @@ async function cmdEnsure(args) {
   // target's PER-ITEM `enabled` flags can go stale even when the profile
   // NAME itself is unchanged (a hand-edited state.json, or a manifest that
   // gained new items for the same profile since the target was last
-  // derived/reconciled), an explicit `--profile core` against an
+  // derived/reconciled). An explicit `--profile core` against an
   // already-'core' target must still re-derive membership, not silently
   // skip reconcile because the profile string happens to match. Without
   // this, the pre-check work list would be computed against a possibly-
@@ -6342,7 +6342,7 @@ async function cmdEnsure(args) {
       if (guardrailProbe.actual !== 'present') {
         const itemState = target.items['guardrail-block-global'];
         // CR-style defensive normalize (same class as state.js's own
-        // malformed-overrides guards), a hand-edited or pre-this-ticket
+        // malformed-overrides guards). A hand-edited or pre-this-ticket
         // state.json could carry a non-object `overrides`.
         if (!itemState.overrides || typeof itemState.overrides !== 'object' || Array.isArray(itemState.overrides)) {
           itemState.overrides = {};
@@ -6357,7 +6357,7 @@ async function cmdEnsure(args) {
           if (args.items) {
             // a scoped run saves no derive/reconcile bookkeeping,
             // but the operator's own answer about the requested item is
-            // theirs to keep, write that one field into a fresh state.
+            // theirs to keep. Write that one field into a fresh state.
             const fresh = stateLib.load();
             const freshTarget = fresh.targets[targetKey] || stateLib.ensureTarget(fresh, manifest, cachedAnswers);
             const freshItem = freshTarget.items['guardrail-block-global'] || (freshTarget.items['guardrail-block-global'] = { enabled: false, overrides: {} });
@@ -6368,7 +6368,7 @@ async function cmdEnsure(args) {
           console.log(`himmelctl: recorded guardrail-block-global consent = ${decided}`);
         } else if (consent !== 'yes' && consent !== 'no') {
           // No recorded answer, and this run cannot ask right now
-          // (--dry-run, or non-interactive/piped stdin), the one thing
+          // (--dry-run, or non-interactive/piped stdin). The one thing
           // this gate must never do is treat that silence as consent.
           console.log(`himmelctl: guardrail-block-global has no recorded consent yet — staying manual (run 'himmelctl ensure' interactively once to decide; recommended: yes). Direct fix: ${nodeScriptCmd(path.join(repoRoot(), 'scripts/hooks/guardrail-block.mjs'))} install --node <ABS_NODE> --bash <ABS_BASH>`);
         }
@@ -6379,7 +6379,7 @@ async function cmdEnsure(args) {
   // Step 1: pre-check. Passes the IN-MEMORY `state` (reflecting any
   // just-computed reconcile, even when --dry-run left it unsaved) so the
   // preview matches the reconcile rather than reading the stale on-disk
-  // entry, statusReport's own independent load() would otherwise never
+  // entry. statusReport's own independent load() would otherwise never
   // see an unsaved reconcile of an EXISTING target entry (unlike the
   // derive-if-missing case, where its no-entry fallback happens to agree).
   const byId = new Map(manifest.items.map((i) => [i.id, i]));
@@ -6441,7 +6441,7 @@ async function cmdEnsure(args) {
   }
 
   // Toward-disabled candidates: statusReport NEVER probes a desired:false
-  // item (its own results loop short-circuits to actual:null for those,
+  // item (its own results loop short-circuits to actual:null for those:
   // "not enabled for this target" is a legitimate state needing no
   // diagnosis for status's own read-only use case), so an enabled item the
   // operator no longer wants can't be detected from `pre` alone. Directly
@@ -6456,7 +6456,7 @@ async function cmdEnsure(args) {
   const towardDisabledProbes = new Map();
   const desiredIds = new Set(pre.items.filter((r) => r.desired).map((r) => r.id));
   for (const item of manifest.items) {
-    // also require item.scopes.includes(scope), without it, a
+    // also require item.scopes.includes(scope). Without it, a
     // project-scope run processed user-only removable items and vice versa
     // (scope bleed). Mirrors the SAME membership check deriveTarget()/
     // reconcileTarget() apply for the toward-ENABLED side.
@@ -6465,7 +6465,7 @@ async function cmdEnsure(args) {
     const ctx = { repoRoot: repoRoot(), targetPath: baseTargetPath, scope, env: process.env };
     const probe = probesLib.runProbe(item, ctx);
     // a degraded (not just fully present) removable item is STILL
-    // physically there and still needs converging toward disabled, only a
+    // physically there and still needs converging toward disabled. Only a
     // clean 'absent' probe means there's genuinely nothing to remove.
     if (probe.actual !== 'absent') {
       towardDisabled.push(item);
@@ -6487,7 +6487,7 @@ async function cmdEnsure(args) {
   // install/unwire something they never asked for).
   // fullById: the UNFILTERED status map both closure checks key on. --items
   // filters `pre` (statusReport's own itemIds param), so `pre` alone can't
-  // tell whether an EXCLUDED item is itself desired+red/degraded, a second,
+  // tell whether an EXCLUDED item is itself desired+red/degraded. A second,
   // unfiltered statusReport call (same read-only, zero-mutation contract as
   // every other statusReport call here) gives the full picture. An UNFILTERED
   // run already has that picture in `pre`, so it reuses `pre` rather than
@@ -6509,7 +6509,7 @@ async function cmdEnsure(args) {
     // ensure (they surface a hint, not an error); ungating would fail-close
     // every unfiltered `ensure --yes` that carries one, contradicting the
     // spec. KNOWN, ACCEPTED downside: a runnable dependent CAN install atop a
-    // still-red hint-only prereq, ensure surfaces the hint instead of
+    // still-red hint-only prereq. ensure surfaces the hint instead of
     // blocking. That is the spec's trade, not a bug; narrowing it is a SPEC
     // change (sub-ticket D), not a. Re-open only with a concrete case
     // where hinting, not blocking, a hint-only prereq is the wrong call,
@@ -6528,8 +6528,8 @@ async function cmdEnsure(args) {
     // consume) must carry its full dep closure, or a red/desired
     // prerequisite gets silently skipped (planInstall's DFS treats a dep
     // outside the item set as already-satisfied). A dep that's already
-    // green, or not desired at all, is legitimately fine to leave out,
-    // that's exactly the case the "excluded == already satisfied"
+    // green, or not desired at all, is legitimately fine to leave out.
+    // That's exactly the case the "excluded == already satisfied"
     // assumption covers correctly, so it must NOT be rejected.
     //
     // `itemsSet.has(depId)` is NOT sufficient to skip
@@ -6542,7 +6542,7 @@ async function cmdEnsure(args) {
     // in towardEnabled even when it's named in --items, so the dependent
     // would still install on top of a genuinely-missing prerequisite.
     // `--items` membership is never sufficient on either side (enabled or
-    // disabled), only ACTUAL convergence this run is.
+    // disabled). Only ACTUAL convergence this run is.
     const towardEnabledIds = new Set(towardEnabled.map((i) => i.id));
     // this is now a TRANSITIVE
     // prerequisite walk, not a direct-edge scan. The prior loop inspected
@@ -6553,7 +6553,7 @@ async function cmdEnsure(args) {
     // prerequisite, stayed missing. Walk the WHOLE dep closure from each
     // towardEnabled item via byId and reject the first desired red/degraded
     // ANCESTOR absent from towardEnabled. Semantics preserved exactly: a dep
-    // already green is PRESENT so its OWN prereqs still matter, descend
+    // already green is PRESENT so its OWN prereqs still matter: descend
     // through it; a dep converging this run (in towardEnabled) is covered by
     // its own pass below, so it is not re-walked here; a dep not desired at
     // all is legitimately fine to leave out, never rejected. `visited`
@@ -6567,7 +6567,7 @@ async function cmdEnsure(args) {
         const depId = stack.pop();
         if (visited.has(depId)) continue; // cycle guard
         visited.add(depId);
-        if (towardEnabledIds.has(depId)) continue; // converging this run, its own pass checks its deps
+        if (towardEnabledIds.has(depId)) continue; // converging this run: its own pass checks its deps
         const depStatus = fullById.get(depId);
         if (!depStatus || !depStatus.desired) continue; // not desired, legitimately fine to leave out
         if (depStatus.severity === 'red' || depStatus.severity === 'degraded') {
@@ -6584,7 +6584,7 @@ async function cmdEnsure(args) {
       const depStatus = fullById.get(missingDepId);
       // route the remediation message on
       // RUNNABILITY (the SAME predicate the towardEnabled/hints split above
-      // uses), never on --items membership, being NAMED in --items is no
+      // uses), never on --items membership. Being NAMED in --items is no
       // proof a dep will converge (a hint-only dep never lands in
       // towardEnabled even when named), so a membership-branched message
       // handed out remediation that didn't work. The hint-only branch names
@@ -6610,7 +6610,7 @@ async function cmdEnsure(args) {
   // item while a still-desired DEPENDENT would leave that dependent broken.
   // Checked against every in-scope manifest item (a dependent need not
   // itself be `removable` to be broken by a missing prerequisite). This
-  // check NEVER reads args.items, it keys purely on desired-ness, so it
+  // check NEVER reads args.items. It keys purely on desired-ness, so it
   // was wrong to trap it inside the `if (args.items)` block above: an
   // UNFILTERED `ensure --profile core --yes` used to skip it entirely and
   // silently unwire a prerequisite a still-desired dependent needs. desired
@@ -6618,17 +6618,17 @@ async function cmdEnsure(args) {
   // `desired = Boolean(entry && entry.enabled)`), so a target holding
   // A.enabled=false while B.enabled=true and B.deps=[A] puts A in
   // towardDisabled (not-desired + removable + present) and breaks B the
-  // moment A unwires. Drifted persisted entries are real here, the stale-
+  // moment A unwires. Drifted persisted entries are real here. The stale-
   // scope defect fixed in 7222492 on this same PR was exactly that.
   //
   // (cross-model convergence: codex + CodeRabbit
   // independently found the SAME bug): the previous `itemsSet.has(item.id)`
-  // skip was backwards, being INCLUDED in --items does not mean the
+  // skip was backwards. Being INCLUDED in --items does not mean the
   // dependent is being disabled; it only means it's in scope. `--items
   // prereq,dependent` used to pass this check and unwire `prereq` while
   // `dependent` stayed desired/enabled, breaking it. The only thing that
   // matters is whether the dependent is ACTUALLY being unwired this run
-  // (i.e. NOT desired, a dependent that's also in towardDisabled is
+  // (i.e. NOT desired: a dependent that's also in towardDisabled is
   // exactly that, and is legitimately fine: reverseDependencyOrder
   // already unwinds it BEFORE the prerequisite). So: reject whenever the
   // dependent is still desired, regardless of --items membership.
@@ -6640,15 +6640,15 @@ async function cmdEnsure(args) {
   // own (that's the whole bug this round fixed), so following it walks
   // straight into the "also selected" rejection instead of resolving
   // anything. Neither branch's remedy actually depends on --items
-  // membership at all, the dependent's DESIRED-ness is what blocks it,
+  // membership at all. The dependent's DESIRED-ness is what blocks it,
   // and that's unaffected by whether it's named. Unified into one message
   // naming both working remediations regardless of membership, and, the
   // check now being ungated, the message no longer claims --items on an
   // unfiltered run either.
 
   // disable is a DIFFERENT, higher risk than a converge (converge only ever
-  // ADDS wiring; disable REMOVES it) and must never share one Y/n with it,
-  // see the incident this ticket fixes: an operator was offered "converge 1;
+  // ADDS wiring; disable REMOVES it) and must never share one Y/n with it.
+  // See the incident this ticket fixes: an operator was offered "converge 1;
   // disable 8" as a single choice and had to accept the unwanted 8 to get
   // the wanted 1. Default `ensure` performs converges ONLY; --prune opts
   // into reviewing/disabling. `UNDER_RECORDED_LIVE_THRESHOLD` items that are
@@ -6662,7 +6662,7 @@ async function cmdEnsure(args) {
   // it if it proves too eager in practice.
   //
   // this guard used to have NO escape
-  // hatch, an operator doing a genuine, deliberate downgrade (`ensure
+  // hatch. An operator doing a genuine, deliberate downgrade (`ensure
   // --profile core` on a target previously converged richer) could never
   // carry it out, and worse, it could WEDGE: an explicit --profile reconcile
   // flips the affected items' desired flags to false in `state` right away
@@ -6687,7 +6687,7 @@ async function cmdEnsure(args) {
   // is true), so it lands in towardDisabled and used to count AS under-recorded
   // evidence, inverting the signal and letting three deliberate overrides veto
   // the very prune the operator asked for. Excluded from the EVIDENCE count
-  // only, it still stays in towardDisabled and is still offered for disable.
+  // only. It still stays in towardDisabled and is still offered for disable.
   const presentDisableCandidates = towardDisabled.filter((i) => {
     const p = towardDisabledProbes.get(i.id);
     if (!p || p.actual !== 'present') return false;
@@ -6696,13 +6696,13 @@ async function cmdEnsure(args) {
   const recordLooksUnderRecorded = !args.profile && presentDisableCandidates.length >= UNDER_RECORDED_LIVE_THRESHOLD;
   const doPrune = args.prune && towardDisabled.length > 0 && !recordLooksUnderRecorded;
   // Mutable: Step 3's separate disable confirm (below) can decline the
-  // prune while the converge phase still proceeds, `doPrune` itself stays
+  // prune while the converge phase still proceeds. `doPrune` itself stays
   // the ORIGINAL pre-confirm intent (used below to derive disabledIds for
   // the hazard walk).
   // the reverse-dependency hazard walk below evaluates
   // against this INTENDED prune set (disabledIds, derived from doPrune), but
   // it may only reject the PRUNE pass itself (pruneConfirmed=false,
-  // pruneRejected=true), it must never abort the whole run/veto the
+  // pruneRejected=true). It must never abort the whole run/veto the
   // converge pass too. That "hazard vetoes the wanted converge" behavior was
   // exactly the incident this ticket exists to fix, in a third disguise: a
   // declinable disable pass was hard-rejecting a run that also had
@@ -6753,16 +6753,16 @@ async function cmdEnsure(args) {
   // descend THROUGH an
   // undesired intermediate ONLY when it is actually PRESENT. statusReport
   // deliberately leaves an undesired item's actual state UNPROBED
-  // (fullById.get(B).actual === null for a desired:false B, status-report.js
+  // (fullById.get(B).actual === null for a desired:false B: status-report.js
   // short-circuits those), so the walk cannot infer B's presence from
   // fullById. Assuming presence is a FALSE rejection: for A(present) ->
   // B(absent+undesired) -> C(desired), the physical chain is ALREADY broken
-  // at the absent B, so unwiring A cannot newly break C, blocking it is
+  // at the absent B, so unwiring A cannot newly break C. Blocking it is
   // wrong. Probe the intermediate's presence (memoized; read-only, same probe
   // the toward-disabled scan above already ran) and recurse only when it is
   // not 'absent'. Still-DESIRED dependents are rejected regardless of their
   // own presence (a desired-but-red dependent whose prerequisite is unwired
-  // can never converge), so that branch is unchanged, this gate is on the
+  // can never converge), so that branch is unchanged. This gate is on the
   // descend-through-UNDESIRED step only. Pre-seed from towardDisabled (all
   // present by construction, line ~1376 only admits actual !== 'absent') so
   // a removable intermediate is never re-probed.
@@ -6777,7 +6777,7 @@ async function cmdEnsure(args) {
     presenceCache.set(id, present);
     return present;
   };
-  // collected, not printed/aborted immediately, a hazard
+  // collected, not printed/aborted immediately. A hazard
   // here may only reject the PRUNE pass (see the pruneConfirmed comment
   // above), never the whole run, so this loop no longer `return`s.
   const pruneHazards = [];
@@ -6808,7 +6808,7 @@ async function cmdEnsure(args) {
         pruneHazards.push(`would disable ${disabledId}, but ${dependentId} (still desired) depends on it${chainNote} — reconcile ${dependentId} toward undesired too (e.g. via --profile) so both unwire together (reverse-dependency order unwinds ${dependentId} first), or drop ${disabledId} from this run`);
         continue;
       }
-      // Undesired intermediate, its dependents still break when the
+      // Undesired intermediate: its dependents still break when the
       // prerequisite unwires, but ONLY if it is itself still PRESENT: an
       // ABSENT intermediate has already broken the chain, so descending
       // through it and rejecting on a dependent behind it is a false
@@ -6845,7 +6845,7 @@ async function cmdEnsure(args) {
   }
 
   // hints must be surfaced on EVERY path, not only the "nothing to
-  // converge" early return below, a run that ALSO does real work was
+  // converge" early return below. A run that ALSO does real work was
   // dropping them silently. Printed once, unconditionally, right after
   // they're known.
   if (hints.length > 0) {
@@ -6876,13 +6876,13 @@ async function cmdEnsure(args) {
   // --dry-run must NOT silently proceed with no consent. Checked AFTER the
   // no-work early return (nothing to consent to there) and BEFORE the offer/
   // confirm block and any install/unwire dispatch. state.json is untouched
-  // (the save is deferred past this point, see the header comment above).
+  // (the save is deferred past this point. See the header comment above).
   if (!args.yes && !args.dryRun && !isInteractive(args)) {
     console.error('himmelctl: non-interactive ensure requires --yes');
     return 2;
   }
 
-  // Step 3: SPLIT consent (Fix B1), converge and disable are
+  // Step 3: SPLIT consent (Fix B1). Converge and disable are
   // different risk classes (converge only ever ADDS wiring; disable REMOVES
   // it), so disables NEVER ride the converge Y/n: they require their own
   // explicit opt-in (--prune) plus their own separate confirmation below,
@@ -6890,7 +6890,7 @@ async function cmdEnsure(args) {
   // single choice). The two confirms are NOT symmetric, by design: declining
   // the converge prompt aborts the run entirely (including any pending
   // --prune disable pass), rather than falling through to offer removals
-  // right after the operator just said no, that would be worse UX, not
+  // right after the operator just said no. That would be worse UX, not
   // better. Declining the disable prompt below, in contrast, skips only the
   // disable pass; converge (if any) still proceeds. --dry-run skips both
   // confirms (as before) but still prints what each phase would do.
@@ -6918,14 +6918,14 @@ async function cmdEnsure(args) {
   }
 
   // Consent granted (--yes, an interactive confirm, or --dry-run, which
-  // needs none). Persist the derive/reconcile bookkeeping NOW, not before,
-  // an operator who declined above, or was refused above for lacking --yes
+  // needs none). Persist the derive/reconcile bookkeeping NOW, not before.
+  // An operator who declined above, or was refused above for lacking --yes
   // non-interactively, must never have reached this line. Still gated
   // behind !args.dryRun (dry-run's zero-mutation guarantee is unconditional).
   provOpen(args); // past every no-op/refusal return, before the first mutation
   provStep = 'ensure';
   // a scoped (items) run never persists derive/migrate
-  // bookkeeping, the recorded target stays byte-identical (the requested
+  // bookkeeping. The recorded target stays byte-identical (the requested
   // item's own consent answer is written separately where it is asked).
   if (stateChanged && !args.dryRun && !args.items) stateLib.save(state);
 
@@ -6935,7 +6935,7 @@ async function cmdEnsure(args) {
   // ordering, not manifest declaration order.
   const disableErrors = [];
   // tracks successful unwires (unwire ran AND the re-probe
-  // confirmed 'absent'), the final "N converged" summary must include
+  // confirmed 'absent'). The final "N converged" summary must include
   // these alongside the toward-enabled installs (towardEnabled.length), so a
   // run that ALSO successfully disabled items doesn't silently under-report
   // its own result.
@@ -6946,19 +6946,19 @@ async function cmdEnsure(args) {
   // unwiring a prerequisite right after its dependent's OWN unwire already
   // failed, leaving neither side coherent). `--dry-run` is deliberately
   // EXEMPT: it still enumerates every blocker in one pass (existing case d
-  // behavior, the whole point of a preview is seeing everything wrong
+  // behavior. The whole point of a preview is seeing everything wrong
   // before doing anything), so `disableAborted` only ever becomes true on
   // a real run, and only for a failure the operator couldn't have
   // dry-run-previewed away.
   let disableAborted = false;
-  // the whole disable phase is gated on pruneConfirmed, an
+  // the whole disable phase is gated on pruneConfirmed. An
   // empty list here means Step 4 below is a complete no-op (disabled stays
   // [], disableAborted stays false), exactly "ensure offers zero disables"
   // by default.
   for (const item of installEngineLib.reverseDependencyOrder(pruneConfirmed ? towardDisabled : [])) {
     if (item.removable === 'per-item' && item.unwire) {
       // build the spec and check spec.unrunnable BEFORE the
-      // dry-run branch, under the shipped-then-buggy order, a dry-run
+      // dry-run branch. Under the shipped-then-buggy order, a dry-run
       // printed "DRY: unwire <id>" and returned success for an item whose
       // unwire descriptor is genuinely unrunnable, since unwireCommand()
       // was never even called under --dry-run. The dry-run's
@@ -6997,7 +6997,7 @@ async function cmdEnsure(args) {
         break;
       }
       // the unwire primitive exiting 0 doesn't itself prove the
-      // resource is gone, re-probe and treat ANY result other than
+      // resource is gone. Re-probe and treat ANY result other than
       // 'absent' (still 'present', or now merely 'degraded') as a failure.
       const reprobeCtx = { repoRoot: repoRoot(), targetPath: baseTargetPath, scope, env: process.env };
       const reprobe = probesLib.runProbe(item, reprobeCtx);
@@ -7045,7 +7045,7 @@ async function cmdEnsure(args) {
 
   // Step 5: plan + run the toward-enabled work.
   // 16, MAJOR, fail-closed): skipped entirely when a real disable failure
-  // already aborted above (`disableAborted`), do NOT proceed to installs
+  // already aborted above (`disableAborted`). Do NOT proceed to installs
   // on top of a disable phase that didn't finish cleanly. `disableAborted`
   // is always false under --dry-run (see above), so dry-run's own preview
   // enumeration below is unaffected.
@@ -7071,7 +7071,7 @@ async function cmdEnsure(args) {
       for (const p of plan) {
         // a plan entry can be {unrunnable: "..."} (buildEntry's own
         // failure case, e.g. an unmapped dep) with no .cmd/.args at
-        // all, printing `DRY: ${p.cmd} ${p.args.join(' ')}` against that
+        // all. Printing `DRY: ${p.cmd} ${p.args.join(' ')}` against that
         // shape crashed into `DRY: undefined undefined` and (since nothing
         // threw) still returned success. Detect it first and surface it as
         // a genuine preview failure instead.
@@ -7090,7 +7090,7 @@ async function cmdEnsure(args) {
 
   // a --dry-run full-offboard-only blocker (pushed into
   // disableErrors above regardless of --dry-run) must NOT be silently
-  // dropped, surface it as a DRY line and fail the dry-run's own exit
+  // dropped. Surface it as a DRY line and fail the dry-run's own exit
   // code, matching what the real (non-dry-run) run would report. Folds in
   // previewErrors (unrunnable plan entries, above) the same way.
   if (args.dryRun) {
@@ -7100,7 +7100,7 @@ async function cmdEnsure(args) {
 
   // a real disable
   // failure aborted the loop above BEFORE any install was ever attempted
-  // (Step 5, above, already skipped on `disableAborted`), report it now
+  // (Step 5, above, already skipped on `disableAborted`). Report it now
   // and stop, never reaching the post-check below. `disableErrors` holds
   // exactly the one failure that triggered the abort (the loop broke on
   // the first one), not every subsequent item's state.
@@ -7109,11 +7109,11 @@ async function cmdEnsure(args) {
     return 1;
   }
 
-  // Step 6: post-check + fail-closed, name still-not-converged items THAT
+  // Step 6: post-check + fail-closed. Name still-not-converged items THAT
   // HAD a runnable install descriptor (never fail-close on a hint-only item).
-  // Same `state` object as the pre-check (already persisted by this point,
+  // Same `state` object as the pre-check (already persisted by this point:
   // dry-run already returned above); its ACTUAL probe results still read
-  // real disk (fresh probesLib.runProbe calls), only the DESIRED flags
+  // real disk (fresh probesLib.runProbe calls). Only the DESIRED flags
   // come from the passed-in state.
   const post = statusReportLib.statusReport({
     manifest, scope, targetPath: baseTargetPath, answers: cachedAnswers, itemIds: args.items, state,
@@ -7125,7 +7125,7 @@ async function cmdEnsure(args) {
   });
 
   // `failed` (runInstall's own report) was computed but never
-  // consulted here, a primitive that genuinely failed (nonzero exit,
+  // consulted here. A primitive that genuinely failed (nonzero exit,
   // signal, or an unrunnable descriptor) whose target item's post-check
   // probe HAPPENED to pass anyway (e.g. a partially-applied change, or an
   // unrelated pre-existing green) read as a false success. A failed/nonzero
@@ -7164,7 +7164,7 @@ async function cmdEnsure(args) {
   // COALESCE_TYPES collapse the work: two adopt items coalesce into ONE
   // adopt.sh invocation, so the old `ran.length` reported "1 converged" for
   // two items actually converged. towardEnabled holds exactly the manifest
-  // items desired+red that this run set out to converge, every one of them
+  // items desired+red that this run set out to converge. Every one of them
   // IS converged here (stillNotConverged/failed already returned 1 above), so
   // its length is the honest install-side count; `disabled` adds the toward-
   // disabled unwires (already per-item, never coalesced).
@@ -7199,7 +7199,7 @@ async function cmdEnsure(args) {
 // that is present in the OLD scope, exists in BOTH scopes, and is
 // full-offboard-only with NO runnable unwire descriptor (e.g.
 // claude-plugins-pluginSet, graphify-mcp) would be left wired
-// in both scopes, FAIL CLOSED before any mutation: list those items, exit
+// in both scopes. FAIL CLOSED before any mutation: list those items, exit
 // non-zero. No partial switch.
 //
 // Mirrors cmdEnsure's proven machinery (consolidated confirm gate, --yes,
@@ -7207,7 +7207,7 @@ async function cmdEnsure(args) {
 // save past consent). Does NOT hand-roll spawns, routes through install-
 // engine's hardened runInstall/runUnwire, exactly as cmdEnsure does.
 
-// `scope get` / `scope status`, print the current scope off the install-
+// `scope get` / `scope status`: print the current scope off the install-
 // profile cache (the same cache cmdStatus/cmdEnsure load). No manifest, no
 // state, no probes: the scope is an ANSWER field, not a derived value.
 function cmdScopeGet() {
@@ -7238,7 +7238,7 @@ async function cmdScopeSet(args) {
     return 0;
   }
 
-  // Base target path per scope, project scope keys off cwd (adopt.sh's own
+  // Base target path per scope: project scope keys off cwd (adopt.sh's own
   // --target default of $PWD), user scope off the himmel checkout (mirrors
   // cmdStatus/cmdEnsure's baseTargetPath resolution). The settings.json a
   // wire/unwire primitive targets is RELOCATED by this: project ->
@@ -7253,7 +7253,7 @@ async function cmdScopeSet(args) {
   // Fail closed when the SOURCE is project scope but the CWD is not the
   // recorded project install target (CR bin.js:59). cachedAnswers.scope may
   // say 'project', but a project install is keyed by absolute path in
-  // state.targets, run `scope set` from any OTHER directory and the old-scope
+  // state.targets. Run `scope set` from any OTHER directory and the old-scope
   // probes (rooted at cwd) would see nothing, the real project would never be
   // unwired, and the WRONG state key (this cwd) would be deleted, leaving both
   // scopes wired despite the hard invariant. `scope set` from a project source
@@ -7271,7 +7271,7 @@ async function cmdScopeSet(args) {
   // old -> both scopes at once. Refuse BEFORE any mutation (the probes are
   // pure reads), regardless of --dry-run: the switch genuinely cannot
   // proceed, so a preview must say so rather than paint a partial plan. The
-  // unwireable pair (wiring-pretooluse/wiring-statusline) is excluded, the
+  // unwireable pair (wiring-pretooluse/wiring-statusline) is excluded. The
   // unwire path below handles those.
   const failClosed = [];
   for (const item of manifest.items) {
@@ -7298,7 +7298,7 @@ async function cmdScopeSet(args) {
   // entry at targetKeyForScope(newScope). The profile is UNCHANGED by a scope
   // switch (only the scope moves), so it stays profileForVault(cachedAnswers).
   // Done in-memory; the save is DEFERRED past the consent gate below (mirror
-  // cmdEnsure's deferred-save exactly, an operator who declines, or a
+  // cmdEnsure's deferred-save exactly. An operator who declines, or a
   // non-interactive run refused for lacking --yes, leaves state.json
   // byte-untouched).
   const targetProfile = profileForVault(cachedAnswers);
@@ -7392,7 +7392,7 @@ async function cmdScopeSet(args) {
   // (no spawn, pure computation), so an unrunnable install descriptor (e.g.
   // an unmapped dep) is known BEFORE Step 3 unwires the old scope,
   // instead of only surfacing after. Reused as-is by the dry-run preview
-  // below AND by Step 4's runInstall, planInstall is invoked exactly once
+  // below AND by Step 4's runInstall. planInstall is invoked exactly once
   // per switch.
   const wirePlan = wireItems.length > 0
     ? installEngineLib.planInstall(wireItems, {
@@ -7442,7 +7442,7 @@ async function cmdScopeSet(args) {
   // cache describing the OLD scope, so a re-run retries the whole switch
   // idempotently instead of stranding a re-keyed state.json against an
   // unchanged cache and losing the old-scope entry (CR codex-1). Nothing
-  // between here and the persist reads state.json from disk, the wire/unwire
+  // between here and the persist reads state.json from disk. The wire/unwire
   // primitives are external spawns, and the post-check statusReport reads the
   // in-memory `state`, so the deferral is safe.
 
@@ -7450,7 +7450,7 @@ async function cmdScopeSet(args) {
   // before-toward-enabled order AND is the safer order for the HARD REQ:
   // unwiring old first means an item is briefly in NEITHER scope (never in
   // both), even on partial failure. Fail-closed: a real unwire failure
-  // aborts BEFORE any wire dispatch, do not wire the target scope on top of
+  // aborts BEFORE any wire dispatch. Do not wire the target scope on top of
   // a broken old-scope teardown. The recorded scope (install-profile cache)
   // is only flipped AFTER full success (see writeCache below), so a re-run
   // of `scope set <newScope>` still sees the OLD scope as current and retries
@@ -7471,7 +7471,7 @@ async function cmdScopeSet(args) {
       break;
     }
     // The unwire primitive exiting 0 doesn't itself prove the resource is
-    // gone, re-probe the OLD scope and treat anything other than 'absent'
+    // gone. Re-probe the OLD scope and treat anything other than 'absent'
     // as a failure (mirrors cmdEnsure's toward-disabled reprobe gate).
     const reprobeCtx = { repoRoot: repoRoot(), targetPath: oldBaseTargetPath, scope: oldScope, env: process.env };
     const reprobe = probesLib.runProbe(item, reprobeCtx);
@@ -7490,7 +7490,7 @@ async function cmdScopeSet(args) {
   // Step 4: WIRE the target scope (toward-enabled). Skipped entirely if an
   // unwire failure aborted above. Reuses `wirePlan` (built + validated above,
   // before Step 3) via the same runInstall cmdEnsure uses (topological order,
-  // coalescing, hardened spawn), planInstall is not called again here.
+  // coalescing, hardened spawn). planInstall is not called again here.
   let failed = [];
   if (wireItems.length > 0) {
     const result = installEngineLib.runInstall(wirePlan, { dryRun: false });
@@ -7526,12 +7526,12 @@ async function cmdScopeSet(args) {
   // deliberately AFTER successful unwire+wire. These are two non-atomic writes;
   // the AUTHORITATIVE cache pointer is written FIRST, then the state re-key, so
   // a failure BETWEEN them is benign and self-healing: the cache already
-  // describes the new scope (correct, the disk wiring matches), and `ensure`
+  // describes the new scope (correct: the disk wiring matches), and `ensure`
   // re-derives the target-scope state entry on the next run. The reverse order
   // would leave the cache pointing at the OLD scope with the old state key
   // already deleted, which the CWD guard above then refuses to retry (stuck).
-  // The hard invariant (no item wired in BOTH scopes) already holds here,
-  // the wiring converged on disk above, before either write.
+  // The hard invariant (no item wired in BOTH scopes) already holds here.
+  // The wiring converged on disk above, before either write.
   // ponytail: no journal/recovery marker, the two writes are not transactional, upgrade path: commit state and cache through one journal with a recovery marker.
   // Gated behind !dryRun (dry-run returned above).
   writeCache(Object.assign({}, cachedAnswers, { scope: newScope }));
@@ -7567,7 +7567,7 @@ async function cmdScope(args) {
 
 // ── trust ledger wiring ───────────────────────────────────────
 //
-// `himmelctl trust on|off|status`, install, remove, or report the
+// `himmelctl trust on|off|status`: install, remove, or report the
 // shadow ledger's hook entries in the project's .claude/settings.json. The
 // count lives in the wiring script's ENTRIES table, not here
 // made it seven, and a number repeated in a comment is a number that drifts.
@@ -7625,7 +7625,7 @@ async function cmdTrust(args) {
   // matters (CLAUDE_PROJECT_DIR wins) and diverge where the CLI knows more:
   // the CLI has a meaningful cwd, a script invoked directly may not. Wiring a
   // project that has no
-  // recorder is still refused by the script's own precondition, that refusal
+  // recorder is still refused by the script's own precondition. That refusal
   // is the safety net this resolution order makes reachable again.
   const settingsPath = path.join(trustTargetDir(), '.claude', 'settings.json');
   if (!fs.existsSync(settingsPath)) {
@@ -7649,7 +7649,7 @@ async function cmdTrust(args) {
 
 // ── config ───────────────────────
 //
-// `himmelctl config`, bare, it hands off to the UI Configure page; with
+// `himmelctl config`: bare, it hands off to the UI Configure page; with
 // `config set <path> <value>` / `config get <path>` an operator or script can
 // toggle himmel capabilities without hand-editing files. Every actual
 // mutation lives in a pure-ish setter function below, which is what the
@@ -7664,7 +7664,7 @@ async function cmdTrust(args) {
 //   lanes.<id>            on|off  -> scripts/lanes/set-lane-override.mjs
 //                                  upserts a `{id, probe:{kind}}` entry into
 //                                  the gitignored scripts/lanes/lanes.local.json
-//                                  overlay (never scripts/lanes/lanes.json,
+//                                  overlay (never scripts/lanes/lanes.json:
 //                                  the shared registry is read-only from here).
 //   hooks.improveOnSubmit on|off  -> ADVISORY ONLY. IMPROVE_ON_SUBMIT is
 //                                  documented launching-shell-only
@@ -7936,7 +7936,7 @@ function cmdConfigSetHook(hookPath, onOff, args) {
     // Not a settable config value: IMPROVE_ON_SUBMIT is a launching-shell-only
     // env var read straight from the process env, never sourced from the repo
     // .env, so no file himmelctl could write would activate it. Reject with
-    // rc 2 rather than returning a success code for a no-op write, a script
+    // rc 2 rather than returning a success code for a no-op write. A script
     // checking $? must not read this as "the toggle happened". The how-to
     // guidance still prints.
     console.error('himmelctl: hooks.improveOnSubmit is not settable via config — '
@@ -7982,7 +7982,7 @@ function cmdConfigSetHook(hookPath, onOff, args) {
 function cmdConfigGet(pathParts) {
   const [ns, ...rest] = pathParts;
   if (ns === 'initiative') {
-    // 'initiative' (whole) or 'initiative.<step>', reject over-qualified
+    // 'initiative' (whole) or 'initiative.<step>'. Reject over-qualified
     // (initiative.execute.extra) and unknown workers (cmdConfigGetInitiative
     // does not validate the worker itself).
     if (rest.length > 1) {
@@ -7996,7 +7996,7 @@ function cmdConfigGet(pathParts) {
     return cmdConfigGetInitiative(rest[0]);
   }
   if (ns === 'lanes') {
-    // 'lanes' (whole overlay) or 'lanes.<id>', reject over-qualified and
+    // 'lanes' (whole overlay) or 'lanes.<id>'. Reject over-qualified and
     // validate the id against the base registry (fail-closed if unreadable).
     if (rest.length > 1) {
       console.error(`himmelctl: config get: over-qualified path 'lanes.${rest.join('.')}' — expected 'lanes' or 'lanes.<id>'`);
@@ -8145,7 +8145,7 @@ function cmdConfigHandoff() {
   return 0;
 }
 
-// `himmelctl config [get <path> | set <path> <value>]`, no action -> the UI
+// `himmelctl config [get <path> | set <path> <value>]`: no action -> the UI
 // hand-off above. Owns its own tiny argv scan (see main()'s dispatch
 // comment for why): --dry-run is recognized ANYWHERE in argv, every other
 // token is positional.
@@ -8185,8 +8185,8 @@ async function cmdConfig(argv) {
 // `himmelctl deps status|ensure|upgrade`, a version-aware toolchain
 // manager over scripts/install/deps.json, SEPARATE from the manifest's
 // presence-only kind:"dep" items above (operator-locked design: different
-// lifecycles, see deps.json's own header and deps-engine.js for the full
-// rationale). Unlike install/status/ensure, deps has NO per-target state,
+// lifecycles. See deps.json's own header and deps-engine.js for the full
+// rationale). Unlike install/status/ensure, deps has NO per-target state.
 // deps.json is a flat declared set, so every verb here is state-free (no
 // state.json read/write, no install-profile cache dependency). The heavy
 // logic (per-OS recipe derivation, presence/version probing) lives in
@@ -8228,7 +8228,7 @@ async function cmdDepsStatus(args) {
 // $HOME/.bun/bin and $HOME/.local/bin, prepended ahead of originalPath,
 // skipping any already present there. `path` === originalPath and
 // `dirsToAdd` === [] when both are already on it. Extracted as a pure
-// function (never touches process.env itself, the caller assigns
+// function (never touches process.env itself: the caller assigns
 // process.env.PATH = result.path) so the CR round-1 (codex-2) no-trailing-
 // delimiter fix is unit-testable directly: an empty originalPath must not
 // leave a trailing path.delimiter (that reads as an implicit-cwd PATH
@@ -8246,11 +8246,11 @@ function augmentPathForRun(homeDir, originalPath) {
   return { path: newPath, dirsToAdd };
 }
 
-// `deps ensure`, installs every MISSING (severity:red) declared dep via its
+// `deps ensure`: installs every MISSING (severity:red) declared dep via its
 // per-OS recipe. --dry-run prints the plan without executing; otherwise one
 // consolidated confirm (skipped by --yes), then dispatch through
 // install-engine.js's already-hardened runInstall() (timeout, tree-kill,
-// env-scrubbed spawn), this function never spawns a mutating process
+// env-scrubbed spawn). This function never spawns a mutating process
 // itself, same separation cmdEnsure keeps above.
 async function cmdDepsEnsure(args) {
   const deps = loadDeps();
@@ -8264,7 +8264,7 @@ async function cmdDepsEnsure(args) {
   // though it never needed installing on THIS run at all. The caller's real
   // shell rc only picks these dirs up on their NEXT login shell, and
   // nothing in THIS process (or a child it spawns) sees them without help.
-  // Prepending them to process.env.PATH here (never in `status`, an honest
+  // Prepending them to process.env.PATH here (never in `status`: an honest
   // read of the CALLER's own PATH is what `status` is for) does three
   // things: (a) `missing` itself is computed against the augmented PATH, so
   // an already-landed dep is never planned again; (b) install-engine's
@@ -8316,7 +8316,7 @@ async function cmdDepsEnsure(args) {
   const { ran, failed } = installEngineLib.runInstall(plan, { dryRun: false });
 
   // an entry runInstall reports as "installed" is
-  // NOT verified to actually be present afterward, a recipe can exit 0 yet
+  // NOT verified to actually be present afterward. A recipe can exit 0 yet
   // leave the tool off PATH (a no-op stub, a partial install, a recipe that
   // succeeds for an unrelated reason). Re-probe every reported-installed entry
   // with the SAME presence check `deps status` uses (depStatus), and move any
@@ -8327,7 +8327,7 @@ async function cmdDepsEnsure(args) {
   // installed count; only a genuinely-still-absent entry fails out.
   // Honest counter: a dep that only resolves via the
   // PATH-augmented ctx above (never on the caller's OWN original PATH) DID
-  // genuinely land, the recheck stays in the installed count, never the
+  // genuinely land. The recheck stays in the installed count, never the
   // "installed but still not found on PATH" failure that used to fire for
   // this exact case (bun's official installer succeeding, then reported as
   // a failure in the same breath). It still gets an extra line naming where
@@ -8336,7 +8336,7 @@ async function cmdDepsEnsure(args) {
   //
   // Wet-run fix (ubuntu_new clean-tools VM): a manager:"ensure-tools" recipe
   // (git/jq/python3/shellcheck/gitleaks/bun) ALWAYS exits 0 from its own
-  // dispatching entry, ensure_tools() is documented to "always return 0;
+  // dispatching entry. ensure_tools() is documented to "always return 0;
   // the caller re-checks `command -v` to see what truly remains", so `ran`
   // containing one of these does NOT mean its underlying install actually
   // claimed success (bun's own installer can fail internally, e.g. a
@@ -8346,7 +8346,7 @@ async function cmdDepsEnsure(args) {
   // gets the honest "not present after its install recipe ran" wording
   // instead, pointing at ensure-tools.sh's own already-printed diagnostic
   // lines. Every OTHER manager (script/brew/pip) genuinely exits
-  // nonzero on failure, reaching `ran` at all there DOES mean the recipe's
+  // nonzero on failure. Reaching `ran` at all there DOES mean the recipe's
   // own process claimed success, so the PATH-specific wording stays
   // accurate for those.
   const osKeyForCtx = ctx.platform === 'darwin' ? 'macos' : 'linux';
@@ -8379,7 +8379,7 @@ async function cmdDepsEnsure(args) {
   return failed.length > 0 ? 1 : 0;
 }
 
-// `deps upgrade`, re-runs every PRESENT declared dep's recipe in "upgrade"
+// `deps upgrade`: re-runs every PRESENT declared dep's recipe in "upgrade"
 // mode (bump toward latest; a floor-less dep, which is every dep today, has
 // no other notion of "outdated" to converge toward). qmd's model pull
 // (~2.1 GB, the SAME `qmd pull` primitive adopt.sh's wire_qmd_core already
@@ -8427,8 +8427,8 @@ async function cmdDepsUpgrade(args) {
 
   // qmd model pull, gated separately from the main upgrade plan above (it
   // is not "converging toward outdated", it's a large opt-in download).
-  // Only offered when qmd is actually declared AND present (post-upgrade),
-  // an absent qmd has nothing to pull models FOR.
+  // Only offered when qmd is actually declared AND present (post-upgrade).
+  // An absent qmd has nothing to pull models FOR.
   if (byId.has('qmd')) {
     const qmdNowPresent = args.dryRun
       ? present.some((r) => r.id === 'qmd')
@@ -8547,7 +8547,7 @@ async function main() {
   // --profile value) by setting process.exitCode itself and returning
   // early, rather than calling process.exit() synchronously. Returning
   // undefined here (a non-number) tells the top-level .then() below to
-  // NOT force an exit code of its own, the process exits naturally with
+  // NOT force an exit code of its own. The process exits naturally with
   // whatever parseArgs already set, once buffered diagnostics flush.
   if (typeof process.exitCode === 'number') return undefined;
   if (args.subcommand === null) {
@@ -8599,7 +8599,7 @@ async function main() {
 // guard the CLI's own auto-run so a test can `require` this
 // file to reach a pure helper (augmentPathForRun) without triggering the
 // whole install-wizard flow (argv parsing against the TEST's own argv,
-// process.exit, etc.), `node scripts/himmelctl/bin.js ...` still runs
+// process.exit, etc.). `node scripts/himmelctl/bin.js ...` still runs
 // main() exactly as before (require.main === module there); only a
 // `require()` from another module skips straight to the export.
 if (require.main === module) {
@@ -8609,7 +8609,7 @@ if (require.main === module) {
     // payload) before it flushes. Setting exitCode and letting the process
     // terminate naturally once the event loop drains preserves the exit code
     // AND the full output. A non-number result (main()'s early-return) means
-    // process.exitCode was already set upstream (by parseArgs), leave it.
+    // process.exitCode was already set upstream (by parseArgs). Leave it.
     .then((code) => {
       if (typeof code === 'number') process.exitCode = code;
     })
