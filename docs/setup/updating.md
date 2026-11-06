@@ -532,8 +532,9 @@ The exception is a value with an unquoted ` #`, which must be quoted first:
    secret named in `~/.himmel/env-keep.txt` reads `kept (env-keep)`, a blank
    secret line reads `stays (blank in .env: no value)`, and an `export
    NAME=` line of a himmel key reads `stays (an export line: ...)`, because the
-   readers do not read it. The set of secrets comes from
-   `scripts/lib/himmel-secrets names --class secret`.
+   readers do not read it. A key that appears more than once in `.env` reads
+   `stays (it has several entries; keep one)`, whatever its class. The set of
+   secrets comes from `scripts/lib/himmel-secrets names --class secret`.
 2. **Backup.** `.env` is copied to `~/.himmel/env-backups/env.<UTC time>.<pid>`,
    mode 600, before anything else is written; the path is printed.
 3. **Copy.** Each behaviour and policy key is copied to its new place. A key
@@ -560,10 +561,10 @@ The exception is a value with an unquoted ` #`, which must be quoted first:
    from `.env`.
 5. **Remove.** Only after the check passes are the moved lines removed from
    `.env`. A secret's line goes only when it came back `stored`, or, with no
-   unlocked keyring, when the secret went to the legacy file. Every line of a key
-   that moves goes, a later duplicate too; the backup keeps a duplicate that holds
-   another value, and for a secret the report names the key. Comments and the keys
-   that stay
+   unlocked keyring, when the secret went to the legacy file. A key that appears
+   more than once in `.env` does not move, whatever the route: the plan row reads
+   `stays (it has several entries; keep one)`. Delete the extra lines, keep the one
+   you want, and run the command again. Comments and the keys that stay
    (`held`, `env-keep`, another tool's) are kept byte for byte, and so is the
    file's mode. Then the backups are scrubbed (the secrets stage ran, so `-y` at a
    terminal outside an agent session): a file in `~/.himmel/env-backups/` or the

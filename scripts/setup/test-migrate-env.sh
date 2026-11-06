@@ -33,6 +33,29 @@ mkdir -p "$HOME"
 # No row reaches a real keyring: the stub secret-tool and busctl come first on PATH.
 # shellcheck source=../lib/fixtures/keyring-stub.sh
 . "$REPO/scripts/lib/fixtures/keyring-stub.sh"
+# A stub systemctl first on PATH for every row, so none reaches a real user manager (CI has none):
+# it logs its argv and answers show-environment with the names in $TMP/sysenv.
+mkdir -p "$TMP/sbin"
+cat > "$TMP/sbin/systemctl" <<'STUB' || fail "fixture write of the systemctl stub failed"
+#!/usr/bin/env bash
+printf 'systemctl %s\n' "$*" >> "$SYSTEMCTL_LOG"
+case "$1 $2" in
+"--user show-environment")
+    # SYS_UNREACHABLE=1: no user manager answers; SYS_READBACK_FAIL=1: the read-back after an unset fails
+    [ -z "${SYS_UNREACHABLE:-}" ] || exit 1
+    [ -z "${SYS_READBACK_FAIL:-}" ] || ! grep -q unset-environment "$SYSTEMCTL_LOG" || exit 1
+    cat "$SYSENV" 2>/dev/null; exit 0 ;;
+"--user unset-environment")
+    # SYS_STICKY=1: the name stays in the manager
+    [ -z "${SYS_STICKY:-}" ] || exit 0
+    grep -v "^$3=" "$SYSENV" > "$SYSENV.n" 2>/dev/null; mv -f "$SYSENV.n" "$SYSENV" 2>/dev/null; exit 0 ;;
+esac
+exit 0
+STUB
+chmod +x "$TMP/sbin/systemctl"
+export SYSTEMCTL_LOG="$TMP/systemctl.log" SYSENV="$TMP/sysenv"
+export PATH="$TMP/sbin:$PATH"
+unset SYS_UNREACHABLE SYS_STICKY SYS_READBACK_FAIL
 # The script refuses to apply inside an agent session; these rows are the
 # operator's run, so the marker is dropped (row 6 puts it back).
 unset CLAUDECODE
@@ -1030,15 +1053,6 @@ for r31case in "kept|JIRA_API_TOKEN=\"\"|JIRA_API_TOKEN=$r31o" "kept|JIRA_API_TO
     fi
 done
 
-# R32: duplicate .env lines K="" then K=real: the readers take the first, the move deletes both, and this run's backup keeps the dead real line and names it.
-env_only 'JIRA_API_TOKEN=""'
-fxadd "$TMP/st/.env" 'JIRA_API_TOKEN=%s\n' "$(canary r32)"
-apply_tty y
-bf=$(fresh_backup)
-if [ -n "$bf" ] && grep -q '^JIRA_API_TOKEN=CANARY-' "$bf"; then pass "R32 this run's backup keeps the dead real line"; else fail "R32 the dead real line is gone from this run's backup"; fi
-lacks "R32 the move deleted both lines from .env" "JIRA_API_TOKEN" "$(cat "$TMP/st/.env")"
-if printf '%s\n' "$out" | grep -F "$bf keeps a line for" | grep -w JIRA_API_TOKEN > /dev/null; then pass "R32 the report names the key"; else fail "R32 the report does not name the key"; fi
-
 # R33: an env-keep key leaves no backup, even when its keyring item holds the same value: a restore would lose its only .env line.
 r33v=$(canary r33)
 env_only "KEEP_ME=$r33v"
@@ -1267,7 +1281,7 @@ mkdir -p "$TMP/failbin"
 real_awk=$(command -v awk)
 cat > "$TMP/failbin/awk" <<EOF
 #!/usr/bin/env bash
-case "\$*" in *'index(set, " " k " ") { print }'*) exit 1 ;; esac
+case "\$*" in *'mode=only'*'BITBUCKET_API_TOKEN'*) exit 1 ;; esac
 exec "$real_awk" "\$@"
 EOF
 chmod +x "$TMP/failbin/awk"
@@ -1353,6 +1367,418 @@ if [ "$(cat "$TMP/race.1.rc")$(cat "$TMP/race.2.rc")" != 00 ]; then pass "race: 
 lacks "race: the winner took every secret out of .env" "READ_SECRET=" "$(cat "$TMP/st/.env")"
 has "race: the other run says why" "another import-env" "$(cat "$TMP/race.1" "$TMP/race.2" 2>/dev/null)"
 no_canary "race: no value printed" "$(cat "$TMP/race.1" "$TMP/race.2")"
+
+# --- names outside the manifest, a quoted value over two lines, the systemd user manager ---
+SYSPATH="PATH=$TMP/sbin:$PATH "
+fixture_9360() {  # the station .env plus an entry outside the manifest whose quoted value spans two lines, and a one-line one
+    fixture_env
+    : > "$SYSTEMCTL_LOG"
+    fxadd "$TMP/st/.env" "GGS_MQTT_PASS='%s\n'\n" "$(canary mq)"
+    fxadd "$TMP/st/.env" 'PLAIN_UNOWNED=%s\n' "$(canary plain)"
+    printf 'GGS_MQTT_PASS=x\nOTHER_TOOL_TOKEN=y\n' > "$SYSENV"
+    cp -p "$TMP/st/.env" "$TMP/st.orig"
+}
+sources_clean() {  # the file still sources, and load_dotenv still reads the key after the entry
+    bash -c 'set -e; . "$1"' _ "$TMP/st/.env" >/dev/null 2>&1 \
+        && [ "$(bash -c '. "$1"; load_dotenv --root "$2" PLAIN_UNOWNED >/dev/null 2>&1; printf %s "${PLAIN_UNOWNED-}"' _ "$FX/scripts/lib/load-dotenv.sh" "$TMP/st")" = "$(sed -n 's/^PLAIN_UNOWNED=//p' "$TMP/st/.env")" ]
+}
+# N1: -y alone never moves an unowned name, and the plan says how to.
+fixture_9360
+apply_tty y "$SYSPATH"
+has "N1 -y alone leaves the two-line entry" "GGS_MQTT_PASS='CANARY-mq-" "$(cat "$TMP/st/.env")"
+has "N1 the plan names the way to move unowned names" "--unowned" "$out"
+if ! grep -q 'CANARY-mq' "$KSTUB_STORE" 2>/dev/null; then pass "N1 -y alone stores no unowned value"; else fail "N1 -y alone stored an unowned value"; fi
+# N2: --keys moves a name outside the manifest with a two-line quoted value, whole.
+fixture_9360
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N2 --keys apply exits 0"; else fail "N2 --keys apply exited $rc: $out"; fi
+if grep -q 'CANARY-mq' "$KSTUB_STORE" 2>/dev/null; then pass "N2 the value is in the keyring"; else fail "N2 the value is not in the keyring"; fi
+lacks "N2 no GGS_MQTT_PASS entry left" "GGS_MQTT_PASS" "$(cat "$TMP/st/.env")"
+if [ "$(grep -c "^'$" "$TMP/st/.env")" = 0 ]; then pass "N2 no stray quote left"; else fail "N2 a stray quote is left in .env"; fi
+if sources_clean; then pass "N2 the file still sources and load_dotenv still reads it"; else fail "N2 the file no longer sources cleanly"; fi
+has "N2 a key not named stays" "PLAIN_UNOWNED=CANARY-plain-" "$(cat "$TMP/st/.env")"
+has "N2 OTHER_TOOL_TOKEN (not named) stays" "OTHER_TOOL_TOKEN=CANARY-other-" "$(cat "$TMP/st/.env")"
+no_canary "N2 no value printed" "$out"
+# N3: every moved name gets an unset-environment call, and the report names them.
+for n in GGS_MQTT_PASS READ_SECRET UNREAD_SECRET BITBUCKET_API_TOKEN; do
+    has "N3 unset-environment for $n" "systemctl --user unset-environment $n" "$(cat "$SYSTEMCTL_LOG")"
+done
+lacks "N3 a name that stayed is not unset" "unset-environment OTHER_TOOL_TOKEN" "$(cat "$SYSTEMCTL_LOG")"
+has "N3 the report names the systemd user manager" "systemd user manager" "$out"
+# N4: a failed keyring store leaves the entry whole in the file.
+fixture_9360
+grep -v -E '^(READ_SECRET|UNREAD_SECRET|BITBUCKET_API_TOKEN|KEEP_ME)=' "$TMP/st/.env" > "$TMP/st/.env.new" && mv "$TMP/st/.env.new" "$TMP/st/.env"
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "KSTUB_DROP_STORE=1 $SYSPATH"
+if [ "$rc" != 0 ]; then pass "N4 a store the keyring did not keep fails the run (exit $rc)"; else fail "N4 the run exited 0"; fi
+has "N4 the entry stays whole" "GGS_MQTT_PASS='CANARY-mq-" "$(cat "$TMP/st/.env")"
+if [ "$(grep -c "^'$" "$TMP/st/.env")" = 1 ]; then pass "N4 its closing quote stays with it"; else fail "N4 the closing quote line is gone"; fi
+lacks "N4 a name that did not reach the keyring is not unset" "unset-environment GGS_MQTT_PASS" "$(cat "$SYSTEMCTL_LOG")"
+no_canary "N4 no value printed" "$out"
+# N5: --unowned moves every unowned name.
+fixture_9360
+APPLY_ARGS="-y --unowned" apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N5 --unowned apply exits 0"; else fail "N5 --unowned apply exited $rc: $out"; fi
+for n in GGS_MQTT_PASS OTHER_TOOL_TOKEN PLAIN_UNOWNED; do
+    lacks "N5 $n left .env" "$n=" "$(cat "$TMP/st/.env")"
+done
+if [ "$(grep -c 'CANARY-\(mq\|other\|plain\)' "$KSTUB_STORE")" = 3 ]; then pass "N5 the three values are in the keyring"; else fail "N5 the keyring does not hold the three values"; fi
+no_canary "N5 no value printed" "$out"
+# N8: a himmel secret named beside an unowned one is no error; both move.
+fixture_9360
+APPLY_ARGS="-y --keys READ_SECRET,GGS_MQTT_PASS" apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N8 naming a himmel secret beside an unowned one exits 0"; else fail "N8 exited $rc: $out"; fi
+lacks "N8 the himmel secret moved" "READ_SECRET=" "$(cat "$TMP/st/.env")"
+lacks "N8 the unowned entry moved" "GGS_MQTT_PASS" "$(cat "$TMP/st/.env")"
+# N9: a name .env.example lists but the secrets manifest does not (the station's bot token) is the user's to name.
+fxadd "$FX/.env.example" 'EXAMPLE_ONLY_SECRET=\n'
+fixture_9360
+fxadd "$TMP/st/.env" "EXAMPLE_ONLY_SECRET='%s\n'\n" "$(canary ex)"
+apply_tty y "$SYSPATH"
+has "N9 -y alone leaves a name outside the manifest" "EXAMPLE_ONLY_SECRET='CANARY-ex-" "$(cat "$TMP/st/.env")"
+fixture_9360
+fxadd "$TMP/st/.env" "EXAMPLE_ONLY_SECRET='%s\n'\n" "$(canary ex)"
+APPLY_ARGS="-y --keys EXAMPLE_ONLY_SECRET" apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N9 --keys on it exits 0"; else fail "N9 exited $rc: $out"; fi
+lacks "N9 the named entry left .env" "EXAMPLE_ONLY_SECRET" "$(cat "$TMP/st/.env")"
+if grep -q 'CANARY-ex' "$KSTUB_STORE" 2>/dev/null; then pass "N9 its value is in the keyring"; else fail "N9 its value is not in the keyring"; fi
+has "N9 unset-environment for it" "systemctl --user unset-environment EXAMPLE_ONLY_SECRET" "$(cat "$SYSTEMCTL_LOG")"
+printf '# READ_SECRET=\nUNREAD_SECRET=\nKEEP_ME=\nJIRA_API_TOKEN=\nBITBUCKET_API_TOKEN=\n' > "$FX/.env.example" || fail "N9 restoring the fixture .env.example failed"
+# N10: a retained entry whose quoted value holds a NAME=value line is not read as an entry: the real
+# entry is the one stored and removed, and the retained value stays whole.
+fixture_9360
+{ printf "KEEP_NOTE='first line\nGGS_MQTT_PASS=INNER-CANARY\nlast'\n"; cat "$TMP/st/.env"; } > "$TMP/st/.env.new" && mv "$TMP/st/.env.new" "$TMP/st/.env"
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N10 apply exits 0"; else fail "N10 apply exited $rc: $out"; fi
+if grep -q 'CANARY-mq' "$KSTUB_STORE" 2>/dev/null && ! grep -q 'INNER-CANARY' "$KSTUB_STORE" 2>/dev/null; then pass "N10 the real value is stored, not the embedded line"; else fail "N10 the keyring holds the wrong value"; fi
+has "N10 the retained value keeps its embedded line" "GGS_MQTT_PASS=INNER-CANARY" "$(cat "$TMP/st/.env")"
+has "N10 the retained value keeps its last line" "last'" "$(cat "$TMP/st/.env")"
+lacks "N10 the real entry left" "GGS_MQTT_PASS='CANARY-mq" "$(cat "$TMP/st/.env")"
+# N11: an unset whose read-back fails is not reported as an empty manager.
+fixture_9360
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "SYS_READBACK_FAIL=1 $SYSPATH"
+if [ "$rc" != 0 ]; then pass "N11 a failed read-back fails the run (exit $rc)"; else fail "N11 the run exited 0"; fi
+has "N11 the report says it could not read the manager back" "could not be read back" "$out"
+lacks "N11 it does not claim the manager holds none" "still holds 0" "$out"
+# N12: an item the keyring already holds is never replaced. A store here replaces the item with
+# the same attributes, as libsecret does (the shared stub only appends), so a probe-less store
+# would overwrite a newer keyring value with the file's older one.
+mkdir -p "$TMP/rbin"
+cat > "$TMP/rbin/secret-tool" <<'STUB' || fail "fixture write of the replacing secret-tool failed"
+#!/usr/bin/env bash
+if [ "$1" = store ]; then
+    orig=("$@"); shift 3; q=""
+    while [ "$#" -ge 2 ]; do q="$q $1=$2"; shift 2; done
+    if [ -f "$KSTUB_STORE" ]; then
+        awk -F '\t' -v a="${q# }" '$1 != a' "$KSTUB_STORE" > "$KSTUB_STORE.r" && mv -f "$KSTUB_STORE.r" "$KSTUB_STORE"
+    fi
+    exec "$KBIN/secret-tool" "${orig[@]}"
+fi
+exec "$KBIN/secret-tool" "$@"
+STUB
+chmod +x "$TMP/rbin/secret-tool"
+export KBIN
+RPATH="PATH=$TMP/rbin:$TMP/sbin:$PATH "
+fixture_9360
+kitem GGS_MQTT_PASS "$(canary newer)"
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "$RPATH"
+if [ "$rc" = 0 ]; then pass "N12 a held name does not fail the run"; else fail "N12 exited $rc: $out"; fi
+if grep -q 'CANARY-newer' "$KSTUB_STORE" 2>/dev/null && ! grep -q 'CANARY-mq' "$KSTUB_STORE" 2>/dev/null; then pass "N12 the newer keyring value was not replaced"; else fail "N12 the keyring value was replaced"; fi
+has "N12 the entry stays in .env" "GGS_MQTT_PASS='CANARY-mq-" "$(cat "$TMP/st/.env")"
+has "N12 the report says held" "held GGS_MQTT_PASS" "$out"
+lacks "N12 a held name is not cleared from the manager" "unset-environment GGS_MQTT_PASS" "$(cat "$SYSTEMCTL_LOG")"
+no_canary "N12 no value printed" "$out"
+# N12b: the same value already in the keyring lets the entry leave, with nothing stored twice.
+fixture_9360
+n12v=$(sed -n "s/^GGS_MQTT_PASS='//p" "$TMP/st/.env")
+kitem GGS_MQTT_PASS "$n12v"
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "$RPATH"
+lacks "N12b the entry left .env" "GGS_MQTT_PASS" "$(cat "$TMP/st/.env")"
+if [ "$(grep -c 'key=GGS_MQTT_PASS' "$KSTUB_STORE")" = 1 ] && ! grep -q 'secret-tool store.*GGS_MQTT_PASS' "$KSTUB_LOG"; then pass "N12b nothing was stored again"; else fail "N12b the keyring was written again"; fi
+# N13: a NAME= line inside another key's quoted value is not the named key's entry, even when the real entry is one line.
+fixture_9360
+fxadd "$TMP/st/.env" "NOTE='first\nTOK=EMBEDDED-CANARY\nlast'\nTOK=%s\n" "$(canary tok)"
+APPLY_ARGS="-y --keys TOK" apply_tty y "$SYSPATH"
+if grep -q 'CANARY-tok' "$KSTUB_STORE" 2>/dev/null && ! grep -q 'EMBEDDED-CANARY' "$KSTUB_STORE" 2>/dev/null; then pass "N13 the real TOK line is the one stored"; else fail "N13 the keyring holds the wrong TOK value"; fi
+has "N13 the embedded line stays inside NOTE" "TOK=EMBEDDED-CANARY" "$(cat "$TMP/st/.env")"
+lacks "N13 the real TOK line left" "TOK=CANARY-tok" "$(cat "$TMP/st/.env")"
+# N14: the printed commands carry this run's --env.
+fixture_9360
+out=$(bash "$SCRIPT" --dry-run --env "$TMP/st/.env" 2>&1)
+has "N14 the --unowned command carries --env" "--env $TMP/st/.env -y --unowned" "$out"
+has "N14 the --keys command carries --env" "--env $TMP/st/.env -y --keys NAME" "$out"
+# N15: the backups keep a named value and a two-line manifest value in plaintext: the run says so, and does not claim a kept line the keyring lacks.
+fixture_9360
+grep -v '^BITBUCKET_API_TOKEN=' "$TMP/st/.env" > "$TMP/st/.env.new" && mv "$TMP/st/.env.new" "$TMP/st/.env"
+fxadd "$TMP/st/.env" "BITBUCKET_API_TOKEN='%s\n'\n" "$(canary bb2)"
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "$SYSPATH"
+has "N15 the report names the entries the backups keep in plaintext" "still hold the entries for" "$out"
+has "N15 it names the unowned entry" "GGS_MQTT_PASS" "$(printf '%s\n' "$out" | grep 'still hold the entries for')"
+has "N15 it names the two-line manifest entry" "BITBUCKET_API_TOKEN" "$(printf '%s\n' "$out" | grep 'still hold the entries for')"
+lacks "N15 it does not say the keyring lacks a value it stored" "keeps a line for BITBUCKET_API_TOKEN" "$out"
+# N16: --unowned never moves a process environment name, and the plan lists what it will move.
+fixture_9360
+fxadd "$TMP/st/.env" 'PATH=/usr/local/bin\nXDG_RUNTIME_DIR=/run/user/1000\n'
+out=$(bash "$SCRIPT" --dry-run --unowned --env "$TMP/st/.env" 2>&1)
+has "N16 the plan lists the names --unowned will move" "these names move to the keyring" "$out"
+has "N16 a plain name is in that list" "PLAIN_UNOWNED" "$(printf '%s\n' "$out" | grep 'these names move to the keyring')"
+has "N16 PATH is refused in the plan" "PATH  unowned  stays (a process environment name, never moved)" "$out"
+APPLY_ARGS="-y --unowned" apply_tty y "$SYSPATH"
+has "N16 PATH stays in .env" "PATH=/usr/local/bin" "$(cat "$TMP/st/.env")"
+has "N16 XDG_RUNTIME_DIR stays in .env" "XDG_RUNTIME_DIR=/run/user/1000" "$(cat "$TMP/st/.env")"
+lacks "N16 PATH is not cleared from the manager" "unset-environment PATH" "$(cat "$SYSTEMCTL_LOG")"
+# N17: a manager that cannot be reached, or that still holds a name, is not a success.
+fixture_9360
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "SYS_UNREACHABLE=1 $SYSPATH"
+if [ "$rc" != 0 ]; then pass "N17 an unreachable manager fails the run (exit $rc)"; else fail "N17 the run exited 0"; fi
+has "N17 the report says nothing was cleared" "not reachable" "$out"
+lacks "N17 the entry still left .env" "GGS_MQTT_PASS=" "$(cat "$TMP/st/.env")"
+fixture_9360
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "SYS_STICKY=1 $SYSPATH"
+if [ "$rc" != 0 ]; then pass "N17 a name the manager still holds fails the run (exit $rc)"; else fail "N17 the run exited 0"; fi
+has "N17 the report counts the names still held" "still holds" "$out"
+# N6: a name the file does not hold is a usage error with nothing written.
+fixture_9360
+APPLY_ARGS="-y --keys NOT_IN_THE_FILE" apply_tty y "$SYSPATH"
+if [ "$rc" = 2 ]; then pass "N6 a name absent from the file exits 2"; else fail "N6 a name absent from the file exited $rc"; fi
+if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "N6 .env is byte-identical"; else fail "N6 .env changed"; fi
+# N7: a value with a real newline inside cannot be one keyring item: the entry stays whole, others move.
+fixture_9360
+fxadd "$TMP/st/.env" "TWO_LINE_VALUE='%s\n%s\n'\n" "$(canary a)" "$(canary b)"
+APPLY_ARGS="-y --keys TWO_LINE_VALUE,GGS_MQTT_PASS" apply_tty y "$SYSPATH"
+has "N7 the entry with a newline inside stays" "TWO_LINE_VALUE='CANARY-a-" "$(cat "$TMP/st/.env")"
+lacks "N7 the other named entry moved" "GGS_MQTT_PASS" "$(cat "$TMP/st/.env")"
+if [ "$rc" != 0 ]; then pass "N7 the run reports the entry it kept (exit $rc)"; else fail "N7 the run exited 0"; fi
+no_canary "N7 no value printed" "$out"
+
+# --- one entry parser: a quote that never closes, names that are not valid, a several-line value with no keyring ---
+quote_stays() {  # <label> <env file> <plan row>: the file is byte-identical to the fixture, the plan says why the key stays, nothing is reported moved
+    if cmp -s "$2" "$TMP/st.orig"; then pass "$1: .env is byte-identical"; else fail "$1: .env changed"; fi
+    has "$1: the plan says why it stays" "$3" "$out"
+    lacks "$1: nothing is reported moved" "removed their lines" "$out"
+    no_canary "$1: no value printed" "$out"
+}
+n18_env() {  # <path>: USER_SLUG opens a quote that never closes, so the lines after it are inside its value
+    fxput "$1" "USER_SLUG='%s\nREAD_SECRET=%s\nOTHER_TOOL_TOKEN=%s\n" "$(canary slug)" "$(canary read)" "$(canary other)"
+    cp -p "$1" "$TMP/st.orig"
+}
+# N18: a key whose quote never closes stays on every route, and no line after it is removed.
+fixture_env
+n18_env "$TMP/st/.env"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "N18 -y: the run exits 0"; else fail "N18 -y: exited $rc: $out"; fi
+quote_stays "N18 -y" "$TMP/st/.env" "  USER_SLUG  config  stays (its quote never closes)"
+consent_fixture '{"version":1,"policy":{"ENV_MIGRATION_CONSENT":"1"}}'
+n18_env "$FX/.env"
+out=$(CLAUDECODE=1 bash "$SCRIPT" --env "$FX/.env" < /dev/null 2>&1); rc=$?
+if [ "$rc" = 0 ]; then pass "N18 consent: the run exits 0"; else fail "N18 consent: exited $rc: $out"; fi
+quote_stays "N18 consent" "$FX/.env" "  USER_SLUG  config  stays (its quote never closes)"
+fixture_env
+fxput "$TMP/st/.env" "UNREAD_SECRET=%s\nOTHER_TOOL_TOKEN=%s\nUNREAD_SECRET='%s\nBITBUCKET_API_TOKEN=%s\n" "$(canary unread)" "$(canary other)" "$(canary dup)" "$(canary bb)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y "HIMMEL_SECRETS_KEYRING=off "
+quote_stays "N18 no keyring" "$TMP/st/.env" "  UNREAD_SECRET  secret  stays (its quote never closes)"
+lacks "N18 no keyring: the legacy file holds no line of it" "UNREAD_SECRET" "$(cat "$store" 2>/dev/null)"
+fixture_env
+fxput "$TMP/st/.env" "CR_REQUIRE_CROSS_MODEL=1\nOTHER_TOOL_TOKEN=%s\nCR_REQUIRE_CROSS_MODEL='%s\nREAD_SECRET=%s\n" "$(canary other)" "$(canary dup)" "$(canary read)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "N18 a later duplicate: the run exits 0"; else fail "N18 a later duplicate: exited $rc: $out"; fi
+quote_stays "N18 a later duplicate" "$TMP/st/.env" "  CR_REQUIRE_CROSS_MODEL  config (policy)  stays (its quote never closes)"
+has "N18 a later duplicate: the WARN names the line where the quote opens" "WARN the quote opened at line 3 of $TMP/st/.env never closes" "$out"
+# a holder that is no key (an export line) that never closes hides the lines after it: none moves, and the report says why
+fixture_env
+fxput "$TMP/st/.env" "export NOTE='%s\nREAD_SECRET=%s\n" "$(canary note)" "$(canary read)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y
+if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "N18 an export holder: .env is byte-identical"; else fail "N18 an export holder: .env changed"; fi
+has "N18 an export holder: the WARN names the line where the quote opens" "WARN the quote opened at line 1 of $TMP/st/.env never closes" "$out"
+lacks "N18 an export holder: nothing is reported moved" "removed their lines" "$out"
+if ! grep -q 'CANARY-read' "$KSTUB_STORE" 2>/dev/null; then pass "N18 an export holder: the hidden secret reached no store"; else fail "N18 an export holder: a hidden line was stored"; fi
+# N19: a name that is not a valid key opens a quote too: the lines inside it are never entries.
+fixture_9360
+fxadd "$TMP/st/.env" "export NOTE='first\nTOK=EMBEDDED-ONE\nlast'\nmy-note=\"second\nTOK=EMBEDDED-TWO\nend\"\nTOK=%s\n" "$(canary tok)"
+APPLY_ARGS="-y --keys TOK" apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N19 the apply exits 0"; else fail "N19 exited $rc: $out"; fi
+if grep -q 'CANARY-tok' "$KSTUB_STORE" 2>/dev/null && ! grep -q 'EMBEDDED' "$KSTUB_STORE" 2>/dev/null; then pass "N19 the real TOK entry is the one stored"; else fail "N19 the keyring holds the wrong TOK value"; fi
+has "N19 the export holder keeps its embedded line" "TOK=EMBEDDED-ONE" "$(cat "$TMP/st/.env")"
+has "N19 the export holder keeps its last line" "last'" "$(cat "$TMP/st/.env")"
+has "N19 the invalid-name holder keeps its embedded line" "TOK=EMBEDDED-TWO" "$(cat "$TMP/st/.env")"
+has "N19 the invalid-name holder keeps its last line" "end\"" "$(cat "$TMP/st/.env")"
+lacks "N19 the real TOK entry left" "TOK=CANARY-tok" "$(cat "$TMP/st/.env")"
+no_canary "N19 no value printed" "$out"
+# N20: with no keyring a value over several lines stays whole in .env; the legacy file takes one line per entry, so nothing leaves on a one-line store.
+fixture_env
+fxput "$TMP/st/.env" "UNREAD_SECRET='%s\n%s'\n" "$(canary a)" "$(canary b)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y "HIMMEL_SECRETS_KEYRING=off "
+quote_stays "N20" "$TMP/st/.env" "  UNREAD_SECRET  secret  stays (no keyring; its value runs over several lines)"
+lacks "N20 the legacy file holds no line of it" "UNREAD_SECRET" "$(cat "$store" 2>/dev/null)"
+# N21: a value with a newline inside is not the keyring's one-line item because every line of it equals that item.
+fixture_env
+n21v=$(canary rep)
+fxput "$TMP/st/.env" "REPEATED='%s\n%s'\n" "$n21v" "$n21v"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+kitem REPEATED "$n21v"
+APPLY_ARGS="-y --keys REPEATED" apply_tty y "$SYSPATH"
+if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "N21 the several-line entry stays whole"; else fail "N21 the entry left .env"; fi
+if [ "$rc" != 0 ]; then pass "N21 the run reports the entry it kept (exit $rc)"; else fail "N21 the run exited 0"; fi
+no_canary "N21 no value printed" "$out"
+# N22: a keyring that stops answering between the probe and the compare is a failure, not a held name.
+mv "$FX/scripts/lib/himmel-secrets" "$FX/scripts/lib/himmel-secrets.real"
+cat > "$FX/scripts/lib/himmel-secrets" <<'STUB' || fail "fixture write of the silent-keyring wrapper failed"
+#!/usr/bin/env bash
+# same-value: the first call (the probe) is answered, a later one finds the keyring silent
+if [ "$1" = same-value ]; then
+    # read-sink-ok: a counter file this suite names itself (SV_COUNT is set on the apply line below)
+    n=$(cat "$SV_COUNT" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "$SV_COUNT"
+    [ "$n" -le 1 ] || { echo "himmel-secrets: the keyring did not answer" >&2; exit 2; }
+fi
+exec bash "${BASH_SOURCE[0]}.real" "$@"
+STUB
+chmod +x "$FX/scripts/lib/himmel-secrets"
+fixture_env
+fxput "$TMP/st/.env" "GGS_MQTT_PASS='%s\n'\n" "$(canary mq)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+kitem GGS_MQTT_PASS "$(canary newer)"
+rm -f "$TMP/sv.count"
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "SV_COUNT=$TMP/sv.count $SYSPATH"
+mv "$FX/scripts/lib/himmel-secrets.real" "$FX/scripts/lib/himmel-secrets"
+lacks "N22 a silent keyring is not called held" "held GGS_MQTT_PASS" "$out"
+has "N22 the report says the keyring did not answer" "failed GGS_MQTT_PASS (the keyring did not answer)" "$out"
+if [ "$rc" != 0 ]; then pass "N22 the run fails (exit $rc)"; else fail "N22 the run exited 0"; fi
+if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "N22 the entry stays"; else fail "N22 the entry left .env"; fi
+# N23: the command that checks the --unowned list carries this run's --env, and the list is the one printed above it.
+fixture_9360
+out=$(bash "$SCRIPT" --dry-run --env "$TMP/st/.env" 2>&1)
+has "N23 the check command carries --env" "--env $TMP/st/.env --dry-run --unowned" "$out"
+lacks "N23 the list is not 'every name above'" "every name above" "$out"
+# N24: the plaintext WARN names the older backups that hold the entry, and none that does not.
+fixture_9360
+mkdir -p "$HOME/.himmel/env-backups"
+n24old="$HOME/.himmel/env-backups/env.20260101T000000Z.1"
+n24other="$HOME/.himmel/env-backups/env.20260102T000000Z.1"
+fxput "$n24old" "GGS_MQTT_PASS='%s\n'\n" "$(canary old)"
+fxput "$n24other" 'HIMMEL_FLEET_CAP=7\n'
+chmod 600 "$n24old" "$n24other"
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "$SYSPATH"
+n24warn=$(printf '%s\n' "$out" | grep 'still hold the entries for')
+has "N24 the WARN names the older backup that holds the entry" "$n24old" "$n24warn"
+lacks "N24 it does not name an older backup without the entry" "$n24other" "$n24warn"
+# N25: a later run names a several-line manifest entry an earlier run stored, and gives the real reason.
+fixture_env
+fxput "$TMP/st/.env" "BITBUCKET_API_TOKEN='%s\n'\n" "$(canary bb3)"
+apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ] && ! grep -q BITBUCKET_API_TOKEN "$TMP/st/.env"; then pass "N25 the first run stores the entry and removes it"; else fail "N25 the first run exited $rc: $out"; fi
+out=$(bash "$SCRIPT" --dry-run --env "$TMP/st/.env" 2>&1)
+has "N25 the backup is named with the real reason" "keeps the entries for BITBUCKET_API_TOKEN: they run over several lines" "$out"
+has "N25 the config copy is named with the real reason" "keeps the entries for BITBUCKET_API_TOKEN: they run over several lines" "$(printf '%s\n' "$out" | grep 'config backup')"
+lacks "N25 the keyring is not blamed for a value it holds" "keeps a line for BITBUCKET_API_TOKEN" "$out"
+no_canary "N25 no value printed" "$out"
+# N26: the header's exit list names what fails a run.
+out=$(bash "$SCRIPT" --help 2>&1)
+has "N26 --help names an entry that did not reach the keyring" "an entry did not reach the keyring" "$out"
+has "N26 --help names the manager failure" "the systemd user manager could not be reached" "$out"
+# N27 to N29: himmel.conf and config.json take one line per key, so a config or policy key with a value over several lines stays whole:
+# a copy would cut it at its first line while the removal took the rest. Any entry of the key counts, a later duplicate too.
+fixture_env
+fxput "$TMP/st/.env" 'USER_SLUG="%s\n%s"\nOTHER_TOOL_TOKEN=%s\n' "$(canary slug)" "$(canary slugb)" "$(canary other)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "N27 closed config: the run exits 0"; else fail "N27 closed config: exited $rc: $out"; fi
+quote_stays "N27 closed config" "$TMP/st/.env" "  USER_SLUG  config  stays (its value runs over several lines)"
+lacks "N27 closed config: himmel.conf holds no line of it" "USER_SLUG" "$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)"
+fixture_env
+fxput "$TMP/st/.env" 'CR_REQUIRE_CROSS_MODEL="%s\n%s"\nOTHER_TOOL_TOKEN=%s\n' "$(canary pa)" "$(canary pb)" "$(canary other)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "N28 closed policy: the run exits 0"; else fail "N28 closed policy: exited $rc: $out"; fi
+quote_stays "N28 closed policy" "$TMP/st/.env" "  CR_REQUIRE_CROSS_MODEL  config (policy)  stays (its value runs over several lines)"
+lacks "N28 closed policy: config.json holds no value of it" "CR_REQUIRE_CROSS_MODEL" "$(cat "$HOME/.himmel/config.json" 2>/dev/null)"
+fixture_env
+fxput "$TMP/st/.env" 'USER_SLUG=%s\nOTHER_TOOL_TOKEN=%s\nUSER_SLUG="%s\n%s"\n' "$(canary one)" "$(canary other)" "$(canary dupa)" "$(canary dupb)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "N29 a later several-line duplicate: the run exits 0"; else fail "N29 a later several-line duplicate: exited $rc: $out"; fi
+quote_stays "N29 a later several-line duplicate" "$TMP/st/.env" "  USER_SLUG  config  stays (its value runs over several lines)"
+lacks "N29 a later several-line duplicate: himmel.conf holds no line of it" "USER_SLUG" "$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)"
+# N30 and N31: the config copy is staged from the entry table, so it holds the entries of the config keys that move and nothing else.
+# An open key the plan says stays, and a config line inside another entry's quoted value, never reach himmel.conf (served ahead of .env).
+fixture_env
+fxput "$TMP/st/.env" "HANDOVER_DIR=%s\nUSER_SLUG='%s\nREAD_SECRET=%s\n" "$TMP/handovers" "$(canary slug)" "$(canary read)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "N30 an open key beside a moving config key: the run exits 0"; else fail "N30 exited $rc: $out"; fi
+has "N30 the open key stays in the plan" "  USER_SLUG  config  stays (its quote never closes)" "$out"
+has "N30 the other config key moves" "  HANDOVER_DIR  config  → ~/.himmel/himmel.conf" "$out"
+n30conf=$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)
+has "N30 the moving key reached himmel.conf" "HANDOVER_DIR=$TMP/handovers" "$n30conf"
+lacks "N30 the open key did not reach himmel.conf" "USER_SLUG" "$n30conf"
+if [ "$(cat "$TMP/st/.env")" = "$(tail -n +2 "$TMP/st.orig")" ]; then pass "N30 .env lost the moved entry and nothing else"; else fail "N30 .env changed beyond the moved entry"; fi
+no_canary "N30 no value printed" "$out"
+fixture_env
+fxput "$TMP/st/.env" "export NOTE='%s\nUSER_SLUG=%s\nlast'\nHANDOVER_DIR=%s\n" "$(canary note)" "$(canary hidden)" "$TMP/handovers"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "N31 a config line inside a quoted value: the run exits 0"; else fail "N31 exited $rc: $out"; fi
+n31conf=$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)
+has "N31 the real config key reached himmel.conf" "HANDOVER_DIR=$TMP/handovers" "$n31conf"
+lacks "N31 the hidden config line did not reach himmel.conf" "USER_SLUG" "$n31conf"
+has "N31 the holder keeps its hidden line" "USER_SLUG=CANARY-hidden" "$(cat "$TMP/st/.env")"
+lacks "N31 the moved entry left .env" "HANDOVER_DIR" "$(cat "$TMP/st/.env")"
+no_canary "N31 no value printed" "$out"
+# N32 to N35: a store by value reads the first entry of a key and the removal takes every entry, so a key with a later entry stays:
+# the later value would reach no store and no file. A one-line and a several-line later duplicate, a manifest secret whose first entry
+# runs over two lines, and the no-keyring route with a later several-line duplicate.
+no_item() {  # <label> <key>: the keyring holds no item for the key
+    if ! grep -q "key=$2 " "$KSTUB_STORE" 2>/dev/null; then pass "$1: nothing reached the keyring"; else fail "$1: the keyring holds an item for $2"; fi
+}
+fixture_env
+fxput "$TMP/st/.env" 'TOK=%s\nOTHER_TOOL_TOKEN=%s\nTOK=%s\n' "$(canary old)" "$(canary other)" "$(canary new)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+APPLY_ARGS="-y --keys TOK" apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N32 a one-line later duplicate: the run exits 0"; else fail "N32 a one-line later duplicate: exited $rc: $out"; fi
+quote_stays "N32 a one-line later duplicate" "$TMP/st/.env" "  TOK  unowned  stays (it has several entries; keep one)"
+no_item "N32 a one-line later duplicate" TOK
+fixture_env
+fxput "$TMP/st/.env" "TOK=%s\nTOK='%s\n'\n" "$(canary one)" "$(canary two)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+APPLY_ARGS="-y --unowned" apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N33 a several-line later duplicate: the run exits 0"; else fail "N33 a several-line later duplicate: exited $rc: $out"; fi
+quote_stays "N33 a several-line later duplicate" "$TMP/st/.env" "  TOK  unowned  stays (it has several entries; keep one)"
+no_item "N33 a several-line later duplicate" TOK
+fixture_env
+fxput "$TMP/st/.env" "UNREAD_SECRET='%s\n'\nOTHER_TOOL_TOKEN=%s\nUNREAD_SECRET=%s\n" "$(canary a)" "$(canary other)" "$(canary b)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N34 a manifest secret over two lines with a later entry: the run exits 0"; else fail "N34 a manifest secret over two lines with a later entry: exited $rc: $out"; fi
+quote_stays "N34 a manifest secret over two lines with a later entry" "$TMP/st/.env" "  UNREAD_SECRET  secret  stays (it has several entries; keep one)"
+no_item "N34 a manifest secret over two lines with a later entry" UNREAD_SECRET
+fixture_env
+fxput "$TMP/st/.env" "UNREAD_SECRET=%s\nUNREAD_SECRET='%s\n'\n" "$(canary a)" "$(canary b)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y "HIMMEL_SECRETS_KEYRING=off "
+quote_stays "N35 no keyring, a several-line later duplicate" "$TMP/st/.env" "  UNREAD_SECRET  secret  stays (it has several entries; keep one)"
+lacks "N35 the legacy file holds no line of it" "UNREAD_SECRET" "$(cat "$store" 2>/dev/null)"
+# N36, N37: the rule holds on every route, a one-line later duplicate too: no keyring (the legacy file takes the first entry), and a config key (himmel.conf takes one line).
+fixture_env
+fxput "$TMP/st/.env" 'UNREAD_SECRET=%s\nUNREAD_SECRET=%s\n' "$(canary a)" "$(canary b)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y "HIMMEL_SECRETS_KEYRING=off "
+quote_stays "N36 no keyring, a one-line later duplicate" "$TMP/st/.env" "  UNREAD_SECRET  secret  stays (it has several entries; keep one)"
+lacks "N36 the legacy file holds no line of it" "UNREAD_SECRET" "$(cat "$store" 2>/dev/null)"
+fixture_env
+fxput "$TMP/st/.env" 'HANDOVER_DIR=%s\nHANDOVER_DIR=%s\n' "$TMP/handovers" "$TMP/handovers2"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y "$SYSPATH"
+quote_stays "N37 a config key with a one-line later duplicate" "$TMP/st/.env" "  HANDOVER_DIR  config  stays (it has several entries; keep one)"
+lacks "N37 himmel.conf holds no line of it" "HANDOVER_DIR" "$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)"
+# R32: duplicate .env lines K="" then K=real: the key stays, so the real line reaches no store and is not deleted (it used to move and leave the dead line in the backup). The fixture is the two lines alone, so no policy key moves.
+fixture_env
+fxput "$TMP/st/.env" 'JIRA_API_TOKEN=""\nJIRA_API_TOKEN=%s\n' "$(canary r32)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y "$SYSPATH"
+quote_stays "R32 a blank line then a real one" "$TMP/st/.env" "  JIRA_API_TOKEN  secret  stays (it has several entries; keep one)"
+no_item "R32 a blank line then a real one" JIRA_API_TOKEN
 
 if [ "$FAILED" -gt 0 ]; then
     echo "test-migrate-env: $FAILED FAILED"
