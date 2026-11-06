@@ -914,11 +914,11 @@ test("an outbox line with document_path is delivered via the document sender; te
   await writeMeta(r, "__chat__", { chat_id: 5, status: "idle", last_run_pid: null, last_run_at: null, task_name: null });
   const out = join(sessionDir(r, "__chat__"), "outbox.jsonl");
   await appendLine(out, JSON.stringify({ text: "plain" }));
-  await appendLine(out, JSON.stringify({ document_path: "/x/spec.html", caption: "the spec" }));
+  await appendLine(out, JSON.stringify({ document_path: "/x/spec.txt", caption: "the spec" }));
   const texts: any[] = []; const docs: any[] = [];
   await flushOutboxes(r, async (chat, text) => { texts.push([chat, text]); }, async (chat, path, caption) => { docs.push([chat, path, caption]); return true; });
   expect(texts).toEqual([[5, "plain"]]);
-  expect(docs).toEqual([[5, "/x/spec.html", "the spec"]]);
+  expect(docs).toEqual([[5, "/x/spec.txt", "the spec"]]);
 });
 
 test("a document the sender could not deliver tells the chat instead of vanishing", async () => {
@@ -1011,11 +1011,11 @@ test("a document line in a group session is refused and never reaches the docume
 test("a line carrying both text and document_path sends the text and the document", async () => {
   const r = root(); await ensureSession(r, "__chat__");
   await writeMeta(r, "__chat__", { chat_id: 5, status: "idle", last_run_pid: null, last_run_at: null, task_name: null });
-  await appendLine(join(sessionDir(r, "__chat__"), "outbox.jsonl"), JSON.stringify({ text: "here it is", document_path: "/x/spec.html" }));
+  await appendLine(join(sessionDir(r, "__chat__"), "outbox.jsonl"), JSON.stringify({ text: "here it is", document_path: "/x/spec.txt" }));
   const texts: string[] = []; const docs: string[] = [];
   await flushOutboxes(r, async (_c, text) => { texts.push(text); }, async (_c, path) => { docs.push(path); return true; });
   expect(texts).toEqual(["here it is"]);
-  expect(docs).toEqual(["/x/spec.html"]);
+  expect(docs).toEqual(["/x/spec.txt"]);
 });
 
 test("the bridge prompt offers the document channel to a private chat and not to a group", () => {
@@ -1536,4 +1536,74 @@ test("critic-seal.sh does not accept a sha that only sits inside a longer hex ru
   const res = await seal(v, spec, sha("# D\n"));
   expect(res.code).not.toBe(0);
   expect(res.err).toContain("does not quote");
+});
+
+// ---- a spec page carries its source, so a copy outside the registered folders is still checked ----
+const marked = (r: string, extra = "") => `<!doctype html><meta name="spec-source" content="${join(r, "specs", "designs", "design.md")}"><h1>Design</h1>\n${extra}`;
+const copyOf = (r: string, html: string, name = "elsewhere.html") => { const d = join(r, "copies"); mkdirSync(d, { recursive: true }); const f = join(d, name); writeFileSync(f, html); return f; };
+
+test("send-file checks a marked page copied outside the registered folders under another stem, and sends it only when a critic sealed its bytes", async () => {
+  const r = root(); const html = marked(r); const b = htmlBundle(r, html);
+  const copy = copyOf(r, html);
+  criticSeals(b.spec, "spec", 1, "SPEC FINDINGS 2", b.sealed);
+  const refused = await sendFile(r, "1", copy);
+  expect(refused.code).not.toBe(0);
+  expect(refused.err).toContain("design.md.critic-spec-r1.md");
+  expect(refused.lines).toEqual([]);
+  criticSeals(b.spec, "spec", 2, "SPEC CLEAN", b.sealed);
+  const sent = await sendFile(r, "1", copy);
+  expect(sent.code).toBe(0);
+  expect(sent.lines.at(-1)!.caption).toBe("SPEC CLEAN r2 | PLAN CLEAN r1");
+  expect(readFileSync(sent.lines.at(-1)!.document_path, "utf8")).toBe(html);
+});
+
+test("send-file refuses a marked copy whose bytes no critic sealed, and a marker naming a file that is not there", async () => {
+  const r = root(); const html = marked(r); const b = htmlBundle(r, html);
+  criticSeals(b.spec, "spec", 1, "SPEC CLEAN", b.sealed);
+  const edited = await sendFile(r, "1", copyOf(r, html + "<p>edited</p>\n"));
+  expect(edited.code).not.toBe(0);
+  expect(edited.err).toContain("design.md.critic-spec-r1.md");
+  const gone = await sendFile(r, "1", copyOf(r, html.replace("design.md", "gone.md"), "gone.html"));
+  expect(gone.code).not.toBe(0);
+  expect(gone.err).toContain("gone.md");
+  expect(edited.lines.concat(gone.lines)).toEqual([]);
+});
+
+test("send-file reads the marker whatever the attribute order or quote style, and still checks the copy", async () => {
+  const r = root(); const md = join(r, "specs", "designs", "design.md");
+  const variants = [`<meta content="${md}" name="spec-source">`, `<meta name='spec-source' content='${md}'>`, `<META CONTENT=${md} NAME=spec-source />`];
+  for (const [i, tag] of variants.entries()) {
+    const html = `<!doctype html>${tag}<h1>Design${i}</h1>\n`;
+    const b = htmlBundle(r, html);
+    criticSeals(b.spec, "spec", 1, "SPEC FINDINGS 1", b.sealed);
+    const res = await sendFile(r, "1", copyOf(r, html, `v${i}.html`));
+    expect(res.code).not.toBe(0);
+    expect(res.err).toContain("design.md.critic-spec-r1.md");
+    expect(res.lines).toEqual([]);
+  }
+});
+
+test("send-file still sends a report page with no marker from outside the registered folders", async () => {
+  const r = root(); const html = "<!doctype html><h1>Report</h1>\n";
+  const res = await sendFile(r, "1", copyOf(r, html, "report.html"));
+  expect(res.code).toBe(0);
+  expect(readFileSync(res.lines.at(-1)!.document_path, "utf8")).toBe(html);
+  expect(res.lines.at(-1)!.caption).toBeUndefined();
+});
+
+test("send-file refuses a spec page that still says Not for signature, and sends the same page without it with the bytes the critic read", async () => {
+  const r = root(); const banner = "<!doctype html><h1>Design</h1><p>DRAFT, no critic has read this revision. Not for signature.</p>\n";
+  const b = htmlBundle(r, banner);
+  criticSeals(b.spec, "spec", 1, "SPEC CLEAN", b.sealed);
+  const refused = await sendFile(r, "1", b.page);
+  expect(refused.code).not.toBe(0);
+  expect(refused.err).toContain("Not for signature");
+  expect(refused.lines).toEqual([]);
+  const clean = "<!doctype html><h1>Design</h1>\n";
+  writeFileSync(b.page, clean);
+  criticSeals(b.spec, "spec", 2, "SPEC CLEAN", [b.sealed[0], { text: clean, file: "design.html" }]);
+  const sent = await sendFile(r, "1", b.page);
+  expect(sent.code).toBe(0);
+  const bytes = readFileSync(sent.lines.at(-1)!.document_path);
+  expect(createHash("sha256").update(bytes).digest("hex")).toBe(sha(clean));
 });
