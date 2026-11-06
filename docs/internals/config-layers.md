@@ -278,13 +278,10 @@ secret names are still served from `.env` (`C75-secrets`), names only.
 Without `--require`, `exec` skips a key that resolves to unset and still runs
 the command, so a unit that starts before the wallet opens runs without its
 secret and exits 0. A program that does not check its own secret then looks
-healthy. Wrap a unit that must not run without a value this way, in a drop-in
-(`ExecStart=` empty first, to reset it):
+healthy. Wrap a unit that has no restart settings of its own this way, in a
+drop-in (`ExecStart=` empty first, to reset it):
 
 ```ini
-[Unit]
-StartLimitIntervalSec=0
-
 [Service]
 Restart=on-failure
 RestartSec=30
@@ -292,27 +289,38 @@ ExecStart=
 ExecStart=/home/<user>/.local/bin/himmel-secrets exec --require --keys NAME -- <the original command>
 ```
 
+A unit that already sets `Restart=`, `RestartSec=` or a start limit keeps them:
+change only its `ExecStart=`. `hermes-gateway` has `Restart=always`, and
+`telegram-bridge` has a deliberate circuit breaker (`StartLimitIntervalSec=600`,
+`StartLimitBurst=5`); a drop-in that sets `Restart=on-failure` or
+`StartLimitIntervalSec=0` would change what they do.
+
 `--require` only refuses: when a named key resolves to unset it exits 1 before
 the command starts, names the keys on stderr and never prints a value. It does
 not retry. Whether the unit retries comes from the unit:
 
 - With no `Restart=`, the unit stays `failed` until someone restarts it.
-- With `Restart=on-failure` and a short `RestartSec=`, the unit retries until
-  systemd's start limit stops it. The user manager's default is 5 starts in
-  10 s, so `RestartSec=30` stays under it. A unit that sets its own limit
-  (`telegram-bridge`: 5 starts in 600 s with `RestartSec=10`) stops retrying
-  after about 50 s and stays `failed` until a manual restart, even if the wallet
-  opens a minute later. `StartLimitIntervalSec=0` in `[Unit]` removes the limit.
+- With `Restart=on-failure`, the unit retries until systemd's start limit stops
+  it. The user manager's default is 5 starts in 10 s, which a `RestartSec=`
+  under 2 s reaches (measured on the VM: `RestartSec=1` ended `failed` after 5
+  restarts, `RestartSec=3` kept retrying). `RestartSec=30` stays well clear.
+- A unit with its own limit stops retrying when it is reached: `telegram-bridge`
+  (5 starts in 600 s, `RestartSec=10`) gives up after about 50 s and stays
+  `failed`, even if the wallet opens a minute later. While the limit's window is
+  open a manual restart is refused: run `systemctl --user reset-failed <unit>`
+  first, then `systemctl --user restart <unit>` (measured on the VM with a
+  600 s window: the restart did not start the unit, and after `reset-failed` it
+  did). Keep that limit on `telegram-bridge`; it is intended.
 - Every retry writes journal lines: the refusal line, the `keyring locked` line
-  and systemd's own `Failed` lines. A short loop makes a lot of them (a unit
-  with `RestartSec=5`, such as `hermes-gateway`, writes them every 5 s while the
-  wallet is locked), so prefer a `RestartSec=` of 30 or more.
+  and systemd's own `Failed` lines. A loop with a `RestartSec=` under 2 s makes
+  a lot of them, and `hermes-gateway` (`Restart=always`, `RestartSec=5`) writes
+  them every 5 s while the wallet is locked, so a new wrapper should use a
+  `RestartSec=` of 30 or more.
 
-The VM proof of this verb used `RestartSec=3` and no start limit: the locked
-unit showed `activating (auto-restart)` and `status=1/FAILURE`, and after the
-wallet unlocked the retry and an explicit restart both got the value. The
-start limit above is reasoned from systemd's defaults and the unit files, not
-run.
+The VM proof of this verb used `RestartSec=3` with systemd's default start
+limit, which it never reached: the locked unit showed `activating
+(auto-restart)` and `status=1/FAILURE`, and after the wallet unlocked the retry
+and an explicit restart both got the value.
 
 What `--require` counts as present: a value from any layer. A whitespace-only
 keyring value counts as present, and a stale `.env` value satisfies it while
