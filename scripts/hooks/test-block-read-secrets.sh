@@ -1655,6 +1655,68 @@ for m10k_cmd in "cat $m10k_dir/HIMMEL/*" "grep -h sector $m10k_dir/HIMMEL/*"; do
 done
 rm -rf "$m10k_dir"
 
+# A reader over ONE name under each of 3000 DIFFERENT directories (the
+# session-transcript shape). The one-entry parent cache of the 8990 rows cannot help
+# there, and each canonicalisation fork is about 1.8 ms (5.4 s over 3000 parents
+# on main), so the glob ran past a loaded 15 s member window. The proof is a fork
+# count, which load does not move: the hook runs from a shim tree whose lib.sh
+# copy counts every guard_canon_path call. Synthetic names; the query is hook
+# input, never executed.
+p9444_dir=$(mktemp -d "${TMPDIR:-/tmp}/secrets-parents.XXXXXX") || exit 1
+mkdir -p "$p9444_dir/shim/hooks" "$p9444_dir/shim/guardrails" "$p9444_dir/tree/projects" "$p9444_dir/tree/cfg/config-audit/backups" || exit 1
+ln -s "$HOOK" "$p9444_dir/shim/hooks/block-read-secrets.sh" || exit 1
+ln -s "${HOOK%/*}/lib" "$p9444_dir/shim/hooks/lib" || exit 1
+ln -s "${HOOK%/*}/../lib" "$p9444_dir/shim/lib" || exit 1
+cp "${HOOK%/*}/../guardrails/lib.sh" "$p9444_dir/shim/guardrails/lib.sh" || exit 1
+# shellcheck disable=SC2016 # the shim function body is literal text, expanded when the shim runs
+printf '\nguard_canon_path() { echo x >> "%s/count"; _guard_canon_path_impl "${1:-}" 1; }\n' "$p9444_dir" >> "$p9444_dir/shim/guardrails/lib.sh"
+p9444_dirs=(); p9444_files=(); p9444_i=0
+while [ "$p9444_i" -lt 3000 ]; do
+    p9444_dirs+=("$p9444_dir/tree/projects/p$p9444_i")
+    p9444_files+=("$p9444_dir/tree/projects/p$p9444_i/s-$p9444_i.jsonl" "$p9444_dir/tree/projects/p$p9444_i/app-config-$p9444_i.jsonl")
+    p9444_i=$((p9444_i + 1))
+done
+mkdir "${p9444_dirs[@]}" && touch "${p9444_files[@]}" || exit 1
+touch "$p9444_dir/tree/cfg/config-audit/backups/n.jsonl" || exit 1
+ln -s "$p9444_dir/tree/cfg/config-audit/backups" "$p9444_dir/tree/projects/zlink" || exit 1
+p9444_run() { # $1 = command; prints the hook rc, canon-call count and elapsed ms; the deny text goes to $p9444_dir/err
+    local rc=0 s e
+    : > "$p9444_dir/count"
+    s=$(now_ms)
+    printf '%s' "$(j_bash "$1")" | bash "$p9444_dir/shim/hooks/block-read-secrets.sh" >/dev/null 2>"$p9444_dir/err" || rc=$?
+    e=$(now_ms)
+    echo "$rc $(wc -l < "$p9444_dir/count" | tr -d ' ') $((e - s))"
+}
+p9444_n=0
+for p9444_cmd in "rg -l foo $p9444_dir/tree/projects/p*/s-*.jsonl" "rg -l foo $p9444_dir/tree/projects/p*/app-config-*.jsonl"; do
+    p9444_n=$((p9444_n + 1))
+    read -r p9444_rc p9444_calls p9444_ms <<<"$(p9444_run "$p9444_cmd")"
+    echo "     9444 shape $p9444_n: rc=$p9444_rc canon_calls=$p9444_calls elapsed=${p9444_ms}ms over 3000 parents"
+    assert_rc "9444 reader over a name under each of 3000 parents, shape $p9444_n, allows" 0 "$p9444_rc"
+    if [ "${p9444_calls:-99999}" -le 10 ]; then
+        echo "PASS 9444 shape $p9444_n canonicalises ${p9444_calls} times for 3000 parents (bound 10)"
+    else
+        echo "FAIL 9444 shape $p9444_n canonicalises ${p9444_calls:-unread} times for 3000 parents (bound 10)"; FAILED=$((FAILED + 1))
+    fi
+done
+# Controls: a deny-listed parent, and a symlink to one, among the 3000 parents
+# are still refused, by the hook's own deny text (a timeout also exits 2).
+for p9444_cmd in \
+    "cat $p9444_dir/tree/projects/p*/s-*.jsonl $p9444_dir/tree/cfg/config-audit/backups/n.jsonl" \
+    "cat $p9444_dir/tree/projects/p*/s-*.jsonl $p9444_dir/tree/projects/zlink/n.jsonl"; do
+    read -r p9444_rc p9444_calls p9444_ms <<<"$(p9444_run "$p9444_cmd")"
+    assert_rc "9444 deny-listed parent among 3000 parents still denies (${p9444_cmd##*/tree/})" 2 "$p9444_rc"
+    case "$(cat "$p9444_dir/err")" in
+        *"refusing Bash command that reads a secret file"*) echo "PASS 9444 deny names the secret read, not a timeout" ;;
+        *) echo "FAIL 9444 deny text missing: $(cat "$p9444_dir/err")"; FAILED=$((FAILED + 1)) ;;
+    esac
+done
+# A symlink to an ordinary directory still resolves and allows.
+mkdir "$p9444_dir/tree/plain" && touch "$p9444_dir/tree/plain/n.jsonl" && ln -s "$p9444_dir/tree/plain" "$p9444_dir/tree/plink" || exit 1
+read -r p9444_rc p9444_calls p9444_ms <<<"$(p9444_run "cat $p9444_dir/tree/plink/n.jsonl")"
+assert_rc "9444 symlink to an ordinary directory allows" 0 "$p9444_rc"
+rm -rf "$p9444_dir"
+
 # The configuration keys live in ~/.himmel/himmel.conf, which an agent may read; .env, which keeps the secrets, stays refused.
 assert_rc "3111 Read ~/.himmel/himmel.conf"      0 "$(run_case "$(j_read '/home/user/.himmel/himmel.conf')")"
 assert_rc "3111 Bash cat ~/.himmel/himmel.conf"  0 "$(run_case "$(j_bash 'cat ~/.himmel/himmel.conf')")"
