@@ -20,7 +20,7 @@ future upstream revision against this file):
    before now, which reflects absence of need, not unsupported syntax; only
    claude.ai's stricter upload/distribution validator rejects it, and this
    skill is a local project skill, never uploaded there).
-2. Rules 28 and 33 below are scoped to documents written for a human reader
+2. Rules 28 and 33 in SKILL.md are scoped to documents written for a human reader
    — PR bodies, ADRs, handovers, tickets — never routine interactive
    replies, which the operator's Concise output style already governs. A
    blanket application would fight that style directly.
