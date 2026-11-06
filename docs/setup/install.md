@@ -3,8 +3,9 @@
 Audience: newcomer. Owner of the rewrite: HIMMEL-7212.
 
 **The task:** protect one git project with himmel, so that a Claude Code
-session refuses to edit files in your project's own checkout, on any branch, and
-works in a worktree instead.
+session's edit tools refuse to change files in your project's own checkout, on
+any branch, and the work moves to a worktree instead. A shell command that
+writes a file is a separate door; [Verify](#verify) says what stays open.
 Five steps get you there: preview, install, persist, verify, undo. Read the
 choices, the adapting notes and the recovery path once the first install
 works.
@@ -89,7 +90,8 @@ install first. When your project has no `.pre-commit-config.yaml`, the
 installer places plain git hooks, whether or not the `pre-commit` tool is
 installed, and the commit hook refuses a commit on `main` or `master`. A
 project that has its own `.pre-commit-config.yaml` gets the `pre-commit`
-framework instead, whose hooks run only what that file lists. Use a branch and
+framework instead, whose hooks run only what that file lists; the plain hooks
+are also the fallback when `pre-commit` cannot be installed. Use a branch and
 fast-forward either way:
 
 ```bash
@@ -169,7 +171,7 @@ Open a Claude Code session at the repo root (`claude`); hooks only fire inside
 a session. The install must already be committed on the default branch (see
 [Persist](#persist-commit-it-before-you-branch)). Then:
 
-1. Try to edit a file in your project's own checkout (on any branch).
+1. Try to edit a tracked file in your project's own checkout (on any branch).
    `block-edit-on-main` should refuse and point you at a worktree. That refusal *is* the success signal.
 2. Create the worktree: `bash scripts/worktree.sh feat/try-himmel`. It prints
    the worktree path (a `feat+try-himmel` folder under your repo's worktrees
@@ -183,18 +185,18 @@ a session. The install must already be committed on the default branch (see
 
 **What the starter refuses, and what it does not.** The starter install refuses
 Claude's *edit tools* (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`) for a file
-in your project's own checkout, on any branch; a linked worktree is free. It
-does **not** refuse a shell command that writes a file: no starter hook stops
-`echo x > a.txt` on `main`, so it
-reaches Claude Code's normal permission flow, and once allowed `a.txt` is
-written and stays in your working tree until you move it to a worktree branch.
-The installed git hooks run on `git commit` and `git push` only. They refuse a
-commit on `main` or `master` and a direct push to either. They do not cover a
-default branch with another name, a `git merge` into `main` (a fast-forward
-makes no commit, and a merge commit was not refused), or the skip-hooks flag
-(`--no-verify`). A project with its own
-`.pre-commit-config.yaml` gets the `pre-commit` framework instead, whose hooks
-run only what that file lists (see
+in your project's own checkout, on any branch; a linked worktree is free, and so
+is an untracked file your `.gitignore` covers (a secret file such as `.env` is
+not). It does **not** refuse a shell command that writes a file: no starter hook
+stops `echo x > a.txt` on `main`, so it reaches Claude Code's normal permission
+flow, and once allowed `a.txt` is written and stays in your working tree until
+you move it to a worktree branch. The installed git hooks run on `git commit`
+and `git push` only. They refuse a commit on `main` or `master` and a direct
+push to either. They do not cover a default branch with another name, a
+`git merge` into `main` (a fast-forward makes no commit, and the `commit-msg`
+hook, which does run, lets a clean merge commit through), or the skip-hooks flag
+(`--no-verify`). A project with its own `.pre-commit-config.yaml` gets the
+`pre-commit` framework instead, whose hooks run only what that file lists (see
 [Persist](#persist-commit-it-before-you-branch)).
 
 Then walk one real loop: [getting-started.md](../getting-started.md#your-first-loop).
@@ -318,8 +320,8 @@ are opt-in for adopters: they run only if you list the `platforms-tested` and
 and neither ever fires.
 
 **3. `.single-writer`: the one you will want on day one.** `block-edit-on-main`
-refuses edits in the project's own checkout on any branch (a linked worktree is
-free), which is correct for a review-gated team repo and wrong for a personal
+refuses edits in the project's own checkout on any branch (a linked worktree and
+an untracked, gitignored file are free), which is correct for a review-gated team repo and wrong for a personal
 repo you edit in place. Drop a `.single-writer` file at that repo's root
 (`touch .single-writer`) and edits there are allowed. It is local and
 gitignored, so clones of the same repo stay protected; this is a per-checkout
