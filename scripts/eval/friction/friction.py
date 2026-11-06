@@ -275,6 +275,9 @@ RS_TRACE_ON = re.compile(r'(?i)(?:^|[\s;&|(`])(?:set\s+[-+]\w*x|(?:set|shopt|set
                          r'|(?:ba|z|da|k|)sh\s+(?:-\S+\s+)*-[a-z]*x|(?:SHELLOPTS|BASHOPTS)=|BASH_XTRACEFD=)')
 RS_GREP = ('grep', 'egrep', 'fgrep')
 RS_GREP_VALUE_LETTERS = 'ABCDdefm'
+RS_GREP_LONG_VALUE = ('--file', '--regexp', '--max-count', '--after-context', '--before-context', '--context',
+                      '--binary-files', '--devices', '--directories', '--exclude', '--exclude-from', '--exclude-dir',
+                      '--include', '--label')
 RS_ENV_DUMP = re.compile(r'bare env dumps|bare printenv dumps|prints a credential variable|printenv of a credential'
                          r'|prints the whole environment|show-environment|himmel-secrets (?:get|put|import|export)')
 
@@ -293,36 +296,43 @@ def _rs_clause_reads_secret(clause):
         return False
     if os.path.basename(toks[0]) not in RS_GREP:
         return any(RS_SECRET_TOK.search(t) for t in toks[1:])
-    armed, rest = True, toks[1:]
-    i = 0
+    # grep's own reading: an option that takes a value consumes it (attached or the next word), the first
+    # operand is the pattern unless -e/-f/--regexp/--file already gave one, and every later operand is a file.
+    need_pattern, rest, i, only_operands = True, toks[1:], 0, False
     while i < len(rest):
         t = rest[i]
         i += 1
+        if only_operands or not t.startswith('-') or t == '-':
+            if need_pattern:
+                need_pattern = False
+            elif RS_SECRET_TOK.search(t):
+                return True
+            continue
+        if t == '--':
+            only_operands = True
+            continue
         if t.startswith('--'):
-            if '=' not in t and t in ('--file', '--regexp', '--max-count', '--after-context', '--before-context', '--context'):
+            name, eq, val = t.partition('=')
+            if name in RS_GREP_LONG_VALUE and not eq:
+                val = rest[i] if i < len(rest) else ''
                 i += 1
-            if t.startswith('--file=') or t == '--file':
-                v = t.split('=', 1)[1] if '=' in t else (rest[i - 1] if i - 1 < len(rest) else '')
-                if RS_SECRET_TOK.search(v):
+            if name in ('--file', '--regexp'):
+                need_pattern = False
+                if name == '--file' and RS_SECRET_TOK.search(val):
                     return True
-            armed = False
             continue
-        if len(t) > 1 and t.startswith('-'):
-            letters = t[1:]
-            if all(c not in RS_GREP_VALUE_LETTERS for c in letters):
+        for k, c in enumerate(t[1:], 1):
+            if c not in RS_GREP_VALUE_LETTERS:
                 continue
-            armed = False
-            if letters[-1] in RS_GREP_VALUE_LETTERS:
-                v = rest[i] if i < len(rest) else ''
+            val = t[k + 1:]
+            if not val:
+                val = rest[i] if i < len(rest) else ''
                 i += 1
-                if letters[-1] == 'f' and RS_SECRET_TOK.search(v):
-                    return True
-            continue
-        if armed:
-            armed = False        # the first operand is the pattern
-            continue
-        if RS_SECRET_TOK.search(t):
-            return True
+            if c in 'ef':
+                need_pattern = False
+            if c == 'f' and RS_SECRET_TOK.search(val):
+                return True
+            break
     return False
 
 
