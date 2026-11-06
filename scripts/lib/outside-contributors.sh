@@ -54,6 +54,60 @@ outside_audit_passed() {
   [ "$(_oc_sha256 "$report")" = "$rsha" ]
 }
 
+# outside_pr_authorize <pr> <head> <full-rounds-used>
+#   rc 0 and prints `allowlist` or `approval:<message_id>` when an outside PR may
+#   be reviewed from its diff at <head>; else rc 1 and prints nothing. The author
+#   login, node id, head branch and head sha are read here, from ONE bounded
+#   `timeout -k 5 20 gh pr view`; the caller cannot name any of them. A timeout, a
+#   non-zero exit, junk output, a missing id or a forge head that differs from
+#   <head> is rc 1. Allowed when the author is listed and used < 3, or when
+#   $HOME/.himmel/outside-pr-approvals.jsonl holds a row naming <pr> and exactly
+#   <head> with stage "review" and, for an unlisted author, an audit pass at <head>.
+# outside_pr_merge_base <pr> <baseRefName>
+#   fetches origin's base branch and prints its merge base with
+#   refs/himmel/outside/<pr>; any failure is rc 1 and prints nothing.
+
+outside_pr_authorize() {
+  local pr="${1:-}" head="${2:-}" used="${3:-}" anchor f login id branch oid mid ap="$HOME/.himmel/outside-pr-approvals.jsonl"
+  local -a ghc
+  [[ "$pr" =~ ^[1-9][0-9]*$ ]] && [[ "$head" =~ ^[0-9a-f]{40}$ ]] && [[ "$used" =~ ^[0-9]+$ ]] || return 1
+  anchor=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd) || return 1
+  # shellcheck source=timeout-bin.sh
+  . "$anchor/scripts/lib/timeout-bin.sh" 2>/dev/null || return 1
+  [ -n "${_TIMEOUT_BIN:-}" ] || return 1
+  if [ -f "$anchor/scripts/lib/gh-read.sh" ]; then ghc=(bash "$anchor/scripts/lib/gh-read.sh"); else ghc=(gh); fi
+  f=$("$_TIMEOUT_BIN" -k 5 20 "${ghc[@]}" pr view "$pr" --json author,headRefName,headRefOid 2>/dev/null \
+    | jq -er 'select(type == "object") | [.author.login, .author.id, .headRefName, .headRefOid]
+        | select(all(.[]; type == "string" and length > 0 and (test("[\t\n]") | not))) | @tsv' 2>/dev/null) || return 1
+  IFS=$'\t' read -r login id branch oid <<< "$f"
+  [ -n "$login" ] && [ -n "$id" ] && [ -n "$branch" ] && [ "$oid" = "$head" ] || return 1
+  if [ "$used" -lt 3 ] && outside_contributor_allowed "$login" "$id"; then
+    echo allowlist
+    return 0
+  fi
+  [ -r "$ap" ] || return 1
+  mid=$(jq -nRr --argjson pr "$pr" --arg h "$head" '
+      [inputs | fromjson? | select(type == "object" and .pr == $pr and .head == $h and .stage == "review")]
+      | last | select(. != null) | (.message_id | tostring)' "$ap" 2>/dev/null) || return 1
+  [ -n "$mid" ] || return 1
+  outside_contributor_allowed "$login" "$id" || outside_audit_passed "$pr" "$head" "$branch" || return 1
+  echo "approval:$mid"
+}
+
+outside_pr_merge_base() {
+  local pr="${1:-}" base="${2:-}" mb anchor
+  [[ "$pr" =~ ^[1-9][0-9]*$ ]] && [ -n "$base" ] && git check-ref-format "refs/heads/$base" >/dev/null 2>&1 || return 1
+  case "$base" in -*|*..*) return 1 ;; esac
+  anchor=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd) || return 1
+  # shellcheck source=timeout-bin.sh
+  . "$anchor/scripts/lib/timeout-bin.sh" 2>/dev/null || return 1
+  [ -n "${_TIMEOUT_BIN:-}" ] || return 1
+  "$_TIMEOUT_BIN" -k 5 60 git fetch -q origin "+refs/heads/$base:refs/remotes/origin/$base" >/dev/null 2>&1 || return 1
+  mb=$(git merge-base "refs/remotes/origin/$base" "refs/himmel/outside/$pr" 2>/dev/null) || return 1
+  [[ "$mb" =~ ^[0-9a-f]{40}$ ]] || return 1
+  printf '%s\n' "$mb"
+}
+
 # author_class and outside_pr_of: the item 16 predicate, shared by ready-check.sh and
 # scripts/cr/pr-check-outside.sh. Both need ticket-id-internal.sh beside this file.
 
