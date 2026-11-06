@@ -250,7 +250,7 @@ function evalTab(model, stats) {
   // a phase with no source has no per-day counts; one that read nothing has seven zeros, which would draw a flat line for "unknown":
   // both the sparkline and the Trends chart are drawn only for a phase with counts
   const counted = (p) => p.perDay.length === 7 && (p.state !== "nodata" || p.perDay.some((v) => v > 0));
-  const cells = (p) => p.state === "nosource" ? Array(4).fill(esc("no source yet"))
+  const cells = (p) => p.state === "nosource" ? Array(4).fill(`<span class="wf-v wf-none">${esc("no source yet")}</span>`)
     : [p.unit === "rounds" ? `${p.n} branches` : String(p.n), fmtValue(p.median, p.unit), fmtValue(p.p80, p.unit)].map(esc).concat(counted(p) ? sparkline(p.name, p.perDay) : esc("no data yet"));
   const trended = stats.phases.filter(counted), spread = stats.phases.filter((p) => p.hist && p.hist.length);
   const name = (id) => (stats.phases.find((p) => p.id === id) || {}).name || id;
@@ -266,8 +266,9 @@ function evalTab(model, stats) {
       + (trended.length ? `<section class="box"><h2>Trends</h2>${answers("how many changes entered each phase per day, and is that rising or falling? It is for seeing a slowdown before it turns into a backlog.")}<div class="wf-mult">${trended.map((p) => `<div>${trendChart(p.name, p.perDay, stats.days)}<p class="sub"><b>${esc(p.name)}</b>: ${esc(ENTERS[p.id] || "entering the phase")}, per day</p></div>`).join("")}</div></section>` : "")
       + `</div>` : `<p class="sub">Distributions and Trends are not drawn: no phase read any change in this window.</p>`)
     + `<section class="box"><h2>Cost per ticket</h2>${answers("what does one ticket cost, and how much of it is spent before the build starts? It is for estimating later tickets from tickets like them.")}<p class="wf-cost"><span class="wf-v wf-none">${esc(stats.cost.say)}</span> What one ticket costs, and how much of it is spent before the build starts, is not joined to the ticket yet.</p></section>`
-    + `<section class="box"><h2>Review: merged or not, by rounds</h2>${answers("do the branches that need many review rounds still get merged? It is for judging whether extra rounds are fixing changes or stalling them.")}<div class="wf-wrapx"><table class="wf-rev"><thead><tr><th>Branches</th><th>Merged</th><th>Not merged</th><th>All</th></tr></thead><tbody>`
-    + [["3 or more rounds", r.threeUp], ["under 3 rounds", r.under]].map(([label, x]) => `<tr><th>${label}</th><td>${x.merged}</td><td>${x.notMerged}</td><td>${x.merged + x.notMerged}</td></tr>`).join("")
+    + `<section class="box"><h2>Review: merged or not, by rounds</h2>${answers("do the branches that need many review rounds still get merged? It is for judging whether extra rounds are fixing changes or stalling them.")}<div class="wf-wrapx"><table class="wf-rev"><thead><tr><th>Branches</th><th>Merged</th><th>Not merged</th><th>Open</th><th>Closed unmerged</th><th>No PR opened</th><th>All</th></tr></thead><tbody>`
+    // phase-stats counts merged and not merged only: how the not-merged ones split is not recorded
+    + [["3 or more rounds", r.threeUp], ["under 3 rounds", r.under]].map(([label, x]) => `<tr><th>${label}</th><td>${x.merged}</td><td>${x.notMerged}</td>${"<td>not recorded</td>".repeat(3)}<td>${x.merged + x.notMerged}</td></tr>`).join("")
     + `</tbody></table></div></section>`
     + `<section class="box"><h2>Outliers</h2>${answers("which changes took much longer than most, and in which phase? It is for the chief, deciding what to look into.")}${stats.outliers.length ? `<div class="wf-wrapx"><table class="wf-out"><thead><tr><th>Change</th><th>Phase</th><th>Time or rounds</th><th>vs the 8-in-10 line</th></tr></thead><tbody>`
       + stats.outliers.map((o) => { const p = statRow(stats, o.phase); return `<tr><th>${o.pr ? `PR ${esc(o.pr)}` : "a branch with no PR"}</th><td>${esc(name(o.phase))}</td><td>${esc(fmtValue(o.value, o.unit))}</td><td>${o.times} × ${esc(fmtValue(p && p.p80, o.unit))}</td></tr>`; }).join("")
