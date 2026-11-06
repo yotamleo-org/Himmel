@@ -183,11 +183,15 @@
 #     three clauses. A command the tokenizer did not read, one with a
 #     heredoc or a comment, and one whose `${...}` guard_unwrap had to rewrite
 #     before it could read it, keep the plain split above, which ignores
-#     quotes. That split cuts at a backtick and leaves no mark of it, and a
-#     brace expansion can build an option from words that are not one
-#     (`{-,}e`), so a backtick substitution after the quoted word in a command
-#     that also has a comment or a heredoc, and `grep -n '.env' {-,}e TOKEN`,
-#     still leave the quoted word as the pattern: accepted and ticketed gaps.
+#     quotes. On that split the short-flag cluster closes the slot as on main
+#     (it cuts at a backtick or an ampersand and leaves no mark of it), so
+#     `grep -n '.env' ...` there scans the quoted word. A process substitution
+#     (`<(`, `>(`) closes the slot like `$(`. Under xargs the quoted word is not
+#     exempt, since its arguments can come from a file or a pipe. Still allowed,
+#     accepted and ticketed gaps (main refused the flagged forms): a brace
+#     expansion that builds the option (`grep -n '.env' {-,}e TOKEN`), a shell
+#     function named grep that adds a fixed -e, and GREP_OPTIONS on a grep that
+#     honours it.
 #     A nested shell body (bash -c, eval) is one quoted word there,
 #     and guard_unwrap reads it again from its own words. A quoted string that
 #     another program runs or reads is one word too, and nothing reads it
@@ -598,7 +602,7 @@ rs_segment_clauses() {
         done
         # shellcheck disable=SC2016 # literal $( and ` bytes
         case "${ST_SEP[s]:-}" in
-            '$(') line=$line${line:+ }'$(' ;;
+            '$('|'<('|'>(') line=$line${line:+ }'$(' ;;
             '`') if [ "$bt" = 0 ]; then line=$line${line:+ }'`'; bt=1; else bt=0; fi ;;
         esac
         out=$out$line$nl
@@ -1825,7 +1829,7 @@ scan_clause() {
         # of letters that take no value (`-n`, `-rn`, `-nE`) leaves the pattern
         # slot armed. A letter that takes a value (A B C D d e f m), a digit, a
         # long option or any other token closes it, as before.
-        if [ "$grep_cmd" = "1" ] && [ "$this_at_pos0" = "1" ]; then
+        if [ "$grep_cmd" = "1" ] && [ "$this_at_pos0" = "1" ] && [ "${RS_SEG_USED:-0}" = 1 ]; then
             case "$tok" in
                 -*[!a-zA-Z]*|-|-*[ABCDdefm]*) ;;
                 -?*) at_pos0=1 ;;
@@ -1901,7 +1905,7 @@ scan_clause() {
         elif [ "$tok" = "-f" ] || [ "$tok" = "--file" ]; then
             expect_file_val=1
             is_secret_path "$tok" && secret_after=1  # "-f"/"--file" itself never matches a secret glob; harmless.
-        elif [ "$pattern_cmd" = "1" ] && [ "$this_at_pos0" = "1" ] \
+        elif [ "$pattern_cmd" = "1" ] && [ "$this_at_pos0" = "1" ] && [ "$wrap" != xargs ] \
             && is_quoted_pattern_tok "$tok" && ! rs_pattern_from_option; then
             :  # the token right after the bare command, if quoted, is the implicit inline pattern, unless a later option supplies it.
         elif is_secret_path "$tok"; then
@@ -2095,7 +2099,9 @@ case "$tool" in
         # own tokens so a `< secretfile` redirect stays detectable. That split
         # ignores quotes (see header). sed reads via `<<<` (no `printf` fork
         # feeding it).
+        RS_SEG_USED=0
         if rs_segment_clauses; then
+            RS_SEG_USED=1
             normalized=$RS_SEG_CLAUSES
         else
             normalized=$(sed -e 's/[;|&()`]/\

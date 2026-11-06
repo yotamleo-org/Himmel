@@ -1772,6 +1772,19 @@ assert_rc "8319 ctl grep -n '.env' \`cat opt\` TOKEN (backtick substitution)"   
 assert_rc "8319 ctl grep '.env' \$O TOKEN (flagless slot, later variable)"             2 "$(run_case "$(j_bash "grep '.env' \$O TOKEN")")"
 assert_rc "8319 ctl rg '.env' \$O TOKEN (flagless slot, later variable)"               2 "$(run_case "$(j_bash "rg '.env' \$O TOKEN")")"
 assert_rc "8319 grep -n 'TOKEN' \"\$f\" (an expansion beside a pattern that names no secret)"  0 "$(run_case "$(j_bash "grep -n 'TOKEN' \"\$f\"")")"
+# TK-j4806-1: a process substitution ends the tokenizer's segment like a command substitution, so it closes the slot too.
+assert_rc "8319 ctl grep -n '.env' <(true) -e TOKEN (input process substitution)"        2 "$(run_case "$(j_bash "grep -n '.env' <(true) -e TOKEN")")"
+assert_rc "8319 ctl grep -n '.env' >(cat) -e TOKEN (output process substitution)"        2 "$(run_case "$(j_bash "grep -n '.env' >(cat) -e TOKEN")")"
+# TK-j4806-1: a command the tokenizer's words do not stand for (comment, heredoc) keeps the plain split, and there a
+# short-flag cluster closes the slot as on main, so a redirect cut at the ampersand cannot hide a later -e.
+assert_rc "8319 ctl grep -n '.env' 2>&1 -e TOKEN # c (plain split, redirect with an ampersand)"  2 "$(run_case "$(j_bash "grep -n '.env' 2>&1 -e TOKEN # c")")"
+assert_rc "8319 ctl grep -n '.env' &>/dev/null -e TOKEN # c (plain split)"                2 "$(run_case "$(j_bash "grep -n '.env' &>/dev/null -e TOKEN # c")")"
+assert_rc "8319 ctl grep -n '.env' 2>&1 -e TOKEN with a heredoc (plain split)"            2 "$(run_case "$(j_bash $'grep -n \'.env\' 2>&1 -e TOKEN <<EOF\nx\nEOF')")"
+assert_rc "8319 grep -n 'TOKEN' f 2>&1 # c (a pattern that names no secret)"              0 "$(run_case "$(j_bash "grep -n 'TOKEN' f 2>&1 # c")")"
+# TK-j4806-1: xargs supplies its arguments from a file or a pipe, so no later token shows whether a pattern option comes.
+assert_rc "8319 ctl xargs grep -n '.env' < opts (xargs, arguments from a file)"           2 "$(run_case "$(j_bash "xargs grep -n '.env' < opts")")"
+assert_rc "8319 ctl printf ... | xargs grep -n '.env' (xargs, arguments from a pipe)"      2 "$(run_case "$(j_bash "printf '%s\\n' -e TOKEN | xargs grep -n '.env'")")"
+assert_rc "8319 ctl xargs -a opts grep -n '.env' (xargs -a)"                              2 "$(run_case "$(j_bash "xargs -a opts grep -n '.env'")")"
 
 # 8319: the clause split reads quotes through the tokenizer, so a separator inside a quoted word stays in its word and
 # a real separator splits. A closing quote followed by a later opening quote is not one quoted span.
