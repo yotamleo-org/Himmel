@@ -9,9 +9,12 @@ import { pathToFileURL } from "node:url";
 
 // the real rollup builds the response (an ES module, so a child node runs it)
 const ROLLUP = pathToFileURL(join(__dirname, "../../../eval/worker-digest/tool-health.mjs")).href;
-const rollupToolHealth = (evals: object[], failures: object[], now: number, opts: object) => JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e",
-  `import { rollupToolHealth } from ${JSON.stringify(ROLLUP)}; const [e, f, n, o] = JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify(rollupToolHealth(e, f, new URLSearchParams(), n, {}, o)));`,
-  JSON.stringify([evals, failures, now, opts])], { encoding: "utf8" }));
+// rtkDeny: the call ids rtk's history says it refused; the child builds the join, so an rtk hook cause comes from the rollup, never from the seed
+const rollupToolHealth = (evals: object[], failures: object[], now: number, opts: object, rtkDeny: string[]) => JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e",
+  `import { rollupToolHealth } from ${JSON.stringify(ROLLUP)}; const [e, f, n, o, deny] = JSON.parse(process.argv[1]);
+   const rtk = (ids) => ({ state: "ok", duplicates: 0, byId: new Map(ids.map((id) => [id, { path: deny.includes(id) ? "rtk" : "bash", deny: deny.includes(id) }])) });
+   process.stdout.write(JSON.stringify(rollupToolHealth(e, f, new URLSearchParams(), n, {}, { ...o, rtk })));`,
+  JSON.stringify([evals, failures, now, opts, rtkDeny])], { encoding: "utf8" }));
 
 const NOW = Date.parse("2026-10-28T23:59:00Z");
 const AGENT = { id: "main", role: "agent", kind: null, model: "gpt-6.1-sol" };
@@ -20,14 +23,19 @@ const tool = (name: string, calls: number, classes: Record<string, number> = {})
   const denials = Object.values(classes).reduce((n, v) => n + v, 0);
   return { agent: AGENT, tool: name, calls, failures: denials, errors: 0, denials, classes, day: "2026-10-28" };
 };
+// Bash calls by command head and cause, the shape the digest keeps: [call id, head, cause or null, exit code].
+// toolu_5 is recorded as a guard refusal; the rtk join (RTK_DENIED) turns it into an rtk hook cause, as a real digest does.
+// Four causes against the Bash row's four failures below.
+const BASH_CALLS = [["toolu_1", "git", "command", 1], ["toolu_3", "cat", "guard"], ["toolu_4", "gh", "classifier"], ["toolu_5", "rtk", "guard"], ["toolu_6", "git", null]];
+const RTK_DENIED = ["toolu_5"];
 const digest = rollupToolHealth(
   [{ eval: "leg-trajectory", run_id: SESSION, status: "ok", ts: "2026-10-28T12:00:00Z", lane: "native", model: "gpt-6.1-sol", config: {},
     meta: { leg: true, started_ts: Date.parse("2026-10-28T12:00:00Z"), profile: "worker-impl", tool_health: [
-      tool("Bash", 40, { "denied/block-read-secrets": 3, "denied/block-destructive-commands": 1 }), tool("Read", 12, { "denied/block-read-secrets": 2 }),
+      { ...tool("Bash", 40, { "denied/block-read-secrets": 3, "denied/block-destructive-commands": 1 }), bash_calls: BASH_CALLS }, tool("Read", 12, { "denied/block-read-secrets": 2 }),
       tool("Skill:lean-skills:verification-before-completion", 4)] } }],
   [{ session: SESSION, agent: AGENT, class: "denied/block-read-secrets", failure: "denied", count: 5, recovered: null, tool_call_ids: [] },
    { session: SESSION, agent: AGENT, class: "denied/block-destructive-commands", failure: "denied", count: 1, recovered: null, tool_call_ids: [] }],
-  NOW, { eligible: { "block-read-secrets": ["Read", "Bash"], "block-destructive-commands": ["Bash"] } });
+  NOW, { eligible: { "block-read-secrets": ["Read", "Bash"], "block-destructive-commands": ["Bash"] } }, RTK_DENIED);
 const INVENTORY = {
   state: "ok", scanned_at: "2026-10-28T23:00:00.000Z",
   sources: [
@@ -104,11 +112,51 @@ for (const width of [1280, 390]) {
       await info.attach(`map-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
     });
 
+    test("Tool map: each tile carries a calls line and the failure-rate colour, on a phone card too", async ({ page }) => {
+      await open(page, "#/toolhealth/map", ".thmap");
+      const tiles = page.locator(width > 560 ? ".thmap button.mc[data-kind]" : ".thcard .mln");
+      await expect(tiles.first()).toContainText(/\d+ calls · \d+ failed/);
+      // the tint is a token colour: a failing tile paints a different background from a plain one
+      const bg = await tiles.evaluateAll((els) => [...new Set(els.map((e) => getComputedStyle(e).backgroundColor))]);
+      expect(bg.length).toBeGreaterThan(1);
+      if (width <= 560) await expect(page.locator(".thcard .sub").first()).toContainText(/\d+ tools? · \d+ calls/);
+    });
+
+    test("Bash drill-in: Failures by cause is a stacked bar over five cause cards", async ({ page }, info) => {
+      await open(page, "#/toolhealth?tool=Bash", "#th-bash-cause");
+      const box = page.locator("#th-bash-cause");
+      await expect(box.locator("table")).toHaveCount(0);
+      // each card carries its own value: one failure per cause the rollup derives, the rtk filter a dash (no such cause yet)
+      const cards = await box.locator("[data-cause-card]").evaluateAll((els) => els.map((e) => [(e as HTMLElement).dataset.causeCard, e.querySelector(".kv")!.textContent]));
+      expect(cards).toEqual([["command", "1"], ["rtk-filter", "—"], ["rtk-hook", "1"], ["guard", "1"], ["classifier", "1"]]);
+      await expect(box.locator('[data-cause-card="classifier"]')).toContainText("Auto-mode classifier");
+      await expect(box).toContainText("Failure causes cover 5 of 40 calls");
+      expect(await box.locator("[data-cause-seg]").count()).toBeGreaterThanOrEqual(3);
+      // segment fills are token colours, so they differ from each other and from the track
+      const fills = await box.locator("[data-cause-seg]").evaluateAll((els) => els.map((e) => getComputedStyle(e).fill));
+      expect(new Set(fills).size).toBe(fills.length);
+      await expect(box.locator("svg.thcausebar")).toBeVisible();
+      expect(await sideways(page)).toBe(false);
+      await info.attach(`bash-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
+    });
+
     test("guard drill-in: the This week cards", async ({ page }, info) => {
       await open(page, "#/toolhealth?guard=denied/block-read-secrets", '[data-stat="refused"]');
       await expect(page.locator("h3", { hasText: "This week" })).toBeVisible();
       await expect(page.locator('[data-stat="refused"]')).toHaveText("5");
+      // Refusals per day and This week sit side by side on a desktop, stacked on a phone
+      const [a, b] = await Promise.all([page.locator(".th-charts figure").nth(0).boundingBox(), page.locator(".th-charts figure").nth(1).boundingBox()]);
+      if (width > 760) expect(Math.abs(a!.y - b!.y)).toBeLessThan(2);
+      else expect(b!.y).toBeGreaterThan(a!.y);
       for (const id of ["rate", "busiest", "none", "eligible", "bash", "recovery"]) await expect(page.locator(`[data-stat="${id}"]`)).toBeVisible();
+      // the four week cards are a 2x2 on the shared two-column grid, on a desktop and on a phone
+      const week = page.locator('.kpis.th-cols:has([data-stat="refused"])');
+      expect(await week.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length)).toBe(2);
+      const ys = await week.locator(".kpi").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().y)));
+      expect(ys.length).toBe(4);
+      expect(ys[0]).toBe(ys[1]);
+      expect(ys[2]).toBe(ys[3]);
+      expect(ys[2]).toBeGreaterThan(ys[0]);
       expect(await sideways(page)).toBe(false);
       await info.attach(`guard-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
     });
