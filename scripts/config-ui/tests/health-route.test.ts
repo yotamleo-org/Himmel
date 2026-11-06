@@ -16,7 +16,7 @@ function boot(env: Env = {}, opts: Record<string, unknown> = {}) {
   const dir = mkdtempSync(join(tmpdir(), "health-route-"));
   const home = join(dir, "home"), root = join(dir, "root");
   mkdirSync(home); mkdirSync(root);
-  const s = startServer({
+  const s = startServer({ onIdle: () => {},
     port: 0, token: TOKEN, ...opts,
     env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root, HIMMEL_PROMETHEUS_URL: "http://127.0.0.1:1", HIMMEL_FLOW_EXPORTER_PORT: "1", ...env },
   });

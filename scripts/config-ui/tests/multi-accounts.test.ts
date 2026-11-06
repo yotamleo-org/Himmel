@@ -22,7 +22,7 @@ function boot() {
   const accounts = Object.fromEntries(["A", "B"].map((l) => [l, { organization_id: `org-${l}`, cycle_id: `cycle-${l}`, cap_usd: "40.00" }]));
   writeFileSync(join(credit, "config.json"), JSON.stringify({ version: 1, ledger_path: join(credit, "ledger.json"), accounts }));
   const env = { PATH: process.env.PATH, HOME: home, HIMMEL_API_CREDIT_CONFIG: join(credit, "config.json"), HIMMEL_API_CREDIT_SNAPSHOT: join(credit, "snapshot.json"), HIMMEL_SECRETS_KEYRING: "off", CONFIG_UI_IDLE_MS: "60000" };
-  const s = startServer({ port: 0, token: TOKEN, root, projectRoot: project, env });
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, root, projectRoot: project, env });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
   const base = `http://127.0.0.1:${s.port}`;
   const get = async () => (await (await fetch(`${base}/api/api-roles`, { headers: { "x-himmel-token": TOKEN } })).json()) as Record<string, any>;

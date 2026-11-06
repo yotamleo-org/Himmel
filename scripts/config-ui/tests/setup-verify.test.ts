@@ -22,7 +22,7 @@ function boot(extra: Record<string, string> = {}, opts: { verifyTimeoutMs?: numb
   writeFileSync(join(root, ".env"), `JIRA_API_TOKEN=${SECRET}\n`);
   const argvFile = join(dir, "argv");
   writeFileSync(argvFile, "");
-  const s = startServer({
+  const s = startServer({ onIdle: () => {},
     port: 0, token: TOKEN, root, projectRoot: project, ...opts,
     env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HIMMEL_REPORT_DOCTOR: DOCTOR, STUB_ARGV: argvFile, ...extra },
   });

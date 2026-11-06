@@ -35,7 +35,7 @@ afterEach(() => {
 function boot() {
   // never let a test reach the live config
   expect(configPath().startsWith(tmpdir())).toBe(true);
-  const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, HOME: process.env.HOME, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000" } });
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, env: { PATH: process.env.PATH, HOME: process.env.HOME, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000" } });
   stop = () => s.stop();
   return s.port;
 }

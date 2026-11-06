@@ -36,7 +36,7 @@ function dist(): { dir: string; outside: string } {
   return { dir, outside };
 }
 function boot(aguiDist: string) {
-  const s = startServer({ port: 0, token: TOKEN, aguiDist, env: { PATH: process.env.PATH, HOME: tmp("agui-home-"), CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000" } });
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, aguiDist, env: { PATH: process.env.PATH, HOME: tmp("agui-home-"), CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000" } });
   cleanup.push(() => s.stop());
   return `http://127.0.0.1:${s.port}`;
 }
@@ -173,7 +173,7 @@ function web(distAge: number, srcAge: number): { dir: string; web: string } {
   return { dir, web: w };
 }
 function bootWeb(aguiDist: string, aguiWeb: string) {
-  const s = startServer({ port: 0, token: TOKEN, aguiDist, aguiWeb, env: { PATH: process.env.PATH, HOME: tmp("agui-home-"), CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000" } });
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, aguiDist, aguiWeb, env: { PATH: process.env.PATH, HOME: tmp("agui-home-"), CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000" } });
   cleanup.push(() => s.stop());
   return `http://127.0.0.1:${s.port}`;
 }

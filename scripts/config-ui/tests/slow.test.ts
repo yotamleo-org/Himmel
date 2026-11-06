@@ -1,6 +1,7 @@
 // Bun.serve cuts any request slower than 10 s by default, and every
 // other config-ui test answers instantly. These rows use a stub that is slower.
 import { test, expect, afterEach } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,13 +12,43 @@ const H = { "X-Himmel-Token": TOKEN };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const dirs: string[] = [];
 const stops: (() => void)[] = [];
-afterEach(() => { while (stops.length) stops.pop()!(); while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true }); });
+afterEach(() => { while (restores.length) restores.pop()!(); while (stops.length) stops.pop()!(); while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true }); });
+
+// The page rows below run app.js against global stubs. Bun abandons a timed-out test body, so a finally block in it never
+// runs and the stubs would stay set for every later row and file in the process: stubGlobals records what it replaced, and
+// afterEach (which does run after a timeout) puts it back.
+const touched = new Map<string, { had: boolean; value: unknown }>(); // every name a row stubbed, as it was before the first stub
+const restores: (() => void)[] = [];
+function stubGlobals(stubs: Record<string, unknown>, alsoSet: string[] = []) {
+  const g = globalThis as Record<string, unknown>;
+  const names = [...Object.keys(stubs), ...alsoSet];
+  const before = names.map((n) => [n, n in g, g[n]] as const);
+  for (const [n, had, value] of before) if (!touched.has(n)) touched.set(n, { had, value });
+  restores.push(() => { for (const [n, had, value] of before) { if (had) g[n] = value; else delete g[n]; } });
+  Object.assign(g, stubs);
+}
+const FORCE_TIMEOUT = process.env.SLOW_FORCE_TIMEOUT === "1"; // set by the child run below, never by hand
+
+// One no-op for every name app.js imports (its local binding: `renderConfigure as render` is `render`). The import lines are
+// stripped before app.js runs, so a name missing here is a free global, and the first route that calls it throws or hangs
+// the row. app-import-stubs.test.ts reads this block and fails, naming the import, when one is missing.
+const APP_IMPORT_STUBS: Record<string, unknown> = {
+  renderInventory: () => "", renderTriage: () => "", renderHeader: () => "", renderProbe: () => "", reviewGateDraft: () => [],
+  renderHealth: () => "", verdict: () => ({ cls: "off", word: "No data" }), parseView: () => ({ mode: "project", project: null, tab: "broken", row: null }), projectVerdict: () => ({ word: "All clear" }), chiefLiveFor: () => undefined,
+  renderToolHealth: () => "", toolHealthLoader: () => ({}), toolHealthHref: () => "",
+  driftSince: () => null, renderBoard: () => "",
+  renderWorkflow: () => "", parseWorkflowRoute: () => null,
+  apiRolesDraft: () => null, render: () => "",
+  renderShift: () => "",
+  renderReport: () => "", reportBar: () => "",
+  fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), navLinks: () => [], parseLanding: () => null, railMarkup: () => "",
+};
 
 function boot(env: Record<string, string>, x: Record<string, unknown> = {}) {
   const dir = mkdtempSync(join(tmpdir(), "cfgui-slow-"));
   dirs.push(dir);
   mkdirSync(join(dir, "home"), { recursive: true });
-  const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, HOME: join(dir, "home"), CONFIG_UI_IDLE_MS: "60000", ...env }, ...x } as never);
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, env: { PATH: process.env.PATH, HOME: join(dir, "home"), CONFIG_UI_IDLE_MS: "60000", ...env }, ...x } as never);
   stops.push(() => s.stop());
   return { port: s.port, dir };
 }
@@ -74,7 +105,7 @@ test("a slow /api/run (over 10 s) still returns its result to the client", async
   mkdirSync(repo);
   const argv = join(dir, "argv");
   writeFileSync(argv, "");
-  const s = startServer({ port: 0, token: TOKEN, root: repo, env: { PATH: process.env.PATH, HOME: home, CONFIG_UI_IDLE_MS: "60000",
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, root: repo, env: { PATH: process.env.PATH, HOME: home, CONFIG_UI_IDLE_MS: "60000",
     CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-recorder.js"), HIMMEL_REPORT_CADENCE_ROOT: cad, STUB_ARGV: argv, STUB_STATE: state, STUB_RUN_SLEEP: "11" } } as never);
   stops.push(() => s.stop());
   const post = (path: string, body: unknown) => fetch(`http://127.0.0.1:${s.port}${path}`, { method: "POST", body: JSON.stringify(body),
@@ -111,30 +142,24 @@ test("page: a slower, older feed load never repaints over a newer one", async ()
   const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
   const waiting: ((b: string) => void)[] = [];
   let first = true;
-  const g = globalThis as Record<string, unknown>;
-  const names = ["render", "renderNav", "renderHeader", "parseLanding", "navLinks", "railMarkup", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "__loadFeed"];
-  const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
-  Object.assign(g, {
-    render: (f: { id?: string } | null) => { if (f) painted.push(f.id ?? "?"); return ""; }, renderNav: () => "", renderHeader: () => "",
-    // the rail (nav.js) and its fleet read are not under test here.
-    parseLanding: () => null, navLinks: () => [], railMarkup: () => "", fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
+  stubGlobals({
+    ...APP_IMPORT_STUBS,
+    render: (f: { id?: string } | null) => { if (f) painted.push(f.id ?? "?"); return ""; }, renderNav: () => "",
     document: { querySelector: el, querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
     location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
-    // nor is the read-only mode probe or the vm form's or the report settings' or the review gate's or the fleet cap's or the setup read (Configure's onVisit) or the tracker sources' read: none may take the feed's fetch slot.
+    // the rail (nav.js) and its fleet read are not under test here, nor is the read-only mode probe or the vm form's or the report settings' or the review gate's or the fleet cap's or the setup read (Configure's onVisit) or the tracker sources' read: none may take the feed's fetch slot.
     fetch: (url: string) => url === "/api/agui/fleet" || url === "/api/mode" || url === "/api/vm" || url === "/api/review-gate" || url === "/api/fleet-cap" || url === "/api/report-settings" || url === "/api/setup" || url === "/api/sources" || url === "/api/api-roles" ? Promise.resolve({ status: 401, ok: false, json: async () => ({ error: "stub" }) }) : new Promise((res) => {
       const ok = (b: string) => res({ status: 200, ok: true, json: async () => ({ id: b }) });
       if (first) { first = false; ok("initial"); } else waiting.push(ok);
     }),
-  });
-  try {
-    new Function(src)();
-    await sleep(20);
-    const load = g.__loadFeed as () => Promise<void>;
-    const a = load(), b = load(); // two actions each start a re-probe
-    await sleep(20);
-    waiting[1]("newer"); await b;
-    waiting[0]("older"); await a; // the older report lands last
-  } finally { for (const n of names) { if (saved[n] === undefined) delete g[n]; else g[n] = saved[n]; } }
+  }, ["__loadFeed"]);
+  new Function(src)();
+  await sleep(20);
+  const load = (globalThis as Record<string, unknown>).__loadFeed as () => Promise<void>;
+  const a = load(), b = load(); // two actions each start a re-probe
+  await sleep(20);
+  waiting[1]("newer"); await b;
+  waiting[0]("older"); await a; // the older report lands last
   expect(painted).toEqual(["initial", "newer"]);
 });
 
@@ -145,21 +170,15 @@ test("page: a repaint after a review gate control changes puts the focus back on
   const ctl = (rg: string, slug: string) => ({ dataset: { rg, slug }, matches: (q: string) => q === "[data-rg]", focus() { focused.push(`${rg}:${slug}`); } });
   const rendered = [ctl("mode", "codex"), ctl("required", "claude"), ctl("enabled", "claude")];
   const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
-  const g = globalThis as Record<string, unknown>;
-  const names = ["render", "renderNav", "renderHeader", "parseLanding", "navLinks", "railMarkup", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "__paint"];
-  const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
-  Object.assign(g, {
-    render: () => "", renderNav: () => "", renderHeader: () => "",
-    parseLanding: () => null, navLinks: () => [], railMarkup: () => "", fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
+  stubGlobals({
+    ...APP_IMPORT_STUBS, renderNav: () => "",
     document: { querySelector: el, querySelectorAll: (q: string) => (q === "[data-rg]" ? rendered : []), getElementById: el, activeElement: rendered[1], addEventListener() {} },
     location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
     fetch: () => new Promise(() => {}),
-  });
-  try {
-    new Function(src)();
-    focused.length = 0;
-    (g.__paint as () => void)();
-  } finally { for (const n of names) { if (saved[n] === undefined) delete g[n]; else g[n] = saved[n]; } }
+  }, ["__paint"]);
+  new Function(src)();
+  focused.length = 0;
+  ((globalThis as Record<string, unknown>).__paint as () => void)();
   expect(focused).toEqual(["required:claude"]);
 });
 
@@ -173,20 +192,14 @@ for (const [name, before, after, want] of [
   const emptied = { dataset: { path: "handover-root" }, ...before, selectionStart: 0, selectionEnd: 0 };
   const repainted = { value: after, focus() {}, setSelectionRange() {} };
   const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
-  const g = globalThis as Record<string, unknown>;
-  const names = ["render", "renderNav", "renderHeader", "parseLanding", "navLinks", "railMarkup", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "__paint"];
-  const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
-  Object.assign(g, {
-    render: () => "", renderNav: () => "", renderHeader: () => "",
-    parseLanding: () => null, navLinks: () => [], railMarkup: () => "", fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
+  stubGlobals({
+    ...APP_IMPORT_STUBS, renderNav: () => "",
     document: { querySelector: (q: string) => (q === 'input[data-path="handover-root"]' ? repainted : el()), querySelectorAll: (q: string) => (q.startsWith("input[data-secret]") ? [emptied] : []), getElementById: el, activeElement: null, addEventListener() {} },
     location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
     fetch: () => new Promise(() => {}),
-  });
-  try {
-    new Function(src)();
-    (g.__paint as () => void)();
-  } finally { for (const n of names) { if (saved[n] === undefined) delete g[n]; else g[n] = saved[n]; } }
+  }, ["__paint"]);
+  new Function(src)();
+  ((globalThis as Record<string, unknown>).__paint as () => void)();
   expect(repainted.value).toBe(want);
 });
 
@@ -196,35 +209,29 @@ test("page: a failed setup refresh keeps the last good setup and says so, instea
   const toastEl = { textContent: "", hidden: true };
   const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
   let failing = false;
-  const g = globalThis as Record<string, unknown>;
-  const names = ["render", "renderNav", "renderHeader", "parseLanding", "navLinks", "railMarkup", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "__loadSetup", "__setup"];
-  const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
-  Object.assign(g, {
-    render: () => "", renderNav: () => "", renderHeader: () => "",
-    parseLanding: () => null, navLinks: () => [], railMarkup: () => "", fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
+  stubGlobals({
+    ...APP_IMPORT_STUBS, renderNav: () => "",
     document: { querySelector: (q: string) => (q === "#toast" ? toastEl : el()), querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
     location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
     fetch: (url: string) => (url === "/api/setup"
       ? Promise.resolve(failing ? { ok: false, status: 500, json: async () => ({}) } : { ok: true, status: 200, json: async () => ({ secrets: [] }) })
       : new Promise(() => {})),
-  });
-  let kept: unknown;
-  try {
-    new Function(src)();
-    await sleep(20);
-    await (g.__loadSetup as () => Promise<void>)();
-    failing = true;
-    await (g.__loadSetup as () => Promise<void>)();
-    kept = (g.__setup as () => unknown)();
-  } finally { for (const n of names) { if (saved[n] === undefined) delete g[n]; else g[n] = saved[n]; } }
+  }, ["__loadSetup", "__setup"]);
+  const g = globalThis as Record<string, unknown>;
+  new Function(src)();
+  await sleep(20);
+  await (g.__loadSetup as () => Promise<void>)();
+  failing = true;
+  await (g.__loadSetup as () => Promise<void>)();
+  const kept = (g.__setup as () => unknown)();
   expect(kept).toEqual({ secrets: [] });
   expect(toastEl.textContent).toContain("setup failed (500)");
 });
 
 test("the server refuses to start when a route budget would outlast idleTimeout", () => {
   const env = { PATH: process.env.PATH, HOME: tmpdir() };
-  expect(() => startServer({ port: 0, token: TOKEN, env, reprobeBudgetMs: 120_000 } as never)).toThrow(/idleTimeout/);
-  const ok = startServer({ port: 0, token: TOKEN, env });
+  expect(() => startServer({ onIdle: () => {}, port: 0, token: TOKEN, env, reprobeBudgetMs: 120_000 } as never)).toThrow(/idleTimeout/);
+  const ok = startServer({ onIdle: () => {}, port: 0, token: TOKEN, env });
   stops.push(() => ok.stop());
 });
 
@@ -247,23 +254,18 @@ async function pickerHarness(hash: string, run: (h: PickerHarness) => Promise<vo
   const mainEl = { textContent: "", hidden: false, focus() {}, setSelectionRange() {}, set innerHTML(v: string) { main = v; }, get innerHTML() { return main; } };
   const loc = { hash, pathname: "/", search: "" };
   const g = globalThis as Record<string, unknown>;
-  const names = ["render", "renderNav", "renderHeader", "renderHealth", "renderInventory", "renderProbe", "parseView", "projectVerdict", "chiefLiveFor", "parseLanding", "navLinks", "railMarkup", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "addEventListener", "__refresh", "__seed", "__route"];
-  const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
   const json = (b: object) => Promise.resolve({ status: 200, ok: true, json: async () => b });
-  Object.assign(g, {
-    render: () => "", renderNav: () => "", renderHeader: () => "", renderHealth: () => "", renderInventory: () => "", renderProbe: () => "", parseView, projectVerdict, chiefLiveFor,
-    parseLanding: () => null, navLinks: () => [], railMarkup: () => "", fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
+  stubGlobals({
+    ...APP_IMPORT_STUBS, renderNav: () => "", parseView, projectVerdict, chiefLiveFor,
     document: { querySelector: (q: string) => (q === "#main" ? mainEl : el()), querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
     location: loc, history: { replaceState() {} }, addEventListener() {},
     fetch: (url: string) => url === "/api/projects" ? json({ current: "himmel", projects: [{ name: "himmel", checkedAt: "2026-10-31T00:00:00Z", counts: { project: { fail, warn: 0 } } }] })
       : url === "/api/feed" ? json({ generatedAt: "2" }) : new Promise(() => {}),
-  });
-  try {
-    new Function(src)();
-    await sleep(20);
-    await run({ main: () => main, refresh: g.__refresh as () => Promise<void>, seed: g.__seed as (f: object) => void,
-      go: (h) => { loc.hash = h; (g.__route as () => void)(); }, setFail: (n) => { fail = n; } });
-  } finally { for (const n of names) { if (saved[n] === undefined) delete g[n]; else g[n] = saved[n]; } }
+  }, ["__refresh", "__seed", "__route"]);
+  new Function(src)();
+  await sleep(20);
+  await run({ main: () => main, refresh: g.__refresh as () => Promise<void>, seed: g.__seed as (f: object) => void,
+    go: (h) => { loc.hash = h; (g.__route as () => void)(); }, setFail: (n) => { fail = n; } });
 }
 
 test("page: a refreshed feed changes the picker's verdict word with no route change", async () => {
@@ -285,3 +287,26 @@ test("page: the picker is gone from the rail once the reader leaves Health", asy
     expect(h.main()).not.toContain('id="proj"');
   });
 });
+
+// A row that times out must leave no global stub behind. The forced row exists only in the child run below; the guard
+// after it fails when the timed-out row's stubs are still set (every ordinary run holds the guard to the rows above too).
+if (FORCE_TIMEOUT) test("FORCED-TIMEOUT page row stubs globals, then never resolves", async () => {
+  stubGlobals({ fetch: () => new Promise(() => {}), render: () => "", document: { querySelector: () => null } });
+  await new Promise(() => {});
+}, 200);
+
+test("STUB-LEAK-GUARD no harness global stub is left set by an earlier row", () => {
+  const g = globalThis as Record<string, unknown>;
+  const leaked = [...touched].filter(([n, o]) => (o.had ? g[n] !== o.value : n in g)).map(([n]) => n);
+  expect(leaked).toEqual([]);
+});
+
+test.skipIf(FORCE_TIMEOUT)("a row that times out leaves no harness stub set (child bun run with a forced timeout)", () => {
+  const r = spawnSync(process.execPath, ["test", import.meta.path, "-t", "FORCED-TIMEOUT|STUB-LEAK-GUARD"], {
+    env: { ...process.env, SLOW_FORCE_TIMEOUT: "1" }, encoding: "utf8", timeout: 60_000,
+  });
+  const out = String(r.stdout) + String(r.stderr);
+  expect(out).toMatch(/\(fail\) FORCED-TIMEOUT/); // the row did time out
+  expect(out).not.toMatch(/\(fail\) STUB-LEAK-GUARD/); // and left nothing behind
+  expect(out).toMatch(/\b1 pass\b/); // the guard ran (bun prints no line for a passing row)
+}, 70_000);

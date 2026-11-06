@@ -58,6 +58,21 @@ test("the old Setup landing and page=configure resolve to Configure, Setup with 
   expect(parseLanding(`#t=${TOKEN}&page=config`)).toEqual({ token: TOKEN, page: "config" });
 });
 
+// One no-op for every name app.js imports (its local binding: `renderConfigure as render` is `render`). The import lines are
+// stripped before app.js runs, so a name missing here is a free global. app-import-stubs.test.ts reads this block and fails,
+// naming the import, when one is missing.
+const APP_IMPORT_STUBS: Record<string, unknown> = {
+  renderInventory: () => "", renderTriage: () => "", renderHeader: () => "", renderProbe: () => "", reviewGateDraft: () => [],
+  renderHealth: () => "", verdict: () => ({ cls: "off", word: "No data" }), parseView: () => ({ mode: "project", project: null, tab: "broken", row: null }), projectVerdict: () => ({ word: "All clear" }), chiefLiveFor: () => undefined,
+  renderToolHealth: () => "", toolHealthLoader: () => ({}), toolHealthHref: () => "",
+  driftSince: () => null, renderBoard: () => "",
+  renderWorkflow: () => "", parseWorkflowRoute: () => null,
+  apiRolesDraft: () => null, render: () => "",
+  renderShift: () => "",
+  renderReport: () => "", reportBar: () => "",
+  fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), navLinks: () => [], parseLanding: () => null, railMarkup: () => "",
+};
+
 // app.js is a browser module; run it against stubs (as slow.test.ts does) and read where each hash lands.
 async function landedOn(hash: string) {
   const src = readFileSync(join(import.meta.dir, "../public/app.js"), "utf8").replace(/^import .*$/gm, "");
@@ -65,13 +80,11 @@ async function landedOn(hash: string) {
   const painted: unknown[] = [];
   const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
   const g = globalThis as Record<string, unknown>;
-  const names = ["render", "renderInventory", "renderTriage", "renderHeader", "renderProbe", "reviewGateDraft", "renderHealth", "verdict", "parseView", "projectVerdict", "chiefLiveFor", "renderToolHealth", "renderBoard", "renderKanban", "renderRoadmap", "renderWorkflow",
-    "parseLanding", "navLinks", "railMarkup", "fleetDot", "healthDot", "document", "location", "history", "fetch", "addEventListener"];
+  const names = [...Object.keys(APP_IMPORT_STUBS), "document", "location", "history", "fetch", "addEventListener"];
   const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
   Object.assign(g, {
-    render: (_f: unknown, c: unknown) => { painted.push(c); return ""; }, renderInventory: () => "", renderTriage: () => "", renderHeader: () => "", renderProbe: () => "", reviewGateDraft: () => [],
-    renderHealth: () => "", parseView: () => ({ mode: "project", project: null, tab: "broken", row: null }), projectVerdict: () => ({ word: "All clear" }), chiefLiveFor: () => undefined, verdict: () => ({ cls: "off", word: "No data" }), renderToolHealth: () => "", renderBoard: () => "", renderKanban: () => "", renderRoadmap: () => "", renderWorkflow: () => "",
-    parseLanding: () => null, navLinks: () => [], railMarkup: () => "", fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }),
+    ...APP_IMPORT_STUBS,
+    render: (_f: unknown, c: unknown) => { painted.push(c); return ""; },
     document: { querySelector: el, querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
     location: { hash, pathname: "/", search: "", host: "x" }, history: { replaceState: (_a: unknown, _b: unknown, u: string) => urls.push(u) },
     fetch: () => new Promise(() => {}), addEventListener() {},
@@ -191,7 +204,7 @@ afterEach(() => { for (const f of stops) f(); stops = []; });
 
 test("the shared rail files are served like every other page: same headers, no token", async () => {
   const home = mkdtempSync(join(tmpdir(), "nav-home-"));
-  const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, HOME: home, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000" } });
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, env: { PATH: process.env.PATH, HOME: home, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000" } });
   stops.push(() => { s.stop(); rmSync(home, { recursive: true, force: true }); });
   for (const [path, type] of [["/nav.js", "application/javascript; charset=utf-8"], ["/theme.css", "text/css; charset=utf-8"], ["/tokens.css", "text/css; charset=utf-8"]]) {
     const r = await fetch(`http://127.0.0.1:${s.port}${path}`);

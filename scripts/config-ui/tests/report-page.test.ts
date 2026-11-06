@@ -37,7 +37,7 @@ afterEach(() => {
 });
 
 function boot(extra: Record<string, string> = {}) {
-  const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, HOME: process.env.HOME, HANDOVER_DIR: handover, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", ...extra } });
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, env: { PATH: process.env.PATH, HOME: process.env.HOME, HANDOVER_DIR: handover, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", ...extra } });
   stop = () => s.stop();
   return s.port;
 }

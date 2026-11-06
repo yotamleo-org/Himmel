@@ -92,7 +92,7 @@ else if (a[0] === "plugin" && (a[1] === "enable" || a[1] === "disable")) {
       HIMMELCTL_REPO_ROOT: repo, HIMMEL_REPORT_DOCTOR: doctor, HIMMEL_RUNTIME_PREFLIGHT: "0",
       DOCTORCAD_CRONTAB: cron, QMD_CADENCE_CRONTAB: cron, GRAPHMAP_CRONTAB: cron, PIPELINE_CRONTAB: cron,
     };
-    const s = startServer({ port: 0, token: TOKEN, env: { ...env } });
+    const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, env: { ...env } });
     port = s.port; stop = s.stop;
   });
   afterAll(() => {

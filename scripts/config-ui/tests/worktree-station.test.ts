@@ -30,7 +30,7 @@ async function toggle(root: string, extra: Record<string, string> = {}) {
   writeFileSync(argvFile, "");
   const env = { PATH: process.env.PATH, HOME: home, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-env-recorder.js"),
     STUB_ARGV: argvFile, STUB_STATE: state, CONFIG_UI_IDLE_MS: "60000", ...extra };
-  const s = startServer({ port: 0, token: TOKEN, env, root } as never);
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, env, root } as never);
   stops.push(() => s.stop());
   const post = (path: string, body: unknown) => fetch(`http://127.0.0.1:${s.port}${path}`, {
     method: "POST", body: JSON.stringify(body),

@@ -111,7 +111,7 @@ test("a station with no files reads absent everywhere, never zero", async () => 
 test("the route is authenticated and GET-only, caches its scan and re-reads on rescan", async () => {
   const token = "b".repeat(64), { env } = station();
   let clock = Date.parse("2026-11-01T04:00:00Z");
-  const s = startServer({ port: 0, token, now: () => clock, env: { ...env, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js") } });
+  const s = startServer({ onIdle: () => {}, port: 0, token, now: () => clock, env: { ...env, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js") } });
   try {
     const url = `http://127.0.0.1:${s.port}/api/tool-inventory`, headers = { "X-Himmel-Token": token };
     expect((await fetch(url)).status).toBe(401);

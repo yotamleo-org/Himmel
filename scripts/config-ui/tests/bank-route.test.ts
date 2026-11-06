@@ -19,7 +19,7 @@ function boot(files: { claude?: unknown; codex?: unknown } = {}, usageNames = fa
   const claude = join(dir, "claude.json"), codex = join(dir, "codex.json");
   if (files.claude !== undefined) writeFileSync(claude, JSON.stringify(files.claude));
   if (files.codex !== undefined) writeFileSync(codex, JSON.stringify(files.codex));
-  const s = startServer({
+  const s = startServer({ onIdle: () => {},
     port: 0, token: TOKEN, now: () => NOW,
     env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root,
       CLAUDE_USAGE_CACHE: claude, CODEX_USAGE_CACHE: codex,
@@ -111,7 +111,7 @@ test("the route needs the token and a UI request spawns no probe or producer", a
   const sh = join(dir, "probe.sh");
   writeFileSync(sh, `#!/bin/sh\ntouch ${marker}\n`, { mode: 0o755 });
   const home = join(dir, "home"); mkdirSync(home);
-  const s = startServer({
+  const s = startServer({ onIdle: () => {},
     port: 0, token: TOKEN, now: () => NOW,
     env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: dir,
       CLAUDE_USAGE_CACHE: join(dir, "none-c.json"), CODEX_USAGE_CACHE: join(dir, "none-x.json"),

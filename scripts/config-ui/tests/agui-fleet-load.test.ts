@@ -40,7 +40,7 @@ test("archived chief docs get their lock read in parallel, bounded, and none is 
 
 test("requests that arrive while a fleet read is running share it: one census run", async () => {
   const t = tree(2);
-  const s = startServer({ port: 0, token: TOKEN, fleetScript: t.script, env: { PATH: process.env.PATH, HOME: t.dir, CONFIG_UI_IDLE_MS: "60000" } });
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, fleetScript: t.script, env: { PATH: process.env.PATH, HOME: t.dir, CONFIG_UI_IDLE_MS: "60000" } });
   cleanups.push(() => s.stop());
   const get = () => fetch(`http://127.0.0.1:${s.port}/api/agui/fleet`, { headers: { "X-Himmel-Token": TOKEN } });
   const [a, b, c] = await Promise.all([get(), get(), get()]);

@@ -12,7 +12,7 @@ afterEach(() => { stop?.(); stop = null; });
 // lives in the default search path (not on a runner that installs node via setup-node).
 const baseEnv = (): Record<string, string | undefined> => ({ PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000" });
 function boot(env: Record<string, string | undefined> = baseEnv()) {
-  const s = startServer({ port: 0, token: TOKEN, env });
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, env });
   stop = () => s.stop();
   return s;
 }
@@ -56,7 +56,7 @@ test("the feed is redacted before it leaves the server", async () => {
 });
 
 test("startServer refuses a non-loopback hostname", () => {
-  expect(() => startServer({ hostname: "0.0.0.0", port: 0, token: TOKEN } as never)).toThrow();
+  expect(() => startServer({ onIdle: () => {}, hostname: "0.0.0.0", port: 0, token: TOKEN } as never)).toThrow();
 });
 
 test("provider keys are scrubbed from the server env", () => {

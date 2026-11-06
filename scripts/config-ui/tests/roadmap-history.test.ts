@@ -18,7 +18,7 @@ function boot(extra: Record<string, string> = {}, mirrors: string[] = ["HIMMEL"]
   const home = join(dir, "home"), root = join(dir, "root"), log = join(dir, "jira.log"), envLog = join(dir, "env.log"), own = join(dir, "checkout");
   mkdirSync(home); mkdirSync(root); mkdirSync(own);
   for (const k of mirrors) mkdirSync(join(home, ".himmel", "state", "jira-mirror", k), { recursive: true });
-  const s = startServer({
+  const s = startServer({ onIdle: () => {},
     port: 0, token: TOKEN, root: own,
     env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_JIRA_CLI: JIRA, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root,
       STUB_JIRA_LOG: log, STUB_JIRA_ENV_LOG: envLog, ...extra },

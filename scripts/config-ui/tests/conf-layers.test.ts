@@ -22,7 +22,7 @@ function scratch() {
   return { dir, home, root, project, conf };
 }
 const boot = (s: ReturnType<typeof scratch>, env: Record<string, string> = {}) => {
-  const srv = startServer({
+  const srv = startServer({ onIdle: () => {},
     port: 0, token: TOKEN, root: s.root, projectRoot: s.project,
     env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: s.home, HANDOVER_DIR: s.root, HIMMEL_PROMETHEUS_URL: "http://127.0.0.1:1", HIMMEL_FLOW_EXPORTER_PORT: "1", HIMMEL_SECRETS_KEYRING: "off", ...env },
     legsScript: join(s.dir, "no-workers.sh"),

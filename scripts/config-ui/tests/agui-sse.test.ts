@@ -728,7 +728,7 @@ test("GET /api/agui/<run> merges the run's bus events through the server", async
   await append(root, "worker-a", { t, b: "x", c: 0, i: "H1", f: "chief-x", r: "worker-a" });
   await append(root, "chief-x", { t, b: "x", c: 0, i: "H2", f: "worker-b", r: "chief-x" });
   journal(h, "-proj", RUN, JSON.stringify({ type: "agent-name", agentName: "worker-a", sessionId: RUN }) + "\n");
-  const s = startServer({
+  const s = startServer({ onIdle: () => {},
     port: 0, token: TOKEN, env: { PATH: process.env.PATH, HOME: h, XDG_STATE_HOME: join(h, "state"), CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000" },
     aguiPollMs: 20, aguiIdleMs: 300, aguiMaxMs: 10_000,
   });

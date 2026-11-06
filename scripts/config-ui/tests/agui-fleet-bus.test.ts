@@ -28,7 +28,7 @@ async function boot(seed: boolean) {
     await append(root, FLEET.worker.name, rec({ i: "M2", f: FLEET.console.name, r: FLEET.worker.name, b: "just words", t: t + 2 }));
     await append(root, FLEET.console.name, rec({ i: "M3", f: FLEET.worker.name, r: FLEET.console.name, b: "READY 1 abc GREEN", t: t + 3 }));
   }
-  const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", ...fx.env, XDG_STATE_HOME: state } });
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", ...fx.env, XDG_STATE_HOME: state } });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
   return { ...s, root, dir };
 }

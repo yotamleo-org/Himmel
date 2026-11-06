@@ -161,7 +161,7 @@ test("phase-stats route: GET only, behind the token, read from the status record
   const home = join(dir, "home"), root = join(dir, "root");
   mkdirSync(home); mkdirSync(root);
   execFileSync("git", ["init", "-q", root]);
-  const s = startServer({ port: 0, root, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, TICKET_STATUS_STATE_DIR: join(dir, "state") } });
+  const s = startServer({ onIdle: () => {}, port: 0, root, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, TICKET_STATUS_STATE_DIR: join(dir, "state") } });
   cleanups.push(() => s.stop());
   const url = `http://127.0.0.1:${s.port}/api/phase-stats`;
   expect((await fetch(url)).status).toBe(401);

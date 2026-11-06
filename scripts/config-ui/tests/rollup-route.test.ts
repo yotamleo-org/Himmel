@@ -31,7 +31,7 @@ function boot(rows?: Row[]) {
   mkdirSync(home); mkdirSync(root);
   const file = join(dir, "weekly.jsonl");
   if (rows) writeFileSync(file, rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
-  const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root, WEEKLY_ROLLUP_FILE: file } });
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root, WEEKLY_ROLLUP_FILE: file } });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
   return s;
 }
