@@ -1715,6 +1715,13 @@ done
 mkdir "$p9444_dir/tree/plain" && touch "$p9444_dir/tree/plain/n.jsonl" && ln -s "$p9444_dir/tree/plain" "$p9444_dir/tree/plink" || exit 1
 read -r p9444_rc p9444_calls p9444_ms <<<"$(p9444_run "cat $p9444_dir/tree/plink/n.jsonl")"
 assert_rc "9444 symlink to an ordinary directory allows" 0 "$p9444_rc"
+# Positive control: a symlinked parent must still take the fork, so a count of
+# 0 here means the counting shim never loaded and the bound above proves nothing.
+if [ "${p9444_calls:-0}" -ge 1 ]; then
+    echo "PASS 9444 counting shim sees the fork for a symlinked parent (calls=$p9444_calls)"
+else
+    echo "FAIL 9444 counting shim saw no canonicalisation for a symlinked parent (calls=${p9444_calls:-unread})"; FAILED=$((FAILED + 1))
+fi
 rm -rf "$p9444_dir"
 
 # The configuration keys live in ~/.himmel/himmel.conf, which an agent may read; .env, which keeps the secrets, stays refused.
