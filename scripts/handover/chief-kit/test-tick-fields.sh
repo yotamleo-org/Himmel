@@ -634,10 +634,12 @@ contains 'the spinning guardrail refresh lands in the tick that launched it' "$(
 if [ $((cg_spin9342 - cg_base9342)) -lt 1000 ]; then pass 'a section refresh the tick waits out adds none of its CPU to the tick'; else fail "a section refresh added $((cg_spin9342 - cg_base9342)) ms of CPU to the tick (spin ${cg_spin9342} ms, control ${cg_base9342} ms)"; fi
 
 # The dependabot sweep and the plan-index refresh are not waited on, but a tick that is still
-# running when one ends reaps it all the same. A stub `bun` (the tick's last slow step) holds
-# the tick 4 s, longer than the 2 s of CPU the stubs spin, so the child ends inside the tick.
+# running when one ends reaps it all the same. Each stub child touches $HD_DONE as its last step;
+# a stub `bun` (the tick's last slow step) holds the tick until that file exists (at most 15 s)
+# and one second more, so the child ends inside the tick however loaded the host is.
 hd9342="$W/hd9342"; mkdir -p "$hd9342/bin"
-printf '%s\n' '#!/usr/bin/env bash' 'sleep 4' > "$hd9342/bin/bun"
+# shellcheck disable=SC2016  # the stub's own $vars expand when it runs, not here
+printf '%s\n' '#!/usr/bin/env bash' 'i=0; while [ ! -e "${HD_DONE:-/nonexistent}" ] && [ "$i" -lt 150 ]; do sleep 0.1; i=$((i + 1)); done; sleep 1' > "$hd9342/bin/bun"
 chmod +x "$hd9342/bin/bun"
 wait9342() {  # wait9342 <file>: up to 15 s for a file the detached child writes
     local i=0
@@ -645,10 +647,11 @@ wait9342() {  # wait9342 <file>: up to 15 s for a file the detached child writes
 }
 
 db9342="$W/db9342"; mkdir -p "$db9342/state" "$W/repo/scripts/cr"
-printf '%s\n' '#!/usr/bin/env bash' "[ -z \"\${SPIN:-}\" ] || { $spin9342; }" 'echo "dependabot-go sweep: merged=1 skipped=2"' > "$W/repo/scripts/cr/dependabot-go.sh"
+# shellcheck disable=SC2016  # the stub's own $vars expand when it runs, not here
+printf '%s\n' '#!/usr/bin/env bash' "[ -z \"\${SPIN:-}\" ] || { $spin9342; }" 'echo "dependabot-go sweep: merged=1 skipped=2"' 'touch "$HD_DONE"' > "$W/repo/scripts/cr/dependabot-go.sh"
 db_run9342() {
-    rm -rf "$db9342/state"; mkdir -p "$db9342/state"
-    cpu9342 "$db9342/line" env SPIN="$1" DEPENDABOT_AUTOLAND=on TICK_DBOT_MIN_SECS=0 TICK_STATE_DIR="$db9342/state" PATH="$hd9342/bin:$PATH" bash "$SUT"
+    rm -rf "$db9342/state"; mkdir -p "$db9342/state"; rm -f "$db9342/done"
+    cpu9342 "$db9342/line" env SPIN="$1" HD_DONE="$db9342/done" DEPENDABOT_AUTOLAND=on TICK_DBOT_MIN_SECS=0 TICK_STATE_DIR="$db9342/state" PATH="$hd9342/bin:$PATH" bash "$SUT"
 }
 db_base9342="$(db_run9342 '')"
 contains 'the control tick launches the dependabot sweep' "$(cat "$db9342/line")" ' dbot=none,run'
@@ -661,11 +664,12 @@ if [ $((db_spin9342 - db_base9342)) -lt 1000 ]; then pass 'a dependabot sweep th
 if command -v python3 >/dev/null 2>&1; then
     pi9342="$W/pi9342"; mkdir -p "$pi9342/plan" "$pi9342/mirror"
     printf '%s\n' '# chief' '' "tracker-plan: $pi9342/plan" '' '## Results (newest at the bottom)' > "$pi9342/chief.md"
-    printf '%s\n' '#!/usr/bin/env bash' "[ -z \"\${SPIN:-}\" ] || { $spin9342; }" 'exit 0' > "$pi9342/launcher"
+    # shellcheck disable=SC2016  # the stub's own $vars expand when it runs, not here
+    printf '%s\n' '#!/usr/bin/env bash' "[ -z \"\${SPIN:-}\" ] || { $spin9342; }" 'touch "$HD_DONE"' 'exit 0' > "$pi9342/launcher"
     chmod +x "$pi9342/launcher"
     pi_run9342() {
-        rm -rf "$pi9342/out"
-        cpu9342 "$pi9342/line" env SPIN="$1" TOKEN='' TICK_PLAN_INDEX_OUT="$pi9342/out" TICK_PLAN_INDEX_LAUNCHER="$pi9342/launcher" TICK_TRACKER_MIRROR_DIR="$pi9342/mirror" PATH="$hd9342/bin:$PATH" bash "$SUT" --doc "$pi9342/chief.md"
+        rm -rf "$pi9342/out"; rm -f "$pi9342/done"
+        cpu9342 "$pi9342/line" env SPIN="$1" HD_DONE="$pi9342/done" TOKEN='' TICK_PLAN_INDEX_OUT="$pi9342/out" TICK_PLAN_INDEX_LAUNCHER="$pi9342/launcher" TICK_TRACKER_MIRROR_DIR="$pi9342/mirror" PATH="$hd9342/bin:$PATH" bash "$SUT" --doc "$pi9342/chief.md"
     }
     pi_base9342="$(pi_run9342 '')"
     contains 'the control tick launches the plan-index refresh' "$(cat "$pi9342/line")" ' plan-index=REFRESHING'
