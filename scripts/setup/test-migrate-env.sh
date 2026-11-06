@@ -1360,11 +1360,17 @@ mkdir -p "$TMP/sbin"
 cat > "$TMP/sbin/systemctl" <<'STUB' || fail "fixture write of the systemctl stub failed"
 #!/usr/bin/env bash
 printf 'systemctl %s\n' "$*" >> "$SYSTEMCTL_LOG"
-if [ "$1 $2" = "--user show-environment" ]; then
-    # SYS_READBACK_FAIL=1: the read-back after an unset fails
+case "$1 $2" in
+"--user show-environment")
+    # SYS_UNREACHABLE=1: no user manager answers; SYS_READBACK_FAIL=1: the read-back after an unset fails
+    [ -z "${SYS_UNREACHABLE:-}" ] || exit 1
     [ -z "${SYS_READBACK_FAIL:-}" ] || ! grep -q unset-environment "$SYSTEMCTL_LOG" || exit 1
-    cat "$SYSENV" 2>/dev/null; exit 0
-fi
+    cat "$SYSENV" 2>/dev/null; exit 0 ;;
+"--user unset-environment")
+    # SYS_STICKY=1: the name stays in the manager
+    [ -z "${SYS_STICKY:-}" ] || exit 0
+    grep -v "^$3=" "$SYSENV" > "$SYSENV.n" 2>/dev/null; mv -f "$SYSENV.n" "$SYSENV" 2>/dev/null; exit 0 ;;
+esac
 exit 0
 STUB
 chmod +x "$TMP/sbin/systemctl"
@@ -1459,6 +1465,83 @@ APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "SYS_READBACK_FAIL=1 $SYSPATH"
 if [ "$rc" != 0 ]; then pass "N11 a failed read-back fails the run (exit $rc)"; else fail "N11 the run exited 0"; fi
 has "N11 the report says it could not read the manager back" "could not be read back" "$out"
 lacks "N11 it does not claim the manager holds none" "still holds 0" "$out"
+# N12: an item the keyring already holds is never replaced. A store here replaces the item with
+# the same attributes, as libsecret does (the shared stub only appends), so a probe-less store
+# would overwrite a newer keyring value with the file's older one.
+mkdir -p "$TMP/rbin"
+cat > "$TMP/rbin/secret-tool" <<'STUB' || fail "fixture write of the replacing secret-tool failed"
+#!/usr/bin/env bash
+if [ "$1" = store ]; then
+    orig=("$@"); shift 3; q=""
+    while [ "$#" -ge 2 ]; do q="$q $1=$2"; shift 2; done
+    if [ -f "$KSTUB_STORE" ]; then
+        awk -F '\t' -v a="${q# }" '$1 != a' "$KSTUB_STORE" > "$KSTUB_STORE.r" && mv -f "$KSTUB_STORE.r" "$KSTUB_STORE"
+    fi
+    exec "$KBIN/secret-tool" "${orig[@]}"
+fi
+exec "$KBIN/secret-tool" "$@"
+STUB
+chmod +x "$TMP/rbin/secret-tool"
+export KBIN
+RPATH="PATH=$TMP/rbin:$TMP/sbin:$PATH "
+fixture_9360
+kitem GGS_MQTT_PASS "$(canary newer)"
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "$RPATH"
+if [ "$rc" = 0 ]; then pass "N12 a held name does not fail the run"; else fail "N12 exited $rc: $out"; fi
+if grep -q 'CANARY-newer' "$KSTUB_STORE" 2>/dev/null && ! grep -q 'CANARY-mq' "$KSTUB_STORE" 2>/dev/null; then pass "N12 the newer keyring value was not replaced"; else fail "N12 the keyring value was replaced"; fi
+has "N12 the entry stays in .env" "GGS_MQTT_PASS='CANARY-mq-" "$(cat "$TMP/st/.env")"
+has "N12 the report says held" "held GGS_MQTT_PASS" "$out"
+lacks "N12 a held name is not cleared from the manager" "unset-environment GGS_MQTT_PASS" "$(cat "$SYSTEMCTL_LOG")"
+no_canary "N12 no value printed" "$out"
+# N12b: the same value already in the keyring lets the entry leave, with nothing stored twice.
+fixture_9360
+n12v=$(sed -n "s/^GGS_MQTT_PASS='//p" "$TMP/st/.env")
+kitem GGS_MQTT_PASS "$n12v"
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "$RPATH"
+lacks "N12b the entry left .env" "GGS_MQTT_PASS" "$(cat "$TMP/st/.env")"
+if [ "$(grep -c 'key=GGS_MQTT_PASS' "$KSTUB_STORE")" = 1 ] && ! grep -q 'secret-tool store.*GGS_MQTT_PASS' "$KSTUB_LOG"; then pass "N12b nothing was stored again"; else fail "N12b the keyring was written again"; fi
+# N13: a NAME= line inside another key's quoted value is not the named key's entry, even when the real entry is one line.
+fixture_9360
+fxadd "$TMP/st/.env" "NOTE='first\nTOK=EMBEDDED-CANARY\nlast'\nTOK=%s\n" "$(canary tok)"
+APPLY_ARGS="-y --keys TOK" apply_tty y "$SYSPATH"
+if grep -q 'CANARY-tok' "$KSTUB_STORE" 2>/dev/null && ! grep -q 'EMBEDDED-CANARY' "$KSTUB_STORE" 2>/dev/null; then pass "N13 the real TOK line is the one stored"; else fail "N13 the keyring holds the wrong TOK value"; fi
+has "N13 the embedded line stays inside NOTE" "TOK=EMBEDDED-CANARY" "$(cat "$TMP/st/.env")"
+lacks "N13 the real TOK line left" "TOK=CANARY-tok" "$(cat "$TMP/st/.env")"
+# N14: the printed commands carry this run's --env.
+fixture_9360
+out=$(bash "$SCRIPT" --dry-run --env "$TMP/st/.env" 2>&1)
+has "N14 the --unowned command carries --env" "--env $TMP/st/.env -y --unowned" "$out"
+has "N14 the --keys command carries --env" "--env $TMP/st/.env -y --keys NAME" "$out"
+# N15: the backups keep a named value and a two-line manifest value in plaintext: the run says so, and does not claim a kept line the keyring lacks.
+fixture_9360
+grep -v '^BITBUCKET_API_TOKEN=' "$TMP/st/.env" > "$TMP/st/.env.new" && mv "$TMP/st/.env.new" "$TMP/st/.env"
+fxadd "$TMP/st/.env" "BITBUCKET_API_TOKEN='%s\n'\n" "$(canary bb2)"
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "$SYSPATH"
+has "N15 the report names the entries the backups keep in plaintext" "still hold the entries for" "$out"
+has "N15 it names the unowned entry" "GGS_MQTT_PASS" "$(printf '%s\n' "$out" | grep 'still hold the entries for')"
+has "N15 it names the two-line manifest entry" "BITBUCKET_API_TOKEN" "$(printf '%s\n' "$out" | grep 'still hold the entries for')"
+lacks "N15 it does not say the keyring lacks a value it stored" "keeps a line for BITBUCKET_API_TOKEN" "$out"
+# N16: --unowned never moves a process environment name, and the plan lists what it will move.
+fixture_9360
+fxadd "$TMP/st/.env" 'PATH=/usr/local/bin\nXDG_RUNTIME_DIR=/run/user/1000\n'
+out=$(bash "$SCRIPT" --dry-run --unowned --env "$TMP/st/.env" 2>&1)
+has "N16 the plan lists the names --unowned will move" "these names move to the keyring" "$out"
+has "N16 a plain name is in that list" "PLAIN_UNOWNED" "$(printf '%s\n' "$out" | grep 'these names move to the keyring')"
+has "N16 PATH is refused in the plan" "PATH  unowned  stays (a process environment name, never moved)" "$out"
+APPLY_ARGS="-y --unowned" apply_tty y "$SYSPATH"
+has "N16 PATH stays in .env" "PATH=/usr/local/bin" "$(cat "$TMP/st/.env")"
+has "N16 XDG_RUNTIME_DIR stays in .env" "XDG_RUNTIME_DIR=/run/user/1000" "$(cat "$TMP/st/.env")"
+lacks "N16 PATH is not cleared from the manager" "unset-environment PATH" "$(cat "$SYSTEMCTL_LOG")"
+# N17: a manager that cannot be reached, or that still holds a name, is not a success.
+fixture_9360
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "SYS_UNREACHABLE=1 $SYSPATH"
+if [ "$rc" != 0 ]; then pass "N17 an unreachable manager fails the run (exit $rc)"; else fail "N17 the run exited 0"; fi
+has "N17 the report says nothing was cleared" "not reachable" "$out"
+lacks "N17 the entry still left .env" "GGS_MQTT_PASS=" "$(cat "$TMP/st/.env")"
+fixture_9360
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "SYS_STICKY=1 $SYSPATH"
+if [ "$rc" != 0 ]; then pass "N17 a name the manager still holds fails the run (exit $rc)"; else fail "N17 the run exited 0"; fi
+has "N17 the report counts the names still held" "still holds" "$out"
 # N6: a name the file does not hold is a usage error with nothing written.
 fixture_9360
 APPLY_ARGS="-y --keys NOT_IN_THE_FILE" apply_tty y "$SYSPATH"
