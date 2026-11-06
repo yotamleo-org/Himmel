@@ -1203,8 +1203,7 @@ jobs:
       # without hooks installed never hits. Run it on the PR range, from the BASE
       # copies of the gate, the classifier and the rule list (a PR cannot widen the
       # rules that judge it); a missing base sha or base copy is a red job, never a
-      # silent pass. Bootstrap, until a base always holds the rule list: a base that
-      # predates it is judged by its own gate alone.
+      # silent pass; so is a base without the rule list.
       - name: history-comment gate (PR range)
         if: github.event_name == 'pull_request'
         env:
@@ -1219,11 +1218,6 @@ jobs:
           if ! git show "$BASE_SHA:scripts/lint/check-history-comments.sh" > "$gate/check-history-comments.sh" || [ ! -s "$gate/check-history-comments.sh" ]; then
             echo "history-comment gate: script absent at base $BASE_SHA, cannot evaluate" >&2
             exit 1
-          fi
-          if ! git show "$BASE_SHA:scripts/lint/ticket-ref-allow.tsv" > "$gate/ticket-ref-allow.tsv" 2>/dev/null; then
-            echo "history-comment gate: base predates the rule list, judging with the base gate alone (bootstrap)"
-            bash "$gate/check-history-comments.sh" --range "$BASE_SHA"
-            exit $?
           fi
           for f in ticket-refs.awk ticket-ref-allow.tsv; do
             if ! git show "$BASE_SHA:scripts/lint/$f" > "$gate/$f" || [ ! -s "$gate/$f" ]; then
