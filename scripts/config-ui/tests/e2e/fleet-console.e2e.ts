@@ -34,6 +34,7 @@ for (const scheme of ["dark", "light"] as const) {
 }
 
 // The AG-UI rail is the console rail (links only); the filters are a bar in the page and the chiefs are group headers.
+const RAIL_STRAYS = "input, [role=group][aria-label=Filters], nav[aria-label='Supervisor sessions'], details:not(#top *)"; // the identity header's Build details fold is the one details the rail has
 test("the AG-UI rail holds no filter input and no session tree; the page holds the filter bar and no supervisor sessions nav", async ({ page }) => {
   test.skip(noDist, NO_DIST);
   h = await bootAgui("", { fleet: true });
@@ -41,9 +42,21 @@ test("the AG-UI rail holds no filter input and no session tree; the page holds t
   await expect(page.locator(".fleet-row").first()).toBeVisible();
   const rail = page.locator("aside.rail");
   await expect(rail.locator("nav.pages a")).not.toHaveCount(0);
-  await expect(rail.locator("input, [role=group][aria-label=Filters], nav[aria-label='Supervisor sessions'], details")).toHaveCount(0);
+  await expect(rail.locator(RAIL_STRAYS)).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Supervisor sessions" })).toHaveCount(0);
   await expect(page.locator("main.fleet").getByRole("group", { name: "Filters" }).locator("input[type=search]")).toBeVisible();
+});
+
+// The check above still bites: a details fold in the rail body is caught; the identity header's own fold is not.
+test("a stray details element in the rail body fails the rail check, the header's Build details fold does not", async ({ page }) => {
+  test.skip(noDist, NO_DIST);
+  h = await bootAgui("", { fleet: true });
+  await page.goto(h.url);
+  const rail = page.locator("aside.rail");
+  await expect(rail.locator("#top details")).toHaveCount(1);
+  await expect(rail.locator(RAIL_STRAYS)).toHaveCount(0);
+  await page.evaluate(() => document.querySelector("aside.rail nav.pages")!.insertAdjacentHTML("afterend", "<details><summary>stray</summary></details>"));
+  await expect(rail.locator(RAIL_STRAYS)).toHaveCount(1);
 });
 
 test("a live chief's group header counts its running and waiting-for-GO sessions and links its page; Other sessions shows none", async ({ page }) => {

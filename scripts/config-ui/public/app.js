@@ -2,7 +2,7 @@
 import { renderInventory, renderTriage, renderHeader, renderProbe, reviewGateDraft } from "/render.js";
 import { renderHealth, verdict, parseView, projectVerdict, chiefLiveFor } from "/health.js";
 import { renderToolHealth, toolHealthLoader, toolHealthHref } from "/tool-health.js";
-import { driftSince, renderBoard } from "/roadmap.js";
+import { driftSince, pinsFromSearch, renderBoard, searchWithPins, togglePin } from "/roadmap.js";
 import { renderWorkflow, parseWorkflowRoute } from "/workflow.js";
 import { apiRolesDraft, renderConfigure as render } from "/setup.js";
 import { renderShift } from "/shift.js";
@@ -61,7 +61,9 @@ let boardExtras = null, boardGen = 0; // GET /api/board: { drift, chains, versio
 let pagebarOpen = false; // the page bar's "Filters (n on)" fold at phone width; declared before route() runs, as the next one is
 let originsReading = false; // declared before route() runs: a reload at #/board paints, and that paint asks for Tidy up's origins
 // writes = cards drag and take a theme // tab, v, at = the Board route (#/board?tab=&v=&at=); chain = the Chain filter
-const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null, held: null, drawer: null, tab: null, v: null, at: null, why: null, logOpen: [], chain: null, nv: null };
+// pins, showAll, hidePrev, hideFuture = the version strip's window (display only; no Jira call); the pins are kept in the URL's ?pins=, see savePins.
+const savePins = (pins) => history.replaceState(null, "", location.pathname + searchWithPins(location.search, pins) + location.hash);
+const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null, held: null, drawer: null, tab: null, v: null, at: null, why: null, logOpen: [], chain: null, nv: null, pins: pinsFromSearch(location.search), showAll: false, hidePrev: false, hideFuture: false, pinMsg: "" };
 let sources; // GET /api/sources: the trackers the UI can read; undefined until read, [] hides the Board
 const noTracker = () => `<div class="nodata">No tracker the UI can read is configured, so there is no board to show. The Board reads the local tracker store (TRACKER=local, once it holds an item), a Jira mirror, or GitHub issues when TRACKER=github and gh is signed in.</div>`;
 const trackerPage = (draw) => () => (sources && sources.length === 0 ? noTracker() : draw());
@@ -838,6 +840,8 @@ document.addEventListener("change", (e) => {
   if (e.target.dataset.vm === "mode" && state.vm && state.vm.draft) { state.vm.draft.mode = e.target.value; state.vm.msg = null; return paint(); }
   if (e.target.dataset.rs === "report_day" && state.reports && state.reports.draft) { state.reports.draft.report_day = e.target.value; state.reports.msg = null; return paint(); }
   if (e.target.dataset.rmHideDone !== undefined) { roadmapUi.hideDone = e.target.checked; return paint(); }
+  if (e.target.dataset.rmHidePrev !== undefined) { roadmapUi.hidePrev = e.target.checked; return paint(); }
+  if (e.target.dataset.rmHideFuture !== undefined) { roadmapUi.hideFuture = e.target.checked; return paint(); }
   if (e.target.dataset.rmChain !== undefined) { roadmapUi.chain = e.target.value || null; return paint(); }
   if (e.target.dataset.rmFind !== undefined) { roadmapUi.find = e.target.value.trim() || null; return paint(); } // a text box commits on Enter or blur, so typing is never repainted under the cursor
   const f = e.target.dataset.rmFilter;
@@ -911,7 +915,14 @@ document.addEventListener("click", (e) => {
   const card = e.target.closest && e.target.closest("[data-rm-open]");
   if (card && !e.target.closest("a,select,button,input,summary,[data-act]")) return void openDrawer(card);
   const b = e.target.closest("[data-act],[data-f]");
-  if (!b) return;
+  if (!b) {
+    const vc = e.target.closest("[data-rm-pin],[data-rm-show-all],[data-rm-clear-pins]"); // the Board's version strip controls
+    if (!vc) return;
+    if (vc.dataset.rmPin !== undefined) { const r = togglePin(roadmapUi.pins, vc.dataset.rmPin); roadmapUi.pins = r.pins; roadmapUi.pinMsg = r.msg; savePins(r.pins); }
+    else if (vc.dataset.rmClearPins !== undefined) { roadmapUi.pins = []; roadmapUi.pinMsg = ""; savePins([]); }
+    else roadmapUi.showAll = !roadmapUi.showAll;
+    return void paint();
+  }
   if (b.dataset.act === "rm-close") return void closeDrawer();
   if (b.dataset.act === "refresh-toolhealth") return void loadToolHealth(true);
   if (b.dataset.act && b.dataset.act.startsWith("th-")) return void toolHealthClick(b);

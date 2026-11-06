@@ -137,7 +137,9 @@ throwaway tmp directory.
 (`git grep -l` from the worktree), not the suites in the directory you edited.
 `bash scripts/cr/impacted-suites.sh` lists them; with no argument it uses
 `$(git merge-base origin/main HEAD)..HEAD` (`origin/HEAD`'s target in place
-of `origin/main` when set) and prints that range to stderr, and an explicit `<base sha>..HEAD` works the same. Run those and name them with their counts, each as one literal
+of `origin/main` when set) and prints that range to stderr, and an explicit `<base sha>..HEAD` works the same. Run the ones
+`scripts/cr/pr-check-ref/33-step3-impacted.md` keeps local (the one statement of
+the rule; every other one goes to CI as `SUITE <p> = CI`) and name them with their counts, each as one literal
 `bash scripts/quiet-run.sh suite -- bash <tracked test-*.sh>` — nothing
 appended: no `>`, no `2>&1`, no `; echo`, no `sleep N;` prefix, no `| tail`.
 `quiet-run` already captures the output; to see the failing assertion (a

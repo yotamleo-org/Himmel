@@ -3,10 +3,10 @@ name: telegram-clip
 description: Save Telegram text, links or forwards as general luna clips; use grow-feed-log for feeding records.
 ---
 
-# telegram-clip — Telegram → Clippings/ ingestion entry point (LUNA-58)
+# telegram-clip — Telegram → Clippings/ ingestion entry point
 
 You are the entry point that turns a Telegram message into a harvest-ready clip
-note in the luna vault. The clip lands in `<vault>/Clippings/` in the LUNA-2
+note in the luna vault. The clip lands in `<vault>/Clippings/` in the
 Web-Clipper frontmatter shape (carrying NO `harvested_at:`), so
 `obsidian-triage:harvest-clips` picks it up on its next pass and routes it
 (github → `luna-ingest`; everything else → the clip-body path).
@@ -15,7 +15,7 @@ All deterministic logic — URL→type classification, frontmatter assembly,
 filename, idempotency dedup, vault-containment — lives in the
 `tools/telegram-clip.mjs` CLI. This runbook only marshals the message fields
 into one CLI call and reports the result.
-**HIMMEL-128:** the tool is pure Node (no Anthropic API, no `claude -p`); invoke
+**NEVER headless:** the tool is pure Node (no Anthropic API, no `claude -p`); invoke
 it with the `Bash` tool only.
 
 ## Access-gating (delegated, do not reimplement)
@@ -34,7 +34,7 @@ Resolve these from the dispatch context:
   operator when invoked via `/telegram-clip`). Required.
 - **message-id** — the `message_id` attribute. Required; the idempotency key.
 - **chat-id** — the `chat_id` attribute. Optional; recorded as `telegram_chat_id`
-  provenance so a later promotion (synthesize-stubs) can send the LUNA-91 "now a
+  provenance so a later promotion (synthesize-stubs) can send the "now a
   subject" reply back to the chat this clip came from. Omit if not present.
 - **ts** — the `ts` attribute (ISO timestamp). Optional.
 - **text** — the message body. For a forward or a bare link, this is the link
@@ -62,7 +62,7 @@ the operator supplies.
      --text-file "$tf" [--vault "$VAULT"] [--dry-run]
    ```
    Pass `--chat-id` when the `<channel>` tag carries `chat_id` (it enables the
-   LUNA-91 promotion reply); omit it otherwise.
+   promotion reply); omit it otherwise.
    `<plugin>` is this skill's plugin root (`marketplace/plugins/obsidian-triage`).
 3. **Report verbatim.** Surface the CLI's single status line:
    - `✓ telegram-clip: wrote Clippings/<file> (type=<t>, source=<url|none>)`
@@ -83,4 +83,4 @@ the operator supplies.
 - Lands directly in `Clippings/` (not `00-Inbox/`) — the minimum that makes the
   clip harvest-ready with no promotion step.
 - A bare-URL clip has a thin body by design; `harvest-clips` enriches it
-  (github → `luna-ingest`; other hosts → LUNA-27 playwright crawl later).
+  (github → `luna-ingest`; other hosts → playwright crawl).

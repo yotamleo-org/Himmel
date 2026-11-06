@@ -18,7 +18,7 @@ afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
 function boot(extra: Record<string, string> = {}, opts: { cloud?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "agui-fleet-"));
   const fx = fleetFixture(dir, opts);
-  const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", ...fx.env, ...extra } });
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", ...fx.env, ...extra } });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
   return { ...s, ...fx };
 }

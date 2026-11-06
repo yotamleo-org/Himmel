@@ -96,7 +96,7 @@
 #        disposition=<ok|open:<n>> out=<file>   with --workers-from and the auto_go flag off
 #                               (on, the relay above hands READY to worker-event): a worker doc
 #                               whose newest marker bullet is `READY <pr> <head40> GREEN`. Before
-#                               waking, the waiter runs `timeout -k 5 90 ready-check.sh <pr> <head>`,
+#                               waking, the waiter runs `timeout -k 5 150 ready-check.sh <pr> <head>`,
 #                               one bounded CI read (`gh pr checks`; a failed read is PENDING) and
 #                               `timeout -k 5 90 cr-disposition.sh check <pr> <head> --trust-path
 #                               <ready-check's TRUST-PATH>` (read only; open:? = it could not
@@ -1569,7 +1569,7 @@ ready_wake() {
             ready_fold="$ready_fold $label"; continue
         fi
         heartbeat sampling
-        rc_out="$(timeout -k 5 90 bash "${CHIEF_WAIT_READY_CHECK:-$HERE/ready-check.sh}" "$pr" "$head" </dev/null 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
+        rc_out="$(timeout -k 5 150 bash "${CHIEF_WAIT_READY_CHECK:-$HERE/ready-check.sh}" "$pr" "$head" </dev/null 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
         if [ "$rc" -eq 0 ]; then rck=PASS; else rck=FAIL; fi
         if printf '%s\n' "$rc_out" | grep -q '^\[PASS\] 7\.'; then cov=PASS; else cov=FAIL; fi
         if printf '%s\n' "$rc_out" | grep -qx 'TRUST-PATH: yes'; then trust=yes; else trust=no; fi

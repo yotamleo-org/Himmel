@@ -127,7 +127,7 @@ test("board: the JSON beside the console doc is served, and a rewrite reaches th
   mkdirSync(bucket, { recursive: true });
   writeFileSync(join(bucket, `${CHIEF}.md`), "# console\n");
   const token = "t".repeat(64);
-  const s = startServer({ port: 0, token, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: handovers, HOME: dir } });
+  const s = startServer({ onIdle: () => {}, port: 0, token, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: handovers, HOME: dir } });
   cleanups.push(() => s.stop());
   const get = () => fetch(`http://127.0.0.1:${s.port}/api/agui/board?console=${CHIEF}`, { headers: { "X-Himmel-Token": token } });
   const file = join(bucket, `${CHIEF}.board.json`);

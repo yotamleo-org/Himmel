@@ -12,8 +12,8 @@ Run the vault-lint engine against a vault root. Deterministic, report-only, file
    cadence that runs this skill unattended fires with `cwd` set to the vault, not
    a himmel checkout — a repo-relative path forces a `cd <repo> && python …`
    paraphrase, which is a compound shape the cadence's engine-allow hook never
-   grants (HIMMEL-2046). Resolve the himmel repo root from the `$HIMMEL_REPO`
-   environment variable (auto-set on every adopted machine, HIMMEL-453/123) and
+   grants. Resolve the himmel repo root from the `$HIMMEL_REPO`
+   environment variable (auto-set on every adopted machine) and
    substitute its **literal value** into the command text — do not write
    `$HIMMEL_REPO` or `${CLAUDE_PLUGIN_ROOT}` in the actual invocation: a `$`
    token in the engine path is refused outright, and `CLAUDE_PLUGIN_ROOT`

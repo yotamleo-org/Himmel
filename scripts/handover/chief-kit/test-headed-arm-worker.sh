@@ -2747,7 +2747,6 @@ done
 # ACTUALLY CAPTURED FROM THE WORKER'S OWN ENV ABOVE (env26, not a hardcoded
 # primary26/handovers - a hardcoded value would pass vacuously even if the
 # wrapper never exported anything), must find it.
-sha26="$(printf 'a%.0s' $(seq 1 40))"
 # fail closed BEFORE go.sh runs. The GO root this e2e is about to
 # write into is resolved by the exact call go.sh makes (handover_root, from the
 # primary-like cwd, HANDOVER_DIR cleared like the launch above) and must sit
@@ -2786,6 +2785,8 @@ chmod +x "$bin26/gh"
 # shellcheck source=testlib-ready-pass.sh
 . "$HERE/testlib-ready-pass.sh"
 ready_pass_bin "$tmp/ready26"
+# check 19 fetches origin/main and reads origin/main..<head>: a real head
+sha26=$(ready_pass_repo "$primary26") || sha26=""
 ready_pass_ledger "$primary26" "$sha26"
 go_root26="$(cd "$primary26" && HANDOVER_DIR="$primary26/handovers" bash -c '. "$1/../../lib/handover-path.sh" && . "$1/../../lib/go-gate.sh" && go_resolve_root "$1/../../.."' _ "$HERE" 2>/dev/null)" || go_root26=""
 case "$go_root26" in

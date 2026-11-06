@@ -490,6 +490,29 @@ bash "$CAD" disarm > "$W/disarm.log" 2>&1
 check "disarm exits 0" 0 "$?"
 hasnt "disarm removes exactly the entry" "HIMMEL-SnykScan" "$W/crontab.txt"
 
+# cron sets no HANDOVER_DIR: arm takes the root from the shell, else the primary .env (as the morning report's arm does)
+SBX="$W/snyk-sbx"; mkdir -p "$SBX/scripts/security" "$SBX/scripts/luna" "$W/cron-home"
+cp -R "$DIR/../lib" "$SBX/scripts/lib"
+cp "$DIR/../luna/cadence-alert.sh" "$SBX/scripts/luna/"
+cp "$DIR/snyk-scan.sh" "$DIR/snyk-scan-cadence.sh" "$DIR/snyk-code-triage.tsv" "$SBX/scripts/security/"
+git init -q "$SBX"
+SBXCAD="$SBX/scripts/security/snyk-scan-cadence.sh"
+CRONHO="$W/cron-ho"; mkdir -p "$CRONHO"
+printf 'HANDOVER_DIR=%s\nUSER_SLUG=tester\n' "$CRONHO" > "$SBX/.env"
+env -u HANDOVER_DIR bash "$SBXCAD" arm > "$W/arm-env.log" 2>&1
+check "arm with no HANDOVER_DIR in the shell exits 0" 0 "$?"
+has "the runner carries the root from the primary .env" "$(printf 'HANDOVER_DIR=%q' "$CRONHO")" "$W/runner/snyk-scan-cadence.sh"
+has "the runner exports the root from the primary .env" "export HANDOVER_DIR" "$W/runner/snyk-scan-cadence.sh"
+env -i HOME="$W/cron-home" STUB_DIR="$W" STUB_OS="$FIX/snyk-os-clean.json" STUB_OS_RC=0 STUB_CODE=off bash "$W/runner/snyk-scan-cadence.sh" > "$W/cron-run.log" 2>&1
+check "the armed runner under env -i exits 0" 0 "$?"
+check "the armed runner under env -i writes the summary into the handover root" 1 "$(find "$CRONHO/tester/snyk-sbx/specs/security/snyk" -name '*.summary.md' 2>/dev/null | grep -c .)"
+# no root configured anywhere: the runner stays as it is today, without the export
+printf 'USER_SLUG=tester\n' > "$SBX/.env"
+env -u HANDOVER_DIR bash "$SBXCAD" arm --force > "$W/arm-noroot.log" 2>&1
+check "arm with no root anywhere exits 0" 0 "$?"
+hasnt "arm with no root anywhere writes no HANDOVER_DIR line" "HANDOVER_DIR" "$W/runner/snyk-scan-cadence.sh"
+bash "$CAD" disarm > "$W/disarm-env.log" 2>&1
+
 # --- Snyk Code triage: only an untriaged High gates -----------------
 # The triage list is keyed by the SARIF fingerprints.identity; a finding without one is untriaged.
 TRI="$W/triage.tsv"; export SNYK_SCAN_TRIAGE="$TRI"

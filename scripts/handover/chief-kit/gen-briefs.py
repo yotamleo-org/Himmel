@@ -65,6 +65,8 @@ named worker is one item, at most 4 items in all. The named workers get NO brief
 union of every item's Writes. The brief gets `> **Series:** <sid> <ledger path> - read docs/handover/worker-sections/series.md`
 and `> **Series grant:** <family> (operator decision <n>)`, and the ledger `<bucket>/series/<sid>.json` is created through
 series-ledger.py (create, then one add-item per item, state planned) just before the brief is written; sid is <first key>-<label>.
+Each follow-on item's add-item also carries its worker's own text: --scope (its scope without the Do-not sentences),
+one --do-not per "Do not|Never touch|edit|change" sentence of it, and --commit-text (its commit); series-next.sh start prints them.
 series_grant is {family, decision}: family is non-blank single-line text, decision a positive integer (the operator decision that
 granted the family); a series without both is refused. A series is also refused when the items state different completes-ticket
 values (a ticket that states none counts as yes), when a worker's context_guard is compact (its unlock needs a pushed checkpoint
@@ -740,7 +742,7 @@ def core_worker_gate(l, ctx):
         if k in l:
             die('worker %s: %s is refused; a core bypass comes only from jira release core-check (design leg, Bug, emergency, operator record)' % (label, k))
     sp = l.get('series_plan')
-    keys = [k for k, _ in sp['items']] if sp else l['keys']
+    keys = [k for k, _, _ in sp['items']] if sp else l['keys']
     cli = jira_cli()
     brief = os.path.join(ctx['bucket'], l['stem'] + '.md')
     log = os.path.join(ctx['bucket'], 'core-gate.jsonl')
@@ -827,6 +829,14 @@ def core_worker_gate(l, ctx):
     l['core_lines'] = ('\n' + '\n'.join(lines) + '\n') if lines else ''
 
 
+def item_instructions(m):
+    # A follow-on item's own text for series-ledger.py add-item: its "Do not"/"Never touch" sentences as separate
+    # do-not lines, the rest of its scope, and its commit text. series-next.sh start prints them to the worker that authors it.
+    do_not = [g.group(0).strip() for g in _READ_ONLY[0].finditer(m['scope'])]
+    scope = ' '.join(_READ_ONLY[0].sub(' ', m['scope']).split())
+    return dict(scope=scope, do_not=do_not, commit_text=m['commit'].strip())
+
+
 def plan_series(workers):
     # Every series refusal, before anything is written. Sets l['series_plan'] on each series writer and returns the
     # workers without the ones it names, which get no brief or launcher.
@@ -849,8 +859,9 @@ def plan_series(workers):
         for m in members:
             wp = write_paths(m.get('writes', '')).split()
             wp = [] if wp == ['none', 'named'] else wp
-            items += [(k, wp) for k in m['keys']]
-        item_keys = [k for k, _ in items]
+            own = item_instructions(m) if m is not w else {}  # the writer authors from its own brief; a follow-on's text goes to its ledger item
+            items += [(k, wp, own) for k in m['keys']]
+        item_keys = [k for k, _, _ in items]
         dup = sorted({k for k in item_keys if item_keys.count(k) > 1})
         if dup:
             die('worker %s: a series names ticket %s more than once; every item is one ticket' % (label, ', '.join(dup)))
@@ -873,7 +884,7 @@ def plan_series(workers):
             die('worker %s: series_grant.family must be non-blank single-line text with no backtick or control character' % label)
         if isinstance(dec, bool) or not isinstance(dec, int) or dec < 1:
             die('worker %s: series_grant.decision must be the positive integer of the operator decision that granted %s' % (label, fam))
-        union = list(dict.fromkeys(p for _, wp in items for p in wp))
+        union = list(dict.fromkeys(p for _, wp, _ in items for p in wp))
         if union:
             w['writes'] = ' '.join(union)
         w['series_plan'] = dict(sid='%s-%s' % (w['keys'][0], label), items=items, completes=values.pop(), grant='%s (operator decision %d)' % (fam.strip(), dec))
@@ -887,8 +898,10 @@ def create_series_ledger(sp, doc):
     r = led('create', '--sid', sp['sid'], '--completes-ticket', sp['completes'], '--writer', doc, '--grant', sp['grant'])
     if r.returncode != 0:
         die('series ledger %s %s' % (sp['ledger'], 'already exists; pick a new series or remove it' if r.returncode == 4 else 'was not created (series-ledger.py rc %d): %s' % (r.returncode, r.stderr.strip())))
-    for key, wp in sp['items']:
-        r = led('add-item', '--key', key, '--writes', ','.join(wp), '--state', 'planned')
+    for key, wp, own in sp['items']:
+        # --opt=VALUE, so a text that starts with a dash is a value, never an option
+        extra = ['--scope=' + own['scope'], '--commit-text=' + own['commit_text']] + ['--do-not=' + x for x in own['do_not']] if own else []
+        r = led('add-item', '--key', key, '--writes', ','.join(wp), '--state', 'planned', *extra)
         if r.returncode != 0:
             for p in (sp['ledger'], sp['ledger'] + '.lock'):
                 if os.path.exists(p):
@@ -1084,7 +1097,7 @@ template_version: 3
 > 1. LIVE; paste `git log -1 --format=%H` + base-ancestor check via `append-results.sh` (never `>` in a bullet).
 > 2. Do exactly what the ticket asks, smallest correct change. RED first: a failing test row reproducing the defect, shown failing before the fix: run it as `bash scripts/quiet-run.sh suite -- bash <test-*.sh>` with nothing appended (no `>`, `2>&1`, `| tail`, `; echo rc`) and Read the log path its ERR line prints. {extra}{envline}
 > 2a. A new test suite may add exactly one row for itself to scripts/ci/suite-tiers.tsv and scripts/ci/suite-durations.tsv (duration measured locally); name the rows in READY. Rows under a ci-trust-paths pattern still get a trust-reviewed GO.
-> 3. Impacted suites: `scripts/cr/impacted-suites.sh` over your diff, a verdict per suite. Locally run only the RED rows of the item you build; a VM-only check goes through the VM queue; list every other impacted suite as `SKIP CI-gated per decision 101 (GitHub CI is the gate)`; never run run-shell-tests.sh full or sharded locally.
+> 3. Impacted suites: `scripts/cr/impacted-suites.sh` over your diff, a verdict per suite, by the rule in `scripts/cr/pr-check-ref/33-step3-impacted.md`. Run locally the RED rows of the item you build, the suites you changed or added, JS/TS suites, and every suite `--check` refuses `= CI` for, plus any `Local suites:` line of this brief (copy it into the PR body); a VM-only check goes through the VM queue; write `SUITE <p> = CI` for every other impacted `test-*.sh` you did not change and CI runs (ready-check item 19 reads CI's proof at your head); never run run-shell-tests.sh full or sharded locally.
 > 4. Ship: commit `{commit}`; FIRST-commit trailers `Platforms tested: linux` (shell/script diffs), `Security reviewed: manual — <what you checked>` (non-docs code); `## Ticket coverage` in the PR body (`ready-check.sh --only 7 <pr>`); {shipct}. /pr-check (≤3 rounds; the moment you mark a finding agreed or fixed, write its `SWEEP [<id>@<head>] class=… :: sites=…` line (a one-site finding: `:: single-site search=git grep …`) with `bash scripts/cr/write-verdicts.sh sweep --branch <b> --from-file <f>`, else `clear-review-marker.sh` refuses with exit 14), CI green, `ready-check.sh <pr> <full-head>`, then write the `READY <pr> <full-40-hex-head> GREEN` bullet with `append-results.sh` (a bullet only, never a message, as the preface says: the chief's waiter wakes the chief on it and shows it the bullet's text). {judge} {shipmerge} `bash scripts/handover/wrap-subtree-check.sh --queue-doc {doc}`.
 > 5. CI: a shell-unit shard dying with exit 124 in apt-get before any suite ran is a known mirror flake (HIMMEL-2872); you may `gh run rerun <id> --failed` once per run and report it.
 

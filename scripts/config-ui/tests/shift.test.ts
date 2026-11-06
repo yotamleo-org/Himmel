@@ -296,7 +296,7 @@ function boot(opts: { rows?: Row[]; chief?: boolean; prs?: unknown[]; ghFails?: 
   writeFileSync(join(dir, "prs.json"), JSON.stringify(opts.prs ?? []));
   const gh = join(dir, "gh.sh");
   writeFileSync(gh, opts.ghFails ? "#!/bin/sh\nexit 1\n" : "#!/bin/sh\necho x >> " + join(dir, "gh-calls") + "\ncat " + join(dir, "prs.json") + "\n", { mode: 0o755 });
-  const serverOpts = { port: 0, token: TOKEN, boardScript: opts.boardScript, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root, SHIFTS_FILE: file, GH_CMD: gh } };
+  const serverOpts = { onIdle: () => {}, port: 0, token: TOKEN, boardScript: opts.boardScript, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root, SHIFTS_FILE: file, GH_CMD: gh } };
   const s = startServer(serverOpts);
   cleanups.push(() => s.stop());
   return { s, file, dir, root, name };

@@ -47,7 +47,7 @@ esac
   return { d, env, ghCalls: () => (existsSync(ghLog) ? readFileSync(ghLog, "utf8").split("\n").filter(Boolean) : []), jiraCalls: () => existsSync(jiraLog) };
 }
 const serve = (env: Record<string, string>, root: string) => {
-  const srv = startServer({ port: 0, token: TOKEN, root, env, legsScript: join(root, "no-workers.sh") });
+  const srv = startServer({ onIdle: () => {}, port: 0, token: TOKEN, root, env, legsScript: join(root, "no-workers.sh") });
   cleanups.push(() => srv.stop());
   const get = async (p: string) => (await fetch(`http://127.0.0.1:${srv.port}${p}`, { headers: { "X-Himmel-Token": TOKEN } })).json();
   return { srv, get };
@@ -252,7 +252,7 @@ test("a project launched from another checkout keeps its own tracker: the checko
   execFileSync("git", ["-C", project, "config", "himmel.tracker", "local"]);
   writeFileSync(join(store, "LOCAL-1.md"), '---\nid: LOCAL-1\ntitle: "x"\ntype: Task\nstatus: To Do\nfix_version:\nepic:\ncreated: 2026-10-01T00:00:00Z\nlinks:\n---\n\n## Log\n');
   const env = { ...s.env, TRACKER_STORE: store };
-  const srv = startServer({ port: 0, token: TOKEN, root: checkout, projectRoot: project, env, legsScript: join(checkout, "no-workers.sh") });
+  const srv = startServer({ onIdle: () => {}, port: 0, token: TOKEN, root: checkout, projectRoot: project, env, legsScript: join(checkout, "no-workers.sh") });
   cleanups.push(() => srv.stop());
   const base = `http://127.0.0.1:${srv.port}`;
   const get = async (p: string) => (await fetch(base + p, { headers: { "X-Himmel-Token": TOKEN } })).json();

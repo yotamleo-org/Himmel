@@ -51,7 +51,7 @@ function scratch(o: { tracker?: string; items?: boolean; mirror?: boolean; faile
     HIMMEL_SECRETS_KEYRING: "off", HIMMEL_JIRA_MIRROR: o.mirror ? mirror : join(d, "no-mirror"), CONFIG_UI_JIRA_CLI: join(import.meta.dir, "stub-jira.js"), STUB_JIRA_LOG: cliLog,
     CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000" } as Record<string, string>;
   const projectRoot = o.projectGit ? repo(d, "proj", o.projectGit) : undefined;
-  const srv = startServer({ port: 0, token: TOKEN, root: d, projectRoot, env, legsScript: join(d, "no-workers.sh") });
+  const srv = startServer({ onIdle: () => {}, port: 0, token: TOKEN, root: d, projectRoot, env, legsScript: join(d, "no-workers.sh") });
   cleanups.push(() => srv.stop());
   const base = `http://127.0.0.1:${srv.port}`;
   const get = async (p: string) => (await fetch(base + p, { headers: { "X-Himmel-Token": TOKEN } })).json();
@@ -188,7 +188,7 @@ test("the default-bucket store is the project's, not the checkout's: reads and w
   }
   const env = { PATH: process.env.PATH, HOME: d, TRACKER: "local", HANDOVER_DIR: H, USER_SLUG: "u", HIMMEL_SECRETS_KEYRING: "off", HIMMEL_JIRA_MIRROR: join(d, "no-mirror"),
     CONFIG_UI_JIRA_CLI: join(import.meta.dir, "stub-jira.js"), CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000" } as Record<string, string>;
-  const srv = startServer({ port: 0, token: TOKEN, root, projectRoot: proj, env, legsScript: join(d, "no-workers.sh") });
+  const srv = startServer({ onIdle: () => {}, port: 0, token: TOKEN, root, projectRoot: proj, env, legsScript: join(d, "no-workers.sh") });
   cleanups.push(() => srv.stop());
   const base = `http://127.0.0.1:${srv.port}`;
   const rm = await (await fetch(base + "/api/roadmap", { headers: { "X-Himmel-Token": TOKEN } })).json();

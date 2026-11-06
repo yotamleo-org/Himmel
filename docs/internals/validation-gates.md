@@ -288,6 +288,29 @@ reads its lists from the script's own checkout and fails closed when it cannot
 read one. It is outside `--only 7`, and an org-member PR's output is unchanged.
 The operator's GitHub code-owner approval comes last, after item 16 passes.
 
+**19. suite evidence.** A suite CI runs is run once, in CI: pr-check
+step 3.6 records it `SUITE <p> = CI` (`scripts/cr/pr-check-ref/33-step3-impacted.md`),
+and `ready-check.sh` item 19 needs proof for every impacted suite of
+`origin/main..<head>` at the exact head:
+
+| Proof | Counts when |
+|---|---|
+| local | the head's `impacted` ledger row lists the suite in `local_pass` |
+| ruled SKIP | that row lists it in `ruled_skip` (`SUITE <p> = SKIP ruled <chief-session> <reason>`); the PASS line counts and names it apart from the local count. Only a hand GO reads that line: `auto-go.sh` does not stop on a ruled SKIP |
+| CI | an exact `ran 0 <path>` line in a shard manifest of the run behind the latest `SUCCESS` `shell-unit (ubuntu-latest)` check-run of workflow `CI`, whose `head_sha` is the head |
+
+A PR-body `Local suites: <path>` line needs the local proof even when CI proved
+the suite. The subprocess and network reads (`gh`, `impacted-suites.sh`) are bounded, and one that fails
+or times out FAILs item 19. Reads of local files (the ledger, the manifests once downloaded) are not
+bounded; a ledger that cannot be read means no `impacted` row, so no local proof.
+A red CI run at the head appends one `fail` row per failed suite left to CI to
+`~/.himmel/state/suite-evidence/ci-failures.jsonl`, and a later head of that PR one
+`round` row; `scripts/cr/suite-fail-ledger.sh` prints the failure count and the
+extra-round rate. `scripts/check-ci.sh` writes those rows the moment it sees the red
+(through `scripts/cr/ci-fail-record.sh`), so a red that goes green on a re-run still
+leaves its row; item 19 writes the same rows by the same key if it reads a red later.
+The ledger never changes a verdict.
+
 Lane-rubric verdict persistence remains behavioral (validating-session
 discipline); structural `cheap-codex` provenance enforcement waits on a hermes
 task→branch record. See §1 enforcement-honesty.

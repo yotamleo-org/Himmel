@@ -3,7 +3,7 @@ name: grow-feed-log
 description: Record grow-tent feeding, watering or nutrient-label details from Telegram in the feeding log.
 ---
 
-# grow-feed-log — grow-tent feed/watering log entry point (LUNA-130)
+# grow-feed-log — grow-tent feed/watering log entry point
 
 You are the entry point that turns a grow-tent Telegram message — free-form
 text describing a feed/watering, a bare nutrient-label photo, or both — into
@@ -16,7 +16,7 @@ All deterministic logic — table/section insertion, cell sanitization,
 idempotency dedup, vault-containment, the `updated:` frontmatter bump — lives
 in the `tools/grow-feed-log.mjs` CLI. This runbook does the extraction
 judgement work and marshals the result into ONE CLI call.
-**HIMMEL-128:** the tool is pure Node (no Anthropic API, no `claude -p`);
+**NEVER headless:** the tool is pure Node (no Anthropic API, no `claude -p`);
 invoke it with the `Bash` tool only.
 
 ## Access-gating (delegated, do not reimplement)
@@ -57,7 +57,7 @@ Resolve these from the dispatch context:
   if the operator passed one in `$ARGUMENTS`.
 
 There is no `chat-id` input here (unlike telegram-clip) — this skill has no
-reply-routing feature; Telegram routing/access-gating in general is LUNA-127,
+reply-routing feature; Telegram routing/access-gating in general is
 out of scope (Scope section below).
 
 When invoked via `/grow-feed-log`, `$ARGUMENTS` is the message text
@@ -198,7 +198,6 @@ entry written").
 - **One message → at most one row (+ optionally one product section).** No
   batching, no fan-out.
 - **Telegram routing is out of scope.** How a grow-tent message reaches this
-  skill (channel wiring, read-only guard, allowlist enforcement) is LUNA-127
-  — a separate, blocked ticket. This skill only owns the extract+append half
+  skill (channel wiring, read-only guard, allowlist enforcement) is separate work. This skill only owns the extract+append half
   once a message (and any provenance: sender, message-id, timestamp) is
   already in hand.

@@ -82,3 +82,34 @@ ready_pass_ledger() {
             --branch b --head "$s" --model codex --status ok || return 1
     done
 }
+
+# ready_pass_origin <repo> [<base>] - give <repo> a bare origin under its
+# git-common-dir whose main is <base> (default HEAD), as ready-check's check 19
+# fetches origin/main. A repo with no commit first gets an empty root commit as
+# HEAD, so commits the suite makes later share its history. No-op with an origin.
+ready_pass_origin() {
+    local repo="$1" base="${2:-}" gd
+    git -C "$repo" remote get-url origin >/dev/null 2>&1 && return 0
+    gd=$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir) || return 1
+    if [ -z "$base" ] && ! base=$(git -C "$repo" rev-parse -q --verify 'HEAD^{commit}'); then
+        base=$(GIT_AUTHOR_DATE="@1 +0000" GIT_COMMITTER_DATE="@1 +0000" git -C "$repo" -c user.name=t -c user.email=t@example.com \
+            commit-tree -m "chore: ready-pass base" "$(git -C "$repo" hash-object -t tree -w /dev/null)") || return 1
+        git -C "$repo" update-ref HEAD "$base" || return 1
+    fi
+    git init -q --bare "$gd/ready-pass-origin.git" || return 1
+    git -C "$repo" remote add origin "$gd/ready-pass-origin.git" || return 1
+    git -C "$repo" push -q origin "$base:refs/heads/main" || return 1
+    git -C "$repo" fetch -q origin "+refs/heads/main:refs/remotes/origin/main"
+}
+
+# ready_pass_repo <repo> [label] - print a real head commit for check 19, which
+# reads the impacted list of origin/main..<head>: an empty commit on origin's main
+# (0 impacted suites), built with commit-tree, so HEAD never moves past the base.
+# Gives <repo> an origin first (ready_pass_origin). A distinct label, a distinct head.
+ready_pass_repo() {
+    local repo="$1" label="${2:-head}" base key=HIMMEL  # the subject's key is data, so it is built here
+    ready_pass_origin "$repo" || return 1
+    base=$(git -C "$repo" rev-parse refs/remotes/origin/main) || return 1
+    GIT_AUTHOR_DATE="@1 +0000" GIT_COMMITTER_DATE="@1 +0000" git -C "$repo" -c user.name=t -c user.email=t@example.com \
+        commit-tree -p "$base" -m "feat(x): [$key-1] ready-pass $label" "$base^{tree}"
+}

@@ -218,7 +218,7 @@ test("missing ledgers degrade to no data", () => {
 
 test("authenticated read-only route renders the seeded rates and session drilldown", async () => {
   const token = "a".repeat(64), env = seed();
-  const s = startServer({ port: 0, token, now: () => Date.parse("2026-10-07T23:59:00Z"), env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), ...env } });
+  const s = startServer({ onIdle: () => {}, port: 0, token, now: () => Date.parse("2026-10-07T23:59:00Z"), env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), ...env } });
   try {
     const url = `http://127.0.0.1:${s.port}/api/tool-health`;
     const res = await fetch(url, { headers: { "X-Himmel-Token": token } });

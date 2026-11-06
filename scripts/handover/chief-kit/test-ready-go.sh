@@ -48,6 +48,10 @@ git init -q --bare "$tmp/origin.git"
 git init -q "$ANCHOR"
 mkdir -p "$ANCHOR/scripts/lib"
 cp "$HERE/../../lib/go-gate.sh" "$ANCHOR/scripts/lib/go-gate.sh"
+# ready-check's check 19 runs the anchor's impacted-suites.sh
+mkdir -p "$ANCHOR/scripts/cr"
+cp "$HERE/../../cr/impacted-suites.sh" "$HERE/../../cr/anchor-handoff.sh" "$ANCHOR/scripts/cr/"
+cp "$HERE/../../lib/review-default-base.sh" "$ANCHOR/scripts/lib/"
 cp "$HERE/../../lib/pr_remainder.py" "$ANCHOR/scripts/lib/pr_remainder.py"
 git -C "$ANCHOR" add -A
 git -C "$ANCHOR" -c user.name=t -c user.email=t@t commit -q -m init
@@ -100,8 +104,9 @@ READY_REPO="$tmp/ready-repo"
 git init -q "$READY_REPO"
 cd "$READY_REPO" || { echo "FAIL: cd $READY_REPO" >&2; exit 1; }
 
-SHA=0123456789abcdef0123456789abcdef01234567
-SHA2=fedcba9876543210fedcba9876543210fedcba98
+# check 19 fetches origin/main and reads origin/main..<head>: real heads
+SHA=$(ready_pass_repo "$READY_REPO") || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
+SHA2=$(ready_pass_repo "$READY_REPO" 2) || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 export READY_STUB_HEAD="$SHA"
 ready_pass_ledger "$READY_REPO" "$SHA"
 

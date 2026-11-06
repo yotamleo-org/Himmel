@@ -161,6 +161,7 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
   return (
     <BoardContext.Provider value={ctx}>
       <header className="top">
+        {selected && <a className="fleet-back" href={`#t=${encodeURIComponent(token)}`}>← Back to Fleet</a>}
         <span className="brand">himmel</span>
         <span className="run">{selected ?? "fleet"}</span>
         <span className={`state ${error ? "error" : fleet ? "running" : "idle"}`} role="status">{error ? "stopped" : fleet ? "live" : "connecting"}</span>

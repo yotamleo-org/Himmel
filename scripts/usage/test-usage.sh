@@ -360,6 +360,33 @@ check "report: run count beside gh total_count" "yes" "$(grep -qx 'runs: 4  gh_t
 F5="$CD/fx-502"; mkdir -p "$F5"; gen_runs 400000 3 1000 60 > "$F5/runs.json"; echo '{}' > "$F5/timing.json"; : > "$F5/timing-fail"
 check "non-404 timing failure aborts the run" "1" "$(circ "$F5" "$CD/store-502" write)"
 check "non-404 timing failure stored no unknown row" "0" "$(nrows "$CD/store-502/ci-minutes.jsonl")"
+# (e) a rerun of a recorded run (same id, higher run_attempt, new timing) replaces its row:
+# the id is stored once with the new attempt's minutes; the same attempt listed again stays untouched
+F6="$CD/fx-rerun"; mkdir -p "$F6"
+jq -nc '[{id: 8001, name: "CI", run_attempt: 1, created_at: "2026-11-01T10:00:00Z", run_started_at: "2026-11-01T10:00:00Z", updated_at: "2026-11-01T10:04:00Z"},
+         {id: 8002, name: "CI", run_attempt: 1, created_at: "2026-11-02T10:00:00Z", run_started_at: "2026-11-02T10:00:00Z", updated_at: "2026-11-02T10:05:00Z"}]' > "$F6/runs.json"
+jq -nc --argjson real "$REAL" '{"8001": ($real | .billable.UBUNTU.total_ms = 420000), "8002": ($real | .billable.UBUNTU.total_ms = 300000)}' > "$F6/timing.json"
+S6="$CD/store-rerun"; LR="$S6/ci-minutes.jsonl"
+check "rerun fixture: first write exits 0" "0" "$(circ "$F6" "$S6" write)"
+check "attempt 1 stored: billed 7 beside wall 4, attempt 1" "7/4/1" "$(jq -r 'select(.run_id==8001) | "\(.billed_min)/\(.wall_min)/\(.run_attempt)"' "$LR")"
+jq -nc '[{id: 8001, name: "CI", run_attempt: 2, created_at: "2026-11-01T10:00:00Z", run_started_at: "2026-11-01T11:00:00Z", updated_at: "2026-11-01T11:06:00Z"},
+         {id: 8002, name: "CI", run_attempt: 1, created_at: "2026-11-02T10:00:00Z", run_started_at: "2026-11-02T10:00:00Z", updated_at: "2026-11-02T10:05:00Z"}]' > "$F6/runs.json"
+jq -nc --argjson real "$REAL" '{"8001": ($real | .billable.UBUNTU.total_ms = 900000), "8002": ($real | .billable.UBUNTU.total_ms = 999000)}' > "$F6/timing.json"
+: > "$CD/gh.log"
+check "rerun listed again: writer exits 0" "0" "$(circ "$F6" "$S6" write)"
+check "rerun: the run id is stored once" "" "$(jq -r '.run_id' "$LR" | sort | uniq -d)"
+check "rerun: two runs, two rows" "2" "$(nrows "$LR")"
+check "rerun: the row carries the new attempt's minutes" "15/6/2" "$(jq -r 'select(.run_id==8001) | "\(.billed_min)/\(.wall_min)/\(.run_attempt)"' "$LR")"
+check "same attempt listed again keeps its stored minutes" "5/5/1" "$(jq -r 'select(.run_id==8002) | "\(.billed_min)/\(.wall_min)/\(.run_attempt)"' "$LR")"
+check "same attempt is not re-fetched, the rerun is" "1" "$(grep -c 'timing' "$CD/gh.log")"
+REP6="$(CIM_FIX="$F6" CIM_LOG="$CD/gh.log" bash "$CIM" report --repo o/r --days 7 --until "$UNTIL" --store "$S6" --gh "$CD/bin/gh" 2>&1)" || REP6="rc=$? $REP6"
+check "report counts the rerun run once" "yes" "$(grep -qx 'minutes: billed=20 wall=11' <<<"$REP6" && grep -qx 'runs: 2  gh_total_count: 2' <<<"$REP6" && echo yes || echo no)"
+# a store row written before run_attempt existed counts as attempt 1: a rerun refreshes it, a plain relist does not
+S7="$CD/store-legacy"; mkdir -p "$S7"
+printf '%s\n' '{"schema":1,"repo":"o/r","run_id":8001,"workflow":"CI","created_at":"2026-11-01T10:00:00Z","wall_min":4,"billed_min":7}' > "$S7/ci-minutes.jsonl"
+check "legacy row (no run_attempt): rerun writer exits 0" "0" "$(circ "$F6" "$S7" write)"
+check "legacy row refreshed by a rerun" "15/6/2" "$(jq -r 'select(.run_id==8001) | "\(.billed_min)/\(.wall_min)/\(.run_attempt)"' "$S7/ci-minutes.jsonl")"
+check "legacy row: the run id is stored once" "" "$(jq -r '.run_id' "$S7/ci-minutes.jsonl" | sort | uniq -d)"
 # a flag typo or a missing repo is refused
 check "no --repo is refused" "1" "$(CIM_FIX="$F4" CIM_LOG="$CD/gh.log" bash "$CIM" write --store "$CD/store-x" --gh "$CD/bin/gh" >/dev/null 2>&1; echo $?)"
 

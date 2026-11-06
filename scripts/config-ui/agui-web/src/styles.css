@@ -21,6 +21,14 @@ button{font:inherit;color:inherit}
 [id^="call-"],[id^="msg-"]{scroll-margin-top:120px}
 .top{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:center;padding:10px 24px;border-bottom:1px solid var(--line);font:12.5px var(--mono)}
 .brand{font-weight:600}
+/* the rail's identity header, as the config chief draws it (public/app.css .top): beats the page header's .top above */
+.rail .top{display:block;gap:0;padding:0;border-bottom:0;margin-top:2px;font:500 11px/1.4 var(--font-mono);color:var(--muted);overflow-wrap:anywhere;letter-spacing:0}
+.rail .top .ver{display:block}
+.rail .top details{margin-top:var(--s1)}
+.rail .top summary{cursor:pointer}
+.rail .top details>span{display:block;margin-top:var(--s1)}
+.rail .top .k{color:var(--dim)}
+.rail .top .unk{color:var(--warn)}
 .rail-hint{margin:12px 14px;font-size:12px;line-height:1.4;color:var(--muted)}
 .run,.meta{color:var(--dim)}
 .meta{font-variant-numeric:tabular-nums}

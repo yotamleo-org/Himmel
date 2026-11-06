@@ -120,8 +120,6 @@ ROOT="$(cd "$ROOT" && pwd)"
 # HOME keeps every run below off the operator's real key.
 export HOME="$ROOT/home"
 mkdir -p "$HOME"
-SHA="$(printf '%040d' 7)"
-
 # go.sh now resolves this repo's nwo via `gh repo view` to bind
 # the GO mac. A gh stub on PATH keeps every go.sh call below hermetic (no
 # real gh/network dependency) and lets tests fix the nwo it returns via
@@ -154,8 +152,10 @@ export STUB_NWO="o/r"
 # shellcheck source=../handover/chief-kit/testlib-ready-pass.sh
 . "$HERE/../handover/chief-kit/testlib-ready-pass.sh"
 ready_pass_bin "$ROOT/ready-bin"
-export PATH="$ROOT/ready-bin:$PATH" READY_STUB_HEAD="$SHA"
 git init -q "$ROOT/ready-repo"
+# check 19 fetches origin/main and reads origin/main..<head>: a real head
+SHA=$(ready_pass_repo "$ROOT/ready-repo") || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
+export PATH="$ROOT/ready-bin:$PATH" READY_STUB_HEAD="$SHA"
 ready_pass_ledger "$ROOT/ready-repo" "$SHA"
 cd "$ROOT/ready-repo" || { echo "FAIL: cd into the ready repo" >&2; exit 1; }
 

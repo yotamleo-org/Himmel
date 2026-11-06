@@ -107,6 +107,8 @@ fail() { echo "  FAIL: $1"; if [ $# -ge 2 ]; then printf '    %s\n' "$2"; fi; FA
 # REAL gh on PATH and turn this "hermetic" suite into live GitHub calls.
 STUBDIR=$(mktemp -d) || { echo "FATAL: mktemp -d failed"; exit 1; }
 if [ -z "$STUBDIR" ] || [ ! -d "$STUBDIR" ]; then echo "FATAL: no stub dir"; exit 1; fi
+# the CI failure ledger check-ci writes on a red: never the operator's own
+export READY_CHECK_FAIL_LEDGER="$STUBDIR/ci-failures.jsonl"
 cat > "$STUBDIR/gh" <<'EOF'
 #!/usr/bin/env bash
 # gh stub for test-check-ci.sh — checks behavior via GH_STUB_MODE, probe/watch/
@@ -144,6 +146,13 @@ if [ "$cmd" = "api" ] && [ -n "${GH_STUB_RL_PROBE:-}" ] && [ "${2:-}" = "-i" ]; 
     printf 'X-Ratelimit-Remaining: 0\nX-Ratelimit-Reset: %s\n' "$(($(date +%s) + 6))"
     exit 1
 fi
+if [ "$cmd" = "run" ] && [ "${2:-}" = "download" ]; then
+    # the shell-unit manifest artifact of a failed run: GH_STUB_MANIFEST (printf %b lines) lands in the -D dir.
+    [ -n "${GH_STUB_MANIFEST:-}" ] || { echo "no valid artifacts found to download" >&2; exit 1; }
+    while [ $# -gt 0 ]; do [ "$1" = "-D" ] && { _d="${2:-}"; break; }; shift; done
+    mkdir -p "$_d/shell-unit-manifest-ubuntu-latest-shard1" && printf '%b' "$GH_STUB_MANIFEST" > "$_d/shell-unit-manifest-ubuntu-latest-shard1/manifest-shard1.txt"
+    exit 0
+fi
 if [ "$cmd" = "api" ]; then
     case " $* " in
         *" --paginate repos/octo/demo/pulls/42/files "*)
@@ -162,6 +171,7 @@ if [ "$cmd" = "api" ]; then
             exit 0 ;;
     esac
     case "${2:-}" in
+        repos/octo/demo/actions/runs/777) echo "${GH_STUB_RUN_HEAD:-sha1}"; exit 0 ;;
         # the EFFECTIVE required-check set. Rulesets (rules/branches)
         # and classic protection are two separate endpoints; the default is "no
         # rule at all" so every pre-3381 case keeps its verdict untouched.
@@ -2639,6 +2649,47 @@ assert_err_has "gh api --allow-escape-sequences repos/octo/demo/actions/jobs/424
 if grep -qF 'jobs/9/logs' <<< "$ERR"; then fail "4071-b a non-Actions link names no job log"; else pass "4071-b a non-Actions link names no job log"; fi
 unset GH_STUB_FAILLINKS
 
+# 9183 — a red leaves its CI failure-ledger row from check-ci itself (the step every worker
+# passes at final CI), not only from ready-check's later item 19: one `fail` row per impacted
+# suite whose manifest `ran` line is nonzero, the same row once on a re-run, a `round` row for
+# an earlier failed head, nothing for a green, a non-impacted suite or an unreadable manifest.
+FL9183="$READY_CHECK_FAIL_LEDGER"
+export GH_STUB_FAILLINKS='shell-unit (ubuntu-latest)\thttps://github.com/octo/demo/actions/runs/777/job/4242\n'
+export CI_FAIL_RECORD_IMPACTED="$STUBDIR/impacted.txt"
+printf '%s\n' scripts/test-x.sh scripts/test-y.sh > "$CI_FAIL_RECORD_IMPACTED"
+export GH_STUB_MANIFEST='ran 1 scripts/test-x.sh\nran 0 scripts/test-y.sh\nran 2 scripts/test-z.sh\n'
+rm -f "$FL9183"
+RULES_OVERRIDE="req:shell-unit (ubuntu-latest)"; CHECKS_OVERRIDE="fail:shell-unit (ubuntu-latest)"
+run cr-completed
+assert_rc 1 "9183-a a FAILED required check still exits 1"
+if [ "$(jq -c 'select(.kind == "fail") | [.repo, .pr, .head, .suite, .run, .rc]' "$FL9183" 2>/dev/null)" = '["octo/demo",42,"sha1","scripts/test-x.sh",777,1]' ]; then pass "9183-a one fail row, the impacted suite that ran nonzero"; else fail "9183-a one fail row, the impacted suite that ran nonzero" "ledger: $(cat "$FL9183" 2>/dev/null)"; fi
+if jq -e 'select(.kind == "fail") | .v == 1 and .source == "check-ci" and (.host | length > 0)' "$FL9183" > /dev/null 2>&1; then pass "9183-a the row carries the registry envelope (v, host, source)"; else fail "9183-a the row carries the registry envelope (v, host, source)" "ledger: $(cat "$FL9183" 2>/dev/null)"; fi
+RULES_OVERRIDE="req:shell-unit (ubuntu-latest)"; CHECKS_OVERRIDE="fail:shell-unit (ubuntu-latest)"
+run cr-completed
+if [ "$(wc -l < "$FL9183" | tr -d ' ')" = 1 ]; then pass "9183-b the same red twice leaves one row"; else fail "9183-b the same red twice leaves one row" "ledger: $(cat "$FL9183")"; fi
+rm -f "$FL9183"
+printf '%s\n' '{"kind":"fail","ts":"2026-11-01T00:00:00Z","repo":"octo/demo","pr":42,"head":"shaOLD","suite":"scripts/test-x.sh","run":700,"rc":1}' > "$FL9183"
+run red
+assert_rc 1 "9183-c a red watch exits 1"
+if [ "$(jq -c 'select(.kind == "fail" and .head == "sha1") | .suite' "$FL9183" 2>/dev/null)" = '"scripts/test-x.sh"' ]; then pass "9183-c the watch red path writes the row too"; else fail "9183-c the watch red path writes the row too" "ledger: $(cat "$FL9183")"; fi
+if [ "$(jq -c 'select(.kind == "round") | [.head, .next]' "$FL9183" 2>/dev/null)" = '["shaOLD","sha1"]' ]; then pass "9183-c a round row for the earlier failed head"; else fail "9183-c a round row for the earlier failed head" "ledger: $(cat "$FL9183")"; fi
+rm -f "$FL9183"
+export GH_STUB_RUN_HEAD=shaELSE
+run red
+assert_rc 1 "9183-d a run at another head still exits 1"
+if [ ! -s "$FL9183" ]; then pass "9183-d a run at another head leaves no row"; else fail "9183-d a run at another head leaves no row" "ledger: $(cat "$FL9183")"; fi
+unset GH_STUB_RUN_HEAD
+unset GH_STUB_MANIFEST
+run red
+assert_rc 1 "9183-e an unreadable manifest still exits 1"
+if [ ! -s "$FL9183" ]; then pass "9183-e an unreadable manifest leaves no row"; else fail "9183-e an unreadable manifest leaves no row" "ledger: $(cat "$FL9183")"; fi
+export GH_STUB_MANIFEST='ran 1 scripts/test-x.sh\n'
+unset GH_STUB_FAILLINKS
+run register-then-green
+assert_rc 0 "9183-f a green exits 0"
+if [ ! -s "$FL9183" ]; then pass "9183-f a green leaves no row"; else fail "9183-f a green leaves no row" "ledger: $(cat "$FL9183")"; fi
+unset CI_FAIL_RECORD_IMPACTED GH_STUB_MANIFEST
+
 # 3381-g — dedupe: the SAME head refused twice sends ONE alert; the printed line
 # still appears both times.
 KEEP_ALERT_STATE=0
@@ -3049,5 +3100,5 @@ CLASSIC_OVERRIDE=none
 
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 215 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 215"; exit 1; fi
+if [ "$COUNT" -ne 221 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 221"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1

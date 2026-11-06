@@ -160,10 +160,12 @@ has "brief 2 pre-authorizes the new suite's own tier and duration rows" "$(tr '\
 # contract item 3: a worker runs locally only the RED rows it builds; every other impacted suite is CI-gated
 B1="$(tr '\n' ' ' < "$D1" | tr -s ' ')"
 lacks "brief 1 no longer tells the worker to run the full suite of every touched file" "$B1" "the full suite of every file you touched"
-has "brief 1 lists non-RED impacted suites as SKIP CI-gated per decision 101" "$B1" "SKIP CI-gated per decision 101 (GitHub CI is the gate)"
+has "brief 1 hands every other impacted test-*.sh on to CI as SUITE <p> = CI" "$B1" "write \`SUITE <p> = CI\` for every other impacted \`test-*.sh\` you did not change and CI runs"
+lacks "brief 1 no longer lists suites as SKIP CI-gated per decision 101" "$B1" "SKIP CI-gated per decision 101"
+has "brief 1 points at the one statement of the rule" "$B1" "scripts/cr/pr-check-ref/33-step3-impacted.md"
 has "brief 1 routes VM-only checks through the VM queue" "$B1" "VM queue"
 has "brief 1 forbids run-shell-tests.sh full or sharded locally" "$B1" "never run run-shell-tests.sh full or sharded locally"
-has "brief 1 limits local runs to the RED rows of the item built" "$B1" "Locally run only the RED rows of the item you build"
+has "brief 1 limits local runs to the RED rows, changed suites, JS/TS and refused suites" "$B1" "Run locally the RED rows of the item you build, the suites you changed or added, JS/TS suites, and every suite \`--check\` refuses \`= CI\` for"
 
 # the three most-refused shapes are taught where the worker first meets them (7370, 7371, 7372)
 has "brief 1 teaches the exact quiet-run RED command, nothing inside the backticks after the suite" "$B1" "run it as \`bash scripts/quiet-run.sh suite -- bash <test-*.sh>\` with nothing appended"
@@ -669,8 +671,9 @@ done
 # (rarely-read rules live in docs/handover/worker-sections/ and chief-sections/).
 HANDOVER_DOCS="${HANDOVER_DOCS:-$HERE/../../../docs/handover}"
 # worker-preface.md carries the adapter-repo stop-at-READY rule, so its budget is 12800.
-# chief-template.md carries the AG-UI board pointer in step 12, so its budget is 16900.
-for budget in "worker-preface.md:12800" "chief-template.md:16900"; do
+# chief-template.md carries the AG-UI board pointer in step 12 and the item 19 suite-evidence
+# note, so its budget is 17400; worker-preface.md's 12800 was raised to 12900 for the same change.
+for budget in "worker-preface.md:12900" "chief-template.md:17400"; do
     f="${budget%%:*}"; max="${budget##*:}"
     size="$(wc -c < "$HANDOVER_DOCS/$f" 2>/dev/null | tr -d '[:space:]')"
     [ -n "$size" ] && [ "$size" -le "$max" ] && pass "$f is within its byte budget ($size <= $max)" || fail "$f is over its byte budget (${size:-missing} > $max)"
@@ -1321,7 +1324,22 @@ srnd="$(HIMMEL_FLAG_STACKED_SERIES=1 NEXT_DISPATCH_JIRA_CLI="$GEN_BRIEFS_JIRA_CL
 has "S2a: next-dispatchable lists the series writer as the holder a colliding candidate stacks on" "$srnd" "STACKABLE HIMMEL-9390 $SRD"
 lacks "S2a: next-dispatchable reports no unreadable ledger or doc for the written series" "$(cat "$WORK/srnd.err")" "unreadable"
 
-srbad mixed 'w[2]["scope"] = "scripts/sa/c.sh completes-ticket: yes"' "completes-ticket"
+# Each follow-on worker's own scope, "Do not" lines and commit text reach its ledger item (series-next.sh start prints
+# them from there); the writer's item and a follow-on with no "Do not" line record no do_not key
+srmut itemscope 'w[1]["scope"] = "scripts/sa/b.sh Do not touch scripts/x. Never edit scripts/y. completes-ticket: no"'
+sro="$(srrun itemscope)"; rc=$?
+[ "$rc" = 0 ] && pass "8583: a follow-on worker whose scope carries Do-not lines generates (rc 0)" || fail "8583: itemscope rc=$rc: $sro"
+SRIL="$(ls "$WORK"/sr-b-itemscope/series/*.json)"
+srit() { srledger "$SRIL" | python3 -I -c 'import json, sys; d = json.load(sys.stdin); print(eval(sys.argv[1]))' "$1"; }
+check_eq() { [ "$2" = "$3" ] && pass "$1" || fail "$1: [$2] != [$3]"; }
+check_eq "8583: follow-on B's ledger item records its do-not lines, one entry each" "$(srit 'd["items"][1].get("do_not")')" "['Do not touch scripts/x.', 'Never edit scripts/y.']"
+check_eq "8583: follow-on B's ledger item records its scope without the do-not lines" "$(srit 'd["items"][1].get("scope")')" 'scripts/sa/b.sh completes-ticket: no'
+check_eq "8583: follow-on B's ledger item records its commit text" "$(srit 'd["items"][1].get("commit_text")')" "feat(sa): [HIMMEL-9302] b"
+check_eq "8583: follow-on C with no Do-not line records scope and commit text and no do_not key" "$(srit '(d["items"][2].get("scope"), d["items"][2].get("commit_text"), "do_not" in d["items"][2])')" "('\`scripts/sa/c.sh\` completes-ticket: no', 'feat(sa): [HIMMEL-9303] c', False)"
+check_eq "8583: the writer's own item records none of the three (its brief carries them)" "$(srit '[k for k in ("scope", "do_not", "commit_text") if k in d["items"][0]]')" "[]"
+check_eq "8583: the Writes of the items are unchanged by the scope text" "$(srsummary "$(srledger "$SRIL")" | cut -d'|' -f3)" "scripts/sa/a.sh,scripts/sa/b.sh,scripts/sa/c.sh"
+
+srbad mixed 'w[2]["scope"] ="scripts/sa/c.sh completes-ticket: yes"' "completes-ticket"
 srbad nogrant 'w[0]["series_grant"] = {"family": "scripts/sa/"}' "decision"
 srbad nograntkey 'del w[0]["series_grant"]' "decision"
 srbad compact 'w[0]["context_guard"] = "compact"' "compact mode"

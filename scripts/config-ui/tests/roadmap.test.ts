@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { legSync, readRoadmap, SYNC_LABEL } from "../roadmap";
-import { driftSince, renderBoard, renderKanban, renderRoadmap } from "../public/roadmap.js";
+import { driftSince, renderBoard, renderKanban, renderRoadmap, pinsFromSearch, searchWithPins, togglePin } from "../public/roadmap.js";
 import { navLinks, parseLanding } from "../public/nav.js";
 import { startServer } from "../server";
 
@@ -512,7 +512,7 @@ test("kanban pages: an empty mirror shows the empty state, not a blank board", (
 test("GET /api/roadmap: token-gated, GET-only, served live from the mirror the env names", async () => {
   const s = station();
   const home = join(s.d, "home"); mkdirSync(home);
-  const srv = startServer({
+  const srv = startServer({ onIdle: () => {},
     port: 0, token: TOKEN, legsScript: join(s.d, "no-workers.sh"),
     env: { PATH: process.env.PATH, HOME: home, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000",
       HIMMEL_JIRA_MIRROR: s.mirror, HIMMEL_ROADMAP_PLAN_DIR: s.plan, HIMMEL_ROADMAP_DRIFT_LOG: s.drift },
@@ -539,7 +539,7 @@ test("GET /api/roadmap: the default payload has no ticket with no fixVersion; ?n
   writeFileSync(doc, "## Results\n- 04:00 BLOCKED — stuck on the loose ticket\n");
   const legs = join(s.d, "workers-8.sh");
   writeFileSync(legs, `#!/usr/bin/env bash\nprintf '%s' '${JSON.stringify({ manifest: join(s.d, "x.fleet.json"), workers: [{ doc, status: "BLOCKED" }] })}'\n`);
-  const srv = startServer({
+  const srv = startServer({ onIdle: () => {},
     port: 0, token: TOKEN, legsScript: legs,
     env: { PATH: process.env.PATH, HOME: home, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000",
       HIMMEL_JIRA_MIRROR: s.mirror, HIMMEL_ROADMAP_PLAN_DIR: s.plan, HIMMEL_ROADMAP_DRIFT_LOG: s.drift },
@@ -737,7 +737,7 @@ function twoMirrors() {
   return { d, home: join(d, "home"), root };
 }
 function serveBoard(home: string, extraEnv: Record<string, string> = {}, projects?: string[]) {
-  const srv = startServer({
+  const srv = startServer({ onIdle: () => {},
     port: 0, token: TOKEN, legsScript: join(home, "no-workers.sh"), ...(projects ? { projects } : {}),
     env: { PATH: process.env.PATH, HOME: home, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000", ...extraEnv },
   });
@@ -1152,4 +1152,77 @@ test("9100 Board: a 200-character title and a 60-character chain name keep their
   expect(html).not.toMatch(/<[^>]*\bdata-tip="[^>]*\btitle="|<[^>]*\btitle="[^>]*\bdata-tip="/);
   expect(html).not.toContain('title="Open the'); // the link's action is its accessible name now, not a second bubble
   expect(html).toMatch(/<a class="rm-chain"[^>]*aria-label="Open the c{60} chain on the Chains tab[^"]*"/);
+});
+
+// ---- the Board shows at most 5 versions ----------------------------------------------------------------------------------
+// 12 versions v2.0 .. v2.11; v2.0 to v2.4 are released, v2.5 is the running one.
+const many = () => {
+  const r = read(station());
+  const zero = { todo: 0, prog: 0, rev: 0, ci: 0, done: 0, wont: 0 };
+  const versions = Array.from({ length: 12 }, (_, i) => ({ n: `v2.${i}`, rel: i < 5, date: i < 5 ? "2026-09-01" : "", counts: { ...zero }, open: [] as string[] }));
+  return { ...r, versions, cur: 5, next: 6, tickets: [], noVersionCount: 0 } as typeof r;
+};
+const tiles = (html: string) => [...html.matchAll(/class="rm-vt(?: sel)?" href="[^"]*v=(v2\.\d+)/g)].map((m) => m[1]);
+
+test("Board versions: no pins show the running version and 2 on each side, and the page says what it shows", () => {
+  const html = renderBoard(many(), { version: null, theme: null }, null);
+  expect(tiles(html)).toEqual(["v2.3", "v2.4", "v2.5", "v2.6", "v2.7"]);
+  expect(html).toContain("showing 5 of 12 versions");
+  expect(html).toContain("data-rm-show-all");
+});
+
+test("Board versions: pinned versions fill the slots, and a sixth pin is refused with a message that states the cap", () => {
+  const three = renderBoard(many(), { version: null, theme: null, pins: ["v2.0", "v2.9", "v2.11"] }, null);
+  expect(tiles(three)).toEqual(["v2.0", "v2.9", "v2.11"]);
+  expect(three).toContain("showing 3 of 12 versions");
+  const six = renderBoard(many(), { version: null, theme: null, pins: ["v2.0", "v2.1", "v2.2", "v2.3", "v2.4", "v2.5"] }, null);
+  expect(tiles(six).length).toBe(5);
+  expect(six).toContain("at most 5 versions");
+  const full = ["v2.0", "v2.1", "v2.2", "v2.3", "v2.4"];
+  const refused = togglePin(full, "v2.9");
+  expect(refused.pins).toEqual(full);
+  expect(refused.msg).toContain("at most 5 versions");
+  expect(togglePin(full, "v2.4").pins).toEqual(["v2.0", "v2.1", "v2.2", "v2.3"]);
+  expect(togglePin(["v2.0"], "v2.9")).toEqual({ pins: ["v2.0", "v2.9"], msg: "" });
+});
+
+test("Board versions: show all renders all 12, and hide previous and hide far future remove those versions", () => {
+  const d = many();
+  expect(tiles(renderBoard(d, { version: null, theme: null, showAll: true }, null)).length).toBe(12);
+  expect(renderBoard(d, { version: null, theme: null, showAll: true }, null)).toContain("showing 12 of 12 versions");
+  const noPrev = tiles(renderBoard(d, { version: null, theme: null, showAll: true, hidePrev: true }, null));
+  expect(noPrev).toEqual(["v2.5", "v2.6", "v2.7", "v2.8", "v2.9", "v2.10", "v2.11"]);
+  const noFar = tiles(renderBoard(d, { version: null, theme: null, showAll: true, hideFuture: true }, null));
+  expect(noFar).toEqual(["v2.0", "v2.1", "v2.2", "v2.3", "v2.4", "v2.5", "v2.6", "v2.7"]);
+  expect(tiles(renderBoard(d, { version: null, theme: null, hidePrev: true }, null))).toEqual(["v2.5", "v2.6", "v2.7"]);
+});
+
+test("Board versions: the controls and the pin buttons make no write call", () => {
+  const real = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (() => { calls++; return Promise.reject(new Error("write")); }) as unknown as typeof fetch;
+  try {
+    const html = renderBoard(many(), { version: null, theme: null, writes: true, pins: ["v2.1"] }, null);
+    togglePin(["v2.1"], "v2.2");
+    expect(html).toContain("data-rm-pin");
+  } finally { globalThis.fetch = real; }
+  expect(calls).toBe(0);
+});
+
+test("Board versions: the pins ride in the URL's query string, and roadmap.js stores nothing in the browser", () => {
+  expect(pinsFromSearch("?pins=v2.0,v2.9")).toEqual(["v2.0", "v2.9"]);
+  expect(pinsFromSearch("")).toEqual([]);
+  expect(searchWithPins("?a=1", ["v2.0", "v2.9"])).toBe("?a=1&pins=v2.0%2Cv2.9");
+  expect(searchWithPins("?pins=v2.0&a=1", [])).toBe("?a=1");
+  expect(searchWithPins("?pins=v2.0", [])).toBe("");
+  const src = readFileSync(join(import.meta.dir, "../public/roadmap.js"), "utf8").replace(/\/\/.*$/gm, "");
+  expect(/\b(localStorage|sessionStorage|indexedDB|document\.cookie)\b/.test(src)).toBe(false);
+});
+
+test("Board versions: with a pin set, Show all exposes the unpinned versions so a second pin is possible", () => {
+  const html = renderBoard(many(), { version: null, theme: null, pins: ["v2.1"], showAll: true }, null);
+  expect(tiles(html).length).toBe(12);
+  expect(html).toContain("showing 12 of 12 versions");
+  expect(html).toContain('data-rm-pin="v2.1" aria-pressed="true"');
+  expect(html).toContain('data-rm-pin="v2.2" aria-pressed="false"');
 });

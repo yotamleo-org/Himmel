@@ -35,7 +35,7 @@ function scratch() {
   return { d, home, mirror, conf, registry, drift, known };
 }
 const serve = (env: Record<string, string>, s: ReturnType<typeof scratch>) => {
-  const srv = startServer({
+  const srv = startServer({ onIdle: () => {},
     port: 0, token: TOKEN, root: s.d, legsScript: join(s.d, "no-workers.sh"), // root: the checkout's .env is read from the scratch dir, never the real one
     env: { PATH: process.env.PATH, HOME: s.home, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000",
       HIMMEL_JIRA_MIRROR: s.mirror, HIMMEL_CONFIG_DIR: s.conf, DRIFT_SUMMARY_KNOWN: s.known, ...env },
@@ -337,7 +337,7 @@ test("a project launched from another checkout: the extras and the cards read th
   otherMirror(join(s.d, "checkout-mirror"), "from the checkout mirror");
   otherMirror(join(s.home, ".himmel", "state", "jira-mirror", "HIMMEL"), "from the default mirror"); // what the project, naming none, gets
   writeFileSync(join(checkout, ".env"), `HIMMEL_JIRA_MIRROR=${join(s.d, "checkout-mirror")}\nJIRA_PROJECT_KEY=OTHER\nHANDOVER_DIR=${handovers}\n`);
-  const srv = startServer({ port: 0, token: TOKEN, root: checkout, projectRoot: project, legsScript: join(s.d, "no-workers.sh"),
+  const srv = startServer({ onIdle: () => {}, port: 0, token: TOKEN, root: checkout, projectRoot: project, legsScript: join(s.d, "no-workers.sh"),
     env: { PATH: process.env.PATH, HOME: s.home, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000",
       HIMMEL_CONFIG_DIR: s.conf, DRIFT_SUMMARY_KNOWN: s.known, HIMMEL_CHAIN_REGISTRY: s.registry } });
   cleanups.push(() => srv.stop());

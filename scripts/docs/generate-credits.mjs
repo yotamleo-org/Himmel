@@ -23,6 +23,36 @@ function attribution(text) {
   return records;
 }
 
+function isHttps(value) {
+  if (!value.startsWith('https://')) return false;
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function passages(text, root) {
+  const section = text.match(/<!-- credits-passages:start -->([\s\S]*?)<!-- credits-passages:end -->/);
+  if (!section) throw new Error('missing credits passages in docs/third-party-licenses.md');
+  const rows = [];
+  for (const line of section[1].trim().split('\n')) {
+    if (!line.trim()) continue;
+    if (!line.startsWith('|')) throw new Error(`malformed credits passage row: ${line}`);
+    const cells = line.split('|').slice(1, -1).map(cell => cell.trim());
+    if (cells[0] === 'What' || /^-+$/.test(cells[0])) continue;
+    if (cells.length !== 6) throw new Error(`malformed credits passage row: ${line}`);
+    const [what, source, author, license, how, where] = cells;
+    for (const [value, field] of [[what, 'what'], [author, 'author'], [license, 'licence'], [where, 'where']]) required(value, what, field);
+    if (!isHttps(source)) throw new Error(`${what}: source must be an HTTPS URL`);
+    if (how !== 'vendored' && how !== 'inspired by') throw new Error(`${what}: how used must be vendored or inspired by`);
+    if (!fs.statSync(path.join(root, where), { throwIfNoEntry: false })?.isFile()) throw new Error(`${what}: ${where} does not exist as a file`);
+    rows.push({ what, source, author, license, how, where });
+  }
+  return rows;
+}
+
 function required(value, name, field) {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`${name}: missing ${field}`);
   return value;
@@ -42,11 +72,18 @@ function table(rows, fork = false) {
   })].join('\n');
 }
 
+function passageTable(rows) {
+  return ['| What | Source | Author | Licence | How used | Where |', '|---|---|---|---|---|---|',
+    ...rows.sort((a, b) => a.what < b.what ? -1 : a.what > b.what ? 1 : 0).map(row =>
+      '| ' + [row.what, row.source, row.author, row.license, row.how, row.where].map(cell).join(' | ') + ' |')].join('\n');
+}
+
 function generate(root) {
   const read = file => fs.readFileSync(path.join(root, file), 'utf8');
   const plugins = JSON.parse(read('marketplace/.claude-plugin/marketplace.json')).plugins;
   const forks = JSON.parse(read('scripts/guardrails/himmel-adapters.json'));
   const records = attribution(read('docs/third-party-licenses.md'));
+  const borrowed = passages(read('docs/third-party-licenses.md'), root);
   const seen = new Set();
   function take(key) {
     if (seen.has(key)) throw new Error(`duplicate inventory item: ${key}`);
@@ -55,7 +92,7 @@ function generate(root) {
   }
   function complete(row) {
     for (const field of ['name', 'source', 'author', 'license', 'pin']) required(row[field], row.name, field);
-    if (!/^https:\/\//.test(row.source)) throw new Error(`${row.name}: source must be an HTTPS URL`);
+    if (!isHttps(row.source)) throw new Error(`${row.name}: source must be an HTTPS URL`);
     return row;
   }
   const pluginRows = plugins.map(plugin => {
@@ -110,6 +147,7 @@ One row per entry in [the marketplace manifest](../marketplace/.claude-plugin/ma
 A plugin row credits its bundled skill family; it is not a claim that every
 skill is enabled. Remote pins come directly from the manifest. In-tree
 vendoring records name the upstream pins and carried deviations.
+How used: installed from the pin, or vendored in-tree where the pin links a vendoring record.
 
 ${table(pluginRows)}
 
@@ -117,6 +155,7 @@ ${table(pluginRows)}
 
 These are the vendored skills outside marketplace plugins, recorded in
 [the third-party attribution audit](third-party-licenses.md#credits-metadata).
+How used: vendored.
 
 ${table(skills)}
 
@@ -128,6 +167,15 @@ are mutable, not immutable pins. Where registered, the pin-site link is the
 source of truth for the shipped revision; no pin is invented for dormant forks.
 
 ${table(forkRows, true)}
+
+## Inspired by and borrowed passages
+
+Text or ideas from elsewhere inside a skill, command, document or script himmel
+wrote. \`vendored\` means the file runs a vendored copy; \`inspired by\` means himmel wrote its own text from
+the idea, at most repeating a short phrase or format string. \`Not established\` means the licence could not be established: it
+grants no permission to copy, and nothing was copied.
+
+${passageTable(borrowed)}
 
 ## Licences and regeneration
 
@@ -147,7 +195,7 @@ node scripts/docs/generate-credits.mjs --check
 When adding a plugin or fork, record any missing attribution fields in the
 credits metadata table in \`docs/third-party-licenses.md\`, then regenerate.
 The check rejects missing rows, changed pins, missing licence metadata,
-uncredited standalone directories under \`.claude/skills\`, and unused plugin/fork metadata. \`scripts/docs/test-generate-credits.sh\` runs it
+uncredited standalone directories under \`.claude/skills\`, passage rows with an unknown use, a non-HTTPS source or a missing file, and unused plugin/fork metadata. \`scripts/docs/test-generate-credits.sh\` runs it
 against this tree as well as missing-row fixtures in CI.
 `;
 }

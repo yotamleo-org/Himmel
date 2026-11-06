@@ -46,7 +46,7 @@ type Extra = { env?: Record<string, string>; now?: () => number; actionTimeoutMs
 function boot(x: Extra = {}) {
   const env = { PATH: process.env.PATH, HOME: home, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-recorder.js"),
     HIMMEL_REPORT_CADENCE_ROOT: cad, STUB_ARGV: argvFile, STUB_STATE: state, CONFIG_UI_IDLE_MS: "60000", ...x.env };
-  const s = startServer({ port: 0, token: TOKEN, env, root: repo, now: x.now, actionTimeoutMs: x.actionTimeoutMs, reprobeBudgetMs: x.reprobeBudgetMs, onIdle: x.onIdle } as never);
+  const s = startServer({ port: 0, token: TOKEN, env, root: repo, now: x.now, actionTimeoutMs: x.actionTimeoutMs, reprobeBudgetMs: x.reprobeBudgetMs, onIdle: x.onIdle ?? (() => {}) } as never);
   stops.push(() => s.stop());
   return s.port;
 }

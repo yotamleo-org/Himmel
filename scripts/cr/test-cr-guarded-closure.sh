@@ -111,6 +111,7 @@ edges() {
 # still be an edge (checked below), so the list cannot rot silently.
 # dependabot-go.sh runs judge-call.sh only under --sweep, which the chief tick runs.
 # block-fork-sync-pr.sh names resync-fork.sh in its deny message, as the command to run instead.
+# suite-coverage.sh (run by impacted-suites.sh --check) only READS run-shell-tests.sh's SKIP_LIST and timeout tables as text; it never runs it.
 # merge-on-green.sh runs bug-origin-report.py only after a merge, from the anchor's bytes (HIMMEL_REPO), never a /pr-check run's branch.
 NOT_RUN="scripts/cr/install-cr-gate.sh -> scripts/hooks/check-cr-before-push.sh
 scripts/lib/wire-statusline.sh -> marketplace/plugins/claude-hud/dist/index.js
@@ -119,7 +120,8 @@ scripts/lanes/bank-status-core.mjs -> scripts/lanes/codex-usage-probe.ts
 scripts/cr/live-gate-e2e.sh -> scripts/handover/chief-kit/ready-check.sh
 scripts/cr/dependabot-go.sh -> scripts/api-lane/judge-call.sh
 scripts/hooks/block-fork-sync-pr.sh -> scripts/upstreams/resync-fork.sh
-scripts/handover/merge-on-green.sh -> scripts/eval/bug-origin/bug-origin-report.py"
+scripts/handover/merge-on-green.sh -> scripts/eval/bug-origin/bug-origin-report.py
+scripts/handover/suite-coverage.sh -> scripts/ci/run-shell-tests.sh"
 
 # Parents allowed to name scripts/jira/dist, pinned as <file>::<regex>. The regex
 # must match the file, proving the dist path there is anchored on the PRIMARY

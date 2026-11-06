@@ -170,19 +170,30 @@ else
   fail "LD6: .github/workflows/ledger-drift.yml missing, not schedule/dispatch-only, does not run ledger-drift.sh, or a mutant (indented pull_request, path only in a comment) passed"
 fi
 
-echo "== LD7: no ledger row is above 900s, 75% of the 1200s cap the longest suites get =="
+echo "== LD7: no ledger row is above 900s, 75% of the 1200s cap the longest suites get (1350s for test-review-panel.sh, 75% of its 1800s cap) =="
 # A suite near the cap is killed with no assertion failing as soon as a loaded
 # runner is slower than the ledger run. The control row is the real line from
 # green main run 40030573258 (shell-unit-shard 3): [PASS] scripts/test-adopt.sh (969s).
 LD7_CEILING=900
+# test-review-panel.sh has a 1800s cap in run-shell-tests.sh (60 real case repos,
+# measured 1295s in CI), so the same 75% rule puts its ceiling at 1350s. It is the
+# only suite with a higher ceiling.
+LD7_PANEL_SUITE=scripts/eval/review-panel/test-review-panel.sh
+LD7_PANEL_CEILING=1350
 ledger_over_ceiling() {
-  awk -F'\t' -v ceil="$LD7_CEILING" '/^[[:space:]]*(#|$)/ { next } $2 + 0 > ceil { print $1 "\t" $2; bad = 1 } END { exit bad }' "$1"
+  awk -F'\t' -v ceil="$LD7_CEILING" -v psuite="$LD7_PANEL_SUITE" -v pceil="$LD7_PANEL_CEILING" '/^[[:space:]]*(#|$)/ { next } { c = ($1 == psuite) ? pceil : ceil } $2 + 0 > c { print $1 "\t" $2; bad = 1 } END { exit bad }' "$1"
 }
 printf 'scripts/test-adopt.sh\t969\n' > "$SUITE_LOCK_SANDBOX/over-ceiling.tsv" || fail "LD7: cannot write the control ledger"
+printf '%s\t1351\n' "$LD7_PANEL_SUITE" > "$SUITE_LOCK_SANDBOX/over-panel.tsv" || fail "LD7: cannot write the review-panel control ledger"
+printf 'scripts/test-adopt.sh\t1295\n' > "$SUITE_LOCK_SANDBOX/other-1295.tsv" || fail "LD7: cannot write the other-suite control ledger"
 if ledger_over_ceiling "$SUITE_LOCK_SANDBOX/over-ceiling.tsv" >/dev/null; then
   fail "LD7: the control ledger (test-adopt.sh at 969s) was accepted"
+elif ledger_over_ceiling "$SUITE_LOCK_SANDBOX/over-panel.tsv" >/dev/null; then
+  fail "LD7: the control ledger (test-review-panel.sh at 1351s) was accepted"
+elif ledger_over_ceiling "$SUITE_LOCK_SANDBOX/other-1295.tsv" >/dev/null; then
+  fail "LD7: the control ledger (another suite at 1295s) was accepted"
 elif over=$(ledger_over_ceiling "$SRC_ROOT/scripts/ci/suite-durations.tsv"); then
-  pass "LD7: the control row is refused and the committed ledger has no row above ${LD7_CEILING}s"
+  pass "LD7: the three control rows are refused and the committed ledger has no row above its ceiling (${LD7_CEILING}s, ${LD7_PANEL_CEILING}s for review-panel)"
 else
   fail "LD7: committed ledger rows above ${LD7_CEILING}s: $over"
 fi

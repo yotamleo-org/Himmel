@@ -54,10 +54,10 @@ export function navLinks({ here, token, current, run, sources }) {
 // sources: as for navLinks, so an empty list hides Board here exactly as the rendered rail does; omitted, nothing is hidden.
 export const railItems = (current, sources) => [...PAGES.filter((p) => !(sources && sources.length === 0 && TRACKER_PAGES.includes(p.id))).map((p) => p.id), ...(current === "run" ? ["run"] : []), "docs"];
 
-// The console rail's markup. dots: { fleet, health } status dots; waiting: the Shift badge's count.
-// Nothing here depends on the page but the current mark: the Health project picker is the page bar's (app.js).
-export function railMarkup({ token, current, sources, run, dots = {}, waiting = 0 }) {
-  return navLinks({ here: "console", token, current, run, sources }).map((l) =>
+// The rail's markup, drawn by both documents (here: "console" by default, or "agui"). dots: { fleet, health } status dots;
+// waiting: the Shift badge's count. Nothing here depends on the page but the current mark: the Health project picker is the page bar's (app.js).
+export function railMarkup({ here = "console", token, current, sources, run, dots = {}, waiting = 0 }) {
+  return navLinks({ here, token, current, run, sources }).map((l) =>
     `<a href="${l.href}" data-page="${l.id}"${l.current ? ' aria-current="page"' : ""}${l.external ? ' target="_blank" rel="noopener noreferrer"' : ""}>${l.label}${dots[l.id] ? `<span class="st-dot ${dots[l.id].cls}" title="${dots[l.id].title}"></span>` : ""}${l.id === "shift" && waiting ? `<span class="sh-badge" title="${waiting} waiting on you">${waiting}</span>` : ""}</a>`).join("");
 }
 

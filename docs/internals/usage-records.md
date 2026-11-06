@@ -117,16 +117,21 @@ empty). `cr.rounds` counts heads with a responding review
 ## CI minutes (billed beside wall)
 
 `scripts/usage/ci-minutes.sh` is the one writer of `<store>/ci-minutes.jsonl`
-(same store as above): one row per Actions run, the run id is the idempotence
-key, so a rerun on the same window appends nothing for a run it already holds.
+(same store as above): one row per Actions run, the run id is the key, so a
+second pass over the same window appends nothing for a run it already holds. A
+run that was rerun since it was recorded (`gh run rerun`) is listed again with a
+higher `run_attempt`; its row is then replaced, never added to, so the run id
+stays unique in the file.
 
 ```bash
 bash scripts/usage/ci-minutes.sh write  --repo OWNER/NAME [--days 7] [--until <iso>] [--store <dir>]
 bash scripts/usage/ci-minutes.sh report --repo OWNER/NAME [--days 7] [--until <iso>] [--store <dir>]
 ```
 
-Row: `{schema, repo, run_id, workflow, created_at, wall_min, billed_min}`.
-`wall_min` is `run_started_at` to `updated_at` of the run list. `billed_min` is
+Row: `{schema, repo, run_id, workflow, created_at, run_attempt, wall_min, billed_min}`.
+A row written before `run_attempt` existed counts as attempt 1.
+`wall_min` is `run_started_at` to `updated_at` of the run list, which shows the
+latest attempt only. `billed_min` is
 `GET /repos/{repo}/actions/runs/{id}/timing`, `.billable.<OS>.total_ms` summed
 over every OS. A run whose billing answer is absent (HTTP 404/410, or no
 `.billable` entry) is stored as the string `"unknown"`, never 0; an answer of 0
@@ -134,6 +139,12 @@ ms is a real 0 (this public repo bills 0). Any other gh failure aborts the run
 and rows already written stay. `report` prints runs beside the `gh api`
 total_count for the window, billed beside wall minutes, and the unknown runs on
 their own line (unknowns are left out of the billed sum).
+
+How a rerun is stored: the timing endpoint is cumulative over attempts (checked
+on a real `gh run rerun --failed` run: its `jobs` count is the sum of both
+attempts' jobs, while `run_duration_ms` is the latest attempt's), so the new
+answer already holds the earlier attempt's billed time and is stored whole.
+`wall_min` is the latest attempt's wall time, not the sum of attempts.
 
 The runs endpoint returns at most 1,000 rows for a filtered window however large
 `total_count` is, and `gh run list --limit` stops there too. The writer pages
