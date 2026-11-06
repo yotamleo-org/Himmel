@@ -4002,12 +4002,16 @@ s17_at() {
         printf '{"kind":"impacted","ts":"2026-11-05T00:00:00Z","source":"pr-check","branch":"%s","head":"%s","pr":%s,"status":"ok","impacted_n":2,"unverdicted_n":0,"skip_n":0,"rc":0,"local_pass":%s,"ruled_skip":%s}\n' \
             "${S17_ROW_BRANCH:-${STUB_PR_BRANCH:-feat/himmel-100-thing}}" "$SHA" "${S17_ROW_PR:-77}" "${S17_LP:-[]}" "${S17_RS:-[]}" >> "$LEDGER"
     fi
+    # S17_RUNBOOK_CMD: the row is written by running the runbook's command in the repo, not by hand
+    if [ -n "${S17_RUNBOOK_CMD:-}" ]; then
+        s17_rb=$( cd "$S17R" && bash -c "$S17_RUNBOOK_CMD" 2>&1 ) || echo "s17_at: the runbook command failed: $s17_rb"
+    fi
     : > "$GH_LOG"
     rc=0; out="$(STUB_IMPACTED_REAL="$S17_REAL" STUB_ROLLUP="${S17_ROLLUP-$S17_GREEN}" run)" || rc=$?
     SHA="$keep_sha"; REPO="$keep_repo"; LEDGER="$keep_ledger"
 }
 line17() { printf '%s\n' "$1" | grep -F '] 19. ' || true; }
-s17_clear() { unset S17_LP S17_RS S17_ROW_BRANCH S17_ROW_PR S17_ROLLUP STUB_MANIFEST_DIR STUB_DL_FAIL STUB_DL_SLEEP STUB_RUN_SLEEP STUB_RUN_HEAD_SHA READY_CHECK_ITEM19_BOUND; reset_stubs; }
+s17_clear() { unset S17_RUNBOOK_CMD S17_LP S17_RS S17_ROW_BRANCH S17_ROW_PR S17_ROLLUP STUB_MANIFEST_DIR STUB_DL_FAIL STUB_DL_SLEEP STUB_RUN_SLEEP STUB_RUN_HEAD_SHA READY_CHECK_ITEM19_BOUND; reset_stubs; }
 
 # T6 / T21: every suite has a ran-0 row in the head's run; the PR touches no plugin file
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
@@ -4028,6 +4032,28 @@ s17_clear; STUB_MANIFEST_DIR="$S17_MAN_ASKIPB"; S17_LP="[\"$S17_B\"]"
 s17_at "$S17_H1"
 check "19 T8 that suite passed locally: exit 0" "$rc" "0"
 contains "19 T8: one from CI, one local" "$out" "[PASS] 19. suite evidence: 2 impacted, 1 from CI run 555, 1 local"
+
+# T8b: the row comes from the runbook's own default fence (spec 2.2), not a hand-written
+# one: pr-check step 3.6 as written, for a PR that is not an outside PR, then item 19 reads it.
+S17_MD="$HERE/../../cr/pr-check-ref/33-step3-impacted.md"
+S17_FENCE=$(awk '/^   ```bash$/ { f = 1; next } /^   ```/ { f = 0 } f && /--record/ { print; exit }' "$S17_MD")
+contains "19 T8b: the runbook's default fence records (not only on outside-pr: yes)" "$S17_FENCE" "--record --branch '<headRefName>' --head <head>"
+notcontains "19 T8b: the runbook does not gate --record on outside-pr: yes" "$(cat "$S17_MD")" "On \`outside-pr: yes\` (step 0), record the verdicts"
+S17_VERDICTS="$tmp/s17-verdicts.txt"
+printf 'SUITE %s = PASS\nSUITE %s = PASS\n' "$S17_A" "$S17_B" > "$S17_VERDICTS"
+S17_RUN_CMD=$(printf '%s' "$S17_FENCE" | sed -e "s#<himmel_dir>#$HERE/../../..#" -e "s#<base>#$S17_BASE#" -e "s#<head>#$S17_H1#g" -e "s#<scratch-path>#$S17_VERDICTS#" -e "s#<headRefName>#feat/himmel-100-thing#")
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_RUNBOOK_CMD="$S17_RUN_CMD"
+s17_at "$S17_H1"
+check "19 T8b the row the runbook fence wrote: exit 0" "$rc" "0"
+contains "19 T8b: item 19 reads that row (both suites local, nothing left to CI)" "$out" "[PASS] 19. suite evidence: 2 impacted, 0 from CI run -, 2 local"
+
+# T8c: a ready-check killed while item 19 reads (the chief's `timeout` TERMs it) leaves no temp dir
+S17_TMP="$tmp/s17-term-tmp"; mkdir -p "$S17_TMP"
+printf '#!/usr/bin/env bash\nexec timeout 3 bash %q "$@"\n' "$SCRIPT" > "$tmp/s17-term-wrap.sh"  # gnu-ok: Linux-only kit
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_DL_SLEEP=20
+RUN_SCRIPT="$tmp/s17-term-wrap.sh" TMPDIR="$S17_TMP" s17_at "$S17_H1"
+unset RUN_SCRIPT
+check "19 T8c: killed mid-read, no ready-check-19 temp dir is left" "0" "$(find "$S17_TMP" -maxdepth 1 -name 'ready-check-19.*' | wc -l | tr -d ' ')"
 
 # T9: a suite CI cannot run (no manifest row) needs a local PASS
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"

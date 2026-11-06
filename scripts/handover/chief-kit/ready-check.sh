@@ -186,8 +186,11 @@
 #
 # Owner/repo are derived from `gh repo view --json owner,name`, never hard-
 # coded (so this runs the same in any clone/fork). It writes no CR ledger rows,
-# no GO files and no PR comments; its one write is item 19's append-only CI
-# failure ledger (station state, report-only; it never changes a verdict).
+# no GO files and no PR comments. Its writes are: `git fetch` into the repo it runs in
+# (pr_fetch updates refs/remotes/origin/main and, when the head is not there, fetches
+# refs/pull/<pr>/head, so it runs in a checkout where that is fine), a temp dir for
+# item 19 (removed on exit), and item 19's append-only CI failure ledger (station state,
+# report-only; it never changes a verdict; check-ci.sh writes the same rows at the red).
 #
 # Exit codes:
 #   0 — READY-CHECK PASS
@@ -2016,9 +2019,13 @@ check_suite_evidence() {
     local d
     [ "$ONLY7" -eq 0 ] || return 0
     d=$(mktemp -d "${TMPDIR:-/tmp}/ready-check-19.XXXXXX") || { s17_fail "mktemp failed"; return 0; }  # prim-ok: ready-check sources no prim.sh; a failed mktemp FAILs item 19
+    # shellcheck disable=SC2064  # $d is fixed now on purpose: the trap removes this dir whatever exit path follows
+    # shellcheck disable=SC2064  # $d is fixed now on purpose: the trap removes this dir whatever exit path follows
+    trap "rm -rf '$d'" EXIT
     s17_body "$d"
     s17_fl_rounds
     rm -rf "$d"
+    trap - EXIT
 }
 s17_body() {
     local d="$1" anchor n_imp branch ledger row="" have_row=0 run_id="" agg n_ci=0 n_local=0 n_ruled=0 s why bad=0 reasons="" ruled_names="" grc

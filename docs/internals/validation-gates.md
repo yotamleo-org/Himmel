@@ -306,7 +306,10 @@ bounded; a ledger that cannot be read means no `impacted` row, so no local proof
 A red CI run at the head appends one `fail` row per failed suite left to CI to
 `~/.himmel/state/suite-evidence/ci-failures.jsonl`, and a later head of that PR one
 `round` row; `scripts/cr/suite-fail-ledger.sh` prints the failure count and the
-extra-round rate. The ledger never changes a verdict.
+extra-round rate. `scripts/check-ci.sh` writes those rows the moment it sees the red
+(through `scripts/cr/ci-fail-record.sh`), so a red that goes green on a re-run still
+leaves its row; item 19 writes the same rows by the same key if it reads a red later.
+The ledger never changes a verdict.
 
 Lane-rubric verdict persistence remains behavioral (validating-session
 discipline); structural `cheap-codex` provenance enforcement waits on a hermes

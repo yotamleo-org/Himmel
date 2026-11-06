@@ -33,7 +33,7 @@
    SUITE <path> = SKIP <reason>
    ```
 
-   **On `outside-pr: yes` (step 0), record the verdicts** with `--record`, naming the PR's head branch (`headRefName`) and head:
+   **Record the verdicts on every PR** (spec 2.2; `outside-pr: yes` or not) with `--record`, naming the PR's head branch (`headRefName`) and head. This is the DEFAULT shape of the fence; the bare fence above only previews. Ready-check item 19 reads this row as the local proof, so a PR without it has none:
    ```bash
    bash "<himmel_dir>/scripts/cr/impacted-suites.sh" --check <base>..<head> --from-file <scratch-path> --record --branch '<headRefName>' --head <head>
    ```

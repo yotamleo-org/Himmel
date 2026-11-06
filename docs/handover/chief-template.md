@@ -202,7 +202,7 @@ PASS line names before a hand GO (`auto-go.sh` does not stop on one). No row: ru
 `worker-event.sh` on them; else, or on `WAKE worker-event … out=<file>`, finish by hand: on `WRAPPED`, confirm
 the lock is free at the ROOT sweep, then
 `bash scripts/handover/chief-kit/close-wrapped-worker.sh <worker-doc>`. Never run the
-bare `clean.sh` sweep for a worker. long-running.txt: `timeout 90 bash <script>` or `run_in_background`. Hand sequence, `digest=`:
+bare `clean.sh` sweep for a worker. long-running.txt: `run_in_background` (a short listed script may instead run as `timeout 90 bash <script>`; never `ready-check.sh`, whose item 19 bounds sum to 105 s). Hand sequence, `digest=`:
 `chief-sections/wrapping.md`.
 
 ## Standing rules
