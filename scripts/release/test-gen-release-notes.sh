@@ -56,6 +56,13 @@ rc=0; out=$(bash "$SCRIPT" --check "$tmp/leak.md" 2>&1) || rc=$?
 check "--check: leaked ticket key rc 1" "$rc" "1"
 contains "--check: names the section" "$out" "What you can now do"
 
+# --check: a key in any case, or a slash-joined key, in a user section fails
+for shape in 'himmel-7' 'LUNA-9' 'HIMMEL-1/2'; do
+    sed "s|^- The run page shows a live board\.|- Board work for $shape.|" "$tmp/gen.md" > "$tmp/shape.md"
+    rc=0; out=$(bash "$SCRIPT" --check "$tmp/shape.md" 2>&1) || rc=$?
+    check "--check: [$shape] in a user section rc 1" "$rc" "1"
+done
+
 # --check: Internal must be exactly one line
 { cat "$tmp/gen.md"; echo; echo "A second internal line."; } > "$tmp/two.md"
 rc=0; out=$(bash "$SCRIPT" --check "$tmp/two.md" 2>&1) || rc=$?

@@ -6,6 +6,11 @@
 # `## [Unreleased]` over all history — byte-identical to the pre-version-tag
 # generator, so a tagless repo sees no churn.
 # Non-conventional/merge/revert → ### Other.
+# Ticket keys (any case) and a trailing `(#n)` are stripped from every subject.
+# A tag whose docs/release/<tag>-notes.md passes gen-release-notes.sh --check
+# renders that file (the tag's own copy) as its section; while VERSION names no
+# tag yet, the working tree's notes file is read the same way and a failing
+# file, or one with no release date, exits 1.
 # Fully generated; do not hand-edit. Idempotent on immediate re-run.
 #
 # Usage:
@@ -45,8 +50,9 @@ kill_tree() {
 }
 tmp=""
 mb_err_file=""
+notes_tmp=""
 gen_pid=""
-trap '[ -z "$gen_pid" ] || kill_tree "$gen_pid"; rm -f -- "$tmp" "$mb_err_file"' EXIT
+trap '[ -z "$gen_pid" ] || kill_tree "$gen_pid"; rm -f -- "$tmp" "$mb_err_file" "$notes_tmp"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 # shellcheck disable=SC1091
@@ -72,8 +78,8 @@ render() {
     local heading="$1" range="${2:-}"
     local added="" fixed="" changed="" other="" subj
     # Added/Fixed are single-type sections (the heading conveys feat/fix), so
-    # strip the whole `type(scope): ` prefix → just the description (keeps the
-    # `[HIMMEL-N]` + message). `${subj#*: }` removes up to & incl the first
+    # strip the whole `type(scope): ` prefix → just the description (ticket
+    # keys are already stripped, cc_strip_keys). `${subj#*: }` removes up to & incl the first
     # `: ` (colon-space); a malformed no-space subject keeps its prefix.
     # Changed is mixed-type (chore/refactor/docs/test) so the type stays
     # informative — keep the full subject; Other keeps the raw subject.
@@ -84,7 +90,7 @@ render() {
             changed) changed="${changed}- ${subj}"$'\n';;
             *)       other="${other}- ${subj}"$'\n';;
         esac
-    done < <(git log --no-merges --format='%s' ${range:+"$range"})
+    done < <(git log --no-merges --format='%s' ${range:+"$range"} | cc_strip_keys)
     echo
     echo "$heading"
     [ -n "$added" ]   && { echo; echo "### Added";   printf '%s' "$added"; }
@@ -92,6 +98,41 @@ render() {
     [ -n "$changed" ] && { echo; echo "### Changed"; printf '%s' "$changed"; }
     [ -n "$other" ]   && { echo; echo "### Other";   printf '%s' "$other"; }
     return 0
+}
+
+# notes_valid <file> — the release-notes shape check, exit code only.
+notes_valid() {
+    bash "$SCRIPT_DIR/release/gen-release-notes.sh" --check "$1" >/dev/null 2>&1
+}
+
+# notes_date <file> — the `**Release date:** YYYY-MM-DD` line's date, or nothing.
+notes_date() {
+    sed -nE 's/^\*\*Release date:\*\* ([0-9]{4}-[0-9]{2}-[0-9]{2})[.]?$/\1/p' "$1" | head -1
+}
+
+# emit_notes <heading> <notes-file> — one version section made of the notes'
+# five sections demoted to `###`. The title and date lines before the first
+# `## ` are dropped, and trailing blank lines too, so the section ends like
+# render's does. The shape check exempts the Internal line from the key test,
+# so the section goes through the same key strip as the commit subjects.
+emit_notes() {
+    echo
+    echo "$1"
+    echo
+    awk '/^## /{s=1; sub(/^## /,"### ")} s{b[n++]=$0} END{while(n>0&&b[n-1]=="")n--; for(i=0;i<n;i++)print b[i]}' "$2" | cc_strip_keys
+}
+
+# notes_section <tag> <notes-file> — heading date comes from the notes, never
+# the tag, so the bytes do not move when the tag appears. Exits 1 on a passing
+# file with no release date.
+notes_section() {
+    local d
+    d="$(notes_date "$2")"
+    if [ -z "$d" ]; then
+        echo "gen-changelog: ERROR: $1 notes pass the shape check but carry no '**Release date:** YYYY-MM-DD' line" >&2
+        exit 1
+    fi
+    emit_notes "## [$1] - $d" "$2"
 }
 
 # Blank line goes BEFORE each heading (not after each section) so the file
@@ -195,14 +236,40 @@ generate() {
     # Newest tag first: unreleased = everything after it, then each tag's own
     # range down to its predecessor; the oldest tag takes the open-ended range
     # (all history up to that tag).
-    render "## [Unreleased]" "${tags[0]}..HEAD"
+    # Open range: VERSION names no tag yet and its notes file exists, so the
+    # section is rendered from the working tree's notes (a failing file stops
+    # generation, never falls back) and the commits since the newest tag live
+    # in it, leaving [Unreleased] empty -- the same bytes the tag will produce.
+    local ver=""
+    if [ -f "$ROOT/VERSION" ]; then
+        ver="v$(tr -d '[:space:]' < "$ROOT/VERSION")"
+    fi
+    if [[ "$ver" =~ $VERSION_TAG_RE ]] \
+       && ! git rev-parse -q --verify "refs/tags/$ver" >/dev/null \
+       && [ -f "$ROOT/docs/release/$ver-notes.md" ]; then
+        if ! notes_valid "$ROOT/docs/release/$ver-notes.md"; then
+            echo "gen-changelog: ERROR: docs/release/$ver-notes.md fails 'gen-release-notes.sh --check'; fix it before generating" >&2
+            exit 1
+        fi
+        echo
+        echo "## [Unreleased]"
+        notes_section "$ver" "$ROOT/docs/release/$ver-notes.md"
+    else
+        render "## [Unreleased]" "${tags[0]}..HEAD"
+    fi
     local i=0
     while [ "$i" -lt "${#tags[@]}" ]; do
         t="${tags[$i]}"
         prev=""
         [ $((i + 1)) -lt "${#tags[@]}" ] && prev="${tags[$((i + 1))]}"
-        date="$(git log -1 --format=%ad --date=short "$t")"
-        render "## [$t] - $date" "${prev:+$prev..}$t"
+        # A tag's own notes file is its section when it passes the shape
+        # check; tag contents never change, so a later edit cannot move it.
+        if git show "$t:docs/release/$t-notes.md" > "$notes_tmp" 2>/dev/null && notes_valid "$notes_tmp"; then
+            notes_section "$t" "$notes_tmp"
+        else
+            date="$(git log -1 --format=%ad --date=short "$t")"
+            render "## [$t] - $date" "${prev:+$prev..}$t"
+        fi
         i=$((i + 1))
     done
     return 0
@@ -216,6 +283,10 @@ generate() {
 # foreground call did.
 run_generate() {
     mb_err_file="$(mktemp "${TMPDIR:-/tmp}/gen-changelog-mb-err.XXXXXX")" || {
+        echo "gen-changelog: mktemp failed" >&2
+        exit 1
+    }
+    notes_tmp="$(mktemp "${TMPDIR:-/tmp}/gen-changelog-notes.XXXXXX")" || {
         echo "gen-changelog: mktemp failed" >&2
         exit 1
     }
@@ -264,4 +335,11 @@ if [ "${1:-}" = "--check" ]; then
     exit 1
 fi
 
-run_generate "$OUT"
+# Generate aside and copy over only on success, so a refusal (exit 1) leaves
+# the committed file as it was instead of truncated.
+tmp="$(mktemp "${TMPDIR:-/tmp}/gen-changelog.XXXXXX")" || {
+    echo "gen-changelog: mktemp failed" >&2
+    exit 1
+}
+run_generate "$tmp"
+cat "$tmp" > "$OUT"
