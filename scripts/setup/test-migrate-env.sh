@@ -1735,6 +1735,39 @@ lacks "N31 the hidden config line did not reach himmel.conf" "USER_SLUG" "$n31co
 has "N31 the holder keeps its hidden line" "USER_SLUG=CANARY-hidden" "$(cat "$TMP/st/.env")"
 lacks "N31 the moved entry left .env" "HANDOVER_DIR" "$(cat "$TMP/st/.env")"
 no_canary "N31 no value printed" "$out"
+# N32 to N35: a store by value reads the first entry of a key and the removal takes every entry, so a key with a later entry stays:
+# the later value would reach no store and no file. A one-line and a several-line later duplicate, a manifest secret whose first entry
+# runs over two lines, and the no-keyring route with a later several-line duplicate.
+no_item() {  # <label> <key>: the keyring holds no item for the key
+    if ! grep -q "key=$2 " "$KSTUB_STORE" 2>/dev/null; then pass "$1: nothing reached the keyring"; else fail "$1: the keyring holds an item for $2"; fi
+}
+fixture_env
+fxput "$TMP/st/.env" 'TOK=%s\nOTHER_TOOL_TOKEN=%s\nTOK=%s\n' "$(canary old)" "$(canary other)" "$(canary new)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+APPLY_ARGS="-y --keys TOK" apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N32 a one-line later duplicate: the run exits 0"; else fail "N32 a one-line later duplicate: exited $rc: $out"; fi
+quote_stays "N32 a one-line later duplicate" "$TMP/st/.env" "  TOK  unowned  stays (it has several entries; keep one)"
+no_item "N32 a one-line later duplicate" TOK
+fixture_env
+fxput "$TMP/st/.env" "TOK=%s\nTOK='%s\n'\n" "$(canary one)" "$(canary two)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+APPLY_ARGS="-y --unowned" apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N33 a several-line later duplicate: the run exits 0"; else fail "N33 a several-line later duplicate: exited $rc: $out"; fi
+quote_stays "N33 a several-line later duplicate" "$TMP/st/.env" "  TOK  unowned  stays (it has several entries; keep one)"
+no_item "N33 a several-line later duplicate" TOK
+fixture_env
+fxput "$TMP/st/.env" "UNREAD_SECRET='%s\n'\nOTHER_TOOL_TOKEN=%s\nUNREAD_SECRET=%s\n" "$(canary a)" "$(canary other)" "$(canary b)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N34 a manifest secret over two lines with a later entry: the run exits 0"; else fail "N34 a manifest secret over two lines with a later entry: exited $rc: $out"; fi
+quote_stays "N34 a manifest secret over two lines with a later entry" "$TMP/st/.env" "  UNREAD_SECRET  secret  stays (it has several entries; keep one)"
+no_item "N34 a manifest secret over two lines with a later entry" UNREAD_SECRET
+fixture_env
+fxput "$TMP/st/.env" "UNREAD_SECRET=%s\nUNREAD_SECRET='%s\n'\n" "$(canary a)" "$(canary b)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y "HIMMEL_SECRETS_KEYRING=off "
+quote_stays "N35 no keyring, a several-line later duplicate" "$TMP/st/.env" "  UNREAD_SECRET  secret  stays (no keyring; its value runs over several lines)"
+lacks "N35 the legacy file holds no line of it" "UNREAD_SECRET" "$(cat "$store" 2>/dev/null)"
 
 if [ "$FAILED" -gt 0 ]; then
     echo "test-migrate-env: $FAILED FAILED"

@@ -29,11 +29,13 @@
 # the entry leave and another value is `held` and the entry stays. The value is read back
 # with `same-value`, and its whole entry leaves the file only on a match (a quoted value
 # over several lines goes whole, closing quote included); a value with a newline inside it
-# cannot be one keyring item and its entry stays. A process environment name (PATH, HOME,
-# XDG_*, ...) is never moved. Every name that reached the keyring is then cleared from the
-# systemd user manager with `systemctl --user unset-environment`; the report names them and
-# the names still held, and a manager that cannot be reached or read, or still holds a name,
-# fails the run (exit 1). Printed commands carry the --env of this run.
+# cannot be one keyring item and its entry stays. A name with more than one entry stays
+# too (keep one, then run again): the store reads the first entry and the removal would
+# take them all. A process environment name (PATH, HOME, XDG_*, ...) is never moved. Every
+# name that reached the keyring is then cleared from the systemd user manager with
+# `systemctl --user unset-environment`; the report names them and the names still held, and
+# a manager that cannot be reached or read, or still holds a name, fails the run (exit 1).
+# Printed commands carry the --env of this run.
 #
 # What an entry is is decided in one place, the entry table below: a line with an `=` outside any
 # quoted value, and a quoted value that does not close on its line runs on to the line that closes
@@ -42,8 +44,8 @@
 # closes stays whole on every route (a behaviour, policy or secret key, with a keyring or without, a
 # later duplicate too), and no line after it is moved or removed. A behaviour or policy key with a
 # value over several lines stays whole as well, a later duplicate included: himmel.conf and
-# config.json take one line per key. With no keyring, a secret whose value runs over several lines
-# stays in .env too: the legacy file takes one line per entry.
+# config.json take one line per key. With no keyring, a secret with an entry that runs over several
+# lines, a later duplicate's included, stays in .env too: the legacy file takes one line per entry.
 #
 # Order: plan, backup (~/.himmel/env-backups, mode 600), copy, secrets to the
 # keyring, verify, and only then remove the moved lines from .env. Verify runs the
@@ -59,7 +61,8 @@
 # ~/.himmel/env-keep.txt stay. A `failed` key stops the run with no line removed. A
 # blank secret line, and an `export NAME=` line of a himmel key (the readers do not
 # read it), stay with a plan row. Every line of a key that moves leaves .env, a later
-# duplicate too; this run's backup keeps a duplicate that holds another value.
+# duplicate too (a key stored by value stays instead when it has a second entry); this run's
+# backup keeps a duplicate that holds another value.
 #
 # The scrub: after the .env rewrite, when the secrets stage was allowed, a file in
 # ~/.himmel/env-backups and the .env copy in each config-audit backup (manifest
@@ -259,6 +262,11 @@ several_lines() {  # <file> <key>: the key's first entry runs over several lines
 several_any() {  # <file> <key>
     entry_table "$1" | awk -v k="$2" '$3 == k && ($2 == "open" || $2 != $1) { f = 1 } END { exit !f }'
 }
+# The key has more than one entry. A store by value reads the first one and the removal takes them all, so a later one would reach no store.
+# shellcheck disable=SC2016 # awk program text, not shell
+repeated_key() {  # <file> <key>
+    entry_table "$1" | awk -v k="$2" '$3 == k { n++ } END { exit !(n > 1) }'
+}
 # The file's lines with only (mode only) or without (mode drop) the entries named in <set> (" A B "). An
 # entry goes whole, a quoted value over several lines included. An entry of the set whose quote never
 # closes fails the call: nothing is copied or cut past a span the table did not close.
@@ -419,6 +427,8 @@ plan_own() {  # <key> <label>: a name outside the manifest that the user chose; 
         incomplete=1; plan="$plan  $key  $label  stays (no keyring)"$'\n'
     elif ! val=$(entry_value "$envfile" "$key"); then
         plan="$plan  $key  $label  stays (its quote never closes)"$'\n'
+    elif repeated_key "$envfile" "$key"; then
+        plan="$plan  $key  $label  stays (it has several entries; keep one)"$'\n'
     elif [ -z "$(_load_dotenv_trim "$val")" ]; then
         plan="$plan  $key  $label  stays (blank in .env: no value)"$'\n'
     else
@@ -474,7 +484,11 @@ for key in $names; do
             elif [ "$backend_ok" -eq 1 ]; then
                 # A quoted value over several lines is read whole and removed whole, so it takes the same road as a named key.
                 if several_lines "$envfile" "$key"; then
-                    own_keys[${#own_keys[@]}]="$key"; plan="$plan  $key  secret  → keyring (value over several lines)"$'\n'
+                    if repeated_key "$envfile" "$key"; then
+                        stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  stays (it has several entries; keep one)"$'\n'
+                    else
+                        own_keys[${#own_keys[@]}]="$key"; plan="$plan  $key  secret  → keyring (value over several lines)"$'\n'
+                    fi
                 else
                     secret_keys[${#secret_keys[@]}]="$key"; plan="$plan  $key  secret  → keyring"$'\n'
                 fi
@@ -484,8 +498,8 @@ for key in $names; do
                     stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  stays (no keyring; its readers could not be searched)"$'\n'
                 elif [ -n "$reader" ]; then
                     stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  stays (no keyring; read by $reader)"$'\n'
-                elif several_lines "$envfile" "$key"; then
-                    # the legacy file takes one line per entry: a value over several lines stays whole in .env
+                elif several_any "$envfile" "$key"; then
+                    # the legacy file takes one line per entry: a value over several lines stays whole in .env, a later duplicate's too
                     stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  stays (no keyring; its value runs over several lines)"$'\n'
                 else
                     file_keys[${#file_keys[@]}]="$key"; plan="$plan  $key  secret  → $store_rel (no keyring)"$'\n'
