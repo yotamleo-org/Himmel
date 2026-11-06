@@ -836,42 +836,64 @@ fi
 # runtime-computed imports need a selector-miss row before adding a new parser.
 : > "$work/importers" || io_fail "creating the importer list"
 : > "$work/import-edges" || io_fail "creating the import index"
+# One git grep prints every import-shaped line of every importer ("<head>:<path>"
+# NUL "<line>") and one awk indexes them: a git show + awk per importer file spawned
+# over a thousand processes on a wide diff. A file with no such line has no edge.
+# -a reads a file git calls binary as text. tr turns the NUL after the path into
+# \001, the one separator awk can hold. The -c overrides pin the output shape against a
+# user's grep.lineNumber / grep.column / color.grep, which would prefix or colour the
+# lines the awk reads (the edges would vanish at exit 0); -l never printed lines.
 grep_rc=0
-git grep -z -l -E '(^|[^A-Za-z0-9_])(import|from|require)([^A-Za-z0-9_]|$)' "$head_sha" -- \
+git -c grep.lineNumber=false -c grep.column=false -c color.grep=false grep -z -a -E '(^|[^A-Za-z0-9_])(import|from|require)([^A-Za-z0-9_]|$)' "$head_sha" -- \
     ':(glob)**/*.js' ':(glob)**/*.mjs' ':(glob)**/*.cjs' ':(glob)**/*.ts' ':(glob)**/*.py' > "$work/importers" || grep_rc=$?
 [ "$grep_rc" -le 1 ] || io_fail "listing importers"
-while IFS= read -r -d '' importer; do
-    importer="${importer#"${head_sha}:"}"
-    git show "${head_sha}:${importer}" > "$work/import.blob" || io_fail "reading an importer"
-    awk -v importer="$importer" '
-        function emit(module, n, parts) {
-            n = split(module, parts, "/")
-            module = parts[n]
-            if (module ~ /^[A-Za-z0-9_.-]+$/ && module != "." && module != "..")
-                print module "|" importer
+tr '\0' '\001' < "$work/importers" > "$work/import.lines" || io_fail "reading the importer lines"
+awk -v pre="${head_sha}:" '
+    function emit(module, n, parts) {
+        n = split(module, parts, "/")
+        module = parts[n]
+        if (module ~ /^[A-Za-z0-9_.-]+$/ && module != "." && module != "..")
+            print module "|" importer
+    }
+    {
+        i = index($0, "\001")
+        importer = substr($0, length(pre) + 1, i - 1 - length(pre))
+        $0 = substr($0, i + 1)
+    }
+    /^[[:space:]]*(#|\/\/|\/\*|\*)/ { next }
+    importer ~ /\.py$/ {
+        if ($0 !~ /^[[:space:]]*(from|import)[[:space:]]/) next
+        sub(/#.*/, "")
+        gsub(/[^A-Za-z0-9_.]/, " ")
+        for (i = 1; i <= NF; i++) {
+            if ($i == "from" || $i == "import" || $i == "as") continue
+            n = split($i, parts, ".")
+            emit(parts[n])
         }
-        /^[[:space:]]*(#|\/\/|\/\*|\*)/ { next }
-        importer ~ /\.py$/ {
-            if ($0 !~ /^[[:space:]]*(from|import)[[:space:]]/) next
-            sub(/#.*/, "")
-            gsub(/[^A-Za-z0-9_.]/, " ")
-            for (i = 1; i <= NF; i++) {
-                if ($i == "from" || $i == "import" || $i == "as") continue
-                n = split($i, parts, ".")
-                emit(parts[n])
-            }
-            next
+        next
+    }
+    /(^|[^A-Za-z0-9_])(import|from|require)([^A-Za-z0-9_]|$)/ {
+        text = $0
+        while (match(text, /["\047][^"\047]+["\047]/)) {
+            module = substr(text, RSTART + 1, RLENGTH - 2)
+            if (module ~ /\//) emit(module)
+            text = substr(text, RSTART + RLENGTH)
         }
-        /(^|[^A-Za-z0-9_])(import|from|require)([^A-Za-z0-9_]|$)/ {
-            text = $0
-            while (match(text, /["\047][^"\047]+["\047]/)) {
-                module = substr(text, RSTART + 1, RLENGTH - 2)
-                if (module ~ /\//) emit(module)
-                text = substr(text, RSTART + RLENGTH)
-            }
-        }
-    ' "$work/import.blob" >> "$work/import-edges" || io_fail "indexing imports"
-done < "$work/importers"
+    }
+' "$work/import.lines" >> "$work/import-edges" || io_fail "indexing imports"
+
+# Whether git archive may rewrite a blob it unpacks (see grep_narrowed): a .gitattributes
+# at head naming an attribute that changes content, or one that is not a regular file.
+# git grep over a tree skips a symlink blob, but git archive reads it as attribute text,
+# so the modes are listed too.
+attr_slow=0
+grep_rc=0
+git grep -q -a -E 'working-tree-encoding|export-subst|filter=|crlf|(^|[[:space:]])ident([[:space:]]|$)' "$head_sha" -- ':(glob)**/.gitattributes' || grep_rc=$?
+[ "$grep_rc" -le 1 ] || io_fail "reading the attribute files"
+[ "$grep_rc" -ne 0 ] || attr_slow=1
+git ls-tree -r -z "$head_sha" > "$work/tree.modes" || io_fail "listing the tree modes"
+tr '\0' '\n' < "$work/tree.modes" | awk -F '\t' '{ n = split($2, p, "/") } p[n] == ".gitattributes" && $1 !~ /^100/' > "$work/attr.nonreg" || io_fail "finding the non-regular attribute files"
+[ ! -s "$work/attr.nonreg" ] || attr_slow=1
 
 select_changed() {
     cp "$1" "$work/changed" || io_fail "reading the queried paths"
@@ -935,9 +957,10 @@ done < "$work/changed"
 # ponytail: a path holding a newline splits in two, as with the -z lists above;
 # upgrade path is NUL-reading consumers if one ever appears.
 grep_narrowed() {
-    local pf="$1" lf="$2" out="$3" what="$4" cand p narrow="$work/narrow.d"
+    local pf="$1" lf="$2" out="$3" what="$4" p narrow="$work/narrow.d" src="$work/narrow.src"
     shift 4
     case "$pf" in /* | [A-Za-z]:[\\/]*) ;; *) pf="$PWD/$pf" ;; esac   # the ERE pass runs from $narrow
+    case "$lf" in /* | [A-Za-z]:[\\/]*) ;; *) lf="$PWD/$lf" ;; esac   # the fixed-string pass runs from $src
     : > "$out" || io_fail "creating the ${what} hit list"   # a failed open is rc 1 below
     : > "$work/narrow.cand" || io_fail "creating the ${what} candidate list"
     grep_rc=0
@@ -949,18 +972,93 @@ grep_narrowed() {
     [ -s "$work/narrow.cand" ] || return 0
     rm -rf "$narrow"
     mkdir "$narrow" || io_fail "creating the ${what} scratch tree"
-    while IFS= read -r -d '' cand; do
-        p="${cand#"${head_sha}:"}"
+    # A git show + grep + mkdir per candidate is 3.8k spawns on a wide diff, over half
+    # the read. So the candidates at head are unpacked by a few git archive batches and
+    # ONE grep prints the literal-bearing lines of every one. git grep -F -f cannot do
+    # that pass: it tests the patterns one at a time per line.
+    # git archive writes the working-tree form of a blob, by the attributes of the tree
+    # it archives, and that tree is the PR's own head: working-tree-encoding=UTF-16LE on
+    # a suite would hand the narrowing a copy holding no literal and drop the suite at
+    # exit 0. So when any .gitattributes at head could rewrite content (an encoding,
+    # export-subst, ident, a filter, crlf, or a file that is not a regular one: attr_slow,
+    # set once above), no candidate is unpacked: all take the
+    # per-file path below, which reads the raw blob. A candidate the unpack lacks
+    # (export-ignore), or holds as a symlink, takes that path too.
+    # ponytail: a pattern hit in a comment of .gitattributes also takes the slow path;
+    # an attribute set only in $GIT_DIR/info/attributes is the station's, not the PR's.
+    # Upgrade path: git cat-file --batch if the slow path ever matters.
+    # The candidate list is "<head>:<path>" NUL entries: strip the prefix first.
+    tr '\0' '\n' < "$work/narrow.cand" | sed "s/^${head_sha}://" | tr '\n' '\0' > "$work/narrow.rel" || io_fail "reading the ${what} candidates"
+    : > "$work/narrow.reg" || io_fail "creating the ${what} candidate list"
+    : > "$work/narrow.irr" || io_fail "creating the ${what} candidate list"
+    rm -rf "$src"
+    mkdir "$src" || io_fail "creating the ${what} scratch tree"
+    if [ "$attr_slow" -eq 1 ]; then
+        cp "$work/narrow.rel" "$work/narrow.irr" || io_fail "recording the ${what} candidates"
+    else
+        # --literal-pathspecs: a name holding * ? [ is itself, not a glob. A failed batch
+        # (a name past NAME_MAX cannot be unpacked) stops the run: no suite is dropped.
+        # core.autocrlf=false: a user's setting must not add a CR to the unpacked lines.
+        # shellcheck disable=SC2016  # the child shell expands its own $1 $2 $@
+        xargs -0 sh -c 'h=$1; d=$2; shift 2; git -c core.autocrlf=false --literal-pathspecs archive --format=tar "$h" -- "$@" > "$d.tar" && tar -x -f "$d.tar" -C "$d"' sh "$head_sha" "$src" < "$work/narrow.rel" \
+            || io_fail "creating the ${what} scratch copy of the candidates"
+        # Split the candidates the unpack holds as regular files from the rest.
+        while IFS= read -r -d '' p; do
+            # A write that fails (a full disk) must not drop the candidate: it stops the run.
+            if [ -f "$src/$p" ] && [ ! -L "$src/$p" ]; then
+                printf '%s\0' "$p" >&3 || io_fail "recording a ${what} candidate"
+            else
+                printf '%s\0' "$p" >&4 || io_fail "recording a ${what} candidate"
+            fi
+        done < "$work/narrow.rel" 3> "$work/narrow.reg" 4> "$work/narrow.irr" || io_fail "splitting the ${what} candidates"
+    fi
+    # "<path>" NUL "<line>" for each matching line. -H: a lone file still names itself.
+    # LC_ALL=C -a: byte-exact, and a line that is not valid UTF-8 is still text.
+    : > "$work/narrow.lines" || io_fail "creating the ${what} candidate list"
+    if [ -s "$work/narrow.reg" ]; then
+        # xargs reports 123 for any batch that exited 1-125, and grep's 1 is "no match":
+        # the wrapper turns rc 1 into success so that only a real error (rc 2) reaches it.
+        # shellcheck disable=SC2016  # the child shell expands its own $0 $@
+        ( cd "$src" && LC_ALL=C xargs -0 sh -c 'grep -HaF --null -f "$0" -- "$@" || [ $? -eq 1 ]' "$lf" ) < "$work/narrow.reg" > "$work/narrow.lines" || io_fail "narrowing the candidates for ${what}"
+    fi
+    # The NUL after the path becomes \001 (a byte awk can hold). LC_ALL=C: byte-exact
+    # index/substr on a line that is not valid UTF-8.
+    tr '\0' '\001' < "$work/narrow.lines" > "$work/narrow.tagged" || io_fail "reading the ${what} candidates"
+    # Each candidate's directory, once, created by one mkdir -p batch. Every name
+    # starts with $narrow/, so none reads as an option.
+    NARROW_DIR="$narrow" LC_ALL=C awk '
+        {
+            i = index($0, "\001")
+            path = substr($0, 1, i - 1)
+            if (sub(/[^\/]*$/, "", path) && path != "" && !(path in seen)) { seen[path] = 1; print ENVIRON["NARROW_DIR"] "/" path }
+        }
+    ' "$work/narrow.tagged" > "$work/narrow.dirs.txt" || io_fail "listing the ${what} scratch directories"
+    tr '\n' '\0' < "$work/narrow.dirs.txt" > "$work/narrow.dirs" || io_fail "converting the ${what} scratch directory list"
+    if [ -s "$work/narrow.dirs" ]; then
+        xargs -0 mkdir -p < "$work/narrow.dirs" || io_fail "creating the ${what} scratch tree"
+    fi
+    # One scratch copy per candidate, holding its literal-bearing lines. Lines of a
+    # file are contiguous in the grep output, so one file is open at a time. A
+    # redirect that cannot open its target is rc 1, the code for "no match", and an
+    # awk one exits non-zero: either way the suite is never dropped silently.
+    NARROW_DIR="$narrow" LC_ALL=C awk '
+        {
+            i = index($0, "\001")
+            path = substr($0, 1, i - 1)
+            if (path != cur) { if (cur != "") close(file); cur = path; file = ENVIRON["NARROW_DIR"] "/" path }
+            print substr($0, i + 1) > file
+        }
+        END { if (cur != "") close(file) }
+    ' "$work/narrow.tagged" || io_fail "creating the ${what} scratch copy of a candidate"
+    # A candidate the unpack does not hold as a regular file is read from git itself.
+    while IFS= read -r -d '' p; do
         case "$p" in */*) mkdir -p -- "$narrow/${p%/*}" || io_fail "creating the ${what} scratch tree" ;; esac
         git show "${head_sha}:${p}" > "$work/narrow.blob" || io_fail "reading ${p} at ${head_sha} for ${what}"
-        # LC_ALL=C -a: byte-exact, and a line that is not valid UTF-8 is still text.
-        # A redirect that cannot open its target is rc 1, the code for "no match":
-        # create the scratch copy in a checked step first or the suite is dropped.
         : > "$narrow/$p" || io_fail "creating the ${what} scratch copy of ${p}"
         grep_rc=0
         LC_ALL=C grep -aF -f "$lf" "$work/narrow.blob" > "$narrow/$p" || grep_rc=$?
         [ "$grep_rc" -le 1 ] || io_fail "narrowing ${p} for ${what}"
-    done < "$work/narrow.cand"
+    done < "$work/narrow.irr"
     : > "$work/narrow.hits" || io_fail "creating the ${what} result file"
     grep_rc=0
     ( cd "$narrow" || exit 3
