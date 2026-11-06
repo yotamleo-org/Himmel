@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, readFileSync, appen
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readNewLines, readMeta, writeMeta, ensureSession, appendLine, sessionDir } from "./bus";
-import { ingestUpdates, repairThenIngest, loadOffset, handleInbound, handleAutoCommand, replyViaOutbox, runAndSettle, reconcile, flushOutboxes, isRetryDue, peekPending, commitPending, makeRunFn, makeAllow, makeDispatcher, makeFetchVoice, sweepStuckRunning, signalTyping, guarded, deliverAllPending, sweepAttachments, resolveRetentionMs, noticeText, parseBridgeEnv, loadBridgeEnv, bridgeEnvOrigin, makeRestart, makeBurstCoalescer, intervalEnvMs, windowEnvMs, handleBatch, ingestBatch, getUpdatesBackoffMs, shouldAlertOutage, OUTAGE_ALERT_AFTER_MS, parseModelTag, hasReadOnlyFloor, mentionsBot, loadPluginProfilesModule, type FetchImageFn } from "./poller";
+import { ingestUpdates, repairThenIngest, loadOffset, handleInbound, handleAutoCommand, replyViaOutbox, sendFileViaOutbox, runAndSettle, reconcile, flushOutboxes, isRetryDue, peekPending, commitPending, makeRunFn, makeAllow, makeDispatcher, makeFetchVoice, sweepStuckRunning, signalTyping, guarded, deliverAllPending, sweepAttachments, resolveRetentionMs, noticeText, parseBridgeEnv, loadBridgeEnv, bridgeEnvOrigin, makeRestart, makeBurstCoalescer, intervalEnvMs, windowEnvMs, handleBatch, ingestBatch, getUpdatesBackoffMs, shouldAlertOutage, OUTAGE_ALERT_AFTER_MS, parseModelTag, hasReadOnlyFloor, mentionsBot, loadPluginProfilesModule, type FetchImageFn } from "./poller";
 import { readFile, writeFile, mkdir, utimes } from "node:fs/promises";
 import { GROUP_ANONYMOUS_BOT_ID, isAllowed, isOperatorIdentity, vaultForChat } from "./gate";
 import { describeEnabledOps, KNOWN_OPS } from "./auto-action";
@@ -3729,4 +3729,117 @@ test("poller.ts logs no raw chat id or session name", () => {
     .filter(({ l }) => !l.includes("gated out chat"))
     .map(({ n, l }) => `${n}: ${l.trim().slice(0, 100)}`);
   expect(offenders).toEqual([]);
+});
+
+// --- a spec or plan page reaches the operator only by the chief's send-file ---
+
+const docChat = async (): Promise<string> => {
+  const r = root(); await ensureSession(r, "__chat__");
+  await writeMeta(r, "__chat__", { chat_id: 5, status: "idle", last_run_pid: null, last_run_at: null, task_name: null, retry_at: null });
+  mkdirSync(join(r, "outgoing"));
+  return r;
+};
+const flushDocs = async (r: string) => {
+  const texts: string[] = []; const docs: string[] = [];
+  await flushOutboxes(r, async (_c, t) => { texts.push(t); }, async (_c, p) => { docs.push(p); return true; });
+  return { texts, docs };
+};
+const outboxOf = (r: string) => join(sessionDir(r, "__chat__"), "outbox.jsonl");
+
+test("a hand-built spec page with its own document_path line is not delivered; the notice names the send-file route", async () => {
+  const r = await docChat(); const page = join(r, "outgoing", "spec.html"); writeFileSync(page, "<html>spec</html>");
+  await appendLine(outboxOf(r), JSON.stringify({ document_path: page, caption: "the spec" }));
+  const { texts, docs } = await flushDocs(r);
+  expect(docs).toEqual([]);
+  expect(texts.length).toBe(1);
+  expect(texts[0]).toContain("spec.html");
+  expect(texts[0]).toContain("send-file");
+});
+
+test("every page type is refused without the send-file tag (.html .htm .md .markdown, any case)", async () => {
+  const r = await docChat();
+  for (const n of ["a.html", "b.htm", "c.md", "d.markdown", "E.HTML"]) {
+    const p = join(r, "outgoing", n); writeFileSync(p, "x");
+    await appendLine(outboxOf(r), JSON.stringify({ document_path: p }));
+  }
+  const { texts, docs } = await flushDocs(r);
+  expect(docs).toEqual([]);
+  expect(texts.length).toBe(5);
+});
+
+test("a bridge report that is not a page type still reaches the operator without a tag", async () => {
+  const r = await docChat(); const paths: string[] = [];
+  for (const n of ["report.txt", "report.pdf", "chart.png", "rows.csv", "data.json"]) {
+    const p = join(r, "outgoing", n); writeFileSync(p, "x"); paths.push(p);
+    await appendLine(outboxOf(r), JSON.stringify({ document_path: p }));
+  }
+  const { texts, docs } = await flushDocs(r);
+  expect(docs).toEqual(paths);
+  expect(texts).toEqual([]);
+});
+
+test("a page queued by send-file is delivered; the line carries the send-file tag and the file's sha256", async () => {
+  const r = await docChat(); const page = join(r, "outgoing", "spec.html"); writeFileSync(page, "<html>spec</html>");
+  await sendFileViaOutbox(r, 5, page, "cap");
+  const line = JSON.parse(readFileSync(outboxOf(r), "utf8").trim());
+  expect(line.via).toBe("send-file");
+  expect(line.sha256).toBe(new Bun.CryptoHasher("sha256").update("<html>spec</html>").digest("hex"));
+  const { texts, docs } = await flushDocs(r);
+  expect(docs).toEqual([page]);
+  expect(texts).toEqual([]);
+});
+
+// The digest is checked by the document sender against the bytes of the descriptor it holds and uploads.
+const flushWithRealSender = async (r: string) => {
+  const { makeSendDoc } = await import("./poller");
+  const texts: string[] = []; const uploads: string[] = [];
+  const sender = makeSendDoc("123:FAKE", r, 5, (async (_t: string, _c: number, src: any) => { uploads.push(Buffer.from(src.bytes).toString("utf8")); return true; }) as any);
+  await flushOutboxes(r, async (_c, t) => { texts.push(t); }, sender);
+  return { texts, uploads };
+};
+
+test("a send-file line is delivered with the bytes it recorded, through the real document sender", async () => {
+  const r = await docChat(); const page = join(r, "outgoing", "spec.html"); writeFileSync(page, "<html>spec</html>");
+  await sendFileViaOutbox(r, 5, page);
+  const { texts, uploads } = await flushWithRealSender(r);
+  expect(uploads).toEqual(["<html>spec</html>"]);
+  expect(texts).toEqual([]);
+});
+
+test("a send-file line whose file changed since it was queued uploads nothing and tells the chat", async () => {
+  const r = await docChat(); const page = join(r, "outgoing", "spec.html"); writeFileSync(page, "<html>checked</html>");
+  await sendFileViaOutbox(r, 5, page);
+  writeFileSync(page, "<html>swapped after the critic</html>");
+  const { texts, uploads } = await flushWithRealSender(r);
+  expect(uploads).toEqual([]);
+  expect(texts.length).toBe(1);
+  expect(texts[0]).toContain("spec.html");
+});
+
+test("a send-file line copied onto another file of its own uploads nothing", async () => {
+  const r = await docChat(); const sent = join(r, "outgoing", "sent.html"); writeFileSync(sent, "<html>sent</html>");
+  const other = join(r, "outgoing", "other.html"); writeFileSync(other, "<html>hand built</html>");
+  await sendFileViaOutbox(r, 5, sent);
+  const line = JSON.parse(readFileSync(outboxOf(r), "utf8").trim());
+  await appendLine(outboxOf(r), JSON.stringify({ ...line, document_path: other }));
+  const { uploads } = await flushWithRealSender(r);
+  expect(uploads).toEqual(["<html>sent</html>"]);   // the first line only
+});
+
+test("a tagged line naming a device or a pipe never makes the poller read it", async () => {
+  const r = await docChat();
+  await appendLine(outboxOf(r), JSON.stringify({ document_path: "/dev/zero", via: "send-file", sha256: "0".repeat(64) }));
+  const { texts, uploads } = await flushWithRealSender(r);
+  expect(uploads).toEqual([]);
+  expect(texts.length).toBe(1);
+});
+
+test("a page line with only one of the two send-file fields is refused", async () => {
+  const r = await docChat(); const page = join(r, "outgoing", "spec.html"); writeFileSync(page, "x");
+  const sha = new Bun.CryptoHasher("sha256").update("x").digest("hex");
+  await appendLine(outboxOf(r), JSON.stringify({ document_path: page, via: "send-file" }));
+  await appendLine(outboxOf(r), JSON.stringify({ document_path: page, sha256: sha }));
+  const { texts, docs } = await flushDocs(r);
+  expect(docs).toEqual([]);
+  expect(texts.length).toBe(2);
 });

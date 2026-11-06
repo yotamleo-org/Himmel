@@ -1049,8 +1049,22 @@ export type SendFn = (chat_id: number, text: string, replyToMessageId?: number, 
 // delivered through sendDoc (sendDocument in prod) to the session's own chat. A document
 // that cannot be delivered (no sender, missing/oversize file, Bot API refusal) is told to
 // the chat as a text notice (never a silent drop), and the cursor still advances.
-export type SendDocFn = (chat_id: number, path: string, caption?: string) => Promise<boolean>;
+// `expectSha256`: the digest send-file recorded; the sender refuses the file unless the bytes it holds match.
+export type SendDocFn = (chat_id: number, path: string, caption?: string, expectSha256?: string) => Promise<boolean>;
 export const MAX_DOC_BYTES = 50 * 1024 * 1024;
+
+// Operator decision 700: a spec or plan page reaches the operator only through the chief's
+// send-file, which checks the critic first and then queues a line tagged `via: "send-file"` with the sha256
+// of the file it copied. A tagged line goes only if the bytes the document sender holds have that sha256
+// (makeSendDoc compares them before the upload). An untagged line goes unless the file is a page type;
+// the bridge sends a report as .txt, .pdf, .png, .csv, .json or plain text.
+// ponytail: a session that writes both fields and the right sha256 by hand still passes (the bridge can
+// append to its own outbox); the upgrade path is a hook denying the bridge outbox writes of those fields.
+export const SEND_FILE_VIA = "send-file";
+const PAGE_TYPE = /\.(html?|md|markdown)$/i;
+const untaggedPageRefusal = (path: string): string | null => PAGE_TYPE.test(path)
+  ? `⚠️ ${basename(path)} was not sent: a spec or plan page reaches the operator only through the chief's send-file, which checks its critics first. A bridge report goes as .txt, .pdf, .png, .csv or .json, or as plain text.`
+  : null;
 
 export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDocFn): Promise<void> {
   let names: string[] = [];
@@ -1072,13 +1086,18 @@ export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDo
       for (const ln of complete.split("\n")) {
         const bytes = Buffer.byteLength(ln + "\n", "utf8");
         if (ln.trim()) {
-          let out: { text?: string; console?: string; reply_to_message_id?: number; markup?: object; document_path?: string; caption?: string } | null = null;
+          let out: { text?: string; console?: string; reply_to_message_id?: number; markup?: object; document_path?: string; caption?: string; via?: unknown; sha256?: unknown } | null = null;
           try { out = JSON.parse(ln); } catch {}
           if (out && typeof out.document_path === "string") {
             if (typeof out.text === "string" && out.text) await send(meta.chat_id, out.text, out.reply_to_message_id, out.markup);
-            // A group chat never receives a file, whatever the session is called (a ticket session can run in a group).
-            const ok = !s.startsWith("group_") && meta.chat_id > 0 && sendDoc ? await sendDoc(meta.chat_id, out.document_path, typeof out.caption === "string" ? out.caption : undefined) : false;
-            if (!ok) await send(meta.chat_id, `⚠️ couldn't send the file ${basename(out.document_path)} — it may be outside the send folder, missing, over 50 MB, sent from a group, or refused by Telegram.`);
+            const tagged = out.via === SEND_FILE_VIA && typeof out.sha256 === "string";
+            const refusal = tagged ? null : untaggedPageRefusal(out.document_path);
+            if (refusal) await send(meta.chat_id, refusal);
+            else {
+              // A group chat never receives a file, whatever the session is called (a ticket session can run in a group).
+              const ok = !s.startsWith("group_") && meta.chat_id > 0 && sendDoc ? await sendDoc(meta.chat_id, out.document_path, typeof out.caption === "string" ? out.caption : undefined, tagged ? out.sha256 : undefined) : false;
+              if (!ok) await send(meta.chat_id, `⚠️ couldn't send the file ${basename(out.document_path)} — it may be outside the send folder, missing, over 50 MB, changed since send-file queued it, sent from a group, or refused by Telegram.`);
+            }
           } else if (out) {
             const messageId = await send(meta.chat_id, out.text ?? "", out.reply_to_message_id, out.markup); // send BEFORE committing
             if (out.console && typeof messageId === "number") await rememberConsoleReply(root, meta.chat_id, messageId, out.console);
@@ -2217,16 +2236,18 @@ export async function replyViaOutbox(root: string, chat_id: number, text: string
   await appendOutboxLine(root, chat_id, { text, ...(consoleName ? { console: consoleName } : {}), ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_to_message_id: replyToMessageId } : {}), ...(markup ? { markup } : {}) });
 }
 
-// Queue a local file for the chat; flushOutboxes sends it via sendDocument.
+// Queue a local file for the chat; flushOutboxes sends it via sendDocument. The line is tagged with
+// `via` and the file's sha256 so flushOutboxes can tell it from a page the bridge queued by hand.
 export async function sendFileViaOutbox(root: string, chat_id: number, document_path: string, caption?: string): Promise<void> {
-  await appendOutboxLine(root, chat_id, { document_path, ...(caption ? { caption } : {}) });
+  const sha256 = createHash("sha256").update(await readFile(document_path)).digest("hex");
+  await appendOutboxLine(root, chat_id, { document_path, via: SEND_FILE_VIA, sha256, ...(caption ? { caption } : {}) });
 }
 
 // The poller-side document sender. The poller reads files outside any tool-permission
 // hook, so it ships only what sits under <bridge root>/outgoing (where send-file copies
 // its files): the real path must be inside that directory's real path, the path itself
 // must not be a symlink, and the file must be regular and within the Bot API's 50 MB.
-export const makeSendDoc = (token: string, root: string, operatorChat: number | null, upload: typeof sendDocument = sendDocument, beforeOpen?: () => Promise<void>): SendDocFn => async (chat, path, caption) => {
+export const makeSendDoc = (token: string, root: string, operatorChat: number | null, upload: typeof sendDocument = sendDocument, beforeOpen?: () => Promise<void>): SendDocFn => async (chat, path, caption, expectSha256) => {
   if (!isAbsolute(path) || operatorChat === null || chat !== operatorChat) return false;   // a file goes to the operator's own chat only
   let bytes: Buffer;
   let name: string;
@@ -2251,6 +2272,7 @@ export const makeSendDoc = (token: string, root: string, operatorChat: number | 
     } finally { await fh.close(); }
   } catch { return false; }
   if (bytes.length > MAX_DOC_BYTES) return false;
+  if (expectSha256 !== undefined && createHash("sha256").update(bytes).digest("hex") !== expectSha256) return false;   // not the bytes send-file checked
   return upload(token, chat, { name, bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer }, caption);
 };
 

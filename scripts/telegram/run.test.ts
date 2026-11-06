@@ -67,6 +67,12 @@ test("buildPrompt tells the run to Read a document_path attachment", () => {
   expect(p).toContain("document_path");
   expect(p).toContain("Read");
 });
+test("buildPrompt sends a spec or plan page by the chief's send-file and a report as a non-page file or text", () => {
+  const p = buildPrompt("__chat__", { inbox:"i", outbox:"/b/sessions/s/outbox.jsonl", context:"c", cwd:"/r" });
+  expect(p).toContain("send-file");
+  expect(p).toContain(".txt, .pdf, .png, .csv or .json");
+  expect(p).not.toContain("goes as .html");
+});
 test("buildPrompt with a vault adds a file-into-vault clause", () => {
   const p = buildPrompt("group_-50", { inbox:"i", outbox:"o", context:"c", cwd:"/r" }, "/salus");
   expect(p).toContain("/salus");
