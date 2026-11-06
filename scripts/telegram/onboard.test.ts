@@ -1,4 +1,4 @@
-// scripts/telegram/onboard.test.ts — bridge onboarding mode tests.
+// scripts/telegram/onboard.test.ts. Bridge onboarding mode tests.
 // Run from the REPO ROOT: bun test scripts/telegram/onboard.test.ts --dots
 import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -174,7 +174,7 @@ test("V4 end-to-end: run() refuses with a real live pid in a sandboxed BRIDGE_RO
   const prevRoot = process.env.BRIDGE_ROOT;
   process.env.BRIDGE_ROOT = root;
   try {
-    // process.pid (this test process) is genuinely alive — a truthful "live pid"
+    // process.pid (this test process) is genuinely alive, a truthful "live pid"
     // fixture without touching any real bridge.
     writeFileSync(join(root, "supervisor.pid"), formatPidfile({ supervisor: process.pid, poller: null }), "utf8");
     const errors: string[] = [];
@@ -250,7 +250,7 @@ test("run(): a garbage ONBOARD_TIMEOUT_SEC does not disable the poll loop (regre
       fetchFn: (async () => { getUpdatesCalls++; return new Response(JSON.stringify({ ok: true, result: [] })); }) as unknown as typeof fetch,
       // Advances 100s per call: call #1 sets the deadline (n=100000,
       // deadline=400000); call #2 (while-check) passes (200000<400000) so the
-      // loop body runs exactly once (proving it runs AT ALL — the NaN-deadline
+      // loop body runs exactly once (proving it runs AT ALL, the NaN-deadline
       // bug made it never enter); call #3 (remainingSec) and call #4 (the next
       // while-check, n=400000) then exceed the deadline, so the test
       // terminates after exactly one getUpdates call.
@@ -362,7 +362,7 @@ test("--help prints usage and exits 0 WITHOUT ever calling loadToken", async () 
 // --- Lock-path cross-check against the sibling's restart-bridge.sh ---
 // This depends on a SIBLING agent's file (scripts/telegram/restart-bridge.sh).
 // If it hasn't landed yet, SKIP loudly (never a silent or
-// fake pass) — the parent re-runs this suite once it does.
+// fake pass), the parent re-runs this suite once it does.
 
 const PRINT_LOCK_PATH_TIMEOUT_MS = 10_000;
 
@@ -372,7 +372,7 @@ function spawnPrintLockPath(scriptPath: string, env: Record<string, string | und
     env, stdout: "pipe", stderr: "pipe", timeout: PRINT_LOCK_PATH_TIMEOUT_MS,
   });
   const elapsedMs = Date.now() - startedAt;
-  // Bun.spawnSync reports a clean exit as signalCode: undefined, not null —
+  // Bun.spawnSync reports a clean exit as signalCode: undefined, not null,
   // check truthiness, not strict-equals-null, or every successful run reads
   // as a false "timeout".
   if (proc.exitCode !== 0 || proc.signalCode) {
@@ -431,7 +431,7 @@ test("run(): a persistently erroring getUpdates backs off instead of spinning, a
   try {
     let t = 0;
     // `sleep` advances the simulated clock by exactly the backoff duration
-    // instead of actually waiting — this is what makes "bounded attempts in
+    // instead of actually waiting. This is what makes "bounded attempts in
     // a fixed window" observable without a real multi-second test: without a
     // backoff sleep, `now()` never advances and the loop would spin forever
     // (the test would time out instead of passing).
@@ -452,7 +452,7 @@ test("run(): a persistently erroring getUpdates backs off instead of spinning, a
     expect(rc).toBe(0);   // clean exit at the deadline, not a crash/hang
     expect(getUpdatesCalls).toBeGreaterThan(0);
     // 10s window / a multi-second backoff bounds this to a handful of
-    // attempts — nowhere near "one per tick" (which would spin unboundedly).
+    // attempts, nowhere near "one per tick" (which would spin unboundedly).
     expect(getUpdatesCalls).toBeLessThan(20);
   } finally {
     if (prevRoot === undefined) delete process.env.BRIDGE_ROOT; else process.env.BRIDGE_ROOT = prevRoot;

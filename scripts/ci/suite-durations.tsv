@@ -282,6 +282,7 @@ scripts/cr/test-orphan-check.sh	0
 scripts/cr/test-panel-first-pass.sh	13
 scripts/cr/test-pr-check-context.sh	100
 scripts/cr/test-pr-check-env.sh	1
+scripts/cr/test-pr-check-outside.sh	2
 scripts/cr/test-pr-check-pair.sh	2
 scripts/cr/test-pr-check-rounds.sh	732
 scripts/cr/test-pr-check-run.sh	4
@@ -375,6 +376,7 @@ scripts/graphify/test-graph-prune-deleted.sh	6
 scripts/graphify/test-graph-publish.sh	1
 scripts/graphify/test-graph-refresh.sh	1
 scripts/graphify/test-harden-graph.sh	2
+scripts/graphify/test-publish-graph-channel.sh	7
 scripts/graphify/test-worker-graph-rationale.sh	2
 scripts/graphify/test-worker-graph.sh	3
 scripts/graphify/test-refresh-graph-map-backup-prune.sh	0

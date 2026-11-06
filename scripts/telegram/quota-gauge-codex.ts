@@ -1,11 +1,11 @@
 // scripts/telegram/quota-gauge-codex.ts
-// WS9 Codex lane probe — parse the primary (5h) and secondary
+// WS9 Codex lane probe. Parse the primary (5h) and secondary
 // (weekly) banks' used_percent + reset_at out of a ~/.codex/logs_2.sqlite*
 // rate-limit blob and build canonical quota-gauge rows. A best-effort
 // PIGGYBACK on the (rare) hermes Codex dispatch: no standalone lean-invoke
 // command (F5, YAGNI until a reader consumes it), no new poll. Pure parse +
 // row-build are fixture-tested here; the thin append is wired at the hermes
-// Codex dispatch touchpoint (deferred — see Task 4 verify / PR body: no such
+// Codex dispatch touchpoint (deferred, see Task 4 verify / PR body: no such
 // touchpoint on main yet, and a parallel change owns the hermes Codex
 // surface).
 import type { QuotaGaugeRecord } from "./quota-gauge";
@@ -42,7 +42,7 @@ function parseBank(blob: string, bank: "primary" | "secondary"): CodexBank | nul
 }
 
 // Parse both banks out of the blob. Returns null when NEITHER bank is found
-// (T6 — never a fabricated number). One bank found is enough to return a
+// (T6, never a fabricated number). One bank found is enough to return a
 // non-null result with the other slot null.
 export function parseCodexUsage(blob: string): ParsedCodex | null {
   const primary = parseBank(blob, "primary");
@@ -55,7 +55,7 @@ function isoOrNull(ms: number | null): string | null {
   return ms === null ? null : new Date(ms).toISOString();
 }
 
-// Map the parsed reading to canonical rows — one per found bank. `null` ->
+// Map the parsed reading to canonical rows, one per found bank. `null` ->
 // exactly one `invisible`-source row with null fields (visible-not-silent,
 // never a fabricated number). glm_peak is a reserved, always-null v1 column.
 export function buildCodexRows(parsed: ParsedCodex | null, nowMs: number): QuotaGaugeRecord[] {

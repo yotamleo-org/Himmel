@@ -21,10 +21,10 @@ const SAMPLE_WAV = join(WHISPER_DIR, "jfk.wav");
 
 testFn("LIVE: transcribe jfk.wav via real whisper.cpp — transcript contains expected words", async () => {
   // Guard: binaries + sample file must exist or the test gives a useless error
-  await access(SAMPLE_WAV);   // throws ENOENT if missing — tells the operator what to fix
+  await access(SAMPLE_WAV);   // throws ENOENT if missing, tells the operator what to fix
 
   const transcript = await transcribe(SAMPLE_WAV);
-  // whisper output for jfk.wav is stable across models — key phrase is deterministic
+  // whisper output for jfk.wav is stable across models, key phrase is deterministic
   expect(transcript).not.toBeNull();
   const lower = transcript!.toLowerCase();
   expect(lower).toContain("country");

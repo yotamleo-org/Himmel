@@ -1,6 +1,6 @@
 ---
 resume_cwd: @REPO@
-description: Lane canary (@LANE@): a no-op worker that proves this lane launches, registers and writes a first Results bullet
+description: "Lane canary (@LANE@): a no-op worker that proves this lane launches, registers and writes a first Results bullet"
 template_version: 3
 ---
 

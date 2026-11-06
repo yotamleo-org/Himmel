@@ -44,7 +44,7 @@ always appends [`worker-preface-claudex.md`](worker-preface-claudex.md).
 ```markdown
 ---
 resume_cwd: <absolute path to the worker's worktree>
-description: <one plain-language line: what this worker is doing and why>
+description: "<one plain-language line: what this worker is doing and why>"
 template_version: 3
 ---
 
@@ -329,7 +329,7 @@ template_version: 3
 | Queue lock + release token | Two sessions edit one handover doc, and the later write wins silently. |
 | Explicit do-nots | Scope widens into a neighbouring worker's files and the fan-out collides. |
 | Inherited PR block (resume or takeover only) | A resumed worker merges forward and pushes a PR the base has since made obsolete, because "no conflicts" reads as "still current". A takeover that rewrites the branch drops the original authors' credit (HIMMEL-7702). |
-| `description:` line (required) | A worker is named everywhere by its label and ticket (`N1452`, `PROJ-123`), which says nothing about what it is doing, least of all with no tracker or forge to fetch a title from. The front-matter line is the one plain-language description a surface shows NEXT TO the label (never instead: tooling keys on the label); `worker_description` in `scripts/lib/worker-identity.sh` is its only reader. `brief-lint.sh` fails a fresh brief with no line or the `<placeholder>`, and `headed-arm-worker.sh` refuses the launch (no flag skips it). A doc whose `## Results` already holds a bullet has run, so it resumes without one. |
+| `description:` line (required) | A worker is named everywhere by its label and ticket (`N1452`, `PROJ-123`), which says nothing about what it is doing, least of all with no tracker or forge to fetch a title from. The front-matter line is the one plain-language description a surface shows NEXT TO the label (never instead: tooling keys on the label); `worker_description` in `scripts/lib/worker-identity.sh` is its only reader. `brief-lint.sh` fails a fresh brief with no line or the `<placeholder>`, and `headed-arm-worker.sh` refuses the launch (no flag skips it). Keep the `description:` line double-quoted, on one line: an unquoted colon or quote breaks the YAML, and the lint refuses it. A doc whose `## Results` already holds a bullet has run, so it resumes without one. |
 | Prior art line (required) | In the 7 days to 2026-10-06 the qmd tool was called 93 times, 85 of them by 16 of 565 workers and none by a chief or judge: nothing in the brief asked for retrieval, so work was re-derived or duplicated (audit; graphify non-adoption was measured before). The chief runs the retrieval once at dispatch and every worker inherits it. `brief-lint.sh` fails a missing, empty, placeholder or bare `none` line (`none found (<query>)` passes) and `headed-arm-worker.sh` refuses the launch unless `--no-prior-art-check` is passed. |
 | Exemplar line (optional) | A worker told only to "add a gate" copies the nearest older gate, which may be the stale shape. Naming the one file that shows the paved path (e.g. `scripts/hooks/check-unchecked-mktemp.sh`, `scripts/handover/chief-kit/test-ready-check.sh`) makes the worker imitate that. Instructional only, no validator: judge it by drift before anyone gates it. |
 | The standing preface | Every rule the brief no longer repeats — reporting, RETASK asymmetry, RED-first, trailers in the first commit, GO-gated merge, the fill ceiling. It is injected by `--profile`, so a brief that omits it AND uses `--no-profile` is a worker running on vibes (a launch with neither is refused). |

@@ -66,7 +66,7 @@ export function buildPromQueryUrl(promUrl: string): string {
   return params ? `${path}?${params}&query=model_usage` : `${path}?query=model_usage`;
 }
 
-// One fetch outcome. `ok` carries the raw body (string or parsed object —
+// One fetch outcome. `ok` carries the raw body (string or parsed object,
 // parseModelUsage accepts both); `rate_limited` is HTTP 429; `error` is any
 // other failure (network, non-2xx, throw). The injected fetch maps errors to
 // this shape so runProbe never sees a throw from the transport.
@@ -96,8 +96,8 @@ export async function runProbe(opts: {
   log?: (msg: string) => void;
 }): Promise<ProbeOutcome> {
   const aenv = alibabaEnv(opts.env);
-  if (!alibabaEnvReady(aenv)) return "skip-noenv";          // silent — unconfigured
-  if (!shouldProbe(opts.markerMs, opts.nowMs, opts.gapS)) return "skip-fresh"; // silent — throttled
+  if (!alibabaEnvReady(aenv)) return "skip-noenv";          // silent, unconfigured
+  if (!shouldProbe(opts.markerMs, opts.nowMs, opts.gapS)) return "skip-fresh"; // silent, throttled
   const log = opts.log ?? ((m: string) => console.error(m));
   opts.commitMarker?.();                                     // mark the attempt (throttle holds even on 429/error)
 
@@ -127,7 +127,7 @@ export async function runProbe(opts: {
 // ── .env cascade (parity with scripts/lib/load-dotenv.sh) ───────────────────
 // process.env wins; then the keyring (the AK/SK pair, through scripts/lib/resolve-secrets.mjs);
 // then the worktree/repo .env; then the main-checkout .env
-// (a worktree's .env is gitignored/absent — the real one lives in the main
+// (a worktree's .env is gitignored/absent, the real one lives in the main
 // checkout, resolved via `git rev-parse --git-common-dir`).
 const DOTENV_KEYS = new Set(['ALIBABA_QUOTA_AK', 'ALIBABA_QUOTA_SK', 'ALIBABA_QUOTA_PROM_URL', 'ALIBABA_QUOTA_GRANTS']);
 
@@ -206,7 +206,7 @@ async function main(): Promise<void> {
     append: (row) => appendQuotaGauge(row, ledgerPath(env)),
     commitMarker: () => writeMarkerMs(mPath, nowMs),
   });
-  // rc 0 always — best-effort piggyback; never fails the dispatch.
+  // rc 0 always, best-effort piggyback; never fails the dispatch.
 }
 
 if (import.meta.main) {

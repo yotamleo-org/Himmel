@@ -257,6 +257,7 @@ scripts/cr/test-orphan-check.sh	pr	trust-path
 scripts/cr/test-panel-first-pass.sh	pr	trust-path
 scripts/cr/test-pr-check-context.sh	pr	trust-path
 scripts/cr/test-pr-check-env.sh	pr	trust-path
+scripts/cr/test-pr-check-outside.sh	pr	trust-path
 scripts/cr/test-pr-check-pair.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-pr-check-rounds.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-pr-check-run.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -352,6 +353,7 @@ scripts/graphify/test-graph-prune-deleted.sh	pr	guard
 scripts/graphify/test-graph-publish.sh	pr	guard
 scripts/graphify/test-graph-refresh.sh	pr	guard
 scripts/graphify/test-harden-graph.sh	pr	guard
+scripts/graphify/test-publish-graph-channel.sh	pr	guard
 scripts/graphify/test-worker-graph-rationale.sh	pr	guard
 scripts/graphify/test-worker-graph.sh	pr	guard
 scripts/graphify/test-quality-sample.sh	local	behaviour suite, backfilled HIMMEL-6716

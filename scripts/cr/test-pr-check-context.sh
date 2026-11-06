@@ -2720,4 +2720,43 @@ check "$(get_kv "$out70b" base)" "trunk" "T70b base stays origin/HEAD after an u
 check "$(get_kv "$out70b" behind_base)" "2" "T70b behind_base stays 2 (diff base is origin/trunk, not local trunk)"
 check "$(get_kv "$out70b" main_ahead)" "1" "T70b main_ahead=1 (one unpushed local trunk commit)"
 
+# T2.4: --pr <n> --head <H> --branch <name> reviews an outside PR whose branch is not checked out. The diff
+# touches scripts/cr/, which delegates to the branch copy without --pr; with --pr the anchor's copy runs
+# (the branch copy's canary stays absent), the branch and head come from the arguments and the PR ref.
+wt24="$tmp/fake-himmel-wt-pr"
+canary24="$tmp/canary-24"
+(cd "$anchor13" && git worktree add -q -b t24-pr "$wt24" main) || { echo "FAIL: T2.4 could not add worktree"; fail=1; }
+(
+  cd "$wt24" || exit 1
+  printf '# t24 touch\n' >> scripts/cr/critic-panel.sh
+  { sed -n '1p' scripts/cr/pr-check-context.sh; printf 'touch "%s"\n' "$canary24"; sed -n '2,$p' scripts/cr/pr-check-context.sh; } > "$tmp/pcc24.sh" \
+    && cat "$tmp/pcc24.sh" > scripts/cr/pr-check-context.sh
+  git add -A
+  git commit -q -m "touch scripts/cr and plant a canary"
+)
+h24="$(git -C "$wt24" rev-parse HEAD)"
+git -C "$anchor13" update-ref refs/himmel/outside/24 "$h24"
+(cd "$wt24" && git commit -q --allow-empty -m "live head moves on")
+live24="$(git -C "$wt24" rev-parse HEAD)"
+out24c="$(cd "$wt24" && HIMMEL_REPO="$anchor13" bash "$anchor13/scripts/cr/pr-check-context.sh")"
+check "$(get_kv "$out24c" delegated)" "yes" "T2.4 control: without --pr the same diff delegates to the branch copy"
+check "$([ -f "$canary24" ] && echo present || echo absent)" "present" "T2.4 control: the delegate ran and wrote the canary"
+rm -f "$canary24"
+out24="$(cd "$wt24" && HIMMEL_REPO="$anchor13" bash "$anchor13/scripts/cr/pr-check-context.sh" --pr 24 --head "$h24" --branch feat/outside-thing)"
+check "$?" "0" "T2.4 --pr rc"
+check "$(get_kv "$out24" delegated)" "no" "T2.4 --pr never delegates to a branch copy"
+check "$(get_kv "$out24" himmel_dir)" "$anchor13" "T2.4 --pr runs the anchor copy"
+check "$(get_kv "$out24" branch)" "feat/outside-thing" "T2.4 --pr branch is the argument"
+check "$(get_kv "$out24" head)" "$h24" "T2.4 --pr head is the PR ref, not the live head $live24"
+check "$(get_kv "$out24" marker)" "$anchor13/.git/cr-pending/feat/outside-thing" "T2.4 --pr prints its marker line"
+check "$(get_kv "$out24" no_marker_review)" "yes" "T2.4 --pr skips the marker clear"
+check "$([ -f "$canary24" ] && echo present || echo absent)" "absent" "T2.4 --pr: the branch copy's canary stays absent"
+for badargs in "--pr 24 --head ${h24:0:7} --branch feat/x" "--pr 24 --head $h24" "--pr x --head $h24 --branch feat/x" "--pr 24 --head $live24 --branch feat/x" "--bogus"; do
+  # shellcheck disable=SC2086  # the word list is the point
+  (cd "$wt24" && HIMMEL_REPO="$anchor13" bash "$anchor13/scripts/cr/pr-check-context.sh" $badargs >/dev/null 2>&1)
+  check "$?" "2" "T2.4 refused arguments exit 2: $badargs"
+done
+(cd "$wt24" && HIMMEL_REPO="$anchor13" bash scripts/cr/pr-check-context.sh --pr 24 --head "$h24" --branch feat/outside-thing >/dev/null 2>&1)
+check "$?" "2" "T2.4 --pr entered through the branch copy is refused"
+
 [ "$fail" -eq 0 ] && echo "PASS test-pr-check-context" || exit 1

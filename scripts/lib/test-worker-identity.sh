@@ -160,6 +160,14 @@ check_eq 'field: a quoted blank description is no description' "$(worker_descrip
 check_eq 'resolve: a free-form H1 naming a worker is used whole' "$(worker_description "$d_h1leg")" 'Investigate Worker N12 failure'
 d_crlf="$(mkdoc HIMMEL-1-N12-a-2026-10-07.md $'---\r' $'description: "CRLF text"\r' $'---\r')"
 check_eq 'field: a CRLF front matter still yields its description' "$(worker_description_field "$d_crlf")" 'CRLF text'
+d_esc="$(mkdoc esc.md '---' 'description: "say \"hi\" \\ done"' '---')"
+d_escu="$(mkdoc escu.md '---' 'description: say \"hi\" \\ done' '---')"
+d_escs="$(mkdoc escs.md '---' "description: 'say \\\"hi\\\" \\\\ done'" '---')"
+d_escph="$(mkdoc escph.md '---' 'description: "<one plain-language line>"' '---')"
+check_eq 'field: a double-quoted value unescapes its two escapes' "$(worker_description_field "$d_esc")" 'say "hi" \ done'
+check_eq 'field: an unquoted value keeps its backslashes' "$(worker_description_field "$d_escu")" 'say \"hi\" \\ done'
+check_eq 'field: a single-quoted value keeps its backslashes' "$(worker_description_field "$d_escs")" 'say \"hi\" \\ done'
+check_eq 'field: a double-quoted <placeholder> is no description' "$(worker_description_field "$d_escph")" ''
 check_eq 'resolve: no H1 falls back to the stem' "$(worker_description "$d_none")" 'HIMMEL-1-N6-a-2026-10-07'
 check_eq 'resolve: a missing doc falls back to the stem' "$(worker_description "$dtmp/HIMMEL-1-N8-gone-2026-10-07.md")" 'HIMMEL-1-N8-gone-2026-10-07'
 if worker_doc_has_run "$d_run"; then ok 'has_run: a Results bullet means the worker has run'; else bad 'has_run: a Results bullet means the worker has run'; fi

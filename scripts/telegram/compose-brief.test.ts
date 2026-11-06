@@ -1,5 +1,5 @@
 // scripts/telegram/compose-brief.test.ts
-// Design §4.3 / §8 — the C4 acceptance bar: composer output
+// Design §4.3 / §8, the C4 acceptance bar: composer output
 // carries the RETASK, waiter AND write-set blocks. Task-file-not-readable is
 // a clean exit-2 usage refusal (free text arrives via files, not
 // argv).
@@ -77,7 +77,7 @@ test("isHelpFlag: detects --help and -h anywhere in argv", () => {
   expect(isHelpFlag(["--lane", "glm"])).toBe(false);
 });
 
-// --- composeBrief (pure) — the C4 shape -------------------------------------
+// --- composeBrief (pure), the C4 shape -------------------------------------
 
 test("composeBrief (C4): output carries the RETASK block, the waiter block AND the write-set block", () => {
   const doc = composeBrief({ lane: "glm", model: "glm-4.6", effort: "medium", taskBody: "Fix the flaky test.", writeSet: ["scripts/telegram/foo.ts"] }, "cafebabe");

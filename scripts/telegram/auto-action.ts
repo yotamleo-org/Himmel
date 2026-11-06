@@ -1,6 +1,6 @@
 // Remote auto-action dispatch for the Telegram bridge (auth model B2).
 // The TRUSTED bridge parses a structured `/arm` command and invokes the privileged
-// action DIRECTLY — the spawned `claude` agent is never in the trust path. This module
+// action DIRECTLY. The spawned `claude` agent is never in the trust path. This module
 // owns the bridge-side concerns: the closed op allow-list, the per-op enable-list flag,
 // the typed/non-forwarded eligibility guard, rc->message mapping, and the audit line.
 // The privileged resolution + scheduler invocation live in auto-action.sh (it needs the
@@ -9,14 +9,14 @@ import { join } from "node:path";
 import { appendLine } from "./bus";
 import type { Route } from "./router";
 
-// Dispatch table — a thin marker keyed by op name. Its keys ARE the closed op
+// Dispatch table, a thin marker keyed by op name. Its keys ARE the closed op
 // allow-list (= KNOWN_OPS = the valid `TELEGRAM_AUTO_ACTIONS` tokens). v1 shipped one
-// op (arm-resume); v2 adds "merge-public" — the SHA-bound public-merge
+// op (arm-resume); v2 adds "merge-public", the SHA-bound public-merge
 // chokepoint, default OFF like every op here (enabling it is a `TELEGRAM_AUTO_ACTIONS`
 // opt-in the operator sets explicitly; adding the op name to this table only makes it
 // RECOGNIZABLE, never enabled). No per-op arg validators in the table (validation lives
 // in auto-action.sh, which owns the privileged half + the real shell env).
-// v3 adds "restart" — the bridge bouncing ITSELF. It is the one op
+// v3 adds "restart", the bridge bouncing ITSELF. It is the one op
 // with no `script`: rung 1 is the poller exiting 0 so the supervisor respawns it
 // (rung 2, `/restart full`, is unsupported and answers rc 20). Rung 1 cannot be
 // done by a child of auto-action.sh (it must exit the CALLER), so restart is executed
@@ -43,12 +43,12 @@ export const KNOWN_OPS = new Set(Object.keys(OPS));
 
 // Ops too privileged for the blanket enable-all aliases (=1/all/on/yes) to turn on:
 // they require EXPLICIT naming (TELEGRAM_AUTO_ACTIONS=merge-public or ...,merge-public).
-// `merge-public` is the SHA-bound PUBLIC squash-merge —
+// `merge-public` is the SHA-bound PUBLIC squash-merge,
 // an operator already running `=1`/`=all` for arm-resume must NOT silently inherit the
 // public-merge capability. This preserves the ship-disabled / independent-opt-in intent
 // even for enable-all users; arm-resume (and any future low-risk op) stays in the alias.
 // `restart` is deliberately NOT here: it is materially less
-// privileged than merge-public — no git write, no public repo, no scheduler
+// privileged than merge-public, no git write, no public repo, no scheduler
 // persistence, and its worst case is a bridge that comes back up. It belongs in
 // the ordinary tier, so `=1`/`all` enables it. The DoS shape (a restart loop) is
 // bounded by the same operator-only sender check every auto-command carries, plus
@@ -67,7 +67,7 @@ export const CONFIRM_OPS = new Set([...BREAK_GLASS_OPS].filter((op) => op !== "s
 // call), and handleAutoCommand routes them to their in-process handler.
 export const SELF_EXECUTED_OPS = new Set(["restart"]);
 
-// parseEnabledOps — the per-op activation flag parser. Grammar mirrors HIMMEL_INITIATIVE
+// parseEnabledOps. The per-op activation flag parser. Grammar mirrors HIMMEL_INITIATIVE
 // (425) so users learn one convention. Fails toward inert (empty set): unset / falsy /
 // pure-typo all yield no enabled ops. The enable-all aliases match ONLY on the whole
 // value, so `all` as a comma-token is just an unknown token (does NOT enable every op);
@@ -90,10 +90,10 @@ export function parseEnabledOps(raw: string | undefined, knownOps: Set<string>):
 const OFF_ALIASES = new Set(["", "0", "off", "no", "false"]);
 const ON_ALIASES = new Set(["1", "all", "on", "yes", "true"]);
 
-// describeEnabledOps — the startup line(s) for TELEGRAM_AUTO_ACTIONS.
+// describeEnabledOps. The startup line(s) for TELEGRAM_AUTO_ACTIONS.
 // The failure this exists for: the shipped `.env.example` taught
 // `TELEGRAM_AUTO_ACTIONS=arm`, which is not a token in KNOWN_OPS (`arm-resume` is),
-// so it parsed to the EMPTY set and enabled nothing — and the poller only logged
+// so it parsed to the EMPTY set and enabled nothing, and the poller only logged
 // when the set was NON-empty, making "I enabled it and nothing happened"
 // indistinguishable from "it's off". A configured-but-inert value now says so, and
 // names the tokens it did not recognise.
@@ -104,7 +104,7 @@ export function describeEnabledOps(raw: string | undefined, knownOps: Set<string
   const unknown = v.split(",").map((t) => t.trim()).filter((t) => t && !knownOps.has(t));
   // A PARTIALLY valid list warns too: `arm-resume,mergepublic` enables /arm, so the
   // "auto-actions enabled:" line looks healthy while /mergepub stays inert with no
-  // explanation — the same puzzle in a quieter costume.
+  // explanation, the same puzzle in a quieter costume.
   if (ops.size > 0 && unknown.length === 0) return { ops };
   const tail =
     `Valid ops: ${[...knownOps].join(", ")}` +
@@ -121,7 +121,7 @@ export function describeEnabledOps(raw: string | undefined, knownOps: Set<string
 
 // The injection-test seam (pure). An auto-command executes ONLY when it is a typed
 // (caption === false), non-forwarded (forwarded === false) auto route. Strict `=== false`
-// so an unknown/undefined flag refuses rather than fail-open — this is THE security
+// so an unknown/undefined flag refuses rather than fail-open. This is THE security
 // boundary. DM-only + op-enabled are checked by the caller (handleInbound).
 export function isExecutableAutoCommand(route: Route, forwarded: boolean, caption: boolean): boolean {
   return route.kind === "auto" && forwarded === false && caption === false;
@@ -134,7 +134,7 @@ export function isExecutableAutoCommand(route: Route, forwarded: boolean, captio
 //
 // merge-public uses a SEPARATE, PASSED-THROUGH rc space: auto-action.sh
 // relays merge-public-on-green.sh's own exit code verbatim after validating PR/SHA shape
-// (bad shape -> 1, reusing arm-resume's "bad input" code — the two ops' rc spaces never
+// (bad shape -> 1, reusing arm-resume's "bad input" code, the two ops' rc spaces never
 // co-occur within one invocation). See merge-public-on-green.sh's header for the full
 // 0/1/10-19 namespace; mapMergePublicResult below covers the 5 operator-facing buckets
 // (merged / not-green / head-moved / no-open-pr / error).
@@ -151,7 +151,7 @@ function parseResolved(stdout: string): string | undefined {
 }
 
 // rc -> operator message for merge-public. `pr`/`sha` here are route.arg/route.time
-// (the Route variant reuses arm-resume's field names — see router.ts's MERGEPUB
+// (the Route variant reuses arm-resume's field names, see router.ts's MERGEPUB
 // comment). Unlisted codes (1 bad-input, 10 wrong-repo, 11 tool-missing, 13
 // pr-query-failed, 14 base-mismatch, 17 audit-unwritable, 18 merge-failed, 19
 // CLAUDECODE self-refusal) all fall into the generic "error" bucket below.
@@ -175,7 +175,7 @@ export async function dispatchAutoAction(deps: { runScript: RunScriptFn }, route
   // Defense-in-depth: a self-executed op has no script, so reaching
   // here means a caller tried to route it through auto-action.sh. Refuse rather
   // than spawn `auto-action.sh restart …`, which would hit that script's own
-  // unknown-op guard anyway — but fail here, at the layer that knows why.
+  // unknown-op guard anyway, but fail here, at the layer that knows why.
   if (SELF_EXECUTED_OPS.has(route.op)) return { ok: false, rc: 2, message: `⚠️ ${route.op} is not script-dispatched` };
   if (route.op === "launch-bypass-worker") return { ok: false, rc: 19, message: "Telegram hook-bypass launch refused — start hook workers at the station." };
   const { code, stdout, stderr } = await deps.runScript(route.op, route.arg, route.time);
@@ -254,7 +254,7 @@ export function formatAuditLine(f: AuditFields, now: string): string {
 }
 
 // Best-effort: an audit-write failure is logged, never thrown (it must not block the
-// reply or wedge the poller) — consistent with the bridge's other best-effort sinks.
+// reply or wedge the poller), consistent with the bridge's other best-effort sinks.
 export function appendAuditLine(
   root: string,
   deps: { write?: (file: string, line: string) => Promise<void>; now?: () => string } = {},

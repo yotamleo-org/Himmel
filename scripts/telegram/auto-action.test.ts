@@ -76,7 +76,7 @@ test("typed privileged ops require individual opt-in and reject forwarded/captio
 
 // Return the narrowed auto member of Route: assignable BOTH to Route (for
 // isExecutableAutoCommand) and to AutoActionRoute {op,arg,time} (for
-// dispatchAutoAction) — the wide `Route` union is not, since its control
+// dispatchAutoAction), the wide `Route` union is not, since its control
 // variants lack op/arg/time.
 const armRoute = (over: Partial<{ arg: string; time: string }> = {}): Extract<Route, { kind: "auto" }> =>
   ({ kind: "auto", op: "arm-resume", arg: over.arg ?? "HIMMEL-389", time: over.time ?? "smart" });
@@ -115,14 +115,14 @@ test("parseEnabledOps mirrors the initiative-mode grammar (fail toward inert)", 
   expect([...parseEnabledOps("arm-resume", k)]).toEqual(["arm-resume"]);
   expect([...parseEnabledOps("ARM-RESUME", k)]).toEqual(["arm-resume"]);
   expect([...parseEnabledOps("  arm-resume  ", k)]).toEqual(["arm-resume"]);
-  // merge-public is its OWN opt-in token — enabling arm-resume does NOT also
+  // merge-public is its OWN opt-in token. Enabling arm-resume does NOT also
   // enable merge-public (ship-disabled invariant: each op is independently gated)
   expect([...parseEnabledOps("merge-public", k)]).toEqual(["merge-public"]);
   expect([...parseEnabledOps("MERGE-PUBLIC", k)]).toEqual(["merge-public"]);
   expect([...parseEnabledOps("arm-resume,merge-public", k)].sort()).toEqual(["arm-resume", "merge-public"]);
   // unknown tokens dropped
   expect([...parseEnabledOps("arm-resume,bogus", k)]).toEqual(["arm-resume"]);
-  // "all" as a COMMA token is NOT enable-all (only the whole value is) — fix M1
+  // "all" as a COMMA token is NOT enable-all (only the whole value is), fix M1
   expect([...parseEnabledOps("all,arm-resume", k)]).toEqual(["arm-resume"]);
 });
 
@@ -261,7 +261,7 @@ test("describeEnabledOps: deliberately-off values are silent, not warnings", () 
 
 test("describeEnabledOps: the shipped .env.example typo warns and names the bad token", () => {
   // `arm` is what .env.example taught; KNOWN_OPS has `arm-resume`. It parsed to
-  // the empty set and the poller logged NOTHING — indistinguishable from "off",
+  // the empty set and the poller logged NOTHING, indistinguishable from "off",
   // which is why the misconfiguration survived four days.
   const { ops, warning } = describeEnabledOps("arm", KNOWN_OPS);
   expect(ops.size).toBe(0);
@@ -280,9 +280,9 @@ test("describeEnabledOps: warns on an all-unknown list and reports every bad tok
 
 test("describeEnabledOps: a partially-valid list enables what it can AND names the dropped token", () => {
   // glm CR: /arm works, the "auto-actions enabled:" line looks healthy, and
-  // /mergepub stays inert with no explanation — this ticket's failure in a quieter costume.
+  // /mergepub stays inert with no explanation, this ticket's failure in a quieter costume.
   const { ops, warning } = describeEnabledOps("arm-resume,mergepublic", KNOWN_OPS);
-  // An explicit list enables EXACTLY what it names — no alias expansion.
+  // An explicit list enables EXACTLY what it names, no alias expansion.
   expect(ops).toEqual(new Set(["arm-resume"]));
   expect(warning).toContain("DROPPED");
   expect(warning).toContain("mergepublic");
@@ -296,7 +296,7 @@ test("describeEnabledOps: the warning states the EXPLICIT_ONLY rule (merge-publi
 });
 
 test("describeEnabledOps: the whole-value enable-all aliases are never treated as op tokens", () => {
-  // `1` is not in KNOWN_OPS, but it is an alias, not a typo — warning it would be noise.
+  // `1` is not in KNOWN_OPS, but it is an alias, not a typo, warning it would be noise.
   for (const alias of ["1", "all", "on", "yes", "true", "ALL"]) {
     const { ops, warning } = describeEnabledOps(alias, KNOWN_OPS);
     expect(ops).toEqual(new Set(["arm-resume", "restart"]));
@@ -313,8 +313,8 @@ test("restart is a known op with NO script — it is executed by the poller itse
 });
 
 test("restart is NOT explicit-only: =1/all enable it, and it is inert when unset", () => {
-  // Materially less privileged than merge-public — no git write, no public repo,
-  // no scheduler persistence — so it rides the ordinary enable-all alias.
+  // Materially less privileged than merge-public (no git write, no public repo,
+  // no scheduler persistence), so it rides the ordinary enable-all alias.
   expect(EXPLICIT_ONLY_OPS.has("restart")).toBe(false);
   for (const v of ["1", "all", "on", "yes"]) expect(parseEnabledOps(v, KNOWN_OPS).has("restart")).toBe(true);
   expect(parseEnabledOps("restart", KNOWN_OPS)).toEqual(new Set(["restart"]));

@@ -268,5 +268,49 @@ check "a refresh sweeps a stage folder left by a killed run" "$([ -e "$tmp/doc/.
 check "and leaves a recent stage folder alone (it may belong to a live run)" "$([ -e "$tmp/doc/.focus-stage.live" ] && echo kept || echo gone)" kept
 check "and leaves nothing of its own behind" "$(stages_left)" 1
 
+# --- the drift stage is report-only: its failure is a WARN, the page still publishes
+cat >"$tmp/bin/drift-budget" <<'EOS'
+#!/usr/bin/env bash
+echo "HEALTH - drift: the pass was cut off after 90s | writer=- | fix=bash scripts/handover/chief-kit/status-drift.sh"
+echo "sdrift=unknown"
+EOS
+cat >"$tmp/bin/drift-rc3" <<'EOS'
+#!/usr/bin/env bash
+echo "boom" >&2
+exit 3
+EOS
+cat >"$tmp/bin/drift-timeout" <<'EOS'
+#!/usr/bin/env bash
+exit 124
+EOS
+cat >"$tmp/bin/drift-silent" <<'EOS'
+#!/usr/bin/env bash
+echo "HEALTH - nothing useful"
+EOS
+chmod +x "$tmp"/bin/drift-*
+drift_case() { # <name> <stub> <warn detail> <sdrift in state>
+    reset
+    echo "$1" > "$FX/vfp"
+    FR_DRIFT="$tmp/bin/$2" refresh
+    check "drift $2: the run ends focus=WARN:drift $3" "$(out)" "focus=WARN:drift $3"
+    check "drift $2: and exits 0" "$(cat "$tmp/rc")" 0
+    check "drift $2: the page was published" "$(grep -c "vfp$1" "$tmp/doc/roadmap-tracker.html" 2>/dev/null)" 1
+    check "drift $2: the state is ok with the warning and sdrift recorded" "$(st status):$(st warn):$(st sdrift)" "ok:drift $3:$4"
+    refresh --status
+    check "drift $2: --status reports the warning, not FAILED" "$(out)" "focus=WARN:drift $3"
+}
+drift_case d1 drift-budget budget unknown
+drift_case d2 drift-rc3 rc3 unknown
+drift_case d3 drift-timeout timeout unknown
+drift_case d4 drift-silent no-sdrift unknown
+reset
+FR_DRIFT="$tmp/bin/drift-budget" refresh
+check "a drift that reports its own HEALTH row publishes the file" "$(grep -c '^HEALTH - drift:' "$tmp/doc/focus-drift.txt")" 1
+FR_DRIFT="$tmp/bin/drift-timeout" refresh
+check "a later drift failure with no report leaves the last drift file as it was" "$(grep -c '^HEALTH - drift:' "$tmp/doc/focus-drift.txt")" 1
+refresh
+check "the next refresh with a working drift pass recovers" "$(out)" "focus=ok"
+check "and clears the warning" "$(st warn)" ""
+
 printf '%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

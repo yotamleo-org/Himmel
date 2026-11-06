@@ -1,6 +1,6 @@
 // scripts/telegram/session-status.test.ts
 // Hermetic: no real network send (sendAlert is injected, same pattern as
-// luna-sync-alert.test.ts's checkLunaSync tests), no real token file read —
+// luna-sync-alert.test.ts's checkLunaSync tests), no real token file read,
 // main()'s I/O path is never exercised here.
 import { expect, test } from "bun:test";
 import {

@@ -1,8 +1,8 @@
 // scripts/telegram/quota-gauge.test.ts
-// WS9 — quota-gauge ledger tests. Path resolver, append helper,
+// WS9 quota-gauge ledger tests. Path resolver, append helper,
 // byte-identical bash<->TS serialization (T22), two interleaved appends
 // (T16), and the in-process same-lane concurrent-append race (T17/AC6).
-// Injected deps only — no real $HOME writes, no network.
+// Injected deps only, no real $HOME writes, no network.
 import { expect, test, beforeEach, afterEach } from "bun:test";
 // BASH_BIN, never a bare "bash": on Windows the spawning process resolves it
 // through PATH straight to the System32 WSL stub.
@@ -31,7 +31,7 @@ const NOW_TS = "2026-07-04T12:00:00Z";
 
 // Prerequisite for the byte-identical bash<->TS test: can BASH_BIN run at
 // all? A genuinely missing/broken bash (e.g. the Windows System32 WSL stub)
-// is a bun SKIP, never a silent pass — checked separately
+// is a bun SKIP, never a silent pass, checked separately
 // from the --emit case it gates so a real --emit failure still fails loudly.
 const BASH_RUNS = Bun.spawnSync([BASH_BIN, "-c", "exit 0"], { stdout: "pipe", stderr: "pipe" }).exitCode === 0;
 if (!BASH_RUNS) {
@@ -55,7 +55,7 @@ test("QUOTA_GAUGE_FIELDS canonical order (10 keys, schema-locked)", () => {
 
 test("no forbidden fields in the record schema (AC23/T23)", () => {
   // A record smuggling the forbidden per-row TTL / parallel-writer / $-budget
-  // keys serializes to exactly the canonical 10 keys — they never reach a line.
+  // keys serializes to exactly the canonical 10 keys. They never reach a line.
   const smuggled = { ...rec({}), fresh_for_s: 30, concurrency: 2, budget: 5 } as QuotaGaugeRecord;
   expect(Object.keys(JSON.parse(serializeQuotaGauge(smuggled)))).toEqual([...QUOTA_GAUGE_FIELDS]);
 });
@@ -111,7 +111,7 @@ test.skipIf(!BASH_RUNS)("byte-identical bash<->TS serialization (T22)", () => {
     const tsLine = serializeQuotaGauge(record);
     const r = Bun.spawnSync([BASH_BIN, BASH_LIB, "--emit", ...args], { stdout: "pipe", stderr: "pipe" });
     // BASH_RUNS already proved this bash can execute; a nonzero --emit here
-    // is a real serializer failure, not an environment gap — fail it.
+    // is a real serializer failure, not an environment gap. Fail it.
     expect(r.exitCode, `bash --emit rc=${r.exitCode} (stderr=${r.stderr.toString().trim()})`).toBe(0);
     const bashLine = r.stdout.toString().trimEnd();
     expect(bashLine).toBe(tsLine);
@@ -138,7 +138,7 @@ test("T17/AC6 same-lane concurrent appendQuotaGauge race -> no loss/merge", asyn
   // `$(...)` subshells), so a high row count blows the 5s test budget. The
   // atomicity volume was already proven by Task 0's 4000-line standalone
   // probe; T17's job is the CODE PATH (quota_gauge_append wraps printf >> with
-  // path resolution + mkdir) under concurrent first-creation — W concurrent
+  // path resolution + mkdir) under concurrent first-creation. W concurrent
   // writers each contributing a few rows to ONE ledger is sufficient.
   const W = 6, R = 3;
   const subs: Array<{ exited: Promise<number> }> = [];
@@ -285,7 +285,7 @@ test("T11b stale alibaba row (age 4000s > 3600 budget) -> fresh:false status:unk
 
 // T21/AC11 ("exactly one quotaGaugeRead impl") deleted: it only
 // counted the spelling `export function quotaGaugeRead` in this one file and
-// checked one hardcoded filename's absence — a false red on any identifier-
+// checked one hardcoded filename's absence, a false red on any identifier-
 // preserving refactor of the declaration (verified: rewriting the function
 // declaration to a const function expression, same name, same behavior,
 // makes it fail) and a false green for a second reader under any other name
@@ -293,7 +293,7 @@ test("T11b stale alibaba row (age 4000s > 3600 budget) -> fresh:false status:unk
 // single non-test consumer, readGlmBank in scripts/observability/quota-
 // sources.ts:190, is driven through quotaGaugeRead with real ledger
 // fixtures (fresh/stale/omitted/expired-window/invisible cases) by
-// scripts/observability/quota-sources.test.ts:194-221 — a stronger
+// scripts/observability/quota-sources.test.ts:194-221, a stronger
 // owner-boundary proof that a second reader implementation would have to
 // route around to go undetected.
 

@@ -75,12 +75,17 @@ def file_hits(files, al, skip=()):
     return hits
 
 
+def slug(src):
+    """The id graphify gives a file's own node: path without extension, non-alphanumeric runs as '_'."""
+    return re.sub(r"[^a-z0-9]+", "_", src.rsplit(".", 1)[0].lower()).strip("_")
+
+
 def seeds(graph, question):
     nodes = graph.get("nodes", [])
     files = {}
     for n in nodes:
         src = n.get("source_file") or ""
-        if src and n.get("label") == src.rsplit("/", 1)[-1]:
+        if src and (n.get("label") == src.rsplit("/", 1)[-1] or n.get("id") == slug(src)):
             files.setdefault(src, []).append(n)
     picked = []
     for a in anchors(question):

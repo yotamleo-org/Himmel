@@ -7,22 +7,22 @@ type F = typeof fetch;
 // THROWS instead of returning []. poller.ts's main loop already wraps getUpdates
 // in a try/catch for network errors; folding the API-level failure into that same
 // path lets it back off instead of hot-looping with zero delay, which is what a
-// silent [] used to produce. An ok:true call still never throws (below) — that
+// silent [] used to produce. An ok:true call still never throws (below). That
 // path stays fail-open for a malformed result array.
 //
 // Client-side abort deadline.
 // `timeout` above is only a QUERY PARAMETER telling Telegram how long to hold the
 // connection open server-side; it does NOT bound the fetch itself. Without a
 // client-side abort, a stalled transport (or a response whose body never
-// completes) left `await f(...)` / `await res.json()` pending forever — no
+// completes) left `await f(...)` / `await res.json()` pending forever, no
 // reject, so the catch/backoff above (and the outage marker) never
 // fired, and the bridge went silently deaf while the process stayed alive and
 // the supervisor saw nothing wrong. The deadline is set slightly LONGER than the
-// server-side long-poll timeout, so a healthy long poll — which returns at or
+// server-side long-poll timeout, so a healthy long poll (which returns at or
 // before `timeout` seconds, whether from an update arriving or Telegram's own
-// timeout — is never cut short. Per the WHATWG fetch spec, aborting a signal
+// timeout) is never cut short. Per the WHATWG fetch spec, aborting a signal
 // aborts BOTH the in-flight request and, once headers have arrived, the response
-// body stream, so this one signal covers res.json() too — the same pattern
+// body stream, so this one signal covers res.json() too, the same pattern
 // getFile/downloadFile below already use for FILE_FETCH_TIMEOUT_MS.
 const GETUPDATES_ABORT_MARGIN_MS = 10_000;
 export async function getUpdates(token: string, offset: number, timeout = 30, f: F = fetch, abortMarginMs = GETUPDATES_ABORT_MARGIN_MS): Promise<any[]> {
@@ -33,7 +33,7 @@ export async function getUpdates(token: string, offset: number, timeout = 30, f:
   return j.result ?? [];   // tolerate a malformed ok:true with no result array (never throw downstream)
 }
 // Resolve the bridge's own bot username: the require-mention gate
-// needs it to recognize `@<botusername>` in group text. Best-effort — null on
+// needs it to recognize `@<botusername>` in group text. Best-effort, null on
 // any failure (network, non-ok, malformed result), so the caller can fail
 // open rather than the whole bridge refusing to start over a transient
 // getMe hiccup.
@@ -45,7 +45,7 @@ export async function getMe(token: string, f: F = fetch): Promise<string | null>
     return j.result.username;
   } catch { return null; }
 }
-// Best-effort "typing…" indicator. No retries, failures swallowed —
+// Best-effort "typing…" indicator. No retries, failures swallowed,
 // a missed indicator is harmless; it must never disturb the poll loop.
 export async function sendChatAction(token: string, chat_id: number, f: F = fetch): Promise<void> {
   try {
@@ -72,7 +72,7 @@ export const redactChatId = (chat_id: number): string => {
   return digits.length > 2 ? `***${digits.slice(-2)}` : "***";
 };
 
-// Returns whether Telegram actually ACCEPTED the message — the HTTP request
+// Returns whether Telegram actually ACCEPTED the message. The HTTP request
 // succeeded AND the Bot API JSON reports `ok: true` (same success signal
 // getUpdates/getFile validate; an HTTP 200 with `{ ok: false }` is NOT a
 // delivery). A permanent 4xx drop or retry-exhaustion returns false rather
@@ -101,13 +101,13 @@ export async function sendMessage(token: string, chat_id: number, text: string,
       console.error(`[telegram] sendMessage ${res.status} chat=${redactChatId(chat_id)}: ${j?.description ?? ""}`);
       return false;
     }
-    if (attempt < 4) await sleep(1000);                      // transient 5xx (or 2xx ok:false) → bounded retry (skip on last attempt — no retry follows)
+    if (attempt < 4) await sleep(1000);                      // transient 5xx (or 2xx ok:false) → bounded retry (skip on last attempt, no retry follows)
   }
   console.error(`[telegram] sendMessage gave up after retries chat=${redactChatId(chat_id)}`);
   return false;
 }
 // Send a local file as a document (multipart; any file type, the Bot
-// API caps uploads at 50 MB — the caller refuses an oversize file before it gets here).
+// API caps uploads at 50 MB, the caller refuses an oversize file before it gets here).
 // Same contract as sendMessage: true only on a Bot API ok:true, a permanent 4xx or
 // retry exhaustion returns false, a lost response is NOT retried (it would duplicate).
 const DOC_UPLOAD_TIMEOUT_MS = 120_000;
@@ -152,14 +152,14 @@ export async function sendDocument(token: string, chat_id: number, source: DocSo
 // getFile/download would stall the single-threaded ingest loop indefinitely (CR).
 const FILE_FETCH_TIMEOUT_MS = 30_000;
 // Resolve a file_id to its server-side file_path. Null on any
-// failure — caller decides whether to forward the message without the file.
+// failure, caller decides whether to forward the message without the file.
 export async function getFile(token: string, file_id: string, f: F = fetch): Promise<string | null> {
   const res = await f(API(token, "getFile") + `?file_id=${encodeURIComponent(file_id)}`, { signal: AbortSignal.timeout(FILE_FETCH_TIMEOUT_MS) });
   const j: any = await res.json().catch(() => ({}));
   if (!j.ok || !j.result?.file_path) { console.error(`[telegram] getFile not ok: ${j.description ?? res.status}`); return null; }
   return j.result.file_path;
 }
-// Download a resolved file_path to dest. False on failure (logged, never throws —
+// Download a resolved file_path to dest. False on failure (logged, never throws,
 // a write error must degrade to caption-only forwarding, not bubble into ingest).
 export async function downloadFile(token: string, file_path: string, dest: string, f: F = fetch): Promise<boolean> {
   try {

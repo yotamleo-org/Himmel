@@ -90,6 +90,12 @@ if grep -q "claude-haiku-5-5" "$T/launched.log" && [ "$(grep -c -- '--lane claud
 run liveonly 2 --lanes claudex >/dev/null
 doc="$(ls "$T/root"/lane-canary-claudex-*.md 2>/dev/null | head -1)"
 if [ -n "$doc" ] && bash "$REPO/scripts/handover/chief-kit/brief-lint.sh" "$doc" 2>/dev/null && ! grep -q '@[A-Z]*@' "$doc" && grep -q "^resume_cwd: $T$" "$doc"; then ok "T7 rendered brief lints and has no placeholders"; else bad "T7 doc=$doc"; fi
+# T7b: the rendered front matter parses as YAML, and the description reads back whole.
+parsed="$(python3 -I -c 'import sys,yaml
+t=open(sys.argv[1],encoding="utf-8").read().split("\n---\n")[0].lstrip("-\n")
+try: print(yaml.safe_load(t)["description"],end="")
+except Exception: print("PARSE-ERROR",end="")' "$doc" 2>/dev/null)"
+case "$parsed" in "Lane canary (claudex): a no-op worker"*) ok "T7b the rendered front matter parses as YAML" ;; *) bad "T7b front matter parsed as: $parsed" ;; esac
 
 # T8: the worker is launched from the repo it was given, not the caller's cwd.
 if [ -s "$T/cwd.log" ] && [ "$(sort -u "$T/cwd.log")" = "$(cd "$T" && pwd -P)" ]; then ok "T8 launched from the primary repo"; else bad "T8 cwd: $(cat "$T/cwd.log" 2>/dev/null)"; fi

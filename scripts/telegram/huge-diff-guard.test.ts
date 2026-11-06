@@ -1,8 +1,8 @@
-// scripts/telegram/huge-diff-guard.test.ts — huge-diff lane guard.
+// scripts/telegram/huge-diff-guard.test.ts. Huge-diff lane guard.
 //
-// The real-git cases build the fixture from the SHIPPED artifacts — the
+// The real-git cases build the fixture from the SHIPPED artifacts, the
 // tracked graphify-out/graph.json and the repo-root .gitattributes, copied
-// byte-for-byte into a temp repo — never a hand-written mini-mock: this repo
+// byte-for-byte into a temp repo, never a hand-written mini-mock: this repo
 // has had three incidents of a green suite proving nothing because the
 // fixture diverged from what shipped.
 import { expect, test } from "bun:test";
@@ -51,7 +51,7 @@ test("parseLsTreeSizes: git PADS the size column (`ls-tree -l` right-aligns it),
   // Verbatim shape of real `git ls-tree -r -l -z` output for sub-7-digit sizes
   // (verified against this repo's own GRAPH_REPORT.md): the sha is followed by
   // multiple spaces before a right-aligned size. A single-space split reads
-  // meta[3] === "" there, and Number("") === 0 — the file silently weighs 0.
+  // meta[3] === "" there, and Number("") === 0, the file silently weighs 0.
   const out = [
     "100644 blob ac5d40f9b63f6e8a6aec27d3030ef3da0caa5345   56227\tgraphify-out/GRAPH_REPORT.md",
     "100644 blob 16ea5269ac3b4864665b688b18de1af8313ba4d3 1217325\tgraphify-out/graph.json",
@@ -126,12 +126,12 @@ test("mergeRenamePairs: a detected pair becomes ONE hazard at the SUM of both si
   expect(findDominatingPath(merged)?.path).toBe("old/big.json -> new/big.json");
 });
 
-// ── checkHugeDiff decision shape (stubbed probe — no git needed) ──────────────
+// ── checkHugeDiff decision shape (stubbed probe, no git needed) ──────────────
 
 test("checkHugeDiff: a dominating probe yields a WARNING naming lane, path, and share — and NOTHING else (warn-only)", () => {
   // Explicit base: this stub pins the DECISION shape with a fixed probe
   // sequence (merge-base, then the -z name-only diff, then -z ls-tree for
-  // branch then merge-base — outputs NUL-delimited, as real git emits them);
+  // branch then merge-base, outputs NUL-delimited, as real git emits them);
   // an undefined base would add the resolver's probes ahead of them.
   const lsOut = "100644 blob aa 16000000\tgraphify-out/graph.json\0" + "100644 blob bb 2000\tsrc/a.ts\0";
   let call = 0;
@@ -147,7 +147,7 @@ test("checkHugeDiff: a dominating probe yields a WARNING naming lane, path, and 
   expect(res.note).toContain("graphify-out/graph.json");
   expect(res.note).toMatch(/[0-9]+\.[0-9]%/);
   expect(res.note).toContain("fail-open");
-  // warn-only contract: the ONLY key is `note` — there is no refusal to act on
+  // warn-only contract: the ONLY key is `note`, there is no refusal to act on
   expect(Object.keys(res)).toEqual(["note"]);
 });
 
@@ -164,10 +164,10 @@ test("checkHugeDiff: a THROWING probe (unresolvable git) is silent {}", () => {
 // A git path is bytes and may legally contain newlines and other control
 // characters (the -z probes emit them verbatim; `ls-tree -z` entries carry the
 // raw path after the tab). This note lands in dispatch logs an operator scans
-// line-by-line when diagnosing a dead dispatch — a raw \n inside the path
+// line-by-line when diagnosing a dead dispatch, a raw \n inside the path
 // would let a crafted filename spawn whole spoofed lines ("WARNING",
 // "Dispatching anyway", fake next-entry markers). EVERY repository-controlled
-// field interpolated into the note — path, base, AND branch — must go through
+// field interpolated into the note (path, base, AND branch) must go through
 // ONE log-safe encoder: ref names reject ASCII controls by format but DO
 // admit the Unicode ones (U+2028/U+2029 line separators legally render as
 // line breaks in Unicode-aware viewers; Cf bidi controls such as U+202E
@@ -194,8 +194,8 @@ test("checkHugeDiff: a dominating path containing a NEWLINE is printed escaped �
   // the path was interpolated verbatim, so both assertions fail)
   expect(res.note).not.toContain("evil\nalternate");
   // the whole escaped range is covered, not just \n: BEL (C0), DEL (0x7f),
-  // and U+009F (C1) through the same stub shape. Built from code points —
-  // not string-literal escapes — so the SOURCE stays ASCII-clean while the
+  // and U+009F (C1) through the same stub shape. Built from code points,
+  // not string-literal escapes, so the SOURCE stays ASCII-clean while the
   // value carries the raw controls git would emit.
   const ctrl = (path: string) => {
     let c = 0;
@@ -212,14 +212,14 @@ test("checkHugeDiff: a dominating path containing a NEWLINE is printed escaped �
   expect(res2.note).toBeDefined();
   expect(res2.note).toContain("a\\u0007b\\u007fc\\u009f d\\u2028e\\u202ef\\u2029g");
   // no raw C0 (0x00-0x1f), DEL (0x7f), C1 (0x80-0x9f), U+2028/U+2029 (Zl/Zp),
-  // or Cf (bidi/format) code point anywhere — the classes \\p{Cc}, \\p{Cf},
+  // or Cf (bidi/format) code point anywhere, the classes \\p{Cc}, \\p{Cf},
   // \\u2028, \\u2029 the encoder is documented to escape. A
   // \\p{Cc}-only encoder would let the three Unicode poison characters in raw.
   expect([...res2.note].some((ch) => /[\p{Cc}\p{Cf}\u2028\u2029]/u.test(ch))).toBe(false);
 });
 
 test("checkHugeDiff: a BRANCH name carrying Unicode bidi/separator controls is printed escaped too — every repo-controlled field goes through the encoder (ratchet)", () => {
-  // Same stub shape as above; only the branch argument carries the poison —
+  // Same stub shape as above; only the branch argument carries the poison,
   // an encoder-less note would interpolate base and branch verbatim.
   const lsOut = "100644 blob aa 16000000\tgraphify-out/graph.json\0" + "100644 blob bb 2000\tsrc/a.ts\0";
   let call = 0;
@@ -239,18 +239,18 @@ test("checkHugeDiff: a BRANCH name carrying Unicode bidi/separator controls is p
 
 // ── resolveDefaultBranch mirrors lib.sh default_branch ──────
 //
-// The ORDER is scripts/guardrails/lib.sh `default_branch`'s, mirrored — not
+// The ORDER is scripts/guardrails/lib.sh `default_branch`'s, mirrored, not
 // forked: origin/HEAD -> local main/master (both -> "main") ->
 // init.defaultBranch -> "main". The RETURN SHAPE deliberately diverges
 // lib.sh prints a bare NAME its consumers re-verify
 // (`refs/heads/$db`, fail-closed rc=2), but the guard hands the string
 // straight to `git merge-base`, where a bare name resolves only to
-// refs/heads/<name> — never to refs/remotes/origin/<name>. So every
+// refs/heads/<name>, never to refs/remotes/origin/<name>. So every
 // non-terminal return here is a ref VERIFIED to exist, qualified
 // `origin/<name>` when only the remote-tracking ref does. The
 // remote-tracking qualification is a SEPARATE, LAST precedence phase
 // folding it into per-name resolution let a remote
-// origin/main outrank a LOCAL master and preempt init.defaultBranch — in a
+// origin/main outrank a LOCAL master and preempt init.defaultBranch, in a
 // migrated/mirrored repo the remote ref can be stale or unrelated, and the
 // guard would measure the wrong range. A probe miss (args not in the table)
 // answers like a ref/config that is not there: non-zero.
@@ -267,7 +267,7 @@ test("resolveDefaultBranch: the lib.sh order — origin/HEAD, then LOCAL main/ma
     },
     {
       // ratchet: pre-fix this row stripped origin/ and
-      // returned bare "master", which resolves to NO ref — the merge-base
+      // returned bare "master", which resolves to NO ref, the merge-base
       // probe fails and the warning silently misses on the exact repo shape
       // (remote-tracking only, no local default branch) the R2a resolution
       // exists to cover.
@@ -303,7 +303,7 @@ test("resolveDefaultBranch: the lib.sh order — origin/HEAD, then LOCAL main/ma
       // ratchet: pre-fix `resolve()`
       // consulted the remote-tracking fallback per NAME, so origin/main
       // (truthy) beat a LOCAL master through the `if (mainRef && masterRef)`
-      // tie-break — a REMOTE ref outranked a LOCAL branch, and a migrated or
+      // tie-break, a REMOTE ref outranked a LOCAL branch, and a migrated or
       // mirrored repo measured its range against a possibly stale/unrelated
       // remote ref. Local resolution is ONE precedence phase.
       name: "a LOCAL master outranks a REMOTE origin/main — remote-tracking fallbacks are a SEPARATE, LAST phase",
@@ -373,18 +373,18 @@ test("resolveDefaultBranch: the lib.sh order — origin/HEAD, then LOCAL main/ma
 // ── real git ──────────────────────────────────────────────────────────────────
 
 // graphify-out/ is a permanent, operator-authorized PRIVATE_PATHS
-// exclusion (scripts/lib/public-clone-paths.sh) — a ~430k-line
+// exclusion (scripts/lib/public-clone-paths.sh), a ~430k-line
 // knowledge-graph artifact that never propagates to the public mirror. The
 // public tree therefore has ZERO files under graphify-out/, so every REAL GIT
-// case below — which seeds its fixture repo from the SHIPPED
-// graphify-out/graph.json (see makeGraphRepo) — has nothing to copy. This is
+// case below, which seeds its fixture repo from the SHIPPED
+// graphify-out/graph.json (see makeGraphRepo), has nothing to copy. This is
 // NOT missing test coverage to restore: the exclusion is deliberate, so gate
 // on the actual artifact (never a CI/OS proxy) so any clone that DOES carry
-// graphify-out/ — every operator machine, and any future public clone that
-// stops excluding it — still runs every case below for real.
+// graphify-out/ (every operator machine, and any future public clone that
+// stops excluding it) still runs every case below for real.
 const HAS_GRAPHIFY_FIXTURE = existsSync(resolve("graphify-out/graph.json"));
 // test.skipIf silently omits the case's name from bun's default (non-verbose)
-// summary line — print the reason once, loudly, so a skip here is never
+// summary line. Print the reason once, loudly, so a skip here is never
 // mistaken for a suite that never had these cases at all.
 if (!HAS_GRAPHIFY_FIXTURE) {
   console.warn(
@@ -443,7 +443,7 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT, shipped artifacts): the .gitattri
     const stat = git(["diff", "--stat", "main...feat/graph-refresh"]).stdout;
     expect(stat).toMatch(/graphify-out\/graph\.json \| Bin/);
     expect(stat).not.toMatch(/graphify-out\/graph\.json \| \d+ [+-]/);
-    // and numstat collapses to the binary marker — the reason the guard weighs
+    // and numstat collapses to the binary marker, the reason the guard weighs
     // ls-tree BYTES, not numstat lines (see huge-diff-guard.ts)
     const numstat = git(["diff", "--numstat", "main...feat/graph-refresh"]).stdout;
     expect(numstat).toMatch(/^-\t-\tgraphify-out\/graph\.json$/m);
@@ -482,11 +482,11 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): three-dot semantics — main's p
 // ── one revision pair for names AND sizes (a mismatched pair is wrong) ───────
 //
 // Three-dot names are `merge-base(main, branch)..branch`. The old side of
-// every size lookup must be that SAME merge-base — reading main's TIP instead
+// every size lookup must be that SAME merge-base, reading main's TIP instead
 // attributes main's post-fork growth to the branch (false warning) or misses a
 // huge old blob main's tip no longer carries (missed warning). For the poison
-// to reach the result the path must sit in the three-dot NAME set — i.e. the
-// branch touched it — while the large rewrite lives only on main's tip.
+// to reach the result the path must sit in the three-dot NAME set, i.e. the
+// branch touched it, while the large rewrite lives only on main's tip.
 
 test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): main's post-fork growth of a path the branch only lightly touched is NOT attributed to the branch (names and sizes share ONE revision pair)", () => {
   const { repo, git } = makeGraphRepo();
@@ -542,7 +542,7 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a huge blob at the MERGE-BASE th
     git(["add", "."]);
     git(["commit", "-m", "main shrinks artifact post-fork"]);
     // Old-side sizes must come from the merge-base, where the blob is still
-    // ~1.2 MiB — reading main's tip (2 bytes) would silence the exact
+    // ~1.2 MiB, reading main's tip (2 bytes) would silence the exact
     // incident shape: the 15 MB side of the original incident was the OLD blob.
     const res = checkHugeDiff("spawn-glm", { cwd: repo, branch: "feat/drop-artifact" });
     expect(res.note).toBeDefined();
@@ -558,7 +558,7 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a changed path with LEADING whit
     git(["checkout", "-b", "feat/weird-name"]);
     // Leading spaces are a legal, filesystem-real path on every OS the suite
     // runs on (Win32 strips only TRAILING dots/spaces, so trailing-whitespace
-    // names cannot be created there — the same .trim() corruption class).
+    // names cannot be created there, the same .trim() corruption class).
     writeFileSync(join(repo, "  spaced-name.ts"), "x".repeat(2 * 1024 * 1024 + 100));
     writeFileSync(join(repo, "src-touched.ts"), "export const touched = true;\n");
     git(["add", "."]);
@@ -585,11 +585,11 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a real probe against a missing b
 // ── base resolved from the repository, never hard-coded ─────
 //
 // himmel supports `main` OR `master`. A hard-coded `main` makes
-// the guard silently fail open on every master-default repo — the warning
+// the guard silently fail open on every master-default repo, the warning
 // that names the hazard simply never fires. The guard must RESOLVE the base
 // the same way scripts/guardrails/lib.sh `default_branch` does: origin/HEAD
 // -> local main/master (both -> main) -> init.defaultBranch ->
-// "main" — and an unresolvable base stays SILENT (fail-open), never throws.
+// "main", and an unresolvable base stays SILENT (fail-open), never throws.
 
 test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a repo whose default branch is master still warns — the base is RESOLVED, not hard-coded", () => {
   const { repo, git } = makeGraphRepo("master");
@@ -601,7 +601,7 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a repo whose default branch is m
     git(["commit", "-m", "regen graph + one source file"]);
     const res = checkHugeDiff("spawn-claudex", { cwd: repo, branch: "feat/graph-refresh" });
     // ratchet: against a hard-coded `main` this repo has NO main ref, the
-    // merge-base probe fails, and res.note is undefined — the warning that
+    // merge-base probe fails, and res.note is undefined, the warning that
     // R2a exists to deliver never fires.
     expect(res.note).toBeDefined();
     // the RESOLVED name feeds the warning end to end (same revision the guard
@@ -627,11 +627,11 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a repo whose default branch exis
     git(["branch", "-D", "master"]);
     const res = checkHugeDiff("spawn-claudex", { cwd: repo, branch: "feat/graph-refresh" });
     // ratchet: pre-fix the resolver stripped origin/ and returned bare
-    // "master" — which resolves to NO ref (git never DWIMs a bare name to
+    // "master", which resolves to NO ref (git never DWIMs a bare name to
     // refs/remotes/origin/*), the merge-base probe failed, and the warning
     // silently missed on exactly the repo shape the R2a fix exists to cover.
     expect(res.note).toBeDefined();
-    // the RESOLVED ref feeds the warning end to end — the qualified name is
+    // the RESOLVED ref feeds the warning end to end. The qualified name is
     // the revision the guard actually probed
     expect(res.note).toContain("origin/master...feat/graph-refresh");
   } finally { rmQuiet(repo); }
@@ -641,7 +641,7 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a repo where NO base resolves (n
   // A `trunk`-default repo: every arm of the resolver comes up empty (the
   // LOCAL empty init.defaultBranch pins the config arm regardless of the
   // machine's global config), so the resolved name is lib.sh's documented
-  // "main" fallback — which names no ref here, the merge-base probe fails,
+  // "main" fallback, which names no ref here, the merge-base probe fails,
   // and the guard must fail open SILENTLY even though a dominating path
   // exists (the silence must come from the unresolvable base, not a boring diff).
   const { repo, git } = makeGraphRepo("trunk");
@@ -669,7 +669,7 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): every `git diff` command the war
     expect(res.note).toBeDefined();
     // INVARIANT: the guard reasons in three-dot (merge-base..branch). Any
     // `git diff <base>` (two-dot) it tells the operator to run reintroduces
-    // the base-tip noise three-dot exists to exclude — so EVERY command the
+    // the base-tip noise three-dot exists to exclude, so EVERY command the
     // note prints must carry the same three-dot pair it actually used.
     const commands = res.note!.match(/git diff [^`]+`/g) ?? [];
     expect(commands.length).toBeGreaterThan(0);
@@ -684,17 +684,17 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): every `git diff` command the war
 // digits), so the meta fields are whitespace-RUN separated. A single-space
 // split reads meta[3] === "" and Number("") === 0: every sub-MiB sibling of
 // a dominating file weighs 0 bytes, totalBytes is understated, the share is
-// OVERSTATED — and a 1 MiB file among 900 KiB of ordinary work warns as a
+// OVERSTATED, and a 1 MiB file among 900 KiB of ordinary work warns as a
 // "100%" dominating path. False warning, same assumed-not-derived class.
 
 test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a 1 MiB file among sub-MiB siblings does NOT warn — padded sizes must weigh their true bytes", () => {
   const { repo, git } = makeGraphRepo();
   try {
     git(["checkout", "-b", "feat/big-plus-small"]);
-    // 1_048_676 bytes: clears the 1 MiB floor (7 digits — unpadded either
+    // 1_048_676 bytes: clears the 1 MiB floor (7 digits, unpadded either
     // way, so the dominating side parses fine pre-fix too).
     writeFileSync(join(repo, "big-asset.bin"), "y".repeat(1024 * 1024 + 100));
-    // 10 x 95_000 bytes: 5-digit sizes — the PADDED (sub-7-digit) class. True
+    // 10 x 95_000 bytes: 5-digit sizes, the PADDED (sub-7-digit) class. True
     // share of the big file = 1_048_676 / 1_998_676 ~= 52% << 90% -> silent.
     // Pre-fix each sibling weighs 0, the share reads 100%, and the guard
     // FALSELY warns.
@@ -709,7 +709,7 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a 1 MiB file among sub-MiB sibli
 //
 // `git diff --name-only` honors diff.renames (git's default since 2.9, plus
 // any user/repo setting): when detection fires, a rename collapses to its NEW
-// path only — the OLD-side blob this guard exists to weigh is dropped, and
+// path only. The OLD-side blob this guard exists to weigh is dropped, and
 // the same branch measures differently depending on a config the guard never
 // read. The probe must be pinned --no-renames so the changed-path set is a
 // property of the REPOSITORY, deterministic end to end.
@@ -724,7 +724,7 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): the changed-path set is INDEPEND
     git(["commit", "-m", "rename the tracked artifact + one source file"]);
     // The SAME branch, measured under both diff.renames settings. Pre-fix the
     // probe honored the config (ratchet): renames ON collapsed the rename to
-    // its new path only; renames OFF listed both sides — one branch, two
+    // its new path only; renames OFF listed both sides, one branch, two
     // measurements, decided by a config outside the guard.
     git(["config", "diff.renames", "true"]);
     const on = changedPathBytes(gitProbe, repo, "main", "feat/rename-artifact");
@@ -732,7 +732,7 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): the changed-path set is INDEPEND
     const off = changedPathBytes(gitProbe, repo, "main", "feat/rename-artifact");
     expect(on).toEqual(off);
     // and the pinned shape is the no-renames one: BOTH sides' paths, each
-    // weighing its own blob — the old path (the ~1.2 MiB shipped blob at the
+    // weighing its own blob. The old path (the ~1.2 MiB shipped blob at the
     // merge base) must be IN the measurement, not collapsed away.
     if (on.ok && off.ok) {
       expect([...on.paths.map((p) => p.path)].sort()).toEqual(["graphify-out/graph.json", "graphify-out/graph2.json", "src-touched.ts"]);
@@ -740,14 +740,14 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): the changed-path set is INDEPEND
       expect(oldSide?.bytes ?? 0).toBeGreaterThanOrEqual(HUGE_DIFF_MIN_BYTES);
     }
     // Round-2 semantics (codex-adv-1): the config is STILL diff.renames=false
-    // from the probe above — the exact configuration where the worker's own
+    // from the probe above, the exact configuration where the worker's own
     // `git diff` does NOT attribute the rename and ingests the FULL deletion
     // plus the FULL addition. Silence here would be a false negative in precisely the state the
     // repo is in: the guard must model the dump the worker will actually ingest and
     // NOTICE the hazard.
     const noticed = checkHugeDiff("spawn-glm", { cwd: repo, branch: "feat/rename-artifact" });
     expect(noticed.note).toBeDefined();
-    // the grouped hazard names BOTH sides — one logical change, both blobs
+    // the grouped hazard names BOTH sides, one logical change, both blobs
     expect(noticed.note).toContain("graphify-out/graph.json -> graphify-out/graph2.json");
     // ...while silence stays the honest verdict only when worker-side rename
     // detection is actually guaranteed: with diff.renames=true the worker's
@@ -760,11 +760,11 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): the changed-path set is INDEPEND
 // ── the hazard the WORKER ingests, not the one the probe prints (R2 codex-adv-1) ─
 //
 // --no-renames splits a rename into a delete path and an add path, each
-// weighing ~N of the pair's 2N — so the per-path dominance test reads ~50%
+// weighing ~N of the pair's 2N, so the per-path dominance test reads ~50%
 // and stays silent. That silence models the worker's ingest ONLY when the
 // worker's own `git diff` will attribute the rename (diff.renames on, git's
 // default since 2.9) and print a similarity header instead of the blobs.
-// With diff.renames=false — a real repo/user setting — the worker ingests
+// With diff.renames=false (a real repo/user setting), the worker ingests
 // the FULL deletion plus the FULL addition, a multi-MiB text rename blows
 // the context window, and the guard returning {} is exactly the failure
 // exists to prevent. The regression below is the realistic
@@ -776,7 +776,7 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): an un-attributed large text rena
   try {
     git(["checkout", "-b", "feat/move-artifact"]);
     git(["mv", "graphify-out/graph.json", "graphify-out/graph2.json"]);
-    // a small edit on top of the move — the realistic moved-and-tweaked
+    // a small edit on top of the move, the realistic moved-and-tweaked
     // rename; ~99.7% similar, so an explicit -M still attributes it as R
     appendFileSync(join(repo, "graphify-out/graph2.json"), `,\n  {"moved": "${"x".repeat(4096)}"}`);
     writeFileSync(join(repo, "src-touched.ts"), "export const touched = true;\n");
@@ -784,7 +784,7 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): an un-attributed large text rena
     git(["commit", "-m", "move + tweak the tracked artifact"]);
     git(["config", "diff.renames", "false"]);
     // ratchet: measuring the two sides as separate ~50% paths would
-    // assert silence — in the exact configuration where the worker's own
+    // assert silence, in the exact configuration where the worker's own
     // diff emits the full delete plus the full add.
     const res = checkHugeDiff("spawn-claudex", { cwd: repo, branch: "feat/move-artifact" });
     expect(res.note).toBeDefined();
@@ -798,7 +798,7 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): an un-attributed large text rena
 test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a branch NAME may legally carry Unicode bidi/separator controls — the warning escapes base and branch, not just the path", () => {
   const { repo, git } = makeGraphRepo();
   try {
-    // Built from code points — not string-literal escapes — so the SOURCE
+    // Built from code points (not string-literal escapes), so the SOURCE
     // stays ASCII-clean while the value carries the raw controls. That git
     // ACCEPTS this ref name is part of the contract under test: ref names
     // reject ASCII controls by format but admit Cf and Zl/Zp.

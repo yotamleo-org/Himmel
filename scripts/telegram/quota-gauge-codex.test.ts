@@ -8,7 +8,7 @@ const REPO_ROOT = join(import.meta.dir, "..", "..");
 const NOW_MS = Date.parse("2026-07-04T12:00:00Z");
 
 // Real blob shape: each bank carries reset_at (unix epoch SECONDS),
-// and each bank appears MANY times in the log — the LAST occurrence is the
+// and each bank appears MANY times in the log. The LAST occurrence is the
 // newest reading, so used_percent AND reset_at come from the same last object.
 const PRIMARY_RESET_AT = 1782864579;    // epoch seconds
 const SECONDARY_RESET_AT = 1783451379;  // epoch seconds

@@ -43,7 +43,7 @@ ticket: HIMMEL-777
 resume me
 EOF
 
-# A design doc under specs/ — must NOT be a resolution candidate.
+# A design doc under specs/, must NOT be a resolution candidate.
 cat > "$HANDOVER_DIR/yotam/himmel/specs/design/2026-06-20-himmel-888-design.md" <<'EOF'
 # design notes
 not a resume target
@@ -125,7 +125,7 @@ out=$(run arm-resume "$INSIDE" 02:00); rc=$?
 assert_rc "T9 valid in-root path arms" 0 "$rc"
 args9=$(cat "$ARM_ARGS_FILE")
 assert_contains "T9 arm got --time 02:00" "--time 02:00" "$args9"
-# an explicit HH:MM typed on Telegram rides --long-gap — a HUMAN typing a far
+# an explicit HH:MM typed on Telegram rides --long-gap, a HUMAN typing a far
 # time IS the explicit choice the long-gap guard exists to force.
 assert_contains "T9 explicit HH:MM rides --long-gap" "--long-gap" "$args9"
 
@@ -240,7 +240,7 @@ assert_rc "launch refuses agent authority" 19 "$rc"
 [ ! -f "$LAUNCH_ARGS_FILE" ] || FAILED=$((FAILED + 1))
 
 # The launch refusal precedes handover_root resolution and the
-# dotenv load — an unresolvable root must still yield 19, never 3.
+# dotenv load, an unresolvable root must still yield 19, never 3.
 out=$(HANDOVER_DIR="$TMP/no-such-root" launch "$INSIDE"); rc=$?
 assert_rc "launch refusal precedes handover_root resolution" 19 "$rc"
 assert_not_contains "launch refusal never reaches the resolver" "handover_root unresolved" "$(cat "$TMP/err")"

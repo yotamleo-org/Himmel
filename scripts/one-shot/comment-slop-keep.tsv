@@ -1,0 +1,5 @@
+scripts/telegram/chief-heartbeat-watch.ts	gate:rename-diff	66924683ba5f06cdf7ac38e4bf140032cad9d185d25223b008e4d1d813d46b22
+scripts/telegram/chief-heartbeat-watch.ts	gate:rename-diff	620fb011964c44254992435f857cb91d6cc82923000c36cd7e40e824a9994c57
+scripts/telegram/quota-gauge.ts	gate:platform-dropped	b05a5b734f248088ad40e4704cb9e55f6e6070f3d9fd4255d20ab2beb86dfade
+scripts/telegram/triage.ts	gate:platform-dropped	1fb3ac9bdb0d814d3c43e5256c2765862a66e9f40c7951fa9f4a242ed883b688
+scripts/telegram/poller.ts	gate:ws5-invariants	9dab21fa8a666a4c1c6f421ccbe23fbf775fa1ceb226c0d9d669c6bbf382f69b

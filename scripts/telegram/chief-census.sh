@@ -4,13 +4,13 @@
 # pid<TAB>name<TAB>model<TAB>autocompact for every live claude session via
 # the same claude_sessions() census tick.sh and ceiling-conformance.sh use
 # (scripts/lanes/lib/claude-sessions.sh, real /proc/<pid>/cmdline argv, no
-# flattened pgrep -af line) — so "is this chief still running" never
+# flattened pgrep -af line), so "is this chief still running" never
 # re-derives argv parsing of its own.
 #
 # CLAUDE_SESSIONS_PROC / CLAUDE_SESSIONS_PGREP (documented in
 # claude-sessions.sh) are the same test seams this script inherits; it adds
 # none of its own. Exit code is claude_sessions()'s own (0 clean, 3 degraded
-# scan, >1 a pgrep-level failure) — callers here treat "name not found in the
+# scan, >1 a pgrep-level failure), callers here treat "name not found in the
 # output" and "the census itself failed" the same way (no match), since a
 # scan too broken to trust must not manufacture a false "alive".
 #

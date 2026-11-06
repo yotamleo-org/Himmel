@@ -10,7 +10,7 @@ import { handleInbound, replyViaOutbox, flushOutboxes, ingestUpdates, makeRunFn 
 import { consoleInboxPath, foldLine, type ConsoleRouteGate } from "./chief-route";
 
 // Every test runs against a scratch bridge root and a fake reply
-// seam — never the real ~/.claude/handover/bridge, never Telegram.
+// seam, never the real ~/.claude/handover/bridge, never Telegram.
 const root = () => mkdtempSync(join(tmpdir(), "chief-route-"));
 const NAME = "HIMMEL-nextleg-2026-09-21V-chief";
 
@@ -366,7 +366,7 @@ test("forwarded or caption /chief messages drop without spawning", async () => {
 });
 
 // routeToConsole never creates an inbox (appendIfExists is
-// O_CREAT-free — see bus.test.ts for the TOCTOU-race regression at the
+// O_CREAT-free, see bus.test.ts for the TOCTOU-race regression at the
 // primitive level).
 test("a console with no armed inbox gets an error reply, no file, and no cold session", async () => {
   const r = root(); const replies: string[] = []; const ran: string[] = [];

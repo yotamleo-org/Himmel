@@ -169,6 +169,13 @@ rc=0; out="$(run_worker "$tmp/filled_worker.md" --profile worker-impl)" || rc=$?
 [ "$rc" -eq 0 ] && ok "6b a filled worker-brief-template launches" || bad "6b filled worker-brief-template refused (rc=$rc): $out"
 rc=0; out="$(run_worker "$tmp/filled_judge.md" --judge)" || rc=$?
 [ "$rc" -eq 0 ] && ok "6c a filled judge-brief-template launches" || bad "6c filled judge-brief-template refused (rc=$rc): $out"
+# 6b and 6c pass whether or not the placeholder is quoted: put `a: b` inside its quotes and parse the line.
+tmpl_desc_parsed() { # template: the description line with `a: b` in the placeholder's place, parsed as YAML
+    grep -m1 '^description:' "$1" | sed -E 's/^(description: ")[^"]*(")$/\1a: b\2/' \
+        | python3 -I -c 'import sys,yaml; print(yaml.safe_load(sys.stdin.read())["description"],end="")' 2>/dev/null || printf 'PARSE-ERROR'
+}
+[ "$(tmpl_desc_parsed "$DOCS/worker-brief-template.md")" = "a: b" ] && ok "6d the worker template's description placeholder is quoted" || bad "6d worker template description placeholder is not double-quoted: $(tmpl_desc_parsed "$DOCS/worker-brief-template.md")"
+[ "$(tmpl_desc_parsed "$DOCS/judge-brief-template.md")" = "a: b" ] && ok "6e the judge template's description placeholder is quoted" || bad "6e judge template description placeholder is not double-quoted: $(tmpl_desc_parsed "$DOCS/judge-brief-template.md")"
 
 # 7. Writes is a path list; prose belongs on Writes note.
 mk writes_paren "$PA" '> **Writes:** scripts/x/a.sh (no scripts/lib file until the chief rules)'
@@ -754,6 +761,90 @@ while True:
 PY
 out="$(cat "$tmp/m32.out")"
 [ "$rc" = 0 ] && ok "11a the core-gate command substitution ends where bash 3.2 counts it to end ($out)" || bad "11a bash 3.2 would end the core-gate command substitution early: $out"
+
+# 12. The front matter must parse as YAML: a fresh brief whose block does not parse, repeats a key or wraps a quoted
+#     value is refused (exit 3, with and without --core-only), two last lines name the fault and the fix, and every
+#     refusal counts itself in front-matter-refusals.jsonl beside the brief. A doc that has run, a lone session_ids:
+#     line, and a missing PyYAML never refuse.
+mkfm() { # name front-matter-lines...: a fresh brief that passes every other check
+    local n="$1"; shift
+    mk_raw "$n" '---' "$@" '---' '# brief' '> **Prior art:** none found (qmd -c jira-himmel "x")' "$DIR_LINE" '' '> **Contract:** y' '## Results (newest at the bottom)'
+}
+fm_tail() { # lint args... : the lint's last two stderr lines
+    bash "$LINT" "$@" 2>&1 >/dev/null | tail -n 2
+}
+fm_rows() { # doc: how many refusal rows sit beside it
+    local f; f="$(dirname "$1")/front-matter-refusals.jsonl"
+    if [ -f "$f" ]; then wc -l < "$f" | tr -d ' '; else echo 0; fi
+}
+RC="resume_cwd: $CW_HIM"
+SID='session_ids:,11111111-1111-4111-8111-111111111111'
+mkfm fm_colon "$RC" 'description: a: b' 'template_version: 3'
+rm -f "$tmp/front-matter-refusals.jsonl"
+rc=0; t2="$(fm_tail "$tmp/fm_colon.md")"; bash "$LINT" "$tmp/fm_colon.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 3 ] && ok "12a an unquoted colon in the description is exit 3" || bad "12a unquoted colon description (rc=$rc)"
+[ "$(sed -n 1p <<< "$t2" | cut -d: -f1-2)" = "$tmp/fm_colon.md:3" ] && ok "12b line one of the refusal names the doc and the line" || bad "12b refusal line one: $(sed -n 1p <<< "$t2")"
+[ "$(sed -n 2p <<< "$t2")" = 'replace lines 3-3 with: description: "a: b"' ] && ok "12c line two is the replacement line" || bad "12c refusal line two: $(sed -n 2p <<< "$t2")"
+[ "$(fm_rows "$tmp/fm_colon.md")" = 2 ] && ok "12d each refusal appends one row beside the brief" || bad "12d refusal rows: $(fm_rows "$tmp/fm_colon.md")"
+rc=0; bash "$LINT" --core-only "$tmp/fm_colon.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 3 ] && ok "12e --core-only does not clear the refusal" || bad "12e --core-only (rc=$rc)"
+mkfm fm_dupstatus "$RC" 'description: ok' 'status: a' 'status: b'
+t2="$(fm_tail "$tmp/fm_dupstatus.md")"; rc=0; bash "$LINT" "$tmp/fm_dupstatus.md" >/dev/null 2>&1 || rc=$?
+{ [ "$rc" -eq 3 ] && grep -q ':5:.*status' <<< "$t2" && ! grep -q 'replace lines' <<< "$t2"; } && ok "12f a repeated key is exit 3, names line and key, no replacement" || bad "12f repeated status (rc=$rc): $t2"
+mkfm fm_dupdesc "$RC" 'description: one' 'description: two'
+t2="$(fm_tail "$tmp/fm_dupdesc.md")"; rc=0; bash "$LINT" "$tmp/fm_dupdesc.md" >/dev/null 2>&1 || rc=$?
+{ [ "$rc" -eq 3 ] && ! grep -q 'replace lines' <<< "$t2" && grep -q 'double-quote' <<< "$t2"; } && ok "12g two description lines are exit 3 with the generic fix" || bad "12g repeated description (rc=$rc): $t2"
+mkfm fm_wrap0 "$RC" 'description: "Fix this' 'thing now"'
+t2="$(fm_tail "$tmp/fm_wrap0.md")"; rc=0; bash "$LINT" "$tmp/fm_wrap0.md" >/dev/null 2>&1 || rc=$?
+{ [ "$rc" -eq 3 ] && [ "$(sed -n 2p <<< "$t2")" = 'replace lines 3-4 with: description: "Fix this thing now"' ]; } && ok "12h a quoted value wrapped at column 0 is exit 3 and folds" || bad "12h column-0 wrap (rc=$rc): $t2"
+mkfm fm_wrapind "$RC" 'description: "Fix this' '  thing now"'
+t2="$(fm_tail "$tmp/fm_wrapind.md")"; rc=0; bash "$LINT" "$tmp/fm_wrapind.md" >/dev/null 2>&1 || rc=$?
+{ [ "$rc" -eq 3 ] && [ "$(sed -n 2p <<< "$t2")" = 'replace lines 3-4 with: description: "Fix this thing now"' ]; } && ok "12i an indented wrapped quoted value is exit 3 and folds" || bad "12i indented wrap (rc=$rc): $t2"
+mkfm fm_wrapkey "$RC" 'description: "Fix: a' 'second: line"' 'template_version: 3'
+t2="$(fm_tail "$tmp/fm_wrapkey.md")"; fix="$(sed -n 2p <<< "$t2")"
+printf '%s\n' "$(sed -n 1,2p "$tmp/fm_wrapkey.md")" "${fix#*with: }" "$(sed -n '5,$p' "$tmp/fm_wrapkey.md")" > "$tmp/fm_wrapkey_fixed.md"
+keys="$(python3 -I -c 'import sys,yaml; t=open(sys.argv[1]).read().split("\n---\n")[0].lstrip("-\n"); print(" ".join(sorted(yaml.safe_load(t))))' "$tmp/fm_wrapkey_fixed.md" 2>&1)"
+{ [ "$(sed -n 2p <<< "$t2" | cut -c1-23)" = 'replace lines 3-4 with:' ] && [ "$keys" = 'description resume_cwd template_version' ]; } && ok "12j a wrapped value holding a key shape gets a range over both lines, and pasting it leaves no second key" || bad "12j wrapped key shape: $t2 keys=[$keys]"
+mkfm fm_sid_bad "$RC" 'description: a: b' "$SID"
+rc=0; bash "$LINT" "$tmp/fm_sid_bad.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 3 ] && ok "12k a bad description beside session_ids:,<uuid> is exit 3" || bad "12k bad description beside the id (rc=$rc)"
+# controls: each of these must pass
+mkfm fm_good "$RC" 'description: "a plain description"' 'template_version: 3'
+expect_rc "12l a valid brief passes" 0 "$tmp/fm_good.md"
+mk_raw fm_colon_run '---' "$RC" 'description: a: b' '---' '# brief' '> **Prior art:** none found (qmd -c jira-himmel "x")' '## Results (newest at the bottom)' '- 10:00 LIVE — started'
+expect_rc "12m the bad brief with a Results bullet passes (it has run)" 0 "$tmp/fm_colon_run.md"
+mkfm fm_sid_only "$RC" 'description: "valid"' "$SID"
+expect_rc "12n session_ids:,<uuid> with a valid description and no bullet passes (the writer heals it)" 0 "$tmp/fm_sid_only.md"
+mkfm fm_oneline "$RC" 'description: "a: b"'
+expect_rc "12o a one-line quoted a: b passes" 0 "$tmp/fm_oneline.md"
+mkfm fm_merge "$RC" 'description: "merge keys"' 'base: &b' '  x: 1' 'child:' '  <<: *b' '  y: 2'
+expect_rc "12p a merge key passes" 0 "$tmp/fm_merge.md"
+mkfm fm_alias "$RC" 'description: "recursive alias"' 'a: &a' '  b: *a'
+expect_rc "12q a recursive alias ends and passes" 0 "$tmp/fm_alias.md"
+sed 's/$/\r/' "$tmp/fm_good.md" > "$tmp/fm_crlf.md"
+expect_rc "12r a valid brief with CRLF line endings passes" 0 "$tmp/fm_crlf.md"
+mk_raw fm_noclose '---' "$RC" 'description: a: b' '# brief' '> **Prior art:** none found (qmd -c jira-himmel "x")'
+rc=0; bash "$LINT" "$tmp/fm_noclose.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" -ne 3 ] && ok "12s an opening --- with no close has no block, so it is not refused for its front matter" || bad "12s unclosed front matter was refused (rc=$rc)"
+# no PyYAML: a python3 on PATH that runs with -S has no site-packages
+mkdir -p "$tmp/nopy"; printf '#!/bin/sh\nexec %s -S "$@"\n' "$(command -v python3)" > "$tmp/nopy/python3"; chmod +x "$tmp/nopy/python3"
+rc=0; out="$(PATH="$tmp/nopy:$PATH" bash "$LINT" "$tmp/fm_colon.md" 2>&1)" || rc=$?
+{ [ "$rc" -eq 0 ] && grep -q "brief-lint: bypass=no-pyyaml $tmp/fm_colon.md" <<< "$out"; } && ok "12t without PyYAML the lint passes and prints bypass=no-pyyaml" || bad "12t no PyYAML (rc=$rc): $out"
+# a refusal count that cannot be written is still a refusal with the same two lines
+mkdir -p "$tmp/unw/front-matter-refusals.jsonl"; cp "$tmp/fm_colon.md" "$tmp/unw/fm_colon.md"
+rc=0; t2="$(fm_tail "$tmp/unw/fm_colon.md")"; bash "$LINT" "$tmp/unw/fm_colon.md" >/dev/null 2>&1 || rc=$?
+{ [ "$rc" -eq 3 ] && [ "$(sed -n 2p <<< "$t2")" = 'replace lines 3-3 with: description: "a: b"' ]; } && ok "12u an unwritable refusal count still refuses with the same two lines" || bad "12u unwritable count (rc=$rc): $t2"
+# launcher: the refusal reaches the operator without the Prior art advice, and the flag does not clear it
+rc=0; out="$(run_worker "$tmp/fm_colon.md" --profile worker-impl)" || rc=$?
+{ [ "$rc" -eq 2 ] && grep -q 'replace lines 3-3' <<< "$out" && ! grep -q 'fill the Prior art line' <<< "$out"; } && ok "12v the launcher refuses a bad front matter without the Prior art advice" || bad "12v launcher refusal (rc=$rc): $out"
+rc=0; out="$(run_worker "$tmp/fm_colon.md" --profile worker-impl --no-prior-art-check)" || rc=$?
+{ [ "$rc" -eq 2 ] && grep -q 'replace lines 3-3' <<< "$out"; } && ok "12w --no-prior-art-check does not clear the front-matter refusal" || bad "12w launcher with the flag (rc=$rc): $out"
+rc=0; out="$(PATH="$tmp/nopy:$PATH" run_worker "$tmp/fm_colon.md" --profile worker-impl)" || rc=$?
+{ [ "$rc" -eq 0 ] && grep -q 'bypass=no-pyyaml' <<< "$out"; } && ok "12x bypass=no-pyyaml reaches the launcher's output" || bad "12x launcher without PyYAML (rc=$rc): $out"
+rc=0; out="$(run_worker "$tmp/fm_good.md" --profile worker-impl)" || rc=$?
+[ "$rc" -eq 0 ] && ok "12y a valid brief launches" || bad "12y valid brief (rc=$rc): $out"
+rc=0; out="$(run_worker "$tmp/fm_good.md" --profile worker-impl --no-prior-art-check)" || rc=$?
+[ "$rc" -eq 0 ] && ok "12z a valid brief launches with --no-prior-art-check" || bad "12z valid brief with the flag (rc=$rc): $out"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -83,7 +83,7 @@ worker_doc_add_session_id() {
         && cp -p "$_ls_doc" "$_ls_tmp" \
         && awk -v sid="$_ls_sid" '
             NR == 1 { print; fm = 1; next }
-            fm && /^session_ids:/ { sub(/[[:space:]]*$/, ""); print $0 "," sid; done = 1; next }
+            fm && /^session_ids:/ { sub(/[[:space:]]*$/, ""); sub(/^session_ids:[[:space:],]*/, ""); print "session_ids: " ($0 == "" ? sid : $0 "," sid); done = 1; next }
             fm && /^---$/ { if (!done) print "session_ids: " sid; fm = 0 }
             { print }' "$_ls_doc" > "$_ls_tmp" \
         && grep -q "^session_ids:.*$_ls_sid" "$_ls_tmp" &&

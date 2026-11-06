@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # selector: tree-scan
 # Drift test for pr-check-context.sh's cr_guarded set.
+# For pr-check-outside.sh the closure covers the one-argument classifier form only; its --pr form is
+# pinned in NOT_RUN below (it runs only as the anchor's own copy).
 #
 # On a step-0 cr_diff_state=no verdict himmel_dir stays at the BRANCH, so
 # every script a later /pr-check step runs through <himmel_dir> - and every
@@ -113,7 +115,9 @@ edges() {
 # block-fork-sync-pr.sh names resync-fork.sh in its deny message, as the command to run instead.
 # suite-coverage.sh (run by impacted-suites.sh --check) only READS run-shell-tests.sh's SKIP_LIST and timeout tables as text; it never runs it.
 # merge-on-green.sh runs bug-origin-report.py only after a merge, from the anchor's bytes (HIMMEL_REPO), never a /pr-check run's branch.
+# pr-check-outside.sh runs ready-check.sh only in its --pr form, and that form refuses unless the script is the HIMMEL_REPO anchor's own copy (an -ef check before it runs anything), so the ready-check.sh it runs is the anchor's bytes, never a branch's. Held by a row in test-pr-check-outside.sh. The pin is per file, so it also hides any later classifier-form edge to ready-check.sh.
 NOT_RUN="scripts/cr/install-cr-gate.sh -> scripts/hooks/check-cr-before-push.sh
+scripts/cr/pr-check-outside.sh -> scripts/handover/chief-kit/ready-check.sh
 scripts/lib/wire-statusline.sh -> marketplace/plugins/claude-hud/dist/index.js
 scripts/lib/usage-preflight.sh -> scripts/lanes/codex-usage-probe.ts
 scripts/lanes/bank-status-core.mjs -> scripts/lanes/codex-usage-probe.ts

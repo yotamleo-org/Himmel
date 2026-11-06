@@ -845,6 +845,29 @@ rmbad "an rm worker whose state_dir names another release is refused" 'd["state_
 rmbad "an rm worker whose state_dir is not under a release directory is refused" 'd["state_dir"]="/h/tester/himmel/R1"' "must end in release/R1"
 rmbad "an rm worker on a non-opus model is refused" 'd["model"]="claude-sonnet-5-5"' "opus"
 
+# --- every brief's front matter parses as YAML and the description reads back as the folded text ---
+fm_desc() { # <doc>: the parsed description of the doc's front matter, or PARSE-ERROR
+    python3 -I -c 'import sys,yaml
+t=open(sys.argv[1],encoding="utf-8").read().split("\n---\n")[0].lstrip("-\n")
+try: print(yaml.safe_load(t)["description"],end="")
+except Exception: print("PARSE-ERROR",end="")' "$1"
+}
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["desc"]="Operator ask: x\nsay \"y\""; l[0]["label"]="N911"; l[0]["slug"]="colon-desc"; json.dump(l,open(sys.argv[2],"w"),ensure_ascii=False)' "$WORK/workers.json" "$WORK/y-colon.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["desc"]="café \U0001F680 ok"; l[0]["label"]="N912"; l[0]["slug"]="utf-desc"; json.dump(l,open(sys.argv[2],"w"),ensure_ascii=False)' "$WORK/workers.json" "$WORK/y-utf.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["label"]="N914"; l[0]["slug"]="plain-desc"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/y-plain.json"
+for f in y-colon y-utf y-plain; do
+    python3 "$SUT" "$WORK/$f.json" --base 4ccb59d --chief BZ --bucket "$WORK/yb" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >/dev/null 2>"$WORK/$f.err" || fail "$f generates (err: $(cat "$WORK/$f.err"))"
+done
+YC="$(ls "$WORK"/yb/*-N911-*.md 2>/dev/null)"; YU="$(ls "$WORK"/yb/*-N912-*.md 2>/dev/null)"
+[ "$(fm_desc "$YC")" = 'Operator ask: x say "y"' ] && pass "a desc with a colon and a newline parses back to the folded text" || fail "colon desc parsed as: $(fm_desc "$YC")"
+[ "$(fm_desc "$YU")" = "caf$(printf '\303\251') $(printf '\360\237\232\200') ok" ] && pass "a non-ASCII desc parses back unchanged" || fail "utf desc parsed as: $(fm_desc "$YU")"
+lacks "and its raw description line holds no \\u escape" "$(grep '^description:' "$YU" 2>/dev/null)" '\u'
+[ "$(fm_desc "$(ls "$WORK"/yb/*-N914-*.md 2>/dev/null)")" = "fix the plain thing" ] && pass "a plain desc still parses to itself" || fail "plain desc parsed as: $(fm_desc "$(ls "$WORK"/yb/*-N914-*.md 2>/dev/null)")"
+[ "$(fm_desc "$RMD")" = 'Release manager for R1 (v1 + v2, current v1): rule every placement, report STATUS, BURN-DOWN and READY' ] && pass "the rm brief's description parses back to the template text" || fail "rm desc parsed as: $(fm_desc "$RMD")"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["versions"]="v1 \"q\" \\ z"; l[0]["label"]="N913"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/rm.json" "$WORK/rm-q.json"
+python3 "$SUT" "$WORK/rm-q.json" --base 4ccb59d --chief BZ --bucket "$WORK/rmq" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >/dev/null 2>"$WORK/rm-q.err" || fail "the quoting rm generates (err: $(cat "$WORK/rm-q.err"))"
+[ "$(fm_desc "$(ls "$WORK"/rmq/*-N913-*.md 2>/dev/null)")" = 'Release manager for R1 (v1 "q" \ z): rule every placement, report STATUS, BURN-DOWN and READY' ] && pass "an rm versions string holding a quote and a backslash parses back unchanged" || fail "rm quoting desc parsed as: $(fm_desc "$(ls "$WORK"/rmq/*-N913-*.md 2>/dev/null)")"
+
 # --- a brief naming VM work carries the guest-exec line; one that does not stays without it ---
 python3 -I -c "import json,sys; l=json.load(open(sys.argv[1])); l[0]['why']='the install must be proven on a test VM first'; json.dump(l,open(sys.argv[2],'w'))" "$WORK/workers.json" "$WORK/vmlegs.json"
 rc=0; python3 "$SUT" "$WORK/vmlegs.json" --base 4ccb59d --chief BZ --bucket "$WORK/vmb" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >"$WORK/vm.out" 2>&1 || rc=$?

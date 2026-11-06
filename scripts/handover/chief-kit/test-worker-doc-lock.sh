@@ -146,6 +146,29 @@ check "5e inbox-send.sh --doc waits while the lock is held" "$(grep -c 'ruling h
 : > "$tmp/release"; wait "$hp"; wait "$ip"; ip_rc=$?
 check "5f inbox-send.sh --doc mirrors once it is released (rc 0)" "$ip_rc:$(grep -c 'ruling held' "$d6")" "0:1"
 
+# --- 6. the rewrite never writes session_ids:, and the front matter parses --
+# fmsids <doc>: the parsed session_ids value of the doc's front matter, or PARSE-ERROR.
+fmsids() {
+    python3 -I -c 'import sys,yaml
+t=open(sys.argv[1],encoding="utf-8").read().split("\n---\n")[0].lstrip("-\n")
+try: print(yaml.safe_load(t)["session_ids"],end="")
+except Exception: print("PARSE-ERROR",end="")' "$1"
+}
+u1="$(sid 71)"; u2="$(sid 72)"
+d7="$tmp/d7.md"; printf -- '---\ntemplate_version: 3\nsession_ids:\n---\n\n# worker\n' > "$d7"
+rewrite "$d7" 71
+check "6a a bare session_ids: line gets the id with no leading comma" "$(grep '^session_ids:' "$d7")" "session_ids: $u1"
+check "6b and the front matter parses to the id" "$(fmsids "$d7")" "$u1"
+d8="$tmp/d8.md"; printf -- '---\ntemplate_version: 3\nsession_ids:,a\n---\n\n# worker\n' > "$d8"
+rewrite "$d8" 72
+check "6c a session_ids:,a line is healed to a,<id>" "$(grep '^session_ids:' "$d8")" "session_ids: a,$u2"
+check "6d and its value is the string a,<id>" "$(fmsids "$d8")" "a,$u2"
+d9="$tmp/d9.md"; printf -- '---\ntemplate_version: 3\nsession_ids: a\n---\n\n# worker\n' > "$d9"
+rewrite "$d9" 71
+check "6e a session_ids: a line still gets a,<id>" "$(grep '^session_ids:' "$d9")" "session_ids: a,$u1"
+d10="$tmp/d10.md"; mkdoc "$d10"; rewrite "$d10" 72
+check "6f a doc with no session_ids: line still gets one" "$(grep '^session_ids:' "$d10")" "session_ids: $u2"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-worker-doc-lock.sh"
