@@ -1075,7 +1075,7 @@ fi
 # create that read its failure as rc 1 ("no match") would exit 0 with a short list.
 SHIM3="$(fixture_mktemp_dir)" || exit 1
 trap 'rm -rf "$FX" "$SHIM" "$SHIM2" "$SHD" "$BIG" "$SHIM3"' EXIT
-printf '#!/usr/bin/env bash\nd="$(%s "$@")" || exit $?\nif [ -n "${PRECREATE_DIR:-}" ]; then mkdir "$d/$PRECREATE_DIR" || exit 1; fi\nprintf "%%s\\n" "$d"\n' "$(command -v mktemp)" > "$SHIM3/mktemp"
+printf '#!/usr/bin/env bash\nd="$(%s "$@")" || exit $?\nif [ -n "${PRECREATE_DIR:-}" ]; then mkdir "$d/$PRECREATE_DIR" || exit 1; fi\nif [ -n "${PRECREATE_FULL:-}" ]; then ln -s /dev/full "$d/$PRECREATE_FULL" || exit 1; fi\nprintf "%%s\\n" "$d"\n' "$(command -v mktemp)" > "$SHIM3/mktemp"
 chmod +x "$SHIM3/mktemp"
 change scripts/lib/clo-lib.sh
 out="$( cd "$FX" && PRECREATE_DIR=unused PATH="$SHIM3:$PATH" bash "$IS" "$range" 2>"$SHIM3/err" )"; rc=$?
@@ -1103,6 +1103,16 @@ hit.dir|creating the reading shellcheck source directives hit list
 hit.asg|creating the reading variable assignments hit list
 narrow.cand|creating the walking the source closure candidate list
 narrow.hits|creating the walking the source closure result file
+narrow.rel|reading the walking the source closure candidates
+narrow.reg|creating the walking the source closure candidate list
+narrow.irr|creating the walking the source closure candidate list
+narrow.lines|creating the walking the source closure candidate list
+narrow.tagged|reading the walking the source closure candidates
+narrow.dirs.txt|listing the walking the source closure scratch directories
+narrow.dirs|converting the walking the source closure scratch directory list
+importers|creating the importer list
+import-edges|creating the import index
+import.lines|reading the importer lines
 src.out|merging source-closure hits
 next|growing the source closure
 varsrc.raw|creating the variable-sourcer list
@@ -1308,6 +1318,31 @@ change scripts/lib/clo-lib.sh
 out="$( cd "$FX" && bash "$IS" "$range" 2>"$SC/dash.err" )"; rc=$?
 if [ "$rc" -eq 0 ] && grepq "$out" '^scripts/test-names-dash\.sh$'; then pass "a sourcer named -dash-lib.sh is not read as an option: the suite naming it is listed"; else fail "dash-named candidate: rc=$rc err=$(head -c 400 "$SC/dash.err")"; fi
 
+# The import index reads a file git calls binary (a NUL byte) as text: `git grep`
+# without -a prints "Binary file matches" for it and its edge would vanish at exit 0.
+printf 'import pymod\n\000\n' > "$FX/scripts/binuser.py"
+mkf scripts/test-binuser.sh 'python3 "$d/binuser.py"'
+git -C "$FX" add -A
+git -C "$FX" commit -q -m "chore: python importer holding a NUL byte"
+change scripts/lib/pymod.py
+out="$(run_is "$range")"
+if grepq "$out" '^scripts/test-binuser\.sh$'; then pass "an importer git calls binary still indexes its import lines"; else fail "binary importer dropped: $out"; fi
+
+# The candidate split writes two lists. A write that fails (a full disk) must stop the
+# run: dropping the candidate would drop its suite at exit 0. narrow.reg holds the
+# candidates the unpack has as regular files, narrow.irr the export-ignored one; the
+# mktemp shim makes the scratch file a symlink to /dev/full, which opens and rejects writes.
+if [ -c /dev/full ]; then
+    change scripts/lib/clo-lib.sh
+    for name in narrow.reg narrow.irr; do
+        out="$( cd "$FX" && PRECREATE_FULL="$name" PATH="$SHIM3:$PATH" bash "$IS" "$range" 2>"$SHIM3/err" )"; rc=$?
+        err="$(cat "$SHIM3/err")"
+        if [ "$rc" -eq 2 ] && [ -z "$out" ] && grepq "$err" -F 'impacted-suites: recording a walking the source closure candidate failed'; then pass "$name rejects the write -> rc 2, no list, named step"; else fail "$name on /dev/full: rc=$rc out=$out err=$err"; fi
+    done
+else
+    echo "SKIP split writes: /dev/full is unavailable on this platform"
+fi
+
 # --- 37b. a candidate whose scratch copy cannot be created fails closed ------
 # The narrowing writes each candidate's matching lines to a scratch file; a
 # failed open of that file is rc 1, the code `grep` uses for "no match", so
@@ -1321,6 +1356,26 @@ git -C "$FX" commit -q -m "chore: suite with an over-long name"
 change scripts/lib/clo-lib.sh
 out="$( cd "$FX" && bash "$IS" "$range" 2>"$SHIM4/long.err" )"; rc=$?
 if [ "$rc" -ne 0 ] && grepq "$(cat "$SHIM4/long.err")" -F 'scratch copy of'; then pass "uncreatable scratch copy: exits $rc naming the file, not a short list at 0"; else fail "uncreatable scratch copy: rc=$rc err=$(cat "$SHIM4/long.err") out=$out"; fi
+
+# --- 37c. an attribute committed in the head cannot narrow its own list ---------
+# `git archive` applies the attributes of the tree it archives, and that tree is the
+# PR's own head: working-tree-encoding=UTF-16LE on a suite would hand the narrowing
+# a UTF-16 copy that holds no literal, and the suite would drop out of the list at
+# exit 0. The suite's blob is committed first, the attribute in the same commit as
+# the change, so the head holds both. The index is written directly: the worktree
+# never has to hold a file git would convert.
+enc_blob="$(printf 'bash "$d/lib/clo-lib.sh"\n' | git -C "$FX" hash-object -w --stdin)"
+git -C "$FX" update-index --add --cacheinfo "100644,$enc_blob,scripts/test-enc.sh"
+git -C "$FX" commit -q -m "chore: suite naming clo-lib.sh"
+attr_blob="$(printf 'scripts/test-enc.sh working-tree-encoding=UTF-16LE\n' | git -C "$FX" hash-object -w --stdin)"
+lib_blob="$( { git -C "$FX" show HEAD:scripts/lib/clo-lib.sh; printf '# changed\n'; } | git -C "$FX" hash-object -w --stdin)"
+git -C "$FX" update-index --add --cacheinfo "100644,$attr_blob,.gitattributes"
+git -C "$FX" update-index --cacheinfo "100644,$lib_blob,scripts/lib/clo-lib.sh"
+git -C "$FX" update-index --force-remove -- "$LONGNAME"   # row 37b's file cannot be unpacked
+git -C "$FX" commit -q -m "fix: change clo-lib.sh and set an encoding attribute on the suite"
+range="$(git -C "$FX" rev-parse HEAD~1)..$(git -C "$FX" rev-parse HEAD)"
+out="$( cd "$FX" && bash "$IS" "$range" 2>"$SC/enc.err" )"; rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" '^scripts/test-enc\.sh$'; then pass "a suite the head marks working-tree-encoding=UTF-16LE is still listed"; else fail "encoding attribute narrowed the list: rc=$rc out=$out err=$(head -c 400 "$SC/enc.err")"; fi
 
 # --- 38. `SUITE <p> = CI` hands an untouched PR-CI suite on to CI -------------
 # A fresh repo with real copies of run-shell-tests.sh (its SKIP_LIST gains one

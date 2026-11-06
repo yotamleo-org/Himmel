@@ -963,30 +963,45 @@ grep_narrowed() {
     # the read. So the candidates at head are unpacked by a few git archive batches and
     # ONE grep prints the literal-bearing lines of every one. git grep -F -f cannot do
     # that pass: it tests the patterns one at a time per line.
-    # ponytail: git archive honours export-ignore / export-subst; neither is used in
-    # this repo, and a candidate the unpack lacks (or holds as a symlink) takes the
-    # per-file path below, so only export-subst could change a line. Upgrade path:
-    # git cat-file --batch if a repo ever sets it.
+    # git archive writes the working-tree form of a blob, by the attributes of the tree
+    # it archives, and that tree is the PR's own head: working-tree-encoding=UTF-16LE on
+    # a suite would hand the narrowing a copy holding no literal and drop the suite at
+    # exit 0. So when any .gitattributes at head could rewrite content (an encoding,
+    # export-subst, ident, a filter, crlf), no candidate is unpacked: all take the
+    # per-file path below, which reads the raw blob. A candidate the unpack lacks
+    # (export-ignore), or holds as a symlink, takes that path too.
+    # ponytail: a pattern hit in a comment of .gitattributes also takes the slow path;
+    # an attribute set only in $GIT_DIR/info/attributes is the station's, not the PR's.
+    # Upgrade path: git cat-file --batch if the slow path ever matters.
+    grep_rc=0
+    git grep -q -a -E 'working-tree-encoding|export-subst|filter=|crlf|(^|[[:space:]])ident([[:space:]]|$)' "$head_sha" -- ':(glob)**/.gitattributes' || grep_rc=$?
+    [ "$grep_rc" -le 1 ] || io_fail "reading the attribute files at ${head_sha} for ${what}"
+    attr_rc="$grep_rc"
     # The candidate list is "<head>:<path>" NUL entries: strip the prefix first.
     tr '\0' '\n' < "$work/narrow.cand" | sed "s/^${head_sha}://" | tr '\n' '\0' > "$work/narrow.rel" || io_fail "reading the ${what} candidates"
-    rm -rf "$src"
-    mkdir "$src" || io_fail "creating the ${what} scratch tree"
-    # --literal-pathspecs: a name holding * ? [ is itself, not a glob. A failed batch
-    # (a name past NAME_MAX cannot be unpacked) stops the run: no suite is dropped.
-    # shellcheck disable=SC2016  # the child shell expands its own $1 $2 $@
-    xargs -0 sh -c 'h=$1; d=$2; shift 2; git --literal-pathspecs archive --format=tar "$h" -- "$@" > "$d.tar" && tar -x -f "$d.tar" -C "$d"' sh "$head_sha" "$src" < "$work/narrow.rel" \
-        || io_fail "creating the ${what} scratch copy of the candidates"
-    # Split the candidates the unpack holds as regular files from the rest.
     : > "$work/narrow.reg" || io_fail "creating the ${what} candidate list"
     : > "$work/narrow.irr" || io_fail "creating the ${what} candidate list"
-    while IFS= read -r -d '' p; do
-        # A write that fails (a full disk) must not drop the candidate: it stops the run.
-        if [ -f "$src/$p" ] && [ ! -L "$src/$p" ]; then
-            printf '%s\0' "$p" >&3 || io_fail "recording a ${what} candidate"
-        else
-            printf '%s\0' "$p" >&4 || io_fail "recording a ${what} candidate"
-        fi
-    done < "$work/narrow.rel" 3> "$work/narrow.reg" 4> "$work/narrow.irr" || io_fail "splitting the ${what} candidates"
+    rm -rf "$src"
+    mkdir "$src" || io_fail "creating the ${what} scratch tree"
+    if [ "$attr_rc" -eq 0 ]; then
+        cp "$work/narrow.rel" "$work/narrow.irr" || io_fail "recording the ${what} candidates"
+    else
+        # --literal-pathspecs: a name holding * ? [ is itself, not a glob. A failed batch
+        # (a name past NAME_MAX cannot be unpacked) stops the run: no suite is dropped.
+        # core.autocrlf=false: a user's setting must not add a CR to the unpacked lines.
+        # shellcheck disable=SC2016  # the child shell expands its own $1 $2 $@
+        xargs -0 sh -c 'h=$1; d=$2; shift 2; git -c core.autocrlf=false --literal-pathspecs archive --format=tar "$h" -- "$@" > "$d.tar" && tar -x -f "$d.tar" -C "$d"' sh "$head_sha" "$src" < "$work/narrow.rel" \
+            || io_fail "creating the ${what} scratch copy of the candidates"
+        # Split the candidates the unpack holds as regular files from the rest.
+        while IFS= read -r -d '' p; do
+            # A write that fails (a full disk) must not drop the candidate: it stops the run.
+            if [ -f "$src/$p" ] && [ ! -L "$src/$p" ]; then
+                printf '%s\0' "$p" >&3 || io_fail "recording a ${what} candidate"
+            else
+                printf '%s\0' "$p" >&4 || io_fail "recording a ${what} candidate"
+            fi
+        done < "$work/narrow.rel" 3> "$work/narrow.reg" 4> "$work/narrow.irr" || io_fail "splitting the ${what} candidates"
+    fi
     # "<path>" NUL "<line>" for each matching line. -H: a lone file still names itself.
     # LC_ALL=C -a: byte-exact, and a line that is not valid UTF-8 is still text.
     : > "$work/narrow.lines" || io_fail "creating the ${what} candidate list"
@@ -1007,8 +1022,8 @@ grep_narrowed() {
             path = substr($0, 1, i - 1)
             if (sub(/[^\/]*$/, "", path) && path != "" && !(path in seen)) { seen[path] = 1; print ENVIRON["NARROW_DIR"] "/" path }
         }
-    ' "$work/narrow.tagged" > "$work/narrow.dirs.txt" || io_fail "creating the ${what} scratch tree"
-    tr '\n' '\0' < "$work/narrow.dirs.txt" > "$work/narrow.dirs" || io_fail "creating the ${what} scratch tree"
+    ' "$work/narrow.tagged" > "$work/narrow.dirs.txt" || io_fail "listing the ${what} scratch directories"
+    tr '\n' '\0' < "$work/narrow.dirs.txt" > "$work/narrow.dirs" || io_fail "converting the ${what} scratch directory list"
     if [ -s "$work/narrow.dirs" ]; then
         xargs -0 mkdir -p < "$work/narrow.dirs" || io_fail "creating the ${what} scratch tree"
     fi
