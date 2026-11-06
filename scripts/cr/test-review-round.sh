@@ -309,6 +309,97 @@ assert_eq "$bad_rc" "2" "18c --check on another verb is a usage error"
 
 git -C "$repo" checkout -q main 2>/dev/null
 
+# (19) start|check --pr <n> --head <H> reviews an outside PR whose branch is not checked out.
+# The gh stub serves the author, the head branch and the head; the lib reads them, the caller cannot name them.
+cp "$HERE/../lib/outside-contributors.sh" "$HERE/../lib/timeout-bin.sh" "$fx/scripts/lib/"
+mkdir -p "$tmp/prbin" "$fx/scripts/cr/perspectives"
+cat > "$tmp/prbin/gh" <<'STUB'
+#!/usr/bin/env bash
+printf '{"author":{"login":"%s","id":"%s"},"headRefName":"feat/outside-thing","headRefOid":"%s"}\n' "$STUB_LOGIN" "$STUB_ID" "$STUB_OID"
+STUB
+chmod +x "$tmp/prbin/gh"
+printf '# fixture outside-security perspective\n' > "$fx/scripts/cr/perspectives/outside-security.md"
+psha="$(sha256sum < "$fx/scripts/cr/perspectives/outside-security.md" | cut -d' ' -f1)"
+mkdir -p "$HOME/.himmel"
+appr="$HOME/.himmel/outside-pr-approvals.jsonl"
+printf '[{"login":"Goomal","id":"U_goomal"}]\n' > "$HOME/.himmel/outside-contributors.json"
+(
+    cd "$repo" || exit 1
+    for n in 3 4 5; do printf 'p%s\n' "$n" >> f.txt; git commit -q -am "head-$n"; done
+) || fail "fixture: extra heads"
+h1="$head_a"; h2="$head_b"; h3="$(git -C "$repo" rev-parse HEAD~2)"; h4="$(git -C "$repo" rev-parse HEAD~1)"; h5="$(git -C "$repo" rev-parse HEAD)"
+git -C "$repo" checkout -q -b elsewhere 2>/dev/null
+rr_pr() { # verb pr head [login id]: sets out, rc
+    out="$(cd "$repo" && PATH="$tmp/prbin:$PATH" STUB_LOGIN="${4:-Goomal}" STUB_ID="${5:-U_goomal}" STUB_OID="$3" bash "$RR" "$1" --pr "$2" --head "$3" 2>"$tmp/err")"; rc=$?
+    err="$(cat "$tmp/err")"
+}
+pr_state() { local f n=0; for f in "$git_dir"/cr-review-rounds/outside-*; do [ -e "$f" ] && n=$((n + 1)); done; echo "$n"; }
+pr_approve() { # pr head stage
+    jq -nc --argjson pr "$1" --arg h "$2" --arg s "$3" '{pr:$pr,head:$h,stage:$s,from:1,chat:1,message_id:77,ts:"2026-11-06T10:00:00Z"}' >> "$appr"
+}
+rr_pr start 7 "$h1"
+assert_eq "$rc:$out" "0:1" "T2.1 start --pr for a listed author returns a full round, branch not checked out"
+assert_eq "$(cat "$git_dir/cr-review-rounds/outside-7.round" 2>/dev/null)" "1" "T2.1 the state is keyed outside-7"
+assert_eq "$(cat "$git_dir/cr-review-rounds/outside-7.head" 2>/dev/null)" "$h1" "T2.1 the round records the head it ran on"
+rr_pr start 7 "$h1"
+assert_eq "$rc:$out" "0:1" "start --pr at the head the counted round ran on reuses that round"
+before_pr="$(cksum "$git_dir"/cr-review-rounds/outside-7.* | tr '\n' ' ')"
+rr_pr check 7 "$h2"
+assert_eq "$rc:$out" "0:2 allowlist" "check --pr names the round a new head would take and who authorized it"
+assert_eq "$(cksum "$git_dir"/cr-review-rounds/outside-7.* | tr '\n' ' ')" "$before_pr" "check --pr writes nothing"
+rr_pr start 7 "$h2"; rr_pr start 7 "$h3"
+assert_eq "$rc:$out" "0:3" "a third head is the third full round"
+rr_pr start 7 "$h4"
+assert_eq "$rc" "5" "T2.41 a 4th head for a listed author exits 5"
+assert_eq "$(cat "$git_dir/cr-review-rounds/outside-7.round")" "3" "T2.41 the refused start leaves the count at 3"
+rr_pr check 7 "$h4"
+assert_eq "$rc" "5" "T2.41 check --pr gives the same refusal"
+pr_approve 7 "$h4" review
+rr_pr start 7 "$h4"
+assert_eq "$rc:$out" "0:4" "T2.42 the 4th head with an exact approval returns a full round, never a delta"
+rr_pr start 7 "$h5"
+assert_eq "$rc" "5" "a 5th head with no approval for it exits 5"
+# an unlisted author
+n0="$(pr_state)"
+rr_pr start 9 "$h1" Stranger U_stranger
+assert_eq "$rc" "5" "T2.40 an unlisted author's start --pr exits 5"
+assert_eq "$(pr_state)" "$n0" "T2.40 and writes no state"
+rr_pr check 9 "$h1" Stranger U_stranger
+assert_eq "$rc" "5" "T2.40 check --pr refuses an unlisted author too"
+pr_approve 9 "$h1" review
+rr_pr start 9 "$h1" Stranger U_stranger
+assert_eq "$rc" "5" "T2.49 an unlisted author with a review approval and no audit row exits 5"
+assert_eq "$(pr_state)" "$n0" "T2.49 and writes no state"
+audit_row() { # head
+    local rpt="$tmp/audit-report.md"
+    printf 'report\n' > "$rpt"
+    jq -nc --arg h "$1" --arg ps "$psha" --arg r "$rpt" --arg rs "$(sha256sum < "$rpt" | cut -d' ' -f1)" \
+        '{kind:"security-audit",ts:"2026-11-06T10:00:00Z",pr:9,branch:"feat/outside-thing",head:$h,verdict:"pass",perspective_sha256:$ps,report:$r,report_sha256:$rs,status:"ok"}' >> "$ledger"
+}
+: > "$appr"; audit_row "$h1"
+rr_pr start 9 "$h1" Stranger U_stranger
+assert_eq "$rc" "5" "T2.54 an unlisted author with an audit pass and no approval exits 5"
+pr_approve 9 "$h1" ci
+rr_pr start 9 "$h1" Stranger U_stranger
+assert_eq "$rc" "5" "T2.54 an approval with stage ci exits 5"
+printf '{"pr":9,"head":"%s","message_id":78}\n' "$h1" > "$appr"
+rr_pr start 9 "$h1" Stranger U_stranger
+assert_eq "$rc" "5" "T2.54 an approval with no stage exits 5"
+assert_eq "$(pr_state)" "$n0" "T2.54 none of those wrote state"
+: > "$appr"; pr_approve 9 "$h1" review
+rr_pr start 9 "$h1" Stranger U_stranger
+assert_eq "$rc:$out" "0:1" "control: the same unlisted author with both a review approval and an audit pass starts round 1"
+# the old verbs still require the checked-out branch, and --pr takes no --branch
+bad_rc=0; (cd "$repo" && bash "$RR" start --branch not-checked-out --head "$h1" >/dev/null 2>&1) || bad_rc=$?
+assert_eq "$bad_rc" "2" "start --branch for a branch that is not checked out is still refused"
+bad_rc=0; (cd "$repo" && PATH="$tmp/prbin:$PATH" STUB_LOGIN=Goomal STUB_ID=U_goomal STUB_OID="$h1" bash "$RR" start --pr 7 --branch elsewhere --head "$h1" >/dev/null 2>&1) || bad_rc=$?
+assert_eq "$bad_rc" "2" "--pr with --branch is a usage error"
+bad_rc=0; (cd "$repo" && bash "$RR" promote --pr 7 --head "$h1" >/dev/null 2>&1) || bad_rc=$?
+assert_eq "$bad_rc" "2" "--pr belongs to start and check only"
+bad_rc=0; (cd "$repo" && bash "$RR" start --pr 7 --head abc123 >/dev/null 2>&1) || bad_rc=$?
+assert_eq "$bad_rc" "2" "--pr needs a full 40-hex head"
+git -C "$repo" checkout -q main 2>/dev/null
+
 if [ "$fails" -gt 0 ]; then
     printf 'FAIL test-review-round (%s failures)\n' "$fails" >&2
     exit 1

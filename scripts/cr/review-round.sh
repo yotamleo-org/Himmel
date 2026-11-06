@@ -83,6 +83,7 @@ usage() {
     echo "       review-round.sh abort --branch <name> --head <sha>   (give back the round started at <sha> when its panel reviewed nothing)" >&2
     echo "       review-round.sh from --branch <name>   (the reviewed head this round 2 or 3 started from; nothing at other rounds)" >&2
     echo "       review-round.sh trivial-descendant [--tests-only] <from-sha> <to-sha>   (exit 0 yes, 1 no)" >&2
+    echo "       review-round.sh start|check --pr <n> --head <40-hex sha>   (an outside PR reviewed from its diff, its branch not checked out; check reads only)" >&2
     exit 2
 }
 
@@ -231,6 +232,7 @@ if [ "$verb" = "trivial-descendant" ]; then
     exit $?
 fi
 branch=""
+pr=""
 head_sha=""
 base_sha=""
 defer_to="${CR_DEFER_TO:-}"
@@ -240,6 +242,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --check) check_only=1; shift ;;
         --branch) [ $# -ge 2 ] || usage; branch="$2"; shift 2 ;;
+        --pr) [ $# -ge 2 ] || usage; pr="$2"; shift 2 ;;
         --head) [ $# -ge 2 ] || usage; head_sha="$2"; shift 2 ;;
         --base-sha) [ $# -ge 2 ] || usage; base_sha="$2"; shift 2 ;;
         --defer-to) [ $# -ge 2 ] || usage; defer_to="$2"; shift 2 ;;
@@ -247,9 +250,18 @@ while [ $# -gt 0 ]; do
         *) usage ;;
     esac
 done
+# --pr keys the state on outside-<n>, so it never takes --branch, and only start and
+# check (read only) accept it. Its head is a full sha, and the PR number a plain integer.
+if [ -n "$pr" ]; then
+    [ -z "$branch" ] && [ "$check_only" -eq 0 ] || usage
+    case "$verb" in start|check) ;; *) usage ;; esac
+    [[ "$pr" =~ ^[1-9][0-9]{0,8}$ ]] && [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]] || usage
+    branch="outside-$pr"
+fi
 [ -n "$branch" ] || usage
 [ "$check_only" -eq 0 ] || [ "$verb" = "promote" ] || usage
 case "$verb" in
+    check) [ -n "$pr" ] || usage ;;
     start) [ -n "$head_sha" ] || [ -z "$base_sha" ] || usage ;;
     defer) [ -n "$head_sha" ] || usage ;;
     promote) [ -n "$head_sha" ] || usage ;;
@@ -270,7 +282,8 @@ fi
 # detached HEAD has no branch and is refused too.
 current_branch="$(git branch --show-current 2>/dev/null)" || current_branch=""
 # promote --check writes nothing, so it may read a branch this directory does not hold.
-if [ "$check_only" -eq 0 ] && { [ -z "$current_branch" ] || [ "$current_branch" != "$branch" ]; }; then
+# --pr names no branch of ours: the PR's head lives in its own state key.
+if [ "$check_only" -eq 0 ] && [ -z "$pr" ] && { [ -z "$current_branch" ] || [ "$current_branch" != "$branch" ]; }; then
     echo "review-round: --branch '$branch' is not the branch checked out in this directory ('${current_branch:-detached HEAD}') - run it from that branch's worktree" >&2
     exit 2
 fi
@@ -1536,6 +1549,74 @@ if [ "$verb" = "abort" ]; then
         bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
     [ "$ab_rc" -ne 0 ] || printf '%s %s\n' "$ab_round" "${ab_back:-none}"
     exit "$ab_rc"
+fi
+
+# start|check --pr <n> --head <H>: an outside PR reviewed from its diff, its
+# branch never checked out. State is keyed outside-<n>. This is the one owner of the cap
+# for such a PR: outside_pr_authorize reads the author and the head from the forge itself
+# and is told how many full rounds were used, so a listed author gets three, and a fourth
+# (or any round for an unlisted author) needs a recorded review approval for exactly this
+# head. There is no delta round here: past the cap the answer is exit 5. `check` is the
+# same decision with nothing written. Exit 0 prints the round number; 5 = not authorized,
+# or a state or lock error.
+if [ -n "$pr" ]; then
+    # shellcheck source=scripts/lib/outside-contributors.sh
+    # shellcheck disable=SC1091
+    . "$HIMMEL_ROOT/scripts/lib/outside-contributors.sh" || {
+        echo "review-round: cannot load scripts/lib/outside-contributors.sh - a --pr round is refused" >&2
+        exit 5
+    }
+    pr_unlock() {
+        [ "$verb" != "start" ] || SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
+            bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
+    }
+    if [ "$verb" = "start" ]; then counter_lock || exit 5; fi
+    read_round || { pr_unlock; exit 5; }
+    # A start at the head the counted round already ran on is bookkeeping: it reuses that
+    # round, and that round does not count against the cap when it is authorized.
+    pr_used="$round"
+    pr_reuse=0
+    # swallow-ok: a missing or unreadable .head is "a new head"
+    pr_rec="$(cat "$head_state" 2>/dev/null)" || pr_rec=""
+    if [ "$round" -ge 1 ] && [ "$pr_rec" = "$head_sha" ]; then
+        pr_reuse=1
+        pr_used=$((round - 1))
+    fi
+    if ! pr_auth="$(outside_pr_authorize "$pr" "$head_sha" "$pr_used")"; then
+        pr_unlock
+        echo "review-round: PR #$pr at $head_sha is not authorized for a no-checkout review (author not on the allowlist, no recorded approval for exactly this head, the full-round cap used, or the forge could not be read) - nothing was recorded" >&2
+        exit 5
+    fi
+    if [ "$pr_reuse" -eq 1 ]; then
+        pr_unlock
+        if [ "$verb" = "check" ]; then printf '%s %s\n' "$round" "$pr_auth"; else printf '%s\n' "$round"; fi
+        exit 0
+    fi
+    pr_next=$((round + 1))
+    if [ "$verb" = "check" ]; then
+        printf '%s %s\n' "$pr_next" "$pr_auth"
+        exit 0
+    fi
+    pr_tmp_state="$state.tmp.$$"
+    pr_tmp_head="$head_state.tmp.$$"
+    # swallow-ok: an unreadable lock status reads as "not the owner", which refuses the write below
+    pr_owner="$(SHARED_BRANCH_LOCK_NS=himmel-cr-review-round bash "$lock_lib" status "." "$branch" 2>/dev/null || true)"
+    if [ "$pr_owner" != "$lock_owner" ] \
+        || ! printf '%s\n' "$pr_next" > "$pr_tmp_state" \
+        || ! printf '%s\n' "$head_sha" > "$pr_tmp_head" \
+        || ! { mv "$pr_tmp_state" "$state" && mv "$pr_tmp_head" "$head_state"; }; then  # prim-ok: tmp-then-mv under the counter lock, like start; fixture copies of this script have no scripts/lib
+        rm -f "$pr_tmp_state" "$pr_tmp_head"
+        pr_unlock
+        echo "review-round: cannot persist round $pr_next for PR #$pr under the counter lock" >&2
+        exit 5
+    fi
+    if ! SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
+        bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1; then
+        echo "review-round: persisted round $pr_next for PR #$pr but could not release its counter lock" >&2
+        exit 5
+    fi
+    printf '%s\n' "$pr_next"
+    exit 0
 fi
 
 if [ "$verb" = "start" ]; then
