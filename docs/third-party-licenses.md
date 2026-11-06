@@ -490,4 +490,8 @@ Regenerate and check with `node scripts/docs/generate-credits.mjs` and
 | Generalised wiki lint | https://github.com/AgriciDaniel/claude-obsidian | AgriciDaniel | MIT | inspired by | marketplace/plugins/obsidian-triage/skills/vault-lint/SKILL.md |
 | Animation frequency rule | https://x.com/emilkowalski/status/2110429909160264027 | Emil Kowalski | Not established | inspired by | marketplace/plugins/shadcn-mcp/skills/motion-budget/SKILL.md |
 | Log-normal estimate model | https://erikbern.com/2019/04/15/why-software-projects-take-longer-than-you-think-a-statistical-model.html | Erik Bernhardsson | Not established | inspired by | marketplace/plugins/himmel-ops/skills/effort-assess/SKILL.md |
+| Review grading by the intended case and declining what the goal does not need (tstack sol-loop, babysit-pr) | https://github.com/t3dotgg/tstack/tree/7de017b3fc9d50c03cf3ecb98fb71e0ca65a78bd | Theo Browne | MIT | inspired by | .claude/commands/pr-check.md |
+| Keep the credit when taking over a PR (tstack modernize, takeover) | https://github.com/t3dotgg/tstack/tree/7de017b3fc9d50c03cf3ecb98fb71e0ca65a78bd | Theo Browne | MIT | inspired by | docs/handover/worker-brief-template.md |
+| Keep the credit when taking over a PR, generated brief text (tstack modernize, takeover) | https://github.com/t3dotgg/tstack/tree/7de017b3fc9d50c03cf3ecb98fb71e0ca65a78bd | Theo Browne | MIT | inspired by | scripts/handover/chief-kit/gen-briefs.py |
+| PR comments that carry no callout when a script parses them (tstack leaving-pr-comments) | https://github.com/t3dotgg/tstack/tree/7de017b3fc9d50c03cf3ecb98fb71e0ca65a78bd | Theo Browne | MIT | inspired by | docs/handover/worker-sections/shell-and-tests.md |
 <!-- credits-passages:end -->
