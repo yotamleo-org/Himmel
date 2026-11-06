@@ -36,7 +36,7 @@ function passages(text, root) {
     for (const [value, field] of [[what, 'what'], [author, 'author'], [license, 'licence'], [where, 'where']]) required(value, what, field);
     if (!/^https:\/\//.test(source)) throw new Error(`${what}: source must be an HTTPS URL`);
     if (how !== 'vendored' && how !== 'inspired by') throw new Error(`${what}: how used must be vendored or inspired by`);
-    if (!fs.existsSync(path.join(root, where))) throw new Error(`${what}: ${where} does not exist`);
+    if (!fs.statSync(path.join(root, where), { throwIfNoEntry: false })?.isFile()) throw new Error(`${what}: ${where} does not exist as a file`);
     rows.push({ what, source, author, license, how, where });
   }
   return rows;

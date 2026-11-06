@@ -199,6 +199,12 @@ test('a passage must point at a file that exists', () => {
   red(run(), /does not exist/);
 });
 
+test('a passage must point at a file, not a directory', () => {
+  put('dir/skill.md', 'x');
+  metadata(forkMetadata, '| A rule | https://example.com/a | Author | MIT | inspired by | dir |');
+  red(run(), /does not exist/);
+});
+
 test('a passage row with a missing cell is refused', () => {
   put('skill.md', 'x');
   metadata(forkMetadata, '| A rule | https://example.com/a | MIT | inspired by | skill.md |');
