@@ -131,12 +131,15 @@ out=$(cd "$repo" && PRE_COMMIT_TO_REF="$tipsha" PRE_COMMIT_REMOTE_BRANCH=refs/he
 if [ "$rc" -eq 1 ]; then pass "a graph-data tip that shares history with the base is still scanned (rc=$rc)"; else fail "a graph-data tip that shares history with the base is still scanned: want rc=1 got rc=$rc: $out"; fi
 out=$(cd "$repo" && PRE_COMMIT_TO_REF=0000000000000000000000000000000000000001 PRE_COMMIT_REMOTE_BRANCH=refs/heads/graph-data bash "$LINT" "$base" 2>&1); rc=$?
 if [ "$rc" -eq 2 ]; then pass "a graph-data tip that is not a commit fails closed (rc=$rc)"; else fail "a graph-data tip that is not a commit fails closed: want rc=2 got rc=$rc: $out"; fi
-# merge-base exits 1 for "no merge base" but 128 for an error: a tip whose parent object is missing
-# is an error, not a parentless tip, and must not skip the scan.
-parent=$(cd "$repo" && GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid git commit-tree "$(git rev-parse "$tipsha^{tree}")" -m parent) || { echo "FAIL: parent commit failed"; exit 1; }
-broken=$(cd "$repo" && GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid git commit-tree "$(git rev-parse "$tipsha^{tree}")" -p "$parent" -m child) || { echo "FAIL: broken-chain commit failed"; exit 1; }
-rm -f "$repo/.git/objects/${parent:0:2}/${parent:2}"
-out=$(cd "$repo" && PRE_COMMIT_TO_REF="$broken" PRE_COMMIT_REMOTE_BRANCH=refs/heads/graph-data bash "$LINT" "$base" 2>&1); rc=$?
+# merge-base exits 1 for "no merge base" but 128 for an error. A git on PATH whose merge-base fails
+# with 128 (how git versions differ on a missing parent object, so a stub is the stable way to ask)
+# must not read as "no merge base": the scan is not skipped.
+mkdir -p "$tmp/mbbin"
+real_git=$(command -v git)
+# shellcheck disable=SC2016  # literal stub text, nothing should expand
+printf '#!/bin/sh\nif [ "$1" = merge-base ]; then echo "fatal: simulated merge-base error" >&2; exit 128; fi\nexec "%s" "$@"\n' "$real_git" > "$tmp/mbbin/git"
+chmod +x "$tmp/mbbin/git"
+out=$(cd "$repo" && PATH="$tmp/mbbin:$PATH" PRE_COMMIT_TO_REF="$orphan" PRE_COMMIT_REMOTE_BRANCH=refs/heads/graph-data bash "$LINT" "$base" 2>&1); rc=$?
 if [ "$rc" -ne 0 ]; then pass "a graph-data tip whose merge-base lookup errors fails closed (rc=$rc)"; else fail "a graph-data tip whose merge-base lookup errors fails closed: want rc!=0 got rc=0: $out"; fi
 git -C "$repo" checkout -q -B case "$base"
 mkdir -p "$repo/scripts/eval/scrape-bench/results"
