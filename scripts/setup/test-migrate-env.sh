@@ -33,6 +33,29 @@ mkdir -p "$HOME"
 # No row reaches a real keyring: the stub secret-tool and busctl come first on PATH.
 # shellcheck source=../lib/fixtures/keyring-stub.sh
 . "$REPO/scripts/lib/fixtures/keyring-stub.sh"
+# A stub systemctl first on PATH for every row, so none reaches a real user manager (CI has none):
+# it logs its argv and answers show-environment with the names in $TMP/sysenv.
+mkdir -p "$TMP/sbin"
+cat > "$TMP/sbin/systemctl" <<'STUB' || fail "fixture write of the systemctl stub failed"
+#!/usr/bin/env bash
+printf 'systemctl %s\n' "$*" >> "$SYSTEMCTL_LOG"
+case "$1 $2" in
+"--user show-environment")
+    # SYS_UNREACHABLE=1: no user manager answers; SYS_READBACK_FAIL=1: the read-back after an unset fails
+    [ -z "${SYS_UNREACHABLE:-}" ] || exit 1
+    [ -z "${SYS_READBACK_FAIL:-}" ] || ! grep -q unset-environment "$SYSTEMCTL_LOG" || exit 1
+    cat "$SYSENV" 2>/dev/null; exit 0 ;;
+"--user unset-environment")
+    # SYS_STICKY=1: the name stays in the manager
+    [ -z "${SYS_STICKY:-}" ] || exit 0
+    grep -v "^$3=" "$SYSENV" > "$SYSENV.n" 2>/dev/null; mv -f "$SYSENV.n" "$SYSENV" 2>/dev/null; exit 0 ;;
+esac
+exit 0
+STUB
+chmod +x "$TMP/sbin/systemctl"
+export SYSTEMCTL_LOG="$TMP/systemctl.log" SYSENV="$TMP/sysenv"
+export PATH="$TMP/sbin:$PATH"
+unset SYS_UNREACHABLE SYS_STICKY SYS_READBACK_FAIL
 # The script refuses to apply inside an agent session; these rows are the
 # operator's run, so the marker is dropped (row 6 puts it back).
 unset CLAUDECODE
@@ -1355,26 +1378,6 @@ has "race: the other run says why" "another import-env" "$(cat "$TMP/race.1" "$T
 no_canary "race: no value printed" "$(cat "$TMP/race.1" "$TMP/race.2")"
 
 # --- names outside the manifest, a quoted value over two lines, the systemd user manager ---
-# A stub systemctl first on PATH: it logs its argv and answers show-environment with the names in $TMP/sysenv.
-mkdir -p "$TMP/sbin"
-cat > "$TMP/sbin/systemctl" <<'STUB' || fail "fixture write of the systemctl stub failed"
-#!/usr/bin/env bash
-printf 'systemctl %s\n' "$*" >> "$SYSTEMCTL_LOG"
-case "$1 $2" in
-"--user show-environment")
-    # SYS_UNREACHABLE=1: no user manager answers; SYS_READBACK_FAIL=1: the read-back after an unset fails
-    [ -z "${SYS_UNREACHABLE:-}" ] || exit 1
-    [ -z "${SYS_READBACK_FAIL:-}" ] || ! grep -q unset-environment "$SYSTEMCTL_LOG" || exit 1
-    cat "$SYSENV" 2>/dev/null; exit 0 ;;
-"--user unset-environment")
-    # SYS_STICKY=1: the name stays in the manager
-    [ -z "${SYS_STICKY:-}" ] || exit 0
-    grep -v "^$3=" "$SYSENV" > "$SYSENV.n" 2>/dev/null; mv -f "$SYSENV.n" "$SYSENV" 2>/dev/null; exit 0 ;;
-esac
-exit 0
-STUB
-chmod +x "$TMP/sbin/systemctl"
-export SYSTEMCTL_LOG="$TMP/systemctl.log" SYSENV="$TMP/sysenv"
 SYSPATH="PATH=$TMP/sbin:$PATH "
 fixture_9360() {  # the station .env plus an entry outside the manifest whose quoted value spans two lines, and a one-line one
     fixture_env
