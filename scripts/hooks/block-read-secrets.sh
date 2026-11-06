@@ -162,6 +162,20 @@
 #     `-c` body gets from its own scan_clause call) instead of being inferred by comparing a
 #     token's text — text an adversarial -f/--file value can always be
 #     crafted to collide with, state cannot.
+#
+#     One more narrowing, for grep, egrep and fgrep
+#     ONLY: a short-flag cluster made only of letters that take no value
+#     (`-n`, `-rn`, `-nE`) leaves the slot armed, so `grep -n '\.env' f` has
+#     its pattern exempt like `grep '\.env' f`. A letter that takes a value
+#     (A B C D d e f m), a digit, a long option or any other word closes it as
+#     before (`grep -m 1 '.env' f`, `grep -ne '.env' f` still scan the quoted
+#     word), and rg, sed and awk are unchanged. The `|`, `;`, `&` or `(` inside
+#     that same quoted pattern no longer splits the clause
+#     (rs_keep_grep_pattern): `grep -nE '\.env|x' f` is one clause. The tracing
+#     check reads a quoted multi-word argument as data unless a shell word
+#     (set, shopt, eval, bash, SHELLOPTS, ...) shares its text
+#     (g4_text_traces): a Jira JQL or a chat reply that names the option or
+#     holds a `{` no longer reads as tracing turned on.
 #   * A QUOTED value to some OTHER tool-specific file-reading long option at
 #     position zero — i.e. as the reader's ONLY argument with nothing before
 #     it, which no real invocation of such a flag looks like (a file-reading
@@ -499,6 +513,24 @@ is_pattern_arg_cmd() {
         sed|awk|gawk|mawk|nawk)         return 0 ;;
     esac
     return 1
+}
+
+# rs_keep_grep_pattern CMD: the clause split below ignores quotes,
+# so the `|` in `grep -nE '\.env|x' f` cut the pattern in two and the half
+# `grep -nE '\.env` read as a path. For grep, egrep and fgrep only, a separator
+# inside the quoted pattern that follows the command and any boolean short-flag
+# cluster (the same letters scan_clause keeps the slot armed for) is replaced by
+# a control character, so the pattern stays one word. A single-quoted pattern is
+# literal; a double-quoted one is kept only when it holds no `$` or backtick.
+# A letter that takes a value, a long option or any other word before the quote
+# leaves the text as it was.
+rs_keep_grep_pattern() {
+    local sep=$'\001' bool='[EFGHIJKLMNOPQRSTUVWXYZabcghijklnopqrstuvwxyz]'
+    local lead="((^|[^[:alnum:]_./-])(grep|egrep|fgrep)([[:space:]]+-${bool}+)*[[:space:]]+"
+    sed -E -e ':a' \
+        -e "s#${lead}'[^']*)[;|&()\`]([^']*')#\\1${sep}\\5#" \
+        -e "s#${lead}\"[^\"\$\`]*)[;|&()]([^\"\$\`]*\")#\\1${sep}\\5#" \
+        -e 'ta' <<<"$1"
 }
 
 is_quoted_pattern_tok() {
@@ -1025,6 +1057,24 @@ g4_segments() {
 # status lists the keyring's item names (names only) when the keyring is unlocked.
 G4_SD_HINT='Check one setting with: printenv NAME (a non-credential name, e.g. printenv DISPLAY); list the secret names the keyring holds with: himmel-secrets status (names only, no values)'
 
+# g4_text_traces TEXT: does one quoted multi-word argument turn tracing on? It
+# must name the option (a brace may split it, `x{,}trace`) AND hold a word that
+# can consume it: set/shopt/setopt/unsetopt/eval/trap, a shell, SHELLOPTS,
+# BASHOPTS or BASH_XTRACEFD. `text ~ "xtrace"` in a JQL string holds none.
+# ponytail: a JQL or chat text that also holds the word `set` or `sh` stays
+# refused, upgrade path a parse of the one command that receives the text.
+g4_text_traces() {
+    local t="${1//_/}"
+    local cont='[xX][tT][rR][aA][cC][eE]'
+    local sub='[xX].*[tT].*[rR].*[aA].*[cC].*[eE]'
+    local cons='(^|[^[:alnum:]_.-])(set|shopt|setopt|unsetopt|eval|trap|bash|sh|zsh|dash|ksh|ash|mksh|rbash|yash|posh)([^[:alnum:]_-]|$)|SHELLOPTS|BASHOPTS|BASHXTRACEFD'
+    case "$t" in
+        *'{'*) [[ $t =~ $sub ]] || return 1 ;;
+        *)     [[ $t =~ $cont ]] || return 1 ;;
+    esac
+    [[ $t =~ $cons ]]
+}
+
 g4_scan() {
     local w d cmd="" wrap="" wrap_val=0 need_dur=0 redir=0
     local nargs=0 nflags=0 pflag=0 nnames=0 hit=0 note="" cls=""
@@ -1078,6 +1128,12 @@ g4_scan() {
             gh:-f?*|gh:-F?*|gh:--raw-field=*|gh:--field=*) if [ "$gsc" = api ] && [ "$gcfg" = 0 ]; then bx=1; fi ;;
         esac
         if [ "$xskip" = 0 ]; then
+        case "$d" in
+        *[[:space:]]*)
+            # A quoted multi-word argument (a JQL string, a chat reply) names the
+            # option as data; it turns tracing on only with a shell word beside it.
+            if g4_text_traces "$d"; then xt=1; fi ;;
+        *)
         case "${d//_/}" in *[xX][tT][rR][aA][cC][eE]*) xt=1 ;; esac
         # brace expansion splits the word (`shopt -os x{,}trace`), so a
         # word with an unquoted `{` matches xtrace as an in-order subsequence.
@@ -1085,7 +1141,8 @@ g4_scan() {
         # exempt: gh takes it as data, never as shell code.
         if [ "$bx" = 0 ]; then
         case "$w" in *'{'*) case "${d//_/}" in *[xX]*[tT]*[rR]*[aA]*[cC]*[eE]*) xt=1 ;; esac ;; esac
-        fi
+        fi ;;
+        esac
         fi
         # Redirect and fd skips run on the RAW split only. Tokenized, a real
         # redirect is already out of the words (GU_SR), so a `>` word there is
@@ -1517,6 +1574,7 @@ scan_clause() {
     local clause="$1" depth="$2"
     local cmdtok="" reader=0 secret_after=0 inplace=0 prev=""
     local pattern_cmd=0     # cmdtok is grep/sed/awk-family (HIMMEL-2213)
+    local grep_cmd=0        # cmdtok is grep/egrep/fgrep: boolean flags keep the pattern slot
     local at_pos0=0             # the NEXT token is the one right after cmdtok
     local expect_pattern_val=0  # the NEXT token is -e/--regexp's value (always data)
     local expect_file_val=0     # the NEXT token is -f/--file's value (always a real file)
@@ -1640,6 +1698,7 @@ scan_clause() {
             if is_reader_cmd "$dtok"; then reader=1; fi
             if is_interp_cmd "$dtok"; then interp=1; fi
             if is_pattern_arg_cmd "$dtok"; then pattern_cmd=1; fi
+            case "$dtok" in grep|egrep|fgrep) grep_cmd=1 ;; esac
             at_pos0=1
             prev="$tok"
             continue
@@ -1659,6 +1718,16 @@ scan_clause() {
         fi
         # Past the command token: scan its arguments.
         this_at_pos0="$at_pos0"; at_pos0=0
+        # For grep, egrep and fgrep a short-flag cluster made only
+        # of letters that take no value (`-n`, `-rn`, `-nE`) leaves the pattern
+        # slot armed. A letter that takes a value (A B C D d e f m), a digit, a
+        # long option or any other token closes it, as before.
+        if [ "$grep_cmd" = "1" ] && [ "$this_at_pos0" = "1" ]; then
+            case "$tok" in
+                -*[!a-zA-Z]*|-|-*[ABCDdefm]*) ;;
+                -?*) at_pos0=1 ;;
+            esac
+        fi
         if is_inplace_token "$tok"; then inplace=1; fi
         # scan INSIDE a glued option token. Independent of the
         # exemption chain below (a glued value is never exempt — see header).
@@ -1920,8 +1989,9 @@ case "$tool" in
         # are spaced into their own tokens so a `< secretfile` redirect stays
         # detectable. Shell quoting is intentionally NOT parsed (see header).
         # sed reads via `<<<` (no `printf` fork feeding it).
+        case "$cmd" in *grep*) cmd_split=$(rs_keep_grep_pattern "$cmd") ;; *) cmd_split="$cmd" ;; esac
         normalized=$(sed -e 's/[;|&()`]/\
-/g' -e 's/</ < /g' -e 's/>/ > /g' <<<"$cmd")
+/g' -e 's/</ < /g' -e 's/>/ > /g' <<<"$cmd_split")
         block=0
         # the glued token that tripped glued_opt_secret, named in
         # the denial via glued_hint. Declared once (not per-clause) so it
