@@ -1419,7 +1419,13 @@ for n in GGS_MQTT_PASS OTHER_TOOL_TOKEN PLAIN_UNOWNED; do
 done
 if [ "$(grep -c 'CANARY-\(mq\|other\|plain\)' "$KSTUB_STORE")" = 3 ]; then pass "N5 the three values are in the keyring"; else fail "N5 the keyring does not hold the three values"; fi
 no_canary "N5 no value printed" "$out"
-# N6: a name the file does not hold, or one himmel owns, is a usage error with nothing written.
+# N8: a himmel secret named beside an unowned one is no error; both move.
+fixture_9360
+APPLY_ARGS="-y --keys READ_SECRET,GGS_MQTT_PASS" apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N8 naming a himmel secret beside an unowned one exits 0"; else fail "N8 exited $rc: $out"; fi
+lacks "N8 the himmel secret moved" "READ_SECRET=" "$(cat "$TMP/st/.env")"
+lacks "N8 the unowned entry moved" "GGS_MQTT_PASS" "$(cat "$TMP/st/.env")"
+# N6: a name the file does not hold is a usage error with nothing written.
 fixture_9360
 APPLY_ARGS="-y --keys NOT_IN_THE_FILE" apply_tty y "$SYSPATH"
 if [ "$rc" = 2 ]; then pass "N6 a name absent from the file exits 2"; else fail "N6 a name absent from the file exited $rc"; fi

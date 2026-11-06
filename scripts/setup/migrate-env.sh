@@ -17,7 +17,8 @@
 #                  at a terminal, it prints the plan and refuses (exit 3)
 #   --keys A,B     also move these names to the keyring: a name that is not himmel's
 #                  and not in the secrets manifest ("unowned"). Each must be a key
-#                  in the file; -y alone never moves an unowned name
+#                  in the file (a himmel key in the list moves by its own route);
+#                  -y alone never moves an unowned name
 #   --unowned      also move every unowned name the plan lists. With -y this is the
 #                  one command for the secrets a user placed in an env file:
 #                    bash scripts/setup/migrate-env.sh -y --unowned
@@ -256,15 +257,11 @@ is_owned() {
     [ "$(_himmel_key_class "$1")" != secret ]
 }
 
-# A name given with --keys must be a key of the file that is not himmel's: a typo or a
-# himmel key is a usage error, with nothing written.
+# A name given with --keys must be a key of the file: a typo is a usage error, with
+# nothing written. A himmel key in the list moves by its own route, named or not.
 for key in $(printf '%s' "$keys_arg" | tr ',' ' '); do
     if ! printf '%s\n' "$names" | grep -qxF -- "$key"; then
         echo "migrate-env: --keys $key is not a key in ${envfile:-the .env}; nothing written." >&2
-        exit 2
-    fi
-    if is_owned "$key"; then
-        echo "migrate-env: --keys $key is a himmel key; it moves without being named; nothing written." >&2
         exit 2
     fi
 done
