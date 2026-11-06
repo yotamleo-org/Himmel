@@ -384,6 +384,7 @@ details.bundle>summary{cursor:pointer;padding:6px 0}
 .rp-tl{display:grid;gap:var(--s1);margin-bottom:var(--s2)}
 .rp-tlr{display:grid;grid-template-columns:5.5em minmax(0,1fr);gap:var(--s2);align-items:center}
 .rp-tll{font:11px var(--font-mono);color:var(--muted)}
+.rp-tlcap{margin:0}
 .rp-tl .cseg{font-weight:600}
 @media (max-width:520px){.rp-tlr{grid-template-columns:minmax(0,1fr)}.rp-tlr>.rp-tll:empty{display:none}}
 .tw{overflow-x:auto;max-width:100%}

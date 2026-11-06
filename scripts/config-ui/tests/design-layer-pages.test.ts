@@ -190,10 +190,8 @@ const REAL71 = [
   "| day 2026-11-04T08:00+01:00 | 11-04 08:00 to 11-04 20:00 | 16 | 19 | 41% (cadence ledger) | 0 tokens (codex rollouts) | not available | not available | not available |", "",
   "## TL;DR", "", "**27** in-flight · **81** stale branches", "",
 ].join("\n");
-const real71 = (gen = REAL71) => {
-  const html = renderReport({ days: ["2026-11-05"], newest: "2026-11-05", ageHours: 5, today: "2026-11-06", soFar: { day: "2026-11-06", shifts: [] } }, parseReport(gen, "2026-11-05"), { day: "2026-11-05", shiftHref: "#/shift" });
-  return html.slice(html.indexOf("Spend per shift</h2>"));
-};
+const realPage = (gen = REAL71, day = "2026-11-05") => renderReport({ days: [day], newest: day, ageHours: 5, today: "2026-11-06", soFar: { day: "2026-11-06", shifts: [] } }, parseReport(gen, day), { day, shiftHref: "#/shift" });
+const real71 = (gen = REAL71, day = "2026-11-05") => { const html = realPage(gen, day); return html.slice(html.indexOf("Spend per shift</h2>")); };
 const PK = "HIMMEL-nextleg-2026-11-03PK-roadmap-chief";
 
 test("a real report, whose shifts closed before its own day, still draws the shift timeline over the 24 h that end at the last close", () => {
@@ -203,7 +201,7 @@ test("a real report, whose shifts closed before its own day, still draws the shi
   expect(spend).toContain("<span>20</span><span>02</span><span>08</span><span>14</span><span>20</span>");
 });
 
-test("every Chiefs row is drawn, a chief on two shifts twice, none hidden behind a chief that runs to open", () => {
+test("every Chiefs row of the window is drawn, a chief on two shifts twice, none hidden behind a chief that runs to open", () => {
   const spend = real71();
   expect(spend.match(/<td class="cseg"[^>]*title="HIMMEL-nextleg-[^"]*"/g)).toHaveLength(10); // one cell per Chiefs row, 10 rows
   expect(spend).toContain(`title="${PK}: 20:00 to open (approx)">PK</td>`);
@@ -216,6 +214,37 @@ test("every Chiefs row is drawn, a chief on two shifts twice, none hidden behind
 test("a chief that crosses midnight is drawn for its real length", () => {
   const gen = REAL71.replace("| HIMMEL-nextleg-2026-11-03PR-roadmap-chief", "| ZZ | 23:50 to 00:10 | 0 | night 2026-11-03T20:00+01:00 |\n| HIMMEL-nextleg-2026-11-03PR-roadmap-chief");
   expect(real71(gen)).toContain('<td class="cseg" colspan="4" title="ZZ: 23:50 to 00:10">ZZ</td>'); // 20 min of 5 min cells
+});
+
+// the shape of morning-report-2026-11-04: five shifts of which only the last two fall in the 24 h window, and a span that ends before it starts (OY 06:29 to 06:21)
+const OLD71 = REAL71
+  .replace("| HIMMEL-nextleg-2026-11-03PK-roadmap-chief | 20:00 to open (approx)", "| OLD1 | 09:00 to 10:00 | 1 | night 2026-11-02T20:00+01:00 |\n| OLD2 | 11:00 to 12:00 | 1 | night 2026-11-02T20:00+01:00 |\n| OY | 06:29 to 06:21 | 4 | night 2026-11-03T20:00+01:00 |\n| HIMMEL-nextleg-2026-11-03PK-roadmap-chief | 20:00 to open (approx)")
+  .replace("| night 2026-11-03T20:00+01:00 | 11-03 20:00", "| night 2026-11-02T20:00+01:00 | 11-02 20:00 to 11-03 08:00 | 50 | 2 | x | x | x | x | x |\n| night 2026-11-03T20:00+01:00 | 11-03 20:00");
+
+test("an older shift and its chiefs are named on the page as in the tables, not on the chart", () => {
+  const spend = real71(OLD71);
+  expect(spend).toContain('<p class="sub rp-tlcap">11-03 20:00 to 11-04 20:00, the 24 h that end when the last shift closed. 1 earlier shift and 2 chiefs are in the tables below, not on this chart.</p>');
+  expect(spend).not.toContain("OLD1");
+  expect(spend).toContain("2 shifts: ");
+});
+
+test("a span that ends before it starts is one cell and has no length, never a bar through the shift", () => {
+  const html = realPage(OLD71);
+  expect(html).toContain('<td class="cseg" colspan="1" title="OY: 06:29 to 06:21">OY</td>');
+  expect(html).toContain("<td>06:29 to 06:21</td><td></td>");
+});
+
+test("the Chiefs Length is the minutes across midnight, and says when the span is approximate", () => {
+  const gen = REAL71.replace("| HIMMEL-nextleg-2026-11-03PR-roadmap-chief", "| ZZ | 23:50 to 00:10 | 0 | night 2026-11-03T20:00+01:00 |\n| HIMMEL-nextleg-2026-11-03PR-roadmap-chief");
+  const html = realPage(gen);
+  expect(html).toContain("<td>23:50 to 00:10</td><td>20 min</td>");
+  expect(html).toContain("<td>05:45 to 06:18 (approx)</td><td>33 min (approx)</td>");
+  expect(html).toContain("<td>20:00 to open (approx)</td><td>open (approx)</td>");
+});
+
+test("a report written on 1 January dates the December shifts in the year before", () => {
+  const gen = ["## 💸 Spend per shift", "", "| Shift | Span |", "|---|---|", "| day 2026-12-31T08:00+01:00 | 12-31 08:00 to 12-31 20:00 |", "| night 2026-12-31T20:00+01:00 | 12-31 20:00 to 01-01 08:00 |", "| day 2027-01-01T08:00+01:00 | 01-01 08:00 to 01-01 20:00 |", ""].join("\n");
+  expect(real71(gen, "2027-01-01")).toContain('aria-label="Shifts and chiefs from 12-31 20:00 to 01-01 20:00"');
 });
 
 test("the spend table sits in a scroll box and is the wide kind", () => {
