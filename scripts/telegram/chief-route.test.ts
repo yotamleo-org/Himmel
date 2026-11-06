@@ -1239,6 +1239,17 @@ test("critic-seal.sh refuses a sha the critic's return never quoted, even when t
   expect(readFileSync(v, "utf8")).toBe(`return quoting ${sha("# D\n")}\nSPEC CLEAN\n`);
 });
 
+test("critic-seal.sh seals a verdict file larger than a pipe buffer whose quoted sha sits on its first line", async () => {
+  const r = root(); const spec = join(r, "specs", "designs", "d.md"); mkdirSync(join(r, "specs", "designs"), { recursive: true });
+  writeFileSync(spec, "# D\n");
+  const v = `${spec}.critic-spec-r1.md`;
+  writeFileSync(v, `read ${sha("# D\n")}\n${"a long finding line\n".repeat(20000)}SPEC CLEAN\n`);   // about 400 KB
+  const res = await seal(v, spec, sha("# D\n"));
+  expect(res.err).toBe("");
+  expect(res.code).toBe(0);
+  expect(readFileSync(v, "utf8")).toContain(`CONTENT-SHA256 ${sha("# D\n")} d.md\nSPEC CLEAN\n`);
+});
+
 test("critic-seal.sh seals each distinct file a critic read, and refuses only the same file twice", async () => {
   const r = root(); const dir = join(r, "specs", "designs"); mkdirSync(dir, { recursive: true });
   const md = join(dir, "d.md"); const html = join(dir, "d.html"); writeFileSync(md, "# D\n"); writeFileSync(html, "<h1>D</h1>\n");
