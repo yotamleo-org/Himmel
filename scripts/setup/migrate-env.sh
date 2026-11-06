@@ -214,11 +214,15 @@ key_names() {  # <file>
 ENTRY_AWK="$CLOSEAT"'
 { l = $0; sub(/\r$/, "", l) }
 inq { p = closeat(l, q); if (p) { val = val "\n" substr(l, 1, p - 1); last = NR; done = 1; exit } val = val "\n" l; next }
+oq != "" { if (closeat(l, oq)) oq = ""; next }
 l ~ /^[[:space:]]*#/ { next }
 {
     i = index(l, "="); if (!i) next
-    n = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", n); if (n != k) next
-    v = substr(l, i + 1); sub(/^[[:space:]]+/, "", v); first = NR; c = substr(v, 1, 1)
+    n = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", n)
+    v = substr(l, i + 1); sub(/^[[:space:]]+/, "", v); c = substr(v, 1, 1)
+    # another key whose quoted value runs on: its lines are not entries of any key
+    if (n != k) { if (n ~ /^[A-Za-z_][A-Za-z0-9_]*$/ && (c == "\"" || c == "\047") && !closeat(substr(v, 2), c)) oq = c; next }
+    first = NR
     if (c == "\"" || c == "\047") {
         q = c; rest = substr(v, 2); p = closeat(rest, q)
         if (p) { val = substr(rest, 1, p - 1); last = NR; done = 1; exit }
@@ -877,10 +881,15 @@ run_import() {  # <file> <var for the stored names>: sets imp_out; returns 1 whe
 }
 if [ "${#secret_keys[@]}" -gt 0 ]; then
     secret_set=" ${secret_keys[*]} "
-    if ! awk -v set="$secret_set" '{ l = $0; sub(/\r$/, "", l) }
+    if ! awk -v set="$secret_set" "$CLOSEAT"'
+        { l = $0; sub(/\r$/, "", l) }
+        oq != "" { if (closeat(l, oq)) oq = ""; next }
         l ~ /^[[:space:]]*#/ { next }
-        { i = index(l, "="); if (!i) next; k = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k) }
-        index(set, " " k " ") { print }' "$envfile" > "$work/secrets.env" 2>/dev/null; then
+        { i = index(l, "="); if (!i) next; k = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k)
+          v = substr(l, i + 1); sub(/^[[:space:]]+/, "", v); c = substr(v, 1, 1)
+          open = ((c == "\"" || c == "\047") && !closeat(substr(v, 2), c)) }
+        index(set, " " k " ") { print }
+        open { oq = c }' "$envfile" > "$work/secrets.env" 2>/dev/null; then
         echo "migrate-env: could not write the private copy of the secrets; no lines were removed from .env."
         restore_hint
         exit 1
@@ -1053,14 +1062,15 @@ moved_n=$(printf '%s\n' $moved | grep -c .)
 awk -v moved="$moved" "$CLOSEAT"'
     { l = $0; sub(/\r$/, "", l) }
     skipq != "" { if (closeat(l, skipq)) skipq = ""; next }
+    keepq != "" { print; if (closeat(l, keepq)) keepq = ""; next }
     l ~ /^[[:space:]]*#/ { print; next }
-    { i = index(l, "="); k = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k) }
-    i && k != "" && index(moved, " " k " ") {
+    {
+        i = index(l, "="); k = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k)
         v = substr(l, i + 1); sub(/^[[:space:]]+/, "", v); c = substr(v, 1, 1)
-        if ((c == "\"" || c == "\047") && !closeat(substr(v, 2), c)) skipq = c
-        next
+        open = (i && k != "" && (c == "\"" || c == "\047") && !closeat(substr(v, 2), c))
     }
-    { print }' "$backup" > "$work/env.new" || {
+    i && k != "" && index(moved, " " k " ") { if (open) skipq = c; next }
+    { if (open) keepq = c; print }' "$backup" > "$work/env.new" || {
     echo "migrate-env: could not build the new .env; no lines were removed from .env." >&2
     restore_hint
     exit 1
@@ -1107,11 +1117,16 @@ clear_manager() {  # <names>: prints names, never a value
     for n in "$@"; do
         if systemctl --user unset-environment "$n" >/dev/null 2>&1; then cleared="$cleared $n"; else failed="$failed $n"; fi
     done
-    after=$(systemctl --user show-environment 2>/dev/null | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p')
-    for n in "$@"; do
-        if grep -qxF -- "$n" <<<"$after"; then held=$((held + 1)); fi
-    done
-    echo "systemd user manager: unset-environment for$cleared; of these names it still holds $held"
+    if after=$(systemctl --user show-environment 2>/dev/null); then
+        after=$(printf '%s\n' "$after" | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p')
+        for n in "$@"; do
+            if grep -qxF -- "$n" <<<"$after"; then held=$((held + 1)); fi
+        done
+        echo "systemd user manager: unset-environment for$cleared; of these names it still holds $held"
+    else
+        echo "migrate-env: WARN unset-environment ran for$cleared, but the manager's environment could not be read back; check it: systemctl --user show-environment"
+        final_rc=1
+    fi
     [ -z "$failed" ] || { echo "migrate-env: WARN unset-environment failed for:$failed"; final_rc=1; }
     # The serving layer after the move, read with the names out of this process's environment.
     for n in "$@"; do envargs[${#envargs[@]}]="-u"; envargs[${#envargs[@]}]="$n"; done

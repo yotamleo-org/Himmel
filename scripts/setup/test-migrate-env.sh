@@ -1360,7 +1360,11 @@ mkdir -p "$TMP/sbin"
 cat > "$TMP/sbin/systemctl" <<'STUB' || fail "fixture write of the systemctl stub failed"
 #!/usr/bin/env bash
 printf 'systemctl %s\n' "$*" >> "$SYSTEMCTL_LOG"
-[ "$1 $2" = "--user show-environment" ] && { cat "$SYSENV" 2>/dev/null; exit 0; }
+if [ "$1 $2" = "--user show-environment" ]; then
+    # SYS_READBACK_FAIL=1: the read-back after an unset fails
+    [ -z "${SYS_READBACK_FAIL:-}" ] || ! grep -q unset-environment "$SYSTEMCTL_LOG" || exit 1
+    cat "$SYSENV" 2>/dev/null; exit 0
+fi
 exit 0
 STUB
 chmod +x "$TMP/sbin/systemctl"
@@ -1439,6 +1443,22 @@ lacks "N9 the named entry left .env" "EXAMPLE_ONLY_SECRET" "$(cat "$TMP/st/.env"
 if grep -q 'CANARY-ex' "$KSTUB_STORE" 2>/dev/null; then pass "N9 its value is in the keyring"; else fail "N9 its value is not in the keyring"; fi
 has "N9 unset-environment for it" "systemctl --user unset-environment EXAMPLE_ONLY_SECRET" "$(cat "$SYSTEMCTL_LOG")"
 printf '# READ_SECRET=\nUNREAD_SECRET=\nKEEP_ME=\nJIRA_API_TOKEN=\nBITBUCKET_API_TOKEN=\n' > "$FX/.env.example" || fail "N9 restoring the fixture .env.example failed"
+# N10: a retained entry whose quoted value holds a NAME=value line is not read as an entry: the real
+# entry is the one stored and removed, and the retained value stays whole.
+fixture_9360
+{ printf "KEEP_NOTE='first line\nGGS_MQTT_PASS=INNER-CANARY\nlast'\n"; cat "$TMP/st/.env"; } > "$TMP/st/.env.new" && mv "$TMP/st/.env.new" "$TMP/st/.env"
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N10 apply exits 0"; else fail "N10 apply exited $rc: $out"; fi
+if grep -q 'CANARY-mq' "$KSTUB_STORE" 2>/dev/null && ! grep -q 'INNER-CANARY' "$KSTUB_STORE" 2>/dev/null; then pass "N10 the real value is stored, not the embedded line"; else fail "N10 the keyring holds the wrong value"; fi
+has "N10 the retained value keeps its embedded line" "GGS_MQTT_PASS=INNER-CANARY" "$(cat "$TMP/st/.env")"
+has "N10 the retained value keeps its last line" "last'" "$(cat "$TMP/st/.env")"
+lacks "N10 the real entry left" "GGS_MQTT_PASS='CANARY-mq" "$(cat "$TMP/st/.env")"
+# N11: an unset whose read-back fails is not reported as an empty manager.
+fixture_9360
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "SYS_READBACK_FAIL=1 $SYSPATH"
+if [ "$rc" != 0 ]; then pass "N11 a failed read-back fails the run (exit $rc)"; else fail "N11 the run exited 0"; fi
+has "N11 the report says it could not read the manager back" "could not be read back" "$out"
+lacks "N11 it does not claim the manager holds none" "still holds 0" "$out"
 # N6: a name the file does not hold is a usage error with nothing written.
 fixture_9360
 APPLY_ARGS="-y --keys NOT_IN_THE_FILE" apply_tty y "$SYSPATH"
