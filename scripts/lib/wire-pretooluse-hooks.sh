@@ -370,7 +370,7 @@ wire_sessionend_hook() {
   [ -n "$se_pat" ] || { echo "wire-pretooluse-hooks: no SessionEnd pattern from unwire-pretooluse-hooks.sh" >&2; return 1; }
   mkdir -p "$(dirname "$settings")"
   local base="{}"
-  [[ -f "$settings" ]] && base=$(cat "$settings")
+  [[ -f "$settings" ]] && base=$(cat "$settings") # read-sink-ok: the caller-named settings.json under the operator-selected target, merged in place
   if [ -n "$(printf '%s' "$base" | tr -d '[:space:]')" ] && ! printf '%s' "$base" | jq -e . >/dev/null 2>&1; then
     echo "wire-pretooluse-hooks: $settings is not valid JSON -- refusing to overwrite" >&2
     return 1

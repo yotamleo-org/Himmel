@@ -78,7 +78,7 @@ unwire_sessionend_hook() {
     [ "$dry_run" -eq 1 ] && echo "DRY: $settings absent -> no-op"
     return 0
   fi
-  base=$(cat "$settings")
+  base=$(cat "$settings") # read-sink-ok: the caller-named settings.json under the operator-selected target, rewritten in place
   if [ -z "$(printf '%s' "$base" | tr -d '[:space:]')" ]; then
     [ "$dry_run" -eq 1 ] && echo "DRY: $settings empty -> no-op"
     return 0
