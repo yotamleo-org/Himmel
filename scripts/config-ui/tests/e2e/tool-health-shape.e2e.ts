@@ -20,10 +20,12 @@ const tool = (name: string, calls: number, classes: Record<string, number> = {})
   const denials = Object.values(classes).reduce((n, v) => n + v, 0);
   return { agent: AGENT, tool: name, calls, failures: denials, errors: 0, denials, classes, day: "2026-10-28" };
 };
+// Bash calls by command head and cause, the shape the digest keeps: [call id, head, cause or null, exit code]
+const BASH_CALLS = [["toolu_1", "git", "command", 1], ["toolu_2", "git", "command", 2], ["toolu_3", "cat", "guard"], ["toolu_4", "gh", "classifier"], ["toolu_5", "rtk", "rtk_hook"], ["toolu_6", "git", null]];
 const digest = rollupToolHealth(
   [{ eval: "leg-trajectory", run_id: SESSION, status: "ok", ts: "2026-10-28T12:00:00Z", lane: "native", model: "gpt-6.1-sol", config: {},
     meta: { leg: true, started_ts: Date.parse("2026-10-28T12:00:00Z"), profile: "worker-impl", tool_health: [
-      tool("Bash", 40, { "denied/block-read-secrets": 3, "denied/block-destructive-commands": 1 }), tool("Read", 12, { "denied/block-read-secrets": 2 }),
+      { ...tool("Bash", 40, { "denied/block-read-secrets": 3, "denied/block-destructive-commands": 1 }), bash_calls: BASH_CALLS }, tool("Read", 12, { "denied/block-read-secrets": 2 }),
       tool("Skill:lean-skills:verification-before-completion", 4)] } }],
   [{ session: SESSION, agent: AGENT, class: "denied/block-read-secrets", failure: "denied", count: 5, recovered: null, tool_call_ids: [] },
    { session: SESSION, agent: AGENT, class: "denied/block-destructive-commands", failure: "denied", count: 1, recovered: null, tool_call_ids: [] }],
@@ -104,10 +106,38 @@ for (const width of [1280, 390]) {
       await info.attach(`map-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
     });
 
+    test("Tool map: each tile carries a calls line and the failure-rate colour, on a phone card too", async ({ page }) => {
+      await open(page, "#/toolhealth/map", ".thmap");
+      const tiles = page.locator(width > 560 ? ".thmap button.mc[data-kind]" : ".thcard .mln");
+      await expect(tiles.first()).toContainText(/\d+ calls · \d+ failed/);
+      // the tint is a token colour: a failing tile paints a different background from a plain one
+      const bg = await tiles.evaluateAll((els) => [...new Set(els.map((e) => getComputedStyle(e).backgroundColor))]);
+      expect(bg.length).toBeGreaterThan(1);
+      if (width <= 560) await expect(page.locator(".thcard .sub").first()).toContainText(/\d+ tools? · \d+ calls/);
+    });
+
+    test("Bash drill-in: Failures by cause is a stacked bar over five cause cards", async ({ page }, info) => {
+      await open(page, "#/toolhealth?tool=Bash", "#th-bash-cause");
+      const box = page.locator("#th-bash-cause");
+      await expect(box.locator("table")).toHaveCount(0);
+      expect(await box.locator("[data-cause-card]").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.causeCard))).toEqual(["command", "rtk-filter", "rtk-hook", "guard", "classifier"]);
+      expect(await box.locator("[data-cause-seg]").count()).toBeGreaterThanOrEqual(3);
+      // segment fills are token colours, so they differ from each other and from the track
+      const fills = await box.locator("[data-cause-seg]").evaluateAll((els) => els.map((e) => getComputedStyle(e).fill));
+      expect(new Set(fills).size).toBe(fills.length);
+      await expect(box.locator("svg.thcausebar")).toBeVisible();
+      expect(await sideways(page)).toBe(false);
+      await info.attach(`bash-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
+    });
+
     test("guard drill-in: the This week cards", async ({ page }, info) => {
       await open(page, "#/toolhealth?guard=denied/block-read-secrets", '[data-stat="refused"]');
       await expect(page.locator("h3", { hasText: "This week" })).toBeVisible();
       await expect(page.locator('[data-stat="refused"]')).toHaveText("5");
+      // Refusals per day and This week sit side by side on a desktop, stacked on a phone
+      const [a, b] = await Promise.all([page.locator(".th-charts figure").nth(0).boundingBox(), page.locator(".th-charts figure").nth(1).boundingBox()]);
+      if (width > 760) expect(Math.abs(a!.y - b!.y)).toBeLessThan(2);
+      else expect(b!.y).toBeGreaterThan(a!.y);
       for (const id of ["rate", "busiest", "none", "eligible", "bash", "recovery"]) await expect(page.locator(`[data-stat="${id}"]`)).toBeVisible();
       expect(await sideways(page)).toBe(false);
       await info.attach(`guard-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });

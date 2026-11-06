@@ -1432,3 +1432,38 @@ test("the guard drill-in shows the This week cards: Refused, rate over eligible 
   expect(html).toContain("Rate ÷ eligible call attempts");
   for (const id of ["rate", "eligible", "legacy-rate", "bash", "recovery"]) expect(html).toContain(`data-stat="${id}"`);
 });
+
+// the Bash cause view, the guard This week row and the Tool map tiles follow mockup v9.
+test("the Bash drill-in draws Failures by cause as a stacked bar over five cause cards, not a table", async () => {
+  const data = readRtk(seedSplit(), () => ({ state: "absent" }), new URLSearchParams({ days: "30" }));
+  const html = await page(data, { tool: "Bash" });
+  const box = /<section class="box" id="th-bash-cause">([\s\S]*?)<\/section>/.exec(html)![1];
+  expect(box).not.toContain("<table");
+  expect([...box.matchAll(/data-cause-card="([a-z-]+)"/g)].map((m) => m[1])).toEqual(["command", "rtk-filter", "rtk-hook", "guard", "classifier"]);
+  const seg = [...box.matchAll(/<rect [^>]*data-cause-seg="([a-z_]+)" [^>]*width="([0-9.]+)"/g)];
+  expect(seg.map((m) => m[1])).toEqual(["command", "guard", "classifier", "other"]); // the empty rtk hook cause draws no segment
+  expect(seg.every((m) => Math.abs(Number(m[2]) - 25) < 0.01)).toBe(true); // 1 of 4 failures each, in percent of the bar
+  expect(box).toMatch(/data-cause-card="command"[^>]*>[\s\S]*?<dd[^>]*>1</);
+  expect(box).toMatch(/data-cause-card="rtk-filter"[^>]*>[\s\S]*?<dd[^>]*>—</);
+  expect(box).toContain("1 other");
+  expect(html).not.toMatch(/\sstyle=/);
+});
+
+test("the guard drill-in puts Refusals per day beside a four-card This week; the other facts sit below", async () => {
+  const html = await page(readP(seedP()), { guard: "denied/read-clamp" });
+  const row = /<div class="th-charts">([\s\S]*?)<\/figure><\/div>/.exec(html)![1];
+  expect(row.indexOf("Refusals per day")).toBeGreaterThan(-1);
+  expect(row.indexOf("<h3>This week</h3>")).toBeGreaterThan(row.indexOf("Refusals per day"));
+  const week = row.slice(row.indexOf("<h3>This week</h3>"));
+  expect([...week.matchAll(/data-stat="([a-z-]+)"/g)].map((m) => m[1])).toEqual(["refused", "rate", "busiest", "none"]);
+  for (const id of ["eligible", "legacy-rate", "bash", "recovery"]) { expect(html).toContain(`data-stat="${id}"`); expect(week).not.toContain(`data-stat="${id}"`); }
+  expect(html.indexOf('id="th-guard-why"')).toBeGreaterThan(html.indexOf("<h3>This week</h3>"));
+});
+
+test("a phone Tool map tile carries its calls line and the failure-rate colour, as the desktop tile does", async () => {
+  const html = await page(readP(seedP()), { tab: "map" }, { inventory: SHAPE_INV });
+  const cards = html.slice(html.indexOf('<div class="thcards">'));
+  expect(cards).toMatch(/<button class="mln mc (?:bad-t|warn-t|ok-t|zero)[^"]*" data-act="th-pick" data-src="core" data-kind="builtin"[^>]*>[\s\S]*?\d+ calls · \d+ failed/);
+  expect(cards).toMatch(/class="thcard"[\s\S]*?<p class="sub">\d+ tools? · \d+ calls/);
+  expect(cards).toMatch(/○ \d/);
+});
