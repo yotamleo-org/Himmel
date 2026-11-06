@@ -37,6 +37,16 @@ not_contains() {
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/worker-pr-open-test.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 if command -v cygpath >/dev/null 2>&1; then TMP_ROOT=$(cygpath -m "$TMP_ROOT"); fi
 
+# The PR claim writes rows under ~/.himmel/state/holds and judges holders through queue-lock.sh: HOME, the handover root
+# and the lock runtime dirs are pinned to the temp dir, and a worker's own hold variables are dropped, so no row of this
+# run lands in the real register (a row at the end proves it) and a leg running this suite does not feed its key in.
+REAL_HOME="$HOME"
+export HOME="$TMP_ROOT/home" HANDOVER_DIR="$TMP_ROOT/h" XDG_RUNTIME_DIR="$TMP_ROOT/xdg" HIMMELCTL_CACHE_DIR="$TMP_ROOT/cache" HIMMEL_CONFIG_DIR="$TMP_ROOT/cfg"
+mkdir -p "$HOME" "$HANDOVER_DIR/u/r" "$XDG_RUNTIME_DIR" "$HIMMELCTL_CACHE_DIR" "$HIMMEL_CONFIG_DIR" "$TMP_ROOT/bin"
+chmod 700 "$XDG_RUNTIME_DIR"
+: > "$HIMMELCTL_CACHE_DIR/.env"
+unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_DOC HIMMEL_HOLD_KEY HIMMEL_HOLD_DOC HIMMEL_HOLD_LABEL WRITE_HOLD_OK HOLDS_QUEUE_LOCK HOLDS_GH QUEUE_LOCK_TTL_SECONDS
+
 # ── fixture: a real bare "origin" + a pushed feature branch (no network) ────
 BARE="$TMP_ROOT/origin.git"
 git init -q --bare "$BARE"
@@ -597,6 +607,284 @@ err_s6=$(run_sut "$TITLE_FILE" "$BODY_FILE" --base no-such-base 2>&1 >/dev/null)
 assert_eq "unfetched base: refused (rc=1)" "1" "$rc_s6"
 contains "unfetched base: says the size could not be measured" "$err_s6" "could not measure"
 not_contains "unfetched base: no pr create call" "$(cat "$ARGV_LOG")" "pr create"
+
+# ── a PR claims its files and names those outside Writes (holds.py narrow) ───────────────────────────────────────
+# A separate fixture repo, HOME pinned above. Locks are real queue-lock.sh locks under the temp handover root; gh is a stub.
+HOLDS_PY="$HERE/../handover/chief-kit/holds.py"
+QL="$HERE/../handover/queue-lock.sh"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$TMP_ROOT/bin/gh-fail"
+chmod +x "$TMP_ROOT/bin/gh-fail"
+H_BARE="$TMP_ROOT/h-origin.git"
+H_REPO="$TMP_ROOT/h-repo"
+git init -q --bare "$H_BARE"
+git init -q -b main "$H_REPO" 2>/dev/null || { git init -q "$H_REPO"; git -C "$H_REPO" checkout -q -b main; }
+git -C "$H_REPO" config user.email t@t.t
+git -C "$H_REPO" config user.name test
+git -C "$H_REPO" remote add origin "$H_BARE"
+mkdir -p "$H_REPO/scripts/dir"
+for f in a b c; do echo base > "$H_REPO/scripts/$f.sh"; done
+echo base > "$H_REPO/scripts/dir/seed.sh"
+git -C "$H_REPO" add -A
+git -C "$H_REPO" commit -qm base
+git -C "$H_REPO" push -q origin main
+H_COMMON=$(git -C "$H_REPO" rev-parse --path-format=absolute --git-common-dir)
+H_PRIMARY="${H_COMMON%/.git}"
+H_LEDGER="$H_COMMON/cr-critic-scores.jsonl"
+H_DIR="$H_REPO"
+H_REG="$HOME/.himmel/state/holds"
+
+hesc() { local s="${1//%/%25}"; printf '%s' "${s//\//%2F}"; }
+hfile() { printf '%s/%s/%s' "$H_REG" "$(hesc "$H_PRIMARY")" "$(hesc "$1")"; }
+hrow() { cat "$(hfile "$1")" 2>/dev/null; }
+trow() { printf '%s\t%s\t%s\t%s\t%s' "$@"; }
+hreset() { rm -rf "$H_REG"; : > "$ARGV_LOG"; }
+age_file() { python3 -I -c 'import os, sys, time; t = time.time() - 7200; os.utime(sys.argv[1], (t, t))' "$1"; }
+put_hrow() {  # <path> <key> <label> <doc> <source> <pr>: a row written by hand, aged past the arm grace
+    local f
+    f=$(hfile "$1")
+    mkdir -p "$(dirname "$f")"
+    printf '%s\t%s\t%s\t%s\t%s\n' "$2" "$3" "$4" "$5" "$6" > "$f"
+    age_file "$f"
+}
+hdoc() {  # <name> <writes text> [extra line]: a worker doc under the temp handover bucket; prints its path
+    local f="$HANDOVER_DIR/u/r/$1"
+    { printf '# worker doc\n\n> **Writes:** %s\n' "$2"; [ -z "${3:-}" ] || printf '\n%s\n' "$3"; } > "$f"
+    printf '%s' "$f"
+}
+hbranch() {  # <branch> <file>...: a pushed branch cut from origin/main that changes each file; left checked out in H_REPO
+    local br="$1" f
+    shift
+    git -C "$H_REPO" checkout -q -b "$br" origin/main
+    for f in "$@"; do mkdir -p "$(dirname "$H_REPO/$f")"; echo "change $br" >> "$H_REPO/$f"; done
+    git -C "$H_REPO" add -A
+    git -C "$H_REPO" commit -qm "fixture $br"
+    git -C "$H_REPO" push -q -u origin "$br"
+}
+run_h() {  # the SUT from H_DIR at its current head; the body is H_BODY or the shared one
+    local head
+    head=$(git -C "$H_DIR" rev-parse HEAD)
+    printf '{"kind":"avail","ts":"2026-10-25T00:00:00Z","branch":"b","head":"%s","model":"codex","status":"ok","artifact":"diff","perspective":"off"}\n' "$head" >> "$H_LEDGER"
+    (
+        cd "$H_DIR" || exit 99
+        FORGE=github CR_APP=0 GH_CMD="$GH_STUB" ARGV_LOG="$ARGV_LOG" HEAD_SHA_STUB="$head" JIRA_PROJECT_KEY=HIMMEL \
+            HOLDS_GH="$TMP_ROOT/bin/gh-fail" bash "$SUT" "$TITLE_FILE" "${H_BODY:-$BODY_FILE}"
+    )
+}
+ow_line() { grep '^outside-writes:' "${ARGV_LOG}.body" || true; }
+
+H_KEY=HIMMEL-8801
+D1=$(hdoc HIMMEL-8801-w.md "scripts/a.sh")
+export HIMMEL_HOLD_KEY="$H_KEY" HIMMEL_HOLD_DOC="$D1" HIMMEL_HOLD_LABEL=N1
+DR=$(hdoc HIMMEL-9999-r.md "scripts/a.sh")
+bash "$QL" acquire "$DR" sess-rival >/dev/null 2>&1
+H_RIVAL=HIMMEL-9999
+put_rival() {  # <path>: a live rival's row (aged past the grace, its lock held)
+    put_hrow "$1" "$H_RIVAL" rival "$DR" brief ""
+}
+
+echo "TEST: PR claim — a claim outside Writes is named and stays claim (I6); a PR file with no row gets one"
+hreset
+D1=$(hdoc HIMMEL-8801-w.md "scripts/a.sh")
+put_hrow scripts/b.sh "$H_KEY" N1 "$D1" claim ""
+hbranch feat/himmel-3031-h1 scripts/a.sh scripts/b.sh
+out_h1=$(run_h 2>"$TMP_ROOT/h.err"); rc_h1=$?
+assert_eq "claim: the open exits 0" "0" "$rc_h1"
+assert_eq "claim: stdout stays the one PR line" "PR 9 https://github.com/owner/repo/pull/9 $(git -C "$H_REPO" rev-parse HEAD)" "$out_h1"
+assert_eq "claim: the body names the file outside Writes" "outside-writes: scripts/b.sh" "$(ow_line)"
+assert_eq "claim: the claim row stays claim and takes the PR" "$(trow "$H_KEY" N1 "$D1" claim 9)" "$(hrow scripts/b.sh)"
+assert_eq "claim: a file with no earlier row gets a pr row with the doc and label" "$(trow "$H_KEY" N1 "$D1" pr 9)" "$(hrow scripts/a.sh)"
+
+echo "TEST: PR claim — a file inside a tree in Writes is not on the line"
+hreset
+D1=$(hdoc HIMMEL-8801-w.md "scripts/dir/ scripts/a.sh")
+hbranch feat/himmel-3031-h2 scripts/dir/new.sh scripts/a.sh
+run_h >/dev/null 2>"$TMP_ROOT/h.err"; rc_h2=$?
+assert_eq "tree: the open exits 0" "0" "$rc_h2"
+assert_eq "tree: nothing is outside Writes" "outside-writes: none" "$(ow_line)"
+
+echo "TEST: PR claim — a seeded file unchanged in the PR is freed (I12: the new row carries its doc)"
+hreset
+D1=$(hdoc HIMMEL-8801-w.md "scripts/a.sh scripts/c.sh")
+put_hrow scripts/a.sh "$H_KEY" N1 "$D1" brief ""
+put_hrow scripts/c.sh "$H_KEY" N1 "$D1" brief ""
+hbranch feat/himmel-3031-h3 scripts/a.sh
+run_h >/dev/null 2>"$TMP_ROOT/h.err"; rc_h3=$?
+assert_eq "freed: the open exits 0" "0" "$rc_h3"
+assert_eq "freed: the unchanged seeded file has no row" "" "$(hrow scripts/c.sh)"
+assert_eq "freed: the changed seeded file becomes the PR's row" "$(trow "$H_KEY" N1 "$D1" pr 9)" "$(hrow scripts/a.sh)"
+bash "$QL" acquire "$D1" sess-self >/dev/null 2>&1
+age_file "$(hfile scripts/a.sh)"
+alive_h3=$(HOLDS_GH="$TMP_ROOT/bin/gh-fail" python3 -I "$HOLDS_PY" alive --repo "$H_PRIMARY" scripts/a.sh 2>/dev/null)
+assert_eq "I12: the row aged past the grace, its holder's lock held, reads alive" "alive" "$alive_h3"
+D2=$(hdoc HIMMEL-8802-w.md "scripts/c.sh")
+hbranch feat/himmel-3031-h3b scripts/c.sh
+HIMMEL_HOLD_KEY=HIMMEL-8802 HIMMEL_HOLD_DOC="$D2" run_h >/dev/null 2>"$TMP_ROOT/h.err"
+age_file "$(hfile scripts/c.sh)"
+alive_h3b=$(HOLDS_GH="$TMP_ROOT/bin/gh-fail" python3 -I "$HOLDS_PY" alive --repo "$H_PRIMARY" scripts/c.sh 2>/dev/null)
+if [ "$alive_h3b" = alive ]; then fail "I12: a row whose holder's lock is not held does not read alive" "got $alive_h3b"; else pass "I12: a row whose holder's lock is not held does not read alive"; fi
+
+echo "TEST: PR claim — no hold doc opens the PR with 'unavailable (no hold key)' and publishes no row"
+hreset
+hbranch feat/himmel-3031-h5 scripts/a.sh
+HIMMEL_HOLD_DOC='' run_h >/dev/null 2>"$TMP_ROOT/h.err"; rc_h5=$?
+assert_eq "no doc: the open exits 0" "0" "$rc_h5"
+assert_eq "no doc: the body says why" "outside-writes: unavailable (no hold key)" "$(ow_line)"
+assert_eq "no doc: no row is published" "" "$(hrow scripts/a.sh)"
+
+echo "TEST: PR claim — a PR file a live rival holds refuses the open and names it; a grant opens it"
+hreset
+D1=$(hdoc HIMMEL-8801-w.md "scripts/a.sh")
+put_rival scripts/a.sh
+hbranch feat/himmel-3031-h6 scripts/a.sh
+err_h6=$(run_h 2>&1 >/dev/null); rc_h6=$?
+assert_eq "rival: the open is refused (rc=1)" "1" "$rc_h6"
+contains "rival: stderr is a holds: line naming the holder" "$err_h6" "holds: scripts/a.sh is held by HIMMEL-9999"
+not_contains "rival: no PR is created" "$(cat "$ARGV_LOG")" "pr create"
+assert_eq "rival: the rival's row is untouched" "$(trow "$H_RIVAL" rival "$DR" brief '')" "$(hrow scripts/a.sh)"
+printf 'granted\t2026-11-06T00:00:00Z\tchief\tsess\n' > "$(hfile scripts/a.sh).grant.$H_KEY"
+run_h >/dev/null 2>"$TMP_ROOT/h.err"; rc_h6g=$?
+assert_eq "rival: a granted file opens (rc=0)" "0" "$rc_h6g"
+contains "rival: a granted open reaches pr create" "$(cat "$ARGV_LOG")" "pr create"
+
+echo "TEST: PR claim — a size refusal leaves the rows unchanged"
+hreset
+D1=$(hdoc HIMMEL-8801-w.md "scripts/a.sh scripts/c.sh")
+put_hrow scripts/a.sh "$H_KEY" N1 "$D1" brief ""
+put_hrow scripts/c.sh "$H_KEY" N1 "$D1" brief ""
+before_h7="$(hrow scripts/a.sh)|$(hrow scripts/c.sh)"
+many=()
+for ((i = 1; i <= 301; i++)); do many+=("scripts/many/f$i"); done
+many+=(scripts/a.sh)
+hbranch feat/himmel-3031-h7 "${many[@]}"
+err_h7=$(run_h 2>&1 >/dev/null); rc_h7=$?
+assert_eq "size: refused (rc=1)" "1" "$rc_h7"
+contains "size: SIZE-REFUSE" "$err_h7" "SIZE-REFUSE"
+assert_eq "size: both rows are unchanged" "$before_h7" "$(hrow scripts/a.sh)|$(hrow scripts/c.sh)"
+
+echo "TEST: PR claim — a merge-forward with a third party's file in main's delta claims nothing"
+hreset
+D1=$(hdoc HIMMEL-8801-w.md "scripts/own.sh")
+git -C "$H_REPO" checkout -q -b feat/himmel-3031-h8 origin/main
+echo own > "$H_REPO/scripts/own.sh"
+git -C "$H_REPO" add -A
+git -C "$H_REPO" commit -qm "own file"
+git -C "$H_REPO" push -q -u origin feat/himmel-3031-h8
+git -C "$H_REPO" checkout -q main
+echo third > "$H_REPO/scripts/third.sh"
+git -C "$H_REPO" add -A
+git -C "$H_REPO" commit -qm "third party"
+git -C "$H_REPO" push -q origin main
+git -C "$H_REPO" checkout -q feat/himmel-3031-h8
+git -C "$H_REPO" merge -q --no-edit main >/dev/null 2>&1
+git -C "$H_REPO" push -q origin feat/himmel-3031-h8
+run_h >/dev/null 2>"$TMP_ROOT/h.err"; rc_h8=$?
+assert_eq "merge-forward: the open exits 0" "0" "$rc_h8"
+assert_eq "merge-forward: only the worker's file is claimed" "$(trow "$H_KEY" N1 "$D1" pr 9)" "$(hrow scripts/own.sh)"
+assert_eq "merge-forward: the third party's file has no row" "" "$(hrow scripts/third.sh)"
+assert_eq "merge-forward: the line does not name it" "outside-writes: none" "$(ow_line)"
+
+echo "TEST: PR claim — an update of an open PR prints the line once, and a rival's later row refuses nothing"
+hreset
+D1=$(hdoc HIMMEL-8801-w.md "scripts/a.sh")
+OW_BODY="$TMP_ROOT/ow-body.txt"
+{ cat "$BODY_FILE"; echo "outside-writes: stale"; } > "$OW_BODY"
+hbranch feat/himmel-3031-h9 scripts/a.sh scripts/b.sh
+put_rival scripts/b.sh
+for _ in 1 2; do
+    : > "$ARGV_LOG"
+    H_BODY="$OW_BODY" STUB_OPEN_PR=42 run_h >/dev/null 2>"$TMP_ROOT/h.err"; rc_h9=$?
+    assert_eq "update: the body update exits 0 with a rival holding a PR file" "0" "$rc_h9"
+    assert_eq "update: exactly one outside-writes line, the fresh one" "outside-writes: scripts/b.sh" "$(ow_line)"
+done
+contains "update: the PR is edited, not created" "$(cat "$ARGV_LOG")" "pr edit 42"
+not_contains "update: no pr create" "$(cat "$ARGV_LOG")" "pr create"
+assert_eq "update: the rival's row is untouched" "$(trow "$H_RIVAL" rival "$DR" brief '')" "$(hrow scripts/b.sh)"
+assert_eq "update: the worker's row takes the PR number" "$(trow "$H_KEY" N1 "$D1" pr 42)" "$(hrow scripts/a.sh)"
+
+echo "TEST: PR claim — a second PR on one key keeps the first PR's rows"
+hreset
+D1=$(hdoc HIMMEL-8801-w.md "scripts/a.sh scripts/c.sh")
+hbranch feat/himmel-3031-h10a scripts/a.sh
+run_h >/dev/null 2>"$TMP_ROOT/h.err"
+hbranch feat/himmel-3031-h10b scripts/c.sh
+STUB_OPEN_PR=10 run_h >/dev/null 2>"$TMP_ROOT/h.err"; rc_h10=$?
+assert_eq "second PR: exits 0" "0" "$rc_h10"
+assert_eq "second PR: the first PR's row stays" "$(trow "$H_KEY" N1 "$D1" pr 9)" "$(hrow scripts/a.sh)"
+assert_eq "second PR: its own file is its row" "$(trow "$H_KEY" N1 "$D1" pr 10)" "$(hrow scripts/c.sh)"
+
+echo "TEST: PR claim — a doc with a Series line frees nothing"
+hreset
+D1=$(hdoc HIMMEL-8801-w.md "scripts/a.sh scripts/c.sh" "> **Series:** s1 $TMP_ROOT/ledger.md - read it")
+put_hrow scripts/a.sh "$H_KEY" N1 "$D1" brief ""
+put_hrow scripts/c.sh "$H_KEY" N1 "$D1" brief ""
+hbranch feat/himmel-3031-h11 scripts/a.sh
+run_h >/dev/null 2>"$TMP_ROOT/h.err"; rc_h11=$?
+assert_eq "series: exits 0" "0" "$rc_h11"
+assert_eq "series: the unchanged seeded file keeps its row" "$(trow "$H_KEY" N1 "$D1" brief '')" "$(hrow scripts/c.sh)"
+assert_eq "series: the changed file is still claimed for the PR" "$(trow "$H_KEY" N1 "$D1" pr 9)" "$(hrow scripts/a.sh)"
+
+echo "TEST: PR claim — from a linked worktree the diff is the worker's, and the rows are the primary's"
+hreset
+D1=$(hdoc HIMMEL-8801-w.md "scripts/a.sh scripts/c.sh")
+put_hrow scripts/c.sh "$H_KEY" N1 "$D1" brief ""
+git -C "$H_REPO" checkout -q main
+git -C "$H_REPO" worktree add -q -b feat/himmel-3031-h12 "$TMP_ROOT/h-wt" origin/main
+echo wt >> "$TMP_ROOT/h-wt/scripts/a.sh"
+git -C "$TMP_ROOT/h-wt" add -A
+git -C "$TMP_ROOT/h-wt" commit -qm "worktree change"
+git -C "$TMP_ROOT/h-wt" push -q -u origin feat/himmel-3031-h12
+H_DIR="$TMP_ROOT/h-wt" run_h >/dev/null 2>"$TMP_ROOT/h.err"; rc_h12=$?
+assert_eq "worktree: exits 0" "0" "$rc_h12"
+assert_eq "worktree: the worker's file is the PR's row" "$(trow "$H_KEY" N1 "$D1" pr 9)" "$(hrow scripts/a.sh)"
+assert_eq "worktree: the unchanged seeded file is freed" "" "$(hrow scripts/c.sh)"
+assert_eq "worktree: nothing outside Writes" "outside-writes: none" "$(ow_line)"
+
+echo "TEST: PR claim — an empty diff frees nothing and prints unavailable"
+hreset
+D1=$(hdoc HIMMEL-8801-w.md "scripts/c.sh")
+put_hrow scripts/c.sh "$H_KEY" N1 "$D1" brief ""
+git -C "$H_REPO" checkout -q -b feat/himmel-3031-h13 origin/main
+git -C "$H_REPO" push -q -u origin feat/himmel-3031-h13
+run_h >/dev/null 2>"$TMP_ROOT/h.err"; rc_h13=$?
+assert_eq "empty diff: exits 0" "0" "$rc_h13"
+contains "empty diff: the line is unavailable" "$(ow_line)" "outside-writes: unavailable ("
+assert_eq "empty diff: the seeded row stays" "$(trow "$H_KEY" N1 "$D1" brief '')" "$(hrow scripts/c.sh)"
+
+echo "TEST: PR claim — OFF, WRITE_HOLD_OK=1 and the marker each open the PR with a rival's file; the line is still printed"
+hreset
+D1=$(hdoc HIMMEL-8801-w.md "scripts/c.sh")
+put_rival scripts/a.sh
+hbranch feat/himmel-3031-h14 scripts/a.sh scripts/c.sh
+run_h >/dev/null 2>"$TMP_ROOT/h.err"; rc_h14=$?
+assert_eq "bypass control: without a bypass the rival refuses (rc=1)" "1" "$rc_h14"
+mkdir -p "$H_REG"
+: > "$H_REG/OFF"
+run_h >/dev/null 2>"$TMP_ROOT/h.err"; rc_h14a=$?
+rm -f "$H_REG/OFF"
+assert_eq "OFF: opens (rc=0)" "0" "$rc_h14a"
+assert_eq "OFF: the line is still printed" "outside-writes: scripts/a.sh" "$(ow_line)"
+WRITE_HOLD_OK=1 run_h >/dev/null 2>"$TMP_ROOT/h.err"; rc_h14b=$?
+assert_eq "WRITE_HOLD_OK=1: opens (rc=0)" "0" "$rc_h14b"
+: > "$H_PRIMARY/.single-writer"
+run_h >/dev/null 2>"$TMP_ROOT/h.err"; rc_h14c=$?
+rm -f "$H_PRIMARY/.single-writer"
+assert_eq "the .single-writer marker: opens (rc=0)" "0" "$rc_h14c"
+
+echo "TEST: PR claim — an unreadable register still opens the PR, unavailable"
+hreset
+D1=$(hdoc HIMMEL-8801-w.md "scripts/a.sh")
+hbranch feat/himmel-3031-h15 scripts/a.sh
+mkdir -p "$HOME/.himmel/state"
+rm -rf "$H_REG"
+: > "$H_REG"
+run_h >/dev/null 2>"$TMP_ROOT/h.err"; rc_h15=$?
+rm -f "$H_REG"
+assert_eq "unreadable register: the PR opens (rc=0)" "0" "$rc_h15"
+contains "unreadable register: the line is unavailable" "$(ow_line)" "outside-writes: unavailable ("
+
+echo "TEST: PR claim — no row of this run reached the real register"
+real_hits=$(grep -rl -- "$TMP_ROOT" "$REAL_HOME/.himmel/state/holds" 2>/dev/null || true)
+assert_eq "the real register holds nothing of this run" "" "$real_hits"
 
 echo
 echo "===================================="
