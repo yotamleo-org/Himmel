@@ -286,11 +286,20 @@ written tracks the tip.
   are all absent until you configure them; the harness runs fully without any of
   them. Add Jira later by filling the `JIRA_*` values in `.env`; the local CLI
   needs four values and no cloud ID.
-- **Handover state:** run `/handover-setup` once to say where cross-session
-  notes live: an inline folder in the repo, or a separate git repo via
-  `HANDOVER_DIR`. A fresh clone has no handover root until you do. Until then
-  `handover_root` fails closed with a diagnostic (`scripts/lib/handover-path.sh`),
-  it does not crash, and nothing silently writes to the wrong place.
+- **Handover state:** the install copies the resume and storage-setup scripts,
+  so `/handover-setup` and `/handover-resume` run in your project.
+  `/handover-setup` asks where cross-session notes live: a folder in your vault
+  or a separate git repo (either through `HANDOVER_DIR`), or an inline
+  `handovers/` folder in the repo. A fresh clone has no handover root until you
+  run it. Until then `handover_root` fails closed with a diagnostic
+  (`scripts/lib/handover-path.sh`), it does not crash, and nothing silently
+  writes to the wrong place. `/handover` has no default: it writes into an
+  existing tracked item, and a fresh project has none. The commands that create
+  an item or write or ship a note (`new-*`, end-session, PR open and merge, flush)
+  stay in the himmel checkout, where the note lands in a `handover/<slug>`
+  worktree off `main`. A project installed earlier gets the scripts by re-running
+  `adopt.sh` with `--profile core` or `--profile all`; `himmel-update.sh` copies
+  nothing.
 
 ### Adapting himmel to a repo that is not himmel
 
