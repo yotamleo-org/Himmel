@@ -15,6 +15,19 @@
 #                  key (never a value); write nothing
 #   -y             the operator's yes. The apply reads no typed yes: without -y,
 #                  at a terminal, it prints the plan and refuses (exit 3)
+#   --keys A,B     also move these names to the keyring: a name that is not himmel's
+#                  and not in the secrets manifest ("unowned"). Each must be a key
+#                  in the file; -y alone never moves an unowned name
+#   --unowned      also move every unowned name the plan lists. With -y this is the
+#                  one command for the secrets a user placed in an env file:
+#                    bash scripts/setup/migrate-env.sh -y --unowned
+#
+# A named or unowned name is stored through `himmel-secrets put --stdin`, read back
+# with `same-value`, and its whole entry leaves the file only on a match (a quoted
+# value over several lines goes whole, closing quote included); a value with a
+# newline inside it cannot be one keyring item and its entry stays. Every name that
+# reached the keyring is then cleared from the systemd user manager with
+# `systemctl --user unset-environment`; the report names them and the names still held.
 #
 # Order: plan, backup (~/.himmel/env-backups, mode 600), copy, secrets to the
 # keyring, verify, and only then remove the moved lines from .env. Verify runs the
@@ -128,9 +141,13 @@ else
     config_audit_scrub() { :; }
 fi
 
-envfile="" dry=0 yes=0 env_given=0
+envfile="" dry=0 yes=0 env_given=0 keys_arg="" unowned_all=0
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --keys)
+            [ "$#" -ge 2 ] || { echo "migrate-env: --keys needs a list of names" >&2; exit 2; }
+            keys_arg="$keys_arg,$2"; shift 2 ;;
+        --unowned) unowned_all=1; shift ;;
         --env)
             [ "$#" -ge 2 ] || { echo "migrate-env: --env needs a value" >&2; exit 2; }
             envfile="$2"; env_given=1; shift 2 ;;
@@ -164,13 +181,66 @@ confdir=$(_himmel_config_dir)
 store_rel="~/.config/secrets/himmel.env"
 store="$HOME/.config/secrets/himmel.env"
 
-# Key names only: the text before '=' on each uncommented line.
+# Where a quote opened at the start of a value closes: the position in <s>, or 0. A
+# double quote is escaped by a backslash; a single quote is literal.
+CLOSEAT='function closeat(s, q,   n, j, c) {
+    n = length(s)
+    for (j = 1; j <= n; j++) {
+        c = substr(s, j, 1)
+        if (q == "\"" && c == "\\") { j++; continue }
+        if (c == q) return j
+    }
+    return 0
+}'
+# Key names only: the text before '=' on each uncommented line. The lines inside a
+# quoted value that runs over several lines are that value's, never a key.
 key_names() {  # <file>
-    awk '{ sub(/\r$/, "") } /^[[:space:]]*#/ { next } {
+    awk "$CLOSEAT"'
+    { sub(/\r$/, "") }
+    inq { if (closeat($0, q)) inq = 0; next }
+    /^[[:space:]]*#/ { next }
+    {
         i = index($0, "="); if (i == 0) next
         k = substr($0, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k)
+        v = substr($0, i + 1); sub(/^[[:space:]]+/, "", v); c = substr(v, 1, 1)
+        if (k ~ /^[A-Za-z_][A-Za-z0-9_]*$/ && (c == "\"" || c == "\047") && !closeat(substr(v, 2), c)) { q = c; inq = 1 }
         if (k ~ /^[A-Za-z_][A-Za-z0-9_]*$/ && !(k in seen)) { seen[k] = 1; print k }
     }' "$1"
+}
+# The first entry of a key. mode=span prints "<first line> <last line>" (or "open" when
+# its quote never closes); mode=value prints a quoted value, its lines joined by newlines.
+# shellcheck disable=SC2016 # awk program text, not shell
+ENTRY_AWK="$CLOSEAT"'
+{ l = $0; sub(/\r$/, "", l) }
+inq { p = closeat(l, q); if (p) { val = val "\n" substr(l, 1, p - 1); last = NR; done = 1; exit } val = val "\n" l; next }
+l ~ /^[[:space:]]*#/ { next }
+{
+    i = index(l, "="); if (!i) next
+    n = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", n); if (n != k) next
+    v = substr(l, i + 1); sub(/^[[:space:]]+/, "", v); first = NR; c = substr(v, 1, 1)
+    if (c == "\"" || c == "\047") {
+        q = c; rest = substr(v, 2); p = closeat(rest, q)
+        if (p) { val = substr(rest, 1, p - 1); last = NR; done = 1; exit }
+        val = rest; inq = 1; next
+    }
+    last = NR; done = 1; exit
+}
+END { if (!first) exit 1; if (!done) { print "open"; exit } if (mode == "span") print first, last; else printf "%s", val }'
+entry_span() { awk -v k="$2" -v mode=span "$ENTRY_AWK" "$1"; }  # <file> <key>
+entry_value() {  # <file> <key>: the value the reader would see, one quote pair dropped; 1 when the quote never closes
+    local span line v
+    span=$(entry_span "$1" "$2") || return 1
+    [ "$span" != open ] || return 1
+    if [ "${span% *}" = "${span#* }" ]; then
+        line=$(_load_dotenv_extract "$1" "$2")
+        v=$(_load_dotenv_trim "${line#*=}")
+        if [ "${#v}" -gt 1 ]; then
+            case "${v:0:1}" in '"'|"'") [ "${v: -1}" != "${v:0:1}" ] || v=${v:1:${#v}-2} ;; esac
+        fi
+        printf '%s' "$v"
+    else
+        awk -v k="$2" -v mode=value "$ENTRY_AWK" "$1"
+    fi
 }
 names=""
 [ "$no_env" -eq 1 ] || names=$(key_names "$envfile")
@@ -184,6 +254,22 @@ owned=" $(sed -n 's/^#\{0,1\}[[:space:]]*\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$R
 is_owned() {
     case "$owned" in *" $1 "*) return 0 ;; esac
     [ "$(_himmel_key_class "$1")" != secret ]
+}
+
+# A name given with --keys must be a key of the file that is not himmel's: a typo or a
+# himmel key is a usage error, with nothing written.
+for key in $(printf '%s' "$keys_arg" | tr ',' ' '); do
+    if ! printf '%s\n' "$names" | grep -qxF -- "$key"; then
+        echo "migrate-env: --keys $key is not a key in ${envfile:-the .env}; nothing written." >&2
+        exit 2
+    fi
+    if is_owned "$key"; then
+        echo "migrate-env: --keys $key is a himmel key; it moves without being named; nothing written." >&2
+        exit 2
+    fi
+done
+unowned_chosen() {  # <key>
+    [ "$unowned_all" -eq 1 ] || case ",$keys_arg," in *",$1,"*) return 0 ;; *) return 1 ;; esac
 }
 
 # key_names skips an `export NAME=` line, and the readers do not read one: himmel's own get a plan row.
@@ -234,7 +320,7 @@ if [ -n "$secrets" ]; then
     esac
 fi
 
-config_keys=() policy_keys=() secret_keys=() file_keys=() legacy_keys=() plan="" stay_secrets="" commented=" " incomplete=0
+config_keys=() policy_keys=() secret_keys=() file_keys=() legacy_keys=() own_keys=() plan="" stay_secrets="" commented=" " incomplete=0 unowned_left=""
 # The shell loader drops an unquoted trailing comment and the node readers keep it,
 # so such a line would read differently after the move: it stays.
 has_inline_comment() {  # <key>
@@ -250,7 +336,25 @@ blank_line() {  # <key>: the readers see no value on its first line
     [ -z "$(_load_dotenv_trim "${v#*=}")" ]
 }
 for key in $names; do
-    if ! is_owned "$key"; then plan="$plan  $key  unrelated  stays (not himmel's, left in place)"$'\n'; continue; fi
+    if ! is_owned "$key"; then
+        # An unowned name moves only when the user names it (--keys) or accepts every one (--unowned).
+        if ! unowned_chosen "$key"; then
+            unowned_left="$unowned_left $key"
+            plan="$plan  $key  unrelated  stays (not himmel's, left in place)"$'\n'
+        elif case "$keep" in *" $key "*) true ;; *) false ;; esac; then
+            plan="$plan  $key  unowned  kept (env-keep)"$'\n'
+        elif [ "$backend_ok" -eq 0 ]; then
+            incomplete=1; plan="$plan  $key  unowned  stays (no keyring)"$'\n'
+        elif ! v=$(entry_value "$envfile" "$key"); then
+            plan="$plan  $key  unowned  stays (its quote never closes)"$'\n'
+        elif [ -z "$(_load_dotenv_trim "$v")" ]; then
+            plan="$plan  $key  unowned  stays (blank in .env: no value)"$'\n'
+        else
+            own_keys[${#own_keys[@]}]="$key"; plan="$plan  $key  unowned  → keyring (you named it)"$'\n'
+        fi
+        v=""
+        continue
+    fi
     case "$(_himmel_key_class "$key")" in
         config)
             # An env-only key has no himmel.conf reader: it stays in .env, as in migrate-env-config.sh.
@@ -267,7 +371,15 @@ for key in $names; do
             elif blank_line "$key"; then
                 stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  stays (blank in .env: no value)"$'\n'
             elif [ "$backend_ok" -eq 1 ]; then
-                secret_keys[${#secret_keys[@]}]="$key"; plan="$plan  $key  secret  → keyring"$'\n'
+                # A quoted value over several lines is read whole and removed whole, so it takes the same road as a named key.
+                span=$(entry_span "$envfile" "$key")
+                if [ "$span" = open ]; then
+                    stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  stays (its quote never closes)"$'\n'
+                elif [ "${span% *}" != "${span#* }" ]; then
+                    own_keys[${#own_keys[@]}]="$key"; plan="$plan  $key  secret  → keyring (value over several lines)"$'\n'
+                else
+                    secret_keys[${#secret_keys[@]}]="$key"; plan="$plan  $key  secret  → keyring"$'\n'
+                fi
             else
                 incomplete=1
                 if [ "$have_git" -eq 0 ]; then
@@ -293,12 +405,17 @@ if [ "$backend_ok" -eq 1 ] && [ "$no_env" -eq 0 ] && [ -s "$store" ]; then
         legacy_keys[${#legacy_keys[@]}]="$key"; plan="$plan  $key  secret  → keyring (from $store_rel)"$'\n'
     done
 fi
-moving=$(( ${#config_keys[@]} + ${#policy_keys[@]} + ${#secret_keys[@]} + ${#file_keys[@]} + ${#legacy_keys[@]} ))
+moving=$(( ${#config_keys[@]} + ${#policy_keys[@]} + ${#secret_keys[@]} + ${#file_keys[@]} + ${#legacy_keys[@]} + ${#own_keys[@]} ))
 
 if [ "$empty_env" -eq 0 ]; then
     echo "env migration for $envfile (key names only):"
     printf '%s' "$plan"
     [ -z "$stay_secrets" ] || echo "secrets stay in .env:$stay_secrets"
+    if [ -n "$unowned_left" ]; then
+        echo "not himmel's and not in the secrets manifest (unowned), left in place:$unowned_left"
+        echo "to move the ones you name:  bash $HERE/migrate-env.sh -y --keys NAME[,NAME]"
+        echo "to move all of them (the one command for the secrets you placed in this file):  bash $HERE/migrate-env.sh -y --unowned"
+    fi
     if [ "$incomplete" -eq 1 ]; then
         echo "migrate-env: WARN no keyring backend (keyring: ${kstate:-absent}); secrets cannot reach the keyring, so this run is incomplete (exit 4 on an apply)."
         echo "unlock the keyring or install a Secret Service, then run this again."
@@ -314,6 +431,8 @@ trap 'rm -rf "$work"; [ -z "$next" ] || [ -L "$envfile" ] || rm -f "$next"; [ "$
 trap 'names_owed=0; exit 1' HUP INT TERM
 bdir="$confdir/env-backups"
 apply_cmd=$(printf 'bash %q --env %q -y' "$HERE/migrate-env.sh" "$envfile")
+[ -z "$keys_arg" ] || apply_cmd="$apply_cmd$(printf ' --keys %q' "${keys_arg#,}")"
+[ "$unowned_all" -eq 0 ] || apply_cmd="$apply_cmd --unowned"
 
 # A copy beside the file (same mode) renamed over it, so a failed write leaves
 # the file whole; a symlink is followed to its target, so the link stays.
@@ -541,10 +660,10 @@ if [ "$consent" -eq 1 ]; then
     fi
 fi
 secrets_gate
-if [ "$consent" -eq 1 ] && [ -n "$secrets_refusal" ] && [ $(( ${#secret_keys[@]} + ${#legacy_keys[@]} )) -gt 0 ]; then
-    echo "migrate-env: $secrets_refusal; they stay in .env: ${secret_keys[*]-} ${legacy_keys[*]-}"
+if [ "$consent" -eq 1 ] && [ -n "$secrets_refusal" ] && [ $(( ${#secret_keys[@]} + ${#legacy_keys[@]} + ${#own_keys[@]} )) -gt 0 ]; then
+    echo "migrate-env: $secrets_refusal; they stay in .env: ${secret_keys[*]-} ${legacy_keys[*]-} ${own_keys[*]-}"
     printf 'To move them, run this at your own prompt:\n  %s\n' "$apply_cmd"
-    moving=$(( moving - ${#secret_keys[@]} - ${#legacy_keys[@]} )) secret_keys=() legacy_keys=()
+    moving=$(( moving - ${#secret_keys[@]} - ${#legacy_keys[@]} - ${#own_keys[@]} )) secret_keys=() legacy_keys=() own_keys=()
     [ "$moving" -gt 0 ] || { echo "nothing else to move; nothing written."; exit 3; }
 fi
 command -v node >/dev/null 2>&1 || { echo "migrate-env: node is needed to write and verify the config; nothing written." >&2; exit 1; }
@@ -771,6 +890,30 @@ if [ "${#legacy_keys[@]}" -gt 0 ]; then
         exit 1
     fi
 fi
+# Named, unowned and several-line entries: the value is parsed here, stored through
+# `himmel-secrets put --stdin`, and read back from the keyring alone (same-value). An entry
+# whose store or read-back fails stays in .env whole; the others still move.
+own_stored=" " own_kept=""
+for key in ${own_keys[@]+"${own_keys[@]}"}; do
+    own_err=""
+    if ! own_val=$(entry_value "$envfile" "$key"); then
+        own_err="its quote never closes"
+    elif own_err=$(printf '%s' "$own_val" | bash "$hs" put --stdin "$key" 2>&1 >/dev/null); [ -n "$own_err" ]; then
+        own_err=$(printf '%s' "$own_err" | head -n 1)
+    elif ! printf '%s\n' "$own_val" | bash "$hs" same-value "$key" 2>/dev/null; then
+        own_err="the keyring does not hold that value after the store"
+    fi
+    own_val=""
+    if [ -z "$own_err" ]; then
+        own_stored="$own_stored$key "; echo "  stored $key"
+    else
+        own_kept="$own_kept $key"; echo "  failed $key ($own_err); its entry stays in .env"
+    fi
+done
+if [ -n "$own_kept" ]; then
+    echo "migrate-env: WARN these entries did not reach the keyring and stay in .env:$own_kept"
+    final_rc=1
+fi
 
 # --- verify ---
 verify_env="$envfile"   # the .env the readers compare against; a kept ~/.himmel value is swapped in
@@ -895,13 +1038,20 @@ if ! cmp -s "$envfile" "$backup"; then
     restore_hint
     exit 1
 fi
-moved=" ${config_keys[*]-} ${policy_keys[*]-}${stored_keys}${file_keys[*]-} "
+moved=" ${config_keys[*]-} ${policy_keys[*]-}${stored_keys}${own_stored}${file_keys[*]-} "
 # shellcheck disable=SC2086 # word-split key names
 moved_n=$(printf '%s\n' $moved | grep -c .)
-awk -v moved="$moved" '{ l = $0; sub(/\r$/, "", l) }
+# A moved key's whole entry goes: a quoted value over several lines too, closing quote included.
+awk -v moved="$moved" "$CLOSEAT"'
+    { l = $0; sub(/\r$/, "", l) }
+    skipq != "" { if (closeat(l, skipq)) skipq = ""; next }
     l ~ /^[[:space:]]*#/ { print; next }
     { i = index(l, "="); k = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k) }
-    i && k != "" && index(moved, " " k " ") { next }
+    i && k != "" && index(moved, " " k " ") {
+        v = substr(l, i + 1); sub(/^[[:space:]]+/, "", v); c = substr(v, 1, 1)
+        if ((c == "\"" || c == "\047") && !closeat(substr(v, 2), c)) skipq = c
+        next
+    }
     { print }' "$backup" > "$work/env.new" || {
     echo "migrate-env: could not build the new .env; no lines were removed from .env." >&2
     restore_hint
@@ -939,6 +1089,31 @@ if [ "$backend_ok" -eq 1 ] && [ -z "$secrets_refusal" ]; then
 elif [ "$backend_ok" -eq 1 ]; then
     echo "migrate-env: the backups keep their secret lines ($secrets_refusal); run this at your own prompt to scrub them:"
     printf '  %s\n' "$apply_cmd"
+fi
+
+# Every name that reached the keyring leaves the systemd user manager, whatever a login put there.
+clear_manager() {  # <names>: prints names, never a value
+    local n cleared="" failed="" held=0 after envargs=()
+    if ! command -v systemctl >/dev/null 2>&1; then echo "systemd user manager: no systemctl here; nothing to clear."; return 0; fi
+    if ! systemctl --user show-environment >/dev/null 2>&1; then echo "systemd user manager: not reachable from here; nothing cleared (log in as that user and run: systemctl --user unset-environment $*)."; return 0; fi
+    for n in "$@"; do
+        if systemctl --user unset-environment "$n" >/dev/null 2>&1; then cleared="$cleared $n"; else failed="$failed $n"; fi
+    done
+    after=$(systemctl --user show-environment 2>/dev/null | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p')
+    for n in "$@"; do
+        if grep -qxF -- "$n" <<<"$after"; then held=$((held + 1)); fi
+    done
+    echo "systemd user manager: unset-environment for$cleared; of these names it still holds $held"
+    [ -z "$failed" ] || { echo "migrate-env: WARN unset-environment failed for:$failed"; final_rc=1; }
+    # The serving layer after the move, read with the names out of this process's environment.
+    for n in "$@"; do envargs[${#envargs[@]}]="-u"; envargs[${#envargs[@]}]="$n"; done
+    env "${envargs[@]}" bash "$hs" status "$@" 2>/dev/null | grep -v '^keyring:' | sed 's/^/  serving layer: /'
+}
+if [ -z "$secrets_refusal" ]; then
+    # shellcheck disable=SC2086 # word-split key names
+    unset_names=$(printf '%s\n' $stored_keys $own_stored $legacy_stored | grep . | sort -u | tr '\n' ' ')
+    # shellcheck disable=SC2086 # word-split key names
+    [ -z "$unset_names" ] || clear_manager $unset_names
 fi
 
 echo "verified: $verified"

@@ -1354,6 +1354,85 @@ lacks "race: the winner took every secret out of .env" "READ_SECRET=" "$(cat "$T
 has "race: the other run says why" "another import-env" "$(cat "$TMP/race.1" "$TMP/race.2" 2>/dev/null)"
 no_canary "race: no value printed" "$(cat "$TMP/race.1" "$TMP/race.2")"
 
+# --- names outside the manifest, a quoted value over two lines, the systemd user manager ---
+# A stub systemctl first on PATH: it logs its argv and answers show-environment with the names in $TMP/sysenv.
+mkdir -p "$TMP/sbin"
+cat > "$TMP/sbin/systemctl" <<'STUB' || fail "fixture write of the systemctl stub failed"
+#!/usr/bin/env bash
+printf 'systemctl %s\n' "$*" >> "$SYSTEMCTL_LOG"
+[ "$1 $2" = "--user show-environment" ] && { cat "$SYSENV" 2>/dev/null; exit 0; }
+exit 0
+STUB
+chmod +x "$TMP/sbin/systemctl"
+export SYSTEMCTL_LOG="$TMP/systemctl.log" SYSENV="$TMP/sysenv"
+SYSPATH="PATH=$TMP/sbin:$PATH "
+fixture_9360() {  # the station .env plus an entry outside the manifest whose quoted value spans two lines, and a one-line one
+    fixture_env
+    : > "$SYSTEMCTL_LOG"
+    fxadd "$TMP/st/.env" "GGS_MQTT_PASS='%s\n'\n" "$(canary mq)"
+    fxadd "$TMP/st/.env" 'PLAIN_UNOWNED=%s\n' "$(canary plain)"
+    printf 'GGS_MQTT_PASS=x\nOTHER_TOOL_TOKEN=y\n' > "$SYSENV"
+    cp -p "$TMP/st/.env" "$TMP/st.orig"
+}
+sources_clean() {  # the file still sources, and load_dotenv still reads the key after the entry
+    bash -c 'set -e; . "$1"' _ "$TMP/st/.env" >/dev/null 2>&1 \
+        && [ "$(bash -c '. "$1"; load_dotenv --root "$2" PLAIN_UNOWNED >/dev/null 2>&1; printf %s "${PLAIN_UNOWNED-}"' _ "$FX/scripts/lib/load-dotenv.sh" "$TMP/st")" = "$(sed -n 's/^PLAIN_UNOWNED=//p' "$TMP/st/.env")" ]
+}
+# N1: -y alone never moves an unowned name, and the plan says how to.
+fixture_9360
+apply_tty y "$SYSPATH"
+has "N1 -y alone leaves the two-line entry" "GGS_MQTT_PASS='CANARY-mq-" "$(cat "$TMP/st/.env")"
+has "N1 the plan names the way to move unowned names" "--unowned" "$out"
+if ! grep -q 'CANARY-mq' "$KSTUB_STORE" 2>/dev/null; then pass "N1 -y alone stores no unowned value"; else fail "N1 -y alone stored an unowned value"; fi
+# N2: --keys moves a name outside the manifest with a two-line quoted value, whole.
+fixture_9360
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N2 --keys apply exits 0"; else fail "N2 --keys apply exited $rc: $out"; fi
+if grep -q 'CANARY-mq' "$KSTUB_STORE" 2>/dev/null; then pass "N2 the value is in the keyring"; else fail "N2 the value is not in the keyring"; fi
+lacks "N2 no GGS_MQTT_PASS entry left" "GGS_MQTT_PASS" "$(cat "$TMP/st/.env")"
+if [ "$(grep -c "^'$" "$TMP/st/.env")" = 0 ]; then pass "N2 no stray quote left"; else fail "N2 a stray quote is left in .env"; fi
+if sources_clean; then pass "N2 the file still sources and load_dotenv still reads it"; else fail "N2 the file no longer sources cleanly"; fi
+has "N2 a key not named stays" "PLAIN_UNOWNED=CANARY-plain-" "$(cat "$TMP/st/.env")"
+has "N2 OTHER_TOOL_TOKEN (not named) stays" "OTHER_TOOL_TOKEN=CANARY-other-" "$(cat "$TMP/st/.env")"
+no_canary "N2 no value printed" "$out"
+# N3: every moved name gets an unset-environment call, and the report names them.
+for n in GGS_MQTT_PASS READ_SECRET UNREAD_SECRET BITBUCKET_API_TOKEN; do
+    has "N3 unset-environment for $n" "systemctl --user unset-environment $n" "$(cat "$SYSTEMCTL_LOG")"
+done
+lacks "N3 a name that stayed is not unset" "unset-environment OTHER_TOOL_TOKEN" "$(cat "$SYSTEMCTL_LOG")"
+has "N3 the report names the systemd user manager" "systemd user manager" "$out"
+# N4: a failed keyring store leaves the entry whole in the file.
+fixture_9360
+grep -v -E '^(READ_SECRET|UNREAD_SECRET|BITBUCKET_API_TOKEN|KEEP_ME)=' "$TMP/st/.env" > "$TMP/st/.env.new" && mv "$TMP/st/.env.new" "$TMP/st/.env"
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "KSTUB_DROP_STORE=1 $SYSPATH"
+if [ "$rc" != 0 ]; then pass "N4 a store the keyring did not keep fails the run (exit $rc)"; else fail "N4 the run exited 0"; fi
+has "N4 the entry stays whole" "GGS_MQTT_PASS='CANARY-mq-" "$(cat "$TMP/st/.env")"
+if [ "$(grep -c "^'$" "$TMP/st/.env")" = 1 ]; then pass "N4 its closing quote stays with it"; else fail "N4 the closing quote line is gone"; fi
+lacks "N4 a name that did not reach the keyring is not unset" "unset-environment GGS_MQTT_PASS" "$(cat "$SYSTEMCTL_LOG")"
+no_canary "N4 no value printed" "$out"
+# N5: --unowned moves every unowned name.
+fixture_9360
+APPLY_ARGS="-y --unowned" apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N5 --unowned apply exits 0"; else fail "N5 --unowned apply exited $rc: $out"; fi
+for n in GGS_MQTT_PASS OTHER_TOOL_TOKEN PLAIN_UNOWNED; do
+    lacks "N5 $n left .env" "$n=" "$(cat "$TMP/st/.env")"
+done
+if [ "$(grep -c 'CANARY-\(mq\|other\|plain\)' "$KSTUB_STORE")" = 3 ]; then pass "N5 the three values are in the keyring"; else fail "N5 the keyring does not hold the three values"; fi
+no_canary "N5 no value printed" "$out"
+# N6: a name the file does not hold, or one himmel owns, is a usage error with nothing written.
+fixture_9360
+APPLY_ARGS="-y --keys NOT_IN_THE_FILE" apply_tty y "$SYSPATH"
+if [ "$rc" = 2 ]; then pass "N6 a name absent from the file exits 2"; else fail "N6 a name absent from the file exited $rc"; fi
+if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "N6 .env is byte-identical"; else fail "N6 .env changed"; fi
+# N7: a value with a real newline inside cannot be one keyring item: the entry stays whole, others move.
+fixture_9360
+fxadd "$TMP/st/.env" "TWO_LINE_VALUE='%s\n%s\n'\n" "$(canary a)" "$(canary b)"
+APPLY_ARGS="-y --keys TWO_LINE_VALUE,GGS_MQTT_PASS" apply_tty y "$SYSPATH"
+has "N7 the entry with a newline inside stays" "TWO_LINE_VALUE='CANARY-a-" "$(cat "$TMP/st/.env")"
+lacks "N7 the other named entry moved" "GGS_MQTT_PASS" "$(cat "$TMP/st/.env")"
+if [ "$rc" != 0 ]; then pass "N7 the run reports the entry it kept (exit $rc)"; else fail "N7 the run exited 0"; fi
+no_canary "N7 no value printed" "$out"
+
 if [ "$FAILED" -gt 0 ]; then
     echo "test-migrate-env: $FAILED FAILED"
     exit 1
