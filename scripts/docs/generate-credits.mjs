@@ -24,9 +24,10 @@ function attribution(text) {
 }
 
 function isHttps(value) {
+  if (!value.startsWith('https://')) return false;
   try {
-    const url = new URL(value);
-    return url.protocol === 'https:' && url.hostname !== '';
+    new URL(value);
+    return true;
   } catch {
     return false;
   }
@@ -171,7 +172,7 @@ ${table(forkRows, true)}
 
 Text or ideas from elsewhere inside a skill, command, document or script himmel
 wrote. \`vendored\` means the file runs a vendored copy; \`inspired by\` means himmel wrote its own text from
-the idea. \`Not established\` means the licence could not be established: it
+the idea, at most repeating a short phrase or format string. \`Not established\` means the licence could not be established: it
 grants no permission to copy, and nothing was copied.
 
 ${passageTable(borrowed)}

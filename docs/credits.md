@@ -101,13 +101,15 @@ source of truth for the shipped revision; no pin is invented for dormant forks.
 
 Text or ideas from elsewhere inside a skill, command, document or script himmel
 wrote. `vendored` means the file runs a vendored copy; `inspired by` means himmel wrote its own text from
-the idea. `Not established` means the licence could not be established: it
+the idea, at most repeating a short phrase or format string. `Not established` means the licence could not be established: it
 grants no permission to copy, and nothing was copied.
 
 | What | Source | Author | Licence | How used | Where |
 |---|---|---|---|---|---|
+| AI-first vault rule hook, ported unchanged (obsidian-second-brain validate-ai-first.sh, v0.18.1) | https://github.com/eugeniughelbur/obsidian-second-brain | Eugeniu Ghelbur | MIT | vendored | marketplace/plugins/obsidian-triage/hooks/validate-ai-first.sh |
 | Animation frequency rule | https://x.com/emilkowalski/status/2110429909160264027 | Emil Kowalski | Not established | inspired by | marketplace/plugins/shadcn-mcp/skills/motion-budget/SKILL.md |
 | Base and graft, minerva Stage 1 | https://github.com/cursor/plugins/tree/99743e9c151c8537cbbf1f98bb38f34ef3368453/pstack/skills/arena | Lauren Tan | MIT | inspired by | marketplace/plugins/himmel-ops/skills/minerva/SKILL.md |
+| Callout format and comment style for agent-authored PR comments (tstack leaving-pr-comments) | https://github.com/t3dotgg/tstack/tree/7de017b3fc9d50c03cf3ecb98fb71e0ca65a78bd | Theo Browne | MIT | inspired by | docs/handover/worker-sections/shell-and-tests.md |
 | Docs form exemplar and the command-comment check | https://github.com/NousResearch/hermes-agent | NousResearch | MIT | inspired by | marketplace/plugins/himmel-ops/skills/docs-reviewer/SKILL.md |
 | Docs form exemplar and the errors check | https://github.com/garrytan/gstack | Garry Tan | MIT | inspired by | marketplace/plugins/himmel-ops/skills/docs-reviewer/SKILL.md |
 | Docs form exemplar: T3 Code | https://github.com/pingdotgg/t3code | pingdotgg | MIT | inspired by | marketplace/plugins/himmel-ops/skills/docs-reviewer/SKILL.md |
@@ -119,8 +121,8 @@ grants no permission to copy, and nothing was copied.
 | Keep the credit when taking over a PR (tstack modernize, takeover) | https://github.com/t3dotgg/tstack/tree/7de017b3fc9d50c03cf3ecb98fb71e0ca65a78bd | Theo Browne | MIT | inspired by | docs/handover/worker-brief-template.md |
 | Keep the credit when taking over a PR, generated brief text (tstack modernize, takeover) | https://github.com/t3dotgg/tstack/tree/7de017b3fc9d50c03cf3ecb98fb71e0ca65a78bd | Theo Browne | MIT | inspired by | scripts/handover/chief-kit/gen-briefs.py |
 | Log-normal estimate model | https://erikbern.com/2019/04/15/why-software-projects-take-longer-than-you-think-a-statistical-model.html | Erik Bernhardsson | Not established | inspired by | marketplace/plugins/himmel-ops/skills/effort-assess/SKILL.md |
-| PR comments that carry no callout when a script parses them (tstack leaving-pr-comments) | https://github.com/t3dotgg/tstack/tree/7de017b3fc9d50c03cf3ecb98fb71e0ca65a78bd | Theo Browne | MIT | inspired by | docs/handover/worker-sections/shell-and-tests.md |
 | Review grading by the intended case and declining what the goal does not need (tstack sol-loop, babysit-pr) | https://github.com/t3dotgg/tstack/tree/7de017b3fc9d50c03cf3ecb98fb71e0ca65a78bd | Theo Browne | MIT | inspired by | .claude/commands/pr-check.md |
+| The /read-link command's UX, from /x-read in obsidian-second-brain | https://github.com/eugeniughelbur/obsidian-second-brain | Eugeniu Ghelbur | MIT | inspired by | marketplace/plugins/obsidian-triage/commands/read-link.md |
 
 ## Licences and regeneration
 

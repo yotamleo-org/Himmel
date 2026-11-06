@@ -81,4 +81,5 @@ license file:
 `skills/context7-mcp` is himmel-authored (MIT, no upstream). See
 `marketplace/plugins/lean-skills/README.md` and `VENDORED.md` for the
 per-skill inventory and re-vendor procedure.
-The full index of what himmel vendors or takes inspiration from is [docs/credits.md](docs/credits.md).
+
+The index of what himmel vendors or takes inspiration from is [docs/credits.md](docs/credits.md).
