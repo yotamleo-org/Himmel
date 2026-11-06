@@ -21,7 +21,8 @@ scripts/security/test-security-audit-cadence.sh	2
 #   Every suite that ran >= 10 s in green main run 41928036090 (head
 #   11b19d623ec945b58496257457804e390f5cecaa, 2026-11-04, the first full run after the
 #   run-shell-tests and uninstall-provenance split, shell-unit-shard 1..8) carries that run's seconds, a single run
-#   and not a mean; the split run-shell-tests and uninstall-provenance rows and
+#   and not a mean, except marketplace/plugins/himmel-bus/tests/test-cli.sh, which printed FLAKE in that run and
+#   keeps its earlier 24; the split run-shell-tests and uninstall-provenance rows and
 #   scripts/eval/review-panel/test-review-panel.sh (1295) are measured, not shared.
 # The quarantined suites (SKIP_LIST) have no measured row.
 #
