@@ -1423,7 +1423,7 @@ async function askEnum(ask, prompt, opts, defaultVal) {
 // askEnum() directly, unchanged) can never be satisfied by a digit.
 //
 // `helpMap`: optional { option: 'one-line help' }. When
-// given, every menu line gets a <help> suffix, same convention
+// given, every menu line gets an <help> suffix, same convention
 // askProfile() pioneered (PROFILE_HELP) and now generalized here so every
 // enum question in the wizard can carry per-option help without a
 // per-question copy of the menu-building loop.
