@@ -1,4 +1,9 @@
 {
   "_comment": "A bump held back on purpose. A hold reads HELD only while the pin is still at `current` AND upstream's newest release is still `latest_reviewed`; anything newer re-raises BEHIND. Drop the row when the bump lands. eco \"upstream\" holds a scripts/upstreams.json tag_release row by its name. An optional `release` field names the condition that lifts the hold as a token, not prose (e.g. \"vm-proof\"), so a resolver can read it.",
-  "holds": []
+  "holds": [
+    {"eco": "gh", "key": "nvm-sh/nvm", "current": "v0.40.8", "latest_reviewed": "v0.41.0", "reason": "release-age buffer: v0.41.0 published 2026-11-04T21:25Z, inside the 72 h buffer; eligible 2026-11-07T21:25Z"},
+    {"eco": "npm", "key": "@astrojs/starlight", "current": "0.42.7", "latest_reviewed": "0.42.9", "reason": "release-age buffer: 0.42.9 published 2026-11-04T17:36Z, minimumReleaseAge 72 h; eligible 2026-11-07T17:36Z"},
+    {"eco": "upstream", "key": "claude-code", "current": "2.1.316", "latest_reviewed": "2.1.318", "reason": "release-age buffer: v2.1.318 published 2026-11-04T00:01Z, inside the 72 h buffer; eligible 2026-11-07T00:01Z"},
+    {"eco": "upstream", "key": "superpowers-skills", "current": "7.0.1", "latest_reviewed": "7.0.2", "reason": "release-age buffer: v7.0.2 published 2026-11-03T22:17Z, inside the 72 h buffer; eligible 2026-11-06T22:17Z"}
+  ]
 }

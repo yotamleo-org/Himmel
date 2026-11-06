@@ -42,7 +42,7 @@ or model-selection workflow.
 The accepted pilot covers one target. Every defect still needs a real-code
 replay; an all-hold result counts only for the bounded model of the code as
 written. Keep the upstream report's unchecked-rule and state-budget caveats.
-Rendering uses the docs site's Pele 1.10.0, without a separate Pele install.
+Rendering uses the docs site's Pele 1.13.0, without a separate Pele install.
 
 ## Related take-parts tickets (not duplicated here)
 

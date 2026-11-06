@@ -52,7 +52,7 @@ The chief supplies these paths in the launching shell:
   are also required by the wrapper.
 
 Do not install the separate `pele@1.9.0` render path. The docs site already
-uses Pele 1.10.0; `chart.mmd` is the portable artifact.
+uses Pele 1.13.0; `chart.mmd` is the portable artifact.
 
 ## Prepare and run
 
