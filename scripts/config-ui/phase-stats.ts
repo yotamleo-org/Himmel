@@ -17,6 +17,7 @@ type Ev = { ts: number; event: string; key: string; pr: string };
 export type PhaseRow = {
   id: string; name: string; state: "ok" | "nodata" | "nosource"; unit: "min" | "rounds";
   n: number; median: number | null; p80: number | null; perDay: number[]; counts: string;
+  hist: { label: string; n: number }[]; hiFrom: number; // the spread in buckets; the buckets from `hiFrom` on are the slow tail
 };
 export type Outlier = { pr: string | null; phase: string; value: number; unit: "min" | "rounds"; times: number };
 export type PhaseStats = {
@@ -111,10 +112,16 @@ export function readPhaseStats(env: Env, roundsDir: string, now: number): PhaseS
       // far outside: past the 8-in-10 line and 3 × the median (2 × for rounds); a median or 8-in-10 line under 1 counts as 1
       for (const t of took) if (t.v > p80 && t.v >= (unit === "rounds" ? 2 : 3) * Math.max(median, 1))
         outliers.push({ pr: prOf(t.key), phase: id, value: t.v, unit, times: Math.round((t.v / Math.max(p80, 1)) * 10) / 10 });
-    return { id, name, state: vs.length ? "ok" : "nodata", unit, n: vs.length, median, p80, perDay: perDay(entered), counts };
+    // a time phase falls in under 10 min, 10-30, 30-60, 1-2 h, 2-4 h or 4 h+; the tail starts at the bucket holding the 8-in-10 line.
+    // Review counts branches by their highest round, 1, 2, 3 and 4+; the tail is 3 rounds or more.
+    const edges = [10, 30, 60, 120, 240], at = (v: number) => edges.filter((e) => v >= e).length;
+    const hist = unit === "rounds"
+      ? ["1", "2", "3", "4+"].map((label, i) => ({ label, n: vs.filter((v) => Math.min(v, 4) === i + 1).length }))
+      : ["under 10 min", "10-30 min", "30-60 min", "1-2 h", "2-4 h", "4 h+"].map((label, i) => ({ label, n: vs.filter((v) => at(v) === i).length }));
+    return { id, name, state: vs.length ? "ok" : "nodata", unit, n: vs.length, median, p80, perDay: perDay(entered), counts, hist: vs.length ? hist : [], hiFrom: unit === "rounds" ? 2 : p80 === null ? 0 : at(p80) };
   };
   const none = (id: string, name: string, counts: string): PhaseRow =>
-    ({ id, name, state: "nosource", unit: "min", n: 0, median: null, p80: null, perDay: [], counts });
+    ({ id, name, state: "nosource", unit: "min", n: 0, median: null, p80: null, perDay: [], counts, hist: [], hiFrom: 0 });
 
   const build = span("live", "pr-open"), check = span("ci-start", "merge"), merge = span("merge", "wrapped");
   const merged = (key: string | null) => !!key && !!first.get(key)?.get("merge");

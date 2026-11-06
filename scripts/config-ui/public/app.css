@@ -531,6 +531,16 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .wf-sum th,.wf-sum td,.wf-rev th,.wf-rev td,.wf-out th,.wf-out td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--rule);font-variant-numeric:tabular-nums}
 .wf-sum thead th,.wf-rev thead th,.wf-out thead th{font:600 11px var(--font-mono);color:var(--muted)}
 .wf-cost .wf-v{display:inline;margin-right:6px}
+/* the Eval tab's charts: sparkline, Distributions bars with the slow tail apart, Trends lines; colours are tokens */
+.wf-egrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s3);align-items:start;margin:0 0 var(--s3)}
+.wf-egrid>.box{margin:0}
+.wf-mult{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s3)}
+.wf-mult .sub{margin:2px 0 0;font-size:var(--fs-xs)}
+.wf-sp{display:block;color:var(--accent)}
+.wf-ch,.wf-trend{display:block;width:100%;height:auto;color:var(--accent);font-family:var(--font-mono)}
+.wf-ch text,.wf-trend text{fill:var(--muted);font-size:9px}
+.wf-bar{fill:var(--accent)}.wf-bar.wf-hi{fill:var(--crit)}
+@media (max-width:900px){.wf-egrid,.wf-mult{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:1100px){.wf-map{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media (max-width:720px){
   .wf-map{grid-template-columns:minmax(0,1fr)}

@@ -2,7 +2,8 @@
 // order; every move once, on its own step's card; plain words only (no ticket ID, file path, script name or WAKE key);
 // the v7 step names; the deep links; the real state of each "This version" line; and the Eval tab's per-phase numbers.
 import { test, expect } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { renderWorkflow, parseWorkflowRoute } from "../public/workflow.js";
 import { readPhaseStats } from "../phase-stats";
@@ -178,6 +179,50 @@ test("Eval: one row per phase with a Start row, the 7-day numbers in words, and 
   expect(html).toMatch(/wf-cost[^>]*>[\s\S]*no data yet/);
   expect(html).toContain("PR 4347");
   expect(renderWorkflow(MODEL, { tab: "eval" }, null)).toContain("loading");
+});
+
+// A seeded run: eight tickets through Build, Review, Check and approve, and Merge and wrap up on different days of the
+// window, written as status-events.jsonl rows and review-round files and read back by phase-stats.ts's own reader, so the
+// numbers have the shape the server sends. The unseeded control is a state directory that does not exist.
+function seededRun() {
+  const dir = mkdtempSync(join(tmpdir(), "workflow-eval-seed-"));
+  try {
+    const state = join(dir, "state"), rounds = join(dir, "rounds");
+    mkdirSync(state); mkdirSync(rounds);
+    const at = (day: number, min: number) => new Date(Date.UTC(2026, 9, day, 8, min)).toISOString();
+    const rows: string[] = [];
+    for (let i = 1; i <= 8; i++) {
+      const key = `HIMMEL-${i}`, d = 25 + (i * 3) % 7, pr = String(100 + i);
+      const row = (event: string, min: number, extra = {}) => rows.push(JSON.stringify({ ts: at(d, min), event, key, pr, ...extra }));
+      row("live", 0); row("pr-open", 15 + i * 6); row("ci-start", 16 + i * 6); row("merge", 80 + i * 20); row("wrapped", 82 + i * 20);
+      const f = join(rounds, `fix/himmel-${i}-seeded.round`);
+      mkdirSync(join(f, ".."), { recursive: true });
+      writeFileSync(f, `${(i % 4) + 1}\n`);
+      const t = Date.UTC(2026, 9, d, 12) / 1000;
+      utimesSync(f, t, t);
+    }
+    writeFileSync(join(state, "status-events.jsonl"), rows.join("\n") + "\n");
+    return readPhaseStats({ TICKET_STATUS_STATE_DIR: state }, rounds, Date.parse("2026-11-01T09:30:00Z"));
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+
+// RED at base: against the seeded run the Eval tab still has none of the mockup's callouts, sparklines, Ways back column
+// or Trends charts, so the gap is missing code, not an empty state. Distributions needs bucket counts phase-stats.ts does not carry.
+test("Eval: with a seeded run, every panel carries its Answers callout, the Phase summary has sparklines and a Ways back column, and Trends draws four line charts", () => {
+  const seeded = seededRun();
+  expect(seeded.phases.filter((p) => p.state === "ok").map((p) => p.id)).toEqual(["build", "review", "check", "merge"]);
+  const html = renderWorkflow(MODEL, { tab: "eval" }, seeded);
+  const labels = (cls: string) => [...html.matchAll(new RegExp(`<svg class="${cls}"[^>]*aria-label="([^"]*)"`, "g"))].map((m) => m[1]);
+  expect((html.match(/<section class="box">/g) || []).length).toBe(6);
+  expect((html.match(/<p class="wf-purpose"><b>Answers:<\/b>/g) || []).length).toBe(6);
+  expect(html).toContain("<th>Ways back</th>");
+  expect(labels("wf-sp")).toHaveLength(4);
+  expect(labels("wf-sp")[0]).toMatch(/^Build entered per day: \d/);
+  expect(labels("wf-trend")).toEqual(["Build entered per day", "Review entered per day", "Check and approve entered per day", "Merge and wrap up entered per day"]);
+  expect(html).toMatch(/3 or more review rounds: \d+ of 8 branches \(\d+ merged\)/);
+  expect(labels("wf-ch")).toEqual(["Build spread", "Review spread", "Check and approve spread", "Merge and wrap up spread"]);
+  expect(html).toContain("<h2>Distributions</h2>");
+  expect(html).toContain("<h2>Trends</h2>");
 });
 
 // the story map's Frame 1 pieces: a drill-in link per phase, the legend, the always-on and measurement
