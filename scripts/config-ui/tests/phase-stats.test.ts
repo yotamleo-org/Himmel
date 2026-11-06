@@ -83,6 +83,30 @@ test("phase-stats: Build runs from LIVE to the PR opening, counted when the tick
   expect(b.perDay).toEqual([0, 1, 1, 1, 0, 0, 0]);
 });
 
+test("phase-stats: each phase carries its spread as buckets, and where the 8-in-10 line falls (the Eval tab's Distributions)", () => {
+  const { env, roundsDir } = fixture(EVENTS, { "feat/himmel-1-a": [1, "2026-10-26"], "feat/himmel-2-b": [3, "2026-10-27"], "fix/himmel-3-c": [6, "2026-10-29"] });
+  const s = readPhaseStats(env, roundsDir, NOW);
+  // Build took 20 min, 40 min and 30 h: the 10-30, 30-60 and 4 h+ buckets; the 8-in-10 line (about 18 h) is in 4 h+
+  expect(phase(s, "build").hist.map((b) => [b.label, b.n])).toEqual([["<10m", 0], ["10-30m", 1], ["30-60m", 1], ["1-2h", 0], ["2-4h", 0], ["4h+", 1]]);
+  expect(phase(s, "build").hiFrom).toBe(5);
+  // Review: rounds 1, 3 and 6; red from 3 rounds on
+  expect(phase(s, "review").hist.map((b) => [b.label, b.n])).toEqual([["1", 1], ["2", 0], ["3", 1], ["4+", 1]]);
+  expect(phase(s, "review").hiFrom).toBe(2);
+  for (const id of ["start", "plan", "assign"]) expect(phase(s, id).hist).toEqual([]);
+});
+
+test("phase-stats: a tight phase is not drawn as slow tail: the first bucket stays plain when the 8-in-10 line is inside it", () => {
+  // Merge and wrap up took 1, 2, 1 and 3 min: the 8-in-10 line (about 2.4 min) is in "<10m", as the mockup's Merge figure
+  const wrap = (key: string, day: string, min: number) => [ev("merge", key, `${day}T10:00:00Z`, "1"), ev("wrapped", key, `${day}T10:0${min}:00Z`)];
+  const tight = readPhaseStats(fixture([...wrap("HIMMEL-1", "2026-10-26", 1), ...wrap("HIMMEL-2", "2026-10-27", 2), ...wrap("HIMMEL-3", "2026-10-28", 1), ...wrap("HIMMEL-4", "2026-10-29", 3)]).env, fixture().roundsDir, NOW);
+  expect(phase(tight, "merge").hist.map((b) => b.n)).toEqual([4, 0, 0, 0, 0, 0]);
+  expect(phase(tight, "merge").hiFrom).toBe(1);
+  // one row of 5 min: its bucket is the first, so no bucket is slow tail but the empty ones after it
+  const one = readPhaseStats(fixture(wrap("HIMMEL-1", "2026-10-26", 5)).env, fixture().roundsDir, NOW);
+  expect(phase(one, "merge").hist.map((b) => b.n)).toEqual([1, 0, 0, 0, 0, 0]);
+  expect(phase(one, "merge").hiFrom).toBe(1);
+});
+
 test("phase-stats: Check and approve runs from the first CI run to the merge; Merge and wrap up from the merge to WRAPPED", () => {
   const { env, roundsDir } = fixture();
   const s = readPhaseStats(env, roundsDir, NOW);

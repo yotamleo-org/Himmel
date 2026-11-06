@@ -1278,6 +1278,31 @@ put_row q1.txt $K1 branch:feat/prrow "" pr 55 "$GC"; touch "$(rowf q1.txt "$GC")
 run asw "$GW" $K2 "$gcdoc_b" beta env HOLDS_GH="$W/bin/gh-base" "${GCQ[@]}" --push
 same "T5 a pr row of the own branch passes" "$RC" 0
 
+# A narrowed pr row (it carries a doc: narrow --apply made it) is never stale, however old; a doc-less pr row
+# (sync-prs) over 30 minutes still passes. The holder's lock is held, gh fails, the row is aged 2 hours.
+printf '#!/usr/bin/env bash\nexit 1\n' > "$W/bin/gh-down"; chmod +x "$W/bin/gh-down"
+put_row q1.txt $K1 branch:feat/other "" pr 55 "$GC"
+run asw "$GW" $K2 "$gcdoc_b" beta env HOLDS_GH="$W/bin/gh-down" "${GCQ[@]}" --push
+same "T5 F1 control: a doc-less pr row aged 2 h passes --push" "$RC" 0
+run asw "$GW" $K2 "$gcdoc_b" beta env HOLDS_GH="$W/bin/gh-down" python3 -I "$SUT" narrow --check --key $K2 --repo "$GC" --doc "$gcdoc_b" --base main --label beta
+same "T5 F1 control: a doc-less pr row aged 2 h passes narrow --check" "$RC" 0
+put_row q1.txt $K1 alpha "$gcdoc_a" pr 55 "$GC"
+run asw "$GW" $K2 "$gcdoc_b" beta env HOLDS_GH="$W/bin/gh-down" "${GCQ[@]}" --push
+same "T5 F1 a narrowed pr row aged 2 h, its holder's lock held, refuses --push" "$RC" 1
+contains "T5 F1 the --push refusal names the holder" "$ERR" "$K1"
+run asw "$GW" $K2 "$gcdoc_b" beta env HOLDS_GH="$W/bin/gh-down" python3 -I "$SUT" narrow --check --key $K2 --repo "$GC" --doc "$gcdoc_b" --base main --label beta
+same "T5 F1 a narrowed pr row aged 2 h refuses narrow --check" "$RC" 1
+contains "T5 F1 narrow --check names the holder" "$ERR" "$K1"
+contains "T5 F2 a doc with no Writes line still runs the rival check, the line is unavailable" "$OUT" "outside-writes: unavailable (no Writes line)"
+GW="$(gcwt narrowed)"
+( cd "$GW" && echo q >> q1.txt && git add q1.txt )
+run asw "$GW" $K2 "$gcdoc_b" beta env HOLDS_GH="$W/bin/gh-down" "${GCQ[@]}" --staged
+same "T5 F1 a narrowed pr row aged 2 h refuses --staged" "$RC" 1
+put_row q1.txt $K1 branch:feat/other "" pr 55 "$GC"
+run asw "$GW" $K2 "$gcdoc_b" beta env HOLDS_GH="$W/bin/gh-down" "${GCQ[@]}" --staged
+same "T5 F1 control: a doc-less pr row aged 2 h passes --staged" "$RC" 0
+git -C "$GW" reset -q; git -C "$GW" checkout -q -- q1.txt
+
 # git commit -a and git commit <path> run the hook against a temporary index
 GW="$(gcwt tmpidx)"
 put_row j1.txt $K1 alpha "$gcdoc_a" brief "" "$GC"; put_row j2.txt $K1 alpha "$gcdoc_a" brief "" "$GC"

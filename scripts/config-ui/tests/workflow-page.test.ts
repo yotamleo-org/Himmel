@@ -2,7 +2,8 @@
 // order; every move once, on its own step's card; plain words only (no ticket ID, file path, script name or WAKE key);
 // the v7 step names; the deep links; the real state of each "This version" line; and the Eval tab's per-phase numbers.
 import { test, expect } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { renderWorkflow, parseWorkflowRoute } from "../public/workflow.js";
 import { readPhaseStats } from "../phase-stats";
@@ -178,6 +179,129 @@ test("Eval: one row per phase with a Start row, the 7-day numbers in words, and 
   expect(html).toMatch(/wf-cost[^>]*>[\s\S]*no data yet/);
   expect(html).toContain("PR 4347");
   expect(renderWorkflow(MODEL, { tab: "eval" }, null)).toContain("loading");
+});
+
+// A seeded run: eight tickets through Build, Review, Check and approve, and Merge and wrap up on different days of the
+// window, written as status-events.jsonl rows and review-round files and read back by phase-stats.ts's own reader, so the
+// numbers have the shape the server sends. The unseeded control is a state directory that does not exist.
+function seededRun() {
+  const dir = mkdtempSync(join(tmpdir(), "workflow-eval-seed-"));
+  try {
+    const state = join(dir, "state"), rounds = join(dir, "rounds");
+    mkdirSync(state); mkdirSync(rounds);
+    const at = (day: number, min: number) => new Date(Date.UTC(2026, 9, day, 8, min)).toISOString();
+    const rows: string[] = [];
+    for (let i = 1; i <= 8; i++) {
+      const key = `HIMMEL-${i}`, d = 25 + (i * 3) % 7, pr = String(100 + i);
+      const row = (event: string, min: number, extra = {}) => rows.push(JSON.stringify({ ts: at(d, min), event, key, pr, ...extra }));
+      row("live", 0); row("pr-open", 15 + i * 6); row("ci-start", 16 + i * 6); row("merge", 80 + i * 20); row("wrapped", 82 + i * 20);
+      const f = join(rounds, `fix/himmel-${i}-seeded.round`);
+      mkdirSync(join(f, ".."), { recursive: true });
+      writeFileSync(f, `${(i % 4) + 1}\n`);
+      const t = Date.UTC(2026, 9, d, 12) / 1000;
+      utimesSync(f, t, t);
+    }
+    writeFileSync(join(state, "status-events.jsonl"), rows.join("\n") + "\n");
+    return readPhaseStats({ TICKET_STATUS_STATE_DIR: state }, rounds, Date.parse("2026-11-01T09:30:00Z"));
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+
+// RED at base: against the seeded run the Eval tab still has none of the mockup's callouts, sparklines, Ways back column
+// or Trends charts, so the gap is missing code, not an empty state. Distributions needs bucket counts phase-stats.ts does not carry.
+test("Eval: with a seeded run, every panel carries its Answers callout, the Phase summary has sparklines and a Ways back column, and Trends draws four line charts", () => {
+  const seeded = seededRun();
+  expect(seeded.phases.filter((p) => p.state === "ok").map((p) => p.id)).toEqual(["build", "review", "check", "merge"]);
+  const html = renderWorkflow(MODEL, { tab: "eval" }, seeded);
+  const labels = (cls: string) => [...html.matchAll(new RegExp(`<svg class="${cls}"[^>]*aria-label="([^"]*)"`, "g"))].map((m) => m[1]);
+  expect((html.match(/<section class="box">/g) || []).length).toBe(6);
+  expect((html.match(/<p class="wf-purpose"><b>Answers:<\/b>/g) || []).length).toBe(6);
+  expect(html).toContain("<th>Ways back</th>");
+  expect(labels("wf-sp")).toHaveLength(4);
+  expect(labels("wf-sp")[0]).toMatch(/^Build entered per day: \d/);
+  expect(labels("wf-trend")).toEqual(["Build entered per day", "Review entered per day", "Check and approve entered per day", "Merge and wrap up entered per day"]);
+  expect(html).toMatch(/3 or more review rounds: \d+ of 8 branches \(\d+ merged\)/);
+  expect(labels("wf-ch")).toEqual(["Build spread", "Review spread", "Check and approve spread", "Merge and wrap up spread"]);
+  expect(html).toContain("<h2>Distributions</h2>");
+  expect(html).toContain("<h2>Trends</h2>");
+});
+
+// the same seeded run with one phase's row replaced, rendered: what a chart draws for that row
+const withPhase = (id: string, patch: object) => {
+  const s = seededRun();
+  return renderWorkflow(MODEL, { tab: "eval" }, { ...s, phases: s.phases.map((p) => (p.id === id ? { ...p, ...patch } : p)) });
+};
+const svgOf = (html: string, cls: string, label: string) => (html.match(new RegExp(`<svg class="${cls}"[^>]*aria-label="${label}[^"]*"[\\s\\S]*?</svg>`)) || [""])[0];
+const BUCKETS = ["<10m", "10-30m", "30-60m", "1-2h", "2-4h", "4h+"].map((label, i) => ({ label, n: i === 0 ? 4 : 0 }));
+
+test("Eval: Distributions draw the bars from hiFrom on in the slow-tail class, and none when the tail starts past the last bucket", () => {
+  const rects = (html: string) => [...svgOf(html, "wf-ch", "Build spread").matchAll(/<rect class="([^"]*)"/g)].map((m) => m[1]);
+  expect(rects(withPhase("build", { hist: BUCKETS, hiFrom: 1 }))).toEqual(["wf-bar", "wf-bar wf-hi", "wf-bar wf-hi", "wf-bar wf-hi", "wf-bar wf-hi", "wf-bar wf-hi"]);
+  expect(rects(withPhase("build", { hist: BUCKETS, hiFrom: 6 }))).toEqual(Array(6).fill("wf-bar"));
+});
+
+test("Eval: the trend and sparkline lines run from the first day to the last, scaled to the busiest day", () => {
+  const html = withPhase("build", { perDay: [0, 0, 0, 0, 0, 0, 7] });
+  expect(svgOf(html, "wf-trend", "Build")).toContain('<polyline points="22.0,66.0 53.7,66.0 85.3,66.0 117.0,66.0 148.7,66.0 180.3,66.0 212.0,14.0"');
+  const sp = svgOf(html, "wf-sp", "Build");
+  expect(sp).toContain('<polyline points="2.0,19.0 17.3,19.0 32.7,19.0 48.0,19.0 63.3,19.0 78.7,19.0 94.0,3.0"');
+  expect(sp).toContain('<circle cx="94.0" cy="3.0"');
+});
+
+test("Eval: Ways back says in words what each phase can and cannot tell", () => {
+  const html = renderWorkflow(MODEL, { tab: "eval" }, seededRun());
+  const row = (name: string) => (html.match(new RegExp(`<tr><th>\\d ${name}</th>(.*?)</tr>`)) || ["", ""])[1].match(/<td>.*?<\/td>/g)!.slice(-1)[0];
+  expect(row("Start")).toBe("<td>no source yet</td>");
+  expect(row("Plan and design")).toBe("<td>designs redrawn: no source yet</td>");
+  expect(row("Assign")).toBe("<td>dropped tickets, refused starts: not recorded</td>");
+  expect(row("Build")).toBe("<td>refused commits: not recorded</td>");
+  expect(row("Review")).toMatch(/^<td>3 or more review rounds: \d+ of 8 branches \(\d+ merged\)<\/td>$/);
+  expect(row("Check and approve")).toBe("<td>a required check red, judge NO-GO: not counted</td>");
+  expect(row("Merge and wrap up")).toBe("<td>refused merges: not recorded</td>");
+  expect(renderWorkflow(MODEL, { tab: "eval" }, { ...seededRun(), phases: seededRun().phases.map((p) => (p.id === "review" ? { ...p, state: "nodata", n: 0 } : p)) })).toContain("<td>3 or more review rounds: no data yet</td>");
+});
+
+test("Eval: Trends hide a phase that read nothing, keep one with real counts, and each caption says what its phase counts", () => {
+  const none = { state: "nodata", n: 0, median: null, p80: null, hist: [], perDay: [0, 0, 0, 0, 0, 0, 0] };
+  const names = (html: string) => [...html.matchAll(/<svg class="wf-trend"[^>]*aria-label="([^"]*) entered per day"/g)].map((m) => m[1]);
+  expect(names(withPhase("check", none))).toEqual(["Build", "Review", "Merge and wrap up"]);
+  expect(names(withPhase("check", { ...none, perDay: [0, 0, 2, 0, 0, 0, 0] }))).toEqual(["Build", "Review", "Check and approve", "Merge and wrap up"]);
+  const html = renderWorkflow(MODEL, { tab: "eval" }, seededRun());
+  expect(html).toContain("<b>Build</b>: tickets that went live, per day");
+  expect(html).toContain("<b>Review</b>: branches, by the day their review round was last written, per day");
+  expect(html).toContain("<b>Check and approve</b>: tickets whose first CI run started, per day");
+  expect(html).toContain("<b>Merge and wrap up</b>: tickets that merged, per day");
+  expect(html).not.toContain("tickets entering the phase");
+});
+
+test("Eval: the Phase summary draws no sparkline for a phase that read nothing, and says so in its cell", () => {
+  const none = { state: "nodata", n: 0, median: null, p80: null, hist: [], perDay: [0, 0, 0, 0, 0, 0, 0] };
+  const spNames = (html: string) => [...html.matchAll(/<svg class="wf-sp"[^>]*aria-label="([^"]*) entered per day/g)].map((m) => m[1]);
+  const html = withPhase("check", none);
+  expect(spNames(html)).toEqual(["Build", "Review", "Merge and wrap up"]);
+  expect(html).not.toContain("Check and approve entered per day: 0, 0, 0, 0, 0, 0, 0");
+  expect((html.match(/<tr><th>6 Check and approve<\/th>(.*?)<\/tr>/) || ["", ""])[1]).toMatch(/<td>no data yet<\/td><td>/);
+  // the same rule as Trends: real counts on a phase that has no timing still draw
+  expect(spNames(withPhase("check", { ...none, perDay: [0, 0, 2, 0, 0, 0, 0] }))).toEqual(["Build", "Review", "Check and approve", "Merge and wrap up"]);
+});
+
+test("Eval: the panels run in the mockup's order, Cost per ticket, Review, then Outliers, and a run with no data says why Distributions and Trends are missing", () => {
+  const html = renderWorkflow(MODEL, { tab: "eval" }, seededRun());
+  const at = (h: string) => html.indexOf(`<h2>${h}</h2>`);
+  expect([at("Phase summary"), at("Distributions"), at("Trends"), at("Cost per ticket"), at("Review: merged or not, by rounds"), at("Outliers")].every((x, i, a) => x > 0 && (i === 0 || x > a[i - 1]))).toBe(true);
+  const empty = renderWorkflow(MODEL, { tab: "eval" }, { ...seededRun(), phases: seededRun().phases.map((p) => ({ ...p, state: p.state === "nosource" ? p.state : "nodata", n: 0, hist: [], perDay: p.state === "nosource" ? [] : Array(7).fill(0) })) });
+  expect(empty).not.toContain("<h2>Distributions</h2>");
+  expect(empty).not.toContain("<h2>Trends</h2>");
+  expect(empty).toContain("Distributions and Trends are not drawn: no phase read any change in this window.");
+});
+
+test("Eval: each table sits in a scroller so a phone scrolls it sideways instead of shredding its cells", () => {
+  const html = renderWorkflow(MODEL, { tab: "eval" }, { ...seededRun(), outliers: [{ pr: "7", phase: "build", value: 300, unit: "min", times: 4 }] });
+  for (const t of ["wf-sum", "wf-rev", "wf-out"]) expect(html).toContain(`<div class="wf-wrapx"><table class="${t}">`);
+  const css = readFileSync(join(import.meta.dir, "../public/app.css"), "utf8");
+  expect(css).toMatch(/\.wf-wrapx\{overflow-x:auto\}/);
+  expect(css).toMatch(/\.wf-wrapx th,\.wf-wrapx td\{overflow-wrap:normal\}/);
+  // the Answers callout is the mockup's: an accent left border on a soft background, padded
+  expect(css).toMatch(/\.box>\.wf-purpose\{[^}]*padding:[^}]*border-left:3px solid var\(--accent\);background:var\(--accent-soft\)/);
 });
 
 // the story map's Frame 1 pieces: a drill-in link per phase, the legend, the always-on and measurement

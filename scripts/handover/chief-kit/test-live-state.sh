@@ -364,5 +364,23 @@ check '24. it renders the corrected workers: line' "$want_workers" "$(grep '^wor
 check '24. it renders the lockless: line' "$want_lockless" "$(grep '^lockless:' "$wk")"
 check '24. it leaves no legs: line and no refusal text' '0 0' "$(grep -c '^legs:' "$wk") $(grep -c 'no workers: line' "$tmp/flip-err")"
 
+# 25. A hyphenated labelled Live state line directly under the workers: line stays its
+#     own line. The pool-disposition text is the chief template's real seed (the backtick span in its
+#     Standing rules), not a typed line; wrapped prose under workers: is still carried.
+seed25="$(sed -n 's/.*`\(pool-disposition: <KEY>[^`]*\)`.*/\1/p' "$HERE/../../../docs/handover/chief-template.md" | head -1)"
+check '25. setup: the template seeds a pool-disposition line' 'pool-disposition: <KEY> slice|close|question <named target>' "$seed25"
+hy="$HANDOVER_DIR/b/HIMMEL-nextleg-HY-chief.md"
+printf '# c\n\n## Live state\n\nworkers: `N61:nonce-61:tok-one:111` note a\n  wrapped prose b\n%s\ntracker-plan: some/dir\nqueue: none\n\n## Results\n' "$seed25" > "$hy"
+bash "$FM" add "${hy%.md}.fleet.json" --lane native "$d1" >/dev/null 2>&1
+bash "$SCRIPT" "$hy" >/dev/null 2>&1; rc=$?
+check '25. the render succeeds' 0 "$rc"
+check '25. the workers: line is the entries and the wrapped prose only' 'workers: `N61:nonce-61:tok-one:111` note a wrapped prose b' "$(grep '^workers:' "$hy")"
+check '25. the pool-disposition line is still its own line, unchanged' "$seed25" "$(grep '^pool-disposition:' "$hy")"
+check '25. the tracker-plan line is still its own line, unchanged' 'tracker-plan: some/dir' "$(grep '^tracker-plan:' "$hy")"
+check '25. the lines keep their order' 'workers|pool-disposition|tracker-plan|queue' "$(sed -n '/^## Live state/,/^## Results/p' "$hy" | grep -oE '^(workers|pool-disposition|tracker-plan|queue)' | paste -sd'|')"
+out25="$(bash "$SCRIPT" "$hy" --print 2>/dev/null)"
+check '25. --print prints the workers: line without the next labelled line' 'workers: `N61:nonce-61:tok-one:111` note a wrapped prose b' "$out25"
+check '25. --digest ends the workers line at the pool-disposition line' 'workers: `N61:nonce-61:tok-one:111` note a wrapped prose b' "$(bash "$SCRIPT" "$hy" --digest 2>/dev/null | grep '^workers:')"
+
 [ "$t1" = tok-one ] || { echo "FAIL - setup: lock token [$t1]"; fails=$((fails+1)); }
 [ "$fails" -eq 0 ] && echo "PASS" || { echo "$fails FAILED"; exit 1; }
