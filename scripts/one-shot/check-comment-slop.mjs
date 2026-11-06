@@ -447,7 +447,28 @@ function cmdList(dir) {
   return 0;
 }
 
-// Base and head as ordered sequences of hunks, half-open. Null past the cap, which fails closed.
+// Equal lengths past the cap, compared by position. Each differing run is a hunk for the caller's
+// rule to judge, and an insertion shifts everything after it into one long run that fails.
+function positionHunks(a, b, pre, n) {
+  const hunks = [];
+  let open = null;
+  for (let i = pre; i < pre + n; i++) {
+    if (a[i] === b[i]) {
+      if (open) hunks.push(open);
+      open = null;
+    } else if (open) {
+      open.ae = i + 1;
+      open.be = i + 1;
+    } else {
+      open = { as: i, ae: i + 1, bs: i, be: i + 1 };
+    }
+  }
+  if (open) hunks.push(open);
+  return hunks;
+}
+
+// Base and head as ordered sequences of hunks, half-open. Null past the cap at unequal lengths,
+// which fails closed.
 function diffHunks(a, b) {
   let pre = 0;
   while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
@@ -457,7 +478,7 @@ function diffHunks(a, b) {
   const m = b.length - pre - suf;
   if (n === 0 && m === 0) return [];
   if (n === 0 || m === 0) return [{ as: pre, ae: pre + n, bs: pre, be: pre + m }];
-  if (n * m > LCS_CAP) return null;
+  if (n * m > LCS_CAP) return n === m ? positionHunks(a, b, pre, n) : null;
   const width = m + 1;
   const table = new Uint32Array((n + 1) * width);
   for (let i = n - 1; i >= 0; i--) {
