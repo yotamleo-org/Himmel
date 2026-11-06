@@ -296,11 +296,13 @@ written tracks the tip.
   writes to the wrong place. `/handover` has no default: it writes into an
   existing tracked item, and a fresh project has none. Only a himmel checkout has
   been shown running the commands that create an item or write a note (`new-*`,
-  end-session), where the note lands in a `handover/<slug>` worktree off `main`.
-  The scripts that open, merge and flush a handover branch's PR (`pr-open.sh`,
-  `pr-merge.sh`, `flush.sh`) are not copied. A project installed earlier gets the
-  resume and storage-setup scripts by re-running `adopt.sh --scope project` with
-  `--profile core` or `--profile all`; `himmel-update.sh` copies nothing.
+  end-session). With an inline folder the note lands in a `handover/<slug>`
+  worktree off `main`; with `HANDOVER_DIR`, under that folder. The scripts that
+  open, merge and flush a handover branch's PR (`pr-open.sh`, `pr-merge.sh`,
+  `flush.sh`) are not copied. A project installed earlier gets the resume and
+  storage-setup scripts by re-running `adopt.sh --scope project --profile core`.
+  That replaces any copied script you changed and prints where it kept the backup.
+  `himmel-update.sh` copies nothing.
 
 ### Adapting himmel to a repo that is not himmel
 

@@ -541,11 +541,11 @@ state on a tracked item (one you opened with `/handover new-epic <name>` or
 
 `/handover` has no default: it writes into an existing item. The handover skill
 writes a structured summary of what was done, what is in-flight, and what the
-next session should pick up. The note lands in a `handover/<slug>` worktree off
-`main`, not in the folder you are in, under the state root you chose with
-`/handover-setup`. A fresh session reads it with `/handover-resume`; with an
-inline `handovers/` folder, that sees the note from the worktree, or from the
-main folder once the branch merges. `/handover-resume-armed` is a different
+next session should pick up. With an inline `handovers/` folder, the note lands in
+a `handover/<slug>` worktree off `main`, not in the folder you are in, and a fresh
+session reads it with `/handover-resume` from that worktree, or from the main
+folder once the branch merges. With `HANDOVER_DIR`, the note goes under that
+folder, where `/handover-resume` reads it. `/handover-resume-armed` is a different
 command: it recovers an interrupted session. `/handover repos` browses the
 registry.
 

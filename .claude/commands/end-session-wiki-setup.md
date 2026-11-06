@@ -12,7 +12,7 @@ Point the `end-session-wiki` SessionEnd hook (`scripts/hooks/end-session-wiki.{s
 
 A leading `~/` is expanded. An invalid/unresolvable `vault` name, or a config that isn't a valid JSON object, **fails closed** (skips the capture, never misroutes). Full options + examples: [`docs/luna/end-session-wiki.md`](../../docs/luna/end-session-wiki.md) ("Choosing the target vault").
 
-A vault install (`adopt.sh --profile all`, or `--profile luna --luna-target <vault>`, and the wizard's existing-vault step) already wires the session end hook, as one `SessionEnd` entry. The GLOBAL choice below wires it too. BY-NAME and BY-PATH pick the vault and do not register the hook, so on a machine without it, add the block in [`docs/setup/new-machine.md`](../../docs/setup/new-machine.md) (section 7).
+A vault install (`adopt.sh --profile all`, or `--profile luna --luna-target <vault>`, and the wizard's existing-vault step) already wires the session end hook, as one `SessionEnd` entry. `adopt.sh` writes it to the target repo's `.claude/settings.json` by default (`--scope project`), which covers only that repo's sessions; `--scope user` writes `~/.claude/settings.json`, which covers every repo. The GLOBAL choice below wires it there too. BY-NAME and BY-PATH pick the vault and do not register the hook, so in a repo the hook does not cover, add the block in [`docs/setup/new-machine.md`](../../docs/setup/new-machine.md) (section 7).
 
 Run this from the **code repo** whose sessions you want captured. Be idempotent — re-running should update, not duplicate.
 
@@ -65,6 +65,6 @@ Run this from the **code repo** whose sessions you want captured. Be idempotent 
 
    If neither is found, warn that REST delivery won't work until they install/enable the Local REST API plugin and set `OBSIDIAN_API_KEY` — but note the **on-disk fallback still captures notes without it** (Obsidian picks up file changes automatically).
 
-4. **Report.** State exactly what you wrote (which file, which key), which precedence tier now wins for this repo, and the absolute vault path sessions will land in. For BY-NAME, show both the repo `vault` key and how the name resolved (registry entry or `~/Documents/<name>` convention). For GLOBAL, name `~/.claude/settings.json` → `env.LUNA_VAULT_PATH` and the `SessionEnd` entry the helper wired, and repeat the **new sessions only** caveat.
+4. **Report.** State exactly what you wrote (which file, which key), which precedence tier now wins for this repo, and the absolute vault path sessions will land in. For BY-NAME, show both the repo `vault` key and how the name resolved (registry entry or `~/Documents/<name>` convention). For GLOBAL, name `~/.claude/settings.json` → `env.LUNA_VAULT_PATH`, then read that file's `SessionEnd` entries: name the one for `end-session-wiki.sh` if it is there, otherwise say the hook is not wired (the helper only warns when wiring fails) and point to section 7 of `docs/setup/new-machine.md`. Repeat the **new sessions only** caveat.
 
 Keep it tight. Ask the targeting question, validate, write, confirm — nothing more.

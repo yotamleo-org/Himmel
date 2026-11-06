@@ -273,10 +273,11 @@ git add -A && git commit -m "feat: my change #2" && git push -u origin feat/my-t
 > commands that create an item or write a note (`new-*`, end-session). The scripts
 > that open, merge and flush a handover branch's PR (`pr-open.sh`, `pr-merge.sh`,
 > `flush.sh`) are not copied. `/handover-resume` here picks up an item already in
-> this repo's bucket of the store you chose. In a himmel checkout the note lands
-> in a `handover/<slug>` worktree off `main`, not in the folder you are in. With
-> the inline folder, `/handover-resume` sees it from that worktree, or from the
-> main folder once the branch merges.
+> this repo's bucket of the store you chose. In a himmel checkout with the inline
+> folder, the note lands in a `handover/<slug>` worktree off `main`, not in the
+> folder you are in, and `/handover-resume` sees it from that worktree, or from the
+> main folder once the branch merges. With `HANDOVER_DIR`, the note goes under that
+> folder.
 
 **How to tell it's working:** if you try to edit a file on `main` you'll get a
 `block-edit-on-main` message pointing you back into a worktree (`/clean_garden`
