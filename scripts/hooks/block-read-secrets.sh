@@ -169,9 +169,21 @@
 #     its pattern exempt like `grep '\.env' f`. A letter that takes a value
 #     (A B C D d e f m), a digit, a long option or any other word closes it as
 #     before (`grep -m 1 '.env' f`, `grep -ne '.env' f` still scan the quoted
-#     word), and rg, sed and awk are unchanged. The `|`, `;`, `&` or `(` inside
-#     that same quoted pattern no longer splits the clause
-#     (rs_keep_grep_pattern): `grep -nE '\.env|x' f` is one clause. The tracing
+#     word), and rg, sed and awk are unchanged. The slot holds a pattern only
+#     while no later option supplies one. GNU grep permutes its arguments, so
+#     with a later -e, -f, -eVAL, --regexp or --file (sed's --expression, awk's
+#     --source) the quoted word is a file the command reads and is scanned
+#     (rs_pattern_from_option), flagless slot included: `grep -n '.env' -e TOKEN`
+#     reads .env. A `|`, `;`, `&` or `(` inside a quoted word does not split the
+#     clause: a command the tokenizer read is cut at its own segments
+#     (rs_segment_clauses), so `grep -nE '\.env|x' f` is one clause,
+#     `cat 'a|b' .env` reads .env and `echo 'grep '; cat .env; echo 'b'` is
+#     three clauses. A command the tokenizer did not read, or one with a
+#     heredoc, keeps the plain split above, which ignores quotes. A nested
+#     shell body (bash -c, eval) is one quoted word there, and guard_unwrap
+#     reads it again from its own words. A quoted string handed to a command
+#     that runs it as shell (watch, ssh, su -c) is one word, as
+#     `watch 'cat .env'` always was. The tracing
 #     check reads a quoted multi-word argument as data unless a shell word
 #     (set, shopt, eval, bash, SHELLOPTS, ...) shares its text
 #     (g4_text_traces): a Jira JQL or a chat reply that names the option or
@@ -515,22 +527,53 @@ is_pattern_arg_cmd() {
     return 1
 }
 
-# rs_keep_grep_pattern CMD: the clause split below ignores quotes,
-# so the `|` in `grep -nE '\.env|x' f` cut the pattern in two and the half
-# `grep -nE '\.env` read as a path. For grep, egrep and fgrep only, a separator
-# inside the quoted pattern that follows the command and any boolean short-flag
-# cluster (the same letters scan_clause keeps the slot armed for) is replaced by
-# a control character, so the pattern stays one word. A single-quoted pattern is
-# literal; a double-quoted one is kept only when it holds no `$` or backtick.
-# A letter that takes a value, a long option or any other word before the quote
-# leaves the text as it was.
-rs_keep_grep_pattern() {
-    local sep=$'\001' bool='[EFGHIJKLMNOPQRSTUVWXYZabcghijklnopqrstuvwxyz]'
-    local lead="((^|[^[:alnum:]_./-])(grep|egrep|fgrep)([[:space:]]+-${bool}+)*[[:space:]]+"
-    sed -E -e ':a' \
-        -e "s#${lead}'[^']*)[;|&()\`]([^']*')#\\1${sep}\\5#" \
-        -e "s#${lead}\"[^\"\$\`]*)[;|&()]([^\"\$\`]*\")#\\1${sep}\\5#" \
-        -e 'ta' <<<"$1"
+# rs_clause_word K: RS_CW is word K of guard_unwrap's tokenizer as scan_clause reads
+# a clause word: bare when no byte of it was quoted, else the whole word in single
+# quotes (the quotes the pattern exemption looks for), a newline turned to a space.
+# An assignment keeps its name outside the quotes, so `A='x y' cat f` still starts
+# with an assignment.
+rs_clause_word() {
+    local w=${ST_W[$1]} pre=''
+    RS_CW=$w
+    if [ "${ST_Q[$1]}" != 1 ]; then return 0; fi
+    if [ "${ST_A[$1]:-0}" = 1 ]; then pre=${w%%=*}=; w=${w#*=}; fi
+    w=${w//$'\n'/ }
+    RS_CW=$pre"'${w//\'/\'\\\'\'}'"
+}
+
+# rs_segment_clauses: RS_SEG_CLAUSES is the clause list, one clause per segment of
+# the command guard_unwrap's tokenizer read, so a separator inside a quoted word
+# stays in that word and a real one cuts: `grep -nE '\.env|x' f` is one clause,
+# `echo 'grep '; cat .env; echo 'b'` is three. A redirect keeps its operator spaced
+# out and its target after the words, as the plain split gives them. Returns 1, and
+# the caller keeps the plain split on ; | & ( ) ` and newline, when the words are
+# not the whole command: the tokenizer did not read it, or it holds a heredoc, whose
+# body is text the words leave out. A nested shell body (bash -c, eval) is one word
+# here, and guard_unwrap reads it again from its own words.
+rs_segment_clauses() {
+    local s k op line out='' nl=$'\n'
+    local -a idx
+    [ "${GU_TOKENIZED:-0}" = 1 ] || return 1
+    [ "${ST_HEREDOC:-0}" = 0 ] || return 1
+    s=0
+    while [ "$s" -lt "$ST_NSEG" ]; do
+        line=''
+        read -r -a idx <<<"${GU_SW[s]:-}"
+        for k in "${idx[@]+"${idx[@]}"}"; do
+            rs_clause_word "$k"
+            line=$line${line:+ }$RS_CW
+        done
+        for k in ${GU_SR[s]:-}; do
+            op=${ST_RO[k]}
+            op=${op//</ < }
+            op=${op//>/ > }
+            rs_clause_word "$k"
+            line=$line${line:+ }$op$RS_CW
+        done
+        out=$out$line$nl
+        s=$((s + 1))
+    done
+    RS_SEG_CLAUSES=${out%"$nl"}
 }
 
 is_quoted_pattern_tok() {
@@ -546,6 +589,27 @@ is_quoted_pattern_tok() {
         \'*\') return 0 ;;
         \"*\") return 0 ;;
     esac
+    return 1
+}
+
+# rs_pattern_from_option: 0 when a token after the current one in scan_clause's
+# clause supplies the pattern, script or program by an option (-e, -f, -eVAL, a
+# cluster holding either, --regexp, --file, sed's --expression, awk's --source).
+# The first operand is then a file, not the pattern: GNU grep permutes its
+# arguments, so `grep -n '.env' -e TOKEN` reads .env. Reads scan_clause's toks
+# and ti. A later cluster is counted whole, and so is anything after `--`; both
+# only deny more.
+rs_pattern_from_option() {
+    local i=$ti t
+    while [ "$i" -lt "${#toks[@]}" ]; do
+        t=${toks[i]//[\'\"\\]/}
+        case "$t" in
+            --reg* | --file | --file=* | --expression* | --source*) return 0 ;;
+            --*) ;;
+            -*[ef]*) return 0 ;;
+        esac
+        i=$((i + 1))
+    done
     return 1
 }
 
@@ -1062,7 +1126,11 @@ G4_SD_HINT='Check one setting with: printenv NAME (a non-credential name, e.g. p
 # can consume it: set/shopt/setopt/unsetopt/eval/trap, a shell, SHELLOPTS,
 # BASHOPTS or BASH_XTRACEFD. `text ~ "xtrace"` in a JQL string holds none.
 # ponytail: a JQL or chat text that also holds the word `set` or `sh` stays
-# refused, upgrade path a parse of the one command that receives the text.
+# refused, upgrade path a parse of the one command that receives the text. The
+# option name and the word that consumes it in different words (`o=' xtrace'; set -o $o`,
+# `printf '%s -o xtrace\n' set | bash`, `bash -c 'set -o $1' _ ' xtrace'`) are
+# not joined, so tracing turned on that way is not seen; upgrade path: join one
+# segment's words before the check.
 g4_text_traces() {
     local t="${1//_/}"
     local cont='[xX][tT][rR][aA][cC][eE]'
@@ -1799,8 +1867,8 @@ scan_clause() {
             expect_file_val=1
             is_secret_path "$tok" && secret_after=1  # "-f"/"--file" itself never matches a secret glob; harmless.
         elif [ "$pattern_cmd" = "1" ] && [ "$this_at_pos0" = "1" ] \
-            && is_quoted_pattern_tok "$tok"; then
-            :  # the token right after the bare command, if quoted, is the implicit inline pattern.
+            && is_quoted_pattern_tok "$tok" && ! rs_pattern_from_option; then
+            :  # the token right after the bare command, if quoted, is the implicit inline pattern, unless a later option supplies it.
         elif is_secret_path "$tok"; then
             secret_after=1
         fi
@@ -1982,16 +2050,22 @@ case "$tool" in
         # secret in UNRELATED parts of the command don't cross-trip (the old
         # global-OR did — it blocked any reader-named token anywhere plus any
         # secret-glob token anywhere, which false-positived on inline
-        # interpreter bodies like `node -e "…cfg.key…file…"`). Separators
-        # ; | & ( ) ` and newlines each become a clause boundary — a literal
-        # newline via a POSIX backslash-newline sed replacement (works on BSD
-        # and GNU sed; do NOT use GNU-only `\n` in the replacement). `<`/`>`
-        # are spaced into their own tokens so a `< secretfile` redirect stays
-        # detectable. Shell quoting is intentionally NOT parsed (see header).
-        # sed reads via `<<<` (no `printf` fork feeding it).
-        case "$cmd" in *grep*) cmd_split=$(rs_keep_grep_pattern "$cmd") ;; *) cmd_split="$cmd" ;; esac
-        normalized=$(sed -e 's/[;|&()`]/\
-/g' -e 's/</ < /g' -e 's/>/ > /g' <<<"$cmd_split")
+        # interpreter bodies like `node -e "…cfg.key…file…"`). A command the
+        # tokenizer read is cut at its own segments (rs_segment_clauses), so a
+        # separator inside a quoted word stays in that word. Any other command
+        # falls back to the plain split: separators ; | & ( ) ` and newlines
+        # each become a clause boundary — a literal newline via a POSIX
+        # backslash-newline sed replacement (works on BSD and GNU sed; do NOT
+        # use GNU-only `\n` in the replacement). `<`/`>` are spaced into their
+        # own tokens so a `< secretfile` redirect stays detectable. That split
+        # ignores quotes (see header). sed reads via `<<<` (no `printf` fork
+        # feeding it).
+        if rs_segment_clauses; then
+            normalized=$RS_SEG_CLAUSES
+        else
+            normalized=$(sed -e 's/[;|&()`]/\
+/g' -e 's/</ < /g' -e 's/>/ > /g' <<<"$cmd")
+        fi
         block=0
         # the glued token that tripped glued_opt_secret, named in
         # the denial via glued_hint. Declared once (not per-clause) so it

@@ -1740,6 +1740,52 @@ assert_rc "8319 ctl substitution in a double-quoted pattern"     2 "$(run_case "
 assert_rc "8319 ctl separator then substitution in the pattern"  2 "$(run_case "$(j_bash 'grep -n "x;$(cat .env)" f')")"
 assert_rc "8319 ctl mis-nested quotes expose a cat .env clause"  2 "$(run_case "$(j_bash "bash -c 'grep -n 'x;cat .env' ''")")"
 
+# 8319: GNU grep permutes its arguments, so the quoted word after the flags is a pattern only while no later option
+# supplies one. With a later -e, -f or their long forms it is a file operand and grep reads it. The flagless slot of
+# rg, sed and awk has the same shape.
+assert_rc "8319 ctl grep -n '.env' -e TOKEN (later -e, the quoted word is the file)"  2 "$(run_case "$(j_bash "grep -n '.env' -e TOKEN")")"
+assert_rc "8319 ctl grep -n '.env' -f pats (later -f)"                                2 "$(run_case "$(j_bash "grep -n '.env' -f pats")")"
+assert_rc "8319 ctl grep -n '.env' -eTOKEN (later glued -e)"                          2 "$(run_case "$(j_bash "grep -n '.env' -eTOKEN")")"
+assert_rc "8319 ctl grep -n '.env' --regexp=TOKEN (later long -e)"                    2 "$(run_case "$(j_bash "grep -n '.env' --regexp=TOKEN")")"
+assert_rc "8319 ctl grep -n '.env' --regexp TOKEN (later long -e, own value)"         2 "$(run_case "$(j_bash "grep -n '.env' --regexp TOKEN")")"
+assert_rc "8319 ctl grep -n '.env' --file=pats (later long -f)"                       2 "$(run_case "$(j_bash "grep -n '.env' --file=pats")")"
+assert_rc "8319 ctl grep -rn '.env' -e TOKEN (cluster of two)"                        2 "$(run_case "$(j_bash "grep -rn '.env' -e TOKEN")")"
+assert_rc "8319 ctl grep '.env' -e TOKEN (flagless slot, later -e)"                   2 "$(run_case "$(j_bash "grep '.env' -e TOKEN")")"
+assert_rc "8319 ctl grep '.env' -f pats (flagless slot, later -f)"                    2 "$(run_case "$(j_bash "grep '.env' -f pats")")"
+assert_rc "8319 ctl grep '.env' -eTOKEN (flagless slot, later glued -e)"              2 "$(run_case "$(j_bash "grep '.env' -eTOKEN")")"
+assert_rc "8319 ctl grep '.env' --regexp=TOKEN (flagless slot, later long -e)"        2 "$(run_case "$(j_bash "grep '.env' --regexp=TOKEN")")"
+assert_rc "8319 ctl grep '.env' --file=pats (flagless slot, later long -f)"           2 "$(run_case "$(j_bash "grep '.env' --file=pats")")"
+assert_rc "8319 ctl rg '.env' -e TOKEN (flagless slot)"                               2 "$(run_case "$(j_bash "rg '.env' -e TOKEN")")"
+assert_rc "8319 ctl sed '.env' -e p (flagless slot)"                                  2 "$(run_case "$(j_bash "sed '.env' -e p")")"
+assert_rc "8319 ctl sed '.env' --expression=p (flagless slot)"                        2 "$(run_case "$(j_bash "sed '.env' --expression=p")")"
+assert_rc "8319 ctl awk '.env' -f prog (flagless slot)"                               2 "$(run_case "$(j_bash "awk '.env' -f prog")")"
+assert_rc "8319 grep -n '.env' f --color (a later option that supplies no pattern)"   0 "$(run_case "$(j_bash "grep -n '.env' f --color")")"
+assert_rc "8319 grep -n '.env' f -m 1 (a later count)"                                0 "$(run_case "$(j_bash "grep -n '.env' f -m 1")")"
+
+# 8319: the clause split reads quotes through the tokenizer, so a separator inside a quoted word stays in its word and
+# a real separator splits. A closing quote followed by a later opening quote is not one quoted span.
+assert_rc "8319 ctl echo 'grep '; cat .env; echo 'b' (closing then opening quote)"     2 "$(run_case "$(j_bash "echo 'grep '; cat .env; echo 'b'")")"
+assert_rc "8319 ctl echo \"grep \"; cat .env; echo \"b\" (double quotes)"              2 "$(run_case "$(j_bash 'echo "grep "; cat .env; echo "b"')")"
+assert_rc "8319 ctl echo 'grep ' | cat .env | echo 'b' (pipe)"                        2 "$(run_case "$(j_bash "echo 'grep ' | cat .env | echo 'b'")")"
+assert_rc "8319 ctl echo 'grep ' && cat .env && echo 'b' (and)"                       2 "$(run_case "$(j_bash "echo 'grep ' && cat .env && echo 'b'")")"
+assert_rc "8319 ctl head -n 1 .env between two quoted words"                          2 "$(run_case "$(j_bash "echo 'x grep '; head -n 1 .env; echo 'b'")")"
+assert_rc "8319 ctl : 'x grep '; cat .env; : 'y' (no-op command)"                     2 "$(run_case "$(j_bash ": 'x grep '; cat .env; : 'y'")")"
+assert_rc "8319 ctl bash -c body with the straddle"                                   2 "$(run_case "$(j_bash "bash -c \"echo 'grep '; cat .env; echo 'b'\"")")"
+assert_rc "8319 ctl substitution inside a double-quoted grep text"                    2 "$(run_case "$(j_bash "echo \"grep 'x \$(cat .env) y'\"")")"
+assert_rc "8319 : grep '; cat .env; : ' is one quoted word, nothing reads the file"   0 "$(run_case "$(j_bash ": grep '; cat .env; : '")")"
+# the ticket's quoted-separator shapes: the separator inside a quoted word no longer cuts the clause, so the .env operand is read
+assert_rc "8319 ctl cat 'a|b' .env (quoted pipe)"                                     2 "$(run_case "$(j_bash "cat 'a|b' .env")")"
+assert_rc "8319 ctl cat \"a;b\" .env (quoted semicolon)"                               2 "$(run_case "$(j_bash 'cat "a;b" .env')")"
+assert_rc "8319 ctl cat 'a&b' .env (quoted ampersand)"                                2 "$(run_case "$(j_bash "cat 'a&b' .env")")"
+assert_rc "8319 ctl cat 'a(b' .env (quoted parenthesis)"                              2 "$(run_case "$(j_bash "cat 'a(b' .env")")"
+assert_rc "8319 ctl head -n 1 'a|b' .env"                                             2 "$(run_case "$(j_bash "head -n 1 'a|b' .env")")"
+assert_rc "8319 ctl grep -e 'a|b' .env"                                               2 "$(run_case "$(j_bash "grep -e 'a|b' .env")")"
+assert_rc "8319 ctl grep -m 1 'a|b' .env"                                             2 "$(run_case "$(j_bash "grep -m 1 'a|b' .env")")"
+assert_rc "8319 ctl sed -n 'a|b' .env"                                                2 "$(run_case "$(j_bash "sed -n 'a|b' .env")")"
+# a command the tokenizer did not read, or one that holds a heredoc, keeps the plain split
+assert_rc "8319 ctl unterminated quote keeps the plain split"                         2 "$(run_case "$(j_bash 'echo "grep ; cat .env')")"
+assert_rc "8319 ctl heredoc body line cat .env keeps the plain split"                 2 "$(run_case "$(j_bash $'bash <<EOF\necho \'x\'\ncat .env\nEOF')")"
+
 echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All cases passed."
