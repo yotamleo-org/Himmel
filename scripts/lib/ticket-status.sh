@@ -358,7 +358,7 @@ _TS_MI="" _TS_MI_SIG=""
 _ts_merge_last() {
     local sig line rows
     TS_ML_CONTRACT="" TS_ML_RESULT=""
-    sig="$1|$_TS_LIB_DIR|$(stat -c '%s:%y:%i' "$1" 2>/dev/null || stat -f '%z:%m:%i' "$1" 2>/dev/null)" # gnu-ok: the BSD form follows; size, mtime to the nanosecond and inode, so a replaced log of the same size is read again
+    sig="$1|$_TS_LIB_DIR|$(stat -c '%s:%y:%i' "$1" 2>/dev/null || stat -f '%z:%m:%i' "$1" 2>/dev/null)" # gnu-ok: the BSD form follows; size, mtime and inode, so a replaced log of the same size is read again (GNU stat gives the mtime to the nanosecond, BSD stat to the second: there a same-size rewrite in place inside one second is not seen)
     if [ "$_TS_MI_SIG" != "$sig" ]; then
         _TS_MI_SIG=""
         rows=$(ts_merge_rows "$1" 2>/dev/null) || return 2
