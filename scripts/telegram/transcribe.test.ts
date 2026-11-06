@@ -94,7 +94,7 @@ test("realExec: kills long-running child and sets timedOut after timeout", async
   // before it exits on its own. `ping -n 100` is Windows ping syntax (-n =
   // count, ~100s wall time); on POSIX -n means "numeric output" and takes no
   // argument, so `100` is parsed as the destination host and ping exits
-  // immediately with an error — timedOut never gets set. Use
+  // immediately with an error, timedOut never gets set. Use
   // platform-native long-lived commands so the assertions stay live on both.
   // (cmd /c timeout /t 30 exits immediately in non-TTY contexts with code 125.)
   const cmd =
@@ -114,7 +114,7 @@ test("transcribe: wav cleanup ENOENT is silently swallowed", async () => {
   const orig = console.error;
   console.error = (...a: unknown[]) => { logs.push(String(a[0])); };
   try {
-    // happy path exec — WAV path doesn't exist, unlink gets ENOENT, must not log
+    // happy path exec. WAV path doesn't exist, unlink gets ENOENT, must not log
     let n = 0;
     const exec: ExecFn = async () => (++n === 1 ? { code: 0, stdout: "", stderr: "" } : { code: 0, stdout: "hello", stderr: "" });
     await transcribe("/nonexistent/x.oga", exec);

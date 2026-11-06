@@ -7,12 +7,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Bounded-run spawn helper. Runs an INTERACTIVE `claude "<prompt>"` with stdin
-// closed (EOF) so the session does one turn then exits cleanly — empirically
+// closed (EOF) so the session does one turn then exits cleanly, empirically
 // `claude "<p>" </dev/null` exits 0 (~6s, Max quota, no -p). Strips
 // TELEGRAM_OWN_POLLER from the child env so the spawned session never owns the
-// poller. NO -p/--print/--channels — interactive billing + behaviour only.
+// poller. NO -p/--print/--channels, interactive billing + behaviour only.
 // PermissionMode: "bypassPermissions" is the vault-session mode
-// (see runSession). "dontAsk" is the claudex WORKER default —
+// (see runSession). "dontAsk" is the claudex WORKER default,
 // verified (`claude --help`, v2.1.220) as one of the CLI's native
 // --permission-mode values, and the one Claude Code docs confirm auto-DENIES
 // any tool call not explicitly allow-listed rather than ever prompting. That
@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 // prompt it cannot answer would otherwise hang until the external timeout
 // kills it (the native-permission-matcher-bails shape this hook
 // comment documents: scripts/hooks/auto-approve-safe-bash.sh). bypassPermissions
-// is NEVER used for an unattended worker (forbidden — see spawn-common.ts's
+// is NEVER used for an unattended worker (forbidden, see spawn-common.ts's
 // REFUSE_BYPASS_PERMISSIONS) precisely because it strips every guardrail
 // instead of narrowing to what the worker legitimately needs. A union (not
 // bare string) makes a typo a compile error instead of a malformed
@@ -28,7 +28,7 @@ import { fileURLToPath } from "node:url";
 // claude run.
 export type PermissionMode = "bypassPermissions" | "dontAsk";
 // Model pin: without an explicit --model, every bounded run
-// inherits the operator's default model — currently Fable, whose quota is
+// inherits the operator's default model, currently Fable, whose quota is
 // time-limited and reserved for the main thread (see the subagent policy).
 // Opus over sonnet: bridge runs do real work (Jira writes, arming, vault
 // filing) that warrants the reasoning tier, and the operator's standing
@@ -44,12 +44,12 @@ function resolveModel(): string {
 // BEFORE the prompt.
 // modelOverride: an explicit per-dispatch model wins over TELEGRAM_CLAUDE_MODEL.
 // settings (plugin profiles): when set, injected as
-// `--settings <json>` before the prompt — the lever-b per-dispatch plugin-profile
+// `--settings <json>` before the prompt, the lever-b per-dispatch plugin-profile
 // payload spawn-claudex resolves. Highest non-managed precedence, so a lane runs the
 // lean profile while ~/.claude (shared, no CLAUDE_CONFIG_DIR) stays full for the
 // operator. Omitted (operator profile / unset) => no flag, inherits ~/.claude.
 // mcpConfig: when set, injected as `--mcp-config <json>
-// --strict-mcp-config` after --settings — the profile's mcpServers allowlist
+// --strict-mcp-config` after --settings, the profile's mcpServers allowlist
 // (plugin-profiles.mjs's collectMcpServerDefs), passed inline the same way
 // --settings is (the claude CLI accepts --mcp-config as a JSON string, not
 // only a file path). Omitted => no flag, inherits the ambient MCP config.
@@ -74,15 +74,15 @@ export const BASH_BIN = resolveBash();
 // a spawned worker runs with stdin CLOSED (see runSession), so it
 // can never answer an interactive editor or prompt. Any tool that falls back to
 // $EDITOR (git commit without -m, gh pr create without --body, ...) would open a
-// window on the operator's desktop and then block forever behind it — a focus
+// window on the operator's desktop and then block forever behind it, a focus
 // steal that also contaminates the focus soak. Pinning every editor
 // hook to the no-op `true` turns that silent hang into a fast, loud failure.
 // DEFENCE-IN-DEPTH, not a confirmed root cause: gh detects a non-interactive
 // context and errors ("must provide --title and --body ... when not running
 // interactively") rather than opening an editor, so this closes the paths where
 // a TTY *is* present rather than a proven live leak.
-// These merge OVER the inherited process env on purpose — the poller itself is
-// launched by a scheduled task whose environment carries none of them — but
+// These merge OVER the inherited process env on purpose (the poller itself is
+// launched by a scheduled task whose environment carries none of them), but
 // UNDER extraEnv, so an explicit per-route value still wins.
 export const NON_INTERACTIVE_EDITOR_ENV: Record<string, string> = {
   GIT_EDITOR: "true",
@@ -93,14 +93,14 @@ export const NON_INTERACTIVE_EDITOR_ENV: Record<string, string> = {
 
 // extraEnv: per-route child-env additions, merged LAST so the
 // TELEGRAM_OWN_POLLER strip can never remove a marker. This is the only channel
-// by which a route reaches the child env — the env is built here, not in the poller.
+// by which a route reaches the child env. The env is built here, not in the poller.
 export function sessionEnv(extraEnv?: Record<string, string>): Record<string, string | undefined> {
   const base: Record<string, string | undefined> = { ...process.env };
   delete base.TELEGRAM_OWN_POLLER;
   // The GGS markers are SET BY THE ROUTE, never inherited (CR CodeRabbit): if the
   // poller's own environment happens to carry them, every unrouted session would
   // silently claim to be a bounded read-only GGS run. Same posture as the
-  // TELEGRAM_OWN_POLLER strip above — clear first, then let extraEnv grant them.
+  // TELEGRAM_OWN_POLLER strip above. Clear first, then let extraEnv grant them.
   delete base.HERMES_BOUNDED_RUN;
   delete base.GGS_ROLE;
   // The operator's hook-integrity bypass never reaches a worker.
@@ -111,7 +111,7 @@ export function sessionEnv(extraEnv?: Record<string, string>): Record<string, st
 }
 
 // The bounded-run PROMPT. Tells the spawned claude session what it is, where to
-// read pending messages (inbox), where to reply (outbox — append JSON lines, no
+// read pending messages (inbox), where to reply (outbox, append JSON lines, no
 // chat_id needed), where its cross-run memory lives (context.md), and to stop
 // when done. Source of truth for run-prompt.md. Trust is per MESSAGE, not per
 // session: only an inbox line carrying the top-level "operator":true field is an
@@ -122,12 +122,12 @@ export function sessionEnv(extraEnv?: Record<string, string>): Record<string, st
 // "document_path" / "image_path") is filed into that Obsidian vault; resolved
 // per-chat by the poller via gate.vaultForChat.
 // `cwd` vs `sessionCwd`: the session SPAWNS in `sessionCwd` (the
-// chat's vault when one is configured, so the vault's `.claude/hooks` — e.g. a
-// medical PHI-egress floor — load), but the Jira-CLI path stays anchored on
+// chat's vault when one is configured, so the vault's `.claude/hooks`, e.g. a
+// medical PHI-egress floor, load), but the Jira-CLI path stays anchored on
 // `cwd` (the himmel repo root) because `dist/` only exists there. The "running
 // in" line reports the actual spawn cwd.
 // `cwdRouted`: this session spawns in a CODE REPO (access.json `cwd`),
-// not a vault. Attachments are read and summarized in-reply, never filed —
+// not a vault. Attachments are read and summarized in-reply, never filed,
 // a code repo has no _CLAUDE.md filing conventions. The flag wins over `vault`
 // so an inherited defaultVault cannot re-attach the filing clause.
 export type BusPaths = { inbox: string; outbox: string; context: string; cwd: string; sessionCwd?: string };
@@ -156,7 +156,7 @@ export function buildPrompt(session: string, p: BusPaths, vault?: string | null,
       `When a message carries a "document_path" OR an "image_path", and only when that line carries "operator":true, FILE that attachment's content into the Obsidian vault at ${vault} (not just read it): read that vault's _CLAUDE.md first and follow its filing conventions — if the vault has a "medic" skill (or another vault-local filing skill) use it, otherwise use the obsidian-triage plugin's commands. In your reply, confirm what you filed and where.`,
     ] : []),
     // Jira sanction: without this, the auto-mode classifier
-    // VETOES ticket writes because the bridge session's stated workflow omits Jira —
+    // VETOES ticket writes because the bridge session's stated workflow omits Jira,
     // the bridge would reply "I can't create the ticket (classifier veto)". Stating
     // it as in-scope lifts the veto. Non-destructive only: there is no delete op, and
     // move (closes the source ticket) / project-create (admin) are excluded.
@@ -176,7 +176,7 @@ export function detectCap(output: string): boolean {
 // Content-filter detection. A run that exits non-zero
 // because Anthropic's API blocked the model's OUTPUT under the content-filtering
 // policy (observed tail: "API Error: Output blocked by content filtering policy")
-// is NOT a usage cap (run.log correctly logs capped=false) and is DETERMINISTIC —
+// is NOT a usage cap (run.log correctly logs capped=false) and is DETERMINISTIC,
 // the same generated output is blocked on every retry. The poller special-cases
 // this so it parks immediately instead of burning MAX_RETRIES on a block that
 // can never succeed, and reports it accurately instead of mislabelling it a cap.
@@ -185,7 +185,7 @@ export function detectContentFilter(output: string): boolean { return FILTER_SEN
 
 // Hard process-TREE kill. A bare p.kill() on Windows kills only the
 // direct child; claude's own subprocess tree survives as an orphan that keeps
-// holding stdout/stderr — p.exited never resolves, the session sticks "running"
+// holding stdout/stderr, p.exited never resolves, the session sticks "running"
 // (the live 1.5h DM wedge), and a later retry would spawn a SECOND child against
 // the same session's context.md/outbox (single-writer violation).
 //
@@ -193,25 +193,25 @@ export function detectContentFilter(output: string): boolean { return FILTER_SEN
 // with the codex-bank-probe copy that carried the same defect.
 // It is re-exported here because "./run" is the import path four modules and
 // the bun suite already use. The POSIX half only works for a child spawned
-// with SPAWN_OWN_GROUP — see that file for the measured matrix.
+// with SPAWN_OWN_GROUP, see that file for the measured matrix.
 export { killTree };
 
 // Observability hooks: a silently-hung worker (native permission
 // matcher bails to an unanswerable prompt on stdin="ignore") used
-// to be INVISIBLE for the entire RUN_TIMEOUT_MS window — run.log was appended
+// to be INVISIBLE for the entire RUN_TIMEOUT_MS window. run.log was appended
 // only from the FINAL tail, post-exit, so a session
 // that never exits leaves zero trace until its caller's timeout fires. onSpawn
 // fires once, synchronously after spawn, with the real child pid (meta.json
-// previously stayed pid:0 for the whole "running" window — no way for an
+// previously stayed pid:0 for the whole "running" window, no way for an
 // external watcher to check process liveness). onChunk fires once per stdout/
 // stderr chunk AS IT ARRIVES, so a caller can append it to run.log live and/or
 // stamp a last-output timestamp a watchdog can compare against "now" to detect
-// a stall well before the full timeout. Both are best-effort observability —
+// a stall well before the full timeout. Both are best-effort observability,
 // a throwing callback must never abort the run, so each call is wrapped.
 export type RunObserver = { onSpawn?: (pid: number) => void; onChunk?: (chunk: string) => void };
 
 // Drain a stdout/stderr stream chunk-by-chunk (replaces the old buffer-until-
-// EOF `new Response(stream).text()`, which made onChunk impossible — that
+// EOF `new Response(stream).text()`, which made onChunk impossible, that
 // helper does not expose intermediate chunks, only the final joined text).
 // Bun's ReadableStream supports async iteration; each chunk is decoded with
 // `stream: true` so a multi-byte UTF-8 character split across two chunks
@@ -289,7 +289,7 @@ export async function runSession(prompt: string, cwd: string, permissionMode?: P
   // that the harness auto-mode then denies (e.g. the intermittent Jira ticket-create
   // denials). The first-line fix is broadening the auto-approve matcher.
   // when the session spawns in a VAULT cwd (sessionCwd != repoCwd),
-  // himmel's OWN project hooks (incl. auto-approve-safe-bash) no longer load — so
+  // himmel's OWN project hooks (incl. auto-approve-safe-bash) no longer load, so
   // the poller passes permissionMode="bypassPermissions" for vault sessions ONLY,
   // else the FILE-and-commit flow deadlocks on un-answerable prompts. bypass does
   // NOT loosen containment: the VAULT's PreToolUse hooks (e.g. block-cloud-egress)

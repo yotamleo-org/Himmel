@@ -15,7 +15,7 @@ export function nextBackoff(consecutiveFails: number): number {
 const DEFAULT_MAX_FAILS = 5;
 // POLLER_MAX_FAILS validation. A bare
 // `Number(process.env.POLLER_MAX_FAILS ?? 5)` turns any garbage into NaN, and
-// `fails >= NaN` is ALWAYS false — the breaker would never trip and a
+// `fails >= NaN` is ALWAYS false, the breaker would never trip and a
 // crash-looping poller would spin forever, which is the exact opposite of what
 // the breaker is for. The other end is worse for /restart specifically: `=0`
 // makes `fails >= 0` true on the FIRST exit, so a deliberate rung-1 bounce would
@@ -26,7 +26,7 @@ export function resolveMaxFails(raw: string | undefined = process.env.POLLER_MAX
   const n = Number(raw);
   // isSafeInteger, not isInteger: "9007199254740993" parses to a valid integer
   // ABOVE Number.MAX_SAFE_INTEGER, and a threshold that large means `fails >= n`
-  // is never true in practice — the same silently-disabled breaker as the NaN
+  // is never true in practice, the same silently-disabled breaker as the NaN
   // case, reached by a different route.
   if (Number.isSafeInteger(n) && n > 0) return n;
   console.error(`[supervisor] POLLER_MAX_FAILS="${raw}" is not a positive integer — using the default ${DEFAULT_MAX_FAILS}`);
@@ -37,7 +37,7 @@ export const IMMEDIATE_MS = 5000;   // exiting within 5s counts as an immediate 
 
 // The breaker's accounting, extracted so it is TESTED rather than
 // re-implemented in the test. It used to be an inline expression in main(), which
-// left a test no way to exercise it without restating the rule — a test that
+// left a test no way to exercise it without restating the rule, a test that
 // passes even after production drifts away from it.
 // A run that lasted at least IMMEDIATE_MS resets the counter: that is what makes a
 // deliberate `/restart` of a healthy poller free, while a poller that dies on boot
@@ -52,7 +52,7 @@ export function nextFailCount(prev: number, ranMs: number): number {
 export type PidRec = { supervisor: number; poller: number | null };
 export const pidfilePath = (): string => join(bridgeRoot(), "supervisor.pid");
 export function formatPidfile(rec: PidRec): string { return JSON.stringify(rec); }
-// A pid must be a positive integer — reject negatives (process.kill(-N) signals
+// A pid must be a positive integer, reject negatives (process.kill(-N) signals
 // a whole process GROUP on POSIX) and non-integers from a hand-edited file.
 const validPid = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n > 0;
 export function parsePidfile(s: string): PidRec | null {

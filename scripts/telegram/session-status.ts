@@ -1,36 +1,36 @@
-// scripts/telegram/session-status.ts — outbound
+// scripts/telegram/session-status.ts. Outbound
 // Telegram session status.
 //
-// Composes a CONCISE status message for two Claude Code hook events —
+// Composes a CONCISE status message for two Claude Code hook events,
 // SessionEnd ("this session concluded") and Notification (permission prompt /
-// idle-wait / AskUserQuestion) — and relays it to the operator's Telegram
+// idle-wait / AskUserQuestion), and relays it to the operator's Telegram
 // GROUP via the existing sendMessage() HTTP client
 // (scripts/telegram/telegram-api.ts). Never reinvents the HTTP client; never
 // reads/logs the raw bot token anywhere except handing it to sendMessage.
 //
 // Why SessionEnd, not Stop: Stop fires per assistant turn (repeatedly, can
-// block session flow via exit code 2) — SessionEnd fires exactly once per
+// block session flow via exit code 2). SessionEnd fires exactly once per
 // session, is fire-and-forget, and matches this repo's existing "notify
 // operator at session end" convention (end-session-wiki.sh /
 // jira-nudge-on-end.sh / refresh-where-are-we-on-end.sh, all wired via the
 // himmel-ops plugin hooks.json SessionEnd array).
 //
 // Salus/PHI guard: a repo whose name matches /salus/i (the operator's
-// medical vault/repo — see docs/internals memory: "salus = medical vault")
+// medical vault/repo, see docs/internals memory: "salus = medical vault")
 // NEVER has session content (last-assistant text, notification message)
-// included in the composed status — only a generic, content-free line. The
-// calling bash hooks additionally short-circuit BEFORE extracting any
+// included in the composed status, only a generic, content-free line. The
+// calling bash hooks also short-circuit BEFORE extracting any
 // transcript content for a salus repo, so this check is defense-in-depth,
 // not the only guard.
 //
 // Silent no-op: when no group chat id is configured (TELEGRAM_GROUP_CHAT_ID
 // unset/blank/non-numeric), runSessionEndStatus/runNotificationStatus return
-// "skip-no-chat" WITHOUT calling sendAlert — the hook's silent-no-op
+// "skip-no-chat" WITHOUT calling sendAlert. The hook's silent-no-op
 // contract (never error, never block, never send).
 //
 // Pattern mirrors scripts/observability/luna-sync-alert.ts: pure, injectable
 // core functions (unit-testable, no network/env/fs access) + a thin main()
-// that does the real I/O — never exercised by tests.
+// that does the real I/O, never exercised by tests.
 
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -124,9 +124,9 @@ export async function runNotificationStatus(opts: {
 
 // ── real I/O (main-only; never exercised by tests) ──────────────────────────
 
-// Bot token: SAME resolution the bridge/poller and luna-sync-alert.ts use —
+// Bot token: SAME resolution the bridge/poller and luna-sync-alert.ts use,
 // ~/.claude/channels/telegram/.env's TELEGRAM_BOT_TOKEN, overridable via
-// TELEGRAM_ENV. Never logged — only handed to sendMessage's request body.
+// TELEGRAM_ENV. Never logged, only handed to sendMessage's request body.
 function loadToken(env: Record<string, string | undefined>): string {
   const envPath = env.TELEGRAM_ENV ?? join(homedir(), ".claude", "channels", "telegram", ".env");
   const txt = readFileSync(envPath, "utf8");

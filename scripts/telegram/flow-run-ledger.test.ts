@@ -29,7 +29,7 @@ afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
 
 // Prerequisite for every BASH_LIB shell-out below: can BASH_BIN run at all? A
 // genuinely missing/broken bash (e.g. the Windows System32 WSL stub)
-// is a bun SKIP, never a silent pass — checked separately
+// is a bun SKIP, never a silent pass, checked separately
 // from each shell-out it gates so a real bash-side failure still fails loudly
 // instead of being swallowed into a no-op.
 const BASH_RUNS = Bun.spawnSync([BASH_BIN, "-c", "exit 0"], { stdout: "pipe", stderr: "pipe" }).exitCode === 0;
@@ -117,7 +117,7 @@ test.skipIf(!BASH_RUNS)("byte-identical bash<->TS start serialization, including
     const tsLine = serializeFlowRunStart(row);
     const r = Bun.spawnSync([BASH_BIN, BASH_LIB, "--emit-start", ...args], { stdout: "pipe", stderr: "pipe" });
     // BASH_RUNS already proved this bash can execute; a nonzero --emit-start
-    // here is a real serializer failure, not an environment gap — fail it.
+    // here is a real serializer failure, not an environment gap. Fail it.
     expect(r.exitCode, `bash --emit-start rc=${r.exitCode} (stderr=${r.stderr.toString().trim()})`).toBe(0);
     expect(r.stdout.toString().trimEnd()).toBe(tsLine);
   }
@@ -148,7 +148,7 @@ test.skipIf(!BASH_RUNS)("byte-identical bash<->TS end serialization, including u
     const tsLine = serializeFlowRunEnd(row);
     const r = Bun.spawnSync([BASH_BIN, BASH_LIB, "--emit-end", ...args], { stdout: "pipe", stderr: "pipe" });
     // BASH_RUNS already proved this bash can execute; a nonzero --emit-end
-    // here is a real serializer failure, not an environment gap — fail it.
+    // here is a real serializer failure, not an environment gap. Fail it.
     expect(r.exitCode, `bash --emit-end rc=${r.exitCode} (stderr=${r.stderr.toString().trim()})`).toBe(0);
     expect(r.stdout.toString().trimEnd()).toBe(tsLine);
   }
@@ -161,7 +161,7 @@ test.skipIf(!BASH_RUNS)("bash --append-start: run_id is minutes-compact and host
     { stdout: "pipe", stderr: "pipe", env: { ...process.env, HIMMEL_FLOW_RUNS_LEDGER: ledger } },
   );
   // BASH_RUNS already proved this bash can execute; a nonzero --append-start
-  // here is a real failure, not an environment gap — fail it.
+  // here is a real failure, not an environment gap. Fail it.
   expect(r.exitCode, `bash --append-start rc=${r.exitCode} (stderr=${r.stderr.toString().trim()})`).toBe(0);
   // run_id grain is MINUTES (design §1.2: <flow>-YYYYMMDDTHHMM-<pid>).
   expect(r.stdout.toString().trimEnd()).toBe("pipeline-harvest-20260711T0300-4821");
@@ -283,7 +283,7 @@ test.skipIf(!BASH_RUNS)("bash classifier mirrors the required-marker cases", () 
   writeFileSync(p, "[fired]\nblocked on a prompt\n");
   const parked = Bun.spawnSync([BASH_BIN, BASH_LIB, "--classify", "0", p, "", "PIPELINE-WORKER-DONE"], { stdout: "pipe", stderr: "pipe" });
   // BASH_RUNS already proved this bash can execute; a nonzero --classify
-  // here is a real classifier failure, not an environment gap — fail it.
+  // here is a real classifier failure, not an environment gap. Fail it.
   expect(parked.exitCode, `bash --classify rc=${parked.exitCode}`).toBe(0);
   expect(parked.stdout.toString().trim()).toBe("parked");
   writeFileSync(p, "done\r\nPIPELINE-WORKER-DONE\r\n");
@@ -297,7 +297,7 @@ test.skipIf(!BASH_RUNS)("bash classifier mirrors TS classifier cases", () => {
   writeFileSync(p, "ok\nBackground tasks still running: terminating\n");
   const r = Bun.spawnSync([BASH_BIN, BASH_LIB, "--classify", "0", p], { stdout: "pipe", stderr: "pipe" });
   // BASH_RUNS already proved this bash can execute; a nonzero --classify
-  // here is a real classifier failure, not an environment gap — fail it.
+  // here is a real classifier failure, not an environment gap. Fail it.
   expect(r.exitCode, `bash --classify rc=${r.exitCode} (stderr=${r.stderr.toString().trim()})`).toBe(0);
   expect(r.stdout.toString().trim()).toBe("truncated");
 });

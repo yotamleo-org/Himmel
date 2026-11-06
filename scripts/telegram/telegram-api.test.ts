@@ -54,7 +54,7 @@ test("getUpdates non-ok error falls back to the HTTP status when description is 
 });
 test("getUpdates aborts a stalled request within its client-side deadline — a transport that never resolves must still REJECT, not hang forever, so the poller's catch/backoff fires", async () => {
   // Models a stuck transport: the fetch promise never resolves on its own, only
-  // rejecting when the AbortSignal getUpdates wires up actually fires — exactly
+  // rejecting when the AbortSignal getUpdates wires up actually fires, exactly
   // what a real fetch implementation does under an AbortSignal (this is the same
   // contract getFile/downloadFile already rely on for FILE_FETCH_TIMEOUT_MS).
   // `timeout=0` and a 20ms abortMarginMs keep the deadline (0*1000+20=20ms) tiny

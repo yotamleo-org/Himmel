@@ -38,7 +38,7 @@ test("classifyForSpawn shells through the cheap classifier and parses its verdic
 // Regression: the classifier was dead on 100% of messages because
 // argv[0] was a bare "bash": under the poller's PATH that resolves to the WSL
 // System32 stub, which cannot see ANY C: path (it exits 127 on both `C:\...`
-// and `C:/...`, so POSIX-ifying argv[1] would not have helped) — and
+// and `C:/...`, so POSIX-ifying argv[1] would not have helped), and
 // classifyForSpawn fails open to spawn-high, so the breakage was invisible.
 // Asserted on the CONSTRUCTED argv rather than on a live spawn so it runs on
 // every platform: the interpreter must exist and must not be the stub, and the
@@ -53,7 +53,7 @@ test("classifyForSpawn spawns a real non-WSL bash against an existing script", a
   if (process.platform === "win32") {
     // Windows must name the interpreter ABSOLUTELY. That is the whole contract:
     // any PATH-resolved name can land on the stub, so resolveBash() never
-    // returns one here — not even as a last-resort fallback (it returns the
+    // returns one here, not even as a last-resort fallback (it returns the
     // canonical Git Bash path, so a machine without it fails ENOENT loudly
     // rather than 127 silently). Asserting the shape, not existence, keeps this
     // true on a Windows box that has no Git Bash installed.
@@ -66,7 +66,7 @@ test("classifyForSpawn spawns a real non-WSL bash against an existing script", a
 });
 
 // The prompt handed the classifier a bare message: no statement of
-// what the group IS, and — the part that actually caused the loss — no statement
+// what the group IS, and (the part that actually caused the loss) no statement
 // that `ack` DISCARDS the message. `ack` reads as "send an acknowledgement", so
 // the model picked it for messages it had understood were addressed to the
 // agent, and the poller threw them away. Both halves are asserted here; the
@@ -81,7 +81,7 @@ test("triage prompt frames the channel AND names each verdict's effect", async (
 
   expect(prompt).toContain("from the human operator");
   expect(prompt).toContain("follow-up is still a request");
-  // the drop verdicts must both be described as discarding — `ack` especially,
+  // the drop verdicts must both be described as discarding, `ack` especially,
   // whose token name otherwise promises the opposite of what it does
   expect(prompt).toContain("ignore: silently discarded");
   expect(prompt).toContain("ack: ALSO silently discarded");
@@ -93,7 +93,7 @@ test("triage prompt frames the channel AND names each verdict's effect", async (
 // The operator framing must go ONLY where it is true (CR codex-adv-1). A bare
 // group allowlist admits every member, so telling the classifier "this is from
 // the operator" for an ordinary member would widen the very spam gate
-// the triage gate exists to keep — and the branch's own measurements show framing
+// the triage gate exists to keep, and the branch's own measurements show framing
 // moves verdicts, so this is not a harmless inaccuracy.
 test("a NON-operator gets shared-group framing, never the operator framing", async () => {
   let prompt = "";
@@ -107,7 +107,7 @@ test("a NON-operator gets shared-group framing, never the operator framing", asy
   expect(prompt).not.toContain("follow-up is still a request");
   expect(prompt).toContain("NOT from the operator");
   expect(prompt).toContain("ordinary chatter");
-  // the ROLE-NEUTRAL half — what the verdicts actually do — is still told to
+  // the ROLE-NEUTRAL half (what the verdicts actually do) is still told to
   // everyone, because that is what stops `ack` reading as "acknowledge"
   expect(prompt).toContain("ack: ALSO silently discarded");
 });
@@ -156,7 +156,7 @@ test("TELEGRAM_TRIAGE_TIMEOUT_MS falls back to the default on garbage / non-posi
     process.env.TELEGRAM_TRIAGE_TIMEOUT_MS = bad;
     try {
       // A fast-resolving invoke must win against the (defaulted) deadline and
-      // parse to spawn-low — proving the bad value did NOT collapse the timeout
+      // parse to spawn-low, proving the bad value did NOT collapse the timeout
       // to 0/NaN (which would race-reject before invoke resolves).
       const verdict = await classifyForSpawn("ship this?", {
         invoke: async () => "spawn-low\n",

@@ -1,4 +1,4 @@
-// scripts/telegram/round-guard.test.ts — symptom-brief loop breaker.
+// scripts/telegram/round-guard.test.ts. Symptom-brief loop breaker.
 // Every refusal case asserts the specific REASON STRINGS, not rc/shape alone:
 // exit-code-only assertions are how a fail-closed bug reads as a fail-closed
 // feature (a suite once passed on the WRONG refusal for four rounds).
@@ -56,7 +56,7 @@ test("ticket boundary: a letter suffix is NOT the ticket (codex-2 — himmel-154
   expect(extractTicketKey(undefined, undefined, "see HIMMEL-1540abc")).toBeUndefined();
   // counting: a himmel-1540abc branch contributes NO rounds for the key
   expect(countReviewedRounds([avail("fix/himmel-1540abc", "aaaaaaa1")], "HIMMEL-1540").rounds).toBe(0);
-  // a hyphen still bounds — the normal slug shape keeps matching
+  // a hyphen still bounds. The normal slug shape keeps matching
   expect(countReviewedRounds([finding("fix/himmel-1540-x", "aaaaaaa1")], "HIMMEL-1540").rounds).toBe(1);
 });
 
@@ -162,7 +162,7 @@ test("invariant: absent, token-only, and thin all fail the floor", () => {
 // Divergence regression: cr-pending-audit.sh applies amends SEQUENTIALLY, so a
 // set.head re-key moves the finding and the NEXT amend matches the moved head.
 // Pre-merging by (head, identity) filed the two amends in different buckets and
-// silently dropped the second — the counter then read a corrected finding as
+// silently dropped the second, the counter then read a corrected finding as
 // still blocking. Asserted as a ROUND COUNT, since that is the only thing a
 // caller can observe.
 test("rounds: a chained amend (re-key, then disprove) is applied, as the audit does it", () => {
@@ -352,12 +352,12 @@ test("fail-open: unreadable/missing ledger (default reader on a non-repo cwd)", 
   expect(r.refusal).toBeUndefined();
 });
 
-// PROPERTY LOCK, NOT A REGRESSION TEST — and the distinction is deliberate.
+// PROPERTY LOCK, NOT A REGRESSION TEST, and the distinction is deliberate.
 // A whitespace-only --name is truthy, so the pre-fix derivation sanitised it to
 // "" and built the malformed branch `glm/`. That was worth removing, but it was
 // NOT reachable as a behaviour change: the ticket filter in countReviewedRounds
 // requires the ledger branch to CONTAIN the ticket key, and `glm/` never can, so
-// the pre-fix path already failed open — identically to the fix.
+// the pre-fix path already failed open, identically to the fix.
 // This test was RUN AGAINST THE PRE-FIX CODE AND PASSED (30/30). It is kept as a
 // forward guard: if branch matching ever loosens, the blank-name path becomes
 // reachable and this catches it. It is explicitly not evidence the fix changed
@@ -371,7 +371,7 @@ test("blank --name is treated as anonymous, not as the malformed branch `glm/`",
 
 // ── CLI entry ─────────────────────────────────────────────────
 // The ledger/threshold semantics above are exercised in-process; these two
-// cover only the CLI's own argv validation, which nothing else does — the
+// cover only the CLI's own argv validation, which nothing else does, the
 // bash-side integration coverage (scripts/hooks/test-guard-implementor-dispatch.sh)
 // always supplies both flags, so a broken required-flag check would pass there
 // silently. Scoped to exactly the two failure shapes possible before

@@ -21,7 +21,7 @@ import { checkStaleHeartbeats, censusSessionAlive, DEFAULT_STALE_MS, type Alerte
 // instead of a hardcoded `undefined` (no --settings
 // => full operator ~/.claude injected into every cold bridge run, unlean).
 // Entry-point inventory (RULING 2): auto-action.ts spawns no
-// claude, and hermes is dormant with no plugin-profile seam — the bridge
+// claude, and hermes is dormant with no plugin-profile seam, the bridge
 // dispatch below is the ONLY wired entry point. It resolves via
 // the fresh-import loader (resolveTelegramProfileSettings), never spawn-glm's
 // static import of plugin-profiles.mjs.
@@ -32,7 +32,7 @@ import { scanSkillCosts } from "../lanes/skill-cost.mjs";
 
 // Poller logs are captured into vault notes, so no raw chat id may reach one
 // (telegram-api.ts redacts the same way). Chat ids go through redactChatId;
-// logRedacted additionally scrubs the group_<chat_id> session name, including
+// logRedacted also scrubs the group_<chat_id> session name, including
 // inside a caught exception's message or path.
 const redactGroupIds = (s: string): string => s.replace(/group_(-?\d+)/g, (_m, id) => `group_${redactChatId(Number(id))}`);
 const logRedacted = (msg: string): void => console.error(redactGroupIds(msg));
@@ -49,7 +49,7 @@ const RETRY_MS = Number(process.env.TELEGRAM_RETRY_MS ?? 15 * 60 * 1000);
 // Invariant: document_path is only ever present alongside document_name (set as
 // a pair); document_name without document_path means the download failed and the
 // message degraded to caption-only forwarding.
-// forwarded/caption: always explicit booleans, never optional — they
+// forwarded/caption: always explicit booleans, never optional, they
 // gate the privileged `/arm` auto-command. `forwarded` = any Telegram forward marker
 // present (the injection-refuse signal). `caption` = the text came from a media caption
 // or voice transcript, NOT a genuinely typed m.text. Both fail toward "not a typed
@@ -65,17 +65,17 @@ export type FetchDocFn = (file_id: string, update_id: number, file_name: string)
 // a silently-degraded photo, a dropped document also loses its vault-filing
 // clause downstream (run.ts buildPrompt only fires when document_path is present),
 // so the operator would otherwise get a caption-only reply with no sign the file
-// dropped — the bridge's "never a silent drop" rule (cf. voice) applies here too.
+// dropped, the bridge's "never a silent drop" rule (cf. voice) applies here too.
 export type NotifyDocFailFn = (chatId: number, name: string) => Promise<void>;
 // Downloads + transcribes a voice/audio message, returns the TRANSCRIPT.
 // Convention (enforced by makeFetchVoice, the one production implementation):
-// never throws; null = failure AND the chat was already told — so ingest can skip
+// never throws; null = failure AND the chat was already told, so ingest can skip
 // the update without breaking the "never a silent drop" acceptance.
 export type FetchVoiceFn = (file_id: string, update_id: number, chat_id: number) => Promise<string | null>;
 
 // Build the production FetchVoiceFn. Wraps EVERY exit in the
-// explicit "couldn't transcribe" reply (CR: a thrown getFile — network error /
-// the FILE_FETCH_TIMEOUT_MS abort in telegram-api.ts — used to escape before the reply was sent = the
+// explicit "couldn't transcribe" reply (CR: a thrown getFile, network error /
+// the FILE_FETCH_TIMEOUT_MS abort in telegram-api.ts, used to escape before the reply was sent = the
 // silent drop the ticket forbids). sendFail failures are logged with context,
 // never thrown: the reply is best-effort, the skip must still happen.
 export function makeFetchVoice(deps: {
@@ -99,7 +99,7 @@ export function makeFetchVoice(deps: {
       if (!(await deps.download(fp, dest))) return fail();
       // Empty/whitespace counts as failure HERE, not just in transcribe()
       // (CR: a custom transcribe returning "" would slip past `??` reply-less,
-      // then be dropped by ingest's falsy check — the silent drop, again).
+      // then be dropped by ingest's falsy check, the silent drop, again).
       const transcript = (await deps.transcribe(dest))?.trim() || null;
       // Source .oga has no downstream consumer after transcription
       // (unlike photos which may be re-read by the session). Unlink here instead of
@@ -117,7 +117,7 @@ export function makeFetchVoice(deps: {
 }
 
 // Telegram controls file_path, so the extension it implies is attacker-shaped:
-// allow only a plain alphanumeric suffix (no `/` subpaths, no `?` — invalid in
+// allow only a plain alphanumeric suffix (no `/` subpaths, no `?`, invalid in
 // NTFS filenames), else fall back (.jpg for photos, caller overrides for voice).
 // Keeps dest strictly inside attachments/.
 export function safeExt(file_path: string, fallback = ".jpg"): string {
@@ -148,7 +148,7 @@ async function saveOffset(root: string, off: number): Promise<void> {
 // photo and document downloads both start concurrently
 // across the batch instead of serializing inside the loop; each inbox entry is
 // written once its download resolves (image_path/document_path points to an
-// existing file). The offset still advances last — durability beats latency,
+// existing file). The offset still advances last, durability beats latency,
 // and FILE_FETCH_TIMEOUT_MS in telegram-api.ts already bounds how long the
 // batch can take. Photo and document share one media
 // pending list/write loop; one media
@@ -177,18 +177,18 @@ function acceptMessage(u: any, allow: AllowFn): MsgCtx | null {
   if (m.is_automatic_forward === true) return null;      // drop linked-group duplicates
   const chatId = m.chat?.id;
   if (chatId == null) return null;
-  // photos arrive as an array of sizes, smallest→largest — take the largest
+  // photos arrive as an array of sizes, smallest→largest, take the largest
   const photo = Array.isArray(m.photo) && m.photo.length ? m.photo[m.photo.length - 1] : null;
   // voice notes (m.voice) and audio files (m.audio) both carry a file_id
   const voice = m.voice ?? m.audio ?? null;
-  // document attachments — PDFs and other files. Mutually
+  // document attachments, PDFs and other files. Mutually
   // exclusive with photo/voice on a single Telegram message.
   const doc = m.document ?? null;
   const hasText = typeof m.text === "string" && m.text.trim() !== "";
-  // drop text-less, media-less updates (service messages, joins, stickers) —
+  // drop text-less, media-less updates (service messages, joins, stickers),
   // they would otherwise spawn a bounded run answering an empty prompt
   if (!hasText && !photo && !voice && !doc) return null;
-  // channel posts have no `from` (anonymous) — fall back to sender_chat (the channel itself)
+  // channel posts have no `from` (anonymous), fall back to sender_chat (the channel itself)
   const fromId = m.from?.id ?? m.sender_chat?.id ?? 0;
   // PRESERVED, not just used as the fromId fallback:
   // for an on-behalf-of-chat message this is the chat Telegram says the post
@@ -229,7 +229,7 @@ async function voiceRecord(c: MsgCtx, fetchVoice?: FetchVoiceFn): Promise<Inboun
   // to the chat (acceptance: explicit error, not a silent drop).
   // Hardening: if there was a caption, forward it so the operator
   // context is preserved even when the audio couldn't be transcribed.
-  // UX note: caption-with-failed-voice produces two outputs — the error notice
+  // UX note: caption-with-failed-voice produces two outputs, the error notice
   // (from makeFetchVoice) and then a claude run on the caption text. This is
   // intentional: the caption carries independent context worth processing.
   let text: string;
@@ -239,11 +239,11 @@ async function voiceRecord(c: MsgCtx, fetchVoice?: FetchVoiceFn): Promise<Inboun
   } else {
     text = (c.caption ? c.caption + "\n" : "") + "[voice transcript] " + transcript;
   }
-  // caption:true — a voice transcript is never a typed command (auto-ineligible).
+  // caption:true, a voice transcript is never a typed command (auto-ineligible).
   return baseRecord(c, text, true);
 }
 
-// Document (e.g. PDF) — same concurrent, time-bounded download as photos.
+// Document (e.g. PDF), same concurrent, time-bounded download as photos.
 function documentMedia(c: MsgCtx, fetchDoc: FetchDocFn, notifyDocFail?: NotifyDocFailFn): PendingMedia {
   const docName = typeof c.doc.file_name === "string" ? c.doc.file_name : "file";
   const text = c.caption || `[document: ${docName}]`;
@@ -253,14 +253,14 @@ function documentMedia(c: MsgCtx, fetchDoc: FetchDocFn, notifyDocFail?: NotifyDo
     rec: baseRecord(c, text, true, { document_name: docName }),
     p: downloadP,
     pathField: "document_path",
-    // Failed download (null) degrades to caption-only forwarding — tell the
+    // Failed download (null) degrades to caption-only forwarding. Tell the
     // operator so a dropped PDF isn't a silent no-op.
     onMissing: notifyDocFail ? (rec) => notifyDocFail(rec.chat_id, rec.document_name ?? "file") : undefined,
   };
 }
 
 function photoMedia(c: MsgCtx, fetchImage: FetchImageFn): PendingMedia {
-  // Start the download immediately (after allow gate) but do NOT await it here —
+  // Start the download immediately (after allow gate) but do NOT await it here,
   // downloads run concurrently across the batch; each one is
   // already time-bounded by FILE_FETCH_TIMEOUT_MS in telegram-api.ts.
   const text = c.caption || "[photo]";
@@ -276,7 +276,7 @@ function plainRecord(c: MsgCtx): Inbound {
              : doc ? (c.caption || `[document: ${typeof doc.file_name === "string" ? doc.file_name : "file"}]`)
              : m.text;
   // caption:true iff the text came from a media caption (photo/doc present), else it
-  // is a genuinely typed m.text (caption:false) — the only auto-command-eligible shape.
+  // is a genuinely typed m.text (caption:false), the only auto-command-eligible shape.
   return baseRecord(c, text, !!(photo || doc), {}, {
     ...(Number.isSafeInteger(m.message_id) && m.message_id > 0 ? { message_id: m.message_id } : {}),
     ...(Number.isSafeInteger(m.reply_to_message?.message_id) && m.reply_to_message.message_id > 0 ? { reply_to_message_id: m.reply_to_message.message_id } : {}),
@@ -287,8 +287,8 @@ function plainRecord(c: MsgCtx): Inbound {
 // Await photo/document downloads concurrently, then write their inbox
 // entries. The resolved path is only set when the download actually
 // succeeded (consumer contract); a failed download degrades to caption-only
-// forwarding, with documents additionally notifying the operator
-// — best-effort: a notify failure is logged, never thrown (the
+// forwarding, with documents also notifying the operator,
+// best-effort: a notify failure is logged, never thrown (the
 // inbox append already happened).
 async function flushPendingMedia(root: string, pendingMedia: PendingMedia[]): Promise<void> {
   if (pendingMedia.length === 0) return;
@@ -331,7 +331,7 @@ export async function ingestUpdates(root: string, updates: any[], allow: AllowFn
   await flushPendingMedia(root, pendingMedia);
   // Append-then-confirm preserved: the offset advances only after every accepted
   // inbound is durably in the inbox (a crash mid-batch re-delivers, never loses).
-  // Concurrency — not an early offset — is the fix; each download is
+  // Concurrency (not an early offset) is the fix; each download is
   // already time-bounded at the API layer, so this await cannot hang unbounded.
   if (maxId >= offset) await saveOffset(root, maxId + 1);
 }
@@ -343,13 +343,13 @@ export async function ingestUpdates(root: string, updates: any[], allow: AllowFn
 // are dropped along with the genuinely-lost ones. Repairing first means
 // the tick's own appends land ABOVE the repaired cursor and are read
 // normally by readNewLines below. readNewLines still calls this itself
-// too (defence in depth) — after a pre-ingest repair it just finds
+// too (defence in depth), after a pre-ingest repair it just finds
 // nothing left to repair.
 //
 // Extracted to a named, exported function so the
 // ordering is a real seam a test can pin: calling repairCursorBeyondEof and
 // ingestUpdates separately from a test (as bus.test.ts's ordering tests do)
-// does not protect the poller's actual call site — moving the two lines in
+// does not protect the poller's actual call site, moving the two lines in
 // main() back below ingestUpdates would leave those tests green. The test
 // for THIS function, in poller.test.ts, is what pins the production ordering.
 export async function repairThenIngest(root: string, updates: any[], allow: AllowFn, fetchImage?: FetchImageFn, fetchVoice?: FetchVoiceFn, fetchDoc?: FetchDocFn, notifyDocFail?: NotifyDocFailFn, onCursorReset?: OnCursorReset): Promise<void> {
@@ -410,11 +410,11 @@ async function appendInboxOnce(inboxFile: string, hwFile: string, line: string, 
   return true;
 }
 export type RunFn = (session: string, modelOverride?: ModelOverride) => Promise<void>;
-// fromOperator selects the classifier's prompt framing —
+// fromOperator selects the classifier's prompt framing,
 // operator framing must not be told to a shared group's ordinary
 // members, whose chatter is what the triage gate exists to filter.
 export type TriageFn = (text: string, sessionLabel?: string, fromOperator?: boolean) => Promise<TriageVerdict>;
-// Is this sender the operator (the GLOBAL allowFrom identity — the same one
+// Is this sender the operator (the GLOBAL allowFrom identity, the same one
 // AutoGate.authorize uses), as opposed to some other member of a shared group?
 // Kept a separate dep from AutoGate rather than reusing its authorize: the
 // triage floor below is what keeps an operator message out of the drop path,
@@ -450,7 +450,7 @@ const mfaRouteConsumed = (root: string, auto: AutoGate | undefined, msg: Deliver
 // A LEADING `model:<value>` tag pins the bounded run's model (spec
 // §3.A.5). Anchored at the start, so "model railway question" and "use
 // model:sonnet please" are prose, not tags. The key is case-insensitive; the
-// VALUE is strict — an unrecognised one is reported back rather than silently
+// VALUE is strict, an unrecognised one is reported back rather than silently
 // ignored, because a typo'd tag that reads as prose is indistinguishable from a
 // tag that worked. The tag is consumed either way: the session never sees it.
 const MODEL_VALUES = new Set<ModelOverride>(["opus", "sonnet", "haiku"]);
@@ -463,7 +463,7 @@ export function parseModelTag(text: string): { model: ModelOverride | null; rest
 }
 
 // notifyChat: out-of-band reply channel for the DISPATCHER's own
-// notices — things the session cannot report because they are decided before it
+// notices, things the session cannot report because they are decided before it
 // spawns. Optional; unwired callers simply get no notice.
 export type NotifyChatFn = (chatId: number, text: string) => Promise<void>;
 
@@ -482,11 +482,11 @@ export type RequireMentionFn = (chatId: number) => boolean;
 // usernames are alnum/underscore, so a word-char is excluded on BOTH sides:
 // trailing to stop `@foobot2` false-matching a mention of `@foobot`, leading
 // (CR codex-2) to stop email-like embeds (`user@foobot`) reading as a mention.
-// No message-entities check here — DeliveredMsg carries no entities field
+// No message-entities check here, DeliveredMsg carries no entities field
 // (poller.ts never asked getUpdates for them); a regex over the text is what
 // the require-mention feature asked for as the fallback and is all there currently is to check.
 // Telegram's standard command addressing (`/cmd@botusername`) is also
-// accepted — the leading boundary above would
+// accepted, the leading boundary above would
 // otherwise reject it too, since the char before `@` is a word char.
 export function mentionsBot(text: string, botUsername: string): boolean {
   const escaped = botUsername.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -602,7 +602,7 @@ async function handleMemberTicketRoute(root: string, msg: DeliveredMsg, route: E
 
 export async function handleInbound(root: string, msg: DeliveredMsg, run: InboundRunFn, auto?: AutoGate, triage: TriageFn = (text, sessionLabel, fromOperator) => classifyForSpawn(text, { sessionLabel, fromOperator }), isOperator: OperatorFn = () => false, notifyChat?: NotifyChatFn, requireMention: RequireMentionFn = () => false, botUsername?: string | null, consoleRoute?: ConsoleRouteGate): Promise<void> {
   // OPERATOR-ONLY (CR codex-adv-3). The tag is an operator instruction, and the
-  // surrounding code treats it as one — but an allow-listed group WITHOUT a
+  // surrounding code treats it as one, but an allow-listed group WITHOUT a
   // per-group `allowFrom` admits every member, so any member could prepend
   // `model:opus` and override triage's haiku cost control, spending the
   // operator's reserved quota. Resolved ONCE here and reused by the triage floor
@@ -620,25 +620,25 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   const route = classify(tag.rest, botUsername);
   // Non-DM chats (negative chat_id = group/channel) get their own session keyed
   // by chat_id so meta.chat_id pins replies to that chat, not the operator DM.
-  // "_" not ":" — the session id is an NTFS directory name.
+  // "_" not ":", the session id is an NTFS directory name.
   // Hoisted ahead of the control/auto branches below: the
   // require-mention gate needs `session` for its log line and must run before
-  // BOTH of them — a pure derivation, so moving it costs nothing.
+  // BOTH of them, a pure derivation, so moving it costs nothing.
   const chatSession = msg.chat_id < 0 ? `group_${msg.chat_id}` : "__chat__";
   // A non-eligible auto-command (group / caption / disabled-op) routes as chat.
   const session = (route.kind === "chat" || route.kind === "auto" || route.kind === "console") ? chatSession : ("ticket" in route ? route.ticket : chatSession);
   // REQUIRE-MENTION GATE. access.json's per-group `requireMention`
-  // flag (gate.ts GroupPolicy) opts a group into @mention-only mode — the
+  // flag (gate.ts GroupPolicy) opts a group into @mention-only mode. The
   // grow-tent groups share their chat with luna_grow_bot (a hermes gateway)
   // and a message not addressed to THIS bot by @mention is not ours to answer.
   // Absolute and blanket: placed before the control-verb and auto-command
   // branches AND before the triage call and the operator floor
-  // further down — the floor exists to protect the OPERATOR's own chatter
+  // further down, the floor exists to protect the OPERATOR's own chatter
   // from triage misclassification, not to rescue a message aimed at a
   // different bot. An unmentioned /arm in a require_mention group is also
   // dropped by this (acceptable: those commands aren't used in tent groups).
   // Fails OPEN when the bot's own username could not be resolved at startup
-  // (botUsername falsy) — every group behaves exactly as before rather than
+  // (botUsername falsy), every group behaves exactly as before rather than
   // silently going quiet everywhere. Mirrors the triage-gate drop semantics:
   // dropped permanently, nothing written to inbox.jsonl.
   if (msg.chat_id < 0 && botUsername && requireMention(msg.chat_id) && !mentionsBot(msg.text, botUsername)) {
@@ -653,19 +653,19 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
     }
     return; // status/sessions reporting is wired in the main loop (replies via outbox)
   }
-  // Auto-command: a message AUTHORIZED by auto.authorize(from, chat_id)
-  // — the sender is the allowlisted operator (global allowFrom) AND the chat is
+  // Auto-command: a message AUTHORIZED by auto.authorize(from, chat_id),
+  // the sender is the allowlisted operator (global allowFrom) AND the chat is
   // allowlisted (DM or allowlisted group); a non-operator member of a shared group is
-  // refused (fix C1) — that is genuinely TYPED (caption===false — a media-caption/voice
-  // /arm is refused, fix C2) and an ENABLED op is invoked DIRECTLY by the trusted bridge
-  // — the agent never sees it. The forwarded-refuse decision lives in handleAutoCommand.
+  // refused (fix C1), that is genuinely TYPED (caption===false, a media-caption/voice
+  // /arm is refused, fix C2) and an ENABLED op is invoked DIRECTLY by the trusted bridge,
+  // the agent never sees it. The forwarded-refuse decision lives in handleAutoCommand.
   // Any condition false ⇒ falls through to ordinary (powerless) chat below (so a
   // non-operator/caption/disabled-op /arm is just chat).
   // `!tagged`: the auto gate's safety rests on a WHOLE-message match
   // by the operator. Consuming a leading tag and then matching the remainder
   // would turn `model:x /arm …` into an accepted /arm, quietly widening what
   // counts as a whole message. A tagged auto-command falls through to ordinary
-  // chat instead — the tag is an agent-routing hint, never an entry to the
+  // chat instead. The tag is an agent-routing hint, never an entry to the
   // trusted path.
   // `/confirm` is not an op of its own: it is live while any
   // confirm-coded op is enabled, and it can only run what that op issued.
@@ -675,11 +675,11 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
     auto.fire(msg, route);
     return;
   }
-  // CHEAP TRIAGE GATE — runs BEFORE the message is enqueued. The
+  // CHEAP TRIAGE GATE, runs BEFORE the message is enqueued. The
   // session id is a pure derivation (above), so the gate needs no session I/O.
   // On ignore/ack the message is DROPPED PERMANENTLY: nothing is written to
   // inbox.jsonl, the consumed cursor never moves, and a later deliverAllPending
-  // has nothing to resurrect — triage is truthful rather than a no-op (the prior
+  // has nothing to resurrect, triage is truthful rather than a no-op (the prior
   // order appended the line first, so the main loop's unconditional
   // deliverAllPending re-spawned the "ignored" chatter in the same poll tick).
   // Deliberate tradeoff: chatter triaged away is dropped, not delayed; a crash
@@ -687,7 +687,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   // fail-open (any error → spawn-high) so a real failure still enqueues + spawns.
   // An unknown tag is reported by the DISPATCHER, not the session: the session
   // never sees the tag (it is stripped below), so it cannot report a rejection
-  // it has no knowledge of. Best-effort — a failed notice must not cost the
+  // it has no knowledge of. Best-effort, a failed notice must not cost the
   // message, which is still processed on the default model.
   if (tag.unknown && notifyChat) {
     try { await notifyChat(msg.chat_id, `unknown model tag — using the default model (valid: opus, sonnet, haiku)`); }
@@ -696,13 +696,13 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   let modelOverride: ModelOverride | undefined;
   if (msg.chat_id < 0 && (route.kind === "chat" || route.kind === "auto") && process.env.TELEGRAM_TRIAGE !== "off") {
     // fromOperator is resolved ONCE at the top of this function and used by the
-    // classifier's framing, the floor, AND the model-tag gate — they must agree
+    // classifier's framing, the floor, AND the model-tag gate, they must agree
     // on who the sender is.
     const verdict = await triage(tag.rest, session, fromOperator);
     // OPERATOR FLOOR. The drop above is for shared-group CHATTER;
     // The triage gate exists to cut resource spam, never to filter the operator. When
     // the sender IS the operator this is a message addressed to the agent, so an
-    // ignore/ack is a misclassification that costs the message with no trace —
+    // ignore/ack is a misclassification that costs the message with no trace,
     // exactly the incident: `try again..` and `didn't understand the cosmetic
     // item…` classified `ignore`, and `why didn't we got an answer on last
     // messagE?` classified `ack`, i.e. the complaint about the drop was eaten by
@@ -751,16 +751,16 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   // triage's cheap-model verdict is a cost heuristic, the tag is an instruction.
   if (tag.model) modelOverride = tag.model;
   // `tag.rest`, not msg.text: the tag is dispatcher syntax, so the session must
-  // not see it (it would read as part of the request — and on an unknown tag it
+  // not see it (it would read as part of the request, and on an unknown tag it
   // would be a stale instruction the run cannot act on).
   const line = route.kind === "followup" ? route.text : tag.rest;
   if (!(await appendInboxOnce(join(sessionDir(root, session), "inbox.jsonl"), join(root, "handled-update.hw"), line, msg, fromOperator))) { logRedacted("[poller] update " + msg.update_id + " already handled for " + session + " — replay skipped"); return; }
   // Everything above this line can throw BEFORE the append, and handleBatch's
-  // drop notice ("could not be queued — please resend") is truthful for those.
+  // drop notice ("could not be queued, please resend") is truthful for those.
   // The dispatch below is AFTER the message is durable, so its failure must not
   // escape wearing that label (CR coderabbit-1): telling the operator to resend
   // an already-enqueued message manufactures a duplicate. Reachable, not
-  // theoretical — with TELEGRAM_BATCH_QUIET_MS=0 the coalescer awaits dispatch
+  // theoretical, with TELEGRAM_BATCH_QUIET_MS=0 the coalescer awaits dispatch
   // inline, so a rejection propagates straight out of here. deliverAllPending
   // is the existing recovery path for exactly this: the line is in the inbox.
   if (meta.status === "idle" || meta.status === "done") {
@@ -775,12 +775,12 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
 // Map the auto-action.sh exit code to an audit result label. OP-AWARE:
 // merge-public relays merge-public-on-green.sh's OWN rc
 // space (0=merged, 12=no-open-pr, 15=head-moved, 16=not-green), which is disjoint
-// from arm-resume's — so an irreversible successful public merge is logged as
+// from arm-resume's, so an irreversible successful public merge is logged as
 // `merged`, not the arm-specific `armed`, and its refusal states keep their
 // meaning for forensic/result-keyed queries.
 function auditResult(op: string, rc: number): string {
   // restart has its own two-value space: it either got far enough to
-  // fire (0) or it did not. There is no "succeeded" beyond that — by the time a
+  // fire (0) or it did not. There is no "succeeded" beyond that, by the time a
   // restart has actually happened this process is gone and cannot log anything.
   if (op === "restart") {
     switch (rc) {
@@ -888,9 +888,9 @@ function confirmMatches(p: PendingConfirm | null, msg: DeliveredMsg, code: strin
 
 // The auto-command flow. Run FIRE-AND-FORGET off the ingest loop (via
 // the gate's `fire`) so a slow `--time smart` arm can't stall polling. A FORWARDED /arm
-// is refused + audited (the injection kill-switch — `root` reserved for future use);
-// otherwise the bridge invokes auto-action.sh and relays the result. Every attempt —
-// executed OR refused — is audited.
+// is refused + audited (the injection kill-switch, `root` reserved for future use);
+// otherwise the bridge invokes auto-action.sh and relays the result. Every attempt,
+// executed OR refused, is audited.
 export async function handleAutoCommand(root: string, msg: DeliveredMsg, route: Extract<Route, { kind: "auto" }>, deps: AutoCommandDeps): Promise<void> {
   const nowMs = deps.now ?? (() => Date.now());
   // The AUDIT is the security event and is written FIRST; the operator reply is
@@ -915,7 +915,7 @@ export async function handleAutoCommand(root: string, msg: DeliveredMsg, route: 
     return;
   }
   // restart is executed IN THIS PROCESS, not by auto-action.sh: rung 1
-  // must exit the caller. For rung 1 ORDERING IS LOAD-BEARING — ack, then audit, THEN fire. The reply is an
+  // must exit the caller. For rung 1 ORDERING IS LOAD-BEARING: ack, then audit, THEN fire. The reply is an
   // outbox APPEND (durable on disk); the running poller never gets to flush it,
   // because firing is exactly what kills the transport. The respawned poller drains
   // outbox.jsonl on its next tick, so the operator sees the ack a second or two
@@ -940,7 +940,7 @@ export async function handleAutoCommand(root: string, msg: DeliveredMsg, route: 
     const out = await deps.restart(route.arg);
     // Only reached when the fire FAILED (a successful rung 1 never returns).
     // Surface the rc rather than leaving the operator with an ack and a bridge
-    // that never went away — a silent no-op here is indistinguishable from a
+    // that never went away, a silent no-op here is indistinguishable from a
     // slow restart.
     if (out.rc !== 0) {
       await deps.audit({ chat_id: msg.chat_id, user: msg.from, forwarded: false, op: route.op, arg: route.arg, time: route.time, rc: out.rc, result: auditResult(route.op, out.rc) });
@@ -984,7 +984,7 @@ export async function handleAutoCommand(root: string, msg: DeliveredMsg, route: 
 // The real restart executor. Injected into handleAutoCommand so the
 // unit tests never bounce anything.
 //
-// Rung 1 — exit 0. supervisor.ts's main() loop respawns the poller immediately and
+// Rung 1, exit 0. supervisor.ts's main() loop respawns the poller immediately and
 // rewrites the pidfile; a >5s run resets its immediate-crash counter, so a healthy
 // bridge never walks toward POLLER_MAX_FAILS. This picks up anything re-read from
 // a FILE at startup (that includes TELEGRAM_AUTO_ACTIONS) but NOT
@@ -1005,9 +1005,9 @@ export function makeRestart(deps: { exit?: (code: number) => never } = {}): Rest
   };
 }
 
-// tail: last chunk of the run's stdout+stderr — persisted to run.log
+// tail: last chunk of the run's stdout+stderr, persisted to run.log
 // blocked: the run failed because the API blocked the model's OUTPUT under the
-// content-filtering policy (deterministic — retrying replays the same block).
+// content-filtering policy (deterministic, retrying replays the same block).
 export type RunResult = { code: number; capped: boolean; blocked?: boolean; timedOut?: boolean; pid: number; tail?: string };
 export type Runner = () => Promise<RunResult>;
 export type NowFn = () => string;   // ISO timestamp (injected for tests / resume-slot in prod)
@@ -1015,12 +1015,12 @@ export type NowFn = () => string;   // ISO timestamp (injected for tests / resum
 // Run one bounded session run and settle meta. Three outcomes:
 //   * BLOCKED (content-filter) -> park status=failed directly, no retry_at,
 //     fail_count cleared. The block is deterministic (every retry replays the same blocked
-//     output), so it parks immediately as "failed" in ONE settle write — it never transits
+//     output), so it parks immediately as "failed" in ONE settle write, it never transits
 //     the transient "capped" back-off (which would mislabel it + invite the pointless retry
 //     loop). A NEW operator message un-parks it via handleInbound's failed->idle reset.
 //   * UNsuccessful, not blocked (cap OR non-zero exit, incl. timeout=-1 / crash) -> back
 //     off: status=capped + retry_at. Treating any non-zero exit like a cap is what keeps the
-//     message durable — the caller commits the inbox cursor only on a successful run, so a
+//     message durable, the caller commits the inbox cursor only on a successful run, so a
 //     crashed/timed-out run leaves it uncommitted and `deliverAllPending` re-runs the same
 //     pending at retry_at instead of dropping it (the "capped" status doubles as the generic
 //     back-off state). (Re-running on still-queued inbox is the MAIN LOOP's job, not here.)
@@ -1048,7 +1048,7 @@ export type SendFn = (chat_id: number, text: string, replyToMessageId?: number, 
 // An outbox line may carry document_path (+ caption) instead of text; it is
 // delivered through sendDoc (sendDocument in prod) to the session's own chat. A document
 // that cannot be delivered (no sender, missing/oversize file, Bot API refusal) is told to
-// the chat as a text notice — never a silent drop — and the cursor still advances.
+// the chat as a text notice (never a silent drop), and the cursor still advances.
 export type SendDocFn = (chat_id: number, path: string, caption?: string) => Promise<boolean>;
 export const MAX_DOC_BYTES = 50 * 1024 * 1024;
 
@@ -1109,7 +1109,7 @@ export async function reconcile(root: string, isAlive: (pid: number) => boolean)
 // getUpdates in a catch) AND take every LATER record of the batch with it. Those
 // later records include operator messages that never reached the triage floor.
 // handleInbound's own I/O is the reachable thrower here
-// (ensureSession / writeMeta / appendLine — EPERM, ENOSPC, EISDIR); triage
+// (ensureSession / writeMeta / appendLine, EPERM, ENOSPC, EISDIR); triage
 // itself is fail-open. Losing ONE record loudly beats losing the rest silently.
 // A dropped record is still acked (see below), so a persistent fault cannot
 // re-deliver the same record forever.
@@ -1117,13 +1117,13 @@ export async function reconcile(root: string, isAlive: (pid: number) => boolean)
 // Containing the throw traded a loud crash-loop for a quiet one: before, a
 // persistent session-storage fault killed the poller over and over, which at
 // least LOOKED broken; contained, it would consume and discard batch after batch
-// while the bridge looked healthy — the precise failure signature this ticket
+// while the bridge looked healthy, the precise failure signature this ticket
 // exists to kill. So a drop tells the chat it happened. main() wires onDrop to a
 // DIRECT Telegram send rather than the session outbox, precisely so the notice
 // shares no state with the I/O whose failure it is reporting. onDrop's own
 // failure is caught and logged: a notice that cannot be delivered must not
 // abort the batch and strand the records behind it.
-// onDrop is FIRE-AND-FORGET BY SIGNATURE — it returns void and is never awaited.
+// onDrop is FIRE-AND-FORGET BY SIGNATURE, it returns void and is never awaited.
 // The notice goes over the network, and sendMessage
 // retries up to 5x honouring Telegram's UNCAPPED retry_after; awaiting it here
 // would let one rate-limited chat stall every later record in a batch the cursor
@@ -1188,17 +1188,17 @@ export function guarded(task: () => Promise<void>): () => void {
 }
 
 // Per-tick delivery scan: for every session, run any pending inbox lines via
-// runFn — telegram backlog, IPC bus-send (T6), or a due-capped retry. A capped
+// runFn: telegram backlog, IPC bus-send (T6), or a due-capped retry. A capped
 // session is SKIPPED until its retry_at passes, so the cap backoff holds;
 // every other session is run (runFn no-ops when nothing is pending).
 // isHeld: a session whose burst is still inside its quiet window
-// is SKIPPED here. Without this the coalescer would be pointless — handleInbound
+// is SKIPPED here. Without this the coalescer would be pointless, handleInbound
 // appends the line and holds the dispatch, then this scan, running later in the
 // SAME tick, would fire the run immediately and split the burst exactly as
 // before. The hold is bounded (max-hold cap), and the coalescer releases it on
 // an accepted dispatch, so a session can never be skipped here indefinitely.
 // A DEFERRED dispatch is re-held on purpose (see flushDue) so the burst's model
-// override survives the retry — that keeps the session skipped here for as long
+// override survives the retry, that keeps the session skipped here for as long
 // as the dispatcher is refusing it, which is precisely while a run for it is
 // already in flight or the concurrency cap is full. Both clear on their own, and
 // the coalescer retries every tick, so it is still bounded.
@@ -1207,8 +1207,8 @@ export async function deliverAllPending(root: string, runFn: (session: string) =
     const m = await readMeta(root, s);
     if (!m) continue;
     if (m.status === "capped" && !isRetryDue(m, now)) continue;
-    if (m.status === "failed") continue;   // retry cap exhausted — only a new message un-parks
-    if (isHeld(s)) continue;               // burst still landing — the coalescer owns this dispatch
+    if (m.status === "failed") continue;   // retry cap exhausted, only a new message un-parks
+    if (isHeld(s)) continue;               // burst still landing, the coalescer owns this dispatch
     await runFn(s);
   }
 }
@@ -1258,18 +1258,18 @@ export async function commitPending(root: string, session: string, nextPos: numb
 // commits ONLY after a SUCCESSFUL run (clean exit, no cap); an unsuccessful run (cap OR
 // non-zero exit / timeout / crash) does NOT commit, so the retry loop re-peeks the SAME
 // pending and reprocesses it instead of losing those messages. After a successful run,
-// drain by re-running — terminates when peekPending returns 0 (then reclaims the
+// drain by re-running, terminates when peekPending returns 0 (then reclaims the
 // fully-consumed inbox). runImpl is injected so the spawn/settle/commit logic
 // is unit-testable without launching a real claude.
 // Hard deadline wrapper. runSession's own 30-min timer used to fail
 // to settle (bare p.kill() leaves the claude tree alive on Windows → p.exited
-// never resolves → session stuck "running" — observed live 2026-06-10, DM wedged
+// never resolves → session stuck "running", observed live 2026-06-10, DM wedged
 // ~1.5h). The PRIMARY fix is run.ts killTree (taskkill /T on timeout); this race
 // is the settle BACKSTOP: a hung OR throwing runImpl resolves unsuccessful
 // (code -1) at the deadline so runAndSettle backs the session off (capped +
 // retry_at) and the pending stays uncommitted. Residual window:
 // if BOTH the tree-kill and the child's exit fail, an orphan could overlap the
-// post-retry_at re-run of the same session — accepted: taskkill /T /F makes that
+// post-retry_at re-run of the same session, accepted: taskkill /T /F makes that
 // double failure remote, and the overlap is bounded to one stale outbox append.
 const FAILED_RUN: RunResult = { code: -1, capped: false, blocked: false, pid: -1 };
 export function withDeadline(p: Promise<RunResult>, ms: number): Promise<RunResult> {
@@ -1286,20 +1286,20 @@ export function withDeadline(p: Promise<RunResult>, ms: number): Promise<RunResu
 const RUN_DEADLINE_MS = Number(process.env.RUN_TIMEOUT_MS ?? 30 * 60 * 1000) + 60 * 1000;
 
 // notify: called once per BACKOFF EPISODE when a run settles
-// unsuccessful — kind "cap" for a genuine usage cap (CAP_SENTINELS in run.ts),
-// kind "transient" for any other non-zero exit (server overload, timeout, crash)
-// — and with kind "giveup" once when the retry cap parks the session. The
+// unsuccessful, kind "cap" for a genuine usage cap (CAP_SENTINELS in run.ts),
+// kind "transient" for any other non-zero exit (server overload, timeout, crash),
+// and with kind "giveup" once when the retry cap parks the session. The
 // cap/transient split keeps the notice honest: a 529 Overloaded must not read as
 // a quota cap (transient mislabeled as cap). main
 // wires it to a direct poller-side sendMessage so the chat is told instead of
 // going silent. A clean run ends the episode. The episode set is in-memory: a
-// bridge restart may re-notice once — harmless.
+// bridge restart may re-notice once, harmless.
 export type NotifyKind = "cap" | "transient" | "giveup" | "blocked" | "stopped";
 export type NotifyFn = (session: string, retryAt: string, kind: NotifyKind) => Promise<void>;
 // noticeText: the operator-facing notice string per kind. Pure +
 // exported so the cap-vs-transient honesty (a 529 must say "NOT a usage cap",
 // never the cap wording) is unit-testable, and the `never` default makes a new
-// kind that forgets its notice a COMPILE error — not a silent transient mislabel
+// kind that forgets its notice a COMPILE error, not a silent transient mislabel
 // (the very class this notice split exists to kill). `when` is the pre-rendered
 // retry time; `maxRetries` only used by the giveup wording.
 export function noticeText(kind: NotifyKind, when: string, maxRetries: number): string {
@@ -1314,24 +1314,24 @@ export function noticeText(kind: NotifyKind, when: string, maxRetries: number): 
 }
 // Retry cap: a shipping-class ask that exceeds the bounded-run
 // deadline would otherwise loop forever (kill → 15-min backoff → re-peek the
-// SAME pending → restart from scratch — observed live: "ship 241+249" died at
+// SAME pending → restart from scratch, observed live: "ship 241+249" died at
 // the 30-min deadline repeatedly). After maxRetries consecutive failures the
 // session parks as status=failed: deliverAllPending stops offering it; the
 // pending stays uncommitted (nothing lost); a NEW operator message un-parks it
-// (handleInbound resets fail_count) — the operator decides retry vs terminal.
+// (handleInbound resets fail_count), the operator decides retry vs terminal.
 const MAX_RETRIES = Number(process.env.TELEGRAM_MAX_RETRIES ?? 3);
 // vaultFor: resolves the Obsidian-vault path a session's documents
 // are filed into, from its meta.chat_id (gate.vaultForChat over loaded access).
-// Optional — when absent or it returns null, the prompt carries no file-into-vault clause.
+// Optional, when absent or it returns null, the prompt carries no file-into-vault clause.
 export type VaultForFn = (chatId: number) => string | null;
 // cwdFor: resolves the REPO a session spawns in, from its meta.chat_id
-// (gate.cwdForChat over loaded access). Optional — absent or null means the
+// (gate.cwdForChat over loaded access). Optional, absent or null means the
 // session keeps the himmel checkout, exactly as before.
 export type CwdForFn = (chatId: number) => string | null;
 
 // ATTEST THE READ-ONLY FLOOR BEFORE GRANTING BYPASS (CR codex-adv-1).
 // A cwd route pairs `bypassPermissions` with the target repo's OWN default-deny
-// PreToolUse hook — that hook is the entire read-only floor, because himmel's
+// PreToolUse hook, that hook is the entire read-only floor, because himmel's
 // auto-approve hook does not load outside the himmel checkout. If the target has
 // no `.claude/settings.json`, there is no floor and bypass would run
 // Telegram-driven prompts with unrestricted host permissions. The pairing is
@@ -1341,11 +1341,11 @@ export type CwdForFn = (chatId: number) => string | null;
 // catches a stale, mistyped, or moved path, a settings file emptied or broken by
 // an edit, and a hook script deleted out from under its registration. It does not
 // defend against an operator who points `cwd` at a repo whose hook deliberately
-// allows everything — the trust model there is still "the operator wrote this
+// allows everything, the trust model there is still "the operator wrote this
 // file", the same one `vault` has relied on all along.
 //
 // BE PRECISE ABOUT WHAT IS ATTESTED: a mere existence
-// check was not enough — `{}` passed it, so an emptied or malformed settings file
+// check was not enough, `{}` passed it, so an emptied or malformed settings file
 // read as a floor and granted bypass with nothing enforcing it. What is verified
 // here is that a PreToolUse hook is REGISTERED and that the script it names is
 // on disk. What cannot be verified without executing it is that the hook actually
@@ -1359,7 +1359,7 @@ export function hasReadOnlyFloor(cwd: string): boolean {
   if (!Array.isArray(pre) || pre.length === 0) return false;
   for (const entry of pre) {
     // The matcher must actually cover Bash (CR codex-2). Without this, an
-    // UNRELATED registration — a hook matching only `Task`, say — counted as the
+    // UNRELATED registration (a hook matching only `Task`, say) counted as the
     // floor and unlocked bypass over the tool that matters. Bash is the minimum
     // because it is the tool a bounded GGS session runs hactl through, and the
     // one an injected prompt would reach for. An absent matcher means "all
@@ -1373,7 +1373,7 @@ export function hasReadOnlyFloor(cwd: string): boolean {
       if (h?.type !== "command" || typeof h?.command !== "string") continue;
       // The command is a shell line ("python .claude/hooks/guard.py"); the script
       // is the first token that looks like one. A registration naming a script
-      // that is NOT on disk is a dead hook — worse than no hook, because it reads
+      // that is NOT on disk is a dead hook, worse than no hook, because it reads
       // as configured.
       const script = h.command.split(/\s+/).find((t: string) => /\.(py|sh|mjs|cjs|js|ts)$/.test(t));
       if (script && existsSync(isAbsolute(script) ? script : join(cwd, script))) return true;
@@ -1381,7 +1381,7 @@ export function hasReadOnlyFloor(cwd: string): boolean {
   }
   return false;
 }
-// the bridge's own lean plugin profile — see plugin-profiles.json's
+// the bridge's own lean plugin profile, see plugin-profiles.json's
 // "telegram" entry for the full enable/mcpServers rationale (obsidian-triage
 // covers the Telegram content workload; telegram-himmel and
 // luna-correlate are deliberately excluded; qmd is the sole mcpServers entry).
@@ -1389,13 +1389,13 @@ const TELEGRAM_PROFILE = "telegram";
 
 // poller.ts used to statically import plugin-profiles.mjs ONCE
 // at process startup (the ESM module cache), while loadRegistry() re-reads
-// plugin-profiles.json fresh on every call below — so a merge changing BOTH
+// plugin-profiles.json fresh on every call below, so a merge changing BOTH
 // files together left a long-running bridge validating NEW json with a
 // STALE validator, failing every dispatch with "registry invalid" (or worse,
 // silently accepting something the new schema disallows) until an operator
 // restarted it, with nothing telling them. Fix: re-import the module fresh
 // per dispatch, cache-busted on the FILE'S OWN mtime (not wall-clock) so the
-// cache only grows on a real on-disk change, never per-request — and every
+// cache only grows on a real on-disk change, never per-request, and every
 // function (loadRegistry/validateRegistry/mcpServersForProfile/
 // collectMcpServerDefs) comes from the SAME fresh import, so they can never
 // drift out of sync with each other. plugin-profiles.mjs's STATIC local import is
@@ -1410,7 +1410,7 @@ const TELEGRAM_PROFILE = "telegram";
 // import() cache (measured: two imports of the same path differing only by
 // query string return the SAME module object), so a stale-mtime key would
 // silently never re-import. Instead, on a cache miss, copy the module's
-// CURRENT bytes to a uniquely-named file and import that — a genuinely
+// CURRENT bytes to a uniquely-named file and import that, a genuinely
 // distinct path forces a genuinely fresh module every time the source file's
 // mtime changes.
 type PluginProfilesModule = typeof import("../lanes/plugin-profiles.mjs");
@@ -1419,7 +1419,7 @@ const pluginProfilesModuleCache = new Map<string, Promise<PluginProfilesModule>>
 // modulePath can clean up the now-unreachable prior one (otherwise every distinct mtime leaks its tmp dir for the bridge's lifetime).
 const pluginProfilesTempDirs = new Map<string, string>();
 // plugin-profiles.mjs's local import graph, relative to its dir, copied beside it
-// when present (a single-file fixture has none) — see the lazy-graph note above.
+// when present (a single-file fixture has none), see the lazy-graph note above.
 const PLUGIN_PROFILES_LAZY_GRAPH = ["skill-listing.mjs", "role-requires.mjs", "skill-cost.mjs", "../lib/env-alias.mjs", "../lib/is-main.mjs"];
 export async function loadPluginProfilesModule(modulePath: string = join(REPO_ROOT, "scripts", "lanes", "plugin-profiles.mjs")): Promise<PluginProfilesModule> {
   const mtimeMs = (await stat(modulePath)).mtimeMs;
@@ -1445,7 +1445,7 @@ export async function loadPluginProfilesModule(modulePath: string = join(REPO_RO
       }
       return import(pathToFileURL(dest).href) as Promise<PluginProfilesModule>;
     })().catch((err) => {
-      // A failed copy/import must NOT stick — evict the
+      // A failed copy/import must NOT stick, evict the
       // rejected promise so the next dispatch retries instead of replaying
       // this same failure until modulePath's mtime happens to change again.
       pluginProfilesModuleCache.delete(cacheKey);
@@ -1469,14 +1469,14 @@ export async function loadPluginProfilesModule(modulePath: string = join(REPO_RO
 
 // Resolves the telegram profile's mcpServers allowlist (["qmd"]) into a
 // --mcp-config JSON payload, mirroring resolveProfileSettings's --settings
-// convention (an inline JSON string, not a file path — the claude CLI accepts
+// convention (an inline JSON string, not a file path, the claude CLI accepts
 // both). undefined when the profile declares no allowlist at all (distinct
 // from an explicit [], which would still apply --strict-mcp-config with zero
 // servers). Throws on an invalid registry, exactly like resolveProfileByName.
 async function resolveTelegramMcpConfig(cwd: string, lanesDir: string): Promise<string | undefined> {
   const { loadRegistry, validateRegistry, mcpServersForProfile, collectMcpServerDefs } = await loadPluginProfilesModule(join(lanesDir, "plugin-profiles.mjs"));
   // The copied module runs from a tmp dir, so its own SCRIPT_DIR-relative
-  // REGISTRY default resolves to nothing there — pass the real json path
+  // REGISTRY default resolves to nothing there, pass the real json path
   // explicitly (loadRegistry accepts one) rather than relying on that default.
   const registry = loadRegistry(join(lanesDir, "plugin-profiles.json"));
   const errors = validateRegistry(registry);
@@ -1529,7 +1529,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     if (lockdownEnabled(root)) return;
     const sd = sessionDir(root, session);
     const parked = await readMeta(root, session);
-    if (parked?.status === "failed") {                          // retry cap exhausted — wait for a new message
+    if (parked?.status === "failed") {                          // retry cap exhausted, wait for a new message
       // a stop on a parked session still consumes its marker and the queued work, or it would eat the operator's retry
       if (existsSync(join(sd, "stop"))) {
         await unlink(join(sd, "stop")).catch(() => {});
@@ -1562,7 +1562,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     // `|| null` normalizes a falsy vault ("" from a blank access.json `vault:`) to
     // null, so the nullish-coalescing `?? repoCwd` below stays coherent with the
     // truthy `vault ?` checks (an empty string would otherwise spawn in cwd "" with
-    // no bypass and no file-into-vault clause — an incoherent posture).
+    // no bypass and no file-into-vault clause, an incoherent posture).
     const vault = (vaultFor && parked ? vaultFor(parked.chat_id) : null) || null;
     // Same `|| null` normalization as vault: a blank access.json `cwd:` must read
     // as "unset", not as a spawn in cwd "".
@@ -1574,12 +1574,12 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     const routedCwd = routeRefused ? null : configuredCwd;
     // spawn the session in the chat's vault cwd when one is configured,
     // so the vault's own .claude/hooks load (e.g. a medical PHI-egress floor). The
-    // Jira-CLI path stays on repoCwd (himmel) — `dist/` only exists there. Vault
+    // Jira-CLI path stays on repoCwd (himmel), `dist/` only exists there. Vault
     // sessions get bypassPermissions because himmel's auto-approve hook isn't loaded
     // under the vault cwd; the vault's hooks still enforce containment.
     // a cwd-routed chat (the GGS grow tents) spawns in that REPO instead,
-    // read-only. Same bypass rationale — himmel's auto-approve hook isn't loaded
-    // there either — with the repo's own default-deny PreToolUse hook as the floor,
+    // read-only. Same bypass rationale, himmel's auto-approve hook isn't loaded
+    // there either, with the repo's own default-deny PreToolUse hook as the floor,
     // keyed on the markers below. The cwd route wins over the vault for the spawn
     // dir AND suppresses the filing clause: `defaultVault` is pinned live, so
     // `vault` is non-null for every chat and would otherwise re-attach Obsidian
@@ -1587,7 +1587,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     //
     // A REFUSED route gets its OWN branch, and that is load-bearing.
     // Simply nulling routedCwd fell through to the vault
-    // branch below — and `defaultVault` is pinned live, so a refused TENT route
+    // branch below, and `defaultVault` is pinned live, so a refused TENT route
     // would have spawned in the LUNA VAULT, with bypassPermissions AND the
     // Obsidian filing clause re-attached. A misconfigured grow-tent path would
     // have put a Telegram-driven session inside the personal vault: strictly
@@ -1614,13 +1614,13 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     const paths: BusPaths = { inbox: join(sd, "inbox.pending.jsonl"), outbox: join(sd, "outbox.jsonl"), context: join(sd, "context.md"), cwd: repoCwd, sessionCwd };
     // the profile itself (TELEGRAM_PROFILE's enable list) is the
     // BRIDGE's own fixed lean set, independent of which cwd/vault this dispatch
-    // routes into — but the deny-by-default baseline (opts.installed) must be
+    // routes into, but the deny-by-default baseline (opts.installed) must be
     // discovered from sessionCwd, not repoCwd (CR codex-1): resolveTelegramProfileSettings
     // widens the deny-by-default set with whatever is enabled in the passed
     // cwd's OWN settings ancestry. When routedCwd/vault sends this spawn into a
     // directory other than the himmel checkout (grow-tent repo, luna vault),
     // discovering off repoCwd would miss plugins enabled only in THAT
-    // directory's settings — leaving them unmentioned in the injected map and
+    // directory's settings, leaving them unmentioned in the injected map and
     // free to inherit "enabled" from Claude Code's own resolution for the
     // actual session cwd, defeating deny-by-default for exactly the routed
     // spawns that most need it.
@@ -1637,7 +1637,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
       if (lockdownEnabled(root)) { lockedAtSpawn = true; return Promise.resolve({ code: 0, capped: false, pid: 0, tail: "locked, reset at the station" }); }
       return withDeadline(runImpl(buildPrompt(session, paths, filingVault, !!routedCwd, parked?.chat_id), sessionCwd, permissionMode, undefined, modelOverride, settings, undefined, extraEnv, mcpConfig), deadlineMs);
     }, undefined, retryAt);
-    // run.log: persist the run's output tail — before this, a dead
+    // run.log: persist the run's output tail. Before this, a dead
     // run's stdout/stderr vanished and failures were undebuggable
     const logHead = `[${new Date().toISOString()}] session=${session} code=${res.code} capped=${res.capped} blocked=${res.blocked ?? false} pid=${res.pid}\n`;
     await atomicWrite(join(sd, "run.log"), logHead + (res.tail ?? "(no output captured — run hung or was killed at the deadline)") + "\n");
@@ -1671,7 +1671,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
       // takes it; the coalescer's own dispatch carries the model). That gap
       // leaked the burst model (second codex pass): lines
       // arriving mid-run are held by the coalescer with their resolved override,
-      // and this drain would consume them first — with no override at all —
+      // and this drain would consume them first (with no override at all)
       // before the dispatcher cleared in-flight and the coalescer-owned retry
       // could run. The held burst then ran on the DEFAULT model, which is the
       // same silent cost regression the re-hold above exists to prevent, just
@@ -1679,7 +1679,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
       //
       // Skipping while held is not a delay: the coalescer flushes on its own
       // timer (bounded by maxHoldMs), and its dispatch lands after this run's
-      // promise settles and clears in-flight — so the lines run with the model
+      // promise settles and clears in-flight, so the lines run with the model
       // the burst actually resolved to. Guarding all three consumers closes the
       // set; there is no fourth reader of the pending slice.
       if (!isHeld(session)) await runOnce(session);
@@ -1692,7 +1692,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     const fails = (m.fail_count ?? 0) + 1;
     if (fails >= maxRetries) {
       // A message that arrived DURING this final failing run must
-      // not be stranded under the park — re-peek; growth = the operator spoke,
+      // not be stranded under the park, re-peek; growth = the operator spoke,
       // treat it as an un-park (same semantics as handleInbound's failed reset)
       const again = await peekPending(root, session);
       if (again.count > count && (!isTicket || await pendingHasOperatorLine(sd, count))) {
@@ -1707,7 +1707,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
       await writeMeta(root, session, { ...m, fail_count: fails });
       if (!noticed.has(session)) {                              // first failure of an episode → tell the chat
         noticed.add(session);
-        // genuine cap vs generic transient failure (529, timeout, crash) — keep the notice honest
+        // genuine cap vs generic transient failure (529, timeout, crash), keep the notice honest
         await safeNotify(session, m.retry_at ?? "", res.capped ? "cap" : "transient");
       }
     }
@@ -1732,12 +1732,12 @@ export async function signalTyping(root: string, isInFlight: (s: string) => bool
 // the caller awaiting them: per-session serialization via an in-memory in-flight
 // set (the CAS the single-threaded loop relied on), plus a global cap so
 // concurrent claude children can't burn the Max quota in parallel. An over-cap
-// or overlapping dispatch is a NO-OP — deliverAllPending re-offers every pending
+// or overlapping dispatch is a NO-OP, deliverAllPending re-offers every pending
 // session each tick, so deferred sessions are picked up when a slot frees.
 // Returns whether the run was ACCEPTED. The two no-op paths (already in flight,
 // global cap reached) are not failures, but the caller has to be able to tell
-// them apart from an accepted run: a deferred dispatch carries state — the
-// coalesced model override — that is lost unless whoever holds it keeps it.
+// them apart from an accepted run: a deferred dispatch carries state (the
+// coalesced model override) that is lost unless whoever holds it keeps it.
 export type Dispatcher = ((session: string, modelOverride?: ModelOverride) => Promise<boolean>)
   & { inFlightCount: () => number; isInFlight: (s: string) => boolean };
 // a run that THROWS (a setup failure before the worker spawns,
@@ -1753,13 +1753,13 @@ export function makeDispatcher(runFn: RunFn, cap: number = positiveEnvInt(proces
   const inFlight = new Set<string>();
   const streaks = new Map<string, { error: string; count: number; alerted: boolean }>();
   // `modelOverride` must be declared AND forwarded. Dispatcher is RunFn, which
-  // takes it, but the `as Dispatcher` cast below silences the arity mismatch —
+  // takes it, but the `as Dispatcher` cast below silences the arity mismatch,
   // so a one-parameter dispatch type-checks while dropping the argument on the
   // floor. That is exactly how burst coalescing lost it: flushDue computes the
   // strongest model across the burst, passes it here, and it went nowhere.
   const dispatch = (async (session: string, modelOverride?: ModelOverride): Promise<boolean> => {
     if (inFlight.has(session)) return false;      // per-session serialization
-    if (inFlight.size >= cap) return false;       // cap reached — next tick retries
+    if (inFlight.size >= cap) return false;       // cap reached, next tick retries
     inFlight.add(session);
     runFn(session, modelOverride)
       .then(() => { streaks.delete(session); })
@@ -1785,7 +1785,7 @@ export function makeDispatcher(runFn: RunFn, cap: number = positiveEnvInt(proces
 }
 
 // --- Burst coalescing ---
-// Messages sent in close proximity — especially a bulk of attachments — used to
+// Messages sent in close proximity (especially a bulk of attachments) used to
 // land as N cold runs answering N fragments of one intent. Runs were already
 // serialized per session and peekPending already takes the whole unconsumed
 // slice, so the machinery to batch existed; what was missing is a QUIET PERIOD.
@@ -1797,22 +1797,22 @@ export function makeDispatcher(runFn: RunFn, cap: number = positiveEnvInt(proces
 //     sending 3 PDFs usually produces 2-3 separate ticks. Only a timer fixes it.
 //
 // So this wraps the dispatcher: a request RECORDS intent instead of firing, and
-// the hold is released once the session has been quiet for quietMs — or once
+// the hold is released once the session has been quiet for quietMs, or once
 // maxHoldMs has elapsed since the first message, so a steady trickle can never
 // starve the session (that cap still applies).
 //
 // Flushing is driven by an explicit `flushDue(now)` rather than per-session
 // setTimeout: it is deterministic to test, leaks no timers, and matches the
 // typing/outbox timers this file already runs. It CANNOT be driven off the main
-// loop's tick — that blocks in a 30s long-poll, which would stretch a 4s window
-// to 30s — so main wires it to its own short interval.
+// loop's tick, that blocks in a 30s long-poll, which would stretch a 4s window
+// to 30s, so main wires it to its own short interval.
 //
 // Auto-ops (/arm, /mergepub, /restart) never reach here: handleInbound fires
 // them and returns before the run call, so a privileged op is never buffered.
 // That is asserted by test, not just by reading.
 // `explicit` marks a modelOverride the OPERATOR typed as a `model:`
 // tag, as opposed to one triage derived. Only the coalescer needs the
-// distinction — it decides which of a burst's models survives — so it stays off
+// distinction (it decides which of a burst's models survives), so it stays off
 // RunFn, whose callers have no such choice to express.
 export type BurstCoalescer = ((session: string, modelOverride?: ModelOverride, explicit?: boolean) => Promise<void>) & {
   isHolding: (s: string) => boolean;
@@ -1824,9 +1824,9 @@ export type BurstCoalescer = ((session: string, modelOverride?: ModelOverride, e
 // (NaN comparisons are always false, which would hold a burst forever).
 //
 // The empty/whitespace guard is load-bearing:
-// Number("") is 0, NOT NaN — and 0 is a MEANINGFUL value here (it disables
-// coalescing). So `TELEGRAM_BATCH_QUIET_MS=` — set but empty, which is what a
-// commented-out or half-edited .env line produces — would have silently turned
+// Number("") is 0, NOT NaN, and 0 is a MEANINGFUL value here (it disables
+// coalescing). So `TELEGRAM_BATCH_QUIET_MS=` (set but empty, which is what a
+// commented-out or half-edited .env line produces) would have silently turned
 // burst coalescing OFF while looking configured, instead of falling back to the
 // default. An empty value is absence, not a request for zero.
 function positiveEnvMs(raw: string | undefined, fallback: number): number {
@@ -1836,23 +1836,23 @@ function positiveEnvMs(raw: string | undefined, fallback: number): number {
 }
 
 // A concurrency cap is a positive INTEGER, and unlike the millisecond periods
-// above, 0 is not a meaningful setting here — it is a stall. Both malformed
+// above, 0 is not a meaningful setting here. It is a stall. Both malformed
 // shapes fail, in opposite and equally bad directions:
 //   TELEGRAM_MAX_CONCURRENT_RUNS=   -> Number("") is 0 -> cap 0 -> EVERY dispatch
 //     defers. The coalescer re-holds, deliverAllPending skips held sessions, and
 //     the bridge goes quiet while looking configured.
 //   TELEGRAM_MAX_CONCURRENT_RUNS=tow -> NaN -> `inFlight.size >= NaN` is always
 //     false, so the cap is silently REMOVED and unbounded claude children run in
-//     parallel — precisely what the cap exists to prevent, and it burns the Max
+//     parallel, precisely what the cap exists to prevent, and it burns the Max
 //     quota rather than merely stalling.
 // A fractional value is rejected too: "2.5" is not a number of concurrent runs.
-// Same contract as the interval periods — malformed means default, and an empty
+// Same contract as the interval periods, malformed means default, and an empty
 // value is absence rather than a request for zero.
 //
 // The bound at the TOP matters as much as the one at the bottom, and for the
 // same reason intervalEnvMs carries a ceiling: a fat-fingered value with a few
 // extra digits is a typo, not a request. `Number()` alone cannot see the
-// difference — Number("1e6") is 1000000 and Number.isInteger says yes — so an
+// difference (Number("1e6") is 1000000 and Number.isInteger says yes), so an
 // exponent or an over-long digit string would restore precisely the unbounded
 // parallelism the cap exists to prevent, while looking configured. Hence a
 // strict decimal parse (no exponent, no hex, no sign, no separators) plus a
@@ -1870,28 +1870,28 @@ function positiveEnvInt(raw: string | undefined, fallback: number): number {
 
 // Interval PERIODS. Same operator-typo hazard as
 // above, worse consequence: setInterval clamps a 0/NaN period to ~1ms, so an
-// unvalidated value does not fall back to the default — it spins the sweep at
+// unvalidated value does not fall back to the default, it spins the sweep at
 // a thousand ticks a second. positiveEnvMs already turns ""/NaN/negative into
 // the fallback, but it PERMITS 0, which is meaningful for a quiet WINDOW
 // (0 disables coalescing) and never for a timer.
 //
-// So a period under 1ms falls back — it does NOT floor to 1 (codex-adv round).
+// So a period under 1ms falls back, it does NOT floor to 1 (codex-adv round).
 // The public-CR patch proposed `Math.max(1, positiveEnvMs(…))`, which keeps the
 // worst case intact: `TELEGRAM_FLUSH_MS=0` would still be a 1ms hot loop
 // hammering the Telegram API and the outbox sweep, just spelled differently.
-// Nothing here reads 0 as "disable the timer" — the timers are unconditional —
+// Nothing here reads 0 as "disable the timer" (the timers are unconditional)
 // so there is no operator intent to honour, only a bad value to reject. That
 // makes sub-1ms exactly like "" and NaN: absence, and absence means default.
 //
 // The UPPER bound is the same hazard wearing the opposite disguise (verified on bun 1.3.14): setInterval keeps its delay in a signed
-// 32-bit int, so anything above 2147483647 does not become a long interval —
+// 32-bit int, so anything above 2147483647 does not become a long interval,
 // it warns TimeoutOverflowWarning and is set to 1. A fat-fingered env value
 // with a few extra digits therefore lands on the SAME 1ms hot loop as `=0`.
 // Both ends fall back rather than clamp, for the same reason: an
 // out-of-range period is a typo, and a typo means default.
 // A FRACTIONAL period falls back too. Not because it is a
 // new hot-loop class — setInterval truncates, so 1.5 becomes 1, which is no
-// worse than the 1 this function already permits outright — but because
+// worse than the 1 this function already permits outright, but because
 // silently truncating is the one input shape that did not follow the contract
 // the rest of the function states: a period that is not a whole millisecond is
 // malformed, and malformed means default. Without it "0.4" fell back while
@@ -1905,8 +1905,8 @@ export function intervalEnvMs(raw: string | undefined, fallback: number): number
 
 // Burst WINDOWS (public-CR round: the one env class here that never got a
 // ceiling). positiveEnvMs alone accepts any finite non-negative value, so
-// `TELEGRAM_BATCH_MAX_HOLD_MS=300000000` — a fat-fingered 30000 with four extra
-// digits — parks a burst for three and a half DAYS. That is exactly the
+// `TELEGRAM_BATCH_MAX_HOLD_MS=300000000` (a fat-fingered 30000 with four extra
+// digits) parks a burst for three and a half DAYS. That is exactly the
 // starvation the max-hold cap exists to prevent, arriving through the cap's own
 // setting. positiveEnvInt and intervalEnvMs both grew ceilings for this reason;
 // the windows were the gap.
@@ -1915,7 +1915,7 @@ export function intervalEnvMs(raw: string | undefined, fallback: number): number
 // documented escape hatch back to dispatch-per-message (see makeBurstCoalescer),
 // and maxHoldMs=0 flushes on the next tick. So this floors at 0, not 1.
 //
-// The ceiling is a fat-finger guardrail, not a tuning limit — 10 minutes is far
+// The ceiling is a fat-finger guardrail, not a tuning limit, 10 minutes is far
 // past any window that leaves a chat bridge feeling responsive (the defaults are
 // 4s and 30s), while still catching the extra-digit class the finding names. A
 // deployment that genuinely wants a longer hold is asking for a different
@@ -1927,7 +1927,7 @@ export function windowEnvMs(raw: string | undefined, fallback: number): number {
 }
 
 // `dispatch` returns `false` when it DEFERRED the run (Dispatcher). A plain RunFn
-// returning Promise<void> is still accepted — `undefined` is not `false`, so it
+// returning Promise<void> is still accepted, `undefined` is not `false`, so it
 // reads as "accepted", which is the right default for a caller that cannot defer.
 export function makeBurstCoalescer(
   dispatch: (session: string, modelOverride?: ModelOverride) => Promise<boolean | void>,
@@ -1943,7 +1943,7 @@ export function makeBurstCoalescer(
   const holds = new Map<string, Hold>();
 
   const request = (async (session: string, modelOverride?: ModelOverride, explicit = false): Promise<void> => {
-    // quietMs=0 disables coalescing entirely — an explicit escape hatch back to
+    // quietMs=0 disables coalescing entirely, an explicit escape hatch back to
     // the old dispatch-per-message behaviour.
     if (quietMs <= 0) { await dispatch(session, modelOverride); return; }
     const t = nowFn();
@@ -1956,7 +1956,7 @@ export function makeBurstCoalescer(
       //
       // An OPERATOR tag is exempt. The rule above exists to undo a
       // TRIAGE downgrade; applied to `model:sonnet`, it would silently discard a
-      // choice the operator typed the moment any untagged line joined the burst —
+      // choice the operator typed the moment any untagged line joined the burst,
       // and a burst is the normal shape of chat. An explicit tag later in the
       // burst still replaces an earlier one (last tag wins).
       if (explicit) { cur.model = modelOverride; cur.explicit = true; }
@@ -1978,27 +1978,27 @@ export function makeBurstCoalescer(
       //
       // The re-hold is the load-bearing part. Letting the
       // hold stay dropped falls back on deliverAllPending re-offering the
-      // session — the pre-existing safety net — but that net calls `runFn(s)`
+      // session (the pre-existing safety net), but that net calls `runFn(s)`
       // with NO model override and never re-triages, so a deferred spawn-low
       // burst came back as a DEFAULT-model run. That is a silent cost
       // regression, and it bit exactly under load, when the cap is what caused
       // the deferral in the first place. Keeping the hold keeps `h.model` with
       // it, and flushDue retries on the next tick because the hold is already
       // past due. deliverAllPending skips a held session, so ownership stays
-      // here rather than being split — which is the point: only the holder
+      // here rather than being split, which is the point: only the holder
       // still knows what model the burst resolved to.
       holds.delete(session);
       // Isolate per-session failures: one session's
       // dispatch throwing must not abort the sweep and delay every OTHER
       // already-due session to the next tick. A THROW deliberately does not
-      // re-hold — the safety net takes it, as before. Re-holding a dispatch
+      // re-hold, the safety net takes it, as before. Re-holding a dispatch
       // that throws every tick would spin forever on the same session.
       try {
         if (await dispatch(session, h.model) === false) {
           // MERGE, never overwrite. The hold
           // was deleted before the await, so a message arriving DURING it finds
           // no hold and starts a fresh one. Blindly re-setting the snapshot
-          // would drop that message's contribution — and in the dangerous
+          // would drop that message's contribution, and in the dangerous
           // direction: a spawn-high line landing mid-await would be clobbered
           // back to the snapshot's "haiku", which is exactly the downgrade the
           // strongest-model rule exists to prevent. It would also rewind
@@ -2015,12 +2015,12 @@ export function makeBurstCoalescer(
             // strongest-model rule below silently downgrades an operator tag on
             // the deferred path: an explicit `sonnet` hold plus one untagged
             // message arriving DURING the awaited dispatch retried on the
-            // default model — reachable exactly when the concurrency cap is what
+            // default model, reachable exactly when the concurrency cap is what
             // caused the deferral. `cur` is the NEWER hold (h was snapshotted
             // before the await), so it wins when both are explicit; an older
             // explicit tag otherwise survives later untagged input; the
             // strongest-model rule applies only when neither is explicit.
-            if (cur.explicit) { /* newer explicit tag wins — keep cur.model */ }
+            if (cur.explicit) { /* newer explicit tag wins, keep cur.model */ }
             else if (h.explicit) { cur.model = h.model; cur.explicit = true; }
             else if (h.model === undefined || cur.model === undefined) cur.model = undefined;
           }
@@ -2035,7 +2035,7 @@ export function makeBurstCoalescer(
 
 // In-loop watchdog: a session stuck status=running that THIS poller
 // is not actually running (crashed previous incarnation, or a settle that never
-// happened) is reset to idle so deliverAllPending can re-run its pending — no
+// happened) is reset to idle so deliverAllPending can re-run its pending, no
 // bridge restart needed. The in-memory in-flight set is the liveness truth;
 // startup reconcile() (pid-based) still covers the cross-process cold start.
 export async function sweepStuckRunning(root: string, isInFlight: (s: string) => boolean, sessions: () => Promise<string[]>): Promise<void> {
@@ -2047,12 +2047,12 @@ export async function sweepStuckRunning(root: string, isInFlight: (s: string) =>
 }
 
 // Default retention window: 7 days. Long enough to never delete an in-flight
-// (unconsumed) attachment — unprocessed messages are retried within minutes —
+// (unconsumed) attachment (unprocessed messages are retried within minutes)
 // while bounding disk growth to ~0.5-1 GB/year at moderate photo+voice volume.
 // Only a finite POSITIVE number overrides the default: empty string and NaN
 // fall through, and a negative value would flip the cutoff into the future
 // (sweeping everything) while Math.min would turn the daily timer into a
-// tight loop — so it must be rejected here, not downstream.
+// tight loop, so it must be rejected here, not downstream.
 export function resolveRetentionMs(raw: string | undefined): number {
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : 7 * 24 * 60 * 60 * 1000;
@@ -2061,7 +2061,7 @@ export const ATTACHMENT_RETENTION_MS = resolveRetentionMs(process.env.TELEGRAM_A
 
 // Age-based GC for the attachments/ directory.
 // Deletes files whose mtime is older than `maxAgeMs`. Only files at the
-// top level of `dir` are swept — no subdirectories. Errors on individual
+// top level of `dir` are swept, no subdirectories. Errors on individual
 // files are logged and skipped so a single bad entry never aborts the sweep.
 export async function sweepAttachments(dir: string, maxAgeMs: number = ATTACHMENT_RETENTION_MS): Promise<number> {
   let entries: string[];
@@ -2081,7 +2081,7 @@ export async function sweepAttachments(dir: string, maxAgeMs: number = ATTACHMEN
 
 // Bridge config file. Until now the ONLY key ever read out of
 // ~/.claude/channels/telegram/.env was TELEGRAM_BOT_TOKEN, while the shipped docs
-// told operators to set TELEGRAM_AUTO_ACTIONS there too — so a correctly-edited
+// told operators to set TELEGRAM_AUTO_ACTIONS there too, so a correctly-edited
 // .env enabled nothing and `/mergepub` silently routed as chat, twice. Every
 // other knob is still process.env-only and stays that way; these two keys are the
 // ones the docs point at the file for.
@@ -2094,7 +2094,7 @@ export const BRIDGE_ENV_KEYS = ["TELEGRAM_BOT_TOKEN", "TELEGRAM_AUTO_ACTIONS"] a
 export type BridgeEnvKey = (typeof BRIDGE_ENV_KEYS)[number];
 
 // Strips ONE layer of matching surrounding quotes. dotenv-style files quote
-// values routinely, and an unstripped `"arm-resume"` is not a known op token —
+// values routinely, and an unstripped `"arm-resume"` is not a known op token,
 // it would parse to the empty set, which is the exact silent-nothing this ticket
 // exists to kill.
 function unquote(v: string): string {
@@ -2105,14 +2105,14 @@ function unquote(v: string): string {
 // Duplicate-key precedence, line by line. The two keys need OPPOSITE rules, and
 // picking one for both is wrong in a way that bites:
 //
-//   TELEGRAM_BOT_TOKEN — FIRST NON-EMPTY wins (the rule
+//   TELEGRAM_BOT_TOKEN, FIRST NON-EMPTY wins (the rule
 //     scripts/lib/load-dotenv.sh:62-76 already implements). onboard-telegram.{sh,ps1}
 //     scaffolds a literal empty `TELEGRAM_BOT_TOKEN=` placeholder, so an operator who
 //     APPENDED the real token instead of editing the placeholder has a working bridge
 //     today; letting the empty first line win would abort startup and take the whole
 //     bridge down on upgrade. An empty assignment must never mask a real one.
 //
-//   TELEGRAM_AUTO_ACTIONS — LAST assignment wins, empty included. This is a
+//   TELEGRAM_AUTO_ACTIONS, LAST assignment wins, empty included. This is a
 //     CAPABILITY flag, so the failure that matters is the opposite one: with
 //     first-wins, `TELEGRAM_AUTO_ACTIONS=merge-public` followed by an appended
 //     ``, `off`, or narrower value would leave the public-merge capability live
@@ -2140,7 +2140,7 @@ export function parseBridgeEnv(txt: string): Partial<Record<BridgeEnvKey, string
   return out;
 }
 
-// A real process env var still WINS over the file — the launching shell is the
+// A real process env var still WINS over the file, the launching shell is the
 // more specific scope, and that is the precedence the rest of the bridge assumes.
 //
 // Only TELEGRAM_AUTO_ACTIONS accepts a process-env override. TELEGRAM_BOT_TOKEN is
@@ -2151,20 +2151,20 @@ export function parseBridgeEnv(txt: string): Partial<Record<BridgeEnvKey, string
 // `.env` (see the jira-nudge block in .env.example), which is a different
 // credential from the poller's. Letting the process env win would mean that
 // launching the bridge from any shell that had sourced the repo `.env`
-// authenticates the poller AS THE RELAY BOT — a deaf bridge, or two consumers
+// authenticates the poller AS THE RELAY BOT, a deaf bridge, or two consumers
 // competing for the same getUpdates offset, depending on which token it grabbed.
 // The dedicated bridge file is the only correct source for that credential.
 //
 // For TELEGRAM_AUTO_ACTIONS the override is the point, and an EMPTY value counts:
 // `TELEGRAM_AUTO_ACTIONS=` in the launching shell is the one-run kill switch, so
-// treating it as "unset" would leave the file's `merge-public` live — a fail-OPEN
+// treating it as "unset" would leave the file's `merge-public` live, a fail-OPEN
 // on the privileged direction.
 const PROCESS_OVERRIDABLE: ReadonlySet<BridgeEnvKey> = new Set<BridgeEnvKey>(["TELEGRAM_AUTO_ACTIONS"]);
 
 // `source` records WHERE each effective value came from, so a startup warning can
 // point the operator at the thing they actually have to edit. Reporting the file
 // path for a value the process env supplied would send them to fix the wrong
-// place — they would edit the file, restart, and the process value would win again.
+// place, they would edit the file, restart, and the process value would win again.
 export type BridgeEnvSource = "process env" | "file";
 export type LoadedBridgeEnv = Partial<Record<BridgeEnvKey, string>> & {
   path: string;
@@ -2181,7 +2181,7 @@ export async function loadBridgeEnv(): Promise<LoadedBridgeEnv> {
     if (!PROCESS_OVERRIDABLE.has(key)) continue;
     const live = process.env[key];
     if (live === undefined) continue;
-    merged[key] = live;          // "" included — the kill switch
+    merged[key] = live;          // "" included, the kill switch
     source[key] = "process env";
   }
   if (!merged.TELEGRAM_BOT_TOKEN) throw new Error("TELEGRAM_BOT_TOKEN not found in " + envPath);
@@ -2199,10 +2199,10 @@ async function sessionsList(root: string): Promise<string[]> {
 
 // Reply via the originating chat's outbox: consistent with every other
 // operator-facing message in the bridge (send-then-commit durability + per-chat throttle
-// via flushOutboxes), and — unlike a direct sendMessage in the ingest loop — it does not
+// via flushOutboxes), and (unlike a direct sendMessage in the ingest loop) it does not
 // block polling. Routes to the SAME session the chat uses (group_<id> for a group, so a
 // group `/arm` reply lands in that group and its per-group context is preserved;
-// __chat__ for a DM) — mirrors handleInbound's chatSession routing.
+// __chat__ for a DM), mirrors handleInbound's chatSession routing.
 async function appendOutboxLine(root: string, chat_id: number, line: object): Promise<void> {
   const session = chat_id < 0 ? `group_${chat_id}` : "__chat__";
   const { created } = await ensureSession(root, session);
@@ -2256,8 +2256,8 @@ export const makeSendDoc = (token: string, root: string, operatorChat: number | 
 
 // --- getUpdates outage handling ---
 // Before this, a non-ok getUpdates response (e.g. a Telegram-API-side Bad
-// Gateway storm) returned [] silently and the main loop's catch — the ONLY
-// place that slept — was never reached, so the loop re-hit the API every tick
+// Gateway storm) returned [] silently and the main loop's catch (the ONLY
+// place that slept) was never reached, so the loop re-hit the API every tick
 // with zero delay for as long as the outage lasted. getUpdates now throws on
 // non-ok (telegram-api.ts), routing it through the same catch as a network
 // error; these two pure helpers decide how long to back off and when a
@@ -2272,14 +2272,14 @@ export function getUpdatesBackoffMs(consecutiveFails: number): number {
 }
 
 // How long getUpdates has to be failing continuously before the outage is
-// worth a loud log line (constant, not env-tunable — this is a fixed
+// worth a loud log line (constant, not env-tunable, this is a fixed
 // observability threshold, not an operator-facing knob).
 export const OUTAGE_ALERT_AFTER_MS = 5 * 60 * 1000;
 
 // Pure + testable without real timers. `outageStartedAt` is the ms timestamp of
 // the first consecutive failure in the current episode; `lastAlertAt` is null
 // until the first alert fires. True once the outage has run >= OUTAGE_ALERT_AFTER_MS
-// AND (no alert has fired yet OR a full interval has passed since the last one) —
+// AND (no alert has fired yet OR a full interval has passed since the last one),
 // so a stuck outage keeps re-announcing itself at a bounded rate (a later reader
 // can see it was still down, not just that it once was) instead of alerting once
 // and going silent for the rest of the outage.
@@ -2297,7 +2297,7 @@ export async function main(): Promise<void> {
   const access = await loadAccess();
   const allow = makeAllow(access);
   // require-mention gate needs the bridge's own username to recognize a
-  // mention. Resolved at startup, not per-message — best effort:
+  // mention. Resolved at startup, not per-message, best effort:
   // a failed lookup fails OPEN (every group behaves exactly as before)
   // rather than the bridge refusing to start. A transient startup failure is
   // retried on an unref'd timer (CR codex-1) so one flaky getMe cannot
@@ -2319,7 +2319,7 @@ export async function main(): Promise<void> {
   }
   const requireMentionFor: RequireMentionFn = (chatId) => requireMentionForChat(access, chatId);
   // cap/transient/giveup/blocked notice: poller-side direct
-  // send — works exactly when the claude layer can't run (quota cap), so failure
+  // send, works exactly when the claude layer can't run (quota cap), so failure
   // is never silent. Text per kind lives in the exported pure noticeText().
   const notify: NotifyFn = async (session, retryAt, kind) => {
     const m = await readMeta(root, session);
@@ -2347,7 +2347,7 @@ export async function main(): Promise<void> {
   };
   const dispatch = makeDispatcher(runFn, undefined, repeatedFailureAlert);
   await reconcile(root, isAlive);
-  // photo downloads land in a shared root-level attachments/ (named by update_id —
+  // photo downloads land in a shared root-level attachments/ (named by update_id,
   // unique + dedup-stable); the session is only routed later, in handleInbound
   const attachmentsDir = join(root, "attachments");
   // Attachments GC: sweep on startup, then once per day.
@@ -2364,7 +2364,7 @@ export async function main(): Promise<void> {
     return (await downloadFile(token, fp, dest)) ? dest : null;
   };
   // voice → download + whisper.cpp transcript. Every failure path
-  // replies an explicit error to the chat — acceptance: never a silent drop.
+  // replies an explicit error to the chat, acceptance: never a silent drop.
   const fetchVoice = makeFetchVoice({
     getFile: (id) => getFile(token, id),
     download: (fp, dest) => downloadFile(token, fp, dest),
@@ -2373,7 +2373,7 @@ export async function main(): Promise<void> {
     attachmentsDir,
   });
   // document/PDF download. Mirrors fetchImage, but preserves the
-  // original filename's extension (so the Read tool detects PDFs) — the
+  // original filename's extension (so the Read tool detects PDFs), the
   // server-side file_path is the fallback. Telegram getFile caps at ~20MB; a
   // larger file resolves null here and degrades to caption-only forwarding.
   const fetchDoc: FetchDocFn = async (file_id, update_id, file_name) => {
@@ -2384,7 +2384,7 @@ export async function main(): Promise<void> {
     return (await downloadFile(token, fp, dest)) ? dest : null;
   };
   // never-a-silent-drop notice for a document we couldn't download.
-  // "may exceed" — fetchDoc returns null identically for the ~20MB getFile cap, a
+  // "may exceed", fetchDoc returns null identically for the ~20MB getFile cap, a
   // 4xx, or a timeout, so the notice can't assert a single cause.
   const notifyDocFail: NotifyDocFailFn = async (chatId, name) => {
     await sendMessage(token, chatId, `⚠️ couldn't download "${name}" (it may exceed Telegram's ~20MB limit) — I forwarded your caption only.`);
@@ -2406,24 +2406,24 @@ export async function main(): Promise<void> {
     const gap = cursor - size;
     // "may not have been" (CR codex-2): the offset gap cannot establish
     // delivery status. A cursor past EOF also happens when an OLDER file is
-    // restored over one whose lines were all processed first — those messages
+    // restored over one whose lines were all processed first, those messages
     // WERE delivered. Asserting a loss would push the operator into resending
     // work that already ran.
     await send(operatorChat, `⚠️ bridge inbox recovery: the read cursor was at byte ${cursor} but ${file} is only ${size} bytes — the file shrank underneath it. Anything in the ~${gap} bytes between them is no longer on disk and may not have been delivered. I have reset the cursor to ${size}; please resend anything you did not get an answer to.`);
   };
   // Remote auto-actions: the trusted bridge parses a structured `/arm`
-  // and invokes auto-action.sh DIRECTLY — the agent is never in the trust path. Inert
+  // and invokes auto-action.sh DIRECTLY. The agent is never in the trust path. Inert
   // unless TELEGRAM_AUTO_ACTIONS enables an op (default OFF). `runScript` spawns the
-  // privileged script argv-array (no shell string — fix I2) with cwd=repoCwd. The child
-  // INHERITS the full bridge env BY DESIGN ("inherit the system" — the operator
+  // privileged script argv-array (no shell string, fix I2) with cwd=repoCwd. The child
+  // INHERITS the full bridge env BY DESIGN ("inherit the system", the operator
   // requirement): arm-resume.sh needs .env/HANDOVER_DIR/PATH/py-armor, and anticipated
-  // future ops need more (file-ticket → Jira token, run-named-skill → ANTHROPIC) — so a
+  // future ops need more (file-ticket → Jira token, run-named-skill → ANTHROPIC), so a
   // secret denylist is wrong here. The env is NOT an attacker surface: the child is
   // himmel's own trusted script and the /arm arg is passed as validated positional args,
-  // never into env. We strip only TELEGRAM_BOT_TOKEN (+ TELEGRAM_OWN_POLLER) — the one
+  // never into env. We strip only TELEGRAM_BOT_TOKEN (+ TELEGRAM_OWN_POLLER), the one
   // credential the arm path demonstrably never needs (fix M3). The arm runs
   // FIRE-AND-FORGET (autoFire) so a slow `--time smart` arm never stalls the ingest loop.
-  // Read from the bridge .env (with a real process env var still winning) —
+  // Read from the bridge .env (with a real process env var still winning),
   // this used to be process.env ONLY, so the documented .env location
   // was inert. The describe* wrapper also makes a configured-but-inert value say so
   // at startup instead of looking identical to "off".
@@ -2452,7 +2452,7 @@ export async function main(): Promise<void> {
   };
   // authorize = operator-identity (global allowFrom) AND chat-allowlisted (makeAllow):
   // the operator in a DM or an allowlisted group arms; a non-operator group member or a
-  // non-allowlisted chat is refused. Self-sufficient — re-asserts the chat gate (CR S1).
+  // non-allowlisted chat is refused. Self-sufficient, re-asserts the chat gate (CR S1).
   const afkSudoDeps = { access: () => access, installed: helperInstalled, runHelper: spawnHelper, reply: (chat: number, text: string) => replyViaOutbox(root, chat, text), log: logRedacted };
   const afkPrompts = makeAfkSudoPrompts();
   const afkSudo = makeAfkSudoGate(afkSudoDeps, afkPrompts);
@@ -2469,8 +2469,8 @@ export async function main(): Promise<void> {
   }, afkPrompts);
   const configRestore = makeConfigRestoreGate({ access: () => access, enrolled: configRestoreEnrolled, run: spawnConfigRestore, reply: (chat: number, text: string) => replyViaOutbox(root, chat, text), log: logRedacted });
   const autoGate: AutoGate = { enabledOps, authorize: (from, chat_id) => isAllowed(access, from) && allow(from, chat_id), fire: autoFire, afkSudo, configRestore };
-  // Operator -> chief routing. Same authorize as /arm — global
-  // allowFrom sender AND an allowed chat — so the gate is unchanged; the ack rides
+  // Operator -> chief routing. Same authorize as /arm, global
+  // allowFrom sender AND an allowed chat, so the gate is unchanged; the ack rides
   // the per-chat outbox like every other bridge reply.
   const consoleGate: ConsoleRouteGate = { authorize: autoGate.authorize, reply: (chat, text, name, replyTo) => replyViaOutbox(root, chat, text, name, replyTo) };
   // "Send to chief" / "Choose chief" buttons: same authorize as a typed /chief.
@@ -2489,7 +2489,7 @@ export async function main(): Promise<void> {
   // of dispatching per message, so a burst becomes ONE run.
   const coalesce = makeBurstCoalescer(dispatch);
   isHeldRef = coalesce.isHolding;   // closes the runFn -> dispatch -> coalesce cycle declared above
-  // Its own short timer — the main loop below blocks in a 30s long-poll, so
+  // Its own short timer, the main loop below blocks in a 30s long-poll, so
   // driving the flush from the tick would stretch a 4s quiet window to 30s.
   const BATCH_TICK_MS = intervalEnvMs(process.env.TELEGRAM_BATCH_TICK_MS, 500);
   const batchTimer = setInterval(guarded(() => coalesce.flushDue(Date.now())), BATCH_TICK_MS);
@@ -2497,7 +2497,7 @@ export async function main(): Promise<void> {
   // typing indicator while a session's bounded child works, and
   // while a burst is being held: during the quiet window nothing
   // is in flight, so without this the operator gets several seconds of dead
-  // silence after sending — which reads as "the bridge is down", the opposite
+  // silence after sending, which reads as "the bridge is down", the opposite
   // of the reassurance this indicator exists to give.
   const TYPING_MS = intervalEnvMs(process.env.TELEGRAM_TYPING_MS, 4000);
   const isBusy = (s: string) => dispatch.isInFlight(s) || coalesce.isHolding(s);
@@ -2507,7 +2507,7 @@ export async function main(): Promise<void> {
   // waiting up to 30s for the next long-poll to complete (T4). A cold child is a separate
   // process that appends to outbox.jsonl as it works, so the concurrent flush still earns
   // its keep. The flush path touches only outbox files; the run path touches only
-  // inbox/meta/pending — disjoint, so the timer adds no shared-file race.
+  // inbox/meta/pending, disjoint, so the timer adds no shared-file race.
   const FLUSH_MS = intervalEnvMs(process.env.TELEGRAM_FLUSH_MS, 1000);
   const flushTimer = setInterval(guarded(() => flushOutboxes(root, send, makeSendDoc(token, root, operatorChat))), FLUSH_MS); // t13b-ok: the existing outbox flush timer, only its arguments changed
   if (typeof flushTimer.unref === "function") flushTimer.unref();
@@ -2515,7 +2515,7 @@ export async function main(): Promise<void> {
   // rewrites consoles/<name>.md.wait on every poll; a gap past
   // HEARTBEAT_STALE_MS while the chief's own session is still alive means
   // its background waiter may have died silently (an unreproduced
-  // harness low-memory kill) — a SIGKILL alone re-invokes the chief, so
+  // harness low-memory kill), a SIGKILL alone re-invokes the chief, so
   // this alert only fires for the silent case. heartbeatAlerted persists
   // across ticks so a stale episode alerts exactly once until re-armed.
   const HEARTBEAT_STALE_MS = intervalEnvMs(process.env.TELEGRAM_HEARTBEAT_STALE_MS, DEFAULT_STALE_MS);
@@ -2546,7 +2546,7 @@ export async function main(): Promise<void> {
         const downSec = Math.round((Date.now() - outageStartedAt) / 1000);
         console.error(`[poller] getUpdates recovered after ${pollFails} consecutive failure(s) — outage ran ~${downSec}s (started ${new Date(outageStartedAt).toISOString()})`);
       }
-      // a poll-loop heartbeat, printed on EVERY successful getUpdates —
+      // a poll-loop heartbeat, printed on EVERY successful getUpdates,
       // including a quiet one with zero new updates, which never touches the offset
       // file (ingestUpdates only rewrites it when maxId advances). Without this,
       // "poller alive but neither appending nor advancing the offset" is invisible:
@@ -2564,7 +2564,7 @@ export async function main(): Promise<void> {
         lastOutageAlertAt = Date.now();
         const downMin = Math.round((Date.now() - outageStartedAt) / 60000);
         // Log-only: no non-Telegram operator-alert path (e.g. a
-        // PushNotification/hermes hook) exists in this repo to raise this on —
+        // PushNotification/hermes hook) exists in this repo to raise this on,
         // and Telegram itself is exactly what's down, so this can't alert
         // through it either. The recovery line above closes the span for a
         // later reader of this (now timestamped) log.
@@ -2582,13 +2582,13 @@ export async function main(): Promise<void> {
     // Per-BATCH, so it resets every poll tick: a chat whose fault persists is
     // re-notified on the next batch rather than silenced for the session.
     const notifiedChats = new Set<number>();
-    // dispatch (not runFn) everywhere: runs fire WITHOUT blocking this loop —
+    // dispatch (not runFn) everywhere: runs fire WITHOUT blocking this loop,
     // ingest keeps polling while bounded children work
     // coalesce (not dispatch): each inbound RECORDS intent, so a same-tick burst
-    // is one run even before the quiet window elapses — the intra-tick race the
+    // is one run even before the quiet window elapses, the intra-tick race the
     // ticket calls near-free to close.
     // isOperator = global allowFrom identity: a per-group
-    // allowFrom member is an ordinary group member and stays fully triaged —
+    // allowFrom member is an ordinary group member and stays fully triaged,
     // plus the anonymous-admin substitute id in a group that opted in via
     // `trustAnonymousAdmins`, which is the only form the
     // operator's own posts take in a group he has "Remain anonymous" on for.
@@ -2599,15 +2599,15 @@ export async function main(): Promise<void> {
       (i) => handleInbound(root, inboundToDelivered(i), coalesce, autoGate, undefined, (from, chat_id, sender_chat) => isOperatorIdentity(access, from, chat_id, sender_chat), (chatId, text) => sendMessage(token, chatId, text).then(() => undefined), requireMentionFor, botUsername, consoleGate),
       // sendMessage, NOT replyViaOutbox: the outbox is
       // written INTO the same session directory whose failure caused the drop,
-      // so on an unwritable session it fails too — and the bridge would then eat
+      // so on an unwritable session it fails too, and the bridge would then eat
       // that chat's messages indefinitely with nothing but supervisor.log to show
       // for it, staying alive because the root inbound log is still fine. A
       // direct send shares no state with the session, so the one failure that
       // matters most is exactly the one it can still report.
       (i) => {
         // ONE notice per chat per batch (CR coderabbit-2). The failure this
-        // reports is usually per-SESSION and persistent — an unwritable session
-        // directory fails for every message to that chat — so a naive
+        // reports is usually per-SESSION and persistent (an unwritable session
+        // directory fails for every message to that chat), so a naive
         // notice-per-record turns a broken chat into a burst of identical alerts,
         // which is the resource spam the triage gate exists to prevent, aimed at the
         // operator. Every dropped record is still logged individually below.
@@ -2619,7 +2619,7 @@ export async function main(): Promise<void> {
         // The boolean IS the error channel: sendMessage returns false on a
         // permanent 4xx, a transport failure, or exhausted retries rather than
         // throwing (telegram-api.ts), so ignoring it would let the visibility
-        // guarantee fail silently — the exact shape of this whole ticket.
+        // guarantee fail silently, the exact shape of this whole ticket.
         void sendMessage(token, i.chat_id, `⚠️ Your last message could not be queued (update ${i.update_id}) and was NOT answered — please resend. Details in supervisor.log.`)
           .then((ok) => { if (!ok) logRedacted(`[poller] drop notice UNDELIVERED for update ${i.update_id} chat ${redactChatId(i.chat_id)} — this log is now the only record of the drop`); })
           .catch((e) => { console.error(`[poller] drop notice threw for update ${i.update_id}: ${e}`); });

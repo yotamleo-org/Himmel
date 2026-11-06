@@ -1,4 +1,4 @@
-// scripts/telegram/huge-diff-guard.ts — the huge-diff lane guard.
+// scripts/telegram/huge-diff-guard.ts. The huge-diff lane guard.
 //
 // Live incident (2026-08): two consecutive claudex dispatches died before
 // editing a single file with "Prompt is too long · automatic compaction
@@ -11,7 +11,7 @@
 //
 // The .gitattributes `-diff` entries (PR #1686, same ticket) already make git
 // report the two graph artifacts as `Bin` instead of hundreds of thousands of
-// diff lines — but they only protect a worktree whose TREE carries the entry:
+// diff lines, but they only protect a worktree whose TREE carries the entry:
 // a branch that predates #1686 and regenerated the graph still explodes when
 // ITS worktree runs `git diff main`, and a huge non-artifact file regenerates
 // the same failure class on any repo. This guard is the lane-boundary
@@ -23,17 +23,17 @@
 // only makes the hazard visible. A probe that cannot evaluate (no default-
 // branch ref, broken git, a timed-out probe, git's rename-limit overflow, a
 // synthetic test repo) still dispatches, but logs exactly ONE stderr line per
-// fail-open path — a silent fail-open cannot be told apart from "no hazard".
+// fail-open path. A silent fail-open cannot be told apart from "no hazard".
 // The happy paths (hazard found, clean diff) log nothing.
 //
 // Shared seam (the defect class this repo keeps re-learning): ONE predicate
-// in this module, imported by both spawn-glm.ts and spawn-claudex.ts — never
+// in this module, imported by both spawn-glm.ts and spawn-claudex.ts, never
 // copy-pasted into the two spawners (the moonshot fence bypass, PR #1680, and
 // the openrouter first-match-wins bug, #1691, were both a predicate written
 // twice and drifting).
 
 // Thresholds, named once (round-guard convention: a number stated in a
-// comment drifts from the code — the code is the only home).
+// comment drifts from the code, the code is the only home).
 // A path "dominates" when BOTH hold:
 //   - it is >= HUGE_DIFF_SHARE of the branch's changed-path bytes, and
 //   - it is >= HUGE_DIFF_MIN_BYTES in absolute size.
@@ -72,7 +72,7 @@ export function gitProbe(args: string[], cwd: string): { code: number; stdout: s
 // counts, on purpose: `git diff --numstat` collapses a `-diff`-marked file to
 // `- -` (binary), so a line-share probe run from a checkout whose
 // .gitattributes carries the entries (the primary, since #1686) is blind to
-// exactly the branch that still explodes — one whose tree predates them.
+// exactly the branch that still explodes, one whose tree predates them.
 // Blob sizes are attribute-independent. For each changed path the size is the
 // LARGER of the two sides' blobs: the diff text a worker ingests scales with
 // both the old and the new content (the incident's 15 MB side was the OLD
@@ -89,7 +89,7 @@ export function parseLsTreeSizes(out: string): Map<string, number> {
     const tab = entry.indexOf("\t");
     if (tab < 0) continue;
     // ls-tree right-aligns the size column (any sub-7-digit size is preceded
-    // by padding spaces), so the meta fields are whitespace-RUN separated — a
+    // by padding spaces), so the meta fields are whitespace-RUN separated, a
     // single-space split reads meta[3] === "" there, Number("") === 0, and the
     // file silently weighs 0 bytes, understating totals and overstating every
     // share computed from them (a false-warning class).
@@ -109,7 +109,7 @@ export function parseLsTreeSizes(out: string): Map<string, number> {
 //
 // ONE revision pair: three-dot names are
 // `merge-base(base, branch)..branch`, so the merge-base is resolved ONCE and
-// that same revision feeds BOTH the name set and every old-side size lookup —
+// that same revision feeds BOTH the name set and every old-side size lookup,
 // reading `base`'s TIP instead would attribute base-side post-fork growth to
 // the branch (false warning) or miss a huge old blob the base tip no longer
 // carries (the incident's 15 MB side was exactly such an old blob). A
@@ -119,31 +119,31 @@ export function changedPathBytes(
 ): { ok: true; mergeBase: string; paths: { path: string; bytes: number }[] } | { ok: false; error: string } {
   const mb = probe(["merge-base", base, branch], cwd);
   if (mb.code !== 0) return { ok: false, error: `git merge-base ${base} ${branch}: ${mb.stderr.trim()}` };
-  const mergeBase = mb.stdout.trim().split("\n")[0]; // a rev, not a path — trim is safe here
+  const mergeBase = mb.stdout.trim().split("\n")[0]; // a rev, not a path, trim is safe here
   // --no-renames: the name set must be a property of the
   // REPOSITORY, not a view of the user's config. `git diff --name-only`
   // honors diff.renames (git's default since 2.9, plus any user/repo
   // setting): when detection fires, a rename collapses to its NEW path only,
-  // dropping the old-side blob this guard exists to weigh — and the same
+  // dropping the old-side blob this guard exists to weigh, and the same
   // branch then measures differently depending on a config the guard never
   // read. Pinning --no-renames makes the probe deterministic and weighs BOTH
   // sides' paths, per-path (the premise of the max() below).
   const names = probe(["diff", "--name-only", "-z", "--no-renames", `${mergeBase}...${branch}`], cwd);
   if (names.code !== 0) return { ok: false, error: `git diff --name-only --no-renames ${mergeBase}...${branch}: ${names.stderr.trim()}` };
   // -z: paths are NUL-delimited and un-quoted, so a path is defined by its
-  // delimiter, never by trimming whitespace off it — git paths may legally
+  // delimiter, never by trimming whitespace off it. Git paths may legally
   // carry leading/trailing whitespace, and a trimmed key silently misses the
   // size lookup. filter(Boolean) drops only the trailing NUL field; a real
   // path is never empty.
   const paths = names.stdout.split("\0").filter(Boolean);
   if (paths.length === 0) return { ok: true, mergeBase, paths: [] };
-  // A failed ls-tree reads as an empty map (every path 0 bytes) — fail-open,
+  // A failed ls-tree reads as an empty map (every path 0 bytes), fail-open,
   // consistent with the guard's posture; the refs necessarily exist or the
   // probes above would already have failed.
   const branchSizes = parseLsTreeSizes(probe(["ls-tree", "-r", "-l", "-z", branch], cwd).stdout);
   const mergeBaseSizes = parseLsTreeSizes(probe(["ls-tree", "-r", "-l", "-z", mergeBase], cwd).stdout);
   // mergeBase rides along so downstream policy probes (the rename pairing
-  // below) read the SAME revision pair the names and sizes came from — a
+  // below) read the SAME revision pair the names and sizes came from, a
   // re-derived merge-base is a second resolution that can only drift.
   return {
     ok: true,
@@ -172,7 +172,7 @@ export function findDominatingPath(paths: { path: string; bytes: number }[]):
 // ── rename pairing (the hazard the WORKER ingests) ───────
 //
 // The pinned --no-renames name set splits ONE logical rename into a delete
-// path and an add path, each weighing ~N of the pair's 2N — so the per-path
+// path and an add path, each weighing ~N of the pair's 2N, so the per-path
 // dominance test above reads ~50% and stays silent. That silence models the
 // worker's ingest only when the worker's OWN `git diff` attributes the rename
 // and prints a similarity header instead of the blobs. Whether it does is not
@@ -183,14 +183,14 @@ export function findDominatingPath(paths: { path: string; bytes: number }[]):
 // `git diff --name-status` attributes and groups every delete/add pair it left
 // un-attributed into ONE logical hazard at the SUM of both blobs.
 //
-// The pair itself comes from a probe that forces `-M1% -l2000` — explicit
+// The pair itself comes from a probe that forces `-M1% -l2000`, explicit
 // flags beat config, so the pairing stays deterministic, exactly like the
 // pinned name set; the worker's own diff decides only which pairs are
 // un-attributed. An attributed partial rename still prints its changed hunks,
 // so it weighs (old+new) x (1 - similarity).
 
 // `git diff --name-status -z` rows are NUL-delimited as
-// `<status>\0<path>\0` — and `<status>\0<old>\0<new>\0` for R rows, the only
+// `<status>\0<path>\0`, and `<status>\0<old>\0<new>\0` for R rows, the only
 // two-path status `-M` emits. Stepping by each row's path count keeps the
 // parser aligned on delimiters, never on whitespace inside a path.
 export function parseNameStatusRenames(out: string): { oldPath: string; newPath: string }[] {
@@ -216,8 +216,8 @@ export function parseNameStatusRows(out: string): { status: string; paths: strin
   return rows;
 }
 
-// Fold each detected pair into ONE logical entry at old+new bytes — the text
-// a worker whose diff does NOT attribute the rename actually ingests — and
+// Fold each detected pair into ONE logical entry at old+new bytes, the text
+// a worker whose diff does NOT attribute the rename actually ingests, and
 // pass everything else through untouched. A pair's optional `scale` is the
 // share of that text the worker still prints: an attributed partial rename
 // shows only its changed hunks. Unscaled, the TOTAL is unchanged (a pair's
@@ -243,17 +243,17 @@ export function mergeRenamePairs(
 
 // The base is RESOLVED from the repository, never
 // hard-coded: himmel supports `main` OR `master`, and on a
-// master-default repo a hard-coded `main` makes the guard silently fail open
-// — the warning it exists to deliver never fires. The ORDER mirrors the RULE
+// master-default repo a hard-coded `main` makes the guard silently fail open,
+// the warning it exists to deliver never fires. The ORDER mirrors the RULE
 // of `default_branch` in scripts/guardrails/lib.sh (same order, same
 // tie-breaks) so every caller in the repo derives the same answer; do not
 // fork the rule here. The RETURN SHAPE deliberately diverges:
 // lib.sh prints a bare NAME its consumers re-verify (`refs/heads/$db`,
 // fail-closed rc=2), but this guard hands the string straight to
-// `git merge-base`, where a bare name resolves only to refs/heads/<name> —
+// `git merge-base`, where a bare name resolves only to refs/heads/<name>,
 // NEVER to refs/remotes/origin/<name>. So every name the resolver returns
 // (except the terminal fallback) is a ref VERIFIED to exist, qualified
-// `origin/<name>` when only the remote-tracking ref does — the pre-fix bare
+// `origin/<name>` when only the remote-tracking ref does, the pre-fix bare
 // name on that repo shape resolved to nothing, the merge-base probe failed,
 // and the warning silently missed on exactly the branches R2a exists to
 // cover.
@@ -264,10 +264,10 @@ export function mergeRenamePairs(
 // "main" (lib.sh always yields a name). The remote-tracking fallbacks are a
 // SEPARATE, LAST precedence phase: folding them into
 // per-name resolution let a remote origin/main outrank a LOCAL master and
-// preempt init.defaultBranch — and in a migrated or mirrored repo the remote
+// preempt init.defaultBranch, and in a migrated or mirrored repo the remote
 // ref can be stale or unrelated, so the guard would measure the wrong range.
 // A name that names no ref is how an "unresolvable" base manifests: the
-// merge-base probe below fails and the guard stays SILENT — never throws.
+// merge-base probe below fails and the guard stays SILENT, never throws.
 export function resolveDefaultBranch(probe: GitProbe, cwd: string): string {
   // Resolve a default-branch NAME to a revision git accepts as a merge-base
   // operand: the LOCAL branch when it exists, else the remote-tracking ref of
@@ -279,19 +279,19 @@ export function resolveDefaultBranch(probe: GitProbe, cwd: string): string {
   };
   const head = probe(["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], cwd);
   if (head.code === 0) {
-    const b = head.stdout.trim().replace(/^origin\//, ""); // a ref, not a path — trim is safe here
+    const b = head.stdout.trim().replace(/^origin\//, ""); // a ref, not a path, trim is safe here
     const r = b ? resolve(b) : null;
     if (r) return r;
   }
-  // The LOCAL phase — ONE precedence phase, main before master.
+  // The LOCAL phase, ONE precedence phase, main before master.
   if (probe(["rev-parse", "--verify", "--quiet", "refs/heads/main"], cwd).code === 0) return "main";
   if (probe(["rev-parse", "--verify", "--quiet", "refs/heads/master"], cwd).code === 0) return "master";
-  // The CONFIG phase — before any remote-tracking fallback: a repo whose
+  // The CONFIG phase, before any remote-tracking fallback: a repo whose
   // default is `trunk` must not be measured against a stale origin/main just
   // because the remote ref lingers.
   const cfg = probe(["config", "init.defaultBranch"], cwd);
   if (cfg.code === 0 && cfg.stdout.trim() !== "") {
-    const r = resolve(cfg.stdout.trim()); // a ref name — trim is safe here
+    const r = resolve(cfg.stdout.trim()); // a ref name, trim is safe here
     if (r) return r;
   }
   // Only now the REMOTE-TRACKING fallbacks, in the same documented order
@@ -308,10 +308,10 @@ export function resolveDefaultBranch(probe: GitProbe, cwd: string): string {
 }
 
 // The dispatch-time check both worker lanes call in runBody (before the
-// worker launches, after the branch exists — it covers own-branch AND shared
+// worker launches, after the branch exists. It covers own-branch AND shared
 // modes from one call site). Returns at most a `note` for the caller to
-// console.error; it NEVER refuses, and it never throws (a probe that throws —
-// Bun.spawnSync does on an unresolvable binary — is caught and logged).
+// console.error; it NEVER refuses, and it never throws (a probe that throws,
+// Bun.spawnSync does on an unresolvable binary, is caught and logged).
 export function checkHugeDiff(
   lane: string,
   args: { cwd: string; branch: string; base?: string },
@@ -353,7 +353,7 @@ export function checkHugeDiff(
     // one loose probe (-M1%, bounded -l: flags beat config) ties to the same
     // logical file is grouped into ONE hazard at the sum of both blobs. An
     // attributed partial rename still prints its changed hunks, so it weighs
-    // (old+new) x (1 - similarity). A failed probe reads as no pairs —
+    // (old+new) x (1 - similarity). A failed probe reads as no pairs,
     // fail-open back to the per-path verdict.
     let paths = res.paths;
     const range = `${res.mergeBase}...${args.branch}`;
@@ -385,12 +385,12 @@ export function checkHugeDiff(
     if (!dom) return {};
     const mib = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MiB`;
     // Print-time sanitization: EVERY repository-controlled
-    // field interpolated into this note — path, base, AND branch — goes
+    // field interpolated into this note (path, base, AND branch) goes
     // through ONE log-safe encoder. The -z probes emit raw bytes and git
     // paths may legally carry C0/C1 controls; ref names reject ASCII
     // controls by format but DO admit the Unicode ones, so a branch may
     // legally carry U+202E or U+2028. This note lands in dispatch logs an
-    // operator scans line-by-line when diagnosing a dead dispatch — a raw
+    // operator scans line-by-line when diagnosing a dead dispatch, a raw
     // control, a bidi override that visually reorders the line, or a Zl/Zp
     // separator some viewers render as a line break would let a crafted
     // name forge or garble whole log lines. Escaped to backslash-u form:

@@ -1,11 +1,11 @@
 // scripts/telegram/compose-brief.ts
 // Design §4.3, C4: compose a lane dispatch brief as CODE,
 // not retyped prose. This is the fix for "the RETASK block reaches only the
-// GLM/claudex lanes" (design §1) — a lane-agnostic CLI any dispatcher can
+// GLM/claudex lanes" (design §1), a lane-agnostic CLI any dispatcher can
 // shell out to, producing a brief file a spawn-glm/spawn-claudex `--brief-file`
 // (or a judge's own dispatch) can point a worker at.
 //
-// Deliberately imports ONLY brief-blocks.ts, never spawn-glm.ts — pulling in
+// Deliberately imports ONLY brief-blocks.ts, never spawn-glm.ts, pulling in
 // the GLM spawner here would drag its whole env/quota/guard machinery into a
 // composer that has no business touching any of it (the reason brief-blocks.ts
 // was extracted in the first place, design §4.3).
@@ -13,7 +13,7 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { mintRetaskNonce, composeRetaskBlock, composeWaiterBlock, composeWriteSetBlock } from "./brief-blocks";
 
-// argv carries ONLY enums, ids and paths — never free text. A
+// argv carries ONLY enums, ids and paths, never free text. A
 // model-authored string containing `$`/backticks/`&&` bails Claude Code's
 // native permission matcher to an interactive prompt an unattended judge
 // cannot answer (the same reasoning as the worker manifest's --evidence-file /
@@ -37,19 +37,19 @@ export function isHelpFlag(argv: string[]): boolean {
 }
 
 // Enforce the argv contract
-// ("argv carries ONLY enums, ids and paths — never free text", line 16 above)
+// ("argv carries ONLY enums, ids and paths, never free text", line 16 above)
 // structurally instead of just documenting it. --lane/--model/--effort get
 // interpolated verbatim into the brief header, and --write-set values into
 // the write-set block; unvalidated, a newline in any of them forges brief
 // sections. ENUM_RE pins the header fields to identifier shape; --write-set
-// only rejects control chars (newlines included) — it still needs ordinary
+// only rejects control chars (newlines included), it still needs ordinary
 // path characters (spaces, /, \, :), so no full path grammar here (that's
 // single-writer enforcement's job, out of scope for this fix).
 const ENUM_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const hasControlChar = (v: string): boolean => /[\x00-\x1f]/.test(v);
 
 // Mirrors spawn-glm.ts's parseArgs: a value-taking flag with no value, or a
-// missing required flag, is a clean usage refusal — never a silent undefined
+// missing required flag, is a clean usage refusal, never a silent undefined
 // that surfaces later as a confusing crash.
 export function parseArgs(argv: string[]): { ok: true; args: ComposeBriefArgs } | { ok: false; error: string } {
   let lane: string | undefined;
@@ -76,7 +76,7 @@ export function parseArgs(argv: string[]): { ok: true; args: ComposeBriefArgs } 
   return { ok: true, args: { lane, model, effort, taskFile, writeSet, out } };
 }
 
-// Pure composition — the document order is the C4 acceptance shape (design
+// Pure composition. The document order is the C4 acceptance shape (design
 // §4.3 / §8): header, task body, write-set (omitted when empty), waiter,
 // RETASK (fresh nonce every call). `nonce` is injected so tests can assert
 // against a known token instead of parsing one back out.
@@ -100,7 +100,7 @@ async function main(): Promise<void> {
   const { lane, model, effort, taskFile, writeSet, out } = parsed.args;
 
   // C4: refuse before any side effect (no --out write) if the
-  // task file is missing or unreadable — free text arrives via files, never
+  // task file is missing or unreadable. Free text arrives via files, never
   // argv, and an unreadable file must not silently compose a brief with an
   // empty task body.
   let taskBody: string;

@@ -6,7 +6,7 @@ import * as realFs from "node:fs";
 // Plain-object snapshot of the REAL fs, captured at module load (before any
 // mock runs). ESM namespace props are live bindings, but spreading copies the
 // current function REFERENCES into a fresh object whose props won't follow a
-// later mock — so the surgical readFileSync mock below can pass through to real
+// later mock, so the surgical readFileSync mock below can pass through to real
 // for every path except the one under test, and cannot starve other test files
 // (bun runs them concurrently in one process; a global throw leaked once).
 const realFsSnapshot = { ...realFs };
@@ -32,7 +32,7 @@ test(".salus marker refuses", () => {
   expect((r as any).reason).toMatch(/\.salus/);
 });
 
-// .salus-profile ALONE (no .salus) also refuses — a defense for
+// .salus-profile ALONE (no .salus) also refuses, a defense for
 // salus deployments that predate the profile installer shipping the real
 // .salus guard marker alongside it.
 test(".salus-profile-only marker refuses", () => {
@@ -80,7 +80,7 @@ test("sibling prefix does not false-positive", () => {
 
 // --- pathUnderAny catch branch (CR finding F2). The `!statSync().isFile()`
 // branch is covered by the DIRECTORY test above; the TRY/CATCH (statSync or
-// readFileSync THROW — e.g. permission-denied at read time) is not. Force the
+// readFileSync THROW, e.g. permission-denied at read time) is not. Force the
 // throw with a SURGICAL module mock (readFileSync throws ONLY for this listFile,
 // passes through to real for every other path) and assert fail-closed. Without
 // the mock this config would be a HIT (PHI-marked refuse), so the "failing
@@ -89,7 +89,7 @@ test("sibling prefix does not false-positive", () => {
 
 test("guard config read THROW fails closed (catch branch — e.g. permission-denied)", () => {
   const listFile = join(cfg, "phi-roots");
-  writeFileSync(listFile, work + "\n"); // exists; sans mock this is a HIT (REFUSED — PHI-marked)
+  writeFileSync(listFile, work + "\n"); // exists; sans mock this is a HIT (REFUSED, PHI-marked)
   mock.module("node:fs", () => ({
     ...realFsSnapshot,
     readFileSync: (p: any, ...rest: any[]) => {

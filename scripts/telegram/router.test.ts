@@ -49,9 +49,9 @@ test("classifies /mergepub <pr> <sha12> auto-commands", () => {
 });
 
 test("/mergepub with bad/missing pieces or mid-text falls through to chat (never auto)", () => {
-  // sha too short (<12 hex) — 11 hex is one below the floor, must fall through
+  // sha too short (<12 hex), 11 hex is one below the floor, must fall through
   expect(classify("/mergepub 123 abcdef12345")).toEqual({ kind: "chat", text: "/mergepub 123 abcdef12345" });
-  // sha too long (>40 hex) — the trailing chars break the whole-message anchor
+  // sha too long (>40 hex), the trailing chars break the whole-message anchor
   const sha41 = "0123456789abcdef0123456789abcdef012345678";
   expect(classify(`/mergepub 123 ${sha41}`)).toEqual({ kind: "chat", text: `/mergepub 123 ${sha41}` });
   // sha not hex

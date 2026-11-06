@@ -164,7 +164,7 @@ test("alibabaProbeAppend: found -> rows, no stderr; throw/garbled -> ONE invisib
   expect(rows[2].source).toBe("invisible"); // throw
   expect(rows[3].source).toBe("invisible"); // garbled
   expect(rows[4].source).toBe("invisible"); // empty result
-  // stderr fires exactly once per unreadable probe (throw, garbled, empty) — never on found.
+  // stderr fires exactly once per unreadable probe (throw, garbled, empty), never on found.
   expect(stderrCount).toBe(3);
 });
 
@@ -229,7 +229,7 @@ test("resolveGrants: override REPLACES the default per model key (others still d
 test("resolveGrants: wan* model gets NO token default (used_pct stays null downstream)", () => {
   const usage = [{ model: "wan2.2-t2v", totalTokens: 30 }, { model: "qwen-plus", totalTokens: 250000 }];
   const grants = resolveGrants(usage, {});
-  expect(grants).toEqual({ "qwen-plus": 1_000_000 });   // wan2.2-t2v absent — never fabricated
+  expect(grants).toEqual({ "qwen-plus": 1_000_000 });   // wan2.2-t2v absent, never fabricated
   const rows = buildAlibabaRows(usage, grants, NOW_MS);
   const wan = rows.find((r) => r.tier === "wan2.2-t2v")!;
   expect(wan.used_pct).toBeNull();

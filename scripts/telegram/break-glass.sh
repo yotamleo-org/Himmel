@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# break-glass.sh <op> <arg> <time> — operator break-glass ops.
+# break-glass.sh <op> <arg> <time>. Operator break-glass ops.
 #
 # Reached ONLY through auto-action.sh, which the trusted Telegram bridge spawns
 # on the typed path (operator id + allowed chat + whole,

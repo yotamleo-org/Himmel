@@ -1,4 +1,4 @@
-// scripts/telegram/round-guard.ts — the symptom-brief loop breaker.
+// scripts/telegram/round-guard.ts. The symptom-brief loop breaker.
 //
 // Live incident (2026-08-04): one ticket burned FOUR CR review rounds across
 // four overnight workers without landing. Every round's dispatch brief described
@@ -6,7 +6,7 @@
 // defects shared (what identity a CR certificate is keyed to). The orchestrator
 // holds the full history and kept handing the symptom forward; the worker lane
 // inherits nothing and can only fix what the brief names. Nothing in the system
-// noticed "this ticket is on round N" and forced a change of approach — so per
+// noticed "this ticket is on round N" and forced a change of approach, so per
 // CLAUDE.md's structural>instructional doctrine this guard makes the dispatch
 // REFUSE, rather than adding more handover prose.
 //
@@ -18,16 +18,16 @@
 // panel on a fresh branch (or an anonymous dispatch) cannot reset it. Two-stage escalation (see the threshold constants below for the
 // operator decision + evidence): at ROUND_WARN_THRESHOLD consecutive blocking
 // reviews the dispatch is refused unless the brief carries a substantive
-// `INVARIANT:` section — the property every prior round's defect violated,
+// `INVARIANT:` section, the property every prior round's defect violated,
 // which the whole fix must preserve; at
-// ROUND_ESCALATE_THRESHOLD the CHEAP LANE ITSELF is refused — the permitted
+// ROUND_ESCALATE_THRESHOLD the CHEAP LANE ITSELF is refused. The permitted
 // paths are a judgment-tier lane given the abstraction as the task, or an
 // explicit recorded operator override (--rounds-override). The guard cannot
 // check an invariant is TRUE; it forces the escalation step all four
 // rounds skipped.
 //
 // FAIL-OPEN by design: no ticket key extractable, no ledger, unreadable ledger,
-// malformed lines — all pass. This is a workflow guard against an expensive
+// malformed lines, all pass. This is a workflow guard against an expensive
 // loop, not a security gate; blocking every dispatch on a fresh clone (no
 // ledger) or a keyless exploratory brief would be a worse failure than the one
 // it prevents. The refusal itself is self-serviceable (add the section and
@@ -35,10 +35,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// Two-stage escalation (operator decision, 2026-08-05 — "we should've stopped
+// Two-stage escalation (operator decision, 2026-08-05, "we should've stopped
 // earlier"). Stage 1 at 2 consecutive blocking reviews: per CLAUDE.md doctrine
 // "first drift is signal; on the SECOND, escalate to structural", the second
-// failed review IS the second drift — from here the brief must carry the
+// failed review IS the second drift. From here the brief must carry the
 // invariant. Stage 2 at 3 consecutive blocking reviews: REFUSE the cheap-lane
 // dispatch outright. Evidence from the incident itself: its rounds
 // 1-4 all had competent workers and
@@ -46,7 +46,7 @@ import { join } from "node:path";
 // the next seam; what actually broke the loop was a JUDGMENT-TIER pass given
 // the abstraction as the task, which root-caused it in one pass. An INVARIANT
 // paragraph written by the same orchestrator that produced four symptom-briefs
-// is likely another symptom in invariant clothing — at the third round the thing that
+// is likely another symptom in invariant clothing. At the third round the thing that
 // has to change is the MODEL, not the brief. (Confirmed live: the round-5
 // prediction "never add a fourth resolution source" was violated by the very
 // next adversarial pass finding a fifth and sixth identity.)
@@ -54,21 +54,21 @@ export const ROUND_WARN_THRESHOLD = 2;
 export const ROUND_ESCALATE_THRESHOLD = 3;
 
 // The operator-override reason (--rounds-override) must state WHY another
-// cheap round is justified — a bare token would be the same laundering the
+// cheap round is justified. A bare token would be the same laundering the
 // guard exists to end. Forgeable in principle (any flag is), but deliberate,
-// per-dispatch, and recorded in the transcript — same posture as the claudex
+// per-dispatch, and recorded in the transcript, same posture as the claudex
 // bank preflight's --force.
 export const ROUNDS_OVERRIDE_MIN_CHARS = 20;
 
 // The invariant must be more than a token gesture: "INVARIANT: fix it" is the
 // symptom loop wearing a costume. 40 chars of substance is a floor, not proof
-// of quality — proof is not mechanically checkable, forcing articulation is.
+// of quality. Proof is not mechanically checkable, forcing articulation is.
 export const INVARIANT_MIN_CHARS = 40;
 
 // Extract the ticket key the dispatch targets. Priority: branch (shared mode
 // names the real branch) > name (own-mode slug) > task text. Branch/name are
 // machine-shaped (type/himmel-1540-slug), so a case-insensitive match is safe;
-// free task text only matches an UPPERCASE key ("PROJ-123") — lowercase
+// free task text only matches an UPPERCASE key ("PROJ-123"), lowercase
 // prose like "bash-3.2-safe" must not read as a ticket. A wrong extraction
 // fails OPEN (an unknown key has no ledger rounds), never closed.
 // The trailing boundary is FULL non-alnum, not digits-only:
@@ -126,7 +126,7 @@ export function countReviewedRounds(ledgerLines: string[], ticketKey: string): {
   // amend work: the first amend's set.head re-keys the finding, and the next
   // amend targets the MOVED head. Pre-merging into a Map keyed by (head,
   // identity) instead put the second amend in a different bucket and dropped
-  // it — one ledger semantics with two implementations, and this half had
+  // it, one ledger semantics with two implementations, and this half had
   // drifted from cr-pending-audit.sh, which does it sequentially. Over-counting
   // is the SAFE direction for a refusal-only guard, so the drift never showed
   // as a wrong answer; it is still two readers disagreeing about one ledger.
@@ -226,7 +226,7 @@ export function hasSubstantiveInvariant(task: string): boolean {
   for (const line of lines.slice(start + 1)) {
     // >= 3 chars of header name: `*` let a bare `A:` end the section, so an
     // authored invariant containing a labelled line ("A: the reviewed sha")
-    // was TRUNCATED at it and could fall under the floor — a false refusal on
+    // was TRUNCATED at it and could fall under the floor, a false refusal on
     // a brief that did the right thing. Real headers are `WHY:`/`FILES:`/
     // `STEPS:`/`RETASK:`; 3 is below the shortest of them and above prose.
     if (/^[A-Z][A-Z0-9 _/-]{2,}:[ \t]*(?:.*)?$/.test(line)) break;
@@ -239,7 +239,7 @@ export function hasSubstantiveInvariant(task: string): boolean {
 
 // Read the CR ledger for the repo at cwd. FAIL-OPEN: not a repo / no ledger /
 // unreadable -> [] (see the header). The ledger path is the same fixed
-// <git-common-dir>/cr-critic-scores.jsonl clear-review-marker.sh reads — no
+// <git-common-dir>/cr-critic-scores.jsonl clear-review-marker.sh reads, no
 // CR_LEDGER seam here either, but for the opposite reason: this guard only
 // REFUSES, so a caller-pointed ledger could only make it stricter; the fixed
 // path is simply the one that holds the real history.
@@ -257,7 +257,7 @@ export function readCrLedgerLines(cwd: string): string[] {
 
 // The dispatch-time check both worker lanes call BEFORE any side effect.
 // Returns a refusal message (caller prints + exits 2), a pass-through note
-// (caller prints — the transcript should show the guard evaluated a hot
+// (caller prints, the transcript should show the guard evaluated a hot
 // ticket), or nothing.
 //
 // Decision table (rounds = trailing blocking reviews on the ticket):
@@ -283,7 +283,7 @@ export function checkRoundGuard(
   if (rounds >= ROUND_ESCALATE_THRESHOLD) {
     // the Agent-tool hook chokepoint (lane "agent-dispatch") has
     // no --rounds-override wired and no way to "re-dispatch" through the same
-    // tool call — the escalation options that are genuinely actionable for
+    // tool call, the escalation options that are genuinely actionable for
     // spawn-glm/spawn-claudex's own CLI-driven callers are not for this one,
     // so it gets its own accurate advice rather than inheriting theirs.
     const permittedPaths = lane === "agent-dispatch"
@@ -322,8 +322,8 @@ export function checkRoundGuard(
   };
 }
 
-// CLI entry: scripts/hooks/guard-implementor-dispatch.sh — the
-// PreToolUse chokepoint on the Agent tool — shells out to this as a
+// CLI entry: scripts/hooks/guard-implementor-dispatch.sh (the
+// PreToolUse chokepoint on the Agent tool) shells out to this as a
 // subprocess (a bash hook cannot import a TS module), so exactly one
 // implementation of "what counts as a reviewed round" backs BOTH the
 // spawn-glm/spawn-claudex dispatchers above (in-process) and a real Agent
@@ -331,11 +331,11 @@ export function checkRoundGuard(
 //
 // Usage: bun round-guard.ts check --cwd <dir> [--branch <name>] --task-file <path> [--rounds-override <text>]
 // Exit 0 = allow (a note, if any, on stderr). Exit 2 = refuse (message on
-// stderr) — this covers both a genuine round-guard policy refusal AND a CLI
+// stderr). This covers both a genuine round-guard policy refusal AND a CLI
 // usage/argument/task-file-read error (the message on stderr distinguishes
 // them; the one real call site always passes well-formed args and an
 // already-written task file, so those paths are unreached in practice). Any
-// other exit means the predicate could not be evaluated at all —
+// other exit means the predicate could not be evaluated at all,
 // the hook's own contract treats that as a fail-CLOSED case for
 // a real implementor dispatch, unlike this guard's own fail-open posture on a
 // missing ledger or an unkeyed dispatch (both handled above, inside
@@ -344,7 +344,7 @@ export function checkRoundGuard(
 // The branch defaults to --cwd's own git branch: an Agent-tool dispatch runs
 // IN the caller's existing worktree, and the branch only supplies the ticket
 // key. A --cwd that is not a git repo, or a detached HEAD, leaves the key to
-// the task text — checkRoundGuard fails open when neither names a ticket, not
+// the task text. checkRoundGuard fails open when neither names a ticket, not
 // a CLI error.
 if (import.meta.main) {
   const argv = process.argv.slice(2);

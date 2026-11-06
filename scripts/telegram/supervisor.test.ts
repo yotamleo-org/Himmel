@@ -28,7 +28,7 @@ test("parsePidfile rejects non-positive / non-integer pids (no process-group kil
 });
 
 // killBridge resolves the pidfile via BRIDGE_ROOT at call time, so each test
-// runs against a fresh temp root (restored after) and an injected killFn —
+// runs against a fresh temp root (restored after) and an injected killFn,
 // the real bridge / real pids are never touched.
 function withBridgeRoot(fn: (root: string) => void): void {
   const prev = process.env.BRIDGE_ROOT;
@@ -79,7 +79,7 @@ test("killBridge: supervisor kill OK, poller kill EPERM → rc 2 + pidfile KEPT"
 
 test("an intentional /restart of a HEALTHY poller never walks toward the breaker", () => {
   // Exercises the PRODUCTION accounting (nextFailCount + breakerTrips + the real
-  // IMMEDIATE_MS / MAX_FAILS), not a restatement of it — a test that re-implements
+  // IMMEDIATE_MS / MAX_FAILS), not a restatement of it. A test that re-implements
   // the rule keeps passing after main() drifts away from it.
   // A FIXED local threshold, not the env-derived MAX_FAILS: an operator with
   // POLLER_MAX_FAILS exported would otherwise silently change what this test
@@ -105,14 +105,14 @@ test("an intentional /restart of a HEALTHY poller never walks toward the breaker
 test("resolveMaxFails rejects values that would DISABLE or hair-trigger the breaker", () => {
   // NaN is the dangerous one: `fails >= NaN` is always false, so a garbage value
   // would silently disable the breaker and let a crash-looping poller spin forever.
-  // "9007199254740993" parses to a valid integer ABOVE MAX_SAFE_INTEGER — a
+  // "9007199254740993" parses to a valid integer ABOVE MAX_SAFE_INTEGER, a
   // threshold that large is a disabled breaker by another route, so isSafeInteger
   // (not isInteger) is the right predicate.
   for (const bad of ["", "   ", "garbage", "NaN", "1.5", "-1", "0", "1e999", "9007199254740993", "1e300"]) {
     expect(resolveMaxFails(bad)).toBe(5);
     expect(Number.isInteger(resolveMaxFails(bad))).toBe(true);
   }
-  // Explicit blank input ONLY — resolveMaxFails(undefined) defaults its parameter
+  // Explicit blank input ONLY. resolveMaxFails(undefined) defaults its parameter
   // to process.env.POLLER_MAX_FAILS, so asserting 5 there would fail on a machine
   // that legitimately sets it. That is the same env-dependence the last round
   // flagged, reintroduced by the fix for it.

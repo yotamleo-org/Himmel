@@ -3,18 +3,18 @@
 // (scripts/handover/chief-kit/chief-wait.sh)
 // going stale while the
 // chief session is still running. N383 measured that an external SIGKILL
-// of the waiter re-invokes the chief (a task notification fires) — not
+// of the waiter re-invokes the chief (a task notification fires), not
 // silent. The harness's own "low memory" kill of a background task
 // (workers N129/N132 never woke) is unreproduced and may NOT
 // re-invoke: the waiter dies, the session sits idle, and nothing tells the
-// operator. This module is pure code — no model turn, no new always-on
-// process — driven by a periodic timer already living in poller.ts's main().
+// operator. This module is pure code (no model turn, no new always-on
+// process), driven by a periodic timer already living in poller.ts's main().
 //
 // Heartbeat contract (owned by chief-wait.sh):
 //   hb=<epoch> pid=<pid> key=<sha16> tick=<ok|fail|-> state=<waiting|exited> [exit=<reason>]
 // rewritten on every poll (CHIEF_WAIT_POLL_SEC, default 1s), atomically
 // (write-then-rename). A line that doesn't match the contract is read
-// defensively and is NEVER an alert — the contract can change out from under
+// defensively and is NEVER an alert. The contract can change out from under
 // this file (send a FINDING to the chief per the brief, don't guess).
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -40,7 +40,7 @@ export function parseHeartbeat(raw: string): Heartbeat | null {
 
 // Default staleness threshold. The heartbeat is rewritten on every poll
 // (CHIEF_WAIT_POLL_SEC, default 1s) in the common case, but chief-wait.sh
-// only reaches that write AFTER a due tick's sample() call returns — and a
+// only reaches that write AFTER a due tick's sample() call returns, and a
 // single tick call may legitimately block the waiter for up to
 // CHIEF_WAIT_TICK_TIMEOUT (default 120s: a slow `gh`/jira/bank-preflight
 // call, not a dead waiter) before the next heartbeat write. 3x that ceiling
@@ -79,10 +79,10 @@ export async function checkStaleHeartbeats(
     let raw: string;
     try { raw = await readFile(join(dir, f), "utf8"); } catch { continue; }
     const hb = parseHeartbeat(raw);
-    if (!hb) continue; // malformed — never an alert
-    if (hb.state === "exited") { alerted.set(name, false); continue; } // not stale by definition — re-arms
+    if (!hb) continue; // malformed, never an alert
+    if (hb.state === "exited") { alerted.set(name, false); continue; } // not stale by definition, re-arms
     const ageMs = nowMs - hb.hb * 1000;
-    if (ageMs <= staleMs) { alerted.set(name, false); continue; } // fresh — re-arms
+    if (ageMs <= staleMs) { alerted.set(name, false); continue; } // fresh, re-arms
     if (alerted.get(name)) continue; // already alerted this stale episode
     if (!(await sessionAlive(name))) continue; // the console process itself is gone — nothing to alert
     await alert(name, Math.round(ageMs / 1000));
@@ -92,12 +92,12 @@ export async function checkStaleHeartbeats(
 
 // censusSessionAlive: is a live claude session named `consoleName` running,
 // per the same claude_sessions() census tick.sh/ceiling-conformance.sh use
-// (scripts/lanes/lib/claude-sessions.sh, real /proc/<pid>/cmdline argv — no
+// (scripts/lanes/lib/claude-sessions.sh, real /proc/<pid>/cmdline argv, no
 // re-derivation of that parsing here). Shells out to the thin
 // chief-census.sh wrapper rather than reimplementing the scan.
 //
 // ponytail: a degraded or failed census (script rc>0) and a genuinely absent
-// chief both read as "not found" here — the caller only asks "should I
+// chief both read as "not found" here. The caller only asks "should I
 // alert," and a census too broken to trust must not manufacture a false
 // "alive" that would then page the operator over nothing.
 //
@@ -105,7 +105,7 @@ export async function checkStaleHeartbeats(
 // would otherwise block this await indefinitely on one chief, starving
 // checkStaleHeartbeats's scan loop for every remaining chief. Bound it and
 // treat a timeout the same as any other degraded scan: sessionAlive=false,
-// matching the fail-closed "degraded scan never alerts" stance above — never
+// matching the fail-closed "degraded scan never alerts" stance above, never
 // a manufactured "alive". SPAWN_OWN_GROUP + killTree (not a bare p.kill) so a
 // grandchild the stub/census script itself spawns doesn't survive the kill
 // and keep holding the pipes open.
@@ -121,13 +121,13 @@ export async function censusSessionAlive(
   const timer = setTimeout(() => { timedOut = true; killTree(p.pid, (s: string) => p.kill(s as any)); }, opts.timeoutMs ?? CENSUS_TIMEOUT_MS);
   let stdout: string, exitCode: number;
   try {
-    // Drain stdout AND stderr concurrently with p.exited — an unread stderr
+    // Drain stdout AND stderr concurrently with p.exited, an unread stderr
     // pipe fills its OS buffer and blocks the child from exiting, hanging
     // this await forever once its diagnostics grow past that buffer.
     [stdout, , exitCode] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
   } finally {
     clearTimeout(timer);
   }
-  if (timedOut || exitCode !== 0) return false; // timed-out/degraded/failed scan — never trust a match from it
+  if (timedOut || exitCode !== 0) return false; // timed-out/degraded/failed scan, never trust a match from it
   return stdout.split("\n").some((line) => line.split("\t")[1] === consoleName);
 }

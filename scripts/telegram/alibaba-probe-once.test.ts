@@ -1,7 +1,7 @@
 // scripts/telegram/alibaba-probe-once.test.ts
 // Runner tests. Hermetic: NO live HTTP, NO real fs.
 // runProbe's fetch / append / marker / log are all injected spies. Credentials
-// in these tests are FAKE ("test-ak"/"test-sk") — never real secret material.
+// in these tests are FAKE ("test-ak"/"test-sk"), never real secret material.
 import { expect, test } from "bun:test";
 import {
   MIN_PROBE_GAP_S, markerPath, shouldProbe, basicAuthHeader, buildPromQueryUrl,
@@ -124,7 +124,7 @@ test("runProbe skip-fresh: within the gap -> skip-fresh, silent, no fetch/append
   let fetched = 0, appended = 0, committed = 0, logged = 0;
   const outcome = await runProbe({
     env: BASE_ENV,
-    nowMs: NOW_MS, markerMs: NOW_MS - 5_000,   // 5s ago — too fresh
+    nowMs: NOW_MS, markerMs: NOW_MS - 5_000,   // 5s ago, too fresh
     fetchJson: async () => { fetched++; return { status: "ok", body: REAL_PROM }; },
     append: () => { appended++; },
     commitMarker: () => { committed++; },
@@ -200,7 +200,7 @@ test("runProbe appended (ok): ALIBABA_QUOTA_GRANTS override flows through resolv
   });
   expect(outcome).toBe("appended");
   const plus = rows.find((r) => r.tier === "qwen-plus")!;
-  expect(plus.used_pct).toBe(50);                  // round(100*250000/500000) — override beat the 1M default
+  expect(plus.used_pct).toBe(50);                  // round(100*250000/500000), override beat the 1M default
   const coder = rows.find((r) => r.tier === "qwen3-coder-plus")!;
   expect(coder.used_pct).toBe(60);                 // default still applies to the non-overridden model
 });
@@ -222,15 +222,15 @@ test("runProbe appended (ok, garbled body): ONE invisible row + one stderr line"
 });
 
 // ProbeOutcome/FetchResult union-pin tests deleted: neither
-// called runProbe or any product code — both built handwritten literals and
+// called runProbe or any product code, both built handwritten literals and
 // asserted properties of those same literals, giving zero runtime coverage.
 // Verified vacuous: renaming "skip-429" to "skip-ratelimited" in the
 // ProbeOutcome union and its return site (a real behavior-breaking change)
 // failed the real "runProbe skip-429" test above but left both deleted
 // literal-pin tests green. Stronger owner-boundary proof already exists at
 // real call sites in this file: every ProbeOutcome member is asserted via an
-// actual runProbe() call — skip-noenv (line 97), skip-fresh (111),
-// skip-429 (125), skip-error (139), appended (162) — and every FetchResult
+// actual runProbe() call: skip-noenv (line 97), skip-fresh (111),
+// skip-429 (125), skip-error (139), appended (162), and every FetchResult
 // shape (ok/rate_limited/error) is exercised the same way via fetchJson
 // returns in those same tests.
 
