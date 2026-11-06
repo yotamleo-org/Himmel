@@ -260,7 +260,7 @@ is_owned() {
 # A name given with --keys must be a key of the file: a typo is a usage error, with
 # nothing written. A himmel key in the list moves by its own route, named or not.
 for key in $(printf '%s' "$keys_arg" | tr ',' ' '); do
-    if ! printf '%s\n' "$names" | grep -qxF -- "$key"; then
+    if ! grep -qxF -- "$key" <<<"$names"; then
         echo "migrate-env: --keys $key is not a key in ${envfile:-the .env}; nothing written." >&2
         exit 2
     fi
