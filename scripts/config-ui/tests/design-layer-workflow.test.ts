@@ -49,3 +49,13 @@ test("the Eval tab's sparklines and trend charts paint only currentColor and car
     }
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+// The judge diamond sits on the Check and approve line and is named in the legend.
+test("Workflow: the story map's Check and approve line draws the judge diamond and the legend names it", () => {
+  const html = renderWorkflow(MODEL, { tab: "workflow" }, null);
+  const phases = html.split('<li class="wf-ph').slice(1);
+  const check = phases[MODEL.stages.findIndex((s) => s.id === "check")];
+  const line = check.slice(check.indexOf('class="wf-line"'), check.indexOf("</div>", check.indexOf('class="wf-line"')));
+  expect(line).toContain('<span class="wf-g wf-j" aria-hidden="true"></span>');
+  expect(html).toContain('<span class="wf-g wf-j" aria-hidden="true"></span>the judge, only on a trust path');
+});

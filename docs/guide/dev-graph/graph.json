@@ -4066,6 +4066,9 @@
           "back": "readiness check fails"
         },
         {
+          "judge": "judge, on a trust path"
+        },
+        {
           "back": "judge NO-GO: fix"
         },
         {

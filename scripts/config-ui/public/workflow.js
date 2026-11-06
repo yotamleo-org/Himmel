@@ -55,6 +55,7 @@ function glyph(ix, item, planned) {
     return `<span class="wf-g wf-s${who}${planned.has(item.step) || s.tagKind === "planned" ? " wf-pl" : ""}" aria-hidden="true"></span>`;
   }
   if (item.gate) return `<span class="wf-g wf-k" aria-hidden="true"></span>`;
+  if (item.judge) return `<span class="wf-g wf-j" aria-hidden="true"></span>`;
   if (item.back) return `<span class="wf-g wf-w" aria-hidden="true">↶</span>`;
   return `<span class="wf-art">${esc(item.artifact)}</span>`;
 }
@@ -95,12 +96,12 @@ function measure(stage, stats) {
 function storyMap(model, ix, stats, open) {
   return `<ol class="wf-map">${model.stages.map((st) => {
     const planned = new Set(st.map.filter((x) => x.planned).map((x) => x.step));
-    const marks = st.line.filter((x) => x.gate || x.back);
+    const marks = st.line.filter((x) => x.gate || x.back || x.judge);
     const met = measure(st, stats);
     return `<li class="wf-ph${open === st.id ? " wf-sel" : ""}" data-ph="${esc(st.id)}">`
       + `<a class="wf-ph-btn" href="#/workflow?phase=${esc(st.id)}" aria-label="Open phase ${st.n}, ${esc(st.name)}"><span class="wf-ph-n">${st.n}</span><span class="wf-ph-name">${esc(st.name)}</span><span class="wf-ph-who">${esc(st.who)}</span></a>`
       + `<div class="wf-line" title="${esc(st.name)}: steps and marks in order">${st.line.map((x) => glyph(ix, x, planned)).join("")}</div>`
-      + `<ul class="wf-marks">${marks.map((x) => `<li>${glyph(ix, x, planned)}<span>${esc(x.gate || x.back)}</span></li>`).join("")}</ul>`
+      + `<ul class="wf-marks">${marks.map((x) => `<li>${glyph(ix, x, planned)}<span>${esc(x.gate || x.back || x.judge)}</span></li>`).join("")}</ul>`
       + `<div class="wf-met"><span class="wf-win">${esc(windowLabel(stats))}</span><span class="wf-v${met.none ? " wf-none" : ""}">${esc(met.v)}</span>${met.cap ? `<span class="wf-cap">${esc(met.cap)}</span>` : ""}</div>`
       + `<ol class="wf-steps">${st.map.map((x) => {
         const s = ix.node.get(x.step).step;
@@ -113,7 +114,8 @@ function storyMap(model, ix, stats, open) {
 
 // what each mark on the story map's lines means, the always-on note, and what the numbers are (Frame 1 of the approved design)
 const KEY = [
-  ['wf-g wf-s', "a step (worker, check or judge)"], ['wf-g wf-s chief', "a step (chief)"], ['wf-g wf-s you', "a step (you)"],
+  ['wf-g wf-s', "a step (worker or check)"], ['wf-g wf-s chief', "a step (chief)"], ['wf-g wf-s you', "a step (you)"],
+  ['wf-g wf-j', "the judge, only on a trust path"],
   ['wf-g wf-k', "an automatic check"], ['wf-g wf-w', "a way back", "↶"], ['wf-g wf-k wf-pl', "dotted, dashed or italic: planned, pilot, or only sometimes"],
 ];
 function mapNotes() {
@@ -149,7 +151,7 @@ function panel(model, ix, st, stats, open, hl) {
   const met = measure(st, stats);
   const chip = (x) => x.step
     ? `<a class="wf-chip" href="#/workflow?step=${esc(x.step)}">${glyph(ix, x, new Set())}${esc(ix.node.get(x.step).step.name)}${badge(ix.node.get(x.step).step)}</a>`
-    : x.gate ? `<span class="wf-chip wf-k">┃ ${esc(x.gate)}</span>` : x.back ? `<span class="wf-chip wf-w">↶ ${esc(x.back)}</span>` : `<span class="wf-chip wf-artchip">${esc(x.artifact)}</span>`;
+    : x.gate ? `<span class="wf-chip wf-k">┃ ${esc(x.gate)}</span>` : x.judge ? `<span class="wf-chip wf-j">◆ ${esc(x.judge)}</span>` : x.back ? `<span class="wf-chip wf-w">↶ ${esc(x.back)}</span>` : `<span class="wf-chip wf-artchip">${esc(x.artifact)}</span>`;
   return `<section class="wf-panel" id="pp-${esc(st.id)}" data-ph="${esc(st.id)}"${open === st.id ? "" : " hidden"}>`
     + `<p class="wf-crumb">Workflow › <b>${st.n} · ${esc(st.name)}</b></p><h2>${st.n} · ${esc(st.name)}</h2>`
     + `<p class="wf-purpose"><b>This phase answers:</b> ${esc(st.purpose)}</p>`
