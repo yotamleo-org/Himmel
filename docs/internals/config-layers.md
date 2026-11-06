@@ -256,8 +256,9 @@ unset too. `HIMMEL_SECRETS_KEYRING=off` skips the keyring.
 The secret keys of a `.env` that git tracks are refused with one line naming
 the file; only an untracked `.env` serves secrets.
 
-Verbs: `get KEY…`, `exec --keys KEY[,KEY…] -- <command>` (runs the command
-with only those keys added to its env), `status [KEY…]` (the layer serving
+Verbs: `get KEY…`, `exec [--require] --keys KEY[,KEY…] -- <command>` (runs the
+command with only those keys added to its env; see "Wrapping a unit" below),
+`status [KEY…]` (the layer serving
 each key, names only), `put KEY` (value from stdin or a silent prompt;
 `--project` stores a per-project item), `import-env <file>` (stores each
 secret key of a dotenv file that `scripts/himmelctl/lib/secrets-manifest.json`
@@ -271,6 +272,54 @@ barrier: an agent can still reach `get` by sourcing the script
 
 `himmel-doctor` check C75 reports the keyring state (`C75-keyring`) and which
 secret names are still served from `.env` (`C75-secrets`), names only.
+
+### Wrapping a unit: `exec --require`
+
+Without `--require`, `exec` skips a key that resolves to unset and still runs
+the command, so a unit that starts before the wallet opens runs without its
+secret and exits 0. A program that does not check its own secret then looks
+healthy. Wrap a unit that must not run without a value this way, in a drop-in
+(`ExecStart=` empty first, to reset it):
+
+```ini
+[Unit]
+StartLimitIntervalSec=0
+
+[Service]
+Restart=on-failure
+RestartSec=30
+ExecStart=
+ExecStart=/home/<user>/.local/bin/himmel-secrets exec --require --keys NAME -- <the original command>
+```
+
+`--require` only refuses: when a named key resolves to unset it exits 1 before
+the command starts, names the keys on stderr and never prints a value. It does
+not retry. Whether the unit retries comes from the unit:
+
+- With no `Restart=`, the unit stays `failed` until someone restarts it.
+- With `Restart=on-failure` and a short `RestartSec=`, the unit retries until
+  systemd's start limit stops it. The user manager's default is 5 starts in
+  10 s, so `RestartSec=30` stays under it. A unit that sets its own limit
+  (`telegram-bridge`: 5 starts in 600 s with `RestartSec=10`) stops retrying
+  after about 50 s and stays `failed` until a manual restart, even if the wallet
+  opens a minute later. `StartLimitIntervalSec=0` in `[Unit]` removes the limit.
+- Every retry writes journal lines: the refusal line, the `keyring locked` line
+  and systemd's own `Failed` lines. A short loop makes a lot of them (a unit
+  with `RestartSec=5`, such as `hermes-gateway`, writes them every 5 s while the
+  wallet is locked), so prefer a `RestartSec=` of 30 or more.
+
+The VM proof of this verb used `RestartSec=3` and no start limit: the locked
+unit showed `activating (auto-restart)` and `status=1/FAILURE`, and after the
+wallet unlocked the retry and an explicit restart both got the value. The
+start limit above is reasoned from systemd's defaults and the unit files, not
+run.
+
+What `--require` counts as present: a value from any layer. A whitespace-only
+keyring value counts as present, and a stale `.env` value satisfies it while
+the wallet is locked, so `status NAME` names the layer that serves a key. An
+empty value counts as missing on every layer. The refusal exit 1 can only be
+told from the command's own exit 1 by the stderr line
+`himmel-secrets: exec --require: no value for NAME`.
 
 Moving a station: import-env skips a secret the manifest does not list, so
 add a new one to `stationSecrets` first. Then:

@@ -92,6 +92,12 @@ assert_eq "S3b unset key: --require names the key" "1" "$(printf '%s' "$out" | g
 rm -f "$TMP/s3b.ran"
 out=$(cd "$REPO" && unset TEST_HS_A TEST_HS_NONE && "$HS" exec --require --keys TEST_HS_A,TEST_HS_NONE -- touch "$TMP/s3b.ran" 2>&1; echo "rc=$?")
 assert_eq "S3b one of two unset: --require exits 1 and runs nothing" "rc=1 absent" "$(printf '%s' "$out" | tail -n 1) $([ -e "$TMP/s3b.ran" ] && echo ran || echo absent)"
+kreset
+printf 'service=himmel key=TEST_HS_E scope=user\t\n' >"$KSTUB_STORE"
+rm -f "$TMP/s3b.ran"
+out=$(cd "$REPO" && unset TEST_HS_E && "$HS" exec --require --keys TEST_HS_E -- touch "$TMP/s3b.ran" 2>&1; echo "rc=$?")
+assert_eq "S3b empty keyring value: --require exits 1 and runs nothing" "rc=1 absent" "$(printf '%s' "$out" | tail -n 1) $([ -e "$TMP/s3b.ran" ] && echo ran || echo absent)"
+printf 'service=himmel key=TEST_HS_A scope=user\tfake-a\n' >"$KSTUB_STORE"
 # shellcheck disable=SC2016 # expands in the child
 got=$(cd "$REPO" && unset TEST_HS_A && "$HS" exec --require --keys TEST_HS_A -- bash -c 'printf "%s" "${TEST_HS_A:-<unset>}"')
 assert_eq "S3b present key: --require runs CMD with the value" "fake-a" "$got"
