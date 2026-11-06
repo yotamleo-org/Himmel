@@ -1041,6 +1041,8 @@ grep -q '^graphify extract' "$WS/calls.log" && fail "T71 graphify ran on a pendi
 
 echo "T72: an ended batch is replayed through graphify, merged with batch id, request count and cost on the run row"
 : > "$WS/calls.log"; echo ended > "$WS/batch-status"
+# a retried resume finds the match log of the attempt before it: its lines must not count into this run
+mkdir -p "$P70/results"; printf 'body\nbody\n' > "$P70/results/replay-matches.log"
 out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t70 --corpus-root "$C70" --corpus-class himmel-code --backend claude-api); rc=$?
 [ "$rc" -eq 0 ] && [[ "$(ids "$C70")" == *sem_a.md_alpha* ]] && [[ "$(ids "$C70")" != *stale_a* ]] \
   && pass "T72 exit 0, results merged into the graph" || fail "T72 (rc=$rc): $out / $(ids "$C70")"

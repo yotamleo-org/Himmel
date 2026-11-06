@@ -399,6 +399,8 @@ if [ "$RESUME" -eq 1 ]; then
   fi
   node "$BATCH_CLIENT" results --dir "$PENDING" --out "$PENDING/results" >&2 \
     || { echo "semantic-update: reading the results of batch $(batch_field batch_id) failed -- graph untouched, the next run retries" >&2; exit 2; }
+  # a retried resume reuses this directory: only this attempt's match lines may count
+  rm -f "$PENDING/results/replay-matches.log"
   export GRAPHIFY_BATCH_MODE=replay GRAPHIFY_BATCH_DIR="$PENDING/results"
 fi
 if [ "$N_BATCH" -gt 0 ]; then
