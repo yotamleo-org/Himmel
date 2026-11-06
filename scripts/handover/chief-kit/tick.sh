@@ -680,6 +680,7 @@ for key, refs, prs, sha in lines:
             continue
         if n is None:
             unreadable = True
+            continue  # an age that cannot be read leaves the line unjudged, as an unreadable blocker does
     if not states:
         continue
     if "open" in states:

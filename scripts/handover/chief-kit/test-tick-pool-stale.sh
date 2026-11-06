@@ -133,6 +133,8 @@ l="$pd HIMMEL-121 question operator decision 268 @$old"; d="$(doc agedbare "$l")
 check 'a ref-less disposition ruled long ago is stale too' '1:HIMMEL-121' "$(afield pool-stale "$d")"
 l="$pd HIMMEL-120 question waits on HIMMEL-902 @deadbeef01"; d="$(doc unknownsha "$l")"
 check 'a sha the repo does not know prints ?, never stale' '?' "$(afield pool-stale "$d")"
+l="$pd HIMMEL-101 slice HIMMEL-901 @deadbeef01"; d="$(doc unknownshadone "$l")"
+check 'an unknown sha leaves a line with only Done blockers unjudged: ?, not stale' '?' "$(afield pool-stale "$d")"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
