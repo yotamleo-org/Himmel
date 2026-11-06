@@ -15,7 +15,9 @@
 #      a host-path regex (home dirs, user-profile dirs, scratch dirs). Any hit
 #      blocks the publish. No gitleaks, or a gitleaks error, blocks it too;
 #   4. builds ONE orphan commit (no parent) of those four files and pushes it to
-#      refs/heads/graph-data with --force-with-lease on the tip it just read.
+#      refs/heads/graph-data with --force-with-lease on the tip it just read,
+#      under BRANCH_NAME_OK=1 (the pre-push branch-name hook refuses
+#      'graph-data' as a new branch). A refused push names its reason.
 # Every failure raises a cadence alert (scripts/luna/cadence-alert.sh, worker
 # graph-channel-publish) naming the file and the rule, never the matched text;
 # a clean publish clears it. No model call, no semantic pass.
@@ -132,8 +134,19 @@ commit="$(GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-himmel graph publisher}" GIT_AUTHO
     "${G[@]}" commit-tree "$tree" -m "chore(graphify): graph-data built at $BAC")" || refuse 5 "git commit-tree failed"
 ls_out="$("${G[@]}" ls-remote "$REMOTE" "$BRANCH_REF" 2>/dev/null)" || refuse 5 "git ls-remote $REMOTE failed"
 old="${ls_out%%[[:space:]]*}"
-"${G[@]}" push --quiet "--force-with-lease=$BRANCH_REF:$old" "$REMOTE" "$commit:$BRANCH_REF" >&2 \
-    || refuse 5 "git push to $BRANCH_REF failed (the tip moved, or the remote refused)"
+# graph-data is a fixed, deliberate channel name that the pre-push branch-name
+# hook (check-push-target.sh) refuses as a new branch; BRANCH_NAME_OK=1 is its
+# single-run bypass for this one push (the main refusal still holds).
+push_err="$STAGE.push.err"
+if ! BRANCH_NAME_OK=1 "${G[@]}" push --quiet "--force-with-lease=$BRANCH_REF:$old" "$REMOTE" "$commit:$BRANCH_REF" 2>"$push_err"; then
+    cat "$push_err" >&2
+    # Name the real reason: the hook's ERROR: line or git's ` ! [rejected]` line.
+    # Other git lines can quote the remote URL, so they are not copied.
+    why="$(grep -E -m1 '^(ERROR:| ! \[)' "$push_err" | cut -c1-200)"
+    rm -f "$push_err"
+    refuse 5 "git push to $BRANCH_REF failed${why:+: $why}${why:-" (the tip moved, or the remote refused)"}"
+fi
+rm -f "$push_err"
 
 bash "$ALERT" clear "$WORKER" >/dev/null 2>&1 || true
 echo "publish-graph-channel: published graph-data $commit (built at $BAC)"

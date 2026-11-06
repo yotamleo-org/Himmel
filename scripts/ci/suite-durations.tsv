@@ -375,6 +375,7 @@ scripts/graphify/test-graph-prune-deleted.sh	6
 scripts/graphify/test-graph-publish.sh	1
 scripts/graphify/test-graph-refresh.sh	1
 scripts/graphify/test-harden-graph.sh	2
+scripts/graphify/test-publish-graph-channel.sh	1
 scripts/graphify/test-worker-graph-rationale.sh	2
 scripts/graphify/test-worker-graph.sh	3
 scripts/graphify/test-refresh-graph-map-backup-prune.sh	0

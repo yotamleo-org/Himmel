@@ -352,6 +352,7 @@ scripts/graphify/test-graph-prune-deleted.sh	pr	guard
 scripts/graphify/test-graph-publish.sh	pr	guard
 scripts/graphify/test-graph-refresh.sh	pr	guard
 scripts/graphify/test-harden-graph.sh	pr	guard
+scripts/graphify/test-publish-graph-channel.sh	pr	guard
 scripts/graphify/test-worker-graph-rationale.sh	pr	guard
 scripts/graphify/test-worker-graph.sh	pr	guard
 scripts/graphify/test-quality-sample.sh	local	behaviour suite, backfilled HIMMEL-6716
