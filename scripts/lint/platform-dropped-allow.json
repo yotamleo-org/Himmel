@@ -876,7 +876,7 @@
     ]
   },
   "scripts/security/security-audit-cadence.sh": {
-    "reason": "Audited HIMMEL-8281: cron-only Windows refusal, matching the existing Snyk cadence; keep unsupported scheduling explicit",
+    "reason": "Audited with the weekly security scanner cadence: cron-only Windows refusal, matching the existing Snyk cadence; keep unsupported scheduling explicit",
     "lines": [
       "    case \"$(uname -s)\" in MINGW*|MSYS*|CYGWIN*) echo 'ERR security-audit: cron only' >&2; return 2 ;; esac"
     ]

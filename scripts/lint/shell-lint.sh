@@ -181,7 +181,7 @@ EOF
 # Print "lineno:line" for every arithmetic use ($(( )), (( )), let) of a variable
 # that was assigned from a leading-zero date field (see [octal-arith] above) and
 # is not 10#-normalized there. A same-line `octal-ok` marker exempts the line.
-# ponytail: same-file single-pass scan, nesting-blind, cross-file values unseen; upgrade path HIMMEL-6020 portable primitives lib
+# ponytail: same-file single-pass scan, nesting-blind, cross-file values unseen; upgrade path the portable primitives lib
 _octal_arith_hits() {
     awk '
     function isname(c) { return c ~ /[A-Za-z0-9_]/ }
