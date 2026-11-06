@@ -1271,6 +1271,18 @@ change scripts/lib/clo-lib.sh
 out="$(run_is "$range")"
 if grepq "$out" '^scripts/test-export-ignored\.sh$' && grepq "$out" '^scripts/test-bulk-120\.sh$'; then pass "a suite git archive leaves out is listed beside the unpacked ones"; else fail "export-ignored suite not listed: $out"; fi
 
+# A root-level file whose name starts with `-` is a candidate like any other: the
+# batched grep must not read it as an option (a grep may exit 1, "no match", on that
+# usage error, which would drop the candidate without a word). It sources the changed
+# file, so a suite naming only it must be listed.
+mkf -dash-lib.sh 'source "$d/lib/clo-lib.sh"'
+mkf scripts/test-names-dash.sh 'bash "$d/../-dash-lib.sh"'
+git -C "$FX" add -A
+git -C "$FX" commit -q -m "chore: dash-named sourcer"
+change scripts/lib/clo-lib.sh
+out="$( cd "$FX" && bash "$IS" "$range" 2>"$SC/dash.err" )"; rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" '^scripts/test-names-dash\.sh$'; then pass "a sourcer named -dash-lib.sh is not read as an option: the suite naming it is listed"; else fail "dash-named candidate: rc=$rc err=$(head -c 400 "$SC/dash.err")"; fi
+
 # --- 37b. a candidate whose scratch copy cannot be created fails closed ------
 # The narrowing writes each candidate's matching lines to a scratch file; a
 # failed open of that file is rc 1, the code `grep` uses for "no match", so

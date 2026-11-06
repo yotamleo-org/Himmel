@@ -987,7 +987,7 @@ grep_narrowed() {
         # xargs reports 123 for any batch that exited 1-125, and grep's 1 is "no match":
         # the wrapper turns rc 1 into success so that only a real error (rc 2) reaches it.
         # shellcheck disable=SC2016  # the child shell expands its own $0 $@
-        ( cd "$src" && LC_ALL=C xargs -0 sh -c 'grep -HaFZ -f "$0" "$@" || [ $? -eq 1 ]' "$lf" ) < "$work/narrow.reg" > "$work/narrow.lines" || io_fail "narrowing the candidates for ${what}"
+        ( cd "$src" && LC_ALL=C xargs -0 sh -c 'grep -HaFZ -f "$0" -- "$@" || [ $? -eq 1 ]' "$lf" ) < "$work/narrow.reg" > "$work/narrow.lines" || io_fail "narrowing the candidates for ${what}"
     fi
     # The NUL after the path becomes \001 (a byte awk can hold). LC_ALL=C: byte-exact
     # index/substr on a line that is not valid UTF-8.
