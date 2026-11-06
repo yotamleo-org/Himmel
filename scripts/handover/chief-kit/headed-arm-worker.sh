@@ -1823,6 +1823,21 @@ if [ "$LANE" = "native" ]; then
         echo "headed-arm-worker: refusing launch: asked effort=$EFFORT_ASKED (WORKER_SESSION_EFFORT) but the worker would run effort=$EFFORT_EFFECTIVE (source=${EFFORT_SOURCE:-none}); set CLAUDE_CODE_EFFORT_LEVEL explicitly if that is intended" >&2
         exit 2
     fi
+    # A settings env block that pins CLAUDE_CODE_EFFORT_LEVEL beats this launcher's env export and
+    # `claude --effort` alike (claude 2.1.319), so the worker would run at the pin, not at
+    # EFFORT_EFFECTIVE. Warn, never refuse: a refusal would stop every launch on a pinned station.
+    # ponytail: reads the user, project and project-local settings files only, upgrade by also reading the
+    # managed and --profile merged settings.
+    if [ -n "$EFFORT_EFFECTIVE" ] && command -v jq >/dev/null 2>&1; then
+        for _pin_f in "${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/settings.json" "${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/settings.local.json" \
+            "${WORKER_SESSION_REPO:-${HEADED_ARM_REPO:-$HERE/../../..}}/.claude/settings.json" "${WORKER_SESSION_REPO:-${HEADED_ARM_REPO:-$HERE/../../..}}/.claude/settings.local.json"; do
+            [ -r "$_pin_f" ] || continue
+            _pin_v="$(jq -r '(.env // {}) | if type == "object" and has("CLAUDE_CODE_EFFORT_LEVEL") then (.CLAUDE_CODE_EFFORT_LEVEL | tostring) else empty end' "$_pin_f" 2>/dev/null)" || continue # swallow-ok: an unreadable or non-JSON settings file pins nothing
+            if [ -n "$_pin_v" ] && [ "$_pin_v" != "$EFFORT_EFFECTIVE" ]; then
+                echo "headed-arm-worker: WARNING: $_pin_f pins $_pin_v in its env block (CLAUDE_CODE_EFFORT_LEVEL), which overrides the asked effort=$EFFORT_EFFECTIVE; the worker will run at $_pin_v (remove the pin; doctor C90 reports it)" >&2
+            fi
+        done
+    fi
 fi
 
 # Propagate the resolved registry values, including DeepSeek's existing

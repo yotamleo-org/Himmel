@@ -3935,6 +3935,27 @@ check_c89_qmd_rerank() {
     fi
 }
 
+# --- C90-effort-pin: a settings env block pins CLAUDE_CODE_EFFORT_LEVEL ---
+# A settings env value wins over both the launcher's process env and `claude --effort` (claude 2.1.319:
+# with the pin at high, a worker asked for medium still sent high), so every worker leg on this station
+# runs at the pinned effort whatever its brief asked. WARN names each file and value; OK without a pin.
+# Reads the user settings, the user settings.local.json and the project's two settings files. Read-only.
+check_c90_effort_pin() {
+    command -v jq >/dev/null 2>&1 || { emit INFO C90-effort-pin "jq not on PATH -- settings effort pin scan skipped"; return 0; }
+    local f v pins=""
+    for f in "$SETTINGS" "$CLAUDE_DIR_R/settings.local.json" "$REPO_ROOT/.claude/settings.json" "$REPO_ROOT/.claude/settings.local.json"; do
+        [ -r "$f" ] || continue
+        v="$(jq -r '(.env // {}) | if type == "object" and has("CLAUDE_CODE_EFFORT_LEVEL") then (.CLAUDE_CODE_EFFORT_LEVEL | tostring) else empty end' "$f" 2>/dev/null)" || continue
+        [ -n "$v" ] && pins="${pins:+$pins, }$f ($v)"
+    done
+    if [ -z "$pins" ]; then
+        emit OK C90-effort-pin "no settings env block pins CLAUDE_CODE_EFFORT_LEVEL, so a worker leg runs at the effort its launcher asks for"
+        return 0
+    fi
+    emit WARN C90-effort-pin "a settings env block pins CLAUDE_CODE_EFFORT_LEVEL: $pins -- it overrides the launcher's asked effort, so every worker leg runs at the pinned effort" \
+        "remove CLAUDE_CODE_EFFORT_LEVEL from the env block of each file named above (set the effort per session with /effort or --effort instead)"
+}
+
 # --- C41: MCP server credential on the command line ---------------
 # An MCP server entry launched as `npm exec <server> --api-key <key>` puts the key
 # in argv, so any local user reads it via ps or /proc/<pid>/cmdline, and it lands
@@ -5680,6 +5701,7 @@ run_check C86 check_c86_morning_report
 run_check C88 check_c88_graph_api_optin
 run_check C87 check_c87_stub_handover_state
 run_check C89 check_c89_qmd_rerank
+run_check C90 check_c90_effort_pin
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

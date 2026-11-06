@@ -179,6 +179,29 @@ mkdir -p "$T/repo11"
 out="$(cd "$T" && HIMMEL_HOLD_KEY=HIMMEL-1 WORKER_SESSION_REPO="$T/repo11" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-9377-N5-c "$T/consult.md" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)"
 contains "W11 a --consult launch carries no key" "$out" "HIMMEL_HOLD_KEY=<unset> HIMMEL_HOLD_DOC=<unset> HIMMEL_HOLD_LABEL=<unset>"
 
+# W12. a settings env pin of CLAUDE_CODE_EFFORT_LEVEL overrides the asked effort (claude 2.1.319,
+# sandboxed HOME, mock API: pin high + `--effort medium` or env medium both still sent high). The launcher
+# warns, never refuses, and stays quiet when the pin matches or there is none. HOME is the sandbox from W7.
+unset CLAUDE_CONFIG_DIR CLAUDE_DIR 2>/dev/null || true
+mkdir -p "$HOME/.claude" "$T/repo12/.claude"
+printf '{"env":{"CLAUDE_CODE_EFFORT_LEVEL":"high"}}\n' >"$HOME/.claude/settings.json"
+rc=0; out="$(WORKER_SESSION_EFFORT=medium dry)" || rc=$?
+check "W12 a user-settings pin differing from the asked effort still launches (exit 0)" "$rc" "0"
+contains "W12 the launcher warns about the pin" "$out" "WARNING"
+contains "W12 the warning names the variable" "$out" "CLAUDE_CODE_EFFORT_LEVEL"
+contains "W12 the warning names the settings file" "$out" "$HOME/.claude/settings.json"
+contains "W12 the warning names the pinned effort" "$out" "pins high"
+contains "W12 the warning names the asked effort" "$out" "asked effort=medium"
+out="$(WORKER_SESSION_EFFORT=high dry)"
+not_contains "W12 control: a pin equal to the asked effort is silent" "$out" "WARNING"
+rm -f "$HOME/.claude/settings.json"
+out="$(WORKER_SESSION_EFFORT=medium dry)"
+not_contains "W12 control: no pin is silent" "$out" "WARNING"
+printf '{"env":{"CLAUDE_CODE_EFFORT_LEVEL":"max"}}\n' >"$T/repo12/.claude/settings.json"
+out="$(HEADED_ARM_REPO="$T/repo12" WORKER_SESSION_EFFORT=medium dry)"
+contains "W12 a project-settings pin warns too" "$out" "$T/repo12/.claude/settings.json"
+rm -f "$T/repo12/.claude/settings.json"
+
 echo "---"
 if [ "$FAILED" -gt 0 ]; then echo "FAILED: $FAILED case(s)"; exit 1; fi
 echo "PASS all cases"

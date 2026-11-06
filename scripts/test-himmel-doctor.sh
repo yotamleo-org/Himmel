@@ -8096,4 +8096,31 @@ out="$(c89_run QMD_RERANK=off QMD_DAEMON_OFF_FLAG="$c89_t/off-flag")"
 if grepq "$out" 'INFO C89-qmd-rerank' && grepq "$out" -F 'off by operator' && ! grepq "$out" 'WARN C89'; then pass "C89 operator off -> INFO"; else fail "C89 operator off -> $(printf '%s' "$out" | head -4)"; fi
 rm -rf "$c89_t"
 
+# --- C90-effort-pin: a settings env block pins CLAUDE_CODE_EFFORT_LEVEL ---
+# Probe on claude 2.1.319 (sandboxed HOME, mock API logging output_config.effort): with the pin
+# set to high, `--effort medium` and a process-env medium both still sent high; without the pin
+# both sent medium. So a pin overrides whatever the launcher asks for, and the doctor names it.
+c90_t="$(mktemp -d "${TMPDIR:-/tmp}/c90.XXXXXX")" || { echo "FATAL: C90 setup mktemp failed" >&2; exit 1; }
+c90_reset() { rm -rf "${c90_t:?}/claude" "${c90_t:?}/root"; mkdir -p "$c90_t/claude" "$c90_t/root/.claude"; ln -s "$REPO_ROOT/scripts" "$c90_t/root/scripts"; }
+c90_run() { env -u CLAUDE_CODE_EFFORT_LEVEL CLAUDE_DIR="$c90_t/claude" HOME="$c90_t/home" bash "$DOC" --root "$c90_t/root" --only C90 --no-color 2>&1; }
+echo "== C90: user settings env pins CLAUDE_CODE_EFFORT_LEVEL -> WARN naming the variable, the value and the file =="
+c90_reset; printf '{"env":{"CLAUDE_CODE_EFFORT_LEVEL":"high"}}\n' > "$c90_t/claude/settings.json"
+out="$(c90_run)"
+if grepq "$out" 'WARN C90-effort-pin' && grepq "$out" -F 'CLAUDE_CODE_EFFORT_LEVEL' && grepq "$out" -F "$c90_t/claude/settings.json" && grepq "$out" -F 'high'; then pass "C90 user pin -> WARN"; else fail "C90 user pin -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C90: control, settings without the pin -> OK, no WARN =="
+c90_reset; printf '{"env":{"OTHER":"1"}}\n' > "$c90_t/claude/settings.json"
+out="$(c90_run)"
+if grepq "$out" 'OK   C90-effort-pin' && ! grepq "$out" 'WARN C90'; then pass "C90 no pin -> OK"; else fail "C90 no pin -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C90: no settings file at all -> OK =="
+c90_reset
+out="$(c90_run)"
+if grepq "$out" 'OK   C90-effort-pin' && ! grepq "$out" 'WARN C90'; then pass "C90 no settings -> OK"; else fail "C90 no settings -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C90: project settings.json and settings.local.json pins also warn =="
+c90_reset; printf '{"env":{"CLAUDE_CODE_EFFORT_LEVEL":"max"}}\n' > "$c90_t/root/.claude/settings.json"
+out="$(c90_run)"
+c90_reset; printf '{"env":{"CLAUDE_CODE_EFFORT_LEVEL":"low"}}\n' > "$c90_t/root/.claude/settings.local.json"
+out2="$(c90_run)"
+if grepq "$out" 'WARN C90-effort-pin' && grepq "$out" -F "$c90_t/root/.claude/settings.json" && grepq "$out2" 'WARN C90-effort-pin' && grepq "$out2" -F "$c90_t/root/.claude/settings.local.json"; then pass "C90 project pins -> WARN"; else fail "C90 project pins -> $(printf '%s' "$out$out2" | head -6)"; fi
+rm -rf "$c90_t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi
