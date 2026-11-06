@@ -1656,6 +1656,19 @@ assert_rc "arm --rewrite-armed over a runner armed with no account exits 2" 2 "$
 assert_contains "the no-account refusal names --api-account" "--api-account" "$out"
 run_cron3 disarm >/dev/null 2>&1
 
+echo "TEST: --rewrite-armed reads the account from the lane assignment, not from a vault path that spells one"
+ACCT_PATH_VAULT="$TMP_ROOT/HIMMEL_API_ACCOUNT=B"
+mkdir -p "$ACCT_PATH_VAULT"
+rc=0; out=$(PATH="$CLAUDE_BIN_DIR_PATH:$PATH" run_cron3 arm --vault "$ACCT_PATH_VAULT" --luna-only --ast-only --with-luna-semantic --api-account A 2>&1) || rc=$?
+assert_rc "arm over a vault path that spells an account exits 0" 0 "$rc"
+assert_contains "fixture: the armed runner names account A and the vault path spells B" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A " "$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)"
+rc=0; out=$(PATH="$CLAUDE_BIN_DIR_PATH:$PATH" run_cron3 arm --vault "$ACCT_PATH_VAULT" --rewrite-armed 2>&1) || rc=$?
+assert_rc "arm --rewrite-armed over that runner exits 0" 0 "$rc"
+sem_sh=$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)
+assert_contains "the rewrite keeps account A" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A " "$sem_sh"
+assert_not_contains "the rewrite does not take the account from the vault path" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=B " "$sem_sh"
+run_cron3 disarm >/dev/null 2>&1
+
 echo "TEST: --semantic-active on a re-arm lifts a pause marker left by the earlier paused arm"
 : > "$CRON_DIR3/semantic-luna.paused"
 : > "$CRON_DIR3/semantic.paused"

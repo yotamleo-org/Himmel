@@ -1093,7 +1093,7 @@ publish_cron_payload() {
 # The account an armed luna semantic runner names, read back from the runner file: the lane form
 # (HIMMEL_API_ACCOUNT=<acct>) or the skip form ("; api account <acct>]"). Empty when it names none.
 armed_luna_semantic_account() {
-    sed -n -e 's/.*HIMMEL_API_ACCOUNT=\([^ ]*\) .*/\1/p' -e 's/.*; api account \([^]]*\)\].*/\1/p' "$1" | head -n 1
+    sed -n -e 's/.*HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=\([^ ]*\) .*/\1/p' -e 's/.*; api account \([^]]*\)\].*/\1/p' "$1" | head -n 1
 }
 
 # Luna semantic worker payload, POSIX form: semantic-update.sh on the live luna graph (GRAPHIFY_OUT, the same
