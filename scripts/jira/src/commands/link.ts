@@ -41,7 +41,7 @@ interface DirectedIssueLink {
 
 /**
  * Case-insensitive match of a requested link-type name against the available
- * Jira issue-link types. Mirrors findTransition() — keeps the I/O out of the
+ * Jira issue-link types. Mirrors findTransition(). Keeps the I/O out of the
  * matcher so it's unit-testable.
  */
 export function findLinkType(

@@ -27,9 +27,9 @@ import type {
 /**
  * MCP surface for the himmel jira CLI.
  *
- * Exposes the Commander CLI's verbs — get, create, list, transition,
+ * Exposes the Commander CLI's verbs (get, create, list, transition,
  * transitions, comment, attach, edit, projects, project-create, roadmap-set,
- * roadmap-get, rank — over the Model Context Protocol on stdio. Each MCP tool
+ * roadmap-get, rank) over the Model Context Protocol on stdio. Each MCP tool
  * routes to the SAME underlying client functions (`request`,
  * `uploadAttachment`, `markdownToAdf`, `buildEditFields`, `resolveListJql`,
  * `findTransition`, …) the CLI verbs call. This module is purely additive:
@@ -43,7 +43,7 @@ import type {
  * SDK) without also pulling zod into the schema layer.
  */
 
-/** Dependencies a tool handler needs — injectable so tests can mock them. */
+/** Dependencies a tool handler needs, injectable so tests can mock them. */
 export interface ToolDeps {
   request: typeof request;
   uploadAttachment: typeof uploadAttachment;
@@ -73,7 +73,7 @@ const str = (description: string) => ({ type: 'string', description });
 /**
  * Build the tools. The handlers mirror the CLI verbs in
  * `src/commands/*` line-for-line in terms of which client function they call
- * and what payload they build — they just return a string instead of
+ * and what payload they build. They just return a string instead of
  * `console.log`-ing it.
  */
 export function createTools(): JiraTool[] {

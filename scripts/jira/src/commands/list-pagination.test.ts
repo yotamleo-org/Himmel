@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { searchAllIssues } from './list.js';
 
-// Jira Cloud's /search/jql SILENTLY clamps maxResults to 100 —
+// Jira Cloud's /search/jql SILENTLY clamps maxResults to 100,
 // asking for 999 returns exactly 100, with no error and nothing to say more
 // exist. Every count taken through this CLI was therefore quietly truncated:
 // a consolidation pass read "100 open tickets" when the real figure was 389.
@@ -46,7 +46,7 @@ describe('searchAllIssues', () => {
     await searchAllIssues('x', '150', req as never);
 
     expect(req.mock.calls[0][1]).not.toContain('nextPageToken');
-    // cursor must be URL-encoded — a raw token with / or + would corrupt the query
+    // cursor must be URL-encoded. A raw token with / or + would corrupt the query
     expect(req.mock.calls[1][1]).toContain(`nextPageToken=${encodeURIComponent('tok en/+1')}`);
   });
 
@@ -84,7 +84,7 @@ describe('searchAllIssues', () => {
 
   it('throws on a repeated nextPageToken with non-empty pages', async () => {
     // The empty-page guard cannot catch a cursor that does not
-    // advance — a non-empty page repeating the same token would loop forever,
+    // advance. A non-empty page repeating the same token would loop forever,
     // pushing duplicates until `target`. Fail loud instead.
     const req = vi
       .fn()

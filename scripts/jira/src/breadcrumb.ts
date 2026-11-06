@@ -7,7 +7,7 @@ import { join } from 'node:path';
 //
 // Every mutating verb (transition, comment, create, move, edit, assign,
 // worklog, link, unlink, sprint) calls writeJiraBreadcrumb(<ticket>) immediately after
-// its mutating request RESOLVES — NOT gated on the command's exit code, so a
+// its mutating request RESOLVES, NOT gated on the command's exit code, so a
 // mutation that landed before a later non-fatal failure (e.g. an attachment
 // upload) still leaves a breadcrumb.
 //
@@ -18,7 +18,7 @@ import { join } from 'node:path';
 // by repo+branch and let the hook match on `epoch >= session-start`.
 //
 // The path + sanitization MUST stay byte-identical to the bash reader in
-// scripts/lib/jira-breadcrumb.sh — see that file's header.
+// scripts/lib/jira-breadcrumb.sh. See that file's header.
 
 // Keep [A-Za-z0-9._-]; replace everything else (notably the '/' in branch
 // names like feat/foo) with '-'. Mirrors the reader's sed expression.
@@ -53,7 +53,7 @@ function gitOut(args: string[]): string {
 
 export function writeJiraBreadcrumb(ticket: string): void {
   // Best-effort, fire-and-forget. The mutation already landed; a breadcrumb
-  // write failure must NEVER fail the CLI command — swallow everything.
+  // write failure must NEVER fail the CLI command. Swallow everything.
   try {
     if (!ticket) return;
     const remote = gitOut(['remote', 'get-url', 'origin']);

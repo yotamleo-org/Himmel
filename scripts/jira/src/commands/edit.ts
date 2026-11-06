@@ -70,7 +70,7 @@ export function buildEditFields(opts: EditOptions, sectors: readonly string[] = 
   // plugin-first hook).
   if (opts.parent) fields['parent'] = { key: opts.parent };
   // --labels is FULL-REPLACE: the comma-separated set becomes
-  // the issue's complete label list — any existing label not in the set is
+  // the issue's complete label list. Any existing label not in the set is
   // removed. Use --add-labels for an incremental, non-destructive
   // append instead.
   if (opts.labels !== undefined) fields['labels'] = parseLabels(opts.labels);
@@ -331,7 +331,7 @@ export function registerEdit(program: Command): void {
     .action(async (key: string, options: EditOptions & { desc?: string; descFile?: string; gate?: string; chiefOverride?: string; residualOf?: string }) => {
       // `--desc` and `--description` are aliases; whichever the operator
       // passed wins (and if both, --description wins because it's parsed
-      // last by commander's option-order). `--desc-file` overrides both — it
+      // last by commander's option-order). `--desc-file` overrides both. It
       // is the escape hatch for multi-line bodies that can't go inline.
       if (options.descFile !== undefined) {
         options.description = readBodyFile(options.descFile, '--desc-file');
@@ -384,7 +384,7 @@ export function registerEdit(program: Command): void {
       // A 2xx PUT does not prove the field changed (Jira can drop a
       // field its edit screen or scheme does not take), so read the priority
       // back and fail loud instead of reporting a silent no-op as "edited".
-      // Same for every other field edit sends — one GET covers all.
+      // Same for every other field edit sends. One GET covers all.
       const names = [...new Set([...readBackFieldNames(options), ...(dropFixVersions.length > 0 ? ['fixVersions'] : [])])];
       if (names.length > 0) {
         const got = await request<{ fields?: Record<string, unknown> }>(

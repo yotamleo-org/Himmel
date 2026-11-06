@@ -155,7 +155,7 @@ export function markdownToAdf(md: string): AdfDoc {
       continue;
     }
 
-    // paragraph — accumulate consecutive non-blank, non-special lines
+    // paragraph. Accumulate consecutive non-blank, non-special lines
     const paraLines: string[] = [line];
     i++;
     while (

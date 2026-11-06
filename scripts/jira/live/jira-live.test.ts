@@ -5,7 +5,7 @@
 //   npm run build && JIRA_LIVE_TEST=1 JIRA_LIVE_PROJECT=HTEST npx vitest run live/
 //
 // Safety: refuses to run unless JIRA_LIVE_PROJECT is a valid project key that
-// is not HIMMEL (any case) — live writes never touch the real backlog. Every
+// is not HIMMEL (any case). Live writes never touch the real backlog. Every
 // issue and version the run creates is tracked and torn down in afterAll, also
 // after a failed assertion: versions are archived, issues moved to Done (the CLI
 // has no issue-delete, so they remain, closed, in the test project). Needs the creds the

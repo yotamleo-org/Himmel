@@ -19,7 +19,7 @@ const distIndex = fileURLToPath(new URL('../dist/index.js', import.meta.url));
 
 // Verbs the hook's verb→MCP-method map keys on (block-mcp-when-plugin-exists.sh).
 // If any of these stop being emitted, the corresponding MCP method stops
-// being blocked — exactly the silent regression this test guards.
+// being blocked, exactly the silent regression this test guards.
 const HOOK_CRITICAL_VERBS = [
   'get',
   'create',

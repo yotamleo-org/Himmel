@@ -5,13 +5,13 @@ import type { JiraTransition } from '../types.js';
 
 // Jira Cloud REST API does NOT support direct project-change
 // on an issue. The pattern here is close-and-recreate:
-//   0. PRE-FLIGHT GET /project/<to-project> — fail fast if target invalid
+//   0. PRE-FLIGHT GET /project/<to-project>, fail fast if target invalid
 //   1. GET source (summary, description, issuetype)
 //   2. GET source comments (small race window: a comment added between 1 and
 //      2 is dropped; documented, acceptable for current use)
 //   3. CREATE target with prepended supersedes paragraph in description
 //   4. COPY each comment (per-iteration try/catch; partial failures collected,
-//      reported at the end, do NOT abort the move — target is more useful with
+//      reported at the end, do NOT abort the move. Target is more useful with
 //      most comments than with none)
 //   5. COMMENT on source: "Moved to <NEW-KEY>. Closing."
 //   6. GET source transitions, find --target-status (default Done)
@@ -67,7 +67,7 @@ export interface JiraCommentResp {
  * Safely extract the content array from an ADF doc. Returns [] for null,
  * undefined, or malformed shapes (e.g. legacy issues where `content` is a
  * string, missing, or any non-array). Guards against the malformed-ADF
- * passthrough class — without this, prependSupersedesNote could produce a doc
+ * passthrough class. Without this, prependSupersedesNote could produce a doc
  * Jira renders broken.
  */
 export function safeContent(
@@ -78,8 +78,8 @@ export function safeContent(
 }
 
 /**
- * Prepend a "Originally filed as <srcKey> — moved <date>" italic paragraph to
- * the source ADF description. Exported for unit testing — the inner request()
+ * Prepend a "Originally filed as <srcKey>, moved <date>" italic paragraph to
+ * the source ADF description. Exported for unit testing. The inner request()
  * orchestration is integration territory.
  *
  * When source description is null/undefined/malformed, returns a doc with only
@@ -163,7 +163,7 @@ export function registerMove(program: Command): void {
           dryRun: boolean;
         },
       ) => {
-        // Partial-state tracking — used by the error-breadcrumb path so the
+        // Partial-state tracking, used by the error-breadcrumb path so the
         // operator can finish the move manually instead of re-running and
         // double-creating the target.
         let stepLabel = 'pre-flight';
@@ -187,7 +187,7 @@ export function registerMove(program: Command): void {
         };
 
         try {
-          // 0. PRE-FLIGHT — validate --to-project exists + operator has perms.
+          // 0. PRE-FLIGHT, validate --to-project exists + operator has perms.
           // Catching here means a typo'd target key fails BEFORE any GET of the
           // source, rather than at step 3 with a cryptic create-400.
           stepLabel = 'pre-flight (--to-project validation)';
@@ -209,7 +209,7 @@ export function registerMove(program: Command): void {
           const targetSummary = src.fields.summary;
           const targetDesc = prependSupersedesNote(srcKey, src.fields.description ?? null);
 
-          // 2. GET comments. NOTE: small race window between step 1 and step 2 —
+          // 2. GET comments. NOTE: small race window between step 1 and step 2,
           // a comment added concurrently is dropped from the move. Acceptable
           // for current use; documented here so future readers know it's a known
           // window, not an oversight.
@@ -247,7 +247,7 @@ export function registerMove(program: Command): void {
           // fails, so the SessionEnd nudge must not fire.
           writeJiraBreadcrumb(srcKey);
 
-          // 4. Copy comments — per-iteration try/catch so a single failure does
+          // 4. Copy comments, per-iteration try/catch so a single failure does
           // NOT abandon the rest. Target is much more useful with most comments
           // than with none. Failed IDs are listed at the end.
           stepLabel = 'COPY comments';

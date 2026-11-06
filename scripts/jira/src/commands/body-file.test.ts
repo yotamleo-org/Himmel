@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { readBodyFile } from './body-file.js';
 
-// readFileSync is an ESM export — spyOn can't redefine it, so mock the module.
+// readFileSync is an ESM export. spyOn can't redefine it, so mock the module.
 vi.mock('node:fs', () => ({ readFileSync: vi.fn() }));
 const mockRead = vi.mocked(readFileSync);
 

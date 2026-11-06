@@ -4,7 +4,7 @@ import { formatIssue } from '../output.js';
 import type { JiraIssue, JiraSearchResult } from '../types.js';
 
 // Local widening: with `--labels`, the search fields include `labels`, but
-// the shared JiraIssue type does not declare it — kept local rather than
+// the shared JiraIssue type does not declare it, kept local rather than
 // touching types.ts, which this ticket's scope excludes.
 type IssueWithLabels = JiraIssue & { fields: JiraIssue['fields'] & { labels?: string[] } };
 
@@ -50,7 +50,7 @@ export interface ListJqlOptions {
 /**
  * Resolve the JQL to query.
  *
- * When `--jql` is supplied, pass it through verbatim — this is
+ * When `--jql` is supplied, pass it through verbatim. This is
  * the arbitrary-search escape hatch that the block-mcp hook points
  * `searchJiraIssuesUsingJql` at, so it must support any JQL the operator
  * writes (cross-status, free-text, ORDER BY, etc.) without the CLI adding
@@ -61,7 +61,7 @@ export interface ListJqlOptions {
  *
  * `--label` composes a `labels = "<l>"` clause into the built
  * JQL alongside the project/status/type filters. Precedence matches the
- * existing flags: `--jql` still wins — when supplied, `--label` (like
+ * existing flags: `--jql` still wins. When supplied, `--label` (like
  * `--project`/`--type`/`--status`) is ignored. An empty or whitespace-only
  * `--label` is treated as not supplied (mirrors the `--jql` trim behaviour).
  */
@@ -87,7 +87,7 @@ const PAGE_MAX = 100;
 /**
  * Fetch up to `limit` issues, following `nextPageToken` as needed.
  *
- * Why this exists: the endpoint SILENTLY clamps `maxResults` to 100 — asking
+ * Why this exists: the endpoint SILENTLY clamps `maxResults` to 100. Asking
  * for 999 returned exactly 100 with no error and no indication more existed,
  * so every count taken through this CLI was quietly truncated. A consolidation
  * pass read "100 open tickets" when the real figure was 389.
@@ -131,8 +131,8 @@ export async function searchAllIssues(
     );
     issues.push(...result.issues);
     token = result.nextPageToken;
-    // A page that returns nothing ends the walk even if a token came back —
-    // without this an empty-but-tokened page would spin forever.
+    // A page that returns nothing ends the walk even if a token came back.
+    // Without this an empty-but-tokened page would spin forever.
     if (result.issues.length === 0) break;
   } while (token !== undefined && issues.length < target);
 

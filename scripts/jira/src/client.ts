@@ -164,7 +164,7 @@ if (!underTest()) ensureEnvLoaded();
 export const baseUrl = (): string => {
   ensureEnvLoaded();
   // No hardcoded default. A stranger who sets a token but
-  // not the base URL must fail loud here — never silently send requests
+  // not the base URL must fail loud here, never silently send requests
   // to the author's instance.
   const url = process.env.JIRA_BASE_URL;
   if (!url) {
@@ -326,7 +326,7 @@ export async function uploadMultipart(
     headers: {
       Authorization: auth,
       'X-Atlassian-Token': 'no-check',
-      // intentionally NO Content-Type — fetch must set multipart boundary
+      // intentionally NO Content-Type. Fetch must set multipart boundary
     },
     body: fd,
   });

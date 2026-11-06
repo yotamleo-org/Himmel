@@ -101,7 +101,7 @@ function printCore(verdict: CoreVerdict): void {
  * Jira's REST field is `summary`; the CLI's long-standing flag is `--title`
  * (matches `edit --title`). `--summary` is accepted as an alias since that's
  * the literal Jira field name and the natural reach for anyone who knows the
- * API. If both are given, `--title` wins — it's the documented flag, so this
+ * API. If both are given, `--title` wins. It's the documented flag, so this
  * is the least-surprising resolution (no error; --summary is a pure
  * alias, not a distinct value to reconcile).
  */
@@ -1058,7 +1058,7 @@ export function registerCreate(program: Command): void {
         // Print the issue key to STDOUT immediately on success, BEFORE
         // attempting attachments. Scripted callers like
         //   KEY=$(jira create ... --attach foo)
-        // capture stdout — if attachments fail and we exit 1, the key
+        // capture stdout. If attachments fail and we exit 1, the key
         // has already been emitted so the caller still has it. The
         // attachment-failure message goes to stderr.
         console.log(`Created ${result.key}`);

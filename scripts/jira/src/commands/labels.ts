@@ -3,8 +3,8 @@
  * REST API expects for `fields.labels`.
  *
  * Split on comma, trim each token, drop empties. An argument that yields no
- * labels (empty string, whitespace, bare commas) is an operator error —
- * unlike `--status` there is no sensible default to fall back to, and on
+ * labels (empty string, whitespace, bare commas) is an operator error.
+ * Unlike `--status` there is no sensible default to fall back to, and on
  * `edit` a silently-empty array would wipe every label on the issue.
  */
 export function parseLabels(arg: string): string[] {

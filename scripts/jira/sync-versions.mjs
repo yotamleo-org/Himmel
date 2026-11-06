@@ -1,24 +1,24 @@
 #!/usr/bin/env node
-// scripts/jira/sync-versions.mjs — Jira fixVersions mirror the
+// scripts/jira/sync-versions.mjs. Jira fixVersions mirror the
 // GitHub release tags.
 //
 //   1. Every published GitHub release becomes a Jira project version with the
-//      same name (tag), released=true, the release date, and — for a
-//      pre-release — a description that says so. Draft releases are skipped.
+//      same name (tag), released=true, the release date, and (for a
+//      pre-release) a description that says so. Draft releases are skipped.
 //   2. Every merged PR's merge commit is mapped to the FIRST tag that contains
 //      it; that version is added to every [<PROJECT>-N] key in the PR title.
 //      A PR whose merge commit is in no tag is left alone.
 //
 // Idempotent: an existing version is never re-created, a fixVersion a ticket
 // already carries is never re-added. Default is a dry-run report; --apply
-// writes. Only versions that are GitHub tags — plus v1.0.0 under --v1-keys —
+// writes. Only versions that are GitHub tags (plus v1.0.0 under --v1-keys)
 // are ever created or released here; any other hand-made version is left alone.
 // An existing version's release date and description are never rewritten
-// either (the one exception: releasing it, if it is still unreleased) — a
+// either (the one exception: releasing it, if it is still unreleased). A
 // hand edit in Jira survives every run.
 //
 // Reads AND writes go through the jira CLI (dist/, `npm run build`) as a
-// subprocess — one auth path, breadcrumbs intact — and `gh` / local `git` for
+// subprocess (one auth path, breadcrumbs intact) and `gh` / local `git` for
 // the GitHub side. The planner is pure so it is unit-tested with fixtures.
 //
 // Usage:
@@ -55,7 +55,7 @@ export function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     // A trailing option (no next token) must not silently take an undefined
-    // value — --repo used to fall back to the local repo, --v1-keys used to
+    // value. --repo used to fall back to the local repo, --v1-keys used to
     // silently skip the v1.0.0 step, both even under --apply. Nor may a
     // value position silently swallow the NEXT option (e.g. `--repo --apply`
     // taking "--apply" as the repo path and dropping the actual flag).
@@ -149,7 +149,7 @@ export function planSync({ project, releases, prs, shaToTag, jiraVersions, jiraK
       // ponytail: releasing an unreleased version is the one
       // write an existing version still gets. Its release date/description
       // otherwise never converges onto the GitHub release's values, even if
-      // they now differ (an operator may have hand-edited them in Jira) —
+      // they now differ (an operator may have hand-edited them in Jira),
       // same "any hand-made version is left alone" invariant this file
       // already applies to non-tag versions, extended to existing metadata.
       releaseVersions.push({ name: spec.name, releaseDate: spec.releaseDate });
@@ -248,7 +248,7 @@ export async function runSync(opts, deps) {
     else missingTags.push(tag);
   }
   // A skipped tag hands its commits to the NEXT tag, and a wrong fixVersion is
-  // never removed by a later run — so a partial clone may report but not write.
+  // never removed by a later run, so a partial clone may report but not write.
   if (opts.apply && missingTags.length) {
     throw new Error(
       `tags not in the local clone (run \`git fetch --tags\`): ${missingTags.join(', ')} — refusing to write`,
