@@ -3999,15 +3999,15 @@ s17_at() {
     SHA="$1"; REPO="$S17R"; LEDGER="$S17R/.git/cr-critic-scores.jsonl"
     seed_ledger_ok
     if [ -n "${S17_LP:-}${S17_RS:-}" ]; then
-        printf '{"kind":"impacted","ts":"2026-11-05T00:00:00Z","source":"pr-check","branch":"%s","head":"%s","pr":77,"status":"ok","impacted_n":2,"unverdicted_n":0,"skip_n":0,"rc":0,"local_pass":%s,"ruled_skip":%s}\n' \
-            "${STUB_PR_BRANCH:-feat/himmel-100-thing}" "$SHA" "${S17_LP:-[]}" "${S17_RS:-[]}" >> "$LEDGER"
+        printf '{"kind":"impacted","ts":"2026-11-05T00:00:00Z","source":"pr-check","branch":"%s","head":"%s","pr":%s,"status":"ok","impacted_n":2,"unverdicted_n":0,"skip_n":0,"rc":0,"local_pass":%s,"ruled_skip":%s}\n' \
+            "${S17_ROW_BRANCH:-${STUB_PR_BRANCH:-feat/himmel-100-thing}}" "$SHA" "${S17_ROW_PR:-77}" "${S17_LP:-[]}" "${S17_RS:-[]}" >> "$LEDGER"
     fi
     : > "$GH_LOG"
     rc=0; out="$(STUB_IMPACTED_REAL="$S17_REAL" STUB_ROLLUP="${S17_ROLLUP-$S17_GREEN}" run)" || rc=$?
     SHA="$keep_sha"; REPO="$keep_repo"; LEDGER="$keep_ledger"
 }
 line17() { printf '%s\n' "$1" | grep -F '] 19. ' || true; }
-s17_clear() { unset S17_LP S17_RS S17_ROLLUP STUB_MANIFEST_DIR STUB_DL_FAIL STUB_DL_SLEEP STUB_RUN_SLEEP STUB_RUN_HEAD_SHA READY_CHECK_ITEM19_BOUND; reset_stubs; }
+s17_clear() { unset S17_LP S17_RS S17_ROW_BRANCH S17_ROW_PR S17_ROLLUP STUB_MANIFEST_DIR STUB_DL_FAIL STUB_DL_SLEEP STUB_RUN_SLEEP STUB_RUN_HEAD_SHA READY_CHECK_ITEM19_BOUND; reset_stubs; }
 
 # T6 / T21: every suite has a ran-0 row in the head's run; the PR touches no plugin file
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
@@ -4068,6 +4068,17 @@ contains "19 T20: the ruled SKIP is named" "$out" "1 from CI run 555, 1 local; r
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; S17_LP="[\"$S17_A\"]"; S17_RS="[]"
 s17_at "$S17_H1"
 contains "19 T20 a bare SKIP (in neither list): FAIL" "$(line17 "$out")" "$S17_B (no ran-0 row in run 555)"
+
+# T5c: a row at this head on another branch, or one whose .pr names another PR, is no local proof
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; S17_LP="[\"$S17_B\"]"; S17_ROW_BRANCH=other/branch
+s17_at "$S17_H1"
+contains "19 T5c a row of another branch gives no local proof" "$(line17 "$out")" "$S17_B (no ran-0 row in run 555)"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; S17_LP="[\"$S17_B\"]"; S17_ROW_PR=78
+s17_at "$S17_H1"
+contains "19 T5c a row whose .pr names another PR gives no local proof" "$(line17 "$out")" "$S17_B (no ran-0 row in run 555)"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; S17_LP="[\"$S17_B\"]"
+s17_at "$S17_H1"
+check "19 T5c control: the same row on this branch and PR proves it: exit 0" "$rc" "0"
 
 # T22: only an exact `ran 0 <path>` proves a suite
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_NEAR"

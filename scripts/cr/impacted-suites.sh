@@ -1289,10 +1289,14 @@ have="$work/have"
 blocked_raw="$work/blocked.raw"
 ci_raw="$work/ci.raw"
 skip_raw="$work/skip.raw"
+pass_raw="$work/pass.raw"
+ruled_raw="$work/ruled.raw"
 : > "$blocked_raw"
 : > "$ci_raw"
 : > "$skip_raw"
-awk -v blockedf="$blocked_raw" -v cif="$ci_raw" -v skipf="$skip_raw" '
+: > "$pass_raw"
+: > "$ruled_raw"
+awk -v blockedf="$blocked_raw" -v cif="$ci_raw" -v skipf="$skip_raw" -v passf="$pass_raw" -v ruledf="$ruled_raw" '
     # The path is everything between "SUITE " and the FIRST " = " (a suite path
     # may contain spaces); the verdict word and reason rules follow it.
     /^SUITE +/ {
@@ -1315,6 +1319,11 @@ awk -v blockedf="$blocked_raw" -v cif="$ci_raw" -v skipf="$skip_raw" '
             print path
             if (verdict == "BLOCKED") print path > blockedf
             if (verdict == "SKIP") print path > skipf
+            if (verdict == "PASS") print path > passf
+            # a ruled SKIP names a chief session and a reason; the form is checked, not the truth
+            ruled = rest
+            sub(/\r$/, "", ruled)
+            if (ruled ~ /^SKIP ruled [A-Za-z0-9._-]*chief[A-Za-z0-9._-]* .*[^ ].*$/) print path > ruledf
         }
     }
 ' | sort -u > "$have.local" || io_fail "reading the verdicts"
@@ -1373,8 +1382,12 @@ check_exit() {
     if [ "$record" -eq 1 ]; then
         n_skip=$(sort -u "$skip_raw" | comm -12 "$impacted" - | wc -l | tr -d ' ') || io_fail "counting SKIP verdicts"
         rec_ledger="$(git rev-parse --path-format=absolute --git-common-dir)/cr-critic-scores.jsonl" || exit 4
+        # the PASS and ruled-SKIP paths, only those on the impacted list, one per line
+        sort -u "$pass_raw" | comm -12 "$impacted" - > "$work/local_pass" || io_fail "listing the PASS verdicts"
+        sort -u "$ruled_raw" | comm -12 "$impacted" - > "$work/ruled_skip" || io_fail "listing the ruled SKIP verdicts"
         if ! CR_LEDGER="$rec_ledger" bash "$is_dir/ledger-append.sh" impacted --branch "$rec_branch" --head "$rec_head" \
-            --impacted "$n_impacted" --unverdicted "$n_missing" --skip "$n_skip" --rc "$1" >/dev/null; then
+            --impacted "$n_impacted" --unverdicted "$n_missing" --skip "$n_skip" --rc "$1" \
+            --local-pass-file "$work/local_pass" --ruled-skip-file "$work/ruled_skip" >/dev/null; then
             echo "impacted-suites.sh: could not record the impacted row (ledger-append.sh, reason above)" >&2
             exit 4
         fi

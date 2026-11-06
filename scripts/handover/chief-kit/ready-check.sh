@@ -1944,9 +1944,9 @@ check_open_findings
 # `impacted` ledger row) or CI proof (an exact `ran 0 <path>` line in a shard
 # manifest of the run behind the latest SUCCESS `shell-unit (ubuntu-latest)`
 # check-run in workflow CI, whose run head_sha is SHA). The manifests are read
-# only when some suite lacks local proof. ponytail: the row reader keys like
-# 4690's o16_ledger (head, headRefName, .pr null or this PR) and the latest-run
-# pick mirrors check 2's; both fold into those shared readers once 4690 merges.
+# only when some suite lacks local proof. The row comes from o16_ledger (head,
+# headRefName, .pr null or this PR). ponytail: the latest-run pick mirrors check
+# 2's rather than sharing it; upgrade path: one shared latest-run reader.
 S17_AGG="shell-unit (ubuntu-latest)"
 s17_bound() {  # <default seconds>: READY_CHECK_ITEM19_BOUND wins only when lower
     local b="${READY_CHECK_ITEM19_BOUND:-}"
@@ -2052,9 +2052,9 @@ s17_body() {
     : > "$d/lp"
     : > "$d/rs"
     if [ -n "$branch" ] && [ -n "${common_dir:-}" ] && [ -r "$ledger" ]; then
-        row=$(jq -R -c --arg h "$SHA" --arg b "$branch" --argjson p "$PR" '
-            fromjson? | select(type == "object" and .kind == "impacted" and .head == $h and .branch == $b
-                and (.pr == null or .pr == $p) and .status == "ok")' "$ledger" 2>/dev/null | tail -n 1)
+        # item 16's reader: rows of this head, branch and PR, oldest first; the newest ok one is the proof
+        o16_branch="$branch"; o16_ledger="$ledger"
+        row=$(o16_ledger impacted 'select(.status == "ok") | tojson' | tail -n 1)
     fi
     if [ -n "$row" ]; then
         have_row=1

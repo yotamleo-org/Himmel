@@ -217,6 +217,27 @@ other_head="${range%%..*}"
 if [ "$rc" -eq 2 ] && [ ! -e "$REC_LEDGER" ]; then pass "T1.41 --record refuses a --head the range does not end at (rc2, no row)"; else fail "T1.41 head mismatch: rc=$rc"; fi
 ( cd "$FX" && printf '' | bash "$IS" --check "$rec_head..$rec_head" --record --branch feat/x --head "$rec_head" >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -eq 2 ] && [ ! -e "$REC_LEDGER" ]; then pass "T1.41 --record refuses a range not from the default branch's merge-base (rc2, no row)"; else fail "T1.41 partial range: rc=$rc"; fi
+# T5: the row also lists the PASS paths (local_pass) and the chief-ruled SKIP paths (ruled_skip); both count in skip_n only as SKIPs.
+rm -rf "$REC_LEDGER"
+( cd "$FX" && printf '%s\n%s\n' "$V1" 'SUITE scripts/lanes/tests/plugins.test.mjs = SKIP ruled HIMMEL-x-roadmap-chief no bun on this host' | bash "$IS" --check "$range" --record --branch feat/x --head "$rec_head" >/dev/null 2>&1 ); rc=$?
+rows="$(grep -F '"kind":"impacted"' "$REC_LEDGER" 2>/dev/null)"
+if [ "$rc" -eq 0 ] && grepq "$rows" -F '"local_pass":["scripts/test-uninstall.sh"]' && grepq "$rows" -F '"ruled_skip":["scripts/lanes/tests/plugins.test.mjs"]' && grepq "$rows" -F '"skip_n":1'; then
+    pass "T5 the row lists local_pass and ruled_skip"
+else
+    fail "T5 local_pass / ruled_skip: rc=$rc $rows"
+fi
+# T5d: a ruled SKIP needs a session token naming a chief and a reason; anything else is a bare SKIP
+for bare in 'SKIP ruled out by flake' 'SKIP ruled' 'SKIP ruled worker-1 flaky' 'SKIP ruled x-chief'; do
+    rm -rf "$REC_LEDGER"
+    ( cd "$FX" && printf '%s\n%s\n' "$V1" "SUITE scripts/lanes/tests/plugins.test.mjs = $bare" | bash "$IS" --check "$range" --record --branch feat/x --head "$rec_head" >/dev/null 2>&1 ); rc=$?
+    rows="$(grep -F '"kind":"impacted"' "$REC_LEDGER" 2>/dev/null)"
+    if [ "$rc" -eq 0 ] && grepq "$rows" -F '"ruled_skip":[]' && grepq "$rows" -F '"skip_n":1'; then
+        pass "T5d '$bare' is not a ruled SKIP"
+    else
+        fail "T5d '$bare': rc=$rc $rows"
+    fi
+done
+rm -rf "$REC_LEDGER"
 git -C "$FX" update-ref -d refs/remotes/origin/main
 
 # --- 9. --check with nothing impacted is clean, and says so -----------------
