@@ -142,6 +142,10 @@ lock_token_held() {
     # rc 0 and 20 (a flagged lock) are answers; anything else could not read the locks, so a worker
     # is never proven closed by it (it stays missing)
     case "$sweep_rc" in 0|20) ;; *) return 0 ;; esac
+    # a lock line with no session= field (CORRUPT, INDETERMINATE) belongs to no token we can name, so it
+    # could be this worker's: nothing is proven
+    live="$(printf '%s\n' "$sweep" | grep '^slug=' | grep -v -F ' session=')"
+    [ -z "$live" ] || return 0
     live="$(printf '%s\n' "$sweep" | grep -F -- " session=$1 " | grep -v -- 'status=STALE-DEAD')"
     [ -n "$live" ]
 }
@@ -151,10 +155,24 @@ entry_token() {
     printf '%s\n' "$spans" | awk -F: -v l="$1" '$1 == l && NF == 4 { print $3; exit }'
 }
 
-# a worker with no usable quote-back: closed when its newest marker is WRAPPED and its doc's queue
-# lock is free (a held lock is a live session), else missing
+# doc_closed <worker doc>: success when the newest marker is WRAPPED and the doc's queue lock is free (a
+# held lock is a live session). A same-label <stem>-RESUME doc is the same worker running on, so it must be
+# closed too: the hand-off still owes a quote-back until it is.
+doc_closed() {
+    local d="$1" n=0
+    while [ -f "$d" ] && [ "$n" -lt 5 ]; do
+        [ "$(worker_tail_status "$d")" = WRAPPED ] || return 1
+        bash "$HERE/../queue-lock.sh" status "$d" >/dev/null 2>&1 || return 1
+        d="${d%.md}-RESUME.md"
+        [ -f "$d" ] || return 0
+        n=$((n + 1))
+    done
+    return 1
+}
+
+# a worker with no usable quote-back: closed when its doc is closed, else missing
 unquoted_state() {
-    if [ "$(worker_tail_status "$1")" = WRAPPED ] && bash "$HERE/../queue-lock.sh" status "$1" >/dev/null 2>&1; then echo closed; else echo missing; fi
+    if doc_closed "$1"; then echo closed; else echo missing; fi
 }
 
 # state of one worker doc: prints replaced, own, quoted-back, closed or missing
@@ -193,6 +211,15 @@ while IFS= read -r label; do
         if ldoc="$(jq -r --arg l "$label" "$JQ_W"'[W[] | select(.label == $l)][0].doc // empty' "$manifest" 2>/dev/null)"; then token="$(entry_token "$label")"; fi  # swallow-ok: a failed lookup passes no token, so the worker is never proven closed by it
     fi
     state="$(worker_state "$ldoc" "$token")"
+    if [ "$state" = closed ] && [ -f "$manifest" ]; then
+        # a label can sit on several manifest rows (a doc, then its relaunch): closed only when every row is
+        # closed, so a worker still running on a later row is never left out
+        if odocs="$(jq -r --arg l "$label" "$JQ_W"'[W[] | select(.label == $l)][1:][] | .doc // empty' "$manifest" 2>/dev/null)"; then  # swallow-ok: a failed listing leaves the worker missing in the else branch
+            for odoc in $odocs; do doc_closed "$odoc" || state=missing; done
+        else
+            state=missing
+        fi
+    fi
     if [ "$state" = closed ]; then
         echo "$label closed (wrapped or gone, cannot quote back, not counted)"
         closed=$((closed + 1))
