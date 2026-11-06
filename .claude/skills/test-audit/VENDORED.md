@@ -39,5 +39,9 @@ future upstream revision against this file):
 7. An "expired transition residue" item is added (from a transition-residue audit): one bullet at the end of Junk patterns and one
    paragraph at the end of the Authoring gate. The PR-time counterpart is
    `scripts/cr/residue-scan.sh` (/pr-check step 2.9, advisory).
+8. The skill ends with a himmel line, on its own after the See also link:
+   "Be thorough in your analysis and bold in your recommendations" (operator
+   decision 730; `scripts/lint/test-audit-prompt-sentence.sh` fails without it).
+   No evidence rule above it changes.
 
-No other rule text differs from the pinned commit.
+Apart from these eight deviations, no rule text differs from the pinned commit.
