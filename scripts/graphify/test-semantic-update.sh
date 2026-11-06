@@ -975,7 +975,10 @@ if (cmd === 'submit') {
   log(`submit account=${o.account} prompts=${ids.length} model=${o.model} effort=${o.effort}`);
   if ((process.env.BATCH_STUB_EXHAUSTED || '').split(',').includes(o.account)) { console.error('semantic-batch: credit exhausted (HTTP 400)'); process.exit(5); }
   mkdirSync(o.dir, { recursive: true });
-  writeFileSync(sp, JSON.stringify({ batch_id: 'msgbatch_stub', account: o.account, request_count: ids.length, custom_ids: ids, status: 'in_progress' }));
+  // as the real client: the shim's chunk-body key sidecars ride in batch.json
+  const bodies = {};
+  for (const id of ids) if (existsSync(join(o.prompts, `${id}.key`))) bodies[readFileSync(join(o.prompts, `${id}.key`), 'utf8').trim()] = id;
+  writeFileSync(sp, JSON.stringify({ batch_id: 'msgbatch_stub', account: o.account, request_count: ids.length, custom_ids: ids, bodies, status: 'in_progress' }));
   console.log(JSON.stringify({ batch_id: 'msgbatch_stub', request_count: ids.length, status: 'in_progress' }));
 } else if (cmd === 'poll') {
   const st = state();
@@ -991,6 +994,7 @@ if (cmd === 'submit') {
     if (process.env.BATCH_STUB_DROP) continue;
     writeFileSync(join(o.out, `${id}.json`), JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: '{}', usage: {}, total_cost_usd: 0.0035 }));
   }
+  if (Object.keys(st.bodies || {}).length > 0 && !process.env.BATCH_STUB_DROP) writeFileSync(join(o.out, 'bodies.json'), JSON.stringify(st.bodies));
   st.cost_usd = '0.003500';
   writeFileSync(sp, JSON.stringify(st));
   console.log(JSON.stringify({ batch_id: st.batch_id, succeeded: process.env.BATCH_STUB_DROP ? 0 : st.custom_ids.length, cost_usd: st.cost_usd }));
@@ -1055,6 +1059,20 @@ out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t70 --corpus-root "$C70" --co
 grep -q 'claude-shim-rc' "$WS/calls.log" && fail "T72 the replay shim missed an answer: $(cat "$WS/calls.log")" || pass "T72 every chunk prompt was answered from the batch"
 [[ "$out" == *"semantic-update: replay answered 1 chunk(s) by full prompt hash and 0 by chunk-body key"* ]] \
   && pass "T72 the run log says how many chunks matched by full hash and by chunk-body key" || fail "T72 replay match line: $out"
+
+echo "T72c: a batch recorded under one set of graphify instructions is replayed under another and still answers, counted as a chunk-body match"
+# FIXTURE: the boundary paragraph and the <untrusted_source> wrapper are copied from a graphify 0.9.103+himmel.1 record run
+# on the frozen corpus of the 2026-10-29 batch (the prompt's own text); only the instructions above the boundary differ.
+BOUND72C='Now extract the knowledge graph from the following source file(s) and output ONLY the JSON object described above. No prose, no preamble, no markdown fences.'
+CHUNK72C='<untrusted_source path="a.md" sha256="4da4ea7e34cf5ba0423d5c7d2b9768c31d2e7b1cf3b868b0e391456f4f81b77b">\nalpha text\n</untrusted_source>'
+C72C="$WS/c72c"; new_corpus "$C72C"; batch_reset
+out=$(GRAPHIFY_STUB_PROMPT="OLD INSTRUCTIONS\\n\\n$BOUND72C\\n\\n$CHUNK72C" GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t72c --corpus-root "$C72C" --corpus-class himmel-code --backend claude-api); rc=$?
+echo ended > "$WS/batch-status"
+out=$(GRAPHIFY_STUB_PROMPT="NEW INSTRUCTIONS, reworded\\n\\n$BOUND72C\\n\\n$CHUNK72C" GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t72c --corpus-root "$C72C" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && ! grep -q 'claude-shim-rc' "$WS/calls.log" \
+  && pass "T72c the changed instructions still got their answer from the batch" || fail "T72c (rc=$rc): $out / $(cat "$WS/calls.log")"
+[[ "$out" == *"semantic-update: replay answered 0 chunk(s) by full prompt hash and 1 by chunk-body key"* ]] \
+  && pass "T72c the run log counts the chunk as a chunk-body match" || fail "T72c replay match line: $out"
 
 echo "T72b: the opt-in does not reach a batch, so a batch keeps semantic-r1 with the knob set"
 C72B="$WS/c72b"; new_corpus "$C72B"; batch_reset

@@ -289,7 +289,8 @@ test('shim: a resumed batch answers every chunk although graphify\'s instruction
   const rec = join(f.dir, 'rec');
   const flags = ['-p', '--output-format', 'json', '--no-session-persistence', '--model', 'sonnet'];
   const chunks = ['a', 'b', 'c'].map((n) => `<untrusted_source path="docs/${n}.md" sha256="${sha(n)}">\ncontent of ${n}\n</untrusted_source>`);
-  const prompt = (head, chunk) => `${head}\n\nNow extract the knowledge graph from the following source file(s) and output ONLY the JSON object.\n\n${chunk}`;
+  // the boundary paragraph and the <untrusted_source> wrapper are copied from a graphify 0.9.103+himmel.1 record run
+  const prompt = (head, chunk) => `${head}\n\nNow extract the knowledge graph from the following source file(s) and output ONLY the JSON object described above. No prose, no preamble, no markdown fences.\n\n${chunk}`;
   const addendumOld = join(f.dir, 'addendum-old.txt');
   const addendumNew = join(f.dir, 'addendum-new.txt');
   writeFileSync(addendumOld, 'OLD ADDENDUM\n');
