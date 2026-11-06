@@ -22,7 +22,8 @@ but the hand-off ones; its deny names your mode and exactly what unlocks it.
   refuses the auto-compaction until then. Then carry on: the compaction is a
   backstop, not lost work — when it fires, re-read the worker preface and your handover
   doc (309 of 349 compacted workers still wrapped).
-- **`handoff`:** write `…legN<n>b-…-RESUME.md`, message the chief, stop. The
+- **`handoff`:** write `…legN<n>b-…-RESUME.md` (keep `description:`
+  double-quoted, on one line), message the chief, stop. The
   hook unlocks once that RESUME doc exists.
 
 In both modes a last marker of `WRAPPED` unlocks everything; `BLOCKED` frees

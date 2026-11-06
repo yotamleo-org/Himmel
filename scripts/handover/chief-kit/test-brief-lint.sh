@@ -169,6 +169,13 @@ rc=0; out="$(run_worker "$tmp/filled_worker.md" --profile worker-impl)" || rc=$?
 [ "$rc" -eq 0 ] && ok "6b a filled worker-brief-template launches" || bad "6b filled worker-brief-template refused (rc=$rc): $out"
 rc=0; out="$(run_worker "$tmp/filled_judge.md" --judge)" || rc=$?
 [ "$rc" -eq 0 ] && ok "6c a filled judge-brief-template launches" || bad "6c filled judge-brief-template refused (rc=$rc): $out"
+# 6b and 6c pass whether or not the placeholder is quoted: put `a: b` inside its quotes and parse the line.
+tmpl_desc_parsed() { # template: the description line with `a: b` in the placeholder's place, parsed as YAML
+    grep -m1 '^description:' "$1" | sed -E 's/^(description: ")[^"]*(")$/\1a: b\2/' \
+        | python3 -I -c 'import sys,yaml; print(yaml.safe_load(sys.stdin.read())["description"],end="")' 2>/dev/null || printf 'PARSE-ERROR'
+}
+[ "$(tmpl_desc_parsed "$DOCS/worker-brief-template.md")" = "a: b" ] && ok "6d the worker template's description placeholder is quoted" || bad "6d worker template description placeholder is not double-quoted: $(tmpl_desc_parsed "$DOCS/worker-brief-template.md")"
+[ "$(tmpl_desc_parsed "$DOCS/judge-brief-template.md")" = "a: b" ] && ok "6e the judge template's description placeholder is quoted" || bad "6e judge template description placeholder is not double-quoted: $(tmpl_desc_parsed "$DOCS/judge-brief-template.md")"
 
 # 7. Writes is a path list; prose belongs on Writes note.
 mk writes_paren "$PA" '> **Writes:** scripts/x/a.sh (no scripts/lib file until the chief rules)'

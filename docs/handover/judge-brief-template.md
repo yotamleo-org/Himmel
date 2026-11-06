@@ -47,7 +47,7 @@ uses one under the repo's `.claude/worktrees/` instead.
 ```markdown
 ---
 resume_cwd: <absolute $HOME>/.cache/himmel/verdicts/<qid>/scratch
-description: <one plain-language line: what this judge is ruling on and why>
+description: "<one plain-language line: what this judge is ruling on and why>"
 template_version: 1
 ---
 
@@ -409,7 +409,7 @@ gathering, per the rule below.>
 | Part | What goes wrong without it |
 |---|---|
 | Blind-not-thin | A judge given the chief's conclusion has nothing to independently confirm or reject — its verdict becomes a rubber stamp, defeating the reason a judge subagent or session exists. |
-| `description:` line (required) | A judge is named by its label and question id, which says nothing a reader of the board or tick can act on. The front-matter line is the plain-language description a surface shows next to the label; `worker_description` in `scripts/lib/worker-identity.sh` is its only reader. `brief-lint.sh` fails a fresh brief with no line or the `<placeholder>`, and `headed-arm-worker.sh --judge` refuses the launch (no flag skips it). |
+| `description:` line (required) | A judge is named by its label and question id, which says nothing a reader of the board or tick can act on. The front-matter line is the plain-language description a surface shows next to the label; `worker_description` in `scripts/lib/worker-identity.sh` is its only reader. `brief-lint.sh` fails a fresh brief with no line or the `<placeholder>`, and `headed-arm-worker.sh --judge` refuses the launch (no flag skips it). Keep the `description:` line double-quoted, on one line: an unquoted colon or quote breaks the YAML, and the lint refuses it. |
 | Prior art line (required) | Chief, judge and consult sessions made 0 qmd calls in the 7 days to 2026-10-06, so a judge ruled on a question whose related tickets and prior fixes nobody had looked up. The chief retrieves once at dispatch; as pointers only, so blindness is kept. `brief-lint.sh` fails a missing, empty, placeholder or bare `none` line (`none found (<query>)` passes) and `headed-arm-worker.sh --judge` refuses the launch unless `--no-prior-art-check` is passed. |
 | `## Evidence` as a real, numbered section | A judge whose evidence is scattered through prose cannot cite it by number in its verdict's `## Evidence checked`, breaking the verdict template's contract. |
 | Tier line | `headed-arm-worker.sh:239-282` refuses to launch an Opus or Fable session without an exact-lowercase category tag and non-blank free text after it — every judge dispatch launches at one tier or the other (Opus by default), so this line is never optional. |
