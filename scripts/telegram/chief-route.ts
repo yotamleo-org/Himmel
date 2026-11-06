@@ -1,6 +1,6 @@
 import { join, dirname, basename, resolve } from "node:path";
-import { randomUUID } from "node:crypto";
-import { readdir, readFile, stat, mkdir, open, unlink, copyFile, rm } from "node:fs/promises";
+import { randomUUID, createHash } from "node:crypto";
+import { readdir, readFile, stat, mkdir, open, unlink, copyFile, rm, realpath } from "node:fs/promises";
 import { appendIfExists, atomicWrite, defaultRoot } from "./bus";
 import { loadAccess, operatorChatId } from "./gate";
 import { BASH_BIN } from "./run";
@@ -379,8 +379,187 @@ export async function speakOnSatellite(satellite: string, text: string, env: Rec
 export const MAX_SEND_BYTES = 50 * 1024 * 1024;
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-export function renderMarkdownHtml(md: string, title: string): string {
-  const body = Bun.markdown.html(md, { noHtmlBlocks: true, noHtmlSpans: true });   // raw HTML in the source is shown as text
+// A spec or plan page goes to the operator to be signed, so it goes only after its latest-round
+// spec critic and plan critic ended in a clean line AND quoted the sha256 of the exact bytes
+// being sent (operator decisions 700 and 701). The critic files sit beside the spec as
+// `<spec>.critic-spec-r<n>.md` / `<spec>.critic-plan-r<n>.md`; `critic-seal.sh` adds the
+// `CONTENT-SHA256 <sha> <path relative to the verdict file>` line above the verdict line.
+// A file is a signature page when it lives under `specs/{design,designs,spec,plan,plans}/` or
+// `specs/HIMMEL-<n>/`, or a plan critic file names it; every other file sends as before.
+const CLEAN = { spec: "SPEC CLEAN", plan: "PLAN CLEAN" } as const;
+const SIGNATURE_DIRS = new Set(["design", "designs", "spec", "plan", "plans"]);
+const sha256 = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
+const lastLine = (text: string) => text.split("\n").map(l => l.trim()).filter(Boolean).at(-1) ?? "";
+const sealsOf = (text: string) => [...text.matchAll(/^CONTENT-SHA256 ([0-9a-f]{64}) (\S.*)$/gm)].map(m => ({ sha: m[1], rel: m[2] }));
+
+const underSignaturePath = (p: string) => {
+  const parts = p.split("/");
+  return parts.some((d, i) => d === "specs" && i + 2 < parts.length && (SIGNATURE_DIRS.has(parts[i + 1]) || /^HIMMEL-\d+$/.test(parts[i + 1])));
+};
+
+// A missing folder reads as empty; any other failure (a folder we may not read) refuses, naming the folder.
+async function listDir(dir: string): Promise<string[]> {
+  try { return (await readdir(dir)).sort(); }
+  catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return [];
+    throw new Error(`${dir}: cannot read the folder (${e instanceof Error ? e.message : e}); the page is not sent`);
+  }
+}
+
+// The plan and plans folders of every specs root above `path`.
+function planDirs(path: string): string[] {
+  const parts = path.split("/");
+  const dirs = new Set<string>();
+  parts.forEach((d, i) => { if (d === "specs") for (const s of ["plan", "plans"]) dirs.add([...parts.slice(0, i + 1), s].join("/")); });
+  return [...dirs];
+}
+
+// The newest round of each critic kind for `spec`: spec and plan critics beside it, plus same-named plan
+// critics (`<spec name>.critic-plan-r<n>.md`) saved beside the plan in a plan or plans folder of the specs root.
+// The highest round wins; other files of the same round (`tied`) must be clean too.
+type CriticFile = { path: string; round: number; tied: string[] };
+async function latestCritics(spec: string): Promise<Record<"spec" | "plan", CriticFile | null>> {
+  const out: Record<"spec" | "plan", CriticFile | null> = { spec: null, plan: null };
+  const base = basename(spec);
+  const scan = async (dir: string, kinds: string[]) => {
+    for (const n of await listDir(dir)) {
+      const m = n.startsWith(base + ".") ? /^\.critic-(spec|plan)-r(\d+)\.md$/.exec(n.slice(base.length)) : null;
+      if (!m || !kinds.includes(m[1])) continue;
+      const kind = m[1] as "spec" | "plan"; const round = Number(m[2]);
+      if (!out[kind] || round > out[kind]!.round) out[kind] = { path: join(dir, n), round, tied: [] };
+      else if (round === out[kind]!.round) out[kind]!.tied.push(join(dir, n));
+    }
+  };
+  await scan(dirname(spec), ["spec", "plan"]);
+  for (const d of planDirs(spec)) if (d !== dirname(spec)) await scan(d, ["plan"]);
+  return out;
+}
+
+// Folders a critic file for `page` may sit in: its own, and the design and plan folders of any specs
+// root above it (a plan critic may be saved beside the SPEC, while the plan itself lives in the plans folder).
+function criticDirs(page: string): string[] {
+  const parts = page.split("/");
+  const dirs = new Set([dirname(page)]);
+  parts.forEach((d, i) => { if (d === "specs") for (const s of SIGNATURE_DIRS) dirs.add([...parts.slice(0, i + 1), s].join("/")); });
+  return [...dirs];
+}
+
+// How a page relates to the spec whose critic files govern it: the spec itself, a rendering of it
+// (`<stem>.html` beside `<stem>.md`), or its plan (the same-named file in a plans folder, or sealed by some plan critic round of that spec).
+type Role = "spec" | "render" | "plan";
+const siblingMd = (page: string) => (/\.html?$/i.test(page) ? page.replace(/\.html?$/i, ".md") : null);
+const isFile = (p: string) => stat(p).then(s => s.isFile(), () => false);
+
+const readCritic = (file: string) => readFile(file, "utf8").catch((e) => { throw new Error(`${file}: cannot read the critic file (${e instanceof Error ? e.message : e}); the page is not sent`); });
+
+// Whichever spec governs the page, the latest plan critic of ANY spec that seals it must be clean: a
+// failed one refuses the send, so the file name of a spec cannot decide which critic is heard.
+async function refuseIfPlanCriticFailed(page: string): Promise<void> {
+  const latest = new Map<string, { round: number; files: string[] }>();
+  for (const dir of criticDirs(page)) {
+    for (const n of await listDir(dir)) {
+      const m = /^(.+)\.critic-plan-r(\d+)\.md$/.exec(n);
+      if (!m) continue;
+      const round = Number(m[2]); const cur = latest.get(m[1]);
+      if (!cur || round > cur.round) latest.set(m[1], { round, files: [join(dir, n)] });
+      else if (round === cur.round) cur.files.push(join(dir, n));
+    }
+  }
+  for (const { files } of latest.values()) {
+    for (const file of files) {
+      const text = await readCritic(file);
+      const last = lastLine(text);
+      if (last === CLEAN.plan) continue;
+      for (const seal of sealsOf(text)) {
+        if (await realpath(resolve(dirname(file), seal.rel)).catch(() => "") === page) throw new Error(`${file}: the latest plan critic that seals ${basename(page)} ended '${last}', not '${CLEAN.plan}'; the page is not sent`);
+      }
+    }
+  }
+}
+
+// null = nothing is filed for the page. An unreadable critic file or folder throws.
+async function governingSpec(page: string): Promise<{ spec: string; role: Role } | null> {
+  // A rendering is governed by the .md beside it, before any critic file of its own: a critic file beside the
+  // .html cannot stand in for an .md that has none (a plain report.html beside a critic-less report.md stays no signature page).
+  const md = siblingMd(page);
+  if (md && await isFile(md)) {
+    const c = await latestCritics(md);
+    if (c.spec || c.plan) return { spec: md, role: "render" };
+    const own = await latestCritics(page);
+    if (own.spec || own.plan) return { spec: md, role: "render" };
+  }
+  // A plan in a plans folder is governed by the same-named spec in a sibling design folder, when that spec has critic files.
+  if (["plan", "plans"].includes(basename(dirname(page)))) {
+    for (const d of ["design", "designs", "spec"]) {
+      const spec = join(dirname(dirname(page)), d, basename(page));
+      if (await isFile(spec) && (await latestCritics(spec)).spec) return { spec, role: "plan" };
+    }
+  }
+  const own = await latestCritics(page);
+  if (own.spec || own.plan) return { spec: page, role: "spec" };
+  for (const dir of criticDirs(page)) {
+    for (const n of await listDir(dir)) {
+      const m = /^(.+)\.critic-plan-r\d+\.md$/.exec(n);
+      if (!m) continue;
+      const file = join(dir, n);
+      const text = await readCritic(file);
+      for (const seal of sealsOf(text)) if (await realpath(resolve(dir, seal.rel)).catch(() => "") === page) return { spec: join(dir, m[1]), role: "plan" };
+    }
+  }
+  return null;
+}
+
+export type VerdictLine = { kind: "spec" | "plan"; round: number; file: string; verdict: string };
+
+// null = not a signature page (sends as before); throws, naming the verdict file, when the page may not be sent.
+// `bytes` are the page's bytes as read once here: the caller sends THOSE, so an edit after the check cannot slip through.
+export async function checkSignaturePage(abs: string): Promise<{ verdicts: VerdictLine[]; bytes: Buffer } | null> {
+  const page = await realpath(abs).catch(() => abs);
+  await refuseIfPlanCriticFailed(page);
+  let g = await governingSpec(page);
+  if (!g) {
+    if (![abs, page].some(underSignaturePath)) return null;
+    const md = siblingMd(page);
+    g = md && await isFile(md) ? { spec: md, role: "render" } : { spec: page, role: "spec" };
+  }
+  const { spec, role } = g;
+  const specReal = await realpath(spec).catch(() => spec);
+  const bytes = await readFile(page);
+  const critics = await latestCritics(spec);
+  const verdicts: VerdictLine[] = [];
+  for (const kind of ["spec", "plan"] as const) {
+    const c = critics[kind];
+    if (!c) throw new Error(`${basename(page)} is a spec or plan page and has no ${kind} critic file (${spec}.critic-${kind}-r<n>.md); run the ${kind} critic first`);
+    const text = await readFile(c.path, "utf8");
+    const last = lastLine(text);
+    if (last !== CLEAN[kind]) throw new Error(`${c.path}: the latest ${kind} critic ended '${last}', not '${CLEAN[kind]}'; the page is not sent`);
+    for (const tied of c.tied) {
+      const tiedLast = lastLine(await readCritic(tied));
+      if (tiedLast !== CLEAN[kind]) throw new Error(`${tied}: a ${kind} critic of the same round ended '${tiedLast}', not '${CLEAN[kind]}'; the page is not sent`);
+    }
+    const seals = sealsOf(text);
+    if (!seals.length) throw new Error(`${c.path} has no CONTENT-SHA256 line, so it does not record the bytes it read (chief-kit/critic-seal.sh adds it); the page is not sent`);
+    const sealed = new Set<string>();
+    for (const seal of seals) {
+      const file = await realpath(resolve(dirname(c.path), seal.rel)).catch(() => null);
+      if (!file) throw new Error(`${c.path}: the file it seals (${seal.rel}) is missing; the page is not sent`);
+      if (sha256(file === page ? bytes : await readFile(file)) !== seal.sha) throw new Error(`${c.path}: ${seal.rel} changed since the ${kind} critic read it; re-run the critic`);
+      sealed.add(file);
+    }
+    if (kind === "spec" && !sealed.has(specReal)) throw new Error(`${c.path} does not seal ${basename(spec)}`);
+    if (kind === "spec" && role === "render" && !sealed.has(page)) throw new Error(`${c.path} has no seal naming ${basename(page)}: the critic of the latest round never read this page`);
+    if (kind === "plan" && role === "plan" && !sealed.has(page)) throw new Error(`${c.path} does not seal ${basename(page)}`);
+    verdicts.push({ kind, round: c.round, file: basename(c.path), verdict: last });
+  }
+  return { verdicts, bytes };
+}
+
+export function renderMarkdownHtml(md: string, title: string, verdicts?: VerdictLine[]): string {
+  const banner = verdicts?.length
+    ? `<p class="verdict">${verdicts.map(v => `<strong>${esc(v.verdict)}</strong> (round ${v.round}, <code>${esc(v.file)}</code>)`).join("<br>")}</p>\n`
+    : "";
+  const body = banner + Bun.markdown.html(md, { noHtmlBlocks: true, noHtmlSpans: true });   // raw HTML in the source is shown as text
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -399,12 +578,17 @@ export async function queueFile(root: string, chat: number, path: string, captio
   if (!st) throw new Error(`file not found: ${path}`);
   if (!st.isFile()) throw new Error(`not a regular file: ${path}`);
   if (st.size > MAX_SEND_BYTES) throw tooBig(st.size);
+  const signed = await checkSignaturePage(abs);   // throws (nothing queued) unless the latest critics passed these bytes
+  // The caption opens with the verdicts read from the critic files; the caller's words follow, never replace them.
+  const verdictCaption = signed?.verdicts.map(v => `${v.verdict} r${v.round}`).join(" | ");
+  if (verdictCaption) caption = caption ? `${verdictCaption} - ${caption}` : verdictCaption;
   // Every file is COPIED (or rendered) into <bridge root>/outgoing/<id>/: the poller ships only from there.
   const dir = join(root, "outgoing", randomUUID());
   await mkdir(dir, { recursive: true, mode: 0o700 });
   const isMd = /\.(md|markdown)$/i.test(abs);
   const send = join(dir, isMd ? `${basename(abs).replace(/\.(md|markdown)$/i, "")}.html` : basename(abs));
-  if (isMd) await Bun.write(send, renderMarkdownHtml(await readFile(abs, "utf8"), basename(abs)));
+  if (isMd) await Bun.write(send, renderMarkdownHtml(signed ? signed.bytes.toString("utf8") : await readFile(abs, "utf8"), basename(abs), signed?.verdicts));
+  else if (signed) await Bun.write(send, signed.bytes);
   else await copyFile(abs, send);
   const size = (await stat(send)).size;
   if (size > MAX_SEND_BYTES) { await rm(dir, { recursive: true, force: true }); throw tooBig(size); }
