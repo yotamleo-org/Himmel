@@ -794,6 +794,7 @@ gitd() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache
 # which takes chief-kit/worker-doc-lock.sh and scans the bullet with
 # chief-kit/bucket-gitleaks.sh (which runs chief-kit/vault-status.sh), so all
 # four are guarded.
+# worker-pr-open.sh runs chief-kit/holds.py narrow (the PR claim), so holds.py is guarded too.
 cr_guarded="scripts/cr scripts/lib scripts/api-lane scripts/guardrails/lib.sh scripts/check-ci.sh scripts/handover/resolve-active-item.sh
 scripts/handover/resolve-active-item-report.sh
 scripts/handover/append-cr-findings.sh scripts/handover/append-cr-bugs.sh scripts/handover/bug.sh
@@ -817,7 +818,7 @@ scripts/telegram/huge-diff-guard.ts
 scripts/telegram/lane-args.ts scripts/telegram/phi-egress-guard.ts scripts/telegram/round-guard.ts
 scripts/telegram/config-restore-route.ts scripts/telegram/config-restore.py
 scripts/lanes/plugin-profiles.mjs scripts/lanes/plugin-profiles.json scripts/lanes/role-requires.mjs scripts/lanes/skill-cost.mjs scripts/lanes/skill-listing.mjs scripts/lanes/profile-settings.sh scripts/lanes/worker-pr-open.sh scripts/lanes/worker-burn.sh scripts/lanes/lib/burn-weights.sh
-scripts/handover/chief-kit/worker-jira-status.sh
+scripts/handover/chief-kit/worker-jira-status.sh scripts/handover/chief-kit/holds.py
 scripts/handover/chief-kit/chain-push-check.sh
 marketplace/plugins/himmel-ops/scripts/humanizer-facts.py
 scripts/handover/chief-kit/append-results.sh scripts/handover/chief-kit/worker-doc-lock.sh
@@ -852,7 +853,7 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/'
     ':(top)scripts/telegram/config-restore-route.ts' ':(top)scripts/telegram/config-restore.py'
     ':(top)scripts/lanes/plugin-profiles.mjs' ':(top)scripts/lanes/plugin-profiles.json' ':(top)scripts/lanes/role-requires.mjs' ':(top)scripts/lanes/skill-cost.mjs' ':(top)scripts/lanes/skill-listing.mjs' ':(top)scripts/lanes/profile-settings.sh'
     ':(top)scripts/lanes/worker-pr-open.sh' ':(top)scripts/lanes/worker-burn.sh' ':(top)scripts/lanes/lib/burn-weights.sh'
-    ':(top)scripts/handover/chief-kit/worker-jira-status.sh'
+    ':(top)scripts/handover/chief-kit/worker-jira-status.sh' ':(top)scripts/handover/chief-kit/holds.py'
     ':(top)scripts/handover/chief-kit/chain-push-check.sh'
     ':(top)marketplace/plugins/himmel-ops/scripts/humanizer-facts.py'
     ':(top)scripts/handover/chief-kit/append-results.sh' ':(top)scripts/handover/chief-kit/worker-doc-lock.sh'

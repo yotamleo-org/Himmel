@@ -746,6 +746,21 @@ run_h >/dev/null 2>"$TMP_ROOT/h.err"; rc_h6g=$?
 assert_eq "rival: a granted file opens (rc=0)" "0" "$rc_h6g"
 contains "rival: a granted open reaches pr create" "$(cat "$ARGV_LOG")" "pr create"
 
+echo "TEST: PR claim — a doc with no Writes line still refuses a rival's file and claims the PR's files (F2)"
+hreset
+D1="$HANDOVER_DIR/u/r/HIMMEL-8801-w.md"  # the doc HIMMEL_HOLD_DOC names, rewritten without its Writes line
+printf '# worker doc, no Writes line\n' > "$D1"
+put_rival scripts/a.sh
+hbranch feat/himmel-3031-h6w scripts/a.sh scripts/b.sh
+err_h6w=$(run_h 2>&1 >/dev/null); rc_h6w=$?
+assert_eq "no Writes, rival: the open is refused (rc=1)" "1" "$rc_h6w"
+contains "no Writes, rival: stderr names the holder" "$err_h6w" "holds: scripts/a.sh is held by HIMMEL-9999"
+printf 'granted\t2026-11-06T00:00:00Z\tchief\tsess\n' > "$(hfile scripts/a.sh).grant.$H_KEY"
+run_h >/dev/null 2>"$TMP_ROOT/h.err"; rc_h6x=$?
+assert_eq "no Writes, granted: the open exits 0" "0" "$rc_h6x"
+assert_eq "no Writes: the line is unavailable" "outside-writes: unavailable (no Writes line)" "$(ow_line)"
+assert_eq "no Writes: the PR's unheld file gets a pr row" "$(trow "$H_KEY" N1 "$D1" pr 9)" "$(hrow scripts/b.sh)"
+
 echo "TEST: PR claim — a size refusal leaves the rows unchanged"
 hreset
 D1=$(hdoc HIMMEL-8801-w.md "scripts/a.sh scripts/c.sh")

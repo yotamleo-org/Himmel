@@ -1575,8 +1575,9 @@ def pr_base(cwd):
 
 def pr_row_passes(fields, row, key, branch):
     """True for a pr row of another key that holds nothing against this branch: its own PR row (label branch:<branch>), or a
-    row sync-prs stopped freshening more than PR_STALE ago."""
-    if fields[3] != 'pr' or fields[0] == key:
+    row sync-prs stopped freshening more than PR_STALE ago. A row with a doc is a worker's narrowed claim (narrow --apply),
+    which nothing freshens, so it never passes: only sync-prs rows (no doc) get the exception."""
+    if fields[3] != 'pr' or fields[0] == key or fields[2]:
         return False
     try:
         age = time.time() - os.path.getmtime(row)
@@ -1666,9 +1667,7 @@ def narrow_context(a):
         raise Unavailable('cannot read the hold doc: %s' % (e.strerror or e))
     if not has_writes(text) and 'RESUME' in os.path.basename(a.doc):
         text = fallback_text(Judge(repo), a.doc, a.key) or text  # a RESUME doc with no Writes line: the predecessor's
-    pairs = parse_text(text, repo)
-    if not pairs:
-        raise Unavailable('no Writes line')
+    pairs = parse_text(text, repo)  # may be empty: the rival check and --apply still run, only the outside-writes line is lost
     branch = (git_text(['rev-parse', '--abbrev-ref', 'HEAD'], cwd) or '').strip()
     return repo, files, pairs, text, branch
 
@@ -1794,7 +1793,8 @@ def op_narrow(a):
     """--check: print `outside-writes: <files>`, `none` or `unavailable (<reason>)`; exit 1 (the holder on stderr) when a PR file
     is held by a live rival with no grant. It makes no row. --apply: the PR's files become the key's rows (source pr, a claim
     stays claim, each with the doc, label and PR number); the key's other rows with no PR number are freed, except for a doc
-    with a Series line. Every fault exits 0 and changes nothing: it never fails the PR."""
+    with a Series line or after a fault. Every fault exits 0 and never fails the PR; a fault on one file stops the freeing but
+    can leave the rows already made for the other files."""
     try:
         repo, files, pairs, text, branch = narrow_context(a)
     except Unavailable as e:
@@ -1807,7 +1807,10 @@ def op_narrow(a):
               or os.path.exists(os.path.join(repo, '.single-writer')))
     if a.check:
         outside = outside_of(files, pairs, repo)
-        line = 'outside-writes: ' + (clean(', '.join(outside)) if outside else 'none')
+        if not pairs:
+            line = 'outside-writes: unavailable (no Writes line)'
+        else:
+            line = 'outside-writes: ' + (clean(', '.join(outside)) if outside else 'none')
         refused, faulted = [], False
         if not bypass:
             judge = Judge(repo, time.time() + CHECK_BUDGET)
