@@ -17,9 +17,11 @@ n=0
 DENY_MSG="This command requires approval"
 # Real tool_result texts copied from session transcripts under ~/.claude/projects.
 # NV_MSG: the 2026-11 auto mode no-verdict (it says "denied" and so matched DENIAL_RE).
+# NV3_MSG: the 2026-11 hook-changed-input no-verdict (also says "denied"; the hook input in it is shortened).
 # NV_OLD_MSG: the 2026-09 no-verdict wording (matches no DENIAL_RE word).
 # CLS_MSG: a real classifier denial (first two sentences). HOOK_MSG: a real hook denial (head).
 NV_MSG="The server-side auto mode classifier gave no verdict for Bash: another call in this response was changed by a hook after auto mode reviewed it, or could not be confirmed unchanged, so this call's review no longer applies. This is not a judgment that the action is unsafe. Issue the Bash call again in a response of its own, exactly as this conversation records it, after you have seen the results of the other calls. If it is denied again, do not retry; continue with other tasks and tell the user that auto mode could not evaluate it. Note: reading files, searching code, and other read-only operations do not require the classifier and can still be used."
+NV3_MSG="The server-side auto mode classifier gave no verdict for Bash: a hook changed this call's input after auto mode reviewed it, so the review does not cover what would run. This is not a judgment that the action is unsafe. The hook produced this input: {\"command\":\"echo hi\"}. In your next response, issue the Bash call once more with exactly that input so auto mode reviews it. If it is denied again, do not retry; continue with other tasks and tell the user that auto mode could not check this Bash call because a hook or plugin changes it."
 NV_OLD_MSG="The server-side auto mode classifier gave no verdict (the response ended before its verdict arrived), so auto mode cannot determine the safety of Bash. This is a transient failure of the check, not a judgment about the action: a later response may get a verdict. You may try the action again once, as-is."
 CLS_MSG="Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Out-of-Place Publication]. If you have other tasks that do not depend on this action, continue working on those."
 HOOK_MSG="PreToolUse:Bash hook error: [if [ -f \"\$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" ]; then command -p sh run-hook-with-bash.js --chain guard.sh"
@@ -144,6 +146,23 @@ f="$TMP/hook2.jsonl"; : >"$f"; dn "$f" "$HOOK_MSG"; dn "$f" "$HOOK_MSG"
 run "$f" "$C"; expect_deny "a real hook denial twice, then the same command: DENIED"
 f="$TMP/mix2.jsonl"; : >"$f"; dn "$f" "$CLS_MSG"; dn "$f" "$HOOK_MSG"
 run "$f" "$C"; expect_deny "a classifier denial and a hook denial, then the same command: DENIED"
+
+f="$TMP/nv3a.jsonl"; : >"$f"; nv "$f" "$NV3_MSG"; nv "$f" "$NV3_MSG"
+run "$f" "$C"; expect_allow "the hook-changed-input no-verdict twice, reissued unchanged: allowed"
+f="$TMP/nv3b.jsonl"; : >"$f"; dn "$f" "$DENY_MSG"; nv "$f" "$NV3_MSG"; dn "$f" "$DENY_MSG"
+run "$f" "$C"; expect_deny "denial, hook-changed-input no-verdict, denial: neutral, DENIED"
+case "$OUT" in *"2 times"*) ok "denial, hook-changed-input no-verdict, denial counts 2";; *) bad "denial, hook-changed-input no-verdict, denial counts 2 - $OUT";; esac
+
+# Only a result that BEGINS with the sentence, and is an error, is neutral.
+f="$TMP/nvm1.jsonl"; : >"$f"; dn "$f" "$HOOK_MSG $NV_MSG"; dn "$f" "$HOOK_MSG $NV_MSG"
+run "$f" "$C"; expect_deny "a hook denial carrying the sentence mid-text still counts: DENIED"
+f="$TMP/nvm2.jsonl"; : >"$f"; dn "$f" "$DENY_MSG"; dn "$f" "$DENY_MSG"
+n=$((n + 1)); tu "t$n" "$C" >>"$f"; res "t$n" false "$NV_MSG" >>"$f"
+run "$f" "$C"; expect_allow "a non-error result carrying the sentence ran: resets, allowed"
+f="$TMP/nvm3.jsonl"; : >"$f"; dn "$f" "$DENY_MSG"; dn "$f" "$DENY_MSG"
+n=$((n + 1)); tu "t$n" "$C" >>"$f"; res "t$n" true "Exit code 1
+$NV_MSG" >>"$f"
+run "$f" "$C"; expect_allow "an Exit code result carrying the sentence ran: resets, allowed"
 
 echo "== call identity: run_in_background / timeout / sandbox =="
 f="$TMP/t9.jsonl"; : >"$f"; denied_n "$f" 2 "$C"
