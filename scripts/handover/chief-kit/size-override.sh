@@ -99,14 +99,21 @@ LEDGER="$ROOT/.locks/size-escalate.tsv"
 # band <row> <column> - one number from pr-size-bands.tsv (a "-" or a missing row is empty).
 band() { awk -F'\t' -v r="$1" -v c="$2" '$1 == r { print $c; exit }' "$BANDS" 2>/dev/null; }
 
+# The bands are read here, at top level, so an unreadable file exits 2 before anything is signed or read:
+# an exit inside operator_owned's command substitution would only end the subshell and read as "not operator-owned".
+if [ "$VERB" = record ] || [ "$VERB" = check ]; then
+    SOFT=$(band soft 3); CAP=$(band coderabbit 3); HARDL=$(band hard 2)
+    if [ -z "$SOFT" ] || [ -z "$CAP" ] || [ -z "$HARDL" ]; then
+        echo "size-override: cannot read the size bands from $BANDS" >&2; exit 2
+    fi
+    case "$SOFT$CAP$HARDL" in *[!0123456789]*) echo "size-override: cannot read the size bands from $BANDS" >&2; exit 2 ;; esac
+fi
+
 # operator_owned <files> <lines> <trust> - prints why, and succeeds, when the operator owns the case.
 operator_owned() {
-    local soft cap hardl
-    soft=$(band soft 3); cap=$(band coderabbit 3); hardl=$(band hard 2)
-    case "$soft$cap$hardl" in *[!0123456789]*|'') echo "size-override: cannot read the size bands from $BANDS" >&2; exit 2 ;; esac
-    if [ "$1" -gt "$cap" ]; then echo "$1 files is past the $cap-file CodeRabbit cap"; return 0; fi
-    if [ "$2" -gt "$hardl" ]; then echo "$2 lines is past the $hardl-line hard max"; return 0; fi
-    if [ "$3" = yes ] && [ "$1" -gt "$soft" ]; then echo "a trust-path brief over the $soft-file soft band ($1 files)"; return 0; fi
+    if [ "$1" -gt "$CAP" ]; then echo "$1 files is past the $CAP-file CodeRabbit cap"; return 0; fi
+    if [ "$2" -gt "$HARDL" ]; then echo "$2 lines is past the $HARDL-line hard max"; return 0; fi
+    if [ "$3" = yes ] && [ "$1" -gt "$SOFT" ]; then echo "a trust-path brief over the $SOFT-file soft band ($1 files)"; return 0; fi
     return 1
 }
 
@@ -166,10 +173,12 @@ EOF
     echo "size-override: $KEY $LABEL ($FILES files) kept whole by $rsrc: $rreason"
     ;;
 pending)
-    total=0
-    [ ! -f "$LEDGER" ] || total=$(grep -c '^SIZE-ESCALATE'"$(printf '\t')" "$LEDGER" 2>/dev/null)  # swallow-ok: grep -c prints 0 and exits 1 for none
-    echo "total=${total:-0}"
-    [ "${total:-0}" -gt "$SINCE" ] || exit 1
-    grep '^SIZE-ESCALATE'"$(printf '\t')" "$LEDGER" | tail -n +"$((10#$SINCE + 1))"
+    # one snapshot of the ledger, so the total and the rows printed always agree under a concurrent append
+    rows="" total=0
+    [ ! -f "$LEDGER" ] || rows=$(grep '^SIZE-ESCALATE'"$(printf '\t')" "$LEDGER" 2>/dev/null)  # swallow-ok: grep exits 1 when there are no rows
+    [ -z "$rows" ] || total=$(printf '%s\n' "$rows" | wc -l | tr -d ' ')
+    echo "total=$total"
+    [ "$total" -gt "$SINCE" ] || exit 1
+    printf '%s\n' "$rows" | tail -n +"$((10#$SINCE + 1))"
     ;;
 esac

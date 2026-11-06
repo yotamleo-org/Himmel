@@ -725,8 +725,9 @@ writes a `SIZE-ESCALATE` row to `<handover root>/.locks/size-escalate.tsv` and w
 you as `WAKE size rows=<n>` with the new rows. Read each row and rule: **split** the
 ticket (the default), **keep it whole** by signing the reason, or **escalate**. To
 keep it whole, run the `size-override.sh record <KEY> <label> --files <n> --reason "<why a
-split is worse>"` line the refusal prints; gen-briefs then accepts that brief once, for
-that exact file count. Only the chief signs it: a worker or relay is refused (exit 3),
+split is worse>"` line the refusal prints; gen-briefs then accepts that worker's brief
+for that exact file count, however often you re-run it; a change to the Writes list
+that moves the count needs a new record. Only the chief signs it: a worker or relay is refused (exit 3),
 and an unsigned or hand-written row is not read. **Escalate to the operator, never
 override alone,** a trust-path brief over the soft band, a brief past the 300-file
 CodeRabbit cap, and one past the 1500-line max: `size-override.sh` refuses to record
