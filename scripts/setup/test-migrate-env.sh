@@ -1053,13 +1053,6 @@ for r31case in "kept|JIRA_API_TOKEN=\"\"|JIRA_API_TOKEN=$r31o" "kept|JIRA_API_TO
     fi
 done
 
-# R32: duplicate .env lines K="" then K=real: a key with more than one entry stays, so the real line reaches no store and is not deleted.
-env_only 'JIRA_API_TOKEN=""'
-fxadd "$TMP/st/.env" 'JIRA_API_TOKEN=%s\n' "$(canary r32)"
-cp -p "$TMP/st/.env" "$TMP/st.orig"
-apply_tty y
-quote_stays "R32 a blank line then a real one" "$TMP/st/.env" "  JIRA_API_TOKEN  secret  stays (it has several entries; keep one)"
-
 # R33: an env-keep key leaves no backup, even when its keyring item holds the same value: a restore would lose its only .env line.
 r33v=$(canary r33)
 env_only "KEEP_ME=$r33v"
@@ -1779,6 +1772,13 @@ cp -p "$TMP/st/.env" "$TMP/st.orig"
 apply_tty y "$SYSPATH"
 quote_stays "N37 a config key with a one-line later duplicate" "$TMP/st/.env" "  HANDOVER_DIR  config  stays (it has several entries; keep one)"
 lacks "N37 himmel.conf holds no line of it" "HANDOVER_DIR" "$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)"
+# R32: duplicate .env lines K="" then K=real: the key stays, so the real line reaches no store and is not deleted (it used to move and leave the dead line in the backup). The fixture is the two lines alone, so no policy key moves.
+fixture_env
+fxput "$TMP/st/.env" 'JIRA_API_TOKEN=""\nJIRA_API_TOKEN=%s\n' "$(canary r32)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y "$SYSPATH"
+quote_stays "R32 a blank line then a real one" "$TMP/st/.env" "  JIRA_API_TOKEN  secret  stays (it has several entries; keep one)"
+no_item "R32 a blank line then a real one" JIRA_API_TOKEN
 
 if [ "$FAILED" -gt 0 ]; then
     echo "test-migrate-env: $FAILED FAILED"
