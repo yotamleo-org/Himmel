@@ -1051,6 +1051,8 @@ out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t70 --corpus-root "$C70" --co
   && pass "T72 run row: batch_id msgbatch_stub, batch_requests 1, cost_usd 0.0035" || fail "T72 row: $(tail -1 "$C70/graphify-out/semantic-runs.jsonl")"
 [[ "$out" == *"state=merged requests=1 cost_usd=0.003500"* ]] && pass "T72 the BATCH line closes the run as merged" || fail "T72 BATCH line: $out"
 grep -q 'claude-shim-rc' "$WS/calls.log" && fail "T72 the replay shim missed an answer: $(cat "$WS/calls.log")" || pass "T72 every chunk prompt was answered from the batch"
+[[ "$out" == *"semantic-update: replay answered 1 chunk(s) by full prompt hash and 0 by chunk-body key"* ]] \
+  && pass "T72 the run log says how many chunks matched by full hash and by chunk-body key" || fail "T72 replay match line: $out"
 
 echo "T72b: the opt-in does not reach a batch, so a batch keeps semantic-r1 with the knob set"
 C72B="$WS/c72b"; new_corpus "$C72B"; batch_reset

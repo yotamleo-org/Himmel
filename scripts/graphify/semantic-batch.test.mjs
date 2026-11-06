@@ -281,6 +281,51 @@ test('shim: record writes the prompt under its hash, replay answers from the bat
   assert.match(miss.stderr, /no answer for prompt/);
 });
 
+// A batch is resumed days after it was recorded; the replay must find each chunk's answer even when graphify's
+// instruction text or the addendum changed in between (the whole-prompt hash then matches nothing).
+test('shim: a resumed batch answers every chunk although graphify\'s instructions and the addendum changed since the record', async () => {
+  reset();
+  const f = fixture();
+  const rec = join(f.dir, 'rec');
+  const flags = ['-p', '--output-format', 'json', '--no-session-persistence', '--model', 'sonnet'];
+  const chunks = ['a', 'b', 'c'].map((n) => `<untrusted_source path="docs/${n}.md" sha256="${sha(n)}">\ncontent of ${n}\n</untrusted_source>`);
+  const prompt = (head, chunk) => `${head}\n\nNow extract the knowledge graph from the following source file(s) and output ONLY the JSON object.\n\n${chunk}`;
+  const addendumOld = join(f.dir, 'addendum-old.txt');
+  const addendumNew = join(f.dir, 'addendum-new.txt');
+  writeFileSync(addendumOld, 'OLD ADDENDUM\n');
+  writeFileSync(addendumNew, 'NEW ADDENDUM, reworded\n');
+  for (const c of chunks) {
+    const r = shim({ GRAPHIFY_BATCH_MODE: 'record', GRAPHIFY_BATCH_DIR: rec, GRAPHIFY_SEMANTIC_ADDENDUM: addendumOld }, prompt('You are the old extractor.', c), ...flags);
+    assert.equal(r.status, 0, r.stderr);
+  }
+  assert.equal((await f.client('submit', '--dir', f.batch, '--prompts', rec, '--account', 'A', '--model', 'sonnet')).code, 0);
+  stub.status = 'ended';
+  assert.equal((await f.client('poll', '--dir', f.batch)).code, 0);
+  const res = join(f.dir, 'res');
+  assert.equal((await f.client('results', '--dir', f.batch, '--out', res)).code, 0);
+  for (const c of chunks) {
+    const oldFull = `${prompt('You are the old extractor.', c)}\n\n---\nOLD ADDENDUM\n`;
+    const hit = shim({ GRAPHIFY_BATCH_MODE: 'replay', GRAPHIFY_BATCH_DIR: res, GRAPHIFY_SEMANTIC_ADDENDUM: addendumNew }, prompt('You are the NEW extractor, reworded.', c), ...flags);
+    assert.equal(hit.status, 0, `${c.slice(0, 40)}: ${hit.stderr}`);
+    assert.match(JSON.parse(hit.stdout).result, new RegExp(`n_${sha(oldFull).slice(0, 6)}`));
+  }
+  // never silent: each answered chunk leaves one line saying how it matched, which semantic-update.sh counts into the run log
+  const matches = () => readFileSync(join(res, 'replay-matches.log'), 'utf8').split('\n').filter(Boolean);
+  assert.deepEqual(matches(), ['body', 'body', 'body']);
+  const same = shim({ GRAPHIFY_BATCH_MODE: 'replay', GRAPHIFY_BATCH_DIR: res, GRAPHIFY_SEMANTIC_ADDENDUM: addendumOld }, prompt('You are the old extractor.', chunks[0]), ...flags);
+  assert.equal(same.status, 0, same.stderr);
+  assert.deepEqual(matches().slice(3), ['full']);
+  // negative controls: a chunk the batch never held, and a recorded file whose text changed, get no answer
+  const newer = 'You are the NEW extractor, reworded.';
+  const never = shim({ GRAPHIFY_BATCH_MODE: 'replay', GRAPHIFY_BATCH_DIR: res, GRAPHIFY_SEMANTIC_ADDENDUM: addendumNew }, prompt(newer, '<untrusted_source path="docs/z.md" sha256="0">\nnever recorded\n</untrusted_source>'), ...flags);
+  assert.equal(never.status, 1, 'a chunk the batch never held stays a miss');
+  const edited = chunks[0].replace('content of a', 'content of a, edited since the record');
+  const changed = shim({ GRAPHIFY_BATCH_MODE: 'replay', GRAPHIFY_BATCH_DIR: res, GRAPHIFY_SEMANTIC_ADDENDUM: addendumNew }, prompt(newer, edited), ...flags);
+  assert.equal(changed.status, 1, 'an answer for changed chunk content never lands');
+  assert.match(changed.stderr, /no answer for prompt/);
+  assert.equal(matches().length, 4, 'a miss leaves no match line');
+});
+
 test('shim: refuses an argument graphify does not send and a missing mode', () => {
   assert.equal(shim({ GRAPHIFY_BATCH_MODE: 'record', GRAPHIFY_BATCH_DIR: T }, '', '-p', '--dangerous').status, 2);
   assert.equal(shim({}, '', '-p').status, 2);
