@@ -755,13 +755,14 @@ PATH="$PATH:/usr/local/bin:/usr/bin:/bin" bash "$REPO_ROOT/scripts/lib/test-run-
 # ponytail: kill -0 trusts the pid in the token, so a reused pid reads as
 # live and costs the wait (up to 2700 s) on EVERY run while that pid lives,
 # which also delays a capped run's keep step; upgrade to a pid start-time stamp.
-# The three seconds values below must be whole numbers: anything else warns and
-# takes the default, because the wait loop's [ -ge ] tests never end on text.
+# The three seconds values below must be whole numbers of at most 6 digits
+# (999999 s): anything else warns and takes the default, because the wait loop's
+# [ -ge ] tests error forever on text or on a number past the shell's range.
 _promote_lock_seconds() { # <env-var-name> <default>
   local v="${!1:-$2}"
   case "$v" in
-    ''|*[!0-9]*)
-      echo "refresh-graph-map: WARN $1='$v' is not a non-negative integer -- using the default $2" >&2
+    ''|*[!0-9]*|???????*)
+      echo "refresh-graph-map: WARN $1='$v' is not a whole number of at most 6 digits -- using the default $2" >&2
       v="$2" ;;
   esac
   printf '%s' "$v"
