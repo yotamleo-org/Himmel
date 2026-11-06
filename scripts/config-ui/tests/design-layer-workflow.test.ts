@@ -58,4 +58,5 @@ test("Workflow: the story map's Check and approve line draws the judge diamond a
   const line = check.slice(check.indexOf('class="wf-line"'), check.indexOf("</div>", check.indexOf('class="wf-line"')));
   expect(line).toContain('<span class="wf-g wf-j" aria-hidden="true"></span>');
   expect(html).toContain('<span class="wf-g wf-j" aria-hidden="true"></span>the judge, only on a trust path');
+  expect(html).toContain('<span class="wf-chip wf-j">◆ judge, on a trust path</span>');
 });
