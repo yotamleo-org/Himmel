@@ -167,6 +167,30 @@ got="$(aseeds "how does stop-worker.sh stop a lane worker")"
 if [ "$got" = "stop_w " ]; then pass "A13 a lane-worker file named as written resolves"
 else fail "A13 got='$got'"; fi
 
+# A14-A15: a semantic pass titles a document node (id = slug of its path, label = a title), so the
+# label is not the file's basename. A query naming the path still anchors on that node; a file with
+# a similar slug is not picked, and a titled section node of another file is not a file node.
+python3 -I - "$T/titled.json" <<'PY'
+import json, sys
+def node(i, label, src):
+    return {"id": i, "label": label, "norm_label": label.lower(), "file_type": "document", "source_file": src, "source_location": "L1"}
+d = "docs/handover/chief-sections/"
+nodes = [
+    node("docs_handover_chief_sections_waiter", "Chief section: the event waiter (ACTION ZERO step 10)", d + "waiter.md"),
+    node("docs_handover_chief_sections_waiter_wake", "WAKE doctor", d + "waiter.md"),
+    node("docs_handover_chief_sections_waiter_notes", "Waiter notes", d + "waiter-notes.md"),
+    node("docs_handover_chief_sections_waiter_notes_x", "Waiter notes", d + "waiter-notes.md"),
+]
+json.dump({"nodes": nodes, "links": []}, open(sys.argv[1], "w"))
+PY
+tseeds() { python3 -I "$ANCHOR" seeds "$T/titled.json" "$1" | tr '\n' ' '; }
+got="$(tseeds "what does docs/handover/chief-sections/waiter.md say")"
+if [ "$got" = "docs_handover_chief_sections_waiter " ]; then pass "A14 a titled document node anchors the named file"
+else fail "A14 got='$got'"; fi
+got="$(tseeds "what does waiter-notes.md say")"
+if [ "$got" = "docs_handover_chief_sections_waiter_notes " ]; then pass "A15 a similar-slug file is not picked for waiter.md, and waiter-notes.md resolves to its own node"
+else fail "A15 got='$got'"; fi
+
 # A8: the real graphify on the fixture: the bare query never reaches go.sh's file, the wrapper
 # starts from it.
 if command -v graphify >/dev/null 2>&1 && graphify --help 2>&1 | grep -q -- '--rationale'; then
