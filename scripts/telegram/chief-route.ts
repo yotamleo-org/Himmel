@@ -513,11 +513,16 @@ async function governingSpec(page: string): Promise<{ spec: string; role: Role }
 // The .md a page names as its source, or null for a page that names none. A marker that is not an absolute path, or names a file that is not there, refuses.
 async function markedSource(page: string): Promise<string | null> {
   if (!/\.html?$/i.test(page)) return null;
-  const m = /<meta\s+name="spec-source"\s+content="([^"]*)"/i.exec((await readFile(page)).toString("utf8"));
-  if (!m) return null;
-  if (!isAbsolute(m[1])) throw new Error(`${basename(page)} names its source as '${m[1]}', which is not an absolute path; the page is not sent`);
-  const real = await realpath(m[1]).catch(() => null);
-  if (!real || !await isFile(real)) throw new Error(`${basename(page)} names its source as ${m[1]}, which is not there; the page is not sent`);
+  let named: string | null = null;
+  for (const tag of (await readFile(page)).toString("utf8").matchAll(/<meta\b[^>]*>/gi)) {
+    const attrs = new Map<string, string>();
+    for (const a of tag[0].matchAll(/([a-z][\w-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi)) attrs.set(a[1].toLowerCase(), a[2] ?? a[3] ?? a[4]);
+    if (attrs.get("name")?.toLowerCase() === "spec-source") { named = (attrs.get("content") ?? "").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"); break; }
+  }
+  if (named === null) return null;
+  if (!isAbsolute(named)) throw new Error(`${basename(page)} names its source as '${named}', which is not an absolute path; the page is not sent`);
+  const real = await realpath(named).catch(() => null);
+  if (!real || !await isFile(real)) throw new Error(`${basename(page)} names its source as ${named}, which is not there; the page is not sent`);
   return real;
 }
 
