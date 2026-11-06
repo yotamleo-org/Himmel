@@ -276,10 +276,16 @@ assert_rc "Bash egrep '.env' file.txt" 0 "$(run_case "$(j_bash "egrep '.env' fil
 assert_rc "Bash rg '.env' src/" 0 "$(run_case "$(j_bash "rg '.env' src/")")"
 assert_rc "Bash awk '.env' file.txt (pattern only)" 0 \
     "$(run_case "$(j_bash "awk '.env' file.txt")")"
-# Any flag before the pattern — even one that takes no value at all, like
-# -r/-n — puts the pattern at position 1, not 0, so it is NOT exempt and
-# falls back to blocking. Deliberate scope limit (see header above).
-assert_rc "Bash grep -rn '.env' scripts/ (flag before pattern, out of scope)" 2 \
+# For rg, sed and awk any flag before the pattern puts it at position 1, not 0,
+# so it is NOT exempt and falls back to blocking (deliberate scope limit, see
+# header above). That is lifted for grep, egrep and fgrep after a
+# cluster of letters that take no value (`-rn`); a letter that takes a value
+# (`-m 1`) still closes the slot.
+assert_rc "Bash rg -rn '.env' scripts/ (flag before pattern, out of scope)" 2 \
+    "$(run_case "$(j_bash "rg -rn '.env' scripts/")")"
+assert_rc "Bash grep -m 1 '.env' scripts/ (value letter before pattern)" 2 \
+    "$(run_case "$(j_bash "grep -m 1 '.env' scripts/")")"
+assert_rc "Bash grep -rn '.env' scripts/ (boolean cluster)" 0 \
     "$(run_case "$(j_bash "grep -rn '.env' scripts/")")"
 # Positive control (must still BLOCK): the SAME pattern, but the target
 # argument genuinely IS a secret file — proves the fix narrows only the
@@ -513,14 +519,14 @@ esac
 
 # --- pattern_hint on quoted pattern-family denials ---
 # The quoted-pattern exemption is positional (see header): a flag before the
-# pattern (`grep -rn '.env' scripts/`, blocked above) still denies. The agent
+# pattern (`rg -rn '.env' scripts/`, blocked above) still denies. The agent
 # has no way to know the two shapes that DO pass, so pattern_hint() names
 # them on that denial. pattern_hint_applies() gates it to pattern-family
 # commands (grep/egrep/fgrep/rg/ripgrep/ag/sed/awk/gawk/mawk/nawk) that also
 # have a token which is BOTH quoted (is_quoted_pattern_tok) AND secret-looking
 # (is_secret_path) — otherwise the hint is noise.
-err=$(printf '%s' "$(j_bash "grep -rn '.env' scripts/")" | bash "$HOOK" 2>&1 >/dev/null); rc=$?
-assert_rc "Bash grep -rn '.env' scripts/ (denied, pattern hint shown)" 2 "$rc"
+err=$(printf '%s' "$(j_bash "rg -rn '.env' scripts/")" | bash "$HOOK" 2>&1 >/dev/null); rc=$?
+assert_rc "Bash rg -rn '.env' scripts/ (denied, pattern hint shown)" 2 "$rc"
 case "$err" in
     *"pattern first, flags after it"*) echo "PASS pattern hint shown on quoted pattern-family denial" ;;
     *) echo "FAIL pattern hint shown on quoted pattern-family denial — got: $err"; FAILED=$((FAILED + 1)) ;;
@@ -1682,6 +1688,143 @@ ln -s "$CALINK/loop1" "$CALINK/loop2"
 assert_rc "8401 Read a symlink that never resolves" 2 "$(run_case "$(j_read "$CALINK/loop1")")"
 assert_rc "8401 Read a plain file is allowed"    0 "$(run_case "$(j_read "$CALINK/plain.txt")")"
 rm -rf "$CALINK"
+
+# 8319: the guard refuses tracing turned on, not quoted text that names the option or merely holds a brace, and a
+# grep pattern after boolean flags is a pattern. 331 refusals in 3 days; the replay sorted 241 of 411 in 7 days (window
+# ending 2026-11-06T02:57Z) to the tracing word or a brace in quoted text. Real shapes: a Jira search quoted JQL, a
+# Telegram reply JSON.
+assert_rc "8319 jira list JQL quotes the tracing option"        0 "$(run_case "$(j_bash "node scripts/jira/dist/index.js list --jql 'project = HIMMEL AND text ~ \"xtrace\" ORDER BY created DESC'")")"
+assert_rc "8319 jira search JQL quotes it with other words"      0 "$(run_case "$(j_bash "node scripts/jira/dist/index.js search --jql 'text ~ \"xtrace\" AND status = Done'")")"
+assert_rc "8319 reply JSON with spaces (printf)"                 0 "$(run_case "$(j_bash "printf '%s\\n' '{\"text\":\"Filed the Instagram reel as a clip (type=instagram, link-only stub). Transcript pending, extract later.\"}'")")"
+assert_rc "8319 reply JSON with spaces (echo after cd)"          0 "$(run_case "$(j_bash "cd /tmp/chat && echo '{\"text\":\"Already filed, that post is a tweet clip. Nothing more to extract here.\"}'")")"
+assert_rc "8319 ctl bash -x script.sh"                           2 "$(run_case "$(j_bash 'bash -x script.sh')")"
+assert_rc "8319 ctl sh -x script.sh"                             2 "$(run_case "$(j_bash 'sh -x script.sh')")"
+assert_rc "8319 ctl set -x; cat .env"                            2 "$(run_case "$(j_bash 'set -x; cat .env')")"
+assert_rc "8319 ctl set -x alone"                                2 "$(run_case "$(j_bash 'set -x')")"
+assert_rc "8319 ctl quoted body sets it (bash -c)"               2 "$(run_case "$(j_bash "bash -c 'set -o xtrace; ls /tmp'")")"
+assert_rc "8319 ctl quoted body sets it through a variable"      2 "$(run_case "$(j_bash "sh -c 'x=xtrace; set -o \$x; ls'")")"
+assert_rc "8319 ctl quoted text assigns SHELLOPTS"               2 "$(run_case "$(j_bash "env 'SHELLOPTS=errexit:xtrace bash' s.sh")")"
+assert_rc "8319 ctl cat .env"                                    2 "$(run_case "$(j_bash 'cat .env')")"
+assert_rc "8319 ctl cat quoted .env"                             2 "$(run_case "$(j_bash "cat '.env'")")"
+
+assert_rc "8319 grep -n quoted escaped .env pattern"             0 "$(run_case "$(j_bash "grep -n '\\.env' f")")"
+assert_rc "8319 grep -nE quoted alternation pattern"             0 "$(run_case "$(j_bash "grep -nE '\\.env|x' f")")"
+assert_rc "8319 grep -rn double-quoted pattern over a dir"       0 "$(run_case "$(j_bash "grep -rn \"\\.env\" scripts/")")"
+assert_rc "8319 grep -n -E two clusters then the pattern"        0 "$(run_case "$(j_bash "grep -n -E '\\.env|deleted|backup' scripts/lib/x.sh")")"
+assert_rc "8319 egrep -n quoted pattern"                         0 "$(run_case "$(j_bash "egrep -n '\\.env' f")")"
+assert_rc "8319 fgrep -n quoted pattern"                         0 "$(run_case "$(j_bash "fgrep -n '.env' f")")"
+assert_rc "8319 ctl grep -n TOKEN .env"                          2 "$(run_case "$(j_bash 'grep -n TOKEN .env')")"
+assert_rc "8319 ctl grep -n TOKEN '.env'"                        2 "$(run_case "$(j_bash "grep -n TOKEN '.env'")")"
+assert_rc "8319 ctl grep -f .env x"                              2 "$(run_case "$(j_bash 'grep -f .env x')")"
+assert_rc "8319 ctl grep -m 1 TOKEN .env"                        2 "$(run_case "$(j_bash 'grep -m 1 TOKEN .env')")"
+assert_rc "8319 ctl grep -n '.env' .env"                         2 "$(run_case "$(j_bash "grep -n '.env' .env")")"
+assert_rc "8319 ctl grep -E '^JIRA_PROJECT_KEY=' .env"           2 "$(run_case "$(j_bash "grep -E '^JIRA_PROJECT_KEY=' .env")")"
+assert_rc "8319 ctl grep -m 1 '.env' file (value letter closes)" 2 "$(run_case "$(j_bash "grep -m 1 '.env' file")")"
+assert_rc "8319 ctl grep -A 2 '.env' file (value letter closes)" 2 "$(run_case "$(j_bash "grep -A 2 '.env' file")")"
+assert_rc "8319 ctl grep -ne '.env' file (cluster holds -e)"     2 "$(run_case "$(j_bash "grep -ne '.env' file")")"
+assert_rc "8319 ctl grep --color '.env' file (long closes)"      2 "$(run_case "$(j_bash "grep --color '.env' file")")"
+assert_rc "8319 ctl rg -n '.env' file is unchanged"              2 "$(run_case "$(j_bash "rg -n '.env' file")")"
+assert_rc "8319 ctl grep -n -f .env -- x"                        2 "$(run_case "$(j_bash 'grep -n -f .env -- x')")"
+assert_rc "8319 ctl grep -f '.env' x (quoted -f operand is a file)"  2 "$(run_case "$(j_bash "grep -f '.env' x")")"
+assert_rc "8319 ctl grep -nf '.env' x (cluster holds -f)"            2 "$(run_case "$(j_bash "grep -nf '.env' x")")"
+assert_rc "8319 ctl grep -f.env x (attached pattern file)"           2 "$(run_case "$(j_bash 'grep -f.env x')")"
+assert_rc "8319 ctl grep -n -f.env x (attached after a cluster)"     2 "$(run_case "$(j_bash 'grep -n -f.env x')")"
+assert_rc "8319 grep pipe in pattern, no flags"                0 "$(run_case "$(j_bash "grep '\\.env|x' f")")"
+assert_rc "8319 grep -n pattern holds a semicolon"               0 "$(run_case "$(j_bash 'grep -n "a;b" f')")"
+assert_rc "8319 ctl pipe in pattern, real target is .env"        2 "$(run_case "$(j_bash "grep -n 'a|b' .env")")"
+assert_rc "8319 ctl pipe in pattern, then cat .env clause"       2 "$(run_case "$(j_bash "grep -n 'a|b' f; cat .env")")"
+assert_rc "8319 ctl pipe in pattern, then piped cat .env"        2 "$(run_case "$(j_bash "grep -n 'a|b' f | cat .env")")"
+assert_rc "8319 ctl command inside the pattern text"             2 "$(run_case "$(j_bash "grep -n 'x;cat .env' f")")"
+# shellcheck disable=SC2016
+assert_rc "8319 ctl substitution in a double-quoted pattern"     2 "$(run_case "$(j_bash 'grep -n "$(cat .env)" f')")"
+# shellcheck disable=SC2016
+assert_rc "8319 ctl separator then substitution in the pattern"  2 "$(run_case "$(j_bash 'grep -n "x;$(cat .env)" f')")"
+assert_rc "8319 ctl mis-nested quotes expose a cat .env clause"  2 "$(run_case "$(j_bash "bash -c 'grep -n 'x;cat .env' ''")")"
+
+# 8319: GNU grep permutes its arguments, so the quoted word after the flags is a pattern only while no later option
+# supplies one. With a later -e, -f or their long forms it is a file operand and grep reads it. The flagless slot of
+# rg, sed and awk has the same shape.
+assert_rc "8319 ctl grep -n '.env' -e TOKEN (later -e, the quoted word is the file)"  2 "$(run_case "$(j_bash "grep -n '.env' -e TOKEN")")"
+assert_rc "8319 ctl grep -n '.env' -f pats (later -f)"                                2 "$(run_case "$(j_bash "grep -n '.env' -f pats")")"
+assert_rc "8319 ctl grep -n '.env' -eTOKEN (later glued -e)"                          2 "$(run_case "$(j_bash "grep -n '.env' -eTOKEN")")"
+assert_rc "8319 ctl grep -n '.env' --regexp=TOKEN (later long -e)"                    2 "$(run_case "$(j_bash "grep -n '.env' --regexp=TOKEN")")"
+assert_rc "8319 ctl grep -n '.env' --regexp TOKEN (later long -e, own value)"         2 "$(run_case "$(j_bash "grep -n '.env' --regexp TOKEN")")"
+assert_rc "8319 ctl grep -n '.env' --file=pats (later long -f)"                       2 "$(run_case "$(j_bash "grep -n '.env' --file=pats")")"
+assert_rc "8319 ctl grep -rn '.env' -e TOKEN (cluster of two)"                        2 "$(run_case "$(j_bash "grep -rn '.env' -e TOKEN")")"
+assert_rc "8319 ctl grep '.env' -e TOKEN (flagless slot, later -e)"                   2 "$(run_case "$(j_bash "grep '.env' -e TOKEN")")"
+assert_rc "8319 ctl grep '.env' -f pats (flagless slot, later -f)"                    2 "$(run_case "$(j_bash "grep '.env' -f pats")")"
+assert_rc "8319 ctl grep '.env' -eTOKEN (flagless slot, later glued -e)"              2 "$(run_case "$(j_bash "grep '.env' -eTOKEN")")"
+assert_rc "8319 ctl grep '.env' --regexp=TOKEN (flagless slot, later long -e)"        2 "$(run_case "$(j_bash "grep '.env' --regexp=TOKEN")")"
+assert_rc "8319 ctl grep '.env' --file=pats (flagless slot, later long -f)"           2 "$(run_case "$(j_bash "grep '.env' --file=pats")")"
+assert_rc "8319 ctl rg '.env' -e TOKEN (flagless slot)"                               2 "$(run_case "$(j_bash "rg '.env' -e TOKEN")")"
+assert_rc "8319 ctl sed '.env' -e p (flagless slot)"                                  2 "$(run_case "$(j_bash "sed '.env' -e p")")"
+assert_rc "8319 ctl sed '.env' --expression=p (flagless slot)"                        2 "$(run_case "$(j_bash "sed '.env' --expression=p")")"
+assert_rc "8319 ctl awk '.env' -f prog (flagless slot)"                               2 "$(run_case "$(j_bash "awk '.env' -f prog")")"
+assert_rc "8319 grep -n '.env' f --color (a later option that supplies no pattern)"   0 "$(run_case "$(j_bash "grep -n '.env' f --color")")"
+assert_rc "8319 grep -n '.env' f -m 1 (a later count)"                                0 "$(run_case "$(j_bash "grep -n '.env' f -m 1")")"
+# A later token that holds an expansion may expand to a pattern option (O=-e), so the quoted word is a file the command
+# reads: the slot closes and the word is scanned, as with a literal later -e. A literal $ inside single quotes counts too,
+# which only denies more.
+assert_rc "8319 ctl grep -n '.env' \$O TOKEN (a later variable may expand to -e)"      2 "$(run_case "$(j_bash "grep -n '.env' \$O TOKEN")")"
+assert_rc "8319 ctl grep -n '.env' \"\$O\" TOKEN (double-quoted variable)"               2 "$(run_case "$(j_bash "grep -n '.env' \"\$O\" TOKEN")")"
+assert_rc "8319 ctl grep -n '.env' \$(printf %s x) TOKEN (command substitution)"       2 "$(run_case "$(j_bash "grep -n '.env' \$(printf %s x) TOKEN")")"
+assert_rc "8319 ctl grep -n '.env' \`cat opt\` TOKEN (backtick substitution)"           2 "$(run_case "$(j_bash "grep -n '.env' \`cat opt\` TOKEN")")"
+assert_rc "8319 ctl grep '.env' \$O TOKEN (flagless slot, later variable)"             2 "$(run_case "$(j_bash "grep '.env' \$O TOKEN")")"
+assert_rc "8319 ctl rg '.env' \$O TOKEN (flagless slot, later variable)"               2 "$(run_case "$(j_bash "rg '.env' \$O TOKEN")")"
+assert_rc "8319 grep -n 'TOKEN' \"\$f\" (an expansion beside a pattern that names no secret)"  0 "$(run_case "$(j_bash "grep -n 'TOKEN' \"\$f\"")")"
+# TK-j4806-1: a process substitution ends the tokenizer's segment like a command substitution, so it closes the slot too.
+assert_rc "8319 ctl grep -n '.env' <(true) -e TOKEN (input process substitution)"        2 "$(run_case "$(j_bash "grep -n '.env' <(true) -e TOKEN")")"
+assert_rc "8319 ctl grep -n '.env' >(cat) -e TOKEN (output process substitution)"        2 "$(run_case "$(j_bash "grep -n '.env' >(cat) -e TOKEN")")"
+# TK-j4806-1: a command the tokenizer's words do not stand for (comment, heredoc) keeps the plain split, and there a
+# short-flag cluster closes the slot as on main, so a redirect cut at the ampersand cannot hide a later -e.
+assert_rc "8319 ctl grep -n '.env' 2>&1 -e TOKEN # c (plain split, redirect with an ampersand)"  2 "$(run_case "$(j_bash "grep -n '.env' 2>&1 -e TOKEN # c")")"
+assert_rc "8319 ctl grep -n '.env' &>/dev/null -e TOKEN # c (plain split)"                2 "$(run_case "$(j_bash "grep -n '.env' &>/dev/null -e TOKEN # c")")"
+assert_rc "8319 ctl grep -n '.env' 2>&1 -e TOKEN with a heredoc (plain split)"            2 "$(run_case "$(j_bash $'grep -n \'.env\' 2>&1 -e TOKEN <<EOF\nx\nEOF')")"
+assert_rc "8319 grep -n 'TOKEN' f 2>&1 # c (a pattern that names no secret)"              0 "$(run_case "$(j_bash "grep -n 'TOKEN' f 2>&1 # c")")"
+# TK-j4806-1: xargs supplies its arguments from a file or a pipe, so no later token shows whether a pattern option comes.
+assert_rc "8319 ctl xargs grep -n '.env' < opts (xargs, arguments from a file)"           2 "$(run_case "$(j_bash "xargs grep -n '.env' < opts")")"
+assert_rc "8319 ctl printf ... | xargs grep -n '.env' (xargs, arguments from a pipe)"      2 "$(run_case "$(j_bash "printf '%s\\n' -e TOKEN | xargs grep -n '.env'")")"
+assert_rc "8319 ctl xargs -a opts grep -n '.env' (xargs -a)"                              2 "$(run_case "$(j_bash "xargs -a opts grep -n '.env'")")"
+
+# 8319: the clause split reads quotes through the tokenizer, so a separator inside a quoted word stays in its word and
+# a real separator splits. A closing quote followed by a later opening quote is not one quoted span.
+assert_rc "8319 ctl echo 'grep '; cat .env; echo 'b' (closing then opening quote)"     2 "$(run_case "$(j_bash "echo 'grep '; cat .env; echo 'b'")")"
+assert_rc "8319 ctl echo \"grep \"; cat .env; echo \"b\" (double quotes)"              2 "$(run_case "$(j_bash 'echo "grep "; cat .env; echo "b"')")"
+assert_rc "8319 ctl echo 'grep ' | cat .env | echo 'b' (pipe)"                        2 "$(run_case "$(j_bash "echo 'grep ' | cat .env | echo 'b'")")"
+assert_rc "8319 ctl echo 'grep ' && cat .env && echo 'b' (and)"                       2 "$(run_case "$(j_bash "echo 'grep ' && cat .env && echo 'b'")")"
+assert_rc "8319 ctl head -n 1 .env between two quoted words"                          2 "$(run_case "$(j_bash "echo 'x grep '; head -n 1 .env; echo 'b'")")"
+assert_rc "8319 ctl : 'x grep '; cat .env; : 'y' (no-op command)"                     2 "$(run_case "$(j_bash ": 'x grep '; cat .env; : 'y'")")"
+assert_rc "8319 ctl bash -c body with the straddle"                                   2 "$(run_case "$(j_bash "bash -c \"echo 'grep '; cat .env; echo 'b'\"")")"
+assert_rc "8319 ctl substitution inside a double-quoted grep text"                    2 "$(run_case "$(j_bash "echo \"grep 'x \$(cat .env) y'\"")")"
+assert_rc "8319 : grep '; cat .env; : ' is one quoted word, nothing reads the file"   0 "$(run_case "$(j_bash ": grep '; cat .env; : '")")"
+# the ticket's quoted-separator shapes: the separator inside a quoted word no longer cuts the clause, so the .env operand is read
+assert_rc "8319 ctl cat 'a|b' .env (quoted pipe)"                                     2 "$(run_case "$(j_bash "cat 'a|b' .env")")"
+assert_rc "8319 ctl cat \"a;b\" .env (quoted semicolon)"                               2 "$(run_case "$(j_bash 'cat "a;b" .env')")"
+assert_rc "8319 ctl cat 'a&b' .env (quoted ampersand)"                                2 "$(run_case "$(j_bash "cat 'a&b' .env")")"
+assert_rc "8319 ctl cat 'a(b' .env (quoted parenthesis)"                              2 "$(run_case "$(j_bash "cat 'a(b' .env")")"
+assert_rc "8319 ctl head -n 1 'a|b' .env"                                             2 "$(run_case "$(j_bash "head -n 1 'a|b' .env")")"
+assert_rc "8319 ctl grep -e 'a|b' .env"                                               2 "$(run_case "$(j_bash "grep -e 'a|b' .env")")"
+assert_rc "8319 ctl grep -m 1 'a|b' .env"                                             2 "$(run_case "$(j_bash "grep -m 1 'a|b' .env")")"
+assert_rc "8319 ctl sed -n 'a|b' .env"                                                2 "$(run_case "$(j_bash "sed -n 'a|b' .env")")"
+# a command the tokenizer did not read, or one that holds a heredoc, keeps the plain split
+assert_rc "8319 ctl unterminated quote keeps the plain split"                         2 "$(run_case "$(j_bash 'echo "grep ; cat .env')")"
+assert_rc "8319 ctl heredoc body line cat .env keeps the plain split"                 2 "$(run_case "$(j_bash $'bash <<EOF\necho \'x\'\ncat .env\nEOF')")"
+# the words stand in for the plain split only when they are what the shell runs. A # right after a closing
+# substitution is part of the word, not a comment, so the cat after it runs; and a command whose ${...} was
+# rewritten before the tokenizer could read it shows words that no longer hold the body of that expansion.
+# Both keep the plain split.
+# shellcheck disable=SC2016
+assert_rc "8319 ctl # right after a substitution is no comment, the cat runs"        2 "$(run_case "$(j_bash 'echo $(true)#; cat .env')")"
+# shellcheck disable=SC2016
+assert_rc "8319 ctl # right after a backtick substitution, the cat runs"             2 "$(run_case "$(j_bash 'echo `true`#; cat .env')")"
+# shellcheck disable=SC2016
+assert_rc "8319 ctl # right after an arithmetic expansion, the cat runs"             2 "$(run_case "$(j_bash 'echo $((1+1))#; cat .env')")"
+# shellcheck disable=SC2016
+assert_rc "8319 ctl # right after a process substitution, the cat runs"              2 "$(run_case "$(j_bash 'echo <(true)#; cat .env')")"
+# shellcheck disable=SC2016
+assert_rc "8319 ctl substitution inside an unmodelled expansion reads an ssh key"    2 "$(run_case "$(j_bash 'echo ${V:-$(cat ~/.ssh/id_ecdsa)}')")"
+# shellcheck disable=SC2016
+assert_rc "8319 ctl same, assigned, reads a file under the secrets directory"        2 "$(run_case "$(j_bash 'X=${X:-$(cat ~/.himmel/secrets/x)}')")"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then

@@ -36,6 +36,10 @@
 #                   an enclosing one moved the cwd, so a glob in it does not
 #                   expand against the hook's cwd
 #   GU_TOKENIZED       1 when the tokenizer read the command (ST_* hold it)
+#   GU_FLATTENED    1 when the tokenizer read a rewrite of the command, not the
+#                   command: every `${…}` replaced by `${GU}`, or heredoc bodies
+#                   dropped. ST_* then hold the rewrite's words, which leave out
+#                   what those expansions held
 #   GU_SW[s]        the non-redirect word indices of segment s, space-joined
 #   GU_CORE[s]      the position in GU_SW[s] of segment s's command word,
 #                   after wrappers, assignments and keywords
@@ -298,7 +302,7 @@ guard_unwrap() {
     local trigger=0 nl=$'\n' err rc cwd_env xrender='' xseg vs='' xkept=${GUARD_UNWRAP_XKEPT:-0} ci=0 noskip
     local -a children=()
     GU_V=() GU_VS=() GU_SW=() GU_SR=() GU_CORE=() GU_LOOKUP=() GU_XA=()
-    GU_SHIFT=0 GU_STRIP=0 GU_TOKENIZED=0 GU_FUNC=0
+    GU_SHIFT=0 GU_STRIP=0 GU_TOKENIZED=0 GU_FLATTENED=0 GU_FUNC=0
     GU_CWD_UNKNOWN=0
     [ "${GUARD_UNWRAP_CWD:-}" != unknown ] || GU_CWD_UNKNOWN=1
     case "$depth" in ''|*[!0-9]*) depth=$GU_MAX_DEPTH ;; esac
@@ -328,6 +332,8 @@ guard_unwrap() {
             fi
             return 0
         fi
+        # shellcheck disable=SC2034 # read by the sourcing hook
+        GU_FLATTENED=1
     fi
     # shellcheck disable=SC2034 # read by the sourcing hook
     GU_TOKENIZED=1

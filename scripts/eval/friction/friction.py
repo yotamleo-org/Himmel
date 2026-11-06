@@ -24,6 +24,7 @@ import glob
 import json
 import os
 import re
+import shlex
 import statistics
 import sys
 
@@ -132,7 +133,6 @@ HOOK_CLASSES = {
     'run-hook-with-bash': [(r'budget=', 'hook-budget-timeout', 'over-deny',
                             'a must-run guard exceeded its budget under load and failed closed')],
     'read-clamp': [(r'.', 'duplicate-read', 'true-positive', 'token-saving re-read clamp')],
-    'block-read-secrets': [(r'.', 'read-secrets', 'true-positive', 'secret-shaped path read')],
     'block-unresolved-cr-merge': [(r'single plain command', 'gh-merge-shape', 'true-positive',
                                    'merge must be one plain command')],
     'require-quiet-run': [(r'.', 'suite-not-wrapped', 'true-positive', 'suite run outside quiet-run')],
@@ -266,6 +266,125 @@ def mask(s):
     return re.sub(r'\s+', ' ', s)[:140]
 
 
+# block-read-secrets refusals are sorted per clause, not under one blanket verdict. The sort reads the
+# refused command out of the refusal text: a real read, tracing turned on, a tracing word or a secret name
+# in quoted text only, an environment dump, or other.
+RS_SECRET_TOK = re.compile(r'(?:^|/)(?:\.env(?:\.[\w.-]+)?|[\w.-]*\.(?:pem|key|p12|pfx)|id_(?:rsa|ed25519|ecdsa|dsa)'
+                           r'|credentials(?:\.json)?|\.netrc|\.npmrc|\.pgpass|himmel\.conf|secrets?\.[\w.]+)$')
+RS_TRACE_ON = re.compile(r'(?i)(?:^|[\s;&|(`])(?:set\s+[-+]\w*x|(?:set|shopt|setopt|unsetopt)\s+(?:[-+]\w+\s+)*x_?trace'
+                         r'|(?:ba|z|da|k|)sh\s+(?:-\S+\s+)*-[a-z]*x|(?:SHELLOPTS|BASHOPTS)=|BASH_XTRACEFD=)')
+RS_GREP = ('grep', 'egrep', 'fgrep')
+RS_GREP_VALUE_LETTERS = 'ABCDdefm'
+RS_WRAPPERS = ('sudo', 'doas', 'rtk', 'proxy', 'command', 'time', 'nice', 'env', 'exec', 'nohup')
+RS_WRAPPER_VALUE_OPTS = {'sudo': 'ugCDhprtUT', 'doas': 'uC', 'env': 'uCS', 'nice': 'n', 'time': 'fo'}
+RS_READERS = frozenset('cat tac head tail less more nl wc cut sort uniq od xxd hexdump strings base64 jq yq sed awk '
+                       'gawk bat batcat cp scp rsync tar zip gzip xz bzip2 curl wget source . diff cmp paste column '
+                       'rg ag tr fold fmt rev file stat openssl'.split())
+RS_GREP_LONG_VALUE = ('--file', '--regexp', '--max-count', '--after-context', '--before-context', '--context',
+                      '--binary-files', '--devices', '--directories', '--exclude', '--exclude-from', '--exclude-dir',
+                      '--include', '--label')
+RS_ENV_DUMP = re.compile(r'bare env dumps|bare printenv dumps|prints a credential variable|printenv of a credential'
+                         r'|prints the whole environment|show-environment|himmel-secrets (?:get|put|import|export)')
+
+
+def _rs_strip_quotes(s):
+    return re.sub(r"'[^']*'|\"(?:[^\"\\]|\\.)*\"", ' ', s)
+
+
+def _rs_clause_reads_secret(clause):
+    """True when the clause names a secret path as a file operand, not as a grep pattern."""
+    try:
+        toks = shlex.split(clause, comments=False, posix=True)
+    except ValueError:
+        toks = clause.split()
+    while toks:
+        wrapper = os.path.basename(toks[0])
+        if re.match(r'[A-Za-z_]\w*=', toks[0]):
+            toks = toks[1:]
+        elif wrapper in RS_WRAPPERS:
+            toks = toks[1:]
+            while toks and toks[0].startswith('-') and len(toks[0]) > 1:
+                opt, toks = toks[0], toks[1:]
+                if opt == '--':
+                    break
+                if len(opt) == 2 and opt[1] in RS_WRAPPER_VALUE_OPTS.get(wrapper, '') and toks:
+                    toks = toks[1:]
+        else:
+            break
+    if not toks:
+        return False
+    if os.path.basename(toks[0]) not in RS_GREP:
+        return os.path.basename(toks[0]) in RS_READERS and any(RS_SECRET_TOK.search(t) for t in toks[1:])
+    # grep's own reading: an option that takes a value consumes it (attached or the next word), the first
+    # operand is the pattern unless -e/-f/--regexp/--file already gave one, and every later operand is a file.
+    need_pattern, rest, i, only_operands = True, toks[1:], 0, False
+    while i < len(rest):
+        t = rest[i]
+        i += 1
+        if only_operands or not t.startswith('-') or t == '-':
+            if need_pattern:
+                need_pattern = False
+            elif RS_SECRET_TOK.search(t):
+                return True
+            continue
+        if t == '--':
+            only_operands = True
+            continue
+        if t.startswith('--'):
+            name, eq, val = t.partition('=')
+            if name in RS_GREP_LONG_VALUE and not eq:
+                val = rest[i] if i < len(rest) else ''
+                i += 1
+            if name in ('--file', '--regexp'):
+                need_pattern = False
+                if name == '--file' and RS_SECRET_TOK.search(val):
+                    return True
+            continue
+        for k, c in enumerate(t[1:], 1):
+            if c not in RS_GREP_VALUE_LETTERS:
+                continue
+            val = t[k + 1:]
+            if not val:
+                val = rest[i] if i < len(rest) else ''
+                i += 1
+            if c in 'ef':
+                need_pattern = False
+            if c == 'f' and RS_SECRET_TOK.search(val):
+                return True
+            break
+    return False
+
+
+def read_secrets_class(reason):
+    """(class, verdict, evidence) for one block-read-secrets refusal; reason is the text after the hook name."""
+    if reason.startswith('refusing Read of secret file') or 'glob read after a cwd change' in reason[:80]:
+        return 'real-read', 'true-positive', 'a secret file read through the Read tool or a glob'
+    m = re.search(r'(?s)refusing \S+ command that reads a secret file:\n(.*?)(?:\n    \(([^\n]*)\))?\n\n?To bypass', reason)
+    if not m:
+        return 'other', 'unclear', 'refusal text in an unknown shape'
+    cmd = '\n'.join(l[4:] if l.startswith('    ') else l for l in m.group(1).split('\n'))
+    note = m.group(2) or ''
+    if 'shell tracing' in note:
+        bare = _rs_strip_quotes(cmd)
+        if RS_TRACE_ON.search(bare) or re.search(r'(?i)x_?trace', bare):
+            return 'tracing-on', 'true-positive', 'tracing is turned on outside quoted text'
+        if re.search(r'(?:^|[\s;&|(`])(?:eval|(?:ba|z|da|k|)sh\s+(?:-\S+\s+)*-\w*c)\s', bare):
+            return 'other', 'unclear', 'tracing named inside a quoted shell body'
+        return 'tracing-word-in-quotes', 'over-deny', 'the tracing option is only quoted argument text'
+    if RS_ENV_DUMP.search(note):
+        return 'env-dump', 'true-positive', 'prints the environment or a credential variable'
+    if note:
+        return 'other', 'unclear', 'refused for a reason outside the read/tracing sort'
+    clauses = [c for c in re.split(r'\n|;|&&|\|\||\|', cmd) if c.strip()]
+    if any(_rs_clause_reads_secret(c) for c in clauses):
+        return 'real-read', 'true-positive', 'a secret path is a file operand'
+    if re.search(r'/proc/[^\s/]+/environ', cmd):
+        return 'env-dump', 'true-positive', 'reads a process environment'
+    if any(re.match(r'\s*(?:\S*/)?(?:egrep|fgrep|grep)\s', c) for c in clauses):
+        return 'quoted-pattern', 'over-deny', 'a grep clause names a secret word only in its pattern'
+    return 'other', 'unclear', 'no secret path operand found in the refused command'
+
+
 def classify(text, denial_kind=None):
     """Return (source, class, verdict, evidence) or None when text is no refusal."""
     for rx, src, cls, verdict, ev in TEXT_RULES:
@@ -277,6 +396,9 @@ def classify(text, denial_kind=None):
     m = HOOK_RE.search(text)
     if m and ('hook error' in text):
         name, reason = m.group(1), m.group(2)
+        if name == 'block-read-secrets':
+            cls, verdict, ev = read_secrets_class(reason)
+            return 'hook:' + name, 'read-secrets-' + cls, verdict, ev
         for rx, cls, verdict, ev in HOOK_CLASSES.get(name, [(r'.', 'other-' + re.sub(r'[^a-z]+', '-', reason[:40].lower()).strip('-'),
                                                  'unclear', 'unmapped hook denial')]):
             hit = re.search(rx, reason)
