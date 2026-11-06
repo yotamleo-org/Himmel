@@ -24,8 +24,8 @@ step 10 undoes the install. A different result means stop and read
 > model too, once you add one), and merges through one gate. Hooks refuse
 > risky actions before they run, so the rules hold even when nobody remembers
 > them. In a himmel checkout, handover notes carry the work across sessions; in
-> your own project, only their setup and resume have been shown running. See the
-> [README](../README.md) for the full pitch and the
+> your own project, the install copies their setup and resume scripts, and resume
+> has been shown running. See the [README](../README.md) for the full pitch and the
 > [advantages](../README.md#what-you-get).
 
 ## The first protected project, in ten steps
@@ -270,12 +270,13 @@ git add -A && git commit -m "feat: my change #2" && git push -u origin feat/my-t
 > git repo (either through `HANDOVER_DIR`), or an inline `handovers/` folder in
 > the repo. `/handover` has no default: it writes into an existing tracked item,
 > and a fresh project has none. Only a himmel checkout has been shown running the
-> commands that create an item or write a note (`new-*`, end-session), and the PR
-> open, merge and flush scripts are not copied. `/handover-resume` here picks up an
-> item already in this repo's bucket of the store you chose. In a himmel checkout
-> the note lands in a `handover/<slug>` worktree off `main`, not in the folder you
-> are in. With the inline folder, `/handover-resume`
-> sees it from that worktree, or from the main folder once the branch merges.
+> commands that create an item or write a note (`new-*`, end-session). The scripts
+> that open, merge and flush a handover branch's PR (`pr-open.sh`, `pr-merge.sh`,
+> `flush.sh`) are not copied. `/handover-resume` here picks up an item already in
+> this repo's bucket of the store you chose. In a himmel checkout the note lands
+> in a `handover/<slug>` worktree off `main`, not in the folder you are in. With
+> the inline folder, `/handover-resume` sees it from that worktree, or from the
+> main folder once the branch merges.
 
 **How to tell it's working:** if you try to edit a file on `main` you'll get a
 `block-edit-on-main` message pointing you back into a worktree (`/clean_garden`

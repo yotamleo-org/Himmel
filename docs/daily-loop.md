@@ -551,9 +551,10 @@ registry.
 
 In your own project, the install copies the resume and storage-setup scripts, so
 `/handover-setup` and `/handover-resume` run. Only a himmel checkout has been shown
-running the commands that create an item or write a note (`new-*`, end-session),
-and the PR open, merge and flush scripts are not copied. A fresh project has no
-item for `/handover` to write into.
+running the commands that create an item or write a note (`new-*`, end-session).
+The scripts that open, merge and flush a handover branch's PR (`pr-open.sh`,
+`pr-merge.sh`, `flush.sh`) are not copied. A fresh project has no item for
+`/handover` to write into.
 
 Full handover internals:
 [docs/internals/handover-system.md](internals/handover-system.md).
