@@ -117,7 +117,7 @@ export function readPhaseStats(env: Env, roundsDir: string, now: number): PhaseS
     const edges = [10, 30, 60, 120, 240], at = (v: number) => edges.filter((e) => v >= e).length;
     const hist = unit === "rounds"
       ? ["1", "2", "3", "4+"].map((label, i) => ({ label, n: vs.filter((v) => Math.min(v, 4) === i + 1).length }))
-      : ["under 10 min", "10-30 min", "30-60 min", "1-2 h", "2-4 h", "4 h+"].map((label, i) => ({ label, n: vs.filter((v) => at(v) === i).length }));
+      : ["<10m", "10-30m", "30-60m", "1-2h", "2-4h", "4h+"].map((label, i) => ({ label, n: vs.filter((v) => at(v) === i).length }));
     return { id, name, state: vs.length ? "ok" : "nodata", unit, n: vs.length, median, p80, perDay: perDay(entered), counts, hist: vs.length ? hist : [], hiFrom: unit === "rounds" ? 2 : p80 === null ? 0 : at(p80) };
   };
   const none = (id: string, name: string, counts: string): PhaseRow =>

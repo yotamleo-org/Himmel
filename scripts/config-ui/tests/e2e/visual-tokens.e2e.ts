@@ -4,7 +4,7 @@
 // left unstyled) fails here. A colour passes when it is a token value, or a mix of two token values (color-mix).
 // RED control: E2E_BREAK=colour plants one off-token colour on each page, and the suite must fail.
 import { test, expect, type Page } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { boot, type Harness } from "./fixtures";
 
@@ -91,6 +91,16 @@ for (const scheme of ["light", "dark"] as const) {
       if (process.env.E2E_BREAK === "colour") await plant(page);
       for (const o of await offTokens(page)) bad.push(`${id}: ${o}`);
     }
+    // the Eval tab with a seeded run, so its sparklines, bar charts and trend lines are painted and scanned too
+    const day = 86_400_000, today = Math.floor(Date.now() / day) * day;
+    mkdirSync(join(h.home, ".himmel", "state"), { recursive: true });
+    writeFileSync(join(h.home, ".himmel", "state", "status-events.jsonl"), [0, 1, 2].flatMap((i) => [["live", 0], ["pr-open", 20], ["ci-start", 25], ["merge", 70], ["wrapped", 80]]
+      .map(([event, min]) => JSON.stringify({ ts: new Date(today - (i + 1) * day + 8 * 3600_000 + Number(min) * 60_000).toISOString(), event, key: `HIMMEL-${i + 1}`, pr: String(i + 1) }))).join("\n") + "\n");
+    await page.evaluate(() => { location.hash = "#/workflow/eval"; });
+    await page.locator("nav.wf-tabs a[aria-current='page'][href$='#/workflow/eval']").waitFor();
+    await page.locator("svg.wf-trend").first().waitFor();
+    if (process.env.E2E_BREAK === "colour") await plant(page);
+    for (const o of await offTokens(page)) bad.push(`workflow/eval: ${o}`);
     await ctx.close();
     expect(bad, "colours outside tokens.css").toEqual([]);
   });

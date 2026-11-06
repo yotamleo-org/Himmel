@@ -219,7 +219,7 @@ function histChart(p) {
   const step = 212 / p.hist.length;
   return `<svg class="wf-ch" viewBox="0 0 220 86" role="img" aria-label="${esc(p.name)} spread" fill="currentColor" font-size="9">`
     + p.hist.map((b, i) => {
-      const h = Math.max((vals[i] / max) * 60, 1), x = 7 + i * step, w = step - 4;
+      const h = Math.max((vals[i] / max) * 52, 1), x = 7 + i * step, w = step - 4;
       return `<rect class="wf-bar${i >= p.hiFrom ? " wf-hi" : ""}" x="${x.toFixed(1)}" y="${(68 - h).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}"/>`
         + `<text x="${(x + w / 2).toFixed(1)}" y="81" text-anchor="middle">${esc(b.label)}</text><text x="${(x + w / 2).toFixed(1)}" y="${(65 - h).toFixed(1)}" text-anchor="middle">${vals[i]}</text>`;
     }).join("")

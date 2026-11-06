@@ -87,7 +87,7 @@ test("phase-stats: each phase carries its spread as buckets, and where the 8-in-
   const { env, roundsDir } = fixture(EVENTS, { "feat/himmel-1-a": [1, "2026-10-26"], "feat/himmel-2-b": [3, "2026-10-27"], "fix/himmel-3-c": [6, "2026-10-29"] });
   const s = readPhaseStats(env, roundsDir, NOW);
   // Build took 20 min, 40 min and 30 h: the 10-30, 30-60 and 4 h+ buckets; the 8-in-10 line (about 18 h) is in 4 h+
-  expect(phase(s, "build").hist.map((b) => [b.label, b.n])).toEqual([["under 10 min", 0], ["10-30 min", 1], ["30-60 min", 1], ["1-2 h", 0], ["2-4 h", 0], ["4 h+", 1]]);
+  expect(phase(s, "build").hist.map((b) => [b.label, b.n])).toEqual([["<10m", 0], ["10-30m", 1], ["30-60m", 1], ["1-2h", 0], ["2-4h", 0], ["4h+", 1]]);
   expect(phase(s, "build").hiFrom).toBe(5);
   // Review: rounds 1, 3 and 6; red from 3 rounds on
   expect(phase(s, "review").hist.map((b) => [b.label, b.n])).toEqual([["1", 1], ["2", 0], ["3", 1], ["4+", 1]]);
