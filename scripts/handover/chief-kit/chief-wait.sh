@@ -46,8 +46,12 @@
 #                               a LOW, INTAKE or empty pool (short of its slots) adds a second pass
 #                               without it, its rows not already in the pool under
 #                               `# version backlog`, and the wake line then carries
-#                               dispatchable=<n>, the count of dispatchable To Do
-#                               rows (CHIEF_WAIT_DISPATCH
+#                               dispatchable=<n> keys=<KEY>,..., the count and keys of
+#                               dispatchable To Do rows (also on a
+#                               pool-unresolved wake; a pool that lists a row keeps
+#                               this wake even when every key carries a
+#                               pool-disposition: line), ` backlog=unread` when the
+#                               second pass failed (CHIEF_WAIT_DISPATCH
 #                               replaces the command, tests; it never launches).
 #   WAKE pool-unresolved capacity=<value> pool=<open>/<in-flight>/<dispositioned>/<undispositioned>
 #                               --dispositions still has unresolved tickets: list their keys
@@ -973,16 +977,21 @@ underfill_wake() {
     printf '%s\n' "$blk"
 }
 underfill_block() { # prints the WAKE block for the pool pool_probe just read; fail-open on the dispatchable list
-    local back="" back_keys="" extra="" count="" intake_ver="" wake=underfilled
+    local back="" back_keys="" extra="" count="" dkeys="" intake_ver="" wake=underfilled short="" listed="" back_failed="" tail=""
     if [ -n "$pool_unresolved" ]; then wake=pool-unresolved
     else
-        case "$pool_counts" in ''|'?') ;; *) return 1 ;; esac
+        case "$pool_counts" in
+            ''|'?') ;;
+            # counted and nothing unresolved: every listed key carries a disposition, yet the slots are idle while the pool lists work
+            *) listed="$(printf '%s\n' "$pool_out" | pool_row_keys "$pool_keys")"; [ -n "$listed" ] || return 1 ;;
+        esac
     fi
     # a LOW or empty pool leaves slots idle: a second pass without --priority-pool-only lists the version
     # backlog (later versions included); its rows already in the pool are printed once, under their own heading
-    if printf '%s\n' "$pool_out" | awk -F'[=/,]' '/^# pool=/ && ($2 + 0) < ($3 + 0) { f = 1 } $0 == "POOL-EMPTY" { f = 1 } END { exit !f }'; then  # a pool short of its slots, whether the line says LOW or INTAKE:<m>
+    if printf '%s\n' "$pool_out" | awk -F'[=/,]' '/^# pool=/ && ($2 + 0) < ($3 + 0) { f = 1 } $0 == "POOL-EMPTY" { f = 1 } END { exit !f }'; then short=1; fi  # a pool short of its slots, whether the line says LOW or INTAKE:<m>
+    if [ -n "$short" ]; then
         heartbeat sampling
-        back="$(timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)" || back=""  # gnu-ok: Linux-only kit; swallow-ok: a failed or timed-out second pass drops its partial rows, the pool list still prints
+        back="$(timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)" || { back=""; back_failed=1; }  # gnu-ok: Linux-only kit; swallow-ok: a failed or timed-out second pass drops its partial rows and the wake line says backlog=unread, the pool list still prints
         back_keys="$(printf '%s\n' "$back" | DOC='' bash "$HERE/tick.sh" --pool-dispositions 2>/dev/null | sed -n 's/^# pool-keys //p')" || back_keys=""  # swallow-ok: no keys reads a series row as an unknown row, never a wrong count
         extra="$(printf '%s\n' "$back" | awk -v pool="$pool_out" -v pk="$pool_keys" -v bk="$back_keys" '
             BEGIN {
@@ -993,12 +1002,20 @@ underfill_block() { # prints the WAKE block for the pool pool_probe just read; f
             NR in sk { m = split(sk[NR], a, ","); all = 1; for (j = 1; j <= m; j++) if (!seen[a[j]]) all = 0; if (all) next; print; next }
             $0 == "" || seen[$2] { next }
             { print }')"
-        count="$({ printf '%s\n' "$pool_out" | pool_row_keys "$pool_keys"; printf '%s\n' "$back" | pool_row_keys "$back_keys"; } | sort -u | wc -l | tr -d ' ')"
     fi
+    if [ -n "$short" ] || [ -n "$listed" ]; then
+        dkeys="$({ printf '%s\n' "$pool_out" | pool_row_keys "$pool_keys"; printf '%s\n' "$back" | pool_row_keys "$back_keys"; } | sort -u)"
+        count="$(printf '%s\n' "$dkeys" | grep -c . || true)"  # swallow-ok: grep -c prints 0 and exits 1 on no key
+        # the wake line names the keys the count is of, so the chief acts on the tick's own set, never a carried list
+        [ "$count" = 0 ] || dkeys="$(printf '%s\n' "$dkeys" | paste -sd, -)"
+        [ "$count" != 0 ] || [ -z "$back_failed" ] || count=""  # a failed read is not an empty backlog: no dispatchable=0
+    fi
+    # one tail on both wakes: dispatchable=<n> keys=<KEYS> backlog=unread (a partial count stays, marked)
+    tail="${count:+ dispatchable=$count}${dkeys:+ keys=$dkeys}${back_failed:+ backlog=unread}"
     if [ "$wake" = pool-unresolved ]; then
-        printf 'WAKE pool-unresolved capacity=%s%s%s\n%s\n' "$cap_val" "${pool_counts:+ pool=$pool_counts}" "${count:+ dispatchable=$count}" "$tick_line"
+        printf 'WAKE pool-unresolved capacity=%s%s%s\n%s\n' "$cap_val" "${pool_counts:+ pool=$pool_counts}" "$tail" "$tick_line"
     else
-        printf 'WAKE underfilled capacity=%s%s%s\n%s\n' "$cap_val" "${pool_counts:+ pool=$pool_counts}" "${count:+ dispatchable=$count}" "$tick_line"
+        printf 'WAKE underfilled capacity=%s%s%s\n%s\n' "$cap_val" "${pool_counts:+ pool=$pool_counts}" "$tail" "$tick_line"
     fi
     [ -z "$pool_out" ] || printf '%s\n' "$pool_out" | pool_view
     [ -z "$pool_unresolved" ] || printf '%s\n' "$pool_unresolved"

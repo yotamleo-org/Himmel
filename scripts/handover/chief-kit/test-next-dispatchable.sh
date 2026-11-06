@@ -466,7 +466,7 @@ retype "$M7/HIMMEL-131.md" Bug
 mk HIMMEL-132 "To Do" Medium '[]' '[]' '[]' "medium bug is not tier3" "Edit scripts/lib/q5.sh only."
 retype "$M7/HIMMEL-132.md" Bug
 mk HIMMEL-120 "To Do" Low '["operator-directed"]' '["v1.0.1"]' '[]' "tier2 operator directed" "Edit scripts/lib/q6.sh only."
-mk HIMMEL-110 "To Do" Low '["must-v1.1.3"]' '[]' '[]' "tier1 by label" "Edit scripts/lib/q7.sh only."
+mk HIMMEL-110 "To Do" Low '["must-v1.0.1"]' '[]' '[]' "tier1 by label" "Edit scripts/lib/q7.sh only."
 mk HIMMEL-111 "To Do" Low '[]' '[]' '[]' "tier1 second on the line" "Edit scripts/lib/q8.sh only."
 mk HIMMEL-112 "To Do" Low '[]' '[]' '[]' "tier1 first on the line" "Edit scripts/lib/q9.sh only."
 mk HIMMEL-113 "To Do" Low '[]' '[]' '[]' "listed but cloud only" "Edit scripts/lib/q10.sh only."
@@ -489,6 +489,16 @@ o7d="$(run7 --doc "$WORK/chief-doc-bold.md" --priority-pool-only | grep -v '^#' 
 [ "$o7d" = "HIMMEL-112,HIMMEL-111,HIMMEL-110,HIMMEL-120,HIMMEL-131,HIMMEL-130,HIMMEL-140" ] && pass "a bold **priority:** line with '113 (CLOUD)' and bracketed or dotted numbers ranks as written" || fail "bold-line pool is '$o7d'"
 o7c="$(run7 --priority-pool-only |grep -v '^#' | cut -f2 | paste -sd, -)"
 [ "$o7c" = "HIMMEL-110,HIMMEL-120,HIMMEL-131,HIMMEL-130,HIMMEL-140" ] && pass "without --doc the pool is the labels, tiers 2-3 and the rest of the earliest version" || fail "no-doc pool is '$o7c'"
+# the tier-1 must label follows the current version: with v2.0.0 current, must-v2.0.0 is tier 1; must-v1.1.3 and a later version's label are not
+M31="$WORK/jira-mirror31/HIMMEL"; mkdir -p "$M31"
+M_SAVE="$M"; M="$M31"
+mk HIMMEL-310 "To Do" Low '["must-v2.0.0"]' '[]' '[]' "must label of the current version" "Edit scripts/lib/m1.sh only."
+mk HIMMEL-311 "To Do" Low '["must-v1.1.3"]' '[]' '[]' "must label of another version" "Edit scripts/lib/m2.sh only."
+mk HIMMEL-312 "To Do" Low '["must-v2.0.1"]' '[]' '[]' "must label of a later version" "Edit scripts/lib/m3.sh only."
+M="$M_SAVE"
+printf 'v2.0.0\tfalse\t\nv2.0.1\tfalse\t\n' > "$WORK/jira-mirror31/HIMMEL.versions.tsv"
+o31="$(NEXT_DISPATCH_MIRROR="$M31" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only 2>/dev/null | grep -v '^#' | cut -f2 | paste -sd, -)"
+[ "$o31" = "HIMMEL-310" ] && pass "only the must label of the current version is tier 1; another version's must label stays out of the pool" || fail "must-label pool is '$o31'"
 M8="$WORK/jira-mirror8/HIMMEL"; mkdir -p "$M8"
 M_SAVE="$M"; M="$M8"
 mk HIMMEL-160 "To Do" Highest '[]' '["v1.0.1"]' '[]' "only tier5" "Edit scripts/lib/w1.sh only."
@@ -552,8 +562,9 @@ r11="$(NEXT_DISPATCH_MIRROR="$M11" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH
 [ "$r11" = "RESUME:HIMMEL-403" ] && pass "pool-only with --resume-only prints only RESUME rows and no POOL-EMPTY" || fail "pool-only resume-only is '$r11'"
 M12="$WORK/jira-mirror12/HIMMEL"; mkdir -p "$M12"
 M_SAVE="$M"; M="$M12"
-mk HIMMEL-420 "In Progress" Low '["must-v1.1.3"]' '[]' '[]' "only a worker-less pool ticket" "Edit scripts/lib/t1.sh only."
+mk HIMMEL-420 "In Progress" Low '["must-v1.0.1"]' '[]' '[]' "only a worker-less pool ticket" "Edit scripts/lib/t1.sh only."
 M="$M_SAVE"
+printf 'v1.0.1\tfalse\t\n' > "$WORK/jira-mirror12/HIMMEL.versions.tsv"  # the must label names the current version, so the mirror needs one
 x12="$(NEXT_DISPATCH_MIRROR="$M12" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only --owners "HIMMEL-999" 2>/dev/null)"
 has "pool-only: a worker-less pool ticket alone is a RESUME row" "$x12" "RESUME	HIMMEL-420"
 lacks "pool-only: a pool with only a RESUME row is not POOL-EMPTY" "$x12" "POOL-EMPTY"
@@ -575,10 +586,11 @@ has "pool-only: a cloud session past the liveness window owns nothing" "$c11b" "
 # dropped-platform and residual-depth rules apply to RESUME rows as they do to To Do rows
 M13="$WORK/jira-mirror13/HIMMEL"; mkdir -p "$M13"
 M_SAVE="$M"; M="$M13"
-mk HIMMEL-421 "In Progress" Low '["must-v1.1.3"]' '[]' '[]' "port the hook to powershell" "Edit scripts/lib/u1.sh only."
-mk HIMMEL-422 "In Progress" Low '["must-v1.1.3","residual-depth-1"]' '[]' '[]' "a residual one" "Edit scripts/lib/u2.sh only."
-mk HIMMEL-423 "In Progress" Low '["must-v1.1.3"]' '[]' '[]' "an ordinary pool ticket" "Edit scripts/lib/u3.sh only."
+mk HIMMEL-421 "In Progress" Low '["must-v1.0.1"]' '[]' '[]' "port the hook to powershell" "Edit scripts/lib/u1.sh only."
+mk HIMMEL-422 "In Progress" Low '["must-v1.0.1","residual-depth-1"]' '[]' '[]' "a residual one" "Edit scripts/lib/u2.sh only."
+mk HIMMEL-423 "In Progress" Low '["must-v1.0.1"]' '[]' '[]' "an ordinary pool ticket" "Edit scripts/lib/u3.sh only."
 M="$M_SAVE"
+printf 'v1.0.1\tfalse\t\n' > "$WORK/jira-mirror13/HIMMEL.versions.tsv"  # the must label names the current version, so the mirror needs one
 f13="$(NEXT_DISPATCH_MIRROR="$M13" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only --owners "HIMMEL-999" 2>/dev/null)"
 lacks "pool-only: a dropped-platform In Progress ticket is not a RESUME row" "$f13" "HIMMEL-421"
 lacks "pool-only: a residual-depth In Progress ticket is not a RESUME row" "$f13" "HIMMEL-422"
@@ -2408,6 +2420,25 @@ rm -f "$HOME/.himmel/state/holds/OFF"
 lacks "OFF folds the barrier: no register verb runs, so a failing register is not read" "$(fault_head "$f_off")" "holds register unknown"
 lacks "OFF reads the worker from its doc: its Writes-only file stays held" "$f_off" "HIMMEL-9600	"
 printf '4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
+
+# the waiter counts the pool with --top <slack>; a bare `--doc <doc> --why` kept the default --top 8, which nine
+# worker-less In Progress rows fill, so it listed no To Do row while the tick read dispatchable above 0. --why with no --top
+# lists the same set and names a reason per listed key.
+M9="$WORK/m9181/HIMMEL"; mkdir -p "$M9"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/m9181/HIMMEL.versions.tsv"
+M_SAVE="$M"; M="$M9"
+for n in 1 2 3 4 5 6 7 8 9; do mk "HIMMEL-970$n" "In Progress" Medium '[]' '["v1.0.1"]' '[]' "orphan $n" "Edit scripts/lib/o9181-$n.sh."; done
+for n in 1 2 3; do mk "HIMMEL-971$n" "To Do" Medium '[]' '["v1.0.1"]' '[]' "startable $n" "Edit scripts/lib/s9181-$n.sh."; done
+M="$M_SAVE"
+D9181="$WORK/chief-9181.md"; printf '# chief\n\n## Live state\npriority:\n' > "$D9181"
+run9181() { NEXT_DISPATCH_MIRROR="$M9" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-from "$WORK/fleet5.json" --doc "$D9181" "$@" 2>/dev/null; }
+w9="$(run9181 --why)"
+w9keys="$(printf '%s\n' "$w9" | grep -E '^(LOCAL|CLOUD)' | cut -f2 | sort | paste -sd, -)"
+[ "$w9keys" = "HIMMEL-9711,HIMMEL-9712,HIMMEL-9713" ] && pass "9181: --doc --why lists the startable To Do rows though nine RESUME rows come first" || fail "9181: --why listed '$w9keys'"
+pool9="$(run9181 --priority-pool-only --top 50 | grep -E '^(LOCAL|CLOUD)' | cut -f2 | sort | paste -sd, -)"
+[ "$w9keys" = "$pool9" ] && pass "9181: --why lists the keys the waiter's pool pass counts" || fail "9181: --why '$w9keys' vs the pool pass '$pool9'"
+for k in HIMMEL-9711 HIMMEL-9712 HIMMEL-9713; do has "9181: --why gives a reason for $k" "$w9" "# why $k listed LOCAL tier 4"; done
+w9t="$(run9181 --why --top 2 | grep -E '^(LOCAL|CLOUD)' | grep -c .)"
+[ "$w9t" = 0 ] && pass "9181: an explicit --top is still the cap (two slots, both RESUME rows)" || fail "9181: --why --top 2 listed $w9t To Do rows"
 
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.

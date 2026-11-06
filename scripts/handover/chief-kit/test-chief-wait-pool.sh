@@ -77,7 +77,8 @@ case " $* " in
         elif [ -f "$STUB/pool.rows" ]; then cat "$STUB/pool.rows"; printf '# pool=%s/7,LOW\n' "$(wc -l < "$STUB/pool.rows" | tr -d ' ')"
         else printf '# pool=0/7,LOW\nPOOL-EMPTY\n'; fi
         case " $* " in *" --dispositions "*) [ ! -f "$STUB/dispositions" ] || cat "$STUB/dispositions" ;; esac ;;
-    *) [ ! -f "$STUB/pass2.rows" ] || cat "$STUB/pass2.rows" ;;  # the second pass, without --priority-pool-only
+    *) [ ! -f "$STUB/pass2.fail" ] || exit 1  # a failed second pass
+       [ ! -f "$STUB/pass2.rows" ] || cat "$STUB/pass2.rows" ;;  # the second pass, without --priority-pool-only
 esac
 EOF
 export CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh"
@@ -365,6 +366,7 @@ check "(rp-ok) a new streak after capacity=ok wakes at once (rc 0)" "0" "$rc"
 # Replay 10-25: 52 To Do, 34 dropped (15 collision, 10 BLOCKED, 3 residual,
 # 2 blocker, 2 label, 1 platform, 1 type), plus four in-flight tickets.
 # A drop reason alone must not silence a ticket that needs the chief's decision.
+rm -f "$STUB/pool.rows"  # the replay pool lists no row: a row left by (rp-cad) would keep an underfilled wake awake (9181)
 : > "$STUB/dispositions"
 for n in $(seq 1 56); do
     case "$n" in
@@ -641,7 +643,27 @@ printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\nLOCAL\tHIMMEL-9005\tL
 I="$(new_inbox golden)"
 arm "$I" "$WORK/golden.out" 8
 check "(8349) a pool with no series row is byte-identical to the base golden" "same" "$(cmp -s "$WORK/golden.out" "$HERE/test-chief-wait-pool.golden" && echo same || echo differs)"
+check "(9181) the underfilled wake line names the dispatchable keys its count is of" "WAKE underfilled capacity=UNDERFILLED:7 pool=? dispatchable=3 keys=HIMMEL-9001,HIMMEL-9002,HIMMEL-9005" "$(head -n1 "$WORK/golden.out")"
 rm -f "$STUB/pool.rows" "$STUB/pass2.rows"
+
+# --- (9181) keys= on every wake that lists work, a carried disposition never silences an underfilled fleet, a failed second pass is named
+rm -f "$STUB/pass2.fail"
+printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
+printf '# disposition HIMMEL-9001 listed LOCAL\n# disposition HIMMEL-16 classification BLOCKED: needs slicing\n' > "$STUB/dispositions"
+printf '# chief\n\n## Live state\n\n## Results\n' > "$WORK/k9181-open.md"
+I="$(new_inbox keysunres)"
+timeout 8 bash "$WAIT" "$I" --doc "$WORK/k9181-open.md" --workers N1.md > "$WORK/k9181a.out" 2>/dev/null
+check "(9181) a pool-unresolved wake on numeric counts names the dispatchable keys" "WAKE pool-unresolved capacity=UNDERFILLED:7 pool=2/0/0/2 dispatchable=1 keys=HIMMEL-9001" "$(head -n1 "$WORK/k9181a.out")"
+printf '# chief\n\n## Live state\npool-disposition: HIMMEL-9001 question operator decision 268\npool-disposition: HIMMEL-16 question operator decision 268\n\n## Results\n' > "$WORK/k9181-carried.md"
+I="$(new_inbox keyscarried)"
+timeout 8 bash "$WAIT" "$I" --doc "$WORK/k9181-carried.md" --workers N1.md > "$WORK/k9181b.out" 2>/dev/null
+check "(9181) a carried disposition on every key still wakes an underfilled fleet that lists work" "WAKE underfilled capacity=UNDERFILLED:7 pool=2/0/2/0 dispatchable=1 keys=HIMMEL-9001" "$(head -n1 "$WORK/k9181b.out")"
+rm -f "$STUB/pool.rows" "$STUB/dispositions"
+: > "$STUB/pass2.fail"
+I="$(new_inbox pass2fail)"
+timeout 8 bash "$WAIT" "$I" --doc "$WORK/k9181-open.md" --workers N1.md > "$WORK/k9181c.out" 2>/dev/null
+check "(9181) a failed second pass says backlog=unread and never prints dispatchable=0" "WAKE underfilled capacity=UNDERFILLED:7 pool=? backlog=unread" "$(head -n1 "$WORK/k9181c.out")"
+rm -f "$STUB/pass2.fail"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
