@@ -3,7 +3,7 @@ name: luna-upgrade
 description: Use when checking or upgrading one luna-second-brain vault to the current himmel template.
 ---
 
-# luna-upgrade — content-preserving vault/template upgrade (HIMMEL-389)
+# luna-upgrade — content-preserving vault/template upgrade
 
 You bring an EXISTING luna-second-brain vault up to the current himmel template
 without clobbering the user's own content. Vaults are scaffolded once and never
@@ -19,7 +19,7 @@ and surfaces the engine's output. Do NOT reimplement any merge logic here.
 - **User prompt:** `/luna-upgrade [--vault <path>] [--template-dir <path>]` —
   handled by the thin wrapper at `.claude/commands/luna-upgrade.md` which
   delegates here.
-- **Programmatic Skill-tool dispatch (HIMMEL-128 compliant — no headless
+- **Programmatic Skill-tool dispatch (no headless
   claude):** `Skill { skill: "obsidian-triage:luna-upgrade", args: "<flags...>" }`.
 
 Wherever this document references `$ARGUMENTS`, treat it as the literal arg
@@ -174,7 +174,7 @@ that flags a dirty single-writer vault later.)
 - `3` — needs reconcile: every other file was applied, but local edits were
   withheld (no write failure) — stamp NOT written. Stdout carries one stable
   `upgrade: NEEDS-RECONCILE — …` line. Reconcile each withheld file: take the
-  template copy, or re-run with `--keep <rel>` (repeatable, HIMMEL-3406) to
+  template copy, or re-run with `--keep <rel>` (repeatable) to
   explicitly keep the vault's content — this records which template version
   the decision was made against, so a later run that finds the template
   unchanged for that file does not re-prompt, but a later run where the
