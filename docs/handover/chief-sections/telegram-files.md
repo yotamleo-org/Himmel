@@ -24,7 +24,8 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   and carry a `CONTENT-SHA256 <sha> <relative path>` line whose file still hashes to that sha (a spec or
   plan edited after the critic read it fails). The plan critic may sit beside the spec, or beside the plan
   as `<same name>.critic-plan-r<n>.md` in a `plan`/`plans` folder of the same `specs/` root (the higher
-  round wins; beside the spec wins a tie); a plan in `plans/` that has a same-named spec in a
+  round wins; the same round in two folders needs both clean); the latest plan critic of ANY spec that
+  seals the page must also be clean, or the send is refused naming it; a plan in `plans/` that has a same-named spec in a
   `design`/`designs`/`spec` folder with spec critic files is governed by that spec. A `<stem>.html`
   sign page beside a `<stem>.md` is governed by the `.md`'s critics first: it goes only when the `.md`'s
   latest spec critic is clean and also sealed that `.html`. A folder that cannot be listed refuses the

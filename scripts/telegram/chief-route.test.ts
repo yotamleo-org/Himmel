@@ -1399,12 +1399,17 @@ test("send-file refuses an .html with clean critic files of its own beside an .m
   expect(ok.lines.at(-1)!.caption).toBeUndefined();
 });
 
-test("send-file compares plan critic rounds across folders: a newer FINDINGS in plans/ beats an older clean one beside the spec, and a tie goes to the one beside the spec", async () => {
+test("send-file compares plan critic rounds across folders: a newer FINDINGS in plans/ beats an older clean one beside the spec, and a same-round tie needs both clean", async () => {
   const r = root(); const l = planLayout(r);
   critic(l.spec, "plan", 1, "PLAN CLEAN", { text: "# X plan\n", file: "../plans/X.md" });   // r1 beside the spec; plans/ also holds r1 (clean)
-  critic(l.plan, "plan", 1, "PLAN FINDINGS 1", { text: "# X plan\n", file: "X.md" });       // tie at r1: the one beside the spec wins
-  const tie = await sendFile(r, "1", l.spec);
-  expect(tie.err).toBe(""); expect(tie.code).toBe(0);
+  const bothClean = await sendFile(r, "1", l.spec);
+  expect(bothClean.err).toBe(""); expect(bothClean.code).toBe(0);
+  critic(l.plan, "plan", 1, "PLAN FINDINGS 1", { text: "# X plan\n", file: "X.md" });       // tie at r1, one of them FINDINGS
+  for (const f of [l.spec, l.plan]) {
+    const tie = await sendFile(r, "1", f);
+    expect(tie.code).not.toBe(0);
+    expect(tie.err).toContain(join("plans", "X.md.critic-plan-r1.md"));
+  }
   critic(l.plan, "plan", 2, "PLAN FINDINGS 2", { text: "# X plan\n", file: "X.md" });       // newer round in plans/
   const newer = await sendFile(r, "1", l.spec);
   expect(newer.code).not.toBe(0);
@@ -1483,17 +1488,31 @@ test("send-file refuses the plan page of the real layout when the plan critic in
   }
 });
 
-test("send-file takes a plan page named by two specs' plan critics from the first spec by name", async () => {
-  const r = root(); const b = bundle(r);
-  const other = join(r, "specs", "other"); mkdirSync(other);
-  const plan = join(other, "p.md"); writeFileSync(plan, "# P\n");
-  const second = join(b.dir, "zzz.md"); writeFileSync(second, "# Z\n");
-  critic(second, "spec", 1, "SPEC CLEAN", { text: "# Z\n", file: "zzz.md" });
-  critic(second, "plan", 1, "PLAN FINDINGS 1", { text: "# P\n", file: "../other/p.md" });
-  critic(b.spec, "plan", 2, "PLAN CLEAN", { text: "# P\n", file: "../other/p.md" });
-  const res = await sendFile(r, "1", plan);
-  expect(res.err).toBe("");
-  expect(res.code).toBe(0);
+test("send-file refuses a plan page when the latest plan critic of any spec that seals it is not clean, whatever the spec's file name", async () => {
+  for (const name of ["zzz", "aaa"]) {   // the name must not decide: it sorts after and before design.md
+    const r = root(); const b = bundle(r);
+    const other = join(r, "specs", "other"); mkdirSync(other);
+    const plan = join(other, "p.md"); writeFileSync(plan, "# P\n");
+    const second = join(b.dir, `${name}.md`); writeFileSync(second, "# Z\n");
+    critic(second, "spec", 1, "SPEC CLEAN", { text: "# Z\n", file: `${name}.md` });
+    critic(second, "plan", 1, "PLAN FINDINGS 1", { text: "# P\n", file: "../other/p.md" });
+    critic(b.spec, "plan", 2, "PLAN CLEAN", { text: "# P\n", file: "../other/p.md" });
+    const res = await sendFile(r, "1", plan);
+    expect(res.code).not.toBe(0);
+    expect(res.err).toContain(`${name}.md.critic-plan-r1.md`);
+    expect(res.lines).toEqual([]);
+  }
+});
+
+test("send-file refuses a plan page in plans/ whose same-name spec is clean when another spec's latest plan critic sealing it failed", async () => {
+  const r = root(); const l = planLayout(r);
+  const second = join(r, "specs", "designs", "other.md"); writeFileSync(second, "# O\n");
+  critic(second, "spec", 1, "SPEC CLEAN", { text: "# O\n", file: "other.md" });
+  critic(second, "plan", 1, "PLAN FINDINGS 1", { text: "# X plan\n", file: "../plans/X.md" });
+  const res = await sendFile(r, "1", l.plan);
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("other.md.critic-plan-r1.md");
+  expect(res.lines).toEqual([]);
 });
 
 test("send-file refuses, naming the folder, when a folder it must list is unreadable", async () => {

@@ -417,8 +417,8 @@ function planDirs(path: string): string[] {
 
 // The newest round of each critic kind for `spec`: spec and plan critics beside it, plus same-named plan
 // critics (`<spec name>.critic-plan-r<n>.md`) saved beside the plan in a plan or plans folder of the specs root.
-// The highest round wins; beside the spec wins a tie.
-type CriticFile = { path: string; round: number };
+// The highest round wins; other files of the same round (`tied`) must be clean too.
+type CriticFile = { path: string; round: number; tied: string[] };
 async function latestCritics(spec: string): Promise<Record<"spec" | "plan", CriticFile | null>> {
   const out: Record<"spec" | "plan", CriticFile | null> = { spec: null, plan: null };
   const base = basename(spec);
@@ -427,7 +427,8 @@ async function latestCritics(spec: string): Promise<Record<"spec" | "plan", Crit
       const m = n.startsWith(base + ".") ? /^\.critic-(spec|plan)-r(\d+)\.md$/.exec(n.slice(base.length)) : null;
       if (!m || !kinds.includes(m[1])) continue;
       const kind = m[1] as "spec" | "plan"; const round = Number(m[2]);
-      if (!out[kind] || round > out[kind]!.round) out[kind] = { path: join(dir, n), round };
+      if (!out[kind] || round > out[kind]!.round) out[kind] = { path: join(dir, n), round, tied: [] };
+      else if (round === out[kind]!.round) out[kind]!.tied.push(join(dir, n));
     }
   };
   await scan(dirname(spec), ["spec", "plan"]);
@@ -449,6 +450,33 @@ function criticDirs(page: string): string[] {
 type Role = "spec" | "render" | "plan";
 const siblingMd = (page: string) => (/\.html?$/i.test(page) ? page.replace(/\.html?$/i, ".md") : null);
 const isFile = (p: string) => stat(p).then(s => s.isFile(), () => false);
+
+const readCritic = (file: string) => readFile(file, "utf8").catch((e) => { throw new Error(`${file}: cannot read the critic file (${e instanceof Error ? e.message : e}); the page is not sent`); });
+
+// Whichever spec governs the page, the latest plan critic of ANY spec that seals it must be clean: a
+// failed one refuses the send, so the file name of a spec cannot decide which critic is heard.
+async function refuseIfPlanCriticFailed(page: string): Promise<void> {
+  const latest = new Map<string, { round: number; files: string[] }>();
+  for (const dir of criticDirs(page)) {
+    for (const n of await listDir(dir)) {
+      const m = /^(.+)\.critic-plan-r(\d+)\.md$/.exec(n);
+      if (!m) continue;
+      const round = Number(m[2]); const cur = latest.get(m[1]);
+      if (!cur || round > cur.round) latest.set(m[1], { round, files: [join(dir, n)] });
+      else if (round === cur.round) cur.files.push(join(dir, n));
+    }
+  }
+  for (const { files } of latest.values()) {
+    for (const file of files) {
+      const text = await readCritic(file);
+      const last = lastLine(text);
+      if (last === CLEAN.plan) continue;
+      for (const seal of sealsOf(text)) {
+        if (await realpath(resolve(dirname(file), seal.rel)).catch(() => "") === page) throw new Error(`${file}: the latest plan critic that seals ${basename(page)} ended '${last}', not '${CLEAN.plan}'; the page is not sent`);
+      }
+    }
+  }
+}
 
 // null = nothing is filed for the page. An unreadable critic file or folder throws.
 async function governingSpec(page: string): Promise<{ spec: string; role: Role } | null> {
@@ -475,7 +503,7 @@ async function governingSpec(page: string): Promise<{ spec: string; role: Role }
       const m = /^(.+)\.critic-plan-r\d+\.md$/.exec(n);
       if (!m) continue;
       const file = join(dir, n);
-      const text = await readFile(file, "utf8").catch((e) => { throw new Error(`${file}: cannot read the critic file (${e instanceof Error ? e.message : e}); the page is not sent`); });
+      const text = await readCritic(file);
       for (const seal of sealsOf(text)) if (await realpath(resolve(dir, seal.rel)).catch(() => "") === page) return { spec: join(dir, m[1]), role: "plan" };
     }
   }
@@ -488,6 +516,7 @@ export type VerdictLine = { kind: "spec" | "plan"; round: number; file: string; 
 // `bytes` are the page's bytes as read once here: the caller sends THOSE, so an edit after the check cannot slip through.
 export async function checkSignaturePage(abs: string): Promise<{ verdicts: VerdictLine[]; bytes: Buffer } | null> {
   const page = await realpath(abs).catch(() => abs);
+  await refuseIfPlanCriticFailed(page);
   let g = await governingSpec(page);
   if (!g) {
     if (![abs, page].some(underSignaturePath)) return null;
@@ -505,6 +534,10 @@ export async function checkSignaturePage(abs: string): Promise<{ verdicts: Verdi
     const text = await readFile(c.path, "utf8");
     const last = lastLine(text);
     if (last !== CLEAN[kind]) throw new Error(`${c.path}: the latest ${kind} critic ended '${last}', not '${CLEAN[kind]}'; the page is not sent`);
+    for (const tied of c.tied) {
+      const tiedLast = lastLine(await readCritic(tied));
+      if (tiedLast !== CLEAN[kind]) throw new Error(`${tied}: a ${kind} critic of the same round ended '${tiedLast}', not '${CLEAN[kind]}'; the page is not sent`);
+    }
     const seals = sealsOf(text);
     if (!seals.length) throw new Error(`${c.path} has no CONTENT-SHA256 line, so it does not record the bytes it read (chief-kit/critic-seal.sh adds it); the page is not sent`);
     const sealed = new Set<string>();
