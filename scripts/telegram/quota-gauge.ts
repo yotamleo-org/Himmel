@@ -112,7 +112,7 @@ const LANES: Lane[] = ["glm", "codex", "claude", "alibaba"];
 // `known` iff the latest row for the lane is VISIBLE (used_pct !== null) AND
 // fresh; otherwise `unknown` (no row / invisible / stale). `row` still carries
 // the last-known reading even when unknown-because-stale, so a consumer can
-// show it as "last seen".`fresh`/`status` gate whether to TRUST it.
+// show it as "last seen". `fresh`/`status` gate whether to TRUST it.
 export type LaneStatus = { lane: Lane; row: QuotaGaugeRecord | null; fresh: boolean; status: "known" | "unknown" };
 
 function laneVerdict(lane: Lane, row: QuotaGaugeRecord, nowMs: number): LaneStatus {

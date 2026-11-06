@@ -426,7 +426,7 @@ if [ "${HIMMEL_TEST_FIXTURE:-}" = "1" ]; then
   esac
 fi
 
-# capture_ps_ef.`ps -ef` with the widest CMD column available. BSD-derived
+# capture_ps_ef. `ps -ef` with the widest CMD column available. BSD-derived
 # ps (macOS) truncates the last (CMD) column to terminal width even when
 # stdout is a pipe/file; `-ww` requests unlimited width there.
 capture_ps_ef() {
@@ -1058,7 +1058,7 @@ start_verb() {
   echo "[restart-bridge] start complete; lock=$lock"
 }
 
-# run_verb.`start` minus the detach. Takes the same lock, does the same
+# run_verb. `start` minus the detach. Takes the same lock, does the same
 # instance-scoped stale sweep, then EXECs the supervisor in the FOREGROUND from
 # $BRIDGE_DIR so a process supervisor (systemd Type=simple) tracks the
 # supervisor itself as MAINPID and can restart it when it dies. Output is NOT
