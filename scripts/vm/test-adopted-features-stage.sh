@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-adopted-features-stage.sh -- hermetic coverage for the VM e2e adopted-features
 # stage: scripts/vm/adopted-features-guest.sh (row reporting, guest-only guard, the
-# ten row functions) and scripts/vm/adopted-features-e2e.sh (host driver: lock,
+# thirteen row functions) and scripts/vm/adopted-features-e2e.sh (host driver: lock,
 # restore, stage, run, restore-after, --expect-red control). No real VM: the vmsdk and
 # guest-exec seams are fakes that log their argv.
 #
@@ -38,21 +38,23 @@ expect_lacks() { # <label> <needle> <haystack>
 OUT="$(row_report 3 "no force push" PASS "gate refused the force push")"
 expect_has "row_report prints ROW <n> <name> <status> <detail>" "ROW 3 PASS no force push: gate refused the force push" "$OUT"
 
-for n in 1 2 3 4 5 6 7 8 9 10; do
+for n in 1 2 3 4 5 6 7 8 9 10 11 12 13; do
   if declare -F "row_$n" >/dev/null; then pass "row_$n is defined"; else fail_case "row_$n is defined"; fi
 done
 
 printf 'ROW 1 PASS a: x\nROW 2 FINDING b: y\nROW 3 FAIL c: z\nROW 4 FINDING d: w\n' > "$WORK/rows.txt"
 expect_has "tally counts failures and findings" "RESULT: 1 failure(s), 2 finding(s)" "$(rows_tally "$WORK/rows.txt")"
-{ printf 'ROW 1 FINDING a: x\n'; for n in 2 3 4 5 6 7 8 9 10; do printf 'ROW %s PASS r: ok\n' "$n"; done; } > "$WORK/rows-ok.txt"
+{ printf 'ROW 1 FINDING a: x\n'; for n in 2 3 4 5 6 7 8 9 10 11 12 13; do printf 'ROW %s PASS r: ok\n' "$n"; done; } > "$WORK/rows-ok.txt"
 rows_tally "$WORK/rows-ok.txt" >/dev/null; expect_rc "findings alone do not fail the stage" 0 $?
 rows_tally "$WORK/rows.txt" >/dev/null; expect_rc "a FAIL row fails the stage" 1 $?
 : > "$WORK/rows-empty.txt"
 rows_tally "$WORK/rows-empty.txt" >/dev/null; expect_rc "an empty row log fails the stage (no row ran)" 1 $?
 printf 'ROW 1 PASS a: x\n' > "$WORK/rows-short.txt"
-rows_tally "$WORK/rows-short.txt" >/dev/null; expect_rc "fewer than ten rows fails the stage" 1 $?
-{ for n in 1 1 2 3 4 5 6 7 8 9; do printf 'ROW %s PASS r: ok\n' "$n"; done; } > "$WORK/rows-dup.txt"
-rows_tally "$WORK/rows-dup.txt" >/dev/null; expect_rc "ten rows with a duplicate id and a missing id fails the stage" 1 $?
+rows_tally "$WORK/rows-short.txt" >/dev/null; expect_rc "fewer than thirteen rows fails the stage" 1 $?
+{ for n in 1 2 3 4 5 6 7 8 9 10; do printf 'ROW %s PASS r: ok\n' "$n"; done; } > "$WORK/rows-ten.txt"
+rows_tally "$WORK/rows-ten.txt" >/dev/null; expect_rc "ten rows (rows 11 to 13 never reported) fails the stage" 1 $?
+{ for n in 1 1 2 3 4 5 6 7 8 9 10 11 12; do printf 'ROW %s PASS r: ok\n' "$n"; done; } > "$WORK/rows-dup.txt"
+rows_tally "$WORK/rows-dup.txt" >/dev/null; expect_rc "thirteen rows with a duplicate id and a missing id fails the stage" 1 $?
 
 # --- guest guard: refuses to adopt anywhere but the VM ----------------------------
 env -i PATH="$PATH" HOME="$WORK/home" bash "$GUEST" "$WORK" >"$WORK/g.out" 2>&1; rc=$?
@@ -66,6 +68,7 @@ LOG="$WORK/calls.log"
 cat > "$BIN/vmsdk" <<'EOS'
 #!/usr/bin/env bash
 echo "vmsdk $*" >> "${FAKE_LOG:?}"
+if [ "$2" = push ] && [ -n "${FAKE_PUSH_COPY:-}" ]; then cp "$3" "$FAKE_PUSH_COPY"; fi
 if [ -n "${FAKE_FAIL_POST_RUN:-}" ] && grep -q 'adopted-features-guest.sh' "$FAKE_LOG"; then exit 1; fi
 exit "${FAKE_VMSDK_RC:-0}"
 EOS
@@ -85,7 +88,7 @@ GOOD_OUT="$(printf 'ROW 1 PASS a: x\nROW 2 FINDING b: y\nRESULT: 0 failure(s), 1
 run_driver() { # <guest-rc> <guest-out> args...
   local grc="$1" gout="$2"; shift 2
   : > "$LOG"
-  env -i PATH="$PATH" HOME="$WORK/hhome" FAKE_LOG="$LOG" FAKE_GUEST_RC="$grc" FAKE_GUEST_OUT="$gout" FAKE_FAIL_POST_RUN="${FAKE_FAIL_POST_RUN:-}" \
+  env -i PATH="$PATH" HOME="$WORK/hhome" FAKE_LOG="$LOG" FAKE_GUEST_RC="$grc" FAKE_GUEST_OUT="$gout" FAKE_FAIL_POST_RUN="${FAKE_FAIL_POST_RUN:-}" FAKE_PUSH_COPY="$WORK/pushed.tgz" \
     HIMMEL_ADOPTED_VMSDK="$BIN/vmsdk" HIMMEL_ADOPTED_GUEST_EXEC="$BIN/guest-exec" \
     HIMMEL_VM_LOCK_DIR="$WORK/locks" HIMMEL_ADOPTED_STAGE_TMP="$WORK/stage" \
     bash "$DRIVER" "$@" >"$WORK/driver.out" 2>&1
@@ -101,6 +104,8 @@ expect_has "driver boots the VM" "vmsdk himmel-ar-1 up" "$CALLS"
 expect_has "driver pushes the staged tree through vmsdk" "vmsdk himmel-ar-1 push" "$CALLS"
 expect_has "driver runs the guest script through guest-exec" "gx himmel-ar-1" "$CALLS"
 expect_has "driver marks the guest as the VM" "HIMMEL_ADOPTED_E2E_GUEST=1" "$CALLS"
+expect_has "driver gives the guest 2400 s for thirteen rows" "gx himmel-ar-1 --timeout 2400 --" "$CALLS"
+expect_has "driver stages the vault template that rows 11 to 13 adopt" "templates/luna-second-brain/" "$(tar -tzf "$WORK/pushed.tgz" 2>&1)"
 expect_has "driver reports the findings" "FINDING" "$(cat "$WORK/driver.out")"
 first_restore="$(grep -n 'restore suite-ready-v4' "$LOG" | head -1 | cut -d: -f1)"
 last_restore="$(grep -n 'restore suite-ready-v4' "$LOG" | tail -1 | cut -d: -f1)"
@@ -147,9 +152,9 @@ kill "$HOLDER" 2>/dev/null; wait "$HOLDER" 2>/dev/null
 rm -rf "$WORK/locks/himmel-vm-lock-himmel-ar-1"
 
 # RED control: --expect-red passes only when the guest FAILS on row 3.
-red_out() { # <failing-row>... -- ten rows, the listed ones FAIL, then the RESULT line
+red_out() { # <failing-row>... -- thirteen rows, the listed ones FAIL, then the RESULT line
   local n k=0 f
-  for n in 1 2 3 4 5 6 7 8 9 10; do
+  for n in 1 2 3 4 5 6 7 8 9 10 11 12 13; do
     f=PASS; for _r in "$@"; do [ "$_r" = "$n" ] && f=FAIL && k=$((k+1)); done
     if [ "$n" = 3 ] && [ "$f" = FAIL ]; then printf 'ROW 3 FAIL r3: %s\n' "${RED3_MSG:-check-no-force-push.sh was not copied into the project}"
     else printf 'ROW %s %s r%s: x\n' "$n" "$f" "$n"; fi
@@ -157,7 +162,7 @@ red_out() { # <failing-row>... -- ten rows, the listed ones FAIL, then the RESUL
   printf 'RESULT: %s failure(s), 0 finding(s)\n' "$#"
 }
 run_driver 1 "$(red_out 3)" --expect-red himmel-ar-1
-expect_rc "--expect-red passes when row 3 alone fails and all ten rows ran" 0 "$DRV_RC"
+expect_rc "--expect-red passes when row 3 alone fails and all thirteen rows ran" 0 "$DRV_RC"
 expect_has "--expect-red tells the guest to sabotage row 3" "ADOPTED_E2E_RED=1" "$(cat "$LOG")"
 run_driver 0 "$GOOD_OUT" --expect-red himmel-ar-1
 expect_rc "--expect-red FAILS when the sabotage did not fail the stage" 1 "$DRV_RC"
@@ -168,7 +173,28 @@ expect_rc "--expect-red FAILS when another row failed instead of row 3" 1 "$DRV_
 run_driver 1 "$(red_out 3 7)" --expect-red himmel-ar-1
 expect_rc "--expect-red FAILS when another row failed besides row 3" 1 "$DRV_RC"
 run_driver 1 'ROW 3 FAIL no force push: the gate did not refuse' --expect-red himmel-ar-1
-expect_rc "--expect-red FAILS when the guest died right after row 3 (no ten-row result)" 1 "$DRV_RC"
+expect_rc "--expect-red FAILS when the guest died right after row 3 (no thirteen-row result)" 1 "$DRV_RC"
+{ for n in 1 2 3 4 5 6 7 8 9 10; do if [ "$n" = 3 ]; then printf 'ROW 3 FAIL r3: check-no-force-push.sh was not copied into the project\n'; else printf 'ROW %s PASS r%s: x\n' "$n" "$n"; fi; done; printf 'RESULT: 1 failure(s), 0 finding(s)\n'; } > "$WORK/red-ten.txt"
+run_driver 1 "$(cat "$WORK/red-ten.txt")" --expect-red himmel-ar-1
+expect_rc "--expect-red FAILS on a ten-row result (rows 11 to 13 never ran)" 1 "$DRV_RC"
+
+# --- rows 11 to 13 name their own cause when the installer left the piece out -----------
+# Each runs against a project that lacks what the installer should have put there, so the FAIL
+# text is what the control run shows on the unchanged installer.
+R="$WORK/rowfx"; mkdir -p "$R/p11/.claude" "$R/p12/.claude" "$R/p13" "$R/fh" "$R/bin" "$R/tree/scripts/himmelctl" "$R/w"
+printf '{"env":{}}\n' > "$R/p11/.claude/settings.json"
+printf '{"hooks":{"PreToolUse":[]},"env":{}}\n' > "$R/p12/.claude/settings.json"
+printf '#!/usr/bin/env bash\necho "http://127.0.0.1:1/#t=tok"\n' > "$R/bin/node"; chmod +x "$R/bin/node"
+OUT11="$(WORK="$R/w" FH="$R/fh" P11="$R/p11" row_11 2>&1)"
+expect_has "row 11 FAILs naming the missing handover script" "ROW 11 FAIL" "$OUT11"
+expect_has "...and the script" "set-handover-dir.sh" "$OUT11"
+expect_has "...and No such file" "No such file" "$OUT11"
+OUT12="$(WORK="$R/w" FH="$R/fh" P12="$R/p12" row_12 2>&1)"
+expect_has "row 12 FAILs naming the missing SessionEnd entry" "ROW 12 FAIL" "$OUT12"
+expect_has "...and the entry" "no SessionEnd entry" "$OUT12"
+OUT13="$(PATH="$R/bin:$PATH" WORK="$R/w" FH="$R/fh" TREE="$R/tree" P13="$R/p13" row_13 2>&1)"
+expect_has "row 13 FAILs when the first stdout line is not the /agui/ URL" "ROW 13 FAIL" "$OUT13"
+expect_has "...and names it" "first stdout line is not the /agui/ URL" "$OUT13"
 
 echo
 if [ "$FAILED" -eq 0 ]; then echo "ALL PASSED"; else echo "$FAILED FAILED"; fi
