@@ -1208,7 +1208,7 @@ test("checkSignaturePage hands back the exact bytes it hashed, so the page sent 
 
 const SEAL_SH =join(import.meta.dir, "..", "handover", "chief-kit", "critic-seal.sh");
 const seal = async (...args: string[]) => {
-  const p = Bun.spawn(["bash", SEAL_SH, ...args], { stdout: "pipe", stderr: "pipe" });
+  const p = Bun.spawn([BASH_BIN, SEAL_SH, ...args], { stdout: "pipe", stderr: "pipe" });
   return { code: await p.exited, err: await new Response(p.stderr).text() };
 };
 
