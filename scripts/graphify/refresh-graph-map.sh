@@ -813,7 +813,7 @@ case "$EXTRACTION_LOCK_STALE_SECONDS" in ''|*[!0-9]*) EXTRACTION_LOCK_STALE_SECO
 EXTRACTION_LOCK_HELD=0
 EXTRACTION_LOCK_TOKEN=""
 
-# >>> HIMMEL-2731 extraction lock protocol -- sliced VERBATIM out of this file
+# >>> extraction lock protocol -- sliced VERBATIM out of this file
 # by test-refresh-graph-map-lock.sh (T11) and sourced there, so the contention
 # harness drives the shipped functions rather than a copy. Keep these three
 # functions (plus the test seam) contiguous between the markers, and keep them dependent only on
@@ -994,7 +994,7 @@ _extraction_lock_acquire() {
     waited=$((waited + 1))
   done
 }
-# <<< HIMMEL-2731 extraction lock protocol
+# <<< extraction lock protocol
 
 # _promote_stage_cleanup -- remove an incomplete same-filesystem staging dir.
 # If a cache swap failed after sidelining the prior complete cache, restore it
@@ -1236,7 +1236,7 @@ _report_leftover_scratches() {
   done
 }
 
-# >>> HIMMEL-3708 backup prune protocol -- sliced VERBATIM out of this file by
+# >>> backup prune protocol -- sliced VERBATIM out of this file by
 # test-refresh-graph-map-backup-prune.sh and sourced there, so the test
 # harness drives the shipped function rather than a copy.
 #
@@ -1326,7 +1326,7 @@ _prune_graphify_backups() {
   [ "$pruned" -gt 0 ] && echo "refresh-graph-map: pruned $pruned dated backup dir(s) under $out (kept newest $keep)" >&2
   return 0
 }
-# <<< HIMMEL-3708 backup prune protocol
+# <<< backup prune protocol
 
 # _corpus_root_marker -- the value of the `.graphify-source-root` marker: the
 # corpus root's physical (symlink-resolved) absolute path. The extraction path

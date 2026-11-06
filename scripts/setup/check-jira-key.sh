@@ -50,7 +50,7 @@ if [ "$mode" = "required" ]; then
 ERROR: JIRA_PROJECT_KEY is not set.
 
 --with-jira requires JIRA_PROJECT_KEY (e.g. ACME, HIMMEL).
-No hardcoded fallback as of HIMMEL-146.
+There is no hardcoded fallback.
 
 Fix:
   1. Add JIRA_PROJECT_KEY=<your-key> to .env (see .env.example).

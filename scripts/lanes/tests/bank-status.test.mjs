@@ -159,7 +159,7 @@ test('/lanes output surfaces limit structure, binding windows, and measured bank
   assert.match(out, new RegExp(`claudex .*\\[access: subscription; windows: weekly; binds: weekly\\].*\\[bank: weekly 14% used / 86% free resets=${CODEX_RESETS_ISO}\\]`));
 });
 
-test('bank probe surfaces an overlay-only quota bank instead of "no status returned" (HIMMEL-1690)', () => {
+test('bank probe surfaces an overlay-only quota bank instead of "no status returned"', () => {
   // usage-status.ts emits one status line per lane in withBank. A lane ABSENT
   // from withBank is exactly what renders as "[bank: unmeasurable — no status
   // returned]" in /lanes (formatBankAnnotation(undefined) in

@@ -57,7 +57,7 @@ describe("private-gha-hosted (dispatched, sparing)", () => {
     expect(r.runId).toBe("555");
   });
 
-  test("scopes the observe-run query to the job's workflow file (no sibling mis-attribution, HIMMEL-714)", async () => {
+  test("scopes the observe-run query to the job's workflow file (no sibling mis-attribution)", async () => {
     const listCalls: string[][] = [];
     const exec: ExecFn = async (_file, args) => {
       if (args.includes("list")) {

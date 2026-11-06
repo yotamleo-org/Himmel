@@ -315,7 +315,7 @@ write_doc doc.md <<'DOC'
 Set the install profile knob `TICKET_ID_REQUIRED=0` to opt out.
 DOC
 run_check doc.md
-expect 0 "HIMMEL-2847: KNOB=value is split at '=' before the existence test"
+expect 0 "KNOB=value is split at '=' before the existence test"
 
 # `for tok in $tokens` is an unquoted
 # split — a code span holding a glob must be judged as the LITERAL string
@@ -332,12 +332,12 @@ write_doc doc.md <<'DOC'
 Any file under `docs/setup/*.md` documents one release channel.
 DOC
 run_check_from "$R" doc.md
-expect 1 "HIMMEL-2847: glob code span judged as literal even when cwd matches it"
-expect_says "does not exist in the tree" "HIMMEL-2847: glob is not silently expanded into real files"
+expect 1 "glob code span judged as literal even when cwd matches it"
+expect_says "does not exist in the tree" "glob is not silently expanded into real files"
 
 run_check_from "$HERE" doc.md
-expect 1 "HIMMEL-2847: glob code span judged as literal when cwd does not match it"
-expect_says "does not exist in the tree" "HIMMEL-2847: same verdict regardless of cwd"
+expect 1 "glob code span judged as literal when cwd does not match it"
+expect_says "does not exist in the tree" "same verdict regardless of cwd"
 
 # --------------------------------------------------------------- multi-doc
 

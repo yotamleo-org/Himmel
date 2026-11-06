@@ -1022,18 +1022,57 @@ leg_start_epoch() {
     printf '%s' "$t"
 }
 
+# tick_title_index: the transcripts in the fork window and the customTitle strings each names,
+# one `<file>:"customTitle":"<title>"` line apiece, built by ONE find|grep pass per tick and shared
+# by leg_forked and leg_cachettl (each used to rerun the pass per candidate name per
+# worker, 3 to 4 CPU-s of a tick). Same window and same exact-title test as before, read at the first
+# use in the tick; tick_tdirs is the roots it covers (leg_cachettl's list; leg_forked filters to its own).
+tick_title_idx_built=0
+tick_title_idx=""
+tick_tdirs=()
+tick_title_index() {
+    [ "$tick_title_idx_built" = 0 ] || return 0
+    tick_title_idx_built=1
+    local dir live=()
+    tick_tdirs=("$HOME/.claude/projects" "$HOME/.claude-codex/projects")
+    if [ -n "${TICK_PROJECTS_DIR:-}" ]; then
+        tick_tdirs=("$TICK_PROJECTS_DIR")
+    elif [ -n "${CLAUDE_CONFIG_DIR:-}" ] && [ "$CLAUDE_CONFIG_DIR" != "$HOME/.claude" ] && [ "$CLAUDE_CONFIG_DIR" != "$HOME/.claude-codex" ]; then
+        tick_tdirs+=("$CLAUDE_CONFIG_DIR/projects")
+    fi
+    for dir in "${tick_tdirs[@]}"; do
+        [ -d "$dir" ] && live+=("$dir")
+    done
+    [ "${#live[@]}" -gt 0 ] || return 0
+    tick_title_idx="$(find "${live[@]}" -maxdepth 2 -name '*.jsonl' -mmin "-${TICK_FORK_WINDOW_MIN:-1440}" -exec grep -HoE '"customTitle":"([^"\\]|\\.)*"' {} + 2>/dev/null | sort -u)" || true  # gnu-ok: Linux-only kit; swallow-ok: grep exits 1 on a batch with no title and find passes that on, but the lines it did print are kept; an unreadable root leaves the index empty, so no transcript is found
+}
+
+# tick_title_newest <candidate name> [root]: sets tick_title_hit to the newest indexed transcript
+# naming exactly that customTitle (under <root> when given); empty when none.
+tick_title_hit=""
+tick_title_newest() {
+    local line f
+    tick_title_hit=""
+    tick_title_index
+    while IFS= read -r line; do
+        case "$line" in *':"customTitle":"'"$1"'"') ;; *) continue ;; esac
+        f="${line%:\"customTitle\":*}"
+        [ -z "${2:-}" ] || case "$f" in "$2"/*) ;; *) continue ;; esac
+        if [ -z "$tick_title_hit" ] || [ "$f" -nt "$tick_title_hit" ]; then tick_title_hit="$f"; fi
+    done <<<"$tick_title_idx"
+}
+
 # leg_forked <candidate names, comma list> -- succeeds when the newest session
 # transcript whose custom-title IS one of the names ends in a continued-in
 # record. The title is the only link (the harness writes it from `claude -n`);
 # no transcript found = not forked, never a guess.
 leg_forked() {
-    local dir="${TICK_PROJECTS_DIR:-$HOME/.claude/projects}" cand f newest=""
+    local dir="${TICK_PROJECTS_DIR:-$HOME/.claude/projects}" cand newest=""
     [ -d "$dir" ] || return 1
     for cand in ${1//,/ }; do
-        while IFS= read -r f; do
-            [ -n "$f" ] || continue
-            if [ -z "$newest" ] || [ "$f" -nt "$newest" ]; then newest="$f"; fi
-        done < <(find "$dir" -maxdepth 2 -name '*.jsonl' -mmin "-${TICK_FORK_WINDOW_MIN:-1440}" -exec grep -lF "\"customTitle\":\"$cand\"" {} + 2>/dev/null)  # gnu-ok: Linux-only kit
+        tick_title_newest "$cand" "$dir"
+        [ -n "$tick_title_hit" ] || continue
+        if [ -z "$newest" ] || [ "$tick_title_hit" -nt "$newest" ]; then newest="$tick_title_hit"; fi
     done
     [ -n "$newest" ] || return 1
     # the last record that is not a trailing cost-state: a resumed session appends
@@ -1047,21 +1086,11 @@ leg_forked() {
 # Mirror guard-worker-cache-ttl.sh's task signal; factoring it out would change
 # the Stop hook as well as this read-only view.
 leg_cachettl() {
-    local dir cand f newest="" stamp epoch running
-    local dirs=("$HOME/.claude/projects" "$HOME/.claude-codex/projects")
-    if [ -n "${TICK_PROJECTS_DIR:-}" ]; then
-        dirs=("$TICK_PROJECTS_DIR")
-    elif [ -n "${CLAUDE_CONFIG_DIR:-}" ] && [ "$CLAUDE_CONFIG_DIR" != "$HOME/.claude" ] && [ "$CLAUDE_CONFIG_DIR" != "$HOME/.claude-codex" ]; then
-        dirs+=("$CLAUDE_CONFIG_DIR/projects")
-    fi
-    for dir in "${dirs[@]}"; do
-        [ -d "$dir" ] || continue
-        for cand in ${1//,/ }; do
-            while IFS= read -r f; do
-                [ -n "$f" ] || continue
-                if [ -z "$newest" ] || [ "$f" -nt "$newest" ]; then newest="$f"; fi
-            done < <(find "$dir" -maxdepth 2 -name '*.jsonl' -mmin "-${TICK_FORK_WINDOW_MIN:-1440}" -exec grep -lF "\"customTitle\":\"$cand\"" {} + 2>/dev/null)  # gnu-ok: Linux-only kit
-        done
+    local cand newest="" stamp epoch running
+    for cand in ${1//,/ }; do
+        tick_title_newest "$cand"
+        [ -n "$tick_title_hit" ] || continue
+        if [ -z "$newest" ] || [ "$tick_title_hit" -nt "$newest" ]; then newest="$tick_title_hit"; fi
     done
     [ -n "$newest" ] || return 1
     stamp="$(tail -n 1 "$newest" | jq -r '.timestamp // empty' 2>/dev/null)" || return 1  # swallow-ok: unreadable activity cannot establish an idle leg

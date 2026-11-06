@@ -387,7 +387,7 @@ i=1; while [ "$i" -le 51 ]; do printf '# d%s\n' "$i" > "$CORPUS/docs/d$i.md"; pr
 printf '{"version":1,"files":{}}\n' > "$OUT/semantic-manifest.json"
 out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
 [ "$rc" -eq 3 ] && [[ "$out" == *"content unstamped=53"* ]] && [[ "$out" == *" unstamped=53 "* ]] && [[ "$out" == *"non_content_unstamped=0"* ]] \
-  && pass "T11g 53 content files unstamped -> rc=3, the 51 template files are not in the corpus at all (HIMMEL-9140)" || fail "T11g (rc=$rc): $out"
+  && pass "T11g 53 content files unstamped -> rc=3, the 51 template files are not in the corpus at all" || fail "T11g (rc=$rc): $out"
 rm -f "$CORPUS"/docs/d*.md
 out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
 [ "$rc" -eq 0 ] && [[ "$out" != *"SEMANTIC-STALE"* ]] \

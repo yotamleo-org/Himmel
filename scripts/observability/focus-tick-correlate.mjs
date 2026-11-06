@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// LUNA-131 Task 9c (acceptance 2 / D16). The owner of acceptance 2's
+// Sweeper plan Task 9c (acceptance 2 / D16). The owner of acceptance 2's
 // statistic -- nothing else in the plan computes it. Correlates
 // foreground-window-change timestamps (focus.jsonl, written by
 // the foreground-window logger) against the vault sweeper's tick_start times

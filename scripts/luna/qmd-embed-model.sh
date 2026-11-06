@@ -243,7 +243,7 @@ daemon_running() {
 # file is stale once a minute old (the holder died between mkdir and the write).
 # The qmd fork's own `mcp --http` start (src/cli/swap-lock.ts) honours
 # the same lock, so a hand-typed `qmd mcp --http --daemon` is refused too.
-# ponytail: pid liveness is POSIX kill -0 only (Git Bash pids do not map), and a qmd binary older than the HIMMEL-4324 fork pin does not check the lock, so the second daemon check just before the commit and the do-not-start-by-hand line are the guard against it; upgrade in HIMMEL-4314 follow-ups if either bites.
+# ponytail: pid liveness is POSIX kill -0 only (pids from a non-POSIX shell do not map), and a qmd binary older than the fork pin that honours the embed-swap lock does not check it, so the second daemon check just before the commit and the do-not-start-by-hand line are the guard against it; upgrade path: hold one lock across the whole swap if either bites.
 swap_lock_dir() { printf '%s/qmd/embed-swap.lock\n' "${XDG_CACHE_HOME:-$HOME/.cache}"; }
 
 swap_lock_stale() {

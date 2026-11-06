@@ -780,8 +780,8 @@ import pathlib
 import sys
 
 source = pathlib.Path(sys.argv[1]).read_text()
-start_marker = "# >>> HIMMEL-2731 extraction lock protocol"
-end_marker = "# <<< HIMMEL-2731 extraction lock protocol"
+start_marker = "# >>> extraction lock protocol"
+end_marker = "# <<< extraction lock protocol"
 try:
     start = source.index(start_marker)
     end = source.index(end_marker, start)

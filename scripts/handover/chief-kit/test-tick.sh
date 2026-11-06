@@ -145,7 +145,7 @@ if [ "${1:-}" != --ciq-sampled ] && [ "${1:-}" != --cachettl-only ]; then
 fi
 
 cachettl_cases() (
-    local stamp out verbose_out
+    local stamp out verbose_out scans
     stamp="$(date -u -d '55 minutes ago' +%Y-%m-%dT%H:%M:%SZ)"
     printf '{"type":"custom-title","customTitle":"HIMMEL-111-legN61"}\n{"type":"assistant","timestamp":"%s"}\n' "$stamp" > "$TICK_PROJECTS_DIR/p/cache.jsonl"
     out="$(bash "$SUT")"
@@ -177,6 +177,17 @@ cachettl_cases() (
     printf '{"type":"custom-title","customTitle":"HIMMEL-6532-N1-other"}\n{"type":"assistant","timestamp":"%s"}\n' "$stamp" > "$TICK_PROJECTS_DIR/p/other.jsonl"
     out="$(WORKERS='HIMMEL-111-legN61 HIMMEL-6532-N1-other' bash "$SUT")"
     contains 'multiple idle workers are comma joined after terminal notifications' "$out" ' cachettl=N61,N1'
+    # one transcript pass per tick, however many workers and candidate names
+    mkdir -p "$W/grepshim"
+    # shellcheck disable=SC2016  # the shim script expands its own $* and "$@"
+    printf '#!/bin/sh\ncase "$*" in *customTitle*) echo x >> "$GREP_COUNT_FILE" ;; esac\nexec "%s" "$@"\n' "$(command -v grep)" > "$W/grepshim/grep"
+    chmod +x "$W/grepshim/grep"
+    : > "$W/grepshim/count"
+    two_workers='HIMMEL-111-legN61 HIMMEL-6532-N1-other'
+    out="$(WORKERS="$two_workers" PATH="$W/grepshim:$PATH" GREP_COUNT_FILE="$W/grepshim/count" bash "$SUT")"
+    contains 'the shared transcript index still lists both idle workers' "$out" ' cachettl=N61,N1'
+    scans="$(wc -l < "$W/grepshim/count" | tr -d ' ')"
+    [ "$scans" -eq 1 ] && pass "two workers cost one transcript scan ($scans)" || fail "two workers cost $scans transcript scans, expected 1"
     touch -d '25 hours ago' "$TICK_PROJECTS_DIR/p/cache.jsonl"
     out="$(bash "$SUT")"
     not_contains 'a matching transcript older than the search window is ignored' "$out" ' cachettl='

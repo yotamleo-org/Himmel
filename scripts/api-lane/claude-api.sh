@@ -221,7 +221,7 @@ fail_over() {
     esac
   fi
   # the preflight and the alert take time: a stop that lands in them still ends the failure path
-  # ponytail: the check before the alert has no test seam in the usage preflight, upgrade path: HIMMEL-8657
+  # ponytail: the check before the alert has no test seam in the usage preflight, upgrade path: the follow-up that gives the alert send a test seam, forwards TERM to the subscription fallback and frees the slot before the preflight
   [ "$STOPPED" = 0 ] || { echo "claude-api: stopped by its caller during the failure path; no alert, no fallback" >&2; return 0; }
   send_alert "$class" "$rc" "$reason" "$decision"
   echo "claude-api: fallback: $decision" >&2
@@ -542,7 +542,7 @@ wait "$CALL_PID"
 RC=$?
 kill "$WATCHDOG_PID" 2>/dev/null
 # a cancel kills the call first and this shell right after: a default TERM here would end it before the settle below
-# ponytail: a tree cancel that lands mid-settle can cut a node step, so the reservation goes unknown or to the sweep, upgrade path: HIMMEL-8657
+# ponytail: a tree cancel that lands mid-settle can cut a node step, so the reservation goes unknown or to the sweep, upgrade path: the follow-up that forwards TERM to the subscription fallback and frees the slot before the preflight
 trap 'STOPPED=1' TERM INT HUP
 
 # --- settle on verified cost; a call that exited non-zero is dead and settles too; otherwise unknown ---

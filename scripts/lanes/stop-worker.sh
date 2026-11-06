@@ -369,7 +369,7 @@ checkpoint_worker_worktree() {
         echo "clean"
         return 0
     fi
-    oid=$(git -C "$wt" commit-tree "$tree" -p "$head_oid" -m "stop-worker halt checkpoint (HIMMEL-1693): $slug" 2>/dev/null) || oid=""
+    oid=$(git -C "$wt" commit-tree "$tree" -p "$head_oid" -m "stop-worker halt checkpoint: $slug" 2>/dev/null) || oid=""
     [ -n "$oid" ] || { echo "commit-tree failed"; return 1; }
     # Create-or-update, both compare-and-swap: two concurrent halts must not
     # clobber each other's snapshot.

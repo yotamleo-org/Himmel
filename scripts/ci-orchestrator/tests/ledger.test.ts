@@ -62,7 +62,7 @@ describe("reduce", () => {
   });
 });
 
-describe("reduce — dispatch on a finished job (HIMMEL-8440)", () => {
+describe("reduce — dispatch on a finished job", () => {
   test("reduce ignores dispatch on a done job", () => {
     const J = jobAttrs();
     const st = reduce([

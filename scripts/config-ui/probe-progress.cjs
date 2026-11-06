@@ -3,7 +3,7 @@
 // It writes one stderr line per probe step, `himmel-probe {"i":2,"n":9,"source":"doctor checks"}`, so the page can
 // say which source is being probed, n of N. The report itself is untouched: the hook only watches config-feed.js
 // load (the report starting) and the children it spawns (spawnSync), in composeFeed's fixed order.
-// ponytail: HIMMEL-4807: the steps are inferred from config-feed.js's spawns (the doctor, each cadence's status, the plugin
+// ponytail: the steps are inferred from config-feed.js's spawns (the doctor, each cadence's status, the plugin
 // list), not announced by it, so a source added there shows under the step before it; upgrade path: config-feed.js
 // emits its own steps and this hook is deleted.
 const cp = require('child_process');

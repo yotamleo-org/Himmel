@@ -36,7 +36,7 @@ FIXTURE_NVM_TAG_COMMIT='a885b885fef16fac4bc544188fb25e9e37ae83e8'
 FIXTURE_CERTIFI_WHEEL='e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1'
 FIXTURE_CERTIFI_SDIST='a9895e6e2758b371e0545e321a3a8fd1fcfd9829ada8824a936dfb16aaaf36cd'
 
-echo "installers: no unpinned curl-pipe, no moving alias (HIMMEL-7092)"
+echo "installers: no unpinned curl-pipe, no moving alias"
 no_match() { grep -Eq -- "$1" "$2"; [ $? -eq 1 ]; }
 printf 'curl -fsSL https://example.invalid/i.sh | sh\n' > "$work/positive-control"
 check "matcher flags a curl | sh line (positive control)" test "$(grep -Ec 'curl[^#|]*\|[[:space:]]*(ba)?sh' "$work/positive-control")" = 1
@@ -103,7 +103,7 @@ EOF
   check "tampered bytes removed from dest" test ! -e "$work/dest"
 fi
 
-echo "certifi: pinned past the emSign-compromised release (HIMMEL-7092)"
+echo "certifi: pinned past the emSign-compromised release"
 for f in requirements-scrapling.txt requirements-whisper.txt; do
   p="$repo_root/marketplace/plugins/obsidian-triage/tools/$f"
   check "$f pins certifi==2026.10.23"      grep -q '^certifi==2026\.10\.23 ' "$p"

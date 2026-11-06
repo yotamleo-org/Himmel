@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """pin-scan.py — discover every third-party pin in the repo and compare each to
-its latest STABLE release (HIMMEL-3807). Called by scripts/check-plugin-drift.sh.
+its latest STABLE release. Called by scripts/check-plugin-drift.sh.
 
 Discovery is by scanning, not by a hand-kept list, so a new package, hook rev
 or action is watched from the day it lands:
@@ -13,7 +13,7 @@ or action is watched from the day it lands:
   literal every version literal listed in scripts/upstreams/literal-pins.json
           (installer, runner and tool VAR=<version> lines, .nvmrc): eco gh
           (optional tag_prefix) or node (newest LTS); a missing file or
-          literal reads UNCHECKED (HIMMEL-8282)
+          literal reads UNCHECKED
 
 Latest comes from the npm registry (`curl`) or `gh api` — both looked up via
 PATH so the test harness can stub them. Prints one verdict line per pin and

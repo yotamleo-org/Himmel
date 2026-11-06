@@ -30,7 +30,7 @@ rc=$?
 # unrelated earlier failure would also exit nonzero without ever starting a
 # stub, making this control pass vacuously) - require the suite's own
 # forced-failure message.
-grep -q 'forced failure after start_fake_daemon (HIMMEL-3775 leak-test hook)' "$log" \
+grep -q 'forced failure after start_fake_daemon (leak-test hook)' "$log" \
   || fail "suite exited nonzero but never reached the forced failure after start_fake_daemon (out: $(cat "$log"))"
 
 work_dir="$(cat "$marker")"

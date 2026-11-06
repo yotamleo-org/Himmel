@@ -126,7 +126,8 @@ out="$(JIRA_PROJECT_KEY=HIMMEL bash "$JB" plan stale 2>&1)"; rc=$?
 printf '%s\n' "$out" > "$TMP/j-plan.txt"
 check "jira plan exits 0" [ "$rc" -eq 0 ]
 check "jira plan lists at most 20" [ "$(grep -vc '^#' "$TMP/j-plan.txt")" -eq 20 ]
-check "jira plan labels each row" grepq "$out" -x "$(printf 'HIMMEL-1\tstale')"
+row1="HIMMEL-1"$'\t'"stale"
+check "jira plan labels each row" grepq "$out" -x "$row1"
 check "jira plan names what waits for the next run" grepq "$out" -x '# candidates=25 batch=20 next-run=5'
 check "jira plan only reads" [ "$(grep -c '^edit' "$JLOG")" -eq 0 ]
 check "jira plan quotes the label in its JQL" grepq "$(cat "$JLOG")" -F 'labels not in ("stale")'

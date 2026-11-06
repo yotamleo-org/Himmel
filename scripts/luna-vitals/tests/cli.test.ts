@@ -142,7 +142,7 @@ test("merge with NO artifact inputs at all still exits 1 with the usage message"
   expect(err).toContain("no rows or warnings to merge");
 });
 
-test("write on an artifact carrying warnings: exit 0, series written, warnings surfaced on stderr and harmlessly ignored (HIMMEL-794 Fix E)", async () => {
+test("write on an artifact carrying warnings: exit 0, series written, warnings surfaced on stderr and harmlessly ignored", async () => {
   const dir = mkdtempSync(join(tmpdir(), "luna-vitals-cli-write-warnings-"));
   const artifact = join(dir, "a.json");
   const w = "sleep 2026-01-02: malformed stage timestamps - sleep_hours omitted (degraded stage data)";

@@ -52,14 +52,14 @@ test('costUsd applies the spec §0.1 list-price rates', () => {
   assert.equal(costUsd('unknown-model', usage), null);
 });
 
-test('costUsd still resolves the legacy gpt-5.6-luna rate after the HIMMEL-3500 repin (HIMMEL-3516)', () => {
+test('costUsd still resolves the legacy gpt-5.6-luna rate after the repin', () => {
   const usage = { input_tokens: 1_000_000, output_tokens: 1_000_000, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
   const cost = costUsd('gpt-5.6-luna', usage);
   assert.notEqual(cost, null);
   assert.equal(cost, RATES['gpt-5.6-luna'].inputPerM + RATES['gpt-5.6-luna'].outputPerM);
 });
 
-test('aggregate() resolves a manifest recorded under the legacy gpt-5.6-luna model to a real, non-null cost (HIMMEL-3516)', () => {
+test('aggregate() resolves a manifest recorded under the legacy gpt-5.6-luna model to a real, non-null cost', () => {
   const records = [
     { run_id: 'T7-luna-legacy-1', task: 'T7', cell: 'luna', rep: 1, model: 'gpt-5.6-luna', transcript_path: LUNA_SAMPLE },
   ];

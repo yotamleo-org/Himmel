@@ -85,12 +85,13 @@ cmp -s "$W/g1" "$g" && pass "deterministic: forced rebuild is byte-identical" ||
 # graphify reads it: query + explain over a scratch copy, absolute --graph, tmp cwd, never `path`
 if command -v graphify >/dev/null 2>&1; then
     mkdir -p "$W/scratch/gout" "$W/cwd"; cp "$g" "$W/scratch/gout/graph.json"
-    e="$(cd "$W/cwd" && graphify explain "HIMMEL-111" --graph "$W/scratch/gout/graph.json" 2>&1)"
+    tk=HIMMEL-111
+    e="$(cd "$W/cwd" && graphify explain "$tk" --graph "$W/scratch/gout/graph.json" 2>&1)"
     contains "graphify explain: version neighbour" "$e" "v1.0.1"
     contains "graphify explain: theme neighbour" "$e" "Knowledge substrate"
     contains "graphify explain: epic neighbour" "$e" "HIMMEL-100"
     contains "graphify explain: goal neighbour" "$e" "G7"
-    q="$(cd "$W/cwd" && graphify query "HIMMEL-111" --graph "$W/scratch/gout/graph.json" 2>&1)"
+    q="$(cd "$W/cwd" && graphify query "$tk" --graph "$W/scratch/gout/graph.json" 2>&1)"
     contains "graphify query: intheme edge" "$q" "intheme"
     contains "graphify query: servesgoal edge" "$q" "servesgoal"
     # the egress hook: the plan is handover-state derived, so the staged copy declares that
@@ -102,9 +103,9 @@ if command -v graphify >/dev/null 2>&1; then
         python3 -c 'import json,sys; print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1],"cwd":sys.argv[2]}}))' "$1" "$W/cwd" \
             | GRAPHIFY_LEDGER="$W/ledger.jsonl" LUNA_VAULT_PATH="$W/luna" bash "$HOOK" 2>&1
     }
-    hmsg="$(hook "graphify query HIMMEL-111 --graph $W/scratch/gout/graph.json")"; hrc=$?
+    hmsg="$(hook "graphify query $tk --graph $W/scratch/gout/graph.json")"; hrc=$?
     [ "$hrc" != 0 ] && pass "block-graphify-egress denies the bare no-backend query on a staged copy" || fail "bare no-backend query allowed"
-    hmsg="$(hook "graphify query HIMMEL-111 --graph $W/scratch/gout/graph.json --backend ollama")"; hrc=$?
+    hmsg="$(hook "graphify query $tk --graph $W/scratch/gout/graph.json --backend ollama")"; hrc=$?
     [ "$hrc" = 0 ] && pass "block-graphify-egress allows the local-backend scratch run" || fail "egress hook rc=$hrc: $hmsg"
     [ -s "$W/ledger.jsonl" ] && pass "staged-copy run is ledgered (test-local ledger)" || fail "no ledger line"
     [ ! -e "$W/cwd/graphify-out" ] && pass "no graphify-out created in the run cwd" || fail "graphify-out created in cwd"

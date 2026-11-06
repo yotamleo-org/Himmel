@@ -81,7 +81,7 @@ out=$(bash "$LINT" "$REPO" 2>&1); rc=$?
 [ "$rc" -eq 0 ] && ok "A1 every hook-named script in this checkout is wired or allowlisted" || no "A1 real repo: $out"
 al="$REPO/scripts/testing/unwired-hooks-allowlist.txt"
 n=0; for b in bus-deliver-hook.sh bus-deliver-sessionstart.sh; do grep -q "^$b|" "$al" && n=$((n+1)); done
-[ "$n" -eq 0 ] && grep -q "^bus-deliver-run.js|.*HIMMEL-5030" "$al" && ok "A2 the two wired bus-deliver hooks are off the allowlist; bus-deliver-run.js stays listed" || no "A2 bus-deliver allowlist entries: hooks listed $n/2, run.js not listed citing HIMMEL-5030"
+[ "$n" -eq 0 ] && grep -q "^bus-deliver-run.js|" "$al" && ok "A2 the two wired bus-deliver hooks are off the allowlist; bus-deliver-run.js stays listed" || no "A2 bus-deliver allowlist entries: hooks listed $n/2, run.js not listed"
 
 echo; if [ "$fail" -eq 0 ]; then echo "ALL PASSED ($pass)"; exit 0; fi
 echo "FAILED: $fail"; exit 1

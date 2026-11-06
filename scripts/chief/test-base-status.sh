@@ -634,7 +634,7 @@ esac
 STUB
 chmod +x "$GH_STUB_FLAGPAIR"
 
-echo "TEST: gh rejects --comments+--json — certification must reach a real verdict, not QUERY-ERROR (HIMMEL-2500)"
+echo "TEST: gh rejects --comments+--json — certification must reach a real verdict, not QUERY-ERROR"
 out=$(GH_CMD="$GH_STUB_FLAGPAIR" "$BASE_STATUS" scripts/hooks 2>"$TMP_ROOT/err_flagpair")
 rc=$?
 err=$(cat "$TMP_ROOT/err_flagpair")

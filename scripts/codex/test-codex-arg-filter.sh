@@ -57,7 +57,7 @@ echo "test: --model detected"
 OUT="$(run_filter --model gpt-5.5-codex hi)"
 case "$OUT" in *"model=1"*) pass "model detected";; *) fail "model not detected: $OUT";; esac
 
-echo "test: --context-tier validated + stripped, unstated = 272k (HIMMEL-1907)"
+echo "test: --context-tier validated + stripped, unstated = 272k"
 OUT="$(run_filter hi)"
 case "$OUT" in *"tier=272k window=272000"*) pass "unstated tier = 272k/272000";; *) fail "default tier: $OUT";; esac
 OUT="$(run_filter --context-tier 353k hi)"
@@ -75,7 +75,7 @@ case "$OUT" in *"rc=1"*) pass "tier flag refused when the caller does not opt in
 OUT="$(TIER_OK=0 run_filter --context-tier=353k hi)"
 case "$OUT" in *"rc=1"*) pass "equals-form tier refused without opt-in";; *) fail "equals tier accepted without opt-in: $OUT";; esac
 
-echo "test: shell tier map agrees with spawn-claudex.ts (HIMMEL-1907)"
+echo "test: shell tier map agrees with spawn-claudex.ts"
 TS_MAP="$(grep -o 'CODEX_CONTEXT_TIER_WINDOW: Record<CodexContextTier, string> = {[^}]*}' "$SCRIPT_DIR/../telegram/spawn-claudex.ts" | grep -o '"[0-9]*k": "[0-9]*"' | tr -d '" ' | tr '\n' ' ')"
 # shellcheck disable=SC1090
 SH_MAP="$( . "$LIB"; for t in $CAF_CONTEXT_TIERS; do printf '%s:%s ' "$t" "$(caf_context_window "$t")"; done )"

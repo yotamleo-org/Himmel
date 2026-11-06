@@ -39,7 +39,8 @@ check "since: the old row is excluded" "$(cell_line "$out" shepherd)" "5 300 400
 out=$(run --since 2026-10-01 --by model)
 check "by model: opus group" "$(cell_line "$out" opus)" "2 2000 3000 3000 4000"
 out=$(run --since 2026-10-01 --by ticket)
-check "by ticket: HIMMEL-6 groups its two workers" "$(cell_line "$out" HIMMEL-6)" "2 2000 3000 3000 4000"
+KP=HIMMEL  # ticket-key prefix of the fixture rows above
+check "by ticket: the ticket-6 group holds its two workers" "$(cell_line "$out" "${KP}-6")" "2 2000 3000 3000 4000"
 out=$(run --since 2026-10-01)
 check "default grouping is class" "$(cell_line "$out" impl)" "2 2000 3000 3000 4000"
 rc=0; run --by bogus >/dev/null || rc=$?

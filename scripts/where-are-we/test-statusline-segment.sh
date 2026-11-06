@@ -65,6 +65,8 @@ ROLLDIR_COLD="$TMP/roll-cold"; mkdir -p "$ROLLDIR_COLD"
 ROLLDIR_BADSHAPE="$TMP/roll-bad"; mkdir -p "$ROLLDIR_BADSHAPE"
 printf '%s\n' '{"foo":1}' > "$ROLLDIR_BADSHAPE/where-are-we-rollup-HIMMEL-538.json"
 
+BR=feat/HIMMEL-538-x
+
 # Common run: gate ON, fixture handover root + cold rollup unless overridden.
 run() { HIMMEL_WHERE_ARE_WE=1 HANDOVER_DIR="$HROOT" HIMMEL_WHERE_ARE_WE_ROLLUP_DIR="$ROLLDIR_COLD" \
         bash "$SUT" "$@" </dev/null 2>/dev/null; }
@@ -72,14 +74,14 @@ run() { HIMMEL_WHERE_ARE_WE=1 HANDOVER_DIR="$HROOT" HIMMEL_WHERE_ARE_WE_ROLLUP_D
 # --- Case 1: explicit opt-out → empty ---------------------------------------
 # (Default is ON, so only an explicit falsy value suppresses.)
 for off in 0 false off no FALSE Off " no "; do
-    o="$(HIMMEL_WHERE_ARE_WE="$off" HANDOVER_DIR="$HROOT" bash "$SUT" --branch feat/HIMMEL-538-x </dev/null 2>/dev/null)"
+    o="$(HIMMEL_WHERE_ARE_WE="$off" HANDOVER_DIR="$HROOT" bash "$SUT" --branch "$BR" </dev/null 2>/dev/null)"
     if [ -z "$o" ]; then pass "opt-out '$off' -> empty"; else fail "opt-out '$off' -> '$o'"; fi
 done
 
 # --- Case 1b: default ON (unset/empty) on a ticket branch → renders ----------
 for on in "" "  "; do
     o="$(HIMMEL_WHERE_ARE_WE="$on" HANDOVER_DIR="$HROOT" HIMMEL_WHERE_ARE_WE_ROLLUP_DIR="$ROLLDIR_COLD" \
-         bash "$SUT" --branch feat/HIMMEL-538-x --ledger "$TMP/none.jsonl" </dev/null 2>/dev/null)"
+         bash "$SUT" --branch "$BR" --ledger "$TMP/none.jsonl" </dev/null 2>/dev/null)"
     if grepq "$o" -F '⎇ HIMMEL-538'; then
         pass "default ON (HIMMEL_WHERE_ARE_WE='$on') -> ticket renders"
     else
@@ -96,7 +98,7 @@ o="$(run --branch chore/no-ticket)"
 if [ -z "$o" ]; then pass "no-ticket branch -> empty"; else fail "no-ticket -> '$o'"; fi
 
 # --- Case 4: breadcrumb present → contains the ticket + 📋 -------------------
-o="$(run --branch feat/HIMMEL-538-x --ledger "$TMP/none.jsonl")"
+o="$(run --branch "$BR" --ledger "$TMP/none.jsonl")"
 if grepq "$o" -F '⎇ HIMMEL-538' && grepq "$o" -F '📋'; then
     pass "breadcrumb present -> ticket + 📋"
 else
@@ -106,7 +108,7 @@ fi
 # --- Case 5: breadcrumb absent → no 📋 --------------------------------------
 HROOT2="$TMP/handover-empty"; mkdir -p "$HROOT2/breadcrumbs"
 o="$(HIMMEL_WHERE_ARE_WE=1 HANDOVER_DIR="$HROOT2" HIMMEL_WHERE_ARE_WE_ROLLUP_DIR="$ROLLDIR_COLD" \
-     bash "$SUT" --branch feat/HIMMEL-538-x --ledger "$TMP/none.jsonl" </dev/null 2>/dev/null)"
+     bash "$SUT" --branch "$BR" --ledger "$TMP/none.jsonl" </dev/null 2>/dev/null)"
 if grepq "$o" -F '⎇ HIMMEL-538' && ! grepq "$o" -F '📋'; then
     pass "breadcrumb absent -> no 📋"
 else
@@ -114,7 +116,7 @@ else
 fi
 
 # --- Case 6: ledger status in-progress → shown -----------------------------
-o="$(run --branch feat/HIMMEL-538-x --ledger "$LEDGER_INPROG")"
+o="$(run --branch "$BR" --ledger "$LEDGER_INPROG")"
 if grepq "$o" -F 'in-progress'; then
     pass "ledger status -> 'in-progress' shown"
 else
@@ -122,7 +124,7 @@ else
 fi
 
 # --- Case 7: ledger status null (—) → omitted -------------------------------
-o="$(run --branch feat/HIMMEL-538-x --ledger "$LEDGER_NULLSTATUS")"
+o="$(run --branch "$BR" --ledger "$LEDGER_NULLSTATUS")"
 if ! grepq "$o" -F '—'; then
     pass "ledger null status (—) -> omitted"
 else
@@ -130,7 +132,7 @@ else
 fi
 
 # --- Case 8: corrupt ledger → no status, still exits 0 ----------------------
-o="$(run --branch feat/HIMMEL-538-x --ledger "$LEDGER_CORRUPT")"; rc=$?
+o="$(run --branch "$BR" --ledger "$LEDGER_CORRUPT")"; rc=$?
 if [ "$rc" -eq 0 ] && grepq "$o" -F '⎇ HIMMEL-538'; then
     pass "corrupt ledger -> fail-open, ticket still shown, exit 0"
 else
@@ -139,7 +141,7 @@ fi
 
 # --- Case 9: warm rollup → epic d/t -----------------------------------------
 o="$(HIMMEL_WHERE_ARE_WE=1 HANDOVER_DIR="$HROOT" HIMMEL_WHERE_ARE_WE_ROLLUP_DIR="$ROLLDIR_WARM" \
-     bash "$SUT" --branch feat/HIMMEL-538-x --ledger "$TMP/none.jsonl" </dev/null 2>/dev/null)"
+     bash "$SUT" --branch "$BR" --ledger "$TMP/none.jsonl" </dev/null 2>/dev/null)"
 if grepq "$o" -F 'HIMMEL-514 6/9'; then
     pass "warm rollup -> 'HIMMEL-514 6/9'"
 else
@@ -147,7 +149,7 @@ else
 fi
 
 # --- Case 10: cold rollup → no epic -----------------------------------------
-o="$(run --branch feat/HIMMEL-538-x --ledger "$TMP/none.jsonl")"
+o="$(run --branch "$BR" --ledger "$TMP/none.jsonl")"
 if ! grepq "$o" -F 'HIMMEL-514'; then
     pass "cold rollup -> no epic part"
 else
@@ -156,7 +158,7 @@ fi
 
 # --- Case 11: wrong-shape rollup JSON → no epic, no crash -------------------
 o="$(HIMMEL_WHERE_ARE_WE=1 HANDOVER_DIR="$HROOT" HIMMEL_WHERE_ARE_WE_ROLLUP_DIR="$ROLLDIR_BADSHAPE" \
-     bash "$SUT" --branch feat/HIMMEL-538-x --ledger "$TMP/none.jsonl" </dev/null 2>/dev/null)"; rc=$?
+     bash "$SUT" --branch "$BR" --ledger "$TMP/none.jsonl" </dev/null 2>/dev/null)"; rc=$?
 if [ "$rc" -eq 0 ] && ! grepq "$o" -F '/'; then
     pass "wrong-shape rollup -> no epic, no crash"
 else
@@ -171,7 +173,7 @@ if [ -n "$old" ]; then touch -t "$old" "$ROLLDIR_STALE/where-are-we-rollup-HIMME
 # Pre-create the lock so the stale cache does NOT fire a real refresh during the test.
 mkdir -p "$ROLLDIR_STALE/where-are-we-rollup-HIMMEL-538.json.lock"
 o="$(HIMMEL_WHERE_ARE_WE=1 HANDOVER_DIR="$HROOT" HIMMEL_WHERE_ARE_WE_ROLLUP_DIR="$ROLLDIR_STALE" \
-     bash "$SUT" --branch feat/HIMMEL-538-x --ledger "$TMP/none.jsonl" </dev/null 2>/dev/null)"
+     bash "$SUT" --branch "$BR" --ledger "$TMP/none.jsonl" </dev/null 2>/dev/null)"
 if grepq "$o" -F 'HIMMEL-514 3/9'; then
     pass "stale-but-present rollup -> still shows last 3/9"
 else
@@ -186,7 +188,7 @@ ROLLDIR_A="$TMP/roll-a"; mkdir -p "$ROLLDIR_A"
 mkdir -p "$ROLLDIR_A/where-are-we-rollup-HIMMEL-538.json.lock"   # lock present
 HIMMEL_WHERE_ARE_WE=1 HANDOVER_DIR="$HROOT" HIMMEL_WHERE_ARE_WE_ROLLUP_DIR="$ROLLDIR_A" \
     HIMMEL_WHERE_ARE_WE_REFRESH_SYNC=1 HIMMEL_WHERE_ARE_WE_ROLLUP_CMD="bash $stub" \
-    bash "$SUT" --branch feat/HIMMEL-538-x --ledger "$TMP/none.jsonl" </dev/null >/dev/null 2>&1
+    bash "$SUT" --branch "$BR" --ledger "$TMP/none.jsonl" </dev/null >/dev/null 2>&1
 if [ ! -e "$sentinel" ]; then
     pass "lock present -> refresh NOT spawned"
 else
@@ -199,7 +201,7 @@ printf '%s\n' '#!/usr/bin/env bash' "touch \"$sentinel\"" > "$stub"; chmod +x "$
 ROLLDIR_B="$TMP/roll-b"; mkdir -p "$ROLLDIR_B"
 HIMMEL_WHERE_ARE_WE=1 HANDOVER_DIR="$HROOT" HIMMEL_WHERE_ARE_WE_ROLLUP_DIR="$ROLLDIR_B" \
     HIMMEL_WHERE_ARE_WE_REFRESH_SYNC=1 HIMMEL_WHERE_ARE_WE_ROLLUP_CMD="bash $stub" \
-    bash "$SUT" --branch feat/HIMMEL-538-x --ledger "$TMP/none.jsonl" </dev/null >/dev/null 2>&1
+    bash "$SUT" --branch "$BR" --ledger "$TMP/none.jsonl" </dev/null >/dev/null 2>&1
 if [ -e "$sentinel" ]; then
     pass "lock absent -> refresh ran (sync)"
 else
@@ -208,7 +210,7 @@ fi
 
 # --- Case 14: full compose --------------------------------------------------
 o="$(HIMMEL_WHERE_ARE_WE=1 HANDOVER_DIR="$HROOT" HIMMEL_WHERE_ARE_WE_ROLLUP_DIR="$ROLLDIR_WARM" \
-     bash "$SUT" --branch feat/HIMMEL-538-x --ledger "$LEDGER_INPROG" </dev/null 2>/dev/null)"
+     bash "$SUT" --branch "$BR" --ledger "$LEDGER_INPROG" </dev/null 2>/dev/null)"
 if [ "$o" = "⎇ HIMMEL-538 📋 in-progress · HIMMEL-514 6/9" ]; then
     pass "full compose -> exact line"
 else
@@ -227,7 +229,7 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
     o="$(HIMMEL_WHERE_ARE_WE=1 HANDOVER_DIR="$HROOT" HIMMEL_WHERE_ARE_WE_ROLLUP_DIR="$ROLLDIR_HANG" \
          HIMMEL_WHERE_ARE_WE_ROLLUP_CMD="true" HIMMEL_WHERE_ARE_WE_NODE_BIN="$hangnode" \
          HIMMEL_WHERE_ARE_WE_NODE_TIMEOUT=1 \
-         bash "$SUT" --branch feat/HIMMEL-538-x --ledger "$LEDGER_INPROG" </dev/null 2>/dev/null)"
+         bash "$SUT" --branch "$BR" --ledger "$LEDGER_INPROG" </dev/null 2>/dev/null)"
     elapsed="$(( $(date +%s) - start ))"
     if grepq "$o" -F '⎇ HIMMEL-538' && ! grepq "$o" -F 'in-progress' && [ "$elapsed" -lt 10 ]; then
         pass "hanging node -> bounded by timeout, no status, ticket still shown (${elapsed}s)"
@@ -249,7 +251,7 @@ printf '%s\n' '#!/usr/bin/env bash' "touch \"$sentinel\"" > "$nospawnstub"; chmo
 ROLLDIR_NOSPAWN="$TMP/roll-nospawn"; mkdir -p "$ROLLDIR_NOSPAWN"   # cold cache
 HIMMEL_WHERE_ARE_WE=1 HANDOVER_DIR="$HROOT" HIMMEL_WHERE_ARE_WE_ROLLUP_DIR="$ROLLDIR_NOSPAWN" \
     HIMMEL_WHERE_ARE_WE_ROLLUP_CMD="bash $nospawnstub" \
-    bash "$SUT" --branch feat/HIMMEL-538-x --ledger "$TMP/none.jsonl" </dev/null >/dev/null 2>&1
+    bash "$SUT" --branch "$BR" --ledger "$TMP/none.jsonl" </dev/null >/dev/null 2>&1
 # Give any (wrongly) backgrounded refresh a moment to fire before asserting absence.
 for _ in 1 2 3 4; do [ -e "$sentinel" ] && break; sleep 0.5; done
 if [ ! -e "$sentinel" ]; then
@@ -294,7 +296,7 @@ printf '%s\n' '#!/usr/bin/env bash' "echo x >> \"$COUNTER\"" "exec \"$REALNODE\"
 calls() { if [ -f "$COUNTER" ]; then wc -l < "$COUNTER" | tr -d ' '; else echo 0; fi; }
 crun() { HIMMEL_WHERE_ARE_WE=1 HANDOVER_DIR="$HROOT" HIMMEL_WHERE_ARE_WE_ROLLUP_DIR="$1" \
          HIMMEL_WHERE_ARE_WE_NODE_BIN="$COUNTNODE" \
-         bash "$SUT" --branch feat/HIMMEL-538-x --ledger "$2" </dev/null 2>/dev/null; }
+         bash "$SUT" --branch "$BR" --ledger "$2" </dev/null 2>/dev/null; }
 
 if [ -n "$REALNODE" ] && { command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; }; then
     # 18: an unchanged ledger is sliced once; the second render starts no node.

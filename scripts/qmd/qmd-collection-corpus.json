@@ -1,5 +1,4 @@
 {
-  "jira": "HIMMEL-5683",
   "doc": "docs/internals/egress-matrix.md",
   "note": "qmd collection name -> egress-matrix corpora. A collection absent from this map is UNMAPPED and denied for every remote model (fail closed). A collection that spans two corpora lists both; every listed corpus must allow.",
   "collections": {

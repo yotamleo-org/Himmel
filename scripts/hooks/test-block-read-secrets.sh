@@ -1496,6 +1496,50 @@ assert_rc "7147 ctl grep for secret-tool in a file"        0 "$(run_case "$(j_ba
 assert_rc "7147 ctl commit message naming secret-tool"     0 "$(run_case "$(j_bash "git commit -m 'docs: secret-tool lookup is denied'")")"
 assert_rc "7147 ctl age encrypt"                           0 "$(run_case "$(j_bash 'age -r age1xyz -o out.age in.txt')")"
 
+# The systemd manager's environment holds whatever a login imported;
+# printing it puts every credential in it into the transcript. Hook input only.
+assert_rc "9341 systemctl --user show-environment"         2 "$(run_case "$(j_bash 'systemctl --user show-environment')")"
+assert_rc "9341 systemctl show-environment (no --user)"    2 "$(run_case "$(j_bash 'systemctl show-environment')")"
+assert_rc "9341 systemctl --user flags then show-environment" 2 "$(run_case "$(j_bash 'systemctl --user --no-pager show-environment')")"
+assert_rc "9341 show-environment piped to a filter"        2 "$(run_case "$(j_bash 'systemctl --user show-environment | grep DISPLAY')")"
+assert_rc "9341 busctl get-property Manager Environment"   2 "$(run_case "$(j_bash 'busctl --user get-property org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager Environment')")"
+assert_rc "9341 busctl Properties GetAll on the Manager"   2 "$(run_case "$(j_bash 'busctl --user call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.DBus.Properties GetAll s org.freedesktop.systemd1.Manager')")"
+assert_rc "9341 busctl introspect the Manager"             2 "$(run_case "$(j_bash 'busctl --user introspect org.freedesktop.systemd1 /org/freedesktop/systemd1')")"
+assert_rc "9341 systemctl --user show (manager properties)" 2 "$(run_case "$(j_bash 'systemctl --user show')")"
+assert_rc "9341 systemctl --user show -p Environment"     2 "$(run_case "$(j_bash 'systemctl --user show -p Environment')")"
+assert_rc "9341 systemctl show --property=Environment"     2 "$(run_case "$(j_bash 'systemctl --user show --property=Environment')")"
+assert_rc "9341 systemctl show -pEnvironment"              2 "$(run_case "$(j_bash 'systemctl --user show -pEnvironment')")"
+assert_rc "9341 systemctl show --property Environment"     2 "$(run_case "$(j_bash 'systemctl --user show --property Environment')")"
+assert_rc "9341 systemctl show -p Version,Environment"     2 "$(run_case "$(j_bash 'systemctl --user show -p Version,Environment')")"
+assert_rc "9341 systemctl show unit -p Environment (accepted false positive)" 2 "$(run_case "$(j_bash 'systemctl --user show telegram-bridge.service -p Environment')")"
+assert_rc "9341 gdbus Properties.Get Manager Environment"  2 "$(run_case "$(j_bash 'gdbus call --session --dest org.freedesktop.systemd1 --object-path /org/freedesktop/systemd1 --method org.freedesktop.DBus.Properties.Get org.freedesktop.systemd1.Manager Environment')")"
+assert_rc "9341 dbus-send Properties.GetAll on the Manager" 2 "$(run_case "$(j_bash 'dbus-send --session --print-reply --dest=org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.DBus.Properties.GetAll string:org.freedesktop.systemd1.Manager')")"
+assert_rc "9341 ctl systemctl --user show a unit"          0 "$(run_case "$(j_bash 'systemctl --user show telegram-bridge.service')")"
+assert_rc "9341 ctl systemctl --user show -p Version"      0 "$(run_case "$(j_bash 'systemctl --user show -p Version')")"
+assert_rc "9341 ctl systemctl show unit -p ActiveState"    0 "$(run_case "$(j_bash 'systemctl --user show telegram-bridge.service -p ActiveState')")"
+assert_rc "9341 ctl busctl Environment on another bus name" 0 "$(run_case "$(j_bash 'busctl --user get-property org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus Environment')")"
+assert_rc "9341 ctl busctl GetAll on another bus name"     0 "$(run_case "$(j_bash 'busctl --user call org.freedesktop.NetworkManager /org/freedesktop/NetworkManager org.freedesktop.DBus.Properties GetAll s org.freedesktop.NetworkManager')")"
+assert_rc "9341 ctl gdbus Get Environment on another bus name" 0 "$(run_case "$(j_bash 'gdbus call --session --dest org.example.App --object-path /org/example/App --method org.freedesktop.DBus.Properties.Get org.example.App Environment')")"
+assert_rc "9341 ctl printenv of a non-credential name"     0 "$(run_case "$(j_bash 'printenv DISPLAY')")"
+# The denial TEXT names a replacement that works: himmel-secrets status (its `names` verb
+# needs --class secret and reads no keyring), and never the dead spelling.
+for c9341 in 'systemctl --user show-environment' 'systemctl --user show' \
+    'busctl --user get-property org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager Environment'; do
+    err=$(printf '%s' "$(j_bash "$c9341")" | bash "$HOOK" 2>&1 >/dev/null); rc=$?
+    assert_rc "9341 denial text row: $c9341" 2 "$rc"
+    case "$err" in
+        *"himmel-secrets names"*) echo "FAIL 9341 denial names the dead 'himmel-secrets names' — got: $err"; FAILED=$((FAILED + 1)) ;;
+        *"printenv NAME"*"himmel-secrets status"*) echo "PASS 9341 denial names printenv and himmel-secrets status" ;;
+        *) echo "FAIL 9341 denial text lacks the replacement — got: $err"; FAILED=$((FAILED + 1)) ;;
+    esac
+done
+assert_rc "9341 ctl systemctl --user status"               0 "$(run_case "$(j_bash 'systemctl --user status telegram-bridge.service')")"
+assert_rc "9341 ctl systemctl --user is-active"            0 "$(run_case "$(j_bash 'systemctl --user is-active telegram-bridge.service')")"
+assert_rc "9341 ctl busctl Manager Version property"       0 "$(run_case "$(j_bash 'busctl --user get-property org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager Version')")"
+assert_rc "9341 ctl busctl StartUnit on the Manager"       0 "$(run_case "$(j_bash 'busctl --user call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager StartUnit ss x.service replace')")"
+assert_rc "9341 ctl grep for show-environment in a script" 0 "$(run_case "$(j_bash 'grep -n show-environment scripts/telegram/restart-bridge.sh')")"
+assert_rc "9341 ctl commit message naming show-environment" 0 "$(run_case "$(j_bash "git commit -m 'docs: systemctl --user show-environment is denied'")")"
+
 # A short mirror query expands thousands of filenames even when the raw
 # clause's command is rtk, not a reader. It must finish in the real chain's
 # unchanged member window; the query is hook input, never executed.

@@ -73,6 +73,8 @@
       "Bash(bash scripts/handover/chief-kit/cut-tag.sh:*)",
       "Bash(bash scripts/handover/chief-kit/close-wrapped-worker.sh:*)",
       "Bash(bash scripts/handover/chief-kit/launch-cloud.sh:*)",
+      "Bash(bash scripts/handover/chief-kit/series-next.sh:*)",
+      "Bash(bash scripts/handover/chief-kit/series-publish.sh:*)",
       "Bash(bash scripts/ci/gcp-runners.sh down)",
       "Bash(bash scripts/ci/gcp-runners.sh status)",
       "Bash(bash scripts/handover/chief-kit/vm-runner.sh on)",

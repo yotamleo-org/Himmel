@@ -72,7 +72,7 @@ test('both overlaps reported when lean-skills and both upstream plugins are on',
   ], 'expected exactly the 12 vendored superpowers skills, in sorted order');
 
   const mattpocock = out.find((o) => o.plugin === 'mattpocock-skills@claude-plugins-official');
-  assert.ok(mattpocock, 'mattpocock-skills overlap missing (HIMMEL-3064 Defect B regression)');
+  assert.ok(mattpocock, 'mattpocock-skills overlap missing (Defect B regression)');
   assert.equal(mattpocock.repo, 'mattpocock/skills');
   assert.deepEqual(mattpocock.skills, ['grilling']);
 });

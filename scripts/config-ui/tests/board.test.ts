@@ -202,7 +202,7 @@ test("GET /api/board: the chain read runs on the running version, so a blocker o
   expect(days[0]).toBe("2026-10-30");
   expect(days.at(-1)).toBe(r.now.slice(0, 10));
   expect(new Set(days).size).toBe(days.length);
-  expect(r.burn.points[0]).toEqual({ day: "2026-10-30", open: 3, merged: 1 }); // HIMMEL-2, 6, 7 are open; 8 is done and undated, so it leaves the total
+  expect(r.burn.points[0]).toEqual({ day: "2026-10-30", open: 3, merged: 1 }); // tickets 2, 6, 7 are open; 8 is done and undated, so it leaves the total
   expect(r.burn).toMatchObject({ total: 4, undated: 1 });
 });
 
@@ -222,7 +222,7 @@ test("GET /api/board: the saved drift file and the chain registry named in the e
   expect(r.drift.mode).toBe("single-user");
   expect(r.chains.schema).toBe("himmel.chains/1");
   expect(r.chains.chains.map((c: { id: string }) => c.id)).toEqual(["memory"]);
-  expect(r.chains.tickets["HIMMEL-2"].state).toBe("can launch"); // its only blocker, HIMMEL-1, is Done
+  expect(r.chains.tickets["HIMMEL-2"].state).toBe("can launch"); // its only blocker is Done
   expect(r.chains.tickets["HIMMEL-1"].chains[0]).toMatchObject({ id: "memory", step: 1, steps: 2 });
 });
 

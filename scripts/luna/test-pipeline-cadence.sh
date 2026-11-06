@@ -370,7 +370,7 @@ assert_contains "cron bad --ig-limit message names flag" "--ig-limit must be a n
 # --synth-day removed (synthesize is daily). Model pins must be
 # non-empty.
 rc=0; out=$(run_cron arm --vault "$VAULT" --synth-day mon 2>&1) || rc=$?
-assert_rc "cron removed --synth-day -> rc 1 (HIMMEL-506)" 1 "$rc"
+assert_rc "cron removed --synth-day -> rc 1" 1 "$rc"
 assert_contains "cron --synth-day message points at daily" "daily now" "$out"
 # --health-day defaults to weekly (cadence audit 2026-08-23): four days of vault-lint moving
 # 363 -> 369 findings did not justify a daily health worker, so it is weekly again.
@@ -388,20 +388,20 @@ rc=0; out=$(run_cron arm --vault "$VAULT" --health-day=15 2>&1) || rc=$?
 assert_rc "cron bad --health-day -> rc 1" 1 "$rc"
 assert_contains "cron bad --health-day names the accepted set" "MON TUE WED THU FRI SAT SUN DAILY" "$out"
 rc=0; out=$(run_cron arm --vault "$VAULT" --health-model "" 2>&1) || rc=$?
-assert_rc "cron empty --health-model -> rc 1 (HIMMEL-506)" 1 "$rc"
+assert_rc "cron empty --health-model -> rc 1" 1 "$rc"
 rc=0; out=$(run_cron arm --vault "$VAULT" --harvest-model "" 2>&1) || rc=$?
-assert_rc "cron empty --harvest-model -> rc 1 (HIMMEL-506)" 1 "$rc"
+assert_rc "cron empty --harvest-model -> rc 1" 1 "$rc"
 assert_contains "cron empty --harvest-model message names the flag + grammar" "--harvest-model must match [A-Za-z0-9][A-Za-z0-9._:-]*" "$out"
 # A model value carrying " and & must be rejected by the grammar gate; the
 # message names the offending flag, the grammar and the value.
 rc=0; out=$(run_cron arm --vault "$VAULT" --harvest-model 'a"&b' 2>&1) || rc=$?
-assert_rc "cron hostile --harvest-model (\" and &) -> rc 1 (HIMMEL-506)" 1 "$rc"
+assert_rc "cron hostile --harvest-model (\" and &) -> rc 1" 1 "$rc"
 assert_contains "cron hostile model message names the flag" "--harvest-model" "$out"
 assert_contains "cron hostile model message names the grammar" "[A-Za-z0-9][A-Za-z0-9._:-]*" "$out"
 assert_contains "cron hostile model message echoes the offending value" "a\"&b" "$out"
 # Whitespace-only slips a bare [ -z ] check; the grammar rejects it.
 rc=0; out=$(run_cron arm --vault "$VAULT" --harvest-model " " 2>&1) || rc=$?
-assert_rc "cron whitespace-only --harvest-model -> rc 1 (HIMMEL-506)" 1 "$rc"
+assert_rc "cron whitespace-only --harvest-model -> rc 1" 1 "$rc"
 assert_contains "cron whitespace model message names the flag" "--harvest-model" "$out"
 rc=0; out=$(run_cron arm --vault "$TMP_ROOT/does-not-exist" 2>&1) || rc=$?
 assert_rc "cron missing vault dir -> rc 1" 1 "$rc"
@@ -419,7 +419,7 @@ assert_contains "dry-run weekly health entry"  "00 04 * * 0" "$out"
 assert_contains "dry-run harvest marker" "# HIMMEL-Pipeline-Harvest" "$out"
 assert_contains "dry-run synth marker"  "# HIMMEL-Pipeline-Synthesize" "$out"
 assert_contains "dry-run shows bounded run" "< /dev/null" "$out"
-assert_contains "dry-run pre-trusts vault (HIMMEL-386)" "would pre-trust workspace '$VAULT'" "$out"
+assert_contains "dry-run pre-trusts vault" "would pre-trust workspace '$VAULT'" "$out"
 if [ ! -f "$CSTATE/crontab" ]; then
     pass "dry-run installed no crontab"
 else
@@ -487,17 +487,17 @@ FMT="$CADENCE_RUNNER_FORMAT_VERSION"
 assert_contains "fetch-health runner stamps the format version" "# himmel-cadence-runner-format: $FMT" "$fetch_health_sh"
 assert_contains "fetch-health runner invokes the plain probe script" "fetch-health.py" "$fetch_health_sh"
 assert_not_contains "fetch-health runner invokes no claude" "claude --model" "$fetch_health_sh"
-assert_contains "fetch-health runner restores arming PATH (HIMMEL-1449 r2)" '; export PATH' "$fetch_health_sh"
-assert_contains "fetch-health runner guards the repo .env source (HIMMEL-1449 r2)" '] && . ' "$fetch_health_sh"
-assert_contains "fetch-health runner .env source targets the repo env file (HIMMEL-1449 r2)" '/.env' "$fetch_health_sh"
+assert_contains "fetch-health runner restores arming PATH" '; export PATH' "$fetch_health_sh"
+assert_contains "fetch-health runner guards the repo .env source" '] && . ' "$fetch_health_sh"
+assert_contains "fetch-health runner .env source targets the repo env file" '/.env' "$fetch_health_sh"
 # The worker writes the same flow-run ledger rows as the claude workers,
 # so a FetchHealth run that stops firing is detectable as a MISSING row rather
 # than being indistinguishable from a cadence that was never armed.
-assert_contains "fetch-health runner opens a flow-run ledger row (HIMMEL-1724)" '--append-start pipeline-fetch-health' "$fetch_health_sh"
-assert_contains "fetch-health runner closes the flow-run ledger row (HIMMEL-1724)" '--append-end pipeline-fetch-health' "$fetch_health_sh"
-assert_contains "fetch-health runner names the worker's task in the start row (HIMMEL-1724)" 'HIMMEL-Pipeline-FetchHealth' "$fetch_health_sh"
+assert_contains "fetch-health runner opens a flow-run ledger row" '--append-start pipeline-fetch-health' "$fetch_health_sh"
+assert_contains "fetch-health runner closes the flow-run ledger row" '--append-end pipeline-fetch-health' "$fetch_health_sh"
+assert_contains "fetch-health runner names the worker's task in the start row" 'HIMMEL-Pipeline-FetchHealth' "$fetch_health_sh"
 # shellcheck disable=SC2016  # the runner's own $_rc, asserted as literal emitted text
-assert_contains "fetch-health runner derives the outcome from the probe rc (HIMMEL-1724)" '_flow_outcome=complete; [ "$_rc" = 0 ] || _flow_outcome=error' "$fetch_health_sh"
+assert_contains "fetch-health runner derives the outcome from the probe rc" '_flow_outcome=complete; [ "$_rc" = 0 ] || _flow_outcome=error' "$fetch_health_sh"
 
 # Test C4d: fetch-health runner PATH export restores binary resolution under
 # cron's empty environment. The real failure mode: cron runs
@@ -506,7 +506,7 @@ assert_contains "fetch-health runner derives the outcome from the probe rc (HIMM
 # emitted runner bakes the arming shell's PATH in, so a binary present at arm
 # time stays resolvable when the ambient PATH is stripped. Host-gated (needs
 # `env -i` + /bin/sh); the emission asserts above run on every host.
-echo "TEST: fetch-health runner PATH export resolves a probe binary under env -i (HIMMEL-1449 r2)"
+echo "TEST: fetch-health runner PATH export resolves a probe binary under env -i"
 if command -v env >/dev/null 2>&1 && [ -x /bin/sh ]; then
     # Clean POSIX stub dir + a probe-shaped binary on it. cygpath -u (when
     # available) keeps the dir POSIX-form: a C:/ mixed-form PATH entry splits on
@@ -533,24 +533,24 @@ if command -v env >/dev/null 2>&1 && [ -x /bin/sh ]; then
     # Pass ONLY if the export makes the stub resolve AND, without it, it can't —
     # proving resolution rides on the emitted PATH line, not ambient PATH.
     if env -i /bin/sh "$with_export" >/dev/null 2>&1 && ! env -i /bin/sh "$without_export" >/dev/null 2>&1; then
-        pass "fetch-health runner PATH export restores binary resolution under env -i (HIMMEL-1449 r2)"
+        pass "fetch-health runner PATH export restores binary resolution under env -i"
     else
         fail "fetch-health runner PATH export did not gate binary resolution under env -i" "clean_path=$q_clean_path"
     fi
 else
     pass "fetch-health runner env -i execution skipped (host lacks env -i / /bin/sh)"
 fi
-assert_contains "harvest runner stamps the format version (HIMMEL-588)" "# himmel-cadence-runner-format: $FMT" "$harvest_sh"
-assert_contains "synth runner stamps the format version (HIMMEL-588)"   "# himmel-cadence-runner-format: $FMT" "$synth_sh"
-assert_contains "health runner stamps the format version (HIMMEL-588)"  "# himmel-cadence-runner-format: $FMT" "$health_sh"
+assert_contains "harvest runner stamps the format version" "# himmel-cadence-runner-format: $FMT" "$harvest_sh"
+assert_contains "synth runner stamps the format version"   "# himmel-cadence-runner-format: $FMT" "$synth_sh"
+assert_contains "health runner stamps the format version"  "# himmel-cadence-runner-format: $FMT" "$health_sh"
 # Same PATH-snapshot shape assertion as fetch-health above, but against the
 # REAL emit_runner output (not a reconstructed shape):
 # the old node-dir-only line was `export PATH=<node_dir>:$PATH` (no leading
 # semicolon), so this distinguishes the fix's `PATH=<snapshot>; export PATH`
 # shape from a regression back to the old prepend-only line.
-assert_contains "harvest runner restores arm-time PATH snapshot (HIMMEL-2840)" '; export PATH' "$harvest_sh"
-assert_contains "synth runner restores arm-time PATH snapshot (HIMMEL-2840)"   '; export PATH' "$synth_sh"
-assert_contains "health runner restores arm-time PATH snapshot (HIMMEL-2840)"  '; export PATH' "$health_sh"
+assert_contains "harvest runner restores arm-time PATH snapshot" '; export PATH' "$harvest_sh"
+assert_contains "synth runner restores arm-time PATH snapshot"   '; export PATH' "$synth_sh"
+assert_contains "health runner restores arm-time PATH snapshot"  '; export PATH' "$health_sh"
 
 # SCRUM-4: on macOS the interactive login sits in the Keychain, which cron
 # cannot read, so every scheduled claude run said "Not logged in". Each claude
@@ -589,29 +589,29 @@ assert_contains "harvest runner chains /triage-clips" "/triage-clips" "$harvest_
 # spaces - strip the escapes before multi-word prompt assertions.
 harvest_sh_plain=${harvest_sh//\\/}
 assert_contains "harvest runner chains /ig-media-enrich default limit" "/ig-media-enrich --limit 10" "$harvest_sh_plain"
-assert_contains "harvest runner passes --include-evidence to /ig-media-enrich (HIMMEL-3174)" "/ig-media-enrich --limit 10 --include-evidence" "$harvest_sh_plain"
-assert_contains "harvest runner names --include-evidence on the step sentence too (HIMMEL-3174)" "step uses --limit 10 --include-evidence" "$harvest_sh_plain"
+assert_contains "harvest runner passes --include-evidence to /ig-media-enrich" "/ig-media-enrich --limit 10 --include-evidence" "$harvest_sh_plain"
+assert_contains "harvest runner names --include-evidence on the step sentence too" "step uses --limit 10 --include-evidence" "$harvest_sh_plain"
 assert_contains "harvest runner fail-opens ig-media-enrich" "must not abort" "$harvest_sh_plain"
 # x-media-enrich runs nightly beside
 # ig-media, bounded by the same --ig-limit, and fail-opens the same way.
-assert_contains "harvest runner chains /x-media-enrich (HIMMEL-4181)" "/x-media-enrich --limit 10 --include-evidence" "$harvest_sh_plain"
-assert_contains "harvest runner fail-opens x-media-enrich (HIMMEL-4181)" "If /x-media-enrich fails" "$harvest_sh_plain"
+assert_contains "harvest runner chains /x-media-enrich" "/x-media-enrich --limit 10 --include-evidence" "$harvest_sh_plain"
+assert_contains "harvest runner fail-opens x-media-enrich" "If /x-media-enrich fails" "$harvest_sh_plain"
 # A backlog left for later nights is not a failure. The 04:47 run
 # withheld the marker over the X backlog and 3 slides-pending-digest IG clips.
-assert_contains "harvest DONE: a remaining backlog still completes (HIMMEL-4684)" "A backlog left for later runs is not unfinished work" "$harvest_sh_plain"
-assert_contains "harvest DONE: backlog is reported, not withheld (HIMMEL-4684)" "report the remaining counts and still print the marker" "$harvest_sh_plain"
-assert_contains "harvest DONE: a real step failure withholds it (HIMMEL-4684)" "Withhold the marker only when a step itself failed or aborted" "$harvest_sh_plain"
+assert_contains "harvest DONE: a remaining backlog still completes" "A backlog left for later runs is not unfinished work" "$harvest_sh_plain"
+assert_contains "harvest DONE: backlog is reported, not withheld" "report the remaining counts and still print the marker" "$harvest_sh_plain"
+assert_contains "harvest DONE: a real step failure withholds it" "Withhold the marker only when a step itself failed or aborted" "$harvest_sh_plain"
 assert_contains "harvest runner bounded run"         "< /dev/null"    "$harvest_sh"
 assert_contains "synth runner cds into vault" "cd $VAULT || {" "$synth_sh"
 assert_contains "synth runner runs /synthesize-clips" "/synthesize-clips" "$synth_sh"
 assert_contains "synth runner chains /archive-clips"  "/archive-clips"    "$synth_sh"
 assert_contains "synth runner bounded run"            "< /dev/null"       "$synth_sh"
 synth_sh_plain=${synth_sh//\\/}
-assert_contains "synth DONE: archive-clips (stuck) clips are structural backlog (HIMMEL-6433)" "archive-clips reports clips as (stuck)" "$synth_sh_plain"
-assert_contains "synth DONE: stuck clips still print the marker (HIMMEL-6433)" "report the stuck count and still print the marker" "$synth_sh_plain"
-assert_contains "synth DONE: a real step failure withholds it (HIMMEL-6433)" "Withhold the marker when a step itself failed or aborted" "$synth_sh_plain"
-assert_contains "synth DONE: blocked, parked or early-bailed still withholds it (HIMMEL-6433)" "or the worker was blocked, parked, or bailed early; do not withhold it only because stuck clips remain" "$synth_sh_plain"
-assert_not_contains "synth DONE: no clause makes stuck clips withhold the marker (HIMMEL-6433)" "stuck clips remain, do not print" "$synth_sh_plain"
+assert_contains "synth DONE: archive-clips (stuck) clips are structural backlog" "archive-clips reports clips as (stuck)" "$synth_sh_plain"
+assert_contains "synth DONE: stuck clips still print the marker" "report the stuck count and still print the marker" "$synth_sh_plain"
+assert_contains "synth DONE: a real step failure withholds it" "Withhold the marker when a step itself failed or aborted" "$synth_sh_plain"
+assert_contains "synth DONE: blocked, parked or early-bailed still withholds it" "or the worker was blocked, parked, or bailed early; do not withhold it only because stuck clips remain" "$synth_sh_plain"
+assert_not_contains "synth DONE: no clause makes stuck clips withhold the marker" "stuck clips remain, do not print" "$synth_sh_plain"
 # shellcheck disable=SC2016  # literal $log needles — the runner expands them at fire time
 assert_contains "synth runner rotates the log" 'mv -f "$log" "$log.prev"' "$synth_sh"
 assert_contains "synth runner stamps every fire" '[fired' "$synth_sh"
@@ -662,7 +662,7 @@ done
 # managed node found under cron's minimal PATH); (2) a node_dir ALREADY in the
 # snapshot is not prepended again (no duplicate PATH entry).
 # ============================================================================
-echo "TEST: runner_path_snapshot prepends node_dir only when missing (HIMMEL-2840)"
+echo "TEST: runner_path_snapshot prepends node_dir only when missing"
 RPS_SRC="$(sed -n '/^runner_path_snapshot()/,/^}/p' "$SCRIPT")"
 run_rps() { bash -c "$RPS_SRC"$'\n'"runner_path_snapshot \"\$1\" \"\$2\"" _ "$1" "$2"; }
 
@@ -692,7 +692,7 @@ assert_contains "runner_path_snapshot with no node_dir echoes the snapshot as-is
 # dir is synthetic (never this station's real PATH); node_dir is a synthetic
 # path too, so the RED control needs no real node install.
 # ============================================================================
-echo "TEST: emitted runner PATH line resolves an arm-time-only ~/.local/bin stub under env -i (RED control, HIMMEL-2840)"
+echo "TEST: emitted runner PATH line resolves an arm-time-only ~/.local/bin stub under env -i (RED control)"
 if command -v env >/dev/null 2>&1 && [ -x /bin/sh ]; then
     localbin_dir="$TMP_ROOT/c4f-localbin"
     mkdir -p "$localbin_dir"
@@ -746,12 +746,12 @@ fi
 # Test C4c: per-worker --model pins — every runner carries an
 # explicit --model right after the binary so the cadence never inherits the
 # operator's saved default tier. Defaults: harvest/synth=claude-sonnet-5-5, health=haiku.
-echo "TEST: cron runners carry the per-worker --model pin (HIMMEL-506)"
+echo "TEST: cron runners carry the per-worker --model pin"
 assert_contains "harvest runner pins --model claude-sonnet-5-5" "--model claude-sonnet-5-5" "$harvest_sh"
 assert_contains "synth runner pins --model claude-sonnet-5-5"   "--model claude-sonnet-5-5" "$synth_sh"
 assert_contains "health runner pins --model haiku"    "--model haiku"  "$health_sh"
 
-echo "TEST: cron runners omit the print-only bg-wait ceiling override (HIMMEL-951)"
+echo "TEST: cron runners omit the print-only bg-wait ceiling override"
 assert_not_contains "harvest runner omits bg-wait ceiling override" "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS" "$harvest_sh"
 assert_not_contains "synth runner omits bg-wait ceiling override"   "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS" "$synth_sh"
 assert_not_contains "health runner omits bg-wait ceiling override"  "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS" "$health_sh"
@@ -858,12 +858,12 @@ fi
 # cadence stays live even when the operator disables the plugin interactively.
 if command -v jq >/dev/null 2>&1; then
     if printf '%s' "$frag_body" | jq -e '.enabledPlugins["obsidian-triage@himmel"] == true' >/dev/null 2>&1; then
-        pass "fragment force-enables obsidian-triage@himmel (HIMMEL-1036)"
+        pass "fragment force-enables obsidian-triage@himmel"
     else
         fail "fragment does not force-enable obsidian-triage@himmel" "$frag_body"
     fi
 else
-    assert_contains "fragment force-enables obsidian-triage (HIMMEL-1036)" "obsidian-triage@himmel" "$frag_body"
+    assert_contains "fragment force-enables obsidian-triage" "obsidian-triage@himmel" "$frag_body"
 fi
 
 # The 2026-10-03 harvest's Skill call came back
@@ -879,12 +879,12 @@ for _allow in \
 do
     if command -v jq >/dev/null 2>&1; then
         if printf '%s' "$frag_body" | jq -e --arg a "$_allow" '.permissions.allow | index($a)' >/dev/null 2>&1; then
-            pass "fragment allows $_allow (HIMMEL-4181)"
+            pass "fragment allows $_allow"
         else
-            fail "fragment does not allow $_allow (HIMMEL-4181)" "$frag_body"
+            fail "fragment does not allow $_allow" "$frag_body"
         fi
     else
-        assert_contains "fragment allows $_allow (HIMMEL-4181)" "\"$_allow\"" "$frag_body"
+        assert_contains "fragment allows $_allow" "\"$_allow\"" "$frag_body"
     fi
 done
 
@@ -1019,7 +1019,7 @@ assert_contains "cron daily fetch-health override"             "45 00 * * *" "$t
 assert_contains "cron daily harvest override"                  "15 01 * * *" "$tab"
 # %q-escaped prompt: strip backslashes for the multi-word assert.
 assert_contains "cron --ig-limit override reaches harvest runner" "/ig-media-enrich --limit 25" "${harvest_sh//\\/}"
-assert_contains "cron --harvest-model override reaches runner (HIMMEL-506)" "--model opus" "${harvest_sh//\\/}"
+assert_contains "cron --harvest-model override reaches runner" "--model opus" "${harvest_sh//\\/}"
 assert_contains "cron daily synth override (time only, daily)" "30 02 * * *" "$tab"
 assert_contains "cron health override (time only, still weekly)" "00 05 * * 0" "$tab"
 assert_contains "unrelated entry survives --force re-arm" "keep-me" "$tab"
@@ -1064,7 +1064,7 @@ else
     fail "runner .sh files left after disarm"
 fi
 if [ ! -f "$CRON_DIR/cadence-settings.json" ]; then
-    pass "settings fragment removed on disarm (HIMMEL-575)"
+    pass "settings fragment removed on disarm"
 else
     fail "settings fragment left after disarm"
 fi
@@ -1377,7 +1377,7 @@ assert_contains "fresh log captured the second fire" "claude-stub-ran" "$cur"
 # fires it and reads the ledger, which is the only thing that proves the worker is
 # now visible to stall / never-started detection (a worker that writes no row is
 # indistinguishable from one that was never armed — the bug this fixes).
-echo "TEST: armed fetch-health runner writes flow-run ledger start+end rows (HIMMEL-1724)"
+echo "TEST: armed fetch-health runner writes flow-run ledger start+end rows"
 : > "$HIMMEL_FLOW_RUNS_LEDGER"
 if ! grep -q "bin-rec" "$FIRE_DIR/pipeline-fetch-health.sh"; then
     fail "fetch-health runner must reference the python STUB (refusing to run the real probe)" \
@@ -1406,7 +1406,7 @@ fi
 # `<iso-ts> <worker> <reason> <log>` line in the alert file and exactly one send
 # through the recorder; a repeat of the same failure appends again but does not
 # re-send; a completed worker clears the dedupe so the next failure sends again.
-echo "TEST: failed cadence workers alert once, through seams (HIMMEL-4181)"
+echo "TEST: failed cadence workers alert once, through seams"
 reset_alerts() { rm -rf "$CADENCE_ALERT_DEDUPE_DIR"; : > "$CADENCE_ALERT_FILE"; : > "$ALERT_SENDS"; }
 count_lines() { grep -c . "$1" 2>/dev/null || true; }
 cat >"$TMP_ROOT/bin-rec/claude-parked" <<'STUB'
@@ -1522,7 +1522,7 @@ use_claude ok
 # Harvest and synthesize refresh the day note's timeline after the
 # worker, must-not-abort. `node` is stubbed AFTER arm (the runner's PATH snapshot
 # already carries bin-rec), so no fire here touches a real vault note.
-echo "TEST: runners run daily-timeline.mjs, must-not-abort (HIMMEL-4182)"
+echo "TEST: runners run daily-timeline.mjs, must-not-abort"
 REAL_NODE=$(command -v node || true)
 TL_REC="$TMP_ROOT/timeline-record"
 cat >"$TMP_ROOT/bin-rec/node" <<STUB
@@ -1600,7 +1600,7 @@ assert_rc "clearing one worker leaves a dotted sibling's dedupe intact" 1 "$(cou
 # is retried, a real failure is NOT, and every attempt is visible in the one
 # flow-run ledger. The backoff is neutralized through the runner's sleep seam,
 # so three attempts cost no wall-clock.
-echo "TEST: transient upstream API error is retried, other failures are not (HIMMEL-1152)"
+echo "TEST: transient upstream API error is retried, other failures are not"
 RETRY_COUNT="$TMP_ROOT/retry-attempts"
 cat >"$TMP_ROOT/bin-rec/claude" <<STUB
 #!/usr/bin/env bash

@@ -319,7 +319,7 @@ assert_contains "ledger merges_behind is the true distance (seed-graph commit + 
 # unlike Test 1's below-threshold skip, there is no graph.json on origin/main
 # to diff against in the first place.
 # =============================================================================
-echo "TEST: origin/main missing graphify-out/graph.json entirely -> the worktree rebuild is skipped, publish/merge never run (HIMMEL-2705)"
+echo "TEST: origin/main missing graphify-out/graph.json entirely -> the worktree rebuild is skipped, publish/merge never run"
 REPO1B="$TMP_ROOT/t1b-primary"; BARE1B="$TMP_ROOT/t1b-origin.git"
 HOME1B="$TMP_ROOT/t1b-home"; LEDGER1B="$TMP_ROOT/t1b-ledger"
 mkdir -p "$HOME1B" "$LEDGER1B"
@@ -1377,7 +1377,7 @@ assert_eq "semantic opt-in rc=0" "0" "$rc"
 sem_log=$(cat "$FAKE_SEM_LOG")
 assert_contains "semantic step runs with --semantic on the subscription by default" "--backend claude-cli" "$sem_log"
 assert_not_contains "semantic step defaults to claude-cli, never the API" "--backend claude-api" "$sem_log"
-assert_not_contains "semantic step defaults to the API, not ollama (HIMMEL-5367)" "--backend ollama" "$sem_log"
+assert_not_contains "semantic step defaults to the API, not ollama" "--backend ollama" "$sem_log"
 assert_contains "semantic step targets the dedicated worktree as himmel-code" "--corpus-root $TMP_ROOT/t9-on-home/.claude/graph-cadence/$SLUG9 --corpus-class himmel-code" "$sem_log"
 if [ -e "$TMP_ROOT/t9-on-dedupe/graph-semantic-$SLUG9.stale" ]; then
     fail "a successful semantic step clears its cadence alert"

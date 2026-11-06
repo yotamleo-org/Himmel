@@ -343,7 +343,7 @@ describe('the wiring it produces', () => {
   });
 });
 
-describe('the queue-lock self-heartbeat entry (HIMMEL-2318)', () => {
+describe('the queue-lock self-heartbeat entry', () => {
   const heartbeatHooks = (settings) => (settings.hooks.PostToolUse ?? [])
     .flatMap((g) => (g.hooks ?? []).map((h) => ({ group: g, hook: h })))
     .filter(({ hook }) => hook.command.includes('scripts/handover/queue-lock.sh'));
@@ -398,7 +398,7 @@ describe('the queue-lock self-heartbeat entry (HIMMEL-2318)', () => {
   });
 });
 
-describe('the stop-queue-wrapped session-end is a canonical variant (HIMMEL-8726)', () => {
+describe('the stop-queue-wrapped session-end is a canonical variant', () => {
   // The tracked .claude/settings.json runs session-end through the durable
   // stop-queue; a plain install must not read that as drift and rewrite it.
   const WRAPPED = {

@@ -176,7 +176,7 @@ SMOKE_TOKEN="smk-$(date +%s)-${RANDOM}${RANDOM}"
 cat > "$DEMO/DEMO-PROJECT.md" <<EOF
 # DEMO PROJECT - DISPOSABLE
 
-Throwaway clone created by \`scripts/codex/hook-smoke-demo.sh\` (HIMMEL-2000) to
+Throwaway clone created by \`scripts/codex/hook-smoke-demo.sh\` to
 smoke the project hook chain. Source: \`$FROM\`. Nothing here is authoritative;
 the runner deletes this directory unless it was given \`--keep\`.
 

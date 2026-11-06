@@ -10,7 +10,7 @@
 //  - the close time is the last lock release, declared once idleMin minutes pass with nothing held, never idleMin later.
 //  - one span function: first LIVE to last WRAPPED/HALTED; a doc with no LIVE starts at its predecessor's end, marked approx.
 //
-// ponytail: the last lock release is derived from the last poll that saw a lock held and the newest WRAPPED/HALTED stamp (queue-lock.sh keeps no release record, and a stale-dead lock reads as held until swept), upgrade to a release record read from queue-lock.sh, HIMMEL-8391
+// ponytail: the last lock release is derived from the last poll that saw a lock held and the newest WRAPPED/HALTED stamp (queue-lock.sh keeps no release record, and a stale-dead lock reads as held until swept), upgrade to a release record read from queue-lock.sh
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, join, relative, sep } from "node:path";

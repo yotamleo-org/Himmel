@@ -46,7 +46,7 @@ run_inv "$LB"; rc_b=$?
 
 # PLATFORM GUARD: inventory.sh is guest-side (GNU find -printf); BSD find on macOS
 # rejects -printf, so the rc==0 assertions (T1, T7c) cannot hold on such a host.
-# ponytail: rc==0 assertions skipped where find lacks -printf, port inventory.sh to a portable stat/find form if it ever runs off an Ubuntu guest (HIMMEL-3699).
+# ponytail: rc==0 assertions skipped where find lacks -printf, port inventory.sh to a portable stat/find form if it ever runs off an Ubuntu guest.
 HAVE_FIND_PRINTF=1
 find "$WORK" -maxdepth 0 -printf '' >/dev/null 2>&1 || HAVE_FIND_PRINTF=0
 

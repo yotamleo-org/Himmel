@@ -164,13 +164,13 @@ fi
 # A chunk must fit one lane call: graphify's default 60000-token chunk costs about 0.45 USD on sonnet and died
 # under the 0.25 USD cap (himmel batch 1, 8 of 9 chunks). At high effort a 30k-token chunk costs about 0.36 USD,
 # so 30000 tokens per USD keeps a chunk near 0.36 of its cap.
-# ponytail: the rate is measured on one A/B run (HIMMEL-5835), not a table; re-measure from the lane ledger once real batches settle, HIMMEL-5871.
+# ponytail: the rate is measured on one A/B run, not a table; re-measure from the lane ledger once real batches settle.
 CHUNK_TOKENS=""
 if [ "$BACKEND" = "claude-api" ]; then
   CHUNK_TOKENS="$(awk -v b="$API_CALL_BUDGET" 'BEGIN { t = int(b * 30000); if (t > 60000) t = 60000; print t }')"
   # A batch answer that hits max_tokens makes graphify split the chunk on replay, and the halves are prompts the
   # batch never held (the shim exits 1, the files stay unstamped): half the sync cap keeps the answer inside it.
-  # ponytail: 15000 is half the sync cap, not measured from stop_reason; lower it if replays still split, HIMMEL-7922.
+  # ponytail: 15000 is half the sync cap, not measured from stop_reason; lower it if replays still split.
   if [ "$BATCH_MODE" -eq 1 ] && [ "$CHUNK_TOKENS" -gt 15000 ]; then CHUNK_TOKENS=15000; fi
   if [ "$CHUNK_TOKENS" -lt 1000 ]; then
     echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD=$API_CALL_BUDGET is too small for any chunk (needs at least 0.04)" >&2
@@ -224,7 +224,7 @@ if [ "$BACKEND" = "ollama" ]; then
   # spilled qwen3.6:27b 55% to CPU, and its request timeout defaults to 600 s.
   # Pin a context that should fit the 24 GB card and raise the timeout; a
   # caller-set value of either wins.
-  # ponytail: num_ctx 16384 unmeasured, the GPU was unavailable; re-measure per HIMMEL-4527 when the 4090 returns from RMA
+  # ponytail: num_ctx 16384 unmeasured, the GPU was unavailable; re-measure when the 4090 returns from RMA (fit qwen3.6:27b fully on the GPU, add a request-timeout knob)
   : "${GRAPHIFY_OLLAMA_NUM_CTX:=16384}"; export GRAPHIFY_OLLAMA_NUM_CTX
   : "${GRAPHIFY_API_TIMEOUT:=1800}"; export GRAPHIFY_API_TIMEOUT
 fi

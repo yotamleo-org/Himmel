@@ -10,7 +10,7 @@ import { readRecords } from './lib/ledger.mjs';
 import { fold, inFlight } from './lib/fold.mjs';
 import { UsageError } from './lib/errors.mjs';
 
-// Well-formed Jira ticket key, e.g. PROJ-567 / LUNA-44. Used to filter the
+// Well-formed Jira ticket key, e.g. PROJ-567. Used to filter the
 // active-key set passed into the by-key status query (no JQL injection) and to
 // keep PR keys (#7) out of it.
 const TICKET_KEY_RE = /^[A-Z][A-Z0-9]+-\d+$/;

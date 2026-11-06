@@ -93,7 +93,7 @@ test("writeArtifact/readArtifact round-trips an artifact that carries warnings",
   expect(await readArtifact(p)).toEqual(a);
 });
 
-test("readArtifact accepts an artifact with NO warnings field (pre-HIMMEL-794 artifact)", async () => {
+test("readArtifact accepts an artifact with NO warnings field (an artifact from before the warnings field)", async () => {
   const p = join(tmpdir(), "luna-vitals-no-warnings-field.json");
   await Bun.write(p, JSON.stringify({ bucket: "x", conflicts: [], rows: [] }));
   const a = await readArtifact(p);
