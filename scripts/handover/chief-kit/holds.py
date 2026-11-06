@@ -1546,6 +1546,87 @@ def op_parse(a):
     return 0
 
 
+PR_STALE = 30 * 60       # a pr row not freshened by sync-prs for this long no longer holds a push
+CHECK_BUDGET = 15        # seconds a git-check run may spend judging holders; past it a holder reads unknown and passes
+BASE_RE = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9._/-]*$')
+
+
+def git_text(args, cwd):
+    """The stdout of one git call in cwd with the caller's GIT_* kept (GIT_INDEX_FILE names the temporary index of
+    `git commit -a` and `git commit <path>`), or None on any failure."""
+    try:
+        r = subprocess.run(['git'] + args, capture_output=True, timeout=10, cwd=cwd)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return os.fsdecode(r.stdout) if r.returncode == 0 else None
+
+
+def git_names(args, cwd):
+    out = git_text(args, cwd)
+    return None if out is None else [n for n in out.split('\0') if n]
+
+
+def pr_base(cwd):
+    """The base branch of this branch's open PR as HOLDS_GH reads it, else ''."""
+    res = run_bounded([os.environ.get('HOLDS_GH') or 'gh', 'pr', 'view', '--json', 'baseRefName', '-q', '.baseRefName'], GH_TIMEOUT, cwd=cwd)
+    b = res[1].strip() if res and res[0] == 0 else ''
+    return b if BASE_RE.match(b) else ''
+
+
+def op_git_check(a):
+    """Refuse (exit 1, the holder on stderr) when git's own list of staged files (--staged) or of files the branch adds over
+    its base (--push) names a file another live holder holds. It reads no command text, so no shape of write dodges it.
+    A file nobody holds is claimed. Every fault, and every worker the barrier does not know, exits 0."""
+    key, doc, label = (os.environ.get(k) or '' for k in ('HIMMEL_HOLD_KEY', 'HIMMEL_HOLD_DOC', 'HIMMEL_HOLD_LABEL'))
+    if os.environ.get('WRITE_HOLD_OK') == '1' or not KEY_RE.fullmatch(key) or not os.path.isabs(doc):
+        return 0
+    if os.path.exists(os.path.join(holds_root(), 'OFF')):
+        return 0
+    cwd = os.getcwd()
+    repo = primary_of(cwd)
+    if os.path.exists(os.path.join(repo, '.single-writer')):
+        return 0
+    branch = (git_text(['rev-parse', '--abbrev-ref', 'HEAD'], cwd) or '').strip()
+    if a.staged:
+        for n in ('rebase-merge', 'rebase-apply', 'MERGE_HEAD'):  # a replayed or merged-forward commit carries other workers' files
+            p = (git_text(['rev-parse', '--git-path', n], cwd) or '').strip()
+            if p and os.path.exists(os.path.join(cwd, p)):
+                return 0
+        files = git_names(['diff', '--cached', '--name-only', '--no-renames', '-z'], cwd)
+    else:
+        base = pr_base(cwd) or 'main'
+        if base != 'main' and git_text(['rev-parse', '--verify', '-q', 'refs/remotes/origin/' + base], cwd) is None:
+            base = 'main'
+        if git_text(['rev-parse', '--verify', '-q', 'refs/remotes/origin/' + base], cwd) is None:
+            return 0
+        files = git_names(['diff', 'origin/%s...HEAD' % base, '--name-only', '--no-renames', '-z'], cwd)
+    if not files:
+        return 0
+    judge = Judge(repo, time.time() + CHECK_BUDGET)
+    refused = []
+    for f in files:
+        norm = normalize(repo, f)
+        if norm is None:
+            continue
+        row = os.path.join(slug_dir(repo, norm[0]), escape(norm[1]))
+        st, fields = read_row(row)
+        if st == 'ok' and fields[3] == 'pr' and fields[0] != key:
+            try:
+                age = time.time() - os.path.getmtime(row)
+            except OSError:
+                age = 0
+            if fields[1] == 'branch:%s' % branch or age > PR_STALE:
+                continue  # this branch's own PR row, or a PR row sync-prs stopped freshening: it holds nothing
+        r = claim_one(repo, judge, f, key, label, doc, 'claim', '')
+        if r.startswith('refused:'):
+            refused.append(r[len('refused:'):])
+    for m in refused:
+        sys.stderr.write(m + '\n')
+    if refused:
+        sys.stderr.write('holds: refused by the %s check. Bypass: WRITE_HOLD_OK=1 in the launching shell\n' % ('commit' if a.staged else 'push'))
+    return 1 if refused else 0
+
+
 def abs_doc(s):
     return os.path.abspath(s) if s else s
 
@@ -1611,6 +1692,10 @@ def build_parser():
     sp.add_argument('--repo', required=True)
     sp.add_argument('--live-docs', metavar='FILE', help='live worker docs, one per line (- for stdin)')
     sp.add_argument('--open-prs', metavar='LIST', help='open PR numbers, comma separated (#12,#34 or none); absent or ? skips the PR test')
+    sp = add('git-check', op_git_check, help='refuse a commit or push whose git file list holds a file another live holder holds')
+    g = sp.add_mutually_exclusive_group(required=True)
+    g.add_argument('--staged', action='store_true', help='the staged files (the commit hook)')
+    g.add_argument('--push', action='store_true', help='the files the branch adds over its base (the push hook)')
     sp = add('asks', op_asks, help='TSV key path holder command: pending trust-path asks with the paste-ready grant')
     sp.add_argument('--repo', required=True)
     return ap
