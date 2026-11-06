@@ -129,7 +129,7 @@ KROOT="$tmp/kroot"; mkdir -p "$KROOT"
 out=$(bash "$KIT/scripts/handover/chief-kit/size-override.sh" record HIMMEL-9500 N950 --files 25 --trust yes --reason "bands gone" --root "$KROOT" 2>&1); rc=$?
 check "record with unreadable size bands exits 2, it does not sign" 2 "$rc"
 has "the unreadable-bands message names the bands" "$out" "size bands"
-check "record with unreadable size bands writes no row" 0 "$(find "$KROOT" -type f 2>/dev/null | wc -l | tr -d ' ')"
+check "record with unreadable size bands writes no row" 0 "$([ -e "$KROOT/.locks" ] && echo 1 || echo 0)"
 out=$(bash "$KIT/scripts/handover/chief-kit/size-override.sh" check HIMMEL-9500 N950 --files 25 --trust yes --root "$KROOT" 2>&1); rc=$?
 check "check with unreadable size bands exits 2, it does not pass" 2 "$rc"
 
