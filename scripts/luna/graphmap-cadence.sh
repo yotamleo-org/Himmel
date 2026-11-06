@@ -1385,12 +1385,17 @@ cmd_arm() {
     payload_publish_himmel=$(publish_cron_payload "$q_bash" "$q_publish_script" "$q_himmel")
     # Luna semantic task: writes the same out dir the luna AST worker does.
     # --rewrite-armed keeps the account the luna runner was armed with; a runner armed with auto or
-    # none cannot be rewritten (decision 525), and nothing is rewritten before that is known.
+    # none cannot be rewritten once the station is opted in (decision 525), and nothing is rewritten
+    # before that is known. Without the opt-in the render has no lane and no semantic call, so there
+    # is nothing to protect: the rewrite goes ahead and the skip line names no account.
     if [ "$REWRITE_ARMED" -eq 1 ] && [ -f "$CRON_RUNNER_SEMANTIC_LUNA" ]; then
         API_ACCOUNT=$(armed_luna_semantic_account "$CRON_RUNNER_SEMANTIC_LUNA")
         if ! llm_backend_api_account_ok "$API_ACCOUNT"; then
-            echo "ERR graphmap-cadence: $CRON_RUNNER_SEMANTIC_LUNA was armed with account '${API_ACCOUNT:-none}', not A, B or C (decision 525): re-arm it with arm --luna-only --with-luna-semantic --api-account A|B|C --force; nothing was rewritten" >&2
-            exit 2
+            if semantic_api_opted_in; then
+                echo "ERR graphmap-cadence: $CRON_RUNNER_SEMANTIC_LUNA was armed with account '${API_ACCOUNT:-none}', not A, B or C (decision 525): re-arm it with arm --luna-only --ast-only --with-luna-semantic --api-account A|B|C --force; nothing was rewritten" >&2
+                exit 2
+            fi
+            API_ACCOUNT=""
         fi
     fi
     payload_semantic_luna=$(luna_semantic_cron_payload "$q_bash" "$q_semantic_script" "$q_vault" "$q_out_dir_ast_luna" "$API_ACCOUNT")

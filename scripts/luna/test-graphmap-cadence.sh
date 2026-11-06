@@ -2058,6 +2058,32 @@ assert_contains "opted-in luna semantic payload is byte-identical to main's" "$e
 assert_not_contains "opted-in luna semantic runner has no skip line" "$SKIP_TEXT" "$sem_sh"
 run_cron3 disarm >/dev/null 2>&1 || true
 
+echo "TEST: the account refusal needs the opt-in: a no-opt-in station still drops the lane from an old auto runner or an old skip line"
+OLD_AUTO_FIXTURE="$SCRIPT_DIR/fixtures/graphmap-semantic-luna-old-auto.txt"
+run_optin arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --semantic-active >/dev/null 2>&1 || true
+assert_contains "fixture: the publish runner carries the lane" "HIMMEL_API_LANE=on" "$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)"
+cp "$OLD_AUTO_FIXTURE" "$CRON_DIR3/graphmap-semantic-luna.sh"
+rc=0; out=$(run_adopter arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+assert_rc "adopter --rewrite-armed over an old auto luna runner exits 0" 0 "$rc"
+assert_not_contains "adopter rewrite of an old auto runner drops the publish lane" "HIMMEL_API_LANE" "$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)"
+sem_sh=$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)
+assert_not_contains "adopter rewrite of an old auto runner drops the luna lane" "HIMMEL_API_LANE" "$sem_sh"
+assert_not_contains "adopter rewrite of an old auto runner bakes no auto into the skip line" "api account" "$sem_sh"
+run_optin arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --semantic-active >/dev/null 2>&1 || true
+# the skip line an earlier arm rendered: no account suffix
+sed 's/_rc=0; if .*; fi || _rc=\$?/_rc=0; echo "[semantic skipped: API lane not opted in (graphify.semantic_api_ok in ~\/.himmel\/config.json)]" || _rc=$?/' "$OLD_AUTO_FIXTURE" > "$CRON_DIR3/graphmap-semantic-luna.sh"
+assert_not_contains "fixture: the old skip line names no lane" "HIMMEL_API_LANE" "$(cat "$CRON_DIR3/graphmap-semantic-luna.sh")"
+rc=0; out=$(run_adopter arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+assert_rc "adopter --rewrite-armed over an old skip line exits 0" 0 "$rc"
+assert_not_contains "adopter rewrite of an old skip line drops the publish lane" "HIMMEL_API_LANE" "$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)"
+assert_contains "adopter rewrite of an old skip line keeps the skip line" "[$SKIP_TEXT" "$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)"
+# an opted-in station still refuses: a rewrite there would render a lane with no account
+rc=0; out=$(run_optin arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+assert_rc "opted-in --rewrite-armed over the no-account skip line exits 2" 2 "$rc"
+assert_contains "the opted-in refusal names --api-account" "--api-account" "$out"
+assert_contains "the opted-in refusal remedy is the AST-only arm" "--ast-only" "$out"
+run_cron3 disarm >/dev/null 2>&1 || true
+
 echo "TEST: HIMMEL-9155 only the JSON literal true opts in: other values, malformed JSON and links do not"
 OPT_BAD="$TMP_ROOT/optin-bad"
 n9=0
