@@ -36,6 +36,7 @@ psha="$(sha256sum < "$A/scripts/cr/perspectives/outside-security.md" | cut -d' '
 # ready-check.sh --outside is the predicate's one owner; here a stub answers yes or no.
 cat > "$A/scripts/handover/chief-kit/ready-check.sh" <<'STUB'
 #!/usr/bin/env bash
+touch "$(dirname "$0")/ran"
 [ "${1:-}" = "--outside" ] || exit 2
 [ "${RC_FAIL:-0}" = 0 ] || exit 2
 printf 'outside-pr: %s\n' "${RC_ANSWER:-yes}"
@@ -127,7 +128,7 @@ reset() { # clear everything a row may have set
 # route <head> [login id]: sets out, err, rc. The head the forge serves is the argument, unless STUB_OID is set.
 route() {
     local h="$1"
-    out="$(cd "$P" && HOME="$HOMEDIR" PATH="$tmp/bin:$PATH" STUB_OID="${STUB_OID:-$h}" STUB_LOGIN="${2:-Goomal}" STUB_ID="${3:-U_goomal}" \
+    out="$(cd "$P" && HIMMEL_REPO="$A" HOME="$HOMEDIR" PATH="$tmp/bin:$PATH" STUB_OID="${STUB_OID:-$h}" STUB_LOGIN="${2:-Goomal}" STUB_ID="${3:-U_goomal}" \
         bash "$ROUTE" --pr 7 --head "$h" 2>"$tmp/err")"; rc=$?
     err="$(cat "$tmp/err")"
 }
@@ -154,6 +155,20 @@ eq "$rc" "0" "T2.5 a listed login and id proceeds"
 has "$out" "outside-pr: yes 7 $H1 feat/outside-thing base=main authorized=allowlist" "T2.5 the route prints who authorized it"
 eq "$(git -C "$P" rev-parse refs/himmel/outside/7)" "$H1" "T2.5 refs/himmel/outside/7 holds the head"
 canary_absent "T2.5"
+
+# the route runs only as the anchor's own copy: a branch copy, or no HIMMEL_REPO at all, runs nothing
+reset; listed
+cp -R "$A" "$tmp/branchcopy"
+rm -f "$tmp/branchcopy/scripts/handover/chief-kit/ran"
+out="$(cd "$P" && HIMMEL_REPO="$A" HOME="$HOMEDIR" PATH="$tmp/bin:$PATH" STUB_OID="$H1" bash "$tmp/branchcopy/scripts/cr/pr-check-outside.sh" --pr 7 --head "$H1" 2>"$tmp/err")"; rc=$?
+err="$(cat "$tmp/err")"
+eq "$rc" "2" "a branch copy of the route exits 2"
+has "$err" "anchor's copy" "a branch copy: the refusal names the anchor's copy"
+if [ -e "$tmp/branchcopy/scripts/handover/chief-kit/ran" ]; then fail "a branch copy ran its own ready-check.sh"; else pass "a branch copy never ran its ready-check.sh"; fi
+if git -C "$P" rev-parse --verify --quiet refs/himmel/outside/7 >/dev/null; then fail "a branch copy fetched the PR head"; else pass "a branch copy fetched nothing"; fi
+out="$(cd "$P" && HIMMEL_REPO="" HOME="$HOMEDIR" PATH="$tmp/bin:$PATH" STUB_OID="$H1" bash "$ROUTE" --pr 7 --head "$H1" 2>"$tmp/err")"; rc=$?
+eq "$rc" "2" "the route with no HIMMEL_REPO exits 2"
+if git -C "$P" rev-parse --verify --quiet refs/himmel/outside/7 >/dev/null; then fail "no HIMMEL_REPO: the PR head was fetched"; else pass "no HIMMEL_REPO: nothing fetched"; fi
 
 reset
 route "$H1" Stranger U_stranger

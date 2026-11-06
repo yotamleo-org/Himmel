@@ -22,6 +22,13 @@ if [ "${1:-}" = "--pr" ]; then
         echo "usage: pr-check-outside.sh <pr-number> | --pr <pr-number> --head <40-hex sha>" >&2
         exit 2
     fi
+    # The route runs ready-check.sh and the libraries below, none of which a branch under review may supply:
+    # it runs only as the trust anchor's own copy. The anchor comes from HIMMEL_REPO, never from this script's location.
+    pc_anchor="${HIMMEL_REPO:-}"
+    if [ -z "$pc_anchor" ] || ! [ "$here/../.." -ef "$pc_anchor" ]; then
+        echo "pr-check-outside: --pr runs only through the anchor's copy (\${HIMMEL_REPO}/scripts/cr/pr-check-outside.sh), never a branch copy ($here) - nothing was fetched or reviewed" >&2
+        exit 2
+    fi
     command -v jq >/dev/null 2>&1 || { echo "pr-check-outside: jq not found on PATH" >&2; exit 2; }
     # shellcheck source=../lib/outside-contributors.sh
     . "$lib/outside-contributors.sh" || { echo "pr-check-outside: cannot load scripts/lib/outside-contributors.sh" >&2; exit 2; }
