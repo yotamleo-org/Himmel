@@ -27,7 +27,7 @@ function boot(extra: { noIdle?: boolean; kstub?: Record<string, string> } = {}) 
   for (const d of [home, root, project]) mkdirSync(d);
   const k = stubKeyring(dir);
   const s = startServer({
-    port: 0, token: TOKEN, root, projectRoot: project, noIdle: extra.noIdle,
+    port: 0, token: TOKEN, root, projectRoot: project, noIdle: extra.noIdle, onIdle: () => {},
     env: { ...k.env, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, ...extra.kstub },
   });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });

@@ -37,7 +37,7 @@ type Extra = { aguiIdleMs?: number; aguiMaxMs?: number; aguiPollMs?: number; onI
 function boot(h: string, extra: Extra = {}) {
   const s = startServer({
     port: 0, token: TOKEN, env: { PATH: process.env.PATH, HOME: h, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: extra.idleMs ?? "60000", ...extra.env },
-    aguiPollMs: extra.aguiPollMs ?? 20, aguiIdleMs: extra.aguiIdleMs ?? 200, aguiMaxMs: extra.aguiMaxMs ?? 10_000, onIdle: extra.onIdle,
+    aguiPollMs: extra.aguiPollMs ?? 20, aguiIdleMs: extra.aguiIdleMs ?? 200, aguiMaxMs: extra.aguiMaxMs ?? 10_000, onIdle: extra.onIdle ?? (() => {}),
   });
   cleanup.push(() => s.stop());
   return s;

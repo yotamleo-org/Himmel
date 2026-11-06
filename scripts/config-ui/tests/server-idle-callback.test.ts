@@ -29,9 +29,16 @@ function callsWithoutIdleCallback(src: string): number[] {
       const def = src.search(new RegExp(`\\bconst ${arg.replace(/\$/g, "\\$")}\\b`));
       judged = def < 0 ? "" : src.slice(def, src.indexOf(";\n", def));
     }
-    if (!/\b(onIdle|noIdle)\b/.test(judged)) bad.push(src.slice(0, m.index).split("\n").length);
+    if (!hasEffectiveIdle(judged)) bad.push(src.slice(0, m.index).split("\n").length);
   }
   return bad;
+}
+
+// An effective idle setting: an `onIdle:` that is a function (or falls back to one with `??`), or `noIdle: true`. A bare mention,
+// a comment, `noIdle: false` or a pass-through such as `onIdle: opts.onIdle` (undefined when the caller sets none) leaves the default exit.
+function hasEffectiveIdle(arg: string): boolean {
+  const code = arg.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  return /\bonIdle\s*:\s*(\(|async\b|function\b)/.test(code) || /\bonIdle\s*:[^,}]*\?\?\s*\(/.test(code) || /\bnoIdle\s*:\s*true\b/.test(code);
 }
 
 test("the scan flags a call with no idle callback, accepts onIdle and noIdle, follows an identifier argument, skips comments", () => {
@@ -41,6 +48,13 @@ test("the scan flags a call with no idle callback, accepts onIdle and noIdle, fo
   expect(callsWithoutIdleCallback(`const opts = { port: 0 };\nconst s = startServer(opts);\n`)).toEqual([2]);
   expect(callsWithoutIdleCallback(`const opts = { port: 0, onIdle: () => {} };\nconst s = startServer(opts);\n`)).toEqual([]);
   expect(callsWithoutIdleCallback(`// startServer(x) is quoted here\n * startServer({ a }) too\n`)).toEqual([]);
+  // negative controls: a mention that leaves the default exit in place
+  expect(callsWithoutIdleCallback(`startServer({ port: 0, noIdle: false });`)).toEqual([1]);
+  expect(callsWithoutIdleCallback(`startServer({ port: 0, noIdle: o.noIdle });`)).toEqual([1]);
+  expect(callsWithoutIdleCallback(`startServer({ port: 0, onIdle: x.onIdle });`)).toEqual([1]);
+  expect(callsWithoutIdleCallback(`startServer({ port: 0, // onIdle is set elsewhere\n });`)).toEqual([1]);
+  expect(callsWithoutIdleCallback(`startServer({ port: 0, /* noIdle: true */ });`)).toEqual([1]);
+  expect(callsWithoutIdleCallback(`startServer({ port: 0, onIdle: x.onIdle ?? (() => {}) });`)).toEqual([]);
 });
 
 test("every config-ui test that starts a server passes an idle callback or noIdle", () => {
