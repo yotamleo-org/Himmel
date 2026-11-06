@@ -171,7 +171,12 @@ that PR merges or closes). Give each one a disposition:
 The tick also re-reads the Live-state `pool-disposition:` lines: `pool-stale=<n>:<KEY>,...`
 lists the ones whose named blocker is now Done or merged (`?` = an unreadable target, never
 stale) and `WAKE pool-stale` fires once per newly stale key; `residual-unversioned=<n>:<KEY>,...`
-counts open residuals of an open focus-version ticket that carry no fixVersion.
+counts open residuals of an open focus-version ticket that carry no fixVersion and whose
+latest `[release-ruling ...]` comment is not a `BACKLOG` ruling (or a `MOVE` to the backlog) of
+that same ticket: a To Do ticket of priority below High that the release manager ruled into the
+backlog is placed there, not unversioned. A ticket in progress, or of priority High or above, stays
+counted whatever its last ruling says, because work or urgency came after it. The comment is only a
+mirror copy of the ruling; the release ledger is the record.
 `residual-unversioned` hides at `0` or `skip`; `pool-stale` hides only at `skip` (no doc, or a
 failed read), so `pool-stale=0` on the tick line is the all-clear that lets the waiter wake again for
 a key that goes stale a second time. Both read only the Jira mirror plus one batched `gh pr list`.

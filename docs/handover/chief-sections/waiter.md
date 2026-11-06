@@ -97,7 +97,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     re-rule it (dispatch the held ticket, or write a fresh `pool-disposition:`),
     then the key leaves the field. The tick also prints
     `residual-unversioned=<n>:<KEY>,...` (open residuals of an open focus-version
-    ticket with no fixVersion, invisible to every version count): it never wakes;
+    ticket with no fixVersion, other than a To Do ticket below High whose latest release ruling is a backlog ruling, invisible to every version count): it never wakes;
     give each a fixVersion or a disposition.
 
     **Housekeeping digest (HIMMEL-8197).** Board class changes and `board-stale`,
