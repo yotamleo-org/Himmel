@@ -45,6 +45,11 @@ tick_bound() {
     if [ "$1" -lt "$left" ]; then printf '%s\n' "$1"; else printf '%s\n' "$left"; fi
 }
 
+# tick_detach <cmd...>: start <cmd> with no input or output and print its pid. The tick reaps a
+# child that ends while the tick still runs, and a timed tick then counts that child's CPU; the
+# job is started by a subshell that exits at once, so init adopts it and the tick never reaps it.
+tick_detach() { ( "$@" </dev/null >/dev/null 2>&1 & printf '%s\n' "$!" ); }
+
 # tick_section_refresh <base> <min-secs> <script> <args...>: run <script> detached, so the
 # waiter's timeout kills the tick's process group and never the refresh, at most once per
 # <min-secs> whether it succeeded or not ($base.tried), one at a time per <base> ($base.lock).
@@ -56,8 +61,7 @@ tick_section_refresh() {
     tried="$(stat -c %Y "$base.tried" 2>/dev/null)" || tried=0  # gnu-ok: chief kit is Linux-only; swallow-ok: never tried reads old
     [ $(( $(date +%s) - ${tried:-0} )) -ge "$gap" ] || return 0
     touch "$base.tried"
-    setsid -w flock -n -E 75 "$base.lock" bash -c "$@" </dev/null >/dev/null 2>&1 &  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the cache; gnu-ok: chief kit is Linux-only
-    pid=$!
+    pid="$(tick_detach setsid -w flock -n -E 75 "$base.lock" bash -c "$@")"  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the cache; gnu-ok: chief kit is Linux-only
     wait_s="${TICK_SECTION_WAIT:-3}"; case "$wait_s" in '' | *[!0-9]*) wait_s=3 ;; esac
     end=$(( $(date +%s) + wait_s ))
     while kill -0 "$pid" 2>/dev/null && [ "$(date +%s)" -lt "$end" ]; do sleep 0.05; done
@@ -1068,7 +1072,7 @@ tick_title_index() {
         [ -d "$dir" ] && live+=("$dir")
     done
     [ "${#live[@]}" -gt 0 ] || return 0
-    tick_title_idx="$(find "${live[@]}" -maxdepth 2 -name '*.jsonl' -mmin "-${TICK_FORK_WINDOW_MIN:-1440}" -exec grep -HoE '"customTitle":"([^"\\]|\\.)*"' {} + 2>/dev/null | sort -u)" || true  # gnu-ok: Linux-only kit; swallow-ok: grep exits 1 on a batch with no title and find passes that on, but the lines it did print are kept; an unreadable root leaves the index empty, so no transcript is found
+    tick_title_idx="$(find "${live[@]}" -maxdepth 2 -name '*.jsonl' -mmin "-${TICK_FORK_WINDOW_MIN:-1440}" -exec grep -aHoE '"customTitle":"([^"\\]|\\.)*"' {} + 2>/dev/null | sort -u)" || true  # gnu-ok: Linux-only kit; swallow-ok: grep exits 1 on a batch with no title and find passes that on, but the lines it did print are kept; an unreadable root leaves the index empty, so no transcript is found
 }
 
 # tick_title_newest <candidate name> [root]: sets tick_title_hit to the newest indexed transcript
@@ -1101,7 +1105,7 @@ leg_forked() {
     [ -n "$newest" ] || return 1
     # the last record that is not a trailing cost-state: a resumed session appends
     # assistant/user records after its continued-in, so only the final one counts.
-    grep -v '"type":"cost-state"' "$newest" 2>/dev/null | tail -n 1 | grep -q '"type":"continued-in"'  # pipefail-ok: tail reads its input to EOF and grep -q sees one line, so no SIGPIPE upstream
+    grep -av '"type":"cost-state"' "$newest" 2>/dev/null | tail -n 1 | grep -q '"type":"continued-in"'  # pipefail-ok: tail reads its input to EOF and grep -q sees one line, so no SIGPIPE upstream
 }
 
 # leg_cachettl <candidate names, comma list> [idle seconds]: only warn on a
@@ -2589,8 +2593,8 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
         # setsid: the waiter's timeout kills the tick's process group, never the snapshot.
         # A running snapshot holds the lock, so this launch exits at once.
         # shellcheck disable=SC2016  # the inner script expands its own positional arguments
-        setsid -w flock -n -E 75 "$pd_base.lock" bash -c 'timeout -k 2 300 bash "$1" "${@:3}" >"$2.$$" 2>/dev/null && mv -f "$2.$$" "$2"; rm -f "$2.$$"' _ "$HERE/next-dispatchable.sh" "$pd_base.rows" "${pd_args[@]}" </dev/null >/dev/null 2>&1 &  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the snapshot; gnu-ok: chief kit is Linux-only
-        pd_pid=$!
+        pd_script='timeout -k 2 300 bash "$1" "${@:3}" >"$2.$$" 2>/dev/null && mv -f "$2.$$" "$2"; rm -f "$2.$$"'
+        pd_pid="$(tick_detach setsid -w flock -n -E 75 "$pd_base.lock" bash -c "$pd_script" _ "$HERE/next-dispatchable.sh" "$pd_base.rows" "${pd_args[@]}")"  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the snapshot; gnu-ok: chief kit is Linux-only
         pd_wait="${TICK_POOL_WAIT:-10}"; case "$pd_wait" in '' | *[!0-9]*) pd_wait=10 ;; esac
         pd_wait="$(tick_bound "$pd_wait")"
         pd_end=$(( $(date +%s) + pd_wait ))
@@ -3084,7 +3088,7 @@ if [ "$doctor_ttl" -gt 0 ] && [ -f "$doctor_cmd" ] && command -v jq >/dev/null 2
             rm -f "$doctor_cache.rc"
             # gnu-ok: console kit is Linux-only (setsid, timeout -k)
             # shellcheck disable=SC2016  # $1 and $2 expand in the inner shell, not here
-            setsid bash -c 'timeout -k 5 600 bash "$1" --json --no-color </dev/null >"$2.out" 2>/dev/null; echo $? >"$2.rc"; rmdir "$2.run"' _ "$doctor_cmd" "$doctor_cache" </dev/null >/dev/null 2>&1 &
+            tick_detach setsid bash -c 'timeout -k 5 600 bash "$1" --json --no-color </dev/null >"$2.out" 2>/dev/null; echo $? >"$2.rc"; rmdir "$2.run"' _ "$doctor_cmd" "$doctor_cache" >/dev/null
         fi
         case "${TICK_DOCTOR_WAIT_SEC:-3}" in ""|*[!0-9]*) doctor_wait=3 ;; *) doctor_wait=$((10#${TICK_DOCTOR_WAIT_SEC:-3})) ;; esac
         doctor_polls=0

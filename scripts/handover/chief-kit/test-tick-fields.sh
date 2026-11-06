@@ -599,6 +599,68 @@ touch -d '20 minutes ago' "$dr7849/held.cache.run"
 DR_COUNT="$dr7849/count" TICK_DOCTOR_CMD="$dr7849/doctor" TICK_DOCTOR_CACHE="$dr7849/held.cache" bash "$SUT" > "$dr7849/lost-line" 2>/dev/null
 same 'a run directory older than 15 minutes is a lost run and a new one starts (HIMMEL-7849)' "$(doctor_of < "$dr7849/lost-line")" 'C16-hooks,C77-bridge-stale'
 
+# --- a detached refresh the tick harvests adds none of its CPU to the tick.
+# A timed tick counts the CPU of every child it reaped, so a refresh the tick launched itself
+# and waited out landed in its time. The stubs spin about 2 s of CPU; the control stubs do not.
+cpu9342() {  # cpu9342 <stdout-file> <cmd...>: the CPU ms of the children the command reaped
+    local out="$1" t; shift
+    t="$( { TIMEFORMAT='%U %S'; time "$@" >"$out" 2>/dev/null; } 2>&1 )"
+    printf '%s\n' "$t" | tr , . | LC_ALL=C awk 'END { printf "%d", ($1 + $2) * 1000 }'  # a de_DE station prints 2,987
+}
+# shellcheck disable=SC2016  # the stub's own $vars expand when it runs, not here
+spin9342='i=0; while [ $i -lt 2000000 ]; do i=$((i+1)); done'
+dr9342="$W/dr9342"; mkdir -p "$dr9342"
+printf '%s\n' '#!/usr/bin/env bash' "[ -z \"\${SPIN:-}\" ] || { $spin9342; }" \
+    'echo "{\"sev\":\"WARN\",\"id\":\"C9-spin\",\"msg\":\"m\",\"remedy\":\"r\"}"; exit 0' > "$dr9342/doctor"
+chmod +x "$dr9342/doctor"
+dr_run9342() { rm -f "$dr9342/cache".*; rm -rf "$dr9342/cache.run"; cpu9342 "$dr9342/line" env SPIN="$1" TICK_DOCTOR_WAIT_SEC=30 TICK_DOCTOR_CMD="$dr9342/doctor" TICK_DOCTOR_CACHE="$dr9342/cache" bash "$SUT"; }
+rm -f "$dr9342/cache"
+dr_base9342="$(dr_run9342 '')"
+same 'the control tick harvests the doctor run' "$(doctor_of < "$dr9342/line")" 'C9-spin'
+rm -f "$dr9342/cache"
+dr_spin9342="$(dr_run9342 1)"
+same 'the spinning doctor run is harvested in the tick' "$(doctor_of < "$dr9342/line")" 'C9-spin'
+same 'the doctor launch prints no pid line on the tick stdout' "$(grep -c '^[0-9][0-9]*$' "$dr9342/line")" '0'
+if [ $((dr_spin9342 - dr_base9342)) -lt 1000 ]; then pass 'a harvested doctor run adds none of its CPU to the tick'; else fail "a harvested doctor run added $((dr_spin9342 - dr_base9342)) ms of CPU to the tick (spin ${dr_spin9342} ms, control ${dr_base9342} ms)"; fi
+
+cg9342="$W/cg9342"; mkdir -p "$cg9342"
+printf '%s\n' '#!/usr/bin/env bash' "[ -z \"\${SPIN:-}\" ] || { $spin9342; }" 'echo ciguard=ok' > "$cg9342/probe"
+chmod +x "$cg9342/probe"
+cg_run9342() { rm -rf "$cg9342/state"; mkdir -p "$cg9342/state"; cpu9342 "$cg9342/line" env SPIN="$1" TICK_STATE_DIR="$cg9342/state" TICK_SECTION_WAIT=30 TICK_CIGUARD_PROBE="$cg9342/probe" bash "$SUT"; }
+cg_base9342="$(cg_run9342 '')"
+contains 'the control tick serves the guardrail refresh' "$(cat "$cg9342/line")" ' ciguard=ok'
+cg_spin9342="$(cg_run9342 1)"
+contains 'the spinning guardrail refresh lands in the tick that launched it' "$(cat "$cg9342/line")" ' ciguard=ok'
+if [ $((cg_spin9342 - cg_base9342)) -lt 1000 ]; then pass 'a section refresh the tick waits out adds none of its CPU to the tick'; else fail "a section refresh added $((cg_spin9342 - cg_base9342)) ms of CPU to the tick (spin ${cg_spin9342} ms, control ${cg_base9342} ms)"; fi
+
+# --- leg_forked: the root filter, the exact title match and a transcript grep reads as binary.
+# leg_forked trusts only transcripts under its own root ($HOME/.claude/projects), though the
+# title index also covers the codex root; and only a title that IS the worker name links one.
+tf9342="$W/handover/HIMMEL-777-legN81.md"
+printf '%s\n' '# worker' > "$tf9342"
+tfh9342="$W/home9342"
+tf_state9342() { ( unset TICK_PROJECTS_DIR; HOME="$tfh9342" bash "$SUT" --workers 'HIMMEL-777-legN81' 2>/dev/null | sed -nE 's/.* workers=([^ ]*).*/\1/p' ); }
+tf_put9342() {  # tf_put9342 <root> <title> [<extra>]: a transcript that ended in continued-in
+    mkdir -p "$tfh9342/$1/p"
+    printf '{"type":"custom-title","customTitle":"%s"}\n%b{"type":"continued-in","sessionId":"s1"}\n' "$2" "${3:-}" > "$tfh9342/$1/p/s1.jsonl"
+}
+tf_put9342 .claude/projects HIMMEL-777-legN81
+same 'a continued-in transcript under the worker title reads FORKED' "$(tf_state9342)" 'N81:FORKED'
+rm -rf "$tfh9342"
+mkdir -p "$tfh9342/.claude/projects"
+tf_put9342 .claude-codex/projects HIMMEL-777-legN81
+same 'a continued-in transcript outside the fork root is not FORKED' "$(tf_state9342)" 'N81:FREE'
+rm -rf "$tfh9342"
+tf_put9342 .claude/projects HIMMEL-777-legN81-extra
+same 'a title that only starts with the worker name is not FORKED' "$(tf_state9342)" 'N81:FREE'
+rm -rf "$tfh9342"
+tf_put9342 .claude/projects xHIMMEL-777-legN81
+same 'a title that only ends with the worker name is not FORKED' "$(tf_state9342)" 'N81:FREE'
+rm -rf "$tfh9342"
+tf_put9342 .claude/projects HIMMEL-777-legN81 '\0\n'
+same 'a transcript with a NUL byte still links its title and reads FORKED' "$(tf_state9342)" 'N81:FORKED'
+rm -rf "$tfh9342"
+
 # --- parked=<worker>:<age>m: a worker on an unanswered permission prompt -----
 # Absent unless a worker's newest trust-ledger row is a permission prompt older than
 # TICK_PARKED_MIN; the rule itself is pinned by test-parked-on-prompt.sh.
@@ -815,6 +877,16 @@ if [ -n "$_TIMEOUT_BIN" ]; then
     contains 'the tick reads pool=? until the slow snapshot lands (HIMMEL-7609)' "$pd_slow_out" ' pool=? '
     for _ in $(seq 1 40); do [ -z "$(find "$W/pd-slow-state" -name 'tick-pool-*.rows' 2>/dev/null)" ] || break; sleep 0.5; done
     contains 'the next tick counts from the finished snapshot (HIMMEL-7609)' "$(pd_slow)" ' pool=3/1/2/1 '
+    # A snapshot that ends while the tick waits for it adds none of its CPU to the tick: the same
+    # wrapper spins about 2 s on the pool call, the control does not.
+    # shellcheck disable=SC2016  # the wrapper's own $vars expand when it runs, not here
+    printf '#!/usr/bin/env bash\ncase " $* " in *" --dispositions "*) [ -z "${SPIN:-}" ] || { %s; } ;; esac\nexec bash %q "$@"\n' "$spin9342" "$HERE/next-dispatchable.sh" > "$sk/handover/chief-kit/next-dispatchable.sh"
+    pd_cpu9342() { rm -rf "$W/pd-cpu-state"; cpu9342 "$W/pd-cpu-line" env SPIN="$1" TOKEN= NEXT_DISPATCH_MIRROR="$PD" NEXT_DISPATCH_GH_CMD="$W/ow-gh" NEXT_DISPATCH_CLASSIFY_CMD="$W/pd-classify" OW_PR_ROWS='4001\tfix: [HIMMEL-901] x\tfix/himmel-901-x\n' TICK_POOL_WAIT=30 TICK_STATE_DIR="$W/pd-cpu-state" bash "$sk/handover/chief-kit/tick.sh" --doc "$pd_doc"; }
+    pd_base9342="$(pd_cpu9342 '')"
+    contains 'the control tick counts from the snapshot it waited for' "$(cat "$W/pd-cpu-line")" ' pool=3/1/2/1 '
+    pd_spin9342="$(pd_cpu9342 1)"
+    contains 'the spinning snapshot lands in the tick that launched it' "$(cat "$W/pd-cpu-line")" ' pool=3/1/2/1 '
+    if [ $((pd_spin9342 - pd_base9342)) -lt 1000 ]; then pass 'a pool snapshot the tick waits out adds none of its CPU to the tick'; else fail "a pool snapshot added $((pd_spin9342 - pd_base9342)) ms of CPU to the tick (spin ${pd_spin9342} ms, control ${pd_base9342} ms)"; fi
 else
     skip 'a slow pool snapshot never holds the tick: no timeout'
 fi
