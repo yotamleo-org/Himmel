@@ -276,6 +276,7 @@ RS_TRACE_ON = re.compile(r'(?i)(?:^|[\s;&|(`])(?:set\s+[-+]\w*x|(?:set|shopt|set
 RS_GREP = ('grep', 'egrep', 'fgrep')
 RS_GREP_VALUE_LETTERS = 'ABCDdefm'
 RS_WRAPPERS = ('sudo', 'doas', 'rtk', 'proxy', 'command', 'time', 'nice', 'env', 'exec', 'nohup')
+RS_WRAPPER_VALUE_OPTS = {'sudo': 'ugCDhprtUT', 'doas': 'uC', 'env': 'uCS', 'nice': 'n', 'time': 'fo'}
 RS_READERS = frozenset('cat tac head tail less more nl wc cut sort uniq od xxd hexdump strings base64 jq yq sed awk '
                        'gawk bat batcat cp scp rsync tar zip gzip xz bzip2 curl wget source . diff cmp paste column '
                        'rg ag tr fold fmt rev file stat openssl'.split())
@@ -296,8 +297,20 @@ def _rs_clause_reads_secret(clause):
         toks = shlex.split(clause, comments=False, posix=True)
     except ValueError:
         toks = clause.split()
-    while toks and (re.match(r'[A-Za-z_]\w*=', toks[0]) or os.path.basename(toks[0]) in RS_WRAPPERS):
-        toks = toks[1:]
+    while toks:
+        wrapper = os.path.basename(toks[0])
+        if re.match(r'[A-Za-z_]\w*=', toks[0]):
+            toks = toks[1:]
+        elif wrapper in RS_WRAPPERS:
+            toks = toks[1:]
+            while toks and toks[0].startswith('-') and len(toks[0]) > 1:
+                opt, toks = toks[0], toks[1:]
+                if opt == '--':
+                    break
+                if len(opt) == 2 and opt[1] in RS_WRAPPER_VALUE_OPTS.get(wrapper, '') and toks:
+                    toks = toks[1:]
+        else:
+            break
     if not toks:
         return False
     if os.path.basename(toks[0]) not in RS_GREP:
