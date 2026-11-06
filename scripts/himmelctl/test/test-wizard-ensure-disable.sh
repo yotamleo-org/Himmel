@@ -1688,7 +1688,7 @@ cat > "$mutateScript" <<'JS'
 // Restores the pre-v2 hazard-walk behavior (hard `return 2`, aborting the
 // WHOLE ensure run) at the one site this ticket changed to a collect+continue.
 // Structural match (push-line followed by a bare `continue;`), not a literal
-// text match against the message string -- so this stays even if the
+// text match against the message string -- so this stays valid even if the
 // message wording is later edited, and fails LOUD (not silently) if the code
 // shape it depends on has moved.
 const fs = require('fs');
