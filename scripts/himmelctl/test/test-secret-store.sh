@@ -471,12 +471,12 @@ krow('S0-R8 unlocked but the keyring refuses the store: the write is refused, no
   ok(!fs.existsSync(envOf(ctx)), 'no .env was written');
 });
 
-krow('S0-R8 removing a token the keyring still serves is refused, naming the manual clear, and .env is untouched', () => {
+krow('S0-R8 removing a token the keyring still serves is refused, saying it cannot delete it, and .env is untouched', () => {
   const ctx = mk(); const v = fake();
   fs.writeFileSync(envOf(ctx), 'JIRA_API_TOKEN=' + v + '\n');
   let msg = '';
   withKeyring({ items: 'service=himmel key=JIRA_API_TOKEN scope=user\t' + fake() + '\n' }, () => { try { store.remove('JIRA_API_TOKEN', ctx); } catch (e) { msg = e.message; } });
-  ok(/keyring/.test(msg) && /HIMMEL-8473/.test(msg), 'the refusal names the keyring and the delete-verb ticket: ' + msg);
+  ok(/keyring/.test(msg) && /cannot delete it/.test(msg), 'the refusal names the keyring and says himmel-secrets cannot delete it: ' + msg);
   ok(fs.readFileSync(envOf(ctx), 'utf8').includes('JIRA_API_TOKEN=' + v), 'the .env line is still there');
 });
 

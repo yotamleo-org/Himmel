@@ -14,7 +14,7 @@
 // ctx: { home, himmelRoot, projectRoot, env, uid?, gitCheckIgnore?, backend? }.
 // Results and errors name a rule or a path, never an input value.
 //
-// ponytail: card entries and the MCP stores are detect-only, no vault backend yet, HIMMEL-4862.
+// ponytail: card entries and the MCP stores are detect-only, no vault backend yet, upgrade path: a password-vault backend for these entries.
 
 const fs = require('fs');
 const os = require('os');
@@ -196,7 +196,7 @@ function fileWrite(name, value, ctx) {
   if (!file) refuse('secret has no writable file store (card entry)');
   // himmel-secrets has no delete verb: dropping only the .env line would report "removed" while the keyring still serves the token.
   if (value === null && keyringStored(e) && usable(resolveSecrets(ctx.himmelRoot, [name], ctx.env)[name])) {
-    refuse('the OS keyring still holds this token and himmel-secrets cannot delete it yet (HIMMEL-8473); remove the item from the keyring, then retry');
+    refuse('the OS keyring still holds this token and himmel-secrets cannot delete it yet; remove the item from the keyring, then retry');
   }
   if (value !== null && keyringStored(e) && putKeyring(name, value, ctx)) return { ok: true, path: 'the OS keyring (himmel-secrets)', tightened: false };
   if (name === 'JIRA_BASE_URL') {

@@ -71,7 +71,7 @@ describe('uploadAttachment', () => {
     );
   });
 
-  it('normalizeEnv strips trailing CR from CRLF-source env vars (HIMMEL-111)', () => {
+  it('normalizeEnv strips trailing CR from CRLF-source env vars', () => {
     const stderrCaptured: string[] = [];
     const origWrite = process.stderr.write.bind(process.stderr);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -144,7 +144,7 @@ describe('baseUrl', () => {
     expect(baseUrl()).toBe('https://example.atlassian.net');
   });
 
-  it('throws when JIRA_BASE_URL is unset — no personal-instance fallback (HIMMEL-286)', () => {
+  it('throws when JIRA_BASE_URL is unset — no personal-instance fallback', () => {
     delete process.env.JIRA_BASE_URL;
     expect(() => baseUrl()).toThrow(/JIRA_BASE_URL is not set/);
   });
@@ -154,7 +154,7 @@ describe('baseUrl', () => {
     expect(() => baseUrl()).toThrow(/\.env\.example/);
   });
 
-  it('never falls back to the author instance when unset (HIMMEL-286)', () => {
+  it('never falls back to the author instance when unset', () => {
     delete process.env.JIRA_BASE_URL;
     let message = '';
     try {
@@ -167,7 +167,7 @@ describe('baseUrl', () => {
   });
 });
 
-describe('requestAt base composition (HIMMEL-437)', () => {
+describe('requestAt base composition', () => {
   const origBase = process.env.JIRA_BASE_URL;
   afterEach(() => {
     if (origBase === undefined) delete process.env.JIRA_BASE_URL; else process.env.JIRA_BASE_URL = origBase;
@@ -188,7 +188,7 @@ describe('requestAt base composition (HIMMEL-437)', () => {
   });
 });
 
-describe('confluenceAuthHeader (HIMMEL-437)', () => {
+describe('confluenceAuthHeader', () => {
   const keys = ['JIRA_EMAIL', 'JIRA_API_TOKEN', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN'];
   const orig: Record<string, string | undefined> = {};
   for (const k of keys) orig[k] = process.env[k];
@@ -213,7 +213,7 @@ describe('confluenceAuthHeader (HIMMEL-437)', () => {
   });
 });
 
-describe('resolveAccountId (HIMMEL-437)', () => {
+describe('resolveAccountId', () => {
   const origBase = process.env.JIRA_BASE_URL;
   afterEach(() => {
     if (origBase === undefined) delete process.env.JIRA_BASE_URL; else process.env.JIRA_BASE_URL = origBase;
@@ -336,7 +336,7 @@ describe('loadEnvFile', () => {
     expect(process.env.JIRA_PROJECT_KEY).toBe('CONFIG');
   });
 
-  it('resolves the Jira site URL from himmel.conf alone (HIMMEL-8244)', () => {
+  it('resolves the Jira site URL from himmel.conf alone', () => {
     vi.stubEnv('JIRA_BASE_URL', '');
     rmSync(file);
     writeFileSync(join(dir, '.himmel', 'himmel.conf'), 'JIRA_BASE_URL=https://from-config.example\n');
@@ -475,7 +475,7 @@ function fakeJira(over: Partial<FakeJira>): FakeJira {
   return f;
 }
 
-describe('version-write journal hook (HIMMEL-8724 S2)', () => {
+describe('version-write journal hook', () => {
   let dir: string;
   let journal: string;
   const rows = () => readVersionWrites(journal);
@@ -515,7 +515,7 @@ describe('version-write journal hook (HIMMEL-8724 S2)', () => {
     expect(puts(f)).toHaveLength(1);
   });
 
-  it('a changelog item with no toString string still binds the removal (HIMMEL-8823)', async () => {
+  it('a changelog item with no toString string still binds the removal', async () => {
     // A JSON item has no own toString, so the property reads as Object.prototype.toString, a function.
     fakeJira({
       key: 'HIMMEL-9', set: ['v1.1.4'], entries: [fv('500', null, 'v1.1.4')],

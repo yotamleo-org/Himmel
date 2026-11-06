@@ -1304,7 +1304,7 @@ function probeQmdDaemon(item, ctx) {
   if (code === '401' || code === '403') {
     return { actual: 'degraded', detail: token
       ? `the qmd server on ${url} answered HTTP ${code} and rejected the bearer token read from ${tokenFile}${describeQmdListener(url, env)} — it was started with a different token; fix: set QMD_HTTP_AUTH_FILE to the file the qmd server reads, or restart the qmd server so it re-reads ${tokenFile}`
-      : `the qmd server on ${url} answered HTTP ${code}: it requires a bearer token (HIMMEL-5002) and none is readable at ${tokenFile} (mode 600 required)${describeQmdListener(url, env)} — fix: start the qmd server once so it creates the file, or set QMD_HTTP_AUTH_FILE to the qmd server's token file` };
+      : `the qmd server on ${url} answered HTTP ${code}: it requires a bearer token and none is readable at ${tokenFile} (mode 600 required)${describeQmdListener(url, env)} — fix: start the qmd server once so it creates the file, or set QMD_HTTP_AUTH_FILE to the qmd server's token file` };
   }
   if (!body) return { actual: 'degraded', detail: `a process on ${url} returned no usable initialize reply (curl rc=${r.status}, HTTP ${code || 'unknown'}) — vec search is not being served` };
   const data =body.split(/\r?\n/).filter((l) => /^data:/.test(l)).map((l) => l.replace(/^data:\s*/, ''))[0];
@@ -3686,7 +3686,7 @@ const POLLER_SWEEP_PATTERN = 'poller.ts';
 function posixPollerVerdict(n, source) {
   if (n === 1) return { actual: 'present', detail: `1 poller.ts process running for this checkout (${source}; a supervisor parent, if any, is not counted)` };
   if (n === 0) return { actual: 'absent', detail: `0 poller.ts process(es) running for this checkout (${source}; expected exactly 1)` };
-  return { actual: 'degraded', detail: `${n} poller.ts processes running for this checkout (${source}; expected exactly 1 — duplicate pollers, HIMMEL-1555 class)` };
+  return { actual: 'degraded', detail: `${n} poller.ts processes running for this checkout (${source}; expected exactly 1 — duplicate pollers)` };
 }
 
 function probeBridgePollerCountPosix(ctx) {
@@ -3762,7 +3762,7 @@ function probeBridgePollerCountPosix(ctx) {
             return { actual: 'degraded', detail: `could not run the system-wide pgrep sweep for telegram-bridge.service: ${sweep.error.message} — process identity is UNVERIFIED, not assumed healthy` };
           }
           if (sweep.pids === null) {
-            return { actual: 'degraded', detail: 'no pgrep on PATH to run the system-wide sweep for telegram-bridge.service (HIMMEL-1555 class) — process identity is UNVERIFIED, not assumed healthy' };
+            return { actual: 'degraded', detail: 'no pgrep on PATH to run the system-wide sweep for telegram-bridge.service — process identity is UNVERIFIED, not assumed healthy' };
           }
           sweep.pids.forEach((pid) => verifiedPids.add(pid));
           if (sweep.excludedNotes) treeExcludedNotes.push(...sweep.excludedNotes);
@@ -3801,7 +3801,7 @@ function probeBridgePollerCount(ctx) {
   if (platform === 'linux' || platform === 'darwin') return probeBridgePollerCountPosix(ctx);
   return {
     actual: 'degraded',
-    detail: `poller-count check not implemented on '${platform}' — Linux/macOS only today (HIMMEL-2176/HIMMEL-2890); process identity is UNVERIFIED here, not assumed healthy`,
+    detail: `poller-count check not implemented on '${platform}' — Linux/macOS only today; process identity is UNVERIFIED here, not assumed healthy`,
   };
 }
 
@@ -4015,7 +4015,7 @@ function probeBridgePersistence(item, ctx) {
 
   return {
     actual: 'degraded',
-    detail: `bridge-persistence check not implemented on '${platform}' — launchd/macOS persistence is Stage 2 (HIMMEL-2176, A12); persistence is UNVERIFIED here, not assumed healthy (bridge.enabled=true)`,
+    detail: `bridge-persistence check not implemented on '${platform}' — launchd/macOS persistence is Stage 2 (A12); persistence is UNVERIFIED here, not assumed healthy (bridge.enabled=true)`,
   };
 }
 

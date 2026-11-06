@@ -56,7 +56,7 @@ set -euo pipefail
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
-. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # HIMMEL-2350: shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
+. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
 wizard="$repo_root/scripts/himmelctl/bin.js"
 lint="$repo_root/scripts/install/manifest-lint.mjs"
 [ -f "$wizard" ] || { echo "FAIL: $wizard not found" >&2; exit 1; }
@@ -385,8 +385,8 @@ set -e
 [ -f "$gWt/uninstall-calls.log" ] \
   || fail "caseG: an explicit --yes accept should invoke uninstall.sh (out: $out)"
 grepq "$out" -i 'WARN' \
-  && fail "caseG (HIMMEL-2459): running from himmel's OWN checkout must NOT WARN on its own git-tracked project-scope settings.json (got: $out)"
-echo "ok: caseG self-checkout project-scope residue -> no false WARN (HIMMEL-2459)"
+  && fail "caseG: running from himmel's OWN checkout must NOT WARN on its own git-tracked project-scope settings.json (got: $out)"
+echo "ok: caseG self-checkout project-scope residue -> no false WARN"
 
 # ── Case H (REQUIRED control 3): even from himmel's own
 # checkout (same git-worktree-identity trick as case G), a genuine
@@ -414,8 +414,8 @@ out=$(PATH="$cH" HOME="$hH" USERPROFILE="$(winpath "$hH")" HIMMELCTL_CACHE_DIR="
 set -e
 [ "$rc" -eq 0 ] || fail "caseH: accept should exit 0 even with a residue WARN (got rc=$rc): $out"
 grepq "$out" -E 'WARN.*fixture-owned \(present, user\)' \
-  || fail "caseH (HIMMEL-2459 control 3): a genuine user-scope leftover must still WARN even when run from himmel's own checkout (got: $out)"
-echo "ok: caseH self-checkout + genuine user-scope residue -> still WARNs (HIMMEL-2459 control 3)"
+  || fail "caseH (control 3): a genuine user-scope leftover must still WARN even when run from himmel's own checkout (got: $out)"
+echo "ok: caseH self-checkout + genuine user-scope residue -> still WARNs"
 
 # ── Case I: sameFsEntry must reject a degenerate ino=0
 # comparison rather than reading it as a match. This cannot be driven from
@@ -450,8 +450,8 @@ NODEEOF
 )
 out=$(printf '%s' "$iCase" | "$node_bin" - "$wizard" 2>&1); rc=$?
 if [ "$rc" -ne 0 ] || [ "$out" != "ok" ]; then
-  fail "caseI (HIMMEL-2501): sameFsEntry degenerate-inode guard failed (rc=$rc): $out"
+  fail "caseI: sameFsEntry degenerate-inode guard failed (rc=$rc): $out"
 fi
-echo "ok: caseI — sameFsEntry rejects ino=0 while still matching real identity (HIMMEL-2501)"
+echo "ok: caseI — sameFsEntry rejects ino=0 while still matching real identity"
 
 echo "PASS"

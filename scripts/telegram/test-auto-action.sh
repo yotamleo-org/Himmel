@@ -45,7 +45,7 @@ EOF
 
 # A design doc under specs/ — must NOT be a resolution candidate.
 cat > "$HANDOVER_DIR/yotam/himmel/specs/design/2026-06-20-himmel-888-design.md" <<'EOF'
-# HIMMEL-888 design
+# design notes
 not a resume target
 EOF
 

@@ -18,7 +18,7 @@ function freshProgram(): Command {
   return p;
 }
 
-describe('get labels (HIMMEL-3610)', () => {
+describe('get labels', () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -114,7 +114,7 @@ describe('get labels (HIMMEL-3610)', () => {
   });
 });
 
-describe('get fix versions (HIMMEL-3713)', () => {
+describe('get fix versions', () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {

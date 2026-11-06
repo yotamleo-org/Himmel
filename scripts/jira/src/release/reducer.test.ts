@@ -52,7 +52,7 @@ function input(over: Partial<ReduceInput> & { rulingRows?: RulingRow[]; opRows?:
   };
 }
 
-describe('release reducer (HIMMEL-6796)', () => {
+describe('release reducer', () => {
   it('a baseline key starts in with a baseline obligation', () => {
     const s = reduce(input({}));
     expect(recordOf(s, 'K-1', 'v1')).toMatchObject({ placement: 'in', obligation: 'baseline', ruling: 'baseline-v1-g1' });
@@ -218,7 +218,7 @@ describe('release reducer (HIMMEL-6796)', () => {
     expect(r.leaks.unauthorized).toEqual(['K-5@v1']);
   });
 
-  it('a Closed key in the Done status category is terminal Done, and a fold makes it bookkeeping (HIMMEL-7158)', () => {
+  it('a Closed key in the Done status category is terminal Done, and a fold makes it bookkeeping', () => {
     const fold: EventRow = { ts: TS, kind: 'fold', key: 'K-5', from: null, to: 'v1', pr: 12 };
     const issueList = [closed('K-1', ['v1']), closed('K-5', ['v1'], null)];
     const s = reduce(input({ eventRows: [fold], issueList, mirrorSync: '2026-10-21T12:00:00.000Z' }));
@@ -228,7 +228,7 @@ describe('release reducer (HIMMEL-6796)', () => {
     expect(s.leaks.unauthorized).toEqual([]);
   });
 
-  it('a Closed key with a resolution outside empty, Done and Fixed is terminal but never folds (HIMMEL-7158)', () => {
+  it('a Closed key with a resolution outside empty, Done and Fixed is terminal but never folds', () => {
     const fold: EventRow = { ts: TS, kind: 'fold', key: 'K-5', from: null, to: 'v1', pr: 12 };
     for (const resolution of ['Cannot Reproduce', 'Obsolete', 'Never Seen Before']) {
       const issueList = [issue('K-1', ['v1']), closed('K-5', ['v1'], resolution)];
@@ -238,12 +238,12 @@ describe('release reducer (HIMMEL-6796)', () => {
     }
   });
 
-  it('a Done-status key resolved outside empty, Done and Fixed is terminal Other, never Done (HIMMEL-7158)', () => {
+  it('a Done-status key resolved outside empty, Done and Fixed is terminal Other, never Done', () => {
     const s = reduce(input({ issueList: [issue('K-1', ['v1']), issue('K-5', ['v1'], 'Done', { resolution: 'Cannot Reproduce' })] }));
     expect(recordOf(s, 'K-5', 'v1')?.terminal).toBe('Other');
   });
 
-  it('a Closed key resolved Won\'t Do or Duplicate keeps its own terminal and never folds (HIMMEL-7158)', () => {
+  it('a Closed key resolved Won\'t Do or Duplicate keeps its own terminal and never folds', () => {
     const issueList = [issue('K-1', ['v1']), closed('K-5', ['v1'], "Won't Do"), closed('K-6', ['v1'], 'Duplicate')];
     const s = reduce(input({ issueList }));
     expect(recordOf(s, 'K-5', 'v1')?.terminal).toBe("Won't Do");
@@ -259,7 +259,7 @@ describe('release reducer (HIMMEL-6796)', () => {
   });
 });
 
-describe('admission rows clear unauthorized (HIMMEL-8724 S1)', () => {
+describe('admission rows clear unauthorized', () => {
   const adm = (key: string, version: string, kind?: Admission['kind'], extra: Partial<Admission> = {}): Admission =>
     ({ ts: TS, version, key, actor: 'someone', ...(kind ? { kind } : {}), ...extra });
   const members = [issue('K-1', ['v1']), issue('K-2', ['v1']), issue('K-3', ['v1']), issue('K-4', ['v1'])];

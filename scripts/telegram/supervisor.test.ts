@@ -102,7 +102,7 @@ test("an intentional /restart of a HEALTHY poller never walks toward the breaker
   expect(breakerTrips(fails, MAX)).toBe(false);
 });
 
-test("resolveMaxFails rejects values that would DISABLE or hair-trigger the breaker (HIMMEL-1272 CR)", () => {
+test("resolveMaxFails rejects values that would DISABLE or hair-trigger the breaker", () => {
   // NaN is the dangerous one: `fails >= NaN` is always false, so a garbage value
   // would silently disable the breaker and let a crash-looping poller spin forever.
   // "9007199254740993" parses to a valid integer ABOVE MAX_SAFE_INTEGER — a

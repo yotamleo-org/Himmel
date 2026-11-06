@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createTeardown } from './teardown.js';
 
-describe('createTeardown (HIMMEL-4642)', () => {
+describe('createTeardown', () => {
   it('closes every tracked issue and archives every tracked version', () => {
     const closed: string[] = [];
     const archived: string[] = [];

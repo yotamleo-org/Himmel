@@ -278,7 +278,7 @@ export function checkRoundGuard(
   if (rounds < ROUND_WARN_THRESHOLD) return {};
   const override = (args.roundsOverride ?? "").trim();
   if (override.length >= ROUNDS_OVERRIDE_MIN_CHARS) {
-    return { note: `${lane}: round guard OVERRIDE (HIMMEL-1553): ${ticket} is on review round ${rounds + 1} (${rounds} consecutive blocking reviews) — cheap-lane dispatch proceeding on recorded operator authority: "${override}"` };
+    return { note: `${lane}: round guard OVERRIDE: ${ticket} is on review round ${rounds + 1} (${rounds} consecutive blocking reviews) — cheap-lane dispatch proceeding on recorded operator authority: "${override}"` };
   }
   if (rounds >= ROUND_ESCALATE_THRESHOLD) {
     // the Agent-tool hook chokepoint (lane "agent-dispatch") has
@@ -299,18 +299,18 @@ export function checkRoundGuard(
         ];
     return {
       refusal: [
-        `${lane}: REFUSED (round guard, HIMMEL-1553): ${ticket} already has ${rounds} consecutive blocking reviews on the ticket (heads: ${heads.join(", ")}) — buying another cheap-lane round is the failure mode itself, not a fix for it.`,
-        `Evidence class (HIMMEL-1540): four rounds of competent workers with increasingly detailed briefs each fixed the symptom and exposed the next seam; what broke the loop was a JUDGMENT-TIER pass given the abstraction as the task. At this round the thing that must change is the model, not the brief.`,
+        `${lane}: REFUSED (round guard): ${ticket} already has ${rounds} consecutive blocking reviews on the ticket (heads: ${heads.join(", ")}) — buying another cheap-lane round is the failure mode itself, not a fix for it.`,
+        `Evidence class: four rounds of competent workers with increasingly detailed briefs each fixed the symptom and exposed the next seam; what broke the loop was a JUDGMENT-TIER pass given the abstraction as the task. At this round the thing that must change is the model, not the brief.`,
         ...permittedPaths,
       ].join("\n"),
     };
   }
   if (hasSubstantiveInvariant(args.task)) {
-    return { note: `${lane}: round guard (HIMMEL-1553): ${ticket} is on review round ${rounds + 1} (${rounds} consecutive blocking reviews in the CR ledger) — INVARIANT section present, dispatching. At ${ROUND_ESCALATE_THRESHOLD} consecutive blocking reviews a cheap-lane dispatch will be refused outright.` };
+    return { note: `${lane}: round guard: ${ticket} is on review round ${rounds + 1} (${rounds} consecutive blocking reviews in the CR ledger) — INVARIANT section present, dispatching. At ${ROUND_ESCALATE_THRESHOLD} consecutive blocking reviews a cheap-lane dispatch will be refused outright.` };
   }
   return {
     refusal: [
-      `${lane}: REFUSED (round guard, HIMMEL-1553): ${ticket} already has ${rounds} consecutive blocking reviews on the ticket (heads: ${heads.join(", ")}) and this brief names no invariant.`,
+      `${lane}: REFUSED (round guard): ${ticket} already has ${rounds} consecutive blocking reviews on the ticket (heads: ${heads.join(", ")}) and this brief names no invariant.`,
       `A second failed review is the second drift (CLAUDE.md: escalate to structural on the second): each round's brief so far describes the previous defect, the worker fixes exactly that, and the next seam surfaces. Do NOT re-describe the newest defect.`,
       `Re-dispatch with a line-delimited section in the brief:`,
       `INVARIANT:`,

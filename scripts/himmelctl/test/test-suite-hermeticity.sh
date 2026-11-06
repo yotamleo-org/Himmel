@@ -1110,7 +1110,7 @@ noLocalOut=$(check_no_local_winpath "$REAL_TEST_DIR" 2>&1); noLocalRc=$?
 set -e
 [ "$noLocalRc" -eq 0 ] \
   || fail "case g(real)(b): $REAL_TEST_DIR has a suite still defining its own winpath() -- consolidation incomplete: $noLocalOut"
-echo "ok: case g(real)(b) — no scripts/himmelctl/test/*.sh defines its own winpath() any more (the HIMMEL-2350 34-copies-to-one consolidation held)"
+echo "ok: case g(real)(b) — no scripts/himmelctl/test/*.sh defines its own winpath() any more (the 34-copies-to-one consolidation held)"
 
 # case g(real)(c): OFF BY DEFAULT (opt in via HERMETICITY_REAL_CANARY=1).
 # This file is itself discovered and run by scripts/ci/run-shell-tests.sh

@@ -75,7 +75,7 @@ export const BASH_BIN = resolveBash();
 // can never answer an interactive editor or prompt. Any tool that falls back to
 // $EDITOR (git commit without -m, gh pr create without --body, ...) would open a
 // window on the operator's desktop and then block forever behind it — a focus
-// steal that also contaminates the LUNA-131 focus soak. Pinning every editor
+// steal that also contaminates the focus soak. Pinning every editor
 // hook to the no-op `true` turns that silent hang into a fast, loud failure.
 // DEFENCE-IN-DEPTH, not a confirmed root cause: gh detects a non-interactive
 // context and errors ("must provide --title and --body ... when not running
@@ -91,7 +91,7 @@ export const NON_INTERACTIVE_EDITOR_ENV: Record<string, string> = {
   GH_PROMPT_DISABLED: "1",
 };
 
-// extraEnv (LUNA-101): per-route child-env additions, merged LAST so the
+// extraEnv: per-route child-env additions, merged LAST so the
 // TELEGRAM_OWN_POLLER strip can never remove a marker. This is the only channel
 // by which a route reaches the child env — the env is built here, not in the poller.
 export function sessionEnv(extraEnv?: Record<string, string>): Record<string, string | undefined> {
@@ -126,7 +126,7 @@ export function sessionEnv(extraEnv?: Record<string, string>): Record<string, st
 // medical PHI-egress floor — load), but the Jira-CLI path stays anchored on
 // `cwd` (the himmel repo root) because `dist/` only exists there. The "running
 // in" line reports the actual spawn cwd.
-// `cwdRouted` (LUNA-101): this session spawns in a CODE REPO (access.json `cwd`),
+// `cwdRouted`: this session spawns in a CODE REPO (access.json `cwd`),
 // not a vault. Attachments are read and summarized in-reply, never filed —
 // a code repo has no _CLAUDE.md filing conventions. The flag wins over `vault`
 // so an inherited defaultVault cannot re-attach the filing clause.

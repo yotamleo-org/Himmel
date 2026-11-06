@@ -19,7 +19,7 @@ function fieldReply(path: string): unknown {
   return undefined;
 }
 
-describe('Sector field (HIMMEL-5710)', () => {
+describe('Sector field', () => {
   let mockRequest: ReturnType<typeof vi.fn>;
   let logs: string[];
   let realHome: string | undefined;
@@ -268,6 +268,7 @@ describe('Sector field (HIMMEL-5710)', () => {
       return p;
     }
 
+    const k = (n: number) => `HIMMEL-${n}`;
     // current: key -> sector label | null ; failPut: keys whose PUT throws
     function jira(current: Record<string, string | null>, failPut: string[] = []): void {
       const state = { ...current };
@@ -292,7 +293,7 @@ describe('Sector field (HIMMEL-5710)', () => {
     }
 
     it('prints one result TSV row per input row: set, unchanged, failed', async () => {
-      jira({ 'HIMMEL-1': null, 'HIMMEL-2': 'Visibility', 'HIMMEL-3': null }, ['HIMMEL-3']);
+      jira({ [k(1)]: null, [k(2)]: 'Visibility', [k(3)]: null }, [k(3)]);
       await run(tsv('HIMMEL-1\tShip loop\nHIMMEL-2\tvisibility\nHIMMEL-3\tDeployment\n'));
       expect(logs).toEqual([
         'HIMMEL-1\tShip loop\tset',
@@ -303,7 +304,7 @@ describe('Sector field (HIMMEL-5710)', () => {
     });
 
     it('does not abort on a bad row (unknown sector, bad key, 404) and still processes the rest', async () => {
-      jira({ 'HIMMEL-1': null, 'HIMMEL-9': null });
+      jira({ [k(1)]: null, [k(9)]: null });
       await run(tsv('HIMMEL-5\tBogus\nnot-a-key\tShip loop\nHIMMEL-404\tShip loop\nHIMMEL-1\tShip loop\n'));
       expect(logs[0]).toMatch(/^HIMMEL-5\tBogus\tfailed\tUnknown sector/);
       expect(logs[1]).toMatch(/^not-a-key\tShip loop\tfailed\t/);
@@ -312,7 +313,7 @@ describe('Sector field (HIMMEL-5710)', () => {
     });
 
     it('is idempotent: a second run over the same file only reports unchanged and PUTs nothing', async () => {
-      jira({ 'HIMMEL-1': null });
+      jira({ [k(1)]: null });
       const f = tsv('HIMMEL-1\tShip loop\n');
       await run(f);
       mockRequest.mockClear();
@@ -324,7 +325,7 @@ describe('Sector field (HIMMEL-5710)', () => {
     });
 
     it('fails a row that does not have exactly two columns, without touching Jira', async () => {
-      jira({ 'HIMMEL-1': null, 'HIMMEL-2': null });
+      jira({ [k(1)]: null, [k(2)]: null });
       await run(tsv('HIMMEL-1\tShip loop\textra\nHIMMEL-2\n'));
       expect(logs[0]).toMatch(/^HIMMEL-1\tShip loop\tfailed\texpected 2 columns/);
       expect(logs[1]).toMatch(/^HIMMEL-2\t\tfailed\texpected 2 columns/);
@@ -332,7 +333,7 @@ describe('Sector field (HIMMEL-5710)', () => {
     });
 
     it('skips a header row, blank lines and CRLF endings', async () => {
-      jira({ 'HIMMEL-1': null });
+      jira({ [k(1)]: null });
       await run(tsv('key\tsector\r\n\r\nHIMMEL-1\tShip loop\r\n'));
       expect(logs).toEqual(['HIMMEL-1\tShip loop\tset']);
     });

@@ -193,7 +193,7 @@ function withEnv<T>(patch: Record<string, string | undefined>, fn: () => T): T {
   }
 }
 
-test("HIMMEL-2241: suite marker + no override -> quarantined, default untouched", () => {
+test("suite marker + no override -> quarantined, default untouched", () => {
   const home = join(tmp, "home");
   const scratchTmp = join(tmp, "tmpdir");
   withEnv(
@@ -204,7 +204,7 @@ test("HIMMEL-2241: suite marker + no override -> quarantined, default untouched"
   expect(existsSync(join(home, ".himmel", "flow-runs.jsonl"))).toBe(false);
 });
 
-test("HIMMEL-2241: NO suite marker -> the default path still wins (a genuine non-suite flow is untouched)", () => {
+test("NO suite marker -> the default path still wins (a genuine non-suite flow is untouched)", () => {
   const home = join(tmp, "home2");
   const scratchTmp = join(tmp, "tmpdir2");
   withEnv(
@@ -215,7 +215,7 @@ test("HIMMEL-2241: NO suite marker -> the default path still wins (a genuine non
   expect(existsSync(join(scratchTmp, "flow-runs-unredirected.jsonl"))).toBe(false);
 });
 
-test("HIMMEL-2241: an explicit redirect wins over the quarantine, env or argument", () => {
+test("an explicit redirect wins over the quarantine, env or argument", () => {
   const scratchTmp = join(tmp, "tmpdir3");
   const envLedger = join(tmp, "env-ledger.jsonl");
   withEnv(

@@ -58,7 +58,7 @@ test("isGroupAllowed: a non-empty per-group allowFrom restricts senders (fork Gr
 
 test("isGroupAllowed: empty/missing per-group allowFrom admits any member; requireMention is out of scope here", () => {
   // isGroupAllowed answers "is this sender/chat admitted at all" — requireMention
-  // (LUNA-158) is a separate @mention-only gate honored by poller.ts
+  // is a separate @mention-only gate honored by poller.ts
   // handleInbound via requireMentionForChat below, not by this predicate.
   expect(isGroupAllowed({ groups: { "-50": { allowFrom: [] } } }, -50, 999)).toBe(true);
   expect(isGroupAllowed({ groups: { "-50": { requireMention: true } } }, -50, 999)).toBe(true);
@@ -73,7 +73,7 @@ test("isGroupAllowed: empty/missing per-group allowFrom admits any member; requi
 
 const OPTED_IN = { allowFrom: ["1000000001"], groups: { "-1009999999": { trustAnonymousAdmins: true } } };
 
-test("isOperatorIdentity: the anonymous-admin id is operator in an opted-in group (HIMMEL-1358)", () => {
+test("isOperatorIdentity: the anonymous-admin id is operator in an opted-in group", () => {
   expect(isOperatorIdentity(OPTED_IN, 1000000001, -1009999999)).toBe(true);              // named post
   expect(isOperatorIdentity(OPTED_IN, GROUP_ANONYMOUS_BOT_ID, -1009999999)).toBe(true);  // anonymous post
   expect(isOperatorIdentity(OPTED_IN, "1087968824", "-1009999999")).toBe(true);          // string ids too
@@ -83,7 +83,7 @@ test("isOperatorIdentity: the anonymous-admin id is operator in an opted-in grou
 // EVERY admin of the chat, so allow-listing a group (which only means "ingest
 // this chat") must NOT by itself promote its admins to operator. The opt-in is
 // what says that out loud, per group.
-test("isOperatorIdentity: allow-listing alone does NOT trust anonymous admins (HIMMEL-1358)", () => {
+test("isOperatorIdentity: allow-listing alone does NOT trust anonymous admins", () => {
   const noOptIn = { allowFrom: ["1000000001"], groups: { "-1009999999": {} } };
   expect(isOperatorIdentity(noOptIn, GROUP_ANONYMOUS_BOT_ID, -1009999999)).toBe(false);
   expect(isOperatorIdentity(noOptIn, 1000000001, -1009999999)).toBe(true);   // named post is unaffected
@@ -96,7 +96,7 @@ test("isOperatorIdentity: allow-listing alone does NOT trust anonymous admins (H
 // represent". Where it is supplied it must BE the destination chat, so the floor
 // no longer rests on inferring that 1087968824 here means an admin of here.
 // Absent is permitted on purpose — see the note on isOperatorIdentity.
-test("isOperatorIdentity: a mismatched sender_chat is refused; matching and absent pass (HIMMEL-1358)", () => {
+test("isOperatorIdentity: a mismatched sender_chat is refused; matching and absent pass", () => {
   expect(isOperatorIdentity(OPTED_IN, GROUP_ANONYMOUS_BOT_ID, -1009999999, -1009999999)).toBe(true);   // matches
   expect(isOperatorIdentity(OPTED_IN, GROUP_ANONYMOUS_BOT_ID, -1009999999, "-1009999999")).toBe(true); // string form
   expect(isOperatorIdentity(OPTED_IN, GROUP_ANONYMOUS_BOT_ID, -1009999999, -777)).toBe(false);         // some OTHER chat
@@ -106,7 +106,7 @@ test("isOperatorIdentity: a mismatched sender_chat is refused; matching and abse
   expect(isOperatorIdentity(OPTED_IN, 1000000001, -1009999999, -777)).toBe(true);
 });
 
-test("isOperatorIdentity: the anonymous-admin id is NOT operator outside its opted-in group (HIMMEL-1358)", () => {
+test("isOperatorIdentity: the anonymous-admin id is NOT operator outside its opted-in group", () => {
   expect(isOperatorIdentity(OPTED_IN, GROUP_ANONYMOUS_BOT_ID, -50)).toBe(false);            // unlisted group
   expect(isOperatorIdentity(OPTED_IN, GROUP_ANONYMOUS_BOT_ID, 1087968824)).toBe(false);     // positive chat_id (DM)
   expect(isOperatorIdentity(OPTED_IN, 9, -1009999999)).toBe(false);                      // ordinary member
@@ -117,10 +117,10 @@ test("isOperatorIdentity: the anonymous-admin id is NOT operator outside its opt
 // a group keeps losing anonymous posts (they are rejected at INGEST by
 // makeAllow, before triage) unless 1087968824 is added to that allowFrom too —
 // is a real trap and is documented in README.md rather than papered over here.
-test("isOperatorIdentity: a per-group allowFrom that excludes the anon id keeps it out (HIMMEL-1358)", () => {
+test("isOperatorIdentity: a per-group allowFrom that excludes the anon id keeps it out", () => {
   const access = { allowFrom: ["5"], groups: { "-50": { allowFrom: ["9"], trustAnonymousAdmins: true } } };
   expect(isOperatorIdentity(access, GROUP_ANONYMOUS_BOT_ID, -50)).toBe(false);
-  expect(isOperatorIdentity(access, 9, -50)).toBe(false);   // per-group member is not the operator (HIMMEL-1296)
+  expect(isOperatorIdentity(access, 9, -50)).toBe(false);   // per-group member is not the operator
   expect(isOperatorIdentity(access, 5, -50)).toBe(true);    // global allowFrom identity still wins
   // ...and listing the anon id in that allowFrom is what admits it (the README's escape hatch)
   const listed = { allowFrom: ["5"], groups: { "-50": { allowFrom: ["9", "1087968824"], trustAnonymousAdmins: true } } };
@@ -135,7 +135,7 @@ test("isOperatorIdentity: a per-group allowFrom that excludes the anon id keeps 
 // guards (CodeRabbit CR). The id is not a person, so globally it means nothing —
 // and this misconfiguration is one indentation level away from the per-group
 // allowFrom entry the README now recommends.
-test("isOperatorIdentity: the anon id in the GLOBAL allowFrom grants nothing (HIMMEL-1358)", () => {
+test("isOperatorIdentity: the anon id in the GLOBAL allowFrom grants nothing", () => {
   const misconfigured = { allowFrom: ["1000000001", "1087968824"], groups: { "-50": {} } };
   expect(isOperatorIdentity(misconfigured, GROUP_ANONYMOUS_BOT_ID, -50)).toBe(false);        // no group opt-in
   expect(isOperatorIdentity(misconfigured, GROUP_ANONYMOUS_BOT_ID, 12345)).toBe(false);      // and not in a DM
@@ -148,7 +148,7 @@ test("isOperatorIdentity: the anon id in the GLOBAL allowFrom grants nothing (HI
   expect(isOperatorIdentity(misconfigured, 1000000001, -50)).toBe(true);
 });
 
-test("isOperatorIdentity: fails closed when no operator identity is configured (HIMMEL-1358)", () => {
+test("isOperatorIdentity: fails closed when no operator identity is configured", () => {
   expect(isOperatorIdentity({}, GROUP_ANONYMOUS_BOT_ID, -50)).toBe(false);
   expect(isOperatorIdentity({ groups: { "-50": { trustAnonymousAdmins: true } } }, GROUP_ANONYMOUS_BOT_ID, -50)).toBe(false);
   expect(isOperatorIdentity({ allowFrom: [], groups: { "-50": { trustAnonymousAdmins: true } } }, GROUP_ANONYMOUS_BOT_ID, -50)).toBe(false);
@@ -185,7 +185,7 @@ test("vaultForChat: null when no vault and no default (fails closed → file not
   expect(vaultForChat(undefined as any, -50)).toBeNull();
 });
 
-// cwdForChat (LUNA-101) — the repo a chat's session spawns in. Deliberately
+// cwdForChat — the repo a chat's session spawns in. Deliberately
 // NOT a mirror of vaultForChat: there is no defaultCwd, because a default
 // would route every chat (including DMs) into that repo.
 
@@ -237,7 +237,7 @@ test("cwdForChat: a malformed (non-string) cwd is refused at the boundary", () =
   expect(cwdForChat({ groups: { "-50": { cwd: { path: "/x" } as any } } }, -50)).toBeNull();
 });
 
-// requireMentionForChat (LUNA-158) — the per-group @mention-only opt-in.
+// requireMentionForChat — the per-group @mention-only opt-in.
 test("requireMentionForChat: true only for a group with requireMention:true", () => {
   const access = { groups: { "-5245475441": { requireMention: true }, "-50": {} } };
   expect(requireMentionForChat(access, -5245475441)).toBe(true);

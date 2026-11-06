@@ -473,7 +473,7 @@ describe('CLI option-value validation', () => {
   });
 });
 
-describe('makeJira names its writer (HIMMEL-8823 S3)', () => {
+describe('makeJira names its writer', () => {
   it('sync-versions names itself on the fix-version write, over an inherited variable', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'sync-writer-'));
     const before = { SYNC_OUT: process.env.SYNC_OUT, HIMMEL_VERSION_WRITER: process.env.HIMMEL_VERSION_WRITER };
