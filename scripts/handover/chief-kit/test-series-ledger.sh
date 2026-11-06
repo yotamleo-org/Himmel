@@ -82,6 +82,26 @@ for st in authoring committed published abandoned; do
     check "2: state $st accepted" "$rc" 0
 done
 
+# --- 2b. add-item records an item's own scope, do-not lines and commit text; set still refuses them -------
+S="$tmp/scope.json"
+sl create --ledger "$S" --sid sc --completes-ticket no --writer /docs/a.md >/dev/null 2>&1
+rc=0; sl add-item --ledger "$S" --key HIMMEL-A >/dev/null 2>&1 || rc=$?
+check "2b: an item added with none of the three options rc 0" "$rc" 0
+check "2b: ...records no scope, do_not or commit_text key (the row is as before)" "$(jget "$S" 'sorted(d["items"][0])')" "['branch', 'cut_from', 'key', 'publish_branch', 'published_head', 'state', 'wip', 'worktree', 'writes']"
+rc=0; sl add-item --ledger "$S" --key HIMMEL-B --scope x --do-not 'Do not touch scripts/x' --do-not 'Do not turn y on' --commit-text 'feat(y): [HIMMEL-B] y does it' >/dev/null 2>&1 || rc=$?
+check "2b: add-item --scope --do-not --commit-text rc 0" "$rc" 0
+check "2b: scope recorded" "$(jget "$S" 'd["items"][1]["scope"]')" x
+check "2b: each --do-not is one list entry, in order" "$(jget "$S" 'd["items"][1]["do_not"]')" "['Do not touch scripts/x', 'Do not turn y on']"
+check "2b: commit_text recorded" "$(jget "$S" 'd["items"][1]["commit_text"]')" 'feat(y): [HIMMEL-B] y does it'
+rc=0; sl add-item --ledger "$S" --key HIMMEL-C --scope=-dash >/dev/null 2>&1 || rc=$?
+check "2b: a scope that starts with a dash is taken with --scope=VALUE" "$rc.$(jget "$S" 'd["items"][2]["scope"]')" "0.-dash"
+before="$(cat "$S")"
+for f in scope do_not commit_text; do
+    rc=0; sl set --ledger "$S" --key HIMMEL-B "$f=y" >/dev/null 2>&1 || rc=$?
+    check "2b: set $f still refuses rc 2" "$rc" 2
+done
+check "2b: the set refusals leave the file byte-identical" "$(cat "$S")" "$before"
+
 # --- 3. set --------------------------------------------------------------
 rc=0; sl set --ledger "$L" --key HIMMEL-1 state=authoring worktree=/wt/1 wip=abc123 writes=x.js,y.js >/dev/null 2>&1 || rc=$?
 check "3: set item rc 0" "$rc" 0

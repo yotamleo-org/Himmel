@@ -10,13 +10,16 @@ USAGE
     series-ledger.py add-item --ledger P --key K [--branch B] [--worktree W] [--cut-from SHA] [--wip SHA]
                               [--writes a,b] [--state planned|authoring|committed|published|abandoned]
                               [--publish-branch B] [--published-head SHA]
-    series-ledger.py set      --ledger P [--key K] field=value ...     (item fields with --key, else top-level)
+                              [--scope TEXT] [--do-not TEXT]... [--commit-text TEXT]
+    series-ledger.py set     --ledger P [--key K] field=value ...     (item fields with --key, else top-level)
     series-ledger.py pass     --ledger P --from DOC --to DOC
     series-ledger.py find     --bucket B --doc DOC --manifest M      (reads <B>/series/*.json; takes no lock)
 
 Ledger fields: sid, completes_ticket, writer, grant, passes[{from,to,at}], items[{key, branch, worktree,
-cut_from, wip, writes[], state, publish_branch, published_head}]. `set` refuses sid, writer, passes and items
-(only `pass` moves the writer), the item key, any unknown field, and any state outside the five known ones.
+cut_from, wip, writes[], state, publish_branch, published_head, and when given scope, do_not[], commit_text}].
+`add-item` alone records scope, do_not and commit_text (the item's own instructions, which series-next.sh start prints);
+`set` refuses them, sid, writer, passes and items (only `pass` moves the writer), the item key, any unknown field,
+and any state outside the five known ones.
 
 Every write takes flock on <P>.lock, reads the ledger, changes it and replaces it by write-temp-then-rename, so
 a reader never sees a half-written file and two writers never lose an update. `read` takes no lock.
@@ -156,6 +159,13 @@ def cmd_add_item(a):
     row = {"key": a.key, "branch": a.branch, "worktree": a.worktree, "cut_from": a.cut_from, "wip": a.wip,
            "writes": [w for w in a.writes.split(",") if w], "state": state,
            "publish_branch": a.publish_branch, "published_head": a.published_head}
+    # the item's own instructions are recorded only when given, so a row without them is as it was
+    if a.scope:
+        row["scope"] = a.scope
+    if a.do_not:
+        row["do_not"] = a.do_not
+    if a.commit_text:
+        row["commit_text"] = a.commit_text
     with Locked(a.ledger):
         data = load(a.ledger)
         if find_item(data, a.key):
@@ -287,6 +297,9 @@ def build():
     s.add_argument("--state", default="planned")
     s.add_argument("--publish-branch", default="")
     s.add_argument("--published-head", default="")
+    s.add_argument("--scope", default="")
+    s.add_argument("--do-not", dest="do_not", action="append")
+    s.add_argument("--commit-text", default="")
     s = verb("set", cmd_set)
     s.add_argument("--key")
     s.add_argument("assignments", nargs="+")
