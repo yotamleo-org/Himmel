@@ -941,6 +941,41 @@ reset "In Progress"; owned "$K" LIVE '{"state":"live"}'; jl "$K" "In Progress"
 drift
 check "3b: an unheld ticket is not HELD-IN-WORK" "$(dcount HELD-IN-WORK)" 0
 
+# A ticket's labels and comments come from the local Jira mirror, not one live read per ticket
+# (the traced pass spent 37 s on them). A ticket the mirror lacks is still read live.
+mirrorfull() { # <KEY> <status> <labels json> [comment text] - a mirror file with labels and a Comments section
+    mkdir -p "$TICK_TRACKER_MIRROR_DIR"
+    printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "%s"\nlabels: %s\n---\n\n# %s: x\n\n## Description\n\nd\n\n## Comments\n\n### Someone — 2026-11-06T10:00:00.000+0100\n\n%s\n' \
+        "$1" "$2" "$3" "$1" "${4:-nothing}" > "$TICK_TRACKER_MIRROR_DIR/$1.md"
+}
+livereads() { grep -cE "^(get $K |comments $K)" "$STUB_LOG" || true; }
+rm -rf "$TICK_TRACKER_MIRROR_DIR"
+reset "In Progress"; jl "$K" "In Progress"; mirrorfull "$K" "In Progress" '["standing"]'
+drift
+check "9436: a standing label in the mirror means not UNOWNED" "$(dcount UNOWNED)" 0
+check "9436: and the standing label costs no live read" "$(livereads)" 0
+reset "In Progress"; jl "$K" "In Progress"; mirrorfull "$K" "In Progress" '["other"]'; printf 'standing\n' > "$FX/labels.$K"
+drift
+contains "9436: the mirror's labels decide, not a live read: another label is still UNOWNED" "$(drows UNOWNED)" "UNOWNED $K"
+reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr OPEN
+mirrorfull "$K" "In Review" '[]' "PR $XPR is open and parked"
+drift
+check "9436: an open cross-repo PR cited in the mirror's comments means not UNOWNED" "$(dcount UNOWNED)" 0
+check "9436: and the comments cost no live read" "$(livereads)" 0
+check "9436: the cross-repo PR is still read by its URL" "$(grep -c "^gh pr view $XPR --json state" "$STUB_LOG")" 1
+reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr OPEN
+mirrorfull "$K" "In Review" '[]' "no PR is cited here"
+drift
+contains "9436: a mirror whose comments cite no PR keeps UNOWNED" "$(drows UNOWNED)" "UNOWNED $K"
+reset "In Progress"; owned "$K" LIVE '{"state":"live"}'; jl "$K" "In Progress"; mirrorfull "$K" "In Progress" '["held"]'
+drift
+contains "9436: a held label in the mirror is HELD-IN-WORK" "$(drows HELD-IN-WORK)" "HELD-IN-WORK $K"
+check "9436: and the held label costs no live read" "$(livereads)" 0
+reset "In Progress"; owned "$K" LIVE '{"state":"live"}'; jl "$K" "In Progress"; printf 'held\n' > "$FX/labels.$K"
+drift
+contains "9436: a ticket the mirror lacks is still read live: HELD-IN-WORK" "$(drows HELD-IN-WORK)" "HELD-IN-WORK $K"
+rm -rf "$TICK_TRACKER_MIRROR_DIR"
+
 reset "To Do"; touch "$FX/pr-list.fail"
 drift
 contains "3b: an unreadable PR list is sdrift=unknown" "$(dlast)" "sdrift=unknown"
@@ -1253,7 +1288,7 @@ fr --mirror-fresh "$FR/m2"
 check "3c: a fresh mirror from the caller skips the mirror and versions steps" "$(frseq)" "sweep,tracker,drift,ksync"
 contains "3c: the render reads that mirror" "$(grep '^tracker ' "$FX/fr.log")" "--mirror-dir $FR/m2"
 
-for stage in mirror versions sweep:rc1 render drift:rc1; do
+for stage in mirror versions sweep:rc1 render; do
     fr_reset
     fr
     echo "page-before" > "$PAGE"
@@ -1282,19 +1317,25 @@ fr
 check "3c: an unparseable snapshot cause is FAILED:sweep:unknown" "$(frout)" "focus=FAILED:sweep:unknown"
 fr_reset; echo drift-unknown > "$FX/fr.fail"
 fr
-check "3c: an unknown drift pass with no reason is FAILED:drift:unknown" "$(frout)" "focus=FAILED:drift:unknown"
-check "3c: and the page is not published" "$([ -e "$PAGE" ] && echo set || echo none)" none
+contains "3c: an unknown drift pass with no reason is WARN:drift unknown" "$(frout)" "drift unknown"
+check "3c: and the page is still published" "$([ -e "$PAGE" ] && echo set || echo none)" set
+check "3c: and the state is ok, not FAILED" "$(fst status)" ok
 fr_reset; echo drift-budget > "$FX/fr.fail"
 fr
-check "3c: a drift pass cut off by its budget is FAILED:drift:budget" "$(frout)" "focus=FAILED:drift:budget"
+contains "3c: a drift pass cut off by its budget is WARN:drift budget" "$(frout)" "drift budget"
+check "3c: and the run exits 0" "$(frrc)" 0
 fr --status
-check "3c: and --status names the reason" "$(frout)" "focus=FAILED:drift:budget"
+contains "3c: and --status names the reason" "$(frout)" "drift budget"
 fr_reset; echo drift-gh > "$FX/fr.fail"
 fr
-check "3c: a drift pass that could not read the PRs is FAILED:drift:gh" "$(frout)" "focus=FAILED:drift:gh"
+contains "3c: a drift pass that could not read the PRs is WARN:drift gh" "$(frout)" "drift gh"
 fr_reset; echo drift-none > "$FX/fr.fail"
 fr
-check "3c: a drift pass with no sdrift line is FAILED:drift:no-sdrift" "$(frout)" "focus=FAILED:drift:no-sdrift"
+contains "3c: a drift pass with no sdrift line is WARN:drift no-sdrift" "$(frout)" "drift no-sdrift"
+fr_reset; echo drift > "$FX/fr.fail"
+fr
+contains "3c: a drift pass that exits 1 is WARN:drift rc1" "$(frout)" "drift rc1"
+check "3c: and the page is still published" "$([ -e "$PAGE" ] && echo set || echo none)" set
 fr_reset; echo 2 > "$FX/sweep.moved"
 fr
 check "3c: a sweep that moved a ticket re-reads the mirror before the render" "$(frseq)" "jira,jira,sweep,jira,tracker,drift,ksync"

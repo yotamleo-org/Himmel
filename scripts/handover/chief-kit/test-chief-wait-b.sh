@@ -932,6 +932,12 @@ check "(sw8b) and the status is read for the console doc" "focus --doc $SWDOC --
 echo $(( $(date +%s) - 1000 )) > "$I.wait.sweep"
 timeout 3 bash "$WAIT" "$I" --doc "$SWDOC" --workers "N1.md" > "$WORK/sw8c.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(sw8c) the same FAILED state does not wake twice" "124:" "$rc:$(cat "$WORK/sw8c.out")"
+printf 'focus=FAILED:drift:budget\n' > "$STUB/focus.out"; echo $(( $(date +%s) - 1000 )) > "$I.wait.sweep"
+timeout 3 bash "$WAIT" "$I" --doc "$SWDOC" --workers "N1.md" > "$WORK/sw8e.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(sw8e) the same failure under another stage name does not wake again" "124:" "$rc:$(cat "$WORK/sw8e.out")"
+printf 'focus=FAILED:timeout\n' > "$STUB/focus.out"; echo $(( $(date +%s) - 1000 )) > "$I.wait.sweep"
+timeout 3 bash "$WAIT" "$I" --doc "$SWDOC" --workers "N1.md" > "$WORK/sw8f.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(sw8f) a stage that flips between timeout and drift:budget wakes the chief once" "124:" "$rc:$(cat "$WORK/sw8f.out")"
 printf 'focus=ok\n' > "$STUB/focus.out"; echo $(( $(date +%s) - 1000 )) > "$I.wait.sweep"
 timeout 3 bash "$WAIT" "$I" --doc "$SWDOC" --workers "N1.md" > "$WORK/sw8d.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(sw8d) a focus back to ok clears the marker" "absent" "$([ -e "$I.wait.focus" ] && echo present || echo absent)"
