@@ -882,6 +882,19 @@ awk -v pre="${head_sha}:" '
     }
 ' "$work/import.lines" >> "$work/import-edges" || io_fail "indexing imports"
 
+# Whether git archive may rewrite a blob it unpacks (see grep_narrowed): a .gitattributes
+# at head naming an attribute that changes content, or one that is not a regular file.
+# git grep over a tree skips a symlink blob, but git archive reads it as attribute text,
+# so the modes are listed too.
+attr_slow=0
+grep_rc=0
+git grep -q -a -E 'working-tree-encoding|export-subst|filter=|crlf|(^|[[:space:]])ident([[:space:]]|$)' "$head_sha" -- ':(glob)**/.gitattributes' || grep_rc=$?
+[ "$grep_rc" -le 1 ] || io_fail "reading the attribute files"
+[ "$grep_rc" -ne 0 ] || attr_slow=1
+git ls-tree -r -z "$head_sha" > "$work/tree.modes" || io_fail "listing the tree modes"
+tr '\0' '\n' < "$work/tree.modes" | awk -F '\t' '{ n = split($2, p, "/") } p[n] == ".gitattributes" && $1 !~ /^100/' > "$work/attr.nonreg" || io_fail "finding the non-regular attribute files"
+[ ! -s "$work/attr.nonreg" ] || attr_slow=1
+
 select_changed() {
     cp "$1" "$work/changed" || io_fail "reading the queried paths"
     # Normal mode starts with fresh files; only batch calls reuse them.
@@ -967,23 +980,20 @@ grep_narrowed() {
     # it archives, and that tree is the PR's own head: working-tree-encoding=UTF-16LE on
     # a suite would hand the narrowing a copy holding no literal and drop the suite at
     # exit 0. So when any .gitattributes at head could rewrite content (an encoding,
-    # export-subst, ident, a filter, crlf), no candidate is unpacked: all take the
+    # export-subst, ident, a filter, crlf, or a file that is not a regular one: attr_slow,
+    # set once above), no candidate is unpacked: all take the
     # per-file path below, which reads the raw blob. A candidate the unpack lacks
     # (export-ignore), or holds as a symlink, takes that path too.
     # ponytail: a pattern hit in a comment of .gitattributes also takes the slow path;
     # an attribute set only in $GIT_DIR/info/attributes is the station's, not the PR's.
     # Upgrade path: git cat-file --batch if the slow path ever matters.
-    grep_rc=0
-    git grep -q -a -E 'working-tree-encoding|export-subst|filter=|crlf|(^|[[:space:]])ident([[:space:]]|$)' "$head_sha" -- ':(glob)**/.gitattributes' || grep_rc=$?
-    [ "$grep_rc" -le 1 ] || io_fail "reading the attribute files at ${head_sha} for ${what}"
-    attr_rc="$grep_rc"
     # The candidate list is "<head>:<path>" NUL entries: strip the prefix first.
     tr '\0' '\n' < "$work/narrow.cand" | sed "s/^${head_sha}://" | tr '\n' '\0' > "$work/narrow.rel" || io_fail "reading the ${what} candidates"
     : > "$work/narrow.reg" || io_fail "creating the ${what} candidate list"
     : > "$work/narrow.irr" || io_fail "creating the ${what} candidate list"
     rm -rf "$src"
     mkdir "$src" || io_fail "creating the ${what} scratch tree"
-    if [ "$attr_rc" -eq 0 ]; then
+    if [ "$attr_slow" -eq 1 ]; then
         cp "$work/narrow.rel" "$work/narrow.irr" || io_fail "recording the ${what} candidates"
     else
         # --literal-pathspecs: a name holding * ? [ is itself, not a glob. A failed batch

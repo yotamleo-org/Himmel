@@ -1113,6 +1113,8 @@ narrow.dirs|converting the walking the source closure scratch directory list
 importers|creating the importer list
 import-edges|creating the import index
 import.lines|reading the importer lines
+tree.modes|listing the tree modes
+attr.nonreg|finding the non-regular attribute files
 src.out|merging source-closure hits
 next|growing the source closure
 varsrc.raw|creating the variable-sourcer list
@@ -1376,6 +1378,18 @@ git -C "$FX" commit -q -m "fix: change clo-lib.sh and set an encoding attribute 
 range="$(git -C "$FX" rev-parse HEAD~1)..$(git -C "$FX" rev-parse HEAD)"
 out="$( cd "$FX" && bash "$IS" "$range" 2>"$SC/enc.err" )"; rc=$?
 if [ "$rc" -eq 0 ] && grepq "$out" '^scripts/test-enc\.sh$'; then pass "a suite the head marks working-tree-encoding=UTF-16LE is still listed"; else fail "encoding attribute narrowed the list: rc=$rc out=$out err=$(head -c 400 "$SC/enc.err")"; fi
+
+# The same attribute, in a .gitattributes committed as a symlink (mode 120000) whose
+# target text is the attribute line: `git grep` over a tree skips a symlink blob, but
+# git archive may still read it as attribute text.
+sym_blob="$(printf 'scripts/test-enc.sh working-tree-encoding=UTF-16LE' | git -C "$FX" hash-object -w --stdin)"
+lib_blob="$( { git -C "$FX" show HEAD:scripts/lib/clo-lib.sh; printf '# changed again\n'; } | git -C "$FX" hash-object -w --stdin)"
+git -C "$FX" update-index --cacheinfo "120000,$sym_blob,.gitattributes"
+git -C "$FX" update-index --cacheinfo "100644,$lib_blob,scripts/lib/clo-lib.sh"
+git -C "$FX" commit -q -m "fix: change clo-lib.sh again, the attribute file now a symlink"
+range="$(git -C "$FX" rev-parse HEAD~1)..$(git -C "$FX" rev-parse HEAD)"
+out="$( cd "$FX" && bash "$IS" "$range" 2>"$SC/enc.err" )"; rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" '^scripts/test-enc\.sh$'; then pass "a suite a symlinked .gitattributes marks working-tree-encoding=UTF-16LE is still listed"; else fail "symlinked attribute file narrowed the list: rc=$rc out=$out err=$(head -c 400 "$SC/enc.err")"; fi
 
 # --- 38. `SUITE <p> = CI` hands an untouched PR-CI suite on to CI -------------
 # A fresh repo with real copies of run-shell-tests.sh (its SKIP_LIST gains one
