@@ -1700,6 +1700,9 @@ def rival_message(repo, judge, path, key, branch):
     slug, rel = norm
     if slug != '_abs' and rel in exempt_set():
         return None
+    if len(escape(rel).encode('utf-8')) > MAX_NAME:
+        fault('path name over %d bytes' % MAX_NAME, rel, key)  # no row can exist for it: it passes, as claim_one lets it
+        return None
     row = os.path.join(slug_dir(repo, slug), escape(rel))
     st, fields = read_row(row)
     if st == 'gone':
@@ -1727,20 +1730,20 @@ def rival_message(repo, judge, path, key, branch):
 
 def retag_row(repo, rel, key, label, doc, pr):
     """Make the key's own row for rel the PR's: source pr (a claim stays claim), this PR, doc and label. Under the directory
-    lock; a row of another key or of another PR is left as it is."""
+    lock; a row of another key or of another PR is left as it is. -> False on a fault (the register could not be written)."""
     d, name = slug_dir(repo), escape(rel)
     target = os.path.join(d, name)
     lock = dir_lock(d)
     if lock is None:
         fault('register lock not free', rel, key)
-        return
+        return False
     try:
         st, f = read_row(target)
         if st != 'ok' or f[0] != key or f[4] not in ('', pr):
-            return
+            return True
         new = [key, label, doc, 'claim' if f[3] == 'claim' else 'pr', pr]
         if f == new:
-            return
+            return True
         _tmp_n[0] += 1
         tmp = os.path.join(d, '%sretag.%d.%d' % (TMP_PREFIX, os.getpid(), _tmp_n[0]))
         try:
@@ -1753,6 +1756,8 @@ def retag_row(repo, rel, key, label, doc, pr):
                 os.unlink(tmp)
             except OSError:
                 pass  # swallow-ok: the temp file never existed or is gone
+            return False
+        return True
     finally:
         dir_unlock(lock)
 
@@ -1824,6 +1829,7 @@ def op_narrow(a):
         return 2
     judge = Judge(repo, time.time() + CHECK_BUDGET)
     keep = set()
+    faulted = False  # a file the PR changes that could not be registered: nothing is freed, so no hold is lost to a fault
     for f in files:
         norm = normalize(repo, f)
         if norm is None or norm[0] == '_abs':
@@ -1832,10 +1838,10 @@ def op_narrow(a):
         keep.add(escape(rel))
         st, row = read_row(os.path.join(slug_dir(repo), escape(rel)))
         if st == 'ok' and row[0] == a.key:
-            retag_row(repo, rel, a.key, a.label, a.doc, a.pr)
+            faulted = not retag_row(repo, rel, a.key, a.label, a.doc, a.pr) or faulted
         else:
-            claim_one(repo, judge, rel, a.key, a.label, a.doc, 'pr', a.pr)
-    if not any(l.startswith(SERIES_LEAD) for l in text.splitlines()):
+            faulted = claim_one(repo, judge, rel, a.key, a.label, a.doc, 'pr', a.pr) == 'fault' or faulted
+    if not faulted and not any(l.startswith(SERIES_LEAD) for l in text.splitlines()):
         free_unchanged(repo, a.key, keep)
     return 0
 

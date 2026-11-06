@@ -812,6 +812,18 @@ assert_eq "second PR: exits 0" "0" "$rc_h10"
 assert_eq "second PR: the first PR's row stays" "$(trow "$H_KEY" N1 "$D1" pr 9)" "$(hrow scripts/a.sh)"
 assert_eq "second PR: its own file is its row" "$(trow "$H_KEY" N1 "$D1" pr 10)" "$(hrow scripts/c.sh)"
 
+echo "TEST: PR claim — a PR file that cannot be registered leaves the unchanged rows in place"
+hreset
+D1=$(hdoc HIMMEL-8801-w.md "scripts/a.sh scripts/c.sh")
+put_hrow scripts/c.sh "$H_KEY" N1 "$D1" brief ""
+long_name="scripts/$(printf '%0250d' 0).sh"
+hbranch feat/himmel-3031-h16 scripts/a.sh "$long_name"
+run_h >/dev/null 2>"$TMP_ROOT/h.err"; rc_h16=$?
+assert_eq "unregistrable file: the open exits 0" "0" "$rc_h16"
+assert_eq "unregistrable file: the registrable file is the PR's row" "$(trow "$H_KEY" N1 "$D1" pr 9)" "$(hrow scripts/a.sh)"
+assert_eq "unregistrable file: the unchanged seeded row is not freed" "$(trow "$H_KEY" N1 "$D1" brief '')" "$(hrow scripts/c.sh)"
+contains "unregistrable file: the line still names it" "$(ow_line)" "$long_name"
+
 echo "TEST: PR claim — a doc with a Series line frees nothing"
 hreset
 D1=$(hdoc HIMMEL-8801-w.md "scripts/a.sh scripts/c.sh" "> **Series:** s1 $TMP_ROOT/ledger.md - read it")
