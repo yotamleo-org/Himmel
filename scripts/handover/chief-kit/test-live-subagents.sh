@@ -165,6 +165,15 @@ handback rb3 2026-11-04T22:10:03.300Z
 fg_result toolu_SM3 2026-11-04T22:10:03.400Z
 rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
 check "resumed fg: own record newer than hand-back and result (running) -> rc 1" "$rc" "1"
+
+# a SendMessage to a running BACKGROUND child returns at once, so its result proves nothing
+reset_session
+launch bg1 toolu_BG1 background 2026-11-04T22:00:00.000Z
+send_use toolu_SMB bg1 2026-11-04T22:09:47.054Z
+child_runs bg1 2026-11-04T22:10:00.000Z
+fg_result toolu_SMB 2026-11-04T22:10:03.231Z
+rc=0; out=$(detect --session "$SID" 2>&1) || rc=$?
+check "background child: SendMessage tool_result newer than its last record does not clear it -> rc 1" "$rc" "1"
 reset_session
 
 # --- the wrap gate: chief.sh wrap ------------------------------------------

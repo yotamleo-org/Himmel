@@ -25,7 +25,8 @@
 #     SendMessage gets no task-notification: the parent gets an enqueue of an
 #     <agent-message from="<agent-id>"> hand-back and a tool_result for the
 #     SendMessage's own tool-use id, so both also count, the
-#     tool_result only for a SendMessage whose input.to is this agent id. A
+#     tool_result only for a foreground child and a SendMessage whose input.to
+#     is this agent id (a send to a running background child returns at once). A
 #     child counts as finished only when its newest completion record is no
 #     older than the newest record in its own transcript.
 # Rejected: the process tree (an in-process subagent is not a process; only the
@@ -114,7 +115,7 @@ EOF
                     | (contains("<task-id>" + $a + "</task-id>") or contains("<agent-message from=\"" + $a + "\">"))))
             or ($s == "foreground" and .type == "user"
                 and any(.message.content[]?; .type == "tool_result" and .tool_use_id == $t))
-            or (.type == "user"
+            or ($s == "foreground" and .type == "user"
                 and any(.message.content[]?; .type == "tool_result" and (.tool_use_id as $u | $sm | index($u))))
         ) | .timestamp // empty' 2>/dev/null | sort | tail -n 1)
     child_at=""
