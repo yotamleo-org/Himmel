@@ -1271,6 +1271,31 @@ change scripts/lib/clo-lib.sh
 out="$(run_is "$range")"
 if grepq "$out" '^scripts/test-export-ignored\.sh$' && grepq "$out" '^scripts/test-bulk-120\.sh$'; then pass "a suite git archive leaves out is listed beside the unpacked ones"; else fail "export-ignored suite not listed: $out"; fi
 
+# The import index reads the lines `git grep` prints, so a user's grep.* output settings
+# must not reach it. A Python and a JS importer of a changed module, each reached by a
+# suite that names only the importer, run once plain and once with a git shim that
+# turns grep.lineNumber and grep.column on (a mutation that drops the
+# overrides, or the importer parse, loses the suites).
+mkf scripts/lib/pymod.py 'X = 1'
+mkf scripts/pyuser.py 'import pymod'
+mkf scripts/test-pyuser.sh 'python3 "$d/pyuser.py"'
+mkf scripts/lib/jsmod.mjs 'export const X = 1;'
+mkf scripts/jsuser.mjs "import { X } from './lib/jsmod.mjs';"
+mkf scripts/test-jsuser.sh 'node "$d/jsuser.mjs"'
+git -C "$FX" add -A
+git -C "$FX" commit -q -m "chore: python and js importers"
+GRL="$SHIM4/grepcfg"
+mkdir -p "$GRL"
+printf '#!/usr/bin/env bash\nexec "%s" -c grep.lineNumber=true -c grep.column=true "$@"\n' "$REAL_GIT" > "$GRL/git"
+chmod +x "$GRL/git"
+for chg in scripts/lib/pymod.py:test-pyuser scripts/lib/jsmod.mjs:test-jsuser; do
+    change "${chg%%:*}"
+    out="$(run_is "$range")"
+    if grepq "$out" "^scripts/${chg##*:}\\.sh\$"; then pass "${chg%%:*}: the suite naming only its importer is listed"; else fail "import closure of ${chg%%:*}: $out"; fi
+    out="$( cd "$FX" && PATH="$GRL:$PATH" bash "$IS" "$range" 2>/dev/null )"
+    if grepq "$out" "^scripts/${chg##*:}\\.sh\$"; then pass "${chg%%:*}: still listed with grep.lineNumber and grep.column set"; else fail "import closure of ${chg%%:*} under grep.* settings: $out"; fi
+done
+
 # A root-level file whose name starts with `-` is a candidate like any other: the
 # batched grep must not read it as an option (a grep may exit 1, "no match", on that
 # usage error, which would drop the candidate without a word). It sources the changed

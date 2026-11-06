@@ -840,9 +840,11 @@ fi
 # NUL "<line>") and one awk indexes them: a git show + awk per importer file spawned
 # over a thousand processes on a wide diff. A file with no such line has no edge.
 # -a reads a file git calls binary as text. tr turns the NUL after the path into
-# \001, the one separator awk can hold.
+# \001, the one separator awk can hold. The -c overrides pin the output shape against a
+# user's grep.lineNumber / grep.column / color.grep, which would prefix or colour the
+# lines the awk reads (the edges would vanish at exit 0); -l never printed lines.
 grep_rc=0
-git grep -z -a -E '(^|[^A-Za-z0-9_])(import|from|require)([^A-Za-z0-9_]|$)' "$head_sha" -- \
+git -c grep.lineNumber=false -c grep.column=false -c color.grep=false grep -z -a -E '(^|[^A-Za-z0-9_])(import|from|require)([^A-Za-z0-9_]|$)' "$head_sha" -- \
     ':(glob)**/*.js' ':(glob)**/*.mjs' ':(glob)**/*.cjs' ':(glob)**/*.ts' ':(glob)**/*.py' > "$work/importers" || grep_rc=$?
 [ "$grep_rc" -le 1 ] || io_fail "listing importers"
 tr '\0' '\001' < "$work/importers" > "$work/import.lines" || io_fail "reading the importer lines"
@@ -978,8 +980,13 @@ grep_narrowed() {
     : > "$work/narrow.reg" || io_fail "creating the ${what} candidate list"
     : > "$work/narrow.irr" || io_fail "creating the ${what} candidate list"
     while IFS= read -r -d '' p; do
-        if [ -f "$src/$p" ] && [ ! -L "$src/$p" ]; then printf '%s\0' "$p" >&3; else printf '%s\0' "$p" >&4; fi
-    done < "$work/narrow.rel" 3> "$work/narrow.reg" 4> "$work/narrow.irr"
+        # A write that fails (a full disk) must not drop the candidate: it stops the run.
+        if [ -f "$src/$p" ] && [ ! -L "$src/$p" ]; then
+            printf '%s\0' "$p" >&3 || io_fail "recording a ${what} candidate"
+        else
+            printf '%s\0' "$p" >&4 || io_fail "recording a ${what} candidate"
+        fi
+    done < "$work/narrow.rel" 3> "$work/narrow.reg" 4> "$work/narrow.irr" || io_fail "splitting the ${what} candidates"
     # "<path>" NUL "<line>" for each matching line. -H: a lone file still names itself.
     # LC_ALL=C -a: byte-exact, and a line that is not valid UTF-8 is still text.
     : > "$work/narrow.lines" || io_fail "creating the ${what} candidate list"
@@ -987,7 +994,7 @@ grep_narrowed() {
         # xargs reports 123 for any batch that exited 1-125, and grep's 1 is "no match":
         # the wrapper turns rc 1 into success so that only a real error (rc 2) reaches it.
         # shellcheck disable=SC2016  # the child shell expands its own $0 $@
-        ( cd "$src" && LC_ALL=C xargs -0 sh -c 'grep -HaFZ -f "$0" -- "$@" || [ $? -eq 1 ]' "$lf" ) < "$work/narrow.reg" > "$work/narrow.lines" || io_fail "narrowing the candidates for ${what}"
+        ( cd "$src" && LC_ALL=C xargs -0 sh -c 'grep -HaF --null -f "$0" -- "$@" || [ $? -eq 1 ]' "$lf" ) < "$work/narrow.reg" > "$work/narrow.lines" || io_fail "narrowing the candidates for ${what}"
     fi
     # The NUL after the path becomes \001 (a byte awk can hold). LC_ALL=C: byte-exact
     # index/substr on a line that is not valid UTF-8.
