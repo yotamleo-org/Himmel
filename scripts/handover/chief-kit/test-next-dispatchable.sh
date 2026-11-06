@@ -1001,6 +1001,45 @@ f27="$(NEXT_DISPATCH_MIRROR="$M26" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" -
 lacks "held-paths: an explicit 'Writes: none named' worker is a real empty scope, not unknown" "$f27" "live workers unknown"
 lacks "held-paths: a path after 'replace grep -P in' is a write, not a read" "$f26" "HIMMEL-885	"
 
+# a worker whose PR is open has pr rows (holds.py narrow made them) and is still a seeded worker: the register, not the doc, says what it writes
+M="$M26"
+mk HIMMEL-9821 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a file the PR freed" "Edit scripts/nd-pr-freed.sh only."
+mk HIMMEL-9822 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a file inside a tree the worker's Writes names" "Edit scripts/nd-pr-tree/x.sh only."
+mk HIMMEL-9823 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a file a sync-prs-only worker's Writes names" "Edit scripts/nd-pr-ctrl.sh only."
+M="$M_SAVE"
+cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror26/HIMMEL.versions.tsv"
+PRD="$WORK/pr-docs"; mkdir -p "$PRD"
+printf '# worker\n\nno scope line here.\n' > "$PRD/HIMMEL-9810-N9810-nowrites.md"
+printf '# worker\n\n> **Writes:** scripts/nd-pr-kept.sh scripts/nd-pr-freed.sh\n' > "$PRD/HIMMEL-9811-N9811-freed.md"
+printf '# worker\n\n> **Writes:** scripts/nd-pr-tree/ scripts/nd-pr-kept2.sh\n' > "$PRD/HIMMEL-9812-N9812-tree.md"
+printf '# worker\n\n> **Writes:** scripts/nd-pr-ctrl.sh\n' > "$PRD/HIMMEL-9813-N9813-ctrl.md"
+printf '#!/usr/bin/env bash\necho OPEN\n' > "$WORK/holds-gh-open"; chmod +x "$WORK/holds-gh-open"
+seedpr() { # <key> <label> <doc> <path>...: a pr row with a PR number, the shape holds.py narrow --apply leaves for a worker whose PR is open
+    local k="$1" l="$2" d="$3"; shift 3
+    python3 -I "$HOLDS_PY" claim --key "$k" --label "$l" --doc "$d" --repo "$SUT_REPO" --source pr --pr 5 "$@" > /dev/null 2>&1 || fail "seedpr $k: holds.py claim failed"
+}
+run_pr() { # <doc> <label>: the dispatcher with that one live worker
+    printf '{"schema":1,"legs":[{"doc":"%s","label":"%s"}]}\n' "$1" "$2" > "$WORK/fleet-pr.json"
+    HOLDS_GH="$WORK/holds-gh-open" NEXT_DISPATCH_MIRROR="$M26" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --top 50 --workers-from "$WORK/fleet-pr.json" 2>"$WORK/fpr.err"
+}
+fresh_register
+seedpr HIMMEL-9810 N9810 "$PRD/HIMMEL-9810-N9810-nowrites.md" scripts/nd-pr-n.sh
+fpr1="$(run_pr "$PRD"/*-nowrites.md N9810)"
+lacks "pr-rows: a worker with only pr rows and no Writes line is not named as yielding no held paths" "$(cat "$WORK/fpr.err")" "yields no held paths"
+lacks "pr-rows: a worker with only pr rows and no Writes line does not make the live workers unknown" "$fpr1" "live workers unknown"
+fresh_register
+seedpr HIMMEL-9811 N9811 "$PRD/HIMMEL-9811-N9811-freed.md" scripts/nd-pr-kept.sh
+fpr2="$(run_pr "$PRD"/*-freed.md N9811)"
+has "pr-rows: a candidate on a file the PR freed is listed (the doc's Writes are not re-held)" "$fpr2" "HIMMEL-9821	"
+fresh_register
+seedpr HIMMEL-9812 N9812 "$PRD/HIMMEL-9812-N9812-tree.md" scripts/nd-pr-kept2.sh
+fpr3="$(run_pr "$PRD"/*-tree.md N9812)"
+has "pr-rows: a candidate inside a tree the doc's Writes names is listed (the tree is not re-held)" "$fpr3" "HIMMEL-9822	"
+fresh_register
+seedpr HIMMEL-9813 'branch:feat/nd-ctrl' "$PRD/HIMMEL-9813-N9813-ctrl.md" scripts/nd-pr-other.sh
+fpr4="$(run_pr "$PRD"/*-ctrl.md N9813)"
+lacks "pr-rows: control: a worker with only a sync-prs row (label branch:) is not seeded, so its doc's Writes still hold" "$fpr4" "HIMMEL-9823	"
+
 
 # --- a disposition per open ticket, live blocker re-check, rename registry, per-PR file reads, narrow write scope ---
 DD="$HERE/fixtures/dispatch-disposition"

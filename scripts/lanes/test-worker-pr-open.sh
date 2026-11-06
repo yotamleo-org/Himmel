@@ -723,6 +723,31 @@ age_file "$(hfile scripts/c.sh)"
 alive_h3b=$(HOLDS_GH="$TMP_ROOT/bin/gh-fail" python3 -I "$HOLDS_PY" alive --repo "$H_PRIMARY" scripts/c.sh 2>/dev/null)
 if [ "$alive_h3b" = alive ]; then fail "I12: a row whose holder's lock is not held does not read alive" "got $alive_h3b"; else pass "I12: a row whose holder's lock is not held does not read alive"; fi
 
+echo "TEST: PR claim — a row whose PR is CLOSED reads dead first, even with its holder's lock held (replaces the plan's CLOSED-stub I12 row)"
+hreset
+put_hrow scripts/a.sh "$H_RIVAL" rival "$DR" pr 55
+printf '#!/usr/bin/env bash\necho CLOSED\n' > "$TMP_ROOT/bin/gh-closed"
+chmod +x "$TMP_ROOT/bin/gh-closed"
+alive_closed=$(HOLDS_GH="$TMP_ROOT/bin/gh-closed" python3 -I "$HOLDS_PY" alive --repo "$H_PRIMARY" scripts/a.sh 2>/dev/null)
+if [ "$alive_closed" = alive ]; then fail "closed PR: the row does not read alive though its holder's lock is held" "got $alive_closed"; else pass "closed PR: the row does not read alive though its holder's lock is held"; fi
+alive_closed_c=$(HOLDS_GH="$TMP_ROOT/bin/gh-fail" python3 -I "$HOLDS_PY" alive --repo "$H_PRIMARY" scripts/a.sh 2>/dev/null)
+assert_eq "closed PR: control: the same row with a failing gh reads alive" "alive" "$alive_closed_c"
+
+echo "TEST: PR claim — a rival row that cannot be read or judged prints unavailable, never 'none'"
+hreset
+D1=$(hdoc HIMMEL-8801-w.md "scripts/a.sh")
+mkdir -p "$(dirname "$(hfile scripts/a.sh)")"
+printf 'garbage\n' > "$(hfile scripts/a.sh)"
+hbranch feat/himmel-3031-h5u scripts/a.sh
+run_h >/dev/null 2>"$TMP_ROOT/h.err"
+contains "unparseable rival row: the line is unavailable" "$(ow_line)" "outside-writes: unavailable ("
+hreset
+DRN=$(hdoc HIMMEL-9998-r.md "scripts/a.sh")
+put_hrow scripts/a.sh HIMMEL-9998 rival2 "$DRN" pr 55
+hbranch feat/himmel-3031-h5v scripts/a.sh
+run_h >/dev/null 2>"$TMP_ROOT/h.err"
+contains "unproven holder liveness (gh failing, no lock held): the line is unavailable" "$(ow_line)" "outside-writes: unavailable ("
+
 echo "TEST: PR claim — no hold doc opens the PR with 'unavailable (no hold key)' and publishes no row"
 hreset
 hbranch feat/himmel-3031-h5 scripts/a.sh

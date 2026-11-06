@@ -1575,8 +1575,8 @@ def pr_base(cwd):
 
 def pr_row_passes(fields, row, key, branch):
     """True for a pr row of another key that holds nothing against this branch: its own PR row (label branch:<branch>), or a
-    row sync-prs stopped freshening more than PR_STALE ago. A row with a doc is a worker's narrowed claim (narrow --apply),
-    which nothing freshens, so it never passes: only sync-prs rows (no doc) get the exception."""
+    row sync-prs stopped freshening more than PR_STALE ago. A row with a doc is a worker's narrowed claim (narrow --apply):
+    it holds while its holder is alive, whatever its age, so it never passes; only sync-prs rows (no doc) get the exception."""
     if fields[3] != 'pr' or fields[0] == key or fields[2]:
         return False
     try:
@@ -1711,7 +1711,7 @@ def rival_message(repo, judge, path, key, branch):
         return 'fault'
     if st == 'bad':
         fault('row unparseable, left in place', rel, key)
-        return None
+        return 'fault'
     if fields[0] == key or os.path.exists('%s.grant.%s' % (row, key)) or pr_row_passes(fields, row, key, branch):
         return None
     try:
@@ -1724,6 +1724,7 @@ def rival_message(repo, judge, path, key, branch):
         return refusal(rel, fields, key)
     if state == 'unknown':
         fault('holder liveness unproven', rel, key)
+        return 'fault'
     return None
 
 
