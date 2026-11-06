@@ -15,7 +15,7 @@
 #   11.   clean why-comment                                      -> exit 0
 #   12.   --staged and --range read real git state
 #   13.   the lint-job step of ci.yml, run against throwaway PR ranges, with the
-#         base copies and the bootstrap branch
+#         base copies and a base without the rule list
 #   14.   a .gitattributes -diff entry does not hide an added line (--staged, --range)
 #   15.   --range ignores unchanged output ids
 #   16.   a verbatim move (old path left as a symlink) adds no lines; an edited move is checked
@@ -42,7 +42,6 @@ GATE="$SELF_DIR/check-history-comments.sh"
 AWKF="$SELF_DIR/ticket-refs.awk"
 LIST="$SELF_DIR/ticket-ref-allow.tsv"
 ONESHOT="$SELF_DIR/../one-shot/check-ticket-refs.sh"
-PRE_S0="$SELF_DIR/fixtures/pre-s0-gate/check-history-comments.sh"
 
 PASS=0; FAIL=0
 pass() { PASS=$((PASS + 1)); echo "  PASS: $1"; }
@@ -210,10 +209,10 @@ printf 'echo a\n# ponytail: prefix only, upgrade tracked in %s-77\n' "$H" > "$S/
 git -C "$S" add -A; git -C "$S" commit -q -m ponytail
 step "$pr_base"
 if [ "$RC" -eq 1 ] && has "scripts/a.sh:2"; then pass "step: ponytail line citing a ticket is refused"; else fail "step ponytail -> rc=$RC: $OUT"; fi
-# (a) a base that predates the rule list is judged by its own gate alone
+# (a) a base that holds the gate but not the rule list is a red job
 B="$T/boot"; mkdir -p "$B/scripts/lint" "$B/tmp"; git -C "$B" init -q
 git -C "$B" config user.email t@t; git -C "$B" config user.name t
-cp "$PRE_S0" "$B/scripts/lint/check-history-comments.sh"
+cp "$GATE" "$B/scripts/lint/"
 printf 'echo a\n' > "$B/scripts/a.sh"
 git -C "$B" add -A; git -C "$B" commit -q -m base
 boot_base="$(git -C "$B" rev-parse HEAD)"
@@ -221,11 +220,11 @@ printf 'echo a\necho b\n' > "$B/scripts/a.sh"
 git -C "$B" add -A; git -C "$B" commit -q -m clean
 bstep() { OUT="$(cd "$B" && BASE_SHA="$1" RUNNER_TEMP="$B/tmp" bash "$STEP" 2>&1)"; RC=$?; }
 bstep "$boot_base"
-if [ "$RC" -eq 0 ] && has "bootstrap"; then pass "step: a base without the rule list runs the base gate alone and passes a clean PR"; else fail "step bootstrap clean -> rc=$RC: $OUT"; fi
+if [ "$RC" -ne 0 ] && has "cannot evaluate"; then pass "step: a base without the rule list is a red job, even for a clean PR"; else fail "step no-rule-list clean -> rc=$RC: $OUT"; fi
 printf 'echo a\necho b\n# %s-1234 added this guard\n' "$H" > "$B/scripts/a.sh"
 git -C "$B" add -A; git -C "$B" commit -q -m ticket
 bstep "$boot_base"
-if [ "$RC" -eq 1 ] && has "scripts/a.sh:3"; then pass "step: the bootstrap base gate still refuses a code comment"; else fail "step bootstrap ticket -> rc=$RC: $OUT"; fi
+if [ "$RC" -ne 0 ] && has "cannot evaluate"; then pass "step: a base without the rule list is a red job for a ticket comment too"; else fail "step no-rule-list ticket -> rc=$RC: $OUT"; fi
 # (b) a PR cannot widen the rule list that judges it
 P="$T/widen"; mkdir -p "$P/scripts/lint" "$P/docs" "$P/tmp"; git -C "$P" init -q
 git -C "$P" config user.email t@t; git -C "$P" config user.name t
