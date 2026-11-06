@@ -193,28 +193,85 @@ function workflowTab(model, ix, ui, stats) {
     + model.stages.map((st) => panel(model, ix, st, stats, open, hl)).join("");
 }
 
+// the "Answers:" callout under a panel title, and the charts of Frame 3: strokes and text take currentColor (the page's own
+// ink), so no colour is written here. A line through `vals`, scaled 0..max over the box (x0..x1, y0 top .. y1 base).
+const answers = (what) => `<p class="wf-purpose"><b>Answers:</b> ${what}</p>`;
+function linePoints(vals, x0, x1, y0, y1) {
+  const max = Math.max(...vals, 1);
+  return vals.map((v, i) => [(x0 + (i / (vals.length - 1)) * (x1 - x0)).toFixed(1), (y1 - (v / max) * (y1 - y0)).toFixed(1)]);
+}
+function sparkline(name, vals) {
+  const pts = linePoints(vals, 2, 94, 3, 19), last = pts[pts.length - 1];
+  return `<svg class="wf-sp" viewBox="0 0 96 22" width="96" height="22" fill="currentColor" role="img" aria-label="${esc(name)} entered per day: ${vals.join(", ")}"><polyline points="${pts.map((p) => p.join(",")).join(" ")}" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="${last[0]}" cy="${last[1]}" r="2.4" fill="currentColor"/></svg>`;
+}
+function trendChart(name, vals, days) {
+  const pts = linePoints(vals, 22, 212, 14, 66), max = Math.max(...vals, 1);
+  return `<svg class="wf-trend" viewBox="0 0 220 84" role="img" aria-label="${esc(name)} entered per day" fill="currentColor" font-size="9">`
+    + `<line x1="18" y1="66.5" x2="216" y2="66.5" stroke="currentColor" stroke-opacity=".3"/>`
+    + `<polyline points="${pts.map((p) => p.join(",")).join(" ")}" fill="none" stroke="currentColor" stroke-width="1.5"/>`
+    + pts.map((p, i) => `<circle cx="${p[0]}" cy="${p[1]}" r="2"/><text x="${p[0]}" y="80" text-anchor="middle">${Number(days[i].slice(8, 10))}</text>`).join("")
+    + `<text x="2" y="17">${max}</text><text x="2" y="66">0</text></svg>`;
+}
+// one phase's spread: a bar per bucket (share of the phase's changes, or branch count for Review), the slow tail drawn apart
+function histChart(p) {
+  const total = p.hist.reduce((s, b) => s + b.n, 0) || 1, rounds = p.unit === "rounds";
+  const vals = p.hist.map((b) => (rounds ? b.n : Math.round((b.n / total) * 1000) / 10)), max = Math.max(...vals, 1);
+  const step = 212 / p.hist.length;
+  return `<svg class="wf-ch" viewBox="0 0 220 86" role="img" aria-label="${esc(p.name)} spread" fill="currentColor" font-size="9">`
+    + p.hist.map((b, i) => {
+      const h = Math.max((vals[i] / max) * 52, 1), x = 7 + i * step, w = step - 4;
+      return `<rect class="wf-bar${i >= p.hiFrom ? " wf-hi" : ""}" x="${x.toFixed(1)}" y="${(68 - h).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}"/>`
+        + `<text x="${(x + w / 2).toFixed(1)}" y="81" text-anchor="middle">${esc(b.label)}</text><text x="${(x + w / 2).toFixed(1)}" y="${(65 - h).toFixed(1)}" text-anchor="middle">${vals[i]}</text>`;
+    }).join("")
+    + `<line x1="4" y1="68.5" x2="216" y2="68.5" stroke="currentColor" stroke-opacity=".3"/></svg>`;
+}
+const histCaption = (p) => p.unit === "rounds"
+  ? `<b>${esc(p.name)}</b>: branches by their highest round, n ${p.n}. Red: 3 or more rounds.`
+  : `<b>${esc(p.name)}</b>: % of ${p.n} changes by time. Red: from the bucket holding the 8-in-10 line (${esc(fmtValue(p.p80, p.unit))}), or from the second bucket when that line is under 10 min.`;
+
+// what each phase's entered-per-day count counts (Review counts branches by the last write of their round file, not tickets)
+const ENTERS = { build: "tickets that went live", review: "branches, by the day their review round was last written", check: "tickets whose first CI run started", merge: "tickets that merged" };
+
+// what the build can say about the ways back out of a phase: Review's 3-or-more-rounds share is recorded; the rest is not
+function waysBack(p, stats) {
+  const unrec = { start: "no source yet", plan: "designs redrawn: no source yet", assign: "dropped tickets, refused starts: not recorded", build: "refused commits: not recorded", check: "a required check red, judge NO-GO: not counted", merge: "refused merges: not recorded" };
+  if (p.id !== "review") return unrec[p.id] || "not recorded";
+  if (p.state !== "ok") return "3 or more review rounds: no data yet";
+  const t = stats.review.threeUp;
+  return `3 or more review rounds: ${t.merged + t.notMerged} of ${p.n} branches (${t.merged} merged)`;
+}
+
 function evalTab(model, stats) {
   const intro = `<p class="wf-tabq"><b>Eval tab:</b> phase statistics for monitoring the system. Every figure says in words what it counts.</p>`;
   if (!stats) return intro + `<p class="sub">loading…</p>`;
   if (stats.error) return intro + `<div class="nodata" role="alert">The phase numbers were not read: ${esc(stats.error)}</div>`;
   const day = (iso) => { const d = new Date(iso); return `${d.getUTCDate()} ${["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][d.getUTCMonth()]}`; };
   const n = (s) => Object.fromEntries(model.stages.map((x) => [x.id, x.n]))[s];
-  const cells = (p) => p.state === "nosource" ? Array(4).fill("no source yet")
-    : [p.unit === "rounds" ? `${p.n} branches` : String(p.n), fmtValue(p.median, p.unit), fmtValue(p.p80, p.unit), p.perDay.join(" · ")];
+  // a phase with no source has no per-day counts; one that read nothing has seven zeros, which would draw a flat line for "unknown":
+  // both the sparkline and the Trends chart are drawn only for a phase with counts
+  const counted = (p) => p.perDay.length === 7 && (p.state !== "nodata" || p.perDay.some((v) => v > 0));
+  const cells = (p) => p.state === "nosource" ? Array(4).fill(esc("no source yet"))
+    : [p.unit === "rounds" ? `${p.n} branches` : String(p.n), fmtValue(p.median, p.unit), fmtValue(p.p80, p.unit)].map(esc).concat(counted(p) ? sparkline(p.name, p.perDay) : esc("no data yet"));
+  const trended = stats.phases.filter(counted), spread = stats.phases.filter((p) => p.hist && p.hist.length);
   const name = (id) => (stats.phases.find((p) => p.id === id) || {}).name || id;
   const r = stats.review;
   return intro
     + `<p class="wf-win">Window: ${esc(day(stats.from))} 00:00 to ${esc(day(stats.to))} 00:00 UTC, 7 full days. A ticket counts in a phase when it enters the phase in the window.</p>`
-    + `<section class="box"><h2>Phase summary</h2><table class="wf-sum"><thead><tr><th>Phase</th><th>n</th><th>Median</th><th>8 in 10 under</th><th>Entered per day</th></tr></thead><tbody>`
-    + stats.phases.map((p) => `<tr><th>${n(p.id)} ${esc(p.name)}</th>${cells(p).map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")
-    + `</tbody></table><ul class="wf-list">${stats.phases.map((p) => `<li><b>${esc(p.name)}:</b> ${esc(p.counts)}.</li>`).join("")}</ul></section>`
-    + `<section class="box"><h2>Review: merged or not, by rounds</h2><table class="wf-rev"><thead><tr><th>Branches</th><th>Merged</th><th>Not merged</th><th>All</th></tr></thead><tbody>`
+    + `<section class="box"><h2>Phase summary</h2>${answers("for each phase, how many changes passed through it, how long the typical one took, and how often one went back. It is the first table the chief reads in a review of the system.")}<div class="wf-wrapx"><table class="wf-sum"><thead><tr><th>Phase</th><th>n</th><th>Median</th><th>8 in 10 under</th><th>Entered per day</th><th>Ways back</th></tr></thead><tbody>`
+    + stats.phases.map((p) => `<tr><th>${n(p.id)} ${esc(p.name)}</th>${cells(p).map((c) => `<td>${c}</td>`).join("")}<td>${esc(waysBack(p, stats))}</td></tr>`).join("")
+    + `</tbody></table></div><ul class="wf-list">${stats.phases.map((p) => `<li><b>${esc(p.name)}:</b> ${esc(p.counts)}.</li>`).join("")}</ul></section>`
+    + (spread.length || trended.length ? `<div class="wf-egrid">`
+      + (spread.length ? `<section class="box"><h2>Distributions</h2>${answers("is a phase's time tight, or does it have a long tail? It is for spotting a phase whose median looks fine while its slowest changes do not.")}<div class="wf-mult">${spread.map((p) => `<div>${histChart(p)}<p class="sub">${histCaption(p)}</p></div>`).join("")}</div>`
+        + `<p class="sub"><b>Start, Plan and design, Assign:</b> no source yet. Nothing records when an idea arrives, a ticket is picked, an estimate is made or a design is approved.</p></section>` : "")
+      + (trended.length ? `<section class="box"><h2>Trends</h2>${answers("how many changes entered each phase per day, and is that rising or falling? It is for seeing a slowdown before it turns into a backlog.")}<div class="wf-mult">${trended.map((p) => `<div>${trendChart(p.name, p.perDay, stats.days)}<p class="sub"><b>${esc(p.name)}</b>: ${esc(ENTERS[p.id] || "entering the phase")}, per day</p></div>`).join("")}</div></section>` : "")
+      + `</div>` : `<p class="sub">Distributions and Trends are not drawn: no phase read any change in this window.</p>`)
+    + `<section class="box"><h2>Cost per ticket</h2>${answers("what does one ticket cost, and how much of it is spent before the build starts? It is for estimating later tickets from tickets like them.")}<p class="wf-cost"><span class="wf-v wf-none">${esc(stats.cost.say)}</span> What one ticket costs, and how much of it is spent before the build starts, is not joined to the ticket yet.</p></section>`
+    + `<section class="box"><h2>Review: merged or not, by rounds</h2>${answers("do the branches that need many review rounds still get merged? It is for judging whether extra rounds are fixing changes or stalling them.")}<div class="wf-wrapx"><table class="wf-rev"><thead><tr><th>Branches</th><th>Merged</th><th>Not merged</th><th>All</th></tr></thead><tbody>`
     + [["3 or more rounds", r.threeUp], ["under 3 rounds", r.under]].map(([label, x]) => `<tr><th>${label}</th><td>${x.merged}</td><td>${x.notMerged}</td><td>${x.merged + x.notMerged}</td></tr>`).join("")
-    + `</tbody></table></section>`
-    + `<section class="box"><h2>Outliers</h2>${stats.outliers.length ? `<table class="wf-out"><thead><tr><th>Change</th><th>Phase</th><th>Time or rounds</th><th>vs the 8-in-10 line</th></tr></thead><tbody>`
+    + `</tbody></table></div></section>`
+    + `<section class="box"><h2>Outliers</h2>${answers("which changes took much longer than most, and in which phase? It is for the chief, deciding what to look into.")}${stats.outliers.length ? `<div class="wf-wrapx"><table class="wf-out"><thead><tr><th>Change</th><th>Phase</th><th>Time or rounds</th><th>vs the 8-in-10 line</th></tr></thead><tbody>`
       + stats.outliers.map((o) => { const p = statRow(stats, o.phase); return `<tr><th>${o.pr ? `PR ${esc(o.pr)}` : "a branch with no PR"}</th><td>${esc(name(o.phase))}</td><td>${esc(fmtValue(o.value, o.unit))}</td><td>${o.times} × ${esc(fmtValue(p && p.p80, o.unit))}</td></tr>`; }).join("")
-      + `</tbody></table><p class="sub">A ticket that was parked and resumed counts its wait, so the longest rows are often a pause, not slow work. An 8-in-10 line under 1 minute counts as 1 minute here.</p>` : `<p class="sub">No change was far outside its phase's 8-in-10 line.</p>`}</section>`
-    + `<section class="box"><h2>Cost per ticket</h2><p class="wf-cost"><span class="wf-v wf-none">${esc(stats.cost.say)}</span> What one ticket costs, and how much of it is spent before the build starts, is not joined to the ticket yet.</p></section>`;
+      + `</tbody></table></div><p class="sub">A ticket that was parked and resumed counts its wait, so the longest rows are often a pause, not slow work. An 8-in-10 line under 1 minute counts as 1 minute here.</p>` : `<p class="sub">No change was far outside its phase's 8-in-10 line.</p>`}</section>`;
 }
 
 // model: the parsed workflow model, null while loading, or { error }; ui: parseWorkflowRoute's answer;
