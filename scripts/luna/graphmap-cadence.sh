@@ -247,6 +247,10 @@ PUBLISH_FLOW_NAME="graph-publish-${PUBLISH_CORPUS_SLUG}"
 # shellcheck source=../lib/macos-fda-warning.sh
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/macos-fda-warning.sh"
+# llm_backend_api_account_ok: the one check for a named API account (A, B or C).
+# shellcheck source=../lib/llm-backend.sh
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/llm-backend.sh"
 
 # Off-peak defaults for the WEEKLY semantic workers (see the header for the
 # Sunday 13:00 / 13:20 local rationale).
@@ -330,6 +334,8 @@ PUBLISH_EVERY_HOURS=6
 PUBLISH_SEMANTIC=0
 SEMANTIC_ACTIVE=0
 WITH_LUNA_SEMANTIC=0
+# --api-account A|B|C: the account the luna semantic runner names (decision 525: never auto).
+API_ACCOUNT=""
 
 # Fixed per-corpus map identity (titles/slugs/tags).
 LUNA_TITLE="Graphify Luna Map"
@@ -442,7 +448,12 @@ Flags (arm only, except --dry-run and --luna-only):
                          (HIMMEL-GraphSemantic-Luna, every 2h): capped
                          claude-api semantic-update over the vault. Cron only.
                          Arms PAUSED: arm writes semantic-luna.paused; rm it
-                         to resume.
+                         to resume. Needs --api-account.
+  --api-account A|B|C    With --with-luna-semantic: the API account the luna
+                         semantic runner names (never auto, decision 525).
+                         arm --rewrite-armed keeps the account the runner was
+                         armed with, and refuses a runner armed with auto or
+                         none (re-arm it with --force --api-account).
 
 The two claude-api semantic runners above spend the station's own API key, so a
 station must opt in before either one renders the API lane: set
@@ -501,6 +512,8 @@ while [ $# -gt 0 ]; do
         --publish-semantic)      PUBLISH_SEMANTIC=1; shift ;;
         --semantic-active)       SEMANTIC_ACTIVE=1; shift ;;
         --with-luna-semantic)    WITH_LUNA_SEMANTIC=1; shift ;;
+        --api-account)           API_ACCOUNT="${2:-}"; shift 2 ;;
+        --api-account=*)         API_ACCOUNT="${1#--api-account=}"; shift ;;
         -h|--help)       usage; exit 0 ;;
         *)
             echo "ERR graphmap-cadence: unknown arg: $1" >&2
@@ -550,8 +563,12 @@ fi
 # adds, replaces or reschedules a crontab row contradicts it.
 if [ "$REWRITE_ARMED" -eq 1 ] && { [ "$FORCE" -eq 1 ] || [ "$AST_ONLY" -eq 1 ] || [ "$WITH_PUBLISH" -eq 1 ] \
         || [ "$PUBLISH_SEMANTIC" -eq 1 ] || [ "$WITH_LUNA_SEMANTIC" -eq 1 ] || [ "$SEMANTIC_ACTIVE" -eq 1 ] \
-        || [ "$PUBLISH_EVERY_SET" -eq 1 ]; }; then
-    echo "ERR graphmap-cadence: --rewrite-armed cannot combine with --force, --ast-only, --with-publish, --publish-semantic, --with-luna-semantic, --semantic-active or --publish-every-hours (it touches no crontab row)" >&2; exit 1
+        || [ "$PUBLISH_EVERY_SET" -eq 1 ] || [ -n "$API_ACCOUNT" ]; }; then
+    echo "ERR graphmap-cadence: --rewrite-armed cannot combine with --force, --ast-only, --with-publish, --publish-semantic, --with-luna-semantic, --semantic-active, --publish-every-hours or --api-account (it touches no crontab row; the account is read from the armed runner)" >&2; exit 1
+fi
+# The luna semantic runner spends an API account the operator names: auto is the himmel graph pass alone (decision 525).
+if [ "$WITH_LUNA_SEMANTIC" -eq 1 ] && ! llm_backend_api_account_ok "$API_ACCOUNT"; then
+    echo "ERR graphmap-cadence: --with-luna-semantic needs --api-account A, B or C (got '${API_ACCOUNT:-}'): the luna semantic worker never runs on auto (decision 525)" >&2; exit 2
 fi
 
 # The semantic pair's backend label must come from the INSTALLED runner's
@@ -1072,20 +1089,27 @@ publish_cron_payload() {
     printf 'if [ -e %s ]; then echo "[semantic paused: marker present]"; %s; else echo "[semantic active]"; HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api %s --semantic; fi' "$q_pause" "$base" "$base"
 }
 
+# The account an armed luna semantic runner names, read back from the runner file: the lane form
+# (HIMMEL_API_ACCOUNT=<acct>) or the skip form ("; api account <acct>]"). Empty when it names none.
+armed_luna_semantic_account() {
+    sed -n -e 's/.*HIMMEL_API_ACCOUNT=\([^ ]*\) .*/\1/p' -e 's/.*; api account \([^]]*\)\].*/\1/p' "$1" | head -n 1
+}
+
 # Luna semantic worker payload, POSIX form: semantic-update.sh on the live luna graph (GRAPHIFY_OUT, the same
 # out dir the luna AST worker writes), batch- and spend-capped, behind its own pause marker read at fire time.
 luna_semantic_cron_payload() {
-    local q_bash="$1" q_script="$2" q_corpus="$3" q_out_dir="${4:-}"
+    local q_bash="$1" q_script="$2" q_corpus="$3" q_out_dir="${4:-}" q_account="${5:-}"
     local q_pause base
-    # No opt-in: no lane, and semantic-update.sh (claude-api only) is never called.
+    # No opt-in: no lane, and semantic-update.sh (claude-api only) is never called. The skip line
+    # remembers the account, so a rewrite after the station opts in renders the same one.
     if ! semantic_api_opted_in; then
-        printf 'echo "[%s]"' "$SEMANTIC_API_SKIP_TEXT"
+        printf 'echo "[%s%s]"' "$SEMANTIC_API_SKIP_TEXT" "${q_account:+; api account $q_account}"
         return 0
     fi
     q_pause=$(printf '%q' "$BAT_DIR/$LUNA_SEMANTIC_PAUSE_MARKER")
     base=$(printf '%s %s --name luna --corpus-root %s --corpus-class luna-personal --backend claude-api --max-files %s --max-run-usd %s' \
         "$q_bash" "$q_script" "$q_corpus" "$LUNA_SEMANTIC_MAX_FILES" "$LUNA_SEMANTIC_RUN_USD")
-    local env_prefix='HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto' unset_out=''
+    local env_prefix="HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=$q_account" unset_out=''
     if [ -n "$q_out_dir" ]; then env_prefix="$env_prefix GRAPHIFY_OUT=$q_out_dir"; else unset_out='unset GRAPHIFY_OUT; '; fi
     printf 'if [ -e %s ]; then echo "[semantic paused: marker present]"; else %s%s %s; fi' "$q_pause" "$unset_out" "$env_prefix" "$base"
 }
@@ -1360,7 +1384,16 @@ cmd_arm() {
     # Publish task: himmel repo only (v1).
     payload_publish_himmel=$(publish_cron_payload "$q_bash" "$q_publish_script" "$q_himmel")
     # Luna semantic task: writes the same out dir the luna AST worker does.
-    payload_semantic_luna=$(luna_semantic_cron_payload "$q_bash" "$q_semantic_script" "$q_vault" "$q_out_dir_ast_luna")
+    # --rewrite-armed keeps the account the luna runner was armed with; a runner armed with auto or
+    # none cannot be rewritten (decision 525), and nothing is rewritten before that is known.
+    if [ "$REWRITE_ARMED" -eq 1 ] && [ -f "$CRON_RUNNER_SEMANTIC_LUNA" ]; then
+        API_ACCOUNT=$(armed_luna_semantic_account "$CRON_RUNNER_SEMANTIC_LUNA")
+        if ! llm_backend_api_account_ok "$API_ACCOUNT"; then
+            echo "ERR graphmap-cadence: $CRON_RUNNER_SEMANTIC_LUNA was armed with account '${API_ACCOUNT:-none}', not A, B or C (decision 525): re-arm it with arm --luna-only --with-luna-semantic --api-account A|B|C --force; nothing was rewritten" >&2
+            exit 2
+        fi
+    fi
+    payload_semantic_luna=$(luna_semantic_cron_payload "$q_bash" "$q_semantic_script" "$q_vault" "$q_out_dir_ast_luna" "$API_ACCOUNT")
     # A semantic runner asked for without the opt-in renders without the lane; say so once.
     if { [ "$PUBLISH_SEMANTIC" -eq 1 ] || [ "$WITH_LUNA_SEMANTIC" -eq 1 ]; } && ! semantic_api_opted_in; then
         note_semantic_api_off

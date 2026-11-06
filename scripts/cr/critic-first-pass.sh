@@ -579,7 +579,7 @@ case "$provider" in api) provider="claude-api" ;; subscription) provider="claude
 # bypassPermissions) in a scratch cwd, not hermes. rc 5 = SKIPPED: no key, lane
 # off, credit or bank exhausted -- a clean no-op the panel records as unavailable,
 # never a failed review. A gate that crashed instead (no bank verdict, no scratch
-# file, a reservation with no verdict) exits 1 behind a "claude critic BROKE" line.
+# file, a reservation with no verdict, a decision-525 policy refusal) exits 1 behind a "claude critic BROKE" line.
 _cfp_claude_effort() {
     _cce_e="${CR_CLAUDE_CRITIC_EFFORT:-}"
     if [ -z "$_cce_e" ] && command -v node >/dev/null 2>&1; then
@@ -633,13 +633,22 @@ _cfp_claude_invoke() {
             # only the launcher's own exit 2 is a refusal; the same line behind any other rc is a failure
             if [ "$_cc_rc" -eq 2 ] && grep -q '^claude-api: refused:' "$_cc_err" 2>/dev/null; then
                 _cc_why="$(grep -m1 '^claude-api: refused:' "$_cc_err" | sed 's/^claude-api: refused: //')"
+                # the launcher's decision-525 policy refusal (the marker line it writes for that class alone) means a caller
+                # regressed to auto: broke, never a decision. Keyed on the marker, never on the reason text.
+                _cc_policy=no
+                grep -q '^claude-api: policy refusal (decision 525)' "$_cc_err" 2>/dev/null && _cc_policy=yes
                 rm -rf "$_cc_dir"
                 # a gate that crashed (no scratch file, BANK-UNKNOWN from the bank gate or the reservation, a reservation with no string verdict) is broke, not a decision
-                case "$_cc_why" in
-                    'reservation refused: '*'"verdict":"SKIPPED-BANK"'*|'reservation refused: '*'"verdict":"HOLD"'*) _cc_decided=yes ;;
-                    'no scratch file'|'api bank gate said BANK-UNKNOWN'|'reservation refused: '*) _cc_decided=no ;;
-                    *) _cc_decided=yes ;;
-                esac
+                if [ "$_cc_policy" = yes ]; then
+                    _cc_why="decision-525 policy refusal: $_cc_why"
+                    _cc_decided=no
+                else
+                    case "$_cc_why" in
+                        'reservation refused: '*'"verdict":"SKIPPED-BANK"'*|'reservation refused: '*'"verdict":"HOLD"'*) _cc_decided=yes ;;
+                        'no scratch file'|'api bank gate said BANK-UNKNOWN'|'reservation refused: '*) _cc_decided=no ;;
+                        *) _cc_decided=yes ;;
+                    esac
+                fi
                 if [ "$_cc_decided" = no ]; then
                     echo "critic-first-pass.sh: claude critic BROKE ($_cc_why) — not a clean no-op" >&2
                     return 1
