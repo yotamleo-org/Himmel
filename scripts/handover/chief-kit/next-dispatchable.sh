@@ -17,7 +17,7 @@
 # natural order; none last), then priority, then key.
 #
 # Tiers (the first that applies; tier_of() in the script): 1 the operator pool
-# head: label ps3-blocker / must-v1.1.3, or a key on the ordered `priority:` line
+# head: label ps3-blocker / must-<earliest unreleased version>, or a key on the ordered `priority:` line
 # in --doc's `## Live state` (line order ranks within the tier, labelled-only
 # tickets after the listed ones; groups split by `|`; a token that is not a key,
 # like K1, is skipped; a key marked `(CLOUD)` is dropped from the output); 2 label
@@ -460,7 +460,7 @@ def read_priority_line(path):
     return order, cloud
 
 prio_order, prio_cloud = read_priority_line(os.environ.get('ND_DOC', ''))
-TIER1_LABELS = {'ps3-blocker', 'must-v1.1.3'}
+TIER1_LABELS = {'ps3-blocker'} | ({'must-' + first_ver} if first_ver else set())  # the must label of the earliest unreleased version only: another version's label never outranks current work
 TIER3_LABELS = {'security', 'data-integrity', 'data-loss'}
 
 def residual_depth(i):
