@@ -8,7 +8,7 @@ recovery layer.
 himmel enforces its workflow structurally (PreToolUse hooks, pre-commit /
 pre-push gates, an auto-mode classifier). When you hit one of those guardrails,
 the recovery rule has to be available **without** living in the always-on root
-`CLAUDE.md` — every line there is paid for in every session (HIMMEL-211). This
+`CLAUDE.md` — every line there is paid for in every session. This
 plugin holds that operational knowledge as a skill that loads only on the
 friction symptom, at zero always-on token cost.
 
@@ -27,19 +27,19 @@ Symptom index:
 
 - **Bash command hangs on a permission prompt then aborts** — the native
   matcher bails on `$var` / `$(…)` / backticks / compound operators. Prefer
-  literal single commands. (HIMMEL-203)
+  literal single commands.
 - **A Jira write fell through to the classifier and was denied** — a command
   *shape* problem, not a permission problem. Prefer the literal
   `node …/jira …` invocation; multi-line bodies via `--comment-file` /
-  `--desc-file`. (HIMMEL-205 / 209)
+  `--desc-file`.
 - **A pre-push gate failed on a missing attestation trailer** — put the trailer
   (`Platforms tested:` / `Security reviewed:`) in the **first** commit; never a
   reactive `git commit --amend` (HARD-blocked in auto-mode). If already pushed,
   add it to the PR body.
 
 **The one rule that overrides every workaround:** never reshape a command to
-dodge a guardrail. The guardrails are structural on purpose (HIMMEL-195:
-structural > instructional). If a write is still denied after applying the
+dodge a guardrail. The guardrails are structural on purpose (the rule is
+structural over instructional). If a write is still denied after applying the
 matching section, that denial is *correct* — defer to the operator, and prefer
 a structural fix (a new `auto-approve-safe-bash` case, a CLI flag) over a
 cleverer command.
@@ -93,7 +93,7 @@ red-teamed before it advances:
 
 **Gates are mode-driven.** `scripts/autonomy-mode.sh` reports `autonomous` when
 `HIMMEL_INITIATIVE` or `HIMMEL_INITIATIVE_AFK` is set to a non-falsy value
-(non-empty, not `0`/`false`/`off`/`no`; initiative mode, HIMMEL-425) — then the
+(non-empty, not `0`/`false`/`off`/`no`; initiative mode) — then the
 critics are the only gate and the pipeline auto-advances.
 Otherwise it reports `interactive` and minerva pauses for the operator after each
 critic-cleaned artifact.
@@ -101,13 +101,13 @@ critic-cleaned artifact.
 **Distribution:** ships in this plugin (skill + command + helper), so it installs
 system-wide and works in any repo, with no `superpowers` fork.
 
-**Skill-tool hook (HIMMEL-429).** A `PreToolUse` hook (`hooks/hooks.json`,
+**Skill-tool hook.** A `PreToolUse` hook (`hooks/hooks.json`,
 `matcher: "Skill"`) closes the no-`/minerva` bypass: when
 `lean-skills:brainstorming` or `lean-skills:writing-plans` is invoked by ANY
 path without going through `/minerva`, the hook injects a scoped directive so the
 critic loop still fires (spec-critic after brainstorming, plan-critic after
-writing-plans). It also routes `lean-skills:grilling` into minerva Stage 1a
-(HIMMEL-2039), so grill / stress-test / brainstorm all share one front door
+writing-plans). It also routes `lean-skills:grilling` into minerva Stage 1a,
+so grill / stress-test / brainstorm all share one front door
 without forking the upstream plugin. It is advisory context, not a permission change, and is
 **fail-open** — it never blocks a Skill call. Disable it with
 `MINERVA_HOOK_DISABLE=1` in the shell that launched Claude Code.
@@ -121,7 +121,7 @@ load limit — the first 200 lines or 25 KB, whichever comes first (content past
 it is silently dropped at load = partial recall). `scripts/memory/audit-memory-capture.sh
 --structure` reports where a store stands, and `scripts/memory/memory-snapshot.sh`
 (`take|verify|restore --expect`) backs every pass with a conflict-aware
-rollback. It encodes the by-hand HIMMEL-564 compaction as one pass:
+rollback. It encodes the by-hand compaction as one pass:
 
 1. **Mine** (READ-ONLY reader fan-out, single-writer rule) each topic file for
    its durable gotcha / decision vs ephemeral status.
@@ -133,7 +133,7 @@ rollback. It encodes the by-hand HIMMEL-564 compaction as one pass:
 4. **Slim** `MEMORY.md` to one-line `→ luna [[note]]` pointers (snapshot the
    store first), then **delete** the compounded topic files only after the gate passes.
 
-Lean-invoke, operator-run on demand (HIMMEL-177) — NOT an always-on hook: the
+Lean-invoke, operator-run on demand — NOT an always-on hook: the
 durable-vs-disposable classification, dedupe, and placement need judgement. The
 over-budget load warning is the natural cue. Documented pass:
 [`docs/luna/compounding.md` §"A second loop: auto-memory → vault"](../../../docs/luna/compounding.md#a-second-loop-auto-memory--vault).
@@ -145,14 +145,14 @@ invariant actually calls for (judgement/destructive → Fable; multi-step
 reasoning → Opus; well-specified implementation → Sonnet by default, or an
 explicit non-dormant lane; scoped research → Sonnet; bulk mechanical → Haiku,
 never spawns further), instead of leaving tier selection to per-dispatch
-judgement (HIMMEL-1829 — the gap `/afk-shift` left: it dispatches with
+judgement (the gap `/afk-shift` left: it dispatches with
 no model named at all).
 
 The refusal is a real mechanism, not prose: `scripts/lanes/fanout-plan.mjs`
 validates every item against the LIVE lane roster
 (`scripts/lanes/resolve.mjs --json`) and exits 1 — no plan emitted — on an
 unknown type, a lane absent from this machine's roster or marked dormant
-(HIMMEL-1967: impl routes to native Claude subagents only), a `bulk` item
+(implementation routes to native Claude subagents only), a `bulk` item
 asking to spawn further, or (the specific defect that produced the ticket) a
 `destructive: true` item routed to anything but `judgement`/Fable. The command
 shows the validated plan and confirms before dispatching, one `Agent` call per
@@ -161,16 +161,16 @@ block, the concurrency discipline, and the attestation-trailer requirement.
 
 ## ticket-standard — refuse a draft without Plan, DoD and named proof (`himmel-ops:ticket-standard`)
 
-Lean-invoke skill (HIMMEL-5702): `scripts/ticket-standard-check.sh --type <T> --draft <file>` refuses a Task, Story or Bug missing Impact, What, Why, Plan, DoD, Proof or Agent detail and parks the draft in an intake queue (never discarded); Epic, Subtask and a missing Sector only warn. It offers optional deterministic dash/quote normalization through `humanizer-facts.py --normalize <original> <candidate>` with advisory banned-word flags, never a model rewrite; `--rewrite <file>` checks literal facts before selecting a candidate. Skipped, unsafe or unavailable candidates keep the original; style never blocks filing. Tests: `bash marketplace/plugins/himmel-ops/scripts/test-ticket-standard-check.sh`.
+Lean-invoke skill: `scripts/ticket-standard-check.sh --type <T> --draft <file>` refuses a Task, Story or Bug missing Impact, What, Why, Plan, DoD, Proof or Agent detail and parks the draft in an intake queue (never discarded); Epic, Subtask and a missing Sector only warn. It offers optional deterministic dash/quote normalization through `humanizer-facts.py --normalize <original> <candidate>` with advisory banned-word flags, never a model rewrite; `--rewrite <file>` checks literal facts before selecting a candidate. Skipped, unsafe or unavailable candidates keep the original; style never blocks filing. Tests: `bash marketplace/plugins/himmel-ops/scripts/test-ticket-standard-check.sh`.
 
 ## release-manager — every placement into a release is a reasoned ruling (`himmel-ops:release-manager`)
 
-For the release-manager session only (HIMMEL-6796), armed from [`docs/handover/rm-brief-template.md`](../../../docs/handover/rm-brief-template.md). Thin procedures over `jira release`: claim the chief's requests, rule each with a sector, a ground and a reason, apply the ruling to Jira with a readback and a receipt comment, and report STATUS, BURN-DOWN and READY. No count gates (decision 104). Tests: `cd scripts/jira && npx vitest run src/release/ src/commands/release.test.ts`.
+For the release-manager session only, armed from [`docs/handover/rm-brief-template.md`](../../../docs/handover/rm-brief-template.md). Thin procedures over `jira release`: claim the chief's requests, rule each with a sector, a ground and a reason, apply the ruling to Jira with a readback and a receipt comment, and report STATUS, BURN-DOWN and READY. No count gates (decision 104). Tests: `cd scripts/jira && npx vitest run src/release/ src/commands/release.test.ts`.
 
 ## cloud-route — classify tickets for the cloud lane (`/cloud-route`)
 
 `/cloud-route HIMMEL-<n> ...` labels each ticket CLOUD-OK / LOCAL-NATIVE /
-HOOK-BYPASS / BLOCKED (HIMMEL-4262), writes `cloud-brief-HIMMEL-<n>.md` for each
+HOOK-BYPASS / BLOCKED, writes `cloud-brief-HIMMEL-<n>.md` for each
 CLOUD-OK one from [`docs/handover/cloud-brief-template.md`](../../../docs/handover/cloud-brief-template.md),
 and prints ONE operator launch line per brief. It never launches: `claude --cloud`
 needs a TTY and spends credit. A sibling of `/fanout`, not an extension: that is a
