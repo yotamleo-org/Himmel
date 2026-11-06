@@ -4214,8 +4214,13 @@ s17_clear
 # READY_CHECK_DEADLINE (whole seconds, default 150, 0 = none): argv unchanged; a stalled gh
 # read ends in a named FAIL, never a hang, and the override reaches the wrapper.
 reset_stubs
+# shellcheck source=scripts/lib/timeout-bin.sh
+. "$HERE/../../lib/timeout-bin.sh"  # the same GNU timeout (timeout or gtimeout) ready-check resolves
+REAL_TIMEOUT="$_TIMEOUT_BIN"
+if [ -z "$REAL_TIMEOUT" ]; then
+  echo "ok - deadline rows skipped: no GNU timeout on this host (ready-check runs without the deadline there)"
+else
 mkdir -p "$tmp/dl-bin"
-REAL_TIMEOUT="$(command -v timeout)"
 cat > "$tmp/dl-bin/timeout" <<STUB
 #!/usr/bin/env bash
 [ "\$1" = "--version" ] || echo "\$*" >> "$tmp/timeout.log"
@@ -4236,6 +4241,7 @@ check "deadline: 0 still passes" "$rc" "0"
 rc=0; out="$(READY_CHECK_DEADLINE=2 STUB_GH_STALL=30 run 2>&1)" || rc=$?
 check "deadline: a stalled gh read exits 1" "$rc" "1"
 contains "deadline: the FAIL line names the deadline and its variable" "$out" "READY-CHECK FAIL: no verdict within the 2 s deadline (READY_CHECK_DEADLINE)"
+fi
 reset_stubs
 
 echo "---"
