@@ -1,6 +1,6 @@
 import { join, dirname, basename, resolve } from "node:path";
-import { randomUUID } from "node:crypto";
-import { readdir, readFile, stat, mkdir, open, unlink, copyFile, rm } from "node:fs/promises";
+import { randomUUID, createHash } from "node:crypto";
+import { readdir, readFile, stat, mkdir, open, unlink, copyFile, rm, realpath } from "node:fs/promises";
 import { appendIfExists, atomicWrite, defaultRoot } from "./bus";
 import { loadAccess, operatorChatId } from "./gate";
 import { BASH_BIN } from "./run";
@@ -379,8 +379,85 @@ export async function speakOnSatellite(satellite: string, text: string, env: Rec
 export const MAX_SEND_BYTES = 50 * 1024 * 1024;
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-export function renderMarkdownHtml(md: string, title: string): string {
-  const body = Bun.markdown.html(md, { noHtmlBlocks: true, noHtmlSpans: true });   // raw HTML in the source is shown as text
+// A spec or plan page goes to the operator to be signed, so it goes only after its latest-round
+// spec critic and plan critic ended in a clean line AND quoted the sha256 of the exact bytes
+// being sent (operator decisions 700 and 701). The critic files sit beside the spec as
+// `<spec>.critic-spec-r<n>.md` / `<spec>.critic-plan-r<n>.md`; `critic-seal.sh` adds the
+// `CONTENT-SHA256 <sha> <path relative to the verdict file>` line above the verdict line.
+// A file is a signature page when it lives under `specs/{design,designs,plan,plans}/` or
+// `specs/HIMMEL-<n>/`, or any critic file names it; every other file sends as before.
+const CLEAN = { spec: "SPEC CLEAN", plan: "PLAN CLEAN" } as const;
+const SIGNATURE_DIRS = new Set(["design", "designs", "plan", "plans"]);
+const sha256 = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
+const lastLine = (text: string) => text.split("\n").map(l => l.trim()).filter(Boolean).at(-1) ?? "";
+const SEAL = /^CONTENT-SHA256 ([0-9a-f]{64}) (\S.*)$/m;
+
+const underSignaturePath = (p: string) => {
+  const parts = p.split("/");
+  return parts.some((d, i) => d === "specs" && i + 2 < parts.length && (SIGNATURE_DIRS.has(parts[i + 1]) || /^HIMMEL-\d+$/.test(parts[i + 1])));
+};
+
+type CriticFile = { path: string; round: number };
+async function latestCritics(spec: string): Promise<Record<"spec" | "plan", CriticFile | null>> {
+  const names = await readdir(dirname(spec)).catch(() => [] as string[]);
+  const out: Record<"spec" | "plan", CriticFile | null> = { spec: null, plan: null };
+  for (const n of names) {
+    const m = n.startsWith(basename(spec) + ".") ? /^\.critic-(spec|plan)-r(\d+)\.md$/.exec(n.slice(basename(spec).length)) : null;
+    if (!m) continue;
+    const kind = m[1] as "spec" | "plan"; const round = Number(m[2]);
+    if (!out[kind] || round > out[kind]!.round) out[kind] = { path: join(dirname(spec), n), round };
+  }
+  return out;
+}
+
+// The spec whose critic files govern `page`: the page itself, or the spec whose latest plan critic
+// is sealed to `page` (a plan page). null = nothing is filed for it.
+async function governingSpec(page: string): Promise<string | null> {
+  if ((await latestCritics(page)).spec || (await latestCritics(page)).plan) return page;
+  for (const n of await readdir(dirname(page)).catch(() => [] as string[])) {
+    const m = /^(.+)\.critic-plan-r\d+\.md$/.exec(n);
+    if (!m) continue;
+    const spec = join(dirname(page), m[1]);
+    const plan = (await latestCritics(spec)).plan;
+    const sealed = plan && SEAL.exec(await readFile(plan.path, "utf8").catch(() => ""));
+    if (sealed && await realpath(resolve(dirname(plan!.path), sealed[2])).catch(() => "") === page) return spec;
+  }
+  return null;
+}
+
+export type VerdictLine = { kind: "spec" | "plan"; round: number; file: string; verdict: string };
+
+// null = not a signature page (sends as before); throws, naming the verdict file, when the page may not be sent.
+export async function checkSignaturePage(abs: string): Promise<VerdictLine[] | null> {
+  const page = await realpath(abs).catch(() => abs);
+  const spec = await governingSpec(page);
+  if (!spec && ![abs, page].some(underSignaturePath)) return null;
+  const critics = await latestCritics(spec ?? page);
+  const verdicts: VerdictLine[] = [];
+  for (const kind of ["spec", "plan"] as const) {
+    const c = critics[kind];
+    if (!c) throw new Error(`${basename(spec ?? page)} is a spec or plan page and has no ${kind} critic file (${(spec ?? page)}.critic-${kind}-r<n>.md); run the ${kind} critic first`);
+    const text = await readFile(c.path, "utf8");
+    const last = lastLine(text);
+    if (last !== CLEAN[kind]) throw new Error(`${c.path}: the latest ${kind} critic ended '${last}', not '${CLEAN[kind]}'; the page is not sent`);
+    const sealed = SEAL.exec(text);
+    if (!sealed) throw new Error(`${c.path} has no CONTENT-SHA256 line, so it does not bind the bytes it read (chief-kit/critic-seal.sh adds it); the page is not sent`);
+    const bound = await realpath(resolve(dirname(c.path), sealed[2])).catch(() => null);
+    if (!bound) throw new Error(`${c.path}: the file it binds (${sealed[2]}) is missing; the page is not sent`);
+    if (sha256(await readFile(bound)) !== sealed[1]) throw new Error(`${c.path}: ${sealed[2]} changed since the ${kind} critic read it; re-run the critic`);
+    if (kind === "spec" && bound !== await realpath(spec ?? page)) throw new Error(`${c.path} binds ${sealed[2]}, not ${basename(spec ?? page)}`);
+    if (kind === "plan" && !spec) throw new Error(`${c.path}: no spec to bind`);
+    if (kind === "plan" && page !== (spec ?? page) && bound !== page) throw new Error(`${c.path} binds ${sealed[2]}, not ${basename(page)}`);
+    verdicts.push({ kind, round: c.round, file: basename(c.path), verdict: last });
+  }
+  return verdicts;
+}
+
+export function renderMarkdownHtml(md: string, title: string, verdicts?: VerdictLine[]): string {
+  const banner = verdicts?.length
+    ? `<p class="verdict">${verdicts.map(v => `<strong>${esc(v.verdict)}</strong> (round ${v.round}, <code>${esc(v.file)}</code>)`).join("<br>")}</p>\n`
+    : "";
+  const body = banner + Bun.markdown.html(md, { noHtmlBlocks: true, noHtmlSpans: true });   // raw HTML in the source is shown as text
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -399,12 +476,13 @@ export async function queueFile(root: string, chat: number, path: string, captio
   if (!st) throw new Error(`file not found: ${path}`);
   if (!st.isFile()) throw new Error(`not a regular file: ${path}`);
   if (st.size > MAX_SEND_BYTES) throw tooBig(st.size);
+  const verdicts = await checkSignaturePage(abs);   // throws (nothing queued) unless the latest critics passed these bytes
   // Every file is COPIED (or rendered) into <bridge root>/outgoing/<id>/: the poller ships only from there.
   const dir = join(root, "outgoing", randomUUID());
   await mkdir(dir, { recursive: true, mode: 0o700 });
   const isMd = /\.(md|markdown)$/i.test(abs);
   const send = join(dir, isMd ? `${basename(abs).replace(/\.(md|markdown)$/i, "")}.html` : basename(abs));
-  if (isMd) await Bun.write(send, renderMarkdownHtml(await readFile(abs, "utf8"), basename(abs)));
+  if (isMd) await Bun.write(send, renderMarkdownHtml(await readFile(abs, "utf8"), basename(abs), verdicts ?? undefined));
   else await copyFile(abs, send);
   const size = (await stat(send)).size;
   if (size > MAX_SEND_BYTES) { await rm(dir, { recursive: true, force: true }); throw tooBig(size); }
