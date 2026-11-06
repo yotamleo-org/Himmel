@@ -26,7 +26,7 @@ function boot(conf?: string, origin?: string) {
   }
   const argvFile = join(dir, "argv");
   writeFileSync(argvFile, "");
-  const s = startServer({
+  const s = startServer({ onIdle: () => {},
     port: 0, token: TOKEN, root, projectRoot: project,
     env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, STUB_ARGV: argvFile, STUB_STATE: state, HIMMEL_SECRETS_KEYRING: "off" },
   });

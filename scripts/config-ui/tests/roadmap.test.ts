@@ -512,7 +512,7 @@ test("kanban pages: an empty mirror shows the empty state, not a blank board", (
 test("GET /api/roadmap: token-gated, GET-only, served live from the mirror the env names", async () => {
   const s = station();
   const home = join(s.d, "home"); mkdirSync(home);
-  const srv = startServer({
+  const srv = startServer({ onIdle: () => {},
     port: 0, token: TOKEN, legsScript: join(s.d, "no-workers.sh"),
     env: { PATH: process.env.PATH, HOME: home, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000",
       HIMMEL_JIRA_MIRROR: s.mirror, HIMMEL_ROADMAP_PLAN_DIR: s.plan, HIMMEL_ROADMAP_DRIFT_LOG: s.drift },
@@ -539,7 +539,7 @@ test("GET /api/roadmap: the default payload has no ticket with no fixVersion; ?n
   writeFileSync(doc, "## Results\n- 04:00 BLOCKED — stuck on the loose ticket\n");
   const legs = join(s.d, "workers-8.sh");
   writeFileSync(legs, `#!/usr/bin/env bash\nprintf '%s' '${JSON.stringify({ manifest: join(s.d, "x.fleet.json"), workers: [{ doc, status: "BLOCKED" }] })}'\n`);
-  const srv = startServer({
+  const srv = startServer({ onIdle: () => {},
     port: 0, token: TOKEN, legsScript: legs,
     env: { PATH: process.env.PATH, HOME: home, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000",
       HIMMEL_JIRA_MIRROR: s.mirror, HIMMEL_ROADMAP_PLAN_DIR: s.plan, HIMMEL_ROADMAP_DRIFT_LOG: s.drift },
@@ -737,7 +737,7 @@ function twoMirrors() {
   return { d, home: join(d, "home"), root };
 }
 function serveBoard(home: string, extraEnv: Record<string, string> = {}, projects?: string[]) {
-  const srv = startServer({
+  const srv = startServer({ onIdle: () => {},
     port: 0, token: TOKEN, legsScript: join(home, "no-workers.sh"), ...(projects ? { projects } : {}),
     env: { PATH: process.env.PATH, HOME: home, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000", ...extraEnv },
   });

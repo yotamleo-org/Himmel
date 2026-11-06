@@ -32,7 +32,7 @@ function boot(page?: string) {
   mkdirSync(home); mkdirSync(root);
   const file = join(dir, "review-page.md");
   if (page !== undefined) writeFileSync(file, page);
-  const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root, REVIEW_PAGE_FILE: file } });
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root, REVIEW_PAGE_FILE: file } });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
   return s;
 }

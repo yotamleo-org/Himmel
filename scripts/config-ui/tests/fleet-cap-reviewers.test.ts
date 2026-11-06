@@ -45,7 +45,7 @@ afterEach(() => {
 });
 
 function boot(overrides: Record<string, string> = {}) {
-  const s = startServer({
+  const s = startServer({ onIdle: () => {},
     port: 0, token: TOKEN,
     env: { PATH: process.env.PATH, HOME: join(dir, "home"), HIMMEL_POLICY_FOLLOWS_HOME: "1", CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HIMMELCTL_REPO_ROOT: join(dir, "station"), CRITICS_BASE_JSON: base, CRITICS_LOCAL_JSON: local, ...overrides },
   });

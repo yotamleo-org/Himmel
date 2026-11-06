@@ -23,7 +23,7 @@ function boot(gh: string) {
     writeFileSync(join(bin, "gh"), gh === "fail" ? "#!/bin/sh\nexit 1\n" : `#!/bin/sh\necho ${gh.split(":")[1]}\n`);
     chmodSync(join(bin, "gh"), 0o755);
   }
-  const s = startServer({
+  const s = startServer({ onIdle: () => {},
     port: 0, token: TOKEN, root, projectRoot: project,
     env: { PATH: gh === "none" ? bin : `${bin}:/usr/bin:/bin`, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HIMMEL_SECRETS_KEYRING: "off" },
   });

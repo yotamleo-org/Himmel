@@ -48,7 +48,7 @@ function boot(o: { password?: string | null; noIdle?: boolean; legacy?: boolean;
   if (o.locked) env.KSTUB_LOCKED = "true";
   if (o.envLogin !== undefined) env[KEY] = o.envLogin;
   Object.assign(env, o.extra);
-  const s =startServer({ port: 0, token: TOKEN, root, projectRoot: project, noIdle: o.noIdle, now: () => t, env });
+  const s =startServer({ port: 0, token: TOKEN, root, projectRoot: project, noIdle: o.noIdle, onIdle: () => {}, now: () => t, env });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
   const base = `http://127.0.0.1:${s.port}`;
   const post = (path: string, body: unknown, headers: Record<string, string> = {}) => fetch(base + path, {

@@ -21,7 +21,7 @@ function boot(extra: Record<string, string> = {}, checkout?: string, project?: s
   const own = join(dir, "checkout"); // hermetic: no .env of the real checkout is read
   mkdirSync(home); mkdirSync(root); mkdirSync(own);
   for (const k of mirrors) mkdirSync(join(home, ".himmel", "state", "jira-mirror", k), { recursive: true }); // a write is only for a project on the Board
-  const s = startServer({
+  const s = startServer({ onIdle: () => {},
     port: 0, token: TOKEN, root: checkout ?? own, ...(project ? { projectRoot: project } : {}), ...(only ? { projects: only } : {}),
     env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_JIRA_CLI: JIRA, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root,
       STUB_JIRA_LOG: log, ...extra },

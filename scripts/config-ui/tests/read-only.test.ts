@@ -22,7 +22,7 @@ function boot(readOnly: boolean) {
   mkdirSync(join(dir, "station"));
   mkdirSync(join(dir, "handover"));
   writeFileSync(join(dir, "critics.json"), JSON.stringify(BASE, null, 2) + "\n");
-  const s = startServer({
+  const s = startServer({ onIdle: () => {},
     port: 0, token: TOKEN, ...(readOnly ? { readOnly: true } : {}),
     env: { PATH: process.env.PATH, HOME: join(dir, "home"), HIMMEL_POLICY_FOLLOWS_HOME: "1", CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: join(dir, "handover"),
       HIMMELCTL_REPO_ROOT: join(dir, "station"), CRITICS_BASE_JSON: join(dir, "critics.json"), CRITICS_LOCAL_JSON: join(dir, "critics.local.json") },

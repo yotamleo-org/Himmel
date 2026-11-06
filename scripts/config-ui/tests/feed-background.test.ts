@@ -20,7 +20,7 @@ function boot(env: Record<string, string>, x: Partial<ServerOpts> & Record<strin
   dirs.push(dir);
   mkdirSync(join(dir, "home"), { recursive: true });
   const count = join(dir, "count");
-  const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, HOME: join(dir, "home"), CONFIG_UI_IDLE_MS: "60000", CONFIG_UI_HIMMELCTL: STUB, STUB_FEED_COUNT: count, ...env }, ...x } as never);
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, env: { PATH: process.env.PATH, HOME: join(dir, "home"), CONFIG_UI_IDLE_MS: "60000", CONFIG_UI_HIMMELCTL: STUB, STUB_FEED_COUNT: count, ...env }, ...x } as never);
   stops.push(() => s.stop());
   const runs = () => { try { return readFileSync(count, "utf8").split("\n").filter(Boolean).length; } catch { return 0; } };
   return { port: s.port, runs, home: join(dir, "home") };
@@ -113,7 +113,7 @@ function bootRun(x: Record<string, unknown> = {}) {
   mkdirSync(repo);
   const argv = join(dir, "argv");
   writeFileSync(argv, "");
-  const s = startServer({ port: 0, token: TOKEN, root: repo, env: { PATH: process.env.PATH, HOME: home, CONFIG_UI_IDLE_MS: "60000",
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, root: repo, env: { PATH: process.env.PATH, HOME: home, CONFIG_UI_IDLE_MS: "60000",
     CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-recorder.js"), HIMMEL_REPORT_CADENCE_ROOT: cad, STUB_ARGV: argv, STUB_STATE: state }, ...x } as never);
   stops.push(() => s.stop());
   const post = (path: string, body: unknown) => fetch(`http://127.0.0.1:${s.port}${path}`, { method: "POST", body: JSON.stringify(body),

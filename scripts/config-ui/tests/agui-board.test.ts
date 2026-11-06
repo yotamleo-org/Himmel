@@ -27,7 +27,7 @@ function boot(readOnly = false) {
   // the chief's board file, as board.mjs writes it beside the doc; its bullet still carries a nonce, to prove the route redacts on its own
   writeFileSync(join(bucket, `${CHIEF}.board.json`), JSON.stringify({ schema: "himmel.board/1", console: { name: CHIEF },
     workers: [{ worker: WORKER, timeline: [{ text: `RETASK ${NONCE} lock ${LOCK}` }] }] }));
-  const s = startServer({ port: 0, token: TOKEN, readOnly, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: handovers, HOME: dir } });
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, readOnly, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: handovers, HOME: dir } });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
   return Object.assign(s, { bucket });
 }
@@ -66,7 +66,7 @@ test("board: a board file's text is masked with the keyring's secrets too", asyn
   writeFileSync(join(handovers, "op", "himmel", `${CHIEF}.board.json`), JSON.stringify({ schema: "himmel.board/1", console: { name: CHIEF }, workers: [{ worker: WORKER, timeline: [{ text: `jira auth failed for ${kr}` }] }] }));
   const k = stubKeyring(dir);
   k.put("JIRA_API_TOKEN", kr);
-  const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, ...k.env, HIMMEL_SECRETS_KEYRING: "", JIRA_API_TOKEN: "", CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: handovers, HOME: dir } });
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, env: { PATH: process.env.PATH, ...k.env, HIMMEL_SECRETS_KEYRING: "", JIRA_API_TOKEN: "", CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: handovers, HOME: dir } });
   cleanups.push(() => s.stop());
   const r = await get(s.port, `/api/agui/board?console=${CHIEF}`);
   expect(r.status).toBe(200);
@@ -190,7 +190,7 @@ test("sections: an unknown console is 404 with no sections, and a start with no 
   expect(await unknown.text()).not.toContain("sections");
   const dir = mkdtempSync(join(tmpdir(), "agui-board-nohd-"));
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
-  const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: dir } });
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: dir } });
   cleanups.push(() => s.stop());
   const none = await get(s.port, `/api/agui/board?console=${CHIEF}`);
   expect(none.status).toBe(404);
@@ -204,7 +204,7 @@ test("sections: a chief with no board file (503) still carries the sections that
   mkdirSync(bucket, { recursive: true });
   writeFileSync(chiefDoc(bucket), "# console\n");
   await seed(bucket);
-  const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: join(dir, "handovers"), HOME: dir } });
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: join(dir, "handovers"), HOME: dir } });
   cleanups.push(() => s.stop());
   const { r, b } = await board(s.port);
   expect(r.status).toBe(503);
@@ -222,7 +222,7 @@ test("board: with no board file the route answers no-board and never runs a buil
   const marker = join(dir, "build-ran");
   const script = join(dir, "board.mjs");
   writeFileSync(script, `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(marker)}, "x");\n`);
-  const opts = { port: 0, token: TOKEN, boardScript: script, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: join(dir, "handovers"), HOME: dir } };
+  const opts = { onIdle: () => {}, port: 0, token: TOKEN, boardScript: script, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: join(dir, "handovers"), HOME: dir } };
   const s = startServer(opts);
   cleanups.push(() => s.stop());
   const { r, b } = await board(s.port);

@@ -28,7 +28,7 @@ function boot(extraEnv: Record<string, string> = {}) {
   const cache = (name: string, rows: object[]) => writeFileSync(join(feeds, `${name}.json`), JSON.stringify({ rows }));
   cache("himmel", [shared, row("mine", "warn", "project"), row("fine", "ok", "project")]);
   cache("luna", [shared, row("lunabad", "fail", "project", { by: "configure", tile: "tracker" })]);
-  const s = startServer({
+  const s = startServer({ onIdle: () => {},
     port: 0, token: TOKEN, projectRoot: here,
     env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root, HIMMEL_PROMETHEUS_URL: "http://127.0.0.1:1", HIMMEL_FLOW_EXPORTER_PORT: "1", ...extraEnv },
   });
@@ -152,7 +152,7 @@ test("5494 launch place: from an adopter repo cwd naming its own JIRA_PROJECT_KE
     writeFileSync(join(root, key, `${key}-1.md`), ["---", `key: "${key}-1"`, `status: "To Do"`, `statusCategory: "To Do"`, `labels: []`, `fixVersions: ["v1.1.2"]`, "---", "", `# ${key}-1: t`, ""].join("\n"));
     writeFileSync(join(root, `${key}.versions.tsv`), "v1.1.2\tfalse\t\n");
   }
-  const s = startServer({ port: 0, token: TOKEN, root: adopter, projectRoot: adopter, legsScript: join(dir, "none.sh"),
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, root: adopter, projectRoot: adopter, legsScript: join(dir, "none.sh"),
     env: { PATH: process.env.PATH, HOME: home, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000" } });
   cleanups.push(() => s.stop());
   const r = await (await get(s.port, "/api/roadmap")).json();

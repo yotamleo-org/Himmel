@@ -18,7 +18,7 @@ function boot(extra: { noIdle?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "setup-secret-"));
   const home = join(dir, "home"), root = join(dir, "root"), project = join(dir, "project");
   for (const d of [home, root, project]) mkdirSync(d);
-  const s = startServer({
+  const s = startServer({ onIdle: () => {},
     port: 0, token: TOKEN, root, projectRoot: project, ...extra,
     env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HIMMEL_SECRETS_KEYRING: "off" },
   });
