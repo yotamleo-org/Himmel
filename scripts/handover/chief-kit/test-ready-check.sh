@@ -4123,6 +4123,10 @@ contains "19 T17b a stalled run read: names the read" "$(line17 "$out")" "[FAIL]
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; READY_CHECK_ITEM19_BOUND=99
 s17_at "$S17_H1"
 check "19 a higher bound override is ignored: exit 0" "$rc" "0"
+# a zero bound would reach timeout as "no limit": it is ignored, so the 30 s default still ends a stalled read
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_DL_SLEEP=40; READY_CHECK_ITEM19_BOUND=0
+s17_at "$S17_H1"
+contains "19 a zero bound override is ignored: the default bound ends a stalled read" "$(line17 "$out")" "[FAIL] 19. suite evidence: gh run download 555 timed out after 30s"
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
 PATH="$tmp/no-timeout:$PATH" s17_at "$S17_H1"
 contains "19 T18 no timeout binary: FAIL" "$(line17 "$out")" "[FAIL] 19. suite evidence: no timeout binary"

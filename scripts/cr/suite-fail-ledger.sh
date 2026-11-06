@@ -16,6 +16,10 @@ if [ $# -gt 1 ]; then
 fi
 f="${1:-${HOME:-/tmp}/.himmel/state/suite-evidence/ci-failures.jsonl}"
 counts="0 0 0"
+if [ -e "$f" ] && [ ! -r "$f" ]; then
+    echo "suite-fail-ledger: cannot read $f" >&2
+    exit 1
+fi
 if [ -r "$f" ]; then
     counts=$(jq -n -R -r '
         [inputs | fromjson? | select(type == "object")] as $rows

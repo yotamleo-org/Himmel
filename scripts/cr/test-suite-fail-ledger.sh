@@ -43,6 +43,14 @@ check "the default path is the station ledger" "${out%%,*}" "suite-fail-ledger: 
 rc=0; bash "$SCRIPT" a b > /dev/null 2>&1 || rc=$?
 check "two arguments: usage, exit 2" "$rc" "2"
 
+# an existing ledger that cannot be read is an error, never a zero count
+if [ "$(id -u)" -ne 0 ]; then
+    : > "$tmp/unreadable.jsonl"; chmod 000 "$tmp/unreadable.jsonl"
+    rc=0; out=$(bash "$SCRIPT" "$tmp/unreadable.jsonl" 2>&1) || rc=$?
+    check "an unreadable ledger: exit 1" "$rc" "1"
+    check "an unreadable ledger: says so" "${out%%:*}" "suite-fail-ledger"
+fi
+
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; fi
 echo "$fails FAILED"

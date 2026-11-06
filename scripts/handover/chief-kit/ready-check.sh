@@ -1948,9 +1948,9 @@ check_open_findings
 # headRefName, .pr null or this PR). ponytail: the latest-run pick mirrors check
 # 2's rather than sharing it; upgrade path: one shared latest-run reader.
 S17_AGG="shell-unit (ubuntu-latest)"
-s17_bound() {  # <default seconds>: READY_CHECK_ITEM19_BOUND wins only when lower
+s17_bound() {  # <default seconds>: READY_CHECK_ITEM19_BOUND wins only when 1 or more and lower (timeout 0 means no limit)
     local b="${READY_CHECK_ITEM19_BOUND:-}"
-    case "$b" in ''|*[!0-9]*) printf '%s' "$1" ;; *) if [ "$b" -lt "$1" ]; then printf '%s' "$b"; else printf '%s' "$1"; fi ;; esac
+    case "$b" in ''|*[!0-9]*) printf '%s' "$1" ;; *) if [ "$b" -ge 1 ] && [ "$b" -lt "$1" ]; then printf '%s' "$b"; else printf '%s' "$1"; fi ;; esac
 }
 s17_fail() { echo "[FAIL] 19. suite evidence: $1"; mark_fail; }
 # s17_run <name> <seconds> <out> <cmd...>: bounded; rc 124/137 is a timeout, said by name
