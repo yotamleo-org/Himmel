@@ -113,12 +113,13 @@ notes_date() {
 # emit_notes <heading> <notes-file> — one version section made of the notes'
 # five sections demoted to `###`. The title and date lines before the first
 # `## ` are dropped, and trailing blank lines too, so the section ends like
-# render's does.
+# render's does. The shape check exempts the Internal line from the key test,
+# so the section goes through the same key strip as the commit subjects.
 emit_notes() {
     echo
     echo "$1"
     echo
-    awk '/^## /{s=1; sub(/^## /,"### ")} s{b[n++]=$0} END{while(n>0&&b[n-1]=="")n--; for(i=0;i<n;i++)print b[i]}' "$2"
+    awk '/^## /{s=1; sub(/^## /,"### ")} s{b[n++]=$0} END{while(n>0&&b[n-1]=="")n--; for(i=0;i<n;i++)print b[i]}' "$2" | cc_strip_keys
 }
 
 # notes_section <tag> <notes-file> — heading date comes from the notes, never

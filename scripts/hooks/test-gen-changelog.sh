@@ -510,6 +510,14 @@ run_test "tagged section renders the tag copy of the notes, not a later edit" '
   grep -qF "A brand new thing" CHANGELOG.md && ! grep -qF "A later edit" CHANGELOG.md
 '
 
+run_test "a key in the notes Internal line (exempt from --check) is stripped from the section" '
+  setup_notes_repo 2001-02-03 && cd "$R" || exit 1;
+  sed -i.bak "s/^Internal: 1 further/Internal: see HIMMEL-123, 1 further/" docs/release/v9.9.9-notes.md && rm -f docs/release/v9.9.9-notes.md.bak &&
+  git commit -q -am "chore: internal line" && git tag v9.9.9 &&
+  bash "$GEN" &&
+  grep -qF "1 further" CHANGELOG.md && ! grep -qiE "(HIMMEL|LUNA)-[0-9]" CHANGELOG.md
+'
+
 run_test "tagged notes failing --check render commits" '
   setup_notes_repo 2001-02-03 bad && cd "$R" || exit 1;
   git tag v9.9.9 &&
