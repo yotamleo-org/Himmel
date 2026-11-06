@@ -171,7 +171,9 @@ run_ui() {
   rc=0
   # shellcheck disable=SC2016
   printf '#!/bin/sh\necho "$*" >> "%s"\n' "$c/launches" > "$c/stub/bun"
-  out=$(env "${scrub[@]}" PATH="$c/stub:$PATH" HOME="$c/home" HIMMELCTL_REPO_ROOT="$(winpath "$c/fx")" \
+  out=$(env "${scrub[@]}" PATH="$c/stub:$PATH" HOME="$c/home" USERPROFILE="$(winpath "$c/home")" \
+    HIMMELCTL_CACHE_DIR="$(winpath "$c/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$c/cache/luna-config.json")" \
+    HIMMELCTL_REPO_ROOT="$(winpath "$c/fx")" \
     HIMMELCTL_SYSTEMD_USER_UNIT_DIR="$c/units" HANDOVER_DIR="$c/handover" \
     ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 5} "$node_bin" "$wizard" ui "$@" < /dev/null 2>&1) || rc=$?  # read-sink-ok: /dev/null
 }
