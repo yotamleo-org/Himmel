@@ -54,8 +54,8 @@ mkdir -p "$tmp/bin"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 if [ "${1:-}" = pr ] && [ "${2:-}" = view ]; then
-    printf '{"author":{"login":"%s","id":"%s"},"headRefName":"feat/outside-thing","headRefOid":"%s","baseRefName":"main","state":"%s"}' \
-        "${STUB_LOGIN:-Goomal}" "${STUB_ID:-U_goomal}" "$STUB_OID" "${STUB_STATE:-OPEN}" | { _q=""; for _a in "$@"; do [ "${_prev:-}" = "--jq" ] && _q="$_a"; _prev="$_a"; done; if [ -n "$_q" ]; then jq -r "$_q"; else cat; fi; }
+    printf '{"author":{"login":"%s","id":"%s"},"headRefName":"%s","headRefOid":"%s","baseRefName":"%s","state":"%s"}' \
+        "${STUB_LOGIN:-Goomal}" "${STUB_ID:-U_goomal}" "${STUB_BRANCH:-feat/outside-thing}" "$STUB_OID" "${STUB_BASE-main}" "${STUB_STATE:-OPEN}" | { _q=""; for _a in "$@"; do [ "${_prev:-}" = "--jq" ] && _q="$_a"; _prev="$_a"; done; if [ -n "$_q" ]; then jq -r "$_q"; else cat; fi; }
     exit 0
 fi
 printf 'unexpected gh invocation\n' >&2
@@ -253,6 +253,33 @@ eq "$rc" "2" "T2.18 a state other than OPEN exits 2"
 reset; listed
 STUB_STATE=MERGED route "$H1"
 eq "$rc" "2" "T2.18 a merged PR exits 2"
+
+# a branch or base name outside the safe alphabet is refused before anything is fetched
+# shellcheck disable=SC2016
+for bad_name in 'feat/x;touch-evil' 'feat/$(id)' 'feat/a..b'; do
+    reset; listed
+    STUB_BRANCH="$bad_name" route "$H1"
+    eq "$rc" "2" "a hostile branch name '$bad_name' exits 2"
+    has "$err" "safe alphabet" "a hostile branch name '$bad_name' is refused for its alphabet"
+    if git -C "$P" rev-parse --verify --quiet refs/himmel/outside/7 >/dev/null; then fail "a hostile branch name '$bad_name': the ref was fetched anyway"; else pass "a hostile branch name '$bad_name': nothing was fetched"; fi
+done
+reset; listed
+# shellcheck disable=SC2016
+STUB_BASE='ma$in' route "$H1"
+eq "$rc" "2" "a hostile base name exits 2"
+
+# a fetch that fails, or lands a ref that is not at the head, is refused and never prints outside-pr: yes
+reset; listed
+git -C "$O" update-ref -d refs/pull/7/head
+route "$H1"
+eq "$rc" "2" "a PR ref the origin does not hold exits 2"
+lacks "$out" "outside-pr: yes" "a missing PR ref prints no outside-pr: yes line"
+reset; listed
+git -C "$O" update-ref refs/pull/7/head "$H2"
+route "$H1"
+eq "$rc" "2" "an origin ref that is not at the forge head exits 2"
+lacks "$out" "outside-pr: yes" "a ref not at the head prints no outside-pr: yes line"
+has "$err" "could not fetch refs/pull/7/head" "a ref not at the head names the fetch"
 
 reset; listed
 GIT_DIR="$tmp/not-a-repo" route "$H1"

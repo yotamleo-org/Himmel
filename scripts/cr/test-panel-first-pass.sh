@@ -1074,8 +1074,8 @@ mkdir -p "$tmp/prbin"
 cat > "$tmp/prbin/gh" <<'GHEOF'
 #!/usr/bin/env bash
 if [ "${1:-}" = pr ] && [ "${2:-}" = view ]; then
-    _json="$(printf '{"author":{"login":"%s","id":"%s"},"headRefName":"feat/outside-thing","headRefOid":"%s","baseRefName":"main","state":"OPEN"}' \
-        "${PR_LOGIN:-Goomal}" "${PR_ID:-U_goomal}" "$PR_OID")"
+    _json="$(printf '{"author":{"login":"%s","id":"%s"},"headRefName":"%s","headRefOid":"%s","baseRefName":"%s","state":"OPEN"}' \
+        "${PR_LOGIN:-Goomal}" "${PR_ID:-U_goomal}" "${PR_BRANCH:-feat/outside-thing}" "$PR_OID" "${PR_BASE-main}")"
     _q=""
     for _a in "$@"; do [ "$_prev" = "--jq" ] && _q="$_a"; _prev="$_a"; done
     if [ -n "$_q" ]; then printf '%s' "$_json" | jq -r "$_q"; else printf '%s\n' "$_json"; fi
@@ -1104,6 +1104,12 @@ mkdir -p "$prrepo"
     git add -A
     git commit -q -m pr-change
     git update-ref refs/himmel/outside/7 HEAD
+    # a second PR whose diff is over the 204800-byte cap the critics read
+    head -c 300000 /dev/zero | tr '\0' 'a' > big.txt
+    git add big.txt
+    git commit -q -m pr-big
+    git update-ref refs/himmel/outside/8 HEAD
+    git reset -q --hard refs/himmel/outside/7
     git checkout -q main
     git branch -q -D prside
     git checkout -q -b elsewhere
@@ -1164,6 +1170,41 @@ pr_run --pr 7 --head "$pr_oid" --branch some/other-branch
 if [ "$pr_rc" -eq 7 ]; then ok "--pr with a --branch that is not the PR's headRefName exits 7"; else bad "--pr wrong branch exit (got $pr_rc)"; fi
 assert_has "$pr_err" "headRefName" "--pr wrong branch: the refusal names headRefName"
 if [ ! -f "$CALL_LOG" ] && [ "$(pr_rounds)" = "$n_before" ] && [ "$(rs_rows "$prrepo" | wc -l | tr -d ' ')" = "$rs_before" ]; then ok "--pr wrong branch: no panel, no round, no row"; else bad "--pr wrong branch: the panel ran or state was written"; fi
+# pr_run_x VAR=val ... -- args: pr_run with extra stub environment
+pr_run_x() {
+    local envs=()
+    while [ "$1" != "--" ]; do envs+=("$1"); shift; done
+    shift
+    rm -f "$CALL_LOG" "$ARGS_LOG" "$tmp/stdin-log" "$tmp/err"
+    pr_out="$( (cd "$prrepo" && env HOME="$pr_home" GH_FALLBACK="$tmp/ghbin/gh" PR_OID="$pr_oid" STDIN_LOG="$tmp/stdin-log" FAKE_RC=0 \
+        PATH="$tmp/prbin:$PATH" "${envs[@]}" bash "$SCRIPT" "$@") 2>"$tmp/err" )"; pr_rc=$?
+    pr_err="$(cat "$tmp/err")"
+}
+pr_ledger="$prrepo/.git/cr-critic-scores.jsonl"
+# a hostile --branch is refused before anything is echoed or recorded
+n_before="$(pr_rounds)"
+pr_run_x X=1 -- --pr 7 --head "$pr_oid" --branch 'feat/x;touch-evil'
+if [ "$pr_rc" -eq 2 ]; then ok "--pr with a branch outside the safe alphabet exits 2"; else bad "--pr hostile branch exit (got $pr_rc)"; fi
+assert_lacks "$pr_err" "touch-evil" "--pr hostile branch: the raw name is never echoed"
+if [ ! -f "$CALL_LOG" ] && [ "$(pr_rounds)" = "$n_before" ]; then ok "--pr hostile branch: no panel, no round"; else bad "--pr hostile branch: the panel ran or state was written"; fi
+# an unreadable or unknown base never lets the diff read the station HEAD
+for pr_base_try in nosuchbranch ""; do
+    n_before="$(pr_rounds)"
+    pr_run_x PR_BASE="$pr_base_try" -- --pr 7 --head "$pr_oid" --branch feat/outside-thing
+    if [ "$pr_rc" -eq 7 ]; then ok "--pr with base '${pr_base_try:-<empty>}' exits 7"; else bad "--pr base '${pr_base_try:-<empty>}' exit (got $pr_rc)"; fi
+    if [ ! -f "$CALL_LOG" ] && [ "$(pr_rounds)" = "$n_before" ]; then ok "--pr base '${pr_base_try:-<empty>}': no panel, no round"; else bad "--pr base '${pr_base_try:-<empty>}': the panel ran or state was written"; fi
+done
+# a diff over the byte cap the critics read is refused before a round starts
+pr_oid8="$(git -C "$prrepo" rev-parse refs/himmel/outside/8)"
+n_before="$(pr_rounds)"; rs_before="$(rs_rows "$prrepo" | wc -l | tr -d ' ')"
+pr_run_x PR_OID="$pr_oid8" -- --pr 8 --head "$pr_oid8" --branch feat/outside-thing
+if [ "$pr_rc" -eq 7 ]; then ok "--pr with a diff over the cap exits 7"; else bad "--pr over-cap exit (got $pr_rc)"; fi
+assert_has "$pr_err" "204800" "--pr over-cap: the refusal names the cap"
+if [ ! -f "$CALL_LOG" ] && [ "$(pr_rounds)" = "$n_before" ] && [ "$(rs_rows "$prrepo" | wc -l | tr -d ' ')" = "$rs_before" ]; then ok "--pr over-cap: no panel, no round, no row"; else bad "--pr over-cap: the panel ran or state was written"; fi
+# authorization comes before the preflight: a refused author leaves no preflight row
+pr_run_x PR_LOGIN=Stranger PR_ID=U_stranger PR_BRANCH=feat/other-thing -- --pr 7 --head "$pr_oid" --branch feat/other-thing
+if [ "$pr_rc" -eq 5 ]; then ok "--pr for an unlisted author exits 5 before the preflight"; else bad "--pr unlisted author exit (got $pr_rc)"; fi
+if [ "$(grep -F 'feat/other-thing' "$pr_ledger" 2>/dev/null | grep -c '"kind":"preflight"')" = 0 ]; then ok "--pr for an unlisted author writes no preflight row"; else bad "--pr for an unlisted author wrote a preflight row"; fi
 
 # --- no writes outside the mktemp fixture -----------------------------------
 # panel-first-pass.sh's only persistent writes are mktemp -t cr-panel-avail.*

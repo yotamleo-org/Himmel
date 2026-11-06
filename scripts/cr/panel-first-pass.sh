@@ -60,10 +60,12 @@
 #   0 - ran to completion (panel invoked, skipped, or failed open to
 #       claude-only). Findings, if any, are on stdout.
 #   2 - usage error: missing --head or --branch, or (--pr) a PR number or --head that is
-#       not a plain number / full 40-hex sha, or outside-contributors.sh cannot be loaded.
-#   5 - (--pr only) review-round.sh start --pr refused: the PR's author is not authorized
-#       for a no-checkout review, or the round state could not be written. Nothing was
-#       reviewed or recorded.
+#       not a plain number / full 40-hex sha, --branch is outside the safe alphabet, or
+#       outside-contributors.sh cannot be loaded.
+#   5 - (--pr only) review-round.sh check or start --pr refused: the PR's author is not
+#       authorized for a no-checkout review, or the round state could not be written. The
+#       check runs before the known-findings preflight, so a refused author leaves no
+#       preflight row. Nothing was reviewed or recorded.
 #   3 -the branch has no preflight row and the step 2.8 known-findings pass
 #       it ran first has open hits: no round was started. Close the hits and
 #       record the pass (the message names both commands), then re-run.
@@ -78,7 +80,8 @@
 #       independently on the rtk retry; (c) the diff base cannot be fetched or
 #       resolved; (d) (--pr only) critic-panel.sh has no --pin-ref, refs/himmel/outside/<n>
 #       is not at --head, --branch is not the PR's headRefName, or the PR's base branch
-#       or merge base cannot be read. ABORT: nothing was reviewed, nothing was recorded,
+#       or merge base cannot be read, or (e) the PR diff is over the 204800 bytes the
+#       critics read (CRITIC_FIRST_PASS_CAP_BYTES), refused before a round starts. ABORT: nothing was reviewed, nothing was recorded,
 #       and for a branch review a round already started is given back
 #       (review-round.sh abort). A --pr round started before an abort stays counted;
 #       a retry at the same head reuses it. Never degrades to claude-only - re-run
@@ -143,6 +146,11 @@ if [ -n "$PR" ]; then
         echo "panel-first-pass: --pr needs a plain PR number and a full 40-hex --head" >&2
         exit 2
     fi
+    # The branch is substituted as a literal into later fences and echoed in messages: keep it to the safe alphabet.
+    if [[ "$BRANCH" =~ [^A-Za-z0-9._/+-] ]] || ! git check-ref-format --branch "$BRANCH" >/dev/null 2>&1; then
+        echo "panel-first-pass: --branch is outside the safe alphabet [A-Za-z0-9._/+-] or is not a branch name. Nothing was reviewed and nothing was recorded." >&2
+        exit 2
+    fi
     FULL=1
     # shellcheck source=scripts/lib/outside-contributors.sh
     # shellcheck disable=SC1091
@@ -201,7 +209,7 @@ if [ -n "$PR" ]; then
     esac
     # The ledger rows are keyed on --branch, so it must be the branch the forge names for this PR.
     if [ -n "$pr_head_name" ] && [ "$pr_head_name" != "$BRANCH" ]; then
-        echo "panel-first-pass ABORT - --branch '$BRANCH' is not PR #$PR's headRefName '$pr_head_name'. Nothing was reviewed and nothing was recorded." >&2
+        echo "panel-first-pass ABORT - --branch is not PR #$PR's headRefName as the forge names it. Nothing was reviewed and nothing was recorded." >&2
         exit 7
     fi
     db_sha=""
@@ -254,6 +262,16 @@ diff_rc=0
 diff_range="$db_sha...$HEAD_SHA"
 scoped_from=""   # the last round's head, once a round 2 or 3 reviews only the change since it
 diff_out=$(git diff "$diff_range") || diff_rc=$?
+if [ -n "$PR" ] && [ "$diff_rc" -eq 0 ]; then
+    # The critics read only the first cap bytes of a diff: a full-scope row over a longer one would certify text nobody read.
+    pr_cap="${CRITIC_FIRST_PASS_CAP_BYTES:-204800}"
+    case "$pr_cap" in ''|*[!0-9]*) pr_cap=204800 ;; esac
+    pr_diff_bytes="$(printf '%s' "$diff_out" | wc -c | tr -d ' ')"
+    if [ "$pr_diff_bytes" -gt "$pr_cap" ]; then
+        echo "panel-first-pass ABORT - PR #$PR's diff is $pr_diff_bytes bytes, over the $pr_cap-byte cap the critics read, so a full review row would certify text nobody read. Nothing was reviewed and nothing was recorded; hand the PR to a maintainer takeover." >&2
+        exit 7
+    fi
+fi
 panel_avail_lines=""   # "panel-availability: <slug> ok|unavailable (rc=N)" lines
 panel_findings=""      # the merged findings block
 # elapsed tell: a real panel round takes ~2 minutes, so an empty
@@ -272,6 +290,15 @@ elif [ "$diff_rc" -ne 0 ]; then
 elif [ -z "$diff_out" ]; then
     echo "empty diff - critic panel skipped"
 else
+    if [ -n "$PR" ]; then
+        # Authorization first: a refused author must leave no preflight row. This only asks; start --pr below decides again.
+        pr_auth_rc=0
+        bash "$HIMMEL_ROOT/scripts/cr/review-round.sh" check --pr "$PR" --head "$HEAD_SHA" >/dev/null || pr_auth_rc=$?
+        if [ "$pr_auth_rc" -ne 0 ]; then
+            echo "panel-first-pass ABORT - PR #$PR at $HEAD_SHA is not authorized for a no-checkout review, or its round state could not be read (reason above). Nothing was reviewed and nothing was recorded." >&2
+            exit 5
+        fi
+    fi
     # step 2.8 is structural: a branch with no preflight row gets the
     # known-findings pass run (and, when clean, recorded) before a score row
     # can exist. Open hits cannot be closed here, so they stop the run

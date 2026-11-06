@@ -298,10 +298,14 @@ the forge itself and decides: a listed author gets 3 full rounds; any other roun
 approval row for exactly that PR and head with stage `review` in
 `~/.himmel/outside-pr-approvals.jsonl` and, for an unlisted author, a `security-audit` pass at
 that head. `review-round.sh start --pr` owns the cap (state `outside-<n>`, no delta round).
-`panel-first-pass.sh --pr` and `pr-check-context.sh --pr` then run on the ref; the panel is
-pinned to it (`--pin-ref`), and a panel without that flag is refused before a round is spent,
-so item 16b never passes on a review of a tree the panel did not pin. The approve verb that
-writes the approval row ships separately.
+`panel-first-pass.sh --pr` and `pr-check-context.sh --pr` then run on the ref; the panel must be
+pinned to it, and a panel without a pin option is refused before a round is spent,
+so item 16b never passes on a review of a tree the panel did not pin. A diff over the 204800
+bytes the critics read is refused before a round starts, so a full-scope row never covers text
+nobody read. **Status: built but refused today.** `critic-panel.sh` has no pin option yet,
+so `panel-first-pass.sh --pr` exits 7 and no review row is written for any PR; the pin option,
+the approve verb that writes the approval row and the hook rows that protect the two files
+ship separately.
 
 **19. suite evidence.** A suite CI runs is run once, in CI: pr-check
 step 3.6 records it `SUITE <p> = CI` (`scripts/cr/pr-check-ref/33-step3-impacted.md`),
