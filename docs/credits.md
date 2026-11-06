@@ -99,8 +99,8 @@ source of truth for the shipped revision; no pin is invented for dormant forks.
 
 ## Inspired by and borrowed passages
 
-Text or ideas from elsewhere inside a skill himmel wrote. `vendored` means the
-skill runs a vendored copy; `inspired by` means himmel wrote its own text from
+Text or ideas from elsewhere inside a skill, command, document or script himmel
+wrote. `vendored` means the file runs a vendored copy; `inspired by` means himmel wrote its own text from
 the idea. `Not established` means the licence could not be established: it
 grants no permission to copy, and nothing was copied.
 

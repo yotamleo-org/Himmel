@@ -23,18 +23,28 @@ function attribution(text) {
   return records;
 }
 
+function isHttps(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname !== '';
+  } catch {
+    return false;
+  }
+}
+
 function passages(text, root) {
   const section = text.match(/<!-- credits-passages:start -->([\s\S]*?)<!-- credits-passages:end -->/);
   if (!section) throw new Error('missing credits passages in docs/third-party-licenses.md');
   const rows = [];
   for (const line of section[1].trim().split('\n')) {
-    if (!line.startsWith('|')) continue;
+    if (!line.trim()) continue;
+    if (!line.startsWith('|')) throw new Error(`malformed credits passage row: ${line}`);
     const cells = line.split('|').slice(1, -1).map(cell => cell.trim());
     if (cells[0] === 'What' || /^-+$/.test(cells[0])) continue;
     if (cells.length !== 6) throw new Error(`malformed credits passage row: ${line}`);
     const [what, source, author, license, how, where] = cells;
     for (const [value, field] of [[what, 'what'], [author, 'author'], [license, 'licence'], [where, 'where']]) required(value, what, field);
-    if (!/^https:\/\//.test(source)) throw new Error(`${what}: source must be an HTTPS URL`);
+    if (!isHttps(source)) throw new Error(`${what}: source must be an HTTPS URL`);
     if (how !== 'vendored' && how !== 'inspired by') throw new Error(`${what}: how used must be vendored or inspired by`);
     if (!fs.statSync(path.join(root, where), { throwIfNoEntry: false })?.isFile()) throw new Error(`${what}: ${where} does not exist as a file`);
     rows.push({ what, source, author, license, how, where });
@@ -81,7 +91,7 @@ function generate(root) {
   }
   function complete(row) {
     for (const field of ['name', 'source', 'author', 'license', 'pin']) required(row[field], row.name, field);
-    if (!/^https:\/\//.test(row.source)) throw new Error(`${row.name}: source must be an HTTPS URL`);
+    if (!isHttps(row.source)) throw new Error(`${row.name}: source must be an HTTPS URL`);
     return row;
   }
   const pluginRows = plugins.map(plugin => {
@@ -159,8 +169,8 @@ ${table(forkRows, true)}
 
 ## Inspired by and borrowed passages
 
-Text or ideas from elsewhere inside a skill himmel wrote. \`vendored\` means the
-skill runs a vendored copy; \`inspired by\` means himmel wrote its own text from
+Text or ideas from elsewhere inside a skill, command, document or script himmel
+wrote. \`vendored\` means the file runs a vendored copy; \`inspired by\` means himmel wrote its own text from
 the idea. \`Not established\` means the licence could not be established: it
 grants no permission to copy, and nothing was copied.
 

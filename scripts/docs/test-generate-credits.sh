@@ -194,6 +194,18 @@ test('a passage source must be HTTPS', () => {
   red(run(), /source must be an HTTPS URL/);
 });
 
+test('a passage source with no host is refused', () => {
+  put('skill.md', 'x');
+  metadata(forkMetadata, '| A rule | https:// | Author | MIT | inspired by | skill.md |');
+  red(run(), /source must be an HTTPS URL/);
+});
+
+test('a line in the passages block that is not a table row is refused', () => {
+  put('skill.md', 'x');
+  metadata(forkMetadata, ' A rule | https://example.com/a | Author | MIT | inspired by | skill.md |');
+  red(run(), /malformed credits passage/);
+});
+
 test('a passage must point at a file that exists', () => {
   metadata(forkMetadata, '| A rule | https://example.com/a | Author | MIT | inspired by | gone.md |');
   red(run(), /does not exist/);
