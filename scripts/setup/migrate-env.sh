@@ -332,24 +332,29 @@ blank_line() {  # <key>: the readers see no value on its first line
     v=$(_load_dotenv_extract "$envfile" "$1")
     [ -z "$(_load_dotenv_trim "${v#*=}")" ]
 }
+plan_own() {  # <key> <label>: a name outside the manifest that the user chose; sets one plan row
+    local key=$1 label=$2 val
+    if case "$keep" in *" $key "*) true ;; *) false ;; esac; then
+        plan="$plan  $key  $label  kept (env-keep)"$'\n'
+    elif [ "$backend_ok" -eq 0 ]; then
+        incomplete=1; plan="$plan  $key  $label  stays (no keyring)"$'\n'
+    elif ! val=$(entry_value "$envfile" "$key"); then
+        plan="$plan  $key  $label  stays (its quote never closes)"$'\n'
+    elif [ -z "$(_load_dotenv_trim "$val")" ]; then
+        plan="$plan  $key  $label  stays (blank in .env: no value)"$'\n'
+    else
+        own_keys[${#own_keys[@]}]="$key"; plan="$plan  $key  $label  → keyring (you named it)"$'\n'
+    fi
+}
 for key in $names; do
     if ! is_owned "$key"; then
         # An unowned name moves only when the user names it (--keys) or accepts every one (--unowned).
-        if ! unowned_chosen "$key"; then
+        if unowned_chosen "$key"; then
+            plan_own "$key" unowned
+        else
             unowned_left="$unowned_left $key"
             plan="$plan  $key  unrelated  stays (not himmel's, left in place)"$'\n'
-        elif case "$keep" in *" $key "*) true ;; *) false ;; esac; then
-            plan="$plan  $key  unowned  kept (env-keep)"$'\n'
-        elif [ "$backend_ok" -eq 0 ]; then
-            incomplete=1; plan="$plan  $key  unowned  stays (no keyring)"$'\n'
-        elif ! v=$(entry_value "$envfile" "$key"); then
-            plan="$plan  $key  unowned  stays (its quote never closes)"$'\n'
-        elif [ -z "$(_load_dotenv_trim "$v")" ]; then
-            plan="$plan  $key  unowned  stays (blank in .env: no value)"$'\n'
-        else
-            own_keys[${#own_keys[@]}]="$key"; plan="$plan  $key  unowned  → keyring (you named it)"$'\n'
         fi
-        v=""
         continue
     fi
     case "$(_himmel_key_class "$key")" in
@@ -364,7 +369,13 @@ for key in $names; do
             if case "$keep" in *" $key "*) true ;; *) false ;; esac; then
                 stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  kept (env-keep)"$'\n'
             elif case "$secret_names" in *" $key "*) false ;; *) true ;; esac; then
-                stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  stays (not in the secrets manifest)"$'\n'
+                # In .env.example but not in the manifest: the user's to name, like an unowned name.
+                if unowned_chosen "$key"; then
+                    plan_own "$key" secret
+                else
+                    unowned_left="$unowned_left $key"
+                    stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  stays (not in the secrets manifest)"$'\n'
+                fi
             elif blank_line "$key"; then
                 stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  stays (blank in .env: no value)"$'\n'
             elif [ "$backend_ok" -eq 1 ]; then

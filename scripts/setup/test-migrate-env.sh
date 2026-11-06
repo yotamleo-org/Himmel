@@ -1425,6 +1425,20 @@ APPLY_ARGS="-y --keys READ_SECRET,GGS_MQTT_PASS" apply_tty y "$SYSPATH"
 if [ "$rc" = 0 ]; then pass "N8 naming a himmel secret beside an unowned one exits 0"; else fail "N8 exited $rc: $out"; fi
 lacks "N8 the himmel secret moved" "READ_SECRET=" "$(cat "$TMP/st/.env")"
 lacks "N8 the unowned entry moved" "GGS_MQTT_PASS" "$(cat "$TMP/st/.env")"
+# N9: a name .env.example lists but the secrets manifest does not (the station's bot token) is the user's to name.
+fxadd "$FX/.env.example" 'EXAMPLE_ONLY_SECRET=\n'
+fixture_9360
+fxadd "$TMP/st/.env" "EXAMPLE_ONLY_SECRET='%s\n'\n" "$(canary ex)"
+apply_tty y "$SYSPATH"
+has "N9 -y alone leaves a name outside the manifest" "EXAMPLE_ONLY_SECRET='CANARY-ex-" "$(cat "$TMP/st/.env")"
+fixture_9360
+fxadd "$TMP/st/.env" "EXAMPLE_ONLY_SECRET='%s\n'\n" "$(canary ex)"
+APPLY_ARGS="-y --keys EXAMPLE_ONLY_SECRET" apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N9 --keys on it exits 0"; else fail "N9 exited $rc: $out"; fi
+lacks "N9 the named entry left .env" "EXAMPLE_ONLY_SECRET" "$(cat "$TMP/st/.env")"
+if grep -q 'CANARY-ex' "$KSTUB_STORE" 2>/dev/null; then pass "N9 its value is in the keyring"; else fail "N9 its value is not in the keyring"; fi
+has "N9 unset-environment for it" "systemctl --user unset-environment EXAMPLE_ONLY_SECRET" "$(cat "$SYSTEMCTL_LOG")"
+printf '# READ_SECRET=\nUNREAD_SECRET=\nKEEP_ME=\nJIRA_API_TOKEN=\nBITBUCKET_API_TOKEN=\n' > "$FX/.env.example" || fail "N9 restoring the fixture .env.example failed"
 # N6: a name the file does not hold is a usage error with nothing written.
 fixture_9360
 APPLY_ARGS="-y --keys NOT_IN_THE_FILE" apply_tty y "$SYSPATH"
