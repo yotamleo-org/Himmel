@@ -240,8 +240,10 @@ generate() {
     # generation, never falls back) and the commits since the newest tag live
     # in it, leaving [Unreleased] empty -- the same bytes the tag will produce.
     local ver=""
-    [ -f "$ROOT/VERSION" ] && ver="v$(tr -d '[:space:]' < "$ROOT/VERSION")"
-    if printf '%s\n' "$ver" | grep -Eq "$VERSION_TAG_RE" \
+    if [ -f "$ROOT/VERSION" ]; then
+        ver="v$(tr -d '[:space:]' < "$ROOT/VERSION")"
+    fi
+    if [[ "$ver" =~ $VERSION_TAG_RE ]] \
        && ! git rev-parse -q --verify "refs/tags/$ver" >/dev/null \
        && [ -f "$ROOT/docs/release/$ver-notes.md" ]; then
         if ! notes_valid "$ROOT/docs/release/$ver-notes.md"; then
