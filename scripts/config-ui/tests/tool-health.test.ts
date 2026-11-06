@@ -1443,13 +1443,40 @@ test("the Bash drill-in draws Failures by cause as a stacked bar over five cause
   const seg = [...box.matchAll(/<rect [^>]*data-cause-seg="([a-z_]+)" [^>]*width="([0-9.]+)"/g)];
   expect(seg.map((m) => m[1])).toEqual(["command", "guard", "classifier", "other"]); // the empty rtk hook cause draws no segment
   expect(seg.every((m) => Math.abs(Number(m[2]) - 25) < 0.01)).toBe(true); // 1 of 4 failures each, in percent of the bar
-  expect(box).toMatch(/class="kpi" data-cause-card="command"[^>]*>[\s\S]*?<b class="kv">1</);
-  expect(box).toMatch(/class="kpi" data-cause-card="rtk-filter"[^>]*>[\s\S]*?<b class="kv"[^>]*>—</);
+  // rtk history is absent here, so the rtk hook card is a dash with its reason, never a healthy 0
+  expect(causeCards(box)).toEqual({ command: "1", "rtk-filter": "—", "rtk-hook": "—", guard: "1", classifier: "1" });
+  expect(box).toMatch(/data-cause-card="rtk-hook"[\s\S]*?<b class="kv" title="rtk history could not be read/);
   // the mockup's colours: command red, rtk hook amber, himmel guard purple, classifier teal
   const fill = (k: string) => new RegExp(`data-cause-seg="${k}"[^>]*fill="([^"]+)"`).exec(box)![1];
   expect([fill("command"), fill("guard"), fill("classifier")]).toEqual(["var(--crit)", "var(--road)", "var(--alpha)"]);
   expect(box).toContain("1 other");
+  expect(box).toContain("Auto-mode classifier");
   expect(html).not.toMatch(/\sstyle=/);
+});
+
+// one value per cause card, read card by card so a wrong number in any card fails
+const causeCards = (box: string) => Object.fromEntries([...box.matchAll(/data-cause-card="([a-z-]+)"><span class="k">[\s\S]*?<\/span><b class="kv"[^>]*>([^<]*)<\/b>/g)].map((m) => [m[1], m[2]]));
+const causeBox = (html: string) => /<section class="box" id="th-bash-cause">([\s\S]*?)<\/section>/.exec(html)![1];
+
+test("with rtk history read, the rtk hook card counts the refusals history.db says were rtk's", async () => {
+  const byId = new Map([["toolu_a", { path: "rtk", deny: false }], ["toolu_c", { path: "bash", deny: true }], ["toolu_d", { path: "bash", deny: false }]]);
+  const html = await page(readRtk(seedSplit(), () => ({ state: "ok", byId, duplicates: 0 }), new URLSearchParams({ days: "30" })), { tool: "Bash" });
+  const box = causeBox(html);
+  expect(causeCards(box)).toEqual({ command: "1", "rtk-filter": "—", "rtk-hook": "1", guard: "0", classifier: "1" });
+  expect([...box.matchAll(/<rect [^>]*data-cause-seg="([a-z_]+)"/g)].map((m) => m[1])).toEqual(["command", "rtk_hook", "classifier", "other"]);
+  expect(box).not.toContain("rtk history could not be read");
+});
+
+test("the cause view says when no cause was recorded, and how much of the window the causes cover", async () => {
+  const none = await page(readRtk(seed(), () => ({ state: "absent" }), new URLSearchParams({ days: "30" })), { tool: "Bash" });
+  expect(none).toMatch(/id="th-bash-cause">[\s\S]*?<p class="nodata">No failure cause recorded/);
+  expect(causeBox(none)).not.toContain("data-cause-card");
+  expect(causeBox(none)).not.toContain("thcausebar");
+  const data = readRtk(seedSplit(), () => ({ state: "absent" }), new URLSearchParams({ days: "30" }));
+  expect(data.bash).toMatchObject({ recorded: 5, unrecorded: 45 });
+  expect(causeBox(await page(data, { tool: "Bash" }))).toContain("Failure causes cover 5 of 50 calls");
+  expect(causeBox(await page({ ...data, bash: { ...data.bash, unrecorded: null } }, { tool: "Bash" }))).toContain("causes cover 5 of an unknown number of calls");
+  expect(causeBox(await page({ ...data, bash: { ...data.bash, unrecorded: 0 } }, { tool: "Bash" }))).not.toContain("causes cover");
 });
 
 test("the guard drill-in puts Refusals per day beside a four-card This week; the other facts sit below", async () => {
@@ -1460,6 +1487,7 @@ test("the guard drill-in puts Refusals per day beside a four-card This week; the
   const week = row.slice(row.indexOf("<h3>This week</h3>"));
   expect([...week.matchAll(/data-stat="([a-z-]+)"/g)].map((m) => m[1])).toEqual(["refused", "rate", "busiest", "none"]);
   expect((week.match(/class="kpi"/g) || []).length).toBe(4); // four boxed cards, as in the mockup
+  expect(week).toContain('<div class="kpis th-cols">'); // two columns, so the four cards read 2x2 as in the mockup
   for (const id of ["eligible", "legacy-rate", "bash", "recovery"]) { expect(html).toContain(`data-stat="${id}"`); expect(week).not.toContain(`data-stat="${id}"`); }
   expect(html.indexOf('id="th-guard-why"')).toBeGreaterThan(html.indexOf("<h3>This week</h3>"));
 });
@@ -1470,4 +1498,23 @@ test("a phone Tool map tile carries its calls line and the failure-rate colour, 
   expect(cards).toMatch(/<button class="mln mc (?:bad-t|warn-t|ok-t|zero)[^"]*" data-act="th-pick" data-src="core" data-kind="builtin"[^>]*>[\s\S]*?\d+ calls · \d+ failed/);
   expect(cards).toMatch(/class="thcard"[\s\S]*?<p class="sub">\d+ tools? · \d+ calls/);
   expect(cards).toMatch(/○ \d/);
+  // exact values, not just a shape: Bash 50 calls / 8 failed and Read 20 calls / 0 failed make one built-in tile of 70 calls, 8 failed (11.4 %, the bad tint)
+  expect(cards).toMatch(/<button class="mln mc bad-t" data-act="th-pick" data-src="core" data-kind="builtin"[^>]*><span class="kl">built-in<\/span><b>2<\/b><span>70 calls · 8 failed<\/span>/);
+});
+
+test("a Tool map whose digest could not be read shows dashes, never zero calls or zero failed, on tiles and source cards", async () => {
+  const html = await page(null, { tab: "map" }, { inventory: SHAPE_INV });
+  const tiles = [...html.matchAll(/<button class="(?:mln )?mc[^"]*" data-act="th-pick"[^>]*>([\s\S]*?)<\/button>/g)].map((m) => m[1]);
+  expect(tiles.length).toBeGreaterThan(0);
+  for (const t of tiles) expect(t).not.toMatch(/\b0 (?:calls|failed|refused)\b/);
+  expect(html).toMatch(/— calls · — failed/);
+  expect(html).toMatch(/<p class="sub">\d+ tools? · — calls<\/p>/);
+  expect(html).not.toMatch(/<p class="sub">\d+ tools? · 0 calls/);
+});
+
+test("a recorded window with no failures reads 0 failed and the quiet tint, not a dash", async () => {
+  const data = readP(seedP());
+  const quiet = { ...data, tools: data.tools.map((t: any) => ({ ...t, failures: 0, errors: 0, denials: 0, rate: 0 })) };
+  const cards = (await page(quiet, { tab: "map" }, { inventory: SHAPE_INV })).split('<div class="thcards">')[1];
+  expect(cards).toMatch(/<button class="mln mc ok-t" data-act="th-pick" data-src="core" data-kind="builtin"[^>]*><span class="kl">built-in<\/span><b>2<\/b><span>70 calls · 0 failed<\/span>/);
 });

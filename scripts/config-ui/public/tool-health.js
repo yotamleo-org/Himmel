@@ -491,25 +491,30 @@ function trendTable(trend, attr) {
 // mockup v9 "Failures by cause": one stacked bar over five cards. The server refuses inline style attributes, so the bar is an SVG
 // whose segment widths are percent attributes and whose fills are tokens. rtk filter has no data yet (rtk logs no call id): it reads —.
 const CAUSE_FILL = { command: "var(--crit)", rtk_hook: "var(--beta)", guard: "var(--road)", classifier: "var(--alpha)", other: "var(--rule-strong)" };
-function causeView(totals) {
+function causeView(totals, b, rtkOk) {
+  // No Bash call carries its command yet, so no cause was recorded: zeros here would read as an all-clear.
+  if (!(b.recorded > 0)) return `<p class="nodata">No failure cause recorded: no Bash call in this window carries its command yet</p>`;
   const failed = Object.values(totals).reduce((n, v) => n + v, 0);
   let at = 0;
   const segs = Object.entries(totals).filter(([, v]) => v > 0).map(([k, v]) => {
     const w = (v / failed) * 100, x = at;
     at += w;
-    return `<rect data-cause-seg="${k}" x="${x.toFixed(2)}" y="0" width="${w.toFixed(2)}" height="18" fill="${CAUSE_FILL[k]}"><title>${esc(k.replace("_", " "))}: ${v}</title></rect>`;
+    return `<rect data-cause-seg="${k}" x="${x.toFixed(2)}" y="0" width="${w.toFixed(2)}" height="18" fill="${CAUSE_FILL[k]}"><title>${esc(k.replace("_", " "))}: ${esc(String(v))}</title></rect>`;
   }).join("");
   const bar = `<svg class="thcausebar" viewBox="0 0 100 18" width="100%" height="18" preserveAspectRatio="none" role="img" aria-label="${esc(`${failed} failed Bash calls by cause`)}"><rect x="0" y="0" width="100" height="18" fill="var(--surface-2)"/>${segs}</svg>`;
   const swatch = (k) => `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect width="10" height="10" fill="${CAUSE_FILL[k]}"/></svg> `;
-  const card = (id, label, value, k, title = "") => `<div class="kpi" data-cause-card="${id}"><span class="k">${k ? swatch(k) : ""}${esc(label)}</span><b class="kv"${title ? ` title="${esc(title)}"` : ""}>${value}</b></div>`;
+  const card = (id, label, value, k, title = "") => `<div class="kpi" data-cause-card="${id}"><span class="k">${k ? swatch(k) : ""}${esc(label)}</span><b class="kv"${title ? ` title="${esc(title)}"` : ""}>${esc(value)}</b></div>`;
   const cards = `<div class="kpis">${[
     card("command", "Command", String(totals.command), "command"),
     card("rtk-filter", "rtk filter", "—", null, "rtk's parse failures carry no call id until upstream rtk logs one; these failures count under Command for now"),
-    card("rtk-hook", "rtk hook", String(totals.rtk_hook), "rtk_hook"),
+    rtkOk ? card("rtk-hook", "rtk hook", String(totals.rtk_hook), "rtk_hook") : card("rtk-hook", "rtk hook", "—", "rtk_hook", "rtk history could not be read, so an rtk hook refusal cannot be told from a himmel guard refusal; it counts under himmel guard"),
     card("guard", "himmel guard", String(totals.guard), "guard"),
-    card("classifier", "Classifier", String(totals.classifier), "classifier"),
+    card("classifier", "Auto-mode classifier", String(totals.classifier), "classifier"),
   ].join("")}</div>`;
-  return `${bar}${cards}${totals.other > 0 ? `<p class="sub">${totals.other} other: a failure with no named cause.</p>` : ""}`;
+  // Causes come from the calls that carry their command; a window with older calls shows a subset, so say how much.
+  const all = isNum(b.unrecorded) ? b.recorded + b.unrecorded : null;
+  const cover = b.unrecorded === null || b.unrecorded > 0 ? `<p class="sub">Failure causes cover ${num(b.recorded)} of ${isNum(all) ? num(all) : "an unknown number of"} calls: the rest were written before the command was recorded.</p>` : "";
+  return `${bar}${cards}${totals.other > 0 ? `<p class="sub">${esc(String(totals.other))} other: a failure with no named cause.</p>` : ""}${cover}`;
 }
 function bashSections(data) {
   const b = data.bash;
@@ -522,7 +527,7 @@ function bashSections(data) {
   const rtkRows = rtkOk && fl ? [["rtk", fl.rtk], ["bash", fl.bash], ["not in rtk history", fl.unmatched]].map(([k, v]) => `<tr data-path="${k}">${td(k)}${td(num(v.calls))}${td(num(v.failures))}${td(pct(ratio(v.failures, v.calls)))}</tr>`) : [];
   const rtkBody = rtkOk && fl ? `${table(["Path", "Calls", "Failed", "Failure rate"], rtkRows)}<p class="sub">rtk history: ${num(b.rtk.matched)} matched, ${num(b.rtk.unmatched)} unmatched, ${num(b.rtk.duplicates)} duplicate call ids.</p>` : `<p class="nodata">rtk history unavailable (${esc(b.rtk ? b.rtk.state : "not-read")}): rtk —, bash —</p>`;
   return `${box("bash-cmd", "Calls by command", `Which commands run, and how many go through rtk? The command is recorded for ${num(b.recorded)} calls; ${num(b.unrecorded)} were written before it was.`, cmds)}
-${box("bash-cause", "Failures by cause", "Who broke the call: the command, the rtk hook, a himmel guard or the classifier? rtk filter failures need rtk to log the call id (later).", causeView(totals))}
+${box("bash-cause", "Failures by cause", "Who broke the call: the command, the rtk hook, a himmel guard or the classifier? rtk filter failures need rtk to log the call id (later).", causeView(totals, b, rtkOk))}
 ${box("bash-rtk", "rtk vs bash", "Does going through rtk fail more often? Whole fleet: not split by role, lane or profile.", rtkBody, "whole fleet")}`;
 }
 function toolDrill(data, inv, ui, token) {
@@ -548,9 +553,9 @@ function guardDrill(data, ui, token) {
   for (const d of data.daily_hooks || []) if (d.class === h.class) by.set(d.day, (by.get(d.day) || 0) + (isNum(d.failures) ? d.failures : 0));
   const days = windowDays(data).map((day) => ({ day, n: by.has(day) ? by.get(day) : cohort.has(day) ? 0 : null }));
   const max = Math.max(0, ...days.map((d) => d.n || 0));
-  // The mockup's This week cards lead; the rest of the facts stay in the second list.
+  // The four This week cards sit beside the chart; the eligible attempts, the legacy rate, Bash calls and recovery are in the counted box below.
   const peak = days.reduce((b, d) => (isNum(d.n) && d.n > 0 && (!b || d.n > b.n) ? d : b), null), counted = days.filter((d) => isNum(d.n));
-  const cards = `<h3>${data.selected && data.selected.days === 30 ? "This window (30 days)" : "This week"}</h3><div class="kpis">${weekCard("refused", "Refused", num(h.failures))}${weekCard("rate", "Rate ÷ eligible call attempts", pct2(h.eligible_rate))}${weekCard("busiest", "Busiest day", peak ? `${dayLabel(peak.day)} · ${peak.n}` : "—")}${weekCard("none", "Days with none", counted.length ? num(counted.filter((d) => d.n === 0).length) : "—")}</div>`;
+  const cards = `<h3>${data.selected && data.selected.days === 30 ? "This window (30 days)" : "This week"}</h3><div class="kpis th-cols">${weekCard("refused", "Refused", num(h.failures))}${weekCard("rate", "Rate ÷ eligible call attempts", pct2(h.eligible_rate))}${weekCard("busiest", "Busiest day", peak ? `${dayLabel(peak.day)} · ${peak.n}` : "—")}${weekCard("none", "Days with none", counted.length ? num(counted.filter((d) => d.n === 0).length) : "—")}</div>`;
   const counting = box("guard-counts", "How the rate is counted", "The eligible call attempts behind the rate, the older Bash-only rate kept for comparison, and how often a refused call was retried and recovered.", `<dl class="stats">${stat("eligible", "Eligible call attempts", num(h.eligible_calls))}${stat("legacy-rate", "Rate ÷ Bash calls (legacy)", pct(h.rate))}${stat("bash", "Bash calls", num(h.calls))}${stat("recovery", "Recovery", `${pct(h.recovery_rate)} (${num(h.recovered)} of ${num(h.known)} known)`)}</dl>`);
   // mockup v9: Refusals per day and the four This week cards sit side by side.
   const perDay = `<figure class="card"><h3>Refusals per day <span class="tag">refused calls</span></h3>${sub("Refusals per UTC day; a gap is a day with no calls recorded.")}${chart(days.map((d) => ({ day: d.day, n: d.n })), (d) => d.n, max, String, "bar")}<details><summary>Exact values per day</summary>${table(["Day (UTC)", "Refused"], days.map((d) => `<tr data-guard-day="${d.day}">${td(esc(dayLabel(d.day)))}${td(num(d.n))}</tr>`))}</details></figure>`;
@@ -631,18 +636,20 @@ function mapTab(data, inv, ui) {
   const heads = ["Source", ...KINDS.map((k) => KIND_LABEL[k]), "All"];
   const head = heads.map((h, i) => `<span class="mh"><button class="th-sort" data-act="th-sort" data-table="map" data-col="${i}" aria-label="Sort sources by ${esc(h)}"${i === KINDS.indexOf("res") + 1 ? ` title="No scan source lists MCP resources, so this column stays empty."` : ""}>${esc(h)}${sort && sort.col === i ? (sort.desc ? " ▾" : " ▴") : ""}</button></span>`).join("");
   // One tile's facts, shared by the desktop grid cell and the phone card tile: count, calls line, failure-rate tint, loaded-never-used.
+  // A sum is a number only when every part is one: an unread digest leaves a dash, never a zero. An empty list is `empty`.
+  const sumOf = (list, f, empty = null) => (!list.length ? empty : list.every((x) => isNum(f(x))) ? list.reduce((n, x) => n + f(x), 0) : null);
   const tileInfo = (s, k) => {
     const items = itemsOf(s, k);
     if (!items.length) return null;
     const outside = outsideKind(k);
     const counts = items.map((r) => toolCounts(r, data));
-    const calls = outside ? null : counts.reduce((n, c) => (n === null || !isNum(c.calls) ? null : n + c.calls), 0);
-    const failed = outside ? items.reduce((n, r) => n + (isNum(r.refused) ? r.refused : 0), 0) : counts.reduce((n, c) => n + (isNum(c.failures) ? c.failures : 0), 0);
+    const calls = outside ? null : sumOf(counts, (c) => c.calls);
+    const failed = outside ? (data ? items.reduce((n, r) => n + (isNum(r.refused) ? r.refused : 0), 0) : null) : sumOf(counts, (c) => c.failures);
     const rate = ratio(failed, calls);
-    const tint = outside ? "" : !isNum(calls) || calls === 0 ? " zero" : failed === 0 ? " ok-t" : rate >= 0.1 ? " bad-t" : rate >= 0.05 ? " warn-t" : " ok-t";
+    const tint = outside ? "" : !isNum(calls) || calls === 0 || !isNum(failed) ? " zero" : failed === 0 ? " ok-t" : rate >= 0.1 ? " bad-t" : rate >= 0.05 ? " warn-t" : " ok-t";
     const runs = k === "hook" ? items.reduce((n, r) => (n === null || !isNum(r.runs) ? null : n + r.runs), 0) : null;
     const unused = items.filter((r, i) => (r.kind === "hook" ? r.runs === 0 : !outsideKind(r.kind) && counts[i].calls === 0)).length;
-    const line = k === "hook" ? `${num(runs)} runs ${items.every((r) => r.runsMeasured) ? "measured" : items.some((r) => r.runsMeasured) ? "measured and derived" : "derived"} · ${failed} refused` : k === "cli" ? "outside call total" : `${num(calls)} calls · ${failed} failed${isNum(calls) && calls > 0 && calls < 10 ? " · few calls" : ""}`;
+    const line = k === "hook" ? `${num(runs)} runs ${items.every((r) => r.runsMeasured) ? "measured" : items.some((r) => r.runsMeasured) ? "measured and derived" : "derived"} · ${num(failed)} refused` : k === "cli" ? "outside call total" : `${num(calls)} calls · ${num(failed)} failed${isNum(calls) && calls > 0 && calls < 10 ? " · few calls" : ""}`;
     const label = k ? `${items.length} ${KIND_LABEL[k]}` : `${items.length} ${items.length === 1 ? "tool" : "tools"}`;
     return { items, label, line, tint, unused };
   };
@@ -661,7 +668,7 @@ function mapTab(data, inv, ui) {
   const grid = `<div class="thmap" data-cols="${kindCols.length}">${head}${body}${foot}</div>`;
   const cards = `<div class="thcards">${ordered.map((s) => {
     const own = rows.filter((r) => r.src === s), counted = own.filter((r) => !outsideKind(r.kind)).map((r) => toolCounts(r, data));
-    const calls = counted.reduce((n, c) => (n === null || !isNum(c.calls) ? null : n + c.calls), 0), rate = ratio(counted.reduce((n, c) => n + (isNum(c.failures) ? c.failures : 0), 0), calls);
+    const none = isNum(data && data.totalCalls) ? 0 : null, calls = sumOf(counted, (c) => c.calls, none), rate = ratio(sumOf(counted, (c) => c.failures, none), calls);
     // mockup v9: each source card names its tools, calls and failure rate, then one tile per kind with the same calls line and tint as the desktop grid
     const summary = `${own.length} ${own.length === 1 ? "tool" : "tools"} · ${num(calls)} calls${isNum(rate) ? ` · ${pct(rate)}` : ""}`;
     const tiles = KINDS.map((k) => ({ k, info: tileInfo(s, k) })).filter((x) => x.info).map(({ k, info }) => {
