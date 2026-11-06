@@ -3,7 +3,7 @@ name: stuck-playbook
 description: Use when a himmel guardrail blocks you.
 ---
 
-# stuck-playbook — guardrail-recovery escape-hatches (HIMMEL-211)
+# stuck-playbook — guardrail-recovery escape-hatches
 
 You hit a himmel guardrail and need the recovery rule. The full symptom→action
 playbook lives in the repo at **`docs/internals/stuck-playbook.md`** — read it
@@ -18,7 +18,7 @@ Read docs/internals/stuck-playbook.md
 ## The one rule that overrides every workaround
 
 **Never reshape a command to dodge a guardrail.** The guardrails are structural
-on purpose (HIMMEL-195: structural > instructional). If a write is still denied
+on purpose (structural > instructional). If a write is still denied
 after applying the matching playbook section, that denial is *correct* — **defer
 to the operator**. Prefer a structural fix (a new `auto-approve-safe-bash` case,
 a CLI flag) over a cleverer command.
@@ -28,11 +28,10 @@ a CLI flag) over a cleverer command.
 - **Bash command stopped by a permission prompt** (interactively it waits;
   headless/auto it DENIES at rc=0 and continues — a silent no-op) → the native
   matcher bails on `$var` / `$(…)` / backticks / compound operators. Prefer
-  literal single commands. (HIMMEL-203 / HIMMEL-1969)
+  literal single commands.
 - **Jira write fell through to the classifier and was DENIED** → command-SHAPE
   problem, not a write-permission problem. Prefer literal `node …/jira …` (bare
   or `cd`-prefixed); multi-line bodies via `--comment-file` / `--desc-file`.
-  (HIMMEL-205 / 209)
 - **Pre-push gate failed on a missing attestation trailer** → put the trailer in
   the FIRST commit; never reactive `--amend` (HARD-blocked in auto-mode). If
   already pushed, add it to the PR body.
@@ -44,16 +43,15 @@ a CLI flag) over a cleverer command.
   '/tmp'"** → a stray `.git` in an ANCESTOR of the edited path (not the file
   itself) makes `block-edit-on-main` treat that ancestor as a repo root.
   `/himmel-doctor` C36-stray-tmp-git catches it; `rmdir` it if empty, stop and
-  name it (never delete contents) if not. (HIMMEL-2739)
+  name it (never delete contents) if not.
 - **An ad-hoc Bash line containing the literal word "enable" is refused in a
   worktree-pinned session** → the harness's own worktree-isolation guard, not
   a himmel script; independent of `git` involvement. Do not reshape the
   command to dodge it (the rule above still applies) — rephrase to avoid the
-  word where possible, or defer to the operator. (HIMMEL-2739)
+  word where possible, or defer to the operator.
 - **A late fix after plain `pre-commit run` is gated against stale content**
   → it stashes every unstaged file repo-wide and lints the STAGED index;
   `--all-files` does NOT stash. `git add` the fix again before re-running.
-  (HIMMEL-2739)
 - **An outward-facing command (`gh pr create` / `gh pr comment` / `git push`)
   is denied with `Stage 2 classifier error`** → do not retry verbatim
   back-to-back; end the turn or do one unrelated read, then retry ONCE,
@@ -64,7 +62,7 @@ a CLI flag) over a cleverer command.
   after that one retry → stop, `BLOCKED` to the chief with the exact text;
   the chief never runs it (laundering). **`[Out-of-Place Publication]` gets
   no retry at all**, first time seen or not — escalate immediately the same
-  way. (HIMMEL-3020)
+  way.
 
 Why these are a load-on-trigger playbook and not CLAUDE.md rules:
 `docs/internals/stuck-playbook.md` § Why this is a playbook, and memory

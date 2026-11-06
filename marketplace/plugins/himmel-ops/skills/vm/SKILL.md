@@ -3,17 +3,17 @@ name: vm
 description: Start/stop/snapshot test VMs; run the VM e2e; arm claude on one.
 ---
 
-# vm — VM lifecycle + e2e runbook (HIMMEL-491/493)
+# vm — VM lifecycle + e2e runbook
 
 Lean-invoke skill. Invoke on demand when you need to drive a test VM.
 Do NOT use this as an always-on rule.
 
 ## Safety rails — read first
 
-- **Concurrency rail (amended HIMMEL-2623):** the old "only ONE VM online at a
+- **Concurrency rail:** the old "only ONE VM online at a
   time" rule was Windows-era — it existed for shared loopback ports (2222/2223)
   and host RAM, carried no stated rationale, and blocked exactly the parallel
-  linked-clone design HIMMEL-2623 needed on purpose. It is now: **one VM per
+  linked-clone design the e2e runs need on purpose. It is now: **one VM per
   loopback port; clones get distinct loopback ports above the registered
   set — the allocator skips any port a registered VM already claims — and a
   RAM budget (4 GB each, capped via env against free host RAM); the
@@ -24,7 +24,7 @@ Do NOT use this as an always-on rule.
   (`himmel-ar-1`..`himmel-ar-$HIMMEL_VM_AR_MAX`, `scripts/vm/after-report.sh`)
   are the first consumer of the new rule: several can run at once, each on
   its own port, because each is genuinely its own host for the machine-lock
-  purposes HIMMEL-2623 exists to route around.
+  purposes the linked clones exist to route around.
 - **Power the VM OFF when done** — `python scripts/lib/vmsdk.py <vm> down`
   (after-report.sh does this itself for its own clones, at the end of every
   run).
@@ -58,7 +58,7 @@ Do NOT use this as an always-on rule.
   v4 → v5** (full rationale, the vacuous-pass trap, the de-personalise steps).
 - The guest SSH login for `ubuntu_new`-derived VMs is `vms.json`'s
   `ubuntu_new.user` literal (`himmel`) — it wins over the (possibly stale)
-  `user_env`-resolved value (HIMMEL-2623). Repoint every consumer at once by
+  `user_env`-resolved value. Repoint every consumer at once by
   editing that one JSON field, not by hardcoding a username elsewhere.
 
 ## VM registry
@@ -76,7 +76,7 @@ Defined in `scripts/lib/vms.json`. Known VMs:
 python scripts/lib/vmsdk.py <vm> <verb>
 ```
 
-`vmsdk.py` needs `python-dotenv` and `paramiko` (HIMMEL-2471). Its PEP 723 script
+`vmsdk.py` needs `python-dotenv` and `paramiko`. Its PEP 723 script
 block pins them (`python-dotenv>=1.0,<2`, `paramiko>=3.4,<6`), so on a clean checkout
 run it as `uv run scripts/lib/vmsdk.py <vm> <verb>` (or
 `pip install 'python-dotenv>=1.0,<2' 'paramiko>=3.4,<6'`). Without `python-dotenv` it
@@ -97,17 +97,17 @@ usage: vmsdk.py <vm> <up|down|snapshot NAME [--no-secret-scan]|restore NAME|audi
 |---|---|
 | `up` | Power on the VM and wait for SSH |
 | `down` | Graceful power-off (pass `graceful=False` in code for hard power-off) |
-| `snapshot NAME [--no-secret-scan]` | Take a named VirtualBox snapshot. REFUSES (HIMMEL-2540) if the guest holds a `.env` / `.env.*` (fail-closed: a powered-off or unscannable guest is refused too); `--no-secret-scan` is the explicit, loud override |
+| `snapshot NAME [--no-secret-scan]` | Take a named VirtualBox snapshot. REFUSES if the guest holds a `.env` / `.env.*` (fail-closed: a powered-off or unscannable guest is refused too); `--no-secret-scan` is the explicit, loud override |
 | `restore NAME` | Restore to a named snapshot (powers off + restores) |
-| `audit-base NAME` | Restore snapshot `NAME`, run the snapshot secret scan on it (HIMMEL-2540), power off. Exits 1 (REFUSING) if the image holds a `.env`; use it before trusting or sharing an old base. Overwrites the VM's current state. If a matrix base is wanted later, rebuild it by staging the RC with `vm_stage_tree` (excludes the secret set) and snapshotting; `snapshot` runs the same scan. |
+| `audit-base NAME` | Restore snapshot `NAME`, run the snapshot secret scan on it, power off. Exits 1 (REFUSING) if the image holds a `.env`; use it before trusting or sharing an old base. Overwrites the VM's current state. If a matrix base is wanted later, rebuild it by staging the RC with `vm_stage_tree` (excludes the secret set) and snapshotting; `snapshot` runs the same scan. |
 | `baseline NAME` | Restore `NAME` if it exists, else provision from scratch and snapshot it — idempotent clean-state shortcut |
 | `clone [REF]` | Shallow-clone the private himmel repo onto the guest (`REF` defaults to `main`). A git checkout already at `~/himmel` (the one baked into `suite-ready-v4`) is fetched and detached at `REF` (a branch, tag or SHA) instead; a non-git or locally modified `~/himmel` is refused |
 | `provision` | Run the per-OS provisioner (`ubuntu-vm-setup.py` or `windows-vm-setup.py`) |
 | `e2e` | Run the install/uninstall symmetry e2e against an Ubuntu VM (delegates to `scripts/test-install-symmetry-vm.sh`) |
 | `push FILE [DEST]` | Copy one host file to the guest via SFTP (`DEST` defaults to `~/handover-inbox/<name>`; `.env*`, `*.local.json` and any other secret-set file refused) |
-| `trigger HANDOVER [--at TIME] [--cwd DIR] [--long-gap] [--timeout N]` | Fire a claude session ON the guest from a host handover file (HIMMEL-835): pushes the handover, then either drives an immediate bounded session (default) or, with `--at`, arms the guest's own `arm-resume.sh` (at/atd backend). `--cwd` defaults to the guest's private-checkout path under `~/Documents/github/` (the ubuntu_new layout, verified 2026-07-09). `--long-gap` (HIMMEL-1475) forwards arm-resume's `--long-gap` so a far `--at TIME` (>60 min out) is not refused (rc 9) by the long-gap guard; only valid with `--at`. Single-writer: do not trigger a ticket another writer owns |
+| `trigger HANDOVER [--at TIME] [--cwd DIR] [--long-gap] [--timeout N]` | Fire a claude session ON the guest from a host handover file: pushes the handover, then either drives an immediate bounded session (default) or, with `--at`, arms the guest's own `arm-resume.sh` (at/atd backend). `--cwd` defaults to the guest's private-checkout path under `~/Documents/github/` (the ubuntu_new layout, verified 2026-07-09). `--long-gap` forwards arm-resume's `--long-gap` so a far `--at TIME` (>60 min out) is not refused (rc 9) by the long-gap guard; only valid with `--at`. Single-writer: do not trigger a ticket another writer owns |
 
-**Secret boundary (HIMMEL-2540).** Every host→guest copy excludes `.env`,
+**Secret boundary.** Every host→guest copy excludes `.env`,
 `.env.*` and `*.local.json` (incl. `.claude/settings.local.json`), and the guest
 is scanned (home directory plus the two `/tmp` staging dirs the tracked scripts
 use; `-xdev`, so nested mounts and an untracked builder's own staging are not
@@ -118,7 +118,7 @@ rsyncs a checkout itself (the ad-hoc `m2457-rebuild.sh` style) must use it too:
 `bash scripts/lib/vm-guest-excludes.sh excludes rsync|tar` prints the flags and
 `bash scripts/lib/vm-guest-excludes.sh scan <root> [full|env]` exits non-zero on a hit.
 
-The `full` scan has ONE content exemption (HIMMEL-3252): himmelctl's own
+The `full` scan has ONE content exemption: himmelctl's own
 `scripts/lanes/lanes.local.json` (written during an install) passes only when it is
 a regular file ≤1 KiB whose keys and values match a closed inert shape (lane-profile
 keys, the wizard-owned lane ids, probe kinds `always|never`). Any other key or
@@ -130,7 +130,7 @@ refuses; inspect it by hand.
 **All invocations must be from the primary checkout** (not a worktree) — the
 SDK resolves `.env` via `git rev-parse --git-common-dir`; worktrees lack `.env`.
 
-## After-report runner — `scripts/vm/after-report.sh` (HIMMEL-2623)
+## After-report runner — `scripts/vm/after-report.sh`
 
 ```bash
 bash scripts/vm/after-report.sh <branch> <pr>
@@ -193,7 +193,7 @@ failure) — not a code defect, re-run when fixed.
 An LLM-in-the-loop, VM-dependent, billing-consuming test must never block a
 merge. Run manually on demand to dogfood the `/luna-upgrade` skill end-to-end.
 The `drive_claude` primitive keeps the invocation non-headless and billing-safe
-per HIMMEL-128.
+(root `CLAUDE.md`, Claude invocation billing).
 
 ## Central SDK primitives
 
@@ -208,8 +208,8 @@ the e2e harness uses internally:
   presence after install.
 - **`drive_claude(prompt, cwd)`** — drive an interactive `claude "<prompt>"`
   session on the guest (positional prompt, not `-p`/`--print`, so it is
-  non-headless and billing-safe per HIMMEL-128); returns `(rc, output)`.
-  **Permissions policy (HIMMEL-575):** the drive runs with
+  non-headless and billing-safe); returns `(rc, output)`.
+  **Permissions policy:** the drive runs with
   `--dangerously-skip-permissions` *on purpose* — a VM is throwaway, isolated,
   and holds no operator data, and the non-interactive drive (`< /dev/null`) has
   no human to answer a tool-use prompt, so the guest is allowed to "run wild";
