@@ -1739,6 +1739,9 @@ def retag_row(repo, rel, key, label, doc, pr):
         return False
     try:
         st, f = read_row(target)
+        if st == 'err':
+            fault('row unreadable: %s' % (getattr(f, 'strerror', None) or f), rel, key)
+            return False
         if st != 'ok' or f[0] != key or f[4] not in ('', pr):
             return True
         new = [key, label, doc, 'claim' if f[3] == 'claim' else 'pr', pr]
