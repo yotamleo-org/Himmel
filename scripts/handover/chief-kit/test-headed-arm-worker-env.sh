@@ -201,6 +201,16 @@ printf '{"env":{"CLAUDE_CODE_EFFORT_LEVEL":"max"}}\n' >"$T/repo12/.claude/settin
 out="$(HEADED_ARM_REPO="$T/repo12" WORKER_SESSION_EFFORT=medium dry)"
 contains "W12 a project-settings pin warns too" "$out" "$T/repo12/.claude/settings.json"
 rm -f "$T/repo12/.claude/settings.json"
+# a higher-precedence file that restates the asked effort wins over a user pin: nothing to warn about
+printf '{"env":{"CLAUDE_CODE_EFFORT_LEVEL":"high"}}\n' >"$HOME/.claude/settings.json"
+printf '{"env":{"CLAUDE_CODE_EFFORT_LEVEL":"medium"}}\n' >"$T/repo12/.claude/settings.local.json"
+out="$(HEADED_ARM_REPO="$T/repo12" WORKER_SESSION_EFFORT=medium dry)"
+not_contains "W12 control: a project-local pin equal to the asked effort overrides a user pin, so no warning" "$out" "WARNING"
+printf '{"env":{"CLAUDE_CODE_EFFORT_LEVEL":"max"}}\n' >"$T/repo12/.claude/settings.local.json"
+out="$(HEADED_ARM_REPO="$T/repo12" WORKER_SESSION_EFFORT=medium dry)"
+contains "W12 the warning names the winning (project-local) pin" "$out" "$T/repo12/.claude/settings.local.json pins max"
+not_contains "W12 ... and not the overridden user pin" "$out" "$HOME/.claude/settings.json pins"
+rm -f "$HOME/.claude/settings.json" "$T/repo12/.claude/settings.local.json"
 
 echo "---"
 if [ "$FAILED" -gt 0 ]; then echo "FAILED: $FAILED case(s)"; exit 1; fi
