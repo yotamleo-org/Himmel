@@ -179,6 +179,57 @@ mkdir -p "$T/repo11"
 out="$(cd "$T" && HIMMEL_HOLD_KEY=HIMMEL-1 WORKER_SESSION_REPO="$T/repo11" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-9377-N5-c "$T/consult.md" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)"
 contains "W11 a --consult launch carries no key" "$out" "HIMMEL_HOLD_KEY=<unset> HIMMEL_HOLD_DOC=<unset> HIMMEL_HOLD_LABEL=<unset>"
 
+# W12. a settings env pin of CLAUDE_CODE_EFFORT_LEVEL overrides the asked effort (claude 2.1.319,
+# sandboxed HOME, mock API: pin high + `--effort medium` or env medium both still sent high). The launcher
+# warns, never refuses, and stays quiet when the pin matches or there is none. HOME is the sandbox from W7.
+unset CLAUDE_CONFIG_DIR CLAUDE_DIR 2>/dev/null || true
+mkdir -p "$HOME/.claude" "$T/repo12/.claude"
+printf '{"env":{"CLAUDE_CODE_EFFORT_LEVEL":"high"}}\n' >"$HOME/.claude/settings.json"
+rc=0; out="$(WORKER_SESSION_EFFORT=medium dry)" || rc=$?
+check "W12 a user-settings pin differing from the asked effort still launches (exit 0)" "$rc" "0"
+contains "W12 the launcher warns about the pin" "$out" "WARNING"
+contains "W12 the warning names the variable" "$out" "CLAUDE_CODE_EFFORT_LEVEL"
+contains "W12 the warning names the settings file" "$out" "$HOME/.claude/settings.json"
+contains "W12 the warning names the pinned effort" "$out" "pins high"
+contains "W12 the warning names the asked effort" "$out" "asked effort=medium"
+out="$(WORKER_SESSION_EFFORT=high dry)"
+not_contains "W12 control: a pin equal to the asked effort is silent" "$out" "WARNING"
+rm -f "$HOME/.claude/settings.json"
+out="$(WORKER_SESSION_EFFORT=medium dry)"
+not_contains "W12 control: no pin is silent" "$out" "WARNING"
+printf '{"env":{"CLAUDE_CODE_EFFORT_LEVEL":"max"}}\n' >"$T/repo12/.claude/settings.json"
+out="$(HEADED_ARM_REPO="$T/repo12" WORKER_SESSION_EFFORT=medium dry)"
+contains "W12 a project-settings pin warns too" "$out" "$T/repo12/.claude/settings.json"
+rm -f "$T/repo12/.claude/settings.json"
+# a higher-precedence file that restates the asked effort wins over a user pin: nothing to warn about
+printf '{"env":{"CLAUDE_CODE_EFFORT_LEVEL":"high"}}\n' >"$HOME/.claude/settings.json"
+printf '{"env":{"CLAUDE_CODE_EFFORT_LEVEL":"medium"}}\n' >"$T/repo12/.claude/settings.local.json"
+out="$(HEADED_ARM_REPO="$T/repo12" WORKER_SESSION_EFFORT=medium dry)"
+not_contains "W12 control: a project-local pin equal to the asked effort overrides a user pin, so no warning" "$out" "WARNING"
+printf '{"env":{"CLAUDE_CODE_EFFORT_LEVEL":"max"}}\n' >"$T/repo12/.claude/settings.local.json"
+out="$(HEADED_ARM_REPO="$T/repo12" WORKER_SESSION_EFFORT=medium dry)"
+contains "W12 the warning names the winning (project-local) pin" "$out" "$T/repo12/.claude/settings.local.json pins max"
+not_contains "W12 ... and not the overridden user pin" "$out" "$HOME/.claude/settings.json pins"
+rm -f "$HOME/.claude/settings.json" "$T/repo12/.claude/settings.local.json"
+# a settings file the scan cannot read as a pin never changes the launch: same exit, no warning
+for bad12 in '{ not json' '{"env":"high"}' '{"env":["high"]}' '[]'; do
+    printf '%s\n' "$bad12" >"$HOME/.claude/settings.json"
+    rc=0; out="$(WORKER_SESSION_EFFORT=medium dry)" || rc=$?
+    check "W12 an unreadable pin ($bad12) leaves the launch exit 0" "$rc" "0"
+    not_contains "W12 an unreadable pin ($bad12) is silent" "$out" "WARNING"
+done
+# no jq on PATH: the scan is skipped, the launch is unchanged even with a real pin present
+printf '{"env":{"CLAUDE_CODE_EFFORT_LEVEL":"high"}}\n' >"$HOME/.claude/settings.json"
+mkdir -p "$T/nojq-bin"
+for nj12 in /usr/bin/* /bin/*; do
+    [ -e "$T/nojq-bin/${nj12##*/}" ] || [ "${nj12##*/}" = jq ] || ln -s "$nj12" "$T/nojq-bin/${nj12##*/}"
+done
+rc=0; out="$(PATH="$T/nojq-bin" WORKER_SESSION_EFFORT=medium dry)" || rc=$?
+if PATH="$T/nojq-bin" command -v jq >/dev/null 2>&1; then echo "FAIL W12 setup: jq is still on the stripped PATH"; FAILED=$((FAILED + 1)); fi
+check "W12 no jq: the launch still exits 0" "$rc" "0"
+not_contains "W12 no jq: the scan is skipped, no warning" "$out" "WARNING"
+rm -f "$HOME/.claude/settings.json"
+
 echo "---"
 if [ "$FAILED" -gt 0 ]; then echo "FAILED: $FAILED case(s)"; exit 1; fi
 echo "PASS all cases"
