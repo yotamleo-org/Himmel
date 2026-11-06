@@ -3789,24 +3789,49 @@ test("a page queued by send-file is delivered; the line carries the send-file ta
   expect(texts).toEqual([]);
 });
 
-test("a send-file line whose file changed since it was queued is refused with a notice", async () => {
+// The digest is checked by the document sender against the bytes of the descriptor it holds and uploads.
+const flushWithRealSender = async (r: string) => {
+  const { makeSendDoc } = await import("./poller");
+  const texts: string[] = []; const uploads: string[] = [];
+  const sender = makeSendDoc("123:FAKE", r, 5, (async (_t: string, _c: number, src: any) => { uploads.push(Buffer.from(src.bytes).toString("utf8")); return true; }) as any);
+  await flushOutboxes(r, async (_c, t) => { texts.push(t); }, sender);
+  return { texts, uploads };
+};
+
+test("a send-file line is delivered with the bytes it recorded, through the real document sender", async () => {
+  const r = await docChat(); const page = join(r, "outgoing", "spec.html"); writeFileSync(page, "<html>spec</html>");
+  await sendFileViaOutbox(r, 5, page);
+  const { texts, uploads } = await flushWithRealSender(r);
+  expect(uploads).toEqual(["<html>spec</html>"]);
+  expect(texts).toEqual([]);
+});
+
+test("a send-file line whose file changed since it was queued uploads nothing and tells the chat", async () => {
   const r = await docChat(); const page = join(r, "outgoing", "spec.html"); writeFileSync(page, "<html>checked</html>");
   await sendFileViaOutbox(r, 5, page);
   writeFileSync(page, "<html>swapped after the critic</html>");
-  const { texts, docs } = await flushDocs(r);
-  expect(docs).toEqual([]);
+  const { texts, uploads } = await flushWithRealSender(r);
+  expect(uploads).toEqual([]);
   expect(texts.length).toBe(1);
   expect(texts[0]).toContain("spec.html");
 });
 
-test("a send-file line copied onto another file of its own is refused", async () => {
+test("a send-file line copied onto another file of its own uploads nothing", async () => {
   const r = await docChat(); const sent = join(r, "outgoing", "sent.html"); writeFileSync(sent, "<html>sent</html>");
   const other = join(r, "outgoing", "other.html"); writeFileSync(other, "<html>hand built</html>");
   await sendFileViaOutbox(r, 5, sent);
   const line = JSON.parse(readFileSync(outboxOf(r), "utf8").trim());
   await appendLine(outboxOf(r), JSON.stringify({ ...line, document_path: other }));
-  const { docs } = await flushDocs(r);
-  expect(docs).toEqual([sent]);   // the first line only
+  const { uploads } = await flushWithRealSender(r);
+  expect(uploads).toEqual(["<html>sent</html>"]);   // the first line only
+});
+
+test("a tagged line naming a device or a pipe never makes the poller read it", async () => {
+  const r = await docChat();
+  await appendLine(outboxOf(r), JSON.stringify({ document_path: "/dev/zero", via: "send-file", sha256: "0".repeat(64) }));
+  const { texts, uploads } = await flushWithRealSender(r);
+  expect(uploads).toEqual([]);
+  expect(texts.length).toBe(1);
 });
 
 test("a page line with only one of the two send-file fields is refused", async () => {
