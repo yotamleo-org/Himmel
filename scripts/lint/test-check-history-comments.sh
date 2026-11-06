@@ -212,7 +212,7 @@ if [ "$RC" -eq 1 ] && has "scripts/a.sh:2"; then pass "step: ponytail line citin
 # (a) a base that holds the gate but not the rule list is a red job
 B="$T/boot"; mkdir -p "$B/scripts/lint" "$B/tmp"; git -C "$B" init -q
 git -C "$B" config user.email t@t; git -C "$B" config user.name t
-cp "$GATE" "$B/scripts/lint/"
+cp "$GATE" "$AWKF" "$B/scripts/lint/"
 printf 'echo a\n' > "$B/scripts/a.sh"
 git -C "$B" add -A; git -C "$B" commit -q -m base
 boot_base="$(git -C "$B" rev-parse HEAD)"
@@ -220,11 +220,11 @@ printf 'echo a\necho b\n' > "$B/scripts/a.sh"
 git -C "$B" add -A; git -C "$B" commit -q -m clean
 bstep() { OUT="$(cd "$B" && BASE_SHA="$1" RUNNER_TEMP="$B/tmp" bash "$STEP" 2>&1)"; RC=$?; }
 bstep "$boot_base"
-if [ "$RC" -ne 0 ] && has "cannot evaluate"; then pass "step: a base without the rule list is a red job, even for a clean PR"; else fail "step no-rule-list clean -> rc=$RC: $OUT"; fi
+if [ "$RC" -ne 0 ] && has "ticket-ref-allow.tsv absent"; then pass "step: a base without the rule list is a red job, even for a clean PR"; else fail "step no-rule-list clean -> rc=$RC: $OUT"; fi
 printf 'echo a\necho b\n# %s-1234 added this guard\n' "$H" > "$B/scripts/a.sh"
 git -C "$B" add -A; git -C "$B" commit -q -m ticket
 bstep "$boot_base"
-if [ "$RC" -ne 0 ] && has "cannot evaluate"; then pass "step: a base without the rule list is a red job for a ticket comment too"; else fail "step no-rule-list ticket -> rc=$RC: $OUT"; fi
+if [ "$RC" -ne 0 ] && has "ticket-ref-allow.tsv absent"; then pass "step: a base without the rule list is a red job for a ticket comment too"; else fail "step no-rule-list ticket -> rc=$RC: $OUT"; fi
 # (b) a PR cannot widen the rule list that judges it
 P="$T/widen"; mkdir -p "$P/scripts/lint" "$P/docs" "$P/tmp"; git -C "$P" init -q
 git -C "$P" config user.email t@t; git -C "$P" config user.name t
