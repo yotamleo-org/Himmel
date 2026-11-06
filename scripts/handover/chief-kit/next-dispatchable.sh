@@ -1061,8 +1061,8 @@ if not holds_off:
             c = l.split('\t')
             if len(c) == 3:
                 key_state[c[0]] = c[1]
-        # a key counts as seeded only with a row that is not a sync-prs row (source pr): a PR title's key is not proof the worker was seeded
-        seeded_keys = {c[1] for c in (l.split('\t') for l in (reg(['read', '--repo', repo], fatal=False) or '').splitlines()) if len(c) == 6 and c[3] != 'pr' and c[5] != 'dead'}
+        # a key counts as seeded only with a row that is not a sync-prs row (source pr, label branch:<head>): a PR title's key is not proof the worker was seeded, but the pr rows a worker's own PR open makes carry its label
+        seeded_keys = {c[1] for c in (l.split('\t') for l in (reg(['read', '--repo', repo], fatal=False) or '').splitlines()) if len(c) == 6 and (c[3] != 'pr' or not c[2].startswith('branch:')) and c[5] != 'dead'}
     want = []
     for i in issues.values():
         for f in i['files']:
