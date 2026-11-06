@@ -1905,7 +1905,7 @@ H_REV=1111222233334444555566667777888899990000
 H_NEW=ffffeeeeddddcccc999988887777666655554444
 H_OLD2=9999888877776666555544443333222211110000
 printf 'o/pin-held=%s\no/pin-moved=%s\no/pin-free=%s\no/pin-shifted=%s\no/pin-eco=%s\no/ch-held=%s\no/ch-moved=%s\no/ch-free=%s\n' "$H_REV" "$H_NEW" "$H_REV" "$H_REV" "$H_REV" "$H_REV" "$H_NEW" "$H_REV" >"$W18/state/heads"
-printf 'o/fork-held=v1.0.0,v2.0.0\no/fork-moved=v1.0.0,v3.0.0\no/fork-free=v1.0.0,v2.0.0\no/fork-waiting=v1.0.0,v2.0.0\no/fork-expired=v1.0.0,v2.0.0\no/fork-badtime=v1.0.0,v2.0.0\n' >"$W18/state/tags"
+printf 'o/fork-held=v1.0.0,v2.0.0\no/fork-moved=v1.0.0,v3.0.0\no/fork-free=v1.0.0,v2.0.0\no/fork-waiting=v1.0.0,v2.0.0\no/fork-expired=v1.0.0,v2.0.0\no/fork-badtime=v1.0.0,v2.0.0\no/fork-farpast=v1.0.0,v2.0.0\no/fork-farfuture=v1.0.0,v2.0.0\n' >"$W18/state/tags"
 cat >"$W18/m.json" <<JSON
 {"plugins":[
  {"name":"pin-held","source":{"source":"url","url":"https://github.com/o/pin-held.git","sha":"$H_OLD"}},
@@ -1949,6 +1949,8 @@ cat >"$W18/holds.json" <<JSON
  {"eco":"plugin","key":"fork-waiting","current":"v1.0.0","latest_reviewed":"v2.0.0","eligible":"2026-12-01T00:00Z","reason":"fixture timed hold, not yet eligible"},
  {"eco":"plugin","key":"fork-expired","current":"v1.0.0","latest_reviewed":"v2.0.0","eligible":"2026-11-06T08:00Z","reason":"fixture timed hold, eligible time passed"},
  {"eco":"plugin","key":"fork-badtime","current":"v1.0.0","latest_reviewed":"v2.0.0","eligible":"","reason":"fixture hold whose eligible time is empty"},
+ {"eco":"plugin","key":"fork-farpast","current":"v1.0.0","latest_reviewed":"v2.0.0","eligible":"2000-01-01T00:00Z","reason":"fixture timed hold, eligible long ago"},
+ {"eco":"plugin","key":"fork-farfuture","current":"v1.0.0","latest_reviewed":"v2.0.0","eligible":"2999-01-01T00:00Z","reason":"fixture timed hold, eligible far ahead"},
  {"eco":"upstream","key":"ch-held","current":"$H_OLD","latest_reviewed":"$H_REV","reason":"fixture commit_head hold"},
  {"eco":"upstream","key":"ch-moved","current":"$H_OLD","latest_reviewed":"$H_REV","reason":"fixture commit_head hold"}
 ]}
@@ -1970,6 +1972,23 @@ out18b="$(DRIFT_NOW=2026-11-06T12:00Z GHSTATE="$W18/state" PATH="$W18/bin:$PATH"
 for row in pin-held fork-held ch-held fork-waiting; do
   if grepq "$out18b" "^  $row: BEHIND" && ! grepq "$out18b" "^  $row: HELD"; then ok "hold: a corrupt holds file leaves $row BEHIND, never HELD"; else bad "$row not BEHIND under a corrupt holds file; $(grep "$row" <<< "$out18b")"; fi
 done
+# The real clock: no DRIFT_NOW, so the script reads the time itself. An eligible
+# time long past reads BEHIND, one far ahead still reads HELD.
+cat >"$W18/m-clock.json" <<JSON
+{"plugins":[
+ {"name":"fork-farpast","source":{"source":"url","url":"https://github.com/me/fork-farpast.git","ref":"v1.0.0"}},
+ {"name":"fork-farfuture","source":{"source":"url","url":"https://github.com/me/fork-farfuture.git","ref":"v1.0.0"}}
+]}
+JSON
+cat >"$W18/u-clock.json" <<'JSON'
+{
+ "fork-farpast":{"upstream_repo":"o/fork-farpast","track":"release","synced_base":"v1.0.0"},
+ "fork-farfuture":{"upstream_repo":"o/fork-farfuture","track":"release","synced_base":"v1.0.0"}
+}
+JSON
+out18c="$(GHSTATE="$W18/state" PATH="$W18/bin:$PATH" DRIFT_PIN_HOLDS="$W18/holds.json" DRIFT_MJSON="$W18/m-clock.json" DRIFT_UPSTREAMS="$W18/u-clock.json" DRIFT_REGISTRY="$W18/reg.json" DRIFT_KNOWN_MARKETPLACES=/dev/null bash "$SCRIPT" 2>&1)"
+if grepq "$out18c" "^  fork-farpast: BEHIND"; then ok "hold: with the real clock an eligible time long past -> BEHIND"; else bad "fork-farpast not BEHIND on the real clock; $(grep "fork-farpast" <<< "$out18c")"; fi
+if grepq "$out18c" "^  fork-farfuture: HELD "; then ok "hold: with the real clock an eligible time far ahead -> HELD"; else bad "fork-farfuture not HELD on the real clock; $(grep "fork-farfuture" <<< "$out18c")"; fi
 # Only held rows: they must not count as drift.
 cat >"$W18/m.json" <<JSON
 {"plugins":[
