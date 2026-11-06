@@ -196,7 +196,9 @@
 #     does not see xargs), zsh's `grep -n '.env' =(true) -e TOKEN` (a mid-command
 #     paren carries no mark), a brace expansion that builds the option
 #     (`grep -n '.env' {-,}e TOKEN`), `?e` or `[-]e` reaching a planted file
-#     named -e, a shell function or an alias named grep that adds a fixed -e,
+#     named -e that the hook's own glob cannot see (after a cd, or planted by
+#     the same command; one already in the hook's cwd expands to -e and is
+#     refused), a shell function or an alias named grep that adds a fixed -e,
 #     and GREP_OPTIONS on a grep that honours it.
 #     A nested shell body (bash -c, eval) is one quoted word there,
 #     and guard_unwrap reads it again from its own words. A quoted string that
