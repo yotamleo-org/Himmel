@@ -153,6 +153,11 @@ check "9436: the answers over the counting filter are right: 9101 none, 9102 don
 check "9436: nine merge-row questions over one unchanged log run the filter once" "$(wc -l < "$MRC_LOG" | tr -d ' ')" 1
 printf '{"ts":"t","event":"merge","key":"HIMMEL-9190","pr":"90","head":"h90","contract":"yes","result":"moved","stage":"x"}\n' >> "$TICKET_STATUS_STATE_DIR/status-events.jsonl"
 _TS_LIB_DIR="$tmp/countlib" ts_has_merge_row HIMMEL-9190; check "9436: a log that grew since the last read is read again and the new row seen" "$?:$(wc -l < "$MRC_LOG" | tr -d ' ')" "0:2"
+sed 's/HIMMEL-9190/HIMMEL-9191/' "$TICKET_STATUS_STATE_DIR/status-events.jsonl" > "$TICKET_STATUS_STATE_DIR/status-events.new"
+mv "$TICKET_STATUS_STATE_DIR/status-events.new" "$TICKET_STATUS_STATE_DIR/status-events.jsonl"
+_TS_LIB_DIR="$tmp/countlib" ts_has_merge_row HIMMEL-9190; a=$?
+_TS_LIB_DIR="$tmp/countlib" ts_has_merge_row HIMMEL-9191; b=$?
+check "9436: a log replaced by a file of the same size is read again, not served from the cache" "$a$b:$(wc -l < "$MRC_LOG" | tr -d ' ')" "10:3"
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-ticket-status.sh"
