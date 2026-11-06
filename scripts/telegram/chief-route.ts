@@ -410,17 +410,29 @@ async function latestCritics(spec: string): Promise<Record<"spec" | "plan", Crit
   return out;
 }
 
+// Folders a critic file for `page` may sit in: its own, and the design and plan folders of any specs/
+// root above it (the plan critic is saved beside the SPEC, while the plan itself lives in specs/plans/).
+function criticDirs(page: string): string[] {
+  const parts = page.split("/");
+  const dirs = new Set([dirname(page)]);
+  parts.forEach((d, i) => { if (d === "specs") for (const s of SIGNATURE_DIRS) dirs.add([...parts.slice(0, i + 1), s].join("/")); });
+  return [...dirs];
+}
+
 // The spec whose critic files govern `page`: the page itself, or the spec whose latest plan critic
 // is sealed to `page` (a plan page). null = nothing is filed for it.
 async function governingSpec(page: string): Promise<string | null> {
-  if ((await latestCritics(page)).spec || (await latestCritics(page)).plan) return page;
-  for (const n of await readdir(dirname(page)).catch(() => [] as string[])) {
-    const m = /^(.+)\.critic-plan-r\d+\.md$/.exec(n);
-    if (!m) continue;
-    const spec = join(dirname(page), m[1]);
-    const plan = (await latestCritics(spec)).plan;
-    const sealed = plan && SEAL.exec(await readFile(plan.path, "utf8").catch(() => ""));
-    if (sealed && await realpath(resolve(dirname(plan!.path), sealed[2])).catch(() => "") === page) return spec;
+  const own = await latestCritics(page);
+  if (own.spec || own.plan) return page;
+  for (const dir of criticDirs(page)) {
+    for (const n of await readdir(dir).catch(() => [] as string[])) {
+      const m = /^(.+)\.critic-plan-r\d+\.md$/.exec(n);
+      if (!m) continue;
+      const spec = join(dir, m[1]);
+      const plan = (await latestCritics(spec)).plan;
+      const sealed = plan && SEAL.exec(await readFile(plan.path, "utf8").catch(() => ""));
+      if (sealed && await realpath(resolve(dirname(plan!.path), sealed[2])).catch(() => "") === page) return spec;
+    }
   }
   return null;
 }
@@ -428,10 +440,12 @@ async function governingSpec(page: string): Promise<string | null> {
 export type VerdictLine = { kind: "spec" | "plan"; round: number; file: string; verdict: string };
 
 // null = not a signature page (sends as before); throws, naming the verdict file, when the page may not be sent.
-export async function checkSignaturePage(abs: string): Promise<VerdictLine[] | null> {
+// `bytes` are the page's bytes as read once here: the caller sends THOSE, so an edit after the check cannot slip through.
+export async function checkSignaturePage(abs: string): Promise<{ verdicts: VerdictLine[]; bytes: Buffer } | null> {
   const page = await realpath(abs).catch(() => abs);
   const spec = await governingSpec(page);
   if (!spec && ![abs, page].some(underSignaturePath)) return null;
+  const bytes = await readFile(page);
   const critics = await latestCritics(spec ?? page);
   const verdicts: VerdictLine[] = [];
   for (const kind of ["spec", "plan"] as const) {
@@ -444,13 +458,13 @@ export async function checkSignaturePage(abs: string): Promise<VerdictLine[] | n
     if (!sealed) throw new Error(`${c.path} has no CONTENT-SHA256 line, so it does not bind the bytes it read (chief-kit/critic-seal.sh adds it); the page is not sent`);
     const bound = await realpath(resolve(dirname(c.path), sealed[2])).catch(() => null);
     if (!bound) throw new Error(`${c.path}: the file it binds (${sealed[2]}) is missing; the page is not sent`);
-    if (sha256(await readFile(bound)) !== sealed[1]) throw new Error(`${c.path}: ${sealed[2]} changed since the ${kind} critic read it; re-run the critic`);
+    if (sha256(bound === page ? bytes : await readFile(bound)) !== sealed[1]) throw new Error(`${c.path}: ${sealed[2]} changed since the ${kind} critic read it; re-run the critic`);
     if (kind === "spec" && bound !== await realpath(spec ?? page)) throw new Error(`${c.path} binds ${sealed[2]}, not ${basename(spec ?? page)}`);
     if (kind === "plan" && !spec) throw new Error(`${c.path}: no spec to bind`);
     if (kind === "plan" && page !== (spec ?? page) && bound !== page) throw new Error(`${c.path} binds ${sealed[2]}, not ${basename(page)}`);
     verdicts.push({ kind, round: c.round, file: basename(c.path), verdict: last });
   }
-  return verdicts;
+  return { verdicts, bytes };
 }
 
 export function renderMarkdownHtml(md: string, title: string, verdicts?: VerdictLine[]): string {
@@ -476,13 +490,14 @@ export async function queueFile(root: string, chat: number, path: string, captio
   if (!st) throw new Error(`file not found: ${path}`);
   if (!st.isFile()) throw new Error(`not a regular file: ${path}`);
   if (st.size > MAX_SEND_BYTES) throw tooBig(st.size);
-  const verdicts = await checkSignaturePage(abs);   // throws (nothing queued) unless the latest critics passed these bytes
+  const signed = await checkSignaturePage(abs);   // throws (nothing queued) unless the latest critics passed these bytes
   // Every file is COPIED (or rendered) into <bridge root>/outgoing/<id>/: the poller ships only from there.
   const dir = join(root, "outgoing", randomUUID());
   await mkdir(dir, { recursive: true, mode: 0o700 });
   const isMd = /\.(md|markdown)$/i.test(abs);
   const send = join(dir, isMd ? `${basename(abs).replace(/\.(md|markdown)$/i, "")}.html` : basename(abs));
-  if (isMd) await Bun.write(send, renderMarkdownHtml(await readFile(abs, "utf8"), basename(abs), verdicts ?? undefined));
+  if (isMd) await Bun.write(send, renderMarkdownHtml(signed ? signed.bytes.toString("utf8") : await readFile(abs, "utf8"), basename(abs), signed?.verdicts));
+  else if (signed) await Bun.write(send, signed.bytes);
   else await copyFile(abs, send);
   const size = (await stat(send)).size;
   if (size > MAX_SEND_BYTES) { await rm(dir, { recursive: true, force: true }); throw tooBig(size); }

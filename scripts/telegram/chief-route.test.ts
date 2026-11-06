@@ -1184,7 +1184,29 @@ test("send-file treats a symlink into a specs/ design path as a spec", async () 
   expect(res.lines).toEqual([]);
 });
 
-const SEAL_SH = join(import.meta.dir, "..", "handover", "chief-kit", "critic-seal.sh");
+test("send-file finds the plan critic beside the spec when the plan lives in specs/plans/, and refuses it on a NO-GO", async () => {
+  const r = root(); const b = bundle(r);
+  const plans = join(r, "specs", "plans"); mkdirSync(plans);
+  const plan = join(plans, "design.plan.md"); writeFileSync(plan, "# Plan\n\nthe plan\n");
+  critic(b.spec, "plan", 1, "PLAN CLEAN", { text: "# Plan\n\nthe plan\n", file: "../plans/design.plan.md" });
+  const ok = await sendFile(r, "1", plan);
+  expect(ok.code).toBe(0);
+  critic(b.spec, "plan", 2, "PLAN FINDINGS 1", { text: "# Plan\n\nthe plan\n", file: "../plans/design.plan.md" });
+  const no = await sendFile(r, "1", plan);
+  expect(no.code).not.toBe(0);
+  expect(no.err).toContain("design.md.critic-plan-r2.md");
+  expect(no.lines.length).toBe(1);   // only the first send queued
+});
+
+test("checkSignaturePage hands back the exact bytes it hashed, so the page sent is the page the critic read", async () => {
+  const { checkSignaturePage } = await import("./chief-route");
+  const r = root(); const b = bundle(r);
+  const res = await checkSignaturePage(b.spec);
+  expect(res!.bytes.toString("utf8")).toBe("# Design\n\nthe spec\n");
+  expect(await checkSignaturePage(join(r, "elsewhere.txt"))).toBeNull();
+});
+
+const SEAL_SH =join(import.meta.dir, "..", "handover", "chief-kit", "critic-seal.sh");
 const seal = async (...args: string[]) => {
   const p = Bun.spawn(["bash", SEAL_SH, ...args], { stdout: "pipe", stderr: "pipe" });
   return { code: await p.exited, err: await new Response(p.stderr).text() };
