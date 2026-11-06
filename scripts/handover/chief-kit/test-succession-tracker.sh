@@ -391,6 +391,12 @@ out="$(run)"; rc=$?
 has "a Live-state worker with no manifest row whose lock token is held is missing" "$out" "N9 missing"
 eq "and keeps the set incomplete (rc 1)" "$rc" 1
 [ -z "$HELD_TOKEN" ] || bash "$QL" release "$WORK/9395-N9-lock.md" "$HELD_TOKEN" >/dev/null 2>&1
+# with no manifest at all the lookup proved nothing: the worker is never read as closed
+mv "$MAN" "$MAN.keep9395"
+out="$(run)"; rc=$?
+has "a Live-state worker with no manifest file is missing, not closed" "$out" "N9 missing"
+eq "and keeps the set incomplete (rc 1)" "$rc" 1
+mv "$MAN.keep9395" "$MAN"
 
 # the 11-06 05:04 shape: 16 inherited workers, 10 quoted back; 4 wrapped and closed, 1 removed
 # from the manifest, 1 alive and silent. Before: INCOMPLETE 10/16 naming 6. After: only the live one.

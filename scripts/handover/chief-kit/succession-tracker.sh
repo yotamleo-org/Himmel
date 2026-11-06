@@ -134,18 +134,14 @@ fi
 . "$HERE/../../lib/worker-tail-status.sh"
 
 # lock_token_held <token>: success when a held, not provably dead, queue lock carries this session
-# token (the third field of a Live-state entry). The sweep is read once.
-sweep=""; sweep_read=0; sweep_rc=0
+# token (the third field of a Live-state entry). Only a worker with no readable doc gets here.
 lock_token_held() {
+    local sweep sweep_rc live
     [ -n "$1" ] || return 1
-    if [ "$sweep_read" -eq 0 ]; then
-        sweep="$(bash "$HERE/../queue-lock.sh" status --sweep)"; sweep_rc=$?
-        sweep_read=1
-    fi
+    sweep="$(bash "$HERE/../queue-lock.sh" status --sweep)"; sweep_rc=$?
     # rc 0 and 20 (a flagged lock) are answers; anything else could not read the locks, so a worker
     # is never proven closed by it (it stays missing)
     case "$sweep_rc" in 0|20) ;; *) return 0 ;; esac
-    local live
     live="$(printf '%s\n' "$sweep" | grep -F -- " session=$1 " | grep -v -- 'status=STALE-DEAD')"
     [ -n "$live" ]
 }
@@ -191,11 +187,12 @@ worker_state() {
 total=0; ok=0; pending=""; closed=0
 while IFS= read -r label; do
     [ -n "$label" ] || continue
-    ldoc=""
+    ldoc=""; token=""
     if [ -f "$manifest" ]; then
-        ldoc="$(jq -r --arg l "$label" "$JQ_W"'[W[] | select(.label == $l)][0].doc // empty' "$manifest" 2>/dev/null)"
+        # only a lookup that succeeded can prove a worker has no doc: its lock token is passed on then
+        if ldoc="$(jq -r --arg l "$label" "$JQ_W"'[W[] | select(.label == $l)][0].doc // empty' "$manifest" 2>/dev/null)"; then token="$(entry_token "$label")"; fi  # swallow-ok: a failed lookup passes no token, so the worker is never proven closed by it
     fi
-    state="$(worker_state "$ldoc" "$(entry_token "$label")")"
+    state="$(worker_state "$ldoc" "$token")"
     if [ "$state" = closed ]; then
         echo "$label closed (wrapped or gone, cannot quote back, not counted)"
         closed=$((closed + 1))
