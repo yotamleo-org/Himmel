@@ -2,8 +2,10 @@
 
 Release notes answer four questions for someone who installs himmel, in this
 order, then fold everything else into one line. `docs/release/<tag>-notes.md`
-is what the release workflow publishes; `CHANGELOG.md` stays the generated
-per-commit record (`scripts/gen-changelog.sh`) for anyone who wants the churn.
+is what the release workflow publishes; `git log` is the per-commit record for
+anyone who wants the churn. `CHANGELOG.md` is generated
+(`scripts/gen-changelog.sh`) with no ticket key in it: a tagged release's
+section is that tag's notes, older ones list commit subjects.
 
 ## Sections
 
@@ -27,7 +29,7 @@ and worker mechanics, review gates, CI and test tooling, lint baselines, refacto
 dependency pins.
 
 User sections are written in plain words and contain no ticket key
-(`HIMMEL-123`) and no PR number (`#123`); both belong in `CHANGELOG.md`. The
+(`HIMMEL-123`, in any case) and no PR number (`#123`); both belong in `git log`. The
 internal line gives a count, not a list.
 
 ## How a PR opts in

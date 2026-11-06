@@ -414,6 +414,134 @@ run_test "HIMMEL-2379: TERM while a NESTED git hangs also kills the git process"
 '
 
 # ---------------------------------------------------------------------------
+# Ticket keys never reach CHANGELOG.md (I1), and a tagged section
+# is rendered from the tag's own notes file so it does not move when the tag
+# appears (I2).
+# ---------------------------------------------------------------------------
+
+# Fixture: subjects holding a ticket key in every shape the strip must remove.
+setup_key_subjects() {
+  R=$(fixture_mktemp_dir) || return 1
+  git -C "$R" init -q
+  git -C "$R" config user.email t@t
+  git -C "$R" config user.name t
+  local s
+  for s in \
+    "feat: [HIMMEL-1] one" \
+    "feat: [HIMMEL-1, HIMMEL-2] two" \
+    "feat: HIMMEL-3 three" \
+    "fix: see HIMMEL-4/5 in text" \
+    "fix(HIMMEL-6): six" \
+    "fix(himmel-7): seven" \
+    "fix: himmel-8 eight" \
+    "chore: LUNA-9 nine" \
+    "feat: ten thing (#10)" \
+    "fix: eleven thing (#11) (#12)" \
+    "fix: twelve thing (#13) HIMMEL-14"; do
+    git -C "$R" commit -q --allow-empty -m "$s"
+  done
+}
+
+# write_notes <file> <release date or empty> — a notes file that passes
+# gen-release-notes.sh --check.
+write_notes() {
+  mkdir -p "$(dirname "$1")"
+  {
+    echo "# v9.9.9 release notes"; echo
+    [ -z "$2" ] || { echo "**Release date:** $2."; echo; }
+    echo "## What you can now do"; echo; echo "- A brand new thing."; echo
+    echo "## What changed that you will notice"; echo; echo "Nothing."; echo
+    echo "## What you must do on update"; echo; echo "Nothing."; echo
+    echo "## Known issues"; echo; echo "Nothing."; echo
+    echo "## Internal"; echo
+    echo "Internal: 1 further change (tests) is not listed here; \`git log\` has the per-commit record."
+  } > "$1"
+}
+
+# Fixture: prior tag v9.9.8, a commit after it, VERSION 9.9.9 and notes for it,
+# v9.9.9 not yet tagged — the open-range (ranged, not tagless) path.
+# setup_notes_repo <release date or empty> [bad]
+setup_notes_repo() {
+  R=$(fixture_mktemp_dir) || return 1
+  git -C "$R" init -q
+  git -C "$R" config user.email t@t
+  git -C "$R" config user.name t
+  git -C "$R" commit -q --allow-empty -m "chore: base"
+  git -C "$R" tag v9.9.8
+  git -C "$R" commit -q --allow-empty -m "feat: after the prior tag"
+  printf '9.9.9\n' > "$R/VERSION"
+  write_notes "$R/docs/release/v9.9.9-notes.md" "$1"
+  if [ "${2:-}" = bad ]; then
+    grep -v "Known issues" "$R/docs/release/v9.9.9-notes.md" > "$R/n.tmp"
+    mv "$R/n.tmp" "$R/docs/release/v9.9.9-notes.md"
+  fi
+  git -C "$R" add VERSION docs
+  git -C "$R" commit -q -m "chore: cut notes"
+}
+
+run_test "I1: no ticket key, trailing PR number, empty bracket or empty scope in any shape" '
+  setup_key_subjects && cd "$R" || exit 1;
+  bash "$GEN" &&
+  grep -qF "one" CHANGELOG.md && grep -qF "ten thing" CHANGELOG.md &&
+  ! grep -qiE "(HIMMEL|LUNA)-[0-9]" CHANGELOG.md &&
+  ! grep -qE "\(#[0-9]+\)$" CHANGELOG.md &&
+  ! grep -qF "[]" CHANGELOG.md &&
+  ! grep -qF "()" CHANGELOG.md
+'
+
+run_test "I2: a ranged section is byte-identical before and after its tag exists, --check 0 both times" '
+  setup_notes_repo 2001-02-03 && cd "$R" || exit 1;
+  bash "$GEN" && cp CHANGELOG.md before.md &&
+  bash "$GEN" --check >/dev/null &&
+  git tag v9.9.9 &&
+  bash "$GEN" --check >/dev/null &&
+  bash "$GEN" && cmp -s before.md CHANGELOG.md &&
+  grep -qF "## [v9.9.9] - 2001-02-03" CHANGELOG.md &&
+  grep -qF "### What you can now do" CHANGELOG.md &&
+  ! grep -qF "after the prior tag" CHANGELOG.md
+'
+
+run_test "tagged section renders the tag copy of the notes, not a later edit" '
+  setup_notes_repo 2001-02-03 && cd "$R" || exit 1;
+  git tag v9.9.9 &&
+  sed -i.bak "s/A brand new thing/A later edit/" docs/release/v9.9.9-notes.md && rm -f docs/release/v9.9.9-notes.md.bak &&
+  git commit -q -am "chore: edit notes after the tag" &&
+  bash "$GEN" &&
+  grep -qF "A brand new thing" CHANGELOG.md && ! grep -qF "A later edit" CHANGELOG.md
+'
+
+run_test "a key in the notes Internal line (exempt from --check) is stripped from the section" '
+  setup_notes_repo 2001-02-03 && cd "$R" || exit 1;
+  sed -i.bak "s/^Internal: 1 further/Internal: see HIMMEL-123, 1 further/" docs/release/v9.9.9-notes.md && rm -f docs/release/v9.9.9-notes.md.bak &&
+  git commit -q -am "chore: internal line" && git tag v9.9.9 &&
+  bash "$GEN" &&
+  grep -qF "1 further" CHANGELOG.md && ! grep -qiE "(HIMMEL|LUNA)-[0-9]" CHANGELOG.md
+'
+
+run_test "tagged notes failing --check render commits" '
+  setup_notes_repo 2001-02-03 bad && cd "$R" || exit 1;
+  git tag v9.9.9 &&
+  bash "$GEN" &&
+  grep -qE "^## \[v9.9.9\] - " CHANGELOG.md &&
+  grep -qF "after the prior tag" CHANGELOG.md &&
+  ! grep -qF "### What you can now do" CHANGELOG.md
+'
+
+run_test "tagged notes passing --check with no release date exits 1" '
+  setup_notes_repo "" && cd "$R" || exit 1;
+  git tag v9.9.9 &&
+  rc=0; bash "$GEN" >/dev/null 2>&1 || rc=$?;
+  [ "$rc" -eq 1 ]
+'
+
+run_test "invalid notes exits 1 in the open range, with no fallback and no truncated file" '
+  setup_notes_repo 2001-02-03 bad && cd "$R" || exit 1;
+  echo keep > CHANGELOG.md;
+  rc=0; bash "$GEN" >/dev/null 2>&1 || rc=$?;
+  [ "$rc" -eq 1 ] && [ "$(cat CHANGELOG.md)" = keep ]
+'
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 

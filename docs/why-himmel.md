@@ -200,8 +200,8 @@ latest), not a current benchmark. The reasoning is written into
 ## The provenance argument
 
 Every mechanism above is traceable. On 2026-10-24 (main at `4daf5c89f`),
-himmel's `CHANGELOG.md` carried 1,070 distinct ticket references
-(`grep -o -E 'HIMMEL-[0-9]+' CHANGELOG.md | sort -u | wc -l`) and 1,405
+himmel's commit subjects carried 3,044 distinct ticket references
+(`git log --format=%s | grep -o -E 'HIMMEL-[0-9]+' | sort -u | wc -l`) and 3,546
 distinct pull-request references (the same command with `'\(#[0-9]+\)'`),
 `scripts/ci/suite-tiers.tsv` listed 1,112 test suites, and
 `.github/workflows/ci.yml` defined 40 CI jobs (counted with the command in the

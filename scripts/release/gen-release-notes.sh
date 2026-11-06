@@ -18,7 +18,9 @@ H_CHANGED="What changed that you will notice"
 H_UPDATE="What you must do on update"
 H_KNOWN="Known issues"
 H_INTERNAL="Internal"
-LEAK_RE='HIMMEL-[0-9]+|#[0-9]+'
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/commit-class.sh"
+LEAK_RE="$CC_KEY_RE|#[0-9]+"   # both greps below pass -i: a key in any case leaks
 
 die() { echo "gen-release-notes: $*" >&2; exit 1; }
 
@@ -41,8 +43,8 @@ $H_INTERNAL"
         [ -n "$sect" ] || continue
         if [ "$sect" = "$H_INTERNAL" ]; then
             internal=$((internal + 1))
-        elif hit="$(printf '%s\n' "$line" | grep -E -o "$LEAK_RE" | head -1)" && [ -n "$hit" ]; then
-            die "$f:$i: '$hit' in section '$sect' - tickets and PR numbers belong in CHANGELOG.md, not the user sections"
+        elif hit="$(printf '%s\n' "$line" | grep -E -i -o "$LEAK_RE" | head -1)" && [ -n "$hit" ]; then
+            die "$f:$i: '$hit' in section '$sect' - tickets and PR numbers belong in git log, not the user sections"
         fi
     done < "$f" # read-sink-ok: caller-named release input, read-only validation
     [ "$internal" -eq 1 ] || die "$f: section '$H_INTERNAL' must be exactly one line (found $internal)"
@@ -66,7 +68,7 @@ render() {
         if [ "$line" = "INTERNAL" ]; then n_internal=$((n_internal + 1)); continue; fi
         kind="${line#- }"; kind="${kind%%:*}"
         text="${line#- "$kind":}"; text="${text# }"
-        if printf '%s\n' "$text" | grep -E -q "$LEAK_RE"; then
+        if printf '%s\n' "$text" | grep -E -i -q "$LEAK_RE"; then
             die "release note names a ticket or PR number: $text"
         fi
         case "$kind" in
@@ -87,7 +89,7 @@ render() {
     echo "## $H_INTERNAL"
     echo
     plural="s"; [ "$n_internal" -eq 1 ] && plural=""
-    echo "Internal: ${n_internal} further change${plural} (guards, chief and CI tooling, tests) are not listed here; \`CHANGELOG.md\` has the per-commit record."
+    echo "Internal: ${n_internal} further change${plural} (guards, chief and CI tooling, tests) are not listed here; \`git log\` has the per-commit record."
 }
 
 case "${1:-}" in

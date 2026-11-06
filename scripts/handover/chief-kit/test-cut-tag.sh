@@ -192,7 +192,7 @@ contains "no-runs: names how to dispatch a run" "$out" "gh workflow run ci.yml -
 reset_calls
 rc=0; out=$(CT_SERIES_TAGS="$CT_SERIES_TAGS_DEFAULT" CT_RUNS_JSON='{"total_count":1,"check_runs":[{"name":"unit","status":"completed","conclusion":"failure"}]}' run "$CLEAN_VERSION" "$SHA" 2>&1) || rc=$?
 check "red-run: rc 4" "$rc" "4"
-contains "red-run: names the failing run" "$out" "unit="
+contains "red-run: names the failing run" "$out" "unit=completed/failure"
 
 # --- 8. combined status failure with statuses present -----------------------
 reset_calls
@@ -342,7 +342,7 @@ reset_calls
 BARE_SERIES_TAGS_26="aaaa1111	refs/tags/v1.0.0-pre.1"
 rc=0; out=$(CT_SERIES_TAGS="$BARE_SERIES_TAGS_26" CT_RUNS_JSON='{"total_count":1,"check_runs":[{"name":"unit","status":"completed","conclusion":"failure"}]}' run "$BARE_VERSION" "$SHA" 2>&1) || rc=$?
 check "bare-red-run: rc 4" "$rc" "4"
-contains "bare-red-run: names the failing run" "$out" "unit="
+contains "bare-red-run: names the failing run" "$out" "unit=completed/failure"
 
 # --- 27. bare release: malformed shapes stay refused, exit 2, nothing called --
 for args in "v1a.0.0 $SHA" "v1.0 $SHA" "v1.0.0.1 $SHA" "v1.0.0-rc1 $SHA" "v.1.2 $SHA" "v1..2 $SHA" "v1.2. $SHA"; do
@@ -380,6 +380,13 @@ check "version-file matching: rc 0" "$rc" "0"
 reset_calls
 rc=0; out=$(CT_SERIES_TAGS="$CT_SERIES_TAGS_DEFAULT" CT_SHA_VERSION="0.3. 0" run "$CLEAN_VERSION" "$SHA" 2>&1) || rc=$?
 check "version-file with internal whitespace: rc 7" "$rc" "7"
+
+# --- 29. I3: --version-override on a bare release still refuses a red check-run ---
+reset_calls
+rc=0; out=$(CT_SERIES_TAGS="" CT_RUNS_JSON='{"total_count":1,"check_runs":[{"name":"unit","status":"completed","conclusion":"failure"}]}' run "$BARE_VERSION" "$SHA" --version-override "no pre-release cut" 2>&1) || rc=$?
+check "override-red-run: rc 4" "$rc" "4"
+contains "override-red-run: names the failing run" "$out" "unit=completed/failure"
+not_contains "override-red-run: never writes the tag" "$(cat "$CALLS")" "git/refs"
 
 echo "----"
 if [ "$fails" -eq 0 ]; then
