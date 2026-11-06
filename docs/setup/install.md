@@ -179,6 +179,16 @@ a session. The install must already be committed on the default branch (see
 4. Run `node ~/himmel/scripts/himmelctl/bin.js status` for a severity-grouped diff of
    what is installed versus what the manifest wants.
 
+**What the starter refuses on the default branch, and what it does not.** The
+starter install refuses Claude's *edit tools* (`Edit`, `Write`, `MultiEdit`,
+`NotebookEdit`) there. It does **not** refuse a shell command that writes a
+file: with the starter hooks wired, `echo x > a.txt` on the default branch runs
+and the file is written. What stops that file reaching the branch is the git
+side: the installed `pre-commit` hook refuses a commit on the default branch and
+the `pre-push` hook refuses a direct push to it. Both were checked on a test VM
+with a full starter install. The file itself stays in your working tree until
+you move it to a worktree branch.
+
 Then walk one real loop: [getting-started.md](../getting-started.md#your-first-loop).
 
 ## Undo
