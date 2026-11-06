@@ -2663,6 +2663,7 @@ RULES_OVERRIDE="req:shell-unit (ubuntu-latest)"; CHECKS_OVERRIDE="fail:shell-uni
 run cr-completed
 assert_rc 1 "9183-a a FAILED required check still exits 1"
 if [ "$(jq -c 'select(.kind == "fail") | [.repo, .pr, .head, .suite, .run, .rc]' "$FL9183" 2>/dev/null)" = '["octo/demo",42,"sha1","scripts/test-x.sh",777,1]' ]; then pass "9183-a one fail row, the impacted suite that ran nonzero"; else fail "9183-a one fail row, the impacted suite that ran nonzero" "ledger: $(cat "$FL9183" 2>/dev/null)"; fi
+if jq -e 'select(.kind == "fail") | .v == 1 and .source == "check-ci" and (.host | length > 0)' "$FL9183" > /dev/null 2>&1; then pass "9183-a the row carries the registry envelope (v, host, source)"; else fail "9183-a the row carries the registry envelope (v, host, source)" "ledger: $(cat "$FL9183" 2>/dev/null)"; fi
 RULES_OVERRIDE="req:shell-unit (ubuntu-latest)"; CHECKS_OVERRIDE="fail:shell-unit (ubuntu-latest)"
 run cr-completed
 if [ "$(wc -l < "$FL9183" | tr -d ' ')" = 1 ]; then pass "9183-b the same red twice leaves one row"; else fail "9183-b the same red twice leaves one row" "ledger: $(cat "$FL9183")"; fi

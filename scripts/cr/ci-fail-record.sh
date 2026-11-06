@@ -35,9 +35,11 @@ d=$(mktemp -d "${TMPDIR:-/tmp}/ci-fail-record.XXXXXX") || exit 0  # swallow-ok: 
 trap 'rm -rf "$d"' EXIT
 rd() { "$_TIMEOUT_BIN" -k 5 "$1" bash "$here/../lib/gh-read.sh" "${@:2}" < /dev/null; }
 
-add() {  # <json row>
+add() {  # <json row>: the registry envelope (v, host, source) is added here, once
+    local row
+    row=$(printf '%s' "$1" | jq -c --arg h "${HOSTNAME:-$(uname -n)}" '{v: 1} + . + {host: $h, source: "check-ci"}') || { echo "ci-fail-record: CI failure ledger row not built"; return 0; }
     mkdir -p "$(dirname "$ledger")" 2>/dev/null && chmod 700 "$(dirname "$ledger")" 2>/dev/null  # swallow-ok: an unwritable ledger only loses the advisory row
-    ( umask 077; printf '%s\n' "$1" >> "$ledger" ) 2>/dev/null || echo "ci-fail-record: CI failure ledger not written ($ledger)"
+    ( umask 077; printf '%s\n' "$row" >> "$ledger" ) 2>/dev/null || echo "ci-fail-record: CI failure ledger not written ($ledger)"
 }
 
 n=0

@@ -1976,10 +1976,11 @@ s17_run() {
 # never change a verdict; scripts/cr/suite-fail-ledger.sh reads them.
 # ponytail: dedupe-then-append is unlocked, so two racing reads can double a row; a lock if the counts drift.
 s17_fl_path() { printf '%s' "${READY_CHECK_FAIL_LEDGER:-${HOME:-/tmp}/.himmel/state/suite-evidence/ci-failures.jsonl}"; }
-s17_fl_add() {  # <json row>: appended once, dir 700, file 600
-    local f; f=$(s17_fl_path)
+s17_fl_add() {  # <json row>: appended once, dir 700, file 600; the registry envelope (v, host, source) is added here
+    local f row; f=$(s17_fl_path)
+    row=$(printf '%s' "$1" | jq -c --arg h "${HOSTNAME:-$(uname -n)}" '{v: 1} + . + {host: $h, source: "ready-check"}') || { echo "       note: CI failure ledger row not built"; return 0; }
     mkdir -p "$(dirname "$f")" 2>/dev/null && chmod 700 "$(dirname "$f")" 2>/dev/null  # swallow-ok: an unwritable ledger only loses the advisory row
-    ( umask 077; printf '%s\n' "$1" >> "$f" ) 2>/dev/null || echo "       note: CI failure ledger not written ($f)"
+    ( umask 077; printf '%s\n' "$row" >> "$f" ) 2>/dev/null || echo "       note: CI failure ledger not written ($f)"
 }
 s17_fl_rounds() {  # one `round` row per earlier failed head of this PR
     local f h
