@@ -554,4 +554,86 @@ check "phase-cost: the unchanged rows were not re-counted (review still 1 call)"
 PCPRINT="$(HOME="$PCH" TZ=UTC bash "$COMPUTE" --projects "$PCP" --ledger "$LEDGER" --print | jq -c 'select(.kind=="phase-cost")' | wc -l | tr -d ' ')"
 check "phase-cost: --print shows the rows and writes no store" "7/no" "$PCPRINT/$([ -e "$PCH/.himmel" ] && echo yes || echo no)"
 
+# 10. phase-cost: classes, the live-file and replaced-file cases, repeated ids, long paths, and what the state keeps.
+PC2P="$ROOT/pc2/projects"; PC2S="$PC2P/slug"; mkdir -p "$PC2S"
+PC2STORE="$ROOT/pc2-store"
+pc2run() { HOME="$PCH" TZ=UTC bash "$COMPUTE" --projects "$PC2P" --ledger "$LEDGER" --store "$PC2STORE" >/dev/null; }
+pc2() { # session -> "class/phase/mark/calls" for each phase's latest row, comma-joined
+  jq -sr --arg s "$1" '[.[] | select(.kind=="phase-cost" and .session==$s)] | group_by(.phase) | map(last) | map("\(.class)/\(.phase)/\(.mark)/\(.calls)") | join(",")' "$PC2STORE/records.jsonl"
+}
+uprow() { jq -nc --arg t "$1" '{type:"user",message:{content:$t}}'; }
+SCH=aaaaaaaa-2222-4222-8222-000000000001; SW2=aaaaaaaa-2222-4222-8222-000000000002; SCR=aaaaaaaa-2222-4222-8222-000000000003
+SRM=aaaaaaaa-2222-4222-8222-000000000004; SNA=aaaaaaaa-2222-4222-8222-000000000005; SPL=aaaaaaaa-2222-4222-8222-000000000006
+SSH=aaaaaaaa-2222-4222-8222-000000000007; SCL=aaaaaaaa-2222-4222-8222-000000000008; SLG=aaaaaaaa-2222-4222-8222-000000000009
+T=2026-11-04T10:00
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-nextleg-chief"}'; arow $SCH $T:00.000Z h1 $OP 10 1 100 0 0 Read '{"file_path":"/x"}'; } > "$PC2S/$SCH.jsonl"
+mkdir -p "$PC2S/$SCH/subagents"
+arow $SCH $T:05.000Z h2 $OP 10 1 100 0 0 > "$PC2S/$SCH/subagents/agent-c1.jsonl"; echo '{"agentType":"general-purpose"}' > "$PC2S/$SCH/subagents/agent-c1.meta.json"
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-9996-N4-w"}'; arow $SW2 $T:00.000Z w1 $OP 10 1 100 0 0; } > "$PC2S/$SW2.jsonl"
+mkdir -p "$PC2S/$SW2/subagents"
+arow $SW2 $T:05.000Z w2 $OP 10 1 100 0 0 > "$PC2S/$SW2/subagents/agent-w1.jsonl"; echo '{"agentType":"general-purpose"}' > "$PC2S/$SW2/subagents/agent-w1.meta.json"
+arow $SW2 $T:06.000Z w3 $OP 10 1 100 0 0 > "$PC2S/$SW2/subagents/agent-b1.jsonl"; echo '{"agentType":"brief-drafter"}' > "$PC2S/$SW2/subagents/agent-b1.meta.json"
+{ uprow "Read ./review-prompt.md SECRETSENTINEL2"; arow $SCR $T:00.000Z r1 $OP 10 1 100 0 0; } > "$PC2S/$SCR.jsonl"
+{ uprow "You are the release manager for SECRETSENTINEL2"; arow $SRM $T:00.000Z m1 $OP 10 1 100 0 0; } > "$PC2S/$SRM.jsonl"
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-9995-N5-na"}'
+  arow $SNA $T:00.000Z n1 $OP 10 1 100 0 0 Read '{"file_path":"/x"}'; arow $SNA $T:01.000Z n2 $OP 10 1 100 0 0
+  arow $SNA $T:02.000Z n1 $OP 10 1 100 0 0; } > "$PC2S/$SNA.jsonl"
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-9994-N6-pl"}'; arow $SPL $T:00.000Z p1 $OP 10 1 100 0 0; } > "$PC2S/$SPL.jsonl"
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-9993-N7-sh"}'; arow $SSH $T:00.000Z s1 $OP 10 1 100 0 0; arow $SSH $T:01.000Z s2 $OP 10 1 100 0 0; } > "$PC2S/$SSH.jsonl"
+arow $SCL $T:00.000Z c1 $OP 10 1 100 0 0 > "$PC2S/$SCL.jsonl"
+LONGSLUG="$(printf '%0190d' 0 | tr 0 a)"; mkdir -p "$PC2P/$LONGSLUG/$SLG/subagents"
+arow $SLG $T:00.000Z l1 $OP 10 1 100 0 0 > "$PC2P/$LONGSLUG/$SLG/subagents/agent-aaaaaaaaaaaaaaaaa.jsonl"
+rc=0; pc2run || rc=$?
+check "phase-cost: a path of about 270 characters does not fail the run" "0" "$rc"
+check "phase-cost: a subagent under a 190-character project slug is priced" "1" \
+  "$(jq -sr '[.[] | select(.kind=="phase-cost" and .session=="agent-aaaaaaaaaaaaaaaaa")] | length' "$PC2STORE/records.jsonl")"
+check "phase-cost: a chief session is all chief-turns, counted" "chief/chief-turns/counted/1" "$(pc2 $SCH)"
+check "phase-cost: a chief's subagent goes to chief-turns, counted" "subagent/chief-turns/counted/1" "$(pc2 agent-c1)"
+check "phase-cost: a worker's subagent is phase agent, counted" "subagent/agent/counted/1" "$(pc2 agent-w1)"
+check "phase-cost: a brief-drafter is chief-turns, counted" "brief-drafter/chief-turns/counted/1" "$(pc2 agent-b1)"
+check "phase-cost: a critic (first prompt Read ./review-prompt.md) is its own phase, counted" "critic/critic/counted/1" "$(pc2 $SCR)"
+check "phase-cost: a release manager (first prompt) is its own phase, counted" "release-mgr/release-mgr/counted/1" "$(pc2 $SRM)"
+check "phase-cost: a message id repeated non-adjacently counts once" "worker/boot/derived/1,worker/build/derived/1" "$(pc2 $SNA)"
+# a live transcript: a last line with no newline is still being written, so it waits for its newline
+# (the row is whole JSON, which usage-attribution accepts; the half-JSON case stops that script first)
+r2="$(arow $SPL $T:05.000Z p2 $OP 10 1 100 0 0)"
+printf '%s' "$r2" >> "$PC2S/$SPL.jsonl"
+pc2run
+check "phase-cost: a last line with no newline is not read yet" "worker/boot/derived/1" "$(pc2 $SPL)"
+printf '\n' >> "$PC2S/$SPL.jsonl"
+pc2run
+check "phase-cost: once its newline arrives the line is counted, once" "worker/boot/derived/2" "$(pc2 $SPL)"
+# a replaced (shorter) transcript is read again from its start
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-9993-N7-sh"}'; arow $SSH $T:00.000Z s9 $OP 10 1 100 0 0; } > "$PC2S/$SSH.jsonl"
+pc2run
+check "phase-cost: a file that shrank is read again, not skipped" "worker/boot/derived/1" "$(pc2 $SSH)"
+# a class that changes closes the rows it moved: the old key gets a zero row, the new one the calls
+check "phase-cost: before a title the session is class other, phase boot" "other/boot/derived/1" "$(pc2 $SCL)"
+echo '{"type":"custom-title","customTitle":"HIMMEL-9992-chief"}' >> "$PC2S/$SCL.jsonl"
+pc2run
+check "phase-cost: a later title moves the calls and closes the old row with zero" "other/boot/derived/0,chief/chief-turns/counted/1" "$(pc2 $SCL)"
+check "phase-cost: the closed row has zero tokens and zero dollars" "0/0" \
+  "$(jq -sr --arg s $SCL '[.[] | select(.kind=="phase-cost" and .session==$s and .phase=="boot")] | last | "\(.in)/\(.usd)"' "$PC2STORE/records.jsonl")"
+# the state holds ids, counts and class words only: no title and no message text
+check "phase-cost: the state directory holds no title and no message text" "0" \
+  "$(grep -rlE 'N4-w|N5-na|SECRETSENTINEL2' "$PC2STORE/phase-cost-state" | wc -l | tr -d ' ')"
+check "phase-cost: the store holds no message text" "0" "$(grep -c 'SECRETSENTINEL2' "$PC2STORE/records.jsonl" || true)"
+
+# the phase-cost dollars equal the repo's other price reader (model-price.mjs transcripts) on the same directory:
+# one table, the same per-message dedupe, and the sums reach cents
+PC3P="$ROOT/pc3/projects"; PC3S="$PC3P/slug"; mkdir -p "$PC3S"
+SQ=aaaaaaaa-3333-4333-8333-000000000001
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-9991-N8-q"}'
+  arow $SQ 2026-11-04T10:00:00.000Z q1 $OP 1000000 100000 5000000 200000 100000 Read '{"file_path":"/x"}'
+  arow $SQ 2026-11-04T10:00:01.000Z q2 claude-sonnet-5-5 2000000 50000 1000000 0 400000
+  arow $SQ 2026-11-04T10:00:02.000Z q1 $OP 1000000 100000 5000000 200000 100000
+  arow $SQ 2026-11-04T10:00:03.000Z q3 gpt-6.1-sol 3000000 30000 0 0 0; } > "$PC3S/$SQ.jsonl"
+mkdir -p "$PC3S/$SQ/subagents"
+arow $SQ 2026-11-04T10:00:04.000Z q4 $OP 500000 20000 2500000 0 300000 > "$PC3S/$SQ/subagents/agent-q.jsonl"
+PC3STORE="$ROOT/pc3-store"
+HOME="$PCH" TZ=UTC bash "$COMPUTE" --projects "$PC3P" --ledger "$LEDGER" --store "$PC3STORE" >/dev/null
+MP_CENTS="$(node "$HERE/../lanes/model-price.mjs" transcripts "$PC3P" | sed -n 's/^total usd=\([0-9]*\)\.\([0-9][0-9]\).*/\1\2/p')"
+check "phase-cost: the dollars equal model-price.mjs on the same directory, in cents (non-adjacent repeat included)" "$((10#$MP_CENTS))" \
+  "$(jq -sr '[.[] | select(.kind=="phase-cost") | .usd] | add | . * 100 | round' "$PC3STORE/records.jsonl")"
+
 if [ "$FAIL" -eq 0 ]; then echo "PASS"; else echo "FAILED" >&2; exit 1; fi

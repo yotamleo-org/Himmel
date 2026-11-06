@@ -302,42 +302,34 @@ def contrib($m; $u):
   | $t + { calls: 1, models: { ($m // "unknown"): 1 } }
     + (if $p == null then { nano: 0, unp: 1 }
        else { nano: ($t.i * $p.i + $t.o * $p.o + $t.cr * $p.cr + $t.c5 * $p.c5 + $t.c1 * $p.c1), unp: 0 } end);
-def bump($key; $c; $sgn):
+def add($key; $c):
   .agg[$key] = (reduce ("calls", "i", "o", "cr", "c5", "c1", "nano", "unp") as $f
-      (.agg[$key] // { calls: 0, i: 0, o: 0, cr: 0, c5: 0, c1: 0, nano: 0, unp: 0, models: {} }; .[$f] += $sgn * $c[$f]))
-  | .agg[$key].models = (reduce ($c.models | to_entries[]) as $e (.agg[$key].models; .[$e.key] = ((.[$e.key] // 0) + $sgn * $e.value))
-      | with_entries(select(.value != 0)))
-  | if .agg[$key].calls == 0 then del(.agg[$key]) else . end;
+      (.agg[$key] // { calls: 0, i: 0, o: 0, cr: 0, c5: 0, c1: 0, nano: 0, unp: 0, models: {} }; .[$f] += $c[$f]))
+  | .agg[$key].models = (reduce ($c.models | to_entries[]) as $e (.agg[$key].models; .[$e.key] = ((.[$e.key] // 0) + $e.value)));
+def tclass($t): if ($t | test("chief|console"; "i")) then "chief" elif ($t | test("-N[0-9]+|^HIMMEL-[0-9]+")) then "worker" else "other" end;
+# a message id seen anywhere earlier in the file is the same call (its rows repeat the usage): counted once, first row wins
 def step($r):
   ($r.message.id // $r.requestId) as $id
-  | . as $s
-  | if $id != null and $s.cur != null and $s.cur.id == $id then
-      bump($s.cur.key; $s.cur.c; -1)
+  | if $id != null and .seen[$id] != null then .
+    else ((try day($r.timestamp // "") catch "unknown") + "|" + .last) as $key
       | contrib($r.message.model; $r.message.usage) as $c
-      | bump($s.cur.key; $c; 1) | .cur.c = $c
-    else
-      ((try day($r.timestamp // "") catch "unknown") + "|" + $s.last) as $key
-      | contrib($r.message.model; $r.message.usage) as $c
-      | bump($key; $c; 1) | .cur = { id: $id, key: $key, c: $c }
+      | add($key; $c) | (if $id != null then .seen[$id] = 1 else . end)
     end
   | (lasttool($r.message.content)) as $lt | if $lt != null then .last = $lt else . end;
-( $st // { off: 0, last: "boot", cur: null, agg: {}, title: null, aititle: null, fp: null } ) as $st0
+( $st[0] // { off: 0, last: "boot", seen: {}, agg: {}, tc: null, ac: null, fp: null } ) as $st0
 | reduce (inputs | fromjson? | select(type == "object")) as $r ($st0;
     if $r.type == "assistant" and ($r.message | type) == "object" and $r.message.usage
        and (($r.message.model // "") | startswith("<") | not) then step($r)
     elif ($r.type == "system" and $r.subtype == "compact_boundary") or $r.isCompactSummary == true then .last = "compaction"
-    elif $r.type == "custom-title" then .title = ($r.customTitle // .title)
-    elif $r.type == "ai-title" then .aititle = ($r.aiTitle // .aititle)
+    elif $r.type == "custom-title" and ($r.customTitle | type) == "string" then .tc = tclass($r.customTitle)
+    elif $r.type == "ai-title" and ($r.aiTitle | type) == "string" then .ac = tclass($r.aiTitle)
     else . end)
 | .off = $off | .meta = $meta | .fp = (if .fp == null and $fp != "" then $fp else .fp end)'
 
 # shellcheck disable=SC2016  # jq's own $vars
 PHASE_EMIT_JQ='
 def toplevel_class($s):
-  ($s.title // $s.aititle // "") as $t
-  | if $s.fp == "critic" then "critic" elif $s.fp == "release-mgr" then "release-mgr"
-    elif ($t | test("chief|console"; "i")) then "chief"
-    elif ($t | test("-N[0-9]+|^HIMMEL-[0-9]+")) then "worker" else "other" end;
+  if $s.fp == "critic" then "critic" elif $s.fp == "release-mgr" then "release-mgr" else ($s.tc // $s.ac // "other") end;
 def zero: { calls: 0, i: 0, o: 0, cr: 0, c5: 0, c1: 0, nano: 0, unp: 0, models: {} };
 [inputs] as $all
 | ( $all | map(select(.meta.parent == null) | { key: .meta.session, value: toplevel_class(.) }) | from_entries ) as $top
@@ -379,7 +371,8 @@ mkdir -p "$PSTATE" "$WORK/pnew"
 PHASE_FILTER='"type":"(assistant|custom-title|ai-title)"|"subtype":"compact_boundary"|"isCompactSummary":true'
 for f in "$PROJECTS"/*/*.jsonl "$PROJECTS"/*/*/subagents/*.jsonl; do
   [ -f "$f" ] || continue
-  rel="${f#"$PROJECTS"/}"; key="${rel//[^A-Za-z0-9._-]/_}"
+  # the state file name is a checksum of the whole path plus a readable tail, so a long path cannot exceed a file-name limit
+  rel="${f#"$PROJECTS"/}"; ck="$(printf '%s' "$rel" | cksum | tr ' ' _)"; tl="${rel//[^A-Za-z0-9._-]/_}"; key="${ck}_${tl: -60}"
   # the byte offset lives inside the state file, so the totals and the offset they cover move together
   st=null; [ ! -f "$PSTATE/$key.json" ] || st="$(<"$PSTATE/$key.json")"
   off=0; [ "$st" = null ] || off="$(jq -r '.off // 0' <<<"$st")"
@@ -398,12 +391,13 @@ for f in "$PROJECTS"/*/*.jsonl "$PROJECTS"/*/*/subagents/*.jsonl; do
   fi
   meta="$(jq -nc --arg s "$stem" --arg p "$par" --arg a "$atype" '{session: $s, parent: (if $p == "" then null else $p end), agent_type: $a}')"
   fp=""
-  if [ "$(jq -r '.fp // ""' <<<"$st")" = "" ]; then
+  printf '%s' "$st" > "$WORK/st.json"
+  if [ "$(jq -r '.fp // ""' "$WORK/st.json")" = "" ]; then
     fp="$(grep -a -m1 '"type":"user"' "$f" | jq -r 'select(.type == "user") | (.message.content | if type == "string" then . else ([.[]? | select(.type == "text") | .text] | first // "") end) as $t
       | if ($t | startswith("Read ./review-prompt.md")) then "critic" elif ($t | startswith("You are the release manager")) then "release-mgr" else "none" end' 2>/dev/null || true)"
   fi
   { head -c "$consumed" "$WORK/chunk" | { grep -a -E "$PHASE_FILTER" || true; } \
-      | jq -nRc --argjson st "$st" --argjson prices "$PRICES" --argjson meta "$meta" --arg fp "$fp" --argjson off "$((off + consumed))" "$PHASE_FILE_JQ"; } \
+      | jq -nRc --slurpfile st "$WORK/st.json" --argjson prices "$PRICES" --argjson meta "$meta" --arg fp "$fp" --argjson off "$((off + consumed))" "$PHASE_FILE_JQ"; } \
     > "$WORK/pnew/$key.json" || die "phase-cost pass failed on $f"
 done
 rm -f "$WORK/chunk"

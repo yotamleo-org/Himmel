@@ -52,7 +52,7 @@ outside the tree.
 | `cr` | `rounds` (distinct reviewed heads), `findings` (count by final verdict after amends; `open` when none), `est_tokens` (the ledger's estimated critic tokens) |
 | `digest` | sha256 of the record without this field |
 
-Numbers and ids only: the store never holds message text.
+Numbers and ids only: neither `records.jsonl` nor the `phase-cost-state/` directory beside it holds message text or a session title (the state keeps message ids, counts and a class word per transcript).
 
 ## Phase-cost rows (`kind: "phase-cost"`)
 
@@ -71,7 +71,7 @@ want ticket records skip rows without one (`usage-read.sh` does).
 | `model` | the models of the row's calls, sorted, comma-joined |
 | `phase` | see below |
 | `phase_rule` | `v1`: the rule set of the cost-page audit |
-| `calls`, `in`, `out`, `cache_read`, `cc_5m`, `cc_1h` | API calls (a message streamed over several transcript rows counts once) and their tokens |
+| `calls`, `in`, `out`, `cache_read`, `cc_5m`, `cc_1h` | API calls (a message id seen earlier anywhere in the same transcript counts once, as `usage-attribution.sh` does) and their tokens |
 | `usd` | the calls priced per model from `scripts/lanes/lib/model-prices.tsv`; `null` when no call was priced |
 | `mark` | `counted` (the phase is the session's whole class), `derived` (the phase is the last-tool rule), `unpriced` (some call's model has no price row; `usd` covers only the priced calls) |
 
@@ -83,10 +83,10 @@ before any tool; `compaction` after a compaction boundary until the next tool):
 `review`, `ci`, `ticket-filing`, `ticket-read`, `ship`, `tests`, `comms`, `retrieval`,
 `vm`, `skill`, `tool-load`, `agent`, else `build`. A `judge`, `critic` or `release-mgr`
 session has that one phase; a chief or brief-drafter (and a subagent of a chief) has
-`chief-turns`. Classes `graph-eval` and `bots` are not detected yet (class `other`).
+`chief-turns`; a subagent of a worker has phase `agent`. All of these are mark `counted`. Classes `graph-eval` and `bots` are not detected yet (class `other`).
 
 **Rows are cumulative.** Each run reads every transcript from its saved byte offset
-(`<store>/phase-cost-state/`), complete lines only, and appends a key's row only when
+(`<store>/phase-cost-state/`, one file per transcript, named by a checksum of its path, the offset inside it), complete lines only (a last line with no newline waits), and appends a key's row only when
 its totals changed; the latest row for a (day, session, phase) is the total. A key
 that disappears (a class change moved it) is closed with a zero row. The whole run
 renices itself to 19 and, where `ionice` exists, to the idle io class. `--since` and
