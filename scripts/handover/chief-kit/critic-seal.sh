@@ -9,8 +9,10 @@
 # `chief-route.ts send-file` re-hashes the named file and refuses a spec or plan page whose bytes
 # changed after the critic read them. Refuses, and leaves the verdict file untouched, when:
 #   - the verdict file or the read file is missing, or the verdict file's last line is no verdict;
+#   - the verdict file does not itself quote the sha (the critic's return is the proof of what it read);
 #   - the read file on disk no longer hashes to the quoted sha (it changed since the critic read it);
-#   - the verdict file already carries a CONTENT-SHA256 line (a second seal is not stacked).
+#   - the verdict file already seals that same file. A critic that read several files (the spec and its
+#     rendered page) gets one seal per distinct file, so run the helper once per file read.
 set -uo pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd) || exit 1
@@ -26,10 +28,10 @@ verdict=$1; read_file=$2; quoted=$3
 [ -f "$read_file" ] || die "file the critic read not found: $read_file"
 [[ "$quoted" =~ ^[0-9a-f]{64}$ ]] || die "not a sha256 (64 lowercase hex): $quoted"
 
+grep -v '^CONTENT-SHA256 ' "$verdict" | grep -qF -- "$quoted" || die "$verdict does not quote $quoted; the critic's return must quote the sha256 of the file it read, or the seal would only vouch for whatever is on disk now"
+
 actual=$(sha256sum "$read_file" | cut -d' ' -f1)
 [ "$actual" = "$quoted" ] || die "$read_file hashes to $actual, not the $quoted the critic quoted; it changed since the critic read it, re-run the critic"
-
-if grep -q '^CONTENT-SHA256 ' "$verdict"; then die "$verdict already carries a CONTENT-SHA256 line"; fi
 
 last=$(awk 'NF { l = $0 } END { print l }' "$verdict")
 [[ "$last" =~ ^[[:space:]]*(SPEC|PLAN)\ (CLEAN|FINDINGS\ [0-9]+)[[:space:]]*$ ]] \
@@ -38,6 +40,7 @@ last=$(awk 'NF { l = $0 } END { print l }' "$verdict")
 verdict_dir=$(cd "$(dirname "$verdict")" && pwd -P) || die "cannot enter the verdict file's folder"
 read_abs="$(cd "$(dirname "$read_file")" && pwd -P)/$(basename "$read_file")" || die "cannot resolve $read_file"
 rel=$(python3 -I -c 'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$read_abs" "$verdict_dir") || die "cannot relativise $read_file"
+if grep '^CONTENT-SHA256 ' "$verdict" | cut -d' ' -f3- | grep -qxF -- "$rel"; then die "$verdict already seals $rel"; fi
 
 awk -v seal="CONTENT-SHA256 $quoted $rel" '
   { line[NR] = $0; if ($0 ~ /[^[:space:]]/) last = NR }

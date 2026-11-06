@@ -384,13 +384,13 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 // being sent (operator decisions 700 and 701). The critic files sit beside the spec as
 // `<spec>.critic-spec-r<n>.md` / `<spec>.critic-plan-r<n>.md`; `critic-seal.sh` adds the
 // `CONTENT-SHA256 <sha> <path relative to the verdict file>` line above the verdict line.
-// A file is a signature page when it lives under `specs/{design,designs,plan,plans}/` or
+// A file is a signature page when it lives under `specs/{design,designs,spec,plan,plans}/` or
 // `specs/HIMMEL-<n>/`, or any critic file names it; every other file sends as before.
 const CLEAN = { spec: "SPEC CLEAN", plan: "PLAN CLEAN" } as const;
-const SIGNATURE_DIRS = new Set(["design", "designs", "plan", "plans"]);
+const SIGNATURE_DIRS = new Set(["design", "designs", "spec", "plan", "plans"]);
 const sha256 = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 const lastLine = (text: string) => text.split("\n").map(l => l.trim()).filter(Boolean).at(-1) ?? "";
-const SEAL = /^CONTENT-SHA256 ([0-9a-f]{64}) (\S.*)$/m;
+const sealsOf = (text: string) => [...text.matchAll(/^CONTENT-SHA256 ([0-9a-f]{64}) (\S.*)$/gm)].map(m => ({ sha: m[1], rel: m[2] }));
 
 const underSignaturePath = (p: string) => {
   const parts = p.split("/");
@@ -419,19 +419,24 @@ function criticDirs(page: string): string[] {
   return [...dirs];
 }
 
-// The spec whose critic files govern `page`: the page itself, or the spec whose latest plan critic
-// is sealed to `page` (a plan page). null = nothing is filed for it.
-async function governingSpec(page: string): Promise<string | null> {
+// How a page relates to the spec whose critic files govern it: the spec itself, a rendering of it
+// (`<stem>.html` beside `<stem>.md`), or its plan (some plan critic round of that spec is sealed to it).
+type Role = "spec" | "render" | "plan";
+const siblingMd = (page: string) => (/\.html?$/i.test(page) ? page.replace(/\.html?$/i, ".md") : null);
+
+// null = nothing is filed for the page. An unreadable critic file throws.
+async function governingSpec(page: string): Promise<{ spec: string; role: Role } | null> {
   const own = await latestCritics(page);
-  if (own.spec || own.plan) return page;
+  if (own.spec || own.plan) return { spec: page, role: "spec" };
+  const md = siblingMd(page);
+  if (md) { const c = await latestCritics(md); if (c.spec || c.plan) return { spec: md, role: "render" }; }
   for (const dir of criticDirs(page)) {
     for (const n of await readdir(dir).catch(() => [] as string[])) {
       const m = /^(.+)\.critic-plan-r\d+\.md$/.exec(n);
       if (!m) continue;
-      const spec = join(dir, m[1]);
-      const plan = (await latestCritics(spec)).plan;
-      const sealed = plan && SEAL.exec(await readFile(plan.path, "utf8").catch(() => ""));
-      if (sealed && await realpath(resolve(dirname(plan!.path), sealed[2])).catch(() => "") === page) return spec;
+      const file = join(dir, n);
+      const text = await readFile(file, "utf8").catch((e) => { throw new Error(`${file}: cannot read the critic file (${e instanceof Error ? e.message : e}); the page is not sent`); });
+      for (const seal of sealsOf(text)) if (await realpath(resolve(dir, seal.rel)).catch(() => "") === page) return { spec: join(dir, m[1]), role: "plan" };
     }
   }
   return null;
@@ -443,25 +448,35 @@ export type VerdictLine = { kind: "spec" | "plan"; round: number; file: string; 
 // `bytes` are the page's bytes as read once here: the caller sends THOSE, so an edit after the check cannot slip through.
 export async function checkSignaturePage(abs: string): Promise<{ verdicts: VerdictLine[]; bytes: Buffer } | null> {
   const page = await realpath(abs).catch(() => abs);
-  const spec = await governingSpec(page);
-  if (!spec && ![abs, page].some(underSignaturePath)) return null;
+  let g = await governingSpec(page);
+  if (!g) {
+    if (![abs, page].some(underSignaturePath)) return null;
+    const md = siblingMd(page);
+    g = md && await stat(md).then(s => s.isFile(), () => false) ? { spec: md, role: "render" } : { spec: page, role: "spec" };
+  }
+  const { spec, role } = g;
+  const specReal = await realpath(spec).catch(() => spec);
   const bytes = await readFile(page);
-  const critics = await latestCritics(spec ?? page);
+  const critics = await latestCritics(spec);
   const verdicts: VerdictLine[] = [];
   for (const kind of ["spec", "plan"] as const) {
     const c = critics[kind];
-    if (!c) throw new Error(`${basename(spec ?? page)} is a spec or plan page and has no ${kind} critic file (${(spec ?? page)}.critic-${kind}-r<n>.md); run the ${kind} critic first`);
+    if (!c) throw new Error(`${basename(page)} is a spec or plan page and has no ${kind} critic file (${spec}.critic-${kind}-r<n>.md); run the ${kind} critic first`);
     const text = await readFile(c.path, "utf8");
     const last = lastLine(text);
     if (last !== CLEAN[kind]) throw new Error(`${c.path}: the latest ${kind} critic ended '${last}', not '${CLEAN[kind]}'; the page is not sent`);
-    const sealed = SEAL.exec(text);
-    if (!sealed) throw new Error(`${c.path} has no CONTENT-SHA256 line, so it does not bind the bytes it read (chief-kit/critic-seal.sh adds it); the page is not sent`);
-    const bound = await realpath(resolve(dirname(c.path), sealed[2])).catch(() => null);
-    if (!bound) throw new Error(`${c.path}: the file it binds (${sealed[2]}) is missing; the page is not sent`);
-    if (sha256(bound === page ? bytes : await readFile(bound)) !== sealed[1]) throw new Error(`${c.path}: ${sealed[2]} changed since the ${kind} critic read it; re-run the critic`);
-    if (kind === "spec" && bound !== await realpath(spec ?? page)) throw new Error(`${c.path} binds ${sealed[2]}, not ${basename(spec ?? page)}`);
-    if (kind === "plan" && !spec) throw new Error(`${c.path}: no spec to bind`);
-    if (kind === "plan" && page !== (spec ?? page) && bound !== page) throw new Error(`${c.path} binds ${sealed[2]}, not ${basename(page)}`);
+    const seals = sealsOf(text);
+    if (!seals.length) throw new Error(`${c.path} has no CONTENT-SHA256 line, so it does not record the bytes it read (chief-kit/critic-seal.sh adds it); the page is not sent`);
+    const sealed = new Set<string>();
+    for (const seal of seals) {
+      const file = await realpath(resolve(dirname(c.path), seal.rel)).catch(() => null);
+      if (!file) throw new Error(`${c.path}: the file it seals (${seal.rel}) is missing; the page is not sent`);
+      if (sha256(file === page ? bytes : await readFile(file)) !== seal.sha) throw new Error(`${c.path}: ${seal.rel} changed since the ${kind} critic read it; re-run the critic`);
+      sealed.add(file);
+    }
+    if (kind === "spec" && !sealed.has(specReal)) throw new Error(`${c.path} does not seal ${basename(spec)}`);
+    if (kind === "spec" && role === "render" && !sealed.has(page)) throw new Error(`${c.path} has no seal naming ${basename(page)}: the critic of the latest round never read this page`);
+    if (kind === "plan" && role === "plan" && !sealed.has(page)) throw new Error(`${c.path} does not seal ${basename(page)}`);
     verdicts.push({ kind, round: c.round, file: basename(c.path), verdict: last });
   }
   return { verdicts, bytes };
@@ -491,6 +506,9 @@ export async function queueFile(root: string, chat: number, path: string, captio
   if (!st.isFile()) throw new Error(`not a regular file: ${path}`);
   if (st.size > MAX_SEND_BYTES) throw tooBig(st.size);
   const signed = await checkSignaturePage(abs);   // throws (nothing queued) unless the latest critics passed these bytes
+  // The caption opens with the verdicts read from the critic files; the caller's words follow, never replace them.
+  const verdictCaption = signed?.verdicts.map(v => `${v.verdict} r${v.round}`).join(" | ");
+  if (verdictCaption) caption = caption ? `${verdictCaption} - ${caption}` : verdictCaption;
   // Every file is COPIED (or rendered) into <bridge root>/outgoing/<id>/: the poller ships only from there.
   const dir = join(root, "outgoing", randomUUID());
   await mkdir(dir, { recursive: true, mode: 0o700 });

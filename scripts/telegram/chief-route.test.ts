@@ -1215,15 +1215,142 @@ const seal = async (...args: string[]) => {
 test("critic-seal.sh adds the CONTENT-SHA256 line above the verdict line, and refuses a file that no longer hashes to the quoted sha", async () => {
   const r = root(); const spec = join(r, "specs", "designs", "d.md"); mkdirSync(join(r, "specs", "designs"), { recursive: true });
   writeFileSync(spec, "# D\n");
-  const v = `${spec}.critic-spec-r1.md`; writeFileSync(v, "the critic's return\nSPEC CLEAN\n");
+  const v = `${spec}.critic-spec-r1.md`; writeFileSync(v, `the critic's return, which read ${sha("# D\n")}\nSPEC CLEAN\n`);
   const ok = await seal(v, spec, sha("# D\n"));
   expect(ok.code).toBe(0);
-  expect(readFileSync(v, "utf8")).toBe(`the critic's return\nCONTENT-SHA256 ${sha("# D\n")} d.md\nSPEC CLEAN\n`);
-  expect((await seal(v, spec, sha("# D\n"))).code).not.toBe(0);   // a second seal is refused, not stacked
-  const v2 = `${spec}.critic-spec-r2.md`; writeFileSync(v2, "return\nSPEC CLEAN\n");
-  const stale = await seal(v2, spec, sha("# D, as the critic read it\n"));
+  expect(readFileSync(v, "utf8")).toBe(`the critic's return, which read ${sha("# D\n")}\nCONTENT-SHA256 ${sha("# D\n")} d.md\nSPEC CLEAN\n`);
+  expect((await seal(v, spec, sha("# D\n"))).code).not.toBe(0);   // the same file sealed twice is refused, not stacked
+  const staleSha = sha("# D, as the critic read it\n");
+  const v2 = `${spec}.critic-spec-r2.md`; writeFileSync(v2, `return quoting ${staleSha}\nSPEC CLEAN\n`);
+  const stale = await seal(v2, spec, staleSha);
   expect(stale.code).not.toBe(0);
-  expect(readFileSync(v2, "utf8")).toBe("return\nSPEC CLEAN\n");   // nothing written
-  const v3 = `${spec}.critic-spec-r3.md`; writeFileSync(v3, "return with no verdict line\n");
+  expect(readFileSync(v2, "utf8")).toBe(`return quoting ${staleSha}\nSPEC CLEAN\n`);   // nothing written
+  const v3 = `${spec}.critic-spec-r3.md`; writeFileSync(v3, `return with no verdict line ${sha("# D\n")}\n`);
   expect((await seal(v3, spec, sha("# D\n"))).code).not.toBe(0);
+});
+
+test("critic-seal.sh refuses a sha the critic's return never quoted, even when the file on disk hashes to it", async () => {
+  const r = root(); const spec = join(r, "specs", "designs", "d.md"); mkdirSync(join(r, "specs", "designs"), { recursive: true });
+  writeFileSync(spec, "# D, edited after the critic read it\n");
+  const v = `${spec}.critic-spec-r1.md`; writeFileSync(v, `return quoting ${sha("# D\n")}\nSPEC CLEAN\n`);
+  const res = await seal(v, spec, sha("# D, edited after the critic read it\n"));
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("does not quote");
+  expect(readFileSync(v, "utf8")).toBe(`return quoting ${sha("# D\n")}\nSPEC CLEAN\n`);
+});
+
+test("critic-seal.sh seals each distinct file a critic read, and refuses only the same file twice", async () => {
+  const r = root(); const dir = join(r, "specs", "designs"); mkdirSync(dir, { recursive: true });
+  const md = join(dir, "d.md"); const html = join(dir, "d.html"); writeFileSync(md, "# D\n"); writeFileSync(html, "<h1>D</h1>\n");
+  const v = `${md}.critic-spec-r1.md`; writeFileSync(v, `read ${sha("# D\n")} and ${sha("<h1>D</h1>\n")}\nSPEC CLEAN\n`);
+  expect((await seal(v, md, sha("# D\n"))).code).toBe(0);
+  expect((await seal(v, html, sha("<h1>D</h1>\n"))).code).toBe(0);
+  expect((await seal(v, html, sha("<h1>D</h1>\n"))).code).not.toBe(0);
+  const lines = readFileSync(v, "utf8").split("\n");
+  expect(lines.filter((l) => l.startsWith("CONTENT-SHA256 "))).toEqual([`CONTENT-SHA256 ${sha("# D\n")} d.md`, `CONTENT-SHA256 ${sha("<h1>D</h1>\n")} d.html`]);
+  expect(lines.at(-2)).toBe("SPEC CLEAN");
+});
+
+// A spec critic that read several files seals each one.
+const criticSeals = (spec: string, kind: "spec" | "plan", round: number, verdict: string, sealed: { text: string; file: string }[]) =>
+  writeFileSync(`${spec}.critic-${kind}-r${round}.md`, `critic return, round ${round}\n${sealed.map((s) => `CONTENT-SHA256 ${sha(s.text)} ${s.file}\n`).join("")}${verdict}\n`);
+
+test("send-file refuses a spec critic that seals another path than the spec", async () => {
+  const r = root(); const b = bundle(r);
+  critic(b.spec, "spec", 2, "SPEC CLEAN", { text: "# Plan\n\nthe plan\n", file: "design.plan.md" });
+  const res = await sendFile(r, "1", b.spec);
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("design.md.critic-spec-r2.md");
+  expect(res.err).toContain("does not seal design.md");
+  expect(res.lines).toEqual([]);
+});
+
+test("send-file refuses a plan page while the spec critic failed", async () => {
+  const r = root(); const b = bundle(r);
+  critic(b.spec, "spec", 2, "SPEC FINDINGS 1", { text: "# Design\n\nthe spec\n", file: "design.md" });
+  const res = await sendFile(r, "1", b.plan);
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("design.md.critic-spec-r2.md");
+  expect(res.lines).toEqual([]);
+});
+
+test("send-file matches a plan page named by an OLDER plan critic round, even outside the listed folders", async () => {
+  const r = root(); const b = bundle(r);
+  const other = join(r, "specs", "other"); mkdirSync(other);   // not one of the listed folders
+  const plan = join(other, "plan.md"); writeFileSync(plan, "# Plan\n\nthe plan\n");
+  critic(b.spec, "plan", 1, "PLAN CLEAN", { text: "# Plan\n\nthe plan\n", file: "../other/plan.md" });
+  critic(b.spec, "plan", 2, "PLAN FINDINGS 1");   // the newest round seals nothing
+  const res = await sendFile(r, "1", plan);
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("design.md.critic-plan-r2.md");
+  expect(res.lines).toEqual([]);
+});
+
+test("send-file refuses, naming the file, when a critic file it must read is unreadable", async () => {
+  if (process.getuid?.() === 0) return;   // root reads a mode-000 file, so the row cannot make it unreadable
+  const { chmodSync } = await import("node:fs");
+  const r = root(); const b = bundle(r);
+  const other = join(b.dir, "notes.md"); writeFileSync(other, "# Notes\n");
+  const unreadable = `${b.spec}.critic-plan-r1.md`; chmodSync(unreadable, 0o000);
+  try {
+    const res = await sendFile(r, "1", other);
+    expect(res.code).not.toBe(0);
+    expect(res.err).toContain("critic-plan-r1.md");
+    expect(res.err).toContain("cannot read");
+    expect(res.lines).toEqual([]);
+  } finally { chmodSync(unreadable, 0o644); }
+});
+
+test("send-file treats specs/spec/ as a signature folder", async () => {
+  const r = root(); const dir = join(r, "specs", "spec"); mkdirSync(dir, { recursive: true });
+  const f = join(dir, "a.md"); writeFileSync(f, "# A\n");
+  const res = await sendFile(r, "1", f);
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("critic-spec");
+});
+
+// The sign page is a hand-built or generated .html beside its .md; the critic must have read that very page.
+const htmlBundle = (r: string, html = "<!doctype html><h1>Design</h1>\n") => {
+  const b = bundle(r); const page = join(b.dir, "design.html"); writeFileSync(page, html);
+  const sealed = [{ text: "# Design\n\nthe spec\n", file: "design.md" }, { text: html, file: "design.html" }];
+  return { ...b, page, html, sealed };
+};
+
+test("send-file sends an .html sign page the latest spec critic read, with the verdicts as its caption", async () => {
+  const r = root(); const b = htmlBundle(r);
+  criticSeals(b.spec, "spec", 1, "SPEC CLEAN", b.sealed);
+  const res = await sendFile(r, "1", b.page, "for the operator");
+  expect(res.code).toBe(0);
+  expect(res.lines.at(-1)!.caption).toBe("SPEC CLEAN r1 | PLAN CLEAN r1 - for the operator");
+  expect(readFileSync(res.lines.at(-1)!.document_path, "utf8")).toBe(b.html);   // the bytes the critic read, untouched
+});
+
+test("send-file refuses an .html beside a clean .md when no seal names it, naming the spec verdict file", async () => {
+  const r = root(); const b = htmlBundle(r);   // the bundle's spec critic seals design.md only
+  const res = await sendFile(r, "1", b.page);
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("design.md.critic-spec-r1.md");
+  expect(res.err).toContain("design.html");
+  expect(res.lines).toEqual([]);
+});
+
+test("send-file refuses an .html edited after the critic read it", async () => {
+  const r = root(); const b = htmlBundle(r);
+  criticSeals(b.spec, "spec", 1, "SPEC CLEAN", b.sealed);
+  writeFileSync(b.page, b.html + "<p>edited</p>\n");
+  const res = await sendFile(r, "1", b.page);
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("design.md.critic-spec-r1.md");
+  expect(res.err).toContain("changed since");
+  expect(res.lines).toEqual([]);
+});
+
+test("send-file refuses a clean .md whose .html was read only by an older round's critic", async () => {
+  const r = root(); const b = htmlBundle(r);
+  criticSeals(b.spec, "spec", 1, "SPEC CLEAN", b.sealed);
+  critic(b.spec, "spec", 2, "SPEC CLEAN", { text: "# Design\n\nthe spec\n", file: "design.md" });   // round 2 read the .md only
+  const res = await sendFile(r, "1", b.page);
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("design.md.critic-spec-r2.md");
+  expect(res.lines).toEqual([]);
 });

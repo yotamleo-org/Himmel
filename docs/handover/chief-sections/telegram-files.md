@@ -18,18 +18,20 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
 - A missing path, a directory or a file over 50 MB is refused with a clear error and a
   non-zero exit; nothing is queued.
 - **A spec or plan page is checked before it queues**. A file under
-  `specs/{design,designs,plan,plans}/` or `specs/HIMMEL-<n>/`, or one a critic file names, is a
+  `specs/{design,designs,spec,plan,plans}/` or `specs/HIMMEL-<n>/`, or one a critic file names, is a
   signature page. It is refused, naming the verdict file and queueing nothing, unless its highest-round
   `<spec>.critic-spec-r<n>.md` AND `<spec>.critic-plan-r<n>.md` each end in `SPEC CLEAN` / `PLAN CLEAN`
   and carry a `CONTENT-SHA256 <sha> <relative path>` line whose file still hashes to that sha (a spec or
-  plan edited after the critic read it fails). The rendered page opens with the verdict lines read from
-  those files; a caption never supplies one. A critic return is sealed with
-  `bash scripts/handover/chief-kit/critic-seal.sh <verdict file> <file it read> <sha the critic quoted>`;
-  a verdict with no such line is refused until it is. Reports, logs and audits under no such path send
+  plan edited after the critic read it fails). A `<stem>.html` sign page beside a `<stem>.md` goes only
+  when the latest spec critic also sealed that `.html`. The Telegram caption opens with the verdict lines
+  read from those files (your own caption follows), and a rendered page opens with them too. A critic
+  return is sealed, once per file the critic read, with
+  `bash scripts/handover/chief-kit/critic-seal.sh <verdict file> <file it read> <sha the critic quoted>`
+  (the return itself must quote that sha); a verdict with no such line is refused until it is. Reports, logs and audits under no such path send
   as before. There is no read-only form: a signature-class file goes through the check or does not send.
 - The check covers `send-file` only. A file the bridge chat copies into `outgoing/` and queues itself is
-  not checked (ponytail: a hand-built `.html` there carries no link to its spec; upgrade path: the poller
-  refuses a `document_path` that `send-file` did not write).
+  not checked (ponytail: a hand-built `.html` there carries no link to its spec; upgrade path:
+  a follow-up that starts with a ruling on how to tell a report from a spec page; the PR names its ticket).
 - A queued line that carries both `text` and `document_path` sends the text, then the file.
 - The bridge never receives your path on its own: you run `send-file`; the operator's receipt
   is the proof (quote it in the ticket).
