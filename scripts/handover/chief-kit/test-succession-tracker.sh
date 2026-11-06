@@ -468,6 +468,12 @@ eq "and the set stays incomplete (rc 1)" "$rc" 1
 SKDOC="$OTHER"; sk_doc "- 23:30 LIVE — resumed" "$SK_WRAP1"
 out="$(run)"
 has "and once that row is WRAPPED with its lock free the label is closed" "$out" "N4875 closed"
+# a later row's doc path with a space in it is one path, not two words
+SPACED="$WORK/9395 spaced later row.md"
+SKDOC="$SPACED"; sk_doc "- 23:30 LIVE — resumed" "$SK_WRAP1"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N4875","lane":"native"},{"doc":"%s","label":"N4875","lane":"native"}]}\n' "$SK0" "$SPACED" > "$MAN"
+out="$(run)"
+has "a later row whose doc path holds spaces is read whole: WRAPPED, lock free, closed" "$out" "N4875 closed"
 
 # A lock line with no session= field (a CORRUPT or INDETERMINATE one) belongs to no token we can name, so a
 # worker with no readable doc is never proven closed while one exists.

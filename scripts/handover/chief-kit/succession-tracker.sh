@@ -215,7 +215,7 @@ while IFS= read -r label; do
         # a label can sit on several manifest rows (a doc, then its relaunch): closed only when every row is
         # closed, so a worker still running on a later row is never left out
         if odocs="$(jq -r --arg l "$label" "$JQ_W"'[W[] | select(.label == $l)][1:][] | .doc // empty' "$manifest" 2>/dev/null)"; then  # swallow-ok: a failed listing leaves the worker missing in the else branch
-            for odoc in $odocs; do doc_closed "$odoc" || state=missing; done
+            while IFS= read -r odoc; do [ -z "$odoc" ] || doc_closed "$odoc" || state=missing; done <<< "$odocs"
         else
             state=missing
         fi
