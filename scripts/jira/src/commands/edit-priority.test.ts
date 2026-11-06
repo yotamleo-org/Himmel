@@ -6,7 +6,7 @@ vi.mock('../client.js', async (importOriginal) => {
   return { ...actual, request: vi.fn() };
 });
 
-describe('edit --priority (HIMMEL-4640)', () => {
+describe('edit --priority', () => {
   let mockRequest: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
@@ -59,7 +59,7 @@ describe('edit --priority (HIMMEL-4640)', () => {
     expect(console.log).not.toHaveBeenCalledWith('HIMMEL-1 edited');
   });
 
-  it('control: a --title edit reads back summary only, never priority (HIMMEL-4644)', async () => {
+  it('control: a --title edit reads back summary only, never priority', async () => {
     mockRequest.mockImplementation(async (method: string) =>
       method === 'GET' ? { fields: { summary: 't' } } : {},
     );

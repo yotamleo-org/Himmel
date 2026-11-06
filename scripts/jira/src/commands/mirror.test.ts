@@ -301,7 +301,7 @@ describe('cursor + qmd', () => {
   });
 });
 
-describe('renderIssue — Sector (HIMMEL-6483)', () => {
+describe('renderIssue — Sector', () => {
   const prev = process.env.JIRA_SECTOR_FIELD;
   afterEach(() => {
     if (prev === undefined) delete process.env.JIRA_SECTOR_FIELD;

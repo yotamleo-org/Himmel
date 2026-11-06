@@ -8,7 +8,7 @@ export function frozenDate(description: string | undefined): string | undefined 
   return /^[ \t]*frozen:[ \t]*(\S+)[ \t]*\r?$/m.exec(description ?? '')?.[1];
 }
 
-// ponytail: the gate reason is recorded in the ledger, not verified against a decision or receipt, upgrade path: the RM signed-row design (HIMMEL-6796)
+// ponytail: the gate reason is recorded in the ledger, not verified against a decision or receipt, upgrade path: the RM signed-row design
 export function assertIntakeGate(gate: string): void {
   const valid = gate === 'critical' || gate === 'regression' || gate === 'receipt' || /^must:\S/.test(gate);
   if (!valid) throw new Error(`--gate must be one of ${INTAKE_GATES} (got "${gate}")`);
@@ -27,7 +27,7 @@ export function chiefOverrideOf<T>(o: { chiefOverride?: T }): T | undefined {
 export function checkConsoleOverride(reason: string): string {
   const trimmed = reason.trim();
   if (!trimmed) throw new Error('--chief-override needs a reason');
-  // ponytail: any same-uid caller can set HIMMEL_CONSOLE, upgrade path: the RM signed-row design (HIMMEL-6796)
+  // ponytail: any same-uid caller can set HIMMEL_CONSOLE, upgrade path: the RM signed-row design
   if (process.env['HIMMEL_CONSOLE'] !== '1') {
     throw new Error('--chief-override is for the console session only (HIMMEL_CONSOLE=1 is not set)');
   }

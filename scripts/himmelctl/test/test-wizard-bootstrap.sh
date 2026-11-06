@@ -55,7 +55,7 @@ bash_bin=$(command -v bash)
 work=$(mktemp -d)
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
-. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # HIMMEL-2350: shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
+. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
 
 # build_path <stub_dir> <present_tools...> -- <absent_tools...>
 build_path() {

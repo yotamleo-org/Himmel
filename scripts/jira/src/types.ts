@@ -23,7 +23,7 @@ export interface JiraSearchResult {
   /**
    * Token-based pagination cursor (Jira Cloud `/search/jql`). Absent on the
    * last page. The endpoint caps `maxResults` at 100 server-side regardless of
-   * what is asked for, so anything above that MUST be paged (HIMMEL-1602).
+   * what is asked for, so anything above that MUST be paged.
    */
   nextPageToken?: string;
 }

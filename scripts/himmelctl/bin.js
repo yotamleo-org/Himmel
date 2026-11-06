@@ -3638,7 +3638,7 @@ function mergePhiRoot(root) {
   // last rename() still wins, so a root added by a concurrent process can
   // still be lost. That half is deliberately OUT of scope here, so do not
   // read this atomic write as closing it.
-  // ponytail: last rename wins under concurrent writers, tracked in HIMMEL-2416.
+  // ponytail: last rename wins under concurrent writers, upgrade path: take a lock around the phi-roots read-modify-write.
   //
   // create tmp owner-only (mode 0o600) from
   // the very first write, not via a chmod afterward — a default-mode create
@@ -7531,7 +7531,7 @@ async function cmdScopeSet(args) {
   // already deleted, which the CWD guard above then refuses to retry (stuck).
   // The hard invariant (no item wired in BOTH scopes) already holds here —
   // the wiring converged on disk above, before either write.
-  // ponytail: no journal/recovery marker, the two writes are not transactional, tracked in HIMMEL-1174.
+  // ponytail: no journal/recovery marker, the two writes are not transactional, upgrade path: commit state and cache through one journal with a recovery marker.
   // Gated behind !dryRun (dry-run returned above).
   writeCache(Object.assign({}, cachedAnswers, { scope: newScope }));
   delete state.targets[oldTargetKey];

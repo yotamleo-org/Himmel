@@ -39,7 +39,7 @@
 set -euo pipefail
 
 repo_root=$(git rev-parse --show-toplevel)
-. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # HIMMEL-2350: shared winpath()
+. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # shared winpath()
 wizard="$repo_root/scripts/himmelctl/bin.js"
 status_report_lib="$repo_root/scripts/himmelctl/lib/status-report.js"
 [ -f "$wizard" ] || { echo "FAIL: $wizard not found" >&2; exit 1; }

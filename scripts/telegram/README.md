@@ -361,15 +361,15 @@ fail closed.
 
 A `group_<chat_id>` run is framed as **untrusted third-party input**, not operator
 requests: its prompt omits the Jira sanction and tells the run not to change
-tickets, run `/arm` / `/arm-resume`, or execute commands on a message's say-so
-(HIMMEL-1359). This holds for every allow-listed group, with or without
+tickets, run `/arm` / `/arm-resume`, or execute commands on a message's say-so.
+This holds for every allow-listed group, with or without
 `trustAnonymousAdmins`, and also for the operator's own posts in a group — send
 action requests from the DM. Other sessions are framed per message: the poller
 stamps `"operator":true` on an inbox line only for the operator, and a line
 without it (e.g. a group member's `work on <KEY>` that reached a ticket session)
 is untrusted; a missing marker fails safe. It is prompt framing, not a sandbox.
 
-### require_mention (per-group) (LUNA-158)
+### require_mention (per-group)
 
 Set `"requireMention": true` on a group entry to put it in @mention-only
 mode — used for groups shared with a sibling bot (e.g. the grow-tent groups,
@@ -839,8 +839,8 @@ measured history of failing purely with ambient load.
 | `systemd/telegram-bridge.service` | systemd **user** unit template (`@HIMMEL_REPO@` placeholder), Linux reboot-persistence |
 | `run-prompt.md` | the prompt contract handed to each bounded run |
 | `fixture-repo.ts` | real-git test fixtures + the registry-gated teardown the spawn suites use |
-| `afk-sudo-route.ts` | hands the operator's `approve`/`deny` lines to the root afk-sudo helper (HIMMEL-8066) |
-| `config-restore-route.ts` | hands the operator's `/config backups`/`restore` lines to `config-restore.py`; runs the 60 s config watcher pass (HIMMEL-8401) |
+| `afk-sudo-route.ts` | hands the operator's `approve`/`deny` lines to the root afk-sudo helper |
+| `config-restore-route.ts` | hands the operator's `/config backups`/`restore` lines to `config-restore.py`; runs the 60 s config watcher pass |
 | `config-restore.py` | TOTP-gated station config restore (`enroll` / `list` / `restore`) |
 
 Bot: `@<your-bot-username>`. Token: `~/.claude/channels/telegram/.env`

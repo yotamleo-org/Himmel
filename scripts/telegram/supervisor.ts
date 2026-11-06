@@ -107,7 +107,7 @@ export function killBridge(killFn: (pid: number) => void = (pid) => process.kill
 }
 
 async function main(): Promise<void> {
-  installTimestampedLogging();   // HIMMEL-1401: every supervisor.log line gets an ISO timestamp
+  installTimestampedLogging();   // every supervisor.log line gets an ISO timestamp
   if (process.argv.includes("--kill")) { process.exit(killBridge()); }
   writePidfile({ supervisor: process.pid, poller: null });
   let fails = 0;

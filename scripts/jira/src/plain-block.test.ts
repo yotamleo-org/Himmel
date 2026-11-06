@@ -15,7 +15,7 @@ const OK =
 
 const NO_BULLET = 'has no bullet or numbered line beyond the placeholder';
 
-describe('lintPlainBlock (HIMMEL-5226)', () => {
+describe('lintPlainBlock', () => {
   it('passes a full block', () => expect(lintPlainBlock(OK)).toEqual([]));
 
   it('names every missing section on an empty body', () => {
@@ -37,44 +37,44 @@ describe('lintPlainBlock (HIMMEL-5226)', () => {
     expect(lintPlainBlock('```\n' + OK + '\n```')).toHaveLength(6);
   });
 
-  it('a shorter or different closing marker does not end a fence (HIMMEL-5226)', () => {
+  it('a shorter or different closing marker does not end a fence', () => {
     expect(lintPlainBlock('````\n```\n' + OK + '\n```')).toHaveLength(6);
     expect(lintPlainBlock('~~~\n```\n' + OK + '\n```')).toHaveLength(6);
     expect(lintPlainBlock('```\ncode\n```\n' + OK)).toEqual([]);
     expect(lintPlainBlock('```\n```not-a-close\n' + OK + '\n```')).toHaveLength(6);
   });
 
-  it('a hash run with no space is text, not a heading (HIMMEL-5226)', () => {
+  it('a hash run with no space is text, not a heading', () => {
     const noSpace = OK.replace(/^## /gm, '##');
     expect(lintPlainBlock(noSpace)).toHaveLength(6);
   });
 
-  it('the template alone fails on Plan and DoD only, so a skeleton never files as is (HIMMEL-5643)', () => {
+  it('the template alone fails on Plan and DoD only, so a skeleton never files as is', () => {
     expect(lintPlainBlock(PLAIN_BLOCK_TEMPLATE)).toEqual([
       `"## Plan" ${NO_BULLET}`,
       `"## DoD" ${NO_BULLET}`,
     ]);
   });
 
-  it('refuses a body with no DoD and names it (HIMMEL-5643)', () => {
+  it('refuses a body with no DoD and names it', () => {
     expect(lintPlainBlock(OK.replace(/## DoD\n[^\n]*\n\n/, ''))).toEqual(['missing "## DoD"']);
   });
 
-  it('refuses a body with no Plan and names it (HIMMEL-5643)', () => {
+  it('refuses a body with no Plan and names it', () => {
     expect(lintPlainBlock(OK.replace(/## Plan\n[^\n]*\n\n/, ''))).toEqual(['missing "## Plan"']);
   });
 
-  it('refuses a DoD that holds only the placeholder line (HIMMEL-5643)', () => {
+  it('refuses a DoD that holds only the placeholder line', () => {
     const ph = OK.replace('- A test fails before and passes after.', '- <checkable result>');
     expect(lintPlainBlock(ph)).toEqual([`"## DoD" ${NO_BULLET}`]);
   });
 
-  it('refuses Plan or DoD prose with no bullet or numbered line (HIMMEL-5643)', () => {
+  it('refuses Plan or DoD prose with no bullet or numbered line', () => {
     const prose = OK.replace('- A test fails before and passes after.', 'A test fails before.');
     expect(lintPlainBlock(prose)).toEqual([`"## DoD" ${NO_BULLET}`]);
   });
 
-  it('accepts a real line next to a placeholder line (HIMMEL-5643)', () => {
+  it('accepts a real line next to a placeholder line', () => {
     expect(lintPlainBlock(OK.replace('1. Edit a.ts.', '1. <step>\n2. Edit a.ts.'))).toEqual([]);
   });
 });
@@ -105,7 +105,7 @@ describe('lintPlainBlockAdf', () => {
     expect(lintPlainBlockAdf({ type: 'doc', content: [p('x')] })).toHaveLength(6);
   });
 
-  it('agrees with the markdown path: list items count as lines, placeholders and prose do not (HIMMEL-5643)', () => {
+  it('agrees with the markdown path: list items count as lines, placeholders and prose do not', () => {
     const base = [h('Impact'), p('a'), h('What'), p('b'), h('Why'), p('c'), h('Agent detail'), p('d')];
     const doc = (plan: unknown[], dod: unknown[]) => ({
       type: 'doc',
@@ -118,12 +118,12 @@ describe('lintPlainBlockAdf', () => {
     expect(lintPlainBlockAdf(doc([], [ul('ok')]))).toEqual(['"## Plan" is empty']);
   });
 
-  it('an empty paragraph under a section still leaves it empty (HIMMEL-5643)', () => {
+  it('an empty paragraph under a section still leaves it empty', () => {
     const doc = { type: 'doc', content: [h('Impact'), p(''), h('What'), p('b'), h('Why'), p('c'), h('Plan'), ol('s'), h('DoD'), ul('d'), h('Agent detail'), p('e')] };
     expect(lintPlainBlockAdf(doc)).toEqual(['"## Impact" is empty']);
   });
 
-  it('a paragraph or code block that merely reads like a list line is not a list item (HIMMEL-5643)', () => {
+  it('a paragraph or code block that merely reads like a list line is not a list item', () => {
     const base = [h('Impact'), p('a'), h('What'), p('b'), h('Why'), p('c'), h('Plan'), ol('step'), h('Agent detail'), p('d')];
     const code = { type: 'codeBlock', content: [{ type: 'text', text: '- fake' }] };
     const dodBad = [`"## DoD" ${NO_BULLET}`];
@@ -141,7 +141,7 @@ describe('plainBlockVerdict', () => {
     expect(plainBlockVerdict('Task', []).action).toBe('ok');
   });
 
-  it('names a missing Plan and DoD in the refusal and keeps an Epic warn-only (HIMMEL-5643)', () => {
+  it('names a missing Plan and DoD in the refusal and keeps an Epic warn-only', () => {
     const found = lintPlainBlock(
       OK.replace(/## Plan\n[^\n]*\n\n## DoD\n[^\n]*\n\n/, ''),
     );
@@ -150,7 +150,7 @@ describe('plainBlockVerdict', () => {
   });
 });
 
-describe('titleSector (HIMMEL-8659)', () => {
+describe('titleSector', () => {
   const live = ['Ship loop', 'Visibility', 'Cost & efficiency'];
 
   it('takes the canonical Sector from a valid "<Sector>: " prefix, case-insensitively', () => {
@@ -174,7 +174,7 @@ describe('titleSector (HIMMEL-8659)', () => {
   });
 });
 
-describe('homeVerdict (HIMMEL-6223)', () => {
+describe('homeVerdict', () => {
   const home = { sector: 'Ship loop', parent: 'HIMMEL-1', labels: [] as string[] };
 
   it('refuses a Task, Story or Bug with no Sector, naming the field and the fix', () => {
@@ -213,7 +213,7 @@ describe('homeVerdict (HIMMEL-6223)', () => {
   });
 });
 
-describe('titleVerdict (HIMMEL-6968)', () => {
+describe('titleVerdict', () => {
   const FITTING = [
     'Ship loop: merge waits for the signed GO',
     'Safety & enforcement: edits on main are blocked in every worktree',

@@ -74,7 +74,7 @@ function buildArmFlags({ cadence, vaultPath, force, dryRun } = {}) {
       throw new Error(
         `cadence-emit: schedule '${key}' carries a day (${sched.day}) but pipeline-cadence.sh has no `
         + `--${key}-day flag — only '${DAY_CAPABLE_SCHEDULE}' accepts a day (--health-day); `
-        + '--synth-day was removed (HIMMEL-506) and there is no --harvest-day/--fetch-health-day',
+        + '--synth-day was removed and there is no --harvest-day/--fetch-health-day',
       );
     }
     flags.push(TIME_FLAG_BY_SCHEDULE[key], sched.time);

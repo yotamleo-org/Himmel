@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseLabels } from './labels.js';
 
-describe('parseLabels (HIMMEL-243)', () => {
+describe('parseLabels', () => {
   it('splits a comma-separated arg into a label array', () => {
     expect(parseLabels('a,b')).toEqual(['a', 'b']);
   });

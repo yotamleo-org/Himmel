@@ -267,7 +267,7 @@ set -euo pipefail
 # git-hooks case, which resolved hooks against the Windows .git instead of a
 # fixture repo), where a plain path never can.
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || repo_root=$(cd "$(dirname "$0")/../../.." && pwd)
-. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # HIMMEL-2350: shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
+. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
 probes_lib="$repo_root/scripts/himmelctl/lib/probes.js"
 helpers_lib="$repo_root/scripts/himmelctl/lib/helpers.js"
 manifest_path="$repo_root/scripts/install/manifest.json"
@@ -504,7 +504,7 @@ echo "$outStubMixed" | jq -e '.actual == "degraded" and (.detail | contains("pre
 outStubCfg=$(probe_hooks "$hooks_stub_repo")
 echo "$outStubCfg" | jq -e '.actual == "present"' >/dev/null \
   || fail "HIMMEL-3306 pre-commit stubs with a .pre-commit-config.yaml must read present: (got: $outStubCfg)"
-echo "ok: git-hooks reads pre-commit stubs with no .pre-commit-config.yaml as inert (absent/degraded), present once the config exists (HIMMEL-3306)"
+echo "ok: git-hooks reads pre-commit stubs with no .pre-commit-config.yaml as inert (absent/degraded), present once the config exists"
 
 # ── git-hooks: core.hooksPath override ───────────────────────
 # A legitimate LOCAL `git config core.hooksPath <dir>` (the in-repo layout
@@ -522,7 +522,7 @@ echo "$outHooksHP" | jq -e '.actual == "present"' >/dev/null \
   || fail "git-hooks core.hooksPath override should read present (got: $outHooksHP)"
 echo "$outHooksHP" | jq -e '.detail | contains("custom-hooks")' >/dev/null \
   || fail "git-hooks core.hooksPath detail should name the configured dir (got: $outHooksHP)"
-echo "ok: git-hooks honors a local core.hooksPath override instead of defaulting to .git/hooks (HIMMEL-1470)"
+echo "ok: git-hooks honors a local core.hooksPath override instead of defaulting to .git/hooks"
 
 # ── file-exists: {vaultPath} placeholder (luna-vault-scaffold) ─────────────
 feC_present="$work/feC-vault-present"; mkdir -p "$feC_present"
@@ -665,7 +665,7 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outSK1hOk" | jq -e '.actual == "present"' >/dev/null \
   || fail "settings-key verifyHudConfig: hud config present with display.customLineCommand should read present (got: $outSK1hOk)"
-echo "ok: settings-key verifyHudConfig (wiring-statusline, HIMMEL-3334) — hud-wired + config missing/no customLineCommand degrades, present with customLineCommand reads present"
+echo "ok: settings-key verifyHudConfig (wiring-statusline) — hud-wired + config missing/no customLineCommand degrades, present with customLineCommand reads present"
 
 # RED: a malformed new-path config must not be silently
 # skipped in favor of a valid legacy-path one -- the active override is
@@ -682,7 +682,7 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outSK1hMalformed" | jq -e '.actual == "degraded"' >/dev/null \
   || fail "settings-key verifyHudConfig: malformed new-path hud config must degrade, not fall through to a valid legacy config (got: $outSK1hMalformed)"
-echo "ok: settings-key verifyHudConfig (HIMMEL-3334 codex-1) — malformed new-path config degrades even when a valid legacy-path config exists"
+echo "ok: settings-key verifyHudConfig — malformed new-path config degrades even when a valid legacy-path config exists"
 
 # The renderer merges the legacy plugins/claude-hud/config.json
 # (base) under claude-hud.json (override); the probe must read the same merged view.
@@ -702,7 +702,7 @@ printf '{"display":{"showPromptCache":true}}' > "$sk1h_cfgdir_a/claude-hud.json"
 printf '{"display":{"customLineCommand":"echo legacy"}}' > "$sk1h_cfgdir_a/plugins/claude-hud/config.json"
 outSK1hA=$(sk1h_probe "$sk1h_cfgdir_a")
 echo "$outSK1hA" | jq -e '.actual == "present"' >/dev/null \
-  || fail "settings-key verifyHudConfig (HIMMEL-3739): customLineCommand only in the legacy file must read present, the renderer merges both (got: $outSK1hA)"
+  || fail "settings-key verifyHudConfig: customLineCommand only in the legacy file must read present, the renderer merges both (got: $outSK1hA)"
 
 # B: both files carry customLineCommand; merged view = override value wins, nested keys from both survive.
 sk1h_cfgdir_b="$work/sk1h-cfg-b"; mkdir -p "$sk1h_cfgdir_b/plugins/claude-hud"
@@ -710,14 +710,14 @@ printf '{"display":{"customLineCommand":"","showPromptCache":true}}' > "$sk1h_cf
 printf '{"display":{"customLineCommand":"echo override"}}' > "$sk1h_cfgdir_b/claude-hud.json"
 outSK1hB=$(sk1h_probe "$sk1h_cfgdir_b")
 echo "$outSK1hB" | jq -e '.actual == "present"' >/dev/null \
-  || fail "settings-key verifyHudConfig (HIMMEL-3739): override customLineCommand must win over an empty legacy value (got: $outSK1hB)"
+  || fail "settings-key verifyHudConfig: override customLineCommand must win over an empty legacy value (got: $outSK1hB)"
 # Reverse: a blank override value replaces a healthy legacy one, exactly as the renderer does -> degraded.
 sk1h_cfgdir_b2="$work/sk1h-cfg-b2"; mkdir -p "$sk1h_cfgdir_b2/plugins/claude-hud"
 printf '{"display":{"customLineCommand":"echo legacy"}}' > "$sk1h_cfgdir_b2/plugins/claude-hud/config.json"
 printf '{"display":{"customLineCommand":""}}' > "$sk1h_cfgdir_b2/claude-hud.json"
 outSK1hB2=$(sk1h_probe "$sk1h_cfgdir_b2")
 echo "$outSK1hB2" | jq -e '.actual == "degraded"' >/dev/null \
-  || fail "settings-key verifyHudConfig (HIMMEL-3739): a blank override value replaces the legacy one (got: $outSK1hB2)"
+  || fail "settings-key verifyHudConfig: a blank override value replaces the legacy one (got: $outSK1hB2)"
 
 # C: unparsable new-path file + healthy legacy file stays degraded (regression guard, true before the merge too).
 sk1h_cfgdir_c="$work/sk1h-cfg-c"; mkdir -p "$sk1h_cfgdir_c/plugins/claude-hud"
@@ -725,15 +725,15 @@ printf '{not valid json' > "$sk1h_cfgdir_c/claude-hud.json"
 printf '{"display":{"customLineCommand":"echo legacy"}}' > "$sk1h_cfgdir_c/plugins/claude-hud/config.json"
 outSK1hC=$(sk1h_probe "$sk1h_cfgdir_c")
 echo "$outSK1hC" | jq -e '.actual == "degraded"' >/dev/null \
-  || fail "settings-key verifyHudConfig (HIMMEL-3739): unparsable new-path file must stay degraded (got: $outSK1hC)"
+  || fail "settings-key verifyHudConfig: unparsable new-path file must stay degraded (got: $outSK1hC)"
 # C2: the legacy file unparsable under a healthy new-path file is just as broken.
 sk1h_cfgdir_c2="$work/sk1h-cfg-c2"; mkdir -p "$sk1h_cfgdir_c2/plugins/claude-hud"
 printf '{"display":{"customLineCommand":"echo new"}}' > "$sk1h_cfgdir_c2/claude-hud.json"
 printf '{not valid json' > "$sk1h_cfgdir_c2/plugins/claude-hud/config.json"
 outSK1hC2=$(sk1h_probe "$sk1h_cfgdir_c2")
 echo "$outSK1hC2" | jq -e '.actual == "degraded"' >/dev/null \
-  || fail "settings-key verifyHudConfig (HIMMEL-3739): unparsable legacy file must degrade too (got: $outSK1hC2)"
-echo "ok: settings-key verifyHudConfig (HIMMEL-3739) — legacy base merged under the new-path override, broken file never masked"
+  || fail "settings-key verifyHudConfig: unparsable legacy file must degrade too (got: $outSK1hC2)"
+echo "ok: settings-key verifyHudConfig — legacy base merged under the new-path override, broken file never masked"
 
 # A safe-key-only config beyond the renderer's nesting bound still degrades.
 sk1h_cfgdir_deep="$work/sk1h-cfg-deep"; mkdir -p "$sk1h_cfgdir_deep"
@@ -1160,10 +1160,10 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 }
 out=$(sk3_conf_probe "$sk3_conf_repo" "$sk3_conf_home")
 echo "$out" | jq -e '.actual == "present"' >/dev/null \
-  || fail "HIMMEL-7712: JIRA_EMAIL/JIRA_PROJECT_KEY in ~/.himmel/himmel.conf must satisfy jira-env-keys (got: $out)"
+  || fail "JIRA_EMAIL/JIRA_PROJECT_KEY in ~/.himmel/himmel.conf must satisfy jira-env-keys (got: $out)"
 out=$(sk3_conf_probe "$sk3_conf_repo" "$sk3_confhalf_home")
 echo "$out" | jq -e '.actual == "absent" and (.detail | contains("JIRA_PROJECT_KEY")) and (.detail | contains("JIRA_EMAIL") | not)' >/dev/null \
-  || fail "HIMMEL-7712: a himmel.conf holding only JIRA_EMAIL must still name JIRA_PROJECT_KEY as missing (got: $out)"
+  || fail "a himmel.conf holding only JIRA_EMAIL must still name JIRA_PROJECT_KEY as missing (got: $out)"
 echo "ok: HIMMEL-7712 jira-env-keys reads JIRA_EMAIL and JIRA_PROJECT_KEY from ~/.himmel/himmel.conf"
 
 # JIRA_BASE_URL is a CONFIG_KEYS member in client.ts too, so the URL held only
@@ -1178,10 +1178,10 @@ JIRA_PROJECT_KEY=HIMMEL
 CONF
 out=$(sk3_conf_probe "$sk3_url_repo" "$sk3_url_home")
 echo "$out" | jq -e '.actual == "present"' >/dev/null \
-  || fail "HIMMEL-8690: JIRA_BASE_URL only in ~/.himmel/himmel.conf must satisfy jira-env-keys (got: $out)"
+  || fail "JIRA_BASE_URL only in ~/.himmel/himmel.conf must satisfy jira-env-keys (got: $out)"
 out=$(sk3_conf_probe "$sk3_url_repo" "$sk3_conf_home")
 echo "$out" | jq -e '.actual == "absent" and (.detail | contains("JIRA_BASE_URL"))' >/dev/null \
-  || fail "HIMMEL-8690: JIRA_BASE_URL in neither .env nor himmel.conf must still read missing (got: $out)"
+  || fail "JIRA_BASE_URL in neither .env nor himmel.conf must still read missing (got: $out)"
 echo "ok: HIMMEL-8690 jira-env-keys reads JIRA_BASE_URL from ~/.himmel/himmel.conf; absent everywhere stays missing"
 
 # `cleanAbsence` marks a jira-env-keys that was NEVER set up (no
@@ -1206,12 +1206,12 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 for d in sk3_none sk3_unrelated; do
   out=$(sk3_clean_flag "$work/${d//_/-}")
   echo "$out" | jq -e '.actual == "absent" and .cleanAbsence == true' >/dev/null \
-    || fail "HIMMEL-3307: jira-env-keys never set up ($d) must be absent + cleanAbsence (got: $out)"
+    || fail "jira-env-keys never set up ($d) must be absent + cleanAbsence (got: $out)"
 done
 for d in sk3-repo-missing sk3-emptykey sk3-unreadable; do
   out=$(sk3_clean_flag "$work/$d")
   echo "$out" | jq -e '.actual == "absent" and (has("cleanAbsence") | not)' >/dev/null \
-    || fail "HIMMEL-3307: jira-env-keys $d is a real fault and must NOT carry cleanAbsence (got: $out)"
+    || fail "jira-env-keys $d is a real fault and must NOT carry cleanAbsence (got: $out)"
 done
 echo "ok: HIMMEL-3307 jira-env-keys cleanAbsence — never-set-up only; partial/empty/unreadable .env stay a plain absent"
 
@@ -1283,27 +1283,27 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 }
 outSHu=$(sh_user_probe "$sh_present" "$sh_uhome")
 echo "$outSHu" | jq -e '.actual == "present"' >/dev/null \
-  || fail "HIMMEL-8163: user scope, empty user layer, project layer wires the trio must read present (got: $outSHu)"
+  || fail "user scope, empty user layer, project layer wires the trio must read present (got: $outSHu)"
 echo "$outSHu" | jq -e '.detail | contains("project") and contains("C81")' >/dev/null \
-  || fail "HIMMEL-8163: the present detail must name the project layer and the C81 double-wiring cost (got: $outSHu)"
+  || fail "the present detail must name the project layer and the C81 double-wiring cost (got: $outSHu)"
 outSHb=$(sh_user_probe "$sh_absent" "$sh_uhome")
 echo "$outSHb" | jq -e '.actual == "absent"' >/dev/null \
-  || fail "HIMMEL-8163: user scope, empty user layer, no project trio must stay absent (got: $outSHb)"
+  || fail "user scope, empty user layer, no project trio must stay absent (got: $outSHb)"
 outSHc=$(sh_user_probe "$sh_present" "$sh_degraded")
 echo "$outSHc" | jq -e '.actual == "degraded"' >/dev/null \
-  || fail "HIMMEL-8163: a partial user layer stays degraded even when the project wires the trio (got: $outSHc)"
+  || fail "a partial user layer stays degraded even when the project wires the trio (got: $outSHc)"
 sh_corrupt="$work/sh-corrupt"; mkdir -p "$sh_corrupt/.claude"
 printf '{not json' > "$sh_corrupt/.claude/settings.json"
 outSHd=$(sh_user_probe "$sh_present" "$sh_corrupt")
 echo "$outSHd" | jq -e '.actual == "absent"' >/dev/null \
-  || fail "HIMMEL-8163: an unparseable user layer is a fault, never hidden by the project layer (got: $outSHd)"
+  || fail "an unparseable user layer is a fault, never hidden by the project layer (got: $outSHd)"
 sh_nofile="$work/sh-nofile"; mkdir -p "$sh_nofile"
 outSHe=$(sh_user_probe "$sh_present" "$sh_nofile")
 echo "$outSHe" | jq -e '.actual == "present" and (.detail | contains("C81"))' >/dev/null \
-  || fail "HIMMEL-8163: a missing user settings file with the project layer wiring the trio must read present (got: $outSHe)"
+  || fail "a missing user settings file with the project layer wiring the trio must read present (got: $outSHe)"
 outSHf=$(sh_user_probe "$sh_absent" "$sh_nofile")
 echo "$outSHf" | jq -e '.actual == "absent"' >/dev/null \
-  || fail "HIMMEL-8163: a missing user settings file with no project trio must stay absent (got: $outSHf)"
+  || fail "a missing user settings file with no project trio must stay absent (got: $outSHf)"
 echo "ok: HIMMEL-8163 settings-hooks user scope — the project layer owning the trio reads present with the C81 note"
 
 # ── cmd:has_qmd (qmd-binary) ────────────────────────────────────────────────
@@ -1567,7 +1567,7 @@ echo "$outDeepNoInit" | jq -e '.actual == "degraded"' >/dev/null \
   || fail "mcp-registered deepened (fixture-mcp) missing initMarker (no .fixture-marker/ in target) should read degraded: (got: $outDeepNoInit)"
 echo "$outDeepNoInit" | jq -e '.detail | contains("project not initialized")' >/dev/null \
   || fail "mcp-registered deepened missing-initMarker detail should name it (got: $outDeepNoInit)"
-echo "ok: mcp-registered deepening (HIMMEL-1093) — registered-but-broken (unresolved bin / uninitialized project) reads degraded, never silently present"
+echo "ok: mcp-registered deepening — registered-but-broken (unresolved bin / uninitialized project) reads degraded, never silently present"
 
 # ── mcp-registered: bin check honors ctx.env, not just process.env ─────────
 # which(item.probe.bin) used to read
@@ -1784,20 +1784,20 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 }
 outHDc=$(hd_probe "$hd_clean_repo")
 echo "$outHDc" | jq -e '.actual == "absent" and .cleanAbsence == true' >/dev/null \
-  || fail "HIMMEL-3307: handover-dir with HANDOVER_DIR unset in a git repo lacking handovers/ must be absent + cleanAbsence (got: $outHDc)"
+  || fail "handover-dir with HANDOVER_DIR unset in a git repo lacking handovers/ must be absent + cleanAbsence (got: $outHDc)"
 outHDe=$(hd_probe "$hd_clean_repo" "")
 echo "$outHDe" | jq -e '.actual == "absent" and .cleanAbsence == true' >/dev/null \
-  || fail "HIMMEL-3307: an EMPTY HANDOVER_DIR is the same as unset (got: $outHDe)"
+  || fail "an EMPTY HANDOVER_DIR is the same as unset (got: $outHDe)"
 outHDm=$(hd_probe "$hd_clean_repo" "$work/hd-does-not-exist")
 echo "$outHDm" | jq -e '.actual == "absent" and (has("cleanAbsence") | not)' >/dev/null \
-  || fail "HIMMEL-3307: HANDOVER_DIR pointing at a missing dir is a real fault, no cleanAbsence (got: $outHDm)"
+  || fail "HANDOVER_DIR pointing at a missing dir is a real fault, no cleanAbsence (got: $outHDm)"
 outHDn=$(hd_probe "$hd_absent_cwd")
 echo "$outHDn" | jq -e '.actual == "absent" and (has("cleanAbsence") | not)' >/dev/null \
-  || fail "HIMMEL-3307: HANDOVER_DIR unset outside any git repo is a real fault, no cleanAbsence (got: $outHDn)"
+  || fail "HANDOVER_DIR unset outside any git repo is a real fault, no cleanAbsence (got: $outHDn)"
 mkdir -p "$hd_clean_repo/handovers"
 outHDx=$(hd_probe "$hd_clean_repo")
 echo "$outHDx" | jq -e '.actual == "present"' >/dev/null \
-  || fail "HIMMEL-3307: once <repo>/handovers exists the probe must read present (got: $outHDx)"
+  || fail "once <repo>/handovers exists the probe must read present (got: $outHDx)"
 echo "ok: HIMMEL-3307 handover-dir cleanAbsence — only 'unset + git repo + inline dir not created yet'; missing HANDOVER_DIR / non-git stay a plain absent"
 
 # the probe must answer the way the handover tooling does from ANY
@@ -1816,7 +1816,7 @@ hd4403_real="$work/hd4403-link"  # the probe reports the .env value as written, 
 for hd4403_cwd in "$hd4403_primary" "$work/hd4403-wt"; do
   outHD4403=$(hd_probe "$hd4403_cwd")
   echo "$outHD4403" | jq -e --arg d "$hd4403_real" '.actual == "present" and .detail == $d' >/dev/null \
-    || fail "HIMMEL-4403: HANDOVER_DIR unset in the process env must resolve via the primary .env from $hd4403_cwd (got: $outHD4403)"
+    || fail "HANDOVER_DIR unset in the process env must resolve via the primary .env from $hd4403_cwd (got: $outHD4403)"
 done
 # no .env value: a worktree falls back to the PRIMARY's inline dir, not <worktree>/handovers
 rm -f "$hd4403_primary/.env"
@@ -1824,7 +1824,7 @@ hd4403_inline=$(cd "$hd4403_primary/handovers" && pwd -P)
 for hd4403_cwd in "$hd4403_primary" "$work/hd4403-wt"; do
   outHD4403=$(hd_probe "$hd4403_cwd")
   echo "$outHD4403" | jq -e --arg d "$hd4403_inline" '.actual == "present" and .detail == $d' >/dev/null \
-    || fail "HIMMEL-4403: inline fallback must resolve the primary's handovers/ from $hd4403_cwd (got: $outHD4403)"
+    || fail "inline fallback must resolve the primary's handovers/ from $hd4403_cwd (got: $outHD4403)"
 done
 echo "ok: HIMMEL-4403 handover-dir resolves the same root from the primary and from a linked worktree"
 
@@ -2779,7 +2779,7 @@ echo "$outWRctxEnvConfig" | jq -e '.actual == "present"' >/dev/null \
   || fail "cmd:whisper_ready: a ctx.env.HIMMEL_LUNA_CONFIG_PATH override must be honored over the ambient process.env one (got: $outWRctxEnvConfig)"
 echo "$outWRctxEnvConfig" | jq -e '.detail | test("ambient-model"; "i") | not' >/dev/null \
   || fail "cmd:whisper_ready: must not have consulted the ambient process.env config at all (got: $outWRctxEnvConfig)"
-echo "ok: cmd:whisper_ready — a ctx.env HIMMEL_LUNA_CONFIG_PATH override is honored, not the ambient process.env one (HIMMEL-2176 CR fix)"
+echo "ok: cmd:whisper_ready — a ctx.env HIMMEL_LUNA_CONFIG_PATH override is honored, not the ambient process.env one"
 
 # ── cmd:python_interpreter ─────────────────────────────
 pi_absent_stub="$work/pi-absent-bin"; mkdir -p "$pi_absent_stub"
@@ -3042,7 +3042,7 @@ const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outLunaOneUnrecognized" | jq -e '.actual == "degraded"' >/dev/null \
-  || fail "luna-sources: one unrecognized source among others ok must NOT read present (fail-open-silently, HIMMEL-1128): (got: $outLunaOneUnrecognized)"
+  || fail "luna-sources: one unrecognized source among others ok must NOT read present (fail-open-silently): (got: $outLunaOneUnrecognized)"
 echo "$outLunaOneUnrecognized" | jq -e '.detail | contains("ghost-source") and test("not recognized"; "i") and test("not being monitored"; "i")' >/dev/null \
   || fail "luna-sources: degraded detail should name the unrecognized source and say plainly it is not being monitored (got: $outLunaOneUnrecognized)"
 echo "ok: luna-sources — one unrecognized-by-fetch-health.py source among others ok reads degraded, never present"
@@ -3447,7 +3447,7 @@ const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outGBf" | jq -e '.actual == "present"' >/dev/null \
-  || fail "cmd:guardrail_block_status: a genuine 3-of-3 install (every hook wired under its correct matcher, bash/node/wrapper/script all resolving, HIMMEL-1422 trust anchor matching) must read present: (got: $outGBf)"
+  || fail "cmd:guardrail_block_status: a genuine 3-of-3 install (every hook wired under its correct matcher, bash/node/wrapper/script all resolving, trust anchor matching) must read present: (got: $outGBf)"
 echo "$outGBf" | jq -e '.detail | contains("3 guardrail hooks present, correctly matched, and resolving")' >/dev/null \
   || fail "cmd:guardrail_block_status present detail should confirm all 3 hooks (got: $outGBf)"
 echo "ok: cmd:guardrail_block_status — a genuine full (3-of-3) install now reads present via status --json"
@@ -3485,10 +3485,10 @@ const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outGBwc" | jq -e '.actual == "degraded"' >/dev/null \
-  || fail "cmd:guardrail_block_status: a same-basename wrapper/script wired from a WRONG checkout (not the pinned trust anchor) must read degraded, never present (HIMMEL-1422): (got: $outGBwc)"
+  || fail "cmd:guardrail_block_status: a same-basename wrapper/script wired from a WRONG checkout (not the pinned trust anchor) must read degraded, never present: (got: $outGBwc)"
 echo "$outGBwc" | jq -e '.detail | contains("does not match trust anchor")' >/dev/null \
   || fail "cmd:guardrail_block_status wrong-checkout detail should name the trust-anchor mismatch (got: $outGBwc)"
-echo "ok: cmd:guardrail_block_status — same-basename wiring from a wrong checkout reads degraded with the trust-anchor mismatch named, never present (HIMMEL-1422)"
+echo "ok: cmd:guardrail_block_status — same-basename wiring from a wrong checkout reads degraded with the trust-anchor mismatch named, never present"
 
 # ── correct-checkout, correct path, but a TRUNCATED (empty)
 # script file → degraded, never present. Uses its OWN fake anchor checkout
@@ -3522,12 +3522,12 @@ const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outGBes" | jq -e '.actual == "degraded"' >/dev/null \
-  || fail "cmd:guardrail_block_status: an anchor-matching but EMPTY script file must read degraded, never present (HIMMEL-1422 truncation floor): (got: $outGBes)"
+  || fail "cmd:guardrail_block_status: an anchor-matching but EMPTY script file must read degraded, never present (truncation floor): (got: $outGBes)"
 echo "$outGBes" | jq -e '.detail | contains("does not match trust anchor") | not' >/dev/null \
   || fail "cmd:guardrail_block_status empty-script detail should be a content problem, NOT an anchor mismatch — the path IS the anchor's own copy (got: $outGBes)"
 echo "$outGBes" | jq -e '.detail | contains("script")' >/dev/null \
   || fail "cmd:guardrail_block_status empty-script detail should name script as the broken part (got: $outGBes)"
-echo "ok: cmd:guardrail_block_status — an anchor-matching but empty (truncated) script file reads degraded, never present (HIMMEL-1422 content-sanity floor)"
+echo "ok: cmd:guardrail_block_status — an anchor-matching but empty (truncated) script file reads degraded, never present (content-sanity floor)"
 
 # ── codex-adv-1: all 3 hooks wired, every path resolving, but under the
 # WRONG matcher (all 3 crammed into a single 'Bash' group) → degraded, never
@@ -4038,10 +4038,10 @@ const ctx = { repoRoot: '$(winpath "$gb_v2_healthy_dir")', targetPath: '$repo_ro
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outGBv2h" | jq -e '.actual == "present"' >/dev/null \
-  || fail "cmd:guardrail_block_status: a fully healthy v2 payload (complete + content-integrity + audit-anchor all green) must read present (HIMMEL-1427): (got: $outGBv2h)"
+  || fail "cmd:guardrail_block_status: a fully healthy v2 payload (complete + content-integrity + audit-anchor all green) must read present: (got: $outGBv2h)"
 echo "$outGBv2h" | jq -e '.detail | contains("attestation v2 complete")' >/dev/null \
   || fail "cmd:guardrail_block_status healthy-v2 detail should name attestation v2 complete (got: $outGBv2h)"
-echo "ok: cmd:guardrail_block_status — a fully healthy v2 attestation payload reads present (HIMMEL-1427)"
+echo "ok: cmd:guardrail_block_status — a fully healthy v2 attestation payload reads present"
 
 # Case 2: a content-tampered wrapper — v1 complete stays true, but
 # wrapperIntegrity.verdict is 'degraded', so contentIntegrityComplete:false and
@@ -4085,10 +4085,10 @@ const ctx = { repoRoot: '$(winpath "$gb_v2_content_dir")', targetPath: '$repo_ro
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outGBv2c" | jq -e '.actual == "degraded"' >/dev/null \
-  || fail "cmd:guardrail_block_status: a content-tampered wrapper (wrapperIntegrity degraded, attestationComplete:false) must read degraded, NEVER present, even though v1 complete stays true (HIMMEL-1427): (got: $outGBv2c)"
+  || fail "cmd:guardrail_block_status: a content-tampered wrapper (wrapperIntegrity degraded, attestationComplete:false) must read degraded, NEVER present, even though v1 complete stays true: (got: $outGBv2c)"
 echo "$outGBv2c" | jq -e '.detail | contains("content integrity")' >/dev/null \
   || fail "cmd:guardrail_block_status content-tampered detail should name the content-integrity dimension (got: $outGBv2c)"
-echo "ok: cmd:guardrail_block_status — a content-tampered wrapper reads degraded naming content integrity, never a v1-flag-only present (HIMMEL-1427)"
+echo "ok: cmd:guardrail_block_status — a content-tampered wrapper reads degraded naming content integrity, never a v1-flag-only present"
 
 # Case 3: a divergent audit anchor — content integrity is healthy, but the
 # configured wrapper points at a DIFFERENT checkout than the audit anchor
@@ -4132,10 +4132,10 @@ const ctx = { repoRoot: '$(winpath "$gb_v2_anchor_dir")', targetPath: '$repo_roo
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outGBv2a" | jq -e '.actual == "degraded"' >/dev/null \
-  || fail "cmd:guardrail_block_status: a divergent audit anchor (wrapperMatchesAuditAnchor:false, attestationComplete:false) must read degraded, NEVER present, even with healthy content integrity (HIMMEL-1427): (got: $outGBv2a)"
+  || fail "cmd:guardrail_block_status: a divergent audit anchor (wrapperMatchesAuditAnchor:false, attestationComplete:false) must read degraded, NEVER present, even with healthy content integrity: (got: $outGBv2a)"
 echo "$outGBv2a" | jq -e '.detail | contains("audit anchor")' >/dev/null \
   || fail "cmd:guardrail_block_status audit-anchor-divergent detail should name the audit-anchor dimension (got: $outGBv2a)"
-echo "ok: cmd:guardrail_block_status — a divergent audit anchor reads degraded naming the audit anchor, never present (HIMMEL-1427)"
+echo "ok: cmd:guardrail_block_status — a divergent audit anchor reads degraded naming the audit anchor, never present"
 
 # Case 4 (fail-closed on absence — finding 1): a payload that
 # emits NO attestation v2 fields at all (a stale checkout aimed at an older
@@ -4173,10 +4173,10 @@ const ctx = { repoRoot: '$(winpath "$gb_v1_no_v2_dir")', targetPath: '$repo_root
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outGBv1" | jq -e '.actual == "degraded"' >/dev/null \
-  || fail "cmd:guardrail_block_status: a payload with NO v2 fields must read degraded (fail-closed on absence — stale checkout or stripped output re-opens the downgrade path), NEVER present (HIMMEL-1427 CR round 2): (got: $outGBv1)"
+  || fail "cmd:guardrail_block_status: a payload with NO v2 fields must read degraded (fail-closed on absence — stale checkout or stripped output re-opens the downgrade path), NEVER present: (got: $outGBv1)"
 echo "$outGBv1" | jq -e '.detail | contains("producer emitted no attestation-v2 fields")' >/dev/null \
   || fail "cmd:guardrail_block_status v1-no-v2 detail should name the fail-closed situation (got: $outGBv1)"
-echo "ok: cmd:guardrail_block_status — a payload without v2 fields reads degraded (fail-closed), never a silent v1 present (HIMMEL-1427 CR round 2)"
+echo "ok: cmd:guardrail_block_status — a payload without v2 fields reads degraded (fail-closed), never a silent v1 present"
 
 # Case 5 (fail-closed on a PARTIAL v2 set — finding 1, panel sug
 # codex-1): a payload whose per-hook integrity fields ARE present but whose
@@ -4216,10 +4216,10 @@ const ctx = { repoRoot: '$(winpath "$gb_v2_partial_dir")', targetPath: '$repo_ro
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outGBv2p" | jq -e '.actual == "degraded"' >/dev/null \
-  || fail "cmd:guardrail_block_status: a PARTIAL v2 payload (per-hook integrity present, summary booleans missing) must read degraded, NEVER silently v1-classified as present (HIMMEL-1427 CR round 2): (got: $outGBv2p)"
+  || fail "cmd:guardrail_block_status: a PARTIAL v2 payload (per-hook integrity present, summary booleans missing) must read degraded, NEVER silently v1-classified as present: (got: $outGBv2p)"
 echo "$outGBv2p" | jq -e '.detail | contains("incomplete")' >/dev/null \
   || fail "cmd:guardrail_block_status partial-v2 detail should name the payload as incomplete (got: $outGBv2p)"
-echo "ok: cmd:guardrail_block_status — a partial v2 payload (some fields present, set not whole) reads degraded, never a silent v1 present (HIMMEL-1427 CR round 2)"
+echo "ok: cmd:guardrail_block_status — a partial v2 payload (some fields present, set not whole) reads degraded, never a silent v1 present"
 
 gb_bad_exit_dir="$work/gb-bad-exit"; mkdir -p "$gb_bad_exit_dir/scripts/hooks"
 cat > "$gb_bad_exit_dir/scripts/hooks/guardrail-block.mjs" <<'JS'
@@ -4511,7 +4511,7 @@ echo "$outHCwlad" | jq -e '.actual == "present"' >/dev/null \
   || fail "cmd:hermes_checkout present (Windows LOCALAPPDATA/hermes/hermes-agent, no HERMES_HOME): (got: $outHCwlad)"
 echo "$outHCwlad" | jq -e '.detail | contains("NousResearch/hermes-agent")' >/dev/null \
   || fail "cmd:hermes_checkout LOCALAPPDATA-default detail should name the verified origin (got: $outHCwlad)"
-echo "ok: cmd:hermes_checkout — default root resolution: no HERMES_HOME/LOCALAPPDATA reads \$HOME/.hermes (Linux/macOS), LOCALAPPDATA set still reads \$LOCALAPPDATA/hermes (Windows unchanged) (HIMMEL-2437)"
+echo "ok: cmd:hermes_checkout — default root resolution: no HERMES_HOME/LOCALAPPDATA reads \$HOME/.hermes (Linux/macOS), LOCALAPPDATA set still reads \$LOCALAPPDATA/hermes (Windows unchanged)"
 
 depsCheck=$(jq -r '.items[] | select(.id=="hermes-lanes") | .deps | join(",")' "$manifest_path")
 [ "$depsCheck" = "hermes-checkout" ] || fail "manifest: hermes-lanes.deps should be exactly [\"hermes-checkout\"] (got: $depsCheck)"
@@ -5127,7 +5127,7 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 # degraded, never a silent present just because the token/access checks pass.
 outBHposix=$(run_bh_other freebsd)
 echo "$outBHposix" | jq -e '.actual == "degraded"' >/dev/null \
-  || fail "bridge-health: a platform with no poller-count implementation at all must read a LOUD degraded (HIMMEL-1128), never a silent present just because the token/access checks pass (got: $outBHposix)"
+  || fail "bridge-health: a platform with no poller-count implementation at all must read a LOUD degraded, never a silent present just because the token/access checks pass (got: $outBHposix)"
 echo "$outBHposix" | jq -e '.detail | test("not implemented"; "i")' >/dev/null \
   || fail "bridge-health: the not-implemented-platform degraded detail should name the limitation explicitly (got: $outBHposix)"
 echo "$outBHposix" | jq -e '.detail | contains("fake-bridge-health-token-marker") | not' >/dev/null \
@@ -5292,7 +5292,7 @@ if bh_posix_log_has "show telegram-bridge.service"; then
     || fail "bridge-health (Linux): 2 matching children should read degraded, never present/absent (got: $outBHlinuxC)"
   echo "$outBHlinuxC" | jq -e '.detail | contains("2 poller")' >/dev/null \
     || fail "bridge-health (Linux): degraded detail should name the count 2 (got: $outBHlinuxC)"
-  echo "ok: bridge-health (Linux) — two matching children reads degraded, count 2 (duplicate pollers, HIMMEL-1555 class)"
+  echo "ok: bridge-health (Linux) — two matching children reads degraded, count 2 (duplicate pollers)"
 else
   echo "SKIP: bridge-health (Linux) case (c): no evidence in the stub log that systemctl actually spawned on this host"
 fi
@@ -5465,7 +5465,7 @@ if bh_posix_log_has "show telegram-bridge.service"; then
     || fail "bridge-health (Linux): a duplicate poller running OUTSIDE the systemd unit's process tree must be found by the system-wide sweep and unioned in, not missed (got: $outBHlinuxH)"
   echo "$outBHlinuxH" | jq -e '.detail | contains("2 poller")' >/dev/null \
     || fail "bridge-health (Linux): tree+sweep degraded detail should name the count 2 (got: $outBHlinuxH)"
-  echo "ok: bridge-health (Linux) — an out-of-tree duplicate poller found via the system-wide pgrep sweep is unioned with the tree-scoped count, reading degraded, count 2 (HIMMEL-1555 class)"
+  echo "ok: bridge-health (Linux) — an out-of-tree duplicate poller found via the system-wide pgrep sweep is unioned with the tree-scoped count, reading degraded, count 2"
   # the sweep must match on a broad basename-only pattern, NOT the resolved
   # absolute poller path -- the realistic out-of-tree duplicate (fixture
   # cmdline above is a bare `bun poller.ts`, no path) has no path substring
@@ -5605,7 +5605,7 @@ if bh_posix_log_has "pgrep -f"; then
     || fail "bridge-health (Linux): cwd-verified sweep count should name 1, not 2 (got: $outBHlinuxO)"
   echo "$outBHlinuxO" | jq -e '.detail | contains("9202")' >/dev/null \
     || fail "bridge-health (Linux): detail should name the excluded foreign-cwd pid 9202 (got: $outBHlinuxO)"
-  echo "ok: bridge-health (Linux) — sweep bare-token match with a foreign cwd is excluded via cwd check, count 1, detail names 9202 (HIMMEL-2936)"
+  echo "ok: bridge-health (Linux) — sweep bare-token match with a foreign cwd is excluded via cwd check, count 1, detail names 9202"
   # procRoot exists here (the fake /proc-shaped bh_proc_root
   # tree above), so the bare-token cwd check must read it via readlinkSync
   # directly and never fall through to the darwin lsof path.
@@ -5615,7 +5615,7 @@ if bh_posix_log_has "pgrep -f"; then
   # pgrep -f pattern logged just above and would otherwise false-positive.
   grep -q '^lsof ' "$bh_posix_log" 2>/dev/null \
     && fail "bridge-health (Linux): the bare-token cwd check must not invoke lsof when procRoot exists (log: $(cat "$bh_posix_log" 2>/dev/null))"
-  echo "ok: bridge-health (Linux) — the bare-token cwd check never invokes lsof when procRoot exists (HIMMEL-2945)"
+  echo "ok: bridge-health (Linux) — the bare-token cwd check never invokes lsof when procRoot exists"
 else
   echo "SKIP: bridge-health (Linux) control (a) HIMMEL-2936: no evidence in the stub log that pgrep actually spawned on this host"
 fi
@@ -5635,7 +5635,7 @@ if bh_posix_log_has "pgrep -f"; then
     || fail "bridge-health (Linux): fail-safe exclusion should read count 0 (got: $outBHlinuxP)"
   echo "$outBHlinuxP" | jq -e '.detail | contains("9201")' >/dev/null \
     || fail "bridge-health (Linux): detail should name the excluded pid 9201 with the unreadable-cwd reason (got: $outBHlinuxP)"
-  echo "ok: bridge-health (Linux) — sweep bare-token match with an unreadable cwd is excluded fail-safe, count 0, detail names 9201 (HIMMEL-2936)"
+  echo "ok: bridge-health (Linux) — sweep bare-token match with an unreadable cwd is excluded fail-safe, count 0, detail names 9201"
 else
   echo "SKIP: bridge-health (Linux) control (b) HIMMEL-2936: no evidence in the stub log that pgrep actually spawned on this host"
 fi
@@ -5654,7 +5654,7 @@ if bh_posix_log_has "show telegram-bridge.service"; then
     || fail "bridge-health (Linux): an absolute-path child matching the anchor must still be counted with no cwd read (got: $outBHlinuxQ)"
   echo "$outBHlinuxQ" | jq -e '.detail | contains("1 poller")' >/dev/null \
     || fail "bridge-health (Linux): absolute-path match detail should name the count 1 (got: $outBHlinuxQ)"
-  echo "ok: bridge-health (Linux) — an absolute-path child matching the anchor is counted without any cwd read (HIMMEL-2936 control)"
+  echo "ok: bridge-health (Linux) — an absolute-path child matching the anchor is counted without any cwd read (control)"
 else
   echo "SKIP: bridge-health (Linux) control (c) HIMMEL-2936: no evidence in the stub log that systemctl actually spawned on this host"
 fi
@@ -5676,7 +5676,7 @@ if bh_posix_log_has "pgrep -f"; then
     || fail "bridge-health (Linux): nested-worktree exclusion should read count 0 (got: $outBHlinuxR)"
   echo "$outBHlinuxR" | jq -e '.detail | contains("9201")' >/dev/null \
     || fail "bridge-health (Linux): detail should name the excluded nested-worktree pid 9201 (got: $outBHlinuxR)"
-  echo "ok: bridge-health (Linux) — sweep bare-token match whose cwd is a nested worktree checkout is excluded, count 0, detail names 9201 (HIMMEL-2936 codex-1)"
+  echo "ok: bridge-health (Linux) — sweep bare-token match whose cwd is a nested worktree checkout is excluded, count 0, detail names 9201"
 else
   echo "SKIP: bridge-health (Linux) control (d) HIMMEL-2936: no evidence in the stub log that pgrep actually spawned on this host"
 fi
@@ -5699,7 +5699,7 @@ if bh_posix_log_has "pgrep -f"; then
     || fail "bridge-health (Linux): case-mismatch exclusion should read count 0 (got: $outBHlinuxS)"
   echo "$outBHlinuxS" | jq -e '.detail | contains("9201")' >/dev/null \
     || fail "bridge-health (Linux): detail should name the excluded case-mismatched pid 9201 (got: $outBHlinuxS)"
-  echo "ok: bridge-health (Linux) — sweep bare-token match whose cwd differs only by case is excluded, count 0, detail names 9201 (HIMMEL-2936 CodeRabbit)"
+  echo "ok: bridge-health (Linux) — sweep bare-token match whose cwd differs only by case is excluded, count 0, detail names 9201"
 else
   echo "SKIP: bridge-health (Linux) control (e) HIMMEL-2936: no evidence in the stub log that pgrep actually spawned on this host"
 fi
@@ -5722,7 +5722,7 @@ if bh_posix_log_has "pgrep -f"; then
     || fail "bridge-health (Linux): a bare-token sweep match must be counted when the checkout root is a symlink and the cwd readlink is the real path it resolves to (got: $outBHlinuxT)"
   echo "$outBHlinuxT" | jq -e '.detail | contains("1 poller")' >/dev/null \
     || fail "bridge-health (Linux): symlinked-checkout-root match should read count 1 (got: $outBHlinuxT)"
-  echo "ok: bridge-health (Linux) — bare-token sweep match is counted when the checkout root is a symlink and cwd is its real target (HIMMEL-2947)"
+  echo "ok: bridge-health (Linux) — bare-token sweep match is counted when the checkout root is a symlink and cwd is its real target"
 else
   echo "SKIP: bridge-health (Linux) control (f) HIMMEL-2947: no evidence in the stub log that pgrep actually spawned on this host"
 fi
@@ -5741,7 +5741,7 @@ if bh_posix_log_has "pgrep -f"; then
     || fail "bridge-health (Linux): a bare-token sweep match must be counted when the cwd readlink is a symlink resolving to the checkout's real root (got: $outBHlinuxU)"
   echo "$outBHlinuxU" | jq -e '.detail | contains("1 poller")' >/dev/null \
     || fail "bridge-health (Linux): symlinked-cwd match should read count 1 (got: $outBHlinuxU)"
-  echo "ok: bridge-health (Linux) — bare-token sweep match is counted when cwd is a symlink resolving to the checkout's real root (HIMMEL-2947)"
+  echo "ok: bridge-health (Linux) — bare-token sweep match is counted when cwd is a symlink resolving to the checkout's real root"
 else
   echo "SKIP: bridge-health (Linux) control (g) HIMMEL-2947: no evidence in the stub log that pgrep actually spawned on this host"
 fi
@@ -5762,7 +5762,7 @@ if bh_posix_log_has "pgrep -f"; then
     || fail "bridge-health (Linux): nonexistent-cwd-target exclusion should read count 0 (got: $outBHlinuxV)"
   echo "$outBHlinuxV" | jq -e '.detail | contains("9201")' >/dev/null \
     || fail "bridge-health (Linux): detail should name the excluded pid 9201 (got: $outBHlinuxV)"
-  echo "ok: bridge-health (Linux) — sweep bare-token match whose cwd target does not exist is excluded fail-safe without throwing, count 0, detail names 9201 (HIMMEL-2947)"
+  echo "ok: bridge-health (Linux) — sweep bare-token match whose cwd target does not exist is excluded fail-safe without throwing, count 0, detail names 9201"
 else
   echo "SKIP: bridge-health (Linux) control (h) HIMMEL-2947: no evidence in the stub log that pgrep actually spawned on this host"
 fi
@@ -5859,7 +5859,7 @@ if bh_darwin_log_has "pgrep -f"; then
     || fail "bridge-health (darwin): in-checkout cwd match should read count 1 (got: $outBHdarwinI)"
   bh_darwin_log_has "lsof -a -p 9201 -d cwd -Fn" \
     || fail "bridge-health (darwin): the cwd fallback should invoke lsof -a -p <pid> -d cwd -Fn (log: $(cat "$bh_darwin_log" 2>/dev/null))"
-  echo "ok: bridge-health (darwin) — no /proc: bare-token sweep match with an in-checkout cwd via the lsof fallback is counted, count 1 (HIMMEL-2945)"
+  echo "ok: bridge-health (darwin) — no /proc: bare-token sweep match with an in-checkout cwd via the lsof fallback is counted, count 1"
 else
   echo "SKIP: bridge-health (darwin) case (i) HIMMEL-2945: no evidence in the stub log that pgrep actually spawned on this host"
 fi
@@ -5875,7 +5875,7 @@ if bh_darwin_log_has "pgrep -f"; then
     || fail "bridge-health (darwin): foreign-cwd exclusion should read count 0 (got: $outBHdarwinII)"
   echo "$outBHdarwinII" | jq -e '.detail | contains("9201")' >/dev/null \
     || fail "bridge-health (darwin): detail should name the excluded pid 9201 (got: $outBHdarwinII)"
-  echo "ok: bridge-health (darwin) — no /proc: bare-token sweep match with a foreign cwd via the lsof fallback is excluded, count 0, detail names 9201 (HIMMEL-2945)"
+  echo "ok: bridge-health (darwin) — no /proc: bare-token sweep match with a foreign cwd via the lsof fallback is excluded, count 0, detail names 9201"
 else
   echo "SKIP: bridge-health (darwin) case (ii) HIMMEL-2945: no evidence in the stub log that pgrep actually spawned on this host"
 fi
@@ -5889,7 +5889,7 @@ if bh_darwin_log_has "pgrep -f"; then
     || fail "bridge-health (darwin): with lsof absent from PATH, a bare-token candidate must be excluded fail-safe, never counted or thrown (got: $outBHdarwinIII)"
   echo "$outBHdarwinIII" | jq -e '.detail | contains("lsof")' >/dev/null \
     || fail "bridge-health (darwin): the excluded detail should name lsof as the reason the cwd could not be verified (got: $outBHdarwinIII)"
-  echo "ok: bridge-health (darwin) — no /proc, no lsof on PATH: bare-token candidate excluded fail-safe naming lsof, never throws (HIMMEL-2945)"
+  echo "ok: bridge-health (darwin) — no /proc, no lsof on PATH: bare-token candidate excluded fail-safe naming lsof, never throws"
 else
   echo "SKIP: bridge-health (darwin) case (iii) HIMMEL-2945: no evidence in the stub log that pgrep actually spawned on this host"
 fi
@@ -5903,7 +5903,7 @@ if bh_darwin_log_has "pgrep -f"; then
     || fail "bridge-health (darwin): a failed lsof cwd query must exclude the candidate fail-safe, never throw or count it (got: $outBHdarwinIV)"
   echo "$outBHdarwinIV" | jq -e '.detail | contains("9201")' >/dev/null \
     || fail "bridge-health (darwin): failed-lsof exclusion detail should still name the excluded pid 9201 (got: $outBHdarwinIV)"
-  echo "ok: bridge-health (darwin) — no /proc, lsof exits nonzero: bare-token candidate excluded fail-safe without throwing (HIMMEL-2945)"
+  echo "ok: bridge-health (darwin) — no /proc, lsof exits nonzero: bare-token candidate excluded fail-safe without throwing"
 else
   echo "SKIP: bridge-health (darwin) case (iv) HIMMEL-2945: no evidence in the stub log that pgrep actually spawned on this host"
 fi
@@ -6192,7 +6192,7 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 if [ -s "$bp_ctxenv_log" ]; then
   echo "$outBPctxEnvSpawn" | jq -e '.actual == "present"' >/dev/null \
     || fail "bridge-persistence: ctx.env PATH must drive the systemctl/loginctl resolve+spawn, not the ambient process.env (got: $outBPctxEnvSpawn)"
-  echo "ok: bridge-persistence — Linux: ctx.env (not ambient process.env) drives the systemctl/loginctl resolve+spawn (HIMMEL-2176 CR fix, retask stage1-build-6d2e)"
+  echo "ok: bridge-persistence — Linux: ctx.env (not ambient process.env) drives the systemctl/loginctl resolve+spawn (retask stage1-build-6d2e)"
 else
   echo "SKIP: bridge-persistence — ctx.env spawn-routing case: no evidence in the stub log that systemctl/loginctl actually spawned on this host"
 fi
@@ -6525,9 +6525,9 @@ const ctx = { repoRoot: '$(winpath "$hd_slow_repo")', targetPath: '$(winpath "$h
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outHDover" | jq -e '.actual == "degraded"' >/dev/null \
-  || fail "HIMMEL-2298: a resolver slower than the configured budget must read degraded (got: $outHDover)"
+  || fail "a resolver slower than the configured budget must read degraded (got: $outHDover)"
 echo "$outHDover" | jq -e '.detail | contains("timed out after 2s")' >/dev/null \
-  || fail "HIMMEL-2298: the timeout message must report the budget ACTUALLY applied (2s via HIMMELCTL_PROBE_TIMEOUT_SECS), never a hardcoded figure — that drift is what put the wrong number in the operator's bug report (got: $outHDover)"
+  || fail "the timeout message must report the budget ACTUALLY applied (2s via HIMMELCTL_PROBE_TIMEOUT_SECS), never a hardcoded figure — that drift is what put the wrong number in the operator's bug report (got: $outHDover)"
 echo "ok: HIMMEL-2298 — the spawn budget is honoured end-to-end and the timeout message reports the budget actually applied, not a hardcoded one"
 
 # Case 2 — the SAME 4s resolver under the shipped default reads present, with
@@ -6552,9 +6552,9 @@ const ctx = { repoRoot: '$(winpath "$hd_slow_repo")', targetPath: '$(winpath "$h
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outHDunder" | jq -e '.actual == "present"' >/dev/null \
-  || fail "HIMMEL-2298: a resolver well inside the shipped family budget must read present, never a timed-out degraded (got: $outHDunder)"
+  || fail "a resolver well inside the shipped family budget must read present, never a timed-out degraded (got: $outHDunder)"
 echo "$outHDunder" | jq -e '.detail | contains("timed out") | not' >/dev/null \
-  || fail "HIMMEL-2298: a resolver well inside the budget must not report a timeout at all (got: $outHDunder)"
+  || fail "a resolver well inside the budget must not report a timeout at all (got: $outHDunder)"
 echo "ok: HIMMEL-2298 — a resolver inside the shipped family budget reads present with no timeout row (the complement of the over-budget case above)"
 
 # a sub-millisecond override must NOT disable the guard.
@@ -6639,9 +6639,9 @@ probes_src="$repo_root/scripts/himmelctl/lib/probes.js"
 # carried until this ticket: a wedged git blocked `status` indefinitely).
 spawnsync_count=$(grep -c 'spawnSync(' "$probes_src")
 [ "$spawnsync_count" -eq 1 ] \
-  || fail "HIMMEL-2298: probes.js must contain exactly ONE spawnSync( call (the one inside spawnProbeSync, which applies PROBE_TIMEOUT_MS + SIGKILL to the whole family); found $spawnsync_count — a new spawn site is bypassing the shared budget"
+  || fail "probes.js must contain exactly ONE spawnSync( call (the one inside spawnProbeSync, which applies PROBE_TIMEOUT_MS + SIGKILL to the whole family); found $spawnsync_count — a new spawn site is bypassing the shared budget"
 awk '/^function spawnProbeSync/,/^}/' "$probes_src" | grep -q 'spawnSync(' \
-  || fail "HIMMEL-2298: the single spawnSync( call is no longer inside spawnProbeSync — the family budget is not being applied"
+  || fail "the single spawnSync( call is no longer inside spawnProbeSync — the family budget is not being applied"
 echo "ok: HIMMEL-2298 family invariant — every process-spawning probe routes through spawnProbeSync, so PROBE_TIMEOUT_MS applies to all of them"
 
 # (1b) The shipped DEFAULT is 60s. The functional cases above drive the budget
@@ -6651,7 +6651,7 @@ echo "ok: HIMMEL-2298 family invariant — every process-spawning probe routes t
 # on healthy Windows hosts twice; dropping back
 # under ~20s reopens that.
 grep -q 'const PROBE_TIMEOUT_MS = 60000;' "$probes_src" \
-  || fail "HIMMEL-2298: the shipped family budget must remain 60s (const PROBE_TIMEOUT_MS = 60000) — the functional cases drive an override for speed and cannot pin the default an operator gets"
+  || fail "the shipped family budget must remain 60s (const PROBE_TIMEOUT_MS = 60000) — the functional cases drive an override for speed and cannot pin the default an operator gets"
 echo "ok: HIMMEL-2298 family invariant — the shipped default budget is pinned at 60s"
 
 # (2) No probe hardcodes a stale budget in its own timeout message. The 15
@@ -6659,7 +6659,7 @@ echo "ok: HIMMEL-2298 family invariant — the shipped default budget is pinned 
 # exactly how a reader (and the operator's bug report) learns the wrong number;
 # details now interpolate the budget the result was actually run under.
 ! grep -q 'timed out after 10s' "$probes_src" \
-  || fail "HIMMEL-2298: probes.js still hardcodes 'timed out after 10s' — a timeout message must report the budget actually applied (probeTimeoutSecs(r)), or it drifts the moment the budget changes"
+  || fail "probes.js still hardcodes 'timed out after 10s' — a timeout message must report the budget actually applied (probeTimeoutSecs(r)), or it drifts the moment the budget changes"
 echo "ok: HIMMEL-2298 family invariant — no probe hardcodes a timeout figure; every message reports the budget actually applied"
 
 # ── purity: full sweep over every manifest item, fixture tree byte-identical ─
@@ -6748,8 +6748,8 @@ const ctx = { repoRoot: '$(winpath "$dl_repo")', targetPath: '$(winpath "$dl_rep
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outDLexp" | jq -e '.actual == "degraded" and (.detail | contains("whole-run deadline"))' >/dev/null \
-  || fail "HIMMEL-2309: a probe reached after the whole-run deadline must read degraded and name the deadline (got: $outDLexp)"
-[ ! -e "$dl_marker" ] || fail "HIMMEL-2309: a probe reached after the whole-run deadline must not spawn anything"
+  || fail "a probe reached after the whole-run deadline must read degraded and name the deadline (got: $outDLexp)"
+[ ! -e "$dl_marker" ] || fail "a probe reached after the whole-run deadline must not spawn anything"
 echo "ok: HIMMEL-2309 — an expired whole-run deadline skips the probe (degraded, nothing spawned)"
 
 dl_t0=$(date +%s)
@@ -6762,9 +6762,9 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 dl_elapsed=$(( $(date +%s) - dl_t0 ))
 echo "$outDLclamp" | jq -e '.actual == "degraded"' >/dev/null \
-  || fail "HIMMEL-2309: a probe still running at the whole-run deadline must read degraded (got: $outDLclamp)"
-[ -e "$dl_marker" ] || fail "HIMMEL-2309: the clamped probe must actually have spawned the resolver (an early degraded would pass the assertions above vacuously)"
-[ "$dl_elapsed" -lt 5 ] || fail "HIMMEL-2309: the spawn budget must be clamped to the time left before the deadline, not the full per-probe budget (took ${dl_elapsed}s against a resolver that sleeps 6s)"
+  || fail "a probe still running at the whole-run deadline must read degraded (got: $outDLclamp)"
+[ -e "$dl_marker" ] || fail "the clamped probe must actually have spawned the resolver (an early degraded would pass the assertions above vacuously)"
+[ "$dl_elapsed" -lt 5 ] || fail "the spawn budget must be clamped to the time left before the deadline, not the full per-probe budget (took ${dl_elapsed}s against a resolver that sleeps 6s)"
 echo "ok: HIMMEL-2309 — a probe running when the deadline passes is clamped to the remaining budget"
 
 # ── cadence-runs (cadence-runs-<registry row>) — every registry row is judged by its real runs ──

@@ -140,7 +140,7 @@ cleanup() {
   rm -rf "$work"
 }
 trap cleanup EXIT
-. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # HIMMEL-2350: shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
+. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
 
 # exported ONCE, read via process.env inside every node -e script
 # below instead of being interpolated into the JS source string.
@@ -713,7 +713,7 @@ echo "$outY" | jq -e '.result.failed[0].reason | test("no usable bash found")' >
   || fail "case y: the failure reason should name the missing bash, not a generic spawn error (got: $outY)"
 echo "$outY" | jq -e '.spawned == 0' >/dev/null \
   || fail "case y: the entry must be REFUSED before any spawn — spawning the bare 'bash' is exactly the WSL-stub launch this resolution exists to prevent (got: $outY)"
-echo "ok: case y — a cmd:'bash' entry with no resolvable bash is refused before any spawn, naming the missing bash (HIMMEL-2289)"
+echo "ok: case y — a cmd:'bash' entry with no resolvable bash is refused before any spawn, naming the missing bash"
 
 # ── case z: a user-scope `plugins` install that changes
 # enabledPlugins names its writer — one stdout line AND one state-log line per

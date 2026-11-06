@@ -32,7 +32,7 @@
 set -euo pipefail
 
 repo_root=$(git rev-parse --show-toplevel)
-. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # HIMMEL-2350: shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
+. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
 state_lib="$repo_root/scripts/himmelctl/lib/state.js"
 manifest_path="$repo_root/scripts/install/manifest.json"
 [ -f "$state_lib" ] || { echo "FAIL: $state_lib not found" >&2; exit 1; }

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { assertLiveProject } from './project-guard.js';
 
-describe('assertLiveProject (HIMMEL-4642)', () => {
+describe('assertLiveProject', () => {
   it('accepts a dedicated test project key', () => {
     expect(() => assertLiveProject('HTEST')).not.toThrow();
     expect(() => assertLiveProject('H2_TEST')).not.toThrow();
