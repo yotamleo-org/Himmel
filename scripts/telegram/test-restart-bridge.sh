@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# test-restart-bridge.sh — hermetic V6 coverage for restart-bridge.sh.
+# test-restart-bridge.sh. Hermetic V6 coverage for restart-bridge.sh.
 # Never starts a real bridge, never touches the
-# operator's ~/.claude/handover/bridge or ~/.claude/channels/telegram — a
+# operator's ~/.claude/handover/bridge or ~/.claude/channels/telegram, a
 # fake `bun` on PATH plus a sandboxed HOME/BRIDGE_ROOT/BRIDGE_LOCK_DIR AND a
 # sandboxed --repo root stand in for everything real. Cases that genuinely
 # cannot run on this host (no `flock`) SKIP, printing why, rather than faking
@@ -9,7 +9,7 @@
 #
 # Three things here exist because this suite was once proven to SIGKILL
 # the operator's live production bridge while reporting "17 passed, 0 failed":
-#   * its own fixture repo root ($WORK/repo) — the launcher scopes kills to the
+#   * its own fixture repo root ($WORK/repo), the launcher scopes kills to the
 #     launching instance's $repo/scripts/telegram, so sharing the real checkout
 #     made the fixture's bridge dir identical to production's;
 #   * a foreign-bridge case (a decoy `bun supervisor.ts` running from ANOTHER
@@ -17,17 +17,17 @@
 #     control proving that case is non-vacuous;
 #   * cases for the HIMMEL_TEST_FIXTURE=1 refusals (rc=3): no BRIDGE_ROOT, and
 #     --repo pointing at the launcher's own checkout.
-# CR rounds added the rest, and the last three are a matched set — they pin the
+# CR rounds added the rest, and the last three are a matched set, they pin the
 # two identity sources against each other, which is where every earlier round
 # of this ticket went wrong by fixing one and breaking the other:
 #   * FOREIGN (different root AND checkout): survives start and stop, and the
 #     launcher WARNS rather than passing over it silently;
 #   * SHARED ROOT (our ledger, foreign cwd, entry written after the process
-#     started): IS swept — otherwise a worktree and the primary checkout both
+#     started): IS swept, otherwise a worktree and the primary checkout both
 #     poll one token;
 #   * RECYCLED PID (our ledger, foreign cwd, process started AFTER the ledger
 #     was written): is NOT swept.
-# Staleness, not cwd, is what separates the last two — each has its own RED
+# Staleness, not cwd, is what separates the last two, each has its own RED
 # control mutating the freshness comparison in the opposite direction.
 #
 # Usage: bash scripts/telegram/test-restart-bridge.sh
@@ -36,11 +36,11 @@ set -uo pipefail
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/restart-bridge-test.XXXXXX") || exit 1
 [ -n "$WORK" ] || exit 1
 
-# capture_ps_ef — `ps -ef` with the widest CMD column available. BSD-derived
+# capture_ps_ef. `ps -ef` with the widest CMD column available. BSD-derived
 # ps (macOS) truncates the last (CMD) column to terminal width even when
 # stdout is a pipe/file, which would truncate the fakebin paths this suite
 # greps for; `-ww` requests unlimited width there. Not every `ps` accepts
-# `-w` (this repo's Git Bash MSYS ps rejects it) — probe by trying `-ww`
+# `-w` (this repo's Git Bash MSYS ps rejects it), probe by trying `-ww`
 # first and falling back to a bare `ps -ef` when it errors.
 capture_ps_ef() {
   local out
@@ -60,7 +60,7 @@ cleanup() {
   local pids=() p pat
   # Both trees: the fixture's own fake bun AND the decoy copy the
   # foreign-bridge case launches from a separate path. Two
-  # literal -F sweeps rather than one regex — $WORK is an mktemp path and may
+  # literal -F sweeps rather than one regex, $WORK is an mktemp path and may
   # legitimately carry regex metacharacters.
   for pat in "$WORK/fakebin/bun" "$WORK/decoybin/bun" "$WORK/slowbin/stage2" "$HOME/.bun/bin/bun" "$WORK/precedence-bin/bun"; do
     # shellcheck disable=SC2009 # portable across GNU/BSD/MSYS ps -ef; pgrep is
@@ -86,7 +86,7 @@ mkdir -p "$BRIDGE_LOCK_DIR"
 export TELEGRAM_BOT_TOKEN="test-fixture-token-0123456789abcdef"
 unset HIMMEL_REPO 2>/dev/null || true
 
-# The fixture's OWN repo root — never the real checkout. restart-bridge.sh
+# The fixture's OWN repo root, never the real checkout. restart-bridge.sh
 # scopes its kills to the launching instance's bridge dir
 # ($repo/scripts/telegram), so a fixture passing the real $REPO_ROOT would
 # share a bridge dir with the operator's production bridge and sweep it away
@@ -100,7 +100,7 @@ cp "$REPO_ROOT/scripts/lib/resolve-bun.sh" "$FIXTURE_REPO/scripts/lib/resolve-bu
 : > "$FIXTURE_BRIDGE_DIR/supervisor.ts"
 
 # Declare ourselves a test fixture. restart-bridge.sh REFUSES start/stop/run
-# with rc=3 under this marker when BRIDGE_ROOT is unset — belt and braces for a
+# with rc=3 under this marker when BRIDGE_ROOT is unset, belt and braces for a
 # fixture that sandboxes HOME but forgets the bridge root. Ours IS sandboxed
 # (just above), so the guard correctly does not fire for the rest of the suite.
 export HIMMEL_TEST_FIXTURE=1
@@ -141,7 +141,7 @@ DECOY_DIR="$WORK/decoy-root/scripts/telegram"
 mkdir -p "$DECOY_DIR"
 DECOY_PAT="$DECOY_BIN/bun"
 
-# start_decoy — launch one decoy bridge (supervisor + its poller child) from
+# start_decoy. Launch one decoy bridge (supervisor + its poller child) from
 # the decoy root; sets $decoy_pid to the supervisor's pid. `exec` inside the
 # subshell keeps $! the pid that ends up running the fake bun.
 decoy_pid=""
@@ -150,7 +150,7 @@ start_decoy() {
   decoy_pid=$!
 }
 
-# decoy_poller_pid — the pid of the decoy's poller child.
+# decoy_poller_pid. The pid of the decoy's poller child.
 decoy_poller_pid() {
   # shellcheck disable=SC2009 # see the trap cleanup comment above
   capture_ps_ef | grep -F -- "$DECOY_BIN/bun poller.ts" | grep -v grep | awk '{print $2}' | tail -n1
@@ -165,7 +165,7 @@ reap_decoys() {
   poll_until "$DECOY_PAT" 0 15 >/dev/null
 }
 
-# plant_pidfile <supervisor-pid> [poller-pid] — forge OUR ledger so it records
+# plant_pidfile <supervisor-pid> [poller-pid]. Forge OUR ledger so it records
 # the decoy, the way a shared BRIDGE_ROOT genuinely would.
 plant_pidfile() {
   if [ -n "${2:-}" ]; then
@@ -175,9 +175,9 @@ plant_pidfile() {
   fi
 }
 
-# age_pidfile <seconds-back> — back-date the PIDFILE (never the process: a
+# age_pidfile <seconds-back>. Back-date the PIDFILE (never the process: a
 # process's start time cannot be faked) so a live decoy reads as having started
-# AFTER the ledger was written — the recycled-pid shape. rc=1 when neither
+# AFTER the ledger was written, the recycled-pid shape. rc=1 when neither
 # touch dialect is available, so the caller can SKIP rather than fake a pass.
 age_pidfile() {
   local back="$1" ts stamp
@@ -222,10 +222,10 @@ HOST_CAN_DENY_WRITE=0
 if host_can_deny_write; then HOST_CAN_DENY_WRITE=1; fi
 HOST_PS_O_WHY="this host's ps has no working per-pid '-o' columns (etimes/lstart/args), so a process cannot be dated or its argv read"
 
-# run_with_timeout <secs> <cmd...> — bounds a call to the script under test so
+# run_with_timeout <secs> <cmd...>. Bounds a call to the script under test so
 # a genuine hang never wedges the whole suite. Uses GNU `timeout` when
 # present; otherwise a portable background+poll fallback (never assumes
-# `timeout` exists — absent by default on macOS).
+# `timeout` exists, absent by default on macOS).
 # shellcheck source=../lib/timeout-bin.sh
 . "$REPO_ROOT/scripts/lib/timeout-bin.sh"
 run_with_timeout() {
@@ -250,7 +250,7 @@ run_with_timeout() {
 }
 
 count_procs() {
-  # count_procs <literal-substring> — number of live process lines containing
+  # count_procs <literal-substring>. Number of live process lines containing
   # the substring (the fake bun always logs its FULL invoked path + arg, e.g.
   # "$FAKE_BIN/bun poller.ts", so a literal grep -F is exact and portable
   # across GNU/BSD/MSYS `ps -ef` column layouts).
@@ -259,7 +259,7 @@ count_procs() {
 }
 
 poll_until() {
-  # poll_until <substring> <expected-count> [max-attempts] — polls up to
+  # poll_until <substring> <expected-count> [max-attempts]. Polls up to
   # ~(max-attempts * 0.2)s, printing the final observed count either way.
   local pattern="$1" expected="$2" max="${3:-30}" i=0 c
   while [ "$i" -lt "$max" ]; do
@@ -307,7 +307,7 @@ check "stop: releases every supervisor" 0 "$sc_after_stop"
 # Lock released: a fresh non-blocking flock acquisition on the same path
 # should succeed immediately once `stop` (and its own script process) exited.
 # The redirection here is scoped to this ONE `flock` invocation, so the lock
-# self-releases the moment the command returns — no separate unlock needed.
+# self-releases the moment the command returns, no separate unlock needed.
 if command -v flock >/dev/null 2>&1; then
   TOKEN_LOCK=$("$SCRIPT" --print-lock-path)
   mkdir -p "$(dirname "$TOKEN_LOCK")"
@@ -320,7 +320,7 @@ else
   skip "stop: lock is free for immediate re-acquisition afterward" "no 'flock' on PATH on this host"
 fi
 
-# ── Case: stale-PROC kill — an orphaned poller (no supervisor) is killed on start ──
+# ── Case: stale-PROC kill, an orphaned poller (no supervisor) is killed on start ──
 # Launched with cwd = the FIXTURE bridge dir, which is both what instance
 # scoping requires and more faithful: a real orphan was started
 # by a previous start_verb, so it carries exactly that cwd. `exec` inside the
@@ -374,11 +374,11 @@ fi
 # ── Case: a stale lock left by a killed holder does not wedge the next start ──
 if command -v flock >/dev/null 2>&1; then
   # A SINGLE process holds the lock end-to-end (fork once, then `exec` into
-  # `sleep` so the SAME pid keeps fd 9 open) — killing that one pid closes
+  # `sleep` so the SAME pid keeps fd 9 open), killing that one pid closes
   # its fd and releases the kernel-level flock immediately, the exact
   # "holder died" shape stale-lock recovery exists for. (Piping the lock
   # through `flock file -c cmd` instead would spawn `cmd` as a CHILD that
-  # inherits — and can keep open — the same locked fd, so killing only the
+  # inherits (and can keep open) the same locked fd, so killing only the
   # parent would NOT reliably release it.)
   (
     exec 9>"$TOKEN_LOCK"
@@ -406,7 +406,7 @@ fi
 # start_verb's stale sweep is the PROVEN killer: it is what SIGKILLed the
 # operator's live supervisor/poller (pids 1751090/1751099) while this suite
 # reported all-green. The decoy runs `bun supervisor.ts` (which spawns its own
-# poller.ts child) from ITS OWN bridge dir — exactly the shape of a second
+# poller.ts child) from ITS OWN bridge dir, exactly the shape of a second
 # himmel checkout's real bridge, and exactly what the old machine-wide
 # entrypoint-name matcher used to sweep away.
 start_decoy
@@ -415,7 +415,7 @@ check "foreign-bridge setup: the decoy supervisor+poller are alive before start"
 
 start_bridge >"$WORK/log-start-foreign.log" 2>&1
 # Non-destructive signal: leaving a foreign bridge alone must be VISIBLE, not
-# silent — the launcher no longer papers over a shared-token misconfiguration.
+# silent. The launcher no longer papers over a shared-token misconfiguration.
 # The count is asserted as ">= our 2 decoys", never as an exact number: the
 # warning legitimately also counts any OTHER bridge live on the host (an
 # operator's real one included), which is the whole point of it, so an exact
@@ -482,28 +482,28 @@ check "foreign bridge: the decoy survives the no-op stop too" 2 "$decoy_after_no
 
 # ── Shared RED-control setup ───────────────────────────────────────────────
 # Read by the sourced red-control.sh (where its stderr capture lands), not by
-# this file — exported for the same reason scripts/lib/test-red-control.sh
+# this file, exported for the same reason scripts/lib/test-red-control.sh
 # exports it, so the scratch capture stays inside $WORK and the EXIT trap reaps it.
 RED_CONTROL_TMPDIR="$WORK"
 export RED_CONTROL_TMPDIR
 # shellcheck source=../lib/red-control.sh
 . "$REPO_ROOT/scripts/lib/red-control.sh"
 
-# SAFETY FENCE — shared by every control below, and deliberately NOT part of
+# SAFETY FENCE, shared by every control below, and deliberately NOT part of
 # any mutation. Each mutant re-enables (or suppresses) a cross-instance
 # decision, and the machine-wide one would SIGKILL the operator's real Telegram
 # bridge: that is the bug under test, and a control must not reproduce it on a
 # live machine. This stand-in `ps` runs the real one and passes through ONLY
 # command lines under this fixture's scratch dir, so a mutant's candidate set
 # can never contain anything real. It only ever REMOVES real processes; the
-# decoy — the process the assertions are about — lives under $WORK and stays in
+# decoy (the process the assertions are about) lives under $WORK and stays in
 # the set, so each mutation is still fully exercised.
 PS_FENCE="$WORK/psfence"
 mkdir -p "$PS_FENCE"
 REAL_PS=$(command -v ps)
 # Only the CANDIDATE SCAN (`ps -ef`) is filtered. The launcher also runs
 # per-pid `ps -o etimes=/-o lstart= -p <pid>` to date a ledger entry, and those
-# must pass through untouched — filtering them made every timestamp
+# must pass through untouched, filtering them made every timestamp
 # undeterminable, which silently took ledger_entry_fresh's degrade path and
 # made a mutant look green for the wrong reason. Passing them through cannot
 # widen the blast radius: a per-pid query is only ever made about a pid that is
@@ -520,7 +520,7 @@ exit 0
 EOF
 chmod +x "$PS_FENCE/ps"
 
-# mutant_killed_from_stdout — the count the mutant itself reported. Derived
+# mutant_killed_from_stdout. The count the mutant itself reported. Derived
 # from its OWN stdout so red-control contract point (b), "it produced a value",
 # is real rather than inferred from the process table alone.
 mutant_killed_from_stdout() {
@@ -558,7 +558,7 @@ rm -f "$BRIDGE_ROOT/supervisor.pid"
 # ── RED control for the shared-root case ──────────────────────────────────
 # Mutate the freshness comparison to `false`: every ledger entry then reads as
 # stale, source (2) never fires, and the shared-root bridge is misclassified as
-# foreign and left running — the duplicate-poller regression.
+# foreign and left running, the duplicate-poller regression.
 MUTANT_FRESH_FALSE="$WORK/mutant-fresh-false.sh"
 # shellcheck disable=SC2016 # $started/$fresh_cutoff are literal text in the file being mutated
 sed 's|^\( *\)\[ "\$started" -le "\$fresh_cutoff" \]$|\1false|' "$SCRIPT" > "$MUTANT_FRESH_FALSE"
@@ -591,15 +591,15 @@ fi
 
 # ── Case: an UNDETERMINABLE freshness verdict cannot override a foreign cwd ─
 # The degrade exists so a host with neither cwd nor timestamps can still stop
-# its own bridge — not so that a ledger entry outranks cwd evidence we DO have.
+# its own bridge, not so that a ledger entry outranks cwd evidence we DO have.
 # Simulated by stubbing `stat` (both the GNU and BSD forms fail), the same
 # stand-in-on-PATH shape the fake `bun` and the ps fence already use. The pair
-# is what makes it non-vacuous: identical state, one env difference — with the
+# is what makes it non-vacuous: identical state, one env difference, with the
 # stub the decoy SURVIVES, without it the very same decoy IS swept.
 #
 # Not exercisable here, and named rather than glossed: the OTHER arm (cwd
 # unreadable AND freshness undeterminable, which still licenses ownership) has
-# no hermetic simulation on Linux — /proc/<pid>/cwd is genuinely readable for
+# no hermetic simulation on Linux, /proc/<pid>/cwd is genuinely readable for
 # our own processes and cannot be hidden without root.
 STAT_STUB="$WORK/statstub"
 mkdir -p "$STAT_STUB"
@@ -634,7 +634,7 @@ degrade_after=$(count_procs "$DECOY_PAT")
 check "undeterminable freshness: the decoy survives" 2 "$degrade_after"
 
 # The discriminating half: same decoy, same ledger, WITHOUT the stub it is
-# swept — so the survival above is the degrade narrowing, not a dead fixture.
+# swept, so the survival above is the degrade narrowing, not a dead fixture.
 stop_bridge >"$WORK/log-stop-degrade-control.log" 2>&1
 if grep -q "stop: killed 2 bridge process(es)" "$WORK/log-stop-degrade-control.log"; then
   pass "undeterminable freshness (control): with timestamps readable, the same decoy IS swept"
@@ -654,7 +654,7 @@ fi
 # stat'ed the file itself there was one per ledger-matched candidate, which is
 # 2 here (both decoy pids are planted). So the count discriminates.
 #
-# The ORDERING half — mtime before contents — is deliberately NOT asserted
+# The ORDERING half (mtime before contents) is deliberately NOT asserted
 # here: reproducing a mid-scan rewrite needs a stub that mutates the pidfile
 # between the two reads, and such a case would be asserting the stub's
 # behaviour rather than the launcher's. It rests on the argument recorded in
@@ -697,7 +697,7 @@ fi
 # ── Case: a STALE ledger entry (recycled pid) is NOT swept ────────────────
 # The recycling shape: our supervisor died, its pid was reused by ANOTHER
 # checkout's supervisor, so that pid is a live bridge candidate AND still sits
-# in our ledger. Distinguished from the shared-root case above by ONE fact —
+# in our ledger. Distinguished from the shared-root case above by ONE fact,
 # the process started AFTER the ledger was written. We age the PIDFILE rather
 # than fake the process: a real process's start time cannot be forged.
 start_decoy
@@ -730,7 +730,7 @@ elif age_pidfile 300; then
   fi
 
   # ── RED control for the recycled-pid case ──────────────────────────────
-  # Mutate the same freshness comparison the other way — to `true`: every
+  # Mutate the same freshness comparison the other way, to `true`: every
   # ledger entry then reads as live, and the recycled pid is claimed and
   # killed. Only the supervisor pid was planted, so the poller (foreign cwd,
   # not in the ledger) stays: killed=1 / decoy_after=1.
@@ -808,7 +808,7 @@ reap_decoys
 
 # ── Case: the HIMMEL_TEST_FIXTURE guard refuses an un-sandboxed bridge root ─
 # HOME is already the sandbox, so the default root this WOULD have used is
-# $WORK/home/.claude/handover/bridge — nothing real is ever involved.
+# $WORK/home/.claude/handover/bridge, nothing real is ever involved.
 for guard_verb in stop start; do
   guard_out=$(env -u BRIDGE_ROOT HIMMEL_TEST_FIXTURE=1 bash "$SCRIPT" --repo "$FIXTURE_REPO" "$guard_verb" 2>&1)
   guard_rc=$?
@@ -828,7 +828,7 @@ done
 # The second limb of the guard: BRIDGE_ROOT sandboxed but --repo pointing at
 # the checkout the launcher itself lives in, so the cwd identity source would
 # select THAT checkout's real bridge processes. Exercised against a scratch
-# COPY of the launcher rather than the repo's own — the condition under test is
+# COPY of the launcher rather than the repo's own, the condition under test is
 # path equality between $BRIDGE_DIR_REAL and the script's own directory, and
 # probing it with the real checkout's path is precisely the kill this guard
 # exists to prevent, so it is never used as a fixture input.
@@ -854,7 +854,7 @@ done
 # ── Case: the fixture guard refuses ANY real checkout, not just our own ────
 # A fixture aimed at a DIFFERENT clone passes the own-checkout comparison and
 # would still kill that clone's live bridge by cwd. The general limb is "inside
-# a git work tree". Exercised against a THROWAWAY `git init` repo under $WORK —
+# a git work tree". Exercised against a THROWAWAY `git init` repo under $WORK,
 # never a real checkout, since pointing a test at one is the very kill this
 # guard exists to prevent.
 if command -v git >/dev/null 2>&1; then
@@ -864,7 +864,7 @@ if command -v git >/dev/null 2>&1; then
   if git -C "$GIT_REPO" init -q >/dev/null 2>&1; then
     # The assertion that would have caught the fail-open: the refusal must not
     # depend on a working `git`. A stub that always fails stands in for both
-    # "git broken" and "git absent" — the check walks up looking for `.git`
+    # "git broken" and "git absent", the check walks up looking for `.git`
     # itself and never shells out, so the two are the same to it. Under the
     # previous `git rev-parse` implementation this invocation was ALLOWED.
     GIT_STUB="$WORK/gitstub"
@@ -926,7 +926,7 @@ check "fixture guard: does NOT fire while BRIDGE_ROOT is sandboxed (stop still e
 # ── Case: `run` execs the supervisor in the FOREGROUND (systemd Type=simple) ─
 # The unit's whole shape depends on this path: Type=simple tracks ExecStart's
 # own process as MAINPID, so `run` is only honest if the launcher BECOMES the
-# supervisor. Backgrounded directly rather than through run_with_timeout —
+# supervisor. Backgrounded directly rather than through run_with_timeout,
 # `run` is a daemon that never returns, and the wrapper's extra `timeout`
 # process would break exactly the pid identity being asserted. The bounded
 # poll below is the hang guard; the `stop` that follows uses run_with_timeout,
@@ -967,7 +967,7 @@ esac
 # fd 200 must NOT survive the exec: a leaked lock fd keeps the flock's
 # open-file-description alive for the bridge's whole lifetime and deadlocks the
 # next `stop`. (With no `flock` on the host fd 200 is never opened at all, so
-# this reads as absent either way — still the correct observation.)
+# this reads as absent either way, still the correct observation.)
 if [ -d "/proc/$run_pid/fd" ]; then
   if [ -e "/proc/$run_pid/fd/200" ]; then
     fail "run: the lock fd 200 is not leaked into the exec'd supervisor" "/proc/$run_pid/fd/200 still exists"
@@ -1004,7 +1004,7 @@ wait "$run_pid" 2>/dev/null || true
 # ── LAUNCH HANDOFF fixture: the "slow double" ────────────────
 # The reproduction needs a launched process that is ALIVE but whose `ps`
 # cmdline does not match list_bridge_pids' `*bun*` candidate filter for a few
-# seconds, then becomes a genuine fake-bun supervisor WITH THE SAME PID —
+# seconds, then becomes a genuine fake-bun supervisor WITH THE SAME PID,
 # simulating the real handoff window where `nohup`/`exec` has already made
 # the future supervisor a live process, but bun itself has not yet run.
 #
@@ -1015,19 +1015,19 @@ wait "$run_pid" 2>/dev/null || true
 #
 # Two facts make this work, both confirmed by exercising the fixture rather
 # than assumed:
-#   * `exec -a NAME` is HONORED here because bash is being exec'd directly —
+#   * `exec -a NAME` is HONORED here because bash is being exec'd directly,
 #     not through its OWN shebang. Had stage2 instead been exec'd directly
 #     (skipping the `bash "$SLOWBIN/stage2"` indirection), the kernel's
 #     shebang handling would replace argv[0] with the script's own path,
-#     discarding the requested name — which is exactly why stage2 is invoked
+#     discarding the requested name, which is exactly why stage2 is invoked
 #     as `bash $SLOWBIN/stage2` and not as `$SLOWBIN/stage2` directly.
 #   * neither the placeholder argv[0] nor the stage2 path may contain the
-#     substring "bun" — list_bridge_pids' very first filter is
+#     substring "bun", list_bridge_pids' very first filter is
 #     `case "$line" in *bun*) ;; *) continue ;; esac`, so either one
 #     containing "bun" would make the "slow" half indistinguishable from an
 #     already-visible bridge process and defeat the whole fixture. Both paths
-#     derive from $WORK (an mktemp path), so the gate below — refusing to
-#     build the fixture at all when $WORK itself contains "bun" — is
+#     derive from $WORK (an mktemp path), so the gate below (refusing to
+#     build the fixture at all when $WORK itself contains "bun") is
 #     sufficient to guarantee neither derived path does either.
 # Every case built on this fixture is gated on RACE_OK and SKIPs with
 # RACE_SKIP_REASON when it is 0, rather than faking a pass.
@@ -1128,7 +1128,7 @@ if [ "$RACE_OK" -eq 1 ]; then
       poll_until "$POLLER_PAT" 0 30 >/dev/null
       poll_until "$SUPERVISOR_PAT" 0 10 >/dev/null
 
-      # Launcher A again for the control run — plain PATH is fine per the
+      # Launcher A again for the control run, plain PATH is fine per the
       # brief; only launcher B (the mutant) must be fenced against real host
       # processes.
       ( PATH="$SLOWBIN:$PATH" run_with_timeout 20 "$SCRIPT" --repo "$FIXTURE_REPO" start ) >"$WORK/log-r1-red-a.log" 2>&1 &
@@ -1184,17 +1184,17 @@ fi
 # ── Case R2: 'run' writes the marker under the lock; a concurrent start refuses ──
 # COVERAGE, stated precisely rather than over-read: this case proves (1) the
 # marker becomes readable while 'run' is mid-handoff and blocks a concurrent
-# 'start' (rc=4, no second supervisor), and (2) — via the lock-freedom poll
-# below — that the marker is ALREADY on disk by the moment the lock first
+# 'start' (rc=4, no second supervisor), and (2), via the lock-freedom poll
+# below, that the marker is ALREADY on disk by the moment the lock first
 # becomes acquirable again, the closest observable proxy for "written under
 # the lock" available without a test-only hook in run_verb itself (there is
 # no injectable seam for the sub-millisecond gap between the write and the fd
 # close, and adding one to production code purely to make it testable is out
 # of bounds). It does NOT, and cannot, directly observe fd 200 being held
-# DURING the write — only that the write is provably complete by the time the
+# DURING the write, only that the write is provably complete by the time the
 # lock next opens, which run_verb's own code order (write, then close)
 # guarantees deterministically rather than by timing luck. Lighter than R1 by
-# design otherwise — R1's RED control already covers the shared guard code
+# design otherwise, R1's RED control already covers the shared guard code
 # path; R2 exists to prove BOTH verbs are covered and to add the ordering
 # proxy R1 cannot exercise, since start_verb's lock is held by a DIFFERENT
 # process (the launcher script) than the one that becomes the supervisor.
@@ -1205,7 +1205,7 @@ if [ "$RACE_OK" -eq 1 ]; then
 
   R2_LOCK_PATH=$("$SCRIPT" --print-lock-path)
 
-  # 'run' execs, so its OWN pid is the marker pid — `exec` inside the subshell
+  # 'run' execs, so its OWN pid is the marker pid, `exec` inside the subshell
   # keeps $! that same pid through to the marker write.
   ( PATH="$SLOWBIN:$PATH" exec "$SCRIPT" --repo "$FIXTURE_REPO" run ) >"$WORK/log-r2-run.log" 2>&1 &
   r2_run_bg=$!
@@ -1213,15 +1213,15 @@ if [ "$RACE_OK" -eq 1 ]; then
   # Two-phase poll, deliberately: a single "wait until the lock is free"
   # check is AMBIGUOUS between "run_verb held it and released it" (what we
   # want to observe) and "run_verb has not even started yet" (the lock was
-  # never contended) — both read as "free" to a bare poll. Proven live: an
+  # never contended), both read as "free" to a bare poll. Proven live: an
   # earlier version of this case asserted straight off a single free-poll and
   # FAILED, because the very first check (before the backgrounded job had
   # even been scheduled) already found the lock free with no marker written
   # yet. So: first poll until the lock is observably HELD (proof run_verb
-  # actually acquired it), THEN poll until it is free again — only that
+  # actually acquired it), THEN poll until it is free again, only that
   # second transition is evidence of a release, and only a release proves the
   # write (which run_verb's own code order places strictly before the fd
-  # close — see its ORDERING comment) already happened. If the HELD phase is
+  # close, see its ORDERING comment) already happened. If the HELD phase is
   # never observed within the bound, this is the sub-millisecond-gap case the
   # brief anticipated: SKIP rather than assert on an ambiguous read. Each
   # probe acquires and immediately releases (the subshell exits right after
@@ -1231,7 +1231,7 @@ if [ "$RACE_OK" -eq 1 ]; then
   r2_h=0
   while [ "$r2_h" -lt 150 ]; do
     if ( flock -n 9 ) 9>"$R2_LOCK_PATH" 2>/dev/null; then
-      :   # still free (or not yet contended) — keep polling
+      :   # still free (or not yet contended), keep polling
     else
       r2_seen_held=1
       break
@@ -1299,7 +1299,7 @@ if [ "$RACE_OK" -eq 1 ]; then
     # marker's absence itself: the marker never
     # appearing is exactly the regression this case exists to catch, so
     # inferring "couldn't run the scenario" from that same absence made the
-    # detection target and the SKIP condition the same fact — delete
+    # detection target and the SKIP condition the same fact, delete
     # write_launch_marker from run_verb and this branch used to SKIP both
     # assertions, the suite reported 0 failed, and run_verb's entire handoff
     # protection went untested while everything looked green.
@@ -1310,7 +1310,7 @@ if [ "$RACE_OK" -eq 1 ]; then
       # close to produce that observed hold-then-release transition at all
       # (none of those steps depend on write_launch_marker succeeding). A
       # marker absent AFTER that point is not something we failed to
-      # observe — it IS the regression.
+      # observe, it IS the regression.
       fail "R2: 'run' writes the launch marker before it becomes visible" \
         "the lock was observed held then released (run_verb demonstrably reached the fd-close point), but no marker file ever appeared — write_launch_marker did not run or did not persist"
       fail "R2: a concurrent start while 'run' is mid-handoff is refused (rc=4)" \
@@ -1318,7 +1318,7 @@ if [ "$RACE_OK" -eq 1 ]; then
     elif ps -p "$r2_run_bg" >/dev/null 2>&1; then
       # Genuinely could not anchor on the lock transition (the sub-
       # millisecond-gap case), but the backgrounded 'run' process is
-      # observably still alive — a real inability to run THIS OBSERVATION,
+      # observably still alive, a real inability to run THIS OBSERVATION,
       # not evidence the marker write failed.
       skip "R2: 'run' writes the launch marker before it becomes visible" \
         "backgrounded 'run' (pid $r2_run_bg) is alive, but the lock-held/lock-free observation never anchored (r2_seen_held=$r2_seen_held r2_lock_free=$r2_lock_free) — cannot distinguish 'still mid-handoff' from 'broken' without asserting on an unobserved window"
@@ -1343,7 +1343,7 @@ if [ "$RACE_OK" -eq 1 ]; then
   # The control that makes the fail-vs-skip fix above PROVABLE rather than
   # merely intended: it demonstrates the case goes RED under exactly the
   # mutation that used to make it SKIP. Neuters run_verb's
-  # `write_launch_marker "$$"` call — and ONLY that one: start_verb's own
+  # `write_launch_marker "$$"` call, and ONLY that one: start_verb's own
   # call is `write_launch_marker "$child"`, a textually distinct string, so
   # this sed cannot touch it.
   MUTANT_R2="$WORK/mutant-r2-no-marker.sh"
@@ -1359,7 +1359,7 @@ if [ "$RACE_OK" -eq 1 ]; then
     poll_until "$SUPERVISOR_PAT" 0 10 >/dev/null
 
     # Mutant 'run' in the background, fenced (PS_FENCE) so its own
-    # sweep_stale/discovery scans can never see a real host process — same
+    # sweep_stale/discovery scans can never see a real host process, same
     # shape as R1's control. `run` execs, so $! is the pid that becomes the
     # (fake) supervisor once the slow double resolves.
     ( PATH="$PS_FENCE:$SLOWBIN:$PATH" bash "$MUTANT_R2" --repo "$FIXTURE_REPO" run ) >"$WORK/log-r2-red-run.log" 2>&1 &
@@ -1395,7 +1395,7 @@ if [ "$RACE_OK" -eq 1 ]; then
 
     if [ "$r2_red_seen_held" -eq 1 ]; then
       # Concurrent start B is the PROBE whose result is what "RED" actually
-      # means here — A (backgrounded above) carries the mutation, so B must
+      # means here. A (backgrounded above) carries the mutation, so B must
       # be the call red_control_run captures: real (unmutated) script, fenced
       # (PS_FENCE) so its own sweep_stale/discovery scan can never reach a
       # real host process, real fast bun via the ambient PATH. Matches
@@ -1423,7 +1423,7 @@ if [ "$RACE_OK" -eq 1 ]; then
         "the mutant's own lock-held/lock-free window never anchored on this run — a timing limitation of the control's own setup, not evidence about the mutation"
     fi
 
-    # Reap whatever the mutant started — its own supervisor/poller (once the
+    # Reap whatever the mutant started, its own supervisor/poller (once the
     # slow double resolved) plus the still-alive backgrounded 'run' process
     # itself, the same discipline R1's control and reap_decoys already use.
     sleep $((SLOW_SECS + 2))
@@ -1528,7 +1528,7 @@ fi
 
 # ── Case R5: an UNREADABLE epoch ("-", live pid) is ignored+removed, LOUDLY ──
 # An age this function cannot COMPUTE must read
-# INACTIVE, not active-forever — the "-" epoch is exactly what
+# INACTIVE, not active-forever, the "-" epoch is exactly what
 # write_launch_marker itself writes when `date` failed at write time, so this
 # is not a synthetic case, it is the real shape that function produces on a
 # clockless host. No timing needed: the marker is written directly, same
@@ -1579,7 +1579,7 @@ fi
 # The other unboundable-age route: a marker epoch AHEAD of
 # "now" (a clock stepped backward by NTP, or a bridge root shared across
 # machines with skewed clocks) makes `now - epoch` negative, so the plain
-# `-gt LAUNCH_MARKER_MAX_AGE_SEC` comparison alone would never catch it — the
+# `-gt LAUNCH_MARKER_MAX_AGE_SEC` comparison alone would never catch it, the
 # marker could stay ACTIVE far past 30s. No timing needed: the marker is
 # written directly with an epoch 1 hour in the future.
 if [ "$RACE_OK" -eq 1 ]; then
@@ -1627,17 +1627,17 @@ fi
 
 # ── Case R7: an epoch with a LEADING ZERO does not crash the launcher ──────
 # The all-digits `case` above accepts "08"/"09", and
-# bash arithmetic reads an UNQUOTED leading-zero literal as OCTAL — "08" and
+# bash arithmetic reads an UNQUOTED leading-zero literal as OCTAL, "08" and
 # "09" are invalid octal digits, so plain `$((now - epoch))` raised a hard
 # evaluation error. Reproduced by hand before this fix existed: it did NOT
-# merely make `start` exit non-zero — it silently unwound the whole call
+# merely make `start` exit non-zero, it silently unwound the whole call
 # stack past sweep_stale, bun resolution, and the launch itself, straight to
 # the script's own trailing `exit 0`, so `start` reported SUCCESS having
 # launched nothing and left the malformed marker untouched. `10#$epoch`
 # normalizes to base 10 before the arithmetic. "08" is chosen deliberately
 # rather than "07": 07 is a VALID octal literal (decimal 7) and would parse
 # without error, so a regression that dropped the `10#` prefix would produce
-# a silently WRONG age, not a loud failure — this suite would not catch it.
+# a silently WRONG age, not a loud failure, this suite would not catch it.
 # "08"/"09" fail LOUDLY without the fix, so a regression here reintroduces a
 # hard crash this case cannot miss.
 if [ "$RACE_OK" -eq 1 ]; then
@@ -1688,7 +1688,7 @@ fi
 # ── RETASK 02H-G9-9c4e21-impl (1/2): a start failing at bun resolution ─────
 # leaves NO marker behind. This is the ORDERING half of the
 # hardening: write_launch_marker in start_verb sits AFTER bun_bin resolution,
-# so a start that cannot find bun must exit before ever writing a marker —
+# so a start that cannot find bun must exit before ever writing a marker,
 # pid-liveness alone would not catch this failure mode (the calling shell's
 # own pid stays alive for the rest of this test process's life). Written to
 # be correct whether or not a marker pre-existed, per the brief.
@@ -1696,7 +1696,7 @@ fi
 # installed as a system package (/usr/bin/bun), so any PATH built from real
 # system directories resolves it. Build a scratch dir of symlinks to exactly
 # the external commands restart-bridge.sh actually calls, deliberately never
-# 'bun' itself, and use ONLY that directory as PATH (no fallback dirs) — the
+# 'bun' itself, and use ONLY that directory as PATH (no fallback dirs), the
 # one reliable way to guarantee "no bun anywhere on PATH" on a host that
 # genuinely has one installed.
 NOBUN_BIN="$WORK/nobun-path"
@@ -1761,7 +1761,7 @@ fi
 # ── RETASK 02H-G9-9c4e21-impl (2/2): a launcher REFUSED with rc=4 does not ──
 # overwrite the in-flight marker it was refused because of. Reuses the R1/R2
 # slow-double setup. Captures the marker's pid+epoch BEFORE the refused call
-# and asserts it is byte-identical after — refuse_if_launch_in_progress must
+# and asserts it is byte-identical after, refuse_if_launch_in_progress must
 # exit 4 before writing any marker of its own.
 if [ "$RACE_OK" -eq 1 ]; then
   stop_bridge >"$WORK/log-retaskb-pre-stop.log" 2>&1
@@ -1803,15 +1803,15 @@ else
 fi
 
 # ── A marker-write FAILURE degrades LOUDLY, not silently ──
-# write_launch_marker must stay non-fatal (the launch proceeds either way —
+# write_launch_marker must stay non-fatal (the launch proceeds either way,
 # that part is deliberate and unchanged), but a lost marker write must be
 # VISIBLE, matching every other degrade in this file (flock absent, an
-# unreadable cwd, an unattributable candidate left alone — all print one named
+# unreadable cwd, an unattributable candidate left alone, all print one named
 # WARNING). A `chmod`-based unwritable $BRIDGE_ROOT is the cheapest hermetic
 # way to force the write to fail without a test-only hook in production code.
 # Gated on NOT running as root: root bypasses ordinary permission checks, so
 # the directory would stay effectively writable regardless of its mode bits,
-# defeating this fixture — SKIP rather than silently no-op in that case.
+# defeating this fixture. SKIP rather than silently no-op in that case.
 # Gated on the MEASURED behaviour (host_can_deny_write: `chmod 555`
 # really makes a directory refuse a new file), not on `id -u` -- that also covers
 # Git Bash/NTFS, where chmod is a no-op for a non-root user.
@@ -1823,7 +1823,7 @@ if [ "$HOST_CAN_DENY_WRITE" -eq 1 ]; then
 
   # $BRIDGE_ROOT already EXISTS at this point (created at suite setup), so
   # write_launch_marker's `mkdir -p` is a no-op that does not itself need
-  # write access — it is the marker FILE creation inside the directory
+  # write access, it is the marker FILE creation inside the directory
   # (r-xr-xr-x, no write bit) that fails, exercising the write_ok=0 arm.
   chmod 555 "$BRIDGE_ROOT"
   warn_rc=0
@@ -1868,9 +1868,9 @@ fi
 # Sibling of the marker-write case above, same family: `rm -f` needs WRITE
 # permission on the marker's DIRECTORY (not the file itself), and `-f`
 # suppresses only a missing-FILE error, never a permission error. An
-# INACTIVE marker (a dead pid is the easiest inactive state — see R3) sitting
+# INACTIVE marker (a dead pid is the easiest inactive state, see R3) sitting
 # in an unwritable bridge root used to make prune_launch_marker's unguarded
-# `rm -f` abort start/run before they launched anything — a plain internal
+# `rm -f` abort start/run before they launched anything, a plain internal
 # contradiction with the promise (stated twice in the header) that
 # unwritable marker storage is non-fatal, since write and remove are the SAME
 # storage with the SAME failure mode.
@@ -1881,7 +1881,7 @@ fi
 # only needs write permission on the FILE itself (already has it, from
 # before the chmod); only CREATING or UNLINKING a directory entry needs
 # write permission on the DIRECTORY. So with a marker already on disk, only
-# the `rm -f` inside prune_launch_marker is exercised — write_launch_marker's
+# the `rm -f` inside prune_launch_marker is exercised. write_launch_marker's
 # later overwrite of that same file, once the launch proceeds, still
 # succeeds independently, which is confirmed below rather than assumed.
 # Gated on the measured host_can_deny_write, as the marker-write case above.
@@ -1961,21 +1961,21 @@ fi
 # when the launcher's OWN PATH is linger-shaped. A linger-started systemd
 # user unit runs before the login shell's PATH import, so on 2026-09-05 the
 # unit's own environment was PATH=/usr/local/bin:/usr/bin (read live from
-# /proc/<poller>/environ) — `command -v bun` failed there, and once that was
+# /proc/<poller>/environ), `command -v bun` failed there, and once that was
 # worked around by hand the poller's bounded run still died with
 # `Error: Executable not found in $PATH: "claude"`. restart-bridge.sh now
 # appends $HOME/.local/bin and $HOME/.bun/bin (when they exist) to
 # whatever PATH it was launched with, for every verb, before the first
 # `command -v` (see `_himmel_tool_dir` near the top of the script).
 #
-# Reuses $NOBUN_BIN — the curated, symlinked-tool, deliberately-bun-free PATH
-# built above for the RETASK bun-resolution case — as the "linger-shaped"
+# Reuses $NOBUN_BIN (the curated, symlinked-tool, deliberately-bun-free PATH
+# built above for the RETASK bun-resolution case) as the "linger-shaped"
 # PATH for both cases below: it excludes $FAKE_BIN and any real bun while
 # still resolving every OTHER external command restart-bridge.sh calls (ps,
 # grep, sed, awk, date, stat, flock, ...). The literal linger PATH
 # "/usr/local/bin:/usr/bin" cannot be used verbatim here: this station ships
 # a real bun at /usr/bin/bun, so any PATH built from real system directories
-# resolves it and the negative control below would be vacuous — only a
+# resolves it and the negative control below would be vacuous, only a
 # from-scratch curated directory can guarantee "no bun anywhere on PATH" on
 # a host that genuinely has one installed.
 #
@@ -1983,11 +1983,11 @@ fi
 # the override to each ONE invocation so it cannot leak into $PATH for the
 # rest of the suite, which still needs $FAKE_BIN on it for every other case.
 # Only `start`/`run` resolve bun at all (`status` never calls `command -v
-# bun`), so `start` is the only verb that can exercise this — stopped and
+# bun`), so `start` is the only verb that can exercise this, stopped and
 # polled to zero afterward, matching the neighbouring bun-resolution case.
 if [ "$NOBUN_OK" -eq 1 ]; then
   # Negative control: same curated bun-free PATH, and a sandboxed HOME with
-  # no $HOME/.bun/bin — proves the probe actually observes the failure mode
+  # no $HOME/.bun/bin, proves the probe actually observes the failure mode
   # (and not some other unrelated PATH quirk of this host) before the
   # positive case below is allowed to mean anything.
   rm -rf "$HOME/.bun" 2>/dev/null || true
@@ -1996,7 +1996,7 @@ if [ "$NOBUN_OK" -eq 1 ]; then
   # grep reads a HERE-STRING rather than taking the output on a pipe: this
   # file runs under `set -o pipefail` (line 34), where a quiet grep exits at
   # the first match, the producer then takes SIGPIPE writing the rest, and the
-  # PIPELINE status goes non-zero — so a successful match can read as a failure
+  # PIPELINE status goes non-zero, so a successful match can read as a failure
   # and invert the guard. The captured output is a few short
   # lines, far below the size where a here-string wedges Git Bash
   #.
@@ -2009,7 +2009,7 @@ if [ "$NOBUN_OK" -eq 1 ]; then
   fi
 
   # The actual assertion: same PATH, but $HOME/.bun/bin/bun now exists (the
-  # fix's own fallback target) — the block must add it to the curated PATH,
+  # fix's own fallback target), the block must add it to the curated PATH,
   # so bun resolution succeeds and the launcher must NOT print the not-found
   # message.
   mkdir -p "$HOME/.bun/bin"
@@ -2037,7 +2037,7 @@ if [ "$NOBUN_OK" -eq 1 ]; then
   # different Bun is first on the incoming PATH. Pin that by an actual launch.
   #
   # Both bun copies are present and identical in behaviour, so the ONLY thing
-  # distinguishing them is the argv path the launcher execs — which is exactly
+  # distinguishing them is the argv path the launcher execs, which is exactly
   # what the poller pattern below matches on.
   mkdir -p "$HOME/.bun/bin"
   cp "$FAKE_BIN/bun" "$HOME/.bun/bin/bun"
@@ -2061,18 +2061,18 @@ if [ "$NOBUN_OK" -eq 1 ]; then
   rm -rf "$HOME/.bun"
 
   # ── The launched CHILD inherits
-  # a PATH on which `claude` resolves — not just bun ────────────────────────
+  # a PATH on which `claude` resolves, not just bun ────────────────────────
   # Every case above exercises ONLY bun resolution
   # ($HOME/.bun/bin). If someone dropped "$HOME/.local/bin" back out of the
   # `for _himmel_tool_dir in ...` list in restart-bridge.sh, this whole suite
   # would stay green while re-breaking the exact defect the ticket was filed
   # for: the poller's bounded run dying with `Error: Executable not found in
   # $PATH: "claude"`. `claude` is never resolved by restart-bridge.sh itself
-  # (only bun is, via `command -v bun` above) — it is resolved later, by the
+  # (only bun is, via `command -v bun` above), it is resolved later, by the
   # POLLER CHILD, out of whatever PATH it inherited. So the property this
   # case pins is inheritance, not restart-bridge.sh's own resolution: a fake
-  # `claude` under $HOME/.local/bin, and a PROBE bun that — only when invoked
-  # as supervisor.ts — records what ITS OWN inherited environment resolves
+  # `claude` under $HOME/.local/bin, and a PROBE bun that, only when invoked
+  # as supervisor.ts, records what ITS OWN inherited environment resolves
   # `claude` to, then idles in the exact same tight sleep loop every other
   # fake bun in this suite uses, so the existing stop/poll helpers keep
   # working on it unmodified.

@@ -1,4 +1,4 @@
-// scripts/telegram/onboard.ts — bridge onboarding mode.
+// scripts/telegram/onboard.ts. Bridge onboarding mode.
 //
 // A dedicated, BOUNDED entry point (`bun scripts/telegram/onboard.ts`) that helps
 // an adopter discover the chat.id / from.id values they will hand-author into
@@ -7,7 +7,7 @@
 // this refuses to run at all while the bridge is armed (see checkBridgeArmed)
 // rather than becoming a second consumer.
 //
-// It never writes access.json — that file is trust-bearing and human-authored
+// It never writes access.json. That file is trust-bearing and human-authored
 // (spec A8.1). Onboarding REPORTS; the human edits.
 
 import { randomBytes, createHash } from "node:crypto";
@@ -27,7 +27,7 @@ import { getUpdates } from "./telegram-api";
 // single-getUpdates-consumer guarantee. Keep in lockstep if the formula changes.
 // `${VAR:-default}` (restart-bridge.sh's formula) falls back on unset OR
 // empty; JS `??` only catches unset. bus.ts's bridgeRoot() has the same `??`
-// gap, so it can't be reused as-is here — this replicates its fallback
+// gap, so it can't be reused as-is here. This replicates its fallback
 // A set-but-empty BRIDGE_LOCK_DIR/BRIDGE_ROOT must
 // resolve to the SAME path the shell derives, or the two single-consumer
 // guards can disagree about which lock they're both supposed to hold.
@@ -76,7 +76,7 @@ export function checkBridgeArmed(deps: ArmedCheckDeps): string | null {
   return null;
 }
 
-// ponytail: best-effort OS process scan — the pidfile check above is the
+// ponytail: best-effort OS process scan, the pidfile check above is the
 // primary, race-free signal; this only catches a bridge process running
 // WITHOUT (or ahead of) a valid pidfile. Any failure (missing tool, perms)
 // fails to "not found" so a broken scan can never itself hang onboarding;
@@ -103,8 +103,8 @@ export function matchesNonce(update: any, nonce: string): boolean {
 
 export type Identity = { chatId: number; chatType: string; fromId: number | null; label: string };
 
-// Enough to author an access.json entry — chat.id, chat.type, from.id, and a
-// human label — never the raw message body (spec: never the body verbatim
+// Enough to author an access.json entry (chat.id, chat.type, from.id, and a
+// human label), never the raw message body (spec: never the body verbatim
 // beyond what's needed).
 export function extractIdentity(update: any): Identity | null {
   const m = update?.message ?? update?.channel_post;
@@ -127,7 +127,7 @@ export function formatOffer(id: Identity): string {
 }
 
 // Pure per-batch step. `alreadyConsumed` carries the nonce's used/not-used state
-// across batches (a used nonce is never re-offered — replay rejection). Only
+// across batches (a used nonce is never re-offered, replay rejection). Only
 // updates whose text/caption CONTAINS the nonce are offered; everything else
 // (including a nonce-less message from an unrelated chat) is dropped silently.
 export function collectOffers(updates: any[], nonce: string, alreadyConsumed: boolean): { offers: Identity[]; consumed: boolean } {
@@ -149,7 +149,7 @@ export function redactToken(text: string, token: string): string {
 }
 
 // getUpdates wrapped so a transport error (whose message/URL can embed the raw
-// token — telegram-api.ts's API() builds `.../bot<token>/method`) is redacted
+// token, telegram-api.ts's API() builds `.../bot<token>/method`) is redacted
 // before it ever reaches a log line, never thrown raw.
 export async function safeGetUpdates(token: string, offset: number, timeoutSec: number, f: typeof fetch = fetch): Promise<{ updates: any[]; error: string | null }> {
   try {
@@ -165,7 +165,7 @@ export async function safeGetUpdates(token: string, offset: number, timeoutSec: 
 const DEFAULT_TIMEOUT_SEC = 300;   // ~5 minutes (brief default)
 const POLL_TIMEOUT_SEC = 30;       // long-poll window per getUpdates call
 // Transport failures (DNS, revoked token, offline host) reject almost
-// instantly, unlike a successful long-poll — without a delay here the loop
+// instantly, unlike a successful long-poll. Without a delay here the loop
 // would spin at max rate for the whole timeout window. Fixed and small: this
 // is a CLI onboarding aid bounded by DEFAULT_TIMEOUT_SEC, not a long-running
 // service that needs exponential backoff.
@@ -188,7 +188,7 @@ Options:
 
 // Same shape as supervisor.ts's resolveMaxFails: undefined/blank silently
 // takes the default, but a genuinely BAD value (NaN, non-positive) must not
-// silently disable the timeout — `now() < NaN` is always false, so a garbage
+// silently disable the timeout, `now() < NaN` is always false, so a garbage
 // value would make the poll loop never execute and the CLI would report
 // "timed out after NaNs" instantly. Falls back loudly (warn), not silently.
 export function resolveTimeoutSec(raw: string | undefined, warn: (s: string) => void = (s) => console.error(s)): number {
@@ -268,7 +268,7 @@ export async function run(deps: RunDeps = {}): Promise<number> {
   const fetchFn = deps.fetchFn ?? fetch;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 
-  // Own bounded read: an in-memory-only offset, never persisted — the poller's
+  // Own bounded read: an in-memory-only offset, never persisted, the poller's
   // committed cursor/offset files are never touched (requirement #7).
   let offset = 0;
   let consumed = false;

@@ -5,7 +5,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// buildRunArgs resolves the model from process.env — reset the
+// buildRunArgs resolves the model from process.env. Reset the
 // override before EVERY test so neither ambient operator env nor test order
 // can skew the argv assertions (centralized per CR round-2).
 beforeEach(() => { delete process.env.TELEGRAM_CLAUDE_MODEL; });
@@ -41,7 +41,7 @@ test("run args: interactive claude, prompt, stdin closed, no -p/--channels", () 
 test("detectCap flags a rate-limit sentinel in output", () => {
   expect(detectCap("…\nClaude usage limit reached\n")).toBe(true);
   expect(detectCap("all good")).toBe(false);
-  // disjoint from a content-filter block — this is what makes runSession emit
+  // disjoint from a content-filter block. This is what makes runSession emit
   // capped:false, blocked:true for a block (the root-cause distinction).
   expect(detectCap("API Error: Output blocked by content filtering policy")).toBe(false);
 });
@@ -51,7 +51,7 @@ test("detectContentFilter flags an output-blocked sentinel; not confused with a 
   expect(detectContentFilter("Claude usage limit reached")).toBe(false);   // a cap is NOT a block
   expect(detectContentFilter("all good")).toBe(false);
 });
-// live smoke — only runs with LIVE=1 (pins the empirical primitive); skipped in CI
+// live smoke, only runs with LIVE=1 (pins the empirical primitive); skipped in CI
 test.skipIf(!process.env.LIVE)("live: claude </dev/null exits cleanly", async () => {
   const { runSession } = await import("./run");
   const r = await runSession("Reply with exactly PONG and nothing else.", process.cwd());
@@ -188,7 +188,7 @@ test("buildPrompt sanctions non-destructive Jira ticket ops (followup — lifts 
   expect(p).toContain("Jira");
   expect(p.toLowerCase()).toMatch(/create|edit|comment|transition/);
   // explicit non-destructive boundary: assert the FORBIDDANCE phrasing, not just the
-  // keyword (a prompt that said "you may delete" would otherwise pass — CR gptoss-1)
+  // keyword (a prompt that said "you may delete" would otherwise pass, CR gptoss-1)
   expect(p).toMatch(/NOT delete/i);                       // no deletion
   expect(p).toMatch(/do NOT use [`']?move/i);             // no move (closes the source ticket)
   expect(p).toContain("project-create");                  // admin op named in the exclusion
@@ -241,7 +241,7 @@ test("sessionEnv pins every editor hook to a no-op", () => {
   expect(e.GH_PROMPT_DISABLED).toBe("1");
 });
 // The poller is launched by a scheduled task whose env carries no GIT_EDITOR,
-// so inheriting is not enough — an ambient INTERACTIVE editor must be overridden.
+// so inheriting is not enough. An ambient INTERACTIVE editor must be overridden.
 test("sessionEnv overrides an inherited interactive editor", () => {
   const prior = process.env.GIT_EDITOR;
   process.env.GIT_EDITOR = "notepad";
@@ -305,7 +305,7 @@ test("spawnSpec carries the lane's effort for a native dispatch", () => {
     expect(spawnSpec("p").env.CLAUDE_CODE_EFFORT_LEVEL).toBe(tierEffort("opus"));
     // an alias override resolves to that lane
     expect(spawnSpec("p", undefined, undefined, "haiku").env.CLAUDE_CODE_EFFORT_LEVEL).toBe(tierEffort("haiku"));
-    // the lane value beats an ambient one — the registry is the per-dispatch setting
+    // the lane value beats an ambient one. The registry is the per-dispatch setting
     process.env.CLAUDE_CODE_EFFORT_LEVEL = "max";
     expect(spawnSpec("p").env.CLAUDE_CODE_EFFORT_LEVEL).toBe(tierEffort("opus"));
   } finally { restoreEffort(); }

@@ -120,7 +120,7 @@ export async function atomicWrite(path: string, data: string): Promise<void> {
   await rename(tmp, path);
 }
 
-// "failed": retry cap exhausted — auto-retry parked until a new
+// "failed": retry cap exhausted, auto-retry parked until a new
 // operator message arrives (handleInbound resets it). fail_count counts
 // consecutive unsuccessful settles; cleared by any clean run.
 export type Meta = { chat_id: number; status: "idle"|"running"|"done"|"capped"|"failed";
@@ -148,12 +148,12 @@ export async function appendLine(file: string, line: string): Promise<void> {
   await appendFile(file, line + "\n", { encoding: "utf8", mode: 0o600 });
 }
 
-// Append `line` to `file` ONLY if it already exists — an
+// Append `line` to `file` ONLY if it already exists, an
 // O_WRONLY|O_APPEND open with NO O_CREAT, so a route attempt against a file
 // deleted moments earlier can never recreate it. A separate existsSync()
 // check followed by appendFile() (which implies O_CREAT) has a TOCTOU
 // window: a deletion between the two silently recreates the file. Returns
-// false (ENOENT — ideally the file never existed) instead of throwing so a
+// false (ENOENT, ideally the file never existed) instead of throwing so a
 // caller can fall back; any other error still throws.
 export async function appendIfExists(file: string, line: string): Promise<boolean> {
   let handle;
@@ -180,7 +180,7 @@ export async function appendIfExists(file: string, line: string): Promise<boolea
 // concurrent cross-process writer (a bounded run child appending to outbox) could lose
 // a line: if the file grew between the two reads we defer to the next tick. A
 // residual sub-millisecond race remains (an append landing on the old inode
-// after the second read but before the rename) — acceptable under the bridge's
+// after the second read but before the rename), acceptable under the bridge's
 // existing at-least-once / operator-resends model, and bounded to one flush
 // interval of output. Single-writer logs (cursor == EOF means the writer is
 // idle) are fully safe. No-op (returns false) unless there is something to reclaim.
@@ -219,13 +219,13 @@ export async function rotateConsumedLedger(file: string, cursorFile: string, thr
 }
 // reader tracks a byte offset in <file>.cursor; parses only '\n'-terminated lines.
 // Generic in the record shape so a caller can NAME what
-// it is reading — the poller reads Inbound from inbound.jsonl, sessions read
-// their own inbox shape — instead of casting `any[]` at the call site. Defaults
+// it is reading (the poller reads Inbound from inbound.jsonl, sessions read
+// their own inbox shape) instead of casting `any[]` at the call site. Defaults
 // to `any`, so every existing caller is unchanged. The parse itself stays
 // unchecked: these are JSON lines off disk, and T is the caller's assertion
 // about them, not a validation.
 // Raised when readNewLines finds its cursor past EOF and repairs
-// it. `cursor` is the stale offset, `size` the file's real length — the gap
+// it. `cursor` is the stale offset, `size` the file's real length, the gap
 // between them is data that is no longer on disk. Optional at every call site;
 // an unwired caller still gets the reset and the log line, just no notice.
 export type CursorResetInfo = { file: string; cursor: number; size: number };
@@ -233,7 +233,7 @@ export type OnCursorReset = (info: CursorResetInfo) => void | Promise<void>;
 
 // Extracted from readNewLines (cursor repair must run BEFORE
 // ingestUpdates appends the tick's own new lines, or a reset-to-EOF discards
-// those too — see the call in poller.ts's main() loop). readNewLines still
+// those too, see the call in poller.ts's main() loop). readNewLines still
 // calls this itself, so every other caller (session inboxes, existing tests)
 // is unaffected and behaves exactly as before: a beyond-EOF cursor there is
 // just repaired one step later, inside the same read.
@@ -243,26 +243,26 @@ export async function repairCursorBeyondEof(file: string, cursorFile: string, on
   let total = 0;
   try { total = (await stat(file)).size; }
   catch (e) {
-    // ENOENT means an EMPTY inbox, not "can't tell" — and it is exactly the
+    // ENOENT means an EMPTY inbox, not "can't tell", and it is exactly the
     // restore/shadow-copy class that caused the original incident: inbound.jsonl itself
     // is gone but a stale cursor survives beside it. Falling through with
     // total=0 lets the ordinary start > total branch below fire and repair
     // it (reset to 0, logged, notice raised) instead of this function
     // silently bailing out and leaving ingestUpdates to recreate the file
     // and readNewLines' own internal repair to reset the cursor to the new
-    // (small) post-append EOF — discarding this tick's just-ingested
+    // (small) post-append EOF, discarding this tick's just-ingested
     // messages, the very bug the pre-ingest ordering exists to prevent. Any
     // OTHER read error (EACCES, EISDIR, a transient I/O fault) must NOT be
     // treated as empty: we cannot conclude the file has zero bytes from a
     // permission or I/O failure, and resetting a good cursor on that guess
-    // would destroy state instead of repairing it — so still bail out.
+    // would destroy state instead of repairing it, so still bail out.
     if ((e as any)?.code !== "ENOENT") return false;
   }
-  // start > total is NOT "nothing new" — the file shrank under the cursor, so
+  // start > total is NOT "nothing new". The file shrank under the cursor, so
   // the cursor is INVALID and every subsequent read would return [] forever
   // (a restore dropped an older inbound.jsonl next to a newer
   // cursor and 8 operator messages were silently dropped over ~10h). Reset to
-  // EOF, never to 0 — replaying a 345 KB inbox is its own incident — and make
+  // EOF, never to 0 (replaying a 345 KB inbox is its own incident), and make
   // the loss visible: loudly in the log, and to the operator via the caller's
   // notice seam, because the bytes between `total` and `start` are gone from
   // disk and no lower layer can recover them. The notice is the point;
@@ -271,10 +271,10 @@ export async function repairCursorBeyondEof(file: string, cursorFile: string, on
     console.error(`[bus] cursor ${start} beyond EOF ${total} for ${file} — file shrank; resetting`);
     await atomicWrite(cursorFile, String(total));
     // The reset is what unwedges the bridge, so a notice that throws (Telegram
-    // down, chat unreachable) must not undo it — it is already committed above.
+    // down, chat unreachable) must not undo it, it is already committed above.
     // But swallowing that failure silently would just move the drop one layer
     // up (the operator never learns recovery happened, and
-    // nothing here retries the notice) — this module's whole contract is
+    // nothing here retries the notice). This module's whole contract is
     // "never a silent drop", so log it; the reset line above is the surviving
     // record either way.
     if (onCursorReset) { try { await onCursorReset({ file, cursor: start, size: total }); } catch (err) { console.error(`[bus] cursor repair for ${file} already succeeded (reset to ${total} above) but the operator notice failed:`, err); } }
@@ -286,7 +286,7 @@ export async function repairCursorBeyondEof(file: string, cursorFile: string, on
 // Read without advancing the cursor, for a caller that acks per record.
 // `ends[i]` is the byte offset to commit once records[i] is durably handled;
 // `consumed` is the offset past every complete line (blank and unparseable lines
-// included — they have no record to ack); `start` is the cursor as read.
+// included, they have no record to ack); `start` is the cursor as read.
 export type PeekedLines<T> = { records: T[]; ends: number[]; start: number; consumed: number };
 export async function peekNewLines<T = any>(file: string, cursorFile: string, onCursorReset?: OnCursorReset): Promise<PeekedLines<T>> {
   if (await repairCursorBeyondEof(file, cursorFile, onCursorReset)) return { records: [], ends: [], start: 0, consumed: 0 };
@@ -325,7 +325,7 @@ export async function readNewLines<T = any>(file: string, cursorFile: string, on
 // poller's delivery scan spawns a bounded run for the target (if idle) to consume
 // it. ensureSession first so a not-yet-seen target still queues durably.
 // origin:"sendToSession": this is the TRUSTED A->B inter-session
-// writer (the only current caller is the `bus.ts send` CLI) — distinct from
+// writer (the only current caller is the `bus.ts send` CLI), distinct from
 // poller.ts's direct inbox.jsonl append for a real inbound Telegram message
 // (no origin field there). Stamping it lets a session's RETASK-channel
 // verification tell "arrived via the trusted bus" from "arrived via Telegram"
@@ -353,10 +353,10 @@ export async function appendContext(root: string, s: string, note: string, budge
   const tmp = p + ".tmp"; await writeFile(tmp, cur, "utf8"); await rename(tmp, p);
 }
 
-// Coms layer — live seat-to-seat messaging over this file bus,
+// Coms layer, live seat-to-seat messaging over this file bus,
 // received through Claude Code's Monitor tool (one stdout line = one event).
 // Layout: <root>/peers/<seat>/inbox.jsonl (+ .cursor); <root>/peers/ledger.jsonl.
-// No server/port/token/daemon/encryption; no broadcast verb — ONE named target.
+// No server/port/token/daemon/encryption; no broadcast verb, ONE named target.
 export const peerInbox = (root: string, seat: string) => join(root, "peers", seat, "inbox.jsonl");
 export const peerLedger = (root: string) => join(root, "peers", "ledger.jsonl");
 export const PEER_TEXT_MAX = 2000;
@@ -441,12 +441,12 @@ export async function drainPeerInbox(root: string, seat: string, emit: (line: st
 export const streamEmit = (out: { write(s: string, cb: (e?: Error | null) => void): unknown }) =>
   (line: string) => new Promise<void>((res, rej) => { out.write(line + "\n", (e) => (e ? rej(e) : res())); });
 
-// ponytail: polls the cursor in-process instead of `tail -c +N -F` — the cursor
+// ponytail: polls the cursor in-process instead of `tail -c +N -F`, the cursor
 // must be committed by the same code that prints (a tail pipe can't advance it
 // at print time, and tail -F around truncateFullyConsumed's rename is fragile);
 // ceiling = up to intervalMs latency per message; upgrade path = fs.watch
 // wakeup if latency matters.
-// NOTE: a flooded seat can hit Monitor's event rate limit — documenting that
+// NOTE: a flooded seat can hit Monitor's event rate limit, documenting that
 // behaviour is a precondition still open.
 export async function followPeerInbox(root: string, seat: string, emit: (line: string) => void | Promise<void>,
     intervalMs = 1000, signal?: AbortSignal): Promise<void> {
@@ -457,8 +457,8 @@ export async function followPeerInbox(root: string, seat: string, emit: (line: s
   }
 }
 
-// CLI: `bun bus.ts send <target> <text...>` — A→B inter-session message;
-// `peer-send <from> <to> <text...>` / `peer-recv <seat> [--once] [--interval-ms N]` — coms layer.
+// CLI: `bun bus.ts send <target> <text...>`, A→B inter-session message;
+// `peer-send <from> <to> <text...>` / `peer-recv <seat> [--once] [--interval-ms N]`, coms layer.
 if (import.meta.main) {
   const argv = process.argv.slice(2);
   const [verb, target, ...rest] = argv;

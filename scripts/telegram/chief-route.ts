@@ -8,8 +8,8 @@ import { BASH_BIN } from "./run";
 // Operator Telegram message -> a named RUNNING chief.
 //
 // A chief runs without --channels on purpose (a second getUpdates consumer
-// 409s the bridge), so nothing reaches it today. Instead the poller — the one
-// getUpdates consumer, unchanged — appends one line to the chief's own file
+// 409s the bridge), so nothing reaches it today. Instead the poller (the one
+// getUpdates consumer, unchanged) appends one line to the chief's own file
 // inbox and the chief Monitors that file (docs/handover/chief-template.md,
 // ACTION ZERO). Bare `/chief <text>` discovers a single fresh heartbeat;
 // explicit `/chief <name> <text>` and Telegram reply receipts pin a chief;
@@ -23,7 +23,7 @@ import { BASH_BIN } from "./run";
 //
 // Authority (operator-equal, but not unbounded): the caller (poller.ts
 // handleInbound) only reaches this for the global-allowFrom operator in an
-// allowed chat, typed and not forwarded — gate.ts stays the sole sender gate.
+// allowed chat, typed and not forwarded, gate.ts stays the sole sender gate.
 // The line is tagged `[telegram from=<id> chat=<chat_id>]` so the chief can
 // tell it from a terminal message. It carries no RETASK token: it is operator
 // -> chief, never chief -> worker (docs/internals/retask-channel.md).
@@ -89,7 +89,7 @@ export async function armedConsoles(root: string, now = Date.now()): Promise<Arm
 // convention is a lineage of one.
 // ponytail: lineage is read from the name, not chief.sh's recorded predecessor link;
 // a renamed chain splits into two lineages (the "more than one chief" refusal
-// returns for it) — record the link in <inbox>.meta.json if that recurs.
+// returns for it). Record the link in <inbox>.meta.json if that recurs.
 export function chiefLineage(name: string): { prefix: string; key: string; rank: string } {
   const m = /^([A-Za-z0-9]+)-nextleg-(\d{4}-\d{2}-\d{2})([A-Z]{1,2})-(.+)$/.exec(name);
   if (!m) return { prefix: "", key: `singleton:${name}`, rank: "" };
@@ -108,7 +108,7 @@ const CHIEF_ALIAS = /^chief:([A-Za-z0-9_.-]+)$/i;
 const describeConsoles = (live: (LiveConsole & { busy?: boolean })[]) => live.map(c => `${c.name} — hb=${c.hb} (${new Date(c.hb * 1000).toISOString()}) bucket=${c.bucket} project=${c.project}${c.busy ? " (busy)" : ""}`).join("\n");
 
 // Same refusals as chief-kit/inbox-send.sh (empty, path separator, `..`,
-// whitespace) — the path is built from this value. The router's charset already
+// whitespace). The path is built from this value. The router's charset already
 // excludes `/` and whitespace; `..` and empty are what reach here.
 export function consoleInboxPath(root: string, name: string): string | null {
   if (name === "" || /[\\/\s]/.test(name) || name.includes("..")) return null;
@@ -157,7 +157,7 @@ export async function routeToConsole(
   reply: ConsoleReplyFn,
 ): Promise<void> {
   // The append is the delivery. A failed ack after it must not throw out of
-  // handleInbound: handleBatch would tell the operator "could not be queued —
+  // handleInbound: handleBatch would tell the operator "could not be queued,
   // please resend" for a message that WAS queued, manufacturing a duplicate.
   const say = async (text: string, name?: string) => {
     try { await reply(msg.chat_id, text, name); }
@@ -228,7 +228,7 @@ export async function routeToConsole(
   if (!file) return;
   // Append only to an inbox a chief already armed; never create one, so a typo
   // cannot open a mailbox nobody reads. The append itself is the existence
-  // check — no separate existsSync() step left to race.
+  // check, no separate existsSync() step left to race.
   const delivered = await appendIfExists(file, `- ${hhmm()} [telegram from=${msg.from} chat=${msg.chat_id}] ${foldLine(text)}`);
   if (!delivered) { await say(`⚠️ no chief "${name}" is listening (it has not armed its inbox) — nothing was sent.`); return; }
   const busy = (await armedConsoles(root)).some(c => c.name === name && c.busy);
@@ -370,7 +370,7 @@ export async function speakOnSatellite(satellite: string, text: string, env: Rec
   if (!res.ok) throw new Error(`Home Assistant announce failed: HTTP ${res.status}`);
 }
 
-// `send-file` — hand a local file to the operator's Telegram chat.
+// `send-file`. Hand a local file to the operator's Telegram chat.
 // Validates here (missing / not a file / over the Bot API's 50 MB cap are refused with
 // a clear error and a non-zero exit, nothing queued), renders a markdown spec or plan
 // to a standalone phone-readable HTML file first, then queues one `document_path`
@@ -598,7 +598,7 @@ export async function queueFile(root: string, chat: number, path: string, captio
 }
 
 // CLI: `bun chief-route.ts send-file <chat_id> <path> [caption...]` queues a file (above).
-// CLI: `bun chief-route.ts reply [--chief <name>] [--satellite <entity_id>] <chat_id> <text...>` — the chief's reply
+// CLI: `bun chief-route.ts reply [--chief <name>] [--satellite <entity_id>] <chat_id> <text...>`, the chief's reply
 // path. Appends to the same per-chat outbox every other bridge reply uses; the
 // running poller flushes it. Dynamic import: poller.ts imports this module, so a
 // static import back would be a cycle.

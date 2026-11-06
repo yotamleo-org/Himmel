@@ -1,12 +1,12 @@
 // scripts/telegram/quota-gauge.ts
-// WS9 cross-lane quota-gauge ledger — append helper + reader
+// WS9 cross-lane quota-gauge ledger, append helper + reader
 // (Task 2 adds the reader; this file ships the path resolver, the record
 // schema, and the append helper).
 //
 // A PASSIVE observability layer: one append-only JSONL ledger keyed by
 // lane, ONE read-only reader. Writers piggyback existing touchpoints; this
 // module NEVER routes/arms/spawns/blocks (AC10). The ledger rests on atomic
-// single-line O_APPEND (AC0 — Windows Git Bash atomicity gate PASSED 5/5).
+// single-line O_APPEND (AC0, Windows Git Bash atomicity gate PASSED 5/5).
 //
 // Byte-identical twin of scripts/lib/quota-gauge-ledger.sh (the bash append
 // helper used by the in-hook Claude writer, Task 3): both emit the canonical
@@ -18,9 +18,9 @@ import { homedir } from "node:os";
 // glm remains readable for historical ledgers consumed by observability.
 export type Lane = "glm" | "codex" | "claude" | "alibaba";
 
-// Canonical record schema — keys in this EXACT order (the byte-identical
+// Canonical record schema. Keys in this EXACT order (the byte-identical
 // contract with the bash twin). ALL keys always present; null where
-// unobservable — never omit, never fabricate. The schema stays
+// unobservable, never omit, never fabricate. The schema stays
 // observation-only: no per-row TTL, no token-cost counter, no
 // parallel-writer column (the atomic single-line append is the integrity
 // guarantee, not a lock) (AC23/T23).
@@ -42,7 +42,7 @@ export type QuotaGaugeRecord = {
 };
 
 // Ledger path resolver. $HIMMEL_QUOTA_GAUGE_LEDGER if set, else
-// <HOME>/.himmel/quota-gauge.jsonl. PURE — no fs mutation; the dir is created
+// <HOME>/.himmel/quota-gauge.jsonl. PURE, no fs mutation; the dir is created
 // on append (appendQuotaGauge), not on resolve. `env` is injectable for tests.
 export function ledgerPath(env: Record<string, string | undefined> = process.env): string {
   const override = env.HIMMEL_QUOTA_GAUGE_LEDGER;
@@ -51,7 +51,7 @@ export function ledgerPath(env: Record<string, string | undefined> = process.env
   return join(home, ".himmel", "quota-gauge.jsonl");
 }
 
-// Minimal JSON string escape — matches the bash twin's _qg_json_str.
+// Minimal JSON string escape. Matches the bash twin's _qg_json_str.
 function jsonStr(s: string): string {
   return '"' + s
     .replace(/\\/g, "\\\\")
@@ -68,7 +68,7 @@ function jsonVal(v: number | string | boolean | null | undefined): string {
   return jsonStr(v);
 }
 
-// Canonical serialization — QUOTA_GAUGE_FIELDS order, byte-identical with the
+// Canonical serialization, QUOTA_GAUGE_FIELDS order, byte-identical with the
 // bash twin's quota_gauge_row. Exported so the byte-identical test (T22) can
 // compare against bash --emit directly.
 export function serializeQuotaGauge(row: QuotaGaugeRecord): string {
@@ -102,7 +102,7 @@ export function appendQuotaGauge(row: QuotaGaugeRecord, path?: string): void {
 // Freshness budget per lane (seconds): a row older than its lane's budget is
 // stale. GLM re-queries on a ~5h cycle but is polled per-dispatch (2min); Codex
 // is a rare piggyback probe (weekly window → 1h); Claude (budget 0) is the
-// "dimly observed" lane — a threshold trip writes the ACTUAL %, but with budget
+// "dimly observed" lane. A threshold trip writes the ACTUAL %, but with budget
 // 0 it is never fresh unless a trip fired at `nowMs`, so it reads UNKNOWN
 // between trips (dim-lane honesty, never a fabricated number).
 export const LANE_BUDGET_S: Record<Lane, number> = { glm: 120, codex: 3600, claude: 0, alibaba: 3600 };
@@ -112,7 +112,7 @@ const LANES: Lane[] = ["glm", "codex", "claude", "alibaba"];
 // `known` iff the latest row for the lane is VISIBLE (used_pct !== null) AND
 // fresh; otherwise `unknown` (no row / invisible / stale). `row` still carries
 // the last-known reading even when unknown-because-stale, so a consumer can
-// show it as "last seen" — `fresh`/`status` gate whether to TRUST it.
+// show it as "last seen".`fresh`/`status` gate whether to TRUST it.
 export type LaneStatus = { lane: Lane; row: QuotaGaugeRecord | null; fresh: boolean; status: "known" | "unknown" };
 
 function laneVerdict(lane: Lane, row: QuotaGaugeRecord, nowMs: number): LaneStatus {
@@ -126,7 +126,7 @@ function laneVerdict(lane: Lane, row: QuotaGaugeRecord, nowMs: number): LaneStat
 
 // Latest-per-lane over the append-only ledger, scanning NEWEST→oldest. A lane
 // with no row (or not found within `lookbackN` scanned rows) is UNKNOWN with a
-// null row — never a fabricated 0/100. The bounded look-back keeps an absent
+// null row, never a fabricated 0/100. The bounded look-back keeps an absent
 // lane from forcing a full-file walk and stops a GLM burst from evicting a
 // still-fresh row of another lane (both lanes are found before the bound bites).
 export function quotaGaugeRead(p: { path?: string; nowMs?: number; lookbackN?: number } = {}): Record<Lane, LaneStatus> {
@@ -147,7 +147,7 @@ export function quotaGaugeRead(p: { path?: string; nowMs?: number; lookbackN?: n
   for (let i = lines.length - 1; i >= 0; i--) {
     if (found.size === LANES.length || visited >= lookbackN) break;
     const line = lines[i];
-    if (line.trim() === "") continue;              // trailing newline / blank — not a row
+    if (line.trim() === "") continue;              // trailing newline / blank, not a row
     visited++;
     let row: QuotaGaugeRecord;
     try { row = JSON.parse(line) as QuotaGaugeRecord; } catch { continue; }  // truncated/garbled last line skipped (T15)

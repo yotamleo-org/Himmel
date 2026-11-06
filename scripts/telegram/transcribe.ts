@@ -3,14 +3,14 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 
 // Local whisper.cpp transcription. Backend decision (operator):
-// whisper.cpp — free + offline + multi-language; do NOT fold into gemini.
+// whisper.cpp, free + offline + multi-language; do NOT fold into gemini.
 // Pipeline: ffmpeg (OGG/Opus → 16kHz mono WAV, whisper.cpp's required input)
 // → whisper-cli (-l auto for multi-language detection) → stdout transcript.
 //
 // Binary/model resolution: env override first, else the default install dir
-// (~/.himmel/whisper — setup steps in scripts/telegram/README.md), ffmpeg from PATH.
+// (~/.himmel/whisper, setup steps in scripts/telegram/README.md), ffmpeg from PATH.
 // WHISPER_CLI defaults to `whisper-cli` found on PATH (pacman/brew whisper-cpp),
-// then WHISPER_DIR/whisper-cli. Env vars are read at poller start — restart the
+// then WHISPER_DIR/whisper-cli. Env vars are read at poller start. Restart the
 // bridge after any change.
 const WHISPER_DIR = process.env.WHISPER_DIR ?? join(homedir(), ".himmel", "whisper");
 const WHISPER_CLI = process.env.WHISPER_CLI ?? Bun.which("whisper-cli") ?? join(WHISPER_DIR, "whisper-cli");
@@ -19,7 +19,7 @@ const WHISPER_CLI = process.env.WHISPER_CLI ?? Bun.which("whisper-cli") ?? join(
 const WHISPER_MODEL = process.env.WHISPER_MODEL ?? join(WHISPER_DIR, "ggml-small.bin");
 const FFMPEG = process.env.FFMPEG_BIN ?? "ffmpeg";
 // Per-step bound: a hung ffmpeg/whisper must not wedge the ingest loop forever.
-// Malformed env values must not become NaN/0 — setTimeout(NaN|0) fires
+// Malformed env values must not become NaN/0, setTimeout(NaN|0) fires
 // immediately, killing every child at spawn with a misleading "ffmpeg failed".
 const RAW_TIMEOUT_MS = Number(process.env.TRANSCRIBE_TIMEOUT_MS ?? 120_000);
 const STEP_TIMEOUT_MS = Number.isFinite(RAW_TIMEOUT_MS) && RAW_TIMEOUT_MS > 0 ? RAW_TIMEOUT_MS : 120_000;
@@ -45,7 +45,7 @@ export async function realExec(cmd: string[], timeoutMs: number): Promise<ExecRe
 }
 
 // Transcribe an audio file to text. Null on ANY failure (missing binaries,
-// conversion error, whisper error, empty/silent audio) — logged, never throws;
+// conversion error, whisper error, empty/silent audio), logged, never throws;
 // the caller owns the user-facing "couldn't transcribe" reply.
 export async function transcribe(audioPath: string, exec: ExecFn = realExec): Promise<string | null> {
   const wav = audioPath + ".wav";
@@ -68,7 +68,7 @@ export async function transcribe(audioPath: string, exec: ExecFn = realExec): Pr
     console.error(`[transcribe] failed for ${audioPath}: ${e}`);
     return null;
   } finally {
-    // WAV is ours (created by ffmpeg) — clean up. Log non-ENOENT failures:
+    // WAV is ours (created by ffmpeg), clean up. Log non-ENOENT failures:
     // Windows EBUSY/EPERM would silently leak WAVs; logging surfaces them
     // while still degrading gracefully (the transcript was already captured).
     await unlink(wav).catch((e: NodeJS.ErrnoException) => {

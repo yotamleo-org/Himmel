@@ -5,7 +5,7 @@ import { join } from "node:path";
 const REPO_ROOT = join(import.meta.dir, "..", "..");
 
 // Strip line + block comments so prose (e.g. "the hermes Codex dispatch") does
-// not false-trip the symbol scan — only CODE is checked.
+// not false-trip the symbol scan. Only CODE is checked.
 function code(path: string): string {
   return readFileSync(path, "utf8").replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
 }
@@ -13,7 +13,7 @@ function code(path: string): string {
 // AC10 passivity: the WS9 modules add NO write/dispatch/arm/spawn symbol beyond
 // the append helper. (Task 3's auto-arm-on-cap.sh in-hook writer + Task 6's
 // spawn-glm.ts append have their own scoped checks; spawn-glm.ts sits in a host
-// that pre-exists an arm call, so a whole-file grep there would false-fail — it
+// that pre-exists an arm call, so a whole-file grep there would false-fail, it
 // is asserted at its added-line scope in spawn-glm's own test.)
 test("AC10 passivity: quota-gauge.ts + quota-gauge-codex.ts reach no arm/dispatch/spawn symbol", () => {
   const FORBIDDEN = /arm-resume|runSession|spawn-glm|schtasks|\brouter\b|\bdispatch\b/;
@@ -24,7 +24,7 @@ test("AC10 passivity: quota-gauge.ts + quota-gauge-codex.ts reach no arm/dispatc
 
 // AC10 passivity, Task 3 half: the WS9 lines grafted into the auto-arm-on-cap.sh
 // watchdog reach no arm/spawn/schedule symbol. Scoped to the sentinel-delimited
-// WS9 blocks — a whole-file grep would false-fail on the host's pre-existing
+// WS9 blocks. A whole-file grep would false-fail on the host's pre-existing
 // arm-resume call, which is OUTSIDE WS9's envelope. The "arm-threshold" source
 // label is a data string, not a call, so the forbidden set names the dangerous
 // SYMBOLS (arm-resume/spawn/schtasks/...), never a bare "arm".

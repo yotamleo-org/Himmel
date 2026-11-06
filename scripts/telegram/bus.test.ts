@@ -40,7 +40,7 @@ test("append + cursor reads only complete lines; partial held until newline", as
   expect(got.length).toBe(0);                                    // partial NOT parsed
 });
 
-// appendIfExists must be O_CREAT-free — the previous
+// appendIfExists must be O_CREAT-free, the previous
 // existsSync()-then-appendFile() pair had a TOCTOU window where a file
 // deleted between the two calls was silently recreated by the append.
 test("appendIfExists appends to a file that already exists and returns true", async () => {
@@ -118,11 +118,11 @@ test("atomicWrite writes content and leaves no .tmp file behind", async () => {
   expect(existsSync(p + ".tmp")).toBe(false);
 });
 
-// A cursor PAST EOF (the inbox file shrank under it — a restore
+// A cursor PAST EOF (the inbox file shrank under it, a restore
 // copied an older inbound.jsonl next to a newer cursor) made readNewLines
 // return [] on every tick forever, silently: 8 operator messages were dropped
 // on 2026-09-05. `start > total` is not "nothing new", it is an INVALID
-// cursor — reset it to EOF (never to 0: replaying a 345 KB inbox is its own
+// cursor. Reset it to EOF (never to 0: replaying a 345 KB inbox is its own
 // incident) and make the loss visible, in the log AND to the operator.
 test("readNewLines: a cursor beyond EOF is invalid — reset to EOF, log loudly, notify once", async () => {
   const r = root();
@@ -139,7 +139,7 @@ test("readNewLines: a cursor beyond EOF is invalid — reset to EOF, log loudly,
   try { got = await readNewLines(f, cur, (info) => { seen.push(info); }); }
   finally { console.error = origErr; }
 
-  expect(got).toEqual([]);                                    // this batch is gone — it is not on disk
+  expect(got).toEqual([]);                                    // this batch is gone, it is not on disk
   expect(await Bun.file(cur).text()).toBe(String(size));      // reset to EOF, not 0
   expect(logs.some(l => l.includes("[bus] cursor") && l.includes("beyond EOF"))).toBe(true);
   expect(seen).toEqual([{ file: f, cursor: size + 7000, size }]);
@@ -153,7 +153,7 @@ test("readNewLines: a cursor beyond EOF is invalid — reset to EOF, log loudly,
 });
 
 // Negative control for the above: cursor EXACTLY at EOF is the ordinary
-// "nothing new since last tick" case that runs on every idle poll — it must
+// "nothing new since last tick" case that runs on every idle poll, it must
 // stay silent, or the fix trades a silent drop for a per-tick false alarm.
 test("readNewLines: cursor exactly at EOF stays silent (no log, no notice)", async () => {
   const r = root();
@@ -174,7 +174,7 @@ test("readNewLines: cursor exactly at EOF stays silent (no log, no notice)", asy
 });
 
 // A notice that throws (Telegram down, chat unreachable) must not take the
-// cursor reset with it — the reset is the part that unwedges the bridge.
+// cursor reset with it. The reset is the part that unwedges the bridge.
 test("readNewLines: a failing reset notice still leaves the cursor repaired", async () => {
   const r = root();
   const f = join(r, "inbound.jsonl"); const cur = f + ".cursor";
@@ -188,19 +188,19 @@ test("readNewLines: a failing reset notice still leaves the cursor repaired", as
   try { expect(await readNewLines(f, cur, async () => { throw new Error("telegram down"); })).toEqual([]); }
   finally { console.error = origErr; }
   expect(await Bun.file(cur).text()).toBe(String(size));
-  // The notice failure must not vanish — log it, or the
+  // The notice failure must not vanish. Log it, or the
   // operator has no way to learn the repair happened at all.
   expect(logs.some(l => l.includes("[bus]") && l.includes("notice failed"))).toBe(true);
 });
 
 // A MISSING inbox file must not bypass
 // the repair. Before this fix, readFile(file) threw on ENOENT and
-// repairCursorBeyondEof returned false without touching the cursor — exactly
+// repairCursorBeyondEof returned false without touching the cursor, exactly
 // the restore/shadow-copy class that caused the original incident (a stale
 // cursor survives next to an inbox file that is now genuinely GONE). ENOENT
 // is treated as an empty inbox (total=0), so the ordinary start > total
 // branch fires: the cursor resets to 0, the reset is logged, and the notice
-// fires — same contract as any other beyond-EOF repair, just with nothing on
+// fires, same contract as any other beyond-EOF repair, just with nothing on
 // disk to report as "beyond".
 test("repairCursorBeyondEof: a stale cursor over a MISSING inbox file is still repaired", async () => {
   const r = root();
@@ -245,8 +245,8 @@ test("repairCursorBeyondEof: sizes the inbox with stat, never loading it", async
 // Repairing a beyond-EOF cursor AFTER the
 // poll tick's own ingestUpdates append discards that tick's just-appended
 // messages too, because the reset lands on the POST-append EOF and the fresh
-// lines sit below it. This is the ordering defect itself — the ordering
-// PROPERTY of repairCursorBeyondEof relative to a simulated ingest append —
+// lines sit below it. This is the ordering defect itself, the ordering
+// PROPERTY of repairCursorBeyondEof relative to a simulated ingest append,
 // not a restatement of the reset/log/notice contract above, and not itself a
 // pin on the poller's production call site (see poller.test.ts's
 // repairThenIngest test for that: calling repairCursorBeyondEof and
@@ -263,7 +263,7 @@ test("repairCursorBeyondEof before the tick's own append preserves that append",
   console.error = () => {};
   try {
     // Fixed order: repair FIRST (the ordering this ticket ships), THEN the
-    // tick's own append (simulating ingestUpdates) — the appended line lands
+    // tick's own append (simulating ingestUpdates), the appended line lands
     // above the just-repaired cursor and IS read.
     await repairCursorBeyondEof(f, cur);
     await appendLine(f, JSON.stringify({ n: 2 }));
@@ -284,10 +284,10 @@ test("repairCursorBeyondEof after the append loses it — why the poller repairs
   try {
     // The order this branch moved AWAY from, pinned here as the negative
     // case of repairCursorBeyondEof's own ordering property (NOT a pin on
-    // the poller's production call site — that protection lives in
+    // the poller's production call site. That protection lives in
     // poller.test.ts's repairThenIngest test, which goes red if main()'s
     // call is ever moved back below ingestUpdates): the tick's own append
-    // happens FIRST, THEN repair — the reset lands on the POST-append EOF,
+    // happens FIRST, THEN repair. The reset lands on the POST-append EOF,
     // so the appended line sits below the repaired cursor and is swallowed
     // with the lost bytes.
     await appendLine(f, JSON.stringify({ n: 2 }));
@@ -297,7 +297,7 @@ test("repairCursorBeyondEof after the append loses it — why the poller repairs
   } finally { console.error = origErr; }
 });
 
-// Coms layer — peer-send / peer-recv between seats over this bus.
+// Coms layer, peer-send / peer-recv between seats over this bus.
 import { peerSend, drainPeerInbox, peerInbox, peerLedger } from "./bus";
 
 test("peerSend appends ONE line to the target inbox and to a ledger that survives truncation", async () => {

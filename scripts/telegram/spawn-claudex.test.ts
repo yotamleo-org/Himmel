@@ -51,14 +51,14 @@ import { resolveFailfastWindowMs, resolveProfileSettings, transcriptDirFor } fro
 // runClaudexSharedDispatch trust-seeds
 // UNCONDITIONALLY (needsWorktreeAdd true or false), so every test below that
 // exercises it would otherwise read/rewrite the OPERATOR'S REAL ~/.claude.json
-// on every dispatch — slow (JSON parse/stringify of a live, 100KB+ file,
+// on every dispatch, slow (JSON parse/stringify of a live, 100KB+ file,
 // pushing already-borderline Windows subprocess timing over Bun's 5s default
-// test timeout — observed as spurious "lock release failed (rc=null)" +
+// test timeout, observed as spurious "lock release failed (rc=null)" +
 // EBUSY-on-cleanup once the timeout kills the process mid-dispatch) AND a
 // real side effect (leaves throwaway temp-worktree paths trusted in the
 // operator's live config forever). Point every ensureWorkspaceTrust call in
 // this file's tests at a scratch config instead. TRUST_WRITE_JITTER_MS=0
-// drops the (up to 500ms) launch-race jitter — the dedicated jitter behavior
+// drops the (up to 500ms) launch-race jitter. The dedicated jitter behavior
 // is exercised by scripts/lib/test-ensure-workspace-trust.sh, not here.
 process.env.WORKSPACE_TRUST_CONFIG = join(tmpdir(), `spawn-claudex-test-trust-${process.pid}.json`);
 process.env.TRUST_WRITE_JITTER_MS = "0";
@@ -131,7 +131,7 @@ test("composeClaudexWorkerPrompt shared mode: the merge verb names the PR base, 
 
 test("composeClaudexWorkerPrompt shared mode: the permitted integration op is publishable under the prompt's own push rules (design fix)", () => {
   const p = composeClaudexWorkerPrompt("catch up the branch", "/tmp/cs/claudex-a-1", "feat/live-pr", { shared: true });
-  // The sanctioned base-integration verb is `git merge main` — a merge commit
+  // The sanctioned base-integration verb is `git merge main`, a merge commit
   // ADDS to history without rewriting any existing SHA, so the validating
   // session that owns the git surface can publish it with an ordinary
   // fast-forward push. No force-push is ever required by a permitted op.
@@ -141,13 +141,13 @@ test("composeClaudexWorkerPrompt shared mode: the permitted integration op is pu
   expect(p).toContain("run `git merge main` and resolve any conflicts");
   // Self-consistency guard: the prompt must never PERMIT a SHA-rewriting
   // integration op (rebase), because publishing a rewritten branch requires
-  // the force-push the same prompt bans — that carve-out was inert as written.
+  // the force-push the same prompt bans, that carve-out was inert as written.
   // `rebase` may appear only inside a ban.
   // Broader than the original `MAY run …`: any permissive verb in front of
   // `git rebase` reopens the inert carve-out this PR removed.
   expect(p).not.toMatch(/(?:run|allow|permit(?:ted)?|may)\s+[`'"]?git rebase(?:\s+main)?/i);
   expect(p).toMatch(/do NOT reset\/rebase\/amend\/force-anything/i);
-  // force-push stays named-and-banned — and nothing the prompt permits needs it.
+  // force-push stays named-and-banned, and nothing the prompt permits needs it.
   // force-push must appear in a BANNED context, not merely be named.
   expect(p).toMatch(/force-push.*(?:banned|never)/i);
   expect(p).toContain("catch up the branch");
@@ -389,7 +389,7 @@ test("refuseNonPrimaryCwd: falls back to a path-only diagnostic when the primary
 
 test("detectNonPrimaryCwd: drops primaryPath when it would resolve to the refused cwd itself (standalone repo nested under .claude/worktrees)", () => {
   // A plain nested clone reports a RELATIVE common-dir, so the "primary"
-  // resolves back to the very cwd being refused — naming it would tell the
+  // resolves back to the very cwd being refused, naming it would tell the
   // caller to cd where they already are.
   const probe = () => ({ gitDir: ".git", commonDir: ".git" });
   const r = detectNonPrimaryCwd("/x/.claude/worktrees/nested-clone", probe);
@@ -495,7 +495,7 @@ test("detectNonPrimaryCwd (real git): primary checkout -> ok; its linked worktre
   } finally { removeFixture(repo); }
 }, CX_GIT_TEST_TIMEOUT_MS);
 
-// --- real CLI end-to-end — the guard fires from the actual
+// --- real CLI end-to-end, the guard fires from the actual
 // entrypoint, before any worktree/branch side-effect, against a REAL
 // `git worktree add`. ---
 
@@ -522,7 +522,7 @@ test("spawn-claudex real CLI: dispatch from the PRIMARY checkout is NOT caught b
   try {
     // --force bypasses the codex-weekly-bank preflight (which reads the REAL
     // operator bank cache and could otherwise flake this test on whatever the
-    // live quota / cache freshness happens to be) — irrelevant to what this test
+    // live quota / cache freshness happens to be), irrelevant to what this test
     // proves: that the guard itself does not fire from a primary cwd.
     const r = Bun.spawnSync(["bun", "scripts/telegram/spawn-claudex.ts", "do the task", "--cwd", repo, "--force"], {
       cwd: resolve("."), stdout: "pipe", stderr: "pipe", timeout: 20_000,
@@ -538,20 +538,20 @@ test("spawn-claudex real CLI: dispatch from the PRIMARY checkout is NOT caught b
 //
 // Before this pre-check, spawn-claudex.ts had no EXPLICIT pre-creation
 // PHI/egress guard call, but the picture was not "no refusal until launch"
-// either — it split into two cases, both worse than a direct refusal:
+// either. It split into two cases, both worse than a direct refusal:
 //   - default path (auth preflight ON): probeClaudexAuth spawns the launcher
 //     with `--preflight-only` and `cwd: absCwd` (spawn-claudex.ts's
 //     probeClaudexAuth), and the launcher's UNCONDITIONAL
 //     `guard_workspace "$CWD" "this workspace"` (claude-codex, before the
-//     `--preflight-only` branch) runs first — so a PHI-marked absCwd WAS
+//     `--preflight-only` branch) runs first, so a PHI-marked absCwd WAS
 //     already refused pre-creation. But that exit 3 doesn't map to
 //     probeClaudexAuth's "unavailable" (CLAUDEX_PREFLIGHT_GAP_EXIT) or "ok"
 //     cases, so it falls into the generic "fatal" bucket and main() reports
 //     it as "codex auth preflight reports a PERMANENT failure ... fix the
-//     claude-codex config" — a real refusal, MISATTRIBUTED as a credential
+//     claude-codex config", a real refusal, MISATTRIBUTED as a credential
 //     problem, exit 2 (see the RED test below, which observed exactly this).
 //   - `--skip-auth-preflight` path: probeClaudexAuth is never called, so
-//     nothing screens absCwd pre-creation — the worktree, branch, session dir
+//     nothing screens absCwd pre-creation, the worktree, branch, session dir
 //     and meta.json all get minted, and only the eventual launch-time screen
 //     (against the WORKER's worktree) has a chance to refuse (see the
 //     dedicated RED test for this path below).
@@ -583,22 +583,22 @@ test("spawn-claudex real CLI: a PHI-marked checkout is REFUSED (exit 3) before a
 
 // This is the case the pre-check actually RESCUES: --skip-auth-preflight
 // never calls probeClaudexAuth at all, so before this pre-check NOTHING
-// screened absCwd pre-creation — the worktree, branch, session dir and
+// screened absCwd pre-creation, the worktree, branch, session dir and
 // meta.json all got minted, and the ACTUAL worker launch (executeClaudexRun,
 // cwd:worktree) is what eventually refused: the worktree lives PHYSICALLY at
 // <absCwd>/.claude/worktrees/<slug>, and guard_workspace's `.salus` check is a
 // plain `[ -e ... ]` ancestor walk on the filesystem (not git-tracked
 // content), so it climbs from the worktree straight back up into absCwd and
 // finds the marker there even though `git worktree add` never copied it.
-// The exit code even comes out the same (3) — the pre-fix REGRESSION is not
+// The exit code even comes out the same (3). The pre-fix REGRESSION is not
 // in the number, it's WHERE it happens and what surfaces: the worktree,
 // branch, session dir and meta.json all exist by the time that refusal
 // fires, and the launcher's "PHI-marked" message lands in the WORKER's own
-// captured log (run.log / transcript), never in spawn-claudex's own stderr —
+// captured log (run.log / transcript), never in spawn-claudex's own stderr,
 // so an operator watching this dispatch sees a silently-orphaned session, not
 // a refusal. Post-fix, the pre-check's own console.error/stderr forward makes
 // "PHI-marked" appear in spawn-claudex's OWN stderr, and nothing gets minted
-// at all — both of those are what this test actually discriminates on.
+// at all. Both of those are what this test actually discriminates on.
 test("spawn-claudex real CLI: a PHI-marked checkout is REFUSED (exit 3) even with --skip-auth-preflight, before any worktree/branch/session side-effect", () => {
   const { repo } = initHermeticRepo("cxcli-phi-skipauth-");
   const fakeHome = mkdtempSync(join(tmpdir(), "cxcli-phi-skipauth-home-"));
@@ -619,11 +619,11 @@ test("spawn-claudex real CLI: a PHI-marked checkout is REFUSED (exit 3) even wit
 // Negative control (EXPANSION): without this, a broken pre-check
 // that refuses EVERY dispatch would also pass the RED test above. A clean
 // checkout must sail past the pre-check and reach the (later, unrelated)
-// codex auth preflight, which then refuses for its own reason — no real
-// cli-proxy-api is listening in this sandbox — landing on exit 2, not 3.
+// codex auth preflight, which then refuses for its own reason, no real
+// cli-proxy-api is listening in this sandbox, landing on exit 2, not 3.
 // CLAUDEX_AUTH_RETRY_DELAYS="0.01" (10ms): an all-ZERO schedule is REJECTED by
 // parseAuthRetryDelaysMs (falls back to the 10s/20s/30s default, which made
-// this test time out against the 20s spawn budget below) — "0.01" is the
+// this test time out against the 20s spawn budget below), "0.01" is the
 // smallest nonzero schedule, one 10ms backoff, so the preflight still exhausts
 // its (tiny) budget fast.
 test("spawn-claudex real CLI: a CLEAN checkout is NOT caught by the PHI/egress pre-check — proceeds to the codex auth preflight (negative control)", () => {
@@ -642,7 +642,7 @@ test("spawn-claudex real CLI: a CLEAN checkout is NOT caught by the PHI/egress p
         // CODEX_PROXY_BASE_URL (127.0.0.1:8317). If a real CLIProxyAPI happened
         // to be up there AND accepted this bogus key, the auth probe would
         // read healthy and the dispatch would proceed to mint a worktree and
-        // launch a real worker — measured (see scripts/claude-codex) at rc=20
+        // launch a real worker, measured (see scripts/claude-codex) at rc=20
         // (transient) against a refused connection, so this still exercises
         // the same "sails past the pre-check, stops at auth" path.
         CODEX_PROXY_BASE_URL: "http://127.0.0.1:1",
@@ -826,7 +826,7 @@ test("runClaudexSharedDispatch: a dispatch mutates NO git config — behavioural
     // Seed the operator config a push fence is most tempted to touch:
     // url.<base>.pushInsteadOf redirects where a push LANDS without naming a
     // remote or a pushurl. It is the operator's to set, so the dispatch must
-    // leave it alone — neither clobber it nor "helpfully" clear it. (The
+    // leave it alone, neither clobber it nor "helpfully" clear it. (The
     // worker-side hook separately DENIES a worker writing one; that is the
     // classifier's job, not the dispatcher's.)
     run(["config", "url.https://github.com/.pushInsteadOf", "git@github.com:"], repo);
@@ -911,12 +911,12 @@ test("parseClaudexArgs: --skip-auth-preflight is an EXPLICIT per-invocation flag
 
 // the ambient-env half of this test used to be a source grep
 // (`expect(src.includes("CLAUDEX_SKIP_AUTH_PREFLIGHT")).toBe(false)`), which
-// only catches literal reintroduction of that identifier — a differently-
+// only catches literal reintroduction of that identifier, a differently-
 // named ambient var wired to the same effect would sail through unnoticed.
 // Proven behaviorally instead, reusing the closed-port fixture from the
 // "CLEAN checkout ... proceeds to the codex auth preflight" negative control
 // above: setting the retired env var (no --skip-auth-preflight flag) must
-// NOT change the outcome — the auth preflight still runs and still refuses.
+// NOT change the outcome. The auth preflight still runs and still refuses.
 test("no AMBIENT env can bypass the auth gate — CLAUDEX_SKIP_AUTH_PREFLIGHT has zero effect without the explicit flag (codex-adv CR)", () => {
   const { repo } = initHermeticRepo("cxcli-envbypass-");
   const fakeHome = mkdtempSync(join(tmpdir(), "cxcli-envbypass-home-"));
@@ -928,12 +928,12 @@ test("no AMBIENT env can bypass the auth gate — CLAUDEX_SKIP_AUTH_PREFLIGHT ha
       env: {
         ...process.env, CLIPROXY_API_KEY: "test-key", HOME: fakeHome, CLAUDEX_AUTH_RETRY_DELAYS: "0.01",
         CODEX_PROXY_BASE_URL: "http://127.0.0.1:1",
-        CLAUDEX_SKIP_AUTH_PREFLIGHT: "1", // the retired ambient bypass — must be inert
+        CLAUDEX_SKIP_AUTH_PREFLIGHT: "1", // the retired ambient bypass, must be inert
       },
     });
     const err = r.stderr.toString();
     // Same outcome as the no-env negative control: the auth preflight still
-    // ran and still refused (exit 2) — if the env var bypassed it, the
+    // ran and still refused (exit 2). If the env var bypassed it, the
     // dispatch would instead sail past to a LATER gate (worktree minted or a
     // different refusal entirely).
     expect(r.exitCode).toBe(2);
@@ -958,7 +958,7 @@ test("parseClaudexArgs: --branch and --name are mutually exclusive", () => {
   expect((r as any).error).toMatch(/mutually exclusive/);
 });
 
-// --- --brief-file — a multi-line brief reaches the worker via ONE
+// --- --brief-file. A multi-line brief reaches the worker via ONE
 // literal command, instead of the cd/$(cat)/var compound that defeats the
 // allow-rule prefix and the native permission matcher. Mirrors the
 // spawn-glm.test.ts block from part 1. ---
@@ -985,7 +985,7 @@ test("parseClaudexArgs --brief-file: value captured, missing value refuses, mutu
   expect(bothReversed.ok).toBe(false);
 });
 
-// Real CLI end-to-end — the flag's contract fires from the actual entrypoint,
+// Real CLI end-to-end, the flag's contract fires from the actual entrypoint,
 // before any side effect (no worktree minted, no session-dir printed), against
 // the same hermetic-repo pattern the CLI tests use above.
 test("spawn-claudex real CLI: missing / unreadable / empty / both-supplied --brief-file each REFUSE (exit 2, usage error, no dispatch)", () => {
@@ -1009,7 +1009,7 @@ test("spawn-claudex real CLI: missing / unreadable / empty / both-supplied --bri
     expect(r2.stderr.toString()).toMatch(/could not be read/);
     expect(r2.stdout.toString()).not.toContain("session-dir:");
 
-    // empty / whitespace-only — readable but contentless, same fail-closed gate
+    // empty / whitespace-only, readable but contentless, same fail-closed gate
     const emptyPath = join(dir, "empty.md");
     writeFileSync(emptyPath, "   \n\t\n");
     const r3 = Bun.spawnSync(["bun", "scripts/telegram/spawn-claudex.ts", "--brief-file", emptyPath, "--cwd", dir], {
@@ -1019,7 +1019,7 @@ test("spawn-claudex real CLI: missing / unreadable / empty / both-supplied --bri
     expect(r3.stderr.toString()).toMatch(/is empty/);
     expect(r3.stdout.toString()).not.toContain("session-dir:");
 
-    // both supplied — the clean mutual-exclusion error names both forms
+    // both supplied, the clean mutual-exclusion error names both forms
     const briefPath = join(dir, "brief.md");
     writeFileSync(briefPath, "the file brief\n");
     const r4 = Bun.spawnSync(["bun", "scripts/telegram/spawn-claudex.ts", "inline task", "--brief-file", briefPath, "--cwd", dir], {
@@ -1037,9 +1037,9 @@ test("spawn-claudex real CLI: a valid --brief-file is READ and becomes the task 
     const briefPath = join(dir, "brief.md");
     writeFileSync(briefPath, "Do the multi-line task from the brief file.\nSecond line.\n");
     // --force bypasses the codex-weekly-bank preflight (it reads the REAL
-    // operator ledger — same reasoning as the happy-path test
+    // operator ledger, same reasoning as the happy-path test
     // above). A non-himmel --cwd then makes the dispatch refuse at the NEXT
-    // gate after the brief read ("is not a himmel checkout") — proving the
+    // gate after the brief read ("is not a himmel checkout"), proving the
     // file was read, accepted as the task, and did NOT trip the missing-brief
     // usage error.
     const r = Bun.spawnSync(["bun", "scripts/telegram/spawn-claudex.ts", "--brief-file", briefPath, "--cwd", dir, "--force"], {
@@ -1065,7 +1065,7 @@ test("main() reads --brief-file BEFORE any side effect and its contents flow int
   expect(roundGuardIdx).toBeGreaterThan(-1);
   expect(composeIdx).toBeGreaterThan(-1);
   // the brief-file read precedes the missing-task usage gate, the round guard,
-  // the brief composition, and every side effect — a bad path refuses with no orphans
+  // the brief composition, and every side effect. A bad path refuses with no orphans
   expect(readIdx).toBeLessThan(usageGateIdx);
   expect(readIdx).toBeLessThan(roundGuardIdx);
   expect(readIdx).toBeLessThan(composeIdx);
@@ -1131,7 +1131,7 @@ test("parseClaudexArgs: --model accepts every allowed codex tier and refuses eve
 // --- codex weekly bank preflight (D4) -------------------------------------------
 
 // the source is the probe's TTL'd cache, NOT ~/.codex/logs_2.sqlite
-// (a log DB that never carried a quota field — its scan could only ever return
+// (a log DB that never carried a quota field, its scan could only ever return
 // null, which refused every dispatch).
 const NOW = Date.UTC(2026, 7, 17, 12, 0, 0);
 function bankCacheText(usedPct: number, extra: Record<string, unknown> = {}) {
@@ -1177,7 +1177,7 @@ test("fetchCodexWeeklyUsedPercent: a fresh cache yields the weekly used%", () =>
 });
 
 test("fetchCodexWeeklyUsedPercent: FAIL-CLOSED on a missing/stale/window-less cache", () => {
-  // Missing (the read throws) — null WITH a reason naming the probe.
+  // Missing (the read throws), null WITH a reason naming the probe.
   const missing = fetchCodexWeeklyUsedPercent("/home/t", NOW, 21600, () => { throw new Error("ENOENT"); });
   expect(missing.usedPct).toBeNull();
   expect(missing.reason).toMatch(/codex-usage-probe/);
@@ -1190,7 +1190,7 @@ test("fetchCodexWeeklyUsedPercent: FAIL-CLOSED on a missing/stale/window-less ca
   // Unparseable.
   expect(fetchCodexWeeklyUsedPercent("/home/t", NOW, 21600, () => "not json").usedPct).toBeNull();
 
-  // A cache with only a 5h window carries no weekly evidence — refuse, never
+  // A cache with only a 5h window carries no weekly evidence. Refuse, never
   // substitute the other window's number.
   const noWeekly = fetchCodexWeeklyUsedPercent("/home/t", NOW, 21600, () => JSON.stringify({
     limits: [{ limitId: "codex/secondary", usedPercent: 3, windowDurationMins: 300, resetsAt: Math.floor(NOW / 1000) + 3600 }],
@@ -1325,7 +1325,7 @@ test("runAuthPreflightWithBackoff: persistent unavailability returns not-ready a
 
 test("runAuthPreflightWithBackoff: worst case runs the FULL schedule (n+1 attempts, every delay intact) and never exceeds the deadline (codex-adv + coderabbit CR)", async () => {
   // A pure clock advanced by BOTH the sleep (its wait) and the probe (its full
-  // clamped timeout) — worst case: every probe burns its whole budget and the gap
+  // clamped timeout), worst case: every probe burns its whole budget and the gap
   // persists. The deadline reserves a probe allowance, so the advertised schedule
   // still runs end-to-end AND elapsed never passes the (honest) bound.
   let clock = 0;
@@ -1337,11 +1337,11 @@ test("runAuthPreflightWithBackoff: worst case runs the FULL schedule (n+1 attemp
   const r = await runAuthPreflightWithBackoff(probe, { delaysMs, sleep, now });
   expect(r.ready).toBe(false);
   expect(r.fatal).toBe(false);
-  expect(r.attempts).toBe(delaysMs.length + 1); // 4 attempts — the final wait IS followed by a probe
+  expect(r.attempts).toBe(delaysMs.length + 1); // 4 attempts, the final wait IS followed by a probe
   expect(slept).toEqual(delaysMs);              // every configured delay ran in full, none truncated
   // honest hard bound: Σdelays + (n+1) probe allowance (was a
   // hardcoded 12_000 literal that silently drifted from PROBE_TIMEOUT_MS
-  // when the constant was raised to 25s — import the real constant instead)
+  // when the constant was raised to 25s, import the real constant instead)
   expect(clock).toBeLessThanOrEqual(60_000 + 4 * PROBE_TIMEOUT_MS);
 });
 
@@ -1431,7 +1431,7 @@ test("auth preflight wiring: main() probes with backoff BEFORE the plan + worktr
   const src = readFileSync("scripts/telegram/spawn-claudex.ts", "utf8");
   expect(src.includes("runAuthPreflightWithBackoff((t) => probeClaudexAuth(")).toBe(true);
   expect(src.includes("parseAuthRetryDelaysMs(process.env.CLAUDEX_AUTH_RETRY_DELAYS")).toBe(true);
-  // the worker itself runs exactly once — no retry wrapper around runClaudexSession
+  // the worker itself runs exactly once, no retry wrapper around runClaudexSession
   expect(src.includes("run: runClaudexSession")).toBe(true);
   const preIdx = src.indexOf("runAuthPreflightWithBackoff((t) => probeClaudexAuth("); // the CALL in main, not the definition
   const planIdx = src.indexOf("planClaudexSharedSpawn(absCwd");
@@ -1443,7 +1443,7 @@ test("auth preflight wiring: main() probes with backoff BEFORE the plan + worktr
   expect(planIdx).toBeGreaterThan(-1);
   expect(planIdx).toBeLessThan(preIdx);
   expect(preIdx).toBeLessThan(wtIdx);
-  // refuse (abort) on !ready — covers BOTH pf.fatal (permanent) and exhausted transient
+  // refuse (abort) on !ready, covers BOTH pf.fatal (permanent) and exhausted transient
   const notReadyIdx = src.indexOf("if (!pf.ready)");
   expect(notReadyIdx).toBeGreaterThan(-1);
   expect(notReadyIdx).toBeLessThan(wtIdx);
@@ -1482,7 +1482,7 @@ test("claude-codex --preflight-only probes /v1/messages (NOT the registry) and e
 });
 
 test("claude-codex --preflight-only classifies REAL HTTP responses: 2xx->0, 503/auth_unavailable/429/5xx->20, 4xx->21, connect-fail->20 (live loopback endpoint, no production seam)", async () => {
-  // Drives the launcher's REAL curl against a controlled loopback server — no
+  // Drives the launcher's REAL curl against a controlled loopback server, no
   // env stand-in for the probe result (a production seam would let ambient env
   // fake this auth gate; coderabbit CR). Loopback keeps the trust-boundary check
   // happy. A missing key would exit 2 first, so pass a dummy CLIPROXY_API_KEY.
@@ -1490,7 +1490,7 @@ test("claude-codex --preflight-only classifies REAL HTTP responses: 2xx->0, 503/
   const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response(body, { status }) });
   const base = `http://127.0.0.1:${server.port}`;
   // ASYNC spawn (not spawnSync): spawnSync blocks this process's event loop, so
-  // the in-process Bun.serve above could never answer curl — every probe would
+  // the in-process Bun.serve above could never answer curl, every probe would
   // time out and read transient. Await the child instead.
   const run = async (s: number, b: string, urlOverride?: string): Promise<number> => {
     status = s; body = b;
@@ -1513,29 +1513,29 @@ test("claude-codex --preflight-only classifies REAL HTTP responses: 2xx->0, 503/
     expect(await run(401, "invalid api key")).toBe(21);               // bad key = fatal
     expect(await run(403, "forbidden")).toBe(21);                     // fatal
     expect(await run(404, "not found")).toBe(21);                     // fatal
-    // 408 is a probe TIMEOUT, not a deterministic auth failure —
+    // 408 is a probe TIMEOUT, not a deterministic auth failure,
     // this was the actual bug (worker 7): a healthy lane got misclassified fatal.
     expect(await run(408, "stream closed before response.completed")).toBe(20);
     // a 400 whose body complains about the model/params (not auth)
-    // PROVES the request reached the model layer through valid auth — reads healthy.
+    // PROVES the request reached the model layer through valid auth, reads healthy.
     expect(await run(400, '{"type":"invalid_request_error","message":"model gpt-5.6-sol does not support max_tokens=1"}')).toBe(0);
     // transport failure: nothing listening on this loopback port -> curl rc!=0,
     // http_code 000 -> transient, never healthy (codex-adv r9/r10). Bind an
-    // ephemeral port and release it rather than assuming a fixed one is free —
+    // ephemeral port and release it rather than assuming a fixed one is free,
     // a squatter on a hardcoded port would make this nondeterministic (coderabbit).
     const dead = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("") });
     const deadPort = dead.port;
     dead.stop(true);
     expect(await run(200, "x", `http://127.0.0.1:${deadPort}`)).toBe(20);
   } finally { server.stop(true); }
-}, 240_000); // sequential bash spawns are slow on Windows (observed ~9-10s each here) — well past bun-test's 5s default; the auth probe adds 2 more sequential calls (408, auth-proving 400)
+}, 240_000); // sequential bash spawns are slow on Windows (observed ~9-10s each here), well past bun-test's 5s default; the auth probe adds 2 more sequential calls (408, auth-proving 400)
 
 test("claude-codex --preflight-only: a stalled body (200 headers, then hang) is NOT healthy — curl transport rc wins (coderabbit/codex-adv r10)", async () => {
   // The launcher's curl uses -m 10; a server that sends a 200 then never finishes
   // the body makes curl exit 28 (timeout) while %{http_code} still reads 200.
   // The transport-status guard must classify that transient (20), never 0.
   // idleTimeout must exceed curl's -m so the SERVER never closes the stalled
-  // connection first (Bun's default idleTimeout is 10s, same as curl's -m —
+  // connection first (Bun's default idleTimeout is 10s, same as curl's -m,
   // that race let the server's own timeout close the response "cleanly" and
   // masked the intended client-side-timeout scenario).
   const server = Bun.serve({
@@ -1543,7 +1543,7 @@ test("claude-codex --preflight-only: a stalled body (200 headers, then hang) is 
     fetch: () => new Response(new ReadableStream({ start() { /* headers sent; body never completes */ } }), { status: 200 }),
   });
   try {
-    // async spawn — spawnSync would block the loop and stall the server for the
+    // async spawn, spawnSync would block the loop and stall the server for the
     // WRONG reason, making this pass without exercising the partial-200 path
     const p = Bun.spawn([BASH_BIN, "scripts/claude-codex", "--preflight-only"], {
       cwd: process.cwd(),
@@ -1677,7 +1677,7 @@ test("claudexChildEnv: sets CODEX_MODEL when a model is passed and omits it when
   const noModel = claudexChildEnv(base);
   expect(noModel.CODEX_MODEL).toBeUndefined();
 
-  // co-present with effort — both land independently, neither clobbers the other
+  // co-present with effort, both land independently, neither clobbers the other
   const both = claudexChildEnv(base, "high", "gpt-5.6-terra");
   expect(both.CLAUDE_CODE_EFFORT_LEVEL).toBe("high");
   expect(both.CODEX_MODEL).toBe("gpt-5.6-terra");
@@ -2083,8 +2083,8 @@ test("shared-branch lock is acquired BEFORE any worktree mutation (wiring pin)",
 
 test("no ANTHROPIC_* var is ever assigned in spawn-claudex.ts (source-text guard on the trust boundary)", () => {
   const src = readFileSync("scripts/telegram/spawn-claudex.ts", "utf8");
-  // an ASSIGNMENT (env.ANTHROPIC_FOO = ..., or a JS-object key ANTHROPIC_FOO:)
-  // — not a mere prose MENTION of the pattern (this file's own comments
+  // an ASSIGNMENT (env.ANTHROPIC_FOO = ..., or a JS-object key ANTHROPIC_FOO:),
+  // not a mere prose MENTION of the pattern (this file's own comments
   // reference claude-codex's ANTHROPIC_*/CLAUDE_CODE_USE_* settings screen).
   expect(/\bANTHROPIC_[A-Z_]*\s*=[^=]/.test(src)).toBe(false);
   expect(/\bANTHROPIC_[A-Z_]*\s*:/.test(src)).toBe(false);
@@ -2141,7 +2141,7 @@ test("runBody runs the shared huge-diff guard BEFORE the worker launches, warn-o
   // Same seam as spawn-glm's twin: runBody covers BOTH modes (own-branch mint,
   // shared gitAdd inside runClaudexSharedDispatch) after the branch exists and
   // before executeClaudexRun. The predicate itself is imported from the shared
-  // huge-diff-guard module — never re-defined per lane (PR #1680, #1691).
+  // huge-diff-guard module, never re-defined per lane (PR #1680, #1691).
   const src = readFileSync("scripts/telegram/spawn-claudex.ts", "utf8");
   const guardIdx = src.indexOf('checkHugeDiff("spawn-claudex"');
   const runIdx = src.indexOf("await executeClaudexRun({");
@@ -2157,7 +2157,7 @@ test("runBody runs the shared huge-diff guard BEFORE the worker launches, warn-o
 // Mirrors spawn-glm's startup-hang suite (same shared armStartupWatchdog): a
 // worker that never starts (no transcript growth, no output beyond the
 // banner) is killed at the startup window and the run reports failed with a
-// startup-timeout reason; a worker that starts — then goes quiet — never is.
+// startup-timeout reason; a worker that starts, then goes quiet, never is.
 
 const mangleCx = (p: string) => p.replace(/[^A-Za-z0-9]/g, "-");
 
@@ -2243,7 +2243,7 @@ test("executeClaudexRun: a worker that STARTS (transcript grows) then goes quiet
     const quiet = (async (_p: string, _c: string, _opts: unknown, onSpawn: (pid: number) => void) => {
       onSpawn(78);
       await new Promise((r) => setTimeout(r, 60));
-      appendFileSync(transcript, "{\"role\":\"assistant\"}\n"); // the model answers — stdout stays silent
+      appendFileSync(transcript, "{\"role\":\"assistant\"}\n"); // the model answers, stdout stays silent
       await new Promise((r) => setTimeout(r, 300)); // outlive the window by 2x
       return { code: 0, capped: false, blocked: false, timedOut: false, pid: 78, tail: "" };
     }) as any;
@@ -2283,7 +2283,7 @@ test("executeClaudexRun: growth observed the poll AFTER the window elapses must 
   // Same interception as spawn-glm's test: the watchdog's own
   // callback is captured instead of scheduled and fired by hand at the three
   // logical moments (baseline / first-elapsed / confirming), so no real-timer
-  // tick count — and therefore no CI contention — can decide the outcome.
+  // tick count (and therefore no CI contention) can decide the outcome.
   const { dir, metaPath, runningMeta } = seedRunningMeta();
   const watchRoot = mkdtempSync(join(tmpdir(), "cxwatch-"));
   const stderr = spyOn(console, "error").mockImplementation(() => {});
@@ -2309,9 +2309,9 @@ test("executeClaudexRun: growth observed the poll AFTER the window elapses must 
       expect(typeof tick).toBe("function"); // fail loudly if the watchdog never called setInterval
       fire(); // baseline tick
       now = realNow + windowMs;
-      fire(); // first elapsed tick — pre-3146 code kills here
+      fire(); // first elapsed tick, pre-3146 code kills here
       appendFileSync(transcriptFile, "{\"role\":\"assistant\"}\n");
-      fire(); // confirming tick — must see the growth first and stand down
+      fire(); // confirming tick, must see the growth first and stand down
       return { code: 0, capped: false, blocked: false, timedOut: false, pid: 81, tail: "" };
     }) as any;
     const { code } = await executeClaudexRun({

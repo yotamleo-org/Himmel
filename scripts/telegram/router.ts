@@ -1,6 +1,6 @@
 // Pure-code inbound router for the telegram bridge v2.
 // Classifies a raw message string into control | dispatch | followup | chat.
-// No side effects, no I/O — table-driven matching only.
+// No side effects, no I/O, table-driven matching only.
 //
 // SECURITY: ticket keys must validate ^[A-Z][A-Z0-9]+-[0-9]+$. A bad key in
 // "work on <X>" / "stop <X>" falls through to chat (never dispatch/control),
@@ -28,7 +28,7 @@ export type Route =
 // Structured auto-command: `/arm <ticket|path> [at HH:MM|auto|smart]`.
 // Anchored on the WHOLE trimmed message so a mid-text `/arm` never matches. SECURITY:
 // the bridge invokes this op directly (agent OUT of the trust path), so the command
-// must be a deliberate, message-fact-authenticated instruction — never text embedded
+// must be a deliberate, message-fact-authenticated instruction, never text embedded
 // in chat. `arg` is freeform (ticket OR path); it is validated/resolved downstream by
 // auto-action.sh, NOT here. `time` defaults to "smart"; an unrecognized trailing
 // modifier (e.g. "now", "at 99:99") fails the match → falls through to chat. `/arm`
@@ -37,15 +37,15 @@ const ARM = /^\/arm\s+(\S+)(?:\s+(?:at\s+((?:[01][0-9]|2[0-3]):[0-5][0-9])|(auto
 
 // Structured merge-authorization auto-command:
 // `/mergepub <pr> <sha12>`. Anchored on the WHOLE trimmed message, same as /arm,
-// so a mid-text or malformed `/mergepub` never matches — falls through to chat.
+// so a mid-text or malformed `/mergepub` never matches, falls through to chat.
 // SECURITY: the bridge invokes auto-action.sh directly on a match (agent OUT of
-// the trust path) — this is the ONLY way a public squash-merge gets authorized.
+// the trust path). This is the ONLY way a public squash-merge gets authorized.
 // `<pr>` is 1-6 digits (optional leading `#`); `<sha>` is >=12 hex chars (up to a
 // full 40-char SHA), matched case-insensitively but the operator's ready report
 // always prints lowercase. The 12-hex floor (48 bits, was 7=28 bits) blunts a
 // prefix-grinding attack: the agent may push fix-commits to the public branch, so
 // a 7-hex prefix could be ground (~2^28) to a malicious commit sharing the
-// operator-approved prefix and pass both the SHA gates and --match-head-commit —
+// operator-approved prefix and pass both the SHA gates and --match-head-commit,
 // defeating even a diligent operator. This Route
 // variant reuses arm-resume's EXACT shape (`arg`/`time`, not `pr`/`sha`) so
 // poller.ts's generic auto-command plumbing (handleAutoCommand's audit-line
@@ -60,7 +60,7 @@ const MERGEPUB = /^\/mergepub\s+#?(\d{1,6})\s+([0-9a-f]{12,40})$/i;
 // so `/restart now` or a mid-text `/restart` falls through to chat rather than
 // bouncing the bridge on a stray word. The RUNG rides in `arg` (the Route variant
 // reuses the same {arg,time} shape as the other two ops so poller.ts's generic
-// auto-command plumbing — the audit-line builder in particular — needs no change);
+// auto-command plumbing (the audit-line builder in particular) needs no change);
 // `time` is the fixed placeholder "-" since a restart has no schedule.
 // The supervisor respawns an exited poller, but that respawn INHERITS the
 // supervisor's environment, frozen at its launching shell. So rung 1 picks up
@@ -118,7 +118,7 @@ export function classify(raw: string, botUsername?: string | null): Route {
   const mergepub = t.match(MERGEPUB);
   // Lowercase the captured SHA: the verb+hex match case-insensitively (/i) for a
   // forgiving paste, but git oids are lowercase and auto-action.sh + the
-  // chokepoint validate/compare lowercase-only — so an uppercase paste must be
+  // chokepoint validate/compare lowercase-only, so an uppercase paste must be
   // normalized HERE, else it classifies as executable then fails downstream
   // validation. arg (PR digits) has no case.
   if (mergepub) return { kind: "auto", op: "merge-public", arg: mergepub[1], time: mergepub[2].toLowerCase() };

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""config-restore — the operator's TOTP-gated station config restore.
+"""config-restore. The operator's TOTP-gated station config restore.
 
 The Telegram bridge runs this from its own process for `/config backups` and
 `/config restore <id> <code>`; a session never does (block-himmel-config-writes.sh

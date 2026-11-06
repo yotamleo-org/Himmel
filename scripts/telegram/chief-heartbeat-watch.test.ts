@@ -212,7 +212,7 @@ test("censusSessionAlive is false (never throws) when the census itself fails", 
 test("censusSessionAlive is false on a degraded scan even when a matching row printed (rc=3)", async () => {
   // One live pid the census CAN read (matches consoleName) plus one it
   // CANNOT (unreadable cmdline) makes claude_sessions() print the matching
-  // row and still return rc=3 (degraded) — that rc must win, never the row.
+  // row and still return rc=3 (degraded). That rc must win, never the row.
   const proc = join(tmp, "proc");
   const bin = join(tmp, "bin");
   mkcmdline(proc, 501, ["claude", "--model", "claude-sonnet-5", "-n", "HIMMEL-nextleg-2026-09-23E-chief", "work"]);
@@ -230,7 +230,7 @@ test("censusSessionAlive kills a hung child at the timeout and returns false wit
   const bin = join(tmp, "bin");
   mkdirSync(proc, { recursive: true });
   mkdirSync(bin, { recursive: true });
-  // pgrep itself hangs — claude_sessions() never returns, so without a
+  // pgrep itself hangs, claude_sessions() never returns, so without a
   // timeout around the Bun.spawn this await (and this test) never resolves.
   writeFileSync(join(bin, "pgrep"), "#!/usr/bin/env bash\nif [ \"$1\" = \"-x\" ]; then sleep 30; fi\nexit 1\n", { mode: 0o755 });
   const start = Date.now();

@@ -1,4 +1,4 @@
-// scripts/telegram/fixture-repo.test.ts — the teardown contract the spawn-glm /
+// scripts/telegram/fixture-repo.test.ts. The teardown contract the spawn-glm /
 // spawn-claudex REAL-GIT suites rely on.
 import { expect, test, spyOn } from "bun:test";
 import { mkdirSync, mkdtempSync, existsSync, rmSync, writeFileSync } from "node:fs";
@@ -8,7 +8,7 @@ import { GIT_TEST_TIMEOUT_MS, initHermeticRepo, makeSharedFixtureRepo, removeFix
 
 // A repo + linked worktree this module did NOT create: the shape of an
 // operator's checkout, built by hand so the registry never learns about it.
-// Zero commits beyond the seed and DIRTY (one staged file) — the exact state
+// Zero commits beyond the seed and DIRTY (one staged file), the exact state
 // a shape-based teardown would destroy, and the one with no recovery path.
 function foreignZeroCommitWorktree(): { repo: string; wt: string } {
   const repo = mkdtempSync(join(tmpdir(), "foreign-checkout-"));
@@ -71,7 +71,7 @@ test("shared-dispatch fixtures are hermetic — the host's global hooks never fi
   const { repo, wt, run } = makeSharedFixtureRepo("hermetic-shared-", "glm+feat-live-pr", "feat/live-pr");
   try {
     // Ratchet: without this, a global core.hooksPath (tokensave installs one)
-    // backgrounds a ~30s index into every fixture `git worktree add` mints —
+    // backgrounds a ~30s index into every fixture `git worktree add` mints,
     // which is what held the handle that EBUSY'd cleanup and what pushed this
     // family past bun's 5s default.
     expect(run(["config", "--get", "core.hooksPath"], repo).stdout.toString().trim()).toBe(join(repo, "no-hooks"));

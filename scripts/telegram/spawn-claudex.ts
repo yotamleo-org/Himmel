@@ -5,13 +5,13 @@
 // (PHI/egress guard union, ANTHROPIC_*/CLAUDE_CODE_USE_*/proxy env sweeps,
 // config-dir seeding, proxy pinning, the effort default). This
 // file NEVER sets an ANTHROPIC_* var, NEVER builds a GLM-style env block, and
-// NEVER re-implements any guard claude-codex already owns — it only mints the
+// NEVER re-implements any guard claude-codex already owns, it only mints the
 // worktree/branch, composes the worker prompt, and dispatches THROUGH the
 // launcher, mirroring spawn-glm's own+shared-branch lifecycle. ONE
 // pre-creation call goes INTO that same launcher (`claude-codex
 // --guard-check <dir>`, a check-only entry onto its existing guard_workspace)
 // so a PHI-marked dispatch refuses before any worktree/branch/session
-// side-effect and before the auth preflight, instead of only at launch —
+// side-effect and before the auth preflight, instead of only at launch,
 // still nothing re-implemented, since it is the launcher's own verdict.
 //
 // Lane-agnostic helpers are IMPORTED from spawn-common.ts (transcriptDirFor,
@@ -19,10 +19,10 @@
 // copy-pasted. Everything GLM-branded (worker
 // prompt, plan functions, args parser, the shared-dispatch lock lifecycle,
 // main) is twinned here with codex/claudex wording and a claudex/<slug>
-// branch — see the design brief for the twin/import split.
+// branch, see the design brief for the twin/import split.
 //
 // Fresh-context: every dispatch is a NEW Claude Code
-// session — Claude Code gives each subagent/session its own context, so
+// session. Claude Code gives each subagent/session its own context, so
 // there is no v2-subagent-history-copy and no fast-mode toggle to carry or
 // disable here; nothing to implement for that requirement.
 import { existsSync, mkdirSync, chmodSync, writeFileSync, appendFileSync, readFileSync } from "node:fs";
@@ -32,20 +32,20 @@ import { spawn } from "bun";
 import { BASH_BIN, REPO_ROOT, killTree, detectContentFilter, NON_INTERACTIVE_EDITOR_ENV, type PermissionMode } from "./run";
 import { SPAWN_OWN_GROUP } from "../lib/kill-tree.mjs";
 import { transcriptDirFor, PUSH_PROTECTION_DISCLOSURE, composeDispatchGitState, gitCapture, ensureWorkspaceTrust, preflightWindowCheck, measureOverheadChars, finalMeta, resolveProfileSettings, teardownMintedWorktree, DEFAULT_LANE_PROFILE, mintRetaskNonce, mintSpawnStamp, composeRetaskBlock, STASH_BAN_LINE, composeBashShapeWarning, composeOutboxWriteHint, composeWorkerSettings, refuseBypassPermissions, refuseUnknownPermissionMode, isHelpFlag, writeLiveWorkerMeta, readBriefFile, armStartupWatchdog, resolveFailfastWindowMs } from "./spawn-common";
-// symptom-brief loop breaker, two-stage — shared with spawn-glm
+// symptom-brief loop breaker, two-stage, shared with spawn-glm
 // so both worker lanes carry one decision table: invariant required at the
 // warn stage, cheap lane refused at the escalate stage. Thresholds live in
-// round-guard.ts (ROUND_WARN_THRESHOLD / ROUND_ESCALATE_THRESHOLD) — not
+// round-guard.ts (ROUND_WARN_THRESHOLD / ROUND_ESCALATE_THRESHOLD), not
 // restated here, so this comment cannot drift off the code.
 import { checkRoundGuard } from "./round-guard";
-// huge-diff lane guard — shared module (one predicate, both
-// lanes; never copy-pasted — see huge-diff-guard.ts for the incident).
+// huge-diff lane guard, shared module (one predicate, both
+// lanes; never copy-pasted, see huge-diff-guard.ts for the incident).
 import { checkHugeDiff, gitProbe, resolveDefaultBranch } from "./huge-diff-guard";
 // plugin profiles: same per-dispatch lean-profile injection as the
 // GLM lane. spawn-claudex dispatches through scripts/claude-codex, which already
-// screens + forwards --settings — so the resolved payload just rides its argv.
+// screens + forwards --settings, so the resolved payload just rides its argv.
 import { parseAddPlugins } from "../lanes/plugin-profiles.mjs";
-// shared declarative flag-table parser — see spawn-glm.ts's
+// shared declarative flag-table parser, see spawn-glm.ts's
 // GLM_FLAG_TABLE for the twin.
 import { parseLaneArgs, type FlagTable } from "./lane-args";
 import { CODEX_USAGE_PROBE_REMEDY, readCodexBankCache } from "../lanes/bank-status-core.mjs";
@@ -61,11 +61,11 @@ export function claudexSessionRoot(): string {
 
 // ── worker prompt (twin of spawn-glm's composeWorkerPrompt/composePointerPrompt) ──
 
-// v1 scope: deferred — the grants/escalation channel (spawn-glm's
+// v1 scope: deferred, the grants/escalation channel (spawn-glm's
 // --grant/--autonomous/--carry-from, classifyShape/authorityGate/grants.jsonl,
 // applyCarryFrom). A claudex worker gets no pre-seeded capability grants and
 // has no escalation-outbox line to fall back on when a step is hard-blocked
-// in v1 — it just skips and notes it in the final context.md summary via the
+// in v1, it just skips and notes it in the final context.md summary via the
 // generic HARD RULES line below. A followup ticket ports the channel if the
 // codex lane needs the same graceful-degrade path GLM has.
 export function composeClaudexWorkerPrompt(task: string, sessionDir: string, branch: string, opts?: { shared?: boolean; model?: string; base?: string }): string {
@@ -73,7 +73,7 @@ export function composeClaudexWorkerPrompt(task: string, sessionDir: string, bra
   const context = join(sessionDir, "context.md");
   const rawModel = opts?.model ?? CODEX_MODELS[0];
   // opts.model is exported/programmatic-caller-facing (the
-  // CLI --model path is already restricted to a fixed enum at parse time —
+  // CLI --model path is already restricted to a fixed enum at parse time,
   // see parseClaudexArgs below), so a newline-bearing value must not land
   // verbatim in the dispatched worker's prompt. Degrade to a generic phrase
   // outside a plain slug shape; gpt-5.6-sol/terra/luna are unaffected.
@@ -82,7 +82,7 @@ export function composeClaudexWorkerPrompt(task: string, sessionDir: string, bra
   // `git merge main`. An earlier revision of this PR permitted `git rebase
   // main` instead (per-commit conflict surfacing is gentler on a stale
   // branch: one merge once produced a ~400-file conflict set where a rebase
-  // would have surfaced ~7 small ones) — but a rebase REWRITES the branch's
+  // would have surfaced ~7 small ones), but a rebase REWRITES the branch's
   // published SHAs, and publishing a rewritten branch requires the force-push
   // this same brief bans, so the carve-out was inert as written: permitted,
   // never publishable (PR #1458 CR round). A merge commit ADDS to history
@@ -92,7 +92,7 @@ export function composeClaudexWorkerPrompt(task: string, sessionDir: string, bra
   // unaffected: the merge runs under the lock during runBody, exactly like
   // any other worker git op.
   // the merge target is the PR base (resolved by the caller),
-  // not a literal `main` — a master- or release-based PR would otherwise be
+  // not a literal `main`, a master- or release-based PR would otherwise be
   // told to merge the wrong branch. Same slug-shape screen as the model: a
   // base outside it (or none) degrades to `main`, so nothing newline-bearing
   // lands in the prompt.
@@ -110,10 +110,10 @@ export function composeClaudexWorkerPrompt(task: string, sessionDir: string, bra
     `HARD RULES: never push, never open a PR — a validating session reviews your branch and owns the git/PR surface. Jira updates (status, comments, followup tickets) ARE allowed via node scripts/jira/dist/index.js (audited + recoverable). If a step is hard-blocked, skip it, continue the rest of the task, and note the skipped step in your final ${context} summary — v1 has no escalation channel to append to.`,
     // shared with the GLM lane so both briefs carry identical text.
     STASH_BAN_LINE,
-    // RETASK channel — see spawn-glm.ts's composeWorkerPrompt for
+    // RETASK channel, see spawn-glm.ts's composeWorkerPrompt for
     // the same block; imported verbatim so both lanes carry identical rules text.
     composeRetaskBlock(mintRetaskNonce()),
-    // same bash-shape warning as the GLM twin — see
+    // same bash-shape warning as the GLM twin, see
     // spawn-glm.ts's composeBashShapeWarning for the root-cause evidence.
     composeBashShapeWarning(outbox),
     composeOutboxWriteHint(outbox),
@@ -138,12 +138,12 @@ export function composeClaudexPointerPrompt(briefPath: string): string {
 // Deliberately SIMPLER than the GLM twins: GLM's planSpawn/planSharedSpawn run
 // a settingsConflicts preflight (findSettingsConflicts) because spawn-glm
 // itself builds the ANTHROPIC_* env block and needs to catch a settings layer
-// that would fight it BEFORE dispatch. spawn-claudex never builds that block —
+// that would fight it BEFORE dispatch. spawn-claudex never builds that block,
 // scripts/claude-codex already walks every ancestor .claude/settings{,.local}.json
 // (screen_project_settings_file, R5) and refuses on an env.ANTHROPIC_*/
 // CLAUDE_CODE_USE_* key itself. Duplicating that check here would be
 // re-implementing a guard claude-codex already owns (D1) and could drift out
-// of sync with it — so the claudex plan functions skip it entirely.
+// of sync with it, so the claudex plan functions skip it entirely.
 
 export type ClaudexSpawnPlan = { ok: true; slug: string; worktree: string; branch: string } | { ok: false; reason: string };
 export function planClaudexSpawn(cwd: string, name: string | undefined, deps: { isHimmelCheckout: (d: string) => boolean }): ClaudexSpawnPlan {
@@ -198,9 +198,9 @@ function isHimmelCheckout(d: string): boolean {
 
 // ── primary-checkout cwd guard ─────────────────────────────
 //
-// Twinned (not imported — deliberately duplicated per the ticket's brief:
+// Twinned (not imported, deliberately duplicated per the ticket's brief:
 // a small guard duplicated across the two lane wrappers, not a new shared
-// layer) from spawn-glm.ts's own detectNonPrimaryCwd/refuseNonPrimaryCwd —
+// layer) from spawn-glm.ts's own detectNonPrimaryCwd/refuseNonPrimaryCwd,
 // see that file's comment for the full incident + detection rationale.
 // Same detection, same message shape, only the "spawn-claudex:" prefix
 // differs.
@@ -218,7 +218,7 @@ export function detectNonPrimaryCwd(cwd: string, probe: (cwd: string) => { gitDi
   const gitSaysWorktree = dirs !== null && norm(dirs.gitDir) !== norm(dirs.commonDir);
   if (!pathLooksLikeWorktree && !gitSaysWorktree) return { ok: true };
   const primary = dirs ? dirname(resolve(cwd, dirs.commonDir)) : undefined;
-  // Only name a primary that is somewhere ELSE — see spawn-glm.ts's twin for
+  // Only name a primary that is somewhere ELSE, see spawn-glm.ts's twin for
   // the full rationale (a standalone repo nested under .claude/worktrees/
   // resolves to the very cwd being refused).
   const usable = primary !== undefined && norm(resolve(primary)) !== norm(resolve(cwd));
@@ -235,7 +235,7 @@ export function refuseNonPrimaryCwd(cwd: string, probe?: (cwd: string) => { gitD
 
 // ── real git probes for planClaudexSharedSpawn's injected deps ──────────────
 // Twinned (not imported) from spawn-glm.ts's gitBranchExists/gitWorktreeOf/
-// gitIsDirty — those exist purely to feed planSharedSpawn's deps and are not
+// gitIsDirty. Those exist purely to feed planSharedSpawn's deps and are not
 // on the D2 lane-agnostic import list; identical logic, no "glm" in either.
 
 export function gitBranchExists(cwd: string, branch: string): boolean {
@@ -271,7 +271,7 @@ export function gitIsDirty(worktreePath: string): boolean {
 
 // Under-the-lock revalidation of a REUSED shared worktree.
 // The plan's pre-lock checks can go stale between then and lock
-// acquisition — the worktree could be switched to another branch, recreated, or
+// acquisition, the worktree could be switched to another branch, recreated, or
 // dirtied by a concurrent worker. Re-resolve identity + cleanliness so the
 // worker never commits onto the WRONG branch or another worker's mixed state:
 //   - fresh worktree (needsWorktreeAdd) ⇒ nothing to revalidate, ok.
@@ -286,7 +286,7 @@ export function revalidateSharedWorktree(deps: {
   const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/$/, "");
   const wtNow = deps.worktreeOf(deps.branch);
   if (deps.needsWorktreeAdd) {
-    // Planned to CREATE the worktree — but under the lock a concurrent dispatch
+    // Planned to CREATE the worktree, but under the lock a concurrent dispatch
     // may have created the branch→worktree mapping during the backoff; a second
     // `git worktree add` would then fail. Refuse cleanly instead (codex-adv/
     // coderabbit CR). Absent mapping ⇒ ours to create, proceed.
@@ -307,7 +307,7 @@ export function revalidateSharedWorktree(deps: {
 export type EffortLevel = "low" | "medium" | "high" | "xhigh";
 // per-dispatch codex tier selector. Kept to the three tiers the
 // local CLIProxyAPI proxy exposes for the codex subscription (verified live).
-// scripts/claude-codex's own CODEX_MODEL knob stays UNVALIDATED by design — it
+// scripts/claude-codex's own CODEX_MODEL knob stays UNVALIDATED by design, it
 // documents "all overridable per task" against whatever the proxy's /v1/models
 // serves, and the proxy currently serves other models beyond these tiers, so a
 // hardcoded allowlist at the launcher would be a regression, not a fix. This
@@ -323,7 +323,7 @@ export type CodexContextTier = "272k" | "353k" | "900k";
 export const CODEX_CONTEXT_TIER_WINDOW: Record<CodexContextTier, string> = { "272k": "272000", "353k": "353000", "900k": "900000" };
 export type ClaudexParsedArgs = { task?: string; briefFile?: string; cwd: string; name?: string; branch?: string; timeoutMins?: number; permMode?: PermissionMode; effort?: EffortLevel; model?: CodexModelTier; contextTier?: CodexContextTier; force: boolean; skipAuthPreflight: boolean; profile: string; addPlugins: string[]; roundsOverride?: string };
 
-// the declarative flag table for parseClaudexArgs — mirrors
+// the declarative flag table for parseClaudexArgs, mirrors
 // spawn-glm.ts's GLM_FLAG_TABLE (shared loop mechanics live in
 // lane-args.ts's parseLaneArgs). Each entry is the exact per-flag validation
 // the old inline if/else chain had.
@@ -350,7 +350,7 @@ const CLAUDEX_FLAG_TABLE: FlagTable<ClaudexParsedArgs> = {
     },
   },
   // --effort: refuse `max` (undocumented codex juice) and
-  // `ultra` (unreachable from Claude Code — falls back to xhigh) with a message
+  // `ultra` (unreachable from Claude Code, falls back to xhigh) with a message
   // pointing at the operating-rules doc, rather than silently forwarding them.
   "--effort": {
     kind: "value",
@@ -362,7 +362,7 @@ const CLAUDEX_FLAG_TABLE: FlagTable<ClaudexParsedArgs> = {
     },
   },
   // per-dispatch codex tier pin (e.g. to bench gpt-5.6-luna).
-  // Sets CODEX_MODEL in the worker's child env — validated ONLY here, not by
+  // Sets CODEX_MODEL in the worker's child env, validated ONLY here, not by
   // scripts/claude-codex (its CODEX_MODEL knob stays unvalidated by design;
   // see the CodexModelTier comment above).
   "--model": {
@@ -393,7 +393,7 @@ const CLAUDEX_FLAG_TABLE: FlagTable<ClaudexParsedArgs> = {
   "--profile": { kind: "value", apply: (s, v) => { s.profile = v; return undefined; } },
   "--add-plugins": { kind: "value", apply: (s, v) => { s.addPlugins.push(...parseAddPlugins(v)); return undefined; } },
   // recorded operator override for the round guard's cheap-lane
-  // refusal — same contract as spawn-glm (substance enforced by the guard).
+  // refusal, same contract as spawn-glm (substance enforced by the guard).
   "--rounds-override": {
     kind: "value",
     missingValueError: "--rounds-override requires a value (why another cheap-lane round is justified)",
@@ -403,7 +403,7 @@ const CLAUDEX_FLAG_TABLE: FlagTable<ClaudexParsedArgs> = {
   // dispatch is ONE literal command (`bun scripts/telegram/spawn-claudex.ts
   // --brief-file <path> ...`) instead of the cd/$(cat)/var compound that
   // defeats both the allow-rule prefix and the native permission matcher
-  // The file is READ in main(), not here — parseClaudexArgs
+  // The file is READ in main(), not here. parseClaudexArgs
   // stays pure (fs-free); the read itself is spawn-glm's exported
   // readBriefFile (one fail-closed implementation across both lanes).
   "--brief-file": { kind: "value", apply: (s, v) => { s.briefFile = v; return undefined; } },
@@ -420,7 +420,7 @@ export function parseClaudexArgs(argv: string[]): { ok: true; args: ClaudexParse
   const result = parseLaneArgs(argv, CLAUDEX_FLAG_TABLE, args, (s, token) => { if (s.task === undefined) s.task = token; });
   if (!result.ok) return result;
   if (args.branch !== undefined && args.name !== undefined) return { ok: false, error: "--branch and --name are mutually exclusive (shared mode derives the slug from the branch)" };
-  // --brief-file and a positional prompt are mutually exclusive —
+  // --brief-file and a positional prompt are mutually exclusive,
   // the file's contents BECOME the task, so a co-supplied positional would be
   // silently dropped (or ambiguous about which brief wins). Refuse instead.
   if (args.briefFile !== undefined && args.task !== undefined) return { ok: false, error: "--brief-file and a positional prompt are mutually exclusive (pass the brief as a file or inline, not both)" };
@@ -429,7 +429,7 @@ export function parseClaudexArgs(argv: string[]): { ok: true; args: ClaudexParse
 
 // ── codex weekly bank preflight ────────────────────────────
 //
-// v1 scope: deferred — quota-gauge ledger rows (parity with GLM's
+// v1 scope: deferred, quota-gauge ledger rows (parity with GLM's
 // appendQuotaGauge/buildGlmRow observability). This preflight is the ONLY
 // quota signal recorded for a claudex dispatch; a followup ticket adds a
 // claudex row to the shared quota-gauge ledger.
@@ -509,7 +509,7 @@ export type BankPreflightResult = { action: "ok" | "warn" | "refuse"; usedPct: n
 // overridden (CLAUDEX_USAGE_OK=1 / --force). An unreadable weekly bank refuses
 // loudly: this preflight must never claim success when no check occurred.
 // Rationale for refusing BEFORE any worktree side-effect: a capped worker
-// dies mid-run — the tree survives but the work is lost.
+// dies mid-run, the tree survives but the work is lost.
 export function evaluateCodexBankPreflight(usedPct: number | null, opts: { warnPct: number; refusePct: number; override: boolean; reason?: string | null }): BankPreflightResult {
   if (usedPct === null) {
     const why = opts.reason ?? `codex weekly bank unreadable — ${CODEX_USAGE_PROBE_REMEDY}`;
@@ -525,14 +525,14 @@ export function evaluateCodexBankPreflight(usedPct: number | null, opts: { warnP
   return { action: "ok", usedPct };
 }
 
-// ── cap detection (deferred — see below) ─────────────
+// ── cap detection (deferred, see below) ─────────────
 
-// v1 scope: deferred — GLM-style cap-WINDOW classification (5h vs
+// v1 scope: deferred, GLM-style cap-WINDOW classification (5h vs
 // long) and the auto-arm-on-cap resume scheduling that spawn-glm's
 // executeRun/capGuard performs (computeResumeAt/buildArmArgv/
 // composeRespawnHandover). detectClaudexCap only lets a capped run surface as
 // meta status "capped" (via finalMeta, imported) instead of vanishing as a
-// bare "failed" — no resume is armed. evaluateCodexBankPreflight above is the
+// bare "failed", no resume is armed. evaluateCodexBankPreflight above is the
 // real quota control for this lane; a followup ticket adds resume scheduling
 // if the cap-mid-run loss rate warrants it.
 const CLAUDEX_CAP_SENTINELS = [/usage limit reached/i, /rate limit/i, /try again later/i];
@@ -544,24 +544,24 @@ export function detectClaudexCap(output: string): boolean {
 //
 // The CLIProxyAPI codex gateway (127.0.0.1:8317) returns 503 auth_unavailable
 // during the ~seconds window while the codex OAuth *access* token is
-// mid-refresh — a transient ~1h-lapse window, NOT a dead credential. A
+// mid-refresh, a transient ~1h-lapse window, NOT a dead credential. A
 // BACKGROUND dispatch that starts up inside that window dies immediately; the
 // proven 2026-07-15 incident was 3 back-to-back immediate retries all landing
 // in the SAME gap (an interactive retry a minute later worked, because the
 // human waited).
 //
-// We fix this BEFORE launching the worker — never by re-running one. `probe`
+// We fix this BEFORE launching the worker, never by re-running one. `probe`
 // runs `claude-codex --preflight-only` (the launcher's OWN authed 1-token
-// /v1/messages check — the registry /v1/models stays 200 during the gap, so it
+// /v1/messages check. The registry /v1/models stays 200 during the gap, so it
 // must exercise the real upstream; exits 0=healthy / 20=transient-retry /
 // 21=fatal WITHOUT spinning a worker) and is retried with backoff until auth is
 // healthy or fatal/exhausted; only then does the caller mint
 // the worktree and spawn the worker, exactly once. A worker's allowed side
-// effects (Jira writes, outbox appends — see the worker prompt) can therefore
+// effects (Jira writes, outbox appends, see the worker prompt) can therefore
 // never be duplicated by a re-run: post-hoc "did the worker do work?" inference
 // is unsound (codex-adv CR), so a pre-execution auth signal is the only safe
 // gate. It also avoids minting a worktree for a doomed run. Interactive
-// cc-codex needs none of this — its human provides the retry delay — so this
+// cc-codex needs none of this (its human provides the retry delay), so this
 // lives only in the background dispatcher; claude-codex still owns the authed
 // call (the probe just asks it), keeping the D1 trust boundary intact.
 
@@ -569,7 +569,7 @@ export function detectClaudexCap(output: string): boolean {
 // The refresh gap is a ~seconds window, so a modest schedule catches the common
 // case; a gap that outlasts the whole schedule hits the refuse-on-exhaustion
 // path (main), not an ever-longer wait. The total is deliberately BOUNDED and
-// small because the preflight runs in the FOREGROUND before the worker — a
+// small because the preflight runs in the FOREGROUND before the worker, a
 // long backoff plus a multi-minute worker could exceed a caller's foreground
 // dispatch budget (codex-adv CR). Immediate (0-delay) retries are futile (the
 // gap outlasts them). Overridable via CLAUDEX_AUTH_RETRY_DELAYS (comma-separated
@@ -591,7 +591,7 @@ export function parseAuthRetryDelaysMs(raw: string | undefined, fallbackMs: numb
   //    deadline, would strand the invoking parent (codex-adv: a per-value cap
   //    alone still allows a ~25-day single sleep). Require a safe integer within
   //    the timer cap, at most MAX_AUTH_RETRY_ATTEMPTS delays, summing within
-  //    MAX_TOTAL_BACKOFF_MS — else fall back to the small default.
+  //    MAX_TOTAL_BACKOFF_MS, else fall back to the small default.
   if (ms.some((n) => !Number.isSafeInteger(n) || n > MAX_TIMER_MS)) return fallbackMs;
   if (ms.length > MAX_AUTH_RETRY_ATTEMPTS) return fallbackMs;
   const totalMs = ms.reduce((a, b) => a + b, 0);
@@ -606,7 +606,7 @@ export function parseAuthRetryDelaysMs(raw: string | undefined, fallbackMs: numb
 export const MAX_TIMER_MS = 2_147_483_647;
 // The preflight runs in the FOREGROUND before the worker, so its total wall-clock
 // is hard-bounded: at most 8 backoff delays summing to ≤3 min, even under an
-// operator override (codex-adv CR — otherwise a single huge delay strands the parent).
+// operator override (codex-adv CR, otherwise a single huge delay strands the parent).
 export const MAX_AUTH_RETRY_ATTEMPTS = 8;
 export const MAX_TOTAL_BACKOFF_MS = 180_000;
 
@@ -619,29 +619,29 @@ export const CLAUDEX_PREFLIGHT_GAP_EXIT = 20;
 // Hard per-probe wall-clock cap so ONE synchronous probe can never blow the
 // preflight's absolute deadline (codex/coderabbit CR: spawnSync is not
 // cancellable, so bound it at the source). The old
-// 12s cap left too little headroom once curl's own budget rose to -m 10 — the
+// 12s cap left too little headroom once curl's own budget rose to -m 10, the
 // launcher's bash/guard overhead ALONE (sourcing config, egress checks, etc.,
 // with no real network latency) was independently measured at several
 // seconds on Windows Git Bash, so 10s curl + that overhead could exceed 12s
-// and get the probe KILLED (misread as "unavailable") even on a healthy lane
-// — the exact misclassification this ticket exists to fix. Raised to 25s:
+// and get the probe KILLED (misread as "unavailable") even on a healthy lane,
+// the exact misclassification this ticket exists to fix. Raised to 25s:
 // curl's 10s ceiling + a generous overhead allowance + margin.
 export const PROBE_TIMEOUT_MS = 25_000;
 export type AuthProbeResult = "ok" | "unavailable" | "fatal";
 
 // Run the launcher's --preflight-only auth probe (no worker spawned). The
 // launcher exercises the REAL upstream provider (a 16-token /v1/messages call,
-// — a reasoning model emits reasoning tokens before content, so a
+// a reasoning model emits reasoning tokens before content, so a
 // 1-token budget was a poor liveness test), so this distinguishes:
 //   exit 0                        ⇒ "ok"        (auth healthy, or a non-gap
 //                                                 status the real run surfaces)
 //   exit CLAUDEX_PREFLIGHT_GAP_EXIT⇒ "unavailable" (transient 503 refresh gap,
 //                                                 408 probe timeout, etc. → retry)
 //   any other nonzero             ⇒ "fatal"     (missing key / config / egress
-//                                                 refusal — permanent; abort, do
+//                                                 refusal, permanent; abort, do
 //                                                 NOT retry or mint a worktree)
 // A probe KILLED at PROBE_TIMEOUT_MS (spawnSync timeout → exitCode null +
-// signalCode) is TRANSIENT, not fatal — the gate couldn't complete, so retry
+// signalCode) is TRANSIENT, not fatal. The gate couldn't complete, so retry
 // within the deadline rather than abort. TELEGRAM_OWN_POLLER is stripped
 // (claudexChildEnv) so the probe never adopts poller ownership.
 export function probeClaudexAuth(repoRoot: string, cwd: string, timeoutMs: number = PROBE_TIMEOUT_MS): AuthProbeResult {
@@ -652,21 +652,21 @@ export function probeClaudexAuth(repoRoot: string, cwd: string, timeoutMs: numbe
   if (r.exitCode === CLAUDEX_PREFLIGHT_GAP_EXIT) return "unavailable";
   // exit 3 is the launcher's OWN PHI/egress guard_workspace
   // refusal (unconditional, runs before the --preflight-only branch this probe
-  // exercises) — a real, permanent verdict, but with no special-casing it fell
+  // exercises), a real, permanent verdict, but with no special-casing it fell
   // into the generic evidence-forwarding below and surfaced to the operator as
   // "codex auth preflight reports a PERMANENT failure ... fix the claude-codex
   // config" (main()'s fatal message), sending them to chase credentials for a
   // guard refusal. "fatal" is still the CORRECT verdict here (permanent, must
-  // abort, must never retry) — only the attribution was wrong, so fix that and
+  // abort, must never retry). Only the attribution was wrong, so fix that and
   // nothing else. This branch is DEAD BY CONSTRUCTION on the normal path since
   // the PHI/egress pre-check in main() now screens the SAME absCwd with the
-  // SAME guard before this probe ever runs against it — kept as defense for a
+  // SAME guard before this probe ever runs against it, kept as defense for a
   // marker created in the narrow window between the two calls, and for any
   // future caller that reaches this probe without going through that
   // pre-check first.
   // Forward the launcher's OWN stderr FIRST: it names
-  // WHICH row refused — the .salus/.salus-profile marker, a phi-roots or
-  // egress-denylist entry, or an inaccessible directory — and returning before
+  // WHICH row refused (the .salus/.salus-profile marker, a phi-roots or
+  // egress-denylist entry, or an inaccessible directory), and returning before
   // the block below would drop exactly that detail, leaving only
   // the generic attribution line. Pre-2626 this exit fell through to that
   // block and the operator saw the specific reason; keep it that way, and add
@@ -677,8 +677,8 @@ export function probeClaudexAuth(repoRoot: string, cwd: string, timeoutMs: numbe
     console.error(`spawn-claudex: the codex auth probe was refused by claude-codex's PHI/egress guard (exit 3) for ${cwd} — this is a guard verdict, NOT an auth or credential problem.`);
     return "fatal";
   }
-  // the launcher already logged "HTTP <code> — body: …" to its own
-  // stderr right before this exit — forward it verbatim so the operator-facing
+  // the launcher already logged "HTTP <code>, body: …" to its own
+  // stderr right before this exit. Forward it verbatim so the operator-facing
   // fatal message (below, in the caller) is backed by what was actually
   // measured instead of a fixed list of suspected causes.
   const evidence = r.stderr?.toString().trim();
@@ -688,19 +688,19 @@ export function probeClaudexAuth(repoRoot: string, cwd: string, timeoutMs: numbe
 
 // Poll the auth probe with backoff BEFORE any worktree side-effect. Returns as
 // soon as the probe is decisive:
-//   {ready:true}              — auth healthy, spin the worker.
-//   {fatal:true}             — a permanent config error; the caller aborts
+//   {ready:true}, auth healthy, spin the worker.
+//   {fatal:true}, a permanent config error; the caller aborts
 //                              WITHOUT minting a worktree (no doomed run, no
 //                              wasted backoff).
-//   {ready:false,fatal:false}— still the transient gap after the whole schedule:
+//   {ready:false,fatal:false}, still the transient gap after the whole schedule:
 //                              REFUSED by the caller (don't launch into a known
 //                              outage).
-// An ABSOLUTE wall-clock deadline (start + Σdelays) bounds the WHOLE preflight —
-// sleeps AND synchronous probe time — so it can NEVER exceed the budget (codex-adv
+// An ABSOLUTE wall-clock deadline (start + Σdelays) bounds the WHOLE preflight,
+// sleeps AND synchronous probe time, so it can NEVER exceed the budget (codex-adv
 // CR: a per-delay cap alone ignored probe latency, and even a hard per-probe cap
 // let the FINAL probe overshoot). Each backoff AND each probe timeout is clamped
 // to the budget remaining at that instant, and the loop stops the moment the
-// budget is spent — total elapsed ≤ deadline. `probe` receives its clamped
+// budget is spent, total elapsed ≤ deadline. `probe` receives its clamped
 // timeout (ms); `probe`/`sleep`/`now` are injected so tests never spawn or wait.
 export async function runAuthPreflightWithBackoff(
   probe: (timeoutMs: number) => AuthProbeResult,
@@ -708,12 +708,12 @@ export async function runAuthPreflightWithBackoff(
 ): Promise<{ ready: boolean; fatal: boolean; attempts: number }> {
   const now = deps.now ?? (() => Date.now());
   const budgetMs = deps.delaysMs.reduce((a, b) => a + b, 0);
-  // The deadline covers the configured SLEEPS **plus** a probe allowance — one
+  // The deadline covers the configured SLEEPS **plus** a probe allowance, one
   // bounded probe per attempt (n delays ⇒ n+1 attempts). Without the allowance
   // probe time eats the sleep budget, silently truncating the last delay and
   // dropping the final probe, so recovery after the last wait is undetectable
   // and the advertised schedule never runs (coderabbit CR). Worst-case foreground
-  // is therefore Σdelays + (n+1)·PROBE_TIMEOUT_MS — larger, but honest and hard.
+  // is therefore Σdelays + (n+1)·PROBE_TIMEOUT_MS, larger, but honest and hard.
   const probeAllowanceMs = (deps.delaysMs.length + 1) * PROBE_TIMEOUT_MS;
   const deadline = now() + budgetMs + probeAllowanceMs;
   const probeBudget = () => Math.min(PROBE_TIMEOUT_MS, Math.max(0, deadline - now()));
@@ -727,7 +727,7 @@ export async function runAuthPreflightWithBackoff(
     const wait = Math.min(deps.delaysMs[i], remaining);
     deps.log?.(`spawn-claudex: codex auth unavailable (503 refresh gap?) on preflight ${i + 1}/${deps.delaysMs.length + 1}; backing off ${Math.round(wait / 1000)}s before re-probing`);
     await deps.sleep(wait);
-    if (deadline - now() <= 0) break; // budget spent by the sleep — do NOT probe past the deadline
+    if (deadline - now() <= 0) break; // budget spent by the sleep, do NOT probe past the deadline
     res = probe(probeBudget());
     attempts++;
     if (res === "ok") return { ready: true, fatal: false, attempts };
@@ -739,7 +739,7 @@ export async function runAuthPreflightWithBackoff(
 
 // ── dispatch through scripts/claude-codex (D1) ──────────────────────────────
 
-// REPO_ROOT is derived from run.ts's OWN file location (see run.ts) —
+// REPO_ROOT is derived from run.ts's OWN file location (see run.ts),
 // reliable when spawn-claudex.ts runs from the primary checkout (the common
 // case for a parent/orchestrator session, per the design brief's explicit
 // "resolved like run.ts's REPO_ROOT" instruction). A parent invoking this
@@ -751,14 +751,14 @@ export function claudexLauncherPath(repoRoot: string): string {
   return join(repoRoot, "scripts", "claude-codex");
 }
 
-// cmd construction only — the launcher's own arg screen passes
+// cmd construction only. The launcher's own arg screen passes
 // --permission-mode/--settings/the prompt through verbatim to `exec claude "$@"`
 // (D1). NO --model flag is ever added to `cmd`: claude-codex pins the model via
 // ANTHROPIC_MODEL/ANTHROPIC_DEFAULT_*_MODEL itself, derived from its OWN
 // CODEX_MODEL env var (a `claude` CLI flag here would fight that). spawn-claudex's
-// --model sets CODEX_MODEL in the child env instead — see
-// claudexChildEnv — never a cmd-line flag.
-// settings: the resolved plugin-profile `--settings` payload —
+// --model sets CODEX_MODEL in the child env instead, see
+// claudexChildEnv, never a cmd-line flag.
+// settings: the resolved plugin-profile `--settings` payload,
 // claude-codex screens it (env-injection) then forwards it to claude. Omitted
 // (operator profile) => no flag. Placed before the prompt, after --permission-mode.
 export function buildClaudexRunArgs(launcherPath: string, prompt: string, permMode?: PermissionMode, settings?: string): { cmd: string[] } {
@@ -769,20 +769,20 @@ export function buildClaudexRunArgs(launcherPath: string, prompt: string, permMo
   return { cmd };
 }
 
-// Child env (D1): the base env passed straight through — NO ANTHROPIC_* var,
+// Child env (D1): the base env passed straight through, NO ANTHROPIC_* var,
 // NO GLM-style env block; scripts/claude-codex owns the entire trust
 // boundary and sweeps ambient ANTHROPIC_*/CLAUDE_CODE_USE_* itself. The ONLY
 // overrides this lane makes are the optional per-dispatch effort pin (D5,
 // unset => the launcher's own `${CLAUDE_CODE_EFFORT_LEVEL:-xhigh}` default
 // applies), the optional per-dispatch model pin (unset =>
 // the launcher's own `${CODEX_MODEL:-gpt-6.1-sol}` default applies), the
-// unconditional HIMMEL_WORKER worker-ness marker (see below) —
+// unconditional HIMMEL_WORKER worker-ness marker (see below),
 // plus stripping TELEGRAM_OWN_POLLER so a spawned worker never adopts poller
 // ownership (mirrors run.ts's sessionEnv/glmChildEnv). `base` is injected so
 // this is testable without touching the real process.env.
 export function claudexChildEnv(base: Record<string, string | undefined>, effort?: EffortLevel, model?: CodexModelTier, contextTier?: CodexContextTier): Record<string, string | undefined> {
   // same no-op-editor pin as the glm/default lanes (see
-  // NON_INTERACTIVE_EDITOR_ENV in run.ts) — a claudex worker also spawns with
+  // NON_INTERACTIVE_EDITOR_ENV in run.ts), a claudex worker also spawns with
   // stdin closed and could otherwise block behind an editor window.
   const env: Record<string, string | undefined> = { ...base, ...NON_INTERACTIVE_EDITOR_ENV };
   if (effort) env.CLAUDE_CODE_EFFORT_LEVEL = effort;
@@ -795,7 +795,7 @@ export function claudexChildEnv(base: Record<string, string | undefined>, effort
   // registration fails closed on.
   env.HIMMEL_WORKER = "1";
   delete env.TELEGRAM_OWN_POLLER;
-  // the operator's hook-integrity bypass is not a worker's lever —
+  // the operator's hook-integrity bypass is not a worker's lever,
   // inherited, it would hand the worker its own pin-dir and anchor fences.
   delete env.HIMMEL_HOOK_INTEGRITY_BYPASS_OK;
   return env;
@@ -812,7 +812,7 @@ export type ClaudexRunResult = {
 type ClaudexRunOpts = {
   permMode?: PermissionMode; effort?: EffortLevel; model?: CodexModelTier; contextTier?: CodexContextTier; repoRoot: string; settings?: string;
   runLogPath?: string; timeoutForensicsPath?: string;
-  // byte count of every stdout/stderr chunk as it arrives — the
+  // byte count of every stdout/stderr chunk as it arrives, the
   // startup watchdog's "real output beyond the banner" disarm signal.
   onOutput?: (bytes: number) => void;
 };
@@ -998,7 +998,7 @@ export function createClaudexLiveLogAppender(
 // The real bounded-run spawn (mirrors run.ts's runSession: stdin closed,
 // hard process-TREE kill on timeout via the imported killTree, tail kept for
 // run.log persistence). NOT unit-tested directly (it launches a real
-// process) — executeClaudexRun below takes it as an injected dependency so
+// process), executeClaudexRun below takes it as an injected dependency so
 // tests stub it and never launch claude-codex/claude for real.
 export async function runClaudexSession(prompt: string, cwd: string, opts: ClaudexRunOpts, onSpawn?: (pid: number) => void): Promise<ClaudexRunResult> {
   const launcherPath = claudexLauncherPath(opts.repoRoot);
@@ -1089,7 +1089,7 @@ export function writeClaudexLiveMeta(
 }
 
 // claude-codex exports CLAUDE_CONFIG_DIR=~/.claude-codex, so the
-// worker's session transcript lands under ~/.claude-codex/projects — NOT the
+// worker's session transcript lands under ~/.claude-codex/projects, NOT the
 // ~/.claude/projects root the glm lane (and transcriptDirFor) uses. Watching
 // the wrong root would read every healthy worker as never-started.
 export function claudexTranscriptRoot(): string {
@@ -1103,8 +1103,8 @@ export function claudexTranscriptDirFor(worktree: string): string {
 }
 
 // The run-and-record step (mirrors spawn-glm's executeRun's meta-transition
-// contract and its startup-hang watchdog — the latter via the
-// shared armStartupWatchdog — minus the prompt-too-long
+// contract and its startup-hang watchdog (the latter via the
+// shared armStartupWatchdog), minus the prompt-too-long
 // classification, the done_escalated reclassification and cap-guard resume
 // scheduling, all GLM-specific / deferred here). meta.json ALWAYS leaves
 // "running": the success path writes finalMeta (done/failed/capped/blocked/
@@ -1139,7 +1139,7 @@ export async function executeClaudexRun(deps: {
     const runLogPath = join(deps.sessionDir, "run.log");
     const timeoutForensicsPath = join(deps.sessionDir, "timeout-forensics.txt");
     // armed at spawn, disarmed on the first transcript growth or
-    // on output beyond the banner (onOutput below) — a quiet-but-healthy
+    // on output beyond the banner (onOutput below), a quiet-but-healthy
     // worker is never killed; only one that never starts.
     if (watchWindowMs > 0) {
       disarmWatch = armStartupWatchdog({
@@ -1153,8 +1153,8 @@ export async function executeClaudexRun(deps: {
     }
     const onOutput = (bytes: number) => { outputBytes += bytes; if (outputBytes > 512) disarmWatch(); };
     const res = await deps.run(deps.prompt, deps.worktree, { permMode: deps.permMode, effort: deps.effort, model: deps.model, contextTier: deps.contextTier, repoRoot: deps.repoRoot, settings: deps.settings, runLogPath, timeoutForensicsPath, onOutput }, recordLivePid);
-    disarmWatch(); // the run is over either way — never let the interval outlive it
-    // run.log append is COSMETIC persistence — isolated so an I/O failure here
+    disarmWatch(); // the run is over either way, never let the interval outlive it
+    // run.log append is COSMETIC persistence, isolated so an I/O failure here
     // never flips a successful run to failed. Real runs stream live; injected
     // test/alternate runners retain the old post-run tail persistence fallback.
     if (!res.liveLogHandled) {
@@ -1191,7 +1191,7 @@ export async function executeClaudexRun(deps: {
 //
 // Twinned rather than imported: spawn-glm's runSharedDispatch hardcodes
 // "glm" as the lane argument to shared-branch-lock.sh acquire and its
-// messages are "spawn-glm:"-prefixed — reusing it as-is would record a
+// messages are "spawn-glm:"-prefixed, reusing it as-is would record a
 // claudex dispatch's lock under the wrong lane name. The lifecycle itself
 // (acquire -> runBody -> release in a finally) is identical. The pushurl
 // quarantine both twins used to carry is gone (see the removal
@@ -1202,7 +1202,7 @@ export async function runClaudexSharedDispatch(p: {
   repoDir: string; worktree: string; branch: string; needsWorktreeAdd: boolean;
   lockScript: string; gitAdd: () => void; runBody: () => Promise<number>;
   // codex-adv CR: re-validate the reused worktree AFTER the lock. The plan's
-  // pre-lock cleanliness check can go stale — another shared worker may run
+  // pre-lock cleanliness check can go stale, another shared worker may run
   // (and leave uncommitted changes) between it and this acquire. Called right
   // after acquire, before gitAdd/poison; returns ok:false to refuse (the finally
   // still releases the lock). Absent ⇒ skipped (own-mode / tests).
@@ -1218,7 +1218,7 @@ export async function runClaudexSharedDispatch(p: {
     if (p.needsWorktreeAdd) p.gitAdd(); // NO -b: an existing branch, never minted here
     // Unconditional: a REUSED managed
     // worktree (needsWorktreeAdd=false) from a pre-change or failed dispatch
-    // may never have been trust-seeded — seeding is idempotent, so cover both.
+    // may never have been trust-seeded, seeding is idempotent, so cover both.
     ensureWorkspaceTrust(p.worktree);
     const code = await p.runBody();
     return { ok: true, code };
@@ -1246,16 +1246,16 @@ export async function runClaudexSharedDispatch(p: {
 async function main(): Promise<void> {
   const usage = `usage: spawn-claudex [<prompt> | --brief-file <path>] [--cwd <dir>] [--name <slug>] [--branch <existing-branch>] [--timeout-mins <n>] [--permission-mode dontAsk] [--effort low|medium|high|xhigh] [--model ${CODEX_MODELS.join("|")}] [--context-tier 272k|353k|900k] [--profile <name>] [--add-plugins a@m,b@m] [--rounds-override <why>] [--force] [--skip-auth-preflight] (the prompt is the task brief, inline, or read verbatim from --brief-file; default --permission-mode: dontAsk; bypassPermissions is refused)`;
   const rawArgv = process.argv.slice(2);
-  // help short-circuit — before parseClaudexArgs, before any side effect.
+  // help short-circuit, before parseClaudexArgs, before any side effect.
   if (isHelpFlag(rawArgv)) { console.log(usage); process.exit(0); }
   const parsed = parseClaudexArgs(rawArgv);
   if (!parsed.ok) { console.error(`spawn-claudex: ${parsed.error}`); console.error(usage); process.exit(2); }
   const { task: taskArg, briefFile, cwd, name, branch: branchArg, timeoutMins, permMode: permModeArg, effort, model, contextTier, force, skipAuthPreflight, profile, addPlugins, roundsOverride } = parsed.args;
   // --brief-file's contents BECOME the task (readBriefFile is
-  // spawn-glm's exported fail-closed helper — one implementation across both
-  // lanes). Read here — before any side effect and before every task-consuming
-  // consumer below (round guard, bank preflight, plan, worker-prompt compose)
-  // — so a missing/unreadable/empty file is a clean exit-2 usage refusal that
+  // spawn-glm's exported fail-closed helper, one implementation across both
+  // lanes). Read here, before any side effect and before every task-consuming
+  // consumer below (round guard, bank preflight, plan, worker-prompt compose),
+  // so a missing/unreadable/empty file is a clean exit-2 usage refusal that
   // leaves no orphan worktree/branch/meta, and the file's brief flows into the
   // EXISTING <session-dir>/brief.md + pointer-prompt machinery unchanged.
   let task: string | undefined = taskArg;
@@ -1265,7 +1265,7 @@ async function main(): Promise<void> {
     task = brief.task;
   }
   if (!task) { console.error(usage); process.exit(2); }
-  // same structural forbid + worker default as spawn-glm.ts — see
+  // same structural forbid + worker default as spawn-glm.ts, see
   // its composeWorkerSettings/refuseBypassPermissions comment for the full
   // design rationale (twin lane, identical hang class + fix).
   const bypassRefusal = refuseBypassPermissions(permModeArg);
@@ -1275,21 +1275,21 @@ async function main(): Promise<void> {
   const permMode: PermissionMode = permModeArg ?? "dontAsk";
   const absCwd = resolve(cwd);
   // refuse BEFORE any worktree/branch side-effect if this
-  // dispatch is not running from the PRIMARY checkout — see
+  // dispatch is not running from the PRIMARY checkout, see
   // detectNonPrimaryCwd above for the incident + detection rationale.
   const nonPrimaryRefusal = refuseNonPrimaryCwd(absCwd);
   if (nonPrimaryRefusal) { console.error(nonPrimaryRefusal); process.exit(2); }
-  // refuse a symptom-loop dispatch BEFORE any side effect — same
+  // refuse a symptom-loop dispatch BEFORE any side effect, same
   // two-stage guard + rationale as spawn-glm.ts (round-guard.ts has the
   // incident): invariant required at 2 reviewed rounds, cheap lane refused at 3.
   const roundGuard = checkRoundGuard("spawn-claudex", { task, branch: branchArg, name, cwd: absCwd, roundsOverride });
   if (roundGuard.refusal) { console.error(roundGuard.refusal); process.exit(2); }
   if (roundGuard.note) console.error(roundGuard.note);
-  // validate the profile NAME + overlay ids BEFORE any side effect —
+  // validate the profile NAME + overlay ids BEFORE any side effect,
   // an unknown --profile / malformed --add-plugins id is a clean usage refusal
   // (exit 2), never an orphan worktree/branch. `installed: []` keeps this to pure
   // validation: the REAL deny baseline is computed later, in runBody, from the
-  // WORKER'S worktree (CR) — that is the cwd claude actually runs in, and its
+  // WORKER'S worktree (CR). That is the cwd claude actually runs in, and its
   // branch-local .claude/settings{,.local}.json can differ from the dispatcher's.
   try { resolveProfileSettings(profile, addPlugins, absCwd, []); }
   catch (e) { console.error(`spawn-claudex: ${String((e as any)?.message ?? e)}`); console.error(usage); process.exit(2); }
@@ -1329,18 +1329,18 @@ async function main(): Promise<void> {
   // calls the LAUNCHER's own check-only entry (scripts/claude-codex
   // --guard-check) rather than re-implementing a recogniser here:
   // scripts/claude-codex stays the SINGLE owner of the PHI/egress verdict
-  // (D1) — its guard_workspace already screens the launch cwd at launch time,
+  // (D1), its guard_workspace already screens the launch cwd at launch time,
   // so nothing here can drift out of sync with it, because nothing here
   // duplicates it. This call exists for ORDERING and ATTRIBUTION, not for a
   // refusal that didn't exist before: probeClaudexAuth already runs the
   // launcher with cwd:absCwd, whose unconditional guard_workspace screen (it
   // runs before the --preflight-only branch) DOES refuse a PHI-marked absCwd
-  // pre-creation today — but that exit 3 doesn't fit probeClaudexAuth's
+  // pre-creation today, but that exit 3 doesn't fit probeClaudexAuth's
   // ok/unavailable cases, so it falls into "fatal" and surfaces as a
   // misattributed "codex auth preflight reports a PERMANENT failure" (fix
   // your credentials) instead of a PHI refusal. And --skip-auth-preflight
   // skips probeClaudexAuth entirely, so THAT path had no pre-creation
-  // screening at all — the worktree, branch, session dir and meta.json all
+  // screening at all, the worktree, branch, session dir and meta.json all
   // got minted before the worker's own launch-time guard_workspace(worktree)
   // had a chance to refuse. This call fixes both: a correctly-attributed exit
   // 3, before either the auth probe or a mint, on every path. `cwd: absCwd`
@@ -1348,14 +1348,14 @@ async function main(): Promise<void> {
   // directory the operator happened to invoke spawn-claudex from (the
   // launcher's "this workspace" check is against ITS OWN process cwd).
   // Screens absCwd (the himmel checkout, which exists now) rather than
-  // worktree (which does not exist yet — the launcher's own
+  // worktree (which does not exist yet, the launcher's own
   // accessible-directory check would just fail-close on it for the wrong
   // reason); worktree is always a descendant of absCwd, so every guard row
   // covering the checkout already refuses here, and a row naming only the
   // lane's worktree subtree is still caught at launch by the launcher's own
   // screening of the worker's cwd. Any nonzero exit refuses (fail-closed): 3
   // is the guard's own verdict, 2 is a launcher-level failure (missing key,
-  // bad arg) — either way this dispatch must not proceed.
+  // bad arg), either way this dispatch must not proceed.
   const guardCheck = Bun.spawnSync([BASH_BIN, claudexLauncherPath(REPO_ROOT), "--guard-check", absCwd], { cwd: absCwd, stdout: "pipe", stderr: "pipe" });
   if (guardCheck.exitCode !== 0) {
     process.stderr.write(guardCheck.stderr);
@@ -1365,7 +1365,7 @@ async function main(): Promise<void> {
 
   // Per-model window preflight (same pattern as the GLM lane): refuse a brief
   // that cannot fit BEFORE any side effect. 272_000 is the GPT-5.6 2x-billing
-  // ceiling documented in docs/tooling-catalog.md#claude-codex — kept under
+  // ceiling documented in docs/tooling-catalog.md#claude-codex, kept under
   // it rather than a raw context-window max, since going past it silently
   // doubles the codex-bank spend for this dispatch.
   const CLAUDEX_WINDOW_TOKENS = 272_000;
@@ -1391,12 +1391,12 @@ async function main(): Promise<void> {
 
   // Auth preflight: wait out a transient codex OAuth-refresh gap
   // (503 auth_unavailable) BEFORE any worktree side-effect but AFTER all the
-  // side-effect-free local validation (bank/plan/window) — so a deterministic
+  // side-effect-free local validation (bank/plan/window), so a deterministic
   // refusal (bad branch, dirty/primary/trunk worktree, brief-too-big) fails
   // FAST and locally, never wasting billable probes or masking itself behind an
   // auth failure (codex-adv CR). The shared-worktree race a long backoff could
   // open is handled under the lock by runClaudexSharedDispatch.revalidateClean.
-  // REFUSES (no worktree, no worker) on `!ready` — BOTH a permanent failure
+  // REFUSES (no worktree, no worker) on `!ready`, BOTH a permanent failure
   // (pf.fatal) AND an exhausted transient gap. The probe is claude-codex's own
   // authed check, so no key is handled here (D1). The ONLY override is the
   // EXPLICIT per-invocation --skip-auth-preflight flag, never an env var: an
@@ -1410,14 +1410,14 @@ async function main(): Promise<void> {
     const pf = await runAuthPreflightWithBackoff((t) => probeClaudexAuth(REPO_ROOT, absCwd, t), { delaysMs: preflightDelaysMs, sleep, log: (m) => console.error(m) });
     if (!pf.ready) {
       console.error(pf.fatal
-        // name what was measured, not an asserted cause — the
+        // name what was measured, not an asserted cause, the
         // "spawn-claudex: preflight probe observed HTTP …" line above (forwarded
         // from the launcher's own stderr) carries the actual status + body
         // excerpt. Only a 401/403 is a deterministic invalid-key signal; curl
         // unavailable and egress refusal are the other permanent causes, but a
         // bare CLIPROXY_API_KEY accusation is no longer asserted here.
         // a PHI/egress GUARD refusal (exit 3) is also permanent
-        // and lands here — probeClaudexAuth prints its own "refused by
+        // and lands here. probeClaudexAuth prints its own "refused by
         // claude-codex's PHI/egress guard ... NOT an auth or credential
         // problem" attribution line right above this one when that's the
         // cause, so this generic line no longer reads as credentials-only.
@@ -1432,30 +1432,30 @@ async function main(): Promise<void> {
   // The run body (mkdir sessionDir through executeClaudexRun) is IDENTICAL
   // between own-branch and shared modes; only the surrounding worktree
   // creation/mutation + lock ownership differ, below (mirrors spawn-glm).
-  // onSetupFail runs ONLY if the profile resolve below throws —
+  // onSetupFail runs ONLY if the profile resolve below throws,
   // i.e. before ANY of the worker's state exists. The own-branch caller passes a
   // teardown; shared mode passes nothing (runSharedDispatch calls runBody()).
   // the worker branch's tip BEFORE the worker runs, the base for `commits:`.
   let baseSha: string | undefined;
   const runBody = async (onSetupFail?: () => void): Promise<number> => {
-    // same seam as spawn-glm's twin — runBody runs in BOTH modes
+    // same seam as spawn-glm's twin, runBody runs in BOTH modes
     // after the branch exists and before the worker launches. Warn-only.
     const hugeDiff = checkHugeDiff("spawn-claudex", { cwd: worktree, branch });
     if (hugeDiff.note) console.error(hugeDiff.note);
-    // Resolve the profile FIRST — before meta.json is written.
+    // Resolve the profile FIRST, before meta.json is written.
     // resolveProfileSettings throws on an unreadable/malformed settings layer and
     // sits OUTSIDE executeClaudexRun's failure-transition guard; after the
     // "running" write a throw would leave meta stuck at running (a phantom worker
     // for fleet control). Resolving here keeps the "meta.json ALWAYS leaves
-    // running" invariant. Uses the WORKTREE — the cwd the worker runs in.
+    // running" invariant. Uses the WORKTREE, the cwd the worker runs in.
     let settings: string;
     try {
-      // same permission-hardening overlay as spawn-glm.ts's twin —
+      // same permission-hardening overlay as spawn-glm.ts's twin,
       // never optional, so --settings is now unconditionally passed.
       settings = composeWorkerSettings(resolveProfileSettings(profile, addPlugins, worktree), worktree, sessionDir);
     } catch (e) {
       // the resolve NEEDS the worktree cwd (branch-local settings
-      // layers), so it necessarily runs after `worktree add` — which is why a
+      // layers), so it necessarily runs after `worktree add`, which is why a
       // throw here would otherwise strand the worktree+branch we just minted.
       // Undo them, then rethrow the ORIGINAL error unchanged.
       onSetupFail?.();
@@ -1478,7 +1478,7 @@ async function main(): Promise<void> {
     const prompt = composeClaudexPointerPrompt(briefPath);
     if (timeoutMins !== undefined) process.env.RUN_TIMEOUT_MS = String(timeoutMins * 60 * 1000);
 
-    // The worker runs EXACTLY ONCE — the transient codex OAuth gap is waited out
+    // The worker runs EXACTLY ONCE. The transient codex OAuth gap is waited out
     // by the pre-launch auth preflight in main(), never by
     // re-running a worker (which could duplicate the worker's allowed side
     // effects). No retry wrapper here.
@@ -1493,7 +1493,7 @@ async function main(): Promise<void> {
     g(["worktree", "add", worktree, "-b", branch]);
     ensureWorkspaceTrust(worktree);
     // this dispatch MINTED both the worktree and the branch (-b), so
-    // it owns them until the worker starts. Teardown is passed ONLY here — shared
+    // it owns them until the worker starts. Teardown is passed ONLY here, shared
     // mode must never tear down a caller-owned worktree/branch.
     code = await runBody(() => teardownMintedWorktree(absCwd, worktree, branch));
   } else {

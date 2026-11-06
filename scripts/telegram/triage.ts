@@ -5,7 +5,7 @@ import { SPAWN_OWN_GROUP } from "../lib/kill-tree.mjs";
 
 export type TriageVerdict = "ignore" | "ack" | "spawn-low" | "spawn-high";
 // The only model the triage seam ever injects is the spawn-low haiku override
-// A literal type — not bare `string` — so a future verdict that
+// A literal type (not bare `string`), so a future verdict that
 // mints a different override is a compile error at the producer, not a silent
 // fall-through to the default model.
 export type TriageModelOverride = "haiku";
@@ -17,7 +17,7 @@ export type TriageModelOverride = "haiku";
 export type ModelOverride = "haiku" | "sonnet" | "opus";
 export type TriageInvokeFn = (args: string[], prompt: string) => Promise<string>;
 // fromOperator: the sender's ROLE, which selects
-// the prompt framing. Defaults false — the conservative side: an unwired caller
+// the prompt framing. Defaults false, the conservative side: an unwired caller
 // gets the shared-group framing, never the operator one.
 export type TriageDeps = { invoke?: TriageInvokeFn; timeoutMs?: number; sessionLabel?: string; fromOperator?: boolean };
 
@@ -43,7 +43,7 @@ function resolveTimeoutMs(): number {
 // 1. It never said what the group IS, so a terse follow-up (`try again..`,
 //    `Status?`) was indistinguishable from idle chatter.
 // 2. `ack` LIES about its effect. To a classifier the token reads "send an
-//    acknowledgement"; at the poller it means the same as `ignore` — silently
+//    acknowledgement"; at the poller it means the same as `ignore`, silently
 //    discarded, nobody ever sees it. So the model picked the label whose name
 //    matched its intent and unknowingly chose the drop.
 //
@@ -59,14 +59,14 @@ function resolveTimeoutMs(): number {
 // and genuine chatter (`lol nice`, `haha 😂`, `ok`) still classifies `ack`, so
 // the spam gate keeps its teeth.
 //
-// Deliberately stateless — no conversation history: the poller's triage gate
+// Deliberately stateless, no conversation history: the poller's triage gate
 // runs BEFORE the enqueue precisely so it needs no session I/O.
 function triagePrompt(text: string, fromOperator: boolean): string {
   return [
     "Classify this Telegram group message for whether it needs an agent spawn.",
     // ROLE-SPLIT (CR codex-adv-1). The framing was originally sent to EVERY
     // sender, which told the classifier "most traffic is the operator" even for
-    // an ordinary member of a shared group — a bare group allowlist admits every
+    // an ordinary member of a shared group, a bare group allowlist admits every
     // member. Measured chatter still classified `ack` under it, so no promotion
     // was observed, but asserting something false about the sender to widen a
     // spam gate is the wrong shape regardless: it exists to filter
@@ -79,7 +79,7 @@ function triagePrompt(text: string, fromOperator: boolean): string {
       // member": anonymous CHANNEL posts also land here (ingest falls their
       // `from` back to sender_chat, a channel id that is never in allowFrom), and
       // a broadcast post is not a group member. Their handling is unchanged from
-      // before this ticket — no exemption existed for anyone — so this is
+      // before this ticket (no exemption existed for anyone), so this is
       // accuracy, not a behaviour change. Recognising an operator posting under a
       // channel identity would need a trusted-channel policy; not in scope here.
       : ["This message is a shared-group post and is NOT from the operator.",
@@ -102,7 +102,7 @@ function triagePrompt(text: string, fromOperator: boolean): string {
 // invoke.sh spawns hermes as `run_hermes > >(tee "$capture_log")
 // 2>&1 &` for its own iteration-budget scan, which merges hermes'
 // stderr INTO stdout by construction. That means invoke.sh's OWN stderr is
-// structurally empty for any plain non-zero hermes exit — the
+// structurally empty for any plain non-zero hermes exit, the
 // `stderr.slice(-512)` this file used to reject with was therefore always
 // empty, and every real failure logged as a bare `triage exited 1:` with
 // nothing after the colon. Behind that empty colon the station ran 100%
@@ -145,7 +145,7 @@ export async function defaultInvoke(args: string[], prompt: string, timeoutMs: n
     const timer = setTimeout(() => {
       timedOut = true;
       // killTree: on Windows a bare p.kill() orphans the hermes
-      // python grandchild — taskkill /T /F takes the whole spawn tree.
+      // python grandchild, taskkill /T /F takes the whole spawn tree.
       killTree(p.pid, (s) => p.kill(s as any));
       reject(new Error("triage timeout"));
     }, timeoutMs);
@@ -202,7 +202,7 @@ export async function classifyForSpawn(text: string, deps: TriageDeps = {}): Pro
   const provider = process.env.TELEGRAM_TRIAGE_PROVIDER?.trim() || "deepseek";
   // Absolute path: the poller's cwd is not guaranteed to be the repo root.
   // BASH_BIN, not a bare "bash": under the poller's PATH a bare
-  // "bash" hit the WSL System32 stub, which exits 127 on any C: path — so the
+  // "bash" hit the WSL System32 stub, which exits 127 on any C: path, so the
   // classifier fail-opened to spawn-high on 100% of messages, invisibly.
   const args = [BASH_BIN, join(REPO_ROOT, "scripts", "hermes", "invoke.sh"), "--model", model, "--provider", provider];
   // deps.timeoutMs (tests) wins; otherwise the env-tunable deadline.

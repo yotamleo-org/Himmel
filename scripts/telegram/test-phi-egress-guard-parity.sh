@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/telegram/test-phi-egress-guard-parity.sh — cross-language
+# scripts/telegram/test-phi-egress-guard-parity.sh. Cross-language
 # parity test for the PHI/egress predicates.
 #
 # WHY: scripts/guardrails/phi-egress-lib.sh is the shared bash
@@ -14,9 +14,9 @@
 # it visible: this suite runs the SAME fixture inputs through both sides and
 # asserts they reach the SAME allow/deny verdict.
 #
-# The bash side runs the REAL root-scan function — `path_under_any` is
+# The bash side runs the REAL root-scan function. `path_under_any` is
 # extracted verbatim (via sed) from scripts/claude-codex, the surviving PHI
-# launcher screen and phi-egress-guard.ts's sync partner — not a test-authored
+# launcher screen and phi-egress-guard.ts's sync partner, not a test-authored
 # reimplementation, so drift in the ACTUAL deployed bash list-matching logic
 # is caught, not just drift in this test's idea of it (a fixture-passing hand-rolled copy proves nothing about the real
 # script). It also happens to be case-sensitive prefix matching, matching
@@ -55,7 +55,7 @@ done
 
 # Extract the REAL path_under_any() function verbatim from scripts/claude-codex
 # (bounded sed: opening line to the closing brace at column 0) rather than
-# hand-copying its logic — sourcing claude-codex itself would run its whole
+# hand-copying its logic, sourcing claude-codex itself would run its whole
 # launcher body, not just define the function. claude-codex's version calls
 # norm_path, so that is extracted the same way.
 _extracted_path_under_any="$(mktemp)"

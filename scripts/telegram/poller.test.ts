@@ -17,13 +17,13 @@ const root = () => mkdtempSync(join(tmpdir(), "poller-"));
 const allowAll = () => true;
 const spawnHighTriage = async (): Promise<TriageVerdict> => "spawn-high";
 
-// The triage gate is skipped entirely when TELEGRAM_TRIAGE=off — and that is a
+// The triage gate is skipped entirely when TELEGRAM_TRIAGE=off, and that is a
 // real User env var on the operator's box while a triage incident is mitigated.
 // Inherited, it made every triage test below silently pass-through
 // and still report green. Clear it so the suite tests the code, not the host.
 // beforeEACH, not beforeAll (panel CR codex-1): the kill switch is exactly the
 // kind of state a test sets and could fail to restore, and a once-per-file clear
-// would let that leak forward and silently disable triage for every later test —
+// would let that leak forward and silently disable triage for every later test,
 // re-creating the false-green this guard exists to prevent. Per-test is cheap.
 beforeEach(() => { delete process.env.TELEGRAM_TRIAGE; });
 
@@ -51,7 +51,7 @@ test("retry cap: after maxRetries consecutive failures the session parks as fail
 });
 
 test("content-filter block: parks failed on the FIRST failure (no retry climb), notifies kind 'blocked'", async () => {
-  // A content-filter block is deterministic — every retry replays the same blocked
+  // A content-filter block is deterministic, every retry replays the same blocked
   // output. So it must park IMMEDIATELY as "failed" (not climb MAX_RETRIES under the
   // "capped" mislabel) and surface an accurate "blocked" notice, not "backoff".
   const r = root(); await ensureSession(r, "S");
@@ -67,14 +67,14 @@ test("content-filter block: parks failed on the FIRST failure (no retry climb), 
   expect(m?.status).toBe("failed");                    // parked immediately, not "capped"
   expect(m?.fail_count ?? null).toBe(null);            // no retry climb
   expect(m?.retry_at).toBe(null);                      // no pointless backoff retry
-  expect(spawns).toBe(1);                              // exactly ONE run — no 3× retry loop
+  expect(spawns).toBe(1);                              // exactly ONE run, no 3× retry loop
   expect(notices).toEqual(["blocked"]);                // accurate notice, not "backoff"/"giveup"
   expect((await peekPending(r, "S")).count).toBe(1);   // message preserved (un-parkable by a new message)
 });
 
 test("content-filter block takes precedence over a simultaneous cap (blocked wins, parks failed not capped)", async () => {
   // Load-bearing ordering guard: if a run is BOTH capped and blocked, the deterministic
-  // block must win — park failed immediately, NOT climb the capped/retry path. A future
+  // block must win, park failed immediately, NOT climb the capped/retry path. A future
   // reorder that let "capped" win would silently regress to the 3×-retry loop this fixes.
   const r = root(); await ensureSession(r, "S");
   await writeMeta(r, "S", freshMeta(9));
@@ -94,7 +94,7 @@ test("content-filter block takes precedence over a simultaneous cap (blocked win
 test("transient non-zero exit (e.g. 529 Overloaded) notifies 'transient' not 'cap', and still backs off + retries", async () => {
   // Regression guard for the 529-mislabeled-as-cap bug: a run that exits non-zero
   // WITHOUT a genuine cap sentinel (capped:false) must surface the transient notice,
-  // never the usage-cap one — while still backing off (status=capped is the shared
+  // never the usage-cap one, while still backing off (status=capped is the shared
   // generic back-off state) and re-peeking the still-uncommitted pending.
   const r = root(); await ensureSession(r, "S");
   await writeMeta(r, "S", freshMeta(9));
@@ -105,7 +105,7 @@ test("transient non-zero exit (e.g. 529 Overloaded) notifies 'transient' not 'ca
   const runFn = makeRunFn(r, "/repo", overloaded, 5000, notify, 3);
   await runFn("S");
   const m = await readMeta(r, "S");
-  expect(notices.map((n) => n[0])).toEqual(["transient"]);   // honest label — NOT "cap"
+  expect(notices.map((n) => n[0])).toEqual(["transient"]);   // honest label, NOT "cap"
   expect(notices[0][1]).toBeTruthy();              // carries retry_at so the notice renders a real time
   expect(m?.status).toBe("capped");                // shared back-off state retained
   expect(m?.retry_at).toBeTruthy();                // retry scheduled
@@ -114,7 +114,7 @@ test("transient non-zero exit (e.g. 529 Overloaded) notifies 'transient' not 'ca
 });
 
 test("noticeText: cap vs transient strings are honest (529 must not read as a usage cap)", () => {
-  // The literal point of this test — assert the operator-facing wording, not just
+  // The literal point of this test, assert the operator-facing wording, not just
   // the kind token. A future edit that swapped the two arms or dropped the disclaimer
   // would otherwise ship green.
   const cap = noticeText("cap", "01:49 UTC", 3);
@@ -152,7 +152,7 @@ test("retry cap: a message arriving DURING the final failing run prevents the pa
   };
   await makeRunFn(r, "/repo", failingWithArrival, 5000, undefined, 3)("S");   // would be the 3rd failure
   const m = await readMeta(r, "S");
-  expect(m?.status).toBe("idle");              // NOT parked — new arrival un-parks
+  expect(m?.status).toBe("idle");              // NOT parked, new arrival un-parks
   expect(m?.fail_count ?? 0).toBe(0);
   expect((await peekPending(r, "S")).count).toBe(2);   // both messages re-runnable
 });
@@ -347,7 +347,7 @@ test("dispatcher: concurrency cap defers extra sessions; freed slot admits them"
 // everything else was hardened away from. Both malformed shapes fail badly and
 // in OPPOSITE directions: "" is 0, which stalls the bridge outright (every
 // dispatch defers, the coalescer re-holds, deliverAllPending skips held
-// sessions), while a typo is NaN, and `inFlight.size >= NaN` is always false —
+// sessions), while a typo is NaN, and `inFlight.size >= NaN` is always false,
 // the cap silently disappears and unbounded runs go out in parallel.
 test("dispatcher cap: malformed TELEGRAM_MAX_CONCURRENT_RUNS falls back to 2, never 0 or unbounded", async () => {
   const prev = process.env.TELEGRAM_MAX_CONCURRENT_RUNS;
@@ -364,13 +364,13 @@ test("dispatcher cap: malformed TELEGRAM_MAX_CONCURRENT_RUNS falls back to 2, ne
   try {
     // The over-large shapes matter as much as the empty/NaN ones: Number("1e6")
     // is 1000000 and IS an integer, so a plain isInteger check would hand back
-    // an effectively unbounded cap — the same failure as NaN, reached from the
+    // an effectively unbounded cap, the same failure as NaN, reached from the
     // other end. "65" is one past the ceiling; "0x10"/"+5" are non-decimal
     // shapes a lenient Number() would also accept.
     for (const bad of ["", "   ", "abc", "0", "-1", "2.5", "NaN",
                        "1e6", "999999999999", "65", "0x10", "+5"]) {
       process.env.TELEGRAM_MAX_CONCURRENT_RUNS = bad;
-      expect(await effectiveCap()).toBe(2);          // default — not 0 (stall), not 12 (uncapped)
+      expect(await effectiveCap()).toBe(2);          // default, not 0 (stall), not 12 (uncapped)
     }
     delete process.env.TELEGRAM_MAX_CONCURRENT_RUNS;
     expect(await effectiveCap()).toBe(2);            // absent -> default
@@ -508,11 +508,11 @@ test("ingest accepts a channel_post (no from) when the chat is allowed; from fal
 });
 
 // bus.test.ts's ordering tests call
-// repairCursorBeyondEof and appendLine/ingestUpdates directly — they pin the
+// repairCursorBeyondEof and appendLine/ingestUpdates directly. They pin the
 // ordering PROPERTY, but do not exercise the poller's actual production call
 // site, so moving main()'s two lines back below ingestUpdates would leave
-// them green. This test calls repairThenIngest itself — the real seam main()
-// calls — so it goes red if the repair is ever moved back below the ingest.
+// them green. This test calls repairThenIngest itself (the real seam main()
+// calls), so it goes red if the repair is ever moved back below the ingest.
 test("repairThenIngest: a stale beyond-EOF cursor is repaired BEFORE the tick's own ingest, preserving the ingested message", async () => {
   const r = root();
   const f = join(r, "inbound.jsonl"); const cur = f + ".cursor";
@@ -675,7 +675,7 @@ test("chat routes to __chat__ session", async () => {
 // --- per-group session routing ---
 // Non-DM chat (negative chat_id) gets its own session keyed by chat_id so
 // meta.chat_id = the group/channel and replies route back there, not the DM.
-// Key uses "_" not ":" — the session id is an NTFS directory name.
+// Key uses "_" not ":", the session id is an NTFS directory name.
 
 test("group chat routes to its own group_<chat_id> session with meta.chat_id = the group", async () => {
   const r = root(); const ran: string[] = [];
@@ -706,7 +706,7 @@ test("group chat ignores cheap-triaged chatter without spawning", async () => {
 // Regression: an ignored group message must NOT be resurrected by
 // the main loop's unconditional deliverAllPending (mirrors poller.ts ~905). The
 // gate drops it before enqueue, so there is no inbox content and no session to
-// deliver — zero runs across the sweep.
+// deliver, zero runs across the sweep.
 test("ignore verdict: deliverAllPending fires zero runs and finds no pending inbox", async () => {
   const r = root(); const ran: string[] = [];
   const ignoreTriage = async (): Promise<TriageVerdict> => "ignore";
@@ -729,7 +729,7 @@ test("ack verdict: deliverAllPending fires zero runs and finds no pending inbox"
   expect(await readMeta(r, "group_-50")).toBeNull();
 });
 
-// an ignored message is dropped even when the session is mid-run —
+// an ignored message is dropped even when the session is mid-run,
 // the gate returns before appendLine, so a running session's inbox never grows
 // with triaged-away chatter.
 test("ignore verdict while session is running: chatter is not appended to the inbox", async () => {
@@ -761,7 +761,7 @@ test("group chat spawn-low triage passes haiku as the run model override", async
 // The incident: with the classifier live on Windows for the first time
 // (after the bash-path bug that had fail-opened it was fixed), ordinary
 // operator questions in the himmel-ops group classified as ignore/ack and were
-// dropped PERMANENTLY — including `why didn't we got an answer on last messagE?`,
+// dropped PERMANENTLY, including `why didn't we got an answer on last messagE?`,
 // the complaint about the message the same bug had already eaten. The triage gate's
 // purpose was cutting resource spam in SHARED groups, never filtering the
 // operator, so an operator message floors to spawn-low instead of dropping.
@@ -822,7 +822,7 @@ test("non-operator group chatter is still dropped when the exemption is wired", 
 // --- REQUIRE-MENTION GATE ---
 // Grow-tent groups are shared with luna_grow_bot, which owns `/grow`. Rather
 // than blocklist that one command, access.json opts the whole group into
-// @mention-only mode (GroupPolicy.requireMention) — a message that doesn't
+// @mention-only mode (GroupPolicy.requireMention), a message that doesn't
 // @mention THIS bot is dropped before triage and before the
 // operator floor, which must not rescue a message aimed at a different bot.
 const mentionOn = () => true;
@@ -888,7 +888,7 @@ test("a DM is unaffected by require_mention (chat_id >= 0 is out of scope)", asy
     mentionOn, BOT);
 
   // DMs never hit the group-scoped triage gate at all, so a DM just routes as
-  // ordinary chat straight through to the run — untouched either way.
+  // ordinary chat straight through to the run, untouched either way.
   expect(triaged).toEqual([]);
   expect(ran).toEqual([{ session: "__chat__", modelOverride: undefined }]);
 });
@@ -935,7 +935,7 @@ test("handleBatch isolates a throwing record so later records still land", async
   expect(handled).toEqual(["try again..", "status?"]);
 });
 
-// Containing the throw must not make the loss QUIET — that would swap a loud
+// Containing the throw must not make the loss QUIET, that would swap a loud
 // crash-loop for a healthy-looking bridge that silently eats messages, which is
 // the exact signature the operator floor exists to kill.
 test("handleBatch notifies on a dropped record, keyed by update_id", async () => {
@@ -964,7 +964,7 @@ test("handleBatch survives an onDrop that itself throws", async () => {
 
 // The notice goes over the network, and sendMessage honours Telegram's uncapped
 // retry_after. If handleBatch awaited it, ONE rate-limited chat would stall every
-// later record of a batch the cursor has already consumed — and a restart while
+// later record of a batch the cursor has already consumed, and a restart while
 // blocked would lose them permanently. onDrop is fire-and-forget by signature,
 // so a notifier that never settles cannot hold the loop.
 test("a drop notifier that never settles does not stall later records", async () => {
@@ -983,7 +983,7 @@ test("a drop notifier that never settles does not stall later records", async ()
 });
 
 // onDrop is typed `=> void` (fire-and-forget), but void says "don't await",
-// not "can't reject" — a caller passing an async callback that rejects must
+// not "can't reject", a caller passing an async callback that rejects must
 // not let that rejection escape the seam as an unhandled rejection.
 test("handleBatch contains an onDrop that rejects asynchronously, without an unhandled rejection", async () => {
   const rejections: unknown[] = [];
@@ -1040,8 +1040,8 @@ test("handleBatch handles every record when none throw", async () => {
 });
 
 // The tests above inject a mock isOperator, which proves the FLOOR but not the
-// production WIRING (panel CR glm-2). This one composes the real predicate —
-// `(from) => isAllowed(access, from)`, exactly what main() passes — against an
+// production WIRING (panel CR glm-2). This one composes the real predicate,
+// `(from) => isAllowed(access, from)`, exactly what main() passes, against an
 // access.json shape where the two identities differ, so the claim that the floor
 // keys on the GLOBAL allowFrom (and not on group membership) is actually tested.
 test("operator floor keys on GLOBAL allowFrom: a per-group allowFrom member is still triaged", async () => {
@@ -1066,7 +1066,7 @@ test("operator floor keys on GLOBAL allowFrom: a per-group allowFrom member is s
 // has GroupAnonymousBot substituted for their real id, so a floor keyed on raw
 // from.id could never match. The links were classified `ignore` and hit the
 // PERMANENT drop with only a supervisor.log line to show for it. Composes the
-// REAL production predicate (what main() passes), not a mock — the wiring is the
+// REAL production predicate (what main() passes), not a mock. The wiring is the
 // thing that was wrong. Ids below are synthetic.
 test("an anonymous group admin reaches the spawn floor, not the drop path", async () => {
   const access = { allowFrom: ["1000000001"], groups: { "-1009999999": { trustAnonymousAdmins: true } } };
@@ -1084,7 +1084,7 @@ test("an anonymous group admin reaches the spawn floor, not the drop path", asyn
 // End-to-end, ingest → handler (codex adversarial CR asked for exactly this):
 // Telegram's sender_chat says which chat an on-behalf-of-chat post represents.
 // A post carrying the anonymous sender id but a sender_chat that is NOT the
-// destination chat is a different trust principal and must stay triaged — and
+// destination chat is a different trust principal and must stay triaged, and
 // the check is only reachable if ingest actually PRESERVES the field, which is
 // why this drives the real ingestUpdates rather than hand-building the message.
 test("ingest preserves sender_chat, and a mismatched one is not floored", async () => {
@@ -1128,7 +1128,7 @@ test("ingest records a reply to a bot message as reply_to_bot, and no other repl
 // sender_chat is spread into all FOUR ingest branches, and the media ones append
 // their record only AFTER the download settles (`{ ...rec, ...path }`), so the
 // field survives by construction rather than by an explicit copy. Pin the two
-// that go through that post-download finalization (panel CR glm-1) — the plain
+// that go through that post-download finalization (panel CR glm-1), the plain
 // text path is covered above, and voice shares the ready.push shape.
 test("ingest preserves sender_chat through the post-download media branches", async () => {
   const r = root();
@@ -1165,7 +1165,7 @@ test("the anonymous-admin id is still triaged in a non-opted-in group", async ()
 });
 
 // A dispatch failure happens AFTER the message is durable, so it must not
-// escape handleInbound — handleBatch would label it "could not be queued" and
+// escape handleInbound, handleBatch would label it "could not be queued" and
 // tell the operator to resend an already-enqueued message (CR coderabbit-1).
 // Reachable via TELEGRAM_BATCH_QUIET_MS=0, where the coalescer awaits dispatch.
 test("a dispatch failure after the inbox append does not escape handleInbound", async () => {
@@ -1183,7 +1183,7 @@ test("a dispatch failure after the inbox append does not escape handleInbound", 
   expect((await peekPending(r, "group_-50")).count).toBe(1);
 });
 
-// The poller must tell the classifier the SAME sender role the floor uses —
+// The poller must tell the classifier the SAME sender role the floor uses,
 // otherwise a group member could be classified under operator framing (CR
 // codex-adv-1), or the operator under shared-group framing.
 test("the sender role handleInbound passes to triage matches the floor's", async () => {
@@ -1338,7 +1338,7 @@ test("peekPending does not consume until commit (capped run can re-peek)", async
   const p1 = await peekPending(r, "S");
   expect(p1.count).toBe(2);                       // pending.jsonl written with a,b
   const p2 = await peekPending(r, "S");
-  expect(p2.count).toBe(2);                       // NOT consumed yet — capped-run safety
+  expect(p2.count).toBe(2);                       // NOT consumed yet, capped-run safety
   await commitPending(r, "S", p1.nextPos);
   const p3 = await peekPending(r, "S");
   expect(p3.count).toBe(0);                       // committed → consumed
@@ -1349,7 +1349,7 @@ test("peekPending does not consume until commit (capped run can re-peek)", async
 // DoD: a delivered inbound produces an outbox reply via the cold-spawn path; the cold
 // prompt carries context.md (prior-turn continuity) + points at the peeked slice; the
 // consumed cursor commits only AFTER a clean run. runImpl is injected so no real claude
-// spawns — it simulates the child reading the pending slice and replying to the outbox.
+// spawns, it simulates the child reading the pending slice and replying to the outbox.
 test("cold runFn: pending inbound → cold run replies to outbox, passes continuity context, commits cursor", async () => {
   const r = root(); await ensureSession(r, "HIMMEL-7");
   await writeMeta(r, "HIMMEL-7", { chat_id:9, status:"idle", last_run_pid:null, last_run_at:null, task_name:null, retry_at:null });
@@ -1490,7 +1490,7 @@ test("clean-run self-drain SKIPS a coalescer-held session (the burst keeps its m
     return { code:0, capped:false, pid:1 };
   };
   await makeRunFn(r, "/repo", fakeRun, 5000, undefined, 3, undefined, () => true)("HELD");
-  expect(calls).toBe(1);                                  // drain skipped — did NOT eat the held line
+  expect(calls).toBe(1);                                  // drain skipped, did NOT eat the held line
   expect((await peekPending(r, "HELD")).count).toBe(1);   // still pending for the coalescer's dispatch
 });
 
@@ -1561,7 +1561,7 @@ test("guarded: overlapping calls are dropped; re-entry works after in-flight res
   const fn = guarded(task);
 
   fn();                    // starts the first invocation (in-flight)
-  fn();                    // overlaps — must be a no-op (dropped)
+  fn();                    // overlaps, must be a no-op (dropped)
   expect(counter).toBe(0); // task not done yet
 
   resolve();               // complete the first invocation
@@ -1786,7 +1786,7 @@ const spawnSpy = () => {
   return { seen, runImpl };
 };
 // A cwd route is only honoured when the target carries a read-only floor
-// (.claude/settings.json — CR codex-adv-1), so route tests need a REAL dir.
+// (.claude/settings.json, CR codex-adv-1), so route tests need a REAL dir.
 const flooredRepo = (() => {
   const d = mkdtempSync(join(tmpdir(), "cr-floored-repo-"));
   mkdirSync(join(d, ".claude", "hooks"), { recursive: true });
@@ -1832,7 +1832,7 @@ test("makeRunFn: an unrouted chat keeps repoCwd, no permission mode, no markers"
   expect(seen.extraEnv).toBeUndefined();
 });
 
-// defaultVault is pinned live, so vaultFor returns non-null for EVERY chat —
+// defaultVault is pinned live, so vaultFor returns non-null for EVERY chat,
 // including the tent groups. Without suppression the cwd route would still carry
 // the Obsidian filing clause into a code repo (spec §3.A.1).
 test("makeRunFn: cwd wins over an inherited defaultVault and suppresses the filing clause", async () => {
@@ -1844,7 +1844,7 @@ test("makeRunFn: cwd wins over an inherited defaultVault and suppresses the fili
   expect(seen.prompt).toContain("Do NOT file it anywhere");
 });
 
-// An empty-string cwd in access.json must read as "unset", not as cwd "" —
+// An empty-string cwd in access.json must read as "unset", not as cwd "",
 // the same normalization the vault branch already does.
 test("makeRunFn: a blank cwd falls back to repoCwd with no bypass", async () => {
   const r = root(); await seedChat(r, "group_-77", -77);
@@ -1894,7 +1894,7 @@ test("ingest voice when transcription fails: not forwarded (closure owns the err
   await ingestUpdates(r, [upd], allowAll, undefined, async () => null);
   const lines = await readNewLines(join(r,"inbound.jsonl"), join(r,"inbound.jsonl.cursor"));
   expect(lines.length).toBe(0);
-  expect(await loadOffset(r)).toBe(23);              // confirmed — no retry loop on a bad voice note
+  expect(await loadOffset(r)).toBe(23);              // confirmed, no retry loop on a bad voice note
 });
 
 test("ingest voice when fetchVoice throws: degrades to a skip, no crash", async () => {
@@ -1925,7 +1925,7 @@ test("ingest voice with no fetchVoice wired: dropped like other unsupported medi
   expect(lines.length).toBe(0);
 });
 
-// makeFetchVoice — the production closure that OWNS the acceptance
+// makeFetchVoice. The production closure that OWNS the acceptance
 // ("explicit error reply on every failure, never a silent drop, never throws")
 
 const voiceDeps = (over: Partial<Parameters<typeof makeFetchVoice>[0]> = {}) => {
@@ -2010,7 +2010,7 @@ test("mixed batch — photo and text in same batch both land in inbox; offset ad
 
 test("consumer contract — image_path in inbox entry points to a file that exists at write time", async () => {
   // This test verifies that we only write image_path once the download promise has resolved
-  // (the consumer — a bounded claude run — reads the inbox entry after download is done).
+  // (the consumer, a bounded claude run, reads the inbox entry after download is done).
   const r = root();
   const written: Array<{ image_path?: string; resolvedBefore: boolean }> = [];
   let downloadResolved = false;
@@ -2035,7 +2035,7 @@ test("consumer contract — image_path in inbox entry points to a file that exis
 test("a batch of N photos does not delay getUpdates by N × file-fetch timeout (concurrent downloads)", async () => {
   const r = root();
   const ORDER: string[] = [];
-  // Three slow fetches — each takes 10ms but they run concurrently
+  // Three slow fetches, each takes 10ms but they run concurrently
   const slowFetch: FetchImageFn = async (file_id, _uid) => {
     ORDER.push(`start:${file_id}`);
     await new Promise<void>((res) => setTimeout(res, 10));
@@ -2051,7 +2051,7 @@ test("a batch of N photos does not delay getUpdates by N × file-fetch timeout (
   // All three downloads started before any ended (concurrency, not sequential)
   const startIdx = (id: string) => ORDER.indexOf(`start:${id}`);
   const endIdx   = (id: string) => ORDER.indexOf(`end:${id}`);
-  // All starts should appear before the first end — i.e., all three kicked off concurrently
+  // All starts should appear before the first end, i.e., all three kicked off concurrently
   const firstEnd = Math.min(endIdx("a"), endIdx("b"), endIdx("c"));
   expect(startIdx("a")).toBeLessThan(firstEnd);
   expect(startIdx("b")).toBeLessThan(firstEnd);
@@ -2088,7 +2088,7 @@ test("ingest voice with caption: caption + [voice transcript unavailable] forwar
   };
   await ingestUpdates(r, [upd], allowAll, undefined, async () => null);
   const lines = await readNewLines(join(r, "inbound.jsonl"), join(r, "inbound.jsonl.cursor"));
-  // caption MUST be forwarded even though transcription failed — operator context preserved
+  // caption MUST be forwarded even though transcription failed, operator context preserved
   expect(lines.length).toBe(1);
   expect(lines[0].text).toContain("check this out");
   expect(lines[0].text).toContain("[voice transcript unavailable]");
@@ -2168,7 +2168,7 @@ test("resolveRetentionMs: only finite positive values override the default", () 
   expect(resolveRetentionMs("")).toBe(DEFAULT);
   expect(resolveRetentionMs("not-a-number")).toBe(DEFAULT);
   // negative would flip the cutoff into the future (sweep everything) and
-  // collapse the daily timer interval — must fall back to the default
+  // collapse the daily timer interval, must fall back to the default
   expect(resolveRetentionMs("-1")).toBe(DEFAULT);
   expect(resolveRetentionMs("0")).toBe(DEFAULT);
   expect(resolveRetentionMs("Infinity")).toBe(DEFAULT);
@@ -2184,9 +2184,9 @@ test("ingest drops is_automatic_forward messages (linked-group copy); original c
   const r = root();
   const allow = (_fromId: number, chatId: number) => chatId === -1001234 || chatId === -1009876;
   await ingestUpdates(r, [
-    // original channel post — must be ingested
+    // original channel post, must be ingested
     { update_id: 50, channel_post: { chat:{id:-1001234}, sender_chat:{id:-1001234}, text:"hello from channel" } },
-    // auto-forwarded copy into the linked discussion group — must be DROPPED
+    // auto-forwarded copy into the linked discussion group, must be DROPPED
     { update_id: 51, message: { chat:{id:-1009876}, from:{id:-1001234}, text:"hello from channel", is_automatic_forward: true } },
   ], allow);
   const lines = await readNewLines(join(r,"inbound.jsonl"), join(r,"inbound.jsonl.cursor"));
@@ -2213,7 +2213,7 @@ test("ingest: is_automatic_forward drop still advances the offset (no retry loop
   ], allowAll);
   const lines = await readNewLines(join(r,"inbound.jsonl"), join(r,"inbound.jsonl.cursor"));
   expect(lines.length).toBe(0);
-  expect(await loadOffset(r)).toBe(71);   // confirmed — no re-delivery
+  expect(await loadOffset(r)).toBe(71);   // confirmed, no re-delivery
 });
 
 // --- remote auto-actions (forwarded/caption bits + /arm routing) ---
@@ -2443,7 +2443,7 @@ test("makeRunFn: a NON-vault chat spawns in repoCwd with NO bypass (default post
   expect(calls[0].mode).toBeUndefined();
 });
 
-// Blast-radius — a configured defaultVault routes EVERY unconfigured chat (DMs,
+// Blast-radius, a configured defaultVault routes EVERY unconfigured chat (DMs,
 // unknown groups) into a vault cwd WITH bypassPermissions. Pin that composed
 // behavior with the REAL vaultForChat (the unit tests above stubbed it).
 test("makeRunFn + real vaultForChat: a defaultVault grants vault-cwd+bypass to an UNCONFIGURED chat (blast radius)", async () => {
@@ -2464,7 +2464,7 @@ test("makeRunFn: an empty-string vault normalizes to null (repoCwd, no bypass) �
   const calls: Array<{ cwd: string; mode?: string }> = [];
   const spy = async (_p: string, cwd: string, mode?: string) => { calls.push({ cwd, mode }); return { code: 0, capped: false, pid: 1 }; };
   await makeRunFn(r, "/repo", spy, 5000, undefined, 3, () => "")("E");   // blank vault
-  expect(calls[0].cwd).toBe("/repo");                   // not "" — normalized
+  expect(calls[0].cwd).toBe("/repo");                   // not "", normalized
   expect(calls[0].mode).toBeUndefined();                // no bypass for a falsy vault
 });
 
@@ -2545,7 +2545,7 @@ test("loadBridgeEnv still throws when no token is resolvable anywhere", async ()
 test("loadBridgeEnv: an EMPTY process TELEGRAM_AUTO_ACTIONS disables file-enabled ops (kill switch)", async () => {
   // `TELEGRAM_AUTO_ACTIONS=` in the launching shell is how the operator turns
   // privileged ops off for one run. Treating it as "unset" would leave the
-  // file's merge-public enabled — a fail-OPEN on the privileged direction.
+  // file's merge-public enabled, a fail-OPEN on the privileged direction.
   const dir = mkdtempSync(join(tmpdir(), "bridgecfg-"));
   const cfg = join(dir, "bridge-config");
   await writeFile(cfg, "TELEGRAM_BOT_TOKEN=1:tok\nTELEGRAM_AUTO_ACTIONS=arm-resume,merge-public\n");
@@ -2568,7 +2568,7 @@ test("loadBridgeEnv: NO process TELEGRAM_BOT_TOKEN can override the bridge file'
   // The token is FILE-ONLY, as loadToken() always was. This repo runs a SECOND
   // bot: the HIMMEL_JIRA_NUDGE SessionEnd relay reads TELEGRAM_BOT_TOKEN from the
   // repo .env. If the process env could win, launching the bridge from a shell
-  // that had sourced that file would authenticate the poller AS THE RELAY BOT —
+  // that had sourced that file would authenticate the poller AS THE RELAY BOT,
   // a deaf bridge, or two consumers racing the same getUpdates offset.
   const dir = mkdtempSync(join(tmpdir(), "bridgecfg-"));
   const cfg = join(dir, "bridge-config");
@@ -2602,7 +2602,7 @@ test("parseBridgeEnv: an empty scaffold placeholder never masks a later real tok
   expect(parsed.TELEGRAM_BOT_TOKEN).toBe("1:real");
   // …and the reverse arrangement (real first) is unchanged.
   expect(parseBridgeEnv("TELEGRAM_BOT_TOKEN=1:real\nTELEGRAM_BOT_TOKEN=\n").TELEGRAM_BOT_TOKEN).toBe("1:real");
-  // A key whose ONLY assignment is empty still resolves to "" — meaningful for
+  // A key whose ONLY assignment is empty still resolves to "", meaningful for
   // TELEGRAM_AUTO_ACTIONS (explicitly off), and a throw for the token.
   expect(parseBridgeEnv("TELEGRAM_AUTO_ACTIONS=\n").TELEGRAM_AUTO_ACTIONS).toBe("");
 });
@@ -2629,7 +2629,7 @@ test("loadBridgeEnv tracks provenance so a warning points at the right place", a
     expect(bridgeEnvOrigin(fromProc, "TELEGRAM_AUTO_ACTIONS")).toContain("process env");
     expect(bridgeEnvOrigin(fromProc, "TELEGRAM_AUTO_ACTIONS")).not.toContain(cfg);
     expect(describeEnabledOps(fromProc.TELEGRAM_AUTO_ACTIONS, KNOWN_OPS).warning).toContain("enables NOTHING");
-    // the token still came from the file — provenance is per-key, not global
+    // the token still came from the file, provenance is per-key, not global
     expect(bridgeEnvOrigin(fromProc, "TELEGRAM_BOT_TOKEN")).toBe(cfg);
   } finally {
     if (prevPath === undefined) delete process.env.TELEGRAM_ENV; else process.env.TELEGRAM_ENV = prevPath;
@@ -2773,7 +2773,7 @@ test("burst within the quiet window dispatches exactly ONE run", async () => {
   let now = 1_000;
   const c = makeBurstCoalescer(async (s) => { runs.push(s); }, { quietMs: 4000, maxHoldMs: 30000, now: () => now });
 
-  // three messages 200ms apart — a phone sending 3 PDFs
+  // three messages 200ms apart, a phone sending 3 PDFs
   await c("__chat__"); now += 200;
   await c("__chat__"); now += 200;
   await c("__chat__");
@@ -2897,7 +2897,7 @@ test("handleInbound: an unknown tag notices the chat and falls back to the defau
 // safety rests on a WHOLE-message match by the operator.
 // isOperator MUST be () => true here (CR glm-2): with the default () => false the
 // tag is never parsed, so the test passed because `classify` simply did not match
-// the `model:`-prefixed text — NOT because the `!tagged` guard fired. That left
+// the `model:`-prefixed text, NOT because the `!tagged` guard fired. That left
 // the guard, which is a security boundary, completely untested.
 test("handleInbound: an OPERATOR's tagged message still cannot reach the auto-command gate", async () => {
   const r = root();
@@ -2907,7 +2907,7 @@ test("handleInbound: an OPERATOR's tagged message still cannot reach the auto-co
     async () => {}, auto, undefined, () => true);
   expect(fired).toBe(false);   // the !tagged guard, not a classify miss
 });
-// The control: same operator, same op, NO tag — proving the test above fails for
+// The control: same operator, same op, NO tag, proving the test above fails for
 // the tag and not for some unrelated reason in this harness.
 test("handleInbound: the same operator's UNTAGGED auto-command does fire", async () => {
   const r = root();
@@ -2970,7 +2970,7 @@ const guardWithMatcher = (matcher: any) => JSON.stringify(
 
 test("hasReadOnlyFloor: rejects missing, empty, malformed, hookless, and dead-registration settings", () => {
   expect(hasReadOnlyFloor(floorCase(null, true))).toBe(false);            // no settings.json
-  expect(hasReadOnlyFloor(floorCase("{}", true))).toBe(false);            // empty object — the round-2 hole
+  expect(hasReadOnlyFloor(floorCase("{}", true))).toBe(false);            // empty object, the round-2 hole
   expect(hasReadOnlyFloor(floorCase("{ not json", true))).toBe(false);    // malformed
   expect(hasReadOnlyFloor(floorCase('{"hooks":{}}', true))).toBe(false);  // hooks, but no PreToolUse
   expect(hasReadOnlyFloor(floorCase('{"hooks":{"PreToolUse":[]}}', true))).toBe(false);  // empty array
@@ -2994,7 +2994,7 @@ test("hasReadOnlyFloor: the matcher must cover Bash", () => {
 });
 
 // "*" and "**" are the documented match-ALL wildcards: they
-// cover Bash by definition, same as an absent matcher — the predicate was
+// cover Bash by definition, same as an absent matcher, the predicate was
 // rejecting exactly the widest, most conservative guard a repo could write.
 test("hasReadOnlyFloor: the documented match-all wildcards '*' and '**' cover Bash", () => {
   expect(hasReadOnlyFloor(floorCase(guardWithMatcher("*"), true))).toBe(true);
@@ -3002,12 +3002,12 @@ test("hasReadOnlyFloor: the documented match-all wildcards '*' and '**' cover Ba
 });
 
 // this slot asserted against the operator's literal home paths
-// and bare-returned when they were absent — vacuously green on every machine
+// and bare-returned when they were absent, vacuously green on every machine
 // but one (the shape: a check that cannot fail is a check not
 // running), and the literals aborted public propagation at the leak scan.
 // Realistic fixtures carry the intent on every machine instead: a full repo
-// settings.json — unrelated keys, another hook event alongside PreToolUse, a
-// multi-tool matcher, args after the script — is a floor; a vault-shaped
+// settings.json (unrelated keys, another hook event alongside PreToolUse, a
+// multi-tool matcher, args after the script) is a floor; a vault-shaped
 // settings whose hooks are not a PreToolUse default-deny is not, even with
 // its script on disk.
 test("hasReadOnlyFloor: a realistic repo config is a floor; a realistic vault config is not", () => {
@@ -3029,7 +3029,7 @@ test("hasReadOnlyFloor: a realistic repo config is a floor; a realistic vault co
 
 // The refused route must NOT fall through to the vault branch:
 // defaultVault is pinned live, so that fallback put a bypassed,
-// filing-enabled session inside the personal vault — worse than the missing
+// filing-enabled session inside the personal vault, worse than the missing
 // floor it was refusing.
 test("a REFUSED cwd route never lands in the vault, never bypasses, never files", async () => {
   const r = root(); await seedChat(r, "group_-8803", -8803);
@@ -3046,7 +3046,7 @@ test("handleInbound: a NON-operator cannot use the model tag (it stays ordinary 
   const r = root();
   const seen: (string | undefined)[] = [];
   // Pin TELEGRAM_TRIAGE (CR CodeRabbit): the haiku assertion needs the triage
-  // block to run, and it is guarded by `TELEGRAM_TRIAGE !== "off"` — an ambient
+  // block to run, and it is guarded by `TELEGRAM_TRIAGE !== "off"`, an ambient
   // `off` in a dev shell or CI job would fail this test for an unrelated reason.
   const prev = process.env.TELEGRAM_TRIAGE;
   delete process.env.TELEGRAM_TRIAGE;
@@ -3098,7 +3098,7 @@ test("a burst still escalates a TRIAGE haiku (the explicit flag is opt-in, not t
 // the coalescer's model arithmetic and nothing downstream of it. That is how the
 // real drop shipped: makeDispatcher declared `(session)` only and called
 // `runFn(session)`, and the `as Dispatcher` cast hid the arity mismatch from the
-// compiler — the strongest model was computed correctly and then discarded one
+// compiler. The strongest model was computed correctly and then discarded one
 // call later. This wires the REAL chain, coalescer -> makeDispatcher -> runFn.
 //
 // The expectation must be a NON-undefined model. Asserting the escalation case
@@ -3117,7 +3117,7 @@ test("burst coalescing forwards the model through the REAL dispatcher, not just 
 
 // Forwarding on the ACCEPTED path is only half of it. A dispatch can also DEFER
 // (session already in flight, or the global concurrency cap full), and the hold
-// used to be dropped either way — handing the retry to deliverAllPending, which
+// used to be dropped either way, handing the retry to deliverAllPending, which
 // calls runFn(s) with no override and never re-triages. So a spawn-low burst
 // that happened to flush while the dispatcher was busy came back as a
 // DEFAULT-model run: a silent cost regression that only appeared under load,
@@ -3149,7 +3149,7 @@ test("a DEFERRED dispatch keeps the burst's model — the retry still runs haiku
 
 // The hold is deleted BEFORE the await, so a message landing DURING the dispatch
 // finds no hold and starts a fresh one. Re-setting the snapshot on a deferral
-// would clobber it — losing that message's model contribution in the dangerous
+// would clobber it, losing that message's model contribution in the dangerous
 // direction (a spawn-high line downgraded back to the snapshot's "haiku") and
 // rewinding lastAt so the burst looks quiet sooner than it is.
 test("a deferred re-hold MERGES with a hold created during the await (no clobber)", async () => {
@@ -3177,7 +3177,7 @@ test("a deferred re-hold MERGES with a hold created during the await (no clobber
 });
 
 // flushDue iterates a SNAPSHOT ([...holds.entries()]), not the live Map. That
-// spread used to be incidental — nothing was re-inserted mid-sweep — but the
+// spread used to be incidental (nothing was re-inserted mid-sweep), but the
 // re-hold above made it load-bearing: a JS Map iterator DOES visit keys added
 // during iteration, so re-holding a persistently-deferred session against a live
 // iterator spins forever inside one sweep (verified: a live iterator yields
@@ -3231,7 +3231,7 @@ test("an AUTO-OP is never buffered — it fires immediately even mid-burst", asy
   const c = makeBurstCoalescer(async (s) => { runs.push(s); }, { quietMs: 5000, maxHoldMs: 30000, now: () => now });
   const fired: string[] = [];
   const auto = { enabledOps: new Set(["arm-resume"]), authorize: () => true, fire: (_m: any, route: any) => { fired.push(route.op); } };
-  // ordinary chat first — starts a hold
+  // ordinary chat first, starts a hold
   await handleInbound(r, { from: 7, chat_id: 7, text: "hello", ts: 1, forwarded: false, caption: false } as any, c, auto as any);
   expect(c.isHolding("__chat__")).toBe(true);
   // a privileged op lands DURING the window
@@ -3255,7 +3255,7 @@ test("typing fires while a burst is held, not just while a run is in flight", as
 });
 
 // An EMPTY env var is ABSENCE, not a request for 0.
-// Number("") is 0, not NaN, and 0 is meaningful here (it disables coalescing) —
+// Number("") is 0, not NaN, and 0 is meaningful here (it disables coalescing),
 // so `TELEGRAM_BATCH_QUIET_MS=` (a commented-out or half-edited .env line) would
 // have silently turned coalescing OFF while looking configured.
 test("an EMPTY TELEGRAM_BATCH_QUIET_MS falls back to the default, it does not mean 0", async () => {
@@ -3277,7 +3277,7 @@ test("an EMPTY TELEGRAM_BATCH_QUIET_MS falls back to the default, it does not me
 
 // The timer PERIODS bypassed the hardening above.
 // `Number(process.env.X ?? d)` yields 0 for an empty value and NaN for a typo,
-// and setInterval clamps both to ~1ms — so a half-edited .env line did not fall
+// and setInterval clamps both to ~1ms, so a half-edited .env line did not fall
 // back to the default, it spun the sweep. positiveEnvMs handles ""/NaN/negative
 // but permits 0, which is fine for a quiet window and never for a period, hence
 // the floor.
@@ -3297,7 +3297,7 @@ test("intervalEnvMs: a negative period falls back", () => {
 });
 
 // codex-adv round: flooring 0 to 1 (the public-CR patch's `Math.max(1, …)`)
-// keeps the worst case — a 1ms hot loop — and only respells it. Nothing reads
+// keeps the worst case (a 1ms hot loop) and only respells it. Nothing reads
 // 0 as "disable the timer", so a sub-1ms period is a bad value, not intent.
 test("intervalEnvMs: an explicit 0 falls back — it is NOT floored to a 1ms spin", () => {
   expect(intervalEnvMs("0", 500)).toBe(500);
@@ -3305,7 +3305,7 @@ test("intervalEnvMs: an explicit 0 falls back — it is NOT floored to a 1ms spi
 });
 
 // Verified on bun 1.3.14: setInterval holds its delay in a
-// signed 32-bit int, so >2147483647 does NOT become a long interval — it warns
+// signed 32-bit int, so >2147483647 does NOT become a long interval, it warns
 // TimeoutOverflowWarning and is set to 1. A few extra digits in an env value
 // therefore lands on the SAME 1ms hot loop as `=0`, from the opposite end.
 test("intervalEnvMs: a period past setInterval's 32-bit ceiling falls back", () => {
@@ -3315,7 +3315,7 @@ test("intervalEnvMs: a period past setInterval's 32-bit ceiling falls back", () 
 });
 
 // setInterval truncates a fractional delay (verified on bun
-// 1.3.14: 1.5 -> 1, 500.7 -> 500), so this is not a new hot-loop class — 1 is
+// 1.3.14: 1.5 -> 1, 500.7 -> 500), so this is not a new hot-loop class, 1 is
 // permitted outright anyway. It is a contract fix: without it "0.4" fell back
 // while "1.5" was quietly accepted and rounded.
 test("intervalEnvMs: a fractional period falls back rather than being truncated", () => {
@@ -3330,7 +3330,7 @@ test("intervalEnvMs: absent uses the default, and a valid value passes through",
 });
 
 // Public-CR round: the burst WINDOWS were the one env class here with no
-// ceiling. A fat-fingered TELEGRAM_BATCH_MAX_HOLD_MS parks a burst for days —
+// ceiling. A fat-fingered TELEGRAM_BATCH_MAX_HOLD_MS parks a burst for days,
 // the starvation the max-hold cap exists to prevent, arriving through the cap's
 // own setting.
 test("windowEnvMs: a window past the ceiling falls back instead of parking a burst for days", () => {
@@ -3373,12 +3373,12 @@ test("makeBurstCoalescer: a fat-fingered quiet-window env falls back to the 4s d
     const now = 0;
     // No quietMs in opts, so the env value is what this reads.
     // maxHoldMs pinned explicitly so an ambient TELEGRAM_BATCH_MAX_HOLD_MS
-    // cannot decide this test's outcome — the assertion is
+    // cannot decide this test's outcome, the assertion is
     // about the QUIET window falling back, and a max-hold inherited from the
     // environment could fire the flush for an unrelated reason.
     const c = makeBurstCoalescer(async (s) => { dispatched.push(s); }, { now: () => now, maxHoldMs: 600_000 });
     await c("s1");
-    expect(dispatched).toEqual([]);         // still held — coalescing is ON, not disabled
+    expect(dispatched).toEqual([]);         // still held, coalescing is ON, not disabled
     await c.flushDue(3999);                 // inside the 4s DEFAULT window
     expect(dispatched).toEqual([]);
     await c.flushDue(4000);                 // the default fired...
@@ -3419,10 +3419,10 @@ test("getUpdatesBackoffMs: 0 failures = no backoff; grows 1s -> 2s -> 4s ... cap
 
 test("shouldAlertOutage: silent before the threshold, fires once at it, then re-fires only after a full interval", () => {
   const start = 1_000_000;
-  // Before threshold — never alerts, first-alert or repeat.
+  // Before threshold, never alerts, first-alert or repeat.
   expect(shouldAlertOutage(start, start, null)).toBe(false);
   expect(shouldAlertOutage(start + OUTAGE_ALERT_AFTER_MS - 1, start, null)).toBe(false);
-  // Crosses the threshold — first alert fires.
+  // Crosses the threshold, first alert fires.
   expect(shouldAlertOutage(start + OUTAGE_ALERT_AFTER_MS, start, null)).toBe(true);
   // Right after a first alert, does not immediately re-fire.
   const firstAlertAt = start + OUTAGE_ALERT_AFTER_MS;
@@ -3452,7 +3452,7 @@ test("loadPluginProfilesModule re-imports fresh after the file changes on disk, 
 
   const mod2 = await loadPluginProfilesModule(fixture);
   expect(mod2).not.toBe(mod1); // a genuine re-import, not the cached first copy
-  // The NEW validator accepts the NEW schema and rejects the old one — never
+  // The NEW validator accepts the NEW schema and rejects the old one, never
   // a false "registry invalid" on the schema it was actually written for.
   expect(mod2.validateRegistry({ v: 2 })).toEqual([]);
   expect(mod2.validateRegistry({ v: 1 })).toEqual(["stale-validator: expected v2"]);
@@ -3532,7 +3532,7 @@ test("dispatcher: an alert whose delivery throws is retried on the next identica
   const d = makeDispatcher(runFn, 4, (_s, _err, n) => { attempts.push(n); if (attempts.length < 3) throw new Error("outbox write failed"); }, 3);
   const once = async () => { await d("S"); for (let i = 0; i < 10; i++) await Promise.resolve(); };
   for (let i = 0; i < 10; i++) await once();
-  expect(attempts).toEqual([3, 4, 5]);  // two failed deliveries, then one delivered — and no more
+  expect(attempts).toEqual([3, 4, 5]);  // two failed deliveries, then one delivered, and no more
 });
 
 test("dispatcher: a DIFFERENT error restarts the count instead of alerting", async () => {

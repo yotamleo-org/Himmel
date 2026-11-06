@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# auto-action.sh <op> <arg> <time> — privileged remote auto-action executor (B2).
+# auto-action.sh <op> <arg> <time>. Privileged remote auto-action executor (B2).
 #
 # The TRUSTED Telegram bridge invokes this DIRECTLY (argv array) after parsing a
 # structured `/arm` command; the spawned `claude` agent is never in the trust path.
 # This script owns the privileged half: resolve a ticket|path to a resume handover,
 # then shell arm-resume.sh. It runs in the real himmel shell environment (.env,
-# handover-path.sh, py-armor) — "inherit the system".
+# handover-path.sh, py-armor), "inherit the system".
 #
 # Exit-code namespace (kept DISTINCT from arm-resume's own rc space so a dedup/
 # already-armed result doesn't collide with a resolution failure):
@@ -13,12 +13,12 @@
 #   1  bad input (missing args / bad time)
 #   2  unknown op (closed op allow-list, defense-in-depth)
 #   3  no resume handover / bad path / path outside handover_root
-#   4  ambiguous (>1 genuine handover — never silently pick)
+#   4  ambiguous (>1 genuine handover, never silently pick)
 #   5  already armed (arm-resume dedup rc=3)
 #   6  arm-resume failed (any other non-zero)
 #
 # merge-public is a SEPARATE flow below the op allow-list check:
-# it does NOT share arm-resume's rc space above — this script instead RELAYS
+# it does NOT share arm-resume's rc space above. This script instead RELAYS
 # merge-public-on-green.sh's own exit code verbatim (0 merged / 1 bad usage /
 # 10-19 refusal codes; see that script's header) after validating PR/SHA shape
 # here (bad shape -> 1, reusing arm-resume's "bad input" code since the two
@@ -55,7 +55,7 @@ case "$OP" in
 esac
 
 # merge-public: ARG carries the PR number, TIME carries the
-# operator-approved head SHA — the `<op> <arg> <time>` shape is reused
+# operator-approved head SHA. The `<op> <arg> <time>` shape is reused
 # verbatim from arm-resume (see router.ts's MERGEPUB comment for why). Branch
 # out to the merge chokepoint BEFORE any arm-resume-specific validation below:
 # the HH:MM/smart/auto time check would reject a SHA outright, and a merge
@@ -67,7 +67,7 @@ if [ "$OP" = "merge-public" ]; then
     esac
     # 12-hex floor (was 7): a 7-hex prefix is 28 bits and grindable by an agent
     # that can push public fix-commits. Anchored
-    # `case` — NOT `grep -Eq '^…$'`, which passes if ANY line of a multi-line
+    # `case`, NOT `grep -Eq '^…$'`, which passes if ANY line of a multi-line
     # value matches (audit-log line-injection vector). case matches the WHOLE
     # string, so an embedded newline lands a non-hex char and is rejected.
     case "$SHA" in
@@ -79,7 +79,7 @@ if [ "$OP" = "merge-public" ]; then
     fi
     MERGE_CMD="${AUTO_ACTION_MERGE_PUBLIC_CMD:-bash $SCRIPT_DIR/../merge-public-on-green.sh}"
     # Strip the bot token (+ TELEGRAM_OWN_POLLER) from the child env, same as
-    # the arm-resume path below — this chokepoint doesn't need them either.
+    # the arm-resume path below. This chokepoint doesn't need them either.
     # DELIBERATELY do NOT strip CLAUDECODE: it MUST
     # propagate to the chokepoint's gate 0. This script is itself reachable by an
     # agent (through the classifier, since the broad
@@ -89,7 +89,7 @@ if [ "$OP" = "merge-public" ]; then
     # bridge runs WITHOUT CLAUDECODE (it is not a Claude session), so it is
     # unaffected; a bridge accidentally launched inside a Claude session correctly
     # fails closed rather than merging. Unsetting it here would open that bypass.
-    # MERGE_CMD is an intentional command+args split — word-splitting wanted.
+    # MERGE_CMD is an intentional command+args split, word-splitting wanted.
     # shellcheck disable=SC2086
     out=$(TELEGRAM_BOT_TOKEN="" TELEGRAM_OWN_POLLER="" $MERGE_CMD "$PR" "$SHA" 2>&1)
     rc=$?
@@ -227,7 +227,7 @@ esac
 # shellcheck disable=SC1091
 if . "$SCRIPT_DIR/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
 # Resolve the handover root via the shared resolver (subtree hard rule: never
-# hardcode ./handovers/ — source handover-path.sh + call handover_root).
+# hardcode ./handovers/, source handover-path.sh + call handover_root).
 # shellcheck source=../lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/handover-path.sh"
@@ -259,7 +259,7 @@ if printf '%s' "$ARG" | grep -Eq '^[A-Z][A-Z0-9]+-[0-9]+$'; then
     _pool=("${_matches[@]}")
     [ "${#_preferred[@]}" -gt 0 ] && _pool=("${_preferred[@]}")
     if [ "${#_pool[@]}" -gt 1 ]; then
-        # Never silently pick among genuine handovers — list basenames and refuse.
+        # Never silently pick among genuine handovers, list basenames and refuse.
         _list=""
         for _f in "${_pool[@]}"; do _list="${_list:+$_list, }$(basename "$_f")"; done
         echo "$_list" >&2
@@ -267,7 +267,7 @@ if printf '%s' "$ARG" | grep -Eq '^[A-Z][A-Z0-9]+-[0-9]+$'; then
     fi
     RESOLVED="${_pool[0]}"
 else
-    # Path: must exist AND canonicalize UNDER handover_root (containment, fix I3 —
+    # Path: must exist AND canonicalize UNDER handover_root (containment, fix I3,
     # blocks /etc/passwd and ../../x, which arm-resume would otherwise read
     # resume_cwd/resume_worktree frontmatter from). Fail closed if realpath is
     # unavailable (can't verify containment).
@@ -289,9 +289,9 @@ fi
 echo "resolved=$(basename "$RESOLVED")"
 
 # Invoke arm-resume.sh with the resolved handover as the --handover VALUE. Strip the
-# bot token (and TELEGRAM_OWN_POLLER) from the child env (M3 — arm doesn't need them).
+# bot token (and TELEGRAM_OWN_POLLER) from the child env (M3, arm doesn't need them).
 # Default per-handover dedup; no --force, no --dedup-any (remote arms can't force/clobber).
-# An explicit HH:MM rides --long-gap — a HUMAN typing a far time on
+# An explicit HH:MM rides --long-gap, a HUMAN typing a far time on
 # Telegram IS the explicit choice the long-gap guard exists to force (the guard
 # targets the ORCHESTRATOR silently defaulting to a far park, not a typed one).
 # smart/auto are system-computed sentinels the guard exempts by design, so they
@@ -301,7 +301,7 @@ case "$TIME" in
     smart|auto) ARM_LONG_GAP="" ;;
     *)          ARM_LONG_GAP="--long-gap" ;;
 esac
-# ARM_CMD / ARM_LONG_GAP are an intentional command+args split — word-splitting wanted.
+# ARM_CMD / ARM_LONG_GAP are an intentional command+args split, word-splitting wanted.
 # shellcheck disable=SC2086
 out=$(TELEGRAM_BOT_TOKEN="" TELEGRAM_OWN_POLLER="" $ARM_CMD --handover "$RESOLVED" --time "$TIME" $ARM_LONG_GAP 2>&1)
 arm_rc=$?

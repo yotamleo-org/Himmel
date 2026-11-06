@@ -1,7 +1,7 @@
 // scripts/telegram/quota-gauge-alibaba.ts
 // Alibaba Model Studio lane probe for the quota-gauge.
 // Alibaba (qwen models, free per-model quotas) exposes per-model CONSUMED
-// tokens — NOT free-remaining — via a private Prometheus HTTP API: metric
+// tokens (NOT free-remaining) via a private Prometheus HTTP API: metric
 // `model_usage`, labels workspace_id/model/user_id/apikey_id/usage_type
 // (usage_type ∈ total_tokens/input_tokens/output_tokens/cache_tokens), auth
 // HTTP Basic base64(AccessKey:AccessKeySecret). Free-remaining is exposed
@@ -10,10 +10,10 @@
 // env/grant/response collapses to explicit invisible/null semantics
 // matching the codex probe's style (quota-gauge-codex.ts).
 //
-// Mirrors quota-gauge-codex.ts: a best-effort PIGGYBACK probe — a rare
+// Mirrors quota-gauge-codex.ts: a best-effort PIGGYBACK probe, a rare
 // piggyback on an Alibaba dispatch, 1h freshness like codex. Pure parse +
 // row-build are fixture-tested here; the thin append is wired at a consumer
-// touchpoint later (same deferred pattern the codex probe header documents —
+// touchpoint later (same deferred pattern the codex probe header documents,
 // no such touchpoint on main yet). This module ships PURE: NO live HTTP in
 // tests, NO new poll, NO always-on anything.
 import type { QuotaGaugeRecord } from "./quota-gauge";
@@ -24,7 +24,7 @@ export type AlibabaEnv = { promUrl?: string; accessKey?: string; accessSecret?: 
 
 // Per-model operator-configured free-token grant. Keyed by model name. A model
 // absent from this record (or with a non-positive grant) has an unknowable
-// used_pct — consumed is still recorded, never fabricated into a percentage.
+// used_pct, consumed is still recorded, never fabricated into a percentage.
 export type AlibabaGrants = Record<string, number>;
 
 // One model's consumed-total-token reading (the total_tokens usage_type only).
@@ -43,13 +43,13 @@ export function alibabaEnv(env: Record<string, string | undefined> = process.env
 // ── free-tier grants resolution ───────────────────
 // Every TOKEN-quota model on the account carries exactly this free-tier grant.
 // Source: operator-verified from the live Model Studio console, 2026-07-06,
-// cross-checked with https://www.alibabacloud.com/help/en/model-studio/new-free-quota
-// — ~89 token models (~70M total pool): qwen* families PLUS glm-5.1/glm-5.2,
+// cross-checked with https://www.alibabacloud.com/help/en/model-studio/new-free-quota,
+// ~89 token models (~70M total pool): qwen* families PLUS glm-5.1/glm-5.2,
 // deepseek-v3.2/v4-*, kimi-k2.7-code, qwq/qvq. Most grants expire 2026-10-03;
 // qwen-plus and qwen-turbo expire 2026-08-04. Quota is SHARED between the account
 // and its RAM users; Singapore region; Stop-on-Exhaust is enabled (hard stop, no
 // overage). Applied ONLY as a default to a reported token model with no operator
-// override — never to wan* (unit-quota video models). Never fabricated: a grant
+// override, never to wan* (unit-quota video models). Never fabricated: a grant
 // figure is emitted only for a model that is either defaulted or overridden.
 export const DEFAULT_FREE_TIER_GRANT_TOKENS = 1_000_000;
 
@@ -92,7 +92,7 @@ export function parseGrantsOverride(env: Record<string, string | undefined> = pr
 // -> only overrides are knowable, so the default is NOT applied blindly. Pure +
 // injectable; the runner calls this AFTER parseModelUsage so the default lands on
 // reported models only, and buildAlibabaRows (unchanged) receives a fully
-// resolved map — keeping its never-fabricate rule intact for any model neither
+// resolved map, keeping its never-fabricate rule intact for any model neither
 // defaulted nor overridden.
 export function resolveGrants(usage: ModelUsage[] | null, env: Record<string, string | undefined> = process.env): AlibabaGrants {
   const grants: AlibabaGrants = { ...parseGrantsOverride(env) };
@@ -111,7 +111,7 @@ export function resolveGrants(usage: ModelUsage[] | null, env: Record<string, st
 // ONLY usage_type="total_tokens" series; sums per model when a model appears
 // in multiple series (e.g. across apikey_id). Returns null on a non-success
 // status, missing data.result, a non-array result, an empty/no-usable-series
-// result, or a garbled/unparseable input — never a fabricated number.
+// result, or a garbled/unparseable input, never a fabricated number.
 export function parseModelUsage(json: unknown): ModelUsage[] | null {
   let obj: unknown = json;
   if (typeof obj === "string") {
@@ -148,13 +148,13 @@ export function parseModelUsage(json: unknown): ModelUsage[] | null {
   return out;
 }
 
-// Map parsed usage + operator grants to canonical rows — one per model.
+// Map parsed usage + operator grants to canonical rows, one per model.
 // `usage` null -> exactly ONE invisible-source row with null fields
 // (visible-not-silent), never a fabricated number. used_pct is
 // DERIVED: round(100*consumed/grant) when the grant is a finite positive
 // number, else null (the consumed figure is still recorded in `note`).
 // glm_peak is a reserved, always-null v1 column.
-// window/reset_at are null — Prometheus exposes a cumulative
+// window/reset_at are null. Prometheus exposes a cumulative
 // consumed counter, no rolling window or reset instant. tier carries the
 // model name (the closest analogue to a "tier" for a per-model quota).
 export function buildAlibabaRows(usage: ModelUsage[] | null, grants: AlibabaGrants, nowMs: number): QuotaGaugeRecord[] {
@@ -197,7 +197,7 @@ export function alibabaEnvReady(env: AlibabaEnv): boolean {
 // invisible row + ONE stderr line, never a throw), build the rows, append every
 // one. fetchBlob returns a Promise (live HTTP is the caller's concern); all
 // other I/O is injected so this is unit-testable with no network. The returned
-// promise never rejects — a failed fetch resolves to a single invisible row.
+// promise never rejects. A failed fetch resolves to a single invisible row.
 export async function alibabaProbeAppend(
   fetchBlob: () => Promise<unknown>,
   grants: AlibabaGrants,

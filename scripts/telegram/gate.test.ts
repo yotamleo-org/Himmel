@@ -57,7 +57,7 @@ test("isGroupAllowed: a non-empty per-group allowFrom restricts senders (fork Gr
 });
 
 test("isGroupAllowed: empty/missing per-group allowFrom admits any member; requireMention is out of scope here", () => {
-  // isGroupAllowed answers "is this sender/chat admitted at all" — requireMention
+  // isGroupAllowed answers "is this sender/chat admitted at all". requireMention
   // is a separate @mention-only gate honored by poller.ts
   // handleInbound via requireMentionForChat below, not by this predicate.
   expect(isGroupAllowed({ groups: { "-50": { allowFrom: [] } } }, -50, 999)).toBe(true);
@@ -95,7 +95,7 @@ test("isOperatorIdentity: allow-listing alone does NOT trust anonymous admins", 
 // Telegram's sender_chat is the authoritative "which chat does this post
 // represent". Where it is supplied it must BE the destination chat, so the floor
 // no longer rests on inferring that 1087968824 here means an admin of here.
-// Absent is permitted on purpose — see the note on isOperatorIdentity.
+// Absent is permitted on purpose, see the note on isOperatorIdentity.
 test("isOperatorIdentity: a mismatched sender_chat is refused; matching and absent pass", () => {
   expect(isOperatorIdentity(OPTED_IN, GROUP_ANONYMOUS_BOT_ID, -1009999999, -1009999999)).toBe(true);   // matches
   expect(isOperatorIdentity(OPTED_IN, GROUP_ANONYMOUS_BOT_ID, -1009999999, "-1009999999")).toBe(true); // string form
@@ -113,9 +113,9 @@ test("isOperatorIdentity: the anonymous-admin id is NOT operator outside its opt
 });
 
 // The narrower gate wins, deliberately: trustAnonymousAdmins must not quietly
-// undo a per-group allowFrom the operator set on purpose. The consequence — such
+// undo a per-group allowFrom the operator set on purpose. The consequence, such
 // a group keeps losing anonymous posts (they are rejected at INGEST by
-// makeAllow, before triage) unless 1087968824 is added to that allowFrom too —
+// makeAllow, before triage) unless 1087968824 is added to that allowFrom too,
 // is a real trap and is documented in README.md rather than papered over here.
 test("isOperatorIdentity: a per-group allowFrom that excludes the anon id keeps it out", () => {
   const access = { allowFrom: ["5"], groups: { "-50": { allowFrom: ["9"], trustAnonymousAdmins: true } } };
@@ -127,12 +127,12 @@ test("isOperatorIdentity: a per-group allowFrom that excludes the anon id keeps 
   expect(isOperatorIdentity(listed, GROUP_ANONYMOUS_BOT_ID, -50)).toBe(true);
 });
 
-// The anonymous branch is a SUBSTITUTION rule — "Telegram replaced the
-// operator's id" — so it is meaningless where no operator identity is
+// The anonymous branch is a SUBSTITUTION rule, "Telegram replaced the
+// operator's id", so it is meaningless where no operator identity is
 // configured at all. With an empty/absent global allowFrom nobody is the
 // operator, and the anon id must not become one by default.
 // A globally-listed anonymous id must not short-circuit past the group-scoped
-// guards (CodeRabbit CR). The id is not a person, so globally it means nothing —
+// guards (CodeRabbit CR). The id is not a person, so globally it means nothing,
 // and this misconfiguration is one indentation level away from the per-group
 // allowFrom entry the README now recommends.
 test("isOperatorIdentity: the anon id in the GLOBAL allowFrom grants nothing", () => {
@@ -185,7 +185,7 @@ test("vaultForChat: null when no vault and no default (fails closed → file not
   expect(vaultForChat(undefined as any, -50)).toBeNull();
 });
 
-// cwdForChat — the repo a chat's session spawns in. Deliberately
+// cwdForChat. The repo a chat's session spawns in. Deliberately
 // NOT a mirror of vaultForChat: there is no defaultCwd, because a default
 // would route every chat (including DMs) into that repo.
 
@@ -212,7 +212,7 @@ test("cwdForChat: missing/empty access fails closed", () => {
   expect(cwdForChat(undefined as any, -50)).toBeNull();
 });
 
-// access.json is hand-edited, and a malformed cwd is TRUTHY — it would otherwise
+// access.json is hand-edited, and a malformed cwd is TRUTHY, it would otherwise
 // reach the floor check and the spawn as a non-string (CR CodeRabbit).
 // The key is DOCUMENTED as absolute; a relative value would resolve against the
 // poller's launch directory, so the same config would mean different places
@@ -237,7 +237,7 @@ test("cwdForChat: a malformed (non-string) cwd is refused at the boundary", () =
   expect(cwdForChat({ groups: { "-50": { cwd: { path: "/x" } as any } } }, -50)).toBeNull();
 });
 
-// requireMentionForChat — the per-group @mention-only opt-in.
+// requireMentionForChat. The per-group @mention-only opt-in.
 test("requireMentionForChat: true only for a group with requireMention:true", () => {
   const access = { groups: { "-5245475441": { requireMention: true }, "-50": {} } };
   expect(requireMentionForChat(access, -5245475441)).toBe(true);
@@ -253,7 +253,7 @@ test("requireMentionForChat: unknown chat and missing/empty access default to fa
 });
 
 // The cursor-reset notice has no originating chat to reply into,
-// so it addresses the operator's DM — chat_id === the allowFrom user id.
+// so it addresses the operator's DM, chat_id === the allowFrom user id.
 // Every not-a-usable-chat shape must fail closed to null, because the caller's
 // only alternative to "log-only" is messaging some other chat entirely.
 test("operatorChatId returns the global allowFrom DM, and fails closed otherwise", () => {
@@ -269,7 +269,7 @@ test("operatorChatId returns the global allowFrom DM, and fails closed otherwise
   expect(operatorChatId({ allowFrom: ["0"] })).toBe(null);
   expect(operatorChatId({ allowFrom: [{} as any] })).toBe(null);
   // CR codex-1: a hand-edited access.json can carry a bare string where the
-  // array belongs — indexing it yields the CHARACTER "1", a valid-looking id.
+  // array belongs. Indexing it yields the CHARACTER "1", a valid-looking id.
   expect(operatorChatId({ allowFrom: "1000000001" as any })).toBe(null);
   expect(operatorChatId({ allowFrom: {} as any })).toBe(null);
   // CR codex-1: a negative id is a group/channel, never an operator DM.

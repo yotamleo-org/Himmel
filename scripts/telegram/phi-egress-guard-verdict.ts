@@ -1,9 +1,9 @@
-// scripts/telegram/phi-egress-guard-verdict.ts — cross-language parity
+// scripts/telegram/phi-egress-guard-verdict.ts. Cross-language parity
 // harness. Thin CLI over the REAL checkPhiEgressGuards(), normalizing its {ok,
 // reason} result to one coarse verdict label so a bash test can diff it
 // against the bash-side reference verdict without depending on exact wording
 // (test-phi-egress-guard-parity.sh: "assert the VERDICT, not the mechanism").
-// Not a runtime entry point for phi-egress-guard.ts itself — test-only.
+// Not a runtime entry point for phi-egress-guard.ts itself, test-only.
 import { checkPhiEgressGuards } from "./phi-egress-guard";
 
 const [, , cwd, cfgDir] = process.argv;
