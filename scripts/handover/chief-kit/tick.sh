@@ -458,7 +458,7 @@ the waiter wakes once per newly stale key. A line may end `@<sha>`, the head the
 ruled at: more than TICK_POOL_MAX_MERGES (30) commits behind origin/main (else HEAD) it is stale
 whatever its blockers say, and an unknown sha prints `?`. The line is never rewritten. residual-unversioned=
 <n>:<KEY>,... lists open residual tickets of an open focus-version ticket with no fixVersion
-and no latest release-manager ruling whose destination is backlog.
+and whose latest release-ruling comment is not a BACKLOG ruling (or a MOVE to the backlog) of that same ticket.
 residual-unversioned hides when 0 or skip. pool-stale hides only on skip (no --doc, or a failed
 read): an explicit pool-stale=0 is the all-clear the waiter needs to clear its marker, so it stays
 on the compact line. --pool-stale --doc <doc> prints just these two fields.
@@ -603,7 +603,8 @@ PY
 # is Done or merged, and an unreadable blocker prints `?`, never stale. The PR states come
 # from ONE batched gh read, made only when some target names a PR. residual-unversioned lists
 # open residual tickets of an open focus-version ticket that carry no fixVersion and are not
-# ruled into the backlog by their latest release-ruling comment. It never
+# ruled into the backlog by their latest release-ruling comment (a mirror copy of the ruling; the release
+# ledger is the record). It never
 # rewrites the doc.
 pool_stale() { # <doc> <mirror> <gh command> <repo dir>
     python3 -I - "$@" <<'PY'
@@ -724,9 +725,12 @@ if focus:
             continue
         if not any(l == '"residual"' or re.fullmatch(r'"residual-depth-[1-9]\d*"', l) for l in (x.strip() for x in f.get("labels", "").strip("[]").split(","))):
             continue
-        # the release manager's latest ruling on the ticket names the backlog as its destination: it is placed there, not unversioned
-        rulings = re.findall(r"^\[release-ruling [^\]]*\] RULING \S+ \S+ [A-Z]+ \S+ \S+ \S+ \S+ (\S+)", open(os.path.join(mirror, name)).read(), re.M)
-        if rulings and rulings[-1] == "backlog":
+        # the last release-ruling comment (after the Comments heading) is this ticket's own and is a BACKLOG
+        # ruling, or a MOVE to the backlog: the ticket is ruled into the backlog, not unversioned. A last
+        # ruling line that fails to parse leaves the ticket counted.
+        rl = [x for x in open(os.path.join(mirror, name)).read().partition("\n## Comments\n")[2].splitlines() if x.startswith("[release-ruling ")]
+        rm = re.match(r"\[release-ruling [^\]]*\] RULING \S+ \S+ [A-Z-]+ (\S+) \S+ \S+→(\S+) ([A-Z-]+) \S+ sector=", rl[-1]) if rl else None
+        if rm and rm[1] == name[:-3] and (rm[3] == "BACKLOG" or (rm[3] == "MOVE" and rm[2] == "backlog")):
             continue
         for target in re.findall(r"HIMMEL-\d+", f.get("relates", "")) + re.findall(r"[A-Z]+-\d+", f.get("parent", "")):
             p = front(target)
