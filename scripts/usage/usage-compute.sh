@@ -444,6 +444,7 @@ cat "$WORK/phase-rows.jsonl" >> "$FILE"
 for p in "$WORK/pnew"/*.json "$WORK/phase-emitted.json"; do
   [ -f "$p" ] || continue
   name="$(basename "$p")"; [ "$name" != phase-emitted.json ] || name=emitted.json
-  cp "$p" "$PSTATE/.$name.new" && mv "$PSTATE/.$name.new" "$PSTATE/$name"
+  cp "$p" "$PSTATE/.$name.new" || die "cannot save phase-cost state $name"
+  mv "$PSTATE/.$name.new" "$PSTATE/$name" || die "cannot save phase-cost state $name"
 done
 echo "usage-compute: appended $added, unchanged $kept, phase-cost rows $phase_added ($FILE)"
