@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# test-wizard-uninstall-converge.sh — hermetic tests for the manifest-driven
+# test-wizard-uninstall-converge.sh: hermetic tests for the manifest-driven
 # uninstall advisory + completeness check
 # uninstall-completeness). Companion to test-wizard-uninstall.sh (which
 # covers the pre-existing thin-wrapper confirm/dry-run/flag behavior
-# unchanged by this sub-ticket) — this suite covers the NEW manifest-aware
+# unchanged by this sub-ticket): this suite covers the NEW manifest-aware
 # behavior added to cmdUninstall: partitioning items by `offboard`
 # (unwire/advise/keep), printing the advisory plan, and the post-teardown
 # residue WARN.
@@ -20,37 +20,37 @@
 #      executes nothing (mirrors test-wizard-uninstall.sh caseB, plus the new
 #      advisory content).
 #   B. an accepted run with nothing pre-wired: the advisory lists the shared
-#      items (never removed — no code path in cmdUninstall touches them) and
+#      items (never removed: no code path in cmdUninstall touches them) and
 #      the keep item is reported as left-untouched; completeness reads clean
 #      (no WARN) since nothing was wired to begin with.
 #   C. an accepted run with the tracked owned item's backing state PRE-WIRED
 #      (a `statusLine` key in the fake $HOME/.claude/settings.json): since
 #      the fixture's uninstall.sh stub is a no-op (never actually unwires
 #      anything), the post-teardown completeness probe finds it still
-#      present and WARNs — proving the residue check actually fires, not
+#      present and WARNs, proving the residue check actually fires, not
 #      just prints an empty summary every time.
 #   D. manifest-lint.mjs still passes on the REAL manifest.json (the
 #      `offboard` field this sub-ticket added must stay lint-clean).
 #   E. the teardown itself FAILS (uninstall.sh exits 1, same
 #      pre-wired owned state as case C): cmdUninstall must propagate the
-#      teardown's rc=1 out as its own return value — never swallow/mask a
-#      failed teardown behind rc=0 — AND still run the completeness check
+#      teardown's rc=1 out as its own return value (never swallow/mask a
+#      failed teardown behind rc=0) AND still run the completeness check
 #      (which still WARNs, since a failed no-op stub never actually unwired
 #      fixture-owned, same residue signal as case C).
 #   F. project-scope residue: fixture-owned's PROJECT-scope settings.json
 #      (<fixture>/.claude/settings.json, not $HOME's) is pre-wired while
 #      $HOME stays clean. Proves the completeness check probes EVERY scope
 #      an item declares (not just 'user') and labels the residue with the
-#      scope it was found in ("fixture-owned (present, project)") — the
+#      scope it was found in ("fixture-owned (present, project)"), the
 #      CodeRabbit finding this case guards against.
 
 set -euo pipefail
 
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
 # `set -o pipefail`: grep -q exits the instant it matches, the producer
 # then takes SIGPIPE writing the remainder, and pipefail reports the
-# PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
+# PIPELINE as failed, so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
 # so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
@@ -83,7 +83,7 @@ wt_add() {
 
 work=$(mktemp -d)
 # cases G/H add REAL git worktrees of this repo under $work
-# (git-common-dir identity, not a throwaway fixture) — `git worktree remove`
+# (git-common-dir identity, not a throwaway fixture): `git worktree remove`
 # them BEFORE the plain rm -rf, then prune, so a bare rm -rf never leaves
 # stale `.git/worktrees/<name>` admin entries behind in the real repo.
 cleanup() {
@@ -112,21 +112,21 @@ build_path() {
   printf '%s:%s' "$_stub" "$PATH"
 }
 
-# build_fixture <dir> — a throwaway HIMMELCTL_REPO_ROOT target: no-op
-# uninstall.sh stubs (never actually unwire anything — that's
+# build_fixture <dir>: a throwaway HIMMELCTL_REPO_ROOT target: no-op
+# uninstall.sh stubs (never actually unwire anything: that's
 # the point: it lets case C prove the completeness check notices), plus a
 # 3-item manifest exercising all three `offboard` values:
-#   fixture-owned  — default (absent -> 'unwire'), carries an `unwire`
+#   fixture-owned: default (absent -> 'unwire'), carries an `unwire`
 #                    descriptor + removable:'per-item' so it's in the
 #                    completeness check's convergeable set. Its probe reads
 #                    a statusLine key from ".claude/settings.json" and
-#                    declares scopes:["project","user"] — the same shape
+#                    declares scopes:["project","user"], the same shape
 #                    the real wiring-statusline item uses, so it exercises
 #                    the per-scope completeness probing (project ->
 #                    <fixture>/.claude/settings.json, user ->
 #                    $HOME/.claude/settings.json).
-#   fixture-advise — offboard:'advise' (a shared dep, e.g. 'node' stand-in).
-#   fixture-keep   — offboard:'keep' (user content stand-in).
+#   fixture-advise: offboard:'advise' (a shared dep, e.g. 'node' stand-in).
+#   fixture-keep: offboard:'keep' (user content stand-in).
 build_fixture() {
   local _d="$1"
   mkdir -p "$_d/scripts/install"
@@ -176,7 +176,7 @@ STUB
 JSON
 }
 
-# build_fixture_failing <dir> — same fixture as build_fixture, except
+# build_fixture_failing <dir>: same fixture as build_fixture, except
 # uninstall.sh exit 1 instead of 0 (still logging the call
 # first, so a failed-invocation assertion has the same log-file signal to
 # check as the passing cases). Used by case E to prove a failed teardown's
@@ -208,7 +208,7 @@ set -e
 grepq "$out" -F 'himmel-owned wiring & repo-local artifacts' \
   || fail "caseA: expected the owned/unwire plan header (got: $out)"
 # the header must not tell a project-scope adopter that repo-local
-# artifacts vanish with the clone — adopt copies scripts/ into THEIR repo, and
+# artifacts vanish with the clone: adopt copies scripts/ into THEIR repo, and
 # deleting the himmel clone never touches that.
 grepq "$out" -F "what adopt copied into a project-scope adopter's own repo (scripts/)" \
   || fail "caseA: expected the header to say adopter-repo copies stay (got: $out)"
@@ -263,7 +263,7 @@ echo "ok: caseB accepted run (nothing pre-wired) -> advisory + keep reported, sh
 
 # ── Case C: accepted run, the owned item's backing state IS pre-wired ─────
 # (a statusLine key in the fake HOME's settings.json). The fixture's
-# uninstall.sh stub is a no-op — it never actually unwires anything — so the
+# uninstall.sh stub is a no-op (it never actually unwires anything), so the
 # post-teardown completeness probe must still find fixture-owned present and
 # WARN. This proves the residue check is a real signal, not a check that
 # only ever prints "0 residue".
@@ -298,7 +298,7 @@ echo "ok: caseD — the real manifest.json (with the new 'offboard' field) still
 # ── Case E: the teardown itself FAILS (uninstall.sh exit 1), with the
 # same pre-wired owned state as case C. The overall `himmelctl uninstall` rc
 # must be 1 (the teardown's rc propagated, never masked by the non-fatal
-# completeness check that runs after it) — and the completeness check must
+# completeness check that runs after it), and the completeness check must
 # still fire, still finding fixture-owned present and WARNing (the failed
 # no-op stub never actually unwired anything, same residue signal as case C).
 stubE="$work/caseE"; mkdir -p "$stubE"
@@ -322,7 +322,7 @@ grepq "$out" -E 'WARN.*fixture-owned' \
 echo "ok: caseE a failed teardown propagates rc=1 (not masked), and the completeness WARN still fires"
 
 # ── Case F: PROJECT-scope residue, $HOME clean. fixture-owned declares
-# scopes:["project","user"] (same as the real wiring-statusline item) — this
+# scopes:["project","user"] (same as the real wiring-statusline item): this
 # case pre-wires ONLY the project-scope settings.json (<fixture>/.claude/
 # settings.json, i.e. HIMMELCTL_REPO_ROOT's own .claude, the "project" target
 # for a machine offboard) and leaves the fake $HOME untouched. Before this

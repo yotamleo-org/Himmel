@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-profile-lint.sh — CI staleness/validation check for CHECKED-IN
+# test-wizard-profile-lint.sh: CI staleness/validation check for CHECKED-IN
 # install-profile fixtures (part B item 4; mirrors the
 # secrets-manifest CI-staleness precedent, and the
 # test-wizard-manifest-v2.sh sibling-suite pattern in this same directory).
@@ -8,7 +8,7 @@
 # for hand-authored install-profile fixtures an operator can point
 # --from-profile at. This
 # suite proves every file that ends up there actually validates against the
-# REAL v2 schema bin.js's own loadProfile() enforces — never a hand-rolled
+# REAL v2 schema bin.js's own loadProfile() enforces, never a hand-rolled
 # duplicate of that schema that could silently drift from it.
 #
 # How the real validator is invoked: bin.js exports nothing (main() runs
@@ -16,7 +16,7 @@
 # CLI against this test's own argv) and there is no separate profile-lint
 # entrypoint. `loadProfile()` already runs as literally the FIRST thing
 # `install --from-profile <path>` does (bin.js's own cmdInstall step 0, before
-# any side effect — see its comment: "load + validate the FULL schema BEFORE
+# any side effect. See its comment: "load + validate the FULL schema BEFORE
 # any side effect"), so `node bin.js install --dry-run --from-profile <path>`
 # invokes the real validator with zero code changes to bin.js: rc=2 + a
 # per-field message means the profile is rejected, rc=0 means it validated
@@ -28,20 +28,20 @@
 #      profile fixture -> rc=0.
 #   b. POSITIVE CONTROL: a hand-built v2 profile with one bad enum field
 #      -> rc=2, message naming the bad field. Cases a+b together prove the
-#      harness's invocation actually runs a real, discriminating validator —
+#      harness's invocation actually runs a real, discriminating validator:
 #      a suite that only ever saw rc=0 would pass just as "green" if the
 #      invocation were silently a no-op.
 #   c. every real docs/setup/profiles/*.install-profile.json in this checkout
 #      (today: operator.install-profile.json) lints
 #      clean via the SAME invocation as cases a/b. The empty-glob vacuous-pass
-#      path stays in the harness BY DESIGN — case a/b already prove the
+#      path stays in the harness BY DESIGN: case a/b already prove the
 #      invocation isn't vacuous in general, and an empty directory should
-#      never fail this suite — it just isn't exercised while a real fixture
+#      never fail this suite. It just isn't exercised while a real fixture
 #      is checked in.
 
 set -euo pipefail
 
-# grepq <text> [grep-args...] — see test-wizard-manifest-v2.sh's own comment
+# grepq <text> [grep-args...]: see test-wizard-manifest-v2.sh's own comment
 # for why this (not a piped `grep -q`) is required under `set -o pipefail`.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
@@ -98,9 +98,9 @@ STUB
   chmod +x "$_d/git"
 }
 
-# make_fixture <dir> — a throwaway HIMMELCTL_REPO_ROOT with a no-op adopt.sh
+# make_fixture <dir>: a throwaway HIMMELCTL_REPO_ROOT with a no-op adopt.sh
 # and a copy of the real lane registry, same shape as the sibling suites'
-# own make_fixture() (test-wizard-adopter-profile.sh) — needed because
+# own make_fixture() (test-wizard-adopter-profile.sh), needed because
 # --dry-run install still walks the full preview path (lane probing,
 # plan derivation), not just loadProfile() itself.
 make_fixture() {
@@ -110,7 +110,7 @@ make_fixture() {
   chmod +x "$_d/scripts/adopt.sh"
   cp "$repo_root/scripts/lanes/lanes.json" "$_d/scripts/lanes/lanes.json"
   # a checked-in profile may carry devOverlay:true (the operator
-  # profile does) — bin.js's step-5.5 gate then requires the dev-overlay
+  # profile does): bin.js's step-5.5 gate then requires the dev-overlay
   # primitive to exist, so the fixture must look like a real himmel checkout
   # (same setup.sh stub as the sibling
   # suite's own make_fixture(), test-wizard-contributor-profile.sh).
@@ -121,14 +121,14 @@ make_fixture() {
 fixture="$work/fixture"
 make_fixture "$fixture"
 
-# lint_profile <path> — run the profile through the REAL v2 validator via
+# lint_profile <path>: run the profile through the REAL v2 validator via
 # `install --dry-run --from-profile`. Echoes combined output, returns rc.
 lint_profile() {
   local _profile="$1"
   run_install --from-profile "$(winpath "$_profile")"
 }
 
-# run_install <install-args...> — same hermetic harness as lint_profile, but
+# run_install <install-args...>: same hermetic harness as lint_profile, but
 # takes arbitrary `install` args (needed to exercise --scope,
 # which does not always pair with --from-profile). Echoes combined output,
 # returns rc.
@@ -193,7 +193,7 @@ grepq "$outB" -i "field 'scope'" \
 echo "ok: case b — a broken v2 install-profile fixture (bad enum) exits 2 naming the field — proves the validator actually discriminates"
 
 # ── case c: every REAL checked-in fixture under docs/setup/profiles/ lints
-# clean. Globs docs/setup/profiles/*.install-profile.json — the directory may
+# clean. Globs docs/setup/profiles/*.install-profile.json: the directory may
 # not exist yet (lands the first real fixture there), in which
 # case this loop simply runs zero times. Cases a/b above already prove that
 # emptiness here is a vacuous pass BY DESIGN, not a broken harness. ─────────
@@ -214,7 +214,7 @@ fi
 
 # ── honest bridge validation ───────────────────────────────────
 # d. bridge.enabled:false with NO envPath/whisperCli/whisperModel/
-#    installPersistence — a disabled section's members are now optional
+#    installPersistence: a disabled section's members are now optional
 #    (absent = empty), so this must lint clean where it used to be refused.
 bridgeOffAbsent="$work/bridge-off-absent.install-profile.json"
 cat > "$bridgeOffAbsent" <<'JSON'
@@ -238,7 +238,7 @@ set -e
 [ "$rcD" -eq 0 ] || fail "case d: bridge.enabled:false with no envPath/etc should lint clean (got rc=$rcD): $outD"
 echo "ok: case d — bridge.enabled:false with its dependent fields absent lints clean (honest validation)"
 
-# e. bridge.enabled:false but envPath is PRESENT with the wrong type — still
+# e. bridge.enabled:false but envPath is PRESENT with the wrong type, still
 #    refused. Proves "optional" means absent=empty, not unchecked-if-present.
 bridgeOffWrongType="$work/bridge-off-wrong-type.install-profile.json"
 cat > "$bridgeOffWrongType" <<'JSON'
@@ -264,7 +264,7 @@ grepq "$outE" -i "envPath" \
   || fail "case e: error should name 'envPath' (got: $outE)"
 echo "ok: case e — bridge.enabled:false does not exempt a present-but-wrong-typed field (rc=2)"
 
-# f. RED CONTROL: bridge.enabled:true with NO envPath — must still be
+# f. RED CONTROL: bridge.enabled:true with NO envPath, must still be
 #    refused. The honesty fix relaxes disabled sections only; an enabled
 #    bridge keeps its required fields.
 bridgeOnMissing="$work/bridge-on-missing.install-profile.json"
@@ -292,7 +292,7 @@ grepq "$outF" -i "envPath" \
 echo "ok: case f — RED control: bridge.enabled:true still requires envPath (rc=2, unchanged behavior)"
 
 # ── lanes refusal messages name the accepted spelling ─────────
-# g. lanesMeaningful present but not true — message must state the exact
+# g. lanesMeaningful present but not true: message must state the exact
 #    accepted spelling and disambiguate the CLI flag from the profile value.
 lanesBadMeaningful="$work/lanes-bad-meaningful.install-profile.json"
 cat > "$lanesBadMeaningful" <<'JSON'
@@ -319,7 +319,7 @@ grepq "$outG" -F -- "--lanes none" \
   || fail "case g: error should note '--lanes none' is a CLI flag, not a profile value (got: $outG)"
 echo "ok: case g — lanesMeaningful refusal names the accepted spelling verbatim and disambiguates the CLI flag"
 
-# h. legacy lanes:[] with lanesMeaningful absent — same accepted-spelling
+# h. legacy lanes:[] with lanesMeaningful absent: same accepted-spelling
 #    message on the sibling refusal path.
 lanesLegacyEmpty="$work/lanes-legacy-empty.install-profile.json"
 cat > "$lanesLegacyEmpty" <<'JSON'

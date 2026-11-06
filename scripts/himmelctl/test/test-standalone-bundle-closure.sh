@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-standalone-bundle-closure.sh — drift guard for
+# test-standalone-bundle-closure.sh: drift guard for
 # scripts/himmelctl/lib/standalone-bundle.js's BUNDLE_FILES_POSIX
 # S13 item 8). Re-runs the design §3.2 closure walk transitively from
 # scripts/uninstall.sh (its own grep commands, plus the `for helper in …`

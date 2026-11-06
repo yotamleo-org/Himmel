@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# test-wizard-deps-lint.sh — hermetic tests for scripts/install/deps-lint.mjs
+# test-wizard-deps-lint.sh: hermetic tests for scripts/install/deps-lint.mjs
 # Mirrors test-wizard-manifest-v2.sh's conventions (needs no
-# node process beyond the lint script itself — pure fs-read validator).
+# node process beyond the lint script itself: pure fs-read validator).
 #
 # Covers:
 #   a. a dep with an unknown extra key -> exit 1, naming the key.
@@ -17,15 +17,15 @@
 #   k. a whitespace-only 'pkg' (brew) -> exit 1 (identifier fields pkg/
 #      script/resolver must be non-blank, not merely string-typed).
 #   l. a whitespace-only dep 'cmd' -> exit 1 (the dep-level cmd is an
-#      identifier field too — non-blank, not merely string-typed).
+#      identifier field too: non-blank, not merely string-typed).
 
 set -euo pipefail
 
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
 # `set -o pipefail`: grep -q exits the instant it matches, the producer
 # then takes SIGPIPE writing the remainder, and pipefail reports the
-# PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
+# PIPELINE as failed, so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
 # so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
@@ -78,7 +78,7 @@ run_lint() {
   "$node_bin" "$lint_w" "$(winpath "$1")"
 }
 
-# mutate_base <out-path> <js-mutation-expr-on-m> — CR-style: args passed via
+# mutate_base <out-path> <js-mutation-expr-on-m> (CR-style): args passed via
 # process.argv, never interpolated into the JS source string (mirrors
 # test-wizard-manifest-v2.sh's own mutate_base).
 mutate_base() {
@@ -187,7 +187,7 @@ echo "ok: case j — manager:ensure-tools with an unexpected extra field exits 1
 
 # ── case k: whitespace-only 'pkg' (brew) -> exit 1 ─────────────────────────
 # CodeRabbit: identifier fields pkg/script/resolver must be NON-WHITESPACE
-# non-empty strings — a whitespace-only value is string-typed (so the old
+# non-empty strings. A whitespace-only value is string-typed (so the old
 # typeof check let it through) but names no package to install. Covers the
 # trim-based rejection; empty-string pkg/script/resolver fail the same way.
 caseK="$work/case-k.json"
@@ -200,8 +200,8 @@ grepq "$errK" -i 'pkg' || fail "case k: error should mention pkg (got: $errK)"
 echo "ok: case k — a whitespace-only 'pkg' exits 1 (non-blank identifier check)"
 
 # ── case l: whitespace-only dep 'cmd' -> exit 1 ─────────────────────────────
-# CodeRabbit: the dep-level cmd is an IDENTIFIER field too —
-# a whitespace-only value is string-typed (so the old typeof check let it
+# CodeRabbit: the dep-level cmd is an IDENTIFIER field too.
+# A whitespace-only value is string-typed (so the old typeof check let it
 # through) but names nothing to install/resolve. Both must fail the same
 # non-blank (empty-after-trim) check pkg/script/resolver do (case k).
 caseL2="$work/case-l2.json"

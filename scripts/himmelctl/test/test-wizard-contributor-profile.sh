@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# test-wizard-contributor-profile.sh — hermetic coverage for the
+# test-wizard-contributor-profile.sh: hermetic coverage for the
 # contributor-dev overlay, now `devOverlay` (the old
-# adopter|contributor role fork is gone — devOverlay is an orthogonal layer
+# adopter|contributor role fork is gone: devOverlay is an orthogonal layer
 # on top of a profile install, set only via --contribute, never a question;
 # see bin.js's deriveOverlayCommand()/printContributorProfile()). The overlay
-# keeps setup.sh as the idempotent mutation primitive — it now runs
-# AFTER adopt.sh, as an ADDITIONAL step, not a replacement for it — and
+# keeps setup.sh as the idempotent mutation primitive. It now runs
+# AFTER adopt.sh, as an ADDITIONAL step, not a replacement for it, and
 # reports actual post-run state through the shared manifest/probe/dependency
 # engines plus the canonical lane resolver. Its report prints ALONGSIDE the
 # universal epilogue (bin.js's printAdopterEpilogue), never instead of it.
 #
 # Covers:
 #   A. dry-run reports missing three-stage git hooks, Jira dist, shell-test
-#      tools, Codex/Hermes and handover guidance without running setup.sh —
+#      tools, Codex/Hermes and handover guidance without running setup.sh,
 #      and the universal epilogue (lanes/hardening/summary) prints alongside it.
 #   A2. a LEGACY v1 role='contributor' cache still migrates to devOverlay=true
 #      and keeps its own lanes:[] exemption.
 #   A3. 2 fix: the SAME legacy cache, APPLIED, must never
 #      persist an authoritative empty lane allowlist for a lanes question it
-#      was never asked — no lanes.local.json write, honest skip message only.
+#      was never asked: no lanes.local.json write, honest skip message only.
 #   B. applied setup is invoked once; hook/Jira artifacts created by the stub
 #      are re-probed as present rather than optimistically claimed; the (now
 #      universal) lane-profile allowlist persists too.
@@ -26,7 +26,7 @@
 #   D. Codex/Hermes guidance is platform-correct and hardening remains a
 #      printed pointer, never an executed machine-hardening step.
 #   E. a manifest-less checkout still installs rc=0 + WARN
-#      defect 1 — a reporting failure must never abort a succeeded install).
+#      defect 1: a reporting failure must never abort a succeeded install).
 #   F. applied install is hermetic: PATH launchers land only in the fixture
 #      HIMMELCTL_BIN_DIR, never the real user bin.
 
@@ -52,7 +52,7 @@ work=$(mktemp -d)
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
-# The directory himmelctlBinDir() resolves to when HIMMELCTL_BIN_DIR is UNSET —
+# The directory himmelctlBinDir() resolves to when HIMMELCTL_BIN_DIR is UNSET:
 # the defect-2 leak target. HOME is honored, so the override run_contributor
 # passes already redirects writes away from it. Used to assert an applied
 # install leaves no new/overwritten launcher in the real user bin.
@@ -79,7 +79,7 @@ snapshot_real_bin() {
 # Coreutils this suite and its targets shell out to, which must survive the
 # scrub. scrub_path drops a PATH dir WHOLESALE when it carries any
 # scrubbed tool, and this suite's scrub list includes shellcheck / pre-commit /
-# gh — all of which live in /usr/bin on stock Ubuntu, so the scrub takes
+# gh, all of which live in /usr/bin on stock Ubuntu, so the scrub takes
 # /usr/bin (and every coreutil in it) with them. Windows hid this: node and the
 # scrubbed CLIs live in their own directories there, so Git-Bash's /usr/bin
 # survives and every local run stayed green while Linux CI failed with
@@ -88,7 +88,7 @@ snapshot_real_bin() {
 # restores: link whatever the target needs BEFORE calling scrub_path.
 # Entries that do not resolve to a real binary are skipped rather than fatal:
 # the list spans platforms, and `command -v` reports a SHELL BUILTIN for names
-# like printf (bare "printf", not a path) — linking that would plant a dangling
+# like printf (bare "printf", not a path). Linking that would plant a dangling
 # symlink that any non-bash execve of printf would then trip over.
 HERMETIC_COREUTILS=(uname dirname basename mkdir chmod cat cp rm ls sed grep awk
                     mktemp env sort head tail tr wc find date printf sha256sum)
@@ -97,7 +97,7 @@ HERMETIC_COREUTILS=(uname dirname basename mkdir chmod cat cp rm ls sed grep awk
 # caseC runs the SAME stub dir through build_path twice, and re-linking is not
 # harmless on Linux: link_hermetic_tool's `ln -s` fails when the entry exists,
 # and its wrapper fallback then writes THROUGH the existing symlink into the
-# real binary (`/usr/bin/uname: Permission denied`). Windows never hit this —
+# real binary (`/usr/bin/uname: Permission denied`). Windows never hit this:
 # `ln -s` fails there, so the first pass leaves a plain wrapper file that the
 # second pass simply truncates. The same latent hazard exists in the shared
 # link_hermetic_tool for any suite that re-links one stub dir.
@@ -154,7 +154,7 @@ make_fixture() {
   cp "$repo_root/scripts/lanes/resolve.mjs" "$_d/scripts/lanes/resolve.mjs"
   cp "$repo_root/scripts/lanes/profile-managed.cjs" "$_d/scripts/lanes/profile-managed.cjs"
   cp "$repo_root/scripts/guardrails/lib.sh" "$_d/scripts/guardrails/lib.sh"
-  # ONE execution engine now — deriveCommand always targets
+  # ONE execution engine now. deriveCommand always targets
   # adopt.sh (the dev overlay's setup.sh is an ADDITIONAL command
   # layered on top, never a substitute for it), so every fixture needs a
   # no-op adopt.sh even for a devOverlay-only run.
@@ -170,7 +170,7 @@ STUB
   chmod +x "$_d/scripts/setup.sh"
 }
 
-# a v2 (schemaVersion:2) devOverlay=true cache — the dev overlay
+# a v2 (schemaVersion:2) devOverlay=true cache. The dev overlay
 # is now an orthogonal layer on top of a profile install (never its own
 # role), so a fresh v2 fixture is the natural default here. caseA2 below
 # separately keeps a LEGACY v1 role=contributor fixture, to pin the
@@ -250,7 +250,7 @@ grepq "$report" 'gh' || fail "caseA: shell-test report must include gh: $report"
 grepq "$report" -E '!! +codex' || fail "caseA: Codex must be a first-class probed item: $report"
 grepq "$report" -E '!! +hermes' || fail "caseA: Hermes must be a first-class probed item: $report"
 grepq "$report" '/handover-setup' || fail "caseA: unwired handover must print interactive completion guidance: $report"
-# alwaysOn is asked UNIVERSALLY now — this fixture answers no,
+# alwaysOn is asked UNIVERSALLY now. This fixture answers no,
 # so the (now-universal) epilogue must honestly report the real answer, never
 # the old contributor-only "not asked" pointer (that only applies to a
 # legacy/hand-edited profile that genuinely carries no alwaysOn answer).
@@ -262,7 +262,7 @@ grepq "$report" 'would run the idempotent contributor setup primitive' \
   || fail "caseA: dry-run must describe setup as planned, not completed: $report"
 # the universal epilogue (bin.js's printAdopterEpilogue) now
 # prints ALONGSIDE the overlay's own contributor-dev report on every run,
-# never instead of it — proves the "universal epilogue" design is real, not
+# never instead of it. Proves the "universal epilogue" design is real, not
 # just that the overlay report alone still works.
 grepq "$report" 'delegation lanes' \
   || fail "caseA: the universal epilogue's delegation-lanes section must print alongside the overlay report: $report"
@@ -275,12 +275,12 @@ echo "ok: caseA dry-run reports the overlay profile AND the universal epilogue, 
 # ── Case A2: LEGACY v1 contributor profile (lanes:[] w/o lanesMeaningful) ───
 # lanes was adopter-only (buildAnswers
 # gave a contributor lanes:[]; applyLaneProfileStep short-circuited non-
-# adopter), so a contributor cache — lanes:[] with NO
-# lanesMeaningful — must NOT be refused over the empty placeholder. This case
+# adopter), so a contributor cache (lanes:[] with NO
+# lanesMeaningful) must NOT be refused over the empty placeholder. This case
 # pins that v1 exemption survives loadProfile()'s role->devOverlay migration
 # a legacy role='contributor' cache still loads without the
 # lanes-placeholder refusal a v2 cache would now hit unconditionally (lanes
-# is asked universally in v2 — see test-wizard-adopter-profile.sh caseD2 for
+# is asked universally in v2. See test-wizard-adopter-profile.sh caseD2 for
 # that refusal, unaffected by this migration exemption).
 sA2="$work/a2-stub"; mkdir -p "$sA2"
 hA2="$work/a2-home"; mkdir -p "$hA2"
@@ -316,7 +316,7 @@ echo "ok: caseA2 legacy contributor lanes:[] profile is accepted (lanes is adopt
 # question this cache was never asked (the consent-fabrication class
 # exists to prevent). Contrast caseB below: a v2/devOverlay
 # profile's lanes:[] WITH lanesMeaningful:true is an explicit answer and DOES
-# persist — this case's lanes:[] has no lanesMeaningful at all.
+# persist. This case's lanes:[] has no lanesMeaningful at all.
 sA3="$work/a3-stub"; mkdir -p "$sA3"
 hA3="$work/a3-home"; mkdir -p "$hA3"
 fA3="$work/a3-fixture"; make_fixture "$fA3"
@@ -378,7 +378,7 @@ grepq "$report" 'setup primitive completed; post-install probes above are author
   || fail "caseB: applied summary should defer to probes rather than claiming blanket success: $report"
 # lanes is asked UNIVERSALLY now (applyLaneProfileStep no longer
 # short-circuits on role), so an APPLIED install with a genuinely-answered
-# lanes:[] (lanesMeaningful:true) DOES persist the (empty) allowlist — the
+# lanes:[] (lanesMeaningful:true) DOES persist the (empty) allowlist: the
 # opposite of the old contributor-only exemption, which existed only because
 # lanes:[] used to be an unanswered placeholder for that role.
 [ -f "$fB/scripts/lanes/lanes.local.json" ] \
@@ -442,7 +442,7 @@ grepq "$out" 'manifest.json' \
   || fail "caseE: WARN must name the unreadable manifest.json: $out"
 echo "ok: caseE manifest-less checkout installs rc=0 and WARNs the skipped profile"
 
-# ── Case F: applied install is hermetic — launchers land ONLY in HIMMELCTL_BIN_DIR
+# ── Case F: applied install is hermetic. Launchers land ONLY in HIMMELCTL_BIN_DIR
 # Without the HIMMELCTL_BIN_DIR export run_contributor sets, an applied
 # install could leak PATH launchers into the REAL ~/.local/bin. Assert the launchers land in the fixture bin and
 # nothing touches the real user bin (checked across the whole suite).
@@ -497,7 +497,7 @@ echo "ok: caseG a devOverlay:true --from-profile outside a himmel checkout fails
 
 # ── Case H: an interactive `--contribute` outside a
 # himmel checkout must fail at cmdInstall's step-0.5 gate, BEFORE the question
-# engine ever starts — not just before adopt.sh (caseG's --from-profile gate
+# engine ever starts, not just before adopt.sh (caseG's --from-profile gate
 # fires post-answers; this one is a flag-ergonomics pre-check so an invalid
 # --contribute never walks the wizard or persists a devOverlay:true cache).
 # Queues a full interactive answer sequence on stdin as a negative control:

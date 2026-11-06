@@ -1,11 +1,11 @@
 'use strict';
-// scripts/himmelctl/lib/standalone-bundle.js — writes the standalone
+// scripts/himmelctl/lib/standalone-bundle.js: writes the standalone
 // uninstall bundle beside the provenance ledger (3,
 // design -standalone-undo.md §3). himmelctl copies the uninstall
 // closure into ${HIMMEL_PROVENANCE_DIR:-~/.himmel}/uninstall/ wherever it
 // writes the PATH launcher, so the launcher can fall back to it once the
 // clone is gone. BUNDLE_MARKER matches the bash constant in
-// scripts/lib/provenance.sh (S12) byte for byte — this module can't
+// scripts/lib/provenance.sh (S12) byte for byte. This module can't
 // `require` a .sh file, so the string is duplicated, not shared.
 
 const fs = require('fs');
@@ -49,7 +49,7 @@ const BUNDLE_FILES_POSIX = [
   'scripts/himmelctl/lib/launcher.js',
   'scripts/himmelctl/lib/helpers.js',
   // lib/launcher.js `require`s provenance.js unconditionally (for ledgerDir()
-  // et al) — not named by design §3.2's node-entry list, but a hard
+  // et al), not named by design §3.2's node-entry list, but a hard
   // transitive dependency: without it the bundle's own standalone.js dies on
   // MODULE_NOT_FOUND the same way bin.js does without the clone.
   'scripts/himmelctl/lib/provenance.js',
@@ -84,7 +84,7 @@ function readMarker(dir) {
 }
 
 // Semver compare (a, b are "x.y.z" strings): -1/0/1, matching Array.sort's
-// comparator contract. No pre-release/build-metadata handling — himmel's own
+// comparator contract. No pre-release/build-metadata handling. himmel's own
 // VERSION file has never carried either.
 function semverCompare(a, b) {
   const pa = String(a || '0.0.0').split('.').map((n) => parseInt(n, 10) || 0);
@@ -119,7 +119,7 @@ const STALE_SIBLING_MIN_AGE_MS = 5 * 60 * 1000;
 // Best-effort removal of stale staging/backup siblings from a crashed prior
 // write (design §3.3 step 5: "the next write sweeps any it finds that carry
 // our marker"). A .uninstall.tmp-* that never reached the bundle.json write
-// carries no marker and is left alone — it might be a concurrent write in
+// carries no marker and is left alone. It might be a concurrent write in
 // flight, and this function is best-effort by design, never a hard failure.
 function sweepStaleSiblings(parent, ownPid) {
   let entries;
@@ -152,7 +152,7 @@ function sweepStaleSiblings(parent, ownPid) {
 // write (design §3.3). Refuses to clobber anything not ours; refuses to
 // downgrade; stages then atomically swaps; records exactly one `tree` row
 // per call. Best-effort: returns false and WARNs on any failure, never
-// throws — the launcher write must proceed regardless (design §3.3: "never
+// throws. The launcher write must proceed regardless (design §3.3: "never
 // fails install or update").
 function writeStandaloneBundle(repoRoot) {
   const dir = bundleDir();

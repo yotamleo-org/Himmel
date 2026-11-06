@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# test-wizard-status-golden.sh — the #276-class golden fixture
+# test-wizard-status-golden.sh: the #276-class golden fixture
 # T1.7): a single project-scope target whose himmelctl state.json marks
-# EXACTLY six items desired-enabled — qmd-binary, qmd-index,
+# EXACTLY six items desired-enabled: qmd-binary, qmd-index,
 # wiring-statusline, wiring-pretooluse, jira-cli-dist-build,
-# handover-wiring — every other manifest item disabled, and every one of
+# handover-wiring, every other manifest item disabled, and every one of
 # the six probes ABSENT by hermetic construction (never by luck: the suite
 # runner inherits the real PATH + parent env, so each condition is actively
 # scrubbed/unset/omitted rather than assumed missing). Mirrors sibling
@@ -19,10 +19,10 @@
 # 'luna' + scope 'project' would ALSO enable claude-plugins-pluginSet).
 # state.json is himmelctl's OWN artifact (lib/state.js's module header: a
 # SEPARATE artifact from install-profile.json, read/written by a stable
-# public schema) — so the fixture calls state.js directly
+# public schema), so the fixture calls state.js directly
 # `status` itself never writes state.json any more) to derive-and-save the
 # target entry under its real key (however path.resolve(cwd) stringifies on
-# this platform — avoids reproducing that string by hand), then patches the
+# this platform, avoids reproducing that string by hand), then patches the
 # saved items map via jq to the exact six-true/rest-false split the brief
 # specifies. That direct seed (plus its jq patch) is the ONE sanctioned
 # mutation; the sha256 purity sweep (case d) snapshots AFTER it, so every
@@ -42,13 +42,13 @@
 #      fully-verified per-item breakdown of those 8).
 #   b. DISCRIMINATION: six flip cases. Each flips ONE condition to present
 #      via a hermetic-env change scoped to that ONE invocation (extra PATH
-#      entry, an env var, or a file edit — never a permanent fixture
-#      mutation that survives past its own case) and asserts that item —
+#      entry, an env var, or a file edit, never a permanent fixture
+#      mutation that survives past its own case) and asserts that item,
 #      and, honestly, ONLY it, with one documented exception: qmd-index's
 #      own probe requires has_qmd to succeed as a hard precondition
 #      (scripts/lib/qmd-bin.sh's has_index chains `has_qmd && qmd_cmd
 #      collection list`), so flipping qmd-index to present necessarily also
-#      flips qmd-binary to present — a REAL causal coupling in the probe
+#      flips qmd-binary to present, a REAL causal coupling in the probe
 #      engine, not a fixture shortcut, and the flip-2 case asserts it
 #      explicitly rather than hiding it.
 #   c. manifest-lint regression re-run against the REAL repo manifest.
@@ -90,7 +90,7 @@ trap cleanup EXIT
 # shellcheck disable=SC1091
 { . "$repo_root/scripts/lib/testlib-config-isolation.sh" && isolate_himmel_config "$work"; } || { echo "FAIL - config isolation unavailable" >&2; exit 1; }
 
-# snapshot_dir <dir> — sorted "relpath sha256" pairs, for a before/after
+# snapshot_dir <dir>: sorted "relpath sha256" pairs, for a before/after
 # byte-identity check that doesn't depend on tar's metadata quirks. Portable
 # across bash 3.2 + BSD sort (no -z/-print0/xargs -0 on macOS's base sort).
 snapshot_dir() {
@@ -98,7 +98,7 @@ snapshot_dir() {
 }
 
 # write_cache <path> <role> <scope> <vault-mode> <vault-path> <handover-mode>
-#             <handover-path> <plugin-set> — a minimal valid Draft-A profile
+#             <handover-path> <plugin-set>: a minimal valid Draft-A profile
 #             (same shape test-wizard-status-cmd.sh's write_cache writes).
 write_cache() {
   cat > "$1" <<JSON
@@ -113,13 +113,13 @@ SIX_SORTED_JSON='["handover-wiring","jira-cli-dist-build","qmd-binary","qmd-inde
 # ── fixture repo root (HIMMELCTL_REPO_ROOT) ─────────────────────────────────
 # A real copy of manifest.json, the two resolver libs the six items' probes
 # actually source (scripts/lib/qmd-bin.sh for qmd-binary/qmd-index,
-# scripts/lib/handover-path.sh for handover-wiring — control 1/2/6 need the
+# scripts/lib/handover-path.sh for handover-wiring: control 1/2/6 need the
 # REAL resolvers present so a later "flip to present" is genuinely possible,
 # not just permanently absent because the sourced file itself 404s), and an
 # EMPTY scripts/jira/dist/ (control 5: jira-cli-dist-build's file-exists
-# probe resolves repoRoot-relative — the dir exists so the flip only ever
+# probe resolves repoRoot-relative: the dir exists so the flip only ever
 # adds/removes the one file, never a directory, keeping the purity diff
-# clean). No handovers/ dir here (control 6 doesn't need it — see below).
+# clean). No handovers/ dir here (control 6 doesn't need it: see below).
 fixtureRepo="$work/repo"
 mkdir -p "$fixtureRepo/scripts/install" "$fixtureRepo/scripts/lib" "$fixtureRepo/scripts/jira/dist"
 cp "$manifest_path" "$fixtureRepo/scripts/install/manifest.json"
@@ -128,7 +128,7 @@ cp "$qmd_bin_lib" "$fixtureRepo/scripts/lib/qmd-bin.sh"
 cp "$repo_root/scripts/lib/qmd-bounded.sh" "$fixtureRepo/scripts/lib/qmd-bounded.sh"
 cp "$handover_path_lib" "$fixtureRepo/scripts/lib/handover-path.sh"
 # wiring-statusline's verifyScript resolution target for flip 3
-# below — created once up front (same convention as the qmd stubs) so the
+# below, created once up front (same convention as the qmd stubs) so the
 # case-d purity sweep never sees it as a mutation introduced mid-run.
 printf '// fixture stub\n' > "$fixtureRepo/scripts/lib/statusline-stub.js"
 fixtureRepo_w="$(winpath "$fixtureRepo")"
@@ -148,9 +148,9 @@ cacheDir_w="$(winpath "$cacheDir")"
 
 write_cache "$cacheDir/install-profile.json" adopter project none "" inline "" lean
 
-# ── control 1/2: hermetic PATH — bash (+ git, for handover_root's `git
+# ── control 1/2: hermetic PATH, bash (+ git, for handover_root's `git
 # rev-parse`) present via link_hermetic_tool, bun + qmd + pre-commit
-# scrubbed via scrub_path (never assumed absent by luck — actively excluded
+# scrubbed via scrub_path (never assumed absent by luck, actively excluded
 # even though the suite runner's own real PATH may carry any of them).
 # pre-commit in particular must be scrubbed: the case (a) bonus check below
 # reads the "pre-commit" manifest item's probe, and letting that read
@@ -160,7 +160,7 @@ baseStub="$work/stub-base"; mkdir -p "$baseStub"
 link_hermetic_tool bash "$baseStub"
 link_hermetic_tool git "$baseStub"
 # wiring-statusline's verifyScript resolves the `node` interpreter
-# via which() — scrub_path drops a WHOLE dir that carries any scrubbed tool, and
+# via which(): scrub_path drops a WHOLE dir that carries any scrubbed tool, and
 # node commonly shares a toolchain-manager bin dir with bun/qmd, so without this
 # link the flip-3 control below reads degraded on hosts where that's true.
 link_hermetic_tool node "$baseStub"
@@ -189,9 +189,9 @@ chmod +x "$qmdFullStub/qmd"
 
 handoverTarget="$work/handover-target"; mkdir -p "$handoverTarget"
 
-# run_status <extra-path-prefix|""> <handover-dir|""> — one status
+# run_status <extra-path-prefix|""> <handover-dir|"">: one status
 # invocation, --json --items <the six>, scope=project, cwd=targetGolden.
-# HANDOVER_DIR is explicitly unset by default (control 6 — the suite
+# HANDOVER_DIR is explicitly unset by default (control 6: the suite
 # runner's OWN real env may carry an operator HANDOVER_DIR; an inherited
 # value would make handover-wiring read present by luck, not absence).
 run_status() {
@@ -206,14 +206,14 @@ run_status() {
   fi
 }
 
-# run_status_full — same as run_status but WITHOUT --items (the bonus
+# run_status_full: same as run_status but WITHOUT --items (the bonus
 # whole-manifest check in case a).
 run_status_full() {
   ( cd "$targetGolden" && unset HANDOVER_DIR && HIMMELCTL_REPO_ROOT="$fixtureRepo_w" HIMMELCTL_CACHE_DIR="$cacheDir_w" HIMMEL_LUNA_CONFIG_PATH="$cacheDir_w-luna-config.json" HOME="$homeDir" USERPROFILE="$(winpath "$homeDir")" PATH="$basePath" \
       "$node_bin" "$wizard" status --json )
 }
 
-# assert_items_severity <json> <label> <id:severity>... — one jq -e check
+# assert_items_severity <json> <label> <id:severity>...: one jq -e check
 # per pair, naming the item + json on failure.
 assert_items_severity() {
   local json="$1" label="$2" pair id sev
@@ -228,7 +228,7 @@ assert_items_severity() {
 
 # ── seed state.json: made `status` genuinely read-only (it never
 # calls stateLib.save()/ensureTarget() any more), so this fixture can no
-# longer ride a `status` invocation to derive-and-persist the target entry —
+# longer ride a `status` invocation to derive-and-persist the target entry:
 # it calls state.js directly instead (same out-of-band-seed idiom
 # test-wizard-statusreport.sh's case d uses), then patches the saved items
 # map to the exact six-true/rest-false split. ─────────────────────────────
@@ -329,18 +329,18 @@ echo "ok: case a (bonus) - a --items-less run against the same state confirms si
 
 # ── case (b): six discrimination flips, each restored after ────────────────
 
-# flip 1 — qmd-binary: minimal qmd stub on PATH (has_qmd succeeds; no
-# collection-list support, so qmd-index stays absent — genuine isolation).
+# flip 1 (qmd-binary): minimal qmd stub on PATH (has_qmd succeeds; no
+# collection-list support, so qmd-index stays absent, genuine isolation).
 out1=$(run_status "$qmdMinStub" "")
 assert_items_severity "$out1" "flip qmd-binary" \
   "qmd-binary:green" "qmd-index:red" "wiring-statusline:red" "wiring-pretooluse:red" \
   "jira-cli-dist-build:red" "handover-wiring:red"
 echo "ok: flip 1/6 — qmd-binary alone leaves the red set (qmd-index stays red: no collection-list support in the minimal stub)"
 
-# flip 2 — qmd-index: a qmd stub that ALSO answers `collection list` with
+# flip 2 (qmd-index): a qmd stub that ALSO answers `collection list` with
 # all 4 required collections. qmd-binary's has_qmd probe necessarily also
-# reads present here — a REAL dependency in the probe engine (has_index
-# chains has_qmd && qmd_cmd collection list), not a fixture leak — asserted
+# reads present here: a REAL dependency in the probe engine (has_index
+# chains has_qmd && qmd_cmd collection list), not a fixture leak, asserted
 # explicitly rather than hidden.
 out2=$(run_status "$qmdFullStub" "")
 assert_items_severity "$out2" "flip qmd-index" \
@@ -348,9 +348,9 @@ assert_items_severity "$out2" "flip qmd-index" \
   "jira-cli-dist-build:red" "handover-wiring:red"
 echo "ok: flip 2/6 — qmd-index leaves the red set (qmd-binary necessarily follows: documented has_qmd precondition); the other four stay red"
 
-# flip 3 — wiring-statusline: add statusLine.command, leave hooks untouched.
+# flip 3 (wiring-statusline): add statusLine.command, leave hooks untouched.
 # verifyScript now resolves the interpreter (on PATH) and the
-# script path (readable file) — a real, non-empty script is required for the
+# script path (readable file): a real, non-empty script is required for the
 # green case; wire-statusline.sh always writes this exact `node "<path>"` shape.
 statuslineStub="$fixtureRepo/scripts/lib/statusline-stub.js"
 printf '// fixture stub\n' > "$statuslineStub"
@@ -362,7 +362,7 @@ assert_items_severity "$out3" "flip wiring-statusline" \
 printf '%s' "$baselineSettingsJson" > "$targetGolden/.claude/settings.json"
 echo "ok: flip 3/6 — wiring-statusline alone leaves the red set; restored"
 
-# flip 4 — wiring-pretooluse: add all 3 himmel PreToolUse markers, leave
+# flip 4 (wiring-pretooluse): add all 3 himmel PreToolUse markers, leave
 # statusLine untouched.
 cat > "$targetGolden/.claude/settings.json" <<'JSON'
 {"statusLine":{},"hooks":{"PreToolUse":[
@@ -378,7 +378,7 @@ assert_items_severity "$out4" "flip wiring-pretooluse" \
 printf '%s' "$baselineSettingsJson" > "$targetGolden/.claude/settings.json"
 echo "ok: flip 4/6 — wiring-pretooluse alone leaves the red set; restored"
 
-# flip 5 — jira-cli-dist-build: create the repoRoot-relative dist file.
+# flip 5 (jira-cli-dist-build): create the repoRoot-relative dist file.
 : > "$fixtureRepo/scripts/jira/dist/index.js"
 out5=$(run_status "" "")
 assert_items_severity "$out5" "flip jira-cli-dist-build" \
@@ -387,7 +387,7 @@ assert_items_severity "$out5" "flip jira-cli-dist-build" \
 rm -f "$fixtureRepo/scripts/jira/dist/index.js"
 echo "ok: flip 5/6 — jira-cli-dist-build alone leaves the red set; restored"
 
-# flip 6 — handover-wiring: HANDOVER_DIR set to a real directory for this
+# flip 6 (handover-wiring): HANDOVER_DIR set to a real directory for this
 # ONE invocation only (never persisted into the ambient env).
 out6=$(run_status "" "$handoverTarget")
 assert_items_severity "$out6" "flip handover-wiring" \
@@ -403,7 +403,7 @@ set -e
 [ "$lintRc" -eq 0 ] || fail "case c: manifest-lint regression failed (rc=$lintRc): $lintOut"
 echo "ok: case c — manifest-lint regression re-run passes"
 
-# ── case (d): purity — the full golden run (case a + all six flips,
+# ── case (d): purity, the full golden run (case a + all six flips,
 # each restored) left the fixture tree byte-identical to the post-setup
 # baseline. ─────────────────────────────────────────────────────────────
 snapAfter=$(snapshot_dir "$work")

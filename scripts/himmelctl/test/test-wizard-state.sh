@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# test-wizard-state.sh — hermetic tests for scripts/himmelctl/lib/state.js
+# test-wizard-state.sh: hermetic tests for scripts/himmelctl/lib/state.js
 # target-keyed install state derived from the manifest +
 # the wizard's cached install-profile answers. Mirrors sibling test-wizard-*
 # suites: a fake HOME + HIMMELCTL_CACHE_DIR so nothing touches the real
 # ~/.claude/himmel/, node launched by absolute path, winpath for node.exe's
 # MSYS-path blindness. state.js has no shell-out surface (pure fs read/write
-# against HIMMELCTL_CACHE_DIR), so no HIMMELCTL_REPO_ROOT fixture is needed —
+# against HIMMELCTL_CACHE_DIR), so no HIMMELCTL_REPO_ROOT fixture is needed:
 # the REAL scripts/install/manifest.json is read (read-only reference, safe).
 #
 # Covers:
-#   A. deriveTarget() — role=adopter, vault.mode=default-template (profile
+#   A. deriveTarget(): role=adopter, vault.mode=default-template (profile
 #      "all"), scope=project: the golden-six manifest items (all∈profiles,
 #      project∈scopes) are enabled:true; handover-wiring tracks
 #      handover.mode (external -> true, none -> false) independent of
 #      manifest membership.
-#   B. ensureTarget() — one project target + one "user" target coexist in
+#   B. ensureTarget(): one project target + one "user" target coexist in
 #      the same state object with no key collision.
 #   C. save()/load() round-trip byte-stably across two saves.
 
@@ -40,7 +40,7 @@ trap cleanup EXIT
 state_lib_w="$(winpath "$state_lib")"
 manifest_w="$(winpath "$manifest_path")"
 
-# ── Case A: deriveTarget() — golden-six + handover-wiring exception ────────
+# ── Case A: deriveTarget(), golden-six + handover-wiring exception ────────
 caseA_dir="$work/caseA-target"; mkdir -p "$caseA_dir"
 homeA="$work/homeA"; mkdir -p "$homeA"
 cacheA="$work/cacheA"
@@ -82,7 +82,7 @@ echo "$outNone" | jq -e '.items["handover-wiring"].enabled == false' >/dev/null 
   || fail "caseA: handover-wiring should be enabled:false when handover.mode=none (got: $outNone)"
 echo "ok: caseA handover-wiring(none) -> disabled"
 
-# ── Case B: ensureTarget() — project + user targets coexist, no collision ──
+# ── Case B: ensureTarget(), project + user targets coexist, no collision ──
 caseB_dir="$work/caseB-project"; mkdir -p "$caseB_dir"
 homeB="$work/homeB"; mkdir -p "$homeB"
 cacheB="$work/cacheB"
@@ -135,7 +135,7 @@ cmp -s "$work/state-save1.json" "$statePathC" \
 echo "ok: caseC write->read round-trips byte-stably across two saves"
 
 # ── Case D: ensureTarget migrates a PRE-CHANGE existing
-# target — it backfills manifest items the target's persisted `items` map
+# target: it backfills manifest items the target's persisted `items` map
 # doesn't yet carry (simulating a manifest that gained items after this
 # target was first derived, e.g. an install predating this repo's most
 # recent `himmel-update`), leaving every already-tracked item's enabled flag
@@ -156,9 +156,9 @@ const answers = {
 
 // Simulate a PRE-CHANGE state.json: derive against an OLDER manifest missing
 // two real items (one that should end up enabled:true under this target's
-// profile/scope — 'qmd-binary' — and one that should end up enabled:false —
+// profile/scope ('qmd-binary') and one that should end up enabled:false,
 // 'pre-commit-hooks', scope:['project'] only under profiles core/all, and
-// this target's profile is 'all' from vault.mode default-template — wait,
+// this target's profile is 'all' from vault.mode default-template, wait,
 // pre-commit-hooks IS profiles:['core','all'] so it WOULD be true; pick a
 // genuinely-false one instead: a user-scope-only item under a project-scope
 // target reads false regardless of profile).
@@ -171,7 +171,7 @@ const preChange = state.ensureTarget(s, oldManifest, answers);
 if (preChange.items['qmd-binary']) throw new Error('fixture drift: qmd-binary should be ABSENT from the pre-change derive');
 if (preChange.items['graphify']) throw new Error('fixture drift: graphify should be ABSENT from the pre-change derive');
 // Hand-set an override + a non-default enabled flag on an item that DOES
-// survive the migration untouched — proves migration never re-derives
+// survive the migration untouched, proves migration never re-derives
 // already-tracked items.
 preChange.items['pre-commit-hooks'].overrides = { note: 'pre-change-override' };
 preChange.items['pre-commit-hooks'].enabled = false; // deliberately wrong vs. a fresh derive, to prove it survives verbatim
@@ -179,7 +179,7 @@ state.save(s);
 
 const before = JSON.parse(JSON.stringify(s));
 
-// Now ensureTarget against the CURRENT (full) manifest — the 'upgrade'.
+// Now ensureTarget against the CURRENT (full) manifest, the 'upgrade'.
 const migrated = state.ensureTarget(s, manifest, answers);
 state.save(s);
 
@@ -191,7 +191,7 @@ echo "$outD" | jq -e '.migrated.items["qmd-binary"].enabled == true' >/dev/null 
 echo "ok: caseD — qmd-binary backfilled enabled:true"
 
 # graphify is scope:["user"] only; this target is scope 'project', so its
-# backfilled membership check (scopes.includes('project')) reads false —
+# backfilled membership check (scopes.includes('project')) reads false,
 # asserted explicitly so the migration's per-item rule (not just presence) is
 # exercised in both directions.
 echo "$outD" | jq -e '.migrated.items["graphify"].enabled == false' >/dev/null \
@@ -212,13 +212,13 @@ echo "$outD" | jq -e '.after.targets | to_entries[0].value.items["qmd-binary"].e
 echo "ok: caseD — migration round-trips through save()/load()"
 
 # ── Case E: migration membership must key off the
-# AUTHORITATIVE invocation scope (cachedAnswers.scope — the same value that
+# AUTHORITATIVE invocation scope (cachedAnswers.scope, the same value that
 # picked which target entry we're even operating on), NEVER the target's own
 # PERSISTED `.scope` field, which can independently drift (a hand-edit, a
-# pre-schema-fix state file — the same class of defect `lastEnsured`/
+# pre-schema-fix state file, the same class of defect `lastEnsured`/
 # `overrides` already guard against). Repro: a project-scope target whose
 # persisted `.scope` somehow reads "user" gains a project-ONLY item after an
-# upgrade — the item must still backfill enabled:true (project scope really
+# upgrade: the item must still backfill enabled:true (project scope really
 # is desired here), not enabled:false (what a naive read of the stale
 # persisted scope would produce, forever, since the item-exists guard skips
 # it on every later run once wrongly backfilled). ─────────────────────────
@@ -237,7 +237,7 @@ const answers = {
 };
 
 // PRE-CHANGE state: derive against a manifest missing pre-commit-hooks
-// (scopes:['project'], profiles:['core','all'] — desired under THIS
+// (scopes:['project'], profiles:['core','all'], desired under THIS
 // target's real profile 'core' + authoritative scope 'project').
 const oldManifest = { schemaVersion: manifest.schemaVersion, harness: manifest.harness,
   items: manifest.items.filter((i) => i.id !== 'pre-commit-hooks') };
@@ -248,7 +248,7 @@ const key = state.ensureTarget(s, oldManifest, answers) && Object.keys(s.targets
 if (s.targets[key].items['pre-commit-hooks']) throw new Error('fixture drift: pre-commit-hooks should be ABSENT from the pre-change derive');
 if (s.targets[key].scope !== 'project') throw new Error('fixture drift: freshly-derived scope should be project before corruption');
 
-// Corrupt the PERSISTED .scope field only — cachedAnswers.scope (what
+// Corrupt the PERSISTED .scope field only: cachedAnswers.scope (what
 // ensureTarget uses to pick this very target key) stays 'project'
 // throughout; only the target's own redundant copy drifts.
 s.targets[key].scope = 'user';
@@ -287,7 +287,7 @@ echo "ok: caseF — pre-commit framework item is not wanted for a vault=none sta
 
 # a core target with vault=none that ships its OWN
 # .pre-commit-config.yaml still needs the framework (adopt.sh keeps the
-# uv/pipx check for it) — himmelctl must agree. Project scope only; the
+# uv/pipx check for it): himmelctl must agree. Project scope only; the
 # target is the cwd, the same key state.js's targetKeyForScope uses.
 mkdir -p "$work/tgtF-with" "$work/tgtF-without"
 : > "$work/tgtF-with/.pre-commit-config.yaml"

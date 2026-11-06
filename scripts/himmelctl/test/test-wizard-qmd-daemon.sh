@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-qmd-daemon.sh — hermetic tests for the himmelctl `qmd-daemon`
+# test-wizard-qmd-daemon.sh: hermetic tests for the himmelctl `qmd-daemon`
 # status item: the qmd daemon's initialize round-trip, judged in
 # himmelctl status (one owner per fact) instead of doctor C40.
 # The probe runs against a stubbed curl through the doctor's own seams
@@ -87,7 +87,7 @@ kill "$fake_pid" 2>/dev/null || true
 echo "$out" | jq -e --arg p "pid $fake_pid" '.actual == "degraded" and (.detail | test("NOT qmd")) and (.detail | contains($p)) and (.detail | test("sleep|fake-listener")) and (.detail | contains("sleep 31") | not)' >/dev/null || fail "foreign listener is named by pid and executable only, no arguments (got: $out)"
 echo "ok: a non-qmd listener is named by pid and executable only, never its arguments"
 
-# not wanted: desired follows the qmd items' profiles (luna, all) — core wants none of them.
+# not wanted: desired follows the qmd items' profiles (luna, all). Core wants none of them.
 want=$("$node_bin" -e "
 const m = JSON.parse(require('fs').readFileSync('$(winpath "$manifest_path")', 'utf8'));
 for (const id of ['qmd-binary', 'qmd-index', 'qmd-daemon']) {

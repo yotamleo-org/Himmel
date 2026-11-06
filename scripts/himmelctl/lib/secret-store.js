@@ -1,5 +1,5 @@
 'use strict';
-// scripts/himmelctl/lib/secret-store.js — wizard secret store: detect,
+// scripts/himmelctl/lib/secret-store.js: wizard secret store: detect,
 // validate and write ONE secret into its documented store, in-process.
 //
 // Why not set-env-var.sh: it takes `KEY VALUE` as arguments of a child, so the

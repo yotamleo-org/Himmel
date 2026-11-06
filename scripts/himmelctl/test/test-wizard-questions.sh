@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-questions.sh — hermetic tests for the himmelctl install wizard's
+# test-wizard-questions.sh: hermetic tests for the himmelctl install wizard's
 # question engine + answer schema/cache (T3). Mirrors
 # test-wizard-preflight.sh conventions: a stub PATH built via
 # scripts/lib/hermetic-path.sh, a fake HOME, node launched by absolute path so
@@ -10,7 +10,7 @@
 # question set, first asking `profile` (starter|luna|operator|custom, a
 # numbered menu with per-option help text) instead of `role`. A profile only
 # SEEDS the default answer at each later question (PROFILE_PRESETS in
-# bin.js) — it never skips one. `devOverlay` (the old contributor-dev
+# bin.js). It never skips one. `devOverlay` (the old contributor-dev
 # behavior) is no longer a question at all; it is set only by the
 # --contribute CLI flag (covered here + test-wizard-derive.sh for the
 # checkout-validity + derivation side).
@@ -27,7 +27,7 @@
 #      bridge=on) while EVERY question is still asked, and custom keeps
 #      today's plain defaults (vault=none, handover=inline, alwaysOn=no).
 #      Verified via the printed `(default: X)` headers with stdin closed
-#      right after the profile answer — every later ask() then returns ''
+#      right after the profile answer: every later ask() then returns ''
 #      (closed-stdin default acceptance), so the WHOLE chain still asks and
 #      answers with defaults, proving nothing is silently skipped.
 #   3. invalid profile answer -> the question repeats once, then accepts.
@@ -80,7 +80,7 @@ questions_cwd="$work/suite-cwd"; mkdir -p "$questions_cwd"; cd "$questions_cwd"
 # a non-dry-run install (case5 --from-profile) reaches
 # applyHimmelctlPathShim(), whose default binDir is the operator's REAL
 # ~/.local/bin. Isolate binDir for the WHOLE
-# suite so no case touches the real bin dir — mirrors test-wizard-update.sh /
+# suite so no case touches the real bin dir, mirrors test-wizard-update.sh /
 # test-wizard-uninstall.sh. winpath'd so node resolves it cleanly.
 HIMMELCTL_BIN_DIR="$(winpath "$work/isolated-bin")"
 export HIMMELCTL_BIN_DIR
@@ -110,10 +110,10 @@ build_path() {
 # prompts carry no '[' so they are excluded.
 count_questions() { printf '%s' "$1" | grep -cE '^\? .*\[' || true; }
 
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline. printf-into-`grep -q` is a trap under this file's `set -o pipefail`:
 # grep -q exits the instant it matches, printf then takes SIGPIPE writing the
-# remainder, and pipefail reports the PIPELINE as failed — so a SUCCESSFUL match
+# remainder, and pipefail reports the PIPELINE as failed, so a SUCCESSFUL match
 # returns non-zero whenever the match lands early in a large input (the outcome
 # depends on how far down the match sits). A here-string is not a pipeline, so
 # the status is grep's own verdict alone. (grep -c, as in count_questions above,
@@ -141,10 +141,10 @@ set -e
 [ "$rc" -eq 0 ] || fail "case1: starter-profile run should succeed (got rc=$rc)"
 qs=$(count_questions "$out")
 # vault=none + no codex lane no longer means zero cadence rows
-# qualify — drift-fix/upstream-watch are requires:'none' and always offered
+# qualify: drift-fix/upstream-watch are requires:'none' and always offered
 # so the cadences
 # question is now asked (+1), and closed stdin
-# declines all three, which triggers the disarm-consent follow-up (+1) —
+# declines all three, which triggers the disarm-consent follow-up (+1):
 # 6 main questions (pluginSet no longer asked) + those 2 = 8; the commit-rules prompts follow a bare "> " on closed stdin so this line-anchored count does not see them. See test-wizard-cadence-per-unit.sh case e
 # for the row-level coverage of this exact scenario.
 [ "$qs" -eq 8 ] \
@@ -178,7 +178,7 @@ disclosure_before_prompt=$(printf '%s' "$out" | awk '
 echo "ok: case1 starter profile -> 7 questions + summary profile=starter/devOverlay=false, no fabricated luna/bridge; CR-floor disclosure prints before lanes"
 
 # ── Case 2: profile preset seeding (luna/operator/custom) ──────────────────
-# Every later question is still asked (confirmed via headers) — the preset
+# Every later question is still asked (confirmed via headers). The preset
 # only changes the DEFAULT shown. Feeding just the profile answer and closing
 # stdin immediately makes every subsequent ask() resolve to '' (closed-stdin
 # default acceptance, makeAsk()'s own contract), so the whole remaining chain
@@ -222,11 +222,11 @@ grepq "$outOp" -F '? configure the telegram bridge (voice/text ingestion)? [off|
 # question fell through to the schema default 'small' regardless of profile.
 grepq "$outOp" -F '? whisper model [tiny|base|small|medium|large-v3|large-v3-turbo|custom] (default: large-v3-turbo)' \
   || fail "case2(operator): should seed whisper model default=large-v3-turbo (got: $outOp)"
-# Every has-it-or-not question is STILL ASKED under operator — seeding never
+# Every has-it-or-not question is STILL ASKED under operator: seeding never
 # skips a question (locked spec). Substring checks (not the line-anchored
 # count_questions helper): once stdin closes early, makeAsk()'s closed-stdin
 # fast path skips its usual separating newline, so later question headers can
-# land glued onto the previous prompt's "> " rather than at column 0 — a
+# land glued onto the previous prompt's "> " rather than at column 0, a
 # formatting quirk of this deliberately-early-EOF technique, not a sign the
 # question was skipped (the printed answer JSON above already proves each of
 # these was actually asked and answered).
@@ -249,9 +249,9 @@ _needles=('? vault path' '? handover path' '? lanes' \
           'configure the telegram bridge' '? bridge .env path' \
           '? whisper CLI path' '? whisper model [')
 # '? whisper model filename' (the old free-text prompt) is now
-# CONDITIONAL — only reached if the operator picks the 'custom' menu entry,
+# CONDITIONAL: only reached if the operator picks the 'custom' menu entry,
 # which closed-stdin default-acceptance never does (the seeded default here
-# is large-v3-turbo, an enum pick, not custom) — so it is deliberately absent
+# is large-v3-turbo, an enum pick, not custom), so it is deliberately absent
 # from the unconditional needle list above, unlike every other question here.
 if [ -n "$bridge_persist_artifact" ]; then
   _needles+=('install bridge persistence now')
@@ -369,9 +369,9 @@ grepq "$cache_body" '"channel": "stable"' \
 # Now replay the cache non-interactively: ZERO prompts + byte-stable JSON.
 # Non-interactive --from-profile (T4) skips the confirm and shells out for
 # real, so HIMMELCTL_REPO_ROOT is pointed at a throwaway fixture carrying a
-# harmless no-op adopt.sh stub — keeps this replay hermetic (no real adopt.sh
+# harmless no-op adopt.sh stub, keeps this replay hermetic (no real adopt.sh
 # execution against the checkout) without changing what's being asserted here
-# (the --from-profile round-trip, not T4 derivation — that's covered by
+# (the --from-profile round-trip, not T4 derivation: that's covered by
 # test-wizard-derive.sh).
 fixture5="$work/case5-fixture"; mkdir -p "$fixture5/scripts"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$fixture5/scripts/adopt.sh"
@@ -387,7 +387,7 @@ prompts=$(printf '%s' "$out_b" | grep -cE '^\? ' || true)
 [ "$prompts" -eq 0 ] \
   || fail "case5: --from-profile must ask ZERO questions (got $prompts): $out_b"
 # Extract the JSON block node printed: from the first '{' line to the first
-# bare '}' line (the top-level close — nested closes are indented, e.g.
+# bare '}' line (the top-level close: nested closes are indented, e.g.
 # `  },`, so they don't match). T4 prints a `derived: ...` line right after
 # the JSON, which a to-end-of-output extraction would now swallow.
 json_b=$(printf '%s' "$out_b" | sed -n '/^{/,/^}/p')
@@ -424,7 +424,7 @@ grepq "$cache_body_5b" '"channel": "pre"' \
 echo "ok: case5b --from-profile with an existing channel value never coerces it to the stable default"
 
 # ── Case 5c: an EXISTING station's channel-less ────────
-# re-install must not be defaulted to stable — "new adopter" means this
+# re-install must not be defaulted to stable: "new adopter" means this
 # station never having a prior cache, checked via fs.existsSync(cachePath()),
 # not merely answers.channel === undefined (which is also true for every
 # channel-less re-install of an existing station).
@@ -459,8 +459,8 @@ fi
 echo "ok: case5c an existing station's channel-less --from-profile re-install is never coerced to the stable default"
 
 # ── Case 5d: a channel-less re-install ────────
-# carries an EXISTING station's cached channel forward instead of dropping it
-# — writeCache replaces the whole file, so doing nothing here would silently
+# carries an EXISTING station's cached channel forward instead of dropping it.
+# writeCache replaces the whole file, so doing nothing here would silently
 # revert a stable/pre station to unset (branch-tip pull) on any reinstall
 # whose incoming profile doesn't happen to restate channel.
 stub5d="$work/case5d"; mkdir -p "$stub5d"
@@ -546,7 +546,7 @@ grepq "$outFullV2" -i "field 'pluginSet'" \
   || fail "case6c: should name the pluginSet field (got: $outFullV2)"
 echo "ok: case6c --from-profile v2 with pluginSet=full -> exit 2 + message naming pluginSet"
 
-# Fixture repo root shared by case6d/e below — every --from-profile
+# Fixture repo root shared by case6d/e below: every --from-profile
 # invocation here gets it, even the exit-2 ones, so a future validator
 # regression that lets one of these fall through to the derived adopt.sh
 # shell-out hits a harmless stub instead of the real checkout.
@@ -616,10 +616,10 @@ rc=$?
 set -e
 [ "$rc" -eq 0 ] || fail "case7: --contribute run should succeed (got rc=$rc): $out"
 qs=$(count_questions "$out")
-# same +2 (cadences + disarm-consent) as case1 above — this
+# same +2 (cadences + disarm-consent) as case1 above: this
 # scenario is vault=none + no codex lane too, so the baseline case7 must
 # compare against is 9, not the 7 (the point of this
-# assertion — "--contribute does not change the count" — still holds; only
+# assertion ("--contribute does not change the count") still holds; only
 # the number itself moved, for an unrelated reason).
 [ "$qs" -eq 8 ] \
   || fail "case7: --contribute must not change the question count (baseline 8 post-HIMMEL-6362 (pluginSet no longer asked), got $qs): $out"
@@ -694,7 +694,7 @@ echo "ok: case9 numbered option selection parses digits (proven via non-default 
 # ── Case 10: consent/PHI prompts keep explicit wording ───────
 # The PHI declaration and the two "consented, --dry-run shows it" mutation
 # consent prompts (disarm cadence, bridge persistence install) must NEVER
-# become a numbered menu — a source-level check rather than a live fixture,
+# become a numbered menu, a source-level check rather than a live fixture,
 # since exercising them interactively needs a full vault!=none + bridge=on
 # question chain that adds no coverage beyond this direct assertion.
 wizard_src=$(cat "$wizard")
@@ -702,7 +702,7 @@ grepq "$wizard_src" -F -- '? does this vault handle Protected Health Information
   || fail "case10: the PHI declaration prompt must keep its exact explicit yes/no wording, never a numbered menu"
 # the two new personal/medical-vault prompts (yes/no declaration
 # + the .salus-marker consent) are the SAME consent-grade class as the PHI
-# declaration above — both must be askEnum() calls with explicit wording, not
+# declaration above: both must be askEnum() calls with explicit wording, not
 # askNumberedEnum().
 grepq "$wizard_src" -F -- "? do you keep a personal/medical vault this machine's agents must never send to cloud backends? [yes|no] (default: no)\\n> " \
   || fail "case10: the personal/medical vault declaration prompt must keep its exact explicit yes/no wording, never a numbered menu"
@@ -710,7 +710,7 @@ grepq "$wizard_src" -F -- 'now (marks this vault PHI to every local guard that c
   || fail "case10: the .salus-marker consent prompt must keep its exact explicit yes/no wording, never a numbered menu"
 # the prompt now names the declined units dynamically
 # (`${declinedIds.join(', ')}`), so the exact-string check becomes two
-# substring checks bracketing the interpolation — still proving the SAME
+# substring checks bracketing the interpolation, still proving the SAME
 # explicit yes/no wording, never a numbered menu. Deliberately
 # single-quoted: a literal `${declinedIds.join(` template-literal fragment
 # searched for in bin.js's own SOURCE TEXT, not a shell expansion.
@@ -725,7 +725,7 @@ grepq "$wizard_src" -F -- "(each unit's own disarm subcommand; consented, --dry-
 grepq "$wizard_src" -F -- 'install bridge persistence now (${persistArtifact}; consented, --dry-run shows it) [yes|no] (default: no)\n> ' \
   || fail "case10: the bridge-persistence consent prompt must keep its exact explicit yes/no wording, never a numbered menu"
 # numeric-index acceptance used to live in askEnum
-# itself, shared by every caller — including the three consent/PHI prompts
+# itself, shared by every caller, including the three consent/PHI prompts
 # above, so a bare "1"/"2" silently satisfied a PHI declaration or a
 # machine-mutation consent that was supposed to require typed yes/no. Prove
 # structurally that askEnum() (the function those three call, unlike the
@@ -744,7 +744,7 @@ echo "ok: case10 PHI/consent prompts are untouched by the numbered-menu conversi
 # evaluate without asking someone "what is the big one?" (the operator
 # complaint this ticket fixes). Now a numbered menu of the standard
 # whisper.cpp ggml models, plus a 'custom' branch that falls through to a
-# free-text ask for any other filename — same shape as vaultMode='existing'/
+# free-text ask for any other filename, same shape as vaultMode='existing'/
 # handoverMode='external' already trigger a follow-up free-text question
 # above, not a new escape hatch bolted onto askNumberedEnum() itself.
 #
@@ -758,7 +758,7 @@ echo "ok: case10 PHI/consent prompts are untouched by the numbered-menu conversi
 # bridge-persistence consent takes its default.
 whisper_case_input() {
   # $1 = whisper-model answer, $2 = optional custom-filename sub-answer
-  # one extra blank line vs. before — the new personal/medical
+  # one extra blank line vs. before: the new personal/medical
   # vault question sits between PHI and secretsWalk, defaults 'no' on blank,
   # so no follow-up path/marker sub-answers are ever reached here.
   printf 'custom\n\ndefault-template\n\n\nnone\n\n\nnone\n\n\n\non\n\n\n%s\n' "$1"
@@ -797,7 +797,7 @@ grepq "$out13" -F '"whisperModel": "my-finetune.bin"' \
   || fail "case13: the custom branch should record whatever arbitrary filename was typed (got: $out13)"
 echo "ok: case13 the 'custom' menu entry still accepts an arbitrary filename"
 
-# Case 14: pressing Enter takes the default — profile=custom keeps the plain
+# Case 14: pressing Enter takes the default. profile=custom keeps the plain
 # schema default (ggml-small.bin), proving the operator preset's new seed
 # (case2 above) did NOT change the other presets.
 stub14="$work/case14"; mkdir -p "$stub14"

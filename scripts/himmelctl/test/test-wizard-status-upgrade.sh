@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-status-upgrade.sh — hermetic tests for: himmelctl `status` must reconcile new
+# test-wizard-status-upgrade.sh: hermetic tests for: himmelctl `status` must reconcile new
 # manifest items into an EXISTING state.json, and stop false-redding
 # opt-in tools. Mirrors sibling test-wizard-status-*.sh conventions: a fake
 # HOME + HIMMELCTL_CACHE_DIR + HIMMELCTL_REPO_ROOT fixture, node launched by
@@ -9,10 +9,10 @@
 #   a. UPGRADE: a target's state.json was derived against an OLDER manifest
 #      missing an item ('pre-commit-hooks') that a later himmel-update's
 #      manifest.json gained. Re-running `status` against the CURRENT
-#      (full) manifest — simulating that update — must surface the
+#      (full) manifest (simulating that update) must surface the
 #      previously-invisible item in the report instead of silently omitting
 #      it, with its genuinely-derived desired/severity (not a stale
-#      n/a-forever) — computed in memory only (`status` never
+#      n/a-forever), computed in memory only (`status` never
 #      writes state.json, so the migration is NOT persisted; every
 #      already-tracked item's on-disk state stays byte-for-byte untouched).
 #   b. OPT-IN: graphify-mcp carries profiles:["luna","all"] like any other
@@ -20,7 +20,7 @@
 #      though registering it is a genuinely opt-in, manual step (adopt.sh's
 #      --with-graphify). Absent -> severity n/a (informational), not red.
 #      Present (registered in ~/.claude.json) -> severity green, same as
-#      any other item — the fix only silences the "never opted in" alarm,
+#      any other item: the fix only silences the "never opted in" alarm,
 #      it does not stop tracking the item.
 
 set -euo pipefail
@@ -45,7 +45,7 @@ cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
 # write_cache <path> <role> <scope> <vault-mode> <vault-path> <handover-mode>
-#             <handover-path> <plugin-set> — a minimal valid Draft-A profile
+#             <handover-path> <plugin-set>: a minimal valid Draft-A profile
 #             (same shape sibling test-wizard-status-cmd.sh's write_cache).
 write_cache() {
   cat > "$1" <<JSON
@@ -54,7 +54,7 @@ JSON
 }
 
 # ══════════════════════════════════════════════════════════════════════════
-# case (a): UPGRADE — a manifest item gained after the target was derived
+# case (a): UPGRADE, a manifest item gained after the target was derived
 # ══════════════════════════════════════════════════════════════════════════
 
 fixtureRepoA="$work/repoA"
@@ -62,19 +62,19 @@ mkdir -p "$fixtureRepoA/scripts/install"
 fixtureRepoA_w="$(winpath "$fixtureRepoA")"
 
 targetA="$work/targetA"; mkdir -p "$targetA/.claude"
-# Deliberately no .pre-commit-config.yaml — pre-commit-hooks reads absent
+# Deliberately no .pre-commit-config.yaml: pre-commit-hooks reads absent
 # once it's visible at all.
 
 homeA="$work/homeA"; mkdir -p "$homeA"
 cacheA="$work/cacheA"; mkdir -p "$cacheA"
 cacheA_w="$(winpath "$cacheA")"
 
-# profile 'core' (vault.mode:none), scope 'project' — pre-commit-hooks
+# profile 'core' (vault.mode:none), scope 'project': pre-commit-hooks
 # (profiles:["core","all"], scopes:["project"]) is desired under this
 # target.
 write_cache "$cacheA/install-profile.json" adopter project none "" inline "" lean
 
-# ── OLD manifest: the real manifest minus pre-commit-hooks — simulates the
+# ── OLD manifest: the real manifest minus pre-commit-hooks, simulates the
 # state.json this target would have derived BEFORE a himmel-update added it
 # (this is a fixture device: pre-commit-hooks is a real, long-standing item;
 # the point is only that SOME item the target's persisted state predates).
@@ -126,7 +126,7 @@ wiringBefore=$(jq -e --arg k "$targetKeyA" '.targets[$k].items["wiring-pretoolus
 cp "$cacheA/state.json" "$work/state.json.before-migration" || fail "case a setup: could not snapshot state.json before the migration-surfacing run"
 
 # ── the "upgrade": swap in the REAL (current, full) manifest and re-run
-# status — this is the exact scenario a himmel-update delivers.
+# status: this is the exact scenario a himmel-update delivers.
 cp "$manifest_path" "$fixtureRepoA/scripts/install/manifest.json"
 
 outA=$( cd "$targetA" && HIMMELCTL_REPO_ROOT="$fixtureRepoA_w" HIMMELCTL_CACHE_DIR="$cacheA_w" HIMMEL_LUNA_CONFIG_PATH="$cacheA_w-luna-config.json" HOME="$homeA" USERPROFILE="$(winpath "$homeA")" \
@@ -142,7 +142,7 @@ echo "$outA" | jq -e '.items[] | select(.id=="pre-commit-hooks") | .severity == 
 echo "ok: case a — a manifest item gained after the target's last derive is surfaced (probed, not silently n/a) on the very next status run"
 
 # `status` never writes state.json, so the migration this
-# report surfaced stays IN MEMORY for this one run only — the on-disk entry
+# report surfaced stays IN MEMORY for this one run only: the on-disk entry
 # must still lack pre-commit-hooks, exactly as the seed left it. Persisting a
 # migration is `install`'s and `ensure`'s job now, not `status`'s.
 jq -e --arg k "$targetKeyA" '.targets[$k].items | has("pre-commit-hooks") | not' "$cacheA/state.json" >/dev/null \
@@ -166,7 +166,7 @@ after2=$($_SHA256_CMD -- "$cacheA/state.json")
 echo "ok: case a — a second run against an already-migrated target is a zero-write no-op"
 
 # ══════════════════════════════════════════════════════════════════════════
-# case (b): OPT-IN — graphify-mcp reads n/a (not red) when CLEANLY never
+# case (b): OPT-IN, graphify-mcp reads n/a (not red) when CLEANLY never
 # registered, still reads green once it IS registered, and
 # stays red (not silently swallowed to n/a) when its
 # config is genuinely broken rather than just never-opted-in. This target is
@@ -187,7 +187,7 @@ homeB="$work/homeB"; mkdir -p "$homeB"
 cacheB="$work/cacheB"; mkdir -p "$cacheB"
 cacheB_w="$(winpath "$cacheB")"
 
-# profile 'all' (vault.mode:default-template), scope 'project' — graphify-mcp
+# profile 'all' (vault.mode:default-template), scope 'project': graphify-mcp
 # (profiles:["luna","all"], scopes:["project","user"]) is desired:true here.
 vaultB="$work/vault"
 write_cache "$cacheB/install-profile.json" adopter project default-template "$(winpath "$vaultB")" inline "" lean
@@ -199,8 +199,8 @@ runStatusB() {
 
 # ── absent: no <targetB>/.mcp.json at all (project scope) -> severity n/a,
 # not red, desired stays true (still actively tracked, just not alarmed).
-# ENOENT is the ORDINARY case here — most projects never commit a .mcp.json
-# at all — so this is a CLEAN absence, not a config error.
+# ENOENT is the ORDINARY case here (most projects never commit a .mcp.json
+# at all), so this is a CLEAN absence, not a config error.
 outB1=$(runStatusB) || fail "case b: status run (graphify-mcp absent) failed"
 echo "$outB1" | jq -e '.items[0].desired == true' >/dev/null \
   || fail "case b: graphify-mcp should read desired:true under profile 'all' (got: $outB1)"
@@ -210,7 +210,7 @@ echo "$outB1" | jq -e '.items[0].detail | test("opt-in"; "i")' >/dev/null \
   || fail "case b: graphify-mcp's n/a detail should name it as opt-in (got: $outB1)"
 # the n/a row must PRESERVE the underlying probe
 # diagnostic (which file/condition was actually checked), not just the
-# friendly opt-in framing — proves the fix doesn't discard information.
+# friendly opt-in framing, proves the fix doesn't discard information.
 echo "$outB1" | jq -e '.items[0].detail | test("does not exist")' >/dev/null \
   || fail "case b: graphify-mcp's n/a detail should still name the underlying probe diagnostic (got: $outB1)"
 echo "$outB1" | jq -e '.summary.red == 0' >/dev/null \
@@ -218,7 +218,7 @@ echo "$outB1" | jq -e '.summary.red == 0' >/dev/null \
 echo "ok: case b — graphify-mcp cleanly absent (never opted in) reads n/a, not a false red, and keeps its diagnostic detail"
 
 # ── malformed config:.mcp.json EXISTS but is
-# unparseable — a lost/corrupted registration, NOT "never opted in". Must
+# unparseable: a lost/corrupted registration, NOT "never opted in". Must
 # stay on the standard red path with the RAW probe diagnostic, never the
 # friendly opt-in message (which would hide a genuine regression).
 printf '{not valid json' > "$targetB/.mcp.json"
@@ -234,13 +234,13 @@ echo "$outB2" | jq -e '.summary.red == 1' >/dev/null \
 echo "ok: case b — a malformed graphify-mcp config stays red with its raw diagnostic, never silently downgraded"
 
 # ── present: register it in <targetB>/.mcp.json -> severity green, same as
-# any other present item — the fix must not stop tracking it once it IS
+# any other present item: the fix must not stop tracking it once it IS
 # there, and project scope must resolve .mcp.json (not ~/.claude.json).
 # graphify-mcp's `bin` descriptor field was DROPPED
-# (redundant/wrong — see manifest.json's comment); the registered entry's
+# (redundant/wrong: see manifest.json's comment); the registered entry's
 # OWN `command` ("graphify-mcp", a bare name here) is now what must resolve,
 # unconditionally. The stub is named to match that EXACT registered command
-# — not the (now-irrelevant) `graphify` CLI name — and prepended ahead of
+# (not the (now-irrelevant) `graphify` CLI name) and prepended ahead of
 # the real PATH so the assertion doesn't depend on whether graphify-mcp
 # happens to be installed on the test-runner's machine (this dev machine
 # genuinely has one at ~/.local/bin/graphify-mcp.exe, which is exactly the

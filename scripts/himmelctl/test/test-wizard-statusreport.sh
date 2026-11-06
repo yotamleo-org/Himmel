@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# test-wizard-statusreport.sh — hermetic tests for the extracted
+# test-wizard-statusreport.sh: hermetic tests for the extracted
 # scripts/himmelctl/lib/status-report.js statusReport library
 # A2). Complements test-wizard-status-cmd/golden/multitarget.sh (which cover
 # the CLI `status` command end-to-end through bin.js) by exercising the
-# library directly via `node -e` + require — no bin.js invocation. Mirrors
+# library directly via `node -e` + require, no bin.js invocation. Mirrors
 # sibling test-wizard-*.sh conventions: a fake HOME + HIMMELCTL_CACHE_DIR/
 # HIMMELCTL_REPO_ROOT fixture, node launched by absolute path, winpath for
 # node.exe's MSYS-path blindness.
@@ -13,46 +13,46 @@
 #      items:[{id,kind,desired,actual,severity,detail}], summary}) for a
 #      minimal 2-item fixture manifest (one desired+red, one not-desired),
 #      with no persisted state.json for the target (proves the in-memory
-#      deriveTarget() fallback path — no state.json write happens either).
+#      deriveTarget() fallback path, no state.json write happens either).
 #   b. parameterization: calling statusReport with an EXPLICIT
 #      {scope:"user", targetPath} that differs from process.cwd() routes a
 #      handover-dir-type probe's spawned-shell cwd to THAT targetPath (a
-#      marker-file resolver stub proves it — two calls with two different
+#      marker-file resolver stub proves it: two calls with two different
 #      targetPath values read back two different marker contents), proving
 #      the library never falls back to cwd/repoRoot on its own.
 #   c. the uncached-derive fallback honors the EXPLICIT `scope`
 #      argument, not `answers.scope`: calling statusReport with scope:"user"
 #      while `answers.scope` is "project" (deliberately mismatched, no
 #      persisted state) still reads a scope:["user"]-only item as
-#      desired:true — proving deriveTarget() was driven off the caller's
+#      desired:true, proving deriveTarget() was driven off the caller's
 #      scope, not silently off the stale answers object.
 #   d. a caller-provided UNSAVED reconciled
 #      `state` whose desired flags DIFFER from disk: statusReport reports
 #      the PASSED values (not the on-disk ones) and writes NO state.json.
 #      Protects the `ensure --profile X --dry-run` preview path, which
-#      passes an in-memory reconcile here without persisting it first — a
+#      passes an in-memory reconcile here without persisting it first: a
 #      regression that made statusReport ignore `state` and re-load() would
 #      silently read stale on-disk desired flags (the preview would lie).
 #   e. doc-guard-map's opt-in n/a downgrade fires
 #      ONLY on a genuinely clean probe absence (marker sourced fine, just not
-#      present) — a broken probe (resolver fails to source, probe.actual
+#      present): a broken probe (resolver fails to source, probe.actual
 #      'degraded') must read severity degraded end-to-end, never get
 #      silently swallowed into the same friendly opt-in n/a message.
 #   h. a
 #      malformed ~/.himmel/config.json must surface at severity (degraded),
 #      naming the config file, for ALL THREE config-desired-override items
-#      (cadence-armed, bridge-health, bridge-persistence) — not vanish as a
-#      silent "not enabled for this target" n/a row — while every OTHER item
+#      (cadence-armed, bridge-health, bridge-persistence), not vanish as a
+#      silent "not enabled for this target" n/a row, while every OTHER item
 #      in the same sweep still renders its normal probe result.
 #   i. (C, status item S6) bridge-persistence's own
 #      cleanAbsence downgrade, exercised end-to-end through the REAL probe:
 #      bridge.enabled:false reads n/a (opt-in hint), never red; bridge.
 #      enabled:true with persistence missing stays severity degraded (a
-#      warn) — proving the downgrade fires only on the red/absent branch,
+#      warn), proving the downgrade fires only on the red/absent branch,
 #      never on an already-degraded probe result.
 #   k. the recordedDesired additive overlay (the
 #      !passedState branch covered by case d's gating) must ALSO honor the
-#      EXPLICIT `scope` argument, not `answers.scope` — the same rule case c
+#      EXPLICIT `scope` argument, not `answers.scope`, the same rule case c
 #      already pins for the deriveTarget() fallback. A scope:["user"]-only
 #      item, answers.scope:"user" (mismatched) but called with the explicit
 #      scope:"project" and no `state`, must read desired:false: evaluating
@@ -81,7 +81,7 @@ trap cleanup EXIT
 
 # every fixture path used inside a node -e script is passed via the
 # ENVIRONMENT (exported once, read via process.env inside the script) rather
-# than interpolated into the JS source string — a checkout path containing
+# than interpolated into the JS source string. A checkout path containing
 # an apostrophe or backslash would otherwise break the inline JS on Windows
 # Git Bash, macOS, or Linux alike.
 STATUS_REPORT_LIB="$(winpath "$status_report_lib")"
@@ -153,7 +153,7 @@ echo "$outA" | jq -e '.summary.red == 1 and .summary.na == 1 and .summary.degrad
 [ ! -f "$cacheA/state.json" ] || fail "case a: statusReport must never write state.json (no ensureTarget/save call)"
 echo "ok: case a — statusReport returns the shipped shape; no persisted state -> in-memory deriveTarget fallback, zero writes"
 
-# ── case b: parameterization — explicit {scope:user, targetPath} differing
+# ── case b: parameterization, explicit {scope:user, targetPath} differing
 # from cwd routes a handover-dir probe's spawned cwd to targetPath ─────────
 fixtureRepoB="$work/repoB"
 mkdir -p "$fixtureRepoB/scripts/lib"
@@ -249,7 +249,7 @@ export MANIFEST_C_PATH
 outC=$(cd "$caseC_dir" && HOME="$homeC" USERPROFILE="$(winpath "$homeC")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheC")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheC")-luna-config.json" "$node_bin" -e "
 const { statusReport } = require(process.env.STATUS_REPORT_LIB);
 const manifest = JSON.parse(require('fs').readFileSync(process.env.MANIFEST_C_PATH, 'utf8'));
-// answers.scope is 'project' — deliberately MISMATCHED with the explicit
+// answers.scope is 'project', deliberately MISMATCHED with the explicit
 // scope:'user' argument below. No persisted state.json exists for this
 // target, so this exercises the uncached deriveTarget() fallback.
 const answers = {
@@ -270,7 +270,7 @@ echo "ok: case c — the uncached-derive fallback honors the explicit scope argu
 
 # ── case d: a caller-provided UNSAVED reconciled
 # `state` whose desired flags DIFFER from disk. statusReport must report the
-# PASSED values (not the on-disk ones) AND write NO state.json — the contract
+# PASSED values (not the on-disk ones) AND write NO state.json: the contract
 # `ensure --profile X --dry-run` relies on to preview an in-memory reconcile
 # without persisting it first. The on-disk baseline is persisted HERE (drift-
 # item ENABLED) only to give the passed preview something to differ FROM; the
@@ -313,15 +313,15 @@ const answers = {
   pluginSet: 'lean', lanes: [], alwaysOn: false,
 };
 
-// Phase 1: persist the on-disk baseline — drift-item ENABLED (project/core).
+// Phase 1: persist the on-disk baseline, drift-item ENABLED (project/core).
 // This is the 'disk' the passed preview deliberately differs from.
 let disk = stateLib.load();
 stateLib.ensureTarget(disk, manifest, answers);
 stateLib.save(disk);
 
-// Phase 2: build an UNSAVED reconciled preview — drift-item DISABLED. Loaded
+// Phase 2: build an UNSAVED reconciled preview, drift-item DISABLED. Loaded
 // fresh from the just-written disk baseline (enabled:true) then flipped in
-// memory ONLY (no save) — exactly the shape 'ensure --dry-run' hands over.
+// memory ONLY (no save), exactly the shape 'ensure --dry-run' hands over.
 let preview = stateLib.load();
 const key = path.resolve(process.cwd());
 preview.targets[key].items['drift-item'].enabled = false;
@@ -355,11 +355,11 @@ echo "ok: case d — statusReport honors a caller-provided UNSAVED reconciled st
 # fires ONLY on a genuinely clean absence (marker not present, sourced fine),
 # never on a broken probe. probes.js's cmd:is_himmel_dev now distinguishes
 # "resolver failed to source" (degraded) from "sourced fine, marker absent"
-# (absent) — this proves status-report.js's item.id==='doc-guard-map' branch
+# (absent): this proves status-report.js's item.id==='doc-guard-map' branch
 # only reaches the friendly-opt-in override for the latter. The CR's own
 # glm-3/glm-4 findings (claiming 'degraded' also gets swallowed to n/a) were
 # adjudicated DISPROVED by code inspection (statusReport's degraded branch is
-# a separate `else if` that never falls into the red/n/a-override block) —
+# a separate `else if` that never falls into the red/n/a-override block):
 # this end-to-end case pins that as regression protection, not just the
 # probes.js-level unit coverage in test-wizard-probes.sh. ─────────────────
 caseE_dir="$work/caseE-target"; mkdir -p "$caseE_dir"
@@ -424,7 +424,7 @@ echo "ok: case e1 — doc-guard-map with a genuinely absent marker (resolver sou
 
 # ── e2: resolver missing (probe wiring broken, rc 3) -> degraded, NEVER n/a ──
 fixtureRepoE2="$work/repoE2"; mkdir -p "$fixtureRepoE2/scripts/guardrails"
-# Deliberately NO scripts/guardrails/lib.sh — `.` fails to source it.
+# Deliberately NO scripts/guardrails/lib.sh: `.` fails to source it.
 fixtureRepoE2_w="$(winpath "$fixtureRepoE2")"
 cacheE2="$work/cacheE2"; mkdir -p "$cacheE2"
 
@@ -450,9 +450,9 @@ echo "ok: case e2 — doc-guard-map with a broken resolver (probe wiring failure
 # (luna.cadence.enabled), ADDITIVE to (never instead of) the state.json-
 # derived signal. Three sub-cases: desired purely from the new config
 # (state.json/deriveTarget alone would say false), desired purely from
-# state.json (no config document at all — the pre-existing, unaffected
+# state.json (no config document at all: the pre-existing, unaffected
 # path), and both absent (desired stays false, severity n/a). Uses a
-# fixture manifest item literally named 'cadence-armed' — status-report.js's
+# fixture manifest item literally named 'cadence-armed': status-report.js's
 # configDesiredOverride() dispatches on that exact id. ────────────────────
 manifestF="$work/manifestF.json"
 cat > "$manifestF" <<'JSON'
@@ -482,9 +482,9 @@ run_case_f() {
 const { statusReport } = require(process.env.STATUS_REPORT_LIB);
 const manifest = JSON.parse(require('fs').readFileSync(process.env.MANIFEST_F_PATH, 'utf8'));
 // scope:'project' + vault.mode:'$vaultMode' derives profile 'core' (vault
-// mode 'none') or 'all' (vault mode 'default-template' — helpers.js's
+// mode 'none') or 'all' (vault mode 'default-template', helpers.js's
 // profileForVault()); the fixture item is profiles:[all] only, so a 'core'
-// profile deliberately does NOT grant it via membership alone — isolating
+// profile deliberately does NOT grant it via membership alone, isolating
 // the config-store override as the ONLY possible source of desired:true
 // whenever vaultMode is 'none'.
 const answers = {
@@ -498,7 +498,7 @@ console.log(JSON.stringify(report));
 " )
 }
 
-# f1: desired purely from the NEW config — profile 'core' (vault.mode:'none')
+# f1: desired purely from the NEW config, profile 'core' (vault.mode:'none')
 # would otherwise read desired:false for a luna-only item; luna.cadence.enabled
 # in config.json alone must flip it to true.
 homeF1="$work/homeF1"; cacheF1="$work/cacheF1"
@@ -513,9 +513,9 @@ echo "$outF1" | jq -e '.items[0].severity == "red"' >/dev/null \
   || fail "case f1: once desired via the config override, the item is genuinely probed (missing.txt absent -> red), not skipped (got: $outF1)"
 echo "ok: case f1 — desired-state from the NEW config alone (state.json/profile membership would say false)"
 
-# f2: desired purely from state.json/profile membership — NO config document
+# f2: desired purely from state.json/profile membership, NO config document
 # at all (luna-config.js's load() falls back to defaultConfig(),
-# cadence.enabled:false) — the pre-existing path, unaffected by 7a.
+# cadence.enabled:false), the pre-existing path, unaffected by 7a.
 homeF2="$work/homeF2"; cacheF2="$work/cacheF2"
 cfgF2Missing="$work/configF2-never-created.json"
 outF2=$(run_case_f "$homeF2" "$cacheF2" "$cfgF2Missing" "default-template")
@@ -523,8 +523,8 @@ echo "$outF2" | jq -e '.items[0].desired == true' >/dev/null \
   || fail "case f2: profile 'all' (vault.mode:default-template) membership alone should read desired:true with no config document at all (got: $outF2)"
 echo "ok: case f2 — desired-state from state.json/profile membership alone (no config document present)"
 
-# f3: both absent — profile 'core' (no membership) AND no config document
-# (defaultConfig(), cadence.enabled:false) — desired stays false, severity n/a.
+# f3: both absent, profile 'core' (no membership) AND no config document
+# (defaultConfig(), cadence.enabled:false), desired stays false, severity n/a.
 homeF3="$work/homeF3"; cacheF3="$work/cacheF3"
 cfgF3Missing="$work/configF3-never-created.json"
 outF3=$(run_case_f "$homeF3" "$cacheF3" "$cfgF3Missing" "none")
@@ -535,7 +535,7 @@ echo "ok: case f3 — desired-state absent from BOTH sources reads desired:false
 # ── case g (status item S2): luna-sources' severity
 # remap. The underlying probe (Task 6, UNCHANGED) returns 'absent' for
 # "nothing was evaluated" and 'degraded' for "a configured source is
-# unhealthy" — status-report.js remaps these to severity degraded (warn) and
+# unhealthy": status-report.js remaps these to severity degraded (warn) and
 # red (fail) respectively for this ONE item id, the inverse of the generic
 # mapping every other item uses. ──────────────────────────────────────────
 manifestG="$work/manifestG.json"
@@ -578,8 +578,8 @@ echo "ok: case g — luna-sources' 'nothing configured' (probe.actual absent) re
 
 # ── case h: a malformed ~/.himmel/config.json
 # must surface at severity, naming the file, for the two config-desired-
-# override items — not be silently swallowed into a plain "not enabled" n/a
-# row — while every OTHER item in the same sweep still renders normally. ──
+# override items, not be silently swallowed into a plain "not enabled" n/a
+# row, while every OTHER item in the same sweep still renders normally. ──
 manifestH="$work/manifestH.json"
 cat > "$manifestH" <<'JSON'
 {
@@ -659,12 +659,12 @@ echo "$outH" | jq -e '.summary.degraded == 3 and .summary.red == 1' >/dev/null \
 echo "ok: case h — a malformed config.json surfaces at severity for all three config-desired-override items, naming the file, without swallowing the rest of the report"
 
 # ── case i (C, status item S6): bridge-persistence's
-# OWN cleanAbsence downgrade — bridge.enabled:false must render n/a (opt-in
+# OWN cleanAbsence downgrade: bridge.enabled:false must render n/a (opt-in
 # hint), never red; bridge.enabled:true with persistence missing must stay
 # 'degraded' (a warn), proving the downgrade only ever fires on the red
 # branch (probe.actual:'absent'), never on 'degraded'. Runs the REAL
 # bridge-persistence probe end-to-end (statusReport -> probes.js), not a
-# file-exists fixture — ctxForItem() threads no `platform`, so this exercises
+# file-exists fixture: ctxForItem() threads no `platform`, so this exercises
 # the actual host platform's branch. ─────────────────
 manifestI="$work/manifestI.json"
 cat > "$manifestI" <<'JSON'
@@ -734,7 +734,7 @@ exit 0
 STUB
 chmod +x "$i2_stub/pwsh"
 # resolvePowershell
-# PREFERS pwsh over powershell — scrubbing only 'powershell' off the REAL
+# PREFERS pwsh over powershell: scrubbing only 'powershell' off the REAL
 # PATH left a real pwsh.exe (present on this test host) resolvable, so the
 # probe queried the REAL Windows Task Scheduler instead of this stub
 # (caught here: it returned an actual 'HimmelTelegramBridge' task on the
@@ -751,11 +751,11 @@ echo "ok: case i2 — bridge-persistence with bridge.enabled=true and persistenc
 
 # ── case j: telegram-bridge/hermes-lanes/codex-cli have no
 # config.json flag of their own (unlike bridge-health/bridge-persistence/
-# cadence-armed above) — their ONLY selection record is the recorded wizard
+# cadence-armed above): their ONLY selection record is the recorded wizard
 # answers (bridge.enabled, lanes). adopterProfileLib.resolveActiveFeatures()
 # downgrades each to n/a when its feature was never selected, stays red when
-# it was selected and the credential is genuinely absent, and — the fail-open
-# control — stays red when `answers` itself is missing entirely (no profile
+# it was selected and the credential is genuinely absent, and (the fail-open
+# control) stays red when `answers` itself is missing entirely (no profile
 # to consult at all), preserving today's full-nag behavior rather than
 # silently going quiet. ─────────────────────────────────────────────────────
 manifestJ="$work/manifestJ.json"
@@ -843,7 +843,7 @@ echo "$outJ2" | jq -e '.items[] | select(.id=="codex-cli") | .severity == "n/a"'
 echo "ok: case j2 — a selected feature's genuinely-absent credential stays red; an unselected sibling stays n/a"
 
 # j3 (fail-open control): no `answers` object at all (statusReport called
-# with none) must NOT be treated as "nothing selected" — it must keep
+# with none) must NOT be treated as "nothing selected". It must keep
 # TODAY'S full-nag behavior (severity stays red), since resolveActiveFeatures
 # fails open (null) rather than fabricating an empty feature set.
 outJ3=$(cd "$caseJ_dir" && HOME="$homeJ" USERPROFILE="$(winpath "$homeJ")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheJ")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheJ")-luna-config.json" "$node_bin" -e "
@@ -857,13 +857,13 @@ echo "$outJ3" | jq -e '[.items[] | select(.severity != "red")] | length == 0' >/
 echo "ok: case j3 — no recorded profile at all fails open to full-nag behavior, never silently quiet"
 
 # ── case k: the recordedDesired additive overlay must
-# honor the EXPLICIT `scope` argument, not `answers.scope` — the same rule
+# honor the EXPLICIT `scope` argument, not `answers.scope`, the same rule
 # case c already pins for the deriveTarget() fallback (status-report.js:163),
 # reintroduced ~90 lines below at the recordedDesired() call site. Fixture
 # item is scopes:["user"] only, profiles:["core","all"] (so profile
-# membership always matches — scope is the ONLY discriminator). answers.scope
+# membership always matches: scope is the ONLY discriminator). answers.scope
 # is 'user' (deliberately mismatched); the call itself uses the explicit
-# scope:'project'. No persisted state.json and no caller `state` — first-run
+# scope:'project'. No persisted state.json and no caller `state`: first-run
 # deriveTarget() fallback (already scope-correct per case c) leaves the item
 # entry.enabled:false, so the ONLY way it could read desired:true is the
 # recordedDesired() overlay evaluating membership against the wrong
@@ -895,9 +895,9 @@ cacheK="$work/cacheK"; mkdir -p "$cacheK"
 outK=$(cd "$caseK_dir" && HOME="$homeK" USERPROFILE="$(winpath "$homeK")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheK")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheK")-luna-config.json" "$node_bin" -e "
 const { statusReport } = require(process.env.STATUS_REPORT_LIB);
 const manifest = JSON.parse(require('fs').readFileSync(process.env.MANIFEST_K_PATH, 'utf8'));
-// answers.scope is 'user' — deliberately MISMATCHED with the explicit
+// answers.scope is 'user', deliberately MISMATCHED with the explicit
 // scope:'project' argument below. No persisted state.json, no caller
-// \`state\` — exercises the recordedDesired() overlay (!passedState branch).
+// \`state\`, exercises the recordedDesired() overlay (!passedState branch).
 const answers = {
   role: 'adopter', tier: 'standard', scope: 'user',
   vault: { mode: 'none', path: '' },
@@ -921,7 +921,7 @@ echo "ok: case k — the recordedDesired() additive overlay honors the explicit 
 # Each read RED on a machine nothing was wrong with. They now read n/a with a
 # DISTINCT one-line reason; a GENUINE problem (a half-filled .env, a HANDOVER_DIR
 # pointing nowhere, an external handover with the var unset) must keep reading
-# red — the downgrade fires on clean absence only. Real manifest items, fixture repoRoot + target, ambient
+# red: the downgrade fires on clean absence only. Real manifest items, fixture repoRoot + target, ambient
 # HANDOVER_DIR stripped (`env -u`) so the operator's own dir cannot green it.
 manifestM="$work/manifestM.json"
 jq '{schemaVersion, harness, items: [.items[] | select(.id | IN("jira-env-keys","bitbucket-cli-build","handover-wiring"))]}' \
@@ -1012,7 +1012,7 @@ outM3b=$(run_m "$repoM3b" "$answersM_inline")
 git -C "$targetM" remote remove origin
 echo "ok: case m3b — an unbuilt bitbucket CLI is red for a Bitbucket origin or FORGE=bitbucket, n/a for a GitHub origin"
 
-# m3c: targetUsesBitbucket decides on the origin's HOST — a URL that
+# m3c: targetUsesBitbucket decides on the origin's HOST: a URL that
 # merely contains bitbucket.org in a path segment or a longer hostname is NOT a
 # Bitbucket origin, and every real Bitbucket shape still is. The SAME table
 # (scripts/lib/fixtures/forge-origins.tsv) is fed to scripts/lib/forge.sh
@@ -1080,7 +1080,7 @@ echo "ok: case m4 — handover-wiring downgrades ONLY for an inline profile whos
 # ── case l: expandHome itself, direct unit coverage ────────
 # Regression guard for the `~\` (Windows-style separator) branch. Before this
 # case, the ONLY thing exercising it was probePhiCoherence's own `~\`-prefixed
-# vaultPath case in test-wizard-probes.sh — and that suite's `fail()` exits
+# vaultPath case in test-wizard-probes.sh, and that suite's `fail()` exits
 # the WHOLE suite on first failure, so an entirely UNRELATED earlier failure
 # in that long suite (the cadence-coherence PIPELINE_CRONTAB gap this same
 # ticket fixed) silently masked this exact regression for as long as it was
@@ -1092,21 +1092,21 @@ echo "ok: case m4 — handover-wiring downgrades ONLY for an inline profile whos
 # `~\` one.
 #
 # Panel finding (head f4dede6a, codex-1, AGREED/Important): `expandHome`
-# returns `path.join(...)`, which is `\`-separated under native Windows Node
-# — hand-asserting a hardcoded `/`-joined expected string here would be the
+# returns `path.join(...)`, which is `\`-separated under native Windows Node.
+# Hand-asserting a hardcoded `/`-joined expected string here would be the
 # EXACT mirror of the defect this case exists to catch (it would fail on
 # Windows while the function behaves correctly). Every expected value below
 # is therefore built with Node's own `path.join` INSIDE this same node -e
-# call and compared joined-to-joined — nothing is hand-assembled with `/` or
+# call and compared joined-to-joined: nothing is hand-assembled with `/` or
 # `\` on either the node or the jq/shell side. `expectedNested` is built as
-# `path.join(home, 'Documents', 'luna')` — three SEPARATE segment
+# `path.join(home, 'Documents', 'luna')` (three SEPARATE segment
 # arguments, never a pre-joined 'Documents/luna' or 'Documents\\luna'
-# string — because that is the one comparison that actually proves the
+# string) because that is the one comparison that actually proves the
 # result has real, distinct nested segments rather than one mangled
 # 'Documents\luna' segment (the regression this whole case guards against);
 # joining a pre-built remainder string would silently re-admit the bug this
 # case exists to catch. `~something` (bareTildeNoSep) has no separator to
-# normalize at all — expandHome returns it verbatim — so it's compared
+# normalize at all (expandHome returns it verbatim), so it's compared
 # literally, against the SAME `inputBareTildeNoSep`/`inputNonTilde`
 # variables node used as the call argument (never retyped in the jq
 # expression), so there is nothing to hand-assemble there either.
@@ -1193,7 +1193,7 @@ echo "ok: case m — an unarmed doctor-cadence reads n/a (opt-in), never red"
 # Three probes whose resolver hangs (sleeps 30s, far inside the 60s per-probe
 # budget): per-probe budgets alone let the sweep run ~90s. With the whole-run
 # deadline at 2s the first probe is clamped to the time left and the rest are
-# never run — all three read degraded, none present/absent, and the sweep ends
+# never run: all three read degraded, none present/absent, and the sweep ends
 # near the deadline.
 caseN_dir="$work/caseN-target"; mkdir -p "$caseN_dir"
 homeN="$work/homeN"; mkdir -p "$homeN"

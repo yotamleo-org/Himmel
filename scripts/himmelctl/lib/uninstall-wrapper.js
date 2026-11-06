@@ -1,16 +1,16 @@
 'use strict';
-// scripts/himmelctl/lib/uninstall-wrapper.js — the uninstall confirm/spawn
+// scripts/himmelctl/lib/uninstall-wrapper.js: the uninstall confirm/spawn
 // wrapper extracted out of bin.js's cmdUninstall.
 // Pure refactor: same TTY/`--yes` fail-closed rule (rc 2), same default-No
 // confirm (rc 3), same wet spawn with HIMMEL_UNINSTALL_REAL_HOME=1, same
-// launcher removal on rc 0 — bin.js now delegates to runUninstallWrapper()
+// launcher removal on rc 0. bin.js now delegates to runUninstallWrapper()
 // instead of doing all of this inline. Deliberately takes an injected
 // { bashPath, repoRoot, header, afterRun } rather than resolving those
 // itself: bin.js passes resolveBash()/repoRoot() and its own manifest-driven
 // header/completeness-check closures, while the not-yet-in-clone
 // scripts/himmelctl/standalone.js (S13 item 4) passes 'bash'/the bundle dir
 // and a header that says it is skipping the offboard plan + completeness
-// check instead — same wrapper, two callers, no behaviour duplicated.
+// check instead: same wrapper, two callers, no behaviour duplicated.
 //
 // displayCommand/runSpawn/askConfirmSafe are used by OTHER bin.js commands
 // too (install/update previews and prompts), so they stay defined there;
@@ -55,7 +55,7 @@ function askConfirmSafe(prompt, eofValue = 'n') {
 
 // Same shape as bin.js's former deriveUninstallCommand, parameterized on the
 // caller's own repoRoot/bashPath instead of calling repoRoot()/resolveBash()
-// itself — repoRoot is the bundle dir for standalone.js, the clone root for
+// itself: repoRoot is the bundle dir for standalone.js, the clone root for
 // bin.js.
 function deriveUninstallCommand(repoRoot, bashPath, args = {}) {
   const scriptsDir = path.join(repoRoot, 'scripts');
@@ -66,7 +66,7 @@ function deriveUninstallCommand(repoRoot, bashPath, args = {}) {
 
 // The confirm/spawn wrapper itself. `header(purgeState)` prints whatever
 // pre-derived-command context the caller owns (bin.js: the offboard banner +
-// manifest plan; standalone.js: a one-line "skipping ..." notice) — called
+// manifest plan; standalone.js: a one-line "skipping ..." notice), called
 // BEFORE the `derived: ...` line, same as bin.js's original order for the
 // banner/state lines (the manifest offboard plan printed after `derived:` in
 // the pre-extraction code; no test asserts that relative order, so folding
@@ -81,7 +81,7 @@ async function runUninstallWrapper(args, { bashPath, repoRoot, header, afterRun 
 
   // --dry-run asks nothing and removes nothing: it runs the executor in its
   // own --dry-run, which prints every path/plugin/hook/settings key it WOULD
-  // touch. No HIMMEL_UNINSTALL_REAL_HOME here — the wet-run
+  // touch. No HIMMEL_UNINSTALL_REAL_HOME here. The wet-run
   // fence is for wet runs; a dry run is never fenced. No launcher removal or
   // afterRun either: nothing was torn down.
   if (args.dryRun) return runSpawn(cmd);
@@ -111,7 +111,7 @@ async function runUninstallWrapper(args, { bashPath, repoRoot, header, afterRun 
     }
   }
   // this is the ONE spawn that runs uninstall.sh WET, after
-  // the human's own confirm above — tell it so its own live-operator-HOME
+  // the human's own confirm above. Tell it so its own live-operator-HOME
   // fence doesn't refuse the very machine the operator just confirmed
   // offboarding. The dry-run/plan path above never reaches here.
   const rc = runSpawn(cmd, { env: { ...process.env, HIMMEL_UNINSTALL_REAL_HOME: '1' } });

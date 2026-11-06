@@ -1,5 +1,5 @@
 'use strict';
-// scripts/himmelctl/lib/ui-service.js — `himmelctl ui --service install|uninstall|status|url`: the AG-UI fleet page
+// scripts/himmelctl/lib/ui-service.js (`himmelctl ui --service install|uninstall|status|url`): the AG-UI fleet page
 // as a systemd USER unit (himmel-ui.service), modelled on telegram-bridge.service (bridge-persistence.js).
 // The unit runs scripts/config-ui/server.ts --service on a fixed 127.0.0.1 port: no idle exit, a stable token in
 // ~/.himmel/state/ui-token (mode 600, created once), HANDOVER_DIR set so the chief board works, Restart=on-failure.

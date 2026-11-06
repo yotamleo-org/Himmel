@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-secret-store.sh — secret-store.js writes one secret to
+# test-secret-store.sh: secret-store.js writes one secret to
 # its documented 0600 store in-process (never on a child's argv), detects it
 # without returning the value, and validates without echoing the input.
 #

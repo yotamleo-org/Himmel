@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# _hermetic-home.sh — sourced by every scripts/himmelctl/test/*.sh suite
+# _hermetic-home.sh: sourced by every scripts/himmelctl/test/*.sh suite
 #
 # ROOT CAUSE: a bash-level `HOME=` override can be a NO-OP for a node CHILD a
-# suite spawns — the child can still resolve the operator's REAL homedir. Every
+# suite spawns. The child can still resolve the operator's REAL homedir. Every
 # per-seam patch (HIMMELCTL_CACHE_DIR, HIMMEL_LUNA_CONFIG_PATH) only closes
 # the ONE env-var override each library happens to check; it does nothing
 # for a code path neither of us has enumerated. own live
 # incident proved this: the operator's real install-profile.json was
 # overwritten by a writeCache() call during a run where every suite already
 # set HIMMELCTL_CACHE_DIR on every "$node_bin" "$wizard" invocation the
-# static guard could see — the leak was in a shape the enumeration missed.
+# static guard could see. The leak was in a shape the enumeration missed.
 #
 # THIS FILE'S JOB, post-consolidation: define `winpath()` ONCE for the whole
 # directory instead of the 34 hand-copied local definitions that used to
@@ -20,17 +20,17 @@
 # built from it (USERPROFILE/HIMMELCTL_CACHE_DIR/HIMMEL_LUNA_CONFIG_PATH)
 # fell straight through to the operator's real home. A shared definition
 # means a suite that forgets (or fails) to source this file has NO winpath
-# at all and dies on first use — loud and immediate — instead of quietly
+# at all and dies on first use (loud and immediate) instead of quietly
 # exporting an empty string that recreates the bug in whichever of the 34
 # copies happens to be missing or broken next.
 #
 # WHY winpath ITSELF ASSERTS NON-EMPTY: the chief's own read of the
 # incident is the reason this function does not just transform
-# and trust — cacheDir()/configPath() are BOTH `process.env.X || <real
+# and trust. cacheDir()/configPath() are BOTH `process.env.X || <real
 # homedir path>`, and an EMPTY STRING IS FALSY in JS. "Set but empty" is
 # therefore INDISTINGUISHABLE from "never set" at the seam this whole ticket
 # exists to close. A missing `winpath()` definition, a failed `cygpath`, an
-# unset upstream variable — any of them can silently produce `X=""`, and a
+# unset upstream variable. Any of them can silently produce `X=""`, and a
 # static grep for `HIMMELCTL_CACHE_DIR=` still finds the assignment and
 # scores the invocation "covered" even though the write lands on the
 # operator (exactly what happened here). So `winpath()` ASSERTS its input is
@@ -38,8 +38,8 @@
 # to stderr) rather than silently returning "" and letting every
 # `$(winpath ...)` call site downstream re-create the same bug.
 #
-# USAGE: source this file before using `winpath` anywhere in a suite —
-# every *.sh in this directory that computes USERPROFILE/HIMMELCTL_CACHE_DIR/
+# USAGE: source this file before using `winpath` anywhere in a suite.
+# Every *.sh in this directory that computes USERPROFILE/HIMMELCTL_CACHE_DIR/
 # HIMMEL_LUNA_CONFIG_PATH/HIMMELCTL_BIN_DIR (or any other node-consumed path)
 # via `$(winpath ...)` depends on it. Sourcing is now load-bearing BY
 # CONSTRUCTION: a suite whose source line is missing, mistyped, or a no-op
@@ -56,7 +56,7 @@
 # fakes `uname` for the code under test never reaches this variable.
 _HERMETIC_UNAME="$(uname -s)"
 
-# winpath <posix-or-windows-path> — echoes <path> unchanged on posix, or its
+# winpath <posix-or-windows-path>: echoes <path> unchanged on posix, or its
 # Windows form on git-bash/MSYS/Cygwin (node.exe/pwsh.exe misresolve MSYS
 # /tmp-style paths). Dies loud on an empty INPUT, a missing/failing `cygpath`
 # on MSYS/MinGW/Cygwin, or an empty OUTPUT.

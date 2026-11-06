@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# test-wizard-cadence-registry.sh — CI staleness lint for
+# test-wizard-cadence-registry.sh: CI staleness lint for
 # scripts/himmelctl/lib/cadence-registry.json, mirroring the
 # test-wizard-profile-lint.sh case a/b pattern: a positive
 # control proving the real registry lints clean, and a NEGATIVE control
-# (a deliberately broken fixture) proving the lint actually discriminates —
-# a suite that only ever saw a pass would be just as "green" if the check
+# (a deliberately broken fixture) proving the lint actually discriminates.
+# A suite that only ever saw a pass would be just as "green" if the check
 # were silently a no-op.
 #
 # What "lints clean" means here: every row's `script` (repo-root-relative)
 # exists on disk AND contains cmd_arm()/cmd_status()/cmd_disarm() function
-# definitions — the same three subcommands bin.js's arm/disarm plumbing
+# definitions: the same three subcommands bin.js's arm/disarm plumbing
 # assumes every registry row's script implements (see
 # cadenceArmFlags()/cadenceScriptPath()). A row naming a renamed/deleted
 # script, or one missing a subcommand, must fail loud in CI rather than
 # surface as a silent runtime spawn failure at install time.
 #
 # Covers:
-#   a. POSITIVE CONTROL: the real cadence-registry.json lints clean — every
+#   a. POSITIVE CONTROL: the real cadence-registry.json lints clean: every
 #      row's script exists and defines all three cmd_*().
 #   b. NEGATIVE CONTROL (mandatory): a synthetic registry naming
 #      a script missing cmd_disarm() -> the SAME lint logic fails, naming the
@@ -33,7 +33,7 @@ command -v node >/dev/null 2>&1 || { echo "FAIL: node required" >&2; exit 1; }
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
-# grepq <text> [grep-args...] — see test-wizard-manifest-v2.sh's own comment
+# grepq <text> [grep-args...]: see test-wizard-manifest-v2.sh's own comment
 # for why this (not a piped `grep -q`) is required under `set -o pipefail`.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
@@ -43,12 +43,12 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/cadence-registry-lint.XXXXXX")
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
-# lint_registry <repo_root> <registry_json_path> — the real lint logic: every
+# lint_registry <repo_root> <registry_json_path>: the real lint logic: every
 # row's script must exist under <repo_root> AND define cmd_arm()/cmd_status()/
 # cmd_disarm(). Prints one "FAIL <id>: <reason>" line per violation to stdout,
 # exits 1 if any violation was found, else prints "PASS" lines and exits 0.
 # A plain node -e script (not a separate library module) since this check has
-# exactly one caller — this test — and the brief scopes no production
+# exactly one caller (this test), and the brief scopes no production
 # staleness-lint entrypoint, only "a test case ... asserting" the property.
 lint_registry() {
   local _root="$1" _reg="$2"

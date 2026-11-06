@@ -1,5 +1,5 @@
 'use strict';
-// scripts/himmelctl/lib/wiring-rows.js — the wiring layers behind
+// scripts/himmelctl/lib/wiring-rows.js: the wiring layers behind
 // `himmelctl report --json --deep` (spec A15): pre-commit ids, Claude hooks,
 // git hooks, CI workflows. Read-only: declared and installed come from config
 // files under the checkout; `fires` is always unverified (A9) because none of

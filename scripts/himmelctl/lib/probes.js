@@ -1,5 +1,5 @@
 'use strict';
-// scripts/himmelctl/lib/probes.js — the himmelctl probe engine
+// scripts/himmelctl/lib/probes.js: the himmelctl probe engine
 // T1.4, extended and): one function per probe.type,
 // EXACTLY the vocabulary in scripts/install/manifest-lint.mjs's PROBE_TYPES
 // (the original eight; cmd:has_hermes / cmd:is_himmel_dev / telegram-access
@@ -13,9 +13,9 @@
 // missing voice-transcription binary/model, an interpreter-stub class, two
 // bots sharing one token, and a broken luna clip-source all used to be
 // invisible until first live use. telegram-access ALSO grew a formal
-// JSON-schema check on access.json in this same ticket — see
+// JSON-schema check on access.json in this same ticket. See
 // telegram-access.schema.json beside this file and the extension at
-// probeTelegramAccess below — without a new probe.type (it deepens the
+// probeTelegramAccess below, without a new probe.type (it deepens the
 // EXISTING one, per the ticket's own "extend, don't replace" instruction).
 // Every probe is a PURE READ (no writes, no prompts, no env mutation)
 // returning `{ actual: "present"|"absent"|"degraded", detail: "<string>" }`.
@@ -26,7 +26,7 @@
 // cmd:is_himmel_dev, cmd:cadence_armed, cmd:guardrail_block_status all shell
 // out to bash or node), so a hermetic test can hand a fully-controlled env
 // object without mutating the real process.env; falls back to process.env
-// when ctx.env is omitted. The `dep` probe is the one exception — see its
+// when ctx.env is omitted. The `dep` probe is the one exception. See its
 // function below.
 //
 // ── Design calls made resolving ambiguity in the T1.3 brief's shorthand ────
@@ -35,11 +35,11 @@
 // undersells a real split in the manifest: most file-exists items check
 // something adopt.sh's PORTABLE_FILES actually copies into the ADOPTED
 // project (pre-commit-hooks' .pre-commit-config.yaml, guardrail-scope's
-// scripts/guardrails/lib.sh) — those resolve against ctx.targetPath. A
+// scripts/guardrails/lib.sh). Those resolve against ctx.targetPath. A
 // handful check himmel's OWN repo-only build/tooling artifacts that are
 // NEVER copied into any target (jira-cli-dist-build, bitbucket-cli-build,
-// doc-guard-map — the latter is kind:"wiring" like guardrail-scope, so kind
-// alone doesn't separate them) — those always resolve against ctx.repoRoot,
+// doc-guard-map: the latter is kind:"wiring" like guardrail-scope, so kind
+// alone doesn't separate them). Those always resolve against ctx.repoRoot,
 // regardless of scope. REPO_ROOT_FILE_EXISTS_IDS below is the explicit,
 // commented exception list; a new file-exists item added to the manifest
 // defaults to targetPath-relative for scope=project, repoRoot-relative for
@@ -47,7 +47,7 @@
 //
 // "settings-key → parse the scope-appropriate settings.json" is similarly
 // shorthand: descriptor.file is generic (".claude/settings.json" for the
-// wiring/plugin items, ".env" for jira-env-keys) — resolveConfigFile() below
+// wiring/plugin items, ".env" for jira-env-keys). resolveConfigFile() below
 // resolves ".env" against ctx.repoRoot ALWAYS (both scopes), per the
 // documented convention (CLAUDE.md: jira CLI always invoked by absolute path
 // from the primary checkout; adopt.sh's fill_env_core comment: "adopt copies
@@ -57,17 +57,17 @@
 // base (project: ctx.targetPath; user: $HOME), matching bin.js's own
 // settingsPathForScope().
 //
-// "settings-hooks → contains the himmel marker(s) named in the descriptor" —
-// the settings-hooks descriptor shape (manifest-lint.mjs) carries no markers
+// "settings-hooks → contains the himmel marker(s) named in the descriptor".
+// The settings-hooks descriptor shape (manifest-lint.mjs) carries no markers
 // field; PRETOOLUSE_MARKERS below is the actual himmel PreToolUse hook
 // trio, sourced from wire-pretooluse-hooks.sh's own dedup regex
 // (scripts/hooks/(auto-approve-safe-bash|block-edit-on-main|
-// block-read-secrets)[.]sh) — the single other place this trio is
+// block-read-secrets)[.]sh), the single other place this trio is
 // enumerated. Keep both lists in sync if that trio ever changes.
 //
-// "qmd-index → qmd data/collections dir present + non-empty" — qmd's actual
+// "qmd-index → qmd data/collections dir present + non-empty". qmd's actual
 // on-disk data-dir layout has no stable, documented path anywhere in this
-// repo (grepped scripts/lib/qmd-bin.sh and its test suite — confirmed absent
+// repo (grepped scripts/lib/qmd-bin.sh and its test suite: confirmed absent
 // before writing this). Per the brief's own fallback instruction, this adds
 // a thin `has_index` predicate to scripts/lib/qmd-bin.sh (checks `qmd
 // collection list` succeeds and is non-empty) and the probe here goes one
@@ -90,17 +90,17 @@ const { resolveBash: resolveHookBash } = require('../../hooks/run-hook-with-bash
 // the composite probes below (cadence-coherence,
 // phi-coherence, engine-allowlist, bridge-health) read the adopter's shared
 // config document directly (luna.cadence.enabled/schedules, bridge.enabled,
-// luna.vaultPath) — the SAME module status-report.js uses for its desired-
+// luna.vaultPath), the SAME module status-report.js uses for its desired-
 // state override (see that file's module header). load()/configPath() only
 // honor HIMMEL_LUNA_CONFIG_PATH via the real process.env (no env parameter
-// of their own) — every caller here that needs it ctx-scoped routes through
+// of their own). Every caller here that needs it ctx-scoped routes through
 // scopeConfigPathToCtx (retask stage1-build-6d2e), which stands in for that
 // missing seam rather than reading the ambient environment unscoped.
 const lunaConfig = require('./luna-config.js');
 // C, status item S6: the pinned persistence artifact
 // names/helpers (SYSTEMD_UNIT_NAME,
-// lingerEnabled(), systemdUnitInstalled()) are owned by bridge-persistence.js
-// — imported here, never redeclared (that module's own header comment: "a
+// lingerEnabled(), systemdUnitInstalled()) are owned by bridge-persistence.js,
+// imported here, never redeclared (that module's own header comment: "a
 // sibling status item (S6) registers against these constants").
 const bridgePersistence = require('./bridge-persistence.js');
 
@@ -109,12 +109,12 @@ const bridgePersistence = require('./bridge-persistence.js');
 // Himmel-repo-only file-exists items: their descriptor.path is a build/
 // tooling artifact adopt.sh's PORTABLE_FILES never copies into any adopted
 // target, so it must resolve against ctx.repoRoot even for scope:"project"
-// items (jira-cli-dist-build, bitbucket-cli-build are also kind:"dep" — see
+// items (jira-cli-dist-build, bitbucket-cli-build are also kind:"dep", see
 // the DEFAULT_DEP_REPO_ROOT rule below, which already covers them; listed
 // here too for a single self-contained source of truth).
 //
 // doc-guard-map USED TO be here too, forcing scripts/lib/
-// doc-guard-map.sh to always resolve against repoRoot — but that script is
+// doc-guard-map.sh to always resolve against repoRoot, but that script is
 // git-TRACKED, so the probe was tautologically 'present' for every himmel
 // checkout regardless of target, detecting nothing. It now
 // uses probe type 'cmd:is_himmel_dev' (below) instead, which checks the
@@ -152,7 +152,7 @@ function probeFileExists(item, ctx) {
 
 // ── git-hooks ────────────────────────────────────────────────────────────
 
-// Read a checkout's LOCAL core.hooksPath — the override that points git at a
+// Read a checkout's LOCAL core.hooksPath, the override that points git at a
 // non-default hooks dir (e.g. `git config core.hooksPath scripts/hooks`, the
 // legitimate in-repo layout check-hookspath validates). LOCAL scope only: the status-probe fixtures below resolve hooks
 // by pure-fs .git/gitdir/commondir traversal and carry no local config, so
@@ -160,12 +160,12 @@ function probeFileExists(item, ctx) {
 // core.hooksPath is check-hookspath's authoritative concern, not this probe's
 //
 // this was the ONE process-spawning
-// probe site with no budget at all — a bare spawnSync, so a wedged git (a
+// probe site with no budget at all: a bare spawnSync, so a wedged git (a
 // network-backed config include, a hung filesystem) blocked `status` forever
 // rather than for a bounded time. Routed through spawnProbeSync for the same
 // PROBE_TIMEOUT_MS + SIGKILL guard every other site gets. A timeout lands in
 // the existing '' return, which callers already treat as "no override
-// configured" — the pre-existing behaviour for any git failure here.
+// configured", the pre-existing behaviour for any git failure here.
 function configuredHooksPath(targetPath) {
   try {
     const r = spawnProbeSync('git', ['-C', targetPath, 'config', '--local', '--get', 'core.hooksPath'], { encoding: 'utf8' });
@@ -269,7 +269,7 @@ function probeGitHooks(item, ctx) {
 
 // Resolve a settings-key/settings-hooks descriptor's `file` against the
 // scope-appropriate base. ".env" is special-cased to ALWAYS resolve against
-// ctx.repoRoot (both scopes) — see the module header comment. Every other
+// ctx.repoRoot (both scopes). See the module header comment. Every other
 // file resolves against ctx.targetPath (project scope) or $HOME (user
 // scope), matching bin.js's settingsPathForScope().
 function resolveConfigFile(file, ctx) {
@@ -279,12 +279,12 @@ function resolveConfigFile(file, ctx) {
   return path.join(base, file);
 }
 
-// Expand a leading `~` against ctx.env.HOME (falling back to os.homedir()) —
+// Expand a leading `~` against ctx.env.HOME (falling back to os.homedir()),
 // deliberately NOT status-report.js's own expandHome(), which reads
 // process.env.HOME directly: resolveConfigFile() above already resolves a
 // user-scope item's home via ctx.env.HOME (the hermetic seam every probe
 // test drives), and a config-sourced path needs to land on that SAME home to
-// stay consistent with it — reading process.env.HOME instead would silently
+// stay consistent with it. Reading process.env.HOME instead would silently
 // diverge from a test's faked ctx.env.HOME and resolve against the REAL
 // operator home (caught during Part C testing: this exact mismatch made the
 // no-config-file case read the real ~/.claude/channels/telegram/.env).
@@ -298,21 +298,21 @@ function expandHomeForCtx(p, ctx) {
 
 // C, Part B: lunaConfig.load itself returns the
 // SAME schema-shaped default object whether or not ~/.himmel/config.json
-// actually exists on disk (first-run convenience) — so file EXISTENCE, not
+// actually exists on disk (first-run convenience), so file EXISTENCE, not
 // the loaded VALUE, is the only way the two call sites below can tell "the
 // adopter genuinely has a config" apart from "this is just the untouched
 // in-memory default." That distinction matters here specifically because
 // bridge.envPath's own default ('~/.claude/channels/telegram/.env') is a
-// non-empty string — unlike bridge.enabled/luna.cadence.enabled (used
+// non-empty string, unlike bridge.enabled/luna.cadence.enabled (used
 // elsewhere in this file), which default to `false` and so stay inert with
 // no such gate needed. Skipping load() entirely for the common "no config
 // file yet" case also means a probe never overrides its own pre-existing,
 // scope/target-aware resolution (resolveConfigFile) with a home-relative
-// config path that a project-scoped caller could never reproduce — caught
+// config path that a project-scoped caller could never reproduce, caught
 // during this ticket's own Part C testing, where the ungated version read
 // the REAL operator's ~/.claude/channels/telegram/.env. Returns
 // { config: <doc> } | { config: null } (no file) | { configError } (a file
-// exists but load() threw — malformed JSON/schema).
+// exists but load() threw: malformed JSON/schema).
 //
 // the third instance of this file's
 // ctx.env-vs-process.env class (see expandHomeForCtx's HOME fix and the
@@ -320,12 +320,12 @@ function expandHomeForCtx(p, ctx) {
 // round asked for, NOT the only remaining one: probeCadenceCoherence,
 // probePhiCoherence, probeBridgeHealth, and probeBridgePersistence all call
 // lunaConfig.load() directly (never through loadConfigIfPresent, since they
-// want its schema-defaulted return even with no config file — unlike this
+// want its schema-defaulted return even with no config file, unlike this
 // function's null-on-absent contract), and all four already thread
 // `ctx.env` for their OTHER reads, making the same ambient-process.env leak.
 // luna-config.js's own configPath()/load() read `process.env.
-// HIMMEL_LUNA_CONFIG_PATH` directly — that module takes no env parameter
-// and is outside this fix's file set — so scopeConfigPathToCtx below is the
+// HIMMEL_LUNA_CONFIG_PATH` directly. That module takes no env parameter
+// and is outside this fix's file set, so scopeConfigPathToCtx below is the
 // one shared seam every caller in this file now routes through: scope
 // process.env.HIMMEL_LUNA_CONFIG_PATH to ctx.env for the duration of the
 // call only (save/restore, restoring absence as absence, never a stray ''),
@@ -339,7 +339,7 @@ function scopeConfigPathToCtx(ctx, fn) {
     process.env.HIMMEL_LUNA_CONFIG_PATH = env.HIMMEL_LUNA_CONFIG_PATH;
   } else if (ctx && ctx.env) {
     // A genuinely scoped ctx.env that does NOT carry the override must not
-    // silently inherit the ambient process-level one either — clearing it
+    // silently inherit the ambient process-level one either. Clearing it
     // for the duration of the call is what makes ctx.env authoritative in
     // both directions, not just when it happens to set the var.
     delete process.env.HIMMEL_LUNA_CONFIG_PATH;
@@ -363,26 +363,26 @@ function loadConfigIfPresent(ctx) {
   });
 }
 
-// bridge.envPath was a documented config field nothing ever read — the
+// bridge.envPath was a documented config field nothing ever read. The
 // wizard writes it, but every token-reading bridge probe (telegram-access,
 // cmd:telegram_getme) only ever consulted the manifest's own hardcoded
 // item.probe.envFile. Precedence, deliberately chosen (no existing
-// three-way chain to copy): explicit process-env override (TELEGRAM_ENV —
+// three-way chain to copy): explicit process-env override (TELEGRAM_ENV,
 // the SAME var poller.ts/session-status.ts already read:
 // `process.env.TELEGRAM_ENV ?? join(homedir(), ".claude/channels/telegram/
 // .env")`) wins, else the adopter's configured value, else the manifest's
-// hardcoded default — matching this tree's established idiom that an
+// hardcoded default, matching this tree's established idiom that an
 // explicit env var always wins (probeWhisperReady's WHISPER_DIR;
 // luna-config.js's own HIMMEL_LUNA_CONFIG_PATH), with config filling in only
 // when the env var is unset AND a config file genuinely exists (see
-// loadConfigIfPresent above) — so "no config at all" behaves exactly as
+// loadConfigIfPresent above), so "no config at all" behaves exactly as
 // before this change (regression guard).
 function resolveBridgeEnvFilePath(item, ctx) {
   const env = ctx.env || process.env;
   // the configured-value
   // branch below expands a leading `~` (expandHomeForCtx, which already
   // handles both `~/` and the `~\` backslash gap), but this
-  // override branch used to return env.TELEGRAM_ENV verbatim — the HIGHEST-
+  // override branch used to return env.TELEGRAM_ENV verbatim. The HIGHEST-
   // priority input in the precedence chain was the one most likely to fail
   // for an adopter who set it the natural way (`TELEGRAM_ENV=~/...`).
   // Expanded the same way as the configured path for consistency.
@@ -408,7 +408,7 @@ function nonEmpty(v) {
 
 // Minimal KEY=VALUE .env parser: skips blank lines/comments, strips a single
 // layer of matching quotes. Good enough for the jira-env-keys probe's
-// presence check — this never writes or reinterprets the file.
+// presence check: this never writes or reinterprets the file.
 function parseDotEnv(raw) {
   const out = {};
   for (const line of raw.split(/\r?\n/)) {
@@ -434,13 +434,13 @@ function parseDotEnv(raw) {
 // tokenizer) keeps this simple and matches what actually gets written;
 // anything else can't be resolved with confidence, so it degrades rather
 // than reading a script it can't actually locate.
-// ponytail: never executes the command — only resolves the interpreter (on
+// ponytail: never executes the command, only resolves the interpreter (on
 // PATH) and the script path (readable file), which is enough to catch a
 // missing/moved/unbuilt script without any side effect.
 const STATUSLINE_COMMAND_RE = /^(\S+)\s+"([^"]+)"$/;
 // the guarded form wire-statusline.sh writes now,
 // `[ -f "<js>" ] && exec <interpreter> "<js>" || true`, is reduced to the bare
-// shape above — the same script must appear in both halves.
+// shape above: the same script must appear in both halves.
 const STATUSLINE_GUARDED_RE = /^\[ -f "([^"]+)" \] && exec (\S+) "([^"]+)" \|\| true$/;
 
 function verifyStatusLineCommand(command, ctx) {
@@ -462,7 +462,7 @@ function verifyStatusLineCommand(command, ctx) {
 // ── settings-key deepening: verifyHudConfig (wiring-statusline) ─
 
 // The statusLine command alone says nothing about whether the hud's OWN
-// config exists — wire-statusline.sh drops it as a separate file, at
+// config exists. wire-statusline.sh drops it as a separate file, at
 // ${CLAUDE_CONFIG_DIR:-~/.claude}/claude-hud.json (the hud's own upstream
 // override path; a install may still have it at the old,
 // swept ${CLAUDE_CONFIG_DIR:-~/.claude}/plugins/claude-hud/config.json).
@@ -481,7 +481,7 @@ function getClaudeConfigDirForHud(ctx) {
 
 // Only the `node "<...>/marketplace/plugins/claude-hud/dist/index.js"` shape
 // (the guarded form is already reduced to this by verifyStatusLineCommand's
-// caller before this runs) is "wired to claude-hud" — the vendored bash
+// caller before this runs) is "wired to claude-hud". The vendored bash
 // fallback bar has no config file to check, so it is left alone rather than
 // flagged absent.
 function isHudRendererScript(scriptPath) {
@@ -492,7 +492,7 @@ function isHudRendererScript(scriptPath) {
 // The renderer (claude-hud config.ts loadConfig) reads the legacy
 // plugins/claude-hud/config.json as the base and merges claude-hud.json over
 // it: plain-object sections merge key by key, arrays and scalars replace.
-// A file that EXISTS but fails to parse is the active config, broken —
+// A file that EXISTS but fails to parse is the active config, broken,
 // never silently skipped in favor of the other file (that would mask a
 // malformed new-path config behind a healthy legacy one). Only an absent
 // file (ENOENT) is skipped. `path` names the override when present, else the
@@ -549,7 +549,7 @@ function readHudConfig(ctx) {
 }
 
 // a hud-wired statusLine with no config, or a config missing
-// display.customLineCommand, is never a clean "n/a" — the wiring itself says
+// display.customLineCommand, is never a clean "n/a". The wiring itself says
 // it should be there. Returns a problem string (→ degraded), or null when
 // the command isn't wired to claude-hud at all (nothing to check) or the
 // config checks out.
@@ -587,7 +587,7 @@ function verifyHudConfig(command, ctx) {
 // on POSIX it already strips a trailing '/' on its own, so the extra trim
 // below is applied ONLY for the Windows-shaped case, where it covers
 // path.resolve()'s own edge case of leaving a bare drive-root ('C:/')
-// separator in place — applying it unconditionally would also strip a
+// separator in place. Applying it unconditionally would also strip a
 // literal trailing backslash BYTE from a non-Windows-shaped path (e.g.
 // '/projects/a\'), collapsing it onto the distinct directory '/projects/a'
 function isWindowsShapedPath(p) {
@@ -625,7 +625,7 @@ function isDirectory(p) {
 // docs/setup/settings-template.json's enabledPlugins true-flagged keys are
 // the recorded FLOOR (scripts/machine-setup/reconcile-enabled-plugins.sh's
 // WHITELIST model already treats it as authoritative), not an exact-match
-// ceiling — a MISSING recorded plugin degrades, but an EXTRA enabled plugin
+// ceiling: a MISSING recorded plugin degrades, but an EXTRA enabled plugin
 // beyond that floor is legitimate and stays present (chief ruling);
 // it is still subject to the installed-ledger check below like
 // every other enabled plugin, and is named in the detail as information.
@@ -667,7 +667,7 @@ function marketplaceSourceDrift(settings, template, ctx) {
   for (const name of Object.keys(want)) {
     const wantSrc = marketplaceSource(want[name]).replace(/<himmel-path>/g, ctx.repoRoot);
     const haveSrc = marketplaceSource(have[name]);
-    // compare the {source, value} pair — the same string under a
+    // compare the {source, value} pair. The same string under a
     // github vs a directory source is not the same marketplace.
     if (!wantSrc || !haveSrc) continue;
     if (wantSrc === haveSrc && want[name].source.source === have[name].source.source) continue;
@@ -708,7 +708,7 @@ function verifyPluginSet(enabledPlugins, ctx, settings) {
   const installed = (ledger && typeof ledger.plugins === 'object' && ledger.plugins) || {};
   // A "user" ledger entry is globally available, so it satisfies either
   // scope of probe. A "project" entry only satisfies a project-scope probe
-  // whose targetPath is that SAME project — an entry recorded for a
+  // whose targetPath is that SAME project. An entry recorded for a
   // different project must not satisfy this one (installPath is a shared
   // marketplace-cache dir, so any stale entry would otherwise pass). Then
   // the matching entry's installPath must still exist on disk AS A
@@ -721,7 +721,7 @@ function verifyPluginSet(enabledPlugins, ctx, settings) {
     return !entries.some((e) => scopeMatches(e) && typeof e.installPath === 'string' && isDirectory(e.installPath));
   });
   // a marketplace registered under a different source than the
-  // template's makes `claude plugin marketplace add` fail — drift (degraded),
+  // template's makes `claude plugin marketplace add` fail: drift (degraded),
   // not an install failure. Same remedy text as install-plugins.sh. Computed
   // before the not-installed return so that missing plugin keeps its remedy.
   const drift = marketplaceSourceDrift(settings, template, ctx);
@@ -764,7 +764,7 @@ function probeSettingsKey(item, ctx) {
     raw = fs.readFileSync(filePath, 'utf8');
   } catch (e) {
     // a missing.env is the ordinary "never configured" state for
-    // an optional integration (jira-env-keys on a starter install) — flag it
+    // an optional integration (jira-env-keys on a starter install). Flag it
     // so status-report can read it as opt-in rather than red. ENOENT ONLY: an
     // .env that exists but cannot be read (EACCES, EISDIR) is a real fault.
     const clean = item.probe.file === '.env' && e && e.code === 'ENOENT';
@@ -781,12 +781,12 @@ function probeSettingsKey(item, ctx) {
   if (item.probe.file === '.env') overlayHimmelConf(data, ctx);
   const getVal = item.probe.file === '.env' ? (k) => data[k] : (k) => getDotPath(data, k);
   // optional 'expect' asserts the SINGLE key's value equals it
-  // exactly, not merely non-empty — existence != enablement. Without this, a
+  // exactly, not merely non-empty: existence != enablement. Without this, a
   // boolean-flag key (e.g. enabledPlugins["<spec>"]) set to `false` reads
   // 'present' below (nonEmpty(false) === true, since false is neither
   // undefined/null/'' nor an empty array/object) and a toggled-off plugin
   // would probe green forever. manifest-lint.mjs's shape check requires
-  // 'expect' to pair with singular 'key' (not 'keys') — see its own comment
+  // 'expect' to pair with singular 'key' (not 'keys'). See its own comment
   // for why a multi-key expected-value map isn't supported.
   if (Object.prototype.hasOwnProperty.call(item.probe, 'expect')) {
     const val = getVal(item.probe.key);
@@ -797,7 +797,7 @@ function probeSettingsKey(item, ctx) {
   const missing = keys.filter((k) => !nonEmpty(getVal(k)));
   if (missing.length === 0) {
     // the key(s) being non-empty is not proof the thing they
-    // point at actually works — same "extend, don't replace" pattern as
+    // point at actually works, same "extend, don't replace" pattern as
     // mcp-registered's bin/initMarker. Opt-in per item; any gap downgrades
     // to 'degraded', never silently 'present'.
     if (item.probe.verifyScript) {
@@ -825,10 +825,10 @@ function probeSettingsKey(item, ctx) {
   return { actual: 'absent', detail };
 }
 
-// ── telegram-access — formal JSON-schema extension ───
+// ── telegram-access: formal JSON-schema extension ───
 
 // The inventory's "access.json gets zero validation" finding is stale by the
-// time this ticket landed — the semantic check below (a usable
+// time this ticket landed. The semantic check below (a usable
 // allowFrom/groups shape) already existed. What was actually missing is
 // FORMALITY: a machine-checkable schema document a later consumer (the gate
 // layer, scripts/telegram/gate.ts, at load time) can import too, instead of
@@ -837,8 +837,8 @@ function probeSettingsKey(item, ctx) {
 // not inline, so a non-Node consumer never has to require() probes.js just
 // to read it. validateAgainstSchema is a small hand-rolled validator, not a
 // dependency: this repo is zero-dep by convention (module header) and the
-// schema surface actually needed — type/properties/items/additionalProperties
-// as either a boolean or a nested schema — is a small, fixed subset of JSON
+// schema surface actually needed (type/properties/items/additionalProperties
+// as either a boolean or a nested schema) is a small, fixed subset of JSON
 // Schema, not a case for pulling in a general validator library.
 const ACCESS_SCHEMA = require('./telegram-access.schema.json');
 
@@ -859,7 +859,7 @@ function validateAgainstSchema(schema, value, label, errors) {
         errors.push(`${label}.${key} is not a recognized field`);
       }
       // additionalProperties === true (or absent): deliberately open, see the
-      // sidecar schema's own description — no check for this key.
+      // sidecar schema's own description, no check for this key.
     }
   } else if (schema.type === 'array') {
     if (!Array.isArray(value)) {
@@ -877,14 +877,14 @@ function validateAgainstSchema(schema, value, label, errors) {
 }
 
 // telegram-bridge used to be a plain
-// settings-key check on TELEGRAM_BOT_TOKEN — green for a bridge that would
+// settings-key check on TELEGRAM_BOT_TOKEN, green for a bridge that would
 // reject every DM/group. scripts/telegram/gate.ts's isAllowed()/
 // isAllowedGroup() fail CLOSED: a missing/empty allowFrom AND no groups
 // entries means every incoming message is gated out, token notwithstanding.
 // This probe deepens the check into its OWN dedicated type (rather than
 // bolting Telegram-specific "usable allow rule" semantics onto the generic
 // settings-key shape, which has no content-validation concept beyond
-// key-presence) — token absent -> 'absent' (unchanged); token present but
+// key-presence): token absent -> 'absent' (unchanged); token present but
 // access.json missing/unparseable/with no usable allow rule -> 'degraded'
 // (registered but would gate out everything); both satisfied -> 'present'.
 function probeTelegramAccess(item, ctx) {
@@ -919,7 +919,7 @@ function probeTelegramAccess(item, ctx) {
     return { actual: 'degraded', detail: `${item.probe.tokenKey} present in ${envFilePath}, but ${accessFilePath} is unparseable — every DM/group would be gated out` };
   }
   // formal schema check BEFORE the semantic (usable-
-  // allow-rule) check below — a file that HAPPENS to carry a non-empty
+  // allow-rule) check below. A file that HAPPENS to carry a non-empty
   // allowFrom/groups but also carries a wrong-typed field elsewhere (e.g.
   // dmPolicy as a number, a per-group requireMention as a string) must not
   // silently read 'present' just because the one field this probe used to
@@ -945,7 +945,7 @@ function probeTelegramAccess(item, ctx) {
 
 // ── settings-hooks ───────────────────────────────────────────────────────
 
-// The himmel PreToolUse hook trio — see the module header comment for where
+// The himmel PreToolUse hook trio. See the module header comment for where
 // this is otherwise enumerated (wire-pretooluse-hooks.sh's dedup regex).
 const PRETOOLUSE_MARKERS = ['auto-approve-safe-bash', 'block-edit-on-main', 'block-read-secrets'];
 
@@ -995,7 +995,7 @@ function probeSettingsHooks(item, ctx) {
   if (found.length === PRETOOLUSE_MARKERS.length) {
     // docs/setup/settings-template.json ships no `permissions`
     // block, so an adopter install leaves permissions.allow empty at either
-    // scope by design — the auto-approve-safe-bash hook found above is what
+    // scope by design. The auto-approve-safe-bash hook found above is what
     // pre-approves Bash. Say so on this row rather than leave it silent.
     const allow = getDotPath(data, 'permissions.allow');
     const n = Array.isArray(allow) ? allow.length : 0;
@@ -1013,7 +1013,7 @@ function probeSettingsHooks(item, ctx) {
 
 // ── shared spawn helper (probe hang guard) ──────────────────────────────
 
-// Bound every spawnSync-based probe (cmd:has_qmd, qmd-index, handover-dir —
+// Bound every spawnSync-based probe (cmd:has_qmd, qmd-index, handover-dir:
 // each shells out to bash, which can hang if the sourced resolver script or
 // a downstream binary (qmd, bun) wedges): timeout + SIGKILL so a hung child
 // can't block `status` forever. r.timedOut is set so callers can surface a
@@ -1024,18 +1024,18 @@ function probeSettingsHooks(item, ctx) {
 // is not a hang budget on Windows — it is inside the range a HEALTHY probe
 // legitimately occupies there, so it manufactured false DEGRADED rows on
 // perfectly good machines. Measured on this dev box: the handover-dir probe
-// takes 3.5-8.1s IDLE (one run of five at 8.1s — a 20% margin), and
+// takes 3.5-8.1s IDLE (one run of five at 8.1s: a 20% margin), and
 // cadence-coherence 7.9-10.1s, because each probe launches at least one
 // process and Windows process creation is slow and load-sensitive; the
 // operator's ~4-session run pushed handover-dir over and it reported a
 // DEGRADED timeout row against the old 10s budget on a healthy host.
 // (Phrased without the literal message text on purpose: the suite's
 // drift guard greps this file for a hardcoded timeout figure, and
-// a comment quoting one trips it exactly like a real detail string would —
-// reword the prose, never exempt the file.)
+// a comment quoting one trips it exactly like a real detail string would.
+// Reword the prose, never exempt the file.)
 //
 // raised ONE probe (cadence-coherence) to 60s and left its 14
-// siblings at 10s — the sibling-branch defect family, and is the
+// siblings at 10s, the sibling-branch defect family, and is the
 // second report of it. The budget therefore lives HERE, as the default for
 // every probe, instead of per call site.
 //
@@ -1045,12 +1045,12 @@ function probeSettingsHooks(item, ctx) {
 // probe; the cost of 10s was paid by healthy machines, twice.
 //
 // r.timeoutMs carries the budget that was actually applied, so a caller's
-// "timed out after Ns" message can never drift from the real number — the
+// "timed out after Ns" message can never drift from the real number, the
 // exact drift introduced when it changed one budget and left 15
 // hardcoded "10s" strings behind.
 const PROBE_TIMEOUT_MS = 60000;
 
-// HIMMELCTL_PROBE_TIMEOUT_SECS overrides the family budget — the same env-seam
+// HIMMELCTL_PROBE_TIMEOUT_SECS overrides the family budget, the same env-seam
 // class as HIMMELCTL_BASH here, and the direct sibling
 // of install-engine.js's own INSTALL_TIMEOUT_SECS. Two real users: an operator
 // on a box slower than the one these numbers were measured on, and a hermetic
@@ -1058,23 +1058,23 @@ const PROBE_TIMEOUT_MS = 60000;
 // rather than a minute (CR [codex-1]). Read from the SPAWN env, like the bash
 // resolution above, so a probe threading a controlled ctx.env pins the budget
 // that env implies. A non-numeric or non-positive value falls back to the
-// default rather than failing — the same bad-value convention critic-panel.sh
+// default rather than failing, the same bad-value convention critic-panel.sh
 // applies to CRITIC_TIMEOUT_SECS.
 //
 // the validation is on the COMPUTED MILLISECONDS, not on
 // the seconds value. `secs > 0` alone accepts a sub-millisecond override
-// (0.0004), which rounds to 0 ms — and Node reads `timeout: 0` as NO TIMEOUT,
+// (0.0004), which rounds to 0 ms, and Node reads `timeout: 0` as NO TIMEOUT,
 // silently disabling the very hang guard this constant exists to provide. A
 // value too small to express a real budget is a BAD value, so it takes the
 // same fallback as a non-numeric one: fail back to the default, never to
 // "unbounded".
 // an earlier fix validated the computed ms with `ms >= 1`,
-// which still let a huge-but-finite override through — `1e308 * 1000`
+// which still let a huge-but-finite override through: `1e308 * 1000`
 // overflows to Infinity, passes `>= 1`, and reaches spawnSync as an
 // out-of-range timeout. One predicate closes the whole class instead of the
 // two instances found so far: the milliseconds must be a SAFE INTEGER of at
 // least 1. NaN, Infinity, sub-millisecond and absurd values all take the same
-// fallback — the default budget, never "unbounded" and never a throw.
+// fallback: the default budget, never "unbounded" and never a throw.
 function probeTimeoutMs(env) {
   const raw = (env || process.env).HIMMELCTL_PROBE_TIMEOUT_SECS;
   const secs = Number(raw);
@@ -1147,7 +1147,7 @@ function probeTimeoutSecs(r) {
 // spawn; probes.js was the sibling that never got it.
 //
 // HIMMELCTL_BASH overrides the resolver (nonstandard install, or a hermetic
-// test pinning — or deliberately UN-resolving — bash), the same env seam
+// test pinning (or deliberately UN-resolving) bash), the same env seam
 // bin.js's own resolveBash() documents. Read from the SPAWN env, so a probe
 // threading a fully-controlled ctx.env pins the interpreter that env implies
 // rather than whatever the outer process happens to see.
@@ -1156,7 +1156,7 @@ function resolveProbeBash(env) {
   return e.HIMMELCTL_BASH || resolveHookBash({ env: e });
 }
 
-// spawnBashProbe(args, opts) — spawnProbeSync against the RESOLVED bash.
+// spawnBashProbe(args, opts): spawnProbeSync against the RESOLVED bash.
 // Every bash-backed probe below goes through here rather than naming the
 // interpreter itself, so the resolution rule lives in one place instead of
 // being re-remembered at 13 call sites.
@@ -1227,7 +1227,7 @@ function probeQmdIndex(item, ctx) {
 // one initialize round-trip against the daemon, with the budget set from
 // measurements (measured 2026-10-05: idle 0.33-0.39s, peak 2.87s under 8 concurrent
 // vec queries, so 10s ~= 2x the peak; a genuine wedge still reads degraded).
-// An answer slower than QMD_DAEMON_SLOW_SECS is still PRESENT — slow-but-alive
+// An answer slower than QMD_DAEMON_SLOW_SECS is still PRESENT: slow-but-alive
 // is not a wedge. Seams (read from ctx.env, shared with doctor C40):
 // HIMMEL_DOCTOR_QMD_URL (localhost, NOT 127.0.0.1: the daemon binds ::1 only),
 // HIMMEL_DOCTOR_QMD_CURL, HIMMEL_DOCTOR_QMD_INIT_TIMEOUT.
@@ -1250,7 +1250,7 @@ function qmdBearerToken(env, ctx) {
   return r.error || r.status !== 0 ? '' : String(r.stdout || '').trim();
 }
 
-// describeQmdListener(url, env) -> ", listener: pid N (executable)" or "" — names
+// describeQmdListener(url, env) -> ", listener: pid N (executable)" or "". Names
 // the process on the URL's port from `ss` + /proc, READ ONLY. Best effort: no
 // ss (Windows), a foreign user's pid, or no match all read as "".
 function describeQmdListener(url, env) {
@@ -1323,7 +1323,7 @@ function probeQmdDaemon(item, ctx) {
 // own `claude mcp add -s <scope>` writes to a DIFFERENT config file per
 // scope (graphify-bin.sh's graphify_register_mcp() comment + docs/setup/
 // new-machine.md: project scope -> a COMMITTED <target>/.mcp.json;
-// user/local scope -> the personal ~/.claude.json) — this probe used to read
+// user/local scope -> the personal ~/.claude.json). This probe used to read
 // ~/.claude.json UNCONDITIONALLY, so a correctly-registered project-scope
 // server (graphify-mcp carries scopes:["project", "user"]) always read
 // absent. Both files share the same
@@ -1334,13 +1334,13 @@ function mcpConfigPath(ctx) {
   return path.join((ctx.env && ctx.env.HOME) || os.homedir(), '.claude.json');
 }
 
-// registeredCommandCheck(command, ctx) -> { ok, reason? } — does a registered
+// registeredCommandCheck(command, ctx) -> { ok, reason? }. Does a registered
 // MCP entry's `command` actually resolve TO SOMETHING EXECUTABLE? A bare name
 // goes through which() (PATH-aware, ctx.env-threaded). An absolute path used
 // to be fs.existsSync-only: a
 // present-but-non-executable file (wrong permissions, a stray non-binary
 // dropped at that path) read as usable. POSIX distinguishes the two cases via
-// fs.accessSync(path, X_OK) — ENOENT (doesn't exist) vs any other failure
+// fs.accessSync(path, X_OK): ENOENT (doesn't exist) vs any other failure
 // (typically EACCES, exists but not executable) get different reasons.
 function registeredCommandCheck(command, ctx) {
   if (!path.isAbsolute(command)) {
@@ -1380,12 +1380,12 @@ function probeMcpConfigFile(item, ctx, filePath) {
     data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
   } catch (e) {
     // configError: true marks a genuinely BROKEN
-    // config — unreadable for a reason other than "it doesn't exist yet", or
-    // present-but-unparseable — as opposed to a clean, expected absence. A
+    // config (unreadable for a reason other than "it doesn't exist yet", or
+    // present-but-unparseable) as opposed to a clean, expected absence. A
     // MISSING file (ENOENT) is the ordinary, common case for project-scope
     // .mcp.json specifically (a committed file that only exists once
-    // SOMETHING has been registered at project scope — most projects never
-    // have one) — that is exactly "never opted in", not an error, so it does
+    // SOMETHING has been registered at project scope: most projects never
+    // have one). That is exactly "never opted in", not an error, so it does
     // NOT get configError. Any other read failure (permission denied) or a
     // present-but-unparseable file DOES: a consumer that wants to treat
     // "genuinely never opted in" differently from "the config is broken"
@@ -1397,8 +1397,8 @@ function probeMcpConfigFile(item, ctx, filePath) {
     }
     return { actual: 'absent', detail: `cannot read/parse ${filePath}`, configError: true };
   }
-  // A valid-JSON but non-object root (null, array, string) has no mcpServers —
-  // guard before dereferencing so a malformed config reads absent rather
+  // A valid-JSON but non-object root (null, array, string) has no mcpServers.
+  // Guard before dereferencing so a malformed config reads absent rather
   // than throwing out of the whole status sweep.
   if (data === null || typeof data !== 'object' || Array.isArray(data)) {
     return { actual: 'absent', detail: `unexpected JSON shape in ${filePath}`, configError: true };
@@ -1410,12 +1410,12 @@ function probeMcpConfigFile(item, ctx, filePath) {
   const registered = data.mcpServers[server];
   const problems = [];
   // validate the REGISTERED
-  // entry's OWN `command` resolves — not just a descriptor-named `bin`
+  // entry's OWN `command` resolves, not just a descriptor-named `bin`
   // guess, which can name the wrong binary entirely (found live: graphify's
   // registered command is the MCP entrypoint graphify-mcp, not the
   // bare `graphify` CLI a stale descriptor checked). This runs
   // unconditionally (registration always implies SOME configured command;
-  // there's no opt-out) — see registeredCommandCheck() above for the exact
+  // there's no opt-out). See registeredCommandCheck() above for the exact
   // resolution rule (absolute path: X_OK, not just
   // existence; bare name:
   // which() against ctx.env, same PATH-aware resolution `bin` uses).
@@ -1426,13 +1426,13 @@ function probeMcpConfigFile(item, ctx, filePath) {
     const check = registeredCommandCheck(command, ctx);
     if (!check.ok) problems.push(`registered command '${command}' ${check.reason}`);
   }
-  // registration alone is not proof the server works — a
+  // registration alone is not proof the server works. A
   // registered-but-broken MCP entry (pointed at a project that was never
   // initialized) used to read the same 'present' as a genuinely working
-  // one. `initMarker` — a path, relative to ctx.targetPath, that must
+  // one. `initMarker` (a path, relative to ctx.targetPath, that must
   // exist, proving the CONSUMING project is actually initialized (e.g. a
   // per-checkout-indexed MCP server is registered-but-useless without its
-  // own project graph) — is an OPTIONAL descriptor field, opt-in per item; a
+  // own project graph)) is an OPTIONAL descriptor field, opt-in per item; a
   // probe naming none keeps the registered-command check as the only
   // deepening. `bin` (a descriptor-named binary that must resolve on PATH,
   // independent of what's actually registered) is ALSO still supported for
@@ -1442,9 +1442,9 @@ function probeMcpConfigFile(item, ctx, filePath) {
   // registered-command check alone wouldn't); graphify-mcp's `bin` was
   // dropped from the manifest in this same round precisely because it was
   // checking the WRONG (unrelated) binary and the registered-command check
-  // now covers it correctly — see manifest.json's graphify-mcp comment.
-  // Any gap downgrades to 'degraded' — registered, but not actually usable
-  // — never silently 'present'.
+  // now covers it correctly. See manifest.json's graphify-mcp comment.
+  // Any gap downgrades to 'degraded': registered, but not actually usable,
+  // never silently 'present'.
   if (item.probe.bin && !which(item.probe.bin, ctx.env)) {
     problems.push(`binary '${item.probe.bin}' not resolvable on PATH`);
   }
@@ -1484,7 +1484,7 @@ function probeHandoverDir(item, ctx) {
   const detail = (r.stderr || '').trim() || 'handover_root did not resolve';
   // with HANDOVER_DIR unset the resolver falls back to the
   // repo-local <repo>/handovers, which handover_root_ensure creates lazily on
-  // the first handover write — so its absence right after an install is the
+  // the first handover write, so its absence right after an install is the
   // ordinary state, not a fault. Flag exactly that: no explicit HANDOVER_DIR
   // AND the resolver's "inline default '...' does not exist" refusal. A
   // HANDOVER_DIR that points nowhere, or a non-git cwd, never carries the flag.
@@ -1500,7 +1500,7 @@ function probeHandoverDir(item, ctx) {
 
 // ── dep ──────────────────────────────────────────────────────────────────
 
-// which() (lib/helpers.js) reads process.env.PATH directly — a hermetic test
+// which() (lib/helpers.js) reads process.env.PATH directly. A hermetic test
 // exercises this probe by setting PATH on the OUTER shell invocation (the
 // same convention as helpers.js itself and every sibling test-wizard-*.sh
 // suite), not by threading ctx.env through. The `bash` dep is the ONE
@@ -1518,11 +1518,11 @@ function probeDep(item, ctx) {
 
 // bash is the ONE hard-gate dep for which a which-style
 // presence answer is VACUOUS: a bash that which() finds can still fail every
-// bash-backed probe in this file — existence is not enablement. Probe the bash the rest of himmel
+// bash-backed probe in this file: existence is not enablement. Probe the bash the rest of himmel
 // actually spawns (spawnProbeSync's resolution, HIMMELCTL_BASH included), and
 // prove it by SOURCING a tracked repo script rather than by mere presence.
 //
-// The proof file is scripts/guardrails/lib.sh — the file the doc-guard probe
+// The proof file is scripts/guardrails/lib.sh, the file the doc-guard probe
 // failed to source in the field report. When it is absent (an adopter running
 // himmelctl against a checkout that predates it, or a stripped fixture) the
 // deep check is skipped rather than turned into a false "bash broken": a
@@ -1548,30 +1548,30 @@ function probeBashDep(ctx) {
 // ── cmd:has_hermes ───────────────────────────────────────────────────────
 
 // hermes-lanes used to be a file-exists probe on scripts/lanes/
-// lanes.json — a git-TRACKED registry file, so it read 'present' on every
+// lanes.json, a git-TRACKED registry file, so it read 'present' on every
 // himmel checkout regardless of whether hermes is actually installed on the
 // machine, detecting nothing. hermes is a venv-based install with no bare
 // binary on PATH (docs/hermes-runbook.md); scripts/lib/resolve-hermes-py.sh
-// is the ONE canonical resolver — source it and call
+// is the ONE canonical resolver. Source it and call
 // resolve_hermes_py, mirroring probeCmdHasQmd's exact shape.
 //
 // this branch INTRODUCED the probe, so it
 // ships with the same fix probeCmdIsHimmelDev already got rather
-// than repeating the bug — a genuine probe-WIRING failure must never
+// than repeating the bug. A genuine probe-WIRING failure must never
 // collapse into 'absent' (this manifest item has no opt-in n/a downgrade
 // today, but conflating "hermes isn't installed" with "the probe itself is
-// broken" is misleading regardless, and a future downgrade — mirroring
-// graphify-mcp/doc-guard-map's pattern — would inherit the same hole if
+// broken" is misleading regardless, and a future downgrade (mirroring
+// graphify-mcp/doc-guard-map's pattern) would inherit the same hole if
 // added later). Mirrors probeCmdIsHimmelDev exactly: spawn error ->
 // 'degraded', not 'absent'; `. resolver || exit 3; resolve_hermes_py`
-// disambiguates rc 3 (resolver failed to SOURCE — missing/unreadable
+// disambiguates rc 3 (resolver failed to SOURCE: missing/unreadable
 // resolve-hermes-py.sh, probe wiring broken) -> 'degraded' from
 // resolve_hermes_py's own nonzero (sourced fine, hermes genuinely not
-// installed — the ordinary case) -> 'absent'.
+// installed: the ordinary case) -> 'absent'.
 //
 // the resolver PATH used to be
 // STRING-INTERPOLATED into the `bash -c` command (`. "${resolverPath}" ||
-// ...`) — a checkout path containing a double quote breaks out of the
+// ...`). A checkout path containing a double quote breaks out of the
 // quoting entirely. Fixed structurally, not by escaping: the path travels
 // via the spawned process's OWN env (HIMMEL_PROBE_RESOLVER), and the `-c`
 // command is now a CONSTANT string that only ever references it through a
@@ -1579,8 +1579,8 @@ function probeBashDep(ctx) {
 // what the path contains.
 //
 // rc mapping now covers EVERY status,
-// not just the three named ones — an UNEXPECTED rc (e.g. 127, the resolver
-// sourced fine but doesn't define resolve_hermes_py — a stale/mismatched
+// not just the three named ones. An UNEXPECTED rc (e.g. 127, the resolver
+// sourced fine but doesn't define resolve_hermes_py: a stale/mismatched
 // resolver) used to fall into the same 'absent' as resolve_hermes_py's own
 // clean "not installed" answer (rc 1). An unexpected rc is a WIRING signal,
 // never a clean no, so it now reads 'degraded' with the rc named.
@@ -1599,29 +1599,29 @@ function probeCmdHasHermes(item, ctx) {
 // ── cmd:is_himmel_dev ────────────────────────────────────────────────────
 
 // doc-guard-map used to be a file-exists probe on scripts/lib/
-// doc-guard-map.sh, forced to always resolve against repoRoot — but that
+// doc-guard-map.sh, forced to always resolve against repoRoot, but that
 // script is git-TRACKED, so it read 'present' on every himmel checkout,
 // tautologically, detecting nothing. The thing that actually varies is
 // whether doc-guard is genuinely WIRED for this operator: it is gated
 // end-to-end by the untracked, gitignored .himmel-dev marker (contributor
-// opt-in — scripts/guardrails/lib.sh's is_himmel_dev_repo(), which is itself
+// opt-in: scripts/guardrails/lib.sh's is_himmel_dev_repo(), which is itself
 // worktree-aware, resolving to the PRIMARY checkout's marker). Always probed
-// against ctx.repoRoot (not ctx.targetPath) — this is a fact about the
+// against ctx.repoRoot (not ctx.targetPath). This is a fact about the
 // RUNNING himmel installation, same self-referential shape as
 // jira-cli-dist-build/bitbucket-cli-build, not about whatever project is
 // being adopted.
 //
 // a genuine probe-WIRING failure must
-// never collapse into 'absent' — status-report.js's doc-guard-map handler
+// never collapse into 'absent'. status-report.js's doc-guard-map handler
 // downgrades a clean 'absent' to a friendly "opt-in, gate off" n/a, so a
 // broken probe used to read as "gate off by choice" instead of surfacing a
 // real problem. Two holes this closes:
 //   (a) a spawn error (bash itself unresolvable) now reads 'degraded', not
 //       'absent'.
 //   (b) `. resolver && is_himmel_dev_repo` conflated "resolver failed to
-//       source" (missing/unreadable lib.sh — rc from `.` itself) with
+//       source" (missing/unreadable lib.sh: rc from `.` itself) with
 //       "sourced fine, marker genuinely absent" (is_himmel_dev_repo's own
-//       rc 1) — both surfaced as the SAME rc 1. `. resolver || exit 3;
+//       rc 1), both surfaced as the SAME rc 1. `. resolver || exit 3;
 //       is_himmel_dev_repo` disambiguates: rc 3 = sourcing failed (probe
 //       wiring broken) -> degraded; rc 1 = is_himmel_dev_repo's own "not a
 //       dev checkout" -> absent (still the common, legitimate case,
@@ -1631,18 +1631,18 @@ function probeCmdHasHermes(item, ctx) {
 //       degraded; rc 0 = marker present -> present.
 //
 // the resolver PATH used to be
-// STRING-INTERPOLATED into the `bash -c` command — a checkout path
+// STRING-INTERPOLATED into the `bash -c` command. A checkout path
 // containing a double quote breaks out of the quoting. Fixed structurally
 // (not by escaping): the path travels via the spawned process's OWN env
 // (HIMMEL_PROBE_RESOLVER), and the `-c` command is now a CONSTANT string
 // that only ever references it through a shell variable expansion.
 //
 // rc mapping now covers EVERY
-// status — an UNEXPECTED rc (e.g. 127, the resolver sourced fine but
-// doesn't define is_himmel_dev_repo — a stale/mismatched resolver) used to
+// status. An UNEXPECTED rc (e.g. 127, the resolver sourced fine but
+// doesn't define is_himmel_dev_repo: a stale/mismatched resolver) used to
 // fall into the same 'absent' as is_himmel_dev_repo's own clean "not a dev
 // checkout" answer (rc 1), which status-report.js's opt-in handler then
-// downgrades to a friendly n/a — exactly the false-quiet a wiring failure
+// downgrades to a friendly n/a, exactly the false-quiet a wiring failure
 // must never get. An unexpected rc is a WIRING signal, never a clean no, so
 // it now reads 'degraded' with the rc named.
 function probeCmdIsHimmelDev(item, ctx) {
@@ -1660,18 +1660,18 @@ function probeCmdIsHimmelDev(item, ctx) {
 
 // ── cmd:codex_provisioned ────────────────────────────────────────────────
 
-// codex CLI + companion — a "fully automated subsystem" per
+// codex CLI + companion: a "fully automated subsystem" per
 // himmel-update.sh's update_codex() (re-syncs plugins + sanitizes hooks.json
 // on EVERY /himmel-update) had ZERO manifest presence at all. Pure JS, no
 // spawn: mirrors update_codex()'s/install-himmel-codex.sh's own resolve_codex()
-// precedence EXACTLY — CODEX_BIN override (hard error if set-but-unusable, no
-// silent PATH fallback) else bare `codex` on PATH — reusing
+// precedence EXACTLY: CODEX_BIN override (hard error if set-but-unusable, no
+// silent PATH fallback) else bare `codex` on PATH, reusing
 // registeredCommandCheck for the same executable-aware
 // resolution the mcp-registered command check already gets. Binary resolvable
 // is NOT the same as "provisioned" (same false-green class killed
 // for the mcp-registered bin/initMarker deepening): update_codex() itself
 // treats a binary with no `$CODEX_HOME/plugins/cache` dir as "never
-// provisioned, skip" — so this probe
+// provisioned, skip", so this probe
 // checks BOTH and downgrades to 'degraded' (not silently 'present') when the
 // binary resolves but the cache doesn't exist, naming the install command.
 function probeCmdCodexProvisioned(item, ctx) {
@@ -1687,7 +1687,7 @@ function probeCmdCodexProvisioned(item, ctx) {
     };
   }
   // resolve HOME/CODEX_HOME from
-  // ctx.env, not the real process (os.homedir()) — a hermetic/user-targeted
+  // ctx.env, not the real process (os.homedir()). A hermetic/user-targeted
   // caller with a fully-controlled ctx.env otherwise got the WRONG home
   // (same hermeticity class as which's round-5 fix). Key
   // PRESENCE, not truthiness, decides the source (mirrors which()'s own
@@ -1699,9 +1699,9 @@ function probeCmdCodexProvisioned(item, ctx) {
   const home = ('HOME' in env) ? env.HOME : os.homedir();
   const codexHome = ('CODEX_HOME' in env) ? env.CODEX_HOME : path.join(home, '.codex');
   // CodeRabbit fix (coderabbit-1): an empty-string
-  // env.HOME/env.CODEX_HOME (key PRESENT, value '' — a real shape, not just
+  // env.HOME/env.CODEX_HOME (key PRESENT, value '': a real shape, not just
   // a test artifact: some shells export a var empty rather than unsetting
-  // it) makes codexHome a RELATIVE path via path.join('', ...) — existsSync
+  // it) makes codexHome a RELATIVE path via path.join('', ...). existsSync
   // would then resolve it against the CURRENT PROCESS's cwd, an entirely
   // wrong and non-hermetic answer. Guard explicitly rather than let a
   // relative path silently probe the wrong location.
@@ -1717,17 +1717,17 @@ function probeCmdCodexProvisioned(item, ctx) {
   }
   // ANY plugins/cache dir
   // even an empty one, which codex itself can create lazily on first launch
-  // regardless of whether ANY himmel plugin was ever registered — used to
+  // regardless of whether ANY himmel plugin was ever registered, used to
   // read 'present'. The genuine himmel-specific marker is a cache entry for
   // the HIMMEL marketplace itself: install-himmel-codex.sh registers it
   // under the fixed name `MARKET="himmel"` (`codex plugin marketplace add
   // "$MARKET_PATH"`), and every enabled plugin caches under
-  // `<cache>/himmel/<plugin>/<version>` — verified live on this machine
+  // `<cache>/himmel/<plugin>/<version>`, verified live on this machine
   // (~/.codex/plugins/cache/himmel/{handover,himmel-ops,...}). A cache dir
   // with entries for OTHER marketplaces only (openai-bundled,
   // claude-plugins-official, ...) but no `himmel/` subdir, or an empty
   // `himmel/` subdir, means codex itself is used but the himmel companion
-  // specifically was never provisioned — 'degraded', not 'present'.
+  // specifically was never provisioned: 'degraded', not 'present'.
   const himmelCacheDir = path.join(cacheDir, 'himmel');
   let himmelEntries;
   try {
@@ -1747,7 +1747,7 @@ function probeCmdCodexProvisioned(item, ctx) {
 // ── cmd:hermes_checkout ──────────────────────────────────────────────────
 
 // hermes-checkout used to reuse
-// cmd:has_hermes — that probe proves a USABLE venv python (and honors
+// cmd:has_hermes: that probe proves a USABLE venv python (and honors
 // HERMES_PY), which is the right runtime-health check for hermes-lanes, but
 // it is NOT the same fact update_hermes() (himmel-update.sh:114-186) cares
 // about: whether the SOURCE CHECKOUT it git-pulls actually exists and is
@@ -1758,13 +1758,13 @@ function probeCmdCodexProvisioned(item, ctx) {
 // working venv (cmd:has_hermes reads present) proves nothing about whether
 // update_hermes will ever touch it. Pure fs, no git spawn (per the finding's
 // own instruction): resolves the IDENTICAL root/src update_hermes() itself
-// derives, then reads .git/config directly for the origin remote's url —
+// derives, then reads .git/config directly for the origin remote's url,
 // the same information `git remote get-url origin` would report, without
 // spawning git.
 //
 // Resolution mirrors update_hermes()'s bash `${VAR:-default}` (empty-OR-
 // unset falls to the default) rather than the presence-only discipline used
-// elsewhere in this file — deliberately: the goal
+// elsewhere in this file, deliberately: the goal
 // here is byte-for-byte PARITY with what update_hermes() itself resolves,
 // not this probe's own ctx.env hermeticity, and bash's `:-` operator treats
 // an empty override the same as an absent one.
@@ -1789,21 +1789,21 @@ function gitConfigOriginUrl(gitDir) {
 }
 
 // the origin check used to be a bare
-// substring match (`originUrl.indexOf('NousResearch/hermes-agent') !== -1`)
-// — `git@github.com:evil/NousResearch-hermes-agent-mirror.git` contains that
+// substring match (`originUrl.indexOf('NousResearch/hermes-agent') !== -1`):
+// `git@github.com:evil/NousResearch-hermes-agent-mirror.git` contains that
 // exact substring and would have false-greened. Extracts the OWNER/REPO
 // path from either ssh (git@github.com:owner/repo[.git], also ssh://…) or
 // https (https://github.com/owner/repo[.git]) forms and requires an EXACT
-// (case-insensitive) match — a spoofed owner or repo name, even one that
+// (case-insensitive) match: a spoofed owner or repo name, even one that
 // merely CONTAINS the real name, no longer matches.
 // CodeRabbit fix (coderabbit-2): the single combined
 // regex rejected a valid ssh URL carrying an explicit port
-// (ssh://git@github.com:22/owner/repo.git — a normal, real-world form),
+// (ssh://git@github.com:22/owner/repo.git: a normal, real-world form),
 // false-degrading it. Split into three explicit forms so the port can be
 // scoped to EXACTLY the one place it's syntactically valid: the ssh://
 // (URL) form. The scp-like syntax (git@github.com:owner/repo) has no port
 // syntax in real git usage, so it stays unchanged; https never carries a
-// port for github.com. None of the three broadens HOST matching — every
+// port for github.com. None of the three broadens HOST matching. Every
 // branch still requires the literal `github.com` hostname, never an ssh
 // config alias.
 function parseGitHubOwnerRepo(url) {
@@ -1826,12 +1826,12 @@ function isDirSync(p) {
   }
 }
 
-// readWorktreeCommonOriginUrl(gitDir) —
+// readWorktreeCommonOriginUrl(gitDir):
 // codex-1): for a NORMAL linked worktree, the gitlink's resolved dir
-// (.git/worktrees/<name>/) carries no remotes of its own — remotes live in
+// (.git/worktrees/<name>/) carries no remotes of its own. Remotes live in
 // the COMMON dir's config, which the worktree's OWN dir points to via a
 // `commondir` file (a path, typically relative like `../..`). Without this,
-// a worktree hermes checkout — a perfectly legitimate install shape — read
+// a worktree hermes checkout (a perfectly legitimate install shape) read
 // falsely degraded. Bounded to ONE level of indirection (matches
 // resolveGitConfigDir's own gitdir: bound): relative paths resolve against
 // gitDir (per git's own commondir contract); a missing commondir file, an
@@ -1851,10 +1851,10 @@ function readWorktreeCommonOriginUrl(gitDir) {
   return gitConfigOriginUrl(commonDir);
 }
 
-// hasDotGitEntry(dir) — true when <dir>/.git exists as EITHER a directory
+// hasDotGitEntry(dir): true when <dir>/.git exists as EITHER a directory
 // (a normal checkout) OR a file
 // SUBMODULE checkout, where .git is a "gitdir: <path>" pointer file, not a
-// directory) — both count as "this looks like a git checkout" for the
+// directory). Both count as "this looks like a git checkout" for the
 // src-selection fallback below.
 function hasDotGitEntry(dir) {
   try {
@@ -1865,17 +1865,17 @@ function hasDotGitEntry(dir) {
   }
 }
 
-// resolveGitConfigDir(dotGitPath) — resolve the REAL directory containing
+// resolveGitConfigDir(dotGitPath): resolve the REAL directory containing
 // `config` for a `.git` entry that may be a plain directory OR a gitlink
-// FILE ("gitdir: <path>", worktrees/submodules —. Returns:
-//   null              — no .git entry at all (caller reads this as absent).
-//   { error: reason } — a .git entry EXISTS but the real git dir could not
+// FILE ("gitdir: <path>", worktrees/submodules). Returns:
+//   null:              no .git entry at all (caller reads this as absent).
+//   { error: reason }: a .git entry EXISTS but the real git dir could not
 //                       be resolved from it (unreadable gitlink, no
 //                       `gitdir:` line, or the pointer target itself is
-//                       missing) — bounded to ONE level of indirection,
+//                       missing), bounded to ONE level of indirection,
 //                       never crashes; caller reads this as degraded (a
 //                       checkout genuinely IS there, just unverifiable).
-//   { dir: path }     — resolved successfully; safe to read <dir>/config.
+//   { dir: path }:     resolved successfully; safe to read <dir>/config.
 function resolveGitConfigDir(dotGitPath) {
   let st;
   try {
@@ -1905,7 +1905,7 @@ function probeCmdHermesCheckout(item, ctx) {
   const env = ctx.env || process.env;
   // Mirrors update_hermes()'s own root/src resolution EXACTLY
   // (himmel-update.sh:139-147): HERMES_HOME override, else — on Windows,
-  // where LOCALAPPDATA is set — $LOCALAPPDATA/hermes, else (Linux/macOS)
+  // where LOCALAPPDATA is set, $LOCALAPPDATA/hermes, else (Linux/macOS)
   // $HOME/.hermes (upstream hermes' own default config home); src =
   // root/hermes-agent, falling back to root itself when THAT carries .git
   // instead (tolerates HERMES_HOME pointing straight at the checkout).
@@ -1943,21 +1943,21 @@ function probeCmdHermesCheckout(item, ctx) {
 
 // the scheduled cadence runners (pipeline-cadence,
 // graphmap-cadence) have dedicated staleness detection
-// in himmel-update.sh (report_cadence_stale) but zero manifest presence — the
+// in himmel-update.sh (report_cadence_stale) but zero manifest presence. The
 // manifest can't even say whether one is ARMED, let alone stale. This probe
 // covers the armed-vs-not question only; staleness stays advisory (the
 // himmel-update nudge), per the ticket's own scoping.
 //
-// Reuses scripts/lib/cadence-format.sh's cadence_runner_stamp() — the SAME
-// function report_cadence_stale() itself calls — rather than re-deriving the
+// Reuses scripts/lib/cadence-format.sh's cadence_runner_stamp() (the SAME
+// function report_cadence_stale() itself calls) rather than re-deriving the
 // armed/not-armed answer a second way. rc 0 = at least one runner present
-// (armed); rc 1 = cadence_runner_stamp's own clean "no runners" (not armed —
+// (armed); rc 1 = cadence_runner_stamp's own clean "no runners" (not armed:
 // arming is always an explicit, one-time `arm` operator action, never part of
 // setup.sh/adopt.sh's automatic install path).
 //
 // Structural env-passing
 // proactively): the resolver path, the override env-var NAME, and the
-// default subdir all travel via the spawned process's OWN env — never
+// default subdir all travel via the spawned process's OWN env, never
 // interpolated into the `-c` command string, which is a CONSTANT. The
 // override var name is resolved via bash indirect expansion (`${!VAR}`),
 // not `eval`, so no part of the descriptor or the resolved value is ever
@@ -1973,7 +1973,7 @@ function probeCmdCadenceArmed(item, ctx) {
   // itself returns rc 1 for BOTH "no runner armed" (the dir doesn't exist,
   // or exists and is empty of runners) AND "the dir exists but couldn't be
   // read" (its own `[ -f "$dir/$name.$ext" ]` checks fail silently on a
-  // permission-denied dir, same as "not found") — the absent-vs-degraded
+  // permission-denied dir, same as "not found"), the absent-vs-degraded
   // conflation again. A MISSING dir needs no special-casing here: every
   // `-f` check is already false against a nonexistent path, so
   // cadence_runner_stamp's natural rc 1 already means "genuinely unarmed"
@@ -1997,10 +1997,10 @@ function probeCmdCadenceArmed(item, ctx) {
 // ── cmd:guardrail_block_status ───────────────────────────────────────────
 
 // the user-scope guardrail block (scripts/hooks/
-// guardrail-block.mjs — DISTINCT from the project-scope guardrail-scope item)
+// guardrail-block.mjs, DISTINCT from the project-scope guardrail-scope item)
 // has its own drift check in himmel-update.sh (report_guardrail_block) but
 // zero manifest presence. Spawns node directly with an ARGV ARRAY (not
-// `bash -c` + string command) — no shell involved at all, so there is no
+// `bash -c` + string command). No shell involved at all, so there is no
 // quoting/interpolation surface to get wrong in the first place.
 //
 // uses the richer `status --json` verb (guardrail-block.mjs's
@@ -2008,10 +2008,10 @@ function probeCmdCadenceArmed(item, ctx) {
 // node-resolves=<yes|no>` text line the probe used through. The
 // plain line only ever proves "at least one owned hook exists and ITS node
 // path resolves" (detectMode()'s `.some()` over every group, nodeResolves()'s
-// first-match return) — a 1-of-3 partial install (only one of the three
+// first-match return). A 1-of-3 partial install (only one of the three
 // GUARDRAILS wired, the other two missing or pointing at dead paths) was
 // INDISTINGUISHABLE from a complete one, so every mode=global reading had to
-// map to 'degraded' — 'present' was structurally
+// map to 'degraded'. 'present' was structurally
 // unreachable. `status --json` enumerates each expected hook's own presence,
 // ACTUAL matcher, and bash/node/wrapper/script resolution (`complete` is
 // true only when ALL of that holds for every hook), so this probe can now
@@ -2019,25 +2019,25 @@ function probeCmdCadenceArmed(item, ctx) {
 // THEIR CLI's own richer output.
 //
 //   codex-adv-1: statusDetail() used to report each hook's EXPECTED matcher
-//     (from GUARDRAILS) rather than the ACTUAL configured one — a settings.json
+//     (from GUARDRAILS) rather than the ACTUAL configured one. A settings.json
 //     where all 3 owned hooks were moved into a single `Bash` matcher group
 //     (so block-edit-on-main.sh never fires on Edit/Write, block-read-secrets
 //     never fires on PowerShell/Read/Grep) still read complete:true. Fixed by
 //     surfacing the actual matcher + an exact-match matcherMatches flag;
 //     complete now requires matcherMatches on every hook too.
-//   codex-adv-2: the baked GUARDRAIL_BASH path was parsed and then discarded
-//     — a nonexistent bash executable (the wrapper fails closed on this at
+//   codex-adv-2: the baked GUARDRAIL_BASH path was parsed and then discarded.
+//     A nonexistent bash executable (the wrapper fails closed on this at
 //     runtime) still read complete:true, since only node/wrapper/script were
 //     checked. Fixed by surfacing bashPath/bashResolves; complete now
 //     requires bashResolves on every hook too.
 // the *Resolves fields used fs.existsSync, which
 //     accepts a DIRECTORY (or, for node/bash, a non-executable file) as
-//     "resolves" — reproduced complete:true with a baked path pointing at a
+//     "resolves", reproduced complete:true with a baked path pointing at a
 //     plain directory. Fixed in guardrail-block.mjs's isReadableFile()/
 //     isRunnableExecutable() (isFile() + access() mode check); see that
 //     file's contract comment for the Windows X_OK caveat.
 // statusDetail only ever looked at the FIRST
-//     owned entry per basename — a second, dead-pathed duplicate (the exact
+//     owned entry per basename. A second, dead-pathed duplicate (the exact
 //     drift state installData()'s own dedup step exists to clean up) was
 //     invisible, so a valid-plus-dead-duplicate pair still read
 //     complete:true even though the duplicate can independently fire and
@@ -2046,7 +2046,7 @@ function probeCmdCadenceArmed(item, ctx) {
 // ownership was decided by substring-searching the
 //     WHOLE command string for the guardrail's basename, while the parser
 //     independently took the first three quoted args and ignored anything
-//     after them — reproduced: a command whose real script arg is a decoy
+//     after them, reproduced: a command whose real script arg is a decoy
 //     (e.g. "claude-stub.sh") with the guardrail's basename sitting ONLY in
 //     a trailing shell comment still read complete:true, while the real
 //     protection was never wired. Fixed in guardrail-block.mjs by binding
@@ -2054,7 +2054,7 @@ function probeCmdCadenceArmed(item, ctx) {
 //     match the exact generated shape (4 quoted segments, nothing
 //     trailing) AND the parsed script arg's basename must equal the
 //     guardrail's basename exactly (path.basename(), never a substring
-//     check) — a decoy is now not owned by ANY guardrail at all (reads
+//     check). A decoy is now not owned by ANY guardrail at all (reads
 //     present:false/entryCount:0, identical to "never wired"; see that
 //     file's contract comment for why "not owned" was chosen over "owned
 //     but flagged").
@@ -2062,7 +2062,7 @@ function probeCmdCadenceArmed(item, ctx) {
 //     same-named no-op file elsewhere pass"): round
 //     4's anchored GENERATED_COMMAND_RE correctly rejects a true decoy, but
 //     it ALSO made an entry with the SAME wrapper/script identity plus a
-//     trailing extra token invisible entirely — yet guardrail-skip-in-
+//     trailing extra token invisible entirely, yet guardrail-skip-in-
 //     himmel.js reads only process.argv[2] and ignores anything after it,
 //     so Claude Code still executes such an entry identically to a
 //     canonical one. A dead-pathed duplicate wired in this shape reopened
@@ -2070,7 +2070,7 @@ function probeCmdCadenceArmed(item, ctx) {
 //     a different command shape. Fixed via a bounded, NON-substring
 //     structural test (referencesGuardrailIdentity(): every quoted
 //     segment's path.basename() checked against WRAPPER/the guardrail's
-//     basename, never String#includes over the whole string — a
+//     basename, never String#includes over the whole string. A
 //     comment-only mention still correctly reads as a decoy, no regression
 //     on codex-adv-5) that surfaces this as its own
 //     `nonCanonicalCount`/`nonCanonical` anomaly, distinct from both a
@@ -2080,7 +2080,7 @@ function probeCmdCadenceArmed(item, ctx) {
 //     finding above): basename-only ownership meant a settings.json
 //     referencing a same-named file in a WRONG directory (a stale/moved
 //     checkout, or an unrelated no-op stub with the right filename) still
-//     read present:true/resolves:true — "present" attested wiring, not
+//     read present:true/resolves:true: "present" attested wiring, not
 //     that the wired file IS the real himmel copy. guardrail-block.mjs's
 //     statusDetail() now realpath-compares the configured wrapper/script
 //     paths against a resolved trust anchor (HIMMEL_REPO env, else the
@@ -2090,18 +2090,18 @@ function probeCmdCadenceArmed(item, ctx) {
 //     DOES force complete:false, with anchorWrapperPath/anchorScriptPath
 //     naming the anchor precisely. Separately, wrapperResolves/
 //     scriptResolves now also require non-trivial content
-//     (isSaneContentFile()) — a truncated/empty file at an otherwise-
+//     (isSaneContentFile()). A truncated/empty file at an otherwise-
 //     correct, even anchor-matching, path no longer reads resolves:true
 //     either. This probe's recompute (guardrailEntryIsFullyValid below) and
-//     its `problems` naming were extended in lockstep — see both below.
-//   SCOPE: this probe attests the FULL GENERATED COMMAND IDENTITY —
-//     presence, resolution, matcher, uniqueness, shape, AND trust-anchor
-//     identity — of the CONFIGURED wiring. It does not attempt deeper
+//     its `problems` naming were extended in lockstep. See both below.
+//   SCOPE: this probe attests the FULL GENERATED COMMAND IDENTITY
+//     (presence, resolution, matcher, uniqueness, shape, AND trust-anchor
+//     identity) of the CONFIGURED wiring. It does not attempt deeper
 //     runtime proof (executing the hook chain, node/bash version checks,
 //     full content hashing beyond the cheap sanity floor, or semantic
 //     equivalence of a differently-formed command); those belong to
 //     follow-up tickets against the contract, not this probe.
-//   mode=project    -> 'absent' (never armed globally — the ordinary
+//   mode=project    -> 'absent' (never armed globally: the ordinary
 //                      default; global mode is an explicit `setup-hooks.sh
 //                      --guardrail-mode global` opt-in, never part of the
 //                      automatic install path).
@@ -2136,7 +2136,7 @@ function probeGuardrailBlockStatus(item, ctx) {
   } catch (_e) {
     return { actual: 'degraded', detail: `guardrail-block.mjs status --json produced unparseable output: ${out || '(empty)'}` };
   }
-  // Array.isArray([]) is true — without a
+  // Array.isArray([]) is true. Without a
   // non-empty check, a malformed/truncated {mode:"global",complete:true,
   // hooks:[]} would sail past this guard and straight into the
   // `complete === true` branch below, trusted as 'present' despite
@@ -2144,33 +2144,33 @@ function probeGuardrailBlockStatus(item, ctx) {
   // available without duplicating guardrail-block.mjs's own GUARDRAILS
   // count here: hardcoding "3" (or requiring the .mjs's ESM export into
   // this CommonJS file) would itself be a second, driftable copy of that
-  // knowledge — a non-empty array is the honest floor a CONSUMER can assert
+  // knowledge: a non-empty array is the honest floor a CONSUMER can assert
   // without owning the producer's vocabulary.
   if (!parsed || typeof parsed.mode !== 'string' || !Array.isArray(parsed.hooks) || parsed.hooks.length === 0) {
     return { actual: 'degraded', detail: `guardrail-block.mjs status --json missing expected 'mode'/'hooks' fields: ${out || '(empty)'}` };
   }
   if (parsed.mode !== 'global') return { actual: 'absent', detail: `guardrail-mode=${parsed.mode}` };
   // stricter): an earlier fix closed the empty-array case, but a TRUNCATED payload
-  // — complete:true with only 1 hook object, that one object itself fully
-  // healthy — still sailed through on parsed.complete alone. RECOMPUTE
+  // (complete:true with only 1 hook object, that one object itself fully
+  // healthy) still sailed through on parsed.complete alone. RECOMPUTE
   // completeness from the entries themselves rather than trusting the
   // producer's own summary flag: every entry must independently satisfy the
   // same fields the contract defines completeness by (present, matcherMatches,
   // bashResolves, nodeResolves, wrapperResolves, scriptResolves, entryCount
   // === 1, nonCanonicalCount === 0). 'present' now requires parsed.complete
-  // === true AND this recomputed value to AGREE — a payload whose entries
+  // === true AND this recomputed value to AGREE. A payload whose entries
   // contradict its own complete flag is untrustworthy, not present.
   //
-  // ACCEPTED FLOOR (documented, not fixed here — out of
+  // ACCEPTED FLOOR (documented, not fixed here: out of
   // trust-anchor scope, a distinct residual gap): this still cannot catch
-  // an INTERNALLY CONSISTENT truncated array — e.g. complete:true with
+  // an INTERNALLY CONSISTENT truncated array, e.g. complete:true with
   // exactly 1 well-formed, fully-healthy hook object, when the real
   // contract enumerates 3. Detecting "too few entries" requires knowing the
   // EXPECTED count, which only the producer (guardrail-block.mjs's own
   // GUARDRAILS array) owns; asserting a count here (hardcoded "3", or a
   // `>1` guess) would be exactly the kind of producer-vocabulary
   // duplication an earlier fix already rejected, and a real producer always emits
-  // its full fixed-order set regardless — this probe takes the floor: a
+  // its full fixed-order set regardless. This probe takes the floor: a
   // non-empty, internally-self-consistent payload is trusted.
   //
   // also requires wrapperMatchesAnchor/scriptMatchesAnchor
@@ -2196,7 +2196,7 @@ function probeGuardrailBlockStatus(item, ctx) {
     }
     // ── attestation v2 binding (fail-closed) ────────────────────────────────────
     // The legacy `complete` flag attests the GENERATED COMMAND IDENTITY
-    // (presence, matcher, resolution, trust-anchor basename ownership —
+    // (presence, matcher, resolution, trust-anchor basename ownership:
     // recomputedComplete above). guardrail-block.mjs's statusDetail() grew a
     // SECOND, audit-independent layer atop it: a content-integrity hash of
     // each wired wrapper/script against its git:HEAD object (per-hook
@@ -2207,18 +2207,18 @@ function probeGuardrailBlockStatus(item, ctx) {
     // contentIntegrityComplete / auditAnchorComplete / attestationComplete
     // (= complete && contentIntegrityComplete && auditAnchorComplete). A
     // content-tampered wrapper or a divergent audit anchor yields
-    // attestationComplete:false while `complete` still reads true — so WITHOUT
+    // attestationComplete:false while `complete` still reads true, so WITHOUT
     // this binding the attestation exists in the payload but never reaches the
     // health surface (doctor still reports the guardrails 'present').
     //
     // FAIL-CLOSED: this probe spawns the checkout's OWN
-    // guardrail-block.mjs, so producer and consumer ship in lockstep — a
+    // guardrail-block.mjs, so producer and consumer ship in lockstep. A
     // payload with NO v2 fields is either version skew (HIMMEL_REPO aimed at
     // an older checkout) or deliberately stripped/tampered output, and a
     // PARTIAL v2 payload (some fields present, the set not whole) is
     // self-contradictory/incomplete. the earlier fail-OPEN back-compat
     // (v2-absent → 'present') let a stale OR stripped producer read green
-    // with tamper-evidence silently absent — exactly the downgrade path the
+    // with tamper-evidence silently absent, exactly the downgrade path the
     // attestation exists to close. A CONSUMER never owns the producer's
     // version; it detects v2 by the fields' PRESENCE, then fails CLOSED on
     // absence OR a partial set rather than silently downgrading to the v1
@@ -2236,9 +2236,9 @@ function probeGuardrailBlockStatus(item, ctx) {
     // A COMPLETE v2 payload carries the whole fixed set (top-level
     // attestationComplete / contentIntegrityComplete / auditAnchorComplete /
     // anchorMatchesAudit, plus per-hook wrapperIntegrity / scriptIntegrity /
-    // wrapperMatchesAuditAnchor / scriptMatchesAuditAnchor). A PARTIAL set —
-    // per-hook integrity fields present but the summary booleans missing, or
-    // anchorMatchesAudit absent while audit-anchor divergence is visible — is
+    // wrapperMatchesAuditAnchor / scriptMatchesAuditAnchor). A PARTIAL set
+    // (per-hook integrity fields present but the summary booleans missing, or
+    // anchorMatchesAudit absent while audit-anchor divergence is visible) is
     // self-contradictory/incomplete and must NOT silently fall back to a v1
     // classification: degraded, never 'present' (panel sug codex-1).
     const v2SummaryComplete = typeof parsed.attestationComplete === 'boolean'
@@ -2254,14 +2254,14 @@ function probeGuardrailBlockStatus(item, ctx) {
       return { actual: 'degraded', detail: `guardrail-mode=global, v1 complete, but attestation v2 payload is incomplete — some v2 fields present but the set is not whole (self-contradictory payload, not trusted): ${out}` };
     }
     // Same self-consistency posture as recomputedComplete: do NOT trust the
-    // producer's own attestationComplete flag on its own — RECOMPUTE the v2
+    // producer's own attestationComplete flag on its own. RECOMPUTE the v2
     // composite from the payload's own parts. The flag must AGREE with its
     // three summary parts (complete && contentIntegrityComplete &&
     // auditAnchorComplete), and those summaries must AGREE with the per-hook
     // integrity verdicts / audit-anchor matches that ground them. A payload
     // whose flags contradict their own evidence is untrustworthy, not present
     // (the same "self-contradictory, not trusted" stance as the v1 recompute
-    // above — a CONSUMER recomputes; it does not rubber-stamp the producer).
+    // above: a CONSUMER recomputes; it does not rubber-stamp the producer).
     const healthyIntegrity = (i) => i && typeof i === 'object' && i.verdict === 'healthy';
     const recomputedContentIntegrity = parsed.hooks.every((h) => healthyIntegrity(h.wrapperIntegrity) && healthyIntegrity(h.scriptIntegrity));
     const recomputedAuditAnchor = parsed.anchorMatchesAudit === true
@@ -2274,8 +2274,8 @@ function probeGuardrailBlockStatus(item, ctx) {
     if (recomputedAttestation && parsed.attestationComplete === true && flagsConsistent) {
       return { actual: 'present', detail: `guardrail-mode=global — all ${parsed.hooks.length} guardrail hooks present, correctly matched, and resolving (attestation v2 complete: content-integrity + audit-anchor verified)` };
     }
-    // v2 present but NOT satisfied: name the failing dimension(s), per hook —
-    // content-integrity vs audit-anchor, wrapper vs script — mirroring the
+    // v2 present but NOT satisfied: name the failing dimension(s), per hook
+    // (content-integrity vs audit-anchor, wrapper vs script), mirroring the
     // `problems` builder below, so an operator (or himmelctl doctor) can act
     // on a specific broken attestation rather than a bare "incomplete".
     const v2Problems = [];
@@ -2291,7 +2291,7 @@ function probeGuardrailBlockStatus(item, ctx) {
     return { actual: 'degraded', detail: `guardrail-mode=global, v1 complete, but attestation v2 not satisfied — ${v2Problems.join('; ')}` };
   }
   // complete !== true: name exactly which hook(s) fall short, rather than
-  // just saying "incomplete" — the whole point of the richer verb is to let
+  // just saying "incomplete". The whole point of the richer verb is to let
   // an operator (or `himmelctl doctor`) act on a specific broken hook.
   const problems = parsed.hooks
     .filter((h) => !(h && h.present && h.entryCount === 1 && (h.nonCanonicalCount || 0) === 0
@@ -2300,7 +2300,7 @@ function probeGuardrailBlockStatus(item, ctx) {
     .map((h) => {
       // even a hook with NO canonical entry at all can
       // still have a runtime-relevant non-canonical one wired (same
-      // wrapper/script identity, non-generated shape) — "missing" alone
+      // wrapper/script identity, non-generated shape). "missing" alone
       // would understate that, so it's named here too, not just below when
       // a canonical entry is also present.
       if (!h || !h.present) {
@@ -2312,13 +2312,13 @@ function probeGuardrailBlockStatus(item, ctx) {
       }
       const reasons = [];
       // a duplicate owned entry is a problem in its own
-      // right, independent of whether the FIRST-FOUND one is fully valid — a
+      // right, independent of whether the FIRST-FOUND one is fully valid. A
       // dead-pathed duplicate is still independently wired and can fail
       // closed at runtime, so it's named even when the primary entry alone
       // would otherwise pass every other check.
       if (typeof h.entryCount === 'number' && h.entryCount > 1) reasons.push(`${h.entryCount} duplicate entries wired (expected exactly 1)`);
       // a non-canonical entry (same wrapper/script
-      // identity, non-generated shape — e.g. a trailing extra token) is
+      // identity, non-generated shape, e.g. a trailing extra token) is
       // still runtime-relevant (guardrail-skip-in-himmel.js only reads
       // argv[2]) even though it's excluded from entryCount, so it must be
       // named independently of whether the canonical entry alone is valid.
@@ -2328,7 +2328,7 @@ function probeGuardrailBlockStatus(item, ctx) {
       if (broken.length > 0) reasons.push(`${broken.join('/')} path does not resolve`);
       // a wrapper/script that resolves but is NOT the trust
       // anchor's own copy (same basename, wrong/stale checkout) is a
-      // distinct problem from "does not resolve" — name it with the exact
+      // distinct problem from "does not resolve". Name it with the exact
       // anchor path expected, so an operator can see precisely which
       // checkout the wiring should point at.
       const anchorMismatches = [];
@@ -2344,29 +2344,29 @@ function probeGuardrailBlockStatus(item, ctx) {
 // ── cmd:telegram_getme ───────────────────────────────────────────────────
 
 // A17: telegram-access (above) proves TELEGRAM_BOT_TOKEN
-// is present and access.json's allow-rule shape is usable — neither proves
+// is present and access.json's allow-rule shape is usable. Neither proves
 // the token actually AUTHENTICATES against Telegram (revoked, typo'd, or a
 // deleted bot's token pasted from an old note). getMe() already exists at
 // scripts/telegram/telegram-api.ts:39-46 (its injectable-fetch
-// signature) — reused here rather than a second HTTP client, but it's
+// signature), reused here rather than a second HTTP client, but it's
 // Bun/TypeScript and probes.js is zero-dep Node CommonJS, so there is no
 // require()/import seam between them. The seam is the SAME one every other
-// cmd:* probe in this file already uses to cross into a different runtime —
+// cmd:* probe in this file already uses to cross into a different runtime:
 // the shared spawnProbeSync helper with a -c constant command, and every value
 // the child needs (the api-module path, the token, the inline script text
 // itself) traveling through the CHILD's OWN env, never string-interpolated
 // into the -c command and never passed as an argv element (argv is visible
-// to any other process on the box via `ps`/Task Manager; env is not) — just
+// to any other process on the box via `ps`/Task Manager; env is not), just
 // crossing into `bun -e` at the end instead of stopping at bash. The inline
 // script dynamic-imports the checkout's own telegram-api.ts by absolute
-// path and calls the REAL getMe(token) (the real global fetch — this IS a
+// path and calls the REAL getMe(token) (the real global fetch: this IS a
 // network call, so it only ever runs against a live bridge; the hermetic
 // test suite stubs the `bun` EXECUTABLE itself, this file's own established
 // testing convention, never the JS boundary), printing only "ok:<username>"
 // or "fail" to stdout on the happy path.
 //
 // the happy path never
-// echoed the token, but a FAILURE path could — getMe()'s request URL embeds
+// echoed the token, but a FAILURE path could. getMe()'s request URL embeds
 // the token in its own path (https://api.telegram.org/bot<TOKEN>/getMe), so
 // any fetch failure or stack trace that includes that URL, folded into this
 // probe's detail via the child's raw stderr below, printed the live bot
@@ -2375,21 +2375,21 @@ function probeGuardrailBlockStatus(item, ctx) {
 // error and strips the token from the message BEFORE it ever reaches
 // stderr (the child never gets a chance to emit the raw value), and this
 // function's own handling of the child's stdout/stderr/spawn-error text
-// redacts the token again via redactToken() as an independent second layer
-// — a probe that forwards a secret-bearing child's output can't assume the
+// redacts the token again via redactToken() as an independent second layer.
+// A probe that forwards a secret-bearing child's output can't assume the
 // child redacted itself correctly.
 //
 // that same
 // catch-and-redact wrapped BOTH the module import and the getMe() call in
-// one try, so any failure — the probe's own plumbing (bun missing, the
+// one try, so any failure (the probe's own plumbing (bun missing, the
 // module failing to import) as much as a genuine network/Telegram-API
-// failure the probe successfully observed — surfaced through the identical
+// failure the probe successfully observed) surfaced through the identical
 // nonzero-exit path below as "probe wiring broken". That told an adopter
 // with a perfectly fine himmel install, but no network reachability, to go
 // look at their himmel install. The two failure kinds are now told apart at
 // the source: the inline script tags its own stderr with `wiring:` (import
-// failed — the probe couldn't even ATTEMPT the check) or `runtime:` (the
-// getMe() call itself failed — the probe DID run, and observed a
+// failed: the probe couldn't even ATTEMPT the check) or `runtime:` (the
+// getMe() call itself failed: the probe DID run, and observed a
 // connectivity/API problem) before this same redaction step, and this
 // function reads that tag to route the two into different detail text.
 const RUNTIME_TAG = 'runtime:';
@@ -2418,15 +2418,15 @@ function probeTelegramGetMe(item, ctx) {
   const apiPath = path.resolve(ctx.repoRoot, item.probe.apiModule);
   // a native Windows path
   // (`C:\...`) handed to a dynamic `import()` is runtime-dependent as an ESM
-  // specifier and can be rejected as an unsupported URL scheme — convert to
+  // specifier and can be rejected as an unsupported URL scheme. Convert to
   // a `file://` URL first, which every runtime's import() accepts uniformly
   // regardless of platform.
   const apiUrl = pathToFileURL(apiPath).href;
   // Two SEPARATE try/catches, not one: the import is the probe's own
-  // plumbing (a wiring failure if it throws — bun's fine, but the module
+  // plumbing (a wiring failure if it throws: bun's fine, but the module
   // couldn't even be loaded), while getMe() is the actual check this probe
   // exists to run (a throw there is a runtime failure the probe DID
-  // observe — network/DNS/timeout/HTTP-level, not a wiring gap). Each catch
+  // observe: network/DNS/timeout/HTTP-level, not a wiring gap). Each catch
   // tags its stderr line so probeTelegramGetMe below can tell them apart.
   const script = 'const token = process.env.HIMMEL_PROBE_TOKEN;'
     + 'let getMe;'
@@ -2456,7 +2456,7 @@ function probeTelegramGetMe(item, ctx) {
   if (r.status !== 0) {
     const stderr = redactToken((r.stderr || '').trim(), token);
     if (stderr.indexOf(RUNTIME_TAG) === 0) {
-      // The probe DID run getMe() and observed a failure — connectivity,
+      // The probe DID run getMe() and observed a failure: connectivity,
       // DNS, a proxy, or Telegram itself, not this probe's own wiring.
       return { actual: 'degraded', detail: `getMe network/API call failed (connectivity, not a probe wiring problem): ${stderr.slice(RUNTIME_TAG.length)}` };
     }
@@ -2474,22 +2474,22 @@ function probeTelegramGetMe(item, ctx) {
 
 // A17: voice-note transcription's toolchain (a
 // whisper.cpp binary + a real ggml model file) had no manifest presence at
-// all — a bridge could be fully wired for text and silently unable to
+// all. A bridge could be fully wired for text and silently unable to
 // transcribe a single voice note. Pure fs, no spawn: mirrors
 // scripts/telegram/transcribe.ts:15-25's own resolution (WHISPER_DIR
 // override else ~/.himmel/whisper; WHISPER_CLI/WHISPER_MODEL override else
 // `whisper-cli` on PATH, then <dir>/whisper-cli; model <dir>/<default>).
 // Two-step degrade, not a single yes/no: a binary
 // present but the model missing is a DIFFERENT, more specific problem
-// (whisper-cli then fails per-invocation, not at bridge startup) —
+// (whisper-cli then fails per-invocation, not at bridge startup):
 // 'degraded', not 'absent'.
 // bare fs.existsSync accepts a DIRECTORY, a
-// non-executable file, or a 0-byte file (a truncated download — the design's
+// non-executable file, or a 0-byte file (a truncated download: the design's
 // own model-download checklist item warns about exactly this) as "ready".
 // isUsableFile() below mirrors guardrail-block.mjs's isReadableFile() (this
 // file's own comments already cite it for the identical "it was a plain
 // directory" bug class) plus a non-zero-size floor, rather than a third
-// hand-rolled variant — kept local (not required cross-module) since that
+// hand-rolled variant, kept local (not required cross-module) since that
 // file is ESM and this one is CommonJS. The exec check is only ever applied to the
 // binary, never the model.
 function isUsableFile(p, { execCheck } = {}) {
@@ -2530,27 +2530,27 @@ function whichExecutable(tool, env) {
 }
 
 // C, Part B: bridge.whisper.{cli,model} used to be
-// read by nothing — the wizard writes them, but this probe only ever
+// read by nothing. The wizard writes them, but this probe only ever
 // consulted WHISPER_CLI/WHISPER_MODEL/the hardcoded default. Precedence
 // (same deliberate choice as resolveBridgeEnvFilePath above): explicit
-// process-env override (WHISPER_CLI/WHISPER_MODEL — already the documented
+// process-env override (WHISPER_CLI/WHISPER_MODEL, already the documented
 // seam transcribe.ts's own operators use) wins, else the adopter's
 // configured value, else the hardcoded default. `model` is stored in
-// ~/.himmel/config.json as a bare FILENAME (default 'ggml-small.bin' — one
+// ~/.himmel/config.json as a bare FILENAME (default 'ggml-small.bin', one
 // of several installable ggml sizes), joined with `dir` exactly like the
-// hardcoded default already is, so an untouched (or entirely absent — load()
+// hardcoded default already is, so an untouched (or entirely absent: load()
 // returns that same default) config resolves to the IDENTICAL path as before
 // this change. `cli`, in contrast, defaults to null (unset) and, when the
 // adopter DOES set it, is a full path to a custom binary (the same shape
-// WHISPER_CLI itself takes) — used as-is, never joined with `dir`.
+// WHISPER_CLI itself takes), used as-is, never joined with `dir`.
 //
 // CR sweep: unlike
 // resolveBridgeEnvFilePath's TELEGRAM_ENV/envPath pair, NEITHER side here
-// expands a leading `~` — env.WHISPER_CLI/WHISPER_MODEL/WHISPER_DIR never
+// expands a leading `~`. env.WHISPER_CLI/WHISPER_MODEL/WHISPER_DIR never
 // have (matches transcribe.ts's own pre-existing, unchanged-by-this-ticket
 // resolution: `process.env.WHISPER_CLI ?? join(WHISPER_DIR, ...)`, a plain
 // path.join with no tilde handling), and `configuredCli`/`configuredModel`
-// below deliberately don't either — adding expansion to only one side would
+// below deliberately don't either. Adding expansion to only one side would
 // REINTRODUCE this exact class of bug in the other direction (config
 // expands, override doesn't). Symmetric non-expansion on both sides is not
 // an oversight; it is the correct, consistent choice here.
@@ -2590,17 +2590,17 @@ function probeWhisperReady(item, ctx) {
 
 // ── cmd:python_interpreter ───────────────────────────────────────────────
 
-// A11: adopters genuinely hit "interpreter stub" classes
-// — a stray interpreter shim or a broken venv activation resolves fine on
+// A11: adopters genuinely hit "interpreter stub" classes.
+// A stray interpreter shim or a broken venv activation resolves fine on
 // PATH (which() would find it) but exits non-zero without ever running the
 // given script. PATH-resolution alone is
-// necessary but not sufficient proof of a working interpreter — this probe
+// necessary but not sufficient proof of a working interpreter. This probe
 // actually SPAWNS the candidate with the caller's OWN environment (so a
 // caller-set PYTHONHOME/PYTHONPATH is exercised, not just read) and asserts
 // it runs a trivial script end to end and prints back a fixed marker, not
 // just that something at that name exists. Routed through `bash -c` (the
 // SAME cross-platform exec/PATH-resolution seam every other cmd:* probe in
-// this file already uses) rather than spawning the candidate directly —
+// this file already uses) rather than spawning the candidate directly.
 // bash's own generic "command not found" (rc 127) is then the ordinary,
 // unambiguous "not installed" signal, exactly like probeDep's absent case,
 // distinct from a resolved-but-broken stub (any other non-zero/wrong-output
@@ -2628,15 +2628,15 @@ function probePythonInterpreter(item, ctx) {
 
 // ── distinct-tokens ──────────────────────────────────────────────────────
 
-// two DIFFERENT Telegram bots share this checkout — the
+// two DIFFERENT Telegram bots share this checkout: the
 // interactive bridge (telegram-bridge, ~/.claude/channels/telegram/.env) and
-// the HIMMEL_JIRA_NUDGE SessionEnd relay (repo-root .env — see poller.ts's
+// the HIMMEL_JIRA_NUDGE SessionEnd relay (repo-root .env, see poller.ts's
 // loadBridgeEnv() comment on why TELEGRAM_BOT_TOKEN is deliberately
 // FILE-ONLY there, precisely to prevent this class of mix-up). Pointing both
 // at the SAME bot token means the bridge's long-poll getUpdates and the
-// relay's one-shot send compete for the same offset — a silent, hard-to-
+// relay's one-shot send compete for the same offset, a silent, hard-to-
 // diagnose failure with no error anywhere. Design-specified as a single
-// severity, no escalation ladder: "validates the two differ" — either token
+// severity, no escalation ladder: "validates the two differ". Either token
 // being unconfigured is fine (nothing to collide with), and distinct values
 // are fine; only an identical, non-empty pair is ever a problem.
 function probeDistinctTokens(item, ctx) {
@@ -2667,75 +2667,75 @@ function probeDistinctTokens(item, ctx) {
 // ── luna-sources ─────────────────────────────────────────────────────────
 
 // A11: the wizard's luna-source health check used to have
-// no manifest presence at all — an operator could finish onboarding with a
+// no manifest presence at all. An operator could finish onboarding with a
 // configured clip-source (reddit, firecrawl, ...) silently broken (expired
 // cookie, revoked API key) and no signal until the first live clip attempt
 // failed. scripts/luna/fetch-health.py --probe <source> (shipped in PR-A, on
-// main) already does the real health check — this probe is a thin fold:
+// main) already does the real health check. This probe is a thin fold:
 // loop the profile's configured sources, shell out once per source, and
 // reduce the per-source {status, reason} verdicts to ONE actual/detail
 // (mirrors qmd-index's own N-collections-folded-to-one shape above).
 //
 // Several outcomes per source, not two: fetch-health.py's own STATUSES (ok /
 // auth-or-cookie-expired / blocked-or-rate-limited / transport-fail) cover a
-// RECOGNIZED source fetch-health.py knows how to check — including a source
+// RECOGNIZED source fetch-health.py knows how to check, including a source
 // it knows but the adopter never CONFIGURED (no cookie file, no API key),
 // which comes back as a normal status (e.g. auth-or-cookie-expired, reason
 // "...key missing").: this used to fold into `problems`
-// like any other unhealthy source — a fresh adopter who only set up ONE
+// like any other unhealthy source. A fresh adopter who only set up ONE
 // clip source then saw every other, deliberately-unconfigured source read as
 // a failure. It is now kept in its OWN bucket (`unconfigured`, see
-// UNCONFIGURED_REASON_RE below) — a source the adopter simply never set up
+// UNCONFIGURED_REASON_RE below). A source the adopter simply never set up
 // is not the same problem as one that IS configured and broken (an expired
 // cookie, a rejected token): the former is skippable and warns, the latter
 // fails. A source name the PROFILE carries that fetch-health.py's OWN registry has
-// since dropped, or never implemented, is a DIFFERENT, third case —
+// since dropped, or never implemented, is a DIFFERENT, third case:
 // run_single_probe raises ValueError for it, which parser.error() turns into
 // argparse's own fixed exit code 2. That source isn't being monitored AT
-// ALL, which is a configuration error, not a runtime one — own
+// ALL, which is a configuration error, not a runtime one. Own
 // CR round found the original cut (fold it into a footnote and still report
 // 'present') was a fail-open-silently shape (violating the loud-degradation
 // rule): a check that cannot evaluate something must say so at severity, so
 // an unrecognized source now forces 'degraded' whenever at least one OTHER
-// source was actually evaluated (see `unrecognized` below) — it is kept in
+// source was actually evaluated (see `unrecognized` below). It is kept in
 // its own bucket, separate from `problems`, so the detail can tell an
 // operator "fix your profile" (unrecognized) apart from "fix your
 // credentials" (problems). The one case left unescalated on purpose: when
 // EVERY named source is unrecognized (evaluated === 0), there's nothing to
-// call healthy in the first place, so it stays 'absent' — the pre-existing,
+// call healthy in the first place, so it stays 'absent', the pre-existing,
 // honest "nothing was checked" signal, not a new degradation surface.
 //
 // rc 2 is argparse's fixed code for ANY usage error, not specifically "this
-// source doesn't exist" — trusting the bare code would silently reclassify a
+// source doesn't exist". Trusting the bare code would silently reclassify a
 // future, unrelated usage error (e.g. a renamed flag) as "unrecognized
 // source" too. Cheaply disambiguated instead: run_single_probe's ValueError
 // is always worded "unknown probe source: '<name>' (valid sources: ...)",
-// and parser.error() prints that verbatim to stderr — matching that literal
+// and parser.error() prints that verbatim to stderr. Matching that literal
 // substring is a two-line check against a message this same file's own
 // source constructs, not a guess. An rc=2 that DOESN'T carry it is a
 // different, unrecognized usage error and folds into `problems` (a wiring
 // problem) instead of being silently treated as "this source doesn't exist".
 // fetch-health.py's STATUSES vocabulary (ok /
 // auth-or-cookie-expired / blocked-or-rate-limited / transport-fail) has no
-// "unconfigured" state — so a source the adopter simply never set up (no
+// "unconfigured" state, so a source the adopter simply never set up (no
 // reddit cookie file, no Firecrawl API key, ...) used to fold into
 // `problems` exactly like a genuinely broken one, turning a fresh
 // single-source adopter's every OTHER, deliberately-unused source into a
 // wall of failures (the exact false-alarm this epic exists to eliminate;
 // design assumption A15: "a skipped source reports unconfigured, not
 // error"). fetch-health.py's REASON strings are distinctive when the
-// credential/artifact is simply ABSENT — verified against that file's own
+// credential/artifact is simply ABSENT, verified against that file's own
 // probe_* functions: probe_reddit's "reddit cookie file missing",
 // probe_gallery_dl's "<source> cookie file missing", probe_youtube's "youtube Playwright
 // storage state missing", probe_bitbucket's "Bitbucket credentials
-// missing", probe_firecrawl's "Firecrawl API key missing" — every one of
+// missing", probe_firecrawl's "Firecrawl API key missing". Every one of
 // them carries status auth-or-cookie-expired AND ends in the literal word
 // "missing", while every OTHER auth-or-cookie-expired reason (an expired/
 // unreadable/no-match cookie, a 401/403, an unexpected response shape) does
 // not. Matching text is sound here for the same reason the rc=2 "unknown
 // probe source" match below is: this exact wording is this same file's own
 // source, not a guess. (Status transport-fail carries its own "<tool>
-// missing" reasons — e.g. probe_gallery_dl's "gallery-dl missing" — for a
+// missing" reasons (e.g. probe_gallery_dl's "gallery-dl missing") for a
 // missing BINARY, an unrelated toolchain problem; the status check keeps
 // those out of this bucket.)
 const UNCONFIGURED_REASON_RE = /missing$/;
@@ -2786,7 +2786,7 @@ function probeLunaSources(item, ctx) {
       const reason = parsed && parsed.reason;
       if (status === 'cooldown') {
         // the Instagram throttle is deliberately holding requests
-        // (a 429/challenge, the daily cap, or a spacing/backoff window) — a wait,
+        // (a 429/challenge, the daily cap, or a spacing/backoff window): a wait,
         // not a fault, so it never joins `problems`.
         cooling.push(`${source} (${reason || 'cooldown'})`);
       } else if (status === 'auth-or-cookie-expired' && UNCONFIGURED_REASON_RE.test(reason || '')) {
@@ -2797,7 +2797,7 @@ function probeLunaSources(item, ctx) {
     }
   }
   // An unrecognized source only forces the SAME 'degraded' the problems list
-  // already forces — no escalation ladder — but it must not disappear into a
+  // already forces (no escalation ladder), but it must not disappear into a
   // footnote on an otherwise-green result: evaluated > 0 means at least one
   // configured source WAS meaningfully checked, so a result here can no
   // longer read 'present' while another configured source is invisible.
@@ -2816,14 +2816,14 @@ function probeLunaSources(item, ctx) {
   // an earlier fix fix (retask stage1-build-6d2e): evaluated === 0
   // here (past the problems.length > 0 branch above, and unconfigured always
   // implies evaluated > 0) can ONLY mean every named source was unrecognized
-  // by fetch-health.py — a profile that names nothing the probe script knows
+  // by fetch-health.py: a profile that names nothing the probe script knows
   // about, i.e. nothing is being monitored at all. That is a configuration
   // error the adopter must fix, not a lesser signal than the "one bad entry
-  // among healthy ones" case above — it must land on the SAME 'degraded'
+  // among healthy ones" case above. It must land on the SAME 'degraded'
   // (fail) tier, not 'absent' (warn). Genuinely-nothing-configured (no
   // sources at all, handled above the loop; or every named source merely
   // UNCONFIGURED, handled below) is a different, benign situation and stays
-  // 'absent'/warn — the two must not share a verdict.
+  // 'absent'/warn. The two must not share a verdict.
   if (evaluated === 0) {
     return {
       actual: 'degraded',
@@ -2831,11 +2831,11 @@ function probeLunaSources(item, ctx) {
     };
   }
   // every evaluated source is either healthy or
-  // simply UNCONFIGURED (no `problems`, checked above) — that must not read
+  // simply UNCONFIGURED (no `problems`, checked above). That must not read
   // the same as "a configured source is broken" (status-report.js's S2 remap
-  // turns 'absent' into a warn, 'degraded' into a fail — see that file's
+  // turns 'absent' into a warn, 'degraded' into a fail, see that file's
   // luna-sources block). Covers both "some configured, some not" and "every
-  // named source unconfigured" — both benign, both warn.
+  // named source unconfigured": both benign, both warn.
   if (unconfigured.length > 0 || cooling.length > 0) {
     const healthy = evaluated - unconfigured.length - cooling.length;
     const healthyNote = healthy > 0 ? `; ${healthy} other configured source(s) healthy` : '';
@@ -2851,7 +2851,7 @@ function probeLunaSources(item, ctx) {
 
 // Map a luna.cadence.schedules key (design §3.3/A9) to the runner basename
 // pipeline-cadence.sh actually generates for it (pipeline-cadence.sh's own
-// runner_for_name()) — the file this probe treats as "armed" evidence for
+// runner_for_name()), the file this probe treats as "armed" evidence for
 // that schedule. Kept here (not re-derived from cadence-format.sh, which has
 // no such mapping) as the one small piece of domain knowledge these two
 // probes share; the ARMED-OR-NOT signal itself is a plain fs.existsSync,
@@ -2871,7 +2871,7 @@ function resolvePipelineBatDir(item, ctx) {
 }
 
 // Which of `scheduleKeys` have a generated runner file present under
-// `batDir` — the same present-vs-absent signal cmd:cadence_armed already
+// `batDir`, the same present-vs-absent signal cmd:cadence_armed already
 // uses, just per-schedule instead of "any runner at all".
 function armedPipelineSchedules(scheduleKeys, batDir) {
   const ext = 'sh';
@@ -2889,11 +2889,11 @@ function armedPipelineSchedules(scheduleKeys, batDir) {
 // actually took effect. Neither one alone proves the cadence is coherent:
 // config can say enabled with nothing armed (never ran `arm`, or the tasks
 // were deleted out-of-band), or tasks can survive after config flips back to
-// disabled (an unmanaged leftover — `disarm` was never run).
+// disabled (an unmanaged leftover: `disarm` was never run).
 //
 // Do not treat the mere EXISTENCE of
 // a generated runner file (armedPipelineSchedules, a plain fs.existsSync)
-// as proof a scheduler task is registered. It is not — a runner file
+// as proof a scheduler task is registered. It is not: a runner file
 // persists on disk after its Task Scheduler entry or crontab line is
 // deleted, or after an `arm` that failed partway, and S1 is the ONE status
 // item whose whole job is catching exactly that "not actually armed" state
@@ -2907,18 +2907,18 @@ function armedPipelineSchedules(scheduleKeys, batDir) {
 // queries here a second way.
 //
 // `cleanAbsence: true` marks the ordinary, common "never turned on" case
-// (enabled:false, nothing armed) — status-report.js's opt-in downgrade for
+// (enabled:false, nothing armed). status-report.js's opt-in downgrade for
 // this item's id fires ONLY on that flag, never on the "enabled:true but
 // nothing armed" genuine-fail case, which stays a loud red.
 //
-// Path to the one script this probe trusts for scheduler state — a fixed
+// Path to the one script this probe trusts for scheduler state: a fixed
 // convention (like phi-coherence's phi-roots path above), not a manifest
 // field: this item's shape doesn't vary per-install.
 const PIPELINE_CADENCE_SCRIPT = 'scripts/luna/pipeline-cadence.sh';
 
 // Map each schedule key to the exact scheduler task name pipeline-cadence.sh
 // emits in `status` output (its own TASK_FETCH_HEALTH/TASK_HARVEST/
-// TASK_SYNTH/TASK_HEALTH constants) — the scheduler-side counterpart to
+// TASK_SYNTH/TASK_HEALTH constants), the scheduler-side counterpart to
 // PIPELINE_RUNNER_BASE above, which keys the runner-FILE signal instead.
 const PIPELINE_TASK_NAME = {
   fetchHealth: 'HIMMEL-Pipeline-FetchHealth',
@@ -2931,11 +2931,11 @@ const PIPELINE_TASK_NAME = {
 // the scheduler itself reports as registered. Both its Windows/schtasks path
 // (cmd_status, via cadence-format.sh's shared cadence_registered_status) and
 // its POSIX/crontab path (cron_status's own literal echo) print an
-// "ARMED      <task-name> ..." / "not armed  <task-name> ..." line per task —
+// "ARMED      <task-name> ..." / "not armed  <task-name> ..." line per task,
 // a stable enough shape to scan by task name without a stricter parser.
 // ARMED and UNHEALTHY (registered, but the Windows wscript runner fails its
 // own preflight per cadence_registered_status) both count as "a matching
-// scheduler task exists" — the design's own S1 wording — since UNHEALTHY is
+// scheduler task exists" (the design's own S1 wording), since UNHEALTHY is
 // a narrower, distinct health signal an operator sees verbatim from `status`
 // itself, not a registration question this probe is answering.
 function schedulerRegisteredSchedules(stdout) {
@@ -3071,7 +3071,7 @@ function probeCadenceCoherence(item, ctx) {
   // binary missing from PATH, an unsupported platform) exits non-zero rather
   // than printing a clean answer. Reading that as absent-and-clean would be
   // exactly the false-green this fix exists to close, just moved one layer
-  // down — this must be a LOUD degraded naming the limitation instead
+  // down: this must be a LOUD degraded naming the limitation instead
   // never a silent pass or an assumed-healthy default.
   if (r.status !== 0) {
     return {
@@ -3120,7 +3120,7 @@ function probeCadenceCoherence(item, ctx) {
 
 // One item per cadence-registry.json row: runs the row's own `status` and
 // judges every ARMED task it lists (descriptor `tasks`: { task, intervalHours,
-// okRcs?, scheduleKey? }) with the shared reader above — one scheduler entry, a run log
+// okRcs?, scheduleKey? }) with the shared reader above: one scheduler entry, a run log
 // written within twice the interval, a last run that exited with a success
 // code. A task that is not armed is not judged; a row with none armed is the
 // ordinary "never turned on" absence (cleanAbsence). `platform` marks a
@@ -3184,11 +3184,11 @@ function probeCadenceRuns(item, ctx) {
 // a luna vault marked PHI
 // via a `.salus` ancestor marker (graph-refresh.sh's/refresh-graph-map.sh's
 // `_salus_marked` convention) should also be registered in the operator's
-// phi-roots list (~/.config/claude-glm/phi-roots, one path per line — the
+// phi-roots list (~/.config/claude-glm/phi-roots, one path per line, the
 // SAME file the egress fence itself consults), and vice versa. A mismatch
 // means either the vault THINKS it's PHI-scoped but egress enforcement
 // doesn't know it (a leak risk), or phi-roots names a vault carrying no
-// local marker (a stale entry). READ-ONLY and INFORMATIONAL — it reports
+// local marker (a stale entry). READ-ONLY and INFORMATIONAL: it reports
 // coherence, it never enforces anything; the fence's own matcher
 // (graph-refresh.sh/refresh-graph-map.sh) stays the single enforcement
 // surface, matching engine-allowlist's "the hook stays the single source"
@@ -3197,7 +3197,7 @@ function probeCadenceRuns(item, ctx) {
 //
 // ponytail: the phi-roots comparison below is a SIMPLIFIED prefix match
 // (resolve + backslash-normalize + lowercase), not the fence's full
-// CRLF/whitespace-tolerant matcher — good enough for a coherence hint, not
+// CRLF/whitespace-tolerant matcher, good enough for a coherence hint, not
 // a security boundary; upgrade to a shared matcher only if this probe's own
 // false mismatches become a real complaint (avoids a second, driftable copy
 // of security-relevant matching logic for a probe that enforces nothing).
@@ -3218,13 +3218,13 @@ function walkForSalusMarker(startDir) {
 // coherence hint (this probe already disclaims full fence-matcher fidelity
 // above).
 // a `~`-prefixed path (either
-// side — vaultPath or a phi-roots entry) reached path.resolve() unexpanded,
-// which resolves `~` against CWD, not $HOME — a wrong PHI coherence verdict.
+// side: vaultPath or a phi-roots entry) reached path.resolve() unexpanded,
+// which resolves `~` against CWD, not $HOME, a wrong PHI coherence verdict.
 // luna-config.js's schema accepts any string for vaultPath, and bridge.envPath's
 // own default is itself `~`-prefixed, so this is a realistic shape, not a
 // contrived one. Reuses status-report.js's expandHome() (lazy require: this
 // module is itself required BY status-report.js, so a top-level require here
-// would see a partially-initialized module — deferring the require into the
+// would see a partially-initialized module: deferring the require into the
 // call site, after both modules have finished loading, avoids that) rather
 // than writing a third variant.
 function normalizeForPhiMatch(p) {
@@ -3262,7 +3262,7 @@ function probePhiCoherence(item, ctx) {
     return { actual: 'degraded', detail: 'luna.vaultPath is missing from the config document' };
   }
   // expand `~` before the
-  // fs.existsSync/walkForSalusMarker check below — fs calls don't do tilde
+  // fs.existsSync/walkForSalusMarker check below. fs calls don't do tilde
   // expansion, so an unexpanded vaultPath read the marker as absent even
   // when it was present. normalizeForPhiMatch expands again for the
   // phi-roots comparison (a no-op here, since vaultPath is now absolute).
@@ -3293,21 +3293,21 @@ function probePhiCoherence(item, ctx) {
 // a luna cadence worker
 // (harvest, health, ...) runs an interactive claude session whose Bash tool
 // calls are gated by scripts/hooks/cadence-approve-engines.sh's own
-// ENGINE_LIST — an armed worker whose invoked engine script ISN'T on that
+// ENGINE_LIST. An armed worker whose invoked engine script ISN'T on that
 // allow-list stalls silently at its scheduled hour waiting for a permission
 // prompt nobody is there to answer (the exact failure class this
 // hook exists to prevent). `--print-engine-list` (A18, landed in PR-A) is
-// the ONE sanctioned way to read the live list — this probe shells out to it
+// the ONE sanctioned way to read the live list. This probe shells out to it
 // rather than copying its values or re-deriving them with a JS regex over
 // the hook's own source (the hook stays the single source of truth, per its
 // own header comment). The worker-to-required-engine-suffix PAIRING itself
 // (which schedule needs which engine) is NOT derivable from the live list
-// output — it lives in this item's own manifest descriptor (`workers`),
+// output: it lives in this item's own manifest descriptor (`workers`),
 // declarative data alongside the manifest, the same way qmd-index declares
 // its own `collections` or luna-sources its own `sources`.
 //
 // `cleanAbsence: true` marks "no worker with a known engine requirement is
-// currently armed" (nothing to check) — status-report.js downgrades that
+// currently armed" (nothing to check). status-report.js downgrades that
 // case to n/a; an armed worker actually missing a required suffix stays red.
 function probeEngineAllowlist(item, ctx) {
   const env = ctx.env || process.env;
@@ -3354,7 +3354,7 @@ function probeEngineAllowlist(item, ctx) {
 //   (1) The count is of poller.ts CONSUMER processes only, never the
 //       combined supervisor-or-poller liveness regex, which serves a
 //       DIFFERENT purpose (where a supervisor+child pair legitimately coexist). A supervisor plus its
-//       poller child is one healthy running bridge, not two — counting with
+//       poller child is one healthy running bridge, not two. Counting with
 //       that liveness regex here would read 2 pollers on a correct install
 //       and false-fail S5 every time.
 //   (2) Platform posture: process identity is read by the POSIX path
@@ -3374,10 +3374,10 @@ function worstSeverity(a, b) {
 // supervisor.ts spawns the real poller.ts process with a bare RELATIVE argv
 // (`spawn(["bun","poller.ts"], {cwd: import.meta.dir})`), so the genuine
 // command lines carry NO path. A healthy poller from ANY checkout is
-// therefore indistinguishable from this one by path alone in that shape — a
+// therefore indistinguishable from this one by path alone in that shape, a
 // genuine platform limit; a bare, unpathed token is still counted. What IS
 // closable: when a commandline DOES carry a path, it must resolve to THIS
-// checkout's own scripts/telegram/poller.ts to count — a path naming a
+// checkout's own scripts/telegram/poller.ts to count. A path naming a
 // different checkout is excluded. The comparison normalizes both sides
 // (forward-slashed, lower-cased) rather than assuming one canonical form.
 function normalizeForPollerAnchorMatch(p) {
@@ -3386,21 +3386,21 @@ function normalizeForPollerAnchorMatch(p) {
 
 // a path token was
 // previously captured as the longest run of non-whitespace/non-quote chars
-// ending in 'poller.ts' — [^\s"']* stops at the first space, so a checkout
+// ending in 'poller.ts': [^\s"']* stops at the first space, so a checkout
 // under a path WITH a space (e.g. 'C:\Users\John Doe\himmel\...\poller.ts', // leak-allow: home-path doc example
 // the same class of path install-engine.js's own positional-arg fix already
 // treats as a supported reality here, not a hypothetical) truncated to a
 // fragment ('Doe\himmel\...\poller.ts') that can never equal
-// thisCheckoutAnchor — a healthy LOCAL poller then read as foreign, and
+// thisCheckoutAnchor. A healthy LOCAL poller then read as foreign, and
 // bridge-health falsely reported zero pollers. Rather than fight whitespace
 // inside a bare regex, this leans on the fact that a process
 // command line quotes an argument
-// that itself contains a space — so a quoted 'poller.ts' path is tried
+// that itself contains a space, so a quoted 'poller.ts' path is tried
 // FIRST, capturing everything between the quotes (spaces included); only
 // when no quoted match exists does this fall back to the original bare-token
 // shape, which still covers both an unquoted, space-free path
 // ('C:/repo/scripts/telegram/poller.ts') and the bare, unpathed token
-// ('poller.ts') supervisor.ts's own relative spawn produces — that bare
+// ('poller.ts') supervisor.ts's own relative spawn produces. That bare
 // shape carries no path to anchor against and keeps its original "counted,
 // unattributable" behaviour unchanged.
 const QUOTED_POLLER_TOKEN_RE = /["']([^"']*poller\.ts)["']/i;
@@ -3417,8 +3417,8 @@ function pollerLineIsThisCheckout(line, thisCheckoutAnchor) {
   const token = extractPollerToken(line);
   if (!token) return false; // defensive: the line was already filtered on 'poller.ts'
   const sepIdx = Math.max(token.lastIndexOf('/'), token.lastIndexOf('\\'));
-  if (sepIdx === -1) return true; // bare token, no path — the genuine, unattributable shape; counted, unchanged
-  if (!thisCheckoutAnchor) return false; // a path IS present but there is no root to compare it against — fail-safe
+  if (sepIdx === -1) return true; // bare token, no path: the genuine, unattributable shape; counted, unchanged
+  if (!thisCheckoutAnchor) return false; // a path IS present but there is no root to compare it against, fail-safe
   return normalizeForPollerAnchorMatch(token) === thisCheckoutAnchor;
 }
 
@@ -3433,17 +3433,17 @@ function pollerLineIsThisCheckout(line, thisCheckoutAnchor) {
 //
 // Prefers `systemctl --user show telegram-bridge.service` (MainPID +
 // ActiveState + LoadState) when systemd is present and knows the unit;
-// otherwise (no systemctl on PATH, or LoadState=not-found — genuinely no
+// otherwise (no systemctl on PATH, or LoadState=not-found: genuinely no
 // unit registered) falls back to `pgrep -f <resolved poller path>`, per the
 // ticket's explicit adopters-running-the-bridge-by-hand case (e).
 //
 // Child enumeration: `/proc/<pid>/task/*/children` on Linux (walking every
 // thread's children file, since a single-threaded MainPID's own children
-// file lives at task/<mainpid>/children) — overridable via ctx.procRoot
+// file lives at task/<mainpid>/children), overridable via ctx.procRoot
 // (test-only seam) since a real hermetic test cannot fabricate genuine PIDs.
 // Where ctx.procRoot doesn't exist as a real directory (macOS has no /proc
 // at all), falls back to `pgrep -P <pid>` for children and `ps -o args= -p`
-// for each child's argv — existing checkout-path anchor
+// for each child's argv. Existing checkout-path anchor
 // (extractPollerToken/pollerLineIsThisCheckout above) matches equally well
 // against a POSIX argv string as against a Windows CommandLine, so no new
 // matching logic is needed here.
@@ -3454,10 +3454,10 @@ function posixProcRoot(ctx) {
 // Direct (one-level) children of `pid`. Returns:
 //   { pids: [...] }  on success
 //   { pids: null }   child enumeration is genuinely unavailable (no /proc,
-//                    no pgrep on PATH) — the caller reads this as UNVERIFIED
+//                    no pgrep on PATH). The caller reads this as UNVERIFIED
 //   { error }        a thread's children file exists but failed to read for
 //                     a reason OTHER than the thread having exited between
-//                     readdir and read (GH #639) — e.g. EACCES must not be
+//                     readdir and read (GH #639), e.g. EACCES must not be
 //                     silently folded into "no children"; a persistent read
 //                     failure would otherwise mask an undercount as healthy.
 function posixDirectChildPids(pid, procRoot, env) {
@@ -3490,7 +3490,7 @@ function posixDirectChildPids(pid, procRoot, env) {
 }
 
 // Depth-bounded BFS over the descendant tree rooted at `pid` (NOT including
-// pid itself) — a poller can run directly as MainPID, or nested under a
+// pid itself). A poller can run directly as MainPID, or nested under a
 // wrapper/supervisor grandchild-or-deeper, so walking only one level of
 // children (the prior behaviour) misses both shapes.
 // The depth bound keeps this finite against a pathological/cyclic fixture
@@ -3534,10 +3534,10 @@ function posixCmdline(pid, procRoot, env) {
   return (r.stdout || '').trim();
 }
 
-// Like posixCmdline, but distinguishes "no such file" (ENOENT — the pid has
+// Like posixCmdline, but distinguishes "no such file" (ENOENT: the pid has
 // genuinely exited, or simply carries no cmdline of its own) from any other
 // read failure. Used ONLY for MainPID's own cmdline: unlike a descendant
-// pid (where any unreadable cmdline makes process identity UNVERIFIED —
+// pid (where any unreadable cmdline makes process identity UNVERIFIED,
 // case d2), MainPID is already independently confirmed alive via
 // ActiveState=active, so a missing cmdline just means "not itself the
 // poller"; a genuine error (e.g. EACCES) still degrades.
@@ -3553,7 +3553,7 @@ function posixOptionalCmdline(pid, procRoot, env) {
   }
   const r = spawnProbeSync('ps', ['-o', 'args=', '-p', String(pid)], { env, encoding: 'utf8' });
   if (r.error) return { error: r.error };
-  if (r.status !== 0) return { cmdline: null }; // no such pid — not an error, just not this
+  if (r.status !== 0) return { cmdline: null }; // no such pid, not an error, just not this
   return { cmdline: (r.stdout || '').trim() };
 }
 
@@ -3566,13 +3566,13 @@ function escapeEreMetachars(s) {
 
 // Runs `pgrep -f <escaped matchPattern>` and verifies EACH matched pid's
 // cmdline through the existing checkout-anchor helper rather than trusting
-// pgrep's raw match count — pgrep -f matches on any
+// pgrep's raw match count. pgrep -f matches on any
 // substring, so a raw count can both over-count (a foreign checkout whose
 // path happens to contain this one's, or an unrelated process that mentions
 // the path in an argument) in principle, and gives no anchor verification
 // at all otherwise. `matchPattern` may be the resolved absolute poller path
 // (anchored fallback) or a broad basename-only substring (system-wide
-// sweep, see its call site) — either way, identity is decided below by
+// sweep, see its call site). Either way, identity is decided below by
 // pollerLineIsThisCheckout, never by the breadth of this pattern. Returns
 // { pids: [...verified] } or { error }.
 // A bare `poller.ts` token carries no path to anchor against, so a
@@ -3584,7 +3584,7 @@ function escapeEreMetachars(s) {
 // there is already decided by the anchor comparison below, no cwd read
 // needed.
 // Reads pid's cwd: a real /proc readlink when procRoot exists (Linux), else
-// an `lsof -a -p <pid> -d cwd -Fn` fallback (darwin has no /proc at all) —
+// an `lsof -a -p <pid> -d cwd -Fn` fallback (darwin has no /proc at all),
 // same existsSync-gated shape as posixDirectChildPids/posixCmdline above.
 // `-Fn` emits one field per line, name-prefixed with 'n'.
 function posixCwd(pid, procRoot, env) {
@@ -3621,7 +3621,7 @@ function posixCandidateIsThisCheckout(cmdline, pid, thisCheckoutAnchor, checkout
   const cwd = cwdResult.cwd;
   // Case-SENSITIVE on purpose, unlike the pathed-token branch above: this
   // compares two POSIX filesystem paths (a live cwd readlink, this
-  // checkout's own root), where Linux paths are case-sensitive by design —
+  // checkout's own root), where Linux paths are case-sensitive by design.
   // normalizeForPollerAnchorMatch's lowercasing exists for the pathed-token
   // anchor, which also has to match a case-insensitive Windows CommandLine.
   // Lowercasing here would fold e.g. /work/Himmel and /work/himmel together
@@ -3733,7 +3733,7 @@ function probeBridgePollerCountPosix(ctx) {
           else if (verdict.excludedNote) treeExcludedNotes.push(verdict.excludedNote);
         }
 
-        // MainPID can itself BE the poller (no wrapper) — a genuine
+        // MainPID can itself BE the poller (no wrapper). A genuine
         // read failure here degrades, but a missing cmdline (MainPID has
         // already been confirmed alive via ActiveState=active) just means
         // it isn't itself the poller.
@@ -3749,11 +3749,11 @@ function probeBridgePollerCountPosix(ctx) {
 
         // duplicate-poller class: a manually-launched poller
         // running OUTSIDE this systemd unit's tree is invisible to a
-        // tree-scoped count by construction — sweep system-wide via
+        // tree-scoped count by construction. Sweep system-wide via
         // pgrep -f (same anchor verification as the no-unit fallback
         // below) and union by verified pid, mirroring the Windows CIM
         // branch's system-wide scope. Matched on POLLER_SWEEP_PATTERN, NOT
-        // the resolved pollerPath used by the no-unit fallback below — see
+        // the resolved pollerPath used by the no-unit fallback below, see
         // that constant's comment for why the sweep needs the broader,
         // unanchored pattern.
         if (pollerPath) {
@@ -3809,26 +3809,26 @@ function probeBridgePollerCount(ctx) {
 // access.json schema ok + exactly one poller) into ONE tri-state result,
 // reusing probeTelegramAccess/probeTelegramGetMe UNCHANGED (their probe
 // descriptors share the same envFile/tokenKey/accessFile/apiModule field
-// names this item's descriptor also carries) — the same "fold existing
+// names this item's descriptor also carries), the same "fold existing
 // per-source probes" shape luna-sources already established, applied here
 // to a fixed 3-source set instead of a variable one.
 //
 // `cleanAbsence: true` (mirrors telegram-access's own absent-vs-degraded
 // split) marks the ordinary "bridge never configured" case (token entirely
-// missing) — short-circuited BEFORE the getMe/poller-count checks run at
+// missing), short-circuited BEFORE the getMe/poller-count checks run at
 // all (no live network call or process spawn for the common case of an
 // adopter who never set up the bridge). status-report.js's opt-in downgrade
 // fires ONLY on this flag; a PARTIALLY configured or genuinely broken
 // bridge stays a loud red/degraded.
 //
 // a missing token alone used to be enough for
-// cleanAbsence — that's wrong for an adopter who set bridge.enabled: true in
+// cleanAbsence. That's wrong for an adopter who set bridge.enabled: true in
 // ~/.himmel/config.json (they explicitly asked for this subsystem; a missing
 // token is a real failure, not "never opted in"). Consulting
 // ~/.himmel/config.json here, the same way probeCadenceCoherence already
 // does for cadence-armed (both read it directly via lunaConfig.load(),
 // scoped to ctx.env through scopeConfigPathToCtx rather than reading the
-// ambient process.env unscoped — retask stage1-build-6d2e), is what makes
+// ambient process.env unscoped, retask stage1-build-6d2e), is what makes
 // "cleanAbsence means genuinely not opted in" hold for this item the same
 // way it already does for cadence-armed, instead of special-casing
 // bridge.enabled at the status layer while the probe stays oblivious to it.
@@ -3866,39 +3866,39 @@ function probeBridgeHealth(item, ctx) {
 // ── bridge-persistence (status item S6) ─────────────────────────────────
 
 // C, status item S6 (design §3.5): a systemd unit + linger (linux) must exist
-// whenever bridge.enabled —
-// otherwise the bridge silently stops surviving a reboot/logout (the same
+// whenever bridge.enabled.
+// Otherwise the bridge silently stops surviving a reboot/logout (the same
 // silent-04:00-stall class S1 named for cadence). bridge.enabled:false is a
-// clean opt-out, not a failure — mirrors cadence-armed/engine-allowlist/
+// clean opt-out, not a failure, mirrors cadence-armed/engine-allowlist/
 // bridge-health's own additive `cleanAbsence` flag (status-report.js
 // downgrades it to an n/a opt-in hint instead of red). Every OTHER failure/
-// limitation reads 'degraded' (a loud warn) — this item's contract is
+// limitation reads 'degraded' (a loud warn). This item's contract is
 // pass/warn/opt-in, never a hard 'absent'/red once the adopter has opted in.
 //
 // Linux: persistence = the systemd user unit installed+enabled AND linger
 // enabled. Linger absent is reported as ITS OWN warn (never folded into a
-// generic "unit missing") — a user unit without linger only runs while the
+// generic "unit missing"). A user unit without linger only runs while the
 // operator is logged in, the exact failure spec A12/V5 calls out.
 //
-// macOS/other: launchd support is explicitly Stage 2 (A12) — this does NOT
+// macOS/other: launchd support is explicitly Stage 2 (A12). This does NOT
 // build a process/service-inspection library for it; it reads a LOUD
 // degraded naming the limitation (never a silent pass), the
 // same platform posture bridge-health's own poller-count
 // check already established.
 // the SPAWN side of the same
-// ctx.env class scopeConfigPathToCtx already fixed for the config-path read
-// — one layer further out. bridgePersistence.systemdUnitInstalled()/
+// ctx.env class scopeConfigPathToCtx already fixed for the config-path read,
+// one layer further out. bridgePersistence.systemdUnitInstalled()/
 // lingerEnabled() take no parameters at all: they resolve `systemctl`/
 // `loginctl` via which() with NO env argument (ambient process.env.PATH),
 // and spawn them via spawnSync with no `env` option (the child inherits the
-// WHOLE ambient process.env, not just PATH) — bridge-persistence.js is a
+// WHOLE ambient process.env, not just PATH). bridge-persistence.js is a
 // sibling agent's file this round and is off limits, so there is no
 // `{ env }` parameter to pass through even if we wanted one. The only seam
 // reachable from here is the same one scopeConfigPathToCtx already uses:
 // scope process.env itself for the duration of the call. Unlike that
 // helper (which only needs to shadow ONE key), which()'s PATH lookup and
 // the spawned child's inherited environment both depend on the ENTIRE
-// env object, so this swaps all of it — save/restore is safe here because
+// env object, so this swaps all of it. Save/restore is safe here because
 // systemdUnitInstalled()/lingerEnabled() are fully synchronous (spawnSync),
 // so nothing else can observe process.env mid-swap on Node's single
 // threaded event loop.
@@ -3907,12 +3907,12 @@ function probeBridgeHealth(item, ctx) {
 // `unitInfo.fileExists`/`unitInfo.unitPath` are derived from
 // SYSTEMD_USER_UNIT_DIR, a MODULE-LEVEL `const` in bridge-persistence.js
 // evaluated ONCE at require() time from `process.env.
-// HIMMELCTL_SYSTEMD_USER_UNIT_DIR` (falling back to `os.homedir()`) — by
+// HIMMELCTL_SYSTEMD_USER_UNIT_DIR` (falling back to `os.homedir()`). By
 // the time this probe runs, that value is frozen; no per-call env swap from
 // probes.js can retroactively change it. Closing that gap needs an actual
 // bridge-persistence.js signature change: systemdUnitInstalled(ctx) (or
 // `{ env }`) computing the unit dir from the passed env at CALL time
-// instead of a frozen module constant — see this function's own report for
+// instead of a frozen module constant. See this function's own report for
 // the exact routing note.
 function scopeEnvToCtx(ctx, fn) {
   if (!ctx || !ctx.env || ctx.env === process.env) return fn();
@@ -3928,9 +3928,9 @@ function scopeEnvToCtx(ctx, fn) {
 }
 
 // Best-effort username for the systemd `loginctl show-user`/`enable-linger`
-// calls bridge-persistence.js's lingerEnabled() needs — env first (the
+// calls bridge-persistence.js's lingerEnabled() needs: env first (the
 // documented seam a hermetic test drives), else os.userInfo() (some
-// sandboxes carry no passwd entry — guarded, never thrown).
+// sandboxes carry no passwd entry: guarded, never thrown).
 function bridgePersistenceUser(ctx) {
   const env = ctx.env || process.env;
   if (nonEmpty(env.USER)) return env.USER;
@@ -3969,13 +3969,13 @@ function probeBridgePersistence(item, ctx) {
       };
     }
     // systemdUnitInstalled's
-    // `enabled` is a genuine tri-state (true/false/null — see its own
-    // comment in bridge-persistence.js) — null means UNDETERMINED (no
+    // `enabled` is a genuine tri-state (true/false/null, see its own
+    // comment in bridge-persistence.js). null means UNDETERMINED (no
     // systemctl on this host, or `is-enabled` exited with a code other than
     // 0/1), not "confirmed not enabled". The old `enabled !== true` check
     // folded both into the same "is installed but not enabled" wording,
     // which tells an operator to `systemctl enable` a unit whose enablement
-    // was never actually established — the wrong remediation when the real
+    // was never actually established, the wrong remediation when the real
     // problem is that systemctl couldn't be queried at all. Named separately
     // here. The verdict stays 'degraded' in both cases.
     if (unitInfo.enabled === null) {
@@ -3992,7 +3992,7 @@ function probeBridgePersistence(item, ctx) {
     }
     const user = bridgePersistenceUser(ctx);
     const linger = scopeEnvToCtx(ctx, () => bridgePersistence.lingerEnabled({ user }));
-    // Same tri-state shape as unitInfo.enabled above — lingerEnabled()
+    // Same tri-state shape as unitInfo.enabled above. lingerEnabled()
     // returns null when it is undetermined (no loginctl, or the query
     // failed), not when linger is confirmed off. Split for the same reason.
     if (linger === null) {
@@ -4021,7 +4021,7 @@ function probeBridgePersistence(item, ctx) {
 
 // ── observability-stack ───────────────────────────────────
 //
-// No descriptor fields — a fixed convention (same posture as
+// No descriptor fields: a fixed convention (same posture as
 // cmd:codex_provisioned/phi-coherence/bridge-persistence), not per-item
 // configuration.
 //
@@ -4121,7 +4121,7 @@ let legacyUserSettings = false;
 function setLegacyUserSettings(on) { legacyUserSettings = Boolean(on); }
 
 // Run the probe for one manifest item. ctx = { repoRoot, targetPath, scope,
-// env }. An unrecognized probe.type (should never happen — manifest-lint.mjs
+// env }. An unrecognized probe.type (should never happen: manifest-lint.mjs
 // gates the manifest itself) reads absent rather than throwing, so a single
 // bad item can't abort a whole probe sweep.
 function runProbe(item, ctx) {

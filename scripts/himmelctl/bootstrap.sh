@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# scripts/himmelctl/bootstrap.sh — node-less bootstrap shim for himmelctl
+# scripts/himmelctl/bootstrap.sh: node-less bootstrap shim for himmelctl
 # For a genuinely node-less clean machine: detect node
-# absent, install node (+ bun on darwin — apt has no bun package, so linux
+# absent, install node (+ bun on darwin: apt has no bun package, so linux
 # gets node+npm and bun stays an optional post-bootstrap step) via the
 # platform package manager (darwin: brew, linux: apt), then hand off to
-# `node scripts/himmelctl/bin.js install`. Nothing else — himmelctl's own
+# `node scripts/himmelctl/bin.js install`. Nothing else. himmelctl's own
 # preflight covers every other hard-gate tool. Windows is unsupported.
 #
 # Usage:
@@ -41,9 +41,9 @@ if [ -n "$default_scope" ]; then
 fi
 handoff_cmd="node \"$bin_js\" ${handoff_args[*]}"
 
-# install_plan — the package-manager line for this platform. darwin: brew
+# install_plan: the package-manager line for this platform. darwin: brew
 # (node+bun both brew-installable); everything else (linux, and any posix
-# host running this .sh): apt — bun is not an apt package, so apt installs
+# host running this .sh): apt. bun is not an apt package, so apt installs
 # node via `nodejs npm` only (npm satisfies bin.js's hard gate) and bun stays
 # a separate, optional, post-bootstrap step (see the note echoed below).
 install_plan() {
@@ -58,7 +58,7 @@ run_install() {
     Darwin) brew install node bun ;;
     *)
       # Non-Darwin assumes apt (the only posix plan this shim carries). Do NOT
-      # add distro-specific package managers (yum/dnf/pacman/zypper) — fail
+      # add distro-specific package managers (yum/dnf/pacman/zypper). Fail
       # closed with a manual-install pointer naming the detected platform so a
       # non-apt host never silently mis-runs `sudo apt-get`.
       if ! command -v apt-get >/dev/null 2>&1; then

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-vm-mode.sh — hermetic tests for (vm.mode in himmelctl):
+# test-wizard-vm-mode.sh: hermetic tests for (vm.mode in himmelctl):
 #
 #   a. luna-config.js: `vm` is an OPTIONAL managed section; validateVm()
 #      verdicts equal the resolver's (scripts/lib/vm-mode.sh mode: rc 0 vs 2)
@@ -7,7 +7,7 @@
 #   b. the install wizard's vm question (askVm) re-asks on invalid input with
 #      that same validator, one row per mode.
 #   c. the cadence menu (askCadences): a `vm_proof` row (vault-stall) is only
-#      pre-selected when the vm.mode route is a VM — one row per mode
+#      pre-selected when the vm.mode route is a VM: one row per mode
 #      (local, remote, none, error).
 #   d. non-interactive: --from-profile never auto-arms a vm_proof row under
 #      none/error, still arms it under local/remote; a vm answer is persisted
@@ -195,7 +195,7 @@ printf '{"vm":{"mode":"local"}}\n' > "$HIMMEL_VM_MODE_CONFIG"
 got=$(DOC='{"vm":{"mode":"local"}}' VMANS='{"mode":"none"}' askcad)
 [ "$(cad_field "$got" .vs)" = off ] || fail "c: wizard vm=none answer should win over a local config: $got"
 
-# error: a vm_proof row is not armable at all — selecting it re-asks
+# error: a vm_proof row is not armable at all. Selecting it re-asks
 printf '{"vm":{"mode":"bogus"}}\n' > "$HIMMEL_VM_MODE_CONFIG"
 got=$(node -e '
   const w = require(process.argv[1]);
@@ -203,7 +203,7 @@ got=$(node -e '
   w.askCadences(async () => seq[n++], "existing", [], undefined).then((r) => console.log(JSON.stringify({ n, vs: r["vault-stall"] })));
 ' "$wizard" 2>/dev/null)
 [ "$got" = '{"n":2,"vs":"off"}' ] || fail "c: error — explicit vault-stall should be refused and re-asked: $got"
-# none: an explicit selection is the operator's ack — armable
+# none: an explicit selection is the operator's ack, armable
 printf '{"vm":{"mode":"none"}}\n' > "$HIMMEL_VM_MODE_CONFIG"
 got=$(node -e '
   const w = require(process.argv[1]);
@@ -304,7 +304,7 @@ ok "d — a remote answer that omits port/identity drops the previous target's"
 # ── e. the resolver decides, on the config as written (J1947 B1) ─────────────
 # A config the JS validator accepts but the resolver rejects (rc 2): a JSON
 # float port. A vm answer equal to it leaves the file as it is, so vault-stall
-# must be refused as a config error — interactively and via --from-profile.
+# must be refused as a config error, interactively and via --from-profile.
 float_cfg='{"vm":{"mode":"remote","remote":{"ssh":"u@h","port":22.0}}}'
 askcad_doc() { # <answer-json> -> {n, vs}; doc = the wizard's own read of its config
   node -e '
@@ -320,7 +320,7 @@ printf '%s\n' "$float_cfg" > "$HIMMEL_LUNA_CONFIG_PATH"
 got=$(askcad_doc '{"mode":"remote","remote":{"ssh":"u@h","port":22,"identity":"~/.ssh/id_ed25519"}}')
 [ "$got" = '{"n":2,"vs":"off"}' ] || fail "e: interactive float port — vault-stall must be refused as a config error: $got"
 # (the interior-\x1c ssh row left this section in the JS validator
-# now rejects it too, so the wizard cannot read such a config at all — table a)
+# now rejects it too, so the wizard cannot read such a config at all, table a)
 # control: the same answer over an integer port arms
 printf '{"vm":{"mode":"remote","remote":{"ssh":"u@h","port":22}}}\n' > "$HIMMEL_LUNA_CONFIG_PATH"
 got=$(askcad_doc '{"mode":"remote","remote":{"ssh":"u@h","port":22,"identity":"~/.ssh/id_ed25519"}}')

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-config-feed.sh — `himmelctl report --json`, the config
+# test-config-feed.sh: `himmelctl report --json`, the config
 # UI's one data feed (scripts/himmelctl/lib/config-feed.js), plus redact.js and
 # the flag-registry lint.
 #
@@ -104,7 +104,7 @@ JSON
 STUB
 chmod +x "$scriptRoot"/scripts/*.sh "$scriptRoot"/scripts/*/*.sh
 
-# fake crontab first on PATH — must never be called
+# fake crontab first on PATH. Must never be called
 fakeBin="$work/fakebin"; mkdir -p "$fakeBin"
 cronLog="$work/crontab.calls"
 printf '#!/usr/bin/env bash\necho called >> "%s"\nexit 1\n' "$cronLog" > "$fakeBin/crontab"

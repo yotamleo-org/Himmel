@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-commit-rules.sh — hermetic tests: the frame-11
+# test-wizard-commit-rules.sh: hermetic tests: the frame-11
 # install wording and the Commit rules step (journey J7 of the docs-site plan).
 #
 # Covers:

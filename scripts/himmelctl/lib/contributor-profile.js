@@ -1,5 +1,5 @@
 'use strict';
-// scripts/himmelctl/lib/contributor-profile.js — contributor-dev reporting for
+// scripts/himmelctl/lib/contributor-profile.js: contributor-dev reporting for
 // `himmelctl install`. setup.sh remains the one
 // idempotent mutation primitive; this module only reads actual state after (or
 // before, for --dry-run) that primitive. It composes the existing manifest
@@ -169,7 +169,7 @@ function reportLines(report, opts) {
     if (guidance) lines.push(guidance);
   }
   // alwaysOn is asked universally now (the dev overlay is an
-  // orthogonal layer on top of a profile install, not its own flow) — the
+  // orthogonal layer on top of a profile install, not its own flow). The
   // universal epilogue (bin.js's printAdopterEpilogue, printed alongside this
   // report on every run) already reports the honest hardening state, so this
   // report no longer duplicates/shadows it with a hardcoded "not asked" line.

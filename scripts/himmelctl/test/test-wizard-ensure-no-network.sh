@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-ensure-no-network.sh — `himmelctl ensure --no-network` runs only
+# test-wizard-ensure-no-network.sh: `himmelctl ensure --no-network` runs only
 # the manifest-declared local path and refuses everything else
 # A17). Deny by default: an item with no `noNetwork` declaration
 # refuses, with a reason, and none of bun, npm, git, qmd or adopt.sh is called.
@@ -46,7 +46,7 @@ done
 STUB_LOG="$work/stub.log"; : > "$STUB_LOG"
 real_path="$PATH"
 # stub_calls: the stub log minus the status probes the CLI itself runs (qmd
-# list/status reads, the localhost MCP health check) — converge work only.
+# list/status reads, the localhost MCP health check): converge work only.
 stub_calls() { grep -v -e '^qmd collection list' -e '^qmd status' -e '^curl .*localhost' -e '^curl .*127\.0\.0\.1' "$STUB_LOG" || true; }
 # git is read-only for the CLI's own provenance (rev-parse, status): the stub
 # logs and swallows only the network verbs and passes the rest to real git.

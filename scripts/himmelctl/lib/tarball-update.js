@@ -1,5 +1,5 @@
 'use strict';
-// tarball-update.js — the release tarball's versioned layout and its update
+// tarball-update.js: the release tarball's versioned layout and its update
 // (design -linux-packaging.md §1.4).
 //
 // Layout: every release is extracted into <base>/<version>/ and
@@ -8,7 +8,7 @@
 // atomic link swap: a file the new release deleted cannot survive, rollback is
 // repointing the link, and removal is one directory.
 //
-// Update: release lookup (scripts/lib/release-check.sh — the same fixed URL,
+// Update: release lookup (scripts/lib/release-check.sh, the same fixed URL,
 // grammar check and version compare the session nudge uses) -> download the
 // tarball + .sha256 into a staging dir under <base> -> verify the sha256 (and,
 // when `gh` is present and authenticated, the build attestation) -> extract ->
@@ -18,7 +18,7 @@
 // has passed. A git clone never reaches this file: versionedLayout() is null
 // for any root with a .git.
 //
-// ponytail: previous version dirs are kept, never pruned — rollback needs the
+// ponytail: previous version dirs are kept, never pruned. Rollback needs the
 // last one and nothing here can tell which older ones the operator still wants;
 // the update prints the rm line. Upgrade path: prune all but current + previous
 // once an operator asks for it.
@@ -56,7 +56,7 @@ function versionedLayout(root) {
 }
 
 // The live version: the name of the dir current points at (the release tag's
-// version — a -pre.N tarball's VERSION file carries only X.Y.Z), else VERSION.
+// version: a -pre.N tarball's VERSION file carries only X.Y.Z), else VERSION.
 function installedVersion(layout) {
   const name = path.basename(layout.dir);
   if (VERSION_RE.test(name)) return name;

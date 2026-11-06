@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# test-wizard-status-cmd.sh — hermetic tests for the himmelctl `status`
+# test-wizard-status-cmd.sh: hermetic tests for the himmelctl `status`
 # subcommand: the severity-grouped diff between
 # desired (state.js-derived) and actual (probes.js) per manifest item, plus
 # its stable --json mode. Mirrors sibling test-wizard-*.sh conventions: a
 # fake HOME + HIMMELCTL_CACHE_DIR + HIMMELCTL_REPO_ROOT fixture, node
 # launched by absolute path, winpath for node.exe's MSYS-path blindness.
 # `status` never prompts (no readline anywhere in its code path) and never
-# shells out to a stub-able installer, so — unlike test-wizard-derive.sh —
+# shells out to a stub-able installer, so (unlike test-wizard-derive.sh)
 # there is no install/uninstall script stub to fake; the fixture only needs
 # a real copy of scripts/install/manifest.json plus the handful of files
 # the chosen probe set reads.
@@ -32,11 +32,11 @@
 
 set -euo pipefail
 
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
 # `set -o pipefail`: grep -q exits the instant it matches, the producer
 # then takes SIGPIPE writing the remainder, and pipefail reports the
-# PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
+# PIPELINE as failed, so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
 # so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
@@ -61,7 +61,7 @@ cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
 # write_cache <path> <role> <scope> <vault-mode> <vault-path> <handover-mode>
-#             <handover-path> <plugin-set> — a minimal valid Draft-A profile
+#             <handover-path> <plugin-set>: a minimal valid Draft-A profile
 #             (same shape test-wizard-derive.sh's write_cache writes).
 write_cache() {
   cat > "$1" <<JSON
@@ -69,7 +69,7 @@ write_cache() {
 JSON
 }
 
-# snapshot_dir <dir> — sorted "relpath sha256" pairs, for a before/after
+# snapshot_dir <dir>: sorted "relpath sha256" pairs, for a before/after
 # byte-identity check that doesn't depend on tar's metadata quirks.
 snapshot_dir() {
   ( cd "$1" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do $_SHA256_CMD -- "$f"; done )
@@ -79,7 +79,7 @@ snapshot_dir() {
 # A real copy of manifest.json plus the handful of repoRoot-relative files
 # the chosen probe set reads: jira/bitbucket dist builds (file-exists),
 # doc-guard-map.sh (file-exists, REPO_ROOT_FILE_EXISTS_IDS), .env (settings-
-# key, jira-env-keys — always repoRoot-relative per both scopes).
+# key, jira-env-keys, always repoRoot-relative per both scopes).
 fixtureRepo="$work/repo"
 mkdir -p "$fixtureRepo/scripts/install" "$fixtureRepo/scripts/jira/dist" \
   "$fixtureRepo/scripts/bitbucket/dist" "$fixtureRepo/scripts/lib"
@@ -109,7 +109,7 @@ echo "ok: case a — --help / status --help list the status subcommand"
 targetBE="$work/target-be"
 mkdir -p "$targetBE/.claude" "$targetBE/scripts/guardrails"
 : > "$targetBE/scripts/guardrails/lib.sh"
-# Deliberately NO .pre-commit-config.yaml — the known-missing enabled item
+# Deliberately NO .pre-commit-config.yaml: the known-missing enabled item
 # for case b. settings.json carries wiring-statusline + claude-plugins-
 # pluginSet green, but no hooks.PreToolUse markers (wiring-pretooluse red).
 cat > "$targetBE/.claude/settings.json" <<'JSON'
@@ -135,14 +135,14 @@ echo "$outB" | jq -e '.items[] | select(.id=="pre-commit-hooks") | .detail | con
 echo "ok: case b — known-missing enabled item (pre-commit-hooks) reads red, exit 0, names all hook types"
 
 # status is documented read-only. targetBE/cacheBE had NO prior
-# state.json entry before this run (a fresh target — the derive/migrate
+# state.json entry before this run (a fresh target: the derive/migrate
 # comparison must happen purely in memory), so state.json must still be
-# ABSENT after a full status run with a valid install-profile cache — not
+# ABSENT after a full status run with a valid install-profile cache, not
 # merely on the already-covered "no cache at all" early-exit (case d below).
 [ ! -f "$cacheBE/state.json" ] || fail "case b: status must NOT create state.json even on a full run with a valid cache (got: $(cat "$cacheBE/state.json")) [HIMMEL-2463]"
 echo "ok: case b — status leaves state.json absent even after deriving a full report"
 
-# ── case f: no-prompt guard — stdin closed must not hang or error ──────────
+# ── case f: no-prompt guard, stdin closed must not hang or error ──────────
 set +e
 ( cd "$targetBE" && HIMMELCTL_REPO_ROOT="$(winpath "$fixtureRepo")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheBE")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheBE")-luna-config.json" HOME="$work/home" USERPROFILE="$(winpath "$work/home")" \
       "$node_bin" "$wizard" status < /dev/null ) >/dev/null; rcF=$?
@@ -164,7 +164,7 @@ idsSorted=$(echo "$outE1" | jq -c '[.items[].id] | sort')
 [ "$idsActual" = "$idsSorted" ] || fail "case e: items should be sorted by id (got: $idsActual, sorted: $idsSorted)"
 echo "ok: case e — --json byte-identical across runs, summary.red consistent, items sorted by id"
 
-# ── case g: purity — beyond the one sanctioned first-derive write ─────────
+# ── case g: purity, beyond the one sanctioned first-derive write ─────────
 # The runs above already exercised this target/cache pair repeatedly, so a
 # state.json entry for it already exists (sanctioned first write already
 # happened). Snapshot now, run once more, and confirm nothing changed.
@@ -250,7 +250,7 @@ redH1=$(echo "$outH1" | jq -c '[.items[] | select(.severity=="red") | .id]')
 grepq "$(cat "$cacheH/install-profile.json")" -F '"scope":"project"' || fail "case h1: the recorded profile file must be left untouched"
 echo "ok: case h1 — legacy project record on himmel's own checkout reads as user scope"
 # h3: the project-scope items (here the two scopes:["project"] dist builds) are
-# still judged against the checkout under the legacy record — green, not n/a.
+# still judged against the checkout under the legacy record: green, not n/a.
 outH3=$(cd "$fixtureRepo" && HIMMELCTL_REPO_ROOT="$(winpath "$fixtureRepo")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheH")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheH")-luna-config.json" HOME="$homeH" USERPROFILE="$(winpath "$homeH")" \
   "$node_bin" "$wizard" status --json --items jira-cli-dist-build,bitbucket-cli-build)
 greenH3=$(echo "$outH3" | jq -c '[.items[] | select(.severity=="green") | .id] | sort')

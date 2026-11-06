@@ -21,7 +21,7 @@ HIMMEL_LUNA_CONFIG_PATH="$(winpath "$tmp/home/luna-config.json")"
 export USERPROFILE HIMMELCTL_CACHE_DIR HIMMELCTL_REPO_ROOT HIMMELCTL_BIN_DIR HIMMEL_LUNA_CONFIG_PATH
 # Existing repo-root seam resolves only these harmless teardown scripts.
 # --dry-run now RUNS the executor's own --dry-run (the plan it
-# prints is the script's, not a second copy) — the stub answers it distinctly.
+# prints is the script's, not a second copy). The stub answers it distinctly.
 printf '#!/usr/bin/env bash\ncase " $* " in *" --dry-run "*) echo fixture-dry-run; exit 0 ;; esac\necho fixture-teardown\nexit 7\n' > "$tmp/repo/scripts/uninstall.sh"
 
 check_rc() {
@@ -34,7 +34,7 @@ check_not_has() {
     if grep -Fq -- "$1" "$2"; then echo "FAIL - $3: unexpected $1"; exit 1; fi
 }
 
-# C1 — RED: the old helper reported a successful human decline on EOF.
+# C1 (RED): the old helper reported a successful human decline on EOF.
 node "$root/scripts/himmelctl/bin.js" uninstall </dev/null >"$tmp/out" 2>"$tmp/err"; rc=$?
 check_rc 2 "$rc" C1
 check_has 'non-interactive run without --yes' "$tmp/err" C1
@@ -87,11 +87,11 @@ for confirm_case in C6 C7; do
     fi
 done
 
-# C8 — WHY: an open, silent pipe must not stall teardown.
+# C8 (WHY): an open, silent pipe must not stall teardown.
 if [ -n "$_TIMEOUT_BIN" ]; then
     # WHY: an open pipe that never sends a byte and never closes.
     # No PID capture: $! is not set by a process substitution before bash 5.1,
-    # so the producer cannot be reaped portably — instead it is given a short
+    # so the producer cannot be reaped portably. Instead it is given a short
     # lifetime and its stderr, the only fd it inherits, is discarded, so a
     # lingering producer holds nothing the test harness is reading.
     exec 3< <(sleep 10 2>/dev/null)
@@ -109,7 +109,7 @@ else
     echo 'skip - C8 timeout is not available'
 fi
 
-# C9-C11 — real TTY decline, EOF, and redirected stdout must never teardown.
+# C9-C11: real TTY decline, EOF, and redirected stdout must never teardown.
 if [ "$(uname -s)" = "Linux" ] && command -v script >/dev/null 2>&1; then
     printf 'n\n' | script -qec "node \"$root/scripts/himmelctl/bin.js\" uninstall" /dev/null >"$tmp/out" 2>"$tmp/err"; rc=$? # gnu-ok: util-linux script(1), and the block is uname-gated to Linux
     if (
@@ -144,7 +144,7 @@ if [ "$(uname -s)" = "Linux" ] && command -v script >/dev/null 2>&1; then
     else
         confirm_failed=$((confirm_failed + 1))
     fi
-    # C13-C18 — (operator ruling a): the prompt is default-No,
+    # C13-C18 (operator ruling a): the prompt is default-No,
     # `Proceed? [y/N]`. Only y/yes (any case) consents; a bare Enter or any
     # other answer declines with rc=3. Each runs under the scratch HOME above.
     printf '\n' | script -qec "node \"$root/scripts/himmelctl/bin.js\" uninstall" /dev/null >"$tmp/out" 2>"$tmp/err"; rc=$? # gnu-ok: util-linux script(1), and the block is uname-gated to Linux
@@ -195,7 +195,7 @@ check_rc 7 "$rc" 'yes spawn'
 check_has 'fixture-teardown' "$tmp/out" 'yes spawn'
 check_not_has 'Proceed?' "$tmp/out" 'yes spawn'
 echo 'ok - --yes runs only the fixture teardown and propagates rc=7'
-# C12 — help must include the propagated teardown meanings of rc=2 and rc=3.
+# C12: help must include the propagated teardown meanings of rc=2 and rc=3.
 node "$root/scripts/himmelctl/bin.js" --help >"$tmp/out" 2>"$tmp/err"; rc=$?
 check_rc 0 "$rc" C12
 check_has '2 = refused (non-interactive without --yes) or' "$tmp/out" C12

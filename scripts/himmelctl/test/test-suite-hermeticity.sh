@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-suite-hermeticity.sh — structural guard
+# test-suite-hermeticity.sh: structural guard
 #
 # WHY: os.homedir() reads USERPROFILE, not HOME, for node.exe children under
 # Git Bash on Windows (proven: `HOME=/tmp/fakehome node -e "console.log(require('os').homedir())"`
@@ -18,42 +18,42 @@
 # and the operator's real ~/.claude/himmel/install-profile.json still got
 # overwritten by a writeCache() call reached through askQuestions() with an
 # all-defaulted answer set (profile=starter, lanes=DEFAULT_LANE_IDS=
-# [ollama,copilot] at the time — DEFAULT_LANE_IDS is empty as of
+# [ollama,copilot] at the time. DEFAULT_LANE_IDS is empty as of
 # v1 lane rescope, but the leak mechanism is unchanged; any all-defaulted
 # answer set still reaches writeCache()) via a closed/unredirected
 # stdin path the static idiom-matcher never enumerated. A pattern check can
-# only catch idioms it was told to look for — require()-style invocations,
+# only catch idioms it was told to look for. require()-style invocations,
 # and this closed-stdin writeCache() path all missed it in
 # turn. So this guard has THREE layers:
 #
-#   1. check_dir() — static, cheap, LOCALIZES a fault to a file:line when one
+#   1. check_dir(): static, cheap, LOCALIZES a fault to a file:line when one
 #      exists (kept: still useful for suites using the "$node_bin" "$wizard"
 #      idiom directly). It ALSO proves winpath is at least reachable in text
 #      (sourced or locally defined) for every $(winpath ...) call site it
-#      sees — but text presence is not a runtime value; see GUARD LIMITS.
-#   2. check_sources_helper() + check_no_local_winpath() — every suite must
+#      sees, but text presence is not a runtime value; see GUARD LIMITS.
+#   2. check_sources_helper() + check_no_local_winpath(): every suite must
 #      source _hermetic-home.sh (the SINGLE shared winpath() definition,
 #      34 hand-copied local definitions is itself the bug
-#      shape — one missing copy is exactly what happened to
+#      shape. One missing copy is exactly what happened to
 #      test-wizard-preflight.sh), and no suite may still carry its own local
 #      copy (proving that consolidation actually held, not just that it
 #      happened once).
-#   3. canary_snapshot/canary_run + check_real_canary() — hashes a THROWAWAY
+#   3. canary_snapshot/canary_run + check_real_canary(): hashes a THROWAWAY
 #      SANDBOX (seeded faithfully from the three real files' current
-#      content, never their live paths — codex-1/codex-2 forced this
+#      content, never their live paths: codex-1/codex-2 forced this
 #      redesign, see check_real_canary()'s own comment) before/after a suite
 #      runs and fails on ANY change, including an absent file becoming
 #      present. This is idiom-agnostic: it does not care HOW a suite reached
 #      the target, only THAT it did. check_real_canary() wraps this around
-#      ACTUALLY RUNNING every real suite (opt-in, HERMETICITY_REAL_CANARY=1
-#      — see case g(real)(c) below for why it defaults off; the gating is
+#      ACTUALLY RUNNING every real suite (opt-in, HERMETICITY_REAL_CANARY=1,
+#      see case g(real)(c) below for why it defaults off; the gating is
 #      about CI cost now, not risk, since the sandbox never touches the real
 #      files at all).
 #
-# GUARD LIMITS (stated honestly, not implied away — Chief Ruling 38): this
+# GUARD LIMITS (stated honestly, not implied away: Chief Ruling 38): this
 # guard, even with all three layers green, does NOT prove every path is
 # hermetic. It does not see in-process require() invocations (a suite that
-# requires helpers.js/luna-config.js directly instead of spawning bin.js —
+# requires helpers.js/luna-config.js directly instead of spawning bin.js:
 # hand-audited separately, not by this file), it does not see non-bash entry
 # points (verified separately, from inside, to reach only fixture stubs), and
 #
@@ -91,19 +91,19 @@
 #
 # it cannot prove a value is non-empty at runtime for any code path neither
 # check_dir()'s idiom-matcher nor check_real_canary()'s per-suite run actually
-# exercises — that last one is the canary's job by design, not the static
+# exercises. That last one is the canary's job by design, not the static
 # check's, and check_real_canary() itself is opt-in (case g(real)(c)) rather
 # than run on every corpus pass, for cost reasons documented at its call site.
 #
 # This file is BOTH the guard AND its own test: every check function is
 # invocable standalone (for a RED/GREEN comparison against two different
 # trees, or to canary-wrap an arbitrary command), and running this file with
-# no argument exercises each one against synthetic fixtures — including a
-# POSITIVE CONTROL proving the canary itself can detect a real write — before
+# no argument exercises each one against synthetic fixtures (including a
+# POSITIVE CONTROL proving the canary itself can detect a real write) before
 # asserting PASS on the real, now-fixed scripts/himmelctl/test/ directory.
 set -uo pipefail
 
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline (same helper every sibling suite in this directory defines,
 # `<producer> | grep -q` under `set -o pipefail` inverts on a
 # large match, since grep -q exits on first match and the producer takes
@@ -126,7 +126,7 @@ REAL_TEST_DIR="$REPO_ROOT/scripts/himmelctl/test"
 # shellcheck disable=SC1091
 . "$REAL_TEST_DIR/_hermetic-home.sh"
 
-# _sha256 <path> — detected ONCE (not per call): sha256sum on Linux/Git-Bash,
+# _sha256 <path>: detected ONCE (not per call): sha256sum on Linux/Git-Bash,
 # `shasum -a 256` on stock macOS, which ships no sha256sum at all (codex-3).
 if command -v sha256sum >/dev/null 2>&1; then
   _sha256() { sha256sum "$1" | awk '{print $1}'; }
@@ -137,11 +137,11 @@ else
   exit 1
 fi
 
-# canary_snapshot <path1> <path2> <path3> — prints one sha256-or-ABSENT token
+# canary_snapshot <path1> <path2> <path3>: prints one sha256-or-ABSENT token
 # per path, one per line. ABSENT is a real, distinct state (never conflated
 # with any hash) so a suite that CREATES one of these files on a clean
-# machine — the "file didn't exist, guard has nothing to diff" trap Chief
-# Ruling 38 flagged — is still caught: absent->present is a mismatch, exactly
+# machine (the "file didn't exist, guard has nothing to diff" trap Chief
+# Ruling 38 flagged) is still caught: absent->present is a mismatch, exactly
 # like present->changed.
 canary_snapshot() {
   local p
@@ -150,7 +150,7 @@ canary_snapshot() {
   done
 }
 
-# canary_run <path1> <path2> <path3> -- <cmd...> — snapshots the three paths,
+# canary_run <path1> <path2> <path3> -- <cmd...>: snapshots the three paths,
 # runs <cmd...>, snapshots again, and reports PASS (rc 0, nothing printed) or
 # FAIL (rc 1, one "DRIFT <path>: <before> -> <after>" line per changed path).
 # Idiom-agnostic by construction: it does not inspect the command's source at
@@ -180,7 +180,7 @@ canary_run() {
   [ "$drift" -eq 0 ] && [ "$rc" -eq 0 ]
 }
 
-# real_home_dir — the operator's REAL home as a node child would resolve it.
+# real_home_dir: the operator's REAL home as a node child would resolve it.
 #
 # `os.homedir` can read USERPROFILE; $HOME is a
 # git-bash convenience that can legitimately point elsewhere (git-bash honours
@@ -212,7 +212,7 @@ real_home_dir() {
   printf '%s\n' "$HOME"
 }
 
-# check_real_canary <dir> — actually RUNS every *.sh in <dir> (except this
+# check_real_canary <dir>: actually RUNS every *.sh in <dir> (except this
 # guard and the shared helper) and asserts none of them write outside a
 # THROWAWAY SANDBOX, seeded with a faithful COPY of the three real
 # operator-home files' current content (never their live paths).
@@ -275,13 +275,13 @@ real_home_dir() {
 #
 # Deliberately ignores each suite's own exit code for PASS/FAIL purposes: a
 # suite's PASS/FAIL is scripts/ci/run-shell-tests.sh's job, not this
-# function's — conflating "the suite failed for an unrelated reason" with
+# function's. Conflating "the suite failed for an unrelated reason" with
 # "the suite wrote outside its sandbox" would make this check noisy in a way
 # that has nothing to do with hermeticity. That reasoning is sound as far as
 # it goes, but it does NOT license discarding the exit code entirely: a
 # suite that dies before it reaches the code that would write (a missing
 # dependency, a winpath() FATAL, any early crash) writes nothing, moves
-# nothing, and therefore reads as behaviourally clean — a VACUOUS pass, not
+# nothing, and therefore reads as behaviourally clean: a VACUOUS pass, not
 # evidence of hermeticity. This function still never fails the canary over a
 # crashed suite (that stays run-shell-tests.sh's job), but it DOES capture
 # each suite's rc, counts how many exited non-zero, and names them in a
@@ -376,7 +376,7 @@ check_real_canary() {
   return "$rc"
 }
 
-# check_sources_helper <dir> — every *.sh in <dir> that establishes a fake
+# check_sources_helper <dir>: every *.sh in <dir> that establishes a fake
 # HOME (a signal a suite means to isolate a node child) must source
 # _hermetic-home.sh. STATED PLAINLY: _hermetic-home.sh does NOT itself set
 # USERPROFILE or close os.homedir() at the source -- it defines exactly one
@@ -437,11 +437,11 @@ check_sources_helper() {
   return 0
 }
 
-# check_no_local_winpath <dir> — every *.sh in <dir> (except this guard and
+# check_no_local_winpath <dir>: every *.sh in <dir> (except this guard and
 # the shared helper) must NOT define its own winpath() function any more. A
 # surviving local copy means the item-1 consolidation (34
-# hand-copied definitions -> one, in _hermetic-home.sh) did not fully hold —
-# this is the STRICT positive proof of that, distinct from check_dir()'s
+# hand-copied definitions -> one, in _hermetic-home.sh) did not fully hold.
+# This is the STRICT positive proof of that, distinct from check_dir()'s
 # permissive text-presence check below (which accepts either a source line or
 # a local definition, since it also has to judge synthetic fixtures written
 # in the old style).
@@ -470,7 +470,7 @@ check_no_local_winpath() {
   return 0
 }
 
-# check_dir <dir> — scans <dir>/*.sh, prints one "MISSING <vars> in
+# check_dir <dir>: scans <dir>/*.sh, prints one "MISSING <vars> in
 # <path>:<line>: <snippet>" line per violating invocation block, and exits
 # 1 if any were found (0 otherwise). This is the actual guard: run it
 # standalone (`test-suite-hermeticity.sh [dir]`, default = this script's own

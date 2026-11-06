@@ -1,5 +1,5 @@
 'use strict';
-// scripts/himmelctl/lib/deps-engine.js — the engine behind `himmelctl deps
+// scripts/himmelctl/lib/deps-engine.js: the engine behind `himmelctl deps
 // status|ensure|upgrade`.
 //
 // deps.json (scripts/install/deps.json) is a SEPARATE, flat, version-aware
@@ -7,27 +7,27 @@
 // items (scripts/install/manifest.json). The two coexist by design
 // (operator-locked, 2026-07-17): manifest.json drives the wizard's
 // install/ensure WIRING reconcile (per-target enabled flags, dependency
-// ordering, coalescing — see install-engine.js); deps.json is a standalone
+// ordering, coalescing, see install-engine.js); deps.json is a standalone
 // toolchain-version view with no per-target state and no dependency graph
-// ("a flat declared set is enough" — do not add one). This file never
+// ("a flat declared set is enough": do not add one). This file never
 // touches state.json or the install-profile cache.
 //
 // Absorbs scripts/setup/ensure-tools.sh's per-OS recipe logic for the tools
 // it already knows how to install (git/jq/python3 via apt/dnf/brew identity
 // package names, bun via its official curl installer) by SHELLING OUT to it
-// (manager:"ensure-tools" below) rather than re-implementing it — the
+// (manager:"ensure-tools" below) rather than re-implementing it. The
 // script stays the single source of truth for that recipe; this file only
 // orchestrates + reports (mirrors the locked bootstrap-shim boundary: a
-// node process cannot bootstrap node itself, so every recipe here — even
-// the ones that could technically run inline — ends in a bash spawn, never
+// node process cannot bootstrap node itself, so every recipe here (even
+// the ones that could technically run inline) ends in a bash spawn, never
 // inline Node install logic).
 //
 // Pure/reporting functions (loadDeps, depStatus, versionGte) never spawn a
-// MUTATING process — depStatus's spawns are read-only version/presence
+// MUTATING process. depStatus's spawns are read-only version/presence
 // probes. buildDepEntry/qmdPullModelsEntry only BUILD a {cmd,args} plan
 // entry; they never spawn. Actual execution is the caller's job (bin.js's
 // cmdDeps), via install-engine.js's already-hardened runInstall() (timeout,
-// tree-kill, env-scrubbed spawn) — this file never calls spawnSync for a
+// tree-kill, env-scrubbed spawn). This file never calls spawnSync for a
 // mutating command itself.
 
 const fs = require('fs');
@@ -43,12 +43,12 @@ const { resolveBash } = require('../../hooks/run-hook-with-bash.js');
 
 // Read scripts/install/deps.json under repoRoot and return its deps array.
 // a MISSING deps.json (fs ENOENT) is distinguished from a MALFORMED
-// one — only ENOENT is caught, converted to a clear "deps.json not found"
+// one: only ENOENT is caught, converted to a clear "deps.json not found"
 // Error (surfaced via main()'s top-level catch, same as loadProfile's own
 // "missing/unreadable file -> throw -> exit 1" convention in bin.js). A
 // JSON.parse failure on a present-but-malformed file is left to propagate
 // as-is (its own SyntaxError) rather than being swallowed into the same
-// "missing" bucket — the two are different failure classes and callers need
+// "missing" bucket. The two are different failure classes and callers need
 // to tell them apart.
 function loadDeps(repoRoot) {
   const depsPath = path.join(repoRoot, 'scripts', 'install', 'deps.json');
@@ -60,7 +60,7 @@ function loadDeps(repoRoot) {
     throw e;
   }
   const parsed = JSON.parse(raw);
-  // validate the top-level shape — a deps.json whose `deps` is
+  // validate the top-level shape. A deps.json whose `deps` is
   // missing or not an array is a corrupt declaration, not an empty one.
   // Returning [] (the old fallback) would silently make `deps status` report
   // a healthy empty toolchain and `deps ensure` converge nothing, masking the
@@ -77,7 +77,7 @@ function loadDeps(repoRoot) {
 
 // True iff dotted version string `actual` >= `min` (both like "1.2.3" or
 // "1.2"; missing trailing components read as 0). `actual` may carry a
-// leading/trailing non-numeric prefix (e.g. "v24.3.0") — the first
+// leading/trailing non-numeric prefix (e.g. "v24.3.0"). The first
 // x.y(.z) run is extracted. Mirrors scripts/lib/qmd-bin.sh's own
 // _qmd_version_ge, ported to JS (this file has no bash to source).
 function versionGte(actual, min) {
@@ -101,9 +101,9 @@ function osKey(platform) {
 }
 
 // Read-only presence probe. qmd (the one dep declaring `resolver`) is not a
-// bare PATH-resolvable binary — it's served via a bun-global link qmd-bin.sh
+// bare PATH-resolvable binary. It's served via a bun-global link qmd-bin.sh
 // resolves (mirrors probes.js's cmd:has_qmd probe type, for the SAME
-// reason) — so its presence check sources the resolver and calls has_qmd
+// reason), so its presence check sources the resolver and calls has_qmd
 // instead of which(cmd). Every other dep is a plain `which()` PATH check.
 // resolverPath used to be
 // interpolated straight into the -c script text (`` `. "${resolverPath}" &&
@@ -112,11 +112,11 @@ function osKey(platform) {
 // shell metacharacters, could execute unintended commands. Passed as a
 // POSITIONAL arg ($1) instead, mirroring qmdPullModelsEntry's own `. "$1"
 // && has_qmd && qmd_cmd pull` shape and install-engine.js's buildEntry()
-// brew/apt-dep cases — no value is ever interpolated into the -c
+// brew/apt-dep cases. No value is ever interpolated into the -c
 // string.
 // isExecutableFile(p) -> bool. (CodeRabbit MAJOR): a PATH entry which
 // resolved must be a regular file the caller can actually EXECUTE before it
-// counts as present — a DIRECTORY named like the tool, or a present-but-non-
+// counts as present: a DIRECTORY named like the tool, or a present-but-non-
 // executable file (POSIX mode 0644), used to read as present (probePresence
 // returned true for any which() hit, and which() only checks existence). isFile()
 // rejects dirs / dir-symlinks / devices.
@@ -155,17 +155,17 @@ function probePresence(dep, ctx) {
 // Read-only version probe: runs the dep's versionProbe.args (default
 // ["--version"]) and extracts the first x.y(.z) token from stdout+stderr.
 // Returns null when the tool can't be run, exits nonzero (e.g. an
-// unrecognized flag prints usage instead of a version and exits 1 — that
+// unrecognized flag prints usage instead of a version and exits 1. That
 // output is never parsed for a version-shaped token, it's just discarded),
-// or no version-shaped token is found (e.g. a corrupt install) — callers
+// or no version-shaped token is found (e.g. a corrupt install). Callers
 // treat null as "can't verify", never as a crash. depStatus reports
 // "degraded" for it only when a minVersion floor is declared. Always routed through `bash -c` (never a raw
-// spawnSync(dep.cmd, ...)) — same reason bin.js's installMissing()/
+// spawnSync(dep.cmd, ...)), same reason bin.js's installMissing()/
 // runPluginEnable() all do the same: bash's PATH search resolves the right
 // binary regardless of extension, and a hermetic test can stub it.
 // resolverPath/dep.cmd/versionArgs
 // used to be string-interpolated into the -c line (same class of bug as
-// probePresence above — breaks on a spacey repoRoot, unhardened against
+// probePresence above, breaks on a spacey repoRoot, unhardened against
 // metacharacters). Every value is now a POSITIONAL arg; the script
 // references them via "$1"/"${@:2}" (never re-interpolated), same
 // convention as probePresence and install-engine.js's buildEntry() cases.
@@ -190,12 +190,12 @@ function probeVersion(dep, ctx) {
 
 // depStatus(dep, ctx) -> {id, cmd, present, version, severity, detail}
 // severity: "red" (absent), "degraded" (present but a declared minVersion
-// floor is not met, or is declared and the version is UNVERIFIABLE — the
+// floor is not met, or is declared and the version is UNVERIFIABLE: the
 // probe ran but produced no parseable x.y(.z) token), "green" (present, and
 // version-ok whenever a minVersion is declared). With no minVersion there is
 // nothing to verify, so a present dep whose version can't be read (e.g.
 // Ubuntu's apt gitleaks: "version is set by build process", no --version) is
-// green with version:null — the version-unverifiable check only matters when
+// green with version:null. The version-unverifiable check only matters when
 // a floor is declared.
 function depStatus(dep, ctx) {
   const present = probePresence(dep, ctx);
@@ -230,12 +230,12 @@ function depStatus(dep, ctx) {
 
 // The apt/dnf/brew package-manager detection ensure-tools.sh's own
 // _ensure_detect_pm uses, duplicated here ONLY for the upgrade verb: unlike
-// `ensure_tools()` (which SKIPS an already-present tool by design — it's an
+// `ensure_tools()` (which SKIPS an already-present tool by design: it's an
 // "ensure present" primitive, not an upgrade one), upgrading git/jq/python3
 // needs to re-run the package manager's install command even when the tool
 // is already there.
 // `sudo` used to be invoked bare here, ignoring
-// the configured HIMMELCTL_SUDO_PASSWORD entirely — a non-interactive
+// the configured HIMMELCTL_SUDO_PASSWORD entirely. A non-interactive
 // `deps upgrade --yes` on linux would either prompt (hanging with no tty
 // until sudo's own timeout) or just fail, instead of using the SAME
 // hardened credential path install-engine.js's own linux 'dep' buildEntry()
@@ -246,7 +246,7 @@ function depStatus(dep, ctx) {
 // Both keep the brew branch (macOS, no sudo involved) and the
 // "no supported package manager" branch unchanged. buildDepEntry (below)
 // picks between them based on whether resolveSudoPassword(ctx.repoRoot)
-// finds a configured value — never on which branch the bash snippet will
+// finds a configured value, never on which branch the bash snippet will
 // actually take at runtime (that's decided by `command -v`, not knowable
 // here).
 const UPGRADE_APT_DNF_BREW_SUDO_PASSWORD_SNIPPET = 'if command -v apt-get >/dev/null 2>&1; then '
@@ -269,10 +269,10 @@ const UPGRADE_APT_DNF_BREW_NO_SUDO_PASSWORD_SNIPPET = 'if command -v apt-get >/d
 // The install-time (ensure) or upgrade-time (opts.upgrade:true) plan entry
 // for one dep on the CURRENT platform (ctx.platform override for tests).
 // Every branch shells out via `bash -c` with the variable part passed as a
-// POSITIONAL arg ($1), never interpolated into the -c string — the same
+// POSITIONAL arg ($1), never interpolated into the -c string, the same
 // injection-hardening convention install-engine.js's buildEntry() already
 // uses for its own brew/apt-dep cases. Returned entries are handed
-// straight to install-engine.js's runInstall() — this function never spawns.
+// straight to install-engine.js's runInstall(). This function never spawns.
 function buildDepEntry(dep, ctx, opts) {
   const upgrade = Boolean(opts && opts.upgrade);
   const key = osKey((ctx && ctx.platform) || process.platform);
@@ -284,12 +284,12 @@ function buildDepEntry(dep, ctx, opts) {
     case 'ensure-tools': {
       const ensureToolsPath = path.join(ctx.repoRoot, 'scripts', 'setup', 'ensure-tools.sh');
       // bun/uv/pre-commit have no ensure_tools() dispatch by package-manager
-      // identity (each is special-cased inside that function) — their own
+      // identity (each is special-cased inside that function). Their own
       // upgrade path re-runs the bespoke installer directly, since
       // ensure_tools() itself SKIPS an already-present tool and can't
       // upgrade one. uv is bootstrapped via its official installer
       // (option 2: no system pip on stock Ubuntu/Debian
-      // PEP 668 — so the pip manager below is never routed to on linux for
+      // PEP 668, so the pip manager below is never routed to on linux for
       // uv or pre-commit); pre-commit is then `uv tool install pre-commit`,
       // which needs no pip either.
       const BESPOKE_INSTALLER = { bun: '_ensure_install_bun', uv: '_ensure_install_uv', 'pre-commit': '_ensure_install_precommit' };
@@ -302,7 +302,7 @@ function buildDepEntry(dep, ctx, opts) {
       }
       // route through the SAME hardened sudo
       // credential path install-engine.js's own linux 'dep' buildEntry()
-      // case uses — see the snippet constants' own header above.
+      // case uses. See the snippet constants' own header above.
       if (resolveSudoPassword(ctx.repoRoot)) {
         return {
           id: dep.id,
@@ -325,7 +325,7 @@ function buildDepEntry(dep, ctx, opts) {
     }
     case 'script': {
       // Idempotent/converging by construction (qmd_install re-checks
-      // qmd_fork_served) — the same recipe serves both ensure and upgrade.
+      // qmd_fork_served). The same recipe serves both ensure and upgrade.
       const script = path.join(ctx.repoRoot, recipe.script);
       return { id: dep.id, type: 'dep', cmd: 'bash', args: [script, ...(recipe.args || [])] };
     }
@@ -336,13 +336,13 @@ function buildDepEntry(dep, ctx, opts) {
   }
 }
 
-// The qmd model-pull plan entry (~2.1 GB embedding/rerank models — see
+// The qmd model-pull plan entry (~2.1 GB embedding/rerank models, see
 // adopt.sh's wire_qmd_core, the same `qmd pull` primitive). Separate from
-// buildDepEntry's qmd 'script' case (which only installs the BINARY) —
-// callers (cmdDeps upgrade) gate this behind an explicit prompt/--with-models
+// buildDepEntry's qmd 'script' case (which only installs the BINARY).
+// Callers (cmdDeps upgrade) gate this behind an explicit prompt/--with-models
 // before ever building it, matching adopt.sh's own size-caveat-first posture.
 // Takes the qmd dep object (not a hardcoded path) so it resolves via the
-// SAME dep.resolver every other qmd probe/install already uses — keeps a
+// SAME dep.resolver every other qmd probe/install already uses, keeps a
 // hermetic test's fixture resolver authoritative for every qmd code path,
 // not just presence/version.
 function qmdPullModelsEntry(dep, ctx) {

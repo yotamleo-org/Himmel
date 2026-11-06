@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-save-profile.sh — hermetic tests for deliverable 1
+# test-wizard-save-profile.sh: hermetic tests for deliverable 1
 # ("save-your-profile"): at the end of a SUCCESSFUL, non-dry-run install or
 # ensure converge, offer to save the answered profile as a NAMED, reusable
 # file under HIMMELCTL_PROFILES_DIR that `--from-profile` can replay on
@@ -18,14 +18,14 @@
 # underlying stream. Empirically (probed against this exact bin.js code),
 # when more than one line is already sitting in that stream's read buffer the
 # moment a readline instance attaches, it can silently consume ALL of them
-# even though only one is asked for — a line intended for a LATER prompt
+# even though only one is asked for: a line intended for a LATER prompt
 # (e.g. this ticket's save-name prompt) gets swallowed by an EARLIER one
 # (askQuestions, or the "Proceed?" confirm) and is gone, never reaching the
 # prompt it was meant to answer. Delivering each answer as its own write with
 # a short pause after it (stage(), below) keeps each prompt's line out of the
 # stream until that prompt's OWN readline instance is the one attached and
 # waiting, avoiding the swallow. This is why several cases below pipe from a
-# `(stage ...; stage ...)` subshell instead of a plain heredoc — a heredoc
+# `(stage ...; stage ...)` subshell instead of a plain heredoc: a heredoc
 # hands the whole answer set to the child as one already-available blob, RIGHT
 # BACK into the swallow case.
 #
@@ -37,21 +37,21 @@
 #   4. --from-profile (non-interactive) -> no prompt, no hang, no file.
 #   5. a FAILED install (adopt.sh exits 1) -> no save prompt, no file.
 #   6. name validation, NEGATIVE CONTROL: a name containing '..'/a path
-#      separator writes NOTHING outside the profiles dir — the traversal
+#      separator writes NOTHING outside the profiles dir: the traversal
 #      target is asserted absent.
 #   7. `ensure` after a real (non-dry-run) converge -> the same offer fires;
 #      --yes and --dry-run both suppress it (no prompt, no file).
 #   8. 1: an existing REGULAR file at the destination,
 #      overwrite confirmed -> it gets overwritten (the 'wx'-then-EEXIST-then-
 #      'w' fallback path this finding rewrote wasn't exercised by any case
-#      above — case 1 always writes into an empty profiles dir).
+#      above: case 1 always writes into an empty profiles dir).
 #   9. 1: a SYMLINK at the destination, overwrite
 #      confirmed -> refused (never written through), the symlink's target is
 #      left untouched. Probed and SKIPPED with a clear message if this box
 #      can't create filesystem symlinks (observed on at least one dev box:
 #      Git Bash's own `ln -s` silently copies instead of linking, and Node's
 #      fs.symlinkSync fails EPERM without elevated privilege/Developer
-#      Mode) — never faked against a same-named regular file instead.
+#      Mode), never faked against a same-named regular file instead.
 #  10. 2 findings 1/2/3: the save now writes via a
 #      temp-file-in-the-same-dir + renameSync, so a failure DURING that
 #      write must leave a pre-existing destination file completely
@@ -64,7 +64,7 @@
 #  11. Same finding, the OTHER failure point: the temp WRITE succeeds and
 #      renameSync (temp -> dest) is the thing that throws. That is the only
 #      path where offerSaveProfile's `finally { if (tmpCreated) unlinkSync
-#      (tmpDest) }` cleanup does anything — case 10's fixture never creates
+#      (tmpDest) }` cleanup does anything: case 10's fixture never creates
 #      the temp file, so it can't reach it. Same --require technique, this
 #      time patching fs.renameSync to throw only for this save's own temp
 #      path; asserts the leftover temp is cleaned up (none matching
@@ -82,7 +82,7 @@ wizard="$repo_root/scripts/himmelctl/bin.js"
 command -v node >/dev/null 2>&1 || { echo "FAIL: node required" >&2; exit 1; }
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline (see sibling suites' identical helper: printf/echo into `grep -q`
 # under `set -o pipefail` can report a SUCCESSFUL match as a failed pipeline).
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
@@ -115,12 +115,12 @@ trap cleanup EXIT
 
 # Isolate HIMMELCTL_BIN_DIR for the whole suite (a non-dry-run install reaches
 # applyHimmelctlPathShim, whose default binDir is the operator's REAL
-# ~/.local/bin on POSIX) — mirrors every sibling suite that runs a real
+# ~/.local/bin on POSIX), mirrors every sibling suite that runs a real
 # install.
 HIMMELCTL_BIN_DIR="$(winpath "$work/isolated-bin")"
 export HIMMELCTL_BIN_DIR
 
-# build_path <stub_dir> <present_tools...> -- <absent_tools...> — copied from
+# build_path <stub_dir> <present_tools...> -- <absent_tools...>: copied from
 # test-wizard-questions.sh/test-wizard-adopter-profile.sh.
 build_path() {
   local _stub="$1"; shift
@@ -139,8 +139,8 @@ build_path() {
   printf '%s:%s' "$_stub" "$_scrubbed"
 }
 
-# make_fixture <dir> [adopt_rc] — a throwaway HIMMELCTL_REPO_ROOT with a
-# no-op (or, given a nonzero adopt_rc, a FAILING) adopt.sh — same shape as
+# make_fixture <dir> [adopt_rc]: a throwaway HIMMELCTL_REPO_ROOT with a
+# no-op (or, given a nonzero adopt_rc, a FAILING) adopt.sh, same shape as
 # test-wizard-adopter-profile.sh's make_fixture(), narrowed to just what
 # runPlan's main (non-T5b) path shells out to for profile=starter/vault=none.
 make_fixture() {
@@ -150,7 +150,7 @@ make_fixture() {
   chmod +x "$_d/scripts/adopt.sh"
 }
 
-# stage <line> — write one line to stdout, then pause briefly. Used inside a
+# stage <line>: write one line to stdout, then pause briefly. Used inside a
 # `( stage a; stage b; ... ) | wizard ...` pipeline so each answer lands in
 # process.stdin only once the readline instance meant to consume it is the
 # one actually attached (see the file-header note on the swallow bug).
@@ -161,12 +161,12 @@ stage() {
 
 # The 10 base wizard answers (profile/scope/vault/handover/lanes/alwaysOn/
 # cadences/disarm-consent/tracker/commit-rules-consent) that produce a
-# starter/project/vault=none/inline/no-lanes/no-alwaysOn profile — verbatim the same sequence
+# starter/project/vault=none/inline/no-lanes/no-alwaysOn profile, verbatim the same sequence
 # test-wizard-questions.sh's case5 uses. this vault=none +
 # no-codex-lane shape now ALSO reaches the cadences question (drift-fix/
 # upstream-watch are requires:'none', always offered) followed by
 # the disarm-consent question (since declining all three counts as a
-# decline) — 7 became 9; see that file's case1/case7 for the exact count
+# decline): 7 became 9; see that file's case1/case7 for the exact count
 # assertion this mirrors.
 # pluginSet is no longer asked (-1); the Commit rules step adds
 # tracker=none and its consent=no (+2).
@@ -287,8 +287,8 @@ cache4_node=$(winpath "$cache4_posix")
 profiles4_posix="$work/case4-profiles"
 profiles4_node=$(winpath "$profiles4_posix")
 fixture4="$work/case4-fixture"; make_fixture "$fixture4"
-# A minimal, hand-authored valid v1 profile (loadProfile's legacy branch —
-# role required, no schemaVersion) — avoids depending on case1's output so
+# A minimal, hand-authored valid v1 profile (loadProfile's legacy branch:
+# role required, no schemaVersion), avoids depending on case1's output so
 # this case stands alone.
 profile4="$work/case4-profile.json"
 cat > "$profile4" <<'JSON'
@@ -334,7 +334,7 @@ grepq "$out5" 'save this install profile' && fail "case5: a FAILED install must 
   || fail "case5: a failed install must write nothing under the profiles dir (found: $(ls -A "$profiles5_posix"))"
 echo "ok: case5 a failed install never offers to save and writes nothing"
 
-# ── Case 6: name validation NEGATIVE CONTROL — a traversal name writes
+# ── Case 6: name validation NEGATIVE CONTROL, a traversal name writes
 # NOTHING outside the profiles dir ───────────────────────────────────────────
 c6="$work/case6"; mkdir -p "$c6"
 p6=$(build_path "$c6" bash jq python3 npm --)
@@ -367,7 +367,7 @@ echo "ok: case6 a traversal name ('../evil') writes nothing anywhere — negativ
 # ── Case 7: ensure after a real converge -> same offer; --yes/--dry-run
 # suppress it (no prompt, no file) ───────────────────────────────────────────
 # A minimal manifest with ONE red item carrying a runnable install
-# descriptor, converged by a stub primitive — same shape as
+# descriptor, converged by a stub primitive, same shape as
 # test-wizard-ensure.sh's repoD fixture (case d/g there).
 repo7="$work/repo7"; mkdir -p "$repo7/scripts/install" "$repo7/scripts/lib"
 cat > "$repo7/scripts/install/manifest.json" <<'JSON'
@@ -393,13 +393,13 @@ cat > "$repo7/scripts/lib/wire-statusline.sh" <<'SH'
 exit 0
 SH
 
-# write_cache7 <cache_dir> — a minimal valid v2 profile, in the EXACT byte
+# write_cache7 <cache_dir>: a minimal valid v2 profile, in the EXACT byte
 # shape serialize()+'\n' (JSON.stringify(_, null, 2), one trailing newline)
-# would produce for it — loadProfile() returns a v2 object UNCHANGED (no
+# would produce for it: loadProfile() returns a v2 object UNCHANGED (no
 # v1->v2 migration in the way, unlike a legacy v1 cache), so this makes the
 # case7a byte-identity check between this file and the saved profile actually
 # meaningful. (A single-line-JSON fixture would carry the same DATA but never
-# the same BYTES as serialize()'s pretty-printed output — that mismatch is a
+# the same BYTES as serialize()'s pretty-printed output: that mismatch is a
 # wrong fixture shape, not a code bug.)
 write_cache7() {
   mkdir -p "$1"
@@ -429,12 +429,12 @@ JSON
 #
 # RETRY, why: unlike the install cases above (whose question-engine starts
 # reading stdin almost immediately), `ensure` does real synchronous work
-# (loadManifest, statusReport, probes, and — after 'y' — a SYNCHRONOUS
+# (loadManifest, statusReport, probes, and (after 'y') a SYNCHRONOUS
 # spawnSync of the converge primitive) between each readline instance it
 # attaches. A fixed sleep long enough to always outlast that work on a
 # quiet machine can still occasionally lose the race under load (this was
 # observed directly: 1.5s/1.5s passed several runs, then failed one under
-# load) — a machine-load-dependent race, not a code defect (every case
+# load), a machine-load-dependent race, not a code defect (every case
 # above, and 7a's own prompt text, prove the feature itself works). Retry a
 # few times with a fresh target/cache/profiles dir each time (reusing one
 # would find the item already converged on a retry and skip straight past
@@ -468,11 +468,11 @@ for attempt in 1 2 3; do
   if [ "$CASE7A_RC" -eq 0 ] && grepq "$CASE7A_OUT" 'save this install profile' && [ -f "$CASE7A_SAVED" ]; then
     case7a_ok=1
     if [ "$attempt" -gt 1 ]; then
-      # Audible, not just a bare "ok:" — a worsening race must be visible
+      # Audible, not just a bare "ok:": a worsening race must be visible
       # before it hits 3/3, and the note names the observed cause so this
       # doesn't read as a flaky product bug: Node readline can swallow
       # buffered stdin lines meant for a LATER prompt when a fresh readline
-      # interface attaches (see the file-header STAGGERED STDIN note) — a
+      # interface attaches (see the file-header STAGGERED STDIN note), a
       # harness/platform race under load, not a product defect.
       echo "NOTE: case7a needed attempt $attempt/3 to pass — this is the documented readline stdin-swallow race (see file header), not a product defect; investigate only if attempt 3 starts failing too" >&2
     fi
@@ -614,7 +614,7 @@ else
   echo "ok: case9 a symlink at the save destination is refused, never written through; its target is untouched"
 fi
 
-# ── Case 10: 2 findings 1/2/3 — a write failure during
+# ── Case 10: 2 findings 1/2/3. A write failure during
 # the temp-file-then-rename save leaves the pre-existing destination file
 # completely unchanged ───────────────────────────────────────────────────────
 c10="$work/case10"; mkdir -p "$c10"
@@ -628,9 +628,9 @@ fixture10="$work/case10-fixture"; make_fixture "$fixture10"
 dest10="$profiles10_posix/existing.install-profile.json"
 printf 'OLD-CONTENT-PLACEHOLDER' > "$dest10"
 
-# denyTmp10.js — monkey-patches fs.writeFileSync to throw ONLY for a path
+# denyTmp10.js: monkey-patches fs.writeFileSync to throw ONLY for a path
 # that (a) lives inside the profiles dir under test and (b) ends in '.tmp'
-# (offerSaveProfile's temp-file naming) — every other write in the process
+# (offerSaveProfile's temp-file naming). Every other write in the process
 # (the cache install-profile.json, etc.) is left alone.
 denyTmp10="$work/deny-profile-save-tmp.js"
 cat > "$denyTmp10" <<'JS'
@@ -671,10 +671,10 @@ grepq "$out10" -i 'could not save profile' || fail "case10: expected a save-fail
 grepq "$out10" 'saved profile to' && fail "case10: a failed save must never print a success confirmation (got: $out10)"
 content10=$(cat "$dest10")
 [ "$content10" = "OLD-CONTENT-PLACEHOLDER" ] || fail "case10: the pre-existing destination file must survive a failed save UNCHANGED (got: $content10)"
-# Bash-native glob (portable — no GNU `find -maxdepth`): nullglob so a no-match
+# Bash-native glob (portable, no GNU `find -maxdepth`): nullglob so a no-match
 # expands to zero array elements instead of a literal unmatched pattern, AND
 # dotglob because offerSaveProfile's tmpDest is dot-prefixed
-# (`.${name}.install-profile.json.<pid>-<ts>-<rand>.tmp`, bin.js:1962) — bare
+# (`.${name}.install-profile.json.<pid>-<ts>-<rand>.tmp`, bin.js:1962). Bare
 # `*` never matches a leading dot, so without dotglob this assertion could
 # never see the very file it exists to catch.
 shopt -s nullglob dotglob
@@ -683,7 +683,7 @@ shopt -u nullglob dotglob
 [ "${#leftover10[@]}" -eq 0 ] || fail "case10: a failed save must not litter the profiles dir with a temp file (found: ${leftover10[*]})"
 echo "ok: case10 a write failure during the temp-file-then-rename save leaves the pre-existing destination file byte-unchanged, warns, and does not touch the install's exit code"
 
-# ── Case 11: 2 finding — a RENAME failure (temp write
+# ── Case 11: 2 finding. A RENAME failure (temp write
 # succeeds, renameSync throws) must still clean up the leftover temp file.
 # This is the only path that exercises offerSaveProfile's
 # `finally { if (tmpCreated) unlinkSync(tmpDest) }` cleanup: case 10's write
@@ -699,9 +699,9 @@ fixture11="$work/case11-fixture"; make_fixture "$fixture11"
 dest11="$profiles11_posix/existing.install-profile.json"
 printf 'OLD-CONTENT-PLACEHOLDER' > "$dest11"
 
-# denyRename11.js — monkey-patches fs.renameSync to throw ONLY when the
+# denyRename11.js: monkey-patches fs.renameSync to throw ONLY when the
 # source path (a) lives inside the profiles dir under test and (b) ends in
-# '.tmp' (offerSaveProfile's temp-file naming) — every other renameSync
+# '.tmp' (offerSaveProfile's temp-file naming). Every other renameSync
 # call in the process is left alone. Unlike case10's writeFileSync patch,
 # this lets the temp file actually get CREATED (tmpCreated becomes true)
 # before the failure hits, which is the only way to reach the unlinkSync
@@ -758,7 +758,7 @@ echo "ok: case11 a rename failure during the temp-file-then-rename save cleans u
 # case12: a profile save that lands INSIDE the retired-cadence
 # rewrite is kept. The rewrite (dropRetiredFromProfileFile) compares the file
 # with what it read, then renames its temp file over it; a second writer
-# (writeCache — the one himmelctl itself and the config UI save go through)
+# (writeCache: the one himmelctl itself and the config UI save go through)
 # that lands between that compare and the rename used to be overwritten with
 # the stale content. A --require preload holds the rewrite right before its
 # rename, starts the second writer (a separate process) and gives it up to 3s
@@ -780,7 +780,7 @@ cat > "$saved12" <<'JSON'
 JSON
 done12="$work/second-writer12.done"
 
-# secondWriter12.js — the second profile writer: writeCache() from bin.js, in
+# secondWriter12.js (the second profile writer): writeCache() from bin.js, in
 # its own process, then a marker file so the test knows it finished.
 second12="$work/second-writer12.js"
 cat > "$second12" <<'JS'
@@ -789,7 +789,7 @@ require(process.env.SECOND_WRITER_BIN).writeCache({ schemaVersion: 2, savedBy: '
 fs.writeFileSync(process.env.SECOND_WRITER_DONE, 'done');
 JS
 
-# holdRewrite12.js — holds the retired-cadence rewrite between its compare and
+# holdRewrite12.js: holds the retired-cadence rewrite between its compare and
 # its rename (the window), starts the second writer, and waits until that
 # writer has changed the profile or 3s are up (a locked writer cannot change it
 # until the rewrite is done, so it never will inside the window).
@@ -896,7 +896,7 @@ lib.withProfileLock(process.env.PROFILE, () => {
 if (process.env.A_LINGER_MS) Atomics.wait(sleeper, 0, 0, Number(process.env.A_LINGER_MS));
 JS
 
-# race_two_waiters <case> [VAR=value...] — B reads a dead owner's lock, A takes
+# race_two_waiters <case> [VAR=value...]: B reads a dead owner's lock, A takes
 # it over, B goes on; the files a-out / b-in under $work/<case> hold the times.
 race_two_waiters() {
   local name="$1" dir="$work/$1"; shift

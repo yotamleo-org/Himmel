@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# test-wizard-noinstall-guard.sh — the "no new install logic" guard
+# test-wizard-noinstall-guard.sh: the "no new install logic" guard
 # Statically asserts bin.js's ONLY side effects
 # are: (a) read answers, (b) write the profile cache, (c) exec the ENUMERATED
-# existing scripts — never a NEW script, and never a reimplementation of
+# existing scripts, never a NEW script, and never a reimplementation of
 # plugin-install / hook-wire / settings-merge logic of its own.
 #
 # Covers:
@@ -15,11 +15,11 @@
 #      (offerSaveProfile()), the vm.mode resolver probe (vmProofRoute()),
 #      the two PHI guard-input writes (mergePhiRoot(), the .salus marker),
 #      and the retired-cadence profile rewrite
-#      (dropRetiredFromProfileFile()) — no other file the wizard itself
+#      (dropRetiredFromProfileFile()), no other file the wizard itself
 #      writes. The PATH-launcher shim write lives in lib/launcher.js and is
 #      pinned there.
-#   D. bin.js requires ONLY node builtins (fs/os/path/readline/child_process)
-#      — zero npm deps, and no new lib smuggled in to reimplement
+#   D. bin.js requires ONLY node builtins (fs/os/path/readline/child_process),
+#      zero npm deps, and no new lib smuggled in to reimplement
 #      plugin-install/hook-wire/settings-merge logic.
 
 set -euo pipefail
@@ -51,22 +51,22 @@ trap cleanup EXIT
 # The documented allow-set (brief T6): every script bin.js is permitted to
 # shell out to. bin.js's own comments name the non-script exec surfaces this
 # guard does NOT enumerate here (the platform pkg-mgr via `bash -c` [T1] and
-# the documented `claude plugin ...` commands [T4.5/config]) — those never
+# the documented `claude plugin ...` commands [T4.5/config]). Those never
 # carry a .sh/.mjs literal, so extract_script_targets() below can't
 # confuse them with a NEW script reference.
 #
-# set-lane-override.mjs (the `config` lanes.local.json writer) added — an
+# set-lane-override.mjs (the `config` lanes.local.json writer) added, an
 # existing-primitive shell-out, not a reimplementation of the write logic
 # inline in bin.js. (HIMMEL_INITIATIVE and HANDOVER_DIR are config-class keys
 # written to ~/.himmel/himmel.conf in-process, so set-env-var.sh and
 # set-handover-dir.sh are no longer shell-out targets.)
 #
-# himmel-update.sh — the existing dependency-chain update
+# himmel-update.sh: the existing dependency-chain update
 # engine `himmelctl update` (deriveUpdateCommand) delegates to. Same class:
 # an enumerated existing-script shell-out, not new inline logic. It was
 # omitted when `update` landed (#1279), leaving this guard red; added here.
 #
-# wire-trust-hooks.mjs — the `trust on|off|status` verb's
+# wire-trust-hooks.mjs: the `trust on|off|status` verb's
 # existing-primitive shell-out (cmdTrust -> scripts/trust/wire-trust-hooks.mjs
 # via spawnSync), same class as set-lane-override.mjs above, not a
 # reimplementation of the trust-wiring logic inline in bin.js.
@@ -79,18 +79,18 @@ trap cleanup EXIT
 # applyPluginStep() still offers its removal for that answer alone, even
 # though the enable step itself stays an unconditional no-op.
 #
-# check-user-slug.sh — the USER_SLUG step setup.sh's [0.5/9]
+# check-user-slug.sh: the USER_SLUG step setup.sh's [0.5/9]
 # runs, REPLAYED by userSlugState() so the install summary can name the step
 # when it was left undone. Same class as the shell-outs above: bin.js invokes
 # the existing primitive and reads its exit status; the resolution logic stays
 # in scripts/lib/user-slug.sh, none of it reimplemented here.
 #
-# plugin-profile.sh — the `profile` subcommand's shell-out
+# plugin-profile.sh: the `profile` subcommand's shell-out
 # (cmdProfile). A THIN passthrough: bin.js forwards argv verbatim and
-# propagates the exit code, same class as the shell-outs above — every bit of
+# propagates the exit code, same class as the shell-outs above. Every bit of
 # the two-tier toggle/resolution logic stays in the script.
 #
-# ensure-workspace-trust.sh — applyWorkspaceTrust calls the
+# ensure-workspace-trust.sh: applyWorkspaceTrust calls the
 # existing helper for the install target so the
 # permissions.allow/additionalDirectories entries the install just wrote are
 # not left silently ignored. Same class as the shell-outs above: bin.js
@@ -98,17 +98,17 @@ trap cleanup EXIT
 # ~/.claude.json read-modify-write logic stays in scripts/lib/, none of it
 # reimplemented here.
 #
-# release-check.sh — `himmelctl update` on a versioned
+# release-check.sh: `himmelctl update` on a versioned
 # release-tarball install sources the existing release-lookup primitive (the
 # same fixed URL, tag grammar and version compare the session nudge and
 # himmel-update.sh --check use) instead of reimplementing the lookup in JS.
 #
-# vm-mode.sh — the `vm_proof` cadence rows ask the vm.mode
+# vm-mode.sh: the `vm_proof` cadence rows ask the vm.mode
 # resolver (`vm-mode.sh route`) whether a VM can prove the step, and read its
 # rc. Same class as the shell-outs above: bin.js invokes the existing
 # primitive; the config parse and validation stay in scripts/lib/vm-mode.sh.
 #
-# register-state.sh — the wizard's handover step registers the repo's state
+# register-state.sh: the wizard's handover step registers the repo's state
 # through this single registry writer and reads its rc; the registry write and
 # validation stay in scripts/handover/register-state.sh.
 allow_full="$work/allow-full.txt"
@@ -131,15 +131,15 @@ vm-mode.sh
 register-state.sh
 NAMES
 
-# extract_script_targets — every 'name.sh' / "name.sh" /
+# extract_script_targets: every 'name.sh' / "name.sh" /
 # 'name.mjs' quoted literal referenced anywhere in bin.js (source text, so a
-# rogue reference even inside a comment still trips the guard — a
+# rogue reference even inside a comment still trips the guard, a
 # conservative trip-wire)..mjs joined (set-lane-override.mjs).
 extract_script_targets() {
   grep -ohE "['\"][A-Za-z0-9_.-]+\.(sh|mjs)['\"]" "${script_exec_files[@]}" | tr -d "'\"" | sort -u
 }
 
-# check_allow_set <allow-set-file> — 0 iff every script target bin.js
+# check_allow_set <allow-set-file>: 0 iff every script target bin.js
 # references is present in <allow-set-file>; 1 on the first name that isn't.
 check_allow_set() {
   local allow_file="$1" name
@@ -185,7 +185,7 @@ echo "ok: caseB dropping any single allow-set name breaks the guard (proves it c
 # (vmProofRoute); the two PHI guard-INPUT writes; and the retired-cadence
 # profile rewrite (dropRetiredFromProfileFile). The PATH-launcher shim's
 # atomic tmp write (writeMarkedLauncher) lives in lib/launcher.js. No other
-# file write — keeps the wizard from reimplementing
+# file write, keeps the wizard from reimplementing
 # plugin-install/hook-wire/settings-merge logic inline. Every site is pinned
 # below so a SEVENTH, undocumented write still trips the guard (count + site
 # match).
@@ -194,7 +194,7 @@ echo "ok: caseB dropping any single allow-set name breaks the guard (proves it c
 # reason to fail: they are not install/wiring logic reimplemented inline, they
 # are the guard inputs themselves. The PHI guards key on
 # ~/.config/claude-glm/phi-roots and a `.salus` marker, and NOTHING created
-# either — so every launcher PHI guard was silently inert.
+# either, so every launcher PHI guard was silently inert.
 # Materializing those two files IS that ticket's structural fix; there is no
 # other component to delegate them to. Both are narrow by construction: the
 # phi-roots write is append-if-absent and never truncates (a non-ENOENT read
@@ -203,10 +203,10 @@ echo "ok: caseB dropping any single allow-set name breaks the guard (proves it c
 #
 # Why the offerSaveProfile() tmpDest write also belongs here rather than being
 # a reason to fail: it is not install/wiring logic reimplemented inline
-# either — it is the wizard saving its OWN output artifact (the named
+# either. It is the wizard saving its OWN output artifact (the named
 # `<name>.install-profile.json` a later `--from-profile` run reads back), the
 # same class of self-output as the profile cache above. It is narrow by
-# construction too: the temp is created exclusively ('wx' — fails rather than
+# construction too: the temp is created exclusively ('wx', fails rather than
 # clobbering if it already exists) in the same directory as `dest`, then
 # renameSync'd onto `dest` atomically, which cannot be redirected through a
 # symlink; the code refuses outright if `dest` is already a symlink; and
@@ -230,7 +230,7 @@ grep -q 'fs.writeFileSync(cachePath()' "$wizard" \
 grep -q "fs.writeFileSync(tmpDest, bytes, { flag: 'wx' })" "$wizard" \
   || fail "caseC: missing the install-profile save write (offerSaveProfile tmpDest), or its call shape changed"
 # writeMarkedLauncher (and its tmp+rename PATH-
-# launcher shim write) was extracted out of bin.js into lib/launcher.js —
+# launcher shim write) was extracted out of bin.js into lib/launcher.js,
 # checked here, not against $wizard, since bin.js's own text no longer
 # contains it.
 grep -q "fs.writeFileSync(tmp, contents, 'utf8')" "$repo_root/scripts/himmelctl/lib/launcher.js" \
@@ -238,7 +238,7 @@ grep -q "fs.writeFileSync(tmp, contents, 'utf8')" "$repo_root/scripts/himmelctl/
 # Pinned on the FULL call shape, not the bare `fs.writeFileSync(tmp,` prefix:
 # since fix 3, mergePhiRoot also writes to a variable named
 # `tmp`, so the short prefix matched EITHER site and this pin silently stopped
-# being site-specific. The count check alone would not cover that — it only
+# being site-specific. The count check alone would not cover that. It only
 # catches a write disappearing, not two pins collapsing onto one site.
 grep -q "fs.writeFileSync(tmp, lines.join('" "$wizard" \
   || fail "caseC: missing the phi-roots merge write (mergePhiRoot, now via tmp+rename)"

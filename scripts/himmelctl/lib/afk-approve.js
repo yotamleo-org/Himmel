@@ -1,5 +1,5 @@
 'use strict';
-// scripts/himmelctl/lib/afk-approve.js — `himmelctl approve <id>`, `himmelctl deny <id>` and
+// scripts/himmelctl/lib/afk-approve.js: `himmelctl approve <id>`, `himmelctl deny <id>` and
 // `himmelctl approve status <id>`: the SSH way to answer an AFK request.
 //
 // A thin caller of the root afk-sudo helper, the same helper the Telegram route calls:

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-config.sh — hermetic tests for the himmelctl `config` subcommand
+# test-wizard-config.sh: hermetic tests for the himmelctl `config` subcommand
 # Mirrors test-wizard-uninstall.sh/
 # test-wizard-derive.sh conventions: node launched by absolute path, a fake
 # HOME, HIMMELCTL_REPO_ROOT pointed at a throwaway fixture carrying real copies
@@ -11,23 +11,23 @@
 # `config set`/`config get` are the scripted path over the same store.
 #
 # Covers:
-#   A. initiative.<step> — set on/off toggles HIMMEL_INITIATIVE in the fixture
+#   A. initiative.<step>: set on/off toggles HIMMEL_INITIATIVE in the fixture
 #      .env; multiple steps coexist; unknown step -> rc=2, no write.
 #   B. initiative get (whole + single worker).
-#   C. lanes.<id> — set on/off writes ONLY lanes.local.json (probe.kind
+#   C. lanes.<id>: set on/off writes ONLY lanes.local.json (probe.kind
 #      always/never); the fixture's lanes.json (repo-registry stand-in) is
 #      NEVER modified; unknown id -> rc=2.
 #   D. lanes get (whole + single id, override vs no-override), including the
 #      adopter-profile suppression state and an out-of-scope lane that remains
 #      unconstrained.
-#   E. --dry-run — set initiative AND set lanes write NOTHING (no .env, no
+#   E. --dry-run: set initiative AND set lanes write NOTHING (no .env, no
 #      lanes.local.json).
-#   F. hooks.improveOnSubmit — advisory only: prints the manual instructions,
+#   F. hooks.improveOnSubmit (advisory only): prints the manual instructions,
 #      writes nothing (no .env mutation at all).
-#   G. hooks.plugin.<name> — stubbed `claude` on PATH: on/off invoke
+#   G. hooks.plugin.<name> (stubbed `claude` on PATH): on/off invoke
 #      `claude plugin enable/disable <name>`; --dry-run invokes nothing;
 #      unknown plugin name -> rc=2.
-#   H. value validation — anything other than on/off -> rc=2 for every
+#   H. value validation: anything other than on/off -> rc=2 for every
 #      surface; an unknown top-level path -> rc=2.
 #   I. `config` with no args prints the UI Configure link (or how to open the
 #      UI when no service is installed) and exits 0 without asking anything;
@@ -36,20 +36,20 @@
 #      into loadRegistry()): base lanes.json + a local override -> the
 #      overridden lane is force-on/off in the RESOLVED set, every other lane
 #      unaffected, and the base lanes.json fixture file is byte-unchanged.
-#   Q. commit.tracker / commit.ticketIdRequired — the Setup page's commit-rules
+#   Q. commit.tracker / commit.ticketIdRequired, the Setup page's commit-rules
 #      path: jira|local|none and on|off, written to ~/.himmel/himmel.conf by the
 #      wizard's own writer; none drops the ticket-id keys; the pattern is never
 #      settable here; --dry-run and every refusal write nothing.
 #      Q3: a himmel.conf linked into a luna vault stays a link after a write.
 #      Q4: so does every link of a dangling chain.
-#   R. handover.root / luna.vaultPath — the Setup page's path writers: an
+#   R. handover.root / luna.vaultPath (the Setup page's path writers): an
 #      absolute, normalized path to HANDOVER_DIR / LUNA_VAULT_PATH in
 #      ~/.himmel/himmel.conf; handover.root creates the directory, the vault
 #      path must already be one; --dry-run and every refused path (control
 #      chars, quotes, #, $, relative, ..) write nothing.
 #   P. `himmelctl profile` is a SEPARATE argv[0] special-case
 #      (same mechanism as `config`'s, added right after it in main()) that
-#      dispatches to plugin-profile.sh — proves it parses to subcommand
+#      dispatches to plugin-profile.sh. Proves it parses to subcommand
 #      `profile` (exact args forwarded, exact exit code propagated) and does
 #      not collide with the pre-existing config/scope/trust verb handling:
 #      `config get`, `scope status` and `trust status` still reach their own
@@ -57,11 +57,11 @@
 
 set -euo pipefail
 
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
 # `set -o pipefail`: grep -q exits the instant it matches, the producer
 # then takes SIGPIPE writing the remainder, and pipefail reports the
-# PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
+# PIPELINE as failed, so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
 # so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
@@ -87,7 +87,7 @@ work=$(mktemp -d)
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
-# build_fixture <dir> — a throwaway HIMMELCTL_REPO_ROOT target carrying REAL
+# build_fixture <dir>: a throwaway HIMMELCTL_REPO_ROOT target carrying REAL
 # copies of the primitives `config` shells out to, so a live run against the
 # fixture exercises the actual write logic without ever touching the real
 # repo's own .env / scripts/lanes/*.json.
@@ -101,7 +101,7 @@ build_fixture() {
 }
 
 run_cfg() {
-  # run_cfg <fixture> [args...] — invoke `himmelctl config <args...>` against
+  # run_cfg <fixture> [args...]: invoke `himmelctl config <args...>` against
   # <fixture> with a fake HOME, capturing combined stdout+stderr and rc into
   # the caller's own `out`/`rc` locals via `local -n`-free convention (bash
   # 3.2-safe: assign globals `CFG_OUT`/`CFG_RC` instead of nameref).
@@ -203,7 +203,7 @@ grepq "$CFG_OUT" -F 'initiative.execute: off' \
 echo "ok: caseB initiative get (whole + single worker) reports the persisted himmel.conf state"
 CFG_HOME=""
 
-# ── Case C: lanes.<id> set on/off — lanes.local.json only, lanes.json untouched ─
+# ── Case C: lanes.<id> set on/off, lanes.local.json only, lanes.json untouched ─
 fxC="$work/fixtureC"; build_fixture "$fxC"
 lanes_json_before=$(cat "$fxC/scripts/lanes/lanes.json")
 run_cfg "$fxC" set lanes.haiku off
@@ -277,7 +277,7 @@ echo "ok: caseE --dry-run makes ZERO writes for both initiative and lanes surfac
 
 # ── Case L: a global flag BEFORE `config` still routes to config ─────────────
 # Regression: main() used to dispatch on argv[0] only, so `--dry-run config …`
-# (flag ahead of the subcommand — the order-independent form every other
+# (flag ahead of the subcommand: the order-independent form every other
 # subcommand accepts) fell through to parseArgs and died "unknown argument:
 # config". main() now detects `config` as the first non-flag token.
 fxL="$work/fixtureL"; build_fixture "$fxL"
@@ -299,13 +299,13 @@ echo "ok: caseL a global flag before 'config' (--dry-run config set …) routes 
 # --dry-run, NOT value-taking flags. `himmelctl --items config status` is the
 # `status` subcommand with --items=config; the value 'config' must never be
 # mistaken for the config subcommand. If it misroutes to cmdConfig, cmdConfig
-# rejects the stray '--items' as `config: unknown argument` — assert that
+# rejects the stray '--items' as `config: unknown argument`. Assert that
 # symptom is absent (i.e. it reached status, which validates --items itself).
 # CodeRabbit (Minor): the two absence-only greps above are ALSO satisfied by a
-# crash (e.g. cmdStatus's loadManifest() throwing ENOENT because fxM — like
-# every other case's fixture — carries no scripts/install/manifest.json) or
+# crash (e.g. cmdStatus's loadManifest() throwing ENOENT because fxM (like
+# every other case's fixture) carries no scripts/install/manifest.json) or
 # any other unrelated parser failure, neither of which proves routing worked.
-# So fxM additionally gets a real manifest.json + a minimal cached install
+# So fxM gets a real manifest.json + a minimal cached install
 # profile (the two things cmdStatus needs to reach ITS OWN --items
 # validation, which runs before 'config' would even need to be a known item
 # id), and the test now captures rcM and asserts the concrete, deterministic
@@ -331,7 +331,7 @@ grepq "$outM" -F 'unknown --items id: config' \
   || fail "caseM: expected cmdStatus's own diagnostic 'unknown --items id: config' (got: $outM)"
 echo "ok: caseM an --items VALUE of 'config' routes to status, never the config subcommand"
 
-# ── Case F: hooks.improveOnSubmit — not settable/readable via config (rc 2) ──
+# ── Case F: hooks.improveOnSubmit, not settable/readable via config (rc 2) ──
 # CodeRabbit (Major): a `set` that changes nothing must NOT report success, and
 # `get` must not return instructions in place of a value. improveOnSubmit is a
 # launching-shell-only env var config cannot persist or read, so both reject
@@ -357,7 +357,7 @@ run_cfg "$fxF" get hooks
 [ "$CFG_RC" -eq 2 ] || fail "caseF: get hooks (whole) must exit 2, got rc=$CFG_RC: $CFG_OUT"
 echo "ok: caseF hooks.improveOnSubmit set/get reject with rc 2 (no-op write / unreadable), guidance still printed"
 
-# ── Case G: hooks.plugin.<name> — stubbed claude CLI ────────────────────────
+# ── Case G: hooks.plugin.<name>, stubbed claude CLI ────────────────────────
 stubG="$work/stubG"; mkdir -p "$stubG"
 callsG="$work/plugin-calls.log"
 cat > "$stubG/claude" <<STUB
@@ -496,7 +496,7 @@ echo "ok: caseJ lanes.local.json overlay (base + local, local wins) actually sup
 # as '' (unset), so config set would derive a replacement from an empty base
 # and DROP existing HIMMEL_INITIATIVE tokens. Only ENOENT means unset now; any
 # other read error aborts before any write. Simulated by making .env a
-# DIRECTORY — readFileSync then throws EISDIR (same non-ENOENT code path as the
+# DIRECTORY. readFileSync then throws EISDIR (same non-ENOENT code path as the
 # EACCES the finding named), portably on both posix and git-bash.
 fxN="$work/fixtureN"; build_fixture "$fxN"
 mkdir "$fxN/.env"
@@ -529,8 +529,8 @@ echo "ok: caseO a malformed lanes overlay (bad JSON or wrong shape) aborts inste
 # with config/scope/trust ────────────────────────────────────────────────────
 # `himmelctl profile` is dispatched by a SEPARATE `if (argv[0] === 'profile')`
 # check in main() (added right after the `config` special-case, before
-# parseArgs) that forwards its remaining argv verbatim to plugin-profile.sh —
-# a stub replaces the real script here so nothing touches the operator's
+# parseArgs) that forwards its remaining argv verbatim to plugin-profile.sh.
+# A stub replaces the real script here so nothing touches the operator's
 # actual plugin set. build_fixture already gives this fixture a real `config`
 # setup (initiative/lanes primitives), so the SAME fixture proves both halves:
 # `profile` reaches the stub, and `config`/`scope`/`trust` are unaffected by
@@ -560,7 +560,7 @@ cp "$repo_root/scripts/lib/is-main.mjs" "$fxP/scripts/lib/is-main.mjs"
 
 # P1: `himmelctl profile list` dispatches to the stub with EXACTLY ["list"]
 # forwarded (never "profile list"), and the stub's non-standard exit code (17,
-# not 0/1) propagates unchanged — proof this is real passthrough, not a
+# not 0/1) propagates unchanged: proof this is real passthrough, not a
 # wrapper collapsing every outcome to a generic code.
 set +e
 outP1=$(HOME="$_hP" USERPROFILE="$(winpath "$_hP")" HIMMELCTL_CACHE_DIR="$(winpath "$_hP.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$_hP.himmelctl-cache/luna-config.json")" HIMMELCTL_BASH=bash \
@@ -576,7 +576,7 @@ args_loggedP1=$(cat "$fxP/profile-args.log")
 echo "ok: caseP1 'himmelctl profile list' parses to subcommand profile — exact args forwarded, exact exit code (17) propagated"
 rm -f "$fxP/profile-calls.log" "$fxP/profile-args.log"
 
-# P2: config/scope/trust are unaffected — none of them are swallowed by the
+# P2: config/scope/trust are unaffected. None of them are swallowed by the
 # new `profile` check (never invoke the stub, never enter the config TUI).
 run_cfg "$fxP" get initiative
 [ "$CFG_RC" -eq 0 ] || fail "caseP2: 'config get initiative' should still work on a fixture that ALSO carries the profile stub (got rc=$CFG_RC): $CFG_OUT"
@@ -607,7 +607,7 @@ for verb_pair in "scope status" "trust status"; do
 done
 echo "ok: caseP2 config/scope/trust verb handling is unaffected by the new 'profile' dispatch — never misrouted, never touch the profile stub"
 
-# ── Case Q: commit.<tracker|ticketIdRequired> — the Setup page's commit-rules path ──
+# ── Case Q: commit.<tracker|ticketIdRequired>, the Setup page's commit-rules path ──
 # Reuses the wizard's own commit-rules writer, so the web UI and the terminal share one engine.
 fxQ="$work/fixtureQ"; build_fixture "$fxQ"
 _hQ="$work/home-Q-$$-$RANDOM"; mkdir -p "$_hQ"
@@ -740,7 +740,7 @@ run_cfg_q6 set tracker.teamMode maybe
 grep -qE '^HIMMEL_TRACKER_TEAM_MODE=off$' "$_hQ6/.himmel/himmel.conf" || fail "caseQ6: a refused set leaves himmel.conf as it was"
 echo "ok: caseQ6 tracker.teamMode set/get round-trips HIMMEL_TRACKER_TEAM_MODE and refuses other values"
 
-# ── Case R: handover.root / luna.vaultPath — the Setup page's path writers ──
+# ── Case R: handover.root / luna.vaultPath, the Setup page's path writers ──
 fxR="$work/fixtureR"; build_fixture "$fxR"
 _hR="$work/home-R-$$-$RANDOM"; mkdir -p "$_hR"
 confR="$_hR/.himmel/himmel.conf"

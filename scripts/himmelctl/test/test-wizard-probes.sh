@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-probes.sh — hermetic tests for scripts/himmelctl/lib/probes.js
+# test-wizard-probes.sh: hermetic tests for scripts/himmelctl/lib/probes.js
 # the probe-type engine, run against
 # the REAL scripts/install/manifest.json descriptors (so a manifest authoring
 # drift breaks THIS suite, not silently). Mirrors sibling test-wizard-*.sh
@@ -10,10 +10,10 @@
 # Covers, present AND absent (plus degraded where the probe type supports a
 # tri-state result):
 #   file-exists    targetPath-relative (guardrail-scope), the repoRoot-
-#                  relative exception (jira-cli-dist-build — proves it
+#                  relative exception (jira-cli-dist-build: proves it
 #                  ignores a targetPath that DOES carry the file), and the
 #                  {vaultPath} placeholder (luna-vault-scaffold);
-#                  guardrail-scope's opt-in syntaxCheck — a present file that
+#                  guardrail-scope's opt-in syntaxCheck: a present file that
 #                  fails `bash -n` degrades instead of reading green.
 #   git-hooks      pre-commit-hooks absent (none installed) / degraded
 #                  (partial install) / present (pre-commit + commit-msg +
@@ -22,9 +22,9 @@
 #                  non-dotted key (claude-plugins-pluginSet), and the .env
 #                  ALL-keys-required union resolving against repoRoot for
 #                  BOTH scopes (jira-env-keys); wiring-
-#                  statusline's opt-in verifyScript — a present command
+#                  statusline's opt-in verifyScript: a present command
 #                  pointed at a missing script degrades; claude-plugins-
-#                  pluginSet's opt-in verifyPluginSet — a present map that
+#                  pluginSet's opt-in verifyPluginSet: a present map that
 #                  doesn't match docs/setup/settings-template.json's recorded
 #                  set, or names a plugin absent from ~/.claude/plugins/
 #                  installed_plugins.json, degrades.
@@ -37,12 +37,12 @@
 #                  (ENOENT, clean) / malformed JSON / unexpected shape
 #                  (the latter two carry configError:true), resolving
 #                  .claude.json from ctx.env.HOME; graphify-mcp
-#                  scope-awareness — project scope resolves <targetPath>/
+#                  scope-awareness: project scope resolves <targetPath>/
 #                  .mcp.json, user scope resolves ~/.claude.json, no
 #                  cross-scope bleed;
 #                  the bin/initMarker deepening against a synthetic fixture
 #                  descriptor (no live manifest item still carries both
-#                  fields) — registered-but-broken (unresolved binary /
+#                  fields): registered-but-broken (unresolved binary /
 #                  uninitialized project) reads degraded, not present;
 #  the bin check resolves via
 #                  ctx.env.PATH, proven DIVERGING from process.env.PATH (the
@@ -50,53 +50,53 @@
 #                  carries an extra dir process.env.PATH lacks); every fixture
 #                  above pins a REGISTERED `command` that resolves
 #                  codex-adv-1's registered-command check is now
-#                  unconditional — see the dedicated block further down for
+#                  unconditional: see the dedicated block further down for
 #                  the wrong/missing/nonexistent-command coverage itself,
 #                  including the POSIX executability distinction).
 #   which (helpers.js key-PRESENCE beats
-#                  truthiness — a deliberately scrubbed PATH:'' must not fall
+#                  truthiness: a deliberately scrubbed PATH:'' must not fall
 #                  through to a present Path, and Path alone (PATH key
 #                  genuinely absent) still resolves.
-#   handover-dir   handover-wiring — HANDOVER_DIR set (ctx.env pass-through,
+#   handover-dir   handover-wiring: HANDOVER_DIR set (ctx.env pass-through,
 #                  not process.env mutation) / unset with a non-repo cwd.
-#   dep            single-cmd (rtk), the scheduler-backend, and graphify — each
+#   dep            single-cmd (rtk), the scheduler-backend, and graphify, each
 #                  present/absent via stub PATH.
 #   cmd:has_hermes hermes-lanes, sourcing (via a resolver path
 #                  passed through the spawned env, not string-interpolated
-#                  into the command — a stub resolve-
-#                  hermes-py.sh — present/absent; resolver missing (rc 3,
+#                  into the command: a stub resolve-
+#                  hermes-py.sh, present/absent; resolver missing (rc 3,
 #                  probe wiring broken) and a spawn error (bash unresolvable)
 #                  both reading degraded (mirroring cmd:is_himmel_
 #                  dev's round-2 fix); plus an UNEXPECTED
-#                  rc (127 — resolver sourced but the function was never
+#                  rc (127: resolver sourced but the function was never
 #                  defined) also reading degraded, not the same absent as
 #                  resolve_hermes_py's own clean "not installed" (rc 1).
 #   cmd:is_himmel_dev doc-guard-map, sourcing (same env-passed-
-#                  path shape as cmd:has_hermes — a stub
-#                  guardrails/lib.sh — present (rc 0) / absent (rc 1, the
+#                  path shape as cmd:has_hermes: a stub
+#                  guardrails/lib.sh, present (rc 0) / absent (rc 1, the
 #                  ordinary non-contributor case) / degraded (rc 2, repo root
 #                  unresolvable); plus rc 3 (resolver
-#                  itself fails to source — probe wiring broken, must NOT
+#                  itself fails to source: probe wiring broken, must NOT
 #                  read the same 'absent' as a clean marker-not-present), a
 #                  spawn error (bash itself unresolvable via ctx.env.PATH),
-#                  and an UNEXPECTED rc (127 — resolver
+#                  and an UNEXPECTED rc (127: resolver
 #                  sourced but the function was never defined) also reading
 #                  degraded, never the same absent as is_himmel_dev_repo's
 #                  own clean "not a dev checkout" (rc 1).
-#   telegram-access telegram-bridge — no
+#   telegram-access telegram-bridge: no
 #                  token (absent); token + access.json missing/unparseable/
 #                  no usable allow rule (degraded, would gate out every DM/
 #                  group); token + a real allowFrom or a groups-only
 #                  access.json (present).
-#   cmd:codex_provisioned codex-cli — pure JS, no spawn: CODEX_BIN
+#   cmd:codex_provisioned codex-cli, pure JS, no spawn: CODEX_BIN
 #                  override semantics (unusable override = absent, no PATH
 #                  fallback) / plain PATH resolution / binary-resolves-but-
 #                  never-provisioned (no plugin cache dir) reads degraded, not
-#                  present — the same false-green class killed for
+#                  present, the same false-green class killed for
 #                  the (since-removed) tokensave-mcp descriptor,
 #                  applied here proactively; plus
 #                  codex-adv-2) a cache dir with OTHER marketplaces cached
-#                  but no himmel/ subdir also reads degraded — ANY cache dir
+#                  but no himmel/ subdir also reads degraded. ANY cache dir
 #                  is not himmel-specific evidence, only a cache entry for
 #                  the himmel marketplace itself is.
 #   cmd:cadence_armed pipeline-cadence (full matrix: armed /
@@ -108,10 +108,10 @@
 #                  output, nonzero exit (all degraded); plus
 #                  codex-adv-1) a 1-of-3-hooks partial install (mode=global,
 #                  node-resolves=yes for the ONE wired hook) reads degraded,
-#                  NEVER present — status output cannot attest all 3
+#                  NEVER present: status output cannot attest all 3
 #                  guardrail hooks, only that at least one is wired, so
 #                  'present' is bounded to unreachable via this data source.
-#  'present' additionally requires
+#  'present' requires
 #                  the v2 attestation layer (contentIntegrityComplete /
 #                  auditAnchorComplete / attestationComplete + per-hook
 #                  wrapperIntegrity/scriptIntegrity and *MatchesAuditAnchor),
@@ -119,41 +119,41 @@
 #                  a content-tampered wrapper or divergent audit anchor reads
 #                  degraded naming the dimension, and a payload
 #                  with NO v2 fields (stale checkout or stripped/tampered
-#                  output) OR a PARTIAL v2 set FAILS CLOSED — degraded, never
+#                  output) OR a PARTIAL v2 set FAILS CLOSED: degraded, never
 #                  the v1 'present' (a fail-OPEN back-compat would re-open
 #                  the downgrade path the attestation exists to close).
 #   cmd:hermes_checkout hermes-checkout
 #                  pure fs, no git spawn: resolves update_hermes()'s OWN
 #                  root/src, reads .git/config directly for the origin
-#                  remote — present (genuine NousResearch/hermes-agent
+#                  remote: present (genuine NousResearch/hermes-agent
 #                  checkout, exact ssh AND https origin forms) / absent (no
 #                  .git at all) / degraded (checkout present but wrong/
 #                  missing/unreadable origin); distinct from cmd:has_hermes
 #                  (a usable venv python), kept unchanged on hermes-lanes for
 #                  runtime health. an EXACT owner/repo
-#                  path match, not a substring — a spoofed origin that merely
+#                  path match, not a substring: a spoofed origin that merely
 #                  CONTAINS "NousResearch/hermes-agent" (e.g. evil/
 #                  NousResearch-hermes-agent-mirror) reads degraded, never a
 #                  false present; (codex-2) .git as a gitlink FILE (worktree/
 #                  submodule "gitdir: <path>") is honored too, following the
-#                  pointer one level — a broken pointer reads degraded
+#                  pointer one level: a broken pointer reads degraded
 #                  (a checkout genuinely exists, just unverifiable), never a
 #                  crash or a silent absent. a NORMAL
 #                  linked worktree (gitdir -> .git/worktrees/<name>, which
 #                  carries no remotes of its own) resolves via that dir's
 #                  `commondir` file, followed ONE level to the common config
-#                  with the origin — reads present, not falsely degraded.
+#                  with the origin, reads present, not falsely degraded.
 #   purity         a full sweep over every manifest.json item leaves the
 #                  fixture repo + vault trees byte-identical (sha256
 #                  snapshot before/after).
-#   telegram-access — formal-schema extension: a
+#   telegram-access (formal-schema extension): a
 #                  semantically-usable access.json (non-empty allowFrom) that
 #                  ALSO carries a wrong-typed field elsewhere (dmPolicy as a
 #                  number, a per-group requireMention as a string) now reads
-#                  degraded — the schema check runs BEFORE the pre-existing
+#                  degraded. The schema check runs BEFORE the pre-existing
 #                  usable-allow-rule check, so a previously-passing shape
 #                  can't mask a formal violation.
-#   cmd:telegram_getme — no token (absent) / stub `bun`
+#   cmd:telegram_getme: no token (absent) / stub `bun`
 #                  ok (present, detail carries the returned username, never
 #                  the token) / stub `bun` rejects (degraded) / bun absent
 #                  from PATH (degraded); a dedicated assertion greps the full
@@ -162,7 +162,7 @@
 #  retask stage1-build-6d2e): a child that dumps
 #                  the raw token straight to stderr, and a child whose stderr
 #                  echoes a request URL with the token embedded in its path
-#                  (getMe()'s own URL shape) — both still read degraded, and
+#                  (getMe()'s own URL shape): both still read degraded, and
 #                  neither leaks the token into the result; the redacted
 #                  detail keeps a `[REDACTED]` marker in its place, proving
 #                  the diagnostic text was scrubbed, not silently dropped.
@@ -170,7 +170,7 @@
 #                  runtime-observed network/API failure (the real script's
 #                  own `runtime:`-tagged stderr) reads as a connectivity
 #                  problem, never "probe wiring broken", while an
-#                  import-stage (`wiring:`-tagged) failure still does —
+#                  import-stage (`wiring:`-tagged) failure still does,
 #                  proving the two are told apart, not that everything
 #                  became "runtime".
 #   cmd:whisper_ready
@@ -178,24 +178,24 @@
 #                  model missing (degraded) / binary missing (absent);
 #                  default binary name whisper-cli (no .exe); ALSO a plain DIRECTORY at the
 #                  binary path (absent, never present), a 0-byte binary
-#                  (absent) and a 0-byte model (degraded) — a truncated
+#                  (absent) and a 0-byte model (degraded): a truncated
 #                  download must never read ready.
-#   cmd:python_interpreter — absent (nothing on PATH,
+#   cmd:python_interpreter: absent (nothing on PATH,
 #                  via bash's own rc=127 "command not found"), present (a
 #                  stub interpreter that runs the given script and echoes the
 #                  marker), degraded (a stub that mimics the REAL Windows
 #                  Store python.exe app-execution alias: resolves on PATH,
 #                  exits non-zero without running the script).
-#   distinct-tokens — both unconfigured / only one
+#   distinct-tokens: both unconfigured / only one
 #                  configured / two distinct values (all present, nothing to
 #                  collide with) vs. two IDENTICAL non-empty values
 #                  (degraded, the one and only failure shape).
 #   luna-sources (corrected under retask
-#                  stage1-build-6d2e) — all configured sources ok (present);
+#                  stage1-build-6d2e): all configured sources ok (present);
 #                  one auth-expired among others ok (degraded, names the
 #                  source + reason); one source unrecognized by
 #                  fetch-health.py (argparse exit code 2, matched against its
-#                  own literal 'unknown probe source' stderr wording — NOT
+#                  own literal 'unknown probe source' stderr wording, NOT
 #                  the bare rc alone) among others ok reads DEGRADED, never
 #                  present (loud-degradation: a source not being
 #                  monitored at all must not hide behind a green verdict); a
@@ -225,15 +225,15 @@
 #                  specifically, unit absent reads degraded naming the unit;
 #                  a unit file present but systemctl is-enabled reports it
 #                  disabled reads degraded, never present (existence is not
-#                  enablement —; a unit file
+#                  enablement; a unit file
 #                  present but is-enabled exiting with an UNRECOGNIZED code
 #                  (the null/undetermined tri-state, distinct from a confirmed
 #                  not-enabled) also reads degraded but must NOT claim "not
-#                  enabled" — it must name the undetermined condition instead;
+#                  enabled". It must name the undetermined condition instead;
 #                  Windows (a stubbed powershell/Get-ScheduledTask on PATH, never a
-#                  file-on-disk inference — the S1 false-green class; schtasks'
+#                  file-on-disk inference, the S1 false-green class; schtasks'
 #                  LOCALIZED text output replaced with the culture-invariant
-# .State enum —): task
+# .State enum): task
 #                  registered AND State=Ready/Running reads present, a task
 #                  that EXISTS but is State=Disabled (the query still
 #                  succeeds) reads degraded naming the Disabled state, never
@@ -245,7 +245,7 @@
 #                  (darwin) reads a loud degraded naming the launchd/Stage-2
 #                  limitation; a malformed config.json degrades cleanly,
 #                  never crashes. Part B (bridge.envPath /
-#                  bridge.whisper.{cli,model} — previously read by nothing):
+#                  bridge.whisper.{cli,model}, previously read by nothing):
 #                  a configured envPath resolves the token from THAT path
 #                  when set (no TELEGRAM_ENV override); TELEGRAM_ENV wins
 #                  over a different configured value; no config file at all
@@ -259,11 +259,11 @@ set -euo pipefail
 # git rev-parse is the primary resolution (unchanged on a normal checkout);
 # the path-based fallback (3 levels up from this file) is what the sibling
 # suites (test-restart-bridge.sh, test-bridge-persistence.sh) already use, and
-# is what makes this suite runnable under WSL against this worktree — its
+# is what makes this suite runnable under WSL against this worktree: its
 # .git is a FILE pointing at a Windows-absolute `gitdir: C:/Users/...` path
 # WSL cannot follow, so `git rev-parse --show-toplevel` fails there (retask
 # stage1-build-6d2e). Deliberately NOT an exported GIT_DIR/GIT_WORK_TREE: that
-# leaks into every probe fixture spawned below (proven — it broke the
+# leaks into every probe fixture spawned below (proven: it broke the
 # git-hooks case, which resolved hooks against the Windows .git instead of a
 # fixture repo), where a plain path never can.
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || repo_root=$(cd "$(dirname "$0")/../../.." && pwd)
@@ -312,7 +312,7 @@ build_path() {
   printf '%s:%s' "$_stub" "$_scrubbed"
 }
 
-# snapshot_dir <dir> — sorted "relpath sha256" pairs, for a before/after
+# snapshot_dir <dir>: sorted "relpath sha256" pairs, for a before/after
 # byte-identity check that doesn't depend on tar's metadata quirks. Portable
 # across bash 3.2 + BSD sort (no -z/-print0/xargs -0 on macOS's base sort).
 snapshot_dir() {
@@ -324,28 +324,28 @@ helpers_lib_w="$(winpath "$helpers_lib")"
 manifest_w="$(winpath "$manifest_path")"
 repo_root_w="$(winpath "$repo_root")"
 
-# a path under $work that is never created — pins HIMMELCTL_BASH
+# a path under $work that is never created: pins HIMMELCTL_BASH
 # to a genuinely unresolvable bash. A bare `env: { PATH: '' }` used to be
 # enough to un-resolve bash for a spawn-error case, but resolveProbeBash()
 # (probes.js) now falls through to resolveBash() (scripts/hooks/
 # run-hook-with-bash.js), which also probes /bin/bash and /usr/bin/bash
-# REGARDLESS of PATH — so an empty PATH alone is now vacuous and no longer
+# REGARDLESS of PATH, so an empty PATH alone is now vacuous and no longer
 # proves a spawn error.
 no_such_bash_w="$(winpath "$work/no-such-bash/bash")"
 
-# ── which (helpers.js): key-PRESENCE, not truthiness — an earlier fix
+# ── which (helpers.js): key-PRESENCE, not truthiness. An earlier fix
 # `e.PATH || e.Path || ''` treated a DELIBERATELY scrubbed
-# `PATH: ''` as falsy and fell through to `e.Path` — so a hermetic caller
+# `PATH: ''` as falsy and fell through to `e.Path`, so a hermetic caller
 # that explicitly empties PATH (to prove "nothing on it resolves") silently
 # resolved from an inherited Windows `Path` instead, defeating the scrub.
 # Proven directly against helpers.js (not through a probe), with a
-# real-looking `Path` value present alongside the empty `PATH` — the exact
+# real-looking `Path` value present alongside the empty `PATH`, the exact
 # shape that used to slip through.
 whichEnvTest="$work/which-env-test-bin"; mkdir -p "$whichEnvTest"
 : > "$whichEnvTest/probe-tool"
 outWhichScrubbed=$("$node_bin" -e "
 const { which } = require('$helpers_lib_w');
-// PATH explicitly empty (the scrub); Path carries a REAL, resolvable dir —
+// PATH explicitly empty (the scrub); Path carries a REAL, resolvable dir:
 // the pre-fix code would fall through to it and find 'probe-tool'.
 const env = { PATH: '', Path: '$(winpath "$whichEnvTest")' };
 console.log(JSON.stringify(which('probe-tool', env)));
@@ -355,7 +355,7 @@ echo "$outWhichScrubbed" | jq -e '. == null' >/dev/null \
 echo "ok: which() honors key-presence — a deliberately scrubbed PATH:'' is NOT treated as absent-so-fall-through-to-Path"
 
 # ── which() positive control: Path alone (PATH key genuinely ABSENT) still
-# resolves — proves the fix didn't just make which() always fail. ─────────
+# resolves, proves the fix didn't just make which() always fail. ─────────
 outWhichPathFallback=$("$node_bin" -e "
 const { which } = require('$helpers_lib_w');
 const env = { Path: '$(winpath "$whichEnvTest")' };
@@ -401,7 +401,7 @@ echo "$outA2" | jq -e '.actual == "absent"' >/dev/null || fail "file-exists targ
 echo "ok: file-exists targetPath-relative + syntaxCheck (guardrail-scope) present/absent, syntax-broken degrades"
 
 # ── file-exists: repoRoot-relative exception (jira-cli-dist-build) ─────────
-# The target ALSO carries the file, at the identical relative path — proves
+# The target ALSO carries the file, at the identical relative path, proves
 # the probe resolves against repoRoot, not targetPath, for this item.
 feB_repo_absent="$work/feB-repo-absent"; mkdir -p "$feB_repo_absent"
 feB_repo_present="$work/feB-repo-present"; mkdir -p "$feB_repo_present/scripts/jira/dist"
@@ -551,7 +551,7 @@ echo "ok: file-exists {vaultPath} placeholder (luna-vault-scaffold) present/abse
 # a non-empty statusLine.command used to read green even when
 # the script it names is missing/moved/unbuilt. The control fixture below
 # uses the CANONICAL `node "<script>"` shape wire-statusline.sh itself
-# writes, pointed at a script that genuinely exists — the "stays green on a
+# writes, pointed at a script that genuinely exists, the "stays green on a
 # clean starter install" control the ticket requires.
 sk1_script="$work/sk1-hud-index.js"; printf '// fixture stub\n' > "$sk1_script"
 sk1_present="$work/sk1-present"; mkdir -p "$sk1_present/.claude"
@@ -588,8 +588,8 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 echo "$outSK1missing" | jq -e '.actual == "degraded"' >/dev/null \
   || fail "settings-key verifyScript: statusLine.command pointing at a missing script must NOT read green (got: $outSK1missing)"
 # wire-statusline.sh now writes the GUARDED form
-# `[ -f "<js>" ] && exec node "<js>" || true`. The probe must still resolve it —
-# green on an existing script, degraded on a missing one — not report a shape
+# `[ -f "<js>" ] && exec node "<js>" || true`. The probe must still resolve it:
+# green on an existing script, degraded on a missing one, not report a shape
 # mismatch.
 for sk1g_case in present missing; do
   sk1g="$work/sk1g-$sk1g_case"; mkdir -p "$sk1g/.claude"
@@ -611,9 +611,9 @@ echo "ok: settings-key dot-path + verifyScript (wiring-statusline) — present/a
 
 # ── settings-key: verifyHudConfig (wiring-statusline) ──
 # statusLine.command wired to the hud renderer used to read
-# green (via verifyScript alone) even when the hud's OWN config — the
+# green (via verifyScript alone) even when the hud's OWN config (the
 # separate file wire-statusline.sh drops at
-# ${CLAUDE_CONFIG_DIR:-~/.claude}/claude-hud.json — is missing or lacks
+# ${CLAUDE_CONFIG_DIR:-~/.claude}/claude-hud.json) is missing or lacks
 # display.customLineCommand. Per that must degrade, never read
 # n/a/green. The guarded form below is the shape wire-statusline.sh writes,
 # pointed at the real vendored dist/index.js (present, so verifyScript alone
@@ -782,7 +782,7 @@ echo "ok: settings-key verifyHudConfig — 18 unsafe-key cases degrade in either
 # of whether it matched the recorded pluginSet or was actually installed.
 # repoRoot is a SYNTHETIC sandbox carrying its own docs/setup/settings-
 # template.json (mirrors the repoRoot-relative jira-cli-dist-build fixture
-# above) — never the real checkout's template. HOME is threaded through
+# above), never the real checkout's template. HOME is threaded through
 # ctx.env (same seam mcp-registered's .claude.json resolution uses), never
 # the real ~/.claude/plugins/installed_plugins.json.
 sk2_repo="$work/sk2-repo"; mkdir -p "$sk2_repo/docs/setup"
@@ -794,7 +794,7 @@ printf '{"version":2,"plugins":{"foo@bar":[{"scope":"user","installPath":"%s"}]}
 sk2_home_w="$(winpath "$sk2_home")"
 
 # a ledger entry with a non-empty
-# array used to be enough — regardless of whether its installPath still
+# array used to be enough, regardless of whether its installPath still
 # exists on disk, or whether the entry belongs to a DIFFERENT project.
 sk2_home_stale="$work/sk2-home-stale"; mkdir -p "$sk2_home_stale/.claude/plugins"
 printf '{"version":2,"plugins":{"foo@bar":[{"scope":"user","installPath":"%s"}]}}' "$(winpath "$work/sk2-cache/gone")" > "$sk2_home_stale/.claude/plugins/installed_plugins.json"
@@ -974,8 +974,8 @@ console.log(JSON.stringify(runProbe(item, ctx)));
   printf '{"enabledPlugins":{"foo@bar":true}}' > "$sk4_target/.claude/settings.json"
 }
 
-# (a) RED: projectPath carries a trailing separator the targetPath lacks —
-# a raw string compare degrades a valid project-scope install.
+# (a) RED: projectPath carries a trailing separator the targetPath lacks.
+# A raw string compare degrades a valid project-scope install.
 sk4_home_a="$work/sk4-home-a"
 write_sk4_ledger "$sk4_home_a" "${sk4_target_w}/" "$sk4_cache_foo_w"
 outSK4a=$(run_sk4 "$sk4_home_a" "$sk4_target_w")
@@ -983,7 +983,7 @@ echo "$outSK4a" | jq -e '.actual == "present"' >/dev/null \
   || fail "verifyPluginSet: projectPath with a trailing separator the targetPath lacks must still match (got: $outSK4a)"
 
 # (b) RED: the identical path, spelled with backslashes in the ledger vs
-# forward slashes in targetPath — a separator difference, not a real
+# forward slashes in targetPath, a separator difference, not a real
 # project-path mismatch.
 sk4_target_backslash=$("$node_bin" -e "console.log(process.argv[1].split('/').join('\\\\'))" "$sk4_target_w")
 sk4_home_b="$work/sk4-home-b"
@@ -1000,7 +1000,7 @@ outSK4c=$(run_sk4 "$sk4_home_c" "$sk4_target_w")
 echo "$outSK4c" | jq -e '.actual == "degraded"' >/dev/null \
   || fail "verifyPluginSet control: a genuinely different project path must NOT satisfy this one (got: $outSK4c)"
 
-# (d) RED: installPath resolves to a regular FILE, not a directory —
+# (d) RED: installPath resolves to a regular FILE, not a directory.
 # fs.existsSync() alone cannot tell the two apart.
 sk4_home_d="$work/sk4-home-d"
 write_sk4_ledger "$sk4_home_d" "$sk4_target_w" "$sk4_cache_regularfile_w"
@@ -1009,8 +1009,8 @@ echo "$outSK4d" | jq -e '.actual == "degraded"' >/dev/null \
   || fail "verifyPluginSet: a regular-file installPath must NOT read as installed (got: $outSK4d)"
 
 # (e) RED: an EXTRA enabled plugin beyond the recorded set, which IS
-# installed, must stay present — the template is a floor, not an exact
-# match (chief ruling) — and must be named in the detail.
+# installed, must stay present (the template is a floor, not an exact
+# match (chief ruling)) and must be named in the detail.
 sk4_home_e="$work/sk4-home-e"
 write_sk4_ledger "$sk4_home_e" "$sk4_target_w" "$sk4_cache_foo_w" "baz@qux" "$sk4_cache_baz_w"
 outSK4e=$(run_sk4 "$sk4_home_e" "$sk4_target_w" '{"enabledPlugins":{"foo@bar":true,"baz@qux":true}}')
@@ -1020,7 +1020,7 @@ echo "$outSK4e" | jq -e '.detail | contains("baz@qux")' >/dev/null \
   || fail "verifyPluginSet: an EXTRA plugin must be named in the detail (got: $outSK4e)"
 
 # (f) RED: an EXTRA enabled plugin that is NOT installed must still
-# degrade — the floor relaxation never skips the installed-ledger check.
+# degrade: the floor relaxation never skips the installed-ledger check.
 sk4_home_f="$work/sk4-home-f"
 write_sk4_ledger "$sk4_home_f" "$sk4_target_w" "$sk4_cache_foo_w"
 outSK4f=$(run_sk4 "$sk4_home_f" "$sk4_target_w" '{"enabledPlugins":{"foo@bar":true,"baz@qux":true}}')
@@ -1043,7 +1043,7 @@ case "$sk4_target_w" in
   *)
     # (g) RED: a projectPath that mixes a literal
     # backslash with a real forward slash is a POSIX path with a backslash
-    # BYTE in a filename, not a Windows path — treating any-backslash as
+    # BYTE in a filename, not a Windows path. Treating any-backslash as
     # evidence of Windows shape would swap that byte for '/' and collapse a
     # genuinely different directory onto the real target, letting another
     # project's ledger entry satisfy this scope check.
@@ -1057,7 +1057,7 @@ case "$sk4_target_w" in
     # (h) RED: a projectPath with a
     # literal trailing backslash BYTE (the path also contains forward
     # slashes, so it is not Windows-shaped) must not collapse onto the same
-    # directory without that trailing byte — the old unconditional
+    # directory without that trailing byte. The old unconditional
     # trailing-separator trim stripped it regardless of path shape.
     sk4_target_trailing_bs=$("$node_bin" -e "console.log(process.argv[1] + '\\\\')" "$sk4_target_w")
     sk4_home_h="$work/sk4-home-h"
@@ -1068,7 +1068,7 @@ case "$sk4_target_w" in
     ;;
 esac
 
-# (i) RED: an empty projectPath must never match — node's
+# (i) RED: an empty projectPath must never match. node's
 # path.resolve('') is the process cwd, so a malformed ledger entry with
 # projectPath "" would satisfy the scope check whenever the probe runs
 # from inside the target directory. Run node with cwd = the target so the
@@ -1090,7 +1090,7 @@ echo "ok: settings-key verifyPluginSet (claude-plugins-pluginSet) — trailing-s
 
 # ── settings-key: .env ALL-keys-required union (jira-env-keys) ────────────
 # Resolves against repoRoot for BOTH scopes (CLAUDE.md / adopt.sh
-# fill_env_core convention) — proven by using scope 'user' here too.
+# fill_env_core convention), proven by using scope 'user' here too.
 sk3_repo_present="$work/sk3-repo-present"; mkdir -p "$sk3_repo_present"
 cat > "$sk3_repo_present/.env" <<'ENV'
 JIRA_BASE_URL=https://example.atlassian.net
@@ -1242,7 +1242,7 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outSHp" | jq -e '.actual == "present"' >/dev/null || fail "settings-hooks present (3/3): (got: $outSHp)"
 # the fixture carries no permissions block (the adopter template
-# ships none) — the green row must say that emptiness is intended and where
+# ships none): the green row must say that emptiness is intended and where
 # Bash pre-approvals come from, so nobody re-files it as a projection gap.
 echo "$outSHp" | jq -e '.detail | contains("permissions.allow: 0 entries") and contains("intentional") and contains("auto-approve-safe-bash")' >/dev/null \
   || fail "settings-hooks present detail must state the empty permissions.allow is intentional (got: $outSHp)"
@@ -1393,7 +1393,7 @@ echo "ok: qmd-index present/degraded/absent"
 
 # ── mcp-registered: present / server missing / file missing / malformed ────
 # the registered entry's OWN `command` is now ALWAYS
-# validated (codex-adv-1) — the fixture's registered command must actually
+# validated (codex-adv-1): the fixture's registered command must actually
 # resolve for the 'present' case, so it points at a real stub FILE by
 # absolute path (fs.existsSync, not PATH-dependent).
 mcp_present_home="$work/mcp-present-home"; mkdir -p "$mcp_present_home"
@@ -1406,7 +1406,7 @@ mcp_file_missing_home="$work/mcp-file-missing-home"; mkdir -p "$mcp_file_missing
 mcp_null_root_home="$work/mcp-null-root-home"; mkdir -p "$mcp_null_root_home"
 printf 'null' > "$mcp_null_root_home/.claude.json"
 # a present-but-UNPARSEABLE config is a
-# genuinely different case from a MISSING one — both used to read identically
+# genuinely different case from a MISSING one: both used to read identically
 # (actual:absent, generic "cannot read/parse" detail); configError now
 # distinguishes them (see probes.js's probeMcpRegistered).
 mcp_malformed_json_home="$work/mcp-malformed-json-home"; mkdir -p "$mcp_malformed_json_home"
@@ -1414,7 +1414,7 @@ printf '{not valid json' > "$mcp_malformed_json_home/.claude.json"
 
 outMCP=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
-// A SYNTHETIC descriptor (registration only, no bin/initMarker) — this block
+// A SYNTHETIC descriptor (registration only, no bin/initMarker). This block
 // pins the registration matrix (present/server-missing/
 // file-missing/malformed/configError) in isolation from the
 // bin/initMarker deepening, which gets its own dedicated block below against
@@ -1442,7 +1442,7 @@ echo "$outMCP" | jq -e '.[4].detail | contains("cannot read/parse")' >/dev/null 
   || fail "mcp-registered malformed-JSON detail should report cannot read/parse (got: $outMCP)"
 # configError distinguishes a genuinely BROKEN
 # config (malformed JSON, unexpected shape) from a clean absence (present-
-# but-server-missing, OR the file simply doesn't exist yet — ENOENT is the
+# but-server-missing, OR the file simply doesn't exist yet: ENOENT is the
 # ORDINARY case for project-scope .mcp.json, never an error by itself).
 echo "$outMCP" | jq -e '(.[0].configError // false) == false and (.[1].configError // false) == false and (.[2].configError // false) == false' >/dev/null \
   || fail "mcp-registered present/server-missing/file-missing (ENOENT) should carry NO configError (got: $outMCP)"
@@ -1451,7 +1451,7 @@ echo "$outMCP" | jq -e '.[3].configError == true and .[4].configError == true' >
 echo "ok: mcp-registered (fixture-mcp) present/server-missing/file-missing/null-root/malformed via ctx.env.HOME, configError distinguishes broken config from clean absence"
 
 # ── mcp-registered: scope-aware file resolution ─
-# project scope reads <targetPath>/.mcp.json, NOT ~/.claude.json — proven in
+# project scope reads <targetPath>/.mcp.json, NOT ~/.claude.json, proven in
 # both directions: a project-scope registration in .mcp.json reads present
 # even with a DIFFERENT server registered in ~/.claude.json (never bleeds
 # across scopes), and a user-scope-only registration is correctly invisible
@@ -1465,7 +1465,7 @@ printf '{"mcpServers":{"fixture":{"command":"fixture-mcp"}}}' > "$mcp_scope_home
 
 outScope=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
-// Synthetic descriptor again (see the outMCP comment above) — isolates the
+// Synthetic descriptor again (see the outMCP comment above), isolates the
 // scope-resolution behavior from the bin deepening on the REAL
 // graphify-mcp item.
 const graphifyItem = { id: 'graphify-mcp', probe: { type: 'mcp-registered', server: 'graphify' } };
@@ -1506,13 +1506,13 @@ echo "ok: mcp-registered user scope also reads the on-demand registry, project s
 
 # ── mcp-registered: deepening (bin + initMarker) ───────────────
 # Registration alone used to read 'present' even when the wrapped binary is
-# gone or the consuming project was never initialized — a registered-but-
+# gone or the consuming project was never initialized. A registered-but-
 # broken server looked identical to a working one. Proven against a
 # SYNTHETIC descriptor carrying bin/initMarker (no live manifest item still
-# carries both fields — removed the one that did, tokensave-mcp
+# carries both fields: removed the one that did, tokensave-mcp
 # so this block builds its own fixture rather than depend on one), keeping
 # the registered command itself pinned to an absolute-path stub that always
-# resolves (the unconditional registered-command check — see below
+# resolves (the unconditional registered-command check: see below
 # is not what this block is isolating; it only wants bin/initMarker to be
 # the thing that varies across the three sub-cases).
 fixture_mcp_item='{ "id": "fixture-mcp", "probe": { "type": "mcp-registered", "server": "fixture", "bin": "fixture-bin", "initMarker": ".fixture-marker" } }'
@@ -1571,13 +1571,13 @@ echo "ok: mcp-registered deepening — registered-but-broken (unresolved bin / u
 
 # ── mcp-registered: bin check honors ctx.env, not just process.env ─────────
 # which(item.probe.bin) used to read
-# process.env.PATH directly, ignoring ctx.env entirely — a hermetic caller
+# process.env.PATH directly, ignoring ctx.env entirely. A hermetic caller
 # that already threads a fully-controlled ctx.env (this probe reads
 # ctx.env.HOME for its own file resolution) got a WRONG answer if ctx.env's
 # PATH differed from the real process env. Proven by DIVERGING the two: the
 # OUTER shell's PATH is scrubbed of any real `fixture-bin` (so node's own
 # process.env.PATH, inherited unmodified, cannot resolve it), while ctx.env
-# is built with an EXTRA stub dir prepended that process.env.PATH lacks —
+# is built with an EXTRA stub dir prepended that process.env.PATH lacks:
 # only a fix that actually reads ctx.env.PATH (not process.env.PATH) resolves
 # it as present.
 deep_bin_ctxonly="$work/deep-bin-ctxonly"; mkdir -p "$deep_bin_ctxonly"
@@ -1603,11 +1603,11 @@ echo "ok: mcp-registered bin check honors ctx.env.PATH for a hermetic caller wit
 
 # ── mcp-registered: the REGISTERED command itself must resolve ─────────────
 # a descriptor-named `bin`
-# is a GUESS at what the MCP server wraps — it can name the WRONG binary
+# is a GUESS at what the MCP server wraps: it can name the WRONG binary
 # entirely (found live: graphify's real registered command is the MCP
 # entrypoint graphify-mcp[.exe], not the bare `graphify` CLI the old
 # descriptor checked). The registered entry's OWN `command` is now ALWAYS
-# validated, unconditionally, with no descriptor opt-in — using a SYNTHETIC
+# validated, unconditionally, with no descriptor opt-in, using a SYNTHETIC
 # descriptor (server only, no bin/initMarker) to isolate this from the
 # bin/initMarker deepening tested above.
 mcpCmdItem() {
@@ -1701,7 +1701,7 @@ echo "$outCmdNone" | jq -e '.actual == "degraded"' >/dev/null \
 echo "ok: mcp-registered — the registered entry's OWN command is validated (absolute-path resolution / bare-name PATH lookup), unconditionally; a wrong, missing, or nonexistent command reads degraded, never silently present"
 
 # ── graphify-mcp: bin field DROPPED, relying on the registered-command
-# check alone (least-redundant design — see manifest.json's comment on this
+# check alone (least-redundant design: see manifest.json's comment on this
 # item). Proven live: the REAL server registered under a bare "graphify-mcp"
 # name (the actual entrypoint) reads present without any bin field at all.
 gmcp_home="$work/gmcp-home"; mkdir -p "$gmcp_home"
@@ -1727,13 +1727,13 @@ echo "ok: graphify-mcp's dropped bin field is redundant — the registered-comma
 
 # ── handover-dir (handover-wiring) ──────────────────────────────────────────
 # these two cases run the REAL scripts/lib/handover-path.sh
-# against the real checkout, and that resolver is slow on Windows — measured
+# against the real checkout, and that resolver is slow on Windows: measured
 # 4.8-13.0s wall for 1.2s of user time, i.e. MSYS syscall-bound rather than
 # blocked on anything. Under this suite's OWN load (it spawns hundreds of bash
 # processes) it has been seen to exceed even the 60s family budget, which made
 # these long-standing cases latently flaky: they assert WIRING, not latency, so
 # a slow host must not turn them red. Pin a generous-but-bounded budget via
-# HIMMELCTL_PROBE_TIMEOUT_SECS — a genuine hang still fails them. The
+# HIMMELCTL_PROBE_TIMEOUT_SECS: a genuine hang still fails them. The
 # underlying resolver latency is, not a budget problem.
 hd_present_dir="$work/hd-present-handoverdir"; mkdir -p "$hd_present_dir"
 outHDp=$("$node_bin" -e "
@@ -1764,7 +1764,7 @@ echo "$outHDa" | jq -e '.actual == "absent"' >/dev/null \
 echo "ok: handover-dir (handover-wiring) present/absent, exercising ctx.env pass-through"
 
 # `cleanAbsence` marks ONLY "no HANDOVER_DIR, inside a git repo,
-# and the lazily-created repo-local handovers/ does not exist yet" — the
+# and the lazily-created repo-local handovers/ does not exist yet", the
 # resolver's own 'inline default ... does not exist' refusal, run for real here
 # so a rewording of that message fails this test rather than quietly turning
 # the flag off. A HANDOVER_DIR pointing nowhere and a non-git cwd are real
@@ -1890,9 +1890,9 @@ echo "$outSchedA" | jq -e '.actual == "absent"' >/dev/null \
   || fail "dep platform-branch (scheduler-backend, $sched_name) absent: (got: $outSchedA)"
 echo "ok: dep platform-branch (scheduler-backend) picks '$sched_name' on this platform, present/absent"
 
-# ── dep (graphify) — ─────────────────────────────────────────────
+# ── dep (graphify) ─────────────────────────────────────────────
 # Used to be file-exists on scripts/graphify/check-graph-freshness.sh, a
-# git-TRACKED script — always 'present' on any himmel checkout regardless of
+# git-TRACKED script, always 'present' on any himmel checkout regardless of
 # whether graphify is actually installed. Now a plain PATH lookup, like
 # rtk/every other real dep item.
 gp_present_stub="$work/gp-present-bin"; mkdir -p "$gp_present_stub"
@@ -1923,15 +1923,15 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 echo "$outGPa" | jq -e '.actual == "absent"' >/dev/null || fail "dep (graphify) absent: (got: $outGPa)"
 echo "ok: dep (graphify) present/absent — no longer a tautological file-exists on a tracked script"
 
-# ── cmd:has_hermes (hermes-lanes) — ──────────────────────────────
+# ── cmd:has_hermes (hermes-lanes) ──────────────────────────────
 # Used to be file-exists on scripts/lanes/lanes.json (also git-TRACKED,
 # always present). Now runs `. resolver || exit 3; resolve_hermes_py`,
 # mirroring cmd:is_himmel_dev's shape exactly (this branch
 # INTRODUCED cmd:has_hermes with the same absent-vs-degraded conflation
-# cmd:is_himmel_dev already got fixed — ships consistent instead
+# cmd:is_himmel_dev already got fixed, ships consistent instead
 # of repeating the bug): rc 0 present, rc 3 degraded (resolver itself failed
-# to source — probe wiring broken), resolve_hermes_py's own nonzero ->
-# absent (sourced fine, hermes genuinely not installed — the ordinary case).
+# to source: probe wiring broken), resolve_hermes_py's own nonzero ->
+# absent (sourced fine, hermes genuinely not installed, the ordinary case).
 hh_repo_present="$work/hh-repo-present"; mkdir -p "$hh_repo_present/scripts/lib"
 cat > "$hh_repo_present/scripts/lib/resolve-hermes-py.sh" <<'SH'
 resolve_hermes_py() { printf '%s\n' "/fake/venv/python"; return 0; }
@@ -1960,7 +1960,7 @@ echo "$outHHa" | jq -e '.actual == "absent"' >/dev/null || fail "cmd:has_hermes 
 echo "ok: cmd:has_hermes (hermes-lanes) present/absent — no longer a tautological file-exists on a tracked registry file"
 
 # ── cmd:has_hermes: resolver missing -> degraded, NOT absent (──────
-# No scripts/lib/resolve-hermes-py.sh at all — `.`
+# No scripts/lib/resolve-hermes-py.sh at all: `.`
 # fails to source it, hitting the `|| exit 3` guard. Must not read the same
 # 'absent' as hermes genuinely-not-installed.
 hh_no_resolver="$work/hh-no-resolver"; mkdir -p "$hh_no_resolver/scripts/lib"
@@ -1980,7 +1980,7 @@ echo "ok: cmd:has_hermes — a missing/unreadable resolver reads degraded, disti
 # ── cmd:has_hermes: spawn error -> degraded, NOT absent (───────────
 # PATH:'' alone no longer un-resolves
 # bash (resolveProbeBash()'s Git-for-Windows/posix fallback candidates below
-# aren't PATH-gated — see the no_such_bash_w comment above) — HIMMELCTL_BASH
+# aren't PATH-gated: see the no_such_bash_w comment above). HIMMELCTL_BASH
 # pinned to a path that is never created is what actually forces the spawn
 # error and exercises the r.error branch.
 outHHse=$("$node_bin" -e "
@@ -1996,10 +1996,10 @@ echo "$outHHse" | jq -e '.detail | contains("spawn error")' >/dev/null \
   || fail "cmd:has_hermes spawn-error detail should name it (got: $outHHse)"
 echo "ok: cmd:has_hermes — a spawn error (bash unresolvable via a pinned-nonexistent HIMMELCTL_BASH) reads degraded, not absent"
 
-# ── cmd:has_hermes: unexpected rc (127 — resolver sourced fine but never ───
+# ── cmd:has_hermes: unexpected rc (127, resolver sourced fine but never ───
 # defined resolve_hermes_py) -> degraded, NOT absent
 # A stale/mismatched resolver is a WIRING problem, never
-# a clean "hermes not installed" (resolve_hermes_py's own rc 1) — the old
+# a clean "hermes not installed" (resolve_hermes_py's own rc 1). The old
 # fallback-to-absent conflated ANY nonzero rc, including this one.
 hh_no_fn="$work/hh-no-fn"; mkdir -p "$hh_no_fn/scripts/lib"
 cat > "$hh_no_fn/scripts/lib/resolve-hermes-py.sh" <<'SH'
@@ -2018,11 +2018,11 @@ echo "$outHHnf" | jq -e '.detail | contains("unexpected rc")' >/dev/null \
   || fail "cmd:has_hermes unexpected-rc detail should name it (got: $outHHnf)"
 echo "ok: cmd:has_hermes — an unexpected rc (127, resolver sourced but the function was never defined) reads degraded, never a clean absent"
 
-# ── cmd:is_himmel_dev (doc-guard-map) — ──────────────────────────
+# ── cmd:is_himmel_dev (doc-guard-map) ──────────────────────────
 # Used to be file-exists on scripts/lib/doc-guard-map.sh (repoRoot-forced,
-# also git-TRACKED — always present). Now runs `. resolver || exit 3;
+# also git-TRACKED, always present). Now runs `. resolver || exit 3;
 # is_himmel_dev_repo`: rc 0 present, rc 1 absent (sourced fine, not a dev
-# checkout — the ordinary case), rc 2 degraded (repo root unresolvable),
+# checkout, the ordinary case), rc 2 degraded (repo root unresolvable),
 # rc 3 degraded (resolver itself failed to source
 # this used to be indistinguishable from rc 1's clean absence, so a
 # genuinely broken probe wiring read as "gate off by choice").
@@ -2067,7 +2067,7 @@ echo "$outIDHe" | jq -e '.actual == "degraded"' >/dev/null || fail "cmd:is_himme
 echo "ok: cmd:is_himmel_dev (doc-guard-map) present/absent/degraded — no longer a tautological file-exists on a tracked script"
 
 # ── cmd:is_himmel_dev: resolver missing -> degraded, NOT absent (────
-# No scripts/guardrails/lib.sh at all — `.`
+# No scripts/guardrails/lib.sh at all: `.`
 # fails to source it, hitting the `|| exit 3` guard. Must not read the same
 # 'absent' as a genuinely-not-a-dev-checkout marker, or status-report.js's
 # opt-in downgrade would swallow a broken probe into a friendly "gate off".
@@ -2088,8 +2088,8 @@ echo "ok: cmd:is_himmel_dev — a missing/unreadable resolver reads degraded, di
 # ── cmd:is_himmel_dev: spawn error -> degraded, NOT absent (─────────
 # PATH:'' alone no longer
 # un-resolves bash (resolveProbeBash()'s Git-for-Windows/posix fallback
-# candidates below aren't PATH-gated — see the no_such_bash_w comment above)
-# — HIMMELCTL_BASH pinned to a path that is never created is what actually
+# candidates below aren't PATH-gated: see the no_such_bash_w comment above).
+# HIMMELCTL_BASH pinned to a path that is never created is what actually
 # forces the spawn error and exercises the r.error branch.
 outIDHse=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
@@ -2103,11 +2103,11 @@ echo "$outIDHse" | jq -e '.actual == "degraded"' >/dev/null \
 echo "$outIDHse" | jq -e '.detail | contains("spawn error")' >/dev/null \
   || fail "cmd:is_himmel_dev spawn-error detail should name it (got: $outIDHse)"
 
-# ── cmd:is_himmel_dev: unexpected rc (127 — resolver sourced fine but ──────
+# ── cmd:is_himmel_dev: unexpected rc (127, resolver sourced fine but ──────
 # never defined is_himmel_dev_repo) -> degraded, NOT absent
 # A stale/mismatched resolver is a WIRING
 # problem, never a clean "not a dev checkout" (is_himmel_dev_repo's own
-# rc 1) — the old fallback-to-absent conflated ANY nonzero rc, including
+# rc 1). The old fallback-to-absent conflated ANY nonzero rc, including
 # this one, which status-report.js's opt-in handler would then have
 # silently downgraded to a friendly "gate off" n/a.
 idh_no_fn="$work/idh-no-fn"; mkdir -p "$idh_no_fn/scripts/guardrails"
@@ -2128,8 +2128,8 @@ echo "$outIDHnf" | jq -e '.detail | contains("unexpected rc")' >/dev/null \
 echo "ok: cmd:is_himmel_dev — an unexpected rc (127, resolver sourced but the function was never defined) reads degraded, never a clean absent"
 echo "ok: cmd:is_himmel_dev — a spawn error (bash unresolvable) reads degraded, not absent"
 
-# ── telegram-access (telegram-bridge) — an earlier fix ──
-# Used to be a plain settings-key check on TELEGRAM_BOT_TOKEN — green for a
+# ── telegram-access (telegram-bridge): an earlier fix ──
+# Used to be a plain settings-key check on TELEGRAM_BOT_TOKEN, green for a
 # bridge that would reject every DM/group (gate.ts's isAllowed()/
 # isAllowedGroup() fail CLOSED on a missing/empty allowFrom with no groups).
 # Now checks both the token AND access.json's usable-allow-rule shape: token
@@ -2142,7 +2142,7 @@ telegramHome() {
 # HIMMEL_LUNA_CONFIG_PATH points every telegram-access/cmd:telegram_getme
 # invocation in this section at a deliberately nonexistent path
 # (resolveBridgeEnvFilePath now consults ~/.himmel/config.json for
-# bridge.envPath — Part B) — never the real file. A
+# bridge.envPath, Part B), never the real file. A
 # nonexistent path makes loadConfigIfPresent() skip load() entirely, so this
 # whole section's pre-existing, unaffected HOME-based fixture resolution is
 # unchanged.
@@ -2248,7 +2248,7 @@ echo "ok: telegram-access — token + valid access.json (non-empty allowFrom) re
 
 # token present, access.json has NO allowFrom but a real groups entry ->
 # present too (gate.ts admits a present group key with no per-group
-# allowFrom — see the module comment in probes.js).
+# allowFrom: see the module comment in probes.js).
 tb_group_only=$(telegramHome "tb-group-only")
 cat > "$tb_group_only/.claude/channels/telegram/.env" <<'ENV'
 TELEGRAM_BOT_TOKEN=123:abc
@@ -2270,7 +2270,7 @@ echo "ok: telegram-access — token + a groups-only access.json reads present, n
 
 # ── telegram-access: formal JSON-schema extension ─────
 # A semantically-usable access.json (non-empty allowFrom) that ALSO carries a
-# wrong-typed field elsewhere must now read degraded — proves the schema
+# wrong-typed field elsewhere must now read degraded, proves the schema
 # check runs BEFORE (not instead of) the pre-existing usable-allow-rule check.
 tb_schema_bad_dmpolicy=$(telegramHome "tb-schema-bad-dmpolicy")
 cat > "$tb_schema_bad_dmpolicy/.claude/channels/telegram/.env" <<'ENV'
@@ -2352,7 +2352,7 @@ echo "ok: cmd:telegram_getme — no token reads absent"
 
 # stub `bun`: HIMMEL_PROBE_TOKEN == GOODTOKEN999 -> "ok:testbot"; else "fail".
 # Fakes the SUBPROCESS boundary (this file's own convention), never the JS
-# import boundary — the real telegram-api.ts is never touched by this suite.
+# import boundary: the real telegram-api.ts is never touched by this suite.
 gm_bun_stub="$work/gm-bun-stub"; mkdir -p "$gm_bun_stub"
 cat > "$gm_bun_stub/bun" <<'STUB'
 #!/usr/bin/env bash
@@ -2454,7 +2454,7 @@ fi
 echo "ok: cmd:telegram_getme — bun missing from PATH reads degraded, token still never leaks"
 
 # every case above only ever
-# exercised a stub `bun` that prints "ok:"/"fail" to STDOUT — none of them
+# exercised a stub `bun` that prints "ok:"/"fail" to STDOUT. None of them
 # covered a child that writes something raw to STDERR containing the token,
 # which is exactly the shape that leaked in production (getMe()'s own
 # request URL embeds the token in its path: https://api.telegram.org/
@@ -2553,7 +2553,7 @@ fi
 echo "ok: cmd:telegram_getme — a runtime-observed network failure reads degraded with a connectivity detail, not 'probe wiring broken', and never leaks the token"
 
 # The wiring side of the same distinction: an import-stage failure (tagged
-# "wiring:" by the real script) must still read as a probe wiring problem —
+# "wiring:" by the real script) must still read as a probe wiring problem,
 # proving the fix routes on the tag rather than defaulting everything to
 # "runtime" now that both are possible.
 gm_wiring_stub="$work/gm-wiring-stub"; mkdir -p "$gm_wiring_stub"
@@ -2586,7 +2586,7 @@ echo "ok: cmd:telegram_getme — an import-stage (wiring) failure still reads as
 # ── cmd:whisper_ready ──────────────────────────────────
 # HIMMEL_LUNA_CONFIG_PATH points every invocation below at a deliberately
 # nonexistent path (probeWhisperReady now consults ~/.himmel/config.json for
-# bridge.whisper.{cli,model} — Part B) — never the
+# bridge.whisper.{cli,model}, Part B), never the
 # real file. A nonexistent path makes loadConfigIfPresent() skip load()
 # entirely, matching this whole block's pre-existing, unaffected behavior.
 wr_no_config="$work/wr-no-config.json"
@@ -2689,7 +2689,7 @@ echo "ok: cmd:whisper_ready — binary + model both present reads present"
 
 # a DIRECTORY sitting at the binary path (a
 # stray same-named folder, or a broken/partial install) must never read
-# present or degraded from bare fs.existsSync() — it must read absent, same
+# present or degraded from bare fs.existsSync(). It must read absent, same
 # as a genuinely missing binary. Ambient WHISPER_CLI/WHISPER_MODEL/
 # WHISPER_DIR are explicitly nulled per the task brief's own warning (a real
 # operator env value on this machine previously produced a false pass).
@@ -2725,7 +2725,7 @@ echo "$outWRemptyBinary" | jq -e '.detail | test("0-byte"; "i")' >/dev/null \
 echo "ok: cmd:whisper_ready — a 0-byte binary (truncated download) reads absent, never ready"
 
 # binary usable, but a 0-byte MODEL (a
-# truncated model download — the design's own checklist item warns about
+# truncated model download: the design's own checklist item warns about
 # exactly this) must read degraded, never present.
 wr_empty_model="$work/wr-empty-model-dir"; mkdir -p "$wr_empty_model"
 printf 'not-empty' > "$wr_empty_model/whisper-cli"; chmod +x "$wr_empty_model/whisper-cli"
@@ -2745,16 +2745,16 @@ echo "ok: cmd:whisper_ready — a 0-byte model (truncated download) reads degrad
 
 # loadConfigIfPresent used to read
 # HIMMEL_LUNA_CONFIG_PATH from the real process.env directly, ignoring
-# ctx.env — the same shape as the HOME bug expandHomeForCtx already fixed a
+# ctx.env, the same shape as the HOME bug expandHomeForCtx already fixed a
 # few files up ("would have resolved against the real operator's
 # ~/.claude/channels/telegram/.env in production for any caller not using
 # ctx.env.HOME"). Proven the SAME way the pre-existing "cmd:codex_provisioned
 # honors ctx.env.HOME" case above proves its own fix: a MINIMAL ctx.env (no
 # process.env spread at all) carrying its OWN HIMMEL_LUNA_CONFIG_PATH, set
 # alongside a DIFFERENT value on the real subprocess env var. The two
-# configs are engineered to disagree on the RESULT, not just wording — the
+# configs are engineered to disagree on the RESULT, not just wording: the
 # ambient config's model file doesn't exist in the whisper dir (would read
-# degraded), the ctx config's does (present) — so only a genuine ctx.env
+# degraded), the ctx config's does (present), so only a genuine ctx.env
 # read, not an accidental string match, can make this pass.
 wr_ctxenv_dir="$work/wr-ctxenv-dir"; mkdir -p "$wr_ctxenv_dir"
 printf 'stub-binary' > "$wr_ctxenv_dir/whisper-cli"; chmod +x "$wr_ctxenv_dir/whisper-cli"
@@ -2795,7 +2795,7 @@ echo "$outPIabsent" | jq -e '.actual == "absent"' >/dev/null \
 echo "ok: cmd:python_interpreter — absent when nothing resolves on PATH"
 
 # present: a stub interpreter that actually RUNS the given script (not just
-# resolves) and echoes the marker back — also proves PYTHONHOME is threaded
+# resolves) and echoes the marker back. Also proves PYTHONHOME is threaded
 # to the child (named in the detail), not just read from the real process env.
 pi_present_stub="$work/pi-present-bin"; mkdir -p "$pi_present_stub"
 cat > "$pi_present_stub/python" <<'STUB'
@@ -2818,7 +2818,7 @@ echo "$outPIpresent" | jq -e '.detail | contains("PYTHONHOME")' >/dev/null \
   || fail "cmd:python_interpreter: present detail should name the PYTHONHOME actually threaded to the child (got: $outPIpresent)"
 echo "ok: cmd:python_interpreter — a working interpreter that runs the script reads present, PYTHONHOME threaded through"
 
-# degraded: mimics the REAL Windows Store python.exe app-execution alias —
+# degraded: mimics the REAL Windows Store python.exe app-execution alias,
 # resolves on PATH but exits non-zero without ever running the given script.
 pi_stub_stub="$work/pi-stub-bin"; mkdir -p "$pi_stub_stub"
 cat > "$pi_stub_stub/python" <<'STUB'
@@ -2898,12 +2898,12 @@ echo "ok: distinct-tokens — two identical non-empty tokens (bridge vs jira-nud
 # Stub `python`: dispatches on the LAST argv (the --probe SOURCE value),
 # mimicking fetch-health.py's own --probe <source> contract exactly (JSON on
 # stdout + rc 0/1; argparse's fixed rc 2 for a genuinely unrecognized source,
-# with the EXACT stderr wording run_single_probe's own ValueError produces —
-# "unknown probe source: '<name>' (valid sources: ...)" — since the probe
+# with the EXACT stderr wording run_single_probe's own ValueError produces:
+# "unknown probe source: '<name>' (valid sources: ...)", since the probe
 # disambiguates rc=2 by matching that literal text, not the bare code; a
 # SEPARATE rc=2 case (bad-flag-source) deliberately does NOT carry that text,
 # proving an unrelated usage error is never misclassified as "unrecognized
-# source") — fakes the SUBPROCESS boundary, never a JS mock of the aggregator.
+# source"). Fakes the SUBPROCESS boundary, never a JS mock of the aggregator.
 luna_stub="$work/luna-py-bin"; mkdir -p "$luna_stub"
 cat > "$luna_stub/python" <<'STUB'
 #!/usr/bin/env bash
@@ -2967,7 +2967,7 @@ echo "ok: luna-sources — one CONFIGURED-but-broken source among others ok read
 
 # a source the
 # adopter simply never CONFIGURED (fetch-health.py's reason names an absent
-# credential/artifact — e.g. "reddit cookie file missing") must warn
+# credential/artifact, e.g. "reddit cookie file missing") must warn
 # (actual:absent, remapped to severity:degraded by status-report.js's S2
 # block), NOT fail like a genuinely broken configured source. Distinguishable
 # in detail from the configured-but-broken case above ("not configured yet"
@@ -2987,7 +2987,7 @@ echo "$outLunaOneUnconfigured" | jq -e '.detail | test("unhealthy"; "i") | not' 
 echo "ok: luna-sources — one unconfigured source among others ok reads absent (warn), distinguishable from a configured-but-broken source"
 
 # a source on COOLDOWN (the Instagram throttle after a 429 or a
-# challenge) is deliberately waiting, not broken — it must warn (absent), never
+# challenge) is deliberately waiting, not broken. It must warn (absent), never
 # fail (degraded), and say so in its own words.
 outLunaCooldown=$(PATH="$pathLuna" "$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
@@ -3002,7 +3002,7 @@ echo "$outLunaCooldown" | jq -e '.detail | contains("cooldown-source") and test(
 echo "ok: luna-sources — a source on cooldown reads absent (warn), never degraded"
 
 # Nothing configured at all: every named source is unconfigured (no problems,
-# no healthy sources either) — still warn (absent), same tier as the mixed
+# no healthy sources either): still warn (absent), same tier as the mixed
 # case above, never a fail.
 outLunaAllUnconfigured=$(PATH="$pathLuna" "$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
@@ -3015,7 +3015,7 @@ echo "$outLunaAllUnconfigured" | jq -e '.actual == "absent"' >/dev/null \
 echo "ok: luna-sources — nothing configured at all (every source unconfigured) reads absent (warn), never a fail"
 
 # Mixed: a configured-but-broken source AND an unconfigured one in the SAME
-# sweep — the broken one must still force the fail tier (degraded), and both
+# sweep: the broken one must still force the fail tier (degraded), and both
 # groups must remain distinguishable in the one combined detail.
 outLunaMixed=$(PATH="$pathLuna" "$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
@@ -3031,7 +3031,7 @@ echo "ok: luna-sources — a configured-but-broken source alongside an unconfigu
 
 # a profile naming a
 # source fetch-health.py has never heard of (typo, renamed, dropped upstream)
-# used to fold into a footnote and still read 'present' — a fail-open-
+# used to fold into a footnote and still read 'present': a fail-open-
 # silently shape (violating the loud-degradation rule): a source that isn't
 # being monitored at all must never hide behind an otherwise-green verdict.
 # Pins the fix: one healthy + one unrecognized must NOT report present.
@@ -3063,10 +3063,10 @@ echo "$outLunaAmbiguousRc2" | jq -e '.detail | contains("unexpected usage error"
 echo "ok: luna-sources — an rc=2 NOT matching the documented 'unknown probe source' wording is never misclassified as an unrecognized source"
 
 # every named source
-# unrecognized means NOTHING is being monitored at all — a profile
+# unrecognized means NOTHING is being monitored at all: a profile
 # configuration error, not a lesser signal than the "one bad entry among
-# healthy ones" case above. Must read degraded (fail), never absent (warn) —
-# it must not collapse into the same benign verdict as "genuinely nothing
+# healthy ones" case above. Must read degraded (fail), never absent (warn).
+# It must not collapse into the same benign verdict as "genuinely nothing
 # configured" (empty sources list / every source merely unconfigured, both
 # tested elsewhere in this file).
 outLunaAllSkip=$(PATH="$pathLuna" "$node_bin" -e "
@@ -3091,10 +3091,10 @@ echo "$outLunaEmpty" | jq -e '.actual == "absent"' >/dev/null \
   || fail "luna-sources: an empty sources list should read absent: (got: $outLunaEmpty)"
 echo "ok: luna-sources — an empty configured-sources list reads absent"
 
-# ── cmd:codex_provisioned — ─────────────────────────
+# ── cmd:codex_provisioned ─────────────────────────
 # the fixture must plant a himmel-marketplace
 # cache ENTRY (matching install-himmel-codex.sh's own MARKET="himmel"
-# constant), not just an empty plugins/cache dir — see the probe's own
+# constant), not just an empty plugins/cache dir. See the probe's own
 # comment for why a bare cache dir is not himmel-specific evidence.
 codex_home_present="$work/codex-home-present"; mkdir -p "$codex_home_present/plugins/cache/himmel/himmel-ops/0.1.0"
 codex_bin_stub="$work/codex-bin-stub"
@@ -3112,7 +3112,7 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 echo "$outCodexP" | jq -e '.actual == "present"' >/dev/null || fail "cmd:codex_provisioned present (bin resolves + himmel-marketplace plugin cache exists): (got: $outCodexP)"
 
 # a NON-empty cache dir with entries for OTHER
-# marketplaces only (no himmel/ subdir at all) must NOT read present — codex
+# marketplaces only (no himmel/ subdir at all) must NOT read present: codex
 # itself is clearly in real use, but the himmel companion specifically was
 # never provisioned.
 codex_home_other_market="$work/codex-home-other-market"; mkdir -p "$codex_home_other_market/plugins/cache/openai-bundled/some-plugin/1.0.0"
@@ -3166,12 +3166,12 @@ echo "$outCodexAoverride" | jq -e '.actual == "absent"' >/dev/null || fail "cmd:
 echo "$outCodexAoverride" | jq -e '.detail | contains("CODEX_BIN set but")' >/dev/null || fail "cmd:codex_provisioned CODEX_BIN-unusable detail should name it (got: $outCodexAoverride)"
 echo "ok: cmd:codex_provisioned (codex-cli) present/degraded/absent, including CODEX_BIN override semantics"
 
-# ── cmd:codex_provisioned: ctx.env HOME/CODEX_HOME divergence — ─
+# ── cmd:codex_provisioned: ctx.env HOME/CODEX_HOME divergence ─
 # the codexHome resolution used to read the REAL
 # os.homedir() whenever CODEX_HOME was unset, ignoring ctx.env.HOME entirely
 # the same hermeticity class as which's round-5 fix. Proven
 # with a MINIMAL ctx.env (no process.env spread at all) carrying only
-# CODEX_BIN + a HOME that diverges from the real process env — only a fix
+# CODEX_BIN + a HOME that diverges from the real process env. Only a fix
 # that actually reads ctx.env.HOME can find the plugin cache planted there.
 codex_ctxenv_home="$work/codex-ctxenv-home"; mkdir -p "$codex_ctxenv_home/.codex/plugins/cache/himmel/himmel-ops/0.1.0"
 codex_ctxenv_bin="$work/codex-ctxenv-bin"; : > "$codex_ctxenv_bin"; chmod +x "$codex_ctxenv_bin"
@@ -3187,7 +3187,7 @@ echo "$outCodexCtxEnv" | jq -e '.actual == "present"' >/dev/null \
   || fail "cmd:codex_provisioned should resolve the plugin cache via ctx.env.HOME (not process.env/os.homedir()): (got: $outCodexCtxEnv)"
 echo "ok: cmd:codex_provisioned honors ctx.env.HOME for a hermetic caller with a fully-controlled env, diverging from process.env"
 
-# An explicit ctx.env.CODEX_HOME wins over the HOME-derived default — the
+# An explicit ctx.env.CODEX_HOME wins over the HOME-derived default: the
 # fixture HOME here deliberately carries NO .codex/plugins/cache, so a fix
 # that fell back to the HOME-derived path instead of the explicit CODEX_HOME
 # would misread this as degraded.
@@ -3206,10 +3206,10 @@ echo "$outCodexCtxEnv2" | jq -e '.actual == "present"' >/dev/null \
 echo "ok: cmd:codex_provisioned honors an explicit ctx.env.CODEX_HOME over the HOME-derived default"
 
 # CodeRabbit fix (coderabbit-1): CODEX_HOME PRESENT
-# but set to an EMPTY STRING — path.join('', 'plugins', 'cache') produces a
+# but set to an EMPTY STRING: path.join('', 'plugins', 'cache') produces a
 # RELATIVE path, which existsSync would resolve against the wrong thing
 # (the current process's cwd) if not guarded. Must read degraded, naming
-# the bad value — never silently probe cwd.
+# the bad value, never silently probe cwd.
 outCodexEmptyHome=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
@@ -3224,7 +3224,7 @@ echo "$outCodexEmptyHome" | jq -e '.detail | contains("non-absolute")' >/dev/nul
   || fail "cmd:codex_provisioned empty-CODEX_HOME detail should name the non-absolute path (got: $outCodexEmptyHome)"
 echo "ok: cmd:codex_provisioned degraded when CODEX_HOME is present but empty (relative-path guard)"
 
-# ── cmd:cadence_armed (pipeline-cadence) — ──────────────────────
+# ── cmd:cadence_armed (pipeline-cadence) ──────────────────────
 pc_armed_dir="$work/pc-armed-dir"; mkdir -p "$pc_armed_dir"
 cat > "$pc_armed_dir/pipeline-harvest.sh" <<'SH'
 # himmel-cadence-runner-format: 7
@@ -3265,8 +3265,8 @@ echo "$outPCnr" | jq -e '.detail | contains("cannot source resolver")' >/dev/nul
 
 # ── cmd:cadence_armed: spawn error -> degraded, NOT absent.
 # PATH:'' alone no longer un-resolves bash (resolveProbeBash()'s
-# Git-for-Windows/posix fallback candidates below aren't PATH-gated — see
-# the no_such_bash_w comment above) — HIMMELCTL_BASH pinned to a path that is
+# Git-for-Windows/posix fallback candidates below aren't PATH-gated: see
+# the no_such_bash_w comment above). HIMMELCTL_BASH pinned to a path that is
 # never created is what actually forces the spawn error and exercises the
 # r.error branch.
 outPCse=$("$node_bin" -e "
@@ -3298,10 +3298,10 @@ echo "ok: cmd:cadence_armed (pipeline-cadence) present/absent/degraded (resolver
 
 # CodeRabbit fix (coderabbit-3): cadence_runner_stamp
 # conflates "genuinely unarmed" and "dir exists but unreadable" into the
-# SAME rc 1 — the absent-vs-degraded conflation this whole ticket exists to
+# SAME rc 1, the absent-vs-degraded conflation this whole ticket exists to
 # kill. Pre-checked in the probe script via a distinct exit code (4). On
 # Windows/NTFS, chmod 000 does not reliably deny the OWNING user read
-# access the way it does on POSIX — detected here (not assumed) via a real
+# access the way it does on POSIX, detected here (not assumed) via a real
 # bash `[ -r ... ]` probe against the fixture BEFORE asserting anything, so
 # this skips cleanly (with a note) instead of false-failing on a platform
 # where the fixture itself can't be constructed; POSIX CI exercises it.
@@ -3346,24 +3346,24 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 echo "$outGCp" | jq -e '.actual == "present"' >/dev/null || fail "cmd:cadence_armed (graphmap-cadence) present via GRAPHMAP_BAT_DIR: (got: $outGCp)"
 echo "ok: cmd:cadence_armed envVar wiring — graphmap-cadence routes to its OWN dir"
 
-# ── cmd:guardrail_block_status (guardrail-block-global) — ──
+# ── cmd:guardrail_block_status (guardrail-block-global) ──
 # guardrail-block.mjs grew a `status --json` verb enumerating
 # all 3 expected GUARDRAILS hooks with per-hook presence + node/wrapper/
 # script resolution, and the probe now consumes it instead of the plain
 # `guardrail-mode=<mode> node-resolves=<yes|no>` text line (which only ever
-# proved "at least one owned hook exists and ITS node path resolves" —
+# proved "at least one owned hook exists and ITS node path resolves":
 # detectMode()'s `.some()`, nodeResolves()'s first-match return). This
 # fixture is DELIBERATELY a 1-of-3 partial install (only auto-approve-safe-
 # bash.sh wired, and even that one hook's wrapper/script paths are FAKE
-# /x/... paths that don't resolve) — exactly what used to false-green as
+# /x/... paths that don't resolve), exactly what used to false-green as
 # 'present', and what the round-3 fix could only bound to
-# 'degraded' for lack of per-hook data. It must still read degraded — the
+# 'degraded' for lack of per-hook data. It must still read degraded: the
 # genuine 'present' path is proven separately below (full-install fixture).
 gb_node_stub="$work/gb-node-stub"; : > "$gb_node_stub"; chmod +x "$gb_node_stub"
 # A REAL, RUNNABLE stub file for the baked bash path too
 # then codex-adv-3): every fixture below that hardcoded the literal string
 # "/bin/bash" was a POSIX-only path that never resolves on native Windows
-# (fs.existsSync('/bin/bash') is false here) — harmless before bashResolves
+# (fs.existsSync('/bin/bash') is false here), harmless before bashResolves
 # existed, but now feeds directly into `complete`. `chmod +x` on both stubs
 # the new node/bash usability check requires X_OK
 # a POSIX CI run would otherwise fail the full-install fixture below on a
@@ -3372,11 +3372,11 @@ gb_node_stub="$work/gb-node-stub"; : > "$gb_node_stub"; chmod +x "$gb_node_stub"
 gb_bash_stub="$work/gb-bash-stub"; : > "$gb_bash_stub"; chmod +x "$gb_bash_stub"
 gb_settings_present="$work/gb-settings-present/.claude"; mkdir -p "$gb_settings_present"
 # this fixture used to hardcode the literal
-# string "/bin/bash" for GUARDRAIL_BASH — which RESOLVES on POSIX (ubuntu
+# string "/bin/bash" for GUARDRAIL_BASH, which RESOLVES on POSIX (ubuntu
 # CI has a real /bin/bash) but never resolves on native Windows. The
 # assertion below names the EXACT combination of broken parts
 # ("bash/wrapper/script"), so a platform where bash happens to resolve
-# would drop the "bash/" prefix and string-mismatch — red on the public
+# would drop the "bash/" prefix and string-mismatch, red on the public
 # mirror's ubuntu shell-unit job while staying green here. Fixed by baking
 # a DELIBERATELY dead bash path instead (this fixture already wants
 # everything about the one wired hook to be broken, so a genuinely
@@ -3413,10 +3413,10 @@ echo "ok: cmd:guardrail_block_status — a partial (1-of-3) install reads degrad
 # whole point: `complete` in status --json can only be true
 # when EVERY GUARDRAILS hook is present, its ACTUAL matcher exactly matches
 # what it needs for full tool coverage, and bash/node/wrapper/script paths
-# ALL resolve — so a genuinely fully-armed machine now reads present instead
+# ALL resolve, so a genuinely fully-armed machine now reads present instead
 # of being permanently bounded to degraded. this fixture bakes
 # wrapper/script paths under $repo_root_w, so its ctx.env below PINS
-# HIMMEL_REPO to that same $repo_root_w — hermetic against whatever
+# HIMMEL_REPO to that same $repo_root_w, hermetic against whatever
 # HIMMEL_REPO the ambient shell running this suite happens to carry (a real
 # operator machine auto-sets it in ~/.claude/settings.json, typically
 # pointing at the PRIMARY checkout, not necessarily this worktree); without
@@ -3459,8 +3459,8 @@ echo "ok: cmd:guardrail_block_status — a genuine full (3-of-3) install now rea
 # same-named stub elsewhere) that ownsGuardrail()'s basename-only identity
 # check alone cannot distinguish from the real thing. auto-approve-safe-
 # bash.sh's wrapper+script here live under a SEPARATE, real, non-empty
-# checkout ($gb_wrong_checkout) — not $repo_root_w, the pinned trust
-# anchor — so the probe must flag it, not the wrapper/script *Resolves
+# checkout ($gb_wrong_checkout), not $repo_root_w, the pinned trust
+# anchor, so the probe must flag it, not the wrapper/script *Resolves
 # checks (which stay true: the files genuinely exist and are readable). ───
 gb_wrong_checkout="$work/gb-wrong-checkout"; mkdir -p "$gb_wrong_checkout/scripts/hooks"
 : > "$gb_wrong_checkout/scripts/hooks/guardrail-skip-in-himmel.js"
@@ -3494,7 +3494,7 @@ echo "ok: cmd:guardrail_block_status — same-basename wiring from a wrong check
 # script file → degraded, never present. Uses its OWN fake anchor checkout
 # ($gb_truncated_anchor, HIMMEL_REPO pinned to it) rather than truncating a
 # file under the real $repo_root_w scripts/hooks/ (which would break this
-# very test run's own guardrail wiring) — the wrapper/script paths baked
+# very test run's own guardrail wiring). The wrapper/script paths baked
 # into settings.json live UNDER that anchor, so wrapperMatchesAnchor/
 # scriptMatchesAnchor stay true (this is NOT the wrong-checkout case above);
 # only the script's CONTENT is a no-op, exactly the empty-guardrail-skip-
@@ -3598,7 +3598,7 @@ echo "$outGBb" | jq -e '.detail | contains("path does not resolve")' >/dev/null 
 echo "ok: cmd:guardrail_block_status — a genuinely wired install with a dead baked bash path reads degraded, never present (codex-adv-2)"
 
 # ── fs.existsSync alone accepts a DIRECTORY as
-# "resolves" — all 3 hooks wired, matcher correct, but the baked node path
+# "resolves": all 3 hooks wired, matcher correct, but the baked node path
 # is a DIRECTORY (not a file) → degraded, never present, even though
 # fs.existsSync() on that path would return true. ──────────────────────────
 gb_node_dir="$work/gb-node-is-a-directory"; mkdir -p "$gb_node_dir"
@@ -3632,7 +3632,7 @@ echo "$outGBnd" | jq -e '.detail | contains("node")' >/dev/null \
 echo "ok: cmd:guardrail_block_status — a DIRECTORY at the baked node path reads degraded, never present (codex-adv-3)"
 
 # ──: duplicate owned entries per basename were
-# invisible past the first match — 6 configured entries (one valid + one
+# invisible past the first match: 6 configured entries (one valid + one
 # dead-node duplicate per guardrail) used to report only the 3 valid ones
 # and read complete:true, even though the dead duplicate is still
 # independently wired and can fail closed at runtime. ──────────────────────
@@ -3649,7 +3649,7 @@ const matchers = { 'auto-approve-safe-bash.sh': 'Bash', 'block-edit-on-main.sh':
 const wrapper = repoRoot + '/scripts/hooks/guardrail-skip-in-himmel.js';
 const cmdFor = (node, basename) => 'GUARDRAIL_BASH=' + JSON.stringify(bashPath) + ' ' + JSON.stringify(node) + ' ' + JSON.stringify(wrapper) + ' ' + JSON.stringify(repoRoot + '/scripts/hooks/' + basename);
 // ONE valid group per guardrail (the genuine install) PLUS one extra group
-// per guardrail wired to a dead node path — 6 owned entries total, exactly
+// per guardrail wired to a dead node path: 6 owned entries total, exactly
 // the reproduced shape.
 const validGroups = basenames.map((basename) => ({ matcher: matchers[basename], hooks: [ { type: 'command', command: cmdFor(nodePath, basename) } ] }));
 const dupGroups = basenames.map((basename) => ({ matcher: matchers[basename], hooks: [ { type: 'command', command: cmdFor(deadNodePath, basename) } ] }));
@@ -3670,14 +3670,14 @@ echo "$outGBdup" | jq -e '.detail | contains("duplicate entries wired")' >/dev/n
 echo "ok: cmd:guardrail_block_status — a valid entry plus a dead-node duplicate per guardrail reads degraded, never present (codex-adv-4)"
 
 # ──: ownership by whole-string substring search let a
-# DECOY command through — the real (4th quoted) script arg for all 3 groups
+# DECOY command through: the real (4th quoted) script arg for all 3 groups
 # is a stub file, and each guardrail's actual basename appears ONLY in a
 # trailing shell comment. The pre-fix isOwnedHook()/parseOwnedCommand() pair
 # would have reported this as "owned, script resolves" per guardrail. Fixed
-# semantic: NOT owned by any guardrail at all (present:false/entryCount:0 —
+# semantic: NOT owned by any guardrail at all (present:false/entryCount:0,
 # reads identically to "never wired"), so this must read degraded (mode
-# still reads global off the decoy — detectMode()'s loose match is
-# unchanged/out of scope — but no guardrail has a genuine owned entry). ────
+# still reads global off the decoy: detectMode()'s loose match is
+# unchanged/out of scope, but no guardrail has a genuine owned entry). ────
 gb_decoy_script="$work/gb-decoy-script.sh"; : > "$gb_decoy_script"
 gb_settings_decoy="$work/gb-settings-decoy/.claude"; mkdir -p "$gb_settings_decoy"
 "$node_bin" -e "
@@ -3690,7 +3690,7 @@ const basenames = ['auto-approve-safe-bash.sh', 'block-edit-on-main.sh', 'block-
 const matchers = { 'auto-approve-safe-bash.sh': 'Bash', 'block-edit-on-main.sh': 'Edit|Write|MultiEdit|NotebookEdit', 'block-read-secrets.sh': 'Bash|PowerShell|Read|Grep' };
 const wrapper = repoRoot + '/scripts/hooks/guardrail-skip-in-himmel.js';
 // Real script arg is the SAME decoy for all 3; the guardrail's own basename
-// sits ONLY in a trailing comment — no quoted-argument parse ever sees it.
+// sits ONLY in a trailing comment: no quoted-argument parse ever sees it.
 const groups = basenames.map((basename) => ({
   matcher: matchers[basename],
   hooks: [ { type: 'command', command: 'GUARDRAIL_BASH=' + JSON.stringify(bashPath) + ' ' + JSON.stringify(nodePath) + ' ' + JSON.stringify(wrapper) + ' ' + JSON.stringify(decoyScript) + ' # ' + basename } ],
@@ -3717,12 +3717,12 @@ echo "ok: cmd:guardrail_block_status — a decoy script with the real guardrail 
 
 # ──: a canonical (fully valid) entry for all 3
 # guardrails PLUS a SAME-IDENTITY duplicate with a TRAILING EXTRA ARGUMENT
-# on auto-approve-safe-bash.sh — guardrail-skip-in-himmel.js reads only
+# on auto-approve-safe-bash.sh: guardrail-skip-in-himmel.js reads only
 # process.argv[2] (the script path) and ignores anything after it, so this
 # duplicate is RUNTIME-RELEVANT (Claude still executes it identically to
 # the canonical one), not a decoy. the earlier anchored regex alone would make
 # it invisible entirely (entryCount would stay 1, complete:true) even
-# though it's wired with a DEAD node path — reopening the earlier own blind
+# though it's wired with a DEAD node path, reopening the earlier own blind
 # spot via a different command shape. Must read degraded, never present. ──
 gb_noncanon_dead_node="$work/gb-noncanon-dead-node"
 gb_settings_noncanon="$work/gb-settings-noncanon/.claude"; mkdir -p "$gb_settings_noncanon"
@@ -3760,7 +3760,7 @@ echo "$outGBnc" | jq -e '.detail | contains("auto-approve-safe-bash.sh")' >/dev/
 echo "ok: cmd:guardrail_block_status — a canonical entry plus a same-identity trailing-arg duplicate reads degraded, never present (codex-adv-7)"
 
 # ── full install but the WRAPPER itself has rotted (a moved/deleted himmel
-# checkout — exactly the drift class report_guardrail_block exists to
+# checkout, exactly the drift class report_guardrail_block exists to
 # catch) → degraded, never present, even though all 3 hooks are wired. ────
 gb_settings_dead_wrapper="$work/gb-settings-dead-wrapper/.claude"; mkdir -p "$gb_settings_dead_wrapper"
 "$node_bin" -e "
@@ -3770,7 +3770,7 @@ const repoRoot = '$repo_root_w';
 const basenames = ['auto-approve-safe-bash.sh', 'block-edit-on-main.sh', 'block-read-secrets.sh'];
 const matchers = { 'auto-approve-safe-bash.sh': 'Bash', 'block-edit-on-main.sh': 'Edit|Write|MultiEdit|NotebookEdit', 'block-read-secrets.sh': 'Bash|PowerShell|Read|Grep' };
 // Basename stays 'guardrail-skip-in-himmel.js' (isOwnedHook matches on that
-// substring) but lives under a directory that doesn't exist — the file
+// substring) but lives under a directory that doesn't exist: the file
 // itself does not resolve.
 const wrapper = repoRoot + '/scripts/hooks/NONEXISTENT-DIR/guardrail-skip-in-himmel.js';
 const groups = basenames.map((basename) => ({
@@ -3841,7 +3841,7 @@ echo "$outGBu" | jq -e '.detail | contains("unparseable")' >/dev/null || fail "c
 
 # mode is valid JSON and present, but the 'hooks' array is
 # MISSING entirely (a wiring/shape break in guardrail-block.mjs's own
-# output, distinct from the plain-unparseable case above) — must NOT be
+# output, distinct from the plain-unparseable case above), must NOT be
 # treated as a confirmed install; same "missing field is not proof" stance
 # as the earlier node-resolves check, now against the richer verb.
 gb_missing_field_dir="$work/gb-missing-field"; mkdir -p "$gb_missing_field_dir/scripts/hooks"
@@ -3865,7 +3865,7 @@ echo "ok: cmd:guardrail_block_status degraded when mode=global but the 'hooks' a
 # genuinely present, well-typed EMPTY array. Array.isArray([]) is true, so
 # without an explicit non-empty check this would sail straight past the
 # shape guard and into the `complete === true` branch, trusted as 'present'
-# despite attesting ZERO guardrails — a malformed/truncated producer output
+# despite attesting ZERO guardrails: a malformed/truncated producer output
 # read as a clean, complete install. Raised as a suggestion,
 # re-raised as Important.
 gb_empty_hooks_dir="$work/gb-empty-hooks"; mkdir -p "$gb_empty_hooks_dir/scripts/hooks"
@@ -3886,24 +3886,24 @@ echo "$outGBeh" | jq -e '.detail | contains("missing expected")' >/dev/null \
 echo "ok: cmd:guardrail_block_status degraded when mode=global, complete=true, but the 'hooks' array is empty (codex-1-r6)"
 
 # ── (third raise, each stricter): an earlier fix closed the
-# EMPTY hooks[] case, but a TRUNCATED payload — complete:true with FEWER
+# EMPTY hooks[] case, but a TRUNCATED payload (complete:true with FEWER
 # hook objects than the real contract enumerates, that one object itself
-# fully healthy — still sailed through on parsed.complete alone, since
+# fully healthy) still sailed through on parsed.complete alone, since
 # nothing recomputed completeness FROM the entries. The probe now requires
 # parsed.complete AND an independent per-entry recomputation to AGREE. ────
 
-# Case 1 (the accepted floor, DOCUMENTED not fixed — a residual gap distinct
+# Case 1 (the accepted floor, DOCUMENTED not fixed: a residual gap distinct
 # from trust-anchor scope, which this fixture's payload now
 # also satisfies via wrapperMatchesAnchor/scriptMatchesAnchor: true): a
 # non-empty, INTERNALLY CONSISTENT array with only 1 (of the real 3) hook
-# objects, that one fully healthy (including anchor-matching) — complete:true
+# objects, that one fully healthy (including anchor-matching): complete:true
 # and the recomputation over the given entries agree (both say "healthy"),
 # so this reads present. This is the accepted limit: detecting "too few
 # entries" needs the EXPECTED count, which only the producer owns; asserting
 # a count here would duplicate producer vocabulary the same way an earlier fix
 # already rejected. (the payload now also carries the FULL v2
 # attestation set, so the round-2 fail-closed-on-v2-absence gate does NOT
-# trip it — isolating the COUNT question this case exists to document.)
+# trip it, isolating the COUNT question this case exists to document.)
 gb_truncated_dir="$work/gb-truncated"; mkdir -p "$gb_truncated_dir/scripts/hooks"
 cat > "$gb_truncated_dir/scripts/hooks/guardrail-block.mjs" <<'JS'
 process.stdout.write(JSON.stringify({
@@ -3946,7 +3946,7 @@ echo "$outGBtr" | jq -e '.actual == "present"' >/dev/null \
 echo "ok: cmd:guardrail_block_status — an internally-consistent truncated payload (fewer entries than the real contract, all healthy) reads present under the documented accepted floor (codex-1-r7, case 1)"
 
 # Case 2 (the NON-NEGOTIABLE case): complete:true, but the ONE hook entry's
-# OWN fields say it is NOT healthy (wrapperResolves:false) — the payload
+# OWN fields say it is NOT healthy (wrapperResolves:false): the payload
 # contradicts itself. Must read degraded, never present.
 gb_contradiction_dir="$work/gb-contradiction"; mkdir -p "$gb_contradiction_dir/scripts/hooks"
 cat > "$gb_contradiction_dir/scripts/hooks/guardrail-block.mjs" <<'JS'
@@ -3979,22 +3979,22 @@ echo "$outGBcon" | jq -e '.detail | contains("self-contradictory")' >/dev/null \
   || fail "cmd:guardrail_block_status self-contradictory-payload detail should name it as such (got: $outGBcon)"
 echo "ok: cmd:guardrail_block_status — complete=true contradicted by its own hooks[] entry reads degraded, never present (codex-1-r7, case 2, non-negotiable)"
 
-# ── (attestation v2 binding; fail-closed
-# — codex-adv finding 1): the probe requires the v2 attestation layer —
+# ── (attestation v2 binding; fail-closed,
+# codex-adv finding 1): the probe requires the v2 attestation layer:
 # top-level contentIntegrityComplete / auditAnchorComplete /
 # attestationComplete plus per-hook wrapperIntegrity / scriptIntegrity and
-# wrapperMatchesAuditAnchor / scriptMatchesAuditAnchor — for 'present'. The
+# wrapperMatchesAuditAnchor / scriptMatchesAuditAnchor, for 'present'. The
 # probe spawns the checkout's OWN guardrail-block.mjs, so producer and
 # consumer ship in lockstep: a payload with NO v2 fields (stale checkout or
 # stripped/tampered output) OR a PARTIAL v2 set reads DEGRADED, never the v1
-# 'present' verdict — the earlier fail-OPEN back-compat re-opened the downgrade
+# 'present' verdict. The earlier fail-OPEN back-compat re-opened the downgrade
 # path the attestation exists to close. Five cases, each a STUB
 # guardrail-block.mjs emitting a hand-crafted status --json payload (same
 # harness as the codex-1-r7 self-consistency fixtures above) so the probe's v2
 # binding is exercised directly, isolated from the producer's git-blob
 # mechanics. The motivating gap: a content-tampered wrapper or a divergent
 # audit anchor yields attestationComplete:false while the legacy v1 `complete`
-# flag still reads true — so WITHOUT this binding the attestation exists in
+# flag still reads true, so WITHOUT this binding the attestation exists in
 # the payload but never reaches the health surface (doctor still reports the
 # guardrails 'present').
 
@@ -4043,7 +4043,7 @@ echo "$outGBv2h" | jq -e '.detail | contains("attestation v2 complete")' >/dev/n
   || fail "cmd:guardrail_block_status healthy-v2 detail should name attestation v2 complete (got: $outGBv2h)"
 echo "ok: cmd:guardrail_block_status — a fully healthy v2 attestation payload reads present"
 
-# Case 2: a content-tampered wrapper — v1 complete stays true, but
+# Case 2: a content-tampered wrapper, v1 complete stays true, but
 # wrapperIntegrity.verdict is 'degraded', so contentIntegrityComplete:false and
 # attestationComplete:false. The probe must NOT rubber-stamp 'present' on the v1
 # flag alone; it reads degraded and names the content-integrity dimension.
@@ -4090,7 +4090,7 @@ echo "$outGBv2c" | jq -e '.detail | contains("content integrity")' >/dev/null \
   || fail "cmd:guardrail_block_status content-tampered detail should name the content-integrity dimension (got: $outGBv2c)"
 echo "ok: cmd:guardrail_block_status — a content-tampered wrapper reads degraded naming content integrity, never a v1-flag-only present"
 
-# Case 3: a divergent audit anchor — content integrity is healthy, but the
+# Case 3: a divergent audit anchor, content integrity is healthy, but the
 # configured wrapper points at a DIFFERENT checkout than the audit anchor
 # (wrapperMatchesAuditAnchor:false), so auditAnchorComplete:false and
 # attestationComplete:false. Reads degraded, naming the audit-anchor dimension.
@@ -4137,9 +4137,9 @@ echo "$outGBv2a" | jq -e '.detail | contains("audit anchor")' >/dev/null \
   || fail "cmd:guardrail_block_status audit-anchor-divergent detail should name the audit-anchor dimension (got: $outGBv2a)"
 echo "ok: cmd:guardrail_block_status — a divergent audit anchor reads degraded naming the audit anchor, never present"
 
-# Case 4 (fail-closed on absence — finding 1): a payload that
+# Case 4 (fail-closed on absence, finding 1): a payload that
 # emits NO attestation v2 fields at all (a stale checkout aimed at an older
-# guardrail-block.mjs, OR deliberately stripped/tampered output) — complete:true,
+# guardrail-block.mjs, OR deliberately stripped/tampered output), complete:true,
 # internally consistent, but no attestationComplete / contentIntegrityComplete /
 # auditAnchorComplete and no per-hook wrapperIntegrity / scriptIntegrity. an earlier fix
 # kept the v1 'present' verdict here (back-compat); an earlier fix fails CLOSED: this
@@ -4178,10 +4178,10 @@ echo "$outGBv1" | jq -e '.detail | contains("producer emitted no attestation-v2 
   || fail "cmd:guardrail_block_status v1-no-v2 detail should name the fail-closed situation (got: $outGBv1)"
 echo "ok: cmd:guardrail_block_status — a payload without v2 fields reads degraded (fail-closed), never a silent v1 present"
 
-# Case 5 (fail-closed on a PARTIAL v2 set — finding 1, panel sug
+# Case 5 (fail-closed on a PARTIAL v2 set, finding 1, panel sug
 # codex-1): a payload whose per-hook integrity fields ARE present but whose
 # summary booleans (attestationComplete / contentIntegrityComplete /
-# auditAnchorComplete) and anchorMatchesAudit are MISSING — some v2 fields
+# auditAnchorComplete) and anchorMatchesAudit are MISSING: some v2 fields
 # present, the set not whole. This is self-contradictory/incomplete and must
 # NOT silently fall back to a v1 classification: degraded, never 'present'.
 gb_v2_partial_dir="$work/gb-v2-partial"; mkdir -p "$gb_v2_partial_dir/scripts/hooks"
@@ -4237,11 +4237,11 @@ echo "$outGBe" | jq -e '.actual == "degraded"' >/dev/null || fail "cmd:guardrail
 echo "$outGBe" | jq -e '.detail | contains("rc=2")' >/dev/null || fail "cmd:guardrail_block_status nonzero-exit detail should name the rc (got: $outGBe)"
 echo "ok: cmd:guardrail_block_status (guardrail-block-global) absent/degraded (rotted node path / unparseable output / missing hooks field / nonzero exit) — 'present' is reserved for the genuine full-install case proven above"
 # SKIP NOTE: a spawn-error path (process.execPath itself unresolvable) is not
-# exercised — this probe spawns by ABSOLUTE execPath, never a bash/PATH
+# exercised: this probe spawns by ABSOLUTE execPath, never a bash/PATH
 # lookup for node, so the r.error branch has no realistic trigger here (unlike
 # the bash-spawned probes above, where 'bash' itself can go missing from
 # PATH). The branch stays defensive (matches every other probe's shape) but
-# is not artificially forced — per the CR-established "comment + skip note,
+# is not artificially forced, per the CR-established "comment + skip note,
 # not a fake test" standard.
 
 # ── gemini-cli is not on the adoption trail ──────────────────────
@@ -4253,7 +4253,7 @@ echo "ok: gemini-cli absent from the manifest"
 
 # ── cmd:hermes_checkout (hermes-checkout)
 # hermes-checkout no longer reuses cmd:has_hermes (that proves a usable venv
-# python, kept unchanged on hermes-lanes for runtime health) — it now checks
+# python, kept unchanged on hermes-lanes for runtime health). It now checks
 # the CHECKOUT itself: pure fs, no git spawn, resolving update_hermes()'s
 # OWN root/src and reading .git/config directly for the origin remote.
 hc_home_present="$work/hc-home-present"; mkdir -p "$hc_home_present/hermes-agent/.git"
@@ -4280,7 +4280,7 @@ echo "$outHCp" | jq -e '.actual == "present"' >/dev/null \
 echo "$outHCp" | jq -e '.detail | contains("NousResearch/hermes-agent")' >/dev/null \
   || fail "cmd:hermes_checkout present detail should name the verified origin (got: $outHCp)"
 
-# absent: no .git at all under either root/hermes-agent or root — never
+# absent: no .git at all under either root/hermes-agent or root, never
 # installed as a checkout, the ordinary case for most operators.
 hc_home_absent="$work/hc-home-absent"; mkdir -p "$hc_home_absent"
 outHCa=$("$node_bin" -e "
@@ -4296,8 +4296,8 @@ echo "$outHCa" | jq -e '.actual == "absent"' >/dev/null \
 echo "$outHCa" | jq -e '.detail | contains("not installed as a git checkout")' >/dev/null \
   || fail "cmd:hermes_checkout absent detail should say not installed as a git checkout (got: $outHCa)"
 
-# degraded: .git present but the origin points at a DIFFERENT repo entirely
-# — update_hermes() would silently skip this checkout too (its own remote
+# degraded: .git present but the origin points at a DIFFERENT repo entirely.
+# update_hermes() would silently skip this checkout too (its own remote
 # grep), so this is genuinely NOT a working hermes install.
 hc_home_wrong_origin="$work/hc-home-wrong-origin"; mkdir -p "$hc_home_wrong_origin/hermes-agent/.git"
 cat > "$hc_home_wrong_origin/hermes-agent/.git/config" <<'CFG'
@@ -4318,7 +4318,7 @@ echo "$outHCw" | jq -e '.detail | contains("not a NousResearch/hermes-agent chec
   || fail "cmd:hermes_checkout wrong-origin detail should name it (got: $outHCw)"
 
 # degraded: a SPOOFED origin whose owner/repo merely CONTAINS
-# "NousResearch/hermes-agent" as a substring —
+# "NousResearch/hermes-agent" as a substring,
 # codex-1): the previous bare substring match would have false-greened this.
 hc_home_spoof="$work/hc-home-spoof"; mkdir -p "$hc_home_spoof/hermes-agent/.git"
 cat > "$hc_home_spoof/hermes-agent/.git/config" <<'CFG'
@@ -4357,7 +4357,7 @@ echo "$outHCn" | jq -e '.actual == "degraded"' >/dev/null \
   || fail "cmd:hermes_checkout degraded (checkout present but no origin remote configured): (got: $outHCn)"
 
 # HERMES_HOME pointing straight AT the checkout (venv + .git at root, no
-# hermes-agent/ subdir) — the tolerance fallback update_hermes() itself has.
+# hermes-agent/ subdir), the tolerance fallback update_hermes() itself has.
 hc_home_at_root="$work/hc-home-at-root"; mkdir -p "$hc_home_at_root/.git"
 cat > "$hc_home_at_root/.git/config" <<'CFG'
 [remote "origin"]
@@ -4375,7 +4375,7 @@ echo "$outHCr" | jq -e '.actual == "present"' >/dev/null \
   || fail "cmd:hermes_checkout present (HERMES_HOME pointing straight at the checkout, root/.git tolerance, SSH-form origin url): (got: $outHCr)"
 
 # CodeRabbit fix (coderabbit-2): an ssh:// origin with
-# an EXPLICIT PORT (a normal, real-world form) used to false-degrade — the
+# an EXPLICIT PORT (a normal, real-world form) used to false-degrade: the
 # combined regex couldn't parse past the port segment.
 hc_home_ssh_port="$work/hc-home-ssh-port"; mkdir -p "$hc_home_ssh_port/hermes-agent/.git"
 cat > "$hc_home_ssh_port/hermes-agent/.git/config" <<'CFG'
@@ -4395,7 +4395,7 @@ echo "$outHCp2" | jq -e '.actual == "present"' >/dev/null \
 echo "ok: cmd:hermes_checkout — an ssh:// origin with an explicit port resolves present, not falsely degraded"
 
 # .git as a gitlink FILE (worktree/submodule shape: "gitdir: <path>") must
-# still count as a valid checkout indicator —
+# still count as a valid checkout indicator,
 # codex-2). Follows the pointer ONE level to find the real config.
 hc_home_gitdir_file="$work/hc-home-gitdir-file"; mkdir -p "$hc_home_gitdir_file/hermes-agent"
 hc_real_gitdir="$work/hc-real-gitdir"; mkdir -p "$hc_real_gitdir"
@@ -4416,7 +4416,7 @@ echo "$outHCg" | jq -e '.actual == "present"' >/dev/null \
   || fail "cmd:hermes_checkout present (.git is a gitlink FILE — worktree/submodule shape — following the gitdir: pointer): (got: $outHCg)"
 
 # gitdir: pointer target missing -> degraded (a .git entry genuinely exists,
-# just unverifiable) — never absent, never a crash.
+# just unverifiable), never absent, never a crash.
 hc_home_gitdir_broken="$work/hc-home-gitdir-broken"; mkdir -p "$hc_home_gitdir_broken/hermes-agent"
 printf 'gitdir: %s\n' "$(winpath "$work")/does-not-exist" > "$hc_home_gitdir_broken/hermes-agent/.git"
 outHCgb=$("$node_bin" -e "
@@ -4433,9 +4433,9 @@ echo "$outHCgb" | jq -e '.detail | contains("gitdir:")' >/dev/null \
   || fail "cmd:hermes_checkout broken-gitdir detail should mention the gitdir pointer (got: $outHCgb)"
 echo "ok: cmd:hermes_checkout — a .git gitlink FILE (worktree/submodule) is honored, following the pointer one level; a broken pointer reads degraded, never absent or a crash"
 
-# Worktree-shaped fixture — a NORMAL
+# Worktree-shaped fixture: a NORMAL
 # linked worktree's gitdir (.git/worktrees/<name>/) carries no remotes of
-# its own — they live in the COMMON dir, reached via that dir's own
+# its own: they live in the COMMON dir, reached via that dir's own
 # `commondir` file (relative paths resolve against the gitdir, per git's own
 # contract). Without the fallback, this legitimate install shape read
 # falsely degraded.
@@ -4466,7 +4466,7 @@ echo "ok: cmd:hermes_checkout — a NORMAL linked-worktree checkout (gitdir -> w
 echo "ok: cmd:hermes_checkout (hermes-checkout) present/absent/degraded (wrong origin / no origin / spoofed origin), including the root/.git tolerance fallback and SSH-form origin urls"
 
 # no HERMES_HOME override and no LOCALAPPDATA (the Linux/macOS
-# station shape) must resolve the default root to $HOME/.hermes — NOT
+# station shape) must resolve the default root to $HOME/.hermes, NOT
 # $HOME/AppData/Local/hermes (a Windows %LOCALAPPDATA% layout rendered under a
 # POSIX $HOME, the ticket's own repro). HOME is faked ONLY inside ctx.env
 # passed to runProbe (never at the bash level), matching the mcp-registered
@@ -4517,24 +4517,24 @@ depsCheck=$(jq -r '.items[] | select(.id=="hermes-lanes") | .deps | join(",")' "
 [ "$depsCheck" = "hermes-checkout" ] || fail "manifest: hermes-lanes.deps should be exactly [\"hermes-checkout\"] (got: $depsCheck)"
 echo "ok: hermes-lanes correctly deps on hermes-checkout (distinct probes: checkout provenance vs runtime venv health)"
 
-# ── cadence-coherence (cadence-armed) — status item S1 ──
+# ── cadence-coherence (cadence-armed), status item S1 ──
 # this probe used
 # to trust a generated RUNNER FILE's mere existence as proof a scheduler task
-# is registered — but a runner file survives after its Task Scheduler entry
+# is registered, but a runner file survives after its Task Scheduler entry
 # is deleted, or after an `arm` that failed partway, so S1 (the ONE status
 # item whose whole job is catching "not actually armed") could itself read a
 # false green. It now shells out to pipeline-cadence.sh's own `status` (the
-# single source of truth for scheduler state — the same posture
+# single source of truth for scheduler state, the same posture
 # engine-allowlist already applies to cadence-approve-engines.sh below) and
 # parses ITS answer, rather than re-deriving a schtasks/cron query here.
 #
 # Scheduler responses are faked via stub `schtasks`/`crontab` executables
 # wired through pipeline-cadence.sh's own PIPELINE_SCHTASKS/PIPELINE_CRONTAB
 # test seams (the same seams scripts/luna/test-pipeline-cadence.sh's own
-# suite uses) — real stub processes on this suite's own hermetic-executable
+# suite uses): real stub processes on this suite's own hermetic-executable
 # convention, never a JS mock. pipeline-cadence.sh dispatches `status` to
 # cmd_status (schtasks) on Windows and cron_status (crontab -l) everywhere
-# else (see its own trailing `case "$SUBCMD"` dispatch) — WITHOUT the
+# else (see its own trailing `case "$SUBCMD"` dispatch). WITHOUT the
 # `crontab` stub, cron_status's `cron_read` shells out to the REAL system
 # crontab, so this probe's actual/cleanAbsence verdict silently depends on
 # whatever cadence entries happen to be armed on the machine running the
@@ -4542,7 +4542,7 @@ echo "ok: hermes-lanes correctly deps on hermes-checkout (distinct probes: check
 # and RED, in the opposite direction, on a station with the real pipeline
 # cadence actually armed). Both fakes are driven off the SAME cc_sched_state
 # marker directory below, so one `touch`/`rm` against a task marker flips
-# both the Windows and POSIX code paths identically — the suite's outcome no
+# both the Windows and POSIX code paths identically: the suite's outcome no
 # longer depends on which platform branch pipeline-cadence.sh took, or on
 # this machine's real scheduler/crontab state. The Windows wscript
 # smoke-probe cadence_registered_status runs underneath is neutralized the
@@ -4551,7 +4551,7 @@ echo "ok: hermes-lanes correctly deps on hermes-checkout (distinct probes: check
 # machine's real WSH policy.
 # HIMMEL_LUNA_CONFIG_PATH points each case at its OWN fixture config.json (or
 # a deliberately nonexistent path, exercising luna-config.js's defaultConfig()
-# fallback) — never the real ~/.himmel/config.json.
+# fallback), never the real ~/.himmel/config.json.
 cc_bat="$work/cc-batdir"; mkdir -p "$cc_bat"
 cc_cfg_missing="$work/cc-config-missing.json"   # deliberately never created
 
@@ -4562,7 +4562,7 @@ cc_wsh_powershell="$work/cc-wsh-powershell-fake.sh"
 printf '#!/bin/sh\necho ABSENT\n' > "$cc_wsh_powershell"
 chmod +x "$cc_wsh_powershell"
 
-# `touch $cc_sched_state/tasks/<name>` marks <name> registered — /query /tn
+# `touch $cc_sched_state/tasks/<name>` marks <name> registered: /query /tn
 # answers TaskName/Next-Run-Time (rc 0) when the marker exists, the real
 # schtasks NOT_FOUND stderr signature (rc 1) otherwise, matching query_one's
 # own NOT_FOUND_RE. `touch $cc_sched_state/fail-query` makes every /query an
@@ -4601,13 +4601,13 @@ FAKE
 chmod +x "$cc_schtasks"
 
 # the POSIX twin of cc_schtasks, wired through pipeline-cadence.sh's
-# own PIPELINE_CRONTAB test seam (cron_read's `"${PIPELINE_CRONTAB:-crontab}" -l`)
-# — cron_status is what `status` actually dispatches to on Linux/macOS (see the
+# own PIPELINE_CRONTAB test seam (cron_read's `"${PIPELINE_CRONTAB:-crontab}" -l`).
+# cron_status is what `status` actually dispatches to on Linux/macOS (see the
 # trailing `case "$SUBCMD"` in pipeline-cadence.sh), so without this fake the
 # probe reads the REAL user crontab. `-l` lists one synthetic line per marker
 # file under $cc_sched_state/tasks/ carrying the `# HIMMEL-Pipeline-<Name>`
-# suffix cron_status greps for — the exact marker convention the real armed
-# crontab entries also use — so the SAME `touch`/`rm` against a task marker
+# suffix cron_status greps for (the exact marker convention the real armed
+# crontab entries also use), so the SAME `touch`/`rm` against a task marker
 # that drives cc_schtasks above drives this fake identically. `fail-query`
 # fails `-l` itself (a real crontab error, not the trusted "no crontab yet"
 # rc=1/empty-stderr signature cron_read special-cases), exercising the same
@@ -4683,7 +4683,7 @@ echo "$outCCbug" | jq -e '.actual == "absent" and (.cleanAbsence // false) == fa
   || fail "cadence-coherence: enabled:true + a runner file present but NO scheduler task registered must read absent, never present (got: $outCCbug)"
 echo "ok: cadence-coherence — RED: a runner file's mere presence, with nothing actually registered in the scheduler, does not read green (the CR round-10 finding)"
 
-# Same runner file, unchanged — only the scheduler now genuinely has all 4
+# Same runner file, unchanged: only the scheduler now genuinely has all 4
 # tasks registered. That, and only that, is what flips this to present.
 : > "$cc_bat/pipeline-fetch-health.bat"
 : > "$cc_bat/pipeline-synthesize.bat"
@@ -4777,7 +4777,7 @@ echo "$outCCg" | jq -e '.actual == "present"' >/dev/null \
 echo "ok: cadence real-runs — healthy armed jobs with the flag set still read present"
 cc_clean
 
-# ── phi-coherence — status item S3 ──────────────────────
+# ── phi-coherence, status item S3 ──────────────────────
 phi_vault="$work/phi-vault"; mkdir -p "$phi_vault"
 phi_home="$work/phi-home"; mkdir -p "$phi_home/.config/claude-glm"
 phi_cfg="$work/phi-config.json"
@@ -4820,7 +4820,7 @@ echo "ok: phi-coherence — a phi-roots entry with no local .salus marker reads 
 rm -f "$phi_home/.config/claude-glm/phi-roots"
 
 # ── phi-coherence: case-sensitive comparison (5,
-# retask stage1-build-6d2e) — POSIX filesystems are case-sensitive, so two
+# retask stage1-build-6d2e): POSIX filesystems are case-sensitive, so two
 # paths differing only in case must NOT compare equal.
 phi_case_vault="$work/PHI-Case-Vault"; mkdir -p "$phi_case_vault"
 : > "$phi_case_vault/.salus"
@@ -4829,7 +4829,7 @@ cat > "$phi_case_cfg" <<JSON
 {"version":1,"luna":{"vaultPath":"$(winpath "$phi_case_vault")","cadence":{"enabled":false,"schedules":{"fetchHealth":{"time":"01:30"},"harvest":{"time":"02:00"},"synthesize":{"time":"03:00"},"health":{"time":"04:00","day":"SUN"}},"models":{"harvest":"sonnet","synthesize":"sonnet","health":"haiku"}},"phi":{"declared":false}},"bridge":{"enabled":false,"envPath":"~/x/.env","whisper":{"cli":null,"model":"ggml-small.bin"}}}
 JSON
 # phi-roots lists the SAME path with different case in its last segment
-# (phi-vault -> PHI-VAULT-style casing) — a case-sensitive (POSIX) compare
+# (phi-vault -> PHI-VAULT-style casing): a case-sensitive (POSIX) compare
 # must treat this as a DIFFERENT path (no listing, degraded).
 printf '%s\n' "$(winpath "$phi_case_vault" | tr '[:lower:]' '[:upper:]')" > "$phi_home/.config/claude-glm/phi-roots"
 
@@ -4851,15 +4851,15 @@ echo "ok: phi-coherence — ctx.platform=linux (POSIX) treats case-differing pat
 rm -f "$phi_home/.config/claude-glm/phi-roots"
 
 # ── phi-coherence: ~-prefixed vaultPath (CodeRabbit App finding,
-# retask stage1-build-6d2e) — luna-config.js's schema accepts any string for
+# retask stage1-build-6d2e): luna-config.js's schema accepts any string for
 # vaultPath, and bridge.envPath's own default is itself `~`-prefixed, so this
 # is a realistic document shape. path.resolve('~/...') resolves against CWD,
 # not $HOME, so an unexpanded vaultPath used to misread fs.existsSync's
 # marker check as false AND normalizeForPhiMatch's comparison as a
-# CWD-relative path — both landing on false coincided with an empty
+# CWD-relative path: both landing on false coincided with an empty
 # phi-roots file also reading false, so the probe read a WRONG 'present'
 # instead of the correct 'degraded' (marker present, not listed). $HOME is
-# driven through this fixture's own temp dir — never the real home.
+# driven through this fixture's own temp dir, never the real home.
 phi_tilde_home="$work/phi-tilde-home"; mkdir -p "$phi_tilde_home/Documents/luna" "$phi_tilde_home/.config/claude-glm"
 : > "$phi_tilde_home/Documents/luna/.salus"
 phi_tilde_cfg="$work/phi-tilde-config.json"
@@ -4884,8 +4884,8 @@ echo "$outPHItildeVault" | jq -e '.detail | contains("~") | not' >/dev/null \
   || fail "phi-coherence: ~-prefixed vaultPath detail still carries a literal '~' — expansion did not happen (got: $outPHItildeVault)"
 echo "ok: phi-coherence — a ~-prefixed vaultPath expands against \$HOME and reads the correct (degraded) verdict, not a false 'present'"
 
-# ── phi-coherence: ~-prefixed phi-roots entry (same finding — either side of
-# the coherence check can carry a `~`) — vaultPath here is already a fully-
+# ── phi-coherence: ~-prefixed phi-roots entry (same finding, either side of
+# the coherence check can carry a `~`). vaultPath here is already a fully-
 # expanded absolute path; the phi-roots entry is the one that's `~`-prefixed,
 # and it must resolve to the SAME home-relative path as the vault for the
 # probe to see them as coherent.
@@ -4895,7 +4895,7 @@ phi_tilde2_cfg="$work/phi-tilde2-config.json"
 cat > "$phi_tilde2_cfg" <<JSON
 {"version":1,"luna":{"vaultPath":"$(winpath "$phi_tilde2_vault")","cadence":{"enabled":false,"schedules":{"fetchHealth":{"time":"01:30"},"harvest":{"time":"02:00"},"synthesize":{"time":"03:00"},"health":{"time":"04:00","day":"SUN"}},"models":{"harvest":"sonnet","synthesize":"sonnet","health":"haiku"}},"phi":{"declared":false}},"bridge":{"enabled":false,"envPath":"~/x/.env","whisper":{"cli":null,"model":"ggml-small.bin"}}}
 JSON
-# shellcheck disable=SC2088  # deliberate literal '~' — the fixture proves the
+# shellcheck disable=SC2088  # deliberate literal '~': the fixture proves the
 # probe's OWN expandHome() call expands it, not the shell
 printf '%s\n' '~/Documents/luna2' > "$phi_tilde_home/.config/claude-glm/phi-roots"
 
@@ -4915,15 +4915,15 @@ echo "$outPHItildeRoots" | jq -e '.actual == "present"' >/dev/null \
 echo "ok: phi-coherence — a ~-prefixed phi-roots entry expands against \$HOME and matches the expanded vault path (present)"
 rm -f "$phi_tilde_home/.config/claude-glm/phi-roots"
 
-# ── phi-coherence: ~\ -prefixed vaultPath (backslash form — CodeRabbit App
+# ── phi-coherence: ~\ -prefixed vaultPath (backslash form, CodeRabbit App
 # finding, retask stage1-build-6d2e): the ~/ fix above left `~\`
 # (the separator a Windows-authored config value actually writes, e.g.
 # `~\Documents\luna`) still falling through expandHome()'s bare `return p`,
 # same false 'present' this suite already proved for the ~/ form. Quoted
-# heredoc (<<'JSON') below — an UNQUOTED heredoc's backslash-collapsing rule
+# heredoc (<<'JSON') below. An UNQUOTED heredoc's backslash-collapsing rule
 # (POSIX: `\\` -> a single `\`) would corrupt the double-backslash JSON
 # escaping this fixture needs. $HOME is driven through this fixture's own
-# temp dir — never the real home.
+# temp dir, never the real home.
 phi_tildebs_home="$work/phi-tildebs-home"; mkdir -p "$phi_tildebs_home/Documents/luna" "$phi_tildebs_home/.config/claude-glm"
 : > "$phi_tildebs_home/Documents/luna/.salus"
 phi_tildebs_cfg="$work/phi-tildebs-config.json"
@@ -4949,7 +4949,7 @@ echo "$outPHItildebsVault" | jq -e '.detail | contains("~") | not' >/dev/null \
 echo "ok: phi-coherence — a ~\\-prefixed vaultPath expands against \$HOME and reads the correct (degraded) verdict, not a false 'present'"
 
 # ── phi-coherence: ~\ -prefixed phi-roots entry (same finding, backslash
-# form) — vaultPath here is already a fully-expanded absolute path; the
+# form): vaultPath here is already a fully-expanded absolute path; the
 # phi-roots entry is the one that's `~\`-prefixed, and it must resolve to the
 # SAME home-relative path as the vault for the probe to see them as coherent.
 phi_tildebs2_vault="$phi_tildebs_home/Documents/luna2"; mkdir -p "$phi_tildebs2_vault"
@@ -4958,7 +4958,7 @@ phi_tildebs2_cfg="$work/phi-tildebs2-config.json"
 cat > "$phi_tildebs2_cfg" <<JSON
 {"version":1,"luna":{"vaultPath":"$(winpath "$phi_tildebs2_vault")","cadence":{"enabled":false,"schedules":{"fetchHealth":{"time":"01:30"},"harvest":{"time":"02:00"},"synthesize":{"time":"03:00"},"health":{"time":"04:00","day":"SUN"}},"models":{"harvest":"sonnet","synthesize":"sonnet","health":"haiku"}},"phi":{"declared":false}},"bridge":{"enabled":false,"envPath":"~/x/.env","whisper":{"cli":null,"model":"ggml-small.bin"}}}
 JSON
-# shellcheck disable=SC2088  # deliberate literal '~' — the fixture proves the
+# shellcheck disable=SC2088  # deliberate literal '~': the fixture proves the
 # probe's OWN expandHome() call expands it, not the shell
 printf '%s\n' '~\Documents\luna2' > "$phi_tildebs_home/.config/claude-glm/phi-roots"
 
@@ -4978,9 +4978,9 @@ echo "$outPHItildebsRoots" | jq -e '.actual == "present"' >/dev/null \
 echo "ok: phi-coherence — a ~\\-prefixed phi-roots entry expands against \$HOME and matches the expanded vault path (present)"
 rm -f "$phi_tildebs_home/.config/claude-glm/phi-roots"
 
-# ── engine-allowlist — status item S4 ───────────────────
+# ── engine-allowlist, status item S4 ───────────────────
 # Exercised against the REAL repo + the REAL cadence-approve-engines.sh
-# script (never a copied literal), only PIPELINE_BAT_DIR is faked — proving
+# script (never a copied literal), only PIPELINE_BAT_DIR is faked, proving
 # the real manifest's `workers[].requiredSuffixes` genuinely stay covered by the
 # real hook's live ENGINE_LIST (a drift here is a real bug, not a fixture
 # artifact). The MISSING-suffix (fail) case below uses a deliberately
@@ -5031,16 +5031,16 @@ echo "$outEAmissing" | jq -e '.detail | contains("health") and contains("no/such
 echo "ok: engine-allowlist — an armed worker missing a required engine from the live allow-list reads absent (the silent-04:00-stall class), never cleanAbsence"
 rm -f "$ea_bat"/*.bat "$ea_bat"/*.sh
 
-# ── bridge-health — status item S5 ──────────────────────
+# ── bridge-health, status item S5 ──────────────────────
 # S5's binding rulings (probes.js's own header comment): (1) counts poller.ts
-# CONSUMER processes only; (2) linux/darwin only — EVERY other platform reads
+# CONSUMER processes only; (2) linux/darwin only: EVERY other platform reads
 # a LOUD degraded naming the limitation, never a silent pass.
 bh_dir="$work/bh-dir"; mkdir -p "$bh_dir/.claude/channels/telegram"
 
 # no token at all -> absent, cleanAbsence:true, short-circuited before any
 # getMe/poller-count check runs at all. HIMMEL_LUNA_CONFIG_PATH points at a
 # deliberately nonexistent path (defaultConfig() -> bridge.enabled:false)
-# now that the token-absent branch itself consults ~/.himmel/config.json —
+# now that the token-absent branch itself consults ~/.himmel/config.json,
 # never the real file.
 outBHabs=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$work/bh-config-missing.json")" "$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
@@ -5054,7 +5054,7 @@ echo "$outBHabs" | jq -e '.actual == "absent" and .cleanAbsence == true' >/dev/n
 echo "ok: bridge-health — no token configured (bridge never set up) reads absent, cleanAbsence:true, short-circuited"
 
 # a missing token alone used to mark
-# cleanAbsence regardless of bridge.enabled — an adopter who explicitly set
+# cleanAbsence regardless of bridge.enabled: an adopter who explicitly set
 # bridge.enabled:true in ~/.himmel/config.json got the same silent n/a
 # downgrade as someone who never opted in. Pin both directions against
 # lunaConfig.js's own HIMMEL_LUNA_CONFIG_PATH seam (never the real file), in
@@ -5083,7 +5083,7 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 }
 
 # bridge.enabled:true + no token configured -> loud absent, NEVER
-# cleanAbsence — the adopter explicitly asked for this subsystem and it
+# cleanAbsence: the adopter explicitly asked for this subsystem and it
 # cannot work without a token; status-report.js's opt-in downgrade must
 # never fire here.
 outBHenabledNoToken=$(run_bh_cfg "$bh_cfg_enabled")
@@ -5091,7 +5091,7 @@ echo "$outBHenabledNoToken" | jq -e '.actual == "absent" and (.cleanAbsence // f
   || fail "bridge-health: bridge.enabled=true + no token should read absent, never cleanAbsence (got: $outBHenabledNoToken)"
 echo "ok: bridge-health — bridge.enabled=true with no token configured reads a loud absent, never cleanAbsence"
 
-# bridge.enabled:false (explicit) + no token -> absent, cleanAbsence:true —
+# bridge.enabled:false (explicit) + no token -> absent, cleanAbsence:true,
 # unchanged from the ordinary never-opted-in case.
 outBHdisabledNoToken=$(run_bh_cfg "$bh_cfg_disabled")
 echo "$outBHdisabledNoToken" | jq -e '.actual == "absent" and .cleanAbsence == true' >/dev/null \
@@ -5123,7 +5123,7 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 }
 
 # linux/darwin have a real implementation (see the poller-count blocks
-# below) — a platform with neither reads the generic "not implemented"
+# below): a platform with neither reads the generic "not implemented"
 # degraded, never a silent present just because the token/access checks pass.
 outBHposix=$(run_bh_other freebsd)
 echo "$outBHposix" | jq -e '.actual == "degraded"' >/dev/null \
@@ -5134,23 +5134,23 @@ echo "$outBHposix" | jq -e '.detail | contains("fake-bridge-health-token-marker"
   || fail "bridge-health: the raw token must never appear in the result (got: $outBHposix)"
 echo "ok: bridge-health — a platform with no poller-count implementation at all reads a LOUD degraded naming the limitation, never a silent pass, token never leaked"
 
-# ── bridge-health poller-count — Linux/macOS ──────────────────
+# ── bridge-health poller-count, Linux/macOS ──────────────────
 # Unlike Windows' binary present/absent, the Linux/macOS contract is a
 # genuine 3-way split: 1 = present, 0 = absent, >1 = degraded (duplicate
 # pollers, class). Prefers `systemctl --user show
 # telegram-bridge.service -p MainPID -p ActiveState -p LoadState` when
 # systemd knows the unit, walking MainPID's children via a fixture
-# `/proc`-shaped tree (ctx.procRoot, a test-only seam — a real hermetic test
+# `/proc`-shaped tree (ctx.procRoot, a test-only seam: a real hermetic test
 # cannot fabricate genuine PIDs); LoadState=not-found (systemd genuinely
 # doesn't know this unit) falls back to `pgrep -f <resolved poller path>`.
 # Same stub-log SKIP-gate convention as the bridge-persistence Linux block
-# above (bp_stub_log_has) — a real Linux/macOS host runs every assertion for
+# above (bp_stub_log_has). A real Linux/macOS host runs every assertion for
 # real; a host where an extensionless bash-shebang stub can't spawn SKIPs
 # rather than faking a pass.
 bh_posix_stub="$work/bh-posix-stub"
 build_hermetic_bin "$bh_posix_stub" cat
 # bridge-health is a composite probe (accessResult + getMeResult +
-# pollerResult, see probeBridgeHealth) — runProbe below exercises the WHOLE
+# pollerResult, see probeBridgeHealth). runProbe below exercises the WHOLE
 # item, not poller-count in isolation, so the getMe sub-check's real `bun`
 # child process is on the critical path too. build_hermetic_bin only links
 # the REAL binary (by design); a real bun genuinely calling
@@ -5768,7 +5768,7 @@ else
 fi
 rm -f "$bh_posix_state/no-unit"
 
-# ── bridge-health poller-count — darwin, no /proc ────────────
+# ── bridge-health poller-count, darwin, no /proc ────────────
 # On darwin there is no systemd and no /proc at all, so probeBridgePollerCountPosix
 # falls straight to the pgrep -f fallback (no systemctl stub on this PATH ->
 # which('systemctl') finds nothing). posixDirectChildPids/posixCmdline already
@@ -5908,12 +5908,12 @@ else
   echo "SKIP: bridge-health (darwin) case (iv) HIMMEL-2945: no evidence in the stub log that pgrep actually spawned on this host"
 fi
 
-# ── bridge-persistence — status item S6 ───────────
+# ── bridge-persistence, status item S6 ───────────
 # Contract (spec §3.5): logon task (win) / systemd unit + linger (linux)
 # present when bridge.enabled; warn when enabled but persistence is absent.
 # bridge.enabled:false is a clean opt-out (cleanAbsence:true), never red.
 # Windows registration is verified by QUERYING THE SCHEDULER (stub schtasks
-# on PATH), never inferred from a file on disk — the exact S1 false-green
+# on PATH), never inferred from a file on disk, the exact S1 false-green
 # class this item exists to close. macOS/other reads a LOUD degraded naming
 # the Stage-2 limitation (A12), never a silent pass.
 bp_cfg_enabled="$work/bp-config-enabled.json"
@@ -5951,19 +5951,19 @@ echo "ok: bridge-persistence — bridge.enabled=false reads absent, cleanAbsence
 
 # ── Linux branch: unit + linger, via stubbed systemctl/loginctl on PATH ────
 # bridge-persistence.js calls spawnSync('systemctl'|'loginctl', ...) DIRECTLY
-# (never through bash -c — its own module header: "every real command is run
+# (never through bash -c, its own module header: "every real command is run
 # via spawnSync on the actual binary... never a spawned bash"). Sibling suite
 # scripts/himmelctl/test/test-bridge-persistence.sh (Task 9) already
 # documents this repo's Windows Git Bash dev host's exact limitation: Node
 # refuses to spawnSync() a .bat/.cmd without shell:true (CVE-2024-27980), and
-# an extensionless shebang script isn't CreateProcess-able at all — so the
+# an extensionless shebang script isn't CreateProcess-able at all, so the
 # stub satisfies which()'s PATH-presence check (haveSystemctl()/
 # haveLoginctl() read true) but the actual spawn ENOENTs, same shape as
 # "genuinely absent". Same technique adopted here: the stub LOGS every
 # invocation it actually receives; each spawn-dependent assertion below
 # checks that log first and SKIPs (never fakes a pass) when the log shows the
 # spawn never ran. On a real Linux/macOS host every assertion runs for real,
-# no SKIP. The unit-ABSENT case (case 4 below) needs no such gate — fileExists
+# no SKIP. The unit-ABSENT case (case 4 below) needs no such gate: fileExists
 # is a pure fs.existsSync with no spawn dependency for its verdict, so it
 # asserts unconditionally on every host.
 bp_stub="$work/bp-stub"; mkdir -p "$bp_stub"
@@ -5971,17 +5971,17 @@ bp_stub_log="$work/bp-stub.log"
 bp_stub_state="$work/bp-stub-state"; mkdir -p "$bp_stub_state"
 bp_linux_unit_dir="$work/bp-linux-unit-dir"; mkdir -p "$bp_linux_unit_dir"
 
-# On a real Linux host (retask stage1-build-6d2e — WSL) systemctl/loginctl
+# On a real Linux host (retask stage1-build-6d2e, WSL) systemctl/loginctl
 # live in /usr/bin ALONGSIDE bash itself (confirmed on this repo's WSL host).
 # scrub_path drops a PATH dir WHOLESALE when it carries a scrubbed tool
-# (a documented hazard) — scrubbing systemctl/loginctl
+# (a documented hazard): scrubbing systemctl/loginctl
 # would therefore also drop bash, and the stub scripts' own
 # `#!/usr/bin/env bash` shebang would then fail to resolve `bash` in the
 # child's own PATH. link_hermetic_tool (hermetic-path.sh's documented
 # convention: "link bash + whatever tools ... into a stub dir BEFORE calling
 # scrub_path") keeps bash resolvable in $bp_stub regardless of what gets
 # scrubbed. A no-op on Windows, where systemctl/loginctl are never on PATH at
-# all — scrub_path drops nothing there and this stub is never actually
+# all: scrub_path drops nothing there and this stub is never actually
 # spawned successfully anyway (see the file-header SKIP note above).
 link_hermetic_tool bash "$bp_stub"
 
@@ -6054,7 +6054,7 @@ else
   echo "SKIP: bridge-persistence — Linux linger-OFF case: no evidence in the stub log that systemctl/loginctl actually spawned on this host (see file header, CVE-2024-27980 / no-shebang-exec-on-Windows)"
 fi
 
-# ── case 4: Linux, unit ABSENT -> warn, naming the unit. No SKIP gate here —
+# ── case 4: Linux, unit ABSENT -> warn, naming the unit. No SKIP gate here:
 # fileExists is a pure fs.existsSync with no spawn dependency for the verdict
 # (probeBridgePersistence short-circuits on !fileExists before ever calling
 # lingerEnabled), so this is deterministic and testable on every host. ─────
@@ -6068,14 +6068,14 @@ echo "$outBP4" | jq -e '.detail | test("telegram-bridge.service"; "i")' >/dev/nu
 echo "ok: bridge-persistence — Linux: unit not installed reads degraded, naming the unit (deterministic, no spawn dependency)"
 
 # ── case 4b: the unit FILE exists, but
-# `systemctl --user is-enabled` reports it disabled/masked (rc!=0) — the
+# `systemctl --user is-enabled` reports it disabled/masked (rc!=0), the
 # SAME existence-is-not-enablement distinction as the Windows fix above.
 # bridge-persistence.js's systemdUnitInstalled() already derives `enabled`
 # from is-enabled's own exit code (never from file presence alone), so this
-# closes a TEST gap, not a code gap — confirming that behavior end-to-end
+# closes a TEST gap, not a code gap, confirming that behavior end-to-end
 # through this probe rather than just asserting it in prose. Same SKIP gate
 # as cases 2/3: genuinely exercised only where the spawn can actually run
-# (never on this repo's Windows dev host — see the file-header note above).
+# (never on this repo's Windows dev host: see the file-header note above).
 : > "$bp_linux_unit_dir/telegram-bridge.service"
 rm -f "$bp_stub_log"; rm -f "$bp_stub_state/enabled"; : > "$bp_stub_state/linger-yes"
 outBP4b=$(run_bp_linux "$bp_linux_unit_dir" "$bp_cfg_enabled")
@@ -6091,11 +6091,11 @@ fi
 
 # ── case 4c: unit file
 # exists but `systemctl --user is-enabled` exits with an UNRECOGNIZED code
-# (neither 0 nor 1) — systemdUnitInstalled()'s `enabled` is a genuine
+# (neither 0 nor 1). systemdUnitInstalled()'s `enabled` is a genuine
 # tri-state (true/false/null) and this is the null/UNDETERMINED case, not a
 # confirmed "not enabled". The pre-fix `enabled !== true` check folded this
 # into the same "installed but not enabled" wording as case 4b's confirmed-
-# disabled unit — telling an operator to `systemctl enable` a unit whose
+# disabled unit: telling an operator to `systemctl enable` a unit whose
 # enablement was never actually established. The detail here must NOT claim
 # "not enabled" and MUST name the undetermined condition, while the verdict
 # stays degraded either way. Same SKIP gate as 4b (spawn-dependent).
@@ -6116,7 +6116,7 @@ else
 fi
 
 # ── case 4d (same sweep, retask stage1-build-6d2e): unit installed+enabled,
-# but `loginctl show-user --property=Linger` fails (neither yes nor no) — the
+# but `loginctl show-user --property=Linger` fails (neither yes nor no). The
 # stub's existing else-branch (exit 3) already models this; lingerEnabled()
 # treats any non-zero rc as null/UNDETERMINED, same tri-state shape as
 # unitInfo.enabled above, and the pre-fix `linger !== true` check folded it
@@ -6139,7 +6139,7 @@ else
 fi
 
 # ── case 4e (final round): the SPAWN side
-# of the class cases 4c/4d already proved for the config-path READ side —
+# of the class cases 4c/4d already proved for the config-path READ side:
 # bridgePersistence.systemdUnitInstalled()/lingerEnabled() take no
 # parameters and resolve+spawn systemctl/loginctl purely off the ambient
 # process.env (which()'s PATH lookup, spawnSync's inherited env). A single
@@ -6148,7 +6148,7 @@ fi
 # nothing and read degraded/undetermined), while a MINIMAL ctx.env (no
 # process.env spread) carries its OWN PATH pointing at a stub dir where
 # systemctl/loginctl report the unit installed+enabled and linger on. Only a
-# genuine ctx.env-scoped resolve+spawn can make this read present — same
+# genuine ctx.env-scoped resolve+spawn can make this read present, same
 # SKIP gate as every other Linux bridge-persistence spawn case (this stub
 # never actually spawns on this repo's Windows dev host).
 bp_ctxenv_stub="$work/bp-ctxenv-stub"; mkdir -p "$bp_ctxenv_stub"
@@ -6219,7 +6219,7 @@ echo "$outBPmalformed" | jq -e '.actual == "degraded" and (.detail | test("luna 
   || fail "bridge-persistence: a malformed config.json must not crash the probe — degrades naming the config read failure (got: $outBPmalformed)"
 echo "ok: bridge-persistence — a malformed config.json degrades cleanly, never crashes the probe"
 
-# ── Part B — the inert-config wiring closes: bridge.envPath / bridge.whisper.{cli,model} ──
+# ── Part B (the inert-config wiring closes): bridge.envPath / bridge.whisper.{cli,model} ──
 # These config fields used to be read by
 # NOTHING (probeTelegramAccess/probeTelegramGetMe only ever consulted the
 # manifest's hardcoded envFile; probeWhisperReady only ever consulted
@@ -6235,7 +6235,7 @@ cat > "$pb_home/.claude/channels/telegram/access.json" <<'JSON'
 {"allowFrom": ["1"]}
 JSON
 # NOTE: the manifest default envFile ('.claude/channels/telegram/.env' under
-# $pb_home) is deliberately left EMPTY/absent — only the CONFIGURED path
+# $pb_home) is deliberately left EMPTY/absent: only the CONFIGURED path
 # carries a token, so a pass here proves resolution actually followed the
 # configured value, not a coincidental fallback.
 pb_cfg_envpath="$work/pb-config-envpath.json"
@@ -6276,7 +6276,7 @@ echo "$outPB10" | jq -e '.detail | contains("configured-path-token-marker")' >/d
 echo "ok: Part B case 10 — TELEGRAM_ENV process-env override wins over a different configured bridge.envPath"
 
 # ── case 10b: TELEGRAM_ENV set
-# to a ~/-prefixed path must expand against HOME before resolving — the
+# to a ~/-prefixed path must expand against HOME before resolving: the
 # configured-envPath branch already expanded `~`, the override branch used
 # to return the raw value verbatim, so the HIGHEST-priority input was the
 # one most likely to fail for an adopter who set it the natural way. ──────
@@ -6325,10 +6325,10 @@ echo "$outPBwhisperMalformed" | jq -e '.actual == "degraded" and (.detail | test
 echo "ok: Part B — cmd:whisper_ready with a malformed config.json degrades cleanly, never crashes"
 
 # ── regression: bash-backed probes must resolve via HIMMELCTL_BASH,
-# never the bare `bash` name — a sabotage-stub `bash` FIRST on PATH stands in
+# never the bare `bash` name: a sabotage-stub `bash` FIRST on PATH stands in
 # for Windows System32's WSL launcher (the exact binary that broke
 # doc-guard-map / handover-wiring / hermes-lanes on a fully healthy host
-# before this fix — see probes.js's resolveProbeBash/spawnBashProbe header
+# before this fix: see probes.js's resolveProbeBash/spawnBashProbe header
 # comment). Each positive case proves the probe still reads its healthy
 # verdict when HIMMELCTL_BASH points at a real bash despite the sabotage stub
 # shadowing PATH (this fails against the pre-fix bare-`bash` spawn); each
@@ -6338,7 +6338,7 @@ real_bash_w="$(winpath "$(command -v bash)")"
 
 # when this stub is PINNED directly as HIMMELCTL_BASH (the
 # negative controls, and the toolchain-row non-vacuous case below) it is
-# spawned DIRECTLY, so it must be a plain shebang script that always fails —
+# spawned DIRECTLY, so it must be a plain shebang script that always fails,
 # exactly the "resolves fine but can't source" bash a sabotage stub needs.
 sabotage_bash_dir="$work/sabotage-bash-bin"; mkdir -p "$sabotage_bash_dir"
 sabotage_bash="$sabotage_bash_dir/bash"
@@ -6421,9 +6421,9 @@ echo "$outDGnc" | jq -e '.actual != "present"' >/dev/null \
   || fail "HIMMEL-2289 negative control: doc-guard-map must NOT read present when HIMMELCTL_BASH is pinned at the sabotage stub (got: $outDGnc)"
 echo "ok: HIMMEL-2289 negative control — doc-guard-map does NOT read present when HIMMELCTL_BASH points at the sabotage stub"
 
-# ── toolchain bash row (probeBashDep — dep item cmd:'bash') ────
-# The manifest carries no dep/bash item — probeDep() only routes to
-# probeBashDep() when item.probe.cmd === 'bash' (probes.js) — so the item is
+# ── toolchain bash row (probeBashDep, dep item cmd:'bash') ────
+# The manifest carries no dep/bash item: probeDep() only routes to
+# probeBashDep() when item.probe.cmd === 'bash' (probes.js), so the item is
 # constructed inline, mirroring this file's established inline-item idiom
 # (engine-allowlist-fixture above).
 outBDhealthy=$(HIMMELCTL_BASH="$real_bash_w" "$node_bin" -e "
@@ -6439,7 +6439,7 @@ echo "$outBDhealthy" | jq -e --arg b "$real_bash_w" '.detail == $b' >/dev/null \
 echo "ok: toolchain bash (probeBashDep) reads present with the resolved bash path as detail when it can source scripts/guardrails/lib.sh"
 
 # Non-vacuous: the resolved bash EXISTS (which() would have called this
-# 'ok bash ready') but can't source the proof file — the exact false-green
+# 'ok bash ready') but can't source the proof file, the exact false-green
 # the operator hit (a present-but-broken WSL bash.exe), reproduced here with
 # a stub that always exits nonzero regardless of what it's asked to run.
 outBDstub=$(HIMMELCTL_BASH="$(winpath "$sabotage_bash")" "$node_bin" -e "
@@ -6457,7 +6457,7 @@ echo "ok: toolchain bash (probeBashDep) reads degraded, naming 'cannot source', 
 # Unresolvable: HIMMELCTL_BASH pinned to a nonexistent path, PATH scrubbed
 # too. resolveProbeBash() trusts a set HIMMELCTL_BASH unconditionally (it
 # never existsSync-checks it), so this does NOT hit probeBashDep's own
-# '!bash -> no usable bash found' branch — it is spawnSync's own ENOENT on
+# '!bash -> no usable bash found' branch. It is spawnSync's own ENOENT on
 # the bogus path that produces r.error, read here via probeBashDep's
 # spawn-error branch (confirmed against probes.js, not assumed).
 outBDunresolv=$("$node_bin" -e "
@@ -6490,15 +6490,15 @@ echo "ok: toolchain bash (probeBashDep) reads present with a 'presence only' det
 # ── the probe spawn budget is a FAMILY default, not a per-probe
 # constant. measured that a probe launching a process on Windows
 # legitimately occupies 8-18s and raised ONE probe (cadence-coherence) from the
-# 10s default to 60s — leaving its 14 siblings at 10s. The operator's next
-# wizard run then hit the SAME false DEGRADED one probe over: "handover state —
-# DEGRADED, timed out after 10s" on a healthy host (measured here at 3.5-8.1s
+# 10s default to 60s, leaving its 14 siblings at 10s. The operator's next
+# wizard run then hit the SAME false DEGRADED one probe over: handover state
+# DEGRADED, timed out after 10s on a healthy host (measured here at 3.5-8.1s
 # even IDLE, i.e. a 20% margin, which ~4 concurrent sessions erase). The budget
 # now lives on spawnProbeSync/spawnBashProbe as PROBE_TIMEOUT_MS, so a probe
 # cannot be left behind on the old one. ────────────────────────────────────
 #
 # The budget is exercised through HIMMELCTL_PROBE_TIMEOUT_SECS rather than by
-# sleeping past the real 60s default — a suite that waits a minute to prove one
+# sleeping past the real 60s default: a suite that waits a minute to prove one
 # number is its own defect (CR [codex-1] on this ticket). The override is the
 # same env-seam class as HIMMELCTL_BASH and the sibling of install-engine's
 # INSTALL_TIMEOUT_SECS, so this drives the SHIPPED code path, not a test-only
@@ -6506,7 +6506,7 @@ echo "ok: toolchain bash (probeBashDep) reads present with a 'presence only' det
 # asserting it costs nothing. Real bash, real resolver-sourcing path: none of
 # shebang-exec caveats from the 2289 cases apply here.
 #
-# Case 1 — a resolver slower than the budget reads degraded, and the message
+# Case 1: a resolver slower than the budget reads degraded, and the message
 # reports the budget ACTUALLY applied (2s here, not a hardcoded figure). That
 # second assertion is the drift half of this ticket: before it, every probe
 # said "10s" no matter what budget it ran under.
@@ -6530,10 +6530,10 @@ echo "$outHDover" | jq -e '.detail | contains("timed out after 2s")' >/dev/null 
   || fail "the timeout message must report the budget ACTUALLY applied (2s via HIMMELCTL_PROBE_TIMEOUT_SECS), never a hardcoded figure — that drift is what put the wrong number in the operator's bug report (got: $outHDover)"
 echo "ok: HIMMEL-2298 — the spawn budget is honoured end-to-end and the timeout message reports the budget actually applied, not a hardcoded one"
 
-# Case 2 — the SAME 4s resolver under the shipped default reads present, with
+# Case 2: the SAME 4s resolver under the shipped default reads present, with
 # no timeout reported. Deliberately NOT called the regression proof
 # [codex-2], agreed): 4s clears the old 10s default too on an idle box, so this
-# case does not by itself demonstrate the reported failure — it pins the
+# case does not by itself demonstrate the reported failure. It pins the
 # complement of case 1 (a probe inside its budget must come back clean, and
 # must not acquire a timeout row from the budget plumbing).
 #
@@ -6542,7 +6542,7 @@ echo "ok: HIMMEL-2298 — the spawn budget is honoured end-to-end and the timeou
 # DEGRADED, and the pin shows the shipped budget is now 60s rather than the 10s
 # that probe legitimately exceeded. The direct measurement against shipped main
 # (degraded "timed out after 10s" at 10016ms, vs present at 12080ms on this
-# branch, same fixture) is recorded in the PR body — a 12s sleep in the suite
+# branch, same fixture) is recorded in the PR body: a 12s sleep in the suite
 # to re-derive it every run was the round-1 finding.
 outHDunder=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
@@ -6558,7 +6558,7 @@ echo "$outHDunder" | jq -e '.detail | contains("timed out") | not' >/dev/null \
 echo "ok: HIMMEL-2298 — a resolver inside the shipped family budget reads present with no timeout row (the complement of the over-budget case above)"
 
 # a sub-millisecond override must NOT disable the guard.
-# `secs > 0` accepted 0.0004, which rounds to 0 ms — and Node reads timeout:0
+# `secs > 0` accepted 0.0004, which rounds to 0 ms, and Node reads timeout:0
 # as NO TIMEOUT, so the probe would run unbounded while looking configured.
 # The 4s resolver must therefore still be bounded by the DEFAULT budget (it
 # completes, reading present) rather than silently losing its hang guard.
@@ -6609,7 +6609,7 @@ echo "$outHDfrac" | jq -e '.detail | contains("timed out after 1.5s")' >/dev/nul
 echo "ok: HIMMEL-2298 CR[codex-2] — a fractional budget is reported exactly, never rounded into disagreement with itself"
 
 # Negative control: the SAME harness, but handover_root itself fails. Proves
-# case 2 is not passing vacuously — if the probe read present regardless of
+# case 2 is not passing vacuously: if the probe read present regardless of
 # what the resolver did, this would read present too.
 hd_slow_fail_repo="$work/hd-slow-resolver-fail"; mkdir -p "$hd_slow_fail_repo/scripts/lib"
 cat > "$hd_slow_fail_repo/scripts/lib/handover-path.sh" <<'SLOWHDFAIL'
@@ -6626,14 +6626,14 @@ echo "$outHDslowNc" | jq -e '.actual != "present"' >/dev/null \
   || fail "HIMMEL-2298 negative control: handover-dir must NOT read present when handover_root itself fails (got: $outHDslowNc)"
 echo "ok: HIMMEL-2298 negative control — handover-dir does NOT read present when the resolver's handover_root fails (proves the regression case is not vacuous)"
 
-# ── family invariants (structural — these are what stop a THIRD
+# ── family invariants (structural: these are what stop a THIRD
 # report of this same sibling-branch defect). Both are textual assertions over
 # probes.js, so a probe added later cannot quietly opt out of the budget.
 probes_src="$repo_root/scripts/himmelctl/lib/probes.js"
 
 # (1) EVERY process-spawning probe routes through the shared helper. Exactly
 # one spawnSync call may exist in the file, and it must be the one inside
-# spawnProbeSync — that is what makes PROBE_TIMEOUT_MS a family default rather
+# spawnProbeSync. That is what makes PROBE_TIMEOUT_MS a family default rather
 # than a value 15 call sites each have to remember. A new probe calling
 # spawnSync directly would get NO budget at all (the shape configuredHooksPath
 # carried until this ticket: a wedged git blocked `status` indefinitely).
@@ -6646,7 +6646,7 @@ echo "ok: HIMMEL-2298 family invariant — every process-spawning probe routes t
 
 # (1b) The shipped DEFAULT is 60s. The functional cases above drive the budget
 # through HIMMELCTL_PROBE_TIMEOUT_SECS so they cost seconds instead of a
-# minute, which means nothing there pins the number an operator actually gets —
+# minute, which means nothing there pins the number an operator actually gets:
 # this does, for free. 10s was the value that manufactured false DEGRADED rows
 # on healthy Windows hosts twice; dropping back
 # under ~20s reopens that.
@@ -6697,7 +6697,7 @@ purity_vault_before=$(snapshot_dir "$purity_vault")
 
 # cadence-coherence/phi-coherence read the adopter's
 # shared config document via luna-config.js's OWN HIMMEL_LUNA_CONFIG_PATH
-# seam (not ctx.env — see that module's header) — pointed at a path under
+# seam (not ctx.env: see that module's header), pointed at a path under
 # $work that is never created, so load() takes its safe defaultConfig()
 # fallback rather than the sweep silently reading the REAL
 # ~/.himmel/config.json.
@@ -6767,7 +6767,7 @@ echo "$outDLclamp" | jq -e '.actual == "degraded"' >/dev/null \
 [ "$dl_elapsed" -lt 5 ] || fail "the spawn budget must be clamped to the time left before the deadline, not the full per-probe budget (took ${dl_elapsed}s against a resolver that sleeps 6s)"
 echo "ok: HIMMEL-2309 — a probe running when the deadline passes is clamped to the remaining budget"
 
-# ── cadence-runs (cadence-runs-<registry row>) — every registry row is judged by its real runs ──
+# ── cadence-runs (cadence-runs-<registry row>): every registry row is judged by its real runs ──
 # Each row's item runs the row's own `status` and reads the shared ARMED / run log / last line shape:
 # one scheduler entry, a run log written within twice the interval, a last run that exited 0. The
 # stub below stands in for the script and replays a status output copied from the real subcommand
@@ -6839,7 +6839,7 @@ echo "ok: cadence-runs-graphmap — the real failing publish run is named alone"
 
 # A weekly refresh run that stopped at its chunk cap ([exit rc=4]) keeps its finished chunks and the next
 # run resumes, so on the two refresh tasks rc=4 reads clean; on the AST tasks (no chunk cap) the same line still fails.
-cr_gm_rc4() { # <task that ends in the odd rc> [rc, default 4] — all four map tasks armed with a fresh run, the rest ending rc=0
+cr_gm_rc4() { # <task that ends in the odd rc> [rc, default 4]: all four map tasks armed with a fresh run, the rest ending rc=0
   local _t _rc
   printf 'graphmap-cadence status:\n'
   for _t in HIMMEL-GraphMap-Luna HIMMEL-GraphMap-Himmel HIMMEL-GraphMapAst-Luna HIMMEL-GraphMapAst-Himmel; do

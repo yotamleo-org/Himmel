@@ -1,5 +1,5 @@
 'use strict';
-// scripts/himmelctl/lib/profile-lock.js — the one lock every writer of the
+// scripts/himmelctl/lib/profile-lock.js: the one lock every writer of the
 // saved install profile takes: bin.js writeCache() and the
 // retired-cadence rewrite (dropRetiredFromProfileFile). The config UI save
 // reaches the profile through himmelctl, so it takes this lock without a file
@@ -26,7 +26,7 @@ function staleOwner(lock) {
   try {
     text = fs.readFileSync(lock, 'utf8');
   } catch (_e) {
-    return null; // released, or not written yet — try again
+    return null; // released, or not written yet. Try again
   }
   const pid = parseInt(text, 10);
   if (Number.isInteger(pid) && pid > 0) {

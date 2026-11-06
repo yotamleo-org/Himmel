@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# test-wizard-install-engine.sh — hermetic tests for
+# test-wizard-install-engine.sh: hermetic tests for
 # scripts/himmelctl/lib/install-engine.js's planInstall()/runInstall()
 # the install-descriptor engine `ensure` drives to converge
 # red/degraded manifest items via EXISTING shell primitives (never
 # reimplemented wiring). Invokes the library directly via `node -e` +
-# require — no bin.js/manifest.json involvement (planInstall/runInstall take
+# require, no bin.js/manifest.json involvement (planInstall/runInstall take
 # plain item objects, not full manifest items, so a minimal fixture is
 # enough). Mirrors sibling test-wizard-*.sh conventions: node launched by
 # absolute path, winpath for node.exe's MSYS-path blindness. every
 # fixture path used inside a node -e script is passed via the ENVIRONMENT
 # (exported once, read via process.env inside the script) rather than
-# interpolated into the JS source string — a checkout path containing an
+# interpolated into the JS source string. A checkout path containing an
 # apostrophe or backslash would otherwise break the inline JS on Windows
 # Git Bash, macOS, or Linux alike.
 #
@@ -20,7 +20,7 @@
 #      returns exactly 6 plan entries in deps[] order.
 #   b. planInstall coalescing: 2 adopt-type items (one depending on the
 #      other) collapse to EXACTLY 1 plan entry, tagged coalesceKey:'adopt'.
-#   c. runInstall(plan, {dryRun:true}) executes NOTHING — {ran:[],
+#   c. runInstall(plan, {dryRun:true}) executes NOTHING: {ran:[],
 #      failed:[]} and a spy marker file (that a real invocation of the stub
 #      primitive would create) is proven ABSENT afterward.
 #   d/e. runInstall(plan, {dryRun:false}) against a 2-item plan (one stub
@@ -29,34 +29,34 @@
 #      failure in failed[] with a reason (fail-closed, never silent).
 #   f. install-plugins.sh (the KEPT orchestrator, unchanged) at a
 #      NON-default --scope project still runs its HIMMEL_RECONCILE_PLUGINS
-#      lean-floor reconcile step — proving the `plugins` install type's
+#      lean-floor reconcile step, proving the `plugins` install type's
 #      delegation to it is behavior-preserving, not a capability regression.
 #   g. plugin-spec canonicalization: bin.js has no inline FULL_PLUGIN_ENABLE
 #      duplicate and loads scripts/machine-setup/full-plugin-enable.json; the
 #      data file carries the expected 13 unique plugin specs.
-#   h. a signal-terminated primitive (r.signal set, r.status null — a real
+#   h. a signal-terminated primitive (r.signal set, r.status null: a real
 #      OS signal kill does not reliably surface via Node's spawnSync.signal
 #      field on Windows, verified empirically; a child_process.spawnSync
 #      monkey-patch injects the exact shape cross-platform) lands in
-#      failed[] with a reason naming the signal — NOT in ran[] (the bug: it
+#      failed[] with a reason naming the signal, NOT in ran[] (the bug: it
 #      previously fell through both the r.error and r.status!==0 checks).
 #   i. runInstall skip-after-prereq-failure: a 2-entry plan where
-#      the second entry depends on the first, and the first fails — the
+#      the second entry depends on the first, and the first fails: the
 #      second is SKIPPED (never spawned; a spy marker proves it), landing
 #      in failed[] naming the failed prerequisite, not silently run anyway.
 #   j. coalesce merges deps (union, not first-occurrence-only):
 #      adopt-a and adopt-b BOTH depend on dep-x (a third, non-coalescing
-#      item) — dep-x must be ordered BEFORE the single coalesced adopt
+#      item): dep-x must be ordered BEFORE the single coalesced adopt
 #      entry, proving the coalesced node's graph position accounts for
 #      EVERY member's deps, not just the first item coalesced.
 #
-# HIMMELCTL_SUDO_PASSWORD (linux dep-install) — driven with ctx.platform
+# HIMMELCTL_SUDO_PASSWORD (linux dep-install), driven with ctx.platform
 # forced to 'linux'/'darwin' (buildEntry/planInstall accept a ctx.platform
 # override for exactly this: the suite itself runs on Windows Git Bash and
 # needs to exercise branches process.platform alone could never reach here).
 #   k. HIMMELCTL_SUDO_PASSWORD set -> the plan entry passes the password on
-#      STDIN (`input`) ONLY — cmd:'sudo', args:['-S','-p','','env',
-#      'DEBIAN_FRONTEND=noninteractive','apt-get','install','-y',<pkg>] —
+#      STDIN (`input`) ONLY: cmd:'sudo', args:['-S','-p','','env',
+#      'DEBIAN_FRONTEND=noninteractive','apt-get','install','-y',<pkg>],
 #      and the password string appears NOWHERE in cmd/args.
 #   l. HIMMELCTL_SUDO_PASSWORD unset -> the fail-fast `sudo -n
 #      DEBIAN_FRONTEND=noninteractive apt-get install -y <pkg>` form, no
@@ -72,11 +72,11 @@
 #   p. (addendum) HIMMELCTL_SUDO_PASSWORD set -> the diagnostic never
 #      prints, and no secret material appears in any output stream.
 #   q. spawnSync timeout: INSTALL_TIMEOUT_SECS forced to 1s against
-#      a stub primitive that sleeps 3s — the REAL Node spawnSync timeout (not
+#      a stub primitive that sleeps 3s. The REAL Node spawnSync timeout (not
 #      a monkey-patch) kills it, landing in failed[] with a "timed out after
 #      1s" reason, never ran[], and the primitive is proven never to finish
 #      (its own completion marker is absent).
-#   r. (SECURITY — secret leak) the child's ENVIRONMENT never
+#   r. (SECURITY: secret leak) the child's ENVIRONMENT never
 #      carries HIMMELCTL_SUDO_PASSWORD: a real (non-monkey-patched) entry
 #      whose primitive targeted-probes its own environment
 #      16: NOT a full `env` dump, which would leak the
@@ -87,26 +87,26 @@
 #      from case k is unaffected by the fix).
 #   s. timeout kills the WHOLE process tree, not just the direct
 #      child: a wedged primitive that backgrounds a grandchild (and records
-#      its pid) is timed out at 1s — the grandchild is verified GENUINELY
+#      its pid) is timed out at 1s. The grandchild is verified GENUINELY
 #      DEAD afterward (kill -0), not merely orphaned/still running in the
 #      background. Exercises the REAL POSIX detached-process-group mechanism; case t proves
 #      its exact shape via a spawnSync/process.kill monkey-patch (the technique
 #      case h established).
 #   t. process-group-kill mechanism, POSIX branch (process.platform
 #      monkey-patched to 'linux'): on a monkey-patched ETIMEDOUT, runInstall
-#      calls process.kill(-pid, 'SIGKILL') (the NEGATIVE pid — the whole
-#      group, not just the direct child) — and the spawnOpts captured by the
+#      calls process.kill(-pid, 'SIGKILL') (the NEGATIVE pid: the whole
+#      group, not just the direct child), and the spawnOpts captured by the
 #      monkey-patched spawnSync carried detached:true (required so that
 #      negative-pid kill can never reach OUR OWN process group) and an env
 #      with HIMMELCTL_SUDO_PASSWORD already stripped.
 
 set -euo pipefail
 
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
 # `set -o pipefail`: grep -q exits the instant it matches, the producer
 # then takes SIGPIPE writing the remainder, and pipefail reports the
-# PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
+# PIPELINE as failed, so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
 # so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
@@ -125,7 +125,7 @@ node_bin=$(command -v node)
 
 work=$(mktemp -d)
 # case w (below) deliberately leaves a
-# backgrounded survivor process ALIVE past its own assertions — that's the
+# backgrounded survivor process ALIVE past its own assertions. That's the
 # whole point of the test (proving kill-on-close does NOT fire on the
 # success path). SURVIVOR_PID is set once that pid is known; cleanup() kills
 # it (harmless if it already exited on its own 30s sleep, or was already
@@ -235,7 +235,7 @@ echo "$outC" | jq -e '.ran == [] and .failed == []' >/dev/null || fail "case c: 
 [ ! -f "$markerOk" ] || fail "case c: dry-run must NOT have invoked the stub primitive (marker file exists)"
 echo "ok: case c — runInstall(plan,{dryRun:true}) executes nothing; spy marker proven absent"
 
-# ── case d/e: non-dry-run — success lands in ran[] (marker now present),
+# ── case d/e: non-dry-run, success lands in ran[] (marker now present),
 # failure lands in failed[] with a reason ──────────────────────────────────
 outDE=$("$node_bin" -e "
 const { runInstall } = require(process.env.INSTALL_ENGINE_LIB);
@@ -282,7 +282,7 @@ else
   set -e
   # a nonzero install-plugins.sh exit here is a genuine test
   # failure (the stub claude/jq preflight is fully satisfied above), not
-  # something to swallow — assert success explicitly instead of `|| true`.
+  # something to swallow. Assert success explicitly instead of `|| true`.
   [ "$rcF" -eq 0 ] || fail "case f: install-plugins.sh --scope project with HIMMEL_RECONCILE_PLUGINS=1 should exit 0 (got rc=$rcF): $outF"
   grepq "$outF" "Reconciling enabledPlugins to lean floor" \
     || fail "case f: install-plugins.sh --scope project with HIMMEL_RECONCILE_PLUGINS=1 should still run the lean-floor reconcile step (got: $outF)"
@@ -305,7 +305,7 @@ echo "ok: case g — bin.js loads the canonical full-plugin-enable.json; no inli
 
 # ── case h: a signal-terminated primitive lands in failed[], never ran[] ───
 # child_process.spawnSync is monkey-patched to return the exact
-# {status:null, signal:'SIGKILL'} shape a real signal kill produces — a
+# {status:null, signal:'SIGKILL'} shape a real signal kill produces. A
 # genuine OS signal doesn't reliably surface via Node's spawnSync.signal on
 # Windows (verified empirically: process.kill(pid,'SIGTERM') on a child
 # process here reports signal:null, status:1), so this is the portable way
@@ -344,9 +344,9 @@ echo "$outI" | jq -e '.failed[1].id == "dependent" and (.failed[1].reason | test
 echo "ok: case i — a dependent entry is skipped (never spawned) after its prerequisite fails, naming it in failed[]"
 
 # ── case j: coalesce merges deps as a UNION, not first-occurrence-only ─────
-# ONLY adopt-b depends on dep-x (adopt-a — the FIRST-seen member,
+# ONLY adopt-b depends on dep-x (adopt-a, the FIRST-seen member,
 # whose own deps a "first-occurrence-only" implementation would use for the
-# coalesced node's graph position — carries NO deps at all). This is the
+# coalesced node's graph position, carries NO deps at all). This is the
 # precise, discriminating case: the old shipped-then-buggy code would have
 # passed even the original (both-depend-on-dep-x) fixture by accident,
 # since adopt-a's OWN deps already included dep-x. With adopt-a deps-free,
@@ -378,7 +378,7 @@ echo "ok: case j — coalescing merges deps as a union across all members; a sha
 
 # ── case k: password SET -> sudo -S -p '' env ... form; the plan carries
 # ONLY a non-secret marker, NEVER the credential.
-# ctx.platform pinned to 'linux' (see case a's comment) — kept. ─────────────
+# ctx.platform pinned to 'linux' (see case a's comment), kept. ─────────────
 outK=$(HIMMELCTL_SUDO_PASSWORD='s3cr3t-pw' "$node_bin" -e "
 const { planInstall } = require(process.env.INSTALL_ENGINE_LIB);
 const items = [
@@ -392,7 +392,7 @@ echo "$outK" | jq -e '.[0].args == ["-S","-p","","env","DEBIAN_FRONTEND=noninter
   || fail "case k: unexpected args shape (got: $outK)"
 # the plan no longer carries the live credential. It
 # carries a NON-SECRET marker (needsSudoPassword) + repoRoot (so the exec
-# path resolves the real password immediately before the spawn) — and NO
+# path resolves the real password immediately before the spawn), and NO
 # `input` field at all (the old shape embedded the password here).
 echo "$outK" | jq -e '.[0].needsSudoPassword == true' >/dev/null \
   || fail "case k: entry should carry the non-secret marker needsSudoPassword:true (got: $outK)"
@@ -402,10 +402,10 @@ if echo "$outK" | jq -e '.[0] | has("input")' >/dev/null 2>&1; then
   fail "case k: the plan must NOT carry an 'input' field — the credential is resolved at exec time, never embedded in the plan (got: $outK)"
 fi
 # The WHOLE POINT of the ENTIRE returned plan object,
-# JSON-serialized, contains the secret NOWHERE — not in cmd, args, input
+# JSON-serialized, contains the secret NOWHERE: not in cmd, args, input
 # (gone), repoRoot, or any other field. A plan that can be freely logged /
 # serialized / printed without leaking the credential. Verified to BITE: see
-# the sabotage note in the commit/PR — temporarily re-attaching the password
+# the sabotage note in the commit/PR: temporarily re-attaching the password
 # to the entry (the old plan-time shape) makes this assertion fail.
 if grepq "$outK" -F 's3cr3t-pw'; then
   fail "case k: the password must appear NOWHERE in the serialized plan object (got: $outK)"
@@ -424,7 +424,7 @@ console.log(JSON.stringify(planInstall(items, ctx)));
 echo "$outL" | jq -e '.[0].cmd == "bash"' >/dev/null || fail "case l: cmd should be 'bash' (got: $outL)"
 # 'sometool' is now passed as a bash POSITIONAL arg ($1), not interpolated
 # into the -c script text (same class of fix already applied to the
-# 'qmd'/'build' cases) — the array now carries a trailing
+# 'qmd'/'build' cases). The array now carries a trailing
 # ['himmel-dep', 'sometool'] pair instead of the tool name embedded in the
 # string itself.
 echo "$outL" | jq -e '.[0].args == ["-c", "sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y \"$1\"", "himmel-dep", "sometool"]' >/dev/null \
@@ -473,12 +473,12 @@ echo "ok: case o — no HIMMELCTL_SUDO_PASSWORD + 2 linux dep items: the diagnos
 
 # ── case p (addendum): password SET -> the diagnostic never prints, and
 # NOTHING is written to real stdout/stderr (the console output streams a
-# real `ensure` run would surface to the operator/logs) — the resulting
+# real `ensure` run would surface to the operator/logs). The resulting
 # plan is written to a FILE for structural inspection instead of
 # console.log'd, so this test never confuses its own data transport with a
 # genuine product-code leak channel. the plan no longer
 # carries the credential at all (only the non-secret marker), so this case
-# now ALSO asserts the secret appears NOWHERE in the serialized plan file —
+# now ALSO asserts the secret appears NOWHERE in the serialized plan file,
 # the same guarantee case k proves on the in-memory plan, here on the
 # file-written form a real handover/log path would consume. ────────────────
 stderrLogP="$work/stderr-p.txt"
@@ -509,10 +509,10 @@ if grepq "$outP" -F 'p-secret-pw'; then
 fi
 echo "ok: case p — HIMMELCTL_SUDO_PASSWORD set: no diagnostic printed, no product-code output on stdout/stderr, and the plan file carries no secret"
 
-# ── case q: spawnSync timeout — a wedged primitive lands in failed[] with a
+# ── case q: spawnSync timeout. A wedged primitive lands in failed[] with a
 # "timed out after Ns" reason, never ran[]. Uses REAL spawnSync (no
 # monkey-patch) with INSTALL_TIMEOUT_SECS forced to 1s against a stub
-# primitive that sleeps 3s — exercises Node's genuine ETIMEDOUT+SIGKILL
+# primitive that sleeps 3s, exercises Node's genuine ETIMEDOUT+SIGKILL
 # behavior, not just the shape (case h/m already cover the monkey-patch
 # technique for the signal/input branches).
 timeoutWork="$work/timeout-work"; mkdir -p "$timeoutWork"
@@ -531,8 +531,8 @@ echo "$outQ" | jq -e '.failed[0].reason | test("timed out after 1s")' >/dev/null
 [ ! -f "$timeoutWork/WEDGED_FINISHED.marker" ] || fail "case q: the wedged primitive must have been killed before completing (marker exists)"
 echo "ok: case q — a spawnSync call exceeding INSTALL_TIMEOUT_SECS lands in failed[] with a 'timed out after Ns' reason, never ran[], and is actually killed before finishing"
 
-# ── case r (SECURITY — secret leak): HIMMELCTL_SUDO_PASSWORD never
-# reaches the child's ENVIRONMENT — only stdin. A real (non-monkey-patched)
+# ── case r (SECURITY, secret leak): HIMMELCTL_SUDO_PASSWORD never
+# reaches the child's ENVIRONMENT, only stdin. A real (non-monkey-patched)
 # entry whose primitive proves: the var is ABSENT from the child's own
 # environment, a DIFFERENT unrelated env var survives (proves this isn't
 # "the whole env got wiped"), and the password STILL arrives via stdin (the
@@ -542,18 +542,18 @@ echo "ok: case q — a spawnSync call exceeding INSTALL_TIMEOUT_SECS lands in fa
 #
 # the
 # primitive used to `env` (a FULL dump of its own environment) then `cat`
-# stdin — on a real operator's machine, "its own environment" is whatever
+# stdin. On a real operator's machine, "its own environment" is whatever
 # ambient secrets happen to be in the shell that launched
 # scripts/test-adopt.sh, printed straight into test/CI output. Replaced
 # with `printenv <name>` calls targeting ONLY the two vars this case
-# actually checks — a presence-only probe for HIMMELCTL_SUDO_PASSWORD
+# actually checks: a presence-only probe for HIMMELCTL_SUDO_PASSWORD
 # (never its value, even if a future bug reintroduces it into the env) and
 # the value of the synthetic, test-owned OTHER_MARKER_R. Deliberately
-# avoids `$VAR`/`"..."` shell syntax inside this one-liner — it's a JS
+# avoids `$VAR`/`"..."` shell syntax inside this one-liner. It's a JS
 # single-quoted string INSIDE a bash double-quoted `node -e` argument
 # (see this file's own STATE_LIB_PATH/MANIFEST_PATH convention elsewhere
 # for the same "no $ or unescaped quotes across a nested-string boundary"
-# lesson) — `printenv NAME` needs neither, so nothing to escape. ──────────
+# lesson): `printenv NAME` needs neither, so nothing to escape. ──────────
 rWork="$work/env-scrub-work"; mkdir -p "$rWork"
 outR=$(cd "$rWork" && HIMMELCTL_SUDO_PASSWORD='r-env-secret' OTHER_MARKER_R='should-survive-r' "$node_bin" -e "
 const { runInstall } = require(process.env.INSTALL_ENGINE_LIB);
@@ -584,7 +584,7 @@ echo "ok: case r — HIMMELCTL_SUDO_PASSWORD is absent from the child's environm
 # pid to a file; after the 1s timeout fires, the grandchild is verified
 # GENUINELY DEAD (kill -0), not merely orphaned/still running. This exercises
 # the REAL mechanism for whichever platform this suite is actually running
-# on — cases t/u below prove the exact shape of BOTH platforms' mechanisms
+# on. Cases t/u below prove the exact shape of BOTH platforms' mechanisms
 # deterministically via monkey-patch (this host can only exercise one for
 # real). ─────────────────────────────────────────────────────────────────
 treeWork="$work/tree-work"; mkdir -p "$treeWork"
@@ -611,14 +611,14 @@ echo "$outS" | jq -e '.failed | length == 1 and .[0].id == "wedged-tree"' >/dev/
 grandchildPidFile="$treeWork/grandchild.pid"
 [ -f "$grandchildPidFile" ] || fail "case s: the grandchild's pid file was never written — it never even started before the timeout fired"
 grandchildPid=$(cat "$grandchildPidFile")
-# poll instead of a fixed `sleep 1` — signal delivery/
+# poll instead of a fixed `sleep 1`: signal delivery/
 # process teardown is async, and a busy host can take longer than 1s to
 # actually reap the process, which would false-fail a fixed-sleep check.
 # Re-checks liveness every 100ms for up to 5s; the assertion itself stays
-# STRICT (genuinely dead, not merely unchecked/assumed) — this only avoids
+# STRICT (genuinely dead, not merely unchecked/assumed). This only avoids
 # racing the OS's own reaper, never loosens what's being proven.
 grandchildDead=0
-# a bash arithmetic loop instead of `seq` — same 50
+# a bash arithmetic loop instead of `seq`: same 50
 # iterations, same kill -0 check, same break/sleep timing; `seq` is an
 # external binary not guaranteed present on every POSIX host this suite
 # might run on, where a C-style for-loop is a bash builtin.
@@ -647,7 +647,7 @@ echo "ok: case s — a timeout kills the WHOLE process tree on this host's real 
 # patched to the OTHER platform makes the resolver scan candidate locations
 # that cannot exist on the host actually running the suite, so the entry is
 # refused before the stubbed spawnSync is ever reached and this case's
-# mechanism assertion never runs. The value is arbitrary — spawnSync is
+# mechanism assertion never runs. The value is arbitrary: spawnSync is
 # stubbed here and never executes it.
 outT=$(HIMMELCTL_SUDO_PASSWORD='t-secret-mech' HIMMELCTL_BASH='bash' "$node_bin" -e "
 const cp = require('child_process');
@@ -686,12 +686,12 @@ echo "ok: case t — POSIX (simulated) timeout-cleanup: process.kill(-pid,'SIGKI
 # `unrunnable` refusal for the guardrail-block-global target.
 #
 # Un-resolving bash PORTABLY is the whole difficulty: neither an empty PATH
-# nor a scrubbed env does it — resolveBash() probes hardcoded
+# nor a scrubbed env does it: resolveBash() probes hardcoded
 # /bin/bash and /usr/bin/bash locations,
 # none of them PATH-gated (the trap list), and HIMMELCTL_BASH can
 # only PIN a bash, never remove one. So stub the resolver at the module
 # boundary: require run-hook-with-bash.js FIRST, overwrite its exported
-# resolveBash on the cached module, and only THEN require install-engine —
+# resolveBash on the cached module, and only THEN require install-engine,
 # which destructures the export at load time and so picks up the stub. Same
 # platform-independent result on every host.
 outY=$("$node_bin" -e "
@@ -716,7 +716,7 @@ echo "$outY" | jq -e '.spawned == 0' >/dev/null \
 echo "ok: case y — a cmd:'bash' entry with no resolvable bash is refused before any spawn, naming the missing bash"
 
 # ── case z: a user-scope `plugins` install that changes
-# enabledPlugins names its writer — one stdout line AND one state-log line per
+# enabledPlugins names its writer: one stdout line AND one state-log line per
 # changed key, so the next on/off flip of a plugin is attributable. The stub
 # install-plugins.sh flips obsidian-second-brain@himmel false -> true the way
 # `claude plugin install` does as a side effect.

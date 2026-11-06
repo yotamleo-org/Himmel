@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
-# test-wizard-gaps.sh — hermetic tests for the himmelctl `gaps` subcommand
+# test-wizard-gaps.sh: hermetic tests for the himmelctl `gaps` subcommand
 # "what does starter not get from operator?"
 # gaps diffs THIS setup's saved install profile against a reference profile
 # (default docs/setup/profiles/operator.install-profile.json, or
 # --preset <name>/--from-profile <path>) and prints four DISTINCT groups:
-#   (a) answered off/none — the reference has it on, this setup turned it
+#   (a) answered off/none: the reference has it on, this setup turned it
 #       off. The operator's OWN CHOICE, never framed as a deficiency.
-#   (b) not recorded — the field is genuinely absent from this profile (a
+#   (b) not recorded: the field is genuinely absent from this profile (a
 #       profile written before the question existed), never a false "off"
 #       answer the operator never made.
-#   (c) reference-only — no wizard question can produce this yet. Rendered
+#   (c) reference-only: no wizard question can produce this yet. Rendered
 #       from the checked-in scripts/himmelctl/tbd-delta.json map, itself
 #       checked (case f below) against docs/setup/operator-profile-tbd-
 #       delta.md so the two can never silently drift apart.
-#   (d) present but unverified — this setup's answer matches the reference
-#       (both "on"), but gaps is a static profile diff, not a live probe —
+#   (d) present but unverified: this setup's answer matches the reference
+#       (both "on"), but gaps is a static profile diff, not a live probe,
 #       named as still-manual (run `himmelctl status` to confirm).
 #
 # `gaps` is a REPORT, not a gate: exit 0 whenever the report was produced,
 # even when gaps exist (unlike status's severity model, which this is NOT).
 # It never prompts (no readline anywhere in its code path) and never shells
-# out — unlike test-wizard-status-cmd.sh's sibling suite it needs no
+# out, unlike test-wizard-status-cmd.sh's sibling suite it needs no
 # HIMMELCTL_REPO_ROOT fixture at all: the default --preset (operator) reads
 # the REAL checked-in docs/setup/profiles/operator.install-profile.json,
 # same file `gaps` ships against.
@@ -36,37 +36,37 @@
 #      cmdStatus/cmdEnsure already use.
 #   f. doc<->map ROW-LEVEL agreement: every doc table row (# column) appears
 #      as a key in scripts/himmelctl/tbd-delta.json's `entries` with the
-#      SAME primary ticket, and vice versa (STRUCTURAL, not instructional —
+#      SAME primary ticket, and vice versa (STRUCTURAL, not instructional:
 #      this test fails the moment a row is dropped from either side, even
-#      when its path/ticket happen to still appear via a different row —
-#      a path-keyed or ticket-set check is structurally
+#      when its path/ticket happen to still appear via a different row.
+#      A path-keyed or ticket-set check is structurally
 #      blind to exactly that kind of drift).
 #   g. an identical-to-reference profile -> group (a) empty, group (c)
 #      populated (present but unverified).
 #   h. --from-profile points gaps at a profile file outside the cache.
-#   i. --preset rejects a traversal name (reuses isValidProfileName —
+#   i. --preset rejects a traversal name (reuses isValidProfileName:
 #      Part A's fix made the whitespace/trim half of that guard live).
 #   j. `gaps` is listed in the USAGE banner (bare --help and gaps --help).
 #   k. 2: a field genuinely MISSING from this
 #      profile (not "off", not even the key present) is reported as
-#      "not recorded" — never as a choice the operator never made.
+#      "not recorded", never as a choice the operator never made.
 #   l. 3: a non-operator --preset omits the
 #      operator-machine TBD-delta rows (group b) instead of presenting
 #      them as gaps against that preset.
 #   m. 2 finding 4: a cadence id that's ARMED in the
 #      reference but genuinely ABSENT (not "off") from this profile's own
-#      `cadences` object is reported as "not recorded", never as a choice —
+#      `cadences` object is reported as "not recorded", never as a choice:
 #      the same collapse case k already closed for GAPS_FIELDS, in the
 #      cadence loop that was scoped out.
 #   n. 3 finding: a legacy v1 non-adopter (contributor)
-#      profile — lanes:[] with no lanesMeaningful, the shape loadProfile's
-#      own !isV2 role==='adopter' exemption lets validate — never answered
+#      profile (lanes:[] with no lanesMeaningful, the shape loadProfile's
+#      own !isV2 role==='adopter' exemption lets validate) never answered
 #      the lanes question at all. A reference lane absent from it must be
-#      reported as "not recorded", never as a choice — the same collapse
+#      reported as "not recorded", never as a choice: the same collapse
 #      case k/m already closed for GAPS_FIELDS/cadences, now closed for the
 #      lane loop.
 #   o. the OTHER direction of case n, pinned so the fix does not over-apply:
-#      an EXPLICIT empty lane selection (lanes:[], lanesMeaningful:true —
+#      an EXPLICIT empty lane selection (lanes:[], lanesMeaningful:true,
 #      write_cache_off's shape) is a real answer and must STILL be reported
 #      as a choice, never as "not recorded".
 
@@ -83,10 +83,10 @@ tbd_delta_doc="$repo_root/docs/setup/operator-profile-tbd-delta.md"
 command -v node >/dev/null 2>&1 || { echo "FAIL: node required" >&2; exit 1; }
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
-# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline (see sibling suites' identical helper for why: under `set -o
 # pipefail`, printf/echo into `grep -q` can report a SUCCESSFUL early match
-# as a failed pipeline —).
+# as a failed pipeline).
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 node_bin=$(command -v node)
@@ -95,7 +95,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/wizard-gaps.XXXXXX") || fail "mktemp -d failed
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
-# write_cache_off <cache_dir> — a v2 profile with every comparable field
+# write_cache_off <cache_dir>: a v2 profile with every comparable field
 # "off/none" relative to the operator reference: devOverlay/alwaysOn false,
 # vault=none, handover=inline, no lanes, no cadences/bridge/luna/secretsWalk
 # sections at all (absence reads as "off" the same way presence-vs-absence
@@ -118,7 +118,7 @@ write_cache_off() {
 JSON
 }
 
-# write_cache_match <cache_dir> — byte-identical to the real operator
+# write_cache_match <cache_dir>: byte-identical to the real operator
 # reference profile, so every comparable field is "on" both sides (group c:
 # present but unverified; group a must be empty).
 write_cache_match() {
@@ -126,8 +126,8 @@ write_cache_match() {
   cp "$repo_root/docs/setup/profiles/operator.install-profile.json" "$1/install-profile.json"
 }
 
-# write_cache_missing_alwaysOn <cache_dir> — same as write_cache_off, EXCEPT
-# the `alwaysOn` key is entirely ABSENT (not present-and-false) — an older
+# write_cache_missing_alwaysOn <cache_dir>: same as write_cache_off, EXCEPT
+# the `alwaysOn` key is entirely ABSENT (not present-and-false), an older
 # profile written before this question existed. Used by case k
 # CR finding 2) to prove a missing field is reported as "not recorded",
 # never as an off-by-choice gap.
@@ -148,9 +148,9 @@ write_cache_missing_alwaysOn() {
 JSON
 }
 
-# write_cache_missing_cadence <cache_dir> — a `cadences` object that's
+# write_cache_missing_cadence <cache_dir>: a `cadences` object that's
 # PRESENT but omits the "pipeline" id entirely (armed in the operator
-# reference) while explicitly answering "qmd" off — the round-2 twin of
+# reference) while explicitly answering "qmd" off, the round-2 twin of
 # write_cache_missing_alwaysOn, for the cadence loop in diffProfiles. Used by
 # case m.
 write_cache_missing_cadence() {
@@ -172,9 +172,9 @@ write_cache_missing_cadence() {
 JSON
 }
 
-# write_cache_legacy_contributor <cache_dir> — a legacy v1 (no schemaVersion)
+# write_cache_legacy_contributor <cache_dir>: a legacy v1 (no schemaVersion)
 # profile with role: contributor and lanes:[] and NO lanesMeaningful key at
-# all — the OLD lanes question was adopter-only, so a contributor cache never
+# all. The OLD lanes question was adopter-only, so a contributor cache never
 # answered it; loadProfile's !isV2 role==='adopter' gate (bin.js ~1645)
 # exempts exactly this shape from the "lanes:[] needs lanesMeaningful" refusal
 # that would otherwise fire. Used by case n to prove
@@ -236,48 +236,48 @@ grepq "$errE" -F 'no himmelctl install profile found' || fail "case e: expected 
 grepq "$errE" -F 'run himmelctl install first' || fail "case e: expected the standard missing-profile message (got: $errE)"
 echo "ok: case e — a missing install profile exits non-zero with the standard message"
 
-# ── case f: doc<->map ROW-LEVEL STRUCTURAL agreement — every doc table row
+# ── case f: doc<->map ROW-LEVEL STRUCTURAL agreement. Every doc table row
 # (# column) must appear as a key in the map's `entries`, with the SAME
 # primary ticket, and vice versa. A path- or ticket-SET check (the prior
 # version of this test) is structurally blind to a dropped row whose
-# path/ticket happen to still appear via a sibling row — CR:
+# path/ticket happen to still appear via a sibling row. CR:
 # rows 2 and 4 both cite delta.cadences.extraArmedTasks, so a path-keyed map
 # silently swallowed row 4 and the old set-based check still passed. This
 # version fails the moment a row is missing from either side. It also keeps
 # a path cross-check: every delta.*/profile.* path cited in a doc row's
 # Item or "Captured how" cell must be listed in that SAME row's map entry
 # (row 12 cites its one path, delta.alwaysOnInferred, parenthetically in the
-# Item cell rather than in Captured how — scanning both is what the map's
+# Item cell rather than in Captured how. Scanning both is what the map's
 # own paths[] is meant to agree with; scanning the whole row instead would
 # false-positive on incidental mentions in the prose columns, as case f's
 # ticket-extraction comment below already found for row 11's Classification
 # cell).
 # Extraction is scoped to actual table DATA rows (`^\|\s*\d+\s*\|`) and, for
-# tickets, to the Classification cell specifically (not the whole row) — a
+# tickets, to the Classification cell specifically (not the whole row). A
 # naive whole-row scan false-positives on incidental ticket mentions inside
 # the "Wizard coverage today" prose column (e.g. row 11 cites as
 # unrelated background, not its own classification); the PRIMARY ticket is
 # the first HIMMEL-NNNN in that cell (always the one right after
-# "ticketed:" — a row's classification prose may parenthetically mention a
+# "ticketed:". A row's classification prose may parenthetically mention a
 # second, unrelated ticket, as row 2 does).
 # the row-level check above still had two blind
-# spots — a stale `label` in the map was never compared against the doc's
+# spots. A stale `label` in the map was never compared against the doc's
 # Item cell at all, and a path check only ran doc->map (an EXTRA path in a
 # map entry the doc never cites went unnoticed). Both extended below:
 # label comparison uses a normalised WORD-CONTAINMENT rule (not exact
 # equality): strip markdown backticks/emphasis, lowercase, split into a
 # word set, and require that at least 90% of the map label's distinct words
 # appear verbatim in the doc Item cell's word set. Exact equality is
-# impractical here — the map's `label` is a hand-paraphrase of the doc's
+# impractical here: the map's `label` is a hand-paraphrase of the doc's
 # Item cell, not a copy (row 9's Item cell adds a parenthetical the label
 # omits; row 12's Item cell says "the capture INFERS ... it is never an
 # asked-and-recorded answer" where the label says "inferred ..., never
-# asked-and-recorded" — same content, different inflection/wording) so a
+# asked-and-recorded": same content, different inflection/wording) so a
 # byte- or even whitespace/markdown-normalised equality check would fail on
 # EVERY currently-correct row that paraphrases at all. Containment (map
-# words found in doc words) tolerates that paraphrasing — extra explanatory
+# words found in doc words) tolerates that paraphrasing. Extra explanatory
 # clauses in the doc's longer prose don't hurt since we only require the
-# map's (fewer, shorter) words to be present, not the reverse — while still
+# map's (fewer, shorter) words to be present, not the reverse, while still
 # failing hard on a label that's actually stale or copied from a different
 # row, where most of its words won't appear in this row's Item cell at all.
 docMapAgreement=$(node -e '
@@ -382,7 +382,7 @@ outHelp=$(HIMMELCTL_CACHE_DIR="$(winpath "$work/help-cache")" HIMMEL_LUNA_CONFIG
 grepq "$outHelp" 'gaps' || fail "case j: bare --help should list the gaps subcommand (got: $outHelp)"
 echo "ok: case j — gaps is listed in the USAGE banner"
 
-# ── case k: 2 — a field MISSING from this profile
+# ── case k: 2. A field MISSING from this profile
 # (not merely off) is reported as "not recorded", never as a choice ────────
 cacheK="$work/cache-k"; write_cache_missing_alwaysOn "$cacheK"
 outKjson=$(run_gaps "$cacheK" --json)
@@ -398,7 +398,7 @@ outKtext=$(run_gaps "$cacheK")
 grepq "$outKtext" -i 'not recorded' || fail "case k: expected a not-recorded section in console output (got: $outKtext)"
 echo "ok: case k — a profile missing a field entirely is reported as not recorded, never as a choice"
 
-# ── case l: 3 — a non-operator --preset omits the
+# ── case l: 3. A non-operator --preset omits the
 # operator-machine TBD-delta rows (group b) rather than presenting them as
 # gaps against that preset ──────────────────────────────────────────────────
 repoStubL="$work/repo-stub-l"
@@ -418,7 +418,7 @@ grepq "$outLtext" 'HIMMEL-2302' && fail "case l: a non-operator preset must not 
 grepq "$outLtext" -i 'omitted' || fail "case l: expected an omission note explaining why group (b) is empty (got: $outLtext)"
 echo "ok: case l — a non-operator --preset omits the operator-machine TBD rows instead of presenting them as its own"
 
-# ── case m: 2 finding 4 — a cadence id armed in the
+# ── case m: 2 finding 4. A cadence id armed in the
 # reference but genuinely ABSENT from this profile's own `cadences` object
 # is reported as notRecorded, never as a choice ─────────────────────────────
 cacheM="$work/cache-m"; write_cache_missing_cadence "$cacheM"
@@ -435,7 +435,7 @@ node -e '
 ' <<< "$outMjson" || fail "case m: --json missing-cadence assertions failed (got: $outMjson)"
 echo "ok: case m — a cadence armed in the reference but absent from this profile is reported as not recorded, never as a choice"
 
-# ── case n: 3 — a legacy v1 contributor profile
+# ── case n: 3. A legacy v1 contributor profile
 # (lanes:[], no lanesMeaningful) never answered the lanes question; a
 # reference lane absent from it is reported as notRecorded, never a choice ──
 cacheN="$work/cache-n"; write_cache_legacy_contributor "$cacheN"
@@ -449,7 +449,7 @@ node -e '
 ' <<< "$outNjson" || fail "case n: --json never-asked-lanes assertions failed (got: $outNjson)"
 echo "ok: case n — a legacy contributor profile that never answered lanes reports reference lanes as not recorded, never as a choice"
 
-# ── case o: the other direction — an EXPLICIT empty lane selection
+# ── case o: the other direction. An EXPLICIT empty lane selection
 # (lanes:[], lanesMeaningful:true) is a real answer and stays a choice ──────
 outOjson=$(run_gaps "$cacheAB" --json)
 node -e '

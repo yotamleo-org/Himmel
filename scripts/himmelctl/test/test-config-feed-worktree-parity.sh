@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-config-feed-worktree-parity.sh — the config feed
+# test-config-feed-worktree-parity.sh: the config feed
 # (`himmelctl report --json`) answers the same rows from the primary checkout
 # and from a linked worktree of it. Rows whose answer must not depend on which
 # checkout served them are the whole feed minus the envelope fields that name
