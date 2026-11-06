@@ -25,7 +25,7 @@ registerAttachments(program);
 if (process.argv.includes('--list-commands')) {
   const walk = (cmd: Command, prefix: string): void => {
     for (const c of cmd.commands) {
-      if (c.name() === 'help') continue; // commander auto-adds help — don't emit it
+      if (c.name() === 'help') continue; // commander auto-adds help, don't emit it
       const name = `${prefix}${c.name()}`;
       if (c.commands.length) walk(c, `${name} `);
       else console.log(name);

@@ -1,14 +1,14 @@
 // ADF → plain text renderer.
 //
 // Companion to adf.ts (which converts markdown → ADF for `create`/`edit`).
-// This module walks an ADF document tree and extracts plain text — used
+// This module walks an ADF document tree and extracts plain text, used
 // by `get` to dump an issue's description body inline. No round-tripping,
 // no formatting preservation; the goal is "readable text" not "lossless
 // markdown".
 //
 // Defined with its own minimal node interface (rather than reusing the
 // builder's strict union types) so the renderer accepts ANY ADF tree
-// shape Jira returns — including node types adf.ts doesn't emit
+// shape Jira returns, including node types adf.ts doesn't emit
 // (media, mentions, panels, etc.). Unknown node types are walked
 // through (their children's text still surfaces); only the type-tag
 // and per-type attrs (panel emoji, date attrs, etc.) are dropped.
@@ -83,7 +83,7 @@ function walk(node: ADFRenderNode | null | undefined, listMarker?: string): stri
     return '';
   }
 
-  // List rendering — bullet/ordered each pass a marker prefix to listItem
+  // List rendering. Bullet/ordered each pass a marker prefix to listItem
   // children so the marker appears in front of the rendered item text.
   if (node.type === 'bulletList' && Array.isArray(node.content)) {
     return node.content.map((c) => walk(c, '- ')).join('\n');
@@ -102,7 +102,7 @@ function walk(node: ADFRenderNode | null | undefined, listMarker?: string): stri
 
   // Generic block/inline: walk children, concatenate. Block-level nodes
   // get a leading listMarker (when supplied by a parent list) but no
-  // forced trailing newline — separation between blocks comes from the
+  // forced trailing newline. Separation between blocks comes from the
   // join('\n') at the doc/list level.
   const inner = Array.isArray(node.content)
     ? node.content.map((c) => walk(c)).join('')

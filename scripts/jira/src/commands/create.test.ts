@@ -71,7 +71,7 @@ describe('create — resolveTitle', () => {
 });
 
 // Command-level wiring (CR #1191 follow-up): exercise Commander option parsing
-// + the resulting POST /issue payload, not just resolveTitle in isolation — a
+// + the resulting POST /issue payload, not just resolveTitle in isolation. A
 // regression in the --summary option registration or the fields.summary wiring
 // would slip past the unit tests above.
 describe('create — command wiring (--summary → POST /issue payload)', () => {

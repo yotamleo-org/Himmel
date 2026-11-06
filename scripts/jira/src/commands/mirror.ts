@@ -225,7 +225,7 @@ export async function runMirror(opts: MirrorOptions, req: Req): Promise<MirrorRe
     });
   });
 
-  // Delete/move detection: authoritative key list. Fails SAFE — an error or a
+  // Delete/move detection: authoritative key list. Fails SAFE. An error or a
   // suspiciously short list deletes nothing.
   const local = localKeys(root, project);
   try {

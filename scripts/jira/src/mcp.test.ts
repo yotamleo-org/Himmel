@@ -104,8 +104,8 @@ describe('MCP tool registration', () => {
 describe('MCP server wiring', () => {
   it('builds a server and lists all tools via the ListTools handler', async () => {
     const server = buildServer();
-    // Reach into the registered handler the SDK installs for ListTools — the
-    // same private _requestHandlers map the CallTool test below uses — and
+    // Reach into the registered handler the SDK installs for ListTools (the
+    // same private _requestHandlers map the CallTool test below uses) and
     // actually invoke it, rather than asserting createTools() (the tool list's
     // own source) independently of whether ListTools ever serves it.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -117,7 +117,7 @@ describe('MCP server wiring', () => {
   });
 
   it('CallTool error path: non-Error throwable yields String() text', async () => {
-    // Make the `get` tool's request throw a plain string — not an Error instance.
+    // Make the `get` tool's request throw a plain string, not an Error instance.
     const throwingRequest = vi.fn(async () => {
       // oxlint-disable-next-line no-throw-literal -- deliberate non-Error throw; the test verifies String() fallback
       throw 'plain string error';

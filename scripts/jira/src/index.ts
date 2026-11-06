@@ -67,7 +67,7 @@ registerRelease(program);
 registerHistory(program);
 
 // Expose the CLI verbs over the Model Context Protocol on stdio.
-// The MCP SDK is heavy, so import it lazily inside the action — keeping it out
+// The MCP SDK is heavy, so import it lazily inside the action, keeping it out
 // of the hot path for every other verb (and `--list-commands` below).
 program
   .command('mcp')
@@ -78,7 +78,7 @@ program
   });
 
 // Machine-readable command introspection. Emits one
-// registered verb name per line, then exits 0 — a STABLE surface the
+// registered verb name per line, then exits 0, a STABLE surface the
 // block-mcp-when-plugin-exists hook derives its blocked-set from, so the
 // hook no longer hand-maintains a literal list that drifts when this CLI
 // gains/loses a verb. Handled before parseAsync so it needs no network /

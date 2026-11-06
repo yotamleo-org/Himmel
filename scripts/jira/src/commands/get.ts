@@ -6,7 +6,7 @@ import { sectorField, sectorOf } from './sector.js';
 
 // Local widening: the get.ts fields query includes `labels` and
 // `fixVersions`, but the shared JiraIssue type does not declare
-// them — kept local rather than touching types.ts, which this ticket's scope
+// them, kept local rather than touching types.ts, which this ticket's scope
 // excludes.
 type IssueWithLabels = JiraIssue & {
   fields: JiraIssue['fields'] & { labels?: string[]; fixVersions?: Array<{ name: string }>; priority?: { name: string } | null };
@@ -34,7 +34,7 @@ export function registerGet(program: Command): void {
       'Suppress the description body (one-line header only — backward-compatible with the old header-only output)',
     )
     .action(async (key: string, options: { json?: boolean; short?: boolean }) => {
-      // Always fetch description from the API — output flag controls
+      // Always fetch description from the API. Output flag controls
       // display only, so --short still gets the field for --json
       // round-tripping (consistent --json payload shape regardless of
       // which display flag was used).
@@ -54,10 +54,10 @@ export function registerGet(program: Command): void {
       } else if (options.short) {
         // --short is documented as one-line header only (backward-compatible
         // with the earlier output) and is consumed as a single line by
-        // scripts/handover/pr-open.sh — never append the labels line here.
+        // scripts/handover/pr-open.sh. Never append the labels line here.
         console.log(formatIssue(issue));
       } else {
-        // Distinguish "field not returned by API" (undefined — possible
+        // Distinguish "field not returned by API" (undefined, possible
         // when field-level perms hide description from this user) from
         // "issue genuinely has no body" (null). Both render the header,
         // but undefined gets a stderr hint so the operator knows to use

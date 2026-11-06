@@ -10,7 +10,7 @@ export function formatIssue(issue: JiraIssue): string {
   ].join('\t');
 }
 
-// formatIssueWithDescription — header line (formatIssue output) plus a
+// formatIssueWithDescription. Header line (formatIssue output) plus a
 // blank line plus the description rendered as plain text. Used by
 // `get` so callers/Claude can read the issue body inline. `list` stays
 // on formatIssue (one tab-separated line per issue) to keep output

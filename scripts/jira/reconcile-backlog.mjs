@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// scripts/jira/reconcile-backlog.mjs — pure-code backlog reconciler.
+// scripts/jira/reconcile-backlog.mjs. Pure-code backlog reconciler.
 //
 // Structural fix for Jira backlog drift: classify
 // every open ticket against the merged-commit corpus with the deterministic
@@ -8,11 +8,11 @@
 // I/O only lives here; reconcile-lib.mjs stays a pure function library so
 // the evidence rule is unit-testable against fixtures. This file talks to:
 //   - the jira CLI's compiled client (dist/, built via `npm run build`) for
-//     reads (issue search, comments) — no CLI verb exists for either, so we
+//     reads (issue search, comments). No CLI verb exists for either, so we
 //     import the same request() the CLI commands use rather than duplicate
 //     auth/env handling.
-//   - the jira CLI itself, as a subprocess, for writes (comment/transition)
-//     — that preserves its breadcrumb-writing and attestation conventions
+//   - the jira CLI itself, as a subprocess, for writes (comment/transition).
+//     That preserves its breadcrumb-writing and attestation conventions
 //     instead of bypassing them via a direct API call.
 //   - git, for the commit corpus (subject + body per commit on `main`).
 //
@@ -78,7 +78,7 @@ export function loadConfig(path) {
 
 // Every key named under ANY table (CLOSED / RESCOPED / STALE-PREMISE /
 // LEFT ALONE / decided-but-not-written) of the hygiene-sweep report is
-// "already adjudicated" — including the LEFT ALONE rows that carry no Jira
+// "already adjudicated", including the LEFT ALONE rows that carry no Jira
 // comment at all (the gap this reconciler must not blindly re-close).
 // All of the report's tables share one markdown shape: `| <KEY> | ...`.
 export function loadHygieneKeys(path) {
@@ -93,14 +93,14 @@ export function loadHygieneKeys(path) {
   return keys;
 }
 
-// Prefer an explicit --commits-file (date\tsubject, newest first — the shape
+// Prefer an explicit --commits-file (date\tsubject, newest first, the shape
 // a prior audit already produced by merging public + archived-private git
 // history). Falling back to a live `git log` only covers THIS repo's public
 // history: any ticket whose only evidence lives in the archived private
-// history will read as no-evidence, not as a false CLOSE — a safe direction
+// history will read as no-evidence, not as a false CLOSE. A safe direction
 // for a fallback to fail in. Neither path populates `body`: the --commits-file
 // TSV shape carries subject only (a prior audit's own output format), and the
-// live `git log` format below is subject-only for the same reason — a commit
+// live `git log` format below is subject-only for the same reason. A commit
 // body can contain literal tabs/newlines that would corrupt a single-line
 // TSV/`%x09`-joined record. bodyOnlyCommits matches are therefore unreachable
 // from either loader today; a body-carrying format is possible (e.g. a NUL- or
@@ -158,10 +158,10 @@ async function loadBacklog({ jiraCli, project, limit }) {
   }));
 }
 
-// Paginated (startAt/maxResults/total — the classic Jira REST shape this
+// Paginated (startAt/maxResults/total, the classic Jira REST shape this
 // endpoint uses, distinct from list.ts's cursor-based /search/jql): a ticket
 // with more than one page of comments would otherwise have its later pages
-// — including a prior adjudication or evidence marker — invisible to
+// (including a prior adjudication or evidence marker) invisible to
 // classifyTicket/hasSkipMarker, risking a re-close of an already-handled
 // ticket.
 async function loadCommentBodies({ jiraCli, key }) {
@@ -212,7 +212,7 @@ function makeJiraClient(jiraCliPath) {
 // I/O (network Jira calls baked into loadCommentBodies/loadDescription,
 // makeJiraClient's subprocess). Extracted here with every I/O boundary
 // injected so the /backlog-reconcile surface's operator-approval gate is
-// unit-testable against a fixture backlog — `apply` is the ONLY switch that
+// unit-testable against a fixture backlog. `apply` is the ONLY switch that
 // lets the loop reach jiraClient.comment/transition.
 export async function runReconciliation({
   backlog,
@@ -238,7 +238,7 @@ export async function runReconciliation({
 
     const { subjectCommits, bodyOnlyCommits } = findMatches(commits, ticket.key);
 
-    // Fetch comments only when there is evidence to act on — the tool's own
+    // Fetch comments only when there is evidence to act on. The tool's own
     // marker can only ever exist on a ticket it previously found evidence
     // for, so a zero-evidence ticket cannot carry it. Keeps the real run
     // bounded to the candidate set instead of a comment-fetch per all ~989
@@ -293,7 +293,7 @@ export async function runReconciliation({
           } catch (err) {
             // One ticket's comment/transition failure (a missing
             // transition-screen field, a permissions gap, ...) must not abort
-            // the whole backlog run — every other candidate still needs its
+            // the whole backlog run. Every other candidate still needs its
             // own disposition recorded.
             record.applied = 'failed';
             failed += 1;
@@ -313,7 +313,7 @@ export async function runReconciliation({
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   // A LEFT ALONE hygiene-sweep row carries no Jira comment at all, so
-  // hasSkipMarker cannot protect it — --hygiene-doc is the ONLY guard for
+  // hasSkipMarker cannot protect it. --hygiene-doc is the ONLY guard for
   // those tickets. Silently running --apply without it would let a real
   // write run re-disposition tickets a concurrent sweep already adjudicated.
   if (opts.apply && !opts.hygieneDoc) {
@@ -326,7 +326,7 @@ async function main() {
   }
   // --apply requires an explicit --max-close N so a run can
   // never close more than N tickets without that being a deliberate choice
-  // (defence in depth on top of the evidence-rule fix — the only writing
+  // (defence in depth on top of the evidence-rule fix. The only writing
   // disposition on the backlog is CLOSE). No default N: an unset cap would
   // just be a large default someone forgets is there.
   if (opts.apply && (!Number.isInteger(opts.maxClose) || opts.maxClose < 0)) {
@@ -384,8 +384,8 @@ async function main() {
     }),
   );
 
-  // A run where every apply attempt failed must not report success —
-  // automation watching only the exit code needs a non-zero signal here.
+  // A run where every apply attempt failed must not report success.
+  // Automation watching only the exit code needs a non-zero signal here.
   if (failed > 0) process.exitCode = 1;
 }
 

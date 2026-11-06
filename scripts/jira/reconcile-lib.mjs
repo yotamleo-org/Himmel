@@ -1,7 +1,7 @@
-// scripts/jira/reconcile-lib.mjs — pure-code backlog reconciler.
+// scripts/jira/reconcile-lib.mjs. Pure-code backlog reconciler.
 //
 // Pure classification + evidence matching. No network, no subprocess, no
-// filesystem here — reconcile-backlog.mjs owns all I/O (git log, the jira CLI)
+// filesystem here. reconcile-backlog.mjs owns all I/O (git log, the jira CLI)
 // and hands parsed data structures into these functions. That split is what
 // makes the evidence rule unit-testable against fixtures instead of the live
 // backlog.
@@ -17,7 +17,7 @@ const NEVER_TOUCH_TYPES = new Set(['Epic', 'Story']);
 // A partial-delivery signal in a commit subject/PR title: "PR 1 of 2",
 // "[5/8]", "phase 1", "stage-1"/"stage 1", "manifest half", or a trailing
 // "... core)" qualifier. Any of these means the matched commit is ONE SLICE
-// of the ticket's full scope, not the whole thing — RESCOPE, never CLOSE.
+// of the ticket's full scope, not the whole thing. RESCOPE, never CLOSE.
 const PARTIAL_DELIVERY_RE =
   /\bPR\s+\d+\s+of\s+\d+\b|\[\d+\/\d+\]|\bphase\s+\d+\b|\bstage[- ]?1\b|\bmanifest half\b|\bcore\)/i;
 
@@ -25,7 +25,7 @@ const REVERT_RE = /^revert(:|\b|\s*")/i;
 
 // A merged commit proves the WORKER's slice of work landed. It does not prove
 // the TICKET is done when the ticket's own acceptance criterion is an
-// outcome outside the repository — a flipped repo setting, a served URL,
+// outcome outside the repository: a flipped repo setting, a served URL,
 // a published package/release, a DNS/dashboard change, an enabled
 // third-party integration. The reopened Pages ticket is the known-positive case: the
 // merged commit delivered a content audit + Pages config prep, but the
@@ -34,7 +34,7 @@ const REVERT_RE = /^revert(:|\b|\s*")/i;
 // explicitly ("the worker prepares and verifies, the operator flips it"). It
 // was closed, then reopened when the URL 404'd. This check runs against the
 // ticket's own DESCRIPTION text (never the commit) and can only ever
-// downgrade a would-be CLOSE to RESCOPE — never used to justify closing.
+// downgrade a would-be CLOSE to RESCOPE, never used to justify closing.
 // Deliberately excludes a bare `github.io` (or any URL) mention: a ticket
 // that just links to something in passing must still be CLOSE-eligible.
 // Every alternative here names a verification/operator-gating ACTION, not
@@ -61,7 +61,7 @@ export function describeOutcome(descriptionText) {
 }
 
 // A bare `[KEY]` on a commit subject only proves ONE commit
-// landed for this ticket, not that the ticket's own scope is finished — and
+// landed for this ticket, not that the ticket's own scope is finished, and
 // himmel's commit convention puts the ticket key in every commit subject, so
 // subject-match alone has near-zero evidential value for a ticket that ships
 // across several PRs (a "1. Relay / 2. Judge" Proposal section, or a
@@ -74,7 +74,7 @@ export function describeOutcome(descriptionText) {
 const NUMBERED_LIST_ITEM_RE = /^\s*\d+[.)]\s+\S/gm;
 const TASK_ID_MARKER_RE = /\bT\d{1,3}\b|\bTask\s+\d+\b/gi;
 
-// `T1` and `Task 1` name the same task under two spellings — normalize to
+// `T1` and `Task 1` name the same task under two spellings. Normalize to
 // the numeric id so they count as one marker, not two, or a ticket that
 // mentions one task both ways falsely looks like it declares two.
 function taskMarkerIds(text) {
@@ -89,7 +89,7 @@ export function hasNumberedTaskList(descriptionText) {
 }
 
 // The specifics for the evidence comment: how many numbered items, or which
-// task-id markers, decided it — so a wrong disposition is auditable.
+// task-id markers, decided it, so a wrong disposition is auditable.
 export function describeNumberedTaskList(descriptionText) {
   const text = descriptionText ?? '';
   const listItems = text.match(NUMBERED_LIST_ITEM_RE) ?? [];
@@ -105,7 +105,7 @@ export function ticketKeyPattern(key) {
 
 // The bracketed-tag form `[KEY]` is the strong signal: a commit deliberately
 // filed under that ticket. A bare word-boundary mention (no brackets) is
-// weaker — often a cross-reference to related work filed under a DIFFERENT
+// weaker, often a cross-reference to related work filed under a DIFFERENT
 // ticket's brackets (e.g. one key mentioned inside a commit tagged
 // with another). Callers use this to avoid promoting a cross-reference to
 // a full subject match.
@@ -133,7 +133,7 @@ export function hasSkipMarker(commentBodies) {
  * resume doc's SCOPE-gap fix (2026-09-16): the concurrent hygiene sweep
  * dispositioned some tickets (its LEFT ALONE table, "evidence mismatch"
  * rows especially) WITHOUT ever posting a Jira comment. Those keys are just
- * as final as commented ones — checking hasSkipMarker() alone would let the
+ * as final as commented ones. Checking hasSkipMarker() alone would let the
  * reconciler re-close a ticket a human already reviewed and correctly left
  * alone. `hygieneKeys` is every key named under ANY table (CLOSED, RESCOPED,
  * STALE-PREMISE, LEFT ALONE) of that report, parsed once by the caller.
@@ -144,13 +144,13 @@ export function hasHygieneSweepDisposition(key, hygieneKeys) {
 
 /**
  * Split a commit corpus into subject-matches and body-only-matches for one
- * ticket key. `commits` must already be sorted newest-first — the caller
+ * ticket key. `commits` must already be sorted newest-first. The caller
  * (reconcile-backlog.mjs) sorts the merged public+private corpus once, and
  * every downstream consumer relies on that order to mean "most recent decides".
  *
  * A subject match with no bracketed [KEY] tag AND where the subject carries
  * a *different* bracketed ticket tag is a cross-reference, not a delivery of
- * this ticket — demoted to bodyOnlyCommits (weaker evidence), matching the
+ * this ticket, demoted to bodyOnlyCommits (weaker evidence), matching the
  * ticket-A-inside-a-[ticket-B]-commit case.
  */
 export function findMatches(commits, key) {
@@ -256,7 +256,7 @@ export function classifyTicket({
 
 /**
  * Comment-before-transition, enforced structurally: this is the only place
- * that sequences the two mutating calls, and it always comments first — so a
+ * that sequences the two mutating calls, and it always comments first, so a
  * transition failure (a missing transition-screen field, not handled here)
  * still leaves the evidence behind. `jiraClient` is injected ({comment,
  * transition} async functions) so this is testable without a subprocess.

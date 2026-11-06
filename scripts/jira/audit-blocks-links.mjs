@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// scripts/jira/audit-blocks-links.mjs — READ-ONLY audit of Blocks links on open tickets.
+// scripts/jira/audit-blocks-links.mjs. READ-ONLY audit of Blocks links on open tickets.
 //
 // Prints a TSV of every Blocks link with a proposed flip. It only
 // issues GETs; it never creates, deletes or edits a link. An operator approves

@@ -6,7 +6,7 @@ import {
 import { dirname } from 'node:path';
 
 // The signed, hash-chained store behind every authority file (design §5.2).
-// ponytail: same-uid trust — a process that reads the key can mint a valid row
+// ponytail: same-uid trust, a process that reads the key can mint a valid row
 // (accepted by decision 109 for v1.1.3/v1.1.4); upgrade path is a broker
 // running as a separate OS user that holds the key.
 

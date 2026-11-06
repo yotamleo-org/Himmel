@@ -29,7 +29,7 @@ export function registerAttachments(program: Command): void {
   program.command('attach <pageId> <paths...>')
     .description('Upload file(s) as page attachments')
     .action(async (pageId: string, paths: string[]) => {
-      // v1 multipart upload — caller composes the full URL (no v2 upload endpoint).
+      // v1 multipart upload. Caller composes the full URL (no v2 upload endpoint).
       const url = `${baseUrl()}/wiki/rest/api/content/${pageId}/child/attachment`;
       let n = 0;
       for (const p of paths) { await uploadMultipart(url, p, 'file', confluenceAuthHeader()); n++; }

@@ -38,6 +38,7 @@ pre-commit and, through its suite, on every PR. It refuses each of these:
 - a `scripts/one-shot/` helper that carries `# selector: tree-scan`.
 
 The current example is `scripts/one-shot/check-leg-term.sh [--root DIR] [--paths FILE]`, the leg-to-worker sweep's helper: it prints one `HIT path:line: text` per leftover line outside `leg-term-allow.tsv` and exits 0 clean, 1 on hits, 2 on a usage or git error.
+`scripts/one-shot/check-comment-slop.mjs` is the helper of the sweep that takes em dashes out of comments and docs, run by hand and deleted when that sweep ends.
 
 The gate keys on a directory and a filename and never reads shell text. A
 ratchet renamed to dodge the `test-no-*` key is still a new suite. A new suite

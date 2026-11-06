@@ -7,8 +7,8 @@ import { parseArgs, loadConfig, loadHygieneKeys, loadCommits, runReconciliation 
 // I/O-boundary functions this file does NOT cover (loadBacklog,
 // loadCommentBodies, loadDescription, makeJiraClient, main): each requires a
 // built jira CLI dist/ + a live Jira endpoint (network + subprocess), with no
-// local fixture standing in for either. The pure/local functions below —
-// argv parsing, config/hygiene-doc file reads, and commit-corpus loading —
+// local fixture standing in for either. The pure/local functions below
+// (argv parsing, config/hygiene-doc file reads, and commit-corpus loading)
 // carry no such dependency and are covered directly; the classification rules
 // they feed into are already unit-tested in reconcile-lib.test.mjs (44/44).
 
@@ -170,7 +170,7 @@ describe('loadCommits', () => {
 });
 
 // The /backlog-reconcile surface's operator-approval gate is
-// `apply` on this injectable orchestration entrypoint — the only thing that
+// `apply` on this injectable orchestration entrypoint, the only thing that
 // decides whether the loop ever calls into jiraClient. A fixture backlog
 // with a CLOSE-worthy commit proves the classifier still finds the
 // candidate; the assertion that matters is zero writes when apply is false

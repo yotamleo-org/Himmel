@@ -238,7 +238,7 @@ export async function resolveAffectsVersion(project: string, name: string): Prom
 }
 
 // A Jira project key never contains a hyphen, so the project is everything
-// before the LAST one — used to validate `edit <key> --fix-version` against
+// before the LAST one, used to validate `edit <key> --fix-version` against
 // the issue's own project rather than the configured default
 // (`edit` has no `--project` flag, unlike `create`).
 export function projectFromKey(key: string): string {

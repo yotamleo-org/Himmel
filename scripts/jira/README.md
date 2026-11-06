@@ -28,7 +28,7 @@ auto-loads the repo-root `.env`.
 `jira mcp` boots a [Model Context Protocol](https://modelcontextprotocol.io)
 server on stdio that exposes the ten verbs above as MCP tools. Each tool's
 input schema mirrors the corresponding CLI option/argument semantics and
-routes to the same underlying Jira REST client — so the MCP and CLI surfaces
+routes to the same underlying Jira REST client, so the MCP and CLI surfaces
 behave identically.
 
 Register it with your MCP client (replace `<himmel>` with the absolute path
