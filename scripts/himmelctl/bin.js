@@ -5823,7 +5823,8 @@ function cmdUi(args) {
     }
   }
   const agui = run === 'fleet' ? ['--agui'] : run ? ['--agui', run] : [];
-  const serverArgs = [server, '--port', String(args.port === null ? 0 : args.port), ...(args.readOnly ? ['--read-only'] : []), ...agui];
+  // a read-only start builds nothing; the ad-hoc hand-off (ui-service.js) and --service never come through here.
+  const serverArgs = [server, '--port', String(args.port === null ? 0 : args.port), ...(args.readOnly ? ['--read-only'] : ['--build-if-missing']), ...agui];
   return new Promise((resolve) => {
     const child = require('child_process').spawn('bun', serverArgs, { stdio: 'inherit' });
     // A signal to this wrapper must reach the server, never orphan it.
