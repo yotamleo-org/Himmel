@@ -4060,11 +4060,11 @@ s17_at "$S17_HJS"
 contains "19 T19 Dependabot JS/TS suite, no row: FAIL" "$(line17 "$out")" "$S17_JS (no ran-0 row in run 555)"
 contains "19 T19: names the chief's remediation" "$out" "no impacted row at ${S17_HJS:0:7} on dependabot/npm_and_yarn/dep-2: the chief runs pr-check step 3.6"
 
-# T20: a ruled SKIP counts and is named; the same suite as a bare SKIP fails
+# T20: a ruled SKIP is counted and named apart from the local count; the same suite as a bare SKIP fails
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; S17_RS="[\"$S17_B\"]"
 s17_at "$S17_H1"
 check "19 T20 ruled SKIP: exit 0" "$rc" "0"
-contains "19 T20: the ruled SKIP is named" "$out" "1 from CI run 555, 1 local; ruled SKIP: $S17_B"
+contains "19 T20: the ruled SKIP is named and not counted as local" "$out" "1 from CI run 555, 0 local, 1 ruled SKIP: $S17_B"
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; S17_LP="[\"$S17_A\"]"; S17_RS="[]"
 s17_at "$S17_H1"
 contains "19 T20 a bare SKIP (in neither list): FAIL" "$(line17 "$out")" "$S17_B (no ran-0 row in run 555)"

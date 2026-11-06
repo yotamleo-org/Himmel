@@ -19,7 +19,7 @@
      SUITE <path> = SKIP ruled <chief-session> <reason>
      ```
 
-     `<chief-session>` is the ruling chief's session name; it must contain `chief` and only `[A-Za-z0-9._-]` (the checker records anything else as a bare SKIP, which is no evidence). ready-check item 19 accepts a ruled SKIP and names each one in its PASS line, so the chief sees it again at GO; it never counts as CI or local evidence. Any other SKIP is still no evidence.
+     `<chief-session>` is the ruling chief's session name; it must contain `chief` and only `[A-Za-z0-9._-]` (the checker records anything else as a bare SKIP, which is no evidence). ready-check item 19 accepts a ruled SKIP and names each one in its PASS line, so the chief sees it again at GO (a hand GO only: `auto-go.sh` does not stop on a ruled SKIP); it never counts as CI or local evidence. Any other SKIP is still no evidence.
 
    Then submit them. Write `<path>` and the reason as printed, one line per suite, to a scratch file via the Write tool. **Keep the `<himmel_dir>` anchor spelling exactly as shown below — never a bare relative `bash scripts/cr/impacted-suites.sh`.** As of HIMMEL-3798 round 3 ("CUT, do not patch"), `guard-pr-check-literal.sh` denies every heredoc and `< <file>` redirect shape outright — three rounds of patching the same regex-approximates-bash-grammar mechanism kept finding a new bypass, so the mechanism itself was cut, not narrowed further. The sanctioned shape is `--from-file <path>`: a single literal token naming a scratch file, no shell metacharacters/quotes/glob/whitespace in the value, and `--check` is required alongside it (`impacted-suites.sh` refuses `--from-file` without `--check`):
 

@@ -173,7 +173,7 @@ rule; batch rulings per decision point.
 ## Merges — READY → GO → merge
 
 A worker reports `READY <pr> <head> GREEN`. Verify with
-`chief-kit/ready-check.sh <pr> <full-40-hex-head-sha>` (`timeout 180 bash`; all check-runs success
+`chief-kit/ready-check.sh <pr> <full-40-hex-head-sha>` (`run_in_background`; all check-runs success
 at that head, zero unresolved threads, trailers in the first commit; the diff stays
 your judgement), then `chief-kit/go.sh <pr> <head>`: that write IS the GO
 (`gh pr merge` is gated on the file; `GO` over SendMessage only notifies). `go.sh`
@@ -194,7 +194,7 @@ merged-docs list: `chief-sections/merges.md`.
 **19. suite evidence.** Every impacted suite of `origin/main..<head>` needs proof at the
 exact head: `local_pass` or a ruled SKIP in the head's `impacted` ledger row, or a `ran 0 <path>`
 line in the CI shard manifests (`docs/internals/validation-gates.md`). Read each ruled SKIP the
-PASS line names before GO. No row: run pr-check step 3.6 for that head yourself.
+PASS line names before a hand GO (`auto-go.sh` does not stop on one). No row: run pr-check step 3.6 for that head yourself.
 
 ## Wrapping a worker
 

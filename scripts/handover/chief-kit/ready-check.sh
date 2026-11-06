@@ -147,7 +147,7 @@
 #      other state or an unreadable status. Not part of `--only 7`.
 # 19. suite evidence: every suite the anchor's impacted-suites.sh lists for
 #      merge-base..SHA has proof. Local proof is the head's `impacted` ledger row
-#      (`local_pass`, `ruled_skip`); CI proof is an exact `ran 0 <path>` manifest
+#      (`local_pass`; a `ruled_skip` is counted and named apart from it); CI proof is an exact `ran 0 <path>` manifest
 #      line of the run behind the latest SUCCESS `shell-unit (ubuntu-latest)`
 #      check-run, whose run head_sha equals SHA. A suite on a PR-body
 #      `Local suites: <path>` line needs local proof. Every subprocess and network
@@ -185,8 +185,9 @@
 #      unreadable branch or any other exit FAILs. Not part of `--only 7`.
 #
 # Owner/repo are derived from `gh repo view --json owner,name`, never hard-
-# coded (so this runs the same in any clone/fork). It writes nothing — no
-# ledger rows, no GO files, no PR comments.
+# coded (so this runs the same in any clone/fork). It writes no CR ledger rows,
+# no GO files and no PR comments; its one write is item 19's append-only CI
+# failure ledger (station state, report-only; it never changes a verdict).
 #
 # Exit codes:
 #   0 — READY-CHECK PASS
@@ -2020,7 +2021,7 @@ check_suite_evidence() {
     rm -rf "$d"
 }
 s17_body() {
-    local d="$1" anchor n_imp branch ledger row="" have_row=0 run_id="" agg n_ci=0 n_local=0 s why bad=0 reasons="" ruled_names grc
+    local d="$1" anchor n_imp branch ledger row="" have_row=0 run_id="" agg n_ci=0 n_local=0 n_ruled=0 s why bad=0 reasons="" ruled_names="" grc
     s17_why=""
     _TIMEOUT_BIN=""
     # shellcheck source=../../lib/timeout-bin.sh
@@ -2077,8 +2078,10 @@ s17_body() {
     while IFS= read -r s; do
         if grep -Fxq -- "$s" "$d/ls"; then
             if grep -Fxq -- "$s" "$d/lp"; then n_local=$((n_local + 1)); else reasons="$reasons, $s (Local suites line, no local PASS)"; bad=$((bad + 1)); fi
-        elif grep -Fxq -- "$s" "$d/lp" || grep -Fxq -- "$s" "$d/rs"; then
+        elif grep -Fxq -- "$s" "$d/lp"; then
             n_local=$((n_local + 1))
+        elif grep -Fxq -- "$s" "$d/rs"; then
+            n_ruled=$((n_ruled + 1)); ruled_names="$ruled_names, $s"
         else
             printf '%s\n' "$s" >> "$d/need"
         fi
@@ -2142,8 +2145,7 @@ s17_body() {
         fi
         return 0
     fi
-    ruled_names=$(comm -12 "$d/imp" "$d/rs" 2>/dev/null | paste -sd, - | sed 's/,/, /g')  # swallow-ok: no ruled SKIP prints none
-    echo "[PASS] 19. suite evidence: $n_imp impacted, $n_ci from CI run ${run_id:--}, $n_local local${ruled_names:+; ruled SKIP: $ruled_names}"
+    echo "[PASS] 19. suite evidence: $n_imp impacted, $n_ci from CI run ${run_id:--}, $n_local local${ruled_names:+, $n_ruled ruled SKIP: ${ruled_names#, }}"
 }
 check_suite_evidence
 
