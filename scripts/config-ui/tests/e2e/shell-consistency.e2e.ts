@@ -6,25 +6,15 @@
 // E2E_SHOTS=<dir> saves shell-<page>.png for each page.
 import { test, expect, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { aguiBuilt, bootAgui, type AguiHarness } from "./agui-fixtures";
 import { buildFeed, HIMMEL_ID } from "./fixtures";
 
 let h: AguiHarness;
-let root: string;
-let tmpWas: string | undefined;
-test.beforeEach(() => {
-  tmpWas = process.env.TMPDIR;
-  root = mkdtempSync(join(tmpdir(), "shell-consistency-"));
-  process.env.TMPDIR = root; // bootAgui's temp dir is made under it, so the test can hand the stub its feed
-});
 test.afterEach(async () => {
   await h?.stop();
-  if (tmpWas === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = tmpWas;
   delete process.env.E2E_FEED_DELAY_MS;
-  rmSync(root, { recursive: true, force: true });
 });
 
 type Shell = { pages: { page: string | null; text: string; external: boolean }[]; current: string | null; rail: Box; pagesBox: Box };
@@ -44,8 +34,6 @@ const readShell = (page: Page): Promise<Shell> => page.evaluate(() => {
 test("Shift, Morning report, Fleet, a chief page and Health draw one rail and one identity header, and the chief page links back", async ({ page }) => {
   expect(aguiBuilt(), "agui-web/dist is not built: cd scripts/config-ui/agui-web && bun install && bun run build").toBe(true);
   h = await bootAgui("", { fleet: true });
-  const dir = join(root, readdirSync(root).find((d) => d.startsWith("agui-e2e-"))!);
-  writeFileSync(join(dir, "feed.json"), JSON.stringify(buildFeed()));
   const { origin, hash } = new URL(h.url);
   const token = new URLSearchParams(hash.slice(1)).get("t")!;
   const shot = async (name: string) => { const d = process.env.E2E_SHOTS; if (d) { mkdirSync(d, { recursive: true }); await page.screenshot({ path: join(d, `shell-${name}.png`), fullPage: true, animations: "disabled" }); } };
@@ -96,18 +84,15 @@ test("Shift, Morning report, Fleet, a chief page and Health draw one rail and on
 });
 
 // The AG-UI page reads the shared report cache (GET /api/feed): it never draws a rail-less or header-less page when that read fails or has no identity.
-const aguiOnly = async (feed: object | null) => {
-  h = await bootAgui("", { fleet: true });
-  const dir = join(root, readdirSync(root).find((d) => d.startsWith("agui-e2e-"))!);
-  if (feed) writeFileSync(join(dir, "feed.json"), JSON.stringify(feed));
-  else rmSync(join(dir, "feed.json")); // none: the stub's report fails, the feed answers 502
+const aguiOnly = async (feed: object | null) => { // null: the stub's report fails, the feed answers 502
+  h = await bootAgui("", { fleet: true, feed });
   return h.url;
 };
 const RAIL = ["shift", "report", "fleet", "health", "docs"];
 
 test("a failed report still draws the AG-UI rail and an identity header with no data", async ({ page }) => {
   expect(aguiBuilt(), "agui-web/dist is not built").toBe(true);
-  process.env.E2E_FEED_DELAY_MS = "1500"; // the boot-time report reads its file at the end of the delay: after aguiOnly removed it
+  process.env.E2E_FEED_DELAY_MS = "1500"; // the report fails after a delay, so the page sees it running (202) first
   let feedAsks = 0;
   page.on("request", (r) => { if (new URL(r.url()).pathname === "/api/feed") feedAsks++; });
   await page.goto(await aguiOnly(null));

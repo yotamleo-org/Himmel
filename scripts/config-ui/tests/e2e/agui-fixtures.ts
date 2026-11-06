@@ -91,7 +91,7 @@ export type AguiHarness = {
 // `fleet` boots `himmelctl ui --agui` with no session id over the fixture fleet (agui-fleet-fixture.ts:
 // its stub census, sessions and journals under this HOME), and waits for the fleet URL (the token, no run).
 // `cloud` adds the fixture's cloud lane (routing log, briefs, stub gh, the shepherd worker).
-export async function bootAgui(initial = "", opts: { fleet?: boolean; cloud?: boolean } = {}): Promise<AguiHarness> {
+export async function bootAgui(initial = "", opts: { fleet?: boolean; cloud?: boolean; feed?: object | null } = {}): Promise<AguiHarness> {
   const dir = mkdtempSync(join(tmpdir(), "agui-e2e-"));
   const fleet = opts.fleet ? fleetFixture(dir, { cloud: opts.cloud }) : null;
   const home = join(dir, "home");
@@ -120,7 +120,9 @@ export async function bootAgui(initial = "", opts: { fleet?: boolean; cloud?: bo
     E2E_FEED: join(dir, "feed.json"), STUB_ARGV: join(dir, "argv"), ...fleet?.env,
   };
   delete env.CADENCE_USAGE_LEDGER;
-  writeFileSync(env.E2E_FEED!, JSON.stringify(buildFeed())); // the rail's identity header reads GET /api/feed: a stub report, so the page logs no 502
+  // the rail's identity header reads GET /api/feed: a stub report, so the page logs no 502. It is written before the server starts, because
+  // the server's boot-time report reads it at once; `feed: null` leaves no report, so that read fails.
+  if (opts.feed !== null) writeFileSync(env.E2E_FEED!, JSON.stringify(opts.feed ?? buildFeed()));
   for (const k of Object.keys(env)) if (k === "CLAUDECODE" || k.startsWith("CLAUDE_CODE_")) delete env[k];
   const child: ChildProcess = spawn("node", [BIN, "ui", "--port", "0", "--agui", ...(fleet ? [] : [RUN])], { env: env as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "pipe"] });
   const want = fleet ? /(http:\/\/127\.0\.0\.1:\d+\/agui\/#t=[0-9a-f]{64})$/m : /(http:\/\/127\.0\.0\.1:\d+\/agui\/#t=[0-9a-f]{64}&run=[0-9a-f-]{36})/;
