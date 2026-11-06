@@ -1803,6 +1803,27 @@ check "T1.40 impacted: a missing count is refused" "$(rs_rc impacted --branch b 
 check "T1.40 impacted: a valid row is accepted" "$(rs_rc impacted --branch b --head "$A40" --impacted 3 --unverdicted 1 --skip 2 --rc 1)" "0"
 check "T1.40 impacted: the row carries its counts" "$(jq -c 'select(.kind=="impacted") | [.branch,.impacted_n,.unverdicted_n,.skip_n,.rc,.status]' "$RS")" '["b",3,1,2,1,"ok"]'
 
+# T5b: the local_pass / ruled_skip path lists ride in files, one repo-relative path per line
+RS5="$tmp/impacted-lists.jsonl"; : > "$RS5"
+LPF="$tmp/lp.txt"; RSF="$tmp/rs.txt"
+imp_rc() { CR_LEDGER="$RS5" bash "$LA" impacted --branch b --head "$A40" --impacted 3 --unverdicted 0 --skip 1 --rc 0 "$@" >/dev/null 2>&1; echo $?; }
+printf 'scripts/a/test-a.sh\nscripts/b/test-b.sh\n' > "$LPF"; printf 'scripts/c/test-c.sh\n' > "$RSF"
+check "T5b a valid pair of lists is accepted" "$(imp_rc --local-pass-file "$LPF" --ruled-skip-file "$RSF")" "0"
+check "T5b the row carries both lists as arrays" "$(jq -c 'select(.kind=="impacted") | [.local_pass,.ruled_skip]' "$RS5")" '[["scripts/a/test-a.sh","scripts/b/test-b.sh"],["scripts/c/test-c.sh"]]'
+: > "$LPF"
+check "T5b an empty list file is an empty array" "$(imp_rc --local-pass-file "$LPF" --ruled-skip-file "$LPF"; jq -c 'select(.kind=="impacted") | [.local_pass,.ruled_skip]' "$RS5" | tail -n 1)" "$(printf '0\n[[],[]]')"
+check "T5b without the flags the row has neither field" "$(imp_rc; jq -c 'select(.kind=="impacted") | has("local_pass") or has("ruled_skip")' "$RS5" | tail -n 1)" "$(printf '0\nfalse')"
+n_before=$(wc -l < "$RS5" | tr -d ' ')
+printf '/abs/test-a.sh\n' > "$LPF";           check "T5b an absolute path is refused" "$(imp_rc --local-pass-file "$LPF" --ruled-skip-file "$RSF")" "2"
+printf 'scripts/../x/test-a.sh\n' > "$LPF";   check "T5b a .. segment is refused" "$(imp_rc --local-pass-file "$LPF" --ruled-skip-file "$RSF")" "2"
+printf 'scripts/a.sh\n\nscripts/b.sh\n' > "$LPF"; check "T5b an empty line is refused" "$(imp_rc --local-pass-file "$LPF" --ruled-skip-file "$RSF")" "2"
+printf 'scripts/a\tb.sh\n' > "$LPF";          check "T5b a control character is refused" "$(imp_rc --local-pass-file "$LPF" --ruled-skip-file "$RSF")" "2"
+seq 1 2001 | sed 's|^|scripts/t/test-|; s|$|.sh|' > "$LPF"; check "T5b 2001 lines are refused" "$(imp_rc --local-pass-file "$LPF" --ruled-skip-file "$RSF")" "2"
+seq 1 2000 | sed 's|^|scripts/t/test-|; s|$|.sh|' > "$LPF"; check "T5b 2000 lines are accepted" "$(imp_rc --local-pass-file "$LPF" --ruled-skip-file "$RSF")" "0"
+check "T5b a missing list file is refused" "$(imp_rc --local-pass-file "$tmp/nope.txt" --ruled-skip-file "$RSF")" "2"
+check "T5b one list flag without the other is refused" "$(imp_rc --local-pass-file "$LPF")" "2"
+check "T5b the refusals wrote nothing" "$(( $(wc -l < "$RS5" | tr -d ' ') - n_before ))" "1"
+
 # ── T1.45: security-audit rows (the verdict follows the counts) ──
 SA="$tmp/security-audit.jsonl"; : > "$SA"
 GCD="$(git rev-parse --path-format=absolute --git-common-dir)"

@@ -55,6 +55,10 @@ git init -q --bare "$tmp/origin.git"
 git init -q "$ANCHOR"
 mkdir -p "$ANCHOR/scripts/lib" "$ANCHOR/scripts/guardrails"
 cp "$HERE/../../lib/go-gate.sh" "$ANCHOR/scripts/lib/go-gate.sh"
+# ready-check's check 19 runs the anchor's impacted-suites.sh
+mkdir -p "$ANCHOR/scripts/cr"
+cp "$HERE/../../cr/impacted-suites.sh" "$HERE/../../cr/anchor-handoff.sh" "$ANCHOR/scripts/cr/"
+cp "$HERE/../../lib/review-default-base.sh" "$ANCHOR/scripts/lib/"
 cp "$HERE/../../lib/pr_remainder.py" "$ANCHOR/scripts/lib/pr_remainder.py"
 printf '[]\n' > "$ANCHOR/scripts/guardrails/himmel-adapters.json"
 printf '[]\n' > "$ANCHOR/scripts/guardrails/himmel-adopted.json"
@@ -166,9 +170,6 @@ git init -q "$READY_REPO"
 cd "$READY_REPO" || { echo "FAIL: cd $READY_REPO" >&2; exit 1; }
 LEDGER="$(git rev-parse --path-format=absolute --git-common-dir)/cr-critic-scores.jsonl"
 
-SHA=0123456789abcdef0123456789abcdef01234567
-SHA2=fedcba9876543210fedcba9876543210fedcba98
-export READY_STUB_HEAD="$SHA" READY_STUB_BRANCH=b
 # Real commits for the carried-judge rows (delta-class.sh reads them): J is the judged head, a docs-only
 # push after it classifies none, a push that touches a trust path classifies trust.
 rgit() { git -C "$READY_REPO" -c user.email=t@t -c user.name=t -c commit.gpgsign=false "$@"; }
@@ -179,6 +180,11 @@ printf 'c\n' > "$READY_REPO/docs/c.md"
 rgit add -A && rgit commit -qm base
 JUDGED=$(rgit rev-parse HEAD)
 rgit update-ref refs/remotes/origin/main "$JUDGED"
+# check 19 fetches origin/main and reads origin/main..<head>: real heads on JUDGED
+ready_pass_origin "$READY_REPO" "$JUDGED"
+SHA=$(ready_pass_repo "$READY_REPO") || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
+SHA2=$(ready_pass_repo "$READY_REPO" 2) || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
+export READY_STUB_HEAD="$SHA" READY_STUB_BRANCH=b
 printf 'more\n' >> "$READY_REPO/docs/c.md"; rgit add -A && rgit commit -qm docs
 NDOC=$(rgit rev-parse HEAD)
 rgit checkout -q -b trust "$JUDGED"
@@ -660,7 +666,24 @@ would() { # <label> <head>
     check "$1: exit 0" "$RC" "0"
     check "$1: WOULD-GO" "$OUT" "WOULD-GO 77 $2"
 }
-# delta-class.sh and the NO-GO order check read the anchor checkout's git, not the cwd's
+# delta-class.sh and the NO-GO order check read the anchor checkout's git, not the cwd's.
+# Check 5 alone, with ready-go.sh stubbed (a symlinked tree copy whose ready-go.sh prints a pass):
+# the real ready-go's check 19 fetches the PR head into the cwd, so only here does the cwd never hold it.
+RGK="$tmp/rgk"; mkdir -p "$RGK/scripts/handover/chief-kit"
+for rgkd in "$HERE/../.."/*; do [ "$(basename "$rgkd")" = handover ] || ln -s "$rgkd" "$RGK/scripts/$(basename "$rgkd")"; done
+for rgkf in "$HERE/.."/*; do [ "$(basename "$rgkf")" = chief-kit ] || ln -s "$rgkf" "$RGK/scripts/handover/$(basename "$rgkf")"; done
+for rgkf in "$HERE"/*; do case "$(basename "$rgkf")" in ready-go.sh|delta-class.sh) ;; *) ln -s "$rgkf" "$RGK/scripts/handover/chief-kit/$(basename "$rgkf")" ;; esac; done
+# delta-class.sh resolves the verdict scope from its own tree: run the real one, from the real tree
+# shellcheck disable=SC2016  # the wrapper's own $@ stays literal
+printf '#!/usr/bin/env bash\nexec bash "%s/delta-class.sh" "$@"\n' "$HERE" > "$RGK/scripts/handover/chief-kit/delta-class.sh"
+printf '#!/usr/bin/env bash\nprintf "TRUST: hit scripts/ci/x.sh\\nREADY-GO PASS\\n"\n' > "$RGK/scripts/handover/chief-kit/ready-go.sh"
+check "8478 check 5 alone: the cwd does not hold the head" "$(git -C "$READY_REPO" cat-file -e "$ASIDE^{commit}" 2>/dev/null && echo yes || echo no)" "no"
+gofresh; verdict qj "**GO** for head \`$NDOC2\`."
+rgk_keep="$SCRIPT"; SCRIPT="$RGK/scripts/handover/chief-kit/auto-go.sh"
+drun "$ASIDE"; would "8478 check 5 alone classifies the delta in the anchor checkout (the cwd never holds the head)" "$ASIDE"
+SCRIPT="$rgk_keep"
+# the two rows below run the real ready-go: its check 19 fetches the head as GitHub serves it, refs/pull/77/head
+git -C "$SIDE" push -q "$READY_REPO/.git/ready-pass-origin.git" "$ASIDE:refs/pull/77/head"
 gofresh; verdict qj "**GO** for head \`$NDOC2\`."
 drun "$ASIDE"; would "8478 the delta is classified in the anchor checkout (a head only it holds)" "$ASIDE"
 gofresh; verdict qj "**GO** for head \`$NDOC2\`."; verdict qn "**NO-GO** for head \`$ASIB\`."

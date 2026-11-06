@@ -145,6 +145,15 @@
 #      is success + "Review rate limited" prints one [WARN] line saying no review was
 #      posted. Never a FAIL, never the marker or the exit code; nothing prints for any
 #      other state or an unreadable status. Not part of `--only 7`.
+# 19. suite evidence: every suite the anchor's impacted-suites.sh lists for
+#      merge-base..SHA has proof. Local proof is the head's `impacted` ledger row
+#      (`local_pass`; a `ruled_skip` is counted and named apart from it); CI proof is an exact `ran 0 <path>` manifest
+#      line of the run behind the latest SUCCESS `shell-unit (ubuntu-latest)`
+#      check-run, whose run head_sha equals SHA. A suite on a PR-body
+#      `Local suites: <path>` line needs local proof. Every subprocess and network
+#      read is bounded (the reads of local files are not); an unreadable impacted
+#      list, an unresolvable range, no timeout binary or a timed-out read FAILs. Not part
+#      of `--only 7`.
 #
 # 16. outside-PR full review: for an outside PR (a fork, a deleted author, or a
 #      non-Bot author not in scripts/ci/ticket-id-internal-authors.txt; the same
@@ -176,8 +185,12 @@
 #      unreadable branch or any other exit FAILs. Not part of `--only 7`.
 #
 # Owner/repo are derived from `gh repo view --json owner,name`, never hard-
-# coded (so this runs the same in any clone/fork). It writes nothing — no
-# ledger rows, no GO files, no PR comments.
+# coded (so this runs the same in any clone/fork). It writes no CR ledger rows,
+# no GO files and no PR comments. Its writes are: `git fetch` into the repo it runs in
+# (pr_fetch updates refs/remotes/origin/main and, when the head is not there, fetches
+# refs/pull/<pr>/head, so it runs in a checkout where that is fine), a temp dir for
+# item 19 (removed on exit), and item 19's append-only CI failure ledger (station state,
+# report-only; it never changes a verdict; check-ci.sh writes the same rows at the red).
 #
 # Exit codes:
 #   0 — READY-CHECK PASS
@@ -872,6 +885,42 @@ EOF
     fi
 fi
 
+# pr_fetch — fetch origin/main, and the PR head when it is not here. pr_merge_base
+# — pr_fetch, then set pr_mb to merge-base(origin/main, SHA). Each runs once and is
+# kept for every later caller (checks 9 and 19); a failure sets pr_mb_err and
+# returns 1. Each fetch is bounded at 15 s when a timeout binary resolves.
+pr_mb=""
+pr_mb_err=""
+pr_fetch_done=0
+pr_mb_done=0
+_TIMEOUT_BIN=""
+# shellcheck source=../../lib/timeout-bin.sh
+. "$(cd "$(dirname "$0")/../../lib" && pwd)/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN leaves the fetches unbounded, and item 19 FAILs on it
+pr_mb_git() { ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 15} git "$@"; }
+pr_fetch() {
+    if [ "$pr_fetch_done" -eq 0 ]; then
+        pr_fetch_done=1
+        if ! pr_mb_git fetch -q origin '+refs/heads/main:refs/remotes/origin/main' 2>/dev/null; then
+            pr_mb_err="cannot fetch origin/main"
+        elif ! git cat-file -e "$SHA^{commit}" 2>/dev/null \
+            && { ! pr_mb_git fetch -q origin "refs/pull/$PR/head" 2>/dev/null || ! git cat-file -e "$SHA^{commit}" 2>/dev/null; }; then
+            pr_mb_err="cannot fetch PR head $SHA"
+        fi
+    fi
+    [ -z "$pr_mb_err" ]
+}
+pr_merge_base() {
+    pr_fetch || return 1
+    if [ "$pr_mb_done" -eq 0 ]; then
+        pr_mb_done=1
+        if ! pr_mb=$(git merge-base refs/remotes/origin/main "$SHA" 2>/dev/null) || [ -z "$pr_mb" ]; then  # swallow-ok: rc checked, a failure FAILs its caller
+            pr_mb=""
+            pr_mb_err="cannot read the merge-base with origin/main"
+        fi
+    fi
+    [ -z "$pr_mb_err" ]
+}
+
 if [ "$ONLY7" -eq 0 ]; then
 # ── 9. a plugin change bumps that plugin's version ──────────────
 # The --bump-required rule of scripts/check-plugin-drift.sh. A PR
@@ -944,14 +993,9 @@ else
         fi
         return 0
     }
-    if ! git fetch -q origin '+refs/heads/main:refs/remotes/origin/main' 2>/dev/null; then
-        bump_err="cannot fetch origin/main"
-    elif ! git cat-file -e "$SHA^{commit}" 2>/dev/null \
-        && { ! git fetch -q origin "refs/pull/$PR/head" 2>/dev/null || ! git cat-file -e "$SHA^{commit}" 2>/dev/null; }; then
-        bump_err="cannot fetch PR head $SHA"
-    elif ! plug_mb=$(git merge-base refs/remotes/origin/main "$SHA" 2>/dev/null); then  # swallow-ok: rc checked, a failure FAILs check 9
-        bump_err="cannot read the merge-base with origin/main"
-    elif ! plug_rel=$(git diff --name-only "$plug_mb" "$SHA" -- VERSION 2>/dev/null); then  # swallow-ok: rc checked, a failure FAILs check 9
+    if ! pr_merge_base; then
+        bump_err="$pr_mb_err"
+    elif plug_mb="$pr_mb"; ! plug_rel=$(git diff --name-only "$plug_mb" "$SHA" -- VERSION 2>/dev/null); then  # swallow-ok: rc checked, a failure FAILs check 9
         bump_err="cannot read the VERSION diff against the merge-base"
     elif [ -z "$plug_rel" ]; then
         for plug in $(printf '%s\n' "$plug_files" | sed -n 's#^marketplace/plugins/\([^/]*\)/.*#\1#p' | sort -u); do
@@ -1900,6 +1944,218 @@ check_open_findings() {
     echo "[PASS] 18. no blocking or undecided finding at the head the merge gates on (read as the merge reads it, with and without the GO)"
 }
 check_open_findings
+
+# --- 19. suite evidence. Each impacted suite needs local proof (the head's
+# `impacted` ledger row) or CI proof (an exact `ran 0 <path>` line in a shard
+# manifest of the run behind the latest SUCCESS `shell-unit (ubuntu-latest)`
+# check-run in workflow CI, whose run head_sha is SHA). The manifests are read
+# only when some suite lacks local proof. The row comes from o16_ledger (head,
+# headRefName, .pr null or this PR). ponytail: the latest-run pick mirrors check
+# 2's rather than sharing it; upgrade path: one shared latest-run reader.
+S17_AGG="shell-unit (ubuntu-latest)"
+s17_bound() {  # <default seconds>: READY_CHECK_ITEM19_BOUND wins only when 1 or more and lower (timeout 0 means no limit)
+    local b="${READY_CHECK_ITEM19_BOUND:-}"
+    case "$b" in ''|*[!0-9]*) printf '%s' "$1" ;; *) if [ "$b" -ge 1 ] && [ "$b" -lt "$1" ]; then printf '%s' "$b"; else printf '%s' "$1"; fi ;; esac
+}
+s17_fail() { echo "[FAIL] 19. suite evidence: $1"; mark_fail; }
+# s17_run <name> <seconds> <out> <cmd...>: bounded; rc 124/137 is a timeout, said by name
+s17_run() {
+    local name="$1" n="$2" out="$3" rc=0
+    shift 3
+    "$_TIMEOUT_BIN" -k 5 "$n" "$@" > "$out" 2> "$out.err" < /dev/null || rc=$?
+    case "$rc" in
+        0) return 0 ;;
+        124|137) s17_why="$name timed out after ${n}s" ;;
+        *) s17_why="$name failed (rc $rc: $(head -n 1 "$out.err" 2>/dev/null))" ;;  # swallow-ok: a missing err file prints an empty reason
+    esac
+    return 1
+}
+# The CI failure ledger: station state, append-only, report-only.
+# A `fail` row is a suite left to CI that failed there at a PR head; a `round` row
+# says that PR moved on to a new head after a failure (an extra round). The rows
+# never change a verdict; scripts/cr/suite-fail-ledger.sh reads them.
+# ponytail: dedupe-then-append is unlocked, so two racing reads can double a row; a lock if the counts drift.
+s17_fl_path() { printf '%s' "${READY_CHECK_FAIL_LEDGER:-${HOME:-/tmp}/.himmel/state/suite-evidence/ci-failures.jsonl}"; }
+s17_fl_add() {  # <json row>: appended once, dir 700, file 600; the registry envelope (v, host, source) is added here
+    local f row; f=$(s17_fl_path)
+    row=$(printf '%s' "$1" | jq -c --arg h "${HOSTNAME:-$(uname -n)}" '{v: 1} + . + {host: $h, source: "ready-check"}') || { echo "       note: CI failure ledger row not built"; return 0; }
+    mkdir -p "$(dirname "$f")" 2>/dev/null && chmod 700 "$(dirname "$f")" 2>/dev/null  # swallow-ok: an unwritable ledger only loses the advisory row
+    ( umask 077; printf '%s\n' "$row" >> "$f" ) 2>/dev/null || echo "       note: CI failure ledger not written ($f)"
+}
+s17_fl_rounds() {  # one `round` row per earlier failed head of this PR
+    local f h
+    f=$(s17_fl_path)
+    [ -r "$f" ] || return 0
+    jq -n -R -r --arg r "$owner/$repo" --argjson p "$PR" --arg h "$SHA" '
+        [inputs | fromjson? | select(type == "object" and .repo == $r and .pr == $p)] as $rows
+        | ($rows | map(select(.kind == "round") | .head)) as $done
+        | $rows | map(select(.kind == "fail" and .head != $h) | .head) | unique[]
+        | select(. as $x | $done | index($x) | not)' "$f" 2>/dev/null | while IFS= read -r h; do  # swallow-ok: an unreadable ledger records no round
+        s17_fl_add "$(jq -nc --arg r "$owner/$repo" --argjson p "$PR" --arg h "$h" --arg n "$SHA" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{kind: "round", ts: $t, repo: $r, pr: $p, head: $h, next: $n}')"
+    done
+}
+s17_fl_failures() {  # <dir> <run id>: one `fail` row per suite in <dir>/need with a nonzero `ran` line
+    local d="$1" run="$2" f s rc n=0
+    f=$(s17_fl_path)
+    s17_run "gh api actions/runs/$run" "$(s17_bound 15)" "$d/fhs" "$GH" api "repos/$owner/$repo/actions/runs/$run" --jq .head_sha || return 0
+    [ "$(tr -d '[:space:]' < "$d/fhs")" = "$SHA" ] || return 0
+    mkdir "$d/fm" 2>/dev/null || return 0  # swallow-ok: advisory
+    s17_run "gh run download $run" "$(s17_bound 30)" "$d/fdl" "$GH" run download "$run" -R "$owner/$repo" -p 'shell-unit-manifest-ubuntu-latest-shard*' -D "$d/fm" || return 0
+    find "$d/fm" -type f -name 'manifest-shard*.txt' -exec cat {} + 2>/dev/null | tr -d '\r' \
+        | awk '$1 == "ran" && $2 ~ /^[0-9]+$/ && $2 != "0" && NF == 3 { print $2, $3 }' > "$d/fred" || return 0  # swallow-ok: advisory
+    while read -r rc s; do
+        grep -Fxq -- "$s" "$d/need" || continue
+        if [ -r "$f" ] && jq -R -e --arg r "$owner/$repo" --argjson p "$PR" --arg h "$SHA" --arg s "$s" --argjson u "$run" '
+            fromjson? | select(type == "object" and .kind == "fail" and .repo == $r and .pr == $p and .head == $h and .suite == $s and .run == $u)' "$f" > /dev/null 2>&1; then
+            continue
+        fi
+        s17_fl_add "$(jq -nc --arg r "$owner/$repo" --argjson p "$PR" --arg h "$SHA" --arg s "$s" --argjson u "$run" --argjson c "$rc" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{kind: "fail", ts: $t, repo: $r, pr: $p, head: $h, suite: $s, run: $u, rc: $c}')"
+        n=$((n + 1))
+    done < "$d/fred"
+    [ "$n" -eq 0 ] || echo "       note: CI failure ledger +$n row(s) for run $run ($f)"
+}
+check_suite_evidence() {
+    local d
+    [ "$ONLY7" -eq 0 ] || return 0
+    d=$(mktemp -d "${TMPDIR:-/tmp}/ready-check-19.XXXXXX") || { s17_fail "mktemp failed"; return 0; }  # prim-ok: ready-check sources no prim.sh; a failed mktemp FAILs item 19
+    # shellcheck disable=SC2064  # $d is fixed now on purpose: the trap removes this dir whatever exit path follows
+    # shellcheck disable=SC2064  # $d is fixed now on purpose: the trap removes this dir whatever exit path follows
+    trap "rm -rf '$d'" EXIT
+    s17_body "$d"
+    s17_fl_rounds
+    rm -rf "$d"
+    trap - EXIT
+}
+s17_body() {
+    local d="$1" anchor n_imp branch ledger row="" have_row=0 run_id="" agg n_ci=0 n_local=0 n_ruled=0 s why bad=0 reasons="" ruled_names="" grc
+    s17_why=""
+    _TIMEOUT_BIN=""
+    # shellcheck source=../../lib/timeout-bin.sh
+    . "$(cd "$(dirname "$0")/../../lib" && pwd)/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN FAILs item 19 just below
+    if [ -z "$_TIMEOUT_BIN" ]; then
+        s17_fail "no timeout binary, so no read here can be bounded"
+        return 0
+    fi
+    if ! pr_fetch; then
+        s17_fail "cannot resolve the range: $pr_mb_err"
+        return 0
+    fi
+    # The anchor's copy, so a PR cannot narrow its own list. It diffs from
+    # merge-base(origin/main, SHA) itself and exits 2 when there is none.
+    anchor="${READY_CHECK_ANCHOR:-$(cd "$(dirname "$0")/../../.." && pwd)}"
+    if ! s17_run impacted-suites.sh "$(s17_bound 30)" "$d/imp.raw" bash "$anchor/scripts/cr/impacted-suites.sh" "refs/remotes/origin/main..$SHA"; then
+        s17_fail "cannot read the impacted list for origin/main..${SHA:0:7}: $s17_why"
+        return 0
+    fi
+    grc=0
+    grep -v '^$' "$d/imp.raw" > "$d/imp.nz" 2> /dev/null || grc=$?  # grc 1 is no line, an empty list
+    if [ "$grc" -gt 1 ] || ! sort -u "$d/imp.nz" > "$d/imp"; then
+        s17_fail "cannot read the impacted list for origin/main..${SHA:0:7}"
+        return 0
+    fi
+    n_imp=$(wc -l < "$d/imp" | tr -d ' ')
+    if [ "$n_imp" -eq 0 ]; then
+        echo "[PASS] 19. suite evidence: 0 impacted, nothing to prove"
+        return 0
+    fi
+
+    # local proof: the newest ok `impacted` row at this head and branch
+    branch=$(printf '%s' "$snapshot" | jq -r '.[0].headRefName // empty' 2>/dev/null) || branch=""  # swallow-ok: an empty branch reads no row
+    ledger="${common_dir:-}/cr-critic-scores.jsonl"
+    : > "$d/lp"
+    : > "$d/rs"
+    if [ -n "$branch" ] && [ -n "${common_dir:-}" ] && [ -r "$ledger" ]; then
+        # item 16's reader: rows of this head, branch and PR, oldest first; the newest ok one is the proof
+        o16_branch="$branch"; o16_ledger="$ledger"
+        row=$(o16_ledger impacted 'select(.status == "ok") | tojson' | tail -n 1)
+    fi
+    if [ -n "$row" ]; then
+        have_row=1
+        printf '%s' "$row" | jq -r '(.local_pass // []) | .[] | strings' 2>/dev/null | sort -u > "$d/lp" || : > "$d/lp"  # swallow-ok: a malformed field is no local proof
+        printf '%s' "$row" | jq -r '(.ruled_skip // []) | .[] | strings' 2>/dev/null | sort -u > "$d/rs" || : > "$d/rs"  # swallow-ok: a malformed field is no local proof
+    fi
+    # `Local suites: <path>` body lines, one path each (the body is item 7's, CR-stripped)
+    printf '%s\n' "${cov_body:-}" | sed -e 's/[[:space:]]*$//' | sed -n 's/^Local suites: \(..*\)$/\1/p' | sort -u > "$d/ls"
+    while IFS= read -r s; do
+        grep -Fxq -- "$s" "$d/imp" || echo "       note: a Local suites line names $s, which is not impacted"
+    done < "$d/ls"
+
+    : > "$d/need"
+    while IFS= read -r s; do
+        if grep -Fxq -- "$s" "$d/ls"; then
+            if grep -Fxq -- "$s" "$d/lp"; then n_local=$((n_local + 1)); else reasons="$reasons, $s (Local suites line, no local PASS)"; bad=$((bad + 1)); fi
+        elif grep -Fxq -- "$s" "$d/lp"; then
+            n_local=$((n_local + 1))
+        elif grep -Fxq -- "$s" "$d/rs"; then
+            n_ruled=$((n_ruled + 1)); ruled_names="$ruled_names, $s"
+        else
+            printf '%s\n' "$s" >> "$d/need"
+        fi
+    done < "$d/imp"
+
+    if [ -s "$d/need" ]; then
+        # the latest check-run of the aggregator, check 2's latest rule
+        agg=$(printf '%s' "${rollup:-null}" | jq -r --arg n "$S17_AGG" '
+            [ (if type == "array" then . else [] end) | to_entries[] | .key as $i | .value
+              | select(type == "object" and has("conclusion") and .name == $n and (.workflowName // "") == "CI")
+              | {i: $i, ts: (.startedAt // .completedAt // null), st: (.status // "?"), c: (.conclusion // "null"),
+                 run: ((.detailsUrl // "") | [scan("^https://[^/]+/[^/]+/[^/]+/actions/runs/([0-9]+)/job/[0-9]+$")[0]] | first // "")} ]
+            | map(.sk = [(.ts == null), (.ts // .i)]) | max_by(.sk)
+            | if . == null then "none" else "\(.st)/\(.c) \(.run)" end' 2>/dev/null) || agg=""  # swallow-ok: an unreadable rollup is no settled CI run
+        case "$agg" in
+            "COMPLETED/SUCCESS "[0-9]*) run_id="${agg#* }" ;;
+            *) s17_why="no settled CI run (latest $S17_AGG: ${agg:-unreadable})" ;;
+        esac
+        case "$agg" in "COMPLETED/FAILURE "[0-9]*) why="$s17_why"; s17_fl_failures "$d" "${agg#* }"; s17_why="$why" ;; esac
+        if [ -n "$run_id" ]; then
+            if ! s17_run "gh api actions/runs/$run_id" "$(s17_bound 15)" "$d/hs" "$GH" api "repos/$owner/$repo/actions/runs/$run_id" --jq .head_sha; then
+                s17_fail "$s17_why"
+                return 0
+            fi
+            if [ "$(tr -d '[:space:]' < "$d/hs")" != "$SHA" ]; then
+                s17_why="no settled CI run (run $run_id is not at ${SHA:0:7})"
+                run_id=""
+            fi
+        fi
+        if [ -n "$run_id" ]; then
+            mkdir "$d/m" || { s17_fail "mkdir failed"; return 0; }
+            # A run whose plan left every shard out uploads no manifest: gh says so and
+            # exits 1, and no shell suite is CI-proven. Any other failure is a FAIL.
+            if ! s17_run "gh run download $run_id" "$(s17_bound 30)" "$d/dl" "$GH" run download "$run_id" -R "$owner/$repo" -p 'shell-unit-manifest-ubuntu-latest-shard*' -D "$d/m" \
+                && ! { case "$s17_why" in *"timed out"*) false ;; esac && grep -qF 'no valid artifacts found' "$d/dl.err"; }; then
+                s17_fail "$s17_why"
+                return 0
+            fi
+            find "$d/m" -type f -name 'manifest-shard*.txt' -exec cat {} + 2>/dev/null | tr -d '\r' > "$d/man" || : > "$d/man"  # swallow-ok: no manifest proves nothing
+            awk 'index($0, "ran 0 ") == 1 { print substr($0, 7) }' "$d/man" | sort -u > "$d/ran0"
+            awk 'index($0, "skip ") == 1 { print substr($0, 6) }' "$d/man" | sort -u > "$d/skip"
+        fi
+        while IFS= read -r s; do
+            if [ -z "$run_id" ]; then
+                why="$s17_why"
+            elif grep -Fxq -- "$s" "$d/ran0"; then
+                n_ci=$((n_ci + 1)); continue
+            elif grep -Fxq -- "$s" "$d/skip"; then
+                why="CI skipped it"
+            else
+                why="no ran-0 row in run $run_id"
+            fi
+            reasons="$reasons, $s ($why)"; bad=$((bad + 1))
+        done < "$d/need"
+    fi
+
+    if [ "$bad" -gt 0 ]; then
+        s17_fail "$bad suite(s) proven nowhere: ${reasons#, }"
+        if [ "$have_row" -eq 0 ]; then
+            echo "       no impacted row at ${SHA:0:7} on ${branch:-?}: the chief runs pr-check step 3.6 (impacted-suites.sh --check --record) for this head from a worktree of the branch, so the row lands in the shared ledger"
+        fi
+        return 0
+    fi
+    echo "[PASS] 19. suite evidence: $n_imp impacted, $n_ci from CI run ${run_id:--}, $n_local local${ruled_names:+, $n_ruled ruled SKIP: ${ruled_names#, }}"
+}
+check_suite_evidence
 
 if [ "$ONLY7" -eq 1 ]; then
     if [ "$RESULT" -eq 0 ]; then echo "COVERAGE-LINT PASS"; exit 0; fi

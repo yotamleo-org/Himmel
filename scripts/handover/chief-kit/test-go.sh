@@ -102,7 +102,7 @@ export USER_SLUG=u
 VBUCKET="$(basename "$(dirname "$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)")" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
 VSCOPE="u/$VBUCKET"
 
-SHA=0123456789abcdef0123456789abcdef01234567
+SHA=$(ready_pass_repo "$READY_REPO") || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 export READY_STUB_HEAD="$SHA"
 ready_pass_ledger "$READY_REPO" "$SHA"
 ROOT="$tmp/root"; mkdir -p "$ROOT"
@@ -260,8 +260,14 @@ ready_pass_ledger "$S10" "$SHA"
 cp -R "$HERE/../../lib" "$S10/scripts/lib"
 cp "$HERE/../../ci/ticket-id-internal-authors.txt" "$S10/scripts/ci/ticket-id-internal-authors.txt"
 cp "$HERE/../../cr/anchor-handoff.sh" "$S10/scripts/cr/anchor-handoff.sh"
+# check 19: the copy reads READY_REPO's head through an alternate, from its own origin
+cp "$HERE/../../cr/impacted-suites.sh" "$S10/scripts/cr/impacted-suites.sh"
+printf '%s\n' "$READY_REPO/.git/objects" > "$S10/.git/objects/info/alternates"
+ready_pass_origin "$S10" "$(git -C "$READY_REPO" rev-parse refs/remotes/origin/main)"
 cp "$HERE/../../cr/ledger-amend-auth.js" "$S10/scripts/cr/ledger-amend-auth.js"
 cp "$HERE/../../cr/clear-review-marker.sh" "$S10/scripts/cr/clear-review-marker.sh"
+# item 18's marker check promotes through review-round.sh now that the head is a real commit
+cp "$HERE/../../cr/review-round.sh" "$S10/scripts/cr/review-round.sh"
 printf 'HANDOVER_DIR=%s\n' "$S10_REAL" > "$S10/.env"
 S10_GO=".locks/go/77.$SHA"
 
@@ -370,7 +376,7 @@ rm -f "$GO13.forged"
 # now runs ready-check itself (check 4 is the CR-ledger ok row at the head)
 # and refuses, exit 4 and nothing written, on anything but PASS.
 mkdir -p "$ROOT14"
-SHA14=1111111111111111111111111111111111111111
+SHA14=$(ready_pass_repo "$READY_REPO" 14) || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 rc=0; out="$(READY_STUB_HEAD="$SHA14" HANDOVER_DIR="$ROOT14" bash "$SCRIPT" 82 "$SHA14" 2>&1)" || rc=$?
 check    "4565: unreviewed head (no ledger ok row) -> exit 4" "$rc" "4"
 contains "4565: names the failed check" "$out" "4. CR ledger"
@@ -604,6 +610,10 @@ git init -q --bare "$TP21_ORIGIN"
 git init -q "$TP21_ANCHOR"
 mkdir -p "$TP21_ANCHOR/scripts/lib"
 cp "$HERE/../../lib/go-gate.sh" "$TP21_ANCHOR/scripts/lib/go-gate.sh"
+# check 19 runs the anchor's impacted-suites.sh
+mkdir -p "$TP21_ANCHOR/scripts/cr"
+cp "$HERE/../../cr/impacted-suites.sh" "$HERE/../../cr/anchor-handoff.sh" "$TP21_ANCHOR/scripts/cr/"
+cp "$HERE/../../lib/review-default-base.sh" "$TP21_ANCHOR/scripts/lib/"
 git -C "$TP21_ANCHOR" add -A
 git -C "$TP21_ANCHOR" -c user.name=t -c user.email=t@t commit -q -m init
 git -C "$TP21_ANCHOR" remote add origin "$TP21_ORIGIN"
@@ -820,6 +830,7 @@ printf 'c\n' > "$fx27/docs/c.md"
 fx27_git add -A && fx27_git commit -qm base
 J27=$(fx27_git rev-parse HEAD)
 fx27_git update-ref refs/remotes/origin/main "$J27"
+ready_pass_origin "$fx27" "$J27"
 fx27_git checkout -q -b docs27 "$J27"
 printf 'more\n' >> "$fx27/docs/c.md"; fx27_git add -A && fx27_git commit -qm docs
 N27d=$(fx27_git rev-parse HEAD)
@@ -917,6 +928,7 @@ printf 'c\n' > "$fx29/docs/c.md"
 fx29_git add -A && fx29_git commit -qm base
 P29=$(fx29_git rev-parse HEAD)
 fx29_git update-ref refs/remotes/origin/main "$P29"
+ready_pass_origin "$fx29" "$P29"
 fx29_git checkout -q -b a29 "$P29"
 printf 'a\n' >> "$fx29/docs/c.md"; fx29_git add -A && fx29_git commit -qm a
 A29=$(fx29_git rev-parse HEAD)

@@ -291,6 +291,19 @@
       "grandfathered": false
     },
     {
+      "id": "ci-failures",
+      "default_path": "~/.himmel/state/suite-evidence/ci-failures.jsonl",
+      "override_env": "READY_CHECK_FAIL_LEDGER",
+      "writer": "scripts/cr/ci-fail-record.sh",
+      "readers": ["scripts/cr/suite-fail-ledger.sh", "scripts/handover/chief-kit/ready-check.sh"],
+      "format": "jsonl",
+      "rotation": "none",
+      "retention": "unbounded",
+      "schema_version": 1,
+      "envelope": ["v", "ts", "host", "source", "kind"],
+      "grandfathered": false
+    },
+    {
       "id": "user-reports",
       "default_path": "~/.himmel/state/user-reports.jsonl",
       "override_env": "HIMMEL_USER_REPORTS",

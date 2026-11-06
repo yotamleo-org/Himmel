@@ -175,7 +175,12 @@ template_version: 3
 >    (worker-preface.md); do not transition it by hand.
 > 2. <the deliverables, one numbered item each, named by path>
 > 3. **Tests:** <the suite to write and the specific RED assertion to show
->    first; the impacted suites you already know about, by name.> Suites run
+>    first; the impacted suites you already know about, by name.> Which
+>    impacted suites run locally and which go to CI as `SUITE <p> = CI`:
+>    `scripts/cr/pr-check-ref/33-step3-impacted.md`; a
+>    `> **Local suites:** <path>` line, one per path, keeps a suite local (copy
+>    each into the PR body as the bare line `Local suites: <path>`, which
+>    ready-check item 19 reads). Suites run
 >    as `bash scripts/quiet-run.sh suite -- bash <tracked test-*.sh>` — only
 >    that shape, in the listed suite directories, is auto-allowed. A
 >    third-party tool (`uv run`, `pyright`, `npx`, a checkout under `/tmp`)

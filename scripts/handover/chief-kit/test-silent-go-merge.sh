@@ -45,7 +45,16 @@ cat > "$STUB/ps.sh" <<'EOF'
 [ -f "$STUB/ps.fail" ] && exit 1
 cat "$STUB/ps" 2>/dev/null || printf '1 /sbin/init\n'
 EOF
-chmod +x "$STUB/page.sh" "$STUB/ready-check.sh" "$STUB/ps.sh"
+# timeout seam: logs the bound a ready-check call runs under, then runs the real timeout.
+REAL_TIMEOUT="$(command -v timeout)"; export REAL_TIMEOUT  # gnu-ok: Linux-only kit
+mkdir -p "$STUB/bin"
+cat > "$STUB/bin/timeout" <<'EOF'
+#!/usr/bin/env bash
+case " $* " in *ready-check.sh*) printf '%s\n' "$3" >> "$STUB/timeout-bounds" ;; esac
+exec "$REAL_TIMEOUT" "$@"
+EOF
+chmod +x "$STUB/page.sh" "$STUB/ready-check.sh" "$STUB/ps.sh" "$STUB/bin/timeout"
+export PATH="$STUB/bin:$PATH"
 export CHIEF_WAIT_PAGE_CMD="$STUB/page.sh" CHIEF_SILENT_GO_READY_CHECK="$STUB/ready-check.sh" CHIEF_SILENT_GO_PS="$STUB/ps.sh"
 
 # The himmel checkout the chief runs from: a git repo whose merge gate is a stub.
@@ -70,7 +79,7 @@ printf '{"workers":[{"label":"N9","doc":"%s"}]}\n' "$WD" > "$WM"
 
 # reset <completes> <tail bullet...>: a fresh fleet, the worker READY at $SHA and silent for 2 h.
 reset() {
-    rm -f "$STUB/merges" "$STUB/pages" "$STUB/rc-calls" "$STUB/rc.out" "$STUB/rc.rc" "$STUB/ps" "$STUB/ps.fail" "$STUB/merge.rc" "$STATE" "$HANDOVER_DIR/.locks/go/"*
+    rm -f "$STUB/timeout-bounds" "$STUB/merges" "$STUB/pages" "$STUB/rc-calls""$STUB/rc.out" "$STUB/rc.rc" "$STUB/ps" "$STUB/ps.fail" "$STUB/merge.rc" "$STATE" "$HANDOVER_DIR/.locks/go/"*
     printf '# chief\n\n## Results (newest at the bottom)\n- 01:00 LIVE — chief\n' > "$CD"
     {
         printf '# worker N9\n\n> **completes-ticket: %s**\n\n## Results (newest at the bottom)\n' "$1"
@@ -95,6 +104,7 @@ check "(g1) exactly one merge call" "1" "$(n "$STUB/merges")"
 check "(g1) the merge is the bare relative form with --jira-transition and the GO file" \
     "scripts/handover/merge-on-green.sh 77 --jira-transition --worker-doc $WD --go $GOF" "$(cat "$STUB/merges" 2>/dev/null)"
 check "(g1) ready-check ran at the GO head first" "77 $SHA" "$(cat "$STUB/rc-calls" 2>/dev/null)"
+check "(g1) ready-check runs under a bound past item 19's 105 s" "above" "$(awk '{ print ($1 > 105) ? "above" : "at-or-below" }' "$STUB/timeout-bounds" 2>/dev/null | head -n 1)"
 check "(g1) one operator alert" "1" "$(n "$STUB/pages")"
 check "(g1) the alert names the worker, the PR and the head" "1" "$(n "$STUB/pages" "^SILENT-WORKER-MERGE N9 pr=77 head=$SHA ")"
 check "(g1) one chief-doc bullet naming the silent worker" "1" "$(n "$CD" "^- [0-9:]* SILENT-WORKER-MERGE N9 pr=77 head=$SHA ")"

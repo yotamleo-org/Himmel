@@ -711,14 +711,23 @@ _status_only() {
 # the check's link; `gh run view --log-failed` refuses until the whole run ends).
 # Best effort: an unreadable read or a non-Actions link (an external status)
 # prints nothing, and never changes the verdict.
+#
+# The same moment leaves the CI failure ledger rows (scripts/cr/ci-fail-record.sh): one per
+# impacted suite that failed in each failed run, before any re-run can turn the check green.
 _job_log_hint() {
-    local links name link id
+    local links name link id run runs=""
     links=$(pr_checks --json bucket,name,link --jq '.[] | select(.bucket == "fail") | "\(.name)\t\(.link)"' 2>/dev/null) || return 0
     while IFS=$'\t' read -r name link; do
         case "$link" in */actions/runs/*/job/*) id=${link##*/job/} ;; *) continue ;; esac
         case "$id" in ''|*[!0-9]*) continue ;; esac
         echo "check-ci: failed job '$name' — pull its log now: gh api --allow-escape-sequences repos/$owner/$repo/actions/jobs/$id/logs > <scratch file>" >&2
+        run=${link#*/actions/runs/}; run=${run%%/*}
+        case "$run" in ''|*[!0-9]*) ;; *) case " $runs " in *" $run "*) ;; *) runs="$runs $run" ;; esac ;; esac
     done <<< "$links"
+    [ -n "$runs" ] && [ -n "${num:-}" ] && [ -n "${head0:-${initial_head:-}}" ] || return 0
+    # shellcheck disable=SC2086
+    bash "$(cd "$(dirname "$0")" && pwd)/cr/ci-fail-record.sh" "$owner/$repo" "$num" "${head0:-$initial_head}" $runs >&2 \
+        || echo "check-ci: the CI failure ledger write failed (advisory; the verdict stands)" >&2
 }
 
 # _cr_first_event — one CI-release event. With the CI_GO_GATE repository

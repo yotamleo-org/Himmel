@@ -3448,8 +3448,6 @@ fi
 # only on a chief-written GO file for the certified head ------------------
 GO_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/mog-go.XXXXXX")
 GO_ROOT=$(cd "$GO_ROOT" && pwd)
-GO_SHA=0123456789abcdef0123456789abcdef01234567
-GO_OLD=fedcba9876543210fedcba9876543210fedcba98
 GO_WRITER="$SCRIPT_DIR/chief-kit/go.sh"
 # go.sh now resolves this repo's nwo via `gh repo view` to bind
 # the GO mac. The direct $GO_WRITER invocations below run outside run_mog's
@@ -3475,6 +3473,9 @@ chmod +x "$GO_WRITER_BIN/gh"
 . "$SCRIPT_DIR/chief-kit/testlib-ready-pass.sh"
 GO_READY_REPO=$(mktemp -d "${TMPDIR:-/tmp}/mog-go-repo.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 git -C "$GO_READY_REPO" init -q
+# check 19 fetches origin/main and reads origin/main..<head>: real heads
+GO_SHA=$(ready_pass_repo "$GO_READY_REPO") || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
+GO_OLD=$(ready_pass_repo "$GO_READY_REPO" old) || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 ready_pass_bin "$GO_READY_REPO/.bin"
 ready_pass_ledger "$GO_READY_REPO" "$GO_SHA" "$GO_OLD"
 go_write() {

@@ -2,6 +2,8 @@
 # One basename per line; read by scripts/hooks/guard-chief-foreground.sh.
 # A listed script may run in the foreground as `timeout <=90 bash <script>`; chief-wait.sh
 # and run-suite.sh are listed but the guard never bounds them: they stay background.
+# ready-check.sh is listed too, but its item 19 reads sum to 105 s, past `timeout 90`: run it
+# with run_in_background (the guard's generic `timeout 90` allowance is not a promise it fits).
 # Add a script here when a chief run of it blocks the turn for
 # more than about 30 s; leave short scripts (append-results.sh, go.sh,
 # write-verdict.sh, fleet-manifest.sh) out.

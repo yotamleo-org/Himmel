@@ -1140,6 +1140,17 @@ printf '%s\n' "$*" >> "$STUB/disp.calls"
 cat "$STUB/disp.out"; exit "$(cat "$STUB/disp.rc")"
 EOF
 export CHIEF_WAIT_READY_CHECK="$STUB/ready-check.sh" CHIEF_WAIT_CI="$STUB/ci.sh" CHIEF_WAIT_DISPOSITION="$STUB/disposition.sh"
+# timeout seam: logs the bound a ready-check call runs under, then runs the real timeout.
+REAL_TIMEOUT="$(command -v timeout)"; export REAL_TIMEOUT  # gnu-ok: Linux-only kit
+mkdir -p "$STUB/bin"
+cat > "$STUB/bin/timeout" <<'EOF'
+#!/usr/bin/env bash
+case " $* " in *ready-check.sh*) printf '%s\n' "$3" >> "$STUB/timeout-bounds" ;; esac
+exec "$REAL_TIMEOUT" "$@"
+EOF
+chmod +x "$STUB/bin/timeout"
+rm -f "$STUB/timeout-bounds"
+SAVED_PATH="$PATH"; export PATH="$STUB/bin:$PATH"
 # auto_go off (its own READY relay is test-chief-wait-r0.sh's): a fixture registry, no shell override
 printf 'auto_go\toff\tfeature\tHIMMEL-8349\tHIMMEL-8404\t2099-01-01\tfixture\n' > "$WORK/flags.tsv"
 export HIMMEL_FLAGS_TSV="$WORK/flags.tsv" HIMMEL_CONFIG_DIR="$WORK/no-conf"
@@ -1172,6 +1183,7 @@ check "(rdy) a READY bullet ends the wait" "0" "$rc"
 check "(rdy) one pre-checked WAKE ready" "WAKE ready 2566 $HA ready-check=PASS ci=GREEN coverage=PASS disposition=ok out=$I.wait.ready-2566" "$(head -n 1 "$WORK/rdy.out")"
 check "(rdy) exactly one WAKE line" "1" "$(grep -c '^WAKE ' "$WORK/rdy.out")"
 check "(rdy) ready-check ran once on the PR and head" "2566 $HA" "$(cat "$STUB/rc.calls" 2>/dev/null)"
+check "(rdy) ready-check runs under a bound past item 19's 105 s" "above" "$(awk '{ print ($1 > 105) ? "above" : "at-or-below" }' "$STUB/timeout-bounds" 2>/dev/null | head -n 1)"
 check "(rdy) cr-disposition check ran read-only with the computed trust path" "check 2566 $HA --trust-path no" "$(cat "$STUB/disp.calls" 2>/dev/null)"
 check "(rdy) the out file keeps the ready-check output" "yes" "$(grep -q 'READY-CHECK PASS' "$I.wait.ready-2566" 2>/dev/null && echo yes)"
 check "(rdy) no token in the payload or the out file" "0" "$(cat "$WORK/rdy.out" "$I.wait.ready-2566" 2>/dev/null | grep -c 'MH-N1-0123abcd')"
@@ -1221,6 +1233,7 @@ check "(rdy-txt) the out file carries the READY bullet" "1" "$(grep -cF -- 'rows
 check "(rdy-txt) waiter.md names the bullet in the out file" "1" "$(grep -c 'holds the READY bullet' "$HERE/../../../docs/handover/chief-sections/waiter.md")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 unset CHIEF_WAIT_READY_CHECK CHIEF_WAIT_CI CHIEF_WAIT_DISPOSITION
+export PATH="$SAVED_PATH"
 
 # --- (cd) a red or wrongly skipped scheduled CI run wakes the chief once ---
 # The tick's cadence= field lists the last scheduled run of each workflow, a flagged one ending :RED,

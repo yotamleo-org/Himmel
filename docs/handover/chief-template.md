@@ -173,7 +173,7 @@ rule; batch rulings per decision point.
 ## Merges — READY → GO → merge
 
 A worker reports `READY <pr> <head> GREEN`. Verify with
-`chief-kit/ready-check.sh <pr> <full-40-hex-head-sha>` (`timeout 90 bash`; all check-runs success
+`chief-kit/ready-check.sh <pr> <full-40-hex-head-sha>` (`run_in_background`; all check-runs success
 at that head, zero unresolved threads, trailers in the first commit; the diff stays
 your judgement), then `chief-kit/go.sh <pr> <head>`: that write IS the GO
 (`gh pr merge` is gated on the file; `GO` over SendMessage only notifies). `go.sh`
@@ -191,13 +191,18 @@ matches a pattern in `scripts/ci/ci-trust-paths.txt`** needs adversarial review 
 tag is `cut-tag.sh <version> <sha>` (`--dry-run` first). These and the
 merged-docs list: `chief-sections/merges.md`.
 
+**19. suite evidence.** Every impacted suite of `origin/main..<head>` needs proof at the
+exact head: `local_pass` or a ruled SKIP in the head's `impacted` ledger row, or a `ran 0 <path>`
+line in the CI shard manifests (`docs/internals/validation-gates.md`). Read each ruled SKIP the
+PASS line names before a hand GO (`auto-go.sh` does not stop on one). No row: run pr-check step 3.6 for that head yourself.
+
 ## Wrapping a worker
 
 `WRAPPED`/merged are bullets only. A `--workers-from` waiter runs
 `worker-event.sh` on them; else, or on `WAKE worker-event … out=<file>`, finish by hand: on `WRAPPED`, confirm
 the lock is free at the ROOT sweep, then
 `bash scripts/handover/chief-kit/close-wrapped-worker.sh <worker-doc>`. Never run the
-bare `clean.sh` sweep for a worker. long-running.txt: `timeout 90 bash <script>` or `run_in_background`. Hand sequence, `digest=`:
+bare `clean.sh` sweep for a worker. long-running.txt: `run_in_background` (a short listed script may instead run as `timeout 90 bash <script>`; never `ready-check.sh`, whose item 19 bounds sum to 105 s). Hand sequence, `digest=`:
 `chief-sections/wrapping.md`.
 
 ## Standing rules

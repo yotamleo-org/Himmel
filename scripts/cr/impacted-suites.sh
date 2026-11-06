@@ -51,8 +51,13 @@
 #           SUITE <path> = PASS
 #           SUITE <path> = SKIP <reason>          (reason required)
 #           SUITE <path> = BLOCKED <denial>       (denial required)
-#       Exit 0 when every impacted suite has a PASS or SKIP; exit 1, naming
-#       each on stderr, when any is missing; exit 3 when every suite has a
+#           SUITE <path> = CI                     (CI runs it)
+#       `= CI` is accepted only for a test-*.sh the range did not change, that
+#       scripts/handover/suite-coverage.sh says runs in PR CI, and never with
+#       HIMMEL_SUITES_LOCAL=1 set; else `CI NOT ACCEPTED <path> (<reason>)` on
+#       stderr, the suite counts as unverdicted, and the exit is 1.
+#       Exit 0 when every impacted suite has a PASS, SKIP or accepted CI; exit 1,
+#       naming each on stderr, when any is missing; exit 3 when every suite has a
 #       verdict but one is BLOCKED — accounted for, yet the suite did not run,
 #       so the /pr-check row is NOT clean until the chief/operator rules.
 #       With --record --branch <b> --head <40-hex>, it first appends one
@@ -1282,10 +1287,16 @@ fi
 # --check: every impacted suite needs a valid verdict line on stdin.
 have="$work/have"
 blocked_raw="$work/blocked.raw"
+ci_raw="$work/ci.raw"
 skip_raw="$work/skip.raw"
+pass_raw="$work/pass.raw"
+ruled_raw="$work/ruled.raw"
 : > "$blocked_raw"
+: > "$ci_raw"
 : > "$skip_raw"
-awk -v blockedf="$blocked_raw" -v skipf="$skip_raw" '
+: > "$pass_raw"
+: > "$ruled_raw"
+awk -v blockedf="$blocked_raw" -v cif="$ci_raw" -v skipf="$skip_raw" -v passf="$pass_raw" -v ruledf="$ruled_raw" '
     # The path is everything between "SUITE " and the FIRST " = " (a suite path
     # may contain spaces); the verdict word and reason rules follow it.
     /^SUITE +/ {
@@ -1296,7 +1307,10 @@ awk -v blockedf="$blocked_raw" -v skipf="$skip_raw" '
         sub(/ +$/, "", path)
         rest = substr($0, i + 3)
         sub(/^ +/, "", rest)
-        if (path == "" || rest !~ /^(PASS|SKIP|BLOCKED)( +.*)?$/) next
+        if (path == "") next
+        # `= CI` hands the suite on to CI; it is checked below, never taken as is.
+        if (rest ~ /^CI[ \t\r]*$/) { print path > cif; next }
+        if (rest !~ /^(PASS|SKIP|BLOCKED)( +.*)?$/) next
         verdict = rest
         sub(/[ ].*$/, "", verdict)
         reason = rest
@@ -1305,9 +1319,59 @@ awk -v blockedf="$blocked_raw" -v skipf="$skip_raw" '
             print path
             if (verdict == "BLOCKED") print path > blockedf
             if (verdict == "SKIP") print path > skipf
+            if (verdict == "PASS") print path > passf
+            # a ruled SKIP names a chief session and a reason; the form is checked, not the truth
+            ruled = rest
+            sub(/\r$/, "", ruled)
+            if (ruled ~ /^SKIP ruled [A-Za-z0-9._-]*chief[A-Za-z0-9._-]* .*[^ ].*$/) print path > ruledf
         }
     }
-' | sort -u > "$have" || io_fail "reading the verdicts"
+' | sort -u > "$have.local" || io_fail "reading the verdicts"
+# `SUITE <p> = CI` is accepted only for a test-*.sh the PR did not
+# change or add, that suite-coverage.sh says runs in PR CI, and never under
+# HIMMEL_SUITES_LOCAL=1. A refused one counts as no verdict and exits 1. This is
+# a pre-filter for the suites CI can never run; ready-check item 19 is the gate
+# that reads CI's per-suite proof at the head. suite-coverage.sh is the reviewed
+# tree's copy, because the tables it reads are the ones that tree's CI runs.
+ci_list="$work/ci"
+ci_ok="$work/ci.ok"
+ci_cand="$work/ci.cand"
+: > "$ci_ok"
+: > "$ci_cand"
+sort -u "$ci_raw" | comm -12 "$impacted" - > "$ci_list" || io_fail "reading the CI verdicts"
+ci_bad=0
+refuse_ci() { printf 'impacted-suites: CI NOT ACCEPTED %s (%s)\n' "$1" "$2" >&2; ci_bad=1; }
+while IFS= read -r s; do
+    if [ "${HIMMEL_SUITES_LOCAL:-0}" != 0 ]; then
+        refuse_ci "$s" "HIMMEL_SUITES_LOCAL=1: every impacted suite runs locally"; continue
+    fi
+    case "${s##*/}" in
+        test-*.sh) ;;
+        *) refuse_ci "$s" "not a test-*.sh: a JS/TS suite has no per-suite CI proof, run it locally"; continue ;;
+    esac
+    if grep -Fxq -- "$s" "$work/diff.changed"; then
+        refuse_ci "$s" "the PR changed it: a changed or added suite runs locally"; continue
+    fi
+    printf '%s\n' "$s" >> "$ci_cand" || io_fail "writing the CI candidates"
+done < "$ci_list"
+if [ -s "$ci_cand" ]; then
+    ci_args=()
+    while IFS= read -r s; do ci_args+=("$s"); done < "$ci_cand"
+    cov_rc=0
+    bash "$top/scripts/handover/suite-coverage.sh" "${ci_args[@]}" > "$work/cov" 2> "$work/cov.err" || cov_rc=$?
+    # rc 3 = some path is unknown, judged per path below; anything else is a failed read.
+    case "$cov_rc" in 0|3) ;; *) io_fail "suite-coverage.sh (rc ${cov_rc}: $(head -n 1 "$work/cov.err"))" ;; esac
+    while IFS= read -r s; do
+        # The line whose exact prefix is "<path>: "; none (a truncated answer) is unknown.
+        line=$(awk -v p="$s: " 'index($0, p) == 1 { print substr($0, length(p) + 1); exit }' "$work/cov") || io_fail "reading suite-coverage.sh's answer"
+        case "$line" in
+            "runs in PR CI"*) printf '%s\n' "$s" >> "$ci_ok" || io_fail "writing the CI verdicts" ;;
+            "") refuse_ci "$s" "unknown: suite-coverage.sh printed no line for it" ;;
+            *) refuse_ci "$s" "$line" ;;
+        esac
+    done < "$ci_cand"
+fi
+sort -u "$have.local" "$ci_ok" > "$have" || io_fail "merging the verdicts"
 missing="$work/missing"
 comm -23 "$impacted" "$have" > "$missing" || io_fail "comparing verdicts to the impacted list"
 n_impacted=$(wc -l < "$impacted" | tr -d ' ')
@@ -1318,21 +1382,27 @@ check_exit() {
     if [ "$record" -eq 1 ]; then
         n_skip=$(sort -u "$skip_raw" | comm -12 "$impacted" - | wc -l | tr -d ' ') || io_fail "counting SKIP verdicts"
         rec_ledger="$(git rev-parse --path-format=absolute --git-common-dir)/cr-critic-scores.jsonl" || exit 4
+        # the PASS and ruled-SKIP paths, only those on the impacted list, one per line
+        sort -u "$pass_raw" | comm -12 "$impacted" - > "$work/local_pass" || io_fail "listing the PASS verdicts"
+        sort -u "$ruled_raw" | comm -12 "$impacted" - > "$work/ruled_skip" || io_fail "listing the ruled SKIP verdicts"
         if ! CR_LEDGER="$rec_ledger" bash "$is_dir/ledger-append.sh" impacted --branch "$rec_branch" --head "$rec_head" \
-            --impacted "$n_impacted" --unverdicted "$n_missing" --skip "$n_skip" --rc "$1" >/dev/null; then
+            --impacted "$n_impacted" --unverdicted "$n_missing" --skip "$n_skip" --rc "$1" \
+            --local-pass-file "$work/local_pass" --ruled-skip-file "$work/ruled_skip" >/dev/null; then
             echo "impacted-suites.sh: could not record the impacted row (ledger-append.sh, reason above)" >&2
             exit 4
         fi
     fi
     exit "$1"
 }
-printf 'impacted-suites: %s impacted, %s without a verdict\n' "$n_impacted" "$n_missing"
+n_ci=$(wc -l < "$ci_ok" | tr -d ' ')
+printf 'impacted-suites: %s impacted, %s without a verdict, %s to CI\n' "$n_impacted" "$n_missing" "$n_ci"
 if [ "$n_missing" -gt 0 ]; then
     while IFS= read -r s; do
         printf 'impacted-suites: MISSING VERDICT %s\n' "$s" >&2
     done < "$missing"
     check_exit 1
 fi
+[ "$ci_bad" -eq 0 ] || check_exit 1
 # Every suite has a verdict; a BLOCKED one is accounted for but did not run.
 blocked="$work/blocked"
 sort -u "$blocked_raw" | comm -12 "$impacted" - > "$blocked" || io_fail "finding BLOCKED verdicts"
