@@ -150,8 +150,9 @@
 #      (`local_pass`, `ruled_skip`); CI proof is an exact `ran 0 <path>` manifest
 #      line of the run behind the latest SUCCESS `shell-unit (ubuntu-latest)`
 #      check-run, whose run head_sha equals SHA. A suite on a PR-body
-#      `Local suites: <path>` line needs local proof. Every read is bounded; an
-#      unresolvable range, no timeout binary or a timed-out read FAILs. Not part
+#      `Local suites: <path>` line needs local proof. Every subprocess and network
+#      read is bounded (the reads of local files are not); an unreadable impacted
+#      list, an unresolvable range, no timeout binary or a timed-out read FAILs. Not part
 #      of `--only 7`.
 #
 # 16. outside-PR full review: for an outside PR (a fork, a deleted author, or a
@@ -2019,7 +2020,7 @@ check_suite_evidence() {
     rm -rf "$d"
 }
 s17_body() {
-    local d="$1" anchor n_imp branch ledger row="" have_row=0 run_id="" agg n_ci=0 n_local=0 s why bad=0 reasons="" ruled_names
+    local d="$1" anchor n_imp branch ledger row="" have_row=0 run_id="" agg n_ci=0 n_local=0 s why bad=0 reasons="" ruled_names grc
     s17_why=""
     _TIMEOUT_BIN=""
     # shellcheck source=../../lib/timeout-bin.sh
@@ -2039,7 +2040,12 @@ s17_body() {
         s17_fail "cannot read the impacted list for origin/main..${SHA:0:7}: $s17_why"
         return 0
     fi
-    grep -v '^$' "$d/imp.raw" | sort -u > "$d/imp" || : > "$d/imp"  # swallow-ok: no line is grep rc 1, an empty list
+    grc=0
+    grep -v '^$' "$d/imp.raw" > "$d/imp.nz" 2> /dev/null || grc=$?  # grc 1 is no line, an empty list
+    if [ "$grc" -gt 1 ] || ! sort -u "$d/imp.nz" > "$d/imp"; then
+        s17_fail "cannot read the impacted list for origin/main..${SHA:0:7}"
+        return 0
+    fi
     n_imp=$(wc -l < "$d/imp" | tr -d ' ')
     if [ "$n_imp" -eq 0 ]; then
         echo "[PASS] 19. suite evidence: 0 impacted, nothing to prove"

@@ -4131,6 +4131,18 @@ s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
 PATH="$tmp/no-timeout:$PATH" s17_at "$S17_H1"
 contains "19 T18 no timeout binary: FAIL" "$(line17 "$out")" "[FAIL] 19. suite evidence: no timeout binary"
 
+# an impacted list the filter cannot read is a FAIL, never "0 impacted" (grep rc 2 is not grep rc 1)
+mkdir -p "$tmp/bad-grep"
+cat > "$tmp/bad-grep/grep" <<SH
+#!/usr/bin/env bash
+case "\$*" in '-v ^\$ '*imp.raw) exit 2 ;; esac
+exec $(command -v grep) "\$@"
+SH
+chmod +x "$tmp/bad-grep/grep"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
+PATH="$tmp/bad-grep:$PATH" s17_at "$S17_H1"
+contains "19 an unreadable impacted list: FAIL, not 0 impacted" "$(line17 "$out")" "[FAIL] 19. suite evidence: cannot read the impacted list"
+
 # T23: an unresolvable range FAILs, never an empty list
 s17_clear
 s17_at fedcba9876543210fedcba9876543210fedcba98
