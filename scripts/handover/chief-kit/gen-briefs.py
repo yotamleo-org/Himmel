@@ -647,15 +647,30 @@ def size_note(kind, l, hroot, n, trust, detail):
     size_override(['note', kind, l['keys'][0], l['label'], '--files', str(n), '--trust', 'yes' if trust else 'no', '--detail', detail], hroot)
 
 
+def pr_size_gate_on():
+    # a literal himmel_flag('pr_size_gate') read, so scripts/ci/check-flags.sh sees the registered flag is read
+    with flag_read():
+        from flags import himmel_flag  # scripts/lib/flags.py, the registry reader
+        return himmel_flag('pr_size_gate')
+
+
 def check_pr_size(l, repo, base, hroot):
     # The early check for the size bands that worker-pr-open.sh enforces only at PR open.
     proj = projected_files(l.get('writes', ''), repo, base)
     n, tracked, fl = proj if proj else (None, 0, [])
     if l.get('bulk') == 'mechanical':
         # the line and file bands do not apply to a scripted transform (the 300-file cap still holds at PR open),
-        # but with the gate on each use is a SIZE-ESCALATE row the chief is woken for
-        if flag_on('pr_size_gate'):
-            size_note('bulk', l, hroot, n or 0, n is not None and size_trust(fl), 'bulk: mechanical, Writes project to %s files' % ('?' if n is None else n))
+        # but with the gate on each use is a SIZE-ESCALATE row the chief is woken for. bulk skips only the bands the chief
+        # can rule: a case the operator owns (trust path over the soft band, past the file cap) is refused as without bulk
+        if pr_size_gate_on():
+            btrust = n is not None and size_trust(fl)
+            if n is not None:
+                r = size_override(['check', l['keys'][0], l['label'], '--files', str(n), '--trust', 'yes' if btrust else 'no'], hroot)
+                if r.returncode == 4:
+                    msg = 'worker %s is bulk: mechanical, Writes project to %d files' % (l['label'], n)
+                    size_note('refuse', l, hroot, n, btrust, msg)
+                    die(msg + '; ' + r.stderr.strip() + '; ask the operator (SIZE-ESCALATE row written)')
+            size_note('bulk', l, hroot, n or 0, btrust, 'bulk: mechanical, Writes project to %s files' % ('?' if n is None else n))
         return
     bands = size_bands()
     trust = n is not None and n > bands['soft'] and size_trust(fl)
@@ -666,7 +681,7 @@ def check_pr_size(l, repo, base, hroot):
             msg = 'worker %s Writes project to %d files, over the %d-file hard max (pr-size-bands.tsv row hard)' % (l['label'], n, bands['hard'])
         else:
             msg = 'worker %s Writes project to %d files and touch a trust path (ci-trust-paths.txt), over the %d-file soft max (pr-size-bands.tsv row soft)' % (l['label'], n, bands['soft'])
-        if flag_on('pr_size_gate'):
+        if pr_size_gate_on():
             key = l['keys'][0]
             if n is not None:
                 r = size_override(['check', key, l['label'], '--files', str(n), '--trust', 'yes' if trust else 'no'], hroot)

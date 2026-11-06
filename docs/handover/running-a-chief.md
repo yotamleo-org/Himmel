@@ -731,8 +731,11 @@ that moves the count needs a new record. Only the chief signs it: a worker or re
 and an unsigned or hand-written row is not read. **Escalate to the operator, never
 override alone,** a trust-path brief over the soft band, a brief past the 300-file
 CodeRabbit cap, and one past the 1500-line max: `size-override.sh` refuses to record
-these (exit 4) and `gen-briefs.py` refuses them whatever rows exist. Send the operator
-the row and your split proposal.
+these (exit 4). `gen-briefs.py` refuses the first two whatever rows exist, and
+`"bulk": "mechanical"` does not lift them; it skips only the bands you can rule. The
+line limit binds only when a line count is declared (`record --lines`): a brief has no
+line count before the code exists, so `gen-briefs.py` never computes one. Send the
+operator the row and your split proposal.
 
 ## Merges
 

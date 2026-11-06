@@ -1298,12 +1298,12 @@ ps_workers huge "$(for n in $(seq 1 301); do printf 'scripts/newd/n%s.txt ' "$n"
 rm -f "$SEL"
 pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun big esc1)"; rc=$?
 [ "$rc" = 1 ] && pass "size escape: a 41-file refusal still exits 1" || fail "size escape refusal: rc=$rc: $pso"
-[ "$(sel_count)" = 1 ] && pass "size escape: the refusal writes exactly one SIZE-ESCALATE row" || fail "refusal rows: $(sel_count): $(cat "$SEL" 2>/dev/null)"
-has "size escape: the row names the refusal, the key, the worker and the file count" "$(cat "$SEL" 2>/dev/null)" "refuse$(printf '\t')HIMMEL-9201$(printf '\t')N921$(printf '\t')41"
+[ "$(sel_count)" = 1 ] && pass "size escape: the refusal writes exactly one SIZE-ESCALATE row" || fail "refusal rows: $(sel_count): $(cat "$SEL" 2>/dev/null)"  # read-sink-ok: test reads its own mktemp ledger path
+has "size escape: the row names the refusal, the key, the worker and the file count" "$(cat "$SEL" 2>/dev/null)" "refuse$(printf '\t')HIMMEL-9201$(printf '\t')N921$(printf '\t')41"  # read-sink-ok: test reads its own mktemp ledger path
 has "size escape: the refusal tells the chief how to sign an override" "$pso" "size-override.sh record"
 pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun bulk esc1)"; rc=$?
 [ "$rc" = 0 ] && [ "$(sel_count)" = 2 ] && pass "size escape: a bulk: mechanical use writes one more row" || fail "bulk rows: rc=$rc count=$(sel_count)"
-has "size escape: the bulk row says bulk" "$(tail -n 1 "$SEL" 2>/dev/null)" "bulk$(printf '\t')HIMMEL-9201"
+has "size escape: the bulk row says bulk" "$(tail -n 1 "$SEL" 2>/dev/null)" "bulk$(printf '\t')HIMMEL-9201"  # read-sink-ok: test reads its own mktemp ledger path
 pso="$(psrun big esc-off)"; rc=$?
 [ "$rc" = 0 ] && [ "$(sel_count)" = 2 ] && pass "size escape: with the gate off nothing is escalated and no row is written" || fail "gate off rows: rc=$rc count=$(sel_count)"
 pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun few esc1)"; rc=$?
@@ -1343,6 +1343,15 @@ pso="$(HOME="$PSHOME" env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CHIEF_SE
 [ "$rc" = 4 ] && pass "size escape: the chief cannot sign for a brief past 300 files (rc 4)" || fail "huge record: rc=$rc: $pso"
 pso="$(HOME="$PSHOME" env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME=chief-t bash "$OV" record "$SZK" N921 --files 41 --lines 1501 --reason "huge" --root "$WORK/handovers" 2>&1)"; rc=$?
 [ "$rc" = 4 ] && pass "size escape: the chief cannot sign for a brief past 1500 lines (rc 4)" || fail "lines record: rc=$rc: $pso"
+# bulk: mechanical skips only the bands the chief can rule, never a case the operator owns
+ps_workers bulktrust scripts/ci/ ',"bulk":"mechanical"'
+ps_workers bulkhuge "$(for n in $(seq 1 301); do printf 'scripts/newd/n%s.txt ' "$n"; done)" ',"bulk":"mechanical"'
+pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun bulktrust esc10)"; rc=$?
+[ "$rc" = 1 ] && pass "size escape: bulk: mechanical on a trust-path brief over the soft band is refused (rc 1)" || fail "bulk trust soft: rc=$rc: $pso"
+has "size escape: the bulk trust-path refusal routes to the operator" "$pso" "operator"
+[ -z "$(ps_brief bulktrust esc10)" ] && pass "size escape: the bulk trust-path brief writes no doc" || fail "bulk trust-path brief was written"
+pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun bulkhuge esc11)"; rc=$?
+[ "$rc" = 1 ] && pass "size escape: bulk: mechanical past the 300-file cap is refused (rc 1)" || fail "bulk huge: rc=$rc: $pso"
 pso2="$(psrun trustsoft esc9)"; rc2=$?
 [ "$rc2" = 0 ] && pass "size escape: with the gate off a trust-path brief over the soft band only warns (rc 0)" || fail "trust soft gate off: rc=$rc2: $pso2"
 
