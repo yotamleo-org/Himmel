@@ -1,5 +1,5 @@
 'use strict';
-// scripts/himmelctl/lib/probes-observability.js — the status probe for the
+// scripts/himmelctl/lib/probes-observability.js: the status probe for the
 // opt-in `observability-grafana` item. A separate file so it does
 // not widen probes.js; probes.js registers it with one line and hands in the
 // helpers it already owns (scopeConfigPathToCtx, spawnBashProbe,

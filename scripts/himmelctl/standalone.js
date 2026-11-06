@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 'use strict';
-// scripts/himmelctl/standalone.js — the node entry point the PATH launcher
+// scripts/himmelctl/standalone.js: the node entry point the PATH launcher
 // falls back to once the himmel clone is gone (4,
 // design -standalone-undo.md §7). This file itself ships inside
 // the bundle at ${HIMMEL_PROVENANCE_DIR:-~/.himmel}/uninstall/standalone.js,
 // with the tree mirroring scripts/himmelctl/ so its own `./lib/*` requires
 // resolve unchanged inside the bundle.
 //
-// Only `uninstall` works here. Every other verb — including no verb at all
-// and --help — prints the "checkout not present" text and exits 1, because
+// Only `uninstall` works here. Every other verb (including no verb at all
+// and --help) prints the "checkout not present" text and exits 1, because
 // this file has no access to anything the clone provides (install/update/
 // ensure/profile/doctor all need the clone's other scripts).
 
@@ -22,7 +22,7 @@ function ledgerHimmelRoot() {
   // Best-effort only: standalone.js has no clone to read provenance.js from
   // in the general case (it's copied INTO the bundle, so it's actually
   // present here too) but a failure to resolve the ledger's himmel_root is
-  // not fatal to printing a header — fall back to "(not present)".
+  // not fatal to printing a header. Fall back to "(not present)".
   try {
     const provLib = require('./lib/provenance.js');
     const fs = require('fs');

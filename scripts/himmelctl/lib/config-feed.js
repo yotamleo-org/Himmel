@@ -1,5 +1,5 @@
 'use strict';
-// scripts/himmelctl/lib/config-feed.js — the feed behind
+// scripts/himmelctl/lib/config-feed.js: the feed behind
 // `himmelctl report --json`, the config UI's one data source (spec §4).
 //
 // Read-only: composes the existing status engine (status-report.js, in-process),
@@ -196,7 +196,7 @@ function itemGroup(item) {
 }
 
 // Best-effort: the copy-paste command buried in a status detail, e.g.
-// "… — opt-in (bash scripts/luna/graphmap-cadence.sh arm); Luna graph tasks stay off unless you also
+// "… opt-in (bash scripts/luna/graphmap-cadence.sh arm); Luna graph tasks stay off unless you also
 // run arm --luna-only" (a bare arm registers the himmel graph tasks only). status --json is
 // golden-tested and unchanged; the parse lives here only (critic F9).
 function remedyFromDetail(detail) {

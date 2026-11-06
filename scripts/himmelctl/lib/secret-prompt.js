@@ -1,5 +1,5 @@
 'use strict';
-// scripts/himmelctl/lib/secret-prompt.js — read ONE secret on a TTY with no
+// scripts/himmelctl/lib/secret-prompt.js: read ONE secret on a TTY with no
 // echo: raw mode, one bullet per key, never written to a readline history.
 //
 // The wizard's readline (terminal:false) already listens on stdin, so while the

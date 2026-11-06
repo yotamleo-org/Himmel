@@ -1,26 +1,26 @@
 'use strict';
-// scripts/himmelctl/lib/bridge-persistence.js — installer PRIMITIVES for the
+// scripts/himmelctl/lib/bridge-persistence.js: installer PRIMITIVES for the
 // Telegram bridge's Linux systemd-user persistence.
 //
-// This module ships the primitives ONLY — it never calls them, never
+// This module ships the primitives ONLY. It never calls them, never
 // prompts, never writes without being asked. The wizard consent step that
 // calls these (a `--dry-run`-aware install offer) is a DIFFERENT task (8c);
-// no wizard code lives here. Zero npm deps (house convention) — Node
+// no wizard code lives here. Zero npm deps (house convention). Node
 // builtins only, and every real command is run via spawnSync on the actual
 // binary (systemctl / loginctl), never a spawned bash (a standing lint
 // blocks that).
 //
 // Every mutating function (installSystemdUnit / uninstallSystemdUnit /
 // enableLinger) returns a structured `{ ok, actions: string[], detail }`
-// instead of throwing on an EXPECTED failure — a missing systemctl/loginctl
+// instead of throwing on an EXPECTED failure. A missing systemctl/loginctl
 // (e.g. this repo's Windows dev host) is exactly that: a clear non-Linux
 // result, never a crash. `actions` under dryRun:true is the exact list of
 // steps that WOULD run (strings), so a `--dry-run` caller can print it
 // without this module having performed any write or spawn.
 //
 // SYSTEMD_USER_UNIT_DIR is resolved once at require-time (os.homedir(),
-// overridable via HIMMELCTL_SYSTEMD_USER_UNIT_DIR for the hermetic test —
-// each test case spawns a fresh `node -e` invocation with the env var
+// overridable via HIMMELCTL_SYSTEMD_USER_UNIT_DIR for the hermetic test.
+// Each test case spawns a fresh `node -e` invocation with the env var
 // already set, same seam class as helpers.js's HIMMELCTL_CACHE_DIR).
 
 const fs = require('fs');
@@ -40,10 +40,10 @@ const UNIT_PATH = path.join(SYSTEMD_USER_UNIT_DIR, SYSTEMD_UNIT_NAME);
 function haveSystemctl() { return Boolean(which('systemctl')); }
 function haveLoginctl() { return Boolean(which('loginctl')); }
 
-// partialFail — shared by installSystemdUnit AND uninstallSystemdUnit
+// partialFail: shared by installSystemdUnit AND uninstallSystemdUnit
 // (generalized to uninstall an earlier fix for consumer
 // consistency: `partial` is a CONTRACT a caller branches on, not prose in
-// `detail` — a caller reading `{ok, partial, actions, detail}` should not
+// `detail`. A caller reading `{ok, partial, actions, detail}` should not
 // have to know which function produced it). Once a durable side effect has
 // landed (install: the file write; uninstall: disable/stop actually
 // succeeding), any LATER failure in that same call must say what already
@@ -54,7 +54,7 @@ function partialFail(actionsSoFar, detail) {
 
 // systemd unit files treat `%` as a specifier
 // prefix (%h -> home, %i -> instance, ...) in EVERY directive, so a checkout
-// path containing a literal `%` — legal on every filesystem — got silently
+// path containing a literal `%` (legal on every filesystem) got silently
 // mis-expanded or, worse, rejected outright: verified live against systemd
 // 255 (WSL) that an un-escaped `%` in WorkingDirectory/Environment/ExecStart
 // makes the WHOLE unit fail to start with "Failed to resolve unit
@@ -64,33 +64,33 @@ function systemdPercentEscape(s) {
   return s.replace(/%/g, '%%');
 }
 
-// Additionally escapes for use INSIDE a double-quoted systemd value —
+// Also escapes for use INSIDE a double-quoted systemd value.
 // ExecStart=/ExecStop= tokenize their line like a command line (unquoted
-// whitespace SPLITS an argument — verified live: an unquoted space in
+// whitespace SPLITS an argument, verified live: an unquoted space in
 // repoRoot produced 3 separate argv entries instead of 1) and Environment=
 // parses multiple space-separated VAR=value assignments (an unquoted space
 // there is silently dropped with "Invalid environment assignment,
 // ignoring"). Wrapping the value in `"..."` and backslash-escaping `\` and
-// `"` fixes both — verified live: a value containing a literal `"` and `\`
+// `"` fixes both, verified live: a value containing a literal `"` and `\`
 // round-tripped byte-for-byte through a real ExecStart= argv this way.
 // WorkingDirectory= is DIFFERENT and deliberately NOT quoted: it takes the
 // raw rest-of-line as the path with no tokenization (a space alone is
-// already fine there), and — also verified live — literal quote CHARACTERS
+// already fine there), and (also verified live) literal quote CHARACTERS
 // in a WorkingDirectory= value are NOT stripped by systemd, they're parsed
 // as part of the path and rejected as "bad unit file setting". So the two
-// contexts need genuinely different escaping, decided per-directive below
-// — never uniform. Boundary, stated explicitly rather than left for the
-// next reader to re-derive: COVERED — `%`, embedded spaces, `"`, `\` (all
+// contexts need genuinely different escaping, decided per-directive below,
+// never uniform. Boundary, stated explicitly rather than left for the
+// next reader to re-derive: COVERED, `%`, embedded spaces, `"`, `\` (all
 // escaped/quoted below), and CR/LF (REJECTED outright, see
-// hasUnitFileNewline() — there is no correct rendering of a newline inside
+// hasUnitFileNewline(): there is no correct rendering of a newline inside
 // a unit directive: it doesn't corrupt a string, it CREATES additional,
 // unintended directives nobody wrote, so escaping is the wrong tool and
 // refusal is the only correct one). NOT covered, deliberately: NUL (already
-// structurally impossible in a real filesystem path on every OS we target —
-// a real `repoRoot` can never carry one, so there is nothing to defend
+// structurally impossible in a real filesystem path on every OS we target.
+// A real `repoRoot` can never carry one, so there is nothing to defend
 // against here) and other control characters / an arbitrarily long path
 // against systemd's own line-length limits (neither creates a NEW directive
-// the way CR/LF does; accepted as a residual, not silently — a checkout
+// the way CR/LF does; accepted as a residual, not silently. A checkout
 // path is operator-chosen, and %/space/quote/backslash already proved
 // "operator-chosen" alone doesn't mean harmless, so this residual is a
 // judgment call named here, not an oversight).
@@ -98,9 +98,9 @@ function systemdQuoteEscape(percentEscaped) {
   return `"${percentEscaped.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
-// hasUnitFileNewline — CR or LF anywhere in the value. A newline inside a
+// hasUnitFileNewline: CR or LF anywhere in the value. A newline inside a
 // systemd directive's value starts a NEW line, which systemd parses as a
-// new directive (or a stray, possibly-meaningful fragment) — verified
+// new directive (or a stray, possibly-meaningful fragment), verified
 // against the same live systemd 255 instance this escaping was designed
 // against: there is no quoting/escaping that keeps a literal newline inside
 // one directive's value, so the only correct response is refusal, not a
@@ -109,7 +109,7 @@ function hasUnitFileNewline(s) {
   return /[\r\n]/.test(s);
 }
 
-// one provenance row, never fatal — a ledger fault must not
+// one provenance row, never fatal. A ledger fault must not
 // fail the unit install (residue over breakage), it only warns.
 function provRow(recArgs) {
   try {
@@ -135,18 +135,18 @@ function installSystemdUnit({ repoRoot, dryRun } = {}) {
   } catch (e) {
     return { ok: false, actions: [], detail: `template not found at ${TEMPLATE_PATH}: ${e.message}` };
   }
-  // Line-aware substitution — NOT a uniform template.split().join(repoRoot):
+  // Line-aware substitution, NOT a uniform template.split().join(repoRoot):
   // WorkingDirectory= needs the raw (percent-escaped only) value;
   // Environment=/ExecStart=/ExecStop= need the quote-escaped, double-quoted
   // form, since only they tokenize/parse their line's value. Keeps the
   // template file itself untouched (a single @HIMMEL_REPO@ placeholder,
-  // same as before) — only this rendering step got smarter.
+  // same as before). Only this rendering step got smarter.
   //
   // The ExecStop= arm is deliberately kept even though the current template
   // carries none: moved the unit to Type=simple with the bun
   // supervisor as MAINPID, so systemd's default KillMode=control-group stops
   // it (and its poller child) without an explicit ExecStop. The arm is the
-  // per-directive escaping RULE, not a claim about today's template — nothing
+  // per-directive escaping RULE, not a claim about today's template. Nothing
   // here depends on which directives the template happens to contain.
   const percentEscaped = systemdPercentEscape(repoRoot);
   const quoted = systemdQuoteEscape(percentEscaped);
@@ -174,7 +174,7 @@ function installSystemdUnit({ repoRoot, dryRun } = {}) {
     return { ok: false, actions: [], detail: `'systemctl' not found on PATH — not a systemd/Linux host; ${SYSTEMD_UNIT_NAME} was NOT installed` };
   }
 
-  // read the pre-state BEFORE the write — whether the unit file
+  // read the pre-state BEFORE the write: whether the unit file
   // existed (a replace backs the prior bytes up) and whether linger was already
   // on for this user (null = not determinable, recorded as such).
   let unitPre = ['create', '--pre-absent'];
@@ -201,11 +201,11 @@ function installSystemdUnit({ repoRoot, dryRun } = {}) {
 
   // everything below this point runs AFTER the
   // first durable side effect (the unit file is now really on disk at
-  // UNIT_PATH) — a failure here must never read as a flat "not installed".
+  // UNIT_PATH). A failure here must never read as a flat "not installed".
   // `partial:true` + a detail naming exactly what landed lets a summary
   // consumer tell "nothing happened" from "there is a file (and maybe a
   // reload, maybe an enablement) sitting on the adopter's disk that needs
-  // cleanup or a retry" — the same partial-state honesty the earlier
+  // cleanup or a retry", the same partial-state honesty the earlier
   // applied to the enable/start split, generalized to every step after the
   // write instead of just that one branch. No auto-rollback here either,
   // same reasoning as uninstallSystemdUnit's refuse-before-removing.
@@ -218,7 +218,7 @@ function installSystemdUnit({ repoRoot, dryRun } = {}) {
   }
   const enable = spawnSync('systemctl', ['--user', 'enable', '--now', SYSTEMD_UNIT_NAME], { encoding: 'utf8' });
   if (enable.status !== 0) {
-    // `enable --now` enables THEN starts — a start failure does not undo an
+    // `enable --now` enables THEN starts. A start failure does not undo an
     // enablement that already stuck, so the unit can be left ENABLED (will
     // start again at next boot) even though `--now` itself reports failure.
     // Probe is-enabled and say which half actually took.
@@ -238,10 +238,10 @@ function installSystemdUnit({ repoRoot, dryRun } = {}) {
 
 function uninstallSystemdUnit({ dryRun } = {}) {
   // installSystemdUnit reloads the systemd user daemon
-  // after writing the unit file — uninstall must mirror that after REMOVING
+  // after writing the unit file. Uninstall must mirror that after REMOVING
   // it, or systemd keeps its cached definition loaded (still "known") even
   // though the file and the reported ok:true both say gone. Listed in
-  // `actions` so --dry-run shows it too — it under-described the real path
+  // `actions` so --dry-run shows it too. It under-described the real path
   // before (disable + remove only).
   const actions = [
     `systemctl --user disable --now ${SYSTEMD_UNIT_NAME}`,
@@ -257,53 +257,53 @@ function uninstallSystemdUnit({ dryRun } = {}) {
   }
 
   // `systemctl --user disable --now` on a unit that is
-  // already gone exits non-zero — checking disable.status (below) BEFORE
+  // already gone exits non-zero. Checking disable.status (below) BEFORE
   // checking whether the file even exists made re-running uninstall on an
   // already-uninstalled bridge report a false ok:false failure. Uninstall
   // paths get re-run in normal use (retries, re-running `ensure`, an
   // adopter repeating a step), so "nothing to uninstall" must be a clean
-  // no-op success, checked FIRST — before ever calling disable at all. The
+  // no-op success, checked FIRST, before ever calling disable at all. The
   // refuse-before-removing behavior below for a GENUINE disable failure
   // (unit still present) is unchanged.
   //
   //  (a regression of the earlier ruling, not an
-  // implementation bug — recorded here so it doesn't slip past on the
+  // implementation bug, recorded here so it doesn't slip past on the
   // grounds that it was asked for): an absent unit FILE is not proof the
   // service is uninstalled. systemd can still have the unit loaded,
-  // running, and enabled after the file is gone — the same
+  // running, and enabled after the file is gone, the same
   // file-on-disk-as-proof-of-service-state class the daemon-reload finding
   // (codex-4) was about. So the no-op shortcut requires BOTH: no file, AND
   // systemd genuinely no longer knows the unit (neither enabled nor
   // active). If systemd still has it in any state, fall through to the
-  // real disable/stop + reload path below even with no file present —
+  // real disable/stop + reload path below even with no file present.
   // `fs.existsSync(UNIT_PATH)` inside that path already handles "remove a
   // file that isn't there" as a no-op, so nothing else needs to change.
   if (!fs.existsSync(UNIT_PATH)) {
     // is-enabled/is-active exit non-zero for BOTH
     // "systemd has never heard of this unit" AND "systemd knows it fine and
-    // it's merely disabled/stopped" — the same non-zero either way, so the
+    // it's merely disabled/stopped", the same non-zero either way, so the
     // round-5 confirmed-negative check took the no-op shortcut on a unit
     // systemd still has loaded, silently skipping the required daemon-reload
     // and reporting a stale definition as fully uninstalled. LoadState is
     // the fact this shortcut actually needs: `not-found` means genuinely
-    // unknown; `loaded`/`masked`/anything else means systemd still knows it
-    // — go through the real path. A spawn error (status===null) stays
+    // unknown; `loaded`/`masked`/anything else means systemd still knows it.
+    // Go through the real path. A spawn error (status===null) stays
     // INCONCLUSIVE, never a confirmed negative, same rule an earlier fix established.
     const show = spawnSync('systemctl', ['--user', 'show', SYSTEMD_UNIT_NAME, '--property=LoadState'], { encoding: 'utf8' });
     const loadState = show.status === 0 ? (/^LoadState=(.*)$/m.exec(show.stdout || '') || [])[1] : null;
     if (loadState === 'not-found') {
       return { ok: true, actions: [], detail: `${UNIT_PATH} already absent and systemd reports LoadState=not-found for ${SYSTEMD_UNIT_NAME} — nothing to uninstall` };
     }
-    // else: fall through — systemd still knows it (loaded/masked/etc, or we
+    // else: fall through. systemd still knows it (loaded/masked/etc, or we
     // couldn't confirm either way), go through the real path.
   }
 
   const disable = spawnSync('systemctl', ['--user', 'disable', '--now', SYSTEMD_UNIT_NAME], { encoding: 'utf8' });
-  // a failed (or unspawnable — status is `null` on a spawn
+  // a failed (or unspawnable: status is `null` on a spawn
   // error) `disable` means the unit may still be loaded/running. Removing
-  // the file out from under a still-running unit is WORSE than leaving it —
+  // the file out from under a still-running unit is WORSE than leaving it.
   // systemd would keep the service running with no file left to reload or
-  // reason about — so this REFUSES the removal and reports ok:false naming
+  // reason about, so this REFUSES the removal and reports ok:false naming
   // the still-running unit, rather than removing the file and reporting a
   // successful uninstall while the bridge keeps running (the false-green
   // this fix closes: `ok: true` was returned unconditionally before).
@@ -317,7 +317,7 @@ function uninstallSystemdUnit({ dryRun } = {}) {
 
   // `disable --now` succeeding above IS a
   // durable side effect (the unit is now genuinely disabled/stopped on this
-  // machine) — everything below that can still fail must say so via
+  // machine). Everything below that can still fail must say so via
   // partial:true, mirroring installSystemdUnit()'s own write-is-durable
   // boundary. A GENUINE disable failure above stays a flat ok:false: refused
   // before any of OUR actions landed, nothing to describe as partial.
@@ -334,7 +334,7 @@ function uninstallSystemdUnit({ dryRun } = {}) {
     );
   }
 
-  // mirrors installSystemdUnit's reload-after-write — a
+  // mirrors installSystemdUnit's reload-after-write. A
   // reload that fails is folded into the result honestly (ok:false), never
   // reported as a fully clean uninstall, even though the file is already
   // gone at this point (removal is not undone; systemd's stale cached
@@ -369,7 +369,7 @@ function enableLinger({ user, dryRun } = {}) {
   return { ok: true, actions, detail: `linger enabled for ${user}` };
 }
 
-// lingerEnabled(user) — read-only probe. true/false when determinable, null
+// lingerEnabled(user): read-only probe. true/false when determinable, null
 // when it cannot be (no loginctl on this host, or the query itself failed).
 function lingerEnabled({ user } = {}) {
   if (!user) return null;
@@ -382,7 +382,7 @@ function lingerEnabled({ user } = {}) {
   return null;
 }
 
-// systemdUnitInstalled() — read-only: unit file presence + (best-effort)
+// systemdUnitInstalled(). Read-only: unit file presence + (best-effort)
 // enabled state. `enabled` is null when it cannot be determined (no
 // systemctl on this host, or an unexpected `is-enabled` exit code).
 function systemdUnitInstalled() {

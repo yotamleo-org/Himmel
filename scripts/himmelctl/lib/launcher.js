@@ -1,8 +1,8 @@
 'use strict';
-// scripts/himmelctl/lib/launcher.js — PATH launcher marker/write/remove
+// scripts/himmelctl/lib/launcher.js: PATH launcher marker/write/remove
 // primitives extracted out of bin.js. Pure refactor:
 // same implementations, same call sites (bin.js's applyHimmelctlPathShim and
-// removeHimmelctlLaunchers), same seam env vars (HIMMELCTL_BIN_DIR) — bin.js
+// removeHimmelctlLaunchers), same seam env vars (HIMMELCTL_BIN_DIR). bin.js
 // now `require`s these instead of defining them inline. Also required by the
 // new lib/standalone-bundle.js closure list (S13 item 3).
 
@@ -49,7 +49,7 @@ function himmelctlBinDir() {
   return path.join(process.env.HOME || os.homedir(), '.local', 'bin');
 }
 
-//  • The loader target is the PRIMARY checkout, not repoRoot() — a launcher
+//  • The loader target is the PRIMARY checkout, not repoRoot(). A launcher
 //    written from a linked feature worktree must not bind to the disposable
 //    worktree.
 //  • Every generated file carries SHIM_MARKER; an existing destination is
@@ -77,7 +77,7 @@ function fileCarriesMarker(filePath) {
 // Write <contents> to <dest> (optional <mode> for chmod), but ONLY when dest is
 // absent OR already carries our ownership marker. A third-party file, an
 // operator's hand-written launcher, or a symlink (lstat, never followed) is
-// refused with a clear message — never clobbered. Writes go via a sibling tmp +
+// refused with a clear message, never clobbered. Writes go via a sibling tmp +
 // atomic rename, so a crash mid-write or a failed write can never leave a
 // partial launcher at dest (the orphaned tmp is a hidden dotfile). Returns true
 // on success, false on a refused collision. Throws on I/O error. (codex-adv-3.)
@@ -85,7 +85,7 @@ function writeMarkedLauncher(dest, contents, mode) {
   // Existence is probed with lstatSync, NOT fs.existsSync:
   // existsSync FOLLOWS symlinks, so a BROKEN (dangling) symlink at dest returns
   // false, skipping the symlink/ownership check and letting renameSync clobber
-  // the link — violating the never-clobber-a-symlink contract. lstatSync never
+  // the link, violating the never-clobber-a-symlink contract. lstatSync never
   // follows, so ANY symlink (broken included) reaches the isSymbolicLink()
   // refusal. ENOENT (truly absent) is the only skip-to-write case.
   let st = null;

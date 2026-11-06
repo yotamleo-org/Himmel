@@ -1,29 +1,29 @@
 'use strict';
-// scripts/himmelctl/lib/cadence-emit.js —.
+// scripts/himmelctl/lib/cadence-emit.js.
 //
 // Pure mapping: a luna-config-shaped `cadence` object ({enabled, schedules,
-// models} — see luna-config.js's SCHEMA) -> the CLI flags for
+// models}, see luna-config.js's SCHEMA) -> the CLI flags for
 // `scripts/luna/pipeline-cadence.sh arm`. This module builds the invocation
-// ONLY — it never spawns anything and never talks to schtasks/cron itself;
+// ONLY. It never spawns anything and never talks to schtasks/cron itself;
 // pipeline-cadence.sh owns that translation (bin.js's caller is responsible
 // for the actual spawn).
 //
 // Flag names verified in-tree against scripts/luna/pipeline-cadence.sh
-// (subcommands: arm|status|disarm — NOT scripts/hooks/, a plan-doc drift the
+// (subcommands: arm|status|disarm, NOT scripts/hooks/, a plan-doc drift the
 // task brief called out). The config->flag mapping is NOT 1:1:
 //   fetchHealth -> --fetch-health-time            (no model flag: runs no LLM)
 //   harvest     -> --harvest-time, --harvest-model
 //   synthesize  -> --synth-time, --synth-model     (NOT --synthesize-*)
 //   health      -> --health-time, --health-model, --health-day
-// `--health-day` is the ONLY day-accepting flag in the script — `--synth-day`
+// `--health-day` is the ONLY day-accepting flag in the script. `--synth-day`
 // was deliberately removed and the script hard-errors naming the
 // removal; there is no `--harvest-day` or `--fetch-health-day` at all. A
 // `day` present on any OTHER schedule is therefore a loud validation error
-// here (thrown, never silently dropped) — the silent-04:00-stall class this
+// here (thrown, never silently dropped), the silent-04:00-stall class this
 // module exists to prevent.
 //
 // `health.day` absent means daily per design A9 ("weekly when day is
-// present, daily otherwise") — but pipeline-cadence.sh's own default when
+// present, daily otherwise"), but pipeline-cadence.sh's own default when
 // --health-day is omitted is SUN (weekly!), so omitting the flag entirely
 // would silently reinterpret "daily" as "every Sunday". `--health-day DAILY`
 // is emitted explicitly in that case instead of relying on the script's
@@ -37,7 +37,7 @@ const TIME_FLAG_BY_SCHEDULE = {
   synthesize: '--synth-time',
   health: '--health-time',
 };
-// Fixed iteration order — deterministic argv, matches the script's own
+// Fixed iteration order: deterministic argv, matches the script's own
 // pipeline order (fetch-health -> harvest -> synthesize -> health).
 const SCHEDULE_ORDER = ['fetchHealth', 'harvest', 'synthesize', 'health'];
 
@@ -56,7 +56,7 @@ function pipelineCadenceScriptPath(repoRoot) {
 }
 
 // buildArmFlags({ cadence, vaultPath, force, dryRun }) -> string[] flags
-// (no subcommand, no script path — the caller prefixes those). Throws a
+// (no subcommand, no script path: the caller prefixes those). Throws a
 // plain Error naming the offending schedule when a `day` sits on a schedule
 // the script has no day flag for.
 function buildArmFlags({ cadence, vaultPath, force, dryRun } = {}) {

@@ -1,24 +1,24 @@
 'use strict';
-// scripts/himmelctl/lib/install-engine.js — planInstall()/runInstall()
+// scripts/himmelctl/lib/install-engine.js: planInstall()/runInstall()
 // the install-descriptor engine `ensure` (A5) drives to
 // converge red/degraded manifest items. This engine NEVER re-implements
-// wiring/plugin-install/settings-merge logic — every dispatch shells out to
+// wiring/plugin-install/settings-merge logic. Every dispatch shells out to
 // an EXISTING primitive script (adopt.sh, setup.sh, the wire-*.sh/
 // unwire-*.sh libs, install-plugins.sh, qmd-bin.sh's qmd_install,
-// guardrail-block.mjs's own `install` verb —), mirroring
+// guardrail-block.mjs's own `install` verb), mirroring
 // the doctrine test-wizard-noinstall-guard.sh already enforces on bin.js
 // itself. Keeping this dispatch table in its OWN file (not bin.js) keeps
-// that guard's bin.js-only script-literal scan meaningful — ensure's actual
+// that guard's bin.js-only script-literal scan meaningful. ensure's actual
 // primitive invocations live here, covered by this file's own test suite.
 //
 // planInstall(items, ctx) never spawns and never WRITES to the filesystem:
 // it only orders `items` (already filtered to reds/degradeds-with-a-
 // runnable-install-descriptor by the caller) and decides coalescing. It is
 // NOT otherwise side-effect-free, though: building a linux `dep` entry may
-// READ the primary checkout's .env (resolveSudoPassword — never written to)
+// READ the primary checkout's .env (resolveSudoPassword, never written to)
 // and, at most once per call, print a one-line advisory to stderr when no
 // HIMMELCTL_SUDO_PASSWORD is configured (see buildEntry's own header).
-// runInstall(plan, opts) is the ONLY place that calls spawnSync —
+// runInstall(plan, opts) is the ONLY place that calls spawnSync.
 // `dryRun:true` returns before any spawn, so a --dry-run run is provably
 // zero-exec (proven by a spawn spy in the test suite).
 
@@ -36,29 +36,29 @@ const lunaConfig = require('./luna-config.js');
 // the SAME bash resolver scripts/hooks/run-hook-with-bash.js's
 // own launcher uses to pick a real, usable Git Bash on Windows (never bare
 // 'bash', which can silently resolve to the WSL launcher or a 0-byte
-// WindowsApps alias there) — reused here (mirrors deps-engine.js's own
+// WindowsApps alias there), reused here (mirrors deps-engine.js's own
 // require of it) rather than re-deriving a second bash-selection policy.
 const { resolveBash: resolveHookBash } = require('../../hooks/run-hook-with-bash.js');
 
 // install.types planInstall/runInstall know how to dispatch. `config` is
-// deliberately absent — config-type items are hint-only pre-sub-ticket-D; the
+// deliberately absent. Config-type items are hint-only pre-sub-ticket-D; the
 // caller (ensure, A5) must exclude them from the item list handed to
 // planInstall in the first place, never rely on this engine to skip them.
-// 'observability' added — its own switch case in buildEntry dispatches to
+// 'observability' added. Its own switch case in buildEntry dispatches to
 // install-stack.sh, opt-in only.
 const RUNNABLE_INSTALL_TYPES = ['adopt', 'setup', 'wire', 'plugins', 'qmd', 'dep', 'build', 'observability'];
 
 // The closed `target` vocabulary each target-bearing install type dispatches
-// on — the SINGLE source of truth buildEntry()'s switch (and unwireCommand()'s
+// on, the SINGLE source of truth buildEntry()'s switch (and unwireCommand()'s
 // 'wire' branch) actually branch on, exported so manifest-lint.mjs can reject
 // a typo (e.g. "statuslien") that would otherwise lint clean and silently
 // dispatch the WRONG primitive: 'statusline' and 'guardrail-block-global' are
 // each their OWN explicit branch below; every other wire target (today, only
 // 'pretooluse-hooks') falls through to the pretooluse-hooks primitive, and
 // every non-'jira-cli' build target to bitbucket. Keep in lockstep with those
-// branches — a value authored here without a matching dispatch site (or vice
+// branches. A value authored here without a matching dispatch site (or vice
 // versa) is a bug.
-// 'observability'/'stack' added — buildEntry's own
+// 'observability'/'stack' added. buildEntry's own
 // 'observability' case (below) is its ONLY dispatch site; 'wire'/'build'
 // above are untouched.
 const INSTALL_TARGETS = {
@@ -67,14 +67,14 @@ const INSTALL_TARGETS = {
   observability: ['stack', 'grafana'],
 };
 
-// adopt/setup items COLLAPSE to ONE invocation — each converges the WHOLE
+// adopt/setup items COLLAPSE to ONE invocation. Each converges the WHOLE
 // core bundle in one shot (adopt.sh/setup.sh are monolithic installers), so
 // planning two adopt-type items still yields exactly one `adopt.sh` entry.
 const COALESCE_TYPES = new Set(['adopt', 'setup']);
 // adopt-type items whose whole job is covered by `adopt.sh
 // --only-hooks`. A plan whose adopt group holds ONLY these runs the hooks-only
 // mode instead of the monolithic adopt (settings wiring, plugins,
-// marketplaces) — a hooks repair must not re-adopt the user scope.
+// marketplaces). A hooks repair must not re-adopt the user scope.
 const ADOPT_ONLY_HOOKS_ITEMS = new Set(['pre-commit-hooks']);
 
 function depToolName(item, ctx) {
@@ -83,13 +83,13 @@ function depToolName(item, ctx) {
 }
 
 // Resolve HIMMELCTL_SUDO_PASSWORD: process.env wins, else the primary
-// checkout's .env (mirrors scripts/lib/load-dotenv.sh's own precedence —
-// a live env value always wins over the file — and reuses probes.js's
+// checkout's .env (mirrors scripts/lib/load-dotenv.sh's own precedence:
+// a live env value always wins over the file, and reuses probes.js's
 // parseDotEnv rather than writing a third .env parser). Returns null,
 // uniformly, whether the var is genuinely unset OR present-but-empty (an
-// empty string is never treated as "configured") — callers must never
+// empty string is never treated as "configured"). Callers must never
 // reveal WHICH of those two cases applies, only "not configured".
-// SECURITY: never logged, never returned to a caller that might print it —
+// SECURITY: never logged, never returned to a caller that might print it,
 // only consumed to build a spawnSync `input` string (stdin), never argv.
 function resolveSudoPassword(repoRoot) {
   if (process.env.HIMMELCTL_SUDO_PASSWORD) return process.env.HIMMELCTL_SUDO_PASSWORD;
@@ -108,11 +108,11 @@ function resolveSudoPassword(repoRoot) {
 
 // Build one plan entry's {cmd,args} for a given manifest item + its install
 // descriptor. `ctx` = { repoRoot, scope, profile, targetPath, platform? }.
-// `ctx.platform` overrides process.platform when present — the ONLY way
+// `ctx.platform` overrides process.platform when present, the ONLY way
 // this file's platform-branched logic (darwin/linux) is testable
 // deterministically from a single host.
 // `diagnosticState` (optional, shared across every buildEntry() call within
-// ONE planInstall() run — see planInstall()'s own header) tracks whether
+// ONE planInstall() run, see planInstall()'s own header) tracks whether
 // the "no HIMMELCTL_SUDO_PASSWORD configured" diagnostic has already
 // printed this run, so it prints AT MOST once regardless of how many linux
 // dep items need sudo without a password.
@@ -131,24 +131,24 @@ function buildEntry(item, ctx, diagnosticState) {
         return { cmd: 'bash', args: [path.join(scriptsDir, 'lib', 'wire-statusline.sh'), settings, ctx.repoRoot] };
       }
       if (install.target === 'guardrail-block-global') {
-        // guardrail-block.mjs is ITSELF the primitive here — a
+        // guardrail-block.mjs is ITSELF the primitive here: a
         // Node CLI with its own `install --node <ABS> --bash <ABS>` verb
         // (see its own run()/installData()) that writes the OPERATOR'S
         // GLOBAL ~/.claude/settings.json directly (settingsPath() there,
-        // overridable only via CLAUDE_USER_SETTINGS — a TEST seam, not
-        // something this engine sets). Spawned by ARGV, not `bash -c` — no
+        // overridable only via CLAUDE_USER_SETTINGS, a TEST seam, not
+        // something this engine sets). Spawned by ARGV, not `bash -c`. No
         // shell-string quoting surface exists at all here, mirroring
         // probes.js's own cmd:guardrail_block_status probe, which spawns
         // this exact script the exact same way (process.execPath +
         // absolute script path, no shell). `--node` is THIS engine's own
-        // running node (process.execPath is always absolute) — the same
+        // running node (process.execPath is always absolute), the same
         // node the resulting hook should run under later; `--bash` is
         // resolved via resolveHookBash(), the SAME resolver
         // scripts/hooks/run-hook-with-bash.js's own launcher uses to pick a
         // genuinely usable Git Bash on Windows (never bare 'bash', which can
         // silently resolve to the WSL launcher or a 0-byte WindowsApps
         // alias there). guardrail-block.mjs's own requireAbsolute('bash', …)
-        // makes an unresolvable bash a HARD requirement, not optional — when
+        // makes an unresolvable bash a HARD requirement, not optional. When
         // resolveHookBash() finds nothing usable it returns null; surfaced
         // here as `unrunnable` (per the brief: never hand it a relative or
         // empty path, which it would reject anyway) rather than a doomed
@@ -168,7 +168,7 @@ function buildEntry(item, ctx, diagnosticState) {
     }
     case 'plugins':
       // install-plugins.sh stays the tested, parameterized orchestrator
-      // (scope/--template/lean-floor reconcile) — this engine
+      // (scope/--template/lean-floor reconcile). This engine
       // never re-implements or collapses it.
       return {
         cmd: 'bash',
@@ -177,20 +177,20 @@ function buildEntry(item, ctx, diagnosticState) {
       };
     case 'qmd': {
       // the resolver path is passed as a bash POSITIONAL arg ($1),
-      // never interpolated into the -c script text — a checkout path
+      // never interpolated into the -c script text. A checkout path
       // carrying a space or apostrophe (e.g. "C:/Users/John O'Brien/...") // leak-allow: home-path doc example
       // would otherwise break the quoting. spawnSync's argv is never
       // shell-re-parsed, so a positional arg is safe regardless of content.
       // qmd_install only installs the BINARY.
       // The qmd-index probe stays RED until BOTH the himmel and luna
       // collections are registered, so this same flow invokes the existing
-      // qmd_register_collection() (scripts/lib/qmd-bin.sh — $1 = path, $2 =
+      // qmd_register_collection() (scripts/lib/qmd-bin.sh: $1 = path, $2 =
       // name) for each, right after qmd_install. The two collection paths
       // ride the SAME positional-arg channel ($2 himmel = ctx.repoRoot, $3
-      // luna = ctx.vaultPath) — never interpolated into the -c text, for the
+      // luna = ctx.vaultPath), never interpolated into the -c text, for the
       // same quoting-safety reason as $1. Chained with && so a registration
       // failure propagates as a nonzero exit (runInstall classifies it
-      // failed[]) rather than being swallowed — a red qmd-index must not
+      // failed[]) rather than being swallowed. A red qmd-index must not
       // false-green on a binary-only install.
       const resolverPath = path.join(scriptsDir, 'lib', 'qmd-bin.sh');
       const himmelPath = ctx.repoRoot;
@@ -205,13 +205,13 @@ function buildEntry(item, ctx, diagnosticState) {
       }
       // a no-vault adopter has ctx.vaultPath
       // === '' (bin.js's vaultPath stays '' when vault.mode='none', and
-      // expandHome('') === '' — so ctx.vaultPath is legitimately EMPTY). The
+      // expandHome('') === '', so ctx.vaultPath is legitimately EMPTY). The
       // qmd-index probe (manifest.json) requires BOTH the himmel AND luna
       // collections, and qmd-binary/qmd-index are profiles:["luna","all"], so
       // they ARE desired+red under --profile luna/all even with NO vault
       // configured. Without this guard the flow below would run
-      // `qmd_register_collection "" luna` — registering an empty/wrong dir
-      // AFTER consent/state persistence — and qmd-index STILL could never go
+      // `qmd_register_collection "" luna`, registering an empty/wrong dir
+      // AFTER consent/state persistence, and qmd-index STILL could never go
       // green (the luna collection has no real path). Return a hint-only
       // unrunnable entry (the same hint-only shape as the other unrunnable entries)
       // so ensure surfaces the real fix (configure a vault via 'himmelctl
@@ -226,7 +226,7 @@ function buildEntry(item, ctx, diagnosticState) {
     }
     case 'build': {
       // Same positional-arg fix as 'qmd' above, for the build dir.
-      // an explicit if/else, NOT `bun … || (npm …)` — the `||` form
+      // an explicit if/else, NOT `bun … || (npm …)`. The `||` form
       // masks a bun install/build FAILURE by falling through to npm. With the
       // branch, a failing bun path propagates its failure; npm runs only when
       // bun is genuinely absent.
@@ -239,12 +239,12 @@ function buildEntry(item, ctx, diagnosticState) {
     case 'observability': {
       // install-stack.sh runs the exporter only, as a systemd user unit /
       // launchd agent, and ONLY when the
-      // operator opted in (observability.enabled in ~/.himmel/config.json) —
-      // every profile desires this item, and `ensure` must never enable a
+      // operator opted in (observability.enabled in ~/.himmel/config.json).
+      // Every profile desires this item, and `ensure` must never enable a
       // service unasked.
       if (install.target === 'grafana') {
         // Prometheus + Grafana as systemd user units (Linux only so
-        // far), opt-in via observability.grafana — `ensure` never downloads and
+        // far), opt-in via observability.grafana. `ensure` never downloads and
         // starts servers unasked.
         if (platform !== 'linux') {
           return { unrunnable: 'the Prometheus + Grafana user units are Linux-only so far (macOS is not supported yet)' };
@@ -279,7 +279,7 @@ function buildEntry(item, ctx, diagnosticState) {
         return { cmd: 'bash', args: ['-c', 'brew install "$1"', 'himmel-dep', pkg] };
       }
       // Linux: prefer a configured HIMMELCTL_SUDO_PASSWORD, passed to sudo
-      // on STDIN ONLY — never argv (ps-visible), never a log line, never a
+      // on STDIN ONLY, never argv (ps-visible), never a log line, never a
       // DRY: print, never a failed[] reason. `-S` reads the password from
       // stdin; `-p ''` suppresses sudo's own prompt text so nothing sudo
       // itself writes could echo a hint about the value. `env
@@ -290,7 +290,7 @@ function buildEntry(item, ctx, diagnosticState) {
       // the credential is
       // resolved at EXEC time (runHardenedSpawn, the single spawnSync site),
       // NOT here at plan time. This returned entry must NEVER hold the live
-      // secret — any present or future code that logs, serializes, returns, or
+      // secret. Any present or future code that logs, serializes, returns, or
       // prints a plan would leak it (a round-17 finding already caught a test
       // that JSON.stringify'd this plan and would have printed the REAL
       // HIMMELCTL_SUDO_PASSWORD on a Linux runner; pinning ctx.platform in
@@ -299,8 +299,8 @@ function buildEntry(item, ctx, diagnosticState) {
       // here for the boolean, value discarded) to choose the `sudo -S -p ''`
       // form below vs. the fail-fast `sudo -n` form; when the password form is
       // chosen the entry carries a NON-SECRET marker (needsSudoPassword) +
-      // repoRoot (non-secret — a checkout path; threaded here so the exec path
-      // can resolve the real credential immediately before the spawn) — never
+      // repoRoot (non-secret: a checkout path; threaded here so the exec path
+      // can resolve the real credential immediately before the spawn), never
       // the value, under any key.
       const passwordConfigured = !!resolveSudoPassword(ctx.repoRoot);
       if (passwordConfigured) {
@@ -311,13 +311,13 @@ function buildEntry(item, ctx, diagnosticState) {
           repoRoot: ctx.repoRoot,
         };
       }
-      // No password configured (unset OR empty — see resolveSudoPassword's
+      // No password configured (unset OR empty, see resolveSudoPassword's
       // own header; never distinguish the two) -> the fail-fast form, so
       // an adopter without the var gets a clean immediate failure instead
       // of a hang. Surfaced via a ONE-PER-RUN diagnostic (diagnosticState,
       // shared across every buildEntry() call planInstall() makes) rather
       // than silently emitting the doomed-without-a-cached-credential form
-      // with no explanation — never prints the value (there isn't one).
+      // with no explanation, never prints the value (there isn't one).
       if (diagnosticState && !diagnosticState.sudoWarned) {
         diagnosticState.sudoWarned = true;
         console.error(
@@ -326,7 +326,7 @@ function buildEntry(item, ctx, diagnosticState) {
         );
       }
       // consistency): `pkg` as a positional arg, not interpolated into the
-      // -c string — same fix as the brew branch above.
+      // -c string, same fix as the brew branch above.
       return { cmd: 'bash', args: ['-c', 'sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y "$1"', 'himmel-dep', pkg] };
     }
     default:
@@ -334,10 +334,10 @@ function buildEntry(item, ctx, diagnosticState) {
   }
 }
 
-// Scope-appropriate settings.json path — mirrors bin.js's own
+// Scope-appropriate settings.json path, mirrors bin.js's own
 // settingsPathForScope(), parameterized by an explicit targetPath rather
 // than reading process.cwd() (same design principle as status-report.js).
-// CR correction: a prior review suggested switching to bare os.homedir() —
+// CR correction: a prior review suggested switching to bare os.homedir().
 // REJECTED. That would break the hermetic test convention this codebase
 // already relies on (probes.js:103's resolveConfigFile, bin.js's own
 // settingsPathForScope) AND could make a user-scope test write to the
@@ -353,14 +353,14 @@ function settingsPath(scope, targetPath, env) {
 // planInstall(items, ctx) -> [{id, type, cmd, args, deps, coalesceKey?}]
 // `items` = manifest items already filtered by the caller to those needing
 // convergence (red/degraded, with a runnable install descriptor). Ordered by
-// deps[] (DFS post-order over the GIVEN item set only — a dep outside that
+// deps[] (DFS post-order over the GIVEN item set only: a dep outside that
 // set is treated as already-satisfied, since ensure only hands this function
 // items that still need converging). A cycle throws (defense-in-depth;
 // manifest-lint.mjs's own DFS cycle detector already rejects a cyclic
 // manifest, so this should never fire against a lint-clean manifest).
 //
 // coalescing (adopt/setup collapse to ONE invocation) now happens
-// BEFORE topological ordering, not after — items sharing a COALESCE_TYPE are
+// BEFORE topological ordering, not after. Items sharing a COALESCE_TYPE are
 // grouped into ONE graph node up front, and that node's dep edges are the
 // UNION of every member item's deps (minus any dep that points at another
 // member of the SAME group, which would otherwise be a self-loop post-merge).
@@ -372,8 +372,8 @@ function settingsPath(scope, targetPath, env) {
 // runInstall() can skip a dependent after its prerequisite fails.
 function planInstall(items, ctx) {
   const byId = new Map(items.map((it) => [it.id, it]));
-  // Shared across every buildEntry() call THIS run makes — see buildEntry's
-  // own header — so the "no HIMMELCTL_SUDO_PASSWORD configured" diagnostic
+  // Shared across every buildEntry() call THIS run makes (see buildEntry's
+  // own header), so the "no HIMMELCTL_SUDO_PASSWORD configured" diagnostic
   // prints at most once per planInstall() invocation, not once per linux
   // dep item.
   const diagnosticState = { sudoWarned: false };
@@ -393,7 +393,7 @@ function planInstall(items, ctx) {
   }
 
   // The plan entry emitted for a group carries the FIRST member's id (same
-  // convention the shipped code already used for buildEntry) — this is also
+  // convention the shipped code already used for buildEntry). This is also
   // what a dependent entry's `deps` array references.
   const groupRepresentativeId = new Map();
   for (const [groupId, groupItems] of itemsInGroup) {
@@ -406,7 +406,7 @@ function planInstall(items, ctx) {
     const deps = new Set();
     for (const item of groupItems) {
       for (const dep of item.deps || []) {
-        if (!byId.has(dep)) continue; // outside the given item set — already satisfied
+        if (!byId.has(dep)) continue; // outside the given item set, already satisfied
         const depGroup = groupIdForItem.get(dep);
         if (!depGroup || depGroup === groupId) continue; // no install descriptor, or same-group self-ref
         deps.add(depGroup);
@@ -432,7 +432,7 @@ function planInstall(items, ctx) {
     color.set(groupId, BLACK);
     orderedGroups.push(groupId);
   }
-  // Visit in the ORIGINAL items order (stable — matches the shipped
+  // Visit in the ORIGINAL items order (stable: matches the shipped
   // per-item DFS's own traversal order for non-coalesced items), deduped
   // via groupIdForItem so each group is visited exactly once.
   const seenGroups = new Set();
@@ -462,17 +462,17 @@ function planInstall(items, ctx) {
 
 // reverseDependencyOrder(items) -> items reordered so a DEPENDENT item (one
 // whose deps[] includes another item in the SAME set) is unwound BEFORE the
-// item it depends on — the inverse of planInstall's install-time
+// item it depends on, the inverse of planInstall's install-time
 // topological order. (toward-disabled dispatch, ensure A5b): tearing
-// down must happen in reverse build order — if B was wired ON TOP OF A (B
+// down must happen in reverse build order. If B was wired ON TOP OF A (B
 // deps on A), B must be unwired first, or the unwind can leave a dangling
 // reference / undo things in an order the original wiring never assumed.
 // A simple DFS post-order (same shape as manifest-lint.mjs's own dep-cycle
 // detector and planInstall's pre-coalescing traversal) over `items`' OWN
-// `deps` field (not `.install`-derived — this works for ANY item carrying
+// `deps` field (not `.install`-derived: this works for ANY item carrying
 // deps, independent of whether it has a runnable install descriptor),
 // reversed. Ignores a dep that points outside the given item set (same
-// convention planInstall uses — an out-of-set dep is treated as already
+// convention planInstall uses: an out-of-set dep is treated as already
 // resolved/irrelevant to this ordering). A cycle throws (defense-in-depth;
 // manifest-lint.mjs's own cycle detector already rejects a cyclic manifest).
 function reverseDependencyOrder(items) {
@@ -502,7 +502,7 @@ function reverseDependencyOrder(items) {
 }
 
 // installs legitimately take minutes (npm/bun install+build,
-// apt-get, winget, ...) — a MUCH larger default than probes.js's
+// apt-get, winget, ...), a MUCH larger default than probes.js's
 // spawnProbeSync's own 10s probe timeout, but a wedged installer must
 // still not hang an unattended `ensure` forever. Read fresh on every call
 // (not cached at module load) so a test can inject a tiny value via the
@@ -517,50 +517,50 @@ function installTimeoutMs() {
 
 // runHardenedSpawn(entry) -> {ok:true} | {ok:false, reason}
 // The SINGLE hardened spawnSync call every himmelctl-driven primitive goes
-// through — installs (runInstall, below) AND unwinds (runUnwire, below)
+// through: installs (runInstall, below) AND unwinds (runUnwire, below)
 // alike. `entry` = {cmd, args, input?, needsSudoPassword?, repoRoot?}, the
 // SAME shape buildEntry() and unwireCommand() both produce. Extracted (CR
-// fix — a cross-model review caught that bin.js's toward-disabled unwire
+// fix: a cross-model review caught that bin.js's toward-disabled unwire
 // dispatch had its OWN raw
 // spawnSync call that got NEITHER of the hardenings below when they first
-// landed on the install path — exactly the drift a shared implementation
+// landed on the install path, exactly the drift a shared implementation
 // prevents) so install and unwire can never fall out of hardening sync
 // again: fix it ONCE, here, and both call sites get it.
 //
 // A spawn launch failure, a nonzero exit, OR a signal-terminated primitive
-// (r.signal set — killed, not a clean exit; r.status is null in that case,
+// (r.signal set: killed, not a clean exit; r.status is null in that case,
 // so it must be checked explicitly rather than falling through to the
 // r.status!==0 nonzero-exit branch, which would silently classify a signal
 // kill as success) all count as failed (fail-closed, never silent).
 //
 // an entry carrying `input` (the linux sudo-with-password dep form)
-// has that string piped to the child's stdin — see the spawnOpts branch
-// below. SECURITY: `entry.input` (when present) holds a raw credential —
+// has that string piped to the child's stdin. See the spawnOpts branch
+// below. SECURITY: `entry.input` (when present) holds a raw credential,
 // never returned to the caller, never logged.
 //
 // every spawnSync call carries a timeout (installTimeoutMs,
-// default 900s, overridable via INSTALL_TIMEOUT_SECS — see its own header)
+// default 900s, overridable via INSTALL_TIMEOUT_SECS, see its own header)
 // + killSignal:'SIGKILL', so a wedged primitive (install OR unwire) can't
 // hang an unattended `ensure` forever. A timed-out entry fails with a
-// "timed out after Ns" reason — see the ETIMEDOUT branch below. On timeout
-// the WHOLE process tree is killed, not just the direct child — see
+// "timed out after Ns" reason. See the ETIMEDOUT branch below. On timeout
+// the WHOLE process tree is killed, not just the direct child. See
 // childEnv/isWin/the ETIMEDOUT branch's own comments for how.
 //
-// every spawned child gets an EXPLICIT env
-// — process.env with HIMMELCTL_SUDO_PASSWORD deleted — never the default
+// every spawned child gets an EXPLICIT env:
+// process.env with HIMMELCTL_SUDO_PASSWORD deleted, never the default
 // (spawnSync inherits process.env verbatim when `env` is omitted). Putting
 // the password on stdin (above) is necessary but NOT sufficient: an
 // inherited env var is readable from /proc/<pid>/environ by any same-uid
 // process for the child's whole lifetime, AND is inherited by every
-// grandchild the primitive spawns (apt hooks, postinst scripts, ...) — none
+// grandchild the primitive spawns (apt hooks, postinst scripts, ...), none
 // of which need it, since `sudo -S` only ever reads the password from
 // stdin. Applied to EVERY entry, not only input-bearing ones (defense in
-// depth — an unwire primitive never carries `input` at all today, but gets
+// depth: an unwire primitive never carries `input` at all today, but gets
 // the SAME scrub for free by going through this one function).
 //
 function runHardenedSpawn(entry) {
   // resolve the sudo credential HERE, at the
-  // single hardened spawnSync site — immediately before the spawn — never at
+  // single hardened spawnSync site (immediately before the spawn), never at
   // plan time (see buildEntry's 'dep' case, which emits only the NON-SECRET
   // marker `needsSudoPassword` + `repoRoot`). The live credential lives ONLY
   // in this stack frame's local `entry` COPY (the caller's plan object is
@@ -569,7 +569,7 @@ function runHardenedSpawn(entry) {
   // spawnOpts.input. resolveSudoPassword is pure (reads process.env + the
   // .env file) and
   // already returned truthy for this entry at plan time, so the same value
-  // resolves here deterministically — the resolution happens BEFORE childEnv
+  // resolves here deterministically. The resolution happens BEFORE childEnv
   // is built and scrubbed below, so the password reaches stdin but never the
   // child's env.
   if (entry.needsSudoPassword) {
@@ -608,14 +608,14 @@ function runHardenedSpawn(entry) {
 }
 
 // runHardenedSpawnPosix(entry, timeoutMs, childEnv) -> {ok:true} | {ok:false, reason}
-// an entry carrying `input` (the linux sudo-with-password dep form
-// — see buildEntry's 'dep' case) needs its stdin PIPED so the password can
+// an entry carrying `input` (the linux sudo-with-password dep form,
+// see buildEntry's 'dep' case) needs its stdin PIPED so the password can
 // be written to it, instead of 'inherit' (which connects the child
 // directly to the parent's own stdin/terminal and provides no way to feed
 // it programmatically). Every other entry keeps the exact shipped
 // { stdio: 'inherit' } behavior unchanged (only `input`/`stdio` differ;
 // `timeout`/`killSignal`/`env` apply to BOTH forms). `detached:true` makes
-// entry.cmd the leader of its OWN new process group — required so a
+// entry.cmd the leader of its OWN new process group, required so a
 // timeout's group-kill (below) can target ONLY the primitive's tree, never
 // our own process group (without the detach, entry.cmd would share OUR
 // process group, and a negative-pid kill would take our own process down
@@ -629,29 +629,29 @@ function runHardenedSpawnPosix(entry, timeoutMs, childEnv) {
   );
   const r = spawnSync(entry.cmd, entry.args, spawnOpts);
   // a timed-out spawnSync sets r.error.code==='ETIMEDOUT' (Node also
-  // SIGKILLs the child, so r.signal is typically ALSO set) — checked FIRST,
+  // SIGKILLs the child, so r.signal is typically ALSO set), checked FIRST,
   // before the generic r.error branch, so a wedged primitive fails with a
   // CLEAR "timed out after Ns" reason instead of a raw "spawnSync <cmd>
   // ETIMEDOUT" error message.
   if (r.error && r.error.code === 'ETIMEDOUT') {
     // spawnSync's OWN timeout kill only reaches entry.cmd itself
-    // (e.g. bash) — a grandchild it spawned (apt-get, a postinst hook, ...)
+    // (e.g. bash). A grandchild it spawned (apt-get, a postinst hook, ...)
     // can survive and keep running/hung in the background. detached:true
     // (above) made entry.cmd the leader of its OWN process group (pgid ===
-    // its own pid) — process.kill(-pid, 'SIGKILL') signals every process in
+    // its own pid). process.kill(-pid, 'SIGKILL') signals every process in
     // THAT group. Best-effort: r.pid may be unset if the spawn itself never
     // succeeded (shouldn't happen for a genuine ETIMEDOUT, which implies
-    // the child DID start), and the target may already be gone (ESRCH) —
-    // either way, swallow and still report the timeout below.
+    // the child DID start), and the target may already be gone (ESRCH).
+    // Either way, swallow and still report the timeout below.
     //
     // the LIMIT of this mechanism,
     // stated explicitly: a process-group kill is NOT escape-proof. It
     // reaches exactly the processes still in THIS group, so any descendant
-    // that deliberately left it — setsid()/setpgid() into a new session or
-    // group, or a double-fork daemonization — survives, and so does a
+    // that deliberately left it (setsid()/setpgid() into a new session or
+    // group, or a double-fork daemonization) survives, and so does a
     // descendant re-parented to init while sitting in another group. This
     // There is no escape-proof primitive here, so this path is best-effort
-    // BY DESIGN and cannot promise the tree is gone — only that everything
+    // BY DESIGN and cannot promise the tree is gone, only that everything
     // still in the group was signalled. The timeout is still reported as a
     // failure either way (fail-closed), so an escaped straggler degrades
     // cleanup, never the correctness of the result we return.
@@ -659,7 +659,7 @@ function runHardenedSpawnPosix(entry, timeoutMs, childEnv) {
       try {
         process.kill(-r.pid, 'SIGKILL');
       } catch (_e) {
-        // already gone, or never had any descendants — nothing to clean up.
+        // already gone, or never had any descendants: nothing to clean up.
       }
     }
     return { ok: false, reason: `timed out after ${Math.round(timeoutMs / 1000)}s` };
@@ -713,19 +713,19 @@ function logEnabledPluginsWrites(entry, before) {
 }
 
 // runInstall(plan, {dryRun}) -> {ran:[{id,type}], failed:[{id,type,reason}]}
-// dryRun:true returns BEFORE any spawnSync — a --dry-run plan is provably
+// dryRun:true returns BEFORE any spawnSync. A --dry-run plan is provably
 // zero-exec. A plan entry that couldn't be built into a runnable command
 // (buildEntry's `unrunnable` case, e.g. an unmapped dep) lands in
 // failed[] without ever spawning. Every actually-spawned entry goes through
-// runHardenedSpawn() (see its own header for the full hardening list —
+// runHardenedSpawn() (see its own header for the full hardening list:
 // timeout+tree-kill, env-scrubbed credential, signal/ETIMEDOUT
 // classification); ran[]/failed[] never carry `entry.input` (SECURITY: a
-// raw credential, when present — both arrays only ever hold {id,
+// raw credential, when present: both arrays only ever hold {id,
 // type[, reason]}), never logged.
 //
 // an entry whose `deps` (set by planInstall, see its own header)
 // include an id that's ALREADY in failed[] (this run, so far) is SKIPPED
-// rather than run — a dependent must not execute after its prerequisite
+// rather than run. A dependent must not execute after its prerequisite
 // failed. The skip itself lands in failed[] too (with a reason naming the
 // failed prerequisite) and its own id joins failedIds, so a chain of
 // dependents skips transitively.
@@ -775,7 +775,7 @@ function unwireCommand(item, ctx) {
 }
 
 // runUnwire(spec) -> {ok:true} | {ok:false, reason}
-// The toward-disabled counterpart to runInstall — bin.js's
+// The toward-disabled counterpart to runInstall. bin.js's
 // toward-disabled dispatch used to call spawnSync directly with a bare
 // {stdio:'inherit'}, getting NEITHER the env-scrub NOR the timeout that
 // runInstall's own spawns already had (a cross-model review caught this
@@ -783,7 +783,7 @@ function unwireCommand(item, ctx) {
 // runHardenedSpawn() as every install, so the two paths can never diverge
 // again. Takes a single unwireCommand() spec (the toward-disabled dispatch
 // in bin.js calls this once per item inside its own reverse-dependency-order
-// loop, not a batch like runInstall's plan[]) — the caller (bin.js) owns
+// loop, not a batch like runInstall's plan[]). The caller (bin.js) owns
 // the `spec.unrunnable` check and the --dry-run short-circuit (printing its
 // own "DRY: unwire <id>" line), exactly as before; this function is only
 // ever called on the real, non-dry-run execution path.

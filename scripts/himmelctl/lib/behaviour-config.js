@@ -1,5 +1,5 @@
 'use strict';
-// scripts/himmelctl/lib/behaviour-config.js — behaviour-config keys
+// scripts/himmelctl/lib/behaviour-config.js: behaviour-config keys
 // (HIMMEL_INITIATIVE, HANDOVER_DIR, commit rules) live in the tracked config
 // file ~/.himmel/himmel.conf, not the clone .env. Reads layer the same way
 // scripts/lib/load-dotenv.sh does: himmel.conf.local, selected station profile

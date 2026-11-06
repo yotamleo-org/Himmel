@@ -1,10 +1,10 @@
 'use strict';
-// scripts/himmelctl/lib/redact.js — (spec A14b): the one
+// scripts/himmelctl/lib/redact.js (spec A14b): the one
 // redactor every string leaving the config feed (and, in P3/P4, the UI server)
 // passes through. Defence in depth on top of A7 (secrets show presence only).
 //
 // Replaces, with REDACTED:
-//   - any caller-supplied literal (the .env values — see envValues())
+//   - any caller-supplied literal (the .env values, see envValues())
 //   - well-known token shapes (GitHub, Slack, AWS, OpenAI/Anthropic-style sk-,
 //     JWTs, Bearer headers)
 //   - the value of NAME=value / NAME: value when NAME looks secret-bearing

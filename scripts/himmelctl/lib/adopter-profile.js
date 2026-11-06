@@ -1,11 +1,11 @@
 'use strict';
-// scripts/himmelctl/lib/adopter-profile.js — v1 adopter-user
+// scripts/himmelctl/lib/adopter-profile.js: v1 adopter-user
 // profile: the lane SUBSET selection + honest probe, and the always-on
 // machine-hardening CHECKLIST.
 //
 // Scope (operator rescope 2026-07-31): v1 is the adopter-user profile,
 // LOCAL-only. The himmel + luna-vault components are already installed by
-// bin.js's existing adopt.sh derivation — this module adds the two rows the
+// bin.js's existing adopt.sh derivation. This module adds the two rows the
 // T2/T3 answer schema had reserved but never asked (`lanes`, `alwaysOn`),
 // plus the final honest summary.
 //
@@ -18,12 +18,12 @@
 //      never installed. So a selected-but-absent lane is reported as MANUAL
 //      with the exact install command instead. Actually RUNNING those
 //      third-party installers is deliberately v2 (see the split-off note in
-//      the ticket) — it needs per-OS recipes and manifest items, and every
+//      the ticket). It needs per-OS recipes and manifest items, and every
 //      one of them is a machine-wide package-manager mutation.
 //
 //   2. Machine hardening is PRINTED, never executed (rescope, explicit).
 //      Power profile / sshd / auto-logon are machine-wide, need elevation,
-//      and are NOT reversible by `himmelctl uninstall` — so v1 emits the
+//      and are NOT reversible by `himmelctl uninstall`, so v1 emits the
 //      Windows Phase-6 steps (the runbook is removed) as a checklist the
 //      operator runs by hand.
 //
@@ -36,7 +36,7 @@
 // resolver's buildCtx shells out to `git` to locate the main checkout, and the
 // manifest-backed readiness probes reached through probesLib may execute a
 // tool to ask its version or health. Those are reads. The distinction that
-// matters for --dry-run is mutation, not process creation — so the epilogue
+// matters for --dry-run is mutation, not process creation, so the epilogue
 // runs there too, and everything it reports is as true before the install as
 // after it.
 
@@ -50,7 +50,7 @@ const { nodeScriptCmd, cacheDir } = require('./helpers.js');
 
 // the printed `config set lanes.<id> on|off` remediations run from
 // the ADOPTER's project, not the clone, so they name this install's bin.js by
-// absolute path (lib/ sits one level under bin.js) — never the clone-relative
+// absolute path (lib/ sits one level under bin.js), never the clone-relative
 // `node scripts/himmelctl/bin.js`. One definition for all three call sites.
 const HIMMELCTL_BIN = path.join(__dirname, '..', 'bin.js');
 function laneConfigSetCmd(registryId, state) {
@@ -58,13 +58,13 @@ function laneConfigSetCmd(registryId, state) {
 }
 // a pure-data read (not
 // bin.js's logic) so buildSummary can look up whether an 'unconfigured'
-// secret shares its aggregate luna-sources probe with a sibling credential —
-// see the secrets-walk loop below for why that matters.
+// secret shares its aggregate luna-sources probe with a sibling credential.
+// See the secrets-walk loop below for why that matters.
 const SECRETS_MANIFEST = require('./secrets-manifest.json');
-// per-cadence wizard registry — see the file's own $comment.
+// per-cadence wizard registry. See the file's own $comment.
 // resolveCadenceDispositions() below lives HERE (not bin.js) so bin.js's
 // preview/apply steps AND this file's own buildSummary can never drift on
-// what "disposition" means — the exact reason SECRETS_MANIFEST already
+// what "disposition" means, the exact reason SECRETS_MANIFEST already
 // lives in this module instead of bin.js (see the comment just above).
 const CADENCE_REGISTRY = require('./cadence-registry.json').cadences;
 
@@ -72,20 +72,20 @@ const CADENCE_REGISTRY = require('./cadence-registry.json').cadences;
 //
 // `id` is the himmelctl-facing short name (what the operator types).
 // `registryId` names the scripts/lanes/lanes.json lane whose probe decides
-// availability — the registry stays the single source of truth for HOW a lane
+// availability. The registry stays the single source of truth for HOW a lane
 // is detected, so this table never grows a second detection heuristic.
-// `optIn: true` lanes are NEVER selected by default — they are reachable only
+// `optIn: true` lanes are NEVER selected by default. They are reachable only
 // via their explicit flag (or naming them at the interactive prompt, which
-// IS that same explicit consent — see askLanes()'s own comment in bin.js).
+// IS that same explicit consent, see askLanes()'s own comment in bin.js).
 //
 // v1 ships Claude tiers as the
 // ONLY implementation lanes; codex and hermes are offered here ONLY as
 // cross-model CR (code-review) lanes for /pr-check. ollama-local and
-// copilot-cli — previously the two non-opt-in default lanes — are DROPPED
+// copilot-cli (previously the two non-opt-in default lanes) are DROPPED
 // from this table entirely: the wizard no longer offers, selects, or probes
 // them at all. They still exist as ordinary (now `dormant`) rows in
 // scripts/lanes/lanes.json, reachable by an operator who opts in directly via
-// that registry's optInEnv — this table's job is only "what the installer
+// that registry's optInEnv. This table's job is only "what the installer
 // asks about", and v1 no longer asks about them. See DORMANT_LANE_HINTS below
 // for the --lanes/interactive refusal wording that points at that door.
 //
@@ -129,8 +129,8 @@ const OPT_IN_LANE_IDS = V1_LANES.filter((l) => l.optIn).map((l) => l.id);
 // The opt-in lanes are excluded on purpose: `--lanes codex` must NOT be a
 // second, quieter door around the explicit --with-codex consent.
 //
-// This is the SAME set as the defaults today — every non-opt-in lane is both
-// offered and selected by default — so it is an alias rather than a second
+// This is the SAME set as the defaults today. Every non-opt-in lane is both
+// offered and selected by default, so it is an alias rather than a second
 // copy of the expression (two identical filters would
 // drift the moment one of them gained a condition). The names stay distinct
 // because the CONCEPTS are: "what you may type" and "what you get if you type
@@ -138,27 +138,27 @@ const OPT_IN_LANE_IDS = V1_LANES.filter((l) => l.optIn).map((l) => l.id);
 const SELECTABLE_LANE_IDS = DEFAULT_LANE_IDS;
 
 // the wizard's own lane subset is now codex/hermes
-// ONLY, and both are opt-in — DEFAULT_LANE_IDS/SELECTABLE_LANE_IDS are
+// ONLY, and both are opt-in. DEFAULT_LANE_IDS/SELECTABLE_LANE_IDS are
 // therefore empty in v1. That is not a bug in the alias above: an empty
 // "what you may type via --lanes" is exactly the "one door, not two" the
 // ticket asks for (--lanes accepts only 'none'; codex/hermes stay reachable
 // solely via --with-codex/--with-hermes or the interactive prompt below).
 //
 // the INTERACTIVE lanes question offers
-// ALL_LANE_IDS — every v1 lane, opt-in or not — while the --lanes CSV flag
+// ALL_LANE_IDS (every v1 lane, opt-in or not), while the --lanes CSV flag
 // stays restricted to SELECTABLE_LANE_IDS (parseLaneList's default, below):
 // naming codex/hermes THERE must still be refused, so --lanes never becomes a
 // second, quieter door around --with-codex/--with-hermes. Selecting codex/
 // hermes AT THE INTERACTIVE PROMPT is instead treated as the same explicit
-// consent the flag provides — same principle as loadProfile()'s "naming
-// codex/hermes in a profile IS the consent" comment — so askLanes() (bin.js)
+// consent the flag provides, same principle as loadProfile()'s "naming
+// codex/hermes in a profile IS the consent" comment, so askLanes() (bin.js)
 // calls parseLaneList(..., { allowOptIn: true }) for that one call site only.
 //
 // disclosure of the CONSEQUENCE of skipping both opt-ins stays
-// unchanged in spirit — a default or lanes=none install, with neither codex
+// unchanged in spirit. A default or lanes=none install, with neither codex
 // nor hermes taken, leaves NO non-Claude critic available, so /pr-check's
-// CR_REQUIRE_CROSS_MODEL floor (docs/configuration.md) cannot be satisfied —
-// the review panel runs Claude-only. Printed once, before the lanes prompt,
+// CR_REQUIRE_CROSS_MODEL floor (docs/configuration.md) cannot be satisfied.
+// The review panel runs Claude-only. Printed once, before the lanes prompt,
 // by bin.js's askLanes().
 function laneCrossModelDisclosureLines() {
   // The wrap points are load-bearing, not cosmetic: `test-wizard-questions.sh`
@@ -179,10 +179,10 @@ function laneCrossModelDisclosureLines() {
 }
 
 // one-line "what this lane needs" help text for the interactive
-// lanes menu (askLanes, bin.js) — the per-option help apparatus askProfile
+// lanes menu (askLanes, bin.js): the per-option help apparatus askProfile
 // pioneered (PROFILE_HELP), generalized to this question too. Kept HERE
 // (not bin.js) because this module already owns every other lane fact
-// (install/note/optIn) — a second lane-fact table in bin.js would drift from
+// (install/note/optIn). A second lane-fact table in bin.js would drift from
 // this one the first time a lane's install story changed.
 const LANE_HELP = {
   codex: 'a second-model review on each PR; uses your Codex plan, so run `codex login` first (skip if you don\'t have it)',
@@ -190,7 +190,7 @@ const LANE_HELP = {
 };
 
 // ollama-local and copilot-cli are no longer part of
-// V1_LANES at all — the wizard neither offers nor probes them — but a typo'd
+// V1_LANES at all (the wizard neither offers nor probes them), but a typo'd
 // or muscle-memory `--lanes ollama` / the interactive prompt's `ollama` still
 // deserves a more useful refusal than a bare "unknown lane": this table exists
 // ONLY to name the scripts/lanes/lanes.json opt-in door those two lanes moved
@@ -222,7 +222,7 @@ function installHint(lane, platform) {
   return pickByPlatform(lane.install, platform);
 }
 
-// The platform-appropriate post-install setup step for a lane — the work the
+// The platform-appropriate post-install setup step for a lane: the work the
 // binary probe cannot establish (auth, model pull, profile provisioning).
 function setupNote(lane, platform) {
   return pickByPlatform(lane.note, platform);
@@ -232,18 +232,18 @@ function setupNote(lane, platform) {
 
 // Parse a --lanes / interactive-answer CSV into a validated id list.
 // Returns { ok: true, lanes } or { ok: false, error }. 'none' is the explicit
-// empty selection (an empty string is NOT — that means "accept the default",
+// empty selection (an empty string is NOT: that means "accept the default",
 // which the caller resolves before ever getting here).
 //
 // `opts.allowOptIn`: the --lanes CLI flag calls this with no
 // options, so OPT_IN_LANE_IDS still hit the "select it with --with-<id>"
-// refusal below — --lanes must never become a quieter door around that
+// refusal below. --lanes must never become a quieter door around that
 // explicit consent. bin.js's askLanes() (the INTERACTIVE menu only) passes
 // { allowOptIn: true }, because choosing codex/hermes AT THE PROMPT is itself
 // the explicit consent, same principle as a profile file naming them.
 //
 // a third refusal shape, checked BEFORE the opt-in
-// one and regardless of `allowOptIn` — ollama/copilot are not merely opt-in,
+// one and regardless of `allowOptIn`. ollama/copilot are not merely opt-in,
 // they are dormant-in-v1 (DORMANT_LANE_HINTS above): no flag or prompt answer
 // in himmelctl can select them at all, so the error must say WHERE that door
 // actually is (scripts/lanes/lanes.json's own optInEnv) rather than implying
@@ -322,7 +322,7 @@ function isWritableDir(dir) {
 
 // a packaged/root-owned install prefix can't take the in-tree
 // overlay write, so the writer defaults to the himmelctl cache dir instead of
-// throwing — mirroring critic-panel.sh's CRITICS_LOCAL_JSON and
+// throwing, mirroring critic-panel.sh's CRITICS_LOCAL_JSON and
 // load-dotenv.sh's cache-dir-first fallback. A writable git clone is
 // untouched: same path as before, byte for byte.
 function resolveLaneAllowlistFile(repoRoot) {
@@ -400,9 +400,9 @@ function restoreProfileLaneAllowlist(file, prior, writer) {
 // ── probing ─────────────────────────────────────────────────────────────────
 
 // Parse a lane registry file into a THREE-way result:
-//   { status: 'ok',      value }         — parsed, right shape
-//   { status: 'absent' }                 — the file simply isn't there
-//   { status: 'invalid', detail }        — present but unreadable/not JSON/wrong shape
+//   { status: 'ok',      value }:         parsed, right shape
+//   { status: 'absent' }:                 the file simply isn't there
+//   { status: 'invalid', detail }:        present but unreadable/not JSON/wrong shape
 //
 // these last two used to collapse into a single
 // `null`. For the OVERLAY that conflation is a semantics divergence, not
@@ -435,7 +435,7 @@ function readRegistryFile(file) {
 //
 // this used to read the base alone, so a lane the
 // operator had locally DISABLED still reported "available" here while `/lanes`
-// correctly excluded it — the installer's epilogue contradicted the runtime
+// correctly excluded it. The installer's epilogue contradicted the runtime
 // surface it was describing. The overlay is not decoration: it is the documented
 // way to turn a lane off, and an installer that ignores it is reporting a
 // machine that does not exist.
@@ -448,14 +448,14 @@ function readLaneRegistries(repoRoot) {
   const lanesDir = path.join(repoRoot, 'scripts', 'lanes');
 
   // LANES_REGISTRY is the resolver's documented
-  // test/CI override, and it replaces the registry WHOLESALE — resolve.mjs
+  // test/CI override, and it replaces the registry WHOLESALE. resolve.mjs
   // returns that file's contents and skips lanes.local.json entirely. Reading
   // the checkout default plus the overlay under that override made the
   // epilogue describe a different lane set than /lanes resolved.
   //
   // The policy is mirrored, not the loader: resolve.mjs's loadRegistry() ends
-  // in die(2) on a malformed file, which is right for a CLI and wrong here —
-  // this module answers 'unknown' and lets the caller keep going. Reusing it
+  // in die(2) on a malformed file, which is right for a CLI and wrong here.
+  // This module answers 'unknown' and lets the caller keep going. Reusing it
   // would turn a bad registry into an abrupt himmelctl exit and break the
   // fail-to-unknown contract the rest of this file is built on. Read from
   // process.env for the same reason resolve.mjs does: it is a process-wide
@@ -487,12 +487,12 @@ function readLaneRegistries(repoRoot) {
 
 // Load the CANONICAL lane probe machinery: the pure evaluator
 // (scripts/lanes/probe.mjs) plus the context builder that supplies it with
-// real machine state (scripts/lanes/resolve.mjs `buildCtx` — merged repo
+// real machine state (scripts/lanes/resolve.mjs `buildCtx`: merged repo
 // .env, a PATH scan, and the hermes install probe).
 //
 // this used to be a hand-rolled switch that read
 // the registry's `installed` kind as a bare PATH lookup. That is NOT what
-// `installed` means — the canonical hermes probe honors $HERMES_PY and finds
+// `installed` means. The canonical hermes probe honors $HERMES_PY and finds
 // venvs under $HERMES_HOME / %LOCALAPPDATA%, none of which put `hermes` on
 // PATH. The duplicate therefore reported a valid hermes install as missing,
 // and would report any unrelated `hermes` executable as present. Reusing the
@@ -503,7 +503,7 @@ function readLaneRegistries(repoRoot) {
 // single call site is already async. Note the two roots are deliberately
 // different: the MODULES come from this checkout (they ship with himmelctl),
 // while the REGISTRY comes from `repoRoot`, which a hermetic test redirects.
-// Returns null if the resolver cannot be loaded — callers degrade to
+// Returns null if the resolver cannot be loaded. Callers degrade to
 // 'unknown' rather than falling back to a weaker guess.
 async function loadLaneProbe(repoRoot, env) {
   try {
@@ -516,7 +516,7 @@ async function loadLaneProbe(repoRoot, env) {
       ctx: resolveMod.buildCtx(repoRoot, env || process.env),
       evalProbe: probeMod.evalProbe,
       // The resolver's OWN overlay merge (a true per-lane shallow merge, not a
-      // wholesale replace) — reused rather than re-derived for the same reason
+      // wholesale replace), reused rather than re-derived for the same reason
       // evalProbe is.
       mergeLocalOverlay: resolveMod.mergeLocalOverlay,
     };
@@ -534,7 +534,7 @@ async function loadLaneProbe(repoRoot, env) {
 // `false` and presenting it to the operator as a definite "not installed".
 const EVALUABLE_PROBE_KINDS = ['always', 'never', 'path', 'env', 'installed', 'crprofile'];
 
-// Human-readable detail for a decided probe. Presentation ONLY — the verdict
+// Human-readable detail for a decided probe. Presentation ONLY. The verdict
 // comes from evalProbe; nothing here re-implements detection.
 function probeDetail(probe, ok, platform) {
   switch (probe.kind) {
@@ -554,13 +554,13 @@ function probeDetail(probe, ok, platform) {
 // from EFFECTIVE availability (the base probe as overridden by the machine's
 // lanes.local.json). Returns { state, detail } where state is:
 //
-//   present  — physically there AND enabled: the delegation machinery can use it
-//   disabled — physically there but turned OFF by the local overlay. Reported
+//   present:  physically there AND enabled: the delegation machinery can use it
+//   disabled: physically there but turned OFF by the local overlay. Reported
 //              distinctly because "install it"
 //              and "re-enable it" are different next steps, and collapsing
 //              either into the other misdescribes the machine.
-//   absent   — not physically there
-//   unknown  — we cannot honestly say
+//   absent:   not physically there
+//   unknown:  we cannot honestly say
 //
 // 'unknown' is a first-class answer, not a failure mode: an unreadable base
 // registry, a lane the registry does not declare, a probe kind the canonical
@@ -592,8 +592,8 @@ function probeLane(lane, ctx) {
   const baseEntry = pick(regs.base);
   const mergedEntry = pick(merged) || baseEntry;
 
-  // ORDER IS LOAD-BEARING. The BASE probe — and
-  // only the base probe — answers "is this thing physically installed?". The
+  // ORDER IS LOAD-BEARING. The BASE probe (and
+  // only the base probe) answers "is this thing physically installed?". The
   // merged/overlay probe answers a DIFFERENT question: "is this lane switched
   // on?". an earlier fix evaluated the merged probe first and returned `present` on
   // any truthy result, which re-opened the exact trap this module was built to
@@ -617,7 +617,7 @@ function probeLane(lane, ctx) {
   // this used to fall back to the base probe for a
   // null/absent merged probe, and to `enabled = true` for a kind it could not
   // decide. evalProbe returns FALSE for all of those (null, non-object, empty
-  // or unknown kind — verified against probe.mjs), so a hand-edited
+  // or unknown kind, verified against probe.mjs), so a hand-edited
   // `{"probe": null}` or a version-skewed kind EXCLUDES the lane from /lanes
   // while this reported it present with nothing to do. Optimism about an
   // override we cannot read is the same class of false-green as trusting
@@ -659,7 +659,7 @@ function probeLane(lane, ctx) {
   // instructions and got nothing. `overlayFix` names the second step; the
   // summary renders it after the install command.
   if (!physical && !enabled && overlayFault) {
-    // Not installed AND the overlay is broken — name both, so fixing one does
+    // Not installed AND the overlay is broken. Name both, so fixing one does
     // not leave the other as a silent surprise.
     return {
       state: 'absent',
@@ -690,15 +690,15 @@ function probeLane(lane, ctx) {
 // Is a PRESENT lane actually ready to use, or merely installed?
 //
 // the registry probes establish that an
-// executable exists — nothing more. ollama still needs its model pulled,
+// executable exists, nothing more. ollama still needs its model pulled,
 // copilot needs an interactive device-flow login, codex needs provisioning.
 // Reporting such a lane as "ready" and dropping its setup note told the
 // adopter the opposite of the truth about a lane they cannot yet use.
 //
 // Returns one of:
-//   'ready'       — a richer probe confirms setup is complete
-//   'incomplete'  — a richer probe says setup is NOT done
-//   'unverified'  — no richer probe exists (or it could not run); the binary
+//   'ready':       a richer probe confirms setup is complete
+//   'incomplete':  a richer probe says setup is NOT done
+//   'unverified':  no richer probe exists (or it could not run); the binary
 //                   is there and that is genuinely all we know
 function laneSetupState(lane, ctx) {
   if (!lane.manifestItem) return { state: 'unverified', detail: '' };
@@ -798,7 +798,7 @@ function hardeningChecklistLines(platform) {
 }
 
 // The one-line pointer printed when the operator said this is NOT an
-// always-on machine — the checklist stays one command away without dumping
+// always-on machine. The checklist stays one command away without dumping
 // 30 lines of powercfg on someone installing to a laptop.
 function hardeningPointerLines() {
   return [
@@ -828,14 +828,14 @@ function hardeningNotAskedLines() {
 
 // ── PHI + trust-class checklist (PRINTED, never executed) ──────────────────
 //
-// design A10: the wizard records ONLY `luna.phi.declared`
-// — the adopter's yes/no ANSWER to "does this vault handle PHI?" (design A10:
-// an explicit declaration, not a "checklist shown" receipt — every adopter
+// design A10: the wizard records ONLY `luna.phi.declared`,
+// the adopter's yes/no ANSWER to "does this vault handle PHI?" (design A10:
+// an explicit declaration, not a "checklist shown" receipt. Every adopter
 // with a vault sees this checklist regardless of their answer, so "shown"
 // would be true for essentially everyone and the stored value would carry no
 // signal; status item S3/phi-coherence depends on `declared` meaning the
 // adopter's actual declaration). The wizard NEVER creates/writes .salus,
-// phi-roots, egress-denylist or access.json itself — those are trust-bearing,
+// phi-roots, egress-denylist or access.json itself. Those are trust-bearing,
 // human-authored artifacts (design A8.1). Paths verified in-tree against
 // probes.js's phi-coherence probe (`.salus` ancestor marker,
 // `~/.config/claude-glm/phi-roots`) and docs/internals/egress-matrix.md
@@ -844,8 +844,8 @@ function hardeningNotAskedLines() {
 // the printed text below (and
 // buildSummary's own manual-entry wording for phiDeclared, a few hundred
 // lines down) used to say "himmelctl records only that you saw this
-// checklist" — describing the OLD, wrong "shown" semantics rather than what
-// the field actually stores. Fixed the WORDING, not the behaviour — the
+// checklist", describing the OLD, wrong "shown" semantics rather than what
+// the field actually stores. Fixed the WORDING, not the behaviour. The
 // field, its name, and status S3's dependency on it are all correct as
 // shipped; only the sentence describing it was wrong.
 function phiChecklistLines() {
@@ -866,19 +866,19 @@ function phiChecklistLines() {
   ];
 }
 
-// RETASK stage1-build-6d2e — CR finding treated as more than a Suggestion:
+// RETASK stage1-build-6d2e (CR finding treated as more than a Suggestion):
 // bridge persistence installs a DIFFERENT artifact per platform (a Linux
 // systemd --user unit + linger; nothing anywhere else), and THREE user-facing sites need to agree on which: bin.js's
 // interactive consent prompt, bin.js's --dry-run preview (via
 // attemptBridgePersistence itself, already correct), and this module's own
 // buildSummary --dry-run wording below. an earlier fix fixed the preview
-// fixed the summary — the consent prompt was missed BOTH times, and an
+// fixed the summary. The consent prompt was missed BOTH times, and an
 // explicit sweep for platform assumptions in the dry-run text still missed
 // it, because each site independently re-decided the same platform branch
 // instead of reading one answer. This is that one answer now; every
 // consumer (bin.js's consent prompt included) calls this instead of
 // re-testing process.platform. Null means no installer exists for this
-// platform — a caller must not offer/claim an install in that case.
+// platform. A caller must not offer/claim an install in that case.
 function bridgePersistenceArtifact(platform) {
   const p = platform || process.platform;
   if (p === 'linux') return 'a systemd --user unit (telegram-bridge.service) + linger';
@@ -886,12 +886,12 @@ function bridgePersistenceArtifact(platform) {
 }
 
 // legacy interplay: resolve `{ <id>: 'armed'|'off' }` for every
-// cadence unit this run has an ACTUAL answer for — an id absent from the
+// cadence unit this run has an ACTUAL answer for. An id absent from the
 // result means "never asked" (never a fabricated 'off'), same "not asked ≠
 // answered off" discipline every other section already follows. `cadences`
-// is a TOP-LEVEL optional answer section (buildAnswers, bin.js — same
+// is a TOP-LEVEL optional answer section (buildAnswers, bin.js, same
 // pattern as luna/secretsWalk/bridge, NOT nested inside `luna`); when
-// present it is AUTHORITATIVE — `luna.cadenceEnabled` is validated
+// present it is AUTHORITATIVE. `luna.cadenceEnabled` is validated
 // (loadProfile) but never consulted for arming. When ABSENT (every
 // older profile/fixture), pipeline's disposition is derived from
 // the legacy `luna.cadenceEnabled` boolean and every OTHER unit stays
@@ -907,25 +907,25 @@ function resolveCadenceDispositions(answers) {
 }
 
 // the closed set of "feature areas" the installed configuration
-// surface can be scoped by. Mirrored (not shared — different module system,
+// surface can be scoped by. Mirrored (not shared: different module system,
 // see that file's own comment) by scripts/lib/gen-secrets-doc.mjs's
 // FEATURE_IDS, which validates secrets-manifest.json's `feature` field
 // against the same list.
 const FEATURE_IDS = ['core', 'vault', 'cadence', 'bridge', 'whisper', 'lane:codex', 'lane:hermes'];
 
 // the ONE place that turns a recorded install profile's answers
-// into the set of feature areas it actually opted into — consumed by BOTH
+// into the set of feature areas it actually opted into, consumed by BOTH
 // bin.js's secrets walk (filtering secrets-manifest.json entries by their
 // `feature` tag) and status-report.js (downgrading telegram-bridge/
 // hermes-lanes/codex-cli to n/a when their feature was never selected),
 // so the two surfaces can never disagree on what "selected" means.
 //
-// Returns `null` — the fail-open sentinel — when `answers` itself is not a
+// Returns `null` (the fail-open sentinel) when `answers` itself is not a
 // usable object at all: a caller with no real profile to consult must keep
 // every item at its ORIGINAL (full-nag / full-walk) behavior rather than
 // silently going quiet. When `answers` IS a real object, a feature the
 // wizard never asked about (an absent `bridge`/`cadences` section, an empty
-// `lanes` array) resolves to OFF for scoping — the same "not asked ≠
+// `lanes` array) resolves to OFF for scoping, the same "not asked ≠
 // answered off, but still OFF here" rule every other luna/secretsWalk/bridge
 // section in this file already follows (see resolveCadenceDispositions
 // above). `core` is always on: it has no gating question.
@@ -1095,15 +1095,15 @@ function applyBehaviourConfig(values, opts = {}) {
 // Build the summary model from the answers + lane probe rows. Pure data, so
 // the test can assert on the model rather than scraping formatted text.
 //
-//   installed — what this run ACTUALLY put on the machine (applied runs only)
-//   planned   — what it WOULD do (--dry-run only)
-//   skipped   — what it deliberately did not do, each with a reason
-//   manual    — what the operator must still do themselves
+//   installed: what this run ACTUALLY put on the machine (applied runs only)
+//   planned:   what it WOULD do (--dry-run only)
+//   skipped:   what it deliberately did not do, each with a reason
+//   manual:    what the operator must still do themselves
 //
 // `installed` and `planned` are separate keys and
 // exactly ONE is ever populated, rather than one list plus a mode flag the
 // caller has to remember to consult. Under --dry-run nothing is executed, so
-// a reader (or a test) that looks at `installed` must get an EMPTY list — not
+// a reader (or a test) that looks at `installed` must get an EMPTY list, not
 // a list of would-be work it has to re-interpret. An installer whose summary
 // over-claims is worse than one with no summary at all: this whole module
 // exists to refuse exactly that, and it was doing it under --dry-run.
@@ -1124,7 +1124,7 @@ function buildSummary(answers, laneRows, opts) {
   // mixed both tenses and half of it read like completed work.
   const did = (past, future) => (dryRun ? future : past);
 
-  // role died — profile/devOverlay are the two orthogonal axes
+  // role died. profile/devOverlay are the two orthogonal axes
   // now (see bin.js's T2 comment above askQuestions()).
   const overlaySuffix = answers.devOverlay ? '+dev' : '';
   actions.push(dryRun
@@ -1161,12 +1161,12 @@ function buildSummary(answers, laneRows, opts) {
     });
   }
 
-  // the dev overlay's setup.sh step [0.5/9] is advisory now — it
+  // the dev overlay's setup.sh step [0.5/9] is advisory now. It
   // WARNs and continues on an unresolved USER_SLUG instead of aborting the
   // install. That abort was what used to make this row unnecessary: runPlan
   // returned on the overlay's rc=1 and no summary was printed at all. With the
   // install completing, the skipped step has to be named here or it is named
-  // nowhere that outlives the scrollback — the same argument as the gitHooks
+  // nowhere that outlives the scrollback, the same argument as the gitHooks
   // row above.
   //
   // `null` (dry-run, or an install with no dev overlay, where no step resolved
@@ -1198,7 +1198,7 @@ function buildSummary(answers, laneRows, opts) {
   // unlike those two read-only probes this IS the action, so a preview must
   // still say so rather than staying silent (caseJ's structural dry/applied
   // symmetry check never sets this field at all, so `undefined` stays silent
-  // in both directions — only an explicit `null` previews).
+  // in both directions: only an explicit `null` previews).
   if (o.workspaceTrust) {
     if (o.workspaceTrust.applied) {
       actions.push(`workspace trusted: ${o.workspaceTrust.dir} (hasTrustDialogAccepted written to ~/.claude.json)`);
@@ -1214,7 +1214,7 @@ function buildSummary(answers, laneRows, opts) {
   }
 
   // docs/setup/settings-template.json ships no `permissions`
-  // block, so the install writes no permissions.allow at either scope — by
+  // block, so the install writes no permissions.allow at either scope, by
   // design: himmel's own ~93 entries are its contributor config (paths on the
   // operator's machine), and an adopter's Bash pre-approvals come from the
   // auto-approve-safe-bash PreToolUse hook adopt.sh wires. A fact, not an
@@ -1231,7 +1231,7 @@ function buildSummary(answers, laneRows, opts) {
     // when the destination already exists, so "scaffolded" was asserted for
     // runs where nothing was copied. The row is now built from whether
     // scaffolding actually ran (`o.vaultScaffolded`); an occupied destination
-    // that is not a stamped luna vault never reaches here at all — runPlan
+    // that is not a stamped luna vault never reaches here at all. runPlan
     // refuses it before the shell-out.
     if (o.vaultScaffolded === false) {
       skipped.push(`luna vault — existing STAMPED vault reused at ${vaultPath}; no scaffolding ran (adopt.sh skips the copy when the destination exists); session end hook wired`);
@@ -1262,7 +1262,7 @@ function buildSummary(answers, laneRows, opts) {
 
   // 'full' is a legacy-accepted --from-profile value (loadProfile
   // still validates it, for an old cache's backward compat) but its enable
-  // step is GONE — applyPluginStep() is now unconditionally a no-op — so
+  // step is GONE. applyPluginStep() is now unconditionally a no-op, so
   // there is nothing left to report as installed/failed for either answer.
   // Before this ticket, this branch read `pluginFailures`/`pluginTotal` off
   // the (now-always-trivial) applyPluginStep() result to print "full plugin
@@ -1284,7 +1284,7 @@ function buildSummary(answers, laneRows, opts) {
       continue;
     }
     if (row.state === 'present') {
-      // A present lane is a FACT, never an action — himmelctl installs no
+      // A present lane is a FACT, never an action. himmelctl installs no
       // lane CLI in v1, so listing it as work would misreport under an
       // applied run and self-contradict under a "would install" heading.
       skipped.push(`lane ${row.id} — binary already present (${row.detail}), nothing to install`);
@@ -1327,7 +1327,7 @@ function buildSummary(answers, laneRows, opts) {
       manual.push({
         what: `lane ${row.id} — ${row.detail}`,
         how: laneConfigSetCmd(row.registryId, 'on'),
-        // re-enabling is only half the story — a
+        // re-enabling is only half the story. A
         // disabled copilot still needs its device-flow login once it is back
         // on. Remediation first, then the setup step an earlier fix promised to keep.
         note: ['nothing to install — the CLI is present, the local overlay turns the lane off']
@@ -1349,13 +1349,13 @@ function buildSummary(answers, laneRows, opts) {
   }
 
   // disclose the RESULTING cross-model CR floor from the final
-  // lane selection — regardless of how it was set (interactive prompt,
+  // lane selection, regardless of how it was set (interactive prompt,
   // --lanes flag, --with-codex/--with-hermes, or a replayed --from-profile).
   // A fact, not an action: lands in `skipped`, equally true before/after the
   // install, same as the other "you answered X" entries in this bucket.
   //
   // opting in is not the same as the lane actually
-  // being usable — `selected` only means the operator asked for it; a lane
+  // being usable. `selected` only means the operator asked for it; a lane
   // whose probe found it absent/misconfigured/disabled can't run a review
   // either, so claiming "satisfied" off `selected` alone would falsely
   // report the floor met for a lane that cannot review anything. Require
@@ -1384,29 +1384,29 @@ function buildSummary(answers, laneRows, opts) {
   // ── luna cadence / PHI / secrets walk / bridge ────────
   // `answers.luna`/`answers.secretsWalk`/`answers.bridge` are undefined on a
   // pre-Task-8 legacy --from-profile cache (loadProfile treats the whole
-  // section as optional for backward compat) — default to the same "off"
+  // section as optional for backward compat). Default to the same "off"
   // shape bin.js's own buildAnswers() falls back to, so this never throws on
   // an old profile.
   //
   // an
-  // untouched section (no luna key at all — bin.js's applyLunaSectionsStep
+  // untouched section (no luna key at all: bin.js's applyLunaSectionsStep
   // deliberately left the on-disk value alone) is a DIFFERENT fact from "the
   // operator answered off", and this summary's whole purpose is to never say
   // something false to the adopter. Saying "you answered cadence=off" for a
   // legacy-profile replay that PRESERVED an already-armed cadence would be
   // exactly backwards. `lunaSupplied`/`bridgeSupplied` key a third,
-  // untouched-specific wording, distinct from the explicit-off skip text —
-  // both still land in `skipped` (never `installed`), which was already the
+  // untouched-specific wording, distinct from the explicit-off skip text.
+  // Both still land in `skipped` (never `installed`), which was already the
   // safety-relevant half; this is the honesty half.
   // a --dry-run whose ~/.himmel/config.json could not
   // be read (bin.js's previewLunaSections sets this) is the SAME refusal
-  // applyLunaSectionsStep performs for real on a load failure — it returns
+  // applyLunaSectionsStep performs for real on a load failure. It returns
   // before touching cadence/PHI/secrets/bridge at all, so this summary must
   // not claim any of that as `planned` either, regardless of what the
   // profile answered.
   const configLoadFailed = Boolean(o.configLoadFailed);
   // fix: keyed on `phiDeclared` specifically, mirroring bin.js's
-  // own lunaSectionSupplied() — see its comment for why bare `luna !==
+  // own lunaSectionSupplied(), see its comment for why bare `luna !==
   // undefined` is no longer sufficient once a vault=none run can build a
   // partial `luna = { disarmCadence }` with no PHI answer in it.
   const lunaSupplied = Boolean(answers.luna) && typeof answers.luna.phiDeclared === 'boolean';
@@ -1416,7 +1416,7 @@ function buildSummary(answers, laneRows, opts) {
     skipped.push('PHI checklist — ~/.himmel/config.json could not be read (see the WARN line above); left untouched');
     // this branch used to return here,
     // reporting only the two legacy lines above and never reaching the
-    // per-unit loop in the `else` branch below — a profile that requested
+    // per-unit loop in the `else` branch below. A profile that requested
     // qmd/graphmap arming lost those rows entirely on a
     // config-load failure, silently dropping the request from the summary
     // instead of honestly saying it was not armed. `pipeline` is excluded:
@@ -1432,13 +1432,13 @@ function buildSummary(answers, laneRows, opts) {
     }
   } else {
     // per-cadence dispositions replace the old single
-    // luna.cadenceEnabled boolean — resolveCadenceDispositions() (shared
+    // luna.cadenceEnabled boolean. resolveCadenceDispositions() (shared
     // with bin.js, see its own comment above) covers both a fresh top-level
     // `cadences` section (authoritative) and a legacy profile that only
     // ever carried `luna.cadenceEnabled` (derives pipeline only). An id
     // absent from the result was never asked this run (a row filtered out
     // by the codex-lane gate, or every unit but pipeline on a legacy
-    // profile) — distinct from "asked and declined", never conflated.
+    // profile), distinct from "asked and declined", never conflated.
     const dispositions = resolveCadenceDispositions(answers);
     if (Object.keys(dispositions).length === 0) {
       skipped.push('luna cadence — left as-is (the profile carries no luna section)');
@@ -1464,8 +1464,8 @@ function buildSummary(answers, laneRows, opts) {
                 `${label} — would arm: ${arm.argvDisplay}`,
               ));
             } else if (arm.alreadyArmed) {
-              // rc 3 is the script's own dedup refusal — already
-              // converged, not a failure. Reads as skipped, never manual —
+              // rc 3 is the script's own dedup refusal, already
+              // converged, not a failure. Reads as skipped, never manual.
               // "re-run to retry" would loop forever against a healthy machine.
               skipped.push(`${label} — already armed (rc 3)`);
             } else {
@@ -1477,7 +1477,7 @@ function buildSummary(answers, laneRows, opts) {
             }
           } else if (arm) {
             // `arm`
-            // IS present but `arm.ran` is false — bin.js sets exactly this
+            // IS present but `arm.ran` is false. bin.js sets exactly this
             // shape when building the flags/spawning the command THREW
             // mid-step (arm.argvDisplay carries the thrown message in that
             // case), a DIFFERENT fact from "the step was never reached at
@@ -1494,8 +1494,8 @@ function buildSummary(answers, laneRows, opts) {
             // the arm step
             // never reporting a result under an APPLIED run (a config save
             // failure upstream skipped it, or any other reason) is NOT
-            // "installed" — `actions` renders under `installed:`, the one
-            // bucket this whole design promises never overclaims — so this
+            // "installed". `actions` renders under `installed:`, the one
+            // bucket this whole design promises never overclaims, so this
             // belongs in `manual`, same as every other "declared but never
             // ran" shape below.
             manual.push({
@@ -1508,7 +1508,7 @@ function buildSummary(answers, laneRows, opts) {
           skipped.push(isPipeline ? 'luna cadence — you answered cadence=off' : `${label} — you answered off`);
           // RETASK stage1-build-6d2e an earlier fix (extended
           // to every unit): answering off writes the disposition but does
-          // NOT by itself touch the scheduler — spec §3.5 S1 explicitly
+          // NOT by itself touch the scheduler. Spec §3.5 S1 explicitly
           // anticipates enabled:false + tasks-still-present as a WARN
           // ("unmanaged leftovers"), not a forbidden state, so disarming is
           // its own consented step (mirrors bridge persistence below),
@@ -1533,7 +1533,7 @@ function buildSummary(answers, laneRows, opts) {
             }
           } else if (luna.disarmCadence && disarm) {
             // RETASK stage1-build-6d2e
-            // `disarm` present but `disarm.ran` false — the disarm attempt
+            // `disarm` present but `disarm.ran` false: the disarm attempt
             // THREW mid-step (same shape/distinction as the arm branch
             // above), not "never reached". Still manual either way (never
             // claim success).
@@ -1545,13 +1545,13 @@ function buildSummary(answers, laneRows, opts) {
           } else if (luna.disarmCadence && dryRun) {
             // --dry-run "would disarm" is a PLANNED action, same bucket as
             // the arm branch's own dry-run case a few lines up and
-            // bridge-persistence's dry-run case below — it belongs in
+            // bridge-persistence's dry-run case below. It belongs in
             // `actions`/`planned`, not `manual`.
             actions.push(`${label} — would disarm via ${scriptBase} (see the DRY line above)`);
           } else if (luna.disarmCadence) {
             // Consent was given but the step never reported at all under an
             // APPLIED run (most likely gated off by a config-save failure
-            // upstream) — never silently claim it happened.
+            // upstream), never silently claim it happened.
             manual.push({
               what: `${label} disarm was requested, but the step reported no result (treat any existing jobs as still armed)`,
               how: `${scriptFull} disarm`,
@@ -1573,7 +1573,7 @@ function buildSummary(answers, laneRows, opts) {
     } else if (luna.phiDeclared) {
       // this "himmelctl
       // records..." claim is a config-document write, same as bridge config
-      // below — false under an APPLIED run whose save() failed (o.configSaveOk
+      // below: false under an APPLIED run whose save() failed (o.configSaveOk
       // === false is the only "failed" signal; undefined, e.g. under --dry-run
       // where save() never runs, and true both mean "not gated").
       manual.push(o.configSaveOk === false ? {
@@ -1594,10 +1594,10 @@ function buildSummary(answers, laneRows, opts) {
   // vs "you answered X=skip" distinction as luna/bridge above, now that
   // the earlier fix makes `answers.secretsWalk` genuinely undefined (not a
   // manufactured 'skip') when the question was never asked (vaultMode=='none'
-  // or contributor role) — before that fix this branch was unreachable
+  // or contributor role). Before that fix this branch was unreachable
   // (secretsWalk was always at least the string 'skip'), which is why it was
   // left. No data-loss risk here (the walk is pure reporting, never a
-  // write) — this is the same false-statement class the wording fix is
+  // write). This is the same false-statement class the wording fix is
   // still worth making for.
   const secretsWalkSupplied = answers.secretsWalk !== undefined && answers.secretsWalk !== null;
   const secretsWalk = answers.secretsWalk || 'skip';
@@ -1617,25 +1617,25 @@ function buildSummary(answers, laneRows, opts) {
         manual.push({ what: `secret ${r.name} — configured but the probe flagged a problem (${r.detail})`, how: r.obtain, note: '' });
       } else if (r.status === 'error') {
         // the probe itself threw
-        // (our code, not the credential) — a DIFFERENT fact from "configured
+        // (our code, not the credential), a DIFFERENT fact from "configured
         // but unhealthy" (that phrasing presumes we know it's configured) AND
         // from 'unconfigured' (which tells the adopter to go set up something
         // that may already BE set up). Its own wording: we don't know, go
         // look at why the probe broke.
         manual.push({ what: `secret ${r.name} — probe error, could not determine status (${r.detail})`, how: 'investigate the probe failure above, then re-run install to re-check', note: '' });
       } else {
-        // 'unconfigured' — the adopter simply has not set this one up yet
+        // 'unconfigured': the adopter simply has not set this one up yet
         // (or, for a luna-sources-typed entry, the wizard has no per-source
-        // descriptor to actively probe — see the apply-step comment). Either
+        // descriptor to actively probe, see the apply-step comment). Either
         // way this is a normal skip, never an error (design A15).
         //
         // a paired credential
         // (BITBUCKET_EMAIL/BITBUCKET_API_TOKEN) shares ONE aggregate luna-sources probe with its
-        // sibling — the probe can only speak for the source as a whole, so
+        // sibling. The probe can only speak for the source as a whole, so
         // 'unconfigured' here does NOT mean THIS credential specifically is
         // the one missing; it could just as easily be the sibling. Naming
         // only this one would send an adopter who already set IT correctly
-        // on a wasted trip to "fix" something that isn't broken — never
+        // on a wasted trip to "fix" something that isn't broken, never
         // invent a per-credential verdict the probe has no evidence for;
         // just say honestly that it can't tell the pair apart.
         const manifestEntry = SECRETS_MANIFEST.secrets.find((s) => s.name === r.name);
@@ -1647,7 +1647,7 @@ function buildSummary(answers, laneRows, opts) {
     }
     if (results.length === 0) {
       // same "declared but never
-      // ran" shape as cadence-arm/bridge-persistence above — SECRETS_MANIFEST
+      // ran" shape as cadence-arm/bridge-persistence above. SECRETS_MANIFEST
       // always has entries, so this is unreachable in a normal apply run
       // today, but "never actually happens yet" is not a reason to let an
       // APPLIED run's `installed:` bucket claim a walk that reported nothing.
@@ -1671,10 +1671,10 @@ function buildSummary(answers, laneRows, opts) {
     // this claimed a config-
     // document write (bridge.envPath/whisper.*) UNCONDITIONALLY under
     // installed:, even when the save() that was supposed to persist it had
-    // already failed (o.configSaveOk === false) — the exact same "declared
+    // already failed (o.configSaveOk === false), the exact same "declared
     // but never happened" defect already fixed for cadence/persistence,
     // arriving from a fourth direction. `undefined` (e.g. --dry-run, where
-    // save() never runs at all) is NOT a failure signal — only an explicit
+    // save() never runs at all) is NOT a failure signal. Only an explicit
     // `false` gates this.
     if (o.configSaveOk === false) {
       manual.push({
@@ -1709,22 +1709,22 @@ function buildSummary(answers, laneRows, opts) {
         } else if (p.skipped) {
           // RETASK stage1-build-6d2e an earlier fix [coordinator ruling on
           // codex-2]: a deliberate skip (readiness probes not green) is the
-          // DESIGNED behaviour, not a failure — rc stays 0 for this case
+          // DESIGNED behaviour, not a failure. rc stays 0 for this case
           // (bin.js) and the wording here must say so plainly, distinct from
           // an installer that actually ran and failed.
           // `p.skipped` now covers TWO
           // distinct deliberate-skip reasons (probes not ready [codex-2] AND
-          // a config save failure upstream [codex-3]) — the wording stays
+          // a config save failure upstream [codex-3]). The wording stays
           // generic and lets `p.detail` (bin.js's own, reason-specific text)
           // say which, rather than hardcoding one reason into both.
           manual.push({ what: `bridge persistence — SKIPPED: ${p.detail}`, how: 're-run install once the issue above is resolved', note: '' });
         } else if (p.partial) {
           // Linux unit
-          // install+start succeeded but linger did not — a DIFFERENT fact
+          // install+start succeeded but linger did not, a DIFFERENT fact
           // from "nothing was installed" (the else branch below), and
           // "NOT installed" would be false for the half that worked. No
           // automatic rollback (bin.js's own ruling: unwinding machine state
-          // on a partial failure is its own risk) — report the partial
+          // on a partial failure is its own risk). Report the partial
           // state honestly, with the exact remediation command (already
           // embedded in p.detail by attemptBridgePersistence).
           manual.push({ what: `bridge persistence PARTIAL — ${p.detail}`, how: 'run the remediation command above, then re-run install/status to confirm', note: '' });
@@ -1735,7 +1735,7 @@ function buildSummary(answers, laneRows, opts) {
         // RETASK stage1-build-6d2e an earlier fix / later CR finding:
         // platform-branch the wording via the ONE shared decision
         // (bridgePersistenceArtifact() above), the same source bin.js's
-        // consent prompt now reads too — --dry-run is the one surface whose
+        // consent prompt now reads too. --dry-run is the one surface whose
         // entire job is describing what has not happened yet, and a
         // platform with no installer at all must say so rather than
         // claiming an install that could never happen.
@@ -1751,7 +1751,7 @@ function buildSummary(answers, laneRows, opts) {
         }
       } else {
         // same "declared but
-        // never ran" shape as the cadence-arm fix above — an APPLIED run
+        // never ran" shape as the cadence-arm fix above. An APPLIED run
         // where the step reported nothing is not "installed"; belongs under
         // still-manual, never actions/installed.
         manual.push({
@@ -1817,7 +1817,7 @@ function summaryLines(summary) {
     lines.push(`  ! ${m.what}`);
     if (m.how) lines.push(`      ${m.how}`);
     // `note` is one line or an ORDERED list of them (remediation, then the
-    // setup step it unblocks) —.
+    // setup step it unblocks).
     for (const n of (Array.isArray(m.note) ? m.note : [m.note])) {
       if (n) lines.push(`      ${n}`);
     }

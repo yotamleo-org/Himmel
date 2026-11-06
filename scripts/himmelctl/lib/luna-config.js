@@ -1,9 +1,9 @@
 'use strict';
-// scripts/himmelctl/lib/luna-config.js — engine module owning the adopter's
+// scripts/himmelctl/lib/luna-config.js: engine module owning the adopter's
 // shared config document at ~/.himmel/config.json (externalization
 // Stage 1 PR-B, design §3.3 / assumption A13). This is NOT himmelctl's own
 // private state cache (that's lib/state.js's <cacheDir()>/state.json, under
-// ~/.claude/himmel/) — this document belongs to the adopter's luna+bridge
+// ~/.claude/himmel/). This document belongs to the adopter's luna+bridge
 // subsystems, at ~/.himmel/, the SAME per-subsystem data-dir convention as
 // ~/.himmel/quota-gauge.jsonl, ~/.himmel/flow-runs.jsonl and ~/.himmel/voice/
 // (see e.g. scripts/lib/quota-gauge-ledger-path.sh). That's deliberate, not
@@ -13,7 +13,7 @@
 //   - ZERO new npm dependencies: only Node builtins + relative requires.
 //   - No JSON-schema library. validateConfig() below is a hand-rolled,
 //     table-driven, closed-shape walker in the style of
-//     scripts/install/manifest-lint.mjs's checkProbeShape() — a declarative
+//     scripts/install/manifest-lint.mjs's checkProbeShape(): a declarative
 //     SCHEMA tree, not a wall of hand-written `if`s.
 //   - Trust-bearing artifacts (access.json, .salus, phi-roots, egress
 //     denylists) are REFERENCED, never embedded/written here (design A8.1):
@@ -21,11 +21,11 @@
 //   - Secret material is never written into this document (design A8.2):
 //     bridge.envPath is a PATH to the bridge's own .env; the bot token
 //     itself never appears here.
-//   - A schedule is canonically {time: "HH:MM" local, day?: MON..SUN} —
+//   - A schedule is canonically {time: "HH:MM" local, day?: MON..SUN}:
 //     weekly when `day` is present, daily otherwise (design A9).
 //
 // API: load() (read + migrate + validate; a required field the file lacks is
-// filled from its default in memory, an unknown key is kept — inspect() also
+// filled from its default in memory, an unknown key is kept. inspect() also
 // reports both), save() (write-to-temp ->
 // validate -> atomic rename -> keep ONE timestamped .bak), migrate() (pure
 // vN->vN+1 functions; an unknown FUTURE version throws loudly and writes
@@ -33,7 +33,7 @@
 //
 // HIMMEL_LUNA_CONFIG_PATH overrides the resolved file path (explicit
 // override, matches the shell-side single-file convention in e.g.
-// scripts/lib/quota-gauge-ledger-path.sh's HIMMEL_QUOTA_GAUGE_LEDGER) — the
+// scripts/lib/quota-gauge-ledger-path.sh's HIMMEL_QUOTA_GAUGE_LEDGER), the
 // seam hermetic tests use so they never touch the real
 // ~/.himmel/config.json.
 
@@ -52,7 +52,7 @@ function configPath() {
   return path.join(os.homedir(), '.himmel', 'config.json');
 }
 
-// The schema-shaped default when no config.json exists yet (first run) —
+// The schema-shaped default when no config.json exists yet (first run),
 // mirrors lib/state.js's emptyState(). Values match design §3.3 exactly.
 function defaultConfig() {
   return {
@@ -86,7 +86,7 @@ function defaultConfig() {
 // node's `fields` is NOT an error (it is the user's own key
 // kept untouched and reported through `unknown`). Every named field is
 // required unless `optional: true` (the only optional field
-// in the whole v1 document is a schedule's `day` — daily-vs-weekly, A9).
+// in the whole v1 document is a schedule's `day`: daily-vs-weekly, A9).
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DAY_ENUM = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
@@ -101,7 +101,7 @@ function scheduleFieldSpec() {
   };
 }
 
-// `vm` is the one OPTIONAL himmelctl-managed section — absent
+// `vm` is the one OPTIONAL himmelctl-managed section. Absent
 // means vm.mode=local, so fillDefaults()/migrate() never inject it into a
 // config that lacks it. validateVm() mirrors scripts/lib/vm-mode.sh's
 // resolver (fail closed): whatever it rejects is a resolver error there, and
@@ -194,7 +194,7 @@ const SCHEMA = {
         phi: {
           type: 'object',
           // A8.1: `declared` records the adopter's yes/no ANSWER to the PHI
-          // question — never a path to the checklist, never vault contents.
+          // question, never a path to the checklist, never vault contents.
           fields: { declared: { type: 'boolean' } },
         },
       },
@@ -273,7 +273,7 @@ function checkNode(value, spec, label, errors, unknown) {
 }
 
 // Validate `doc` against the v1 schema; returns an array of error strings
-// (empty = valid). Never throws — callers decide what a non-empty result
+// (empty = valid). Never throws. Callers decide what a non-empty result
 // means (load()/save() both turn it into a thrown Error naming the file).
 function validateConfig(doc) {
   const errors = [];
@@ -282,7 +282,7 @@ function validateConfig(doc) {
 }
 
 // The keys of `doc` the schema does not name, as dotted paths ("userKey",
-// "luna.note"). Never an error — see checkNode().
+// "luna.note"). Never an error. See checkNode().
 function unknownKeys(doc) {
   const unknown = [];
   checkNode(doc, SCHEMA, '$', [], unknown);
@@ -293,7 +293,7 @@ function unknownKeys(doc) {
 //
 // A config that predates a required v1 field (hand-edited, or written by an
 // older build) is completed IN MEMORY from defaultConfig(): an absent field
-// takes its documented default, and a present field is never touched — a
+// takes its documented default, and a present field is never touched. A
 // wrong-typed value stays wrong so validation still refuses it rather than
 // this rewriting a user's value. An absent optional field (a schedule's
 // `day`) stays absent. Returns { doc, filled } where `doc` is a new object
@@ -328,7 +328,7 @@ function fillDefaults(doc) {
 
 // ── Migration ────────────────────────────────────────────────────────────
 //
-// Pure vN -> vN+1 functions, keyed by the FROM version. Empty today — v1 is
+// Pure vN -> vN+1 functions, keyed by the FROM version. Empty today. v1 is
 // the only schema version design §3.3 defines. This is the seam future
 // migrations hang off: one pure function per version bump, each returning a
 // NEW object (never mutating its input) with `version` incremented by
@@ -338,8 +338,8 @@ const MIGRATIONS = {
 };
 
 // Walk `doc.version` up to CURRENT_VERSION via MIGRATIONS. A version this
-// build has no migration step for — including any version NEWER than
-// CURRENT_VERSION, e.g. a config written by a future himmelctl — throws
+// build has no migration step for (including any version NEWER than
+// CURRENT_VERSION, e.g. a config written by a future himmelctl) throws
 // loudly naming the offending file, rather than silently truncating or
 // guessing at a shape it doesn't understand. Callers (load()) must not
 // persist anything when this throws.
@@ -349,7 +349,7 @@ function migrate(doc, filePath) {
   // string all parse fine) used to reach `current.version` below and throw an
   // unhelpful TypeError instead of this module's named, file-identifying
   // error style. `typeof null === 'object'` also makes a naive typeof check
-  // insufficient here — isPlainObject() already excludes both null and arrays.
+  // insufficient here. isPlainObject() already excludes both null and arrays.
   if (!isPlainObject(doc)) {
     throw new Error(`luna-config: ${filePath} does not contain a config object (got ${JSON.stringify(doc)})`);
   }
@@ -380,7 +380,7 @@ function migrate(doc, filePath) {
 // Read, validate and migrate the on-disk config, or the schema-shaped
 // default when no config.json exists yet (first run). A malformed file
 // surfaces its parse/validation error naming the file path rather than
-// silently resetting to default — this is the adopter's own artifact, and a
+// silently resetting to default. This is the adopter's own artifact, and a
 // corrupt copy should be investigated, not discarded (mirrors lib/state.js's
 // load() policy for state.json). Never writes.
 //
@@ -418,7 +418,7 @@ function load() {
 }
 
 // Keep exactly ONE timestamped .bak of the file currently at `p` (design:
-// "keep ONE timestamped .bak", not an accumulating history) — pruning any
+// "keep ONE timestamped .bak", not an accumulating history), pruning any
 // earlier backups for this same config path before writing a fresh one.
 // Called BEFORE the temp-write/rename below so a crash in that window still
 // leaves a usable .bak next to an untouched original (V7 atomic-write-
@@ -430,7 +430,7 @@ function backupExisting(p) {
   const freshName = `${base}.bak-${stamp}`;
   const freshPath = path.join(dir, freshName);
   // the fresh backup
-  // used to be created AFTER pruning every existing `.bak-*` — if
+  // used to be created AFTER pruning every existing `.bak-*`. If
   // copyFileSync then failed (ENOSPC, permissions, a locked file) the
   // adopter was left with no backup at all, in exactly the failure scenarios
   // where the backup matters most. Creating the fresh copy first means a
@@ -438,7 +438,7 @@ function backupExisting(p) {
   // untouched, and propagates uncaught so save() aborts as it does today.
   //
   // `freshPath` is
-  // JUST as predictable ahead of time as save()'s pid-named tmp path is —
+  // JUST as predictable ahead of time as save()'s pid-named tmp path is:
   // timestamp-based rather than pid-based, but a plain copyFileSync still
   // followed whatever already sat there, symlink or not. `COPYFILE_EXCL`
   // closes it the same way `{ flag: 'wx' }` already closes it on the temp
@@ -446,28 +446,28 @@ function backupExisting(p) {
   // Windows, CopyFileW's fail-if-exists parameter), not a stat-then-write
   // race, so it refuses ANYTHING already at freshPath rather than writing
   // through a pre-planted symlink. A symlink at freshPath is refused outright
-  // and left untouched (see the lstat check below); a plain regular file —
-  // the same-timestamp collision this stamp's granularity can produce, e.g.
-  // two saves under a mocked clock in tests — is a stale backup from an
+  // and left untouched (see the lstat check below); a plain regular file
+  // (the same-timestamp collision this stamp's granularity can produce, e.g.
+  // two saves under a mocked clock in tests) is a stale backup from an
   // earlier save at this exact timestamp string, not a copy of today's `p`,
   // and refreshing it to today's content is correct.
   //
   // an earlier fix
-  // resolved that plain-file collision with unlink-then-copy — remove the
+  // resolved that plain-file collision with unlink-then-copy: remove the
   // stale file at freshPath, then retry the copy at that SAME name. If the
   // retry then failed (ENOSPC, permissions, a transient I/O error), the
   // adopter was left with ZERO backups: the stale one already destroyed, no
   // replacement ever written. That's the exact defect an earlier fix above closed
   // one layer up, reintroduced inside this EEXIST branch. The fix: never
   // destroy freshPath before its replacement exists. The replacement is
-  // copied to a staging path that cannot collide with freshPath — pid-suffixed,
-  // the same convention save()'s own `.tmp-${pid}` uses below — so the stale
+  // copied to a staging path that cannot collide with freshPath, pid-suffixed,
+  // the same convention save()'s own `.tmp-${pid}` uses below, so the stale
   // file sits untouched on disk for the ENTIRE duration of that copy, and
   // only once it has landed successfully is freshPath replaced, via a single
   // atomic renameSync rather than a remove-then-create window. There is no
   // instant on any path through this branch with zero backups on disk, and a
   // successful refresh still leaves exactly one file at the predictable
-  // `freshName` the prune loop below (and every caller) key on — renameSync
+  // `freshName` the prune loop below (and every caller) key on. renameSync
   // overwrites freshPath in place rather than adding a second file beside it.
   try {
     fs.copyFileSync(p, freshPath, fs.constants.COPYFILE_EXCL);
@@ -477,7 +477,7 @@ function backupExisting(p) {
       throw new Error(`luna-config: a symlink already exists at ${freshPath} — refusing to back up through it`);
     }
     const stagePath = `${freshPath}.stage-${process.pid}`;
-    // `stageRemovalRefused` mirrors save()'s own `tmpRemovalRefused` below —
+    // `stageRemovalRefused` mirrors save()'s own `tmpRemovalRefused` below:
     // a symlink at stagePath is refused and left untouched, so the cleanup
     // in the outer catch must not be the thing that unlinks it.
     let stageRemovalRefused = false;
@@ -498,7 +498,7 @@ function backupExisting(p) {
       throw new Error(`luna-config: refusing to refresh the backup at ${freshPath} — staging copy to ${stagePath} failed: ${stageFailure.message}`);
     }
     // renameSync used to sit
-    // OUTSIDE the cleanup handling — a failed rename (locked/permission-denied
+    // OUTSIDE the cleanup handling: a failed rename (locked/permission-denied
     // destination) left the PID-named staging file behind, contradicting
     // backupExisting()'s own contract that staging failures clean up after
     // themselves. Mirrors save()'s own rename-with-cleanup fix a few lines
@@ -524,7 +524,7 @@ function backupExisting(p) {
 
 // Best-effort delete of our own temp file. Every cleanup call site below is
 // about to throw its OWN, informative error naming what actually went wrong
-// (a bad shape, a failed rename, a failed write) — an unguarded unlinkSync
+// (a bad shape, a failed rename, a failed write). An unguarded unlinkSync
 // racing against the file already being gone (or a permission flip) would
 // replace that informative error with a raw, unrelated one instead of just
 // leaving the original error to surface. existsSync + a swallowed catch keep
@@ -533,7 +533,7 @@ function removeTempBestEffort(tmp) {
   try {
     if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
   } catch (_e) {
-    // best-effort — whatever error triggered this cleanup is what gets thrown.
+    // best-effort: whatever error triggered this cleanup is what gets thrown.
   }
 }
 
@@ -546,7 +546,7 @@ function removeTempBestEffort(tmp) {
 // ponytail: a pre-existing config.json that does not parse as an object has an
 // unknown pre-state, so save() records no sections for it at all and uninstall
 // leaves the whole file in place (residue over breakage); revisit if an
-// operator reports such residue — recording it would need a raw-bytes backup.
+// operator reports such residue. Recording it would need a raw-bytes backup.
 function recordSections(p, prior, doc, fileCreated) {
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   for (const key of Object.keys(doc)) {
@@ -569,9 +569,9 @@ function recordSections(p, prior, doc, fileCreated) {
 // (re-read + re-parsed), not just the in-memory object, so a shape defect
 // introduced by JSON.stringify itself (e.g. a dropped `undefined`) is caught
 // before it ever reaches the real config path. On ANY failure (bad shape,
-// interrupted write, OR a failed rename — e.g. a locked/permission-denied
+// interrupted write, OR a failed rename, e.g. a locked/permission-denied
 // destination) the temp file is cleaned up and the ORIGINAL file is left
-// completely untouched — fs.renameSync is the only step that can make the
+// completely untouched. fs.renameSync is the only step that can make the
 // new content visible at `p`, and it only runs after validation passes.
 function save(doc) {
   const p = configPath();
@@ -595,7 +595,7 @@ function save(doc) {
 
   const tmp = `${p}.tmp-${process.pid}`;
   // the write itself
-  // used to sit OUTSIDE the cleanup handling below — a failure mid-write
+  // used to sit OUTSIDE the cleanup handling below: a failure mid-write
   // (ENOSPC, permission-denied) could still leave a partial tmp file behind,
   // the same "cleaned up on any failure" contract gap codex-5's rename fix
   // (below) already closed for the rename step. removeTempBestEffort()'s own
@@ -604,29 +604,29 @@ function save(doc) {
   //
   // `tmp` is a
   // PREDICTABLE path (pid-based), and a plain writeFileSync follows whatever
-  // already sits there — including a symlink an attacker pre-planted, which
+  // already sits there, including a symlink an attacker pre-planted, which
   // would redirect this write into an arbitrary target. `{ flag: 'wx' }`
   // (O_CREAT|O_EXCL) makes existence-check-and-create atomic at the OS level:
   // open() fails on ANYTHING already at `tmp`, symlink or not, and never
   // follows one. EEXIST is then resolved with an lstat (never followed, so
   // it reports the entry itself) to tell apart the two cases that can
-  // produce it: a symlink is refused outright and left untouched — an
+  // produce it: a symlink is refused outright and left untouched. An
   // attacker can always recreate it, but this function will never silently
-  // write through one — while a plain regular file (a stale leftover from a
+  // write through one, while a plain regular file (a stale leftover from a
   // previous crashed save() run, e.g. the same pid reused) is safe to remove
   // and the write retried exactly once, so a crash doesn't wedge every
   // future save() with a permanent EEXIST.
   //
   // a `tmpIsOurs`
   // flag used to gate cleanup and was only set true AFTER writeFileSync
-  // RETURNED — a partial write (ENOSPC, an I/O error mid-flush) has O_EXCL
+  // RETURNED. A partial write (ENOSPC, an I/O error mid-flush) has O_EXCL
   // succeed in CREATING the file before the write/flush portion throws, so
   // `tmpIsOurs` stayed false and cleanup skipped the very file it had just
   // created, leaking it. Ownership doesn't actually need a flag for that
   // case: O_CREAT|O_EXCL guarantees that any non-EEXIST failure means
   // nothing else could have raced us onto `tmp`, so whatever now exists
   // there is unconditionally ours to remove. `tmpRemovalRefused` names the
-  // ONE case cleanup must still skip — the pre-planted symlink, refused and
+  // ONE case cleanup must still skip: the pre-planted symlink, refused and
   // left alone on purpose because it was never ours to touch, not leaked by
   // omission.
   let tmpRemovalRefused = false;
@@ -661,7 +661,7 @@ function save(doc) {
   }
 
   // renameSync used to sit OUTSIDE the
-  // cleanup handling — a failed rename (locked/permission-denied
+  // cleanup handling: a failed rename (locked/permission-denied
   // destination) left the PID-named temp file behind, contradicting this
   // function's own "temp file is cleaned up on any failure" contract above.
   try {
