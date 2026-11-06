@@ -3,7 +3,7 @@ name: roadmap-clips
 description: Use when the operator wants a cross-source roadmap from the luna vault — writes a 60-Maps/ note. Proposals only.
 ---
 
-# roadmap-clips — cross-source roadmap synthesis (LUNA-59)
+# roadmap-clips — cross-source roadmap synthesis
 
 You turn the luna vault's scattered actionable signal into ONE sequenced
 roadmap note in `60-Maps/`. You **propose** — you never auto-file Jira tickets
@@ -11,7 +11,7 @@ and never restructure the vault (same contract as `/synthesize-clips`).
 
 Deterministic collection lives in `tools/roadmap-aggregate.mjs` (read-only,
 no network). You do the judgement work: cluster, sequence, map to tools, dedup
-candidate tickets against open Jira. **HIMMEL-128:** invoke the tool and the
+candidate tickets against open Jira. **NEVER headless:** invoke the tool and the
 Jira CLI with the `Bash` tool only — no headless / print-mode claude invocations.
 
 ## Inputs

@@ -3,7 +3,7 @@ name: contra
 description: Use to contrast recent luna notes with past views, or explore analogies between technical and personal notes.
 ---
 
-# /contra — ghost-self + bridge passes (LUNA-96, LUNA-97)
+# /contra — ghost-self + bridge passes
 
 Both modes append to TODAY's daily note (`50-Journal/Daily/YYYY-MM-DD.md`, create from
 `[[_Templates/Daily-Note]]` if absent) under the exact H2 heading `## Thinking` (shared
@@ -111,6 +111,6 @@ closed, nothing written) and report the contention. Never merge blindly.
 
 ## Never
 
-- Never schedule this skill (no cadence hook — lean-invoke only, HIMMEL-177).
+- Never schedule this skill (no cadence hook — lean-invoke only).
 - Never modify or merge the source notes; this skill only APPENDS to today's daily note.
 - Never quote from a note younger than `--min-age` in a ghost entry.

@@ -3,7 +3,7 @@ name: luna-upgrade-all
 description: Discover and upgrade many luna-second-brain vaults to the current himmel template — dry-run first, per-vault confirm.
 ---
 
-# luna-upgrade-all — multi-vault upgrade sweep (HIMMEL-462)
+# luna-upgrade-all — multi-vault upgrade sweep
 
 You bring MULTIPLE existing luna-second-brain vaults up to the current himmel
 template in one best-effort pass. The engine that does all the work is
@@ -19,7 +19,7 @@ Do NOT reimplement any merge, backup, or classification logic here.
 - **User prompt:** `/luna-upgrade-all [--roots <dirs>] [--registry <path>]
   [--template-dir <path>] [--porcelain]` — handled by the thin wrapper at
   `.claude/commands/luna-upgrade-all.md` which delegates here.
-- **Programmatic Skill-tool dispatch (HIMMEL-128 compliant — no headless
+- **Programmatic Skill-tool dispatch (no headless
   claude):** `Skill { skill: "obsidian-triage:luna-upgrade-all", args: "<flags...>" }`.
 
 Wherever this document references `$ARGUMENTS`, treat it as the literal arg
