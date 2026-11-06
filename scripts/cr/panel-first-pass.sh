@@ -16,6 +16,15 @@
 #
 # Usage:
 #   bash scripts/cr/panel-first-pass.sh --head <sha> --branch <name> [--context-file <f>]
+#   bash scripts/cr/panel-first-pass.sh --pr <n> --head <40-hex sha> --branch <headRefName> [--context-file <f>]
+#
+# --pr: an outside PR reviewed from its fetched ref refs/himmel/outside/<n>, its branch never
+# checked out. --head must equal that ref and --branch is the PR's headRefName. The round is
+# always full and comes from review-round.sh start --pr (the authorization and the cap), the
+# diff base is the merge base with the PR's base branch, the panel is pinned to the ref
+# (--pin-ref; a panel that lacks it is refused, exit 7, before a round is spent), the
+# CR_TARGET_* seam names the branch, head and PR, and the round-scope row's source is pr-diff.
+# Only the checked-out-branch check is skipped.
 #
 # --context-file: code beyond the diff every critic may cite (format in
 # critic-first-pass.sh --help); forwarded to critic-panel.sh.
@@ -83,6 +92,7 @@ HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 HEAD_SHA=""
 BRANCH=""
+PR=""
 CONTEXT_FILE=""
 FULL=0
 # The context file a later round builds for itself, removed on every exit.
@@ -96,6 +106,9 @@ while [ $# -gt 0 ]; do
         --branch)
             [ $# -ge 2 ] || { echo "panel-first-pass: --branch requires a branch name" >&2; exit 2; }
             BRANCH="$2"; shift 2 ;;
+        --pr)
+            [ $# -ge 2 ] || { echo "panel-first-pass: --pr requires a PR number" >&2; exit 2; }
+            PR="$2"; shift 2 ;;
         --context-file)
             # Code beyond the diff for every critic (critic-first-pass.sh
             # --context-file); forwarded to critic-panel.sh as given.
@@ -116,10 +129,32 @@ fi
 [ -n "$BRANCH" ]   || { echo "panel-first-pass: --branch is required (step 1's captured branch)" >&2; exit 2; }
 # the round counter and ledger are per-branch shared state; only
 # the branch checked out in cwd may be written (review-round.sh refuses too).
-current_branch="$(git branch --show-current 2>/dev/null)" || current_branch=""
-if [ -z "$current_branch" ] || [ "$current_branch" != "$BRANCH" ]; then
-    echo "panel-first-pass: --branch '$BRANCH' is not the branch checked out in this directory ('${current_branch:-detached HEAD}') - run it from that branch's worktree" >&2
-    exit 2
+if [ -n "$PR" ]; then
+    # An outside PR's branch is never checked out: its head is the fetched ref, which --head must equal.
+    if ! [[ "$PR" =~ ^[1-9][0-9]{0,8}$ ]] || ! [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+        echo "panel-first-pass: --pr needs a plain PR number and a full 40-hex --head" >&2
+        exit 2
+    fi
+    FULL=1
+    # shellcheck source=scripts/lib/outside-contributors.sh
+    # shellcheck disable=SC1091
+    . "$HIMMEL_ROOT/scripts/lib/outside-contributors.sh" || { echo "panel-first-pass: cannot load scripts/lib/outside-contributors.sh" >&2; exit 2; }
+    # A panel that cannot pin to the ref would verify the live checkout instead and certify the wrong tree.
+    if ! grep -q -e '--pin-ref)' "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" 2>/dev/null; then
+        echo "panel-first-pass ABORT - critic-panel.sh has no --pin-ref, so the panel cannot be pinned to refs/himmel/outside/$PR instead of the live checkout. A --pr review is refused rather than run unpinned: nothing was reviewed, nothing was recorded, no round was spent." >&2
+        exit 7
+    fi
+    pr_ref_sha="$(git rev-parse --verify --quiet "refs/himmel/outside/$PR^{commit}" 2>/dev/null)" || pr_ref_sha=""   # swallow-ok: an empty ref fails the equality check on the next line (exit 7)
+    if [ "$pr_ref_sha" != "$HEAD_SHA" ]; then
+        echo "panel-first-pass ABORT - refs/himmel/outside/$PR is at '${pr_ref_sha:-nothing}', not at --head $HEAD_SHA. Fetch the PR head first (pr-check-outside.sh --pr). Nothing was reviewed and nothing was recorded." >&2
+        exit 7
+    fi
+else
+    current_branch="$(git branch --show-current 2>/dev/null)" || current_branch=""
+    if [ -z "$current_branch" ] || [ "$current_branch" != "$BRANCH" ]; then
+        echo "panel-first-pass: --branch '$BRANCH' is not the branch checked out in this directory ('${current_branch:-detached HEAD}') - run it from that branch's worktree" >&2
+        exit 2
+    fi
 fi
 
 # validate the INPUT PIN before any git command consumes it.
@@ -141,6 +176,27 @@ fi
 # Resolve the protected default (main OR master) for the diff base.
 # shellcheck source=../guardrails/lib.sh
 # shellcheck disable=SC1091
+if [ -n "$PR" ]; then
+    # The base is the PR's own base branch as the forge names it, and the diff base the merge base of
+    # that branch with the fetched PR ref (the one helper the security audit uses too).
+    # shellcheck source=scripts/lib/timeout-bin.sh
+    # shellcheck disable=SC1091
+    . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
+    pr_gh=(gh)
+    [ ! -f "$HIMMEL_ROOT/scripts/lib/gh-read.sh" ] || pr_gh=(bash "$HIMMEL_ROOT/scripts/lib/gh-read.sh")
+    db=""
+    if [ -n "${_TIMEOUT_BIN:-}" ]; then
+        db="$("$_TIMEOUT_BIN" -k 5 20 "${pr_gh[@]}" pr view "$PR" --json baseRefName --jq .baseRefName 2>/dev/null)" || db=""   # swallow-ok: an empty name is refused on the next line (exit 7)
+    fi
+    db_sha=""
+    if [ -n "$db" ]; then
+        db_sha="$(outside_pr_merge_base "$PR" "$db")" || db_sha=""   # swallow-ok: an empty merge base is refused on the next line (exit 7)
+    fi
+    if [ -z "$db_sha" ]; then
+        echo "panel-first-pass ABORT - could not read PR #$PR's base branch or its merge base with refs/himmel/outside/$PR. Nothing was reviewed and nothing was recorded." >&2
+        exit 7
+    fi
+else
 db=$(. "$HIMMEL_ROOT/scripts/guardrails/lib.sh" 2>/dev/null && default_branch || echo main)
 # Fetch ONCE at the start of the row, then capture the BASE commit through the
 # shared origin-first resolver. A repository with no origin falls
@@ -156,6 +212,7 @@ db_sha="$(git -C "$review_root" rev-parse --verify --quiet "$base_ref^{commit}" 
 if [ -z "$db_sha" ]; then
     echo "panel-first-pass ABORT - diff base $base_ref does not resolve to a commit. Nothing was reviewed and nothing was recorded. Re-run /pr-check from step 1." >&2
     exit 7
+fi
 fi
 echo "captured diff base: $db ($db_sha)"   # carry this literal into step 3.2
 
@@ -223,8 +280,18 @@ else
             exit 9
         fi
     fi
-    review_round="$(bash "$HIMMEL_ROOT/scripts/cr/review-round.sh" start --branch "$BRANCH" --head "$HEAD_SHA" --base-sha "$db_sha")"
-    round_rc=$?
+    if [ -n "$PR" ]; then
+        # review-round.sh start --pr authorizes the PR itself and owns the cap; it takes no base.
+        review_round="$(bash "$HIMMEL_ROOT/scripts/cr/review-round.sh" start --pr "$PR" --head "$HEAD_SHA")"
+        round_rc=$?
+        if [ "$round_rc" -eq 5 ]; then
+            echo "panel-first-pass ABORT - PR #$PR at $HEAD_SHA is not authorized for a no-checkout review, or its round state could not be written (reason above). Nothing was reviewed and nothing was recorded." >&2
+            exit 5
+        fi
+    else
+        review_round="$(bash "$HIMMEL_ROOT/scripts/cr/review-round.sh" start --branch "$BRANCH" --head "$HEAD_SHA" --base-sha "$db_sha")"
+        round_rc=$?
+    fi
     full_takeover="panel-first-pass ABORT - outside PR past its three full rounds: hand it to a maintainer takeover (HIMMEL-9019). Nothing was reviewed."
     if [ "$round_rc" -eq 8 ] && [ "$FULL" -eq 1 ]; then
         echo "$full_takeover" >&2
@@ -241,6 +308,11 @@ else
     # give_back <rc>: an abort from here on reviewed nothing, so the round
     # just started is given back before the exit.
     give_back() {
+        # ponytail: a --pr round is not given back (no review-round abort --pr), so an abort after start spends one of the PR's rounds; upgrade path is abort --pr
+        if [ -n "$PR" ]; then
+            echo "panel-first-pass: the aborted --pr round $review_round for PR #$PR was NOT given back" >&2
+            exit "$1"
+        fi
         if gb_out="$(bash "$HIMMEL_ROOT/scripts/cr/review-round.sh" abort --branch "$BRANCH" --head "$HEAD_SHA")"; then
             echo "panel-first-pass: the aborted round was given back (round, reviewed head: $gb_out)" >&2
         else
@@ -345,7 +417,9 @@ else
     # CR_USAGE_LOG=1: each critic logs a chars/4 ESTIMATED usage
     # ledger record. No CRITIC_PANEL_TIERS here: the panel
     # resolves tiers from the exported CR_PROFILE.
-    panel_findings=$(printf '%s' "$diff_out" | CR_USAGE_LOG=1 CR_REVIEW_ROUND="$review_round" bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --head "$HEAD_SHA" --branch "$BRANCH" --base "$db" --base-sha "$db_sha" --context-file "$CONTEXT_FILE" 2>"$panel_tmp")
+    # --pr: the seam critic-first-pass.sh already honours carries the PR's branch, head and number.
+    [ -z "$PR" ] || export CR_TARGET_BRANCH="$BRANCH" CR_TARGET_HEAD="$HEAD_SHA" CR_TARGET_PR="$PR"
+    panel_findings=$(printf '%s' "$diff_out" | CR_USAGE_LOG=1 CR_REVIEW_ROUND="$review_round" bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --head "$HEAD_SHA" --branch "$BRANCH" ${PR:+--pin-ref "refs/himmel/outside/$PR"} --base "$db" --base-sha "$db_sha" --context-file "$CONTEXT_FILE" 2>"$panel_tmp")
     panel_rc=$?
     panel_avail_lines=$(cat "$panel_tmp"); rm -f "$panel_tmp"
     if [ "$panel_rc" -eq 7 ]; then
@@ -378,7 +452,7 @@ PINABORT
             retry_diff=$(rtk proxy git diff "$diff_range" 2>/dev/null) || retry_diff=""
             if [ -n "$retry_diff" ]; then
                 retry_tmp=$(mktemp -t cr-panel-avail.XXXXXX)
-                panel_findings=$(printf '%s' "$retry_diff" | CR_USAGE_LOG=1 CR_REVIEW_ROUND="$review_round" bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --head "$HEAD_SHA" --branch "$BRANCH" --base "$db" --base-sha "$db_sha" --context-file "$CONTEXT_FILE" 2>"$retry_tmp")
+                panel_findings=$(printf '%s' "$retry_diff" | CR_USAGE_LOG=1 CR_REVIEW_ROUND="$review_round" bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --head "$HEAD_SHA" --branch "$BRANCH" ${PR:+--pin-ref "refs/himmel/outside/$PR"} --base "$db" --base-sha "$db_sha" --context-file "$CONTEXT_FILE" 2>"$retry_tmp")
                 panel_rc=$?
                 panel_avail_lines=$(cat "$retry_tmp"); rm -f "$retry_tmp"
                 # The retry is a SECOND panel invocation, so it has its own
@@ -450,7 +524,7 @@ write_round_scope() {
         echo "panel-first-pass: could not record the round-scope row for $HEAD_SHA (ledger-append.sh, reason above)" >&2
     fi
 }
-write_round_scope panel-first-pass ""
+if [ -n "$PR" ]; then write_round_scope pr-diff "$PR"; else write_round_scope panel-first-pass ""; fi
 
 # Rounds 2 and 3 tag an Important finding on code older than the PR
 # (critic-pre-existing-tag.py): git blame decides, and the ledger field

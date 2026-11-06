@@ -323,6 +323,21 @@ export GIT_CONFIG_NOSYSTEM=1
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# --pr <n> --head <40-hex> --branch <name>: review an outside PR from its fetched ref
+# refs/himmel/outside/<n>, with its branch never checked out. The branch and head come from the
+# arguments (the head must equal that ref), nothing is delegated to a branch copy of this script
+# whatever the diff touches (the anchor's copy always runs), and the marker clear is skipped.
+# No other argument is accepted.
+pr_mode=0 pr_num="" pr_head="" pr_branch=""
+if [ "$#" -gt 0 ]; then
+    if [ "$#" -ne 6 ] || [ "$1" != "--pr" ] || [ "$3" != "--head" ] || [ "$5" != "--branch" ] \
+        || ! [[ "$2" =~ ^[1-9][0-9]{0,8}$ ]] || ! [[ "$4" =~ ^[0-9a-f]{40}$ ]] || [ -z "$6" ]; then
+        echo "usage: pr-check-context.sh [--pr <n> --head <40-hex sha> --branch <name>]" >&2
+        exit 2
+    fi
+    pr_mode=1 pr_num="$2" pr_head="$4" pr_branch="$6"
+fi
+
 # The trust anchor. Read from THIS script's own environment,
 # never re-derived from cwd or a repo-supplied file -
 # a crafted repo under review must never be able to steer where himmel's
@@ -337,6 +352,10 @@ HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 anchor="${HIMMEL_REPO:-}"
 if [ -z "$anchor" ]; then
     echo "pr-check-context: HIMMEL_REPO is unset or empty - cannot locate himmel from a trusted source outside the repo under review; adopt/setup wires it into settings.json env, or export it in your launching shell, then re-run" >&2
+    exit 2
+fi
+if [ "$pr_mode" = 1 ] && ! [ "$HIMMEL_ROOT" -ef "$anchor" ]; then
+    echo "pr-check-context: --pr runs only through the anchor's copy ($anchor/scripts/cr/pr-check-context.sh), never a branch copy ($SCRIPT_DIR) - nothing was reviewed" >&2
     exit 2
 fi
 
@@ -485,7 +504,14 @@ else
     himmel_dir_is_anchor=yes
 fi
 
-branch=$(git branch --show-current)
+if [ "$pr_mode" = 1 ]; then
+    # Never a branch copy of this script, so himmel_dir is the anchor and the delegation block is skipped.
+    himmel_dir="$anchor"
+    himmel_dir_is_anchor=yes
+    branch="$pr_branch"
+else
+    branch=$(git branch --show-current)
+fi
 # Refuse a branch name carrying a shell metacharacter BEFORE it
 # is printed. Every later /pr-check fence substitutes this value as literal
 # TEXT (e.g. --branch '<branch>'), and the branch is repo-controlled on an
@@ -508,7 +534,16 @@ case "$branch" in
         exit 3
         ;;
 esac
-head=$(git rev-parse HEAD)
+if [ "$pr_mode" = 1 ]; then
+    # swallow-ok: an unresolvable PR ref is refused on the next line (exit 2)
+    head=$(git rev-parse --verify --quiet "refs/himmel/outside/$pr_num^{commit}" 2>/dev/null) || head=""
+    if [ "$head" != "$pr_head" ]; then
+        echo "pr-check-context: refs/himmel/outside/$pr_num is not at $pr_head (it is at '${head:-nothing}') - fetch the PR head first, nothing was reviewed" >&2
+        exit 2
+    fi
+else
+    head=$(git rev-parse HEAD)
+fi
 # Use --git-common-dir (shared .git), not --git-dir (per-worktree), so the
 # marker lookup matches the pre-push hook's write path even when /pr-check is
 # invoked from a different worktree.
@@ -1147,7 +1182,7 @@ fi
 # written there. On the adopter lane (the default branch already exited 4 above)
 # an absent marker means "review against origin/<base>", not "nothing to do".
 no_marker_review=no
-if [ "$anchor_lane" = adopter ] && [ ! -f "$marker" ]; then
+if { [ "$anchor_lane" = adopter ] && [ ! -f "$marker" ]; } || [ "$pr_mode" = 1 ]; then
     no_marker_review=yes
 fi
 
@@ -1173,7 +1208,9 @@ printf 'pr-check-context: cr_diff_files=%s\n' "$cr_diff_files_csv"
 # included): commits HEAD lacks from the diff base, and commits local <base>
 # carries beyond origin/<base>. Same two counts the pre-push guard warns on;
 # "unknown" when a ref is missing, never a number guessed.
-behind_base=$(gitd rev-list --count "HEAD..$base_ref" 2>/dev/null) || behind_base=unknown
+behind_tip=HEAD
+[ "$pr_mode" != 1 ] || behind_tip="$head"
+behind_base=$(gitd rev-list --count "$behind_tip..$base_ref" 2>/dev/null) || behind_base=unknown
 main_ahead=unknown
 if gitd rev-parse --verify -q "refs/remotes/origin/$base" >/dev/null 2>&1 \
    && gitd rev-parse --verify -q "refs/heads/$base" >/dev/null 2>&1; then
