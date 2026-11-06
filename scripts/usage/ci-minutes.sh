@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # scripts/usage/ci-minutes.sh -- CI billed minutes per run, beside wall minutes.
 # The one writer of <store>/ci-minutes.jsonl; one JSON row per Actions run,
-# the run id is the idempotence key.
+# the run id is the key. A run listed again at a higher run_attempt (a rerun)
+# replaces its row: the timing endpoint is cumulative over attempts (billed),
+# the run list shows the latest attempt (wall), so the new answer is stored
+# whole, never added to the old. A row without run_attempt is attempt 1.
 #
 # Usage:
 #   ci-minutes.sh write  --repo OWNER/NAME [--days N] [--until <iso>] [--store <dir>] [--gh <exe>]
@@ -108,7 +111,7 @@ list_window() {
   printf '%s' "$out" | jq -c '.workflow_runs[]
     | ((.updated_at | fromdateiso8601) - ((.run_started_at // .created_at) | fromdateiso8601)) as $w
     | if $w < 0 then error("negative wall time") else . end
-    | {id, name, created_at, wall_secs: $w}' >> "$WORK/runs.jsonl" || die "cannot read the run listing"
+    | {id, name, created_at, wall_secs: $w, run_attempt: (.run_attempt // 1)}' >> "$WORK/runs.jsonl" || die "cannot read the run listing"
 }
 
 : > "$WORK/runs.jsonl"
@@ -125,10 +128,13 @@ trap 'rmdir "$LOCK" 2>/dev/null; rm -rf "$WORK"' EXIT
 trap 'exit 130' INT TERM HUP
 touch "$FILE" || die "cannot write $FILE"
 
-# new runs only: the run id is the idempotence key
+# new runs, and runs listed at a higher attempt than the stored row (a rerun; a
+# row from before run_attempt existed is attempt 1): the run id is the key
 jq -c -s --slurpfile old "$FILE" '
-  ($old | map({key: (.run_id | tostring), value: true}) | from_entries) as $have
-  | unique_by(.id) | .[] | select($have[.id | tostring] | not)' "$WORK/runs.jsonl" > "$WORK/new.jsonl" || die "cannot read $FILE"
+  ($old | map({key: (.run_id | tostring), value: (.run_attempt // 1)}) | from_entries) as $have
+  | group_by(.id) | map(max_by(.run_attempt)) | .[]
+  | $have[.id | tostring] as $h
+  | select($h == null or .run_attempt > $h) | .refresh = ($h != null)' "$WORK/runs.jsonl" > "$WORK/new.jsonl" || die "cannot read $FILE"
 
 added=0
 while IFS= read -r r; do
@@ -142,9 +148,19 @@ while IFS= read -r r; do
   fi
   jq -nc --arg repo "$REPO" --argjson r "$r" --argjson t "$timing" '
     (try ([$t.billable[] | .total_ms] | if length > 0 and all(type == "number") then add else null end) catch null) as $ms
-    | {schema: 1, repo: $repo, run_id: $r.id, workflow: $r.name, created_at: $r.created_at,
+    | {schema: 1, repo: $repo, run_id: $r.id, workflow: $r.name, created_at: $r.created_at, run_attempt: $r.run_attempt,
        wall_min: (($r.wall_secs / 60 * 100 | round) / 100),
-       billed_min: (if $ms == null then "unknown" else (($ms / 60000 * 100 | round) / 100) end)}' >> "$FILE" || die "cannot append to $FILE"
+       billed_min: (if $ms == null then "unknown" else (($ms / 60000 * 100 | round) / 100) end)}' > "$WORK/row.json" || die "cannot build the row for run $id"
+  if [ "$(jq -r .refresh <<<"$r")" = true ]; then
+    # a rerun: one atomic swap drops the stored row for this id as the new one lands
+    if { jq -c --argjson id "$id" 'select(.run_id != $id)' "$FILE" && cat "$WORK/row.json"; } > "$FILE.next"; then
+      mv "$FILE.next" "$FILE" || die "cannot rewrite $FILE"
+    else
+      rm -f "$FILE.next"; die "cannot rewrite $FILE"
+    fi
+  else
+    cat "$WORK/row.json" >> "$FILE" || die "cannot append to $FILE"
+  fi
   added=$((added + 1))
 done < "$WORK/new.jsonl"
 echo "ci-minutes: appended $added run(s), $(jq -s 'length' "$WORK/runs.jsonl") listed ($FILE)"
