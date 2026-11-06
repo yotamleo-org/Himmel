@@ -1880,6 +1880,88 @@ if grepq "$fork_out" "== fork branches" && ! grepq "$fork_out" -E 'fork (invento
 unset FORK_OWNER
 rm -rf "$W17"
 
+# 18. A hold is read for every kind of pin, not only the scripts/upstreams.json
+#     tag_release rows: a marketplace plain SHA pin, a skill-fork override and a
+#     commit_head registry row each read HELD while pin-holds.json records the
+#     reviewed pair, and BEHIND again once upstream moves past it. Hermetic:
+#     the W13 stubbed gh serves heads/tags from a state dir.
+W18="$(mktemp -d "${TMPDIR:-/tmp}/pdrift-w18.XXXXXX")" || { bad "hold fixtures: mktemp -d failed"; exit 1; }; mkdir -p "$W18/bin" "$W18/state"
+cat >"$W18/bin/gh" <<'GH'
+#!/usr/bin/env bash
+a="$*"
+[ "$1" = auth ] && [ "$2" = status ] && exit 0
+[ "$1 $2" = 'repo list' ] && { printf '[]\n'; exit 0; }
+repo=$(printf '%s\n' "$a" | sed -n 's|.*repos/\([^/ ]*/[^/ ]*\)/.*|\1|p')
+case "$a" in
+  *"/compare/"*) printf '3\n'; exit 0 ;;
+  *"/tags"*) grep -E "^${repo}=" "$GHSTATE/tags" 2>/dev/null | head -1 | cut -d= -f2- | tr ',' '\n'; exit 0 ;;
+  *"commits/HEAD"*) grep -E "^${repo}=" "$GHSTATE/heads" 2>/dev/null | head -1 | cut -d= -f2; exit 0 ;;
+esac
+exit 0
+GH
+chmod +x "$W18/bin/gh"
+H_OLD=aaaabbbbccccdddd000011112222333344445555
+H_REV=1111222233334444555566667777888899990000
+H_NEW=ffffeeeeddddcccc999988887777666655554444
+printf 'o/pin-held=%s\no/pin-moved=%s\no/pin-free=%s\no/ch-held=%s\no/ch-moved=%s\no/ch-free=%s\n' "$H_REV" "$H_NEW" "$H_REV" "$H_REV" "$H_NEW" "$H_REV" >"$W18/state/heads"
+printf 'o/fork-held=v1.0.0,v2.0.0\no/fork-moved=v1.0.0,v3.0.0\no/fork-free=v1.0.0,v2.0.0\n' >"$W18/state/tags"
+cat >"$W18/m.json" <<JSON
+{"plugins":[
+ {"name":"pin-held","source":{"source":"url","url":"https://github.com/o/pin-held.git","sha":"$H_OLD"}},
+ {"name":"pin-moved","source":{"source":"url","url":"https://github.com/o/pin-moved.git","sha":"$H_OLD"}},
+ {"name":"pin-free","source":{"source":"url","url":"https://github.com/o/pin-free.git","sha":"$H_OLD"}},
+ {"name":"fork-held","source":{"source":"url","url":"https://github.com/me/fork-held.git","ref":"v1.0.0"}},
+ {"name":"fork-moved","source":{"source":"url","url":"https://github.com/me/fork-moved.git","ref":"v1.0.0"}},
+ {"name":"fork-free","source":{"source":"url","url":"https://github.com/me/fork-free.git","ref":"v1.0.0"}}
+]}
+JSON
+cat >"$W18/u.json" <<'JSON'
+{
+ "fork-held":{"upstream_repo":"o/fork-held","track":"release","synced_base":"v1.0.0"},
+ "fork-moved":{"upstream_repo":"o/fork-moved","track":"release","synced_base":"v1.0.0"},
+ "fork-free":{"upstream_repo":"o/fork-free","track":"release","synced_base":"v1.0.0"}
+}
+JSON
+cat >"$W18/reg.json" <<JSON
+{"entries":[
+ {"name":"ch-held","kind":"commit_head","mode":"pin","tracked_repo":"o/ch-held","pinned_commit":"$H_OLD","tier":"A"},
+ {"name":"ch-moved","kind":"commit_head","mode":"pin","tracked_repo":"o/ch-moved","pinned_commit":"$H_OLD","tier":"A"},
+ {"name":"ch-free","kind":"commit_head","mode":"pin","tracked_repo":"o/ch-free","pinned_commit":"$H_OLD","tier":"A"}
+]}
+JSON
+cat >"$W18/holds.json" <<JSON
+{"holds":[
+ {"eco":"plugin","key":"pin-held","current":"$H_OLD","latest_reviewed":"$H_REV","reason":"fixture plain-pin hold"},
+ {"eco":"plugin","key":"pin-moved","current":"$H_OLD","latest_reviewed":"$H_REV","reason":"fixture plain-pin hold"},
+ {"eco":"plugin","key":"fork-held","current":"v1.0.0","latest_reviewed":"v2.0.0","reason":"fixture skill-fork hold"},
+ {"eco":"plugin","key":"fork-moved","current":"v1.0.0","latest_reviewed":"v2.0.0","reason":"fixture skill-fork hold"},
+ {"eco":"upstream","key":"ch-held","current":"$H_OLD","latest_reviewed":"$H_REV","reason":"fixture commit_head hold"},
+ {"eco":"upstream","key":"ch-moved","current":"$H_OLD","latest_reviewed":"$H_REV","reason":"fixture commit_head hold"}
+]}
+JSON
+out18="$(GHSTATE="$W18/state" PATH="$W18/bin:$PATH" DRIFT_PIN_HOLDS="$W18/holds.json" DRIFT_MJSON="$W18/m.json" DRIFT_UPSTREAMS="$W18/u.json" DRIFT_REGISTRY="$W18/reg.json" DRIFT_KNOWN_MARKETPLACES=/dev/null bash "$SCRIPT" 2>&1)"
+for held in pin-held fork-held ch-held; do
+  if grepq "$out18" "^  $held: HELD "; then ok "hold: $held with a matching pin-holds row -> HELD, not BEHIND"; else bad "$held not HELD; $(grep "$held" <<< "$out18")"; fi
+done
+for behind in pin-moved pin-free fork-moved fork-free ch-moved ch-free; do
+  if grepq "$out18" "^  $behind: BEHIND"; then ok "hold: $behind with no row or a stale row -> BEHIND"; else bad "$behind not BEHIND; $(grep "$behind" <<< "$out18")"; fi
+done
+# Only held rows: they must not count as drift.
+cat >"$W18/m.json" <<JSON
+{"plugins":[
+ {"name":"pin-held","source":{"source":"url","url":"https://github.com/o/pin-held.git","sha":"$H_OLD"}},
+ {"name":"fork-held","source":{"source":"url","url":"https://github.com/me/fork-held.git","ref":"v1.0.0"}}
+]}
+JSON
+cat >"$W18/reg.json" <<JSON
+{"entries":[{"name":"ch-held","kind":"commit_head","mode":"pin","tracked_repo":"o/ch-held","pinned_commit":"$H_OLD","tier":"A"}]}
+JSON
+GHSTATE="$W18/state" PATH="$W18/bin:$PATH" DRIFT_PIN_HOLDS="$W18/holds.json" DRIFT_MJSON="$W18/m.json" DRIFT_UPSTREAMS="$W18/u.json" DRIFT_REGISTRY="$W18/reg.json" DRIFT_KNOWN_MARKETPLACES=/dev/null bash "$SCRIPT" >"$W18/held.txt" 2>&1; rc18=$?
+# (The stubbed gh cannot serve the vendored-fork and fork-branch sections, so
+# the run ends INCOMPLETE (3); a held row must not add DRIFT (2).)
+if [ "$rc18" -ne 2 ] && ! grep -q 'DRIFT DETECTED' "$W18/held.txt"; then ok "hold: held rows alone raise no drift"; else bad "all-held run rc=$rc18 reports drift; $(grep BEHIND "$W18/held.txt")"; fi
+rm -rf "$W18"
+
 echo ""
 if [ "$fails" -ne 0 ]; then echo "$fails check(s) failed."; exit 1; fi
 echo "all checks passed."

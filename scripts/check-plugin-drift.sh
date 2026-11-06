@@ -425,6 +425,24 @@ if lines:
 '
 }
 
+# pin_hold_reason <eco> <key> <current> <latest_reviewed> — the reason of the
+# scripts/upstreams/pin-holds.json row for this pin, or nothing. A row applies
+# only while the pin is still at `current` AND upstream's newest is still
+# `latest_reviewed` (a leading v is ignored on both sides), as in pin-scan.py;
+# anything newer re-raises BEHIND. eco "plugin" = a marketplace pin by plugin
+# name (current/latest_reviewed are SHAs for a plain pin, versions for a fork
+# override); eco "upstream" = a scripts/upstreams.json row by its name.
+pin_hold_reason() {
+  python3 -c 'import json,os,sys
+p,e,k,c,l,vm=sys.argv[1:7]
+hs=json.load(open(p)).get("holds",[]) if p and os.path.exists(p) else []
+n=lambda v:str(v).lstrip("vV")
+h=next((h for h in hs if h.get("eco")==e and h.get("key")==k and n(h.get("current",""))==n(c) and n(h.get("latest_reviewed",""))==n(l)),None)
+r=h and h.get("release")
+print("" if h is None else (h.get("reason") or "-")+("" if not r else "; release: "+(vm if r=="vm-proof" else "%s (unrecognised condition, stays HELD)"%r)),end="")' \
+    "${DRIFT_PIN_HOLDS-$ROOT/scripts/upstreams/pin-holds.json}" "$@" "$VM_PROOF_RELEASE" 2>/dev/null
+}
+
 if ! command -v gh >/dev/null 2>&1 || ! gh auth status >/dev/null 2>&1; then
   echo "drift-check: gh CLI not available/authenticated — skipping (fail-open)."
   exit 0
@@ -546,8 +564,13 @@ PY
         if [ "$latest" = "$up_base" ]; then
           echo "  $name: CURRENT  (fork tracks $up_repo @ $up_base; pin $ref)"
         else
-          echo "  $name: BEHIND   ($up_repo latest tag $latest; fork synced to $up_base — re-sync fork, bump synced_base + fork tag, then bump marketplace ref)"
-          drift=1
+          hold_reason="$(pin_hold_reason plugin "$name" "$up_base" "$latest")"
+          if [ -n "$hold_reason" ]; then
+            echo "  $name: HELD     ($up_repo latest tag $latest reviewed and held back: $hold_reason)"
+          else
+            echo "  $name: BEHIND   ($up_repo latest tag $latest; fork synced to $up_base — re-sync fork, bump synced_base + fork tag, then bump marketplace ref)"
+            drift=1
+          fi
         fi
         continue
       fi
@@ -570,9 +593,14 @@ PY
       if [ "$ref" = "$head" ]; then
         echo "  $name: CURRENT  ($repo @ ${ref:0:7})"
       else
-        delta="$(gh api "repos/$repo/compare/$ref...$head" --jq '.ahead_by' 2>/dev/null)"
-        echo "  $name: BEHIND   ($repo upstream is ${delta:-?} commit(s) ahead — pin ${ref:0:7} -> ${head:0:7})"
-        drift=1
+        hold_reason="$(pin_hold_reason plugin "$name" "$ref" "$head")"
+        if [ -n "$hold_reason" ]; then
+          echo "  $name: HELD     ($repo @ ${head:0:7} reviewed and held back: $hold_reason)"
+        else
+          delta="$(gh api "repos/$repo/compare/$ref...$head" --jq '.ahead_by' 2>/dev/null)"
+          echo "  $name: BEHIND   ($repo upstream is ${delta:-?} commit(s) ahead — pin ${ref:0:7} -> ${head:0:7})"
+          drift=1
+        fi
       fi
     done <<< "$pins_out"
   fi
@@ -807,9 +835,14 @@ PY
           if [ "$local_sha" = "$head" ]; then
             echo "  $name: CURRENT  ($repo @ ${local_sha:0:7})${tier_note}"
           else
-            delta="$(gh api "repos/$repo/compare/$local_sha...$head" --jq '.ahead_by' 2>/dev/null)"
-            echo "  $name: BEHIND   ($repo upstream is ${delta:-?} commit(s) ahead — ${local_sha:0:7} -> ${head:0:7})${tier_note}"
-            drift=1
+            hold_reason="$(pin_hold_reason upstream "$name" "$local_sha" "$head")"
+            if [ -n "$hold_reason" ]; then
+              echo "  $name: HELD     ($repo @ ${head:0:7} reviewed and held back: $hold_reason)${tier_note}"
+            else
+              delta="$(gh api "repos/$repo/compare/$local_sha...$head" --jq '.ahead_by' 2>/dev/null)"
+              echo "  $name: BEHIND   ($repo upstream is ${delta:-?} commit(s) ahead — ${local_sha:0:7} -> ${head:0:7})${tier_note}"
+              drift=1
+            fi
           fi
           ;;
         tag_release)
@@ -957,14 +990,7 @@ PY
               # A reviewed hold (eco "upstream", key = registry name) in pin-holds.json
               # reads HELD while current and latest_reviewed both still match, as in
               # pin-scan.py; a newer upstream release re-raises BEHIND.
-              hold_reason="$(python3 -c 'import json,os,sys
-p,k,c,l=sys.argv[1:5]
-hs=json.load(open(p)).get("holds",[]) if p and os.path.exists(p) else []
-n=lambda v:str(v).lstrip("vV")
-h=next((h for h in hs if h.get("eco")=="upstream" and h.get("key")==k and n(h.get("current",""))==c and n(h.get("latest_reviewed",""))==l),None)
-r=h and h.get("release")
-print("" if h is None else (h.get("reason") or "-")+("" if not r else "; release: "+(sys.argv[5] if r=="vm-proof" else "%s (unrecognised condition, stays HELD)"%r)),end="")' \
-                "${DRIFT_PIN_HOLDS-$ROOT/scripts/upstreams/pin-holds.json}" "$name" "$norm_local" "$norm_latest" "$VM_PROOF_RELEASE" 2>/dev/null)"
+              hold_reason="$(pin_hold_reason upstream "$name" "$norm_local" "$norm_latest")"
               if [ -n "$hold_reason" ]; then
                 echo "  $name: HELD     (latest $latest reviewed and held back: $hold_reason)${tier_note}"
               else
