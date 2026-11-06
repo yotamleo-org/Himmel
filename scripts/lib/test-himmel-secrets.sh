@@ -74,6 +74,31 @@ printf 'service=himmel key=TEST_HS_D scope=user\tfake-d\n' >>"$KSTUB_STORE"
 got=$(cd "$REPO" && unset TEST_HS_A TEST_HS_D && "$HS" exec --keys TEST_HS_A -- bash -c 'printf "%s|%s" "${TEST_HS_A:-<unset>}" "${TEST_HS_D:-<unset>}"')
 assert_eq "S3 exec passes only the listed keys" "fake-a|<unset>" "$got"
 
+# S3b: exec --require refuses to run CMD when a named key resolves to unset;
+# without it the child still runs (the default is unchanged). Names, never values.
+kreset
+printf 'service=himmel key=TEST_HS_A scope=user\tfake-a\n' >"$KSTUB_STORE"
+rm -f "$TMP/s3b.ran"
+out=$(cd "$REPO" && unset TEST_HS_A && export KSTUB_LOCKED=true && "$HS" exec --require --keys TEST_HS_A -- touch "$TMP/s3b.ran" 2>&1; echo "rc=$?")
+assert_eq "S3b locked keyring: --require exits 1" "rc=1" "$(printf '%s' "$out" | tail -n 1)"
+assert_eq "S3b locked keyring: --require does not run CMD" "absent" "$([ -e "$TMP/s3b.ran" ] && echo ran || echo absent)"
+assert_eq "S3b locked keyring: --require names the key" "1" "$(printf '%s' "$out" | grep -c 'TEST_HS_A')"
+assert_eq "S3b locked keyring: --require prints no value" "0" "$(printf '%s' "$out" | grep -c 'fake-')"
+rm -f "$TMP/s3b.ran"
+out=$(cd "$REPO" && unset TEST_HS_NONE && "$HS" exec --require --keys TEST_HS_NONE -- touch "$TMP/s3b.ran" 2>&1; echo "rc=$?")
+assert_eq "S3b unset key: --require exits 1" "rc=1" "$(printf '%s' "$out" | tail -n 1)"
+assert_eq "S3b unset key: --require does not run CMD" "absent" "$([ -e "$TMP/s3b.ran" ] && echo ran || echo absent)"
+assert_eq "S3b unset key: --require names the key" "1" "$(printf '%s' "$out" | grep -c 'TEST_HS_NONE')"
+rm -f "$TMP/s3b.ran"
+out=$(cd "$REPO" && unset TEST_HS_A TEST_HS_NONE && "$HS" exec --require --keys TEST_HS_A,TEST_HS_NONE -- touch "$TMP/s3b.ran" 2>&1; echo "rc=$?")
+assert_eq "S3b one of two unset: --require exits 1 and runs nothing" "rc=1 absent" "$(printf '%s' "$out" | tail -n 1) $([ -e "$TMP/s3b.ran" ] && echo ran || echo absent)"
+# shellcheck disable=SC2016 # expands in the child
+got=$(cd "$REPO" && unset TEST_HS_A && "$HS" exec --require --keys TEST_HS_A -- bash -c 'printf "%s" "${TEST_HS_A:-<unset>}"')
+assert_eq "S3b present key: --require runs CMD with the value" "fake-a" "$got"
+rm -f "$TMP/s3b.ran"
+(cd "$REPO" && unset TEST_HS_NONE && "$HS" exec --keys TEST_HS_NONE -- touch "$TMP/s3b.ran" 2>/dev/null)
+assert_eq "S3b default (no --require): CMD still runs without the key" "ran" "$([ -e "$TMP/s3b.ran" ] && echo ran || echo absent)"
+
 # S4: put stores a user default, or a project override with --project.
 kreset
 out=$(cd "$REPO" && printf 'fake-put' | "$HS" put --stdin TEST_HS_P)
