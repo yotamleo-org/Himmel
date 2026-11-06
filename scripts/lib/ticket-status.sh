@@ -341,23 +341,44 @@ ts_merge_rows() {
 # (a funnel row written under event merge by an older worker-jira-status.sh has none).
 # rc 0 = partial, 1 = none, 2 = the filter failed (not read as "none").
 ts_partial_merge() {
-    local log rows
+    local log rc=0
     log="$(ts_state_dir)/status-events.jsonl"
     [ -r "$log" ] || return 1
-    rows=$(ts_merge_rows "$log" 2>/dev/null) || return 2
-    [ -n "$(jq -R -n --arg k "$1" '[inputs | fromjson? | select(.key == $k and .event == "merge" and has("contract"))] | last
-        | select(. != null and .contract == "no") | 1' <<<"$rows" 2>/dev/null)" ]
+    _ts_merge_last "$log" "$1" || rc=$?
+    [ "$rc" -ne 2 ] || return 2
+    [ "$rc" -eq 0 ] && [ "$TS_ML_CONTRACT" = no ]
+}
+
+# _ts_merge_last <log> <KEY> — the key's latest merge row that carries a contract: TS_ML_CONTRACT and TS_ML_RESULT.
+# rc 0 = found, 1 = none, 2 = the filter failed (not read as "none"). The filter (merge-rows-effective.py, which may
+# ask GitHub) and the jq over its rows run once per state of the log, not once per key and question: the answer is
+# kept as one `key<TAB>contract<TAB>result` line per row, and a log that grew or moved since is read again
+# (the traced drift pass spent 31 s on whole-log reads). A call inside `$( )` keeps no cache.
+_TS_MI="" _TS_MI_SIG=""
+_ts_merge_last() {
+    local sig line rows
+    TS_ML_CONTRACT="" TS_ML_RESULT=""
+    sig="$1|$_TS_LIB_DIR|$(stat -c '%s:%Y' "$1" 2>/dev/null || stat -f '%z:%m' "$1" 2>/dev/null)" # gnu-ok: the BSD form follows
+    if [ "$_TS_MI_SIG" != "$sig" ]; then
+        _TS_MI_SIG=""
+        rows=$(ts_merge_rows "$1" 2>/dev/null) || return 2
+        _TS_MI=$(jq -R -r 'fromjson? | select(type == "object" and .event == "merge" and has("contract")) | [.key, .contract, (.result // "")] | @tsv' <<<"$rows" 2>/dev/null) || return 2
+        _TS_MI_SIG=$sig
+    fi
+    line=$(awk -F'\t' -v k="$2" '$1 == k { l = $0 } END { if (l != "") print l }' <<<"$_TS_MI")
+    [ -n "$line" ] || return 1
+    TS_ML_CONTRACT=$(cut -f2 <<<"$line")
+    TS_ML_RESULT=$(cut -f3 <<<"$line")
 }
 
 # ts_has_merge_row <KEY> — rc 0 when the key has any merge row that carries a contract
 # (merge-on-green.sh and pr-merge.sh write one per merge). rc 1 = none, 2 = the filter failed.
 ts_has_merge_row() {
-    local log rows
+    local log rc=0
     log="$(ts_state_dir)/status-events.jsonl"
     [ -r "$log" ] || return 1
-    rows=$(ts_merge_rows "$log" 2>/dev/null) || return 2
-    [ -n "$(jq -R -n --arg k "$1" '[inputs | fromjson? | select(.key == $k and .event == "merge" and has("contract"))] | first
-        | select(. != null) | 1' <<<"$rows" 2>/dev/null)" ]
+    _ts_merge_last "$log" "$1" || rc=$?
+    return "$rc"
 }
 
 # ts_merged_no_row <KEY> — rc 0 when a PR whose title's first [KEY] is <KEY> merged and no merge row
@@ -391,14 +412,13 @@ ts_merged_no_row() {
 # Done did not land (result neither moved nor noop).
 # rc 0 = pending, 1 = none, 2 = the log is unreadable.
 ts_done_pending() {
-    local log
+    local log rc=0
     log="$(ts_state_dir)/status-events.jsonl"
     [ -e "$log" ] || return 1
     [ -r "$log" ] || return 2
-    local rows
-    rows=$(ts_merge_rows "$log" 2>/dev/null) || return 2
-    [ -n "$(jq -R -n --arg k "$1" '[inputs | fromjson? | select(.key == $k and .event == "merge" and has("contract"))] | last
-        | select(. != null and .contract == "yes" and .result != "moved" and .result != "noop") | 1' <<<"$rows" 2>/dev/null)" ]
+    _ts_merge_last "$log" "$1" || rc=$?
+    [ "$rc" -ne 2 ] || return 2
+    [ "$rc" -eq 0 ] && [ "$TS_ML_CONTRACT" = yes ] && [ "$TS_ML_RESULT" != moved ] && [ "$TS_ML_RESULT" != noop ]
 }
 
 _ts_no_write() { TS_DERIVED="no-write"; TS_RESULT="$1"; TS_RULE="$2"; TS_STAGE="${3:-}"; }

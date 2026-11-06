@@ -127,6 +127,33 @@ check "merge-rows: and the budget run made no GitHub call" "$(wc -l < "$MRGH_LOG
 _TS_LIB_DIR="$tmp/nolib" ts_partial_merge HIMMEL-9105; check "merge-rows: ts_partial_merge reports rc 2, not no-partial, when the filter cannot run" "$?" 2
 _TS_LIB_DIR="$tmp/nolib" ts_done_pending HIMMEL-9102; check "merge-rows: ts_done_pending reports an unreadable state (rc 2) when the filter cannot run" "$?" 2
 
+# The merge rows are read once per pass, not once per key and question (31 s of a traced drift pass).
+# A counting filter stands in for merge-rows-effective.py; the three questions about three keys share one read, and a
+# log that grew since is read again.
+mkdir -p "$tmp/countlib"
+cat > "$tmp/countlib/merge-rows-effective.py" <<'EOF'
+import os, runpy
+with open(os.environ["MRC_LOG"], "a") as f:
+    f.write("run\n")
+runpy.run_path(os.environ["MRC_REAL"], run_name="__main__")
+EOF
+export MRC_LOG="$tmp/mrc.log" MRC_REAL="$_TS_LIB_DIR/merge-rows-effective.py"
+: > "$MRC_LOG"
+cl_all() { # <key>... - the three questions, answers as one string
+    local k out=""
+    for k in "$@"; do
+        _TS_LIB_DIR="$tmp/countlib" ts_done_pending "$k"; out="$out$?"
+        _TS_LIB_DIR="$tmp/countlib" ts_partial_merge "$k"; out="$out$?"
+        _TS_LIB_DIR="$tmp/countlib" ts_has_merge_row "$k"; out="$out$?"
+    done
+    printf '%s' "$out"
+}
+ans=$(cl_all HIMMEL-9101 HIMMEL-9102 HIMMEL-9105)
+check "9436: the answers over the counting filter are right: 9101 none, 9102 done-pending + a row, 9105 partial + a row" "$ans" "111010100"
+check "9436: nine merge-row questions over one unchanged log run the filter once" "$(wc -l < "$MRC_LOG" | tr -d ' ')" 1
+printf '{"ts":"t","event":"merge","key":"HIMMEL-9190","pr":"90","head":"h90","contract":"yes","result":"moved","stage":"x"}\n' >> "$TICKET_STATUS_STATE_DIR/status-events.jsonl"
+_TS_LIB_DIR="$tmp/countlib" ts_has_merge_row HIMMEL-9190; check "9436: a log that grew since the last read is read again and the new row seen" "$?:$(wc -l < "$MRC_LOG" | tr -d ' ')" "0:2"
+
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-ticket-status.sh"
 else

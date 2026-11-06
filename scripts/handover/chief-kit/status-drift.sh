@@ -208,10 +208,37 @@ is_owner_state() { case "$1" in live|idle|IDLE-HELD|parked) return 0 ;; *) retur
 # looks ownerless without this. The title binds the PR to the ticket: a PR a comment merely
 # cites (another ticket's, an upstream one) exempts nothing. A closed or merged PR, a PR
 # titled for another ticket or none, or a failed gh read is not a yes: the ticket's rows stay.
+MIRROR_DIR="${TICK_TRACKER_MIRROR_DIR:-$HOME/.himmel/state/jira-mirror/${JIRA_PROJECT_KEY:-HIMMEL}}"
+# A ticket's labels and comments come from its file in the local Jira mirror, as its status and type do for the
+# merged-no-row class below: one live `jira get` or `jira comments` per ticket cost 37 s of a traced pass.
+# A key the mirror lacks, a file with no `labels:` line (labels) or no `## Comments` heading (comments) is read live.
+# ponytail: the mirror is as fresh as the last focus refresh, which mirrors just before this pass; upgrade path =
+# compare the file's updated field with the ticket's before trusting a label.
+# has_label <KEY> <label>: rc 0 labelled, 1 not
+has_label() {
+    local line f=$MIRROR_DIR/$1.md
+    if [ -r "$f" ]; then
+        # swallow-ok: an unreadable or label-less file leaves the line empty and the ticket is read live below
+        line=$(awk '/^---$/ { if (++n == 2) exit; next } n == 1 && /^labels: / { print; exit }' "$f" 2>/dev/null)
+        if [ -n "$line" ]; then
+            case "$line" in *'"'"$2"'"'*) return 0 ;; *) return 1 ;; esac
+        fi
+    fi
+    # swallow-ok: an unreadable ticket is not labelled, so its rows stay
+    jq -e --arg l "$2" '(.fields.labels // []) | index($l)' >/dev/null 2>&1 <<<"$(ts_jira get "$1" --json 2>/dev/null)"
+}
+# ticket_comments <KEY>: the comment text, from the mirror when its file has a Comments section
+ticket_comments() {
+    local f=$MIRROR_DIR/$1.md
+    if [ -r "$f" ] && grep -q '^## Comments' "$f" 2>/dev/null; then # swallow-ok: an unreadable file is read live below
+        sed -n '/^## Comments/,$p' "$f"
+        return 0
+    fi
+    ts_jira comments "$1" 2>/dev/null # swallow-ok: an unreadable comment list means no cross-repo PR is known, so the rows stay
+}
 xrepo_open() { # <KEY>
     local urls u row tkey
-    # swallow-ok: an unreadable comment list means no cross-repo PR is known, so the rows stay
-    urls=$(ts_jira comments "$1" 2>/dev/null | grep -oE 'https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[0-9]+' | sort -u)
+    urls=$(ticket_comments "$1" | grep -oE 'https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[0-9]+' | sort -u)
     while IFS= read -r u; do
         [ -n "$u" ] || continue
         # swallow-ok: a failed gh read is not proof the PR is open, so the rows stay
@@ -262,8 +289,7 @@ while IFS= read -r key; do
     # no single PR) or when its PR is open in another repo (that PR is its owner).
     standing=0 xrepo=0
     if [ -z "$open_prs" ] && [ "$(ts_rank "$jstatus")" -ge 1 ]; then
-        # swallow-ok: an unreadable ticket is not standing, so its rows stay
-        if jq -e '(.fields.labels // []) | index("standing")' >/dev/null 2>&1 <<<"$(ts_jira get "$key" --json 2>/dev/null)"; then standing=1; fi
+        if has_label "$key" standing; then standing=1; fi
         if xrepo_open "$key"; then xrepo=1; fi
     fi
 
@@ -320,8 +346,8 @@ while IFS= read -r key; do
     fi
 
     if [ "$jstatus" != Done ] && { [ -n "$open_prs" ] || is_owner_state "$wstate"; }; then
-        # swallow-ok: an unreadable ticket raises no HELD-IN-WORK row; the derive miss already raised a HEALTH row
-        if jq -e '(.fields.labels // []) | index("held")' >/dev/null 2>&1 <<<"$(ts_jira get "$key" --json 2>/dev/null)"; then
+        # an unreadable ticket raises no HELD-IN-WORK row; the derive miss already raised a HEALTH row
+        if has_label "$key" held; then
             add HELD-IN-WORK "$key" "held while ${open_prs:+PR $open_prs open}${open_prs:+${wstate:+ and }}owner $wstate" "ticket-hold.sh" "bash scripts/handover/chief-kit/ticket-hold.sh $key --release"
         fi
     fi
@@ -369,7 +395,6 @@ elif [ -r "$LOG" ]; then
 fi
 MNR_BUDGET="${TICKET_STATUS_DRIFT_MNR_BUDGET:-40}"
 case "$MNR_BUDGET" in ''|*[!0-9]*) MNR_BUDGET=40 ;; esac
-MIRROR_DIR="${TICK_TRACKER_MIRROR_DIR:-$HOME/.himmel/state/jira-mirror/${JIRA_PROJECT_KEY:-HIMMEL}}"
 # mirror_read <KEY> - TS_J_STATUS and TS_J_TYPE from the key's file in the local Jira mirror (the frontmatter only);
 # rc 1 = no file, or either field missing, so the caller reads the ticket live.
 mirror_read() {

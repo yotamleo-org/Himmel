@@ -1336,7 +1336,7 @@ sweep_wake() {
         *) rm -f "$sweep_focus_file"; return 1 ;;
     esac
     fkey="$fstat"
-    case "$fstat" in DIRTY:*) fkey=DIRTY ;; esac
+    case "$fstat" in DIRTY:*) fkey=DIRTY ;; FAILED:*) fkey=FAILED ;; esac # the marker keys on the state, not the stage: a failure that flips its stage name (timeout, drift:budget) is one failure
     [ "$(cat "$sweep_focus_file" 2>/dev/null)" != "$fkey" ] || return 1  # swallow-ok: no marker reads empty, so the first sight wakes
     printf '%s\n' "$fkey" > "$sweep_focus_file" 2>/dev/null
     printf 'WAKE focus %s\n' "$fstat"

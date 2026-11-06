@@ -33,8 +33,10 @@
 #             run goes on with the last good focus-chains.json, byte for byte, and ends
 #             `focus=WARN:chains <registry|graph|render>` (exit 0; the reason's detail is on stderr).
 #   render    tracker.py --version, staged
-#   drift    status-drift.sh over the sweep's snapshot, staged (report only). It fails as
-#             drift:<why>: timeout, rc<n>, budget (its own cut-off), gh, jira, no-sdrift, unknown
+#   drift    status-drift.sh over the sweep's snapshot, staged (report only). A failure is not a FAILED stage:
+#             the page is still published and the run ends `focus=WARN:drift <why>` (exit 0), why being timeout,
+#             rc<n>, budget (its own cut-off), gh, jira, no-sdrift or unknown. A report the pass printed itself
+#             is published; a pass that printed none leaves the last focus-drift.txt as it was.
 #   publish   the page and its fingerprint (.vfp) replace the old ones unless the page on
 #             disk already carries `<meta name="himmel-focus" content="<version> <fp>">`
 #             for this version and fingerprint, then focus-state is written
@@ -50,7 +52,7 @@
 # unchained count; a WARN on stderr when above 0), ts. A refresh marks the state dirty when it starts and clears
 # that only on success, so a run that dies midway reads as DIRTY.
 # --status prints focus=ok | focus=DIRTY:<minutes>m | focus=FAILED:<stage> |
-# focus=WARN:<warn> (a good run whose chains stage failed); focus=skip; --mark-dirty marks a ship event the refresh
+# focus=WARN:<warn> (a good run whose chains or drift stage failed); focus=skip; --mark-dirty marks a ship event the refresh
 # has not yet seen.
 # The whole run is cut off at FOCUS_REFRESH_BUDGET seconds (default 240) and reads
 # FAILED:timeout.
@@ -350,27 +352,40 @@ bounded 120 "${TRACKER[@]}" "$@" >/dev/null 2>&1 || failed render
 { [ -f "$stage/page.html" ] && [ -f "$stage/page.html.vfp" ]; } || failed render
 vfp=$(cat "$stage/page.html.vfp")
 
-rc=0
+# The drift stage is report only: a failure here never stops the page. It is a WARN, as the chains stage is, and the
+# run ends focus=WARN:drift <why> with the page published. A report the pass printed (its own sdrift= line) is still
+# published; a pass that printed none leaves the last drift file as it was.
+rc=0 DRIFT_WARN="" DRIFT_PUBLISH=""
 bounded 120 "${DRIFT[@]}" --repo "$REPO" --snapshot "$stage/snap" > "$stage/drift.txt" 2>/dev/null || rc=$?
-case "$rc" in 0) ;; 124 | 137) failed drift:timeout ;; *) failed "drift:rc$rc" ;; esac
-sdrift=$(tail -n 1 "$stage/drift.txt")
-case "$sdrift" in
-    sdrift=unknown)
-        case "$(grep -m 1 '^HEALTH - ' "$stage/drift.txt")" in
-            'HEALTH - drift:'*) failed drift:budget ;;
-            'HEALTH - gh:'*) failed drift:gh ;;
-            'HEALTH - jira:'*) failed drift:jira ;;
-            *) failed drift:unknown ;;
+sdrift=unknown
+case "$rc" in
+    0)
+        sdrift=$(tail -n 1 "$stage/drift.txt")
+        case "$sdrift" in
+            sdrift=unknown)
+                DRIFT_PUBLISH=1
+                case "$(grep -m 1 '^HEALTH - ' "$stage/drift.txt")" in
+                    'HEALTH - drift:'*) DRIFT_WARN=budget ;;
+                    'HEALTH - gh:'*) DRIFT_WARN=gh ;;
+                    'HEALTH - jira:'*) DRIFT_WARN=jira ;;
+                    *) DRIFT_WARN=unknown ;;
+                esac ;;
+            sdrift=?*) DRIFT_PUBLISH=1 ;;
+            *) DRIFT_WARN=no-sdrift sdrift=unknown ;;
         esac ;;
-    sdrift=?*) ;;
-    *) failed drift:no-sdrift ;;
+    124 | 137) DRIFT_WARN=timeout ;;
+    *) DRIFT_WARN="rc$rc" ;;
 esac
+if [ -n "$DRIFT_WARN" ]; then
+    echo "focus-refresh: WARN: drift $DRIFT_WARN: the page is published; the drift file is $([ -n "$DRIFT_PUBLISH" ] && echo "the pass's own report" || echo "as it was")" >&2
+    if [ -n "$CHAINS_WARN" ]; then CHAINS_WARN="$CHAINS_WARN, drift $DRIFT_WARN"; else CHAINS_WARN="drift $DRIFT_WARN"; fi
+fi
 
 if ! grep -Fq "<meta name=\"himmel-focus\" content=\"$VER $vfp\">" "$OUT" 2>/dev/null; then
     mv -f "$stage/page.html" "$OUT" || failed publish
     mv -f "$stage/page.html.vfp" "$OUT.vfp" || failed publish
 fi
-mv -f "$stage/drift.txt" "$DIR/focus-drift.txt" || failed publish
+if [ -z "$DRIFT_WARN" ] || [ -n "$DRIFT_PUBLISH" ]; then mv -f "$stage/drift.txt" "$DIR/focus-drift.txt" || failed publish; fi
 [ -z "$CHAINS_NEW" ] || mv -f "$CHAINS_NEW" "$DIR/focus-chains.json" || failed publish
 # Keep the known-checker-bugs file and the checker ticket's Jira links in step. Best effort: a failed sync never fails the refresh.
 ksync_left=$((10#$BUDGET - SECONDS - 5)) # leave the run's own cut-off out of reach, so a slow sync never turns a published refresh into FAILED:timeout
