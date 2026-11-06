@@ -211,6 +211,24 @@ out="$(HEADED_ARM_REPO="$T/repo12" WORKER_SESSION_EFFORT=medium dry)"
 contains "W12 the warning names the winning (project-local) pin" "$out" "$T/repo12/.claude/settings.local.json pins max"
 not_contains "W12 ... and not the overridden user pin" "$out" "$HOME/.claude/settings.json pins"
 rm -f "$HOME/.claude/settings.json" "$T/repo12/.claude/settings.local.json"
+# a settings file the scan cannot read as a pin never changes the launch: same exit, no warning
+for bad12 in '{ not json' '{"env":"high"}' '{"env":["high"]}' '[]'; do
+    printf '%s\n' "$bad12" >"$HOME/.claude/settings.json"
+    rc=0; out="$(WORKER_SESSION_EFFORT=medium dry)" || rc=$?
+    check "W12 an unreadable pin ($bad12) leaves the launch exit 0" "$rc" "0"
+    not_contains "W12 an unreadable pin ($bad12) is silent" "$out" "WARNING"
+done
+# no jq on PATH: the scan is skipped, the launch is unchanged even with a real pin present
+printf '{"env":{"CLAUDE_CODE_EFFORT_LEVEL":"high"}}\n' >"$HOME/.claude/settings.json"
+mkdir -p "$T/nojq-bin"
+for nj12 in /usr/bin/* /bin/*; do
+    [ -e "$T/nojq-bin/${nj12##*/}" ] || [ "${nj12##*/}" = jq ] || ln -s "$nj12" "$T/nojq-bin/${nj12##*/}"
+done
+rc=0; out="$(PATH="$T/nojq-bin" WORKER_SESSION_EFFORT=medium dry)" || rc=$?
+if PATH="$T/nojq-bin" command -v jq >/dev/null 2>&1; then echo "FAIL W12 setup: jq is still on the stripped PATH"; FAILED=$((FAILED + 1)); fi
+check "W12 no jq: the launch still exits 0" "$rc" "0"
+not_contains "W12 no jq: the scan is skipped, no warning" "$out" "WARNING"
+rm -f "$HOME/.claude/settings.json"
 
 echo "---"
 if [ "$FAILED" -gt 0 ]; then echo "FAILED: $FAILED case(s)"; exit 1; fi
