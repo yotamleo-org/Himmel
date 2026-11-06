@@ -260,16 +260,15 @@ function windowOf(d, ui) {
   const open = d.versions.map((v, i) => i).filter((i) => !(ui.hidePrev && d.versions[i].rel) && !(ui.hideFuture && i > anchor + 2));
   return { idx: ui.showAll ? open : open.filter((i) => Math.abs(i - anchor) <= 2), capped: false, pinned };
 }
-function windowBar(d, ui, w) {
+function windowBar(d, ui, w, inert = false) {
   const chk = (attr, label, on) => `<label><input type="checkbox" ${attr}${on ? " checked" : ""}> ${label}</label>`;
-  const msg = ui.pinMsg || (w.capped ? CAP_MSG : "");
-  return `<div class="rm-vwin fields"><span class="ro" role="status">showing ${w.idx.length} of ${d.versions.length} versions${w.pinned.length ? " · pinned" : ""}</span>`
+  return `<div class="rm-vwin fields"${inert ? " inert" : ""}><span class="ro" role="status">showing ${w.idx.length} of ${d.versions.length} versions${w.pinned.length ? " · pinned" : ""}</span>`
     + `<button class="btn" data-rm-show-all aria-pressed="${!!ui.showAll}">${ui.showAll ? "Show 5" : "Show all"}</button>`
     + chk("data-rm-hide-prev", "Hide previous", ui.hidePrev) + chk("data-rm-hide-future", "Hide far future", ui.hideFuture)
-    + (w.pinned.length ? `<button class="btn" data-rm-clear-pins>Clear pins</button>` : "") + `</div>` + (msg ? `<div class="nodata" role="alert">${esc(msg)}</div>` : "");
+    + (w.pinned.length ? `<button class="btn" data-rm-clear-pins>Clear pins</button>` : "") + `</div>`;
 }
 
-function stripHtml(d, sel, ch, tab, ui = {}) {
+function stripHtml(d, sel, ch, tab, ui = {}, lead = "") {
   const note = d.releaseUnknown ? `<div class="nodata">release state unknown: no versions snapshot, so no version is shown as released</div>` : "";
   const w = windowOf(d, ui), pins = ui.pins || [];
   const tiles = w.idx.map((i) => {
@@ -285,7 +284,8 @@ function stripHtml(d, sel, ch, tab, ui = {}) {
       + tip(stats, `<span class="ro">${esc(stats)}</span>`) + `${open}</a>`
       + `<button class="rm-pin" data-rm-pin="${esc(v.n)}" aria-pressed="${pinned}" aria-label="${pinned ? "Unpin" : "Pin"} ${esc(v.n)}">${pinned ? "★" : "☆"}</button></div>`;
   }).join("");
-  return note + windowBar(d, ui, w) + (tiles ? `<div class="rm-vstrip" aria-label="Versions">${tiles}</div>` : `<div class="empty">No versions to show with these filters.</div>`);
+  const msg = ui.pinMsg || (w.capped ? CAP_MSG : "");
+  return lead + note + (msg ? `<div class="nodata" role="alert">${esc(msg)}</div>` : "") + (tiles ? `<div class="rm-vstrip" aria-label="Versions">${tiles}</div>` : `<div class="empty">No versions to show with these filters.</div>`);
 }
 
 // Two links under the strip. "waits for you" counts the chain read's tickets whose state is "waits on you"; with no chain read it
@@ -632,5 +632,5 @@ function boardPage(data, ui, extras) {
   const body = tab === "chains" ? chainsTab(ui, tabCh, data) : tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, ch, dr) : lanesHtml(data, ui, sel, ch, dr);
   const drawer = drawerHtml(data, ui), why = tab === "chains" ? whyHtml(ui, tabCh) : "";
   // with a drawer or the Why panel open the board under it is inert: no drag, select, key or click reaches a card until it closes
-  return [page, `<div class="rm-under"${drawer || why ? " inert" : ""}>`, driftBanner(dr), stripHtml(data, tileSel, ch, tab, ui), `<div class="rm-tabrow">${tabsHtml(data, ui, tab, tabCh, dr)}${linksHtml(ch)}</div>`, barHtml(data, ui, ch, tab, sel, fresh), body, `</div>`, drawer, why].join("\n");
+  return [`<div class="rm-head">${page}${windowBar(data, ui, windowOf(data, ui), !!(drawer || why))}</div>`, `<div class="rm-under"${drawer || why ? " inert" : ""}>`, stripHtml(data, tileSel, ch, tab, ui, driftBanner(dr)), `<div class="rm-tabrow">${tabsHtml(data, ui, tab, tabCh, dr)}${linksHtml(ch)}</div>`, barHtml(data, ui, ch, tab, sel, fresh), body, `</div>`, drawer, why].join("\n");
 }
