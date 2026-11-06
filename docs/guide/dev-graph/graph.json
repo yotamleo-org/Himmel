@@ -3732,6 +3732,9 @@
           "step": "p.write"
         },
         {
+          "gate": "signed spec for a core ticket"
+        },
+        {
           "step": "s.cost"
         },
         {
@@ -4047,6 +4050,9 @@
       "who": "checks · worker · chief · judge",
       "purpose": "what must be true before a change may merge, who approves it, and where does it go back? It is for you, when a change is green but not merged.",
       "line": [
+        {
+          "gate": "ci:go (this version)"
+        },
         {
           "step": "g.ci"
         },

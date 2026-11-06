@@ -60,3 +60,13 @@ test("Workflow: the story map's Check and approve line draws the judge diamond a
   expect(html).toContain('<span class="wf-g wf-j" aria-hidden="true"></span>the judge, only on a trust path');
   expect(html).toContain('<span class="wf-chip wf-j">◆ judge, on a trust path</span>');
 });
+
+// The two shipped gates the chief ruled in: each is a solid check mark on its phase's line and names itself in the marks list.
+test("Workflow: the story map's Start line marks the signed spec gate and the Check line marks ci:go, solid", () => {
+  const html = renderWorkflow(MODEL, { tab: "workflow" }, null);
+  const phases = html.split('<li class="wf-ph').slice(1);
+  const at = (id: string) => phases[MODEL.stages.findIndex((s) => s.id === id)];
+  const marks = (ph: string) => ph.slice(ph.indexOf('<ul class="wf-marks">'), ph.indexOf("</ul>", ph.indexOf('<ul class="wf-marks">')));
+  expect(marks(at("start"))).toContain('<span class="wf-g wf-k" aria-hidden="true"></span><span>signed spec for a core ticket</span>');
+  expect(marks(at("check"))).toContain('<span class="wf-g wf-k" aria-hidden="true"></span><span>ci:go (this version)</span>');
+});
