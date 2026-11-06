@@ -3,7 +3,8 @@
 # `pool-disposition:` line whose target names a ticket key or `PR <n>` and reports
 # pool-stale=<n>:<KEY>,... when every named blocker is Done or merged (`?` for an unreadable
 # target, never stale; a still-open target stays quiet), and residual-unversioned=<n>:<KEY>,...
-# for open residuals of open focus-version tickets that carry no fixVersion. Fixture mirror and
+# for open residuals of open focus-version tickets that carry no fixVersion, leaving out a To Do
+# ticket below High whose last release ruling is its own BACKLOG (or a MOVE to backlog). Fixture mirror and
 # a stub gh (TICK_GH_CMD) only: no Jira, GitHub or live chief doc is touched.
 #
 # SUT overrides the script under test (the RED control: a tick without --pool-stale fails
@@ -25,9 +26,9 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/tick-pool-stale-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
 M="$WORK/mirror/HIMMEL"; mkdir -p "$M"
 printf 'v1.1.3\tfalse\t\n' > "$WORK/mirror/HIMMEL.versions.tsv"
-mk() { # <num> <status> <statusCategory> <fixVersions json> <labels json> <relates json>
-    printf -- '---\nkey: "HIMMEL-%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "%s"\npriority: "Medium"\nlabels: %s\nfixVersions: %s\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: %s\n---\n\n# HIMMEL-%s: t\n\n## Description\n\nbody\n' \
-        "$1" "$2" "$3" "$5" "$4" "$6" "$1" > "$M/HIMMEL-$1.md"
+mk() { # <num> <status> <statusCategory> <fixVersions json> <labels json> <relates json> [priority, default Medium]
+    printf -- '---\nkey: "HIMMEL-%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "%s"\npriority: "%s"\nlabels: %s\nfixVersions: %s\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: %s\n---\n\n# HIMMEL-%s: t\n\n## Description\n\nbody\n' \
+        "$1" "$2" "$3" "${7:-Medium}" "$5" "$4" "$6" "$1" > "$M/HIMMEL-$1.md"
 }
 mk 901 "Done" Done '["v1.1.3"]' '[]' '[]'
 mk 902 "In Progress" "In Progress" '["v1.1.3"]' '[]' '[]'
@@ -147,7 +148,18 @@ res 126; rr 126 R-v1.1.3-0010 INTAKE 126 none backlog→backlog BACKLOG backlog
 check 'an older BACKLOG ruling hides the ticket' '6:HIMMEL-115,HIMMEL-119,HIMMEL-122,HIMMEL-123,HIMMEL-124,HIMMEL-125' "$(field residual-unversioned "$d")"
 printf '\n### Yotam Leopold — 2026-11-05T18:00:00.000+0100\n\n[release-ruling R-v1.1.3-0011] RULING garbage\n' >> "$M/HIMMEL-126.md"
 check 'a malformed latest ruling line keeps the ticket counted over an older BACKLOG ruling' '7:HIMMEL-115,HIMMEL-119,HIMMEL-122,HIMMEL-123,HIMMEL-124,HIMMEL-125,HIMMEL-126' "$(field residual-unversioned "$d")"
-rm -f "$M"/HIMMEL-118.md "$M"/HIMMEL-119.md "$M"/HIMMEL-12[1-6].md
+list7='7:HIMMEL-115,HIMMEL-119,HIMMEL-122,HIMMEL-123,HIMMEL-124,HIMMEL-125,HIMMEL-126'
+# only a To Do ticket below High is hidden: one in progress or at High or above is still owed a version
+mk 127 "In Progress" "In Progress" '[]' '["residual","residual-depth-1"]' '["relates to HIMMEL-110"]'; rr 127 R-v1.1.3-0012 INTAKE 127 none backlog→backlog BACKLOG backlog
+check 'a BACKLOG-ruled ticket that is now in progress stays counted' "8:${list7#7:},HIMMEL-127" "$(field residual-unversioned "$d")"
+mk 128 "To Do" "To Do" '[]' '["residual","residual-depth-1"]' '["relates to HIMMEL-110"]' High; rr 128 R-v1.1.3-0013 INTAKE 128 none backlog→backlog BACKLOG backlog
+check 'a BACKLOG-ruled To Do ticket of priority High stays counted' "9:${list7#7:},HIMMEL-127,HIMMEL-128" "$(field residual-unversioned "$d")"
+mk 129 "To Do" "To Do" '[]' '["residual","residual-depth-1"]' '["relates to HIMMEL-110"]' Highest; rr 129 R-v1.1.3-0014 INTAKE 129 none backlog→backlog BACKLOG backlog
+check 'a BACKLOG-ruled To Do ticket of priority Highest stays counted' "10:${list7#7:},HIMMEL-127,HIMMEL-128,HIMMEL-129" "$(field residual-unversioned "$d")"
+# a MOVE into a version places the ticket in that version, not in the backlog
+mk 130 "To Do" "To Do" '[]' '["residual","residual-depth-1"]' '["relates to HIMMEL-110"]'; rr 130 R-v1.1.3-0015 REVERSION 130 move backlog→v1.1.4 MOVE v1.1.4
+check 'a last ruling that MOVEs the ticket into a version does not hide it' "11:${list7#7:},HIMMEL-127,HIMMEL-128,HIMMEL-129,HIMMEL-130" "$(field residual-unversioned "$d")"
+rm -f "$M"/HIMMEL-118.md "$M"/HIMMEL-119.md "$M"/HIMMEL-12[1-9].md "$M"/HIMMEL-130.md
 
 d="$(doc rerule 'pool-disposition: HIMMEL-101 slice HIMMEL-901' 'pool-disposition: HIMMEL-101 question waits on HIMMEL-902')"
 check 'a later disposition of the same key supersedes an older stale one' '0' "$(field pool-stale "$d")"
