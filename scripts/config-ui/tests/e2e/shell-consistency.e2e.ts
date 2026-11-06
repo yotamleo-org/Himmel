@@ -127,8 +127,9 @@ test("a report with no himmel identity still draws the AG-UI rail, the unknown-v
   expect((await readShell(page)).pages.map((p) => p.page)).toEqual(expect.arrayContaining(RAIL));
 });
 
-// ps lines of a running stub report: one per probe in flight.
-const probes = () => execFileSync("ps", ["-eo", "args"], { encoding: "utf8" }).split("\n").filter((l) => /^node\b.*e2e-stub\.js report\b/.test(l)).length;
+// ps lines of a running stub report: one per probe in flight. Only this checkout's stub counts, so another e2e run on the host cannot inflate it.
+const STUB = join(__dirname, "e2e-stub.js");
+const probes = () => execFileSync("ps", ["-eo", "args"], { encoding: "utf8" }).split("\n").filter((l) => /^node\b/.test(l) && l.includes(`${STUB} report`)).length;
 
 test("the config chief and the AG-UI page opened together share one report probe, and a reload inside the cache starts none", async ({ page, context }) => {
   expect(aguiBuilt(), "agui-web/dist is not built").toBe(true);
