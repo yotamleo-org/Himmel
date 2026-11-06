@@ -65,6 +65,8 @@ named worker is one item, at most 4 items in all. The named workers get NO brief
 union of every item's Writes. The brief gets `> **Series:** <sid> <ledger path> - read docs/handover/worker-sections/series.md`
 and `> **Series grant:** <family> (operator decision <n>)`, and the ledger `<bucket>/series/<sid>.json` is created through
 series-ledger.py (create, then one add-item per item, state planned) just before the brief is written; sid is <first key>-<label>.
+Each follow-on item's add-item also carries its worker's own text: --scope (its scope without the Do-not sentences),
+one --do-not per "Do not|Never touch|edit|change" sentence of it, and --commit-text (its commit); series-next.sh start prints them.
 series_grant is {family, decision}: family is non-blank single-line text, decision a positive integer (the operator decision that
 granted the family); a series without both is refused. A series is also refused when the items state different completes-ticket
 values (a ticket that states none counts as yes), when a worker's context_guard is compact (its unlock needs a pushed checkpoint
@@ -740,7 +742,7 @@ def core_worker_gate(l, ctx):
         if k in l:
             die('worker %s: %s is refused; a core bypass comes only from jira release core-check (design leg, Bug, emergency, operator record)' % (label, k))
     sp = l.get('series_plan')
-    keys = [k for k, _ in sp['items']] if sp else l['keys']
+    keys = [k for k, _, _ in sp['items']] if sp else l['keys']
     cli = jira_cli()
     brief = os.path.join(ctx['bucket'], l['stem'] + '.md')
     log = os.path.join(ctx['bucket'], 'core-gate.jsonl')
@@ -827,6 +829,14 @@ def core_worker_gate(l, ctx):
     l['core_lines'] = ('\n' + '\n'.join(lines) + '\n') if lines else ''
 
 
+def item_instructions(m):
+    # A follow-on item's own text for series-ledger.py add-item: its "Do not"/"Never touch" sentences as separate
+    # do-not lines, the rest of its scope, and its commit text. series-next.sh start prints them to the worker that authors it.
+    do_not = [g.group(0).strip() for g in _READ_ONLY[0].finditer(m['scope'])]
+    scope = ' '.join(_READ_ONLY[0].sub(' ', m['scope']).split())
+    return dict(scope=scope, do_not=do_not, commit_text=m['commit'].strip())
+
+
 def plan_series(workers):
     # Every series refusal, before anything is written. Sets l['series_plan'] on each series writer and returns the
     # workers without the ones it names, which get no brief or launcher.
@@ -849,8 +859,9 @@ def plan_series(workers):
         for m in members:
             wp = write_paths(m.get('writes', '')).split()
             wp = [] if wp == ['none', 'named'] else wp
-            items += [(k, wp) for k in m['keys']]
-        item_keys = [k for k, _ in items]
+            own = item_instructions(m) if m is not w else {}  # the writer authors from its own brief; a follow-on's text goes to its ledger item
+            items += [(k, wp, own) for k in m['keys']]
+        item_keys = [k for k, _, _ in items]
         dup = sorted({k for k in item_keys if item_keys.count(k) > 1})
         if dup:
             die('worker %s: a series names ticket %s more than once; every item is one ticket' % (label, ', '.join(dup)))
@@ -873,7 +884,7 @@ def plan_series(workers):
             die('worker %s: series_grant.family must be non-blank single-line text with no backtick or control character' % label)
         if isinstance(dec, bool) or not isinstance(dec, int) or dec < 1:
             die('worker %s: series_grant.decision must be the positive integer of the operator decision that granted %s' % (label, fam))
-        union = list(dict.fromkeys(p for _, wp in items for p in wp))
+        union = list(dict.fromkeys(p for _, wp, _ in items for p in wp))
         if union:
             w['writes'] = ' '.join(union)
         w['series_plan'] = dict(sid='%s-%s' % (w['keys'][0], label), items=items, completes=values.pop(), grant='%s (operator decision %d)' % (fam.strip(), dec))
@@ -887,8 +898,10 @@ def create_series_ledger(sp, doc):
     r = led('create', '--sid', sp['sid'], '--completes-ticket', sp['completes'], '--writer', doc, '--grant', sp['grant'])
     if r.returncode != 0:
         die('series ledger %s %s' % (sp['ledger'], 'already exists; pick a new series or remove it' if r.returncode == 4 else 'was not created (series-ledger.py rc %d): %s' % (r.returncode, r.stderr.strip())))
-    for key, wp in sp['items']:
-        r = led('add-item', '--key', key, '--writes', ','.join(wp), '--state', 'planned')
+    for key, wp, own in sp['items']:
+        # --opt=VALUE, so a text that starts with a dash is a value, never an option
+        extra = ['--scope=' + own['scope'], '--commit-text=' + own['commit_text']] + ['--do-not=' + x for x in own['do_not']] if own else []
+        r = led('add-item', '--key', key, '--writes', ','.join(wp), '--state', 'planned', *extra)
         if r.returncode != 0:
             for p in (sp['ledger'], sp['ledger'] + '.lock'):
                 if os.path.exists(p):
