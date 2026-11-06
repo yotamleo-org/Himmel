@@ -104,11 +104,6 @@ has "a worker the successor dispatched is skipped, not missing" "$out" "N14 own"
 eq "and the inherited set reads complete without it (rc 0)" "$rc" 0
 has "and the tally counts inherited workers only" "$out" "COMPLETE 1/1"
 
-# a worker held in Live state with no manifest row cannot be read
-# shellcheck disable=SC2016
-printf '# chief\n\n## Live state\nlegs: `N9:Y-N9-aa:lockA:11`\n' > "$CDOC"
-printf '{"schema": 1, "workers": []}\n' > "$MAN"
-has "a Live-state worker with no manifest row is missing (no doc to read)" "$(run)" "N9 missing"
 
 # a complete set prints the LIVE line, once, print only
 # shellcheck disable=SC2016
@@ -307,6 +302,111 @@ eq "a doc whose lock a lettered relaunch holds keeps succession incomplete" "$rc
 lacks "and it is never called replaced" "$out" "N84b replaced"
 has "and it is reported as waiting" "$out" "N84b missing"
 [ -z "$token" ] || bash "$QL" release "$LD" "$token" >/dev/null 2>&1
+
+# A worker that wrapped (WRAPPED tail, its doc's lock free) or was closed and left
+# the manifest can never quote back, so it is left out of the tally as replaced and own are.
+# A live worker with no quote-back stays missing, so a real silent worker still pages.
+hold() { # <doc> <session>: hold the doc's queue lock under <session> (token kept in $HELD_TOKEN)
+    local o
+    o="$(bash "$QL" acquire "$1" "$2" 2>&1)"
+    # shellcheck disable=SC2016  # literal token delimiters
+    HELD_TOKEN="$(printf '%s' "$o" | sed -n 's/.*release-token: `\([^`]*\)`.*/\1/p')"
+    [ -n "$HELD_TOKEN" ] || echo "setup: could not hold the lock of $1" >&2
+}
+mkdoc() { # <label> <bullet...>: a worker doc that is not under the Live-state test above
+    local f="$WORK/9395-$1.md"; shift
+    { printf '# worker\n\n## Results (newest at the bottom)\n\n'; for b in "$@"; do printf '%s\n' "$b"; done; } > "$f"
+}
+mkdoc G1 "- 03:00 LIVE — started" "$(q "$SUCC" "$PRED")"
+mkdoc W1 "- 03:00 LIVE — started" "- 09:00 WRAPPED — PR merged"
+mkdoc W2 "- 03:00 LIVE — started" "- 09:00 WRAPPED — PR merged"
+mkdoc L1 "- 03:00 LIVE — started" "- 09:00 LIVE — still working"
+mkdoc WQ "- 03:00 LIVE — started" "$(q "$SUCC" "$PRED")" "- 09:00 WRAPPED — PR merged"
+# shellcheck disable=SC2016
+pair() { # <label> <lock token>: one Live-state entry
+    printf '`%s:Y-%s-aa:%s:11` ' "$1" "$1" "$2"
+}
+chief_of() { # <entry...>: a chief doc listing the entries; the manifest rows follow from $ROWS
+    { printf '# chief\n\n## Live state\nworkers: '; for e in "$@"; do pair "$e" "lock-$e"; done; printf '\n\n## Results\n'; } > "$CDOC"
+}
+row() { printf '{"doc": "%s/9395-%s.md", "label": "%s", "lane": "native"}' "$WORK" "$1" "$1"; }
+manifest_of() { # <label...>: a manifest holding a row for each
+    local first=1 l
+    { printf '{"schema": 1, "workers": ['; for l in "$@"; do [ "$first" -eq 1 ] || printf ','; first=0; row "$l"; done; printf ']}\n'; } > "$MAN"
+}
+
+chief_of G1 W1; manifest_of G1 W1
+out="$(run)"; rc=$?
+has "a wrapped worker with its lock free and no quote-back is closed, not missing" "$out" "W1 closed"
+lacks "and it is never called missing" "$out" "W1 missing"
+eq "and the tally reads complete without it (rc 0)" "$rc" 0
+has "and counts only the inherited workers that can quote back" "$out" "COMPLETE 1/1"
+
+# a wrapped worker whose lock is still held is a live session
+hold "$WORK/9395-W1.md" "9395-holder"
+out="$(run)"; rc=$?
+eq "a wrapped worker whose lock is held keeps succession incomplete (rc 1)" "$rc" 1
+has "and it is reported as missing" "$out" "W1 missing"
+lacks "and never as closed" "$out" "W1 closed"
+has "and the tally counts it" "$out" "INCOMPLETE 1/2 (waiting on: W1)"
+[ -z "$HELD_TOKEN" ] || bash "$QL" release "$WORK/9395-W1.md" "$HELD_TOKEN" >/dev/null 2>&1
+
+# negative control: a live worker (newest bullet LIVE) with no quote-back still pages
+chief_of G1 L1; manifest_of G1 L1
+out="$(run)"; rc=$?
+eq "a live worker with no quote-back stays incomplete (rc 1)" "$rc" 1
+has "and is reported as missing" "$out" "L1 missing"
+has "and is the one waiting on" "$out" "INCOMPLETE 1/2 (waiting on: L1)"
+lacks "and prints no LIVE line" "$out" "append-results.sh"
+
+# a wrapped worker that did quote back keeps counting as quoted-back
+chief_of G1 WQ; manifest_of G1 WQ
+out="$(run)"; rc=$?
+has "a wrapped worker that quoted back is still quoted-back" "$out" "WQ quoted-back"
+has "and stays in the tally" "$out" "COMPLETE 2/2"
+
+# a tally of only closed workers reads complete; replaced-only stays incomplete as before
+chief_of W1 W2; manifest_of W1 W2
+out="$(run)"; rc=$?
+eq "a set where every worker is closed reads complete (rc 0)" "$rc" 0
+has "and says so with a 0/0 tally" "$out" "COMPLETE 0/0"
+has "and prints the LIVE line" "$out" "append-results.sh"
+has "and names both as closed" "$out" "W2 closed"
+chief_of N80; manifest_of
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N80","lane":"claudex"}]}\n' "$OLD" > "$MAN"
+out="$(run)"; rc=$?
+has "setup: the replaced predecessor is left out" "$out" "N80 replaced"
+eq "an empty set whose entries were replaced, not closed, stays incomplete (rc 1)" "$rc" 1
+has "and reads INCOMPLETE 0/0" "$out" "INCOMPLETE 0/0"
+
+# an entry with no manifest row cannot be read: no live session holding its lock token means closed,
+# a held lock token means a live worker
+chief_of N9; printf '{"schema": 1, "workers": []}\n' > "$MAN"
+out="$(run)"; rc=$?
+has "a Live-state worker with no manifest row and no lock held is closed" "$out" "N9 closed"
+eq "and a set of only that reads complete (rc 0)" "$rc" 0
+printf '# held\n' > "$WORK/9395-N9-lock.md"
+hold "$WORK/9395-N9-lock.md" "lock-N9"
+out="$(run)"; rc=$?
+has "a Live-state worker with no manifest row whose lock token is held is missing" "$out" "N9 missing"
+eq "and keeps the set incomplete (rc 1)" "$rc" 1
+[ -z "$HELD_TOKEN" ] || bash "$QL" release "$WORK/9395-N9-lock.md" "$HELD_TOKEN" >/dev/null 2>&1
+
+# the 11-06 05:04 shape: 16 inherited workers, 10 quoted back; 4 wrapped and closed, 1 removed
+# from the manifest, 1 alive and silent. Before: INCOMPLETE 10/16 naming 6. After: only the live one.
+labels="N4880 N4881 N4882 N4883 N4884 N4887 N4888 N4889 N4890 N4891"
+for l in $labels; do mkdoc "$l" "- 03:00 LIVE — started" "$(q "$SUCC" "$PRED")"; done
+for l in N4895 N4900 N4892 N4898; do mkdoc "$l" "- 03:00 LIVE — started" "- 04:50 WRAPPED — PR merged"; done
+mkdoc N4885 "- 03:00 LIVE — started" "- 05:01 LIVE — waiting on CI"
+all="$labels N4885 N4895 N4900 N4892 N4898 N4886b"
+# shellcheck disable=SC2086
+chief_of $all
+# shellcheck disable=SC2086
+manifest_of $labels N4885 N4895 N4900 N4892 N4898
+out="$(run)"; rc=$?
+eq "05:04 shape: still incomplete, the live worker has not quoted back (rc 1)" "$rc" 1
+has "05:04 shape: 10 of 11 once the closed ones are left out" "$out" "INCOMPLETE 10/11 (waiting on: N4885)"
+for l in N4895 N4900 N4892 N4898 N4886b; do has "05:04 shape: $l is closed" "$out" "$l closed"; done
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
