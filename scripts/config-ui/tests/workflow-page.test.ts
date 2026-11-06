@@ -181,6 +181,33 @@ test("Eval: one row per phase with a Start row, the 7-day numbers in words, and 
   expect(renderWorkflow(MODEL, { tab: "eval" }, null)).toContain("loading");
 });
 
+// the Review table's header row and body rows, as cell text (phase-stats carries merged and not merged only, so the three split columns read "not recorded")
+async function reviewTable(html: string) {
+  const rows: string[][] = [];
+  let row: string[] | null = null, cell: string | null = null;
+  await new HTMLRewriter()
+    .on("table.wf-rev tr", { element(e) { row = []; rows.push(row); } })
+    .on("table.wf-rev tr > *", { element(e) { cell = ""; e.onEndTag(() => { row!.push(cell!.trim()); cell = null; }); }, text(t) { if (cell !== null) cell += t.text; } })
+    .transform(new Response(html)).text();
+  return rows;
+}
+
+for (const col of ["Open", "Closed unmerged", "No PR opened"]) {
+  test(`Eval: the Review table has an "${col}" column, and its cells say not recorded`, async () => {
+    const rows = await reviewTable(renderWorkflow(MODEL, { tab: "eval" }, STATS));
+    const i = rows[0].indexOf(col);
+    expect(i).toBeGreaterThan(0);
+    for (const r of rows.slice(1)) expect(r[i]).toBe("not recorded");
+  });
+}
+
+test("Eval: a no source yet cell in the Phase summary carries the amber wf-none class, and a value cell does not", () => {
+  const html = renderWorkflow(MODEL, { tab: "eval" }, STATS);
+  const start = html.match(/<tr><th>1 Start<\/th>(.*?)<\/tr>/)![1];
+  expect(start.match(/<td><span class="wf-v wf-none">no source yet<\/span><\/td>/g)).toHaveLength(4);
+  expect(html.match(/<tr><th>4 Build<\/th>(.*?)<\/tr>/)![1]).not.toContain("wf-none");
+});
+
 // A seeded run: eight tickets through Build, Review, Check and approve, and Merge and wrap up on different days of the
 // window, written as status-events.jsonl rows and review-round files and read back by phase-stats.ts's own reader, so the
 // numbers have the shape the server sends. The unseeded control is a state directory that does not exist.
