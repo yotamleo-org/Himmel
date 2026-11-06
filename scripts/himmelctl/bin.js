@@ -3628,7 +3628,7 @@ function mergePhiRoot(root) {
     mode = null;
   }
   // write to a sibling tmp file, then rename it over
-  // `file`, rename within a directory is atomic on both POSIX and Windows,
+  // `file` — rename within a directory is atomic on both POSIX and Windows,
   // so an interruption mid-write can never leave phi-roots truncated or
   // partial. Same tmp+rename+cleanup-on-failure shape as
   // writeMarkedLauncher() below (reused convention, not a new one).

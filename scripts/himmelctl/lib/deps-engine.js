@@ -107,7 +107,7 @@ function osKey(platform) {
 // instead of which(cmd). Every other dep is a plain `which()` PATH check.
 // resolverPath used to be
 // interpolated straight into the -c script text (`` `. "${resolverPath}" &&
-// has_qmd` ``), breaks on a repoRoot containing spaces (e.g. a Windows
+// has_qmd` ``) — breaks on a repoRoot containing spaces (e.g. a Windows
 // "C:\Users\My Name\...", the common case) and, were repoRoot ever to carry // leak-allow: home-path doc example
 // shell metacharacters, could execute unintended commands. Passed as a
 // POSITIONAL arg ($1) instead, mirroring qmdPullModelsEntry's own `. "$1"

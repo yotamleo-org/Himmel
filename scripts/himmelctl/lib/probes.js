@@ -83,7 +83,7 @@ const { pathToFileURL } = require('url');
 const { spawnSync } = require('child_process');
 const { which } = require('./helpers.js');
 // the SAME bash resolver scripts/hooks/run-hook-with-bash.js's
-// launcher uses to pick a genuinely usable Git Bash, reused here (mirroring
+// launcher uses to pick a genuinely usable Git Bash — reused here (mirroring
 // deps-engine.js's and install-engine.js's own requires of it) rather than
 // re-deriving a third bash-selection policy. See spawnProbeSync().
 const { resolveBash: resolveHookBash } = require('../../hooks/run-hook-with-bash.js');
@@ -316,7 +316,7 @@ function expandHomeForCtx(p, ctx) {
 //
 // the third instance of this file's
 // ctx.env-vs-process.env class (see expandHomeForCtx's HOME fix and the
-// Windows scheduler-query fix earlier this round), and, per the sweep this
+// Windows scheduler-query fix earlier this round) — and, per the sweep this
 // round asked for, NOT the only remaining one: probeCadenceCoherence,
 // probePhiCoherence, probeBridgeHealth, and probeBridgePersistence all call
 // lunaConfig.load() directly (never through loadConfigIfPresent, since they
@@ -581,7 +581,7 @@ function verifyHudConfig(command, ctx) {
 // Separator-normalize ONLY when the path already looks Windows-shaped: a
 // drive letter, or a backslash with NO forward slash at all (a mixed path
 // like '/projects/a\b' is a POSIX path with a literal backslash byte, not a
-// Windows path: swapping its separator would collapse it onto a different
+// Windows path — swapping its separator would collapse it onto a different
 // project's directory and defeat the scope check the panel flagged this on).
 // path.resolve() then collapses '.'/'..' segments and duplicate separators;
 // on POSIX it already strips a trailing '/' on its own, so the extra trim
@@ -1021,7 +1021,7 @@ function probeSettingsHooks(item, ctx) {
 // ("absent") probe result.
 //
 // PROBE_TIMEOUT_MS is the FAMILY budget, 60s. It was 10s, which
-// is not a hang budget on Windows. It is inside the range a HEALTHY probe
+// is not a hang budget on Windows — it is inside the range a HEALTHY probe
 // legitimately occupies there, so it manufactured false DEGRADED rows on
 // perfectly good machines. Measured on this dev box: the handover-dir probe
 // takes 3.5-8.1s IDLE (one run of five at 8.1s: a 20% margin), and
@@ -1162,7 +1162,7 @@ function resolveProbeBash(env) {
 // being re-remembered at 13 call sites.
 //
 // When nothing usable resolves, a SYNTHETIC spawn error is returned rather
-// than falling back to the bare name. The WSL stub is precisely what this
+// than falling back to the bare name — the WSL stub is precisely what this
 // resolution exists to avoid, and every caller already branches on r.error
 // (a spawn error reads 'degraded'/'absent' per that probe's own contract).
 function spawnBashProbe(args, opts) {
@@ -1904,8 +1904,8 @@ function resolveGitConfigDir(dotGitPath) {
 function probeCmdHermesCheckout(item, ctx) {
   const env = ctx.env || process.env;
   // Mirrors update_hermes()'s own root/src resolution EXACTLY
-  // (himmel-update.sh:139-147): HERMES_HOME override, else (on Windows,
-  // where LOCALAPPDATA is set) $LOCALAPPDATA/hermes, else (Linux/macOS)
+  // (himmel-update.sh:139-147): HERMES_HOME override, else — on Windows,
+  // where LOCALAPPDATA is set, $LOCALAPPDATA/hermes, else (Linux/macOS)
   // $HOME/.hermes (upstream hermes' own default config home); src =
   // root/hermes-agent, falling back to root itself when THAT carries .git
   // instead (tolerates HERMES_HOME pointing straight at the checkout).
@@ -2900,7 +2900,7 @@ function armedPipelineSchedules(scheduleKeys, batDir) {
 // (the silent-04:00-stall class this epic exists to surface). The design's
 // own contract (§3.5) is a matching SCHEDULER TASK, not a runner file.
 // scripts/luna/pipeline-cadence.sh already owns scheduler interrogation
-// (schtasks on Windows, crontab on POSIX) via its `status` subcommand. This
+// (schtasks on Windows, crontab on POSIX) via its `status` subcommand — this
 // probe shells out to it and parses its stdout, the same "the script stays
 // the single source of truth" posture engine-allowlist already applies to
 // cadence-approve-engines.sh below, rather than re-deriving schtasks/cron
@@ -3057,7 +3057,7 @@ function probeCadenceCoherence(item, ctx) {
   const env = ctx.env || process.env;
   const scriptPath = path.resolve(ctx.repoRoot, PIPELINE_CADENCE_SCRIPT);
   // `pipeline-cadence.sh status` queries the scheduler once per configured
-  // schedule, and on Windows every one of those is a fresh process launch,
+  // schedule, and on Windows every one of those is a fresh process launch —
   // measured at 8-18s end-to-end on a healthy dev box even with the scheduler
   // faked out, and 3 of 5 runs exceeded the old 10s budget. gave
   // THIS probe its own 60s constant; found the same false-DEGRADED
@@ -3428,7 +3428,7 @@ function pollerLineIsThisCheckout(line, thisCheckoutAnchor) {
 // and "zero" collapse to the same "not exactly 1" bucket there), the ticket's
 // contract here is a genuine 3-way split: 1 = present (green), 0 = absent
 // (red, unit active but no poller), >1 = degraded (duplicate pollers,
-// class): "same object shape [as Windows]" means the returned
+// class) — "same object shape [as Windows]" means the returned
 // `{actual, detail}` fields, not the same present/absent enum mapping.
 //
 // Prefers `systemctl --user show telegram-bridge.service` (MainPID +
