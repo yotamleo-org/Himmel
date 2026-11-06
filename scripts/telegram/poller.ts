@@ -1052,6 +1052,25 @@ export type SendFn = (chat_id: number, text: string, replyToMessageId?: number, 
 export type SendDocFn = (chat_id: number, path: string, caption?: string) => Promise<boolean>;
 export const MAX_DOC_BYTES = 50 * 1024 * 1024;
 
+// Operator decision 700: a spec or plan page reaches the operator only through the chief's
+// send-file, which checks the critic first and then queues a line tagged `via: "send-file"` with the sha256
+// of the file it copied. A tagged line goes only if the file still has those bytes. An untagged line goes
+// unless the file is a page type; the bridge sends a report as .txt, .pdf, .png, .csv, .json or plain text.
+// ponytail: a session that writes both fields and the right sha256 by hand still passes (the bridge can
+// append to its own outbox); the upgrade path is a hook denying the bridge outbox writes of those fields.
+export const SEND_FILE_VIA = "send-file";
+const PAGE_TYPE = /\.(html?|md|markdown)$/i;
+async function documentRefusal(out: { document_path: string; via?: unknown; sha256?: unknown }): Promise<string | null> {
+  const name = basename(out.document_path);
+  if (out.via === SEND_FILE_VIA && typeof out.sha256 === "string") {
+    const now = await readFile(out.document_path).then(b => createHash("sha256").update(b).digest("hex"), () => null);
+    return now === out.sha256 ? null : `⚠️ couldn't send the file ${name} — it is not the file send-file queued (it changed or is missing since).`;
+  }
+  return PAGE_TYPE.test(out.document_path)
+    ? `⚠️ ${name} was not sent: a spec or plan page reaches the operator only through the chief's send-file, which checks its critics first. A bridge report goes as .txt, .pdf, .png, .csv or .json, or as plain text.`
+    : null;
+}
+
 export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDocFn): Promise<void> {
   let names: string[] = [];
   try { names = await readdir(join(root, "sessions")); } catch { return; }
@@ -1076,9 +1095,13 @@ export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDo
           try { out = JSON.parse(ln); } catch {}
           if (out && typeof out.document_path === "string") {
             if (typeof out.text === "string" && out.text) await send(meta.chat_id, out.text, out.reply_to_message_id, out.markup);
-            // A group chat never receives a file, whatever the session is called (a ticket session can run in a group).
-            const ok = !s.startsWith("group_") && meta.chat_id > 0 && sendDoc ? await sendDoc(meta.chat_id, out.document_path, typeof out.caption === "string" ? out.caption : undefined) : false;
-            if (!ok) await send(meta.chat_id, `⚠️ couldn't send the file ${basename(out.document_path)} — it may be outside the send folder, missing, over 50 MB, sent from a group, or refused by Telegram.`);
+            const refusal = await documentRefusal(out as { document_path: string; via?: unknown; sha256?: unknown });
+            if (refusal) await send(meta.chat_id, refusal);
+            else {
+              // A group chat never receives a file, whatever the session is called (a ticket session can run in a group).
+              const ok = !s.startsWith("group_") && meta.chat_id > 0 && sendDoc ? await sendDoc(meta.chat_id, out.document_path, typeof out.caption === "string" ? out.caption : undefined) : false;
+              if (!ok) await send(meta.chat_id, `⚠️ couldn't send the file ${basename(out.document_path)} — it may be outside the send folder, missing, over 50 MB, sent from a group, or refused by Telegram.`);
+            }
           } else if (out) {
             const messageId = await send(meta.chat_id, out.text ?? "", out.reply_to_message_id, out.markup); // send BEFORE committing
             if (out.console && typeof messageId === "number") await rememberConsoleReply(root, meta.chat_id, messageId, out.console);
@@ -2217,9 +2240,11 @@ export async function replyViaOutbox(root: string, chat_id: number, text: string
   await appendOutboxLine(root, chat_id, { text, ...(consoleName ? { console: consoleName } : {}), ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_to_message_id: replyToMessageId } : {}), ...(markup ? { markup } : {}) });
 }
 
-// Queue a local file for the chat; flushOutboxes sends it via sendDocument.
+// Queue a local file for the chat; flushOutboxes sends it via sendDocument. The line is tagged with
+// `via` and the file's sha256 so flushOutboxes can tell it from a page the bridge queued by hand.
 export async function sendFileViaOutbox(root: string, chat_id: number, document_path: string, caption?: string): Promise<void> {
-  await appendOutboxLine(root, chat_id, { document_path, ...(caption ? { caption } : {}) });
+  const sha256 = createHash("sha256").update(await readFile(document_path)).digest("hex");
+  await appendOutboxLine(root, chat_id, { document_path, via: SEND_FILE_VIA, sha256, ...(caption ? { caption } : {}) });
 }
 
 // The poller-side document sender. The poller reads files outside any tool-permission
