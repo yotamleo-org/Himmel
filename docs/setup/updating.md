@@ -560,9 +560,9 @@ The exception is a value with an unquoted ` #`, which must be quoted first:
    from `.env`.
 5. **Remove.** Only after the check passes are the moved lines removed from
    `.env`. A secret's line goes only when it came back `stored`, or, with no
-   unlocked keyring, when the secret went to the legacy file. Every line of a key
-   that moves goes, a later duplicate too; the backup keeps a duplicate that holds
-   another value, and for a secret the report names the key. Comments and the keys
+   unlocked keyring, when the secret went to the legacy file. A key with more than
+   one entry does not move: every store takes the first entry and the removal takes
+   them all, so it stays in `.env` with a plan row, on every route. Comments and the keys
    that stay
    (`held`, `env-keep`, another tool's) are kept byte for byte, and so is the
    file's mode. Then the backups are scrubbed (the secrets stage ran, so `-y` at a

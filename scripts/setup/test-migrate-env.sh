@@ -1053,14 +1053,12 @@ for r31case in "kept|JIRA_API_TOKEN=\"\"|JIRA_API_TOKEN=$r31o" "kept|JIRA_API_TO
     fi
 done
 
-# R32: duplicate .env lines K="" then K=real: the readers take the first, the move deletes both, and this run's backup keeps the dead real line and names it.
+# R32: duplicate .env lines K="" then K=real: a key with more than one entry stays, so the real line reaches no store and is not deleted.
 env_only 'JIRA_API_TOKEN=""'
 fxadd "$TMP/st/.env" 'JIRA_API_TOKEN=%s\n' "$(canary r32)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
 apply_tty y
-bf=$(fresh_backup)
-if [ -n "$bf" ] && grep -q '^JIRA_API_TOKEN=CANARY-' "$bf"; then pass "R32 this run's backup keeps the dead real line"; else fail "R32 the dead real line is gone from this run's backup"; fi
-lacks "R32 the move deleted both lines from .env" "JIRA_API_TOKEN" "$(cat "$TMP/st/.env")"
-if printf '%s\n' "$out" | grep -F "$bf keeps a line for" | grep -w JIRA_API_TOKEN > /dev/null; then pass "R32 the report names the key"; else fail "R32 the report does not name the key"; fi
+quote_stays "R32 a blank line then a real one" "$TMP/st/.env" "  JIRA_API_TOKEN  secret  stays (it has several entries; keep one)"
 
 # R33: an env-keep key leaves no backup, even when its keyring item holds the same value: a restore would lose its only .env line.
 r33v=$(canary r33)
@@ -1766,8 +1764,21 @@ fixture_env
 fxput "$TMP/st/.env" "UNREAD_SECRET=%s\nUNREAD_SECRET='%s\n'\n" "$(canary a)" "$(canary b)"
 cp -p "$TMP/st/.env" "$TMP/st.orig"
 apply_tty y "HIMMEL_SECRETS_KEYRING=off "
-quote_stays "N35 no keyring, a several-line later duplicate" "$TMP/st/.env" "  UNREAD_SECRET  secret  stays (no keyring; its value runs over several lines)"
+quote_stays "N35 no keyring, a several-line later duplicate" "$TMP/st/.env" "  UNREAD_SECRET  secret  stays (it has several entries; keep one)"
 lacks "N35 the legacy file holds no line of it" "UNREAD_SECRET" "$(cat "$store" 2>/dev/null)"
+# N36, N37: the rule holds on every route, a one-line later duplicate too: no keyring (the legacy file takes the first entry), and a config key (himmel.conf takes one line).
+fixture_env
+fxput "$TMP/st/.env" 'UNREAD_SECRET=%s\nUNREAD_SECRET=%s\n' "$(canary a)" "$(canary b)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y "HIMMEL_SECRETS_KEYRING=off "
+quote_stays "N36 no keyring, a one-line later duplicate" "$TMP/st/.env" "  UNREAD_SECRET  secret  stays (it has several entries; keep one)"
+lacks "N36 the legacy file holds no line of it" "UNREAD_SECRET" "$(cat "$store" 2>/dev/null)"
+fixture_env
+fxput "$TMP/st/.env" 'HANDOVER_DIR=%s\nHANDOVER_DIR=%s\n' "$TMP/handovers" "$TMP/handovers2"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y "$SYSPATH"
+quote_stays "N37 a config key with a one-line later duplicate" "$TMP/st/.env" "  HANDOVER_DIR  config  stays (it has several entries; keep one)"
+lacks "N37 himmel.conf holds no line of it" "HANDOVER_DIR" "$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)"
 
 if [ "$FAILED" -gt 0 ]; then
     echo "test-migrate-env: $FAILED FAILED"

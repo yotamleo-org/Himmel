@@ -60,9 +60,9 @@
 # (the keyring has another value, and that one is served) and keys named in
 # ~/.himmel/env-keep.txt stay. A `failed` key stops the run with no line removed. A
 # blank secret line, and an `export NAME=` line of a himmel key (the readers do not
-# read it), stay with a plan row. Every line of a key that moves leaves .env, a later
-# duplicate too (a key stored by value stays instead when it has a second entry); this run's
-# backup keeps a duplicate that holds another value.
+# read it), stay with a plan row. A key with more than one entry stays, on every route
+# (every store takes the first entry and the removal takes them all); every line of a
+# key that moves leaves .env, so a moved key has exactly one.
 #
 # The scrub: after the .env rewrite, when the secrets stage was allowed, a file in
 # ~/.himmel/env-backups and the .env copy in each config-audit backup (manifest
@@ -460,6 +460,13 @@ for key in $names; do
         plan="$plan  $key  $label  stays (its value runs over several lines)"$'\n'
         continue
     fi
+    if repeated_key "$envfile" "$key"; then
+        # Every store takes one entry (the first) and the removal takes them all, so a later entry would reach no store: the key stays on every route.
+        [ "$class" != secret ] || stay_secrets="$stay_secrets $key"
+        case "$class" in policy) label="config (policy)" ;; *) label=$class ;; esac
+        plan="$plan  $key  $label  stays (it has several entries; keep one)"$'\n'
+        continue
+    fi
     case "$class" in
         config)
             # An env-only key has no himmel.conf reader: it stays in .env, as in migrate-env-config.sh.
@@ -484,11 +491,7 @@ for key in $names; do
             elif [ "$backend_ok" -eq 1 ]; then
                 # A quoted value over several lines is read whole and removed whole, so it takes the same road as a named key.
                 if several_lines "$envfile" "$key"; then
-                    if repeated_key "$envfile" "$key"; then
-                        stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  stays (it has several entries; keep one)"$'\n'
-                    else
-                        own_keys[${#own_keys[@]}]="$key"; plan="$plan  $key  secret  → keyring (value over several lines)"$'\n'
-                    fi
+                    own_keys[${#own_keys[@]}]="$key"; plan="$plan  $key  secret  → keyring (value over several lines)"$'\n'
                 else
                     secret_keys[${#secret_keys[@]}]="$key"; plan="$plan  $key  secret  → keyring"$'\n'
                 fi
@@ -499,7 +502,7 @@ for key in $names; do
                 elif [ -n "$reader" ]; then
                     stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  stays (no keyring; read by $reader)"$'\n'
                 elif several_any "$envfile" "$key"; then
-                    # the legacy file takes one line per entry: a value over several lines stays whole in .env, a later duplicate's too
+                    # the legacy file takes one line per entry: a value over several lines stays whole in .env
                     stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  stays (no keyring; its value runs over several lines)"$'\n'
                 else
                     file_keys[${#file_keys[@]}]="$key"; plan="$plan  $key  secret  → $store_rel (no keyring)"$'\n'
