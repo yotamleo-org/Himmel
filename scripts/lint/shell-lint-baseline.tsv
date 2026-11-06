@@ -400,7 +400,6 @@ scripts/hooks/check-graph-artifact-branch.sh	errexit	1
 scripts/hooks/check-guardrail-matrices.sh	errexit	1
 scripts/hooks/check-lanes-inventory.sh	errexit	1
 scripts/hooks/check-lockfile-integrity.sh	errexit	1
-scripts/hooks/check-no-ticket-id-in-user-strings.sh	errexit	1
 scripts/hooks/check-npm-audit-signatures.sh	errexit	1
 scripts/hooks/check-npm-audit.sh	errexit	1
 scripts/hooks/check-npm-licenses.sh	errexit	1
