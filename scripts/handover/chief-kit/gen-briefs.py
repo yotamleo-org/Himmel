@@ -624,26 +624,62 @@ def projected_files(writes, repo, base):
             hit = r.stdout.split('\n')[:-1]
         tracked += bool(hit)
         files.update(hit or [p])
-    return len(files), tracked
+    return len(files), tracked, sorted(files)
 
 
-def check_pr_size(l, repo, base):
+SIZE_OVERRIDE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'size-override.sh')
+
+
+def size_override(args, hroot):
+    # size-override.sh owns the SIZE-ESCALATE ledger and the chief-signed override; its rc passes through.
+    r = subprocess.run(['bash', SIZE_OVERRIDE] + args + ['--root', hroot], capture_output=True, text=True)
+    if r.returncode not in (0, 1, 4):
+        die('size-override.sh %s failed (rc %d): %s' % (args[0], r.returncode, (r.stderr or r.stdout).strip()), 2)
+    return r
+
+
+def size_trust(files):
+    res = load_trust_res()
+    return any(rx.search(f) for f in files for rx in res)
+
+
+def size_note(kind, l, hroot, n, trust, detail):
+    size_override(['note', kind, l['keys'][0], l['label'], '--files', str(n), '--trust', 'yes' if trust else 'no', '--detail', detail], hroot)
+
+
+def check_pr_size(l, repo, base, hroot):
     # The early check for the size bands that worker-pr-open.sh enforces only at PR open.
-    if l.get('bulk') == 'mechanical':
-        return  # the line and file bands do not apply to a scripted transform (the 300-file cap still holds at PR open)
-    bands = size_bands()
     proj = projected_files(l.get('writes', ''), repo, base)
-    n, tracked = proj if proj else (None, 0)
-    if n is None or n > bands['hard']:
+    n, tracked, fl = proj if proj else (None, 0, [])
+    if l.get('bulk') == 'mechanical':
+        # the line and file bands do not apply to a scripted transform (the 300-file cap still holds at PR open),
+        # but with the gate on each use is a SIZE-ESCALATE row the chief is woken for
+        if flag_on('pr_size_gate'):
+            size_note('bulk', l, hroot, n or 0, n is not None and size_trust(fl), 'bulk: mechanical, Writes project to %s files' % ('?' if n is None else n))
+        return
+    bands = size_bands()
+    trust = n is not None and n > bands['soft'] and size_trust(fl)
+    if n is None or n > bands['hard'] or trust:
         if n is None:
             msg = 'worker %s Writes cannot be projected (git ls-tree failed for base %s in %s)' % (l['label'], base, repo)
-        else:
+        elif n > bands['hard']:
             msg = 'worker %s Writes project to %d files, over the %d-file hard max (pr-size-bands.tsv row hard)' % (l['label'], n, bands['hard'])
-        with flag_read():
-            from flags import himmel_flag  # scripts/lib/flags.py, the registry reader
-            gate_on = himmel_flag('pr_size_gate')
-        if gate_on:
-            die(msg + ('; split the ticket, or set "bulk": "mechanical" on a scripted transform' if n is not None else ''))
+        else:
+            msg = 'worker %s Writes project to %d files and touch a trust path (ci-trust-paths.txt), over the %d-file soft max (pr-size-bands.tsv row soft)' % (l['label'], n, bands['soft'])
+        if flag_on('pr_size_gate'):
+            key = l['keys'][0]
+            if n is not None:
+                r = size_override(['check', key, l['label'], '--files', str(n), '--trust', 'yes' if trust else 'no'], hroot)
+                if r.returncode == 0:
+                    print('gen-briefs: warning: ' + msg + '; ' + r.stdout.strip(), file=sys.stderr)
+                    return
+            size_note('refuse', l, hroot, n or 0, trust, msg)
+            if n is None:
+                die(msg)
+            if r.returncode == 4:
+                die(msg + '; ' + r.stderr.strip() + '; ask the operator (SIZE-ESCALATE row written)')
+            die(msg + '; split the ticket, set "bulk": "mechanical" on a scripted transform, or the chief signs an override '
+                '(bash %s record %s %s --files %d --reason "<why keep it whole>"; SIZE-ESCALATE row written)' % (SIZE_OVERRIDE, key, l['label'], n))
         print('gen-briefs: warning: ' + msg + '; pr_size_gate is off, so the brief is written', file=sys.stderr)
     elif n > bands['soft']:
         print('gen-briefs: warning: worker %s Writes project to %d files, over the %d-file soft max (pr-size-bands.tsv row soft)' % (l['label'], n, bands['soft']), file=sys.stderr)
@@ -1285,7 +1321,7 @@ def main():
         l['judge'] = bool(l.get('judge'))
         l['model_key'] = bool(l.get('model'))
         if l.get('kind') != 'rm':
-            check_pr_size(l, a.repo, a.base)
+            check_pr_size(l, a.repo, a.base, a.handover_root)
             l['profile'] =l.get('profile') or (UI_PROFILE if UI_PATH_RE.search(write_paths(l.get('writes', ''))) else DOCS_PROFILE if docs_only(l.get('writes', '')) else 'worker-impl')
         rm = l.get('kind') == 'rm'
         l['model'] = l.get('model') or (RM_MODEL if rm else LANE_MODELS.get(l.get('lane', 'native'), DEFAULT_MODEL))

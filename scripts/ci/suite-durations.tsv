@@ -1270,3 +1270,4 @@ scripts/handover/test-morning-report-cadence.sh	2
 scripts/test-himmel-doctor-morning-report.sh	3
 scripts/handover/chief-kit/test-tick-repair.sh	89
 scripts/test-real-state-guard.sh	33
+scripts/handover/chief-kit/test-size-override.sh	2

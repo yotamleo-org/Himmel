@@ -716,6 +716,23 @@ comment-only commit is written with
 keeps naming the judged head and carries a signed `reviewed-head:` line, and any
 other delta is refused with nothing written.
 
+**An oversized PR is split by default; keeping it whole is a recorded ruling.**
+A PR over the soft size band (`scripts/ci/pr-size-bands.tsv`) that
+stops at `/pr-check` exit 8 is split into smaller PRs, not given another round.
+With `pr_size_gate` on, `gen-briefs.py` also refuses a brief whose Writes project
+past the hard file max, and every such refusal and every `"bulk": "mechanical"` use
+writes a `SIZE-ESCALATE` row to `<handover root>/.locks/size-escalate.tsv` and wakes
+you as `WAKE size rows=<n>` with the new rows. Read each row and rule: **split** the
+ticket (the default), **keep it whole** by signing the reason, or **escalate**. To
+keep it whole, run the `size-override.sh record <KEY> <label> --files <n> --reason "<why a
+split is worse>"` line the refusal prints; gen-briefs then accepts that brief once, for
+that exact file count. Only the chief signs it: a worker or relay is refused (exit 3),
+and an unsigned or hand-written row is not read. **Escalate to the operator, never
+override alone,** a trust-path brief over the soft band, a brief past the 300-file
+CodeRabbit cap, and one past the 1500-line max: `size-override.sh` refuses to record
+these (exit 4) and `gen-briefs.py` refuses them whatever rows exist. Send the operator
+the row and your split proposal.
+
 ## Merges
 
 `READY <pr> <head> GREEN` → the chief verifies independently (all check-runs

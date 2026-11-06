@@ -123,6 +123,9 @@
 #                               bounded by CHIEF_SILENT_GO_TIMEOUT (default 900 s) and
 #                               ready-check by 90 s; the heartbeat says sampling meanwhile.
 #                               Seam: CHIEF_WAIT_SILENT_GO.
+#   WAKE size rows=<n>          gen-briefs.py refused an oversized brief or took a bulk: mechanical one
+#                               : the new SIZE-ESCALATE rows of size-override.sh's ledger
+#                               follow, once per row (marker <inbox>.wait.size). Seam: CHIEF_WAIT_SIZE.
 #   WAKE succession complete <k/n>   with --succession <successor> --doc <chief doc>
 #   <tracker output>            (the successor's waiter): every inherited worker quoted
 #                               back; the block carries succession-tracker.sh's table
@@ -1621,6 +1624,24 @@ silent_go_wake() {
     out="$(bash "${CHIEF_WAIT_SILENT_GO:-$HERE/silent-go-merge.sh}" --doc "$console_doc" --workers-from "$legs_from" --state "$inbox.wait.silentgo" </dev/null 2>/dev/null 9>&-)" || return 1  # swallow-ok: a failed run reads as no wake; the helper alerts on its own outcomes
     printf 'WAKE silent-go\n%s\n' "$out"
 }
+# size_wake: a SIZE-ESCALATE row gen-briefs.py wrote (a refused oversized brief, or a bulk: mechanical use)
+# that this inbox has not woken for yet. Prints `WAKE size rows=<total>` then the new rows and succeeds. The
+# marker `<inbox>.wait.size` holds the row total already shown. Like the tick key, the first sample with no
+# marker is a silent baseline (rows from before this inbox existed belong to a predecessor). Reads through
+# size-override.sh pending, which exits 1 when nothing is new (CHIEF_WAIT_SIZE replaces it, tests); an
+# unreadable total is no wake.
+size_file="$inbox.wait.size"
+size_wake() {
+    local out seen total rc=0
+    seen="$(cat "$size_file" 2>/dev/null)"; case "$seen" in ''|*[!0-9]*) seen=0 ;; esac  # swallow-ok: an unreadable marker reads as 0 and re-baselines below
+    out="$(bash "${CHIEF_WAIT_SIZE:-$HERE/size-override.sh}" pending --since "$seen" </dev/null 2>/dev/null 9>&-)" || rc=$?  # swallow-ok: rc 1 is "nothing new"; the total decides
+    total="$(printf '%s\n' "$out" | sed -n '1s/^total=\([0-9][0-9]*\)$/\1/p')"
+    [ -n "$total" ] || return 1
+    if [ ! -f "$size_file" ]; then printf '%s\n' "$total" > "$size_file"; return 1; fi
+    [ "$rc" -eq 0 ] || return 1
+    printf '%s\n' "$total" > "$size_file.tmp" && mv -f "$size_file.tmp" "$size_file"
+    printf 'WAKE size rows=%s\n%s\n' "$total" "$(printf '%s\n' "$out" | tail -n +2)"
+}
 # ready_ci <pr> <head>: GREEN, RED or PENDING from one bounded, non-blocking read; a failed read is PENDING.
 ready_ci() {
     local b
@@ -1878,6 +1899,7 @@ while :; do
             # a READY is checked before it wakes; a repeat of a woken head folds into the baseline
             if ready_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-ready'; exit 0; fi
             if silent_go_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-silent-go'; exit 0; fi
+            if size_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-size'; exit 0; fi
             if [ -n "$ready_fold" ] && [ -n "$saved" ]; then
                 ready_new="$(ready_fold_key "$saved" "$key" "$ready_fold")"
                 [ "$ready_new" = "$saved" ] || { saved="$ready_new"; save_key "$saved"; }

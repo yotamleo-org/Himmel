@@ -225,6 +225,13 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
 
     **A GO'd PR whose worker went silent merges without it** (HIMMEL-9132): with `--doc` and `--workers-from`, a READY worker that has had a GO file and no doc write for `CHIEF_WAIT_WORKER_SILENT_MIN` minutes (default 45), and no live process unless its last bullet is a hand-off, is merged by `silent-go-merge.sh` through ready-check at the GO head and `merge-on-green.sh --go`; you wake as `WAKE silent-go` with one `SILENT-WORKER-MERGE`, `-MERGE-FAILED` or `-HELD reason=<why>` line; the operator was already paged with it and your doc carries it as a bullet.
 
+    **An oversized brief wakes you once.** `WAKE size rows=<total>` followed by
+    `SIZE-ESCALATE<TAB>epoch<TAB>refuse|bulk<TAB>KEY<TAB>label<TAB>files<TAB>trust<TAB>detail` lines
+    means `gen-briefs.py` (with `pr_size_gate` on) refused a brief over the size bands or took a
+    `bulk: mechanical` one; each new row shows once (`<inbox>.wait.size` holds the total shown, and a
+    waiter's first sample on a new inbox is a silent baseline). Rule per the size paragraph of
+    `running-a-chief.md#rulings`: split, sign `size-override.sh record`, or escalate to the operator.
+
     **A hold wakes you once.** `WAKE tick changed=holds` means a worker entered the
     `holds=` set (`BLOCKED`, or a `FINDING` awaiting a ruling, untouched for
     `TICK_HOLD_MIN` minutes, default 20): read its newest bullet and answer it. It

@@ -30,6 +30,8 @@
 #   Run only the wrap-bound regressions with --wrap-relay.
 #   (hd)  holds=: a worker entering the set wakes once; ageing, a worker leaving and the set
 #         emptying do not wake
+#   (sz)  a SIZE-ESCALATE ledger row (size-override.sh) wakes once as `WAKE size rows=<n>`
+#         with the new rows; a re-arm does not wake for a row already shown
 #
 # tick.sh, the bank verdict and worker-event.sh are stubbed (CHIEF_WAIT_TICK,
 # CHIEF_WAIT_USAGE, CHIEF_WAIT_WORKER_EVENT): nothing closes a window here.
@@ -715,6 +717,36 @@ wait_exit "$WPID"
 check "(rv-boundary) a BLOCKED2 line does not hide a BLOCKED resolve" "0" "$rc"
 check "(rv-boundary) the wake names the resolve" "WAKE resolve N1 pr=3628 threads=PRRT_abc" "$(head -n 1 "$WORK/rvb.out")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# --- (sz) a SIZE-ESCALATE ledger row wakes the chief once ---
+# gen-briefs writes the rows through size-override.sh; the waiter reads them through the same script.
+SZ_NOTE="$HERE/size-override.sh"
+reset_stub
+fleet sz
+export HANDOVER_DIR="$WORK/sz/hroot"; mkdir -p "$HANDOVER_DIR"
+start "$I" "$WORK/sz.out"
+wait_hb "$I" || fail "(sz) no baseline heartbeat"
+sleep 1.5
+check "(sz) an empty ledger wakes nothing" "" "$(cat "$WORK/sz.out")"
+bash "$SZ_NOTE" note refuse HIMMEL-9201 N921 --files 41 --detail "41 files over the 40-file hard max" --root "$HANDOVER_DIR" >/dev/null 2>&1
+wait_exit "$WPID"
+check "(sz) a SIZE-ESCALATE row ends the wait" "0" "$rc"
+check "(sz) the wake names the size event and the row count" "WAKE size rows=1" "$(head -n 1 "$WORK/sz.out")"
+contains "(sz) the wake carries the row" "$(cat "$WORK/sz.out")" "refuse$(printf '\t')HIMMEL-9201$(printf '\t')N921$(printf '\t')41"
+contains "(sz) the wake ends with the tick line" "$(cat "$WORK/sz.out")" "TICK 03:00"
+start "$I" "$WORK/sz2.out"
+wait_hb "$I" || fail "(sz) no re-arm heartbeat"
+sleep 2.5
+wait_exit "$WPID"
+check "(sz) a re-arm does not wake for the same row" "running" "$rc"
+bash "$SZ_NOTE" note bulk HIMMEL-9202 N922 --files 120 --detail "bulk: mechanical" --root "$HANDOVER_DIR" >/dev/null 2>&1
+wait_exit "$WPID"
+check "(sz) a later row wakes again" "0" "$rc"
+check "(sz) the second wake counts two rows" "WAKE size rows=2" "$(head -n 1 "$WORK/sz2.out")"
+contains "(sz) the second wake carries the new row" "$(cat "$WORK/sz2.out")" "bulk$(printf '\t')HIMMEL-9202"
+lacks "(sz) the second wake does not repeat the first row" "$(cat "$WORK/sz2.out")" "HIMMEL-9201"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+unset HANDOVER_DIR
 
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

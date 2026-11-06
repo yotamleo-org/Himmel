@@ -726,9 +726,9 @@ rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$SUT" "$WORK/workers.json" --base 
 # adopter worktree as WORKER_SESSION_REPO (headed-arm.sh starts the session in that dir) ---
 KIT="$WORK/kit"; mkdir -p "$KIT/scripts/handover/chief-kit"
 mkdir -p "$KIT/scripts/ci"
-cp "$SUT" "$HERE/salus_marked.py" "$HERE/holds.py" "$HERE/platform-dropped.re" "$KIT/scripts/handover/chief-kit/"
+cp "$SUT" "$HERE/salus_marked.py" "$HERE/holds.py" "$HERE/platform-dropped.re" "$HERE/size-override.sh" "$KIT/scripts/handover/chief-kit/"
 cp "$HERE/../../ci/ci-trust-paths.txt" "$HERE/../../ci/pr-size-bands.tsv" "$KIT/scripts/ci/"
-mkdir -p "$KIT/scripts/lib"; cp "$HERE/../../lib/flags.py" "$HERE/../../lib/flags.tsv" "$KIT/scripts/lib/"
+mkdir -p "$KIT/scripts/lib"; cp "$HERE/../../lib/flags.py" "$HERE/../../lib/flags.tsv" "$HERE/../../lib/go-gate.sh" "$HERE/../../lib/handover-path.sh" "$KIT/scripts/lib/"
 export ADP_WT_LOG="$WORK/adp-wt.log"
 cat > "$KIT/scripts/_new-worktree.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -1163,6 +1163,7 @@ echo x > "$PS/scripts/dd/x.sh"; for n in $(seq 1 40); do mkdir -p "$PS/scripts/d
 for n in $(seq 0 40); do echo "$n" > "$(printf '%s/scripts/q/f%02d.txt' "$PS" "$n")"; done
 for n in $(seq 1 25); do echo "$n" > "$PS/scripts/mid/f$n.txt"; done
 for n in 1 2 3; do echo "$n" > "$PS/scripts/few/f$n.txt"; done
+mkdir -p "$PS/scripts/ci"; for n in $(seq 1 25); do echo "$n" > "$PS/scripts/ci/t$n.sh"; done  # 25 files under a ci-trust-paths.txt pattern
 if git init -q "$PS" && git -C "$PS" add -A && git -C "$PS" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m base && PSBASE="$(git -C "$PS" rev-parse HEAD)"; then
     pass "the size-projection fixture repo holds a base commit"
 else
@@ -1282,6 +1283,68 @@ has "an invalid pr_size_gate value is named" "$pso" "pr_size_gate"
 pso="$(HIMMEL_FLAGS_TSV="$WORK/no-such-registry.tsv" psrun big gr)"; rc=$?
 [ "$rc" = 2 ] && pass "an unreadable flag registry exits 2 (configuration error)" || fail "unreadable registry: rc=$rc: $pso"
 lacks "an unreadable flag registry prints no traceback" "$pso" "Traceback"
+
+# ---- the monitored size escape ----
+SZK=$(printf 'HIMMEL-%s' 9201)  # the key of the ps_workers fixture, built so the line holds no literal ticket key
+# Every refusal and every bulk: mechanical use writes a SIZE-ESCALATE row to <handover root>/.locks/size-escalate.tsv;
+# only a chief-signed size-override record lets a refused brief through; a trust-path brief over the soft band and a
+# brief past the 300-file cap go to the operator whatever the chief signs.
+OV="$HERE/size-override.sh"; SEL="$WORK/handovers/.locks/size-escalate.tsv"
+PSHOME="$WORK/ps-home"; mkdir -p "$PSHOME/.config/himmel"
+printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$PSHOME/.config/himmel/go-hmac.key"
+sel_count() { grep -c "^SIZE-ESCALATE" "$SEL" 2>/dev/null || true; }
+ps_workers trustsoft scripts/ci/ ''
+ps_workers huge "$(for n in $(seq 1 301); do printf 'scripts/newd/n%s.txt ' "$n"; done)" ''
+rm -f "$SEL"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun big esc1)"; rc=$?
+[ "$rc" = 1 ] && pass "size escape: a 41-file refusal still exits 1" || fail "size escape refusal: rc=$rc: $pso"
+[ "$(sel_count)" = 1 ] && pass "size escape: the refusal writes exactly one SIZE-ESCALATE row" || fail "refusal rows: $(sel_count): $(cat "$SEL" 2>/dev/null)"
+has "size escape: the row names the refusal, the key, the worker and the file count" "$(cat "$SEL" 2>/dev/null)" "refuse$(printf '\t')HIMMEL-9201$(printf '\t')N921$(printf '\t')41"
+has "size escape: the refusal tells the chief how to sign an override" "$pso" "size-override.sh record"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun bulk esc1)"; rc=$?
+[ "$rc" = 0 ] && [ "$(sel_count)" = 2 ] && pass "size escape: a bulk: mechanical use writes one more row" || fail "bulk rows: rc=$rc count=$(sel_count)"
+has "size escape: the bulk row says bulk" "$(tail -n 1 "$SEL" 2>/dev/null)" "bulk$(printf '\t')HIMMEL-9201"
+pso="$(psrun big esc-off)"; rc=$?
+[ "$rc" = 0 ] && [ "$(sel_count)" = 2 ] && pass "size escape: with the gate off nothing is escalated and no row is written" || fail "gate off rows: rc=$rc count=$(sel_count)"
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun few esc1)"; rc=$?
+[ "$rc" = 0 ] && [ "$(sel_count)" = 2 ] && pass "size escape: a small brief writes no row" || fail "small brief rows: rc=$rc count=$(sel_count)"
+
+# an unsigned or worker-written override does not let the brief through
+printf 'SIZE-OVERRIDE\t1\tHIMMEL-9201\tN921\t41\t0\tno\tconsole:chief-x\tkeep whole\t\n' >> "$SEL"
+pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun big esc2)"; rc=$?
+[ "$rc" = 1 ] && pass "size escape: an unsigned override row is refused (rc 1)" || fail "unsigned override: rc=$rc: $pso"
+pso="$(HOME="$PSHOME" HIMMEL_CONSOLE_LEG=1 HIMMEL_FLAG_PR_SIZE_GATE=1 bash "$OV" record "$SZK" N921 --files 41 --reason "worker says so" --root "$WORK/handovers" 2>&1)"; rc=$?
+[ "$rc" = 3 ] && pass "size escape: a worker cannot sign an override (rc 3)" || fail "worker record: rc=$rc: $pso"
+pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun big esc3)"; rc=$?
+[ "$rc" = 1 ] && pass "size escape: a refused worker record leaves the brief refused (rc 1)" || fail "after worker record: rc=$rc: $pso"
+# a chief-signed override lets it through
+pso="$(HOME="$PSHOME" env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME=chief-t bash "$OV" record "$SZK" N921 --files 41 --reason "one scripted rename, split would break it" --root "$WORK/handovers" 2>&1)"; rc=$?
+[ "$rc" = 0 ] && pass "size escape: the chief signs an override" || fail "chief record: rc=$rc: $pso"
+before="$(sel_count)"
+pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun big esc4)"; rc=$?
+[ "$rc" = 0 ] && pass "size escape: a chief-signed override lets the 41-file brief through (rc 0)" || fail "signed override: rc=$rc: $pso"
+[ -n "$(ps_brief big esc4)" ] && pass "size escape: the overridden brief is written" || fail "overridden brief missing"
+has "size escape: the pass names the override" "$pso" "one scripted rename"
+[ "$(sel_count)" = "$before" ] && pass "size escape: a brief the override lets through is not a new refusal row" || fail "override pass wrote a row"
+
+# the operator's cases: refused even with a chief override, and the message says so
+pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun trustsoft esc5)"; rc=$?
+[ "$rc" = 1 ] && pass "size escape: a trust-path brief over the soft band (25 files) is refused (rc 1)" || fail "trust soft: rc=$rc: $pso"
+has "size escape: the trust-path refusal routes to the operator" "$pso" "operator"
+[ -z "$(ps_brief trustsoft esc5)" ] && pass "size escape: the trust-path brief writes no doc" || fail "trust-path brief was written"
+pso="$(HOME="$PSHOME" env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME=chief-t bash "$OV" record "$SZK" N921 --files 25 --trust yes --reason "keep whole" --root "$WORK/handovers" 2>&1)"; rc=$?
+[ "$rc" = 4 ] && pass "size escape: the chief cannot sign for a trust-path brief over the soft band (rc 4)" || fail "trust record: rc=$rc: $pso"
+pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun trustsoft esc6)"; rc=$?
+[ "$rc" = 1 ] && has "size escape: still the operator's after the attempted record" "$pso" "operator" || fail "trust soft after record: rc=$rc: $pso"
+pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun huge esc7)"; rc=$?
+[ "$rc" = 1 ] && pass "size escape: a brief past the 300-file cap is refused (rc 1)" || fail "huge: rc=$rc: $pso"
+has "size escape: the 300-file refusal routes to the operator" "$pso" "operator"
+pso="$(HOME="$PSHOME" env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME=chief-t bash "$OV" record "$SZK" N921 --files 301 --reason "huge" --root "$WORK/handovers" 2>&1)"; rc=$?
+[ "$rc" = 4 ] && pass "size escape: the chief cannot sign for a brief past 300 files (rc 4)" || fail "huge record: rc=$rc: $pso"
+pso="$(HOME="$PSHOME" env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME=chief-t bash "$OV" record "$SZK" N921 --files 41 --lines 1501 --reason "huge" --root "$WORK/handovers" 2>&1)"; rc=$?
+[ "$rc" = 4 ] && pass "size escape: the chief cannot sign for a brief past 1500 lines (rc 4)" || fail "lines record: rc=$rc: $pso"
+pso2="$(psrun trustsoft esc9)"; rc2=$?
+[ "$rc2" = 0 ] && pass "size escape: with the gate off a trust-path brief over the soft band only warns (rc 0)" || fail "trust soft gate off: rc=$rc2: $pso2"
 
 # the adopted-kit fixture holds the flags.py copy, so the size gate is reached there; a kit without it exits 2, not a traceback
 [ -f "$KIT/scripts/lib/flags.py" ] && pass "the adopted-kit fixture holds the flags.py copy" || fail "the adopted-kit fixture has no flags.py copy"
