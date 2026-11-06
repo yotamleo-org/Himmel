@@ -2663,6 +2663,27 @@ fi
 # so ignoring SKIPPED-BANK would let a launch through against an exhausted
 # bank. Any other verdict (PROCEED, BANK-STALE, BANK-UNKNOWN) falls through.
 BANK_PREFLIGHT="${HEADED_ARM_WORKER_PREFLIGHT:-$HERE/../../lib/usage-preflight.sh}"
+# delete the fleet reservation THIS launcher created for $NAME, and only that. usage-preflight.sh
+# stamps the caller pid ($$ here) into it; admission-lock-failure bypass (FLEET_CAP_OK=1) can admit without creating one,
+# so a reservation present under $NAME with another pid is a concurrent arm's still-pending slot and stays. Both keys
+# the reserver can have used (fleet-reservation-key.sh), as arm-resume.sh's release does.
+_release_fleet_reservation() {
+    local _slots _k
+    local -a _keys
+    _slots="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}"
+    if . "$HERE/../../lib/fleet-reservation-key.sh" 2>/dev/null; then
+        _keys=("$(fleet_reservation_key "$NAME")" "$(fleet_hash_key "$NAME")")
+    else
+        _keys=("$NAME")
+    fi
+    for _k in "${_keys[@]}"; do
+        [ -n "$_k" ] || continue
+        if [ "$(cat "${_slots:?}/$_k/pid" 2>/dev/null)" = "$$" ]; then
+            rm -rf "${_slots:?}/$_k" 2>/dev/null
+        fi
+    done
+    return 0
+}
 if [ -f "$BANK_PREFLIGHT" ]; then
     # TTL from OUR OWN deadline plus a fixed grace period,
     # floored at 60s — a reservation must not outlive the arm attempt it
@@ -2679,7 +2700,16 @@ if [ -f "$BANK_PREFLIGHT" ]; then
     # this call launches a worker, so it declares launch intent —
     # the fleet cap must be able to actually refuse it, unlike a plain
     # bank-status READ.
-    preflight_token="$(CADENCE_USAGE_WORKER="$NAME" CADENCE_USAGE_LANE="$LANE_BANK_GATE" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" FLEET_RESERVE_TTL="$_arm_fleet_ttl" bash "$BANK_PREFLIGHT" 2>>"$LOG")"
+    # The preflight's stderr is read once (a duplicate-reservation refusal is worded apart from the fleet cap below),
+    # then appended to the log as before.
+    _pf_err="$(mktemp "${TMPDIR:-/tmp}/headed-arm-worker-pf.XXXXXX" 2>/dev/null)" || _pf_err=""  # swallow-ok: without it the stderr goes to the log and a duplicate reads as the cap, as before
+    preflight_token="$(CADENCE_USAGE_WORKER="$NAME" CADENCE_USAGE_LANE="$LANE_BANK_GATE" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" FLEET_RESERVE_TTL="$_arm_fleet_ttl" bash "$BANK_PREFLIGHT" 2>>"${_pf_err:-$LOG}")"
+    _pf_dup=0
+    if [ -n "$_pf_err" ]; then
+        cat "$_pf_err" >> "$LOG" 2>/dev/null  # swallow-ok: a log that cannot be appended to is not a reason to stop the launch
+        grep -q 'refusing as a duplicate declared launch' "$_pf_err" 2>/dev/null && _pf_dup=1
+        rm -f "$_pf_err"
+    fi
     if [ "$preflight_token" = SKIPPED-FLEET ]; then
         # NOT a reservation release here — usage-preflight.sh
         # only ever returns SKIPPED-FLEET from its admission block itself
@@ -2688,7 +2718,13 @@ if [ -f "$BANK_PREFLIGHT" ]; then
         # duplicate case in particular is someone ELSE's still-pending
         # reservation for this same name — deleting it here would release a
         # slot out from under that other, still-live arm attempt.
-        echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - fleet-size cap reached (bypass: FLEET_CAP_OK=1 in the LAUNCHING shell)" >> "$LOG"
+        if [ "$_pf_dup" -eq 1 ]; then
+            # not the fleet cap - a slot is already held under this worker's name (a launch still arming, or an
+            # older refused one that left it); the preflight line above says who holds it and when it lapses.
+            echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - a fleet reservation for this worker already exists (the fleet has room; the preflight line above names the holder and when it lapses)" >> "$LOG"
+        else
+            echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - fleet-size cap reached (bypass: FLEET_CAP_OK=1 in the LAUNCHING shell)" >> "$LOG"
+        fi
         exit 10
     fi
     if [ "$preflight_token" = SKIPPED-BANK ]; then
@@ -2696,15 +2732,7 @@ if [ -f "$BANK_PREFLIGHT" ]; then
         # already succeeded and reserved a slot for $NAME (admission runs
         # before any bank check) — release it now since this attempt is not
         # going to launch after all, rather than leaving it to expire by TTL.
-        _arm_fleet_slots="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}"
-        # The same admission-lock-failure bypass that
-        # can reach here without ever creating OUR reservation (see the
-        # comment above SKIPPED-FLEET) means a reservation already present
-        # for $NAME may belong to an unrelated concurrent arm attempt —
-        # verify pid ownership before deleting it out from under them.
-        if [ "$(cat "${_arm_fleet_slots:?}/$NAME/pid" 2>/dev/null)" = "$$" ]; then
-            rm -rf "${_arm_fleet_slots:?}/$NAME" 2>/dev/null
-        fi
+        _release_fleet_reservation
         echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - $LANE lane bank exhausted (park and retry later; see usage-preflight.sh for the parked lane's own bank status)" >> "$LOG"
         exit 11
     fi
@@ -2953,11 +2981,30 @@ fi
 if [ "${#WORKER_SESSION_SCOPE[@]}" -gt 0 ]; then
     HA_RUN=("${WORKER_SESSION_SCOPE[@]}" "${HA_RUN[@]}")
 fi
-if [ -n "$FLEET_MANIFEST" ]; then
-    # Keep headed-arm.sh's profile/context handoff paired to its own exec PID.
-    "${HA_SH[@]}" -c 'export HEADED_ARM_CONTEXT_PID="$$"; exec "$@"' bash \
-        "${HA_RUN[@]}" "$NAME" "$DOC" "$SIGNAL" "$DEADLINE" "$LOG" "$MODEL" "$CONTEXT"
+# headed-arm.sh can still refuse AFTER the fleet slot was reserved above (a single-writer hold, a duplicate
+# name, a ticket rival), and an `exec` leaves nothing here to release it - the chief's relaunch after a grant was then
+# refused as a duplicate for up to FLEET_RESERVE_TTL. So it runs as a child (as under --fleet) and this launcher returns
+# its status, releasing the reservation it owns on a refusal. Not on 7 (konsole alive, claude not yet seen) or 9
+# (the scan was indeterminate): a session may be coming up there and the census consumes the reservation, as on main.
+# A child started with `&` and waited on, so TERM/HUP/INT to this launcher can be forwarded to it (a plain foreground
+# child would only see them after it exits): the child is then not orphaned, and its status releases the reservation.
+# The child's stdin stays this launcher's (`<&0`); HEADED_ARM_CONTEXT_PID is the child's own pid, as under --fleet.
+_ha_child=""
+# shellcheck disable=SC2329  # invoked by the trap below
+_ha_forward() { [ -z "$_ha_child" ] || kill -TERM "$_ha_child" 2>/dev/null; }
+trap _ha_forward TERM HUP INT
+# Keep headed-arm.sh's profile/context handoff paired to its own exec PID.
+"${HA_SH[@]}" -c 'export HEADED_ARM_CONTEXT_PID="$$"; exec "$@"' bash \
+    "${HA_RUN[@]}" "$NAME" "$DOC" "$SIGNAL" "$DEADLINE" "$LOG" "$MODEL" "$CONTEXT" <&0 &
+_ha_child=$!
+while :; do
+    wait "$_ha_child"
     launch_rc=$?
+    kill -0 "$_ha_child" 2>/dev/null || break   # a trapped signal ends `wait` early; the child is still running
+done
+trap - TERM HUP INT
+case "$launch_rc" in 0|7|9) ;; *) _release_fleet_reservation ;; esac
+if [ -n "$FLEET_MANIFEST" ]; then
     [ "$launch_rc" -eq 0 ] || exit "$launch_rc"
     _fm_arm=()
     [ -z "$AB_ARM" ] || _fm_arm=(--arm "$AB_ARM")
@@ -2967,4 +3014,4 @@ if [ -n "$FLEET_MANIFEST" ]; then
     fi
     exit 0
 fi
-exec "${HA_RUN[@]}" "$NAME" "$DOC" "$SIGNAL" "$DEADLINE" "$LOG" "$MODEL" "$CONTEXT"
+exit "$launch_rc"

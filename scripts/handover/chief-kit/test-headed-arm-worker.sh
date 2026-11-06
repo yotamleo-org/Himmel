@@ -5493,6 +5493,125 @@ rc=0; out50c="$(env -u UNGUARDED_LAUNCH_OK WORKER_SESSION_REPO="$scratch50" bash
 check "consult_guard_applies: a --consult on an unguarded folder exits 18" "$rc" "18"
 contains "consult_guard_applies: the refusal names the folder" "$out50c" "$scratch50 does not load the himmel guard hooks"
 
+# --- 51. a launch refused AFTER its fleet slot is reserved releases the reservation it owns ---
+# usage-preflight.sh reserves the slot before headed-arm.sh runs; headed-arm.sh can still refuse (a single-writer hold,
+# a duplicate name, a ticket rival). Main left the reservation to lapse by TTL, so the chief's relaunch after a grant
+# was refused as a duplicate and logged as the fleet cap. The preflight below stands in for the real reserve/duplicate
+# shape (mkdir of the worker's slot, the pid file the releasers check, the duplicate refusal text).
+RESV51="$tmp/resv51-preflight.sh"
+cat > "$RESV51" <<'RESV51_EOF'
+#!/usr/bin/env bash
+slots="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}"
+if ! mkdir "$slots/$CADENCE_USAGE_WORKER" 2>/dev/null; then
+  echo "bank-preflight: a fleet reservation for worker=$CADENCE_USAGE_WORKER already exists — refusing as a duplicate declared launch (held by pid ?, expires in 1s; the fleet itself has room)" >&2
+  echo SKIPPED-FLEET
+  exit 0
+fi
+printf '%s\n' "$CADENCE_USAGE_CALLER_PID" > "$slots/$CADENCE_USAGE_WORKER/pid"
+echo PROCEED
+RESV51_EOF
+chmod 755 "$RESV51"
+# the FLEET_CAP_OK shape: admitted without creating a reservation of its own
+NOCREATE51="$tmp/nocreate51-preflight.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'echo PROCEED' > "$NOCREATE51"
+chmod 755 "$NOCREATE51"
+slot51() { [ -d "$HIMMEL_FLEET_SLOTS/$1" ] && echo held || echo free; }
+
+# 51a-f: the 2026-11-05 sequence through the real headed-arm.sh: refused on a hold, grant, relaunch the same worker
+repo51="$tmp/repo51"; mkdir -p "$repo51" "$tmp/hroot49/u/r"
+doc51h="$tmp/HIMMEL-9611-N1-holder.md"; fx_brief '# HIMMEL-9611 holder' > "$doc51h"
+hold49 claim --key HIMMEL-9611 --label N1 --doc "$doc51h" --repo "$repo51" scripts/w51.sh >/dev/null 2>&1
+n51="HIMMEL-9612-N1-regrant"
+doc51="$tmp/$n51.md"; fx_brief "# $n51" '> **Writes:** scripts/w51.sh' > "$doc51"
+d51="$tmp/c51"; mk_launch_stubs "$d51" "$n51"
+rc=0
+HANDOVER_DIR="$tmp/hroot49" some_doc="$doc51" RUN_WORKER_ARGS=--no-profile run_worker "$d51" "$repo51" "$n51" "claude-sonnet-5" "$RESV51" >/dev/null 2>&1 || rc=$?
+check "51a a launch whose brief names a held file is refused (exit 2)" "$rc" "2"
+check "51b the refused launch leaves no fleet reservation" "$(slot51 "$n51")" "free"
+hold49 grant --key HIMMEL-9612 --repo "$repo51" scripts/w51.sh >/dev/null 2>&1
+rc=0
+out51b="$(HANDOVER_DIR="$tmp/hroot49" some_doc="$doc51" RUN_WORKER_ARGS=--no-profile run_worker "$d51" "$repo51" "$n51" "claude-sonnet-5" "$RESV51" 2>&1)" || rc=$?
+wait_record "$d51" || true
+check "51c after the grant the relaunch of the same worker is admitted and launches" "$rc|$([ -s "$d51/record" ] && echo konsole || echo none)" "0|konsole"
+not_contains "51d ... and the relaunch is not refused as the fleet cap" "$out51b" "fleet-size cap reached"
+not_contains "51e ... nor as a duplicate reservation" "$(cat "$d51/log" 2>/dev/null)" "already exists"
+check "51f the admitted launch keeps its reservation (the census consumes it, not the launcher)" "$(slot51 "$n51")" "held"
+
+# 51g: a duplicate-reservation refusal says what it is in the launcher log, and never the fleet cap
+n51g="HIMMEL-9613-N1-dup"; doc51g="$tmp/$n51g.md"; fx_brief "# $n51g" > "$doc51g"
+mkdir -p "$HIMMEL_FLEET_SLOTS/$n51g"; printf '%s\n' 424242 > "$HIMMEL_FLEET_SLOTS/$n51g/pid"
+tgt51="$tmp/target51.sh"
+cat > "$tgt51" <<'TGT51_EOF'
+#!/usr/bin/env bash
+printf '%s %s\n' "$$" "${HEADED_ARM_CONTEXT_PID:-unset}" > "${TGT51_PIDS:-/dev/null}"
+case "${TGT51_MODE:-rc}" in
+  hang) exec sleep 60 ;;
+  *) exit "${TGT51_RC:-0}" ;;
+esac
+TGT51_EOF
+chmod 755 "$tgt51"
+t51() { # t51 <preflight> <name> <doc>
+  HEADED_ARM_WORKER_TARGET="$tgt51" HEADED_ARM_WORKER_PREFLIGHT="$1" bash "$SCRIPT" --no-profile "$2" "$3" "$tmp/sig51" "$PAST" "$tmp/log51-$2" claude-sonnet-5-5
+}
+rc=0; t51 "$RESV51" "$n51g" "$doc51g" >/dev/null 2>&1 || rc=$?
+log51g="$(cat "$tmp/log51-$n51g" 2>/dev/null)"
+check "51g a duplicate-reservation refusal is exit 10" "$rc" "10"
+contains "51h ... and the launcher log names it as a duplicate reservation" "$log51g" "a fleet reservation for this worker already exists"
+not_contains "51i ... and does not say the fleet cap was reached" "$log51g" "fleet-size cap reached"
+check "51j ... and the other launch's reservation (another pid) is untouched" "$(cat "$HIMMEL_FLEET_SLOTS/$n51g/pid" 2>/dev/null)" "424242"
+rm -rf "${HIMMEL_FLEET_SLOTS:?}/$n51g"
+# control: a genuine SKIPPED-FLEET with no duplicate text still reads as the fleet cap
+rc=0; t51 "$SKIPPED_FLEET_PREFLIGHT" "$n51g" "$doc51g" >/dev/null 2>&1 || rc=$?
+contains "51k control: a plain SKIPPED-FLEET still says fleet-size cap reached" "$(cat "$tmp/log51-$n51g" 2>/dev/null)" "fleet-size cap reached"
+
+# 51l-o: the launcher returns headed-arm.sh's status; it releases what it owns on a pre-launch refusal and keeps it
+# where a session may really be coming up (7: konsole alive, claude not yet seen; 9: the scan was indeterminate)
+for rc51 in 2 16; do
+  n51r="HIMMEL-9614-N1-rc$rc51"; doc51r="$tmp/$n51r.md"; fx_brief "# $n51r" > "$doc51r"
+  rc=0; TGT51_RC=$rc51 t51 "$RESV51" "$n51r" "$doc51r" >/dev/null 2>&1 || rc=$?
+  check "51l headed-arm.sh exit $rc51 is the launcher's exit, and the reservation is released" "$rc|$(slot51 "$n51r")" "$rc51|free"
+done
+for rc51 in 7 9; do
+  n51r="HIMMEL-9615-N1-rc$rc51"; doc51r="$tmp/$n51r.md"; fx_brief "# $n51r" > "$doc51r"
+  rc=0; TGT51_RC=$rc51 t51 "$RESV51" "$n51r" "$doc51r" >/dev/null 2>&1 || rc=$?
+  check "51m headed-arm.sh exit $rc51 (a session may be coming up) is the launcher's exit, and the reservation stays (as on main)" "$rc|$(slot51 "$n51r")" "$rc51|held"
+done
+n51o="HIMMEL-9616-N1-ok"; doc51o="$tmp/$n51o.md"; fx_brief "# $n51o" > "$doc51o"
+rc=0; t51 "$RESV51" "$n51o" "$doc51o" >/dev/null 2>&1 || rc=$?
+check "51n an admitted launch (exit 0) keeps its reservation" "$rc|$(slot51 "$n51o")" "0|held"
+# a reservation this launcher did not create (the FLEET_CAP_OK shape) is never released, even on a refusal
+n51p="HIMMEL-9617-N1-foreign"; doc51p="$tmp/$n51p.md"; fx_brief "# $n51p" > "$doc51p"
+mkdir -p "$HIMMEL_FLEET_SLOTS/$n51p"; printf '%s\n' 424242 > "$HIMMEL_FLEET_SLOTS/$n51p/pid"
+rc=0; TGT51_RC=2 t51 "$NOCREATE51" "$n51p" "$doc51p" >/dev/null 2>&1 || rc=$?
+check "51o a refusal leaves a reservation another process owns" "$rc|$(slot51 "$n51p")" "2|held"
+
+# 51p: the --fleet hand-off releases on a refusal too
+n51q="HIMMEL-9618-N1-fleetrel"; doc51q="$tmp/$n51q.md"; fx_brief "# $n51q" > "$doc51q"
+rc=0; TGT51_RC=2 HEADED_ARM_WORKER_TARGET="$tgt51" HEADED_ARM_WORKER_PREFLIGHT="$RESV51" bash "$SCRIPT" --no-profile --fleet "$tmp/fleet51.json" "$n51q" "$doc51q" "$tmp/sig51" "$PAST" "$tmp/log51-$n51q" claude-sonnet-5-5 >/dev/null 2>&1 || rc=$?
+check "51p --fleet: a refused launch is released and keeps its status" "$rc|$(slot51 "$n51q")" "2|free"
+
+# 51q: the process headed-arm.sh runs as is the process HEADED_ARM_CONTEXT_PID names (headed-arm.sh compares it to its own $$)
+n51s="HIMMEL-9619-N1-pids"; doc51s="$tmp/$n51s.md"; fx_brief "# $n51s" > "$doc51s"
+rm -f "$tmp/pids51"
+TGT51_PIDS="$tmp/pids51" t51 "$RESV51" "$n51s" "$doc51s" >/dev/null 2>&1 || true
+check "51q the launched process is the one HEADED_ARM_CONTEXT_PID names" "$(awk '{ print ($1 == $2) ? "same" : "differ" }' "$tmp/pids51" 2>/dev/null)" "same"
+
+# 51r: TERM to the launcher while headed-arm.sh runs reaches headed-arm.sh, the launcher exits, the reservation is released
+n51t="HIMMEL-9620-N1-term"; doc51t="$tmp/$n51t.md"; fx_brief "# $n51t" > "$doc51t"
+rm -f "$tmp/pids51t"
+# the launcher itself in the background (a function call would background a subshell, and $! would not be the launcher)
+TGT51_MODE=hang TGT51_PIDS="$tmp/pids51t" HEADED_ARM_WORKER_TARGET="$tgt51" HEADED_ARM_WORKER_PREFLIGHT="$RESV51" \
+  bash "$SCRIPT" --no-profile "$n51t" "$doc51t" "$tmp/sig51" "$PAST" "$tmp/log51-$n51t" claude-sonnet-5-5 >/dev/null 2>&1 &
+lpid51=$!
+n=0; while [ ! -s "$tmp/pids51t" ] && [ "$n" -lt 100 ]; do sleep 0.1; n=$((n+1)); done
+cpid51="$(awk '{ print $1 }' "$tmp/pids51t" 2>/dev/null)"
+kill -TERM "$lpid51" 2>/dev/null
+rc=0; wait "$lpid51" 2>/dev/null || rc=$?
+n=0; while [ -n "$cpid51" ] && kill -0 "$cpid51" 2>/dev/null && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n+1)); done
+check "51r TERM to the launcher: the launched process is gone, not orphaned" "$([ -n "$cpid51" ] && ! kill -0 "$cpid51" 2>/dev/null && echo gone || echo alive)" "gone"
+check "51s ... the launcher exits non-zero with the signal status, and the reservation is released" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)|$(slot51 "$n51t")" "nonzero|free"
+[ -z "$cpid51" ] || kill -KILL "$cpid51" 2>/dev/null || true
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-headed-arm-worker.sh"
