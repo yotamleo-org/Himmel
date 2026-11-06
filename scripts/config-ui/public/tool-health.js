@@ -385,6 +385,7 @@ ${box("unused", "Loaded, never used", "Costs usage in every session; could load 
 // ---- drill-ins
 const back = (ui) => `<a class="btn quiet" href="${esc(toolHealthHref(ui))}">Back to overview</a>`;
 const stat = (id, label, v) => `<div><dt>${esc(label)}</dt><dd data-stat="${id}">${esc(v)}</dd></div>`;
+const weekCard = (id, label, v) => `<div class="kpi"><span class="k">${esc(label)}</span><b class="kv" data-stat="${id}">${esc(v)}</b></div>`;
 
 // ---- hook-chain incidents (the `chain` section of GET /api/tool-health): why a guard refused one exact call, with the recorded timing.
 const REASON_ROWS = [
@@ -487,6 +488,34 @@ function trendTable(trend, attr) {
   const max = Math.max(0, ...rows.map((r) => r.rate || 0));
   return `${chart(rows, (r) => r.rate, max, pct, "line")}${table(["Day (UTC)", "Calls", "Failed", "Failure rate"], rows.map((p) => `<tr ${attr}="${esc(p.day)}">${td(esc(dayLabel(p.day)))}${td(num(p.calls))}${td(num(p.failures))}${td(pct(p.rate))}</tr>`))}`;
 }
+// mockup v9 "Failures by cause": one stacked bar over five cards. The server refuses inline style attributes, so the bar is an SVG
+// whose segment widths are percent attributes and whose fills are tokens. rtk filter has no data yet (rtk logs no call id): it reads —.
+const CAUSE_FILL = { command: "var(--crit)", rtk_hook: "var(--beta)", guard: "var(--road)", classifier: "var(--alpha)", other: "var(--rule-strong)" };
+function causeView(totals, b, rtkOk) {
+  // No Bash call carries its command yet, so no cause was recorded: zeros here would read as an all-clear.
+  if (!(b.recorded > 0)) return `<p class="nodata">No failure cause recorded: no Bash call in this window carries its command yet</p>`;
+  const failed = Object.values(totals).reduce((n, v) => n + v, 0);
+  let at = 0;
+  const segs = Object.entries(totals).filter(([, v]) => v > 0).map(([k, v]) => {
+    const w = (v / failed) * 100, x = at;
+    at += w;
+    return `<rect data-cause-seg="${k}" x="${x.toFixed(2)}" y="0" width="${w.toFixed(2)}" height="18" fill="${CAUSE_FILL[k]}"><title>${esc(k.replace("_", " "))}: ${esc(String(v))}</title></rect>`;
+  }).join("");
+  const bar = `<svg class="thcausebar" viewBox="0 0 100 18" width="100%" height="18" preserveAspectRatio="none" role="img" aria-label="${esc(`${failed} failed Bash calls by cause`)}"><rect x="0" y="0" width="100" height="18" fill="var(--surface-2)"/>${segs}</svg>`;
+  const swatch = (k) => `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect width="10" height="10" fill="${CAUSE_FILL[k]}"/></svg> `;
+  const card = (id, label, value, k, title = "") => `<div class="kpi" data-cause-card="${id}"><span class="k">${k ? swatch(k) : ""}${esc(label)}</span><b class="kv"${title ? ` title="${esc(title)}"` : ""}>${esc(value)}</b></div>`;
+  const cards = `<div class="kpis">${[
+    card("command", "Command", String(totals.command), "command"),
+    card("rtk-filter", "rtk filter", "—", null, "rtk's parse failures carry no call id until upstream rtk logs one; these failures count under Command for now"),
+    rtkOk ? card("rtk-hook", "rtk hook", String(totals.rtk_hook), "rtk_hook") : card("rtk-hook", "rtk hook", "—", "rtk_hook", "rtk history could not be read, so an rtk hook refusal cannot be told from a himmel guard refusal; it counts under himmel guard"),
+    card("guard", "himmel guard", String(totals.guard), "guard"),
+    card("classifier", "Auto-mode classifier", String(totals.classifier), "classifier"),
+  ].join("")}</div>`;
+  // Causes come from the calls that carry their command; a window with older calls shows a subset, so say how much.
+  const all = isNum(b.unrecorded) ? b.recorded + b.unrecorded : null;
+  const cover = b.unrecorded === null || b.unrecorded > 0 ? `<p class="sub">Failure causes cover ${num(b.recorded)} of ${isNum(all) ? num(all) : "an unknown number of"} calls: the rest were written before the command was recorded.</p>` : "";
+  return `${bar}${cards}${totals.other > 0 ? `<p class="sub">${esc(String(totals.other))} other: a failure with no named cause.</p>` : ""}${cover}`;
+}
 function bashSections(data) {
   const b = data.bash;
   if (!b) return "";
@@ -498,7 +527,7 @@ function bashSections(data) {
   const rtkRows = rtkOk && fl ? [["rtk", fl.rtk], ["bash", fl.bash], ["not in rtk history", fl.unmatched]].map(([k, v]) => `<tr data-path="${k}">${td(k)}${td(num(v.calls))}${td(num(v.failures))}${td(pct(ratio(v.failures, v.calls)))}</tr>`) : [];
   const rtkBody = rtkOk && fl ? `${table(["Path", "Calls", "Failed", "Failure rate"], rtkRows)}<p class="sub">rtk history: ${num(b.rtk.matched)} matched, ${num(b.rtk.unmatched)} unmatched, ${num(b.rtk.duplicates)} duplicate call ids.</p>` : `<p class="nodata">rtk history unavailable (${esc(b.rtk ? b.rtk.state : "not-read")}): rtk —, bash —</p>`;
   return `${box("bash-cmd", "Calls by command", `Which commands run, and how many go through rtk? The command is recorded for ${num(b.recorded)} calls; ${num(b.unrecorded)} were written before it was.`, cmds)}
-${box("bash-cause", "Failures by cause", "Who broke the call: the command, the rtk hook, a himmel guard or the classifier? rtk filter failures need rtk to log the call id (later).", table(["Cause", "Failed"], Object.entries(causes).map(([k, l]) => `<tr data-cause="${k}">${td(esc(l))}${td(String(totals[k]))}</tr>`)))}
+${box("bash-cause", "Failures by cause", "Who broke the call: the command, the rtk hook, a himmel guard or the classifier? rtk filter failures need rtk to log the call id (later).", causeView(totals, b, rtkOk))}
 ${box("bash-rtk", "rtk vs bash", "Does going through rtk fail more often? Whole fleet: not split by role, lane or profile.", rtkBody, "whole fleet")}`;
 }
 function toolDrill(data, inv, ui, token) {
@@ -524,20 +553,24 @@ function guardDrill(data, ui, token) {
   for (const d of data.daily_hooks || []) if (d.class === h.class) by.set(d.day, (by.get(d.day) || 0) + (isNum(d.failures) ? d.failures : 0));
   const days = windowDays(data).map((day) => ({ day, n: by.has(day) ? by.get(day) : cohort.has(day) ? 0 : null }));
   const max = Math.max(0, ...days.map((d) => d.n || 0));
-  // The mockup's This week cards lead; the rest of the facts stay in the second list.
+  // The four This week cards sit beside the chart; the eligible attempts, the legacy rate, Bash calls and recovery are in the counted box below.
   const peak = days.reduce((b, d) => (isNum(d.n) && d.n > 0 && (!b || d.n > b.n) ? d : b), null), counted = days.filter((d) => isNum(d.n));
-  const cards = `<h3>${data.selected && data.selected.days === 30 ? "This window (30 days)" : "This week"}</h3><dl class="stats">${stat("refused", "Refused", num(h.failures))}${stat("rate", "Rate ÷ eligible call attempts", pct2(h.eligible_rate))}${stat("busiest", "Busiest day", peak ? `${dayLabel(peak.day)} · ${peak.n}` : "—")}${stat("none", "Days with none", counted.length ? num(counted.filter((d) => d.n === 0).length) : "—")}</dl>`;
-  const stats = `${cards}<dl class="stats">${stat("eligible", "Eligible call attempts", num(h.eligible_calls))}${stat("legacy-rate", "Rate ÷ Bash calls (legacy)", pct(h.rate))}${stat("bash", "Bash calls", num(h.calls))}${stat("recovery", "Recovery", `${pct(h.recovery_rate)} (${num(h.recovered)} of ${num(h.known)} known)`)}</dl>`;
+  const cards = `<h3>${data.selected && data.selected.days === 30 ? "This window (30 days)" : "This week"}</h3><div class="kpis th-cols">${weekCard("refused", "Refused", num(h.failures))}${weekCard("rate", "Rate ÷ eligible call attempts", pct2(h.eligible_rate))}${weekCard("busiest", "Busiest day", peak ? `${dayLabel(peak.day)} · ${peak.n}` : "—")}${weekCard("none", "Days with none", counted.length ? num(counted.filter((d) => d.n === 0).length) : "—")}</div>`;
+  const counting = box("guard-counts", "How the rate is counted", "The eligible call attempts behind the rate, the older Bash-only rate kept for comparison, and how often a refused call was retried and recovered.", `<dl class="stats">${stat("eligible", "Eligible call attempts", num(h.eligible_calls))}${stat("legacy-rate", "Rate ÷ Bash calls (legacy)", pct(h.rate))}${stat("bash", "Bash calls", num(h.calls))}${stat("recovery", "Recovery", `${pct(h.recovery_rate)} (${num(h.recovered)} of ${num(h.known)} known)`)}</dl>`);
+  // mockup v9: Refusals per day and the four This week cards sit side by side.
+  const perDay = `<figure class="card"><h3>Refusals per day <span class="tag">refused calls</span></h3>${sub("Refusals per UTC day; a gap is a day with no calls recorded.")}${chart(days.map((d) => ({ day: d.day, n: d.n })), (d) => d.n, max, String, "bar")}<details><summary>Exact values per day</summary>${table(["Day (UTC)", "Refused"], days.map((d) => `<tr data-guard-day="${d.day}">${td(esc(dayLabel(d.day)))}${td(num(d.n))}</tr>`))}</details></figure>`;
+  const week = `<figure class="card">${cards}</figure>`;
   const eligible = h.eligible_by_tool && typeof h.eligible_by_tool === "object" ? h.eligible_by_tool : null, byTool = h.by_tool && typeof h.by_tool === "object" ? h.by_tool : {};
   const wiredName = (tool) => (/^(?:Skill|Agent):/.test(tool) ? tool.slice(0, tool.indexOf(":")) : tool);
   const toolNote = (tool) => (tool === UNKNOWN_TOOL ? "tool not recorded (legacy)" : eligible ? (Object.hasOwn(eligible, wiredName(tool)) ? "a tool this guard is wired to check" : "not a tool this guard is wired to check") : "");
   const toolRows = [...new Set([...Object.keys(byTool), ...(eligible ? Object.keys(eligible) : [])])].sort((a, b) => (byTool[b] || 0) - (byTool[a] || 0) || (a < b ? -1 : 1))
     .map((tool) => `<tr data-guard-tool="${esc(tool)}">${tdWrap(esc(tool))}${td(num(byTool[tool] || 0))}${tdWrap(esc(toolNote(tool)))}${td(eligible && Object.hasOwn(eligible, tool) ? num(eligible[tool]) : "—")}</tr>`);
   const split = box("guard-tools", "Refused by tool", "Which tool was refused? Calls are the eligible call attempts to that tool in the window; a refusal recorded before tools were named sits in the legacy bucket.", `${table(["Tool", "Refused", "Note", "Eligible call attempts"], toolRows, "No refusal recorded for this guard", "thtab")}${isNum(h.unattributed) && h.unattributed > 0 ? `<p class="sub">${h.unattributed} refusals name no tool row.</p>` : ""}`);
-  return `<section class="box">${back(ui)}<h2>Guard drill-in: ${esc(h.class.replace(/^denied\//, ""))} <span class="tag">whole window</span></h2>${sub("On which days did this guard refuse calls, and which tool did it refuse, and why?")}${stats}</section>
+  return `<section class="box">${back(ui)}<h2>Guard drill-in: ${esc(h.class.replace(/^denied\//, ""))} <span class="tag">whole window</span></h2>${sub("On which days did this guard refuse calls, and which tool did it refuse, and why?")}</section>
+<div class="th-charts">${perDay}${week}</div>
+${counting}
 ${guardWhy(data, h, token)}
 ${split}
-${box("guard-days", "Refusals per day", "Refusals per UTC day; a gap is a day with no calls recorded.", `${chart(days.map((d) => ({ day: d.day, n: d.n })), (d) => d.n, max, String, "bar")}${table(["Day (UTC)", "Refused"], days.map((d) => `<tr data-guard-day="${d.day}">${td(esc(dayLabel(d.day)))}${td(num(d.n))}</tr>`))}`)}
 ${box("evidence", "Evidence", "Sessions where it refused, opened in AG-UI.", evidence(h.sessions, h.tool_call_ids, token))}`;
 }
 
@@ -602,19 +635,28 @@ function mapTab(data, inv, ui) {
   const ordered = isNum(sort && sort.col) ? [...srcs].sort((a, b) => { const x = sortKey(a), y = sortKey(b); const c = typeof x === "number" && typeof y === "number" ? x - y || SRC_LABEL[a].localeCompare(SRC_LABEL[b]) : String(x).localeCompare(String(y)); return sort.desc ? -c : c; }) : srcs;
   const heads = ["Source", ...KINDS.map((k) => KIND_LABEL[k]), "All"];
   const head = heads.map((h, i) => `<span class="mh"><button class="th-sort" data-act="th-sort" data-table="map" data-col="${i}" aria-label="Sort sources by ${esc(h)}"${i === KINDS.indexOf("res") + 1 ? ` title="No scan source lists MCP resources, so this column stays empty."` : ""}>${esc(h)}${sort && sort.col === i ? (sort.desc ? " ▾" : " ▴") : ""}</button></span>`).join("");
-  const cell = (s, k, total) => {
+  // One tile's facts, shared by the desktop grid cell and the phone card tile: count, calls line, failure-rate tint, loaded-never-used.
+  // A sum is a number only when every part is one: an unread digest leaves a dash, never a zero. An empty list is `empty`.
+  const sumOf = (list, f, empty = null) => (!list.length ? empty : list.every((x) => isNum(f(x))) ? list.reduce((n, x) => n + f(x), 0) : null);
+  const tileInfo = (s, k) => {
     const items = itemsOf(s, k);
-    if (!items.length) return `<span class="mc none" aria-hidden="true"></span>`;
+    if (!items.length) return null;
     const outside = outsideKind(k);
     const counts = items.map((r) => toolCounts(r, data));
-    const calls = outside ? null : counts.reduce((n, c) => (n === null || !isNum(c.calls) ? null : n + c.calls), 0);
-    const failed = outside ? items.reduce((n, r) => n + (isNum(r.refused) ? r.refused : 0), 0) : counts.reduce((n, c) => n + (isNum(c.failures) ? c.failures : 0), 0);
+    const calls = outside ? null : sumOf(counts, (c) => c.calls);
+    const failed = outside ? (data ? items.reduce((n, r) => n + (isNum(r.refused) ? r.refused : 0), 0) : null) : sumOf(counts, (c) => c.failures);
     const rate = ratio(failed, calls);
-    const tint = outside ? "" : !isNum(calls) || calls === 0 ? " zero" : failed === 0 ? " ok-t" : rate >= 0.1 ? " bad-t" : rate >= 0.05 ? " warn-t" : " ok-t";
+    const tint = outside ? "" : !isNum(calls) || calls === 0 || !isNum(failed) ? " zero" : failed === 0 ? " ok-t" : rate >= 0.1 ? " bad-t" : rate >= 0.05 ? " warn-t" : " ok-t";
     const runs = k === "hook" ? items.reduce((n, r) => (n === null || !isNum(r.runs) ? null : n + r.runs), 0) : null;
     const unused = items.filter((r, i) => (r.kind === "hook" ? r.runs === 0 : !outsideKind(r.kind) && counts[i].calls === 0)).length;
-    const line = k === "hook" ? `${num(runs)} runs ${items.every((r) => r.runsMeasured) ? "measured" : items.some((r) => r.runsMeasured) ? "measured and derived" : "derived"} · ${failed} refused` : k === "cli" ? "outside call total" : `${num(calls)} calls · ${failed} failed${isNum(calls) && calls > 0 && calls < 10 ? " · few calls" : ""}`;
+    const line = k === "hook" ? `${num(runs)} runs ${items.every((r) => r.runsMeasured) ? "measured" : items.some((r) => r.runsMeasured) ? "measured and derived" : "derived"} · ${num(failed)} refused` : k === "cli" ? "outside call total" : `${num(calls)} calls · ${num(failed)} failed${isNum(calls) && calls > 0 && calls < 10 ? " · few calls" : ""}`;
     const label = k ? `${items.length} ${KIND_LABEL[k]}` : `${items.length} ${items.length === 1 ? "tool" : "tools"}`;
+    return { items, label, line, tint, unused };
+  };
+  const cell = (s, k, total) => {
+    const info = tileInfo(s, k);
+    if (!info) return `<span class="mc none" aria-hidden="true"></span>`;
+    const { label, line, tint, unused } = info;
     const inner = `<b>${esc(label)}</b><span>${esc(line)}</span><span class="nu">${unused ? `○ ${unused}` : ""}</span>`;
     if (total) return `<span class="mc total${tint}">${inner}</span>`;
     const on = (ui.src || "") === s && (ui.kind || "") === k;
@@ -625,8 +667,15 @@ function mapTab(data, inv, ui) {
   const foot = `<span class="mr mall">All sources</span>${kindCols.map((k) => cell("", k, k === "")).join("")}`;
   const grid = `<div class="thmap" data-cols="${kindCols.length}">${head}${body}${foot}</div>`;
   const cards = `<div class="thcards">${ordered.map((s) => {
-    const all = rows.filter((r) => r.src === s).length;
-    return `<div class="thcard"><button class="mcard" data-act="th-pick" data-src="${s}" data-kind="">${esc(SRC_LABEL[s])}<span>${all} ${all === 1 ? "tool" : "tools"}</span></button><div class="mlgrid">${KINDS.map((k) => ({ k, n: rows.filter((r) => r.src === s && r.kind === k).length })).filter((x) => x.n).map((x) => `<button class="mln${(ui.src || "") === s && (ui.kind || "") === x.k ? " sel" : ""}" data-act="th-pick" data-src="${s}" data-kind="${x.k}" aria-pressed="${(ui.src || "") === s && (ui.kind || "") === x.k}"><b>${x.n}</b><span class="kl">${esc(KIND_LABEL[x.k])}</span></button>`).join("")}</div></div>`;
+    const own = rows.filter((r) => r.src === s), counted = own.filter((r) => !outsideKind(r.kind)).map((r) => toolCounts(r, data));
+    const none = isNum(data && data.totalCalls) ? 0 : null, calls = sumOf(counted, (c) => c.calls, none), rate = ratio(sumOf(counted, (c) => c.failures, none), calls);
+    // mockup v9: each source card names its tools, calls and failure rate, then one tile per kind with the same calls line and tint as the desktop grid
+    const summary = `${own.length} ${own.length === 1 ? "tool" : "tools"} · ${num(calls)} calls${isNum(rate) ? ` · ${pct(rate)}` : ""}`;
+    const tiles = KINDS.map((k) => ({ k, info: tileInfo(s, k) })).filter((x) => x.info).map(({ k, info }) => {
+      const on = (ui.src || "") === s && (ui.kind || "") === k;
+      return `<button class="mln mc${info.tint}${on ? " sel" : ""}" data-act="th-pick" data-src="${s}" data-kind="${k}" aria-pressed="${on}"><span class="kl">${esc(KIND_LABEL[k])}</span><b>${info.items.length}</b><span>${esc(info.line)}</span><span class="nu">${info.unused ? `○ ${info.unused}` : ""}</span></button>`;
+    }).join("");
+    return `<div class="thcard"><button class="mcard" data-act="th-pick" data-src="${s}" data-kind="">${esc(SRC_LABEL[s])}</button><p class="sub">${esc(summary)}</p><div class="mlgrid">${tiles}</div></div>`;
   }).join("")}</div>`;
   const legend = `<div class="legend"><span class="tag fail">≥10%</span><span class="tag warn">5–10%</span><span class="tag ok">under 5%</span><span class="tag">0 failed</span><span class="tag">few calls: under 10</span><span class="tag">○ loaded, never used</span><span class="tag">outside call total: hooks, CLIs</span></div>`;
   const picked = ui.src || ui.kind ? box("map-list", `Tools: ${[ui.src && SRC_LABEL[ui.src], ui.kind && KIND_LABEL[ui.kind]].filter(Boolean).join(" · ")}`, "The tiles you picked; each name opens its drill-in.", toolList(data, inv, ui, { withOutside: true })) : "";

@@ -1564,7 +1564,7 @@ assert_not_contains "no luna semantic entry by default" "HIMMEL-GraphSemantic-Lu
 run_cron3 disarm >/dev/null 2>&1
 
 echo "TEST: cron arm --ast-only --with-luna-semantic registers the luna semantic worker PAUSED"
-rc=0; out=$(run_cron3 arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic 2>&1) || rc=$?
+rc=0; out=$(run_cron3 arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic --api-account A 2>&1) || rc=$?
 assert_rc "arm --with-luna-semantic succeeds" 0 "$rc"
 tab4=$(cat "$CSTATE3/crontab" 2>/dev/null || echo MISSING)
 assert_contains "luna semantic crontab entry present" "# HIMMEL-GraphSemantic-Luna" "$tab4"
@@ -1577,7 +1577,8 @@ assert_contains "luna semantic runner pins the claude-api backend" "--backend cl
 assert_contains "luna semantic runner caps the batch" "--max-files 20" "$sem_sh"
 assert_contains "luna semantic runner caps the run spend" "--max-run-usd 2.00" "$sem_sh"
 assert_contains "luna semantic runner sets the api lane" "HIMMEL_API_LANE=on" "$sem_sh"
-assert_contains "luna semantic runner sets the api account" "HIMMEL_API_ACCOUNT=auto" "$sem_sh"
+assert_not_contains "luna semantic runner names no auto account (decision 525)" "HIMMEL_API_ACCOUNT=auto" "$sem_sh"
+assert_contains "luna semantic runner sets the named api account" "HIMMEL_API_ACCOUNT=A" "$sem_sh"
 assert_contains "luna semantic runner targets the live luna graph, not the vault copy" "GRAPHIFY_OUT=" "$sem_sh"
 assert_contains "luna semantic runner uses the AST worker's out dir" "graphify/luna/graphify-out" "$sem_sh"
 assert_contains "luna semantic runner reads its own pause marker" "semantic-luna.paused" "$sem_sh"
@@ -1622,11 +1623,57 @@ else
     fail "luna semantic runner survived disarm"
 fi
 
+echo "TEST: arm --with-luna-semantic needs --api-account A|B|C and bakes it into the luna payload"
+rc=0; out=$(run_cron3 arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic 2>&1) || rc=$?
+assert_rc "arm --with-luna-semantic without --api-account exits 2" 2 "$rc"
+assert_contains "the refusal names --api-account" "--api-account" "$out"
+if [ -e "$CRON_DIR3/graphmap-semantic-luna.sh" ]; then fail "the refused arm wrote a luna semantic runner"; else pass "the refused arm wrote no luna semantic runner"; fi
+rc=0; out=$(run_cron3 arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic --api-account auto 2>&1) || rc=$?
+assert_rc "arm --with-luna-semantic --api-account auto exits 2" 2 "$rc"
+rc=0; out=$(run_cron3 arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic --api-account C 2>&1) || rc=$?
+assert_rc "arm --with-luna-semantic --api-account C succeeds" 0 "$rc"
+sem_sh=$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)
+assert_contains "the luna payload names account C" "HIMMEL_API_ACCOUNT=C " "$sem_sh"
+assert_not_contains "the luna payload names no auto" "HIMMEL_API_ACCOUNT=auto" "$sem_sh"
+assert_contains "the luna payload keeps the claude-api backend" "--backend claude-api" "$sem_sh"
+
+echo "TEST: --rewrite-armed keeps the armed luna account and refuses a runner armed with auto or none"
+# the rewrite of a luna semantic runner resolves the claude CLI, so these rows carry the stub dir
+rc=0; out=$(PATH="$CLAUDE_BIN_DIR_PATH:$PATH" run_cron3 arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+assert_rc "arm --rewrite-armed over an account C runner exits 0" 0 "$rc"
+sem_sh=$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)
+assert_contains "the rewritten luna runner keeps account C" "HIMMEL_API_ACCOUNT=C " "$sem_sh"
+assert_not_contains "the rewritten luna runner names no auto" "HIMMEL_API_ACCOUNT=auto" "$sem_sh"
+# fixtures/graphmap-semantic-luna-old-auto.txt is the runner the OLD arm wrote (HIMMEL_API_ACCOUNT=auto)
+cp "$SCRIPT_DIR/fixtures/graphmap-semantic-luna-old-auto.txt" "$CRON_DIR3/graphmap-semantic-luna.sh"
+rc=0; out=$(PATH="$CLAUDE_BIN_DIR_PATH:$PATH" run_cron3 arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+assert_rc "arm --rewrite-armed over a runner armed with auto exits 2" 2 "$rc"
+assert_contains "the auto refusal names --api-account" "--api-account" "$out"
+assert_contains "the refused rewrite leaves the old runner as it was" "HIMMEL_API_ACCOUNT=auto" "$(cat "$CRON_DIR3/graphmap-semantic-luna.sh")"
+sed 's/HIMMEL_API_ACCOUNT=auto //' "$SCRIPT_DIR/fixtures/graphmap-semantic-luna-old-auto.txt" > "$CRON_DIR3/graphmap-semantic-luna.sh"
+rc=0; out=$(PATH="$CLAUDE_BIN_DIR_PATH:$PATH" run_cron3 arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+assert_rc "arm --rewrite-armed over a runner armed with no account exits 2" 2 "$rc"
+assert_contains "the no-account refusal names --api-account" "--api-account" "$out"
+run_cron3 disarm >/dev/null 2>&1
+
+echo "TEST: --rewrite-armed reads the account from the lane assignment, not from a vault path that spells one"
+ACCT_PATH_VAULT="$TMP_ROOT/HIMMEL_API_ACCOUNT=B"
+mkdir -p "$ACCT_PATH_VAULT"
+rc=0; out=$(PATH="$CLAUDE_BIN_DIR_PATH:$PATH" run_cron3 arm --vault "$ACCT_PATH_VAULT" --luna-only --ast-only --with-luna-semantic --api-account A 2>&1) || rc=$?
+assert_rc "arm over a vault path that spells an account exits 0" 0 "$rc"
+assert_contains "fixture: the armed runner names account A and the vault path spells B" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A " "$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)"
+rc=0; out=$(PATH="$CLAUDE_BIN_DIR_PATH:$PATH" run_cron3 arm --vault "$ACCT_PATH_VAULT" --rewrite-armed 2>&1) || rc=$?
+assert_rc "arm --rewrite-armed over that runner exits 0" 0 "$rc"
+sem_sh=$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)
+assert_contains "the rewrite keeps account A" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A " "$sem_sh"
+assert_not_contains "the rewrite does not take the account from the vault path" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=B " "$sem_sh"
+run_cron3 disarm >/dev/null 2>&1
+
 echo "TEST: --semantic-active on a re-arm lifts a pause marker left by the earlier paused arm"
 : > "$CRON_DIR3/semantic-luna.paused"
 : > "$CRON_DIR3/semantic.paused"
 run_cron3 arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --semantic-active >/dev/null 2>&1 || true
-run_cron3 arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic --semantic-active >/dev/null 2>&1 || true
+run_cron3 arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic --api-account A --semantic-active >/dev/null 2>&1 || true
 for _m in semantic-luna.paused semantic.paused; do
     if [ -e "$CRON_DIR3/$_m" ]; then
         fail "re-arm with --semantic-active left $_m" "$(ls "$CRON_DIR3" 2>/dev/null)"
@@ -1642,7 +1689,7 @@ echo "TEST: --semantic-active re-arm whose crontab install fails keeps the pause
 touch "$CSTATE3/fail-write"
 rc=0; run_cron3 arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --semantic-active >/dev/null 2>&1 || rc=$?
 assert_rc "semantic-active re-arm install failure rc 4" 4 "$rc"
-rc=0; run_cron3 arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic --semantic-active >/dev/null 2>&1 || rc=$?
+rc=0; run_cron3 arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic --api-account A --semantic-active >/dev/null 2>&1 || rc=$?
 assert_rc "semantic-active Luna re-arm install failure rc 4" 4 "$rc"
 for _m in semantic-luna.paused semantic.paused; do
     if [ -e "$CRON_DIR3/$_m" ]; then
@@ -1701,6 +1748,8 @@ for _flag in --force --ast-only --with-publish --publish-semantic --with-luna-se
 done
 rc=0; run_rw arm --vault "$VAULT" --rewrite-armed --publish-every-hours 6 >/dev/null 2>&1 || rc=$?
 assert_rc "arm --rewrite-armed with --publish-every-hours is refused" 1 "$rc"
+rc=0; run_rw arm --vault "$VAULT" --rewrite-armed --api-account C >/dev/null 2>&1 || rc=$?
+assert_rc "arm --rewrite-armed with --api-account is refused (the account is read from the armed runner)" 1 "$rc"
 if cmp -s "$RWSTATE/crontab" "$RWSTATE/crontab.before"; then pass "refused combinations leave the crontab alone"; else fail "refused combination changed the crontab"; fi
 printf '#!/bin/sh\n# himmel-cadence-runner-format: 24\n' > "$RWDIR/graphmap-himmel.sh"
 rc=0; out=$(run_rw arm --vault "$VAULT" --rewrite-armed --dry-run 2>&1) || rc=$?
@@ -1766,7 +1815,7 @@ rows_absent() { # <names...> -> 0 when no name has a crontab row
 printf '0 5 * * * /usr/bin/true # keep-me\n' > "$LSTATE/crontab"
 rc=0; out=$(run_luna arm --vault "$VAULT" --with-publish 2>&1) || rc=$?
 assert_rc "luna-only fixture: the himmel arm with the publish worker" 0 "$rc"
-rc=0; out=$(run_luna arm --luna-only --vault "$VAULT" --with-luna-semantic 2>&1) || rc=$?
+rc=0; out=$(run_luna arm --luna-only --vault "$VAULT" --with-luna-semantic --api-account A 2>&1) || rc=$?
 assert_rc "luna-only fixture: the Luna opt-in arm with the semantic worker (all six rows armed)" 0 "$rc"
 # shellcheck disable=SC2086
 if rows_present $LUNA_ROWS $HIM_ROWS; then pass "all six rows armed before the Luna-only disarm"; else fail "fixture is missing rows" "$(cat "$LSTATE/crontab")"; fi
@@ -1970,7 +2019,7 @@ assert_contains "adopter fire logs the skipped semantic pass" "$SKIP_TEXT" "$(ca
 run_cron3 disarm >/dev/null 2>&1 || true
 
 echo "TEST: HIMMEL-9155 adopter station: the luna semantic runner renders no API lane and never calls semantic-update"
-rc=0; out=$(run_adopter arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic --semantic-active 2>&1) || rc=$?
+rc=0; out=$(run_adopter arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic --api-account A --semantic-active 2>&1) || rc=$?
 assert_rc "adopter arm --with-luna-semantic succeeds" 0 "$rc"
 sem_sh=$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)
 assert_not_contains "adopter luna semantic runner sets no api lane" "HIMMEL_API_LANE" "$sem_sh"
@@ -1990,7 +2039,7 @@ run_cron3 disarm >/dev/null 2>&1 || true
 
 echo "TEST: HIMMEL-9155 --rewrite-armed on an adopter station drops a lane a pre-opt-in render baked, and an opt-in brings it back"
 run_optin arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --semantic-active >/dev/null 2>&1 || true
-run_optin arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic --semantic-active >/dev/null 2>&1 || true
+run_optin arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic --api-account A --semantic-active >/dev/null 2>&1 || true
 assert_contains "fixture: the opted-in publish runner carries the lane" "HIMMEL_API_LANE=on" "$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)"
 assert_contains "fixture: the opted-in luna semantic runner carries the lane" "HIMMEL_API_LANE=on" "$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)"
 rc=0; out=$(run_adopter arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
@@ -2018,9 +2067,35 @@ assert_contains "opted-in publish payload is byte-identical to main's" "$exp_pub
 assert_not_contains "opted-in publish runner has no skip line" "$SKIP_TEXT" "$publish_sh"
 luna_out9=$(printf '%s\n' "$sem_sh" | sed -n 's/.* GRAPHIFY_OUT=\([^ ]*\) .*/\1/p' | head -n 1)
 exp_sem_base="$(q9 "$TMP_ROOT/bin/bash") $(q9 "$HIMMEL_ROOT_EXP/scripts/graphify/semantic-update.sh") --name luna --corpus-root $(q9 "$VAULT") --corpus-class luna-personal --backend claude-api --max-files 20 --max-run-usd 2.00"
-exp_sem="if [ -e $(q9 "$CRON_DIR3/semantic-luna.paused") ]; then echo \"[semantic paused: marker present]\"; else HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPHIFY_OUT=$luna_out9 $exp_sem_base; fi"
+exp_sem="if [ -e $(q9 "$CRON_DIR3/semantic-luna.paused") ]; then echo \"[semantic paused: marker present]\"; else HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A GRAPHIFY_OUT=$luna_out9 $exp_sem_base; fi"
 assert_contains "opted-in luna semantic payload is byte-identical to main's" "$exp_sem" "$sem_sh"
 assert_not_contains "opted-in luna semantic runner has no skip line" "$SKIP_TEXT" "$sem_sh"
+run_cron3 disarm >/dev/null 2>&1 || true
+
+echo "TEST: the account refusal needs the opt-in: a no-opt-in station still drops the lane from an old auto runner or an old skip line"
+OLD_AUTO_FIXTURE="$SCRIPT_DIR/fixtures/graphmap-semantic-luna-old-auto.txt"
+run_optin arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --semantic-active >/dev/null 2>&1 || true
+assert_contains "fixture: the publish runner carries the lane" "HIMMEL_API_LANE=on" "$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)"
+cp "$OLD_AUTO_FIXTURE" "$CRON_DIR3/graphmap-semantic-luna.sh"
+rc=0; out=$(run_adopter arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+assert_rc "adopter --rewrite-armed over an old auto luna runner exits 0" 0 "$rc"
+assert_not_contains "adopter rewrite of an old auto runner drops the publish lane" "HIMMEL_API_LANE" "$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)"
+sem_sh=$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)
+assert_not_contains "adopter rewrite of an old auto runner drops the luna lane" "HIMMEL_API_LANE" "$sem_sh"
+assert_not_contains "adopter rewrite of an old auto runner bakes no auto into the skip line" "api account" "$sem_sh"
+run_optin arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --semantic-active >/dev/null 2>&1 || true
+# the skip line an earlier arm rendered: no account suffix
+sed 's/_rc=0; if .*; fi || _rc=\$?/_rc=0; echo "[semantic skipped: API lane not opted in (graphify.semantic_api_ok in ~\/.himmel\/config.json)]" || _rc=$?/' "$OLD_AUTO_FIXTURE" > "$CRON_DIR3/graphmap-semantic-luna.sh"
+assert_not_contains "fixture: the old skip line names no lane" "HIMMEL_API_LANE" "$(cat "$CRON_DIR3/graphmap-semantic-luna.sh")"
+rc=0; out=$(run_adopter arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+assert_rc "adopter --rewrite-armed over an old skip line exits 0" 0 "$rc"
+assert_not_contains "adopter rewrite of an old skip line drops the publish lane" "HIMMEL_API_LANE" "$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)"
+assert_contains "adopter rewrite of an old skip line keeps the skip line" "[$SKIP_TEXT" "$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)"
+# an opted-in station still refuses: a rewrite there would render a lane with no account
+rc=0; out=$(run_optin arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+assert_rc "opted-in --rewrite-armed over the no-account skip line exits 2" 2 "$rc"
+assert_contains "the opted-in refusal names --api-account" "--api-account" "$out"
+assert_contains "the opted-in refusal remedy is the AST-only arm" "--ast-only" "$out"
 run_cron3 disarm >/dev/null 2>&1 || true
 
 echo "TEST: HIMMEL-9155 only the JSON literal true opts in: other values, malformed JSON and links do not"
