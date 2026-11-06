@@ -34,6 +34,8 @@ cp "$HERE/review-round.sh" "$fx/scripts/cr/review-round.sh"
 cp "$HERE/ledger-append.sh" "$fx/scripts/cr/ledger-append.sh"
 cp "$HERE/write-verdicts.sh" "$fx/scripts/cr/write-verdicts.sh"
 cp "$HERE/clear-review-marker.sh" "$fx/scripts/cr/clear-review-marker.sh"
+# Gate 4f reads its scope from blast-scope.cjs beside the script; without it the gate refuses closed.
+cp "$HERE/blast-scope.cjs" "$fx/scripts/cr/blast-scope.cjs"
 cp "$HERE/ledger-amend-auth.js" "$fx/scripts/cr/ledger-amend-auth.js"
 cp "$HERE/known-findings.sh" "$HERE/known-findings.json" "$HERE/critic-pre-existing-tag.py" "$fx/scripts/cr/"
 # Every chokepoint fails closed without its seam-guard lib.
