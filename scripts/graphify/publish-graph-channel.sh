@@ -146,10 +146,11 @@ push_err="$STAGE.push.err"
 if ! BRANCH_NAME_OK=1 PUSH_FOREIGN_REF_OK=1 SKIP_CR=1 "${G[@]}" push --quiet "--force-with-lease=$BRANCH_REF:$old" "$REMOTE" "$commit:$BRANCH_REF" 2>"$push_err"; then
     cat "$push_err" >&2
     # Name the refusal the push printed: a pre-push gate's own line (check-push-target
-    # ERROR:, check-cr-before-push, the code-review notice, a check-*: scan, the
-    # pre-push.legacy shim) or git's ` ! [rejected]` line. Other git lines can quote
-    # the remote URL, so they are not copied. No recognised line: no cause is claimed.
-    why="$(grep -E -m1 '^(ERROR:|check-[A-Za-z-]+: |→ code-review: |pre-push\.legacy: | ! \[)' "$push_err" | cut -c1-300)"
+    # ERROR:, check-cr-before-push, a code-review notice that refuses, a check-*: scan,
+    # the pre-push.legacy shim) or git's ` ! [rejected]` line. A code-review warning or
+    # skip notice is no refusal, so only its "refusing" lines count. Other git lines can
+    # quote the remote URL, so they are not copied. No recognised line: no cause is claimed.
+    why="$(grep -E -m1 '^(ERROR:|check-[A-Za-z-]+: |→ code-review: .*refusing|pre-push\.legacy: | ! \[)' "$push_err" | cut -c1-300)"
     rm -f "$push_err"
     if [ -n "$why" ]; then
         refuse 5 "git push to $BRANCH_REF failed: $why"

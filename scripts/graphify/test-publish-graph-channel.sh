@@ -153,6 +153,7 @@ ORPH1="$(orphan one)"
 ORPH_RC=0
 ORPH_OUT="$(BRANCH_NAME_OK=1 PUSH_FOREIGN_REF_OK=1 SKIP_CR=1 git -C "$WT" push --force origin "$ORPH1:refs/heads/feat/exists" 2>&1)" || ORPH_RC=$?
 if [ "$ORPH_RC" -ne 0 ]; then ok "a parentless commit on an existing other ref is refused even with all three flags"; else bad "a parentless commit updated feat/exists: $ORPH_OUT"; fi
+check_has "it is refused by the hardcoded-environment gate" "check-hardcoded-env-values: git diff failed" "$ORPH_OUT"
 check_eq "feat/exists did not move" "$EXISTS_TIP" "$(git -C "$BARE" rev-parse --verify --quiet refs/heads/feat/exists || echo none)"
 printf '%s\n' "$ORPH_OUT" | sed 's/^/    | /'
 
@@ -178,6 +179,20 @@ check_eq "a refused push exits 5" 5 "$PUB_RC"
 check_has "the output names the hook's reason" "marker-9437" "$PUB_OUT"
 check_eq "the alert names it exactly once" 1 "$(count_in 'marker-9437' "$(alerts)")"
 check_lacks "the alert claims no cause it does not know" "the tip moved" "$(alerts)"
+
+echo "a code-review notice that is not a refusal is not named as the reason"
+: > "$TMP/alerts.log"
+printf '#!/usr/bin/env bash\necho "→ code-review: WARNING feat/work is 3 commits behind origin/main — to catch up: git merge origin/main" >&2\necho "ERROR: remote policy says no (marker-9437b)" >&2\nexit 1\n' > "$SHIM"
+run_publish
+check_eq "a refused push exits 5" 5 "$PUB_RC"
+check_has "the alert names the refusing line" "marker-9437b" "$(alerts)"
+check_lacks "the alert does not name the warning" "commits behind" "$(alerts)"
+: > "$TMP/alerts.log"
+printf '#!/usr/bin/env bash\necho "→ code-review: SKIP_CR=1 set — skipping marker write (WARNING: review locally)" >&2\necho "→ code-review: pushed destination x has no matching local branch — refusing the push (marker-9437c)" >&2\nexit 1\n' > "$SHIM"
+run_publish
+check_eq "a push refused by the code-review gate exits 5" 5 "$PUB_RC"
+check_has "the alert names the code-review refusal" "marker-9437c" "$(alerts)"
+check_lacks "the alert does not name the skip notice" "skipping marker write" "$(alerts)"
 
 echo "an unrecognised refusal gets a neutral reason"
 : > "$TMP/alerts.log"
