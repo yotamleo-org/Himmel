@@ -1663,6 +1663,9 @@ rm -rf "$m10k_dir"
 # copy counts every guard_canon_path call. Synthetic names; the query is hook
 # input, never executed.
 p9444_dir=$(mktemp -d "${TMPDIR:-/tmp}/secrets-parents.XXXXXX") || exit 1
+# The tree must sit on a physical path: /tmp is a symlink on macOS, and a symlinked
+# prefix makes every parent take the fork this row proves it does not.
+p9444_dir=$(cd "$p9444_dir" && pwd -P) || exit 1
 mkdir -p "$p9444_dir/shim/hooks" "$p9444_dir/shim/guardrails" "$p9444_dir/tree/projects" "$p9444_dir/tree/cfg/config-audit/backups" || exit 1
 ln -s "$HOOK" "$p9444_dir/shim/hooks/block-read-secrets.sh" || exit 1
 ln -s "${HOOK%/*}/lib" "$p9444_dir/shim/hooks/lib" || exit 1
@@ -1683,7 +1686,7 @@ p9444_run() { # $1 = command; prints the hook rc, canon-call count and elapsed m
     local rc=0 s e
     : > "$p9444_dir/count"
     s=$(now_ms)
-    printf '%s' "$(j_bash "$1")" | bash "$p9444_dir/shim/hooks/block-read-secrets.sh" >/dev/null 2>"$p9444_dir/err" || rc=$?
+    (cd "${p9444_cwd:-.}" && printf '%s' "$(j_bash "$1")" | bash "$p9444_dir/shim/hooks/block-read-secrets.sh" >/dev/null 2>"$p9444_dir/err") || rc=$?
     e=$(now_ms)
     echo "$rc $(wc -l < "$p9444_dir/count" | tr -d ' ') $((e - s))"
 }
@@ -1711,8 +1714,66 @@ for p9444_cmd in \
         *) echo "FAIL 9444 deny text missing: $(cat "$p9444_dir/err")"; FAILED=$((FAILED + 1)) ;;
     esac
 done
+# Routing: a parent with an empty, `.` or `..` part, a relative parent, and a parent
+# whose name ends in a newline each take the fork, so each is still judged by its
+# canonical path. Without the branch that sends it to the fork each of these reads a
+# config-audit backup and is allowed. The glob row reaches the newline name through
+# the hook's own expansion.
+mkdir -p "$p9444_dir/tree/cfg/config-audit/sub" "$p9444_dir/tree/nl/config-audit/backups"$'\n' || exit 1
+touch "$p9444_dir/tree/nl/config-audit/backups"$'\n'"/n.jsonl" || exit 1
+p9444_rows=(
+    "$p9444_dir|cat $p9444_dir/tree/cfg/config-audit//backups/n.jsonl|empty part"
+    "$p9444_dir|cat $p9444_dir/tree/cfg/config-audit/./backups/n.jsonl|dot part"
+    "$p9444_dir|cat $p9444_dir/tree/cfg/config-audit/sub/../backups/n.jsonl|dotdot part"
+    "$p9444_dir/tree/projects|cat zlink/n.jsonl|relative parent through a symlink"
+    "$p9444_dir|cat $p9444_dir/tree/nl/config-audit/b*/n.jsonl|newline at the end of a parent name"
+)
+for p9444_row in "${p9444_rows[@]}"; do
+    p9444_cwd=${p9444_row%%|*}; p9444_cmd=${p9444_row#*|}; p9444_what=${p9444_cmd##*|}; p9444_cmd=${p9444_cmd%|*}
+    read -r p9444_rc p9444_calls p9444_ms <<<"$(p9444_run "$p9444_cmd")"
+    assert_rc "9444 $p9444_what still denies" 2 "$p9444_rc"
+    case "$(cat "$p9444_dir/err")" in
+        *"refusing Bash command that reads a secret file"*) echo "PASS 9444 $p9444_what: deny names the secret read, not a timeout" ;;
+        *) echo "FAIL 9444 $p9444_what: deny text missing: $(cat "$p9444_dir/err")"; FAILED=$((FAILED + 1)) ;;
+    esac
+done
+p9444_cwd=
+# The helper's answer is the forked answer for every parent shape: same status, same
+# path. A shape the helper answers itself is compared against the fork it skipped; a
+# shape it sends to the fork matches by construction. (A path under a mode-000
+# directory is left out: no caller reaches it, because the name's own -f test fails
+# there for any user but root, who passes both checks.)
+mkdir "$p9444_dir/tree/plain" "$p9444_dir/tree/plain/inner" && ln -s plain "$p9444_dir/tree/lnk2" && ln -s "$p9444_dir/tree/lnk2" "$p9444_dir/tree/chain" || exit 1
+p9444_cmp=$(
+    # shellcheck disable=SC1091
+    . "${HOOK%/*}/../guardrails/lib.sh" || exit 9
+    eval "$(awk '/^_canon_parent\(\) \{/{p=1} p{print} p&&/^}/{exit}' "$HOOK")"
+    cd "$p9444_dir/tree" || exit 9
+    bad=0; n=0
+    for d in / "$p9444_dir/tree" "$p9444_dir/tree/projects/p1" "$p9444_dir/tree/plain/inner" \
+        "$p9444_dir/tree/lnk2" "$p9444_dir/tree/lnk2/inner" "$p9444_dir/tree/chain" "$p9444_dir/tree/chain/inner" \
+        "$p9444_dir/tree/projects/zlink" "$p9444_dir/tree/projects/zlink/" \
+        "$p9444_dir/tree/cfg/config-audit//backups" "$p9444_dir/tree/cfg/config-audit/./backups" \
+        "$p9444_dir/tree/cfg/config-audit/sub/../backups" "$p9444_dir/tree/cfg/config-audit/backups/.." \
+        "$p9444_dir/tree/cfg/config-audit/backups/." "$p9444_dir/tree/nl/config-audit/backups"$'\n' \
+        "$p9444_dir/tree/projects/nonexistent" projects/p1 projects/zlink . ..; do
+        n=$((n + 1))
+        want=$(guard_canon_path "$d" 2>/dev/null); wrc=$?
+        _canon_parent "$d" 2>/dev/null; grc=$?
+        if [ "$wrc" != "$grc" ] || { [ "$wrc" = 0 ] && [ "$want" != "$_CP_OUT" ]; }; then
+            bad=$((bad + 1)); echo "MISMATCH [$d] fork rc=$wrc [$want] helper rc=$grc [$_CP_OUT]" >&2
+        fi
+    done
+    echo "$bad $n"
+)
+p9444_bad=${p9444_cmp%% *}
+if [ "$p9444_bad" = 0 ]; then
+    echo "PASS 9444 the parent helper matches the forked canonicalisation for ${p9444_cmp#* } shapes"
+else
+    echo "FAIL 9444 the parent helper differs from the forked canonicalisation (bad n: ${p9444_cmp:-unread})"; FAILED=$((FAILED + 1))
+fi
 # A symlink to an ordinary directory still resolves and allows.
-mkdir "$p9444_dir/tree/plain" && touch "$p9444_dir/tree/plain/n.jsonl" && ln -s "$p9444_dir/tree/plain" "$p9444_dir/tree/plink" || exit 1
+touch "$p9444_dir/tree/plain/n.jsonl" && ln -s "$p9444_dir/tree/plain" "$p9444_dir/tree/plink" || exit 1
 read -r p9444_rc p9444_calls p9444_ms <<<"$(p9444_run "cat $p9444_dir/tree/plink/n.jsonl")"
 assert_rc "9444 symlink to an ordinary directory allows" 0 "$p9444_rc"
 # Positive control: a symlinked parent must still take the fork, so a count of

@@ -399,10 +399,11 @@ _rd_cmd="${_rd_rest#*$'\001'}"
 # under each) hands the classifier thousands of distinct parents, and the
 # one-entry parent cache below cannot help: each canonicalisation is a fork
 # (1.8 ms here, 5.4 s over 3000 parents). Callers pass the parent of an existing
-# file, so DIR is a directory; an absolute DIR with no empty, `.` or `..` part and no part that is a symlink is its
-# own canonical path, so each prefix is tested with the `-L` builtin. Anything
-# else (a relative DIR, an odd part, a symlinked part) takes the fork as before,
-# and a DIR that cannot be canonicalised returns 1.
+# file, so DIR is a directory; an absolute DIR with no empty, `.` or `..` part, no
+# newline and no part that is a symlink is its own canonical path, so each prefix
+# is tested with the `-L` builtin. Anything else (a relative DIR, an odd part, a
+# newline, which the command substitution of the forked call strips, a symlinked
+# part) takes the fork as before, and a DIR that cannot be canonicalised returns 1.
 _canon_parent() {
     local d="$1" cur="" rest comp
     _CP_OUT=""
@@ -412,7 +413,7 @@ _canon_parent() {
         *) _CP_OUT=$(guard_canon_path "$d") || return 1; return 0 ;;
     esac
     case "$d" in
-        */|*//*|*/./*|*/../*|*/.|*/..) _CP_OUT=$(guard_canon_path "$d") || return 1; return 0 ;;
+        */|*//*|*/./*|*/../*|*/.|*/..|*$'\n'*) _CP_OUT=$(guard_canon_path "$d") || return 1; return 0 ;;
     esac
     rest="${d#/}"
     while [ -n "$rest" ]; do
