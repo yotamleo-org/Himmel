@@ -186,12 +186,18 @@
 #     quotes. On that split the short-flag cluster closes the slot as on main
 #     (it cuts at a backtick or an ampersand and leaves no mark of it), so
 #     `grep -n '.env' ...` there scans the quoted word. A process substitution
-#     (`<(`, `>(`) closes the slot like `$(`. Under xargs the quoted word is not
-#     exempt, since its arguments can come from a file or a pipe. Still allowed,
-#     accepted and ticketed gaps (main refused the flagged forms): a brace
-#     expansion that builds the option (`grep -n '.env' {-,}e TOKEN`), a shell
-#     function named grep that adds a fixed -e, and GREP_OPTIONS on a grep that
-#     honours it.
+#     (`<(`, `>(`) closes the slot like `$(`. Under a bare xargs directly before
+#     the reader the quoted word is not exempt, since its arguments can come
+#     from a file or a pipe. The wrapper tracking keeps only the LAST wrapper, so
+#     that holds for `xargs grep` only. Still allowed, accepted and ticketed
+#     gaps (main refused the flagged forms): xargs followed by another wrapper
+#     (`xargs nice|sudo|env|timeout 5|command|nohup|time grep -n '.env' < opts`),
+#     `/usr/bin/xargs grep ...`, `xargs stdbuf -o0 grep ...` (the child pass
+#     does not see xargs), zsh's `grep -n '.env' =(true) -e TOKEN` (a mid-command
+#     paren carries no mark), a brace expansion that builds the option
+#     (`grep -n '.env' {-,}e TOKEN`), `?e` or `[-]e` reaching a planted file
+#     named -e, a shell function or an alias named grep that adds a fixed -e,
+#     and GREP_OPTIONS on a grep that honours it.
 #     A nested shell body (bash -c, eval) is one quoted word there,
 #     and guard_unwrap reads it again from its own words. A quoted string that
 #     another program runs or reads is one word too, and nothing reads it
@@ -202,7 +208,10 @@
 #     always was allowed, `watch 'date; cat .env'` was refused), a body piped
 #     or fed by a here-string to a shell (`echo 'id; cat .env' | bash`,
 #     `bash <<< '...'`), `node -e` and `python3 -c` scripts that shell out,
-#     and awk `system()` and `getline` (`getline < file` reads the file). The
+#     and awk `system()` and `getline` (`getline < file` reads the file), a
+#     body held in a variable and run by eval (`C='echo a; cat .env'; eval
+#     "$C"`), and a body run by a shell the unwrap does not know (`fish -c`,
+#     `rbash -c`, `csh -c`, `tcsh -c`; `bash -c` is refused). The
 #     tracing check reads a quoted multi-word argument as data unless a
 #     shell word (set, shopt, eval, bash, SHELLOPTS, ...) shares its text
 #     (g4_text_traces): a Jira JQL or a chat reply that names the option or
