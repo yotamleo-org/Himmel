@@ -248,6 +248,34 @@ rc=0; out="$(bash "$DISP" check 90 "$SHA" --repo o/third-repo 2>&1)" || rc=$?
 contains "9: --repo of another repo does not read it" "$out" "[OPEN] crit adopt-9@$FHEAD"
 check "9: another repo's check fails" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" nonzero
 
+# --- 10. a GitHub rate limit on the head-branch read reads as a rate limit ---
+# GH_CMD replaces gh for the one `pr view --json headRefName` call: the GraphQL answer
+# (RATE_LIMIT), the REST wording, an unrelated failure and a success.
+gh_stub() {  # <name> <stderr text, empty for success>
+  { printf '#!/usr/bin/env bash\n'
+    if [ -n "$2" ]; then printf 'echo %q >&2; exit 1\n' "$2"; else printf 'printf "%%s\\n" %q; exit 0\n' "$BR"; fi
+  } > "$tmp/bin/$1"
+  chmod +x "$tmp/bin/$1"
+}
+gh_stub gh-rl-gql  "GraphQL: API rate limit already exceeded for user ID 1. (RATE_LIMIT)"
+gh_stub gh-rl-rest "gh: HTTP 403: API rate limit exceeded for user ID 1."
+gh_stub gh-other   "GraphQL: Could not resolve to a PullRequest with the number of 90."
+gh_stub gh-ok      ""
+for stub in gh-rl-gql gh-rl-rest; do
+  rc=0; out="$(GH_CMD="$tmp/bin/$stub" bash "$DISP" check 90 "$SHA" 2>&1)" || rc=$?
+  check    "10: $stub -> exit 2" "$rc" "2"
+  contains "10: $stub names a GitHub rate limit" "$out" "GitHub rate limit"
+  contains "10: $stub says to retry after the quota returns" "$out" "retry after the quota returns"
+  check    "10: $stub is not the unreadable-branch line" "$(grep -c "cannot read PR" <<< "$out")" "0"
+done
+rc=0; out="$(GH_CMD="$tmp/bin/gh-other" bash "$DISP" check 90 "$SHA" 2>&1)" || rc=$?
+check    "10: an unrelated gh failure -> exit 2" "$rc" "2"
+contains "10: an unrelated gh failure keeps the old line" "$out" "cr-disposition: cannot read PR #90's head branch"
+check    "10: an unrelated gh failure is not called a rate limit" "$(grep -c "rate limit" <<< "$out")" "0"
+rc=0; out="$(GH_CMD="$tmp/bin/gh-ok" bash "$DISP" check 90 "$SHA" 2>&1)" || rc=$?
+contains "10: a gh success reaches the check" "$out" "[OPEN] crit adopt-9@$FHEAD"
+check    "10: a gh success prints neither head-branch line" "$(grep -c "cannot read PR\|rate limit" <<< "$out")" "0"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-cr-disposition.sh"

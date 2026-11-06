@@ -68,8 +68,21 @@ fi
 common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || common=""  # swallow-ok: empty fails closed on the next line
 [ -n "$common" ] || { echo "cr-disposition: not in a git repo, so there is no CR ledger" >&2; exit 2; }
 LEDGER="$common/cr-critic-scores.jsonl"
-BRANCH=$("$GH" pr view "$PR" --json headRefName -q .headRefName 2>/dev/null) || BRANCH=""  # swallow-ok: empty fails closed on the next line
-[ -n "$BRANCH" ] || { echo "cr-disposition: cannot read PR #$PR's head branch" >&2; exit 2; }
+GH_ERRF=$(mktemp "${TMPDIR:-/tmp}/cr-disposition-gh.XXXXXX" 2>/dev/null) || GH_ERRF=/dev/null  # swallow-ok: no stderr capture only loses the rate-limit wording
+BRANCH=$("$GH" pr view "$PR" --json headRefName -q .headRefName 2>"$GH_ERRF") || BRANCH=""  # swallow-ok: empty fails closed below
+if [ -z "$BRANCH" ]; then
+    # gh's own answer says whether the read failed on the GitHub quota: the GraphQL RATE_LIMIT type or the REST wording
+    if grep -qiE 'RATE_LIMIT|API rate limit (already )?exceeded' "$GH_ERRF" 2>/dev/null; then
+        [ "$GH_ERRF" = /dev/null ] || rm -f "$GH_ERRF"
+        echo "cr-disposition: GitHub rate limit hit reading PR #$PR's head branch; retry after the quota returns" >&2
+        exit 2
+    fi
+    [ "$GH_ERRF" = /dev/null ] || rm -f "$GH_ERRF"
+    echo "cr-disposition: cannot read PR #$PR's head branch" >&2
+    exit 2
+fi
+[ "$GH_ERRF" = /dev/null ] || rm -f "$GH_ERRF"
+
 
 disp_mac() {  # <finding_id> <target_head> <disposition> <source> <attest>
     go_msg_mac himmel-disposition-v1 "$PR|$SHA|$BRANCH|$1|$2|$3|$4|$5"
