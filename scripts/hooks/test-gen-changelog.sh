@@ -435,7 +435,9 @@ setup_key_subjects() {
     "fix(himmel-7): seven" \
     "fix: himmel-8 eight" \
     "chore: LUNA-9 nine" \
-    "feat: ten thing (#10)"; do
+    "feat: ten thing (#10)" \
+    "fix: eleven thing (#11) (#12)" \
+    "fix: twelve thing (#13) HIMMEL-14"; do
     git -C "$R" commit -q --allow-empty -m "$s"
   done
 }
