@@ -573,6 +573,11 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .rm-vstrip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:var(--s2)}
 .rm-vt{display:grid;gap:var(--s1);align-content:start;border:1px solid var(--rule);border-radius:10px;background:var(--surface);padding:var(--s2) var(--s3);min-width:0;color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
 .rm-vt.sel{border-color:var(--accent)}
+.rm-vwin{align-items:center;margin-bottom:var(--s2)}
+.rm-vcell{position:relative;display:grid;min-width:0}
+.rm-vcell .rm-vt{padding-right:var(--s6)}
+.rm-pin{position:absolute;top:var(--s1);right:var(--s1);border:0;background:none;color:var(--accent);font-size:var(--fs-md, 1rem);line-height:1;cursor:pointer;padding:var(--s1)}
+.rm-pin:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .rm-vt:focus-visible,.rm-chain:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .rm-vt progress{width:100%;height:var(--s2);accent-color:var(--accent)}
 .rm-vt .pill{white-space:normal}

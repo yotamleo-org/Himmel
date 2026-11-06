@@ -233,19 +233,59 @@ function driftBanner(dr) {
     + `${dr.stale ? " · the saved run is older than 3 h" : ""} <a href="#/board?tab=tidy">Tidy up ▸</a></div>`;
 }
 
-function stripHtml(d, sel, ch, tab) {
+// The version strip shows at most MAX_VERSIONS tiles. Pins (ui.pins, version names) win; with none, the running version and 2 each side. "Show all"
+// lifts the cap; "Hide previous" drops released versions; "Hide far future" drops versions more than 2 after the running one. Display only: no write.
+const MAX_VERSIONS = 5;
+const CAP_MSG = `The Board shows at most ${MAX_VERSIONS} versions, so at most ${MAX_VERSIONS} can be pinned: unpin one first.`;
+export function togglePin(pins, name) {
+  const cur = pins || [];
+  if (cur.includes(name)) return { pins: cur.filter((p) => p !== name), msg: "" };
+  if (cur.length >= MAX_VERSIONS) return { pins: cur, msg: CAP_MSG };
+  return { pins: [...cur, name], msg: "" };
+}
+// The pins live in the URL's query string (?pins=a,b, before the #/board hash, which hash navigation leaves alone): a reload or a bookmark keeps them,
+// and the page stores nothing in the browser and writes nothing to the server.
+// ponytail: per URL, not per account, upgrade path: a server-side per-user setting.
+export const pinsFromSearch = (search) => (new URLSearchParams(search || "").get("pins") || "").split(",").filter(Boolean);
+export function searchWithPins(search, pins) {
+  const p = new URLSearchParams(search || "");
+  if (pins.length) p.set("pins", pins.join(",")); else p.delete("pins");
+  const s = p.toString();
+  return s ? "?" + s : "";
+}
+function windowOf(d, ui) {
+  const n = d.versions.length, anchor = d.cur >= 0 ? d.cur : d.next >= 0 ? d.next : n - 1;
+  const pinned = [...new Set((ui.pins || []).map((name) => d.versions.findIndex((v) => v.n === name)).filter((i) => i >= 0))].sort((x, y) => x - y);
+  if (pinned.length) return { idx: pinned.slice(0, MAX_VERSIONS), capped: pinned.length > MAX_VERSIONS, pinned };
+  const open = d.versions.map((v, i) => i).filter((i) => !(ui.hidePrev && d.versions[i].rel) && !(ui.hideFuture && i > anchor + 2));
+  return { idx: ui.showAll ? open : open.filter((i) => Math.abs(i - anchor) <= 2), capped: false, pinned };
+}
+function windowBar(d, ui, w) {
+  const chk = (attr, label, on) => `<label><input type="checkbox" ${attr}${on ? " checked" : ""}> ${label}</label>`;
+  const msg = ui.pinMsg || (w.capped ? CAP_MSG : "");
+  return `<div class="rm-vwin fields"><span class="ro" role="status">showing ${w.idx.length} of ${d.versions.length} versions${w.pinned.length ? " · pinned" : ""}</span>`
+    + `<button class="btn" data-rm-show-all aria-pressed="${!!ui.showAll}">${ui.showAll ? "Show 5" : "Show all"}</button>`
+    + chk("data-rm-hide-prev", "Hide previous", ui.hidePrev) + chk("data-rm-hide-future", "Hide far future", ui.hideFuture)
+    + (w.pinned.length ? `<button class="btn" data-rm-clear-pins>Clear pins</button>` : "") + `</div>` + (msg ? `<div class="nodata" role="alert">${esc(msg)}</div>` : "");
+}
+
+function stripHtml(d, sel, ch, tab, ui = {}) {
   const note = d.releaseUnknown ? `<div class="nodata">release state unknown: no versions snapshot, so no version is shown as released</div>` : "";
-  const tiles = d.versions.map((v, i) => {
+  const w = windowOf(d, ui), pins = ui.pins || [];
+  const tiles = w.idx.map((i) => {
+    const v = d.versions[i];
     const c = v.counts, total = Object.values(c).reduce((a, b) => a + b, 0), flight = c.prog + c.rev + c.ci;
     const run = runState(d, v, i), tag = v.rel ? `released${v.date ? " " + v.date : ""}` : run || "planned";
     const inChains = chainOk(ch) ? d.tickets.filter((t) => t.v === i && ch.tickets[idOf(t)]).length : null;
     const stats = `${c.done} done · ${flight} in flight · ${c.todo} to do${c.wont ? ` · ${c.wont} won't` : ""}${inChains !== null ? ` · ${inChains} in chains` : ""}`;
     const open = v.open.length ? `<span class="ro pill fail">${v.open.length} still open: ${v.open.map((k) => `${v.project || "HIMMEL"}-${k}`).map(esc).join(", ")}</span>` : "";
-    return `<a class="rm-vt${i === sel ? " sel" : ""}" href="${boardHref({ tab: tab === "roadmap" ? "" : tab, v: v.n })}"${i === sel ? ` aria-current="true"` : ""}>${tip(`${v.n} · ${tag}`, `<b>${esc(v.n)}</b> <span class="ro pill${v.rel ? " ok" : run === "running" ? " warn" : ""}">${esc(tag)}</span>`)}`
+    const pinned = pins.includes(v.n);
+    return `<div class="rm-vcell"><a class="rm-vt${i === sel ? " sel" : ""}" href="${boardHref({ tab: tab === "roadmap" ? "" : tab, v: v.n })}"${i === sel ? ` aria-current="true"` : ""}>${tip(`${v.n} · ${tag}`, `<b>${esc(v.n)}</b> <span class="ro pill${v.rel ? " ok" : run === "running" ? " warn" : ""}">${esc(tag)}</span>`)}`
       + `<progress value="${c.done}" max="${total || 1}" aria-label="${esc(v.n)}: ${c.done} of ${total} done"></progress>`
-      + tip(stats, `<span class="ro">${esc(stats)}</span>`) + `${open}</a>`;
+      + tip(stats, `<span class="ro">${esc(stats)}</span>`) + `${open}</a>`
+      + `<button class="rm-pin" data-rm-pin="${esc(v.n)}" aria-pressed="${pinned}" aria-label="${pinned ? "Unpin" : "Pin"} ${esc(v.n)}">${pinned ? "★" : "☆"}</button></div>`;
   }).join("");
-  return note + (tiles ? `<div class="rm-vstrip" aria-label="Versions">${tiles}</div>` : `<div class="empty">No train versions.</div>`);
+  return note + windowBar(d, ui, w) + (tiles ? `<div class="rm-vstrip" aria-label="Versions">${tiles}</div>` : `<div class="empty">No versions to show with these filters.</div>`);
 }
 
 // Two links under the strip. "waits for you" counts the chain read's tickets whose state is "waits on you"; with no chain read it
@@ -592,5 +632,5 @@ function boardPage(data, ui, extras) {
   const body = tab === "chains" ? chainsTab(ui, tabCh, data) : tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, ch, dr) : lanesHtml(data, ui, sel, ch, dr);
   const drawer = drawerHtml(data, ui), why = tab === "chains" ? whyHtml(ui, tabCh) : "";
   // with a drawer or the Why panel open the board under it is inert: no drag, select, key or click reaches a card until it closes
-  return [page, `<div class="rm-under"${drawer || why ? " inert" : ""}>`, driftBanner(dr), stripHtml(data, tileSel, ch, tab), `<div class="rm-tabrow">${tabsHtml(data, ui, tab, tabCh, dr)}${linksHtml(ch)}</div>`, barHtml(data, ui, ch, tab, sel, fresh), body, `</div>`, drawer, why].join("\n");
+  return [page, `<div class="rm-under"${drawer || why ? " inert" : ""}>`, driftBanner(dr), stripHtml(data, tileSel, ch, tab, ui), `<div class="rm-tabrow">${tabsHtml(data, ui, tab, tabCh, dr)}${linksHtml(ch)}</div>`, barHtml(data, ui, ch, tab, sel, fresh), body, `</div>`, drawer, why].join("\n");
 }
