@@ -15,6 +15,9 @@
 #                    [--since <iso>] [--repo OWNER/NAME [--gh <executable>]]
 #                    [--print]
 #
+# It also appends `phase-cost` rows (one per day, session and phase, see
+# docs/internals/usage-records.md); those ignore --since and the ticket selectors.
+#
 # Default appends changed records to <store>/records.jsonl; --print writes the
 # records to stdout and touches no store. A record carries ids and numbers
 # only -- never message text -- and no compute timestamp, so a rerun on the
@@ -100,6 +103,11 @@ elif [ -n "$TICKETS" ]; then
   fi
   SEL="$(jq -nc --arg l "$TICKETS" '{list: ($l | split(","))}')"
 fi
+
+# The transcript pass can run for minutes on a first run: idle cpu and io priority, never a hard requirement
+# (ionice is Linux-only).
+renice -n 19 -p $$ >/dev/null 2>&1 || true
+if command -v ionice >/dev/null 2>&1; then ionice -c3 -p $$ >/dev/null 2>&1 || true; fi
 
 WORK="$(tmpdir)"
 trap 'rm -rf "$WORK"' EXIT
@@ -246,8 +254,169 @@ for t in $(jq -r '.[].ticket' "$WORK/base.json"); do
   printf '%s' "$rec" | jq -cS --arg d "$dg" '. + {digest: $d}' >> "$WORK/records.jsonl"
 done
 
+# --- 4. phase-cost rows ------------------------------------------------------
+# One row per (day, session, phase), priced per call from scripts/lanes/lib/model-prices.tsv
+# (a model with no row is usd null / mark unpriced, never another model's rate). Incremental:
+# each transcript is read from its saved byte offset, complete lines only, and a message that
+# streams over several rows (one message id) counts once, even across two runs. Rows are
+# cumulative: a changed (day, session, phase) appends its new total, readers take the latest.
+# phase_rule v1 is the cost-page audit: the phase is the last tool before the call [derived];
+# a judge, critic, release-mgr or chief session has one whole-session phase [counted].
+# ponytail: graph-eval and bots classes need a first-prompt pattern the audit does not give, so
+# those sessions are class "other"; upgrade = add the patterns to toplevel_class.
+PRICES_TSV="$HERE/../lanes/lib/model-prices.tsv"
+[ -r "$PRICES_TSV" ] || die "price table not readable: $PRICES_TSV"
+# nano-dollars per token = $/MTok x 1000, so every sum is an integer
+PRICES="$(grep -v '^#' "$PRICES_TSV" | jq -Rnc '[inputs | select(length > 0) | split("\t")
+  | {p: .[0], i: (.[1]|tonumber*1000|round), o: (.[2]|tonumber*1000|round), cr: (.[3]|tonumber*1000|round),
+     c5: (.[4]|tonumber*1000|round), c1: (.[5]|tonumber*1000|round)}]')" || die "cannot read the price table: $PRICES_TSV"
+
+# shellcheck disable=SC2016  # jq's own $vars
+PHASE_FILE_JQ='
+def cmdphase($c):
+  if ($c | test("pr-check|scripts/cr/|review-round|write-verdicts|ledger-append|ready-check|thread-resolve|judge-request|clear-review-marker")) then "review"
+  elif ($c | test("check-ci|gh pr checks|gh run|suite-coverage")) then "ci"
+  elif ($c | test("jira[\\s\\S]*(create|comment|edit|transition|link|update|move)")) then "ticket-filing"
+  elif ($c | test("jira")) then "ticket-read"
+  elif ($c | test("git( -C [^ ]+)? (commit|push)|worker-pr-open|merge-on-green|merge-fork-pr|gh pr (create|edit|merge)")) then "ship"
+  elif ($c | test("quiet-run|impacted-suites|test-[^ ]*\\.sh|bats|pytest|node --test|shellcheck")) then "tests"
+  elif ($c | test("append-results|queue-lock|wrap-subtree|close-wrapped|usage-preflight|(^|[^a-z])bus([^a-z]|$)")) then "comms"
+  elif ($c | test("qmd|graphify|worker-graph")) then "retrieval"
+  elif ($c | test("scripts/vm/")) then "vm"
+  else "build" end;
+def toolphase($b):
+  ($b.name // "") as $n
+  | if $n == "Bash" then cmdphase($b.input.command // "")
+    elif $n == "Skill" then (if (($b.input.skill // "") | test("(^|:)pr-check$")) then "review" else "skill" end)
+    elif $n | IN("SendMessage", "ListAgents", "ReadNotifications") then "comms"
+    elif $n == "ToolSearch" then "tool-load"
+    elif $n | IN("Agent", "Task") then "agent"
+    else "build" end;
+def lasttool($c): ([$c[]? | select(.type == "tool_use")] | last) as $b | if $b == null then null else toolphase($b) end;
+def day($ts): $ts | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601 | localtime | strftime("%Y-%m-%d");
+def contrib($m; $u):
+  ($u | { i: (.input_tokens // 0), o: (.output_tokens // 0), cr: (.cache_read_input_tokens // 0),
+          c5: (if .cache_creation then (.cache_creation.ephemeral_5m_input_tokens // 0) else (.cache_creation_input_tokens // 0) end),
+          c1: (.cache_creation.ephemeral_1h_input_tokens // 0) }) as $t
+  | ([$prices[] | . as $row | select(($m // "") | startswith($row.p))] | first // null) as $p
+  | $t + { calls: 1, models: { ($m // "unknown"): 1 } }
+    + (if $p == null then { nano: 0, unp: 1 }
+       else { nano: ($t.i * $p.i + $t.o * $p.o + $t.cr * $p.cr + $t.c5 * $p.c5 + $t.c1 * $p.c1), unp: 0 } end);
+def add($key; $c):
+  .agg[$key] = (reduce ("calls", "i", "o", "cr", "c5", "c1", "nano", "unp") as $f
+      (.agg[$key] // { calls: 0, i: 0, o: 0, cr: 0, c5: 0, c1: 0, nano: 0, unp: 0, models: {} }; .[$f] += $c[$f]))
+  | .agg[$key].models = (reduce ($c.models | to_entries[]) as $e (.agg[$key].models; .[$e.key] = ((.[$e.key] // 0) + $e.value)));
+def tclass($t): if ($t | test("chief|console"; "i")) then "chief" elif ($t | test("-N[0-9]+|^HIMMEL-[0-9]+")) then "worker" else "other" end;
+# a message id seen anywhere earlier in the file is the same call (its rows repeat the usage): counted once, first row wins
+def step($r):
+  ($r.message.id // $r.requestId) as $id
+  | if $id != null and .seen[$id] != null then .
+    else ((try day($r.timestamp // "") catch "unknown") + "|" + .last) as $key
+      | contrib($r.message.model; $r.message.usage) as $c
+      | add($key; $c) | (if $id != null then .seen[$id] = 1 else . end)
+    end
+  | (lasttool($r.message.content)) as $lt | if $lt != null then .last = $lt else . end;
+( $st[0] // { off: 0, last: "boot", seen: {}, agg: {}, tc: null, ac: null, fp: null } ) as $st0
+| reduce (inputs | fromjson? | select(type == "object")) as $r ($st0;
+    if $r.type == "assistant" and ($r.message | type) == "object" and $r.message.usage
+       and (($r.message.model // "") | startswith("<") | not) then step($r)
+    elif ($r.type == "system" and $r.subtype == "compact_boundary") or $r.isCompactSummary == true then .last = "compaction"
+    elif $r.type == "custom-title" and ($r.customTitle | type) == "string" then .tc = tclass($r.customTitle)
+    elif $r.type == "ai-title" and ($r.aiTitle | type) == "string" then .ac = tclass($r.aiTitle)
+    else . end)
+| .off = $off | .meta = $meta | .fp = (if .fp == null and $fp != "" then $fp else .fp end)'
+
+# shellcheck disable=SC2016  # jq's own $vars
+PHASE_EMIT_JQ='
+def toplevel_class($s):
+  if $s.fp == "critic" then "critic" elif $s.fp == "release-mgr" then "release-mgr" else ($s.tc // $s.ac // "other") end;
+def zero: { calls: 0, i: 0, o: 0, cr: 0, c5: 0, c1: 0, nano: 0, unp: 0, models: {} };
+[inputs] as $all
+| ( $all | map(select(.meta.parent == null) | { key: .meta.session, value: toplevel_class(.) }) | from_entries ) as $top
+| ( [ $all[] | . as $s | $s.meta.parent as $par
+      | ( if $par == null then toplevel_class($s)
+          elif ($s.meta.agent_type | IN("judge", "judge-ro")) then "judge"
+          elif $s.meta.agent_type == "brief-drafter" then "brief-drafter"
+          else "subagent" end ) as $class
+      | ( if $class | IN("chief", "brief-drafter") then "chief-turns"
+          elif $class == "judge" then "judge"
+          elif $class | IN("critic", "release-mgr", "graph-eval", "bots") then $class
+          elif $class == "subagent" then (if $top[$par] == "chief" then "chief-turns" else "agent" end)
+          else null end ) as $whole
+      | $s.agg | to_entries[] | (.key | split("|")) as $kp
+      | { day: $kp[0], session: $s.meta.session, parent: $par, class: $class, phase: ($whole // $kp[1]), whole: ($whole != null), v: .value } ]
+    | group_by([.day, .session, .phase])
+    | map( . as $g | $g[0] as $h
+        | ( reduce $g[].v as $v (zero;
+              reduce ("calls", "i", "o", "cr", "c5", "c1", "nano", "unp") as $f (.; .[$f] += $v[$f])
+              | .models += ($v.models)) ) as $t
+        | ( $t.models | keys ) as $ms
+        | { kind: "phase-cost", day: $h.day, session: $h.session, parent: $h.parent,
+            lane: (if ($ms | all(startswith("claude-"))) then "claude" elif ($ms | all(startswith("gpt-"))) then "codex" else "other" end),
+            class: $h.class, model: ($ms | join(",")), phase: $h.phase, phase_rule: "v1",
+            calls: $t.calls, in: $t.i, out: $t.o, cache_read: $t.cr, cc_5m: $t.c5, cc_1h: $t.c1,
+            usd: (if $t.unp == $t.calls then null else ($t.nano / 1000000000) end),
+            mark: (if $t.unp > 0 then "unpriced" elif $h.whole then "counted" else "derived" end) } ) ) as $rows
+| ( $rows | map({ key: "\(.day)|\(.session)|\(.phase)", value: . }) | from_entries ) as $now
+| $em[0] as $prev
+# a key emitted before and gone now (a class change moved it, or a corrected message left it empty) is closed with a zero row
+| ( $prev | to_entries | map(select(($now[.key]) == null) | (.value | fromjson) | select(.calls != 0)
+      | .calls = 0 | .in = 0 | .out = 0 | .cache_read = 0 | .cc_5m = 0 | .cc_1h = 0 | .usd = (if .usd == null then null else 0 end)) ) as $closed
+| ( ($rows + $closed) | map(select(($prev["\(.day)|\(.session)|\(.phase)"]) != tojson)) ) as $changed
+| { rows: $changed, emitted: ($prev + ($changed | map({ key: "\(.day)|\(.session)|\(.phase)", value: tojson }) | from_entries)) }'
+
+if [ "$PRINT" = 1 ]; then PSTATE="$WORK/phase-state"; else PSTATE="$STORE/phase-cost-state"; fi
+mkdir -p "$PSTATE" "$WORK/pnew"
+[ -f "$PSTATE/emitted.json" ] || echo '{}' > "$PSTATE/emitted.json"
+PHASE_FILTER='"type":"(assistant|custom-title|ai-title)"|"subtype":"compact_boundary"|"isCompactSummary":true'
+for f in "$PROJECTS"/*/*.jsonl "$PROJECTS"/*/*/subagents/*.jsonl; do
+  [ -f "$f" ] || continue
+  # the state file name is a checksum of the whole path plus a readable tail, so a long path cannot exceed a file-name limit
+  rel="${f#"$PROJECTS"/}"; ck="$(printf '%s' "$rel" | cksum | tr ' ' _)"; tl="${rel//[^A-Za-z0-9._-]/_}"; key="${ck}_${tl: -60}"
+  # the byte offset lives inside the state file, so the totals and the offset they cover move together
+  st=null; [ ! -f "$PSTATE/$key.json" ] || st="$(<"$PSTATE/$key.json")"
+  off=0; [ "$st" = null ] || off="$(jq -r '.off // 0' <<<"$st")"
+  size="$(wc -c < "$f" | tr -d ' ')"
+  if [ "$size" -lt "$off" ]; then off=0; st=null; fi   # shrunk: the file was replaced, read it again
+  [ "$size" -gt "$off" ] || continue
+  tail -c +"$((off + 1))" "$f" | head -c "$((size - off))" > "$WORK/chunk"
+  consumed=$((size - off))
+  # a last line with no newline is still being written: leave it for the next run
+  if [ -n "$(tail -c 1 "$WORK/chunk")" ]; then consumed=$((consumed - $(tail -n 1 "$WORK/chunk" | wc -c | tr -d ' '))); fi
+  [ "$consumed" -gt 0 ] || continue
+  stem="$(basename "$f" .jsonl)"; par=""; atype=""
+  if [ "$(basename "$(dirname "$f")")" = subagents ]; then
+    par="$(basename "$(dirname "$(dirname "$f")")")"
+    [ ! -f "${f%.jsonl}.meta.json" ] || atype="$(jq -r '.agentType // ""' "${f%.jsonl}.meta.json" 2>/dev/null || true)"
+  fi
+  meta="$(jq -nc --arg s "$stem" --arg p "$par" --arg a "$atype" '{session: $s, parent: (if $p == "" then null else $p end), agent_type: $a}')"
+  fp=""
+  printf '%s' "$st" > "$WORK/st.json"
+  if [ "$(jq -r '.fp // ""' "$WORK/st.json")" = "" ]; then
+    fp="$(grep -a -m1 '"type":"user"' "$f" | jq -r 'select(.type == "user") | (.message.content | if type == "string" then . else ([.[]? | select(.type == "text") | .text] | first // "") end) as $t
+      | if ($t | startswith("Read ./review-prompt.md")) then "critic" elif ($t | startswith("You are the release manager")) then "release-mgr" else "none" end' 2>/dev/null || true)"
+  fi
+  { head -c "$consumed" "$WORK/chunk" | { grep -a -E "$PHASE_FILTER" || true; } \
+      | jq -nRc --slurpfile st "$WORK/st.json" --argjson prices "$PRICES" --argjson meta "$meta" --arg fp "$fp" --argjson off "$((off + consumed))" "$PHASE_FILE_JQ"; } \
+    > "$WORK/pnew/$key.json" || die "phase-cost pass failed on $f"
+done
+rm -f "$WORK/chunk"
+# every saved state (the new one where this run made one), then the rows that changed
+: > "$WORK/pall.jsonl"
+for p in "$WORK/pnew"/*.json; do [ ! -f "$p" ] || { cat "$p"; echo; } >> "$WORK/pall.jsonl"; done
+for p in "$PSTATE"/*.json; do
+  [ -f "$p" ] || continue
+  [ "$(basename "$p")" != emitted.json ] || continue
+  [ ! -f "$WORK/pnew/$(basename "$p")" ] || continue
+  { cat "$p"; echo; } >> "$WORK/pall.jsonl"
+done
+jq -nc --slurpfile em "$PSTATE/emitted.json" "$PHASE_EMIT_JQ" "$WORK/pall.jsonl" > "$WORK/phase-out.json" \
+  || die "cannot build the phase-cost rows"
+jq -c '.rows[]' "$WORK/phase-out.json" > "$WORK/phase-rows.jsonl"
+jq -c '.emitted' "$WORK/phase-out.json" > "$WORK/phase-emitted.json"
+
 if [ "$PRINT" = 1 ]; then
-  cat "$WORK/records.jsonl"
+  cat "$WORK/records.jsonl" "$WORK/phase-rows.jsonl"
   exit 0
 fi
 
@@ -262,4 +431,14 @@ while IFS= read -r line; do
   last="$(jq -r --arg t "$t" 'select(.ticket == $t) | .digest' "$FILE" | tail -n 1)"
   if [ "$last" = "$d" ]; then kept=$((kept + 1)); else printf '%s\n' "$line" >> "$FILE"; added=$((added + 1)); fi
 done < "$WORK/records.jsonl"
-echo "usage-compute: appended $added, unchanged $kept ($FILE)"
+# phase-cost rows: append, then keep the offsets and the emitted map that produced them (still under the lock)
+phase_added="$(wc -l < "$WORK/phase-rows.jsonl" | tr -d ' ')"
+cat "$WORK/phase-rows.jsonl" >> "$FILE"
+# copy into the store first, then rename within it: a state file is replaced whole or not at all
+for p in "$WORK/pnew"/*.json "$WORK/phase-emitted.json"; do
+  [ -f "$p" ] || continue
+  name="$(basename "$p")"; [ "$name" != phase-emitted.json ] || name=emitted.json
+  cp "$p" "$PSTATE/.$name.new" || die "cannot save phase-cost state $name"
+  mv "$PSTATE/.$name.new" "$PSTATE/$name" || die "cannot save phase-cost state $name"
+done
+echo "usage-compute: appended $added, unchanged $kept, phase-cost rows $phase_added ($FILE)"
