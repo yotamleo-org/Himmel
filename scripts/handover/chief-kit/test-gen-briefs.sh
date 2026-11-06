@@ -1357,7 +1357,7 @@ pso2="$(psrun trustsoft esc9)"; rc2=$?
 
 # the adopted-kit fixture holds the flags.py copy, so the size gate is reached there; a kit without it exits 2, not a traceback
 [ -f "$KIT/scripts/lib/flags.py" ] && pass "the adopted-kit fixture holds the flags.py copy" || fail "the adopted-kit fixture has no flags.py copy"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/ps-big.json" --base "$PSBASE" --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/ps-bucket-kit" --date 2026-10-08 --repo "$PS" --handover-root "$WORK/handovers" --work-dir "$WORK/psw-kit" --deadline 1791475000 2>&1)"; rc=$?
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/ps-big.json" --base "$PSBASE" --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/ps-bucket-kit" --date 2026-10-08 --repo "$PS" --handover-root "$WORK/handovers-kit" --work-dir "$WORK/psw-kit" --deadline 1791475000 2>&1)"; rc=$?
 [ "$rc" = 1 ] && has "an adopted kit reaches the size gate and refuses" "$pso" "40-file hard max" || fail "adopted kit, gate on: rc=$rc: $pso"
 KIT2="$WORK/kit2"; cp -r "$KIT" "$KIT2"; rm -f "$KIT2/scripts/lib/flags.py"
 pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 python3 "$KIT2/scripts/handover/chief-kit/gen-briefs.py" "$WORK/ps-big.json" --base "$PSBASE" --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/ps-bucket-kit2" --date 2026-10-08 --repo "$PS" --handover-root "$WORK/handovers" --work-dir "$WORK/psw-kit2" --deadline 1791475000 2>&1)"; rc=$?

@@ -3604,7 +3604,8 @@
         "status-sweep": "Jira status sweep moved or missed tickets: operational",
         "resolve": "a worker's BLOCKED resolve marker: the chief resolves the thread itself, not a workflow decision",
         "worker-silent": "a worker gone quiet: the chief relaunches it or takes over its one blocked step, operational triage",
-        "silent-go": "a GO'd PR whose worker went silent: the waiter merged it through merge-on-green.sh --go, or held it and paged, operational triage"
+        "silent-go": "a GO'd PR whose worker went silent: the waiter merged it through merge-on-green.sh --go, or held it and paged, operational triage",
+        "size": "a SIZE-ESCALATE row for a refused or bulk brief: the chief splits it, signs a size override or escalates to the operator, operational triage"
       }
     },
     "docs/handover/worker-preface.md": {
