@@ -1365,3 +1365,126 @@ test("send-file refuses a clean .md whose .html was read only by an older round'
   expect(res.err).toContain("design.md.critic-spec-r2.md");
   expect(res.lines).toEqual([]);
 });
+
+test("send-file refuses an .html while the .md beside it failed its latest spec critic, even when the .html has clean critic files of its own", async () => {
+  const r = root(); const b = htmlBundle(r);
+  criticSeals(b.spec, "spec", 1, "SPEC CLEAN", b.sealed);
+  criticSeals(b.spec, "spec", 2, "SPEC FINDINGS 1", b.sealed);
+  const bare = await sendFile(r, "1", b.page);
+  expect(bare.code).not.toBe(0);
+  expect(bare.err).toContain("design.md.critic-spec-r2.md");
+  const own = [{ text: b.html, file: "design.html" }];
+  criticSeals(b.page, "spec", 1, "SPEC CLEAN", own); criticSeals(b.page, "plan", 1, "PLAN CLEAN", own);
+  const withOwn = await sendFile(r, "1", b.page);
+  expect(withOwn.code).not.toBe(0);
+  expect(withOwn.err).toContain("design.md.critic-spec-r2.md");
+  expect(bare.lines.concat(withOwn.lines)).toEqual([]);
+});
+
+test("send-file refuses an .html when only the .md was edited after the critic read both", async () => {
+  const r = root(); const b = htmlBundle(r);
+  criticSeals(b.spec, "spec", 1, "SPEC CLEAN", b.sealed);
+  writeFileSync(b.spec, "# Design\n\nthe spec, edited\n");
+  const res = await sendFile(r, "1", b.page);
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("changed since");
+  expect(res.lines).toEqual([]);
+});
+
+test("send-file refuses an .html when the spec critic sealed only the .html and not the .md", async () => {
+  const r = root(); const b = htmlBundle(r);
+  criticSeals(b.spec, "spec", 1, "SPEC CLEAN", [b.sealed[1]]);
+  const res = await sendFile(r, "1", b.page);
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("design.md.critic-spec-r1.md");
+  expect(res.err).toContain("does not seal design.md");
+  expect(res.lines).toEqual([]);
+});
+
+test("send-file captions a clean page with exactly the verdict lines when the caller gives no caption", async () => {
+  const r = root(); const b = bundle(r);
+  const res = await sendFile(r, "1", b.spec);
+  expect(res.code).toBe(0);
+  expect(res.lines.at(-1)!.caption).toBe("SPEC CLEAN r1 | PLAN CLEAN r1");
+});
+
+test("send-file refuses a plan page when its latest clean plan critic sealed another existing file", async () => {
+  const r = root(); const b = bundle(r);
+  const plans = join(r, "specs", "plans"); mkdirSync(plans);
+  const plan = join(plans, "design.plan.md"); writeFileSync(plan, "# Plan\n\nthe plan\n");
+  critic(b.spec, "plan", 1, "PLAN CLEAN", { text: "# Plan\n\nthe plan\n", file: "../plans/design.plan.md" });
+  critic(b.spec, "plan", 2, "PLAN CLEAN", { text: "# Plan\n\nthe plan\n", file: "design.plan.md" });   // round 2 read the copy beside the spec
+  const res = await sendFile(r, "1", plan);
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("design.md.critic-plan-r2.md");
+  expect(res.err).toContain("does not seal design.plan.md");
+  expect(res.lines).toEqual([]);
+});
+
+// The real layout: specs/designs/X.md with spec critics beside it; the plan is the same-named specs/plans/X.md,
+// whose plan critics sit beside the PLAN.
+const planLayout = (r: string) => {
+  const designs = join(r, "specs", "designs"); const plans = join(r, "specs", "plans");
+  mkdirSync(designs, { recursive: true }); mkdirSync(plans, { recursive: true });
+  const spec = join(designs, "X.md"); const plan = join(plans, "X.md");
+  writeFileSync(spec, "# X spec\n"); writeFileSync(plan, "# X plan\n");
+  critic(spec, "spec", 1, "SPEC CLEAN", { text: "# X spec\n", file: "X.md" });
+  critic(plan, "plan", 1, "PLAN CLEAN", { text: "# X plan\n", file: "X.md" });
+  return { spec, plan };
+};
+
+test("send-file sends both pages of the real layout: a spec in designs/ and the same-named plan in plans/ with its plan critic beside it", async () => {
+  const r = root(); const l = planLayout(r);
+  const s = await sendFile(r, "1", l.spec);
+  const p = await sendFile(r, "1", l.plan);
+  expect(s.err).toBe(""); expect(p.err).toBe("");
+  expect(s.code).toBe(0); expect(p.code).toBe(0);
+  expect(p.lines.at(-1)!.caption).toBe("SPEC CLEAN r1 | PLAN CLEAN r1");
+});
+
+test("send-file refuses the plan page of the real layout when the plan critic in plans/ ends FINDINGS, naming that file", async () => {
+  const r = root(); const l = planLayout(r);
+  critic(l.plan, "plan", 2, "PLAN FINDINGS 2", { text: "# X plan\n", file: "X.md" });
+  for (const f of [l.plan, l.spec]) {
+    const res = await sendFile(r, "1", f);
+    expect(res.code).not.toBe(0);
+    expect(res.err).toContain(join("plans", "X.md.critic-plan-r2.md"));
+    expect(res.lines).toEqual([]);
+  }
+});
+
+test("send-file takes a plan page named by two specs' plan critics from the first spec by name", async () => {
+  const r = root(); const b = bundle(r);
+  const other = join(r, "specs", "other"); mkdirSync(other);
+  const plan = join(other, "p.md"); writeFileSync(plan, "# P\n");
+  const second = join(b.dir, "zzz.md"); writeFileSync(second, "# Z\n");
+  critic(second, "spec", 1, "SPEC CLEAN", { text: "# Z\n", file: "zzz.md" });
+  critic(second, "plan", 1, "PLAN FINDINGS 1", { text: "# P\n", file: "../other/p.md" });
+  critic(b.spec, "plan", 2, "PLAN CLEAN", { text: "# P\n", file: "../other/p.md" });
+  const res = await sendFile(r, "1", plan);
+  expect(res.err).toBe("");
+  expect(res.code).toBe(0);
+});
+
+test("send-file refuses, naming the folder, when a folder it must list is unreadable", async () => {
+  if (process.getuid?.() === 0) return;
+  const { chmodSync } = await import("node:fs");
+  const r = root(); const b = bundle(r);
+  const plans = join(r, "specs", "plans"); mkdirSync(plans); chmodSync(plans, 0o000);
+  try {
+    const res = await sendFile(r, "1", b.spec);
+    expect(res.code).not.toBe(0);
+    expect(res.err).toContain(plans);
+    expect(res.err).toContain("cannot read the folder");
+    expect(res.lines).toEqual([]);
+  } finally { chmodSync(plans, 0o755); }
+});
+
+test("critic-seal.sh does not accept a sha that only sits inside a longer hex run", async () => {
+  const r = root(); const spec = join(r, "specs", "designs", "d.md"); mkdirSync(join(r, "specs", "designs"), { recursive: true });
+  writeFileSync(spec, "# D\n");
+  const v = `${spec}.critic-spec-r1.md`; writeFileSync(v, `return quoting 0${sha("# D\n")}\nSPEC CLEAN\n`);
+  const res = await seal(v, spec, sha("# D\n"));
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("does not quote");
+});

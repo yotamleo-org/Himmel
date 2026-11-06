@@ -18,12 +18,20 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
 - A missing path, a directory or a file over 50 MB is refused with a clear error and a
   non-zero exit; nothing is queued.
 - **A spec or plan page is checked before it queues**. A file under
-  `specs/{design,designs,spec,plan,plans}/` or `specs/HIMMEL-<n>/`, or one a critic file names, is a
+  `specs/{design,designs,spec,plan,plans}/` or `specs/HIMMEL-<n>/`, or one a plan critic file names, is a
   signature page. It is refused, naming the verdict file and queueing nothing, unless its highest-round
   `<spec>.critic-spec-r<n>.md` AND `<spec>.critic-plan-r<n>.md` each end in `SPEC CLEAN` / `PLAN CLEAN`
   and carry a `CONTENT-SHA256 <sha> <relative path>` line whose file still hashes to that sha (a spec or
-  plan edited after the critic read it fails). A `<stem>.html` sign page beside a `<stem>.md` goes only
-  when the latest spec critic also sealed that `.html`. The Telegram caption opens with the verdict lines
+  plan edited after the critic read it fails). The plan critic may sit beside the spec, or beside the plan
+  as `<same name>.critic-plan-r<n>.md` in a `plan`/`plans` folder of the same `specs/` root (the higher
+  round wins; beside the spec wins a tie); a plan in `plans/` that has a same-named spec in a
+  `design`/`designs`/`spec` folder with spec critic files is governed by that spec. A `<stem>.html`
+  sign page beside a `<stem>.md` is governed by the `.md`'s critics first: it goes only when the `.md`'s
+  latest spec critic is clean and also sealed that `.html`. A folder that cannot be listed refuses the
+  send, naming the folder. Today a page whose critic return carries no `CONTENT-SHA256` line is refused,
+  and so is one whose latest critic ended `SPEC FINDINGS <n>` even when it passed with minors. The seal
+  line is proof of the bytes read, not of who wrote it: a chief could append a sha it computed itself, and
+  `send-file` does not check the quote. The Telegram caption opens with the verdict lines
   read from those files (your own caption follows), and a rendered page opens with them too. A critic
   return is sealed, once per file the critic read, with
   `bash scripts/handover/chief-kit/critic-seal.sh <verdict file> <file it read> <sha the critic quoted>`

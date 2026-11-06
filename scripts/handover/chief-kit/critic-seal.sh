@@ -31,7 +31,7 @@ verdict=$1; read_file=$2; quoted=$3
 # Each reader below consumes the whole file before the match: a `grep -q` at the end of a pipe exits
 # at its first hit, and under pipefail the upstream grep then dies of SIGPIPE on a large return.
 return_text=$(grep -v '^CONTENT-SHA256 ' "$verdict")
-grep -qF -- "$quoted" <<<"$return_text" || die "$verdict does not quote $quoted; the critic's return must quote the sha256 of the file it read, or the seal would only vouch for whatever is on disk now"
+grep -qwF -- "$quoted" <<<"$return_text" || die "$verdict does not quote $quoted; the critic's return must quote the sha256 of the file it read, or the seal would only vouch for whatever is on disk now"
 
 actual=$(sha256sum "$read_file" | cut -d' ' -f1)
 [ "$actual" = "$quoted" ] || die "$read_file hashes to $actual, not the $quoted the critic quoted; it changed since the critic read it, re-run the critic"

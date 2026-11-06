@@ -385,7 +385,7 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 // `<spec>.critic-spec-r<n>.md` / `<spec>.critic-plan-r<n>.md`; `critic-seal.sh` adds the
 // `CONTENT-SHA256 <sha> <path relative to the verdict file>` line above the verdict line.
 // A file is a signature page when it lives under `specs/{design,designs,spec,plan,plans}/` or
-// `specs/HIMMEL-<n>/`, or any critic file names it; every other file sends as before.
+// `specs/HIMMEL-<n>/`, or a plan critic file names it; every other file sends as before.
 const CLEAN = { spec: "SPEC CLEAN", plan: "PLAN CLEAN" } as const;
 const SIGNATURE_DIRS = new Set(["design", "designs", "spec", "plan", "plans"]);
 const sha256 = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
@@ -397,21 +397,46 @@ const underSignaturePath = (p: string) => {
   return parts.some((d, i) => d === "specs" && i + 2 < parts.length && (SIGNATURE_DIRS.has(parts[i + 1]) || /^HIMMEL-\d+$/.test(parts[i + 1])));
 };
 
+// A missing folder reads as empty; any other failure (a folder we may not read) refuses, naming the folder.
+async function listDir(dir: string): Promise<string[]> {
+  try { return (await readdir(dir)).sort(); }
+  catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return [];
+    throw new Error(`${dir}: cannot read the folder (${e instanceof Error ? e.message : e}); the page is not sent`);
+  }
+}
+
+// The plan and plans folders of every specs root above `path`.
+function planDirs(path: string): string[] {
+  const parts = path.split("/");
+  const dirs = new Set<string>();
+  parts.forEach((d, i) => { if (d === "specs") for (const s of ["plan", "plans"]) dirs.add([...parts.slice(0, i + 1), s].join("/")); });
+  return [...dirs];
+}
+
+// The newest round of each critic kind for `spec`: spec and plan critics beside it, plus same-named plan
+// critics (`<spec name>.critic-plan-r<n>.md`) saved beside the plan in a plan or plans folder of the specs root.
+// The highest round wins; beside the spec wins a tie.
 type CriticFile = { path: string; round: number };
 async function latestCritics(spec: string): Promise<Record<"spec" | "plan", CriticFile | null>> {
-  const names = await readdir(dirname(spec)).catch(() => [] as string[]);
   const out: Record<"spec" | "plan", CriticFile | null> = { spec: null, plan: null };
-  for (const n of names) {
-    const m = n.startsWith(basename(spec) + ".") ? /^\.critic-(spec|plan)-r(\d+)\.md$/.exec(n.slice(basename(spec).length)) : null;
-    if (!m) continue;
-    const kind = m[1] as "spec" | "plan"; const round = Number(m[2]);
-    if (!out[kind] || round > out[kind]!.round) out[kind] = { path: join(dirname(spec), n), round };
-  }
+  const base = basename(spec);
+  const scan = async (dir: string, kinds: string[]) => {
+    for (const n of await listDir(dir)) {
+      const m = n.startsWith(base + ".") ? /^\.critic-(spec|plan)-r(\d+)\.md$/.exec(n.slice(base.length)) : null;
+      if (!m || !kinds.includes(m[1])) continue;
+      const kind = m[1] as "spec" | "plan"; const round = Number(m[2]);
+      if (!out[kind] || round > out[kind]!.round) out[kind] = { path: join(dir, n), round };
+    }
+  };
+  await scan(dirname(spec), ["spec", "plan"]);
+  for (const d of planDirs(spec)) if (d !== dirname(spec)) await scan(d, ["plan"]);
   return out;
 }
 
-// Folders a critic file for `page` may sit in: its own, and the design and plan folders of any specs/
-// root above it (the plan critic is saved beside the SPEC, while the plan itself lives in specs/plans/).
+// Folders a critic file for `page` may sit in: its own, and the design and plan folders of any specs
+// root above it (a plan critic may be saved beside the SPEC, while the plan itself lives in the plans folder).
 function criticDirs(page: string): string[] {
   const parts = page.split("/");
   const dirs = new Set([dirname(page)]);
@@ -420,18 +445,27 @@ function criticDirs(page: string): string[] {
 }
 
 // How a page relates to the spec whose critic files govern it: the spec itself, a rendering of it
-// (`<stem>.html` beside `<stem>.md`), or its plan (some plan critic round of that spec is sealed to it).
+// (`<stem>.html` beside `<stem>.md`), or its plan (the same-named file in a plans folder, or sealed by some plan critic round of that spec).
 type Role = "spec" | "render" | "plan";
 const siblingMd = (page: string) => (/\.html?$/i.test(page) ? page.replace(/\.html?$/i, ".md") : null);
+const isFile = (p: string) => stat(p).then(s => s.isFile(), () => false);
 
-// null = nothing is filed for the page. An unreadable critic file throws.
+// null = nothing is filed for the page. An unreadable critic file or folder throws.
 async function governingSpec(page: string): Promise<{ spec: string; role: Role } | null> {
-  const own = await latestCritics(page);
-  if (own.spec || own.plan) return { spec: page, role: "spec" };
+  // A rendering is governed by the .md beside it, before any critic file of its own.
   const md = siblingMd(page);
   if (md) { const c = await latestCritics(md); if (c.spec || c.plan) return { spec: md, role: "render" }; }
+  // A plan in a plans folder is governed by the same-named spec in a sibling design folder, when that spec has critic files.
+  if (["plan", "plans"].includes(basename(dirname(page)))) {
+    for (const d of ["design", "designs", "spec"]) {
+      const spec = join(dirname(dirname(page)), d, basename(page));
+      if (await isFile(spec) && (await latestCritics(spec)).spec) return { spec, role: "plan" };
+    }
+  }
+  const own = await latestCritics(page);
+  if (own.spec || own.plan) return { spec: page, role: "spec" };
   for (const dir of criticDirs(page)) {
-    for (const n of await readdir(dir).catch(() => [] as string[])) {
+    for (const n of await listDir(dir)) {
       const m = /^(.+)\.critic-plan-r\d+\.md$/.exec(n);
       if (!m) continue;
       const file = join(dir, n);
@@ -452,7 +486,7 @@ export async function checkSignaturePage(abs: string): Promise<{ verdicts: Verdi
   if (!g) {
     if (![abs, page].some(underSignaturePath)) return null;
     const md = siblingMd(page);
-    g = md && await stat(md).then(s => s.isFile(), () => false) ? { spec: md, role: "render" } : { spec: page, role: "spec" };
+    g = md && await isFile(md) ? { spec: md, role: "render" } : { spec: page, role: "spec" };
   }
   const { spec, role } = g;
   const specReal = await realpath(spec).catch(() => spec);
