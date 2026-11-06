@@ -348,12 +348,16 @@ lane_run() { # <env-assignments...> ; the hook runs inside the sandbox from lane
         CRYSTALLIZE_MARKER="$MARK" bash "$HOOK"
 }
 
+skip_line() { # <lane> <account> -> the whole skip line the gate writes
+    printf 'crystallizer skipped: API lane not ready (llm_backend_api_ready) with HIMMEL_API_LANE=%s, HIMMEL_API_ACCOUNT=%s; accepted values: scripts/lib/llm-backend.sh; set them in the launching shell before claude starts' "$1" "$2"
+}
+
 # 9b-1 (RED on main, where the refusal goes to /dev/null): no lane env -> exactly one
 # skip line in the hook log naming both lane variables and where to set them.
 lane_sandbox
 lane_run -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT CRYSTALLIZE_CLAUDE_BIN="$STUB"
 sleep 0.3
-if [ "$(grep -c 'crystallizer skipped: set HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto in the launching shell' "$LOGF" 2>/dev/null)" = "1" ]; then
+if [ "$(grep -cF "$(skip_line '<unset>' '<unset>')" "$LOGF" 2>/dev/null)" = "1" ]; then
     pass "lane-env: no lane variables -> one skip line in the hook log naming both lane variables and where to set them"
 else
     fail "lane-env: no lane variables -> skip line missing, duplicated or unclear in the hook log"
@@ -368,9 +372,9 @@ else
 fi
 rm -rf "$SB"
 
-# 9b-2 (regression-only, also passes on main): lane env set -> the spawned crystallizer
-# receives both variables unchanged (A and B).
-for ACC in A B; do
+# 9b-2: lane env set -> the spawned crystallizer receives both variables unchanged. A and B
+# are regression-only; C is RED on main, where the hook's own list leaves it out.
+for ACC in A B C; do
     lane_sandbox
     LANE_DUMP="$SB/lane.txt"
     lane_run HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT="$ACC" LANE_DUMP="$LANE_DUMP" CRYSTALLIZE_CLAUDE_BIN="$WRAP"
@@ -382,6 +386,86 @@ for ACC in A B; do
     fi
     rm -rf "$SB"
 done
+
+# 9b-2a: today's limit. llm_backend_api_ready refuses auto, so the hook skips and says so,
+# instead of passing and failing later in the crystallizer.
+lane_sandbox
+lane_run HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto CRYSTALLIZE_CLAUDE_BIN="$STUB"
+sleep 0.3
+if [ "$(grep -cF "$(skip_line on auto)" "$LOGF" 2>/dev/null)" = "1" ]; then
+    pass "lane-env: account auto -> one skip line in the hook log"
+else
+    fail "lane-env: account auto -> no skip line in the hook log"
+fi
+if grep -q 'crystallize-note: refusing' "$LOGF" 2>/dev/null; then
+    fail "lane-env: account auto -> the crystallizer started and refused"
+else
+    pass "lane-env: account auto -> no refusal in the hook log"
+fi
+rm -rf "$SB"
+
+# 9b-2c: auto does not turn the lane on. Lane unset with account auto -> one skip line.
+lane_sandbox
+lane_run -u HIMMEL_API_LANE HIMMEL_API_ACCOUNT=auto CRYSTALLIZE_CLAUDE_BIN="$STUB"
+sleep 0.3
+if [ "$(grep -cF "$(skip_line '<unset>' auto)" "$LOGF" 2>/dev/null)" = "1" ] && [ ! -s "$MARK" ]; then
+    pass "lane-env: account auto with the lane off -> one skip line, stub never called"
+else
+    fail "lane-env: account auto with the lane off -> skip line missing or stub called"
+fi
+rm -rf "$SB"
+
+# 9b-2d: the library cannot be loaded -> its own skip line, exit 0, no crystallizer.
+lane_sandbox
+ESW_SCRIPTS="$(cd "$(dirname "$HOOK")/.." && pwd)"
+mkdir -p "$SB/tree/hooks" "$SB/tree/luna"
+cp "$HOOK" "$SB/tree/hooks/"
+cp -R "$ESW_SCRIPTS/lib" "$SB/tree/lib"
+rm -f "$SB/tree/lib/llm-backend.sh"
+cp "$ESW_SCRIPTS/luna/crystallize-note.sh" "$SB/tree/luna/"
+HOOK="$SB/tree/hooks/end-session-wiki.sh" lane_run HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A CRYSTALLIZE_CLAUDE_BIN="$STUB"
+ESW_RC=$?
+if [ "$ESW_RC" = "0" ] && [ "$(grep -c 'crystallizer skipped: llm-backend.sh not loadable' "$LOGF" 2>/dev/null)" = "1" ] \
+    && [ -n "$(find "$SB/vault/sessions" -type f -name '*.md' 2>/dev/null | head -1)" ]; then
+    pass "lane-env: an unloadable llm-backend.sh -> one skip line, exit 0, and the note is written"
+else
+    fail "lane-env: an unloadable llm-backend.sh -> rc $ESW_RC, skip line or note missing"
+fi
+rm -rf "$SB"
+
+# 9b-2e: the gate asks llm_backend_api_ready and nothing about the backend. Lane on, account
+# auto and an explicit CRYSTALLIZE_BACKEND=claude-cli skip, although the crystallizer would run
+# on the subscription: a chosen outcome, for the signer, until a later change lifts the gate.
+lane_sandbox
+printf '#!/usr/bin/env bash\necho PROCEED\n' > "$SB/preflight.sh"
+chmod +x "$SB/preflight.sh"
+lane_run HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto CRYSTALLIZE_BACKEND=claude-cli CRYSTALLIZE_PREFLIGHT_CMD="$SB/preflight.sh" CRYSTALLIZE_CLAUDE_BIN="$STUB"
+i=0; while [ ! -s "$MARK" ] && [ "$i" -lt 30 ]; do sleep 0.1; i=$((i + 1)); done
+if [ ! -s "$MARK" ]; then
+    pass "lane-env: lane on, auto, explicit claude-cli -> stub never called"
+else
+    fail "lane-env: lane on, auto, explicit claude-cli -> stub called"
+fi
+if [ "$(grep -cF "$(skip_line on auto)" "$LOGF" 2>/dev/null)" = "1" ]; then
+    pass "lane-env: lane on, auto, explicit claude-cli -> one skip line"
+else
+    fail "lane-env: lane on, auto, explicit claude-cli -> no skip line"
+fi
+rm -rf "$SB"
+
+# 9b-2f: the other direction. Lane on, account C and an explicit CRYSTALLIZE_BACKEND=claude-cli
+# reach the crystallizer. RED on main, where the hook's own list leaves C out.
+lane_sandbox
+printf '#!/usr/bin/env bash\necho PROCEED\n' > "$SB/preflight.sh"
+chmod +x "$SB/preflight.sh"
+lane_run HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=C CRYSTALLIZE_BACKEND=claude-cli CRYSTALLIZE_PREFLIGHT_CMD="$SB/preflight.sh" CRYSTALLIZE_CLAUDE_BIN="$STUB"
+i=0; while [ ! -s "$MARK" ] && [ "$i" -lt 30 ]; do sleep 0.1; i=$((i + 1)); done
+if [ -s "$MARK" ]; then
+    pass "lane-env: lane on, C, explicit claude-cli -> the crystallizer runs"
+else
+    fail "lane-env: lane on, C, explicit claude-cli -> the crystallizer did not run"
+fi
+rm -rf "$SB"
 
 # 9b-2b: the backend a lane-on session uses. With the lane on and no explicit
 # CRYSTALLIZE_BACKEND the spawned crystallizer keeps the API path (the launcher sees

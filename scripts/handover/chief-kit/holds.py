@@ -1573,6 +1573,19 @@ def pr_base(cwd):
     return b if BASE_RE.match(b) else ''
 
 
+def pr_row_passes(fields, row, key, branch):
+    """True for a pr row of another key that holds nothing against this branch: its own PR row (label branch:<branch>), or a
+    row sync-prs stopped freshening more than PR_STALE ago. A row with a doc is a worker's narrowed claim (narrow --apply):
+    it holds while its holder is alive, whatever its age, so it never passes; only sync-prs rows (no doc) get the exception."""
+    if fields[3] != 'pr' or fields[0] == key or fields[2]:
+        return False
+    try:
+        age = time.time() - os.path.getmtime(row)
+    except OSError:
+        age = 0
+    return fields[1] == 'branch:%s' % branch or age > PR_STALE
+
+
 def op_git_check(a):
     """Refuse (exit 1, the holder on stderr) when git's own list of staged files (--staged) or of files the branch adds over
     its base (--push) names a file another live holder holds. It reads no command text, so no shape of write dodges it.
@@ -1610,13 +1623,8 @@ def op_git_check(a):
             continue
         row = os.path.join(slug_dir(repo, norm[0]), escape(norm[1]))
         st, fields = read_row(row)
-        if st == 'ok' and fields[3] == 'pr' and fields[0] != key:
-            try:
-                age = time.time() - os.path.getmtime(row)
-            except OSError:
-                age = 0
-            if fields[1] == 'branch:%s' % branch or age > PR_STALE:
-                continue  # this branch's own PR row, or a PR row sync-prs stopped freshening: it holds nothing
+        if st == 'ok' and pr_row_passes(fields, row, key, branch):
+            continue
         r = claim_one(repo, judge, f, key, label, doc, 'claim', '')
         if r.startswith('refused:'):
             refused.append(r[len('refused:'):])
@@ -1625,6 +1633,224 @@ def op_git_check(a):
     if refused:
         sys.stderr.write('holds: refused by the %s check. Bypass: WRITE_HOLD_OK=1 in the launching shell\n' % ('commit' if a.staged else 'push'))
     return 1 if refused else 0
+
+
+SERIES_LEAD = '> **Series:**'
+
+
+class Unavailable(Exception):
+    """The PR's files, its doc or its Writes cannot be read: narrow prints `unavailable (<reason>)` and changes nothing."""
+
+
+def narrow_context(a):
+    """-> (repo, files, pairs, text, branch): the primary checkout, the files this worktree's branch adds over origin/<base>
+    (the three-dot diff, so a merge-forward adds none of main's), the doc's Writes pairs and its text."""
+    if not KEY_RE.fullmatch(a.key) or not os.path.isabs(a.doc):
+        raise Unavailable('no hold key')
+    if not BASE_RE.match(a.base):
+        raise Unavailable('bad base %r' % a.base)
+    try:
+        repo = primary_of(a.repo)
+    except RepoFault as e:
+        raise Unavailable(str(e))
+    cwd = os.getcwd()
+    if git_text(['rev-parse', '--verify', '-q', 'refs/remotes/origin/' + a.base], cwd) is None:
+        raise Unavailable('origin/%s is not fetched' % a.base)
+    files = git_names(['diff', 'origin/%s...HEAD' % a.base, '--name-only', '--no-renames', '-z'], cwd)
+    if files is None:
+        raise Unavailable('the diff against origin/%s failed' % a.base)
+    if not files:
+        raise Unavailable('empty diff')
+    try:
+        text = open(a.doc, encoding='utf-8', errors='replace').read()
+    except OSError as e:
+        raise Unavailable('cannot read the hold doc: %s' % (e.strerror or e))
+    if not has_writes(text) and 'RESUME' in os.path.basename(a.doc):
+        text = fallback_text(Judge(repo), a.doc, a.key) or text  # a RESUME doc with no Writes line: the predecessor's
+    pairs = parse_text(text, repo)  # may be empty: the rival check and --apply still run, only the outside-writes line is lost
+    branch = (git_text(['rev-parse', '--abbrev-ref', 'HEAD'], cwd) or '').strip()
+    return repo, files, pairs, text, branch
+
+
+def outside_of(files, pairs, repo):
+    """The files no Writes entry covers: a file by its name, a tree by its prefix. A bucket file (absolute) covers none."""
+    names, trees = set(), []
+    for kind, p in pairs:
+        if os.path.isabs(p):
+            continue
+        c = canon(p, repo).rstrip('/')
+        if kind == 'file':
+            names.add(c)
+        else:
+            trees.append(c)
+    out = []
+    for f in files:
+        c = canon(f, repo)
+        if c not in names and not any(c == t or c.startswith(t + '/') for t in trees):
+            out.append(f)
+    return out
+
+
+def rival_message(repo, judge, path, key, branch):
+    """None, 'fault' (the row cannot be read) or the refusal text for a file a live rival holds. Reads only: no row is made."""
+    norm = normalize(repo, path)
+    if norm is None:
+        return None
+    slug, rel = norm
+    if slug != '_abs' and rel in exempt_set():
+        return None
+    if len(escape(rel).encode('utf-8')) > MAX_NAME:
+        fault('path name over %d bytes' % MAX_NAME, rel, key)  # no row can exist for it: it passes, as claim_one lets it
+        return None
+    row = os.path.join(slug_dir(repo, slug), escape(rel))
+    st, fields = read_row(row)
+    if st == 'gone':
+        return None
+    if st == 'err':
+        fault('row unreadable: %s' % (getattr(fields, 'strerror', None) or fields), rel, key)
+        return 'fault'
+    if st == 'bad':
+        fault('row unparseable, left in place', rel, key)
+        return 'fault'
+    if fields[0] == key or os.path.exists('%s.grant.%s' % (row, key)) or pr_row_passes(fields, row, key, branch):
+        return None
+    try:
+        mtime = os.path.getmtime(row)
+    except OSError:
+        return None
+    state = judge.row_state(fields, mtime)
+    if state == 'alive':
+        log_event('deny', rel, key, fields[0])
+        return refusal(rel, fields, key)
+    if state == 'unknown':
+        fault('holder liveness unproven', rel, key)
+        return 'fault'
+    return None
+
+
+def retag_row(repo, rel, key, label, doc, pr):
+    """Make the key's own row for rel the PR's: source pr (a claim stays claim), this PR, doc and label. Under the directory
+    lock; a row of another key or of another PR is left as it is. -> False on a fault (the register could not be written)."""
+    d, name = slug_dir(repo), escape(rel)
+    target = os.path.join(d, name)
+    lock = dir_lock(d)
+    if lock is None:
+        fault('register lock not free', rel, key)
+        return False
+    try:
+        st, f = read_row(target)
+        if st == 'err':
+            fault('row unreadable: %s' % (getattr(f, 'strerror', None) or f), rel, key)
+            return False
+        if st != 'ok' or f[0] != key or f[4] not in ('', pr):
+            return True
+        new = [key, label, doc, 'claim' if f[3] == 'claim' else 'pr', pr]
+        if f == new:
+            return True
+        _tmp_n[0] += 1
+        tmp = os.path.join(d, '%sretag.%d.%d' % (TMP_PREFIX, os.getpid(), _tmp_n[0]))
+        try:
+            with open(tmp, 'w', encoding='utf-8') as fh:
+                fh.write('\t'.join(clean(x) for x in new) + '\n')
+            os.replace(tmp, target)
+        except OSError as e:
+            fault('retag write: %s' % (e.strerror or e), rel, key)
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass  # swallow-ok: the temp file never existed or is gone
+            return False
+        return True
+    finally:
+        dir_unlock(lock)
+
+
+def free_unchanged(repo, key, keep):
+    """Remove the key's rows with no PR number whose file the PR does not change (rename-compare, under the directory lock)."""
+    d = slug_dir(repo)
+    try:
+        names = sorted(os.listdir(d))
+    except FileNotFoundError:
+        return
+    except OSError as e:
+        fault('register directory: %s' % (e.strerror or e), '', key)
+        return
+    for n in names:
+        if n.startswith(TMP_PREFIX) or GRANT_RE.search(n) or n in keep:
+            continue
+        full = os.path.join(d, n)
+        st, f = read_row(full)
+        if st != 'ok' or f[0] != key or f[4] != '':
+            continue
+        try:
+            mtime = os.path.getmtime(full)
+        except OSError:
+            continue
+        if remove_dead(d, n, f, mtime):
+            log_event('narrow', unescape(n), key, 'freed')
+
+
+def op_narrow(a):
+    """--check: print `outside-writes: <files>`, `none` or `unavailable (<reason>)`; exit 1 (the holder on stderr) when a PR file
+    is held by a live rival with no grant. It makes no row. --apply: the PR's files become the key's rows (source pr, a claim
+    stays claim, each with the doc, label and PR number); the key's other rows with no PR number are freed, except for a doc
+    with a Series line or after a fault. Every fault exits 0 and never fails the PR; a fault on one file stops the freeing but
+    can leave the rows already made for the other files."""
+    try:
+        repo, files, pairs, text, branch = narrow_context(a)
+    except Unavailable as e:
+        if str(e) != 'no hold key':
+            fault(str(e), '', a.key)
+        if a.check:
+            print('outside-writes: unavailable (%s)' % clean(str(e)))
+        return 0
+    bypass = (os.environ.get('WRITE_HOLD_OK') == '1' or os.path.exists(os.path.join(holds_root(), 'OFF'))
+              or os.path.exists(os.path.join(repo, '.single-writer')))
+    if a.check:
+        outside = outside_of(files, pairs, repo)
+        if not pairs:
+            line = 'outside-writes: unavailable (no Writes line)'
+        else:
+            line = 'outside-writes: ' + (clean(', '.join(outside)) if outside else 'none')
+        refused, faulted = [], False
+        if not bypass:
+            judge = Judge(repo, time.time() + CHECK_BUDGET)
+            for f in files:
+                m = rival_message(repo, judge, f, a.key, branch)
+                if m == 'fault':
+                    faulted = True
+                elif m:
+                    refused.append(m)
+        if refused:
+            print(line)
+            for m in refused:
+                sys.stderr.write(m + '\n')
+            sys.stderr.write('holds: refused by the PR open. Bypass: WRITE_HOLD_OK=1 in the launching shell\n')
+            return 1
+        print('outside-writes: unavailable (register unreadable)' if faulted else line)
+        return 0
+    if bypass:
+        return 0
+    if not a.pr.isdigit():
+        sys.stderr.write('holds: narrow --apply needs --pr N\n')
+        return 2
+    judge = Judge(repo, time.time() + CHECK_BUDGET)
+    keep = set()
+    faulted = False  # a file the PR changes that could not be registered: nothing is freed, so no hold is lost to a fault
+    for f in files:
+        norm = normalize(repo, f)
+        if norm is None or norm[0] == '_abs':
+            continue
+        rel = norm[1]
+        keep.add(escape(rel))
+        st, row = read_row(os.path.join(slug_dir(repo), escape(rel)))
+        if st == 'ok' and row[0] == a.key:
+            faulted = not retag_row(repo, rel, a.key, a.label, a.doc, a.pr) or faulted
+        else:
+            faulted = claim_one(repo, judge, rel, a.key, a.label, a.doc, 'pr', a.pr) == 'fault' or faulted
+    if not faulted and not any(l.startswith(SERIES_LEAD) for l in text.splitlines()):
+        free_unchanged(repo, a.key, keep)
+    return 0
 
 
 def abs_doc(s):
@@ -1696,6 +1922,14 @@ def build_parser():
     g = sp.add_mutually_exclusive_group(required=True)
     g.add_argument('--staged', action='store_true', help='the staged files (the commit hook)')
     g.add_argument('--push', action='store_true', help='the files the branch adds over its base (the push hook)')
+    sp = add('narrow', op_narrow, help='a PR open: --check names the files outside Writes and refuses a rival\'s file; --apply makes the PR\'s files the key\'s rows')
+    g = sp.add_mutually_exclusive_group(required=True)
+    g.add_argument('--check', action='store_true', help='print the outside-writes line; exit 1 on a file a live rival holds; change nothing')
+    g.add_argument('--apply', action='store_true', help='the PR\'s files become the key\'s rows, the rest of its unnumbered rows are freed')
+    for o in ('--key', '--repo', '--doc', '--base'):
+        sp.add_argument(o, required=True, type=abs_doc if o == '--doc' else str)
+    sp.add_argument('--label', default='')
+    sp.add_argument('--pr', default='', help='the PR number (--apply)')
     sp = add('asks', op_asks, help='TSV key path holder command: pending trust-path asks with the paste-ready grant')
     sp.add_argument('--repo', required=True)
     return ap

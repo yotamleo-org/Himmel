@@ -266,6 +266,50 @@ check_pr_size() {
     done < "$bands"
 }
 
+# A PR claims its files in the holds register: holds.py narrow --check names the files outside the worker's Writes for the
+# `outside-writes:` body line and refuses an open that touches a file a live rival holds; --apply, after the PR exists, makes the
+# PR's files the worker's rows. Only a holds.py exit 1 with a `holds:` line on stderr refuses, and never under OFF; every
+# other outcome opens the PR (the barrier blocks on a positive answer only). No key or no doc: no call, no row.
+holds_py="$HERE/../handover/chief-kit/holds.py"
+OW_LINE=""
+holds_narrow_check() { # <gate|print>: sets OW_LINE; returns 1 only when gate mode must refuse the open
+    local mode="$1" key="${HIMMEL_HOLD_KEY:-}" doc="${HIMMEL_HOLD_DOC:-}" repo out="" rc=0 err off=0
+    if [ -z "$key" ] || [ -z "$doc" ]; then
+        OW_LINE="outside-writes: unavailable (no hold key)"
+        return 0
+    fi
+    if [ -e "${HOME:-}/.himmel/state/holds/OFF" ]; then off=1; fi
+    if ! command -v python3 >/dev/null 2>&1 || [ ! -r "$holds_py" ] \
+        || ! repo=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null); then
+        OW_LINE="outside-writes: unavailable (holds.py cannot run)"
+        return 0
+    fi
+    repo="${repo%/.git}"
+    err=$(mktemp "${TMPDIR:-/tmp}/worker-pr-open-holds-err.XXXXXX") || { OW_LINE="outside-writes: unavailable (mktemp failed)"; return 0; }
+    out=$(python3 -I "$holds_py" narrow --check --key "$key" --repo "$repo" --doc "$doc" --base "$BASE" 2>"$err") || rc=$?
+    OW_LINE=$(printf '%s\n' "$out" | awk '/^outside-writes:/ && !done { print; done = 1 }')
+    if [ -z "$OW_LINE" ]; then OW_LINE="outside-writes: unavailable (holds.py gave no answer)"; fi
+    if [ "$mode" = gate ]; then
+        if [ "$rc" -eq 1 ] && [ "$off" -eq 0 ] && grep '^holds:' "$err" >/dev/null; then
+            cat "$err" >&2
+            rm -f "$err"
+            return 1
+        fi
+        cat "$err" >&2
+    fi
+    rm -f "$err"
+    return 0
+}
+holds_set_body_line() { # replace the body's outside-writes: line, or add it after the rest
+    body=$(printf '%s\n' "$body" | OW="$OW_LINE" awk '/^outside-writes:/ { if (!done) { print ENVIRON["OW"]; done = 1 } next } { print } END { if (!done) print ENVIRON["OW"] }')
+}
+holds_narrow_apply() { # <PR number>: the PR's files become the worker's rows; it never fails the PR
+    local key="${HIMMEL_HOLD_KEY:-}" doc="${HIMMEL_HOLD_DOC:-}" repo
+    if [ -z "$key" ] || [ -z "$doc" ] || ! command -v python3 >/dev/null 2>&1 || [ ! -r "$holds_py" ]; then return 0; fi
+    repo=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 0 # swallow-ok: no repo identity means no rows, and narrowing never fails a PR
+    python3 -I "$holds_py" narrow --apply --key "$key" --label "${HIMMEL_HOLD_LABEL:-}" --doc "$doc" --repo "${repo%/.git}" --pr "$1" --base "$BASE" >/dev/null || true # swallow-ok: narrowing never fails a PR
+}
+
 existing_pr=""
 # Same separation as the create path below: a `gh`/`bb` warning on stdin's
 # stderr (even on a SUCCESSFUL lookup, rc=0) must never leak into the value
@@ -334,6 +378,12 @@ if [ -z "$existing_pr" ]; then
         echo "ERR worker-pr-open: no /pr-check record for head $head_sha — run /pr-check on this head before opening the PR (order: commit, push the branch, /pr-check, then open)" >&2
         exit 1
     fi
+    # Last gate before the PR exists: a file a live rival holds refuses the open, naming the holder.
+    if ! holds_narrow_check gate; then
+        echo "ERR worker-pr-open: refused — a file of this PR is held by a live rival (see above); message your chief with the HOLD-ASK line, then open the PR" >&2
+        exit 1
+    fi
+    holds_set_body_line
     # Capture stdout (the PR URL) and stderr (diagnostics, plus the
     # CodeRabbit-trigger confirmation) into SEPARATE streams —
     # merging them with `2>&1` let a stderr line race the URL for "first
@@ -365,6 +415,9 @@ else
             exit 1
         fi
     fi
+    # An update is not an open: the check only prints, its refusal is never acted on.
+    holds_narrow_check print
+    holds_set_body_line
     if ! out=$(forge_pr_set_body "$number" "$title" "$body" 2>&1); then
         echo "ERR worker-pr-open: PR body update failed:" >&2
         printf '%s\n' "$out" >&2
@@ -377,6 +430,8 @@ else
         bitbucket) url="https://bitbucket.org/${nwo}/pull-requests/${number}" ;;
     esac
 fi
+
+holds_narrow_apply "$number"
 
 # An open PR asks the status funnel to re-derive the title's first [KEY].
 # Best-effort: the funnel warns and exits 0 on any Jira failure;
