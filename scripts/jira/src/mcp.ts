@@ -25,7 +25,7 @@ import type {
 } from './types.js';
 
 /**
- * MCP surface for the himmel jira CLI (HIMMEL-159).
+ * MCP surface for the himmel jira CLI.
  *
  * Exposes the Commander CLI's verbs — get, create, list, transition,
  * transitions, comment, attach, edit, projects, project-create, roadmap-set,
@@ -84,7 +84,7 @@ export function createTools(): JiraTool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          key: str('Issue key (e.g. HIMMEL-1)'),
+          key: str('Issue key (e.g. PROJ-1)'),
           json: { type: 'boolean', description: 'Output raw JSON' },
           short: {
             type: 'boolean',
@@ -434,7 +434,7 @@ export function createTools(): JiraTool[] {
     },
     {
       name: 'roadmap-set',
-      description: 'Set roadmap fields on an issue (HIMMEL-3890), then recompute ROI',
+      description: 'Set roadmap fields on an issue, then recompute ROI',
       inputSchema: {
         type: 'object',
         properties: {
@@ -461,7 +461,7 @@ export function createTools(): JiraTool[] {
     },
     {
       name: 'roadmap-get',
-      description: 'Print the roadmap fields of an issue (HIMMEL-3890)',
+      description: 'Print the roadmap fields of an issue',
       inputSchema: {
         type: 'object',
         properties: { key: str('Issue key') },
@@ -492,7 +492,7 @@ export function createTools(): JiraTool[] {
     },
     {
       name: 'release',
-      description: 'Release ledger twin of `jira release <sub>`: state, request, claim, rule, apply, lease-acquire, lease-release (HIMMEL-6796). The operator verbs stay CLI-only',
+      description: 'Release ledger twin of `jira release <sub>`: state, request, claim, rule, apply, lease-acquire, lease-release. The operator verbs stay CLI-only',
       inputSchema: {
         type: 'object',
         properties: {

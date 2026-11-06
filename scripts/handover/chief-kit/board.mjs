@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// board.mjs — Render the chief's progress board: a self-contained
-// HTML page (chief-board.html, next to the chief doc) that shows the fleet,
-// every worker's phase, what needs the chief, epic progress and the operator's
-// open decisions. The chief republishes it as an artifact (that call is the
-// chief's own; this script never publishes).
+// board.mjs — Render the chief's progress board: the board model
+// (<chief doc stem>.board.json beside the chief doc, schema himmel.board/1) that
+// shows the fleet, every worker's phase, what needs the chief, epic progress and
+// the operator's open decisions. The AG-UI board and the Shift page serve that
+// file. With --out it also writes the same state as a self-contained HTML page
+// (and its archive); a chief that wants the page asks for it, the default writes none.
 //
 //   node board.mjs --doc <chief doc> [--workers "<worker doc> ..."] [--out <file>] [--repo <dir>] [--changed]
 //
@@ -11,13 +12,13 @@
 // waiting on you, shipped. Same reads, written to --out (default chief-shift-board.html);
 // the operator board, its archive and its json are not written.
 //
-// --changed (Ask 1): still renders and writes the file, but prints
+// --changed (Ask 1): still renders and writes the board file, but prints
 // one line -- `CHANGED <path>` or `UNCHANGED <path>` -- instead of the bare
 // path, so a chief can call this after every Live-state mutation (dispatch,
 // verdict, GO, MERGED, WRAPPED) and grep the answer instead of diffing the
-// file itself. "Changed" compares the embedded fingerprint (below) against
-// what the file on disk carried before this render; the Artifact publish
-// itself stays a model step, never done here.
+// file itself. The path is the HTML page when --out names one, else the board
+// file. "Changed" compares the freshness signatures (below) against what the
+// board file on disk carried before this render; it needs no HTML page.
 //
 // Worker set: --workers wins; else the chief's fleet manifest
 // (<chief doc stem>.fleet.json, via fleet-manifest.sh list); else the Live-state scan.
@@ -27,9 +28,9 @@
 // docs' Results bullets, `gh` (open + merged PRs), and -- for a WRAPPED worker
 // only -- the SAME process census tick.sh's procs= builds from
 // (claude-sessions.sh), read independently because tick.sh's own procs= counts
-// only HELD workers. tick.sh's `board=` field compares the fingerprint embedded
-// here with a freshly recomputed one, so a stale board is structurally
-// visible. The published page is public-ish: nonces, lock tokens and token
+// only HELD workers. tick.sh's `board=` field compares the fingerprint kept in
+// the board file's `freshness` object with a freshly recomputed one, so a stale
+// board is structurally visible. The board is public-ish: nonces, lock tokens and token
 // spans are redacted from everything before it is escaped.
 //
 // Optional Live-state lines the chief may keep (chief-template.md):
@@ -39,8 +40,8 @@
 //                                           the `(N) ` entries of the named bucket file(s)
 //   versions: v1.0.0, v1.0.1                one `Release <v>` panel per Jira fixVersion
 //
-// The published page shows live work only. WRAPPED and MERGED workers and the merged PRs
-// go to <out>-archive.html beside it (chief-board-archive.html by default): local,
+// The page (written only with --out) shows live work only. WRAPPED and MERGED workers and the
+// merged PRs go to <out>-archive.html beside it: local,
 // never published, one item per line so a grep finds a ticket key, a PR or a last bullet.
 //
 // ponytail: the archive is rebuilt from the fleet manifest and the 24 h merged-PR list each
@@ -101,7 +102,10 @@ if (!existsSync(docPath)) {
 }
 const bucket = dirname(docPath);
 const repo = resolve(opt.repo || join(HERE, '..', '..', '..'));
-const outPath = resolve(opt.out || join(bucket, 'chief-board.html'));
+// The HTML page is opt-in: only --out writes it (and its archive). The board file is always written.
+const writePage = opt.out !== undefined;
+const outPath = resolve(opt.out || join(bucket, 'board.html'));
+const jsonPath = resolve(opt.json || join(bucket, `${basename(docPath, '.md')}.board.json`));
 
 // ---------------------------------------------------------------- redaction
 // Nonces, lock tokens and `token \`...\`` spans never reach a published page;
@@ -1088,9 +1092,6 @@ const html = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Supervisor Session Board</title>
-${fp ? `<meta name="chief-board-fp" content="${fp}">` : ''}
-<meta name="chief-board-pool-fp" content="${poolSig}">
-${ciFleetSig ? `<meta name="chief-board-cifleet-fp" content="${esc(ciFleetSig)}">\n` : ''}${censusSig ? `<meta name="chief-board-census-fp" content="${safe(censusSig)}">` : ''}${releaseSig ? `\n<meta name="chief-board-versions-fp" content="${esc(releaseSig)}">` : ''}${manifestSig ? `\n<meta name="chief-board-manifest-fp" content="${esc(manifestSig)}">` : ''}${capSig ? `\n<meta name="chief-board-cap-fp" content="${esc(capSig)}">` : ''}
 <style>
 :root { --bg:#f6f7f9; --surface:#fff; --text:#1c2128; --muted:#5b6672; --line:#d9dee4; --accent:#2457c5; --ok:#1a7f37; --warn:#9a6700; --bad:#cf222e; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0f1318; --surface:#181d24; --text:#e6e9ed; --muted:#96a1ad; --line:#2b333d; --accent:#7aa2ff; --ok:#3fb950; --warn:#d29922; --bad:#ff7b72; } }
@@ -1405,44 +1406,34 @@ const boardModel = {
     trends: { leg_time: { unit: 'min', today: legTimeToday }, cost: trend.cost, console_cost: consoleCost, exploration: trend.exploration, failures: trend.failures, cr_loop: trend.cr_loop, ice_followups: trend.ice_followups, overdue_classes: trend.overdue_classes, tools: succession },
     legend,
     cards,
+    // What tick.sh's board= and --changed compare, kept in the board file itself: board_fp is
+    // tick's fingerprint (null when tick was unavailable); the rest are the signatures of what the
+    // page shows that the fingerprint leaves out. Every value is a string, '' when there is none.
+    freshness: { board_fp: fp || null, pool: poolSig, census: censusSig, ci_fleet: ciFleetSig, versions: releaseSig, manifest: manifestSig, cap: capSig },
 };
 
-// Ask 1: --changed reads the PREVIOUS render's embedded
-// fingerprint before overwriting it, so a chief can call this after every
-// Live-state mutation and know from one line whether the render moved --
-// the Artifact publish itself stays a separate, deliberate model step.
-let oldFp = null;
-let oldCensusSig = '';
-let oldReleaseSig = '';
-let oldCiFleetSig = '';
-let oldManifestSig = '';
-let oldCapSig = '';
-let oldPoolSig = '';
-if (changedFlag && existsSync(outPath)) {
-    const prev = readFileSync(outPath, 'utf8');
-    oldPoolSig = (/<meta name="chief-board-pool-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
-    oldFp = (/<meta name="(?:chief|console)-board-fp" content="([0-9a-f]{16})">/.exec(prev) || [])[1] || null;
-    oldCensusSig = (/<meta name="(?:chief|console)-board-census-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
-    oldCiFleetSig = (/<meta name="(?:chief|console)-board-cifleet-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
-    oldReleaseSig = (/<meta name="(?:chief|console)-board-versions-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
-    oldManifestSig = (/<meta name="(?:chief|console)-board-manifest-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
-    oldCapSig = (/<meta name="(?:chief|console)-board-cap-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
+// Ask 1: --changed reads the PREVIOUS render's freshness out of the board file
+// before overwriting it, so a chief can call this after every Live-state
+// mutation and know from one line whether the render moved. No previous file, or one
+// without a freshness object, is a change.
+let prevFresh = null;
+if (changedFlag && existsSync(jsonPath)) {
+    try { prevFresh = JSON.parse(readFileSync(jsonPath, 'utf8')).freshness || null; } catch { prevFresh = null; } // swallow-ok: an unreadable previous board is a change
 }
-const tmp = `${outPath}.tmp${process.pid}`;
-writeFileSync(tmp, html);
-renameSync(tmp, outPath);
-const archiveTmp = `${archivePath}.tmp${process.pid}`;
-writeFileSync(archiveTmp, archiveHtml);
-renameSync(archiveTmp, archivePath);
-// The AG-UI page reads <chief doc>.board.json beside the doc, so every render also refreshes it.
+const moved = !prevFresh || Object.entries(boardModel.freshness).some(([k, v]) => (v ?? '') !== (prevFresh[k] ?? ''));
+if (writePage) {
+    const tmp = `${outPath}.tmp${process.pid}`;
+    writeFileSync(tmp, html);
+    renameSync(tmp, outPath);
+    const archiveTmp = `${archivePath}.tmp${process.pid}`;
+    writeFileSync(archiveTmp, archiveHtml);
+    renameSync(archiveTmp, archivePath);
+}
+// The AG-UI board and the Shift page read <chief doc>.board.json beside the doc, so every render refreshes it.
 {
-    const jsonPath = resolve(opt.json || join(bucket, `${basename(docPath, '.md')}.board.json`));
     const jsonTmp = `${jsonPath}.tmp${process.pid}`;
     writeFileSync(jsonTmp, `${JSON.stringify(boardModel, null, 1)}\n`);
     renameSync(jsonTmp, jsonPath);
 }
-if (changedFlag) {
-    console.log(`${poolSig !== oldPoolSig || fp !== oldFp || censusSig !== oldCensusSig || esc(ciFleetSig) !== oldCiFleetSig || esc(releaseSig) !== oldReleaseSig || esc(manifestSig) !== oldManifestSig || esc(capSig) !== oldCapSig ? 'CHANGED' : 'UNCHANGED'} ${outPath}`);
-} else {
-    console.log(outPath);
-}
+const shown = writePage ? outPath : jsonPath;
+console.log(changedFlag ? `${moved ? 'CHANGED' : 'UNCHANGED'} ${shown}` : shown);

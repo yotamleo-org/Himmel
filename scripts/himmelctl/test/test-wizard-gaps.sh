@@ -74,7 +74,7 @@ set -euo pipefail
 
 repo_root=$(git rev-parse --show-toplevel)
 # shellcheck disable=SC1091
-. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # HIMMEL-2350: shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
+. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
 wizard="$repo_root/scripts/himmelctl/bin.js"
 tbd_delta_map="$repo_root/scripts/himmelctl/tbd-delta.json"
 tbd_delta_doc="$repo_root/docs/setup/operator-profile-tbd-delta.md"

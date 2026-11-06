@@ -185,7 +185,7 @@ if [ "${1:-}" = "--selftest-chain" ]; then
     exit 0
 fi
 
-echo "== suite hermeticity (HIMMEL-2902) =="
+echo "== suite hermeticity =="
 # A station's real install-profile.json (channel: stable) must not leak into
 # these plain-pull scenarios via an inherited HIMMELCTL_CACHE_DIR — this
 # recurses with a station-like profile ambient exactly the way a caller's

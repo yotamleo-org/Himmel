@@ -449,7 +449,7 @@ emptyRoot="$work/lint-nohooks"; mkdir -p "$emptyRoot/scripts/himmelctl/lib"
 printf '{"flags":[]}\n' > "$emptyRoot/scripts/himmelctl/lib/bypass-flags.json"
 if "$node_bin" "$lint" --root "$emptyRoot" >/dev/null 2>"$work/lint4.err"; then fail "h5 lint passed vacuously with no scripts/hooks"; fi
 grep -q 'scripts/hooks' "$work/lint4.err" || fail "h5 lint failure does not name scripts/hooks"
-pass "h5 flag-registry-lint fails on a missing hooks dir (node pin deferred to HIMMEL-4332)"
+pass "h5 flag-registry-lint fails on a missing hooks dir (the node 22 pin is set in the CI lint job, not checked here)"
 
 # ── i. one owner per finding, a remedy on every fail/warn row ──
 foldDoctor="$work/stub-doctor-fold.sh"

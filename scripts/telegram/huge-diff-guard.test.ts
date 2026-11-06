@@ -287,7 +287,7 @@ test("resolveDefaultBranch: the lib.sh order — origin/HEAD, then LOCAL main/ma
       expect: "main",
     },
     {
-      name: "BOTH local main and master exist -> main (HIMMEL-323 documented tie-break)",
+      name: "BOTH local main and master exist -> main (documented tie-break)",
       calls: {
         "rev-parse --verify --quiet refs/heads/main": { code: 0, stdout: "" },
         "rev-parse --verify --quiet refs/heads/master": { code: 0, stdout: "" },
@@ -389,7 +389,7 @@ const HAS_GRAPHIFY_FIXTURE = existsSync(resolve("graphify-out/graph.json"));
 if (!HAS_GRAPHIFY_FIXTURE) {
   console.warn(
     "[huge-diff-guard.test] SKIP all (REAL GIT) cases: graphify-out/graph.json not found at the repo root " +
-      "— this tree legitimately lacks the private-only graphify-out/ artifact (PRIVATE_PATHS exclusion, HIMMEL-1740). " +
+      "— this tree legitimately lacks the private-only graphify-out/ artifact (PRIVATE_PATHS exclusion). " +
       "Not a failure; re-run from a checkout that carries it (any operator machine) to exercise these cases.",
   );
 }
@@ -610,7 +610,7 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a repo whose default branch is m
   } finally { rmQuiet(repo); }
 }, GIT_TEST_TIMEOUT_MS);
 
-test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a repo whose default branch exists ONLY as remote-tracking (origin/HEAD set, no local master) still warns — the base is a ref that RESOLVES (HIMMEL-1804 item 1)", () => {
+test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a repo whose default branch exists ONLY as remote-tracking (origin/HEAD set, no local master) still warns — the base is a ref that RESOLVES", () => {
   const { repo, git } = makeGraphRepo("master");
   try {
     git(["checkout", "-b", "feat/graph-refresh"]);

@@ -87,7 +87,7 @@ node_bin=$(command -v node)
 work=$(mktemp -d "${TMPDIR:-/tmp}/luna-config-test.XXXXXX") || fail "mktemp -d failed"
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
-. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # HIMMEL-2350: shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
+. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
 
 lib_w="$(winpath "$lib")"
 
@@ -136,7 +136,7 @@ const before = fs.readFileSync(lc.configPath(), 'utf8');
 // at the real path — simulates a process kill in the temp-write->rename
 // window without relying on real signal timing.
 const origRename = fs.renameSync;
-fs.renameSync = () => { throw new Error('simulated interruption (HIMMEL-2176 test)'); };
+fs.renameSync = () => { throw new Error('simulated interruption'); };
 let threw = false;
 try {
   const changed = lc.defaultConfig();
@@ -160,7 +160,7 @@ grep -q '"threw":true' <<<"$outB" || fail "caseB: interrupted save() should thro
 grep -q '"originalIntact":true' <<<"$outB" || fail "caseB: the ORIGINAL file must survive byte-identical across an interrupted save (got: $outB)"
 grep -q '"hasBak":true' <<<"$outB" || fail "caseB: a .bak must be present after an interrupted save (got: $outB)"
 grep -q '"bakCount":1' <<<"$outB" || fail "caseB: exactly ONE .bak must remain after an interrupted save (got: $outB)"
-grep -q '"hasTmp":false' <<<"$outB" || fail "caseB (HIMMEL-2176 CR fix, codex-5): a failed rename must not leave a PID-named .tmp-* file behind (got: $outB)"
+grep -q '"hasTmp":false' <<<"$outB" || fail "caseB: a failed rename must not leave a PID-named .tmp-* file behind (got: $outB)"
 echo "ok: caseB interrupted save() leaves the original intact with a .bak present"
 
 # ── Case B2: atomic-write interruption — deterministic writeFileSync failure ─
@@ -189,7 +189,7 @@ const before = fs.readFileSync(lc.configPath(), 'utf8');
 // Interrupt: writeFileSync throws before the temp file is ever created —
 // simulates ENOSPC/permission-denied mid-write.
 const origWrite = fs.writeFileSync;
-fs.writeFileSync = () => { throw new Error('simulated write failure (HIMMEL-2176 test)'); };
+fs.writeFileSync = () => { throw new Error('simulated write failure'); };
 let threw = false;
 try {
   const changed = lc.defaultConfig();
@@ -213,7 +213,7 @@ grep -q '"threw":true' <<<"$outB2" || fail "caseB2: interrupted (write-failure) 
 grep -q '"originalIntact":true' <<<"$outB2" || fail "caseB2: the ORIGINAL file must survive byte-identical across an interrupted write (got: $outB2)"
 grep -q '"hasBak":true' <<<"$outB2" || fail "caseB2: a .bak must be present after an interrupted write (got: $outB2)"
 grep -q '"bakCount":1' <<<"$outB2" || fail "caseB2: exactly ONE .bak must remain after an interrupted write (got: $outB2)"
-grep -q '"hasTmp":false' <<<"$outB2" || fail "caseB2 (HIMMEL-2176 CR round 3 fix): a failed WRITE must not leave a PID-named .tmp-* file behind (got: $outB2)"
+grep -q '"hasTmp":false' <<<"$outB2" || fail "caseB2: a failed WRITE must not leave a PID-named .tmp-* file behind (got: $outB2)"
 echo "ok: caseB2 interrupted (write-failure) save() leaves the original intact with a .bak present, no leftover .tmp-*"
 
 # ── Case B3: PARTIAL write interruption — writeFileSync creates the tmp file
@@ -251,7 +251,7 @@ fs.writeFileSync = (filePath, data, opts) => {
   calls += 1;
   if (calls === 1) {
     origWrite(filePath, 'PARTIAL-CONTENT-FROM-AN-INTERRUPTED-FLUSH', { flag: 'wx' });
-    throw new Error('simulated partial write — ENOSPC mid-flush (HIMMEL-2176 test)');
+    throw new Error('simulated partial write — ENOSPC mid-flush');
   }
   return origWrite(filePath, data, opts);
 };
@@ -278,7 +278,7 @@ grep -q '"threw":true' <<<"$outB3" || fail "caseB3: interrupted (partial-write) 
 grep -q '"originalIntact":true' <<<"$outB3" || fail "caseB3: the ORIGINAL file must survive byte-identical across a partial write (got: $outB3)"
 grep -q '"hasBak":true' <<<"$outB3" || fail "caseB3: a .bak must be present after a partial write (got: $outB3)"
 grep -q '"bakCount":1' <<<"$outB3" || fail "caseB3: exactly ONE .bak must remain after a partial write (got: $outB3)"
-grep -q '"hasTmp":false' <<<"$outB3" || fail "caseB3 (HIMMEL-2176 CR round 9 fix): a write that CREATES the tmp file then throws must not leak it — the old tmpIsOurs-gated cleanup missed exactly this case (got: $outB3)"
+grep -q '"hasTmp":false' <<<"$outB3" || fail "caseB3: a write that CREATES the tmp file then throws must not leak it — the old tmpIsOurs-gated cleanup missed exactly this case (got: $outB3)"
 echo "ok: caseB3 a write that creates the tmp file and then throws (partial write) leaves the original intact, no leftover .tmp-*"
 
 # ── Case C: version:99 refusal — loud throw, no write ──────────────────────
@@ -478,7 +478,7 @@ const bakContentBefore = fs.readFileSync(path.join(dir, bakNameBefore), 'utf8');
 // Interrupt: copyFileSync throws before the fresh backup is ever written —
 // simulates ENOSPC/permission-denied/a locked file during backupExisting().
 const origCopy = fs.copyFileSync;
-fs.copyFileSync = () => { throw new Error('simulated backup failure (HIMMEL-2176 test)'); };
+fs.copyFileSync = () => { throw new Error('simulated backup failure'); };
 let threw = false;
 try {
   const third = lc.defaultConfig();
@@ -503,7 +503,7 @@ console.log(JSON.stringify({
 ")
 grep -q '"threw":true' <<<"$outH" || fail "caseH: a failed backup copy should make save() throw (got: $outH)"
 grep -q '"originalIntact":true' <<<"$outH" || fail "caseH: the config file must be untouched when backupExisting() fails (got: $outH)"
-grep -q '"previousBakSurvived":true' <<<"$outH" || fail "caseH (HIMMEL-2176 CR round 7): a failed fs.copyFileSync during backup must NOT destroy the previous .bak (got: $outH)"
+grep -q '"previousBakSurvived":true' <<<"$outH" || fail "caseH: a failed fs.copyFileSync during backup must NOT destroy the previous .bak (got: $outH)"
 grep -q '"bakCountAfter":1' <<<"$outH" || fail "caseH: exactly ONE .bak (the previous one) must remain after a failed backup attempt (got: $outH)"
 echo "ok: caseH a failed backup copy leaves the previous .bak and the original config intact"
 
@@ -769,7 +769,7 @@ let copyCalls = 0;
 fs.copyFileSync = (src, dest, flags) => {
   copyCalls += 1;
   if (copyCalls === 2) {
-    throw new Error('simulated replacement-copy failure (HIMMEL-2176 test)');
+    throw new Error('simulated replacement-copy failure');
   }
   return origCopy(src, dest, flags);
 };
@@ -796,7 +796,7 @@ console.log(JSON.stringify({
 ")
 grep -q '"threw":true' <<<"$outM" || fail "caseM: a failed collision-retry copy should make save() throw (got: $outM)"
 grep -q '"originalIntact":true' <<<"$outM" || fail "caseM: the config file must be untouched when the collision-retry copy fails (got: $outM)"
-grep -q '"bakCountAfter":1' <<<"$outM" || fail "caseM (HIMMEL-2176 CR round 12): a failed collision-retry copy must NEVER leave zero backups (got: $outM)"
+grep -q '"bakCountAfter":1' <<<"$outM" || fail "caseM: a failed collision-retry copy must NEVER leave zero backups (got: $outM)"
 grep -q '"previousBakSurvived":true' <<<"$outM" || fail "caseM: the pre-collision backup must survive a failed collision-retry copy untouched (got: $outM)"
 echo "ok: caseM a same-timestamp collision whose replacement copy fails leaves the pre-collision backup intact, never zero"
 
@@ -853,7 +853,7 @@ const bakContentBefore = fs.readFileSync(path.join(dir, bakNameBefore), 'utf8');
 const origRename = fs.renameSync;
 fs.renameSync = (src, dest) => {
   if (src.includes('.stage-')) {
-    throw new Error('simulated staged-rename failure (HIMMEL-2176 test)');
+    throw new Error('simulated staged-rename failure');
   }
   return origRename(src, dest);
 };
@@ -882,7 +882,7 @@ console.log(JSON.stringify({
 ")
 grep -q '"threw":true' <<<"$outN" || fail "caseN: a failed staged rename should make save() throw (got: $outN)"
 grep -q '"originalIntact":true' <<<"$outN" || fail "caseN: the config file must be untouched when the staged rename fails (got: $outN)"
-grep -q '"stageFilesLeft":0' <<<"$outN" || fail "caseN (HIMMEL-2176, retask stage1-build-6d2e): a failed staged rename must not leave a .stage-* file behind (got: $outN)"
+grep -q '"stageFilesLeft":0' <<<"$outN" || fail "caseN (retask stage1-build-6d2e): a failed staged rename must not leave a .stage-* file behind (got: $outN)"
 grep -q '"bakCountAfter":1' <<<"$outN" || fail "caseN: exactly ONE .bak must remain after a failed staged rename (got: $outN)"
 grep -q '"previousBakSurvived":true' <<<"$outN" || fail "caseN: the pre-collision backup must survive a failed staged rename untouched (got: $outN)"
 echo "ok: caseN a failed staged-rename during backup collision cleanup leaves no .stage-* artifact and the pre-existing backup intact"

@@ -72,7 +72,7 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 
 repo_root=$(git rev-parse --show-toplevel)
 # shellcheck disable=SC1091
-. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # HIMMEL-2350: shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
+. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
 wizard="$repo_root/scripts/himmelctl/bin.js"
 [ -f "$wizard" ] || fail "$wizard not found"
 command -v node >/dev/null 2>&1 || fail "node required"

@@ -122,7 +122,7 @@ test("station-status is read-only: it runs at once, no confirm code", async () =
   expect(h.audits.map((a) => a.result)).toEqual(["break-glass-ok"]);
 });
 
-test("the allow-rule confirm prompt shows the resolved rule text (HIMMEL-5112)", async () => {
+test("the allow-rule confirm prompt shows the resolved rule text", async () => {
   const root = await mkdtemp(join(tmpdir(), "bg-ar-"));
   const h = harness();
   await issue(root, h, "/allow-rule merge-forward-check");
@@ -145,7 +145,7 @@ test("the allow-rule confirm prompt shows the resolved rule text (HIMMEL-5112)",
   }
 });
 
-test("an allow-rule issues no confirm code when JSON.parse rejects the registry (HIMMEL-5112)", async () => {
+test("an allow-rule issues no confirm code when JSON.parse rejects the registry", async () => {
   const root = await mkdtemp(join(tmpdir(), "bg-ar-"));
   const prev = process.env.BREAK_GLASS_ALLOW_REGISTRY;
   try {
@@ -169,7 +169,7 @@ test("an allow-rule issues no confirm code when JSON.parse rejects the registry 
   }
 });
 
-test("an allow-rule /confirm refuses when the registry rule changed after the prompt (HIMMEL-5112)", async () => {
+test("an allow-rule /confirm refuses when the registry rule changed after the prompt", async () => {
   const root = await mkdtemp(join(tmpdir(), "bg-ar-drift-"));
   const reg = join(root, "rules.json");
   await writeFile(reg, JSON.stringify({ "fixture-one": "Bash(fixture:*)" }));
@@ -191,7 +191,7 @@ test("an allow-rule /confirm refuses when the registry rule changed after the pr
   }
 });
 
-test("an allow-rule /confirm hands the executor the sha256 of the approved rule text (HIMMEL-5127)", async () => {
+test("an allow-rule /confirm hands the executor the sha256 of the approved rule text", async () => {
   const root = await mkdtemp(join(tmpdir(), "bg-ar-bind-"));
   const reg = join(root, "rules.json");
   await writeFile(reg, JSON.stringify({ "fixture-one": "Bash(fixture:*)" }));
@@ -207,7 +207,7 @@ test("an allow-rule /confirm hands the executor the sha256 of the approved rule 
   }
 });
 
-test("an allow-rule issues no confirm code for a rule with a lone surrogate (HIMMEL-5127)", async () => {
+test("an allow-rule issues no confirm code for a rule with a lone surrogate", async () => {
   const root = await mkdtemp(join(tmpdir(), "bg-ar-sur-"));
   const reg = join(root, "rules.json");
   // jq 1.7 reads \ud800 as U+FFFD while JSON.parse keeps the lone surrogate: the two readers disagree.
@@ -224,7 +224,7 @@ test("an allow-rule issues no confirm code for a rule with a lone surrogate (HIM
   }
 });
 
-test("an allow-rule issues no confirm code for a rule containing U+FFFD (HIMMEL-5127)", async () => {
+test("an allow-rule issues no confirm code for a rule containing U+FFFD", async () => {
   const root = await mkdtemp(join(tmpdir(), "bg-ar-fffd-"));
   const reg = join(root, "rules.json");
   // The executor refuses U+FFFD (jq may produce it from a lone surrogate), so the prompt must not offer it.
@@ -241,7 +241,7 @@ test("an allow-rule issues no confirm code for a rule containing U+FFFD (HIMMEL-
   }
 });
 
-test("an allow-rule issues no confirm code for a rule containing U+2028 or U+2029 (HIMMEL-5140)", async () => {
+test("an allow-rule issues no confirm code for a rule containing U+2028 or U+2029", async () => {
   // The executor refuses them (bash [[:cntrl:]] under a UTF-8 locale, plus an explicit jq check), so the prompt must not offer them.
   for (const [name, ch] of [["ls", "\\u2028"], ["ps", "\\u2029"]]) {
     const root = await mkdtemp(join(tmpdir(), `bg-ar-${name}-`));

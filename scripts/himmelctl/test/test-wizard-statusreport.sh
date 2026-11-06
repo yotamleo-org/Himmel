@@ -61,7 +61,7 @@
 set -euo pipefail
 
 repo_root=$(git rev-parse --show-toplevel)
-. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # HIMMEL-2350: shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
+. "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
 status_report_lib="$repo_root/scripts/himmelctl/lib/status-report.js"
 [ -f "$status_report_lib" ] || { echo "FAIL: $status_report_lib not found" >&2; exit 1; }
 command -v node >/dev/null 2>&1 || { echo "FAIL: node required" >&2; exit 1; }
@@ -651,7 +651,7 @@ echo "$outH" | jq --arg cfg "$cfgH_w" -e \
   || fail "case h: bridge-health with a malformed config.json should surface severity degraded, naming the config file (got: $outH)"
 echo "$outH" | jq --arg cfg "$cfgH_w" -e \
   '.items[] | select(.id=="bridge-persistence") | .desired == true and .severity == "degraded" and (.detail | contains($cfg))' >/dev/null \
-  || fail "case h: bridge-persistence (HIMMEL-2176 Stage-1 PR-C, S6) with a malformed config.json should ALSO surface severity degraded, naming the config file — it joined CONFIG_OVERRIDE_ITEM_IDS alongside cadence-armed/bridge-health (got: $outH)"
+  || fail "case h: bridge-persistence (Stage-1 PR-C, S6) with a malformed config.json should ALSO surface severity degraded, naming the config file — it joined CONFIG_OVERRIDE_ITEM_IDS alongside cadence-armed/bridge-health (got: $outH)"
 echo "$outH" | jq -e '.items[] | select(.id=="fixture-control") | .severity == "red"' >/dev/null \
   || fail "case h: every OTHER item must still render its normal probe result despite the malformed config (got: $outH)"
 echo "$outH" | jq -e '.summary.degraded == 3 and .summary.red == 1' >/dev/null \

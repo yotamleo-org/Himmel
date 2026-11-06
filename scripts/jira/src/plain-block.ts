@@ -173,7 +173,7 @@ export function homeVerdict(
 }
 
 /**
- * The Sector a create takes from its title when --sector is absent (HIMMEL-8659):
+ * The Sector a create takes from its title when --sector is absent:
  * a leading "<Sector>:" naming a live option gives that option's canonical label.
  * A Task, Story or Bug whose "<Word>:" prefix names no live option is refused with
  * the valid list. A title with no prefix, a commit prefix (lowercase), an Epic or

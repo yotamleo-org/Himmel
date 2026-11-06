@@ -148,7 +148,7 @@ export function appendFlowRun(row: FlowRunRow, path?: string): void {
     // fallback, because a native Windows node process has no /tmp.
     p = join(process.env.TMPDIR || tmpdir(), "flow-runs-unredirected.jsonl");
     console.error(
-      `[flow-run-ledger] HIMMEL-2241 WARN: shell suite running (HIMMEL_SUITE_LOCK_HELD set) with no HIMMEL_FLOW_RUNS_LEDGER override; row quarantined in ${p} instead of the production ledger. Export HIMMEL_FLOW_RUNS_LEDGER to a scratch path in the fixture that spawned this wrapper.`,
+      `[flow-run-ledger] WARN: shell suite running (HIMMEL_SUITE_LOCK_HELD set) with no HIMMEL_FLOW_RUNS_LEDGER override; row quarantined in ${p} instead of the production ledger. Export HIMMEL_FLOW_RUNS_LEDGER to a scratch path in the fixture that spawned this wrapper.`,
     );
   }
   const dir = dirname(p);

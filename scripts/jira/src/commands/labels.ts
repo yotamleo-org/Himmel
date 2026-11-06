@@ -1,6 +1,6 @@
 /**
  * Parse a comma-separated `--labels` argument into the string array Jira's
- * REST API expects for `fields.labels` (HIMMEL-243).
+ * REST API expects for `fields.labels`.
  *
  * Split on comma, trim each token, drop empties. An argument that yields no
  * labels (empty string, whitespace, bare commas) is an operator error —

@@ -253,7 +253,7 @@ describe('setFixVersion names its writer', () => {
   });
 });
 
-describe('earliestUnreleased (HIMMEL-4489)', () => {
+describe('earliestUnreleased', () => {
   const v = (name: string, extra: { released?: boolean; archived?: boolean } = {}) => ({ name, ...extra });
 
   it('skips released versions and returns the first unreleased one', () => {
@@ -270,7 +270,7 @@ describe('earliestUnreleased (HIMMEL-4489)', () => {
   });
 });
 
-describe('assertVersionExists (HIMMEL-3713)', () => {
+describe('assertVersionExists', () => {
   it('resolves silently when the version exists', async () => {
     stubJira({ 'GET /project/HIMMEL/versions': VERSIONS });
     await expect(assertVersionExists('HIMMEL', 'v1.0.0')).resolves.toBeUndefined();
@@ -284,7 +284,7 @@ describe('assertVersionExists (HIMMEL-3713)', () => {
   });
 });
 
-describe('start date + version-edit (HIMMEL-3890)', () => {
+describe('start date + version-edit', () => {
   it('carries startDate on create and validates it', () => {
     expect(buildVersionCreateBody('HIMMEL', 'v1.0.1', { startDate: '2026-10-05', releaseDate: '2026-10-08' })).toEqual({
       name: 'v1.0.1',
@@ -313,7 +313,7 @@ describe('start date + version-edit (HIMMEL-3890)', () => {
   });
 });
 
-describe('version-move (HIMMEL-4006)', () => {
+describe('version-move', () => {
   const MOVABLE = [
     { id: '10001', name: 'v1.0.1', self: 'https://x.example/rest/api/3/version/10001' },
     { id: '10002', name: 'v1.0.1b', self: 'https://x.example/rest/api/3/version/10002' },
@@ -348,7 +348,7 @@ describe('version-move (HIMMEL-4006)', () => {
   });
 });
 
-describe('version-archive (HIMMEL-4469)', () => {
+describe('version-archive', () => {
   it('archives an empty version: counts, then PUT archived:true', async () => {
     const calls = stubJira({
       'GET /project/HIMMEL/versions': VERSIONS,

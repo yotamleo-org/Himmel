@@ -98,10 +98,10 @@ export function composeClaudexWorkerPrompt(task: string, sessionDir: string, bra
   // lands in the prompt.
   const base = opts?.base && /^[A-Za-z0-9._\/-]+$/.test(opts.base) ? opts.base : "main";
   const branchLine = opts?.shared
-    ? `Work ONLY inside your current directory (a dedicated git worktree). The branch ${branch} is a SHARED PR branch with EXISTING history, already checked out — do NOT create a new branch, do NOT reset/rebase/amend/force-anything. To make a change, ADD new commits on top only — never rewrite an existing commit to alter what it did. To bring this branch up to date with its PR base, run \`git merge ${base}\` and resolve any conflicts — a merge commit ADDS to history without rewriting any existing SHA, so the session that publishes your branch needs only an ordinary fast-forward push; a rebase would rewrite the branch's published SHAs and force a force-push, and both stay banned (HIMMEL-1342). A lock serializes writers, so no other worker touches this branch while you run.`
+    ? `Work ONLY inside your current directory (a dedicated git worktree). The branch ${branch} is a SHARED PR branch with EXISTING history, already checked out — do NOT create a new branch, do NOT reset/rebase/amend/force-anything. To make a change, ADD new commits on top only — never rewrite an existing commit to alter what it did. To bring this branch up to date with its PR base, run \`git merge ${base}\` and resolve any conflicts — a merge commit ADDS to history without rewriting any existing SHA, so the session that publishes your branch needs only an ordinary fast-forward push; a rebase would rewrite the branch's published SHAs and force a force-push, and both stay banned. A lock serializes writers, so no other worker touches this branch while you run.`
     : `Work ONLY inside your current directory (a dedicated git worktree). Commit your work on the branch ${branch} which is already checked out.`;
   return [
-    `You are an unattended claudex-lane worker session (himmel offload, codex weekly bank, HIMMEL-654/979/1003) — do the scoped chunk below and stop, do not expand scope.`,
+    `You are an unattended claudex-lane worker session (himmel offload, codex weekly bank) — do the scoped chunk below and stop, do not expand scope.`,
     // outbound HTTP captured the resolved Codex slug, and worker
     // transcripts echoed it on every assistant message; Claude Code's Opus 4.8
     // assertion is only its fallback for an unrecognized model slug.

@@ -13,7 +13,7 @@ const row = (key: string, kind?: Admission['kind'], version = 'v1.1.3'): Admissi
 const LEAKED = [7146, 7145, 7135, 7121, 7120, 7119, 7118, 7117, 7116, 7104, 7030, 7009, 7006, 7004, 7003, 7002, 7001, 7000, 6998, 6995, 6991, 6874, 6836, 6833]
   .map((n) => `HIMMEL-${n}`);
 
-describe('leakDiff (HIMMEL-7153)', () => {
+describe('leakDiff', () => {
   it('lists the open tickets that are in neither the frozen set nor the ledger', () => {
     const issues = mirror(snap('HIMMEL-1', ['v1.1.3']), ...LEAKED.map((k) => snap(k, ['v1.1.3'])));
     expect(leakDiff('v1.1.3', ['HIMMEL-1'], issues, [])).toEqual([...LEAKED].sort());
@@ -52,7 +52,7 @@ describe('leakDiff (HIMMEL-7153)', () => {
   });
 });
 
-describe('commentLeaks (HIMMEL-7153)', () => {
+describe('commentLeaks', () => {
   it('posts one comment per leak and none where the marker is already there', async () => {
     const jira = {
       findComment: vi.fn(async (key: string) => (key === 'K-2' ? 'c-9' : null)),

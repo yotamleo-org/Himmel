@@ -10,7 +10,7 @@ import { releaseRoot } from './paths.js';
 const repoName = (): string =>
   basename(dirname(execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim()));
 
-describe('releaseRoot resolves through handoverRoot (HIMMEL-6917)', () => {
+describe('releaseRoot resolves through handoverRoot', () => {
   it('uses an explicit HANDOVER_DIR from the env record', () => {
     const dir = mkdtempSync(join(tmpdir(), 'release-root-'));
     try {

@@ -15,7 +15,7 @@ const DEFAULT_STATUSES = ['To Do', 'Planning', 'Ready', 'In Progress'];
 /**
  * Build a JQL `status in (...)` clause from a CLI --status arg.
  *
- * HIMMEL-112: pre-fix, the CLI interpolated --status verbatim into JQL,
+ * Pre-fix, the CLI interpolated --status verbatim into JQL,
  * which broke on multi-word values (`status in (To Do)` → JQL parse error
  * because `To` is taken as a JQL keyword/value boundary). Even the CLI's
  * own --help-documented default value `"To Do","In Progress"` worked ONLY
@@ -50,7 +50,7 @@ export interface ListJqlOptions {
 /**
  * Resolve the JQL to query.
  *
- * HIMMEL-215: when `--jql` is supplied, pass it through verbatim — this is
+ * When `--jql` is supplied, pass it through verbatim — this is
  * the arbitrary-search escape hatch that the block-mcp hook points
  * `searchJiraIssuesUsingJql` at, so it must support any JQL the operator
  * writes (cross-status, free-text, ORDER BY, etc.) without the CLI adding
@@ -59,7 +59,7 @@ export interface ListJqlOptions {
  * Without `--jql`, behaviour is unchanged: build
  * `project AND status [AND issuetype] [AND labels] ORDER BY created`.
  *
- * HIMMEL-243: `--label` composes a `labels = "<l>"` clause into the built
+ * `--label` composes a `labels = "<l>"` clause into the built
  * JQL alongside the project/status/type filters. Precedence matches the
  * existing flags: `--jql` still wins — when supplied, `--label` (like
  * `--project`/`--type`/`--status`) is ignored. An empty or whitespace-only
@@ -81,7 +81,7 @@ export function resolveListJql(options: ListJqlOptions): string {
   return jql;
 }
 
-/** Jira Cloud `/search/jql` hard-caps a single page at 100 (HIMMEL-1602). */
+/** Jira Cloud `/search/jql` hard-caps a single page at 100. */
 const PAGE_MAX = 100;
 
 /**

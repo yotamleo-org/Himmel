@@ -1,5 +1,5 @@
 {
-  "$comment": "HIMMEL-4379: the ONE table mapping every config-feed row id to exactly one user-facing bundle. Order = display order. An entry is an exact row id or a prefix ending in '*'. scripts/install/bundle-registry-lint.mjs fails when a row id the feed can emit matches zero or more than one entry, or an entry matches nothing.",
+  "$comment": "The ONE table mapping every config-feed row id to exactly one user-facing bundle. Order = display order. An entry is an exact row id or a prefix ending in '*'. scripts/install/bundle-registry-lint.mjs fails when a row id the feed can emit matches zero or more than one entry, or an entry matches nothing.",
   "bundles": [
     {
       "id": "search",

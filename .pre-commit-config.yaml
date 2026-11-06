@@ -402,6 +402,35 @@ repos:
         always_run: true
         stages: [pre-push]
 
+      # The commit and push halves of the single-writer barrier. holds.py git-check reads git's own staged and
+      # pushed file lists, so a shell write (sed -i) that slipped past the write hook is caught here. The entry stats OFF
+      # first and turns anything but "exit 1 with a holds: line on stderr" into 0, so a crash or a SyntaxError in holds.py
+      # never refuses a commit or a push. GIT_INDEX_FILE is kept (git commit -a and git commit <path> use a temporary index).
+      # ponytail: git commit --no-verify skips these hooks; ceiling: that commit is unchecked until its push; upgrade path: a server-side check on the PR file list.
+      - id: write-hold-commit
+        name: single-writer barrier (staged files)
+        language: system
+        entry: >-
+          bash -c 'if [ -e "${HOME:-}/.himmel/state/holds/OFF" ]; then exit 0; fi;
+          err=$(python3 -I scripts/handover/chief-kit/holds.py git-check --staged 2>&1 >/dev/null); rc=$?;
+          if [ "$rc" = 1 ] && printf "%s\n" "$err" | grep -q "^holds:"; then printf "%s\n" "$err" >&2; exit 1; fi;
+          exit 0'
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
+      - id: write-hold-push
+        name: single-writer barrier (pushed files)
+        language: system
+        entry: >-
+          bash -c 'if [ -e "${HOME:-}/.himmel/state/holds/OFF" ]; then exit 0; fi;
+          err=$(python3 -I scripts/handover/chief-kit/holds.py git-check --push 2>&1 >/dev/null); rc=$?;
+          if [ "$rc" = 1 ] && printf "%s\n" "$err" | grep -q "^holds:"; then printf "%s\n" "$err" >&2; exit 1; fi;
+          exit 0'
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
       - id: npm-audit
         name: npm audit (production, high+) on every npm package
         language: system
