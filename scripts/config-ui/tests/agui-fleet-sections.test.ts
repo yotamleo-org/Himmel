@@ -3,6 +3,8 @@
 // without an install.
 import { expect, test } from "bun:test";
 import * as nav from "../public/nav.js";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { chainKey, chiefCounts, chiefOf, cloudPhase, consoleGroups, filterCount, fleetSections, laneOf, NO_FILTERS, orphanReason, shortName, siblingOrder } from "../agui-web/src/fleet-model";
 
 const row = (name: string, role: string, console: string | null, extra: any = {}) => ({
@@ -292,4 +294,16 @@ test("the AG-UI rail list hides Board with no readable tracker, exactly as navLi
   expect(ids([])).toEqual((nav as any).navLinks({ here: "agui", token: "a".repeat(64), current: "fleet", run: null, sources: [] }).map((l: any) => l.id));
   expect(ids(["jira"])).toContain("board");
   expect(ids(undefined)).toContain("board");
+});
+
+test("the Running heading count is the number of running session rows, the same number the status line says", () => {
+  const C = "HIMMEL-nextleg-2026-11-06TA-roadmap-chief";
+  const mine = [row(C, "console", C, { state: "idle" }), row("run-a", "worker", C, { state: "running" }), row("run-b", "worker", C, { state: "running" })];
+  const s = fleetSections(mine, null, NO_FILTERS, []);
+  // evaluate the heading expression Fleet.tsx really passes to the Running section (the page cannot be imported without react)
+  const src = readFileSync(join(import.meta.dir, "../agui-web/src/Fleet.tsx"), "utf8");
+  const expr = src.match(/<Section id="running" title="Running" count=\{(.*?)\} initial/)![1];
+  const heading = new Function("s", `return ${expr};`)(s);
+  expect(s.counts.running).toBe(2);
+  expect(heading).toBe(s.counts.running);
 });
