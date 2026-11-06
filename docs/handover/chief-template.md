@@ -172,14 +172,13 @@ rule; batch rulings per decision point.
 
 ## Merges — READY → GO → merge
 
-A worker reports `READY <pr> <head> GREEN`. Verify with
-`chief-kit/ready-check.sh <pr> <full-40-hex-head-sha>` (`run_in_background`; all check-runs success
+A worker reports `READY <pr> <head> GREEN`. Verify:
+`bash scripts/handover/chief-kit/ready-check.sh <pr> <full-head-sha>` (`run_in_background`; all check-runs success
 at that head, zero unresolved threads, trailers in the first commit; the diff stays
-your judgement), then `chief-kit/go.sh <pr> <head>`: that write IS the GO
-(`gh pr merge` is gated on the file; `GO` over SendMessage only notifies). `go.sh`
+your judgement), then `bash scripts/handover/chief-kit/go.sh <pr> <head>`: that write IS the GO
+(`gh pr merge` needs the file; a messaged `GO` only notifies). `go.sh`
 refuses (exit 4) unless `ready-check.sh` passes; a head with no ok CR-ledger row
-gets no GO. The worker merges, reports `MERGED #<n> → <sha>`; pull the
-primary.
+gets no GO. The worker merges and reports `MERGED #<n> → <sha>`; pull the primary.
 
 The worker closes Jira per the brief's completes-ticket line (`> **Completes ticket:** yes|no`)
 (`--jira-transition` only for `yes`). After `MERGED`, re-read the ticket — the flag closes only the first `[KEY]`
@@ -187,8 +186,7 @@ of the PR title; check a second key by hand. Never merge with open review
 threads or on a handoff calling a PR clean: query it yourself. A worker's
 `BLOCKED resolve`: verify, resolve, never the operator. **A PR whose diff
 matches a pattern in `scripts/ci/ci-trust-paths.txt`** needs adversarial review and
-`go.sh --trust-reviewed <qid> <pr> <head>` (an ordinary GO exits 21); a pre-release
-tag is `cut-tag.sh <version> <sha>` (`--dry-run` first). These and the
+`bash scripts/handover/chief-kit/go.sh --trust-reviewed <qid> <pr> <head>` (an ordinary GO exits 21). Tag cuts and the
 merged-docs list: `chief-sections/merges.md`.
 
 **19. suite evidence.** Every impacted suite of `origin/main..<head>` needs proof at the
@@ -202,7 +200,7 @@ PASS line names before a hand GO (`auto-go.sh` does not stop on one). No row: ru
 `worker-event.sh` on them; else, or on `WAKE worker-event … out=<file>`, finish by hand: on `WRAPPED`, confirm
 the lock is free at the ROOT sweep, then
 `bash scripts/handover/chief-kit/close-wrapped-worker.sh <worker-doc>`. Never run the
-bare `clean.sh` sweep for a worker. long-running.txt: `run_in_background` (a short listed script may instead run as `timeout 90 bash <script>`; never `ready-check.sh`, whose item 19 bounds sum to 105 s). Hand sequence, `digest=`:
+bare `clean.sh` sweep for a worker. long-running.txt: `run_in_background` (a short listed script may instead run as `timeout 90 bash <script>`; never a gate script (`go.sh`, `ready-check.sh`, `ready-go.sh`): run it bare). Hand sequence, `digest=`:
 `chief-sections/wrapping.md`.
 
 ## Standing rules

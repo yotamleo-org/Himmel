@@ -128,7 +128,9 @@ contains "clean: READY-GO PASS" "$OUT" "READY-GO PASS"
 contains "clean: COVERAGE line" "$OUT" "COVERAGE: [PASS] 7."
 contains "clean: TRUST none" "$OUT" "TRUST: none"
 contains "clean: TICKET key and status" "$OUT" "TICKET: HIMMEL-1 In Review"
-contains "clean: NEXT names go.sh" "$OUT" "NEXT: bash $(printf '%q' "$HERE")/go.sh 77 $SHA"
+contains "clean: NEXT is the relative form the chief allow rule matches" "$OUT" "NEXT: bash scripts/handover/chief-kit/go.sh 77 $SHA"
+lacks "clean: NEXT carries no absolute path" "$OUT" "bash $HERE"
+check "clean: the NEXT line is exactly the relative GO command" "$(printf '%s\n' "$OUT" | grep '^NEXT:')" "NEXT: bash scripts/handover/chief-kit/go.sh 77 $SHA"
 contains "clean: exact GO line" "$OUT" "SENDMESSAGE to=HIMMEL-9-worker :: GO 77 $SHA, token BE-N1-abc"
 
 # --- 3. no pair -> no guessed line -------------------------------------------
@@ -154,6 +156,8 @@ check "trust hit: exit 0" "$RC" "0"
 contains "trust hit: TRUST names the path" "$OUT" "TRUST: hit scripts/ci/ci-trust-paths.txt"
 lacks "trust hit: no plain GO line" "$OUT" "SENDMESSAGE"
 contains "trust hit: routes through the judge" "$OUT" "go.sh --trust-reviewed <judge qid> 77 $SHA"
+contains "trust hit: the judge route is the relative form" "$OUT" "run: bash scripts/handover/chief-kit/go.sh --trust-reviewed <judge qid> 77 $SHA"
+lacks "trust hit: the judge route carries no absolute path" "$OUT" "bash $HERE"
 unset STUB_FILE
 
 # --- 6. trust list unreadable: ready-check fails it before the trust step --------------------------------------------------
