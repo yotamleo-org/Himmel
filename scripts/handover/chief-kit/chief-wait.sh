@@ -1012,7 +1012,11 @@ underfill_block() { # prints the WAKE block for the pool pool_probe just read; f
     fi
     # one tail on both wakes: dispatchable=<n> keys=<KEYS> backlog=unread (a partial count stays, marked)
     tail="${count:+ dispatchable=$count}${dkeys:+ keys=$dkeys}${back_failed:+ backlog=unread}"
-    printf 'WAKE %s capacity=%s%s%s\n%s\n' "$wake" "$cap_val" "${pool_counts:+ pool=$pool_counts}" "$tail" "$tick_line"
+    if [ "$wake" = pool-unresolved ]; then
+        printf 'WAKE pool-unresolved capacity=%s%s%s\n%s\n' "$cap_val" "${pool_counts:+ pool=$pool_counts}" "$tail" "$tick_line"
+    else
+        printf 'WAKE underfilled capacity=%s%s%s\n%s\n' "$cap_val" "${pool_counts:+ pool=$pool_counts}" "$tail" "$tick_line"
+    fi
     [ -z "$pool_out" ] || printf '%s\n' "$pool_out" | pool_view
     [ -z "$pool_unresolved" ] || printf '%s\n' "$pool_unresolved"
     intake_ver="$(printf '%s\n' "$pool_out" | sed -n 's/^# intake [0-9][0-9]* for \([^:]*\):.*/\1/p' | head -n 1)"  # the line's candidates already printed with the pool; this names the way to file them
