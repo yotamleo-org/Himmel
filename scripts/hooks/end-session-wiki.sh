@@ -223,14 +223,19 @@ spawn_crystallizer() {
     # shellcheck source=/dev/null
     [ -r "$detach_lib" ] && . "$detach_lib" || return 0
     # The hook never turns the API lane on: HIMMEL_API_LANE / HIMMEL_API_ACCOUNT pass
-    # through from the launching shell untouched. Lane on (the same check the
-    # crystallizer gates on) means the crystallizer runs; lane off means the hook
+    # through from the launching shell untouched. The hook asks llm_backend_api_ready
+    # and holds no account list: yes means the crystallizer runs; no means the hook
     # logs ONE skip line saying where to set it and does not spawn. detach_run sends
     # stderr to /dev/null, so the inner redirect lands any other crystallizer refusal
     # in this hook's log instead; a log that cannot be opened must not stop the
     # crystallizer, so a failed redirect falls through to a plain exec.
-    { [ "${HIMMEL_API_LANE:-}" = "on" ] && case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) true ;; *) false ;; esac; } \
-        || { log_msg "crystallizer skipped: set HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto in the launching shell before claude starts"; return 0; }
+    local backend_lib
+    backend_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/llm-backend.sh"
+    # shellcheck source=/dev/null
+    { [ -r "$backend_lib" ] && . "$backend_lib"; } 2>/dev/null \
+        || { log_msg "crystallizer skipped: llm-backend.sh not loadable"; return 0; }
+    llm_backend_api_ready \
+        || { log_msg "crystallizer skipped: API lane not ready (llm_backend_api_ready) with HIMMEL_API_LANE=${HIMMEL_API_LANE:-<unset>}, HIMMEL_API_ACCOUNT=${HIMMEL_API_ACCOUNT:-<unset>}; accepted values: scripts/lib/llm-backend.sh; set them in the launching shell before claude starts"; return 0; }
     # shellcheck disable=SC2016  # the single-quoted body is the child shell's script
     detach_run bash -c 'log="$1"; shift; exec bash "$@" 2>>"$log" || exec bash "$@"' _ "$LOG_PATH" "$crys" "$ABS_PATH" "$TRANSCRIPT_PATH"
     return 0
