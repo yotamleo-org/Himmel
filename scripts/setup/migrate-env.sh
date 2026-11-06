@@ -37,11 +37,13 @@
 #
 # What an entry is is decided in one place, the entry table below: a line with an `=` outside any
 # quoted value, and a quoted value that does not close on its line runs on to the line that closes
-# it, whatever the name before the `=`. The plan, the readers, the private copy of the secrets and
-# the removal all take their entries from it. A key whose quote never closes stays whole on every
-# route (a behaviour, policy or secret key, with a keyring or without, a later duplicate too), and
-# no line after it is moved or removed. With no keyring, a secret whose value runs over several
-# lines stays in .env as well: the legacy file takes one line per entry.
+# it, whatever the name before the `=`. The plan, the readers, the private copy of the secrets, the
+# copy of the behaviour keys and the removal all take their entries from it. A key whose quote never
+# closes stays whole on every route (a behaviour, policy or secret key, with a keyring or without, a
+# later duplicate too), and no line after it is moved or removed. A behaviour or policy key with a
+# value over several lines stays whole as well, a later duplicate included: himmel.conf and
+# config.json take one line per key. With no keyring, a secret whose value runs over several lines
+# stays in .env too: the legacy file takes one line per entry.
 #
 # Order: plan, backup (~/.himmel/env-backups, mode 600), copy, secrets to the
 # keyring, verify, and only then remove the moved lines from .env. Verify runs the
@@ -252,6 +254,11 @@ several_lines() {  # <file> <key>: the key's first entry runs over several lines
     span=$(entry_span "$1" "$2") || return 1
     [ "$span" = open ] || [ "${span% *}" != "${span#* }" ]
 }
+# Any entry of the key, a later duplicate too, runs over several lines or never closes.
+# shellcheck disable=SC2016 # awk program text, not shell
+several_any() {  # <file> <key>
+    entry_table "$1" | awk -v k="$2" '$3 == k && ($2 == "open" || $2 != $1) { f = 1 } END { exit !f }'
+}
 # The file's lines with only (mode only) or without (mode drop) the entries named in <set> (" A B "). An
 # entry goes whole, a quoted value over several lines included. An entry of the set whose quote never
 # closes fails the call: nothing is copied or cut past a span the table did not close.
@@ -379,7 +386,7 @@ if [ -n "$secrets" ]; then
     esac
 fi
 
-config_keys=() policy_keys=() secret_keys=() file_keys=() legacy_keys=() own_keys=() plan="" stay_secrets="" commented=" " incomplete=0 unowned_left=""
+config_keys=() policy_keys=() secret_keys=() file_keys=() legacy_keys=() own_keys=() plan="" stay_secrets="" incomplete=0 unowned_left=""
 # The shell loader drops an unquoted trailing comment and the node readers keep it,
 # so such a line would read differently after the move: it stays.
 has_inline_comment() {  # <key>
@@ -437,11 +444,17 @@ for key in $names; do
         plan="$plan  $key  $label  stays (its quote never closes)"$'\n'
         continue
     fi
+    if [ "$class" != secret ] && several_any "$envfile" "$key"; then
+        # himmel.conf and config.json .policy take one line per key: a copy would cut the value at its first line and the removal would take the rest.
+        case "$class" in policy) label="config (policy)" ;; *) label=$class ;; esac
+        plan="$plan  $key  $label  stays (its value runs over several lines)"$'\n'
+        continue
+    fi
     case "$class" in
         config)
             # An env-only key has no himmel.conf reader: it stays in .env, as in migrate-env-config.sh.
             if _himmel_env_only_key "$key"; then plan="$plan  $key  config  stays (env-only: no himmel.conf reader)"$'\n'
-            elif has_inline_comment "$key"; then commented="$commented$key "; plan="$plan  $key  config  stays (its .env line has an inline comment the readers do not agree on; remove the comment to move it)"$'\n'
+            elif has_inline_comment "$key"; then plan="$plan  $key  config  stays (its .env line has an inline comment the readers do not agree on; remove the comment to move it)"$'\n'
             else config_keys[${#config_keys[@]}]="$key"; plan="$plan  $key  config  → ~/.himmel/himmel.conf"$'\n'; fi ;;
         policy) policy_keys[${#policy_keys[@]}]="$key"; plan="$plan  $key  config (policy)  → ~/.himmel/config.json .policy"$'\n' ;;
         *)
@@ -903,11 +916,9 @@ done
 
 # --- copy ---
 if [ "${#config_keys[@]}" -gt 0 ]; then
-    # The copy step takes every behaviour key it finds, so the commented ones are left out of its input.
-    awk -v skip="$commented" '{ l = $0; sub(/\r$/, "", l) }
-        l !~ /^[[:space:]]*#/ { i = index(l, "="); n = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", n)
-            if (i && index(skip, " " n " ")) next }
-        { print }' "$envfile" > "$work/env.copy" \
+    # The copy step reads its input line by line and takes every behaviour key it finds, so it gets the entries of the keys that
+    # move and nothing else: an open key, a key that stays and a line inside another entry's quoted value never reach it.
+    entry_filter only " ${config_keys[*]} " "$envfile" > "$work/env.copy" \
         || { echo "migrate-env: could not stage .env for the copy; no lines were removed from .env." >&2; exit 1; }
     if ! out=$(bash "$HERE/migrate-env-config.sh" --env "$work/env.copy" 2>&1); then
         printf '%s\n' "$out" >&2

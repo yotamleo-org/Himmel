@@ -1290,7 +1290,7 @@ mkdir -p "$TMP/failbin"
 real_awk=$(command -v awk)
 cat > "$TMP/failbin/awk" <<EOF
 #!/usr/bin/env bash
-case "\$*" in *'mode=only'*) exit 1 ;; esac
+case "\$*" in *'mode=only'*'BITBUCKET_API_TOKEN'*) exit 1 ;; esac
 exec "$real_awk" "\$@"
 EOF
 chmod +x "$TMP/failbin/awk"
@@ -1638,6 +1638,7 @@ cat > "$FX/scripts/lib/himmel-secrets" <<'STUB' || fail "fixture write of the si
 #!/usr/bin/env bash
 # same-value: the first call (the probe) is answered, a later one finds the keyring silent
 if [ "$1" = same-value ]; then
+    # read-sink-ok: a counter file this suite names itself (SV_COUNT is set on the apply line below)
     n=$(cat "$SV_COUNT" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "$SV_COUNT"
     [ "$n" -le 1 ] || { echo "himmel-secrets: the keyring did not answer" >&2; exit 2; }
 fi
@@ -1686,6 +1687,54 @@ no_canary "N25 no value printed" "$out"
 out=$(bash "$SCRIPT" --help 2>&1)
 has "N26 --help names an entry that did not reach the keyring" "an entry did not reach the keyring" "$out"
 has "N26 --help names the manager failure" "the systemd user manager could not be reached" "$out"
+# N27 to N29: himmel.conf and config.json take one line per key, so a config or policy key with a value over several lines stays whole:
+# a copy would cut it at its first line while the removal took the rest. Any entry of the key counts, a later duplicate too.
+fixture_env
+fxput "$TMP/st/.env" 'USER_SLUG="%s\n%s"\nOTHER_TOOL_TOKEN=%s\n' "$(canary slug)" "$(canary slugb)" "$(canary other)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "N27 closed config: the run exits 0"; else fail "N27 closed config: exited $rc: $out"; fi
+quote_stays "N27 closed config" "$TMP/st/.env" "  USER_SLUG  config  stays (its value runs over several lines)"
+lacks "N27 closed config: himmel.conf holds no line of it" "USER_SLUG" "$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)"
+fixture_env
+fxput "$TMP/st/.env" 'CR_REQUIRE_CROSS_MODEL="%s\n%s"\nOTHER_TOOL_TOKEN=%s\n' "$(canary pa)" "$(canary pb)" "$(canary other)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "N28 closed policy: the run exits 0"; else fail "N28 closed policy: exited $rc: $out"; fi
+quote_stays "N28 closed policy" "$TMP/st/.env" "  CR_REQUIRE_CROSS_MODEL  config (policy)  stays (its value runs over several lines)"
+lacks "N28 closed policy: config.json holds no value of it" "CR_REQUIRE_CROSS_MODEL" "$(cat "$HOME/.himmel/config.json" 2>/dev/null)"
+fixture_env
+fxput "$TMP/st/.env" 'USER_SLUG=%s\nOTHER_TOOL_TOKEN=%s\nUSER_SLUG="%s\n%s"\n' "$(canary one)" "$(canary other)" "$(canary dupa)" "$(canary dupb)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "N29 a later several-line duplicate: the run exits 0"; else fail "N29 a later several-line duplicate: exited $rc: $out"; fi
+quote_stays "N29 a later several-line duplicate" "$TMP/st/.env" "  USER_SLUG  config  stays (its value runs over several lines)"
+lacks "N29 a later several-line duplicate: himmel.conf holds no line of it" "USER_SLUG" "$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)"
+# N30 and N31: the config copy is staged from the entry table, so it holds the entries of the config keys that move and nothing else.
+# An open key the plan says stays, and a config line inside another entry's quoted value, never reach himmel.conf (served ahead of .env).
+fixture_env
+fxput "$TMP/st/.env" "HANDOVER_DIR=%s\nUSER_SLUG='%s\nREAD_SECRET=%s\n" "$TMP/handovers" "$(canary slug)" "$(canary read)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "N30 an open key beside a moving config key: the run exits 0"; else fail "N30 exited $rc: $out"; fi
+has "N30 the open key stays in the plan" "  USER_SLUG  config  stays (its quote never closes)" "$out"
+has "N30 the other config key moves" "  HANDOVER_DIR  config  → ~/.himmel/himmel.conf" "$out"
+n30conf=$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)
+has "N30 the moving key reached himmel.conf" "HANDOVER_DIR=$TMP/handovers" "$n30conf"
+lacks "N30 the open key did not reach himmel.conf" "USER_SLUG" "$n30conf"
+if [ "$(cat "$TMP/st/.env")" = "$(tail -n +2 "$TMP/st.orig")" ]; then pass "N30 .env lost the moved entry and nothing else"; else fail "N30 .env changed beyond the moved entry"; fi
+no_canary "N30 no value printed" "$out"
+fixture_env
+fxput "$TMP/st/.env" "export NOTE='%s\nUSER_SLUG=%s\nlast'\nHANDOVER_DIR=%s\n" "$(canary note)" "$(canary hidden)" "$TMP/handovers"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "N31 a config line inside a quoted value: the run exits 0"; else fail "N31 exited $rc: $out"; fi
+n31conf=$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)
+has "N31 the real config key reached himmel.conf" "HANDOVER_DIR=$TMP/handovers" "$n31conf"
+lacks "N31 the hidden config line did not reach himmel.conf" "USER_SLUG" "$n31conf"
+has "N31 the holder keeps its hidden line" "USER_SLUG=CANARY-hidden" "$(cat "$TMP/st/.env")"
+lacks "N31 the moved entry left .env" "HANDOVER_DIR" "$(cat "$TMP/st/.env")"
+no_canary "N31 no value printed" "$out"
 
 if [ "$FAILED" -gt 0 ]; then
     echo "test-migrate-env: $FAILED FAILED"
