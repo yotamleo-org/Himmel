@@ -16,7 +16,8 @@
 #
 # One refresh, under an exclusive lock on the mirror root (a second one prints
 # `focus=busy` and does nothing), runs in this order; the first failure stops
-# the run and prints `focus=FAILED:<stage>` (exit 1):
+# the run and prints `focus=FAILED:<stage>` (exit 1). The chains and drift stages are
+# not such stages: their failure is a WARN and the run ends exit 0:
 #   mirror    jira mirror, then versions, each staged and moved into place
 #             (--mirror-fresh <dir> names a mirror the caller just refreshed and skips both)
 #   sweep     status-sweep.sh, so Jira and the worker records are current; it keeps
