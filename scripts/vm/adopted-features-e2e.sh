@@ -94,7 +94,7 @@ vm_guest_assert_clean gx_run "$REMOTE_DIR" full || exit 3
 
 OUT="$(mktemp "$STAGE_TMP/adopted-features-out.XXXXXX")" || exit 3
 red=""; [ "$EXPECT_RED" = 1 ] && red="ADOPTED_E2E_RED=1 "
-gx --timeout 2400 --"${red}HIMMEL_ADOPTED_E2E_GUEST=1 bash $REMOTE_DIR/scripts/vm/adopted-features-guest.sh $REMOTE_DIR" 2>&1 | tee "$OUT"
+gx --timeout 2400 -- "${red}HIMMEL_ADOPTED_E2E_GUEST=1 bash $REMOTE_DIR/scripts/vm/adopted-features-guest.sh $REMOTE_DIR" 2>&1 | tee "$OUT"
 rc="${PIPESTATUS[0]}"
 
 if grep -q ' FINDING ' "$OUT"; then
