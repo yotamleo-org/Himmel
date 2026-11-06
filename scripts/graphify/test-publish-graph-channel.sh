@@ -87,6 +87,7 @@ run_publish
 check_eq "a refused push exits 5" 5 "$PUB_RC"
 check_has "the output names the hook's reason" "marker-9437" "$PUB_OUT"
 check_has "the alert names the hook's reason" "marker-9437" "$(cat "$TMP/alerts.log")"
+check_eq "the alert names it exactly once" 1 "$(grep -o 'marker-9437' "$TMP/alerts.log" | wc -l | tr -d ' ')"
 
 echo
 echo "passed: $pass, failed: $fail"

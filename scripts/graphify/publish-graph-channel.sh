@@ -144,7 +144,8 @@ if ! BRANCH_NAME_OK=1 "${G[@]}" push --quiet "--force-with-lease=$BRANCH_REF:$ol
     # Other git lines can quote the remote URL, so they are not copied.
     why="$(grep -E -m1 '^(ERROR:| ! \[)' "$push_err" | cut -c1-200)"
     rm -f "$push_err"
-    refuse 5 "git push to $BRANCH_REF failed${why:+: $why}${why:-" (the tip moved, or the remote refused)"}"
+    [ -n "$why" ] || why="the tip moved, or the remote refused"
+    refuse 5 "git push to $BRANCH_REF failed: $why"
 fi
 rm -f "$push_err"
 
