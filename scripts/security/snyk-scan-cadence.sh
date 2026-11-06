@@ -23,6 +23,9 @@
 #       3 already armed (use --force), 4 crontab or runner write failed.
 #       status 0 (1 unreadable crontab). disarm 0 (4 crontab write failed). Other verbs 64.
 #
+# `arm` bakes PATH and the handover root (the shell's HANDOVER_DIR, else the primary .env's) into the
+# runner, because cron has neither; with no root configured the runner carries none.
+#
 # Seams (tests): SNYKCAD_CRONTAB, SNYKCAD_RUNNER_DIR, SNYKCAD_SCAN, SNYK_SCAN_STATE_DIR,
 # plus cadence-alert.sh's CADENCE_ALERT_*.
 # Platform: cron (Linux). Windows development is parked.
@@ -37,6 +40,8 @@ CRONTAB_BIN="${SNYKCAD_CRONTAB:-crontab}"
 RUNNER_DIR="${SNYKCAD_RUNNER_DIR:-${HOME:-}/.claude/snyk-scan-cadence}"
 # shellcheck source=../lib/crontab-locked-rmw.sh
 . "$SCRIPT_DIR/../lib/crontab-locked-rmw.sh" || { echo "ERR snyk-scan-cadence: cannot source crontab-locked-rmw.sh" >&2; exit 2; }
+# shellcheck source=../lib/load-dotenv.sh
+. "$SCRIPT_DIR/../lib/load-dotenv.sh" || { echo "ERR snyk-scan-cadence: cannot source load-dotenv.sh" >&2; exit 2; }
 
 resolve_primary() {
     local common
@@ -113,6 +118,8 @@ cmd_arm() {
     command -v "$CRONTAB_BIN" >/dev/null 2>&1 || { echo "ERR snyk-scan-cadence: '$CRONTAB_BIN' not on PATH" >&2; return 2; }
     root="$(resolve_primary)" || { echo "ERR snyk-scan-cadence: cannot resolve the primary checkout" >&2; return 2; }
     bash_bin="$(command -v bash)"
+    # cron has no HANDOVER_DIR: the shell's value wins, else the primary checkout's .env (as the morning report's arm does)
+    if [ -z "${HANDOVER_DIR:-}" ]; then load_dotenv --root "$root" HANDOVER_DIR >/dev/null 2>&1 || true; fi
     cron_read || return 4
     if [ -n "$(cron_entry)" ] && [ "$force" -eq 0 ]; then
         echo "ERR snyk-scan-cadence: already armed: $TASK_NAME (use --force to replace)" >&2
