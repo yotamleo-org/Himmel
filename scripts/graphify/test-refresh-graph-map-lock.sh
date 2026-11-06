@@ -336,15 +336,97 @@ sleep 600 & T3C_PID=$!
 date -u +%s > "$T3C/graphify-out/.promote.lock/acquired"
 printf '%s\n' "$T3C_PID-321" > "$T3C/graphify-out/.promote.lock/owner"
 export T3C_CAPPED="$WS/t3c-capped"
-( until [ -e "$T3C_CAPPED" ]; do sleep 0.2; done; sleep 4; rm -rf "$T3C/graphify-out/.promote.lock" ) &
+t3c_release_helper() { # <capped-file> <lock-dir> <max-tries>; non-zero when the file never appears
+  local tries=0
+  until [ -e "$1" ]; do
+    tries=$((tries + 1))
+    [ "$tries" -le "$3" ] || return 1
+    sleep 0.2
+  done
+  sleep 4; rm -rf "$2"
+}
+t3c_release_helper "$T3C_CAPPED" "$T3C/graphify-out/.promote.lock" 150 & T3C_HELPER=$!
 out_c=$( GRAPHIFY_MAP_BIN="$CBIN/graphify" PATH="$CBIN:$PATH" GRAPHIFY_MAX_CHUNKS_PER_RUN=1 \
   GRAPHIFY_PROMOTE_LOCK_TIMEOUT_SECONDS=1 GRAPHIFY_PROMOTE_LOCK_LIVE_WAIT_SECONDS=60 \
   bash "$SCRIPT" --name t3c --corpus-root "$T3C" --backend claude \
   --maps-dir "$WS/t3c-maps" --title "Lock t3c" --slug t3c-map --corpus-tag t3c 2>&1 ); rc_c=$?
 kill "$T3C_PID" 2>/dev/null; wait "$T3C_PID" 2>/dev/null
+wait "$T3C_HELPER"; rc_c_helper=$?
+[ "$rc_c_helper" -eq 0 ] || fail "T3c the release helper gave up: the stub never wrote the capped file (rc $rc_c_helper)"
 { [ "$rc_c" -eq 4 ] && [ -e "$T3C/graphify-out/cache/t3c-chunk.json" ] && grep -q "finished chunks kept" <<<"$out_c"; } \
   && pass "T3c the capped run waited out the live holder and kept its finished chunk (exit 4)" \
   || fail "T3c the capped run should keep its chunk and exit 4 (got $rc_c): $out_c"
+
+# --- T3e: the T3c helper is bounded. Against a stub that never writes the
+# capped file, the helper must give up on its own (non-zero) once its tries are
+# spent -- never run forever and hang the suite. ---
+echo "T3e: the T3c helper gives up when the capped file never appears"
+t3c_release_helper "$WS/t3e-never-written" "$WS/t3e-lock" 5 & T3E_PID=$!
+i=0
+while kill -0 "$T3E_PID" 2>/dev/null && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+if kill -0 "$T3E_PID" 2>/dev/null; then
+  kill "$T3E_PID" 2>/dev/null; wait "$T3E_PID" 2>/dev/null
+  fail "T3e the helper is still alive 5s after its 5-try bound (1s) -- unbounded wait"
+else
+  wait "$T3E_PID"; rc_e3=$?
+  [ "$rc_e3" -ne 0 ] && pass "T3e the helper exited on its own and reported failure (rc $rc_e3)" \
+    || fail "T3e the helper exited 0 although the capped file never appeared"
+fi
+
+# --- T3f: GRAPHIFY_PROMOTE_LOCK_LIVE_WAIT_SECONDS=abc is not a number: the
+# script warns and uses the 2700 default instead of feeding it to the wait
+# arithmetic. The live holder releases as soon as the waiting message shows
+# (polled, at most 60 s), so the 2700 s wait is not paid. ---
+t3f_live_wait() { # <name> <live-wait value>; sets out_f3 / rc_f3. Releases the holder once the wait message shows (bounded poll, no fixed timer).
+  local name="$1" value="$2" holder poller i=0
+  sleep 600 & holder=$!
+  t3d_case "$name" "$holder-654"
+  t3d_run "$name" "$value" > "$WS/$name.out" 2>&1 & poller=$!
+  while ! grep -q "waiting up to" "$WS/$name.out" 2>/dev/null && [ "$i" -lt 300 ]; do sleep 0.2; i=$((i + 1)); done
+  rm -rf "$T3B_CORPUS/graphify-out/.promote.lock"
+  wait "$poller"; rc_f3=$?
+  out_f3=$(cat "$WS/$name.out")
+  kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+}
+echo "T3f: a non-integer live-wait value falls back to 2700 with a warning"
+t3f_live_wait t3f abc
+{ [ "$rc_f3" -eq 0 ] && grep -q "waiting up to 2700s" <<<"$out_f3" \
+  && grep -q "WARN.*GRAPHIFY_PROMOTE_LOCK_LIVE_WAIT_SECONDS" <<<"$out_f3"; } \
+  && pass "T3f live-wait 'abc' warns and the wait ceiling is the 2700 default" \
+  || fail "T3f live-wait 'abc' should warn and wait up to 2700s (got rc $rc_f3): $out_f3"
+
+# --- T3g: a digit-only value too large for the shell's integer range passes a
+# digits-only check but makes every [ -ge ] error, so the wait would never end:
+# it must take the 2700 default with a warning too. ---
+echo "T3g: an oversized live-wait value falls back to 2700 with a warning"
+t3f_live_wait t3g 99999999999999999999
+{ [ "$rc_f3" -eq 0 ] && grep -q "waiting up to 2700s" <<<"$out_f3" \
+  && grep -q "WARN.*GRAPHIFY_PROMOTE_LOCK_LIVE_WAIT_SECONDS" <<<"$out_f3"; } \
+  && pass "T3g live-wait 99999999999999999999 warns and the wait ceiling is the 2700 default" \
+  || fail "T3g oversized live-wait should warn and wait up to 2700s (got rc $rc_f3): $out_f3"
+
+# --- T3h: the timeout and stale values are validated the same way. ---
+echo "T3h: a non-integer promote-lock timeout / stale value warns and takes its default"
+t3h_run() { # <name> <ENV_VAR> <value>; runs a plain refresh with ENV_VAR=value
+  mkdir -p "$WS/$1/notes" "$WS/$1-maps"
+  printf '# h\ncontent h\n' > "$WS/$1/notes/h.md"
+  env "$2=$3" GRAPHIFY_MAP_BIN="$EBIN/graphify" PATH="$EBIN:$PATH" \
+    bash "$SCRIPT" --name "$1" --corpus-root "$WS/$1" --backend claude \
+    --maps-dir "$WS/$1-maps" --title "Lock $1" --slug "$1-map" --corpus-tag "$1" 2>&1
+}
+out_h1=$(t3h_run t3h-timeout GRAPHIFY_PROMOTE_LOCK_TIMEOUT_SECONDS abc); rc_h1=$?
+{ [ "$rc_h1" -eq 0 ] && grep -q "WARN GRAPHIFY_PROMOTE_LOCK_TIMEOUT_SECONDS='abc'.*default 120" <<<"$out_h1"; } \
+  && pass "T3h timeout 'abc' warns and takes the 120 default" \
+  || fail "T3h timeout 'abc' should warn and use 120 (got rc $rc_h1): $out_h1"
+out_h2=$(t3h_run t3h-stale GRAPHIFY_PROMOTE_LOCK_STALE_SECONDS abc); rc_h2=$?
+{ [ "$rc_h2" -eq 0 ] && grep -q "WARN GRAPHIFY_PROMOTE_LOCK_STALE_SECONDS='abc'.*default 600" <<<"$out_h2"; } \
+  && pass "T3h stale 'abc' warns and takes the 600 default" \
+  || fail "T3h stale 'abc' should warn and use 600 (got rc $rc_h2): $out_h2"
+# A value set but EMPTY is an override that is not a number too: it warns (an unset one stays silent).
+out_h3=$(t3h_run t3h-empty GRAPHIFY_PROMOTE_LOCK_TIMEOUT_SECONDS ''); rc_h3=$?
+{ [ "$rc_h3" -eq 0 ] && grep -q "WARN GRAPHIFY_PROMOTE_LOCK_TIMEOUT_SECONDS=''.*default 120" <<<"$out_h3"; } \
+  && pass "T3h an explicitly empty timeout warns and takes the 120 default" \
+  || fail "T3h an explicitly empty timeout should warn and use 120 (got rc $rc_h3): $out_h3"
 
 # --- T4: two SIMULTANEOUS
 # contenders against one stale lock -- the takeover must be single-winner.
