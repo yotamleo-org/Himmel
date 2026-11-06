@@ -18,11 +18,32 @@ const shortDay = (day) => { const p = parts(day); return `${p.wd.slice(0, 3)} ${
 const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`(.+?)`/g, "<code>$1</code>");
 const cell = (s) => (/^not available/.test(s) ? `<span class="dim">${esc(s)}</span>` : inline(s));
 
-function blockHtml(b) {
+// The Chiefs table gains a Length column after Span, computed from the span ("HH:MM to HH:MM", or "to open"); the generator writes no length.
+const minutes = (hm) => { const m = /^(\d\d):(\d\d)$/.exec(hm || ""); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+// A span that does not fit its own shift (it ends before it starts, or after the shift closed) has no length: the clock times alone cannot say how long it was.
+// placed: a chief's span on its shift. a = the first such clock time at or after the shift opened (which may be the evening before the report day), z = its end, ok = a before z and z at or before the shift's close.
+const placed = (from, to, sh) => {
+  const s = minutes(from), a = s + 1440 * Math.ceil((sh.open - s) / 1440);
+  const z = to === "open" ? sh.close : a + ((minutes(to) - s + 1440) % 1440);
+  return { a, z, ok: a < z && z <= sh.close };
+};
+const lengthOf = (span, sh) => {
+  const m = /^(\d\d:\d\d) to (\d\d:\d\d|open)/.exec(span || "");
+  if (!m) return "";
+  const approx = /\(approx\)/.test(span) ? " (approx)" : "";
+  if (m[2] === "open") return `open${approx}`;
+  const p = sh ? placed(m[1], m[2], sh) : null;
+  return p && p.ok ? `${p.z - p.a} min${approx}` : "";
+};
+const withLength = (b, shifts) => (b.head[1] === "Span" ? { ...b, head: [b.head[0], b.head[1], "Length", ...b.head.slice(2)], rows: b.rows.map((r) => [r[0], r[1], lengthOf(r[1], shifts.find((x) => x.key === r[3])), ...r.slice(2)]) } : b);
+
+function blockHtml(b, o = {}) {
+  if (b.t === "table" && o.chiefs) b = withLength(b, o.shifts || []);
   if (b.t === "p") return `<p class="sub">${inline(b.text)}</p>`;
   if (b.t === "ul") return `<ul class="rp-list">${b.items.map((i) => `<li>${inline(i)}</li>`).join("")}</ul>`;
   if (b.t === "code") return `<pre>${esc(b.text)}</pre>`;
-  return `<table class="data"><thead><tr>${b.head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${b.rows.map((r) => `<tr>${r.map((c) => `<td>${cell(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+  const table = `<table class="data${o.wide ? " wide" : ""}"><thead><tr>${b.head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${b.rows.map((r) => `<tr>${r.map((c) => `<td>${cell(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+  return o.wide ? `<div class="tw">${table}</div>` : table;
 }
 
 const group = (title) => (/shipped|Completed/.test(title) ? "g-ship" : /waits/.test(title) ? "g-wait" : /runs next|In-flight/.test(title) ? "g-run" : /Chiefs/.test(title) ? "g-chief" : "g-carry");
@@ -48,6 +69,82 @@ function tiles(sections) {
     t("g-carry", "$", "What it spent", bank || "n/a", bank ? "weekly bank points" : "no figure in this report"),
     t("g-run", "▶", "What runs next", num(/\*\*(\d+)\*\* In-Progress/, items(next).join("\n")) || "n/a", "tickets in flight"),
   ].join("")}</div>`;
+}
+
+// The shift timeline and the chief chart (mockup v7.1): 24 h cut into 5-minute cells, each segment a table cell whose colspan is its width (the CSP
+// refuses an inline style). The window is the 24 h that end when the last shift in the report closed: a real report is written the morning after
+// and counts shifts that closed before its own day, so the report day itself would hold none of them. Read from the Spend per shift table (a
+// shift's dated span) and the Chiefs table (a chief's HH:MM span, placed on the first such clock time at or after its shift opened). A shift or a
+// chief outside the window is not drawn: the caption above the chart counts them and says they are in the tables. A chief inside it is drawn in as
+// many lanes as its overlaps need; a span that does not fit its shift is a one-cell mark.
+// ponytail: the spans carry no year, so a date is read in the report day's year, or the year before when it lies more than two days after the report day; ceiling = a shift more than a year older than its report; upgrade path = the generator writes ISO spans.
+const UNIT = 5, CELLS = 1440 / UNIT;
+const tableIn = (sections, re) => { const s = find(sections, re); return s ? s.blocks.find((b) => b.t === "table") : null; };
+const stamp = (day, md, hm) => {
+  const m = /^(\d\d)-(\d\d)$/.exec(md), t = minutes(hm);
+  if (!m || t === null) return null;
+  const y = Number(day.slice(0, 4)), t0 = Date.parse(`${day}T00:00:00Z`);
+  const d = Date.UTC(y, Number(m[1]) - 1, Number(m[2]));
+  return ((d - t0 > 2 * 86400000 ? Date.UTC(y - 1, Number(m[1]) - 1, Number(m[2])) : d) - t0) / 60000 + t;
+};
+// the dated shifts of the Spend per shift table, each as minutes from the report day's midnight
+function shiftsOf(sections, day) {
+  const sp = tableIn(sections, /Spend per shift/), shifts = [];
+  for (const r of sp ? sp.rows : []) {
+    const m = /^(\d\d-\d\d) (\d\d:\d\d) to (\d\d-\d\d) (\d\d:\d\d)$/.exec(r[1] || "");
+    const o = m ? stamp(day, m[1], m[2]) : null, c = m ? stamp(day, m[3], m[4]) : null;
+    if (o === null || c === null || c <= o) continue;
+    shifts.push({ key: r[0], name: r[0].split(" ")[0], span: r[1], open: o, close: c });
+  }
+  return shifts;
+}
+const lane = (label, segs, aria) => {
+  const cells = [];
+  let at = 0;
+  for (const g of segs.slice().sort((a, b) => a.from - b.from)) {
+    const from = Math.max(g.from, at);
+    if (g.to <= from) continue;
+    if (from > at) cells.push(`<td class="cseg gap" colspan="${from - at}"></td>`);
+    cells.push(`<td class="cseg" colspan="${g.to - from}" title="${esc(g.title)}">${esc(g.text)}</td>`);
+    at = g.to;
+  }
+  if (at < CELLS) cells.push(`<td class="cseg gap" colspan="${CELLS - at}"></td>`);
+  const role = aria === null ? 'aria-hidden="true"' : `role="img" aria-label="${esc(aria)}"`;
+  return `<div class="rp-tlr"><span class="rp-tll">${esc(label)}</span><div class="chain" ${role}><table><tbody><tr>${cells.join("")}</tr></tbody></table></div></div>`;
+};
+const cellOf = (m) => Math.round(Math.min(Math.max(m, 0), 1440) / UNIT);
+const clock = (m) => String(Math.floor((((m % 1440) + 1440) % 1440) / 60)).padStart(2, "0");
+const tag = (name) => (/\d{4}-\d\d-\d\d([A-Za-z]+)-/.exec(name) || [])[1] || name; // HIMMEL-nextleg-2026-11-03PK-roadmap-chief reads PK; the title keeps the whole name
+function timeline(sections, day, shifts) {
+  const ch = tableIn(sections, /Chiefs/);
+  if (!shifts.length) return "";
+  const w1 = Math.max(...shifts.map((s) => s.close)), w0 = w1 - 1440;
+  const inWin = shifts.filter((s) => s.close > w0);
+  const bands = inWin.map((s) => ({ from: cellOf(s.open - w0), to: cellOf(s.close - w0), text: `${s.open < w0 ? "◂ " : ""}${s.name}`, title: `${s.name}: ${s.span}` }));
+  const segs = [];
+  for (const r of ch ? ch.rows : []) {
+    const m = /^(\d\d:\d\d) to (\d\d:\d\d|open)/.exec(r[1] || ""), sh = inWin.find((s) => s.key === r[3]);
+    if (!m || !sh) continue;
+    const p = placed(m[1], m[2], sh);
+    if (!(p.ok ? p.a < w1 && p.z > w0 : p.a >= w0 && p.a < w1)) continue;
+    const from = Math.min(cellOf(p.a - w0), CELLS - 1);
+    segs.push({ from, to: p.ok ? Math.min(Math.max(cellOf(p.z - w0), from + 1), CELLS) : from + 1, text: tag(r[0]), title: `${r[0]}: ${r[1]}` });
+  }
+  const lanes = [];
+  for (const g of segs.sort((a, b) => a.from - b.from)) {
+    const l = lanes.find((x) => x.end <= g.from) || (lanes.push({ end: 0, segs: [] }), lanes[lanes.length - 1]);
+    l.segs.push(g);
+    l.end = g.to;
+  }
+  const say = (n, what, names) => `${n} ${what}${n === 1 ? "" : "s"}: ${names.join("; ")}`;
+  const when = (m) => new Date(Date.parse(`${day}T00:00:00Z`) + m * 60000).toISOString().slice(5, 16).replace("T", " ");
+  const win = `${when(w0)} to ${when(w1)}`;
+  const axis = `<div class="rp-tlr"><span class="rp-tll"></span><div class="chain-axis">${[0, 1, 2, 3, 4].map((k) => `<span>${clock(w0 + 360 * k)}</span>`).join("")}</div></div>`;
+  const chiefLanes = lanes.map((l, i) => lane(i ? "" : "chiefs", l.segs, i ? null : say(segs.length, "chief", segs.map((c) => c.title)))).join("");
+  const later = shifts.length - inWin.length, off = (ch ? ch.rows.length : 0) - segs.length;
+  const left = [later && `${later} earlier shift${later === 1 ? "" : "s"}`, off && `${off} chief${off === 1 ? "" : "s"}`].filter(Boolean);
+  const cap = `${win}, the 24 h that end when the last shift closed.${left.length ? ` ${left.join(" and ")} ${later + off === 1 ? "is" : "are"} in the tables below, not on this chart.` : ""}`;
+  return `<div class="rp-tl" role="group" aria-label="${esc(`Shifts and chiefs from ${win}`)}"><p class="sub rp-tlcap">${esc(cap)}</p>${lane("shifts", bands, say(inWin.length, "shift", inWin.map((s) => `${s.name} ${s.span}`)))}${chiefLanes}${axis}</div>`;
 }
 
 function selector(list, day, ui) {
@@ -94,12 +191,19 @@ export function renderReport(list, view, ui) {
   }
   const barText = view.bar.length ? `<div class="sub rp-bar">${view.bar.map((l) => `<div>${inline(l)}</div>`).join("")}</div>` : "";
   const notes = view.notes.length ? `<div class="nodata" role="status" id="degraded"><b>Some inputs were not available for this report:</b><ul class="rp-list">${view.notes.map((n) => `<li>${inline(n)}</li>`).join("")}</ul></div>` : "";
+  // the TL;DR is a strip under the tiles (mockup v7.1), not a group panel in the section order
+  const tl = find(view.sections, /^TL;DR/);
+  const strip = tl ? `<section id="tldr" class="sec rp-tldr" aria-labelledby="h-tldr"><h2 id="h-tldr">${esc(tl.title)}</h2>${tl.blocks.map((b) => blockHtml(b)).join("") || none("nothing in this section")}</section>` : "";
+  const shifts = shiftsOf(view.sections, view.day);
   const panels = view.sections.map((s, i) => {
+    if (s === tl) return "";
     const waits = /What waits/.test(s.title);
+    const spend = /Spend per shift/.test(s.title), chiefs = /Chiefs/.test(s.title);
     const blocks = waits ? s.blocks.map((b) => (b.t === "ul" ? { ...b, items: b.items.filter((x) => !/open PR/i.test(x)) } : b)) : s.blocks;
     const open = waits ? items(s).filter((x) => /open PR/i.test(x)) : [];
     const own = open.length ? sec(`open-prs-${i}`, "g-wait", "Open PRs", `<ul class="rp-list">${open.map((x) => `<li>${inline(x)}</li>`).join("")}</ul>`) : "";
-    return sec(`s-${i}`, group(s.title) + (/Failure review/.test(s.title) ? " fr" : ""), s.title, blocks.map(blockHtml).join("") || none("nothing in this section")) + own;
+    const body = (spend ? timeline(view.sections, view.day, shifts) : "") + blocks.map((b) => blockHtml(b, { wide: spend || chiefs, chiefs, shifts })).join("");
+    return sec(`s-${i}`, group(s.title) + (/Failure review/.test(s.title) ? " fr" : ""), s.title, body || none("nothing in this section")) + own;
   }).join("");
-  return pg(`${head}${bar}${barText}${notes}${tiles(view.sections)}${panels}`);
+  return pg(`${head}${bar}${barText}${notes}${tiles(view.sections)}${strip}${panels}`);
 }

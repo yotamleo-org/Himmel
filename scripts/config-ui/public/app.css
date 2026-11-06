@@ -377,6 +377,18 @@ details.bundle>summary{cursor:pointer;padding:6px 0}
 .rp-bar{display:grid;gap:2px;color:var(--muted);font-size:var(--fs-sm)}
 .rp-list{margin:0;padding-left:var(--s4);display:grid;gap:var(--s1);font-size:var(--fs-sm)}
 .rp-list li{overflow-wrap:anywhere}
+/* mockup v7.1 frame 1: the TL;DR strip, the shift timeline and chief chart (they reuse the Shift page's .chain), the wide spend table in a scroll box */
+.rp-tldr{border:1px solid var(--rule);border-radius:var(--radius);background:var(--surface);padding:var(--s2) var(--s3)}
+.rp-tldr>h2{font:700 11px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 var(--s1)}
+.rp-tldr p,.rp-tldr .rp-list{margin:0}
+.rp-tl{display:grid;gap:var(--s1);margin-bottom:var(--s2)}
+.rp-tlr{display:grid;grid-template-columns:5.5em minmax(0,1fr);gap:var(--s2);align-items:center}
+.rp-tll{font:11px var(--font-mono);color:var(--muted)}
+.rp-tlcap{margin:0}
+.rp-tl .cseg{font-weight:600}
+@media (max-width:520px){.rp-tlr{grid-template-columns:minmax(0,1fr)}.rp-tlr>.rp-tll:empty{display:none}}
+.tw{overflow-x:auto;max-width:100%}
+table.wide{min-width:760px}
 #reports fieldset{border:0;padding:0;margin:0 0 var(--s2)}#reports label{display:block;margin:var(--s1) 0}
 /* Tool health (v9 slice A): KPI tiles, the two daily charts, the tool map, drill-in stats; stacks at about 400px */
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--s2);margin:var(--s2) 0}
