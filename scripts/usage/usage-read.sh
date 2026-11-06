@@ -6,7 +6,9 @@
 #   usage-read.sh [--store <dir>] [--ticket KEY] [--all]
 #
 # Prints JSONL: the LATEST record per ticket (or of --ticket), or with --all
-# every stored version in append order. Schema: docs/internals/usage-records.md.
+# every stored version in append order. Rows with no ticket (the `phase-cost`
+# kind) are not ticket records and are skipped.
+# Schema: docs/internals/usage-records.md.
 #
 # Platform guard: bash 3.2-safe + jq.
 set -euo pipefail
@@ -50,6 +52,6 @@ fi
 
 # shellcheck disable=SC2016  # jq's own $vars
 jq -c --arg t "$TICKET" --argjson all "$ALL" -n '
-  [inputs | select($t == "" or .ticket == $t)] as $rows
+  [inputs | select(.ticket != null) | select($t == "" or .ticket == $t)] as $rows
   | if $all == 1 then $rows[]
     else ($rows | reduce .[] as $r ({}; .[$r.ticket] = $r) | to_entries | sort_by(.key)[] | .value) end' "$FILE"

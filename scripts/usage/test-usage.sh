@@ -114,10 +114,10 @@ run --store "$STORE" >/dev/null
 check "store byte-identical on rerun" "$h1" "$(cksum < "$STORE/records.jsonl")"
 
 # 5. append-only: changed input appends a new version, old lines kept
-before="$(wc -l < "$STORE/records.jsonl" | tr -d ' ')"
+before="$(jq -c 'select(.ticket != null)' "$STORE/records.jsonl" | wc -l | tr -d ' ')"
 row $WORKER false 2026-01-01T00:00:09.000Z r3 1 1 1 1 >> "$SLUG/$WORKER.jsonl"
 run --store "$STORE" >/dev/null
-after="$(wc -l < "$STORE/records.jsonl" | tr -d ' ')"
+after="$(jq -c 'select(.ticket != null)' "$STORE/records.jsonl" | wc -l | tr -d ' ')"
 check "changed input appends one version" "$((before + 1))" "$after"
 
 # 6. consumer read test (no JSONL touched)
@@ -460,5 +460,98 @@ bash "$RJ" --launches "$RJD/launches.jsonl" --launch-logs "$RJD/logs" --projects
 check "reconcile: a failing report (a malformed --tolerance) exits non-zero, never 0" "yes" "$([ "$RJTRC" -ne 0 ] && echo yes || echo no)"
 RJD2="$(HIMMEL_API_CREDIT_STATE="$RJD/ledger.json" bash "$RJ" --launch-logs "$RJD/logs" --projects "$RJD/projects" --tolerance 2)"
 check "reconcile: with no --launches the ledger is the one beside HIMMEL_API_CREDIT_STATE" "$RJ3" "$RJD2"
+
+# 9. phase-cost rows: one row per (day, session, phase), priced from scripts/lanes/lib/model-prices.tsv.
+# Synthetic transcripts, a sandboxed HOME and TZ=UTC (the day is the local day); never the real store.
+PCH="$ROOT/pc-home"; mkdir -p "$PCH"
+PCP="$ROOT/pc/projects"; PCS="$PCP/slug"; mkdir -p "$PCS"
+PCW=11111111-1111-4111-8111-111111111111; PCC=22222222-2222-4222-8222-222222222222
+PCU=33333333-3333-4333-8333-333333333333
+arow() { # sid ts msgid model in out cr c5 c1 [toolname toolinput-json]
+  jq -nc --arg s "$1" --arg ts "$2" --arg id "$3" --arg m "$4" --argjson i "$5" --argjson o "$6" --argjson cr "$7" \
+    --argjson c5 "$8" --argjson c1 "$9" --arg tn "${10:-}" --argjson ti "${11:-null}" \
+    '{type:"assistant",sessionId:$s,timestamp:$ts,requestId:("req_"+$id),message:{id:$id,model:$m,
+      content:(if $tn == "" then [{type:"text",text:"x"}] else [{type:"tool_use",name:$tn,input:$ti}] end),
+      usage:{input_tokens:$i,output_tokens:$o,cache_read_input_tokens:$cr,cache_creation_input_tokens:($c5+$c1),
+             cache_creation:{ephemeral_5m_input_tokens:$c5,ephemeral_1h_input_tokens:$c1}}}}'
+}
+OP=claude-opus-5-5
+{
+  echo '{"type":"custom-title","customTitle":"HIMMEL-9999-N1-pc","sessionId":"'$PCW'"}'
+  arow $PCW 2026-11-04T10:00:00.000Z m1 $OP 1000 100 10000 2000 1000                                  # no tool before: boot
+  arow $PCW 2026-11-04T10:00:01.000Z m1 $OP 1000 100 10000 2000 1000 Bash '{"command":"bash scripts/cr/pr-check-context.sh"}'
+  arow $PCW 2026-11-04T10:00:05.000Z m2 $OP 2000 200 20000 0 0 Read '{"file_path":"/x"}'              # after a cr script: review
+  arow $PCW 2026-11-04T10:00:10.000Z m3 $OP 500 50 5000 0 0 Bash '{"command":"git commit -m x"}'      # after a Read: build
+  arow $PCW 2026-11-05T09:00:00.000Z m4 $OP 100 10 1000 0 0                                           # after a commit: ship, next day
+} > "$PCS/$PCW.jsonl"
+mkdir -p "$PCS/$PCW/subagents"
+arow $PCW 2026-11-04T10:00:07.000Z j1 claude-sonnet-5-5 1000 100 0 0 0 > "$PCS/$PCW/subagents/agent-j1.jsonl"
+echo '{"agentType":"judge"}' > "$PCS/$PCW/subagents/agent-j1.meta.json"
+{
+  echo '{"type":"custom-title","customTitle":"HIMMEL-9998-N2-codex","sessionId":"'$PCC'"}'
+  arow $PCC 2026-11-04T11:00:00.000Z g1 gpt-6.1-sol 1000 100 10000 0 0
+} > "$PCS/$PCC.jsonl"
+{
+  echo '{"type":"custom-title","customTitle":"HIMMEL-9997-N3-mystery","sessionId":"'$PCU'"}'
+  arow $PCU 2026-11-04T12:00:00.000Z u1 mystery-model-9 1000 100 10000 0 0
+} > "$PCS/$PCU.jsonl"
+PCSTORE="$ROOT/pc-store"
+pcrun() { HOME="$PCH" TZ=UTC bash "$COMPUTE" --projects "$PCP" --ledger "$LEDGER" --store "$PCSTORE"; }
+# the stub nice/ionice record that the pass asked for idle priority
+PCBIN="$ROOT/pc-bin"; mkdir -p "$PCBIN"
+for t in renice ionice nice; do printf '#!/bin/sh\necho "%s $*" >> "%s/idle.log"\nexit 0\n' "$t" "$PCBIN" > "$PCBIN/$t"; chmod +x "$PCBIN/$t"; done
+pcphase() { jq -c 'select(.kind=="phase-cost")' "$PCSTORE/records.jsonl" 2>/dev/null || true; }
+PATH="$PCBIN:$PATH" pcrun >/dev/null
+PC1="$(pcphase)"
+check "phase-cost: one row per (day, session, phase), 4 for the worker" "4" \
+  "$(printf '%s\n' "$PC1" | jq -rs --arg s "$PCW" '[.[] | select(.session==$s)] | length')"
+check "phase-cost: the rows exist for the worker, codex, mystery and judge sessions (7)" "7" "$(printf '%s\n' "$PC1" | jq -s 'length')"
+check "phase-cost: the review row, every field" \
+  '{"kind":"phase-cost","day":"2026-11-04","session":"'$PCW'","parent":null,"lane":"claude","class":"worker","model":"claude-opus-5-5","phase":"review","phase_rule":"v1","calls":1,"in":2000,"out":200,"cache_read":20000,"cc_5m":0,"cc_1h":0,"usd":0.016,"mark":"derived"}' \
+  "$(printf '%s\n' "$PC1" | jq -c --arg s "$PCW" 'select(.session==$s and .phase=="review")')"
+check "phase-cost: the day changes the row (ship on 11-05)" "2026-11-05" \
+  "$(printf '%s\n' "$PC1" | jq -r --arg s "$PCW" 'select(.session==$s and .phase=="ship") | .day')"
+check "phase-cost: calls before any tool are boot" "1" \
+  "$(printf '%s\n' "$PC1" | jq -r --arg s "$PCW" 'select(.session==$s and .phase=="boot") | .calls')"
+check "phase-cost: a streamed message (two rows, one id) is one call with the cache-write split" \
+  "1/2000/1000" "$(printf '%s\n' "$PC1" | jq -r --arg s "$PCW" 'select(.session==$s and .phase=="boot") | "\(.calls)/\(.cc_5m)/\(.cc_1h)"')"
+check "phase-cost: the judge subagent has its own session, the worker as parent, class judge, counted" \
+  "agent-j1/$PCW/judge/judge/counted/0.003" \
+  "$(printf '%s\n' "$PC1" | jq -r 'select(.class=="judge") | "\(.session)/\(.parent)/\(.class)/\(.phase)/\(.mark)/\(.usd)"')"
+# reconcile: the priced total of the worker equals the fixture's hand-priced sum
+# m1 26000 + m2 16000 + m3 4000 + m4 800 micro-dollars = 0.0468
+check "phase-cost: the worker's priced total reconciles to the fixture (0.0468)" "0.0468" \
+  "$(printf '%s\n' "$PC1" | jq -rs --arg s "$PCW" '[.[] | select(.session==$s) | .usd] | add | . * 1000000 | round / 1000000')"
+# a codex-lane session is priced at its own row, never Opus; an unpriced model is null, never a fallback
+check "phase-cost: a gpt-6.1-sol session is codex lane at its own price (0.004, not the Opus 0.008)" \
+  "codex/gpt-6.1-sol/0.004/derived" \
+  "$(printf '%s\n' "$PC1" | jq -r --arg s "$PCC" 'select(.session==$s) | "\(.lane)/\(.model)/\(.usd)/\(.mark)"')"
+check "phase-cost: a model with no price row is usd null and marked unpriced" "null/unpriced" \
+  "$(printf '%s\n' "$PC1" | jq -r --arg s "$PCU" 'select(.session==$s) | "\(.usd)/\(.mark)"')"
+# the pass asked for idle priority
+check "phase-cost: the run asked for idle cpu and io priority" "yes" \
+  "$(grep -q 'renice -n 19' "$PCBIN/idle.log" 2>/dev/null && grep -q 'ionice -c3' "$PCBIN/idle.log" 2>/dev/null && echo yes || echo no)"
+# a reader without --ticket still works with phase-cost rows in the store
+rc=0; PCREAD="$(bash "$READ" --store "$PCSTORE" 2>"$ROOT/pc-read.err")" || rc=$?
+check "usage-read with no --ticket works with phase-cost rows present" "0" "$rc"
+check "usage-read returns only ticket records" "0" "$(printf '%s\n' "$PCREAD" | jq -s '[.[] | select(.kind=="phase-cost")] | length')"
+# a second run adds nothing
+pc_h="$(cksum < "$PCSTORE/records.jsonl")"
+pcrun >/dev/null
+check "phase-cost: a second run adds nothing (store byte-identical)" "$pc_h" "$(cksum < "$PCSTORE/records.jsonl")"
+# byte offset: new bytes (a repeat of m4's id, as when a message streams across two runs, and a new call)
+# change one row only; a re-read from byte 0 would double every call
+pc_n="$(pcphase | wc -l | tr -d ' ')"
+{ arow $PCW 2026-11-05T09:00:00.500Z m4 $OP 100 10 1000 0 0
+  arow $PCW 2026-11-05T09:30:00.000Z m5 $OP 100 10 1000 0 0; } >> "$PCS/$PCW.jsonl"
+pcrun >/dev/null
+check "phase-cost: new bytes append exactly one changed row" "$((pc_n + 1))" "$(pcphase | wc -l | tr -d ' ')"
+check "phase-cost: the changed row counts the repeated id once and the new call once (2 calls, 200 in)" "2/200" \
+  "$(pcphase | jq -sr --arg s "$PCW" '[.[] | select(.session==$s and .phase=="ship")] | last | "\(.calls)/\(.in)"')"
+check "phase-cost: the unchanged rows were not re-counted (review still 1 call)" "1" \
+  "$(pcphase | jq -sr --arg s "$PCW" '[.[] | select(.session==$s and .phase=="review")] | last | .calls')"
+# --print touches no store
+PCPRINT="$(HOME="$PCH" TZ=UTC bash "$COMPUTE" --projects "$PCP" --ledger "$LEDGER" --print | jq -c 'select(.kind=="phase-cost")' | wc -l | tr -d ' ')"
+check "phase-cost: --print shows the rows and writes no store" "7/no" "$PCPRINT/$([ -e "$PCH/.himmel" ] && echo yes || echo no)"
 
 if [ "$FAIL" -eq 0 ]; then echo "PASS"; else echo "FAILED" >&2; exit 1; fi

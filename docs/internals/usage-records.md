@@ -54,6 +54,44 @@ outside the tree.
 
 Numbers and ids only: the store never holds message text.
 
+## Phase-cost rows (`kind: "phase-cost"`)
+
+The same run also appends one row per **(day, session, phase)** to `records.jsonl`,
+the one record a cost view reads. A phase-cost row has **no `ticket`**; readers that
+want ticket records skip rows without one (`usage-read.sh` does).
+
+| Field | Meaning |
+|---|---|
+| `kind` | `phase-cost` |
+| `day` | the local day (the station's `TZ`) of the call |
+| `session` | the transcript's file name; a subagent's is its `agent-…` id |
+| `parent` | the session id a subagent belongs to, else `null` |
+| `lane` | `claude` (all models `claude-*`), `codex` (all `gpt-*`), else `other` |
+| `class` | `chief`, `worker`, `judge`, `brief-drafter`, `subagent`, `critic`, `release-mgr`, `other` |
+| `model` | the models of the row's calls, sorted, comma-joined |
+| `phase` | see below |
+| `phase_rule` | `v1`: the rule set of the cost-page audit |
+| `calls`, `in`, `out`, `cache_read`, `cc_5m`, `cc_1h` | API calls (a message streamed over several transcript rows counts once) and their tokens |
+| `usd` | the calls priced per model from `scripts/lanes/lib/model-prices.tsv`; `null` when no call was priced |
+| `mark` | `counted` (the phase is the session's whole class), `derived` (the phase is the last-tool rule), `unpriced` (some call's model has no price row; `usd` covers only the priced calls) |
+
+A model with no price row is never priced as another model: a `gpt-6.1-sol` call is
+priced at its own row, an unknown model counts toward `calls` and tokens with no dollars.
+
+**Phase.** A call goes to the phase of the most recent tool call before it (`boot`
+before any tool; `compaction` after a compaction boundary until the next tool):
+`review`, `ci`, `ticket-filing`, `ticket-read`, `ship`, `tests`, `comms`, `retrieval`,
+`vm`, `skill`, `tool-load`, `agent`, else `build`. A `judge`, `critic` or `release-mgr`
+session has that one phase; a chief or brief-drafter (and a subagent of a chief) has
+`chief-turns`. Classes `graph-eval` and `bots` are not detected yet (class `other`).
+
+**Rows are cumulative.** Each run reads every transcript from its saved byte offset
+(`<store>/phase-cost-state/`), complete lines only, and appends a key's row only when
+its totals changed; the latest row for a (day, session, phase) is the total. A key
+that disappears (a class change moved it) is closed with a zero row. The whole run
+renices itself to 19 and, where `ionice` exists, to the idle io class. `--since` and
+the ticket selectors do not apply to phase-cost rows.
+
 ## PR/CI join (`--repo OWNER/NAME [--gh <executable>]`)
 
 Opt-in: without `--repo` records carry no `pr`/`ci` and nothing calls gh. The
