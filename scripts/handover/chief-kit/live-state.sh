@@ -28,7 +28,9 @@
 # with no nonce is refused and the doc is not touched.
 #
 # Only the workers: block (the `workers:` line plus the lines wrapped under it, ended
-# as tick.sh ends it) inside `## Live state` is rewritten, to ONE `workers:` line:
+# as tick.sh ends it, plus at a hyphenated label line such as `pool-disposition:`, so
+# that line stays its own line; tick.sh reads its pool-disposition lines one by one and is
+# unaffected) inside `## Live state` is rewritten, to ONE `workers:` line:
 # the entries, then whatever prose the old block carried. A doc still carrying the
 # pre-rename `legs:` block (read only while legacy names are on) has that block
 # REPLACED by the one `workers:` line, in place. Every other line is
@@ -110,7 +112,7 @@ block_awk='
     digest && s && /^queue:/ && !queue { queue = $0 }
     digest && s && /^lock:/ && !lock { lock = $0 }
     s && index($0, k ":") == 1 { f = 1; if (digest) workers = $0; else print; next }
-    f && (/^[[:space:]]*$/ || /^[A-Za-z][A-Za-z ]*:/ || /^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]/ || /^[[:space:]]*[>#]/) { f = 0 }
+    f && (/^[[:space:]]*$/ || /^[A-Za-z][A-Za-z -]*:/ || /^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]/ || /^[[:space:]]*[>#]/) { f = 0 }
     f {
         if (digest) { line = $0; sub(/^[[:space:]]+/, "", line); workers = workers " " line }
         else print
@@ -220,7 +222,7 @@ if ! NL="$new_line" awk -v k="$live_key" '
     s && /^## / { s = 0 }
     s && index($0, k ":") == 1 { f = 1; print ENVIRON["NL"]; next }
     s && /^lockless:/ { f = 0; next }
-    f && (/^[[:space:]]*$/ || /^[A-Za-z][A-Za-z ]*:/ || /^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]/ || /^[[:space:]]*[>#]/) { f = 0 }
+    f && (/^[[:space:]]*$/ || /^[A-Za-z][A-Za-z -]*:/ || /^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]/ || /^[[:space:]]*[>#]/) { f = 0 }
     f { next }
     # prim-ok: the temp takes the doc mode via chmod --reference; atomic_write would reset it to 0600
     { print }' "$doc" > "$tmp" || ! mv -f "$tmp" "$doc"; then
