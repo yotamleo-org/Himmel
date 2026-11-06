@@ -78,10 +78,10 @@
 #       independently on the rtk retry; (c) the diff base cannot be fetched or
 #       resolved; (d) (--pr only) critic-panel.sh has no --pin-ref, refs/himmel/outside/<n>
 #       is not at --head, --branch is not the PR's headRefName, or the PR's base branch
-#       or merge base cannot be read. A --pr round is NOT given back by an abort after it
-#       started, so a retry may spend a further round. ABORT: nothing was reviewed, nothing
-#       was recorded, and a round already started is given back
-#       (review-round.sh abort). Never degrades to claude-only - re-run
+#       or merge base cannot be read. ABORT: nothing was reviewed, nothing was recorded,
+#       and for a branch review a round already started is given back
+#       (review-round.sh abort). A --pr round started before an abort stays counted;
+#       a retry at the same head reuses it. Never degrades to claude-only - re-run
 #       /pr-check from step 1.
 #   Every other critic-panel.sh failure fails OPEN to claude-only (this
 #   script still exits 0; panel findings are empty and a loud note went to
