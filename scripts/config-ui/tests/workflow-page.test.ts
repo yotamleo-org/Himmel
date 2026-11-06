@@ -273,6 +273,27 @@ test("Eval: Trends hide a phase that read nothing, keep one with real counts, an
   expect(html).not.toContain("tickets entering the phase");
 });
 
+test("Eval: the Phase summary draws no sparkline for a phase that read nothing, and says so in its cell", () => {
+  const none = { state: "nodata", n: 0, median: null, p80: null, hist: [], perDay: [0, 0, 0, 0, 0, 0, 0] };
+  const spNames = (html: string) => [...html.matchAll(/<svg class="wf-sp"[^>]*aria-label="([^"]*) entered per day/g)].map((m) => m[1]);
+  const html = withPhase("check", none);
+  expect(spNames(html)).toEqual(["Build", "Review", "Merge and wrap up"]);
+  expect(html).not.toContain("Check and approve entered per day: 0, 0, 0, 0, 0, 0, 0");
+  expect((html.match(/<tr><th>6 Check and approve<\/th>(.*?)<\/tr>/) || ["", ""])[1]).toMatch(/<td>no data yet<\/td><td>/);
+  // the same rule as Trends: real counts on a phase that has no timing still draw
+  expect(spNames(withPhase("check", { ...none, perDay: [0, 0, 2, 0, 0, 0, 0] }))).toEqual(["Build", "Review", "Check and approve", "Merge and wrap up"]);
+});
+
+test("Eval: the panels run in the mockup's order, Cost per ticket, Review, then Outliers, and a run with no data says why Distributions and Trends are missing", () => {
+  const html = renderWorkflow(MODEL, { tab: "eval" }, seededRun());
+  const at = (h: string) => html.indexOf(`<h2>${h}</h2>`);
+  expect([at("Phase summary"), at("Distributions"), at("Trends"), at("Cost per ticket"), at("Review: merged or not, by rounds"), at("Outliers")].every((x, i, a) => x > 0 && (i === 0 || x > a[i - 1]))).toBe(true);
+  const empty = renderWorkflow(MODEL, { tab: "eval" }, { ...seededRun(), phases: seededRun().phases.map((p) => ({ ...p, state: p.state === "nosource" ? p.state : "nodata", n: 0, hist: [], perDay: p.state === "nosource" ? [] : Array(7).fill(0) })) });
+  expect(empty).not.toContain("<h2>Distributions</h2>");
+  expect(empty).not.toContain("<h2>Trends</h2>");
+  expect(empty).toContain("Distributions and Trends are not drawn: no phase read any change in this window.");
+});
+
 test("Eval: each table sits in a scroller so a phone scrolls it sideways instead of shredding its cells", () => {
   const html = renderWorkflow(MODEL, { tab: "eval" }, { ...seededRun(), outliers: [{ pr: "7", phase: "build", value: 300, unit: "min", times: 4 }] });
   for (const t of ["wf-sum", "wf-rev", "wf-out"]) expect(html).toContain(`<div class="wf-wrapx"><table class="${t}">`);

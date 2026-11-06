@@ -108,9 +108,12 @@ for (const scheme of ["light", "dark"] as const) {
     // the scan must have charts to read: bars, and a slow-tail bar among them (an unseeded tab has neither)
     expect(await page.locator("rect.wf-bar").count(), "bar chart rects on the Eval tab").toBeGreaterThan(0);
     expect(await page.locator("rect.wf-bar.wf-hi").count(), "slow-tail bars on the Eval tab").toBeGreaterThan(0);
-    if (process.env.E2E_BREAK === "colour") await plant(page);
+    // RED control on the Eval tab: the plant goes on a chart bar, not on <body> (whose planted colour the earlier pages already
+    // left in place), so only a scan that really reads the Eval tab's charts can report it
+    if (process.env.E2E_BREAK === "colour") await page.evaluate(() => (document.querySelector("rect.wf-bar") as SVGElement).style.setProperty("fill", "#ff00aa"));
     for (const o of await offTokens(page)) bad.push(`workflow/eval: ${o}`);
     await ctx.close();
+    if (process.env.E2E_BREAK === "colour") expect(bad, "the Eval tab scan reported the planted bar fill").toContain("workflow/eval: rect.wf-bar fill: rgb(255, 0, 170)");
     expect(bad, "colours outside tokens.css").toEqual([]);
   });
 }
