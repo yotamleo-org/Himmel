@@ -1495,7 +1495,7 @@ test("the guard drill-in puts Refusals per day beside a four-card This week; the
 test("a phone Tool map tile carries its calls line and the failure-rate colour, as the desktop tile does", async () => {
   const html = await page(readP(seedP()), { tab: "map" }, { inventory: SHAPE_INV });
   const cards = html.slice(html.indexOf('<div class="thcards">'));
-  expect(cards).toMatch(/<button class="mln mc (?:bad-t|warn-t|ok-t|zero)[^"]*" data-act="th-pick" data-src="core" data-kind="builtin"[^>]*>[\s\S]*?\d+ calls · \d+ failed/);
+  expect(cards).toMatch(/<button class="mln mc (?:bad-t|warn-t|ok-t|good-t|zero)[^"]*" data-act="th-pick" data-src="core" data-kind="builtin"[^>]*>[\s\S]*?\d+ calls · \d+ failed/);
   expect(cards).toMatch(/class="thcard"[\s\S]*?<p class="sub">\d+ tools? · \d+ calls/);
   expect(cards).toMatch(/○ \d/);
   // exact values, not just a shape: Bash 50 calls / 8 failed and Read 20 calls / 0 failed make one built-in tile of 70 calls, 8 failed (11.4 %, the bad tint)
@@ -1516,5 +1516,26 @@ test("a recorded window with no failures reads 0 failed and the quiet tint, not 
   const data = readP(seedP());
   const quiet = { ...data, tools: data.tools.map((t: any) => ({ ...t, failures: 0, errors: 0, denials: 0, rate: 0 })) };
   const cards = (await page(quiet, { tab: "map" }, { inventory: SHAPE_INV })).split('<div class="thcards">')[1];
-  expect(cards).toMatch(/<button class="mln mc ok-t" data-act="th-pick" data-src="core" data-kind="builtin"[^>]*><span class="kl">built-in<\/span><b>2<\/b><span>70 calls · 0 failed<\/span>/);
+  expect(cards).toMatch(/<button class="mln mc good-t" data-act="th-pick" data-src="core" data-kind="builtin"[^>]*><span class="kl">built-in<\/span><b>2<\/b><span>70 calls · 0 failed<\/span>/);
+});
+
+test("a Tool map tile with calls and zero failures carries its own green tint, as in mockup v9", async () => {
+  const data = readP(seedP());
+  const quiet = { ...data, tools: data.tools.map((t: any) => ({ ...t, failures: 0, errors: 0, denials: 0, rate: 0 })) };
+  const cards = (await page(quiet, { tab: "map" }, { inventory: SHAPE_INV })).split('<div class="thcards">')[1];
+  expect(cards).toMatch(/<button class="mln mc good-t" data-act="th-pick" data-src="core" data-kind="builtin"[^>]*>[\s\S]*?70 calls · 0 failed/);
+});
+
+test("a Tool map tile under 5 percent failures stays neutral, not green", async () => {
+  const data = readP(seedP());
+  let done = false;
+  const low = { ...data, tools: data.tools.map((t: any) => (!done && t.failures > 0 ? ((done = true), { ...t, failures: 1, errors: 1, denials: 0 }) : { ...t, failures: 0, errors: 0, denials: 0 })) };
+  const cards = (await page(low, { tab: "map" }, { inventory: SHAPE_INV })).split('<div class="thcards">')[1];
+  expect(cards).toMatch(/<button class="mln mc ok-t" data-act="th-pick" data-src="core" data-kind="builtin"[^>]*>[\s\S]*?70 calls · 1 failed/);
+});
+
+test("the Tool map legend colours 0 failed green and leaves under 5% neutral", async () => {
+  const html = await page(readP(seedP()), { tab: "map" }, { inventory: SHAPE_INV });
+  expect(html).toContain('<span class="tag ok">0 failed</span>');
+  expect(html).toContain('<span class="tag">under 5%</span>');
 });

@@ -412,7 +412,7 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .thmap .mh{font:600 11px var(--font-mono);color:var(--muted);align-self:end}.thmap .mr{font:600 11px var(--font-mono);color:var(--muted);align-self:center;padding-right:var(--s2)}
 .mc{all:unset;cursor:pointer;display:grid;gap:2px;min-height:44px;padding:4px 6px;border:1px solid var(--rule);border-radius:4px;background:var(--surface);font:11px var(--font-mono);color:var(--fg)}
 .mc span{color:var(--muted);font-size:10px}.mc.none{cursor:default;border-style:dashed;background:none}
-.mc.bad-t{background:var(--crit-soft);border-color:var(--crit)}.mc.warn-t{background:var(--beta-soft);border-color:var(--beta)}.mc.ok-t{background:var(--ship-soft)}.mc.zero{opacity:.7}
+.mc.bad-t{background:var(--crit-soft);border-color:var(--crit)}.mc.warn-t{background:var(--beta-soft);border-color:var(--beta)}.mc.ok-t{background:var(--surface-2)}.mc.good-t{background:var(--ship-soft);border-color:var(--ship)}.mc.zero{opacity:.7}
 .mc.sel{outline:2px solid var(--accent)}.mc:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .th-sort{all:unset;cursor:pointer}.th-sort:focus-visible{outline:1px solid var(--accent)}
 @media (max-width:760px){.th-charts,.th-cols{grid-template-columns:minmax(0,1fr)}}
