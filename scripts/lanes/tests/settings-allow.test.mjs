@@ -9,7 +9,10 @@
 // (quiet-run.sh refuses a `..` argv component itself).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { env as hostEnv } from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -267,4 +270,102 @@ test('the project list carries every gateAllow quiet-run suite rule, so a consol
   for (const rule of REG.gateAllow.filter((r) => r.includes('quiet-run.sh suite'))) {
     assert.ok(ALLOW.includes(rule), `missing from .claude/settings.json: ${rule}`);
   }
+});
+
+// Printed form (I2, part 1): a chief types a printed GO, ready-check or ready-go command
+// as-is, so the printed form must be the relative `bash scripts/...` shape a project
+// allow rule matches: no cd, timeout, VAR= prefix or absolute path (those fall to the
+// auto-mode classifier, which refuses a merge-path GO). The hit set is mechanical:
+// a backticked span starting `bash ` that names one of the three scripts in a docs
+// page, a `NEXT:` printf in the chief kit, and the NEXT lines of a real ready-go run.
+// ponytail: this models the `:*` matcher (ruleMatches above), not the harness matcher;
+// upgrade path a live allow probe in a test VM (spec R12).
+const CHIEF_KIT_SCRIPT = /chief-kit\/(go|ready-check|ready-go)\.sh/;
+const NOT_PRINTED_FORM = /^(cd|timeout|nohup|env|[A-Za-z_][A-Za-z0-9_]*=)\b|^bash\s+["'`]?[/~$<]/;
+function printedFormProblems(command) {
+  const problems = [];
+  if (NOT_PRINTED_FORM.test(command)) problems.push('leading cd, timeout, VAR= or absolute path');
+  if (!/^bash scripts\/handover\/chief-kit\/(go|ready-check|ready-go)\.sh( |$)/.test(command)) problems.push('not the relative bash scripts/handover/chief-kit/<script> form');
+  if (matching(ALLOW, command).length !== 1) problems.push(`matches ${matching(ALLOW, command).length} project allow rules, not 1`);
+  return problems;
+}
+const gitLines = (args) => execFileSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
+const docSpans = () => {
+  const out = [];
+  for (const f of gitLines(['ls-files', '--', 'docs/*.md', ':!docs/guide'])) {
+    const text = readFileSync(join(REPO_ROOT, f), 'utf8');
+    for (const m of text.matchAll(/`((?:(?:cd \S+ && |timeout \d+ |[A-Za-z_]\w*=\S+ ))*bash [^`]+)`/g)) {
+      const command = m[1].replace(/\s+/g, ' ').trim();
+      if (CHIEF_KIT_SCRIPT.test(command)) out.push({ where: `${f}:${text.slice(0, m.index).split('\n').length}`, command });
+    }
+  }
+  return out;
+};
+// the NEXT-line printf formats of the chief kit: %q becomes a word, %s a separate argument
+const printfNextCommands = () => {
+  const out = [];
+  for (const f of gitLines(['ls-files', '--', 'scripts/handover/chief-kit/*.sh', ':!scripts/handover/chief-kit/test-*.sh'])) {
+    readFileSync(join(REPO_ROOT, f), 'utf8').split('\n').forEach((line, i) => {
+      const m = /printf '(NEXT:[^']*)'/.exec(line);
+      const cmd = m && /\bbash \S*go\.sh.*$/.exec(m[1].replace(/%q/g, 'X').replace(/%s/g, ' X').replace(/ +/g, ' '));
+      if (cmd) out.push({ where: `${f}:${i + 1}`, command: cmd[0].replace(/\\n$/, '').trim() });
+    });
+  }
+  return out;
+};
+// a real ready-go.sh run over stubs (ready-check, gh, jira, trust list): its NEXT lines
+function readyGoNextCommands() {
+  const dir = mkdtempSync(join(tmpdir(), 'ready-go-allow-'));
+  try {
+    const kit = join(dir, 'scripts', 'handover', 'chief-kit');
+    const lib = join(dir, 'scripts', 'lib');
+    mkdirSync(kit, { recursive: true });
+    mkdirSync(lib, { recursive: true });
+    copyFileSync(join(REPO_ROOT, 'scripts/handover/chief-kit/ready-go.sh'), join(kit, 'ready-go.sh'));
+    copyFileSync(join(REPO_ROOT, 'scripts/lib/git-clean.sh'), join(lib, 'git-clean.sh'));
+    writeFileSync(join(kit, 'ready-check.sh'), 'echo "[PASS] 7. coverage"\necho "READY-CHECK PASS"\n');
+    writeFileSync(join(lib, 'go-gate.sh'), 'trust_path_check() { printf "%s\\n" "${STUB_TRUST:-none}"; }\n');
+    writeFileSync(join(dir, 'gh'), '#!/usr/bin/env bash\ncase "$*" in\n*nameWithOwner*) echo o/r;;\n*defaultBranchRef*) echo main;;\n*title*) echo "fix(x): [HIMMEL-1] t";;\nesac\n', { mode: 0o755 });
+    writeFileSync(join(dir, 'jira'), '#!/usr/bin/env bash\nprintf "%s\\tTask\\tIn Review\\tsummary\\n" "$2"\n', { mode: 0o755 });
+    const out = [];
+    for (const trust of ['none', 'hit scripts/ci/x.sh']) {
+      const r = spawnSync('bash', [join(kit, 'ready-go.sh'), '--contract', 'no', '77', 'a'.repeat(40)], {
+        encoding: 'utf8',
+        env: { ...hostEnv, READY_GO_ANCHOR: dir, GH_CMD: join(dir, 'gh'), JIRA_CMD: join(dir, 'jira'), STUB_TRUST: trust },
+      });
+      for (const line of r.stdout.split('\n')) {
+        const m = /^NEXT:.*?(bash \S+go\.sh.*)$/.exec(line);
+        if (m) out.push({ where: `ready-go.sh run (trust ${trust.split(' ')[0]})`, command: m[1].replaceAll(dir, '<tmp>') });
+      }
+    }
+    return out;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('every printed GO, ready-check and ready-go command matches one chief allow pattern', () => {
+  const spans = docSpans();
+  const printfs = printfNextCommands();
+  const runs = readyGoNextCommands();
+  assert.ok(spans.length >= 4, `anti-vacuity: expected the docs spans, got ${spans.length}`);
+  assert.ok(printfs.length >= 2, `anti-vacuity: expected the ready-go printf formats, got ${printfs.length}`);
+  assert.equal(runs.length, 2, 'anti-vacuity: a plain and a trust-hit NEXT line from the real run');
+  const bad = [];
+  for (const { where, command } of [...spans, ...printfs, ...runs]) {
+    const problems = printedFormProblems(command);
+    if (problems.length) bad.push(`${where}: ${command}\n    ${problems.join('; ')}`);
+  }
+  assert.deepEqual(bad, [], `printed commands no chief allow rule matches:\n${bad.join('\n')}`);
+});
+
+test('the printed-form check refuses a leading cd, timeout, VAR= or absolute path', () => {
+  for (const command of [
+    'cd /x && bash scripts/handover/chief-kit/go.sh 1 a',
+    'timeout 90 bash scripts/handover/chief-kit/ready-check.sh 1 a',
+    'X=1 bash scripts/handover/chief-kit/go.sh 1 a',
+    'bash /abs/scripts/handover/chief-kit/go.sh 1 a',
+    'bash <anchor>/scripts/handover/chief-kit/go.sh 1 a',
+  ]) assert.notDeepEqual(printedFormProblems(command), [], command);
+  assert.deepEqual(printedFormProblems('bash scripts/handover/chief-kit/go.sh --contract no 1 a'), []);
 });

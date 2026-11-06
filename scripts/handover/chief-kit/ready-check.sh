@@ -200,6 +200,29 @@
 # Platform guard: POSIX bash 3.2+, same as go.sh. No mapfile.
 set -u
 
+# A self-armed deadline: the chief types this script bare, because a `timeout`
+# prefix does not match the project allow rule. READY_CHECK_DEADLINE (whole seconds, default
+# 150 = chief-wait's bound, above item 19's 105 s of bounds; 0 = none) bounds the whole run:
+# the script re-runs itself under timeout and says so by name when it is cut.
+if [ -z "${_READY_CHECK_ARMED:-}" ]; then
+    rcd_s="${READY_CHECK_DEADLINE:-150}"
+    case "$rcd_s" in ''|*[!0-9]*) rcd_s=150 ;; esac
+    if [ "$rcd_s" -gt 0 ]; then
+        _TIMEOUT_BIN=""
+        # shellcheck source=../../lib/timeout-bin.sh
+        . "$(cd "$(dirname "$0")/../../lib" && pwd)/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN runs without the deadline, as the per-read bounds below do
+        if [ -n "$_TIMEOUT_BIN" ]; then
+            rcd_rc=0
+            _READY_CHECK_ARMED=1 "$_TIMEOUT_BIN" -k 5 "$rcd_s" bash "$0" "$@" || rcd_rc=$?
+            if [ "$rcd_rc" -eq 124 ] || [ "$rcd_rc" -eq 137 ]; then
+                echo "READY-CHECK FAIL: no verdict within the ${rcd_s} s deadline (READY_CHECK_DEADLINE); a gate read stalled" >&2
+                exit 1
+            fi
+            exit "$rcd_rc"
+        fi
+    fi
+fi
+
 usage() {
     local rc_primary
     rc_primary=$(git -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || rc_primary=""

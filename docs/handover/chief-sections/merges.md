@@ -35,9 +35,9 @@ on denial) and adds the chief step that ruling lacked.
 **Claudex PRs: the chief merges.** A claudex worker's brief ends its Ship step
 at `READY <pr> <head> GREEN` and never runs `merge-on-green.sh` (its auto-mode
 classifier refuses merge-path actions, HIMMEL-4097). On that READY run, from
-the primary checkout and in this order: `ready-check.sh <pr> <head>`, the
+the primary checkout and in this order: `bash scripts/handover/chief-kit/ready-check.sh <pr> <head>`, the
 judge or trust review the PR needs, then
-`chief-kit/go.sh --contract yes|no [--trust-reviewed <qid>] <pr> <head>`, then
+`bash scripts/handover/chief-kit/go.sh --contract yes|no [--trust-reviewed <qid>] <pr> <head>`, then
 `bash scripts/handover/merge-on-green.sh <pr> [--jira-transition] --worker-doc <worker doc>`.
 `--contract` is the worker doc's `Completes ticket:` answer: without it a PR titled
 with a ticket key fails `ready-check.sh` item 17 and `go.sh` writes nothing (exit 4).
@@ -75,7 +75,7 @@ run, or a re-run whose previous attempt cannot be read. The gate is advisory, so
 blocker is yours: withhold the GO of every PR while main is genuinely broken
 (a GO file written before main went red stays valid until you delete it), and
 read the `MAIN-RED advisory:` lines of the merges that did land. The fix PR's
-`Fixes-main-red:` line and `chief-kit/go.sh --fix-main-red <red-run-id> <pr> <head>`
+`Fixes-main-red:` line and `bash scripts/handover/chief-kit/go.sh --fix-main-red <red-run-id> <pr> <head>`
 are now audit labels only (`via=<declaration>`), not required. After an advisory
 merge, or one on the declared-fix or fix-GO path, the script
 dispatches one `ci.yml` run on main and prints `MAIN-RECHECK dispatched
@@ -123,7 +123,7 @@ selector and shared libs, the merge gate and GO writer — the list is read
 from the default branch, never the PR head, so a PR cannot shrink it) does
 not merge through `merge-on-green.sh` on an ordinary GO: it exits 21. Such a
 PR needs an independent adversarial review first; only on the judge's GO for
-that exact head run `chief-kit/go.sh --contract yes|no --trust-reviewed <qid>
+that exact head run `bash scripts/handover/chief-kit/go.sh --contract yes|no --trust-reviewed <qid>
 <pr> <head>`, where `<qid>` is the judge question's id (`[A-Za-z0-9][A-Za-z0-9._-]*`).
 `go.sh` refuses with exit 5 unless `<root>/<user>/<bucket>/verdicts/<qid>/`
 holds a verdict whose first line under `## Verdict` is exactly
