@@ -322,7 +322,10 @@ const docSpans = () => {
 // the NEXT:/GO printf formats under scripts/: %q becomes a word, %s a separate argument
 const printfNextCommands = () => {
   const out = [];
-  for (const f of gitLines(['ls-files', '--', 'scripts/*.sh', ':!*/test-*.sh', ':!*/tests/*'])) {
+  // a plain directory listing filtered here: no wildcard pathspec, so the result does not depend on the git version or pathspec env
+  const shellFiles = gitLines(['ls-files', '--', 'scripts']).filter((f) => f.endsWith('.sh') && !/\/test-[^/]*\.sh$/.test(f) && !f.includes('/tests/'));
+  assert.ok(shellFiles.includes('scripts/handover/chief-kit/ready-go.sh'), `anti-vacuity: ready-go.sh missing from ${shellFiles.length} listed scripts`);
+  for (const f of shellFiles) {
     readFileSync(join(REPO_ROOT, f), 'utf8').split('\n').forEach((line, i) => {
       const m = /printf '((?:NEXT:|GO )[^']*)'/.exec(line);
       const cmd = m && /\bbash \S*(?:go|ready-check|ready-go)\.sh.*$/.exec(m[1].replace(/%q/g, 'X').replace(/%s/g, ' X').replace(/ +/g, ' '));
