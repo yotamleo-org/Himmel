@@ -3,7 +3,9 @@
 Audience: newcomer. Owner of the rewrite: HIMMEL-7212.
 
 **The task:** protect one git project with himmel, so that a Claude Code
-session refuses to edit your default branch and works in a worktree instead.
+session's edit tools refuse to change files in your project's own checkout, on
+any branch, and the work moves to a worktree instead. A shell command that
+writes a file is a separate door; [Verify](#verify) says what stays open.
 Five steps get you there: preview, install, persist, verify, undo. Read the
 choices, the adapting notes and the recovery path once the first install
 works.
@@ -84,11 +86,13 @@ working tree and leaves them **untracked**. A worktree is cut from committed
 history, so one created before the install is committed has none of those
 files: no `.claude/settings.json`, no `scripts/hooks/block-edit-on-main.sh`,
 no `scripts/worktree.sh`, and nothing protects an edit there. Commit the
-install first. Without the `pre-commit` tool the installer places plain git
-hooks, and the commit hook refuses a commit on the default branch (with
-`pre-commit` present the hooks run only what your `.pre-commit-config.yaml`
-lists, which a starter install does not write). Use a branch and fast-forward
-either way:
+install first. When your project has no `.pre-commit-config.yaml`, the
+installer places plain git hooks, whether or not the `pre-commit` tool is
+installed, and the commit hook refuses a commit on `main` or `master`. A
+project that has its own `.pre-commit-config.yaml` gets the `pre-commit`
+framework instead, whose hooks run only what that file lists; the plain hooks
+are also the fallback when `pre-commit` cannot be installed. Use a branch and
+fast-forward either way:
 
 ```bash
 git switch -c chore/install-himmel
@@ -106,7 +110,7 @@ above. On a repository with no ticket convention, switch the requirement off wit
 default branch, push the branch and merge it through a PR instead of the
 fast-forward. If the project has an `origin`, the worktree helper cuts new
 worktrees from `origin/main`, so the install commit must reach it first, and
-the installed pre-push hook refuses a direct push to `main` (no bypass): push
+the plain pre-push hook the installer places when your project has no `.pre-commit-config.yaml` refuses a direct push to `main` or `master` (`git push --no-verify` skips it): push
 `chore/install-himmel` and merge it through a PR before you create a
 worktree. A project with no `origin` branches from the local `main`. The commands say `main`; use your default branch's name if it
 differs.
@@ -167,8 +171,8 @@ Open a Claude Code session at the repo root (`claude`); hooks only fire inside
 a session. The install must already be committed on the default branch (see
 [Persist](#persist-commit-it-before-you-branch)). Then:
 
-1. Try to edit a file while on the default branch. `block-edit-on-main` should
-   refuse and point you at a worktree. That refusal *is* the success signal.
+1. Try to edit a tracked file in your project's own checkout (on any branch).
+   `block-edit-on-main` should refuse and point you at a worktree. That refusal *is* the success signal.
 2. Create the worktree: `bash scripts/worktree.sh feat/try-himmel`. It prints
    the worktree path (a `feat+try-himmel` folder under your repo's worktrees
    directory) and does not move a running session; quit and run `claude` again inside that path. Check that
@@ -178,6 +182,22 @@ a session. The install must already be committed on the default branch (see
 3. Try `cat .env` (if you have one). `block-read-secrets` should refuse.
 4. Run `node ~/himmel/scripts/himmelctl/bin.js status` for a severity-grouped diff of
    what is installed versus what the manifest wants.
+
+**What the starter refuses, and what it does not.** The starter install refuses
+Claude's *edit tools* (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`) for a file
+in your project's own checkout, on any branch; a linked worktree is free, and so
+is an untracked file your `.gitignore` covers (a secret file such as `.env` is
+not). It does **not** refuse a shell command that writes a file: no starter hook
+stops `echo x > a.txt` on `main`, so it reaches Claude Code's normal permission
+flow, and once allowed `a.txt` is written and stays in your working tree until
+you move it to a worktree branch. The installed git hooks run on `git commit`
+and `git push` only. They refuse a commit on `main` or `master` and a direct
+push to either. They do not cover a default branch with another name, a
+`git merge` into `main` (a fast-forward makes no commit, and the `commit-msg`
+hook, which does run, lets a clean merge commit through), or the skip-hooks flag
+(`--no-verify`). A project with its own `.pre-commit-config.yaml` gets the
+`pre-commit` framework instead, whose hooks run only what that file lists (see
+[Persist](#persist-commit-it-before-you-branch)).
 
 Then walk one real loop: [getting-started.md](../getting-started.md#your-first-loop).
 
@@ -239,7 +259,7 @@ deal, and every guard has an off switch (see
 |---|---|---|---|---|
 | **Scope** | `project` | The harness is wired in **this repo's** `.claude/settings.json` | Nothing extra | Everyone who clones the repo inherits it — commit the file deliberately |
 | | `user` | The harness is wired in **`~/.claude/settings.json`** | Nothing extra | Applies to *every* project you open on this machine, including ones you did not mean to gate |
-| **Install profile** | `starter` → `core` | 43 items: hooks, git gates, worktree commands, statusline (claude-hud, cache-expiry line on; legacy bash bar stays opt-in/rollback — [tooling-catalog.md](../tooling-catalog.md#claude-statusline-vendored)), marketplace plugins, the Jira CLI build, and, when qmd is already on the machine, the himmel search collection (no qmd shows a hint, not an error) | `git`, `bash`, `node`, `jq`, `python3` | The PR-gated workflow becomes the only way to commit — that is the point, and it is the thing to try on one repo first |
+| **Install profile** | `starter` → `core` | 43 items: hooks, git gates, worktree commands, statusline (claude-hud, cache-expiry line on; legacy bash bar stays opt-in/rollback — [tooling-catalog.md](../tooling-catalog.md#claude-statusline-vendored)), marketplace plugins, the Jira CLI build, and, when qmd is already on the machine, the himmel search collection (no qmd shows a hint, not an error) | `git`, `bash`, `node`, `jq`, `python3` | When your project has no `.pre-commit-config.yaml`, the plain git hooks the installer places refuse a commit on `main` or `master` and a commit message with no ticket reference, so commits move to a branch — that is the point, and it is the thing to try on one repo first |
 | | `luna` | `core` plus the second-brain surface: vault scaffold, qmd index, graphify MCP, the clip cadences | `bun`, plus disk for the qmd index | A vault you now have to maintain; the cadences run on a schedule |
 | | `operator` / `custom` | `all` (56 items) / whatever you answer | Everything above | The maintainer's full machine — not an adopter starting point |
 | **Release channel** | unset (no recorded channel) | `git pull --ff-only` on your branch | Nothing | You track the tip, including work in progress — this is the *fallback*, not what a fresh install records |
@@ -300,18 +320,24 @@ are opt-in for adopters: they run only if you list the `platforms-tested` and
 and neither ever fires.
 
 **3. `.single-writer`: the one you will want on day one.** `block-edit-on-main`
-refuses edits when `HEAD` is your default branch, which is correct for a
-review-gated team repo and wrong for a personal repo you commit straight to.
-Drop a `.single-writer` file at that repo's root (`touch .single-writer`) and
-on-main edits are allowed there. It is local and gitignored, so clones of the
-same repo stay protected; this is a per-checkout opt-out, not a repo policy.
+refuses edits in the project's own checkout on any branch (a linked worktree and
+an untracked, gitignored file are free), which is correct for a review-gated team repo and wrong for a personal
+repo you edit in place. Drop a `.single-writer` file at that repo's root
+(`touch .single-writer`) and edits there are allowed. It is local and
+gitignored, so clones of the same repo stay protected; this is a per-checkout
+opt-out, not a repo policy. It lifts the edit-tool hook only and does not
+change the git hooks: a commit on `main` or `master` is still refused, so
+commit on a branch and fast-forward as in
+[Persist](#persist-commit-it-before-you-branch).
 
 **4. The worktree workflow, and where the off switch goes.** `/worktree` creates an
-isolated branch and worktree next to your `.claude/` directory; `block-edit-on-main` and
-`check-worktree-isolation` keep work inside one. For a deliberate one-off, the
-off switch is `EDIT_ON_MAIN_OK=1`, and it must be set in the shell that **launches**
+isolated branch and worktree next to your `.claude/` directory; `block-edit-on-main`
+keeps edits inside one. For a deliberate one-off, the off switch for that hook is
+`EDIT_ON_MAIN_OK=1`, and it must be set in the shell that **launches**
 Claude Code (`EDIT_ON_MAIN_OK=1 claude`). A per-call prefix inside a session does
-nothing, because the hook runs in a process that never sees it. This is the most
+nothing, because the hook runs in a process that never sees it. It does not
+reach the commit check: `check-worktree-isolation` does not read it, and a commit
+on `main` or `master` is still refused. This is the most
 common adopter confusion; it is worth reading twice.
 
 **5. Which guards you may disable, and which you should not.** Disabling is
