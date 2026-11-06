@@ -2577,9 +2577,9 @@ if [ "${DEPENDABOT_AUTOLAND:-off}" = on ] && [ -f "$REPO/scripts/cr/dependabot-g
     if [ "$dbot_age" -ge "$dbot_gap" ] && mkdir -p "$dbot_dir" 2>/dev/null && touch "$dbot_base.stamp" 2>/dev/null; then
         dbot_tmp="$dbot_base.log.$$"
         # a running sweep holds the lock (75), so this launch is a no-op that keeps the last log
-        ( cd "$REPO" || exit 0
-          setsid nohup flock -n -E 75 "$dbot_base.lock" bash "$REPO/scripts/cr/dependabot-go.sh" --sweep >"$dbot_tmp" 2>&1; case $? in 0) mv -f "$dbot_tmp" "$dbot_base.log" ;; 75) rm -f "$dbot_tmp" ;; *) mv -f "$dbot_tmp" "$dbot_base.err" ;; esac  # prim-ok: Linux-only nonblocking lock; a per-pid tmp log, and only the tick reads the log
-        ) </dev/null >/dev/null 2>&1 &
+        # tick_detach, so the tick is never the sweep's parent and never reaps (or times) it
+        # shellcheck disable=SC2016  # $1..$3 expand in the inner shell, not here
+        tick_detach bash -c 'cd "$1" || exit 0; setsid nohup flock -n -E 75 "$2.lock" bash "$1/scripts/cr/dependabot-go.sh" --sweep >"$3" 2>&1; case $? in 0) mv -f "$3" "$2.log" ;; 75) rm -f "$3" ;; *) mv -f "$3" "$2.err" ;; esac' _ "$REPO" "$dbot_base" "$dbot_tmp" >/dev/null  # prim-ok: Linux-only nonblocking lock; a per-pid tmp log, and only the tick reads the log
         dbot_summary="$dbot_summary,run"
     fi
 fi
@@ -2790,7 +2790,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
             pi_have=1; [ "${#pi_launcher[@]}" -gt 0 ] || pi_have=0
             for pi_w in "${pi_launcher[@]}"; do command -v "$pi_w" >/dev/null 2>&1 || pi_have=0; done  # command -v with several operands passes if ANY exists
             if [ "$pi_have" = 1 ]; then
-                "${pi_launcher[@]}" bash "$HERE/plan-index-launch.sh" "$pi_out" bash "$HERE/../../roadmap/plan-index.sh" --refresh "${pi_args[@]}" </dev/null >/dev/null 2>&1 &
+                tick_detach "${pi_launcher[@]}" bash "$HERE/plan-index-launch.sh" "$pi_out" bash "$HERE/../../roadmap/plan-index.sh" --refresh "${pi_args[@]}" >/dev/null
                 plan_index_summary=REFRESHING
             else
                 echo "no-launcher: ${pi_launcher[*]} not found" >"$pi_out/.last-fail"

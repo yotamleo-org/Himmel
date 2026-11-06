@@ -633,6 +633,49 @@ cg_spin9342="$(cg_run9342 1)"
 contains 'the spinning guardrail refresh lands in the tick that launched it' "$(cat "$cg9342/line")" ' ciguard=ok'
 if [ $((cg_spin9342 - cg_base9342)) -lt 1000 ]; then pass 'a section refresh the tick waits out adds none of its CPU to the tick'; else fail "a section refresh added $((cg_spin9342 - cg_base9342)) ms of CPU to the tick (spin ${cg_spin9342} ms, control ${cg_base9342} ms)"; fi
 
+# The dependabot sweep and the plan-index refresh are not waited on, but a tick that is still
+# running when one ends reaps it all the same. A stub `bun` (the tick's last slow step) holds
+# the tick 4 s, longer than the 2 s of CPU the stubs spin, so the child ends inside the tick.
+hd9342="$W/hd9342"; mkdir -p "$hd9342/bin"
+printf '%s\n' '#!/usr/bin/env bash' 'sleep 4' > "$hd9342/bin/bun"
+chmod +x "$hd9342/bin/bun"
+wait9342() {  # wait9342 <file>: up to 15 s for a file the detached child writes
+    local i=0
+    while [ ! -e "$1" ] && [ "$i" -lt 150 ]; do sleep 0.1; i=$((i + 1)); done
+}
+
+db9342="$W/db9342"; mkdir -p "$db9342/state" "$W/repo/scripts/cr"
+printf '%s\n' '#!/usr/bin/env bash' "[ -z \"\${SPIN:-}\" ] || { $spin9342; }" 'echo "dependabot-go sweep: merged=1 skipped=2"' > "$W/repo/scripts/cr/dependabot-go.sh"
+db_run9342() {
+    rm -rf "$db9342/state"; mkdir -p "$db9342/state"
+    cpu9342 "$db9342/line" env SPIN="$1" DEPENDABOT_AUTOLAND=on TICK_DBOT_MIN_SECS=0 TICK_STATE_DIR="$db9342/state" PATH="$hd9342/bin:$PATH" bash "$SUT"
+}
+db_base9342="$(db_run9342 '')"
+contains 'the control tick launches the dependabot sweep' "$(cat "$db9342/line")" ' dbot=none,run'
+db_spin9342="$(db_run9342 1)"
+contains 'the spinning tick launches the dependabot sweep' "$(cat "$db9342/line")" ' dbot=none,run'
+wait9342 "$db9342/state"/tick-dbot-*.log
+same 'the dependabot sweep still moves its tmp log to the log' "$(cat "$db9342/state"/tick-dbot-*.log 2>/dev/null)" 'dependabot-go sweep: merged=1 skipped=2'
+if [ $((db_spin9342 - db_base9342)) -lt 1000 ]; then pass 'a dependabot sweep that ends inside the tick adds none of its CPU to the tick'; else fail "a dependabot sweep added $((db_spin9342 - db_base9342)) ms of CPU to the tick (spin ${db_spin9342} ms, control ${db_base9342} ms)"; fi
+
+if command -v python3 >/dev/null 2>&1; then
+    pi9342="$W/pi9342"; mkdir -p "$pi9342/plan" "$pi9342/mirror"
+    printf '%s\n' '# chief' '' "tracker-plan: $pi9342/plan" '' '## Results (newest at the bottom)' > "$pi9342/chief.md"
+    printf '%s\n' '#!/usr/bin/env bash' "[ -z \"\${SPIN:-}\" ] || { $spin9342; }" 'exit 0' > "$pi9342/launcher"
+    chmod +x "$pi9342/launcher"
+    pi_run9342() {
+        rm -rf "$pi9342/out"
+        cpu9342 "$pi9342/line" env SPIN="$1" TOKEN='' TICK_PLAN_INDEX_OUT="$pi9342/out" TICK_PLAN_INDEX_LAUNCHER="$pi9342/launcher" TICK_TRACKER_MIRROR_DIR="$pi9342/mirror" PATH="$hd9342/bin:$PATH" bash "$SUT" --doc "$pi9342/chief.md"
+    }
+    pi_base9342="$(pi_run9342 '')"
+    contains 'the control tick launches the plan-index refresh' "$(cat "$pi9342/line")" ' plan-index=REFRESHING'
+    pi_spin9342="$(pi_run9342 1)"
+    contains 'the spinning tick launches the plan-index refresh' "$(cat "$pi9342/line")" ' plan-index=REFRESHING'
+    if [ $((pi_spin9342 - pi_base9342)) -lt 1000 ]; then pass 'a plan-index refresh that ends inside the tick adds none of its CPU to the tick'; else fail "a plan-index refresh added $((pi_spin9342 - pi_base9342)) ms of CPU to the tick (spin ${pi_spin9342} ms, control ${pi_base9342} ms)"; fi
+else
+    skip 'plan-index CPU row: no python3'
+fi
+
 # --- leg_forked: the root filter, the exact title match and a transcript grep reads as binary.
 # leg_forked trusts only transcripts under its own root ($HOME/.claude/projects), though the
 # title index also covers the codex root; and only a title that IS the worker name links one.
