@@ -4234,6 +4234,7 @@ check "deadline: the default is 150 s" "$(grep -c -E '^-k 5 150 bash .*ready-che
 : > "$tmp/timeout.log"
 rc=0; out="$(READY_CHECK_DEADLINE=7 PATH="$tmp/dl-bin:$PATH" run)" || rc=$?
 check "deadline: the override reaches the wrapper" "$(grep -c -E '^-k 5 7 bash .*ready-check\.sh ' "$tmp/timeout.log" | tr -d ' ')" "1"
+check "deadline: the override run passes" "$rc" "0"
 : > "$tmp/timeout.log"
 rc=0; out="$(READY_CHECK_DEADLINE=0 PATH="$tmp/dl-bin:$PATH" run)" || rc=$?
 check "deadline: 0 means no wrapper" "$(grep -c -E '^-k 5 [0-9]+ bash [^ ]*ready-check\.sh ' "$tmp/timeout.log" | tr -d ' ')" "0"
