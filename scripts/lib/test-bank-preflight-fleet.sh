@@ -204,6 +204,33 @@ if grep -q 'already exists — refusing as a duplicate declared launch' "$W/err.
 else
   FAIL=$((FAIL+1)); echo "FAIL - (f) duplicate refusal did not name the duplicate-reservation reason"
 fi
+# the duplicate refusal names itself (who holds the slot, when it lapses) and never reads as the
+# fleet cap, so a chief seeing it at fleet 8/50 is not sent hunting for a full fleet.
+if grep -q 'held by pid [0-9?]*, expires in [0-9?]*s' "$W/err.log" 2>/dev/null; then
+  PASS=$((PASS+1)); echo "ok - (f2) the duplicate refusal names the holder pid and the seconds until it lapses"
+else
+  FAIL=$((FAIL+1)); echo "FAIL - (f2) the duplicate refusal does not name the holder and expiry"; cat "$W/err.log"
+fi
+if grep -q 'fleet-size cap reached' "$W/err.log" 2>/dev/null; then
+  FAIL=$((FAIL+1)); echo "FAIL - (f2) the duplicate refusal says 'fleet-size cap reached'"
+else
+  PASS=$((PASS+1)); echo "ok - (f2) the duplicate refusal does not say 'fleet-size cap reached'"
+fi
+# control: a genuine at-cap refusal still reads as the fleet cap and never as a duplicate
+slots_f3="$(mktemp -d "$W/slots-f3.XXXXXX")" || { echo "FAIL - could not create slots-f3 scratch dir" >&2; exit 1; }
+: > "$W/err.log"
+p4_f3="$W/ps4-f3"; mk_ps_stub "$p4_f3" \
+  '9001:claude:--model claude-opus-5 -n HIMMEL-1000-worker load doc' \
+  '9002:claude:--model claude-opus-5 -n HIMMEL-1001-worker load doc' \
+  '9003:claude:--model claude-opus-5 -n HIMMEL-1002-worker load doc' \
+  '9004:claude:--model claude-opus-5 -n HIMMEL-1003-worker load doc'
+f3_out="$(run_pf "$slots_f3" "$p4_f3" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=fleetcapleg HIMMEL_FLEET_CAP=4)"
+check "(f3) control: 4 live, cap 4, a declared launch -> SKIPPED-FLEET" SKIPPED-FLEET "$f3_out"
+if grep -q 'fleet at/over cap' "$W/err.log" 2>/dev/null && ! grep -q 'duplicate' "$W/err.log" 2>/dev/null; then
+  PASS=$((PASS+1)); echo "ok - (f3) control: a genuine cap refusal still names the fleet cap, not a duplicate"
+else
+  FAIL=$((FAIL+1)); echo "FAIL - (f3) control: the cap refusal text changed"; cat "$W/err.log"
+fi
 
 # --- (g) `mkdir "$SLOTS/$WORKER"`
 # failing does NOT mean "already exists" — a name exceeding the filesystem's

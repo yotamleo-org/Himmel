@@ -1083,7 +1083,13 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$WORKER" ] && [ "$WORKER" != unknown ];
   case "$_fleet_reserve_rc" in
     0) : ;;
     2)
-      echo "bank-preflight: a fleet reservation for worker=$WORKER already exists — refusing as a duplicate declared launch" >&2
+      # name the holder and when it lapses, so this reads as what it is (a slot already held under
+      # this worker's name, e.g. by a refused earlier launch), never as a full fleet.
+      _fleet_dup_pid="$(cat "$SLOTS/$_fleet_resv_key/pid" 2>/dev/null)"
+      _fleet_dup_exp="$(cat "$SLOTS/$_fleet_resv_key/expires" 2>/dev/null)"
+      case "$_fleet_dup_pid" in ''|*[!0-9]*) _fleet_dup_pid='?' ;; esac
+      case "$_fleet_dup_exp" in ''|*[!0-9]*) _fleet_dup_left='?' ;; *) _fleet_dup_left=$(( 10#$_fleet_dup_exp - $(date +%s) )); [ "$_fleet_dup_left" -ge 0 ] || _fleet_dup_left=0 ;; esac
+      echo "bank-preflight: a fleet reservation for worker=$WORKER already exists — refusing as a duplicate declared launch (held by pid $_fleet_dup_pid, expires in ${_fleet_dup_left}s; the fleet itself has room)" >&2
       _fleet_release_admit "$SLOTS/.admit"
       emit SKIPPED-FLEET
       ;;
