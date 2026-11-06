@@ -134,18 +134,27 @@ commit="$(GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-himmel graph publisher}" GIT_AUTHO
     "${G[@]}" commit-tree "$tree" -m "chore(graphify): graph-data built at $BAC")" || refuse 5 "git commit-tree failed"
 ls_out="$("${G[@]}" ls-remote "$REMOTE" "$BRANCH_REF" 2>/dev/null)" || refuse 5 "git ls-remote $REMOTE failed"
 old="${ls_out%%[[:space:]]*}"
-# graph-data is a fixed, deliberate channel name that the pre-push branch-name
-# hook (check-push-target.sh) refuses as a new branch; BRANCH_NAME_OK=1 is its
-# single-run bypass for this one push (the main refusal still holds).
+# The three prefixes below reach the pre-push chain for THIS one push of the literal
+# graph-data ref, and nowhere else (no export): the pushed commit is a parentless data
+# commit that carries no code, and this script has already scanned its exact bytes.
+#   BRANCH_NAME_OK=1       check-push-target refuses 'graph-data' as a new branch name
+#                          (the main refusal still holds)
+#   PUSH_FOREIGN_REF_OK=1  check-cr-before-push refuses a ref that is not the worktree HEAD
+#   SKIP_CR=1              check-cr-before-push wants CR evidence for a local branch
+# Never --no-verify: every other gate still runs.
 push_err="$STAGE.push.err"
-if ! BRANCH_NAME_OK=1 "${G[@]}" push --quiet "--force-with-lease=$BRANCH_REF:$old" "$REMOTE" "$commit:$BRANCH_REF" 2>"$push_err"; then
+if ! BRANCH_NAME_OK=1 PUSH_FOREIGN_REF_OK=1 SKIP_CR=1 "${G[@]}" push --quiet "--force-with-lease=$BRANCH_REF:$old" "$REMOTE" "$commit:$BRANCH_REF" 2>"$push_err"; then
     cat "$push_err" >&2
-    # Name the real reason: the hook's ERROR: line or git's ` ! [rejected]` line.
-    # Other git lines can quote the remote URL, so they are not copied.
-    why="$(grep -E -m1 '^(ERROR:| ! \[)' "$push_err" | cut -c1-200)"
+    # Name the refusal the push printed: a pre-push gate's own line (check-push-target
+    # ERROR:, check-cr-before-push, the code-review notice, a check-*: scan, the
+    # pre-push.legacy shim) or git's ` ! [rejected]` line. Other git lines can quote
+    # the remote URL, so they are not copied. No recognised line: no cause is claimed.
+    why="$(grep -E -m1 '^(ERROR:|check-[A-Za-z-]+: |→ code-review: |pre-push\.legacy: | ! \[)' "$push_err" | cut -c1-300)"
     rm -f "$push_err"
-    [ -n "$why" ] || why="the tip moved, or the remote refused"
-    refuse 5 "git push to $BRANCH_REF failed: $why"
+    if [ -n "$why" ]; then
+        refuse 5 "git push to $BRANCH_REF failed: $why"
+    fi
+    refuse 5 "git push to $BRANCH_REF failed (no refusal line recognised, see the push output)"
 fi
 rm -f "$push_err"
 
