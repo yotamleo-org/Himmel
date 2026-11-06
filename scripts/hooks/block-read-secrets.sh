@@ -178,14 +178,22 @@
 #     clause: a command the tokenizer read is cut at its own segments
 #     (rs_segment_clauses), so `grep -nE '\.env|x' f` is one clause,
 #     `cat 'a|b' .env` reads .env and `echo 'grep '; cat .env; echo 'b'` is
-#     three clauses. A command the tokenizer did not read, or one with a
-#     heredoc, keeps the plain split above, which ignores quotes. A nested
-#     shell body (bash -c, eval) is one quoted word there, and guard_unwrap
-#     reads it again from its own words. A quoted string handed to a command
-#     that runs it as shell (watch, ssh, su -c) is one word, as
-#     `watch 'cat .env'` always was. The tracing
-#     check reads a quoted multi-word argument as data unless a shell word
-#     (set, shopt, eval, bash, SHELLOPTS, ...) shares its text
+#     three clauses. A command the tokenizer did not read, one with a
+#     heredoc or a comment, and one whose `${...}` guard_unwrap had to rewrite
+#     before it could read it, keep the plain split above, which ignores
+#     quotes. A nested shell body (bash -c, eval) is one quoted word there,
+#     and guard_unwrap reads it again from its own words. A quoted string that
+#     another program runs or reads is one word too, and nothing reads it
+#     again. Main refused some of these only because its plain split cut the
+#     string at a `;`, `|` or parenthesis and left a reader beside a secret;
+#     they are allowed now, an accepted and ticketed gap: a read after
+#     the first command of an ssh, su -c or watch body (`watch 'cat .env'`
+#     always was allowed, `watch 'date; cat .env'` was refused), a body piped
+#     or fed by a here-string to a shell (`echo 'id; cat .env' | bash`,
+#     `bash <<< '...'`), `node -e` and `python3 -c` scripts that shell out,
+#     and awk `system()` and `getline` (`getline < file` reads the file). The
+#     tracing check reads a quoted multi-word argument as data unless a
+#     shell word (set, shopt, eval, bash, SHELLOPTS, ...) shares its text
 #     (g4_text_traces): a Jira JQL or a chat reply that names the option or
 #     holds a `{` no longer reads as tracing turned on.
 #   * A QUOTED value to some OTHER tool-specific file-reading long option at
@@ -547,14 +555,22 @@ rs_clause_word() {
 # `echo 'grep '; cat .env; echo 'b'` is three. A redirect keeps its operator spaced
 # out and its target after the words, as the plain split gives them. Returns 1, and
 # the caller keeps the plain split on ; | & ( ) ` and newline, when the words are
-# not the whole command: the tokenizer did not read it, or it holds a heredoc, whose
-# body is text the words leave out. A nested shell body (bash -c, eval) is one word
-# here, and guard_unwrap reads it again from its own words.
+# not the whole command: the tokenizer did not read it; it holds a heredoc, whose
+# body is text the words leave out; it holds a comment, which the tokenizer ends the
+# words at but bash does not after a closing substitution (`echo $(true)#; cat .env`
+# runs the cat); or it read a rewrite of the command (guard_unwrap replaces a `${...}`
+# it does not model), whose words leave out what that expansion held
+# (`echo ${V:-$(cat ~/.ssh/id_ecdsa)}`). The plain split over-denies a real comment
+# and a quoted separator in such a command, as it did before this function. A nested
+# shell body (bash -c, eval) is one word here, and guard_unwrap reads it again from
+# its own words.
 rs_segment_clauses() {
     local s k op line out='' nl=$'\n'
     local -a idx
     [ "${GU_TOKENIZED:-0}" = 1 ] || return 1
     [ "${ST_HEREDOC:-0}" = 0 ] || return 1
+    [ "${ST_COMMENT:-0}" = 0 ] || return 1
+    [ "${GU_FLATTENED:-0}" = 0 ] || return 1
     s=0
     while [ "$s" -lt "$ST_NSEG" ]; do
         line=''

@@ -1785,6 +1785,18 @@ assert_rc "8319 ctl sed -n 'a|b' .env"                                          
 # a command the tokenizer did not read, or one that holds a heredoc, keeps the plain split
 assert_rc "8319 ctl unterminated quote keeps the plain split"                         2 "$(run_case "$(j_bash 'echo "grep ; cat .env')")"
 assert_rc "8319 ctl heredoc body line cat .env keeps the plain split"                 2 "$(run_case "$(j_bash $'bash <<EOF\necho \'x\'\ncat .env\nEOF')")"
+# the words stand in for the plain split only when they are what the shell runs. A # right after a closing
+# substitution is part of the word, not a comment, so the cat after it runs; and a command whose ${...} was
+# rewritten before the tokenizer could read it shows words that no longer hold the body of that expansion.
+# Both keep the plain split.
+# shellcheck disable=SC2016
+assert_rc "8319 ctl # right after a substitution is no comment, the cat runs"        2 "$(run_case "$(j_bash 'echo $(true)#; cat .env')")"
+# shellcheck disable=SC2016
+assert_rc "8319 ctl # right after a backtick substitution, the cat runs"             2 "$(run_case "$(j_bash 'echo `true`#; cat .env')")"
+# shellcheck disable=SC2016
+assert_rc "8319 ctl substitution inside an unmodelled expansion reads an ssh key"    2 "$(run_case "$(j_bash 'echo ${V:-$(cat ~/.ssh/id_ecdsa)}')")"
+# shellcheck disable=SC2016
+assert_rc "8319 ctl same, assigned, reads a file under the secrets directory"        2 "$(run_case "$(j_bash 'X=${X:-$(cat ~/.himmel/secrets/x)}')")"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then
