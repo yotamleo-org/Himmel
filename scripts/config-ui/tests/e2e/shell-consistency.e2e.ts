@@ -124,7 +124,7 @@ test("the config chief and the AG-UI page opened together share one report probe
   const token = new URLSearchParams(hash.slice(1)).get("t")!;
   const ver = `himmel ${HIMMEL_ID.version} · ${HIMMEL_ID.describe}`;
   let peak = 0;
-  const sampler = setInterval(() => { peak = Math.max(peak, probes()); }, 100);
+  const sampler = setInterval(() => { peak = Math.max(peak, probes()); }, 100); // t13b-ok: a test sampler, cleared in the finally below
   try {
     const other = await context.newPage();
     await Promise.all([page.goto(`${origin}/#t=${token}&page=shift`), other.goto(agui)]);
