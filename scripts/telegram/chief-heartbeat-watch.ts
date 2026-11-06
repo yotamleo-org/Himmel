@@ -59,7 +59,7 @@ export type AlertedState = Map<string, boolean>;
 
 const WAIT_SUFFIX = ".md.wait";
 
-// Scans <root>/consoles/*.md.wait, the heartbeat files chief-wait.sh
+// Scans <root>/consoles/*.md.wait — the heartbeat files chief-wait.sh
 // writes next to each chief's own file inbox (consoleInboxPath in
 // chief-route.ts). Never touches the inbox .md files themselves.
 export async function checkStaleHeartbeats(
@@ -84,7 +84,7 @@ export async function checkStaleHeartbeats(
     const ageMs = nowMs - hb.hb * 1000;
     if (ageMs <= staleMs) { alerted.set(name, false); continue; } // fresh, re-arms
     if (alerted.get(name)) continue; // already alerted this stale episode
-    if (!(await sessionAlive(name))) continue; // the console process itself is gone, nothing to alert
+    if (!(await sessionAlive(name))) continue; // the console process itself is gone — nothing to alert
     await alert(name, Math.round(ageMs / 1000));
     alerted.set(name, true);
   }

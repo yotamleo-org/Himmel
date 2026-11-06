@@ -6,7 +6,7 @@
 // A PASSIVE observability layer: one append-only JSONL ledger keyed by
 // lane, ONE read-only reader. Writers piggyback existing touchpoints; this
 // module NEVER routes/arms/spawns/blocks (AC10). The ledger rests on atomic
-// single-line O_APPEND (AC0, Windows Git Bash atomicity gate PASSED 5/5).
+// single-line O_APPEND (AC0 — Windows Git Bash atomicity gate PASSED 5/5).
 //
 // Byte-identical twin of scripts/lib/quota-gauge-ledger.sh (the bash append
 // helper used by the in-hook Claude writer, Task 3): both emit the canonical

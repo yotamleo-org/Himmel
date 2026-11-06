@@ -202,7 +202,7 @@ export async function classifyForSpawn(text: string, deps: TriageDeps = {}): Pro
   const provider = process.env.TELEGRAM_TRIAGE_PROVIDER?.trim() || "deepseek";
   // Absolute path: the poller's cwd is not guaranteed to be the repo root.
   // BASH_BIN, not a bare "bash": under the poller's PATH a bare
-  // "bash" hit the WSL System32 stub, which exits 127 on any C: path, so the
+  // "bash" hit the WSL System32 stub, which exits 127 on any C: path — so the
   // classifier fail-opened to spawn-high on 100% of messages, invisibly.
   const args = [BASH_BIN, join(REPO_ROOT, "scripts", "hermes", "invoke.sh"), "--model", model, "--provider", provider];
   // deps.timeoutMs (tests) wins; otherwise the env-tunable deadline.
