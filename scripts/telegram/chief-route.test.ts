@@ -1381,6 +1381,36 @@ test("send-file refuses an .html while the .md beside it failed its latest spec 
   expect(bare.lines.concat(withOwn.lines)).toEqual([]);
 });
 
+test("send-file refuses an .html with clean critic files of its own beside an .md that has none, and still sends report.html beside a critic-less report.md", async () => {
+  const r = root(); const dir = join(r, "specs", "designs"); mkdirSync(dir, { recursive: true });
+  const page = join(dir, "x.html"); const html = "<h1>X</h1>\n";
+  writeFileSync(join(dir, "x.md"), "# X\n"); writeFileSync(page, html);
+  const own = [{ text: html, file: "x.html" }];
+  criticSeals(page, "spec", 1, "SPEC CLEAN", own); criticSeals(page, "plan", 1, "PLAN CLEAN", own);
+  const res = await sendFile(r, "1", page);
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("x.md");
+  expect(res.err).toContain("critic");
+  expect(res.lines).toEqual([]);
+  const rep = join(r, "reports"); mkdirSync(rep);
+  writeFileSync(join(rep, "report.md"), "# R\n"); writeFileSync(join(rep, "report.html"), "<h1>R</h1>\n");
+  const ok = await sendFile(r, "1", join(rep, "report.html"));
+  expect(ok.code).toBe(0);
+  expect(ok.lines.at(-1)!.caption).toBeUndefined();
+});
+
+test("send-file compares plan critic rounds across folders: a newer FINDINGS in plans/ beats an older clean one beside the spec, and a tie goes to the one beside the spec", async () => {
+  const r = root(); const l = planLayout(r);
+  critic(l.spec, "plan", 1, "PLAN CLEAN", { text: "# X plan\n", file: "../plans/X.md" });   // r1 beside the spec; plans/ also holds r1 (clean)
+  critic(l.plan, "plan", 1, "PLAN FINDINGS 1", { text: "# X plan\n", file: "X.md" });       // tie at r1: the one beside the spec wins
+  const tie = await sendFile(r, "1", l.spec);
+  expect(tie.err).toBe(""); expect(tie.code).toBe(0);
+  critic(l.plan, "plan", 2, "PLAN FINDINGS 2", { text: "# X plan\n", file: "X.md" });       // newer round in plans/
+  const newer = await sendFile(r, "1", l.spec);
+  expect(newer.code).not.toBe(0);
+  expect(newer.err).toContain(join("plans", "X.md.critic-plan-r2.md"));
+});
+
 test("send-file refuses an .html when only the .md was edited after the critic read both", async () => {
   const r = root(); const b = htmlBundle(r);
   criticSeals(b.spec, "spec", 1, "SPEC CLEAN", b.sealed);

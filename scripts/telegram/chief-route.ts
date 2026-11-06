@@ -452,9 +452,15 @@ const isFile = (p: string) => stat(p).then(s => s.isFile(), () => false);
 
 // null = nothing is filed for the page. An unreadable critic file or folder throws.
 async function governingSpec(page: string): Promise<{ spec: string; role: Role } | null> {
-  // A rendering is governed by the .md beside it, before any critic file of its own.
+  // A rendering is governed by the .md beside it, before any critic file of its own: a critic file beside the
+  // .html cannot stand in for an .md that has none (a plain report.html beside a critic-less report.md stays no signature page).
   const md = siblingMd(page);
-  if (md) { const c = await latestCritics(md); if (c.spec || c.plan) return { spec: md, role: "render" }; }
+  if (md && await isFile(md)) {
+    const c = await latestCritics(md);
+    if (c.spec || c.plan) return { spec: md, role: "render" };
+    const own = await latestCritics(page);
+    if (own.spec || own.plan) return { spec: md, role: "render" };
+  }
   // A plan in a plans folder is governed by the same-named spec in a sibling design folder, when that spec has critic files.
   if (["plan", "plans"].includes(basename(dirname(page)))) {
     for (const d of ["design", "designs", "spec"]) {
