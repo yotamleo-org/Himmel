@@ -112,7 +112,7 @@ worker_description_field() {
         /^description:/ { sub(/^description:/, ""); print; exit }
     ' < "$doc" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
     case "$val" in
-        \"*\") val="${val#\"}"; val="${val%\"}" ;;
+        \"*\") val="${val#\"}"; val="${val%\"}"; val="$(printf '%s' "$val" | sed -E 's/\\(["\\])/\1/g')" ;;
         \'*\') val="${val#\'}"; val="${val%\'}" ;;
     esac
     val="$(printf '%s' "$val" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
