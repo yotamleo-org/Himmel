@@ -1733,9 +1733,9 @@ assert_rc "8319 ctl pipe in pattern, then cat .env clause"       2 "$(run_case "
 assert_rc "8319 ctl pipe in pattern, then piped cat .env"        2 "$(run_case "$(j_bash "grep -n 'a|b' f | cat .env")")"
 assert_rc "8319 ctl command inside the pattern text"             2 "$(run_case "$(j_bash "grep -n 'x;cat .env' f")")"
 # shellcheck disable=SC2016
-assert_rc "8319 ctl substitution in a double-quoted pattern"     2"$(run_case "$(j_bash 'grep -n "$(cat .env)" f')")"
+assert_rc "8319 ctl substitution in a double-quoted pattern"     2 "$(run_case "$(j_bash 'grep -n "$(cat .env)" f')")"
 # shellcheck disable=SC2016
-assert_rc "8319 ctl separator then substitution in the pattern"  2"$(run_case "$(j_bash 'grep -n "x;$(cat .env)" f')")"
+assert_rc "8319 ctl separator then substitution in the pattern"  2 "$(run_case "$(j_bash 'grep -n "x;$(cat .env)" f')")"
 assert_rc "8319 ctl mis-nested quotes expose a cat .env clause"  2 "$(run_case "$(j_bash "bash -c 'grep -n 'x;cat .env' ''")")"
 
 echo ""
