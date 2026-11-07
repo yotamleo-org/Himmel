@@ -326,7 +326,7 @@ fi
 [ "$DRY" -eq 0 ] || { echo "semantic-update: --dry-run, stopping before the bank and the copy"; exit 0; }
 if [ "$BACKEND" = "claude-api" ]; then
   { [ "${HIMMEL_API_LANE:-}" = "on" ] && [ -n "${HIMMEL_API_ACCOUNT:-}" ]; } \
-    || { echo "semantic-update: refusing claude-api: the API lane is off (HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|C|auto are required) -- nothing copied, no claude-cli fallback; with no API account or subscription chosen graphify runs AST only, no semantic call" >&2; exit 2; }
+    || { echo "semantic-update: refusing claude-api: the API lane is off (HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|C|auto are required) -- nothing copied, no claude-cli fallback; this backend makes no semantic call, so graphify runs AST only unless the claude-cli backend (the subscription) is chosen" >&2; exit 2; }
   [ -z "${ANTHROPIC_API_KEY:-}" ] \
     || { echo "semantic-update: refusing claude-api: a caller ANTHROPIC_API_KEY is set; the lane reads its own per-account key file -- nothing copied" >&2; exit 2; }
   [ "$BATCH_MODE" -eq 1 ] || [ -f "$REPO_ROOT/scripts/api-lane/claude-api.sh" ] \
@@ -360,14 +360,24 @@ batch_field() { python3 -c 'import json,sys; v = json.load(open(sys.argv[1])).ge
 batch_line() { echo "semantic-update: BATCH id=$(batch_field batch_id) state=$1 requests=$(batch_field request_count) cost_usd=${2:--}"; }
 # The accounts an auto pass may use, comma-separated: the role map's graphify list, else every configured account
 # (A,B,C when the roster cannot be read). A mapped role never moves to an account outside its list.
+configured_accounts() {
+  node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" accounts 2>/dev/null | tr '{' '\n' | sed -n 's/^"account":"\([ABC]\)","configured":true.*/\1/p' | paste -sd, - || true
+}
 auto_accounts() {
   local r
   r="$(node "$REPO_ROOT/scripts/lib/api-roles.mjs" accounts graphify)" || r=""
   case "$r" in *[!ABC,]*) r="" ;; esac
-  if [ -z "$r" ]; then
-    r="$(node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" accounts 2>/dev/null | tr '{' '\n' | sed -n 's/^"account":"\([ABC]\)","configured":true.*/\1/p' | paste -sd, -)" || r=""
-  fi
+  [ -n "$r" ] || r="$(configured_accounts)"
   printf '%s' "${r:-A,B,C}"
+}
+# How many accounts the sync shim's breaker counts on auto: the auto accounts that have a roster row (a letter the role
+# map names without one can never be picked, so it adds no call); every letter when no roster can be read; at least 1.
+shim_account_count() {
+  local a n=0 conf; conf="$(configured_accounts)"
+  for a in $(printf '%s' "$(auto_accounts)" | tr ',' ' '); do
+    if [ -z "$conf" ]; then n=$((n + 1)); else case ",$conf," in *",$a,"*) n=$((n + 1)) ;; esac; fi
+  done
+  echo $(( n > 0 ? n : 1 ))
 }
 # Submit the recorded prompts as one batch. THE WALK RULE: on auto, a credit-exhausted answer (the
 # client's exit 5) marks the account (the lane's own marker) and the pick runs again over the accounts not yet tried,
@@ -471,7 +481,7 @@ if [ "$N_BATCH" -gt 0 ]; then
       ln -s "$HERE/semantic-batch-shim.mjs" "$WORK/bin/claude"
     else
     # the shim's breaker stops after one rejection per account in play on auto
-    if [ "$HIMMEL_API_ACCOUNT" = auto ]; then GRAPHIFY_SHIM_ACCOUNTS="$(printf '%s\n' "$(auto_accounts)" | tr ',' '\n' | wc -l | tr -d ' ')"; export GRAPHIFY_SHIM_ACCOUNTS; fi
+    if [ "$HIMMEL_API_ACCOUNT" = auto ]; then GRAPHIFY_SHIM_ACCOUNTS="$(shim_account_count)"; export GRAPHIFY_SHIM_ACCOUNTS; fi
     cat > "$WORK/bin/claude" <<'SHIM'
 #!/usr/bin/env bash
 # graphify claude-cli -> API lane shim (written by semantic-update.sh)

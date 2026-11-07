@@ -183,10 +183,11 @@ secret, only role names and account letters:
   Auto skips a marked account for `EXHAUSTED_TTL` (3600 seconds), or sooner when the operator snapshot holds a reading
   newer than the marker (refresh the snapshot after funding the account and the next pick uses it). An account marked
   while no other has room still serves, the one marked longest ago first, so a pick is never refused for the marker
-  alone. Covered by `api-credit-state.test.mjs` (the test named "an account marked exhausted is skipped, returns after an
-  hour or a newer reading, and still serves when it is the only one").
-- **Nothing chosen is AST only.** With the lane off (`HIMMEL_API_LANE` unset) the semantic pass refuses before any call
-  and says graphify runs AST only; no API or subscription semantic call is made.
+  alone. Covered by the rows T93 and T93b of `scripts/graphify/test-semantic-update.sh`, which run the real pick over a
+  marker older than an hour and a reading older than the marker, and by `api-credit-state.test.mjs`.
+- **Nothing chosen on the API backend is AST only.** With `GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api` and the lane off
+  (`HIMMEL_API_LANE` unset) the semantic pass refuses before any call and says graphify runs AST only; no API semantic
+  call is made. The `claude-cli` backend does not read the lane: it draws the subscription.
 - **The judge opt-in.** With `judge` mapped, the release judge tries the mapped account through the launcher first
   (fallback off, no tools, an empty working directory, a two-dollar cap) and answers from the subscription on any
   failure. With `judge` unmapped it never touches the launcher. Only the himmel project's mirror reaches this route.
