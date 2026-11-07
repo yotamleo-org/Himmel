@@ -656,8 +656,8 @@ A standard profile may add two Sonnet-only fields, `sonnetAutocompact` (200000 t
 resolves them **once**, and only for the **native lane on a Sonnet 5.5 model** (the `claude-sonnet-5-5` family):
 `worker-impl` gets 450000 with the hand-off guard, `worker-eval` 450000 with the
 compaction guard (stricter than the measured arm c), `worker-docs` stays 200000. Every
-other lane, an older Sonnet, the bare `sonnet` alias, Opus and Fable keep 200000 with
-no guard. The wrapper hands the value to `headed-arm.sh` in `HEADED_ARM_SONNET_AUTOCOMPACT`
+other lane, an older Sonnet, the bare `sonnet` alias, and Fable keep 200000 with
+no guard, and Opus takes its own fields below. The wrapper hands the value to `headed-arm.sh` in `HEADED_ARM_SONNET_AUTOCOMPACT`
 (same PID pairing as the A/B marker); the renderer never re-derives it from a model string
 the wrapper may have rewritten. `WORKER_SESSION_CONTEXT=1m` drops the profile's ceiling
 and its guard together; an explicit `--context-guard` (including `none`) wins over the
@@ -666,6 +666,30 @@ profile's. The A/B arm needs the plain 200000 ceiling, so it runs on `worker-doc
 worker whose Writes are all under `docs/` or `*.md` to `worker-docs`. The `arm-resume.sh`
 successor path does not apply these fields: `arm-resume.sh --tier worker` pins
 `--autocompact 200000` with no guard, so a Sonnet successor runs at 200000.
+
+Three Opus-only fields take the same path for the **native lane on an Opus 5 model**
+(the `claude-opus-5` prefix; operator decision 751): `opusAutocompact`
+(200000 to 800000), `opusContextGuard` and `opusContextShare`. Every `worker-*` profile
+sets 800000 and share 87, a deny at exactly 700000 tokens (`worker-context-guard.md`);
+each hands off except `worker-eval`, which compacts. The wrapper hands the value over in
+`HEADED_ARM_OPUS_AUTOCOMPACT`. Another lane, an older Opus, the bare `opus` alias, Fable,
+and the `lane-*`, `design-*`, chief and judge profiles keep today's values.
+`WORKER_SESSION_CONTEXT=1m` drops the ceiling and guard together, so launch Opus workers
+without it. A requested A/B arm skips the Opus fields and runs at its own ceiling. An
+`arm-resume.sh --tier worker` Opus successor still runs at 200000.
+
+| Measured from JSONL, 2026-11-07 (price: estimate, cache read at 0.1 of input) | Opus at 200000 | Sonnet at 450000 |
+|---|---|---|
+| Worker transcripts with a compaction | 191 | 35 |
+| Tokens at first compaction, min / median / max | 162871 / 168413 / 209372 | 302375 / 353109 / 425910 |
+| Calls before it, median | 42 | 164 |
+| Estimated USD to first compaction, median | 3.15 | 8.74 |
+| Estimated USD per leg, median | 10.92 | 9.06 |
+
+The Sonnet column includes compactions that are not at the ceiling. The price of the
+higher ceiling: one Opus call re-reads its context from cache, about 0.07 USD at 168000
+and about 0.28 USD at 700000 on the same estimate. The ceiling is not chosen from this
+table; it is the operator's ruling, and the table states what it costs.
 
 `WORKER_SESSION_CONTEXT=1m` plus the sanctioned brief line
 `> **Context:** 1m — operator-ruling: <reason>` remains a per-worker override to
@@ -790,7 +814,7 @@ measured** — do not assume a `standard` worker makes its children compact earl
 | lane | default mode | override |
 |---|---|---|
 | chief arm (`*-chief.md`) | `standard` | `CHIEF_CONTEXT=1m` |
-| headed worker / worker arm | profile default (`design`: `1m` / 1000000; Sonnet 5.5 `worker-impl` and `worker-eval` on the native lane: `standard` / 450000; others: `standard` / 200000) | `WORKER_SESSION_CONTEXT=1m` plus reasoned brief Context line; either alone does not enable 1m |
+| headed worker / worker arm | profile default (`design`: `1m` / 1000000; Sonnet 5.5 `worker-impl` and `worker-eval` on the native lane: `standard` / 450000; Opus 5 `worker-*` on the native lane: `standard` / 800000; others: `standard` / 200000) | `WORKER_SESSION_CONTEXT=1m` plus reasoned brief Context line; either alone does not enable 1m |
 | subagent of either | inherits the parent | none — set it on the parent's arm |
 
 Given that, the chief-side mitigation is a lean parent (the

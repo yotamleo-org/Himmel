@@ -987,11 +987,16 @@ SONNET_EOF
 # sonnet_launch <tag> <profile> <model> [extra worker args] sets sa_rc / sa_rec / sa_env
 sa_opus_doc="$tmp/sa-opus-doc.md"
 fx_brief '# fixture brief' '> **Tier:** opus — design: multi-step design' > "$sa_opus_doc"
+sa_fable_doc="$tmp/sa-fable-doc.md"
+fx_brief '# fixture brief' '> **Tier:** fable — design: multi-step design' > "$sa_fable_doc"
 sonnet_launch() {
   local d="$tmp/c-sa-$1" sa_doc="$some_doc"; mk_launch_stubs "$d" "HIMMEL-7667-$1"; mkdir -p "$tmp/repo-sa-$1"
-  case "$3" in claude-opus*) sa_doc="$sa_opus_doc" ;; esac   # an Opus launch needs a Tier line
+  case "$3" in   # an Opus or Fable launch needs a Tier line
+    claude-opus*) sa_doc="$sa_opus_doc" ;;
+    claude-fable*) sa_doc="$sa_fable_doc" ;;
+  esac
   sa_rc=0
-  PLUGIN_PROFILES_REGISTRY="$sonnet_reg" WORKER_SESSION_CONTEXT='' RUN_WORKER_ARGS="--profile $2 ${4-}" some_doc="$sa_doc" \
+  PLUGIN_PROFILES_REGISTRY="${sa_reg:-$sonnet_reg}" WORKER_SESSION_CONTEXT='' RUN_WORKER_ARGS="--profile $2 ${4-}" some_doc="$sa_doc" \
     run_worker "$d" "$tmp/repo-sa-$1" "HIMMEL-7667-$1" "$3" >/dev/null 2>&1 || sa_rc=$?
   wait_record "$d" || true
   sa_rec="$(cat "$d/record" 2>/dev/null || true)"
@@ -1055,6 +1060,124 @@ contains "A/B arm on a Sonnet worker-impl launch: names the profile's Sonnet cei
 not_contains "A/B arm on a Sonnet worker-impl launch: does not blame 1m" "$out" "never combines with a 1m opt-in"
 rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$sonnet_reg" WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' WORKER_SESSION_AUTOCOMPACT_AB=200000 bash "$SCRIPT" --dry-run --profile worker-docs HIMMEL-9999-leg "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
 check "A/B arm control on a Sonnet worker-docs launch: exit 0" "$rc" "0"
+
+# Operator decision 751: a profile may give a native-lane claude-opus-5
+# launch a higher ceiling and a guard. worker-docs here has no Opus fields, so it is the
+# control for a profile without them. Full launches through the real renderer.
+opus_reg="$tmp/opus-registry.json"
+cat > "$opus_reg" <<'OPUS_EOF'
+{"floor":["qmd@himmel"],"catalog":["qmd@himmel"],"profiles":{"operator":null,
+"worker-impl":{"enable":[],"contextBudget":50000,"contextMode":"standard","autocompact":200000,"sonnetAutocompact":450000,"sonnetContextGuard":"handoff","sonnetContextShare":73,"opusAutocompact":800000,"opusContextGuard":"handoff","opusContextShare":87},
+"worker-eval":{"enable":[],"contextBudget":50000,"contextMode":"standard","autocompact":200000,"sonnetAutocompact":450000,"sonnetContextGuard":"compact","sonnetContextShare":73,"opusAutocompact":800000,"opusContextGuard":"compact","opusContextShare":87},
+"worker-docs":{"enable":[],"contextBudget":50000,"contextMode":"standard","autocompact":200000}}}
+OPUS_EOF
+sa_reg="$opus_reg"
+sonnet_launch opus-impl worker-impl claude-opus-5-5
+check "opus ceiling: impl on Opus launches" "$sa_rc" "0"
+contains "opus ceiling: impl on Opus renders --autocompact 800000" "$sa_rec" "--autocompact 800000"
+contains "opus ceiling: impl on Opus exports the 800000 ceiling" "$sa_env" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=800000"
+contains "opus ceiling: impl on Opus turns the hand-off guard on" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff"
+check "opus ceiling: a real launch delivers exactly the profile share" "$(printf '%s\n' "$sa_env" | grep '^HIMMEL_WORKER_SESSION_CONTEXT_SHARE=')" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=87"
+contains "opus ceiling: the share rides the launcher env token list into the konsole argv" "$sa_rec" " HIMMEL_WORKER_SESSION_CONTEXT_SHARE=87 "
+not_contains "opus ceiling: no 1m suffix" "$sa_rec" "[1m]"
+og_env="$sa_env"
+sonnet_launch opus-eval worker-eval claude-opus-5-5
+contains "opus ceiling: eval on Opus renders --autocompact 800000" "$sa_rec" "--autocompact 800000"
+contains "opus ceiling: eval on Opus compacts" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact"
+sonnet_launch opus-docs worker-docs claude-opus-5-5
+contains "opus ceiling: a profile without Opus fields stays at --autocompact 200000" "$sa_rec" "--autocompact 200000"
+not_contains "opus ceiling: a profile without Opus fields sets no guard" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE="
+sonnet_launch opus-flag worker-impl claude-opus-5-5 "--context-guard compact"
+contains "opus ceiling: an explicit --context-guard wins over the profile's" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact"
+sonnet_launch opus-none worker-impl claude-opus-5-5 "--context-guard none"
+not_contains "opus ceiling: --context-guard none turns the profile's guard off" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE="
+contains "opus ceiling: --context-guard none keeps the ceiling" "$sa_rec" "--autocompact 800000"
+sonnet_launch opus-sonnet worker-impl claude-sonnet-5-5
+contains "opus ceiling: Sonnet on the same profile keeps 450000" "$sa_rec" "--autocompact 450000"
+check "opus ceiling: Sonnet on the same profile keeps share 73" "$(printf '%s\n' "$sa_env" | grep '^HIMMEL_WORKER_SESSION_CONTEXT_SHARE=')" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=73"
+for ol in "or-opus:claude-opus-5-5:--lane openrouter" \
+          "ds-opus:claude-opus-5-5:--lane deepseek" \
+          "o4-opus:claude-opus-4-8:" \
+          "bare-opus:opus:" \
+          "fable-opus:claude-fable-5-1:"; do
+  IFS=: read -r ol_tag ol_model ol_args <<< "$ol"
+  sonnet_launch "$ol_tag" worker-impl "$ol_model" "$ol_args"
+  check "opus ceiling: $ol_tag launches (exit 0)" "$sa_rc" "0"
+  contains "opus ceiling: $ol_tag keeps --autocompact 200000" "$sa_rec" "--autocompact 200000"
+  not_contains "opus ceiling: $ol_tag has no 800000" "$sa_rec" "800000"
+  not_contains "opus ceiling: $ol_tag sets no context guard" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE="
+  not_contains "opus ceiling: $ol_tag sets no share" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE="
+done
+sa_reg=""
+# One dry-run row per lane and model, the ticket's proof: Opus moves, nothing else does.
+for od in "claude-opus-5-5:native:800000:$sa_opus_doc" \
+          "claude-sonnet-5-5:native:450000:$some_doc" \
+          "claude-fable-5-1:native:200000:$sa_fable_doc" \
+          "claude-opus-5-5:openrouter:200000:$sa_opus_doc"; do
+  IFS=: read -r od_model od_lane od_want od_doc <<< "$od"
+  rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$opus_reg" WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --profile worker-impl --lane "$od_lane" opus-dry-leg "$od_doc" /tmp/nosig 99999999999 /tmp/worker.log "$od_model" 2>&1)" || rc=$?
+  check "opus ceiling dry-run: $od_model $od_lane: exit 0" "$rc" "0"
+  contains "opus ceiling dry-run: $od_model $od_lane: ceiling $od_want" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=$od_want"
+done
+# An operator's sanctioned 1m keeps its meaning: auto, with the profile's guard and share gone.
+sa_doc_1m_opus="$tmp/sa-1m-opus-doc.md"
+fx_brief '# fixture brief' '> **Tier:** opus — design: multi-step design' '> **Context:** 1m — operator-ruling: fixture' > "$sa_doc_1m_opus"
+rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$opus_reg" WORKER_SESSION_CONTEXT=1m WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --profile worker-impl opus-dry-leg "$sa_doc_1m_opus" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5-5 2>&1)" || rc=$?
+check "opus ceiling: 1m override: exit 0" "$rc" "0"
+contains "opus ceiling: 1m override resolves auto" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=auto"
+contains "opus ceiling: 1m override drops the profile's guard" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=<unset>"
+contains "opus ceiling: 1m override drops the profile's share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
+# An explicit A/B arm is a measurement of its own ceiling, so it wins over the Opus one.
+rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$opus_reg" WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' WORKER_SESSION_AUTOCOMPACT_AB=200000 bash "$SCRIPT" --dry-run --profile worker-impl opus-dry-leg "$sa_opus_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5-5 2>&1)" || rc=$?
+check "opus ceiling: A/B control arm on Opus: exit 0" "$rc" "0"
+contains "opus ceiling: A/B control arm keeps 200000" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=200000"
+contains "opus ceiling: A/B control arm sets no guard" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=<unset>"
+contains "opus ceiling: A/B control arm sets no share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
+
+# The guard denies before compaction: the env the launch above delivered, fed to the real
+# hook. Auto compaction fires about 33000 under the ceiling (168413 median at 200000,
+# 967405 on auto; JSONL, 2026-11-07), so about 767000 at 800000. The HUD fixture is a real
+# claude-hud snapshot from the station (2026-11-07), with only the numbers and time set.
+og_val() { printf '%s\n' "$og_env" | sed -n "s/^HIMMEL_WORKER_SESSION_$1=//p" | head -1; }
+og_cfg="$tmp/og-cfg"; og_dir="$tmp/og-handovers/u/himmel"
+mkdir -p "$og_cfg/projects/p" "$og_cfg/plugins/claude-hud/context-cache" "$og_dir"
+og_doc="$og_dir/HIMMEL-9482-N1-thing-2026-11-07.md"
+og_tr="$og_cfg/projects/p/sess.jsonl"
+printf -- '---\n---\n# brief\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE — fixture\n' > "$og_doc"
+jq -cn --arg t "load $og_doc and continue" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" '{type:"user",timestamp:$ts,message:{role:"user",content:$t}}' > "$og_tr"
+printf '%s\n' '{"type":"assistant","message":{"usage":{"input_tokens":1}}}' >> "$og_tr"
+if command -v sha256sum >/dev/null 2>&1; then og_sha="$(printf '%s' "$og_tr" | sha256sum | cut -d' ' -f1)"; else og_sha="$(printf '%s' "$og_tr" | shasum -a 256 | cut -d' ' -f1)"; fi
+og_fill() {
+  printf '{"used_percentage":%s,"remaining_percentage":%s,"current_usage":{"input_tokens":2,"output_tokens":3,"cache_creation_input_tokens":4248,"cache_read_input_tokens":%s},"context_window_size":1000000,"saved_at":%s000,"session_name":"HIMMEL-nextleg-2026-11-07TT-roadmap-chief"}' \
+    "$1" "$((100 - $1))" "$(($1 * 10000 - 4250))" "$(date +%s)" > "$og_cfg/plugins/claude-hud/context-cache/$og_sha.json"
+}
+og_hook="$(dirname "$SCRIPT")/../../hooks/guard-worker-context-handoff.sh"
+og_tool="$(jq -cn --arg t "$og_tr" --arg w "$tmp" '{tool_name:"Bash",tool_input:{command:"make all"},transcript_path:$t,cwd:$w}')"
+og_compact="$(jq -cn --arg t "$og_tr" --arg w "$tmp" '{hook_event_name:"PreCompact",trigger:"auto",transcript_path:$t,cwd:$w,session_id:"s"}')"
+# og_run <json> <mode> <ceiling> <share> sets og_rc / og_err
+og_run() {
+  og_rc=0
+  og_err="$(printf '%s' "$1" | env -u CLAUDE_CODE_AUTO_COMPACT_WINDOW -u WORKER_SESSION_CONTEXT_HANDOFF_OK -u CONTEXT_FILL_TRANSCRIPT -u HIMMEL_WORKER \
+    -u HIMMEL_WORKER_SESSION_CONTEXT_MODE -u HIMMEL_WORKER_SESSION_AUTOCOMPACT -u HIMMEL_WORKER_SESSION_CONTEXT_SHARE \
+    HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=T-chief CLAUDE_CONFIG_DIR="$og_cfg" HANDOVER_DIR="$tmp/og-handovers" \
+    ${2:+"HIMMEL_WORKER_SESSION_CONTEXT_MODE=$2"} "HIMMEL_WORKER_SESSION_AUTOCOMPACT=$3" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=$4" \
+    bash "$og_hook" 2>&1 >/dev/null)" || og_rc=$?
+}
+og_mode="$(og_val CONTEXT_MODE)"; og_ceiling="$(og_val AUTOCOMPACT)"; og_share="$(og_val CONTEXT_SHARE)"
+og_fill 69; og_run "$og_tool" "$og_mode" "$og_ceiling" "$og_share"
+check "opus guard: at 690000 an ordinary call passes" "$og_rc" "0"
+og_fill 70; og_run "$og_tool" "$og_mode" "$og_ceiling" "$og_share"
+check "opus guard: at 700000 an ordinary call is denied" "$og_rc" "2"
+contains "opus guard: the deny names the 70 % threshold" "$og_err" "threshold 70 %"
+contains "opus guard: the deny names its basis" "$og_err" "87 % of the 800000-token autocompact ceiling on a 1000000-token window"
+contains "opus guard: the deny names the hand-off" "$og_err" "mode handoff"
+og_fill 77; og_run "$og_compact" "$og_mode" "$og_ceiling" "$og_share"
+check "opus guard: an auto compaction at about 767000 is refused until the hand-off" "$og_rc" "2"
+# RED controls: the deny is the guard's and the share is what places it.
+og_fill 70; og_run "$og_tool" "" "$og_ceiling" "$og_share"
+check "opus guard control: with no mode the same call at 700000 passes" "$og_rc" "0"
+og_fill 70; og_run "$og_tool" "$og_mode" "$og_ceiling" 88
+check "opus guard control: share 88 would land at 710000, so 700000 passes" "$og_rc" "0"
 
 # a caller passing an ALREADY-SUFFIXED model
 # (claude-sonnet-5[1m]) under the DEFAULT (standard) context must still end

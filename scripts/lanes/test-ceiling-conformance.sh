@@ -247,6 +247,20 @@ contains 'an Opus worker at 450000 is DRIFT' "$out_o3" 'HIMMEL-302-N2-2026-10-30
 contains 'a claude-sonnet-4 worker at 450000 is DRIFT' "$out_o3" 'HIMMEL-303-N3-2026-10-30-worker'
 contains 'a Sonnet 5 worker at 300000 is DRIFT' "$out_o3" 'ceiling=DRIFT:HIMMEL-302-N2-2026-10-30-worker,HIMMEL-303-N3-2026-10-30-worker,HIMMEL-304-N4-2026-10-30-worker'
 
+# (o2b) operator decision 751: a claude-opus-5 worker at 800000 is ok; the same number on
+# another model, or an off-ruling number on Opus, is drift.
+mkcmdline 124 claude --model claude-opus-5-5 --autocompact 800000 -n HIMMEL-305-N5-2026-11-07-worker work
+mkcmdline 125 claude --model claude-sonnet-5-5 --autocompact 800000 -n HIMMEL-306-N6-2026-11-07-worker work
+mkcmdline 126 claude --model claude-fable-5-1 --autocompact 800000 -n HIMMEL-307-N7-2026-11-07-worker work
+mkcmdline 127 claude --model claude-opus-4-8 --autocompact 800000 -n HIMMEL-308-N8-2026-11-07-worker work
+mkcmdline 128 claude --model claude-opus-5-5 --autocompact 700000 -n HIMMEL-309-N9-2026-11-07-worker work
+pgrep_x_stub 124
+out_o4="$(run_primary)"
+contains 'a claude-opus-5 worker at 800000 is ok' "$out_o4" 'ceiling=ok'
+pgrep_x_stub 125 126 127 128
+out_o5="$(run_primary)"
+contains 'Sonnet, Fable and an older Opus at 800000, and Opus at 700000, are DRIFT' "$out_o5" 'ceiling=DRIFT:HIMMEL-306-N6-2026-11-07-worker,HIMMEL-307-N7-2026-11-07-worker,HIMMEL-308-N8-2026-11-07-worker,HIMMEL-309-N9-2026-11-07-worker'
+
 # (p) pgrep returns a pid that has already vanished from /proc
 # by the time we read it (a race, or a stale table) -- no /proc/<pid> dir at
 # all. Must print no row for it and must NOT count as scan-degraded -- this

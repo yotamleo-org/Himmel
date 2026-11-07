@@ -325,6 +325,10 @@
       "contextBudget": 55000,
       "contextMode": "standard",
       "autocompact": 200000,
+      "opusAutocompact": 800000,
+      "opusContextGuard": "handoff",
+      "opusContextShare": 87,
+      "_comment_opus": "Operator decision 751 (2026-11-07): an Opus 5 worker on the native lane gets an 800000 ceiling and a guard at 700000 tokens. The guard rounds to a whole percent of the 1M window, so share 87 gives ceil(69.6) = 70 percent = 700000; 88 would give 71 percent = 710000. Active compaction fires about 33000 under the ceiling (168413 median at 200000, 967405 on auto), so about 767000 here, an extrapolation until the VM proof.",
       "sonnetAutocompact": 450000,
       "sonnetContextGuard": "handoff",
       "sonnetContextShare": 73,
@@ -343,6 +347,9 @@
       "contextBudget": 55000,
       "contextMode": "standard",
       "autocompact": 200000,
+      "opusAutocompact": 800000,
+      "opusContextGuard": "compact",
+      "opusContextShare": 87,
       "sonnetAutocompact": 450000,
       "sonnetContextGuard": "compact",
       "sonnetContextShare": 73
@@ -356,7 +363,10 @@
       "mcpServers": ["qmd", "himmel-bus"],
       "contextBudget": 55000,
       "contextMode": "standard",
-      "autocompact": 200000
+      "autocompact": 200000,
+      "opusAutocompact": 800000,
+      "opusContextGuard": "handoff",
+      "opusContextShare": 87
     },
     "worker-bus": {
       "gateAllow": true,
@@ -369,6 +379,9 @@
       "contextBudget": 53000,
       "contextMode": "standard",
       "autocompact": 200000,
+      "opusAutocompact": 800000,
+      "opusContextGuard": "handoff",
+      "opusContextShare": 87,
       "_comment_contextBudget": "2026-10-25: set from measured openings (scripts/eval/profile-openings.py, 14 days to 2026-10-25): n=7, median first-request size 52557, range 49808-63723, rounded up to 53000. Was 35000."
     },
     "worker-vm": {
@@ -382,7 +395,10 @@
       "mcpServers": ["qmd", "himmel-bus"],
       "contextBudget": 35000,
       "contextMode": "standard",
-      "autocompact": 200000
+      "autocompact": 200000,
+      "opusAutocompact": 800000,
+      "opusContextGuard": "handoff",
+      "opusContextShare": 87
     },
     "worker-e2e": {
       "gateAllow": true,
@@ -398,7 +414,10 @@
       ],
       "contextBudget": 40000,
       "contextMode": "standard",
-      "autocompact": 200000
+      "autocompact": 200000,
+      "opusAutocompact": 800000,
+      "opusContextGuard": "handoff",
+      "opusContextShare": 87
     },
     "lane-review": {
       "gateAllow": true,

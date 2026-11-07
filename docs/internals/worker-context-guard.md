@@ -23,7 +23,9 @@ auto-compact anyway, and an always-on guard stopped every opus worker at 13 % fi
 The one exception is a native-lane Sonnet 5.5 launch on a profile that sets
 `sonnetContextGuard`: the default `worker-impl` launch runs the guard in hand-off mode
 and `worker-eval` in compaction mode, both at the 450000 ceiling (see Turning it on).
-Opus, other lanes and `worker-docs` stay off.
+A native-lane Opus 5 launch on a profile that sets `opusContextGuard` is the second: every
+`worker-*` profile hands off, `worker-eval` compacts, at the 800000 ceiling. Fable, other
+lanes and a Sonnet `worker-docs` launch stay off.
 
 ## Turning it on
 
@@ -41,6 +43,9 @@ bash scripts/handover/chief-kit/headed-arm-worker.sh --context-guard handoff …
   on a Sonnet 5.5 model, together with that profile's 450000 ceiling (see
   `docs/internals/lane-calibration.md`, Per-profile ceilings). `WORKER_SESSION_CONTEXT=1m`
   drops it with the ceiling; an explicit `--context-guard` (including `none`) wins.
+- An Opus launch on a profile that sets `opusContextGuard` works the same way on the native
+  lane on an Opus 5 model, together with that profile's 800000 ceiling. `WORKER_SESSION_CONTEXT=1m`
+  drops both, so launch Opus workers without it. A requested A/B arm skips them too.
 - If no flag is given, a `HIMMEL_WORKER_SESSION_CONTEXT_MODE` (old name
   `HIMMEL_WORKER_SESSION_CONTEXT_MODE`, still read; a set new name wins unless it is
   `none`) in the launching shell is used. When both are present, the flag wins.
@@ -71,8 +76,10 @@ model window.
 - **Share.** The share is `HIMMEL_WORKER_SESSION_CONTEXT_SHARE`, read from the worker's env.
   Any value other than 1-100 gives 75. A Sonnet launch on a profile that sets
   `sonnetContextShare` (`worker-impl` and `worker-eval`: 73) gets it exported by the
-  launcher, under the same native-lane Sonnet 5.5 gate as the 450000 ceiling, so
-  `WORKER_SESSION_CONTEXT=1m`, Opus, other lanes and `worker-docs` export none. The
+  launcher, under the same native-lane Sonnet 5.5 gate as the 450000 ceiling, and a
+  native-lane Opus 5 launch on a profile that sets `opusContextShare` (every `worker-*`
+  profile: 87) under the gate of its 800000 ceiling, so `WORKER_SESSION_CONTEXT=1m`,
+  Fable, other lanes and a Sonnet `worker-docs` launch export none. The
   launcher scrubs the name from the launching shell (it is in the chief-context
   strip list), so the launcher no longer takes a launch-env override of the share;
   the profile is the only source. The `--dry-run` report prints the
@@ -108,12 +115,26 @@ compaction; it does not stop hand-offs: a `worker-impl` worker (hand-off mode) t
 outgrows 33 % still relaunches, as HIMMEL-7667 designed, while a `worker-eval` worker
 (compact mode) checkpoints and continues.
 
+**Why 87 on an Opus profile (operator decision 751).** The ruling is a
+checkpoint at 700000 and a ceiling of 800000. The hook rounds up to a whole percent of the
+window, so `ceil(87 × 800000 / 1000000)` = `ceil(69.6)` = 70 %, **exactly 700000 tokens**;
+88, the nearer share on paper (87.5), would give 71 %, 710000. Fill itself reaches the hook
+as a whole percent, so a deny can land up to about 5000 tokens under 700000. Active auto
+compaction fires about 33000 under the ceiling (Opus median 168413 at 200000, 967405 on
+`auto`), so about 767000 here, which leaves about 67000 for the hand-off.
+
+**What the guard does not cover.** A second compaction trigger fires after about 54 minutes
+idle, whatever the ceiling: 10 Opus compactions from 337516 to 555513 tokens over 21 days,
+each after 54 to 55 minutes without a call. Below the threshold the guard passes an auto
+compaction, so an Opus worker idle that long before 700000 can still compact.
+
 ## The autocompact A/B arm
 
 The 200000 ceiling is the default for every worker except a native-lane Sonnet 5.5
-launch on a profile with `sonnetAutocompact` (`worker-impl` and `worker-eval` run 450000).
-A measured A/B against 400000 is opt-in and audited, and needs the plain 200000 ceiling,
-so it runs on `worker-docs`:
+launch on a profile with `sonnetAutocompact` (`worker-impl` and `worker-eval` run 450000)
+and a native-lane Opus 5 launch on a profile with `opusAutocompact` (every `worker-*`
+profile runs 800000). A measured A/B against 400000 is opt-in and audited, and needs the
+plain 200000 ceiling, so it runs on `worker-docs`, where an Opus launch skips its ceiling:
 
 - **Launch.** `WORKER_SESSION_AUTOCOMPACT_AB=400000` (only `200000` or `400000`; anything
   else refuses) on `headed-arm-worker.sh`, with the brief line

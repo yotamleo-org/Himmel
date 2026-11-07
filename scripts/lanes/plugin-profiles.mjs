@@ -235,6 +235,27 @@ function validateToolTrim(errors, name, spec) {
   if (spec.disableWorkflows !== undefined && typeof spec.disableWorkflows !== 'boolean') errors.push(`profile "${name}" disableWorkflows must be a boolean`);
 }
 
+// The one way a standard profile exceeds 200000: a ceiling, a context guard and the guard's
+// share of the ceiling (the hook reads it as HIMMEL_WORKER_SESSION_CONTEXT_SHARE, 1-100) that
+// apply only to a native-lane launch of that model. Sonnet's sample was Sonnet only and Opus
+// is operator decision 751; any other model keeps `autocompact` and no guard.
+function validateModelContext(errors, name, spec) {
+  for (const [model, max] of [['sonnet', 450000], ['opus', 800000]]) {
+    const ceiling = spec[`${model}Autocompact`];
+    if (ceiling !== undefined && (!Number.isSafeInteger(ceiling) || ceiling < 200000 || ceiling > max)) {
+      errors.push(`profile "${name}" ${model}Autocompact must be an integer from 200000 to ${max}`);
+    }
+    const guard = spec[`${model}ContextGuard`];
+    if (guard !== undefined && !['compact', 'handoff'].includes(guard)) {
+      errors.push(`profile "${name}" ${model}ContextGuard must be compact or handoff`);
+    }
+    const share = spec[`${model}ContextShare`];
+    if (share !== undefined && (!Number.isSafeInteger(share) || share < 1 || share > 100)) {
+      errors.push(`profile "${name}" ${model}ContextShare must be an integer from 1 to 100`);
+    }
+  }
+}
+
 // One profile entry's validation (enable/drop/disallowedTools + the "bare"
 // floor-only invariant). Pulled out of validateRegistry's profiles loop for
 // the same reason as validateIdList above: this body repeats once per
@@ -324,22 +345,7 @@ function validateProfileSpec(errors, name, spec, catalogSet, floorSet) {
     || (spec.contextMode !== '1m' && spec.autocompact !== 200000))) {
     errors.push(`profile "${name}" autocompact must be an integer from 200000 to 1000000; only contextMode 1m may exceed 200000`);
   }
-  // The one way a standard profile exceeds 200000 - a ceiling and a
-  // context guard that apply only to a claude-sonnet-* launch (the Phase 2 sample was
-  // Sonnet only); any other model keeps `autocompact` and no guard.
-  if (spec.sonnetAutocompact !== undefined && (!Number.isSafeInteger(spec.sonnetAutocompact)
-    || spec.sonnetAutocompact < 200000 || spec.sonnetAutocompact > 450000)) {
-    errors.push(`profile "${name}" sonnetAutocompact must be an integer from 200000 to 450000`);
-  }
-  if (spec.sonnetContextGuard !== undefined && !['compact', 'handoff'].includes(spec.sonnetContextGuard)) {
-    errors.push(`profile "${name}" sonnetContextGuard must be compact or handoff`);
-  }
-  // The guard's share of the ceiling for a Sonnet launch (the hook reads it
-  // as HIMMEL_WORKER_SESSION_CONTEXT_SHARE, 1-100). Same native-lane claude-sonnet-5 gate.
-  if (spec.sonnetContextShare !== undefined && (!Number.isSafeInteger(spec.sonnetContextShare)
-    || spec.sonnetContextShare < 1 || spec.sonnetContextShare > 100)) {
-    errors.push(`profile "${name}" sonnetContextShare must be an integer from 1 to 100`);
-  }
+  validateModelContext(errors, name, spec);
   // contextBudget — the first-turn token ceiling the measured
   // probe asserts against, so it is REQUIRED on every non-operator profile
   // (a missing budget would let a lane's context footprint grow unnoticed).
@@ -611,12 +617,18 @@ export function contextForProfile(registry, name) {
   const sonnetCeilings = specs.map((spec) => spec?.sonnetAutocompact).filter((v) => v !== undefined);
   const sonnetGuards = specs.map((spec) => spec?.sonnetContextGuard).filter((v) => v !== undefined);
   const sonnetShares = specs.map((spec) => spec?.sonnetContextShare).filter((v) => v !== undefined);
+  const opusCeilings = specs.map((spec) => spec?.opusAutocompact).filter((v) => v !== undefined);
+  const opusGuards = specs.map((spec) => spec?.opusContextGuard).filter((v) => v !== undefined);
+  const opusShares = specs.map((spec) => spec?.opusContextShare).filter((v) => v !== undefined);
   return {
     contextMode: specs.some((spec) => spec?.contextMode === '1m') ? '1m' : 'standard',
     autocompact: Math.max(...specs.map((spec) => spec?.autocompact ?? 200000)),
     ...(sonnetCeilings.length ? { sonnetAutocompact: Math.max(...sonnetCeilings) } : {}),
     ...(sonnetGuards.length ? { sonnetContextGuard: sonnetGuards.includes('handoff') ? 'handoff' : 'compact' } : {}),
     ...(sonnetShares.length ? { sonnetContextShare: Math.min(...sonnetShares) } : {}),
+    ...(opusCeilings.length ? { opusAutocompact: Math.max(...opusCeilings) } : {}),
+    ...(opusGuards.length ? { opusContextGuard: opusGuards.includes('handoff') ? 'handoff' : 'compact' } : {}),
+    ...(opusShares.length ? { opusContextShare: Math.min(...opusShares) } : {}),
   };
 }
 

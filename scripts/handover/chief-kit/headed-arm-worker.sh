@@ -4,7 +4,8 @@
 # A thin wrapper around scripts/handover/headed-arm.sh that
 # pins every worker arm to the standard --autocompact 200000 ceiling (a native-lane
 # Sonnet 5.5 launch on a profile with sonnetAutocompact, today worker-impl and
-# worker-eval, pins 450000 instead) - the window
+# worker-eval, pins 450000 instead, and a native-lane Opus 5 launch on a profile
+# with opusAutocompact, today every worker-* profile, pins 800000) - the window
 # itself measures 1M regardless (docs/internals/lane-calibration.md "What a
 # plain launch reports") - and adds the worker-only env the chief lane does not
 # need.
@@ -16,7 +17,7 @@
 # headed-arm.sh's own --context handling, which this wrapper reuses rather
 # than forking). What was missing was a fail-closed PIN: the resolved worker argv
 # must carry the cost-driving `--autocompact` (200000, or the profile's Sonnet 5.5
-# ceiling), not merely lack a [1m] model suffix. WORKER_SESSION_CONTEXT=1m therefore refuses with an actionable exit 2.
+# or Opus 5 ceiling), not merely lack a [1m] model suffix. WORKER_SESSION_CONTEXT=1m therefore refuses with an actionable exit 2.
 # The raw model string is still headed-arm.sh's concern: a caller handing this
 # wrapper an already-[1m]-suffixed model gets it forwarded unchanged, and
 # headed-arm.sh strips it under standard mode (test-headed-arm-worker.sh asserts
@@ -177,8 +178,10 @@
 # (the one difference: worker-docs keeps lean-skills on the native lane, where the
 # others drop it): a profile's sonnetAutocompact / sonnetContextGuard apply to the
 # native lane on a claude-sonnet-5 model only (worker-impl 450000 + hand-off,
-# worker-eval 450000 + compaction, worker-docs 200000). See the _comment in
-# plugin-profiles.json.
+# worker-eval 450000 + compaction, worker-docs 200000). A profile's opusAutocompact /
+# opusContextGuard apply the same way to the native lane on a claude-opus-5 model only
+# (every worker-* profile 800000 + hand-off, worker-eval + compaction). See the _comment
+# in plugin-profiles.json.
 # --profile composes with --lane claudex: the shim prepends
 # profile flags, then execs scripts/claude-codex via WORKER_SESSION_CLAUDE_BIN. The
 # backend and its guarded argument screen remain in the launch path.
@@ -1167,7 +1170,8 @@ unset -v _lg_dir _lg_phys _lg_reason _lg_rc
 # the `design` profile (and only it) resolves 1m by itself - an
 # operator ruling (2026-10-01) that early compaction hurts design work, so no
 # WORKER_SESSION_CONTEXT or brief Context line is needed; every other profile keeps a
-# standard window (200000, or 450000 for a Sonnet 5.5 profile) and a bare
+# standard window (200000, or 450000 for a Sonnet 5.5 profile, or 800000 for an Opus 5
+# profile) and a bare
 # WORKER_SESSION_CONTEXT=1m is still refused below.
 PROFILES_MJS="${HEADED_ARM_WORKER_PROFILES:-$HERE/../../lanes/plugin-profiles.mjs}"
 CONTEXT="standard"
@@ -1176,6 +1180,8 @@ DESIGN_CONTEXT_REASON=""
 CONTEXT_SOURCE="operator-ruling"
 SONNET_CEILING=0
 SONNET_SHARE=""
+OPUS_CEILING=0
+OPUS_SHARE=""
 GUARD_FROM_PROFILE=0
 if [ -n "$PROFILE" ]; then
     if ! _worker_context_json="$(node "$PROFILES_MJS" "$PROFILE" --context)" \
@@ -1198,6 +1204,10 @@ if [ -n "$PROFILE" ]; then
     # there, and another lane, an older Sonnet or the bare alias keeps the 200000
     # above with no guard. Opus and Fable never read either. An explicit
     # --context-guard (including none) wins over the profile's default.
+    # Operator decision 751 (2026-11-07) gives a native-lane claude-opus-5 launch the
+    # same shape through the opus* fields; Fable, another lane, an older Opus and the
+    # bare alias keep the 200000. A requested A/B arm measures its own ceiling, so
+    # it skips the Opus fields rather than being refused.
     # This is the one place the ceiling is decided; headed-arm.sh is handed the value.
     if [ "$CONTEXT" = "standard" ] && [ "$LANE" = "native" ]; then
         case "$MODEL" in
@@ -1214,6 +1224,18 @@ if [ -n "$PROFILE" ]; then
                         [ -z "$CONTEXT_GUARD" ] || GUARD_FROM_PROFILE=1
                     fi
                 fi ;;
+            claude-opus-5*)
+                if [ -z "${WORKER_SESSION_AUTOCOMPACT_AB:-}" ] \
+                    && _opus_ceiling="$(printf '%s' "$_worker_context_json" | jq -er '.opusAutocompact | select(type == "number" and . >= 200000 and . <= 800000 and floor == .)')"; then
+                    RESOLVED_AUTOCOMPACT="$_opus_ceiling"
+                    [ "$_opus_ceiling" = "200000" ] || OPUS_CEILING=1
+                    # 87 of 800000 on the 1M window is ceil(69.6) = 70 % = 700000 tokens.
+                    OPUS_SHARE="$(printf '%s' "$_worker_context_json" | jq -r '.opusContextShare | select(type == "number" and . >= 1 and . <= 100 and floor == .)')"
+                    if [ -z "$CONTEXT_GUARD" ]; then
+                        CONTEXT_GUARD="$(printf '%s' "$_worker_context_json" | jq -r '.opusContextGuard // empty')"
+                        [ -z "$CONTEXT_GUARD" ] || GUARD_FROM_PROFILE=1
+                    fi
+                fi ;;
         esac
     fi
 fi
@@ -1224,7 +1246,8 @@ if [ "${WORKER_SESSION_CONTEXT:-}" = "1m" ]; then
     CONTEXT="1m"
     RESOLVED_AUTOCOMPACT="auto"
     SONNET_CEILING=0
-    # The profile's guard goes with its Sonnet ceiling; an explicit --context-guard stays.
+    OPUS_CEILING=0
+    # The profile's guard goes with its model ceiling; an explicit --context-guard stays.
     [ "$GUARD_FROM_PROFILE" != "1" ] || CONTEXT_GUARD=""
     # An env override needs its own brief ruling, even on a design profile.
     CONTEXT_SOURCE="operator-ruling"
@@ -1239,10 +1262,11 @@ fi
 AB_ARM=""
 AB_REASON=""
 _ab_in="${WORKER_SESSION_AUTOCOMPACT_AB:-}"
-unset -v WORKER_SESSION_AUTOCOMPACT_AB HEADED_ARM_AB_AUTOCOMPACT HEADED_ARM_SONNET_AUTOCOMPACT
+unset -v WORKER_SESSION_AUTOCOMPACT_AB HEADED_ARM_AB_AUTOCOMPACT HEADED_ARM_SONNET_AUTOCOMPACT HEADED_ARM_OPUS_AUTOCOMPACT
 worker_env_drop_token WORKER_SESSION_AUTOCOMPACT_AB
 worker_env_drop_token HEADED_ARM_AB_AUTOCOMPACT
 worker_env_drop_token HEADED_ARM_SONNET_AUTOCOMPACT
+worker_env_drop_token HEADED_ARM_OPUS_AUTOCOMPACT
 case "$_ab_in" in
     '') ;;
     200000) AB_ARM="200k" ;;
@@ -1428,11 +1452,11 @@ worker_env_drop_token HEADED_ARM_WORKER_CLAUDE_BIN
 # Tier-line gate below, same shape: a fixed marker line in the
 # brief, grepped by exact prefix, non-blank free text required. CONTEXT_REASON
 # stays empty for every standard-ceiling launch (the case above sets
-# RESOLVED_AUTOCOMPACT to 200000, or to the profile's Sonnet ceiling, which the
-# SONNET_CEILING test below skips), so this block is a no-op for every existing
-# caller.
+# RESOLVED_AUTOCOMPACT to 200000, or to the profile's Sonnet or Opus ceiling, which the
+# SONNET_CEILING and OPUS_CEILING tests below skip), so this block is a no-op for every
+# existing caller.
 CONTEXT_REASON=""
-if [ "$RESOLVED_AUTOCOMPACT" != "200000" ] && [ "$AB_ARM" != "400k" ] && [ "$SONNET_CEILING" != "1" ]; then
+if [ "$RESOLVED_AUTOCOMPACT" != "200000" ] && [ "$AB_ARM" != "400k" ] && [ "$SONNET_CEILING" != "1" ] && [ "$OPUS_CEILING" != "1" ]; then
     CONTEXT_REASON="$DESIGN_CONTEXT_REASON"
     CONTEXT_REASON="$(printf '%s' "$CONTEXT_REASON" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
     if [ -z "$CONTEXT_REASON" ]; then
@@ -1457,6 +1481,7 @@ fi
 # The Sonnet ceiling this wrapper resolved, handed to the renderer under the same
 # pairing; headed-arm.sh does not derive it again from MODEL.
 [ "$SONNET_CEILING" != "1" ] || export HEADED_ARM_SONNET_AUTOCOMPACT="$RESOLVED_AUTOCOMPACT"
+[ "$OPUS_CEILING" != "1" ] || export HEADED_ARM_OPUS_AUTOCOMPACT="$RESOLVED_AUTOCOMPACT"
 
 # an Opus or Fable worker costs materially more per turn than the
 # Sonnet default implementor, so it launches only when its brief names one of
@@ -1711,12 +1736,15 @@ fi
 unset -v CONTEXT_GUARD
 worker_env_drop_token HIMMEL_WORKER_SESSION_AUTOCOMPACT
 worker_propagate_env HIMMEL_WORKER_SESSION_AUTOCOMPACT "$RESOLVED_AUTOCOMPACT"
-# The share goes only with the Sonnet ceiling it was calibrated against
-# (a 1m override clears SONNET_CEILING; an A/B arm refuses on a Sonnet launch). The
-# launching shell's own share was scrubbed above with the rest of the chief-context
-# env, so only the profile's value reaches the worker.
+# The share goes only with the Sonnet or Opus ceiling it was calibrated against
+# (a 1m override clears both; an A/B arm refuses on a Sonnet launch and skips the Opus
+# fields). The launching shell's own share was scrubbed above with the rest of the
+# chief-context env, so only the profile's value reaches the worker.
 if [ "$SONNET_CEILING" = "1" ] && [ -n "$SONNET_SHARE" ]; then
     worker_propagate_env HIMMEL_WORKER_SESSION_CONTEXT_SHARE "$SONNET_SHARE"
+fi
+if [ "$OPUS_CEILING" = "1" ] && [ -n "$OPUS_SHARE" ]; then
+    worker_propagate_env HIMMEL_WORKER_SESSION_CONTEXT_SHARE "$OPUS_SHARE"
 fi
 # HIMMEL_READ_CLAMP_LINES: raises read-clamp.sh's
 # whole-file limit for a judge - independent reading is the job. 4000 is a

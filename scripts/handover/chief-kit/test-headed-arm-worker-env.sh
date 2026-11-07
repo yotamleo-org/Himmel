@@ -128,8 +128,20 @@ out="$(dry10 worker-docs "$T/doc10.md" claude-sonnet-5-5)"
 contains "W10 control: docs on Sonnet keeps the 200000 ceiling" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=200000"
 contains "W10 control: docs on Sonnet exports no share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
 out="$(dry10 worker-impl "$T/opus-doc10.md" claude-opus-5-5)"
-contains "W10 control: impl on Opus keeps the 200000 ceiling" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=200000"
-contains "W10 control: impl on Opus exports no share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
+contains "W10 impl on Opus takes the 800000 ceiling (decision 751)" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=800000"
+contains "W10 impl on Opus exports the profile share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=87"
+contains "W10 impl on Opus turns the hand-off guard on" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff"
+{ cat "$T/opus-doc10.md"; printf 'Test VM: ubuntu_new\n'; } >"$T/opus-vm-doc10.md"   # worker-vm refuses a brief naming no VM
+for prof10 in worker-docs worker-bus worker-vm worker-e2e; do
+    out="$(dry10 "$prof10" "$T/opus-vm-doc10.md" claude-opus-5-5)"
+    contains "W10 $prof10 on Opus takes the 800000 ceiling" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=800000"
+    contains "W10 $prof10 on Opus hands off" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff"
+done
+out="$(dry10 worker-eval "$T/opus-doc10.md" claude-opus-5-5)"
+contains "W10 eval on Opus compacts" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact"
+out="$(dry10 worker-impl "$T/opus-doc10.md" claude-opus-5-5 --lane deepseek)"
+contains "W10 control: impl on Opus on a non-native lane keeps the 200000 ceiling" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=200000"
+contains "W10 control: impl on Opus on a non-native lane exports no share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
 out="$(dry10 worker-impl "$T/doc10.md" claude-sonnet-5-5 --lane deepseek)"
 contains "W10 control: impl on a non-native lane keeps the 200000 ceiling" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=200000"
 contains "W10 control: impl on a non-native lane exports no share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
@@ -155,6 +167,11 @@ for bad10 in 0 101 73.5 '"73"'; do
     rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$T/bad-share.json" dry10 worker-impl "$T/doc10.md" claude-sonnet-5-5)" || rc=$?
     check "W10 sonnetContextShare $bad10 refuses the launch (exit 2)" "$rc" "2"
     contains "W10 the refusal names sonnetContextShare" "$out" "sonnetContextShare"
+    printf '%s\n' '{"floor":["qmd@himmel"],"catalog":["qmd@himmel"],"profiles":{"operator":null,' \
+        "\"worker-impl\":{\"enable\":[],\"contextBudget\":50000,\"contextMode\":\"standard\",\"autocompact\":200000,\"opusAutocompact\":800000,\"opusContextGuard\":\"handoff\",\"opusContextShare\":$bad10}}}" >"$T/bad-opus-share.json"
+    rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$T/bad-opus-share.json" dry10 worker-impl "$T/opus-doc10.md" claude-opus-5-5)" || rc=$?
+    check "W10 opusContextShare $bad10 refuses the launch (exit 2)" "$rc" "2"
+    contains "W10 the refusal names opusContextShare" "$out" "opusContextShare"
 done
 
 # W11. a worker launch carries its holder key, its launch doc and its label; a role that

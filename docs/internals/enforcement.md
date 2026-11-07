@@ -4142,7 +4142,9 @@ Reads fill with `scripts/context-fill.sh --percent` on the hook's
 (or `none`) the hook exits 0 with no output for PreToolUse and PreCompact at any
 fill; `headed-arm-worker.sh --context-guard compact|handoff` turns it on, and so does a
 native-lane Sonnet 5.5 launch on a profile with `sonnetContextGuard` (`worker-impl` hands
-off, `worker-eval` compacts, both at 450000). One
+off, `worker-eval` compacts, both at 450000) or a native-lane Opus 5 launch on a profile
+with `opusContextGuard` (every `worker-*` profile hands off, `worker-eval` compacts, at
+800000 with the deny at 700000 tokens). One
 reference: [`worker-context-guard.md`](worker-context-guard.md).
 
 **Threshold — 75 % of the autocompact ceiling, not of the window.** The ceiling
