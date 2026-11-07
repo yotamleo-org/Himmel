@@ -1841,7 +1841,7 @@ assert_has "$(cat "$tmp/defer7.out")" "clear-cr-marker: CR clean" "9498 the poli
 after_missing_calls="$(wc -l < "$PANEL_CALLS" | tr -d ' ')"
 assert_eq "$after_missing_calls" "$((before_missing_calls + 1))" "polish-only flow invokes the panel exactly once"
 if [ -e "$git_dir/cr-pending/capped" ]; then fail "9498 the polish-only round clears the marker"; else pass "9498 the polish-only round clears the marker"; fi
-ledger="$(cat "$git_dir/cr-critic-scores.jsonl" 2>/dev/null)"
+ledger="$(grep '"kind":"amend"' "$git_dir/cr-critic-scores.jsonl" 2>/dev/null | grep '"branch":"capped"' | grep '"verdict":"deferred"')"
 assert_has "$ledger" 'Polish finding noted in the PR body: no ticket filed' "9498 the polish-only round records the noted reason"
 assert_lacks "$ledger" 'deferred_to' "9498 the polish-only round records no ticket"
 
