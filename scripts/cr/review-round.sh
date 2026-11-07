@@ -52,8 +52,9 @@
 # without one defer exits 6 naming the flag. A pre-existing Important classed polish
 # cannot be noted: reclassify it or supply --defer-to <plain ticket>.
 # A Suggestions-only round below the cap closes early on a change that touches
-# no CI trust path. Its polish rows file nothing (see above); when a row needs a
-# ticket (hardening with an override, or an explicit --defer-to) it files ONE
+# no CI trust path. Its polish rows file nothing (see above); an explicit
+# --defer-to attaches every pending finding to that existing ticket, and a
+# hardening row with an override is filed as ONE
 # batch residual per branch and keeps its key in
 # <branch>.deferred-to, which every later early close reuses, adding its
 # findings to that ticket as a comment (a failed comment exits 6; rerun to
