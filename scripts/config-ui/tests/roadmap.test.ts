@@ -704,7 +704,7 @@ test("Board: the default page has no No version lane and no ticket for it; its t
   const html = board(r);
   expect(html).not.toContain('id="rm-nv"');
   expect(html).not.toContain("Loose ticket");
-  expect(html).toMatch(/>No version <span class="ro">1<\/span><\/a>/);
+  expect(html).toMatch(/>No version <span class="ro">1 ticket<\/span><\/a>/);
   expect(board(read(station()))).not.toContain(">No version"); // no such ticket, no tab
   // the tab with nothing read yet says so, and draws nothing even from a default read that held those tickets
   const wait = board(r, { tab: "nv" });
@@ -1263,6 +1263,46 @@ test("9488 call 4: a blocker in an earlier open version is a wait, not a block; 
   expect(panelOf(waitCase("v1.1.3", []))).toContain("in no version");
   expect(panelOf(waitCase("v1.1.3", ["v1.1.1"]))).toContain("a released version, and still open");
   expect(panelOf(waitCase("v1.1.2", ["v1.1.3"]))).toContain("a later version");
+});
+
+test("9488 call 4 does not fail open: with no versions snapshot an earlier version is not trusted to be unreleased, so the wait stays blocked", () => {
+  const n = narrow3();
+  const v = { ...n, version: "v1.1.3", chains: [n.chains[1]], tickets: { [K(6)]: tkt(K(6), "blocked", "beta", 1, 1, [lnk("HIMMEL-21", ["v1.1.2"])]) } };
+  const html = two({ v: "v1.1.3" }, v, whole6(), { ...read(station()), releaseUnknown: true });
+  expect(panelOf(html)).toMatch(/class="tk bd/);
+  expect(panelOf(html)).toContain("1 ticket blocked");
+  expect(panelOf(html)).not.toContain("waits on v1.1.2");
+  expect(html).toContain("no versions snapshot says whether it is released");
+});
+
+test("9488 the No version tab keeps the whole chain read: its tickets are in no version, so the picked version's read cannot hold them", () => {
+  const s = withNoVersion(station());
+  const wh = whole6();
+  wh.chains[0].members.push(K(8));
+  Object.assign(wh.tickets, { [K(8)]: { ...tkt(K(8), "can launch", "alpha", 2, 2), badges: ["alpha"] } });
+  const html = renderBoard(read(s), { version: null, theme: null, tab: "nv", nv: nvRead(s) }, { drift: null, chains: wh, versionChains: { ...narrow3(), version: "v1.1.2" } }); // v1.1.2 is the selected tile, so the narrowed read would be the one drawn from
+  expect(html).toContain("Loose ticket");
+  expect(html).toMatch(/class="rm-chain" href="#\/board\?tab=chains&amp;at=HIMMEL-8"/); // its badge
+  expect(html).toContain("in a chain 1"); // and the Only filter counts it
+});
+
+test("9488 the header spark says no second ticket total, and a finished chain opens when the ticket asked for is in it", () => {
+  const lone = { ...chainsLinked(), burn: { total: 3, undated: 1, points: [{ day: "2026-11-01", open: 2, merged: 1 }] } }; // the burn-down leaves out the undated done ticket
+  const spark = /class="spark">(?:<svg.*?<\/svg>)?([^<]*)<\/div>/.exec(chainsHtml({}, lone))![1];
+  expect(spark).toBe("2 tickets open");
+  expect(chainsHtml({}, lone)).toContain("<b>4 tickets</b> in them");
+  const finished = chainsLinked();
+  Object.assign(finished.chains[1], { done: 2 });
+  expect(chainsHtml({ at: K(6) }, finished)).toMatch(/<details id="rm-chain-ops" class="fin" open>/);
+  expect(chainsHtml({ at: K(1) }, finished)).toMatch(/<details id="rm-chain-ops" class="fin"><summary>/);
+});
+
+test("9488 the Tidy up and No version tabs name their unit", () => {
+  const r = read(withNoVersion(station()));
+  const real = [{ class: "VERSION-DRIFT", key: "HIMMEL-6691", line: "VERSION-DRIFT HIMMEL-6691 Done in v1.1.4, current v1.1.3 | writer=release-manager | fix=jira release request v1.1.3" }];
+  const html = renderBoard(r, { version: null, theme: null, tab: "roadmap" }, { drift: driftOk(real, 4, 1), chains: null });
+  expect(html).toContain('Tidy up <span class="ro">1 drift row</span>');
+  expect(html).toContain('No version <span class="ro">1 ticket</span>');
 });
 
 test("9488 critic minors: no wording that says a later-version blocker is unplanned, full count keys, the 8430 state, the foot line and the phone's named ticket", () => {

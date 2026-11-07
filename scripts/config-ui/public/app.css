@@ -682,7 +682,7 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .tr .tabs{margin:0;flex:0 1 auto}
 .tabs .tab.ch,.tabs .tab.ch[aria-selected="true"]{color:var(--road)}
 .tabs .tab.ch[aria-selected="true"]{background:var(--road-soft);border:1px solid var(--road);border-bottom-color:transparent;border-radius:8px 8px 0 0;text-decoration:none}
-.tab.ch .ic{width:12px;height:12px;vertical-align:-2px;fill:none;stroke:currentColor;stroke-width:2}
+.tab.ch .ic,.rm-chain .ic{width:12px;height:12px;vertical-align:-2px;fill:none;stroke:currentColor;stroke-width:2}
 .tab.ch .cnt{font:700 11px var(--font-mono);border-radius:999px;background:var(--road-soft);padding:0 var(--s2)}
 .tab.ch .blk{font:600 11px var(--font-mono);color:var(--crit);background:var(--crit-soft);border-radius:999px;padding:0 var(--s2)}
 .tr .aside{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1) var(--s3);font-size:var(--fs-xs)}

@@ -354,7 +354,7 @@ function waitingHtml(rows, tabCh, v, d, ch) {
 // The Chains tab is the one coloured tab: the chain icon, the number of chains of the read it opens, and a blocked chip only while a ticket is blocked.
 function tabsHtml(d, ui, tab, ch, dr) {
   const ok = chainOk(ch), n = ok ? ch.chains.length : 0, blocked = ok && ch.version ? countsOf(ch, d).blocked : 0;
-  const em = { tidy: driftOk(dr) ? `${dr.counts.real} drift` : "", nv: d.noVersionCount ? String(d.noVersionCount) : "" };
+  const em = { tidy: driftOk(dr) ? `${dr.counts.real} drift ${dr.counts.real === 1 ? "row" : "rows"}` : "", nv: d.noVersionCount ? nTickets(d.noVersionCount) : "" };
   const chains = (on) => `<a class="tab ch" role="tab" aria-selected="${on}" href="${boardHref({ tab: "chains", v: ui.v })}"${ok ? ` aria-label="${esc(`Chains, ${n} ${n === 1 ? "chain" : "chains"}${ch.version ? " in " + ch.version : ""}${blocked ? `, ${nTickets(blocked)} blocked` : ""}`)}"` : ""}>${CLINK}Chains${ok ? ` <span class="cnt">${n}</span>` : ""}${blocked ? ` <span class="blk">⛔ ${nTickets(blocked)} blocked</span>` : ""}</a>`;
   // the No version tab is there while some ticket has no fixVersion (the count is the default read's; the tickets are read when it opens)
   return `<nav class="tabs" role="tablist" aria-label="Board">${TABS.filter(([id]) => id !== "nv" || d.noVersionCount || tab === "nv").map(([id, label]) => id === "chains" ? chains(tab === id) :
@@ -458,7 +458,8 @@ function blockerKind(l, ch, d) {
   if (!names.length) return { kind: "none" };
   const rel = idx.findIndex((i) => i >= 0 && d.versions[i].rel);
   if (rel >= 0) return { kind: "released", v: names[rel] };
-  if (at >= 0 && idx.every((i) => i >= 0 && i < at)) return { kind: "earlier", v: names[idx.indexOf(Math.max(...idx))] };
+  // with no versions snapshot nothing is known to be released, so an earlier open version is not trusted to be unreleased: it stays blocked
+  if (at >= 0 && idx.every((i) => i >= 0 && i < at)) return { kind: d.releaseUnknown ? "unsure" : "earlier", v: names[idx.indexOf(Math.max(...idx))] };
   return { kind: "later", v: names[0] };
 }
 function viewState(t, state, ch, d) {
@@ -469,7 +470,7 @@ function viewState(t, state, ch, d) {
   const last = outs.reduce((a, b) => (versionAt(d, b.v) > versionAt(d, a.v) ? b : a));
   return { state: `waits on ${last.v}`, why: last };
 }
-const blockerWords = (o) => (o.kind === "none" ? "in no version" : o.kind === "released" ? `in ${o.v}, a released version, and still open` : o.kind === "earlier" ? `planned in ${o.v}, an earlier version` : `in ${o.v}, a later version`);
+const blockerWords = (o) => (o.kind === "none" ? "in no version" : o.kind === "released" ? `in ${o.v}, a released version, and still open` : o.kind === "earlier" ? `planned in ${o.v}, an earlier version` : o.kind === "unsure" ? `planned in ${o.v}, an earlier version, but no versions snapshot says whether it is released` :`in ${o.v}, a later version`);
 
 // The tickets of one read by state, each ticket once. "waiting" is every wait: on a step, on you, on a date, on an earlier version.
 function countsOf(ch, d) {
@@ -556,7 +557,7 @@ function openCard(ui, ch, d, whole, c, rows) {
 function finCard(ui, ch, d, whole, c, rows) {
   const bad = rows.filter(([, x]) => x.state === "done · out of order").map(([t]) => shortKey(t.key)), held = rows.some(([, x]) => x.state === "done · order held");
   const chk = bad.length ? `<span class="chk bad">⚠ ${bad.slice(0, 2).join(", ")}${bad.length > 2 ? ` +${bad.length - 2}` : ""} out of order</span>` : held ? `<span class="chk">order held</span>` : `<span></span>`;
-  return `<details id="rm-chain-${esc(c.id)}" class="fin"><summary><span class="gl" aria-hidden="true">✓</span><span class="nm">${esc(c.name || c.id)} <span class="cid">${esc(c.id)}</span></span>${chk}`
+  return `<details id="rm-chain-${esc(c.id)}" class="fin"${ui.at && rows.some(([t]) => t.key === ui.at) ? " open" : ""}><summary><span class="gl" aria-hidden="true">✓</span><span class="nm">${esc(c.name || c.id)} <span class="cid">${esc(c.id)}</span></span>${chk}`
     + `${outChip(outsideOf(ch, c, whole, d), ch.version || "this read") || "<span></span>"}<span class="prog">${c.done} of ${nTickets(c.total)} done</span></summary>`
     + `<div class="inner">${railHtml(ui, ch, d, c, rows)}${titlesHtml(ch, d, rows, false)}${logHtml(ui, c)}</div></details>`;
 }
@@ -597,7 +598,7 @@ function sparkHtml(ch) {
   if (!b || !b.points.length) return "";
   const n = b.points.length, last = b.points[n - 1];
   const line = n > 1 ? `<svg viewBox="0 0 110 26" role="img" aria-label="Open tickets across the chains"><polyline points="${b.points.map((p, i) => `${2 + (i / (n - 1)) * 106},${2 + (1 - p.open / (b.total || 1)) * 22}`).join(" ")}"/></svg>` : "";
-  return `<div class="spark">${line}${last.open} of ${nTickets(b.total)} open</div>`;
+  return `<div class="spark">${line}${nTickets(last.open)} open</div>`; // no total here: the line above has the chains' ticket total, and the burn-down leaves out undated done tickets
 }
 
 function whyHtml(ui, ch, d) {
@@ -793,7 +794,9 @@ function boardPage(data, ui, extras) {
     const head = `<div class="rm-head bh"${modal ? " inert" : ""}><header class="ph"><h1>Board</h1></header>${stripHtml(data, tileSel, tab, { ...ui, inert: modal }, "", true)}</div>`;
     return [head, `<div class="rm-under"${modal ? " inert" : ""}>`, `<div class="tr">${tabsHtml(data, ui, tab, tabCh, dr)}${asideHtml(ch, rows, fresh)}</div>`, writeNote(ui), chainsTab(ui, tabCh, data, ch, tileSel), `</div>`, drawer, why].join("\n");
   }
-  const body = tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, cardCh, dr) : waitingHtml(rows, tabCh, ui.v, data, ch) + lanesHtml(data, ui, sel, cardCh, dr);
+  // the No version tab's tickets are in no version, so the picked version's read cannot hold them: it keeps the whole read
+  const shownCh = tab === "nv" ? ch : cardCh;
+  const body = tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, shownCh, dr) : waitingHtml(rows, tabCh, ui.v, data, ch) + lanesHtml(data, ui, sel, cardCh, dr);
   // with a drawer or the Why panel open the board under it is inert: no drag, select, key or click reaches a card until it closes
-  return [`<div class="rm-head">${page}${windowBar(data, ui, windowOf(data, ui), modal)}</div>`, `<div class="rm-under"${modal ? " inert" : ""}>`, stripHtml(data, tileSel, tab, ui, driftBanner(dr)), `<div class="rm-tabrow">${tabsHtml(data, ui, tab, tabCh, dr)}${linksHtml(ch, rows, data)}</div>`, barHtml(data, ui, cardCh, tab, sel, fresh), body, `</div>`, drawer, why].join("\n");
+  return [`<div class="rm-head">${page}${windowBar(data, ui, windowOf(data, ui), modal)}</div>`, `<div class="rm-under"${modal ? " inert" : ""}>`, stripHtml(data, tileSel, tab, ui, driftBanner(dr)), `<div class="rm-tabrow">${tabsHtml(data, ui, tab, tabCh, dr)}${linksHtml(ch, rows, data)}</div>`, barHtml(data, ui, shownCh, tab, sel, fresh), body, `</div>`, drawer, why].join("\n");
 }

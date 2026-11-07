@@ -91,6 +91,21 @@ test("the Board draws the seeded mirror: strip, drift banner, chain badge, lanes
   await expect(page.locator(".rm-card", { hasText: "First chain step" })).toBeVisible();
   await expect(page.locator(".rm-card", { hasText: "Old shipped work" })).toHaveCount(0);
   await expect(page.locator(".rm-card", { hasText: "Second chain step" }).locator(".rm-chain")).toContainText("memory step 2 of 2 · can launch");
+  // 9488: the chain glyph on a card badge is badge-sized and the chain id after it sits inside the badge's box, visible (toContainText also passes on clipped text);
+  // the rest of the line is the designed one-line ellipsis, with the whole text in the bubble
+  const badge = page.locator(".rm-card", { hasText: "Second chain step" }).locator(".rm-chain");
+  const icon = await badge.locator(".ic").boundingBox();
+  expect(icon!.width).toBeLessThanOrEqual(16);
+  expect(icon!.height).toBeLessThanOrEqual(16);
+  const idBox = await badge.locator(".rm-clip").evaluate((el) => {
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let n: Node | null;
+    while ((n = w.nextNode())) { const i = (n.textContent || "").indexOf("memory"); if (i >= 0) { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 6); const x = r.getBoundingClientRect(), c = el.getBoundingClientRect(); return { width: x.width, left: x.left - c.left, right: c.right - x.right }; } }
+    return null;
+  });
+  expect(idBox).not.toBeNull();
+  expect(idBox!.width).toBeGreaterThan(20);
+  expect(idBox!.left).toBeGreaterThanOrEqual(0);
+  expect(idBox!.right).toBeGreaterThanOrEqual(0); // the chain id ends inside the box, not past its clipped edge
   await expect(page.locator(".rm-card", { hasText: "Not in any chain" }).locator(".rm-chain")).toHaveCount(0);
   await expect(page.locator(".rm-card[draggable]").first()).toBeVisible(); // drag and the Sector select are still there
   // no registry-less made-up number: the wait link counts the chain read's own rows
