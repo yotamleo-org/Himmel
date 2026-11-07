@@ -50,9 +50,6 @@
 # including HIMMEL_CONFIG_DIR and the resolved himmel.conf link target's sibling
 # profiles directory. File-tool and patch paths resolve symlink aliases; Bash
 # retains the text-matching ceiling below. No config values are read here.
-# ALSO GUARDS .himmel/outside-pr-approvals.jsonl and .himmel/outside-contributors.json,
-# the no-checkout outside-PR review allowlist and approvals, with the same Bash,
-# file-tool and apply_patch routes as project.conf.
 # ponytail: a text match, so a same-uid worker can still reach them through a spelling
 # it misses; the real protection is the separate-uid store (filed as its own ticket).
 # ALLOWS everything else, silently. Plain reads and himmelctl config set stay

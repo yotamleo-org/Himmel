@@ -129,8 +129,6 @@ nolib_out="$(jq -nc --arg p "$T/other.txt" '{tool_name:"Write",tool_input:{file_
 case "$nolib_rc:$nolib_out" in 2:*resolve-path*) ok "7120 resolver lib missing -> block (fail-closed)" ;; *) bad "7120 resolver lib missing - expected block naming resolve-path, got rc=$nolib_rc" ;; esac
 
 echo "== outside-review store (HIMMEL-9429) =="
-# Copies of the config rows above with the store path swapped: a worker must
-# not write the outside-PR allowlist or approvals (the review-route trust files).
 STORE_A="$HOME/.himmel/outside-pr-approvals.jsonl"
 STORE_C="$HOME/.himmel/outside-contributors.json"
 file_case "Write to outside-PR approvals -> block" block Write "$STORE_A"
