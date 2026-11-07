@@ -42,6 +42,8 @@
 #         the same failure with no quarantine row                -> rc 1
 #   MV38  pr, impacted: the list capability-skips a pr-tier suite the shard ran -> rc 0;
 #         a shard that did not run it -> rc 1; a local-tier suite or not pr mode -> rc 1
+#   MV39  the same with no row for the suite -> rc 0; a shard that did not run it -> rc 1;
+#         an unreadable tiers file or not pr mode -> rc 1
 #
 # Platform guard: bash-only; the aggregator runs on Linux.
 #
@@ -427,5 +429,12 @@ MV_TSV="$d/tiers.tsv" MV_TIER="pr" expect "MV38: pr, the same suite no shard ran
 manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test-a.sh' "ran 0 $cap38"
 MV_TSV="$d/tiers-local.tsv" MV_TIER="pr" expect "MV38: pr, a local-tier capability skip a shard ran is still refused" 1 "$d" 1 'phi-egress-guard-parity.*not selected'
 MV_TSV="$d/tiers.tsv" MV_TIER="fast" expect "MV38: not pr mode, the capability skip a shard ran is still refused" 1 "$d" 1 'phi-egress-guard-parity.*not selected'
+# --- MV39: a suite with no row reads as pr, only when the tiers file can be read --
+printf '# fixture tiers\nscripts/test-a.sh\tpr\tx\n' > "$d/tiers-norow.tsv"
+MV_TSV="$d/tiers-norow.tsv" MV_TIER="pr" expect "MV39: pr, a no-row suite the list capability-skips ran on a shard" 0 "$d" 1 '^OK'
+MV_TSV="$d/absent.tsv" MV_TIER="pr" expect "MV39: an unreadable tiers file excuses no capability skip" 1 "$d" 1 'phi-egress-guard-parity.*not selected'
+MV_TSV="$d/tiers-norow.tsv" MV_TIER="fast" expect "MV39: not pr mode, a no-row capability skip a shard ran is still refused" 1 "$d" 1 'phi-egress-guard-parity.*not selected'
+manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test-a.sh' "skip $cap38"
+MV_TSV="$d/tiers-norow.tsv" MV_TIER="pr" expect "MV39: pr, the same no-row suite no shard ran is refused" 1 "$d" 1 'phi-egress-guard-parity.*never ran'
 
 rst_tally

@@ -20,6 +20,10 @@
 #   LD5d a [FLAKE] line counts like a [PASS] line
 #   LD5q a [QUARANTINE] line counts like a [PASS] line
 #   LD6  the workflow runs it on a schedule, never on pull_request or push
+#   LD8  --no-row lists suites missing a tier or duration row, a no-row suite at tier pr
+#   LD8b --no-row with an unreadable tier file -> exit 2, no count
+#   LD9  the cadence run prints the list and keeps its verdict
+#   LD10 the REFRESH recipe in the ledger's header harvests a suite with no row
 #
 # Platform guard: bash-only; Linux CI is the caller.
 #
@@ -196,6 +200,61 @@ elif over=$(ledger_over_ceiling "$SRC_ROOT/scripts/ci/suite-durations.tsv"); the
   pass "LD7: the three control rows are refused and the committed ledger has no row above its ceiling (${LD7_CEILING}s, ${LD7_PANEL_CEILING}s for review-panel)"
 else
   fail "LD7: committed ledger rows above ${LD7_CEILING}s: $over"
+fi
+
+echo "== LD8: --no-row lists the suites a list does not name =="
+NR="$SUITE_LOCK_SANDBOX/no-row"
+mkdir -p "$NR" || fail "LD8: cannot make the fixture dir"
+printf 'scripts/x/%s\n' test-both.sh test-no-tier.sh test-no-dur.sh test-neither.sh helper.sh > "$NR/tracked"
+printf '# fixture tiers\nscripts/x/test-both.sh\tlocal\tx\nscripts/x/test-no-dur.sh\tlocal\tx\n' > "$NR/tiers.tsv"
+printf '# fixture ledger\nscripts/x/test-both.sh\t10\nscripts/x/test-no-tier.sh\t30\n' > "$NR/ledger.tsv"
+out=$(bash "$LD" --no-row --ledger "$NR/ledger.tsv" --tiers "$NR/tiers.tsv" --tracked "$NR/tracked" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] \
+   && grepq "$out" -x 'ledger-drift: no-row scripts/x/test-no-tier.sh tier=pr tier-row=no duration-row=yes seconds=30' \
+   && grepq "$out" -x 'ledger-drift: no-row scripts/x/test-no-dur.sh tier=local tier-row=yes duration-row=no seconds=10' \
+   && grepq "$out" -x 'ledger-drift: no-row scripts/x/test-neither.sh tier=pr tier-row=no duration-row=no seconds=10' \
+   && grepq "$out" -x 'ledger-drift: no-row count=3 no-tier-row=2 no-duration-row=2 untiered-seconds=40' \
+   && ! grepq "$out" -F 'test-both.sh' && ! grepq "$out" -F 'helper.sh'; then
+  pass "LD8: --no-row lists three suites, a no-row suite at tier pr, with the untiered cost"
+else
+  fail "LD8: rc=$rc out: $out"
+fi
+
+echo "== LD8b: --no-row refuses to count from an unreadable tier file =="
+out=$(bash "$LD" --no-row --ledger "$NR/ledger.tsv" --tiers "$NR/absent.tsv" --tracked "$NR/tracked" 2>&1); rc=$?
+if [ "$rc" -eq 2 ] && ! grepq "$out" -F 'count='; then
+  pass "LD8b: unreadable tier file -> rc 2, no count"
+else
+  fail "LD8b: rc=$rc out: $out"
+fi
+
+echo "== LD9: the cadence run prints the list and keeps its verdict =="
+for pair in "stale-ledger.tsv:1:DRIFT" "matching-ledger.tsv:0:OK"; do
+  f=${pair%%:*}; v=${pair##*:}; want=${pair#*:}; want=${want%%:*}
+  out=$(bash "$LD" --logs "$FX" --ledger "$FX/$f" --tiers "$NR/tiers.tsv" --tracked "$NR/tracked" 2>&1); rc=$?
+  if [ "$rc" -eq "$want" ] && grepq "$out" -F "$v" && grepq "$out" -E '^ledger-drift: no-row count=[0-9]+ ' \
+     && grepq "$out" -F 'no-row scripts/x/test-neither.sh tier=pr'; then
+    pass "LD9: $f -> rc $want, $v, and the no-row list"
+  else
+    fail "LD9: $f: want rc $want, $v and the list; rc=$rc out: $out"
+  fi
+done
+out=$(bash "$LD" --logs "$FX" --ledger "$FX/matching-ledger.tsv" --tiers "$NR/absent.tsv" --tracked "$NR/tracked" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" -F 'ledger-drift: OK'; then
+  pass "LD9: a list that cannot be computed leaves the drift verdict alone"
+else
+  fail "LD9: unreadable tier file changed the verdict: rc=$rc out: $out"
+fi
+
+echo "== LD10: the REFRESH recipe harvests a suite with no row =="
+# The sed expression is read out of the ledger's own header, so the row follows the recipe.
+recipe=$(sed -n "s/^#     | sed -nE '\(.*\)' \\\\\$/\1/p" "$SRC_ROOT/scripts/ci/suite-durations.tsv")
+printf 'shell-unit-shard (ubuntu-latest, 1)\trun\t2026-11-07T00:00:00Z [PASS] scripts/x/test-neither.sh (7s)\n' > "$NR/run.log"
+harvest=$(sed -nE "$recipe" "$NR/run.log")
+if [ -n "$recipe" ] && [ "$harvest" = "$(printf 'scripts/x/test-neither.sh\t7')" ]; then
+  pass "LD10: the recipe adds a row for a suite the ledger does not name"
+else
+  fail "LD10: recipe '$recipe' harvested '$harvest'"
 fi
 
 rst_tally

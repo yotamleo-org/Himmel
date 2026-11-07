@@ -39,10 +39,11 @@
 # In full mode a shard runs every tier, so a suite <list> skips only for its
 # local tier must run too (<list> is asked without a selection).
 # A pr-tier suite (scripts/ci/suite-tiers.tsv, SUITE_TIERS_TSV overrides the
-# path) that <list> skips only for a missing tool (`capability: <tool> not on
-# PATH`) is the same: the aggregator runner lacks tools the shards install, so
-# the shards run it and must, as for any floor suite. An unreadable tiers file
-# lists no pr suite, so no capability skip is excused.
+# path), or a suite with no row there, which reads as pr, that <list> skips only
+# for a missing tool (`capability: <tool> not on PATH`) is the same: the
+# aggregator runner lacks tools the shards install, so the shards run it and
+# must, as for any floor suite. An unreadable tiers file lists no pr suite and
+# says nothing about rows, so no capability skip is excused.
 #
 # SUITE_TIERS_TSV (env) overrides the suite-tiers.tsv next to this script; an
 # unreadable file quarantines nothing, so no failure is forgiven.
@@ -86,7 +87,7 @@ tiers_tsv="${SUITE_TIERS_TSV:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/suit
 quar_lines=""
 [ -r "$tiers_tsv" ] && quar_lines=$(awk -F'\t' '!/^#/ && $2 == "quarantine" { print "quar " $1 }' "$tiers_tsv")
 pr_lines=""
-[ -r "$tiers_tsv" ] && pr_lines=$(awk -F'\t' '!/^#/ && $2 == "pr" { print "ptier " $1 }' "$tiers_tsv")
+[ -r "$tiers_tsv" ] && pr_lines=$(awk -F'\t' 'BEGIN { print "treadable" } !/^#/ && $1 != "" { print "rowed " $1 } !/^#/ && $2 == "pr" { print "ptier " $1 }' "$tiers_tsv")
 disc_lines=""
 [ -r "$discovered" ] && disc_lines=$(sed -n -e 's/^\[RUN \] \([^ ]*\).*/drun \1/p' -e 's/^\[SKIP\] \([^ ]*\) — tier: local .*/dlocal \1/p' -e 's/^\[SKIP\] \([^ ]*\) — capability: .*/dcap \1/p' -e 's/^\[SKIP\] \([^ ]*\).*/dskip \1/p' "$discovered")
 if [ -z "$disc_lines" ]; then
@@ -173,8 +174,10 @@ acct=$( { grep '^suite ' "$selection" | sed 's/^suite /sel /'
           printf '%s' "$bodies"; } | awk -v mode="$mode" -v tier="${SUITE_TIER_MODE:-}" '
   $1 == "sel"   { sel[$2] = 1; order[++nsel] = $2; next }
   $1 == "ptier" { ptier[$2] = 1; next }
+  $1 == "treadable" { treadable = 1; next }
+  $1 == "rowed" { rowed[$2] = 1; next }
   $1 == "drun"  { drun[$2] = 1; dorder[++ndisc] = $2; next }
-  $1 == "dcap" && tier == "pr" && ($2 in ptier) { drun[$2] = 1; dorder[++ndisc] = $2; next }
+  $1 == "dcap" && tier == "pr" && (($2 in ptier) || (treadable && !($2 in rowed))) { drun[$2] = 1; dorder[++ndisc] = $2; next }
   $1 == "dcap"  { dskip[$2] = 1; next }
   $1 == "dlocal" && tier == "pr" && mode == "full" { drun[$2] = 1; dorder[++ndisc] = $2; next }
   $1 == "dlocal" { if (tier == "pr") dlocal[$2] = 1; else dskip[$2] = 1; next }
