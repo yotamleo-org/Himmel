@@ -159,7 +159,8 @@ export async function routeFleetCommand(
 // bot message whose first line is the request, the same PR, a typed prefix of the requested sha), and a live
 // `gh pr view` that finds the PR open at EXACTLY the requested sha. Anything else replies its reason and stores nothing.
 // The stored head is the full sha the operator was shown, so a prefix ground against a pushed head buys nothing.
-// A repeated approve for the same PR and head stores no second row.
+// A repeated approve for the same PR and head stores no second row. The poller dispatches one message at a time
+// (handleInbound is serial), so the read-check-append below needs no lock of its own.
 // ponytail: the reader checks neither `from` nor `chat`, and a same-uid process can append a row itself (the
 // tamper-evident approval store is a separate ticket); this verb does not make the reader check them, upgrade path = a MAC per row.
 // ponytail: reply_to_text is the replied-to message's own text as Telegram reports it, and `is_bot` means any bot, so

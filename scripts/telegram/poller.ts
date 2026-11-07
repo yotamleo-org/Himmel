@@ -275,13 +275,14 @@ function plainRecord(c: MsgCtx): Inbound {
   const text = photo ? (c.caption || "[photo]")
              : doc ? (c.caption || `[document: ${typeof doc.file_name === "string" ? doc.file_name : "file"}]`)
              : m.text;
+  const replyText = replyToBotText(m);
   // caption:true iff the text came from a media caption (photo/doc present), else it
   // is a genuinely typed m.text (caption:false), the only auto-command-eligible shape.
   return baseRecord(c, text, !!(photo || doc), {}, {
     ...(Number.isSafeInteger(m.message_id) && m.message_id > 0 ? { message_id: m.message_id } : {}),
     ...(Number.isSafeInteger(m.reply_to_message?.message_id) && m.reply_to_message.message_id > 0 ? { reply_to_message_id: m.reply_to_message.message_id } : {}),
     ...(m.reply_to_message?.from?.is_bot === true ? { reply_to_bot: true } : {}),
-    ...(replyToBotText(m) ? { reply_to_text: replyToBotText(m) } : {}),
+    ...(replyText ? { reply_to_text: replyText } : {}),
   });
 }
 

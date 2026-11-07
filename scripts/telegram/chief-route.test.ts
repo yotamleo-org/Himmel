@@ -1993,7 +1993,7 @@ function approveEnv(liveHead = H1) {
     gh: () => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").filter(l => l.includes("state,headRefOid")) : []),
     // The real reader, run the way the review route runs it: prints `<rc>:<stdout>`.
     authorize: (pr: number, head: string) => {
-      const p = Bun.spawnSync(["bash", "-c", '. "$1" && shift && outside_pr_authorize "$@"', "_", join(anchor, "scripts", "lib", "outside-contributors.sh"), String(pr), head, "0"], { cwd: repo, env: process.env as Record<string, string> });
+      const p = Bun.spawnSync([BASH_BIN, "-c", '. "$1" && shift && outside_pr_authorize "$@"', "_", join(anchor, "scripts", "lib", "outside-contributors.sh"), String(pr), head, "0"], { cwd: repo, env: process.env as Record<string, string> });
       return `${p.exitCode}:${p.stdout.toString().trim()}`;
     },
     done: () => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } },
