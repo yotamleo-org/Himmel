@@ -32,8 +32,9 @@ the relays below follow in the very next turn.
    verdict is the answer; only a qid with no file and no running child is
    re-asked.
 
-   **Restate the direction.** The successor's `LIVE` restates the first lines of
-   its own doc's `## Current direction`, so the outgoing chief can catch a misread
+   **Restate the direction.** The successor's `LIVE` restates the first rulings of
+   its own doc's `## Current direction` (the lines after the `Full original text` pointer
+   line, never that line itself), so the outgoing chief can catch a misread
    before it wraps. `chief.sh next` carries that block verbatim into the successor doc
    when it is short; over `CHIEF_DIRECTION_SPILL_BYTES` (12000) it carries one reading line per ruling
    and writes the full text of every ruling to companion files, which the block's line beginning `Full original text` names and
