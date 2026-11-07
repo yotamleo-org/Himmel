@@ -82,7 +82,7 @@
     {
       "name": "qmd",
       "source": "./plugins/qmd",
-      "description": "[yotamleo fork of tobi/qmd] Local markdown search plugin re-pointed at a SHARED HTTP MCP daemon (http://localhost:8181/mcp) instead of a per-session stdio server, so every Claude session addresses ONE qmd index runtime. Skill name (qmd:qmd) and MCP tool prefix (mcp__plugin_qmd_qmd__*) unchanged from upstream. Daemon brought up lazily by the plugin's own SessionStart hook (${CLAUDE_PLUGIN_ROOT}/scripts/ensure-qmd-daemon.sh) so it works from any session/repo with the plugin enabled. See marketplace/plugins/qmd/README.md.",
+      "description": "[yotamleo fork of tobi/qmd] Local markdown search plugin re-pointed at a SHARED HTTP MCP server (http://localhost:8181/mcp) instead of a per-session stdio server, so every Claude session addresses ONE qmd index runtime. Skill name (qmd:qmd) and MCP tool prefix (mcp__plugin_qmd_qmd__*) unchanged from upstream. The plugin's own SessionStart hook starts that server on first use, so it works from any session/repo with the plugin enabled. See marketplace/plugins/qmd/README.md.",
       "author": {
         "name": "tobi (upstream) / yotamleo (fork)"
       },
