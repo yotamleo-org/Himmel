@@ -5,9 +5,12 @@ Usage: spec-page-gen.py <spec.md> <out.html>
 
 The page names its source in <meta name="spec-source" content="<absolute path of the md>">;
 chief-route.ts send-file reads that marker (markedSource) to find the critic files that
-govern the page wherever the copy sits. The page carries no draft status text of its own:
-the draft state lives in the missing critic seal, so the bytes a critic passed are the bytes
-sent. The sha256 of the md it read is printed so it can be compared with the sealed hash.
+govern the page wherever the copy sits. The page carries no draft status text: the front matter
+status is left out, and a body line starting with Status: or saying "not for signature" makes the
+generator refuse (naming the line) and write nothing, because the draft state lives in the missing
+critic seal. It prints two lines, the sha256 of the md it read and of the page it wrote; the critic
+reads both files, quotes both shas, and both get sealed (chief-kit/critic-seal.sh, one run per file),
+because send-file wants a seal for the page's own bytes.
 """
 import hashlib
 import html
@@ -16,6 +19,10 @@ import re
 import sys
 
 INK, MUTE, BLUE, GREY, RED = "#1c2430", "#4a5563", "#2457a6", "#c3c9d1", "#a33a2a"
+
+
+TABLE_SEP = re.compile(r"^\|\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$")
+DRAFT_LINE = re.compile(r"^\s*status\s*:|not for signature", re.I)
 
 
 def attr(value):
@@ -70,7 +77,7 @@ def render(text):
             level = len(ln) - len(ln.lstrip("#"))
             out.append(f"<h{level}>{inline(ln[level + 1:].strip())}</h{level}>")
             i += 1
-        elif ln.startswith("|"):
+        elif ln.startswith("|") and i + 1 < len(lines) and TABLE_SEP.match(lines[i + 1]):
             head = split_row(ln)
             i += 2
             rows = []
@@ -119,13 +126,22 @@ def main():
     if len(sys.argv) != 3:
         sys.exit("usage: spec-page-gen.py <spec.md> <out.html>")
     spec = os.path.abspath(sys.argv[1])
+    out_path = os.path.abspath(sys.argv[2])
+    if os.path.realpath(out_path) == os.path.realpath(spec):
+        sys.exit(f"spec-page-gen: the output path is the md itself ({spec}); nothing written")
     raw = open(spec, "rb").read()
-    md = raw.decode("utf-8")
+    md = raw.decode("utf-8").replace("\r\n", "\n")
     fm = re.match(r"---\n(.*?)\n---\n", md, re.S)
     meta = dict(x.split(": ", 1) for x in fm.group(1).split("\n") if ": " in x) if fm else {}
     body = md[fm.end():] if fm else md
+    first = md[:fm.end()].count("\n") if fm else 0
+    for n, line in enumerate(body.split("\n"), first + 1):
+        if DRAFT_LINE.search(line):
+            sys.exit(f"spec-page-gen: {spec}:{n} is a draft status line ({line.strip()[:80]!r}); the draft state lives in the missing critic seal, not in the page words. Remove the line from the md, re-run the critic, then generate. Nothing written")
     title = re.search(r"^# (.+)$", body, re.M)
-    bar = " | ".join(html.escape(meta[k][:9] if k == "base" else meta[k]) for k in ("tickets", "status", "date", "base", "author") if k in meta)
+    bar = " | ".join(html.escape(meta[k][:9] if k == "base" else meta[k]) for k in ("tickets", "date", "base", "author") if k in meta)
+    if DRAFT_LINE.search(bar):
+        sys.exit(f"spec-page-gen: the front matter metadata of {spec} carries draft text; nothing written")
     page = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="spec-source" content="{attr(spec)}"><title>{html.escape(title.group(1) if title else os.path.basename(spec))}</title><style>{CSS}</style></head>
 <body>
@@ -133,8 +149,10 @@ def main():
 {render(body)}
 </body></html>
 """
-    open(sys.argv[2], "w", encoding="utf-8").write(page)
+    data = page.encode("utf-8")
+    open(out_path, "wb").write(data)
     print(f"sha256 {hashlib.sha256(raw).hexdigest()} {spec}")
+    print(f"sha256 {hashlib.sha256(data).hexdigest()} {out_path}")
 
 
 main()
