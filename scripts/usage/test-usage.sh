@@ -753,6 +753,17 @@ rc=0; HOME="$PCH" TZ=UTC bash "$COMPUTE" --projects "$WO" --ledger "$WL" --store
 check "windows: a session named outside the plain set builds (rc 0, one phase row)" "0/1" \
   "$rc/$(jq -s '[.[] | select(.kind=="phase-cost" and .session=="odd name+1")] | length' "$ROOT/win/store-odd/records.jsonl" 2>/dev/null || echo none)"
 
+# two long odd names that share their first 160 bytes keep separate emitted maps: a new call in one appends one row
+LP="$(printf '%0160d' 0 | tr 0 x)+"; WO2="$ROOT/win/odd2/projects"; mkdir -p "$WO2/slug"
+{ arow a 2026-11-03T10:00:00.000Z la1 $OP 10 1 100 0 0; arow a 2026-11-04T10:00:00.000Z la2 $OP 10 1 100 0 0; } > "$WO2/slug/${LP}a.jsonl"
+arow b 2026-11-04T10:00:00.000Z lb1 $OP 10 1 100 0 0 > "$WO2/slug/${LP}b.jsonl"
+wo2() { HOME="$PCH" TZ=UTC bash "$COMPUTE" --projects "$WO2" --ledger "$WL" --store "$ROOT/win/store-odd2" >/dev/null 2>&1; }
+wo2; n1="$(jq -s '[.[] | select(.kind=="phase-cost")] | length' "$ROOT/win/store-odd2/records.jsonl")"
+arow a 2026-11-04T11:00:00.000Z la3 $OP 10 1 100 0 0 >> "$WO2/slug/${LP}a.jsonl"
+rc=0; wo2 || rc=$?
+check "windows: two names alike for 160 bytes keep their own emitted maps (3 rows, then one more)" "3/0/4" \
+  "$n1/$rc/$(jq -s '[.[] | select(.kind=="phase-cost")] | length' "$ROOT/win/store-odd2/records.jsonl")"
+
 # an applied commit is renamed aside before it is removed, so a kill during the removal leaves nothing a later run replays
 mkdir -p "$WU/.commit.done/emitted"; echo 7 > "$WU/.commit.done/base"
 wu_h="$(cksum < "$WU/records.jsonl")"

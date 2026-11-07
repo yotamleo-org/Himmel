@@ -487,7 +487,8 @@ fi
 # and --repo); the sessions the checkpoint holds and the root no longer has are dropped in the first window
 # shellcheck disable=SC2016  # jq's own $vars
 jq -nRc --slurpfile ck "$WORK/ck-in.json" --arg root "$PROJECTS" --argjson single "$([ "$PRINT" = 1 ] || [ -n "$REPO" ] && echo true || echo false)" '
-def ukey: if test("^[A-Za-z0-9._-]{1,100}$") then . else "b64-" + (@base64 | gsub("/"; "_") | gsub("\\+"; "-") | gsub("="; "") | .[0:200]) end;
+# a plain session name is its own emitted-map file name; any other gets null here and a checksum key in build_window
+def ukey: if test("^[A-Za-z0-9.-][A-Za-z0-9._-]{0,99}$") then . else null end;
 [ inputs | capture("^(?<s>[0-9]+) (?<m>[0-9]+) (?<p>.*)$")
   | (.p | ltrimstr($root + "/")) as $rel | ($rel | split("/")) as $c
   | { rel: $rel, size: (.s | tonumber), m: (.m | tonumber), slug: $c[0],
@@ -514,6 +515,19 @@ build_window() {
   local win="$1" last="$2" day nu nread=0 rel f ck tl key st off size consumed stem par atype meta fp k j nrows
   day="$(jq -r .day <<<"$win")"; nu="$(jq '.units | length' <<<"$win")"
   jq -c '.units' <<<"$win" > "$WORK/wunits.json"; jq -c '.gone' <<<"$win" > "$WORK/wgone.json"
+  # a session name outside the plain set is keyed like a transcript's state file: "_" (which no plain name starts
+  # with), a checksum of the whole name and a readable tail
+  if jq -e 'any(.[]; .ukey == null)' "$WORK/wunits.json" >/dev/null; then
+    : > "$WORK/ukeys.tsv"
+    while IFS= read -r k; do
+      tl="${k//[^A-Za-z0-9._-]/_}"
+      printf '%s\t_%s_%s\n' "$k" "$(printf '%s' "$k" | cksum | tr ' ' _)" "${tl: -60}" >> "$WORK/ukeys.tsv"
+    done < <(jq -r '.[] | select(.ukey == null) | .unit' "$WORK/wunits.json")
+    # shellcheck disable=SC2016  # jq's own $vars
+    jq -c --rawfile m "$WORK/ukeys.tsv" '($m | split("\n") | map(select(length > 0) | split("\t") | { key: .[0], value: .[1] }) | from_entries) as $k
+      | map(if .ukey == null then .ukey = $k[.unit] else . end)' "$WORK/wunits.json" > "$WORK/wunits.tmp" || die "cannot key the sessions in window $day"
+    mv "$WORK/wunits.tmp" "$WORK/wunits.json"
+  fi
 
   # 1. per-session tokens: usage-attribution.sh, unchanged, on a scratch root of symlinks to this window's files; each
   #    scratch project directory is named u<session index>-<project index>, so its table rows map back to a session
