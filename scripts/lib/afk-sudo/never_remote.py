@@ -85,7 +85,9 @@ DISK_CMDS = ("mkfs", "mkfs.*", "wipefs", "blkdiscard", "sgdisk", "sfdisk", "fdis
 DISK_DEVS = ("/dev/sd*", "/dev/hd*", "/dev/vd*", "/dev/xvd*", "/dev/nvme*", "/dev/mmcblk*", "/dev/md*", "/dev/dm-*",
              "/dev/mapper/*", "/dev/disk/*")
 SECRETS = ("/etc/shadow", "/etc/gshadow", "*/.ssh/id_*", "*/.gnupg", "*/.gnupg/*", "*/.claude/.credentials.json",
-           "*/.claude/channels/*/.env", ".env", "totp.seed")
+           "*/.claude/channels/*/.env", ".env", "totp.seed",
+           "*/.aws/credentials", ".netrc", ".git-credentials", "*/gh/hosts.yml", "*/.docker/config.json",
+           "*/.kube/config", ".npmrc", ".pypirc", ".env.*")
 FORCE = ("--force*", "--delete", "+*", ":*")
 PROTECTED = ("main", "master", "*/main", "*/master", "*:main", "*:master", "refs/heads/main", "refs/heads/master")
 HIMMEL_DIRS = ("/etc/himmel", "/usr/local/libexec/himmel", "/var/lib/himmel", "/var/log/himmel")

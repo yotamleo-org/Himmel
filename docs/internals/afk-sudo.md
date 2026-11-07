@@ -348,7 +348,7 @@ run kind's frozen argv for anything that needs more):
 ## Config keys
 
 `mode`, `operator_user`, `max_per_hour` (default 6, max 30), `run.enabled` (default
-false), `run.ttl_s` (default 900, max 3600), `run.timeout_s` (default 300, max 1800),
+false), `classifier_requests` (default false; see "A classifier refusal files its own request"), `run.ttl_s` (default 900, max 3600), `run.timeout_s` (default 300, max 1800),
 `grant.enabled` (default false), `grant.ttl_s` (default 900, 30 to 3600),
 `ops.enabled` (default false), `ops.ttl_s` (default 900, 30 to 3600), `never_remote_extra`. `install.sh` writes them with the safe defaults on first
 install from `afk-sudo.json.template` (beside it). Over an existing config it adds the keys the template has and the
@@ -491,7 +491,7 @@ nonce and code out of argv. The spec is amended by the chief, not here.
 `request` (sudo kind, allowlist), `run-request`, `op-request`, `grant-request` (the command's bytes on
 stdin), `grant-spend`, `approve`, `deny`, `lockdown`, `status`
 (`run-status` is an alias; both still answer on a locked-down station), `run-result ID [--stream stdout|stderr]` and `mode`
-(`result=mode mode=… enabled=… run_enabled=…`, the effective flag; answered before the
+(`result=mode mode=… enabled=… run_enabled=… classifier_requests=… grant_enabled=…`, the effective flags; answered before the
 `enabled` check).
 
 ## afk-run
@@ -516,31 +516,56 @@ retry. It never polls; the operator's code still runs the command.
 
 The model does not call `afk-run` for a command the classifier refused: the classifier reads
 that call as a way around itself and refuses it too. Instead
-`scripts/hooks/afk-denied-to-request.sh` (`PermissionDenied`, matcher `Bash`, after
-`approval-grant-request.sh`) files the request from the refused call's own bytes:
+`scripts/hooks/afk-denied-to-request.sh` (`PermissionDenied`, matcher `Bash`, timeout 60 s, the external-call tier)
+files the request from the refused call's own bytes:
 
 ```text
 afk-run --no-wait --session <session_id> --ticket <branch ticket|none> \
-        --blocked-by classifier --cwd <cwd> --why <reason> -- ARGV
+        --blocked-by classifier --cwd <cwd> --why "classifier refused: <category>" -- ARGV
 ```
 
 ARGV follows the prompt hook's rule: a plain command is its own argv; anything else is
-`bash -c <the exact bytes>`. A command any of whose words is an `afk-run` path is skipped.
-Nothing runs at filing; root runs the frozen argv once, after `NONCE CODE`, as above.
+`bash -c <the exact bytes>`. Nothing runs at filing; root runs the frozen argv once, after
+`NONCE CODE`, as above.
 
-It files nothing, prints nothing and exits 0 when `AFK_DENIED_TO_REQUEST_OFF=1` is set in the
-launching shell, without `jq`, for a tool other than Bash or an empty command, and unless
-`mode` answers both `enabled=true` and `run_enabled=true` (helper absent, sudo refused,
-station off or locked down, run kind off). It never asks for a `retry`.
+**When it files.** Only while the operator is away: `mode` must answer `enabled=true`,
+`run_enabled=true` and `classifier_requests=true`, and `grant_enabled=false`.
+`classifier_requests` is a top-level key of the root config (default `false`); the operator
+sets it with `sudoedit /etc/himmel/afk-sudo.json` when leaving and clears it on return. Nothing
+user-writable turns it on, and there is no verb for it. With the grant kind on, the grant hook
+owns classifier refusals and this hook stands down. `afk-prompt-to-request.sh` still keys on
+`enabled` and `run_enabled` only.
 
-Accepted residuals:
+**What files.** Only a real refusal: the denial reason must carry a bracketed classifier
+category (`[Unauthorized Persistence]`). "Classifier unavailable" and no-verdict denials carry
+none, and the call is simply retried. Nothing heads toward Telegram before approval that should
+not: a command that matches a `redact()` shape (`scripts/lib/redact.sh`, the patterns
+`log-classifier-denial.sh` uses) or a credential or exfiltration category files nothing, and the
+free-text reason is never passed, only the category. A command any of whose words is an
+`afk-run` path is skipped. That skip is best-effort, a word scan and not a parse, so a computed
+path is not seen; root's checks and the operator's code still apply to it.
 
-- The refused session is not told the request id: `PermissionDenied` can return only
-  `retry`, and no text reaches the model. It learns the outcome from the operator or the
-  chief, or with `afk-run wait <id>` (the id is in the notice and in root's ledger).
-- With the grant kind also on, both `PermissionDenied` hooks file. The broker holds one
-  pending slot per session, so the second answers busy and files nothing; the operator gets
-  exactly one request.
+It also files nothing, prints nothing and exits 0 when `AFK_DENIED_TO_REQUEST_OFF=1` is set in
+the launching shell, without `jq`, for a tool other than Bash or an empty command, and when the
+helper is absent or sudo refuses. It never asks for a `retry`.
+
+**What root adds for `blocked_by=classifier`.**
+
+- At most 2 such requests an hour, and never the last free request of `max_per_hour` or the
+  last free pending slot: the rest answer `classifier-rate-limited`. A request filed on purpose
+  keeps that room.
+- The same argv from the same session answers `duplicate` while an earlier request for it is
+  pending or inside its ttl.
+- A bound data file is shown by path and sha256 only (`NOT SHOWN`), never its body, and no copy
+  is kept. A script `argv[0]` (`#!`) and an interpreter's script operand still show their text.
+  The floor reads every body before this.
+- The floor's `secret-read` rule also names `*/.aws/credentials`, `.netrc`,
+  `.git-credentials`, `*/gh/hosts.yml`, `*/.docker/config.json`, `*/.kube/config`, `.npmrc`,
+  `.pypirc` and `.env.*`, for every kind.
+
+Accepted residual: the refused session is not told the request id. `PermissionDenied` can
+return only `retry`, and no text reaches the model. It learns the outcome from the operator or
+the chief, or with `afk-run wait <id>` (the id is in the notice and in root's ledger).
 
 Once a request is filed, `afk-run` sends the bridge bot's id-only message with the Approve /
 Deny buttons (token from `TELEGRAM_ENV`, default `~/.claude/channels/telegram/.env`, passed
