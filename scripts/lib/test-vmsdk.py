@@ -1563,7 +1563,6 @@ class TestSecretBoundary(unittest.TestCase):
         take.assert_called_once_with("ubuntu_new", "base")
 
     def _scan_down_snapshot(self, scan_out, running=True):
-        """Run scan_down_snapshot against a fake guest; returns (order, exc)."""
         vm = self._vm()
         order = mock.Mock()
         exc = None
@@ -1584,8 +1583,6 @@ class TestSecretBoundary(unittest.TestCase):
         return order, exc
 
     def test_scan_down_snapshot_scans_then_powers_off_then_snapshots(self):
-        """A powered-off guest cannot be scanned, so the scan runs
-        BEFORE power off and the snapshot follows with no --no-secret-scan."""
         order, exc = self._scan_down_snapshot("")
         self.assertIsNone(exc)
         names = [c[0] for c in order.mock_calls]
@@ -1593,7 +1590,6 @@ class TestSecretBoundary(unittest.TestCase):
         self.assertIn("scan", names[:-2])
 
     def test_scan_down_snapshot_stops_on_a_planted_secret(self):
-        """A host .env on the guest stops the run before power off and before any snapshot."""
         order, exc = self._scan_down_snapshot("/home/u/himmel/.env\n")
         self.assertIsNotNone(exc)
         self.assertIn("REFUSING", str(exc))

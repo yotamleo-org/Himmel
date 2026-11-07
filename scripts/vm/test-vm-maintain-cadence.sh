@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 # test-vm-maintain-cadence.sh - hermetic coverage for scripts/vm/vm-maintain-cadence.sh.
-# Stubs stand in for vm-maintain.sh, the station update, the live-worker census and crontab, so no VM,
-# network or real crontab is touched. What is real: the cadence script and cadence-alert.sh (its sender
-# is a stub that counts pages). Each success check is shown to FAIL on a broken run (the RED controls).
 #
 # Platform guard (linux-only): the cadence drives the Linux station's VirtualBox flow and cron.
 #
@@ -23,11 +20,9 @@ control() { local label="$1"; shift; CASES=$((CASES + 1)); if "$@"; then echo "F
 
 [ -f "$SCRIPT" ] || { echo "FAIL $SCRIPT not found"; echo "RESULT: 0 passed, 1 failed"; exit 1; }
 
-# --- stubs -------------------------------------------------------------------------------
 mkdir -p "$WORK/bin"
 cat > "$WORK/bin/vmm" <<'STUB'
 #!/usr/bin/env bash
-# args: run|probe <vm> [flags]
 echo "vmm begin $*" >> "$LOG"
 mode="$1"; vm="$2"
 rc=0
@@ -63,7 +58,6 @@ exit 0
 STUB
 cat > "$WORK/bin/crontab" <<'STUB'
 #!/usr/bin/env bash
-# file-backed crontab: -l prints, - reads stdin
 f="$CRON_FILE"
 case "${1:-}" in
     -l) [ -s "$f" ] || { echo "no crontab for test" >&2; exit 1; }; cat "$f" ;;
@@ -76,7 +70,6 @@ fresh() {
     rm -rf "${WORK:?}/state" "${WORK:?}/alerts" "${WORK:?}/runner" "${WORK:?}/home"; mkdir -p "$WORK/state" "$WORK/alerts" "$WORK/runner" "$WORK/home/.himmel/state"
     : > "$LOG"; : > "$WORK/sent"; : > "$WORK/cron"
 }
-# cadence <verb args...> with extra env as leading NAME=value words
 cadence() {
     local envs=()
     while [ $# -gt 0 ]; do case "$1" in *=*) envs+=("$1"); shift ;; *) break ;; esac; done
@@ -97,9 +90,8 @@ out_lacks() { ! grep -qF -e "$1" <<<"$out"; }
 sent_count() { [ "$(wc -l < "$WORK/sent" | tr -d ' ')" -eq "$1" ]; }
 count_in_out() { [ "$(grep -cF -e "$1" <<<"$out")" -eq "$2" ]; }
 
-# ---------------------------------------------------------------- one pass
 echo "== pass =="
-pass_ok_check() { # one VM at a time, run then probe each, then the station update; never the scan flag
+pass_ok_check() {
     [ "$rc" -eq 0 ] \
       && in_order "vmm begin run vmA" "vmm end run vmA" "vmm begin probe vmA" "vmm end probe vmA" "vmm begin run vmB" "vmm end run vmB" "vmm begin probe vmB" "vmm end probe vmB" "update" \
       && not_logged "--no-secret-scan" && out_has "snapshotted as maint-20261107-1432"
@@ -110,9 +102,8 @@ check "C1b a clean pass pages nobody" sent_count 0
 fresh; out=$(cadence FAIL_RUN_VM=vmA run --vms vmA,vmB 2>&1); rc=$?
 control "C1-RED the pass check fails when a VM run fails" pass_ok_check
 
-# ---------------------------------------------------------------- an update failure stops with a named failure
 echo "== named failure =="
-stopped_check() { # the first failing VM stops the pass: named failure, no later VM, no station update, one page
+stopped_check() {
     [ "$rc" -eq 1 ] && out_has "CADENCE FAILED vm-maintain vmA" && out_has "apt-upgrade" \
       && not_logged "vmm begin run vmB" && not_logged "update" && sent_count 1
 }
@@ -131,7 +122,6 @@ fresh; out=$(cadence BUSY_VM=vmA run --vms vmA,vmB 2>&1); rc=$?
 check "C4 a VM another leg holds is skipped with a line, not failed: the next VM and the station update still run" bash -c '[ "$1" -eq 0 ] && grep -qF "SKIPPED vmA" <<<"$2"' _ "$rc" "$out"
 check "C4b the skipped VM is not probed, the next VM is run" bash -c 'grep -qF "vmm begin run vmB" "$1" && ! grep -qF "vmm begin probe vmA" "$1"' _ "$LOG"
 
-# ---------------------------------------------------------------- login report
 echo "== login report =="
 fresh; out=$(cadence EXPIRED_VM=vmA run --vms vmA 2>&1); rc=$?
 check "L1 an expired login is reported once with its exact command" count_in_out "claude auth login" 1
@@ -141,7 +131,6 @@ check "L2 live logins are silent: no EXPIRED line" out_lacks "EXPIRED"
 fresh; out=$(cadence CRASH_PROBE_VM=vmA run --vms vmA 2>&1); rc=$?
 check "L3 a probe that crashes (rc 127, no FAILED line) is a named failure, never read as an expired login" bash -c '[ "$1" -eq 1 ] && grep -qF "CADENCE FAILED vm-maintain vmA" <<<"$2" && ! grep -qF update "$3"' _ "$rc" "$out" "$LOG"
 
-# ---------------------------------------------------------------- live workers defer the station update
 echo "== live workers =="
 fresh; out=$(cadence STUB_LIVE="slug=x__himmel__HIMMEL-1-N1-foo session=s host=h age=10s status=OK" run --vms vmA 2>&1); rc=$?
 defer_check() { [ "$rc" -eq 0 ] && not_logged "update" && out_has "DEFERRED station-update" && logged "vmm begin run vmA"; }
@@ -155,7 +144,6 @@ check "W3 a dead lock is not a live worker: the update runs" logged "update"
 fresh; out=$(cadence CENSUS_FAIL=1 run --vms vmA 2>&1); rc=$?
 check "W4 a census that fails defers the update (fail closed)" defer_check
 
-# ---------------------------------------------------------------- arm / status / disarm
 echo "== arm =="
 fresh; printf '0 5 * * * /usr/bin/other-job\n' > "$WORK/cron"
 out=$(cadence VM_MAINTAIN_VMS=vmA,vmB arm --day 2 --time 04:15 2>&1); rc=$?

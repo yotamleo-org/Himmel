@@ -699,9 +699,7 @@ class VM:
     def scan_down_snapshot(self, name):
         """Scan the RUNNING guest for host secrets, power it off, then snapshot it.
 
-        A powered-off guest cannot be scanned, so a scheduled run
-        scans first and snapshots after power off with no --no-secret-scan. A hit
-        or an unscannable guest raises before power off and before any snapshot."""
+        A hit or an unscannable guest raises before power off and before any snapshot."""
         self._require_vm("scan-down-snapshot")
         if not vbox.is_running(self.name):
             raise VMError(

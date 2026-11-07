@@ -1,29 +1,10 @@
 #!/usr/bin/env bash
 # vm-maintain-cadence.sh - the scheduled VM maintenance pass: keep every test VM current, then the station.
 #
-# WHY: test VMs rot between uses (2026-11-07: every snapshot's Claude login had expired and a proof
-# leg found out only when launched), and a guest disk filled to 100 percent. Pure code: no model
-# turn and no paid call. A dead login cannot be automated, so it pages the operator once.
-#
 #   vm-maintain-cadence.sh run [--vms a,b]       one pass (what cron fires)
 #   vm-maintain-cadence.sh arm [--day 0-6] [--time HH:MM] [--force] [--dry-run]
 #   vm-maintain-cadence.sh status
 #   vm-maintain-cadence.sh disarm [--dry-run]
-#
-# run: for each VM, ONE AT A TIME, `vm-maintain.sh run <vm>` (it takes scripts/vm/vm-lock.sh, updates,
-# scans for host secrets BEFORE power off, snapshots; this script never passes --no-secret-scan) and
-# then `vm-maintain.sh probe <vm>`, which reports an expired login with its exact command and pages
-# the operator once per CLI. A VM another leg holds past HIMMEL_VM_LOCK_WAIT (VMCAD_LOCK_WAIT, default
-# 1800 s) is SKIPPED with a line, not failed. A failed run or probe stops the pass: "CADENCE FAILED
-# vm-maintain <vm> <step>", one page, and the station update does not run (VM first).
-# Then the station update, `scripts/himmel-update.sh` (its own VM-proof gate still applies; a package
-# that needs sudo prints its command instead of running). While any worker session is live it does
-# nothing and logs "DEFERRED station-update": the live set is every held queue lock that is neither a
-# chief's nor provably dead, and a census that fails counts as live. A failed update is "CADENCE
-# FAILED station-update".
-#
-# OFF by default: only `arm` installs the crontab entry (default Sunday 03:30). arm and disarm rewrite
-# the crontab under crontab_locked_rmw and bake PATH and the handover root into the runner (cron has neither).
 #
 # Exit: run 0 done (also when logins are expired, skipped VMs or a deferral), 1 a failed step, 64 usage.
 #       arm 0 armed (or dry-run), 1 bad argument, 2 no crontab / no primary checkout, 3 already armed
@@ -58,7 +39,6 @@ resolve_primary() {
 
 say() { echo "vm-maintain-cadence: $*"; }
 
-# live_workers: prints the held locks that are workers; returns 1 when the census itself failed.
 live_workers() {
     local out rc
     if [ -n "${VMCAD_LIVE_WORKERS_CMD:-}" ]; then out="$("$VMCAD_LIVE_WORKERS_CMD" 2>/dev/null)"; rc=$?
@@ -67,26 +47,28 @@ live_workers() {
     printf '%s\n' "$out" | grep '^slug=' | grep -v ' status=STALE-DEAD' | grep -Ev '^slug=[^ ]*-chief ' || true
 }
 
-# step_fail <what> <detail>: the named failure, one page, rc 1 for the pass
 step_fail() {
     say "CADENCE FAILED $1 - $2"
     bash "$ALERT" fail "$ALERT_WORKER" "$1 failed" "$LOGF" "$2" "read the log, fix it, the next scheduled pass retries"
 }
 
-# vmm_step <run|probe> <vm>: 0 ok, 1 failed (named, paged), 2 the VM was busy (skipped)
+readonly VMM_OK=0 VMM_FAILED=1 VMM_BUSY=2
+
+probe_reported_expired_login() { [ "$1" -eq 1 ] && ! grep -qF FAILED <<<"$2"; }
+
 vmm_step() {
     local mode="$1" vm="$2" out rc step
     out="$("$VMM" "$mode" "$vm" 2>&1)"; rc=$?
     [ -z "$out" ] || printf '%s\n' "$out"
-    case "$rc" in
-        0) return 0 ;;
-        2) say "SKIPPED $vm ($mode): busy or refused, see the line above; the next pass retries"; return 2 ;;
-    esac
-    # probe rc 1 without a FAILED line is the documented expired-login code (already paged); any other rc is a broken probe
-    if [ "$mode" = probe ] && [ "$rc" -eq 1 ]; then case "$out" in *FAILED*) ;; *) return 0 ;; esac; fi
+    [ "$rc" -ne 0 ] || return "$VMM_OK"
+    if [ "$rc" -eq 2 ]; then
+        say "SKIPPED $vm ($mode): busy or refused, see the line above; the next pass retries"
+        return "$VMM_BUSY"
+    fi
+    if [ "$mode" = probe ] && probe_reported_expired_login "$rc" "$out"; then return "$VMM_OK"; fi
     step="$(printf '%s\n' "$out" | sed -n 's/.*FAILED \([a-z-]*\).*/\1/p' | head -n1)"
     step_fail "vm-maintain $vm ${step:-$mode}" "$(printf '%s\n' "$out" | grep FAILED | head -n1)"
-    return 1
+    return "$VMM_FAILED"
 }
 
 cmd_run() {
@@ -104,10 +86,10 @@ cmd_run() {
     export HIMMEL_VM_LOCK_WAIT="${HIMMEL_VM_LOCK_WAIT:-${VMCAD_LOCK_WAIT:-1800}}"
     for vm in ${vms//,/ }; do
         vmm_step run "$vm"; rc=$?
-        [ "$rc" -ne 1 ] || return 1
-        [ "$rc" -eq 0 ] || continue
+        [ "$rc" -ne "$VMM_FAILED" ] || return 1
+        [ "$rc" -eq "$VMM_OK" ] || continue
         vmm_step probe "$vm"; rc=$?
-        [ "$rc" -ne 1 ] || return 1
+        [ "$rc" -ne "$VMM_FAILED" ] || return 1
     done
     if ! live="$(live_workers)"; then
         say "DEFERRED station-update: the live-worker census failed, so a worker may be live; the next pass retries"
@@ -140,25 +122,25 @@ cron_read() {
 }
 cron_entry() { printf '%s\n' "$CRON_TAB" | grep -F "# $TASK_NAME" || true; }
 
-# $force and $entry are cmd_arm's locals, visible because cmd_arm is on the call stack.
 arm_edit() {
-    if [ -n "$(cron_entry)" ] && [ "$force" -eq 0 ]; then
+    if [ -n "$(cron_entry)" ] && [ "$ARM_FORCE" -eq 0 ]; then
         echo "ERR vm-maintain-cadence: already armed: $TASK_NAME (use --force to replace)" >&2
         return 3
     fi
-    { printf '%s\n' "$CRON_TAB" | { grep -vF "# $TASK_NAME" || true; } | sed '/^$/d'; printf '%s\n' "$entry"; }
+    { printf '%s\n' "$CRON_TAB" | { grep -vF "# $TASK_NAME" || true; } | sed '/^$/d'; printf '%s\n' "$ARM_ENTRY"; }
 }
 disarm_edit() { { printf '%s\n' "$CRON_TAB" | grep -vF "# $TASK_NAME" || true; }; }
 
 cmd_arm() {
-    local day=0 time="03:30" force=0 dry=0 root runner bash_bin entry
+    local day=0 time="03:30" dry=0 root runner bash_bin
+    ARM_FORCE=0
     while [ $# -gt 0 ]; do
         case "$1" in
             --day|--time)
                 [ $# -ge 2 ] || { echo "ERR vm-maintain-cadence: $1 needs a value" >&2; return 1; }
                 case "$1" in --day) day="$2" ;; --time) time="$2" ;; esac
                 shift 2 ;;
-            --force) force=1; shift ;;
+            --force) ARM_FORCE=1; shift ;;
             --dry-run) dry=1; shift ;;
             *) echo "ERR vm-maintain-cadence: unknown arg: $1" >&2; return 1 ;;
         esac
@@ -171,15 +153,15 @@ cmd_arm() {
     # cron has no HANDOVER_DIR (the live-worker census needs it): the shell's value wins, else the primary checkout's .env
     if [ -z "${HANDOVER_DIR:-}" ]; then load_dotenv --root "$root" HANDOVER_DIR >/dev/null 2>&1 || true; fi
     cron_read || return 4
-    if [ -n "$(cron_entry)" ] && [ "$force" -eq 0 ]; then
+    if [ -n "$(cron_entry)" ] && [ "$ARM_FORCE" -eq 0 ]; then
         echo "ERR vm-maintain-cadence: already armed: $TASK_NAME (use --force to replace)" >&2
         return 3
     fi
     runner="$RUNNER_DIR/vm-maintain-cadence.sh"
     # cron reads an unescaped % as a newline, even inside quotes.
-    entry="${time#*:} ${time%:*} * * $day \"${runner//%/\\%}\" # $TASK_NAME"
+    ARM_ENTRY="${time#*:} ${time%:*} * * $day \"${runner//%/\\%}\" # $TASK_NAME"
     if [ "$dry" -eq 1 ]; then
-        echo "DRY vm-maintain-cadence: would write $runner and install: $entry"
+        echo "DRY vm-maintain-cadence: would write $runner and install: $ARM_ENTRY"
         return 0
     fi
     mkdir -p "$RUNNER_DIR" || return 4

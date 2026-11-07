@@ -18,11 +18,7 @@
 # Steps: lock boot apt-update apt-upgrade claude-update codex-update cli-proxy-update secret-scan snapshot
 # (power-off is part of scan-down-snapshot; a hand run with --no-secret-scan has its own power-off step).
 #
-# Secret scan: vmsdk cannot scan a powered-off VM for host .env files, so the DEFAULT run uses the
-# vmsdk verb scan-down-snapshot, which scans the RUNNING guest, powers it off and then snapshots. A
-# hit stops the run with "FAILED secret-scan <files>" before power off and before any snapshot.
-# --no-secret-scan is for the one run an operator makes by hand after checking the VM holds no host
-# copy; it powers off and snapshots with no scan. Never in a schedule (vm-maintain-cadence.sh never passes it).
+# --no-secret-scan: for the one run an operator makes by hand after checking the VM holds no host copy.
 #
 # probe: boot, read the login files in the guest (a free check, no model turn), power off. Claude is
 # expired when its refresh token is past refreshTokenExpiresAt (or absent with the access token past
@@ -162,7 +158,6 @@ cmd_run() {
         BOOTED=0
         sdk "$VM" snapshot "$snap" --no-secret-scan >/dev/null || fail snapshot "vmsdk snapshot $snap failed"
     else
-        # scan the RUNNING guest, power off, snapshot: one vmsdk verb, because a powered-off guest cannot be scanned
         OUT="$(sdk "$VM" scan-down-snapshot "$snap" 2>&1)" \
             || case "$OUT" in
                 *REFUSING*) fail secret-scan "$(printf '%s' "$OUT" | grep REFUSING | head -n 3 | tr '\n' ' ')" ;;
