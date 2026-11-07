@@ -1,8 +1,8 @@
 # /pr-check reference: steps 5 / 6 / 6.5: gate decision, marker clear, footer
 
-5. If step 4.9 did not already clear the marker, and `N == 0` AND step 4.8 reported `threads_rc = 0` AND step 3.6 reported `impacted_rc = 0` (every suite that references a changed file has a verdict — HIMMEL-2821), clear the marker via
-   the chokepoint — **never a bare `rm -f <marker>`** (HIMMEL-1064). Substitute
-   step 0's printed `branch=` literal, SINGLE-quoted (HIMMEL-2226 — this is a
+5. If step 4.9 did not already clear the marker, and `N == 0` AND step 4.8 reported `threads_rc = 0` AND step 3.6 reported `impacted_rc = 0` (every suite that references a changed file has a verdict), clear the marker via
+   the chokepoint — **never a bare `rm -f <marker>`**. Substitute
+   step 0's printed `branch=` literal, SINGLE-quoted (this is a
    pasted, shell-parsed operand, and a git ref may legitimately contain `;`,
    `$` or a backtick):
    ```bash
@@ -17,14 +17,14 @@
    re-derives it from what the step-4.5 ledger recorded at this exact SHA
    (a critic actually responded + zero blocking findings), plus check-ci when a
    PR already exists — so it is strictly STRONGER than the `rm` it replaces.
-   - Exit 0 → report its `CR clean — marker cleared …` line VERBATIM. Under `CR_REQUIRE_CROSS_MODEL` that line states the clearing basis: a plain one means a non-Claude lane reviewed the SHA; one reading `… ON THE SAME-MODEL FLOOR …` means the context-free Claude floor cleared it and the PR has no cross-model coverage (HIMMEL-3108) — never shorten it to "CR clean".
+   - Exit 0 → report its `CR clean — marker cleared …` line VERBATIM. Under `CR_REQUIRE_CROSS_MODEL` that line states the clearing basis: a plain one means a non-Claude lane reviewed the SHA; one reading `… ON THE SAME-MODEL FLOOR …` means the context-free Claude floor cleared it and the PR has no cross-model coverage — never shorten it to "CR clean".
    - Any non-zero → the marker STAYS and the gate is NOT clear; treat it as
      step 6. Notably `14` = no critic responded at this SHA (a MISSING review
      signal, e.g. a rate-limited or timed-out critic — never a clean one) and `13` =
      a commit landed after the review, so re-run `/pr-check` on the new HEAD.
      Do NOT fall back to `rm`.
 
-   **Promote agreed findings to fixed (HIMMEL-2911).** Once the marker cleared
+   **Promote agreed findings to fixed.** Once the marker cleared
    above, terminalize every finding still `agreed` on this branch:
    ```bash
    bash "<himmel_dir>/scripts/cr/review-round.sh" promote --branch '<branch>' --head <head>
@@ -37,7 +37,7 @@
    ledger write failure) is an infrastructure failure, not a
    per-finding one: STOP, report the exact stderr line, repair the cause, and
    re-run `promote` — never hand-amend anything as a workaround.
-   A `still-open <id>@<sha> (unadjudicated)` line (HIMMEL-2917) means a
+   A `still-open <id>@<sha> (unadjudicated)` line means a
    finding row with no effective verdict after applying amendments — nobody
    dispositioned it at all. A
    finding fixed within THIS round must be amended `fixed` at step 4.5,
@@ -48,7 +48,7 @@
 6. If either `N > 0`, or step 4.8 reported `threads_rc != 0`, or step 3.6 reported `impacted_rc != 0`:
    - Leave the marker in place.
    - Surface the Critical / Important findings (and any unresolved-thread count, and every impacted suite still missing a verdict) to the user.
-   - **Route each finding (HIMMEL-6303).** Fix each in-scope Critical or Important finding, and each finding in the version's priority pool, in this PR and run it through a round. Defer a genuinely out-of-scope Critical or Important finding only through step 4.5, with its ticket, `fu_class`, and finding reason. After the round cap, fix Critical and escape-class Important findings; defer classified-hardening Important findings and suggestions/nits only through the cap disposition, with the required ticket and reason. Every suggestion/nit still needs an explicit fixed, deferred, or disproved disposition. A change that does land clears on a signed judge GO at its exact head (`review-round.sh judge-go`, step 3.0), never on a new full round.
+   - **Route each finding.** Fix each in-scope Critical or Important finding, and each finding in the version's priority pool, in this PR and run it through a round. Defer a genuinely out-of-scope Critical or Important finding only through step 4.5, with its ticket, `fu_class`, and finding reason. After the round cap, fix Critical and escape-class Important findings; defer classified-hardening Important findings and suggestions/nits only through the cap disposition, with the required ticket and reason. Every suggestion/nit still needs an explicit fixed, deferred, or disproved disposition. A change that does land clears on a signed judge GO at its exact head (`review-round.sh judge-go`, step 3.0), never on a new full round.
    - **A Suggestions-only round closes at round 1.** When step 3.0 printed round 1, 2 or 3 and every open finding at this head is a Suggestion or nit (no Critical or Important left open; a round 2 or 3 Important tagged `[pre-existing]` by `critic-pre-existing-tag.py` and given its own fu_class counts as closeable, `defer` deferring it by an amend row, see step 4.5), leave those Suggestion/nit rows unamended in step 4.5 and run step 4.9's `review-round.sh defer` instead of another round. The default for a Suggestion is defer: fix one in this PR only inside a commit the round already needs for a Critical or Important. `defer` files no ticket for a polish Suggestion (decisions 746 and 762): it amends the row `deferred` with no ticket, so the marker clears and you note the finding in the PR body. An explicit `--defer-to <ticket>` instead attaches every pending finding to that existing ticket and files nothing. Only a hardening row (with `--fu-override`) is filed, as ONE batch follow-up ticket per branch (`Review follow-ups for <branch>`, parented to the PR title's key, else the first `[KEY-n]` in the branch's commit subjects), remembers its key in `<git-common-dir>/cr-review-rounds/<branch>.deferred-to` for every later early close on the branch (a round-1 `start` removes it, `cr-reset.sh` moves it aside; a later close adds its findings to that ticket as a comment, and a failed comment exits 6 with the marker kept, so rerun the same `defer` to retry it), defers each ticketed finding to it and clears the marker. It does this only when the change touches no pattern in the default branch's `scripts/ci/ci-trust-paths.txt` (the `trust_path_check` merge-on-green runs): the branch's one open PR, headed at this head, or, when gh finds no PR or several, or fails, the branch's `<default>...<head>` diff (the local-git mode). On a trust-path change, or on any trust-path refusal it exits 2 and the round-4 cap stays in force: fix the Suggestions in a round as before. An open Critical or Important still exits 4, as at every round.
    - Instruct: address the findings, commit fixes, resolve the addressed PR threads, then re-run `/pr-check`. Fix the whole round in ONE commit and ONE push (never a WIP push), and make any PR title/body/`## Ticket coverage` edit in that same step, not after CI is green: every push re-runs CI and an edit re-queues `pr-title-lint` and `codeowner-review-gate`. (A new commit invalidates the SHA in the marker too, but the marker is still present until `/pr-check` clears it.)
 
