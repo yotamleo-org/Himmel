@@ -6929,9 +6929,15 @@ echo "== C52-graphify-ollama: default backend (claude-cli) + missing extra -> OK
 out="$(C52_BACKEND=claude-cli c52_run "$c52_t/missing")"
 if grepq "$out" 'OK   C52-graphify-ollama' && ! grepq "$out" 'WARN C52-graphify-ollama'; then pass "C52 claude-cli backend -> OK"; else fail "C52 claude-cli -> $(printf '%s' "$out" | grep -A1 C52)"; fi
 
-echo "== C52-graphify-ollama: unaccepted backend -> WARN naming the variable, not a claude-cli OK =="
+echo "== C52-graphify-ollama: claude-api and its api alias -> OK skip (HIMMEL-7644), never the not-accepted WARN =="
+for c52_b in claude-api api; do
+    out="$(C52_BACKEND=$c52_b c52_run "$c52_t/missing")"
+    if grepq "$out" 'OK   C52-graphify-ollama' && grepq "$out" -F 'claude-api' && ! grepq "$out" 'WARN C52-graphify-ollama'; then pass "C52 $c52_b backend -> OK skip"; else fail "C52 $c52_b -> $(printf '%s' "$out" | grep -A1 C52)"; fi
+done
+
+echo "== C52-graphify-ollama: unaccepted backend -> WARN naming the variable, remedy lists claude-api, not a claude-cli OK =="
 out="$(C52_BACKEND=bogus c52_run "$c52_t/ok")"
-if grepq "$out" 'WARN C52-graphify-ollama' && grepq "$out" -F "GRAPH_CADENCE_SEMANTIC_BACKEND='bogus'" && ! grepq "$out" 'OK   C52-graphify-ollama'; then pass "C52 unaccepted backend -> WARN"; else fail "C52 bogus -> $(printf '%s' "$out" | grep -A1 C52)"; fi
+if grepq "$out" 'WARN C52-graphify-ollama' && grepq "$out" -F "GRAPH_CADENCE_SEMANTIC_BACKEND='bogus'" && grepq "$out" -F 'claude-cli, claude-api or ollama' && ! grepq "$out" 'OK   C52-graphify-ollama'; then pass "C52 unaccepted backend -> WARN"; else fail "C52 bogus -> $(printf '%s' "$out" | grep -A1 C52)"; fi
 
 echo "== C52-graphify-ollama: no graphifyy venv -> OK (skipped) =="
 out="$(c52_run "$c52_t/absent")"

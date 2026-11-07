@@ -4,7 +4,7 @@
 one reference for what the worker context guard does, when it runs, and how a worker
 gets past it. The hook header carries the same facts for whoever edits the code.
 Hook wiring and the enforcement matrix are in
-[`enforcement.md`](enforcement.md#guard-worker-context-handoffsh--chief-spawned-worker-context-hand-off-himmel-4569).
+[`enforcement.md`](enforcement.md#guard-worker-context-handoffsh--chief-spawned-worker-context-hand-off).
 
 ## Purpose
 
@@ -119,10 +119,22 @@ outgrows 33 % still relaunches, by design, while a `worker-eval` worker
 checkpoint at 700000 and a ceiling of 800000. The hook rounds up to a whole percent of the
 window, so `ceil(87 × 800000 / 1000000)` = `ceil(69.6)` = 70 %, **exactly 700000 tokens**;
 88, the nearer share on paper (87.5), would give 71 %, 710000. Fill itself reaches the hook
-as a whole percent, so a deny can land up to about 5000 tokens under 700000. Where auto
-compaction fires at this ceiling is not located. Two real runs each compacted straight after one
-large read batch, at 749689 and 678169 by the CLI's own count (about 645000 by API usage in the
-second, calculated), and the second then grew to 690007 by API usage with no second compaction.
+as a whole percent, so a deny can land up to about 5000 tokens under 700000.
+
+Where auto compaction fires at this ceiling on steady growth is still unmeasured, but it is
+above **744217 tokens by API usage**. The guard denied first in both workers that passed
+700000. This was measured on 2026-11-07 with `scripts/eval/compaction-trigger-report.py` over the
+transcripts of the 41 native Opus workers launched at 800000 after the change:
+
+- Five workers passed 600000 tokens by API usage, and none of them compacted.
+- Two of them passed 700000. The guard denied both, with the last call before the deny at
+  717344 and 698865. They then ran on to 737159 and 744217 with no compaction.
+- The one compaction among the 41 came after 54 minutes idle, at 282690 by the CLI's count.
+
+Two VM runs on a bulk-read fixture each compacted straight after one large read batch, at
+749689 and 678169 by the CLI's count (about 645000 by API usage in the second, calculated).
+The second then grew to 690007 by API usage with no second compaction. Re-run the script when
+more Opus workers have grown past 744217.
 
 **What the guard does not cover.** A second compaction trigger fires after about 54 minutes
 idle, whatever the ceiling: 10 Opus compactions from 337516 to 555513 tokens over 21 days,

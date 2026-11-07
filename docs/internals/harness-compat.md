@@ -803,7 +803,7 @@ one 5-member chain.
 - **The Claude wiring now mirrors this**: `.claude/settings.json`
   carries the same disjoint matchers and the same chains, dispatched by
   `run-hook-with-bash.js --chain` — see
-  [`enforcement.md`](enforcement.md#claude-pretooluse-dispatcher-himmel-2002).
+  [`enforcement.md`](enforcement.md#claude-pretooluse-dispatcher).
 
 **Trap:** Codex keys hook trust state positionally in `config.toml`
 (`[hooks.state.'<file>:<event>:<block>:<hook>']` + `trusted_hash`). Editing
@@ -1060,7 +1060,7 @@ himmel checkout must stay reachable at
 that path for the hook to fire — move or delete it and every armed repo's push
 gate fails closed with a message naming the remedy (re-run the installer);
 `--status` reports `stale`. GitHub-hosted repos only. Detail:
-[`enforcement.md`](enforcement.md#cr-gate-outside-the-himmel-checkout-adopters--upstream-prs--himmel-2035).
+[`enforcement.md`](enforcement.md#cr-gate-outside-the-himmel-checkout-adopters--upstream-prs).
 
 ## Port / guard / accept decisions
 

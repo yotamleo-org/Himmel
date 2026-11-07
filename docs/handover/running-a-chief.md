@@ -238,7 +238,7 @@ label, count and class, and nothing else. A paged worker is then **refused** on
 re-dispatch (`headed-arm-worker.sh` exits 14) until someone has looked and run
 `bash scripts/handover/chief-kit/ack-denial.sh <worker-label-or-doc>`;
 `--ignore-denials` overrides. Detail:
-[`../internals/enforcement.md`](../internals/enforcement.md#log-classifier-denialsh--classifier-denial-tap-himmel-3724).
+[`../internals/enforcement.md`](../internals/enforcement.md#log-classifier-denialsh--classifier-denial-tap).
 
 ## Dispatching workers
 

@@ -1540,7 +1540,7 @@ Turn any of these back on with one command
 > mechanism the on-demand tier's escape hatch above relies on;
 > it is not floor-specific.
 
-#### `security-guidance` — recommended OFF; **operator decision pending**
+#### `security-guidance` — recommended OFF
 
 `security-guidance@claude-plugins-official` runs an **LLM diff review at the end
 of every turn**, an **agentic commit review on every `git commit`**, and ~9 hooks
@@ -1554,19 +1554,19 @@ on, and adding process spawns to the pool that a kernel-handle
 leak was traced to.
 
 **Adopter default: OFF.** `docs/setup/settings-template.json` and the `user`
-profile in `scripts/lanes/plugin-profiles.json` both ship it `false` as of
-this change; no adopter or dispatched lane enables it.
+profile in `scripts/lanes/plugin-profiles.json` both ship it `false`; no
+adopter or dispatched lane enables it.
 
-**Operator box: decision pending.** It is still ENABLED on the operator machine
-(user scope, Claude + Codex). The recommendation is to disable it:
+**Already on?** The default does not change a user-scope install: a machine
+that enabled it earlier (user scope, Claude + Codex) keeps it on until you
+disable it:
 
 ```bash
 claude plugin disable security-guidance@claude-plugins-official
 ```
 
-But that is a user-scope change the operator applies, so that change
-deliberately did **not** flip it. Re-enable per-session or per-repo instead if
-you ever want the per-turn review back.
+Re-enable per-session or per-repo instead if you ever want the per-turn review
+back.
 
 ### Install sequence
 

@@ -183,7 +183,10 @@
 #                               (default 45); the doc's mtime stands in for its newest Results bullet, as
 #                               the tick's hold and READY ages do. succession-partial: a --succession
 #                               tally that stayed short names the worker (the line follows the partial
-#                               block). One line per worker, once per (worker, signal, doc write time):
+#                               block) and a manifest row of it does not have a free queue lock. A worker
+#                               whose every row has a free lock is named by no line, bullet or page: it reads as
+#                               closed, never launched or answering on another row's doc, so a live worker that
+#                               lost its lock is not paged. One line per worker, once per (worker, signal, doc write time):
 #                               <inbox>.wait.silent holds the keys, so a re-arm on an unchanged state is quiet
 #                               and a worker that wrote and went quiet again wakes again. Each line also
 #                               appends a `WORKER-SILENT` bullet to --doc and sends the operator ONE page
@@ -1749,6 +1752,18 @@ silent_emit() { # <label> <signal> <detail>: prints the WAKE line and succeeds w
     page_send "WORKER-SILENT $label signal=$signal$detail - $act" $(( $(date +%s) + page_timeout ))
     printf 'WAKE worker-silent %s signal=%s%s\n' "$label" "$signal" "$detail"
 }
+succ_row_live() {
+    local mf="${legs_from:-${console_doc%.md}.fleet.json}" docs d
+    [ -f "$mf" ] || return 0
+    docs="$(jq -r --arg l "$1" "$JQ_W"'[W[]? | select(.label == $l)] | if length == 0 or any(.[]; .lockless == true or (.doc // "") == "") then empty else .[].doc end' "$mf" 2>/dev/null)" || return 0  # swallow-ok: an unreadable manifest proves nothing, so the worker pages
+    [ -n "$docs" ] || return 0
+    while IFS= read -r d; do
+        bash "${CHIEF_WAIT_LOCK_STATUS:-$HERE/../queue-lock.sh}" status "$d" </dev/null >/dev/null 2>&1 9>&- || return 0
+    done <<EOF
+$docs
+EOF
+    return 1
+}
 silent_wake() { # prints one WAKE line per worker newly silent and succeeds when there is one
     local tok label ldoc m age line out=""
     [ -n "$legs_from" ] || return 1
@@ -1829,7 +1844,7 @@ while :; do
                     printf 'WAKE succession partial %s silent %s min\n%s\n' "${succ_tally:-tracker-error}" "$silent_min" "$succ_out"
                     # the workers the tally still waits on are silent: one worker-silent line each
                     printf '%s\n' "$succ_sum" | sed -nE 's/^INCOMPLETE [0-9]+\/[0-9]+ \(waiting on: ([^)]*)\).*/\1/p' | tr ',' '\n' |
-                        while IFS= read -r succ_w; do silent_emit "$succ_w" succession-partial "" || true; done  # swallow-ok: an already-woken worker prints nothing
+                        while IFS= read -r succ_w; do succ_row_live "$succ_w" && { silent_emit "$succ_w" succession-partial "" || true; }; done  # swallow-ok: an already-woken worker prints nothing
                     rm -f "$succ_file"; exit_reason='wake-succession-partial'; exit 0
                 fi ;;
         esac
