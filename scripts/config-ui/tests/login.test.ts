@@ -430,7 +430,7 @@ async function onPage(b: ReturnType<typeof browser>, hash: string, run: (p: { ma
     history: { replaceState: (_a: unknown, _b: unknown, u: string) => { b.spy.history.push(u); loc.hash = u.includes("#") ? u.slice(u.indexOf("#")) : ""; } },
   };
   await withGlobals(over, async () => {
-    new Function(src)();
+    new Function("setInterval", src)(() => 0);
     await settle();
     await run({
       main: () => String(el("#main").innerHTML), top: () => String(el("#top").innerHTML), status: () => String(el("#status").textContent), readOnly: () => doc.body.dataset.readOnly === "1" && el("#read-only-banner").hidden === false,

@@ -153,7 +153,7 @@ test("page: a slower, older feed load never repaints over a newer one", async ()
       if (first) { first = false; ok("initial"); } else waiting.push(ok);
     }),
   }, ["__loadFeed"]);
-  new Function(src)();
+  new Function("setInterval", src)(() => 0);
   await sleep(20);
   const load = (globalThis as Record<string, unknown>).__loadFeed as () => Promise<void>;
   const a = load(), b = load(); // two actions each start a re-probe
@@ -176,7 +176,7 @@ test("page: a repaint after a review gate control changes puts the focus back on
     location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
     fetch: () => new Promise(() => {}),
   }, ["__paint"]);
-  new Function(src)();
+  new Function("setInterval", src)(() => 0);
   focused.length = 0;
   ((globalThis as Record<string, unknown>).__paint as () => void)();
   expect(focused).toEqual(["required:claude"]);
@@ -198,7 +198,7 @@ for (const [name, before, after, want] of [
     location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
     fetch: () => new Promise(() => {}),
   }, ["__paint"]);
-  new Function(src)();
+  new Function("setInterval", src)(() => 0);
   ((globalThis as Record<string, unknown>).__paint as () => void)();
   expect(repainted.value).toBe(want);
 });
@@ -218,7 +218,7 @@ test("page: a failed setup refresh keeps the last good setup and says so, instea
       : new Promise(() => {})),
   }, ["__loadSetup", "__setup"]);
   const g = globalThis as Record<string, unknown>;
-  new Function(src)();
+  new Function("setInterval", src)(() => 0);
   await sleep(20);
   await (g.__loadSetup as () => Promise<void>)();
   failing = true;
@@ -262,7 +262,7 @@ async function pickerHarness(hash: string, run: (h: PickerHarness) => Promise<vo
     fetch: (url: string) => url === "/api/projects" ? json({ current: "himmel", projects: [{ name: "himmel", checkedAt: "2026-10-31T00:00:00Z", counts: { project: { fail, warn: 0 } } }] })
       : url === "/api/feed" ? json({ generatedAt: "2" }) : new Promise(() => {}),
   }, ["__refresh", "__seed", "__route"]);
-  new Function(src)();
+  new Function("setInterval", src)(() => 0);
   await sleep(20);
   await run({ main: () => main, refresh: g.__refresh as () => Promise<void>, seed: g.__seed as (f: object) => void,
     go: (h) => { loc.hash = h; (g.__route as () => void)(); }, setFail: (n) => { fail = n; } });

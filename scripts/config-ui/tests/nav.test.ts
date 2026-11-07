@@ -89,7 +89,7 @@ async function landedOn(hash: string) {
     location: { hash, pathname: "/", search: "", host: "x" }, history: { replaceState: (_a: unknown, _b: unknown, u: string) => urls.push(u) },
     fetch: () => new Promise(() => {}), addEventListener() {},
   });
-  try { new Function(src)(); } finally { for (const n of names) { if (saved[n] === undefined) delete g[n]; else g[n] = saved[n]; } }
+  try { new Function("setInterval", src)(() => 0); } finally { for (const n of names) { if (saved[n] === undefined) delete g[n]; else g[n] = saved[n]; } }
   return { urls, tile: (painted.at(-1) as { tile?: string } | undefined)?.tile ?? null };
 }
 
