@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { releaseKeyPath, releaseRoot } from './paths.js';
@@ -707,20 +708,35 @@ function rmFence(ctx: Ctx, l: Loaded): Lease {
   return lease;
 }
 
-export function leaseAcquire(ctx: Ctx, o: { expectEpoch: number; doc: string; session: string }): Lease {
+// An rm-run lease names its process, so a run that died without unwinding (SIGKILL, OOM) frees it for the next run.
+export type RunLease = Lease & { owner_pid?: number; owner_host?: string };
+
+// The holder's pid is gone on this host. A lease from another host, or with no pid (a standing RM session), never is;
+// a reused pid reads as alive and keeps refusing.
+export function ownerGone(lease: RunLease): boolean {
+  if (!lease.owner_pid || lease.owner_host !== hostname()) return false;
+  try {
+    process.kill(lease.owner_pid, 0);
+    return false;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'ESRCH';
+  }
+}
+
+export function leaseAcquire(ctx: Ctx, o: { expectEpoch: number; doc: string; session: string; pid?: number }): RunLease {
   if (ctx.env.HIMMEL_RELEASE_MANAGER !== '1') throw new Error('release lease: only the release-manager session (HIMMEL_RELEASE_MANAGER=1) holds the lease');
   if (!isAbsolute(o.doc) || ctx.env.HIMMEL_RM_DOC !== o.doc) throw new Error('release lease acquire: --doc must be this session\'s absolute HIMMEL_RM_DOC');
   return locked(ctx, (l) => {
-    const cur = readLease(ctx, l.k);
+    const cur: RunLease = readLease(ctx, l.k);
     if (cur.epoch !== o.expectEpoch) throw new Error(`release lease: epoch is ${cur.epoch}, expected ${o.expectEpoch}`);
     const takeoverRow = readChain<OperatorRow>(f(ctx, 'operator.jsonl'), l.k).verified
       .some((x) => x.kind === 'takeover' && x.epoch === cur.epoch && x.doc === o.doc);
-    if (cur.owner_doc && !cur.released && !takeoverRow) {
+    if (cur.owner_doc && !cur.released && !takeoverRow && !ownerGone(cur)) {
       throw new Error(`release lease: held by ${cur.owner_doc} at epoch ${cur.epoch}; it needs a release or a chief takeover row`);
     }
-    const next: Lease = {
+    const next: RunLease = {
       release: ctx.release, epoch: cur.epoch + 1, owner_session: o.session, owner_doc: o.doc, acquired: ts(ctx),
-      released: false, prev_epoch: cur.epoch,
+      released: false, prev_epoch: cur.epoch, ...(o.pid ? { owner_pid: o.pid, owner_host: hostname() } : {}),
     };
     writeSigned(f(ctx, 'lease.json'), l.k, next);
     return next;
@@ -1176,7 +1192,8 @@ export interface JudgeInput {
   issues: IssueSnap[];
 }
 
-export type Judge = (input: JudgeInput) => Promise<Decision[]>;
+// The signal aborts when the run stops or its judge deadline passes; a judge that spawns a model call kills it then.
+export type Judge = (input: JudgeInput, opts?: { signal?: AbortSignal }) => Promise<Decision[]>;
 
 // A judge reply the decision check refused; raw is kept so the run doc can show what the model said.
 export class JudgeReplyError extends Error {
@@ -1246,9 +1263,78 @@ function refuse(ctx: Ctx, req: string, reason: string): void {
   });
 }
 
+// Puts every request still claimed at this run's epoch back to open, for a run that is failing.
+function returnClaims(ctx: Ctx): number {
+  return locked(ctx, (l) => {
+    const lease = rmFence(ctx, l);
+    const mine = [...latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k)).values()].filter((r) => r.state === `claimed:${lease.epoch}`);
+    for (const r of mine) {
+      const { prev: _p, mac: _m, ...rest } = r;
+      appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...rest, ts: ts(ctx), state: 'open' });
+    }
+    return mine.length;
+  });
+}
+
+// Bounds the whole judge phase. It outlasts one call's own kill (930 s routed, 900 s native), so a single call ends
+// itself first; a routed call that falls back to the native one is stopped here.
+export const RM_JUDGE_TIMEOUT_MS = 960_000;
+
+const stopReason = (signal: AbortSignal): Error => (signal.reason instanceof Error ? signal.reason : new Error(String(signal.reason)));
+
+// The run's own stop, aborted by the caller's signal (if any) or by the judge deadline; unlink drops the caller's listener.
+function linkStop(signal?: AbortSignal): { stop: AbortController; unlink: () => void } {
+  const stop = new AbortController();
+  const onStop = () => stop.abort(signal?.reason);
+  if (signal?.aborted) onStop();
+  else signal?.addEventListener('abort', onStop, { once: true });
+  return { stop, unlink: () => signal?.removeEventListener('abort', onStop) };
+}
+
+// The line a run starts with when it took over a lease whose rm-run died without unwinding.
+function reclaimNote(prior: RunLease): string[] {
+  if (!prior.owner_doc || prior.released || !ownerGone(prior)) return [];
+  return [`RECLAIMED lease epoch ${prior.epoch}: rm-run pid ${prior.owner_pid} on ${prior.owner_host} is gone`];
+}
+
+// A failed run says why and returns its claims before it frees the lease (the return needs the lease).
+function failNote(ctx: Ctx, failed: Error, lines: string[]): void {
+  lines.push(`FAILED: ${failed.message}`);
+  try {
+    const n = returnClaims(ctx);
+    if (n) lines.push(`RETURNED ${n} claimed requests to open`);
+  } catch (e) {
+    lines.push(`PENDING claims: ${(e as Error).message}`);
+  }
+}
+
+// The judge's answer, or the stop's reason once the caller stops the run or the deadline passes; either aborts the judge.
+async function judged<T>(answer: Promise<T>, stop: AbortController, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  // The judge that loses the race still rejects (its killed call) after the run moved on; that is no crash.
+  answer.catch(() => undefined);
+  const stopped = new Promise<never>((_, reject) => {
+    const fail = () => reject(stopReason(stop.signal));
+    if (stop.signal.aborted) return fail();
+    stop.signal.addEventListener('abort', fail, { once: true });
+    timer = setTimeout(() => stop.abort(new Error(`rm-run: the judge did not answer within ${ms / 1000}s; nothing ruled`)), ms);
+  });
+  try {
+    return await Promise.race([answer, stopped]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export interface RmRunOptions {
   doc?: string;
   session?: string;
+  /** The caller's stop (the CLI wires SIGTERM, SIGINT and SIGHUP to it): the run fails cleanly at the next step. */
+  signal?: AbortSignal;
+  /** How long the judge may take before the run fails (default RM_JUDGE_TIMEOUT_MS). */
+  judgeTimeoutMs?: number;
+  /** The process the lease names (default this one), so the next run can free the lease if it dies. */
+  pid?: number;
   /** A decision ref that covers a run moving more than BULK_MOVE_LIMIT open tickets in the current version. */
   ruling?: string;
   /** The chief's reason for the same, console marker only; one ledger row records it with the count. */
@@ -1278,8 +1364,13 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
 
   const doc = o.doc ?? join(ctx.dir, 'rm-runs', `run-${ts(ctx).replace(/[:.]/g, '-')}.md`);
   const rctx: Ctx = { ...ctx, env: { ...ctx.env, HIMMEL_RELEASE_MANAGER: '1', HIMMEL_RM_DOC: doc, HIMMEL_RM_RELEASE: ctx.release } };
-  const lease = leaseAcquire(rctx, { expectEpoch: readLease(ctx, l.k).epoch, doc, session: o.session ?? 'rm-run' });
-  const lines: string[] = [];
+  const prior: RunLease = readLease(ctx, l.k);
+  const lease = leaseAcquire(rctx, { expectEpoch: prior.epoch, doc, session: o.session ?? 'rm-run', pid: o.pid ?? process.pid });
+  const lines: string[] = reclaimNote(prior);
+  const { stop, unlink } = linkStop(o.signal);
+  // A stop ends the run before its next Jira write, never inside one.
+  const halt = () => { if (stop.signal.aborted) throw stopReason(stop.signal); };
+  let failed: Error | undefined;
   let refused: JudgeReplyError | undefined;
   // Open tickets this run moves into or out of the current version; an operator ruling with a ref is already covered.
   const current = l.decl.current;
@@ -1294,10 +1385,12 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
   };
   const heldNote = `bulk guard: ${current} already takes ${BULK_MOVE_LIMIT} open moves in one run; rerun with --ruling <decision-ref> or --chief-override "<reason>"`;
   try {
+    halt();
     mirrorIssues = readMirror(ctx.mirrorRoot).issues;
     // A replayed intent is from an older epoch: apply settles it by readback or voids and reopens its request,
     // so it writes no fixVersion here and is not a move of this run (a voided one is counted when re-ruled below).
     for (const id of unfinishedRulings(loadOrThrow(ctx).rulings)) {
+      halt();
       try {
         lines.push((await apply(rctx, id)).line);
       } catch (e) {
@@ -1314,13 +1407,13 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
       const receipted = now.rulings.verified.filter((r) => r.phase === 'receipted');
       let decisions: Decision[];
       try {
-        decisions = !asked.length ? [] : await judge({
+        decisions = !asked.length ? [] : await judged(judge({
           release: ctx.release, current: now.decl.current, versions: now.decl.versions, requests: asked,
           records: reduceLoaded(now, mirror).records.filter((r) => keys.has(r.key)),
           operator: now.operator.verified,
           rulings: [...new Set([...receipted.filter((r) => keys.has(r.key)), ...receipted.slice(-40)])],
           issues: (await Promise.all([...keys].map((k) => issueFor(ctx, k, mirror.issues?.get(k))))).flatMap((i) => i ?? []),
-        });
+        }, { signal: stop.signal }), stop, o.judgeTimeoutMs ?? RM_JUDGE_TIMEOUT_MS);
       } catch (e) {
         if (e instanceof JudgeReplyError) {
           refused = e;
@@ -1329,6 +1422,7 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
         throw e;
       }
       for (const q of claimed) {
+        halt();
         let id: string;
         let d = decisions.find((x) => x?.req === q.req);
         const pulled = isPullRequest(q);
@@ -1371,8 +1465,13 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
         }
       }
     }
+  } catch (e) {
+    failed = e as Error;
+    throw e;
   } finally {
     // Cleanup never hides the rulings already made or the error that ended the run.
+    unlink();
+    if (failed) failNote(rctx, failed, lines);
     try {
       if (moved > BULK_MOVE_LIMIT && (ruling || override !== undefined)) {
         appendAdmission({

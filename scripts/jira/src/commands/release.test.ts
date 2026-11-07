@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 // While a reply is set, the judge's subscription `claude` call returns it, the usage preflight prints `preflight`, and
 // the API launcher is refused on policy as on the station since PR 4669; each is recorded. Every other child runs for real.
 type Seen = { file: string; args: string[]; env: NodeJS.ProcessEnv };
-const judgeReply = vi.hoisted(() => ({ out: null as string | null, preflight: 'PROCEED\n', calls: [] as Seen[] }));
+const judgeReply = vi.hoisted(() => ({ out: null as string | null, preflight: 'PROCEED\n', calls: [] as Seen[], hang: false }));
 vi.mock('node:child_process', async (orig) => {
   const m = await orig<typeof import('node:child_process')>();
   const execFileSync = ((...a: Parameters<typeof m.execFileSync>) => {
@@ -16,7 +16,6 @@ vi.mock('node:child_process', async (orig) => {
     const file = String(a[0]);
     const args = (a[1] as string[] | undefined) ?? [];
     const seen = { file, args, env: { ...((a[2] as { env?: NodeJS.ProcessEnv } | undefined)?.env ?? process.env) } };
-    if (file === 'claude') { judgeReply.calls.push(seen); return judgeReply.out; }
     if (String(args[0] ?? '').endsWith('usage-preflight.sh')) { judgeReply.calls.push(seen); return judgeReply.preflight; }
     if (String(args[0] ?? '').endsWith('claude-api.sh')) {
       judgeReply.calls.push(seen);
@@ -24,7 +23,20 @@ vi.mock('node:child_process', async (orig) => {
     }
     return m.execFileSync(...a);
   }) as typeof m.execFileSync;
-  return { ...m, execFileSync };
+  // The judge's model call is async: `claude` answers the reply on the next tick.
+  const execFile = ((...a: unknown[]) => {
+    if (judgeReply.out === null || a[0] !== 'claude') return (m.execFile as (...x: unknown[]) => unknown)(...a);
+    const args = (a[1] as string[] | undefined) ?? [];
+    judgeReply.calls.push({ file: 'claude', args, env: { ...((a[2] as { env?: NodeJS.ProcessEnv } | undefined)?.env ?? process.env) } });
+    const reply = judgeReply.out;
+    const done = a[3] as (err: Error | null, out: string, errOut: string) => void;
+    // A hung call answers only its abort, as execFile does when its signal fires.
+    const signal = (a[2] as { signal?: AbortSignal } | undefined)?.signal;
+    if (judgeReply.hang) signal?.addEventListener('abort', () => done(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }), '', ''), { once: true });
+    else setImmediate(() => done(null, reply, ''));
+    return { stdin: { on: () => undefined, end: () => undefined } };
+  }) as typeof m.execFile;
+  return { ...m, execFileSync, execFile };
 });
 // The run options the repair command hands to the repair, as the last call saw them.
 const repairSeen = vi.hoisted(() => ({ opts: null as { apply?: boolean; refuse?: unknown } | null }));
@@ -68,6 +80,7 @@ afterEach(() => {
   judgeReply.out = null;
   judgeReply.preflight = 'PROCEED\n';
   judgeReply.calls = [];
+  judgeReply.hang = false;
 });
 
 describe.skipIf(process.platform !== 'linux')('jira release from a test on the station', () => {
@@ -257,6 +270,24 @@ describe('jira release rm-run', () => {
     judgeReply.preflight = `bank-preflight: note\n${token}\n`;
     await expect(run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'))).rejects.toThrow(`nothing ruled: preflight ${token}`);
     expect(judgeReply.calls.some((c) => c.file === 'claude')).toBe(false);
+  });
+
+  it.each(['SIGTERM', 'SIGINT', 'SIGHUP'] as const)('%s during the judge call stops the run: the call is killed, the lease freed, the claim open, the doc says why', async (sig) => {
+    await oneRequest();
+    judgeReply.hang = true;
+    const before = process.listenerCount(sig);
+    const run1 = run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    await vi.waitFor(() => expect(judgeReply.calls.some((c) => c.file === 'claude')).toBe(true));
+    expect(process.listenerCount(sig)).toBe(before + 1);
+    process.emit(sig, sig);
+    await expect(run1).rejects.toThrow(`rm-run: stopped by ${sig}; nothing more ruled`);
+    expect(process.listenerCount(sig)).toBe(before);
+    const dir = join(root, 'state', 'R1');
+    expect(JSON.parse(readFileSync(join(dir, 'lease.json'), 'utf8'))).toMatchObject({ epoch: 1, released: true });
+    expect(JSON.parse(readFileSync(join(dir, 'requests.jsonl'), 'utf8').trim().split('\n').at(-1) ?? '{}')).toMatchObject({ req: 'Q-R1-0001', state: 'open' });
+    const docs = readdirSync(join(dir, 'rm-runs'));
+    expect(docs).toHaveLength(1);
+    expect(readFileSync(join(dir, 'rm-runs', docs[0]), 'utf8')).toMatch(new RegExp(`^- FAILED: rm-run: stopped by ${sig}`, 'm'));
   });
 
   it('a stale bank reading still runs the judge', async () => {

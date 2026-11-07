@@ -7,7 +7,7 @@ import {
   JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readOperatorRecords, rmRun, rmRunSummary, signSpec, specCheck, standing,
   type Ctx, type JiraPort, type Judge,
 } from './engine.js';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { Command } from 'commander';
 
 // A hook that runs after a minerva script returns, to edit the spec mid-sign.
@@ -23,7 +23,7 @@ vi.mock('node:child_process', async (orig) => {
 });
 import type { EventRow, IssueSnap, OperatorRow, RequestRow, RulingRow } from './types.js';
 import { appendAdmission, readAdmissions } from '../commands/admissions-ledger.js';
-import { appendChain, breakStaleLock, loadKey, readChain, withLockAsync } from './ledger.js';
+import { appendChain, breakStaleLock, loadKey, readChain, withLockAsync, writeSigned } from './ledger.js';
 
 class FakeJira implements JiraPort {
   fv = new Map<string, string[]>();
@@ -862,13 +862,96 @@ describe('rm-run: the on-demand release manager', () => {
     expect(snapshot(ctx().dir)).toEqual(before);
   });
 
-  it('a failed judge rules nothing, releases the lease, and the next run reclaims', async () => {
+  // A failed run says why in its doc, returns its claims to open and frees the lease, so the next run rules them.
+  const failsClean = async (run: Promise<string[]>, cause: RegExp, doc: string) => {
+    await expect(run).rejects.toThrow(cause);
+    const s = state(ctx());
+    expect(s.lease).toMatchObject({ epoch: 1, released: true });
+    expect(s.requests).toMatchObject({ open: ['Q-R1-0001'], claimed: [] });
+    expect(readFileSync(doc, 'utf8')).toMatch(new RegExp(`^- FAILED: .*${cause.source}`, 'm'));
+    expect(await rmRun(ctx(), admitAll)).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 /));
+    expect(state(ctx()).lease).toMatchObject({ epoch: 2, released: true });
+  };
+
+  it('a judge that throws returns its claims to open, frees the lease and the next run rules them', async () => {
     declared();
     ask('K-2');
-    await expect(rmRun(ctx(), async () => { throw new Error('HOLD'); })).rejects.toThrow(/HOLD/);
-    expect(state(ctx()).lease).toMatchObject({ epoch: 1, released: true });
-    expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']);
-    expect(await rmRun(ctx(), admitAll)).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 /));
+    const doc = join(ctx().dir, 'rm-runs', 'threw.md');
+    await failsClean(rmRun(ctx(), async () => { throw new Error('HOLD'); }, { doc }), /HOLD/, doc);
+  });
+
+  it('a judge that never answers is stopped at the deadline, with its signal aborted, and fails the same way', async () => {
+    declared();
+    ask('K-2');
+    const doc = join(ctx().dir, 'rm-runs', 'hung.md');
+    let seen: AbortSignal | undefined;
+    const hung: Judge = (_input, o) => { seen = o?.signal; return new Promise(() => undefined); };
+    await failsClean(rmRun(ctx(), hung, { doc, judgeTimeoutMs: 50 }), /did not answer within/, doc);
+    expect(seen?.aborted).toBe(true);
+  }, 2000);
+
+  it('a stop signal during the judge call fails the same way', async () => {
+    declared();
+    ask('K-2');
+    const doc = join(ctx().dir, 'rm-runs', 'stopped.md');
+    const stop = new AbortController();
+    const hung: Judge = () => { stop.abort(new Error('rm-run: stopped by SIGTERM')); return new Promise(() => undefined); };
+    await failsClean(rmRun(ctx(), hung, { doc, signal: stop.signal }), /stopped by SIGTERM/, doc);
+  }, 2000);
+
+  it('a run that died after its claim does not hold the lease for the next run', async () => {
+    declared();
+    ask('K-2');
+    const dead = spawnSync('true').pid as number;
+    const left = new AbortController();
+    // The first run claims and never comes back, as a SIGKILLed one; its lease names a pid that is gone.
+    const died = rmRun(ctx(), () => new Promise(() => undefined), { pid: dead, signal: left.signal }).catch((e: Error) => e);
+    await vi.waitFor(() => expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']));
+    const lines = await rmRun(ctx(), admitAll);
+    expect(lines).toContainEqual(expect.stringMatching(new RegExp(`^RECLAIMED lease epoch 1: rm-run pid ${dead} on \\S+ is gone$`)));
+    expect(lines).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 /));
+    expect(state(ctx()).lease).toMatchObject({ epoch: 2, released: true });
+    expect(readFileSync(join(ctx().dir, 'operator.jsonl'), 'utf8')).not.toMatch(/"kind":"takeover"/);
+    left.abort(new Error('test over'));
+    await died;
+    expect(state(ctx()).lease).toMatchObject({ epoch: 2, released: true });
+  }, 4000);
+
+  it.each([
+    ['a live pid', () => ({ owner_pid: process.pid })],
+    ['another host', () => ({ owner_host: 'another-host' })],
+    ['no pid, as a standing session holds it', () => ({ owner_pid: undefined, owner_host: undefined })],
+  ])('a held lease naming %s is never reclaimed', async (_name, patch) => {
+    declared();
+    ask('K-2');
+    const left = new AbortController();
+    const held = rmRun(ctx(), () => new Promise(() => undefined), { pid: spawnSync('true').pid as number, signal: left.signal }).catch((e: Error) => e);
+    await vi.waitFor(() => expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']));
+    const path = join(ctx().dir, 'lease.json');
+    const { mac: _m, ...cur } = JSON.parse(readFileSync(path, 'utf8'));
+    writeSigned(path, loadKey(ctx().keyPath), { ...cur, ...patch() });
+    await expect(rmRun(ctx(), admitAll)).rejects.toThrow(/release lease: held by/);
+    left.abort(new Error('test over'));
+    await held;
+  }, 4000);
+
+  it('a stop between two applies keeps the first applied, returns the second, and the next run writes the first no second time', async () => {
+    declared();
+    ask('K-2');
+    ask('K-3');
+    const stop = new AbortController();
+    const set = jira.setFixVersion.bind(jira);
+    jira.setFixVersion = async (...a) => { await set(...a); stop.abort(new Error('rm-run: stopped by SIGTERM; nothing more ruled')); };
+    await expect(rmRun(ctx(), admitAll, { signal: stop.signal })).rejects.toThrow(/stopped by SIGTERM/);
+    expect(jira.writes).toBe(1);
+    expect(jira.fv.get('K-2')).toEqual(['v1']);
+    const phases = readFileSync(join(ctx().dir, 'rulings.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as RulingRow);
+    expect(phases.filter((r) => r.id === 'R-R1-0001').at(-1)?.phase).toBe('receipted');
+    expect(state(ctx()).requests).toMatchObject({ open: ['Q-R1-0002'], claimed: [] });
+    jira.setFixVersion = set;
+    expect(await rmRun(ctx(), admitAll)).toContainEqual(expect.stringMatching(/^RULING R-R1-0002 Q-R1-0002 INTAKE K-3 /));
+    expect(jira.writes).toBe(2);
+    expect(jira.fv.get('K-3')).toEqual(['v1']);
   });
 
   it('a judge reply the check refused is kept in the run doc with the failing field', async () => {
