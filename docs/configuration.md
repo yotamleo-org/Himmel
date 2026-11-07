@@ -300,7 +300,7 @@ flowchart TD
     CDXBACK --> BACK
 ```
 
-**Dormancy (operator ruling 2026-08-19).** The diagram shows what
+**Dormancy.** The diagram shows what
 each sanctioned script *does*, not what is currently routed to it. `lanes.json`
 deliberately carries no `defaultImplLane`, so an unqualified impl dispatch
 refuses toward the native Claude-subagent path rather than silently picking a
@@ -751,8 +751,7 @@ A repo with no code review at all says so explicitly:
 { "review": "no_code_review" }
 ```
 
-**himmel's own review posture (operator decision 2026-07-28;
-CodeRabbit half superseded 2026-09-07).**
+**himmel's own review posture.**
 The knobs above are general; this is the setting this repo actually runs.
 **The codex critic panel is the steady-state pre-PR reviewer, every review round, and
 CodeRabbit is the GitHub App ONLY** — there is no local CodeRabbit pass to
