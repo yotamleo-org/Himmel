@@ -1783,3 +1783,12 @@ test("planted: a renamed return cannot open the page before round 3, and past it
   expect(page).toContain("finding-renamed");
   expect(page).toContain("Round count: spec 4, plan 1. 2 critics did not end clean.");
 });
+
+test("DoD 4: a judge return that ends in a verdict line can be sealed past the cap, and adds no round", async () => {
+  const r = root(); const b = threeRounds(r);
+  const judge = `${b.spec}.judge-r1.md`; unsealedReturn(judge, D_TEXT, "SPEC CLEAN");
+  expect((await seal(judge, b.spec, sha(D_TEXT))).code).toBe(0);
+  const res = await sendFile(r, "1", b.spec);
+  expect(res.code).toBe(0);
+  expect(readFileSync(res.lines[0].document_path as string, "utf8")).toContain("Round count: spec 3, plan 1.");
+});

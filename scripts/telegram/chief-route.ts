@@ -466,11 +466,12 @@ const readCritic = (file: string) => readFile(file, "utf8").catch((e) => { throw
 // ponytail: the count is read from the files on disk, so deleting or overwriting critic files lowers it, and a new
 // spec file name starts a new count; upgrade path: an append-only ledger written at seal time, keyed on the ticket.
 type Rounds = { count: number; numbered: number; renamed: string[] };
+const isJudgeReturn = (name: string) => /(^|[.-])judge[-.]/.test(name);
 async function criticRounds(spec: string, also?: string): Promise<Record<Kind, Rounds>> {
   const base = basename(spec);
   const files = new Map<string, string>();
   for (const dir of criticDirs(spec)) {
-    for (const n of await listDir(dir)) if (/\.critic.*\.md$/.test(n)) files.set(join(dir, n), await readCritic(join(dir, n)));
+    for (const n of await listDir(dir)) if (/\.critic.*\.md$/.test(n) && !isJudgeReturn(n)) files.set(join(dir, n), await readCritic(join(dir, n)));
   }
   if (also) files.set(also, await readCritic(also));
   const sealedBy = (file: string, text: string) => Promise.all(sealsOf(text).map(s => realpath(resolve(dirname(file), s.rel)).catch(() => "")));
@@ -505,7 +506,7 @@ async function operatorAllowsRound(spec: string, round: number): Promise<boolean
 export async function refuseRoundPastCap(verdict: string, readPath: string): Promise<void> {
   const v = await realpath(verdict); const page = await realpath(readPath);
   const kind = verdictKind(lastLine(await readCritic(v)));
-  if (!kind) return;
+  if (!kind || isJudgeReturn(basename(v))) return;
   const source = await markedSource(page);
   const md = siblingMd(page);
   const read = source ?? (await governingSpec(page))?.spec ?? (md && await isFile(md) ? md : page);
