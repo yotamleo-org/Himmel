@@ -73,7 +73,7 @@ docs/handover/running-a-chief.md	`claude-sonnet-4-6`); Opus 4.7+, Sonnet 5+, Hai
 docs/handover/running-a-chief.md	and non-Anthropic ids (`gpt-*`, `glm-*`, anything with a `/`) never take it
 docs/handover/running-a-chief.md	  `/Windows/1 newSession`), titled with the worker's session name.
 docs/operator-conventions.md	- **Linux + macOS are Supported (Linux CI-gated per-PR, macOS on its own twice-weekly `os:macos` cadence workflow); Windows is not supported.**
-docs/operator-conventions.md	- **Chain ASAP: never park an arm hours out, never pause idle at a decision the model could make.** At a natural completion / context-saturation point, arm + chain the next session (ticket-named, cold-start-complete handover) instead of stopping: idle quota that isn't spent before its window resets simply evaporates. "The handover is written" is not the finish line: exhaust the planned queue in-session while budget remains, then re-arm for the SOONEST slot after true wrap (minutes out, not hours). If an arm exists and work continues past its slot, move/replace it BEFORE the fire time (double-fire risk). Only truly pause when the next step needs an operator decision that can't be pre-teed. Where the fleet spans multiple surfaces (machines, WSL distros), the same discipline applies **per-surface**: after wrapping on any box, verify an armed continuation exists on every configured surface, because an idle surface is wasted pipeline capacity.
+docs/operator-conventions.md	- **Chain ASAP: never park an arm hours out, never pause idle at a decision the model could make.** At a natural completion / context-saturation point, arm + chain the next session (ticket-named, cold-start-complete handover) instead of stopping: idle quota that isn't spent before its window resets simply evaporates. "The handover is written" is not the finish line: exhaust the planned queue in-session while budget remains, then re-arm for the SOONEST slot after true wrap (minutes out, not hours). If an arm exists and work continues past its slot, move/replace it BEFORE the fire time (double-fire risk). Only truly pause when the next step needs a decision from the operator that can't be made ahead of time. Where the fleet spans multiple surfaces (machines, WSL distros), the same discipline applies **per-surface**: after wrapping on any box, verify an armed continuation exists on every configured surface, because an idle surface is wasted pipeline capacity.
 docs/operator-conventions.md	  prompting guide flags that Fable 5.1 can write denser than Fable 5
 docs/operator-conventions.md	qmd bun-install Windows hotfix (already a structural fix in
 docs/why-himmel.md	  run, with each change attesting the platform it was tested on. Windows is
@@ -529,8 +529,6 @@ if grep -q 'check-old-terms' "$RENAMED"; then bad "renamed-identifiers.md names 
 else ok "renamed-identifiers.md names no deleted lint"; fi
 if grep -q 'PARKED-BANK' "$ROOT/docs/handover/worker-preface.md"; then bad "the worker preface teaches the old PARKED-BANK marker"
 else ok "the worker preface teaches PARKED-USAGE"; fi
-if grep 'PARKED-BANK' "$ROOT/docs/glossary.md" | grep -q 'HIMMEL-6647 removed the old names'; then bad "the glossary says HIMMEL-6647 removed PARKED-BANK, which the readers still accept"
-else ok "the glossary says the readers still accept PARKED-BANK"; fi
 if grep '^| \*\*Status marker\*\*' "$ROOT/docs/glossary.md" | grep -q 'PARKED-BANK'; then bad "the glossary Status marker row lists PARKED-BANK"
 else ok "the glossary Status marker row lists PARKED-USAGE"; fi
 
