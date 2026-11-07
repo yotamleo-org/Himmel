@@ -306,13 +306,13 @@ function stripHtml(d, sel, tab, ui = {}, lead = "", slim = false) {
 // the chain read's "waits on you" tickets); with no chain read it still counts the labelled ones and says the holds were not read, and
 // with neither it says so. A ticket with no version is not counted (the default read leaves it out), so while one exists the count says
 // how many and points at the No version tab, and a 0 never stands alone; the line is short because a longer one wraps the tab row. "Shipped" has no count here (the merged-PR read is the Shift page's), so it names where the number is.
-function linksHtml(ch, rows, d) {
+function linksHtml(ch, rows, d, nv) {
   let wait = `<b>waits for you: not read</b> (${esc(noChains(ch))})`;
   if (chainOk(ch) || rows.length) {
     wait = `<b>${rows.length} ${rows.length === 1 ? "waits" : "wait"} for you</b>${rows.length ? ": " + rows.map((x) => esc(x.key)).join(", ") : ""}${chainOk(ch) ? "" : ` (chain holds not read: ${esc(noChains(ch))})`}`;
   }
-  const nv = d.noVersionCount || 0;
-  const scope = nv ? ` <span class="ro">(${nv} not counted: <a href="${boardHref({ tab: "nv" })}">no version</a>)</span>` : "";
+  const unread = nvOk(nv) ? 0 : d.noVersionCount || 0; // once the No version read is in, those tickets are in the rows above and nothing is left uncounted
+  const scope = unread ? ` <span class="ro">(${unread} not counted: <a href="${boardHref({ tab: "nv" })}">no version</a>)</span>` : "";
   return `<div class="rm-links"><div class="rm-link"><span>${wait}${scope}</span><a href="#/shift">open in Shift →</a></div>`
     + `<div class="rm-link"><span><b>Shipped since yesterday</b>: the count is not read here</span><a href="#/report">Morning report →</a></div></div>`;
 }
@@ -321,16 +321,22 @@ function linksHtml(ch, rows, d) {
 // marks "waits on you" (a live operator hold). Every version, whichever one is selected; a ticket with no version is on the No version tab.
 // One row per key. The chain read can be missing while the labels are not, so the two are read apart.
 const OPERATOR_LABELS = ["operator-decision", "operator", "operator-present", "operator-gated"];
-function waitingRows(d, ch) {
+// nv = the No version read (GET /api/roadmap?nv=1) once it has arrived: its operator-labelled tickets are rows too, tagged noVersion.
+const nvOk = (nv) => !!(nv && nv.state === "ok" && Array.isArray(nv.tickets));
+function waitingRows(d, ch, nv) {
   const rows = new Map();
-  for (const t of d.tickets) {
-    const labels = (t.labels || []).filter((l) => OPERATOR_LABELS.includes(l));
-    if (labels.length && (t.b === "todo" || t.b === "prog" || t.b === "rev" || t.b === "ci")) rows.set(idOf(t), { key: idOf(t), title: t.t, labels });
-  }
+  const add = (list, noVersion) => {
+    for (const t of list) {
+      const labels = (t.labels || []).filter((l) => OPERATOR_LABELS.includes(l));
+      if (labels.length && (t.b === "todo" || t.b === "prog" || t.b === "rev" || t.b === "ci")) rows.set(idOf(t), { key: idOf(t), title: t.t, labels, noVersion });
+    }
+  };
+  add(d.tickets, false);
+  if (nvOk(nv)) add(nv.tickets, true);
   if (chainOk(ch)) for (const x of Object.values(ch.tickets)) {
     if (x.state !== "waits on you") continue;
     const own = rows.get(x.key);
-    rows.set(x.key, { key: x.key, title: (own && own.title) || x.title || "", labels: own ? own.labels : [], chain: (x.chains || []).find((y) => y.state === "waits on you") || (x.chains || [])[0] });
+    rows.set(x.key, { key: x.key, title: (own && own.title) || x.title || "", labels: own ? own.labels : [], noVersion: !!(own && own.noVersion), chain: (x.chains || []).find((y) => y.state === "waits on you") || (x.chains || [])[0] });
   }
   return [...rows.values()];
 }
@@ -338,16 +344,18 @@ function waitingRows(d, ch) {
 // The Waiting on you section, one row per waiting ticket: key, title, the operator label or the chain and step it waits at. The key
 // opens its chain only where the Chains tab (the running version) holds the ticket. With nothing waiting there is no section: the count
 // link beside the tabs says 0 or "not read", and an empty box would push the first card down.
-function waitingHtml(rows, tabCh, v, d, ch) {
+function waitingHtml(rows, tabCh, v, d, ch, nv) {
   if (!rows.length) return "";
   const row = (x) => {
     const href = `#/board?tab=chains${v ? `&amp;v=${esc(encodeURIComponent(v))}` : ""}&amp;at=${esc(encodeURIComponent(x.key))}`;
-    const key = chainOk(tabCh) && tabCh.tickets[x.key] ? `<a href="${href}">${esc(x.key)}</a>` : esc(x.key);
-    const why = [...x.labels, ...(x.chain ? [`${x.chain.id} ${x.chain.step}/${x.chain.steps}`] : [])];
+    // a ticket with no version opens the No version tab, where its card is; any other opens its chain where the Chains tab holds it
+    const key = x.noVersion ? `<a href="${boardHref({ tab: "nv" })}">${esc(x.key)}</a>` : chainOk(tabCh) && tabCh.tickets[x.key] ? `<a href="${href}">${esc(x.key)}</a>` : esc(x.key);
+    const why = [...x.labels, ...(x.chain ? [`${x.chain.id} ${x.chain.step}/${x.chain.steps}`] : []), ...(x.noVersion ? ["no version"] : [])];
     return `<li>${key} ${esc(x.title || "")}${why.length ? ` <span class="ro">${why.map(esc).join(" · ")}</span>` : ""}</li>`;
   };
-  const notes = [chainOk(ch) ? "" : "chain holds not read", d.noVersionCount ? `${d.noVersionCount} tickets with no version are on the No version tab` : ""].filter(Boolean);
-  return section("rm-waiting", "Waiting on you", `${rows.length} ${rows.length === 1 ? "ticket waits" : "tickets wait"} on you, across every version${notes.length ? ` (${notes.join("; ")})` : ""}.`,
+  const nvRead = nvOk(nv);
+  const notes = [chainOk(ch) ? "" : "chain holds not read", d.noVersionCount && !nvRead ? `${d.noVersionCount} tickets with no version are on the No version tab` : ""].filter(Boolean);
+  return section("rm-waiting", "Waiting on you", `${rows.length} ${rows.length === 1 ? "ticket waits" : "tickets wait"} on you, across every version${nvRead ? " and the tickets with no version" : ""}${notes.length ? ` (${notes.join("; ")})` : ""}.`,
     `<ul class="rm-waiting">${rows.map(row).join("")}</ul>`);
 }
 
@@ -779,7 +787,7 @@ function boardPage(data, ui, extras) {
   const { drift: dr, chains: ch, versionChains: tabCh = ch } = extras;
   const tab = TABS.some(([id]) => id === ui.tab) ? ui.tab : "roadmap";
   const sel = selIndex(data, ui);
-  const rows = waitingRows(data, ch);
+  const rows = waitingRows(data, ch, ui.nv);
   const tileSel = tab !== "chains" || !chainOk(tabCh) ? sel : tabCh.version ? versionAt(data, tabCh.version) : -1; // a tile never highlights over totals of another version
   const src = data.source === "github" ? `GitHub issues (${data.mirror.count})` : data.source === "local" ? `the local tracker store (${data.mirror.count} items)`
     : `the Jira mirror (${data.mirror.count} tickets, newest update ${data.mirror.newest || "unknown"})`;
@@ -796,7 +804,7 @@ function boardPage(data, ui, extras) {
   }
   // the No version tab's tickets are in no version, so the picked version's read cannot hold them: it keeps the whole read
   const shownCh = tab === "nv" ? ch : cardCh;
-  const body = tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, shownCh, dr) : waitingHtml(rows, tabCh, ui.v, data, ch) + lanesHtml(data, ui, sel, cardCh, dr);
+  const body = tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, shownCh, dr) : waitingHtml(rows, tabCh, ui.v, data, ch, ui.nv) + lanesHtml(data, ui, sel, cardCh, dr);
   // with a drawer or the Why panel open the board under it is inert: no drag, select, key or click reaches a card until it closes
-  return [`<div class="rm-head">${page}${windowBar(data, ui, windowOf(data, ui), modal)}</div>`, `<div class="rm-under"${modal ? " inert" : ""}>`, stripHtml(data, tileSel, tab, ui, driftBanner(dr)), `<div class="rm-tabrow">${tabsHtml(data, ui, tab, tabCh, dr)}${linksHtml(ch, rows, data)}</div>`, barHtml(data, ui, shownCh, tab, sel, fresh), body, `</div>`, drawer, why].join("\n");
+  return [`<div class="rm-head">${page}${windowBar(data, ui, windowOf(data, ui), modal)}</div>`, `<div class="rm-under"${modal ? " inert" : ""}>`, stripHtml(data, tileSel, tab, ui, driftBanner(dr)), `<div class="rm-tabrow">${tabsHtml(data, ui, tab, tabCh, dr)}${linksHtml(ch, rows, data, ui.nv)}</div>`, barHtml(data, ui, shownCh, tab, sel, fresh), body, `</div>`, drawer, why].join("\n");
 }

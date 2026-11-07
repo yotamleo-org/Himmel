@@ -675,6 +675,8 @@ async function loadRoadmap() {
   roadmap = data;
   roadmapUi.writes = data.source !== "github"; // GitHub cards are read-only
   if (currentPage.id === "board") paint();
+  // Waiting on you lists the operator-labelled tickets with no version, which only the No version read carries (a local mirror read, no network): ask for it beside the default one
+  if (data.noVersionCount && !roadmapUi.nv && roadmapUi.tab !== "nv") loadNoVersion();
 }
 // the Board's No version tab: those tickets are not in the default read, so they are fetched when the tab opens (and again on refresh).
 async function loadNoVersion() {

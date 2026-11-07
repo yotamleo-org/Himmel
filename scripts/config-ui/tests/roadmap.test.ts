@@ -477,6 +477,33 @@ test("Board: Waiting on you also lists open tickets carrying an operator label, 
   expect(renderBoard(r, ui, { drift: null, chains: { chains: [], tickets: undefined } })).toContain("chain holds not read");
 });
 
+test("Board: Waiting on you lists the open operator-labelled tickets with no version once the No version read is in, and counts them", () => {
+  const s = station();
+  writeFileSync(join(s.mirror, "HIMMEL-8.md"), issue(8, "To Do", "To Do", [], "Pick the colour", ["operator-decision"]));
+  writeFileSync(join(s.mirror, "HIMMEL-9.md"), issue(9, "Done", "Done", [], "Settled already", ["operator"]));
+  writeFileSync(join(s.mirror, "HIMMEL-10.md"), issue(10, "To Do", "To Do", [], "Loose, nobody owed", ["product"]));
+  const r = read(s), nv = nvRead(s), ui = { version: null, theme: null };
+  const quiet = { drift: null, chains: { chains: [], tickets: {}, version: "v1.1.2" } };
+  const link = (html: string) => html.match(/<div class="rm-link">[\s\S]*?<\/div>/)![0];
+  // before the No version read arrives: nothing listed, the count says it is not counting them
+  expect(renderBoard(r, ui, quiet)).not.toContain("rm-waiting");
+  expect(link(renderBoard(r, ui, quiet))).toContain("3 not counted");
+  // with it: the one open labelled ticket is a row, linked to the No version tab, tagged "no version", and the count includes it
+  const html = renderBoard(r, { ...ui, nv }, quiet);
+  const sec = html.match(/<section id="rm-waiting"[\s\S]*?<\/section>/)![0];
+  expect(sec).toContain("HIMMEL-8");
+  expect(sec).toContain("Pick the colour");
+  expect(sec).toContain("operator-decision");
+  expect(sec).toContain("no version");
+  expect(sec).toContain('href="#/board?tab=nv"');
+  expect(sec).not.toContain("HIMMEL-9"); // Done: nothing is owed
+  expect(sec).not.toContain("HIMMEL-10"); // no operator label
+  expect(link(html)).toContain("1 waits for you");
+  expect(link(html)).not.toContain("not counted");
+  // a failed No version read leaves the old words in place, never a plain 0
+  expect(link(renderBoard(r, { ...ui, nv: { state: "error", reason: "roadmap failed (500)" } }, quiet))).toContain("3 not counted");
+});
+
 test("Board: the waits-for-you count names its scope and points at the No version tab while tickets there are unread", () => {
   const r = read(station());
   const ui = { version: null, theme: null };
