@@ -2761,7 +2761,7 @@
       "source": {
         "file": "marketplace/plugins/himmel-ops/skills/minerva/SKILL.md",
         "line": 235,
-        "text": "fix → re-critic until it returns clean, **cap 2 rounds**"
+        "text": "fix → re-critic until it returns clean, **cap 3 rounds per spec**"
       },
       "from": "s.minerva",
       "to": "s.minerva",
@@ -2858,8 +2858,8 @@
       "id": "m.p.plan.again",
       "source": {
         "file": "marketplace/plugins/himmel-ops/skills/minerva/SKILL.md",
-        "line": 307,
-        "text": "fix → re-critic until clean, **cap 2 rounds**."
+        "line": 310,
+        "text": "fix → re-critic until clean, **cap 3 rounds**"
       },
       "from": "p.plan",
       "to": "p.plan",

@@ -82,11 +82,11 @@ red-teamed before it advances:
    carried into the spec as an explicit ASSUMPTIONS section for the spec-critic.
 2. **Spec critic** — a fresh adversarial subagent red-teams the spec (hidden
    assumptions, scope creep, feasibility, contradictions, missing success
-   criteria); loop fix→re-critic, cap 2 rounds.
+   criteria); loop fix→re-critic, cap 3 rounds, then the operator rules on what is open.
 3. **Plan** — drives `lean-skills:writing-plans` on the approved spec.
 4. **Plan critic** — adversarial subagent red-teams the plan (unordered deps,
    untestable steps, missing verification, over/under-decomposition, assumptions
-   not grounded in the spec); cap 2 rounds.
+   not grounded in the spec); cap 3 rounds.
 5. **Terminal** — a critic-hardened plan; offers hand-off to
    `lean-skills:subagent-driven-development` / `executing-plans`. minerva does
    not implement.

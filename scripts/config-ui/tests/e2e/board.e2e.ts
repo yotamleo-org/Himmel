@@ -27,6 +27,35 @@ test("the rail has one Board entry, no Roadmap and no Kanban", async ({ page }) 
   expect(labels.some((l) => /^(Roadmap|Kanban)/.test(l))).toBe(false);
 });
 
+// fixture, not live: the seeded registry holds nobody waiting on the operator, so the chain read the page asks for is rewritten in flight
+// to put the "Second chain step" ticket in "waits on you"; everything else (the server, the page, the render) is real.
+test("the Waiting on you section lists a waiting ticket and its key opens that ticket's chain", async ({ page }) => {
+  const errs = consoleErrors(page);
+  await page.route("**/api/board", async (route) => {
+    const res = await route.fetch();
+    const j = await res.json();
+    for (const c of [j.chains, j.versionChains]) {
+      const t = c && c.tickets && c.tickets["HIMMEL-2"];
+      if (t) { t.state = "waits on you"; t.title = "Second chain step"; t.chains.forEach((x: { state: string }) => { x.state = "waits on you"; }); }
+    }
+    await route.fulfill({ response: res, json: j });
+  });
+  await open(page);
+  await go(page, "#/board");
+  const sec = page.locator("#rm-waiting");
+  await expect(sec).toContainText("Waiting on you");
+  await expect(sec.locator("li")).toHaveCount(1);
+  await expect(sec.locator("li")).toContainText("HIMMEL-2");
+  await expect(sec.locator("li")).toContainText("Second chain step");
+  await expect(sec.locator("li")).toContainText("memory 2/2");
+  await expect(page.locator(".rm-link").first()).toContainText("1 waits for you");
+  await shot(page, "board-waiting-on-you");
+  await sec.locator("li a").click();
+  await expect.poll(() => page.evaluate(() => location.hash)).toBe("#/board?tab=chains&at=HIMMEL-2");
+  await expect(page.locator("#cn-HIMMEL-2")).toHaveClass(/rm-at/);
+  expect(errs).toEqual([]);
+});
+
 test("the old Roadmap and Kanban routes land on the Board page", async ({ page }) => {
   await open(page);
   await go(page, "#/board");
@@ -66,6 +95,8 @@ test("the Board draws the seeded mirror: strip, drift banner, chain badge, lanes
   await expect(page.locator(".rm-card[draggable]").first()).toBeVisible(); // drag and the Sector select are still there
   // no registry-less made-up number: the wait link counts the chain read's own rows
   await expect(page.locator(".rm-link").first()).toContainText("0 wait for you");
+  await expect(page.locator(".rm-link").first()).toContainText("not counted"); // the seeded mirror has a ticket with no version: the count says it is left out
+  await expect(page.locator("#rm-waiting")).toHaveCount(0); // nobody waits: no section, the count link above says 0
   // Chains tab
   await page.getByRole("tab", { name: /^Chains/ }).click();
   await expect(page.locator("#rm-chain-memory")).toContainText("1/2 done");

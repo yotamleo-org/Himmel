@@ -111,7 +111,7 @@ Quarantine is how a test-only red stops blocking the fleet without hiding.
   fix is dispatched in the same breath.
 - **Who lifts it.** The worker that fixes the ticket removes the `SKIP_LIST` entry, if any,
   and changes the suite's `quarantine` tier in `scripts/ci/suite-tiers.tsv` to a
-  non-quarantine tier (the row stays: the table needs one row per tracked suite) in the
+  non-quarantine tier (or removes the row: a suite with no row reads as tier pr) in the
   fixing PR, so the suite runs again on that PR's own CI. The ticket is not done while the
   entry or the `quarantine` tier is still there. Phased-CI intent applies: keep `SKIP_LIST`
   minimal and justified.
