@@ -499,6 +499,8 @@ specs/decisions/chief-decisions-<date>.md the superseded rulings move to verbati
 (chief-sections/live-state.md). `ACTION livestate-over-budget=<bytes>/<limit>` flags
 the whole `## Live state` section over LIVESTATE_BUDGET_BYTES (12000): keep only the
 open workers and the last GO there, shift history goes to specs/history/.
+`ACTION doc-over-read-limit=<bytes>/<limit>` flags the WHOLE doc over DOC_READ_BUDGET_BYTES
+(48000, a conservative byte bound for the 25,000-token Read limit).
 
 --burn adds a per-worker context-burn field (first-turn/avg-ctx, via
 scripts/lanes/worker-burn.sh) for every doc in --workers. OPT-IN because it scans
@@ -2738,7 +2740,13 @@ livestate_budget="${LIVESTATE_BUDGET_BYTES:-12000}"
 case "$handoff_budget" in ''|*[!0-9]*) handoff_budget=6000 ;; esac
 case "$decisions_budget" in ''|*[!0-9]*) decisions_budget=4000 ;; esac
 case "$livestate_budget" in ''|*[!0-9]*) livestate_budget=12000 ;; esac
+# the whole doc against the Read limit (25,000 tokens; a chief.sh next successor of 48,372 bytes
+# was read whole in one Read, so 48000 bytes is a conservative bound), not only the Live state
+doc_bytes=0
+doc_read_budget="${DOC_READ_BUDGET_BYTES:-48000}"
+case "$doc_read_budget" in ''|*[!0-9]*) doc_read_budget=48000 ;; esac
 if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
+    doc_bytes="$(wc -c < "$console_doc" | tr -d '[:space:]')"
     handoff_file="${console_doc%.md}-HANDOFF.md"
     [ ! -f "$handoff_file" ] || handoff_bytes="$(wc -c < "$handoff_file" | tr -d '[:space:]')"
     decisions_bytes="$(printf '%s\n' "$live_state_body" | grep -m1 '^decisions:' | tr -d '\n' | wc -c | tr -d '[:space:]')"
@@ -3853,6 +3861,9 @@ else
     fi
     if [ "$livestate_bytes" -gt "$livestate_budget" ]; then
         printf 'ACTION livestate-over-budget=%s/%s: keep only the open workers and the last GO in the Live state; move shift history verbatim to %q (chief-sections/live-state.md)\n' "$livestate_bytes" "$livestate_budget" "${console_doc%/*}/specs/history/chief-live-state-${console_doc##*/}"
+    fi
+    if [ "$doc_bytes" -gt "$doc_read_budget" ]; then
+        printf 'ACTION doc-over-read-limit=%s/%s: the whole doc will not read in one Read (25k tokens); move rulings, queue and tracker history verbatim to %q and keep one reading line per ruling\n' "$doc_bytes" "$doc_read_budget" "${console_doc%/*}/specs/decisions/chief-history-$(date +%F).md"
     fi
 fi
 if [ "$emit_fp" -eq 1 ]; then

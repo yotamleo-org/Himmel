@@ -1934,6 +1934,111 @@ spill_decisions() {
     fi
 }
 
+# One dated history file per `next` run: what the seeded doc leaves out of its
+# queue, tracker and Current direction lines is appended here byte for byte under a title,
+# so the doc stays one Read (decision 645) and nothing is lost. The first call creates
+# <dir>/specs/decisions/chief-history-<date>[-N].md and names it in HIST_REL; call it
+# directly, never inside $(...), or HIST_REL is lost. A failed write returns 1 and the
+# caller seeds the line whole.
+# Args: dir, title, text.
+HIST_REL=""
+hist_file_append() {
+    local dir="$1" title="$2" text="$3" base rel n=1
+    if [ -z "$HIST_REL" ]; then
+        base="specs/decisions/chief-history-$(date +%F)"
+        rel="$base.md"
+        while [ -e "$dir/$rel" ]; do n=$((n + 1)); rel="$base-$n.md"; done
+        { mkdir -p "$dir/specs/decisions" && (set -C; : > "$dir/$rel"); } 2>/dev/null || return 1
+        HIST_REL="$rel"
+    fi
+    printf '## %s\n\n%s\n\n' "$title" "$text" >> "$dir/$HIST_REL" 2>/dev/null
+}
+
+# The newest segment of a `queue:` value: everything before the first ` || (<LETTERS>) `,
+# the marker each earlier chief's segment starts with. Prints the whole value when it has
+# one segment. Arg: queue value.
+queue_newest_segment() {
+    printf '%s\n' "$1" | awk '{ if (match($0, / \|\| \([A-Z][A-Z]?\) /)) print substr($0, 1, RSTART - 1); else print }'
+}
+
+# The pinned head of a `tracker:` value: everything before the first ` — older:` or
+# ` — was:`, the history tails. The head, which holds the operator sentence of
+# decision 286, is returned byte for byte. Arg: tracker value.
+tracker_head() {
+    printf '%s\n' "$1" | awk '{
+        a = index($0, " — older:"); b = index($0, " — was:")
+        if (a == 0 || (b > 0 && b < a)) a = b
+        if (a > 0) print substr($0, 1, a - 1); else print
+    }'
+}
+
+# The Current direction block, shortened to its readings. Each ruling line keeps
+# its who, date, decision numbers and a one-line reading; the operator quote of a ruling whose
+# verbatim file exists under <dir>/specs/decisions is left to that file (the first line names
+# the pattern). A line not marked BINDING says so. The reading is cut at a sentence or word so
+# the whole block fits CHIEF_DIRECTION_BUDGET_BYTES (default 15000): the newest 40 lines get
+# twice the share of the older ones, at least 48 bytes (96 for the newest). A line of another
+# shape keeps its start, at least 200 bytes. Every line the shortening cuts is kept byte for
+# byte in the history file named in the first line of the result. Prints nothing and returns 1
+# when no line was shortened.
+# Args: block (stdin), dir, history file (relative to dir).
+compress_direction() {
+    python3 -I -c '
+import glob, os, re, sys
+bucket, budget, hist = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+HEAD = re.compile(r"^((?:OPERATOR|CHIEF)[^(]*?) \(([^()]*(?:\{[^{}]*\}[^()]*)*)\)[.:]?\s*(.*)$")
+DONE = re.compile(r"^(?:(?:OPERATOR|CHIEF)[^:(]*(?:, decisions? \d[\d, ]*)?(?: \((?:carry|not marked binding)\))?: |Full original text)")
+QUOTE = re.compile(r"Verbatim[^:\"\x27]{0,40}:\s*(\"[^\"]*\"|\x27[^\x27]*\x27)\.?\s*")
+def numbers(par):
+    m = re.search(r"\bdecisions?\s+(\d[\d,\s]*(?:(?:and|to)\s*\d+)?(?:[,\s]*(?:and\s*)?\d+)*)", par)
+    if not m: return []
+    s = m.group(1)
+    r = re.match(r"\s*(\d+)\s+to\s+(\d+)\s*$", s)
+    if r: return list(range(int(r.group(1)), int(r.group(2)) + 1))
+    return [int(x) for x in re.findall(r"\d+", s)]
+def resolvable(n):
+    return bool(glob.glob(os.path.join(bucket, "specs/decisions/verbatim-decision-%d-*" % n)))
+rows = []
+for ln in sys.stdin.read().split("\n"):
+    if not ln.strip() or ln.startswith(">") or DONE.match(ln):
+        rows.append((ln, None, ln)); continue
+    m = HEAD.match(ln) if ln.startswith(("OPERATOR ", "CHIEF ")) else None
+    if m:
+        nums = numbers(m.group(2))
+        ok = bool(nums) and len(nums) <= 12 and all(resolvable(n) for n in nums)
+        reading = m.group(3)
+        if ok: reading = QUOTE.sub("", reading, count=1)
+        reading = reading.strip().lstrip(" ;:,.").strip()
+        head = m.group(1)
+        if nums: head += (", decisions " + ", ".join(map(str, nums))) if len(nums) > 1 else ", decision %d" % nums[0]
+        if "BINDING" not in m.group(2): head += " (carry)" if "carry" in m.group(2) else " (not marked binding)"
+        rows.append((ln, head + ": ", reading or "verbatim only"))
+    else:
+        rows.append((ln, "", ln))
+short = [r for r in rows if r[1] is not None]
+n = len(short)
+fixed = sum(len(r[1].encode()) for r in short)
+base = max(48, (budget - fixed) // max(n + min(n, 40), 1))
+def cut(t, cap):
+    if len(t.encode()) <= cap: return t
+    t = t[:cap]
+    s = max(t.rfind(". "), t.rfind("; "))
+    t = t[:s + 1] if s >= cap // 2 else (t.rsplit(" ", 1)[0] if " " in t else t)
+    return t.rstrip(",;: ") + " …"
+out, changed, k = [], 0, 0
+for ln, head, reading in rows:
+    if head is None: out.append(ln); continue
+    cap = base * 2 if k < 40 else base
+    k += 1
+    line = head + cut(reading, cap) if head else cut(reading, max(cap * 2, 200))
+    if line != ln: changed += 1
+    out.append(line)
+if not changed: sys.exit(1)
+note = "Full original text of every ruling shortened below: %s (byte for byte). Every line is BINDING unless it says otherwise. The operator words of a numbered ruling: specs/decisions/verbatim-decision-<N>-*.txt." % hist
+sys.stdout.write(note + "\n\n" + "\n".join(out))
+' "$1" "${CHIEF_DIRECTION_BUDGET_BYTES:-15000}" "$2"
+}
+
 # Match the Jira CLI's declaration root, never the chief's arbitrary --bucket.
 # Ambiguous or invalid names stay unseeded; tick/doctor report the disabled wiring.
 declared_release_line() {
@@ -2015,10 +2120,13 @@ open_legs_block() {
 }
 
 # The `last GO:` value without the chain of prior GOs: everything from the first
-# `prior <pr>`, `prior \`<pr>:<sha>\`` or `(prior ...` on.
+# `prior <pr>`, `prior \`<pr>:<sha>\`` or `(prior ...` on, and everything from the
+# second `<pr>:<sha>` item on (items are joined by "; `").
 # Args: last GO value.
 latest_go_only() {
-    printf '%s\n' "$1" | sed -E 's/(, | )?\(?prior [`0-9#].*$//'
+    local v
+    v="$(printf '%s\n' "$1" | sed -E 's/(, | )?\(?prior [`0-9#].*$//')"
+    printf '%s\n' "${v%%"; \`"*}"
 }
 
 # seed_live_fields <doc> <predecessor live state> <predecessor stem>: replace each
@@ -2052,7 +2160,19 @@ seed_live_fields() {
             new_legs="$workers"; new_go="$go"
         fi
     fi
-    SL_workers="$new_legs" SL_queue="$(seeded_live_field "$live" queue)" \
+    # queue: only the newest segment (an earlier chief's segment starts with ` || (<LETTERS>) `);
+    # the older ones are kept byte for byte in the dated history file and the line points at it.
+    local queue newest
+    queue="$(seeded_live_field "$live" queue)"
+    newest="$(queue_newest_segment "$queue")"
+    if [ "$newest" != "$queue" ]; then
+        if hist_file_append "$(dirname "$doc")" "queue: older segments, trimmed by chief.sh next from $stem" "${queue#"$newest"}"; then
+            queue="$newest || older segments of this line: $HIST_REL"
+        else
+            err "warning: could not write the older queue segments to the history file; seeded the queue: line whole"
+        fi
+    fi
+    SL_workers="$new_legs" SL_queue="$queue" \
     SL_last_GO="$new_go" SL_acked="$(seeded_live_field "$live" acked)" awk '
         $0 == "## Live state" { f = 1; print; next }
         f && /^## / { f = 0 }
@@ -2303,6 +2423,27 @@ cmd_next() {
     if [ -f "$predecessor_manifest" ]; then
         cp "$predecessor_manifest" "$successor_manifest" || { err "could not copy fleet manifest $predecessor_manifest to $successor_manifest"; exit 1; }
         manifest_note="carried from the predecessor, already in place: start the waiter with --workers-from on it"
+    fi
+    # One Read: the tracker line keeps its pinned head (decision 286) and the Current
+    # direction its readings; the history tails and the full text of each shortened ruling go,
+    # byte for byte, to the dated history file the lines name. A failed write seeds them whole.
+    local tracker_kept dir_short
+    tracker_kept="$(tracker_head "$predecessor_tracker")"
+    if [ "$tracker_kept" != "$predecessor_tracker" ]; then
+        if hist_file_append "$state_dir" "tracker: history tail, trimmed by chief.sh next from $predecessor_stem" "${predecessor_tracker#"$tracker_kept"}"; then
+            predecessor_tracker="$tracker_kept — history: $HIST_REL"
+        else
+            err "warning: could not write the tracker history to the history file; seeded the tracker: line whole"
+        fi
+    fi
+    if [ "$(printf '%s' "$predecessor_direction" | wc -c | tr -d ' ')" -gt "${CHIEF_DIRECTION_SPILL_BYTES:-12000}" ]; then
+        if hist_file_append "$state_dir" "Current direction of $predecessor_stem, byte for byte" "$predecessor_direction"; then
+            if dir_short="$(printf '%s\n' "$predecessor_direction" | compress_direction "$state_dir" "$HIST_REL")"; then
+                predecessor_direction="$dir_short"
+            fi
+        else
+            err "warning: could not write the Current direction to the history file; seeded it whole"
+        fi
     fi
     render_template "$console_template" "$doc" \
         FLEET_MANIFEST "$successor_manifest" \
