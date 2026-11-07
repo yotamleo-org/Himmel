@@ -304,13 +304,18 @@ function lockWrites() {
   for (const el of document.querySelectorAll("[data-rm-card]")) el.draggable = false;
 }
 async function loadMode() {
+  let readOnlyNow = false;
   try {
     const r = await fetch("/api/mode", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
-    if (!r.ok || (await r.json()).readOnly !== true) return;
+    if (r.status === 401) session = false; // neither the launch token nor a session: not logged in (a page opened without the token, after Log out)
+    if (!r.ok) { if (session === false && (feed || currentPage.needsFeed === false)) paint(); return; }
+    readOnlyNow = (await r.json()).readOnly === true;
+    const held = r.headers.get("X-Himmel-Session"); // the cookie is HttpOnly, so the server says whether this browser holds a session
+    session = readOnlyNow || held === null ? null : held === "1"; // a read-only server refuses login and logout too: the header offers neither
   } catch (_) { return; } // no answer: the server still refuses writes itself
-  readOnly = true;
-  session = null; // the server refuses login and logout too, so the header offers neither
   if (feed || currentPage.needsFeed === false) paint();
+  if (!readOnlyNow) return;
+  readOnly = true;
   $("#read-only-banner").hidden = false;
   document.body.dataset.readOnly = "1";
   lockWrites();
@@ -318,22 +323,16 @@ async function loadMode() {
 }
 loadMode();
 
-// The login session. Its cookie is HttpOnly, so the page asks: /api/mode without the token header answers 200 only to a session.
 // /login takes ?next=, the page to come back to; login.js accepts only a path on this site. The address holds no typed value.
 function loginHref() { return "/login?next=" + encodeURIComponent(location.pathname + location.search + location.hash); }
 function loginBadge() {
   if (session === null) return "";
   return `<div id="login-state"><span class="k">login</span> ${session ? `logged in · <button class="btn" type="button" data-act="logout">Log out</button>` : `not logged in · <a class="btn" href="${loginHref()}">Log in</a>`}</div>`;
 }
-async function loadSession() {
-  try { const ok = (await fetch("/api/mode", { cache: "no-store" })).ok; if (readOnly) return; session = ok; } catch (_) { return; }
-  if (feed || currentPage.needsFeed === false) paint();
-}
 async function logout() {
   await post("/api/logout", {});
-  loadSession();
+  loadMode();
 }
-loadSession();
 // A save refused for want of a session says so in the row, with Log in beside it (NEEDS_LOGIN is declared with `session`, before route() paints).
 function withLoginButton(html) { return html.split(`role="status">${NEEDS_LOGIN}</span>`).join(`role="status">${NEEDS_LOGIN} <a class="btn primary" href="${loginHref()}">Log in</a></span>`); }
 

@@ -167,6 +167,23 @@ test("in service mode a logged-in session may save a secret, the launch token al
   expect(b.audit()).not.toContain(b.password);
 });
 
+test("/api/mode says in a header whether the caller holds a session, and only to a caller the server already lets in", async () => {
+  const b = boot({ noIdle: true });
+  const mode = (headers: Record<string, string>) => fetch(b.base + "/api/mode", { headers });
+  const byToken = await mode({ "x-himmel-token": TOKEN });
+  expect(byToken.status).toBe(200);
+  expect(byToken.headers.get("x-himmel-session")).toBe("0");
+  expect(await byToken.json()).toEqual({ readOnly: false }); // the body is what it was
+  const c = cookieOf(await b.login(USER, b.password));
+  expect((await mode({ "x-himmel-token": TOKEN, cookie: c })).headers.get("x-himmel-session")).toBe("1");
+  expect((await mode({ cookie: c })).headers.get("x-himmel-session")).toBe("1");
+  for (const refused of [{}, { cookie: "himmel_session=" + "a".repeat(64) }, { "x-himmel-token": "wrong" }]) { // no token and no session: refused as before, nothing said
+    const r = await mode(refused);
+    expect(r.status).toBe(401);
+    expect(r.headers.get("x-himmel-session")).toBeNull();
+  }
+});
+
 test("the login hash is stored in the keyring, never the password, and no login file is written", () => {
   const dir = mkdtempSync(join(tmpdir(), "ui-login-vault-"));
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
