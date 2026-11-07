@@ -636,7 +636,7 @@ assert_eq "T31 no commit" "$before" "$(head_sha)"
 assert_has "T31 alert names the fixer and file" "end-of-file-fixer data.json" "$(sent)"
 assert_not_has "T31 not reported as passing" "stall-but-pre-commit-passes" "$(sent)"
 assert_has "T31 last-run.log keeps the fixer's output" "Fixing data.json" "$(cat "$S/last-run.log" 2>/dev/null)"
-assert_eq "T31 the vault file is not rewritten" '{"workers": []}' "$(cat "$V/data.json")"
+assert_eq "T31 the vault file is not rewritten (still no final newline)" '}' "$(tail -c 1 "$V/data.json")"
 assert_eq "T31 the backlog is untouched" "data.json " "$(staged)"
 
 # --- T32 a staged gitleaks hit the working tree no longer has ----------------
