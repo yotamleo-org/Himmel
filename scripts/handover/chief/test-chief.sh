@@ -3357,8 +3357,6 @@ check "91 the HANDOFF direction pointer names the successor doc" "$(sed -n '/^##
 check "91 the HANDOFF direction block lists the chain order from focus-chains.json" "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$h91" | grep -cF 'Chain order (focus-chains.json): 0 — CI blocker; 1 — audit tickets')" "1"
 check "91 the successor doc carries the direction block" "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$root/tester/dir91d/DEMO-nextleg-${today}C-chief.md" | grep -cF "$dir91")" "1"
 check "91 a fresh HANDOFF reports its facts-header placeholders" "$(printf '%s\n' "$out91" | grep -c 'HANDOFF still has template placeholders')" "1"
-# A Current direction that was shortened (index lines) keeps its `Full original text`
-# pointer, and every companion the pointer names is a readable, non-empty file (exit 7, with a repair line).
 sl92='OPERATOR 11-05 AB, decision 5 (carry): the reading of the ruling.'
 rel92='specs/decisions/chief-direction-2026-11-07-p1.md'
 ptr92="Full original text of every ruling below, byte for byte, is in 1 file under the bucket ($rel92). READ ALL OF THEM in your first turn."

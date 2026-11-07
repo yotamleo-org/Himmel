@@ -2763,9 +2763,6 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     doc_bytes="$(wc -c < "$console_doc" | tr -d '[:space:]')"
     handoff_file="${console_doc%.md}-HANDOFF.md"
     [ ! -f "$handoff_file" ] || handoff_bytes="$(wc -c < "$handoff_file" | tr -d '[:space:]')"
-    # The direction companions the doc's `Full original text` line names that the chief's own
-    # transcript (found by its custom title, the doc stem) has no Read of. No pointer, no companion path or no
-    # transcript found counts none: a tick never guesses.
     dc_ptr="$(awk '$0 == "## Current direction" { f = 1; next } f && /^## / { exit } f && /^Full original text/ { print; exit }' "$console_doc")"
     if [ -n "$dc_ptr" ]; then
         dc_rels="$(grep -o 'specs/decisions/chief-direction-[A-Za-z0-9._-]*\.md' <<< "$dc_ptr")" || dc_rels=""  # swallow-ok: grep exits 1 on a pointer line naming no file; the empty list counts none

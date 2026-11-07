@@ -2436,8 +2436,6 @@ contains '(8349) a STACKABLE row prints its key' "$pk_out" '# pool-keys 2 STACKA
 contains '(8349) a held-by-series disposition prints its key' "$pk_out" '# pool-keys 5 # HIMMEL-804'
 same '(8349) a plain row and a listed disposition print no pool-keys line' "$(printf '%s\n' "$pk_out" | grep -c '^# pool-keys ')" '3'
 
-# --- (9502) a chief whose own transcript never Reads the direction companions its doc names is flagged.
-# The chief's transcript is found by its custom title (the doc stem); no transcript, no pointer line: no flag.
 dc_rel1='specs/decisions/chief-direction-2026-11-07-p1.md'
 dc_rel2='specs/decisions/chief-direction-2026-11-07-p2.md'
 dc_doc="$W/handover/chief-dc9502.md"
@@ -2455,7 +2453,6 @@ contains '(9502) one companion Read of two leaves one flagged' "$dc_out" 'ACTION
 not_contains '(9502) the companion that was Read is not named' "$dc_out" "$dc_rel1"
 dc_read 2 "$dc_rel2" >> "$TICK_PROJECTS_DIR/p/dc9502.jsonl"
 not_contains '(9502) a chief that Read every companion is not flagged' "$(dc_tick)" 'direction-companions-unread'
-# a message that Reads one companion and only MENTIONS the other in its text has not read the other
 printf '{"type":"custom-title","customTitle":"chief-dc9502"}\n{"type":"assistant","timestamp":"%s","message":{"content":[{"type":"text","text":"next I read %s"},{"type":"tool_use","id":"dc-9","name":"Read","input":{"file_path":"%s/%s"}}]}}\n' "$dc_stamp" "$dc_rel2" "$W/handover" "$dc_rel1" > "$TICK_PROJECTS_DIR/p/dc9502.jsonl"
 dc_out="$(dc_tick)"
 contains '(9502) a companion named only in message text, beside a Read of the other, is still flagged' "$dc_out" 'ACTION direction-companions-unread=1/2'

@@ -1794,14 +1794,7 @@ check_direction_real() {
     return 1
 }
 
-# Refuse a handover whose outgoing `## Current direction` was shortened by an earlier `next` (index
-# lines headed "OPERATOR|CHIEF <date> <who>, decision(s) N[ (label)]: ") when the line beginning
-# `Full original text` is gone, names no companion file, or names one that is missing, unreadable
-# or holds nothing but its header: the successor would act on one-line readings
-# alone. A Results bullet `DIRECTION-COMPANION-LOST: <reason>` accepts the loss. The companions
-# are resolved beside the outgoing doc, which is its own bucket.
-# ponytail: a hand-written ruling shaped exactly like an index line, with no pointer, is refused too; the LOST bullet clears it
-# Args: outgoing doc.
+# ponytail: a hand-written ruling shaped like an index line, with no pointer, is refused too, mark generated index lines so the check can tell them apart
 check_direction_companions() {
     local doc="$1" base body results pointer rel f bad="" listed="" found=0
     body="$(direction_block "$doc")"

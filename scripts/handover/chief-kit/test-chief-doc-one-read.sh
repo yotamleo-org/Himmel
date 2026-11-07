@@ -446,8 +446,6 @@ check "tqlike second succession: the time-head index lines are unchanged and sti
 check "tqlike second succession: the HANDOFF names the companions by their line" "$(grep -cF 'beginning `Full original text`' "${gen2_doc%.md}-HANDOFF.md")" "1"
 check "tqlike second succession: the 20 new rulings are in a companion file" "$(companion_files "$doc2" | while read -r f; do cat "$root/tester/tqlike/$f"; done | grep -c '^OPERATOR 11-07 ZZ ')" "20"
 
-# (e) a third succession when an earlier companion file is gone: next refuses (exit 7) and prints a
-# repair line naming the file; nothing is written; with the file restored it succeeds and carries the text forward
 rc=0; python3 -I "$tmp/gen2.py" "$doc2" "$root/tester/tqlike" 3 950 YY || rc=$?
 lost="$(companion_files "$doc2" | tail -n 1)"
 mv "$root/tester/tqlike/$lost" "$tmp/lost-companion"
