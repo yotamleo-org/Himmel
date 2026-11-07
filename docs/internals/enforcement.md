@@ -174,8 +174,8 @@ Stages currently wired:
   The `.pre-commit-config.yaml` entry must keep `pass_filenames: true` — the
   commit-msg stage's filename argument IS the message file. Handed none, the
   hook falls back to `.git/COMMIT_EDITMSG`; only when that fallback does not
-  resolve to a readable file does it fail CLOSED (reject) rather than pass
- . It also WARNS (never blocks) at commit time when
+  resolve to a readable file does it fail CLOSED (reject) rather than pass.
+  It also WARNS (never blocks) at commit time when
   a `Security reviewed:`/`Platforms tested:` trailer is present but does not
   conform — staying silent when the trailer is absent altogether — honoring a
   `[skip security-review]`/`[skip platforms-check]` marker, or a token that
@@ -2676,8 +2676,8 @@ own copy only when three conditions hold:
   `HIMMEL_REPO` anchor's own working tree. For `pr-check-context.sh` and
   `pr-check-env.sh` that is all of `scripts/cr/`, plus
   `scripts/guardrails/lib.sh` and `scripts/lib/load-dotenv.sh`. For every
-  other target it is only the entry script and `scripts/cr/anchor-handoff.sh`
- : each of those entry scripts sources the hand-off as its first
+  other target it is only the entry script and `scripts/cr/anchor-handoff.sh`:
+  each of those entry scripts sources the hand-off as its first
   statement, so an entry byte-equal to the anchor's re-execs the anchor's copy,
   and every library it loads comes from the anchor. A branch that deletes the
   hand-off line changes the entry's bytes and is denied. A worker that edits one
@@ -5568,8 +5568,8 @@ The refusal:
 ```
 ERROR: refusing a wet uninstall — found <marker>
   This $HOME (...) looks like a live operator profile, not a test
-  fixture. A wet uninstall here is refused by default (HIMMEL-2505,
-  after the 2026-09-03 incident where a test run swept a real HOME).
+  fixture. A wet uninstall here is refused by default
+  (a test run once swept a real HOME).
 
   If this really IS the machine to offboard, re-run from your OWN
   shell with: HIMMEL_UNINSTALL_REAL_HOME=1 bash scripts/uninstall.sh ...
