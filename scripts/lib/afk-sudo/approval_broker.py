@@ -33,6 +33,7 @@ MAX_PER_HOUR = 6
 BUSY_ROW_S = 600
 KEEP_DONE = 20
 MAX_SLOTS = 3
+CLASSIFIER_PER_HOUR = 2
 ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567"
 # How an approval reached root: the Telegram route (the default) or `himmelctl approve|deny` from an SSH shell.
 VIAS = ("telegram", "ssh")
@@ -180,9 +181,26 @@ class Broker:
         s["busy_rows"] = rows
         return quiet
 
-    def request(self, kind, display, payload, meta, window_s=None):
+    def _classifier_gate(self, s, meta, t, key):
+        """A request filed for a classifier refusal (`key` set: a digest of the session and the argv bytes).
+        Refused `duplicate` while an earlier request for the same key is pending or inside its window, and
+        `classifier-rate-limited` past CLASSIFIER_PER_HOUR an hour or when it would take the last free hourly
+        request or the last free pending slot, so these never crowd out a request filed on purpose."""
+        recent = {k: v for k, v in s.get("classifier_keys", {}).items() if v > t}
+        s["classifier_keys"] = recent
+        s["classifier"] = [r for r in s.get("classifier", []) if t - r < 3600]
+        if key in recent:
+            self._save(s)
+            self._refuse("request", "duplicate", meta)
+        if (len(s["classifier"]) >= CLASSIFIER_PER_HOUR or len(s["requests"]) + 1 >= self.max_per_hour
+                or len(s["slots"]) + 1 >= MAX_SLOTS):
+            self._save(s)
+            self._refuse("request", "classifier-rate-limited", meta)
+
+    def request(self, kind, display, payload, meta, window_s=None, classifier_key=None):
         """Open a pending slot; returns (id, expires, nonce). Raises Refused (`busy` when this session
-        already has one or MAX_SLOTS are taken).
+        already has one or MAX_SLOTS are taken). `classifier_key` marks a request filed for a classifier
+        refusal (see _classifier_gate).
 
         The nonce is held in the state file only (never a ledger row, never the requester's output):
         the caller sends it to the operator through the root-only notice bot, and approve() needs it
@@ -209,12 +227,17 @@ class Broker:
             if len(s["requests"]) >= self.max_per_hour:
                 self._save(s)
                 self._refuse("request", "rate-limited", meta)
+            if classifier_key:
+                self._classifier_gate(s, meta, t, classifier_key)
             rid = "".join(secrets.choice(ID_ALPHABET) for _ in range(8))
             if callable(payload):
                 payload, extra = payload(rid, int(t), int(t + window))
                 meta.update(extra)
             nonce = "".join(secrets.choice(NONCE_ALPHABET) for _ in range(NONCE_LEN))
             s["requests"].append(t)
+            if classifier_key:
+                s["classifier"].append(t)
+                s["classifier_keys"][classifier_key] = t + window
             s["slots"].append({"id": rid, "kind": kind, "display": display, "payload": payload, "meta": meta,
                                "expires": t + window, "nonce": nonce})
             self._save(s)

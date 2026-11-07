@@ -6,6 +6,7 @@
   "operator_user": "",
   "max_per_hour": 6,
   "run": {"enabled": false, "ttl_s": 900, "timeout_s": 300},
+  "classifier_requests": false,
   "grant": {"enabled": false, "ttl_s": 900},
   "ops": {"enabled": false, "ttl_s": 900},
   "never_remote_extra": [],
