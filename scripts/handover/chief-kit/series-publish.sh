@@ -13,6 +13,9 @@
 #
 # Output: PUBLISHED-BRANCH <KEY> <branch>   (rc 0)
 #         PUBLISH-CONFLICT <files>          (rc 2: cherry-pick aborted, item branch checked out at wip, nothing pushed, ledger untouched)
+#         PUBLISH-WAIT <KEY>                (rc 2: the previous item <KEY> may still merge - its PR is open, none is visible yet, or gh
+#                                            could not be read - so nothing is pushed; retry once it has merged. A previous item whose PR
+#                                            closed unmerged, merged elsewhere or was never published is a plain refusal, no wait line)
 # Exit: 0 ok, 1 failure (ledger unreadable, git or ledger write failed, a cherry-pick that failed with no conflicted file), 2 refused
 # (not the writer, item not committed, dirty, drift, worktree outside <repo>/.claude/worktrees, cut not an ancestor of wip, previous
 # item not merged or gh unreadable, branch exists, conflict). A refusal moves nothing. GH_CMD overrides `gh` (tests).
@@ -125,9 +128,13 @@ if [ -n "$prev" ]; then
     pk="${prev%%$'\t'*}"; ppb="${prev#*$'\t'}"
     [ -n "$ppb" ] || refuse "previous item $pk has no recorded PR (it was never published); publish $KEY once $pk has merged or been abandoned"
     prows="$(cd "$wt" && "$GH" pr list --head "$ppb" --state all --limit 100 --json number,state,baseRefName --jq '.[] | [.number, .state, .baseRefName] | @tsv')" \
-        || refuse "cannot read the PR of previous item $pk ($ppb): gh failed; nothing moved, retry once it answers"
+        || { echo "PUBLISH-WAIT $pk"; refuse "cannot read the PR of previous item $pk ($ppb): gh failed; nothing moved, retry once it answers"; }
     if [ "$(printf '%s\n' "$prows" | awk -F'\t' -v b="$defb" '$2 == "MERGED" && $3 == b { f = 1 } END { print f + 0 }')" != 1 ]; then
         pstates="$(printf '%s\n' "$prows" | awk -F'\t' 'NF { printf "%s#%s %s into %s", (n++ ? ", " : ""), $1, $2, $3 }')"
+        # a wait is a predecessor that may still merge (a PR is open, or none is visible yet); a closed or elsewhere-merged one is a refusal
+        if [ -z "$pstates" ] || [ "$(printf '%s\n' "$prows" | awk -F'\t' '$2 == "OPEN" { f = 1 } END { print f + 0 }')" = 1 ]; then
+            echo "PUBLISH-WAIT $pk"
+        fi
         refuse "previous item $pk has not merged into $defb (${pstates:-no PR on $ppb}); publish $KEY once it has merged or been abandoned"
     fi
 fi
