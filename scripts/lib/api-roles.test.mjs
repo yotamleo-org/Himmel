@@ -77,7 +77,7 @@ test('an empty or non-array entry is ignored with empty-role and an ignored line
     const r = f.cli(['accounts', 'judge']);
     assert.equal(r.status, 0);
     assert.equal(r.stdout, '');
-    assert.match(r.stderr, /judge entry ignored \(empty-role:judge\)/);
+    assert.match(r.stderr, /judge entry ignored \(empty-role:judge\); the default accounts are used for judge\. Add an account to it or remove it$/m);
     const m = JSON.parse(f.cli(['check']).stdout).roleMap;
     assert.equal(m.state, 'partial');
     assert.deepEqual(m.errors, ['empty-role:judge']);
@@ -105,7 +105,7 @@ test('not JSON, version 2 and roles:[] are invalid: no roles and an invalid-role
     const r = f.cli(['accounts', 'graphify']);
     assert.equal(r.status, 0);
     assert.equal(r.stdout, '');
-    assert.match(r.stderr, new RegExp(`role map invalid \\(${error}\\); decision 525 applies`));
+    assert.match(r.stderr, new RegExp(`role map invalid \\(${error}\\); the default accounts are used\\. Fix or remove roles\\.json$`, 'm'));
   }
 });
 
