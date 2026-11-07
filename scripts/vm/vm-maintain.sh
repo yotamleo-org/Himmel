@@ -15,13 +15,9 @@
 # power off, snapshot IN PLACE as maint-YYYYMMDD-HHMM (never a clone: a snapshot may hold a login),
 # record it, prune maint-* beyond the last $KEEP_DATED. Any failed step stops the run with
 # "FAILED <step>", takes no snapshot, records nothing, and the VM is powered off on every exit path.
-# Steps: lock boot apt-update apt-upgrade claude-update codex-update cli-proxy-update power-off snapshot.
+# Steps: lock boot apt-update apt-upgrade claude-update codex-update cli-proxy-update secret-scan snapshot
 #
-# --no-secret-scan: vmsdk refuses to snapshot a powered-off VM it cannot scan for host .env files, so
-# the DEFAULT run refuses at the snapshot step. The flag exists for the one run an operator makes
-# after checking the VM holds no host copy (maintenance copies nothing from the host); it is a
-# per-run choice, never a standing command and never in a schedule. The scan before power off
-# (a vmsdk verb) is owed, so do not arm this on a cron without it.
+# --no-secret-scan: for the one run an operator makes by hand after checking the VM holds no host copy.
 #
 # probe: boot, read the login files in the guest (a free check, no model turn), power off. Claude is
 # expired when its refresh token is past refreshTokenExpiresAt (or absent with the access token past
@@ -156,10 +152,18 @@ cmd_run() {
     guest_out cli-proxy-update '[ -x "$HOME/.cli-proxy-api/cli-proxy-api" ] && head -n1 "$HOME/.cli-proxy-api/cli-proxy-api.version"'; ver="$(printf '%s\n' "$OUT" | head -n1)"
     [ "$ver" = "$PROXY_VER" ] || fail cli-proxy-update "the version stamp reads '${ver:-nothing}', the pin is $PROXY_VER"
 
-    sdk "$VM" down >/dev/null || fail power-off "vmsdk down failed"
-    BOOTED=0
-    if [ "$NO_SCAN" -eq 1 ]; then sdk "$VM" snapshot "$snap" --no-secret-scan >/dev/null || fail snapshot "vmsdk snapshot $snap failed"
-    else sdk "$VM" snapshot "$snap" >/dev/null || fail snapshot "vmsdk snapshot $snap failed (see the vmsdk line above)"; fi
+    if [ "$NO_SCAN" -eq 1 ]; then
+        sdk "$VM" down >/dev/null || fail power-off "vmsdk down failed"
+        BOOTED=0
+        sdk "$VM" snapshot "$snap" --no-secret-scan >/dev/null || fail snapshot "vmsdk snapshot $snap failed"
+    else
+        OUT="$(sdk "$VM" scan-down-snapshot "$snap" 2>&1)" \
+            || case "$OUT" in
+                *REFUSING*) fail secret-scan "$(printf '%s' "$OUT" | grep REFUSING | head -n 3 | tr '\n' ' ')" ;;
+                *) fail snapshot "vmsdk scan-down-snapshot $snap failed: $(printf '%s' "$OUT" | tail -n 3 | tr '\n' ' ')" ;;
+            esac
+        BOOTED=0
+    fi
     record "$snap"
     prune
     say "OK $VM updated (claude $CLAUDE_VER, cli-proxy $PROXY_VER) and snapshotted as $snap; newest good recorded in $NEWEST"
