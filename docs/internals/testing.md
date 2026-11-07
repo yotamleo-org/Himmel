@@ -40,9 +40,9 @@ pre-commit and, through its suite, on every PR. It refuses each of these:
 The current example is `scripts/one-shot/check-leg-term.sh [--root DIR] [--paths FILE]`, the leg-to-worker sweep's helper: it prints one `HIT path:line: text` per leftover line outside `leg-term-allow.tsv` and exits 0 clean, 1 on hits, 2 on a usage or git error.
 
 The gate keys on a directory and a filename and never reads shell text. A
-ratchet renamed to dodge the `test-no-*` key is still a new suite. A new suite
-needs a `suite-tiers.tsv` row, and that file is a trust path, so the
-trust-reviewed GO sees the ratchet before it ships. Ongoing invariants are not
+ratchet renamed to dodge the `test-no-*` key is a new suite, and a new suite
+needs no `suite-tiers.tsv` row, so it no longer reaches a trust-reviewed GO
+through its row. Nothing else catches that rename. Ongoing invariants are not
 removal ratchets and stay as gates:
 `check-mcp-sdk-v1.sh`, swallowed-errors and shell-lint.
 
@@ -358,7 +358,7 @@ aggregator's manifest verification is unchanged.
 On a pull request the plan also sizes the matrix (HIMMEL-5556).
 `scripts/ci/plan-shards.sh` costs each selected suite from
 `scripts/ci/suite-durations.tsv`. A suite missing from the ledger costs the
-median. It packs the suites longest-first and picks the fewest shards (at most 8) whose
+median, and `scripts/ci/ledger-drift.sh --no-row` lists it. It packs the suites longest-first and picks the fewest shards (at most 8) whose
 slowest shard stays under max(600 s, the 8-shard makespan). The shard total
 reaches the run step's `--shard i/N` and the aggregator's `--shards`. Push and
 nightly have no plan and keep 8 shards. If the `--list` fails, the plan falls
