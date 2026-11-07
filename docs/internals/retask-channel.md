@@ -268,7 +268,8 @@ is accepted, for two reasons: the only stronger authenticator is the relay,
 which is unavailable in exactly the case the chain path exists to serve; and
 refusing the chain keeps every succession stranded. The exposure is bounded, not
 removed: the token sits in plaintext in `## Live state` and the HANDOFF, readable
-by any same-uid session. It is tracked as a backlog ticket, the recorded disposition
+by any same-uid session. It is tracked as a backlog ticket (search Jira, the
+icebox project included, for RETASK plaintext token), the recorded disposition
 of the panel finding that raised it (`deferred`, not `disproved` — the finding
 is correct).
 

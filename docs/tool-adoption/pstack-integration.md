@@ -47,7 +47,8 @@ Rendering uses the docs site's Pele 1.13.0, without a separate Pele install.
 ## Related take-parts tickets (not duplicated here)
 
 Four pstack skills outside the ten are being taken in part, nothing installed;
-their scope stays in their own tickets: `interrogate` verdict
+their scope stays in their own tickets (search Jira for `pstack` with the skill
+name, or with `principles digest`): `interrogate` verdict
 buckets into adversarial-verify, `reflect` routing step into the
 wrap flow, the six-principle digest, and `arena` base
 selection and graft rule. The unvendored `poteto-mode` and the fork's

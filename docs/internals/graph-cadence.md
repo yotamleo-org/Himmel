@@ -379,7 +379,7 @@ up) and its own scheduler task name (following the
 
 ## Explicitly out of scope
 
-graphify version bumps; the refresh-lock bugs (this step reuses `ast-update.sh`'s existing promote-lock, unmodified, and
-does not fix them); luna's graph corpus (not wired in v1); arming the real
+graphify version bumps; the known refresh-lock bugs (this step reuses
+`ast-update.sh`'s promote lock unmodified and does not fix them); luna's graph corpus (not wired in v1); arming the real
 crontab (an operator action after review); the chief's own
 `tick.sh`.
