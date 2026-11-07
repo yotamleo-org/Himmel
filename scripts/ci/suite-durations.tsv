@@ -1274,6 +1274,7 @@ scripts/test-himmel-doctor-morning-report.sh	3
 scripts/handover/chief-kit/test-tick-repair.sh	89
 scripts/test-real-state-guard.sh	33
 scripts/handover/chief-kit/test-size-override.sh	2
+scripts/handover/chief-kit/test-chief-doc-one-read.sh	5
 scripts/measurements/test-gh-graphql-callers.sh	5
 scripts/telegram/test-spec-page-gen.sh	1
 scripts/vm/test-vm-maintain.sh	2

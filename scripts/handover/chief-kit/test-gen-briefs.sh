@@ -679,8 +679,9 @@ HANDOVER_DOCS="${HANDOVER_DOCS:-$HERE/../../../docs/handover}"
 # worker-preface.md carries the adapter-repo stop-at-READY rule, so its budget is 12800.
 # chief-template.md carries the AG-UI board pointer in step 12 and the item 19 suite-evidence
 # note, so its budget is 17400; worker-preface.md's 12800 was raised to 12900 for the same change,
-# and to 13100 for the write-barrier bullet.
-for budget in "worker-preface.md:13100" "chief-template.md:17400"; do
+# and to 13100 for the write-barrier bullet. chief-template.md's was raised to 18000 for the
+# two lines that make a chief read the direction companion files in its first batch.
+for budget in "worker-preface.md:13100" "chief-template.md:18000"; do
     f="${budget%%:*}"; max="${budget##*:}"
     size="$(wc -c < "$HANDOVER_DOCS/$f" 2>/dev/null | tr -d '[:space:]')"
     [ -n "$size" ] && [ "$size" -le "$max" ] && pass "$f is within its byte budget ($size <= $max)" || fail "$f is over its byte budget (${size:-missing} > $max)"
