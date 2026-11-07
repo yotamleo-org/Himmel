@@ -28,7 +28,7 @@ trap 'rm -rf "$WORK"' EXIT
 BUCKET="$WORK/bucket"; REPO="$WORK/repo"; mkdir -p "$REPO"
 # No bus identity, so relay-batch never reaches the real himmel-bus store.
 unset HIMMEL_BUS_NAME
-export HIMMEL_FLAG_PR_SIZE_GATE=0  # the registry default is on; the fixture repos below carry no base sha, so every other row runs with the gate off
+export HIMMEL_FLAG_PR_SIZE_GATE=0
 
 cat > "$WORK/wt.sh" <<'EOF'
 #!/usr/bin/env bash
