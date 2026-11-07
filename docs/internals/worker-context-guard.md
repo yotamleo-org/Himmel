@@ -100,7 +100,7 @@ earlier 65 % (130000) left 27000 tokens of room but stopped every opus worker at
 13 % fill. If a worker needs more headroom than 7000 tokens, raise the launcher
 ceiling; that is an operator decision.
 
-**Why 73 on a Sonnet profile (HIMMEL-8825).** At the 450000 ceiling the threshold is
+**Why 73 on a Sonnet profile.** At the 450000 ceiling the threshold is
 `ceil(75 × 450000 / 1000000)` = `ceil(33.75)` = 34 % of the window, which is **340000
 tokens**, not the nominal 337500. Four `worker-impl` Sonnet workers on 2026-11-02 (N4523,
 N4531, N4520, N4533) were denied there, as designed (last context before the deny 337229,
@@ -112,7 +112,7 @@ compaction. Share 73 gives `ceil(73 × 450000 / 1000000)` = 33 %, 330000 tokens,
 nominal 13000 tokens of room (the last context before a deny sat up to 6893 tokens past
 the threshold, and the overshoot at 73 is unmeasured). This protects the hand-off from a
 compaction; it does not stop hand-offs: a `worker-impl` worker (hand-off mode) that
-outgrows 33 % still relaunches, as HIMMEL-7667 designed, while a `worker-eval` worker
+outgrows 33 % still relaunches, by design, while a `worker-eval` worker
 (compact mode) checkpoints and continues.
 
 **Why 87 on an Opus profile (operator decision 751).** The ruling is a

@@ -18,7 +18,7 @@ wake, or a chief armed without `--workers-from`.
 It finds the worker doc by the message's `N<k>` label and runs
 `chief-kit/wrap-merged.sh` (PR state, close, pull, Results bullet, board). `HANDLED ...`
 means done; `ESCALATE <reason>` means do the steps below by hand. After a merged PR, on a `MERGED` or `WRAPPED` line, it
-also starts `chief-kit/station-sync.sh --pr <n>` detached (HIMMEL-5945): the
+also starts `chief-kit/station-sync.sh --pr <n>` detached: the
 `himmel-update.sh --only` steps for the paths the PR touched (a PR touching `scripts/config-ui/` runs `--only config_ui`: it rebuilds the UI bundle and restarts `himmel-ui.service` if active, because the pull above leaves the full update no range to see; a failed or bun-less rebuild leaves `~/.himmel/state/config-ui-rebuild-pending`, so the next sync, whatever it merges, retries it and the verdict reads `BEHIND:config_ui-failed` until it clears; a full update run with no sync rebuilds a bundle built from an older `scripts/config-ui` tree by itself), then `--versions`. The line
 ends `station=pending log=<file>` at once; the tick carries the verdict as `station=`
 (`BEHIND:pending` while it runs, `BEHIND:<components>` when behind, nothing when current)
@@ -28,7 +28,7 @@ upstream the edit or drop it, never discard it silently. You can run
 `wrap-merged.sh --doc <chief doc> --fleet <manifest> <worker doc> [--pr <n>]`
 directly when you already hold the worker doc. The hand sequence below is the
 fallback, not the default: a measured chief spent 7 to 9 full-context turns
-per MERGED/WRAPPED on it (HIMMEL-5592).
+per MERGED/WRAPPED on it.
 
 For a batch close, run `bash scripts/handover/chief-kit/close-wrapped-worker.sh --sweep --fleet <manifest>`: it closes only lock-free workers whose tail is WRAPPED or a BLOCKED hand-off naming its launched successor (the tick counts the same two as `closable=`), skips held or live workers, and continues after an already-pruned worktree.
 To close every finished window across chiefs, run

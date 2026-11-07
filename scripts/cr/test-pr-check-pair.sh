@@ -160,7 +160,7 @@ code_lines() {
 # mutated twin. Prints the first structural failure, or nothing.
 lane_marker_check() {
     local lane_section remaining prefix marker marker_fail="" markers
-    lane_section=$(sed -n '/Himmel-lane spelling of step 0 (HIMMEL-3359)/,/REVIEWED repo.s file/p' "$1")
+    lane_section=$(sed -n '/Himmel-lane spelling of step 0 — run this INSTEAD/,/REVIEWED repo.s file/p' "$1")
     markers=(
         'ONLY if its first line equals its second line followed by'
         'and its third line is empty'
@@ -528,7 +528,7 @@ for f in "$CLAUDE_RUNBOOK" "$CODEX_SKILL"; do
     if [ "$lane_check" -eq 1 ] && [ "$diff_committed_count" -eq 1 ] \
        && [ "$diff_worktree_count" -eq 1 ] && [ "$diff_untracked_count" -eq 1 ] \
        && [ -z "$marker_fail" ]; then
-        pass "$n: (ii) himmel-lane step 0 is gated on the himmel lane and on a diff that touches no scripts/cr/ file (HIMMEL-3359 ruling); all markers present in the step-0 section, in order, not negated"
+        pass "$n: (ii) himmel-lane step 0 is gated on the himmel lane and on a diff that touches no scripts/cr/ file (chief ruling); all markers present in the step-0 section, in order, not negated"
     else
         fail "$n: (ii) himmel-lane step 0 is not gated on the lane and scripts/cr/ conditions -- lane_check=$lane_check (want 1), diff_committed=$diff_committed_count diff_worktree=$diff_worktree_count diff_untracked=$diff_untracked_count (each want exactly 1)${marker_fail:+, structural marker check: $marker_fail} (HIMMEL-3359 chief ruling / HIMMEL-3382 Finding 6)"
     fi
@@ -1023,9 +1023,9 @@ for f in "$CLAUDE_RUNBOOK" "$CODEX_SKILL"; do
     if grep -qF 'relative literal for EVERY scripts/cr call' "$f" \
         && grep -qF "matches the anchor's" "$f" \
         && grep -qF 'drifted or adopter case' "$f"; then
-        pass "$n: HIMMEL-4040 relative-literal-for-every-call rule present"
+        pass "$n: relative-literal-for-every-call rule present"
     else
-        fail "$n: HIMMEL-4040 relative-literal-for-every-call rule missing -- a worker following the absolute fence is classifier-denied [Out-of-Place Publication]"
+        fail "$n: relative-literal-for-every-call rule missing -- a worker following the absolute fence is classifier-denied [Out-of-Place Publication]"
     fi
 done
 

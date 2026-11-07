@@ -89,7 +89,7 @@ cost is joined later from the session transcript, not written at launch.
 
 `worker-impl` is the profile a worker gets from
 `headed-arm-worker.sh --profile worker-impl`. **The worker profiles are thin on purpose:** `worker-impl`
-is `lane-impl` minus `i-have-adhd` (the operator reads chief windows, not worker windows) — HIMMEL-4017
+is `lane-impl` minus `i-have-adhd` (the operator reads chief windows, not worker windows) — an
 audit, 33650 to 31219 first-turn tokens — because the measured worker floor is schema-shaped, not roster-shaped (~40k of a
 74.3k first-turn floor is tool and MCP schemas, ~9k the base system prompt), so
 a profile by skill set would either resolve to `bare` and
@@ -380,7 +380,7 @@ undelivered bullets as `additionalContext`, no operator paste required. See
 `HIMMEL_SESSION_LANE=claudex`; it reviews against the local
 `refs/remotes/origin/<base>` and refuses when that ref is missing. A deferral row
 (gate 7's `deferred_to`) is the chief's to write: under a keyless HOME (the srt box, not yet
-used in production; HIMMEL-5720) a claudex worker's scratch HOME holds no GO key, so an amend
+used in production) a claudex worker's scratch HOME holds no GO key, so an amend
 it writes carries no `amend_mac` and, once the ledger holds a signed amend (the cutover), every
 keyed reader (`review-round.sh`, `clear-review-marker.sh`, `cr-disposition.sh`,
 `review-ledger-evidence.sh`) drops it. The worker sends the chief
@@ -392,7 +392,7 @@ and the chief or a native worker runs `ledger-append.sh amend` for it, which sig
 
 The `hermes-oneshot` lane takes its model from the `himmel_agent` hermes
 profile's default rather than from a pin in this repo. That default is
-`gpt-6.1-sol` (provider `openai-codex`) again since 2026-10-04 (HIMMEL-4287),
+`gpt-6.1-sol` (provider `openai-codex`) again since 2026-10-04,
 when the temporary ox-alpha trial ended. Hermes-routed critics do not ride the
 profile default: `hermes-critic.sh` pins the `scripts/cr/critics.json` codex
 model (`gpt-6.1-sol`; `--model` or `HERMES_CRITIC_MODEL` overrides it).
@@ -531,8 +531,8 @@ point a reader would check it
 
 The `claudex` launcher (`scripts/claude-codex`, documented in
 `scripts/lanes/lanes.json`) defaulted `CLAUDE_CODE_EFFORT_LEVEL` to `high`,
-then to `medium` (HIMMEL-2772). Decision 223 makes `gpt-6.1-sol` at
-**`xhigh`** the claudex default (HIMMEL-7580); an explicitly exported value
+then to `medium`. Decision 223 makes `gpt-6.1-sol` at
+**`xhigh`** the claudex default; an explicitly exported value
 still wins. The `medium` step rested on a vendor calibration note, recorded on
 the ticket as reported (we have not re-measured it) and about an earlier model,
 not the current default model:
@@ -1074,7 +1074,7 @@ Anthropic's guidance ("Building agents: when to fold subagents into your main
 agent loop", read with "Subagents in Claude Code") defaults to one agent loop
 and keeps a subagent only for measured context bloat, parallel work that wants
 a fresh window, or a fresh view. The rule-by-rule audit against this harness is
-in the state repo: `specs/research/HIMMEL-7329-fold-subagents-audit-2026-10-24.md`.
+in the state repo: `specs/research/*-fold-subagents-audit-2026-10-24.md`.
 
 **Why the worker fleet is not subagent sprawl.** The fleet is split by context,
 not by problem type: one ticket is one worker, one worktree, one PR, and
@@ -1091,12 +1091,12 @@ cheaper tier rules the same is unmeasured.
 
 | Role / profile | Delegates | Verdict |
 |---|---|---|
-| chief | judges, haiku publisher, sonnet VM runner | right shape; judge tier and publisher failures unmeasured (HIMMEL-7330, HIMMEL-6825) |
-| worker-impl | rarely; implements inline | right; no live cost budget (HIMMEL-7331) |
+| chief | judges, haiku publisher, sonnet VM runner | right shape; judge tier and publisher failures unmeasured |
+| worker-impl | rarely; implements inline | right; no live cost budget |
 | consult / judge session | not measured (a consult has Edit/Write denied) | no evidence either way |
 | bare, telegram | not measured | no evidence either way |
 
-**Fold-vs-keep is an eval, not a habit** (HIMMEL-7330): per subagent class,
+**Fold-vs-keep is an eval, not a habit**: per subagent class,
 ≥10 golden tasks, ≥2 runs per task per arm, compare the tasks that flipped
 rather than the mean, keep the subagent only where folding scores worse.
 

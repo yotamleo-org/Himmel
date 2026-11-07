@@ -143,7 +143,7 @@ launched before that fix, or one whose settings someone hand-edited
 back in) — the fix and the interim are in `docs/internals/stuck-playbook.md`,
 not a respelling of this fence.
 
-**Himmel-lane spelling of step 0 (HIMMEL-3359) — run this INSTEAD of the
+**Himmel-lane spelling of step 0 — run this INSTEAD of the
 fence above, never both, and ONLY in a himmel checkout on a diff that touches
 none of the paths `pr-check-context.sh` guards: `scripts/cr/`, `scripts/lib/`,
 `scripts/guardrails/lib.sh`, `scripts/check-ci.sh`,
@@ -295,13 +295,13 @@ in the block that computes it. `scripts/cr/test-pr-check-pair.sh` check (ii)
 REJECTS the `"$himmel_dir/scripts/..."` spelling outright rather than
 accepting it as a legitimate alternative.
 
-**HIMMEL-4040: relative literal for EVERY scripts/cr call.** Run each
+**The relative literal for EVERY scripts/cr call.** Run each
 `bash "<himmel_dir>/scripts/cr/<script>.sh"` block below as the cwd-relative
 `bash scripts/cr/<script>.sh <literal args>` whenever cwd is a himmel worktree
 root whose `scripts/cr/` matches the anchor's; keep the absolute spelling only
 for the drifted or adopter case.
 
-**Himmel-lane spelling — drop the absolute prefix (HIMMEL-3338).** The
+**Himmel-lane spelling — drop the absolute prefix.** The
 `"<himmel_dir>/scripts/..."` form the blocks below show is the canonical,
 adopter-safe spelling. When step 0's printed `himmel_dir=` equals `repo=` (the
 himmel lane), drop the `"<himmel_dir>/` prefix and its closing quote and run the

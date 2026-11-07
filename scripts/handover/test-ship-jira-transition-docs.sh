@@ -58,7 +58,7 @@ contains 'preface Shipping: completes-ticket: yes -> pass the flag' "$ship" 'com
 contains 'preface Shipping: completes-ticket: no -> omit the flag' "$ship" 'completes-ticket: no'
 contains 'preface Shipping states the omit branch in words' "$ship" 'omit the flag'
 contains 'preface Shipping says never to turn the flag on by default' "$ship" 'never turn it on by default'
-contains 'preface Shipping names the sliced-ticket regression the default would recreate' "$ship" 'HIMMEL-3059'
+contains 'preface Shipping names the sliced-ticket regression the default would recreate' "$ship" 'a default closes a sliced ticket early'
 contains 'preface Shipping: the flag closes only the FIRST [KEY] of the PR title' "$ship" "\`[KEY]\` of the PR title"
 contains 'preface Shipping keeps the post-merge re-read' "$ship" 're-read the ticket after merge'
 contains 'preface Shipping tells a worker with no completes-ticket line to decide it itself' "$ship" 'decide it yourself'
@@ -80,7 +80,7 @@ brief="$(cat "$BRIEF")"
 contains 'brief template Ship contract carries a completes-ticket: yes|no line' "$brief" 'completes-ticket: yes|no'
 contains 'brief template: yes means the worker passes --jira-transition' "$brief" '--jira-transition'
 contains 'brief template: no means the ticket spans further PRs' "$brief" 'further PRs'
-contains 'brief template explains why the line is load-bearing (HIMMEL-3271)' "$brief" 'HIMMEL-3271'
+contains 'brief template explains why the line is load-bearing' "$brief" 'five were closed by hand'
 
 # --- 4. the chief docs restate the merge: keep them in step ---------------
 for pair in "chief-template.md Merges:$CHIEF" "running-a-chief.md Merges:$RUNNING"; do
