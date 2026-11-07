@@ -1544,3 +1544,18 @@ test("Board: an open ticket's card names the tickets it waits on, with their sta
   expect(card(K(20))).toContain(`${K(99)} (state unknown)`);
   expect(card(K(21))).not.toContain("after ");
 });
+
+test("Board: the lanes carry a sector legend: each sector of the version's open tickets with its count, the largest first, done tickets not counted", () => {
+  const s = station();
+  const put = (n: number, status: string, cat: string, labels: string[]) => writeFileSync(join(s.mirror, `HIMMEL-${n}.md`), issue(n, status, cat, ["v1.1.3"], `Work ${n}`, labels));
+  put(30, "To Do", "To Do", ["theme-alpha"]);
+  put(31, "In Progress", "In Progress", ["theme-alpha"]);
+  put(32, "To Do", "To Do", ["theme-beta"]);
+  put(33, "Done", "Done", ["theme-beta"]);
+  const html = board(read(s), { v: "v1.1.3" }, null);
+  const legend = html.match(/<div class="seclegend"[^>]*>([\s\S]*?)<\/div>/);
+  expect(legend).not.toBeNull();
+  const items = [...legend![1].matchAll(/<span class="sec">([^<]*)<\/span>/g)].map((m) => m[1].replace(/\s+/g, " ").trim());
+  expect(items.slice(0, 2)).toEqual(["alpha 2", "beta 1"]);
+  expect(items.join("|")).not.toContain("beta 2"); // the done ticket is not counted
+});

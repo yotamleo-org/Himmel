@@ -754,3 +754,5 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
   .tr{display:block}.tr .aside{margin-top:var(--s2)}
   .cp{padding:var(--s3)}
 }
+.seclegend{display:flex;flex-wrap:wrap;gap:4px 12px;margin:0 0 8px;font-size:.85em;color:var(--muted)}
+.seclegend .sec{white-space:nowrap}

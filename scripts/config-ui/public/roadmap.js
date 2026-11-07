@@ -452,6 +452,14 @@ const passOf = (d, ui, ch, from = d) => {
 // ticket key to the checker ticket that explains its drift row, for the tag on a lane card
 const knownByKey = (dr) => new Map((dr && dr.known ? dr.known : []).map((r) => [r.key, r.checker]));
 
+// The sector legend: each Sector of the open tickets in scope with its count, the largest first (the tracker's .seclegend). A ticket with no Sector is not a Sector.
+const sectorLegend = (d, scope) => {
+  const n = new Map();
+  for (const t of scope) if (t.b !== "done" && t.b !== "wont" && d.themes[t.theme] && d.themes[t.theme] !== NO_SECTOR) n.set(d.themes[t.theme], (n.get(d.themes[t.theme]) || 0) + 1);
+  const rows = [...n].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]));
+  return rows.length ? `<div class="seclegend" aria-label="Sectors of the open tickets">${rows.map(([name, c]) => `<span class="sec">${esc(name)} ${c}</span>`).join(" ")}</div>` : "";
+};
+
 function lanesHtml(d, ui, sel, ch, dr, prs) {
   const gh = d.source === "github";
   const writeOn = !!ui.writes && !gh;
@@ -460,7 +468,7 @@ function lanesHtml(d, ui, sel, ch, dr, prs) {
   const what = sel >= 0 ? `${d.versions[sel].n}: ${shown.length} tickets` : `every version: ${shown.length} tickets`;
   const sub = gh ? `${what}. GitHub issues are read-only here: change them on GitHub.${d.truncated ? " Only the newest 1000 issues are read, so older ones are missing." : ""}`
     : `${what}.${writeOn ? " Drag a card to another column to change its status." : ""}`;
-  return section("rm-lanes", "Roadmap", sub, shown.length ? boardHtml(d, shown, sel < 0, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase(), drawer: ui.drawer, known: knownByKey(dr), prs }) : `<div class="empty">No tickets match.</div>`);
+  return section("rm-lanes", "Roadmap", sub, shown.length ? sectorLegend(d, scope) + boardHtml(d, shown, sel < 0, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase(), drawer: ui.drawer, known: knownByKey(dr), prs }) : `<div class="empty">No tickets match.</div>`);
 }
 
 // The No version tab: the tickets with no fixVersion, in the same columns. They are not in the default read; ui.nv is GET /api/roadmap?nv=1,
