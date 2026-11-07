@@ -243,6 +243,8 @@ PATH_NOCLAUDE="$GRAPHIFY_BIN_DIR_PATH:$PATH_NOCLAUDE"
 export HOME="$TMP_ROOT/home"
 export HIMMEL_OBSERVABILITY_CONFIG="$TMP_ROOT/observability.json"
 mkdir -p "$HOME"
+mkdir -p "$HOME/.himmel"
+printf '{"graphify":{"semantic_api_ok":true}}\n' > "$HOME/.himmel/config.json"
 # Fired probe runners call cadence-alert + the flow ledger; keep
 # both sinks inside the scratch HOME and never reach Telegram.
 export CADENCE_ALERT_SEND_CMD=/bin/true
@@ -577,7 +579,9 @@ assert_contains "luna runner corpus-root is the vault"     "--corpus-root $VAULT
 assert_contains "himmel runner names the himmel corpus"    "--name himmel"        "$himmel_sh"
 assert_contains "himmel runner sets the himmel slug"       "--slug graphify-himmel-map" "$himmel_sh"
 assert_contains "himmel runner sets the himmel corpus-tag" "--corpus-tag himmel"  "$himmel_sh"
-assert_contains "himmel runner uses the claude-cli backend" "--backend claude-cli --corpus-tag" "$himmel_sh"
+assert_contains "himmel runner extracts on the API lane on auto" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto " "$himmel_sh"
+assert_contains "himmel runner uses the claude-api backend" "--backend claude-api --corpus-tag" "$himmel_sh"
+assert_not_contains "himmel runner never runs on the subscription" "--backend claude-cli" "$himmel_sh"
 assert_contains "himmel runner corpus-root is the himmel repo" "--corpus-root $HIMMEL_ROOT_EXP" "$himmel_sh_plain"
 assert_contains "himmel runner sets the himmel title"      "Graphify Himmel Map"  "$himmel_sh_plain"
 assert_contains "luna runner cds into himmel root" "cd $HIMMEL_ROOT_EXP" "$luna_sh_plain"
@@ -1497,7 +1501,7 @@ run_fda linux-gnu disarm >/dev/null 2>&1
 echo "TEST: cron_payload / ast_cron_payload out-root wiring"
 CP_SRC="$(sed -n '/^cron_payload()/,/^}/p' "$SCRIPT")"
 ACP_SRC="$(sed -n '/^ast_cron_payload()/,/^}/p' "$SCRIPT")"
-run_cp() { bash -c "BACKEND=claude-cli"$'\n'"$CP_SRC"$'\n''cron_payload "$@"' _ "$@"; }
+run_cp() { bash -c "BACKEND=claude-cli SEMANTIC_API_SKIP_TEXT=skip-text; semantic_api_opted_in() { [ \"\${CP_OPTIN:-1}\" = 1 ]; }"$'\n'"$CP_SRC"$'\n''cron_payload "$@"' _ "$@"; }
 run_acp() { bash -c "$ACP_SRC"$'\n''ast_cron_payload "$@"' _ "$@"; }
 
 cp_no_root=$(run_cp bash script.sh luna corpus maps title slug tag)
@@ -1511,6 +1515,11 @@ cp_himmel=$(run_cp bash script.sh himmel corpus maps title slug tag)
 assert_contains "cron_payload merges the himmel refresh into the live graph" "--merge-into-live" "$cp_himmel"
 assert_not_contains "cron_payload keeps the plain promote for luna" "--merge-into-live" "$cp_no_root"
 assert_not_contains "cron_payload keeps the plain promote for luna with an out-root" "--merge-into-live" "$cp_with_root"
+assert_contains "cron_payload puts the himmel map on the API lane on auto" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto bash script.sh --name himmel" "$cp_himmel"
+assert_contains "cron_payload keeps BACKEND for luna" "--backend claude-cli" "$cp_no_root"
+assert_not_contains "cron_payload never gives luna auto" "HIMMEL_API_ACCOUNT" "$cp_no_root"
+cp_himmel_off=$(CP_OPTIN=0 run_cp bash script.sh himmel corpus maps title slug tag)
+assert_rc "cron_payload without the opt-in renders only the himmel skip line" 'echo "[skip-text]"' "$cp_himmel_off"
 
 acp_no_dir=$(run_acp bash script.sh corpus)
 assert_not_contains "ast_cron_payload omits GRAPHIFY_OUT= when unset" "GRAPHIFY_OUT=" "$acp_no_dir"
@@ -1741,6 +1750,15 @@ for _r in luna himmel ast-luna ast-himmel publish-himmel; do
 done
 assert_contains "rewrite-armed himmel runner carries --merge-into-live" "--merge-into-live" "$(cat "$RWDIR/graphmap-himmel.sh")"
 assert_not_contains "rewrite-armed luna runner does not" "--merge-into-live" "$(cat "$RWDIR/graphmap-luna.sh")"
+rw_himmel=$(cat "$RWDIR/graphmap-himmel.sh"); rw_himmel_plain=${rw_himmel//\\/}
+assert_contains "rewrite-armed himmel runner extracts on the API lane on auto" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto " "$rw_himmel"
+assert_contains "rewrite-armed himmel runner uses the claude-api backend" "--backend claude-api --corpus-tag himmel" "$rw_himmel"
+assert_contains "rewrite-armed himmel runner names the himmel corpus"    "--name himmel"        "$rw_himmel"
+assert_contains "rewrite-armed himmel runner sets the himmel slug"       "--slug graphify-himmel-map" "$rw_himmel"
+assert_contains "rewrite-armed himmel runner corpus-root is the himmel repo" "--corpus-root $HIMMEL_ROOT_EXP" "$rw_himmel_plain"
+assert_contains "rewrite-armed himmel runner sets the himmel title"      "Graphify Himmel Map"  "$rw_himmel_plain"
+assert_contains "rewrite-armed luna runner keeps the claude-cli backend" "--backend claude-cli --corpus-tag luna" "$(cat "$RWDIR/graphmap-luna.sh")"
+assert_not_contains "rewrite-armed luna runner never gets auto" "HIMMEL_API_ACCOUNT=auto" "$(cat "$RWDIR/graphmap-luna.sh")"
 if [ -e "$RWDIR/graphmap-semantic-luna.sh" ]; then fail "rewrite-armed created a runner that was not armed"; else pass "rewrite-armed does not create an absent runner"; fi
 for _flag in --force --ast-only --with-publish --publish-semantic --with-luna-semantic --semantic-active; do
     rc=0; run_rw arm --vault "$VAULT" --rewrite-armed "$_flag" >/dev/null 2>&1 || rc=$?
@@ -2016,6 +2034,16 @@ assert_contains "adopter fire still runs the publish worker" "ARGV: --corpus-roo
 assert_not_contains "adopter fire passes no --semantic" "--semantic" "$stub_adopter"
 assert_contains "adopter fire sets no api lane" "LANE: unset" "$stub_adopter"
 assert_contains "adopter fire logs the skipped semantic pass" "$SKIP_TEXT" "$(cat "$CRON_DIR3/graphmap-publish-himmel.log" 2>/dev/null || echo MISSING)"
+run_cron3 disarm >/dev/null 2>&1 || true
+
+echo "TEST: adopter station (no opt-in): a bare arm renders the himmel map row as a skip line, never on the subscription"
+rc=0; out=$(run_adopter arm --vault "$VAULT" 2>&1) || rc=$?
+assert_rc "adopter bare arm succeeds" 0 "$rc"
+hm_sh=$(cat "$CRON_DIR3/graphmap-himmel.sh" 2>/dev/null || echo MISSING)
+assert_contains "adopter himmel map runner logs why it is skipped" "[$SKIP_TEXT" "$hm_sh"
+assert_not_contains "adopter himmel map runner calls no refresh-graph-map.sh" "refresh-graph-map.sh" "$hm_sh"
+assert_not_contains "adopter himmel map runner sets no api lane" "HIMMEL_API_LANE" "$hm_sh"
+assert_contains "adopter bare arm says the API lane is not opted in" "API lane is not opted in" "$out"
 run_cron3 disarm >/dev/null 2>&1 || true
 
 echo "TEST: HIMMEL-9155 adopter station: the luna semantic runner renders no API lane and never calls semantic-update"

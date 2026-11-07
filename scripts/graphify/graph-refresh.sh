@@ -764,7 +764,7 @@ for c in "${CORPORA[@]}"; do
             echo "graph-refresh: [$c] SKIPPED -- bank at/over threshold, extraction skipped for corpus '$c' (refresh-graph-map.sh exited 3; graphify-out left untouched, nothing published)" >&2
             SKIPPED=$((SKIPPED + 1))
         else
-            worker_reason="$(grep '^refresh-graph-map:' "$WORKER_SESSION_LOG" | tail -n 1 || true)"
+            worker_reason="$(grep -E '^(ERR )?refresh-graph-map:' "$WORKER_SESSION_LOG" | tail -n 1 || true)"
             echo "graph-refresh: [$c] FAIL -- ${worker_reason:-refresh-graph-map.sh exited $worker_rc} (log: $WORKER_SESSION_LOG)" >&2
             FAILURES=$((FAILURES + 1))
             FAILED_WORKERS+=("$c $WORKER_SESSION_LOG")
