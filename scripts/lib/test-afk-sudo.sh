@@ -494,7 +494,7 @@ cfg() {
 }
 # The seam turns the run kind on with AFK_SUDO_RUN=1; the installed helper (euid 0) never reads it.
 hr() { local off="$1"; shift; AFK_SUDO_RUN=1 h "$off" "$@"; }
-rr() { local off="$1"; shift; hr "$off" run-request --session S1 --ticket HIMMEL-8067 --blocked-by classifier "$@" </dev/null; }
+rr() { local off="$1"; shift; hr "$off" run-request --session S1 --ticket HIMMEL-8067 --blocked-by prompt "$@" </dev/null; }
 approve_r() { AFK_SUDO_RUN=1 approve "$@"; }
 # cfg_class_user <user>: make the one class run as <user> (the default is root).
 cfg_class_user() { python3 -I -c 'import json, sys; c = json.load(open(sys.argv[1])); c["classes"]["systemctl-restart"]["run_as"] = sys.argv[2]; json.dump(c, open(sys.argv[1], "w"))' "$R/etc/himmel/afk-sudo.json" "$1"; }
@@ -1097,7 +1097,7 @@ rr 0 -- true >/dev/null
 assert_contains "a second run request while one is pending is busy" "result=busy" "$(rr 1 -- true)"
 rr 2 -- true >/dev/null
 assert_contains "two busy requests from one session leave one ledger row" "1" "$(ledger | grep -c '"result": "busy"')"
-for n in 2 3 4; do hr 3 run-request --session "S$n" --ticket T --blocked-by classifier -- true </dev/null >/dev/null; done
+for n in 2 3 4; do hr 3 run-request --session "S$n" --ticket T --blocked-by prompt -- true </dev/null >/dev/null; done
 assert_contains "another session's busy request gets its own row" "2" "$(ledger | grep -c '"result": "busy"')"
 new_root maxhr; cfg "$ALL" true ', "max_per_hour": 2'
 for n in 1 2; do out=$(rr "$n" -- true); h "$n" deny "$(rid "$out")" --from "$OP" --chat "$OP" >/dev/null; done
@@ -1147,7 +1147,7 @@ ar() {
     ARRC=$?
     ARLAST=$(tail -n 1 "$tmp/ar.err")
 }
-AR=(--session S1 --ticket HIMMEL-8067 --blocked-by classifier)
+AR=(--session S1 --ticket HIMMEL-8067 --blocked-by prompt)
 new_root arun; cfg "$ALL" true
 ar 3 "${AR[@]}" -- sh -c 'exit 3'
 assert_eq "RED 6: afk-run exits with the command's status" 3 "$ARRC"
@@ -1185,7 +1185,89 @@ assert_contains "a pending run says so with its id" "status=pending id=" "$ARLAS
 FAKE_ACTION=none ar 4 "${AR[@]}" -- true
 assert_eq "a busy helper exits 76" 76 "$ARRC"
 assert_contains "a busy run says nothing was filed" "afk-run: status=busy, nothing filed" "$ARLAST"
+new_root arnowait; cfg "$ALL" true
+FAKE_ACTION=none ar 3 --no-wait "${AR[@]}" -- true
+assert_eq "--no-wait exits 75 once filed" 75 "$ARRC"
+if [[ $ARLAST =~ ^afk-run:\ status=pending\ id=[a-z2-7]{8}$ ]]; then pass "--no-wait ends on status=pending with the id"; else fail "--no-wait ends on status=pending with the id" "$ARLAST"; fi
+assert_contains "--no-wait says it filed the request" "afk-run: filed request" "$(cat "$tmp/ar.err")"
+assert_eq "--no-wait never polls" "" "$(cd "$R" && find . -maxdepth 1 -name 'polled.*')"
+id=$(printf '%s\n' "$ARLAST" | sed -n 's/.* id=\([a-z2-7]\{8\}\)$/\1/p')
+assert_contains "the --no-wait request stays pending for the operator" "result=pending" "$(h 3 run-status "$id")"
+s=$SECONDS
+FAKE_ACTION=none ar 4 --no-wait "${AR[@]}" -- true
+assert_eq "--no-wait on a busy helper exits 76" 76 "$ARRC"
+assert_contains "--no-wait busy says nothing was filed" "afk-run: status=busy, nothing filed" "$ARLAST"
+if [ $((SECONDS - s)) -lt 2 ]; then pass "--no-wait busy ends at once, no busy loop"; else fail "--no-wait busy ends at once" "$((SECONDS - s))s"; fi
 if [ -x "$REPO_ROOT/scripts/lib/afk-run" ]; then pass "afk-run is executable"; else fail "afk-run is not executable"; fi
+
+echo "== classifier filings: the mode fields, the sub-cap, the collapse, data-file bodies, the credential floor =="
+# rc <now-offset> <session> <argv...>: a run request filed for a classifier refusal.
+rc() { local off="$1" s="$2"; shift 2; hr "$off" run-request --session "$s" --ticket T --blocked-by classifier -- "$@" </dev/null; }
+# rp <now-offset> <session>: a run request filed on purpose (a prompt), for the same argv `true`.
+rp() { hr "$1" run-request --session "$2" --ticket T --blocked-by prompt -- true </dev/null; }
+deny_id() { h "$1" deny "$2" --from "$OP" --chat "$OP" >/dev/null; }
+new_root clsmode; cfg "$ALL" true
+assert_contains "classifier_requests defaults to false" "classifier_requests=false grant_enabled=false" "$(h 0 mode)"
+cfg "$ALL" true ', "classifier_requests": true'
+assert_contains "mode reports classifier_requests from the root config" "classifier_requests=true" "$(h 0 mode)"
+cfg "$ALL" true ', "grant": {"enabled": true}'
+assert_contains "mode reports grant_enabled" "grant_enabled=true" "$(h 0 mode)"
+new_root clscap; cfg "$ALL" true ', "max_per_hour": 20'
+id1=$(rid "$(rc 0 A true)"); deny_id 1 "$id1"
+id2=$(rid "$(rc 2 B true)"); deny_id 3 "$id2"
+if [ -n "$id1" ] && [ -n "$id2" ]; then pass "two classifier requests an hour are filed"; else fail "two classifier requests an hour are filed" "$id1 $id2"; fi
+assert_contains "RED sub-cap: a third classifier request in the hour is refused" "result=classifier-rate-limited" "$(rc 4 C true)"
+assert_contains "the sub-cap refusal is ledgered" '"result": "classifier-rate-limited"' "$(ledger)"
+i=$(rid "$(rp 5 D)")
+if [ -n "$i" ]; then pass "a request filed on purpose still goes through past the classifier cap"; else fail "a request filed on purpose still goes through past the classifier cap"; fi
+deny_id 6 "$i"
+assert_contains "the classifier cap frees after an hour" "result=pending" "$(rc 3700 E true)"
+new_root clsglobal; cfg "$ALL" true ', "max_per_hour": 3'
+deny_id 1 "$(rid "$(rp 0 P1)")"; deny_id 3 "$(rid "$(rp 2 P2)")"
+assert_contains "RED sub-cap: a classifier request never takes the last free hourly request" "result=classifier-rate-limited" "$(rc 4 C1 true)"
+assert_contains "the last hourly request stays free for a request filed on purpose" "result=pending" "$(rp 5 P3)"
+new_root clsslot; cfg "$ALL" true ', "max_per_hour": 20'
+rp 0 P1 >/dev/null; rp 1 P2 >/dev/null
+assert_contains "RED sub-cap: a classifier request never takes the last free pending slot" "result=classifier-rate-limited" "$(rc 2 C1 true)"
+new_root clsdup; cfg "$ALL" true ', "max_per_hour": 20'
+deny_id 1 "$(rid "$(rc 0 S1 true)")"
+assert_contains "RED collapse: the same argv from the same session inside its ttl files nothing" "result=duplicate" "$(rc 10 S1 true)"
+assert_contains "another argv from that session still files" "result=pending" "$(rc 11 S1 echo other)"
+assert_contains "the same argv from another session still files" "result=pending" "$(rc 3700 S2 true)"
+assert_contains "the same argv files again once its ttl is over" "result=pending" "$(rc 7300 S1 true)"
+new_root clsdupcwd; cfg "$ALL" true ', "max_per_hour": 20'
+deny_id 1 "$(rid "$(rc 0 S1 true)")"
+mkdir -p "$R/elsewhere"
+assert_contains "the same argv from that session in another cwd still files" "result=pending" \
+    "$(hr 2 run-request --session S1 --ticket T --blocked-by classifier --cwd "$R/elsewhere" -- true </dev/null)"
+new_root clsbody; cfg "$ALL" true ', "max_per_hour": 20'
+printf 'BODY-%s-SECRETLIKE\n' "$RANDOM" > "$R/data.txt"; body=$(cat "$R/data.txt")
+dsha=$(sha256sum "$R/data.txt" | cut -c1-8)
+i=$(rid "$(rc 0 S1 cat "$R/data.txt")"); text=$(tg notice sendMessage text)
+assert_absent "RED: a classifier request never shows a data file's body" "$body" "$text"
+assert_contains "it shows the data file's path" "$R/data.txt" "$text"
+assert_contains "and its sha256" "sha256 $dsha" "$text"
+assert_absent "no copy of the data file's body is kept" "$body" "$(cat "$R"/var/lib/himmel/afk-sudo/files/"$i"/* 2>/dev/null)"
+new_root clsbody2; cfg "$ALL" true ', "max_per_hour": 20'
+printf 'BODY-%s-PROMPT\n' "$RANDOM" > "$R/data.txt"; body=$(cat "$R/data.txt")
+hr 0 run-request --session S1 --ticket T --blocked-by prompt -- cat "$R/data.txt" </dev/null >/dev/null
+assert_contains "a request filed on purpose still shows the body" "$body" "$(tg notice sendMessage text)"
+new_root clsscript; cfg "$ALL" true ', "max_per_hour": 20'
+printf 'echo SCRIPT-%s-TEXT\n' "$RANDOM" > "$R/s.sh"; stext=$(cat "$R/s.sh")
+rc 0 S1 bash "$R/s.sh" >/dev/null
+assert_contains "a classifier request still shows an interpreter's script" "$stext" "$(tg notice sendMessage text)"
+new_root clscred; cfg "$ALL" true ', "max_per_hour": 20'
+for f in .aws/credentials .netrc .git-credentials .config/gh/hosts.yml .docker/config.json .kube/config .npmrc .pypirc .env.local; do
+    mkdir -p "$(dirname "$R/home/$f")"; printf 'x\n' > "$R/home/$f"
+    n0=$(find "$TG" -name '*.json' | wc -l | tr -d ' ')
+    out=$(rc 0 "S-$f" cat "$R/home/$f")
+    n1=$(find "$TG" -name '*.json' | wc -l | tr -d ' ')
+    if [[ $out == *"result=never-remote rule=secret-read"* ]] && [ "$n0" = "$n1" ]; then
+        pass "RED floor: cat of an absolute $f is never-remote and sends nothing"
+    else
+        fail "RED floor: cat of an absolute $f is never-remote and sends nothing" "$out (notices $n0 to $n1)"
+    fi
+done
 
 # other_nonce <nonce>: a well-formed nonce that is not this one.
 other_nonce() { if [ "$1" = ZZZZ ]; then echo YYYY; else echo ZZZZ; fi; }
@@ -1341,10 +1423,10 @@ assert_absent "only the last 3" "l1" "$text"
 assert_absent "a secret in stderr is redacted" "$gh_fixture" "$text"
 assert_absent "stdout is never sent" "out-not-sent" "$text"
 
-echo "== slice 1b: the stderr redaction matches log-classifier-denial.sh's redact() =="
-# Fixtures are built at run time (no token-shaped literal in the file); each goes through the hook's own
-# redact() (cut out of the hook and sourced) and the port.
-sed -n '/^redact() {/,/^}/p' "$REPO_ROOT/scripts/hooks/log-classifier-denial.sh" > "$tmp/redact.sh"
+echo "== slice 1b: the stderr redaction matches scripts/lib/redact.sh's redact() =="
+# Fixtures are built at run time (no token-shaped literal in the file); each goes through the shared
+# redact() the hooks source and the port.
+cp "$REPO_ROOT/scripts/lib/redact.sh" "$tmp/redact.sh"
 fx=("ghp_$(printf 'b%.0s' $(seq 1 36))" "github_pat_$(printf 'C%.0s' $(seq 1 30))" "sk-ant-api03-$(printf 'd%.0s' $(seq 1 30))"
     "AKIA$(printf 'E%.0s' $(seq 1 16))" "xoxb-$(printf '1%.0s' $(seq 1 12))-abc" "${NTOK}" "Bearer $(printf 'f%.0s' $(seq 1 24))"
     "password=hunter2x" "api_key: 'k$(printf 'g%.0s' $(seq 1 20))'" "--token $(printf 'h%.0s' $(seq 1 20))" "mysql -pS3cretpw"

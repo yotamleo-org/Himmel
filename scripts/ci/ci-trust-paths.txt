@@ -54,6 +54,8 @@
 
 # Hook denials and allow-list logic.
 ^scripts/hooks/(block|guard|cadence-deny)-
+# The AFK approval hooks: they send a refused command toward the operator's code request.
+^scripts/hooks/(afk-|approval-grant-)
 ^scripts/hooks/(auto-approve-safe-bash|permission-allow-gate-shapes|narrow-allow|cadence-approve-engines|require-quiet-run|read-clamp|orchestrator-inline-guard|rtk-hook-guard|hook-integrity|record-hook-integrity|guardrail-|run-hook-with-bash|wire-|mcp-policy|redirect-webfetch-walled-hosts|detect-token-in-output|infra-destroy-verbs)
 ^marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts\.sh$
 # The plugin's vendored launcher twins (byte-identical to run-hook-with-bash and hook-integrity above; test-plugin-hook-bash-wiring.sh).
