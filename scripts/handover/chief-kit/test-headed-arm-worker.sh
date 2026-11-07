@@ -1134,10 +1134,9 @@ contains "opus ceiling: A/B control arm keeps 200000" "$out" "HIMMEL_WORKER_SESS
 contains "opus ceiling: A/B control arm sets no guard" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=<unset>"
 contains "opus ceiling: A/B control arm sets no share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
 
-# The guard denies before compaction: the env the launch above delivered, fed to the real
-# hook. Auto compaction fires about 33000 under the ceiling (168413 median at 200000,
-# 967405 on auto; JSONL, 2026-11-07), so about 767000 at 800000. The HUD fixture is a real
-# claude-hud snapshot from the station (2026-11-07), with only the numbers and time set.
+# The guard denies at its threshold: the env the launch above delivered, fed to the real
+# hook. The HUD fixture is a real claude-hud snapshot from the station (2026-11-07), with
+# only the numbers and time set.
 og_val() { printf '%s\n' "$og_env" | sed -n "s/^HIMMEL_WORKER_SESSION_$1=//p" | head -1; }
 og_cfg="$tmp/og-cfg"; og_dir="$tmp/og-handovers/u/himmel"
 mkdir -p "$og_cfg/projects/p" "$og_cfg/plugins/claude-hud/context-cache" "$og_dir"
@@ -1171,8 +1170,10 @@ check "opus guard: at 700000 an ordinary call is denied" "$og_rc" "2"
 contains "opus guard: the deny names the 70 % threshold" "$og_err" "threshold 70 %"
 contains "opus guard: the deny names its basis" "$og_err" "87 % of the 800000-token autocompact ceiling on a 1000000-token window"
 contains "opus guard: the deny names the hand-off" "$og_err" "mode handoff"
-og_fill 77; og_run "$og_compact" "$og_mode" "$og_ceiling" "$og_share"
-check "opus guard: an auto compaction at about 767000 is refused until the hand-off" "$og_rc" "2"
+og_fill 70; og_run "$og_compact" "$og_mode" "$og_ceiling" "$og_share"
+check "opus guard: an auto compaction at the threshold is refused until the hand-off" "$og_rc" "2"
+og_fill 69; og_run "$og_compact" "$og_mode" "$og_ceiling" "$og_share"
+check "opus guard: an auto compaction below the threshold passes" "$og_rc" "0"
 # RED controls: the deny is the guard's and the share is what places it.
 og_fill 70; og_run "$og_tool" "" "$og_ceiling" "$og_share"
 check "opus guard control: with no mode the same call at 700000 passes" "$og_rc" "0"

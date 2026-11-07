@@ -119,9 +119,9 @@ outgrows 33 % still relaunches, as HIMMEL-7667 designed, while a `worker-eval` w
 checkpoint at 700000 and a ceiling of 800000. The hook rounds up to a whole percent of the
 window, so `ceil(87 × 800000 / 1000000)` = `ceil(69.6)` = 70 %, **exactly 700000 tokens**;
 88, the nearer share on paper (87.5), would give 71 %, 710000. Fill itself reaches the hook
-as a whole percent, so a deny can land up to about 5000 tokens under 700000. Active auto
-compaction fires about 33000 under the ceiling (Opus median 168413 at 200000, 967405 on
-`auto`), so about 767000 here, which leaves about 67000 for the hand-off.
+as a whole percent, so a deny can land up to about 5000 tokens under 700000. Where auto
+compaction fires at this ceiling is not yet located: one real run compacted at 749689 by the
+CLI's own count, after a single read batch jumped there from about 25000.
 
 **What the guard does not cover.** A second compaction trigger fires after about 54 minutes
 idle, whatever the ceiling: 10 Opus compactions from 337516 to 555513 tokens over 21 days,
