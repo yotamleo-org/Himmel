@@ -1336,7 +1336,7 @@ lift=false lift_followed=false
 # shellcheck disable=SC1091
 if { . "$REPO/scripts/lib/usage-lift.sh"; } 2>/dev/null && usage_lift_valid "$CACHE"; then
   lift=true
-  [ "$USAGE_LIFT_FOLLOWED" = true ] && lift_followed=true
+  [ "${USAGE_LIFT_FOLLOWED:-false}" = true ] && lift_followed=true
   # Standing operator policy spends both banks to 100 by default. Explicit
   # CADENCE_USAGE_MAX_PCT still controls five_hour; neither bank spends extra_usage.
   if [ "$USAGE_LIFT_STANDING" = true ] && [ -z "${CADENCE_USAGE_MAX_PCT:-}" ]; then MAX_PCT=100; fi
