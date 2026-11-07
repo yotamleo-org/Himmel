@@ -1646,12 +1646,12 @@ update_jira_cli() {
 update_config_ui() {
     local mode="$1"   # check | apply
     local web="$ROOT/scripts/config-ui/agui-web" unit="himmel-ui.service"
-    local from to changed="" bun log pending="$HOME/.himmel/state/config-ui-rebuild-pending"
+    local from to changed="" bun log state pending="$HOME/.himmel/state/config-ui-rebuild-pending"
     [ -f "$web/package.json" ] || return 0
     if [ "$mode" = "check" ]; then
-        changed=$(git diff --name-only HEAD '@{u}' -- scripts/config-ui 2>/dev/null) || return 0
-        [ -n "$changed" ] || return 0
-        STATUS_config_ui="skipped"; DETAIL_config_ui="check mode — would rebuild the config UI bundle and restart $unit if active"
+        changed=$(git diff --name-only HEAD '@{u}' -- scripts/config-ui 2>/dev/null) || changed=""
+        [ -n "$changed" ] || [ -f "$pending" ] || return 0
+        STATUS_config_ui="skipped"; DETAIL_config_ui="check mode — would rebuild the config UI bundle and restart $unit if running"
         return 0
     fi
     from="${PULL_HEAD_BEFORE:-}"
@@ -1677,7 +1677,10 @@ update_config_ui() {
         DETAIL_config_ui="build failed — $unit left running on the old build; the next update retries, or by hand: (cd scripts/config-ui/agui-web && bun install --frozen-lockfile && bun run build), then systemctl --user restart $unit"
         return 1
     fi
-    if command -v systemctl >/dev/null 2>&1 && [ "$(systemctl --user is-active "$unit" 2>/dev/null)" = "active" ]; then
+    # a unit left failed by an earlier restart is restarted too; an absent or stopped one is not ours to start
+    state=""
+    if command -v systemctl >/dev/null 2>&1; then state=$(systemctl --user is-active "$unit" 2>/dev/null) || true; fi
+    if [ "$state" = "active" ] || [ "$state" = "activating" ] || [ "$state" = "failed" ]; then
         if systemctl --user restart "$unit" >/dev/null 2>&1; then
             rm -f "$pending"
             STATUS_config_ui="updated"; DETAIL_config_ui="bundle rebuilt, $unit restarted"

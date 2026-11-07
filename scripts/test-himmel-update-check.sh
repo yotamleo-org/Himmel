@@ -1032,6 +1032,11 @@ assert_contains "config_ui no service: still builds the bundle" "agui-web|run bu
 if grepq "$cui_log" "restart"; then assert_fail "config_ui no service: must not restart"; else assert_pass "config_ui no service: no restart"; fi
 assert_contains "config_ui no service: row says updated" "STATUS=updated" "$cui_out"
 
+# a unit left failed by an earlier restart is restarted after the rebuild
+make_cui_repo scripts/config-ui/server.ts
+run_cui apply CUI_SVC_STATE=failed
+assert_contains "config_ui failed unit: restarts it" "restart himmel-ui.service" "$cui_log"
+
 # build fails: the running service is left alone and the failure is printed
 make_cui_repo scripts/config-ui/agui-web/index.html
 run_cui apply CUI_BUILD_FAIL=1
@@ -1061,6 +1066,13 @@ run_cui check
 assert_eq "config_ui check mode: rc 0" "0" "$cui_rc"
 assert_eq "config_ui check mode: bun and systemctl not called" "" "$cui_log"
 assert_contains "config_ui check mode: reports what apply would do" "would rebuild" "$cui_out"
+
+# check mode also reports a retry owed by a failed earlier update
+make_cui_repo docs/a.md
+mkdir -p "$HOME/.himmel/state"; : > "$HOME/.himmel/state/config-ui-rebuild-pending"
+run_cui check
+assert_contains "config_ui check mode: reports a pending retry" "would rebuild" "$cui_out"
+rm -f "$HOME/.himmel/state/config-ui-rebuild-pending"
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
