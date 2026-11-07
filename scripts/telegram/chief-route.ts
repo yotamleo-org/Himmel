@@ -711,7 +711,7 @@ export function renderMarkdownHtml(md: string, title: string, verdicts?: Verdict
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">
 <title>${esc(title)}</title>
-<style>body{font:16px/1.5 system-ui,sans-serif;max-width:46rem;margin:0 auto;padding:1rem;overflow-wrap:anywhere}pre{background:#f4f4f4;padding:.75rem;overflow-x:auto}code{font-family:ui-monospace,monospace;font-size:.9em}table{border-collapse:collapse;display:block;overflow-x:auto}th,td{border:1px solid #bbb;padding:.3rem .5rem}blockquote{border-left:4px solid #bbb;margin-left:0;padding-left:1rem;color:#555}@media(prefers-color-scheme:dark){body{background:#111;color:#ddd}pre{background:#222}th,td{border-color:#555}}</style>
+<style>:root{--bg:#0C1319;--ink:#E1E8EE;--mute:#9DADBA;--code:#121B23;--rule:#60727F;color-scheme:dark}body{background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif;max-width:46rem;margin:0 auto;padding:1rem;overflow-wrap:anywhere}pre{background:var(--code);padding:.75rem;overflow-x:auto}code{font-family:ui-monospace,monospace;font-size:.9em}table{border-collapse:collapse;display:block;overflow-x:auto}th,td{border:1px solid var(--rule);padding:.3rem .5rem}blockquote{border-left:4px solid var(--rule);margin-left:0;padding-left:1rem;color:var(--mute)}@media print{:root{--bg:#fff;--ink:#000;--mute:#555;--code:#f4f4f4;--rule:#bbb;color-scheme:light}}</style>
 </head><body>
 ${body}</body></html>
 `;

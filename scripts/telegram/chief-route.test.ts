@@ -7,7 +7,7 @@ import { BASH_BIN, buildPrompt } from "./run";
 import { sendMessage } from "./telegram-api";
 import { appendLine, ensureSession, writeMeta, sessionDir } from "./bus";
 import { handleInbound, replyViaOutbox, flushOutboxes, ingestUpdates, makeRunFn } from "./poller";
-import { consoleInboxPath, foldLine, type ConsoleRouteGate } from "./chief-route";
+import { consoleInboxPath, foldLine, renderMarkdownHtml, type ConsoleRouteGate } from "./chief-route";
 
 // Every test runs against a scratch bridge root and a fake reply
 // seam, never the real ~/.claude/handover/bridge, never Telegram.
@@ -1859,4 +1859,21 @@ test("planted: a spec named like a judge file still gets three rounds", async ()
   const refused = await seal(r4, spec, sha(D_TEXT));
   expect(refused.code).not.toBe(0);
   expect(refused.err).toContain("operator-round-r4.md");
+});
+
+// The page the router renders opens dark with no saved choice, whatever the system preference says; print alone goes back to light.
+test("the routed markdown page opens dark with readable text, no system-preference flip, and a light print", () => {
+  const html = renderMarkdownHtml("# T\n\nbody `code`\n\n```\npre\n```\n\n> quote\n\n| a |\n|---|\n| b |\n", "T");
+  const root = /:root\{([^}]*)\}/.exec(html)?.[1] ?? "";
+  const val = (v: string) => new RegExp(`${v}:(#[0-9a-fA-F]{6})`).exec(root)?.[1];
+  const lum = (h: string) => { const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const ratio = (a: string, b: string) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  const [bg, ink, mute] = ["--bg", "--ink", "--mute"].map(val);
+  expect(bg && ink && mute).toBeTruthy();
+  expect(lum(bg!)).toBeLessThan(0.1);
+  expect(ratio(ink!, bg!)).toBeGreaterThanOrEqual(4.5);
+  expect(ratio(mute!, bg!)).toBeGreaterThanOrEqual(4.5);
+  expect(html).not.toContain("prefers-color-scheme");
+  expect(html).toContain("color-scheme:dark");
+  expect(html).toMatch(/@media print\{:root\{[^}]*--bg:#fff/);
 });
