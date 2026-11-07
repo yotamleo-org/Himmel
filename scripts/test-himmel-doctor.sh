@@ -4433,8 +4433,6 @@ out="$( (unset USAGE_LIFT_FILE; CADENCE_USAGE_CACHE="$t/cache.json" run_doctor_f
 if grepq "$out" -F 'lift set but INVALID: parse'; then fail "C34 read the retired bank-lift.json"; else pass "C34 ignores the retired bank-lift.json"; fi # old-term-ok
 rm -rf "$t"
 
-# After an account switch C34 names the remedy per reason and
-# says when a standing lift followed the login; no line prints 5 hex of a hash.
 echo "== C34: lift after an account switch -> remedy per reason, followed OK =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-follow.XXXXXX")" || exit 1
 c32_fixture_base "$t"
@@ -4446,13 +4444,11 @@ c34_ha="$(. "$REPO_ROOT/scripts/lib/usage-cache-identity.sh"; current_account_ha
 c34_hb="$(. "$REPO_ROOT/scripts/lib/usage-cache-identity.sh"; current_account_hash "$t/login-b.json")"
 c34_now="$(date +%s)"
 c34_lift() {
-    # c34_lift <standing true|false> <set_by>: a lift set on account A.
     jq -cn --arg a "$c34_ha" --argjson s "$1" --arg by "$2" --argjson u "$((c34_now+3600))" \
         '{window:"seven_day",until:$u,standing:$s,account:$a,set_by:$by,set_at:"x"}' > "$t/home/.himmel/state/usage-lift.json"
     chmod 600 "$t/home/.himmel/state/usage-lift.json"
 }
 c34_follow_line() {
-    # c34_follow_line <cache-account-hash>: the C34 lift line and its remedy, login on B.
     printf '{"account":"%s","five_hour":{"utilization":10},"seven_day":{"utilization":10,"resets_at":%s}}' \
         "$1" "$((c34_now+86400))" > "$t/cache.json"
     USAGE_LIFT_FILE="$t/home/.himmel/state/usage-lift.json" CADENCE_USAGE_CACHE="$t/cache.json" \

@@ -2629,9 +2629,9 @@ read against a usage cache stamped with the login's account and a future
 seven_day `resets_at`; anything else is no lift. A one-window lift is also
 bound to the account it was set on and capped by that `resets_at`, so a
 forged one buys at most the rest of the current 7-day window. A standing
-lift ignores its `until` and follows an account switch
-when its `set_by` equals the current user (`set_by` is provenance, not a
-bound: the same uid can write it). So a forged standing lift spends to
+lift ignores its `until` and follows an account switch when its `set_by`
+equals the current user (`set_by` is provenance, not a bound: the same uid
+can write it). So a forged standing lift spends to
 100 % on every account the station logs into, not one. The ceiling still
 holds: five_hour binds under an explicit `CADENCE_USAGE_MAX_PCT`, and either
 window at 100 % refuses, so no lift spends extra_usage. Remaining hook gaps
