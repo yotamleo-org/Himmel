@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# test-compaction-trigger-report.sh: scripts/eval/compaction-trigger-report.py over
-# three hand-made transcripts: steady growth with a guard deny before its
-# compaction, one large tool batch (the VM fixture shape) and a long idle gap.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="$HERE/compaction-trigger-report.py"
@@ -9,15 +6,18 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/compaction-trigger.XXXXXX")" || exit 1; trap '
 fails=0
 check() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: expected [$2] got [$3]"; fails=$((fails + 1)); fi; }
 
-call() { # id, time, api tokens (split across the three usage fields)
-    printf '{"type":"assistant","timestamp":"2026-11-07T%sZ","message":{"id":"%s","model":"claude-opus-5-5","usage":{"input_tokens":5,"cache_read_input_tokens":%d,"cache_creation_input_tokens":%d,"output_tokens":50}}}\n' \
-        "$2" "$1" $(($3 - 1005)) 1000
+call() {
+    local id=$1 at=$2 api=$3 input=5 cache_create=1000
+    printf '{"type":"assistant","timestamp":"2026-11-07T%sZ","message":{"id":"%s","model":"claude-opus-5-5","usage":{"input_tokens":%d,"cache_read_input_tokens":%d,"cache_creation_input_tokens":%d,"output_tokens":50}}}\n' \
+        "$at" "$id" "$input" $((api - input - cache_create)) "$cache_create"
 }
-result() { # time, is_error, text
-    printf '{"type":"user","timestamp":"2026-11-07T%sZ","message":{"content":[{"type":"tool_result","is_error":%s,"content":"%s"}]}}\n' "$1" "$2" "$3"
+result() {
+    local at=$1 is_error=$2 text=$3
+    printf '{"type":"user","timestamp":"2026-11-07T%sZ","message":{"content":[{"type":"tool_result","is_error":%s,"content":"%s"}]}}\n' "$at" "$is_error" "$text"
 }
-boundary() { # time, preTokens
-    printf '{"type":"system","subtype":"compact_boundary","timestamp":"2026-11-07T%sZ","compactMetadata":{"trigger":"auto","preTokens":%d}}\n' "$1" "$2"
+boundary() {
+    local at=$1 pre_tokens=$2
+    printf '{"type":"system","subtype":"compact_boundary","timestamp":"2026-11-07T%sZ","compactMetadata":{"trigger":"auto","preTokens":%d}}\n' "$at" "$pre_tokens"
 }
 title() { printf '{"type":"custom-title","customTitle":"%s"}\n' "$1"; }
 deny='PreToolUse:Read hook error: worker context hand-off (mode handoff): this session is at 70 % context fill (threshold 70 % = 87 % of the 800000-token autocompact ceiling)'

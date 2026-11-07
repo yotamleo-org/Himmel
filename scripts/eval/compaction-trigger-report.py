@@ -166,6 +166,11 @@ def find(projects, names, since):
     return sorted(found)
 
 
+def guard_threshold_api(share, ceiling, window):
+    whole_pct_of_window = math.ceil(share * ceiling / window)
+    return whole_pct_of_window * window // 100
+
+
 def fmt(v):
     return "-" if v is None else str(v)
 
@@ -219,8 +224,7 @@ def main():
     if not paths:
         print("compaction-trigger-report: no transcripts (give paths or --launch-logs)", file=sys.stderr)
         return 1
-    # the hook's threshold: ceil(share x ceiling / window) whole percent of the window
-    threshold = math.ceil(args.share * args.ceiling / args.window) * args.window // 100
+    threshold = guard_threshold_api(args.share, args.ceiling, args.window)
     rows = [r for r in (parse(p, args.batch_tokens, args.idle_s) for p in paths)
             if r["api_peak"] >= args.min_peak]
     summary = report(rows, args, threshold)
