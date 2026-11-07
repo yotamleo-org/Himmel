@@ -307,8 +307,7 @@ async function loadMode() {
   let readOnlyNow = false;
   try {
     const r = await fetch("/api/mode", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
-    if (r.status === 401) session = false; // neither the launch token nor a session: not logged in (a page opened without the token, after Log out)
-    if (!r.ok) { if (session === false && (feed || currentPage.needsFeed === false)) paint(); return; }
+    if (!r.ok) return; // 401: no token and no session. A read-only server answers the same, so the header stays quiet; a refused save (401) or a Log out sets it
     readOnlyNow = (await r.json()).readOnly === true;
     const held = r.headers.get("X-Himmel-Session"); // the cookie is HttpOnly, so the server says whether this browser holds a session
     session = readOnlyNow || held === null ? null : held === "1"; // a read-only server refuses login and logout too: the header offers neither
@@ -327,14 +326,15 @@ loadMode();
 function loginHref() { return "/login?next=" + encodeURIComponent(location.pathname + location.search + location.hash); }
 function loginBadge() {
   if (session === null) return "";
-  return `<div id="login-state"><span class="k">login</span> ${session ? `logged in · <button class="btn" type="button" data-act="logout">Log out</button>` : `not logged in · <a class="btn" href="${loginHref()}">Log in</a>`}</div>`;
+  return `<div id="login-state"><span class="k">login</span> ${session ? `logged in · <button class="btn" type="button" data-act="logout">Log out</button>` : `not logged in · <a class="btn" href="${loginHref()}" target="_blank" rel="noopener">Log in</a>`}</div>`;
 }
 async function logout() {
-  await post("/api/logout", {});
+  const { ok } = await post("/api/logout", {});
+  if (ok) { session = false; if (feed || currentPage.needsFeed === false) paint(); }
   loadMode();
 }
 // A save refused for want of a session says so in the row, with Log in beside it (NEEDS_LOGIN is declared with `session`, before route() paints).
-function withLoginButton(html) { return html.split(`role="status">${NEEDS_LOGIN}</span>`).join(`role="status">${NEEDS_LOGIN} <a class="btn primary" href="${loginHref()}">Log in</a></span>`); }
+function withLoginButton(html) { return html.split(`role="status">${NEEDS_LOGIN}</span>`).join(`role="status">${NEEDS_LOGIN} <a class="btn primary" href="${loginHref()}" target="_blank" rel="noopener">Log in</a></span>`); }
 
 async function post(path, body) {
   if (readOnly) return { ok: false, status: 403, j: { error: "read-only: this config UI was started with --read-only" } };
@@ -577,12 +577,13 @@ async function saveSecret(name, op, input) {
   const body = { name, op };
   if (input) { if (!input.value) { setupMsgs[name] = "type a value first"; return paint(); } body.value = input.value; input.value = ""; }
   const { ok, status, j } = await post("/api/setup/secret", body);
-  const needsLogin = status === 403 && /^service mode: log in/.test(j.error || "");
+  const needsLogin = status === 401 || (status === 403 && /^service mode: log in/.test(j.error || "")); // 401: no token and no session (a read-only server answers 403 before auth)
   if (needsLogin) session = false;
   setupMsgs[name] = ok ? (op === "set" ? "saved" : "removed") : needsLogin ? NEEDS_LOGIN : (j.error || "failed");
   const s = ok && setup && setup.secrets && setup.secrets.find((x) => x.name === name);
   if (s) s.status = j.status;
   paint();
+  if (ok && session === false) loadMode(); // a login in another tab made this save work: the header says so
 }
 
 // a filter change reads again; a tab or drill-in change reuses the answer already held. force: the Refresh button.
@@ -934,6 +935,13 @@ function toggleBundle(h) {
   state.bundles[h.dataset.b] = { open: h.getAttribute("aria-expanded") !== "true", rank: Number(h.dataset.rank) };
   paint();
 }
+
+// A tab without the launch token has no Fleet to show: /agui/ would open the bundled replay as if it were live.
+for (const type of ["click", "auxclick"]) document.addEventListener(type, (e) => {
+  if (token || !e.target.closest || !e.target.closest('a[href^="/agui/"]')) return;
+  e.preventDefault();
+  setStatus("This tab has no session token, so Fleet is not available here: open the URL `himmelctl ui` printed.");
+});
 
 document.addEventListener("click", (e) => {
   const card = e.target.closest && e.target.closest("[data-rm-open]");

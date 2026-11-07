@@ -493,7 +493,13 @@ hour. Sessions live in memory, so a restart logs you out. After five failed logi
 gets 429 with `Retry-After`, even one with the right password. The limit is global because every client
 reaches the loopback server from the same address. `POST /api/logout` ends the session. `/api/*` accepts
 either the session or the launch token. The token stays for automation and for the printed URL, but in
-service mode only a session may save a secret on the Configure page. Tests: `tests/login.test.ts`,
+service mode only a session may save a secret on the Configure page. A refused save (403, or 401 once the session
+has ended) offers a Log in button that opens `/login?next=<the page>` in a new tab, so the working tab keeps its token
+and its next save works on the cookie; `next` must be one path on this site (not `//`, a backslash or a scheme) or login
+lands on `/`. `GET /api/mode` answers an `X-Himmel-Session: 1|0` header to a caller that holds the token or a session,
+which is how the page header shows `logged in` or `not logged in` (the cookie is HttpOnly); a refused caller gets 401
+and no header. A tab without the token (opened from `/login`) cannot reach Fleet: its Fleet and Shift links say to open
+the URL `himmelctl ui` printed. Tests: `tests/login.test.ts`,
 `tests/setup-account.test.ts`, both against a stub `secret-tool` (`tests/keyring-stub.ts`), never the real keyring.
 
 ![The AG-UI page streaming a /pr-check round: a worker and its critic subagent in their own colours and bands, the review panel filling with three findings and their verdicts, and four failures marked by kind](docs/agui-live-run.gif)

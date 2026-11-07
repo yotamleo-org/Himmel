@@ -404,7 +404,7 @@ const DATA_STUBS: Record<string, unknown> = {
 const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 // Load the page at `hash` the way the browser does, hand the test a way to fire events, and read what was painted.
-async function onPage(b: ReturnType<typeof browser>, hash: string, run: (p: { main: () => string; top: () => string; fire: (type: string, target: unknown) => void }) => Promise<void>) {
+async function onPage(b: ReturnType<typeof browser>, hash: string, run: (p: { main: () => string; top: () => string; status: () => string; fire: (type: string, target: unknown) => boolean }) => Promise<void>) {
   const full = readFileSync(join(PUBLIC, "app.js"), "utf8");
   const importLine = /^import\s*\{([^}]*)\}\s*from\s*["'][^"']+["'];?\s*$/gm;
   const src = full.replace(importLine, "");
@@ -433,8 +433,8 @@ async function onPage(b: ReturnType<typeof browser>, hash: string, run: (p: { ma
     new Function(src)();
     await settle();
     await run({
-      main: () => String(el("#main").innerHTML), top: () => String(el("#top").innerHTML),
-      fire: (type, target) => { for (const h of handlers[type] ?? []) h({ target, preventDefault() {}, stopPropagation() {} }); },
+      main: () => String(el("#main").innerHTML), top: () => String(el("#top").innerHTML), status: () => String(el("#status").textContent),
+      fire: (type, target) => { let prevented = false; for (const h of handlers[type] ?? []) h({ target, preventDefault() { prevented = true; }, stopPropagation() {} }); return prevented; },
     });
   });
 }
@@ -493,7 +493,7 @@ function walk() {
 test("a refused save offers a Log in button that leads back to Configure, and a save there then succeeds against the stub keyring", async () => {
   const w = await walk();
   expect(w.refused).toContain("log in to save a secret");
-  expect(w.refused).toMatch(/<a class="btn primary" href="\/login\?next=%2F%23%2Fconfig">Log in<\/a>/);
+  expect(w.refused).toMatch(/<a class="btn primary" href="\/login\?next=%2F%23%2Fconfig" target="_blank" rel="noopener">Log in<\/a>/);
   expect(w.replaced).toEqual(["/#/config"]);
   expect(w.backMain).toContain("saved");
   expect(w.stored).toContain(w.typed);
@@ -558,4 +558,74 @@ test("the header shows the login state: Log in while out, Log out while in, and 
     expect(p.top()).toContain("not logged in");
     expect(p.top()).not.toContain('data-act="logout"');
   });
+});
+
+// A link in the page, for the click handler: closest() answers only for the selector the page asks with.
+const linkEvent = (href: string) => ({ closest: (sel: string) => (sel.includes("href^=") && sel.includes("/agui/") && href.startsWith("/agui/") ? { getAttribute: () => href } : null) });
+
+test("a save refused with 401 (a token-less tab whose session has ended) offers Log in, flips the header, and says the value was cleared", async () => {
+  const s = boot({ noIdle: true });
+  const b = browser(s.base);
+  await onPage(b, "#/config", async (p) => {
+    const ev = saveEvent("e2e-canary-" + randomBytes(8).toString("hex"));
+    p.fire("submit", ev.target);
+    await settle();
+    expect(ev.input.value).toBe("");
+    expect(p.main()).toContain("what you typed was cleared");
+    expect(p.main()).toMatch(/<a class="btn primary"[^>]* href="\/login\?next=%2F%23%2Fconfig"[^>]*>Log in<\/a>/);
+    expect(p.top()).toContain("not logged in");
+    expect(p.top()).toContain('href="/login?next=%2F%23%2Fconfig"');
+  });
+});
+
+test("Log in opens in a new tab, so the working tab keeps its token and its next save succeeds on the cookie and flips the header", async () => {
+  const s = boot({ noIdle: true });
+  const b = browser(s.base);
+  await onPage(b, `#t=${TOKEN}&page=config`, async (p) => {
+    p.fire("submit", saveEvent("first-try").target);
+    await settle();
+    expect(p.main()).toMatch(/<a class="btn primary"[^>]*target="_blank"[^>]*rel="noopener"[^>]*>Log in<\/a>/);
+    expect(p.top()).toMatch(/<a class="btn"[^>]*target="_blank"[^>]*rel="noopener"[^>]*>Log in<\/a>/);
+    expect(p.top()).toContain("not logged in");
+    await logIn(b, "", USER, s.password); // the other tab's login: same cookie jar
+    p.fire("submit", saveEvent("second-try").target);
+    await settle();
+    expect(p.main()).toContain("saved");
+    expect(p.top()).toContain("logged in");
+    expect(p.top()).not.toContain("not logged in");
+  });
+});
+
+test("a token-less tab's Fleet and Shift links say to open the URL himmelctl ui printed; a tab with the token follows them", async () => {
+  const s = boot({ noIdle: true });
+  const less = browser(s.base);
+  await onPage(less, "#/config", async (p) => {
+    expect(p.fire("click", linkEvent("/agui/#t="))).toBe(true);
+    expect(p.status()).toContain("himmelctl ui");
+    expect(p.fire("click", linkEvent("/other"))).toBe(false);
+  });
+  const withToken = browser(s.base);
+  await onPage(withToken, `#t=${TOKEN}&page=config`, async (p) => {
+    expect(p.fire("click", linkEvent(`/agui/#t=${TOKEN}`))).toBe(false);
+  });
+});
+
+test("a read-only server with no token offers no Log in: the refused save and the header both stay quiet", async () => {
+  const s = boot({ noIdle: true, readOnly: true });
+  const b = browser(s.base);
+  await onPage(b, "#/config", async (p) => {
+    expect(p.top()).not.toContain("login");
+    p.fire("submit", saveEvent("a-value").target);
+    await settle();
+    expect(p.main()).not.toContain("/login");
+    expect(p.top()).not.toContain("login");
+  });
+});
+
+test("the real setup.js paints the message the Log in button hangs on", async () => {
+  const msg = /const NEEDS_LOGIN = "([^"]+)"/.exec(readFileSync(join(PUBLIC, "app.js"), "utf8"))![1];
+  const { renderConfigure } = await import(join(PUBLIC, "setup.js"));
+  const secrets = [{ name: NAME, status: "unset", collect: "file", required: "optional", where: "keyring", group: "own" }];
+  const html = renderConfigure(null, { tile: "secrets", setup: { account: null, secrets, commit: {}, choices: {} }, state: {}, msgs: { [NAME]: msg }, verify: null });
+  expect(html).toContain(`role="status">${msg}</span>`);
 });
