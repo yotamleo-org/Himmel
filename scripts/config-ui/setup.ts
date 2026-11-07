@@ -172,7 +172,6 @@ export function accountCreate(b: Record<string, unknown>, o: AccountOpts): Secre
 }
 
 // POST /api/setup/secret {name, op: "set"|"remove", value?}.
-// A service-mode server takes a set or a remove only from a login session: its launch token outlives the process, too weak alone for a write that changes the secret store.
 export function secretWrite(b: Record<string, unknown>, o: SetupOpts & { serviceMode: boolean; session?: boolean }): SecretResult {
   const e = entries.find((x) => x.name === b.name);
   if (!e || e.collect !== "file") return fail(400, "not a secret this page can set");
