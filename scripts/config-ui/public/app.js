@@ -59,7 +59,7 @@ let session = null; // is this browser holding a login session: null until read,
 const NEEDS_LOGIN = "log in to save a secret; what you typed was cleared, type it again after you are back"; // the row's message for a save refused in service mode; declared before route() runs
 let verify = null; // the Setup page's Verify step: null, { state: "running" } or POST /api/setup/verify's answer; page memory only
 let roadmap = null, roadmapGen = 0, nvGen = 0; // declared before route() runs, as healthGen is: a reload at #/board?tab=nv calls loadNoVersion() from it
-let boardExtras = null, boardGen = 0; // GET /api/board: { drift, chains, versionChains }, null until read
+let boardExtras = null, boardGen = 0, boardAsked = ""; // boardAsked: the version tile the last read was sent for // GET /api/board: { drift, chains, versionChains }, null until read
 let pagebarOpen = false; // the page bar's "Filters (n on)" fold at phone width; declared before route() runs, as the next one is
 let originsReading = false; // declared before route() runs: a reload at #/board paints, and that paint asks for Tidy up's origins
 // writes = cards drag and take a theme // tab, v, at = the Board route (#/board?tab=&v=&at=); chain = the Chain filter
@@ -130,6 +130,7 @@ function route() {
   if (old || id !== currentPage.id) history.replaceState(null, "", location.pathname + location.search + "#/" + currentPage.id + (state.tile ? "?tile=" + state.tile : ""));
   const bq = new URLSearchParams(currentPage.id === "board" ? m[3] || "" : "");
   roadmapUi.tab = bq.get("tab"); roadmapUi.v = bq.get("v"); roadmapUi.at = bq.get("at"); roadmapUi.drawer = null; // a new route closes the drawer
+  if (currentPage.id === "board" && boardExtras && askedVersion() !== boardAsked) loadBoard(); // a tile picked: the Chains tab reads that version
   const wasWhy = roadmapUi.why;
   roadmapUi.why = bq.get("why");
   shiftUi.id = null;
@@ -687,12 +688,15 @@ async function loadNoVersion() {
   roadmapUi.nv = data;
   if (currentPage.id === "board") paint();
 }
+// the version tile the Chains tab reads; "all" is never sent (the tab has no all-versions choice)
+function askedVersion() { return roadmapUi.v && roadmapUi.v !== "all" ? roadmapUi.v : ""; }
 // the Board's drift summary and chain read: each part absent on its own, so a missing registry never hides the lanes.
 async function loadBoard() {
   const gen = ++boardGen;
   let data;
+  boardAsked = askedVersion();
   try {
-    const r = await fetch("/api/board", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    const r = await fetch("/api/board" + (boardAsked ? "?v=" + encodeURIComponent(boardAsked) : ""), { headers: { "X-Himmel-Token": token }, cache: "no-store" });
     data = r.ok ? await r.json() : null;
   } catch (_) { data = null; }
   if (gen !== boardGen) return;

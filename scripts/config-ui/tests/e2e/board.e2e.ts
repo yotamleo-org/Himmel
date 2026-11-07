@@ -90,7 +90,22 @@ test("the Board draws the seeded mirror: strip, drift banner, chain badge, lanes
   await page.locator("#rm-lanes details.rm-done summary").click();
   await expect(page.locator(".rm-card", { hasText: "First chain step" })).toBeVisible();
   await expect(page.locator(".rm-card", { hasText: "Old shipped work" })).toHaveCount(0);
-  await expect(page.locator(".rm-card", { hasText: "Second chain step" }).locator(".rm-chain")).toContainText("memory 2/2 · can launch");
+  await expect(page.locator(".rm-card", { hasText: "Second chain step" }).locator(".rm-chain")).toContainText("memory step 2 of 2 · can launch");
+  // 9488: the chain glyph on a card badge is badge-sized and the chain id after it sits inside the badge's box, visible (toContainText also passes on clipped text);
+  // the rest of the line is the designed one-line ellipsis, with the whole text in the bubble
+  const badge = page.locator(".rm-card", { hasText: "Second chain step" }).locator(".rm-chain");
+  const icon = await badge.locator(".ic").boundingBox();
+  expect(icon!.width).toBeLessThanOrEqual(16);
+  expect(icon!.height).toBeLessThanOrEqual(16);
+  const idBox = await badge.locator(".rm-clip").evaluate((el) => {
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let n: Node | null;
+    while ((n = w.nextNode())) { const i = (n.textContent || "").indexOf("memory"); if (i >= 0) { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 6); const x = r.getBoundingClientRect(), c = el.getBoundingClientRect(); return { width: x.width, left: x.left - c.left, right: c.right - x.right }; } }
+    return null;
+  });
+  expect(idBox).not.toBeNull();
+  expect(idBox!.width).toBeGreaterThan(20);
+  expect(idBox!.left).toBeGreaterThanOrEqual(0);
+  expect(idBox!.right).toBeGreaterThanOrEqual(0); // the chain id ends inside the box, not past its clipped edge
   await expect(page.locator(".rm-card", { hasText: "Not in any chain" }).locator(".rm-chain")).toHaveCount(0);
   await expect(page.locator(".rm-card[draggable]").first()).toBeVisible(); // drag and the Sector select are still there
   // no registry-less made-up number: the wait link counts the chain read's own rows
@@ -99,7 +114,7 @@ test("the Board draws the seeded mirror: strip, drift banner, chain badge, lanes
   await expect(page.locator("#rm-waiting")).toHaveCount(0); // nobody waits: no section, the count link above says 0
   // Chains tab
   await page.getByRole("tab", { name: /^Chains/ }).click();
-  await expect(page.locator("#rm-chain-memory")).toContainText("1/2 done");
+  await expect(page.locator("#rm-chain-memory")).toContainText("1 of 2 tickets done");
   await expect(page.locator("#cn-HIMMEL-2")).toContainText("can launch");
   // the badge opens the Chains tab at the ticket
   await go(page, "#/board");
@@ -348,10 +363,13 @@ test("the find box narrows the lanes by title or id on Enter, the columns say ho
 
 test("every tab carries the one filter bar and refresh, and Tidy up lists every version by default", async ({ page }) => {
   await open(page);
-  for (const tab of ["roadmap", "chains", "tidy"]) {
+  for (const tab of ["roadmap", "tidy"]) {
     await go(page, `#/board?tab=${tab}`);
     await expect(page.locator('.rm-bar [data-act="refresh-roadmap"]')).toHaveCount(1);
   }
+  await go(page, "#/board?tab=chains"); // the Chains tab has no filter bar; its refresh is the real control beside the tabs
+  await expect(page.locator(".rm-bar")).toHaveCount(0);
+  await expect(page.locator('.aside [data-act="refresh-roadmap"]')).toHaveCount(1);
   await go(page, "#/board?tab=tidy");
   await expect(page.locator("#rm-librarian")).toContainText("HIMMEL-12"); // released-but-open on v1.1.2, not the running version
 });
@@ -412,7 +430,7 @@ test("the Board at 1280 px is dense: a one-line bar, the first card near the top
   const bar = await page.locator(".rm-bar").first().boundingBox();
   expect(bar && bar.height <= 40).toBe(true);
   const card = await page.locator(".rm-card").first().boundingBox();
-  expect(card && card.y <= 360).toBe(true);
+  expect(card && card.y <= 400).toBe(true); // 350 in Noto Sans; DejaVu Sans (CI) is wider, the tab row's aside wraps under the tabs and the card sits near 373
   const tracks = await page.locator(".rm-board").first().evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length);
   expect(tracks).toBe(5); // four columns and the narrow Won't lane
   await expect(page.locator('[data-rm-drop="wont"]')).toBeVisible();
@@ -480,21 +498,23 @@ test("at 390 px a long title clamps to three lines with no bubble on focus, and 
   await expect(page.locator("aside.drawer")).toContainText(LONG_TITLE);
 });
 
-test("the Chains tab draws the link across chains, the change log and the burn-down", async ({ page }) => {
+test("the Chains tab draws the link across chains, the change log and the folded burn-down", async ({ page }) => {
   await open(page);
   await go(page, "#/board?tab=chains");
-  const links = page.locator("#rm-xlinks");
+  const links = page.locator(".lmap");
   await expect(links).toContainText("HIMMEL-6");
   await expect(links).toContainText("HIMMEL-2");
   await expect(links).toContainText("Ops cleanup chain");
-  await expect(page.locator(".rm-map .rm-edge.open")).toHaveCount(1);
+  await expect(page.locator(".lmap .lk.open")).toHaveCount(1);
   const log = page.locator('.rm-log[data-log="ops"]');
-  await expect(log.locator("summary")).toContainText("Change log · 2");
+  await expect(log.locator("summary")).toContainText("Change log · 2 rows");
   await log.locator("summary").click();
   await expect(log).toContainText("waiting on the freeze");
-  const burn = page.locator("#rm-burn");
-  await expect(burn.locator(".rm-burn-words")).toContainText("3 open of 4");
-  await expect(burn.locator(".rm-burn-words")).toContainText("1 merged since 2026-10-30");
+  const burn = page.locator("details.burn");
+  expect(await burn.evaluate((d) => (d as HTMLDetailsElement).open)).toBe(false); // folded
+  await burn.locator("summary").click();
+  await expect(burn.locator(".rm-burn-words")).toContainText("3 of 4 tickets open");
+  await expect(burn.locator(".rm-burn-words")).toContainText("1 ticket merged since 2026-10-30");
   expect(await burn.locator("circle").count()).toBeGreaterThan(1);
   await expect(burn.locator(".rm-burn-pace")).toHaveCount(0); // the running version has no date
 });
@@ -503,7 +523,7 @@ test("the Why panel names the blocker of a blocked ticket; Esc closes it, focus 
   await open(page);
   await go(page, "#/board?tab=chains");
   await page.locator('.rm-log[data-log="ops"] summary').click();
-  const opener = page.locator('tr#cn-HIMMEL-7 [data-why-open="HIMMEL-7.HIMMEL-21"]');
+  const opener = page.locator('[data-why-open="HIMMEL-7.HIMMEL-21"]').first();
   await opener.click();
   const panel = page.locator("aside.rm-why");
   await expect(panel).toContainText("Why HIMMEL-7 waits on HIMMEL-21");
@@ -524,15 +544,34 @@ test("a Why link as the first Board visit focuses the panel's close control once
   await expect(page.locator(".rm-why-close")).toBeFocused();
 });
 
-test("the Chains tab names its version, and a tile for another version never highlights over those totals", async ({ page }) => {
+test("a version tile picks the version the Chains tab reads, and a link for all versions shows the running one and says so", async ({ page }) => {
   await open(page);
   await go(page, "#/board?tab=chains&v=v1.1.4");
-  await expect(page.locator(".rm-covers")).toContainText("This tab covers the running version, v1.1.3, not v1.1.4.");
-  await expect(page.locator(".rm-vt.sel")).toHaveCount(1);
-  await expect(page.locator(".rm-vt.sel")).toContainText("v1.1.3");
-  await expect(page.locator("#rm-burn .rm-burn-words")).toContainText("in v1.1.3");
-  await expect(page.locator(".rm-vt", { hasText: "v1.1.4" })).toContainText("0 in chains");
+  await expect(page.locator("#rm-chains")).toContainText("No chain has a ticket in v1.1.4.");
+  await expect(page.locator(".vc.sel")).toHaveCount(1);
+  await expect(page.locator(".vc.sel")).toContainText("v1.1.4");
+  await expect(page.locator("#rm-chains .foot")).toContainText("have no ticket in v1.1.4");
   await shot(page, "board-1280-light-chains-other-version");
+  await go(page, "#/board?tab=chains&v=all");
+  await expect(page.locator("#rm-chains")).toContainText("“all versions” shows the running version, v1.1.3.");
+  await expect(page.locator(".vc.sel")).toContainText("v1.1.3");
+  await expect(page.locator("#rm-chains")).toContainText("2 chains in v1.1.3");
+  await expect(page.locator(".tabs .tab.ch .cnt")).toHaveText("2");
+});
+
+test("a version tile picked while the first Board read is still out is the version the tab ends on", async ({ page }) => {
+  await open(page);
+  let release!: () => void;
+  const held = new Promise<void>((r) => { release = r; });
+  let asked = 0;
+  await page.route("**/api/board?*", (route) => route.continue()); // a read with a version is never held
+  await page.route(/\/api\/board$/, async (route) => { asked++; await held; await route.continue(); }); // the first, unversioned read waits
+  await page.evaluate(() => { location.hash = "#/board?tab=chains"; });
+  await expect.poll(() => asked).toBe(1);
+  await page.evaluate(() => { location.hash = "#/board?tab=chains&v=v1.1.4"; });
+  release();
+  await expect(page.locator("#rm-chains")).toContainText("No chain has a ticket in v1.1.4.");
+  await expect(page.locator(".vc.sel")).toContainText("v1.1.4");
 });
 
 test("after the Why panel closes, the ticket drawer keeps its behaviour on the Board: Esc closes it and focus returns to its card", async ({ page }) => {
@@ -550,7 +589,7 @@ test("after the Why panel closes, the ticket drawer keeps its behaviour on the B
 test("motion: an open link moves, and under reduced motion nothing on the tab animates, the Why panel included", async ({ page }) => {
   await open(page);
   await go(page, "#/board?tab=chains&why=HIMMEL-7.HIMMEL-21");
-  expect(await page.locator(".rm-edge.open").evaluate((e) => getComputedStyle(e).animationName)).toBe("rm-dash");
+  expect(await page.locator(".lk.open").first().evaluate((e) => getComputedStyle(e).animationName)).toBe("rm-ping");
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(page.locator("aside.rm-why")).toHaveCount(1);
   const moving = await page.evaluate(() => [...document.querySelectorAll("*")].filter((e) => getComputedStyle(e).animationName !== "none").map((e) => e.tagName + "." + e.getAttribute("class")));
@@ -570,9 +609,8 @@ for (const [width, height] of [[1280, 900], [390, 844]]) {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
       const box = await page.locator("aside.rm-why").boundingBox();
       expect(box && box.x >= 0 && box.x + box.width <= width + 1).toBe(true);
-      await expect(page.locator(".rm-map-note")).toBeVisible({ visible: width > 640 }); // the note speaks of the map: gone with it on a phone
-      const keyLines = await page.locator("#cn-HIMMEL-7 td").first().evaluate((e) => { const r = document.createRange(); r.selectNodeContents(e); return r.getClientRects().length; });
-      expect(keyLines).toBe(1); // a ticket key never breaks mid-word
+      const chipLines = await page.locator("#cn-HIMMEL-7").first().evaluate((e) => e.getBoundingClientRect().height);
+      expect(chipLines).toBeLessThan(26); // a ticket chip is one line: it never breaks
       await shot(page, `board-${width}-${scheme}-why`);
       expect(errs).toEqual([]);
     });
@@ -629,4 +667,115 @@ test("two projects: both projects' cards show with their keys, the Project filte
   await expect.poll(() => sent.length).toBe(2);
   expect(JSON.parse(sent[1])).toMatchObject({ key: "SALUS-2", status: "prog" });
   expect(errs).toEqual([]);
+});
+
+// The Chains tab, measured. Fixture, not live: the seeded mirror holds two chains over a handful of tickets, so the heights below bound a small
+// chains view; the live figures at 1920 and 1280 on the running version are owed from a station and are not claimed here.
+const PANEL_MAX = 590, MARGIN = 40, FIRST_CHAIN_MAX = 250;
+const chainsMeasure = (page: Page) => page.evaluate(() => {
+  const box = (q: string) => document.querySelector(q)!.getBoundingClientRect();
+  const small: string[] = [];
+  document.querySelectorAll(".bh *, .tr *, .cp *").forEach((el) => {
+    if (!el.getClientRects().length) return; // inside a closed fold: nothing drawn
+    const own = Array.from(el.childNodes).some((n) => n.nodeType === 3 && (n.textContent || "").trim());
+    if (own && parseFloat(getComputedStyle(el).fontSize) < 11) small.push(el.tagName + "." + el.className + " " + getComputedStyle(el).fontSize);
+  });
+  const text = (document.querySelector(".cp") as HTMLElement).innerText + " " + (document.querySelector(".tabs") as HTMLElement).innerText;
+  const css = (q: string, p: string) => getComputedStyle(document.querySelector(q)!).getPropertyValue(p);
+  return {
+    panel: box(".cp").height, firstChain: document.querySelector(".cp .cc") ? box(".cp .cc").top - box(".tr").top : -1, small, bare: text.match(/\b\d+\/\d+\b|\d+ in chains/g) || [],
+    chTab: css(".tabs .tab.ch", "color"), plainTab: css(".tabs .tab:not(.ch)", "color"),
+    chTabBorder: css(".tabs .tab.ch", "border-top-color"), panelBorder: css(".cp", "border-top-color"),
+  };
+});
+
+test("the Chains tab at 1280 px, dark, is short, starts its first chain high, reads no bare n/m and wears its own colour joined to the panel", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await open(page);
+  await go(page, "#/board?tab=chains");
+  await expect(page.locator(".cp .cc").first()).toBeVisible();
+  const m = await chainsMeasure(page);
+  console.log("CHAINS-1280-DARK", JSON.stringify(m));
+  expect(m.panel).toBeLessThan(PANEL_MAX + MARGIN);
+  expect(m.firstChain).toBeLessThan(FIRST_CHAIN_MAX);
+  expect(m.small).toEqual([]);
+  expect(m.bare).toEqual([]);
+  expect(m.chTab).not.toBe(m.plainTab); // the Chains tab is a different colour from a ticket tab
+  expect(m.chTabBorder).toBe(m.panelBorder); // and joins the panel in that colour
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  await shot(page, "board-1280-dark-chains");
+});
+
+test("the Chains tab at 1280 px, dark, with a later version's tile picked, still reads that version alone", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await open(page);
+  await go(page, "#/board?tab=chains");
+  await page.locator(".bh .vc", { hasText: "v1.1.4" }).click();
+  await expect(page.locator(".vc.sel")).toContainText("v1.1.4");
+  await expect(page.locator("#rm-chains")).toContainText("v1.1.4");
+  const m = await chainsMeasure(page);
+  expect(m.small).toEqual([]);
+  expect(m.bare).toEqual([]);
+  expect(m.panel).toBeLessThan(PANEL_MAX + MARGIN);
+  await shot(page, "board-1280-dark-chains-v1.1.4");
+});
+
+test("the Chains tab at 390 px, dark: versions and tabs are one sideways row each, a chain opens to its full titles, the page does not scroll", async ({ page }) => {
+  await page.route("**/api/board", async (route) => { // the Chains tab reads its titles from the chain read, so the long title goes there
+    const res = await route.fetch();
+    const j = await res.json();
+    for (const c of [j.chains, j.versionChains]) { const t = c && c.tickets && c.tickets["HIMMEL-2"]; if (t) t.title = LONG_TITLE; }
+    await route.fulfill({ response: res, json: j });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await open(page);
+  await go(page, "#/board?tab=chains");
+  await expect(page.locator(".cp .cc").first()).toBeVisible();
+  const rows = await page.evaluate(() => ["#main .vchips", "#main .tabs"].map((q) => { const el = document.querySelector(q)!; const s = getComputedStyle(el); return { wrap: s.flexWrap, ox: s.overflowX, rows: new Set(Array.from(el.children).map((c) => { const r = c.getBoundingClientRect(); return Math.round((r.top + r.bottom) / 2 / 3); })).size }; }));
+  expect(rows).toEqual([{ wrap: "nowrap", ox: "auto", rows: 1 }, { wrap: "nowrap", ox: "auto", rows: 1 }]); // every child shares one centre line (to 3 px): no second row
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  const fold = page.locator(".cp details.fold", { has: page.locator(".tl li", { hasText: LONG_TITLE }) }).first();
+  await fold.locator("summary").first().click();
+  const title = fold.locator(".tl li", { hasText: LONG_TITLE }).first();
+  await expect(title).toBeVisible();
+  const cut = await title.evaluate((el) => { const s = getComputedStyle(el); return { ellipsis: s.textOverflow === "ellipsis", sideways: el.scrollWidth > el.clientWidth + 1, wrapped: el.clientHeight > 2 * parseFloat(s.fontSize) }; });
+  expect(cut).toEqual({ ellipsis: false, sideways: false, wrapped: true }); // the whole title wraps inside the line: not cut, not scrolled
+  const m = await chainsMeasure(page);
+  expect(m.small).toEqual([]);
+  expect(m.bare).toEqual([]);
+  await shot(page, "board-390-dark-chains");
+});
+
+test("the outside-ticket name is a hover bubble at 1280 px and plain text on a phone", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board?tab=chains");
+  const display = () => page.evaluate(() => { const s = document.createElement("span"); s.className = "outn"; s.textContent = "x"; const w = document.createElement("div"); w.appendChild(s); document.querySelector(".cp")!.appendChild(w); const d = getComputedStyle(s).display; w.remove(); return d; });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  expect(await display()).toBe("none");
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await display()).toBe("inline");
+});
+
+// A Won't ticket and long sector names, added to the roadmap read in flight. The Chains tab must hold at both widths. The Roadmap and
+// Tidy up tabs overflow with this fixture on the commit before this change too (their version-window row), so they are not asserted here.
+test("with a Won't ticket and long sector names the Chains tab does not scroll sideways at 1280 or 390 px", async ({ page }) => {
+  const LONG_SECTOR = "A sector name that is far too long to sit on one line in a card header";
+  await page.route("**/api/roadmap", async (route) => {
+    const res = await route.fetch();
+    const j = await res.json();
+    j.themes = j.themes.map((_: string, i: number) => `${LONG_SECTOR} ${i + 1}`);
+    const t = j.tickets.find((x: { t: string }) => x.t === "Not in any chain");
+    t.b = "wont"; t.s = "Won't Do";
+    await route.fulfill({ response: res, json: j });
+  });
+  await open(page);
+  for (const [width, height] of [[1280, 900], [390, 844]]) {
+    await page.setViewportSize({ width, height });
+    await go(page, "#/board?tab=chains");
+    await expect(page.locator(".cp .cc").first()).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  }
 });

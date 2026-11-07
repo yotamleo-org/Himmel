@@ -524,6 +524,42 @@ test("GET /api/board: a member of another version stays in the whole-Board read 
   expect(r.versionChains.burn.total).toBe(1);
 });
 
+// The version tile picked on the Board decides which version the Chains tab reads.
+test("GET /api/board?v=: a known version narrows the tab's read to it, an unknown one falls back to the running version and says so, no v is unchanged", async () => {
+  const s = scratch();
+  writeFileSync(join(s.mirror, "HIMMEL-21.md"), mirrorIssue(21, "To Do", "To Do", [], "Next version work").replace("v1.1.3", "v1.1.4"));
+  writeFileSync(s.mirror + ".versions.tsv", "v1.1.3\tfalse\t\nv1.1.4\tfalse\t\n");
+  writeFileSync(s.registry, JSON.stringify({ schema: "himmel.chain-registry/1", chains: [{ id: "memory", goal: "Memory guard rework chain", members: ["HIMMEL-1", "HIMMEL-2"] }, { id: "later", goal: "Later version work chain", members: ["HIMMEL-21"] }] }));
+  const url = serve({ HIMMEL_CHAIN_REGISTRY: s.registry, TICKET_STATUS_STATE_DIR: join(s.d, "no-state") }, s);
+  const picked = await get(`${url}?v=v1.1.4`);
+  expect(picked.versionChains.version).toBe("v1.1.4");
+  expect(Object.keys(picked.versionChains.tickets)).toEqual(["HIMMEL-21"]);
+  expect(picked.versionChains.burn.total).toBe(1);
+  expect(picked.versionChains.fellBack).toBeUndefined();
+  const unknown = await get(`${url}?v=v9.9.9`);
+  expect(unknown.versionChains.version).toBe("v1.1.3");
+  expect(unknown.versionChains.fellBack).toEqual({ asked: "v9.9.9", to: "v1.1.3" });
+  const none = await get(url);
+  expect(none.versionChains.version).toBe("v1.1.3");
+  expect(none.versionChains.fellBack).toBeUndefined();
+  expect(Object.keys(none.chains.tickets).sort()).toEqual(["HIMMEL-1", "HIMMEL-2", "HIMMEL-21"]);
+});
+
+// With two projects on the Board the tiles are named "v1.1.4 (HIMMEL)"; the chain registry is the one project's, so its own suffix is the same version.
+test("GET /api/board?v=: a tile named with the chain project's key picks that version, another project's tile falls back and says so", async () => {
+  const s = scratch();
+  writeFileSync(join(s.mirror, "HIMMEL-21.md"), mirrorIssue(21, "To Do", "To Do", [], "Next version work").replace("v1.1.3", "v1.1.4"));
+  writeFileSync(s.mirror + ".versions.tsv", "v1.1.3\tfalse\t\nv1.1.4\tfalse\t\n");
+  writeFileSync(s.registry, JSON.stringify({ schema: "himmel.chain-registry/1", chains: [{ id: "memory", goal: "Memory guard rework chain", members: ["HIMMEL-1", "HIMMEL-2"] }, { id: "later", goal: "Later version work chain", members: ["HIMMEL-21"] }] }));
+  const url = serve({ HIMMEL_CHAIN_REGISTRY: s.registry, TICKET_STATUS_STATE_DIR: join(s.d, "no-state") }, s);
+  const own = await get(`${url}?v=${encodeURIComponent("v1.1.4 (HIMMEL)")}`);
+  expect(own.versionChains.version).toBe("v1.1.4");
+  expect(own.versionChains.fellBack).toBeUndefined();
+  const other = await get(`${url}?v=${encodeURIComponent("v1.1.4 (SALUS)")}`);
+  expect(other.versionChains.version).toBe("v1.1.3");
+  expect(other.versionChains.fellBack).toEqual({ asked: "v1.1.4 (SALUS)", to: "v1.1.3" });
+});
+
 test("GET /api/board: a failed roadmap read is that failure on the tab, never no running version, and the whole-Board read still arrives", async () => {
   const s = scratch();
   const env = { PATH: process.env.PATH, HOME: s.home, HIMMEL_JIRA_MIRROR: s.mirror, HIMMEL_CHAIN_REGISTRY: s.registry, TICKET_STATUS_STATE_DIR: join(s.d, "no-state") };
