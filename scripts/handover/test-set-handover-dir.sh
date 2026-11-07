@@ -168,6 +168,24 @@ assert_eq "T17 conf root beats the .env choice" "/conf/vault/handovers" "$t17_co
 t17_pin_wins=$(cd "$T17_REPO" && export HANDOVER_DIR="$HDIR_CANON" HOME="$TMP/t17home" HIMMEL_CONFIG_DIR="$T17_CONF" && . "$LIB/load-dotenv.sh" && load_dotenv --root "$T17_REPO" HANDOVER_DIR 2>/dev/null && printf '%s' "$HANDOVER_DIR")
 assert_eq "T17 a settings-env pin beats the conf root" "$HDIR_CANON" "$t17_pin_wins"
 
+# T18: handover-setup.md step 2 reads the .env layer through the loader (the secrets
+# guard refuses a direct read): no line prints `unset`, the inline record prints empty,
+# and a path prints the path (HIMMEL_CONFIG_DIR points at nothing, so no conf layer answers).
+t18_read() {
+    # shellcheck disable=SC2016  # the body is single-quoted on purpose: $1/$2 are bash -c positionals
+    (cd "$1" && env -u HANDOVER_DIR HOME="$TMP/t17home" HIMMEL_CONFIG_DIR="${2:-/nonexistent}" \
+        bash -c '. "$1/load-dotenv.sh" && load_dotenv --root "$2" HANDOVER_DIR 2>/dev/null; printf "%s" "${HANDOVER_DIR-unset}"' _ "$LIB" "$1")
+}
+T18_REPO="$TMP/t18repo"
+mkdir -p "$T18_REPO"
+git -C "$T18_REPO" init -q
+: > "$T18_REPO/.env"
+assert_eq "T18 no line reads unset" "unset" "$(t18_read "$T18_REPO")"
+bash "$SCRIPT" --inline --env-file "$T18_REPO/.env" >/dev/null 2>&1
+assert_eq "T18 inline record reads empty" "" "$(t18_read "$T18_REPO")"
+bash "$SCRIPT" "$HDIR" --env-file "$T18_REPO/.env" >/dev/null 2>&1
+assert_eq "T18 a path reads the path" "$HDIR_CANON" "$(t18_read "$T18_REPO")"
+
 echo
 if [ "$FAILED" -eq 0 ]; then echo "All set-handover-dir tests passed."
 else echo "$FAILED set-handover-dir test(s) failed."; exit 1; fi

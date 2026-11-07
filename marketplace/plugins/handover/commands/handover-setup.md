@@ -23,17 +23,30 @@ git repo.
 
 Check both signals:
 
-- **Config:** is `HANDOVER_DIR` already set in the environment, or present as an
-  active (uncommented) line in `<repo-root>/.env`? An empty `HANDOVER_DIR=` line
-  is the recorded inline choice, so it counts as set.
+- **Config:** is `HANDOVER_DIR` already set in the environment, or does
+  `<repo-root>/.env` hold an active (uncommented) `HANDOVER_DIR=` line? An empty
+  line is the recorded inline choice, so it counts as set. Do not read `.env`
+  yourself (the secrets guard refuses it); ask the loader for that one layer.
+  `<env-value>` is its output: `unset` means no line, empty means inline:
+
+  (`<himmel-clone>` is `<repo-root>` in a himmel checkout and `$HIMMEL_REPO` in a
+  project install.)
+
+  ```bash
+  env -u HANDOVER_DIR HIMMEL_CONFIG_DIR=/nonexistent bash -c '. <himmel-clone>/scripts/lib/load-dotenv.sh && load_dotenv --root <repo-root> HANDOVER_DIR 2>/dev/null; printf "%s" "${HANDOVER_DIR-unset}"'
+  ```
 - **Registry:** does `~/.claude/handover/registry.json` already contain an entry
   whose `path` canonicalises to `<repo-root>`?
 
-Also read `env.HANDOVER_DIR` in `<repo-root>/.claude/settings.json` (it beats
-`.env`), the way step 4 does. If the `.env` has a `HANDOVER_DIR` line (empty or
-not) and the pin is present and differs from it, setup is not complete:
-continue to step 3 so step 4 can reconcile it. A pin with no `.env` line is the
-configured value on its own (a project install wrote it).
+Also run the three reads of step 4's reconcile (substeps 1 to 3: the project
+pin, the user-scope pin and the himmel config files; they beat `.env`, same
+stop-on-failure rule). The value that wins is the project pin, else the
+user-scope pin, else the config value, else `<env-value>`; an empty `<env-value>`
+means `<repo-root>/handovers` for this comparison. If the `.env` has a
+`HANDOVER_DIR` line (empty or not) and a higher source is present and differs
+from it, setup is not complete: continue to step 3 so step 4 can reconcile it.
+Without an `.env` line, the highest source present is the configured value on
+its own (a project install wrote it).
 
 If **both** are present and agree, report the resolved state root and stop with: "Handover
 already set up for this repo (HANDOVER_DIR=<…>, registered as '<name>'). Re-run a
@@ -55,8 +68,10 @@ explicit Mode-B path and skip the prompt. Otherwise ask via `AskUserQuestion`:
 > - **External state repo** — a separate directory (typically a dedicated repo)
 >   so handover commits never land on your feature branches. You'll enter the
 >   path. (Mode B)
-> - **Inline (this repo)** — state under `<repo-root>/handovers/`. Simplest; the
->   `.env` gets an empty `HANDOVER_DIR=` line. Best for a single-repo setup. (Mode A)
+> - **Inline (this repo)** — state under `<repo-root>/handovers/`, found only
+>   from `<repo-root>` itself, never from a git worktree of it (Claude Code and
+>   himmel workers cut worktrees on demand). The `.env` gets an empty
+>   `HANDOVER_DIR=` line. Only for work done in the primary checkout. (Mode A)
 
 Pick ONE location — duplicated mode (state in both a vault and a state repo) is
 unsupported; the resolver reads a single `HANDOVER_DIR` root.
@@ -75,16 +90,17 @@ a project-scope install); a project without one (a user-scope install) uses the
 himmel clone's copy (`$HIMMEL_REPO/scripts/handover/set-handover-dir.sh`) with
 `--env-file <repo-root>/.env`. `<writer>` below means that command.
 
-- **Inline (Mode A):** first run `git -C <repo-root> worktree list`. More than
-  one line means worktrees are in use, and inline does not work from them yet:
-  the resolver (`scripts/lib/handover-path.sh`) resolves inline to
-  `git rev-parse --show-toplevel`, which in a worktree is `<worktree>/handovers`,
-  not `<repo-root>/handovers`. A session there finds none of the primary's
-  state, `/handover-resume` exits 2, and a write path (`handover_root_ensure`)
-  silently creates an empty `<worktree>/handovers` and strands the new state in
-  it. Tell the user this plainly and recommend vault or external; continue with
-  inline only if they confirm they will work from `<repo-root>` itself. Then
-  record the choice as an empty `HANDOVER_DIR=` line in `<repo-root>/.env`:
+- **Inline (Mode A):** inline does not work from a git worktree yet, whether or
+  not one exists today: the resolver (`scripts/lib/handover-path.sh`) resolves
+  inline to `git rev-parse --show-toplevel`, which in a worktree is
+  `<worktree>/handovers`, not `<repo-root>/handovers`. A session there finds none
+  of the primary's state, `/handover-resume` exits 2, and a write path
+  (`handover_root_ensure`) silently creates an empty `<worktree>/handovers` and
+  strands the new state in it. Always tell the user this plainly before writing
+  anything (`git -C <repo-root> worktree list` showing more than one line means
+  it applies already) and recommend vault or external; continue with inline only
+  if they confirm they will work from `<repo-root>` itself. Then record the
+  choice as an empty `HANDOVER_DIR=` line in `<repo-root>/.env`:
 
   ```bash
   bash <writer> --inline
@@ -111,10 +127,10 @@ himmel clone's copy (`$HIMMEL_REPO/scripts/handover/set-handover-dir.sh`) with
 
   It creates-or-updates the `HANDOVER_DIR=` line in `<repo-root>/.env`. Confirm
   the printed `OK set-handover-dir:` line; on any other result stop and show it.
-  The writer stores the canonical absolute path (`<canonical-path>`, the
-  `HANDOVER_DIR=` value now in `<repo-root>/.env`), which may differ from what
-  the user typed (relative, trailing slash). `<state-root-host>` =
-  `<canonical-path>`.
+  The writer stores the canonical absolute path (`<canonical-path>`), which may
+  differ from what the user typed (relative, trailing slash). Get it without
+  reading `.env` (the secrets guard refuses that):
+  `bash -c 'cd "<chosen-path>" && pwd'`. `<state-root-host>` = `<canonical-path>`.
 
   Note for the current session: `.env` is read by tools at launch, so the new
   `HANDOVER_DIR` takes effect for shell scripts the next time Claude is launched
@@ -173,8 +189,18 @@ himmel clone's copy (`$HIMMEL_REPO/scripts/handover/set-handover-dir.sh`) with
      If a writer exits non-zero, stop and show its output: `.env` is already
      written but the pin is not, so the choice is only half applied. Do not go on
      to step 5 and do not print the step 6 summary. Step 6 names only a mode
-     that wins: if a source above still holds another root after this substep,
-     do not report the choice as applied.
+     that wins: the user-scope pin and the config files rank below the project
+     pin, so leaving them is fine once the project pin is right; but if a source
+     that outranks the project pin (for example `.claude/settings.local.json`)
+     holds another root, do not report the choice as applied.
+
+     **Expected warning.** With a project pin written over a config root,
+     `/handover-resume` (`resume.sh`) prints "exported HANDOVER_DIR (...)
+     overrides the configured root (...); unset it to follow the root
+     /handover-setup chose". On this path the warning is expected and backwards:
+     the pin is the root `/handover-setup` chose and `resume.sh` compares it with
+     the config root it reads. Tell the user to ignore it and not to unset the
+     pin.
 
      Tell the user what changed ("env.HANDOVER_DIR in .claude/settings.json was
      `<old>`, now `<new>` / removed"). Settings are read at launch, so this
