@@ -12,7 +12,9 @@
 #   - the verdict file does not itself quote the sha (the critic's return is the proof of what it read);
 #   - the read file on disk no longer hashes to the quoted sha (it changed since the critic read it);
 #   - the verdict file already seals that same file. A critic that read several files (the spec and its
-#     rendered page) gets one seal per distinct file, so run the helper once per file read.
+#     rendered page) gets one seal per distinct file, so run the helper once per file read;
+#   - the return would go past three rounds of its kind for that spec with no operator record for that
+#     round (`chief-route.ts critic-round-check`). A new critic name or a scope edit does not restart the count.
 set -uo pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd) || exit 1
@@ -45,6 +47,8 @@ read_abs="$(cd "$(dirname "$read_file")" && pwd -P)/$(basename "$read_file")" ||
 rel=$(python3 -I -c 'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$read_abs" "$verdict_dir") || die "cannot relativise $read_file"
 sealed_paths=$(grep '^CONTENT-SHA256 ' "$verdict" | cut -d' ' -f3-)
 if grep -qxF -- "$rel" <<<"$sealed_paths"; then die "$verdict already seals $rel"; fi
+
+round_refusal=$(bun "$HERE/../../telegram/chief-route.ts" critic-round-check "$verdict" "$read_file" 2>&1) || die "$round_refusal"
 
 awk -v seal="CONTENT-SHA256 $quoted $rel" '
   { line[NR] = $0; if ($0 ~ /[^[:space:]]/) last = NR }
