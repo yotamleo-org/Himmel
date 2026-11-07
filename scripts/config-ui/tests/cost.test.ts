@@ -61,6 +61,22 @@ test("cost: a row with no price keeps its phase and says so; no dollar is invent
   expect(tests.parts.every((p) => p.usd === null || p.mark === "nocount")).toBe(true);
 });
 
+test("cost: the day's total is counted only when every call is priced; a day with no priced call has no total, not $0", () => {
+  expect(buildCostModel(ROWS, DAY)).toMatchObject({ usd: 53, mark: "unpriced" });
+  expect(renderCost(buildCostModel(ROWS, DAY), { open: [] })).toContain("no price yet");
+  const priced = buildCostModel(ROWS.filter((r) => r.phase !== "tests"), DAY);
+  expect(priced).toMatchObject({ usd: 53, mark: "counted" });
+  const none = buildCostModel([row({ phase: "build", usd: null, mark: "unpriced" })], DAY);
+  expect(none).toMatchObject({ state: "ok", usd: null, mark: "unpriced" });
+  expect(renderCost(none, { open: [] })).toContain("<span class=\"big\">— ");
+});
+
+test("cost: a day asked for that has no rows is that day with no data, never another day's costs", () => {
+  const m = buildCostModel(ROWS, "2026-10-01");
+  expect(m).toMatchObject({ state: "nodata", day: "2026-10-01", usd: null, phases: [] });
+  expect(m.days).toEqual(["2026-11-04", "2026-11-03"]);
+});
+
 test("cost: no ticket key reaches the page model or the rendered page", () => {
   const m = buildCostModel(ROWS, DAY);
   expect(JSON.stringify(m)).not.toMatch(/[A-Z][A-Z0-9]*-\d+/);

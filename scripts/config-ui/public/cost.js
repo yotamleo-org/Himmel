@@ -34,7 +34,7 @@ export function renderCost(model, view = {}) {
   const top = Math.max(0, ...model.phases.map((p) => p.share || 0));
   const models = model.models.map((m) => `${esc(m.model)} ${usd(m.usd)}`).join(" · ");
   return `<section class="card"><div class="card-h"><h2>Cost by phase · ${esc(model.day)}</h2>` +
-    `<span class="big">${usd(model.usd)} ${mark("counted")}</span></div>` +
+    `<span class="big">${usd(model.usd)} ${mark(model.mark)}</span></div>` +
     `<p class="sub">${esc(model.calls.toLocaleString("en-US"))} calls · ${models}</p>` +
     `<div class="tw"><table class="tbl ph" aria-label="Cost by phase, one day"><thead><tr><th>Phase</th><th class="n">$</th><th class="n">share</th>` +
     `<th class="barc"></th><th>how</th><th class="hs">made of</th></tr></thead>` +

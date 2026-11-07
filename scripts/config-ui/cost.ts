@@ -18,7 +18,7 @@ export type Mark = "counted" | "derived" | "unpriced" | "nocount";
 export type CostPart = { id: string; name: string; note: string; usd: number | null; share: number | null; mark: Mark };
 export type CostPhase = { id: string; name: string; usd: number | null; share: number | null; mark: Mark; made: string; parts: CostPart[] };
 export type CostModel = {
-  state: "ok" | "nodata"; day: string | null; days: string[]; usd: number; calls: number;
+  state: "ok" | "nodata"; day: string | null; days: string[]; usd: number | null; mark: Mark; calls: number;
   models: { model: string; usd: number | null }[]; phases: CostPhase[];
 };
 
@@ -103,13 +103,15 @@ const money = (n: number) => n.toFixed(1);
 
 export function buildCostModel(all: PhaseCostRow[], day?: string): CostModel {
   const days = [...new Set(all.filter((r) => DAY_RE.test(r.day)).map((r) => r.day))].sort().reverse();
-  const picked = day && days.includes(day) ? day : days[0];
-  if (!picked) return { state: "nodata", day: null, days: [], usd: 0, calls: 0, models: [], phases: [] };
+  // a day asked for that has no rows is that day with no data, never another day's costs
+  if (day && !days.includes(day)) return { state: "nodata", day, days, usd: null, mark: "nocount", calls: 0, models: [], phases: [] };
+  const picked = day ?? days[0];
+  if (!picked) return { state: "nodata", day: null, days: [], usd: null, mark: "nocount", calls: 0, models: [], phases: [] };
   const rows = all.filter((r) => r.day === picked && r.calls > 0);
 
   const known = new Set(GROUPS.flatMap((g) => g.phases));
   const inGroup = (g: GroupDef, r: PhaseCostRow) => (g.id === "other" ? !known.has(r.phase) : g.phases.includes(r.phase));
-  const total = sum(rows) ?? 0;
+  const total = sum(rows);
 
   const phases = GROUPS.flatMap((g, order) => {
     const mine = rows.filter((r) => inGroup(g, r));
@@ -131,7 +133,8 @@ export function buildCostModel(all: PhaseCostRow[], day?: string): CostModel {
   const byModel = new Map<string, PhaseCostRow[]>();
   for (const r of rows) { const k = modelLabel(r.model); byModel.set(k, [...(byModel.get(k) ?? []), r]); }
   const models = [...byModel].map(([model, rs]) => ({ model, usd: sum(rs) })).sort((a, b) => (b.usd ?? -1) - (a.usd ?? -1));
-  return { state: "ok", day: picked, days, usd: total, calls: rows.reduce((a, r) => a + r.calls, 0), models, phases };
+  // the total is counted from the calls' own usage, so it is counted unless some call has no price (then it covers only the priced ones)
+  return { state: "ok", day: picked, days, usd: total, mark: rows.some((r) => r.mark === "unpriced") ? "unpriced" : "counted", calls: rows.reduce((a, r) => a + r.calls, 0), models, phases };
 }
 
 export const readCost = (env: Env, day?: string): CostModel => buildCostModel(readPhaseCostRows(env), day);
