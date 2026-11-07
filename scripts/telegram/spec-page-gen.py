@@ -137,7 +137,7 @@ def main():
     first = md[:fm.end()].count("\n") if fm else 0
     for n, line in enumerate(body.split("\n"), first + 1):
         if DRAFT_LINE.search(line):
-            sys.exit(f"spec-page-gen: {spec}:{n} is a draft status line ({line.strip()[:80]!r}); the draft state lives in the missing critic seal, not in the page words. Remove the line from the md, re-run the critic, then generate. Nothing written")
+            sys.exit(f"spec-page-gen: {spec}:{n} is a draft status line ({line.strip()[:80]!r}); the draft state lives in the missing critic seal, not in the page words. Remove the line from the md, generate the page again, then run the critic on the md and the new page. Nothing written")
     title = re.search(r"^# (.+)$", body, re.M)
     bar = " | ".join(html.escape(meta[k][:9] if k == "base" else meta[k]) for k in ("tickets", "date", "base", "author") if k in meta)
     if DRAFT_LINE.search(bar):

@@ -50,6 +50,7 @@ printf '# Body status\n\nStatus: DRAFT, no critic has read this revision.\n\nBod
 out="$(gen "$T/bodystatus.md" "$T/bodystatus.html")"; rc=$?
 [ "$rc" -ne 0 ] && pass "a Status: line in the body is refused" || fail "a Status: line in the body is refused" "$out"
 has "the refusal names the line" "bodystatus.md:3" "$out"
+has "the refusal says to generate again, then run the critic" "generate the page again, then run the critic on the md and the new page" "$out"
 [ ! -e "$T/bodystatus.html" ] && pass "a refused md writes no page" || fail "a refused md writes no page"
 printf '# Body banner\n\nThis revision is not for signature yet.\n' > "$T/banner.md"
 out="$(gen "$T/banner.md" "$T/banner.html")"; rc=$?
