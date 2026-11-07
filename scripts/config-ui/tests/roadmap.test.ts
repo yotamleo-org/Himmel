@@ -485,19 +485,18 @@ test("Board: the waits-for-you count names its scope and points at the No versio
   r.noVersionCount = 3;
   const none = link(renderBoard(r, ui, quiet));
   expect(none).toContain("0 wait for you");
-  expect(none).toContain("every version");
-  expect(none).toContain("3 with no version not counted");
-  expect(none).toContain('<a href="#/board?tab=nv">No version tab</a>');
+  expect(none).toContain("3 not counted");
+  expect(none).toContain('<a href="#/board?tab=nv">no version</a>');
   // with rows it keeps the pointer too: the rows are a count of the versioned tickets only
   r.noVersionCount = 1;
   const some = link(renderBoard(r, ui, { drift: null, chains: chainsOk() }));
-  expect(some).toContain("1 with no version not counted");
-  expect(some).toContain('<a href="#/board?tab=nv">No version tab</a>');
-  // nothing without a version: the scope is still stated and no pointer is drawn
+  expect(some).toContain("1 not counted");
+  expect(some).toContain('<a href="#/board?tab=nv">no version</a>');
+  // nothing without a version: a plain 0 is true, and no pointer is drawn
   r.noVersionCount = 0;
   const clean = link(renderBoard(r, ui, quiet));
   expect(clean).toContain("0 wait for you");
-  expect(clean).toContain("every version");
+  expect(clean).not.toContain("not counted");
   expect(clean).not.toContain("tab=nv");
 });
 
