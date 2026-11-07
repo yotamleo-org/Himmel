@@ -1308,19 +1308,27 @@ function failNote(ctx: Ctx, failed: Error, lines: string[]): void {
   }
 }
 
+// How long a stopped run waits for its aborted judge to settle, so the judge's own cleanup (its launch row, its temp
+// dir) runs before the CLI exits; it outlasts the launcher's five-second kill grace.
+export const JUDGE_SETTLE_MS = 6000;
+
 // The judge's answer, or the stop's reason once the caller stops the run or the deadline passes; either aborts the judge.
+// Only an answer that lands before the stop counts; after it, the judge's own result (its killed call) is ignored.
 async function judged<T>(answer: Promise<T>, stop: AbortController, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  // The judge that loses the race still rejects (its killed call) after the run moved on; that is no crash.
-  answer.catch(() => undefined);
-  const stopped = new Promise<never>((_, reject) => {
-    const fail = () => reject(stopReason(stop.signal));
-    if (stop.signal.aborted) return fail();
-    stop.signal.addEventListener('abort', fail, { once: true });
-    timer = setTimeout(() => stop.abort(new Error(`rm-run: the judge did not answer within ${ms / 1000}s; nothing ruled`)), ms);
-  });
+  const settled = answer.then(() => undefined, () => undefined);
   try {
-    return await Promise.race([answer, stopped]);
+    return await new Promise<T>((resolve, reject) => {
+      const fail = () => {
+        let grace: ReturnType<typeof setTimeout> | undefined;
+        void Promise.race([settled, new Promise((r) => { grace = setTimeout(r, JUDGE_SETTLE_MS); })])
+          .then(() => { clearTimeout(grace); reject(stopReason(stop.signal)); });
+      };
+      if (stop.signal.aborted) return fail();
+      stop.signal.addEventListener('abort', fail, { once: true });
+      timer = setTimeout(() => stop.abort(new Error(`rm-run: the judge did not answer within ${ms / 1000}s; nothing ruled`)), ms);
+      answer.then((v) => { if (!stop.signal.aborted) resolve(v); }, (e) => { if (!stop.signal.aborted) reject(e); });
+    });
   } finally {
     clearTimeout(timer);
   }
@@ -1405,6 +1413,9 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
       const keys = new Set(asked.map((r) => r.key));
       const mirror = readMirror(ctx.mirrorRoot);
       const receipted = now.rulings.verified.filter((r) => r.phase === 'receipted');
+      const issues = (await Promise.all([...keys].map((k) => issueFor(ctx, k, mirror.issues?.get(k))))).flatMap((i) => i ?? []);
+      // A stop during the live lookups starts no model call.
+      halt();
       let decisions: Decision[];
       try {
         decisions = !asked.length ? [] : await judged(judge({
@@ -1412,7 +1423,7 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
           records: reduceLoaded(now, mirror).records.filter((r) => keys.has(r.key)),
           operator: now.operator.verified,
           rulings: [...new Set([...receipted.filter((r) => keys.has(r.key)), ...receipted.slice(-40)])],
-          issues: (await Promise.all([...keys].map((k) => issueFor(ctx, k, mirror.issues?.get(k))))).flatMap((i) => i ?? []),
+          issues,
         }, { signal: stop.signal }), stop, o.judgeTimeoutMs ?? RM_JUDGE_TIMEOUT_MS);
       } catch (e) {
         if (e instanceof JudgeReplyError) {

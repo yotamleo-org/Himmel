@@ -872,6 +872,23 @@ describe('rm-run: the on-demand release manager', () => {
     expect(await rmRun(ctx(), admitAll)).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 /));
     expect(state(ctx()).lease).toMatchObject({ epoch: 2, released: true });
   };
+  // A judge that never answers and settles only when its call is killed, as the CLI judges do on their signal.
+  const hangs: Judge = (_input, o) => new Promise((_, reject) => {
+    const killed = () => reject(new Error('The operation was aborted'));
+    if (o?.signal?.aborted) killed();
+    else o?.signal?.addEventListener('abort', killed, { once: true });
+  });
+
+  it('a stopped run waits for its killed judge to finish its own cleanup before it fails', async () => {
+    declared();
+    ask('K-2');
+    const doc = join(ctx().dir, 'rm-runs', 'settle.md');
+    let cleaned = false;
+    const slow: Judge = (_input, o) => new Promise((_, reject) => {
+      o?.signal?.addEventListener('abort', () => setTimeout(() => { cleaned = true; reject(new Error('killed')); }, 100), { once: true });
+    });
+    await failsClean(rmRun(ctx(), slow, { doc, judgeTimeoutMs: 50 }).finally(() => expect(cleaned).toBe(true)), /did not answer within/, doc);
+  }, 4000);
 
   it('a judge that throws returns its claims to open, frees the lease and the next run rules them', async () => {
     declared();
@@ -885,7 +902,7 @@ describe('rm-run: the on-demand release manager', () => {
     ask('K-2');
     const doc = join(ctx().dir, 'rm-runs', 'hung.md');
     let seen: AbortSignal | undefined;
-    const hung: Judge = (_input, o) => { seen = o?.signal; return new Promise(() => undefined); };
+    const hung: Judge = (_input, o) => { seen = o?.signal; return hangs(_input, o); };
     await failsClean(rmRun(ctx(), hung, { doc, judgeTimeoutMs: 50 }), /did not answer within/, doc);
     expect(seen?.aborted).toBe(true);
   }, 2000);
@@ -895,7 +912,7 @@ describe('rm-run: the on-demand release manager', () => {
     ask('K-2');
     const doc = join(ctx().dir, 'rm-runs', 'stopped.md');
     const stop = new AbortController();
-    const hung: Judge = () => { stop.abort(new Error('rm-run: stopped by SIGTERM')); return new Promise(() => undefined); };
+    const hung: Judge = (input, o) => { stop.abort(new Error('rm-run: stopped by SIGTERM')); return hangs(input, o); };
     await failsClean(rmRun(ctx(), hung, { doc, signal: stop.signal }), /stopped by SIGTERM/, doc);
   }, 2000);
 
@@ -905,7 +922,7 @@ describe('rm-run: the on-demand release manager', () => {
     const dead = spawnSync('true').pid as number;
     const left = new AbortController();
     // The first run claims and never comes back, as a SIGKILLed one; its lease names a pid that is gone.
-    const died = rmRun(ctx(), () => new Promise(() => undefined), { pid: dead, signal: left.signal }).catch((e: Error) => e);
+    const died = rmRun(ctx(), hangs, { pid: dead, signal: left.signal }).catch((e: Error) => e);
     await vi.waitFor(() => expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']));
     const lines = await rmRun(ctx(), admitAll);
     expect(lines).toContainEqual(expect.stringMatching(new RegExp(`^RECLAIMED lease epoch 1: rm-run pid ${dead} on \\S+ is gone$`)));
@@ -925,7 +942,7 @@ describe('rm-run: the on-demand release manager', () => {
     declared();
     ask('K-2');
     const left = new AbortController();
-    const held = rmRun(ctx(), () => new Promise(() => undefined), { pid: spawnSync('true').pid as number, signal: left.signal }).catch((e: Error) => e);
+    const held = rmRun(ctx(), hangs, { pid: spawnSync('true').pid as number, signal: left.signal }).catch((e: Error) => e);
     await vi.waitFor(() => expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']));
     const path = join(ctx().dir, 'lease.json');
     const { mac: _m, ...cur } = JSON.parse(readFileSync(path, 'utf8'));

@@ -49,7 +49,7 @@ vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { projectKey, request } from '../client.js';
 import { admissionBudget } from '../release/leaks.js';
-import { ctxFor, JUDGE_API_PASS_ENV, judgeApiEnv, judgeEnv, judgeFor, judgePrompt, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge } from './release.js';
+import { ctxFor, JUDGE_API_PASS_ENV, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge } from './release.js';
 import type { Judge, JudgeInput } from '../release/engine.js';
 import { defaultRoot } from './mirror.js';
 
@@ -714,7 +714,7 @@ describe('routedJudge', () => {
   const envelope = (reason: string) => JSON.stringify({ is_error: false, result: JSON.stringify([decision(reason)]) });
   let dir: string;
 
-  function world(roles: unknown, fake: { out?: string; rc?: number } = {}) {
+  function world(roles: unknown, fake: { out?: string; rc?: number; sleep?: number } = {}) {
     dir = mkdtempSync(join(root, 'world-'));
     const now = Math.floor(Date.now() / 1000);
     const config = { version: 1, ledger_path: join(dir, 'ledger.json'), accounts: {
@@ -730,7 +730,7 @@ describe('routedJudge', () => {
     for (const a of ['A', 'B']) writeFileSync(join(dir, `key-${a}.env`), `ANTHROPIC_API_KEY=sk-ant-dummy-${a}-0000\n`, { mode: 0o600 });
     if (roles !== undefined) writeFileSync(join(dir, 'roles.json'), JSON.stringify({ version: 1, roles }));
     const script = (name: string, body: string) => { writeFileSync(join(dir, name), `#!/bin/bash\n${body}\n`); chmodSync(join(dir, name), 0o700); };
-    script('claude-fake', `{ echo "cwd=$PWD"; echo "acct=\${HIMMEL_API_ACCOUNT:-}"; printf 'arg=%s\\n' "$@"; echo --; } >> '${join(dir, 'fake.log')}'\nprintf '%s' '${fake.out ?? envelope('from-fake')}'\nexit ${fake.rc ?? 0}`);
+    script('claude-fake', `{ echo "cwd=$PWD"; echo "acct=\${HIMMEL_API_ACCOUNT:-}"; printf 'arg=%s\\n' "$@"; echo --; } >> '${join(dir, 'fake.log')}'\n${fake.sleep ? `echo "pid=$$" >> '${join(dir, 'fake.log')}'\nsleep ${fake.sleep}\n` : ''}printf '%s' '${fake.out ?? envelope('from-fake')}'\nexit ${fake.rc ?? 0}`);
     script('alert-stub', `echo "alert $TG_MESSAGE" >> '${join(dir, 'alert.log')}'`);
     script('ps', 'exit 0');
     writeFileSync(join(dir, 'native-cache.json'), JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
@@ -800,6 +800,41 @@ describe('routedJudge', () => {
     expect(w.fallbackCalls).toHaveLength(1);
     expect((w.read('fake.log').match(/^--$/gm) ?? []).length).toBe(1);
     expect(w.read('alert.log')).not.toBe('');
+  });
+
+  // The first ancestor of `pid` whose command line names `name` (Linux /proc).
+  const ancestor = (pid: number, name: string): number => {
+    for (let p = pid; p > 1; p = Number(readFileSync(`/proc/${p}/stat`, 'utf8').replace(/^.*\) /, '').split(' ')[1])) {
+      if (readFileSync(`/proc/${p}/cmdline`, 'utf8').includes(name)) return p;
+    }
+    throw new Error(`no ${name} above pid ${pid}`);
+  };
+  const fakePid = (w: ReturnType<typeof world>) => Number(/^pid=(\d+)$/m.exec(w.read('fake.log'))?.[1]);
+
+  it('mapped, the run stopped mid-call: the call is killed and no fallback runs', async () => {
+    const w = world({ judge: ['B'] }, { sleep: 30 });
+    const stop = new AbortController();
+    const got = makeRoutedJudge(w.fallback)(INPUT, { signal: stop.signal });
+    await vi.waitFor(() => expect(fakePid(w)).toBeGreaterThan(0), { timeout: 10_000 });
+    stop.abort(new Error('rm-run: stopped by SIGTERM; nothing more ruled'));
+    await expect(got).rejects.toThrow();
+    expect(w.fallbackCalls).toHaveLength(0);
+  }, 20_000);
+
+  it.skipIf(process.platform !== 'linux')('mapped, TERM to the launcher alone: it exits 143 and no fallback runs', async () => {
+    const w = world({ judge: ['B'] }, { sleep: 30 });
+    const got = makeRoutedJudge(w.fallback)(INPUT);
+    await vi.waitFor(() => expect(fakePid(w)).toBeGreaterThan(0), { timeout: 10_000 });
+    process.kill(ancestor(fakePid(w), 'claude-api.sh'), 'SIGTERM');
+    await expect(got).rejects.toMatchObject({ status: 143 });
+    expect(w.fallbackCalls).toHaveLength(0);
+  }, 20_000);
+
+  it('judgeCall kills a call past its timeout and says so', async () => {
+    const t0 = Date.now();
+    await expect(judgeCall('bash', ['-c', 'sleep 5'], { input: '', cwd: root, env: process.env, timeoutMs: 100 }))
+      .rejects.toThrow('rm-run: the judge call (bash) timed out after 0.1s; nothing ruled');
+    expect(Date.now() - t0).toBeLessThan(3000);
   });
 
   it('mapped, unparseable output: the fallback answers', async () => {

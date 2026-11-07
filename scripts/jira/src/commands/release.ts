@@ -302,7 +302,7 @@ function judgePreflight(): string {
 // The judge's one long model call, async: a synchronous call cannot be killed from its own thread, so a stop or the
 // timeout would not reach it. The prompt goes on stdin; stderr reaches the caller when the call ends; a failure carries
 // the exit code as `status`.
-function judgeCall(file: string, args: string[], o: { input: string; cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; signal?: AbortSignal }): Promise<string> {
+export function judgeCall(file: string, args: string[], o: { input: string; cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; signal?: AbortSignal }): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = execFile(file, args, { cwd: o.cwd, env: o.env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: o.timeoutMs, signal: o.signal },
       (err, stdout, stderr) => {
@@ -452,9 +452,10 @@ export function makeRoutedJudge(fallback: Judge = liveJudge): Judge {
           '-p', '--model', 'opus', '--effort', 'high', '--permission-mode', 'plan', '--max-budget-usd', String(JUDGE_API_BUDGET_USD), '--output-format', 'json',
         ], { input: judgePrompt(input, skill), cwd, env, timeoutMs: JUDGE_SPAWN_TIMEOUT_MS, signal: opts?.signal });
       } catch (e) {
-        // A stopped run, or a launcher killed by a signal it did not get from its own timeout, asks no second model.
-        const k = e as { signal?: unknown; killed?: boolean };
-        if (opts?.signal?.aborted || (k.signal && !k.killed)) throw e;
+        // A stopped run, or a launcher killed by a signal it did not get from its own timeout, asks no second model. The
+        // launcher traps TERM, INT and HUP and exits 143, so a signal shows as that status, not as `signal`.
+        const k = e as { signal?: unknown; killed?: boolean; status?: unknown };
+        if (opts?.signal?.aborted || (!k.killed && (k.signal || [129, 130, 143].includes(k.status as number)))) throw e;
         return fallback(input, opts);
       }
       try { return parseDecisions(out); } catch { return fallback(input, opts); }
