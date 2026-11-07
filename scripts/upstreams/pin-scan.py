@@ -25,8 +25,11 @@ compared to npm-latest nor bumped here.
 
 scripts/upstreams/pin-holds.json records a bump held back on purpose. A hold
 reads HELD only while the pin is still at `current` AND upstream's latest is
-still `latest_reviewed`; any newer upstream release re-raises BEHIND.
+still `latest_reviewed`; any newer upstream release re-raises BEHIND. A hold's
+optional `eligible` time (UTC, YYYY-MM-DDTHH:MMZ) ends it: from that time the row
+reads BEHIND again. An unreadable file, row or time reads BEHIND, never HELD.
 """
+import datetime
 import json
 import os
 import re
@@ -37,6 +40,7 @@ from concurrent.futures import ThreadPoolExecutor
 # `fixtures` holds deliberately stale test inputs (scripts/lanes/bench/fixtures).
 SKIP_DIRS = {"node_modules", ".git", "dist", ".claude", "graphify-out", "vendor", "fixtures"}
 STABLE = re.compile(r"^v?\d+(\.\d+){0,3}$")
+ELIGIBLE_FORMAT = "%Y-%m-%dT%H:%MZ"
 
 
 def walk(root):
@@ -220,6 +224,22 @@ def compare(current, latest):
     return "BEHIND" if semver_key(lat) > semver_key(cur) else "CURRENT"
 
 
+def hold_in_force(hold):
+    """False once a hold's optional `eligible` time (UTC, YYYY-MM-DDTHH:MMZ) has
+    passed, or when it cannot be read: the row then reads BEHIND, never HELD.
+    DRIFT_NOW (same format) stands in for the clock, as in check-plugin-drift.sh."""
+    if "eligible" not in hold:
+        return True
+    try:
+        at = datetime.datetime.strptime(hold["eligible"], ELIGIBLE_FORMAT)
+        now = os.environ.get("DRIFT_NOW")
+        now = (datetime.datetime.strptime(now, ELIGIBLE_FORMAT) if now
+               else datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None))
+    except (ValueError, TypeError):
+        return False
+    return now < at
+
+
 def main():
     root = sys.argv[1]
     holds_path = sys.argv[2] if len(sys.argv) > 2 else ""
@@ -227,7 +247,10 @@ def main():
     vm_release = sys.argv[3] if len(sys.argv) > 3 else "vm-proof"
     holds = []
     if holds_path and os.path.exists(holds_path):
-        holds = json.load(open(holds_path)).get("holds", [])
+        try:
+            holds = [h for h in json.load(open(holds_path)).get("holds", []) if isinstance(h, dict)]
+        except (OSError, ValueError, AttributeError, TypeError):
+            holds = []  # an unreadable file holds nothing: every row reads BEHIND
     found, vend_found = discover(root)
     pins = sorted(found.items())
 
@@ -259,7 +282,8 @@ def main():
         else:
             hold = next(
                 (h for h in holds if h.get("eco") == eco and h.get("key") == key
-                 and h.get("current") == current and h.get("latest_reviewed") == latest),
+                 and h.get("current") == current and h.get("latest_reviewed") == latest
+                 and hold_in_force(h)),
                 None,
             )
             if hold:
