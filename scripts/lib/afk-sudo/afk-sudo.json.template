@@ -1,0 +1,13 @@
+{
+  "enabled": false,
+  "operator_id": 0,
+  "window_s": 120,
+  "mode": "allowlist",
+  "operator_user": "",
+  "max_per_hour": 6,
+  "run": {"enabled": false, "ttl_s": 900, "timeout_s": 300},
+  "grant": {"enabled": false, "ttl_s": 900},
+  "ops": {"enabled": false, "ttl_s": 900},
+  "never_remote_extra": [],
+  "classes": {}
+}

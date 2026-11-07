@@ -19,6 +19,11 @@ Run these, in order, and write the result as the first bullet under
    - **`ListAgents`**: who is alive; a worker absent here is gone, never relay it as live.
    - **`ToolSearch`** `select:SendMessage` (deferred).
    - **`Read`** each `specs/decisions/chief-decisions-<date>.md` `decisions:` names.
+   - **`Read`** every direction companion file that the line of `## Current direction`
+     beginning `Full original text` names (under `{{STATE_DIR}}`), when there is such a line —
+     **required, in this same batch**: the other lines are one-line readings, the rulings' full
+     text is in those files. (That line moves down when you add a ruling above it; find it by
+     its first words, not by its position.)
    - **`bash "{{KIT}}/action-zero.sh" --doc "<this document>" --root "{{HANDOVER_ROOT}}" --prefix {{PREFIX}} --acquire --render-workers`**
      in the **foreground** (never `run_in_background`, never twice): lock sweep,
      head/remote, usage, worker processes, C29, load and lock state for steps 2–6
@@ -123,7 +128,8 @@ tracker: {{TRACKER_URL}}
 action after every compaction is the `COMPACTED` bullet**, under `## Results`:
 `- COMPACTED <HH:MM> — workers: <as re-injected>, queue: <as re-injected>, last GO: <as re-injected>`
 and, in the same batch, `Read` each `specs/decisions/chief-decisions-<date>.md`
-that `decisions:` names.
+that `decisions:` names and each direction companion file that the line of
+`## Current direction` beginning `Full original text` names.
 If the hook warned that `## Live state` is missing, write it from step 2's lock
 sweep first.
 
