@@ -1630,7 +1630,7 @@ test("send-file --by-request queues a spec page with no clean critics, marked no
   const html = readFileSync(res.lines[0].document_path as string, "utf8");
   expect(html).toContain("NOT PASSED");
   expect(html).toContain("Not for signature");
-  expect(html).toContain(REQ);
+  expect(html).toContain(`asked: ${REQ}</p>`);
   expect(html.indexOf("NOT PASSED")).toBeLessThan(html.indexOf("<h1>"));
   const after = await sendFile(r, "1", spec);   // the by-request send leaves the plain route as strict as it was
   expect(after.code).not.toBe(0);
