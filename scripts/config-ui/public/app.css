@@ -780,15 +780,15 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .big .mk.nocount,.tbl.ph .mk.nocount{border:1px dotted var(--muted);color:var(--muted)}
 .dr{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:left;display:inline-flex;align-items:center}
 .dr:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
-.chev{width:12px;height:12px;flex:none;margin-right:6px;fill:none;stroke:var(--muted);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .12s}
+.dr .chev{width:12px;height:12px;flex:none;margin-right:6px;fill:none;stroke:var(--muted);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .12s}
 .dr[aria-expanded="true"] .chev{transform:rotate(90deg);stroke:var(--ink)}
 .tbl.ph tbody.open>tr.pr0 td{border-bottom-color:var(--rule-strong)}
 @media (max-width:640px){
   .card-h .big{font-size:var(--fs-lg)}
   .tbl.ph th.hs,.tbl.ph td.mute{display:none}
   .tbl.ph{font-size:13px}
-  .tbl.ph td,.tbl.ph th{padding:6px 5px}
-  .tbl.ph .barc{width:18%;min-width:36px}
-  .tbl.ph tr.part td:first-child{padding-left:23px}
+  .tbl.ph td,.tbl.ph th{padding:6px 3px}
+  .tbl.ph .barc{width:14%;min-width:28px}
+  .tbl.ph tr.part td:first-child{padding-left:12px}
   .tbl.ph .mk.nocount{white-space:normal;border-radius:6px;line-height:1.15;text-align:center}
 }
