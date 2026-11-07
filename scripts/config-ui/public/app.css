@@ -758,3 +758,39 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .seclegend .sec{white-space:nowrap}
 .rm-ft{color:var(--accent-ink);background:var(--accent);font-size:11px;font-weight:600;padding:0 var(--s1);border-radius:var(--radius);margin-top:var(--s1);width:fit-content}
 .rm-drain{font-size:var(--fs-xs);font-weight:600;margin:var(--s1) 0}
+/* The Cost page (public/cost.js): a phase table whose rows open to their parts, in the look of the signed mockup on the theme tokens.
+   Scoped to the table, as .bar is also the Fleet page's bar chart. A bar's width is set from its style attribute by app.js (the CSP refuses the attribute). */
+.card-h{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px 16px;margin-bottom:6px}
+.card-h h2{margin:0;font-size:var(--fs-md)}
+.card-h .big{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.card.how p{margin:8px 0 0;color:var(--muted);font-size:var(--fs-sm);max-width:900px}
+.tbl.ph{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+.tbl.ph th{text-align:left;font-weight:600;font-size:var(--fs-xs);color:var(--muted);border-bottom:1px solid var(--rule);padding:6px 8px}
+.tbl.ph td{border-bottom:1px solid var(--rule);padding:6px 8px;vertical-align:middle}
+.tbl.ph .n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl.ph td.mute{color:var(--muted);font-size:var(--fs-xs)}
+.tbl.ph tbody:last-child tr:last-child td{border-bottom:0}
+.tbl.ph .barc{width:22%;min-width:60px}
+.tbl.ph .bar{display:block;grid-template-columns:none;height:8px;border-radius:4px;min-width:2px;background:var(--accent);font-size:inherit}
+.tbl.ph tr.part .bar{opacity:.55}
+.tbl.ph tr.part td{background:var(--bg);font-size:var(--fs-xs);padding-top:4px;padding-bottom:4px}
+.tbl.ph tr.part td:first-child{padding-left:42px}
+.big .mk,.tbl.ph .mk{display:inline-block;font-size:10.5px;font-weight:400;line-height:1;padding:3px 6px;border-radius:999px;letter-spacing:.02em;white-space:nowrap;vertical-align:1px}
+.big .mk.counted,.tbl.ph .mk.counted{background:var(--ink);color:var(--surface)}
+.big .mk.derived,.tbl.ph .mk.derived{border:1px solid var(--ink);color:var(--ink)}
+.big .mk.unpriced,.tbl.ph .mk.unpriced{border:1px dashed var(--muted);color:var(--muted);font-style:italic}
+.big .mk.nocount,.tbl.ph .mk.nocount{border:1px dotted var(--muted);color:var(--muted)}
+.dr{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:left;display:inline-flex;align-items:center}
+.dr:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+.chev{width:12px;height:12px;flex:none;margin-right:6px;fill:none;stroke:var(--muted);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .12s}
+.dr[aria-expanded="true"] .chev{transform:rotate(90deg);stroke:var(--ink)}
+.tbl.ph tbody.open>tr.pr0 td{border-bottom-color:var(--rule-strong)}
+@media (max-width:640px){
+  .card-h .big{font-size:var(--fs-lg)}
+  .tbl.ph th.hs,.tbl.ph td.mute{display:none}
+  .tbl.ph{font-size:13px}
+  .tbl.ph td,.tbl.ph th{padding:6px 5px}
+  .tbl.ph .barc{width:18%;min-width:36px}
+  .tbl.ph tr.part td:first-child{padding-left:23px}
+  .tbl.ph .mk.nocount{white-space:normal;border-radius:6px;line-height:1.15;text-align:center}
+}

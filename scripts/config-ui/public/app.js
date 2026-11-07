@@ -4,6 +4,7 @@ import { renderHealth, verdict, parseView, projectVerdict, chiefLiveFor } from "
 import { renderToolHealth, toolHealthLoader, toolHealthHref } from "/tool-health.js";
 import { boardRefreshDue, driftSince, pinsFromSearch, renderBoard, searchWithPins, togglePin } from "/roadmap.js";
 import { renderWorkflow, parseWorkflowRoute } from "/workflow.js";
+import { renderCost } from "/cost.js";
 import { apiRolesDraft, renderConfigure as render } from "/setup.js";
 import { renderShift } from "/shift.js";
 import { renderReport, reportBar } from "/report.js";
@@ -73,12 +74,15 @@ let shift = null, shiftGen = 0, shiftAt = 0; // GET /api/shift, null until read;
 const shiftUi = { id: null, all: false }; // from the route: #/shift/<id>?all=1
 let wfModel = null, wfStats = null, wfGen = 0, wfAt = 0, wfScrolled = null; // the workflow model and GET /api/phase-stats, null until read
 const wfUi = { tab: "workflow", phase: null, step: null, walk: null, at: 0 }; // from the route: #/workflow[/eval]?phase=|step=|walk=&at=
+let costModel = null, costErr = false, costGen = 0; // GET /api/cost, null until read; a failed read keeps the last good answer
+const costView = { open: [] }; // the Cost page's open phase ids
 const PAGES = [
   { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => withLoginButton(render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify })), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.apiRoles || !state.apiRoles.data) loadApiRoles(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); if (!state.reports || !state.reports.data) loadReportSettings(); loadSetup(); } },
   { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => pageBar() + healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => toolHealthPage(), onVisit: () => loadToolHealth(), afterPaint: () => thFocusBack() },
   { id: "board", label: "Board", needsFeed: false, render: trackerPage(() => renderBoard(roadmap, roadmapUi, boardExtras)), afterPaint: () => { whyFocus(null); loadDriftOrigins(); }, onVisit: () => { if (!(sources && !sources.length)) { if (!roadmap) loadRoadmap(); if (!boardExtras) loadBoard(); if (roadmapUi.tab === "nv" && !roadmapUi.nv) loadNoVersion(); } } },
   { id: "workflow", label: "Workflow", needsFeed: false, render: () => renderWorkflow(wfModel, wfUi, wfStats), onVisit: () => { if (!wfModel || wfModel.error || !wfStats || wfStats.error || Date.now() - wfAt > 60_000) loadWorkflow(); }, afterPaint: () => wfScroll() },
+  { id: "cost", label: "Cost", needsFeed: false, render: () => (costErr ? `<p class="sub">The cost could not be read just now${costModel ? "; this is the last good read" : ""}.</p>` : "") + renderCost(costModel, costView), onVisit: () => loadCost(), afterPaint: () => costMount() },
   { id: "shift", label: "Shift", needsFeed: false, render: () => renderShift(shift, { ...shiftUi, fleet: (navLinks({ here: "console", token, current: "shift", sources }).find((l) => l.id === "fleet") || {}).href }), onVisit: () => loadShift() },
   { id: "report", label: "Morning report", needsFeed: false, render: () => pageBar() + renderReport(reportList, reportView, { ...reportUi, shiftHref: "#/shift" }), onVisit: () => loadReport() },
 ];
@@ -641,6 +645,35 @@ async function loadWorkflow() {
   wfModel = m.status === "fulfilled" ? m.value : { error: m.reason instanceof Error ? m.reason.message : "server unreachable" };
   wfStats = s.status === "fulfilled" ? s.value : { error: s.reason instanceof Error ? s.reason.message : "server unreachable" };
   if (currentPage.id === "workflow") paint();
+}
+// the Cost page: read on every visit; only the newest read may land, and a failed one leaves the last good answer on the page.
+async function loadCost() {
+  const gen = ++costGen;
+  try {
+    const r = await fetch("/api/cost", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    const m = await r.json();
+    if (gen !== costGen) return;
+    costModel = m; costErr = false;
+  } catch (_) { if (gen !== costGen) return; costErr = true; }
+  if (currentPage.id === "cost") paint();
+}
+// A phase row is a button: a click, Enter or Space opens or closes it, and focus stays on it through the repaint.
+// The bars' widths come in the markup as style attributes, which the page's CSP (default-src 'self') refuses, so they are set here.
+function costMount() {
+  const main = $("#main");
+  for (const el of main.querySelectorAll(".bar[style]")) el.style.width = (/width:\s*([\d.]+%)/.exec(el.getAttribute("style")) || [])[1] || "0%";
+  const onClick = (e) => {
+    const b = e.target.closest && e.target.closest("button.dr");
+    const id = b && b.dataset.phase;
+    if (!id) return;
+    costView.open = costView.open.includes(id) ? costView.open.filter((x) => x !== id) : [...costView.open, id];
+    paint();
+    const again = [...main.querySelectorAll("button.dr")].find((x) => x.dataset.phase === id);
+    if (again) again.focus();
+  };
+  main.addEventListener("click", onClick);
+  return () => main.removeEventListener("click", onClick);
 }
 // a step link or a walk scrolls its card (or the opened phase) into view, once per route: a later repaint never jumps.
 function wfScroll() {

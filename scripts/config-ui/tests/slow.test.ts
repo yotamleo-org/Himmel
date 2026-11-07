@@ -37,7 +37,7 @@ const APP_IMPORT_STUBS: Record<string, unknown> = {
   renderHealth: () => "", verdict: () => ({ cls: "off", word: "No data" }), parseView: () => ({ mode: "project", project: null, tab: "broken", row: null }), projectVerdict: () => ({ word: "All clear" }), chiefLiveFor: () => undefined,
   renderToolHealth: () => "", toolHealthLoader: () => ({}), toolHealthHref: () => "",
   boardRefreshDue: () => false, driftSince: () => null, renderBoard: () => "", pinsFromSearch: () => [], searchWithPins: () => "", togglePin: () => ({ pins: [], msg: "" }),
-  renderWorkflow: () => "", parseWorkflowRoute: () => null,
+  renderWorkflow: () => "", parseWorkflowRoute: () => null, renderCost: () => "",
   apiRolesDraft: () => null, render: () => "",
   renderShift: () => "",
   renderReport: () => "", reportBar: () => "",

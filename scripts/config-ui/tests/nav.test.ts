@@ -19,7 +19,7 @@ const tokenOnlyInFragment = (href: string) => {
 };
 
 test("the rail lists Fleet first, then Health, Tool health and one Configure entry, on every page, plus Run when a run is open", () => {
-  const rail = ["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Board", "Workflow", "Docs"];
+  const rail = ["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Board", "Workflow", "Cost", "Docs"];
   expect(navLinks({ here: "console", token: TOKEN, current: "config" }).map((l) => l.label)).toEqual(rail);
   expect(navLinks({ here: "agui", token: TOKEN, current: "fleet" }).map((l) => l.label)).toEqual(rail);
   expect(navLinks({ here: "agui", token: TOKEN, current: "run", run: RUN }).map((l) => l.label)).toEqual([...rail.slice(0, -1), "Run", "Docs"]);
@@ -66,7 +66,7 @@ const APP_IMPORT_STUBS: Record<string, unknown> = {
   renderHealth: () => "", verdict: () => ({ cls: "off", word: "No data" }), parseView: () => ({ mode: "project", project: null, tab: "broken", row: null }), projectVerdict: () => ({ word: "All clear" }), chiefLiveFor: () => undefined,
   renderToolHealth: () => "", toolHealthLoader: () => ({}), toolHealthHref: () => "",
   boardRefreshDue: () => false, driftSince: () => null, renderBoard: () => "", pinsFromSearch: () => [], searchWithPins: () => "", togglePin: () => ({ pins: [], msg: "" }),
-  renderWorkflow: () => "", parseWorkflowRoute: () => null,
+  renderWorkflow: () => "", parseWorkflowRoute: () => null, renderCost: () => "",
   apiRolesDraft: () => null, render: () => "",
   renderShift: () => "",
   renderReport: () => "", reportBar: () => "",
