@@ -58,7 +58,7 @@ gqlc_cost() {
 gqlc_caller() {
     local p="$1" n=0 words w found
     while [ -n "$p" ] && [ "$p" -gt 1 ] && [ "$n" -lt 20 ]; do
-        words=$(tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null)
+        words=$({ tr '\0' ' ' <"/proc/$p/cmdline"; } 2>/dev/null)
         found=""
         for w in $words; do
             case "$w" in
@@ -152,7 +152,7 @@ cmd_watch() {
             seen="$seen$key "
             # the args after the word named gh (a script stub shows its interpreter first)
             args=""
-            for w in $(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null); do
+            for w in $({ tr '\0' ' ' <"/proc/$pid/cmdline"; } 2>/dev/null); do
                 if [ -n "$args" ]; then args="$args $w"; elif [ "${w##*/}" = gh ]; then args="gh"; fi
             done
             args="${args#gh}"
