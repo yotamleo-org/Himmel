@@ -171,7 +171,7 @@ PY
 make_pair() { # <bucket> <queue segments> <ruling groups> -> docA (source) path in $made_doc
     chief new --bucket "$1" >/dev/null 2>&1
     made_doc="$root/tester/$1/DEMO-nextleg-${today}A-chief.md"
-    python3 -I "$tmp/gen.py" "$made_doc" "$root/tester/$1" "$2" "$3"
+    python3 -I "$tmp/gen.py" "$made_doc" "$root/tester/$1" "$2" "$3" || check "$1: the fixture generator ran" failed ok
     cp "$made_doc" "$made_doc.src"
 }
 live_line() { awk -v k="$2:" '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f && index($0, k) == 1 { print; exit }' "$1"; }
@@ -242,14 +242,17 @@ PY
 dir_bytes() { awk '$0 == "## Current direction" { f = 1; next } f && /^## / { exit } f' "$1" | wc -c | tr -d ' '; }
 gen2_doc="$last_docB"
 before_dir="$(dir_bytes "$gen2_doc")"
-python3 -I "$tmp/gen2.py" "$gen2_doc" "$root/tester/tqlike" 20
+rc=0; python3 -I "$tmp/gen2.py" "$gen2_doc" "$root/tester/tqlike" 20 || rc=$?
 with_new="$(dir_bytes "$gen2_doc")"
+check "tqlike second succession: the 20 new rulings were added to the source direction" "$([ "$rc" -eq 0 ] && [ "$with_new" -gt "$before_dir" ] && echo yes || echo no)" yes
 out2="$(chief next --bucket tqlike --doc "$gen2_doc" 2>&1)"; rc=$?
 check "tqlike second succession: next succeeds" "$rc" "0"
 doc2="$(printf '%s\n' "$out2" | sed -n 's/^doc: //p')"
 after_dir="$([ -f "$doc2" ] && dir_bytes "$doc2" || echo 0)"
 printf 'second succession: direction %s bytes, with 20 new rulings %s, successor %s\n' "$before_dir" "$with_new" "$after_dir"
 check "tqlike second succession: the 20 new rulings add under 4400 bytes (not their 12000 of full text)" "$([ "$after_dir" -gt 0 ] && [ "$((after_dir - before_dir))" -lt 4400 ] && echo under || echo "over:$((after_dir - before_dir))")" under
+kept=0; for n in $(seq 900 919); do [ "$(grep -cF "decision $n: " "$doc2" 2>/dev/null)" = 1 ] && kept=$((kept + 1)); done
+check "tqlike second succession: all 20 new rulings keep their reading line" "$kept" "20"
 
 # the refusals on an absent or empty Current direction stay
 chief new --bucket empty >/dev/null 2>&1
