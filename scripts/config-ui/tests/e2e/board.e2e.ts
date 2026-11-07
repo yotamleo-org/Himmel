@@ -780,11 +780,6 @@ test("with a Won't ticket and long sector names the Chains tab does not scroll s
   }
 });
 
-// 9488 five-chain scale. fixture, not live: the chain read the page asks for is rewritten to five open chains (alpha and gamma linked, ops blocked on a
-// ticket in the next version); every ticket key, title and count below is fixture. The server, the page and the render are real.
-// The mockup's frame 1 starts its first chain at 177 px and ends the whole tab at 590 px (2 open chains, 3 finished, burn-down folded).
-// Height bound for this fixture = 590 + 3 x 90 + 55: the mockup's tab, plus 90 px for each of the three chains that are open here where the
-// mockup's were one-line finished rows (a rail, its NOW or NEXT line and its folds row), plus 55 px for the link strip the mockup frame has none of.
 const MOCKUP_FIRST_CHAIN_Y = 177, MOCKUP_TAB_H = 590, OPEN_CHAIN_ALLOWANCE = 90, LINK_STRIP_ALLOWANCE = 55;
 const FIXTURE_TAB_H_MAX = MOCKUP_TAB_H + 3 * OPEN_CHAIN_ALLOWANCE + LINK_STRIP_ALLOWANCE;
 function fiveChains() {
@@ -832,7 +827,7 @@ for (const [width, height] of [[1280, 900], [390, 844]]) {
     await expect(page.locator("#rm-chains article.cc")).toHaveCount(5);
     for (const art of await page.locator("#rm-chains article.cc").all()) {
       await expect(art.locator(".rl")).toHaveCount(1);
-      expect(await art.locator("details[open]").count()).toBe(0); // the folds are closed
+      expect(await art.locator("details[open]").count()).toBe(0);
     }
     const top = await page.locator("#rm-chains article.cc").first().evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
     const bottom = await page.locator("#rm-chains").evaluate((el) => el.getBoundingClientRect().bottom + window.scrollY);
@@ -842,7 +837,7 @@ for (const [width, height] of [[1280, 900], [390, 844]]) {
     if (width === 1280) {
       expect(Math.abs(top - MOCKUP_FIRST_CHAIN_Y)).toBeLessThanOrEqual(40);
       expect(bottom).toBeLessThanOrEqual(FIXTURE_TAB_H_MAX);
-      expect(Math.max(...ys) - Math.min(...ys)).toBeLessThanOrEqual(8); // the chip and its Why link share a line: nothing stacks
+      expect(Math.max(...ys) - Math.min(...ys)).toBeLessThanOrEqual(8);
     }
   });
 }

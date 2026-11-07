@@ -1371,7 +1371,6 @@ test("9488 v=all on the Chains tab shows the running version and says so in one 
   expect(linked).toContain("HIMMEL-6 waits on HIMMEL-2");
 });
 
-// fixture, not live: chainsLinked() is two open chains; the second has two open links, a change log and a blocked ticket
 test("9488 an open chain is one compact rail: one rail, one NOW or NEXT line, its folds in one closed row, and a chip with its Why link is one unit", () => {
   const panel = panelOf(chainsHtml());
   const cards = panel.split('<article id="rm-chain-').slice(1);
@@ -1380,12 +1379,11 @@ test("9488 an open chain is one compact rail: one rail, one NOW or NEXT line, it
     expect(card.match(/class="rl"/g) || []).toHaveLength(1);
     expect(card.match(/class="now"/g) || []).toHaveLength(1);
     const folds = /<div class="folds">(.*?)<\/div>(?=<\/article>)/s.exec(card);
-    expect(folds).not.toBeNull(); // every fold sits in the one row after the rail
+    expect(folds).not.toBeNull();
     expect(folds![1]).toContain('<details class="fold"><summary>Tickets and titles');
-    expect(card).not.toMatch(/<details[^>]* open/); // closed, one summary line each
+    expect(card).not.toMatch(/<details[^>]* open/);
   }
   expect(cards[1]).toContain("<summary>Change log · 2 rows");
-  // a chip and its Why link wrap sideways together, so the Ops chain's chips never stack under their links
   expect(cards[1]).toMatch(/<span class="tw"><a class="tk [^>]*>.*?<\/a> <a class="rm-whylink"[^>]*>Why<\/a><\/span>/s);
 });
 

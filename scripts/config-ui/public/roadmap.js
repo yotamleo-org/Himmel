@@ -558,7 +558,6 @@ function chipHtml(ui, ch, d, c, [t, x]) {
   const cls = st === "done · out of order" ? "oo" : /^done/.test(st) ? "dn" : st === "in flight" ? "fl" : st === "can launch" ? "go" : st === "blocked" ? "bd" : "wt";
   const word = st === "done" ? "" : ` ${st}`;
   const why = /^done/.test(st) ? "" : (t.links || []).filter(live).slice(0, 1).map((l) => " " + whyLink(ui, t.key, l.on)).join("");
-  // the chip and its Why link are one unit: a narrow step wraps them sideways together and never stacks the link under the chip
   return `<span class="tw"><a class="tk ${cls}${ui.at === t.key ? " rm-at" : ""}"${t.chains[0].id === c.id ? ` id="cn-${esc(t.key)}"` : ""} href="${boardHref({ tab: "chains", v: ui.v, at: t.key })}" title="${esc(`${t.key} ${t.title || ""}`.trim())}">`
     + `<span class="gl" aria-hidden="true">${glyph(st)}</span> ${esc(shortKey(t.key))}${esc(word)}</a>${why}</span>`;
 }
