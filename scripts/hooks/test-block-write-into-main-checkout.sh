@@ -27,6 +27,17 @@
 # shellcheck source=lib-test-write-fence.sh
 . "$(dirname "$0")/lib-test-write-fence.sh"
 
+# Rows run as an operator or interactive session unless they set the worker
+# variables themselves (rows 10f to 10l): a worker running this suite must not
+# turn rows 9 to 10e into worker rows.
+_bwimc_worker_env() {
+    export HIMMEL_CONSOLE_LEG=1 HIMMEL_HOLD_KEY=TEST-1HIMMEL_HOLD_DOC="$FIX/home/worker-doc.md"
+}
+_bwimc_no_worker_env() {
+    unset HIMMEL_CONSOLE_LEG HIMMEL_HOLD_KEY HIMMEL_HOLD_DOC
+}
+_bwimc_no_worker_env
+
 echo "== DENY rows (destination-based, both wirings) =="
 
 # 1. THE INCIDENT SHAPE.
@@ -90,6 +101,38 @@ check_both "10d echo > primary/.single-writerx (near-miss basename) still denies
 # must allow exactly like row 9.
 check_both "10e touch \$FIX/primary/.single-writer from cwd=wt (destination-based, not cwd-based) allows" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"touch $FIX/primary/.single-writer\",\"cwd\":\"$FIX/wt\"}}"
+
+# 10f to 10l: a worker session (HIMMEL_CONSOLE_LEG=1, a hold key
+# and an absolute doc, the test check-write-hold.sh uses) never takes the
+# marker exemption: creating the marker switches the single-writer barrier and
+# this fence off for the whole repo. The deny sends it to its chief.
+_bwimc_worker_env
+check_both_reason "10f worker: touch primary/.single-writer denies, says ask the chief" \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"touch $FIX/primary/.single-writer\",\"cwd\":\"$FIX/wt\"}}" \
+    "ask your chief"
+check_both_reason "10g worker: echo > primary/.single-writer denies, says ask the chief" \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo x > $FIX/primary/.single-writer\",\"cwd\":\"$FIX/primary\"}}" \
+    "ask your chief"
+check_both "10h worker: rm primary/.single-writer (absent) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"rm -f $FIX/primary/.single-writer\",\"cwd\":\"$FIX/wt\"}}"
+_w8725=$(_run_stderr "$DIRECT" "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"touch $FIX/primary/.single-writer\",\"cwd\":\"$FIX/wt\"}}")
+case "$_w8725" in
+    *'touch "'*) bad "10i worker: the deny recommends touching the marker — got: $(printf '%s' "$_w8725" | tr '\n' '|' | cut -c1-200)" ;;
+    *) ok "10i worker: the deny does not recommend touching the marker" ;;
+esac
+# Not a worker by that test: each keeps the exemption.
+export HIMMEL_HOLD_DOC=worker-doc.md
+check_both "10j relative hold doc: touch primary/.single-writer allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"touch $FIX/primary/.single-writer\",\"cwd\":\"$FIX/wt\"}}"
+_bwimc_worker_env
+unset HIMMEL_HOLD_KEY
+check_both "10k no hold key: touch primary/.single-writer allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"touch $FIX/primary/.single-writer\",\"cwd\":\"$FIX/wt\"}}"
+_bwimc_worker_env
+unset HIMMEL_CONSOLE_LEG
+check_both "10l no HIMMEL_CONSOLE_LEG: touch primary/.single-writer allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"touch $FIX/primary/.single-writer\",\"cwd\":\"$FIX/wt\"}}"
+_bwimc_no_worker_env
 
 # 11. git commit, cwd = primary (main) — BOTH wirings agree (is_on_main and
 # main_checkout_verdict both fire on plain "on main").
