@@ -47,7 +47,7 @@ production implementations have source-derived counts instead.
 
 A session lists tools as `mcp__easel__chart` with the server instruction
 "Tools registered by the cc-plugin-easel plugin through $.tool.register".
-Source (HIMMEL-8061, checked 2026-10-29 against Claude Code 2.1.312): **`cc-plugin-easel`
+Source (checked 2026-10-29 against Claude Code 2.1.312): **`cc-plugin-easel`
 is a built-in plugin compiled into the Claude Code binary**, not a file anyone
 configured. It sits beside `cc-plugin-mermaid`, `cc-plugin-diff`,
 `cc-plugin-plugin-authoring` and other `cc-plugin-*` names found in the binary,
@@ -101,7 +101,7 @@ input-required elicitation flow; external and hosted servers stay unverified.
 
 - Per the audit, a subagent's MCP calls do not become tasks; whether a server may still create one depends on the client advertising task support and the server's decision, which is unverified here.
 - Per the audit, `claude -p` without `--output-format stream-json` gets no tasks; this is unverified against the Claude CLI reference.
-- `claude --bg` and third-party-provider sessions are pending the probe in HIMMEL-7304.
+- `claude --bg` and third-party-provider sessions are pending the worker launch-mode probe.
 
 ## Pilot migration
 

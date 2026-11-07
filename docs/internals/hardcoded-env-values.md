@@ -1,6 +1,6 @@
 # Hardcoded environment values — inventory, config surface, lint
 
-HIMMEL-6508. The org move (HIMMEL-6502) broke merges because a repo name was a
+The org move broke merges because a repo name was a
 literal. This page is the inventory by value class, the one place values are
 read from, and the lint that keeps new literals out.
 
@@ -11,7 +11,7 @@ excluded. Regenerate with the patterns in the third column.
 
 | Class | Pattern | Runtime | Test/fixture | Doc | Disposition |
 |---|---|---|---|---|---|
-| repo-slug | `yotamleo-org/`, `yotamleo/(Himmel\|himmel\|qmd\|luna\|salus)` | 84 | 282 | 120 | Owned by HIMMEL-6495 and PR 3225 (HIMMEL-6516). Not edited here; the lint flags new ones. Fixtures stay literal. |
+| repo-slug | `yotamleo-org/`, `yotamleo/(Himmel\|himmel\|qmd\|luna\|salus)` | 84 | 282 | 120 | Owned by the repo-identity work. Not edited here; the lint flags new ones. Fixtures stay literal. |
 | owner-account | `yotamleo` | 172 | 458 | 161 | Superset of repo-slug. The remainder is identity (CODEOWNERS, author allowlists, git history); allowlisted by path or marker. |
 | pages-url | `<owner>.github.io` | 8 | 5 | 7 | Migrated: `himmelctl` help text and `site/src/urls.mjs` (the site URL `astro.config.mjs` imports) derive from `GITHUB_REPOSITORY`, else git origin. The config UI's link to the product's own docs site carries `env-literal-ok`. Rest are vendored plugin bundles and docs. |
 | ghcr-image | `ghcr.io/` | 2 | 0 | 3 | Migrated: `ci-image.yml` builds `ghcr.io/${{ github.repository_owner }}/himmel-ci`; the Dockerfile label names `ghcr.io/<owner>/himmel-ci`. |
@@ -45,7 +45,7 @@ added lines for the audited classes and fails on a new literal:
   `PRE_COMMIT_TO_REF` replaces HEAD as the tip. No resolvable base is rc 2.
 - `--staged`: the index.
 - `--tree`: every tracked file at HEAD, every class except repo-slug (which
-  HIMMEL-6495 owns).
+  the repo-identity work owns).
 
 It skips:
 

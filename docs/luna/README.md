@@ -73,7 +73,7 @@ Pick the `luna` profile when you [install himmel](../setup/install.md).
 It adds the vault folders, the session-note hook, the qmd index and
 graphify to your project. The scheduled jobs, the nightly linking and
 the daily re-index and map, run only from a himmel clone today;
-bringing them to your project is planned (HIMMEL-6210).
+bringing them to your project is planned.
 
 ## For maintainers
 

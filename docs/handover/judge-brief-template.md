@@ -369,7 +369,7 @@ gathering, per the rule below.>
 > writer refuses it. So does any standalone `residual: <text>` line (bulleted
 > or not, any case, with or without a heading).
 >
-> **Residual depth (HIMMEL-6115).** When the PR you rule on is itself a residual
+> **Residual depth.** When the PR you rule on is itself a residual
 > (its ticket carries a `residual-depth-<n>` label), record its residuals as a PR
 > comment, and file a ticket only for a High, a security or a data-loss residual.
 > On EVERY verdict whose residual lines cite tickets, pass `--residual-of <the

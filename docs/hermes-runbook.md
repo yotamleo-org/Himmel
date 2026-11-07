@@ -293,7 +293,7 @@ systemctl --user restart hermes-gateway-<profile>.service  # per-profile
 refuses to multiplex while a token is duplicated across profiles. On this
 station `default` runs no bot, so its `.env` carries no `TELEGRAM_*` keys.
 
-**Multiplexer caveat: `hactl` role fallback (LUNA-208).** `ggs-local`'s
+**Multiplexer caveat: `hactl` role fallback.** `ggs-local`'s
 `hactl` still honours `GGS_ROLE` from the environment first, but the
 multiplexer sets terminal children's `HERMES_HOME` to the served profile's
 home without forwarding that profile's non-secret `.env` vars, so

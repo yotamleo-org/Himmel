@@ -1,4 +1,4 @@
-# Graph publish cadence — reference (HIMMEL-2095)
+# Graph publish cadence — reference
 
 > The `HIMMEL-GraphPublish-Himmel` scheduler task, armed via
 > `scripts/luna/graphmap-cadence.sh` alongside its four sibling tasks
@@ -38,7 +38,7 @@ script.
    **No tracked graph (the steady state):** `origin/main` no longer carries
    `graphify-out/graph.json`, so there is nothing to measure or publish. Without
    `--semantic` the run then exits right here — `action=skipped`, no pipeline lock,
-   no worktree sync, **no `ast-update.sh` rebuild** (HIMMEL-9069). The only
+   no worktree sync, **no `ast-update.sh` rebuild**. The only
    rebuild of the himmel AST graph per cycle is the hourly
    `HIMMEL-GraphMapAst-Himmel` run into the primary checkout's `graphify-out/`,
    which is what the graph workers and the session-start advisory read; a rebuild
@@ -105,14 +105,14 @@ bash scripts/luna/graphmap-cadence.sh disarm     # removes every task; disarm --
 ```
 
 The Luna graph tasks (`HIMMEL-GraphMap-Luna`, `HIMMEL-GraphMapAst-Luna`,
-`HIMMEL-GraphSemantic-Luna`) are off by default (HIMMEL-9011): a bare `arm`
+`HIMMEL-GraphSemantic-Luna`) are off by default: a bare `arm`
 neither adds nor replaces them, a fresh install registers none (so doctor C24
 expects none), and `himmel-update`'s `arm --rewrite-armed` only rewrites runners
 that already exist, so it can never re-arm a disarmed Luna task.
 
 The publish task is opt-in: `arm` registers `HIMMEL-GraphPublish-Himmel`
 only with `--with-publish`. It is grouped with the free structural (AST) pair for
-`--ast-only` purposes (HIMMEL-2071): it needs no backend credential, so
+`--ast-only` purposes: it needs no backend credential, so
 `--ast-only` arms/replaces it too, alongside the himmel AST task, while leaving the
 himmel semantic task untouched. Default schedule: **every 6 hours**,
 anchored at `:35` past (`35 */6 * * *`) — 20 minutes clear of `HIMMEL-GraphMapAst-Himmel`'s
@@ -121,15 +121,14 @@ stagger, because this step is not free-and-instant like the AST pair: with a
 tracked graph or `--semantic` it can run `ast-update.sh`, open/refresh a PR, and
 drive `merge-on-green.sh`'s own `check-ci` watch, all in one fire (without
 either it skips at once and rebuilds nothing — the hourly AST pair already
-built the graph, HIMMEL-9069). Both steps would otherwise contend for
-`ast-update.sh`'s HIMMEL-910 promote lock (skip-not-wait, so a collision is
+built the graph). Both steps would otherwise contend for
+`ast-update.sh`'s promote lock (skip-not-wait, so a collision is
 a skipped-and-retried refresh next fire, not a failure — the wider offset
 just makes that the exception rather than the rule).
 
 Two fires of this step itself are serialized by `graph-cadence.sh`'s own
 pipeline lock (`<worktree>.lock`), because each run `reset --hard` +
-`clean -fdx`es the same worktree. `mkdir` is the whole protocol (HIMMEL-2654,
-following `scripts/luna/qmd-cadence.sh`, where three rounds of automatic
+`clean -fdx`es the same worktree. `mkdir` is the whole protocol (following `scripts/luna/qmd-cadence.sh`, where three rounds of automatic
 stale-lock takeover each produced the next race). A run proceeds only if its
 own `mkdir` succeeded, and nothing ever removes a lock it did not create: the
 exit trap removes the run's own instance only, by owner token. The lock
@@ -159,7 +158,7 @@ Two ledgers, both written every run:
 
    `action` is one of `skipped | failed | refreshed | published | published-channel | merged` —
    `published-channel` means the run pushed its graph to the `graph-data`
-   branch (see [Sharing the graph](#sharing-the-graph--the-graph-data-branch-himmel-9156)).
+   branch (see [Sharing the graph](#sharing-the-graph--the-graph-data-branch)).
    For the other actions,
    see `graph-cadence.sh`'s header for the full classification (in short:
    `published`, not `failed`, ONLY when `merge-on-green.sh` exits with a
@@ -176,7 +175,7 @@ Two ledgers, both written every run:
    this repo writes, so the existing cadence-audit/staleness tooling is not
    blind to this step.
 
-**`HANDOVER_DIR` is required, not optional** (HIMMEL-2619 class): cron gives
+**`HANDOVER_DIR` is required, not optional**: cron gives
 no login shell, so `HANDOVER_DIR` is exactly the variable that goes missing
 there. If it is unset, `graph-cadence.sh` refuses **loudly** — non-zero exit,
 a clear stderr message naming the variable, a line in the runner's own
@@ -188,11 +187,11 @@ publishes. Set it via `/handover-setup`, or see
 
 ## The standing ticket
 
-Every publish PR's commit subject carries `[HIMMEL-2095]` — this repo's CI
+Every publish PR's commit subject carries the standing ticket's key in brackets — this repo's CI
 commit-range gate requires a ticket ID on every commit, and the PR's subject
 used to carry none at all (plausibly why the manual bypass was reached for
 in the first place; see "Why this exists" above). `graph-publish.sh --ticket
-<ID>` (default `HIMMEL-2095`, or `$GRAPH_PUBLISH_TICKET`) lets the standing
+<ID>` (default: the key in the script, or `$GRAPH_PUBLISH_TICKET`) lets the standing
 ticket change without editing code.
 
 ## The threshold, and its trade-off
@@ -216,21 +215,21 @@ default change therefore takes effect on the **very next scheduled fire**,
 with no re-arm needed. (`--threshold <N>` still exists for an ad-hoc manual
 run against a different value — it just isn't what the armed cadence uses.)
 
-## The `--semantic` step: which exit codes alert (HIMMEL-4512)
+## The `--semantic` step: which exit codes alert
 
 With `--semantic`, `graph-cadence.sh` runs `semantic-update.sh` on the
 dedicated worktree and classifies its exit code. The backend is
 `GRAPH_CADENCE_SEMANTIC_BACKEND`: `claude-cli` (default, Sonnet, gated on the subscription usage budget),
 `claude-api` (API credit through the API lane; needs `HIMMEL_API_LANE=on` and `HIMMEL_API_ACCOUNT`, refuses rc 1
 otherwise; with `GRAPHIFY_API_BATCH=0` a failed chunk call follows the [API lane's fallback rule](api-lane.md), while the default batch mode submits through the Message Batches API and has no alert or fallback) or `ollama` (opt-in, local, needs a GPU); `api` and `cli` are
-aliases, resolved by `scripts/lib/llm-backend.sh`. Any other value refuses (rc 1) before any work (HIMMEL-5367, HIMMEL-5835).
+aliases, resolved by `scripts/lib/llm-backend.sh`. Any other value refuses (rc 1) before any work.
 
 | rc | meaning | cadence result |
 |---|---|---|
 | 0 | ok, no change since the last pass (no-op), or on `claude-api` a batch submitted or still pending (graph untouched) | green; clears the `graph-semantic-<slug>` alert |
 | 3 | subscription usage budget at/over threshold, nothing touched (claude-cli only; the ollama path skips the usage budget check) | benign skip: green, no alert, an existing alert is left standing |
 | 4 | promote lock held by another graph refresh, nothing touched | benign skip: green, no alert, an existing alert is left standing |
-| 5 | one or more semantic chunks failed (the good chunks merged, the failed files stay unstamped, HIMMEL-5871) | alerts (`semantic-update-rc-5`), `action=failed`, rc 3 |
+| 5 | one or more semantic chunks failed (the good chunks merged, the failed files stay unstamped) | alerts (`semantic-update-rc-5`), `action=failed`, rc 3 |
 | 1, 2, other | usage/IO, fence deny, batch submit failure, graphify or merge failure | alerts (`semantic-update-rc-<n>`), `action=failed`, rc 3 |
 
 On `claude-api`, `semantic-update.sh` passes graphify `--token-budget` derived from `GRAPHIFY_API_CALL_BUDGET_USD`
@@ -286,7 +285,7 @@ explicit `GRAPHIFY_MAX_CONCURRENCY` wins, and an ollama-cloud model keeps 6.
   undetermined (a missing `jq`, or an unparseable row — "cannot tell" must
   never render as "healthy").
 
-## Sharing the graph — the graph-data branch (HIMMEL-9156)
+## Sharing the graph — the graph-data branch
 
 One station pays for the semantic pass. Every other station gets the result
 for free.
@@ -343,7 +342,7 @@ with, the station stays AST-only and `graphify-out/` is not touched.
 `graphify.semantic_api_ok` set to true in `~/.himmel/config.json` is the
 publisher, so it never fetches.
 
-## Luna graph freshness (HIMMEL-6551)
+## Luna graph freshness
 
 The luna vault graph is rebuilt AST-only nightly (`HIMMEL-GraphMapAst-Luna`), so
 its markdown only gets LLM extraction from a separate job:
@@ -380,8 +379,7 @@ up) and its own scheduler task name (following the
 
 ## Explicitly out of scope
 
-graphify version bumps; the refresh-lock bugs (HIMMEL-2618/2106/1414/914 —
-this step reuses `ast-update.sh`'s existing promote-lock, unmodified, and
-does not fix them); luna's graph corpus (not wired in v1); arming the real
+graphify version bumps; the known refresh-lock bugs (this step reuses
+`ast-update.sh`'s promote lock unmodified and does not fix them); luna's graph corpus (not wired in v1); arming the real
 crontab (an operator action after review); the chief's own
 `tick.sh`.

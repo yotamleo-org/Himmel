@@ -145,7 +145,7 @@ node scripts/jira/dist/index.js create --project HIMMEL --type Task \
 ```
 
 A Task, Story or Bug needs `--sector` and either `--parent <epic>` or
-`--labels standalone`; `create` refuses it otherwise (HIMMEL-6223).
+`--labels standalone`; `create` refuses it otherwise.
 
 ## Guard changes: one structural round
 
@@ -166,7 +166,7 @@ Each runner in `scripts/cleanup/` has a fixed cap and refuses a batch over it.
 | Worktree reclaim | `worktree-batch.sh plan`, then `worktree-batch.sh apply <file>` (each path goes through `worktree.sh prune --only`) | 10 worktrees |
 | Jira hygiene | `jira-batch.sh plan stale\|version\|status`, then `jira-batch.sh apply <file>` (adds a `stale`, `version-drift` or `status-drift` label) | 20 tickets |
 
-The 20-file cap comes from HIMMEL-5629: across its 59 merges the median
+The 20-file cap comes from the history-comment prune: across its 59 merges the median
 merge touched 21 files, and a tenth of them touched more than 109.
 A directory family is the first two path components, such as
 `scripts/hooks`. Review the `plan` output before you run `apply`.
@@ -183,7 +183,7 @@ bash scripts/insights/self-review.sh --since 2026-09-21 --until 2026-10-21
 ```
 
 Baseline, 2026-09-21 to 2026-10-21: 2,353 merges; fix 1,393 against feat
-560 (59 %); guard churn 385; 1,166 of 2,053 runs compacted (56 %); HIMMEL-5629
+560 (59 %); guard churn 385; 1,166 of 2,053 runs compacted (56 %); the history-comment prune
 with 56 merges; 15 red-main merges. Compare each new 30-day window with it.
 
 ## Reporting issues

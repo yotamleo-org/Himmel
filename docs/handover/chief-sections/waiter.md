@@ -56,7 +56,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     `usage-preflight.sh` verdict word. Heartbeat, procs, fill, fleet, gql and
     orphans never wake (`capacity=` wakes only through `WAKE underfilled`). An idle chief therefore takes **zero** turns.
 
-    **`WAKE doctor <new ids>`** (HIMMEL-7849): the tick runs `himmel-doctor.sh`
+    **`WAKE doctor <new ids>`**: the tick runs `himmel-doctor.sh`
     about every 30 min (cached; `TICK_DOCTOR_TTL_MIN`, 0 = off) and reports the
     WARN/FAIL check ids as `doctor=<id,id>`. The waiter wakes only when that set
     gains an id it has not shown you, naming just the new ones; an unchanged or
@@ -66,7 +66,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     it, ticket it, or record a ruling** that it is acceptable. Never leave it
     unread because the next wake will not repeat it.
 
-    **`WAKE cadence <workflow> run=<id> <RED|SKIP|MISSED> <run url> cause: <why>`** (HIMMEL-9247): the
+    **`WAKE cadence <workflow> run=<id> <RED|SKIP|MISSED> <run url> cause: <why>`**: the
     tick reads the last *scheduled* run of every workflow with a `schedule:` trigger (about every 30 min,
     cached; `CI_CADENCE_INTERVAL_SEC`) and prints them as `cadence=<name>:<state>:<age>:<run id>[:flag],...`.
     The waiter wakes once per run id that is RED (failure or timed_out), SKIP (concluded skipped) or
@@ -75,13 +75,13 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     waiter replays nothing (`<inbox>.wait.cadence`). `cadence=?` (gh unreadable) wakes nothing. A red
     here is yours to triage: open the link, fix or ticket it, never leave it for the next wake.
 
-    **`WAKE review <date> <reasons>`** (HIMMEL-9247, decision 593): the tick prints the daily failure
+    **`WAKE review <date> <reasons>`** (decision 593): the tick prints the daily failure
     review as `review=<date>:<age>:<failures>:<new>:<new5+>:<filed>[:CAPPED][:STALE]` (`none` is left off
     the line). The waiter wakes once per review day when the router filed a ticket, a new class has 5 or
     more failures, or the create cap was hit, and once per last-review date when the review is STALE (no
     review for 26 h). A class with a single failure never wakes you (`<inbox>.wait.review`).
 
-    **`WAKE pool-stale <KEYS>`** (HIMMEL-6604): the tick re-checks every Live-state
+    **`WAKE pool-stale <KEYS>`**: the tick re-checks every Live-state
     `pool-disposition: KEY slice|close|question <target>` line whose target names a
     ticket key or `PR <n>` and reports `pool-stale=<n>:<KEY>,...` when every named
     blocker is Done (Jira mirror) or its PR merged or closed (one batched `gh pr list`); `?` in the
@@ -100,7 +100,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     ticket with no fixVersion, other than a To Do ticket below High whose latest release ruling is a backlog ruling, invisible to every version count): it never wakes;
     give each a fixVersion or a disposition.
 
-    **Housekeeping digest (HIMMEL-8197).** Board class changes and `board-stale`,
+    **Housekeeping digest.** Board class changes and `board-stale`,
     `status-sweep`, and informational `tails=`/`acts=` changes to LIVE, ACK,
     WRAPPED or MERGED wait in `<inbox>.wait.housekeeping`. The first buffered
     event starts a `HOUSEKEEPING_DIGEST_SECS` window (default **900 seconds**).
@@ -116,7 +116,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
 
     This is digest-only: the waiter still exits on WAKE. Persistent delivery and
     tick-side suppression of changes authored by the chief are deferred to
-    **HIMMEL-8247**; no authorship is inferred from worker marker text.
+    the ticket for keeping the chief waiter armed across events; no authorship is inferred from worker marker text.
 
     **Re-start it at the end of the turn that handles each wake** — the waiter
     has exited, so a turn that does not re-start it leaves you deaf to Telegram
@@ -207,7 +207,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     digest starts over. The relay takes no lock and sends nothing to a worker;
     the chief keeps every authority write (GO, judge, dispatch, Jira).
 
-    **A READY wakes you once, already checked** (HIMMEL-6540). Armed with
+    **A READY wakes you once, already checked**. Armed with
     `--workers-from` and the `auto_go` flag off, a worker whose newest marker bullet
     is `READY <pr> <head40> GREEN` wakes you with one line:
     `WAKE ready <pr> <head40> ready-check=<PASS|FAIL> ci=<GREEN|RED|PENDING> coverage=<PASS|FAIL> disposition=<ok|open:<n>> out=<file>`,
@@ -223,7 +223,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     carry a 40-hex head, still wakes as `WAKE tick changed=tails,acts`. Workers
     write READY as a bullet only, never a message.
 
-    **A GO'd PR whose worker went silent merges without it** (HIMMEL-9132): with `--doc` and `--workers-from`, a READY worker that has had a GO file and no doc write for `CHIEF_WAIT_WORKER_SILENT_MIN` minutes (default 45), and no live process unless its last bullet is a hand-off, is merged by `silent-go-merge.sh` through ready-check at the GO head and `merge-on-green.sh --go`; you wake as `WAKE silent-go` with one `SILENT-WORKER-MERGE`, `-MERGE-FAILED` or `-HELD reason=<why>` line; the operator was already paged with it and your doc carries it as a bullet.
+    **A GO'd PR whose worker went silent merges without it**: with `--doc` and `--workers-from`, a READY worker that has had a GO file and no doc write for `CHIEF_WAIT_WORKER_SILENT_MIN` minutes (default 45), and no live process unless its last bullet is a hand-off, is merged by `silent-go-merge.sh` through ready-check at the GO head and `merge-on-green.sh --go`; you wake as `WAKE silent-go` with one `SILENT-WORKER-MERGE`, `-MERGE-FAILED` or `-HELD reason=<why>` line; the operator was already paged with it and your doc carries it as a bullet.
 
     **An oversized brief wakes you once.** `WAKE size rows=<total>` followed by
     `SIZE-ESCALATE<TAB>epoch<TAB>refuse|bulk<TAB>KEY<TAB>label<TAB>files<TAB>trust<TAB>detail` lines
@@ -237,7 +237,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     `TICK_HOLD_MIN` minutes, default 20): read its newest bullet and answer it. It
     does not repeat while the hold stands.
 
-    **A silent worker wakes you once, and the operator is already told** (HIMMEL-9133).
+    **A silent worker wakes you once, and the operator is already told**.
     `WAKE worker-silent <worker> signal=<capped-waker|succession-partial> [silent=<n>m]`
     means no turn is coming from that worker: the tick lists `wakerstate=<worker>:capped`
     (its bus mail went unread) and, with `--workers-from`, its doc has had no write for

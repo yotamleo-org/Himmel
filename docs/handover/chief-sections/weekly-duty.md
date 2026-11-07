@@ -2,7 +2,7 @@
 
 Read on demand from `chief-template.md` `## Standing rules`. The review loop
 collects findings; this duty is how it learns from them. Owner: the chief
-(O4 (a), HIMMEL-6371 R5a). A separate dedicated weekly run is HIMMEL-6914 and
+(O4 (a)). A separate dedicated weekly run is still to be built and
 does not replace this.
 
 - **When it is due:** the board's CR loop line reads `cadence <N>d (stale)`

@@ -1,6 +1,6 @@
 # humanizer (`blader/humanizer`) — tool-adoption eval
 
-HIMMEL-5857, 2026-10-16. Method: [`rubric.md`](rubric.md). Verdict: **ADOPT, opt-in** (pilot closed 2026-10-22 by the HIMMEL-6966 docs pass, below; in no profile).
+Audited 2026-10-16. Method: [`rubric.md`](rubric.md). Verdict: **ADOPT, opt-in** (pilot closed 2026-10-22 by the docs pass, below; in no profile).
 
 ## Goal (rubric §1)
 
@@ -46,11 +46,11 @@ No model call and no spend; rule application read by hand on two real samples. M
 
 PILOT-MEASURE exit: after two weeks of use, count documents where `/humanizer` changed something `/unslop` had left and the operator kept it. Zero kept, REJECT and remove the plugin.
 
-## Relation to unslop (for the HIMMEL-5851 mapping)
+## Relation to unslop (for the pstack integration map)
 
 **Coexist, do not merge or replace.** `unslop` stays the himmel house-style pass for terse internal documents: it carries himmel's three recorded deviations and its plain-speech rules. `humanizer` is an on-demand full-rewrite pass for longer prose written for people outside the harness, where voice matching and the fact-preservation check earn their cost. Merging would break byte-identical vendoring of both. Replacing `unslop` would lose rules 26 to 33. If the pilot finds humanizer never beats unslop on himmel text, drop humanizer; do not fold its rules into unslop.
 
-## Docs pass (HIMMEL-6966)
+## Docs pass
 
 The pilot run: `/humanizer` in file mode over the user-facing docs pages, one PR per docs section, each page as its own voice sample. A change is one changed passage (a diff hunk at zero context); it is *kept* when it survives the fact check and *dropped* when the check reverts it. The fact check compares every fenced block, inline code span, link target, heading and number before and after (zero differences on every page), then a read of each diff for added or dropped claims. Counts use the value-test method above, on prose outside code.
 

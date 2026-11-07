@@ -1,7 +1,7 @@
 # How a rename lands
 
 A rename is finished when no reader, writer, doc or test still uses the old
-name, not when the new name works. The rename audit (HIMMEL-8298) found two
+name, not when the new name works. The rename audit found two
 places that broke because a rename landed halfway: a doc that showed a
 command the code refused, and a status reader that kept its own copy of a
 retired marker. This page is the rule that stops a third one. The rows it

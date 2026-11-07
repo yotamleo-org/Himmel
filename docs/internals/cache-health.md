@@ -1,4 +1,4 @@
-# Cache health (HIMMEL-5672)
+# Cache health
 
 `scripts/eval/cache-health.py` computes per-role prompt-cache metrics from
 session transcripts (`~/.claude/projects/**/*.jsonl`) with no model call.
@@ -32,7 +32,7 @@ chief's bridge inbox; either channel counts as delivered.
 ## `~/.himmel/state/cache-health/` files
 
 - `metrics.json` — rewritten every run (schema below). Read by the morning-report
-  cache line (HIMMEL-668, `scripts/handover/cache-health-line.py`: freshness gate,
+  cache line (`scripts/handover/cache-health-line.py`: freshness gate,
   older than 26h prints `unmonitored`) and the board.
 - `history.jsonl` — one `{"ts","overall","roles":{role: hit_pct}}` row per run,
   last 720 kept. The morning-report line derives its 7-day ratio (unweighted mean

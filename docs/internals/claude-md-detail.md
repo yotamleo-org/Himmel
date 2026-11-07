@@ -1,6 +1,6 @@
 # CLAUDE.md rule detail
 
-The full text of every rule that root `CLAUDE.md` now carries condensed (HIMMEL-5512).
+The full text of every rule that root `CLAUDE.md` now carries condensed.
 Root `CLAUDE.md` keeps each rule's directive and its enforcer; the prose below is
 the prior wording, verbatim, kept for reference. It is not preloaded.
 
@@ -113,7 +113,7 @@ NOT a qmd flag — silently ignored, searching everything while looking scoped);
 a qmd miss is NOT evidence a fact is absent. **graphify explains structure** (`graphify query` /
 `graphify explain` / `graphify path`) — only code files, `name()` symbols, glossary terms and `/command`/plugin/skill/hook names
 merge across files; other same-name concepts, and code symbols defined in 2+ files, stay separate (pick one with `path::symbol`).
-An hourly or incremental refresh can leave a merge stale (HIMMEL-6285), so confirm a `graphify path` miss with grep.
+An hourly or incremental refresh can leave a merge stale, so confirm a `graphify path` miss with grep.
 Luna's hot cache
 `~/Documents/luna/hot.md` comes before crawling luna `index.md`. Extraction runs
 on scratchpad copies, **never live vaults**. A live external URL is none of the three organs' job — `WebFetch` it directly.

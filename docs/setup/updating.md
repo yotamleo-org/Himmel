@@ -1,6 +1,6 @@
 # Updating, or undoing the install
 
-Audience: newcomer, after the first install. Owner of the rewrite: HIMMEL-7212.
+Audience: newcomer, after the first install.
 
 **The task:** bring one himmel install up to a newer version and confirm it
 landed. Six steps: choose your route, confirm the target, preview, update,
@@ -401,8 +401,8 @@ The himmel *plugins* depend on **how the marketplace was registered**:
   **github** source. There `autoUpdate` pulls a separate Claude-managed clone from
   GitHub, so *plugin* updates arrive without pulling your working checkout, but
   the core hooks and commands still run from your checkout and **still need a
-  pull**. Every PR that changes a plugin bumps that plugin's version
-  (HIMMEL-8368), and Claude Code replaces its cached copy only when the version
+  pull**. Every PR that changes a plugin bumps that plugin's version,
+  and Claude Code replaces its cached copy only when the version
   differs, so a plugin change on `main` reaches this install as soon as it
   merges. Pin the marketplace source to a release tag to get exactly a release.
 
@@ -841,7 +841,7 @@ unconditional rather than drift-driven:
   reload the daemon already resident on :8181, and stopping that process is
   termination an agent may not perform. The step prints the operator commands;
   it never kills anything.
-- **claude CLI sync (HIMMEL-5501):** `claude` is held to a launch floor
+- **claude CLI sync:** `claude` is held to a launch floor
   (2.1.280, the first release with Opus 5.5 and `--autocompact`; one constant in
   `scripts/lib/claude-version.sh`). In apply mode a Claude Code below the floor
   or behind the latest is updated by its owner's updater (native `claude

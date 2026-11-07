@@ -104,7 +104,7 @@ gets exit 96 by design. Point it at a scratch copy instead.
 `bash scripts/ci/run-shell-tests.sh` runs the full shell-test corpus. It is
 the same entrypoint CI's `shell-unit` job runs, matrixed over
 `ubuntu-latest` (the required, gating worker on every push/PR). Windows is
-dropped (HIMMEL-5729) and macOS runs on its own cadence workflow, so no PR, no
+dropped and macOS runs on its own cadence workflow, so no PR, no
 nightly and no manual dispatch of `ci.yml` runs a Windows or macOS shard. Running the
 full corpus is slow and noisy — run it in a subagent rather than foregrounding
 it in an interactive session.
@@ -139,7 +139,7 @@ macOS code (or whose brief says macOS) gets the label before `READY`; the
 workflow then runs on the PR head when the label is added and on every later
 push, and both its jobs are skipped on a PR without the label (after a push an unlabelled PR
 lists its two `macos-cadence` checks as skipped, which use no macOS runner, so
-the HIMMEL-3853 cost rule stands). A PR run
+the rule that PRs spend no macOS shards stands). A PR run
 never records breakages and never uploads `macos-breakage-record`: that record
 belongs to main's cadence runs.
 
@@ -149,7 +149,7 @@ gh workflow run macos-cadence.yml --ref main     # dispatch (the file must be on
 gh run list --workflow macos-cadence.yml         # its runs, apart from the nightly `CI` runs
 ```
 
-**A macOS fix worker proves only its own suites (HIMMEL-7309).** A full run is 8
+**A macOS fix worker proves only its own suites.** A full run is 8
 shards and 70-110 min, and it is red from suites unrelated to the PR. Dispatch
 the PR branch with `suites` set instead: one runner runs just those suites
 (`run-shell-tests.sh --only-list`) in minutes.
@@ -210,7 +210,7 @@ red:
 plan without executing anything — use it to check what a change would trigger
 before committing to the long run.
 
-`bash scripts/ci/cr-first-measure.sh` measures how many CI runs were superseded by CodeRabbit fix pushes (read-only GitHub API) and is the HIMMEL-6575 before/after baseline.
+`bash scripts/ci/cr-first-measure.sh` measures how many CI runs were superseded by CodeRabbit fix pushes (read-only GitHub API) and is the before/after baseline for starting heavy CI only after CodeRabbit is clean.
 
 ## Running a brand-new suite before its first commit
 
@@ -273,7 +273,7 @@ not a complete green result. To compare every completed query from a saved
 measurement against pinned main, run
 `bash scripts/cr/test-suite-file-selection.sh --monotonic <measurement-log>`.
 The bare suite command runs fast fixture controls only. Full-property completion,
-residual investigation and nightly disposition are deferred to HIMMEL-7096.
+residual investigation and nightly disposition are deferred to a later change.
 
 A `*.test.mjs`/`.js`/`.ts` suite's own runner is not "whatever's installed" —
 `impacted-suites.sh --runner <path>` prints the exact CI-equivalent command,
@@ -324,7 +324,7 @@ would not have selected.
 
 ### PR jobs and shard setup skip when the diff cannot reach them
 
-On a pull request a `plan` job (HIMMEL-5524) runs the **base** commit's
+On a pull request a `plan` job runs the **base** commit's
 `scripts/ci/pr-plan.sh` over `scripts/ci/pr-job-gates.txt` (`<group> <ERE>`
 lines) and exposes one `run_<group>` output per gated job. A gated job skips only
 when the plan succeeded and said `false`; a plan that failed, printed nothing
@@ -341,7 +341,7 @@ start and skip their steps, so every required name still reports.
 
 The short checks (`secret-scan`, `bwk-awk-mktemp-gate`, `unchecked-mktemp-range`,
 `commit-lint`, `jira-cli-smoke`, `claude-startup`, `guardrail-matrices`,
-`doc-invariants`) run as step groups of one job, `ci-quick` (HIMMEL-5675). A
+`doc-invariants`) run as step groups of one job, `ci-quick`. A
 gated group skips its own steps. Each old job name stays as a sentinel. It
 carries the required context. It is skipped (green) when ci-quick reports its
 group as `pass`, or when the run was cancelled (`!cancelled()`: eight runners
@@ -355,7 +355,7 @@ same selection env and skips the apt/bun/ffmpeg/gitleaks/pre-commit setup when
 it has not. The run step and manifest upload stay unconditional, so the
 aggregator's manifest verification is unchanged.
 
-On a pull request the plan also sizes the matrix (HIMMEL-5556).
+On a pull request the plan also sizes the matrix.
 `scripts/ci/plan-shards.sh` costs each selected suite from
 `scripts/ci/suite-durations.tsv`. A suite missing from the ledger costs the
 median, and `scripts/ci/ledger-drift.sh --no-row` lists it. It packs the suites longest-first and picks the fewest shards (at most 8) whose
@@ -766,7 +766,7 @@ into `tick.sh` or the worker ship flow.
 
 Never rerun a CI run by hand or in a loop: the concurrency group `ci-pr-<N>`
 makes a rerun the newest request, so rerunning a run at a superseded sha cancels
-the PR's real head run (HIMMEL-6509). `bash scripts/ci/rerun-head.sh [--dry-run] <pr>`
+the PR's real head run. `bash scripts/ci/rerun-head.sh [--dry-run] <pr>`
 reruns (`--failed`) the newest CI run at the PR's current head only when it is
 completed as failure, cancelled or timed_out; a live or green head run, a run
 already rerun once and no run at the head are no-ops. `--run <id>` does the same

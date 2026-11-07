@@ -1,9 +1,9 @@
-# pstack principles digest (HIMMEL-5810)
+# pstack principles digest
 
 Six principles from pstack that himmel has no rule for, restated in our wording.
 Nothing is installed or vendored: pstack ships 24 `principle-*` skills, most are
 already himmel rules, and installing all of them would only add trigger noise
-(audit: HIMMEL-5802, take-parts ticket HIMMEL-5810). Each entry cites its leaf at
+(per the pstack integration audit). Each entry cites its leaf at
 the pin and says which layer it belongs on, per the `CLAUDE.md` rule "Adding a
 rule - pick the cheapest layer". All six stay lean-invoke, so `CLAUDE.md` is
 unchanged.

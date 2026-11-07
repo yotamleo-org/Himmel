@@ -216,7 +216,7 @@ Re-measure with the `idle-gap` command below over the worker transcripts of the
 
 <a id="direct-api-prefix"></a>
 
-## Direct API calls: a cached prefix (HIMMEL-8403)
+## Direct API calls: a cached prefix
 
 `scripts/api-lane/cache-report.mjs` groups `launches.jsonl` by kind, model and
 organization. On 2026-10-31 the untagged `other | sonnet` group (graphify's
@@ -241,7 +241,7 @@ claude-api shim) read 3 % over 442 runs on one organization (19.5 M tokens writt
   (steering cull), `probe` (credit measurement), `eval`, `judge`, `bulk`,
   `critic`. A call without one still logs `other`.
 
-### The non-batch graphify path (HIMMEL-8410)
+### The non-batch graphify path
 
 The CLI caches on block boundaries and graphify sends one text block, so reordering
 alone cannot make a different chunk hit. A system prompt is its own block, shared

@@ -1,6 +1,6 @@
 # Daily loop walkthrough
 
-Audience: contributor (the full PR loop of a himmel checkout), and an adopter running himmel in their own repo, who takes the short [adopter route](#adopter-route-your-own-repo). Owner of the rewrite: HIMMEL-7213.
+Audience: contributor (the full PR loop of a himmel checkout), and an adopter running himmel in their own repo, who takes the short [adopter route](#adopter-route-your-own-repo).
 
 > **Prerequisites:**
 > 1. himmel installed and configured on your machine: see
@@ -432,7 +432,7 @@ limited or out of credit holds the head; the levers are to restore the lane, or
 (an operator decision) to set that reviewer to `best-effort` in the overlay for
 the duration.
 
-### CI release: heavy CI after review (planned, HIMMEL-6581 and HIMMEL-6582)
+### CI release: heavy CI after review (planned)
 
 > Not live yet, and himmel-only: it needs a CI workflow that listens to the
 > `ci:go` label. A repo that does not opt in keeps running CI on every push.

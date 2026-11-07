@@ -50,7 +50,7 @@
 # ANTHROPIC_API_ORG_ID_B=dummy-org-b
 # ANTHROPIC_API_ORG_ID_C=dummy-org-c
 
-# Plain behaviour settings (HIMMEL-7427)
+# Plain behaviour settings
 # HIMMEL_REPO=/path/to/your/himmel
 # CLAUDE_HUD_ALLOW_EXTRA_CMD=1
 # HIMMEL_WHERE_ARE_WE_ROLLUP_TTL=900
@@ -65,7 +65,7 @@
 # ALIBABA_DASHSCOPE_BASE_URL=https://dummy.example.invalid/api/v1
 # ALIBABA_OPENAI_BASE_URL=https://dummy.example.invalid/compatible-mode/v1
 
-# Plain settings that once rode along in .env (HIMMEL-8165)
+# Plain settings that once rode along in .env
 # TELEGRAM_CHAT_ID=0
 # TELEGRAM_GROUP_CHAT_ID=0
 # Jira sends credentials to this trusted station URL. Process env, .local and the

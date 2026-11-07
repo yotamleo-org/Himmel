@@ -3,7 +3,7 @@
 `scripts/api-lane/claude-api.sh` runs one print-mode `claude` call billed to an
 API account (`HIMMEL_API_ACCOUNT=A|B|C|auto`; auto only for the himmel graph pass, or a kind the role map maps) instead of the subscription. It is
 OFF unless the launching shell sets `HIMMEL_API_LANE=on`. This page covers what
-happens when a call on it fails (HIMMEL-8643). The launcher's header lists the
+happens when a call on it fails. The launcher's header lists the
 full argument and environment contract.
 
 ## Who uses it
@@ -127,7 +127,7 @@ A reader that sums API dollars skips every row with a `lane` other than `api` (t
 no `lane`): `shift-spend.mjs` does, so the native and `sub-fallback` rows are neither summed nor counted as unpriced.
 `scripts/usage/release-judge-reconcile.sh` is the read-only check that each release judge transcript has its row.
 
-## Account C and auto routing (HIMMEL-9052, decision 525 FINAL)
+## Account C and auto routing (decision 525 FINAL)
 
 Account C is a third API org with a 200.00 USD cap. A, B and C are treated identically: the same refusals (key from
 the caller `ANTHROPIC_API_KEY` or a mode-600 `key-C.env` beside the ledger, `HIMMEL_API_KEY_ID` equal to the roster
@@ -145,7 +145,7 @@ works for every kind and every repo, judge, critic, bulk and cull included.
 Config name: `ANTHROPIC_API_ORG_ID_C`, matching `ANTHROPIC_API_ORG_ID_A` and `_B`. Every site that unsets the A and B keys before a subscription `claude -p` also unsets
 `ANTHROPIC_ORG_C_KEY`. The key file `key-C.env` is written by the operator, never by a script.
 
-### The role map (HIMMEL-9076, decision 526)
+### The role map (decision 526)
 
 `roles.json` says which accounts auto routing may use for each routable kind. It sits beside the account roster
 `config.json` (default `~/.himmel/state/api-credit/roles.json`; `HIMMEL_API_CREDIT_CONFIG` moves both) and holds no
@@ -222,7 +222,7 @@ Recommended, cheapest first:
 3. Use synchronous calls (`GRAPHIFY_API_BATCH=0`) only for a small changed set; there the 5-minute tier is enough
    and the write premium is smaller, but the full price is twice the batch price.
 
-The measured per-run cost and cache read/write split for C is posted on HIMMEL-9052 after the one bounded run.
+The measured per-run cost and cache read/write split for C is posted on the account C ticket after the one bounded run.
 
 ## Test seams
 

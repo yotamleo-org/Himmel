@@ -1,6 +1,6 @@
 # Harness compatibility — running himmel under Codex (and beyond)
 
-> **Platform tier:** Windows is dropped (HIMMEL-5729) and its PowerShell twins are
+> **Platform tier:** Windows is dropped and its PowerShell twins are
 > removed. Linux and macOS are the **Supported**
 > tier, see the [README support matrix](../../README.md#support-matrix). New scripts
 > target bash (still bash 3.2-safe, for macOS). Windows
@@ -118,7 +118,7 @@ which is what is under test.
 
 Exit 0 = all ran checks clean, 1 = a check failed, 2 = nothing ran, or an agent check
 ran without its replay check (both vacuous-pass guards), or a usage error.
-While `codex-replay` is unavailable (HIMMEL-6813 removes it), a run that includes
+While `codex-replay` is unavailable (a later cleanup removes it), a run that includes
 `codex-exec` exits 2 where `pwsh` or `jq` is missing (it is skipped), 1 otherwise.
 `scripts/codex/test-hook-smoke-demo.sh` pins the runner's own contract with
 stubbed `claude`/`codex`/`pwsh` — it never spends a token.
@@ -822,7 +822,7 @@ so the parent returns well inside the clamp — gate:
 `scripts/hooks/test-session-end-timeout-budget.sh`. The plugin cache is
 version-keyed, so a `hooks.json` change to SessionEnd needs a
 `.claude-plugin/plugin.json` version bump to reach an installed codex (every PR that
-changes a plugin bumps its version, HIMMEL-8368, so it arrives with that PR), plus the
+changes a plugin bumps its version, so it arrives with that PR), plus the
 one-time hook re-trust the Trap above already describes.
 
 ### 2. Instruction file — CLAUDE.md is invisible; AGENTS.md must carry the rules

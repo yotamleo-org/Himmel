@@ -42,7 +42,7 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > strips backticks before comparing.
 >
 > **`<worker>` is the worker's label, `N<k>`** (`N191` for
-> `HIMMEL-3269-N191-scorecard-discovery-…`) — the same label
+> `<KEY>-N191-scorecard-discovery-…`) — the same label
 > `tick.sh` prints in `workers=`. A label may contain letters, digits, `_`, `.`
 > and `-`, so a full doc stem also parses.
 >
@@ -134,7 +134,7 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > of every decisions file the line names, plus any written on the line itself.
 >
 > **One-time migration to the decisions file.** The first chief that hands
-> over after `next` started seeding (HIMMEL-6498), if its `decisions:` line
+> over after `next` started seeding, if its `decisions:` line
 > still carries the rulings inline:
 >
 > 1. Append each numbered ruling verbatim, number included, to the bucket's
