@@ -63,7 +63,7 @@ steer the fleet by messaging the chief.
   cheapest tier that can rule on it (`scripts/handover/chief-kit/judge-ladder.sh`).
   A worker merges only on the chief's signed `GO`, through
   `scripts/handover/merge-on-green.sh`.
-- **The RETASK channel.** The chief changes a worker's scope only by a direct
+- **The revision channel.** The chief changes a worker's scope only by a direct
   message that quotes the worker's token, and a change never widens the
   worker's permissions: [internals/retask-channel.md](internals/retask-channel.md).
 - **himmel-bus** carries messages between sessions. It is early:

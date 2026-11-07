@@ -428,8 +428,8 @@ a mode that cannot be read is a config error, not a silent fallback.
 **On a rate limit.** A rate-limited best-effort CodeRabbit is relaxed: the head
 moves on once the hard reviewers pass. If CodeRabbit posts later, its threads
 still have to be resolved before the merge. A **hard** reviewer that is rate
-limited or out of credit holds the head; the levers are to restore the lane, or
-(an operator decision) to set that reviewer to `best-effort` in the overlay for
+limited or out of credit holds the head; the levers are to restore the lane, or,
+if you choose, to set that reviewer to `best-effort` in the overlay for
 the duration.
 
 ### CI release: heavy CI after review (planned)
