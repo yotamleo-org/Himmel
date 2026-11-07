@@ -67,7 +67,8 @@ inside a git repo — e.g. `/c/Users/<you>/Documents/<your-vault>/handovers`
 
 - **Inline (Mode A):** nothing to write — `HANDOVER_DIR` stays unset and the
   resolver (`scripts/lib/handover-path.sh`) defaults to `<repo-root>/handovers`.
-  Continue to step 5 with `<state-root-host>` = `<repo-root>/handovers`.
+  First do the settings-pin reconcile below (inline removes a differing pin),
+  then continue to step 5 with `<state-root-host>` = `<repo-root>/handovers`.
 - **Vault or external (Mode B — both persist identically):** if the chosen
   directory does not exist yet, ask whether
   to create it (`mkdir -p`) — do not write a `HANDOVER_DIR` that points at a
@@ -84,7 +85,8 @@ inside a git repo — e.g. `/c/Users/<you>/Documents/<your-vault>/handovers`
   Note for the current session: `.env` is read by tools at launch, so the new
   `HANDOVER_DIR` takes effect for shell scripts the next time Claude is launched
   from this repo (the loader `scripts/lib/load-dotenv.sh` picks it up); the
-  skill steps below use the path directly.
+  skill steps below use the path directly. Then do the settings-pin reconcile
+  below before step 5.
 
 - **All three choices — reconcile the project's settings pin.** A project
   install (`adopt.sh --profile all`) may have pinned `env.HANDOVER_DIR` in
