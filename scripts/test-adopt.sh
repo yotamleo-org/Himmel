@@ -168,7 +168,8 @@ HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tp" --
 [ "$(git -C "$tp" status --porcelain -- scripts .gitignore .claude/settings.json | wc -l)" -eq 0 ] || fail "HIMMEL-6326: --commit-install left the install uncommitted"
 [ "$(grep -c -x '.claude/worktrees/' "$tp/.gitignore")" = "1" ] || fail "HIMMEL-6326: .gitignore rule duplicated on re-run"
 printf 'HANDOVER_DIR=/x\n' > "$tp/.env"
-git -C "$tp" status --porcelain | grep -q '\.env' && fail "a project .env shows in git status after adopt"
+status_env=$(git -C "$tp" status --porcelain)
+grep -q '\.env' <<< "$status_env" && fail "a project .env shows in git status after adopt"
 rm -f "$tp/.env"
 [ "$(git -C "$tp" remote | wc -l)" -eq 0 ] || fail "HIMMEL-6326: fixture must have no remote"
 (cd "$tp" && HOME="$base_home" bash scripts/worktree.sh feat/try-himmel >/dev/null 2>&1) || fail "HIMMEL-6326: worktree.sh failed in a project with no origin"
