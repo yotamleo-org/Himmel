@@ -364,7 +364,7 @@ function citedOnMain(key) {
 // A key whose search fills the page is `truncated`: that ticket alone is BLOCKED, the other tickets of the run still classify.
 function mergedPrs(keys) {
   const gh = process.env.CLOUD_ROUTE_GH_CMD || 'gh';
-  const run = (extra) => JSON.parse(execFileSync(gh, ['pr', 'list', '--repo', REPO_SLUG, '--state', 'merged', '--json', 'number,title,body,mergedAt,files', ...extra], { encoding: 'utf8', timeout: 60000 }) || '[]');
+  const run = (extra) => JSON.parse(execFileSync(gh, ['pr', 'list', '--repo', REPO_SLUG, '--state', 'merged', '--json', 'number,title,body,mergedAt,files', ...extra], { encoding: 'utf8', timeout: 60000, maxBuffer: 64 * 1024 * 1024 }) || '[]');
   const since = new Date(Date.now() - STALE_DAYS * 86400e3).toISOString().slice(0, 10);
   const all = new Map();
   const truncated = new Set();

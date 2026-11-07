@@ -512,6 +512,23 @@ exit 1`);
   assert.ok(!existsSync(join(bucket, 'cloud-brief-HIMMEL-9001.md')));
 });
 
+test('CLI: a merged-PR list over 1 MiB (the real window list is about 1.6 MiB) still classifies, not BLOCKED as gh failed', () => {
+  const { dir, bucket, jira } = setup();
+  const gh = stub(dir, 'gh-1mib', `
+if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; then
+  printf '[{"number":1,"title":"fix: x","body":"'; head -c 1300000 /dev/zero | tr '\\0' x; printf '","mergedAt":"2000-01-01T00:00:00Z","files":[]}]'; exit 0
+fi
+if [ "$1 $2" = "pr list" ]; then exit 0; fi
+exit 1`);
+  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9001'], {
+    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stderr, /merged PRs unknown/);
+  assert.doesNotMatch(r.stdout, /merged-PR list unavailable/);
+  assert.match(r.stdout, /HIMMEL-9001\s+CLOUD-OK/);
+});
+
 // fixture text of the real tickets (no live Jira). 4503 and 4517 name the
 // hook only as guard-pr-check-literal; 4653 says VM-only / On a VM snapshot.
 const TREE = ['scripts/hooks/guard-pr-check-literal.sh', 'scripts/hooks/block-destructive-commands.sh', 'scripts/cr/pr-check-context.sh', 'scripts/lanes/example.sh', 'scripts/test-check-ci.sh', 'docs/x.md'];
