@@ -128,6 +128,26 @@ BSD_HOME=""
 nolib_out="$(jq -nc --arg p "$T/other.txt" '{tool_name:"Write",tool_input:{file_path:$p}}' | bash "$T/nolib/block-himmel-config-writes.sh" 2>&1)"; nolib_rc=$?
 case "$nolib_rc:$nolib_out" in 2:*resolve-path*) ok "7120 resolver lib missing -> block (fail-closed)" ;; *) bad "7120 resolver lib missing - expected block naming resolve-path, got rc=$nolib_rc" ;; esac
 
+echo "== outside-review store (HIMMEL-9429) =="
+# Copies of the config rows above with the store path swapped: a worker must
+# not write the outside-PR allowlist or approvals (the review-route trust files).
+STORE_A="$HOME/.himmel/outside-pr-approvals.jsonl"
+STORE_C="$HOME/.himmel/outside-contributors.json"
+file_case "Write to outside-PR approvals -> block" block Write "$STORE_A"
+file_case "Edit of outside-PR approvals -> block" block Edit "$STORE_A"
+file_case "MultiEdit of outside-contributors -> block" block MultiEdit "$STORE_C"
+file_case "relative .himmel/outside-contributors.json -> block" block Write ".himmel/outside-contributors.json"
+ln -s "$STORE_C" "$T/alias-contributors.json"
+file_case "symlink resolving to outside-contributors -> block" block Write "$T/alias-contributors.json"
+file_case "outside-contributors.json elsewhere -> allow" allow Write "$T/other/outside-contributors.json"
+patch_case "apply_patch Add File on outside-PR approvals -> block" block "*** Begin Patch${NL}*** Add File: $STORE_A${NL}+{}${NL}*** End Patch"
+patch_case "apply_patch Update File on outside-contributors -> block" block "*** Begin Patch${NL}*** Update File: $STORE_C${NL}@@${NL}-a${NL}+b${NL}*** End Patch"
+patch_case "apply_patch symlinked header to outside-contributors -> block" block "*** Begin Patch${NL}*** Update File: $T/alias-contributors.json${NL}@@${NL}*** End Patch"
+bash_case "redirect into outside-contributors -> block" block "echo '[]' > $STORE_C"
+bash_case "tee into outside-PR approvals -> block" block "echo x | tee $STORE_A"
+bash_case "cat outside-PR approvals -> allow" allow "cat $STORE_A"
+bash_case "jq read of outside-contributors -> allow" allow "jq . $STORE_C"
+
 echo "== Bash writes =="
 bash_case "redirect into the config -> block" block "echo '{\"graphify\":{\"salus_ollama_cloud_ok\":true}}' > $CFG"
 # shellcheck disable=SC2016 # the literal $HOME spelling is the point

@@ -50,6 +50,11 @@
 # including HIMMEL_CONFIG_DIR and the resolved himmel.conf link target's sibling
 # profiles directory. File-tool and patch paths resolve symlink aliases; Bash
 # retains the text-matching ceiling below. No config values are read here.
+# ALSO GUARDS .himmel/outside-pr-approvals.jsonl and .himmel/outside-contributors.json,
+# the no-checkout outside-PR review allowlist and approvals, with the same Bash,
+# file-tool and apply_patch routes as project.conf.
+# ponytail: a text match, so a same-uid worker can still reach them through a spelling
+# it misses; the real protection is the separate-uid store (filed as its own ticket).
 # ALLOWS everything else, silently. Plain reads and himmelctl config set stay
 # allowed; config set is not a prefix bypass for additional shell writes.
 #
@@ -126,7 +131,7 @@ names_guarded_file() {
     case "$text" in
         *.himmel*)
             case "$text" in
-                *config.json*|*config.j\**|*config.\**|*conf\**|*project.conf*|*project.c\**|*project.\**|*proj\**|*himmel.conf*|*profiles/*.conf*) return 0 ;;
+                *config.json*|*config.j\**|*config.\**|*conf\**|*project.conf*|*project.c\**|*project.\**|*proj\**|*himmel.conf*|*profiles/*.conf*|*outside-pr-approvals.jsonl*|*outside-contributors.json*) return 0 ;;
             esac ;;
     esac
     case "$text" in
@@ -160,6 +165,7 @@ check_path() {
     station_path "$p" && deny "$t targets station config $p"
     case "$p" in
         */.himmel/config.json|.himmel/config.json|*/.himmel/project.conf|.himmel/project.conf) deny "$t targets $p" ;;
+        */.himmel/outside-pr-approvals.jsonl|.himmel/outside-pr-approvals.jsonl|*/.himmel/outside-contributors.json|.himmel/outside-contributors.json) deny "$t targets $p" ;;
     esac
     r=$(hook_resolve_m "$p" 2>/dev/null) || deny "$t target $p could not be resolved (fail-closed)"
     station_path "$r" && deny "$t target $p resolves to station config"
@@ -168,6 +174,7 @@ check_path() {
         deny "$t target $p resolves to ~/.himmel/config.json"
     fi
     case "$r" in */.himmel/project.conf) deny "$t target $p resolves to a project file ($r)" ;; esac
+    case "$r" in */.himmel/outside-pr-approvals.jsonl|*/.himmel/outside-contributors.json) deny "$t target $p resolves to an outside-review store ($r)" ;; esac
     return 0
 }
 
@@ -289,6 +296,7 @@ EOF
                 station_path "$r" && deny "an apply_patch target resolves to station config"
                 [ "$r" = "$cfg_res" ] && deny "an apply_patch target resolves to ~/.himmel/config.json"
                 case "$r" in */.himmel/project.conf) deny "an apply_patch target resolves to a project file ($r)" ;; esac
+                case "$r" in */.himmel/outside-pr-approvals.jsonl|*/.himmel/outside-contributors.json) deny "an apply_patch target resolves to an outside-review store ($r)" ;; esac
             done <<EOF
 $resolved
 EOF
