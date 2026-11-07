@@ -436,13 +436,13 @@ apply_commit() {
 commit() {
   local s="$STORE/.commit.new" p
   if [ "$PRINT" = 1 ]; then
-    cat "$1" >> "$WORK/print.jsonl"
-    for p in "$2"/*.json; do [ ! -f "$p" ] || cp "$p" "$EMDIR/"; done
-    cp "$3" "$CHECKPOINT"; return 0
+    cat "$WORK/append.jsonl" >> "$WORK/print.jsonl"
+    for p in "$WORK/wem"/*.json; do [ ! -f "$p" ] || cp "$p" "$EMDIR/"; done
+    cp "$WORK/ck-new.json" "$CHECKPOINT"; return 0
   fi
   rm -rf "$s"; mkdir -p "$s/emitted"
-  cp "$1" "$s/append.jsonl"; cp "$3" "$s/checkpoint.json"
-  for p in "$2"/*.json; do [ ! -f "$p" ] || cp "$p" "$s/emitted/"; done
+  cp "$WORK/append.jsonl" "$s/append.jsonl"; cp "$WORK/ck-new.json" "$s/checkpoint.json"
+  for p in "$WORK/wem"/*.json; do [ ! -f "$p" ] || cp "$p" "$s/emitted/"; done
   if [ -f "$FILE" ]; then wc -c < "$FILE" | tr -d ' ' > "$s/base"; else echo 0 > "$s/base"; fi
   mv "$s" "$STORE/.commit" || die "cannot stage the window commit"
   apply_commit
@@ -599,7 +599,7 @@ build_window() {
     fi
   fi
   cat "$WORK/tappend.jsonl" "$WORK/wrows.jsonl" > "$WORK/append.jsonl"
-  commit "$WORK/append.jsonl" "$WORK/wem" "$WORK/ck-new.json"
+  commit
   cp "$WORK/ck-new.json" "$WORK/ck-in.json"
   nrows="$(wc -l < "$WORK/wrows.jsonl" | tr -d ' ')"; phase_added=$((phase_added + nrows))
   [ "$day" = none ] || echo "usage-compute: window $day done: $nu sessions, $nread transcripts read, $nrows phase rows" >&2
