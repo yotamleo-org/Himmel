@@ -379,14 +379,14 @@ shim_account_count() {
   done
   echo $(( n > 0 ? n : 1 ))
 }
-# Submit the recorded prompts as one batch. THE WALK RULE: on auto, a credit-exhausted answer (the
-# client's exit 5) marks the account (the lane's own marker) and the pick runs again over the accounts not yet tried,
-# so each account is tried at most once per pass and the pass ends when none is left; one batch is submitted, so
-# decision 664's single-batch limit is not widened. ONLY a credit-exhausted answer moves on to the next account: a bad
-# key, a network or API error or a refusal returns at once, because the next account would fail the same way or bill
-# for nothing. A pinned account is not rotated.
+# Submit the recorded prompts as one batch. THE WALK RULE: on auto, a credit-exhausted answer (the client's exit 5) or
+# a rejected key (exit 6, HTTP 401 or 403) marks the account (the lane's own marker, as claude-api.sh does for both)
+# and the pick runs again over the accounts not yet tried, so each account is tried at most once per pass and the pass
+# ends when none is left; one batch is submitted, so decision 664's single-batch limit is not widened. ONLY those two
+# answers move on to the next account: a network or server error, a rate limit or a refusal returns at once, because
+# the next account would fail the same way or bill for nothing. A pinned account is not rotated.
 batch_submit() {
-  local acct pick rc tried="" remaining a base=""
+  local acct pick rc tried="" why="" remaining a base="" what
   [ "$HIMMEL_API_ACCOUNT" != auto ] || base="$(auto_accounts)"
   while :; do
     acct="$HIMMEL_API_ACCOUNT"
@@ -396,13 +396,13 @@ batch_submit() {
         case " $tried " in *" $a "*) ;; *) remaining="${remaining:+$remaining,}$a" ;; esac
       done
       if [ -z "$remaining" ]; then
-        echo "semantic-update: credit exhausted on every account tried ($tried); nothing submitted" >&2; return 5
+        echo "semantic-update: every account tried is out of credit or rejected its key ($why); nothing submitted" >&2; return 5
       fi
       pick="$(node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" pick --usd "$API_CALL_BUDGET" --only "$remaining")"
       case "$pick" in
         *'"verdict":"PROCEED"'*) ;;
         *) if [ -n "$tried" ]; then
-             echo "semantic-update: credit exhausted on every account tried ($tried), and no other account has room ($pick); nothing submitted" >&2; return 5
+             echo "semantic-update: every account tried is out of credit or rejected its key ($why), and no other account has room ($pick); nothing submitted" >&2; return 5
            fi
            echo "semantic-update: refusing the batch: auto routing: no account has room ($pick)" >&2; return 2 ;;
       esac
@@ -413,17 +413,20 @@ batch_submit() {
     rc=0
     node "$BATCH_CLIENT" submit --dir "$PENDING" --prompts "$WORK/prompts" --account "$acct" \
       --model "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" --effort "$API_EFFORT" >&2 || rc=$?
-    if [ "$rc" -ne 5 ]; then
-      [ "$rc" -eq 0 ] || [ "$HIMMEL_API_ACCOUNT" != auto ] \
-        || echo "semantic-update: account $acct failed (rc $rc), not on credit; only a credit-exhausted answer tries the next account, so no other account is tried" >&2
-      return "$rc"
-    fi
+    case "$rc" in
+      5) what="credit exhausted" ;;
+      6) what="API key rejected" ;;
+      *) [ "$rc" -eq 0 ] || [ "$HIMMEL_API_ACCOUNT" != auto ] \
+           || echo "semantic-update: account $acct failed (rc $rc), not on credit or its key; only a credit-exhausted or rejected-key answer tries the next account, so no other account is tried" >&2
+         return "$rc" ;;
+    esac
     HIMMEL_API_ACCOUNT="$acct" node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" exhausted >/dev/null 2>&1 \
-      || echo "semantic-update: account $acct credit exhausted, but the marker was not saved" >&2
+      || echo "semantic-update: account $acct $what, but the marker was not saved" >&2
     tried="${tried:+$tried }$acct"
-    echo "semantic-update: account $acct credit exhausted (tried: $tried)" >&2
+    why="${why:+$why, }$acct $what"
+    echo "semantic-update: account $acct $what (tried: $tried)" >&2
     if [ "$HIMMEL_API_ACCOUNT" = auto ]; then continue; fi
-    echo "semantic-update: credit exhausted on every account tried ($tried); nothing submitted" >&2
+    echo "semantic-update: every account tried is out of credit or rejected its key ($why); nothing submitted" >&2
     return 5
   done
 }

@@ -974,7 +974,13 @@ if (cmd === 'submit') {
   const ids = readdirSync(o.prompts).filter((f) => f.endsWith('.txt')).map((f) => f.slice(0, -4));
   log(`submit account=${o.account} prompts=${ids.length} model=${o.model} effort=${o.effort}`);
   if ((process.env.BATCH_STUB_EXHAUSTED || '').split(',').includes(o.account)) { console.error('semantic-batch: credit exhausted (HTTP 400)'); process.exit(5); }
-  if ((process.env.BATCH_STUB_FAIL || '').split(',').includes(o.account)) { console.error('semantic-batch: HTTP 401 invalid x-api-key'); process.exit(4); }
+  // the client's rejected-key answer: exit 6, with the real 401 body of the 2026-11-07 publish log (403 on request)
+  if ((process.env.BATCH_STUB_REJECTED || '').split(',').includes(o.account)) {
+    const st = process.env.BATCH_STUB_REJECT_STATUS || '401';
+    console.error(`semantic-batch: API key rejected (HTTP ${st}): {"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"},"request_id":"req_011CgoVv2iSXcDgSjk3R5rLm"}`);
+    process.exit(6);
+  }
+  if ((process.env.BATCH_STUB_FAIL || '').split(',').includes(o.account)) { console.error(`semantic-batch: ${process.env.BATCH_STUB_FAIL_MSG || 'HTTP 503: overloaded'}`); process.exit(3); }
   mkdirSync(o.dir, { recursive: true });
   // as the real client: the shim's chunk-body key sidecars ride in batch.json
   const bodies = {};
@@ -1153,14 +1159,47 @@ echo "T88: every account exhausted: each is tried once, the failure names them a
 C79="$REPO/c79"; new_corpus "$C79"; batch_reset
 out=$(ACCT=auto BATCH_STUB_EXHAUSTED=A,B,C GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t79 --corpus-root "$C79" --corpus-class himmel-code --backend claude-api); rc=$?
 [ "$rc" -eq 2 ] && [ "$(batch_accounts)" = "A B C " ] && [ ! -e "$C79/graphify-out/semantic-batch" ] \
-  && [[ "$out" == *"credit exhausted on every account tried (A B C)"* ]] && [[ "$out" == *"submitting the batch failed (rc 5)"* ]] \
+  && [[ "$out" == *"every account tried is out of credit or rejected its key (A credit exhausted, B credit exhausted, C credit exhausted)"* ]] && [[ "$out" == *"submitting the batch failed (rc 5)"* ]] \
   && pass "T88 three submits, one per account, the failure names A B C, nothing pending" || fail "T88 (rc=$rc) accounts '$(batch_accounts)': $out"
 
-echo "T89: a bad key or any non-credit error does not walk the other accounts: one attempt, the rule stated"
-C80="$REPO/c80"; new_corpus "$C80"; batch_reset
-out=$(ACCT=auto BATCH_STUB_FAIL=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t80 --corpus-root "$C80" --corpus-class himmel-code --backend claude-api); rc=$?
-[ "$rc" -eq 2 ] && [ "$(batch_accounts)" = "A " ] && [ ! -s "$WS/exhausted.log" ] && [[ "$out" == *"only a credit-exhausted answer tries the next account"* ]] \
-  && pass "T89 one submit on A, no marker, the walk rule is in the log" || fail "T89 (rc=$rc) accounts '$(batch_accounts)': $out"
+echo "T89: a 5xx or a network failure does not walk the other accounts: one attempt, the rule stated"
+for t89 in 'HTTP 503: overloaded' 'network failure: TypeError'; do
+  C80="$REPO/c80"; rm -rf "$C80"; new_corpus "$C80"; batch_reset
+  out=$(ACCT=auto BATCH_STUB_FAIL=A BATCH_STUB_FAIL_MSG="$t89" GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t80 --corpus-root "$C80" --corpus-class himmel-code --backend claude-api); rc=$?
+  [ "$rc" -eq 2 ] && [ "$(batch_accounts)" = "A " ] && [ ! -s "$WS/exhausted.log" ] && [[ "$out" == *"only a credit-exhausted or rejected-key answer tries the next account"* ]] \
+    && pass "T89 ($t89) one submit on A, no marker, the walk rule is in the log" || fail "T89 ($t89) (rc=$rc) accounts '$(batch_accounts)': $out"
+done
+
+echo "T89b: auto with a rejected key (HTTP 401, then 403) on the first account walks to the next one and submits there"
+for st in 401 403; do
+  C89B="$REPO/c89b"; rm -rf "$C89B"; new_corpus "$C89B"; batch_reset
+  out=$(ACCT=auto BATCH_STUB_REJECTED=A BATCH_STUB_REJECT_STATUS="$st" GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t89b --corpus-root "$C89B" --corpus-class himmel-code --backend claude-api); rc=$?
+  [ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "A B " ] && [ "$(cat "$WS/exhausted.log" 2>/dev/null)" = "A" ] \
+    && [ "$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["account"])' "$C89B/graphify-out/semantic-batch/batch.json")" = "B" ] \
+    && [[ "$out" == *"API key rejected (HTTP $st)"* ]] && [[ "$out" == *"account A API key rejected (tried: A)"* ]] \
+    && [[ "$out" == *"retrying the batch on account B (tried: A)"* ]] \
+    && pass "T89b ($st) A marked, the one batch went to B, the rejection is logged" || fail "T89b ($st) (rc=$rc) accounts '$(batch_accounts)': $out / $(cat "$WS/exhausted.log" 2>&1)"
+done
+
+echo "T89c: a rejected key on every account: each tried once, one line names every account and why"
+C89C="$REPO/c89c"; new_corpus "$C89C"; batch_reset
+out=$(ACCT=auto BATCH_STUB_REJECTED=A,B,C GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t89c --corpus-root "$C89C" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 2 ] && [ "$(batch_accounts)" = "A B C " ] && [ ! -e "$C89C/graphify-out/semantic-batch" ] \
+  && [[ "$out" == *"every account tried is out of credit or rejected its key (A API key rejected, B API key rejected, C API key rejected); nothing submitted"* ]] \
+  && pass "T89c three submits, the failure names A B C and why, nothing pending" || fail "T89c (rc=$rc) accounts '$(batch_accounts)': $out"
+
+echo "T89d: credit on A and a rejected key on B: the walk reaches C, the case of the 2026-11-07 publish run"
+C89D="$REPO/c89d"; new_corpus "$C89D"; batch_reset
+out=$(ACCT=auto BATCH_STUB_EXHAUSTED=A BATCH_STUB_REJECTED=B GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t89d --corpus-root "$C89D" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "A B C " ] && [ "$(tr '\n' ' ' < "$WS/exhausted.log")" = "A B " ] \
+  && [ "$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["account"])' "$C89D/graphify-out/semantic-batch/batch.json")" = "C" ] \
+  && pass "T89d A and B marked, the one batch went to C" || fail "T89d (rc=$rc) accounts '$(batch_accounts)': $out"
+
+echo "T89e: a pinned account that rejects its key is not rotated: one attempt, exit 2"
+C89E="$WS/c89e"; new_corpus "$C89E"; batch_reset
+out=$(ACCT=A BATCH_STUB_REJECTED=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t89e --corpus-root "$C89E" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 2 ] && [ "$(batch_accounts)" = "A " ] && [ ! -e "$C89E/graphify-out/semantic-batch" ] && [[ "$out" == *"API key rejected (HTTP 401)"* ]] \
+  && pass "T89e one attempt on A, nothing pending" || fail "T89e (rc=$rc) accounts '$(batch_accounts)': $out"
 
 echo "T90: nothing chosen (the API lane off): no semantic call on any account, and the output says no API semantic call is made"
 C81="$WS/c81"; new_corpus "$C81"; batch_reset
@@ -1171,7 +1210,7 @@ out=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT PATH="$WS/bin:$PATH" bash "$S
 echo "T91: every account exhausted and the marker cannot be saved: still one try each, exactly A B C, under a deadline"
 C91="$REPO/c91"; new_corpus "$C91"; batch_reset
 out=$(ACCT=auto BATCH_STUB_MARKFAIL=1 BATCH_STUB_EXHAUSTED=A,B,C GRAPHIFY_STUB_CALL_CLAUDE=1 timeout 60 env HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto PATH="$WS/bin:$PATH" bash "$SCRIPT" --name t91 --corpus-root "$C91" --corpus-class himmel-code --backend claude-api 2>&1); rc=$?
-[ "$rc" -eq 2 ] && [ "$(batch_accounts)" = "A B C " ] && [[ "$out" == *"credit exhausted, but the marker was not saved"* ]] && [[ "$out" == *"credit exhausted on every account tried (A B C)"* ]] \
+[ "$rc" -eq 2 ] && [ "$(batch_accounts)" = "A B C " ] && [[ "$out" == *"credit exhausted, but the marker was not saved"* ]] && [[ "$out" == *"every account tried is out of credit or rejected its key (A credit exhausted, B credit exhausted, C credit exhausted)"* ]] \
   && pass "T91 a marker that fails to save does not repeat an account" || fail "T91 (rc=$rc) accounts '$(batch_accounts)': $out"
 
 # --- the role map (roles.json beside the account config) narrows the auto batch pick ---
