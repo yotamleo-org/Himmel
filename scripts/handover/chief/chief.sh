@@ -1794,6 +1794,46 @@ check_direction_real() {
     return 1
 }
 
+# Refuse a handover whose outgoing `## Current direction` was shortened by an earlier `next` (index
+# lines headed "OPERATOR|CHIEF <date> <who>, decision(s) N[ (label)]: ") when the line beginning
+# `Full original text` is gone, names no companion file, or names one that is missing, unreadable
+# or holds nothing but its header: the successor would act on one-line readings
+# alone. A Results bullet `DIRECTION-COMPANION-LOST: <reason>` accepts the loss. The companions
+# are resolved beside the outgoing doc, which is its own bucket.
+# ponytail: a hand-written ruling shaped exactly like an index line, with no pointer, is refused too; the LOST bullet clears it
+# Args: outgoing doc.
+check_direction_companions() {
+    local doc="$1" base body pointer rel f bad="" listed="" found=0
+    body="$(direction_block "$doc")"
+    printf '%s\n' "$body" | grep -Eq '^(OPERATOR|CHIEF) [^(]*, decisions? [0-9]+(, [0-9]+)*( \((carry|standing|not marked binding)\))?: ' || return 0
+    awk '$0 == "## Results" { f = 1; next } f && /^## / { f = 0 } f' "$doc" \
+        | grep -Eq "^- .*DIRECTION-COMPANION-LOST:[[:space:]]*[^[:space:]<]" && return 0
+    base="$(dirname "$doc")"
+    pointer="$(printf '%s\n' "$body" | grep -m 1 '^Full original text')" || pointer=""
+    if [ -z "$pointer" ]; then
+        for f in "$base"/specs/decisions/chief-direction-*.md; do
+            [ -e "$f" ] && listed="$listed ${f#"$base"/}"
+        done
+        err "refusing to hand over: the Current direction in $doc was shortened to one-line readings, but the line beginning 'Full original text' that names the full text of every ruling is gone."
+        if [ -n "$listed" ]; then listed="the bucket holds${listed}"; else listed="the bucket holds no chief-direction file, so the full text is lost"; fi
+        err "  repair: put the 'Full original text' line back in the block, naming the companion files ($listed), or record a Results bullet 'DIRECTION-COMPANION-LOST: <reason>' and retry"
+        return 1
+    fi
+    for rel in $(printf '%s\n' "$pointer" | grep -o 'specs/decisions/chief-direction-[A-Za-z0-9._-]*\.md'); do
+        found=1
+        if [ ! -r "$base/$rel" ]; then
+            bad="$bad $rel (missing)"
+        elif ! grep -Eqv '^(# Current direction, full text.*|[[:space:]]*)$' "$base/$rel"; then
+            bad="$bad $rel (empty)"
+        fi
+    done
+    [ "$found" -eq 1 ] || bad=" (the pointer line names no companion file)"
+    [ -n "$bad" ] || return 0
+    err "refusing to hand over: the Current direction in $doc names direction companion files that are not whole:${bad}"
+    err "  repair: restore${bad} from a snapshot or git (each holds the byte for byte text of its rulings), or record a Results bullet 'DIRECTION-COMPANION-LOST: <reason>' and retry"
+    return 1
+}
+
 # Refuse a handover whose `workers:` Live-state line carries no worker span while
 # the outgoing fleet manifest holds a non-lockless worker that holds a queue lock:
 # seeding it would hand the successor `workers: none` and relay-batch.sh no entries.
@@ -2361,6 +2401,7 @@ cmd_next() {
     check_live_line_kept priority PRIORITY-DROP "$predecessor_doc" "$predecessor_live_state" || exit 1
     check_rulings_recorded "$predecessor_doc" "$predecessor_live_state" || exit 6
     check_direction_real "$predecessor_doc" || exit 7
+    check_direction_companions "$predecessor_doc" || exit 7
     check_workers_listed "$predecessor_doc" "$predecessor_live_state" || exit 1
     check_no_orphan_pr "$predecessor_doc" || exit 8
     # The outgoing direction rides into the successor doc and the HANDOFF; the

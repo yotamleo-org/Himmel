@@ -3357,6 +3357,28 @@ check "91 the HANDOFF direction pointer names the successor doc" "$(sed -n '/^##
 check "91 the HANDOFF direction block lists the chain order from focus-chains.json" "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$h91" | grep -cF 'Chain order (focus-chains.json): 0 — CI blocker; 1 — audit tickets')" "1"
 check "91 the successor doc carries the direction block" "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$root/tester/dir91d/DEMO-nextleg-${today}C-chief.md" | grep -cF "$dir91")" "1"
 check "91 a fresh HANDOFF reports its facts-header placeholders" "$(printf '%s\n' "$out91" | grep -c 'HANDOFF still has template placeholders')" "1"
+# A Current direction that was shortened (index lines) keeps its `Full original text`
+# pointer, and every companion the pointer names is a readable, non-empty file (exit 7, with a repair line).
+sl92='OPERATOR 11-05 AB, decision 5 (carry): the reading of the ruling.'
+rel92='specs/decisions/chief-direction-2026-11-07-p1.md'
+ptr92="Full original text of every ruling below, byte for byte, is in 1 file under the bucket ($rel92). READ ALL OF THEM in your first turn."
+comp92() { mkdir -p "$root/tester/$1/specs/decisions"; printf '%s\n\n%s\n' '# Current direction, full text (part 1 of 1), byte for byte, written by chief.sh next' 'OPERATOR 11-05 AB (BINDING, decision 5): the full text of the ruling.' > "$root/tester/$1/$rel92"; }
+mk91 cmp92a "(46) other ruling" "-" "$ptr92"$'\n\n'"$sl92"; comp92 cmp92a; run91 cmp92a
+check "9502 a shortened direction with its pointer and a readable companion passes" "$rc91" "0"
+mk91 cmp92b "(46) other ruling" "-" "$sl92"; run91 cmp92b
+check "9502 a shortened direction whose pointer line was deleted refuses (exit 7)" "$rc91" "7"
+check "9502 the pointer refusal names the pointer line and says how to repair it" "$(printf '%s\n' "$out91" | grep -c "Full original text.*repair\|repair.*Full original text")" "1"
+check "9502 the pointer refusal writes no successor doc" "$([ -f "$root/tester/cmp92b/DEMO-nextleg-${today}C-chief.md" ] && echo yes || echo no)" "no"
+mk91 cmp92c "(46) other ruling" "-" "$ptr92"$'\n\n'"$sl92"; comp92 cmp92c; : > "$root/tester/cmp92c/$rel92"; run91 cmp92c
+check "9502 a companion emptied in place refuses (exit 7)" "$rc91" "7"
+check "9502 the empty-companion refusal names the file" "$(printf '%s\n' "$out91" | grep -cF "$rel92 (empty)")" "2"
+mk91 cmp92d "(46) other ruling" "-" "$ptr92"$'\n\n'"$sl92"; comp92 cmp92d; printf '# Current direction, full text (part 1 of 1), byte for byte, written by chief.sh next\n\n' > "$root/tester/cmp92d/$rel92"; run91 cmp92d
+check "9502 a companion holding only its header line refuses (exit 7)" "$rc91" "7"
+mk91 cmp92e "(46) other ruling" "-" "$ptr92"$'\n\n'"$sl92"; run91 cmp92e
+check "9502 a missing companion refuses (exit 7)" "$rc91" "7"
+check "9502 the missing-companion refusal prints a repair line naming the file" "$(printf '%s\n' "$out91" | grep -c "repair:.*$rel92")" "1"
+mk91 cmp92f "(46) other ruling" "- 10:00 LIVE — DIRECTION-COMPANION-LOST: $rel92 deleted by hand, the readings stay" "$ptr92"$'\n\n'"$sl92"; run91 cmp92f
+check "9502 a recorded DIRECTION-COMPANION-LOST bullet lets a missing companion pass" "$rc91" "0"
 mk91 hdr91 "(46) other ruling" "-" "$dir91"
 cat > "$root/tester/hdr91/DEMO-nextleg-${today}B-chief-HANDOFF.md" <<'HDR'
 # DF → DG handoff state

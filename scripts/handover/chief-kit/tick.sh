@@ -508,6 +508,9 @@ the whole `## Live state` section over LIVESTATE_BUDGET_BYTES (12000): keep only
 open workers and the last GO there, shift history goes to specs/history/.
 `ACTION doc-over-read-limit=<bytes>/<limit>` flags the WHOLE doc over DOC_READ_BUDGET_BYTES
 (48000, a conservative byte bound for the 25,000-token Read limit).
+`ACTION direction-companions-unread=<unread>/<named>` flags the chief transcript (found by its custom
+title, the doc stem) with no Read of a companion the `Full original text` line names; silent with no
+pointer line or no transcript found.
 
 --burn adds a per-worker context-burn field (first-turn/avg-ctx, via
 scripts/lanes/worker-burn.sh) for every doc in --workers. OPT-IN because it scans
@@ -2751,12 +2754,30 @@ case "$livestate_budget" in ''|*[!0-9]*) livestate_budget=12000 ;; esac
 # the whole doc against the Read limit (25,000 tokens; a chief.sh next successor of 48,372 bytes
 # was read whole in one Read, so 48000 bytes is a conservative bound), not only the Live state
 doc_bytes=0
+dc_total=0
+dc_unread=""
+dc_unread_n=0
 doc_read_budget="${DOC_READ_BUDGET_BYTES:-48000}"
 case "$doc_read_budget" in ''|*[!0-9]*) doc_read_budget=48000 ;; esac
 if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     doc_bytes="$(wc -c < "$console_doc" | tr -d '[:space:]')"
     handoff_file="${console_doc%.md}-HANDOFF.md"
     [ ! -f "$handoff_file" ] || handoff_bytes="$(wc -c < "$handoff_file" | tr -d '[:space:]')"
+    # The direction companions the doc's `Full original text` line names that the chief's own
+    # transcript (found by its custom title, the doc stem) has no Read of. No pointer, no companion path or no
+    # transcript found counts none: a tick never guesses.
+    dc_ptr="$(awk '$0 == "## Current direction" { f = 1; next } f && /^## / { exit } f && /^Full original text/ { print; exit }' "$console_doc")"
+    if [ -n "$dc_ptr" ]; then
+        dc_rels="$(grep -o 'specs/decisions/chief-direction-[A-Za-z0-9._-]*\.md' <<< "$dc_ptr")" || dc_rels=""  # swallow-ok: grep exits 1 on a pointer line naming no file; the empty list counts none
+        dc_stem="${console_doc##*/}"
+        tick_title_newest "${dc_stem%.md}"
+        if [ -n "$dc_rels" ] && [ -n "$tick_title_hit" ]; then
+            while IFS= read -r dc_rel; do
+                dc_total=$((dc_total + 1))
+                awk -v rel="$dc_rel" 'index($0, "\"name\":\"Read\"") && index($0, rel) { f = 1 } END { exit !f }' "$tick_title_hit" 2>/dev/null || { dc_unread="$dc_unread $dc_rel"; dc_unread_n=$((dc_unread_n + 1)); }  # swallow-ok: no Read of this file in the transcript is the thing counted
+            done <<< "$dc_rels"
+        fi
+    fi
     decisions_bytes="$(printf '%s\n' "$live_state_body" | grep -m1 '^decisions:' | tr -d '\n' | wc -c | tr -d '[:space:]')"
     # counted from the doc, heading and trailing blank lines included: $live_state_body came through a command substitution, which drops them
     livestate_bytes="$(LC_ALL=C awk '$0 == "## Live state" { f = 1; n = length($0) + 1; next } f && /^## / { exit } f { n += length($0) + 1 } END { print n + 0 }' "$console_doc")"
@@ -3869,6 +3890,9 @@ else
     fi
     if [ "$livestate_bytes" -gt "$livestate_budget" ]; then
         printf 'ACTION livestate-over-budget=%s/%s: keep only the open workers and the last GO in the Live state; move shift history verbatim to %q (chief-sections/live-state.md)\n' "$livestate_bytes" "$livestate_budget" "${console_doc%/*}/specs/history/chief-live-state-${console_doc##*/}"
+    fi
+    if [ -n "$dc_unread" ]; then
+        printf 'ACTION direction-companions-unread=%s/%s: Read the direction companion files now, in the bucket of %q:%s (the Current direction is one-line readings; the full text of every ruling is only in them)\n' "$dc_unread_n" "$dc_total" "$console_doc" "$dc_unread"
     fi
     if [ "$doc_bytes" -gt "$doc_read_budget" ]; then
         printf 'ACTION doc-over-read-limit=%s/%s: the whole doc will not read in one Read (25k tokens); move Results and queue and tracker history verbatim to %q (Current direction is shortened only by chief.sh next, never by hand)\n' "$doc_bytes" "$doc_read_budget" "${console_doc%/*}/specs/decisions/chief-history-$(date +%F).md"
