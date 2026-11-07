@@ -2318,3 +2318,75 @@ test('resolveProfile hides the skills the chief never invokes as user-invocable-
   assert.equal(worker.skillOverrides.pptx, 'name-only');
   assert.ok(!Object.values(worker.skillOverrides).includes('user-invocable-only'));
 });
+
+// ── capability tags and chiefAllow ───────────
+// Every himmel-script rule the registry holds names the capability it grants, so a
+// later task can switch a capability off. The chief profile renders chiefAllow the
+// way a worker renders gateAllow.
+const CAPABILITIES = ['go', 'merge', 'ship', 'fleet', 'release', 'infra', 'housekeeping'];
+const CHIEF_RULES = {
+  'Bash(bash scripts/handover/chief-kit/go.sh:*)': 'go',
+  'Bash(bash scripts/handover/chief-kit/ready-check.sh:*)': 'go',
+  'Bash(bash scripts/handover/chief-kit/ready-go.sh:*)': 'go',
+  'Bash(bash scripts/handover/merge-on-green.sh:*)': 'merge',
+  'Bash(bash scripts/handover/merge-fork-pr.sh:*)': 'merge',
+};
+
+test('an untagged gate rule fails validation', () => {
+  assert.deepEqual(validateRegistry(REG), [], 'the shipped registry validates clean');
+  for (const list of ['gateAllow', 'vmLaunchAllow', 'chiefAllow']) {
+    assert.ok(REG[list]?.length > 0, `anti-vacuity: the registry holds a ${list} list`);
+    const rule = REG[list][0];
+    assert.ok(CAPABILITIES.includes(REG.ruleCapabilities?.[rule]), `${rule} carries a capability`);
+    const untagged = structuredClone(REG);
+    delete untagged.ruleCapabilities[rule];
+    assert.ok(validateRegistry(untagged).some((e) => e.includes('capability') && e.includes(JSON.stringify(rule))), `${list}: an untagged rule is refused`);
+    const wrongTag = structuredClone(REG);
+    wrongTag.ruleCapabilities[rule] = 'everything';
+    assert.ok(validateRegistry(wrongTag).some((e) => e.includes('capability') && e.includes(JSON.stringify(rule))), `${list}: an unknown capability is refused`);
+  }
+  const noMap = structuredClone(REG);
+  delete noMap.ruleCapabilities;
+  assert.ok(validateRegistry(noMap).some((e) => e.includes('ruleCapabilities')), 'a registry with no tag map is refused');
+});
+
+test('the chief profile renders chiefAllow', () => {
+  assert.deepEqual(REG.chiefAllow, Object.keys(CHIEF_RULES), 'the chief holds exactly its go and merge rules');
+  for (const [rule, capability] of Object.entries(CHIEF_RULES)) assert.equal(REG.ruleCapabilities[rule], capability, rule);
+  for (const name of ['chief', 'console']) {
+    // the chief lists himmel-bus, so its tool allows follow the chief's own rules
+    assert.deepEqual(resolveProfile(REG, name, { installed: [] }).permissions.allow, [...REG.chiefAllow, ...BUS_TOOL_ALLOW], name);
+  }
+  for (const name of [...WORKER_SESSION_PROFILES, 'console-judge', 'release-manager', 'bare']) {
+    const allow = resolveProfile(REG, name, { installed: [] }).permissions?.allow ?? [];
+    assert.deepEqual(allow.filter((r) => REG.chiefAllow.includes(r)), [], `${name} gets no chief rule`);
+  }
+  const stripped = structuredClone(REG);
+  delete stripped.chiefAllow;
+  assert.ok(validateRegistry(stripped).some((e) => e.includes('chiefAllow')), 'the chief profile opt-in requires the list');
+});
+
+for (const [shape, rule] of [
+  ['a directory glob', 'Bash(bash scripts/handover/chief-kit/*)'],
+  ['a different chief-kit script', 'Bash(bash scripts/handover/chief-kit/auto-go.sh:*)'],
+  ['an absolute go path', 'Bash(bash /home/u/himmel/scripts/handover/chief-kit/go.sh:*)'],
+  ['the anchor variable form', 'Bash(bash "$HIMMEL_REPO/scripts/handover/chief-kit/go.sh":*)'],
+  ['a timeout wrapper', 'Bash(timeout 90 bash scripts/handover/chief-kit/ready-check.sh:*)'],
+  ['a gh merge', 'Bash(gh pr merge:*)'],
+  ['a traversal', 'Bash(bash scripts/handover/chief-kit/../merge-on-green.sh:*)'],
+]) {
+  test(`chiefAllow rejects ${shape}`, () => {
+    const registry = structuredClone(REG);
+    registry.chiefAllow = [rule];
+    registry.ruleCapabilities[rule] = 'go';
+    assert.ok(validateRegistry(registry).some((e) => e.includes('chiefAllow')), rule);
+  });
+}
+
+test('chiefAllow is restricted to the chief profile', () => {
+  const registry = structuredClone(REG);
+  registry.profiles['worker-impl'].chiefAllow = true;
+  assert.ok(validateRegistry(registry).some((e) => e.includes('chiefAllow')));
+  registry.profiles['worker-impl'].chiefAllow = 'yes';
+  assert.ok(validateRegistry(registry).some((e) => e.includes('chiefAllow')));
+});
