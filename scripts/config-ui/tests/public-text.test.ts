@@ -14,14 +14,14 @@ function internalRefs(file: string, source: string): string[] {
   return text.match(INTERNAL) ?? [];
 }
 
-const inDir = (dir: string, wanted: RegExp) =>
-  readdirSync(join(ROOT, dir)).filter((name) => wanted.test(name)).map((name) => join(ROOT, dir, name));
+const inDir = (dir: string, wanted: RegExp, recursive = true) =>
+  readdirSync(join(ROOT, dir), { recursive, encoding: "utf8" }).filter((name) => wanted.test(name)).map((name) => join(ROOT, dir, name));
 const uiSources = () => [
   ...inDir("public", /\.(js|html)$/),
-  ...inDir("agui-web", /\.html$/),
+  ...inDir("agui-web", /\.html$/, false),
   ...inDir("agui-web/src", /\.(ts|tsx)$/),
   ...inDir("agui", /\.ts$/),
-  ...inDir(".", /\.ts$/),
+  ...inDir(".", /\.ts$/, false),
 ];
 
 test("the check catches a planted reference of each kind, in code and in HTML, and not in a comment", () => {
