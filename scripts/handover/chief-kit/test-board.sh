@@ -395,7 +395,6 @@ contains 'merged PRs this shift are listed in the archive' "$(cat "$B/chief-boar
 run --json "$W/fp-board.json" >/dev/null
 contains 'the tick fingerprint is stored in the board JSON for tick.sh board=' "$(cat "$W/fp-board.json")" '"board_fp": "deadbeefdeadbeef"'
 contains 'the page has a name title, not a summary' "$html" '<title>Supervisor Session Board</title>'
-contains 'the page themes for dark mode' "$html" 'prefers-color-scheme: dark'
 
 # --- tick input: the chief's own arm (absolute worker docs), no token, no heartbeat
 argv="$(cat "$W/argv.log" 2>/dev/null)"
@@ -1422,7 +1421,7 @@ lacks 'overdue-classes html: an unreadable ladder renders no panel' "$(cat "$CL/
 # --- the operator board is byte-identical: golden of the base render on the main fixture
 # (html + archive, the minute stamp normalised, a hermetic env: no operator ledger, HOME or
 # handover root). A deliberate operator-board change updates GOLDEN_OPERATOR_SHA.
-GOLDEN_OPERATOR_SHA='451b8f483c54dafb760ec144a3cb61f7dc19a56fe82a8b9faf2a17e5400f3744'  # the page carries no fingerprint metas (they live in board.json)
+GOLDEN_OPERATOR_SHA='c25fbd3ecac7e846a3ffad252d6c722554de3baadec7f40fc3b22b8e1b591f22'  # the page carries no fingerprint metas (they live in board.json); the dark default made the page and the archive dark
 mkdir -p "$W/home"
 ( unset HANDOVER_DIR CR_TUNE_DIR; export HOME="$W/home"; run --out "$W/golden.html" >/dev/null )
 golden_sha="$(cat "$W/golden.html" "$W/golden-archive.html" | sed 's/rendered [0-9-]* [0-9:]*/rendered STAMP/' | sha256sum | cut -d' ' -f1)"
@@ -1548,6 +1547,37 @@ lacks 'adopted-repo chief: no angle-bracket placeholder text in the board' "$ado
 lacks 'adopted-repo chief: no unfilled @token@ in the board' "$adopted_html" '@PROJECT@'
 contains 'adopted-repo chief: PR lookups run in the adopted project, not the himmel checkout' "$(cat "$W/adopted-gh-cwd.log")" "$(cd "$AP" && pwd -P)"
 same 'board.mjs leaves a pre-seeded sidecar byte-identical' "$(cksum < "$AB/ADOPT-nextleg-2026-01-01A-chief.sections.json" 2>/dev/null)" "$sections_before"
+
+# --- every page opens dark with no saved choice, whatever the system preference says
+cat > "$W/dark-check.mjs" <<'JS'
+// dark-check.mjs <page.html> <bg var> <text var> <muted var>: DARK-OK when the page's first :root rule (no saved
+// choice) is a dark palette with readable text (WCAG contrast 4.5 for text and muted), no prefers-color-scheme: light
+// query flips it back, and a saved light choice still has its [data-theme="light"] rule.
+import { readFileSync } from 'node:fs';
+const [file, bgV, textV, mutedV] = process.argv.slice(2);
+const html = readFileSync(file, 'utf8');
+const root = /:root\s*\{([^}]*)\}/.exec(html);
+const val = (v) => { const m = root && new RegExp(`${v}\\s*:\\s*(#[0-9a-fA-F]{3,6})`).exec(root[1]); return m && m[1]; };
+const lum = (h) => { h = h.slice(1); if (h.length === 3) h = [...h].map((c) => c + c).join('');
+    const c = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+const [bg, text, muted] = [bgV, textV, mutedV].map(val);
+const why = [];
+if (!bg || !text || !muted) why.push(`missing ${[bgV, textV, mutedV].filter((v) => !val(v)).join(',')} in the first :root rule`);
+else {
+    if (lum(bg) > 0.1) why.push(`background ${bg} is light`);
+    if (ratio(text, bg) < 4.5) why.push(`text ${text} on ${bg} is ${ratio(text, bg).toFixed(2)}`);
+    if (ratio(muted, bg) < 4.5) why.push(`muted ${muted} on ${bg} is ${ratio(muted, bg).toFixed(2)}`);
+}
+if (/prefers-color-scheme\s*:\s*light/.test(html)) why.push('a prefers-color-scheme: light query flips the page');
+if (!/:root\[data-theme="light"\]/.test(html)) why.push('no :root[data-theme="light"] rule');
+console.log(why.length ? `DARK-BAD ${why.join('; ')}` : `DARK-OK bg=${bg} text=${ratio(text, bg).toFixed(1)} muted=${ratio(muted, bg).toFixed(1)}`);
+JS
+contains 'the operator board opens dark with readable text and a light choice still works' "$(node "$W/dark-check.mjs" "$board" --bg --text --muted)" 'DARK-OK'
+contains 'the user shift board opens dark with readable text and a light choice still works' "$(node "$W/dark-check.mjs" "$W/user-board.html" --bg --text --muted)" 'DARK-OK'
+lacks 'the operator board no longer follows a light system preference' "$(cat "$board")" 'prefers-color-scheme: dark'
+contains 'the archive page asks for a dark colour scheme' "$(cat "$B/chief-board-archive.html")" '<meta name="color-scheme" content="dark">'
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-board.sh'

@@ -123,6 +123,31 @@ printf '<!-- edited after the critic -->' >> "$T/elsewhere/renamed.html"
 got="$(read_marker "$T/elsewhere/renamed.html")"
 has "a copy edited after the critic read it is refused" "has no seal for the bytes of renamed.html" "$got"
 
+echo "== dark by default =="
+# The first :root rule is what a reader sees with no choice and any system preference; print alone goes back to light.
+DARK="$T/dark-check.ts"
+cat > "$DARK" <<'TS'
+import { readFileSync } from "node:fs";
+const html = readFileSync(process.argv[2], "utf8");
+const root = /:root\s*\{([^}]*)\}/.exec(html)?.[1] ?? "";
+const val = (v: string) => new RegExp(`${v}\\s*:\\s*(#[0-9a-fA-F]{6})`).exec(root)?.[1];
+const lum = (h: string) => { const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+const ratio = (a: string, b: string) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+const [bg, ink, mute, blue] = ["--bg", "--ink", "--mute", "--blue"].map(val);
+const why: string[] = [];
+if (!bg || !ink || !mute || !blue) why.push("the first :root rule lacks a palette");
+else {
+  if (lum(bg) > 0.1) why.push(`background ${bg} is light`);
+  for (const [n, c] of [["ink", ink], ["mute", mute], ["blue", blue]] as const) if (ratio(c, bg) < 4.5) why.push(`${n} ${c} on ${bg} is ${ratio(c, bg).toFixed(2)}`);
+}
+if (/prefers-color-scheme/.test(html)) why.push("the page follows a system preference");
+if (!/@media print\{:root\{[^}]*--bg:#fff/.test(html)) why.push("print does not go back to a white page");
+console.log(why.length ? `DARK-BAD ${why.join("; ")}` : "DARK-OK");
+TS
+gen "$T/plain.md" "$T/dark.html" >/dev/null
+got="$(bun "$DARK" "$T/dark.html" 2>&1)"
+[ "$got" = "DARK-OK" ] && pass "the page is dark with readable text and a light print" || fail "the page is dark with readable text and a light print" "$got"
+
 echo
 printf 'passed=%d failed=%d\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

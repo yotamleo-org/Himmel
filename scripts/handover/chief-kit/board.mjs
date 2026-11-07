@@ -1070,7 +1070,7 @@ const overdueClassesSection = (() => {
 })();
 
 const archiveHtml = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>Supervisor Session Board — archive</title></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="color-scheme" content="dark"><title>Supervisor Session Board — archive</title><style>:root { color-scheme:dark; }</style></head>
 <body>
 <h1>Supervisor Session Board — archive</h1>
 <p>${safe(consoleName)} · rendered ${stamp} · local only, never published · one item per line: grep it</p>
@@ -1093,9 +1093,8 @@ const html = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Supervisor Session Board</title>
 <style>
-:root { --bg:#f6f7f9; --surface:#fff; --text:#1c2128; --muted:#5b6672; --line:#d9dee4; --accent:#2457c5; --ok:#1a7f37; --warn:#9a6700; --bad:#cf222e; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0f1318; --surface:#181d24; --text:#e6e9ed; --muted:#96a1ad; --line:#2b333d; --accent:#7aa2ff; --ok:#3fb950; --warn:#d29922; --bad:#ff7b72; } }
-:root[data-theme="dark"] { --bg:#0f1318; --surface:#181d24; --text:#e6e9ed; --muted:#96a1ad; --line:#2b333d; --accent:#7aa2ff; --ok:#3fb950; --warn:#d29922; --bad:#ff7b72; }
+:root { --bg:#0f1318; --surface:#181d24; --text:#e6e9ed; --muted:#96a1ad; --line:#2b333d; --accent:#7aa2ff; --ok:#3fb950; --warn:#d29922; --bad:#ff7b72; color-scheme:dark; }
+:root[data-theme="light"] { --bg:#f6f7f9; --surface:#fff; --text:#1c2128; --muted:#5b6672; --line:#d9dee4; --accent:#2457c5; --ok:#1a7f37; --warn:#9a6700; --bad:#cf222e; color-scheme:light; }
 * { box-sizing: border-box; }
 body { margin:0; padding:16px; background:var(--bg); color:var(--text); font:15px/1.45 system-ui, sans-serif; overflow-wrap:anywhere; }
 main { max-width:1100px; margin:0 auto; }

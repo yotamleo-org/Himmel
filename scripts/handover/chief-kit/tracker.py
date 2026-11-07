@@ -1551,10 +1551,9 @@ VERSION_TEMPLATE = """<!doctype html><html lang="en"><head><meta charset="utf-8"
 <title>{v} Tracker</title>
 <meta name="himmel-focus" content="{v} {vfp}">
 <style>
-:root{{--bg:#f5f5f4;--panel:#fff;--fg:#1c1917;--muted:#78716c;--line:#e7e5e4;--acc:#2563eb;
+:root{{--bg:#0c0a09;--panel:#1c1917;--fg:#f5f5f4;--muted:#a8a29e;--line:#44403c;--acc:#60a5fa;color-scheme:dark;
 --p0:#dc2626;--p1:#ea580c;--p2:#ca8a04;--p3:#16a34a;--p4:#0891b2;--p5:#2563eb;--p6:#7c3aed;--p7:#a8a29e}}
-@media (prefers-color-scheme:dark){{:root:not([data-theme="light"]){{--bg:#0c0a09;--panel:#1c1917;--fg:#f5f5f4;--muted:#a8a29e;--line:#44403c;--acc:#60a5fa}}}}
-:root[data-theme="dark"]{{--bg:#0c0a09;--panel:#1c1917;--fg:#f5f5f4;--muted:#a8a29e;--line:#44403c;--acc:#60a5fa}}
+:root[data-theme="light"]{{--bg:#f5f5f4;--panel:#fff;--fg:#1c1917;--muted:#78716c;--line:#e7e5e4;--acc:#2563eb;color-scheme:light}}
 *{{box-sizing:border-box}}
 body{{background:var(--bg);color:var(--fg);font:13px/1.45 system-ui,sans-serif;margin:0;padding:16px}}
 h1{{font-size:20px;margin:0 0 4px}} .sub{{color:var(--muted);margin-bottom:10px}} .sh{{font-size:14px;margin:0 0 8px}}
@@ -1897,8 +1896,6 @@ TEMPLATE = r'''<title>Himmel Roadmap</title>
 --surface:var(--panel);--ink:var(--fg);--muted:var(--dim);--live:var(--prog);--warn:var(--fail);--ldn:var(--line);--bar:var(--dim);--scrim:rgba(0,0,0,.45);
 --f-serif:"IBM Plex Sans",system-ui,sans-serif;--f-sans:"IBM Plex Sans",system-ui,sans-serif;--f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
 --ease:cubic-bezier(.2,.7,.2,1);color-scheme:dark}
-@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#f5f4f0;--panel:#ecebe6;--line:#d6d4cc;--fg:#1f2326;--dim:#5f666d;--accent:#365a7d;
---todo:#7a8087;--prog:#8a5d0e;--rev:#365a7d;--ci:#6a4c9c;--done:#2f6b3f;--fail:#a3392b;--scrim:rgba(26,26,23,.28);color-scheme:light}}
 :root[data-theme="light"]{--bg:#f5f4f0;--panel:#ecebe6;--line:#d6d4cc;--fg:#1f2326;--dim:#5f666d;--accent:#365a7d;
 --todo:#7a8087;--prog:#8a5d0e;--rev:#365a7d;--ci:#6a4c9c;--done:#2f6b3f;--fail:#a3392b;--scrim:rgba(26,26,23,.28);color-scheme:light}
 *{box-sizing:border-box}
