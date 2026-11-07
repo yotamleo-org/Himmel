@@ -576,8 +576,10 @@ test("J2. the AG-UI rail's Docs link opens the public site in a new tab, no sess
   await expect(docs).toHaveAttribute("target", "_blank");
   await expect(docs).toHaveAttribute("rel", "noopener noreferrer");
   await expect(page.locator(".rail .pages a").first()).not.toHaveAttribute("target", /./);
-  const panel = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--panel").trim());
-  expect(panel).toMatch(/^#(fff|ffffff)$/i);
+  const panelVar = () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--panel").trim());
+  expect(await panelVar()).toMatch(/^#121b23$/i);
+  await page.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
+  expect(await panelVar()).toMatch(/^#(fff|ffffff)$/i);
 });
 
 // beside the fixture's chief and worker: a second worker waiting for GO with two subagents, and a judge, both under the
