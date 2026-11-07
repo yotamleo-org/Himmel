@@ -496,6 +496,45 @@ exit 1`);
   assert.deepEqual(searched(), ['HIMMEL-9001', 'HIMMEL-9002', 'HIMMEL-9003']);
 });
 
+test('CLI: an empty local answer from a shallow or stale main ref is unknown, so the key is still searched on GitHub', () => {
+  const { dir, bucket, jira } = setup();
+  const log = join(dir, 'gh.log');
+  const gh = stub(dir, 'gh-shallow', `
+printf '%s\\n' "$*" >> '${log}'
+if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; then echo '[]'; exit 0; fi
+if [ "$1 $2" = "pr list" ]; then exit 0; fi
+exit 1`);
+  const run = (g) => spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9001'], {
+    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh, CLOUD_ROUTE_GIT_DIR: g, CLOUD_ROUTE_MAIN_REF: 'main' },
+  });
+  const searched = () => readFileSync(log, 'utf8').split('\n').filter((l) => l.includes('in:title,body')).length;
+  const git = (g, env, ...a) => spawnSync('git', ['-C', g, '-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...a], { encoding: 'utf8', env: { ...process.env, ...env } });
+  // a shallow clone whose boundary hides the commit that names the key
+  const src = join(dir, 'src-repo');
+  mkdirSync(src, { recursive: true });
+  git(src, {}, 'init', '-q', '-b', 'main');
+  git(src, {}, 'commit', '-q', '--allow-empty', '-m', 'fix(x): [HIMMEL-9001] an old slice (#1)');
+  git(src, {}, 'commit', '-q', '--allow-empty', '-m', 'fix(x): an unrelated change (#2)');
+  const shallow = join(dir, 'shallow-repo');
+  assert.equal(spawnSync('git', ['clone', '-q', '--depth', '1', `file://${src}`, shallow], { encoding: 'utf8' }).status, 0);
+  writeFileSync(log, '');
+  assert.equal(run(shallow).status, 0);
+  assert.equal(searched(), 1, 'a shallow ref cannot show the key is absent');
+  // a whole ref whose tip is older than the 14-day window
+  const old = join(dir, 'old-repo');
+  mkdirSync(old, { recursive: true });
+  git(old, {}, 'init', '-q', '-b', 'main');
+  git(old, { GIT_COMMITTER_DATE: '2020-01-01T00:00:00Z', GIT_AUTHOR_DATE: '2020-01-01T00:00:00Z' }, 'commit', '-q', '--allow-empty', '-m', 'fix(x): an unrelated change (#3)');
+  writeFileSync(log, '');
+  assert.equal(run(old).status, 0);
+  assert.equal(searched(), 1, 'a ref last updated before the window cannot show the key is absent');
+  // control: a whole, fresh ref that does not name the key skips the search
+  const fresh = mainRepo(dir, 'fix(x): an unrelated change (#4)');
+  writeFileSync(log, '');
+  assert.equal(run(fresh).status, 0);
+  assert.equal(searched(), 0, 'a whole, fresh ref that does not name the key still skips the search');
+});
+
 test('CLI: a ticket whose files a merged PR touched prints VERIFY-LOCAL with the PR number and writes no brief', () => {
   const { dir, bucket, jira } = setup();
   const gh = stub(dir, 'gh3', `

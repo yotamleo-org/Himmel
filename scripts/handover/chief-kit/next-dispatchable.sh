@@ -702,13 +702,32 @@ except OSError as e:
     status_unreadable = True
     print('# warn: %s is unreadable (%s): merged contract rows are unknown: a To Do ticket with a merge on main is withheld, but a done-pending or partially merged In Progress ticket may still be listed as RESUME' % (os.path.join(os.path.dirname(workers.rstrip('/')), 'status-events.jsonl'), e.strerror or e))
 
+ref_proves_absence_memo = []
+
+def ref_proves_absence():
+    # An empty `git log --grep` proves a key is absent only from a ref whose history is whole and recent: a shallow clone stops at its
+    # boundary, and a ref last updated more than the 14-day window ago lacks every merge since. Either reads as unknown, never as "no".
+    if not ref_proves_absence_memo:
+        ok = False
+        try:
+            shallow = subprocess.run(['git', '-C', os.environ['ND_GIT_DIR'], 'rev-parse', '--is-shallow-repository'], capture_output=True, text=True, timeout=60, check=True).stdout.strip()
+            tip = subprocess.run(['git', '-C', os.environ['ND_GIT_DIR'], 'log', '-1', '--format=%ct', os.environ['ND_MAIN_REF']], capture_output=True, text=True, timeout=60, check=True).stdout.strip()
+            ok = shallow == 'false' and time.time() - int(tip) <= 14 * 86400
+        except (OSError, ValueError, subprocess.SubprocessError):
+            ok = False
+        ref_proves_absence_memo.append(ok)
+    return ref_proves_absence_memo[0]
+
 def cited_on_main(key, subject_only=False):
     # True: the local main ref carries a commit citing [KEY] (in its message, or in its subject only when subject_only: a squash
-    # subject is the PR title). False: it does not. None: unknown (no such ref, git failed or timed out).
+    # subject is the PR title). False: it does not, and the ref's history can show that. None: unknown (no such ref, git failed or
+    # timed out, a shallow or stale ref with no match).
     try:
         r = subprocess.run(['git', '-C', os.environ['ND_GIT_DIR'], 'log', os.environ['ND_MAIN_REF'], '--fixed-strings', '--grep=[%s]' % key, '--max-count=50', '--format=%s'],
                            capture_output=True, text=True, timeout=60, check=True)
-        return any('[%s]' % key in s for s in r.stdout.splitlines()) if subject_only else bool(r.stdout.strip())
+        if any('[%s]' % key in s for s in r.stdout.splitlines()) if subject_only else bool(r.stdout.strip()):
+            return True
+        return False if ref_proves_absence() else None
     except (OSError, subprocess.SubprocessError):
         return None
 

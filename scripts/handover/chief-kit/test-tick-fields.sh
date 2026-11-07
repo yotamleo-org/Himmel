@@ -759,7 +759,8 @@ STUB
 chmod +x "$W/ow-gh"
 # The dispatcher answers an IN CI ticket's "merged" from the main ref's commit subjects first: pin it to an empty repo, so a real
 # commit on this checkout's origin/main that names a fixture key cannot answer for it and hide the merged-PR read failure row.
-git init -q -b main "$W/ow-main" && git -C "$W/ow-main" -c user.name=t -c user.email=t@e.x -c core.hooksPath=/dev/null commit -q --allow-empty -m init
+{ git init -q -b main "$W/ow-main" && git -C "$W/ow-main" -c user.name=t -c user.email=t@e.x -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m init; } \
+    || { fail "the ow-main fixture repo could not be created"; exit 1; }
 ow_tick() { NEXT_DISPATCH_MIRROR="$OW" NEXT_DISPATCH_GH_CMD="$W/ow-gh" NEXT_DISPATCH_GIT_DIR="$W/ow-main" NEXT_DISPATCH_MAIN_REF=main bash "$SUT" 2>/dev/null; }
 ow_of() { printf '%s\n' "$1" | tr ' ' '\n' | sed -n 's/^orphans-wip=//p'; }
 mk_ow 901 "In Progress" Task

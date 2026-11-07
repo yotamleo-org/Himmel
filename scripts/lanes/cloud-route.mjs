@@ -342,14 +342,33 @@ function openPrFiles() {
   return out;
 }
 
+// Can an empty `git log --grep` on this ref show a key is absent? Only when its history is whole and recent: a shallow clone
+// stops at its boundary, and a ref last updated more than the window ago lacks every merge since. Either reads as unknown.
+const refProof = new Map();
+function refProvesAbsence(cwd, ref) {
+  const k = `${cwd}\0${ref}`;
+  if (!refProof.has(k)) {
+    let ok = false;
+    try {
+      const shallow = gitClean(['rev-parse', '--is-shallow-repository'], { cwd, encoding: 'utf8', timeout: 60000 }).trim();
+      const tip = Number(gitClean(['log', '-1', '--format=%ct', ref], { cwd, encoding: 'utf8', timeout: 60000 }).trim());
+      ok = shallow === 'false' && Number.isFinite(tip) && Date.now() / 1000 - tip <= STALE_DAYS * 86400;
+    } catch { ok = false; }
+    refProof.set(k, ok);
+  }
+  return refProof.get(k);
+}
+
 // Does the local main ref carry a commit whose message (subject and body, a squash merge keeps the PR body) names the key?
-// true / false, or null when it cannot be told (no such ref, git failed or timed out). A superset screen: a short key also
+// true; false when it does not and the ref's history can show that; null when it cannot be told (no such ref, git failed or
+// timed out, a shallow or stale ref with no match). A superset screen: a short key also
 // matches a longer one, which only costs one search that the cites test then filters.
 function citedOnMain(key) {
   try {
     const cwd = process.env.CLOUD_ROUTE_GIT_DIR || primaryCheckout();
     const ref = process.env.CLOUD_ROUTE_MAIN_REF || 'origin/main';
-    return gitClean(['log', ref, '--fixed-strings', `--grep=${key}`, '-1', '--format=%h'], { cwd, encoding: 'utf8', timeout: 60000 }).trim() !== '';
+    if (gitClean(['log', ref, '--fixed-strings', `--grep=${key}`, '-1', '--format=%h'], { cwd, encoding: 'utf8', timeout: 60000 }).trim() !== '') return true;
+    return refProvesAbsence(cwd, ref) ? false : null;
   } catch { return null; }
 }
 

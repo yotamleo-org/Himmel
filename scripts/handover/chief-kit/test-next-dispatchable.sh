@@ -2230,6 +2230,15 @@ has "a key whose only main commit cites a lookalike key ([HIMMEL-880]) is not wi
 pmn="$(NEXT_DISPATCH_GIT_DIR="$PMG" NEXT_DISPATCH_MAIN_REF=no-such-ref NEXT_DISPATCH_MIRROR="$MPM" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-dir "$WORK/pm-bad/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
 lacks "an unreadable status log and a failed git read withholds a candidate (unknown fails closed)" "$pmn" "LOCAL	HIMMEL-82"
 has "and the WARN names it" "$(printf '%s\n' "$pmn" | grep '^# WARN')" "HIMMEL-82"
+# a ref that cannot show absence is unknown, not "no": a shallow clone (its boundary hides the commit that names the first fixture key) and a ref last updated before the window
+PMS="$WORK/pm-shallow"; git clone -q --depth 1 "file://$PMG" "$PMS" || { fail "the shallow fixture clone could not be created"; printf '\n%d failure(s)\n' "$fails"; exit 1; }
+pms="$(NEXT_DISPATCH_GIT_DIR="$PMS" NEXT_DISPATCH_MAIN_REF=main NEXT_DISPATCH_MIRROR="$MPM" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-dir "$WORK/pm-bad/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
+lacks "a shallow ref with no match withholds a candidate under an unreadable status log (it cannot show absence)" "$pms" "LOCAL	HIMMEL-83"
+PMO="$WORK/pm-old"; mkdir -p "$PMO"
+{ git -C "$PMO" init -q -b main && GIT_COMMITTER_DATE=2020-01-01T00:00:00Z GIT_AUTHOR_DATE=2020-01-01T00:00:00Z git -C "$PMO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "fix(x): [HIMMEL-880] an old merge"; } \
+    || { fail "the stale fixture repo could not be created"; printf '\n%d failure(s)\n' "$fails"; exit 1; }
+pmo="$(NEXT_DISPATCH_GIT_DIR="$PMO" NEXT_DISPATCH_MAIN_REF=main NEXT_DISPATCH_MIRROR="$MPM" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-dir "$WORK/pm-bad/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
+lacks "a ref last updated before the 14-day window withholds a candidate with no match (it cannot show absence)" "$pmo" "LOCAL	HIMMEL-82"
 
 # --- (8591, C3 of 8353; permanent since 8592, C5) a core To Do ticket with no signed minerva spec lists as a DESIGN row ---
 # The jira CLI is a fixture stand-in (scripts/jira/dist is untracked, absent in CI): it answers from CG/core/<KEY> and
@@ -2605,7 +2614,9 @@ lacks "a sibling doc armed within the hour, its lock not yet taken, keeps its ti
 
 # --- merged-or-not from local git, each merged PR body read once, a rate limit named and bounded ---
 G9="$WORK/g9438"; mkdir -p "$G9"
-git -C "$G9" init -q -b main
+# the fixture must be its own repository: under a TMPDIR inside another checkout, a failed init would commit into that parent
+{ git -C "$G9" init -q -b main && [ "$(git -C "$G9" rev-parse --show-toplevel)" = "$(cd "$G9" && pwd -P)" ]; } \
+    || { fail "9438: the fixture main repo could not be created"; printf '\n%d failure(s)\n' "$fails"; exit 1; }
 git -C "$G9" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m "fix(x): [HIMMEL-9601] merged on main (#4300)" || fail "9438: fixture main"
 M9="$WORK/m9438/HIMMEL"; mkdir -p "$M9"
 git -C "$G9" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m "fix(x): an unrelated slice (#4301)" -m "Follows up [HIMMEL-9603], which is not merged by this commit." || fail "9438: fixture body mention"
