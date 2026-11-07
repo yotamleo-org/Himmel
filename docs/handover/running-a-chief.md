@@ -180,8 +180,8 @@ env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
 
 `[1m]` is appended to the model only for the 4.6 family (`claude-opus-4-6`,
 `claude-sonnet-4-6`); Opus 4.7+, Sonnet 5+, Haiku 5.5 and Fable run 1M natively
-and non-Anthropic ids (`gpt-*`, `glm-*`, anything with a `/`) never take it.
-`--autocompact` and the Opus 5.5 id need Claude Code 2.1.280 or
+and non-Anthropic ids (`gpt-*`, `glm-*`, anything with a `/`) never take it
+at all. `--autocompact` and the Opus 5.5 id need Claude Code 2.1.280 or
 newer: an armed launch on an older CLI refuses and names `claude update`
 (`/himmel-update` brings it current).
 
