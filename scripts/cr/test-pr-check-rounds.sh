@@ -242,6 +242,11 @@ if (process.argv[2] === 'comment') {
     process.exit(process.env.RECOVERY_JIRA_COMMENT_FAIL === '1' ? 1 : 0);
 }
 fs.writeFileSync(process.env.RECOVERY_JIRA_LOG + '.body', fs.readFileSync(process.argv[process.argv.indexOf('--desc-file') + 1]));
+// a CLI build from before --fu-override (dist/ is rebuilt at station update) rejects the flag.
+if (process.env.RECOVERY_JIRA_OLD === '1' && process.argv.includes('--fu-override')) {
+    console.error("error: unknown option '--fu-override'");
+    process.exit(1);
+}
 if (process.env.RECOVERY_JIRA_FAIL === '1') process.exit(1);
 console.log('Created HIMMEL-9500');
 STUB
@@ -276,6 +281,38 @@ assert_eq "$nowhy_rc" 6 "hardening recovery without fu_why fails closed"
 assert_has "$nowhy_out" "--fu-why <" "hardening recovery without fu_why names the --fu-why recovery"
 assert_eq "$(cat "$recovery_log")" "" "hardening recovery without fu_why files nothing"
 if [ -e "$recovery_git/cr-pending/recovery" ]; then pass "hardening recovery without fu_why leaves the marker pending"; else fail "hardening recovery without fu_why leaves the marker pending"; fi
+# with a valid fu_why but no named override, hardening files nothing either.
+printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-1","severity":"imp","fu_class":"hardening","fu_why":"no-check","class":"reader-allowlist","artifact":"spec","perspective":"on"}\n' \
+    "$recovery_head" > "$recovery_git/cr-critic-scores.jsonl"
+printf 'pending\n' > "$recovery_git/cr-pending/recovery"
+: > "$recovery_log"
+noov_rc=0
+noov_out="$(cd "$recovery_repo" && GH_PR_TITLE='fix: [HIMMEL-123] follow-up' \
+    RECOVERY_JIRA_LOG="$recovery_log" bash "$fx/scripts/cr/review-round.sh" defer \
+    --branch recovery --head "$recovery_head" 2>&1)" || noov_rc=$?
+assert_eq "$noov_rc" 6 "9498 hardening recovery without --fu-override fails closed"
+assert_has "$noov_out" "--fu-override <" "9498 hardening recovery without --fu-override names the flag"
+assert_eq "$(cat "$recovery_log")" "" "9498 hardening recovery without --fu-override files nothing"
+assert_lacks "$(cat "$recovery_git/cr-critic-scores.jsonl")" '"verdict":"deferred"' "9498 hardening recovery without --fu-override writes no deferral"
+if [ -e "$recovery_git/cr-pending/recovery" ]; then pass "9498 hardening recovery without --fu-override leaves the marker pending"; else fail "9498 hardening recovery without --fu-override leaves the marker pending"; fi
+noov_bad_rc=0
+(cd "$recovery_repo" && GH_PR_TITLE='fix: [HIMMEL-123] follow-up' \
+    RECOVERY_JIRA_LOG="$recovery_log" bash "$fx/scripts/cr/review-round.sh" defer \
+    --branch recovery --head "$recovery_head" --fu-override 'because I said so' >/dev/null 2>&1) || noov_bad_rc=$?
+assert_eq "$noov_bad_rc" 6 "9498 hardening recovery with an unnamed override fails closed"
+assert_eq "$(cat "$recovery_log")" "" "9498 hardening recovery with an unnamed override files nothing"
+# A CLI build from before --fu-override rejects the flag: defer fails closed with the CLI's message, once.
+: > "$recovery_log"
+old_rc=0
+old_out="$(cd "$recovery_repo" && GH_PR_TITLE='fix: [HIMMEL-123] follow-up' RECOVERY_JIRA_OLD=1 \
+    RECOVERY_JIRA_LOG="$recovery_log" bash "$fx/scripts/cr/review-round.sh" defer \
+    --branch recovery --head "$recovery_head" --fu-override decision-762 2>&1)" || old_rc=$?
+assert_eq "$old_rc" 6 "9498 an older CLI build that rejects --fu-override fails closed, it does not loop"
+assert_has "$old_out" "unknown option '--fu-override'" "9498 the older CLI's own refusal reaches the worker"
+assert_has "$old_out" "--defer-to <ticket>" "9498 the older-CLI failure names the --defer-to recovery"
+assert_eq "$(wc -l < "$recovery_log" | tr -d ' ')" 1 "9498 the older CLI is asked once"
+assert_lacks "$(cat "$recovery_git/cr-critic-scores.jsonl")" '"verdict":"deferred"' "9498 the older-CLI failure writes no deferral"
+if [ -e "$recovery_git/cr-pending/recovery" ]; then pass "9498 the older-CLI failure leaves the marker pending"; else fail "9498 the older-CLI failure leaves the marker pending"; fi
 # An invalid recorded fu_why yields to a valid supplied --fu-why.
 printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-1","severity":"imp","fu_class":"hardening","fu_why":"bogus","class":"reader-allowlist","artifact":"spec","perspective":"on"}\n' \
     "$recovery_head" > "$recovery_git/cr-critic-scores.jsonl"
@@ -284,14 +321,14 @@ printf 'pending\n' > "$recovery_git/cr-pending/recovery"
 badwhy_rc=0
 (cd "$recovery_repo" && GH_PR_TITLE='fix: [HIMMEL-123] follow-up' \
     RECOVERY_JIRA_LOG="$recovery_log" bash "$fx/scripts/cr/review-round.sh" defer \
-    --branch recovery --head "$recovery_head" --fu-why no-check >/dev/null 2>&1) || badwhy_rc=$?
+    --branch recovery --head "$recovery_head" --fu-why no-check --fu-override decision-762 >/dev/null 2>&1) || badwhy_rc=$?
 assert_eq "$badwhy_rc" 0 "hardening recovery with an invalid recorded fu_why takes the supplied --fu-why"
 assert_has "$(cat "$recovery_log")" '"--fu-why","no-check"' "invalid recorded fu_why is replaced by the supplied one"
 for recovery_spec in 'sug polish' 'imp hardening'; do
     recovery_severity="${recovery_spec%% *}"
     recovery_class="${recovery_spec#* }"
     recovery_why=()
-    if [ "$recovery_class" = hardening ]; then recovery_why=(--fu-why no-check); fi
+    if [ "$recovery_class" = hardening ]; then recovery_why=(--fu-why no-check --fu-override decision-762); fi
     printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-1","severity":"%s","fu_class":"%s","class":"reader-allowlist","artifact":"spec","perspective":"on"}\n' \
         "$recovery_head" "$recovery_severity" "$recovery_class" > "$recovery_git/cr-critic-scores.jsonl"
     printf 'pending\n' > "$recovery_git/cr-pending/recovery"
@@ -300,28 +337,49 @@ for recovery_spec in 'sug polish' 'imp hardening'; do
     recovery_out="$(cd "$recovery_repo" && GH_PR_TITLE='fix: [HIMMEL-123] follow-up [HIMMEL-456]' \
         RECOVERY_JIRA_LOG="$recovery_log" bash "$fx/scripts/cr/review-round.sh" defer \
         --branch recovery --head "$recovery_head" ${recovery_why[@]+"${recovery_why[@]}"} 2>&1)" || recovery_rc=$?
-    assert_eq "$recovery_rc" 0 "$recovery_class recovery files and dispositions without a supplied ticket"
+    assert_eq "$recovery_rc" 0 "$recovery_class recovery dispositions without a supplied ticket"
     recovery_args="$(cat "$recovery_log")"
     if [ "$recovery_class" = hardening ]; then
         assert_has "$recovery_args" '"--fu-why","no-check"' "hardening recovery passes --fu-why to the residual verb"
+        assert_has "$recovery_args" '"--fu-override","decision-762"' "9498 hardening recovery passes the named override to the residual verb"
         assert_has "$(cat "$recovery_git/cr-critic-scores.jsonl")" '"fu_why":"no-check"' "hardening recovery records fu_why on the amend"
+        assert_has "$recovery_args" '"--residual-of","HIMMEL-123"' "$recovery_class recovery uses the first PR-title key"
+        assert_has "$recovery_args" "\"--fu-class\",\"$recovery_class\"" "$recovery_class recovery delegates follow-up routing"
+        assert_has "$recovery_args" '"--class","reader-allowlist"' "$recovery_class recovery preserves the finding class"
+        assert_has "$(cat "$recovery_git/cr-critic-scores.jsonl")" '"deferred_to":"HIMMEL-9500"' "$recovery_class recovery records the created ticket"
+    else
+        # a polish Suggestion files nothing. The row is amended deferred with no ticket and the marker clears.
+        assert_eq "$recovery_args" "" "9498 polish recovery asks the residual verb for nothing"
+        assert_has "$(cat "$recovery_git/cr-critic-scores.jsonl")" '"verdict":"deferred"' "9498 polish recovery records a deferred verdict"
+        assert_has "$(cat "$recovery_git/cr-critic-scores.jsonl")" '"fu_class":"polish"' "9498 polish recovery records the polish class"
+        assert_has "$(cat "$recovery_git/cr-critic-scores.jsonl")" 'Polish finding noted in the PR body: no ticket filed' "9498 polish recovery records the noted reason"
+        assert_lacks "$(cat "$recovery_git/cr-critic-scores.jsonl")" 'deferred_to' "9498 polish recovery names no ticket"
     fi
-    assert_has "$recovery_args" '"--residual-of","HIMMEL-123"' "$recovery_class recovery uses the first PR-title key"
-    assert_has "$recovery_args" "\"--fu-class\",\"$recovery_class\"" "$recovery_class recovery delegates follow-up routing"
-    assert_has "$recovery_args" '"--class","reader-allowlist"' "$recovery_class recovery preserves the finding class"
-    assert_has "$(cat "$recovery_git/cr-critic-scores.jsonl")" '"deferred_to":"HIMMEL-9500"' "$recovery_class recovery records the created ticket"
     if [ -e "$recovery_git/cr-pending/recovery" ]; then fail "$recovery_class recovery clears the marker"; else pass "$recovery_class recovery clears the marker"; fi
     assert_lacks "$recovery_out" 'create --type Task' "$recovery_class recovery does not print a raw-create command"
 done
+# A noted polish row is already dispositioned: a rerun after the amend persisted is idempotent and still clears.
+printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-1","severity":"sug","fu_class":"polish","class":"reader-allowlist","artifact":"spec","perspective":"on"}\n' \
+    "$recovery_head" > "$recovery_git/cr-critic-scores.jsonl"
+printf 'pending\n' > "$recovery_git/cr-pending/recovery"
+for note_pass in first rerun; do
+    : > "$recovery_log"
+    note_rc=0
+    (cd "$recovery_repo" && GH_PR_TITLE='fix: [HIMMEL-123] follow-up' RECOVERY_JIRA_LOG="$recovery_log" \
+        bash "$fx/scripts/cr/review-round.sh" defer --branch recovery --head "$recovery_head" >/dev/null 2>&1) || note_rc=$?
+    assert_eq "$note_rc" 0 "9498 a polish-only round finishes on the $note_pass defer"
+    assert_eq "$(wc -c < "$recovery_log" | tr -d ' ')" 0 "9498 the $note_pass polish-only defer never reaches Jira"
+done
+assert_eq "$(grep -c '"kind":"amend"' "$recovery_git/cr-critic-scores.jsonl" | tr -d ' ')" 1 "9498 the rerun of a polish-only defer adds no second amend"
 # A missing class is recorded in the body, never invented as a class label.
-printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-unclassified","severity":"sug","text":"- [critic-unclassified]: a gap [a.sh:3]"}\n' \
+printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-unclassified","severity":"imp","fu_class":"hardening","fu_why":"no-check","text":"- [critic-unclassified]: a gap [a.sh:3]"}\n' \
     "$recovery_head" > "$recovery_git/cr-critic-scores.jsonl"
 printf 'pending\n' > "$recovery_git/cr-pending/recovery"
 : > "$recovery_log"
 recovery_rc=0
 recovery_out="$(cd "$recovery_repo" && GH_PR_TITLE='fix: [HIMMEL-123] recovery' \
     RECOVERY_JIRA_LOG="$recovery_log" bash "$fx/scripts/cr/review-round.sh" defer \
-    --branch recovery --head "$recovery_head" 2>&1)" || recovery_rc=$?
+    --branch recovery --head "$recovery_head" --fu-override decision-762 2>&1)" || recovery_rc=$?
 assert_eq "$recovery_rc" 0 "classless recovery files without inventing a class label"
 assert_lacks "$(cat "$recovery_log")" '"--class"' "classless recovery omits the class option"
 assert_has "$(cat "$recovery_log.body")" 'class: unclassified' "classless recovery records classification in the body"
@@ -337,14 +395,14 @@ for recovery_failure in create-failed no-parent; do
         create-failed) recovery_create_fail=1 ;;
         no-parent) recovery_title='fix: recovery without a ticket' ;;
     esac
-    printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-1","severity":"sug","class":"%s"}\n' \
+    printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-1","severity":"imp","fu_class":"hardening","fu_why":"no-check","class":"%s"}\n' \
         "$recovery_head" "$recovery_class_id" > "$recovery_git/cr-critic-scores.jsonl"
     printf 'pending\n' > "$recovery_git/cr-pending/recovery"
     : > "$recovery_log"
     recovery_rc=0
     recovery_out="$(cd "$recovery_repo" && GH_PR_TITLE="$recovery_title" \
         RECOVERY_JIRA_FAIL="$recovery_create_fail" RECOVERY_JIRA_LOG="$recovery_log" \
-        bash "$fx/scripts/cr/review-round.sh" defer --branch recovery --head "$recovery_head" 2>&1)" || recovery_rc=$?
+        bash "$fx/scripts/cr/review-round.sh" defer --branch recovery --head "$recovery_head" --fu-override decision-762 2>&1)" || recovery_rc=$?
     assert_eq "$recovery_rc" 6 "$recovery_failure recovery refuses unsafe disposition"
     assert_lacks "$(cat "$recovery_git/cr-critic-scores.jsonl")" '"verdict":"deferred"' "$recovery_failure recovery writes no terminal amend"
     if [ -e "$recovery_git/cr-pending/recovery" ]; then pass "$recovery_failure recovery keeps the marker"; else fail "$recovery_failure recovery keeps the marker"; fi
@@ -481,6 +539,7 @@ rl1_sug='{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-
 '
 rl1_crit='{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-3","severity":"crit","class":"reader-allowlist"}
 '
+rl1_flags=(--fu-override decision-762)
 rl1_run() { # rl1_run <branch> <round> <ledger rows> [<env assignment>...]
     rl1_branch="$1"
     git -C "$rl1_repo" checkout -q "$rl1_branch"
@@ -492,7 +551,7 @@ rl1_run() { # rl1_run <branch> <round> <ledger rows> [<env assignment>...]
     shift 3
     rl1_rc=0
     rl1_out="$(cd "$rl1_repo" && env RECOVERY_JIRA_LOG="$rl1_log" GH_PR_NONE=1 "$@" \
-        bash "$fx/scripts/cr/review-round.sh" defer --branch "$rl1_branch" --head "$rl1_head" 2>&1 </dev/null)" || rl1_rc=$?
+        bash "$fx/scripts/cr/review-round.sh" defer --branch "$rl1_branch" --head "$rl1_head" ${rl1_flags[@]+"${rl1_flags[@]}"} 2>&1 </dev/null)" || rl1_rc=$?
     rl1_ledger="$(cat "$rl1_git/cr-critic-scores.jsonl")"
 }
 rl1_marker() { if [ -e "$rl1_git/cr-pending/$rl1_branch" ]; then printf kept; else printf cleared; fi; }
@@ -502,32 +561,19 @@ rl1_key() { cat "$rl1_git/cr-review-rounds/$rl1_branch.deferred-to" 2>/dev/null;
 rl1_run feat/rl1 1 "$rl1_sug"
 assert_eq "$rl1_rc" 0 "8425 a round-1 Suggestion-only close with no open PR succeeds ($rl1_out)"
 assert_has "$rl1_ledger" '"verdict":"deferred"' "8425 the round-1 close writes a deferred row"
-assert_has "$rl1_ledger" '"deferred_to":"HIMMEL-9500"' "8425 the round-1 close defers to the batch residual"
-assert_has "$rl1_ledger" "\"reason\":\"$early_reason\"" "8425 the round-1 close keeps the early-close reason byte-identical"
+assert_has "$rl1_ledger" '"fu_class":"polish"' "9498 the round-1 close keeps the polish class"
+assert_has "$rl1_ledger" '"reason":"Polish finding noted in the PR body: no ticket filed (decisions 746, 762)."' "9498 the round-1 close records the noted reason"
+assert_lacks "$rl1_ledger" 'deferred_to' "9498 the round-1 close of polish Suggestions names no ticket"
 assert_eq "$(rl1_marker)" cleared "8425 the round-1 close clears the marker"
-assert_eq "$(rl1_creates)" 1 "8425 one batch residual is filed for the round's two findings"
-rl1_args="$(cat "$rl1_log")"
-assert_has "$rl1_args" '"--title","Review follow-ups for feat/rl1"' "8425 the batch residual is titled for the branch"
-assert_has "$rl1_args" '"--residual-of","HIMMEL-700"' "8425 with no PR and two keys the parent is the first commit's key"
-assert_has "$rl1_args" '"--fu-class","polish"' "8425 the batch carries its most severe class"
-assert_has "$(cat "$rl1_log.body")" '1. critic-1 (class: reader-allowlist)' "8425 the batch body lists the first finding with its class"
-assert_has "$(cat "$rl1_log.body")" '   - [critic-1]: the allowlist misses a path [docs/guide/x.md:1]' "8425 the batch body carries each finding's text and location on one line"
-assert_has "$(cat "$rl1_log.body")" '2. critic-2 (class: unclassified)' "8425 the batch body lists a classless finding as unclassified"
-assert_eq "$(rl1_key)" HIMMEL-9500 "8425 the batch key is remembered in .deferred-to"
+assert_eq "$(rl1_creates)" 0 "9498 a polish-only round files no batch residual"
+assert_eq "$(wc -c < "$rl1_log" | tr -d ' ')" 0 "9498 a polish-only round never reaches Jira"
+assert_eq "$(rl1_key)" "" "9498 a polish-only round remembers no batch key"
 
 rl1_run feat/rl1 2 "$(printf '%s' "$rl1_sug" | sed 's/critic-1/critic-4/g; s/critic-2/critic-5/g')"$'\n'
 assert_eq "$rl1_rc" 0 "8425 a second early close on the branch succeeds ($rl1_out)"
-assert_eq "$(rl1_creates)" 1 "8425 two closes on one branch file one ticket"
-assert_has "$rl1_ledger" '"deferred_to":"HIMMEL-9500"' "8425 the second close reuses the remembered key"
-assert_has "$(tail -n 1 "$rl1_log")" '["comment","HIMMEL-9500","--comment-file",' "8425 the second close comments on the remembered ticket"
-assert_has "$(cat "$rl1_log.comment")" '1. critic-4 (class: reader-allowlist)' "8425 the reuse comment lists the second close's findings"
-assert_has "$(cat "$rl1_log.comment")" '   - [critic-4]: the allowlist misses a path [docs/guide/x.md:1]' "8425 the reuse comment carries each finding's text and location"
-rl1_run feat/rl1 2 "$(printf '%s' "$rl1_sug" | sed 's/critic-1/critic-6/g; s/critic-2/critic-7/g')"$'\n' RECOVERY_JIRA_COMMENT_FAIL=1
-assert_eq "$rl1_rc" 6 "8425 a failed reuse comment fails closed ($rl1_out)"
-assert_has "$rl1_out" 'rerun the same command to retry the comment' "8425 a failed reuse comment names the rerun recovery"
-assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8425 a failed reuse comment writes no deferred row"
-assert_eq "$(rl1_marker)" kept "8425 a failed reuse comment keeps the marker"
-assert_eq "$(rl1_creates)" 1 "8425 a failed reuse comment files no ticket"
+assert_eq "$(rl1_creates)" 0 "9498 two polish-only closes on one branch file no ticket"
+assert_eq "$(wc -c < "$rl1_log" | tr -d ' ')" 0 "9498 a second polish-only close does not comment on a ticket either"
+assert_eq "$(rl1_marker)" cleared "9498 the second polish-only close clears the marker"
 
 for rl1_gh in 'GH_PR_JSON=[{"number":1},{"number":2}]' GH_PR_RC=1; do
     rl1_run feat/rl1 1 "$rl1_sug" "$rl1_gh"
@@ -554,17 +600,33 @@ rl1_pre_amend() { printf '{"kind":"amend","branch":"@BR@","target_head":"@HEAD@"
 rl1_class_amend() { printf '\n{"kind":"amend","branch":"@BR@","target_head":"@HEAD@","finding_id":"%s","artifact":"diff","perspective":"off","set":{"fu_class":"%s"%s}}\n' "$1" "$2" "${3:+,\"fu_why\":\"$3\"}"; }
 rl1_text_imp='{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-9","severity":"imp","class":"reader-allowlist","text":"- [critic-9]: [pre-existing] old helper ignores errors [pre-existing] [docs/guide/x.md:1]"}
 '
+# an Important classed polish cannot be noted without a ticket (the marker gate wants one
+# for every Critical/Important deferral) and polish is never filed, so defer refuses and names both roads.
+rl1_creates_before="$(rl1_creates)"
 rl1_run feat/rl1 2 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 polish)"
-assert_eq "$rl1_rc" 0 "8429 a pre-existing Important at round 2 is deferred, not blocking ($rl1_out)"
+assert_eq "$rl1_rc" 6 "9498 a pre-existing Important classed polish is refused, not filed ($rl1_out)"
+assert_has "$rl1_out" 'cannot be noted without a ticket' "9498 the polish-Important refusal says why"
+assert_has "$rl1_out" '--defer-to <ticket>' "9498 the polish-Important refusal names the plain-ticket road"
+assert_has "$rl1_out" 'critic-8' "9498 the polish-Important refusal names the finding"
+assert_eq "$(rl1_creates)" "$rl1_creates_before" "9498 the polish-Important refusal files nothing"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "9498 the polish-Important refusal writes no deferral"
+assert_eq "$(rl1_marker)" kept "9498 the polish-Important refusal keeps the marker"
+rl1_flags=(--defer-to HIMMEL-9500)
+rl1_run feat/rl1 2 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 polish)"
+rl1_flags=(--fu-override decision-762)
+assert_eq "$rl1_rc" 0 "8429 a pre-existing Important at round 2 is deferred to a ticket the worker named ($rl1_out)"
 assert_has "$rl1_ledger" '"verdict":"deferred"' "8429 the pre-existing Important gets a deferred amend row"
-assert_has "$rl1_ledger" '"deferred_to":"HIMMEL-9500"' "8429 it is deferred to the branch's batch residual"
+assert_has "$rl1_ledger" '"deferred_to":"HIMMEL-9500"' "8429 it is deferred to the named ticket"
 rl1_deferral="$(printf '%s\n' "$rl1_ledger" | grep '"verdict":"deferred"')"
 assert_has "$rl1_deferral" '"fu_class":"polish"' "8429 it keeps the polish class its adjudicator gave it"
 assert_has "$rl1_ledger" "\"reason\":\"$rl1_pre_reason\"" "8429 the deferral says why: the code predates the PR"
 assert_has "$rl1_ledger" '"severity":"imp"' "8429 the finding keeps severity imp (I4)"
 assert_lacks "$rl1_ledger" '"severity":"sug"' "8429 nothing lowers the finding to a Suggestion (I4)"
 assert_eq "$(rl1_marker)" cleared "8429 the pre-existing deferral clears the marker"
+assert_eq "$(rl1_creates)" "$rl1_creates_before" "9498 a named --defer-to files nothing"
+rl1_flags=(--defer-to HIMMEL-9500)
 rl1_run feat/rl1 3 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 polish)"
+rl1_flags=(--fu-override decision-762)
 assert_eq "$rl1_rc" 0 "8429 a pre-existing Important at round 3 is deferred ($rl1_out)"
 # The finding's own class decides; none is forced. Hardening is kept, escape-class
 # is fixed in the PR (it blocks), and no class at all cannot be told from escape.
@@ -573,6 +635,38 @@ assert_eq "$rl1_rc" 0 "8429 a pre-existing hardening Important is deferred ($rl1
 rl1_deferral="$(printf '%s\n' "$rl1_ledger" | grep '"verdict":"deferred"')"
 assert_has "$rl1_deferral" '"fu_class":"hardening"' "8429 the deferral keeps the hardening class, it is not forced to polish"
 assert_lacks "$rl1_deferral" '"fu_class":"polish"' "8429 the deferral of a hardening Important is not polish"
+assert_eq "$(rl1_creates)" "$((rl1_creates_before + 1))" "8425 one batch residual is filed for the hardening Important"
+rl1_args="$(tail -n 1 "$rl1_log")"
+assert_has "$rl1_args" '"--residual-of","HIMMEL-700"' "8425 with no PR and two keys the parent is the first commit's key"
+assert_has "$rl1_args" '"--fu-override","decision-762"' "9498 the batch residual carries the named override"
+assert_has "$(cat "$rl1_log.body")" '1. critic-8 (class: reader-allowlist)' "8425 the batch body lists the finding with its class"
+assert_has "$(cat "$rl1_log.body")" '   - [critic-8]: old helper ignores errors [docs/guide/x.md:1]' "8425 the batch body carries each finding's text and location on one line"
+assert_eq "$(rl1_key)" HIMMEL-9500 "8425 the batch key is remembered in .deferred-to"
+# A later close on the branch reuses the remembered ticket and comments on it.
+rl1_pre_imp11="$(printf '%s' "$rl1_pre_imp" | sed 's/critic-8/critic-11/g')"$'\n'
+rl1_hard11="$rl1_pre_imp11$(rl1_pre_amend critic-11)$(rl1_class_amend critic-11 hardening no-check)"
+rl1_run feat/rl1 3 "$rl1_hard11"
+assert_eq "$rl1_rc" 0 "8425 a second close on the branch succeeds ($rl1_out)"
+assert_eq "$(rl1_creates)" "$((rl1_creates_before + 1))" "8425 two closes on one branch file one ticket"
+assert_has "$rl1_ledger" '"deferred_to":"HIMMEL-9500"' "8425 the second close reuses the remembered key"
+assert_has "$(tail -n 1 "$rl1_log")" '["comment","HIMMEL-9500","--comment-file",' "8425 the second close comments on the remembered ticket"
+assert_has "$(cat "$rl1_log.comment")" '1. critic-11 (class: reader-allowlist)' "8425 the reuse comment lists the second close's findings"
+rl1_pre_imp12="$(printf '%s' "$rl1_pre_imp" | sed 's/critic-8/critic-12/g')"$'\n'
+rl1_run feat/rl1 3 "$rl1_pre_imp12$(rl1_pre_amend critic-12)$(rl1_class_amend critic-12 hardening no-check)" RECOVERY_JIRA_COMMENT_FAIL=1
+assert_eq "$rl1_rc" 6 "8425 a failed reuse comment fails closed ($rl1_out)"
+assert_has "$rl1_out" 'rerun the same command to retry the comment' "8425 a failed reuse comment names the rerun recovery"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8425 a failed reuse comment writes no deferred row"
+assert_eq "$(rl1_marker)" kept "8425 a failed reuse comment keeps the marker"
+assert_eq "$(rl1_creates)" "$((rl1_creates_before + 1))" "8425 a failed reuse comment files no ticket"
+# A polish Suggestion beside a hardening Important is noted; only the Important reaches the batch.
+rl1_sug13='{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-13","severity":"sug","class":"reader-allowlist","text":"- [critic-13]: wording"}
+'
+rl1_run feat/rl1 3 "$rl1_sug13$rl1_pre_imp12$(rl1_pre_amend critic-12)$(rl1_class_amend critic-12 hardening no-check)"
+assert_eq "$rl1_rc" 0 "9498 a polish Suggestion beside a hardening Important finishes ($rl1_out)"
+assert_lacks "$(cat "$rl1_log.comment")" 'critic-13' "9498 the polish Suggestion is not listed on the batch ticket"
+assert_has "$(printf '%s\n' "$rl1_ledger" | grep 'critic-13' | grep '"verdict":"deferred"')" 'Polish finding noted in the PR body' "9498 the polish Suggestion is noted, not filed"
+assert_lacks "$(printf '%s\n' "$rl1_ledger" | grep 'critic-13' | grep '"verdict":"deferred"')" 'deferred_to' "9498 the noted Suggestion names no ticket"
+assert_has "$(printf '%s\n' "$rl1_ledger" | grep 'critic-12' | grep '"verdict":"deferred"')" '"deferred_to":"HIMMEL-9500"' "9498 the hardening Important still goes to the batch ticket"
 rl1_run feat/rl1 2 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 escape)"
 assert_eq "$rl1_rc" 4 "8429 a pre-existing escape-class Important still blocks ($rl1_out)"
 assert_has "$rl1_out" 'critic-8' "8429 the blocking escape-class Important is named"
@@ -670,9 +764,11 @@ rl1_reset_out="$(env -u CLAUDECODE CR_RESET_PRIMARY="$rl1_repo" CR_RESET_GH="$tm
     CR_RESET_LOCK_LIB="$HERE/../lib/shared-branch-lock.sh" bash "$HERE/cr-reset.sh" 7 2>&1)" || fail "8425 cr-reset runs ($rl1_reset_out)"
 assert_has "$rl1_reset_out" '.deferred-to' "8425 cr-reset moves .deferred-to aside"
 assert_eq "$(rl1_key)" "" "8425 after cr-reset the branch has no remembered key"
-rl1_run feat/rl1 1 "$rl1_sug"
-assert_eq "$rl1_rc" 0 "8425 the first early close after a reset succeeds ($rl1_out)"
-assert_eq "$(rl1_creates)" 3 "8425 after a reset the next early close files a new batch residual"
+rl1_hard8="$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 hardening no-check)"
+rl1_creates_before="$(rl1_creates)"
+rl1_run feat/rl1 2 "$rl1_hard8"
+assert_eq "$rl1_rc" 0 "8425 the first close after a reset succeeds ($rl1_out)"
+assert_eq "$(rl1_creates)" "$((rl1_creates_before + 1))" "8425 after a reset the next close files a new batch residual"
 
 # S5: a round-1 start removes the key.
 assert_eq "$(rl1_key)" HIMMEL-9500 "8425 the post-reset close remembers its new key"
@@ -681,11 +777,15 @@ rm -f "$rl1_git/cr-review-rounds/feat/rl1.round"
     || fail "8425 a round-1 start runs"
 assert_eq "$(rl1_key)" "" "8425 a round-1 start removes .deferred-to"
 
-rl1_run feat/rl1-onekey 1 "$rl1_sug"
-assert_eq "$rl1_rc" 0 "8425 a one-key branch closes at round 1 ($rl1_out)"
+rl1_run feat/rl1-onekey 2 "$rl1_hard8"
+assert_eq "$rl1_rc" 0 "8425 a one-key branch closes ($rl1_out)"
 assert_has "$(tail -n 1 "$rl1_log")" '"--residual-of","HIMMEL-900"' "8425 one key in the commit subjects gives that parent"
 : > "$rl1_log"
 rl1_run feat/rl1-nokey 1 "$rl1_sug"
+assert_eq "$rl1_rc" 0 "9498 a polish-only round needs no parent ticket: nothing is filed ($rl1_out)"
+assert_eq "$(rl1_creates)" 0 "9498 the no-key polish-only branch files nothing"
+assert_eq "$(rl1_marker)" cleared "9498 the no-key polish-only branch finishes"
+rl1_run feat/rl1-nokey 2 "$rl1_hard8"
 assert_eq "$rl1_rc" 6 "8425 no key in the PR title or the commit subjects falls back to the per-finding refusal ($rl1_out)"
 assert_has "$rl1_out" 'no parent ticket' "8425 the no-key refusal says it found no parent ticket"
 assert_eq "$(rl1_creates)" 0 "8425 the no-key branch files nothing"
@@ -1203,6 +1303,31 @@ postcap_start() {
     (cd "$repo" && PANEL_MODE="${PC_MODE:-clean}" bash "$SCRIPT" --head "$postcap_f_head" --branch "$1" 2>&1)
 }
 
+# a review round whose only leftover is a polish Suggestion finishes through the REAL marker
+# gates with no ticket: nothing is filed, so nothing can be refused and nothing loops.
+three_rounds notereal suggestion
+postcap_amend notereal "$cap_r3_head" stub-1 fixed
+printf '%s\n' "SWEEP [stub-1@$cap_r3_head] class=stub :: single-site search=git grep -n stub" \
+    | (cd "$repo" && bash "$fx/scripts/cr/write-verdicts.sh" sweep --branch notereal) >/dev/null 2>"$tmp/notereal-sweep.err" \
+    || fail "notereal round-3 sweep record"
+fix_commit notereal
+notereal_head="$cap_fix_head"
+git -C "$repo" push -q -u origin notereal
+write_real_marker notereal "$notereal_head"
+(cd "$repo" && PANEL_MODE=suggestion bash "$SCRIPT" --head "$notereal_head" --branch notereal >/dev/null 2>"$tmp/notereal-delta.err") \
+    || fail "notereal delta round runs"
+notereal_log="$tmp/notereal-jira.log"
+notereal_rc=0
+notereal_out="$(cd "$repo" && RECOVERY_JIRA_LOG="$notereal_log" bash "$fx/scripts/cr/review-round.sh" defer --head "$notereal_head" --branch notereal 2>"$tmp/notereal.err")" || notereal_rc=$?
+assert_eq "$notereal_rc" 0 "9498 a round whose only leftover is polish finishes through the real marker gates ($notereal_out $(cat "$tmp/notereal.err"))"
+assert_has "$notereal_out" "clear-cr-marker CLEARED branch=notereal sha=$notereal_head" "9498 the real marker gates clear the polish-only head"
+if [ -e "$git_dir/cr-pending/notereal" ]; then fail "9498 the polish-only round clears the real marker"; else pass "9498 the polish-only round clears the real marker"; fi
+if [ -e "$notereal_log" ]; then fail "9498 the polish-only round never reaches Jira"; else pass "9498 the polish-only round never reaches Jira"; fi
+notereal_amends="$(grep '"kind":"amend"' "$git_dir/cr-critic-scores.jsonl" | grep '"branch":"notereal"' | grep '"verdict":"deferred"')"
+assert_has "$notereal_amends" '"fu_class":"polish"' "9498 the polish-only round records the polish class"
+assert_has "$notereal_amends" 'Polish finding noted in the PR body: no ticket filed' "9498 the polish-only round records the noted reason"
+assert_lacks "$notereal_amends" 'deferred_to' "9498 the polish-only round records no ticket, so the coverage lint finds no deferral key to match"
+
 postcap_setup postcap suggestion
 assert_eq "$(cat "$git_dir/cr-review-rounds/postcap.round")" "4" "postcap fixture: the delta round ran as round 4"
 postcap_amend postcap "$postcap_d_head" stub-1 fixed
@@ -1710,22 +1835,33 @@ out7="$(cd "$repo" && PANEL_MODE=suggestion bash "$SCRIPT" --head "$capped_head"
 assert_eq "$rc7" "0" "delta-round missing-ticket producer run completes"
 assert_has "$out7" "pr-check: delta round 4 on capped" "missing-ticket run still reports its round"
 (cd "$repo" && bash "$fx/scripts/cr/review-round.sh" defer --head "$capped_head" --branch capped >"$tmp/defer7.out" 2>"$tmp/defer7.err"); defer7_rc=$?
-if [ "$defer7_rc" -ne 0 ]; then pass "delta-round suggestions fail disposition without a defer ticket"; else fail "delta-round suggestions fail disposition without a defer ticket"; fi
-assert_has "$(cat "$tmp/defer7.err")" "no parent ticket" "missing parent explains why no residual can be filed"
-assert_lacks "$(cat "$tmp/defer7.err")" "create --type Task" "missing parent does not offer a raw-create command"
+assert_eq "$defer7_rc" 0 "9498 delta-round polish Suggestions need no defer ticket: the round finishes"
+assert_lacks "$(cat "$tmp/defer7.err")" "no parent ticket" "9498 a polish-only round asks for no parent ticket"
+assert_has "$(cat "$tmp/defer7.out")" "clear-cr-marker: CR clean" "9498 the polish-only round clears through the sanctioned script"
 after_missing_calls="$(wc -l < "$PANEL_CALLS" | tr -d ' ')"
-assert_eq "$after_missing_calls" "$((before_missing_calls + 1))" "missing-ticket flow invokes the panel exactly once"
-if [ -e "$git_dir/cr-pending/capped" ]; then pass "missing ticket leaves the marker pending"; else fail "missing ticket leaves the marker pending"; fi
+assert_eq "$after_missing_calls" "$((before_missing_calls + 1))" "polish-only flow invokes the panel exactly once"
+if [ -e "$git_dir/cr-pending/capped" ]; then fail "9498 the polish-only round clears the marker"; else pass "9498 the polish-only round clears the marker"; fi
+ledger="$(cat "$git_dir/cr-critic-scores.jsonl" 2>/dev/null)"
+assert_has "$ledger" 'Polish finding noted in the PR body: no ticket filed' "9498 the polish-only round records the noted reason"
+assert_lacks "$ledger" 'deferred_to' "9498 the polish-only round records no ticket"
 
-recover_out="$(cd "$repo" && CR_DEFER_TO=HIMMEL-9002 bash "$fx/scripts/cr/review-round.sh" defer --head "$capped_head" --branch capped 2>"$tmp/recover.err")"; recover_rc=$?
+# An explicit ticket still takes every pending finding, as before (recovery without rerunning the panel).
+three_rounds capped2 suggestion
+fix_commit capped2
+capped2_head="$cap_fix_head"
+printf 'pending\n' > "$git_dir/cr-pending/capped2"
+(cd "$repo" && PANEL_MODE=suggestion bash "$SCRIPT" --head "$capped2_head" --branch capped2 >/dev/null 2>"$tmp/err7b") || fail "capped2 delta producer run"
+after_missing_calls="$(wc -l < "$PANEL_CALLS" | tr -d ' ')"
+cap_ticket_n=9002
+recover_out="$(cd "$repo" && CR_DEFER_TO="HIMMEL-$cap_ticket_n" bash "$fx/scripts/cr/review-round.sh" defer --head "$capped2_head" --branch capped2 2>"$tmp/recover.err")"; recover_rc=$?
 assert_eq "$recover_rc" "0" "environment ticket resumes deferred disposition"
 assert_has "$recover_out" "clear-cr-marker: CR clean" "recovery clears through the sanctioned script"
 recover_calls="$(wc -l < "$PANEL_CALLS" | tr -d ' ')"
 assert_eq "$recover_calls" "$after_missing_calls" "recovery dispositions recorded results without rerunning the panel"
-ledger="$(cat "$git_dir/cr-critic-scores.jsonl" 2>/dev/null)"
+ledger="$(grep '"branch":"capped2"' "$git_dir/cr-critic-scores.jsonl" 2>/dev/null)"
 assert_has "$ledger" '"deferred_to":"HIMMEL-9002"' "recovery records the environment-supplied ticket"
 assert_has "$ledger" '"fu_class":"polish"' "cap-deferred Suggestions are classed polish (HIMMEL-4034)"
-if [ -e "$git_dir/cr-pending/capped" ]; then fail "recovery clears the marker"; else pass "recovery clears the marker"; fi
+if [ -e "$git_dir/cr-pending/capped2" ]; then fail "recovery clears the marker"; else pass "recovery clears the marker"; fi
 
 calls="$(cat "$PANEL_CALLS" 2>/dev/null)"
 expected_prefix="$(printf '%s\n%s\n%s\n%s' "$head1" "$head2" "$head3" "$other_head")"
