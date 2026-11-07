@@ -1982,7 +1982,9 @@ tracker_head() {
 # BINDING says so (carry, standing, not marked binding). The reading is cut at a sentence or word so
 # the index fits CHIEF_DIRECTION_BUDGET_BYTES (default 12000): the newest 40 lines get
 # twice the share of the older ones, at least 40 bytes (80 for the newest). A line of another
-# shape keeps its start, at least 100 bytes. A line an earlier run already shortened stays as
+# shape keeps its start, at least 100 bytes. A line directly under an OPERATOR or CHIEF line (no
+# blank line between) belongs to that ruling: it joins the ruling's reading, its decision numbers
+# are listed with the ruling's, and the companions keep it directly under its head. A line an earlier run already shortened stays as
 # it is but counts against the budget; its full text is carried forward from the companion
 # files the earlier note names. The companions are specs/decisions/chief-direction-<date>[-N]-pK.md,
 # each under CHIEF_DIRECTION_PART_BYTES (default 40000, so one Read takes it whole). Returns 1
@@ -1993,10 +1995,10 @@ compress_direction() {
 import glob, os, re, sys
 bucket, budget, partmax, today = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4]
 HEAD = re.compile(r"^((?:OPERATOR|CHIEF)[^(]*?) \(([^()]*(?:\{[^{}]*\}[^()]*)*)\)[.:]?\s*(.*)$")
-DONE = re.compile(r"^(?:(?:OPERATOR|CHIEF)[^:(]*(?:, decisions? \d[\d, ]*)?(?: \((?:carry|standing|not marked binding)\))?: |Full original text)")
+DONE = re.compile(r"^(?:(?:OPERATOR|CHIEF)(?:[^:(]|(?<=\d):(?=\d))*(?:, decisions? \d[\d, ]*)?(?: \((?:carry|standing|not marked binding)\))?: |Full original text)")
 NOTE = re.compile(r"^Full original text")
 QUOTE = re.compile(r"Verbatim[^:\"\x27]{0,40}:\s*(\"[^\"]*\"|\x27[^\x27]*\x27)\.?\s*")
-LISTP = re.compile(r"\bdecisions?\s+(\d+(?:\s*(?:,|and|to|-|–)\s*\d+)*)")
+LISTP = re.compile(r"\bdecisions?\s+(\d+(?:\s*(?:,|and|to|-|–)\s*\d+)*)", re.I)
 def expand(s):
     res, toks, i = [], re.findall(r"\d+|to|-|–", s), 0
     while i < len(toks):
@@ -2025,8 +2027,20 @@ def body_numbers(t):
 def resolvable(n):
     return bool(glob.glob(os.path.join(bucket, "specs/decisions/verbatim-decision-%d-*" % n)))
 src = sys.stdin.read().split("\n")
+def headed(l):
+    return l.startswith(("OPERATOR ", "CHIEF ")) or bool(DONE.match(l))
+units, i = [], 0
+while i < len(src):
+    u = [src[i]]; i += 1
+    if u[0].strip() and not u[0].startswith(">") and not DONE.match(u[0]) and u[0].startswith(("OPERATOR ", "CHIEF ")):
+        while i < len(src) and src[i].strip() and not src[i].startswith(">") and not headed(src[i]):
+            u.append(src[i]); i += 1
+    units.append(u)
 rows = []
-for ln in src:
+for u in units:
+    ln = u[0]
+    cont = " / ".join(x.strip() for x in u[1:])
+    whole = "\n".join(u)
     if not ln.strip() or ln.startswith(">") or DONE.match(ln):
         rows.append((ln, None, ln)); continue
     m = HEAD.match(ln) if ln.startswith(("OPERATOR ", "CHIEF ")) else None
@@ -2037,14 +2051,15 @@ for ln in src:
         reading = m.group(3)
         if ok: reading = QUOTE.sub("", reading, count=1)
         reading = reading.strip().lstrip(" ;:,.").strip()
+        if cont: reading = (reading + " / " + cont) if reading else cont
         head = m.group(1)
-        shown = nums + [x for x in body_numbers(m.group(3)) if x not in nums]
+        shown = nums + [x for x in body_numbers(m.group(3) + " " + cont) if x not in nums]
         if shown: head += (", decisions " + ", ".join(map(str, shown))) if len(shown) > 1 else ", decision %d" % shown[0]
         if "BINDING" not in par:
             head += " (carry)" if "carry" in par else " (standing)" if ("STANDING" in par or "STANDING" in reading) else " (not marked binding)"
-        rows.append((ln, head + ": ", reading or "verbatim only"))
+        rows.append((whole, head + ": ", reading or "verbatim only"))
     else:
-        rows.append((ln, "", ln))
+        rows.append((whole, "", ln + (" / " + cont if cont else "")))
 short = [r for r in rows if r[1] is not None]
 n = len(short)
 fixed = sum(len(r[1].encode()) for r in short) + sum(len(r[0].encode()) for r in rows if r[1] is None and r[0].strip() and not r[0].startswith(">") and not NOTE.match(r[0]))
@@ -2075,19 +2090,19 @@ for ln in src:
             except OSError:
                 sys.stderr.write("warning: could not read the earlier direction companion %s; the Current direction is carried as it is, with its pointer\n" % rel)
                 sys.exit(2)
-            for b in body:
-                if b.strip() and not b.startswith("# Current direction, full text") and b not in prior: prior.append(b)
+            for blk in "\n".join(body).split("\n\n"):
+                us = [b for b in blk.split("\n") if b.strip() and not b.startswith("# Current direction, full text")]
+                if us and us not in prior: prior.append(us)
 full = list(prior)
-for ln in src:
-    if not ln.strip() or ln.startswith(">") or NOTE.match(ln): continue
-    if DONE.match(ln): continue
-    if ln not in full: full.append(ln)
+for u in units:
+    if not u[0].strip() or u[0].startswith(">") or NOTE.match(u[0]) or DONE.match(u[0]): continue
+    if u not in full: full.append(u)
 parts, cur, size = [], [], 160
-for ln in full:
-    need = len(ln.encode()) + 2
+for u in full:
+    need = sum(len(x.encode()) + 1 for x in u) + 1
     if cur and size + need > partmax:
         parts.append(cur); cur, size = [], 160
-    cur.append(ln); size += need
+    cur.append(u); size += need
 if cur: parts.append(cur)
 stem = "specs/decisions/chief-direction-" + today
 suffix, names = "", []
@@ -2099,12 +2114,12 @@ try:
     for j, p in enumerate(parts, 1):
         rel = "%s%s-p%d.md" % (stem, suffix, j)
         with open(os.path.join(bucket, rel), "x", encoding="utf-8") as f:
-            f.write("# Current direction, full text (part %d of %d), byte for byte, written by chief.sh next\n\n%s\n" % (j, len(parts), "\n\n".join(p)))
+            f.write("# Current direction, full text (part %d of %d), byte for byte, written by chief.sh next\n\n%s\n" % (j, len(parts), "\n\n".join("\n".join(u) for u in p)))
         names.append(rel)
 except OSError as e:
     sys.stderr.write("warning: could not write the direction companion files: %s\n" % e)
     sys.exit(2)
-note = "Full original text of every ruling below, byte for byte, is in %d file%s under the bucket (%s). READ ALL OF THEM in your first turn, in the same batch as this document: the lines below are one-line readings and a clause cut from a reading is in them. The operator words of a numbered ruling: specs/decisions/verbatim-decision-<N>-*.txt. Every line headed OPERATOR or CHIEF is BINDING unless it says otherwise; any other line is context, not a ruling." % (len(names), "" if len(names) == 1 else "s", " ".join(names))
+note = "Full original text of every ruling below, byte for byte, is in %d file%s under the bucket (%s). READ ALL OF THEM in your first turn, in the same batch as this document: the lines below are one-line readings and a clause cut from a reading is in them. The operator words of a numbered ruling: specs/decisions/verbatim-decision-<N>-*.txt. Every line headed OPERATOR or CHIEF, with the lines directly under it, is BINDING unless it says otherwise; any other line is context, not a ruling." % (len(names), "" if len(names) == 1 else "s", " ".join(names))
 sys.stdout.write(note + "\n\n" + "\n".join(out))
 ' "$1" "${CHIEF_DIRECTION_BUDGET_BYTES:-12000}" "${CHIEF_DIRECTION_PART_BYTES:-40000}" "$2"
 }
@@ -2570,7 +2585,7 @@ cmd_next() {
         # The direction block is already carried into the successor doc; the HANDOFF points at it.
         hf_direction="${hf_chain:+$hf_chain
 
-}The outgoing direction is carried verbatim in \`$successor_doc_ref\` ## Current direction when it is short; over ${CHIEF_DIRECTION_SPILL_BYTES:-12000} bytes it is carried there as one reading line per ruling, and the full text of every ruling is in the companion files that block's first line names: read them in your first turn."
+}The outgoing direction is carried verbatim in \`$successor_doc_ref\` ## Current direction when it is short; over ${CHIEF_DIRECTION_SPILL_BYTES:-12000} bytes it is carried there as one reading line per ruling, and the full text of every ruling is in the companion files named by the line of that block beginning \`Full original text\`: read them in your first turn."
         hf_lastgo="$(bash "$facts" lastgo "$predecessor_doc" --repo "$repo")"
         hf_wrapped="$(wrapped_open_prs_section "$predecessor_doc")"
         hf_wrapped_bytes="$(printf '%s\n' "$hf_wrapped" | wc -c | tr -d ' ')"
