@@ -1151,8 +1151,10 @@ write_lift_cache() {  # $1 path, $2 five_hour util, $3 seven_day util
 EOF2
 }
 
-write_lift() {  # $1 until (epoch), $2 account, $3 standing (true|false)
-    printf '{"window":"seven_day","until":%s,"account":"%s","standing":%s}\n' "$1" "$2" "$3" > "$LIFT_FILE"
+write_lift() {  # $1 until (epoch), $2 account, $3 standing (true|false), [$4 set_by]
+    local by=''
+    [ -n "${4:-}" ] && by=",\"set_by\":\"$4\""
+    printf '{"window":"seven_day","until":%s,"account":"%s","standing":%s%s}\n' "$1" "$2" "$3" "$by" > "$LIFT_FILE"
     chmod 600 "$LIFT_FILE"
 }
 
@@ -1198,6 +1200,11 @@ lift_case lift-window-fh97 97 20 2 present
 echo "Test 58: standing lift spends five_hour to 100 too — five_hour 97 does not arm"
 write_lift "$((LIFT_NOW + 100000))" "$ACCT" true
 lift_case lift-standing-fh97 97 20 0 absent
+
+echo "Test 58b: standing lift set on another account by this user follows — five_hour 97 does not arm"
+printf '%s' '{"oauthAccount":{"accountUuid":"uuid-lift-follow-a"}}' > "$TMP/follow-origin.json"
+write_lift "$((LIFT_NOW + 100000))" "$(current_account_hash "$TMP/follow-origin.json")" true "$(id -un)"
+lift_case lift-followed-fh97 97 20 0 absent
 
 echo "Test 59: standing lift with explicit CADENCE_USAGE_MAX_PCT keeps five_hour at the threshold — arms"
 S="$TMP/s4948-explicit"; mkdir -p "$S"

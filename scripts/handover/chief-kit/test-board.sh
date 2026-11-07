@@ -1031,6 +1031,30 @@ printf 'garbage\n' > "$BL"
 contains 'bank lift: unparseable show output reads unavailable' "$(bl_html "$BL")" 'data-bank-lift="?">weekly budget override: unavailable</p>'
 html="$(BOARD_USAGE_LIFT="$W/no-such-lift" mrun >/dev/null; cat "$M/board.html")"
 contains 'bank lift: a failing show reads unavailable, never fatal' "$html" 'data-bank-lift="?"'
+# The REAL `show` of a standing lift that followed an account switch
+# (set on fixture A, login and cache on fixture B) still renders as standing.
+# Scratch HOME, lift file, login and cache; never the operator's own.
+# shellcheck disable=SC1091
+. "$HERE/../../lib/usage-cache-identity.sh"
+FL="$W/follow"; mkdir -p "$FL/home"
+printf '%s' '{"oauthAccount":{"accountUuid":"uuid-lift-follow-a"}}' > "$FL/a.json"
+printf '%s' '{"oauthAccount":{"accountUuid":"uuid-lift-follow-b"}}' > "$FL/b.json"
+FHA="$(current_account_hash "$FL/a.json")"; FHB="$(current_account_hash "$FL/b.json")"
+FRESET=$(( $(date +%s) + 86400 ))
+printf '{"account":"%s","five_hour":{"utilization":10},"seven_day":{"utilization":90,"resets_at":%s}}' "$FHB" "$FRESET" > "$FL/cache.json"
+printf '{"window":"seven_day","until":%s,"standing":true,"account":"%s","set_by":"%s","set_at":"x"}' "$FRESET" "$FHA" "$(id -un)" > "$FL/lift.json"
+chmod 600 "$FL/lift.json"
+html="$(
+    unset CLAUDE_USAGE_CACHE
+    HOME="$FL/home" USAGE_LIFT_FILE="$FL/lift.json" CLAUDE_ACCOUNT_CONFIG="$FL/b.json" CADENCE_USAGE_CACHE="$FL/cache.json" \
+        BOARD_USAGE_LIFT="$HERE/../../lib/usage-lift.sh" mrun >/dev/null
+    cat "$M/board.html"
+)"
+fline="$(printf '%s\n' "$html" | grep 'data-bank-lift=')"
+contains 'bank lift: a followed standing lift reads VALID until' "$fline" 'VALID until'
+same 'bank lift: a followed standing lift ends · standing' "$(case "$fline" in *' · standing</p>') echo yes ;; *) echo no ;; esac)" yes
+lacks 'bank lift: the origin account prefix never reaches the board' "$html" "${FHA:0:4}"
+lacks 'bank lift: the current account prefix never reaches the board' "$html" "${FHB:0:4}"
 
 # --- cloud sessions panel: each cloud-sessions.tsv row with the state
 # cloud-liveness.mjs derives, the same derivation as tick.sh's cloud= field. Real

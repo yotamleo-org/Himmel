@@ -881,9 +881,11 @@ lift_cache() {
     printf '{"account":"%s","five_hour":{"utilization":%s,"resets_at":%s},"seven_day":{"utilization":%s,"resets_at":%s}}' \
         "$LIFT_ACCOUNT" "$1" "$LIFT_RESET" "$2" "$LIFT_RESET" > "$LIFT_CACHE"
 }
-lift_policy() {
+lift_policy() {  # <until> <account> <standing> [set_by]
+    local by=''
+    [ -n "${4:-}" ] && by=",\"set_by\":\"$4\""
     [ ! -e "$LIFT_POLICY" ] || chmod 600 "$LIFT_POLICY"
-    printf '{"window":"seven_day","until":%s,"account":"%s","standing":%s}' "$1" "$2" "$3" > "$LIFT_POLICY"
+    printf '{"window":"seven_day","until":%s,"account":"%s","standing":%s%s}' "$1" "$2" "$3" "$by" > "$LIFT_POLICY"
     chmod 600 "$LIFT_POLICY"
 }
 lift_hook() {
@@ -895,9 +897,18 @@ assert_rc 'standing lift allows weekly 90' 0 "$(lift_hook lift-standing)"
 assert_contains 'standing lift retains weekly WARN' '7-day bank at 90% (>= WARN 70%)' "$(cat "$TMP/out-lift-standing")"
 assert_rc 'explicit weekly HARD overrides standing lift' 2 "$(lift_hook lift-env-weekly IMPL_GUARD_WEEKLY_HARD=85)"
 assert_rc 'no lift retains weekly refusal' 2 "$(lift_hook lift-absent USAGE_LIFT_FILE="$TMP/no-lift.json")"
-lift_policy "$LIFT_RESET" deadbeefdeadbeef true
-assert_rc 'other-account lift refuses weekly 90' 2 "$(lift_hook lift-account)"
-assert_contains 'other-account lift is loud' 'weekly budget override (usage lift) invalid (account)' "$(cat "$TMP/err-lift-account")"
+lift_policy "$LIFT_RESET" deadbeefdeadbeef false
+assert_rc 'other-account window lift refuses weekly 90' 2 "$(lift_hook lift-account)"
+assert_contains 'other-account window lift is loud' 'weekly budget override (usage lift) invalid (account)' "$(cat "$TMP/err-lift-account")"
+# A standing lift follows the login only when set_by is this user.
+lift_policy "$LIFT_RESET" deadbeefdeadbeef true not-the-operator
+assert_rc 'other-account standing lift set by another user refuses weekly 90' 2 "$(lift_hook lift-set-by)"
+assert_contains 'other-account standing lift set by another user is loud' 'weekly budget override (usage lift) invalid (set_by)' "$(cat "$TMP/err-lift-set-by")"
+lift_policy 1 deadbeefdeadbeef true "$(id -un)"
+assert_rc 'followed standing lift allows weekly 90' 0 "$(lift_hook lift-followed)"
+lift_cache 90 10
+assert_rc 'followed standing lift allows five-hour 90' 0 "$(lift_hook lift-followed-five)"
+lift_cache 10 90
 lift_policy "$LIFT_RESET" "$LIFT_ACCOUNT" true
 chmod 666 "$LIFT_POLICY"
 assert_rc 'untrusted lift refuses weekly 90' 2 "$(lift_hook lift-trust)"

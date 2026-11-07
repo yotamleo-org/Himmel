@@ -917,8 +917,10 @@ check "standing ceiling still refuses full five-hour bank" SKIPPED-BANK "$(CADEN
 check "standing ceiling still refuses full weekly bank" SKIPPED-BANK "$(CADENCE_USAGE_MAX_PCT='' verdict "$(lfx 99 100 "$NOW" "")")"
 check "standing preserves explicit five-hour ceiling" SKIPPED-BANK "$(verdict "$(lfx 90 99 "$NOW" "")")"
 check "standing preserves an explicit CADENCE_USAGE_MAX_PCT five-hour ceiling" SKIPPED-BANK "$(CADENCE_USAGE_MAX_PCT=85 verdict "$(lfx 90 99 "$NOW" "")")"
-jq '.account="deadbeef"' "$USAGE_LIFT_FILE" > "$W/standing.json"; mv "$W/standing.json" "$USAGE_LIFT_FILE"; chmod 600 "$USAGE_LIFT_FILE"
-check "standing remains account bound after renewal" 1 "$(lift_rc "$W/lc.json")"
+jq --arg a "1234abcd1234abcd" --arg me "$(id -un)" '.account=$a | .set_by=$me' "$USAGE_LIFT_FILE" > "$W/standing.json"; mv "$W/standing.json" "$USAGE_LIFT_FILE"; chmod 600 "$USAGE_LIFT_FILE"
+check "renewed standing lift from another account, set_by the user -> follows" 'usage-lift: VALID' "$(bash "$LIFT" show "$W/lc.json" | tail -1)"
+jq '.set_by="t"' "$USAGE_LIFT_FILE" > "$W/standing.json"; mv "$W/standing.json" "$USAGE_LIFT_FILE"; chmod 600 "$USAGE_LIFT_FILE"
+check "renewed standing lift from another account, set_by another user -> INVALID: set_by" 'usage-lift: INVALID: set_by' "$(bash "$LIFT" show "$W/lc.json" | tail -1)"
 jq --arg a "$ACCT" '.account=$a' "$USAGE_LIFT_FILE" > "$W/standing.json"; mv "$W/standing.json" "$USAGE_LIFT_FILE"; chmod 666 "$USAGE_LIFT_FILE"
 check "standing cannot renew from untrusted file" 1 "$(lift_rc "$W/lc.json")"
 chmod 600 "$USAGE_LIFT_FILE"
@@ -948,6 +950,114 @@ check "show explains untrusted file" 'usage-lift: INVALID: trust' "$(bash "$LIFT
 chmod 600 "$USAGE_LIFT_FILE"
 printf '%s' '{broken' > "$USAGE_LIFT_FILE"
 check "show explains malformed file" 'usage-lift: INVALID: parse' "$(bash "$LIFT" show "$W/lc.json" | tail -1)"
+rm -f "$USAGE_LIFT_FILE"
+
+# A standing lift follows the active account. Fixture accounts A
+# (origin) and B (login and cache); set_by is written explicitly in every row.
+FA_CFG="$W/follow-a.json"; FB_CFG="$W/follow-b.json"
+printf '%s' '{"oauthAccount":{"accountUuid":"uuid-lift-follow-a"}}' > "$FA_CFG"
+printf '%s' '{"oauthAccount":{"accountUuid":"uuid-lift-follow-b"}}' > "$FB_CFG"
+HA="$(current_account_hash "$FA_CFG")"; HB="$(current_account_hash "$FB_CFG")"
+ME="$(id -un)"
+follow_lift() { # <account> <standing> [set_by as a JSON value; absent when omitted]
+  if [ -n "${3-}" ]; then
+    jq -cn --arg a "$1" --argjson s "$2" --argjson u "$((NOW+3600))" --argjson by "$3" \
+      '{window:"seven_day",until:$u,standing:$s,account:$a,set_by:$by,set_at:"x"}'
+  else
+    jq -cn --arg a "$1" --argjson s "$2" --argjson u "$((NOW+3600))" \
+      '{window:"seven_day",until:$u,standing:$s,account:$a,set_at:"x"}'
+  fi > "$USAGE_LIFT_FILE"; chmod 600 "$USAGE_LIFT_FILE"
+}
+fcache() { # <cache account> <five_hour> <seven_day>
+  printf '{"account":"%s","five_hour":{"utilization":%s},"seven_day":{"utilization":%s,"resets_at":%s},"primaries_refreshed_at":%s}' \
+    "$1" "$2" "$3" "$LRESET" "$NOW" > "$W/fc.json"
+}
+fshow() { CLAUDE_ACCOUNT_CONFIG="$FB_CFG" bash "$LIFT" show "$W/fc.json" 2>/dev/null; }
+fverdict() { # <five_hour> <seven_day>: login and cache on B
+  fcache "$HB" "$1" "$2"
+  CLAUDE_ACCOUNT_CONFIG="$FB_CFG" CADENCE_USAGE_CACHE="$W/fc.json" CADENCE_USAGE_SKIP_REFRESH=1 \
+  CADENCE_USAGE_LEDGER="$W/ledger.jsonl" CADENCE_USAGE_WORKER=testleg FLEET_PS_CMD="$NO_FLEET" \
+    bash "$SUT" </dev/null 2>"$W/err.log"
+}
+FOLLOWED_LINE="usage-lift: followed: standing lift set on ${HA:0:4}…, now on ${HB:0:4}…"
+# Row 1 (RED on main): standing on A, set_by the user, login and cache on B.
+follow_lift "$HA" true "\"$ME\""; fcache "$HB" 90 90
+check "standing lift on another account follows: show" "$FOLLOWED_LINE
+usage-lift: VALID" "$(fshow | tail -2)"
+check "followed standing lift, five_hour=90 seven_day=90, no ceiling -> PROCEED" PROCEED \
+  "$(CADENCE_USAGE_MAX_PCT='' fverdict 90 90)"
+check "followed standing lift, ledger row carries lift_followed:true" true \
+  "$(tail -1 "$W/ledger.jsonl" | jq -r '.lift_followed')"
+check "followed line prints at most 4 hex of each account" match \
+  "$(fshow | grep '^usage-lift: followed:' | grep -Eq '^usage-lift: followed: standing lift set on [0-9a-f]{4}…, now on [0-9a-f]{4}…$' && echo match)"
+check "ledger row of a followed lift carries no account hash" none \
+  "$(tail -1 "$W/ledger.jsonl" | grep -Eq "${HA:0:5}|${HB:0:5}" && echo hash || echo none)"
+# Row 2: a window lift never follows.
+follow_lift "$HA" false "\"$ME\""; fcache "$HB" 10 90
+check "window lift on another account -> INVALID: account" 'usage-lift: INVALID: account' "$(fshow | tail -1)"
+check "window lift on another account, seven_day=90 -> SKIPPED-BANK" SKIPPED-BANK "$(fverdict 10 90)"
+# Rows 3, 4, 10: set_by must equal the current user for a follow.
+follow_lift "$HA" true '"not-the-operator"'; fcache "$HB" 90 90
+check "standing lift set by another user -> INVALID: set_by" 'usage-lift: INVALID: set_by' "$(fshow | tail -1)"
+check "standing lift set by another user -> SKIPPED-BANK" SKIPPED-BANK "$(CADENCE_USAGE_MAX_PCT='' fverdict 90 90)"
+follow_lift "$HA" true '"unknown"'; fcache "$HB" 90 90
+check "standing lift set_by unknown -> INVALID: set_by" 'usage-lift: INVALID: set_by' "$(fshow | tail -1)"
+follow_lift "$HA" true "$(jq -cn --arg me "$ME" '$me+"\nx"')"; fcache "$HB" 90 90
+check "standing lift with a multiline set_by -> INVALID: set_by" 'usage-lift: INVALID: set_by' "$(fshow | tail -1)"
+follow_lift "$HA" true 42; fcache "$HB" 90 90
+check "standing lift with a numeric set_by -> INVALID: set_by" 'usage-lift: INVALID: set_by' "$(fshow | tail -1)"
+# Row 5: the cache must already be the login's account.
+follow_lift "$HA" true "\"$ME\""; fcache "$HA" 90 90
+check "standing lift, cache still on the origin account -> INVALID: cache-account" \
+  'usage-lift: INVALID: cache-account' "$(fshow | tail -1)"
+# Rows 6, 7: a followed lift grants no more than a standing lift.
+follow_lift "$HA" true "\"$ME\""
+check "followed lift, seven_day=100 -> SKIPPED-BANK (no extra_usage)" SKIPPED-BANK "$(CADENCE_USAGE_MAX_PCT='' fverdict 10 100)"
+check "followed lift, explicit ceiling 85 binds five_hour=90" SKIPPED-BANK "$(CADENCE_USAGE_MAX_PCT=85 fverdict 90 10)"
+# Row 8: a standing lift on its own account does not follow.
+follow_lift "$HB" true "\"$ME\""; fcache "$HB" 90 90
+check "standing lift on its origin account -> VALID" 'usage-lift: VALID' "$(fshow | tail -1)"
+check "standing lift on its origin account prints no followed line" 0 "$(fshow | grep -c '^usage-lift: followed:')"
+check "standing lift on its origin account, ledger row carries lift_followed:false" false \
+  "$(CADENCE_USAGE_MAX_PCT='' fverdict 90 90 >/dev/null; tail -1 "$W/ledger.jsonl" | jq -r '.lift_followed')"
+# Row 11: set_by matters only for a follow.
+follow_lift "$HB" true '"t"'
+check "standing lift on its origin account, set_by t -> VALID" 'usage-lift: VALID' "$(fshow | tail -1)"
+follow_lift "$HB" true '"unknown"'
+check "standing lift on its origin account, set_by unknown -> VALID" 'usage-lift: VALID' "$(fshow | tail -1)"
+follow_lift "$HB" true
+check "standing lift on its origin account, no set_by -> VALID" 'usage-lift: VALID' "$(fshow | tail -1)"
+# Row 12: CR-terminated jq output (native Windows jq) still follows.
+follow_lift "$HA" true "\"$ME\""; fcache "$HB" 90 90
+# shellcheck disable=SC1090,SC2030,SC2317,SC2329 # jq function called indirectly by validator
+crlf_follow() { (
+  export CLAUDE_ACCOUNT_CONFIG="$FB_CFG"
+  . "$LIFT"
+  jq() {
+    local arg last=''
+    for arg; do last="$arg"; done
+    if [ "$last" = "$USAGE_LIFT_FILE" ]; then command jq "$@" | sed 's/$/\r/'; else command jq "$@"; fi
+  }
+  usage_lift_valid "$W/fc.json"
+  local rc=$?
+  # shellcheck disable=SC2031 # validator sets them in this same subshell
+  printf '%s:%s:%s' "$rc" "$USAGE_LIFT_STANDING" "${USAGE_LIFT_FOLLOWED:-}"
+); }
+check "CRLF jq output still follows" '0:true:true' "$(crlf_follow)"
+# I7: reading a followed lift writes nothing.
+lift_state() {
+  local sum mtime
+  sum="$(sha256sum "$USAGE_LIFT_FILE" 2>/dev/null || shasum -a 256 "$USAGE_LIFT_FILE")"
+  mtime="$(stat -c '%y' "$USAGE_LIFT_FILE" 2>/dev/null || stat -f '%Fm' "$USAGE_LIFT_FILE")"  # gnu-ok: BSD stat -f fallback
+  # shellcheck disable=SC2012 # the listing itself (names, sizes, mtimes) is what is compared
+  printf '%s|%s|%s' "$sum" "$mtime" "$(ls -la "$(dirname "$USAGE_LIFT_FILE")" | sed 1d)"
+}
+before_state="$(lift_state)"
+fshow >/dev/null
+# shellcheck disable=SC1090,SC2031 # $LIFT is the lib under test, read in its own subshell
+( export CLAUDE_ACCOUNT_CONFIG="$FB_CFG"; . "$LIFT"; usage_lift_valid "$W/fc.json" >/dev/null 2>&1 )
+CADENCE_USAGE_MAX_PCT='' fverdict 90 90 >/dev/null
+check "reading a followed lift leaves the lift file and state dir unchanged" "$before_state" "$(lift_state)"
 rm -f "$USAGE_LIFT_FILE"
 
 # The lift file: the default path, then the USAGE_LIFT_FILE override.

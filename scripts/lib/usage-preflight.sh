@@ -74,6 +74,7 @@ is_num() { case "$1" in ''|*[!0-9.]*) return 1 ;; *.*.*) return 1 ;; *[0-9]*) re
 is_int() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
 
 lift=false  # HIMMEL-4423: never inherit an env value into the ledger row
+lift_followed=false
 emit() {
   [ -d "$LEDGER_DIR" ] || mkdir -p "$LEDGER_DIR" 2>/dev/null
   degraded=false; [ "$usable" -eq 1 ] && degraded=true
@@ -89,8 +90,8 @@ emit() {
   _fh_json="${fh:-}"; is_num "$_fh_json" || _fh_json=""
   _sd_json="${sd:-}"; is_num "$_sd_json" || _sd_json=""
   _age_json="${age:-}"; is_int "${_age_json#-}" || _age_json=""
-  printf '{"ts":"%s","worker":"%s","verdict":"%s","five_hour":"%s","seven_day":"%s","age":"%s","degraded":%s,"lift":%s}\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_worker_json" "$1" "$_fh_json" "$_sd_json" "$_age_json" "$degraded" "${lift:-false}" \
+  printf '{"ts":"%s","worker":"%s","verdict":"%s","five_hour":"%s","seven_day":"%s","age":"%s","degraded":%s,"lift":%s,"lift_followed":%s}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_worker_json" "$1" "$_fh_json" "$_sd_json" "$_age_json" "$degraded" "${lift:-false}" "${lift_followed:-false}" \
     >> "$LEDGER" 2>/dev/null
   printf '%s\n' "$1"
   exit 0
@@ -1327,13 +1328,15 @@ echo "bank-preflight: worker=$WORKER five_hour=${fh:-n/a} seven_day=${sd:-n/a} e
 
 over() { is_num "$1" && awk -v a="$1" -v b="$MAX_PCT" 'BEGIN{exit !(a>=b)}'; }
 # per-window checks. A valid operator lift (usage-lift.sh) skips ONLY
-# the seven_day comparison; five_hour still binds. A missing, expired, malformed
-# or other-account lift is no lift (usage_lift_valid fails toward the ceiling).
-lift=false
+# the seven_day comparison; five_hour still binds. A missing, expired or
+# malformed lift, or a window lift set on another account, is no lift
+# (usage_lift_valid fails toward the ceiling); a standing lift follows the login.
+lift=false lift_followed=false
 # shellcheck source=usage-lift.sh
 # shellcheck disable=SC1091
 if { . "$REPO/scripts/lib/usage-lift.sh"; } 2>/dev/null && usage_lift_valid "$CACHE"; then
   lift=true
+  [ "$USAGE_LIFT_FOLLOWED" = true ] && lift_followed=true
   # Standing operator policy spends both banks to 100 by default. Explicit
   # CADENCE_USAGE_MAX_PCT still controls five_hour; neither bank spends extra_usage.
   if [ "$USAGE_LIFT_STANDING" = true ] && [ -z "${CADENCE_USAGE_MAX_PCT:-}" ]; then MAX_PCT=100; fi
