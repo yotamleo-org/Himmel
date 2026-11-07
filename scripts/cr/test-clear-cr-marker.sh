@@ -1384,6 +1384,16 @@ cm_start; cm_finish "$_cm_ts" "$(_cm_row feat/x "$_CM_GONE" ok 1)" "$(_cm_row fe
 run_clear "$tmp" 0 "an unresolvable old row plus a row at the clearing head → exit 0"
 rm -rf "$tmp"
 
+cm_start; cm_finish "$_cm_ts" "$(_cm_row feat/x "$sha" ok)"
+run_clear "$tmp" 14 "an ok row with no count does not count → exit 14"
+cm_reason missing-comment-review "ok row without a count"
+rm -rf "$tmp"
+
+cm_start; cm_finish "$_cm_ts" "$(_cm_row feat/x "$sha" off '' because)"
+run_clear "$tmp" 14 "an off row whose reason is not codex-lane or agent-not-loaded does not count → exit 14"
+cm_reason missing-comment-review "off row with another reason"
+rm -rf "$tmp"
+
 cm_start; cm_finish 2026-10-01T10:00:00+00:00
 run_clear "$tmp" 0 "marker minted before the comments gate, no row → exit 0"
 rm -rf "$tmp"

@@ -1788,7 +1788,9 @@ if [ "$marker_lane" = "full" ]; then
           let r;
           try { r = JSON.parse(l); } catch { continue; }
           if (!r || r.kind !== "comments" || r.branch !== e.BRANCH) continue;
-          if (r.status !== "ok" && r.status !== "off") continue;
+          const usable = r.status === "ok" ? Number.isInteger(r.count) && r.count >= 0
+              : r.status === "off" && (r.reason === "codex-lane" || r.reason === "agent-not-loaded");
+          if (!usable) continue;
           const clean = (s) => String(s || "-").replace(/\s+/g, "_").replace(/=/g, ":");
           out.push(clean(r.head) + " " + r.status + " " + clean(r.reason));
       }
