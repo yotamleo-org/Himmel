@@ -24,18 +24,22 @@ git repo.
 Check both signals:
 
 - **Config:** is `HANDOVER_DIR` already set in the environment, or present as an
-  active (uncommented) line in `<repo-root>/.env`?
+  active (uncommented) line in `<repo-root>/.env`? An empty `HANDOVER_DIR=` line
+  is the recorded inline choice, so it counts as set.
 - **Registry:** does `~/.claude/handover/registry.json` already contain an entry
   whose `path` canonicalises to `<repo-root>`?
 
 Also read `env.HANDOVER_DIR` in `<repo-root>/.claude/settings.json` (it beats
-`.env`). If it is present and differs from the `.env` value, setup is not
-complete: continue to step 3 so step 4 can reconcile it.
+`.env`), the way step 4 does. If the `.env` has a `HANDOVER_DIR` line (empty or
+not) and the pin is present and differs from it, setup is not complete:
+continue to step 3 so step 4 can reconcile it. A pin with no `.env` line is the
+configured value on its own (a project install wrote it).
 
 If **both** are present and agree, report the resolved state root and stop with: "Handover
 already set up for this repo (HANDOVER_DIR=<…>, registered as '<name>'). Re-run a
-specific step with `/handover register` or edit `.env` manually if you need to
-change the location." Do not silently re-prompt.
+specific step with `/handover register`, or tell me you want a different
+location and I will ask again." If they say so, continue to step 3. Do not
+silently re-prompt.
 
 If only one is present, continue — you will fill the missing half.
 
@@ -51,8 +55,8 @@ explicit Mode-B path and skip the prompt. Otherwise ask via `AskUserQuestion`:
 > - **External state repo** — a separate directory (typically a dedicated repo)
 >   so handover commits never land on your feature branches. You'll enter the
 >   path. (Mode B)
-> - **Inline (this repo)** — state under `<repo-root>/handovers/`. Simplest; no
->   `.env` change. Best for a single-repo setup. (Mode A)
+> - **Inline (this repo)** — state under `<repo-root>/handovers/`. Simplest; the
+>   `.env` gets an empty `HANDOVER_DIR=` line. Best for a single-repo setup. (Mode A)
 
 Pick ONE location — duplicated mode (state in both a vault and a state repo) is
 unsupported; the resolver reads a single `HANDOVER_DIR` root.
@@ -65,9 +69,19 @@ inside a git repo — e.g. `/c/Users/<you>/Documents/<your-vault>/handovers`
 
 ### 4. Persist the choice
 
-- **Inline (Mode A):** nothing to write — `HANDOVER_DIR` stays unset and the
-  resolver (`scripts/lib/handover-path.sh`) defaults to `<repo-root>/handovers`.
-  First do the settings-pin reconcile below (inline removes a differing pin),
+- **Inline (Mode A):** record the choice as an empty `HANDOVER_DIR=` line in
+  `<repo-root>/.env`:
+
+  ```bash
+  bash <repo-root>/scripts/handover/set-handover-dir.sh --inline
+  ```
+
+  An empty value reads as unset, so the resolver
+  (`scripts/lib/handover-path.sh`) defaults to `<repo-root>/handovers`. The
+  line replaces a vault or external path left by an earlier choice and is what
+  stops a later re-run of `adopt.sh` from pinning the vault again. Confirm the
+  printed `OK set-handover-dir:` line; on any other result stop and show it.
+  Then do the settings-pin reconcile below (inline removes a differing pin),
   then continue to step 5 with `<state-root-host>` = `<repo-root>/handovers`.
 - **Vault or external (Mode B — both persist identically):** if the chosen
   directory does not exist yet, ask whether
@@ -80,7 +94,11 @@ inside a git repo — e.g. `/c/Users/<you>/Documents/<your-vault>/handovers`
   ```
 
   It creates-or-updates the `HANDOVER_DIR=` line in `<repo-root>/.env`. Confirm
-  the printed `OK set-handover-dir:` line. `<state-root-host>` = the chosen path.
+  the printed `OK set-handover-dir:` line; on any other result stop and show it.
+  The writer stores the canonical absolute path (`<canonical-path>`, the
+  `HANDOVER_DIR=` value now in `<repo-root>/.env`), which may differ from what
+  the user typed (relative, trailing slash). `<state-root-host>` =
+  `<canonical-path>`.
 
   Note for the current session: `.env` is read by tools at launch, so the new
   `HANDOVER_DIR` takes effect for shell scripts the next time Claude is launched
@@ -91,25 +109,43 @@ inside a git repo — e.g. `/c/Users/<you>/Documents/<your-vault>/handovers`
 - **All three choices — reconcile the project's settings pin.** A project
   install (`adopt.sh --profile all`) may have pinned `env.HANDOVER_DIR` in
   `<repo-root>/.claude/settings.json`, and a settings `env` value beats `.env`,
-  so a different choice would silently not take effect. Read it:
+  so a different choice would silently not take effect. If
+  `<repo-root>/.claude/settings.json` does not exist there is nothing to
+  reconcile. Otherwise read it:
 
   ```bash
   jq -r '.env.HANDOVER_DIR // empty' <repo-root>/.claude/settings.json
   ```
 
-  No settings file or no value: nothing to do. Otherwise compare it to the
-  chosen root (`<chosen-path>`; for inline, `<repo-root>/handovers`) and act
-  only when they differ. The writers live in the himmel clone, which is
-  `<repo-root>` in a himmel checkout and `$HIMMEL_REPO` in a project install:
+  If `jq` is missing or exits non-zero (invalid JSON), stop and show the error:
+  that is not "no pin", and the choice is not applied until it is read. An empty
+  result from a successful `jq` means no pin: nothing to do. Otherwise compare
+  the pin to the chosen root (`<canonical-path>`; for inline, any pin is
+  removed) and act only when they differ. The writers live in the himmel clone,
+  which is `<repo-root>` in a himmel checkout and `$HIMMEL_REPO` in a project
+  install:
 
   - **Vault or external:** point the pin at the choice:
-    `bash <himmel-clone>/scripts/lib/wire-handover-dir.sh <repo-root>/.claude/settings.json "<chosen-path>"`
+    `bash <himmel-clone>/scripts/lib/wire-handover-dir.sh <repo-root>/.claude/settings.json "<canonical-path>"`
   - **Inline:** remove the pin so the repo default applies:
     `bash <himmel-clone>/scripts/lib/unwire-handover-dir.sh <repo-root>/.claude/settings.json`
+
+  If the writer exits non-zero, stop and show its output: `.env` is already
+  written but the pin is not, so the choice is only half applied. Do not go on
+  to step 5 and do not print the step 6 summary.
 
   Tell the user what changed ("env.HANDOVER_DIR in .claude/settings.json was
   `<old>`, now `<new>` / removed"). Settings are read at launch, so this too
   takes effect from the next Claude launch in the project.
+
+  **Is the settings file tracked?** Run
+  `git -C <repo-root> ls-files --error-unmatch .claude/settings.json`. If it is
+  (a committed install), the reconcile only changed the working copy in
+  `<repo-root>`: every worktree and every other clone reads its own checked-out
+  settings file and keeps the old pin, so their sessions keep writing and
+  reading the old root until the change lands. Tell the user to commit the
+  settings change on a branch and merge it through a PR, never on main, and
+  say what the worktrees do meanwhile. Do not commit it yourself.
 
 ### 5. Initialise or adopt the state
 
@@ -145,4 +181,6 @@ this ran:
   interactively. Everything downstream resolves it from `.env` (Mode B) or the
   inline default (Mode A) — never a hardcoded path.
 - Re-running is safe: step 2 short-circuits when setup is already complete, and
-  `set-handover-dir.sh` + the skill's `register` flow are both idempotent.
+  `set-handover-dir.sh` (both forms) + the skill's `register` flow are idempotent.
+- Re-running `adopt.sh` keeps the choice: it leaves a `HANDOVER_DIR` line in the
+  project's `.env`, empty or not, alone and does not pin a vault over it.

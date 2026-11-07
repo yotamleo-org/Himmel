@@ -89,6 +89,39 @@ case "$t10_out" in
     *) echo "FAIL T10 emits guard diagnostic — got: $t10_out"; FAILED=$((FAILED + 1)) ;;
 esac
 
+# T11: --inline replaces a stale vault path with an empty record, in place.
+ENV5="$TMP/inline.env"
+printf 'USER_SLUG=tester\nHANDOVER_DIR=/stale/vault/handovers\nJIRA_PROJECT_KEY=HIMMEL\n' > "$ENV5"
+bash "$SCRIPT" --inline --env-file "$ENV5" >/dev/null 2>&1
+assert_rc "T11 inline rc=0" 0 "$?"
+assert_eq "T11 stale path replaced by an empty value" "HANDOVER_DIR=" "$(grep '^HANDOVER_DIR=' "$ENV5")"
+assert_eq "T11 other lines kept" "2" "$(grep -cE '^(USER_SLUG|JIRA_PROJECT_KEY)=' "$ENV5")"
+
+# T12: re-running --inline, and --inline after --inline on a fresh file, leave one line.
+bash "$SCRIPT" --inline --env-file "$ENV5" >/dev/null 2>&1
+ENV6="$TMP/inline-fresh.env"
+bash "$SCRIPT" --inline --env-file "$ENV6" >/dev/null 2>&1
+bash "$SCRIPT" --inline --env-file "$ENV6" >/dev/null 2>&1
+assert_eq "T12 re-run keeps one line" "1" "$(grep -cE '^[[:space:]]*HANDOVER_DIR=' "$ENV5")"
+assert_eq "T12 fresh file gets one empty line" "HANDOVER_DIR=" "$(cat "$ENV6")"
+
+# T13: --inline with a dir is a usage error rc=1.
+bash "$SCRIPT" --inline "$HDIR" --env-file "$ENV6" >/dev/null 2>&1
+assert_rc "T13 --inline plus a dir rc=1" 1 "$?"
+
+# T14: an empty record reads as unset: load_dotenv overrides nothing and the resolver
+# falls back to the repo's handovers/ even though the .env still has the line.
+T14_REPO="$TMP/t14repo"
+mkdir -p "$T14_REPO/handovers"
+git -C "$T14_REPO" init -q
+printf 'HANDOVER_DIR=/stale/vault/handovers\n' > "$T14_REPO/.env"
+bash "$SCRIPT" --inline --env-file "$T14_REPO/.env" >/dev/null 2>&1
+LIB="$(cd "$(dirname "$SCRIPT")/../lib" && pwd)"
+mkdir -p "$TMP/t14home"
+t14_root=$(cd "$T14_REPO" && unset HANDOVER_DIR && export HOME="$TMP/t14home" HIMMEL_CONFIG_DIR="$TMP/t14home/.himmel" && . "$LIB/load-dotenv.sh" && . "$LIB/handover-path.sh" \
+    && load_dotenv --root "$T14_REPO" HANDOVER_DIR 2>/dev/null && handover_root 2>&1)
+assert_eq "T14 resolver lands on the repo handovers/" "$(cd "$T14_REPO/handovers" && pwd)" "$t14_root"
+
 echo
 if [ "$FAILED" -eq 0 ]; then echo "All set-handover-dir tests passed."
 else echo "$FAILED set-handover-dir test(s) failed."; exit 1; fi

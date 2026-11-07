@@ -504,6 +504,27 @@ hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$preserve_target2/.claude/settings.j
 grepq "$out" 'via /handover-setup' || fail "project .env preserve: missing the .env-preserve message (got: $out)"
 echo "ok: preserves an existing project .env HANDOVER_DIR (does not shadow it via settings.json)"
 
+# ── 4c1. an inline choice survives a re-run of adopt ──
+# /handover-setup records inline as an empty HANDOVER_DIR= in the project's .env
+# (replacing a stale vault path). Re-running adopt, which docs/setup/updating.md
+# tells project adopters to do, must not pin the vault again, and repeating the
+# choice must not add a second line.
+inline_setdir="$(dirname "$adopt")/handover/set-handover-dir.sh"
+inline_target2="$work/inline-target2"; mkdir -p "$inline_target2"
+inline_vault2="$work/inline-vault2"
+printf 'USER_SLUG=x\nHANDOVER_DIR=/stale/vault/handovers\n' > "$inline_target2/.env"
+bash "$inline_setdir" --inline --env-file "$inline_target2/.env" >/dev/null 2>&1 || fail "inline choice: set-handover-dir.sh --inline failed"
+bash "$inline_setdir" --inline --env-file "$inline_target2/.env" >/dev/null 2>&1 || fail "inline choice: the second --inline failed"
+HOME="$base_home" bash "$adopt" --profile luna --target "$inline_target2" --luna-target "$inline_vault2" >/dev/null 2>&1
+hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$inline_target2/.claude/settings.json" 2>/dev/null)
+[ "$hd" = "ABSENT" ] || fail "inline choice: re-adopt pinned a root over the inline choice ([$hd])"
+[ "$(grep -c '^HANDOVER_DIR=' "$inline_target2/.env")" = "1" ] || fail "inline choice: .env does not hold exactly one HANDOVER_DIR line"
+[ "$(grep '^HANDOVER_DIR=' "$inline_target2/.env")" = "HANDOVER_DIR=" ] || fail "inline choice: the stale .env path was not replaced by the empty record"
+HOME="$base_home" bash "$adopt" --profile luna --target "$inline_target2" --luna-target "$inline_vault2" >/dev/null 2>&1
+hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$inline_target2/.claude/settings.json" 2>/dev/null)
+[ "$hd" = "ABSENT" ] || fail "inline choice: the second re-adopt pinned a root ([$hd])"
+echo "ok: an inline choice (empty .env HANDOVER_DIR=) survives re-adopt and a repeated choice adds no line"
+
 # ── 4c1. the himmel clone's .env is NOT the project's choice ──
 # A project install reads the PROJECT's .env. A HANDOVER_DIR in the himmel
 # clone's .env (another install's choice, or --profile all run from the clone)

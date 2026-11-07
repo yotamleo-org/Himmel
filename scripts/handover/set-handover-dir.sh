@@ -8,10 +8,17 @@
 #
 # Usage:
 #   set-handover-dir.sh <handover-dir> [--env-file <path>]
+#   set-handover-dir.sh --inline [--env-file <path>]
 #
 #   <handover-dir>   Absolute path to the handover state root (Mode B). Must be
 #                    an existing directory (fail-closed — matches the resolver
 #                    in scripts/lib/handover-path.sh).
+#   --inline         The inline choice (Mode A): write an EMPTY `HANDOVER_DIR=`
+#                    line. An empty value reads as unset (load_dotenv and the
+#                    resolver both test -n), so state stays under
+#                    <repo-root>/handovers. The line is the persisted record:
+#                    it replaces a stale vault or external path, and a re-run
+#                    of adopt.sh leaves it alone instead of re-pinning a vault.
 #   --env-file <p>   Target .env (default: <primary-checkout-root>/.env).
 #
 # Idempotent: re-running with the same value reaches the same end-state (the
@@ -32,10 +39,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 HDIR=""
 ENV_FILE=""
+INLINE=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --env-file)   ENV_FILE="${2:-}"; shift 2 ;;
         --env-file=*) ENV_FILE="${1#--env-file=}"; shift ;;
+        --inline)     INLINE=1; shift ;;
         -*)           echo "ERR set-handover-dir: unknown flag: $1" >&2; exit 1 ;;
         *)
             if [ -z "$HDIR" ]; then HDIR="$1"; shift
@@ -44,12 +53,18 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-if [ -z "$HDIR" ]; then
-    echo "Usage: set-handover-dir.sh <handover-dir> [--env-file <path>]" >&2
+if [ "$INLINE" -eq 1 ] && [ -n "$HDIR" ]; then
+    echo "ERR set-handover-dir: --inline takes no handover dir" >&2
     exit 1
 fi
 
-if [ ! -d "$HDIR" ]; then
+if [ "$INLINE" -eq 0 ] && [ -z "$HDIR" ]; then
+    echo "Usage: set-handover-dir.sh <handover-dir> [--env-file <path>]" >&2
+    echo "       set-handover-dir.sh --inline [--env-file <path>]" >&2
+    exit 1
+fi
+
+if [ "$INLINE" -eq 0 ] && [ ! -d "$HDIR" ]; then
     echo "ERR set-handover-dir: handover dir does not exist: $HDIR" >&2
     echo "    Create it first (e.g. a 'handovers' dir in your state repo), then re-run." >&2
     exit 2
@@ -58,7 +73,9 @@ fi
 # Canonicalize (absolute, forward slashes — some Windows bash builds emit
 # backslashes from pwd; normalize so the stored value is shell-safe).
 # shellcheck disable=SC1003  # '\\' is a literal backslash for tr, not a quote escape
-HDIR="$(cd "$HDIR" && pwd | tr '\\' '/')"
+if [ "$INLINE" -eq 0 ]; then
+    HDIR="$(cd "$HDIR" && pwd | tr '\\' '/')"
+fi
 
 # Resolve the target .env: explicit --env-file, else the primary checkout root
 # (parent of git-common-dir — finds the real .env from inside a worktree too).
