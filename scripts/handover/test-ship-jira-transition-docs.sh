@@ -58,7 +58,7 @@ contains 'preface Shipping: completes-ticket: yes -> pass the flag' "$ship" 'com
 contains 'preface Shipping: completes-ticket: no -> omit the flag' "$ship" 'completes-ticket: no'
 contains 'preface Shipping states the omit branch in words' "$ship" 'omit the flag'
 contains 'preface Shipping says never to turn the flag on by default' "$ship" 'never turn it on by default'
-contains 'preface Shipping names the sliced-ticket regression the default would recreate' "$ship" 'a default closes a sliced ticket early'
+contains 'brief template names the sliced-ticket regression a default would recreate' "$(cat "$BRIEF")" 'a default closes multi-PR tickets early'
 contains 'preface Shipping: the flag closes only the FIRST [KEY] of the PR title' "$ship" "\`[KEY]\` of the PR title"
 contains 'preface Shipping keeps the post-merge re-read' "$ship" 're-read the ticket after merge'
 contains 'preface Shipping tells a worker with no completes-ticket line to decide it itself' "$ship" 'decide it yourself'

@@ -152,7 +152,7 @@ commands are VM-only): `worker-sections/shell-and-tests.md`.
   brief's `completes-ticket:` line; if absent, decide it yourself.
   - **`completes-ticket: yes`** → pass the flag:
     `bash <anchor>/scripts/handover/merge-on-green.sh --jira-transition --go <GO file>`.
-  - **`completes-ticket: no`** → omit the flag; never turn it on by default (a default closes a sliced ticket early).
+  - **`completes-ticket: no`** → omit the flag; never turn it on by default.
   - The flag closes only the **first** `[KEY]` of the PR title; check a second
     key by hand; re-read the ticket after merge. [prose]
 
