@@ -120,13 +120,16 @@ checkpoint at 700000 and a ceiling of 800000. The hook rounds up to a whole perc
 window, so `ceil(87 × 800000 / 1000000)` = `ceil(69.6)` = 70 %, **exactly 700000 tokens**;
 88, the nearer share on paper (87.5), would give 71 %, 710000. Fill itself reaches the hook
 as a whole percent, so a deny can land up to about 5000 tokens under 700000. Where auto
-compaction fires at this ceiling is not yet located: one real run compacted at 749689 by the
-CLI's own count, after a single read batch jumped there from about 25000.
+compaction fires at this ceiling is not located. Two real runs each compacted straight after one
+large read batch, at 749689 and 678169 by the CLI's own count (about 645000 by API usage in the
+second, calculated), and the second then grew to 690007 by API usage with no second compaction.
 
 **What the guard does not cover.** A second compaction trigger fires after about 54 minutes
 idle, whatever the ceiling: 10 Opus compactions from 337516 to 555513 tokens over 21 days,
 each after 54 to 55 minutes without a call. Below the threshold the guard passes an auto
-compaction, so an Opus worker idle that long before 700000 can still compact.
+compaction, so an Opus worker idle that long before 700000 can still compact. The guard also
+checks only between calls, so one tool batch that jumps past the threshold reaches a compaction
+with no deny, at any share: that is what both real runs above did, and neither saw a deny.
 
 ## The autocompact A/B arm
 
