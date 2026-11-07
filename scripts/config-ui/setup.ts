@@ -172,7 +172,6 @@ export function accountCreate(b: Record<string, unknown>, o: AccountOpts): Secre
 }
 
 // POST /api/setup/secret {name, op: "set"|"remove", value?}.
-// A service-mode server takes a set only from a login session: its launch token outlives the process, too weak alone for a write that takes a secret.
 export function secretWrite(b: Record<string, unknown>, o: SetupOpts & { serviceMode: boolean; session?: boolean }): SecretResult {
   const e = entries.find((x) => x.name === b.name);
   if (!e || e.collect !== "file") return fail(400, "not a secret this page can set");
@@ -180,7 +179,7 @@ export function secretWrite(b: Record<string, unknown>, o: SetupOpts & { service
   const set = b.op === "set";
   if (set && typeof b.value !== "string") return fail(400, "value required");
   if (!set && b.value !== undefined) return fail(400, "remove takes no value");
-  if (set && o.serviceMode && !o.session) return fail(403, "service mode: log in at /login to save a secret, or run `himmelctl ui` for a window that can");
+  if (o.serviceMode && !o.session) return fail(403, "service mode: log in at /login to save a secret, or run `himmelctl ui` for a window that can");
   const action = set ? "secret.set" : "secret.remove";
   if (set) {
     const v = store.validate(e.name, b.value);
