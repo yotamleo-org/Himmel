@@ -1643,14 +1643,45 @@ update_jira_cli() {
 #    leaves the running service alone, on its old build, and says so. Advisory (the
 #    caller ignores the return): a failed UI build must not stop the chain.
 #    check mode only reports what apply would do, from HEAD..@{u}.
+#    A pulled range is not the only reason the bundle can be behind: a merge-path pull
+#    (wrap-merged.sh) leaves no range, so the tree sha of scripts/config-ui the bundle was
+#    built from is recorded and a full update rebuilds whenever HEAD's differs.
+# config_ui_confirm_up <unit> — systemctl restart of a Type=simple unit returns once the process
+#    has forked, so a server that dies on start still "restarted". The unit must answer active at
+#    every one-second sample for HIMMEL_UI_CONFIRM_SECS (default 5) and, when its unit file names
+#    a port and curl exists, serve HTTP there. On failure CUI_CONFIRM_WHY says why.
+config_ui_confirm_up() {
+    local unit="$1" n="${HIMMEL_UI_CONFIRM_SECS:-5}" i=0 s port
+    port=$(sed -n 's/.*--service --port \([0-9][0-9]*\).*/\1/p' "${HIMMELCTL_SYSTEMD_USER_UNIT_DIR:-$HOME/.config/systemd/user}/$unit" 2>/dev/null | head -n 1)
+    while [ "$i" -lt "$n" ]; do
+        sleep 1
+        s=$(systemctl --user is-active "$unit" 2>/dev/null) || true
+        if [ "$s" != "active" ]; then CUI_CONFIRM_WHY="is-active says '${s:-nothing}'"; return 1; fi
+        i=$((i + 1))
+    done
+    if [ -n "$port" ] && command -v curl >/dev/null 2>&1 && ! curl -fsS -o /dev/null --max-time 3 "http://127.0.0.1:$port/agui/" 2>/dev/null; then
+        CUI_CONFIRM_WHY="no HTTP answer on 127.0.0.1:$port"; return 1
+    fi
+    return 0
+}
 update_config_ui() {
     local mode="$1"   # check | apply | force (--only config_ui: no pulled range, rebuild now)
     local web="$ROOT/scripts/config-ui/agui-web" unit="himmel-ui.service"
     local from to changed="" bun log state pending="$HOME/.himmel/state/config-ui-rebuild-pending"
+    local built="$HOME/.himmel/state/config-ui-built-tree" tree built_tree="" stale=""
     [ -f "$web/package.json" ] || return 0
+    # The unit serves the primary checkout: a run from a linked worktree would build the worktree's
+    # bundle and restart the primary's unit, so it does neither and says why.
+    if [ "$mode" != "check" ] && [ "$(git -C "$ROOT" rev-parse --git-dir 2>/dev/null)" != "$(git -C "$ROOT" rev-parse --git-common-dir 2>/dev/null)" ]; then
+        STATUS_config_ui="skipped"; DETAIL_config_ui="run from a linked worktree — $unit serves the primary checkout, so nothing was rebuilt; run the update there"
+        return 0
+    fi
+    tree=$(git -C "$ROOT" rev-parse HEAD:scripts/config-ui 2>/dev/null) || tree=""
+    [ ! -f "$built" ] || built_tree=$(cat "$built")
+    [ -z "$tree" ] || [ ! -d "$web/dist" ] || [ "$built_tree" = "$tree" ] || stale=1
     if [ "$mode" = "check" ]; then
         changed=$(git diff --name-only HEAD '@{u}' -- scripts/config-ui 2>/dev/null) || changed=""
-        [ -n "$changed" ] || [ -f "$pending" ] || return 0
+        [ -n "$changed" ] || [ -f "$pending" ] || [ -n "$stale" ] || return 0
         STATUS_config_ui="skipped"; DETAIL_config_ui="check mode — would rebuild the config UI bundle and restart $unit if running"
         return 0
     fi
@@ -1662,15 +1693,15 @@ update_config_ui() {
         changed=$(git diff --name-only "$from" "$to" -- scripts/config-ui 2>/dev/null) || changed=""
     fi
     # A step that failed leaves $pending, so the next update retries it: by then the pulled range is empty.
-    [ -n "$changed" ] || [ -f "$pending" ] || return 0
+    [ -n "$changed" ] || [ -f "$pending" ] || [ -n "$stale" ] || return 0
 
     echo ""
     echo "==> config UI rebuild (scripts/config-ui/agui-web/dist)"
     bun=$(resolve_bun 2>/dev/null) || bun=""
     if [ -z "$bun" ]; then
         mkdir -p "${pending%/*}" 2>/dev/null && : > "$pending" 2>/dev/null || true
-        STATUS_config_ui="skipped"; DETAIL_config_ui="bun not on PATH — the config UI changed but was not rebuilt; $unit (if running) still serves the old build; the next update retries"
-        return 0
+        STATUS_config_ui="failed"; DETAIL_config_ui="bun not on PATH — the config UI was not rebuilt; $unit (if running) still serves the old build; install bun, the next update retries"
+        return 1
     fi
     if ! log=$( (cd "$web" && "$bun" install --frozen-lockfile && "$bun" run build) 2>&1 ); then
         printf '%s\n' "$log" | tail -20 | sed 's/^/    /'
@@ -1679,6 +1710,7 @@ update_config_ui() {
         DETAIL_config_ui="build failed — $unit left running on the old build; the next update retries, or by hand: (cd scripts/config-ui/agui-web && bun install --frozen-lockfile && bun run build), then systemctl --user restart $unit"
         return 1
     fi
+    if [ -n "$tree" ]; then mkdir -p "${built%/*}" 2>/dev/null && printf '%s\n' "$tree" > "$built" 2>/dev/null || true; fi
     # a unit left failed by an earlier restart is restarted too; an absent or stopped one is not ours to start
     state=""
     if command -v systemctl >/dev/null 2>&1; then
@@ -1692,10 +1724,19 @@ update_config_ui() {
         fi
     fi
     if [ "$state" = "active" ] || [ "$state" = "activating" ] || [ "$state" = "failed" ]; then
+        # StartLimitBurst=5 per 600 s: a few merges in a row (or a crash loop) leave the unit in start-limit-hit, where
+        # every restart is refused and the retry never lands. This restart is deliberate, so clear the counter first.
+        systemctl --user reset-failed "$unit" >/dev/null 2>&1 || true  # swallow-ok: nothing to reset on a healthy unit
         if systemctl --user restart "$unit" >/dev/null 2>&1; then
-            rm -f "$pending"
-            STATUS_config_ui="updated"; DETAIL_config_ui="bundle rebuilt, $unit restarted"
-            return 0
+            if config_ui_confirm_up "$unit"; then
+                rm -f "$pending"
+                STATUS_config_ui="updated"; DETAIL_config_ui="bundle rebuilt, $unit restarted"
+                return 0
+            fi
+            mkdir -p "${pending%/*}" 2>/dev/null && : > "$pending" 2>/dev/null || true
+            STATUS_config_ui="failed"
+            DETAIL_config_ui="bundle rebuilt and $unit restarted but it did not stay up ($CUI_CONFIRM_WHY) — see: journalctl --user -u $unit; the next update retries"
+            return 1
         fi
         mkdir -p "${pending%/*}" 2>/dev/null && : > "$pending" 2>/dev/null || true
         STATUS_config_ui="failed"

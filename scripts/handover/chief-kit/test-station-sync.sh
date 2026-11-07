@@ -22,6 +22,8 @@ SCRIPT="$HERE/station-sync.sh"
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/ss-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$W"' EXIT
+# the config_ui retry marker lives under $HOME; a developer's real one must not steer these cases
+export HOME="$W/home"; mkdir -p "$HOME"
 fails=0
 check()    { if [ "$2" = "$3" ]; then echo "ok - $1"; else echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); fi; }
 contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: [$2] does not contain [$3]"; fails=$((fails+1)) ;; esac; }
@@ -30,6 +32,7 @@ lacks()    { case "$2" in *"$3"*) echo "FAIL - $1: [$2] contains [$3]"; fails=$(
 cat > "$W/update" <<'EOF2'
 #!/usr/bin/env bash
 echo "update $*" >> "$SS_CALLS"
+if [ "$1 $2" = "--only ${SS_T_FAIL:-}" ]; then echo "bun: build exploded" >&2; exit 1; fi
 if [ "$1" = "--versions" ]; then cat "$SS_T_VERSIONS"; grep -qw behind "$SS_T_VERSIONS" && exit 1; exit 0; fi
 exit 0
 EOF2
@@ -285,5 +288,23 @@ rm -f "$W/bridge-restart.ts"; : > "$SS_SC_CALLS"
 SS_T_ENABLED=1 run_bridge scripts/lanes/a.json
 lacks "22 unit not enabled: no restart" "$sc" " restart "
 contains "22 skip names the reason" "$out" "SKIP bridge_restart unit-not-enabled"
+
+# 25-28: the config_ui retry marker (a rebuild that failed, or never ran for want of bun)
+CUI_MARK="$HOME/.himmel/state/config-ui-rebuild-pending"
+mkdir -p "$HOME/.himmel/state"; : > "$CUI_MARK"
+run "$W/ver-current" docs/x.md
+contains "25 marker owed: the sync runs config_ui though the merge touched no UI path" "$calls" "update --only config_ui"
+contains "25 marker still there (the stub left it): the state is not ok" "$out" "STATION=BEHIND:config_ui-failed"
+check "25 state file agrees" "$(cat "$SS_STATE")" "BEHIND:config_ui-failed"
+rm -f "$CUI_MARK"
+run "$W/ver-current" docs/x.md
+lacks "26 no marker, no UI path: no config_ui step" "$calls" "--only config_ui"
+contains "26 and the station reads ok" "$out" "STATION=OK"
+: > "$CUI_MARK"
+SS_T_FAIL=config_ui run "$W/ver-current" scripts/config-ui/server.ts
+contains "27 a failed config_ui step reports its rc" "$out" "STEP config_ui rc=1"
+contains "27 and keeps the step's own failure line" "$out" "config_ui: bun: build exploded"
+check "27 the failure is named once" "$(printf '%s\n' "$out" | grep -c 'STATION=BEHIND:config_ui-failed$')" 1
+rm -f "$CUI_MARK"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

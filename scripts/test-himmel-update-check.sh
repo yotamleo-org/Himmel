@@ -958,7 +958,12 @@ cat > "$CUI_BIN/systemctl" <<'STUB'
 #!/bin/sh
 printf '%s\n' "$*" >> "$CUI_LOG"
 case "$*" in
-    *is-active*) [ "${CUI_SVC_STATE:-active}" = "silent" ] && exit 1; echo "${CUI_SVC_STATE:-active}"; [ "${CUI_SVC_STATE:-active}" = "active" ]; exit $? ;;
+    *restart*) [ "${CUI_RESTART_FAIL:-}" = "1" ] && exit 1; exit 0 ;;
+    *is-active*)
+        st="${CUI_SVC_STATE:-active}"
+        # CUI_SVC_AFTER: what the unit answers once it has been restarted (a server that dies on start)
+        if [ -n "${CUI_SVC_AFTER:-}" ] && grep -q restart "$CUI_LOG"; then st="$CUI_SVC_AFTER"; fi
+        [ "$st" = "silent" ] && exit 1; echo "$st"; [ "$st" = "active" ]; exit $? ;;
 esac
 exit 0
 STUB
@@ -987,13 +992,15 @@ run_cui() {
     cui_rc=0
     cui_out=$(
         set -euo pipefail
-        unset CUI_BUILD_FAIL CUI_SVC_STATE
-        export CUI_LOG PATH="$CUI_BIN:$PATH"
+        unset CUI_BUILD_FAIL CUI_SVC_STATE CUI_RESTART_FAIL CUI_SVC_AFTER CUI_NO_BUN CUI_ROOT
+        export CUI_LOG PATH="$CUI_BIN:$PATH" HIMMEL_UI_CONFIRM_SECS=1
         # shellcheck disable=SC2163  # kv holds NAME=value; exporting the expansion is the point
         for kv in "$@"; do export "$kv"; done
         # shellcheck disable=SC1090
         HIMMEL_UPDATE_LIB=1 . "$SCRIPT"
-        ROOT="$CUI_REPO"; cd "$ROOT"
+        # shellcheck disable=SC2329  # replaces the sourced resolve_bun; update_config_ui calls it
+        [ "${CUI_NO_BUN:-}" = "1" ] && resolve_bun() { return 1; }
+        ROOT="${CUI_ROOT:-$CUI_REPO}"; cd "$ROOT"
         # shellcheck disable=SC2034  # read by update_config_ui from the sourced script
         PULL_HEAD_BEFORE="$CUI_BEFORE"
         rc=0; update_config_ui "$mode" || rc=$?
@@ -1011,6 +1018,9 @@ assert_contains "config_ui changed: installs deps in agui-web" "agui-web|install
 assert_contains "config_ui changed: builds the bundle" "agui-web|run build" "$cui_log"
 assert_contains "config_ui changed: restarts the service" "restart himmel-ui.service" "$cui_log"
 assert_contains "config_ui changed: row says updated" "STATUS=updated" "$cui_out"
+# the start limit (5 starts in 600 s) refuses every restart once hit, so the counter is cleared right before the restart
+assert_eq "config_ui changed: clears the start limit right before the restart" "reset-failed,restart" \
+    "$(grep -E 'reset-failed|restart' <<< "$cui_log" | sed -e 's/--user //' -e 's/ himmel-ui.service//' | paste -sd, -)"
 
 # server code alone also needs the restart
 make_cui_repo scripts/config-ui/server.ts
@@ -1090,6 +1100,60 @@ mkdir -p "$HOME/.himmel/state"; : > "$HOME/.himmel/state/config-ui-rebuild-pendi
 run_cui check
 assert_contains "config_ui check mode: reports a pending retry" "would rebuild" "$cui_out"
 rm -f "$HOME/.himmel/state/config-ui-rebuild-pending"
+
+# the restart itself fails (systemctl restart rc 1): the row fails, the marker stays, nothing claims a restart
+make_cui_repo scripts/config-ui/server.ts
+rm -f "$HOME/.himmel/state/config-ui-rebuild-pending"
+run_cui apply CUI_RESTART_FAIL=1
+assert_eq "config_ui restart fails: rc 1" "1" "$cui_rc"
+assert_contains "config_ui restart fails: row says failed" "STATUS=failed" "$cui_out"
+assert_contains "config_ui restart fails: row names the restart" "restart himmel-ui.service failed" "$cui_out"
+assert_eq "config_ui restart fails: keeps the retry marker" "yes" "$([ -f "$HOME/.himmel/state/config-ui-rebuild-pending" ] && echo yes || echo no)"
+rm -f "$HOME/.himmel/state/config-ui-rebuild-pending"
+
+# bun missing: the UI was not rebuilt, so that is a failure with a retry marker, never an rc-0 skip
+make_cui_repo scripts/config-ui/server.ts
+run_cui apply CUI_NO_BUN=1
+assert_eq "config_ui bun missing: rc 1" "1" "$cui_rc"
+assert_contains "config_ui bun missing: row says failed" "STATUS=failed" "$cui_out"
+assert_contains "config_ui bun missing: row says bun is missing" "bun not on PATH" "$cui_out"
+assert_eq "config_ui bun missing: keeps the retry marker" "yes" "$([ -f "$HOME/.himmel/state/config-ui-rebuild-pending" ] && echo yes || echo no)"
+rm -f "$HOME/.himmel/state/config-ui-rebuild-pending"
+
+# systemctl restart returns once the process forked: a server that dies on start must not read as restarted
+make_cui_repo scripts/config-ui/server.ts
+run_cui apply CUI_SVC_AFTER=activating
+assert_eq "config_ui unit dies after the restart: rc 1" "1" "$cui_rc"
+assert_contains "config_ui unit dies after the restart: row says failed" "STATUS=failed" "$cui_out"
+assert_contains "config_ui unit dies after the restart: row says it did not stay up" "did not stay up" "$cui_out"
+assert_eq "config_ui unit dies after the restart: keeps the retry marker" "yes" "$([ -f "$HOME/.himmel/state/config-ui-rebuild-pending" ] && echo yes || echo no)"
+rm -f "$HOME/.himmel/state/config-ui-rebuild-pending"
+
+# a full update with an empty range still rebuilds when the dist was built from another config-ui tree (the merge path pulled first)
+make_cui_repo docs/a.md
+CUI_BEFORE=$(git -C "$CUI_REPO" rev-parse HEAD)
+mkdir -p "$CUI_REPO/scripts/config-ui/agui-web/dist"
+rm -f "$HOME/.himmel/state/config-ui-built-tree"
+run_cui apply
+assert_eq "config_ui stale dist: rc 0" "0" "$cui_rc"
+assert_contains "config_ui stale dist: rebuilds with an empty range" "agui-web|run build" "$cui_log"
+assert_contains "config_ui stale dist: restarts the service" "restart himmel-ui.service" "$cui_log"
+assert_eq "config_ui stale dist: records the built tree" "$(git -C "$CUI_REPO" rev-parse HEAD:scripts/config-ui)" "$(cat "$HOME/.himmel/state/config-ui-built-tree")"
+run_cui apply
+assert_eq "config_ui built tree matches: bun and systemctl not called" "" "$cui_log"
+run_cui check
+assert_eq "config_ui built tree matches: check mode says nothing" "" "$cui_log"
+rm -f "$HOME/.himmel/state/config-ui-built-tree"
+run_cui check
+assert_contains "config_ui stale dist: check mode reports it" "would rebuild" "$cui_out"
+
+# a hand run from a linked worktree must not build the worktree and restart the primary's unit
+make_cui_repo scripts/config-ui/server.ts
+git -C "$CUI_REPO" worktree add --quiet "$CUI_REPO-wt" HEAD 2>/dev/null
+run_cui apply CUI_ROOT="$CUI_REPO-wt"
+assert_eq "config_ui linked worktree: rc 0" "0" "$cui_rc"
+assert_eq "config_ui linked worktree: bun and systemctl not called" "" "$cui_log"
+assert_contains "config_ui linked worktree: row says why" "linked worktree" "$cui_out"
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
