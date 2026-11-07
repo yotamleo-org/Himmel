@@ -957,7 +957,7 @@ printf '%s' '{"oauthAccount":{"accountUuid":"uuid-lift-follow-a"}}' > "$FA_CFG"
 printf '%s' '{"oauthAccount":{"accountUuid":"uuid-lift-follow-b"}}' > "$FB_CFG"
 HA="$(current_account_hash "$FA_CFG")"; HB="$(current_account_hash "$FB_CFG")"
 ME="$(id -un)"
-follow_lift() { # <account> <standing> [set_by as a JSON value; absent when omitted]
+follow_lift() {
   if [ -n "${3-}" ]; then
     jq -cn --arg a "$1" --argjson s "$2" --argjson u "$((NOW+3600))" --argjson by "$3" \
       '{window:"seven_day",until:$u,standing:$s,account:$a,set_by:$by,set_at:"x"}'
@@ -966,12 +966,12 @@ follow_lift() { # <account> <standing> [set_by as a JSON value; absent when omit
       '{window:"seven_day",until:$u,standing:$s,account:$a,set_at:"x"}'
   fi > "$USAGE_LIFT_FILE"; chmod 600 "$USAGE_LIFT_FILE"
 }
-fcache() { # <cache account> <five_hour> <seven_day>
+fcache() {
   printf '{"account":"%s","five_hour":{"utilization":%s},"seven_day":{"utilization":%s,"resets_at":%s},"primaries_refreshed_at":%s}' \
     "$1" "$2" "$3" "$LRESET" "$NOW" > "$W/fc.json"
 }
 fshow() { CLAUDE_ACCOUNT_CONFIG="$FB_CFG" bash "$LIFT" show "$W/fc.json" 2>/dev/null; }
-fverdict() { # <five_hour> <seven_day>: login and cache on B
+fverdict() {
   fcache "$HB" "$1" "$2"
   CLAUDE_ACCOUNT_CONFIG="$FB_CFG" CADENCE_USAGE_CACHE="$W/fc.json" CADENCE_USAGE_SKIP_REFRESH=1 \
   CADENCE_USAGE_LEDGER="$W/ledger.jsonl" CADENCE_USAGE_WORKER=testleg FLEET_PS_CMD="$NO_FLEET" \

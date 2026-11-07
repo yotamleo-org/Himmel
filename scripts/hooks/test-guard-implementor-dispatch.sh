@@ -881,7 +881,7 @@ lift_cache() {
     printf '{"account":"%s","five_hour":{"utilization":%s,"resets_at":%s},"seven_day":{"utilization":%s,"resets_at":%s}}' \
         "$LIFT_ACCOUNT" "$1" "$LIFT_RESET" "$2" "$LIFT_RESET" > "$LIFT_CACHE"
 }
-lift_policy() {  # <until> <account> <standing> [set_by]
+lift_policy() {
     local by=''
     [ -n "${4:-}" ] && by=",\"set_by\":\"$4\""
     [ ! -e "$LIFT_POLICY" ] || chmod 600 "$LIFT_POLICY"

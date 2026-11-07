@@ -1151,7 +1151,7 @@ write_lift_cache() {  # $1 path, $2 five_hour util, $3 seven_day util
 EOF2
 }
 
-write_lift() {  # $1 until (epoch), $2 account, $3 standing (true|false), [$4 set_by]
+write_lift() {
     local by=''
     [ -n "${4:-}" ] && by=",\"set_by\":\"$4\""
     printf '{"window":"seven_day","until":%s,"account":"%s","standing":%s%s}\n' "$1" "$2" "$3" "$by" > "$LIFT_FILE"
