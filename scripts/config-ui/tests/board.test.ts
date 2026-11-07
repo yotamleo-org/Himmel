@@ -567,3 +567,41 @@ test("GET /api/board: a failed roadmap read is that failure on the tab, never no
   expect(r.versionChains).toEqual({ state: "absent", reason: "the running version could not be read: mirror went away" });
   expect((r.chains as { schema: string }).schema).toBe("himmel.chains/1");
 });
+
+test("Board: a card shows its open PR and CI as a link from the worker records, flags a started card with no open PR, and flags nothing when the records are not read", async () => {
+  const s = scratch();
+  writeFileSync(join(s.mirror, "HIMMEL-3.md"), mirrorIssue(3, "In Progress", "In Progress", [], "Has a PR"));
+  writeFileSync(join(s.mirror, "HIMMEL-4.md"), mirrorIssue(4, "In Progress", "In Progress", [], "Started, no PR"));
+  writeFileSync(join(s.mirror, "HIMMEL-5.md"), mirrorIssue(5, "In Progress", "In Progress", [], "Red latch, plus a closed PR"));
+  writeFileSync(s.mirror + ".versions.tsv", "v1.1.3\tfalse\t\n");
+  const st = join(s.d, "state");
+  mkdirSync(join(st, "workers"), { recursive: true });
+  const rec = (key: string, prs: Record<string, unknown>) => writeFileSync(join(st, "workers", `${key}.json`), JSON.stringify({ key, leg: "N1", state: "running", prs }));
+  rec("HIMMEL-3", { "4703": { head: "a".repeat(40), ci: "pending", red_latch: false, open: true } });
+  rec("HIMMEL-5", { "4704": { head: "b".repeat(40), ci: "green", red_latch: true, open: true }, "4600": { head: "c".repeat(40), ci: "green", red_latch: false, open: false } });
+  const env = { HIMMEL_CHAIN_REGISTRY: s.registry, TICKET_STATUS_STATE_DIR: st, GH_REPO: "acme/widgets" };
+  const ui = { version: null, theme: null, v: "all" };
+  const page = async (base: string) => renderBoard(await get(base.replace("/api/board", "/api/roadmap")), ui, await get(base));
+  const base = serve(env, s);
+  const api = await get(base);
+  expect(api.prs).toEqual({ state: "ok", repo: "acme/widgets", prs: {
+    ["HIMMEL-" + 3]: [{ pr: 4703, head: "a".repeat(40), ci: "running" }],
+    ["HIMMEL-" + 5]: [{ pr: 4704, head: "b".repeat(40), ci: "red" }] }, seen: {}, unread: [] }); // pending reads running, a red latch reads red, a closed PR is not listed
+  const html = await page(base);
+  const card = (k: string) => html.match(new RegExp(`<div class="rm-card"[^>]*aria-label="${k}:[\\s\\S]*?</div></div>`))![0];
+  expect(card("HIMMEL-3")).toContain('<a class="pr ci-running" href="https://github.com/acme/widgets/pull/4703"');
+  expect(card("HIMMEL-3")).toContain("#4703 · CI running");
+  expect(card("HIMMEL-3")).not.toContain("no open PR");
+  expect(card("HIMMEL-5")).toContain("#4704 · CI red");
+  expect(card("HIMMEL-5")).not.toContain("4600");
+  expect(card("HIMMEL-4")).toContain("no open PR"); // started, and no worker record names an open PR
+  expect(card("HIMMEL-2")).not.toContain("no open PR"); // not started
+  expect(card("HIMMEL-1")).not.toContain("no open PR"); // done
+  writeFileSync(join(st, "workers", "HIMMEL-4.json"), "{ not json");
+  writeFileSync(join(st, "workers", "HIMMEL-" + 2 + ".json"), "null"); // parses, but holds no record
+  expect((await get(serve(env, s))).prs.unread.sort()).toEqual(["HIMMEL-" + 2, "HIMMEL-" + 4]);
+  expect((await page(serve(env, s))).match(new RegExp(`<div class="rm-card"[^>]*aria-label="HIMMEL-${4}:[\\s\\S]*?</div></div>`))![0]).not.toContain("no open PR"); // the record could not be read, so no claim is made
+  const none = await page(serve({ ...env, TICKET_STATUS_STATE_DIR: join(s.d, "no-state") }, s));
+  expect(none).not.toContain("no open PR"); // the records could not be read: no card is flagged on a guess
+  expect(none).not.toContain("CI running");
+});

@@ -65,7 +65,7 @@ const APP_IMPORT_STUBS: Record<string, unknown> = {
   renderInventory: () => "", renderTriage: () => "", renderHeader: () => "", renderProbe: () => "", reviewGateDraft: () => [],
   renderHealth: () => "", verdict: () => ({ cls: "off", word: "No data" }), parseView: () => ({ mode: "project", project: null, tab: "broken", row: null }), projectVerdict: () => ({ word: "All clear" }), chiefLiveFor: () => undefined,
   renderToolHealth: () => "", toolHealthLoader: () => ({}), toolHealthHref: () => "",
-  driftSince: () => null, renderBoard: () => "", pinsFromSearch: () => [], searchWithPins: () => "", togglePin: () => ({ pins: [], msg: "" }),
+  boardRefreshDue: () => false, driftSince: () => null, renderBoard: () => "", pinsFromSearch: () => [], searchWithPins: () => "", togglePin: () => ({ pins: [], msg: "" }),
   renderWorkflow: () => "", parseWorkflowRoute: () => null,
   apiRolesDraft: () => null, render: () => "",
   renderShift: () => "",

@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { legSync, readRoadmap, SYNC_LABEL } from "../roadmap";
-import { driftSince, renderBoard, renderKanban, renderRoadmap, pinsFromSearch, searchWithPins, togglePin } from "../public/roadmap.js";
+import { BOARD_REFRESH_MS, boardRefreshDue, driftSince, renderBoard, renderKanban, renderRoadmap, pinsFromSearch, searchWithPins, togglePin } from "../public/roadmap.js";
 import { navLinks, parseLanding } from "../public/nav.js";
 import { startServer } from "../server";
 
@@ -475,6 +475,33 @@ test("Board: Waiting on you also lists open tickets carrying an operator label, 
   expect(noChain).not.toMatch(/\b0 wait for you/);
   // a chain read that carries no chains at all is not usable either
   expect(renderBoard(r, ui, { drift: null, chains: { chains: [], tickets: undefined } })).toContain("chain holds not read");
+});
+
+test("Board: Waiting on you lists the open operator-labelled tickets with no version once the No version read is in, and counts them", () => {
+  const s = station();
+  writeFileSync(join(s.mirror, "HIMMEL-8.md"), issue(8, "To Do", "To Do", [], "Pick the colour", ["operator-decision"]));
+  writeFileSync(join(s.mirror, "HIMMEL-9.md"), issue(9, "Done", "Done", [], "Settled already", ["operator"]));
+  writeFileSync(join(s.mirror, "HIMMEL-10.md"), issue(10, "To Do", "To Do", [], "Loose, nobody owed", ["product"]));
+  const r = read(s), nv = nvRead(s), ui = { version: null, theme: null };
+  const quiet = { drift: null, chains: { chains: [], tickets: {}, version: "v1.1.2" } };
+  const link = (html: string) => html.match(/<div class="rm-link">[\s\S]*?<\/div>/)![0];
+  // before the No version read arrives: nothing listed, the count says it is not counting them
+  expect(renderBoard(r, ui, quiet)).not.toContain("rm-waiting");
+  expect(link(renderBoard(r, ui, quiet))).toContain("3 not counted");
+  // with it: the one open labelled ticket is a row, linked to the No version tab, tagged "no version", and the count includes it
+  const html = renderBoard(r, { ...ui, nv }, quiet);
+  const sec = html.match(/<section id="rm-waiting"[\s\S]*?<\/section>/)![0];
+  expect(sec).toContain("HIMMEL-8");
+  expect(sec).toContain("Pick the colour");
+  expect(sec).toContain("operator-decision");
+  expect(sec).toContain("no version");
+  expect(sec).toContain('href="#/board?tab=nv"');
+  expect(sec).not.toContain("HIMMEL-9"); // Done: nothing is owed
+  expect(sec).not.toContain("HIMMEL-10"); // no operator label
+  expect(link(html)).toContain("1 waits for you");
+  expect(link(html)).not.toContain("not counted");
+  // a failed No version read leaves the old words in place, never a plain 0
+  expect(link(renderBoard(r, { ...ui, nv: { state: "error", reason: "roadmap failed (500)" } }, quiet))).toContain("3 not counted");
 });
 
 test("Board: the waits-for-you count names its scope and points at the No version tab while tickets there are unread", () => {
@@ -1460,4 +1487,87 @@ test("Board versions: with a pin set, Show all exposes the unpinned versions so 
   expect(html).toContain("showing 12 of 12 versions");
   expect(html).toContain('data-rm-pin="v2.1" aria-pressed="true"');
   expect(html).toContain('data-rm-pin="v2.2" aria-pressed="false"');
+});
+
+test("Board: the worker line on a card shows how long ago its worker last moved, from the worker record, and nothing when no record says", () => {
+  const s = station();
+  const absent = { state: "absent", reason: "none" };
+  const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+  const prs = (seen: Record<string, string>) => ({ state: "ok", repo: "acme/widgets", prs: {}, seen });
+  const card = (html: string, k: string) => html.match(new RegExp(`<div class="rm-card"[^>]*aria-label="${k}:[\\s\\S]*?</div></div>`))![0];
+  const r = read(s);
+  const withAge = board(r, {}, { drift: absent, chains: absent, prs: prs({ [K(1)]: ago(180) }) });
+  expect(card(withAge, K(1))).toMatch(/<div class="rm-worker">[\s\S]*classifier permission hold[\s\S]*3 h ago/); // ticket 1 has the worker
+  expect(card(board(r, {}, { drift: absent, chains: absent, prs: prs({ [K(1)]: ago(50) }) }), K(1))).toContain("50 min ago");
+  expect(card(board(r, {}, { drift: absent, chains: absent, prs: prs({ [K(1)]: ago(60 * 60) }) }), K(1))).toContain("2 d ago");
+  const noRecord = card(board(r, {}, { drift: absent, chains: absent, prs: prs({}) }), K(1));
+  expect(noRecord).toContain("classifier permission hold");
+  expect(noRecord).not.toContain(" ago");
+  expect(card(board(r, {}, { drift: absent, chains: absent, prs: absent }), K(1))).not.toContain(" ago");
+  expect(card(board(r, {}, { drift: absent, chains: absent, prs: prs({ [K(2)]: ago(180) }) }), K(1))).not.toContain(" ago"); // an age belongs to its own ticket's line
+});
+
+test("Board: the read line says when the Board last read and how often it reads again, beside the newest Jira update", () => {
+  const absent = { state: "absent", reason: "none" };
+  const r = read(station());
+  const html = board(r, { readAt: Date.parse("2026-11-07T14:05:09") }, { drift: absent, chains: absent });
+  expect(html).toMatch(/newest update [^,)]+[^]*read \d\d:\d\d:\d\d/); // the Jira mirror's newest update stays, the Board's own read time joins it
+  expect(html).toContain(`refreshes every ${BOARD_REFRESH_MS / 1000} s`);
+  expect(board(r, {}, { drift: absent, chains: absent })).not.toMatch(/read \d\d:\d\d:\d\d/); // no read yet: no time is claimed
+});
+
+test("Board: it refreshes itself only when it is on screen, nothing is being edited or dragged, and a whole interval has passed since the last read", () => {
+  const base = { page: "board", visible: true, modal: false, editing: false, dragging: false, busy: false, readAt: 1_000_000, now: 1_000_000 + BOARD_REFRESH_MS };
+  expect(BOARD_REFRESH_MS).toBeGreaterThanOrEqual(30_000); // bounded below: it never polls fast
+  expect(boardRefreshDue(base)).toBe(true);
+  expect(boardRefreshDue({ ...base, now: base.now - 1 })).toBe(false); // not yet
+  for (const off of [{ page: "health" }, { visible: false }, { modal: true }, { editing: true }, { dragging: true }, { busy: true }, { readAt: 0 }]) expect(boardRefreshDue({ ...base, ...off })).toBe(false);
+});
+
+test("Board: an open ticket's card names the tickets it waits on, with their state: a shut one as 'after', an open one as 'blocked by open'", () => {
+  const s = station();
+  const put = (n: number, status: string, cat: string, by: string[]) => writeFileSync(join(s.mirror, `HIMMEL-${n}.md`),
+    issue(n, status, cat, ["v1.1.2"], `Step ${n}`).replace("blocked_by: []", `blocked_by: ${JSON.stringify(by)}`));
+  put(20, "To Do", "To Do", [K(21), K(22), K(99)]);
+  put(21, "In Progress", "In Progress", []);
+  put(22, "Done", "Done", []);
+  put(23, "Done", "Done", [K(22)]);
+  const r = read(s);
+  const t = (n: number) => r.tickets.find((x) => x.k === n)!;
+  expect(t(20).after).toEqual([{ id: K(21), b: "prog" }, { id: K(22), b: "done" }, { id: K(99), b: "unknown" }]); // 99 is in no mirror: its state is not guessed
+  expect(t(21).after).toBeUndefined();
+  expect(t(23).after).toBeUndefined(); // a ticket that is done waits on nothing
+  const absent = { state: "absent", reason: "none" };
+  const card = (k: string) => board(r, {}, { drift: absent, chains: absent }).match(new RegExp(`<div class="rm-card"[^>]*aria-label="${k}:[\\s\\S]*?</div></div>`))![0];
+  expect(card(K(20))).toContain(`blocked by open ${K(21)}`);
+  expect(card(K(20))).toContain(`after ${K(22)} (done)`);
+  expect(card(K(20))).toContain(`${K(99)} (state unknown)`);
+  expect(card(K(21))).not.toContain("after ");
+});
+
+test("Board: the lanes carry a sector legend: each sector of the version's open tickets with its count, the largest first, done tickets not counted", () => {
+  const s = station();
+  const put = (n: number, status: string, cat: string, labels: string[]) => writeFileSync(join(s.mirror, `HIMMEL-${n}.md`), issue(n, status, cat, ["v1.1.3"], `Work ${n}`, labels));
+  put(30, "To Do", "To Do", ["theme-alpha"]);
+  put(31, "In Progress", "In Progress", ["theme-alpha"]);
+  put(32, "To Do", "To Do", ["theme-beta"]);
+  put(33, "Done", "Done", ["theme-beta"]);
+  const html = board(read(s), { v: "v1.1.3" }, null);
+  const legend = html.match(/<div class="seclegend"[^>]*>([\s\S]*?)<\/div>/);
+  expect(legend).not.toBeNull();
+  const items = [...legend![1].matchAll(/<span class="sec">([^<]*)<\/span>/g)].map((m) => m[1].replace(/\s+/g, " ").trim());
+  expect(items.slice(0, 2)).toEqual(["alpha 2", "beta 1"]);
+  expect(items.join("|")).not.toContain("beta 2"); // the done ticket is not counted
+});
+
+test("Board: a card in a chain says FAST-TRACK with the chain's name and its step, and the lanes carry a drain line counting the open tickets in and out of a chain", () => {
+  const r = read(station());
+  const html = board(r, { v: "v1.1.2" }, { drift: null, chains: chainsOk() });
+  const card = (k: string) => html.match(new RegExp(`<div class="rm-card"[^>]*aria-label="${k}:[\\s\\S]*?</div></div>`))![0];
+  expect(card(K(1))).toContain(`<div class="rm-ft">FAST-TRACK · Memory guard rework · step 1</div>`);
+  expect(card(K(2))).not.toContain("FAST-TRACK"); // in no chain
+  expect(board(r, { v: "v1.1.2" }, null)).not.toContain("FAST-TRACK"); // no chain read: nothing is guessed
+  // v1.1.2 holds tickets 1, 2, 5, 7 open; 1 and 5 are in the memory chain
+  expect(html).toContain(`<div class="rm-drain">v1.1.2 drain: open 4 · in-chain 2 · in no chain 2</div>`);
+  expect(board(r, { v: "v1.1.2" }, null)).not.toContain("rm-drain"); // without the chain read it cannot split
 });
