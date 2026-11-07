@@ -257,5 +257,17 @@ ev '{"ts":"2026-11-01T00:00:00Z","event":"hold","key":"HIMMEL-1","kind":"date","
 NOW=2026-11-08T00:00:00Z cs
 check "kinds: and a date hold read from its event row clears past its date" "$(tk HIMMEL-1 .state)" "can launch"
 
+# --- an absent chain-log is no holds; one that cannot be read is no answer ------
+reset
+reg chain-x=1
+issue HIMMEL-1 "To Do" labels='["chain-x"]'
+cs; rc=$?
+st=$(tk HIMMEL-1 .state)
+check "chain-log: an absent log reads as no holds" "$rc $st" "0 can launch"
+mkdir "$S/chain-log.jsonl"
+cs; rc=$?
+check "chain-log: a log that cannot be read fails the read instead of reading as no holds" "$rc" 2
+contains "chain-log: and the error names the file" "$(cat "$tmp/err")" "chain-log.jsonl"
+
 echo "---"
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; } || { echo "$fails failed"; exit 1; }

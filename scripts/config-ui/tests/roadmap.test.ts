@@ -445,6 +445,37 @@ test("Board: a Waiting on you section above the lanes lists each ticket that wai
   expect(renderBoard(r, { version: null, theme: null, tab: "chains" }, { drift: null, chains: chainsOk() })).not.toContain("rm-waiting");
 });
 
+test("Board: Waiting on you also lists open tickets carrying an operator label, in any version and in no chain, as the tracker does", () => {
+  const r = read(station());
+  const label = (k: number, l: string) => { r.tickets.find((t) => t.k === k)!.labels = [l]; };
+  label(4, "operator-gated"); // To Do in v1.1.1, in no chain
+  label(3, "operator"); // Done: nothing is owed
+  label(1, "product"); // not an operator label
+  const ui = { version: null, theme: null }; // the running version is selected: the section still spans every version
+  const html = renderBoard(r, ui, { drift: null, chains: chainsOk() });
+  const sec = html.match(/<section id="rm-waiting"[\s\S]*?<\/section>/)![0];
+  expect(sec).toContain("HIMMEL-4");
+  expect(sec).toContain("Left behind");
+  expect(sec).toContain("operator-gated");
+  expect(sec).toContain("HIMMEL-5"); // the chain hold is still there
+  expect(sec).not.toContain("HIMMEL-3");
+  expect(sec).not.toContain("HIMMEL-1");
+  expect(sec).toContain("across every version");
+  expect(sec).not.toContain("at=HIMMEL-4"); // the Chains tab does not hold it: plain key, no link to "not in a chain"
+  expect(sec).toContain("at=HIMMEL-5");
+  expect(html).toContain("2 wait for you");
+  // a ticket that is both labelled and on hold is one row
+  label(5, "operator-decision");
+  expect(renderBoard(r, ui, { drift: null, chains: chainsOk() }).match(/<li>/g)).toHaveLength(2);
+  // no chain read: the labelled tickets still show, and the section says the holds were not read, never that nobody waits
+  const noChain = renderBoard(r, ui, { drift: null, chains: { state: "absent", reason: "no chain registry" } });
+  expect(noChain).toContain("chain holds not read");
+  expect(noChain).toContain("HIMMEL-4");
+  expect(noChain).not.toMatch(/\b0 wait for you/);
+  // a chain read that carries no chains at all is not usable either
+  expect(renderBoard(r, ui, { drift: null, chains: { chains: [], tickets: undefined } })).toContain("chain holds not read");
+});
+
 test("Board: loading, no tracker, unavailable and GitHub read-only states, and ticket text is escaped", () => {
   const r = read(station());
   r.tickets[0].t = "<script>x</script>";

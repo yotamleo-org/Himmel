@@ -116,9 +116,12 @@ function readMirror(dir) {
     return out;
 }
 
-function readJsonl(file) {
+function readJsonl(file, strict = false) {
     let txt = '';
-    try { txt = readFileSync(file, 'utf8'); } catch { return []; }
+    try { txt = readFileSync(file, 'utf8'); } catch (e) {
+        if (strict && e.code !== 'ENOENT') fail(`${file}: ${e.message}`); // a log that is there but cannot be read is not an empty log: no holds would read as none
+        return [];
+    }
     return readJsonlText(txt);
 }
 
@@ -142,7 +145,7 @@ function readEffectiveEvents(file) {
     return readJsonlText(txt);
 }
 const events = readEffectiveEvents(join(stateDir, 'status-events.jsonl'));
-const chainLog = readJsonl(join(stateDir, 'chain-log.jsonl'));
+const chainLog = readJsonl(join(stateDir, 'chain-log.jsonl'), true);
 
 // ---------------------------------------------------------------- merges and completion
 const mergesOf = new Map();
