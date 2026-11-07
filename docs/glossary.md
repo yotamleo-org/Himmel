@@ -63,7 +63,7 @@ the plain name, and say the old name once, the first time, in brackets.
 | **weekly limit override** | bank lift | Renamed by slice V1; the old names are gone. |
 | **review-owed marker** | CR marker | |
 | **finding status** | verdict (of a CR finding) | A judge verdict stays "judge verdict". |
-| **variant sweep** | class sweep | Replaces the 10-17 interim name "sibling sweep". Named for CodeQL's "variant analysis". The `SWEEP` ledger keyword is unchanged. |
+| **variant sweep** | class sweep | Replaces "sibling sweep", an earlier interim name. Named for CodeQL's "variant analysis". The `SWEEP` ledger keyword is unchanged. |
 | **review round** / **diff-only round** | round / delta round | Docs only. The printed `pr-check:` line is unchanged. |
 | **GO file (merge approval)** | GO file | The other GO is written "judge verdict GO". |
 | **off switch** | bypass flag | Never "bypass" alone: `bypassPermissions` is a different thing. |
@@ -115,7 +115,7 @@ changelog names the breaking change.
 | F8 | `scripts/handover/console-kit/`, `leg-preface*.md`, `console-template.md`, `leg-brief-template.md` | the former `chief-kit/` directory, `worker-preface*.md`, `chief-template.md`, `worker-brief-template.md` | T; M (the directory) |
 | F9 | `/console`, `console.sh`; skill `himmel-ops:console` | `/chief` only, `chief.sh`, `chief-context.sh`; skill `himmel-ops:chief`; agents `judge`, `judge-ro` (never `chief-judge*`). The Claude command aliases were removed; Telegram bridge aliases are separate. | V5 |
 | F10 | `overnight-shift`, `overnight-mode.md`, `OVERNIGHT_*`, `HIMMEL_OVERNIGHT`, `HIMMEL_INITIATIVE_OVERNIGHT` | `afk-shift`, `afk-mode.md`, `AFK_*`, `HIMMEL_AFK`, `HIMMEL_INITIATIVE_AFK` | V3 |
-| F11 | `watchdog` (auto-arm hooks only) | `auto-relaunch` in prose; ids deferred until a new id name is ruled | — |
+| F11 | `watchdog` (auto-arm hooks only) | `auto-relaunch` in prose; ids keep the old name until a new id name is chosen | — |
 | F13 | `class-sweep`, `missing-class-sweep` (the `SWEEP` ledger keyword is unchanged) | `variant-sweep`, `missing-variant-sweep` | V2 |
 | F14 | `speed bump` (message text) | `soft block` | D |
 | F15 | fleet-sense `chain`, `wave` (and the interim `ticket sequence`, `batch`) | dependency chain, parallel wave: glossary and prose only; no fleet-sense identifier exists. Reserved forms: `DEPENDENCY_CHAIN_*`, `PARALLEL_WAVE_*` | R2, T, D |
@@ -265,7 +265,7 @@ exists, the code word last.
 | **Admission** | The ledger record that a ticket entered a frozen version, with its gate and who admitted it (`kind: rm-admit`; a chief override is recorded as such). |
 | **Follow-up budget** (code word: residual budget) | How many open follow-ups a version holds before new ones compete on rank: 15 unless a `residual-budget:N` line in the version description says otherwise. A monitor, not a quota. See Cap gate above for what a filing over it does. Labels `over-cap`, `residual-overflow`, `residual-displaced`. |
 | **Backlog** / **icebox** | Backlog: no version, waiting for planning. Icebox: parked indefinitely in the ICE project and out of every count (`ice-followups.sh`). |
-| **Ad hoc** / **station ad hoc** | Ad hoc: a quick fix for our own setup, filed with no version. Station ad hoc: a reversible change made on the station before its repo fix, recorded under the label `station-adhoc` so the repo fix is never dropped (plan 10.4). |
+| **Ad hoc** / **station ad hoc** | Ad hoc: a quick fix for our own setup, filed with no version. Station ad hoc: a reversible change made on the station before its repo fix, recorded under the label `station-adhoc` so the repo fix is never dropped. |
 | **Operator-directed** | Filed on the operator's explicit instruction. Exempt from the follow-up budget. Label `operator-directed`. |
 
 ## Industry terms
@@ -310,7 +310,7 @@ collision are not listed: they now use the new wording.
 | **worker** | A worker: one ticket, one worktree, one PR (formerly worker session). | A lane worker (a process on a dispatch backend: `scripts/lanes/stop-worker.sh`), a dispatched subagent worker (`internals/worker-spawn-matrix.md`), a Codex lane worker, `reconcile-workers.sh` and `max_workers`. Also `HIMMEL_WORKER`, the dispatched-lane marker, which a worker does not carry. | A bare "worker" is the fleet sense; every other sense is qualified (lane, subagent, Codex lane). Worker env names are `HIMMEL_WORKER_SESSION_*`, never `HIMMEL_WORKER_*`. |
 | **chain** | A **dependency chain**: workers that must run in order. A bare "chain" is never the fleet sense in new prose. | A serial hook chain and the hook runner's `--chain` flag; the token chain of a succession (`worker-sections/succession.md`); the handover skill's chain files (`next-session-N.md`, read by `arm-resume.sh`); `/himmel-update`'s six-item dependency chain; the dependency supply chain of package security (see the overlap map); the pin chain (`PIN_CHAIN_*`). | "Dependency chain" next to tickets or workers means the fleet sense. The `/himmel-update` docs and package security use the same two words for the other senses. Hooks, tokens and chain files always carry their qualifier. The hook sense is in `architecture.md` and `harness-compat.md`. |
 | **wave** | A **parallel wave**: a group of workers started together. | The idiom "wave … through" ("a guard must not wave it through"); a subagent wave (`MID-AGENT-WAVE` in `auto-arm-on-subagent-cap.sh`, `FIRST_WAVE` in `lane-readiness.mjs`); Argo CD sync waves. | "Parallel wave", or a wave of workers or tickets, means the fleet sense. The idiom is a verb. A subagent wave is a burst of `Agent` dispatches inside one session. |
-| **batch** | Not a fleet term any more: a group of workers started together is a parallel wave ("batch" was the 10-17 interim name). | `batch mode` in a scheduled script, a ledger batch row, a panel batch spec. | A fleet doc means a parallel wave. A script flag or a ledger means the other. |
+| **batch** | Not a fleet term any more: a group of workers started together is a parallel wave ("batch" was an earlier interim name). | `batch mode` in a scheduled script, a ledger batch row, a panel batch spec. | A fleet doc means a parallel wave. A script flag or a ledger means the other. |
 | **armed** | Arming (scheduled launch): launching a session on a schedule. | Opt-in auto-merge (`ARMAUTOMERGE`). That use of "armed" is kept on purpose. Starting a Monitor loop is no longer called arming, and the tick now runs in `chief-wait.sh`. | A session or a schedule means arming. A PR merge means the other. |
 | **orchestrator** / **coordinator** | Not session roles. Orchestrator is a rule, `orchestrator-inline-guard`. | The external pattern catalog's names for the parent session. The CI orchestrator daemon. | A hook name means the rule. A pattern description means the catalog. A CI run means the daemon. The catalog is `orchestration-patterns.md` and the daemon is `scripts/ci-orchestrator`. |
 | **GO** | The chief's GO file that authorises one merge. | A judge verdict `GO` or `NO-GO`, written by `write-verdict.sh`. It is one input the chief reads before it signs a GO file. | In prose write "judge verdict GO" for the verdict and "GO file" for the merge authorisation. The verdict format is in `handover/verdict-template.md`. |
@@ -443,7 +443,7 @@ A cell names the script; `—` means the layer does not enforce it. Columns:
 | No rogue scheduler job launches `claude` | `block-rogue-claude-schedule` (Bash, PowerShell) | — | `block-rogue-claude-schedule` (Bash) | — | — | — |
 | Destructive commands denied | `block-destructive-commands` | `block-docker-privesc` | `block-destructive-commands`, `block-docker-privesc` | — | — | — |
 | No `git stash` | `block-git-stash` (Bash, PowerShell) | — | `block-git-stash` (Bash) | — | — | — |
-| Live settings not writable | `block-edit-live-settings` (Bash, PowerShell, Edit) | — | `block-edit-live-settings` (Bash; not `apply_patch`, HIMMEL-5430 open) | — | — | — |
+| Live settings not writable | `block-edit-live-settings` (Bash, PowerShell, Edit) | — | `block-edit-live-settings` (Bash; not `apply_patch` yet) | — | — | — |
 | Bank lift not writable | `block-bank-lift-writes` (Bash, Edit) | — | `block-bank-lift-writes` (Bash, Edit) | — | — | — |
 | `~/.himmel/config.json` opt-ins not writable | `block-himmel-config-writes` | — | `block-himmel-config-writes` | — | — | — |
 | Lesson and enforcement files not agent-written | — | `block-lesson-enforcement-writes` | `block-lesson-enforcement-writes` | — | — | — |

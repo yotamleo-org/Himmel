@@ -241,6 +241,23 @@ artifacts; neither runs a server.
 Both are Linux-only chief tooling; an install without a chief does not
 have them in use.
 
+## Entry pages: audience
+
+Who each of the ten user entry pages is written for.
+
+| Page | Audience |
+|---|---|
+| `README.md` | newcomer |
+| `docs/why-himmel.md` | newcomer |
+| `docs/getting-started.md` | newcomer |
+| `docs/setup/install.md` | newcomer |
+| `docs/adoption-trail.html` | newcomer |
+| `docs/daily-loop.md` | contributor |
+| `docs/configuration.md` | contributor |
+| `docs/commands-catalog.md` | contributor |
+| `docs/setup/updating.md` | newcomer |
+| `docs/ui.md` | newcomer and contributor |
+
 ## Keeping this page current
 
 Adding a user-facing page or verb means updating this page, `llms.txt` and the

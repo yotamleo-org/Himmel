@@ -34,14 +34,13 @@ else
   ok
 fi
 
-# Each of the ten entry pages has an owner row that records its audience.
+# Each of the ten entry pages has a row in the audience table.
 for p in README.md docs/why-himmel.md docs/getting-started.md docs/setup/install.md docs/adoption-trail.html \
          docs/daily-loop.md docs/configuration.md docs/commands-catalog.md docs/setup/updating.md docs/ui.md; do
-  if grep -E '^\|' "$DOC" | grep -F "\`$p\`" | grep -E 'HIMMEL-[0-9]+' >/dev/null; then ok; else bad "docs/ui.md owner table has no owner row for $p"; fi
-  if grep -E '^\|' "$DOC" | grep -F "\`$p\`" | grep -E '\| (newcomer|contributor)( and (newcomer|contributor))? \|' >/dev/null; then ok; else bad "docs/ui.md owner table has no audience for $p"; fi
+  if grep -E '^\|' "$DOC" | grep -F "\`$p\`" | grep -E '\| (newcomer|contributor)( and (newcomer|contributor))? \|' >/dev/null; then ok; else bad "docs/ui.md audience table has no audience for $p"; fi
   case "$p" in
     *.html) ;;
-    # The README speaks to its reader; its audience lives in the owner table, not in an Audience: label.
+    # The README speaks to its reader; its audience lives in the audience table, not in an Audience: label.
     README.md) if [ -r "$ROOT/$p" ] && ! grep -qE '^Audience:' "$ROOT/$p"; then ok; else bad "README.md is missing or carries an Audience: label for the writer"; fi ;;
     *) if grep -qE '^Audience: (newcomer|contributor)' "$ROOT/$p"; then ok; else bad "$p has no Audience: newcomer|contributor line"; fi ;;
   esac
