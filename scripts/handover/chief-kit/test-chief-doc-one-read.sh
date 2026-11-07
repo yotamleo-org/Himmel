@@ -113,6 +113,18 @@ for g in range(ngroups):
         numbers.append(100 + g)
         lines.append("CHIEF DUTIES %s (carry to every successor; chief rulings, not operator text): (1) %s. (2) %s." % (tag, words(g, 40), words(g + 5, 40)))
         lines.append("OPERATOR 11-03 %s (BINDING, carry to every successor; verbatim, not numbered): \"%s\" %s." % (tag, words(g, 6), words(g + 6, 30)))
+    if g % 7 == 0:   # two decision clauses in one header, with ids that are not decision numbers
+        verb(n, tag); verb(n - 1, tag)
+        lines.append("OPERATOR 11-03 %s (BINDING, carry to every successor; decision %d, O-v1.1.3-0199, verbatim specs/decisions/verbatim-decision-%d-operator-11-03-%s.txt; decision %d, O-v1.1.3-0198). Verbatim: \"%s\". Read: %s. (1) %s. (2) %s." % (tag, n, n, tag, n - 1, words(g, 5), words(g + 7, 40), words(g + 1, 30), words(g + 2, 30)))
+        numbers += [n, n - 1]; n -= 2
+    if g % 8 == 0:   # a second clause after a verbatim file name, joined by ", and"
+        verb(n, tag); verb(n - 1, tag)
+        lines.append("OPERATOR 11-02 %s (BINDING, carry to every successor; decision %d, verbatim specs/decisions/verbatim-decision-%d-operator-11-02-%s.txt, and decision %d, O-v1.1.3-0172). Verbatim: \"%s\". %s." % (tag, n, n, tag, n - 1, words(g, 6), words(g + 3, 60)))
+        numbers += [n, n - 1]; n -= 2
+    if g % 10 == 0:  # a dash range in a header whose body says STANDING, and a (STANDING) header
+        lines.append("OPERATOR 10-25 %s (decisions %d-%d): %s (STANDING). %s." % (tag, n - 2, n, words(g, 6), words(g + 4, 50)))
+        numbers += [n - 2, n - 1, n]; n -= 3
+        lines.append("OPERATOR 10-27 %s (STANDING): %s. (1) %s. (2) %s." % (tag, words(g + 1, 50), words(g + 2, 30), words(g + 3, 30)))
 direction = "\n\n".join(lines)
 out, sec = [], None
 for ln in open(doc, encoding="utf-8").read().split("\n"):
@@ -137,12 +149,16 @@ open(doc + ".pinned", "w", encoding="utf-8").write(pinned)
 PY
 
 # --- the dropped-ruling checker ---------------------------------------------------------------
-# check.py <successor doc> <numbers file> <bucket dir> <source doc>: exit 0 when every decision number is on
-# a line of the successor's Current direction with a reading, a resolvable verbatim file or the
-# history file, and that history file holds the source direction byte for byte.
+# check.py <successor doc> <bucket dir> <expected lines file> <numbers file>: exit 0 when the
+# successor's Current direction names its companion files and the first-turn read, each companion
+# is under the Read bound, the companions hold every expected ruling line byte for byte, every
+# decision number the expected lines name (taken here by a parse of its own, and also the
+# generator's list) is listed in an index line, every shortened index line has a real reading
+# taken from its source line, and a STANDING ruling is not labelled "not marked binding".
 cat > "$tmp/check.py" <<'PY'
-import glob, os, re, sys
-doc, numfile, bucket, src = sys.argv[1:5]
+import os, re, sys
+doc, bucket, exp, numfile = sys.argv[1:5]
+BOUND = 48000
 def block(p):
     on, out = False, []
     for ln in open(p, encoding="utf-8").read().split("\n"):
@@ -150,22 +166,84 @@ def block(p):
         if on and ln.startswith("## "): break
         if on and ln.strip() and not ln.startswith(">"): out.append(ln)
     return out
-new, old = block(doc), block(src)
-m = re.search(r"Full original text of every ruling shortened below: (\S+) ", "\n".join(new))
-if not m: print("no history pointer line"); sys.exit(1)
-hist = os.path.join(bucket, m.group(1))
-if not os.path.isfile(hist): print("history file missing: " + m.group(1)); sys.exit(1)
-held = set(open(hist, encoding="utf-8").read().split("\n"))
-for ln in old:
-    if ln not in held: print("history file lacks a source line: " + ln[:60]); sys.exit(1)
-bad = 0
-for n in [int(x) for x in open(numfile).read().split()]:
-    rx = re.compile(r"\bdecisions? [\d, ]*\b%d\b[\d, ]*(?: \((?:carry|not marked binding)\))?: (\S.*)$" % n)
-    hit = [rx.search(l) for l in new if rx.search(l)]
-    if not hit: print("decision %d: no line with a reading" % n); bad = 1; continue
-    if not glob.glob(os.path.join(bucket, "specs/decisions/verbatim-decision-%d-*" % n)) and not held:
-        print("decision %d: no verbatim file and no history" % n); bad = 1
-sys.exit(bad)
+new = block(doc)
+expected = [l for l in open(exp, encoding="utf-8").read().split("\n") if l.strip() and not l.startswith(">")]
+note = [l for l in new if l.startswith("Full original text")]
+if len(note) != 1: print("no single companion pointer line"); sys.exit(1)
+m = re.search(r"is in (\d+) files? under the bucket \(([^)]*)\)\. READ ALL OF THEM in your first turn, in the same batch as this document", note[0])
+if not m: print("the pointer line lacks the required first-turn read"); sys.exit(1)
+files = m.group(2).split()
+if len(files) != int(m.group(1)): print("the pointer count differs from the files it names"); sys.exit(1)
+held = set()
+for rel in files:
+    p = os.path.join(bucket, rel)
+    if not os.path.isfile(p): print("companion missing: " + rel); sys.exit(1)
+    if os.path.getsize(p) > BOUND: print("companion over the Read bound: " + rel); sys.exit(1)
+    held.update(open(p, encoding="utf-8").read().split("\n"))
+for ln in expected:
+    if ln not in held: print("companion lacks a ruling line: " + ln[:70]); sys.exit(1)
+def header_numbers(line):
+    mm = re.match(r"^(?:OPERATOR|CHIEF)[^(]*\(([^)]*)\)", line)
+    if not mm: return []
+    h, out = mm.group(1), []
+    for d in re.finditer(r"decisions?\b", h):
+        sp = re.match(r"\s*((?:\d+|,|and|to|-|–|\s)+)", h[d.end():])
+        nums, join = [], False
+        for t in re.findall(r"\d+|to|-|–", sp.group(1) if sp else ""):
+            if t.isdigit():
+                v = int(t)
+                if join and nums: nums += list(range(nums[-1] + 1, v + 1)); join = False
+                else: nums.append(v)
+            else: join = True
+        out += nums
+    return out
+listed = set()
+for l in new:
+    hd = l.split(": ", 1)[0]
+    lm = re.search(r"decisions?\s+([\d, ]+)", hd)
+    if lm: listed.update(int(x) for x in re.findall(r"\d+", lm.group(1)))
+want = set(int(x) for x in open(numfile).read().split())
+for ln in expected: want.update(header_numbers(ln))
+missing = sorted(n for n in want if n not in listed)
+if missing: print("decision numbers with no index line: %s" % missing[:10]); sys.exit(1)
+flat = [" ".join(l.split()) for l in expected]
+for l in new:
+    if l in expected or l.startswith("Full original text"): continue
+    mm = re.match(r"^((?:OPERATOR|CHIEF)[^:]*): (.*)$", l)
+    if not mm: print("a shortened line with no index shape: " + l[:60]); sys.exit(1)
+    reading = " ".join(mm.group(2).replace("…", "").split())
+    if len(reading) < 12: print("no reading on an index line: " + l[:80]); sys.exit(1)
+    who = " ".join(mm.group(1).split(", decision")[0].split(" (")[0].split())
+    srcs = [f for f in flat if f.startswith(who + " ") and reading[:30] in f]
+    if not srcs: print("a reading that is not in its source: " + l[:80]); sys.exit(1)
+    standing = any("STANDING" in f and "BINDING" not in f.split(")", 1)[0] for f in srcs)
+    if standing and "(standing)" not in mm.group(1): print("a STANDING ruling is not labelled standing: " + l[:80]); sys.exit(1)
+    if "(not marked binding)" in mm.group(1) and any("STANDING" in f for f in srcs): print("a STANDING ruling is labelled not marked binding: " + l[:80]); sys.exit(1)
+sys.exit(0)
+PY
+
+# mutate.py <kind> <in doc> <out doc>: a successor doc with one defect the checker must catch.
+cat > "$tmp/mutate.py" <<'PY'
+import re, sys
+kind, src, dst = sys.argv[1:4]
+lines = open(src, encoding="utf-8").read().split("\n")
+on, done = False, False
+for i, l in enumerate(lines):
+    if l == "## Current direction": on = True; continue
+    if on and l.startswith("## "): break
+    if not on or done: continue
+    if kind == "dropnum":
+        mm = re.match(r"^((?:OPERATOR|CHIEF)[^:]*decisions \d+(?:, \d+)*), (\d+)((?: \([a-z ]+\))?: .*)$", l)
+        if mm: lines[i] = mm.group(1) + mm.group(3); done = True
+    elif kind == "shortread":
+        mm = re.match(r"^((?:OPERATOR|CHIEF)[^:]*: )(.{60,})$", l)
+        if mm: lines[i] = mm.group(1) + "x"; done = True
+    elif kind == "relabel":
+        if "(standing): " in l: lines[i] = l.replace("(standing): ", "(not marked binding): ", 1); done = True
+    elif kind == "noread":
+        if l.startswith("Full original text"): lines[i] = l.replace("READ ALL OF THEM in your first turn, in the same batch as this document", "see them if you like"); done = True
+if not done: print("mutation %s found nothing to change" % kind); sys.exit(2)
+open(dst, "w", encoding="utf-8").write("\n".join(lines))
 PY
 
 make_pair() { # <bucket> <queue segments> <ruling groups> -> docA (source) path in $made_doc
@@ -174,7 +252,11 @@ make_pair() { # <bucket> <queue segments> <ruling groups> -> docA (source) path 
     python3 -I "$tmp/gen.py" "$made_doc" "$root/tester/$1" "$2" "$3" || check "$1: the fixture generator ran" failed ok
     cp "$made_doc" "$made_doc.src"
 }
+companion_files() { sed -n 's/.*under the bucket (\([^)]*\)).*/\1/p' "$1" | tr ' ' '\n'; }
+# shellcheck disable=SC2016
+READ_LINE='every direction companion file the first line of `## Current direction`'
 live_line() { awk -v k="$2:" '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f && index($0, k) == 1 { print; exit }' "$1"; }
+dir_lines() { awk '$0 == "## Current direction" { f = 1; next } f && /^## / { exit } f && NF && substr($0, 1, 1) != ">"' "$1"; }
 
 run_fixture() { # <name> <queue segments> <ruling groups>
     local b="$1" src out docB hist
@@ -191,15 +273,42 @@ run_fixture() { # <name> <queue segments> <ruling groups>
     printf 'fixture %s: successor doc %s bytes (bound %s)\n' "$b" "$bytes" "$BOUND_BYTES"
     check "$b: (a) the successor doc is under the Read bound ($bound_note)" "$([ "$bytes" -le "$BOUND_BYTES" ] && echo under || echo "over:$bytes")" under
 
-    # (b) no ruling dropped
-    python3 -I "$tmp/check.py" "$docB" "$src.numbers" "$root/tester/$b" "$src.src" >"$tmp/check.out" 2>&1; rc=$?
-    check "$b: (b) every decision number has its reading line and a resolvable verbatim file or history pointer" "$rc" "0"
-    # the mutation: one ruling removed from the successor must make the checker fail
-    cp "$docB" "$tmp/mut.md"
+    # (b) no ruling dropped: the companions hold every source line, the index every number
+    dir_lines "$src.src" > "$src.expected"
+    python3 -I "$tmp/check.py" "$docB" "$root/tester/$b" "$src.expected" "$src.numbers" >"$tmp/check.out" 2>&1; rc=$?
+    check "$b: (b) the companions hold every ruling byte for byte and the index lists every decision number with a reading" "$rc" "0"
+    [ "$rc" -eq 0 ] || sed 's/^/    check said: /' "$tmp/check.out"
+    # the mutations: each defect must make the checker fail
+    local kind
+    for kind in dropnum shortread relabel noread; do
+        python3 -I "$tmp/mutate.py" "$kind" "$docB" "$tmp/mut.md" >/dev/null 2>&1; rc=$?
+        if [ "$rc" -ne 0 ]; then check "$b: (b) the $kind mutation found a line to change" no yes; continue; fi
+        python3 -I "$tmp/check.py" "$tmp/mut.md" "$root/tester/$b" "$src.expected" "$src.numbers" >"$tmp/mut.out" 2>&1; rc=$?
+        check "$b: (b) the checker fails under the $kind mutation" "$([ "$rc" -ne 0 ] && echo failed)" "failed"
+    done
     victim="$(awk 'NR==1' "$src.numbers")"
     grep -v "decision $victim\b" "$docB" > "$tmp/mut.md"
-    python3 -I "$tmp/check.py" "$tmp/mut.md" "$src.numbers" "$root/tester/$b" "$src.src" >"$tmp/mut.out" 2>&1; rc=$?
-    check "$b: (b) the checker fails when one ruling is removed (mutation, decision $victim)" "$([ "$rc" -ne 0 ] && echo failed)" "failed"
+    python3 -I "$tmp/check.py" "$tmp/mut.md" "$root/tester/$b" "$src.expected" "$src.numbers" >"$tmp/mut.out" 2>&1; rc=$?
+    check "$b: (b) the checker fails when one ruling line is removed (mutation, decision $victim)" "$([ "$rc" -ne 0 ] && echo failed)" "failed"
+    # a line gone from a companion file is caught too
+    rm -rf "$tmp/bk"; mkdir -p "$tmp/bk/specs"; cp -R "$root/tester/$b/specs/decisions" "$tmp/bk/specs/decisions"
+    first_part="$(sed -n 's/.*under the bucket (\([^ )]*\).*/\1/p' "$docB")"
+    grep -v "decision $victim\b" "$root/tester/$b/$first_part" > "$tmp/bk/$first_part"
+    python3 -I "$tmp/check.py" "$docB" "$tmp/bk" "$src.expected" "$src.numbers" >"$tmp/mut.out" 2>&1; rc=$?
+    check "$b: (b) the checker fails when a ruling line is missing from the companions" "$([ "$rc" -ne 0 ] && echo failed)" "failed"
+
+    # the judge's shapes: every number of a multi-clause header, a range, a STANDING label
+    check "$b: a header with two decision clauses lists both numbers (478-shape)" "$(dir_lines "$docB" | grep -cE '^OPERATOR 11-03 [A-Z]+, decisions [0-9]+, [0-9]+( \(carry\))?: ')" "$(dir_lines "$src.src" | grep -cE '^OPERATOR 11-03 [A-Z]+ \(BINDING, carry to every successor; decision [0-9]+, O-v')"
+    check "$b: a dash range in a header is listed as its numbers (274-276 shape)" "$(dir_lines "$docB" | grep -cE '^OPERATOR 10-25 [A-Z]+, decisions [0-9]+, [0-9]+, [0-9]+')" "$(dir_lines "$src.src" | grep -cE '^OPERATOR 10-25 [A-Z]+ \(decisions [0-9]+-[0-9]+\)')"
+    check "$b: a (STANDING) ruling is labelled standing, never not marked binding" "$(dir_lines "$docB" | grep -cE '^OPERATOR 10-27 [A-Z]+ \(standing\): ')" "$(dir_lines "$src.src" | grep -cE '^OPERATOR 10-27 [A-Z]+ \(STANDING\): ')"
+
+    # the companions: each under the Read bound; the ACTION ZERO batch reads them
+    local over=0 f
+    while read -r f; do
+        [ "$(wc -c < "$root/tester/$b/$f" | tr -d ' ')" -le "$BOUND_BYTES" ] || over=$((over + 1))
+    done < <(companion_files "$docB")
+    check "$b: every direction companion file is under the Read bound" "$over" "0"
+    check "$b: the ACTION ZERO batch reads the direction companion files, required, in the same batch" "$(awk '/^1\. \*\*One batch/ { f = 1 } /^   Steps 2/ { f = 0 } f' "$docB" | tr '\n' ' ' | grep -cF "$READ_LINE")" 1
 
     # (c) the tracker's pinned operator sentence is byte-identical (decision 286)
     live_line "$docB" tracker > "$tmp/tracker.line"
@@ -251,8 +360,13 @@ doc2="$(printf '%s\n' "$out2" | sed -n 's/^doc: //p')"
 after_dir="$([ -f "$doc2" ] && dir_bytes "$doc2" || echo 0)"
 printf 'second succession: direction %s bytes, with 20 new rulings %s, successor %s\n' "$before_dir" "$with_new" "$after_dir"
 check "tqlike second succession: the 20 new rulings add under 4400 bytes (not their 12000 of full text)" "$([ "$after_dir" -gt 0 ] && [ "$((after_dir - before_dir))" -lt 4400 ] && echo under || echo "over:$((after_dir - before_dir))")" under
-kept=0; for n in $(seq 900 919); do [ "$(grep -cF "decision $n: " "$doc2" 2>/dev/null)" = 1 ] && kept=$((kept + 1)); done
-check "tqlike second succession: all 20 new rulings keep their reading line" "$kept" "20"
+tq_src="$root/tester/tqlike/DEMO-nextleg-${today}A-chief.md"
+{ cat "$tq_src.expected"; dir_lines "$gen2_doc" | grep '^OPERATOR 11-07 ZZ '; } > "$tmp/gen2.expected"
+{ cat "$tq_src.numbers"; seq 900 919; } > "$tmp/gen2.numbers"
+python3 -I "$tmp/check.py" "$doc2" "$root/tester/tqlike" "$tmp/gen2.expected" "$tmp/gen2.numbers" >"$tmp/check.out" 2>&1; rc=$?
+check "tqlike second succession: the companions hold the first generation and the 20 new rulings byte for byte, the index lists every number" "$rc" "0"
+[ "$rc" -eq 0 ] || sed 's/^/    check said: /' "$tmp/check.out"
+check "tqlike second succession: the 20 new rulings are in a companion file" "$(companion_files "$doc2" | while read -r f; do cat "$root/tester/tqlike/$f"; done | grep -c '^OPERATOR 11-07 ZZ ')" "20"
 
 # the refusals on an absent or empty Current direction stay
 chief new --bucket empty >/dev/null 2>&1

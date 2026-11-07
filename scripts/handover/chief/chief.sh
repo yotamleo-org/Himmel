@@ -1935,7 +1935,7 @@ spill_decisions() {
 }
 
 # One dated history file per `next` run: what the seeded doc leaves out of its
-# queue, tracker and Current direction lines is appended here byte for byte under a title,
+# queue and tracker lines is appended here byte for byte under a title,
 # so the doc stays one Read (decision 645) and nothing is lost. The first call creates
 # <dir>/specs/decisions/chief-history-<date>[-N].md and names it in HIST_REL; call it
 # directly, never inside $(...), or HIST_REL is lost. A failed write returns 1 and the
@@ -1972,54 +1972,74 @@ tracker_head() {
     }'
 }
 
-# The Current direction block, shortened to its readings. Each ruling line keeps
-# its who, date, decision numbers and a one-line reading; the operator quote of a ruling whose
-# verbatim file exists under <dir>/specs/decisions is left to that file (the first line names
-# the pattern). A line not marked BINDING says so. The reading is cut at a sentence or word so
-# the whole block fits CHIEF_DIRECTION_BUDGET_BYTES (default 15000): the newest 40 lines get
-# twice the share of the older ones, at least 48 bytes (96 for the newest). A line of another
+# The Current direction block, shortened to an index of one reading line per ruling, with the
+# full text of every ruling kept byte for byte in companion files that the first line of the
+# result names (the successor must read them in its first turn; the index alone is not the
+# rulings). Each index line keeps its who, date, decision numbers (every one the header
+# names, ranges expanded) and a one-line reading; the operator quote of a ruling whose
+# verbatim file exists under <dir>/specs/decisions is left to that file. A line not marked
+# BINDING says so (carry, standing, not marked binding). The reading is cut at a sentence or word so
+# the index fits CHIEF_DIRECTION_BUDGET_BYTES (default 12000): the newest 40 lines get
+# twice the share of the older ones, at least 40 bytes (80 for the newest). A line of another
 # shape keeps its start, at least 150 bytes. A line an earlier run already shortened stays as
-# it is but counts against the budget, so rulings added later are shortened to the floors. Every line the shortening cuts is kept byte for
-# byte in the history file named in the first line of the result. Prints nothing and returns 1
-# when no line was shortened.
-# Args: block (stdin), dir, history file (relative to dir).
+# it is but counts against the budget; its full text is carried forward from the companion
+# files the earlier note names. The companions are specs/decisions/chief-direction-<date>[-N]-pK.md,
+# each under CHIEF_DIRECTION_PART_BYTES (default 40000, so one Read takes it whole). Returns 1
+# and prints nothing when no line was shortened, 2 when a companion could not be written.
+# Args: block (stdin), dir, date.
 compress_direction() {
     python3 -I -c '
 import glob, os, re, sys
-bucket, budget, hist = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+bucket, budget, partmax, today = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4]
 HEAD = re.compile(r"^((?:OPERATOR|CHIEF)[^(]*?) \(([^()]*(?:\{[^{}]*\}[^()]*)*)\)[.:]?\s*(.*)$")
-DONE = re.compile(r"^(?:(?:OPERATOR|CHIEF)[^:(]*(?:, decisions? \d[\d, ]*)?(?: \((?:carry|not marked binding)\))?: |Full original text)")
+DONE = re.compile(r"^(?:(?:OPERATOR|CHIEF)[^:(]*(?:, decisions? \d[\d, ]*)?(?: \((?:carry|standing|not marked binding)\))?: |Full original text)")
+NOTE = re.compile(r"^Full original text")
 QUOTE = re.compile(r"Verbatim[^:\"\x27]{0,40}:\s*(\"[^\"]*\"|\x27[^\x27]*\x27)\.?\s*")
+LISTP = re.compile(r"\bdecisions?\s+(\d+(?:\s*(?:,|and|to|-|–)\s*\d+)*)")
+def expand(s):
+    res, toks, i = [], re.findall(r"\d+|to|-|–", s), 0
+    while i < len(toks):
+        if toks[i].isdigit():
+            if i + 2 < len(toks) and toks[i + 1] in ("to", "-", "–") and toks[i + 2].isdigit():
+                a, b = int(toks[i]), int(toks[i + 2])
+                res += list(range(a, b + 1)) if a <= b and b - a <= 50 else [a, b]
+                i += 3
+                continue
+            res.append(int(toks[i]))
+        i += 1
+    return res
 def numbers(par):
-    m = re.search(r"\bdecisions?\s+(\d[\d,\s]*(?:(?:and|to)\s*\d+)?(?:[,\s]*(?:and\s*)?\d+)*)", par)
-    if not m: return []
-    s = m.group(1)
-    r = re.match(r"\s*(\d+)\s+to\s+(\d+)\s*$", s)
-    if r: return list(range(int(r.group(1)), int(r.group(2)) + 1))
-    return [int(x) for x in re.findall(r"\d+", s)]
+    out = []
+    for m in LISTP.finditer(par):
+        for n in expand(m.group(1)):
+            if n not in out: out.append(n)
+    return out
 def resolvable(n):
     return bool(glob.glob(os.path.join(bucket, "specs/decisions/verbatim-decision-%d-*" % n)))
+src = sys.stdin.read().split("\n")
 rows = []
-for ln in sys.stdin.read().split("\n"):
+for ln in src:
     if not ln.strip() or ln.startswith(">") or DONE.match(ln):
         rows.append((ln, None, ln)); continue
     m = HEAD.match(ln) if ln.startswith(("OPERATOR ", "CHIEF ")) else None
     if m:
-        nums = numbers(m.group(2))
+        par = m.group(2)
+        nums = numbers(par)
         ok = bool(nums) and len(nums) <= 12 and all(resolvable(n) for n in nums)
         reading = m.group(3)
         if ok: reading = QUOTE.sub("", reading, count=1)
         reading = reading.strip().lstrip(" ;:,.").strip()
         head = m.group(1)
         if nums: head += (", decisions " + ", ".join(map(str, nums))) if len(nums) > 1 else ", decision %d" % nums[0]
-        if "BINDING" not in m.group(2): head += " (carry)" if "carry" in m.group(2) else " (not marked binding)"
+        if "BINDING" not in par:
+            head += " (carry)" if "carry" in par else " (standing)" if ("STANDING" in par or "STANDING" in reading) else " (not marked binding)"
         rows.append((ln, head + ": ", reading or "verbatim only"))
     else:
         rows.append((ln, "", ln))
 short = [r for r in rows if r[1] is not None]
 n = len(short)
-fixed = sum(len(r[1].encode()) for r in short) + sum(len(r[0].encode()) for r in rows if r[1] is None and r[0].strip() and not r[0].startswith(">"))
-base = max(48, (budget - fixed) // max(n + min(n, 40), 1))
+fixed = sum(len(r[1].encode()) for r in short) + sum(len(r[0].encode()) for r in rows if r[1] is None and r[0].strip() and not r[0].startswith(">") and not NOTE.match(r[0]))
+base = max(40, (budget - fixed) // max(n + min(n, 40), 1))
 def cut(t, cap):
     if len(t.encode()) <= cap: return t
     t = t.encode()[:cap].decode("utf-8", "ignore")
@@ -2028,16 +2048,57 @@ def cut(t, cap):
     return t.rstrip(",;: ") + " …"
 out, changed, k = [], 0, 0
 for ln, head, reading in rows:
-    if head is None: out.append(ln); continue
+    if head is None:
+        if not NOTE.match(ln): out.append(ln)
+        continue
     cap = base * 2 if k < 40 else base
     k += 1
     line = head + cut(reading, cap) if head else cut(reading, max(cap * 2, 150))
     if line != ln: changed += 1
     out.append(line)
 if not changed: sys.exit(1)
-note = "Full original text of every ruling shortened below: %s (byte for byte). Every line is BINDING unless it says otherwise. The operator words of a numbered ruling: specs/decisions/verbatim-decision-<N>-*.txt." % hist
+prior, prior_ok = [], True
+for ln in src:
+    if NOTE.match(ln):
+        for rel in re.findall(r"specs/decisions/chief-direction-[A-Za-z0-9._-]+\.md", ln):
+            try:
+                body = open(os.path.join(bucket, rel), encoding="utf-8").read().split("\n")
+            except OSError:
+                prior_ok = False
+                sys.stderr.write("warning: could not read the earlier direction companion %s; the index lines it holds are carried as they are\n" % rel)
+                continue
+            for b in body:
+                if b.strip() and not b.startswith("# Current direction, full text") and b not in prior: prior.append(b)
+full = list(prior)
+for ln in src:
+    if not ln.strip() or ln.startswith(">") or NOTE.match(ln): continue
+    if DONE.match(ln) and prior_ok: continue
+    if ln not in full: full.append(ln)
+parts, cur, size = [], [], 0
+for ln in full:
+    need = len(ln.encode()) + 2
+    if cur and size + need > partmax:
+        parts.append(cur); cur, size = [], 0
+    cur.append(ln); size += need
+if cur: parts.append(cur)
+stem = "specs/decisions/chief-direction-" + today
+suffix, names = "", []
+try:
+    os.makedirs(os.path.join(bucket, "specs", "decisions"), exist_ok=True)
+    i = 1
+    while os.path.exists(os.path.join(bucket, stem + suffix + "-p1.md")):
+        i += 1; suffix = "-%d" % i
+    for j, p in enumerate(parts, 1):
+        rel = "%s%s-p%d.md" % (stem, suffix, j)
+        with open(os.path.join(bucket, rel), "x", encoding="utf-8") as f:
+            f.write("# Current direction, full text (part %d of %d), byte for byte, written by chief.sh next\n\n%s\n" % (j, len(parts), "\n\n".join(p)))
+        names.append(rel)
+except OSError as e:
+    sys.stderr.write("warning: could not write the direction companion files: %s\n" % e)
+    sys.exit(2)
+note = "Full original text of every ruling below, byte for byte, is in %d file%s under the bucket (%s). READ ALL OF THEM in your first turn, in the same batch as this document: the lines below are one-line readings and a clause cut from a reading is in them. The operator words of a numbered ruling: specs/decisions/verbatim-decision-<N>-*.txt. Every line is BINDING unless it says otherwise." % (len(names), "" if len(names) == 1 else "s", " ".join(names))
 sys.stdout.write(note + "\n\n" + "\n".join(out))
-' "$1" "${CHIEF_DIRECTION_BUDGET_BYTES:-15000}" "$2"
+' "$1" "${CHIEF_DIRECTION_BUDGET_BYTES:-12000}" "${CHIEF_DIRECTION_PART_BYTES:-40000}" "$2"
 }
 
 # Match the Jira CLI's declaration root, never the chief's arbitrary --bucket.
@@ -2426,9 +2487,10 @@ cmd_next() {
         manifest_note="carried from the predecessor, already in place: start the waiter with --workers-from on it"
     fi
     # One Read: the tracker line keeps its pinned head (decision 286) and the Current
-    # direction its readings; the history tails and the full text of each shortened ruling go,
-    # byte for byte, to the dated history file the lines name. A failed write seeds them whole.
-    local tracker_kept dir_short
+    # direction an index of readings; the history tails go, byte for byte, to the dated history
+    # file the tracker line names, and the full text of every ruling to the companion files
+    # the direction names. A failed write seeds the line whole.
+    local tracker_kept dir_short dir_rc
     tracker_kept="$(tracker_head "$predecessor_tracker")"
     if [ "$tracker_kept" != "$predecessor_tracker" ]; then
         if hist_file_append "$state_dir" "tracker: history tail, trimmed by chief.sh next from $predecessor_stem" "${predecessor_tracker#"$tracker_kept"}"; then
@@ -2438,13 +2500,13 @@ cmd_next() {
         fi
     fi
     if [ "$(printf '%s' "$predecessor_direction" | wc -c | tr -d ' ')" -gt "${CHIEF_DIRECTION_SPILL_BYTES:-12000}" ]; then
-        if hist_file_append "$state_dir" "Current direction of $predecessor_stem, byte for byte" "$predecessor_direction"; then
-            if dir_short="$(printf '%s\n' "$predecessor_direction" | compress_direction "$state_dir" "$HIST_REL")"; then
-                predecessor_direction="$dir_short"
-            fi
-        else
-            err "warning: could not write the Current direction to the history file; seeded it whole"
-        fi
+        dir_rc=0
+        dir_short="$(printf '%s\n' "$predecessor_direction" | compress_direction "$state_dir" "$(date +%F)")" || dir_rc=$?
+        case "$dir_rc" in
+            0) predecessor_direction="$dir_short" ;;
+            1) ;;
+            *) err "warning: could not write the direction companion files; seeded the Current direction whole" ;;
+        esac
     fi
     render_template "$console_template" "$doc" \
         FLEET_MANIFEST "$successor_manifest" \
@@ -2500,7 +2562,7 @@ cmd_next() {
         # The direction block is already carried into the successor doc; the HANDOFF points at it.
         hf_direction="${hf_chain:+$hf_chain
 
-}The outgoing direction is carried verbatim in \`$successor_doc_ref\` ## Current direction."
+}The outgoing direction is carried verbatim in \`$successor_doc_ref\` ## Current direction when it is short; over ${CHIEF_DIRECTION_SPILL_BYTES:-12000} bytes it is carried there as one reading line per ruling, and the full text of every ruling is in the companion files that block's first line names: read them in your first turn."
         hf_lastgo="$(bash "$facts" lastgo "$predecessor_doc" --repo "$repo")"
         hf_wrapped="$(wrapped_open_prs_section "$predecessor_doc")"
         hf_wrapped_bytes="$(printf '%s\n' "$hf_wrapped" | wc -c | tr -d ' ')"
