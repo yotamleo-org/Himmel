@@ -2774,7 +2774,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
         if [ -n "$dc_rels" ] && [ -n "$tick_title_hit" ]; then
             while IFS= read -r dc_rel; do
                 dc_total=$((dc_total + 1))
-                awk -v rel="$dc_rel" 'index($0, "\"name\":\"Read\"") && index($0, rel) { f = 1 } END { exit !f }' "$tick_title_hit" 2>/dev/null || { dc_unread="$dc_unread $dc_rel"; dc_unread_n=$((dc_unread_n + 1)); }  # swallow-ok: no Read of this file in the transcript is the thing counted
+                awk -v rel="$dc_rel\"" '{ s = $0; while (match(s, /"name":"Read","input":\{[^}]*"file_path":"[^"]*"/)) { seg = substr(s, RSTART, RLENGTH); if (substr(seg, length(seg) - length(rel) + 1) == rel) f = 1; s = substr(s, RSTART + RLENGTH) } } END { exit !f }' "$tick_title_hit" 2>/dev/null || { dc_unread="$dc_unread $dc_rel"; dc_unread_n=$((dc_unread_n + 1)); }  # swallow-ok: no Read of this file in the transcript is the thing counted
             done <<< "$dc_rels"
         fi
     fi

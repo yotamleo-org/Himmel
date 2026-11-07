@@ -2455,6 +2455,11 @@ contains '(9502) one companion Read of two leaves one flagged' "$dc_out" 'ACTION
 not_contains '(9502) the companion that was Read is not named' "$dc_out" "$dc_rel1"
 dc_read 2 "$dc_rel2" >> "$TICK_PROJECTS_DIR/p/dc9502.jsonl"
 not_contains '(9502) a chief that Read every companion is not flagged' "$(dc_tick)" 'direction-companions-unread'
+# a message that Reads one companion and only MENTIONS the other in its text has not read the other
+printf '{"type":"custom-title","customTitle":"chief-dc9502"}\n{"type":"assistant","timestamp":"%s","message":{"content":[{"type":"text","text":"next I read %s"},{"type":"tool_use","id":"dc-9","name":"Read","input":{"file_path":"%s/%s"}}]}}\n' "$dc_stamp" "$dc_rel2" "$W/handover" "$dc_rel1" > "$TICK_PROJECTS_DIR/p/dc9502.jsonl"
+dc_out="$(dc_tick)"
+contains '(9502) a companion named only in message text, beside a Read of the other, is still flagged' "$dc_out" 'ACTION direction-companions-unread=1/2'
+not_contains '(9502) the companion that was Read in that message is not named' "$dc_out" "$dc_rel1"
 printf '{"type":"custom-title","customTitle":"someone-else"}\n' > "$TICK_PROJECTS_DIR/p/dc9502.jsonl"
 not_contains '(9502) no transcript with the chief title: no guess, no flag' "$(dc_tick)" 'direction-companions-unread'
 printf '{"type":"custom-title","customTitle":"chief-dc9502"}\n' > "$TICK_PROJECTS_DIR/p/dc9502.jsonl"
