@@ -16,3 +16,5 @@ decide whether it still reproduces on current main.
   `file:line` evidence. Base `fixed` on the code, not on a commit message alone.
 - You change nothing: no edits, no Jira writes, no commits.
 - Reply with one line per ticket: `<key>: <verdict>: <evidence>`.
+
+Be thorough in your analysis and bold in your recommendations

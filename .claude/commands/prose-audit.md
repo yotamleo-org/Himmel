@@ -52,3 +52,5 @@ Thresholds are tuned guesses, overridable: `PROSE_AUDIT_MIN_BYTES` (6144),
 
 Findings are advisory — a successful scan exits 0. Non-zero means the reporter
 itself failed. Program of record: HIMMEL-1941.
+
+Be thorough in your analysis and bold in your recommendations
