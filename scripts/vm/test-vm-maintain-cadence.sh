@@ -113,7 +113,8 @@ fresh; out=$(cadence FAIL_RUN_VM=vmA run --vms vmA 2>&1); out=$(cadence run --vm
 out=$(cadence FAIL_RUN_VM=vmA run --vms vmA 2>&1); rc=$?
 check "C2c a pass that completes re-arms the page, so a later failure pages again" sent_count 2
 fresh; out=$(cadence FAIL_UPDATE=1 run --vms vmA 2>&1); rc=$?
-check "C3 a failed station update is CADENCE FAILED station-update, rc 1, one page" bash -c '[ "$1" -eq 1 ] && grep -qF "CADENCE FAILED station-update" <<<"$2" && [ "$(wc -l < "$3" | tr -d " ")" -eq 1 ]' _ "$rc" "$out" "$WORK/sent"
+check "C3 a failed station update is CADENCE FAILED station-update, rc 1" bash -c '[ "$1" -eq 1 ] && grep -qF "CADENCE FAILED station-update" <<<"$2"' _ "$rc" "$out"
+check "C3b a failed station update pages once" sent_count 1
 fresh; out=$(cadence BUSY_VM=vmA run --vms vmA,vmB 2>&1); rc=$?
 check "C4 a VM another leg holds is skipped with a line, not failed: the next VM and the station update still run" bash -c '[ "$1" -eq 0 ] && grep -qF "SKIPPED vmA" <<<"$2"' _ "$rc" "$out"
 check "C4b the skipped VM is not probed, the next VM is run" bash -c 'grep -qF "vmm begin run vmB" "$1" && ! grep -qF "vmm begin probe vmA" "$1"' _ "$LOG"
