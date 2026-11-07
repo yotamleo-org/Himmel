@@ -165,7 +165,7 @@ test("the Check this install strip sits under the tile row, runs the old Verify,
   expect(chk).toBeGreaterThan(tiles);
   expect(html).toContain("Check this install");
   expect(html).toContain('data-act="setup-verify"');
-  expect(cfg(null, { verify: { state: "done", ok: 2, info: 0, warn: 1, fail: 1, findings: [{ sev: "FAIL", id: "C5", msg: "m", remedy: "r" }] } })).toMatch(/1 fail[\s\S]*1 warn[\s\S]*2 ok/);
+  expect(cfg(null, { verify: { state: "done", ok: 2, info: 0, warn: 1, fail: 1, findings: [{ sev: "FAIL", id: "C65-git-hooks", msg: "m", remedy: "r" }] } })).toMatch(/1 fail[\s\S]*0 warn[\s\S]*setup checks/); // the setup subset's fail and warn, no ok count
   for (const t of ["secrets", "review", "tracker", "scope"]) {
     expect(cfg(t)).not.toContain('class="chk"');
     expect(cfg(t)).not.toContain("Check this install");
