@@ -544,6 +544,21 @@ test("a version tile picks the version the Chains tab reads, and a link for all 
   await expect(page.locator(".tabs .tab.ch .cnt")).toHaveText("2");
 });
 
+test("a version tile picked while the first Board read is still out is the version the tab ends on", async ({ page }) => {
+  await open(page);
+  let release!: () => void;
+  const held = new Promise<void>((r) => { release = r; });
+  let asked = 0;
+  await page.route("**/api/board?*", (route) => route.continue()); // a read with a version is never held
+  await page.route(/\/api\/board$/, async (route) => { asked++; await held; await route.continue(); }); // the first, unversioned read waits
+  await page.evaluate(() => { location.hash = "#/board?tab=chains"; });
+  await expect.poll(() => asked).toBe(1);
+  await page.evaluate(() => { location.hash = "#/board?tab=chains&v=v1.1.4"; });
+  release();
+  await expect(page.locator("#rm-chains")).toContainText("No chain has a ticket in v1.1.4.");
+  await expect(page.locator(".vc.sel")).toContainText("v1.1.4");
+});
+
 test("after the Why panel closes, the ticket drawer keeps its behaviour on the Board: Esc closes it and focus returns to its card", async ({ page }) => {
   await open(page);
   await go(page, "#/board?tab=chains&why=HIMMEL-7.HIMMEL-21");

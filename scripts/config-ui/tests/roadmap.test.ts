@@ -1277,7 +1277,7 @@ test("9488 critic minors: no wording that says a later-version blocker is unplan
   expect(panelOf(html)).toMatch(/class="tk go[^"]*"[^>]*>[^<]*<span class="gl" aria-hidden="true">▷<\/span> 2 can launch/);
   // m3: the foot line names the chain with no ticket in this version and where to pick it; the refresh control and the versions menu are real
   expect(panelOf(html)).toContain("2 more chains, beta, gamma, have no ticket in v1.1.2.");
-  expect(panelOf(html)).toContain('href="#/board?tab=chains&amp;v=v1.1.1">v1.1.1</a> to see them');
+  expect(panelOf(html)).toContain('href="#/board?tab=chains&amp;v=v1.1.1">v1.1.1</a> to see gamma.'); // only gamma has a ticket in the first other version, so only gamma is named
   expect(panelOf(two())).toContain("1 more chain, gamma, has no ticket in v1.1.3. Pick");
   expect(html).toContain('data-act="refresh-roadmap"');
   expect(html).toMatch(/<details class="vmenu"[^>]*><summary>\d of 3 versions/);

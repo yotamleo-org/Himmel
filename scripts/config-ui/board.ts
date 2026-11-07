@@ -130,8 +130,10 @@ export async function readBoardExtras(env: Env, read: typeof readRoadmap = readR
   const withBurn = (r: Record<string, unknown> | Absent) => ("tickets" in r ? { ...r, burn: burnDown(r as Parameters<typeof burnDown>[0]) } : r);
   const whole = chainRead([]);
   const vs = boardVersions(mirror, env, read);
-  const pick = "state" in vs ? undefined : asked && vs.names.includes(asked) ? asked : vs.running;
-  const fell = !("state" in vs) && asked && pick !== asked ? { fellBack: { asked, to: vs.running ?? null } } : {};
+  // With two projects on the Board a tile reads "v1.1.4 (HIMMEL)"; the chain read is the one project's, so its own suffix names the same version.
+  const bare = asked?.endsWith(` (${env.JIRA_PROJECT_KEY || "HIMMEL"})`) ? asked.slice(0, asked.lastIndexOf(" (")) : asked;
+  const pick = "state" in vs ? undefined : bare && vs.names.includes(bare) ? bare : vs.running;
+  const fell = !("state" in vs) && asked && pick !== bare ? { fellBack: { asked, to: vs.running ?? null } } : {};
   const forTab = "state" in vs ? Promise.resolve(vs) : (pick ? chainRead(["--version", pick]) : whole).then(withBurn).then((r) => ("tickets" in r ? { ...r, ...fell } : r));
   const [d, chains, versionChains] = await Promise.all([drift, whole, forTab]);
   return { drift: d, chains, versionChains };

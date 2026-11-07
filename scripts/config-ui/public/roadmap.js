@@ -630,7 +630,9 @@ function footHtml(ui, ch, d, whole, sel) {
   const rest = whole.chains.filter((x) => !ch.chains.some((c) => c.id === x.id));
   if (!rest.length) return "";
   const at = d.tickets.filter((t) => rest.some((x) => (x.members || []).includes(idOf(t))) && t.v >= 0 && t.v !== sel).map((t) => t.v);
-  const pick = at.length ? ` Pick <a href="${boardHref({ tab: "chains", v: d.versions[Math.min(...at)].n })}">${esc(d.versions[Math.min(...at)].n)}</a> to see ${rest.length === 1 ? "it" : "them"}.` : "";
+  const first = at.length ? Math.min(...at) : -1;
+  const there = rest.filter((x) => d.tickets.some((t) => t.v === first && (x.members || []).includes(idOf(t))));
+  const pick = at.length ? ` Pick <a href="${boardHref({ tab: "chains", v: d.versions[first].n })}">${esc(d.versions[first].n)}</a> to see ${there.length === rest.length ? (rest.length === 1 ? "it" : "them") : there.map((x) => esc(x.id)).join(", ")}.` : "";
   return `<p class="foot">${rest.length === 1 ? "1 more chain" : `${rest.length} more chains`}, ${rest.map((x) => esc(x.id)).join(", ")}, ${rest.length === 1 ? "has" : "have"} no ticket in ${esc(ch.version)}.${pick}</p>`;
 }
 
