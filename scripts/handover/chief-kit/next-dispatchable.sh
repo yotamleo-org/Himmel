@@ -988,6 +988,7 @@ def fresh_lock_keys(start):
                     continue
             except (OSError, ValueError, TypeError, AttributeError):
                 pass  # swallow-ok: a lock that cannot be read may be live, and an unparsable heartbeat is fresh, as queue-lock.sh status reads it
+            keys.add(named)  # a doc whose name carries no ticket is matched by the name itself
             keys.update(re.findall(r'[A-Z]+-\d+', named))
         lock_keys_of[q] = keys
     return lock_keys_of[q]
@@ -1022,10 +1023,11 @@ if chain_m:
                 smarks = [m.group(1) for m in (MARKER_RE.match(l) for l in slines) if m]
                 if smarks and smarks[-1] == 'WRAPPED':
                     continue
+                skeys = re.findall(r'[A-Z]+-\d+', os.path.basename(sdoc)) + owned_keys(sdoc, slines)
                 slocked = fresh_lock_keys(os.path.dirname(sdoc))
-                if slocked is not None and sage > SIB_ARM_GRACE_S and not slocked & set(re.findall(r'[A-Z]+-\d+', os.path.basename(sdoc))):
+                if slocked is not None and sage > SIB_ARM_GRACE_S and not slocked & set(skeys + [os.path.basename(sdoc)]):
                     continue  # past the arming hour with no fresh lock on the ticket: that worker is gone
-                for k in re.findall(r'[A-Z]+-\d+', os.path.basename(sdoc)) + owned_keys(sdoc, slines):
+                for k in skeys:
                     worker_keys.add(k); owner.setdefault(k, 'live worker %s of the chief on %s' % (worker.get('label', '?'), sib[:-len('.fleet.json')]))
         except (OSError, ValueError, TypeError, AttributeError):
             continue  # swallow-ok: a sibling chief's unreadable or malformed manifest names no worker; this chief's own fleet is still known
@@ -1131,7 +1133,8 @@ for i in issues.values() if not pr_unknown else ():
     if partial_resume(i['key']) and i['key'] not in worker_keys and i['key'] not in pr_keys and resume_eligible(i):
         parts = [(pr, remainder_of(pr, i['key'])) for pr in partials[i['key']]]
         clear = max((n for n, (_, ans) in enumerate(parts) if ans[0] != 'none'), default=-1)
-        i['parts'] = [p for n, p in enumerate(parts) if n >= clear or p[1][0] != 'none']
+        handed = clear >= 0 and parts[clear][1][0] == 'handed-off'  # a newer hand-off also supersedes an older remainder
+        i['parts'] = [p for n, p in enumerate(parts) if n >= clear or (p[1][0] != 'none' and not (handed and p[1][0] == 'remaining'))]
         latest = [(pr, ans[2]) for pr, ans in i['parts'] if ans[0] == 'remaining'][-1:]
         if latest:
             files, reads = split_reads(latest[0][1])

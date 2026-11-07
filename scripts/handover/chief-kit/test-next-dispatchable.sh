@@ -2496,6 +2496,7 @@ mk HIMMEL-9615 "In Progress" Medium '[]' '["v1.0.1"]' '[]' "an older missing rem
 mk HIMMEL-9616 "In Progress" Medium '[]' '["v1.0.1"]' '[]' "a newer missing remainder" "Edit scripts/lib/nd91-h2.sh."
 mk HIMMEL-9617 "In Progress" Medium '[]' '["v1.0.1"]' '[]' "an older missing remainder, the newer hands off" "Edit scripts/lib/nd91-h3.sh."
 mk HIMMEL-9618 "In Progress" Medium '[]' '["v1.0.1"]' '[]' "in work, no readable scope" "Keep the thing going."
+mk HIMMEL-9619 "In Progress" Medium '[]' '["v1.0.1"]' '[]' "an older remainder, the newer hands off" "Edit scripts/lib/nd91-h4.sh."
 M="$M_SAVE"
 printf 'Remaining: S7 (the chief-run station first run on live state, no code).\n' > "$PR_BODY_DIR/9611"
 printf 'Remaining: edit scripts/lib/nd91-rem.sh for the last case.\n' > "$PR_BODY_DIR/9612"
@@ -2506,9 +2507,11 @@ printf 'Remaining: only a clean live shift, no code.\n' > "$PR_BODY_DIR/9625"
 printf 'Remaining: an old half, no code.\n' > "$PR_BODY_DIR/9616"
 printf 'Merged the last slice.\n' > "$PR_BODY_DIR/9626"
 printf 'Merged the first slice.\n' > "$PR_BODY_DIR/9617"
+printf 'Remaining: edit scripts/himmel-doctor.sh.\n' > "$PR_BODY_DIR/9619"
+printf '## Ticket coverage\n- the rest: deferred → HIMMEL-9998\n' > "$PR_BODY_DIR/9629"
 printf '## Ticket coverage\n- the rest: deferred → HIMMEL-9999\n' > "$PR_BODY_DIR/9627"
 : > "$WORK/s91/status-events.jsonl"
-for row in 9611:9611 9612:9612 9613:9613 9614:9614 9615:9615 9615:9625 9616:9616 9616:9626 9617:9617 9617:9627; do
+for row in 9611:9611 9612:9612 9613:9613 9614:9614 9615:9615 9615:9625 9616:9616 9616:9626 9617:9617 9617:9627 9619:9619 9619:9629; do
     printf '{"ts":"t","event":"merge","key":"HIMMEL-%s","pr":"%s","contract":"no","result":"noop"}\n' "${row%%:*}" "${row#*:}" >> "$WORK/s91/status-events.jsonl"
 done
 printf 'scripts/himmel-doctor.sh\nscripts/handover/merge-on-green.sh\nscripts/lib/nd91-rem.sh\n' > "$WORK/held91.txt"
@@ -2542,6 +2545,8 @@ has "and is a chief question" "$r91" "NEEDS-CHIEF-NOTE HIMMEL-9609: no readable 
 has "a ticket that says it writes no code stays listed" "$(row91 LOCAL 9610)" "files=-"
 has "an in-work ticket with no readable scope is a chief question" "$r91" "NEEDS-CHIEF-NOTE HIMMEL-9618: no readable scope"
 lacks "and is no RESUME row" "$r91" "RESUME	HIMMEL-9618	"
+has "a newer hand-off supersedes an older remainder" "$r91" "HANDED-OFF HIMMEL-9619: remainder on HIMMEL-9998"
+lacks "and the older remainder holds no file" "$r91" "RESUME-HELD HIMMEL-9619"
 has "--resume-only still counts it as an orphan, dispatching nothing" "$(run91 --resume-only)" "RESUME	HIMMEL-9618	"
 r91top="$(run91 --top 1)"
 has "the question rows stop at --top and count the rest" "$r91top" "# no readable scope: 2 more ticket(s) not shown, --why names them"
@@ -2567,18 +2572,21 @@ quiet91="$(run91)"
 lacks "without --why no scope line is printed" "$quiet91" "# scope "
 
 # A chain sibling's worker owns its ticket only while it can be alive: a fresh queue lock, or a doc armed within the hour.
-B91="$WORK/h91/yotamleo/himmel"; mkdir -p "$B91" "$WORK/h91/.locks/queue/held.lock" "$WORK/h91/.locks/queue/stale.lock"
+B91="$WORK/h91/yotamleo/himmel"; mkdir -p "$B91" "$WORK/h91/.locks/queue/held.lock" "$WORK/h91/.locks/queue/stale.lock" "$WORK/h91/.locks/queue/named.lock"
 M91S="$WORK/m91s/HIMMEL"; mkdir -p "$M91S" "$WORK/s91s/workers"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/m91s/HIMMEL.versions.tsv"
 M_SAVE="$M"; M="$M91S"
-for n in 1 2 3 4; do mk "HIMMEL-963$n" "In Progress" Medium '[]' '["v1.0.1"]' '[]' "sibling case $n" "Edit scripts/lib/nd91-s$n.sh."; done
+for n in 1 2 3 4 5; do mk "HIMMEL-963$n" "In Progress" Medium '[]' '["v1.0.1"]' '[]' "sibling case $n" "Edit scripts/lib/nd91-s$n.sh."; done
 M="$M_SAVE"
 for n in 1 2 3 4; do printf '# worker\n> **Writes:** scripts/lib/nd91-s%s.sh\n' "$n" > "$B91/HIMMEL-963$n-N96$n-case-2026-11-06.md"; done
+printf '# HIMMEL-9635 worker\n> **Writes:** scripts/lib/nd91-s5.sh\n' > "$B91/N965-ops-2026-11-06.md"
+ago "$B91/N965-ops-2026-11-06.md" 3
+printf '{"handover":"%s","heartbeat":"%s"}\n' "$B91/N965-ops-2026-11-06.md" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$WORK/h91/.locks/queue/named.lock/owner.json"
 ago "$B91/HIMMEL-9631-N961-case-2026-11-06.md" 3
 ago "$B91/HIMMEL-9632-N962-case-2026-11-06.md" 3
 ago "$B91/HIMMEL-9633-N963-case-2026-11-06.md" 3
 printf '{"handover":"%s","heartbeat":"%s"}\n' "$B91/HIMMEL-9632-N962-case-2026-11-06.md" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$WORK/h91/.locks/queue/held.lock/owner.json"
 printf '{"handover":"%s","heartbeat":"2026-01-01T00:00:00Z"}\n' "$B91/HIMMEL-9633-N963-case-2026-11-06.md" > "$WORK/h91/.locks/queue/stale.lock/owner.json"
-mkfleet "$B91/HIMMEL-nextleg-2026-11-06TA-roadmap-chief.fleet.json" "N961:$B91/HIMMEL-9631-N961-case-2026-11-06.md" "N962:$B91/HIMMEL-9632-N962-case-2026-11-06.md" "N963:$B91/HIMMEL-9633-N963-case-2026-11-06.md" "N964:$B91/HIMMEL-9634-N964-case-2026-11-06.md"
+mkfleet "$B91/HIMMEL-nextleg-2026-11-06TA-roadmap-chief.fleet.json" "N965:$B91/N965-ops-2026-11-06.md" "N961:$B91/HIMMEL-9631-N961-case-2026-11-06.md" "N962:$B91/HIMMEL-9632-N962-case-2026-11-06.md" "N963:$B91/HIMMEL-9633-N963-case-2026-11-06.md" "N964:$B91/HIMMEL-9634-N964-case-2026-11-06.md"
 mkfleet "$B91/HIMMEL-nextleg-2026-11-07TB-roadmap-chief.fleet.json"
 s91="$(NEXT_DISPATCH_MIRROR="$M91S" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --top 20 --dispositions --workers-dir "$WORK/s91s/workers" --workers-from "$B91/HIMMEL-nextleg-2026-11-07TB-roadmap-chief.fleet.json" 2>/dev/null)"
 has "a sibling worker with no lock and a doc hours old owns nothing" "$s91" "RESUME	HIMMEL-9631	"
@@ -2586,6 +2594,7 @@ lacks "and is not called live" "$s91" "live worker N961"
 lacks "a sibling worker with a fresh queue lock keeps its ticket" "$s91" "RESUME	HIMMEL-9632	"
 has "and is named as the owner" "$s91" "# disposition HIMMEL-9632 in-flight owned by live worker N962 of the chief on HIMMEL-nextleg-2026-11-06TA-roadmap-chief"
 has "a sibling worker whose lock heartbeat is past the TTL owns nothing" "$s91" "RESUME	HIMMEL-9633	"
+lacks "a fresh lock on a doc whose name carries no ticket keeps the ticket its title names" "$s91" "RESUME	HIMMEL-9635	"
 lacks "a sibling doc armed within the hour, its lock not yet taken, keeps its ticket" "$s91" "RESUME	HIMMEL-9634	"
 
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
