@@ -102,10 +102,7 @@ check_both "10d echo > primary/.single-writerx (near-miss basename) still denies
 check_both "10e touch \$FIX/primary/.single-writer from cwd=wt (destination-based, not cwd-based) allows" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"touch $FIX/primary/.single-writer\",\"cwd\":\"$FIX/wt\"}}"
 
-# 10f to 10l: a worker session (HIMMEL_CONSOLE_LEG=1, a hold key
-# and an absolute doc, the test check-write-hold.sh uses) never takes the
-# marker exemption: creating the marker switches the single-writer barrier and
-# this fence off for the whole repo. The deny sends it to its chief.
+# 10f to 10l: a worker session never takes the marker exemption.
 _bwimc_worker_env
 check_both_reason "10f worker: touch primary/.single-writer denies, says ask the chief" \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"touch $FIX/primary/.single-writer\",\"cwd\":\"$FIX/wt\"}}" \
@@ -120,7 +117,6 @@ case "$_w8725" in
     *'touch "'*) bad "10i worker: the deny recommends touching the marker — got: $(printf '%s' "$_w8725" | tr '\n' '|' | cut -c1-200)" ;;
     *) ok "10i worker: the deny does not recommend touching the marker" ;;
 esac
-# Not a worker by that test: each keeps the exemption.
 export HIMMEL_HOLD_DOC=worker-doc.md
 check_both "10j relative hold doc: touch primary/.single-writer allows" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"touch $FIX/primary/.single-writer\",\"cwd\":\"$FIX/wt\"}}"

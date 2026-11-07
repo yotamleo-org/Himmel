@@ -2056,10 +2056,7 @@ _bwimc_mode_for_operand_set() {
     _BWIMC_MODE="$mode"
 }
 
-# A worker session by check-write-hold.sh's own test: HIMMEL_CONSOLE_LEG=1, a
-# hold key of the KEY-N shape and an absolute hold doc. A worker may not create
-# the repo-root .single-writer marker: the marker switches the
-# single-writer barrier and this fence off for the whole repo.
+# Must stay the same test check-write-hold.sh uses to decide it acts on a worker.
 # ponytail: the denial rides this hook's text scan, whose shapes are not
 # finite; ceiling: a write shape the scan misses still creates the marker;
 # upgrade path: the doctor WARN for a marker repo with a live worker row.
@@ -2157,8 +2154,7 @@ _bwimc_check_canon() {
             # that exact marker IS itself a write on main/primary-feature, so
             # unexempted it refused its own remedy. Exempt ONLY the exact
             # root-level basename; a subdirectory entry or a near-miss name
-            # (.single-writer.bak, .single-writerx) still denies. A worker
-            # session never takes it: the marker would switch its barrier off.
+            # (.single-writer.bak, .single-writerx) still denies.
             if [ -n "$repo_root" ] && [ "$canon" = "$repo_root/.single-writer" ]; then
                 _bwimc_worker_session || return 0
                 _bwimc_deny "worker-marker" "$raw" "$canon" "$repo_root"
