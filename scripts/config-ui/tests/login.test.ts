@@ -401,7 +401,6 @@ const DATA_STUBS: Record<string, unknown> = {
   togglePin: () => ({ pins: [], msg: "" }), parseWorkflowRoute: () => null, apiRolesDraft: () => null, fleetDot: () => ({ cls: "off", title: "" }),
   healthDot: () => ({ cls: "off", title: "" }), navLinks: () => [], parseLanding: () => null,
 };
-const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 // Load the page at `hash` the way the browser does, hand the test a way to fire events, and read what was painted.
 async function onPage(b: ReturnType<typeof browser>, hash: string, run: (p: { main: () => string; top: () => string; status: () => string; readOnly: () => boolean; fire: (type: string, target: unknown) => boolean }) => Promise<void>) {
@@ -411,8 +410,10 @@ async function onPage(b: ReturnType<typeof browser>, hash: string, run: (p: { ma
   const names = [...full.matchAll(importLine)].flatMap((m) => m[1].split(",").map((s) => s.trim().split(/\s+as\s+/).pop()!).filter(Boolean));
   const stubs: Record<string, unknown> = Object.fromEntries(names.map((n) => [n, () => ""]));
   Object.assign(stubs, DATA_STUBS);
-  // Configure paints each message the way setup.js does: <span class="ro" role="status">message</span>
-  stubs.render = (_f: unknown, c: { msgs: Record<string, string> }) => Object.values(c.msgs).map((m) => `<span class="ro" role="status">${escHtml(m)}</span>`).join("");
+  // Configure is painted by the real setup.js, so a change to its markup reaches every row that reads the page
+  const { renderConfigure } = await import(join(PUBLIC, "setup.js"));
+  const secrets = [{ name: NAME, status: "unset", collect: "file", required: "optional", where: "keyring", group: "own" }];
+  stubs.render = (_f: unknown, c: { msgs: Record<string, string> }) => renderConfigure(null, { tile: "secrets", setup: { account: null, secrets, commit: {}, choices: {} }, state: {}, msgs: c.msgs, verify: null });
   const els: Record<string, Record<string, unknown>> = {};
   const el = (k: string) => (els[k] ??= { textContent: "", innerHTML: "", hidden: false, dataset: {}, focus() {}, setSelectionRange() {}, setAttribute() {}, classList: { toggle() {}, add() {}, remove() {} } });
   const known = new Set(["#main", "#top", "#nav", "#where", "#pages", "#status", "#toast", "#read-only-banner"]);
@@ -445,6 +446,7 @@ const saveEvent = (value: string) => {
   const form = { dataset: { name: NAME }, querySelector: () => input };
   return { input, target: { closest: (s: string) => (s === "[data-setup-form]" ? form : null) } };
 };
+const removeEvent = () => { const btn = { dataset: { act: "setup-remove", name: NAME }, getAttribute: () => null, closest: () => null }; return { closest: (s: string) => (s === "[data-act],[data-f]" ? btn : null) }; };
 const clickEvent = (act: string) => { const btn = { dataset: { act }, getAttribute: () => null, closest: () => null }; return { closest: (s: string) => (s === "[data-act],[data-f]" ? btn : null) }; };
 
 // login.js against the same browser: submit the form with a user, a password and the page's own ?next=
@@ -645,4 +647,26 @@ test("the real setup.js paints the message the Log in button hangs on", async ()
   const secrets = [{ name: NAME, status: "unset", collect: "file", required: "optional", where: "keyring", group: "own" }];
   const html = renderConfigure(null, { tile: "secrets", setup: { account: null, secrets, commit: {}, choices: {} }, state: {}, msgs: { [NAME]: msg }, verify: null });
   expect(html).toContain(`role="status">${msg}</span>`);
+});
+
+test("a remove refused for want of a session offers Log in and leaves the planted secret in the store; with a session the same remove works", async () => {
+  const s = boot({ noIdle: true });
+  const planted = "e2e-canary-" + randomBytes(12).toString("hex");
+  const envFile = join(dirname(s.home), "root", ".env"); // the stub keyring cannot delete, so the secret sits in the file store
+  writeFileSync(envFile, `${NAME}=${planted}\n`, { mode: 0o600 });
+  const b = browser(s.base);
+  await onPage(b, `#t=${TOKEN}&page=config`, async (p) => {
+    p.fire("click", removeEvent());
+    await settle();
+    expect(p.main()).toContain("log in to save a secret");
+    expect(p.main()).toMatch(/<a class="btn primary" href="\/login\?next=%2F%23%2Fconfig" target="_blank" rel="noopener">Log in<\/a>/);
+  });
+  expect(readFileSync(envFile, "utf8")).toBe(`${NAME}=${planted}\n`);
+  await logIn(b, "", USER, s.password);
+  await onPage(b, "#/config", async (p) => {
+    p.fire("click", removeEvent());
+    await settle();
+    expect(p.main()).toContain(">removed<");
+  });
+  expect(readFileSync(envFile, "utf8")).not.toContain(planted);
 });

@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, wri
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
+import { secretWrite } from "../setup";
 
 const STUB = join(import.meta.dir, "stub-himmelctl.js");
 const TOKEN = "t".repeat(64);
@@ -100,15 +101,33 @@ test("a GET, even with the value in the query string, is refused with 405", asyn
   expect(existsSync(join(b.root, ".env"))).toBe(false);
 });
 
-test("a server in service mode refuses set but still allows remove", async () => {
+test("a server in service mode refuses set from the launch token alone", async () => {
   const b = boot({ noIdle: true });
   const v = canary();
   const set = await b.post({ name: "JIRA_API_TOKEN", value: v, op: "set" });
   expect(set.status).toBe(403);
   expect(await set.text()).not.toContain(v);
   expect(existsSync(join(b.root, ".env"))).toBe(false);
-  writeFileSync(join(b.root, ".env"), "JIRA_API_TOKEN=" + canary() + "\n", { mode: 0o600 });
-  expect((await b.post({ name: "JIRA_API_TOKEN", op: "remove" })).status).toBe(200);
+});
+
+test("a server in service mode refuses remove from the launch token alone, with the same wording as set, and the planted secret is still there", async () => {
+  const b = boot({ noIdle: true });
+  const planted = "JIRA_API_TOKEN=" + canary() + "\n";
+  writeFileSync(join(b.root, ".env"), planted, { mode: 0o600 });
+  const set = await b.post({ name: "JIRA_API_TOKEN", value: canary(), op: "set" });
+  const r = await b.post({ name: "JIRA_API_TOKEN", op: "remove" });
+  expect(r.status).toBe(403);
+  expect(await r.json()).toEqual(await set.json());
+  expect(readFileSync(join(b.root, ".env"), "utf8")).toBe(planted);
+  expect(b.audit()).not.toContain("secret.remove");
+});
+
+test("a service-mode remove from a login session works as today", () => {
+  const b = boot({ noIdle: true });
+  writeFileSync(join(b.root, ".env"), "KEEP=1\nJIRA_API_TOKEN=" + canary() + "\n", { mode: 0o600 });
+  const r = secretWrite({ name: "JIRA_API_TOKEN", op: "remove" }, { env: { PATH: process.env.PATH, HIMMEL_SECRETS_KEYRING: "off" }, home: b.root, himmelRoot: b.root, projectRoot: b.project, serviceMode: true, session: true });
+  expect(r.status).toBe(200);
+  expect(readFileSync(join(b.root, ".env"), "utf8")).toBe("KEEP=1\n");
 });
 
 test("a store that git does not ignore inside a work tree is refused and the value is not echoed", async () => {
