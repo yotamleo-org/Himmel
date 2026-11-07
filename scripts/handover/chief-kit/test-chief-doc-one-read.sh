@@ -449,11 +449,11 @@ check "tqlike second succession: the 20 new rulings are in a companion file" "$(
 rc=0; python3 -I "$tmp/gen2.py" "$doc2" "$root/tester/tqlike" 3 950 YY || rc=$?
 lost="$(companion_files "$doc2" | tail -n 1)"
 mv "$root/tester/tqlike/$lost" "$tmp/lost-companion"
-files3="$(find "$root/tester/tqlike" -maxdepth 1 -name 'DEMO-nextleg-*' | sort)"
+files3="$(printf '%s\n' "$root/tester/tqlike"/DEMO-nextleg-*)"
 out3="$(chief next --bucket tqlike --doc "$doc2" 2>&1)"; rc3=$?
 check "tqlike third succession (a companion file gone): next refuses (exit 7)" "$rc3" "7"
 check "tqlike third succession (a companion file gone): next prints a repair line naming the file" "$(printf '%s\n' "$out3" | grep -c "repair:.*$lost")" "1"
-check "tqlike third succession (a companion file gone): no successor doc was written" "$(find "$root/tester/tqlike" -maxdepth 1 -name 'DEMO-nextleg-*' | sort | diff - <(printf '%s\n' "$files3") >/dev/null && echo same || echo changed)" "same"
+check "tqlike third succession (a companion file gone): no successor doc was written" "$(printf '%s\n' "$root/tester/tqlike"/DEMO-nextleg-* | diff - <(printf '%s\n' "$files3") >/dev/null && echo same || echo changed)" "same"
 mv "$tmp/lost-companion" "$root/tester/tqlike/$lost"
 out3="$(chief next --bucket tqlike --doc "$doc2" 2>&1)"; rc3=$?
 check "tqlike third succession (the companion file restored): next succeeds" "$rc3" "0"
