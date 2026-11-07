@@ -2542,7 +2542,7 @@ else
 fi
 printf '1792000000\n' > "$t/home/.himmel/state/bridge-restart.ts"
 out="$(HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color --only C77 --root "$t/repo" 2>&1)"
-if grepq "$out" -F 'automatic after station-sync' && grepq "$out" -F "last restart: $(date -d @1792000000 '+%F %H:%M')"; then  # gnu-ok: test host is Linux (the check is Linux-only)
+if grepq "$out" -F 'automatic after station-sync' && grepq "$out" -F "last restart: $(date -d @1792000000 '+%F %H:%M' 2>/dev/null || date -r 1792000000 '+%F %H:%M')"; then  # gnu-ok: BSD date -r follows on this same line
     pass "C77 fix line names when station-sync last restarted the bridge (HIMMEL-7936)"
 else
     fail "C77 fix line (stamp) -> $(printf '%s' "$out" | grep -A1 C77)"
@@ -7315,7 +7315,7 @@ out="$(c66_run)"
 if grepq "$out" -F 'FAIL C66-hermes-cron-hooks'; then pass "C66 unfenced -> FAIL"; else fail "C66 unfenced -> $(printf '%s' "$out" | grep -A1 C66)"; fi
 
 echo "== C66: a comment naming register_from_config is not a registration -> FAIL =="
-sed '/^def _run_external_worker_payload/a\    # register_from_config(load_config(), accept_hooks=False)' \
+awk '{ print } /^def _run_external_worker_payload/ { print "    # register_from_config(load_config(), accept_hooks=False)" }' \
     "$REPO_ROOT/scripts/hermes/fixtures/cron-worker-unfenced.py" > "$c66_t/hermes/cron/scheduler.py"
 out="$(c66_run)"
 if grepq "$out" -F 'FAIL C66-hermes-cron-hooks'; then pass "C66 comment-only -> FAIL"; else fail "C66 comment-only -> $(printf '%s' "$out" | grep -A1 C66)"; fi
@@ -7489,6 +7489,7 @@ if [ -n "$c69_body" ] && ! grep -qE '\$\([^)]*$' <<< "$c69_body"; then pass "C69
 
 echo "== C70: graphify semantic freshness =="
 c70_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c70.XXXXXX")" || { fail "C70 mktemp -d failed"; exit 1; }
+c70_t="$(cd "$c70_t" && pwd)"  # the doctor prints --root through cd+pwd; a TMPDIR with a trailing slash (macOS) would leave "T//" here
 c70_out="$c70_t/home/.claude/graph-cadence/himmel/graphify-out"; c70_corpus="$c70_t/corpus"
 mkdir -p "$c70_out" "$c70_corpus"
 printf '{"real.md": {"mtime": 0}}\n' > "$c70_out/manifest.json"
@@ -7975,6 +7976,7 @@ rm -rf "$c88_t"
 
 # --- C87-stub-handover-state: files under <repo>/handovers newer than the operator's baseline marker ---
 c87_t="$(mktemp -d "${TMPDIR:-/tmp}/c87.XXXXXX")" || { echo "FATAL: C87 setup mktemp failed" >&2; exit 1; }
+c87_t="$(cd "$c87_t" && pwd)"  # a TMPDIR with a trailing slash (macOS) would leave "T//" where the doctor prints "T/"
 c87_x="$c87_t/repo"
 mkdir -p "$c87_x/scripts/lib" "$c87_t/home" "$c87_t/claude" "$c87_t/root"
 cp "$REPO_ROOT/scripts/himmel-doctor.sh" "$c87_x/scripts/"
