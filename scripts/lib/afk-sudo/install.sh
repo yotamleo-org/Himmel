@@ -10,10 +10,13 @@
 # remove), one sudoers rule letting <login> run exactly that
 # installed copy (checked with visudo -cf before it is moved into place), the
 # ledger /var/log/himmel/afk-sudo.jsonl, the state dir, and on first install the
-# TOTP seed, printed ONCE as an otpauth URI for the authenticator app, and an empty
-# root-only notice-bot.env for the notice bot's token (the bot root sends each request's
-# facts and nonce through; no request is filed while it is empty).
-# The station config /etc/himmel/afk-sudo.json ships disabled with an empty
+# TOTP seed, printed ONCE as an otpauth URI for the authenticator app, and a root-only
+# notice-bot.env for the notice bot's token (the bot root sends each request's
+# facts and nonce through; no request is filed while it holds no token), written from
+# notice-bot.env.template with a TELEGRAM_BOT_TOKEN= placeholder and never rewritten.
+# The station config /etc/himmel/afk-sudo.json is written from afk-sudo.json.template when absent;
+# over an existing config the keys it lacks are added (nested ones too), no existing value is
+# changed, and only key names are printed. It ships disabled with an empty
 # allowlist, mode allowlist and the run kind off (run.enabled false; the compiled
 # switch RUN_KIND_SHIPPED is on since slice 1b), the grant kind off (grant.enabled false) and the
 # station ops off (ops.enabled false); enabling any is a separate `sudoedit` by the operator.
@@ -61,14 +64,106 @@ pkg_hint() {
 # The sudoedit command that works here: sudoedit needs an editor, and a minimal
 # station has no vi.
 enable_cmd() {
-    local e
+    local e f=${1:-$CONFIG}
     if [ -n "${SUDO_EDITOR:-}${VISUAL:-}${EDITOR:-}" ] || command -v vi >/dev/null 2>&1; then
-        echo "sudoedit $CONFIG"; return
+        echo "sudoedit $f"; return
     fi
     for e in nano vim micro; do
-        if command -v "$e" >/dev/null 2>&1; then echo "SUDO_EDITOR=$e sudoedit $CONFIG"; return; fi
+        if command -v "$e" >/dev/null 2>&1; then echo "SUDO_EDITOR=$e sudoedit $f"; return; fi
     done
-    echo "SUDO_EDITOR=nano sudoedit $CONFIG   (no editor found; install one first: $(pkg_hint nano))"
+    echo "SUDO_EDITOR=nano sudoedit $f   (no editor found; install one first: $(pkg_hint nano))"
+}
+# The config and the notice bot's env file come from the templates beside this script, only when
+# absent; a station's own files are never rewritten wholesale.
+# install_config <srcdir> <config>: write the config from afk-sudo.json.template, or, when it exists,
+# add the template's keys it lacks (nested ones too) and change no existing value. The file keeps its
+# mode and owner; only key names are printed, never a value.
+install_config() {
+    local src=$1 cfg=$2 added
+    if [ ! -e "$cfg" ] && [ ! -L "$cfg" ]; then
+        install -o root -g root -m 0644 "$src/afk-sudo.json.template" "$cfg" || return 1
+        return 0
+    fi
+    # shellcheck disable=SC2016 # python source, not shell
+    added=$(python3 -I -c '
+import json, os, stat, sys, tempfile
+tpl_path, cfg_path = sys.argv[1:3]
+# The owner the helper requires is root; a test seam names another uid, honoured only when this is not root.
+owner = int(os.environ.get("AFK_OWNER_UID", "0")) if os.geteuid() != 0 else 0
+def refuse(why):
+    sys.exit("install.sh: refusing " + cfg_path + ": " + why + " (the helper refuses it too); fix it first")
+with open(tpl_path, encoding="utf-8") as f:
+    tpl = json.load(f)
+# The checks the helper makes before it reads the config (approval_broker.check_safe): lstat, so a link is refused.
+st = os.lstat(cfg_path)
+if not stat.S_ISREG(st.st_mode):
+    refuse("not a regular file (a link or a directory)")
+if st.st_uid != owner:
+    refuse("not owned by root")
+if st.st_mode & 0o022:
+    refuse("group- or world-writable")
+with open(cfg_path, "rb") as f:
+    raw = f.read()
+try:
+    cur = json.loads(raw.decode("utf-8"))
+except ValueError:
+    sys.exit("install.sh: " + cfg_path + " is not valid JSON in UTF-8 (the helper refuses it too); it is left as it was")
+if not isinstance(cur, dict):
+    sys.exit("the config is not a JSON object")
+added = []
+def fill(dst, src, prefix):
+    for k, v in src.items():
+        if k not in dst:
+            dst[k] = v
+            added.append(prefix + k)
+        elif isinstance(dst[k], dict) and isinstance(v, dict):
+            fill(dst[k], v, prefix + k + ".")
+fill(cur, tpl, "")
+if added:
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(cfg_path), prefix=".afk-sudo.")
+    try:
+        os.fchmod(fd, st.st_mode & 0o7777)
+        os.fchown(fd, st.st_uid, st.st_gid)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(cur, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        # Replace only a config that is still the one we read (a lockdown or an edit in between is not overwritten).
+        st2 = os.lstat(cfg_path)
+        with open(cfg_path, "rb") as f:
+            again = f.read()
+        if (st2.st_ino, st2.st_mtime_ns, st2.st_size) != (st.st_ino, st.st_mtime_ns, st.st_size) or again != raw:
+            sys.exit("install.sh: " + cfg_path + " changed while it was being merged; it is left as it is, run the install again")
+        os.replace(tmp, cfg_path)
+    except BaseException:
+        if os.path.lexists(tmp):
+            os.unlink(tmp)
+        raise
+    dfd = os.open(os.path.dirname(cfg_path), os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(dfd)
+    finally:
+        os.close(dfd)
+print(" ".join(added))
+' "$src/afk-sudo.json.template" "$cfg") || { echo "install.sh: the new keys were not added to $cfg; it is left as it was" >&2; return 1; }
+    if [ -n "$added" ]; then
+        echo "Added the new keys to $cfg (existing values untouched): $added"
+    fi
+}
+# install_notice_env <srcdir> <file>: write the TELEGRAM_BOT_TOKEN= placeholder (no token, root only) when absent.
+install_notice_env() {
+    local src=$1 f=$2
+    [ -e "$f" ] && return 0
+    install -o root -g "$ROOT_GROUP" -m 0600 "$src/notice-bot.env.template" "$f" || return 1
+    notice_env_steps
+}
+notice_env_steps() {
+    echo "Created $NOTICE_ENV with no token: sudo and run requests are refused until it holds one."
+    echo "The notice bot is a SECOND bot, not the Telegram bridge's: root alone sends each request's facts and nonce through it."
+    echo "  1. In Telegram, ask @BotFather for /newbot and copy the token."
+    echo "  2. Open the new bot's chat and send it /start, so it may message you."
+    echo "  3. $(enable_cmd "$NOTICE_ENV") and put the token after TELEGRAM_BOT_TOKEN= on its last line."
 }
 qr_hint() {
     if ! command -v qrencode >/dev/null 2>&1; then echo "No QR code (qrencode is missing); to get one next time: $(pkg_hint qrencode)"; fi
@@ -116,10 +211,7 @@ python3 -I "$opsrc/build-manifest.py" "$LIBEXEC/ops" >/dev/null || die "cannot w
 tmp=$(mktemp "${TMPDIR:-/tmp}/afk-sudo.XXXXXX") || die "mktemp failed"
 trap 'rm -f "$tmp"' EXIT
 
-if [ ! -e "$CONFIG" ]; then
-    printf '{\n  "enabled": false,\n  "operator_id": 0,\n  "window_s": 120,\n  "mode": "allowlist",\n  "operator_user": "",\n  "max_per_hour": 6,\n  "run": {"enabled": false, "ttl_s": 900, "timeout_s": 300},\n  "grant": {"enabled": false, "ttl_s": 900},\n  "ops": {"enabled": false, "ttl_s": 900},\n  "never_remote_extra": [],\n  "classes": {}\n}\n' > "$tmp" || die "cannot write the config"
-    install -o root -g root -m 0644 "$tmp" "$CONFIG" || die "cannot install the config"
-fi
+install_config "$src" "$CONFIG" || die "cannot install the config"
 
 if [ ! -e "$SEED" ]; then
     (umask 077; python3 -I -c 'import base64, secrets; print(base64.b32encode(secrets.token_bytes(20)).decode())' > "$SEED.new") || die "cannot generate the seed"
@@ -130,14 +222,7 @@ if [ ! -e "$SEED" ]; then
     if command -v qrencode >/dev/null 2>&1; then qrencode -t ansiutf8 "$uri"; else qr_hint; fi
 fi
 
-if [ ! -e "$NOTICE_ENV" ]; then
-    install -m 0600 -o root -g "$ROOT_GROUP" /dev/null "$NOTICE_ENV" || die "cannot create $NOTICE_ENV"
-    echo "Created an empty $NOTICE_ENV: sudo and run requests are refused while it is empty."
-    echo "The notice bot is a SECOND bot, not the Telegram bridge's: root alone sends each request's facts and nonce through it."
-    echo "  1. In Telegram, ask @BotFather for /newbot and copy the token."
-    echo "  2. Open the new bot's chat and send it /start, so it may message you."
-    echo "  3. sudoedit $NOTICE_ENV and add the line TELEGRAM_BOT_TOKEN=<token>."
-fi
+install_notice_env "$src" "$NOTICE_ENV" || die "cannot create $NOTICE_ENV"
 
 printf '%s ALL=(root) NOPASSWD: %s\n' "$user" "$LIBEXEC/afk-sudo" > "$tmp" || die "cannot write the sudoers rule"
 visudo -cf "$tmp" >/dev/null || die "visudo rejected the sudoers rule"
