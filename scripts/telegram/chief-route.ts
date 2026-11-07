@@ -152,26 +152,16 @@ export async function routeFleetCommand(
   await routeToConsole(root, msg, { kind: "console", name: target.name, text, thread: true }, (chat, ack, name) => reply(chat, name ? `queued ${text} → chief ${name}${ack.includes(BUSY_NOTE) ? ` — ${BUSY_NOTE}` : ""}` : ack, name));
 }
 
-// The operator's `approve <pr> <7+ hex>` reply to the chief's `outside-approve-request <pr> <40-hex head>` message
-// (the signed outside-PR full-review design, section 4.2). It is the ONLY writer of the review-stage rows that
-// scripts/lib/outside-contributors.sh (outside_pr_authorize) reads from ~/.himmel/outside-pr-approvals.jsonl.
-// It writes after, in this order: the gate's authorize (and the operator's own chat), the reply check (a reply to a
-// bot message whose first line is the request, the same PR, a typed prefix of the requested sha), and a live
-// `gh pr view` that finds the PR open at EXACTLY the requested sha. Anything else replies its reason and stores nothing.
-// The stored head is the full sha the operator was shown, so a prefix ground against a pushed head buys nothing.
-// A repeated approve for the same PR and head stores no second row. The poller dispatches one message at a time
-// (handleInbound is serial), so the read-check-append below needs no lock of its own.
+// ponytail: no lock around the read-check-append in routeApprove, safe only because the poller dispatches one message at a time; upgrade path = an atomic append-if-absent helper.
 // ponytail: the reader checks neither `from` nor `chat`, and a same-uid process can append a row itself (the
 // tamper-evident approval store is a separate ticket); this verb does not make the reader check them, upgrade path = a MAC per row.
-// ponytail: reply_to_text is the replied-to message's own text as Telegram reports it, and `is_bot` means any bot, so
-// the operator-chat requirement (a DM, where only this bridge's bot writes) is what makes "bot-authored" mean ours.
+// ponytail: `is_bot` means any bot, so the operator-chat requirement (a DM, where only this bridge's bot writes) is what makes "bot-authored" mean ours; upgrade path = compare the replied-to sender id with the bridge bot's id.
 export type ApproveRoute = Extract<import("./router").Route, { kind: "approve" }>;
 export type ApproveMsg = { from: number; chat_id: number; message_id?: number; reply_to_message_id?: number; reply_to_bot?: boolean; reply_to_text?: string; forwarded?: boolean; caption?: boolean };
 const APPROVE_REQUEST = /^outside-approve-request ([1-9][0-9]{0,5}) ([0-9a-f]{40})$/;
 export const APPROVE_GH_TIMEOUT_MS = 20_000;
 const APPROVALS_FILE = "outside-pr-approvals.jsonl";
 
-// The live state and head of a PR, or null when gh timed out, failed or printed anything but the two fields.
 async function livePr(pr: number, timeoutMs: number): Promise<{ state: string; head: string } | null> {
   try {
     const p = Bun.spawn(["gh", "pr", "view", String(pr), "--json", "state,headRefOid"], { ...SPAWN_OWN_GROUP, cwd: join(import.meta.dir, "../.."), stdin: "ignore", stdout: "pipe", stderr: "ignore" });

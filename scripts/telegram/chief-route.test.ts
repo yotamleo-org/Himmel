@@ -1947,9 +1947,6 @@ test("the routed markdown page opens dark with readable text, no system-preferen
   expect(html).toMatch(/@media print\{:root\{[^}]*--bg:#fff/);
 });
 
-// ---- the operator's `approve <pr> <7+ hex>` reply writes one review-stage approval row ----
-// A scratch HOME (the store), a scratch bridge root, a fake `gh` on PATH and a scratch access.json: nothing here touches the
-// real ~/.himmel/outside-pr-approvals.jsonl, the real bridge root or Telegram. The reader is the real outside_pr_authorize.
 import { chmodSync, readdirSync, appendFileSync, copyFileSync } from "node:fs";
 
 const H1 = "a1".repeat(20);
@@ -1973,7 +1970,6 @@ function approveEnv(liveHead = H1) {
   const repo = join(home, "repo");
   expect(Bun.spawnSync(["git", "init", "-q", repo]).exitCode).toBe(0);
   const ledger = join(repo, ".git", "cr-critic-scores.jsonl");
-  // The real reader, copied into a scratch anchor beside a fixture perspective (the way scripts/lib/test-outside-contributors.sh does).
   const anchor = join(home, "anchor"); mkdirSync(join(anchor, "scripts", "lib"), { recursive: true }); mkdirSync(join(anchor, "scripts", "cr", "perspectives"), { recursive: true });
   for (const f of ["outside-contributors.sh", "timeout-bin.sh"]) copyFileSync(join(LIB_DIR, f), join(anchor, "scripts", "lib", f));
   const persp = join(anchor, "scripts", "cr", "perspectives", "outside-security.md"); writeFileSync(persp, "# fixture outside-security perspective\n");
@@ -1989,9 +1985,7 @@ function approveEnv(liveHead = H1) {
   return {
     home, repo, log, store: join(home, ".himmel", "outside-pr-approvals.jsonl"),
     set: (k: string, v: string) => { process.env[k] = v; },
-    // The verb's own live-head reads (the reader's `author,headRefName,headRefOid` reads are not counted).
     gh: () => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").filter(l => l.includes("state,headRefOid")) : []),
-    // The real reader, run the way the review route runs it: prints `<rc>:<stdout>`.
     authorize: (pr: number, head: string) => {
       const p = Bun.spawnSync([BASH_BIN, "-c", '. "$1" && shift && outside_pr_authorize "$@"', "_", join(anchor, "scripts", "lib", "outside-contributors.sh"), String(pr), head, "0"], { cwd: repo, env: process.env as Record<string, string> });
       return `${p.exitCode}:${p.stdout.toString().trim()}`;
@@ -2013,7 +2007,6 @@ test("approve: an unlisted author's PR is refused, then reviewable at the same h
     expect(ran).toEqual([]);
     expect(replies.join("\n")).toContain(`approved PR 7 at ${H1.slice(0, 7)}`);
     expect(e.gh()).toEqual([expect.stringMatching(/^pr view 7 --json state,headRefOid/)]);
-    // The row: exactly one new line, every key and type, checked with jq -e.
     const lines = readFileSync(e.store, "utf8").split("\n").filter(Boolean);
     expect(lines).toHaveLength(1);
     const jq = Bun.spawnSync(["jq", "-e", '(keys | length == 11) and (.pr | type == "number") and (.head | test("^[0-9a-f]{40}$")) and .stage == "review" and (.from | type == "number") and (.chat | type == "number") and (.message_id | type == "number") and (.ts | type == "string" and test("^[0-9]{4}-")) and .v == 1 and (.host | type == "string" and length > 0) and .source == "telegram-approve" and .kind == "approval"'], { stdin: Buffer.from(lines[0]) });
@@ -2027,8 +2020,8 @@ test("approve: a row for head H1 does not authorize H2; a second approve at H2 w
   try {
     await inbound(r, approveMsg(`approve 7 ${H1.slice(0, 7)}`), replies);
     expect(e.authorize(7, H1)).toBe("0:approval:123");
-    e.set("STUB_OID", H2);                       // the author pushed: the forge head is now H2
-    expect(e.authorize(7, H2)).toBe("1:");       // the H1 row does not authorize H2
+    e.set("STUB_OID", H2);
+    expect(e.authorize(7, H2)).toBe("1:");
     await inbound(r, approveMsg(`approve 7 ${H2.slice(0, 9)}`, { reply_to_text: requestText(7, H2), message_id: 124 }), replies);
     expect(rows(e.store).map(x => [x.head, x.message_id])).toEqual([[H1, 123], [H2, 124]]);
     expect(e.authorize(7, H2)).toBe("0:approval:124");
@@ -2073,7 +2066,6 @@ const REFUSALS: { name: string; text?: string; extra?: Record<string, unknown>; 
   { name: "a request whose sha is not 40 hex", extra: { reply_to_text: `outside-approve-request 7 ${H1.slice(0, 12)}` }, reply: "reply to the outside-approve-request", gh: false },
   { name: "an authorized chat that is not the operator chat", extra: { chat_id: -1 }, reply: "operator's own chat", gh: false },
   { name: "a stale command", extra: { ts: Math.floor(Date.now() / 1000) - 301 }, reply: "stale, resend", gh: false },
-  // Ineligible senders and shapes are dropped without a reply and never reach the agent.
   { name: "a sender who is not the operator", extra: { from: 999 }, reply: "", gh: false },
   { name: "a forwarded message", extra: { forwarded: true }, reply: "", gh: false },
   { name: "a voice transcript or caption", extra: { caption: true }, reply: "", gh: false },

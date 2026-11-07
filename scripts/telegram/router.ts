@@ -80,12 +80,9 @@ const RESTART = /^\/restart(?:\s+(full))?$/i;
 // Only the leading verb is matched, so a mid-text or trailing /chief stays chat.
 const CONSOLE_VERB = /^\/(chiefs?)(?:@([A-Za-z0-9_]+))?(?=\s|$)/i;
 
-// The operator's approval of an outside PR: `approve <pr> <hex>`, the whole message, as a reply to the
-// chief's `outside-approve-request` (the reply, the sender, the chat and the live head are checked in chief-route.ts).
-// Any hex length parses so a too-short prefix is refused WITH a reason; the 7-hex floor lives in the handler.
 const APPROVE = /^approve\s+#?([1-9][0-9]{0,5})\s+([0-9a-f]{1,40})$/i;
 
-const FLEET_VERB =/^\/(lockdown|fleet|workers|legs|halt|go|push)(?:@([A-Za-z0-9_]+))?(?![A-Za-z0-9_@])/i;
+const FLEET_VERB = /^\/(lockdown|fleet|workers|legs|halt|go|push)(?:@([A-Za-z0-9_]+))?(?![A-Za-z0-9_@])/i;
 
 export function classify(raw: string, botUsername?: string | null): Route {
   const t = raw.trim();

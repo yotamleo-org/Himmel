@@ -286,8 +286,6 @@ function plainRecord(c: MsgCtx): Inbound {
   });
 }
 
-// The first line (max 200 chars) of the bot message a reply answers: all the approve verb reads of it
-// (`outside-approve-request <pr> <40-hex head>`). Never the text of a message the bot did not send.
 const REPLY_TEXT_MAX = 200;
 function replyToBotText(m: any): string | undefined {
   const quoted = m.reply_to_message;

@@ -1125,7 +1125,6 @@ test("ingest records a reply to a bot message as reply_to_bot, and no other repl
   expect(lines[0].reply_to_message_id).toBe(40);
 });
 
-// The approve verb reads the first line of the bot message it replies to.
 test("ingest carries reply_to_text as the first line (max 200 chars) of a bot message only", async () => {
   const r = root();
   const req = `outside-approve-request 7 ${"a1".repeat(20)}`;
