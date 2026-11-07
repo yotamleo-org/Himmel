@@ -134,7 +134,9 @@ himmel clone's copy (`$HIMMEL_REPO/scripts/handover/set-handover-dir.sh`) with
   The writer stores the canonical absolute path (`<canonical-path>`), which may
   differ from what the user typed (relative, trailing slash). It is the value
   in the printed line, `OK set-handover-dir: ... HANDOVER_DIR=<canonical-path> ...`;
-  do not read `.env` for it (the secrets guard refuses that).
+  do not read `.env` for it (the secrets guard refuses that). If the line
+  carries no value (a project's own writer from before the value was printed),
+  read it with the clone's `--read-env --root <repo-root>` (step 2).
   `<state-root-host>` = `<canonical-path>`.
 
   Note for the current session: `.env` is read by tools at launch, so the new
