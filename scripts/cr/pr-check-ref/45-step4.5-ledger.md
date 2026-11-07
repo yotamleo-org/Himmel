@@ -179,7 +179,7 @@
    (`--set fu_class=<escape|hardening|polish>`, plus `--set fu_why=...` for hardening), and run step 4.9's
    `review-round.sh defer`: it writes an `amend` with `verdict=deferred`, the finding's own `fu_class` and
    the reason `Important finding deferred: the cited code is older than this PR (tagged pre-existing).`
-   to the branch's batch residual, the same ticket as the round's Suggestions, and the finding keeps
+   to the branch's batch residual (a hardening one only; a polish Important is never filed and needs `--defer-to <ticket>`), and the finding keeps
    severity `imp` (I4). No class is forced: an `escape` one is fixed in this PR and keeps blocking, and a
    tagged Important with no class is refused (exit 4) until it has one. `agreed` or no verdict is
    deferred; `disproved` resolves it as usual; any other verdict keeps it blocking. `defer` still exits 4
