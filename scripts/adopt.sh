@@ -701,7 +701,7 @@ wire_handover_dir_luna() {
   # already live:
   #   1. This settings.json's own env.HANDOVER_DIR (a prior adopt run).
   #   2. The tracked config file ~/.himmel/himmel.conf(.local), or the primary
-  #      checkout's .env (set-handover-dir.sh / Mode B — the actual file
+  #      project's .env (set-handover-dir.sh / Mode B — the actual file
   #      /handover-setup writes to). settings.json env takes
   #      PROCESS-ENV precedence over .env (scripts/lib/load-dotenv.sh only
   #      fills currently-unset vars), so writing here would silently SHADOW
@@ -725,7 +725,13 @@ wire_handover_dir_luna() {
       return
     fi
   done
-  envfile="$HIMMEL_ROOT/.env"
+  # set-handover-dir.sh writes the .env of the repo it runs in: the project's
+  # own for a project install, the himmel clone's for a user-scope install.
+  if [[ "$SCOPE" == "project" ]]; then
+    envfile="$TARGET/.env"
+  else
+    envfile="$HIMMEL_ROOT/.env"
+  fi
   if [[ -f "$envfile" ]] && grep -qE '^[[:space:]]*HANDOVER_DIR=' "$envfile"; then
     echo "  HANDOVER_DIR already set in $envfile (via /handover-setup) — leaving it, not wiring env.HANDOVER_DIR into $settings"
     return
