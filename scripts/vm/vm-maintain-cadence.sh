@@ -82,10 +82,8 @@ vmm_step() {
         0) return 0 ;;
         2) say "SKIPPED $vm ($mode): busy or refused, see the line above; the next pass retries"; return 2 ;;
     esac
-    case "$out" in
-        *FAILED*) ;;
-        *) [ "$mode" = probe ] && return 0 ;;   # probe rc 1 without FAILED = an expired login, already paged
-    esac
+    # probe rc 1 without a FAILED line is the documented expired-login code (already paged); any other rc is a broken probe
+    if [ "$mode" = probe ] && [ "$rc" -eq 1 ]; then case "$out" in *FAILED*) ;; *) return 0 ;; esac; fi
     step="$(printf '%s\n' "$out" | sed -n 's/.*FAILED \([a-z-]*\).*/\1/p' | head -n1)"
     step_fail "vm-maintain $vm ${step:-$mode}" "$(printf '%s\n' "$out" | grep FAILED | head -n1)"
     return 1
@@ -192,6 +190,9 @@ cmd_arm() {
         printf 'cd %q || exit 2\n' "$root"
         if [ -n "${HANDOVER_DIR:-}" ]; then
             printf 'HANDOVER_DIR=%q\nexport HANDOVER_DIR\n' "$HANDOVER_DIR"
+        fi
+        if [ -n "${VM_MAINTAIN_VMS:-}" ]; then
+            printf 'VM_MAINTAIN_VMS=%q\nexport VM_MAINTAIN_VMS\n' "$VM_MAINTAIN_VMS"
         fi
         printf 'log=%q\n' "$RUNNER_DIR/vm-maintain-cadence.log"
         printf '[ -f "$log" ] && mv -f "$log" "$log.prev"\n'

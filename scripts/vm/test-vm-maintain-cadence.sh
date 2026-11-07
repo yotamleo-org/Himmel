@@ -36,6 +36,7 @@ if [ "$mode" = run ]; then
     elif [ "${BUSY_VM:-}" = "$vm" ]; then echo "vm-maintain: FAILED lock ($vm) - the vm-lock was refused, see the line above"; rc=2
     else echo "vm-maintain: OK $vm updated (claude 1, cli-proxy 2) and snapshotted as maint-20261107-1432; newest good recorded"; fi
 else
+    if [ "${CRASH_PROBE_VM:-}" = "$vm" ]; then echo "bash: line 1: $0: No such file or directory"; echo "vmm end $*" >> "$LOG"; exit 127; fi
     if [ "${EXPIRED_VM:-}" = "$vm" ]; then
         echo "vm-maintain: $vm claude login EXPIRED (refresh token past its expiry) - operator: on $vm run: claude auth login  (then re-run vm-maintain.sh run $vm)"; rc=1
     fi
@@ -137,6 +138,8 @@ check "L1 an expired login is reported once with its exact command" count_in_out
 check "L1b an expired login does not fail the pass or stop the station update" bash -c '[ "$1" -eq 0 ] && grep -qF update "$2"' _ "$rc" "$LOG"
 fresh; out=$(cadence run --vms vmA 2>&1); rc=$?
 check "L2 live logins are silent: no EXPIRED line" out_lacks "EXPIRED"
+fresh; out=$(cadence CRASH_PROBE_VM=vmA run --vms vmA 2>&1); rc=$?
+check "L3 a probe that crashes (rc 127, no FAILED line) is a named failure, never read as an expired login" bash -c '[ "$1" -eq 1 ] && grep -qF "CADENCE FAILED vm-maintain vmA" <<<"$2" && ! grep -qF update "$3"' _ "$rc" "$out" "$LOG"
 
 # ---------------------------------------------------------------- live workers defer the station update
 echo "== live workers =="
@@ -155,9 +158,10 @@ check "W4 a census that fails defers the update (fail closed)" defer_check
 # ---------------------------------------------------------------- arm / status / disarm
 echo "== arm =="
 fresh; printf '0 5 * * * /usr/bin/other-job\n' > "$WORK/cron"
-out=$(cadence arm --day 2 --time 04:15 2>&1); rc=$?
+out=$(cadence VM_MAINTAIN_VMS=vmA,vmB arm --day 2 --time 04:15 2>&1); rc=$?
 check "A1 arm installs one entry on the chosen day and time and keeps the other job" bash -c '[ "$1" -eq 0 ] && grep -q "^15 04 \* \* 2 .*# HIMMEL-VmMaintain" "$2" && grep -q other-job "$2" && [ -x "$3/vm-maintain-cadence.sh" ]' _ "$rc" "$WORK/cron" "$WORK/runner"
 check "A1b the runner calls run and never the scan flag" bash -c 'grep -q "vm-maintain-cadence.sh.* run" "$1/vm-maintain-cadence.sh" && ! grep -q -e "--no-secret-scan" "$1/vm-maintain-cadence.sh"' _ "$WORK/runner"
+check "A1c the runner keeps a VM list configured in the arming shell" bash -c 'grep -qF "VM_MAINTAIN_VMS" "$1/vm-maintain-cadence.sh" && grep -qE "vmA[\\]?,vmB" "$1/vm-maintain-cadence.sh"' _ "$WORK/runner"
 out=$(cadence arm 2>&1); rc=$?
 check "A2 a second arm without --force is refused with rc 3" test "$rc" -eq 3
 out=$(cadence status 2>&1)
