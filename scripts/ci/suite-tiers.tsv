@@ -1257,3 +1257,4 @@ scripts/eval/relay-cost/test-relay-cost.sh	local	behaviour suite, new for HIMMEL
 scripts/handover/test-morning-report-cadence.sh	local	behaviour suite, new for HIMMEL-7977 (morning-report-cadence.sh)
 scripts/test-himmel-doctor-morning-report.sh	local	behaviour suite, new for HIMMEL-7977 (doctor C86-morning-report)
 scripts/handover/chief-kit/test-size-override.sh	local	behaviour suite, new
+scripts/telegram/test-spec-page-gen.sh	pr	guard
