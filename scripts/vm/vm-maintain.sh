@@ -17,16 +17,18 @@
 # "FAILED <step>", takes no snapshot, records nothing, and the VM is powered off on every exit path.
 # Steps: lock boot apt-update apt-upgrade claude-update codex-update cli-proxy-update power-off snapshot.
 #
-# --no-secret-scan: vmsdk refuses to snapshot a powered-off VM it cannot scan for host .env files.
-# The brief orders power off then snapshot, so the flag is the caller's explicit choice, off by default.
-# Safe here because maintenance copies nothing from the host. A scheduled run needs a scan taken
-# BEFORE power off (a vmsdk verb); that is owed, so do not arm this on a cron without it.
+# --no-secret-scan: vmsdk refuses to snapshot a powered-off VM it cannot scan for host .env files, so
+# the DEFAULT run refuses at the snapshot step. The flag exists for the one run an operator makes
+# after checking the VM holds no host copy (maintenance copies nothing from the host); it is a
+# per-run choice, never a standing command and never in a schedule. The scan before power off
+# (a vmsdk verb) is owed, so do not arm this on a cron without it.
 #
 # probe: boot, read the login files in the guest (a free check, no model turn), power off. Claude is
 # expired when its refresh token is past refreshTokenExpiresAt (or absent with the access token past
 # expiresAt); codex when ~/.codex/auth.json has no refresh token; cli-proxy when no enabled
 # ~/.cli-proxy-api/codex-*.json carries one. "live" means "not provably expired": a token revoked
-# server-side is only found by a real turn, which this probe never spends. An expired login prints
+# server-side is only found by a real turn, which this probe never spends. The probe reads the VM's
+# CURRENT state only; probing each saved snapshot is not done here. An expired login prints
 # the exact command to run on the guest and pages the operator ONCE per CLI through
 # scripts/luna/cadence-alert.sh (its dedupe sentinel); a live login clears that page, so a later
 # death pages again. Probes the VM's current state (it is the newest snapshot right after a run).
@@ -50,7 +52,7 @@ SNAP_PREFIX="maint-"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 GUEST_EXEC="${VM_MAINTAIN_GUEST_EXEC:-$HERE/guest-exec.sh}"
-VBOX="${VM_MAINTAIN_VBOX:-VBoxManage}"
+VBOX="${VM_MAINTAIN_VBOX:-${VBOXMANAGE_PATH:-VBoxManage}}"
 ALERT="${VM_MAINTAIN_ALERT:-$ROOT/scripts/luna/cadence-alert.sh}"
 STATE_DIR="${VM_MAINTAIN_STATE_DIR:-${HOME:-}/.himmel/state/vm-maintain}"
 NEWEST="$STATE_DIR/newest-good.tsv"
@@ -135,7 +137,7 @@ cmd_run() {
     local snap ver now
     [ -n "$CLAUDE_VER" ] && [ -n "$CLAUDE_SHA" ] && [ -n "$PROXY_VER" ] && [ -n "$PROXY_SHA" ] \
         || fail pins "could not read the claude or cli-proxy pin from the repo"
-    now="${VM_MAINTAIN_NOW:-$(date +%Y%m%d-%H%M)}"
+    now="${VM_MAINTAIN_NOW:-$(date -u +%Y%m%d-%H%M)}"
     snap="${SNAP_PREFIX}${now}"
     acquire
     boot
@@ -157,7 +159,7 @@ cmd_run() {
     sdk "$VM" down >/dev/null || fail power-off "vmsdk down failed"
     BOOTED=0
     if [ "$NO_SCAN" -eq 1 ]; then sdk "$VM" snapshot "$snap" --no-secret-scan >/dev/null || fail snapshot "vmsdk snapshot $snap failed"
-    else sdk "$VM" snapshot "$snap" >/dev/null || fail snapshot "vmsdk snapshot $snap failed (a powered-off VM needs --no-secret-scan)"; fi
+    else sdk "$VM" snapshot "$snap" >/dev/null || fail snapshot "vmsdk snapshot $snap failed (see the vmsdk line above)"; fi
     record "$snap"
     prune
     say "OK $VM updated (claude $CLAUDE_VER, cli-proxy $PROXY_VER) and snapshotted as $snap; newest good recorded in $NEWEST"

@@ -71,6 +71,10 @@ cat > "$WORK/bin/vmsdk" <<'STUB'
 # args: <vm> <verb> ...
 echo "sdk $*" >> "$LOG"
 if [ -n "${FAIL_SDK:-}" ] && [ "$2" = "$FAIL_SDK" ]; then echo "stub vmsdk failure: $2" >&2; exit 1; fi
+# like the real vmsdk: a snapshot without the flag is refused when the guest is powered off
+if [ "$2" = snapshot ] && [ -n "${STUB_REFUSE_UNSCANNED:-}" ] && [ "${4:-}" != "--no-secret-scan" ]; then
+    echo "refusing to snapshot $1: it is not running, so it cannot be scanned for host secrets" >&2; exit 1
+fi
 [ "$2" = snapshot ] && echo "SnapshotName-9=\"$3\"" >> "$SNAPS"
 exit 0
 STUB
@@ -173,6 +177,16 @@ check "R8 the vm-lock is released after the run" test ! -e "$WORK/lock/himmel-vm
 # RED control: a run whose snapshot fails must make R1's check fail
 fresh; out=$(vm_maintain FAIL_SDK=snapshot 2>&1); rc=$?
 control "R1-RED the run check fails when the snapshot step fails" run_ok_check
+
+# The flag is one run's explicit choice: without it the snapshot is requested scanned and a refusal is a named failure
+ARGS=(run "$VM")
+fresh; out=$(vm_maintain 2>&1); rc=$?
+check "R10 a run without --no-secret-scan asks vmsdk for a scanned snapshot, never the flag" bash -c 'grep -qF -e "sdk $1 snapshot maint-20261107-1432" "$2" && ! grep -qF -e "--no-secret-scan" "$2"' _ "$VM" "$LOG"
+fresh; out=$(vm_maintain STUB_REFUSE_UNSCANNED=1 2>&1); rc=$?
+check "R11 when vmsdk refuses the unscanned snapshot the run is FAILED snapshot, records nothing and does not offer the flag" bash -c '[ "$1" -ne 0 ] && grep -q "FAILED snapshot" <<<"$2" && ! grep FAILED <<<"$2" | grep -qF -e "--no-secret-scan" && [ ! -s "$3/newest-good.tsv" ]' _ "$rc" "$out" "$WORK/state"
+ARGS=(run "$VM" --no-secret-scan)
+fresh; out=$(vm_maintain STUB_REFUSE_UNSCANNED=1 2>&1); rc=$?
+check "R12 the same refusing vmsdk accepts a run that names the flag" run_ok_check
 
 # ---------------------------------------------------------------- run: named failure
 echo "== named failure =="

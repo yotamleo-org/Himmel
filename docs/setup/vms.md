@@ -445,13 +445,13 @@ cat ~/.himmel/state/vm-maintain/newest-good.tsv
 One line per VM: `<vm>`, `<snapshot>`, `<utc time>`, tab-separated. The file is written only by `scripts/vm/vm-maintain.sh`.
 
 ```bash
-bash scripts/vm/vm-maintain.sh run <vm> --no-secret-scan
+bash scripts/vm/vm-maintain.sh run <vm>
 bash scripts/vm/vm-maintain.sh probe <vm>
 ```
 
-`run` takes the vm-lock, boots the VM from its current state (no restore), runs `apt update` and `apt upgrade`, brings claude and the CLIProxyAPI binary to the pins in `scripts/machine-setup/installer-pins.sh` and `scripts/setup/cli-proxy-lane.sh`, brings codex to npm latest, powers off, snapshots in place as `maint-YYYYMMDD-HHMM`, records it, and deletes `maint-*` snapshots beyond the last 3. A failed step prints `FAILED <step>`, takes no snapshot and leaves the record alone; the VM is powered off either way. Set `HIMMEL_VM_LOCK_WAIT=<seconds>` to wait behind another leg. `--no-secret-scan` is needed because the snapshot is taken powered off; the run copies nothing from the host. No cron entry exists yet.
+`run` takes the vm-lock, boots the VM from its current state (no restore), runs `apt update` and `apt upgrade`, brings claude and the CLIProxyAPI binary to the pins in `scripts/machine-setup/installer-pins.sh` and `scripts/setup/cli-proxy-lane.sh`, brings codex to npm latest, powers off, snapshots in place as `maint-YYYYMMDD-HHMM`, records it, and deletes `maint-*` snapshots beyond the last 3. A failed step prints `FAILED <step>`, takes no snapshot and leaves the record alone; the VM is powered off either way. Set `HIMMEL_VM_LOCK_WAIT=<seconds>` to wait behind another leg. The snapshot is taken powered off, and `vmsdk` refuses a powered-off VM it cannot scan for host `.env` files, so the plain `run` stops at the snapshot step with `FAILED snapshot` until a scan before power off exists. `run <vm> --no-secret-scan` skips the scan for that one run: use it only after checking the VM holds no host copy (the run itself copies nothing from the host), never as a standing command and never in a schedule. No cron entry exists yet.
 
-`probe` reads the login files in the guest, makes no model call, is silent when every login is live, and prints the exact login command for each expired one (claude, codex, cli-proxy), paging the operator once per CLI. "Live" means not provably expired; a token revoked on the server side only shows on a real turn.
+`probe` reads the login files in the guest, makes no model call, is silent when every login is live, reads the VM's current state only (it does not probe each saved snapshot), and prints the exact login command for each expired one (claude, codex, cli-proxy), paging the operator once per CLI. "Live" means not provably expired; a token revoked on the server side only shows on a real turn.
 
 A snapshot that holds a login is never cloned: maintain and snapshot the VM in place.
 
