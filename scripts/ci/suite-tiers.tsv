@@ -1260,3 +1260,4 @@ scripts/test-himmel-doctor-morning-report.sh	local	behaviour suite, new for HIMM
 scripts/handover/chief-kit/test-size-override.sh	local	behaviour suite, new
 scripts/measurements/test-gh-graphql-callers.sh	local	behaviour suite, new
 scripts/telegram/test-spec-page-gen.sh	pr	guard
+scripts/vm/test-vm-maintain.sh	local	behaviour suite, new
