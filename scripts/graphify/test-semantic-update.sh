@@ -706,11 +706,11 @@ grep -q 'not dispatching' "$WS/claude.out" && pass "T68 the shim says why it sto
 [ "$(grep -c '^claude-shim-rc=6$' "$WS/calls.log")" -eq 5 ] && pass "T68 every chunk call reports the non-retryable rc 6" || fail "T68 shim rcs: $(grep claude-shim-rc "$WS/calls.log" | tr '\n' ' ')"
 [ "$(lastrun "$C68" cost_usd)" = "0.0" ] && pass "T68 rejected calls add no cost" || fail "T68 row: $(tail -1 "$C68/graphify-out/semantic-runs.jsonl" 2>&1)"
 
-echo "T68b: on auto routing the second account gets one call, then dispatch stops"
+echo "T68b: on auto routing each account in play (A, B and C: no roster here) gets one call, then dispatch stops"
 C68B="$REPO/c68b"; new_corpus "$C68B"; : > "$WS/calls.log"; : > "$WS/claude.out"
 out=$(env HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPHIFY_API_BATCH=0 GRAPHIFY_STUB_CHUNKFAIL=1 LANE_STUB_REJECT=1 GRAPHIFY_STUB_CALL_N=5 GRAPHIFY_STUB_CALL_CLAUDE=1 PATH="$WS/bin:$PATH" bash "$SCRIPT" --name t68b --corpus-root "$C68B" --corpus-class himmel-code --backend claude-api 2>&1); rc=$?
 [ "$rc" -eq 5 ] && pass "T68b the run exits 5 too" || fail "T68b exit (got $rc): $out"
-[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 2 ] && pass "T68b two lane calls: the first rejection plus one rotated call" || fail "T68b lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
+[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 3 ] && pass "T68b three lane calls: one rejection per account in play" || fail "T68b lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
 
 # --- the real launcher (scripts/api-lane/claude-api.sh) under the shim, only `claude` stubbed ---
 # The rows above stub the whole lane, so they cannot show what the launcher really does with a rejection: replay
@@ -974,6 +974,7 @@ if (cmd === 'submit') {
   const ids = readdirSync(o.prompts).filter((f) => f.endsWith('.txt')).map((f) => f.slice(0, -4));
   log(`submit account=${o.account} prompts=${ids.length} model=${o.model} effort=${o.effort}`);
   if ((process.env.BATCH_STUB_EXHAUSTED || '').split(',').includes(o.account)) { console.error('semantic-batch: credit exhausted (HTTP 400)'); process.exit(5); }
+  if ((process.env.BATCH_STUB_FAIL || '').split(',').includes(o.account)) { console.error('semantic-batch: HTTP 401 invalid x-api-key'); process.exit(4); }
   mkdirSync(o.dir, { recursive: true });
   // as the real client: the shim's chunk-body key sidecars ride in batch.json
   const bodies = {};
@@ -1006,9 +1007,13 @@ import { join } from 'node:path';
 const ws = process.env.BATCH_STUB_WS;
 const f = join(ws, 'exhausted.log');
 if (process.argv[2] === 'pick') {
-  const marked = existsSync(f) ? readFileSync(f, 'utf8') : '';
-  console.log(JSON.stringify({ verdict: 'PROCEED', account: marked.includes('A') ? 'B' : 'A', snapshot_stale: false }));
+  // as the real pick: the first account of --only (else A, B, C) not marked exhausted; every one marked, the first serves
+  const marked = existsSync(f) ? readFileSync(f, 'utf8').split('\n').filter(Boolean) : [];
+  const i = process.argv.indexOf('--only');
+  const list = i > 0 ? process.argv[i + 1].split(',') : ['A', 'B', 'C'];
+  console.log(JSON.stringify({ verdict: 'PROCEED', account: list.find((l) => !marked.includes(l)) || list[0], snapshot_stale: false }));
 } else if (process.argv[2] === 'exhausted') {
+  if (process.env.BATCH_STUB_MARKFAIL) process.exit(1);
   appendFileSync(f, `${process.env.HIMMEL_API_ACCOUNT}\n`);
   console.log('{}');
 }
@@ -1132,6 +1137,43 @@ out=$(GRAPHIFY_API_BATCH=0 GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77 --co
   && ! grep -q '^graphify extract' "$WS/calls.log" \
   && pass "T77 exit 2, the pending batch and the graph are untouched, nothing extracted" || fail "T77 (rc=$rc): $out / $(cat "$WS/calls.log")"
 
+batch_accounts() { sed -n 's/^submit account=\([A-C]\) .*/\1/p' "$WS/batch.log" | tr '\n' ' '; }
+
+echo "T87: auto routing with A and B exhausted and C live submits on C: each account once, in order, every retry line names its account"
+C78="$REPO/c78"; new_corpus "$C78"; batch_reset
+out=$(ACCT=auto BATCH_STUB_EXHAUSTED=A,B GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t78 --corpus-root "$C78" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "A B C " ] && [ "$(tr '\n' ' ' < "$WS/exhausted.log")" = "A B " ] \
+  && [ "$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["account"])' "$C78/graphify-out/semantic-batch/batch.json")" = "C" ] \
+  && pass "T87 A and B marked, the one batch went to C" || fail "T87 (rc=$rc) accounts '$(batch_accounts)': $out / $(cat "$WS/exhausted.log" 2>&1)"
+[[ "$out" == *"account A credit exhausted (tried: A)"* ]] && [[ "$out" == *"retrying the batch on account B (tried: A)"* ]] \
+  && [[ "$out" == *"account B credit exhausted (tried: A B)"* ]] && [[ "$out" == *"retrying the batch on account C (tried: A B)"* ]] \
+  && pass "T87 each retry line names the account and every account tried so far" || fail "T87 retry lines: $out"
+
+echo "T88: every account exhausted: each is tried once, the failure names them all, and nothing loops"
+C79="$REPO/c79"; new_corpus "$C79"; batch_reset
+out=$(ACCT=auto BATCH_STUB_EXHAUSTED=A,B,C GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t79 --corpus-root "$C79" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 2 ] && [ "$(batch_accounts)" = "A B C " ] && [ ! -e "$C79/graphify-out/semantic-batch" ] \
+  && [[ "$out" == *"credit exhausted on every account tried (A B C)"* ]] && [[ "$out" == *"submitting the batch failed (rc 5)"* ]] \
+  && pass "T88 three submits, one per account, the failure names A B C, nothing pending" || fail "T88 (rc=$rc) accounts '$(batch_accounts)': $out"
+
+echo "T89: a bad key or any non-credit error does not walk the other accounts: one attempt, the rule stated"
+C80="$REPO/c80"; new_corpus "$C80"; batch_reset
+out=$(ACCT=auto BATCH_STUB_FAIL=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t80 --corpus-root "$C80" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 2 ] && [ "$(batch_accounts)" = "A " ] && [ ! -s "$WS/exhausted.log" ] && [[ "$out" == *"only a credit-exhausted answer tries the next account"* ]] \
+  && pass "T89 one submit on A, no marker, the walk rule is in the log" || fail "T89 (rc=$rc) accounts '$(batch_accounts)': $out"
+
+echo "T90: nothing chosen (the API lane off): no semantic call on any account, and the output says no API semantic call is made"
+C81="$WS/c81"; new_corpus "$C81"; batch_reset
+out=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT PATH="$WS/bin:$PATH" bash "$SCRIPT" --name t81 --corpus-root "$C81" --corpus-class himmel-code --backend claude-api 2>&1); rc=$?
+[ "$rc" -eq 2 ] && [ ! -s "$WS/batch.log" ] && ! grep -q '^lane \|^graphify extract' "$WS/calls.log" && [[ "$out" == *"no API semantic call is made"* ]] \
+  && pass "T90 refused before any call, the output says no API semantic call is made" || fail "T90 (rc=$rc): $out / $(cat "$WS/calls.log")"
+
+echo "T91: every account exhausted and the marker cannot be saved: still one try each, exactly A B C, under a deadline"
+C91="$REPO/c91"; new_corpus "$C91"; batch_reset
+out=$(ACCT=auto BATCH_STUB_MARKFAIL=1 BATCH_STUB_EXHAUSTED=A,B,C GRAPHIFY_STUB_CALL_CLAUDE=1 timeout 60 env HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto PATH="$WS/bin:$PATH" bash "$SCRIPT" --name t91 --corpus-root "$C91" --corpus-class himmel-code --backend claude-api 2>&1); rc=$?
+[ "$rc" -eq 2 ] && [ "$(batch_accounts)" = "A B C " ] && [[ "$out" == *"credit exhausted, but the marker was not saved"* ]] && [[ "$out" == *"credit exhausted on every account tried (A B C)"* ]] \
+  && pass "T91 a marker that fails to save does not repeat an account" || fail "T91 (rc=$rc) accounts '$(batch_accounts)': $out"
+
 # --- the role map (roles.json beside the account config) narrows the auto batch pick ---
 # These rows run the REAL api-credit-state.mjs and api-roles.mjs over a temp config and snapshot (A, B and C all
 # roomy, A expiring first); only the batch client stays the stand-in. The stub credit-state is put back afterwards.
@@ -1154,7 +1196,6 @@ roles_fixture() {
 }
 roles_real_on() { cp "$REAL_REPO/scripts/lib/api-credit-state.mjs" "$REAL_REPO/scripts/lib/api-roles.mjs" "$REPO/scripts/lib/"; }
 roles_real_off() { cp "$WS/credit-state.stub.mjs" "$REPO/scripts/lib/api-credit-state.mjs"; : > "$REPO/scripts/lib/api-roles.mjs"; unset HIMMEL_API_CREDIT_CONFIG HIMMEL_API_CREDIT_SNAPSHOT; }
-batch_accounts() { sed -n 's/^submit account=\([A-C]\) .*/\1/p' "$WS/batch.log" | tr '\n' ' '; }
 
 echo "T77a: no roles.json, auto batch submits on A (the earliest-expiring), as before the role map"
 roles_fixture; roles_real_on
@@ -1174,12 +1215,12 @@ C77C="$REPO/c77c"; new_corpus "$C77C"; batch_reset
 out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77c --corpus-root "$C77C" --corpus-class himmel-code --backend claude-api); rc=$?
 [ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "C " ] && pass "T77c one submit, on C" || fail "T77c (rc=$rc) accounts '$(batch_accounts)': $out"
 
-echo "T77d: graphify mapped to C and C credit-exhausted: exactly two submits, both on C, none on A or B, rc 5"
+echo "T77d: graphify mapped to C and C credit-exhausted: exactly one submit, on C, none on A or B, rc 5"
 roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["C"]}}' > "$RC/roles.json"
 C77D="$REPO/c77d"; new_corpus "$C77D"; batch_reset
 out=$(ACCT=auto BATCH_STUB_EXHAUSTED=C GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77d --corpus-root "$C77D" --corpus-class himmel-code --backend claude-api); rc=$?
-[ "$rc" -eq 2 ] && [[ "$out" == *"submitting the batch failed (rc 5)"* ]] && [ "$(batch_accounts)" = "C C " ] \
-  && pass "T77d two submits, both on C, the batch failed with rc 5" || fail "T77d (rc=$rc) accounts '$(batch_accounts)': $out"
+[ "$rc" -eq 2 ] && [[ "$out" == *"submitting the batch failed (rc 5)"* ]] && [ "$(batch_accounts)" = "C " ] \
+  && pass "T77d one submit, on C, the batch failed with rc 5"|| fail "T77d (rc=$rc) accounts '$(batch_accounts)': $out"
 
 echo "T77e: a role mapped to a letter with no roster row refuses the batch, never widening to A or B"
 roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["C"]}}' > "$RC/roles.json"
@@ -1196,6 +1237,48 @@ cmp -s "$REAL_REPO/scripts/lib/api-credit-state.mjs" "$REPO/scripts/lib/api-cred
 C77F="$REPO/c77f"; new_corpus "$C77F"; batch_reset
 out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77f --corpus-root "$C77F" --corpus-class himmel-code --backend claude-api); rc=$?
 [ "$(batch_accounts)" = "A " ] && pass "T77f without the --only filter the batch submits on A, so T77c is a real check" || fail "T77f accounts '$(batch_accounts)' (rc=$rc): $out"
+roles_real_off
+
+# the sync path: the shim's breaker counts the accounts in play on auto, so a role mapped to one account gets one lane call
+sync_rejecting() { : > "$WS/calls.log"; : > "$WS/claude.out"
+  env HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPHIFY_API_BATCH=0 GRAPHIFY_STUB_CHUNKFAIL=1 LANE_STUB_REJECT=1 GRAPHIFY_STUB_CALL_N=5 GRAPHIFY_STUB_CALL_CLAUDE=1 PATH="$WS/bin:$PATH" bash "$SCRIPT" "$@" 2>&1; }
+echo "T92: auto sync with graphify mapped to C and the lane rejecting: exactly one lane call, not one per default account"
+roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["C"]}}' > "$RC/roles.json"
+C92="$REPO/c92"; new_corpus "$C92"
+out=$(sync_rejecting --name t92 --corpus-root "$C92" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 5 ] && [ "$(grep -c '^lane ' "$WS/calls.log")" -eq 1 ] \
+  && pass "T92 one lane call for the one mapped account" || fail "T92 (rc=$rc) lane calls $(grep -c '^lane ' "$WS/calls.log"): $out"
+echo "T92b: a role letter with no roster row adds no call: graphify mapped to B and C, only B configured, exactly one lane call"
+roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["B","C"]}}' > "$RC/roles.json"
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); del d["accounts"]["C"]; json.dump(d, open(p,"w"))' "$RC/config.json"
+C92B="$REPO/c92b"; new_corpus "$C92B"
+out=$(sync_rejecting --name t92b --corpus-root "$C92B" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 5 ] && [ "$(grep -c '^lane ' "$WS/calls.log")" -eq 1 ] \
+  && pass "T92b the unconfigured C is not counted" || fail "T92b (rc=$rc) lane calls $(grep -c '^lane ' "$WS/calls.log"): $out"
+roles_real_off
+
+# the exhausted marker clears on its own: a marker older than the TTL no longer counts when the reading is older than the marker
+# (so the reading cannot be what clears it), and a longer TTL would still skip A. The real pick, a temp config and snapshot.
+pick_acct() { node "$1" pick --usd 0.25 | sed -n 's/.*"account":"\([ABC]\)".*/\1/p'; }
+mark_a() { # $1 = how many seconds ago A was marked; every reading is older than the mark
+  roles_fixture; local now; now=$(date +%s)
+  HIMMEL_API_ACCOUNT=A node "$REAL_REPO/scripts/lib/api-credit-state.mjs" exhausted >/dev/null
+  python3 -c 'import json,sys
+cfg=json.load(open(sys.argv[1])); led=sys.argv[2]; snap=sys.argv[3]; now=int(sys.argv[4]); ago=int(sys.argv[5])
+l=json.load(open(led)); l["accounts"]["A"]["exhausted_at"]=now-ago; json.dump(l,open(led,"w"))
+s=json.load(open(snap))
+for a in s["accounts"].values(): a["starts_at"]=now-ago-2000; a["observed_at"]=now-ago-1000
+json.dump(s,open(snap,"w"))' "$RC/config.json" "$RC/ledger.json" "$RC/snapshot.json" "$now" "$1"; }
+echo "T93: A marked 4000 s ago (past the 3600 s TTL), every reading older than the mark: A serves again"
+mark_a 4000
+[ "$(pick_acct "$REAL_REPO/scripts/lib/api-credit-state.mjs")" = "A" ] && pass "T93 the marker lapsed by the TTL alone, A is picked" || fail "T93 picked '$(pick_acct "$REAL_REPO/scripts/lib/api-credit-state.mjs")'"
+echo "T93b: A marked 100 s ago, same readings: A is skipped; with a 7200 s TTL the 4000 s mark would skip A too (the row reads the TTL)"
+mark_a 100
+[ "$(pick_acct "$REAL_REPO/scripts/lib/api-credit-state.mjs")" = "B" ] && pass "T93b a fresh mark skips A, B is picked" || fail "T93b picked '$(pick_acct "$REAL_REPO/scripts/lib/api-credit-state.mjs")'"
+mark_a 4000
+sed 's/EXHAUSTED_TTL = 3600/EXHAUSTED_TTL = 7200/' "$REAL_REPO/scripts/lib/api-credit-state.mjs" > "$REPO/scripts/lib/api-credit-state.mjs"
+cmp -s "$REAL_REPO/scripts/lib/api-credit-state.mjs" "$REPO/scripts/lib/api-credit-state.mjs" && fail "T93b the control copy still has the 3600 s TTL"
+[ "$(pick_acct "$REPO/scripts/lib/api-credit-state.mjs")" = "B" ] && pass "T93b RED control: with a 7200 s TTL the 4000 s mark still skips A, so T93 reads the TTL" || fail "T93b control picked '$(pick_acct "$REPO/scripts/lib/api-credit-state.mjs")'"
 roles_real_off
 
 echo "T78: a .graphifyignore naming a planned file strands nothing: the planner is the only selector"

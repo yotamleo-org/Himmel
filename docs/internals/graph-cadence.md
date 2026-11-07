@@ -241,8 +241,8 @@ On `claude-api`, `semantic-update.sh` passes graphify `--token-budget` derived f
 synchronous path). A first pass records the chunk prompts and submits one batch; the graph and manifest stay
 untouched and `graphify-out/semantic-batch/batch.json` holds the batch id. Each later fire polls that batch instead
 of resubmitting; once it has ended, the answers are replayed through graphify and merged like a synchronous run.
-A credit-exhausted submit retries once on the other account when `HIMMEL_API_ACCOUNT=auto`; `A` or `B` pins one
-(no budget gate). `GRAPHIFY_API_BATCH=0` refuses (rc 2) while a batch is pending, so a synchronous merge cannot be
+When `HIMMEL_API_ACCOUNT=auto`, a credit-exhausted submit moves on to the next account of the pick list, each account
+at most once per pass, and only a credit-exhausted answer moves on; `A`, `B` or `C` pins one (no budget gate). `GRAPHIFY_API_BATCH=0` refuses (rc 2) while a batch is pending, so a synchronous merge cannot be
 overwritten by an older batch later.
 The ledger row carries `batch_id`, `batch_state` (`submitted`, `pending`, `merged`), `batch_requests` and
 `batch_cost_usd`; cost is null until the batch is merged.

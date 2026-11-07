@@ -36,6 +36,8 @@ before(async () => {
       if (req.method === 'POST' && req.url === '/v1/messages/batches') {
         seen.posts.push(JSON.parse(body));
         if (stub.create === 'credit') return reply(400, { type: 'error', error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API.' } });
+        if (stub.create === 'server-billing') return reply(503, { type: 'error', error: { type: 'api_error', message: 'billing service unavailable' } });
+        if (stub.create === 'rate-billing') return reply(429, { type: 'error', error: { type: 'rate_limit_error', message: 'rate limited; see your billing page for limits' } });
         return reply(200, { id: 'msgbatch_stub1', type: 'message_batch', processing_status: 'in_progress', created_at: '2026-10-23T10:00:00Z', results_url: null });
       }
       seen.gets.push(req.url);
@@ -229,6 +231,26 @@ test('credit exhausted exits 5 and leaves no pending batch', async () => {
   const s = await f.submit();
   assert.equal(s.code, 5);
   assert.match(s.stderr, /credit exhausted/);
+  assert.equal(existsSync(join(f.batch, 'batch.json')), false);
+});
+
+test('a server error carrying billing text exits 3, not the credit-exhausted 5 that walks accounts', async () => {
+  reset();
+  stub.create = 'server-billing';
+  const f = fixture();
+  const s = await f.submit();
+  assert.equal(s.code, 3);
+  assert.match(s.stderr, /HTTP 503/);
+  assert.equal(existsSync(join(f.batch, 'batch.json')), false);
+});
+
+test('a 429 carrying billing text stops like a plain 429, exit 3, and is not the credit-exhausted 5', async () => {
+  reset();
+  stub.create = 'rate-billing';
+  const f = fixture();
+  const s = await f.submit();
+  assert.equal(s.code, 3);
+  assert.match(s.stderr, /HTTP 429/);
   assert.equal(existsSync(join(f.batch, 'batch.json')), false);
 });
 
