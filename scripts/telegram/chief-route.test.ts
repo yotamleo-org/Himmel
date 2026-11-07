@@ -1731,6 +1731,9 @@ test("a page that cannot carry the findings block is refused rather than sent wi
     "<!doctype html><div hidden><body><h1>D</h1></div>\n",
     "<!doctype html><head><script><!-- <script></script><body>--></script></head><h1>D</h1>\n",
     "<!doctype html><body class=\"never closed\n",
+    "<!doctype html><head></head data-x=\"><body>\"><h1>D</h1>\n",
+    "<!doctype html><head><title>T</title x=\"><body>\"></head><h1>D</h1>\n",
+    "<!doctype html><head><meta a=b\"c><link title=\"d\"e=\"><body>\"></head><h1>D</h1>\n",
   ]) {
     const r = root(); const res = await sendSealedPage(r, threeRounds(r), pageText);
     expect(res.code).not.toBe(0);
@@ -1747,6 +1750,8 @@ test("the findings block goes in the real body, not in a comment, a title or an 
     "<head><meta name=\"note\" content=\"<body>\"></head>",
     "<head><style>/* <body> */</style><script>const a = \"<body>\";</script></head>",
     "<HEAD><TITLE>The <BODY> tag</TITLE></HEAD>",
+    "<head></head data-x=\"<body>\">",
+    "<head><meta a=b\"c></head>",
   ]) {
     const pageText = `<!doctype html><html>${head}${real}`;
     const r = root(); const res = await sendSealedPage(r, threeRounds(r), pageText);

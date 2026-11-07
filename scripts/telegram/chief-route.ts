@@ -675,8 +675,9 @@ ${returns.join("")}</section>
 }
 
 // The tokens a head may hold before <body>, read as a browser reads them: a comment, a doctype or end tag, the text of a raw element, a start tag whose quoted attributes may hold anything.
-const ATTRS = `(?:[^>"']|"[^"]*(?:"|$)|'[^']*(?:'|$))*(?:>|$)`;
-const HEAD_TOKENS = new RegExp(`<!--[\\s\\S]*?(?:-->|$)|<[!?/][^>]*(?:>|$)|<(title|style|script|noscript)(?=[\\s/>])${ATTRS}[\\s\\S]*?(?:</\\1(?=[\\s/>])[^>]*(?:>|$)|$)|<([a-z][^\\s/>]*)${ATTRS}`, "gi");
+// A quote opens a value only right after "=": elsewhere it is an ordinary character, as it is in a browser.
+const ATTRS = `(?:=\\s*(?:"[^"]*(?:"|$)|'[^']*(?:'|$)|[^\\s>]*)|[^>=])*(?:>|$)`;
+const HEAD_TOKENS = new RegExp(`<!--[\\s\\S]*?(?:-->|$)|<[!?][^>]*(?:>|$)|</${ATTRS}|<(title|style|script|noscript)(?=[\\s/>])${ATTRS}[\\s\\S]*?(?:</\\1(?=[\\s/>])${ATTRS}|$)|<([a-z][^\\s/>]*)${ATTRS}`, "gi");
 
 // Where the page's real <body> start tag ends, or null when that cannot be told: a start tag no head holds comes first
 // (it may hide what follows), the tag never closes, or a script holds "<!--" (what looks like its end tag may not be one).
