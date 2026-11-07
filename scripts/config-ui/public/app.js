@@ -55,6 +55,8 @@ const TH_TABS = ["overview", "station", "map", "hooks", "reviewers"];
 let thQuery = null, thReturn = null; // thReturn: the tool whose drill-in was just left, so focus goes back to its row
 let setup = null, setupGen = 0; // GET /api/setup: secret presence and the commit rules; declared before route() runs
 const setupMsgs = {}; // per secret name: the last save or remove outcome, never a value
+let session = null; // is this browser holding a login session: null until read, then true or false; the header shows it
+const NEEDS_LOGIN = "log in to save a secret; what you typed was cleared, type it again after you are back"; // the row's message for a save refused in service mode; declared before route() runs
 let verify = null; // the Setup page's Verify step: null, { state: "running" } or POST /api/setup/verify's answer; page memory only
 let roadmap = null, roadmapGen = 0, nvGen = 0; // declared before route() runs, as healthGen is: a reload at #/board?tab=nv calls loadNoVersion() from it
 let boardExtras = null, boardGen = 0; // GET /api/board: { drift, chains, versionChains }, null until read
@@ -72,7 +74,7 @@ const shiftUi = { id: null, all: false }; // from the route: #/shift/<id>?all=1
 let wfModel = null, wfStats = null, wfGen = 0, wfAt = 0, wfScrolled = null; // the workflow model and GET /api/phase-stats, null until read
 const wfUi = { tab: "workflow", phase: null, step: null, walk: null, at: 0 }; // from the route: #/workflow[/eval]?phase=|step=|walk=&at=
 const PAGES = [
-  { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify }), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.apiRoles || !state.apiRoles.data) loadApiRoles(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); if (!state.reports || !state.reports.data) loadReportSettings(); loadSetup(); } },
+  { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => withLoginButton(render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify })), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.apiRoles || !state.apiRoles.data) loadApiRoles(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); if (!state.reports || !state.reports.data) loadReportSettings(); loadSetup(); } },
   { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => pageBar() + healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => toolHealthPage(), onVisit: () => loadToolHealth(), afterPaint: () => thFocusBack() },
   { id: "board", label: "Board", needsFeed: false, render: trackerPage(() => renderBoard(roadmap, roadmapUi, boardExtras)), afterPaint: () => { whyFocus(null); loadDriftOrigins(); }, onVisit: () => { if (!(sources && !sources.length)) { if (!roadmap) loadRoadmap(); if (!boardExtras) loadBoard(); if (roadmapUi.tab === "nv" && !roadmapUi.nv) loadNoVersion(); } } },
@@ -264,7 +266,7 @@ function paint() {
   // only an edited field (even one emptied) is put back; an untouched one takes the value the repaint rendered from the fresh read
   for (const t of typing) { const i = document.querySelector(t.sel); if (i) { if (t.edited) i.value = t.value; if (t.had) { i.focus(); i.setSelectionRange(t.from, t.to); } } }
   $("#nav").innerHTML = "";
-  $("#top").innerHTML = renderHeader(feed);
+  $("#top").innerHTML = renderHeader(feed) + loginBadge();
   const buildDetails = $("#top details");
   if (buildOpen && buildDetails) buildDetails.open = true;
   if (focusBuild) $("#top summary")?.focus();
@@ -313,6 +315,25 @@ async function loadMode() {
   new MutationObserver(lockWrites).observe($("#main"), { childList: true, subtree: true });
 }
 loadMode();
+
+// The login session. Its cookie is HttpOnly, so the page asks: /api/mode without the token header answers 200 only to a session.
+// /login takes ?next=, the page to come back to; login.js accepts only a path on this site. The address holds no typed value.
+function loginHref() { return "/login?next=" + encodeURIComponent(location.pathname + location.search + location.hash); }
+function loginBadge() {
+  if (session === null) return "";
+  return `<span id="login-state"><span class="k">login</span> ${session ? `logged in · <button class="btn" type="button" data-act="logout">Log out</button>` : `not logged in · <a class="btn" href="${loginHref()}">Log in</a>`}</span>`;
+}
+async function loadSession() {
+  try { session = (await fetch("/api/mode", { cache: "no-store" })).ok; } catch (_) { return; }
+  if (feed || currentPage.needsFeed === false) paint();
+}
+async function logout() {
+  await post("/api/logout", {});
+  loadSession();
+}
+loadSession();
+// A save refused for want of a session says so in the row, with Log in beside it (NEEDS_LOGIN is declared with `session`, before route() paints).
+function withLoginButton(html) { return html.split(`role="status">${NEEDS_LOGIN}</span>`).join(`role="status">${NEEDS_LOGIN} <a class="btn primary" href="${loginHref()}">Log in</a></span>`); }
 
 async function post(path, body) {
   if (readOnly) return { ok: false, status: 403, j: { error: "read-only: this config UI was started with --read-only" } };
@@ -554,8 +575,10 @@ async function runVerify() {
 async function saveSecret(name, op, input) {
   const body = { name, op };
   if (input) { if (!input.value) { setupMsgs[name] = "type a value first"; return paint(); } body.value = input.value; input.value = ""; }
-  const { ok, j } = await post("/api/setup/secret", body);
-  setupMsgs[name] = ok ? (op === "set" ? "saved" : "removed") : (j.error || "failed");
+  const { ok, status, j } = await post("/api/setup/secret", body);
+  const needsLogin = status === 403 && /^service mode: log in/.test(j.error || "");
+  if (needsLogin) session = false;
+  setupMsgs[name] = ok ? (op === "set" ? "saved" : "removed") : needsLogin ? NEEDS_LOGIN : (j.error || "failed");
   const s = ok && setup && setup.secrets && setup.secrets.find((x) => x.name === name);
   if (s) s.status = j.status;
   paint();
@@ -953,6 +976,7 @@ document.addEventListener("click", (e) => {
     if (field) field.value = ""; // remove sends no value, so the typed text must not be put back by the repaint
     return void saveSecret(b.dataset.name, "remove", null);
   }
+  if (b.dataset.act === "logout") return void logout();
   if (b.dataset.act === "setup-verify") return void runVerify();
   if (b.dataset.act === "refresh-health") { loadHealth(); loadFleet(); return void loadFeed(true); } // the verdict reads the doctor feed too; a chief row reads the Fleet census
   if (b.dataset.act === "open-config") return void (location.hash = "#/health?row=" + encodeURIComponent(b.dataset.id)); // a check's finding opens its row on Health
