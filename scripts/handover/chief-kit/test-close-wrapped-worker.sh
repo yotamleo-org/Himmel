@@ -2109,8 +2109,6 @@ rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-workers.sh" HIMMEL_BUCKET_DIR="$W/bu
 check "workers: a failed manifest listing -> rc 2, not an empty sweep" "$rc" "2"
 not_contains "workers: a failed manifest listing prints no sweep total" "$out" "sweeps: manifests=0"
 
-# --- a relaunched worker is found by its launch record, and the newest marker across a
-# doc pair decides. Every pid, session id and stamp below is a fixture.
 mkdir -p "$W/sessions"
 SID_A="aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa"   # the long-named launch the bus refused
 SID_B="bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb"   # the shortened relaunch
@@ -2119,14 +2117,12 @@ SH_DOC="$W/HIMMEL-9-N60b-demo-slice-2026-01-01-RESUME.md"
 SH_OTHER="$W/HIMMEL-9-N77-other-2026-01-01.md"
 printf -- '---\nsession_ids: %s,%s\n---\n# worker\n\n## Results\n\n- 09:00 LIVE - resumed\n- 10:00 WRAPPED - done\n' "$SID_A" "$SID_B" > "$SH_DOC"
 printf -- '---\nsession_ids: %s\n---\n# other\n\n## Results\n\n- 09:00 LIVE - working\n' "$SID_X" > "$SH_OTHER"
-# mkproc <pid> <name> <session id> <record start> - a live fixture session: argv, /proc stat start time 9<pid>, and its session record
 mkproc() {
     mkcmdline "$1" claude -n "$2" work
     printf '%s (claude) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 9%s 0 0\n' "$1" "$1" > "$W/proc/$1/stat"
     printf '{"pid":%s,"sessionId":"%s","procStart":"%s"}\n' "$1" "$3" "$4" > "$W/sessions/$1.json"
 }
 rm -rf "$W/proc"; mkdir -p "$W/proc"
-# (a) the shortened relaunch: its -n name is nowhere in the doc, only its session id is
 mkproc 410 HIMMEL-9-N60b-slice-RESUME "$SID_B" 9410
 pgrep_x_stub 410
 reset_calls
@@ -2134,7 +2130,6 @@ rc=0; out=$(run "$SH_DOC" 2>&1) || rc=$?
 check "9542 a: a relaunch under a shortened name is found by its session id -> rc 0" "$rc" "0"
 not_contains "9542 a: it is not read as CLOSED-ALREADY while live" "$out" "CLOSED-ALREADY"
 exact_count "9542 a: exactly the proven pid is signaled" "$(cat "$CALLS")" "kill -TERM 410" "1"
-# an unproven pid: the name is not the worker's and its session id is another worker's
 rm -rf "$W/proc"; mkdir -p "$W/proc"
 mkproc 411 HIMMEL-9-N60b-slice-RESUME "$SID_X" 9411
 pgrep_x_stub 411
@@ -2142,7 +2137,6 @@ reset_calls
 rc=0; out=$(run "$SH_DOC" 2>&1) || rc=$?
 check "9542 a: a live pid whose session id is another worker's is not signaled" "$(cat "$CALLS")" ""
 contains "9542 a: it reads as no live session" "$out" "CLOSED-ALREADY"
-# no session record at all, a record with no start time, and a record a dead process left (start time differs)
 rm -rf "$W/proc"; mkdir -p "$W/proc"
 mkproc 413 HIMMEL-9-N60b-slice-RESUME "$SID_B" 9413
 rm -f "$W/sessions/413.json"
@@ -2158,7 +2152,6 @@ mkproc 413 HIMMEL-9-N60b-slice-RESUME "$SID_B" 111
 reset_calls
 rc=0; out=$(run "$SH_DOC" 2>&1) || rc=$?
 check "9542 a: a record left by a dead process (start time differs) is not signaled" "$(cat "$CALLS")" ""
-# two sessions both proven (the refused long launch and the relaunch both alive): ambiguous, nothing signaled
 rm -rf "$W/proc"; mkdir -p "$W/proc"
 mkproc 410 HIMMEL-9-N60b-slice-RESUME "$SID_B" 9410
 mkproc 412 HIMMEL-9-N60b-other-RESUME "$SID_A" 9412
@@ -2169,8 +2162,6 @@ check "9542 a: two proven live sessions are refused -> rc 5" "$rc" "5"
 check "9542 a: two proven live sessions signal nothing" "$(cat "$CALLS")" ""
 rm -f "$SH_DOC" "$SH_OTHER"
 
-# (b) WRAPPED only in the original: the resumed worker's LIVE and WRAPPED are on the original doc and
-# its RESUME sibling's last marker is an older READY. The newest marker across the pair decides.
 PB_ORIG="$W/HIMMEL-9-N61-pair-2026-01-01.md"
 PB_RES="$W/HIMMEL-9-N61-pair-2026-01-01-RESUME.md"
 pb_orig() { # pb_orig <resume wrapped stamp>
@@ -2190,7 +2181,6 @@ reset_calls
 rc=0; out=$(run "$PB_RES" 2>&1) || rc=$?
 check "9542 b: the same pair closes when asked from the RESUME doc -> rc 0" "$rc" "0"
 exact_count "9542 b: from the RESUME doc the same pid is signaled" "$(cat "$CALLS")" "kill -TERM 420" "1"
-# controls: the RESUME's READY is newer than the original's WRAPPED
 pb_orig 12:00; pb_res 12:30
 reset_calls
 rc=0; out=$(run "$PB_ORIG" 2>&1) || rc=$?
@@ -2199,7 +2189,6 @@ check "9542 b: that newer marker signals nothing" "$(cat "$CALLS")" ""
 reset_calls
 rc=0; out=$(run "$PB_RES" 2>&1) || rc=$?
 check "9542 b: the same newer marker refuses from the RESUME doc -> rc 4" "$rc" "4"
-# control: equal stamps are ambiguous, and a gap over twelve hours may cross midnight
 pb_orig 11:35; pb_res 11:35
 reset_calls
 rc=0; out=$(run "$PB_ORIG" 2>&1) || rc=$?
@@ -2209,7 +2198,6 @@ reset_calls
 rc=0; out=$(run "$PB_ORIG" 2>&1) || rc=$?
 check "9542 b: a stamp pair that may cross midnight refuses -> rc 4" "$rc" "4"
 check "9542 b: the ambiguous pairs signal nothing" "$(cat "$CALLS")" ""
-# control: an original WRAPPED with no resumed LIVE then WRAPPED after the hand-off is no evidence (a successor may be booting)
 printf '# worker\n\n## Results\n\n- 09:00 LIVE - started\n- 12:00 WRAPPED - done\n' > "$PB_ORIG"; pb_res 11:35
 reset_calls
 rc=0; out=$(run "$PB_ORIG" 2>&1) || rc=$?

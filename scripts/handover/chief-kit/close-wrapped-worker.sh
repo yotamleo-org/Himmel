@@ -347,8 +347,6 @@ doc_tail_status() {
     if [ "$rt" = nosection ]; then worker_tail_status "$1"; else printf '%s' "$rt"; fi
 }
 
-# tail_marker_minutes <doc>: the HH:MM stamp of the newest marker bullet in the doc's Results section (and its
-# ruling sections), as minutes since midnight; nothing when that bullet carries no stamp or the doc has no Results.
 tail_marker_minutes() {
     awk '
         /^## Results( |$)/ { seen = 1; inres = 1; next }
@@ -360,19 +358,14 @@ tail_marker_minutes() {
         END { if (last != "") { split(last, p, ":"); print p[1] * 60 + p[2] } }' "$1"
 }
 
-# resumed_wrapped_newer <original doc> <resume doc>: success when the WRAPPED that ends the original is the
-# newest marker across the pair. The original must hold the resumed worker's own record (resume_evidence: a
-# LIVE with a new release token, then WRAPPED, after the hand-off), so a successor that has only just started
-# never reads as finished. The stamps are HH:MM with no date: the original's must be strictly later than the
-# RESUME doc's, and under twelve hours later, since a larger gap may cross midnight.
 resumed_wrapped_newer() {
-    local o r d
+    local o r gap half_day=720
     resume_evidence "$1" "$2" || return 1
     [ "$(doc_tail_status "$1")" = WRAPPED ] || return 1
     o=$(tail_marker_minutes "$1"); r=$(tail_marker_minutes "$2")
     [ -n "$o" ] && [ -n "$r" ] || return 1
-    d=$((o - r))
-    [ "$d" -gt 0 ] && [ "$d" -lt 720 ]
+    gap=$((o - r))
+    [ "$gap" -gt 0 ] && [ "$gap" -lt "$half_day" ]
 }
 
 if ! last_marker=$(doc_tail_status "$DOC"); then
@@ -412,8 +405,6 @@ if [ -n "$SIB_DOC" ] && [ "$PREDECESSOR" -eq 0 ]; then
             fi
         fi
     elif [ "$res_marker" = "READY" ] && resumed_wrapped_newer "$sib_orig" "$sib_res"; then
-        # the RESUME doc ends in an older READY: the resumed worker wrapped on the original doc. A LIVE or
-        # BLOCKED tail there is a worker still going, whatever the stamps say, and keeps its refusal.
         if [[ $DOC == *-RESUME.md ]]; then
             tail_doc="$sib_orig"
             last_marker=WRAPPED
@@ -597,14 +588,11 @@ if [ "$census_rc" -gt 1 ]; then
     exit 1
 fi
 
-# claim_ids: the session ids the launcher recorded in the front matter (session_ids:, one per launch and
-# relaunch) of the docs whose names are matched, one per line. A relaunch under a session name the doc never
-# held (the bus refused the long name and the chief shortened it) is still the worker's, and this is how it is proven.
 claim_ids=""
-set_claim_ids() { # set_claim_ids <doc...>
+set_claim_ids() {
     local d first
     claim_ids=""
-    [ "$CHIEF_MODE" -eq 0 ] || return 0   # a predecessor chief is still found by name alone
+    [ "$CHIEF_MODE" -eq 0 ] || return 0
     for d in "$@"; do
         IFS= read -r first < "$d" || continue
         [ "$first" = "---" ] || continue
@@ -613,9 +601,8 @@ set_claim_ids() { # set_claim_ids <doc...>
 }
 if [ "$PREDECESSOR" -eq 0 ] && [ -n "$SIB_DOC" ]; then set_claim_ids "$DOC" "$SIB_DOC"; else set_claim_ids "$DOC"; fi
 
-# pid_proven_by_id <pid>: success only when the pid's own session record (sessions/<pid>.json) names a session id
-# the doc recorded AND the record's procStart equals the live process's start time (/proc/<pid>/stat field 22),
-# so a record a dead session left behind never proves a recycled pid. A record with no procStart proves nothing.
+proc_start_time() { sed -E 's/^.*\) //' "$1" | awk '{print $20}'; }
+
 pid_proven_by_id() {
     local pid="$1" proc="${CLAUDE_SESSIONS_PROC:-/proc}" cfg="" f rec sid ps st
     [ -n "$claim_ids" ] || return 1
@@ -628,7 +615,7 @@ pid_proven_by_id() {
     sid="${rec%% *}"; ps="${rec#* }"
     [ -n "$sid" ] && [ -n "$ps" ] && [ -r "$proc/$pid/stat" ] || return 1
     grep -qxF -- "$sid" <<< "$claim_ids" || return 1
-    st=$(sed -E 's/^.*\) //' "$proc/$pid/stat" | awk '{print $20}')
+    st=$(proc_start_time "$proc/$pid/stat")
     [ "$st" = "$ps" ]
 }
 
