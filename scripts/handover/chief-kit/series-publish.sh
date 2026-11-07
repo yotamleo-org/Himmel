@@ -131,8 +131,8 @@ if [ -n "$prev" ]; then
         || { echo "PUBLISH-WAIT $pk"; refuse "cannot read the PR of previous item $pk ($ppb): gh failed; nothing moved, retry once it answers"; }
     if [ "$(printf '%s\n' "$prows" | awk -F'\t' -v b="$defb" '$2 == "MERGED" && $3 == b { f = 1 } END { print f + 0 }')" != 1 ]; then
         pstates="$(printf '%s\n' "$prows" | awk -F'\t' 'NF { printf "%s#%s %s into %s", (n++ ? ", " : ""), $1, $2, $3 }')"
-        # a wait is a predecessor that may still merge (a PR is open, or none is visible yet); a closed or elsewhere-merged one is a refusal
-        if [ -z "$pstates" ] || [ "$(printf '%s\n' "$prows" | awk -F'\t' '$2 == "OPEN" { f = 1 } END { print f + 0 }')" = 1 ]; then
+        has_open_pr="$(printf '%s\n' "$prows" | awk -F'\t' '$2 == "OPEN" { f = 1 } END { print f + 0 }')"
+        if [ -z "$pstates" ] || [ "$has_open_pr" = 1 ]; then
             echo "PUBLISH-WAIT $pk"
         fi
         refuse "previous item $pk has not merged into $defb (${pstates:-no PR on $ppb}); publish $KEY once it has merged or been abandoned"
