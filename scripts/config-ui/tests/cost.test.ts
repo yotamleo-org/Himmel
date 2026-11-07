@@ -1,6 +1,7 @@
 // The Cost page's data module (cost.ts) and browser half (public/cost.js): phase-cost rows in, one page model out, each
 // phase row opening to the parts it is made of. A part no record splits says "not countable yet"; it never gets a number.
 import { test, expect, afterEach } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,6 +12,7 @@ const cleanups: (() => void)[] = [];
 afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
 
 const DAY = "2026-11-04";
+const READER = join(import.meta.dir, "..", "..", "usage", "usage-read.sh");
 const row = (o: Partial<PhaseCostRow> & { phase: string; usd: number | null }): PhaseCostRow => ({
   kind: "phase-cost", day: DAY, session: "s", parent: null, lane: "claude", class: "worker", model: "claude-sonnet-5-5",
   phase_rule: "v1", calls: 1, in: 100, out: 10, cache_read: 1000, cc_5m: 0, cc_1h: 0, mark: "derived", ...o,
@@ -117,4 +119,20 @@ test("cost: usage-read hands over the latest row per day, session and phase, and
   const rows = readPhaseCostRows({ HIMMEL_USAGE_STORE: store, PATH: process.env.PATH });
   expect(rows.map((r) => [r.session, r.phase, r.usd])).toEqual([["w1", "build", 3], ["w2", "build", 5]]);
   expect(readPhaseCostRows({ HIMMEL_USAGE_STORE: join(dir, "absent"), PATH: process.env.PATH })).toEqual([]);
+});
+
+test("cost: usage-read --phase-cost keeps one day with --day, every version with --all, and refuses --day alone or with --ticket", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cost-flags-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const store = join(dir, "usage");
+  mkdirSync(store);
+  const lines = [row({ phase: "build", usd: 1 }), row({ phase: "build", usd: 3, calls: 2 }), row({ phase: "build", usd: 7, day: "2026-11-03" })];
+  writeFileSync(join(store, "records.jsonl"), lines.map((r) => JSON.stringify(r)).join("\n") + "\n");
+  const read = (...args: string[]) => spawnSync("bash", [READER, "--store", store, ...args], { encoding: "utf8" });
+  const usds = (args: string[]) => read(...args).stdout.trim().split("\n").map((l) => JSON.parse(l).usd);
+  expect(usds(["--phase-cost", "--day", "2026-11-03"])).toEqual([7]);
+  expect(usds(["--phase-cost", "--all"])).toEqual([1, 3, 7]);
+  expect(usds(["--phase-cost"])).toEqual([7, 3]);
+  expect(read("--day", DAY)).toMatchObject({ status: 1, stderr: expect.stringContaining("--day needs --phase-cost") });
+  expect(read("--phase-cost", "--ticket", "HIMMEL-1")).toMatchObject({ status: 1, stderr: expect.stringContaining("does not combine") });
 });
