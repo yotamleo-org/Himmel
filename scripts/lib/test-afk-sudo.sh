@@ -1185,6 +1185,19 @@ assert_contains "a pending run says so with its id" "status=pending id=" "$ARLAS
 FAKE_ACTION=none ar 4 "${AR[@]}" -- true
 assert_eq "a busy helper exits 76" 76 "$ARRC"
 assert_contains "a busy run says nothing was filed" "afk-run: status=busy, nothing filed" "$ARLAST"
+new_root arnowait; cfg "$ALL" true
+FAKE_ACTION=none ar 3 --no-wait "${AR[@]}" -- true
+assert_eq "--no-wait exits 75 once filed" 75 "$ARRC"
+if [[ $ARLAST =~ ^afk-run:\ status=pending\ id=[a-z2-7]{8}$ ]]; then pass "--no-wait ends on status=pending with the id"; else fail "--no-wait ends on status=pending with the id" "$ARLAST"; fi
+assert_contains "--no-wait says it filed the request" "afk-run: filed request" "$(cat "$tmp/ar.err")"
+assert_eq "--no-wait never polls" "" "$(cd "$R" && find . -maxdepth 1 -name 'polled.*')"
+id=$(printf '%s\n' "$ARLAST" | sed -n 's/.* id=\([a-z2-7]\{8\}\)$/\1/p')
+assert_contains "the --no-wait request stays pending for the operator" "result=pending" "$(h 3 run-status "$id")"
+s=$SECONDS
+FAKE_ACTION=none ar 4 --no-wait "${AR[@]}" -- true
+assert_eq "--no-wait on a busy helper exits 76" 76 "$ARRC"
+assert_contains "--no-wait busy says nothing was filed" "afk-run: status=busy, nothing filed" "$ARLAST"
+if [ $((SECONDS - s)) -lt 2 ]; then pass "--no-wait busy ends at once, no busy loop"; else fail "--no-wait busy ends at once" "$((SECONDS - s))s"; fi
 if [ -x "$REPO_ROOT/scripts/lib/afk-run" ]; then pass "afk-run is executable"; else fail "afk-run is not executable"; fi
 
 # other_nonce <nonce>: a well-formed nonce that is not this one.

@@ -498,7 +498,7 @@ stdin), `grant-spend`, `approve`, `deny`, `lockdown`, `status`
 
 ```text
 afk-run --session S --ticket T --blocked-by classifier|hook:<guard>|prompt|operator-step \
-        [--as root] [--cwd DIR] [--stdin-file F] [--why W] -- ARGV...
+        [--as root] [--cwd DIR] [--stdin-file F] [--why W] [--no-wait] -- ARGV...
 afk-run wait <id>
 ```
 
@@ -508,7 +508,39 @@ stdout and stderr and exits with the command's status. Other exits: 3 denied or 
 `afk-run wait <id>`), 76 the helper stayed busy and nothing was filed. The last stderr
 line is `afk-run: status=ran:<exit>|denied|expired|refused:<result>|pending|busy …`,
 with ` id=<id>` when one exists. Timing: `AFK_RUN_WAIT_S` (540), `AFK_RUN_POLL_S` (3),
-`AFK_RUN_BUSY_EVERY_S` (15); they are also the test seams.
+`AFK_RUN_BUSY_EVERY_S` (15); they are also the test seams. `--no-wait` files once, sends the
+control message and ends at once: 75 `pending id=<id>`, or 76 busy with nothing filed and no
+retry. It never polls; the operator's code still runs the command.
+
+### A classifier refusal files its own request
+
+The model does not call `afk-run` for a command the classifier refused: the classifier reads
+that call as a way around itself and refuses it too. Instead
+`scripts/hooks/afk-denied-to-request.sh` (`PermissionDenied`, matcher `Bash`, after
+`approval-grant-request.sh`) files the request from the refused call's own bytes:
+
+```text
+afk-run --no-wait --session <session_id> --ticket <branch ticket|none> \
+        --blocked-by classifier --cwd <cwd> --why <reason> -- ARGV
+```
+
+ARGV follows the prompt hook's rule: a plain command is its own argv; anything else is
+`bash -c <the exact bytes>`. A command any of whose words is an `afk-run` path is skipped.
+Nothing runs at filing; root runs the frozen argv once, after `NONCE CODE`, as above.
+
+It files nothing, prints nothing and exits 0 when `AFK_DENIED_TO_REQUEST_OFF=1` is set in the
+launching shell, without `jq`, for a tool other than Bash or an empty command, and unless
+`mode` answers both `enabled=true` and `run_enabled=true` (helper absent, sudo refused,
+station off or locked down, run kind off). It never asks for a `retry`.
+
+Accepted residuals:
+
+- The refused session is not told the request id: `PermissionDenied` can return only
+  `retry`, and no text reaches the model. It learns the outcome from the operator or the
+  chief, or with `afk-run wait <id>` (the id is in the notice and in root's ledger).
+- With the grant kind also on, both `PermissionDenied` hooks file. The broker holds one
+  pending slot per session, so the second answers busy and files nothing; the operator gets
+  exactly one request.
 
 Once a request is filed, `afk-run` sends the bridge bot's id-only message with the Approve /
 Deny buttons (token from `TELEGRAM_ENV`, default `~/.claude/channels/telegram/.env`, passed
