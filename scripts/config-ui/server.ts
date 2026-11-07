@@ -815,7 +815,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         // read: the checkout's own mirror and key are dropped, so a project that names none gets the default, as the cards do
         const { HIMMEL_JIRA_MIRROR: _checkoutMirror, JIRA_PROJECT_KEY: _checkoutKey, ...handover } = mergedSettings(root, env);
         const mirror = Object.fromEntries(["HIMMEL_JIRA_MIRROR", "JIRA_PROJECT_KEY"].filter((k) => benv[k]).map((k) => [k, benv[k]]));
-        return json(redactOut(await readBoardExtras({ ...handover, ...mirror })));
+        return json(redactOut(await readBoardExtras({ ...handover, ...mirror }, undefined, new URL(req.url).searchParams.get("v") || undefined)));
       }
       // every live session, for the fleet landing at /agui/ with no run. Read-only.
       if (path === "/api/agui/fleet") {

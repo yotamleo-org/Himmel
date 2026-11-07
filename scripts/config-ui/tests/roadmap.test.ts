@@ -333,9 +333,10 @@ test("Board: one filter bar and refresh above every tab, a version tile keeps th
   const r = read(station());
   for (const tab of ["roadmap", "chains", "tidy"]) {
     const html = renderBoard(r, { version: null, theme: null, tab }, { drift: driftOk(), chains: chainsOk() });
-    expect(html.match(/class="rm-bar fields"/g)?.length).toBe(1);
+    // 9488: the Chains tab has its own aside (refresh, no lane filters); the other tabs keep the one bar
+    expect(html.match(/class="rm-bar fields"/g)?.length).toBe(tab === "chains" ? undefined : 1);
     expect(html).toContain('data-act="refresh-roadmap"');
-    expect(html).toContain("data-rm-hide-done");
+    expect(html.includes("data-rm-hide-done")).toBe(tab !== "chains");
   }
   const tidy = renderBoard(r, { version: null, theme: null, tab: "tidy" }, { drift: driftOk(), chains: null });
   expect(tidy).toContain('href="#/board?tab=tidy&amp;v=v1.1.1"'); // the tile keeps Tidy up; the Roadmap tab's tiles carry no tab
@@ -403,13 +404,13 @@ test("Board: the drift banner and the Tidy up table come from the saved drift ru
 test("Board: chain badges, the waits-for-you card and the Chains tab come from the chain read; absent shows a notice, never a count", () => {
   const r = read(station());
   const html = renderBoard(r, { version: null, theme: null }, { drift: null, chains: chainsOk() });
-  expect(html).toContain("memory 1/2");
+  expect(html).toContain("memory step 1 of 2");
   expect(html).toContain("in flight");
   expect(html).toContain('href="#/board?tab=chains&amp;at=HIMMEL-1"');
   expect(html).toContain("1 waits for you");
   const chains = renderBoard(r, { version: null, theme: null, tab: "chains" }, { drift: null, chains: chainsOk() });
   expect(chains).toContain("Memory guard rework");
-  expect(chains).toContain("1/2");
+  expect(chains).toContain("1 of 2 tickets done");
   expect(chains).toContain('id="cn-HIMMEL-1"');
   for (const extras of [null, { drift: null, chains: { state: "absent", reason: "no chain registry (HIMMEL_CHAIN_REGISTRY is not set)" } }]) {
     const none = renderBoard(r, { version: null, theme: null }, extras);
@@ -1009,42 +1010,40 @@ const chainsLinked = () => ({ schema: "himmel.chains/1", now: "2026-11-03T08:00:
   burn: { total: 4, undated: 1, points: [{ day: "2026-11-01", open: 3, merged: 1 }, { day: "2026-11-02", open: 3, merged: 0 }, { day: "2026-11-03", open: 3, merged: 0 }] } });
 const chainsHtml = (ui: object = {}, ch: object = chainsLinked(), r = read(station())) => renderBoard(r, { version: null, theme: null, tab: "chains", ...ui }, { drift: null, chains: ch });
 
-test("Chains tab, words: a chain with open tickets and no next step says none can launch, and one step is one step", () => {
+test("Chains tab, words: an open chain says what is next or blocked, a finished chain is one line, and every count has its unit", () => {
   const html = chainsHtml();
-  expect(html).toContain("0/2 done · 1 step · no step can launch yet");
-  expect(html).toContain("1/2 done · 2 steps · next: step 2 HIMMEL-2");
+  expect(html).toContain("0 of 2 tickets done");
+  expect(html).toContain("1 of 2 tickets done");
+  expect(html).toContain("<small>step 1 of 2</small>");
+  expect(html).toContain("<em>NEXT</em><b>HIMMEL-2</b>");
+  expect(html).toContain("<em>BLOCKED</em><b>HIMMEL-7</b>");
   expect(html).not.toContain("no step left");
   const finished = chainsLinked();
   Object.assign(finished.chains[1], { done: 2 });
-  expect(chainsHtml({}, finished)).toContain("2/2 done · 1 step · no step left");
+  const fin = chainsHtml({}, finished);
+  expect(fin).toContain("Finished in v1.1.3 · 1 chain");
+  expect(fin).toMatch(/<details id="rm-chain-ops" class="fin"><summary>/);
+  expect(fin).toContain("2 of 2 tickets done");
 });
 
-test("Chains tab, links: the map's note travels with the map, so a phone that hides the map hides the note too", () => {
+test("Chains tab, links: no map; a link strip appears only for a link between two chains, and the list names both tickets and both chains", () => {
   const html = chainsHtml();
-  const note = html.indexOf('class="sub rm-map-note"'), map = html.indexOf('class="rm-map"');
-  expect(note).toBeGreaterThan(-1);
-  expect(note).toBeLessThan(map);
-  expect(readFileSync(new URL("../public/app.css", import.meta.url), "utf8")).toMatch(/@media \(max-width:640px\)\{\.rm-map,\.rm-map-note\{display:none\}\}/);
-});
-
-test("Chains tab, links: a map with an arrow between linked chains and a list naming both tickets and both chains", () => {
-  const html = chainsHtml();
-  expect(html).toContain(`<svg class="rm-map"`);
-  expect(html.match(/class="rm-edge open"/g)).toHaveLength(1); // ops to memory; the link to a ticket in no chain draws no arrow
-  const list = html.slice(html.indexOf(`id="rm-xlinks"`), html.indexOf(`id="rm-chain-memory"`));
-  expect(list).toContain("HIMMEL-6");
-  expect(list).toContain("HIMMEL-2");
-  expect(list).toContain("Ops cleanup");
-  expect(list).toContain("Memory guard rework");
+  expect(html).not.toContain("rm-map");
+  expect(readFileSync(new URL("../public/app.css", import.meta.url), "utf8")).not.toContain(".rm-map");
+  expect(html.match(/class="lmap"/g)).toHaveLength(1); // ops waits on memory; the link to a ticket in no chain draws no strip
+  expect(html).toContain('class="lk open"');
+  const strip = html.slice(html.indexOf('class="lmap"'), html.indexOf('class="gh"'));
+  for (const x of ["HIMMEL-6 waits on HIMMEL-2", "Ops cleanup", "Memory guard rework"]) expect(strip).toContain(x);
   expect(html).toContain("HIMMEL-21"); // the across list of its own chain still names the blocker in no chain
 });
 
-test("Chains tab, change log: a folded log per chain, counted, with each row's words; a chain with none says so", () => {
+test("Chains tab, change log: only a chain with rows has one, folded, counted, with each row's words", () => {
   const html = chainsHtml();
-  expect(html).toMatch(/<details class="rm-log" data-log="ops"><summary>Change log · 2 · last [^<]*release<\/summary>/);
+  expect(html).toMatch(/<details class="rm-log fold" data-log="ops"><summary>Change log · 2 rows · last [^<]*release<\/summary>/);
+  expect(html.match(/Change log/g)).toHaveLength(1); // the memory chain has no rows: no empty log, no "No changes logged."
+  expect(html).not.toContain("No changes logged.");
   expect(html).toContain("waiting on the freeze");
-  expect(html).toContain("No changes logged.");
-  expect(chainsHtml({ logOpen: ["ops"] })).toContain(`<details class="rm-log" data-log="ops" open>`); // a repaint keeps it open
+  expect(chainsHtml({ logOpen: ["ops"] })).toContain(`<details class="rm-log fold" data-log="ops" open>`); // a repaint keeps it open
 });
 
 test("Chains tab, Why: an open link offers it, and the panel names the blocker with the link's fields", () => {
@@ -1064,9 +1063,9 @@ test("Chains tab, Why: an open link offers it, and the panel names the blocker w
 test("Chains tab, burn-down: one point per day, the words match the last point, undated tickets are named, and a pace needs a version date", () => {
   const r = read(station());
   const html = chainsHtml({}, chainsLinked(), r);
-  const burn = html.slice(html.indexOf(`id="rm-burn"`));
+  const burn = html.slice(html.indexOf(`<details class="burn"`));
   expect(burn.match(/<circle /g)).toHaveLength(3);
-  expect(burn).toContain("3 open of 4");
+  expect(burn).toContain("3 of 4 tickets open");
   expect(burn).toContain("1 done ticket has no recorded date");
   expect(burn).not.toContain("rm-burn-pace");
   const dated = { ...r, versions: r.versions.map((v) => ({ ...v, date: v.date || "2026-11-20" })) };
@@ -1076,9 +1075,9 @@ test("Chains tab, burn-down: one point per day, the words match the last point, 
 });
 
 test("Chains tab, motion: an open link and the panel move, and reduced motion stops every animation", () => {
-  expect(chainsHtml()).toContain(`class="rm-edge open"`);
+  expect(chainsHtml()).toContain(`class="lk open"`);
   const css = readFileSync(join(import.meta.dir, "../public/app.css"), "utf8");
-  expect(css).toMatch(/\.rm-edge\.open\{[^}]*animation:/);
+  expect(css).toMatch(/\.lk\.open[^{]*\{[^}]*animation:/);
   expect(css).toMatch(/@media \(prefers-reduced-motion:reduce\)\{\*,\*::before,\*::after\{animation:none!important;transition:none!important\}\}/);
 });
 
@@ -1086,11 +1085,11 @@ test("Chains tab: with no running version the tab says so and shows no blocked c
   const { version: _v, ...noVersion } = chainsLinked();
   const html = chainsHtml({}, noVersion);
   expect(html).toContain("no running version");
-  expect(html).not.toMatch(/\d blocked/);
-  expect(chainsHtml()).toContain("1 blocked");
+  expect(html).not.toMatch(/tickets? blocked/);
+  expect(chainsHtml()).toContain("1 ticket blocked");
   const gone = chainsHtml({}, { state: "absent", reason: "no chain registry: none found" });
   expect(gone).toContain("no chain registry");
-  for (const x of ["rm-map", "rm-burn", "rm-log", "rm-why", "Change log"]) expect(gone).not.toContain(x);
+  for (const x of ['class="burn"', "rm-log", "rm-why", "Change log", 'class="cc']) expect(gone).not.toContain(x);
 });
 
 test("Chains tab: the ticket drawer is unchanged, and a Why panel never draws off the Chains tab", () => {
@@ -1123,7 +1122,7 @@ const twoReads = () => {
 test("Two chain reads: tiles, badges, lane filters, the Chain select and waits-for-you read every version, also for a version other than the running one", () => {
   const r = read(station());
   const html = renderBoard(r, { version: null, theme: null, v: "v1.1.2" }, twoReads());
-  expect(tile(html, "v1.1.2")).toContain("2 in chains"); // the narrowed read holds neither ticket
+  expect(tile(html, "v1.1.2")).not.toContain("in chains"); // 9488: no tile counts tickets in chains, in any read
   expect(html).toContain("1 waits for you");
   expect(html).toContain('href="#/board?tab=chains&amp;v=v1.1.2&amp;at=HIMMEL-1"');
   expect(html).toContain(`<option value="memory"`);
@@ -1135,8 +1134,9 @@ test("Two chain reads: the Chains tab's members, totals, blocked count and Why p
   const html = renderBoard(r, { version: null, theme: null, tab: "chains" }, twoReads());
   expect(html).toContain(`id="rm-chain-ops"`);
   expect(html).not.toContain(`id="rm-chain-memory"`);
-  expect(html).toContain("1 in v1.1.3 · 1 blocked");
-  expect(tile(html, "v1.1.2")).toContain("2 in chains");
+  expect(html).toContain("1 chain in v1.1.3");
+  expect(html).toContain("1 ticket blocked");
+  expect(html).not.toContain("in chains");
   const why = renderBoard(r, { version: null, theme: null, tab: "chains", why: "HIMMEL-7.HIMMEL-21" }, twoReads());
   expect(why).toContain("Why HIMMEL-7 waits on HIMMEL-21");
   expect(renderBoard(r, { version: null, theme: null, tab: "chains", why: "HIMMEL-1.HIMMEL-9" }, twoReads())).toContain("not in this chain read");
@@ -1144,16 +1144,17 @@ test("Two chain reads: the Chains tab's members, totals, blocked count and Why p
 
 test("Chains tab, its version: printed on the tab and in the burn-down, and a tile never highlights another version over those totals", () => {
   const html = chainsHtml({ v: "v1.1.2" });
-  expect(selected(html)).toEqual(["v1.1.3"]);
-  expect(html).toContain("This tab covers the running version, v1.1.3, not v1.1.2.");
-  expect(chainsHtml()).toContain("This tab covers the running version, v1.1.3.");
-  expect(chainsHtml({ v: "all" })).toContain("v1.1.3, not every version.");
-  const burn = html.slice(html.indexOf(`id="rm-burn"`));
-  expect(burn).toContain("3 open of 4 in v1.1.3");
-  expect(chainsHtml({}, { ...chainsLinked(), burn: { total: 2, undated: 0, points: [] } })).toContain("No merge recorded yet in v1.1.3: 2 open.");
-  expect(chainsHtml({ v: "nope<" })).not.toContain("nope<");
+  expect(chipsSelected(html)).toEqual(["v1.1.3"]);
+  expect(chainsHtml({ v: "all" })).toContain("“all versions” shows the running version, v1.1.3.");
+  expect(chainsHtml()).not.toContain("shows the running version");
+  const burn = html.slice(html.indexOf(`<details class="burn"`));
+  expect(burn).toContain("3 of 4 tickets open in v1.1.3");
+  expect(chainsHtml({}, { ...chainsLinked(), burn: { total: 2, undated: 0, points: [] } })).toContain("No merge recorded yet in v1.1.3: 2 tickets open.");
+  const fell = chainsHtml({ v: "nope<" }, { ...chainsLinked(), fellBack: { asked: "nope<", to: "v1.1.3" } });
+  expect(fell).not.toContain("nope<");
+  expect(fell).toContain("nope&lt; is not a version in the mirror, so this tab shows the running version, v1.1.3.");
   const { version: _v, ...noVersion } = chainsLinked();
-  expect(selected(chainsHtml({ v: "v1.1.2" }, noVersion))).toEqual([]); // that read covers every version, so no one tile is its version
+  expect(chipsSelected(chainsHtml({ v: "v1.1.2" }, noVersion))).toEqual([]); // that read covers every version, so no one tile is its version
   expect(chainsHtml({}, noVersion)).toContain("No running version, so there is no pace line.");
   expect(selected(renderBoard(read(station()), { version: null, theme: null, v: "v1.1.2" }, { drift: null, chains: chainsLinked() }))).toEqual(["v1.1.2"]); // off the tab a tile follows the ask
 });
@@ -1164,13 +1165,12 @@ test("Chains tab, across wording: a blocker outside the version is in no chain o
   expect(html).not.toMatch(/in no chain ·/);
   const { version: _v, ...noVersion } = chainsLinked();
   expect(chainsHtml({}, noVersion)).toMatch(/in no chain ·/);
-  expect(chainsHtml({ why: "HIMMEL-7.HIMMEL-21" }, noVersion)).toContain("HIMMEL-21 (in no chain)");
-  expect(chainsHtml({ why: "HIMMEL-7.HIMMEL-21" })).toContain("HIMMEL-21 (in no chain of v1.1.3)");
+  expect(chainsHtml({ why: "HIMMEL-7.HIMMEL-21" }, noVersion)).toContain("HIMMEL-21 (in no version)");
+  expect(chainsHtml({ why: "HIMMEL-7.HIMMEL-21" })).toContain("HIMMEL-21 (in no version; in no chain of v1.1.3)");
   const c = chainsLinked();
   const unlinked = { ...c, chains: c.chains.map((x) => ({ ...x, across: x.across.filter((a) => !a.chains.length) })) };
-  const words = chainsHtml({}, unlinked);
-  expect(words).toContain("No links between the chains of v1.1.3; a link to work outside it shows under its chain.");
-  expect(chainsHtml({}, { ...noVersion, chains: unlinked.chains })).toContain("No links across chains.");
+  expect(chainsHtml({}, unlinked)).not.toContain('class="lmap"'); // no link between two chains: no strip, and no sentence saying there is none
+  expect(chainsHtml({}, unlinked)).toContain("in no chain of v1.1.3"); // the link to work outside it still shows under its chain
 });
 
 test("Chains tab, a card's link to a ticket outside the version: the tab says so instead of highlighting nothing", () => {
@@ -1191,9 +1191,128 @@ test("Chains tab with several Board projects: a version name carrying its projec
   const named = { ...r, versions: r.versions.map((v) => ({ ...v, n: `${v.n} (HIMMEL)`, date: "2026-11-20" })) };
   const html = chainsHtml({}, chainsLinked(), named);
   expect(html).toContain("rm-burn-pace");
-  expect(selected(html)).toEqual(["v1.1.3 (HIMMEL)"]);
-  for (const v of ["v1.1.3", "v1.1.3 (HIMMEL)"]) expect(chainsHtml({ v }, chainsLinked(), named)).toContain("This tab covers the running version, v1.1.3.");
-  expect(chainsHtml({ v: "v1.1.2 (HIMMEL)" }, chainsLinked(), named)).toContain("v1.1.3, not v1.1.2 (HIMMEL).");
+  expect(chipsSelected(html)).toEqual(["v1.1.3 (HIMMEL)"]);
+  for (const v of ["v1.1.3", "v1.1.3 (HIMMEL)", "v1.1.2 (HIMMEL)"]) expect(chipsSelected(chainsHtml({ v }, chainsLinked(), named))).toEqual(["v1.1.3 (HIMMEL)"]); // the chip follows the read, not the ask
+});
+
+// ---- The compact Chains tab. Every number below is seeded here, never copied from a live read. ----
+const tkt = (key: string, state: string, chain: string, step: number, steps: number, links: object[] = []) =>
+  ({ key, title: `${key} full title`, state, done: state === "done", chains: [{ id: chain, step, steps, state }], links });
+const lnk = (on: string, onVersions: string[] | null, status = "open") => ({ ...linkOf(on, status), onVersions });
+// the tab's read (version v1.1.3: two chains, three tickets) and the whole read (more tickets, one more chain)
+const narrow3 = () => ({ schema: "himmel.chains/1", now: "2026-11-03T08:00:00.000Z", version: "v1.1.3",
+  chains: [{ id: "alpha", name: "Alpha chain", members: [K(1), K(2)], total: 2, done: 1, steps: 2, next: { step: 2, keys: [K(2)] }, across: [], log: [] },
+    { id: "beta", name: "Beta chain", members: [K(6)], total: 1, done: 0, steps: 1, next: null, across: [], log: [] }],
+  tickets: { [K(1)]: tkt(K(1), "done", "alpha", 1, 2), [K(2)]: tkt(K(2), "can launch", "alpha", 2, 2), [K(6)]: tkt(K(6), "in flight", "beta", 1, 1) },
+  burn: { total: 3, undated: 0, points: [{ day: "2026-11-01", open: 2, merged: 1 }] } });
+const whole6 = () => ({ schema: "himmel.chains/1", version: null,
+  chains: [{ id: "alpha", name: "Alpha chain", members: [K(1), K(2), K(5)], total: 3, done: 1, steps: 2, next: null, across: [], log: [] },
+    { id: "beta", name: "Beta chain", members: [K(6), K(7)], total: 2, done: 0, steps: 1, next: null, across: [], log: [] },
+    { id: "gamma", name: "Gamma chain", members: [K(3), K(4)], total: 2, done: 1, steps: 1, next: null, across: [], log: [] }],
+  tickets: { [K(1)]: tkt(K(1), "done", "alpha", 1, 2), [K(2)]: tkt(K(2), "can launch", "alpha", 2, 2), [K(5)]: tkt(K(5), "can launch", "alpha", 2, 2),
+    [K(6)]: tkt(K(6), "in flight", "beta", 1, 1), [K(7)]: tkt(K(7), "blocked", "beta", 1, 1), [K(3)]: tkt(K(3), "done", "gamma", 1, 1) } });
+const two = (ui: object = {}, narrowed: object = narrow3(), whole: object = whole6(), r = read(station())) =>
+  renderBoard(r, { version: null, theme: null, tab: "chains", ...ui }, { drift: null, chains: whole, versionChains: narrowed });
+const panelOf = (html: string) => html.slice(html.indexOf('id="rm-chains"'));
+const chipsSelected = (html: string) => html.split('<a class="vc').filter((x) => x.startsWith(' sel"')).map((x) => /<b>([^<]*)<\/b>/.exec(x)?.[1]);
+
+test("9488 counts agree: the tab's chains and tickets come from one read and no version tile counts 'in chains'", () => {
+  const html = two();
+  expect(html).toMatch(/Chains\s*<span class="cnt">2<\/span>/);
+  expect(panelOf(html)).toContain("<b>3 tickets</b>");
+  expect(html).not.toContain("in chains"); // the unit-less tile number is gone from every tile
+  expect(html).not.toContain("6 tickets"); // the whole read's 6 are not the tab's
+  // the number on the tab is the sum of the chain rows drawn, also when the whole read is bigger than the version's
+  const drawn = (panelOf(html).match(/<article id="rm-chain-/g) || []).length + (panelOf(html).match(/<details id="rm-chain-/g) || []).length;
+  expect(drawn).toBe(2);
+});
+
+test("9488 tiles drive the tab: a picked version names itself, selects its tile and names the key of every outside ticket", () => {
+  const n = narrow3();
+  const picked = { ...n, version: "v1.1.2", chains: [{ ...n.chains[0], members: [K(1), K(2)] }], tickets: { [K(1)]: n.tickets[K(1)], [K(2)]: n.tickets[K(2)] } };
+  const wh = whole6();
+  wh.chains[0].members = [K(1), K(2), K(6)]; // the sixth ticket is in v1.1.3
+  const html = two({ v: "v1.1.2" }, picked, wh);
+  expect(chipsSelected(html)).toEqual(["v1.1.2"]);
+  expect(panelOf(html)).toContain("1 chain in v1.1.2");
+  expect(panelOf(html)).toContain("+1 ticket outside v1.1.2");
+  expect(panelOf(html)).toContain("HIMMEL-6 in v1.1.3"); // the key is in the text, never only in a hover bubble
+  expect(panelOf(html)).not.toContain("rm-tip");
+});
+
+// Call 4: a ticket is blocked only when nothing lands its blocker before the version.
+const waitCase = (sel: string, onVersions: string[] | null) => {
+  const n = narrow3();
+  const v = { ...n, version: sel, chains: [n.chains[1]], tickets: { [K(6)]: tkt(K(6), "blocked", "beta", 1, 1, [lnk("HIMMEL-21", onVersions)]) } };
+  return two({ v: sel }, v);
+};
+test("9488 call 4: a blocker in an earlier open version is a wait, not a block; later, no version and released-open are blocked", () => {
+  const earlier = waitCase("v1.1.3", ["v1.1.2"]);
+  expect(panelOf(earlier)).toContain("waits on v1.1.2");
+  expect(panelOf(earlier)).not.toMatch(/class="tk bd/);
+  expect(panelOf(earlier)).not.toMatch(/class="cc red/);
+  expect(earlier).not.toContain("blocked</span>"); // no blocked chip on the tab
+  expect(panelOf(earlier)).toContain("0 tickets blocked");
+  for (const [sel, on] of [["v1.1.2", ["v1.1.3"]], ["v1.1.3", []], ["v1.1.3", ["v1.1.1"]]] as [string, string[]][]) {
+    const html = waitCase(sel, on);
+    expect(panelOf(html)).toMatch(/class="tk bd/);
+    expect(panelOf(html)).toMatch(/class="cc red/);
+    expect(panelOf(html)).toContain("1 ticket blocked");
+    expect(html).toContain("⛔ 1 ticket blocked"); // the tab's chip
+  }
+  expect(panelOf(waitCase("v1.1.3", []))).toContain("in no version");
+  expect(panelOf(waitCase("v1.1.3", ["v1.1.1"]))).toContain("a released version, and still open");
+  expect(panelOf(waitCase("v1.1.2", ["v1.1.3"]))).toContain("a later version");
+});
+
+test("9488 critic minors: no wording that says a later-version blocker is unplanned, full count keys, the 8430 state, the foot line and the phone's named ticket", () => {
+  const html = two({ v: "v1.1.2" }, (() => { const n = narrow3(); return { ...n, version: "v1.1.2", chains: [{ ...n.chains[0], members: [K(1), K(2)] }], tickets: { [K(1)]: n.tickets[K(1)], [K(2)]: n.tickets[K(2)] } }; })(),
+    (() => { const w = whole6(); w.chains[0].members = [K(1), K(2), K(6)]; return w; })());
+  // m1
+  for (const bad of ["nothing plans the ticket", "Giving 8430 a version clears this", "is about to do"]) expect(html).not.toContain(bad);
+  // m2
+  expect(panelOf(html).replace(/<a class="tk[^]*?<\/a>/g, "")).not.toMatch(/\b\d+ (blocked|can launch|in flight|waiting|done)\b/); // a ticket chip's "2 can launch" is a key and a state
+  expect(panelOf(html)).toContain("1 ticket can launch");
+  // m5: the ticket that can launch shows that state in its box
+  expect(panelOf(html)).toMatch(/class="tk go[^"]*"[^>]*>[^<]*<span class="gl" aria-hidden="true">▷<\/span> 2 can launch/);
+  // m3: the foot line names the chain with no ticket in this version and where to pick it; the refresh control and the versions menu are real
+  expect(panelOf(html)).toContain("2 more chains, beta, gamma, have no ticket in v1.1.2.");
+  expect(panelOf(html)).toContain('href="#/board?tab=chains&amp;v=v1.1.1">v1.1.1</a> to see them');
+  expect(panelOf(two())).toContain("1 more chain, gamma, has no ticket in v1.1.3. Pick");
+  expect(html).toContain('data-act="refresh-roadmap"');
+  expect(html).toMatch(/<details class="vmenu"[^>]*><summary>\d of 3 versions/);
+  expect(html).toContain("Tickets and titles · 2 tickets"); // full titles on the phone's fold
+  expect(panelOf(html)).toContain("HIMMEL-2 full title");
+});
+
+test("9488 the Chains tab has no Chain select, Hide Done, Sector or 'all versions'; the Roadmap tab keeps them", () => {
+  const html = two();
+  for (const x of ["data-rm-chain", "data-rm-hide-done", 'data-rm-filter="theme"', "all versions"]) expect(html).not.toContain(x);
+  expect(html).not.toContain("drift"); // no drift banner on this tab
+  const road = renderBoard(read(station()), { version: null, theme: null, tab: "roadmap" }, { drift: null, chains: whole6(), versionChains: narrow3() });
+  for (const x of ["data-rm-chain", "data-rm-hide-done", 'data-rm-filter="theme"', "all versions"]) expect(road).toContain(x);
+});
+
+test("9488 v=all on the Chains tab shows the running version and says so in one line; the link strip shows only when a link exists", () => {
+  const html = two({ v: "all" });
+  expect(panelOf(html)).toContain("“all versions” shows the running version, v1.1.3.");
+  expect(html).not.toContain('class="lmap"');
+  const n = narrow3();
+  n.chains[1].across = [{ dir: "waits-on", key: K(6), on: K(2), kind: "jira-link", status: "open", chains: ["alpha"] }] as never;
+  const linked = two({}, n);
+  expect(linked).toContain('class="lmap"');
+  expect(linked).toContain("HIMMEL-6 waits on HIMMEL-2");
+});
+
+test("9488 the burn-down is folded, says the cut date passed, and draws no pace line when the date is before the first merge", () => {
+  const r = read(station());
+  const dated = { ...r, versions: r.versions.map((v) => ({ ...v, date: "2026-10-22" })) };
+  const html = two({}, narrow3(), whole6(), dated);
+  expect(panelOf(html)).toMatch(/<details class="burn"><summary>Burn-down<\/summary>/);
+  expect(panelOf(html)).toContain("The cut date, 2026-10-22, has passed, so no pace line is drawn.");
+  expect(panelOf(html)).not.toContain("rm-burn-pace");
+  const future = { ...r, versions: r.versions.map((v) => ({ ...v, date: "2026-11-20" })) };
+  expect(panelOf(two({}, narrow3(), whole6(), future))).toContain("rm-burn-pace");
 });
 
 // ---- the dense Board. Review and CI share a column, Won't is a lane that takes drops, and every clamped text keeps its full text ----
@@ -1221,7 +1340,7 @@ test("9100 Board: a 200-character title and a 60-character chain name keep their
     tickets: { [K(1)]: { key: K(1), state: "in flight", chains: [{ id: CHAIN, step: 1, steps: 1, state: "in flight" }], badges: [CHAIN], more: 0 } } };
   const html = renderBoard({ ...r, tickets }, { version: null, theme: null }, { chains: ch });
   expect(html).toContain(`<div class="rm-tip rm-title" data-tip="${LONG}">`);
-  expect(html).toContain(`data-tip="● ${CHAIN} 1/1 · in flight"`); // the badge's visible text, glyph included
+  expect(html).toContain(`data-tip="● ${CHAIN} step 1 of 1 · in flight"`); // the badge's visible text, glyph included
   const card = [...html.matchAll(/<div class="rm-card"[^>]*>/g)].map((m) => m[0]).find((c) => c.includes(LONG))!;
   expect(card).toContain('role="button"');
   expect(card).toContain(`aria-label="${K(1)}: ${LONG}"`);

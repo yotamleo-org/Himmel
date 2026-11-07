@@ -70,6 +70,22 @@ check "E25: the earlier step is in flight" "$(tk HIMMEL-1 .state)" "in flight"
 check "E25: an open blocker outside the version is a real block" "$(tk HIMMEL-3 .state)" "blocked"
 check "E25: nothing open stops a ticket: can launch" "$(tk HIMMEL-4 .state)" "can launch"
 check "E25: a ticket in no chain is not listed" "$(tk HIMMEL-9 .key)" "null"
+# Each link carries its blocker's fixVersions so a page narrowed to one version can tell a wait on an earlier version from a block
+check "E25b: a link to a blocker in a later version names that version" "$(tk HIMMEL-3 '.links[0].onVersions | join(",")')" "v2"
+check "E25b: a link to a blocker in the picked version names it" "$(tk HIMMEL-2 '.links[0].onVersions | join(",")')" "v1"
+reset
+reg chain-nov=1,2
+issue HIMMEL-1 "To Do" labels='["chain-nov"]' bb='["HIMMEL-7"]'
+issue HIMMEL-7 "To Do" versions='[]'
+issue HIMMEL-2 "To Do" labels='["chain-nov"]'
+cl '{"ts":"2026-11-01T00:00:00Z","change":"hold","key":"HIMMEL-2","kind":"operator","who":"chief"}'
+cs
+nov_len=$(tk HIMMEL-1 '.links[0].onVersions | length')
+nov_state=$(tk HIMMEL-1 .state)
+hold_vs=$(tk HIMMEL-2 '.links[0].onVersions')
+check "E25b: a blocker with no version has an empty list, and it is still blocked" "$nov_len $nov_state" "0 blocked"
+check "E25b: a hold that names no ticket has no blocker versions" "$hold_vs" "null"
+check "E25b: the word blocked and the exit code are unchanged" "$nov_state" "blocked"
 
 # --- E29: the order check at the completing merge ----------------------------
 reset

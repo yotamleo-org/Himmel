@@ -13,7 +13,7 @@ import { jiraMirrorDir } from "./tracker-sources";
 
 type Env = Record<string, string | undefined>;
 export type Absent = { state: "absent"; reason: string };
-// chains: every version, for the whole Board. versionChains: the running version, for the Chains tab alone, with its burn-down.
+// chains: every version, for the whole Board. versionChains: the picked version (else the running one), for the Chains tab alone, with its burn-down.
 export type BoardExtras = { drift: Record<string, unknown> | Absent; chains: Record<string, unknown> | Absent; versionChains: Record<string, unknown> | Absent };
 
 const KIT = resolve(import.meta.dir, "../handover/chief-kit");
@@ -54,12 +54,12 @@ export function driftFile(env: Env): string | undefined {
 }
 export const chainRegistry = (env: Env) => env.HIMMEL_CHAIN_REGISTRY || inHandoverRoot(env, "chains.json");
 
-// The version the cards call running. Without it the chain read covers every version, and a blocker outside the version cannot read as blocked.
+// The versions the Board lists and the one the cards call running. Without a running version the chain read covers every version, and a blocker outside the version cannot read as blocked.
 // ponytail: this reads the mirror a second time beside GET /api/roadmap, upgrade path: hand the page's own read to this one if it ever shows in the Board's load time.
-function runningVersion(mirror: string, env: Env, read: typeof readRoadmap): string | undefined | Absent {
+function boardVersions(mirror: string, env: Env, read: typeof readRoadmap): { running: string | undefined; names: string[] } | Absent {
   try {
     const r = read({ mirrorDir: mirror, projects: [{ key: env.JIRA_PROJECT_KEY || "HIMMEL", dir: mirror }], workers: { state: "absent" } });
-    return r.versions[r.cur]?.n;
+    return { running: r.versions[r.cur]?.n, names: r.versions.map((v) => v.n) };
   } catch (e) { return absent(`the running version could not be read: ${(e as Error).message}`); } // a failed read, never "no running version"
 }
 
@@ -114,7 +114,8 @@ export async function refreshDrift(env: Env, cwd: string, timeoutMs = DRIFT_REFR
   return { state: "ok", sdrift: last.slice("sdrift=".length) };
 }
 
-export async function readBoardExtras(env: Env, read: typeof readRoadmap = readRoadmap): Promise<BoardExtras> {
+// `asked`: the version tile picked on the page. A known one is the version the tab reads; an unknown one reads as the running version and the answer says so (fellBack).
+export async function readBoardExtras(env: Env, read: typeof readRoadmap = readRoadmap, asked?: string): Promise<BoardExtras> {
   const mirror = jiraMirrorDir(env);
   const file = driftFile(env);
   const registry = chainRegistry(env);
@@ -128,8 +129,10 @@ export async function readBoardExtras(env: Env, read: typeof readRoadmap = readR
   const chainRead = (extra: string[]) => runReader(join(KIT, "chain-state.mjs"), ["--json", "--registry", registry, "--mirror", mirror, ...extra], env, "the chain read");
   const withBurn = (r: Record<string, unknown> | Absent) => ("tickets" in r ? { ...r, burn: burnDown(r as Parameters<typeof burnDown>[0]) } : r);
   const whole = chainRead([]);
-  const version = runningVersion(mirror, env, read);
-  const forTab = typeof version === "object" ? Promise.resolve(version) : (version ? chainRead(["--version", version]) : whole).then(withBurn);
+  const vs = boardVersions(mirror, env, read);
+  const pick = "state" in vs ? undefined : asked && vs.names.includes(asked) ? asked : vs.running;
+  const fell = !("state" in vs) && asked && pick !== asked ? { fellBack: { asked, to: vs.running ?? null } } : {};
+  const forTab = "state" in vs ? Promise.resolve(vs) : (pick ? chainRead(["--version", pick]) : whole).then(withBurn).then((r) => ("tickets" in r ? { ...r, ...fell } : r));
   const [d, chains, versionChains] = await Promise.all([drift, whole, forTab]);
   return { drift: d, chains, versionChains };
 }

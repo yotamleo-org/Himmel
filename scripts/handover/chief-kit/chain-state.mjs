@@ -226,6 +226,7 @@ function linksAt(key, at) {
         const clears = l.kind === 'date' ? l.until : l.on ? `${l.on} completes` : 'a release';
         return { on: l.on, kind: l.kind, source: l.source, added: l.added === null ? null : iso(l.added),
             reason: l.reason, owner: l.owner, until: l.until, clears,
+            onVersions: l.on ? issues.get(l.on)?.versions ?? [] : null,
             status: ends.length ? ends[0][0] : l.on && !issues.get(l.on)?.known ? 'unknown' : 'open',
             at: ends.length ? iso(ends[0][1]) : null };
     });
