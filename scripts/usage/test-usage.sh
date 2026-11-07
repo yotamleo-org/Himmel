@@ -726,7 +726,7 @@ check "windows (d): it says no window is left to build" "yes" "$(grep -q '0 wind
 WE="$ROOT/win/store-e"
 check "windows (e): the run reached the pause after the first transcript" "reached" "$(wkill "$WE" file:1)"
 check "windows (e): the first transcript's offset is saved before its window is committed" "1/0" \
-  "$(find "$WE/phase-cost-state" -maxdepth 1 -name '*.json' 2>/dev/null | wc -l | tr -d ' ')/$(if [ -f "$WE/records.jsonl" ]; then wc -l < "$WE/records.jsonl" | tr -d ' '; else echo 0; fi)"
+  "$(n=0; for p in "$WE/phase-cost-state"/*.json; do [ ! -f "$p" ] || n=$((n + 1)); done; echo "$n")/$(if [ -f "$WE/records.jsonl" ]; then wc -l < "$WE/records.jsonl" | tr -d ' '; else echo 0; fi)"
 rm -f "$WE/.lock/pid"; rmdir "$WE/.lock"
 rc=0; wrun "$WE" --budget-seconds 0 >/dev/null || rc=$?
 check "windows (e): the rerun reads only the transcript left in window 1" "yes" \
