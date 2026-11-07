@@ -5,10 +5,12 @@ Usage: spec-page-gen.py <spec.md> <out.html>
 
 The page names its source in <meta name="spec-source" content="<absolute path of the md>">;
 chief-route.ts send-file reads that marker (markedSource) to find the critic files that
-govern the page wherever the copy sits. The page carries no draft status text: the front matter
-status is left out, and a body line starting with Status: or saying "not for signature" makes the
-generator refuse (naming the line) and write nothing, because the draft state lives in the missing
-critic seal. It prints two lines, the sha256 of the md it read and of the page it wrote; the critic
+govern the page wherever the copy sits. The page carries no draft status text. An ordinary front
+matter status is left out of the page; a front matter status holding "draft" or "not for signature",
+a body line starting with Status:, and a body line saying "not for signature" make the generator
+refuse (naming file and line) and write nothing, because the draft state lives in the missing critic
+seal. Only the plain spellings are refused: a decorated one (a bold or quoted Status:, other draft
+wording) is not, and the page reaches the operator only after a critic reads those bytes. It prints two lines, the sha256 of the md it read and of the page it wrote; the critic
 reads both files, quotes both shas, and both get sealed (chief-kit/critic-seal.sh, one run per file),
 because send-file wants a seal for the page's own bytes.
 """
@@ -138,8 +140,12 @@ def main():
     for n, line in enumerate(body.split("\n"), first + 1):
         if DRAFT_LINE.search(line):
             sys.exit(f"spec-page-gen: {spec}:{n} is a draft status line ({line.strip()[:80]!r}); the draft state lives in the missing critic seal, not in the page words. Remove the line from the md, generate the page again, then run the critic on the md and the new page. Nothing written")
+    if fm:
+        for n, line in enumerate(md[:fm.end()].split("\n"), 1):
+            if re.match(r"\s*status\s*:", line, re.I) and re.search(r"\bdraft\b|not for signature", line.split(":", 1)[1], re.I):
+                sys.exit(f"spec-page-gen: {spec}:{n} is a front matter status holding draft text ({line.strip()[:80]!r}); the draft state lives in the missing critic seal, not in the md. Remove the words from the status, generate the page again, then run the critic on the md and the new page. Nothing written")
     title = re.search(r"^# (.+)$", body, re.M)
-    bar = " | ".join(html.escape(meta[k][:9] if k == "base" else meta[k]) for k in ("tickets", "date", "base", "author") if k in meta)
+    bar =" | ".join(html.escape(meta[k][:9] if k == "base" else meta[k]) for k in ("tickets", "date", "base", "author") if k in meta)
     if DRAFT_LINE.search(bar):
         sys.exit(f"spec-page-gen: the front matter metadata of {spec} carries draft text; nothing written")
     page = f"""<!doctype html>

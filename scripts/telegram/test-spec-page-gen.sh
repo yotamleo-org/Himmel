@@ -42,10 +42,13 @@ lacks "the page does not say Not for signature" "ot for signature" "$page"
 echo "== draft status =="
 printf -- '---\ntickets: HIMMEL-1\nstatus: DRAFT, no critic has read this. Not for signature.\n---\n\n# Front matter status\n\nBody.\n' > "$T/fmstatus.md"
 out="$(gen "$T/fmstatus.md" "$T/fmstatus.html")"; rc=$?
-[ "$rc" -eq 0 ] && pass "a draft status in the front matter generates" || fail "a draft status in the front matter generates" "$out"
-page="$(cat "$T/fmstatus.html" 2>/dev/null)"
-lacks "the front matter status is left out of the page" "DRAFT" "$page"
-lacks "the front matter status leaves no Not for signature" "ot for signature" "$page"
+[ "$rc" -ne 0 ] && [ ! -e "$T/fmstatus.html" ] && pass "a front matter status holding draft text is refused and writes no page" || fail "a front matter status holding draft text is refused and writes no page" "$out"
+has "the refusal names the file and the front matter line" "fmstatus.md:3" "$out"
+printf -- '---\ntickets: HIMMEL-1\nstatus: Revision r10. Critic status: the verdict files beside this spec decide.\n---\n\n# Ordinary status\n\nBody.\n' > "$T/okstatus.md"
+out="$(gen "$T/okstatus.md" "$T/okstatus.html")"; rc=$?
+[ "$rc" -eq 0 ] && pass "an ordinary front matter status generates" || fail "an ordinary front matter status generates" "$out"
+page="$(cat "$T/okstatus.html" 2>/dev/null)"
+lacks "an ordinary front matter status is left off the page" "Revision r10" "$page"
 printf '# Body status\n\nStatus: DRAFT, no critic has read this revision.\n\nBody.\n' > "$T/bodystatus.md"
 out="$(gen "$T/bodystatus.md" "$T/bodystatus.html")"; rc=$?
 [ "$rc" -ne 0 ] && pass "a Status: line in the body is refused" || fail "a Status: line in the body is refused" "$out"
