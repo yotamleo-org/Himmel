@@ -852,6 +852,7 @@ document.addEventListener("dragend", () => { rmDrag = null; });
 // is open, a field has focus, a card is being dragged or a read of this kind is still running.
 let boardReads = 0;
 setInterval(() => {
+  if (typeof document === "undefined") return; // a suite that imports this module without a page has nothing to refresh
   const a = document.activeElement;
   if (!boardRefreshDue({ page: currentPage.id, visible: document.visibilityState === "visible", modal: !!(roadmapUi.drawer || roadmapUi.why),
     editing: !!(a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)), dragging: rmDrag !== null, busy: boardReads > 0, readAt: roadmapUi.readAt || 0, now: Date.now() })) return;

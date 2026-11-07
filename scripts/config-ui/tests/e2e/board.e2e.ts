@@ -301,7 +301,7 @@ test("the Chain filter narrows the lanes to that chain's tickets", async ({ page
   await expect(page.locator(".rm-card", { hasText: "Second chain step" })).toBeVisible();
 });
 
-test("a ticket with no fixVersion is on its own No version tab, fetched only when the tab opens; no version board has it", async ({ page }) => {
+test("a ticket with no fixVersion is on its own No version tab, read once beside the default read; no version board has it", async ({ page }) => {
   const errs = consoleErrors(page);
   const reads: string[] = [];
   page.on("request", (r) => { if (r.url().includes("/api/roadmap")) reads.push(r.url()); });
