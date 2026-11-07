@@ -1,7 +1,8 @@
 # gate-bypass.tsv - operator-recorded bypasses of the reviewer-eval merge gate (HIMMEL-9259).
 # One row per bypass, four TAB-separated columns:
-#   pr <TAB> head sha prefix (7 to 40 lowercase hex) <TAB> decision id <TAB> reason
-# scripts/ci/check-critic-eval.sh reads this file at the PR BASE, never the head, so a PR cannot add its own row.
+#   pr <TAB> head sha prefix (7 to 40 lowercase hex; a new row writes the full 40-hex head) <TAB> decision id <TAB> reason
+# scripts/ci/check-critic-eval.sh reads this file at the default branch's tip as CI's checkout holds it (else at
+# the diff base), never from the PR's own tree, so a PR cannot add its own row.
 # A row is honoured only for its PR number at its head; a malformed row fails the gate closed.
 # A row lands by a chief-ruled change of its own, citing the operator decision in column 3.
 # pr	head	decision	reason

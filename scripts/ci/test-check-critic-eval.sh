@@ -25,7 +25,7 @@ command -v python3 >/dev/null 2>&1 || { echo "SKIP test-check-critic-eval: pytho
 # The real inputs of the gate: everything the CBS can expand to, the eval's own tree and the roster.
 SRC_PATHS="scripts/cr scripts/lib/critics-config.sh scripts/hermes/invoke.sh scripts/eval/review-panel/cbs.txt scripts/eval/review-panel/gate-bypass.tsv scripts/eval/review-panel/fixtures scripts/eval/review-panel/key"
 # The gate reads the PR number from these; a CI run of this suite must not leak its own into a row.
-unset GITHUB_REF CHECK_CRITIC_EVAL_PR
+unset GITHUB_REF CHECK_CRITIC_EVAL_PR GITHUB_BASE_REF GITHUB_EVENT_PATH
 
 gitc() { git -C "$R" -c user.name=t -c user.email=t@example.invalid -c core.hooksPath=/dev/null -c commit.gpgsign=false "$@"; }
 # fixture <name>: a repo holding the real gate inputs, one base commit; sets R and BASE.
@@ -128,7 +128,8 @@ gitc add -A && gitc commit -q -m own-diff
 gate "a diff over HIMMEL-8426's own paths passes" 0 "no protected critic path changed"
 
 # --- a critic path the eval sweep never executes ---------------------------------------
-# cbs.txt tags those paths `# unexecuted: <path>`; the gate reads the tags, and the bypass file, from the BASE tree.
+# cbs.txt tags those paths `# unexecuted: <path>`; the gate reads the tags at the diff base and the bypass file at
+# the default branch's tip (falling back to the diff base), never from the head.
 BYP=scripts/eval/review-panel/gate-bypass.tsv
 fixture unexec
 commit_edit scripts/cr/panel-first-pass.sh '# a pr-check flow change' >/dev/null
@@ -198,6 +199,96 @@ for bad in "$(brow 4690 "${H:0:6}" 592 'prefix too short')" "$(brow 4690 "zzzzzz
 done
 with_bypass "$(brow 4690 "${H:0:6}" 592 'prefix too short')" "$(brow 4690 "${H:0:7}" 592 'a good row')"
 CHECK_CRITIC_EVAL_PR=4690 gate "a malformed row next to a good one still fails closed" 1 "malformed"
+
+# --- CI's merge ref: the diff base is its first parent, the bypass file is read at main's tip ----------
+# P1 is a newer main than BASE0, which stays <base> as the event's base.sha does. on_merge_ref <edit> runs the
+# PR's <edit> on BASE0 to make the PR head PRH, and again on HEAD (P1) to make the tree of M, the merge ref CI
+# builds: parents P1 and PRH. It checks out M (detached).
+on_merge_ref() {
+    local p1; p1="$(gitc rev-parse HEAD)"
+    gitc checkout -q "$BASE0" && "$1" && gitc add -A && gitc commit -q -m pr && PRH="$(gitc rev-parse HEAD)" || return 1
+    gitc checkout -q "$p1" && "$1" && gitc add -A && gitc commit -q -m pr-on-main || return 1
+    M="$(gitc commit-tree "$(gitc rev-parse 'HEAD^{tree}')" -p "$p1" -p "$PRH" -m merge-ref)" && gitc checkout -q "$M"
+}
+add_line() { printf '%s\n' "$2" >> "$R/$1"; }
+untrack_first_pass() { python3 -c 'import sys
+p = sys.argv[1]
+keep = [l for l in open(p) if l.strip() not in ("scripts/cr/critic-first-pass.sh", "scripts/cr/critic-*.sh")]
+open(p, "w").writelines(keep)' "$R/scripts/eval/review-panel/cbs.txt"; }
+pr_note() { add_line scripts/cr/notes-not-a-critic.txt 'not a critic file'; }
+pr_critic() { add_line scripts/cr/critic-first-pass.sh '# a critic change'; }
+# event <default branch>: a pull_request event file in the shape the runner writes at GITHUB_EVENT_PATH (ci.yml
+# reads github.event.repository.default_branch from it); prints its path.
+event() {
+    python3 -c 'import json,sys
+json.dump({"action": "synchronize", "number": 4690,
+           "pull_request": {"number": 4690, "base": {"ref": "main", "sha": sys.argv[2]}, "head": {"sha": sys.argv[3]}},
+           "repository": {"full_name": "owner/repo", "default_branch": sys.argv[1]}}, open(sys.argv[4], "w"))' \
+        "$1" "$BASE0" "$PRH" "$WORK/event-$1.json" && printf '%s\n' "$WORK/event-$1.json"
+}
+# ci <default branch> <gate args>: run the gate as CI does for PR 4690's merge ref, base branch main.
+ci() { local ev; ev="$(event "$1")"; shift; GITHUB_REF=refs/pull/4690/merge GITHUB_BASE_REF=main GITHUB_EVENT_PATH="$ev" gate "$@"; }
+
+fixture mr-diff
+BASE0="$BASE"
+commit_edit scripts/cr/critic-panel.sh '# a critic change on main' >/dev/null
+on_merge_ref pr_note
+GITHUB_REF=refs/pull/4690/merge gate "a critic change main gained after the PR opened is not the PR's (the diff runs from the first parent)" 0 "no protected critic path changed"
+
+fixture mr-cbs
+BASE0="$BASE"
+untrack_first_pass; gitc add -A && gitc commit -q -m "main drops a file from cbs.txt"
+on_merge_ref pr_critic
+GITHUB_REF=refs/pull/4690/merge gate "a file main dropped from cbs.txt after the PR opened is not gated (the first parent's cbs.txt)" 0 "no protected critic path changed"
+
+fixture mr-tag
+BASE0="$BASE"
+add_line scripts/eval/review-panel/cbs.txt '# unexecuted: scripts/cr/critic-first-pass.sh'; gitc add -A && gitc commit -q -m "main tags a path"
+on_merge_ref pr_critic
+GITHUB_REF=refs/pull/4690/merge gate "a tag main added after the PR opened counts (the first parent's tags)" 0 "only paths the sweep never executes changed: scripts/cr/critic-first-pass.sh"
+
+fixture mr-rows
+BASE0="$BASE"
+commit_edit scripts/cr/critic-panel.sh '# a critic change on main' >/dev/null
+on_merge_ref pr_critic
+B="$(cbs_hash "$M^1")"; H="$(cbs_hash "$M")"; C="$(confighash "$M")"
+[ -n "$B" ] && [ "$B" != "$(cbs_hash "$BASE0")" ] && pass "main's critic change moves the first parent's cbs_hash" || fail "main's critic change moves the first parent's cbs_hash ($B)"
+rm -f "$R/$RES"; rows "$R/$RES" "b1:$B:$C:0.50:0.10" "b2:$B:$C:0.60:0.10" "h1:$H:$C:0.55:0.10" "h2:$H:$C:0.50:0.10"
+gitc add -A && M="$(gitc commit-tree "$(gitc write-tree)" -p "$M^1" -p "$PRH" -m merge-ref)" && gitc checkout -q "$M"
+GITHUB_REF=refs/pull/4690/merge gate "the base rows are read at the first parent's cbs_hash" 0 "gate: no-loss"
+
+# A PR's own tag, cbs.txt drop or bypass row still counts for nothing on the merge ref.
+fixture mr-guard
+BASE0="$BASE"
+commit_edit scripts/cr/notes-not-a-critic.txt 'a non-critic change on main' >/dev/null
+P1="$(gitc rev-parse HEAD)"
+pr_self_tag() { pr_critic; add_line scripts/eval/review-panel/cbs.txt '# unexecuted: scripts/cr/critic-first-pass.sh'; }
+on_merge_ref pr_self_tag
+GITHUB_REF=refs/pull/4690/merge gate "on the merge ref, a tag only in the PR's own cbs.txt does not exempt its edit" 1 "no eval rows"
+gitc checkout -q "$P1"
+pr_self_drop() { pr_critic; untrack_first_pass; }
+on_merge_ref pr_self_drop
+GITHUB_REF=refs/pull/4690/merge gate "on the merge ref, dropping its own edited file from cbs.txt does not ungate it" 1 "no eval rows"
+gitc checkout -q "$P1"
+on_merge_ref pr_critic
+gitc checkout -q "$P1"; pr_critic; brow 4690 "$PRH" 592 'self-granted' >> "$R/$BYP"; gitc add -A && gitc commit -q -m "own bypass"
+M="$(gitc commit-tree "$(gitc rev-parse 'HEAD^{tree}')" -p "$P1" -p "$PRH" -m merge-ref)"; gitc checkout -q "$M"
+gitc update-ref refs/remotes/origin/main "$P1"
+ci main "a bypass row only in the PR's own tree is ignored when main's tip is read" 1 "no eval rows"
+
+fixture mr-bypass
+BASE0="$BASE"
+commit_edit scripts/cr/notes-not-a-critic.txt 'a non-critic change on main' >/dev/null
+P1="$(gitc rev-parse HEAD)"
+on_merge_ref pr_critic
+gitc checkout -q "$P1"; brow 4690 "$PRH" 592 'recorded after the PR opened' >> "$R/$BYP"; gitc add -A && gitc commit -q -m "main records a bypass"
+TIP="$(gitc rev-parse HEAD)"; gitc checkout -q "$M"
+gitc update-ref refs/remotes/origin/main "$TIP"
+ci main "a bypass row main gained after the merge ref was built is read at main's tip" 0 "BYPASS honoured for PR 4690 at head $PRH"
+ci trunk "a base branch that is not the default branch reads the bypass file at the diff base, and says so" 1 "the base branch main is not the default branch trunk"
+# HEAD is detached on M, so writing refs/heads/main moves no checkout, whatever init.defaultBranch named.
+gitc update-ref -d refs/remotes/origin/main && gitc update-ref refs/heads/main "$TIP"
+ci main "an absent refs/remotes/origin/main falls back to the diff base, and names the ref" 1 "refs/remotes/origin/main is absent"
 
 # --- I3: every critic behaviour path and the eval itself are trust paths ------------------------
 fixture trust
