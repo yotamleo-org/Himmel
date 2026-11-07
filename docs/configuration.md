@@ -310,8 +310,8 @@ claudex` runs it once its readiness gate has 5 consecutive verified passes
 lanes, codex-exec, hermes-oneshot and openrouter-claude, are marked `dormant`;
 opting one in is per-dispatch and per-lane (`CODEX_EXEC_LANE_OK`,
 `HERMES_ONESHOT_LANE_OK`, `OPENROUTER_CLAUDE_LANE_OK`; `/lanes` prints each
-dormant lane's opt-in). The GLM lane was removed, registry row included.
-Hermes critic rows inside `/pr-check` are unaffected.
+dormant lane's opt-in). The GLM lane was removed, registry row included
+with it. Hermes critic rows inside `/pr-check` are unaffected.
 `/lanes` is the live inventory; `internals/lane-calibration.md` is the status
 of record.
 

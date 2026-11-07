@@ -118,7 +118,7 @@ which is what is under test.
 
 Exit 0 = all ran checks clean, 1 = a check failed, 2 = nothing ran, or an agent check
 ran without its replay check (both vacuous-pass guards), or a usage error.
-While `codex-replay` is unavailable (the Windows-remnant cleanup removes it), a run that includes
+While `codex-replay` is unavailable (a later cleanup removes it), a run that includes
 `codex-exec` exits 2 where `pwsh` or `jq` is missing (it is skipped), 1 otherwise.
 `scripts/codex/test-hook-smoke-demo.sh` pins the runner's own contract with
 stubbed `claude`/`codex`/`pwsh` — it never spends a token.

@@ -194,7 +194,7 @@ docs/internals/enforcement.md	| A `Bash`/`PowerShell` command matching either (i
 docs/internals/enforcement.md	**Both fences in the file are fixed, by ONE shared joiner.** The GLM-lane
 docs/internals/enforcement.md	The GLM lane is currently **dropped**; that is recorded as a fact, and it is
 docs/internals/enforcement.md	   and the GLM-lane shape matchers (round 5).
-docs/internals/harness-compat.md	> **Platform tier:** Windows is dropped (HIMMEL-5729) and its PowerShell twins are
+docs/internals/harness-compat.md	> **Platform tier:** Windows is dropped and its PowerShell twins are
 docs/internals/harness-compat.md	> target bash (still bash 3.2-safe, for macOS). Windows
 docs/internals/harness-compat.md	| `codex-replay` | **unavailable**: it needs the hook-replay probe, which was Windows-only and is removed with Windows. It was the positive control that every project hook **executes** (separating "clean" from "never fired") |
 docs/internals/harness-compat.md	`codex-exec` exits 2 where `pwsh` or `jq` is missing (it is skipped), 1 otherwise.
@@ -318,13 +318,13 @@ docs/hermes-runbook.md	OpenAI API `gpt-5.5` can resolve around `1050000`. Pinnin
 docs/hermes-runbook.md	- `himmel_agent` main tier: `openai-codex` + `gpt-5.5` was a **272K Codex
 docs/hermes-runbook.md	print(get_model_context_length('glm-5.2[1m]', provider='custom',
 docs/setup/footprint.md	| The personal or medical vault you declare, so local guards keep it away from cloud backends | `~/.config/claude-glm/phi-roots` | user | himmel | Not removed yet: uninstall leaves these lines in place | `phi-roots` |
-docs/setup/install.md	> **Windows is not supported** (HIMMEL-5729). himmel runs on Linux and macOS.
+docs/setup/install.md	> **Windows is not supported**. himmel runs on Linux and macOS.
 docs/setup/install.md	      { "matcher": "Bash|PowerShell|Read|Grep",
-docs/setup/new-machine.md	| **Not supported** | Windows, WSL included | Dropped (HIMMEL-5729). |
+docs/setup/new-machine.md	| **Not supported** | Windows, WSL included | Dropped. |
 docs/setup/new-machine.md	- `cygpath` (Windows-only path translation) → `scripts/handover/arm-resume.sh` and `scripts/lib/qmd-bin.sh` (junction creation); falls back to the unconverted path when absent.
 docs/setup/new-machine.md	   worktree-and-git-common-dir, Windows-drive-relative, and Windows
 docs/setup/new-machine.md	in `~/.config/claude-glm/phi-roots` (the harness-wide PHI config directory; the
-docs/setup/new-machine.md	name outlived the GLM lane, HIMMEL-7898) or `~/.config/claude-codex/phi-roots`;
+docs/setup/new-machine.md	name outlived the GLM lane) or `~/.config/claude-codex/phi-roots`;
 docs/setup/operator-profile-tbd-delta.md	| 10 | Lane readiness gates (`passesRequired` probation counters) and the full dormant-lane roster (opt-in env names) | Direct read of `scripts/lanes/lanes.json`'s `readiness`/`dormant` fields (`delta.lanes.readinessGates`, `dormantLanes`) | The wizard offers only the 4 wizard-askable lane ids (`ollama-local`, `copilot-cli`, `codex-exec`, `hermes-oneshot`); it never surfaces readiness-gate progress or the dormant-lane roster (`glm`, `openrouter-claude`) | ticketed: HIMMEL-2330 |
 docs/tool-adoption/lane-adoption-playbook.md	example this playbook generalizes: each axis below is a knob GLM's rollout tripped over,
 docs/tool-adoption/lane-adoption-playbook.md	*config/code knob* the measurement feeds. Where the axis has GLM evidence
@@ -346,7 +346,7 @@ docs/tool-adoption/lane-adoption-playbook.md	**GLM evidence — a full ratify-th
 docs/tool-adoption/lane-adoption-playbook.md	`zai-glm` × `extraction` was `allow+log`, ratified 2026-07-17
 docs/tool-adoption/lane-adoption-playbook.md	the `why` field, and `handover-state` × `zai-glm` × `inference` was
 docs/tool-adoption/lane-adoption-playbook.md	**GLM evidence:** `lanes.json`'s `$readiness-note` records the live operator
-docs/tool-adoption/lane-adoption-playbook.md	needed. The GLM onboarding (the GLM lane was later removed, HIMMEL-1967, HIMMEL-7481) is the worked
+docs/tool-adoption/lane-adoption-playbook.md	needed. The GLM onboarding (the GLM lane was later removed) is the worked
 docs/tool-adoption/lane-adoption-playbook.md	  (`docs/tooling-catalog.md` `claude-codex` section). The removed GLM lane
 docs/tool-adoption/lane-adoption-playbook.md	  (`glm-5.2[1m]` + 1000000, or `glm-5.2` + 200000).
 docs/tool-adoption/lane-adoption-playbook.md	ruling (2026-08-07): **glm gated at 10 consecutive passes** (the lane has since been removed; down since the
@@ -375,7 +375,7 @@ docs/internals/lane-parity.md	**GLM-engine write-fence vs the retired GLM tail o
 docs/internals/lane-parity.md	the retired GLM tail of `block-worker-write-fence.sh`. So an MCP tool call invokes the guard and is
 docs/internals/lane-parity.md	| `block-rogue-claude-schedule` | `TERMINAL_DESTRUCTIVE` blocks `schtasks` (and `taskkill`/`shutdown`/`reg`/`shutdown`), the scheduler-mutation class that arms a rogue `claude` schedule. The claude-CLI-specific System32-cwd anti-trap is a launch-path check with no hermes analog -- hermes does not arm the `claude` CLI. | `present` (scheduler vector fenced; the System32-cwd trap is `n/a-for-runtime`) |
 docs/internals/lane-parity.md	| write-authority / external-write-fence (cross-lane dimension) | The engine-gated write-fence landed: `terminal_external_write_reason` refuses `git push` (plain, not just `--force`), git remote-URL / `config ...url` rewrite, `gh` PR-mutations (carve-out: `gh issue *` + `gh pr view/diff/checks/status/list` + `gh run view/list/watch`), and network CLIs (`curl`/`wget`/`iwr`/`irm`). `_external_writes_allowed()` is fail-closed: refused unless `HERMES_EXTERNAL_WRITES_OK=1` AND no `api.z.ai` / `HERMES_ENGINE=glm*` untrusted signal. Proved by `test-parity-guard.sh` (push / remote-url / `gh pr create` / `curl` refused; carve-outs + trust opt-in allowed; z.ai + `HERMES_ENGINE=glm` override the opt-in). | `present` |
-docs/internals/lane-parity.md	> dormancy status for impl lanes (claudex is live; hermes-oneshot and codex-exec are dormant; the GLM lane was removed, HIMMEL-7481) lives in `scripts/lanes/lanes.json` /
+docs/internals/lane-parity.md	> dormancy status for impl lanes (claudex is live; hermes-oneshot and codex-exec are dormant; the GLM lane was removed) lives in `scripts/lanes/lanes.json` /
 docs/internals/lane-parity.md	**GLM (removed).** The GLM lane was reachable by three paths, each proven
 docs/internals/lane-parity.md	| hermes-main (DEFAULT; engine gpt-6.1-sol; GLM removed) | `parity_guard` push/PR fence -- `tested:scripts/hermes/test-parity-guard.sh` (write-fence; the CC hook does NOT fire under hermes, parity_guard is the sole fence). The other deny-guards are enforced by parity_guard too (all `present`). |
 docs/internals/lane-parity.md	| hermes-main (DEFAULT; engine gpt-6.1-sol; GLM removed) | `AGENTS.md (loaded)` (`tested:scripts/hermes/test-agents-reach.sh`) | `tested:scripts/hermes/test-parity-guard.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
