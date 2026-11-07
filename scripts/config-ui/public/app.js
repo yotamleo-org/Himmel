@@ -309,6 +309,8 @@ async function loadMode() {
     if (!r.ok || (await r.json()).readOnly !== true) return;
   } catch (_) { return; } // no answer: the server still refuses writes itself
   readOnly = true;
+  session = null; // the server refuses login and logout too, so the header offers neither
+  if (feed || currentPage.needsFeed === false) paint();
   $("#read-only-banner").hidden = false;
   document.body.dataset.readOnly = "1";
   lockWrites();
@@ -324,7 +326,7 @@ function loginBadge() {
   return `<div id="login-state"><span class="k">login</span> ${session ? `logged in · <button class="btn" type="button" data-act="logout">Log out</button>` : `not logged in · <a class="btn" href="${loginHref()}">Log in</a>`}</div>`;
 }
 async function loadSession() {
-  try { session = (await fetch("/api/mode", { cache: "no-store" })).ok; } catch (_) { return; }
+  try { const ok = (await fetch("/api/mode", { cache: "no-store" })).ok; if (readOnly) return; session = ok; } catch (_) { return; }
   if (feed || currentPage.needsFeed === false) paint();
 }
 async function logout() {

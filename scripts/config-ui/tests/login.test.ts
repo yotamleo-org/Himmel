@@ -35,7 +35,7 @@ function writeLegacy(path: string, line: string): void {
 
 // legacy: the login sits in the pre-keyring file instead of the keyring; locked: the stub keyring is locked;
 // envLogin: the process env carries its own HIMMEL_UI_LOGIN; extra: more stub knobs (KSTUB_*) for the server's env.
-function boot(o: { password?: string | null; noIdle?: boolean; legacy?: boolean; locked?: boolean; envLogin?: string; extra?: Record<string, string> } = {}) {
+function boot(o: { password?: string | null; noIdle?: boolean; readOnly?: boolean; legacy?: boolean; locked?: boolean; envLogin?: string; extra?: Record<string, string> } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "ui-login-"));
   const home = join(dir, "home"), root = join(dir, "root"), project = join(dir, "project");
   for (const d of [home, root, project]) mkdirSync(d);
@@ -48,7 +48,7 @@ function boot(o: { password?: string | null; noIdle?: boolean; legacy?: boolean;
   if (o.locked) env.KSTUB_LOCKED = "true";
   if (o.envLogin !== undefined) env[KEY] = o.envLogin;
   Object.assign(env, o.extra);
-  const s =startServer({ port: 0, token: TOKEN, root, projectRoot: project, noIdle: o.noIdle, onIdle: () => {}, now: () => t, env });
+  const s =startServer({ port: 0, token: TOKEN, root, projectRoot: project, noIdle: o.noIdle, readOnly: o.readOnly, onIdle: () => {}, now: () => t, env });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
   const base = `http://127.0.0.1:${s.port}`;
   const post = (path: string, body: unknown, headers: Record<string, string> = {}) => fetch(base + path, {
@@ -409,7 +409,7 @@ async function onPage(b: ReturnType<typeof browser>, hash: string, run: (p: { ma
   const loc = { hash, pathname: "/", search: "", host: "x" };
   stubs.parseLanding = (h: string) => { const m = /^#t=([^&]+)&page=(\w+)/.exec(h); return m ? { token: m[1], page: m[2] } : null; };
   const over = {
-    ...stubs, ...recorder(b.spy), document: doc, fetch: b.fetchStub, addEventListener() {}, location: loc,
+    ...stubs, ...recorder(b.spy), MutationObserver: class { observe() {} }, document: doc, fetch: b.fetchStub, addEventListener() {}, location: loc,
     history: { replaceState: (_a: unknown, _b: unknown, u: string) => { b.spy.history.push(u); loc.hash = u.includes("#") ? u.slice(u.indexOf("#")) : ""; } },
   };
   await withGlobals(over, async () => {
@@ -510,6 +510,17 @@ test("a typed secret value reaches no URL, storage, log, cookie or address bar, 
   }
   expect(w.spy.bodies.map((x) => x.body).filter((x) => x.includes(w.password)).length).toBe(1); // the password is in the login request only
   expect(w.spy.urls.join("\n")).not.toContain(w.password);
+});
+
+test("a read-only UI refuses every write, login and logout included, so its header offers neither", async () => {
+  const s = boot({ noIdle: true, readOnly: true });
+  const b = browser(s.base);
+  await onPage(b, `#t=${TOKEN}&page=config`, async (p) => {
+    await settle();
+    expect(p.top()).not.toContain("login");
+    expect(p.top()).not.toContain('data-act="logout"');
+    expect(p.top()).not.toContain("/login");
+  });
 });
 
 test("the header shows the login state: Log in while out, Log out while in, and Log out ends the session", async () => {
