@@ -1558,7 +1558,7 @@ test('an invalid map routes as decision 525: eval refused-policy, graphify picks
   const g = autoKind(f, 'graphify');
   assert.equal(g.status, 0, g.stderr);
   assert.equal(usedKey(f), 'AAAA');
-  assert.match(g.stderr, /role map invalid \(invalid-role-map:not-json\); the default accounts are used\. Fix or remove roles\.json/);
+  assert.match(g.stderr, /role map invalid \(invalid-role-map:not-json\); the map is ignored, so auto routing stays limited to the graph pass\. Fix or remove roles\.json/);
 });
 
 test('a mapped judge from another repo is refused-policy: the map never widens the repo', () => {
