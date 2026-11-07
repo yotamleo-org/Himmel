@@ -127,7 +127,7 @@ ledger_registry_path() {
 # answer for every project), "project" = the default. The per-repo index checks (graph freshness, semantic graph)
 # are project rows that name the repo they judge, so a feed saved under another project does not carry them.
 # A check id is its Cn prefix (C40-qmd-vec -> C40).
-DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 "
+DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 C91 "
 DOCTOR_REPO_CHECKS=" C33 C70 "
 DOCTOR_REPO_NAME="himmel"
 
@@ -3956,6 +3956,36 @@ check_c90_effort_pin() {
         "remove CLAUDE_CODE_EFFORT_LEVEL from the env block of each file named above (set the effort per session with /effort or --effort instead)"
 }
 
+# --- C91-api-policy-refusals: the API lane refused a caller by the decision-525 policy ---
+# claude-api.sh refuses a HIMMEL_API_ACCOUNT=auto call whose kind is not the graph pass (or a role-mapped kind) in
+# the himmel repo, sends no alert and never falls back, so a refused critic or release judge looks like a silent
+# skip. It leaves one JSON line per refusal in policy-refusals.jsonl under the alert directory (HIMMEL_API_ALERT_DIR,
+# else the state directory the launcher defaults to). WARN, one line per kind with its count and repo(s), for the
+# refusals of the last 48 h; a line that does not parse is skipped. Read-only.
+check_c91_api_policy_refusals() {
+    command -v jq >/dev/null 2>&1 || { emit INFO C91-api-policy-refusals "jq not on PATH -- API lane policy refusal record not checked"; return 0; }
+    local dir rec rows kind n repos
+    dir="${HIMMEL_API_ALERT_DIR:-${HOME:-/tmp}/.himmel/state/api-lane-alerts}"
+    rec="$dir/policy-refusals.jsonl"
+    rows=""
+    if [ -f "$rec" ] && [ -r "$rec" ]; then
+        rows="$(jq -Rr --argjson now "$(date +%s)" 'fromjson? | select(type == "object" and (.ts | type) == "number" and .ts >= ($now - 172800))
+            | [((.kind // "unknown") | tostring), ((.repo // "none") | tostring)] | @tsv' "$rec" 2>/dev/null \
+            | awk -F'\t' '{ if (!($1 in c)) order[++k] = $1; c[$1]++; if (!(($1 SUBSEP $2) in seen)) { seen[$1 SUBSEP $2] = 1; r[$1] = r[$1] (r[$1] == "" ? "" : ", ") $2 } }
+                END { for (i = 1; i <= k; i++) printf "%d|%s|%s\n", c[order[i]], order[i], r[order[i]] }')"
+    fi
+    if [ -z "$rows" ]; then
+        emit OK C91-api-policy-refusals "no API lane policy refusal in the last 48 h"
+        return 0
+    fi
+    while IFS='|' read -r n kind repos; do
+        emit WARN C91-api-policy-refusals "kind $kind: $n refused in the last 48 h by the API lane's auto-routing policy and not run (repo $repos)" \
+            "name HIMMEL_API_ACCOUNT=A, B or C in that caller; the record is policy-refusals.jsonl in the alert directory ($dir)"
+    done <<EOF
+$rows
+EOF
+}
+
 # --- C41: MCP server credential on the command line ---------------
 # An MCP server entry launched as `npm exec <server> --api-key <key>` puts the key
 # in argv, so any local user reads it via ps or /proc/<pid>/cmdline, and it lands
@@ -5702,6 +5732,7 @@ run_check C88 check_c88_graph_api_optin
 run_check C87 check_c87_stub_handover_state
 run_check C89 check_c89_qmd_rerank
 run_check C90 check_c90_effort_pin
+run_check C91 check_c91_api_policy_refusals
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

@@ -8123,4 +8123,52 @@ out2="$(c90_run)"
 if grepq "$out" 'WARN C90-effort-pin' && grepq "$out" -F "$c90_t/root/.claude/settings.json" && grepq "$out2" 'WARN C90-effort-pin' && grepq "$out2" -F "$c90_t/root/.claude/settings.local.json"; then pass "C90 project pins -> WARN"; else fail "C90 project pins -> $(printf '%s' "$out$out2" | head -6)"; fi
 rm -rf "$c90_t"
 
+# --- C91-api-policy-refusals: the doctor reads the record the API lane leaves for a decision-525 refusal ---
+# The record comes from the REAL launcher (scripts/api-lane/claude-api.sh) run in a sandboxed HOME with no
+# HIMMEL_API_ALERT_DIR, so the launcher and the doctor each fall back to their own default directory.
+c91_t="$(mktemp -d "${TMPDIR:-/tmp}/c91.XXXXXX")" || { echo "FATAL: C91 setup mktemp failed" >&2; exit 1; }
+git init -q "$c91_t/repo"
+c91_repo="$(cd "$c91_t/repo" && pwd -P)"
+printf '#!/bin/sh\nexit 0\n' > "$c91_t/alert-stub"; chmod 700 "$c91_t/alert-stub"
+c91_rec="$c91_t/home/.himmel/state/api-lane-alerts/policy-refusals.jsonl"
+c91_reset() { rm -rf "${c91_t:?}/home" "${c91_t:?}/claude"; mkdir -p "$c91_t/home" "$c91_t/claude"; }
+c91_refuse() { (cd "$c91_t/repo" && env -i PATH="$PATH" HOME="$c91_t/home" HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto HIMMEL_API_KIND="$1" \
+    HIMMEL_API_ALERT_CMD="$c91_t/alert-stub" HIMMEL_API_JOB_ID=job-c91 bash "$REPO_ROOT/scripts/api-lane/claude-api.sh" \
+    -p 'say hi' --model claude-haiku-5-5 --permission-mode plan --max-budget-usd 0.10 >/dev/null 2>&1); }
+c91_run() { env -u HIMMEL_API_ALERT_DIR CLAUDE_DIR="$c91_t/claude" HOME="$c91_t/home" bash "$DOC" --only C91 --no-color 2>&1; }
+c91_age() { local _ts; _ts=$(( $(date +%s) - $1 * 3600 )); jq -c --argjson ts "$_ts" '.ts = $ts' "$c91_rec" > "$c91_rec.new" && mv "$c91_rec.new" "$c91_rec"; }
+echo "== C91: a real launcher policy refusal (kind critic) -> one WARN naming critic and its repo =="
+c91_reset; c91_refuse critic
+out="$(c91_run)"
+if [ "$(wc -l < "$c91_rec" 2>/dev/null)" -eq 1 ] && [ "$(printf '%s\n' "$out" | grep -c 'WARN C91-api-policy-refusals')" -eq 1 ] && grepq "$out" -F 'critic' && grepq "$out" -F "$c91_repo"; then pass "C91 writer-fed critic refusal -> one WARN with kind and repo"; else fail "C91 writer-fed critic refusal -> record=$(cat "$c91_rec" 2>/dev/null) out=$(printf '%s' "$out" | head -4)"; fi
+echo "== C91: two kinds -> two WARN lines under one ID, each with its count =="
+c91_reset; c91_refuse critic; c91_refuse critic; c91_refuse judge
+out="$(c91_run)"
+if [ "$(printf '%s\n' "$out" | grep -c 'WARN C91-api-policy-refusals')" -eq 2 ] && grepq "$out" 'WARN C91-api-policy-refusals.*critic: 2 refused' && grepq "$out" 'WARN C91-api-policy-refusals.*judge: 1 refused'; then pass "C91 two kinds -> two WARN lines with counts"; else fail "C91 two kinds -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C91: the window is 48 hours: a record 47 h old warns, one 49 h old does not =="
+c91_reset; c91_refuse critic; c91_age 47
+out="$(c91_run)"
+c91_reset; c91_refuse critic; c91_age 49
+out2="$(c91_run)"
+if grepq "$out" 'WARN C91-api-policy-refusals' && ! grepq "$out2" 'WARN C91' && grepq "$out2" 'OK   C91-api-policy-refusals'; then pass "C91 47 h warns, 49 h does not"; else fail "C91 window -> 47h: $(printf '%s' "$out" | head -3) 49h: $(printf '%s' "$out2" | head -3)"; fi
+echo "== C91: no record file -> no WARN =="
+c91_reset
+out="$(c91_run)"
+if grepq "$out" 'OK   C91-api-policy-refusals' && ! grepq "$out" 'WARN C91'; then pass "C91 no file -> OK"; else fail "C91 no file -> $(printf '%s' "$out" | head -3)"; fi
+echo "== C91: an unparseable line beside a good one -> one WARN =="
+c91_reset; c91_refuse critic; printf 'not json {\n' >> "$c91_rec"
+out="$(c91_run)"
+if [ "$(printf '%s\n' "$out" | grep -c 'WARN C91-api-policy-refusals')" -eq 1 ] && grepq "$out" 'critic: 1 refused'; then pass "C91 bad line skipped, good line warns once"; else fail "C91 bad line -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C91: jq not on PATH -> one INFO line =="
+c91_reset; c91_refuse critic
+C91_NOJQ="$c91_t/nojq-bin"; mkdir -p "$C91_NOJQ"
+for f in /usr/bin/*; do b="${f##*/}"; [ "$b" = jq ] && continue; [ -x "$f" ] && ln -s "$f" "$C91_NOJQ/$b" 2>/dev/null; done
+if PATH="$C91_NOJQ" bash -c 'command -v bash >/dev/null 2>&1 && ! command -v jq >/dev/null 2>&1' 2>/dev/null; then
+    out="$(env -u HIMMEL_API_ALERT_DIR CLAUDE_DIR="$c91_t/claude" HOME="$c91_t/home" PATH="$C91_NOJQ" bash "$DOC" --only C91 --no-color 2>&1)"
+    if [ "$(printf '%s\n' "$out" | grep -c 'INFO C91-api-policy-refusals')" -eq 1 ] && ! grepq "$out" 'WARN C91' && grepq "$out" -F 'jq not on PATH'; then pass "C91 no jq -> one INFO"; else fail "C91 no jq -> $(printf '%s' "$out" | head -4)"; fi
+else
+    echo "  SKIP: C91 no-jq — the curated shadow PATH cannot run bash without jq here"
+fi
+rm -rf "$c91_t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi
