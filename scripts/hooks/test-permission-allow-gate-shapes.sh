@@ -143,12 +143,21 @@ mkdir -p "$UW/scripts" && cp -Rp "$T/repo/scripts/cr" "$UW/scripts/cr" || exit 1
 expect "unsafe worktree root: absolute spelling passes through" pass "$UW" Bash "bash $UW/scripts/cr/write-verdicts.sh aggregate --branch b --from-file .tmp/v.txt"
 expect "unsafe worktree root: relative spelling still allowed" allow "$UW" Bash "bash scripts/cr/write-verdicts.sh aggregate --branch b --from-file .tmp/v.txt"
 
+# Capability column: every shipped row names the capability it grants as a fifth field,
+# and the hook reads it as its own field, so it never lands inside the verify= list.
+untagged="$(awk -F'\t' '/^#/ || NF == 0 { next } $5 !~ /^(go|merge|ship|fleet|release|infra|housekeeping)$/ { print $1 }' "$T/repo/scripts/hooks/data/gate-shapes.tsv")"
+[ -z "$untagged" ] && ok "every shipped shape row names a capability" || bad "every shipped shape row names a capability (untagged: $untagged)"
+rows="$(awk -F'\t' '/^#/ || NF == 0 { next } { n++ } END { print n+0 }' "$T/repo/scripts/hooks/data/gate-shapes.tsv")"
+[ "$rows" -ge 4 ] && ok "anti-vacuity: the shipped table has its rows ($rows)" || bad "anti-vacuity: the shipped table has its rows ($rows)"
+
 # Data-driven: a shape absent from the file is not allowed, even if the code knows nothing of it.
 printf 'only\t^bash scripts/hello\\.sh$\t-\tnone\n' > "$T/repo/scripts/hooks/data/gate-shapes.tsv"
+printf 'tagged\t^bash scripts/tagged\\.sh$\t-\tnone\tship\n' >> "$T/repo/scripts/hooks/data/gate-shapes.tsv"
 git -C "$T/repo" add scripts/hooks/data/gate-shapes.tsv && git -C "$T/repo" -c user.email=t@t -c user.name=t commit -q -m table2 || exit 1
 git -C "$T/repo" update-ref refs/remotes/origin/main HEAD || exit 1
 expect "shape not in the data file passes through" pass "$WT" Bash "bash scripts/cr/write-verdicts.sh aggregate --branch b --from-file .tmp/v.txt"
 expect "shape added to the data file is allowed" allow "$WT" Bash "bash scripts/hello.sh"
+expect "a row with a capability field is allowed" allow "$WT" Bash "bash scripts/tagged.sh"
 git -C "$T/repo" update-ref refs/remotes/origin/main "$TABLE_COMMIT" || exit 1
 
 # The table is trusted only from the default branch: a worker's own worktree copy, an env override

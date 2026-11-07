@@ -206,7 +206,9 @@ template_version: 3
 >    cited ticket? `yes` → the worker merges with `--jira-transition`; `no` (the
 >    ticket spans further PRs, sibling slices, or work owed outside any PR) →
 >    it omits the flag. The merge is typed exactly
->    `bash scripts/handover/merge-on-green.sh [--jira-transition]` (on an adapter
+>    `bash <anchor>/scripts/handover/merge-on-green.sh [--jira-transition]`, with
+>    `<anchor>` the primary checkout's absolute path (the spelling the worker's
+>    rendered allow rule matches; the relative one is retired) (on an adapter
 >    repo not confirmed PRIVATE the worker stops at READY and the chief merges with
 >    `merge-fork-pr.sh`, HIMMEL-7796) from the
 >    worktree root, followed by `--go <GO file>`: the chief's `GO` message

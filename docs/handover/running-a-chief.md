@@ -895,7 +895,7 @@ so a worktree edit cannot widen it) and the PR targets that entry's
 1. `bash scripts/handover/chief-kit/go.sh --repo <owner/repo> --trust-reviewed <judge-qid> <pr> <head>`
    (exit 6 not allowlisted or the harness repo itself, 7 PR not OPEN, CLEAN and on the adapter branch at that head
    or a review thread still open, 5 no signed judge GO).
-2. `bash <anchor>/scripts/handover/merge-fork-pr.sh [--jira-transition] <owner/repo> <pr> <head>`
+2. `bash scripts/handover/merge-fork-pr.sh [--jira-transition] <owner/repo> <pr> <head>`
    (chief only; a bare `gh pr merge --repo <fork>` stays refused; pass `--jira-transition` when the brief says `completes-ticket: yes`, and send the worker its `jira-transition=` line).
 
 Both scripts require GitHub's `mergeStateStatus` CLEAN (every check at the head
