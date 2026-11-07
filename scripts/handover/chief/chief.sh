@@ -1978,7 +1978,7 @@ tracker_head() {
 # the pattern). A line not marked BINDING says so. The reading is cut at a sentence or word so
 # the whole block fits CHIEF_DIRECTION_BUDGET_BYTES (default 15000): the newest 40 lines get
 # twice the share of the older ones, at least 48 bytes (96 for the newest). A line of another
-# shape keeps its start, at least 200 bytes. Every line the shortening cuts is kept byte for
+# shape keeps its start, at least 150 bytes. Every line the shortening cuts is kept byte for
 # byte in the history file named in the first line of the result. Prints nothing and returns 1
 # when no line was shortened.
 # Args: block (stdin), dir, history file (relative to dir).
@@ -2030,7 +2030,7 @@ for ln, head, reading in rows:
     if head is None: out.append(ln); continue
     cap = base * 2 if k < 40 else base
     k += 1
-    line = head + cut(reading, cap) if head else cut(reading, max(cap * 2, 200))
+    line = head + cut(reading, cap) if head else cut(reading, max(cap * 2, 150))
     if line != ln: changed += 1
     out.append(line)
 if not changed: sys.exit(1)
