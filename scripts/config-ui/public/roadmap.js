@@ -85,6 +85,13 @@ function prHtml(t, pr) {
 }
 
 // What an open ticket waits on, from the mirror's links: "blocked by open X" for a blocker still open, "after X (done)" for a shut one, and a key in no mirror says its state is unknown.
+// The tracker's FAST-TRACK label: an open ticket in a chain names the chain and its step. Needs the chain read; nothing is guessed without it.
+function ftHtml(t, ch) {
+  const ct = chainOk(ch) && t.b !== "done" && t.b !== "wont" ? ch.tickets[idOf(t)] : null, c = ct && ct.chains && ct.chains[0];
+  if (!c) return "";
+  const def = ch.chains.find((x) => x.id === c.id);
+  return `<div class="rm-ft">FAST-TRACK · ${esc(def && def.name ? def.name : c.id)} · step ${c.step}</div>`;
+}
 function depHtml(t) {
   const a = Array.isArray(t.after) ? t.after : [];
   if (!a.length) return "";
@@ -112,7 +119,7 @@ function cardHtml(t, d, showVersion, w, ch, v, known, pr) {
   const ci = t.b === "ci" ? ` <span class="ro pill warn">CI</span>` : ""; // CI shares the Review column: the pill says which of the two the card is in
   // two lines: the id, status and sector row, then the title clamped to two lines; the card's accessible name is the id and the full title
   return `<div class="rm-card"${attrs}${open} role="button" aria-label="${esc(idOf(t))}: ${esc(t.t)}"><div class="rm-top"><b>${esc(idOf(t))}</b>${local ? ` <span class="ro pill">local</span>` : ""} <span class="ro pill${t.b === "done" ? " ok" : t.b === "prog" || t.b === "rev" || t.b === "ci" ? " warn" : ""}">${esc(t.s)}</span>${ci} <span class="ro">${ver}${theme} ${dr}</span></div>`
-    + `<div class="rm-tip rm-title" data-tip="${esc(t.t)}"><span class="rm-clip">${esc(t.t)}</span></div>${chainBadge(t, ch, v, d)}${kb}${depHtml(t)}${prHtml(t, pr)}${lg}</div>`;
+    + `<div class="rm-tip rm-title" data-tip="${esc(t.t)}"><span class="rm-clip">${esc(t.t)}</span></div>${chainBadge(t, ch, v, d)}${ftHtml(t, ch)}${kb}${depHtml(t)}${prHtml(t, pr)}${lg}</div>`;
 }
 
 // One board: a column per status over the given tickets (Review and CI share one). Won't stays hidden while empty so a quiet board stays short.
@@ -452,6 +459,12 @@ const passOf = (d, ui, ch, from = d) => {
 // ticket key to the checker ticket that explains its drift row, for the tag on a lane card
 const knownByKey = (dr) => new Map((dr && dr.known ? dr.known : []).map((r) => [r.key, r.checker]));
 
+// The drain line (the tracker's): a version's open tickets, how many are in a chain and how many are in none. Needs the chain read.
+const drainLine = (d, sel, scope, ch) => {
+  if (sel < 0 || !chainOk(ch)) return "";
+  const open = scope.filter((t) => t.b !== "done" && t.b !== "wont"), inChain = open.filter((t) => ch.tickets[idOf(t)] && ch.tickets[idOf(t)].chains.length).length;
+  return `<div class="rm-drain">${esc(d.versions[sel].n)} drain: open ${open.length} · in-chain ${inChain} · in no chain ${open.length - inChain}</div>`;
+};
 // The sector legend: each Sector of the open tickets in scope with its count, the largest first (the tracker's .seclegend). A ticket with no Sector is not a Sector.
 const sectorLegend = (d, scope) => {
   const n = new Map();
@@ -468,7 +481,7 @@ function lanesHtml(d, ui, sel, ch, dr, prs) {
   const what = sel >= 0 ? `${d.versions[sel].n}: ${shown.length} tickets` : `every version: ${shown.length} tickets`;
   const sub = gh ? `${what}. GitHub issues are read-only here: change them on GitHub.${d.truncated ? " Only the newest 1000 issues are read, so older ones are missing." : ""}`
     : `${what}.${writeOn ? " Drag a card to another column to change its status." : ""}`;
-  return section("rm-lanes", "Roadmap", sub, shown.length ? sectorLegend(d, scope) + boardHtml(d, shown, sel < 0, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase(), drawer: ui.drawer, known: knownByKey(dr), prs }) : `<div class="empty">No tickets match.</div>`);
+  return section("rm-lanes", "Roadmap", sub, shown.length ? drainLine(d, sel, scope, ch) + sectorLegend(d, scope) + boardHtml(d, shown, sel < 0, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase(), drawer: ui.drawer, known: knownByKey(dr), prs }) : `<div class="empty">No tickets match.</div>`);
 }
 
 // The No version tab: the tickets with no fixVersion, in the same columns. They are not in the default read; ui.nv is GET /api/roadmap?nv=1,

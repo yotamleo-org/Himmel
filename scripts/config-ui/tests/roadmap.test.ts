@@ -1559,3 +1559,15 @@ test("Board: the lanes carry a sector legend: each sector of the version's open 
   expect(items.slice(0, 2)).toEqual(["alpha 2", "beta 1"]);
   expect(items.join("|")).not.toContain("beta 2"); // the done ticket is not counted
 });
+
+test("Board: a card in a chain says FAST-TRACK with the chain's name and its step, and the lanes carry a drain line counting the open tickets in and out of a chain", () => {
+  const r = read(station());
+  const html = board(r, { v: "v1.1.2" }, { drift: null, chains: chainsOk() });
+  const card = (k: string) => html.match(new RegExp(`<div class="rm-card"[^>]*aria-label="${k}:[\\s\\S]*?</div></div>`))![0];
+  expect(card(K(1))).toContain(`<div class="rm-ft">FAST-TRACK · Memory guard rework · step 1</div>`);
+  expect(card(K(2))).not.toContain("FAST-TRACK"); // in no chain
+  expect(board(r, { v: "v1.1.2" }, null)).not.toContain("FAST-TRACK"); // no chain read: nothing is guessed
+  // v1.1.2 holds tickets 1, 2, 5, 7 open; 1 and 5 are in the memory chain
+  expect(html).toContain(`<div class="rm-drain">v1.1.2 drain: open 4 · in-chain 2 · in no chain 2</div>`);
+  expect(board(r, { v: "v1.1.2" }, null)).not.toContain("rm-drain"); // without the chain read it cannot split
+});
