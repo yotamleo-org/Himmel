@@ -15,7 +15,7 @@ scripts/lib/critics-config.sh
 scripts/hermes/invoke.sh
 # The two tags below are comment lines (score.py ignores them). Each names a path above that the eval sweep
 # never runs: run.sh feeds critic-panel.sh directly, so no sweep can grade a change to it. The gate
-# (scripts/ci/check-critic-eval.sh) reads the tags at the PR BASE; a diff over only these paths merges on a
-# judge GO, not eval rows (HIMMEL-9259).
+# (scripts/ci/check-critic-eval.sh) reads the tags at the diff base (on CI's merge ref, its first parent); a
+# diff over only these paths merges on a judge GO, not eval rows.
 # unexecuted: scripts/cr/panel-first-pass.sh
 # unexecuted: scripts/cr/critic-pre-existing-tag.py

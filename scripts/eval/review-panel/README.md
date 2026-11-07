@@ -293,7 +293,8 @@ the panel reports (a `dir/` prefix or a glob at the same `/` depth). A PR that
 changes one of them, at its base or its head, merges only when the eval says the
 change lost nothing.
 
-1. The chief sweeps twice at the PR's base and twice at its head (`run.sh`,
+1. The chief sweeps twice at the tree the gate compares against (on CI's merge
+   ref, main as that ref was built) and twice at the PR's head (`run.sh`,
    above), and records each sweep with
    `score.py export-row <outputs-dir>`: one `results.jsonl` row carrying the
    tree's `cbs_hash` and `confighash` and the `outputs_sha256` of the bundle.
@@ -312,7 +313,10 @@ change lost nothing.
    outputs (exit 1 on any mismatch), so a committed row can be checked against
    the bundle it claims.
 3. CI runs `scripts/ci/check-critic-eval.sh <base> HEAD` (the ci-quick
-   secret-scan step). With no CBS path changed it passes; otherwise it runs
+   secret-scan step). HEAD is the PR's merge ref, so the gate's diff base is
+   `HEAD^1`, the main that ref was built on, not the event's `<base>`, which
+   stays at the main the PR opened on; elsewhere the diff base is `<base>`.
+   With no CBS path changed it passes; otherwise it runs
    `score.py gate`, which reads the head tree's `results.jsonl`:
    - **unmeasured** (fail): fewer than 2 distinct rows (by `run_id` and bundle)
      at the base or the head `cbs_hash` for the head tree's `confighash`.
@@ -321,10 +325,16 @@ change lost nothing.
    - **no-loss** / **keep** (pass): within noise; `keep` when every
      `--target-class` recall also beats the baseline maximum.
 
-Two rules sit in front of that eval check (HIMMEL-9259). Both read their input
-from the PR's **base** tree, never its head, so a PR cannot retag its own files
-or add its own bypass; a tag or row a change needs must already be on main and
-merged into the branch.
+Two rules sit in front of that eval check. Neither reads its input from the
+PR's own tree, so a PR cannot retag its own files or add its own bypass. The
+`# unexecuted:` tags are read at the diff base, which a push rebuilds on newer
+main. The bypass file is read at the default branch's tip as CI's checkout
+fetched it (`refs/remotes/origin/<base branch>`); when that cannot be read the
+gate falls back to the diff base and prints one line naming the missing input.
+A tag or row a change needs must be on main, and needs no merge into the
+branch. So a merged tag exempts every open PR whose merge ref is rebuilt after
+it lands, not only PRs opened later: a tag-only `cbs.txt` change needs a
+trust-reviewed GO (this directory is a trust path).
 
 4. **A path the sweep never executes needs no eval rows.** `run.sh` feeds
    `critic-panel.sh` directly, so a change to a file the sweep never runs gives
@@ -337,8 +347,11 @@ merged into the branch.
    whole diff back on the eval check. Tag a path only after tracing that no
    sweep call reaches it.
 5. **An operator bypass is a recorded row.** `gate-bypass.tsv` holds one row per
-   bypass: `pr`, a `head` sha prefix of 7 or more hex digits, the `decision` id,
-   and the `reason`, separated by tabs. The gate honours a row only for its PR
+   bypass: `pr`, a `head` sha prefix of 7 or more hex digits (a new row writes
+   the full 40-hex head), the `decision` id, and the `reason`, separated by
+   tabs. The gate reads the file at the default branch's tip (else at the diff
+   base), never from the PR's own tree, so a row landed on main after the PR
+   opened counts without being merged into the branch. The gate honours a row only for its PR
    number (`CHECK_CRITIC_EVAL_PR`, else the `refs/pull/<n>/merge` of
    `GITHUB_REF`) at its head (the head given; on CI's `refs/pull/<n>/merge`
    also the merge ref's second parent, which is the PR head), and prints a `BYPASS honoured` line with the decision and reason. A row
@@ -347,6 +360,10 @@ merged into the branch.
    reason) fails the gate closed. A row lands by a chief-ruled change of its own.
 
 The hashes are of the merge ref: a later critic change on main changes the head
-`cbs_hash`, so the rows no longer count and the PR is swept again. Every CBS
-path, this directory and `scripts/eval/lib/` (every module `score.py` can import) are trust paths
-(`scripts/ci/ci-trust-paths.txt`), so a PR cannot weaken its own gate.
+`cbs_hash`, and also the base rows' `cbs_hash`, which is the diff base's
+(`HEAD^1` on CI's merge ref), so the rows no longer count and the PR is swept
+again; the base sweeps run at main as the merge ref was built, not at the main
+the PR opened on. Every CBS path, this directory and `scripts/eval/lib/` (every
+module `score.py` can import) are trust paths (`scripts/ci/ci-trust-paths.txt`),
+as are `scripts/ci/` and `.github/`, since `ci.yml` runs the gate script from
+the PR's merge ref, so a PR cannot weaken its own gate.
