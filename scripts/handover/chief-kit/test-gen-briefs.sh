@@ -28,6 +28,7 @@ trap 'rm -rf "$WORK"' EXIT
 BUCKET="$WORK/bucket"; REPO="$WORK/repo"; mkdir -p "$REPO"
 # No bus identity, so relay-batch never reaches the real himmel-bus store.
 unset HIMMEL_BUS_NAME
+export HIMMEL_FLAG_PR_SIZE_GATE=0  # the registry default is on; the fixture repos below carry no base sha, so every other row runs with the gate off
 
 cat > "$WORK/wt.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -1180,7 +1181,7 @@ else
     fail "the size-projection fixture repo could not be committed; the rows below cannot be trusted"
     PSBASE=0000000000000000000000000000000000000000
 fi
-export HIMMEL_CONFIG_DIR="$WORK/no-conf"; unset HIMMEL_FLAG_PR_SIZE_GATE
+export HIMMEL_CONFIG_DIR="$WORK/no-conf"
 ps_workers() { # <name> <dir/> [extra json members]
     cat > "$WORK/ps-$1.json" <<PSEOF
 [{"label":"N921","keys":["HIMMEL-9201"],"slug":"size","branch":"fix/himmel-9201-size","title":"a sized fix","desc":"d","why":"w","prior":"HIMMEL-9000 (the earlier fix). Source: \`git log -3 -- scripts/x\`.","writes":"$2","scope":"\`$2\`","scope_short":"${2:-none}","commit":"fix(x): [HIMMEL-9201] f"$3}]
@@ -1210,9 +1211,14 @@ pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun bulk)"; rc=$?
 [ -n "$(ps_brief bulk)" ] && pass "the bulk mechanical worker gets its brief" || fail "bulk mechanical: no brief"
 
 pso="$(psrun big off)"; rc=$?
-[ "$rc" = 0 ] && pass "pr_size_gate at its default (off): 41 files still write the brief (rc 0)" || fail "flag off: rc=$rc: $pso"
+[ "$rc" = 0 ] && pass "pr_size_gate off: 41 files still write the brief (rc 0)" || fail "flag off: rc=$rc: $pso"
 has "flag off: a warning names the 40-file hard max" "$pso" "warning: worker N921 Writes project to 41 files, over the 40-file hard max"
 [ -n "$(ps_brief big off)" ] && pass "flag off: the brief is written" || fail "flag off: no brief"
+
+pso="$(unset HIMMEL_FLAG_PR_SIZE_GATE; psrun big dflt)"; rc=$?
+[ "$rc" = 1 ] && pass "pr_size_gate at its registry default (on): 41 files are refused (rc 1)" || fail "registry default: rc=$rc: $pso"
+has "registry default: the refusal names the 40-file hard max" "$pso" "40-file hard max"
+[ -z "$(ps_brief big dflt)" ] && pass "registry default: a refused brief writes no doc" || fail "registry default: a refused brief wrote a doc"
 
 pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun mid)"; rc=$?
 [ "$rc" = 0 ] && pass "pr_size_gate on: 25 files (soft max only) pass (rc 0)" || fail "25 files: rc=$rc: $pso"
