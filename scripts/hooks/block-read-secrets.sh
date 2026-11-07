@@ -394,6 +394,40 @@ _rd_rest="${_rd_rest#*$'\001'}"
 _rd_gpath="${_rd_rest%%$'\001'*}"
 _rd_cmd="${_rd_rest#*$'\001'}"
 
+# _canon_parent DIR: sets _CP_OUT to guard_canon_path DIR, without the fork when
+# the answer is DIR itself. A glob over thousands of directories (one name
+# under each) hands the classifier thousands of distinct parents, and the
+# one-entry parent cache below cannot help: each canonicalisation is a fork
+# (1.8 ms here, 5.4 s over 3000 parents). Callers pass the parent of an existing
+# file, so DIR is a directory; an absolute DIR with no empty, `.` or `..` part, no
+# newline and no part that is a symlink is its own canonical path, so each prefix
+# is tested with the `-L` builtin. Anything else (a relative DIR, an odd part, a
+# newline, which the command substitution of the forked call strips, a symlinked
+# part) takes the fork as before, and a DIR that cannot be canonicalised returns 1.
+_canon_parent() {
+    local d="$1" cur="" rest comp
+    _CP_OUT=""
+    case "$d" in
+        /) _CP_OUT=/; return 0 ;;
+        /*) ;;
+        *) _CP_OUT=$(guard_canon_path "$d") || return 1; return 0 ;;
+    esac
+    case "$d" in
+        */|*//*|*/./*|*/../*|*/.|*/..|*$'\n'*) _CP_OUT=$(guard_canon_path "$d") || return 1; return 0 ;;
+    esac
+    rest="${d#/}"
+    while [ -n "$rest" ]; do
+        comp="${rest%%/*}"
+        case "$rest" in */*) rest="${rest#*/}" ;; *) rest="" ;; esac
+        cur="$cur/$comp"
+        if [ -L "$cur" ]; then
+            _CP_OUT=$(guard_canon_path "$d") || return 1
+            return 0
+        fi
+    done
+    _CP_OUT="$d"
+}
+
 # _fp_plain_file TOKEN: succeeds ONLY when TOKEN is provably not a secret, so the
 # caller can skip the full classification; any doubt fails and the full path
 # runs unchanged. A glob over thousands of files hands the classifier one
@@ -405,7 +439,8 @@ _rd_cmd="${_rd_rest#*$'\001'}"
 # case-insensitively, a superset of the ASCII fold the full path applies), under
 # a parent that holds none of the directory names the path patterns need and
 # whose canonical path holds no config-audit or .himmel part. The parent check
-# runs once per distinct parent per hook run (one canonicalisation fork).
+# runs once per distinct parent per hook run, and _canon_parent forks only for a
+# parent with a symlinked or odd part.
 _fp_plain_file() {
     local t="$1" b d nc=0 hit=0
     case "$t" in
@@ -420,7 +455,8 @@ _fp_plain_file() {
     if [ "${_FP_DIR-}" != "$PWD|$d" ]; then
         _FP_DIR="$PWD|$d"; _FP_OK=0
         local c
-        c=$(guard_canon_path "$d") || return 1
+        _canon_parent "$d" || return 1
+        c="$_CP_OUT"
         if shopt -q nocasematch; then nc=1; fi
         shopt -s nocasematch
         case "$d" in *.ssh*|*config-audit*|*.himmel*) hit=1 ;; esac
@@ -497,7 +533,8 @@ g4_secret_path() {
         if [ -f "$raw" ] && [ ! -L "$raw" ]; then
             case "$raw" in */*) d="${raw%/*}"; [ -n "$d" ] || d=/ ;; *) d=. ;; esac
             if [ "${_G4_CANON_DIR-}" != "$PWD|$d" ] || [ -z "${_G4_CANON_REAL-}" ]; then
-                c=$(guard_canon_path "$d") || return 0
+                _canon_parent "$d" || return 0
+                c="$_CP_OUT"
                 _G4_CANON_DIR="$PWD|$d"
                 _G4_CANON_REAL="$c"
             fi
