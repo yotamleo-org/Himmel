@@ -414,34 +414,35 @@ function autoRepoDir(): string {
 }
 
 // The one env for both the role pre-read and the launcher spawn.
-export function judgeApiEnv(processEnv: NodeJS.ProcessEnv, repoDir: string = autoRepoDir()): NodeJS.ProcessEnv {
+export function judgeApiEnv(processEnv: NodeJS.ProcessEnv, repoDir: string = autoRepoDir(), callTimeoutS: number = JUDGE_TIMEOUT_S): NodeJS.ProcessEnv {
   const passed = Object.fromEntries(JUDGE_API_PASS_ENV.filter((k) => processEnv[k] !== undefined).map((k) => [k, processEnv[k]]));
   return {
     ...judgeEnv(processEnv), ...passed,
     HIMMEL_API_LANE: 'on', HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'judge', HIMMEL_API_FALLBACK: 'off', HIMMEL_API_TOOLS: '',
-    HIMMEL_API_CALL_TIMEOUT_S: String(JUDGE_TIMEOUT_S), HIMMEL_API_AUTO_REPO_DIR: repoDir,
+    HIMMEL_API_CALL_TIMEOUT_S: String(callTimeoutS), HIMMEL_API_AUTO_REPO_DIR: repoDir,
   };
 }
 
 // ponytail: the API judge loads the operator's full plugin set and user memory and has no turn cap (the launcher refuses
 // --settings, --max-turns and --mcp-config); its budget cap (JUDGE_API_BUDGET_USD) and plan mode bound the cost; plan P5
 // proposes a launcher allowlist entry for --settings under the profile settings dir, with a mutation test.
+const SIGNALLED_EXIT = new Set([128 + 1, 128 + 2, 128 + 15]);
+
+function launcherStopped(e: unknown): boolean {
+  const k = e as { signal?: unknown; status?: unknown };
+  return Boolean(k.signal) || SIGNALLED_EXIT.has(k.status as number);
+}
+
 // ponytail: the pre-read and the launcher read roles.json separately; a hand edit between the two reads can make the
 // launcher refuse on policy after routedJudge saw "mapped", which writes one policy-refusals line and lands on liveJudge;
 // the window is one node start; a UI save landing in that window has the same effect; plan P4's write guard covers
 // agent writes only, not that race.
-// `fallback` is the test seam; production passes nothing and gets liveJudge. Any API-route failure (a policy refusal, no
-// room, an API error, an unparseable reply) ends in the fallback, once: the judge always gets an answer.
-const SIGNALLED_EXIT = new Set([128 + 1, 128 + 2, 128 + 15]);
-
-function launcherSignalled(e: unknown): boolean {
-  const k = e as { signal?: unknown; killed?: boolean; status?: unknown };
-  return !k.killed && (Boolean(k.signal) || SIGNALLED_EXIT.has(k.status as number));
-}
-
-export function makeRoutedJudge(fallback: Judge = liveJudge): Judge {
+// `fallback` and `callTimeoutS` are the test seams; production passes nothing and gets liveJudge and the 900 s call.
+// Any other API-route failure (a policy refusal, no room, an API error, an unparseable reply) ends in the fallback, once.
+// A stopped run or a timed-out call ends the run instead (decision 815).
+export function makeRoutedJudge(fallback: Judge = liveJudge, callTimeoutS: number = JUDGE_TIMEOUT_S): Judge {
   return async (input, opts) => {
-    const env = judgeApiEnv(process.env);
+    const env = judgeApiEnv(process.env, undefined, callTimeoutS);
     const mapped = spawnSync('node', [join(repoRoot, 'scripts', 'lib', 'api-roles.mjs'), 'accounts', 'judge'], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
     if (mapped.signal) throw new Error(`rm-run: the judge role read was stopped by ${mapped.signal}; nothing ruled`);
     if (mapped.status !== 0 || !(mapped.stdout ?? '').trim()) return fallback(input, opts);
@@ -453,9 +454,9 @@ export function makeRoutedJudge(fallback: Judge = liveJudge): Judge {
       try {
         out = await judgeCall('bash', [join(repoRoot, 'scripts', 'api-lane', 'claude-api.sh'),
           '-p', '--model', 'opus', '--effort', 'high', '--permission-mode', 'plan', '--max-budget-usd', String(JUDGE_API_BUDGET_USD), '--output-format', 'json',
-        ], { input: judgePrompt(input, skill), cwd, env, timeoutMs: JUDGE_SPAWN_TIMEOUT_MS, signal: opts?.signal });
+        ], { input: judgePrompt(input, skill), cwd, env, timeoutMs: (callTimeoutS + 30) * 1000, signal: opts?.signal });
       } catch (e) {
-        if (opts?.signal?.aborted || launcherSignalled(e)) throw e;
+        if (opts?.signal?.aborted || launcherStopped(e)) throw e;
         return fallback(input, opts);
       }
       try { return parseDecisions(out); } catch { return fallback(input, opts); }
@@ -714,21 +715,23 @@ export function registerRelease(program: Command): void {
         stop.abort(new Error(`rm-run: stopped by ${sig}; nothing more ruled`));
       };
       for (const s of signals) process.on(s, onSignal);
+      const judgeLine: string[] = [];
       let lines: string[];
       try {
         lines = await rmRun(ctx, judgeFor(ctx), {
           doc: o.doc, session: `rm-run-${process.pid}`, ruling: o.ruling, chiefOverride: chiefOverrideOf(o), signal: stop.signal,
           judgeTimeoutMs: RM_RUN_JUDGE_DEADLINE_MS,
+          onJudge: (n, ms) => { judgeLine.push(`RM-RUN ${release} judge: ${n} requests, ${ms} ms`); },
         });
       } catch (e) {
         const r = e as Partial<RunRecord>;
-        for (const l of r.runLines ?? []) console.log(l);
+        for (const l of [...(r.runLines ?? []), ...judgeLine]) console.log(l);
         if (r.runDoc) console.log(`RM-RUN ${release} run record: ${r.runDoc}`);
         throw e;
       } finally {
         for (const s of signals) process.off(s, onSignal);
       }
-      for (const l of lines) console.log(l);
+      for (const l of [...lines, ...judgeLine]) console.log(l);
       const summary = rmRunSummary(release, lines);
       if (summary) console.log(summary);
       if (lines.some((l) => /^(REFUSED|PENDING) /.test(l))) process.exitCode = 2;

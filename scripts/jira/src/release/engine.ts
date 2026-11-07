@@ -1338,6 +1338,8 @@ export interface RmRunOptions {
   judgeTimeoutMs?: number;
   /** The process the lease names (default this one), so the next run can free the lease if it dies. */
   pid?: number;
+  /** Called once the judge answers or fails: how many requests it was asked and how long it took (decision 815). */
+  onJudge?: (requests: number, ms: number) => void;
   /** A decision ref that covers a run moving more than BULK_MOVE_LIMIT open tickets in the current version. */
   ruling?: string;
   /** The chief's reason for the same, console marker only; one ledger row records it with the count. */
@@ -1410,6 +1412,7 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
       const issues = (await Promise.all([...keys].map((k) => issueFor(ctx, k, mirror.issues?.get(k))))).flatMap((i) => i ?? []);
       halt();
       let decisions: Decision[];
+      const judgeStart = Date.now();
       try {
         decisions = !asked.length ? [] : await judged(judge({
           release: ctx.release, current: now.decl.current, versions: now.decl.versions, requests: asked,
@@ -1424,6 +1427,8 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
           lines.push(`JUDGE-REFUSED: ${e.message}`);
         }
         throw e;
+      } finally {
+        if (asked.length) o.onJudge?.(asked.length, Date.now() - judgeStart);
       }
       for (const q of claimed) {
         halt();

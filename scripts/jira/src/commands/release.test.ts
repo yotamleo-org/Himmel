@@ -292,7 +292,8 @@ describe('jira release rm-run', () => {
     expect(docs).toHaveLength(1);
     expect(readFileSync(join(dir, 'rm-runs', docs[0]), 'utf8')).toMatch(new RegExp(`^- FAILED: rm-run: stopped by ${sig}`, 'm'));
     expect(out).toEqual([
-      `FAILED: rm-run: stopped by ${sig}; nothing more ruled`, 'RETURNED 1 claimed requests to open', `RM-RUN R1 run record: ${join(dir, 'rm-runs', docs[0])}`,
+      `FAILED: rm-run: stopped by ${sig}; nothing more ruled`, 'RETURNED 1 claimed requests to open',
+      expect.stringMatching(/^RM-RUN R1 judge: 1 requests, \d+ ms$/), `RM-RUN R1 run record: ${join(dir, 'rm-runs', docs[0])}`,
     ]);
   });
 
@@ -325,7 +326,8 @@ describe('jira release rm-run', () => {
     judgeReply.out = JSON.stringify({ is_error: false, result: JSON.stringify([other]) });
     out = [];
     await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
-    expect(out.at(-2)).toMatch(/^REFUSED Q-R1-0001: /);
+    expect(out.at(-3)).toMatch(/^REFUSED Q-R1-0001: /);
+    expect(out.at(-2)).toMatch(/^RM-RUN R1 judge: 1 requests, \d+ ms$/);
     expect(out.at(-1)).toBe('RM-RUN R1 summary: 1 refused');
     expect(process.exitCode).toBe(2);
     process.exitCode = 0;
@@ -839,6 +841,14 @@ describe('routedJudge', () => {
     await vi.waitFor(() => expect(fakePid(w)).toBeGreaterThan(0), { timeout: 10_000 });
     process.kill(ancestor(fakePid(w), 'claude-api.sh'), 'SIGTERM');
     await expect(got).rejects.toMatchObject({ status: 143 });
+    expect(w.fallbackCalls).toHaveLength(0);
+  }, 20_000);
+
+  it('mapped, the launcher times out its own call: the run fails and no fallback runs', async () => {
+    const w = world({ judge: ['B'] }, { sleep: 30 });
+    const t0 = Date.now();
+    await expect(makeRoutedJudge(w.fallback, 2)(INPUT)).rejects.toThrow();
+    expect(Date.now() - t0).toBeLessThan(15_000);
     expect(w.fallbackCalls).toHaveLength(0);
   }, 20_000);
 
