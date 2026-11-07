@@ -26,14 +26,14 @@ Check both signals:
 - **Config:** is `HANDOVER_DIR` already set in the environment, or does
   `<repo-root>/.env` hold an active (uncommented) `HANDOVER_DIR=` line? An empty
   line is the recorded inline choice, so it counts as set. Do not read `.env`
-  yourself (the secrets guard refuses it); ask the loader for that one layer.
-  `<env-value>` is its output: `unset` means no line, empty means inline:
-
+  yourself (the secrets guard refuses it); ask the loader for that one layer
   (`<himmel-clone>` is `<repo-root>` in a himmel checkout and `$HIMMEL_REPO` in a
-  project install.)
+  project install). `<env-value>` is its output: `unset` means no line, empty
+  means inline. A non-zero exit (for example a wrong clone path) is a failed
+  read, not `unset`:
 
   ```bash
-  env -u HANDOVER_DIR HIMMEL_CONFIG_DIR=/nonexistent bash -c '. <himmel-clone>/scripts/lib/load-dotenv.sh && load_dotenv --root <repo-root> HANDOVER_DIR 2>/dev/null; printf "%s" "${HANDOVER_DIR-unset}"'
+  env -u HANDOVER_DIR HIMMEL_CONFIG_DIR=/nonexistent bash -c '. <himmel-clone>/scripts/lib/load-dotenv.sh && load_dotenv --root <repo-root> HANDOVER_DIR 2>/dev/null && printf "%s" "${HANDOVER_DIR-unset}"'
   ```
 - **Registry:** does `~/.claude/handover/registry.json` already contain an entry
   whose `path` canonicalises to `<repo-root>`?
@@ -43,10 +43,11 @@ pin, the user-scope pin and the himmel config files; they beat `.env`, same
 stop-on-failure rule). The value that wins is the project pin, else the
 user-scope pin, else the config value, else `<env-value>`; an empty `<env-value>`
 means `<repo-root>/handovers` for this comparison. If the `.env` has a
-`HANDOVER_DIR` line (empty or not) and a higher source is present and differs
-from it, setup is not complete: continue to step 3 so step 4 can reconcile it.
-Without an `.env` line, the highest source present is the configured value on
-its own (a project install wrote it).
+`HANDOVER_DIR` line (empty or not) and the winning value differs from
+`<env-value>`, setup is not complete: continue to step 3 so step 4 can reconcile
+it. (A project pin equal to `<env-value>` over a different config root is
+complete: the pin wins and agrees.) Without an `.env` line, the winning value is
+the configured value on its own (a project install wrote it).
 
 If **both** are present and agree, report the resolved state root and stop with: "Handover
 already set up for this repo (HANDOVER_DIR=<…>, registered as '<name>'). Re-run a
@@ -142,25 +143,24 @@ himmel clone's copy (`$HIMMEL_REPO/scripts/handover/set-handover-dir.sh`) with
   `.env`: the project's settings pin, the user-scope settings pin, and the
   himmel config files. A different choice would silently not take effect while
   one of them holds another root. Do all of substeps 1 to 3 in order; an absent
-  file in one is not a reason to skip the next. In each read, a failure (`jq`
-  missing, invalid JSON, a non-zero exit) is not "no value": stop and show the
-  error, because the choice is not applied until it is read. The writers live in
+  file in one is not a reason to skip the next. Read the two settings files with
+  the Read tool, never `jq` or `grep` on a shell line: the secrets guard refuses
+  a `jq` filter such as `.env.HANDOVER_DIR` (it matches `.env.*`). In each read,
+  a failure (a file that exists but cannot be read or parsed, a guard refusal, a
+  non-zero exit) is not "no value": stop and show the error, because the choice
+  is not applied until it is read. The writers live in
   the himmel clone, which is `<repo-root>` in a himmel checkout and
   `$HIMMEL_REPO` in a project install. `<choice>` is `<canonical-path>`; for
   inline it is `<repo-root>/handovers`.
 
   1. **Project pin.** If `<repo-root>/.claude/settings.json` does not exist,
-     there is no project pin: go to substep 2. Otherwise read it:
-
-     ```bash
-     jq -r '.env.HANDOVER_DIR // empty' <repo-root>/.claude/settings.json
-     ```
-
-     An empty result from a successful `jq` means no pin. `<project-pin>` is
-     the value read.
+     there is no project pin: go to substep 2. Otherwise Read that file and take
+     `env.HANDOVER_DIR` from the JSON. No `env` object, no `HANDOVER_DIR` key or
+     an empty string means no pin; invalid JSON is a failed read. `<project-pin>`
+     is the value read.
   2. **User-scope pin.** A user-scope install (`adopt.sh --scope user`) may have
-     pinned `env.HANDOVER_DIR` in `~/.claude/settings.json`. Read it with the
-     same `jq` command (an absent file means none). `<outer>` is that value.
+     pinned `env.HANDOVER_DIR` in `~/.claude/settings.json`. Read it the same
+     way (an absent file means none). `<outer>` is that value.
   3. **Config files.** `scripts/lib/load-dotenv.sh` reads `~/.himmel/himmel.conf.local`,
      the active station profile and `~/.himmel/himmel.conf` before `.env`, and
      `adopt.sh` writes no pin when one holds a `HANDOVER_DIR`. Read the winning

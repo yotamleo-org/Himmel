@@ -174,7 +174,7 @@ assert_eq "T17 a settings-env pin beats the conf root" "$HDIR_CANON" "$t17_pin_w
 t18_read() {
     # shellcheck disable=SC2016  # the body is single-quoted on purpose: $1/$2 are bash -c positionals
     (cd "$1" && env -u HANDOVER_DIR HOME="$TMP/t17home" HIMMEL_CONFIG_DIR="${2:-/nonexistent}" \
-        bash -c '. "$1/load-dotenv.sh" && load_dotenv --root "$2" HANDOVER_DIR 2>/dev/null; printf "%s" "${HANDOVER_DIR-unset}"' _ "$LIB" "$1")
+        bash -c '. "$1/load-dotenv.sh" && load_dotenv --root "$2" HANDOVER_DIR 2>/dev/null && printf "%s" "${HANDOVER_DIR-unset}"' _ "$LIB" "$1")
 }
 T18_REPO="$TMP/t18repo"
 mkdir -p "$T18_REPO"
@@ -185,6 +185,34 @@ bash "$SCRIPT" --inline --env-file "$T18_REPO/.env" >/dev/null 2>&1
 assert_eq "T18 inline record reads empty" "" "$(t18_read "$T18_REPO")"
 bash "$SCRIPT" "$HDIR" --env-file "$T18_REPO/.env" >/dev/null 2>&1
 assert_eq "T18 a path reads the path" "$HDIR_CANON" "$(t18_read "$T18_REPO")"
+# a wrong clone path (a sourcing failure) is a failed read: non-zero, not a plausible `unset`
+# shellcheck disable=SC2016  # single-quoted on purpose: $1/$2 are bash -c positionals
+t18_bad=$(cd "$T18_REPO" && env -u HANDOVER_DIR HOME="$TMP/t17home" HIMMEL_CONFIG_DIR=/nonexistent \
+    bash -c '. "$1/load-dotenv.sh" && load_dotenv --root "$2" HANDOVER_DIR 2>/dev/null && printf "%s" "${HANDOVER_DIR-unset}"' _ "$TMP/no-such-clone/scripts/lib" "$T18_REPO" 2>/dev/null)
+t18_bad_rc=$?
+if [ "$t18_bad_rc" -ne 0 ] && [ -z "$t18_bad" ]; then echo "PASS T18 a wrong clone path fails with no output (rc=$t18_bad_rc)"
+else echo "FAIL T18 a wrong clone path fails with no output — rc=$t18_bad_rc out='$t18_bad'"; FAILED=$((FAILED + 1)); fi
+
+# T19: every command the prose puts in a fenced bash block passes the REAL secrets guard
+# (block-read-secrets.sh, which adopt.sh copies into every guarded project). The old jq
+# filter '.env.HANDOVER_DIR' matches .env.* and was refused; it stays a RED control here.
+GUARD="$(cd "$(dirname "$SCRIPT")/../hooks" && pwd)/block-read-secrets.sh"
+SETUP_MD="$(cd "$(dirname "$SCRIPT")/../.." && pwd)/marketplace/plugins/handover/commands/handover-setup.md"
+guard_rc() { jq -Rs '{tool_name:"Bash",tool_input:{command:.}}' <<<"$1" | bash "$GUARD" >/dev/null 2>&1; echo "$?"; }
+guard_read_rc() { jq -Rn --arg p "$1" '{tool_name:"Read",tool_input:{file_path:$p}}' | bash "$GUARD" >/dev/null 2>&1; echo "$?"; }
+assert_rc "T19 control: the old jq filter on the settings file is refused" 2 \
+    "$(guard_rc "jq -r '.env.HANDOVER_DIR // empty' /r/.claude/settings.json")"
+t19_n=0; t19_bad=0
+while IFS= read -r t19_line; do
+    [ -n "$t19_line" ] || continue
+    t19_cmd=$(printf '%s' "$t19_line" | sed -e 's#<writer>#/h/scripts/handover/set-handover-dir.sh#g' -e 's#<himmel-clone>#/h#g' -e 's#<repo-root>#/r#g' -e 's#<chosen-path>#/x#g')
+    t19_n=$((t19_n + 1))
+    if [ "$(guard_rc "$t19_cmd")" != "0" ]; then t19_bad=$((t19_bad + 1)); echo "FAIL T19 the guard refuses a command in the prose: $t19_cmd"; FAILED=$((FAILED + 1)); fi
+done < <(awk '/^[[:space:]]*```bash[[:space:]]*$/ {f=1; next} /^[[:space:]]*```[[:space:]]*$/ {f=0} f {sub(/^[[:space:]]+/, ""); print}' "$SETUP_MD")
+if [ "$t19_n" -gt 0 ] && [ "$t19_bad" -eq 0 ]; then echo "PASS T19 all $t19_n fenced prose commands pass the secrets guard"
+elif [ "$t19_n" -eq 0 ]; then echo "FAIL T19 found no fenced bash commands in handover-setup.md"; FAILED=$((FAILED + 1)); fi
+assert_rc "T19 Read of the project settings file passes the guard" 0 "$(guard_read_rc "/r/.claude/settings.json")"
+assert_rc "T19 Read of the user settings file passes the guard" 0 "$(guard_read_rc "/home/u/.claude/settings.json")"
 
 echo
 if [ "$FAILED" -eq 0 ]; then echo "All set-handover-dir tests passed."
