@@ -99,11 +99,11 @@ as_worker() {
 w() { fx Write file_path "$2" "${3:-$R}"; as_worker "$1"; }
 
 deny_text() {  # deny_text <path> <holder> <rival>
-    printf '%s is held by %s (%s lbl, claim). Keep working on other files, and send your chief: HOLD-ASK %s %s. Chief grants with: python3 -I %q grant --key %s --repo %q %q. Bypass: WRITE_HOLD_OK=1 in the launching shell' \
+    printf '%s is held by %s (%s lbl, claim). Keep working on other files, and send your chief: HOLD-ASK %s %s. Chief grants with: python3 -I %q grant --key %s --repo %q %q . Bypass: WRITE_HOLD_OK=1 in the launching shell' \
         "$1" "$2" "$2" "$1" "$3" "$HOLDS_REAL" "$3" "$R" "$1"
 }
 trust_text() {  # trust_text <path> <holder> <rival>: grant-route says chief
-    printf '%s is a trust path, held by %s (%s lbl, claim). Keep working on other files. This deny is logged: your chief sees it on its tick (hreg=) and can stamp a grant with: python3 -I %q grant --key %s --repo %q --chief-doc CHIEF_DOC %q. Otherwise wait for its release, or the operator launches with WRITE_HOLD_OK=1' \
+    printf '%s is a trust path, held by %s (%s lbl, claim). Keep working on other files. This deny is logged: your chief sees it on its tick (hreg=) and can stamp a grant with: python3 -I %q grant --key %s --repo %q --chief-doc CHIEF_DOC %q . Otherwise wait for its release, or the operator launches with WRITE_HOLD_OK=1' \
         "$1" "$2" "$2" "$HOLDS_REAL" "$3" "$R" "$1"
 }
 operator_text() {  # operator_text <path> <holder>: grant-route says operator
@@ -283,7 +283,8 @@ same "a path with a space and a percent: exit 0" "$RC" 0
 contains "holds.py read returns that row" "$(hp read --repo "$R")" "with space 100%.txt	$KA	$KA lbl	claim"
 w "$KB" "$R/with space 100%.txt"
 same "a rival on a path with a space: exit 2" "$RC" 2
-grant_line="$(printf '%s' "$ERR" | sed -n 's/.*Chief grants with: \(.*\)\. Bypass:.*/\1/p')"
+contains "route any: a space keeps the sentence's period out of the pasted path" "$ERR" '100%.txt . Bypass:'
+grant_line="$(printf '%s' "$ERR" | sed -n 's/.*Chief grants with: \(.*\) \. Bypass:.*/\1/p')"
 bash -c "$grant_line" > /dev/null 2>&1
 same "the printed grant line pastes and runs on a path with a space" "$?" 0
 w "$KB" "$R/with space 100%.txt"

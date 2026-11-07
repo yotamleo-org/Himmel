@@ -1144,6 +1144,38 @@ same "8725 route operator: the claim is refused" "$RC" 1
 contains "8725 route operator: only the operator grants" "$ERR" "only the operator grants it"
 contains "8725 route operator: the refusal names waiting and the bypass launch" "$ERR" "Otherwise wait for its release, or the operator launches with WRITE_HOLD_OK=1"
 case "$ERR" in *--chief-doc*|*HOLD-ASK*) fail "8725 route operator: the refusal names no chief stamp and no HOLD-ASK" ;; *) pass "8725 route operator: the refusal names no chief stamp and no HOLD-ASK" ;; esac
+# copy_claim <list content for printf %b, or - for no list> <path> <asker key>: the same claim, by a holds.py copy beside that
+# list. Every caller reads rc 1 as a deny and passes on rc 2, so a bad list must leave the deny a deny.
+copy_claim() {
+    local d="$W/trust-$3" rival=HIMMEL-9628
+    mkdir -p "$d/scripts/handover/chief-kit" "$d/scripts/ci"
+    cp "$SUT" "$d/scripts/handover/chief-kit/holds.py"
+    if [ "$1" != - ]; then printf '%b' "$1" > "$d/scripts/ci/ci-trust-paths.txt"; fi
+    put_row "$2" "$rival" lab "$(mkdoc "$rival-case.md")" brief "" "$R9"
+    touch "$(rowf "$2" "$R9")"
+    run python3 -I "$d/scripts/handover/chief-kit/holds.py" claim --key "$3" --label asker --doc "$(mkdoc "$3-case.md")" --repo "$R9" "$2"
+}
+copy_claim '^scripts/tl-good\\.sh$\n' scripts/tl-good.sh HIMMEL-9624
+same "8725 control: a copy beside a good list is refused" "$RC" 1
+contains "8725 control: the copy reads its own list, the path routes chief" "$ERR" "can stamp a grant with --chief-doc"
+copy_claim '*bad\n' scripts/tl-invalid.sh HIMMEL-9623
+same "8725 an invalid pattern in the list: the claim is still refused" "$RC" 1
+contains "8725 an invalid pattern in the list: the refusal is a holds: line" "$ERR" "holds: scripts/tl-invalid.sh is held by"
+copy_claim '\0377\n' scripts/tl-bytes.sh HIMMEL-9622
+same "8725 a non-UTF-8 byte in the list: the claim is still refused" "$RC" 1
+contains "8725 a non-UTF-8 byte in the list: the refusal is a holds: line" "$ERR" "holds: scripts/tl-bytes.sh is held by"
+copy_claim - scripts/tl-missing.sh HIMMEL-9621
+same "8725 no list: the claim is still refused" "$RC" 1
+contains "8725 no list: the refusal is a holds: line" "$ERR" "holds: scripts/tl-missing.sh is held by"
+copy_claim - .github/workflows/tl-missing.yml HIMMEL-9620
+same "8725 no list, a CI workflow: the claim is still refused" "$RC" 1
+contains "8725 no list, a CI workflow: it still routes operator" "$ERR" "only the operator grants it"
+copy_claim '*bad\n' .github/workflows/tl-invalid.yml HIMMEL-9619
+same "8725 an invalid list, a CI workflow: the claim is still refused" "$RC" 1
+contains "8725 an invalid list, a CI workflow: it still routes operator" "$ERR" "only the operator grants it"
+run python3 -I "$W/trust-HIMMEL-9623/scripts/handover/chief-kit/holds.py" grant --key HIMMEL-9623 --repo "$R9" scripts/tl-invalid.sh
+same "8725 an invalid list: a grant still refuses" "$RC" 2
+same "8725 an invalid list: a grant writes nothing" "$(find "$(slugdir "$R9")" -name '*.grant.HIMMEL-9623' | wc -l | tr -d ' ')" 0
 
 # ---- 8725 Task 5: git-check --staged and --push read git's own file lists (I2, I7, I12)
 # A real repo with an origin and linked worktrees; the commit and push hooks are the real entries of .pre-commit-config.yaml,

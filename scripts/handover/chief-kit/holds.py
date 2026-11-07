@@ -589,8 +589,11 @@ GRANT_EXITS = 'Otherwise wait for its release, or the operator launches with WRI
 
 def refusal(path, fields, key):
     head = 'holds: %s is held by %s (%s, %s). Keep working on other files. This deny is logged' % (path, fields[0], fields[1], fields[3])
-    trust = load_trust()
-    route = grant_route(path, path, trust) if trust is not None else 'any'
+    try:
+        trust = load_trust() or []
+    except (re.error, UnicodeError):
+        trust = []  # callers read rc 1 as a deny and pass on a crash, so a bad list costs the wording, never the deny
+    route = grant_route(path, path, trust)
     if route == 'chief':
         return ('%s: this is a trust path, your chief sees it on its tick (hreg=) and can stamp a grant with --chief-doc, and '
                 'the operator is paged with the grant command. %s' % (head, GRANT_EXITS))

@@ -772,11 +772,14 @@ trust judge, whoever granted the write.
 **Crossed trust-file holders.** Two workers each hold a trust file the other needs, so
 both are denied and neither finishes on its own. Stamp one grant (or ask the operator on
 the `operator` route), or stop one worker: its rows die once its lock is free and the
-15-minute grace has passed. An operator launch with `WRITE_HOLD_OK=1` is the last exit.
+15-minute grace has passed, unless its open PR or an unwrapped RESUME doc of its key under
+24 hours old keeps them alive. An operator launch with `WRITE_HOLD_OK=1` is the last exit.
 
 **A crashed holder whose lock stays held blocks its files until the heartbeat passes the
 6-hour TTL (21600 s) and the owner is proven dead.** An owner never proven dead reads plain
-`STALE` and keeps blocking until someone acts. The exits:
+`STALE` and keeps blocking until someone acts. Freeing the lock is not always enough: an
+open PR, or an unwrapped RESUME doc of the key under 24 hours old, keeps the row alive with
+no lock. The exits:
 
 - a grant, by the route above;
 - once past the TTL, `queue-lock.sh status --sweep --reap-dead [<root>]`, which releases only `STALE-DEAD` locks;
