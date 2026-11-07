@@ -2,13 +2,9 @@
 
    **Step 3.7 — Comment review on code diffs; runs in the full lane, after the reviewer stage (3.5).** The deterministic comment lint (`scripts/lint/check-history-comments.sh`) refuses ticket keys and review-round notes, but not narration, banners or commented-out code. This step has a sonnet agent read the comments the diff adds and report which to delete. Gate 4g of `scripts/cr/clear-review-marker.sh` refuses to clear a full-lane marker (exit 14, `reason=missing-comment-review`) whose diff adds a code comment until the branch has a `comments` row.
 
-   **When it runs.** Count the added code comments over the branch diff (`<db_sha>` and `<head>` are step 3.0's values, carried forward as literals):
-   ```bash
-   bash "$HIMMEL_REPO/scripts/lint/check-history-comments.sh" --range <db_sha> --tip <head> --count-comments
-   ```
-   It prints one integer, from the anchor's counter (the one gate 4g runs, never the branch's copy: a `<himmel_dir>` spelling would run the branch's own bytes, which `test-cr-guarded-closure.sh` refuses). `0` means the step ends here and no row is owed. A non-zero exit or a non-integer is a stop: report it, never treat it as 0 (the gate refuses closed on the same condition, `reason=comment-review-unreadable`).
+   **When it runs.** Print the diff (next fence) first. If it adds no comment line, the step ends here and no row is owed. Gate 4g counts the added comments with the anchor's own counter and refuses the clear (exit 14) when a row was owed, so a misjudged skip costs a retry, never a pass, and a counter it cannot run refuses closed (`reason=comment-review-unreadable`). This step has no counting fence: one naming `scripts/lint/check-history-comments.sh` through `<himmel_dir>` would run the branch's own bytes, which `test-cr-guarded-closure.sh` refuses.
 
-   **The diff file.** Print the branch diff with zero context lines (the agent reads nearby code itself), then save that output unchanged to a scratch path in the session scratchpad with the Write tool, since a fence may not redirect and git's `--output` option is refused by the fence guard:
+   **The diff file.** Print the branch diff with zero context lines (`<db_sha>` and `<head>` are step 3.0's values, carried forward as literals) (the agent reads nearby code itself), then save that output unchanged to a scratch path in the session scratchpad with the Write tool, since a fence may not redirect and git's `--output` option is refused by the fence guard:
    ```bash
    git diff -U0 --no-color --no-ext-diff <db_sha> <head>
    ```
