@@ -106,6 +106,13 @@ cloning `himmel-ar-N`, or rebuilding the golden image.
   confirm that service is `enabled`. Skipping this ships a personalised
   golden image — exactly the machine-id/host-key collision `suite-ready-v3`
   was cut to fix, one level up.
+- **Read the newest good snapshot from `~/.himmel/state/vm-maintain/newest-good.tsv`.**
+  `scripts/vm/vm-maintain.sh run <vm> --no-secret-scan` updates the VM, snapshots it in
+  place as `maint-YYYYMMDD-HHMM` and records `<vm>`, `<snapshot>`, `<utc time>` there;
+  it prunes only `maint-*` names beyond the last 3, never `suite-ready-*` or `claudex-*`.
+  `vm-maintain.sh probe <vm>` reports an expired claude, codex or cli-proxy login with
+  the exact command to run. A snapshot that holds a login is maintained in place, never
+  cloned. Details: `docs/setup/vms.md`.
 - **No GUI in the guest.** This image has no display manager and no X
   server, so the bidirectional clipboard machine-config setting (above) is
   correct and necessary but has nothing to attach to — `VBoxClient
