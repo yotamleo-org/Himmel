@@ -1732,6 +1732,31 @@ check "HIMMEL-6685: a status other than ran|off is refused" "$?" "2"
 CR_LEDGER="$tmp/blast-nohead.jsonl" bash "$LA" blast --branch b 2>/dev/null
 check "HIMMEL-6685: a blast row with no --head is refused" "$?" "2"
 
+CMS="$tmp/comments.jsonl"; : > "$CMS"
+comments_rows() { L="$CMS" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).filter(Boolean).map(JSON.parse).filter(r=>r.kind==="comments");console.log(rs.map(r=>[r.branch,r.head,r.status,r.count===undefined?"":r.count,r.reason||""].join(",")).join("|"))'; }
+CR_LEDGER="$CMS" bash "$LA" comments --branch b --head CM1 --count 3 --status ok 2>/dev/null
+check "comments: an ok row with a count exits 0" "$?" "0"
+CR_LEDGER="$CMS" bash "$LA" comments --branch b --head CM2 --status off --reason codex-lane 2>/dev/null
+check "comments: an off row with reason codex-lane exits 0" "$?" "0"
+CR_LEDGER="$CMS" bash "$LA" comments --branch b --head CM3 --status off --reason agent-not-loaded 2>/dev/null
+check "comments: an off row with reason agent-not-loaded exits 0" "$?" "0"
+check "comments: rows keep branch, head, status, count and reason, and are never deduped" "$(comments_rows)" "b,CM1,ok,3,|b,CM2,off,,codex-lane|b,CM3,off,,agent-not-loaded"
+CR_LEDGER="$tmp/comments-badreason.jsonl" bash "$LA" comments --branch b --head CM4 --status off --reason because 2>/dev/null
+check "comments: an off row with any other reason is refused" "$?" "2"
+check "comments: a refused off row writes nothing" "$(test -s "$tmp/comments-badreason.jsonl" && echo wrote || echo none)" "none"
+CR_LEDGER="$tmp/comments-noreason.jsonl" bash "$LA" comments --branch b --head CM4 --status off 2>/dev/null
+check "comments: an off row with no reason is refused" "$?" "2"
+CR_LEDGER="$tmp/comments-badstatus.jsonl" bash "$LA" comments --branch b --head CM4 --status ran --count 1 2>/dev/null
+check "comments: a status other than ok|off is refused" "$?" "2"
+CR_LEDGER="$tmp/comments-nostatus.jsonl" bash "$LA" comments --branch b --head CM4 --count 1 2>/dev/null
+check "comments: a row with no status is refused" "$?" "2"
+CR_LEDGER="$tmp/comments-nocount.jsonl" bash "$LA" comments --branch b --head CM4 --status ok 2>/dev/null
+check "comments: an ok row with no count is refused" "$?" "2"
+CR_LEDGER="$tmp/comments-badcount.jsonl" bash "$LA" comments --branch b --head CM4 --status ok --count many 2>/dev/null
+check "comments: an ok row with a non-integer count is refused" "$?" "2"
+CR_LEDGER="$tmp/comments-nohead.jsonl" bash "$LA" comments --branch b --status ok --count 1 2>/dev/null
+check "comments: a row with no --head is refused" "$?" "2"
+
 # ── a dependabot-go row is the review the merge gate reads for a Dependabot PR ──
 DGL="$tmp/dg.jsonl"; : > "$DGL"
 DGH=9d87a2790a6b7d12146a113a17ad8a612446fba1
