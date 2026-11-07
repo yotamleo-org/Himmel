@@ -2109,6 +2109,175 @@ rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-workers.sh" HIMMEL_BUCKET_DIR="$W/bu
 check "workers: a failed manifest listing -> rc 2, not an empty sweep" "$rc" "2"
 not_contains "workers: a failed manifest listing prints no sweep total" "$out" "sweeps: manifests=0"
 
+mkdir -p "$W/sessions"
+SID_REFUSED_LONG="aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa"
+SID_SHORT_RELAUNCH="bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb"
+SID_OTHER_WORKER="cccccccc-3333-4333-8333-cccccccccccc"
+SH_DOC="$W/HIMMEL-9-N60b-demo-slice-2026-01-01-RESUME.md"
+SH_OTHER="$W/HIMMEL-9-N77-other-2026-01-01.md"
+printf -- '---\nsession_ids: %s,%s\n---\n# worker\n\n## Results\n\n- 09:00 LIVE - resumed\n- 10:00 WRAPPED - done\n' "$SID_REFUSED_LONG" "$SID_SHORT_RELAUNCH" > "$SH_DOC"
+printf -- '---\nsession_ids: %s\n---\n# other\n\n## Results\n\n- 09:00 LIVE - working\n' "$SID_OTHER_WORKER" > "$SH_OTHER"
+mkproc() {
+    mkcmdline "$1" claude -n "$2" work
+    printf '%s (claude) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 9%s 0 0\n' "$1" "$1" > "$W/proc/$1/stat"
+    printf '{"pid":%s,"sessionId":"%s","procStart":"%s"}\n' "$1" "$3" "$4" > "$W/sessions/$1.json"
+}
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkproc 410 HIMMEL-9-N60b-slice-RESUME "$SID_SHORT_RELAUNCH" 9410
+pgrep_x_stub 410
+reset_calls
+rc=0; out=$(run "$SH_DOC" 2>&1) || rc=$?
+check "9542 a: a relaunch under a shortened name is found by its session id -> rc 0" "$rc" "0"
+not_contains "9542 a: it is not read as CLOSED-ALREADY while live" "$out" "CLOSED-ALREADY"
+exact_count "9542 a: exactly the proven pid is signaled" "$(cat "$CALLS")" "kill -TERM 410" "1"
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkproc 411 HIMMEL-9-N60b-slice-RESUME "$SID_OTHER_WORKER" 9411
+pgrep_x_stub 411
+reset_calls
+rc=0; out=$(run "$SH_DOC" 2>&1) || rc=$?
+check "9542 a: a live pid whose session id is another worker's is not signaled" "$(cat "$CALLS")" ""
+contains "9542 a: it reads as no live session" "$out" "CLOSED-ALREADY"
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkproc 413 HIMMEL-9-N60b-slice-RESUME "$SID_SHORT_RELAUNCH" 9413
+rm -f "$W/sessions/413.json"
+pgrep_x_stub 413
+reset_calls
+rc=0; out=$(run "$SH_DOC" 2>&1) || rc=$?
+check "9542 a: a live pid with no session record is not signaled" "$(cat "$CALLS")" ""
+printf '{"pid":413,"sessionId":"%s"}\n' "$SID_SHORT_RELAUNCH" > "$W/sessions/413.json"
+reset_calls
+rc=0; out=$(run "$SH_DOC" 2>&1) || rc=$?
+check "9542 a: a session record with no start time proves nothing, nothing is signaled" "$(cat "$CALLS")" ""
+mkproc 413 HIMMEL-9-N60b-slice-RESUME "$SID_SHORT_RELAUNCH" 111
+reset_calls
+rc=0; out=$(run "$SH_DOC" 2>&1) || rc=$?
+check "9542 a: a record left by a dead process (start time differs) is not signaled" "$(cat "$CALLS")" ""
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkproc 410 HIMMEL-9-N60b-slice-RESUME "$SID_SHORT_RELAUNCH" 9410
+mkproc 412 HIMMEL-9-N60b-other-RESUME "$SID_REFUSED_LONG" 9412
+pgrep_x_stub 410 412
+reset_calls
+rc=0; out=$(run "$SH_DOC" 2>&1) || rc=$?
+check "9542 a: two proven live sessions are refused -> rc 5" "$rc" "5"
+check "9542 a: two proven live sessions signal nothing" "$(cat "$CALLS")" ""
+rm -f "$SH_DOC" "$SH_OTHER"
+
+PB_ORIG="$W/HIMMEL-9-N61-pair-2026-01-01.md"
+PB_RES="$W/HIMMEL-9-N61-pair-2026-01-01-RESUME.md"
+pb_orig() {
+    local wrapped_stamp="$1"
+    # shellcheck disable=SC2016  # literal fixture token delimiters
+    printf '# worker\n\n## Results\n\n- 09:00 LIVE - started, release-token `fixture-pid100`\n- 10:00 WRAPPED - hand-off, resume brief %s\n- 11:00 LIVE - resumed, release-token `fixture-pid200`\n- 11:30 READY - PR 7 abc GREEN\n- %s WRAPPED - merged\n' "$PB_RES" "$wrapped_stamp" > "$PB_ORIG"
+}
+pb_res() { printf '# resume\n\n## Results\n\n- %s READY - PR 7 abc GREEN\n' "$1" > "$PB_RES"; }
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 420 claude -n HIMMEL-9-N61-pair-2026-01-01 work
+pgrep_x_stub 420
+pb_orig 12:00; pb_res 11:35
+reset_calls
+rc=0; out=$(run "$PB_ORIG" 2>&1) || rc=$?
+check "9542 b: WRAPPED only in the original, RESUME ends in an older READY -> rc 0" "$rc" "0"
+exact_count "9542 b: the one proven pid is signaled" "$(cat "$CALLS")" "kill -TERM 420" "1"
+reset_calls
+rc=0; out=$(run "$PB_RES" 2>&1) || rc=$?
+check "9542 b: the same pair closes when asked from the RESUME doc -> rc 0" "$rc" "0"
+exact_count "9542 b: from the RESUME doc the same pid is signaled" "$(cat "$CALLS")" "kill -TERM 420" "1"
+pb_orig 12:00; pb_res 12:30
+reset_calls
+rc=0; out=$(run "$PB_ORIG" 2>&1) || rc=$?
+check "9542 b: a RESUME marker newer than the original's WRAPPED still refuses -> rc 4" "$rc" "4"
+check "9542 b: that newer marker signals nothing" "$(cat "$CALLS")" ""
+reset_calls
+rc=0; out=$(run "$PB_RES" 2>&1) || rc=$?
+check "9542 b: the same newer marker refuses from the RESUME doc -> rc 4" "$rc" "4"
+pb_orig 11:35; pb_res 11:35
+reset_calls
+rc=0; out=$(run "$PB_ORIG" 2>&1) || rc=$?
+check "9542 b: equal stamps refuse -> rc 4" "$rc" "4"
+pb_orig 00:10; pb_res 23:50
+reset_calls
+rc=0; out=$(run "$PB_ORIG" 2>&1) || rc=$?
+check "9542 b: a stamp pair that may cross midnight refuses -> rc 4" "$rc" "4"
+check "9542 b: the ambiguous pairs signal nothing" "$(cat "$CALLS")" ""
+printf '# worker\n\n## Results\n\n- 09:00 LIVE - started\n- 12:00 WRAPPED - done\n' > "$PB_ORIG"; pb_res 11:35
+reset_calls
+rc=0; out=$(run "$PB_ORIG" 2>&1) || rc=$?
+check "9542 b: no successor LIVE-then-WRAPPED record still refuses -> rc 4" "$rc" "4"
+check "9542 b: no record means nothing is signaled" "$(cat "$CALLS")" ""
+pb_orig 23:50; pb_res 00:10
+reset_calls
+rc=0; out=$(run "$PB_ORIG" 2>&1) || rc=$?
+check "9542 b: a gap of 23h40 is not read as the newest WRAPPED -> rc 4" "$rc" "4"
+check "9542 b: the 23h40 gap signals nothing" "$(cat "$CALLS")" ""
+rm -f "$PB_ORIG" "$PB_RES"
+
+# the real N5072 pair: the RESUME doc has no Results heading and one prose bullet that begins READY
+N_ORIG="$W/HIMMEL-9-N63-flags-2026-01-01.md"
+N_RES="$W/HIMMEL-9-N63-flags-2026-01-01-RESUME.md"
+# shellcheck disable=SC2016  # literal fixture token delimiters
+printf '# worker\n\n## Results\n\n- 09:00 LIVE - started, release-token `fixture-pid100`\n- 10:00 WRAPPED - halted. Resume brief: %s\n- 11:00 LIVE - resumed, release-token `fixture-pid200`\n- 11:43 READY - PR 7 abc GREEN\n- 11:50 WRAPPED - merged\n' "$N_RES" > "$N_ORIG"
+printf -- '---\nresume_cwd: /x\nsession_ids: %s\n---\n\n# resume brief\n\n## State\n\n- Branch b, PR 7 open.\n- READY bullet posted at abc GREEN (before the body-only edit).\n\n## Next steps\n\n1. Re-run the ready check.\n\n## Constraints\n\n- Queue lock released at WRAP.\n' "$SID_OTHER_WORKER" > "$N_RES"
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 440 claude -n HIMMEL-9-N63-flags-2026-01-01 work
+pgrep_x_stub 440
+reset_calls
+rc=0; out=$(run "$N_ORIG" 2>&1) || rc=$?
+check "9542 b: the real N5072 pair closes from the original doc -> rc 0" "$rc" "0"
+exact_count "9542 b: the real N5072 pair signals the one pid from the original" "$(cat "$CALLS")" "kill -TERM 440" "1"
+reset_calls
+rc=0; out=$(run "$N_RES" 2>&1) || rc=$?
+check "9542 b: the real N5072 pair closes from the RESUME doc -> rc 0" "$rc" "0"
+exact_count "9542 b: the real N5072 pair signals the one pid from the RESUME doc" "$(cat "$CALLS")" "kill -TERM 440" "1"
+printf '# worker\n\n## Results\n\n- 09:00 LIVE - started\n- 11:50 LIVE - still working\n' > "$N_ORIG"
+reset_calls
+rc=0; out=$(run "$N_RES" 2>&1) || rc=$?
+check "9542 b: the real N5072 RESUME doc refuses while the original has no record of a finished successor -> rc 4" "$rc" "4"
+check "9542 b: that refusal signals nothing" "$(cat "$CALLS")" ""
+rm -f "$N_ORIG" "$N_RES"
+
+# the real N5075 naming: a legN5075b RESUME doc with no Results heading, an original with no leg and a date
+G_ORIG="$W/HIMMEL-9-N62-slug-2026-01-01.md"
+G_RES="$W/HIMMEL-9-legN62b-slug-RESUME.md"
+G_OTHER="$W/HIMMEL-9-N62-other-2026-01-01.md"
+# shellcheck disable=SC2016  # literal fixture token delimiters
+printf '# worker\n\n## Results\n\n- 09:00 LIVE - started, release-token `fixture-pid100`\n- 10:00 WRAPPED - halted. Resume: %s\n- 11:00 LIVE - leg N62b resumed, release-token fixture-pid200\n- 12:00 WRAPPED - merged\n' "$G_RES" > "$G_ORIG"
+printf -- '---\nresume_cwd: /x\n---\n\n# resume brief\n\n## State\n\n- Branch b, nothing open.\n' > "$G_RES"
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 450 claude -n HIMMEL-9-legN62b-slug-RESUME work
+pgrep_x_stub 450
+reset_calls
+rc=0; out=$(run "$G_RES" 2>&1) || rc=$?
+check "9542 sibling: a legN62b RESUME doc finds its dated original by the hand-off that names it -> rc 0" "$rc" "0"
+exact_count "9542 sibling: that pair signals the one pid" "$(cat "$CALLS")" "kill -TERM 450" "1"
+printf '# worker\n\n## Results\n\n- 09:00 LIVE - started, release-token fixture-pid100\n- 10:00 WRAPPED - halted. Resume: %s\n- 11:00 LIVE - resumed, release-token fixture-pid200\n- 12:00 LIVE - still working\n' "$G_RES" > "$G_ORIG"
+reset_calls
+rc=0; out=$(run "$G_RES" 2>&1) || rc=$?
+check "9542 sibling: the same pair refuses while the original tail is LIVE -> rc 4" "$rc" "4"
+check "9542 sibling: the LIVE original signals nothing" "$(cat "$CALLS")" ""
+# a second original that names the same RESUME doc: refuse rather than pick one
+printf '# worker\n\n## Results\n\n- 10:00 WRAPPED - halted. Resume: %s\n' "$G_RES" > "$G_OTHER"
+reset_calls
+rc=0; out=$(run "$G_RES" 2>&1) || rc=$?
+check "9542 sibling: two originals naming one RESUME doc are refused -> rc 5" "$rc" "5"
+check "9542 sibling: two originals signal nothing" "$(cat "$CALLS")" ""
+rm -f "$G_OTHER"
+# shellcheck disable=SC2016  # literal fixture token delimiters
+printf '# worker\n\n## Results\n\n- 09:00 LIVE - started, release-token `fixture-pid100`\n- 10:00 WRAPPED - halted. Resume: %s\n- 11:00 LIVE - resumed, release-token fixture-pid200\n- 12:00 WRAPPED - merged\n' "$G_RES" > "$G_ORIG"
+G_OTHER_LABEL="$W/HIMMEL-9-N64-x-2026-01-01.md"
+printf '# worker\n\n## Results\n\n- 10:00 WRAPPED - halted. Resume: %s\n' "$G_RES" > "$G_OTHER_LABEL"
+reset_calls
+rc=0; out=$(run "$G_RES" 2>&1) || rc=$?
+check "9542 sibling: a doc of another worker that names the RESUME doc is not its original -> rc 0" "$rc" "0"
+exact_count "9542 sibling: another worker's doc does not stop the one pid being signaled" "$(cat "$CALLS")" "kill -TERM 450" "1"
+rm -f "$G_OTHER_LABEL"
+G_OTHER_UNNAMED="$W/HIMMEL-9-N62-unrelated-2026-01-01.md"
+printf '# worker\n\n## Results\n\n- 10:00 WRAPPED - halted, no resume\n' > "$G_OTHER_UNNAMED"
+reset_calls
+rc=0; out=$(run "$G_RES" 2>&1) || rc=$?
+check "9542 sibling: a same-label doc that does not name the RESUME doc is not its original -> rc 0" "$rc" "0"
+exact_count "9542 sibling: an unnamed same-label doc does not stop the one pid being signaled" "$(cat "$CALLS")" "kill -TERM 450" "1"
+rm -f "$G_ORIG" "$G_RES" "$G_OTHER_UNNAMED"
+
 # --- 24: no handovers/ leaked into the real repo ----------------
 post_handovers=absent
 [ -n "$REPO_ROOT" ] && [ -e "$REPO_ROOT/handovers" ] && post_handovers=present

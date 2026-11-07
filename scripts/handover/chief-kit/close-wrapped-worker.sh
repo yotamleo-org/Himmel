@@ -41,18 +41,29 @@
 #     starting with LIVE, is no tail); a -RESUME doc with no marker-bullet of its own reads the original's
 #     (a resumed worker's WRAPPED lands on the original doc) only when the original's Results hold,
 #     after the hand-off WRAPPED naming the -RESUME doc, a LIVE with a new release token and then a
-#     WRAPPED, and the sibling's queue lock must be free too;
+#     WRAPPED, and the sibling's queue lock must be free too; a -RESUME doc with no Results
+#     heading has no marker of its own, whatever prose bullet it holds;
 #   - exactly one live `claude` session's real argv (via
 #     scripts/lanes/lib/claude-sessions.sh's claude_sessions, /proc-argv
 #     based, never a flattened pgrep -af scan) carries a `-n <name>` naming
 #     the worker (names derived by scripts/lib/worker-identity.sh's worker_identity -
 #     the doc stem, its undated form, and any legacy-family derived name, each also
 #     with -RESUME, plus the sibling doc's names; a relaunched worker's trailing -r<N>
-#     on the session name is accepted).
-# ponytail: name-only window match, upgrade path HIMMEL-5928: the launch record
-# (launch-logs/<name>.log) holds no pid and a finished worker's lock is free, so
-# there is no recorded pid to resolve by. Upgrade path: have headed-arm-worker.sh
-# record the claude pid, then resolve by it first, name as fallback.
+#     on the session name is accepted), OR a live claude whose own session record
+#     (sessions/<pid>.json) names a session id in the `session_ids:` front matter of the
+#     doc or its sibling (the launcher's record, one id per launch) and whose recorded
+#     procStart equals the process's /proc start time. That second proof finds a worker
+#     relaunched under a shortened session name (the bus refused the long
+#     name built from the doc), which no name derived from the doc can match. A record
+#     with no procStart, a start time that differs, or a session id the doc does not
+#     list proves nothing. Not used for --chief.
+# A pair whose RESUME doc ends in a READY (any other non-WRAPPED tail there is a worker still going) still closes when the
+# original doc holds the resumed worker's own LIVE (new release token) then WRAPPED after the
+# hand-off and that WRAPPED is the newest stamp across the pair (HH:MM, strictly later and
+# under twelve hours later, since a stamp carries no date).
+# ponytail: the launch record (launch-logs/<name>.log) holds no pid, so the proof is the
+# doc's session_ids against the live pid's session record. Upgrade path: have
+# headed-arm-worker.sh record the claude pid and resolve by it first.
 # TERM goes to that one pid only - it never signals a non-matching pid, and
 # 0 or >1 matches is a refusal, not a best guess.
 #
@@ -223,7 +234,8 @@ fi
 # The resumed worker's label carries a successor letter (N4426b), so the sibling is found by
 # the label with and without it: a RESUME doc looks for the original (letter dropped, with and
 # without -RESUME); an original looks for <stem>-RESUME.md, else the one -N<k>[a-z]-...-RESUME.md
-# successor (more than one is refused).
+# successor (more than one is refused). A leg-named RESUME doc whose original has no leg and a
+# date finds no candidate by name: the one same-ticket, same-worker doc that names it is the original.
 # shellcheck source=scripts/lib/worker-identity.sh
 # shellcheck disable=SC1091
 if ! . "$HERE/../../lib/worker-identity.sh"; then
@@ -251,6 +263,21 @@ elif [[ $DOC == *-RESUME.md ]]; then
     done <<EOF
 $sib_cands
 EOF
+    if [ -z "$SIB_DOC" ] && [[ $sib_label =~ ^(N[0-9]+)[a-z]+$ ]]; then
+        sib_orig_label="${BASH_REMATCH[1]}"
+        sib_ticket="$(printf '%s' "$sib_base" | cut -d- -f1-2)"
+        sib_hits=0
+        for sib_c in "$sib_dir/$sib_ticket"-*.md; do
+            [ -f "$sib_c" ] && [[ $sib_c != *-RESUME.md ]] || continue
+            [[ $(basename "$sib_c") =~ ^${sib_ticket}-(leg)?${sib_orig_label}- ]] || continue
+            grep -qF -- "$(basename "$DOC")" "$sib_c" || continue
+            SIB_DOC="$sib_c"; sib_hits=$((sib_hits + 1))
+        done
+        if [ "$sib_hits" -gt 1 ]; then
+            echo "close-wrapped-worker: refusing - $sib_hits original docs of $sib_orig_label name $DOC; close the right one by name" >&2
+            exit 5
+        fi
+    fi
 elif [ -f "$sib_dir/$sib_base-RESUME.md" ]; then
     SIB_DOC="$sib_dir/$sib_base-RESUME.md"
 else
@@ -337,6 +364,28 @@ doc_tail_status() {
     if [ "$rt" = nosection ]; then worker_tail_status "$1"; else printf '%s' "$rt"; fi
 }
 
+tail_marker_minutes() {
+    awk '
+        /^## Results( |$)/ { seen = 1; inres = 1; next }
+        /^## / { inres = seen && ($0 ~ /^## (Chief|Console) Rulings( |$)/); next }
+        !inres || !/^- / { next }
+        match($0, /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/) {
+            last = ($2 ~ /^[0-9]?[0-9]:[0-9][0-9]$/) ? $2 : ""
+        }
+        END { if (last != "") { split(last, p, ":"); print p[1] * 60 + p[2] } }' "$1"
+}
+
+resumed_wrapped_newer() {
+    local o r gap half_day=720
+    resume_evidence "$1" "$2" || return 1
+    [ "$(doc_tail_status "$1")" = WRAPPED ] || return 1
+    o=$(tail_marker_minutes "$1"); r=$(tail_marker_minutes "$2")
+    [ -n "$o" ] && [ -n "$r" ] || return 1
+    # ponytail: stamps carry no date, so a day-2 relaunch can pass this gap test, upgrade to dated timestamps or to bullet position across the pair
+    gap=$((o - r))
+    [ "$gap" -gt 0 ] && [ "$gap" -lt "$half_day" ]
+}
+
 if ! last_marker=$(doc_tail_status "$DOC"); then
     echo "close-wrapped-worker: refusing - cannot read the ## Results section of $DOC" >&2
     exit 4
@@ -354,10 +403,11 @@ if [ -n "$NAMED_SUCCESSOR" ]; then
 fi
 if [ -n "$SIB_DOC" ] && [ "$PREDECESSOR" -eq 0 ]; then
     if [[ $DOC == *-RESUME.md ]]; then sib_res="$DOC"; sib_orig="$SIB_DOC"; else sib_res="$SIB_DOC"; sib_orig="$DOC"; fi
-    if ! res_marker=$(doc_tail_status "$sib_res"); then
+    if ! res_marker=$(results_tail_status "$sib_res"); then
         echo "close-wrapped-worker: refusing - cannot read the ## Results section of $sib_res" >&2
         exit 4
     fi
+    [ "$res_marker" != nosection ] || res_marker=""
     if [ -z "$res_marker" ]; then
         # the resumed worker has written nothing of its own yet, so it may be a successor that has just
         # started: only the successor's own record on the original (a LIVE with a new release token,
@@ -372,6 +422,11 @@ if [ -n "$SIB_DOC" ] && [ "$PREDECESSOR" -eq 0 ]; then
                 echo "close-wrapped-worker: refusing - cannot read the ## Results section of $sib_orig" >&2
                 exit 4
             fi
+        fi
+    elif [ "$res_marker" = "READY" ] && resumed_wrapped_newer "$sib_orig" "$sib_res"; then
+        if [[ $DOC == *-RESUME.md ]]; then
+            tail_doc="$sib_orig"
+            last_marker=WRAPPED
         fi
     elif [ "$res_marker" != "WRAPPED" ] && [[ $DOC != *-RESUME.md ]]; then
         # an original doc's WRAPPED is stale once its -RESUME doc reports anything newer than WRAPPED
@@ -552,6 +607,37 @@ if [ "$census_rc" -gt 1 ]; then
     exit 1
 fi
 
+claim_ids=""
+set_claim_ids() {
+    local d first
+    claim_ids=""
+    [ "$CHIEF_MODE" -eq 0 ] || return 0
+    for d in "$@"; do
+        IFS= read -r first < "$d" || continue
+        [ "$first" = "---" ] || continue
+        claim_ids="$claim_ids$(awk 'NR == 1 { next } /^---$/ { exit } { print }' "$d" | sed -n 's/^session_ids: *//p' | tr ',' '\n' | tr -d ' ' | grep -E '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$')"$'\n'
+    done
+}
+if [ "$PREDECESSOR" -eq 0 ] && [ -n "$SIB_DOC" ]; then set_claim_ids "$DOC" "$SIB_DOC"; else set_claim_ids "$DOC"; fi
+
+proc_start_time() { sed -E 's/^.*\) //' "$1" | awk '{print $20}'; }
+
+pid_proven_by_id() {
+    local pid="$1" proc="${CLAUDE_SESSIONS_PROC:-/proc}" cfg="" f rec sid ps st
+    [ -n "$claim_ids" ] || return 1
+    if [ -r "$proc/$pid/environ" ]; then
+        cfg=$(tr '\0' '\n' < "$proc/$pid/environ" | sed -n 's/^CLAUDE_CONFIG_DIR=//p' | head -n 1)
+    fi
+    f="${CLOSE_WRAPPED_WORKER_SESSIONS_DIR:-${cfg:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}/sessions}/$pid.json"
+    [ -r "$f" ] || return 1
+    rec=$(jq -r '[.sessionId // "", (.procStart // "" | tostring)] | join(" ")' "$f") || return 1
+    sid="${rec%% *}"; ps="${rec#* }"
+    [ -n "$sid" ] && [ -n "$ps" ] && [ -r "$proc/$pid/stat" ] || return 1
+    grep -qxF -- "$sid" <<< "$claim_ids" || return 1
+    st=$(proc_start_time "$proc/$pid/stat")
+    [ "$st" = "$ps" ]
+}
+
 match_sessions() {
     matched=""; matched_name=""; match_count=0
     while IFS=$'\t' read -r pid name _model _ac; do
@@ -563,6 +649,11 @@ match_sessions() {
             *",${name},"*|*",${base_name},"*)
                 matched="$pid"; matched_name="$name"
                 match_count=$((match_count + 1)) ;;
+            *)
+                if pid_proven_by_id "$pid"; then
+                    matched="$pid"; matched_name="$name"
+                    match_count=$((match_count + 1))
+                fi ;;
         esac
     done <<EOF
 $sessions
@@ -588,6 +679,7 @@ if [ "$PREDECESSOR" -eq 1 ] && [ "$match_count" -eq 0 ]; then
     fi
     sib_ident=$(worker_identity "$NAMED_SUCCESSOR")
     names=",${sib_ident#*$'\t'},$(basename "$NAMED_SUCCESSOR" .md),"
+    set_claim_ids "$NAMED_SUCCESSOR"
     match_sessions
 fi
 
