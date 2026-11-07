@@ -290,13 +290,16 @@ function stripHtml(d, sel, ch, tab, ui = {}, lead = "") {
 
 // Two links under the strip. "waits for you" counts the same rows as the Waiting on you section (open operator-labelled tickets plus
 // the chain read's "waits on you" tickets); with no chain read it still counts the labelled ones and says the holds were not read, and
-// with neither it says so. "Shipped" has no count here (the merged-PR read is the Shift page's), so it names where the number is.
-function linksHtml(ch, rows) {
+// with neither it says so. It names its scope: every version, and a ticket with no version is not counted (the default read leaves it out),
+// so a count of 0 never stands alone while such a ticket exists; it points at the No version tab. "Shipped" has no count here (the merged-PR read is the Shift page's), so it names where the number is.
+function linksHtml(ch, rows, d) {
   let wait = `<b>waits for you: not read</b> (${esc(noChains(ch))})`;
   if (chainOk(ch) || rows.length) {
     wait = `<b>${rows.length} ${rows.length === 1 ? "waits" : "wait"} for you</b>${rows.length ? ": " + rows.map((x) => esc(x.key)).join(", ") : ""}${chainOk(ch) ? "" : ` (chain holds not read: ${esc(noChains(ch))})`}`;
   }
-  return `<div class="rm-links"><div class="rm-link"><span>${wait}</span><a href="#/shift">open in Shift →</a></div>`
+  const nv = d.noVersionCount || 0;
+  const scope = ` <span class="ro">(every version${nv ? `; ${nv} with no version not counted: <a href="${boardHref({ tab: "nv" })}">No version tab</a>` : ""})</span>`;
+  return `<div class="rm-links"><div class="rm-link"><span>${wait}${scope}</span><a href="#/shift">open in Shift →</a></div>`
     + `<div class="rm-link"><span><b>Shipped since yesterday</b>: the count is not read here</span><a href="#/report">Morning report →</a></div></div>`;
 }
 
@@ -667,5 +670,5 @@ function boardPage(data, ui, extras) {
   const body = tab === "chains" ? chainsTab(ui, tabCh, data) : tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, ch, dr) : waitingHtml(rows, tabCh, ui.v, data, ch) + lanesHtml(data, ui, sel, ch, dr);
   const drawer = drawerHtml(data, ui), why = tab === "chains" ? whyHtml(ui, tabCh) : "";
   // with a drawer or the Why panel open the board under it is inert: no drag, select, key or click reaches a card until it closes
-  return [`<div class="rm-head">${page}${windowBar(data, ui, windowOf(data, ui), !!(drawer || why))}</div>`, `<div class="rm-under"${drawer || why ? " inert" : ""}>`, stripHtml(data, tileSel, ch, tab, ui, driftBanner(dr)), `<div class="rm-tabrow">${tabsHtml(data, ui, tab, tabCh, dr)}${linksHtml(ch, rows)}</div>`, barHtml(data, ui, ch, tab, sel, fresh), body, `</div>`, drawer, why].join("\n");
+  return [`<div class="rm-head">${page}${windowBar(data, ui, windowOf(data, ui), !!(drawer || why))}</div>`, `<div class="rm-under"${drawer || why ? " inert" : ""}>`, stripHtml(data, tileSel, ch, tab, ui, driftBanner(dr)), `<div class="rm-tabrow">${tabsHtml(data, ui, tab, tabCh, dr)}${linksHtml(ch, rows, data)}</div>`, barHtml(data, ui, ch, tab, sel, fresh), body, `</div>`, drawer, why].join("\n");
 }

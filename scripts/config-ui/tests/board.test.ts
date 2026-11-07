@@ -240,7 +240,9 @@ test("Board page: a live operator hold and an operator label in the mirror both 
   mkdirSync(join(st, "chain-log.jsonl")); // there, but not a file: unreadable
   const bad = await page(serve(env, s));
   expect(bad).toContain("chain holds not read");
-  expect(bad).not.toContain("HIMMEL-2</a>"); // the hold is not guessed at
+  const badSec = bad.match(/<section id="rm-waiting"[\s\S]*?<\/section>/)![0];
+  expect(badSec).toContain("HIMMEL-9"); // the label still lists
+  expect(badSec).not.toContain("HIMMEL-2"); // the hold is not guessed at: nothing of it is listed or linked
   expect(bad).toContain("1 waits for you"); // the label still counts
   expect(bad).not.toContain("2 wait for you");
 });

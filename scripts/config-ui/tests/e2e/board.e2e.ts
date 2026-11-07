@@ -95,6 +95,7 @@ test("the Board draws the seeded mirror: strip, drift banner, chain badge, lanes
   await expect(page.locator(".rm-card[draggable]").first()).toBeVisible(); // drag and the Sector select are still there
   // no registry-less made-up number: the wait link counts the chain read's own rows
   await expect(page.locator(".rm-link").first()).toContainText("0 wait for you");
+  await expect(page.locator(".rm-link").first()).toContainText("every version"); // the count names its scope
   await expect(page.locator("#rm-waiting")).toHaveCount(0); // nobody waits: no section, the count link above says 0
   // Chains tab
   await page.getByRole("tab", { name: /^Chains/ }).click();

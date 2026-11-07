@@ -476,6 +476,31 @@ test("Board: Waiting on you also lists open tickets carrying an operator label, 
   expect(renderBoard(r, ui, { drift: null, chains: { chains: [], tickets: undefined } })).toContain("chain holds not read");
 });
 
+test("Board: the waits-for-you count names its scope and points at the No version tab while tickets there are unread", () => {
+  const r = read(station());
+  const ui = { version: null, theme: null };
+  const quiet = { drift: null, chains: { chains: [], tickets: {}, version: "v1.1.2" } }; // a chain read that holds nobody
+  const link = (html: string) => html.match(/<div class="rm-link">[\s\S]*?<\/div>/)![0];
+  // nobody waits among the versioned tickets, three tickets have no version: the default read does not carry them, so the count must not read as a plain 0
+  r.noVersionCount = 3;
+  const none = link(renderBoard(r, ui, quiet));
+  expect(none).toContain("0 wait for you");
+  expect(none).toContain("every version");
+  expect(none).toContain("3 with no version not counted");
+  expect(none).toContain('<a href="#/board?tab=nv">No version tab</a>');
+  // with rows it keeps the pointer too: the rows are a count of the versioned tickets only
+  r.noVersionCount = 1;
+  const some = link(renderBoard(r, ui, { drift: null, chains: chainsOk() }));
+  expect(some).toContain("1 with no version not counted");
+  expect(some).toContain('<a href="#/board?tab=nv">No version tab</a>');
+  // nothing without a version: the scope is still stated and no pointer is drawn
+  r.noVersionCount = 0;
+  const clean = link(renderBoard(r, ui, quiet));
+  expect(clean).toContain("0 wait for you");
+  expect(clean).toContain("every version");
+  expect(clean).not.toContain("tab=nv");
+});
+
 test("Board: loading, no tracker, unavailable and GitHub read-only states, and ticket text is escaped", () => {
   const r = read(station());
   r.tickets[0].t = "<script>x</script>";
