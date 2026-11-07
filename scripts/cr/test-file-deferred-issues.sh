@@ -39,6 +39,8 @@ assert_eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "expected='$2' 
 
 TMP_ROOT=$(mktemp -d)
 if command -v cygpath >/dev/null 2>&1; then TMP_ROOT=$(cygpath -m "$TMP_ROOT"); fi
+# The Jira key reaches the filer through the config layer; an empty config dir keeps the run off the operator's himmel.conf.
+export HIMMEL_CONFIG_DIR="$TMP_ROOT/config"
 
 # A git repo with one commit — the script calls `git rev-parse --short HEAD`.
 REPO="$TMP_ROOT/repo"
@@ -361,6 +363,12 @@ out=$(run_mode jira github --fu-class hardening --fu-why no-check 2>&1); rc=$?
 assert_eq "HIMMEL-9498 hardening with no --fu-override → exit 1" "1" "$rc"
 assert_contains "hardening with no --fu-override names the flag" "$out" "--fu-override"
 assert_eq "hardening with no --fu-override files nothing" "0" "$(grep -c '^create' "$JLOG" || true)"
+for bad_override in because-i-said-so decision-abc decision-762x judge-1 DU-j3603 du-j3603-4; do
+    out=$(run_mode jira github --fu-class hardening --fu-why no-check --fu-override "$bad_override" 2>&1); rc=$?
+    assert_eq "9498 hardening with an override of the wrong shape ($bad_override) → exit 1" "1" "$rc"
+    assert_contains "9498 the shape refusal for $bad_override says the id is unverified" "$out" "not verified"
+    assert_eq "9498 an override of the wrong shape ($bad_override) files nothing" "0" "$(grep -c '^create' "$JLOG" || true)"
+done
 out=$(run_mode jira github --fu-class escape --fu-override decision-762 2>&1); rc=$?
 assert_eq "HIMMEL-9498 --fu-override with a non-hardening class → exit 1" "1" "$rc"
 out=$(run_mode jira github --fu-class escape --fu-why no-check 2>&1); rc=$?

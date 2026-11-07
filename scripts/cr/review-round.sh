@@ -2387,12 +2387,12 @@ if [ "$explicit_defer" -eq 0 ] && [ "$pending_count" -gt 0 ]; then
     polish_unnotable="$(printf '%s' "$ticketed_analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).pending.filter(f=>f.fu_class==="polish").map(f=>f.id).join(" ")))')" || exit 5
     if [ -n "$polish_unnotable" ]; then
         echo "review-round: pre-existing Important finding(s) classed polish cannot be noted without a ticket: $polish_unnotable; marker remains pending" >&2
-        echo "review-round: polish is not filed (decisions 746, 762). Reclassify each with ledger-append.sh amend --set fu_class=hardening --set fu_why=<code> (then supply --fu-override <judge verdict id|decision-N>), or file a plain ticket someone will work and supply --defer-to <ticket>" >&2
+        echo "review-round: polish is not filed (decisions 746, 762). Reclassify each with ledger-append.sh amend --set fu_class=hardening --set fu_why=<code> (then supply --fu-override <judge verdict id|decision-N>), or file a plain ticket someone will work, link it from the PR ticket with jira link <PR ticket> <plain ticket>, and supply --defer-to <plain ticket>" >&2
         exit 6
     fi
-    if [ "$ticketed_count" -gt 0 ] && ! [[ $fu_override_arg =~ ^[A-Za-z][A-Za-z0-9]*(-[A-Za-z0-9.]+)+$ ]]; then
+    if [ "$ticketed_count" -gt 0 ] && ! [[ $fu_override_arg =~ ^(decision-[0-9]+|[A-Z]{2}-j[0-9]+-[0-9]+)$ ]]; then
         echo "review-round: hardening finding(s) are filed only with a named override (decisions 746, 762); marker remains pending" >&2
-        echo "review-round: supply --fu-override <judge verdict id|decision-N> (e.g. DU-j3603-4 or decision-762) to file them, or file a plain ticket and supply --defer-to <ticket>; no ticket was filed" >&2
+        echo "review-round: supply --fu-override <judge verdict id of the form XX-jNNNN-N|decision-N> to file them (the id is printed into the ticket and not verified), or file a plain ticket, link it from the PR ticket with jira link <PR ticket> <plain ticket>, and supply --defer-to <plain ticket>; no ticket was filed" >&2
         exit 6
     fi
 fi

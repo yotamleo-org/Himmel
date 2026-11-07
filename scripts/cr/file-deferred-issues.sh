@@ -86,8 +86,9 @@ Optional:
                         (decisions 746, 762): the batch is printed for the PR body instead.
   --fu-why <code>       Jira only: required with --fu-class hardening (and only then):
                         unseen-failure | no-check | vacuous-check | no-recovery | silent-rot.
-  --fu-override <id>    Jira only: required with --fu-class hardening, a judge verdict id or
-                        decision-N; hardening is filed only with a named override.
+  --fu-override <id>    Jira only: required with --fu-class hardening, a judge verdict id of the
+                        form XX-jNNNN-N or decision-N (an unverified audit label, shape only);
+                        hardening is filed only with a named override.
   --class <id>          Jira only: CR class id (default: the one class the CR ledger holds
                         for these findings on this branch, else unclassified).
 
@@ -135,8 +136,8 @@ if [ "$FU_CLASS" = "hardening" ]; then
             ;;
     esac
     # Decisions 746, 762: hardening is filed only with a named override.
-    if ! [[ $FU_OVERRIDE =~ ^[A-Za-z][A-Za-z0-9]*(-[A-Za-z0-9.]+)+$ ]]; then
-        echo "ERR file-deferred-issues: --fu-class hardening requires --fu-override <judge verdict id|decision-N> (got: ${FU_OVERRIDE:-none}); nothing filed" >&2
+    if ! [[ $FU_OVERRIDE =~ ^(decision-[0-9]+|[A-Z]{2}-j[0-9]+-[0-9]+)$ ]]; then
+        echo "ERR file-deferred-issues: --fu-class hardening requires --fu-override <judge verdict id of the form XX-jNNNN-N|decision-N> (got: ${FU_OVERRIDE:-none}); the id is printed into the ticket and not verified; nothing filed" >&2
         exit 1
     fi
     FU_WHY_ARGS+=(--fu-override "$FU_OVERRIDE")

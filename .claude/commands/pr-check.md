@@ -43,4 +43,4 @@ Rules every fence obeys (full contract, the enumerated refused shapes and their 
 
 5. **Clear.** Only if step 4.9 did not already clear the marker and `N == 0` AND step 4.8 reported `threads_rc = 0` AND step 3.6 reported `impacted_rc = 0`: clear the marker through the chokepoint `clear-review-marker.sh '<branch>'`, never a bare `rm`. Then promote agreed findings to fixed. 6. Otherwise the marker stays held: report the blockers. 6.5. Append the critic-score footer. Reference: `50-step5-decision.md`.
 
-7. **Auto-file deferred nits** — runs whenever the review surfaced low-severity findings worth tracking, independently of the clear decision. Reference: `70-step7-nits.md`.
+7. **Deferred nits** — runs whenever the review surfaced low-severity findings worth tracking, independently of the clear decision. On a Jira repo polish Suggestions are NOT filed: the filer prints the batch for the PR body (decisions 746, 762); a hardening residual is filed only with a named `--fu-override`. Reference: `70-step7-nits.md`.

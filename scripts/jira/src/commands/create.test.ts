@@ -573,7 +573,7 @@ describe('create --residual-of', () => {
 
   it('HIMMEL-9498 DoD 1: a polish residual files nothing and exits with the message', async () => {
     play();
-    await expect(file(...RES, '--fu-class', 'polish')).rejects.toThrow(/polish residual is not filed.*note it in the PR body/s);
+    await expect(file(...RES, '--fu-class', 'polish')).rejects.toThrow(/polish residual is not filed.*note it in the PR body.*jira link <PR ticket> <plain ticket>/s);
     expect(created()).toBeUndefined();
     expect(mockRequest.mock.calls.some((c) => c[0] === 'POST')).toBe(false);
   });
@@ -595,7 +595,7 @@ describe('create --residual-of', () => {
 
   it('HIMMEL-9498 DoD 2: a hardening residual with an unnamed override is refused too', async () => {
     play();
-    for (const bad of ['', 'x', 'decision 762', 'because']) {
+    for (const bad of ['', 'x', 'decision 762', 'because', 'because-i-said-so', 'decision-abc', 'decision-762x', 'judge-1', 'DU-j3603', 'du-j3603-4']) {
       await expect(file(...RES, '--fu-class', 'hardening', '--fu-why', 'no-check', '--fu-override', bad)).rejects.toThrow(/--fu-override/);
     }
     expect(created()).toBeUndefined();

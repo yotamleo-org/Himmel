@@ -1106,6 +1106,9 @@ seed_deferral HIMMEL-200
 rc=0; out="$(run)" || rc=$?
 check "links: an unlinked, higher-numbered, unlabelled target is still refused: exit 1" "$rc" "1"
 contains "links: unlinked target: names the raw-create refusal" "$out" "HIMMEL-200 was made by a raw jira create"
+contains "links: unlinked target: hint offers linking a plain ticket" "$out" "jira link HIMMEL-100 HIMMEL-200"
+contains "links: unlinked target: hint names only the filed classes" "$out" "--fu-class escape|hardening"
+notcontains "links: unlinked target: hint no longer offers --fu-class <c>" "$out" "--fu-class <c>"
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-200\n'

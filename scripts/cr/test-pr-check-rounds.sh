@@ -301,6 +301,16 @@ noov_bad_rc=0
     --branch recovery --head "$recovery_head" --fu-override 'because I said so' >/dev/null 2>&1) || noov_bad_rc=$?
 assert_eq "$noov_bad_rc" 6 "9498 hardening recovery with an unnamed override fails closed"
 assert_eq "$(cat "$recovery_log")" "" "9498 hardening recovery with an unnamed override files nothing"
+assert_has "$noov_out" "jira link <PR ticket> <plain ticket>" "9498 the refusal names the jira link recovery for a plain ticket"
+for bad_override in because-i-said-so decision-abc decision-762x judge-1 DU-j3603 du-j3603-4; do
+    bad_rc=0
+    bad_out="$(cd "$recovery_repo" && GH_PR_TITLE='fix: [HIMMEL-123] follow-up' \
+        RECOVERY_JIRA_LOG="$recovery_log" bash "$fx/scripts/cr/review-round.sh" defer \
+        --branch recovery --head "$recovery_head" --fu-override "$bad_override" 2>&1)" || bad_rc=$?
+    assert_eq "$bad_rc" 6 "9498 an override of the wrong shape ($bad_override) fails closed"
+    assert_has "$bad_out" "jira link <PR ticket> <plain ticket>" "9498 the refusal for $bad_override names the jira link recovery"
+    assert_eq "$(cat "$recovery_log")" "" "9498 an override of the wrong shape ($bad_override) files nothing"
+done
 # A CLI build from before --fu-override rejects the flag: defer fails closed with the CLI's message, once.
 : > "$recovery_log"
 old_rc=0
@@ -363,11 +373,13 @@ printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-1
     "$recovery_head" > "$recovery_git/cr-critic-scores.jsonl"
 printf 'pending\n' > "$recovery_git/cr-pending/recovery"
 for note_pass in first rerun; do
+    printf 'pending\n' > "$recovery_git/cr-pending/recovery"
     : > "$recovery_log"
     note_rc=0
     (cd "$recovery_repo" && GH_PR_TITLE='fix: [HIMMEL-123] follow-up' RECOVERY_JIRA_LOG="$recovery_log" \
         bash "$fx/scripts/cr/review-round.sh" defer --branch recovery --head "$recovery_head" >/dev/null 2>&1) || note_rc=$?
     assert_eq "$note_rc" 0 "9498 a polish-only round finishes on the $note_pass defer"
+    if [ -e "$recovery_git/cr-pending/recovery" ]; then fail "9498 the $note_pass polish-only defer clears the marker"; else pass "9498 the $note_pass polish-only defer clears the marker"; fi
     assert_eq "$(wc -c < "$recovery_log" | tr -d ' ')" 0 "9498 the $note_pass polish-only defer never reaches Jira"
 done
 assert_eq "$(grep -c '"kind":"amend"' "$recovery_git/cr-critic-scores.jsonl" | tr -d ' ')" 1 "9498 the rerun of a polish-only defer adds no second amend"
@@ -574,6 +586,13 @@ assert_eq "$rl1_rc" 0 "8425 a second early close on the branch succeeds ($rl1_ou
 assert_eq "$(rl1_creates)" 0 "9498 two polish-only closes on one branch file no ticket"
 assert_eq "$(wc -c < "$rl1_log" | tr -d ' ')" 0 "9498 a second polish-only close does not comment on a ticket either"
 assert_eq "$(rl1_marker)" cleared "9498 the second polish-only close clears the marker"
+# A rerun after the amend persisted but the marker came back: the noted row is already dispositioned, and a non-delta round still clears.
+printf 'pending\n' > "$rl1_git/cr-pending/$rl1_branch"
+rl1_rerun_rc=0
+(cd "$rl1_repo" && env RECOVERY_JIRA_LOG="$rl1_log" GH_PR_NONE=1 \
+    bash "$fx/scripts/cr/review-round.sh" defer --branch "$rl1_branch" --head "$rl1_head" ${rl1_flags[@]+"${rl1_flags[@]}"} >/dev/null 2>&1 </dev/null) || rl1_rerun_rc=$?
+assert_eq "$rl1_rerun_rc" 0 "9498 a rerun of a noted polish-only close succeeds in a non-delta round"
+assert_eq "$(rl1_marker)" cleared "9498 a rerun of a noted polish-only close clears the marker in a non-delta round"
 
 for rl1_gh in 'GH_PR_JSON=[{"number":1},{"number":2}]' GH_PR_RC=1; do
     rl1_run feat/rl1 1 "$rl1_sug" "$rl1_gh"
@@ -606,7 +625,8 @@ rl1_creates_before="$(rl1_creates)"
 rl1_run feat/rl1 2 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 polish)"
 assert_eq "$rl1_rc" 6 "9498 a pre-existing Important classed polish is refused, not filed ($rl1_out)"
 assert_has "$rl1_out" 'cannot be noted without a ticket' "9498 the polish-Important refusal says why"
-assert_has "$rl1_out" '--defer-to <ticket>' "9498 the polish-Important refusal names the plain-ticket road"
+assert_has "$rl1_out" '--defer-to <plain ticket>' "9498 the polish-Important refusal names the plain-ticket road"
+assert_has "$rl1_out" 'jira link <PR ticket> <plain ticket>' "9498 the polish-Important refusal names the jira link step"
 assert_has "$rl1_out" 'critic-8' "9498 the polish-Important refusal names the finding"
 assert_eq "$(rl1_creates)" "$rl1_creates_before" "9498 the polish-Important refusal files nothing"
 assert_lacks "$rl1_ledger" '"verdict":"deferred"' "9498 the polish-Important refusal writes no deferral"

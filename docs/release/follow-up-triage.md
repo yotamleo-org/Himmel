@@ -133,7 +133,7 @@ Operator decisions 746 and 762: a polish follow-up never earned its ticket (sinc
 | Class | `jira create --residual-of` |
 |---|---|
 | `escape` | Files, as above. A broken real flow always files. |
-| `hardening` | Files only with `--fu-override <id>`, a judge verdict id (for example `DU-j3603-4`) or a chief decision number (`decision-762`). The ticket carries the `fu-override` label and a `fu-override: <id>` line in its description. Without one it is refused. |
+| `hardening` | Files only with `--fu-override <id>`, a judge verdict id (`XX-jNNNN-N`) or a chief decision number (`decision-<n>`). The id is an unverified audit label: only its shape is checked, not that the verdict or decision exists. The ticket carries the `fu-override` label and a `fu-override: <id>` line in its description. Without one it is refused. |
 | `polish` | Refused with a message, nothing filed, with or without `--fu-override`. Note it in the PR body, or file a plain ticket (`jira create` without `--residual-of`) if someone will really work it. |
 
 A refusal exits non-zero and writes nothing, so a caller that retries the same
