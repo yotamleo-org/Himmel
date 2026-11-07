@@ -23,14 +23,12 @@ vi.mock('node:child_process', async (orig) => {
     }
     return m.execFileSync(...a);
   }) as typeof m.execFileSync;
-  // The judge's model call is async: `claude` answers the reply on the next tick.
   const execFile = ((...a: unknown[]) => {
     if (judgeReply.out === null || a[0] !== 'claude') return (m.execFile as (...x: unknown[]) => unknown)(...a);
     const args = (a[1] as string[] | undefined) ?? [];
     judgeReply.calls.push({ file: 'claude', args, env: { ...((a[2] as { env?: NodeJS.ProcessEnv } | undefined)?.env ?? process.env) } });
     const reply = judgeReply.out;
     const done = a[3] as (err: Error | null, out: string, errOut: string) => void;
-    // A hung call answers only its abort, as execFile does when its signal fires.
     const signal = (a[2] as { signal?: AbortSignal } | undefined)?.signal;
     if (judgeReply.hang) signal?.addEventListener('abort', () => done(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }), '', ''), { once: true });
     else setImmediate(() => done(null, reply, ''));
@@ -802,7 +800,6 @@ describe('routedJudge', () => {
     expect(w.read('alert.log')).not.toBe('');
   });
 
-  // The first ancestor of `pid` whose command line names `name` (Linux /proc).
   const ancestor = (pid: number, name: string): number => {
     for (let p = pid; p > 1; p = Number(readFileSync(`/proc/${p}/stat`, 'utf8').replace(/^.*\) /, '').split(' ')[1])) {
       if (readFileSync(`/proc/${p}/cmdline`, 'utf8').includes(name)) return p;

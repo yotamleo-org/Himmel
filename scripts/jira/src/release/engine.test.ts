@@ -862,7 +862,6 @@ describe('rm-run: the on-demand release manager', () => {
     expect(snapshot(ctx().dir)).toEqual(before);
   });
 
-  // A failed run says why in its doc, returns its claims to open and frees the lease, so the next run rules them.
   const failsClean = async (run: Promise<string[]>, cause: RegExp, doc: string) => {
     await expect(run).rejects.toThrow(cause);
     const s = state(ctx());
@@ -872,7 +871,6 @@ describe('rm-run: the on-demand release manager', () => {
     expect(await rmRun(ctx(), admitAll)).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 /));
     expect(state(ctx()).lease).toMatchObject({ epoch: 2, released: true });
   };
-  // A judge that never answers and settles only when its call is killed, as the CLI judges do on their signal.
   const hangs: Judge = (_input, o) => new Promise((_, reject) => {
     const killed = () => reject(new Error('The operation was aborted'));
     if (o?.signal?.aborted) killed();
@@ -921,7 +919,6 @@ describe('rm-run: the on-demand release manager', () => {
     ask('K-2');
     const dead = spawnSync('true').pid as number;
     const left = new AbortController();
-    // The first run claims and never comes back, as a SIGKILLed one; its lease names a pid that is gone.
     const died = rmRun(ctx(), hangs, { pid: dead, signal: left.signal }).catch((e: Error) => e);
     await vi.waitFor(() => expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']));
     const lines = await rmRun(ctx(), admitAll);

@@ -299,9 +299,7 @@ function judgePreflight(): string {
     .trim().split('\n').pop() ?? '';
 }
 
-// The judge's one long model call, async: a synchronous call cannot be killed from its own thread, so a stop or the
-// timeout would not reach it. The prompt goes on stdin; stderr reaches the caller when the call ends; a failure carries
-// the exit code as `status`.
+// Async on purpose: a synchronous child call blocks Node's event loop, so no abort signal or timer could reach it.
 export function judgeCall(file: string, args: string[], o: { input: string; cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; signal?: AbortSignal }): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = execFile(file, args, { cwd: o.cwd, env: o.env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: o.timeoutMs, signal: o.signal },
@@ -334,7 +332,6 @@ export const liveJudge: Judge = async (input, opts) => {
   try {
     execFileSync('bash', [join(repoRoot, 'scripts', 'handover', 'launch-record.sh'), `rm-judge-${sid.slice(0, 8)}`, 'bare', 'native', 'release-manager', sid, 'opus'], { stdio: ['ignore', 'ignore', 'inherit'] });
   } catch (e) {
-    // A signal that killed the helper was meant for this run: stop, never go on to the model call.
     if ((e as { signal?: unknown }).signal) throw e;
     process.stderr.write(`rm-run: launch record not written: ${e instanceof Error ? e.message : String(e)}\n`);
   }
@@ -401,6 +398,7 @@ export const JUDGE_TIMEOUT_S = 900;
 // The outer spawn timeout outlasts the launcher's own call timeout plus its five-second kill grace, so the launcher
 // stops its call and releases the reservation before this process would kill it alone.
 export const JUDGE_SPAWN_TIMEOUT_MS = (JUDGE_TIMEOUT_S + 30) * 1000;
+export const RM_RUN_JUDGE_DEADLINE_MS = JUDGE_SPAWN_TIMEOUT_MS + 30_000;
 // judgeEnv strips every HIMMEL_API_ name; these seven pass back: the roster path (it anchors the role map path) and
 // the binary, snapshot, ledger-state, alert and lock-wait seams the launcher's own tests set. Unset, the launcher uses
 // its default. No other name from the caller's API env reaches the judge.
@@ -433,13 +431,18 @@ export function judgeApiEnv(processEnv: NodeJS.ProcessEnv, repoDir: string = aut
 // the window is one node start; a UI save landing in that window has the same effect; plan P4's write guard covers
 // agent writes only, not that race.
 // `fallback` is the test seam; production passes nothing and gets liveJudge. Any API-route failure (a policy refusal, no
-// room, an API error, an unparseable reply) ends in the fallback, once: the judge always gets an answer. A stopped run
-// or a signal is not a failure of the route: it ends the judge with no fallback.
+// room, an API error, an unparseable reply) ends in the fallback, once: the judge always gets an answer.
+const SIGNALLED_EXIT = new Set([128 + 1, 128 + 2, 128 + 15]);
+
+function launcherSignalled(e: unknown): boolean {
+  const k = e as { signal?: unknown; killed?: boolean; status?: unknown };
+  return !k.killed && (Boolean(k.signal) || SIGNALLED_EXIT.has(k.status as number));
+}
+
 export function makeRoutedJudge(fallback: Judge = liveJudge): Judge {
   return async (input, opts) => {
     const env = judgeApiEnv(process.env);
     const mapped = spawnSync('node', [join(repoRoot, 'scripts', 'lib', 'api-roles.mjs'), 'accounts', 'judge'], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
-    // A signal is a stop, never a reason to fall back to a second model call.
     if (mapped.signal) throw new Error(`rm-run: the judge role read was stopped by ${mapped.signal}; nothing ruled`);
     if (mapped.status !== 0 || !(mapped.stdout ?? '').trim()) return fallback(input, opts);
     const skill = readFileSync(join(repoRoot, 'marketplace', 'plugins', 'himmel-ops', 'skills', 'release-manager', 'SKILL.md'), 'utf8');
@@ -452,10 +455,7 @@ export function makeRoutedJudge(fallback: Judge = liveJudge): Judge {
           '-p', '--model', 'opus', '--effort', 'high', '--permission-mode', 'plan', '--max-budget-usd', String(JUDGE_API_BUDGET_USD), '--output-format', 'json',
         ], { input: judgePrompt(input, skill), cwd, env, timeoutMs: JUDGE_SPAWN_TIMEOUT_MS, signal: opts?.signal });
       } catch (e) {
-        // A stopped run, or a launcher killed by a signal it did not get from its own timeout, asks no second model. The
-        // launcher traps TERM, INT and HUP and exits 143, so a signal shows as that status, not as `signal`.
-        const k = e as { signal?: unknown; killed?: boolean; status?: unknown };
-        if (opts?.signal?.aborted || (!k.killed && (k.signal || [129, 130, 143].includes(k.status as number)))) throw e;
+        if (opts?.signal?.aborted || launcherSignalled(e)) throw e;
         return fallback(input, opts);
       }
       try { return parseDecisions(out); } catch { return fallback(input, opts); }
@@ -706,9 +706,8 @@ export function registerRelease(program: Command): void {
     .option('--chief-override <reason>', 'Same, console session only (HIMMEL_CONSOLE=1); the reason and the count go to the admissions ledger')
     .action(async (release: string, o: { doc?: string; mirrorRoot?: string; ruling?: string; chiefOverride?: string }) => {
       const ctx = ctxFor(release, o.mirrorRoot);
-      // A caller's timeout, a Ctrl-C or a closed terminal stops the run cleanly instead of killing it with the lease held.
       const stop = new AbortController();
-      // The first signal stops the run; the listeners go with it, so a second one kills as before.
+      // With its last listener gone, Node restores the default action, so a second signal kills as before.
       const signals: NodeJS.Signals[] = ['SIGTERM', 'SIGINT', 'SIGHUP'];
       const onSignal = (sig: NodeJS.Signals) => {
         for (const s of signals) process.off(s, onSignal);
@@ -719,6 +718,7 @@ export function registerRelease(program: Command): void {
       try {
         lines = await rmRun(ctx, judgeFor(ctx), {
           doc: o.doc, session: `rm-run-${process.pid}`, ruling: o.ruling, chiefOverride: chiefOverrideOf(o), signal: stop.signal,
+          judgeTimeoutMs: RM_RUN_JUDGE_DEADLINE_MS,
         });
       } finally {
         for (const s of signals) process.off(s, onSignal);

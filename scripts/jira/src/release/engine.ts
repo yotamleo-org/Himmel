@@ -708,11 +708,8 @@ function rmFence(ctx: Ctx, l: Loaded): Lease {
   return lease;
 }
 
-// An rm-run lease names its process, so a run that died without unwinding (SIGKILL, OOM) frees it for the next run.
 export type RunLease = Lease & { owner_pid?: number; owner_host?: string };
 
-// The holder's pid is gone on this host. A lease from another host, or with no pid (a standing RM session), never is;
-// a reused pid reads as alive and keeps refusing.
 export function ownerGone(lease: RunLease): boolean {
   if (!lease.owner_pid || lease.owner_host !== hostname()) return false;
   try {
@@ -1192,7 +1189,6 @@ export interface JudgeInput {
   issues: IssueSnap[];
 }
 
-// The signal aborts when the run stops or its judge deadline passes; a judge that spawns a model call kills it then.
 export type Judge = (input: JudgeInput, opts?: { signal?: AbortSignal }) => Promise<Decision[]>;
 
 // A judge reply the decision check refused; raw is kept so the run doc can show what the model said.
@@ -1263,7 +1259,6 @@ function refuse(ctx: Ctx, req: string, reason: string): void {
   });
 }
 
-// Puts every request still claimed at this run's epoch back to open, for a run that is failing.
 function returnClaims(ctx: Ctx): number {
   return locked(ctx, (l) => {
     const lease = rmFence(ctx, l);
@@ -1276,13 +1271,8 @@ function returnClaims(ctx: Ctx): number {
   });
 }
 
-// Bounds the whole judge phase. It outlasts one call's own kill (930 s routed, 900 s native), so a single call ends
-// itself first; a routed call that falls back to the native one is stopped here.
-export const RM_JUDGE_TIMEOUT_MS = 960_000;
-
 const stopReason = (signal: AbortSignal): Error => (signal.reason instanceof Error ? signal.reason : new Error(String(signal.reason)));
 
-// The run's own stop, aborted by the caller's signal (if any) or by the judge deadline; unlink drops the caller's listener.
 function linkStop(signal?: AbortSignal): { stop: AbortController; unlink: () => void } {
   const stop = new AbortController();
   const onStop = () => stop.abort(signal?.reason);
@@ -1291,13 +1281,11 @@ function linkStop(signal?: AbortSignal): { stop: AbortController; unlink: () => 
   return { stop, unlink: () => signal?.removeEventListener('abort', onStop) };
 }
 
-// The line a run starts with when it took over a lease whose rm-run died without unwinding.
 function reclaimNote(prior: RunLease): string[] {
   if (!prior.owner_doc || prior.released || !ownerGone(prior)) return [];
   return [`RECLAIMED lease epoch ${prior.epoch}: rm-run pid ${prior.owner_pid} on ${prior.owner_host} is gone`];
 }
 
-// A failed run says why and returns its claims before it frees the lease (the return needs the lease).
 function failNote(ctx: Ctx, failed: Error, lines: string[]): void {
   lines.push(`FAILED: ${failed.message}`);
   try {
@@ -1308,29 +1296,36 @@ function failNote(ctx: Ctx, failed: Error, lines: string[]): void {
   }
 }
 
-// How long a stopped run waits for its aborted judge to settle, so the judge's own cleanup (its launch row, its temp
-// dir) runs before the CLI exits; it outlasts the launcher's five-second kill grace.
+// ponytail: a fixed 6 s settle, set by hand above claude-api.sh's 5 s kill grace, upgrade path: judgeCall escalates to SIGKILL after its own grace, so the wait derives from one number.
 export const JUDGE_SETTLE_MS = 6000;
 
-// The judge's answer, or the stop's reason once the caller stops the run or the deadline passes; either aborts the judge.
-// Only an answer that lands before the stop counts; after it, the judge's own result (its killed call) is ignored.
-async function judged<T>(answer: Promise<T>, stop: AbortController, ms: number): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const settled = answer.then(() => undefined, () => undefined);
+function startDeadline(stop: AbortController, ms: number | undefined): () => void {
+  if (ms === undefined) return () => undefined;
+  const timer = setTimeout(() => stop.abort(new Error(`rm-run: the judge did not answer within ${ms / 1000}s; nothing ruled`)), ms);
+  return () => clearTimeout(timer);
+}
+
+async function settleWithin(answer: Promise<unknown>, ms: number): Promise<void> {
+  let grace: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([answer.then(() => undefined, () => undefined), new Promise((r) => { grace = setTimeout(r, ms); })]);
+  clearTimeout(grace);
+}
+
+function answerBeforeStop<T>(answer: Promise<T>, stop: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const stopped = () => void settleWithin(answer, JUDGE_SETTLE_MS).then(() => reject(stopReason(stop)));
+    if (stop.aborted) return stopped();
+    stop.addEventListener('abort', stopped, { once: true });
+    answer.then((v) => { if (!stop.aborted) resolve(v); }, (e) => { if (!stop.aborted) reject(e); });
+  });
+}
+
+async function judged<T>(answer: Promise<T>, stop: AbortController, ms: number | undefined): Promise<T> {
+  const clearDeadline = startDeadline(stop, ms);
   try {
-    return await new Promise<T>((resolve, reject) => {
-      const fail = () => {
-        let grace: ReturnType<typeof setTimeout> | undefined;
-        void Promise.race([settled, new Promise((r) => { grace = setTimeout(r, JUDGE_SETTLE_MS); })])
-          .then(() => { clearTimeout(grace); reject(stopReason(stop.signal)); });
-      };
-      if (stop.signal.aborted) return fail();
-      stop.signal.addEventListener('abort', fail, { once: true });
-      timer = setTimeout(() => stop.abort(new Error(`rm-run: the judge did not answer within ${ms / 1000}s; nothing ruled`)), ms);
-      answer.then((v) => { if (!stop.signal.aborted) resolve(v); }, (e) => { if (!stop.signal.aborted) reject(e); });
-    });
+    return await answerBeforeStop(answer, stop.signal);
   } finally {
-    clearTimeout(timer);
+    clearDeadline();
   }
 }
 
@@ -1339,7 +1334,7 @@ export interface RmRunOptions {
   session?: string;
   /** The caller's stop (the CLI wires SIGTERM, SIGINT and SIGHUP to it): the run fails cleanly at the next step. */
   signal?: AbortSignal;
-  /** How long the judge may take before the run fails (default RM_JUDGE_TIMEOUT_MS). */
+  /** How long the judge may take before the run fails (default: no deadline of the run's own). */
   judgeTimeoutMs?: number;
   /** The process the lease names (default this one), so the next run can free the lease if it dies. */
   pid?: number;
@@ -1376,8 +1371,7 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
   const lease = leaseAcquire(rctx, { expectEpoch: prior.epoch, doc, session: o.session ?? 'rm-run', pid: o.pid ?? process.pid });
   const lines: string[] = reclaimNote(prior);
   const { stop, unlink } = linkStop(o.signal);
-  // A stop ends the run before its next Jira write, never inside one.
-  const halt = () => { if (stop.signal.aborted) throw stopReason(stop.signal); };
+  const halt =() => { if (stop.signal.aborted) throw stopReason(stop.signal); };
   let failed: Error | undefined;
   let refused: JudgeReplyError | undefined;
   // Open tickets this run moves into or out of the current version; an operator ruling with a ref is already covered.
@@ -1414,7 +1408,6 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
       const mirror = readMirror(ctx.mirrorRoot);
       const receipted = now.rulings.verified.filter((r) => r.phase === 'receipted');
       const issues = (await Promise.all([...keys].map((k) => issueFor(ctx, k, mirror.issues?.get(k))))).flatMap((i) => i ?? []);
-      // A stop during the live lookups starts no model call.
       halt();
       let decisions: Decision[];
       try {
@@ -1424,7 +1417,7 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
           operator: now.operator.verified,
           rulings: [...new Set([...receipted.filter((r) => keys.has(r.key)), ...receipted.slice(-40)])],
           issues,
-        }, { signal: stop.signal }), stop, o.judgeTimeoutMs ?? RM_JUDGE_TIMEOUT_MS);
+        }, { signal: stop.signal }), stop, o.judgeTimeoutMs);
       } catch (e) {
         if (e instanceof JudgeReplyError) {
           refused = e;
