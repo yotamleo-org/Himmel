@@ -10,9 +10,6 @@
 #       arm 0 armed (or dry-run), 1 bad argument, 2 no crontab / no primary checkout, 3 already armed
 #       (use --force), 4 crontab or runner write failed. status 0 (1 unreadable crontab). disarm 0 (4).
 #
-# Seams (tests): VMCAD_VM_MAINTAIN, VMCAD_UPDATE_CMD, VMCAD_LIVE_WORKERS_CMD (prints queue-lock
-# `status --sweep` lines, rc 0 or 20), VMCAD_STATE_DIR, VMCAD_LOCK_WAIT, VMCAD_CRONTAB, VMCAD_RUNNER_DIR,
-# VM_MAINTAIN_VMS (default VM list), plus cadence-alert.sh's CADENCE_ALERT_*.
 # Platform guard (linux-only): VirtualBox and cron on the Linux station.
 set -uo pipefail
 

@@ -16,7 +16,6 @@
 # record it, prune maint-* beyond the last $KEEP_DATED. Any failed step stops the run with
 # "FAILED <step>", takes no snapshot, records nothing, and the VM is powered off on every exit path.
 # Steps: lock boot apt-update apt-upgrade claude-update codex-update cli-proxy-update secret-scan snapshot
-# (power-off is part of scan-down-snapshot; a hand run with --no-secret-scan has its own power-off step).
 #
 # --no-secret-scan: for the one run an operator makes by hand after checking the VM holds no host copy.
 #

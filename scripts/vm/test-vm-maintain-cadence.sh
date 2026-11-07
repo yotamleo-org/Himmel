@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# test-vm-maintain-cadence.sh - hermetic coverage for scripts/vm/vm-maintain-cadence.sh.
-#
 # Platform guard (linux-only): the cadence drives the Linux station's VirtualBox flow and cron.
-#
-# Usage: bash scripts/vm/test-vm-maintain-cadence.sh
 # shellcheck disable=SC2016  # the bash -c check bodies are single-quoted on purpose: they read their own $1..$3
 set -uo pipefail
 
