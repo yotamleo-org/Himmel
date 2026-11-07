@@ -38,6 +38,10 @@ before(async () => {
         if (stub.create === 'credit') return reply(400, { type: 'error', error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API.' } });
         if (stub.create === 'server-billing') return reply(503, { type: 'error', error: { type: 'api_error', message: 'billing service unavailable' } });
         if (stub.create === 'rate-billing') return reply(429, { type: 'error', error: { type: 'rate_limit_error', message: 'rate limited; see your billing page for limits' } });
+        if (stub.create === 'key-401') return reply(401, '{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"},"request_id":"req_011CgoVv2iSXcDgSjk3R5rLm"}');
+        if (stub.create === 'key-403') return reply(403, { type: 'error', error: { type: 'permission_error', message: 'Your API key does not have permission to use the specified resource.' } });
+        if (stub.create === 'server-500') return reply(500, { type: 'error', error: { type: 'api_error', message: 'Internal server error' } });
+        if (stub.create === 'rate-429') return reply(429, { type: 'error', error: { type: 'rate_limit_error', message: 'Number of request tokens has exceeded your per-minute rate limit' } });
         return reply(200, { id: 'msgbatch_stub1', type: 'message_batch', processing_status: 'in_progress', created_at: '2026-10-23T10:00:00Z', results_url: null });
       }
       seen.gets.push(req.url);
@@ -252,6 +256,36 @@ test('a 429 carrying billing text stops like a plain 429, exit 3, and is not the
   assert.equal(s.code, 3);
   assert.match(s.stderr, /HTTP 429/);
   assert.equal(existsSync(join(f.batch, 'batch.json')), false);
+});
+
+test('a rejected key (HTTP 401 or 403) exits 6, apart from credit (5) and other failures (3)', async () => {
+  for (const [mode, status] of [['key-401', 401], ['key-403', 403]]) {
+    reset();
+    stub.create = mode;
+    const f = fixture();
+    const s = await f.submit();
+    assert.equal(s.code, 6, `${mode}: ${s.stderr}`);
+    assert.match(s.stderr, new RegExp(`API key rejected \\(HTTP ${status}\\)`));
+    assert.equal(existsSync(join(f.batch, 'batch.json')), false);
+  }
+});
+
+test('a 5xx, a plain 429 and a network failure keep exit 3', async () => {
+  for (const mode of ['server-500', 'rate-429']) {
+    reset();
+    stub.create = mode;
+    const s = await fixture().submit();
+    assert.equal(s.code, 3, `${mode}: ${s.stderr}`);
+  }
+  reset();
+  const f = fixture();
+  const closed = createServer();
+  await new Promise((ok) => closed.listen(0, '127.0.0.1', ok));
+  f.env.HIMMEL_BATCH_BASE_URL = `http://127.0.0.1:${closed.address().port}`;
+  await new Promise((ok) => closed.close(ok));
+  const s = await f.submit();
+  assert.equal(s.code, 3, s.stderr);
+  assert.match(s.stderr, /network failure/);
 });
 
 test('refusals send nothing: off-loopback endpoint, unhashed prompt, unpriced model, loose key file', async () => {

@@ -17,7 +17,7 @@
 //           Prints {batch_id, succeeded, missing, cost_usd} and records the cost in D/batch.json.
 //
 // Exit: 0 ok; 2 usage or refusal; 3 API or network failure (retry next run); 4 batch not ended;
-//       5 credit exhausted (the caller rotates account).
+//       5 credit exhausted, 6 API key rejected (HTTP 401 or 403); on either the caller rotates account.
 // Key: read here from <state_dir>/key-<account>.env (mode 600, the lane's own file), never printed or put on argv.
 // Endpoint: https://api.anthropic.com, or HIMMEL_BATCH_BASE_URL when it is a loopback http(s) URL (test stub).
 // Spend is not gated here (operator decision 229): the cost lands in the run row and the provider's cost report.
@@ -121,6 +121,7 @@ async function call(key, method, path, body) {
   if (!res.ok) {
     // only a client error other than a rate limit is a credit answer; a server error or a 429 with billing text must not walk the accounts
     if (res.status < 500 && res.status !== 429 && /credit balance|insufficient.{0,20}credit|billing/i.test(text)) refuse(`credit exhausted (HTTP ${res.status})`, 5);
+    if (res.status === 401 || res.status === 403) refuse(`API key rejected (HTTP ${res.status}): ${text.slice(0, 300).replace(/\s+/g, ' ')}`, 6);
     refuse(`HTTP ${res.status}: ${text.slice(0, 300).replace(/\s+/g, ' ')}`, 3);
   }
   return text;

@@ -60,9 +60,9 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 . "$REPO_ROOT/scripts/guardrails/phi-egress-lib.sh"
 
 # BACKEND default = claude-api: background LLM jobs bill the API,
-# never the subscription. This script has no API-lane extraction path (semantic-update.sh
-# owns it), so the default refuses with one ERR line (see the refusal block below);
-# `--backend claude-cli` is the explicit opt-in. graphify distinguishes `claude`
+# never the subscription. It extracts through the API lane (HIMMEL_API_LANE=on and
+# HIMMEL_API_ACCOUNT set) and refuses with one ERR line without them (see the claude-api
+# block below); `--backend claude-cli` is the explicit opt-in. graphify distinguishes `claude`
 # (Anthropic API — requires ANTHROPIC_API_KEY, pay-as-you-go) from `claude-cli`
 # (routes through the locally-installed `claude` CLI). The claude-ONLY adopter
 # story needs claude-cli, not claude.
@@ -243,19 +243,30 @@ _endpoint_host_allowed() {
   return 1
 }
 
-# claude-api is the default backend and the one that never draws the subscription. The
-# lane extraction lives in semantic-update.sh, not here, so an extracting run on
-# claude-api refuses (rc 2) before any work: lane unresolved, or lane on but not wired
-# here. Never a fallback to claude-cli; that runs only when passed explicitly.
+GRAPHIFY_BACKEND="$BACKEND"
 if [ "$BACKEND" = "claude-api" ] && [ "$DO_EXTRACT" -eq 1 ]; then
   # shellcheck source=../lib/llm-backend.sh
   . "$REPO_ROOT/scripts/lib/llm-backend.sh"
-  if ! llm_backend_api_ready; then
+  if ! llm_backend_api_ready_graph; then
     echo "ERR refresh-graph-map: --backend claude-api needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT in the launching environment -- refusing, no claude-cli fallback" >&2
     exit 2
   fi
-  echo "ERR refresh-graph-map: --backend claude-api extraction is not wired in refresh-graph-map.sh -- use scripts/graphify/semantic-update.sh, or pass --backend claude-cli explicitly" >&2
-  exit 2
+  if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+    echo "ERR refresh-graph-map: --backend claude-api refuses a caller ANTHROPIC_API_KEY; the lane reads its own per-account key file" >&2
+    exit 2
+  fi
+  GRAPHIFY_MAP_LANE_BIN="${GRAPHIFY_MAP_LANE_BIN:-$REPO_ROOT/scripts/api-lane/claude-api.sh}"
+  [ -f "$GRAPHIFY_MAP_LANE_BIN" ] || { echo "ERR refresh-graph-map: --backend claude-api needs $GRAPHIFY_MAP_LANE_BIN -- refusing" >&2; exit 2; }
+  if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
+    _auto_repo="$(git -C "$CORPUS_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _auto_repo=""
+    _own_repo="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _own_repo=""
+    if [ -z "$_own_repo" ] || [ "$_auto_repo" != "$_own_repo" ]; then
+      echo "ERR refresh-graph-map: --backend claude-api: auto routing is for the himmel graph only (corpus repo ${_auto_repo:-none}); name HIMMEL_API_ACCOUNT=A, B or C" >&2
+      exit 2
+    fi
+    export HIMMEL_API_AUTO_REPO_DIR="$_auto_repo"
+  fi
+  GRAPHIFY_BACKEND="claude-cli"
 fi
 
 # Egress preflight for the scheduled/direct path.
@@ -451,7 +462,7 @@ fi
 # GRAPHIFY_MAX_CONCURRENCY).
 _TOKEN_BUDGET_ARGS=()
 if [ "$DO_EXTRACT" -eq 1 ]; then
-  if [ "$BACKEND" = "claude-cli" ]; then
+  if [ "$GRAPHIFY_BACKEND" = "claude-cli" ]; then
     GRAPHIFY_API_TIMEOUT="${GRAPHIFY_API_TIMEOUT-900}"
     export GRAPHIFY_API_TIMEOUT
     # Model pin. Unpinned, graphify's claude-cli chunks run on the
@@ -1184,6 +1195,7 @@ _scratch_cleanup() {
     fi
   fi
   [ -z "${_PRE_SCRATCH:-}" ] || rm -rf "$_PRE_SCRATCH" 2>/dev/null || true
+  [ -z "${_LANE_BIN_DIR:-}" ] || rm -rf "$_LANE_BIN_DIR" 2>/dev/null || true
   rm -rf "$SCRATCH" 2>/dev/null || true
 }
 
@@ -2346,8 +2358,8 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   # dedicated config dir that keeps native subscription auth, disables every
   # hook (including plugin hooks), and applies the validated bare plugin profile.
   # Seed only after the bank preflight passes so a skipped run does not touch auth
-  # state, and only for claude-cli (API backends never launch the local CLI).
-  if [ "$BACKEND" = "claude-cli" ]; then
+  # state, and only for claude-cli and claude-api (the lane launches the local CLI too).
+  if [ "$GRAPHIFY_BACKEND" = "claude-cli" ]; then
     GRAPHIFY_CLAUDE_CONFIG_DIR="${GRAPHIFY_CLAUDE_CONFIG_DIR:-$HOME/.claude-graphify}"
     export GRAPHIFY_CLAUDE_CONFIG_DIR
     if bash "$HERE/seed-claude-config.sh"; then
@@ -2357,6 +2369,56 @@ for p in sys.stdin.buffer.read().split(b"\0"):
       echo "refresh-graph-map: failed to seed the hook-free Claude config dir; refusing claude-cli extraction" >&2
       exit 2
     fi
+  fi
+
+  # ponytail: a slimmer copy of semantic-update.sh's sync shim (no addendum, no run-spend file; the lane's per-call
+  # budget bounds each chunk), upgrade path: one shared shim file both scripts install.
+  if [ "$BACKEND" = "claude-api" ]; then
+    # shellcheck source=../lib/prim.sh
+    . "$REPO_ROOT/scripts/lib/prim.sh"
+    _LANE_BIN_DIR="$(tmpdir)" || { echo "refresh-graph-map: cannot create the API-lane shim dir" >&2; exit 1; }
+    GRAPHIFY_MAP_SHIM_ACCOUNTS="$(node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" accounts 2>/dev/null | grep -o '"configured":true' | wc -l | tr -d ' ')" || GRAPHIFY_MAP_SHIM_ACCOUNTS=0
+    [ "${GRAPHIFY_MAP_SHIM_ACCOUNTS:-0}" -gt 0 ] 2>/dev/null || GRAPHIFY_MAP_SHIM_ACCOUNTS=3
+    cat > "$_LANE_BIN_DIR/claude" <<'SHIM'
+#!/usr/bin/env bash
+case "${1:-}" in
+  --help|-h) echo "claude (himmel API-lane shim): -p [--model M] [--output-format json]; the prompt is read from stdin"; exit 0 ;;
+esac
+model=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -p|--no-session-persistence) shift ;;
+    --output-format|--json-schema) [ $# -ge 2 ] || exit 2; shift 2 ;;
+    --model) [ $# -ge 2 ] || exit 2; model="$2"; shift 2 ;;
+    *) echo "claude-api shim: refusing unexpected argument '$1'" >&2; exit 2 ;;
+  esac
+done
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+newpath=""
+IFS=: read -ra parts <<< "$PATH"
+for d in "${parts[@]}"; do [ "$d" = "$here" ] || newpath="${newpath:+$newpath:}$d"; done
+export PATH="$newpath"
+cd "$here" || exit 2
+limit=1; [ "${HIMMEL_API_ACCOUNT:-}" != auto ] || limit="$GRAPHIFY_MAP_SHIM_ACCOUNTS"
+if [ "$(cat "$here/rejected" 2>/dev/null | wc -l)" -ge "$limit" ]; then
+  echo "claude-api shim: the lane has rejected the account's credit or key $limit time(s) this run; not dispatching this chunk" >&2
+  exit 6
+fi
+export HIMMEL_API_TOOLS=""
+export HIMMEL_API_FALLBACK=off
+out="$here/lane-out.$$"
+HIMMEL_API_KIND=graphify "$GRAPHIFY_MAP_LANE_BIN" -p --model "${model:-sonnet}" --permission-mode default \
+  --max-budget-usd "$GRAPHIFY_MAP_LANE_BUDGET" --effort "$GRAPHIFY_MAP_LANE_EFFORT" > "$out"
+rc=$?
+[ "$rc" -ne 6 ] || echo rejected >> "$here/rejected"
+[ "$rc" -eq 0 ] || echo "claude-api shim: lane exited $rc; result: $(tail -c 400 "$out" | tr '\n' ' ')" >&2
+cat "$out"; rm -f "$out"
+exit "$rc"
+SHIM
+    chmod +x "$_LANE_BIN_DIR/claude"
+    export GRAPHIFY_MAP_LANE_BIN GRAPHIFY_MAP_SHIM_ACCOUNTS GRAPHIFY_MAP_LANE_BUDGET="${GRAPHIFY_API_CALL_BUDGET_USD:-1.00}" \
+      GRAPHIFY_MAP_LANE_EFFORT="${CLAUDE_CODE_EFFORT_LEVEL:-high}"
+    export PATH="$_LANE_BIN_DIR:$PATH"
   fi
 
   # (The promote shrink guard's GRAPHIFY_PROMOTE_MIN_RETAIN_PCT default +
@@ -2433,7 +2495,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   # between them, so the stop threshold is the per-chunk limit times the workers
   # in flight; claude-cli runs serial unless GRAPHIFY_CLAUDE_CLI_PARALLEL=1.
   _hollow_workers=$((10#$GRAPHIFY_MAX_CONCURRENCY))
-  if [ "$BACKEND" = "claude-cli" ] && [ "${GRAPHIFY_CLAUDE_CLI_PARALLEL:-}" != "1" ]; then _hollow_workers=1; fi
+  if [ "$GRAPHIFY_BACKEND" = "claude-cli" ] && [ "${GRAPHIFY_CLAUDE_CLI_PARALLEL:-}" != "1" ]; then _hollow_workers=1; fi
   _HOLLOW_STOP_AT=$((GRAPHIFY_HOLLOW_RETRY_MAX * _hollow_workers))
   _STOP_FILE="$SCRATCH/.graphify-extract-stop"
   _FAILED_FILE="$SCRATCH/.graphify-extract-failed"
@@ -2617,7 +2679,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
       || { echo "refresh-graph-map: could not record the corpus markers in the recent-notes scratch" >&2; exit 1; }
     echo "refresh-graph-map: pre-pass: ${n//[[:space:]]/} notes modified in the last $_RECENT_DAYS days, extracted first (uncached ones only) within the chunk cap ($pre)" >&2
     _rc=0
-    _run_extract "$GRAPHIFY_MAP" "$pre" --update --backend "$BACKEND" ${_TOKEN_BUDGET_ARGS[@]+"${_TOKEN_BUDGET_ARGS[@]}"} --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" || _rc=$?
+    _run_extract "$GRAPHIFY_MAP" "$pre" --update --backend "$GRAPHIFY_BACKEND" ${_TOKEN_BUDGET_ARGS[@]+"${_TOKEN_BUDGET_ARGS[@]}"} --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" || _rc=$?
     [ ! -s "$_DONE_FILE" ] || _PRE_DONE="$(cat "$_DONE_FILE")"
     # The full run deletes $_CKPT_FILE, so keep a pre-pass checkpoint failure.
     [ ! -s "$_CKPT_FILE" ] || _PRE_CKPT_FAILED=1
@@ -2638,7 +2700,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   _rc=0
   _prepass_recent
   if [ "$_SKIP_MAIN" -eq 0 ]; then
-    _run_extract "$GRAPHIFY_MAP" "$SCRATCH" --update --backend "$BACKEND" ${_TOKEN_BUDGET_ARGS[@]+"${_TOKEN_BUDGET_ARGS[@]}"} --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" || _rc=$?
+    _run_extract "$GRAPHIFY_MAP" "$SCRATCH" --update --backend "$GRAPHIFY_BACKEND" ${_TOKEN_BUDGET_ARGS[@]+"${_TOKEN_BUDGET_ARGS[@]}"} --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" || _rc=$?
   fi
   if [ -s "$_FAILED_FILE" ]; then
     echo "refresh-graph-map: hollow chunks failed after bounded retries -- finished chunks cached, graphify-out left unpromoted (exit 5)" >&2
@@ -2689,7 +2751,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
     exit 2
   fi
   _rc=0
-  _run_bounded "$GRAPHIFY_MAP" cluster-only "$SCRATCH" --backend "$BACKEND" --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" >&2 || _rc=$?
+  _run_bounded "$GRAPHIFY_MAP" cluster-only "$SCRATCH" --backend "$GRAPHIFY_BACKEND" --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" >&2 || _rc=$?
   if [ "$_rc" -ne 0 ]; then
     if [ "$_rc" -eq 124 ] || [ "$_rc" -eq 137 ]; then
       echo "refresh-graph-map: cluster-only exceeded the ${GRAPHIFY_RUN_DEADLINE_SECONDS}s run deadline -- graphify-out left unpromoted" >&2
