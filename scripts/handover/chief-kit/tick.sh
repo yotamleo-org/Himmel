@@ -1114,6 +1114,10 @@ tick_title_newest() {
     done <<<"$tick_title_idx"
 }
 
+companion_was_read() {
+    awk -v rel="$2\"" '{ s = $0; while (match(s, /"name":"Read","input":\{[^}]*"file_path":"[^"]*"/)) { seg = substr(s, RSTART, RLENGTH); if (substr(seg, length(seg) - length(rel) + 1) == rel) f = 1; s = substr(s, RSTART + RLENGTH) } } END { exit !f }' "$1"
+}
+
 # leg_forked <candidate names, comma list> -- succeeds when the newest session
 # transcript whose custom-title IS one of the names ends in a continued-in
 # record. The title is the only link (the harness writes it from `claude -n`);
@@ -2765,13 +2769,16 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     [ ! -f "$handoff_file" ] || handoff_bytes="$(wc -c < "$handoff_file" | tr -d '[:space:]')"
     dc_ptr="$(awk '$0 == "## Current direction" { f = 1; next } f && /^## / { exit } f && /^Full original text/ { print; exit }' "$console_doc")"
     if [ -n "$dc_ptr" ]; then
-        dc_rels="$(grep -o 'specs/decisions/chief-direction-[A-Za-z0-9._-]*\.md' <<< "$dc_ptr")" || dc_rels=""  # swallow-ok: grep exits 1 on a pointer line naming no file; the empty list counts none
+        dc_rels="$(awk '{ while (match($0, /specs\/decisions\/chief-direction-[A-Za-z0-9._-]*\.md/)) { print substr($0, RSTART, RLENGTH); $0 = substr($0, RSTART + RLENGTH) } }' <<< "$dc_ptr")"
         dc_stem="${console_doc##*/}"
         tick_title_newest "${dc_stem%.md}"
         if [ -n "$dc_rels" ] && [ -n "$tick_title_hit" ]; then
             while IFS= read -r dc_rel; do
                 dc_total=$((dc_total + 1))
-                awk -v rel="$dc_rel\"" '{ s = $0; while (match(s, /"name":"Read","input":\{[^}]*"file_path":"[^"]*"/)) { seg = substr(s, RSTART, RLENGTH); if (substr(seg, length(seg) - length(rel) + 1) == rel) f = 1; s = substr(s, RSTART + RLENGTH) } } END { exit !f }' "$tick_title_hit" 2>/dev/null || { dc_unread="$dc_unread $dc_rel"; dc_unread_n=$((dc_unread_n + 1)); }  # swallow-ok: no Read of this file in the transcript is the thing counted
+                if ! companion_was_read "$tick_title_hit" "$dc_rel"; then
+                    dc_unread="$dc_unread $dc_rel"
+                    dc_unread_n=$((dc_unread_n + 1))
+                fi
             done <<< "$dc_rels"
         fi
     fi
