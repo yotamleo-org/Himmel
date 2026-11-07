@@ -145,10 +145,10 @@ untouched. Vault content stays native. Wired today: the `claude-headless.sh` cho
 floor reviewer; `HIMMEL_CLAUDE_BIN` still wins, for tests) and the
 `hermes-critic.sh --route claude` pass. Other sites are follow-up.
 
-## Audit: headless call sites (HIMMEL-3410)
+## Audit: headless call sites
 
 Taken from the `# headless-claude-ok:` marker inventory of the time (the
-marker and its gate were retired in HIMMEL-5424; line numbers are as of the
+marker and its gate have since been retired; line numbers are as of the
 audit). Documentation notes and test fixtures (no actual invocation) are
 not call sites and are omitted. No call site was changed by the audit —
 misfits are flagged only.

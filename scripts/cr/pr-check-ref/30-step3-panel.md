@@ -2,7 +2,7 @@
 
 3. **Cross-model finding pass (critic panel), then adjudication.**
 
-   **Operator ruling 2026-09-21 (HIMMEL-3338): the operator authorises sending review diffs to Codex from workers.** The external-critic scripts below (`panel-first-pass.sh`, `docs-audit-panel.sh`, plus step 2's `doc-freshness-advisory.sh` and `known-findings.sh --diff`) are allow-listed for the worker profiles as literals, so a denial on one of them most likely means the call was not spelled as its literal (see the fence contract's himmel-lane spelling) — check the spelling first. A denial that names a deny rule or a policy restriction is not a spelling problem: stop and report it, never respell around it, and never skip the lane silently.
+   **Operator ruling 2026-09-21: the operator authorises sending review diffs to Codex from workers.** The external-critic scripts below (`panel-first-pass.sh`, `docs-audit-panel.sh`, plus step 2's `doc-freshness-advisory.sh` and `known-findings.sh --diff`) are allow-listed for the worker profiles as literals, so a denial on one of them most likely means the call was not spelled as its literal (see the fence contract's himmel-lane spelling) — check the spelling first. A denial that names a deny rule or a policy restriction is not a spelling problem: stop and report it, never respell around it, and never skip the lane silently.
 
    **Step 3.0 — critic panel first-pass (decimal substep, runs BEFORE any Agent dispatch):**
 
