@@ -1488,3 +1488,21 @@ test("Board versions: with a pin set, Show all exposes the unpinned versions so 
   expect(html).toContain('data-rm-pin="v2.1" aria-pressed="true"');
   expect(html).toContain('data-rm-pin="v2.2" aria-pressed="false"');
 });
+
+test("Board: the worker line on a card shows how long ago its worker last moved, from the worker record, and nothing when no record says", () => {
+  const s = station();
+  const absent = { state: "absent", reason: "none" };
+  const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+  const prs = (seen: Record<string, string>) => ({ state: "ok", repo: "acme/widgets", prs: {}, seen });
+  const card = (html: string, k: string) => html.match(new RegExp(`<div class="rm-card"[^>]*aria-label="${k}:[\\s\\S]*?</div></div>`))![0];
+  const r = read(s);
+  const withAge = board(r, {}, { drift: absent, chains: absent, prs: prs({ [K(1)]: ago(180) }) });
+  expect(card(withAge, K(1))).toMatch(/<div class="rm-worker">[\s\S]*classifier permission hold[\s\S]*3 h ago/); // ticket 1 has the worker
+  expect(card(board(r, {}, { drift: absent, chains: absent, prs: prs({ [K(1)]: ago(50) }) }), K(1))).toContain("50 min ago");
+  expect(card(board(r, {}, { drift: absent, chains: absent, prs: prs({ [K(1)]: ago(60 * 60) }) }), K(1))).toContain("2 d ago");
+  const noRecord = card(board(r, {}, { drift: absent, chains: absent, prs: prs({}) }), K(1));
+  expect(noRecord).toContain("classifier permission hold");
+  expect(noRecord).not.toContain(" ago");
+  expect(card(board(r, {}, { drift: absent, chains: absent, prs: absent }), K(1))).not.toContain(" ago");
+  expect(card(board(r, {}, { drift: absent, chains: absent, prs: prs({ [K(2)]: ago(180) }) }), K(1))).not.toContain(" ago"); // an age belongs to its own ticket's line
+});

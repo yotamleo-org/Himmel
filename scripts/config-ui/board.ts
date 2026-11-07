@@ -16,7 +16,8 @@ export type Absent = { state: "absent"; reason: string };
 // chains: every version, for the whole Board. versionChains: the picked version (else the running one), for the Chains tab alone, with its burn-down.
 // prs: the open PRs and their CI per ticket, from the worker records the status sweep keeps (a local file read, no GitHub call).
 export type BoardExtras = { drift: Record<string, unknown> | Absent; chains: Record<string, unknown> | Absent; versionChains: Record<string, unknown> | Absent; prs: PrRead | Absent };
-export type PrRead = { state: "ok"; repo?: string; prs: Record<string, { pr: number; head: string; ci: string }[]> };
+// seen: when each ticket's worker record last moved (its last_event_ts), for the age on the card's worker line.
+export type PrRead = { state: "ok"; repo?: string; prs: Record<string, { pr: number; head: string; ci: string }[]>; seen: Record<string, string> };
 
 const KIT = resolve(import.meta.dir, "../handover/chief-kit");
 export const TIMEOUT_MS = 10_000;
@@ -72,18 +73,19 @@ export function readPrs(env: Env): PrRead | Absent {
   const dir = join(env.TICKET_STATUS_STATE_DIR || join(env.HOME || "/tmp", ".himmel/state"), "workers");
   let names: string[];
   try { names = readdirSync(dir); } catch { return absent("no worker records: the directory is not there or not readable"); }
-  const prs: PrRead["prs"] = {};
+  const prs: PrRead["prs"] = {}, seen: PrRead["seen"] = {};
   for (const n of names) {
     const m = n.match(/^([A-Z][A-Z0-9]*-\d+)\.json$/);
     if (!m) continue;
-    let rec: { prs?: Record<string, { head?: string; ci?: string; red_latch?: boolean; open?: boolean }> };
+    let rec: { last_event_ts?: string; prs?: Record<string, { head?: string; ci?: string; red_latch?: boolean; open?: boolean }> };
     try { rec = JSON.parse(readFileSync(join(dir, n), "utf8")); } catch { continue; }
+    if (typeof rec?.last_event_ts === "string" && Number.isFinite(Date.parse(rec.last_event_ts))) seen[m[1]] = rec.last_event_ts;
     const open = Object.entries(rec?.prs && typeof rec.prs === "object" ? rec.prs : {}).filter(([k, p]) => p && p.open && /^\d+$/.test(k))
       .map(([k, p]) => ({ pr: Number(k), head: String(p.head || ""), ci: p.red_latch ? "red" : p.ci === "pending" ? "running" : p.ci === "red" || p.ci === "green" ? p.ci : "none" }))
       .sort((a, b) => a.pr - b.pr);
     if (open.length) prs[m[1]] = open;
   }
-  return { state: "ok", repo: repoSlug(env), prs };
+  return { state: "ok", repo: repoSlug(env), prs, seen };
 }
 
 // The versions the Board lists and the one the cards call running. Without a running version the chain read covers every version, and a blocker outside the version cannot read as blocked.

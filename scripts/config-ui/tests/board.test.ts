@@ -586,7 +586,7 @@ test("Board: a card shows its open PR and CI as a link from the worker records, 
   const api = await get(base);
   expect(api.prs).toEqual({ state: "ok", repo: "acme/widgets", prs: {
     ["HIMMEL-" + 3]: [{ pr: 4703, head: "a".repeat(40), ci: "running" }],
-    ["HIMMEL-" + 5]: [{ pr: 4704, head: "b".repeat(40), ci: "red" }] } }); // pending reads running, a red latch reads red, a closed PR is not listed
+    ["HIMMEL-" + 5]: [{ pr: 4704, head: "b".repeat(40), ci: "red" }] }, seen: {} }); // pending reads running, a red latch reads red, a closed PR is not listed
   const html = await page(base);
   const card = (k: string) => html.match(new RegExp(`<div class="rm-card"[^>]*aria-label="${k}:[\\s\\S]*?</div></div>`))![0];
   expect(card("HIMMEL-3")).toContain('<a class="pr ci-running" href="https://github.com/acme/widgets/pull/4703"');
