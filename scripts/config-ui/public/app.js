@@ -2,7 +2,7 @@
 import { renderInventory, renderTriage, renderHeader, renderProbe, reviewGateDraft } from "/render.js";
 import { renderHealth, verdict, parseView, projectVerdict, chiefLiveFor } from "/health.js";
 import { renderToolHealth, toolHealthLoader, toolHealthHref } from "/tool-health.js";
-import { driftSince, pinsFromSearch, renderBoard, searchWithPins, togglePin } from "/roadmap.js";
+import { boardRefreshDue, driftSince, pinsFromSearch, renderBoard, searchWithPins, togglePin } from "/roadmap.js";
 import { renderWorkflow, parseWorkflowRoute } from "/workflow.js";
 import { apiRolesDraft, renderConfigure as render } from "/setup.js";
 import { renderShift } from "/shift.js";
@@ -673,6 +673,7 @@ async function loadRoadmap() {
   } catch (_) { data = { state: "error", reason: "server unreachable" }; }
   if (gen !== roadmapGen) return;
   roadmap = data;
+  if (data.state === "ok") roadmapUi.readAt = Date.now(); // the Board's read line says when, and the self-refresh counts from here
   roadmapUi.writes = data.source !== "github"; // GitHub cards are read-only
   if (currentPage.id === "board") paint();
   // Waiting on you lists the operator-labelled tickets with no version, which only the No version read carries (a local mirror read, no network): ask for it beside the default one
@@ -847,6 +848,17 @@ document.addEventListener("keydown", (e) => {
   if (e.shiftKey && (e.key === "ArrowLeft" || e.key === "ArrowRight") && c.hasAttribute("data-rm-card")) { e.preventDefault(); void moveByKey(c, e.key === "ArrowRight" ? 1 : -1); }
 });
 document.addEventListener("dragend", () => { rmDrag = null; });
+// The Board reads itself again at a bounded interval (roadmap.js BOARD_REFRESH_MS), checked on a 10 s tick; boardRefreshDue holds back while the page is hidden, a drawer
+// is open, a field has focus, a card is being dragged or a read of this kind is still running.
+let boardReads = 0;
+setInterval(() => {
+  const a = document.activeElement;
+  if (!boardRefreshDue({ page: currentPage.id, visible: document.visibilityState === "visible", modal: !!(roadmapUi.drawer || roadmapUi.why),
+    editing: !!(a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)), dragging: rmDrag !== null, busy: boardReads > 0, readAt: roadmapUi.readAt || 0, now: Date.now() })) return;
+  boardReads++;
+  roadmapUi.readAt = Date.now(); // the attempt counts: a server that is down is asked once per interval, not every tick
+  Promise.all([loadRoadmap(), loadBoard(), roadmapUi.nv || roadmapUi.tab === "nv" ? loadNoVersion() : null]).finally(() => { boardReads--; });
+}, 10_000);
 document.addEventListener("change", (e) => {
   if (e.target.id === "proj") { // the page bar picker: it routes, the route reads the project
     const v = e.target.value;

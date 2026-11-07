@@ -797,6 +797,11 @@ function drawerHtml(d, ui) {
   </aside>`;
 }
 
+// The Board reads itself again once a whole interval has passed since its last read, and only while it is on screen with nothing being typed, dragged,
+// opened or already loading: a repaint under any of those would lose the operator's place. The caller (app.js) ticks this on a timer.
+export const BOARD_REFRESH_MS = 60_000;
+export const boardRefreshDue = (s) => s.page === "board" && !!s.visible && !s.modal && !s.editing && !s.dragging && !s.busy && s.readAt > 0 && s.now - s.readAt >= BOARD_REFRESH_MS;
+
 export const renderBoard =(data, ui, extras) => pg(boardPage(data, ui || {}, extras || {}));
 function boardPage(data, ui, extras) {
   const page = pageHeader("Board", "Every version, what each ticket is doing, and what is left");
@@ -812,7 +817,8 @@ function boardPage(data, ui, extras) {
   const src = data.source === "github" ? `GitHub issues (${data.mirror.count})` : data.source === "local" ? `the local tracker store (${data.mirror.count} items)`
     : `the Jira mirror (${data.mirror.count} tickets, newest update ${data.mirror.newest || "unknown"})`;
   // plain text: the bar clips it to what fits and keeps the whole line in its bubble
-  const fresh = `read live from ${src}${driftOk(dr) && dr.file.exists ? ` · drift: saved run ${dr.file.writtenHm || "unknown"}` : ""}`;
+  const readAt = ui.readAt ? ` · read ${new Date(ui.readAt).toLocaleTimeString([], { hour12: false })}, refreshes every ${BOARD_REFRESH_MS / 1000} s` : "";
+  const fresh = `read live from ${src}${readAt}${driftOk(dr) && dr.file.exists ? ` · drift: saved run ${dr.file.writtenHm || "unknown"}` : ""}`;
   // the badges, the Only filter and its counts read the picked version's own read when the tab holds it, so a wait on an earlier version reads the same everywhere
   const cardCh = chainOk(tabCh) && tabCh.version && versionAt(data, tabCh.version) === sel ? tabCh : ch;
   const drawer = drawerHtml(data, ui), why = tab === "chains" ? whyHtml(ui, tabCh, data) : "";

@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { legSync, readRoadmap, SYNC_LABEL } from "../roadmap";
-import { driftSince, renderBoard, renderKanban, renderRoadmap, pinsFromSearch, searchWithPins, togglePin } from "../public/roadmap.js";
+import { BOARD_REFRESH_MS, boardRefreshDue, driftSince, renderBoard, renderKanban, renderRoadmap, pinsFromSearch, searchWithPins, togglePin } from "../public/roadmap.js";
 import { navLinks, parseLanding } from "../public/nav.js";
 import { startServer } from "../server";
 
@@ -1505,4 +1505,21 @@ test("Board: the worker line on a card shows how long ago its worker last moved,
   expect(noRecord).not.toContain(" ago");
   expect(card(board(r, {}, { drift: absent, chains: absent, prs: absent }), K(1))).not.toContain(" ago");
   expect(card(board(r, {}, { drift: absent, chains: absent, prs: prs({ [K(2)]: ago(180) }) }), K(1))).not.toContain(" ago"); // an age belongs to its own ticket's line
+});
+
+test("Board: the read line says when the Board last read and how often it reads again, beside the newest Jira update", () => {
+  const absent = { state: "absent", reason: "none" };
+  const r = read(station());
+  const html = board(r, { readAt: Date.parse("2026-11-07T14:05:09") }, { drift: absent, chains: absent });
+  expect(html).toMatch(/newest update [^,)]+[^]*read \d\d:\d\d:\d\d/); // the Jira mirror's newest update stays, the Board's own read time joins it
+  expect(html).toContain(`refreshes every ${BOARD_REFRESH_MS / 1000} s`);
+  expect(board(r, {}, { drift: absent, chains: absent })).not.toMatch(/read \d\d:\d\d:\d\d/); // no read yet: no time is claimed
+});
+
+test("Board: it refreshes itself only when it is on screen, nothing is being edited or dragged, and a whole interval has passed since the last read", () => {
+  const base = { page: "board", visible: true, modal: false, editing: false, dragging: false, busy: false, readAt: 1_000_000, now: 1_000_000 + BOARD_REFRESH_MS };
+  expect(BOARD_REFRESH_MS).toBeGreaterThanOrEqual(30_000); // bounded below: it never polls fast
+  expect(boardRefreshDue(base)).toBe(true);
+  expect(boardRefreshDue({ ...base, now: base.now - 1 })).toBe(false); // not yet
+  for (const off of [{ page: "health" }, { visible: false }, { modal: true }, { editing: true }, { dragging: true }, { busy: true }, { readAt: 0 }]) expect(boardRefreshDue({ ...base, ...off })).toBe(false);
 });
