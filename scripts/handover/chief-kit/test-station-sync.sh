@@ -7,7 +7,7 @@
 # Cases:
 #   1. usage: no source / both sources                        -> rc 2
 #   2. a merged diff touching marketplace/                    -> --only marketplace, nothing else
-#   3. jira / qmd pin / graphify pin / unrelated paths        -> the mapped steps only; --versions always
+#   3. jira / config-ui / qmd pin / graphify pin / unrelated paths -> the mapped steps only; --versions always
 #   4. a behind row                                           -> STATION=BEHIND:<components> + state file
 #   5. non-comment local template hunk                        -> luna_template NOT applied, hunk named
 #   6. comment-only local template hunk                       -> luna_template applied
@@ -79,6 +79,10 @@ contains "3 jira" "$calls" "update --only jira_cli"
 contains "3 qmd" "$calls" "update --only qmd_fork"
 contains "3 graphify" "$calls" "update --only graphify"
 lacks "3 no marketplace" "$calls" "--only marketplace"
+run "$W/ver-current" scripts/config-ui/agui-web/src/main.tsx scripts/config-ui/server.ts
+contains "3 config ui step" "$calls" "update --only config_ui"
+check "3 config ui step runs once" "$(printf '%s\n' "$calls" | grep -c -- '--only config_ui')" 1
+lacks "3 config ui alone runs no jira step" "$calls" "--only jira_cli"
 run "$W/ver-current" docs/x.md
 lacks "3 docs only runs no step" "$calls" "--only"
 contains "3 docs only still checks versions" "$calls" "update --versions"

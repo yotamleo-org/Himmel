@@ -958,7 +958,7 @@ cat > "$CUI_BIN/systemctl" <<'STUB'
 #!/bin/sh
 printf '%s\n' "$*" >> "$CUI_LOG"
 case "$*" in
-    *is-active*) echo "${CUI_SVC_STATE:-active}"; [ "${CUI_SVC_STATE:-active}" = "active" ]; exit $? ;;
+    *is-active*) [ "${CUI_SVC_STATE:-active}" = "silent" ] && exit 1; echo "${CUI_SVC_STATE:-active}"; [ "${CUI_SVC_STATE:-active}" = "active" ]; exit $? ;;
 esac
 exit 0
 STUB
@@ -1036,6 +1036,23 @@ assert_contains "config_ui no service: row says updated" "STATUS=updated" "$cui_
 make_cui_repo scripts/config-ui/server.ts
 run_cui apply CUI_SVC_STATE=failed
 assert_contains "config_ui failed unit: restarts it" "restart himmel-ui.service" "$cui_log"
+
+# --only config_ui has no pulled range (the merge path pulled first): force rebuilds and restarts anyway
+make_cui_repo docs/a.md
+CUI_BEFORE=$(git -C "$CUI_REPO" rev-parse HEAD)
+run_cui force
+assert_eq "config_ui force: rc 0" "0" "$cui_rc"
+assert_contains "config_ui force: builds with an empty range" "agui-web|run build" "$cui_log"
+assert_contains "config_ui force: restarts the service" "restart himmel-ui.service" "$cui_log"
+
+# systemctl present but silent (user bus unreachable): the restart state is unknown, so the retry marker stays and the row fails
+make_cui_repo scripts/config-ui/server.ts
+run_cui apply CUI_SVC_STATE=silent
+assert_eq "config_ui silent systemctl: rc 1" "1" "$cui_rc"
+assert_contains "config_ui silent systemctl: row says failed" "STATUS=failed" "$cui_out"
+assert_eq "config_ui silent systemctl: keeps the retry marker" "yes" "$([ -f "$HOME/.himmel/state/config-ui-rebuild-pending" ] && echo yes || echo no)"
+if grepq "$cui_log" "restart"; then assert_fail "config_ui silent systemctl: must not claim a restart"; else assert_pass "config_ui silent systemctl: no restart"; fi
+rm -f "$HOME/.himmel/state/config-ui-rebuild-pending"
 
 # build fails: the running service is left alone and the failure is printed
 make_cui_repo scripts/config-ui/agui-web/index.html

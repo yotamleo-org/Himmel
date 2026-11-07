@@ -19,7 +19,7 @@ It finds the worker doc by the message's `N<k>` label and runs
 `chief-kit/wrap-merged.sh` (PR state, close, pull, Results bullet, board). `HANDLED ...`
 means done; `ESCALATE <reason>` means do the steps below by hand. After a merged PR, on a `MERGED` or `WRAPPED` line, it
 also starts `chief-kit/station-sync.sh --pr <n>` detached (HIMMEL-5945): the
-`himmel-update.sh --only` steps for the paths the PR touched, then `--versions`. The line
+`himmel-update.sh --only` steps for the paths the PR touched (a PR touching `scripts/config-ui/` runs `--only config_ui`: it rebuilds the UI bundle and restarts `himmel-ui.service` if active, because the pull above leaves the full update no range to see), then `--versions`. The line
 ends `station=pending log=<file>` at once; the tick carries the verdict as `station=`
 (`BEHIND:pending` while it runs, `BEHIND:<components>` when behind, nothing when current)
 until the next sync. A station-local edit against the shipped version is printed in the

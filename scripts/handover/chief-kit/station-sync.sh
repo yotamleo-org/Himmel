@@ -11,6 +11,8 @@
 # Path -> step:
 #   marketplace/                    marketplace
 #   scripts/jira/                   jira_cli
+#   scripts/config-ui/              config_ui     (rebuild the UI bundle, restart himmel-ui.service if active;
+#                                   the merge path pulls the primary first, so a full update sees no range)
 #   scripts/lib/qmd-bin.sh          qmd_fork      (the fork pin)
 #   scripts/lib/graphify-bin.sh     graphify      (the graphify pin)
 #   templates/luna-second-brain/    luna_template (only after the local-edit check)
@@ -89,6 +91,7 @@ while IFS= read -r p; do
     case "$p" in
         marketplace/*) add marketplace ;;
         scripts/jira/*) add jira_cli ;;
+        scripts/config-ui/*) add config_ui ;;
         scripts/lib/qmd-bin.sh) add qmd_fork ;;
         scripts/lib/graphify-bin.sh) add graphify ;;
         templates/luna-second-brain/*) add luna_template ;;
@@ -133,7 +136,7 @@ local_template_diff() {
 }
 
 refused=""; failed=""
-for step in marketplace jira_cli qmd_fork graphify luna_template; do
+for step in marketplace jira_cli config_ui qmd_fork graphify luna_template; do
     case " $want " in *" $step "*) ;; *) continue ;; esac
     if [ "$step" = luna_template ]; then
         diffs="$(local_template_diff)"

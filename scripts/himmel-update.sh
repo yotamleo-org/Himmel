@@ -1644,7 +1644,7 @@ update_jira_cli() {
 #    caller ignores the return): a failed UI build must not stop the chain.
 #    check mode only reports what apply would do, from HEAD..@{u}.
 update_config_ui() {
-    local mode="$1"   # check | apply
+    local mode="$1"   # check | apply | force (--only config_ui: no pulled range, rebuild now)
     local web="$ROOT/scripts/config-ui/agui-web" unit="himmel-ui.service"
     local from to changed="" bun log state pending="$HOME/.himmel/state/config-ui-rebuild-pending"
     [ -f "$web/package.json" ] || return 0
@@ -1656,7 +1656,9 @@ update_config_ui() {
     fi
     from="${PULL_HEAD_BEFORE:-}"
     to=$(git rev-parse HEAD 2>/dev/null) || to=""
-    if [ -n "$from" ] && [ -n "$to" ] && [ "$from" != "$to" ]; then
+    if [ "$mode" = "force" ]; then
+        changed="force"
+    elif [ -n "$from" ] && [ -n "$to" ] && [ "$from" != "$to" ]; then
         changed=$(git diff --name-only "$from" "$to" -- scripts/config-ui 2>/dev/null) || changed=""
     fi
     # A step that failed leaves $pending, so the next update retries it: by then the pulled range is empty.
@@ -1679,7 +1681,16 @@ update_config_ui() {
     fi
     # a unit left failed by an earlier restart is restarted too; an absent or stopped one is not ours to start
     state=""
-    if command -v systemctl >/dev/null 2>&1; then state=$(systemctl --user is-active "$unit" 2>/dev/null) || true; fi
+    if command -v systemctl >/dev/null 2>&1; then
+        state=$(systemctl --user is-active "$unit" 2>/dev/null) || true
+        # An installed unit always answers (active, inactive, failed, ...); silence means the user bus could not be reached.
+        if [ -z "$state" ]; then
+            mkdir -p "${pending%/*}" 2>/dev/null && : > "$pending" 2>/dev/null || true
+            STATUS_config_ui="failed"
+            DETAIL_config_ui="bundle rebuilt but systemctl --user gave no answer for $unit — the next update retries, or restart it by hand"
+            return 1
+        fi
+    fi
     if [ "$state" = "active" ] || [ "$state" = "activating" ] || [ "$state" = "failed" ]; then
         if systemctl --user restart "$unit" >/dev/null 2>&1; then
             rm -f "$pending"
@@ -3589,7 +3600,7 @@ Modes:
   --versions          one row per component — installed vs available, behind
                       marked; read-only. Exit 0 all current, 1 any behind,
                       3 none behind but some could not be determined
-  --only <item>       run ONE step: pull marketplace jira_cli qmd_fork hermes
+  --only <item>       run ONE step: pull marketplace jira_cli config_ui qmd_fork hermes
                       luna_template graphify graph cli_proxy marketplaces toolchain tools
                       drift drift-check (installer-drift pass; -check is read-only)
                       plugin-refresh (reinstall a same-version plugin cache that
@@ -3723,7 +3734,7 @@ fi
 if [ "${1:-}" = "--only" ]; then
     only_item="${2:-}"
     if [ -z "$only_item" ]; then
-        echo "update --only: needs an item — one of: pull marketplace jira_cli qmd_fork hermes luna_template graphify graph cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration" >&2
+        echo "update --only: needs an item — one of: pull marketplace jira_cli config_ui qmd_fork hermes luna_template graphify graph cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration" >&2
         exit 2
     fi
     branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
@@ -3743,6 +3754,7 @@ if [ "${1:-}" = "--only" ]; then
             update_pull || only_rc=1 ;;
         marketplace)   update_marketplace apply || only_rc=1 ;;
         jira_cli)      update_jira_cli apply    || only_rc=1 ;;
+        config_ui)     update_config_ui force   || only_rc=1 ;;
         qmd_fork)      update_qmd_fork apply    || only_rc=1 ;;
         hermes)        run_hermes_step apply    || only_rc=1 ;;
         luna_template) update_luna_template apply || only_rc=1 ;;
@@ -3768,7 +3780,7 @@ if [ "${1:-}" = "--only" ]; then
         drift-check)   report_drift check ;;
         env_migration) run_env_migration apply || only_rc=1 ;;
         *)
-            echo "update --only: unknown item '$only_item' — one of: pull marketplace jira_cli qmd_fork hermes luna_template graphify graph cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration" >&2
+            echo "update --only: unknown item '$only_item' — one of: pull marketplace jira_cli config_ui qmd_fork hermes luna_template graphify graph cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration" >&2
             exit 2 ;;
     esac
     report_qmd_daemon_restart
