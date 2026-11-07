@@ -4458,6 +4458,7 @@ check_c51_firecrawl_parked() {
 # backend skips the check. Never runs graphify itself
 # (a graphify invocation auto-refreshes the user's skill dirs) -- only the venv
 # python. Seams: HIMMEL_DOCTOR_GRAPHIFY_VENV (venv dir), HIMMEL_DOCTOR_UV.
+# billed-exempt: read-only diagnostic; it sources the llm-backend.sh resolver to name a backend and makes no model call
 check_c52_graphify_ollama() {
     local uv_bin="${HIMMEL_DOCTOR_UV:-uv}" venv tooldir="" py="" c backend
     # shellcheck source=lib/llm-backend.sh
