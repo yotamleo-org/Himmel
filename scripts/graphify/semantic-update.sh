@@ -77,7 +77,7 @@
 # ended = the results are replayed through the same graphify extract (the replay shim answers each chunk prompt from
 # its result by hash), then merged and hardened as usual. A chunk the batch did not answer fails like any failed
 # chunk: its files stay unstamped and ride the next batch. The account follows HIMMEL_API_ACCOUNT (auto picks by
-# the lane's credit state); a credit-exhausted answer marks the account and an auto route goes on to the accounts not yet tried, each at most once per pass (only a credit-exhausted answer moves on; any other error stops the pass).
+# the lane's credit state); a credit-exhausted answer or a rejected key (HTTP 401 or 403) marks the account and an auto route goes on to the accounts not yet tried, each at most once per pass (any other error stops the pass).
 # The batch cost is not gated (decision 229); it lands in the run row. Every run prints one
 # `semantic-update: BATCH id=… state=submitted|pending|merged requests=N cost_usd=…` line for the cadence ledger.
 #
