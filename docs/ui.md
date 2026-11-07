@@ -74,11 +74,11 @@ not repeated; Review by a second model is on the Review tile.
 
 The Check this install strip (shown while no tile is open) runs the doctor (`scripts/himmel-doctor.sh --json`, its read-only
 checks; never `--fix`) and shows the setup checks only (the `SETUP_CHECKS` list in `scripts/config-ui/public/setup.js`:
-the install's prerequisites, wiring, configuration files, tracker and keyring): a fail and warn count for that subset,
+the install's prerequisites, hook and consent wiring, configuration files, tracker and keyring): a fail and warn count for that subset,
 one row per setup warning or failure, its remedy, and an Open in Health link to that check's row. The findings outside
 the list are counted on the strip too ("Not setup, so only on the Health page: 1 fail, 2 warn"), so a clean setup never
 sits beside a failure you cannot see. The Health page lists every check, so a worktree or search-index warning shows
-there and not in the rows here. The handover folder and registry checks (C4, C5) only ever report information, which
+there and not in the rows here. The forge check (C4) and the registry check (C5) only ever report information, which
 the strip does not show, so they are not on the list. It takes a minute or two and stops at 200 seconds. The run publishes nothing
 (no statusline counts), and any secret value in a row is redacted before the page sees it. The result lives in the
 page only, so press run again any time to re-check. It is `POST /api/setup/verify`, handled by `verifyDoctor` in `scripts/config-ui/setup.ts`.
