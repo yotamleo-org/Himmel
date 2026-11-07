@@ -195,9 +195,13 @@ fresh; echo "$VM	maint-20261105-0000	2026-11-05T00:00:00Z" > "$WORK/state/newest
 check "F-keeps-old a failed run leaves the previous newest-good record untouched" grep -q "maint-20261105-0000" "$WORK/state/newest-good.tsv"
 fresh; out=$(vm_maintain STUB_LIST_FAIL=1 2>&1); rc=$?
 check "F-list a failed snapshot listing is reported, not read as an empty set" bash -c '[ "$1" -eq 0 ] && grep -q "could not list" <<<"$2"' _ "$rc" "$out"
-fresh; printf '%s\t%s\t%s\n' "$VM" maint-20261105-0000 2026-11-05T00:00:00Z > "$WORK/state/newest-good.tsv"; chmod 000 "$WORK/state/newest-good.tsv"
-out=$(vm_maintain 2>&1); rc=$?; chmod 600 "$WORK/state/newest-good.tsv"
-check "F-record-read an unreadable record file is FAILED snapshot and the file is left as it was" bash -c '[ "$1" -ne 0 ] && grep -q "FAILED snapshot" <<<"$2" && grep -q "maint-20261105-0000" "$3"' _ "$rc" "$out" "$WORK/state/newest-good.tsv"
+if [ "$(id -u)" -eq 0 ]; then
+    echo "SKIP F-record-read (root reads a mode-000 file, so the case cannot fail here)"
+else
+    fresh; printf '%s\t%s\t%s\n' "$VM" maint-20261105-0000 2026-11-05T00:00:00Z > "$WORK/state/newest-good.tsv"; chmod 000 "$WORK/state/newest-good.tsv"
+    out=$(vm_maintain 2>&1); rc=$?; chmod 600 "$WORK/state/newest-good.tsv"
+    check "F-record-read an unreadable record file is FAILED snapshot and the file is left as it was" bash -c '[ "$1" -ne 0 ] && grep -q "FAILED snapshot" <<<"$2" && grep -q "maint-20261105-0000" "$3"' _ "$rc" "$out" "$WORK/state/newest-good.tsv"
+fi
 fresh; out=$(vm_maintain 2>&1); ARGS=(run othervm --no-secret-scan); out=$(vm_maintain 2>&1); rc=$?; ARGS=(run "$VM" --no-secret-scan)
 check "R9 a run for a second VM keeps the first VM's record" bash -c '[ "$(grep -c . "$1")" -eq 2 ] && grep -q "^testvm	" "$1" && grep -q "^othervm	" "$1"' _ "$WORK/state/newest-good.tsv"
 # RED control: the stopped check fails on a run that succeeded
