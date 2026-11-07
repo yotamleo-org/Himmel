@@ -607,12 +607,12 @@ never does:
 
 ```sh
 sudo bash scripts/lib/afk-sudo/install.sh --user "$USER"   # prints the otpauth URI ONCE
-sudoedit /etc/himmel/afk-sudo.json
-sudoedit /etc/himmel/afk-sudo/notice-bot.env              # TELEGRAM_BOT_TOKEN=<notice bot token>
+SUDO_EDITOR=nano sudoedit /etc/himmel/afk-sudo.json        # SUDO_EDITOR only when no editor is set; the installer prints the form for this station
+SUDO_EDITOR=nano sudoedit /etc/himmel/afk-sudo/notice-bot.env   # TELEGRAM_BOT_TOKEN=<notice bot token>
 ```
 
 The notice bot is a new bot from @BotFather (`/newbot`), not this bridge's bot. Send it
-`/start` once so it may message you. While `notice-bot.env` is empty, every request is
+`/start` once so it may message you. While `notice-bot.env` holds no token, every request is
 refused (`result=no-notice-bot`).
 
 ```json
