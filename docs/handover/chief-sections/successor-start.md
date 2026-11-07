@@ -36,7 +36,7 @@ the relays below follow in the very next turn.
    its own doc's `## Current direction`, so the outgoing chief can catch a misread
    before it wraps. `chief.sh next` carries that block verbatim into the successor doc
    when it is short; over `CHIEF_DIRECTION_SPILL_BYTES` (12000) it carries one reading line per ruling
-   and writes the full text of every ruling to companion files, which the block's first line names and
+   and writes the full text of every ruling to companion files, which the block's line beginning `Full original text` names and
    the successor reads in its first turn, in the same batch as the doc;
    the HANDOFF points at it (and gets the `focus-chains.json` dependency-chain order). Keep the block current on
    every ruling and wrap: `next` refuses (exit 7) an absent, empty or placeholder

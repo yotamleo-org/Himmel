@@ -125,6 +125,17 @@ for g in range(ngroups):
         lines.append("OPERATOR 10-25 %s (decisions %d-%d): %s (STANDING). %s." % (tag, n - 2, n, words(g, 6), words(g + 4, 50)))
         numbers += [n - 2, n - 1, n]; n -= 3
         lines.append("OPERATOR 10-27 %s (STANDING): %s. (1) %s. (2) %s." % (tag, words(g + 1, 50), words(g + 2, 30), words(g + 3, 30)))
+    if g % 35 == 0:  # decision numbers in the body (the live TU doc's shapes), and lines of another shape
+        b = 780 + 8 * (g // 35)
+        verb(b, tag); verb(b + 1, tag)
+        # a header that names two numbers, then bare "NNN:" items and "NNN, verbatim in specs" in the body
+        lines.append("OPERATOR 11-06 %s (BINDING, carry to every successor; decisions %d, %d, verbatim specs/decisions/verbatim-decision-%d-operator-11-06-%s.txt). Verbatim: \"%s\". %d: \"%s\" Done: %s. %d: \"%s\", closed. %d, verbatim in specs/decisions: %s. %d: \"%s\". %s." % (tag, b, b + 1, b, tag, words(g, 5), b + 2, words(g + 1, 6), words(g + 2, 40), b + 3, words(g + 3, 6), b + 4, words(g + 4, 40), b + 5, words(g + 5, 6), words(g + 6, 40)))
+        # a header with no number, "decision N" forms in parentheses in the body
+        lines.append("OPERATOR 10-30 %s (BINDING, carry to every successor): %s (decision %d, A+B, 19 keys; admitted R-1127..1145), %s (decision %d: 123 audited keys; list in specs). Ticket 8935: approved, posted 11-06 18:17, 9423 ok. %s." % (tag, words(g, 40), b + 6, words(g + 1, 30), b + 7, words(g + 2, 40)))
+        numbers += list(range(b, b + 8))
+        # lines of another shape: a dash item and an unheaded row, long enough to be cut, with a ticket number and a time that are not decisions
+        lines.append("- Owed by hand %s: 6598 soak, runs 40023386609 green at 18:17 and 40028092118 running; at 3 greens re-dispatch from its doc. %s." % (tag, words(g + 7, 90)))
+        lines.append("Filed %s: 7296 (PR 3691), 7297 (3689 residual: single-guard RED rows), 7299 (issue 3596). %s." % (tag, words(g + 8, 90)))
 direction = "\n\n".join(lines)
 out, sec = [], None
 for ln in open(doc, encoding="utf-8").read().split("\n"):
@@ -203,14 +214,25 @@ for l in new:
     lm = re.search(r"decisions?\s+([\d, ]+)", hd)
     if lm: listed.update(int(x) for x in re.findall(r"\d+", lm.group(1)))
 want = set(int(x) for x in open(numfile).read().split())
-for ln in expected: want.update(header_numbers(ln))
+def body_numbers(line):
+    mm = re.match(r"^(?:OPERATOR|CHIEF)[^(]*\([^)]*\)(.*)$", line)
+    if not mm: return []
+    out = [int(d.group(1)) for d in re.finditer(r"decisions?\s+(\d+)", mm.group(1))]
+    out += [int(d.group(1)) for d in re.finditer(r"(?<![\w/.:#-])(\d{3})(?::\s|, verbatim in specs/)", mm.group(1))]
+    return out
+for ln in expected:
+    want.update(header_numbers(ln))
+    want.update(body_numbers(ln))
 missing = sorted(n for n in want if n not in listed)
 if missing: print("decision numbers with no index line: %s" % missing[:10]); sys.exit(1)
 flat = [" ".join(l.split()) for l in expected]
 for l in new:
     if l in expected or l.startswith("Full original text"): continue
     mm = re.match(r"^((?:OPERATOR|CHIEF)[^:]*): (.*)$", l)
-    if not mm: print("a shortened line with no index shape: " + l[:60]); sys.exit(1)
+    if not mm:
+        core = l[:-2].rstrip() if l.endswith(" …") else l
+        if len(core.encode()) < 75 or not any(f.startswith(core) for f in expected): print("a line of another shape that is not the start of its source line: " + l[:60]); sys.exit(1)
+        continue
     reading = " ".join(mm.group(2).replace("…", "").split())
     if len(reading) < 12: print("no reading on an index line: " + l[:80]); sys.exit(1)
     who = " ".join(mm.group(1).split(", decision")[0].split(" (")[0].split())
@@ -240,6 +262,9 @@ for i, l in enumerate(lines):
         if mm: lines[i] = mm.group(1) + "x"; done = True
     elif kind == "relabel":
         if "(standing): " in l: lines[i] = l.replace("(standing): ", "(not marked binding): ", 1); done = True
+    elif kind == "dropbody":
+        mm = re.match(r"^(OPERATOR 11-06 [^:]*decisions \d+(?:, \d+){4,}), (\d+)((?: \([a-z ]+\))?: .*)$", l)
+        if mm: lines[i] = mm.group(1) + mm.group(3); done = True
     elif kind == "noread":
         if l.startswith("Full original text"): lines[i] = l.replace("READ ALL OF THEM in your first turn, in the same batch as this document", "see them if you like"); done = True
 if not done: print("mutation %s found nothing to change" % kind); sys.exit(2)
@@ -254,7 +279,9 @@ make_pair() { # <bucket> <queue segments> <ruling groups> -> docA (source) path 
 }
 companion_files() { sed -n 's/.*under the bucket (\([^)]*\)).*/\1/p' "$1" | tr ' ' '\n'; }
 # shellcheck disable=SC2016
-READ_LINE='every direction companion file the first line of `## Current direction`'
+READ_LINE='every direction companion file that the line of `## Current direction`'
+# shellcheck disable=SC2016
+COMPACT_LINE='each direction companion file that the line of `## Current direction` beginning `Full original text`'
 live_line() { awk -v k="$2:" '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f && index($0, k) == 1 { print; exit }' "$1"; }
 dir_lines() { awk '$0 == "## Current direction" { f = 1; next } f && /^## / { exit } f && NF && substr($0, 1, 1) != ">"' "$1"; }
 
@@ -280,7 +307,7 @@ run_fixture() { # <name> <queue segments> <ruling groups>
     [ "$rc" -eq 0 ] || sed 's/^/    check said: /' "$tmp/check.out"
     # the mutations: each defect must make the checker fail
     local kind
-    for kind in dropnum shortread relabel noread; do
+    for kind in dropnum dropbody shortread relabel noread; do
         python3 -I "$tmp/mutate.py" "$kind" "$docB" "$tmp/mut.md" >/dev/null 2>&1; rc=$?
         if [ "$rc" -ne 0 ]; then check "$b: (b) the $kind mutation found a line to change" no yes; continue; fi
         python3 -I "$tmp/check.py" "$tmp/mut.md" "$root/tester/$b" "$src.expected" "$src.numbers" >"$tmp/mut.out" 2>&1; rc=$?
@@ -302,6 +329,13 @@ run_fixture() { # <name> <queue segments> <ruling groups>
     check "$b: a dash range in a header is listed as its numbers (274-276 shape)" "$(dir_lines "$docB" | grep -cE '^OPERATOR 10-25 [A-Z]+, decisions [0-9]+, [0-9]+, [0-9]+')" "$(dir_lines "$src.src" | grep -cE '^OPERATOR 10-25 [A-Z]+ \(decisions [0-9]+-[0-9]+\)')"
     check "$b: a (STANDING) ruling is labelled standing, never not marked binding" "$(dir_lines "$docB" | grep -cE '^OPERATOR 10-27 [A-Z]+ \(standing\): ')" "$(dir_lines "$src.src" | grep -cE '^OPERATOR 10-27 [A-Z]+ \(STANDING\): ')"
 
+    # the live TU doc's shapes: bare "NNN:" items and "decision N" in the body are listed (726-735 and 360-361 shapes)
+    check "$b: a header with two numbers and four bare NNN items lists all six (726-735 shape)" "$(dir_lines "$docB" | grep -cE '^OPERATOR 11-06 [A-Z]+, decisions ([0-9]+, ){5}[0-9]+( \(carry\))?: ')" "$(dir_lines "$src.src" | grep -cE '^OPERATOR 11-06 [A-Z]+ \(BINDING, carry to every successor; decisions [0-9]+, [0-9]+, verbatim')"
+    check "$b: a header with no number lists the 'decision N' forms of its body (360-361 shape)" "$(dir_lines "$docB" | grep -cE '^OPERATOR 10-30 [A-Z]+, decisions [0-9]+, [0-9]+( \(carry\))?: ')" "$(dir_lines "$src.src" | grep -cE '^OPERATOR 10-30 [A-Z]+ \(BINDING, carry to every successor\): .*\(decision [0-9]+, A\+B')"
+    check "$b: a ticket number and a time are not listed as decisions" "$(dir_lines "$docB" | grep -cE '^OPERATOR 1[01]-[0-9]+ [A-Z]+, decisions .*\b(8935|9423|935|18|17)\b')" "0"
+    check "$b: the note scopes BINDING to lines headed OPERATOR or CHIEF" "$(dir_lines "$docB" | grep -c '^Full original text.*Every line headed OPERATOR or CHIEF is BINDING')" "1"
+    check "$b: lines of another shape (a dash row, an unheaded row) stay in the direction as the start of their source" "$(dir_lines "$docB" | grep -cE '^(- Owed by hand|Filed) ')" "$(dir_lines "$src.src" | grep -cE '^(- Owed by hand|Filed) ')"
+
     # the companions: each under the Read bound; the ACTION ZERO batch reads them
     local over=0 f
     while read -r f; do
@@ -309,6 +343,9 @@ run_fixture() { # <name> <queue segments> <ruling groups>
     done < <(companion_files "$docB")
     check "$b: every direction companion file is under the Read bound" "$over" "0"
     check "$b: the ACTION ZERO batch reads the direction companion files, required, in the same batch" "$(awk '/^1\. \*\*One batch/ { f = 1 } /^   Steps 2/ { f = 0 } f' "$docB" | tr '\n' ' ' | grep -cF "$READ_LINE")" 1
+    check "$b: compaction recovery reads the companions named by the 'Full original text' line, not by position" "$(tr '\n' ' ' < "$docB" | grep -cF "$COMPACT_LINE")" 1
+    # shellcheck disable=SC2016
+    check "$b: no instruction anchors the companions on the first line of Current direction" "$(tr '\n' ' ' < "$docB" | grep -cF 'the first line of `## Current direction`')" 0
 
     # (c) the tracker's pinned operator sentence is byte-identical (decision 286)
     live_line "$docB" tracker > "$tmp/tracker.line"
@@ -346,7 +383,10 @@ for i in range(n):
 lines = open(doc, encoding="utf-8").read().split("\n")
 cur = lines.index("## Current direction")
 nxt = next(i for i in range(cur + 1, len(lines)) if lines[i].startswith("## "))
-lines[nxt:nxt] = ["\n\n".join(new), ""]
+if len(sys.argv) > 6:   # newest first: the new rulings go above everything, so the pointer line is no longer the first
+    lines[cur + 2:cur + 2] = ["\n\n".join(new), ""]
+else:
+    lines[nxt:nxt] = ["\n\n".join(new), ""]
 open(doc, "w", encoding="utf-8").write("\n".join(lines))
 PY
 dir_bytes() { awk '$0 == "## Current direction" { f = 1; next } f && /^## / { exit } f' "$1" | wc -c | tr -d ' '; }
@@ -382,6 +422,18 @@ check "tqlike third succession (a companion file gone): next warns about the com
 doc3="$(printf '%s\n' "$out3" | sed -n 's/^doc: //p')"
 [ ! -f "$doc3" ] || dir_lines "$doc3" | diff - "$tmp/gen3.expected" | cut -c1-120 | head -n 6 | sed 's/^/    direction diff: /'
 check "tqlike third succession (a companion file gone): the direction is carried as it was, pointer included" "$([ -f "$doc3" ] && dir_lines "$doc3" | cmp -s - "$tmp/gen3.expected" && echo same || echo differs)" same
+
+# (f) a fourth succession when the chief added its rulings ABOVE the pointer (newest first): the
+# pointer is no longer the first line, and next still finds it, carries the earlier text forward
+# and lists the new numbers
+rc=0; python3 -I "$tmp/gen2.py" "$doc3" "$root/tester/tqlike" 3 970 XX top || rc=$?
+check "tqlike fourth succession: the 3 new rulings were put above the pointer line" "$([ "$rc" -eq 0 ] && dir_lines "$doc3" | awk 'NR == 1 { print substr($0, 1, 14) } NR == 2 { print substr($0, 1, 14) } NR == 3 { print substr($0, 1, 14) } NR == 4 { print substr($0, 1, 18) }' | tr '\n' '|')" "OPERATOR 11-07|OPERATOR 11-07|OPERATOR 11-07|Full original text|"
+out4="$(chief next --bucket tqlike --doc "$doc3" 2>&1)"; rc4=$?
+check "tqlike fourth succession (pointer not first): next succeeds" "$rc4" "0"
+doc4="$(printf '%s\n' "$out4" | sed -n 's/^doc: //p')"
+check "tqlike fourth succession (pointer not first): the 3 new rulings are in a companion file" "$([ -f "$doc4" ] && companion_files "$doc4" | while read -r f; do cat "$root/tester/tqlike/$f"; done | grep -c '^OPERATOR 11-07 XX ')" "3"
+check "tqlike fourth succession (pointer not first): the earlier 20 rulings are still in a companion file" "$([ -f "$doc4" ] && companion_files "$doc4" | while read -r f; do cat "$root/tester/tqlike/$f"; done | grep -c '^OPERATOR 11-07 ZZ ')" "20"
+check "tqlike fourth succession (pointer not first): the index lists the 3 new numbers and has one pointer line" "$([ -f "$doc4" ] && dir_lines "$doc4" | grep -cE '^OPERATOR 11-07 XX, decision 97[0-2]') $([ -f "$doc4" ] && dir_lines "$doc4" | grep -c '^Full original text')" "3 1"
 
 # the refusals on an absent or empty Current direction stay
 chief new --bucket empty >/dev/null 2>&1

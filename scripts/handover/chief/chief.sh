@@ -1973,15 +1973,16 @@ tracker_head() {
 }
 
 # The Current direction block, shortened to an index of one reading line per ruling, with the
-# full text of every ruling kept byte for byte in companion files that the first line of the
-# result names (the successor must read them in its first turn; the index alone is not the
-# rulings). Each index line keeps its who, date, decision numbers (every one the header
-# names, ranges expanded) and a one-line reading; the operator quote of a ruling whose
+# full text of every ruling kept byte for byte in companion files that the line of the
+# result beginning "Full original text" names (the successor must read them in its first turn;
+# the index alone is not the rulings). Each index line keeps its who, date, decision numbers
+# (every one the header names, ranges expanded, and every one the reading names as "decision N"
+# or as a bare "NNN:" item) and a one-line reading; the operator quote of a ruling whose
 # verbatim file exists under <dir>/specs/decisions is left to that file. A line not marked
 # BINDING says so (carry, standing, not marked binding). The reading is cut at a sentence or word so
 # the index fits CHIEF_DIRECTION_BUDGET_BYTES (default 12000): the newest 40 lines get
 # twice the share of the older ones, at least 40 bytes (80 for the newest). A line of another
-# shape keeps its start, at least 150 bytes. A line an earlier run already shortened stays as
+# shape keeps its start, at least 100 bytes. A line an earlier run already shortened stays as
 # it is but counts against the budget; its full text is carried forward from the companion
 # files the earlier note names. The companions are specs/decisions/chief-direction-<date>[-N]-pK.md,
 # each under CHIEF_DIRECTION_PART_BYTES (default 40000, so one Read takes it whole). Returns 1
@@ -2014,6 +2015,13 @@ def numbers(par):
         for n in expand(m.group(1)):
             if n not in out: out.append(n)
     return out
+BODYN = re.compile(r"(?<![\w/.:#-])(\d{3})(?::\s|, verbatim in specs/)")
+def body_numbers(t):
+    out = numbers(t)
+    for m in BODYN.finditer(t):
+        n = int(m.group(1))
+        if n not in out: out.append(n)
+    return out
 def resolvable(n):
     return bool(glob.glob(os.path.join(bucket, "specs/decisions/verbatim-decision-%d-*" % n)))
 src = sys.stdin.read().split("\n")
@@ -2030,7 +2038,8 @@ for ln in src:
         if ok: reading = QUOTE.sub("", reading, count=1)
         reading = reading.strip().lstrip(" ;:,.").strip()
         head = m.group(1)
-        if nums: head += (", decisions " + ", ".join(map(str, nums))) if len(nums) > 1 else ", decision %d" % nums[0]
+        shown = nums + [x for x in body_numbers(m.group(3)) if x not in nums]
+        if shown: head += (", decisions " + ", ".join(map(str, shown))) if len(shown) > 1 else ", decision %d" % shown[0]
         if "BINDING" not in par:
             head += " (carry)" if "carry" in par else " (standing)" if ("STANDING" in par or "STANDING" in reading) else " (not marked binding)"
         rows.append((ln, head + ": ", reading or "verbatim only"))
@@ -2053,7 +2062,7 @@ for ln, head, reading in rows:
         continue
     cap = base * 2 if k < 40 else base
     k += 1
-    line = head + cut(reading, cap) if head else cut(reading, max(cap * 2, 150))
+    line = head + cut(reading, cap) if head else cut(reading, max(cap * 2, 100))
     if line != ln: changed += 1
     out.append(line)
 if not changed: sys.exit(1)
@@ -2095,7 +2104,7 @@ try:
 except OSError as e:
     sys.stderr.write("warning: could not write the direction companion files: %s\n" % e)
     sys.exit(2)
-note = "Full original text of every ruling below, byte for byte, is in %d file%s under the bucket (%s). READ ALL OF THEM in your first turn, in the same batch as this document: the lines below are one-line readings and a clause cut from a reading is in them. The operator words of a numbered ruling: specs/decisions/verbatim-decision-<N>-*.txt. Every line is BINDING unless it says otherwise." % (len(names), "" if len(names) == 1 else "s", " ".join(names))
+note = "Full original text of every ruling below, byte for byte, is in %d file%s under the bucket (%s). READ ALL OF THEM in your first turn, in the same batch as this document: the lines below are one-line readings and a clause cut from a reading is in them. The operator words of a numbered ruling: specs/decisions/verbatim-decision-<N>-*.txt. Every line headed OPERATOR or CHIEF is BINDING unless it says otherwise; any other line is context, not a ruling." % (len(names), "" if len(names) == 1 else "s", " ".join(names))
 sys.stdout.write(note + "\n\n" + "\n".join(out))
 ' "$1" "${CHIEF_DIRECTION_BUDGET_BYTES:-12000}" "${CHIEF_DIRECTION_PART_BYTES:-40000}" "$2"
 }

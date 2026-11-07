@@ -3863,7 +3863,7 @@ else
         printf 'ACTION livestate-over-budget=%s/%s: keep only the open workers and the last GO in the Live state; move shift history verbatim to %q (chief-sections/live-state.md)\n' "$livestate_bytes" "$livestate_budget" "${console_doc%/*}/specs/history/chief-live-state-${console_doc##*/}"
     fi
     if [ "$doc_bytes" -gt "$doc_read_budget" ]; then
-        printf 'ACTION doc-over-read-limit=%s/%s: the whole doc will not read in one Read (25k tokens); move rulings, queue and tracker history verbatim to %q and keep one reading line per ruling\n' "$doc_bytes" "$doc_read_budget" "${console_doc%/*}/specs/decisions/chief-history-$(date +%F).md"
+        printf 'ACTION doc-over-read-limit=%s/%s: the whole doc will not read in one Read (25k tokens); move Results and queue and tracker history verbatim to %q (Current direction is shortened only by chief.sh next, never by hand)\n' "$doc_bytes" "$doc_read_budget" "${console_doc%/*}/specs/decisions/chief-history-$(date +%F).md"
     fi
 fi
 if [ "$emit_fp" -eq 1 ]; then
