@@ -1836,6 +1836,38 @@ if [ -n "$othergid" ]; then
 else
     echo "  SKIP  the test user has no second group, so the merge's group-keeping row cannot run"
 fi
+# A config rewritten after the merge read it (a lockdown, an edit) is not overwritten: a python3 stub patches os.fsync
+# so the first fsync (of the merged temp file) is followed by a rewrite of the config, then runs the installer's python.
+RACE="$tmp/race-etc"; mkdir -p "$RACE" "$tmp/pystub"
+printf '{"enabled": true}\n' > "$RACE/afk-sudo.json"; chmod 0644 "$RACE/afk-sudo.json"
+REALPY=$(command -v python3)
+cat > "$tmp/pystub/python3" <<PYSTUB
+#!$REALPY
+import os, sys
+args = sys.argv[1:]
+src = args[2]
+real_fsync, state = os.fsync, {"done": False}
+def fsync(fd):
+    real_fsync(fd)
+    if not state["done"]:
+        state["done"] = True
+        with open(os.environ["STUB_CFG"], "w") as f:
+            f.write('{"enabled": false, "lockdown": true}\n')
+os.fsync = fsync
+sys.argv = ["-c"] + args[3:]
+exec(compile(src, "<install>", "exec"), {"__name__": "__main__"})
+PYSTUB
+chmod 0755 "$tmp/pystub/python3"
+# shellcheck disable=SC2031 # PATH is set for this one call only
+out=$(STUB_CFG="$RACE/afk-sudo.json" PATH="$tmp/pystub:$PATH" inst install_config "$LIB" "$RACE/afk-sudo.json" 2>&1); rc=$?
+assert_eq "RED 9507: a config rewritten during the merge is refused (rc 1) and the rewrite is kept" '1 {"enabled": false, "lockdown": true}' "$rc $(cat "$RACE/afk-sudo.json")"
+assert_contains "RED 9507: the changed-config refusal says so" "changed while it was being merged" "$out"
+assert_eq "RED 9507: the changed-config refusal leaves no temp file" "afk-sudo.json" "$(ls -A "$RACE")"
+BOM="$tmp/bom-etc"; mkdir -p "$BOM"
+printf '\357\273\277{"enabled": true}\n' > "$BOM/afk-sudo.json"; chmod 0644 "$BOM/afk-sudo.json"
+before=$(cat "$BOM/afk-sudo.json")
+out=$(inst install_config "$LIB" "$BOM/afk-sudo.json" 2>&1); rc=$?
+assert_eq "RED 9507: a config with a UTF-8 byte-order mark is refused as the helper refuses it, and left as it was" "1 $before" "$rc $(cat "$BOM/afk-sudo.json")"
 # shellcheck disable=SC2123,SC2030,SC2031,SC1090
 assert_contains "RED 9507: the notice-bot.env step names SUDO_EDITOR when no editor exists" "SUDO_EDITOR=nano sudoedit /etc/himmel/afk-sudo/notice-bot.env" \
     "$( ( PATH="$STUBS/linux"; export AFK_OS_RELEASE="$tmp/os-arch"; unset SUDO_EDITOR VISUAL EDITOR; source "$INSTALL" && notice_env_steps ) 2>&1 )"

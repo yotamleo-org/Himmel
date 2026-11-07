@@ -92,7 +92,7 @@ tpl_path, cfg_path = sys.argv[1:3]
 owner = int(os.environ.get("AFK_OWNER_UID", "0")) if os.geteuid() != 0 else 0
 def refuse(why):
     sys.exit("install.sh: refusing " + cfg_path + ": " + why + " (the helper refuses it too); fix it first")
-with open(tpl_path) as f:
+with open(tpl_path, encoding="utf-8") as f:
     tpl = json.load(f)
 # The checks the helper makes before it reads the config (approval_broker.check_safe): lstat, so a link is refused.
 st = os.lstat(cfg_path)
@@ -104,7 +104,10 @@ if st.st_mode & 0o022:
     refuse("group- or world-writable")
 with open(cfg_path, "rb") as f:
     raw = f.read()
-cur = json.loads(raw)
+try:
+    cur = json.loads(raw.decode("utf-8"))
+except ValueError:
+    sys.exit("install.sh: " + cfg_path + " is not valid JSON in UTF-8 (the helper refuses it too); it is left as it was")
 if not isinstance(cur, dict):
     sys.exit("the config is not a JSON object")
 added = []
@@ -121,7 +124,7 @@ if added:
     try:
         os.fchmod(fd, st.st_mode & 0o7777)
         os.fchown(fd, st.st_uid, st.st_gid)
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(cur, f, indent=2, ensure_ascii=False)
             f.write("\n")
             f.flush()
