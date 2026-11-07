@@ -1368,6 +1368,7 @@ cm_start; cm_commit "$tmp" src/b.sh '# a second reason\necho 2\n' || fail "cm_co
 cm_finish "$_cm_ts" "$(_cm_row feat/x "$_CM_GONE" ok 1)"
 run_clear "$tmp" 14 "the only row sits at an earlier head that does not resolve → exit 14"
 cm_reason comment-review-unreadable "unresolvable earlier row"
+if grepq "$LAST_CLEAR_OUT" -F 'ledger-append.sh comments --head'; then pass; else fail "the unreadable refusal must name the comments row command: $LAST_CLEAR_OUT"; fi
 rm -rf "$tmp"
 
 cm_start
