@@ -921,6 +921,7 @@ describe('rm-run: the on-demand release manager', () => {
     const left = new AbortController();
     const died = rmRun(ctx(), hangs, { pid: dead, signal: left.signal }).catch((e: Error) => e);
     await vi.waitFor(() => expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']));
+    expect(() => leaseAcquire(ctx(rmEnv), { expectEpoch: 1, doc: DOC, session: 'standing' })).toThrow(/release lease: held by/);
     const lines = await rmRun(ctx(), admitAll);
     expect(lines).toContainEqual(expect.stringMatching(new RegExp(`^RECLAIMED lease epoch 1: rm-run pid ${dead} on \\S+ is gone$`)));
     expect(lines).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 /));

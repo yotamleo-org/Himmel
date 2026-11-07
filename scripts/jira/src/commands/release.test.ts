@@ -36,6 +36,11 @@ vi.mock('node:child_process', async (orig) => {
   }) as typeof m.execFile;
   return { ...m, execFileSync, execFile };
 });
+const rmRunSeen = vi.hoisted(() => ({ opts: null as { judgeTimeoutMs?: number } | null }));
+vi.mock('../release/engine.js', async (orig) => {
+  const m = await orig<typeof import('../release/engine.js')>();
+  return { ...m, rmRun: ((c, j, o) => { rmRunSeen.opts = o ?? null; return m.rmRun(c, j, o); }) as typeof m.rmRun };
+});
 // The run options the repair command hands to the repair, as the last call saw them.
 const repairSeen = vi.hoisted(() => ({ opts: null as { apply?: boolean; refuse?: unknown } | null }));
 vi.mock('../release/repair-run.js', async (orig) => {
@@ -286,6 +291,16 @@ describe('jira release rm-run', () => {
     const docs = readdirSync(join(dir, 'rm-runs'));
     expect(docs).toHaveLength(1);
     expect(readFileSync(join(dir, 'rm-runs', docs[0]), 'utf8')).toMatch(new RegExp(`^- FAILED: rm-run: stopped by ${sig}`, 'm'));
+    expect(out).toEqual([
+      `FAILED: rm-run: stopped by ${sig}; nothing more ruled`, 'RETURNED 1 claimed requests to open', `RM-RUN R1 run record: ${join(dir, 'rm-runs', docs[0])}`,
+    ]);
+  });
+
+  it('the CLI gives the judge a deadline that outlasts one routed call', async () => {
+    await oneRequest();
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    expect(rmRunSeen.opts?.judgeTimeoutMs).toBe(960_000);
+    expect(rmRunSeen.opts?.judgeTimeoutMs).toBeGreaterThan(JUDGE_SPAWN_TIMEOUT_MS);
   });
 
   it('a stale bank reading still runs the judge', async () => {

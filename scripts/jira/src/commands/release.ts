@@ -20,7 +20,7 @@ import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
   apply, claim, coreBypass, coreSnapshot, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, PULL_MAX, pull, readMirror, readOperatorRecords, reopen, request as releaseRequest, rmRun, rmRunSummary, rule, signSpec, specCheck, standing, state, takeover, withdraw,
-  type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type StateOut,
+  type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
 import { coreMatch, expandPaths, loadCorePatterns, sizeGuard } from '../release/core.js';
@@ -720,6 +720,11 @@ export function registerRelease(program: Command): void {
           doc: o.doc, session: `rm-run-${process.pid}`, ruling: o.ruling, chiefOverride: chiefOverrideOf(o), signal: stop.signal,
           judgeTimeoutMs: RM_RUN_JUDGE_DEADLINE_MS,
         });
+      } catch (e) {
+        const r = e as Partial<RunRecord>;
+        for (const l of r.runLines ?? []) console.log(l);
+        if (r.runDoc) console.log(`RM-RUN ${release} run record: ${r.runDoc}`);
+        throw e;
       } finally {
         for (const s of signals) process.off(s, onSignal);
       }

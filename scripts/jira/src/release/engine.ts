@@ -720,7 +720,7 @@ export function ownerGone(lease: RunLease): boolean {
   }
 }
 
-export function leaseAcquire(ctx: Ctx, o: { expectEpoch: number; doc: string; session: string; pid?: number }): RunLease {
+export function leaseAcquire(ctx: Ctx, o: { expectEpoch: number; doc: string; session: string; pid?: number; reclaim?: boolean }): RunLease {
   if (ctx.env.HIMMEL_RELEASE_MANAGER !== '1') throw new Error('release lease: only the release-manager session (HIMMEL_RELEASE_MANAGER=1) holds the lease');
   if (!isAbsolute(o.doc) || ctx.env.HIMMEL_RM_DOC !== o.doc) throw new Error('release lease acquire: --doc must be this session\'s absolute HIMMEL_RM_DOC');
   return locked(ctx, (l) => {
@@ -728,7 +728,7 @@ export function leaseAcquire(ctx: Ctx, o: { expectEpoch: number; doc: string; se
     if (cur.epoch !== o.expectEpoch) throw new Error(`release lease: epoch is ${cur.epoch}, expected ${o.expectEpoch}`);
     const takeoverRow = readChain<OperatorRow>(f(ctx, 'operator.jsonl'), l.k).verified
       .some((x) => x.kind === 'takeover' && x.epoch === cur.epoch && x.doc === o.doc);
-    if (cur.owner_doc && !cur.released && !takeoverRow && !ownerGone(cur)) {
+    if (cur.owner_doc && !cur.released && !takeoverRow && !(o.reclaim && ownerGone(cur))) {
       throw new Error(`release lease: held by ${cur.owner_doc} at epoch ${cur.epoch}; it needs a release or a chief takeover row`);
     }
     const next: RunLease = {
@@ -1368,10 +1368,10 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
   const doc = o.doc ?? join(ctx.dir, 'rm-runs', `run-${ts(ctx).replace(/[:.]/g, '-')}.md`);
   const rctx: Ctx = { ...ctx, env: { ...ctx.env, HIMMEL_RELEASE_MANAGER: '1', HIMMEL_RM_DOC: doc, HIMMEL_RM_RELEASE: ctx.release } };
   const prior: RunLease = readLease(ctx, l.k);
-  const lease = leaseAcquire(rctx, { expectEpoch: prior.epoch, doc, session: o.session ?? 'rm-run', pid: o.pid ?? process.pid });
+  const lease = leaseAcquire(rctx, { expectEpoch: prior.epoch, doc, session: o.session ?? 'rm-run', pid: o.pid ?? process.pid, reclaim: true });
   const lines: string[] = reclaimNote(prior);
   const { stop, unlink } = linkStop(o.signal);
-  const halt =() => { if (stop.signal.aborted) throw stopReason(stop.signal); };
+  const halt = () => { if (stop.signal.aborted) throw stopReason(stop.signal); };
   let failed: Error | undefined;
   let refused: JudgeReplyError | undefined;
   // Open tickets this run moves into or out of the current version; an operator ruling with a ref is already covered.
@@ -1499,6 +1499,10 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
     } catch (e) {
       lines.push(`PENDING run record: ${(e as Error).message}`);
     }
+    if (failed) Object.assign(failed, { runLines: lines, runDoc: doc } satisfies RunRecord);
   }
   return lines;
 }
+
+/** What a failed rmRun's error carries: the lines it wrote and its run doc, so the caller can print them. */
+export interface RunRecord { runLines: string[]; runDoc: string }
