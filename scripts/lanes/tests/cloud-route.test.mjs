@@ -426,6 +426,16 @@ test('BLOCKED: merged-PR list unavailable, so the ticket cannot be proven unfixe
   assert.equal(classifyTicket(T4686, ctx({ mergedUnknown: true })).class, 'BLOCKED');
 });
 
+// A fixture main ref: one commit per message, so merged-or-not is answered by a repo this test owns, never the real origin/main.
+function mainRepo(dir, ...messages) {
+  const g = join(dir, 'main-repo');
+  mkdirSync(g, { recursive: true });
+  const git = (...a) => spawnSync('git', ['-C', g, '-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...a], { encoding: 'utf8' });
+  git('init', '-q', '-b', 'main');
+  for (const m of messages) git('commit', '-q', '--allow-empty', '-m', m);
+  return g;
+}
+
 test('CLI: a key search that returns a full page is BLOCKED, never CLOUD-OK on the omitted matches', () => {
   const { dir, bucket, jira } = setup();
   const page = JSON.stringify(Array.from({ length: 30 }, (_, i) => ({ number: 3000 + i, title: 'x', body: '', mergedAt: '2000-01-01T00:00:00Z', files: [] })));
@@ -434,11 +444,95 @@ if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- 'in:title,body'; th
 if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; then echo '[]'; exit 0; fi
 if [ "$1 $2" = "pr list" ]; then exit 0; fi
 exit 1`);
+  const g = mainRepo(dir, 'fix(x): [HIMMEL-9001] an earlier slice (#1)');
   const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9001'], {
-    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh },
+    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh, CLOUD_ROUTE_GIT_DIR: g, CLOUD_ROUTE_MAIN_REF: 'main' },
   });
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /HIMMEL-9001\tBLOCKED\t.*merged-PR list unavailable/);
+});
+
+// A truncated key blocks only its own ticket, never the whole run (the throw it replaces stopped every ticket).
+test('CLI: a key with a full page of merged PRs blocks that ticket alone; the others still classify', () => {
+  const { dir, bucket, jira } = setup();
+  const page = JSON.stringify(Array.from({ length: 30 }, (_, i) => ({ number: 3000 + i, title: 'x', body: '', mergedAt: '2000-01-01T00:00:00Z', files: [] })));
+  const gh = stub(dir, 'gh5', `
+if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- 'HIMMEL-9001 in:title,body'; then echo '${page}'; exit 0; fi
+if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; then echo '[]'; exit 0; fi
+if [ "$1 $2" = "pr list" ]; then exit 0; fi
+exit 1`);
+  const g = mainRepo(dir, 'fix(x): [HIMMEL-9001] [HIMMEL-9002] slices (#1)');
+  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9001', 'HIMMEL-9002'], {
+    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh, CLOUD_ROUTE_GIT_DIR: g, CLOUD_ROUTE_MAIN_REF: 'main' },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  const rows = Object.fromEntries(r.stdout.split('\n').filter(Boolean).map((l) => l.split('\t')));
+  assert.match(rows['HIMMEL-9001'], /^BLOCKED$/);
+  assert.match(r.stdout, /HIMMEL-9001\tBLOCKED\t.*HIMMEL-9001.*search may be truncated/);
+  assert.equal(rows['HIMMEL-9002'], 'LOCAL-NATIVE');
+});
+
+test('CLI: the per-ticket merged search runs only for a key the local main ref names, always under the canonical slug', () => {
+  const { dir, bucket, jira } = setup();
+  const log = join(dir, 'gh.log');
+  const gh = stub(dir, 'gh6', `
+printf '%s\\n' "$*" >> '${log}'
+if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; then echo '[]'; exit 0; fi
+if [ "$1 $2" = "pr list" ]; then echo 77; exit 0; fi
+if [ "$1 $2" = "api --paginate" ]; then echo scripts/held/file.sh; exit 0; fi
+exit 1`);
+  const run = (env) => spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9001', 'HIMMEL-9002', 'HIMMEL-9003'], {
+    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh, ...env },
+  });
+  const searched = () => readFileSync(log, 'utf8').split('\n').filter((l) => l.includes('in:title,body')).map((l) => l.match(/HIMMEL-\d+/)[0]);
+  const g = mainRepo(dir, 'fix(x): [HIMMEL-9002] a slice (#1)');
+  assert.equal(run({ CLOUD_ROUTE_GIT_DIR: g, CLOUD_ROUTE_MAIN_REF: 'main' }).status, 0);
+  assert.deepEqual(searched(), ['HIMMEL-9002'], 'only the key a commit names is searched');
+  const slugs = new Set(readFileSync(log, 'utf8').split('\n').flatMap((l) => l.match(/(?:--repo |repos\/)[\w-]+\/\w+/g) ?? []));
+  assert.deepEqual([...slugs].sort(), ['--repo yotamleo-org/Himmel', 'repos/yotamleo-org/Himmel']);
+  // unknown (no such ref) fails closed: every key is searched
+  writeFileSync(log, '');
+  assert.equal(run({ CLOUD_ROUTE_GIT_DIR: g, CLOUD_ROUTE_MAIN_REF: 'no-such-ref' }).status, 0);
+  assert.deepEqual(searched(), ['HIMMEL-9001', 'HIMMEL-9002', 'HIMMEL-9003']);
+});
+
+test('CLI: an empty local answer from a shallow or stale main ref is unknown, so the key is still searched on GitHub', () => {
+  const { dir, bucket, jira } = setup();
+  const log = join(dir, 'gh.log');
+  const gh = stub(dir, 'gh-shallow', `
+printf '%s\\n' "$*" >> '${log}'
+if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; then echo '[]'; exit 0; fi
+if [ "$1 $2" = "pr list" ]; then exit 0; fi
+exit 1`);
+  const run = (g) => spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9001'], {
+    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh, CLOUD_ROUTE_GIT_DIR: g, CLOUD_ROUTE_MAIN_REF: 'main' },
+  });
+  const searched = () => readFileSync(log, 'utf8').split('\n').filter((l) => l.includes('in:title,body')).length;
+  const git = (g, env, ...a) => spawnSync('git', ['-C', g, '-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...a], { encoding: 'utf8', env: { ...process.env, ...env } });
+  // a shallow clone whose boundary hides the commit that names the key
+  const src = join(dir, 'src-repo');
+  mkdirSync(src, { recursive: true });
+  git(src, {}, 'init', '-q', '-b', 'main');
+  git(src, {}, 'commit', '-q', '--allow-empty', '-m', 'fix(x): [HIMMEL-9001] an old slice (#1)');
+  git(src, {}, 'commit', '-q', '--allow-empty', '-m', 'fix(x): an unrelated change (#2)');
+  const shallow = join(dir, 'shallow-repo');
+  assert.equal(spawnSync('git', ['clone', '-q', '--depth', '1', `file://${src}`, shallow], { encoding: 'utf8' }).status, 0);
+  writeFileSync(log, '');
+  assert.equal(run(shallow).status, 0);
+  assert.equal(searched(), 1, 'a shallow ref cannot show the key is absent');
+  // a whole ref whose tip is older than the 14-day window
+  const old = join(dir, 'old-repo');
+  mkdirSync(old, { recursive: true });
+  git(old, {}, 'init', '-q', '-b', 'main');
+  git(old, { GIT_COMMITTER_DATE: '2020-01-01T00:00:00Z', GIT_AUTHOR_DATE: '2020-01-01T00:00:00Z' }, 'commit', '-q', '--allow-empty', '-m', 'fix(x): an unrelated change (#3)');
+  writeFileSync(log, '');
+  assert.equal(run(old).status, 0);
+  assert.equal(searched(), 1, 'a ref last updated before the window cannot show the key is absent');
+  // control: a whole, fresh ref that does not name the key skips the search
+  const fresh = mainRepo(dir, 'fix(x): an unrelated change (#4)');
+  writeFileSync(log, '');
+  assert.equal(run(fresh).status, 0);
+  assert.equal(searched(), 0, 'a whole, fresh ref that does not name the key still skips the search');
 });
 
 test('CLI: a ticket whose files a merged PR touched prints VERIFY-LOCAL with the PR number and writes no brief', () => {
@@ -455,6 +549,23 @@ exit 1`);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /HIMMEL-9001\tVERIFY-LOCAL\t.*1982/);
   assert.ok(!existsSync(join(bucket, 'cloud-brief-HIMMEL-9001.md')));
+});
+
+test('CLI: a merged-PR list over 1 MiB (the real window list is about 1.6 MiB) still classifies, not BLOCKED as gh failed', () => {
+  const { dir, bucket, jira } = setup();
+  const gh = stub(dir, 'gh-1mib', `
+if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; then
+  printf '[{"number":1,"title":"fix: x","body":"'; head -c 1300000 /dev/zero | tr '\\0' x; printf '","mergedAt":"2000-01-01T00:00:00Z","files":[]}]'; exit 0
+fi
+if [ "$1 $2" = "pr list" ]; then exit 0; fi
+exit 1`);
+  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9001'], {
+    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stderr, /merged PRs unknown/);
+  assert.doesNotMatch(r.stdout, /merged-PR list unavailable/);
+  assert.match(r.stdout, /HIMMEL-9001\s+CLOUD-OK/);
 });
 
 // fixture text of the real tickets (no live Jira). 4503 and 4517 name the

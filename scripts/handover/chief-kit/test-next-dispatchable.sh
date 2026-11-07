@@ -41,6 +41,12 @@ fresh_register() { rm -rf "$HOME/.himmel/state/holds"; SEEDED=0; }  # seeds pers
 export TICKET_STATUS_STATE_DIR="$WORK/ts-none"
 # and the admissions ledger: the real one must never admit a fixture key
 export HIMMEL_ADMISSIONS_LEDGER="$WORK/ledger-none.jsonl"
+# merged-or-not is answered from local git: pin it to a fixture repo that cites no fixture key, so the real
+# origin/main never answers for a fixture ticket; the merged PR body cache is off here so rows that reuse a PR number do not share it
+GN="$WORK/git-none"; mkdir -p "$GN"
+git -C "$GN" init -q -b main && git -C "$GN" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m "init" \
+    || { echo "FAIL: could not build the fixture main"; exit 1; }
+export NEXT_DISPATCH_GIT_DIR="$GN" NEXT_DISPATCH_MAIN_REF=main NEXT_DISPATCH_BODY_CACHE=off
 M="$WORK/jira-mirror/HIMMEL"; mkdir -p "$M"
 # the core gate is permanent and asks the built jira CLI (scripts/jira/dist is untracked, absent in CI), so every
 # row below runs with a fixture stand-in that calls every key NOT-CORE; the C3 section at the end swaps in its own stand-in per run
@@ -2224,6 +2230,15 @@ has "a key whose only main commit cites a lookalike key ([HIMMEL-880]) is not wi
 pmn="$(NEXT_DISPATCH_GIT_DIR="$PMG" NEXT_DISPATCH_MAIN_REF=no-such-ref NEXT_DISPATCH_MIRROR="$MPM" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-dir "$WORK/pm-bad/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
 lacks "an unreadable status log and a failed git read withholds a candidate (unknown fails closed)" "$pmn" "LOCAL	HIMMEL-82"
 has "and the WARN names it" "$(printf '%s\n' "$pmn" | grep '^# WARN')" "HIMMEL-82"
+# a ref that cannot show absence is unknown, not "no": a shallow clone (its boundary hides the commit that names the first fixture key) and a ref last updated before the window
+PMS="$WORK/pm-shallow"; git clone -q --depth 1 "file://$PMG" "$PMS" || { fail "the shallow fixture clone could not be created"; printf '\n%d failure(s)\n' "$fails"; exit 1; }
+pms="$(NEXT_DISPATCH_GIT_DIR="$PMS" NEXT_DISPATCH_MAIN_REF=main NEXT_DISPATCH_MIRROR="$MPM" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-dir "$WORK/pm-bad/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
+lacks "a shallow ref with no match withholds a candidate under an unreadable status log (it cannot show absence)" "$pms" "LOCAL	HIMMEL-83"
+PMO="$WORK/pm-old"; mkdir -p "$PMO"
+{ git -C "$PMO" init -q -b main && GIT_COMMITTER_DATE=2020-01-01T00:00:00Z GIT_AUTHOR_DATE=2020-01-01T00:00:00Z git -C "$PMO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "fix(x): [HIMMEL-880] an old merge"; } \
+    || { fail "the stale fixture repo could not be created"; printf '\n%d failure(s)\n' "$fails"; exit 1; }
+pmo="$(NEXT_DISPATCH_GIT_DIR="$PMO" NEXT_DISPATCH_MAIN_REF=main NEXT_DISPATCH_MIRROR="$MPM" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-dir "$WORK/pm-bad/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
+lacks "a ref last updated before the 14-day window withholds a candidate with no match (it cannot show absence)" "$pmo" "LOCAL	HIMMEL-82"
 
 # --- (8591, C3 of 8353; permanent since 8592, C5) a core To Do ticket with no signed minerva spec lists as a DESIGN row ---
 # The jira CLI is a fixture stand-in (scripts/jira/dist is untracked, absent in CI): it answers from CG/core/<KEY> and
@@ -2596,6 +2611,108 @@ has "and is named as the owner" "$s91" "# disposition HIMMEL-9632 in-flight owne
 has "a sibling worker whose lock heartbeat is past the TTL owns nothing" "$s91" "RESUME	HIMMEL-9633	"
 lacks "a fresh lock on a doc whose name carries no ticket keeps the ticket its title names" "$s91" "RESUME	HIMMEL-9635	"
 lacks "a sibling doc armed within the hour, its lock not yet taken, keeps its ticket" "$s91" "RESUME	HIMMEL-9634	"
+
+# --- merged-or-not from local git, each merged PR body read once, a rate limit named and bounded ---
+G9="$WORK/g9438"; mkdir -p "$G9"
+# the fixture must be its own repository: under a TMPDIR inside another checkout, a failed init would commit into that parent
+{ git -C "$G9" init -q -b main && [ "$(git -C "$G9" rev-parse --show-toplevel)" = "$(cd "$G9" && pwd -P)" ]; } \
+    || { fail "9438: the fixture main repo could not be created"; printf '\n%d failure(s)\n' "$fails"; exit 1; }
+git -C "$G9" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m "fix(x): [HIMMEL-9601] merged on main (#4300)" || fail "9438: fixture main"
+M9="$WORK/m9438/HIMMEL"; mkdir -p "$M9"
+git -C "$G9" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m "fix(x): an unrelated slice (#4301)" -m "Follows up [HIMMEL-9603], which is not merged by this commit." || fail "9438: fixture body mention"
+M_SAVE="$M"; M="$M9"
+mk HIMMEL-9603 "IN CI" Medium '[]' '[]' '[]' "in ci, named only in another commit's body" "Edit scripts/lib/g5.sh."
+mk HIMMEL-9601 "IN CI" Medium '[]' '[]' '[]' "in ci, merged on local main" "Edit scripts/lib/g1.sh."
+mk HIMMEL-9602 "IN CI" Medium '[]' '[]' '[]' "in ci, not on local main" "Edit scripts/lib/g2.sh."
+M="$M_SAVE"
+printf '4300\tfix(x): [HIMMEL-9601] merged\tfix/himmel-9601-m\n' > "$WORK/merged9.tsv"
+: > "$PRS_TSV"
+searches() { SEARCHED="$(grep -c -e "--search $1 " "$GH_ARGS")"; }  # sets SEARCHED to the merged-PR searches gh was asked for <key>
+run9() { # <git dir> <main ref> <merged tsv>: the IN CI rows of the fixture mirror
+    NEXT_DISPATCH_MIRROR="$M9" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_GIT_DIR="$1" NEXT_DISPATCH_MAIN_REF="$2" MERGED_TSV="$3" bash "$SUT" --resume-only --workers-from "$WORK/fleet6.json" 2>/dev/null
+}
+: > "$GH_ARGS"
+loc9="$(run9 "$G9" main "$WORK/merged9.tsv")"
+has "9438: an IN CI ticket cited on local main is a MERGED-NOT-CLOSED row" "$loc9" "MERGED-NOT-CLOSED	HIMMEL-9601"
+searches HIMMEL-9601; n_s9601="$SEARCHED"
+[ "$n_s9601" = 0 ] && pass "9438: the ticket cited on local main costs no merged-PR search" || fail "9438: the ticket cited on local main costs no merged-PR search (got $n_s9601)"
+has "9438: an IN CI ticket NOT on local main is still asked of GitHub (the ref may lag) and is a RESUME row" "$loc9" "RESUME	HIMMEL-9602"
+searches HIMMEL-9602; n_s9602="$SEARCHED"
+[ "$n_s9602" = 1 ] && pass "9438: the ticket not on local main is searched once" || fail "9438: the ticket not on local main is searched once (got $n_s9602)"
+has "9438: a ticket named only in another commit's body is not called merged by it" "$loc9" "RESUME	HIMMEL-9603"
+# (a) the answer from local git equals the answer from GitHub: same bytes with git unusable (the GitHub-only path); a RED control with one altered line must differ
+gh9="$(run9 "$WORK/no-such-git" main "$WORK/merged9.tsv")"
+printf '%s\n' "$loc9" > "$WORK/loc9.out"; printf '%s\n' "$gh9" > "$WORK/gh9.out"
+cmp -s "$WORK/loc9.out" "$WORK/gh9.out" && pass "9438: output with local git is byte-identical to the GitHub-only output" || fail "9438: output with local git is byte-identical to the GitHub-only output"
+printf '4300\tfix(x): [HIMMEL-9602] altered\tfix/himmel-9602-m\n' > "$WORK/merged9-alt.tsv"
+alt9="$(run9 "$WORK/no-such-git" main "$WORK/merged9-alt.tsv")"
+printf '%s\n' "$alt9" > "$WORK/alt9.out"
+cmp -s "$WORK/loc9.out" "$WORK/alt9.out" && fail "9438: RED control: one altered line must make the compare fail" || pass "9438: RED control: one altered line makes the compare fail"
+# unknown fails closed: no local ref and GitHub unreadable: the ticket is NOT called merged and nothing is dispatched on a guess
+: > "$MERGED_FAIL"
+unk9="$(run9 "$G9" no-such-ref "$WORK/merged9.tsv")"
+rm -f "$MERGED_FAIL"
+has "9438: no local ref and a failed GitHub read is reported as unknown" "$unk9" "merged PRs unknown"
+lacks "9438: an unknown merge is not called merged" "$unk9" "MERGED-NOT-CLOSED"
+lacks "9438: an unknown merge is not dispatched on a guess" "$unk9" "RESUME	HIMMEL-960"
+
+# each merged PR body is read once per TTL, by PR number and ticket; a body that says nothing or could not be read is never cached
+PM9="$WORK/pm9438"; mkdir -p "$PM9/workers"
+export PR_BODY_DIR="$WORK/prbody"; mkdir -p "$PR_BODY_DIR"
+printf 'Slice.\n\nRemaining: the second half in scripts/lib/g3.sh\n' > "$PR_BODY_DIR/9611"
+printf 'Slice, no tail.\n' > "$PR_BODY_DIR/9612"
+M9B="$WORK/m9438b/HIMMEL"; mkdir -p "$M9B"
+M_SAVE="$M"; M="$M9B"
+mk HIMMEL-9611 "In Progress" Medium '[]' '[]' '[]' "partial with a remainder" "Edit scripts/lib/g3.sh."
+mk HIMMEL-9612 "In Progress" Medium '[]' '[]' '[]' "partial with no remainder" "Edit scripts/lib/g4.sh."
+M="$M_SAVE"
+printf '{"ts":"t","event":"merge","key":"HIMMEL-9611","pr":"9611","contract":"no","result":"noop"}\n{"ts":"t","event":"merge","key":"HIMMEL-9612","pr":"9612","contract":"no","result":"noop"}\n' > "$PM9/status-events.jsonl"
+: > "$PRS_TSV"
+run9b() { # <cache path or off> [extra env...]
+    local c="$1"; shift
+    env "$@" NEXT_DISPATCH_BODY_CACHE="$c" NEXT_DISPATCH_MIRROR="$M9B" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --resume-only --workers-dir "$PM9/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null
+}
+views() { grep -c -e "pr view $1 " "$GH_ARGS"; }
+CACHE9="$WORK/body-cache9438.json"; rm -f "$CACHE9"; : > "$GH_ARGS"
+b1="$(run9b "$CACHE9" X=1)"; b2="$(run9b "$CACHE9" X=1)"
+has "9438: a partial merge with a remainder is a RESUME row" "$b1" "RESUME	HIMMEL-9611"
+printf '%s\n' "$b1" > "$WORK/b1.out"; printf '%s\n' "$b2" > "$WORK/b2.out"
+cmp -s "$WORK/b1.out" "$WORK/b2.out" && pass "9438: the second run's output is byte-identical to the first" || fail "9438: the second run's output is byte-identical to the first"
+[ "$(views 9611)" = 1 ] && pass "9438: a merged PR body with a remainder is read once over two runs" || fail "9438: a merged PR body with a remainder is read once over two runs (got $(views 9611))"
+[ "$(views 9612)" = 2 ] && pass "9438: a body with no remainder is never cached (read on both runs)" || fail "9438: a body with no remainder is never cached (got $(views 9612))"
+run9b "$CACHE9" NEXT_DISPATCH_BODY_TTL=0 > /dev/null
+[ "$(views 9611)" = 2 ] && pass "9438: a cached body older than the TTL is read again" || fail "9438: a cached body older than the TTL is read again (got $(views 9611))"
+: > "$GH_ARGS"; rm -f "$CACHE9"
+run9b off X=1 > /dev/null; run9b off X=1 > /dev/null
+[ "$(views 9611)" = 2 ] && pass "9438: with the cache off each run reads the body" || fail "9438: with the cache off each run reads the body (got $(views 9611))"
+rm -f "$CACHE9"; : > "$GH_ARGS"; mv "$PR_BODY_DIR/9611" "$PR_BODY_DIR/9611.away"  # the stub's view of a missing body fails
+bf="$(run9b "$CACHE9" X=1)"
+mv "$PR_BODY_DIR/9611.away" "$PR_BODY_DIR/9611"
+has "9438: a body gh cannot read is flagged unreadable" "$bf" "NEEDS-CHIEF-NOTE HIMMEL-9611: merged PR #9611 body could not be read (gh failed)"
+: > "$GH_ARGS"
+bg="$(run9b "$CACHE9" X=1)"
+has "9438: an unreadable body was not cached: the next run reads it" "$bg" "RESUME	HIMMEL-9611"
+printf 'garbage{' > "$CACHE9"
+bh="$(run9b "$CACHE9" X=1)"
+has "9438: a corrupt cache file is ignored, the body is read again" "$bh" "RESUME	HIMMEL-9611"
+
+# (b) a rate-limit answer from gh: the dispatcher returns within a bound, names the rate limit, and does not hang
+cat > "$WORK/gh-rl" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$GH_ARGS"
+echo 'GraphQL: API rate limit already exceeded for user ID 1. (RATE_LIMIT)' >&2
+exit 1
+EOF
+chmod +x "$WORK/gh-rl"
+RL_BOUND=30
+: > "$GH_ARGS"
+rl_t0="$(date +%s)"
+rl9="$(NEXT_DISPATCH_MIRROR="$M9" NEXT_DISPATCH_GH_CMD="$WORK/gh-rl" NEXT_DISPATCH_GIT_DIR="$G9" NEXT_DISPATCH_MAIN_REF=main timeout -k 2 "$RL_BOUND" bash "$SUT" --resume-only --workers-from "$WORK/fleet6.json" 2>/dev/null)"; rl_rc=$?
+rl_secs=$(( $(date +%s) - rl_t0 ))
+[ "$rl_rc" != 124 ] && [ "$rl_rc" != 137 ] && pass "9438: a rate-limited gh does not hang the dispatcher (rc $rl_rc)" || fail "9438: a rate-limited gh does not hang the dispatcher (rc $rl_rc after ${rl_secs}s, bound ${RL_BOUND}s)"
+[ "$rl_secs" -lt "$RL_BOUND" ] && pass "9438: a rate-limited gh returns within ${RL_BOUND}s (took ${rl_secs}s)" || fail "9438: a rate-limited gh returns within ${RL_BOUND}s (took ${rl_secs}s)"
+has "9438: the output names the rate limit" "$rl9" "rate limit"
+lacks "9438: a rate-limited read lists no IN CI row" "$rl9" "RESUME	HIMMEL-960"
 
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
