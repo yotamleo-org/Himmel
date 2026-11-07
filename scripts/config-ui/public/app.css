@@ -758,8 +758,6 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .seclegend .sec{white-space:nowrap}
 .rm-ft{color:var(--accent-ink);background:var(--accent);font-size:11px;font-weight:600;padding:0 var(--s1);border-radius:var(--radius);margin-top:var(--s1);width:fit-content}
 .rm-drain{font-size:var(--fs-xs);font-weight:600;margin:var(--s1) 0}
-/* The Cost page (public/cost.js): a phase table whose rows open to their parts, in the look of the signed mockup on the theme tokens.
-   Scoped to the table, as .bar is also the Fleet page's bar chart. A bar's width is set from its style attribute by app.js (the CSP refuses the attribute). */
 .card-h{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px 16px;margin-bottom:6px}
 .card-h h2{margin:0;font-size:var(--fs-md)}
 .card-h .big{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}

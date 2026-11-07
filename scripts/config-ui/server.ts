@@ -762,7 +762,6 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const common = gitCommonDir(root);
         return json(redactOut(readPhaseStats(env, common ? join(common, "cr-review-rounds") : "", now())));
       }
-      // the Cost page: the day's dollars by phase, read from the phase-cost rows usage-compute keeps. Read-only.
       if (path === "/api/cost") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         return json(redactOut(readCost(env)));

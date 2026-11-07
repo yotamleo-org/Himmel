@@ -1,5 +1,3 @@
-// GET /api/cost and the Cost page's nav entry: the page slice 1 built (cost.ts, public/cost.js) made reachable. The route answers
-// cost.ts's model, GET only, behind the token; the rail lists Cost; the page text a visitor sees carries no ticket key.
 import { test, expect, afterEach } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -20,7 +18,6 @@ const row = (o: Partial<PhaseCostRow> & { phase: string; usd: number | null }): 
   kind: "phase-cost", day: DAY, session: "s", parent: null, lane: "claude", class: "worker", model: "claude-sonnet-5-5",
   phase_rule: "v1", calls: 1, in: 100, out: 10, cache_read: 1000, cc_5m: 0, cc_1h: 0, mark: "derived", ...o,
 });
-// a build row, a chief row, and a review row whose model text carries a ticket key
 const ROWS = [
   row({ session: "w1", phase: "build", usd: 10 }),
   row({ session: "c1", phase: "chief-turns", class: "chief", usd: 20, mark: "counted" }),

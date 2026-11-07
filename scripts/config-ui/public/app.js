@@ -74,8 +74,8 @@ let shift = null, shiftGen = 0, shiftAt = 0; // GET /api/shift, null until read;
 const shiftUi = { id: null, all: false }; // from the route: #/shift/<id>?all=1
 let wfModel = null, wfStats = null, wfGen = 0, wfAt = 0, wfScrolled = null; // the workflow model and GET /api/phase-stats, null until read
 const wfUi = { tab: "workflow", phase: null, step: null, walk: null, at: 0 }; // from the route: #/workflow[/eval]?phase=|step=|walk=&at=
-let costModel = null, costErr = false, costGen = 0; // GET /api/cost, null until read; a failed read keeps the last good answer
-const costView = { open: [] }; // the Cost page's open phase ids
+let costModel = null, costErr = false, costGen = 0;
+const costView = { open: [] };
 const PAGES = [
   { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => withLoginButton(render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify })), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.apiRoles || !state.apiRoles.data) loadApiRoles(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); if (!state.reports || !state.reports.data) loadReportSettings(); loadSetup(); } },
   { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => pageBar() + healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
@@ -646,7 +646,6 @@ async function loadWorkflow() {
   wfStats = s.status === "fulfilled" ? s.value : { error: s.reason instanceof Error ? s.reason.message : "server unreachable" };
   if (currentPage.id === "workflow") paint();
 }
-// the Cost page: read on every visit; only the newest read may land, and a failed one leaves the last good answer on the page.
 async function loadCost() {
   const gen = ++costGen;
   try {
@@ -658,7 +657,6 @@ async function loadCost() {
   } catch (_) { if (gen !== costGen) return; costErr = true; }
   if (currentPage.id === "cost") paint();
 }
-// A phase row is a button: a click, Enter or Space opens or closes it, and focus stays on it through the repaint.
 // The bars' widths come in the markup as style attributes, which the page's CSP (default-src 'self') refuses, so they are set here.
 function costMount() {
   const main = $("#main");
