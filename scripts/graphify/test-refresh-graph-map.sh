@@ -269,7 +269,7 @@ STUB
 cat > "$T4C/lane" <<STUB
 #!/usr/bin/env bash
 printf '%s\n' "\$*" > "$T4C/lane-args"
-printf 'kind=%s tools=%s tools_set=%s\n' "\$HIMMEL_API_KIND" "\$HIMMEL_API_TOOLS" "\${HIMMEL_API_TOOLS+yes}" > "$T4C/lane-env"
+printf 'kind=%s tools=%s tools_set=%s fallback=%s\n' "\$HIMMEL_API_KIND" "\$HIMMEL_API_TOOLS" "\${HIMMEL_API_TOOLS+yes}" "\${HIMMEL_API_FALLBACK:-on}" > "$T4C/lane-env"
 cat > "$T4C/lane-stdin"
 printf '{"type":"result","is_error":false,"result":"LANE-ANSWER"}\n'
 STUB
@@ -282,9 +282,9 @@ out=$( HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A GRAPHIFY_MAP_LANE_BIN="$T4C/lane"
   && grep -q -- 'cluster-only .* --backend claude-cli' "$T4C/graphify-args" \
   && pass "T4c lane on: rc 0, graphify ran its claude-cli path for --update and cluster-only" || fail "T4c lane on (rc=$rc): $out / $(cat "$T4C/graphify-args" 2>&1)"
 [ "$(cat "$T4C/lane-args" 2>/dev/null)" = "-p --model sonnet --permission-mode default --max-budget-usd 1.00 --effort high" ] \
-  && [ "$(cat "$T4C/lane-env" 2>/dev/null)" = "kind=graphify tools= tools_set=yes" ] && [ "$(cat "$T4C/lane-stdin" 2>/dev/null)" = "PROMPT-T4C" ] \
+  && [ "$(cat "$T4C/lane-env" 2>/dev/null)" = "kind=graphify tools= tools_set=yes fallback=off" ] && [ "$(cat "$T4C/lane-stdin" 2>/dev/null)" = "PROMPT-T4C" ] \
   && grep -q LANE-ANSWER "$T4C/graphify-got" 2>/dev/null && [ ! -e "$T4C/sub/calls" ] \
-  && pass "T4c the chunk went through the lane (flags, kind graphify, tool-free, prompt on stdin), the subscription claude never ran" \
+  && pass "T4c the chunk went through the lane (flags, kind graphify, tool-free, no subscription fallback, prompt on stdin), the subscription claude never ran" \
   || fail "T4c lane call: args '$(cat "$T4C/lane-args" 2>&1)' env '$(cat "$T4C/lane-env" 2>&1)' stdin '$(cat "$T4C/lane-stdin" 2>&1)' got '$(cat "$T4C/graphify-got" 2>&1)' sub '$(cat "$T4C/sub/calls" 2>&1)'"
 ls -d "$T4C/scratch"/graphify-lane-* >/dev/null 2>&1 && fail "T4c the shim dir was left behind" || pass "T4c the shim dir is removed after the run"
 

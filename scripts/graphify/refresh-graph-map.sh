@@ -2415,6 +2415,8 @@ if [ "$(cat "$here/rejected" 2>/dev/null | wc -l)" -ge "$limit" ]; then
   exit 6
 fi
 export HIMMEL_API_TOOLS=""
+# a failed chunk is never replayed on the subscription: that runs only with --backend claude-cli
+export HIMMEL_API_FALLBACK=off
 out="$here/lane-out.$$"
 HIMMEL_API_KIND=graphify "$GRAPHIFY_MAP_LANE_BIN" -p --model "${model:-sonnet}" --permission-mode default \
   --max-budget-usd "$GRAPHIFY_MAP_LANE_BUDGET" --effort "$GRAPHIFY_MAP_LANE_EFFORT" > "$out"
