@@ -196,8 +196,8 @@ fails if a runbook body creeps back inline.
 `ui-ux-pro-max` + `scroll-world` (audit O1, ~6 KB) is a user-scope operator
 action already applied outside this repo, and `security-guidance` is an adopter-
 default change (see
-[`docs/setup/new-machine.md`](setup/new-machine.md#security-guidance--recommended-off-operator-decision-pending))
-with the operator-box decision still pending. Neither changes this machine's
+[`docs/setup/new-machine.md`](setup/new-machine.md#security-guidance--recommended-off))
+that does not turn it off on a machine where it is already on. Neither changes this machine's
 current listing sum.
 
 ### Skill/command descriptions → a 120-char cap (measured 2026-08-23)
