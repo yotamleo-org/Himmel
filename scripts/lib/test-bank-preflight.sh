@@ -988,10 +988,10 @@ check "followed standing lift, five_hour=90 seven_day=90, no ceiling -> PROCEED"
   "$(CADENCE_USAGE_MAX_PCT='' fverdict 90 90)"
 check "followed standing lift, ledger row carries lift_followed:true" true \
   "$(tail -1 "$W/ledger.jsonl" | jq -r '.lift_followed')"
-check "followed line prints at most 4 hex of each account" match \
-  "$(fshow | grep '^usage-lift: followed:' | grep -Eq '^usage-lift: followed: standing lift set on [0-9a-f]{4}…, now on [0-9a-f]{4}…$' && echo match)"
-check "ledger row of a followed lift carries no account hash" none \
-  "$(tail -1 "$W/ledger.jsonl" | grep -Eq "${HA:0:5}|${HB:0:5}" && echo hash || echo none)"
+fline="$(fshow | grep -E '^usage-lift: followed: standing lift set on [0-9a-f]{4}…, now on [0-9a-f]{4}…$')"
+check "followed line prints at most 4 hex of each account" match "$([ -n "$fline" ] && echo match)"
+lrow="$(tail -1 "$W/ledger.jsonl" | grep -E "${HA:0:5}|${HB:0:5}")"
+check "ledger row of a followed lift carries no account hash" none "$([ -n "$lrow" ] && echo hash || echo none)"
 # Row 2: a window lift never follows.
 follow_lift "$HA" false "\"$ME\""; fcache "$HB" 10 90
 check "window lift on another account -> INVALID: account" 'usage-lift: INVALID: account' "$(fshow | tail -1)"
