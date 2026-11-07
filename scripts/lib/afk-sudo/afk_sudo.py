@@ -1164,7 +1164,7 @@ def run_request(broker, config, args):
         files = [(e, b if e["path"] in keep or (e["path"] == argv0_path and b is not None and b.startswith(b"#!")) else None)
                  for e, b in files]
         files = [(dict(e, shown=b is not None), b) for e, b in files]
-        classifier_key = hashlib.sha256(json.dumps([meta["session"], argv]).encode()).hexdigest()
+        classifier_key = hashlib.sha256(json.dumps([meta["session"], cwd, argv]).encode()).hexdigest()
     if not SEAM and run_pw.pw_uid != 0 and not setpriv_path():
         print("result=no-setpriv")
         return 5

@@ -1235,6 +1235,11 @@ assert_contains "RED collapse: the same argv from the same session inside its tt
 assert_contains "another argv from that session still files" "result=pending" "$(rc 11 S1 echo other)"
 assert_contains "the same argv from another session still files" "result=pending" "$(rc 3700 S2 true)"
 assert_contains "the same argv files again once its ttl is over" "result=pending" "$(rc 7300 S1 true)"
+new_root clsdupcwd; cfg "$ALL" true ', "max_per_hour": 20'
+deny_id 1 "$(rid "$(rc 0 S1 true)")"
+mkdir -p "$R/elsewhere"
+assert_contains "the same argv from that session in another cwd still files" "result=pending" \
+    "$(hr 2 run-request --session S1 --ticket T --blocked-by classifier --cwd "$R/elsewhere" -- true </dev/null)"
 new_root clsbody; cfg "$ALL" true ', "max_per_hour": 20'
 printf 'BODY-%s-SECRETLIKE\n' "$RANDOM" > "$R/data.txt"; body=$(cat "$R/data.txt")
 dsha=$(sha256sum "$R/data.txt" | cut -c1-8)
