@@ -515,12 +515,12 @@ inline_vault2="$work/inline-vault2"
 printf 'USER_SLUG=x\nHANDOVER_DIR=/stale/vault/handovers\n' > "$inline_target2/.env"
 bash "$inline_setdir" --inline --env-file "$inline_target2/.env" >/dev/null 2>&1 || fail "inline choice: set-handover-dir.sh --inline failed"
 bash "$inline_setdir" --inline --env-file "$inline_target2/.env" >/dev/null 2>&1 || fail "inline choice: the second --inline failed"
-HOME="$base_home" bash "$adopt" --profile luna --target "$inline_target2" --luna-target "$inline_vault2" >/dev/null 2>&1
+HOME="$base_home" bash "$adopt" --profile luna --target "$inline_target2" --luna-target "$inline_vault2" >/dev/null 2>&1 || fail "inline choice: the first adopt failed"
 hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$inline_target2/.claude/settings.json" 2>/dev/null)
 [ "$hd" = "ABSENT" ] || fail "inline choice: re-adopt pinned a root over the inline choice ([$hd])"
 [ "$(grep -c '^HANDOVER_DIR=' "$inline_target2/.env")" = "1" ] || fail "inline choice: .env does not hold exactly one HANDOVER_DIR line"
 [ "$(grep '^HANDOVER_DIR=' "$inline_target2/.env")" = "HANDOVER_DIR=" ] || fail "inline choice: the stale .env path was not replaced by the empty record"
-HOME="$base_home" bash "$adopt" --profile luna --target "$inline_target2" --luna-target "$inline_vault2" >/dev/null 2>&1
+HOME="$base_home" bash "$adopt" --profile luna --target "$inline_target2" --luna-target "$inline_vault2" >/dev/null 2>&1 || fail "inline choice: the second adopt failed"
 hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$inline_target2/.claude/settings.json" 2>/dev/null)
 [ "$hd" = "ABSENT" ] || fail "inline choice: the second re-adopt pinned a root ([$hd])"
 echo "ok: an inline choice (empty .env HANDOVER_DIR=) survives re-adopt and a repeated choice adds no line"

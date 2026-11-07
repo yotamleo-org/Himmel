@@ -69,11 +69,17 @@ inside a git repo — e.g. `/c/Users/<you>/Documents/<your-vault>/handovers`
 
 ### 4. Persist the choice
 
+Both `.env` writers below are `scripts/handover/set-handover-dir.sh`. Use the
+project's own copy (`<repo-root>/scripts/handover/set-handover-dir.sh`, copied by
+a project-scope install); a project without one (a user-scope install) uses the
+himmel clone's copy (`$HIMMEL_REPO/scripts/handover/set-handover-dir.sh`) with
+`--env-file <repo-root>/.env`. `<writer>` below means that command.
+
 - **Inline (Mode A):** record the choice as an empty `HANDOVER_DIR=` line in
   `<repo-root>/.env`:
 
   ```bash
-  bash <repo-root>/scripts/handover/set-handover-dir.sh --inline
+  bash <writer> --inline
   ```
 
   An empty value reads as unset, so the resolver
@@ -90,7 +96,7 @@ inside a git repo — e.g. `/c/Users/<you>/Documents/<your-vault>/handovers`
   so it passes the secrets guard):
 
   ```bash
-  bash <repo-root>/scripts/handover/set-handover-dir.sh "<chosen-path>"
+  bash <writer> "<chosen-path>"
   ```
 
   It creates-or-updates the `HANDOVER_DIR=` line in `<repo-root>/.env`. Confirm
@@ -133,6 +139,16 @@ inside a git repo — e.g. `/c/Users/<you>/Documents/<your-vault>/handovers`
   If the writer exits non-zero, stop and show its output: `.env` is already
   written but the pin is not, so the choice is only half applied. Do not go on
   to step 5 and do not print the step 6 summary.
+
+  **User-scope pin.** A user-scope install (`adopt.sh --scope user`) may have
+  pinned `env.HANDOVER_DIR` in `~/.claude/settings.json`. Read it with the same
+  `jq` command and the same stop rule. That value reaches every project and
+  beats `.env`, and project settings beat user settings. When it is non-empty
+  and differs from the choice (`<canonical-path>`; inline: `<repo-root>/handovers`),
+  give this project its own pin with `wire-handover-dir.sh` as above, even
+  when the project had none (for inline, wire it to `<repo-root>/handovers`
+  instead of removing it), and tell the user the user-scope value is unchanged.
+  Never edit `~/.claude/settings.json` here.
 
   Tell the user what changed ("env.HANDOVER_DIR in .claude/settings.json was
   `<old>`, now `<new>` / removed"). Settings are read at launch, so this too

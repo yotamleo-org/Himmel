@@ -99,9 +99,12 @@ assert_eq "T11 other lines kept" "2" "$(grep -cE '^(USER_SLUG|JIRA_PROJECT_KEY)=
 
 # T12: re-running --inline, and --inline after --inline on a fresh file, leave one line.
 bash "$SCRIPT" --inline --env-file "$ENV5" >/dev/null 2>&1
+assert_rc "T12 re-run on an existing file rc=0" 0 "$?"
 ENV6="$TMP/inline-fresh.env"
 bash "$SCRIPT" --inline --env-file "$ENV6" >/dev/null 2>&1
+assert_rc "T12 fresh file rc=0" 0 "$?"
 bash "$SCRIPT" --inline --env-file "$ENV6" >/dev/null 2>&1
+assert_rc "T12 repeat on the fresh file rc=0" 0 "$?"
 assert_eq "T12 re-run keeps one line" "1" "$(grep -cE '^[[:space:]]*HANDOVER_DIR=' "$ENV5")"
 assert_eq "T12 fresh file gets one empty line" "HANDOVER_DIR=" "$(cat "$ENV6")"
 
