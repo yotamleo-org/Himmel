@@ -56,7 +56,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `github` | GitHub integration (issues, PRs, repos) | ON-DEMAND — cached, off by default |
 | `feature-dev` | Feature development workflow (explorer, architect, reviewer agents) | ON-DEMAND — cached, off by default |
 | `claude-md-management` | Manages CLAUDE.md files across projects | ON-DEMAND — cached, off by default |
-| `security-guidance` | Security analysis and guidance | ON-DEMAND — cached, off by default (retired in favor of the automated review gate — see [new-machine.md §6](setup/new-machine.md#security-guidance--recommended-off-operator-decision-pending)) |
+| `security-guidance` | Security analysis and guidance | ON-DEMAND — cached, off by default (retired in favor of the automated review gate — see [new-machine.md §6](setup/new-machine.md#security-guidance--recommended-off)) |
 | `commit-commands` | Git commit helpers and conventions | ON-DEMAND — cached, off by default |
 | `claude-code-setup` | Setup assistant for new Claude Code environments | ON-DEMAND — cached, off by default |
 | `pr-review-toolkit` | PR review tools (code, tests, types, silent failures, comments) | ON-DEMAND — cached, off by default (`/pr-check` dispatches it only with `CR_CLAUDE_AGENTS=1`) |
