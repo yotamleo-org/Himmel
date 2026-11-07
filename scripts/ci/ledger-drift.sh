@@ -13,12 +13,22 @@
 #   max/min         slowest bin over fastest bin
 # and exits 1 when slowest/floor passes <threshold> (default 1.3).
 #
-# Usage: ledger-drift.sh [--logs <dir>] [--ledger <file>] [--shards <n>]
-#                        [--threshold <x>] [--runs <k>]
+# Every run first prints the tracked suites with no row in suite-tiers.tsv or no
+# row in the ledger, and their count. A suite with no tier row reads as tier pr
+# and its seconds are its ledger row or the median, so the cost of untiered
+# suites shows. The list never changes the exit code. One refresh PR adds the
+# rows in a batch (REFRESH recipe in the ledger's header).
+#
+# Usage: ledger-drift.sh [--no-row] [--logs <dir>] [--ledger <file>] [--tiers <file>]
+#                        [--tracked <file>] [--shards <n>] [--threshold <x>] [--runs <k>]
+#   --no-row      print that list and stop: read-only, needs no gh. Exit 0, or 2
+#                 when the list cannot be computed, never a false zero.
 #   --logs <dir>  read every <dir>/*.log (gh run view --log output) instead of
 #                 fetching: the test's input. Without it the last <k> green
 #                 main ci.yml runs are fetched with gh (GH_TOKEN, and -R from
 #                 $GITHUB_REPOSITORY when set).
+#   --tiers <f>   default suite-tiers.tsv beside this script.
+#   --tracked <f> tracked paths, one per line: the test's input. Default git ls-files.
 #   --shards <n>  default 8, the shard count of a main-branch run (ci.yml).
 #   --runs <k>    default 3.
 # Exit: 0 balanced, 1 drift, 2 no usable input or a usage error.
@@ -32,13 +42,19 @@ ledger="$here/suite-durations.tsv"
 shards=8
 threshold=1.3
 runs=3
+tiers="$here/suite-tiers.tsv"
+tracked=""
+no_row_only=0
 
-usage() { echo "usage: ledger-drift.sh [--logs <dir>] [--ledger <file>] [--shards <n>] [--threshold <x>] [--runs <k>]" >&2; exit 2; }
+usage() { echo "usage: ledger-drift.sh [--no-row] [--logs <dir>] [--ledger <file>] [--tiers <file>] [--tracked <file>] [--shards <n>] [--threshold <x>] [--runs <k>]" >&2; exit 2; }
 while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--no-row" ]; then no_row_only=1; shift; continue; fi
   [ "$#" -ge 2 ] || usage
   case "$1" in
     --logs) logs="$2" ;;
     --ledger) ledger="$2" ;;
+    --tiers) tiers="$2" ;;
+    --tracked) tracked="$2" ;;
     --shards) shards="$2" ;;
     --threshold) threshold="$2" ;;
     --runs) runs="$2" ;;
@@ -56,6 +72,61 @@ case "$threshold" in ''|*[!0-9.]*|.|*.*.*) usage ;; esac
 . "$here/../lib/prim.sh"
 tmp=$(tmpdir) || exit 2
 trap 'rm -rf "$tmp"' EXIT
+
+# Lines on stdout, which the workflow copies to its step summary. Returns 2, with
+# a line saying so, when a list it needs cannot be read.
+no_row_report() {
+  local list="$tracked"
+  if [ -z "$list" ]; then
+    list="$tmp/tracked"
+    git -C "$here/../.." ls-files > "$list" || { echo "ledger-drift: no-row list not computed: git ls-files failed"; return 2; }
+  fi
+  if [ ! -r "$list" ] || [ ! -r "$tiers" ]; then
+    echo "ledger-drift: no-row list not computed: $list or $tiers is not readable"
+    return 2
+  fi
+  LC_ALL=C awk -F'\t' -v ledger="$ledger" -v tiers="$tiers" '
+    BEGIN {
+      while ((getline line < ledger) > 0) {
+        if (line ~ /^[[:space:]]*#/) continue
+        split(line, f, "\t")
+        if (f[1] != "" && f[2] ~ /^[0-9]+$/) { cost[f[1]] = f[2] + 0; vals[++nv] = f[2] + 0 }
+      }
+      close(ledger)
+      for (i = 2; i <= nv; i++) { v = vals[i]; j = i - 1; while (j >= 1 && vals[j] > v) { vals[j + 1] = vals[j]; j-- }; vals[j + 1] = v }
+      med = (nv > 0) ? vals[int((nv + 1) / 2)] : 1
+      if (med < 1) med = 1
+      while ((getline line < tiers) > 0) {
+        if (line ~ /^#/) continue
+        split(line, f, "\t")
+        if (f[1] != "") tier[f[1]] = f[2]
+      }
+      close(tiers)
+    }
+    {
+      n = split($0, p, "/")
+      if (p[n] !~ /^test-.*\.sh$/) next
+      suites++
+      has_tier = ($0 in tier); has_dur = ($0 in cost)
+      if (has_tier && has_dur) next
+      sec = has_dur ? cost[$0] : med
+      listed++
+      if (!has_tier) { no_tier++; untiered += sec }
+      if (!has_dur) no_dur++
+      printf "ledger-drift: no-row %s tier=%s tier-row=%s duration-row=%s seconds=%d\n", $0, (has_tier ? tier[$0] : "pr"), (has_tier ? "yes" : "no"), (has_dur ? "yes" : "no"), sec
+    }
+    END {
+      if (suites == 0) { print "ledger-drift: no-row list not computed: the tracked list names no suite"; exit 2 }
+      printf "ledger-drift: no-row count=%d no-tier-row=%d no-duration-row=%d untiered-seconds=%d\n", listed, no_tier, no_dur, untiered
+    }
+  ' "$list"
+}
+
+if [ "$no_row_only" -eq 1 ]; then
+  no_row_report
+  exit $?
+fi
+no_row_report
 
 if [ -z "$logs" ]; then
   logs="$tmp/logs"

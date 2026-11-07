@@ -153,9 +153,10 @@ DT="$(tr '\n' ' ' < "$WORK/dtitle-bucket/HIMMEL-9001-N901-plain-fix-2026-10-08.m
 { [ "$rc" = 0 ] && case "$DT" in *'query -c luna "fix (touch /tmp/x) and id"'*) true ;; *) false ;; esac; } \
     && pass "a title with command substitution is sanitized in the default query, never pasted live" || fail "title substitution rc=$rc: $DT"
 
-# every brief pre-authorizes a new suite's own tier + duration row
-has "brief 1 pre-authorizes the new suite's own tier and duration rows" "$(tr '\n' ' ' < "$D1" | tr -s ' ')" "A new test suite may add exactly one row for itself to scripts/ci/suite-tiers.tsv and scripts/ci/suite-durations.tsv"
-has "brief 2 pre-authorizes the new suite's own tier and duration rows" "$(tr '\n' ' ' < "$D2" | tr -s ' ')" "name the rows in READY"
+# every brief tells a worker a new suite needs no row, and no longer grants one
+has "brief 1 says a new suite needs no row" "$(tr '\n' ' ' < "$D1" | tr -s ' ')" "A new test suite needs no row in scripts/ci/suite-tiers.tsv or scripts/ci/suite-durations.tsv"
+has "brief 2 says a new suite needs no row" "$(tr '\n' ' ' < "$D2" | tr -s ' ')" "A new test suite needs no row in scripts/ci/suite-tiers.tsv or scripts/ci/suite-durations.tsv"
+lacks "brief 1 no longer grants a new suite its own rows" "$(tr '\n' ' ' < "$D1" | tr -s ' ')" "name the rows in READY"
 
 # contract item 3: a worker runs locally only the RED rows it builds; every other impacted suite is CI-gated
 B1="$(tr '\n' ' ' < "$D1" | tr -s ' ')"

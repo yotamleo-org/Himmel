@@ -47,7 +47,10 @@ scripts/security/test-security-audit-cadence.sh	2
 #   gh run view <run-id> --log \
 #     | sed -nE 's/.*\[(PASS|FAIL)\] ([^ ]+) \(([0-9]+)s\).*/\2\t\3/p;s/.*\[QUARANTINE\] ([^ ]+) \(rc=[0-9]+, ([0-9]+)s\).*/\1\t\2/p;s/.*\[FLAKE\] ([^ ]+) \(first run rc=[0-9]+, passed on retry, ([0-9]+)s\).*/\1\t\2/p' \
 #     | sort -u
-# then replace the rows below and update the source line above.
+# then replace the rows below and update the source line above. A new suite adds no
+# row of its own: scripts/ci/ledger-drift.sh --no-row lists the suites with none, and
+# one refresh PR adds their rows in a batch under a trust-reviewed GO. A suite CI never
+# prints (skip-listed, off-Linux, outside the scan roots) stays on that list.
 marketplace/plugins/pstack/test-vendor.sh	1
 marketplace/plugins/handover/scripts/test-migrate-v1-to-v2.sh	0
 marketplace/plugins/handover/scripts/test-skill-e2e.sh	1
