@@ -79,6 +79,7 @@ export function readPrs(env: Env): PrRead | Absent {
     if (!m) continue;
     let rec: { last_event_ts?: string; prs?: Record<string, { head?: string; ci?: string; red_latch?: boolean; open?: boolean }> };
     try { rec = JSON.parse(readFileSync(join(dir, n), "utf8")); } catch { unread.push(m[1]); continue; } // a record that cannot be read is named, so its card never claims "no open PR"
+    if (!rec || typeof rec !== "object") { unread.push(m[1]); continue; } // JSON null or a bare value holds no data either
     if (typeof rec?.last_event_ts === "string" && Number.isFinite(Date.parse(rec.last_event_ts))) seen[m[1]] = rec.last_event_ts;
     const open = Object.entries(rec?.prs && typeof rec.prs === "object" ? rec.prs : {}).filter(([k, p]) => p && p.open && /^\d+$/.test(k))
       .map(([k, p]) => ({ pr: Number(k), head: String(p.head || ""), ci: p.red_latch ? "red" : p.ci === "pending" ? "running" : p.ci === "red" || p.ci === "green" ? p.ci : "none" }))

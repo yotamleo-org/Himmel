@@ -598,7 +598,8 @@ test("Board: a card shows its open PR and CI as a link from the worker records, 
   expect(card("HIMMEL-2")).not.toContain("no open PR"); // not started
   expect(card("HIMMEL-1")).not.toContain("no open PR"); // done
   writeFileSync(join(st, "workers", "HIMMEL-4.json"), "{ not json");
-  expect((await get(serve(env, s))).prs.unread).toEqual(["HIMMEL-" + 4]);
+  writeFileSync(join(st, "workers", "HIMMEL-" + 2 + ".json"), "null"); // parses, but holds no record
+  expect((await get(serve(env, s))).prs.unread.sort()).toEqual(["HIMMEL-" + 2, "HIMMEL-" + 4]);
   expect((await page(serve(env, s))).match(new RegExp(`<div class="rm-card"[^>]*aria-label="HIMMEL-${4}:[\\s\\S]*?</div></div>`))![0]).not.toContain("no open PR"); // the record could not be read, so no claim is made
   const none = await page(serve({ ...env, TICKET_STATUS_STATE_DIR: join(s.d, "no-state") }, s));
   expect(none).not.toContain("no open PR"); // the records could not be read: no card is flagged on a guess
