@@ -3964,15 +3964,24 @@ check_c90_effort_pin() {
 # refusals of the last 48 h; a line that does not parse is skipped. Read-only.
 check_c91_api_policy_refusals() {
     command -v jq >/dev/null 2>&1 || { emit INFO C91-api-policy-refusals "jq not on PATH -- API lane policy refusal record not checked"; return 0; }
-    local dir rec rows kind n repos
+    local dir rec rows="" recent kind n repos
     dir="${HIMMEL_API_ALERT_DIR:-${HOME:-/tmp}/.himmel/state/api-lane-alerts}"
     rec="$dir/policy-refusals.jsonl"
-    rows=""
-    if [ -f "$rec" ] && [ -r "$rec" ]; then
-        rows="$(jq -Rr --argjson now "$(date +%s)" 'fromjson? | select(type == "object" and (.ts | type) == "number" and .ts >= ($now - 172800))
-            | [((.kind // "unknown") | tostring), ((.repo // "none") | tostring)] | @tsv' "$rec" 2>/dev/null \
-            | awk -F'\t' '{ if (!($1 in c)) order[++k] = $1; c[$1]++; if (!(($1 SUBSEP $2) in seen)) { seen[$1 SUBSEP $2] = 1; r[$1] = r[$1] (r[$1] == "" ? "" : ", ") $2 } }
+    if [ -e "$rec" ] || [ -L "$rec" ]; then
+        # a record that is there but cannot be read, or that jq fails on, is "cannot tell", never "no refusals"
+        if [ ! -f "$rec" ] || [ ! -r "$rec" ]; then
+            emit INFO C91-api-policy-refusals "the API lane policy refusal record exists but cannot be read as a file ($rec) -- not checked"
+            return 0
+        fi
+        recent="$(jq -Rr --argjson now "$(date +%s)" 'fromjson? | select(type == "object" and (.ts | type) == "number" and .ts >= ($now - 172800))
+            | [((.kind // "unknown") | tostring), ((.repo // "none") | tostring)] | @tsv' "$rec" 2>/dev/null)" || {
+            emit INFO C91-api-policy-refusals "jq failed reading the API lane policy refusal record ($rec) -- not checked"
+            return 0
+        }
+        if [ -n "$recent" ]; then
+            rows="$(printf '%s\n' "$recent" | awk -F'\t' '{ if (!($1 in c)) order[++k] = $1; c[$1]++; if (!(($1 SUBSEP $2) in seen)) { seen[$1 SUBSEP $2] = 1; r[$1] = r[$1] (r[$1] == "" ? "" : ", ") $2 } }
                 END { for (i = 1; i <= k; i++) printf "%d|%s|%s\n", c[order[i]], order[i], r[order[i]] }')"
+        fi
     fi
     if [ -z "$rows" ]; then
         emit OK C91-api-policy-refusals "no API lane policy refusal in the last 48 h"

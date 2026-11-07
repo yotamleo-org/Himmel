@@ -8169,6 +8169,14 @@ if PATH="$C91_NOJQ" bash -c 'command -v bash >/dev/null 2>&1 && ! command -v jq 
 else
     echo "  SKIP: C91 no-jq — the curated shadow PATH cannot run bash without jq here"
 fi
+echo "== C91: a record that cannot be read, or that jq fails on, is INFO, never a silent OK =="
+c91_reset; mkdir -p "$c91_rec"
+out="$(c91_run)"
+c91_reset; c91_refuse critic
+mkdir -p "$c91_t/failjq"; printf '#!/bin/sh\nexit 5\n' > "$c91_t/failjq/jq"; chmod 700 "$c91_t/failjq/jq"
+out2="$(env -u HIMMEL_API_ALERT_DIR CLAUDE_DIR="$c91_t/claude" HOME="$c91_t/home" PATH="$c91_t/failjq:$PATH" bash "$DOC" --only C91 --no-color 2>&1)"
+if grepq "$out" 'INFO C91-api-policy-refusals' && ! grepq "$out" 'OK   C91' && ! grepq "$out" 'WARN C91' \
+    && grepq "$out2" 'INFO C91-api-policy-refusals' && ! grepq "$out2" 'OK   C91' && ! grepq "$out2" 'WARN C91'; then pass "C91 unreadable record and failing jq -> INFO"; else fail "C91 unreadable -> $(printf '%s' "$out" | head -3) failing jq -> $(printf '%s' "$out2" | head -3)"; fi
 rm -rf "$c91_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi
