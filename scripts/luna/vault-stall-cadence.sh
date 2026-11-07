@@ -123,9 +123,12 @@ classify() {
     ids="$(printf '%s\n' "$out" | sed -n 's/^- hook id: //p' | sort -u)"
     # The vault's wrapper runs gitleaks itself after pre-commit: its finding carries RuleID
     # lines but no `- hook id:` line, and was alerted as "unclassified refusal".
-    if ! printf '%s\n' "$ids" | grep -qx gitleaks && printf '%s\n' "$out" | grep -q '^RuleID:'; then
-        ids="${ids:+$ids$'\n'}gitleaks"
-    fi
+    local rule_line
+    rule_line="$(printf '%s\n' "$out" | sed -n '/^RuleID:/{p;q;}')"
+    case $'\n'"$ids"$'\n' in
+        *$'\n'gitleaks$'\n'*) ;;
+        *) [ -z "$rule_line" ] || ids="${ids:+$ids$'\n'}gitleaks" ;;
+    esac
     while IFS= read -r hook; do
         [ -n "$hook" ] || continue
         rows=""
