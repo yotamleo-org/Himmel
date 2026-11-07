@@ -28,7 +28,11 @@ Check both signals:
 - **Registry:** does `~/.claude/handover/registry.json` already contain an entry
   whose `path` canonicalises to `<repo-root>`?
 
-If **both** are present, report the resolved state root and stop with: "Handover
+Also read `env.HANDOVER_DIR` in `<repo-root>/.claude/settings.json` (it beats
+`.env`). If it is present and differs from the `.env` value, setup is not
+complete: continue to step 3 so step 4 can reconcile it.
+
+If **both** are present and agree, report the resolved state root and stop with: "Handover
 already set up for this repo (HANDOVER_DIR=<…>, registered as '<name>'). Re-run a
 specific step with `/handover register` or edit `.env` manually if you need to
 change the location." Do not silently re-prompt.
@@ -63,7 +67,7 @@ inside a git repo — e.g. `/c/Users/<you>/Documents/<your-vault>/handovers`
 
 - **Inline (Mode A):** nothing to write — `HANDOVER_DIR` stays unset and the
   resolver (`scripts/lib/handover-path.sh`) defaults to `<repo-root>/handovers`.
-  Continue to step 5 with `<state-root-host>` = `<repo-root>`.
+  Continue to step 5 with `<state-root-host>` = `<repo-root>/handovers`.
 - **Vault or external (Mode B — both persist identically):** if the chosen
   directory does not exist yet, ask whether
   to create it (`mkdir -p`) — do not write a `HANDOVER_DIR` that points at a
@@ -82,6 +86,29 @@ inside a git repo — e.g. `/c/Users/<you>/Documents/<your-vault>/handovers`
   from this repo (the loader `scripts/lib/load-dotenv.sh` picks it up); the
   skill steps below use the path directly.
 
+- **All three choices — reconcile the project's settings pin.** A project
+  install (`adopt.sh --profile all`) may have pinned `env.HANDOVER_DIR` in
+  `<repo-root>/.claude/settings.json`, and a settings `env` value beats `.env`,
+  so a different choice would silently not take effect. Read it:
+
+  ```bash
+  jq -r '.env.HANDOVER_DIR // empty' <repo-root>/.claude/settings.json
+  ```
+
+  No settings file or no value: nothing to do. Otherwise compare it to the
+  chosen root (`<chosen-path>`; for inline, `<repo-root>/handovers`) and act
+  only when they differ. The writers live in the himmel clone, which is
+  `<repo-root>` in a himmel checkout and `$HIMMEL_REPO` in a project install:
+
+  - **Vault or external:** point the pin at the choice:
+    `bash <himmel-clone>/scripts/lib/wire-handover-dir.sh <repo-root>/.claude/settings.json "<chosen-path>"`
+  - **Inline:** remove the pin so the repo default applies:
+    `bash <himmel-clone>/scripts/lib/unwire-handover-dir.sh <repo-root>/.claude/settings.json`
+
+  Tell the user what changed ("env.HANDOVER_DIR in .claude/settings.json was
+  `<old>`, now `<new>` / removed"). Settings are read at launch, so this too
+  takes effect from the next Claude launch in the project.
+
 ### 5. Initialise or adopt the state
 
 Resolve `<state-root>` = `<state-root-host>/<USER_SLUG>` (USER_SLUG via
@@ -89,7 +116,8 @@ Resolve `<state-root>` = `<state-root-host>/<USER_SLUG>` (USER_SLUG via
 
 - If `<state-root>` has no `.md` items yet → invoke the **handover** skill's
   `init` flow (`Skill` tool, handover) against `<state-root-host>` to seed
-  `_templates/`, `status.md`, `roadmap.md`, and register the repo.
+  `_templates/` (which holds the `roadmap.md` template), `status.md`,
+  `backlog.md`, `counter.md`, and register the repo.
 - If `<state-root>` already contains handover items (existing state being
   adopted) → invoke the skill's `register` flow instead (idempotent).
 

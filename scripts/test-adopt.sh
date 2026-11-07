@@ -151,6 +151,9 @@ git -C "$tp" commit -q --allow-empty -m "chore: initial commit"
 out_tp=$(HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tp" 2>&1)
 [ "$(git -C "$tp" status --porcelain -- scripts | wc -l)" -gt 0 ] || fail "HIMMEL-6326: install without --commit-install must stay uncommitted"
 grep -qx '.claude/worktrees/' "$tp/.gitignore" || fail "HIMMEL-6326: adopt did not add .claude/worktrees/ to .gitignore"
+# /handover-setup writes the project's .env, so adopt must ignore it (checked
+# right after the first adopt: later steps re-run the printed line through the real adopt.sh)
+[ "$(grep -c -x '.env' "$tp/.gitignore")" = "1" ] || fail "adopt did not add exactly one .env rule to .gitignore"
 printed_tp=$(sed -n 's/^.*Commit it once with: //p' <<< "$out_tp")
 [ -n "$printed_tp" ] || fail "HIMMEL-6852: install on main printed no 'Commit it once with:' line: $out_tp"
 eval "printed_argv=($printed_tp)"
@@ -164,6 +167,9 @@ echo "ok: the printed --commit-install line runs from the project cwd (HIMMEL-68
 HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tp" --commit-install >/dev/null
 [ "$(git -C "$tp" status --porcelain -- scripts .gitignore .claude/settings.json | wc -l)" -eq 0 ] || fail "HIMMEL-6326: --commit-install left the install uncommitted"
 [ "$(grep -c -x '.claude/worktrees/' "$tp/.gitignore")" = "1" ] || fail "HIMMEL-6326: .gitignore rule duplicated on re-run"
+printf 'HANDOVER_DIR=/x\n' > "$tp/.env"
+git -C "$tp" status --porcelain | grep -q '\.env' && fail "a project .env shows in git status after adopt"
+rm -f "$tp/.env"
 [ "$(git -C "$tp" remote | wc -l)" -eq 0 ] || fail "HIMMEL-6326: fixture must have no remote"
 (cd "$tp" && HOME="$base_home" bash scripts/worktree.sh feat/try-himmel >/dev/null 2>&1) || fail "HIMMEL-6326: worktree.sh failed in a project with no origin"
 [ -f "$tp/.claude/worktrees/feat+try-himmel/scripts/worktree.sh" ] || fail "HIMMEL-6326: worktree cut after install lacks scripts/"
