@@ -2278,6 +2278,68 @@ check "9542 sibling: a same-label doc that does not name the RESUME doc is not i
 exact_count "9542 sibling: an unnamed same-label doc does not stop the one pid being signaled" "$(cat "$CALLS")" "kill -TERM 450" "1"
 rm -f "$G_ORIG" "$G_RES" "$G_OTHER_UNNAMED"
 
+# a predecessor's window and its successor's window both live: the RESUME doc claims the predecessor's name too
+P_ORIG="$W/HIMMEL-9502-N5106-direction-companions-gate-2026-11-07.md"
+P_RES="$W/HIMMEL-9502-N5106b-direction-companions-gate-2026-11-07-RESUME.md"
+P_SID_RES="5d22a528-d2ca-4310-bb10-f9425076d556"
+# shellcheck disable=SC2016  # literal fixture token delimiters
+printf -- '---\nsession_ids: 124c9350-276c-45c9-9ff0-ef5d59f31d47\n---\n# worker\n\n## Results (newest at the bottom)\n- 15:59 LIVE — N5106 effort=high model=claude-sonnet-5-5, release-token `cachyos-x8664-pid688250`; HEAD b91ae459\n- 17:26 LIVE — PR 4925 head a3060429 pushed\n- 17:44 BLOCKED — context 33 %%, RESUME written: %s\n- 17:46 FINDING — PR 4925 shard 10 red is my diff\n- 20:00 WRAPPED — halted by chief US; work handed to N5106b (RESUME doc), PR 4925 merged as 800c183ee\n' "$P_RES" > "$P_ORIG"
+# shellcheck disable=SC2016  # literal fixture token delimiters
+printf -- '---\nsession_ids: %s\n---\n\n> **Prior art:** original brief %s and PR 4925\n\n## Results (newest at the bottom)\n- 17:56 bus-adopt: adopted: HIMMEL-9502-N5106b-direction-companions-gate-2026-11-07 chief UP → UQ [via anchor]\n- 17:56 LIVE — resumed PR 4925 at a3060429; release-token `cachyos-x8664-pid811657` effort=medium model=claude-sonnet-5-5\n- 19:31 READY 4925 40b8054a1262a70fa1a8f3b0b7d53ea9116cc900 GREEN\n- 19:54 WRAPPED — PR 4925 squash-merged as 800c183ee; lock released\n' "$P_SID_RES" "$(basename "$P_ORIG")" > "$P_RES"
+P_N_ORIG="HIMMEL-9502-N5106-direction-companions-gate-2026-11-07"
+P_N_RES="HIMMEL-9502-N5106b-direction-companions-gate-2026-11-07"
+rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
+mkcmdline 672480 claude -n "$P_N_ORIG" work
+mkcmdline 800917 claude -n "$P_N_RES" work
+pgrep_x_stub 672480 800917
+reset_calls
+rc=0; out=$(run "$P_RES" 2>&1) || rc=$?
+check "9542 pair: the real N5106b RESUME doc closes with its predecessor's window also live -> rc 0" "$rc" "0"
+exact_count "9542 pair: only the successor's own-label pid is signaled" "$(cat "$CALLS")" "kill -TERM 800917" "1"
+not_contains "9542 pair: the predecessor's window is never signaled from the RESUME doc" "$(cat "$CALLS")" "672480"
+reset_calls
+rc=0; out=$(run "$P_ORIG" 2>&1) || rc=$?
+check "9542 pair: the WRAPPED original closes with its successor's window also live -> rc 0" "$rc" "0"
+exact_count "9542 pair: only the original's own-label pid is signaled" "$(cat "$CALLS")" "kill -TERM 672480" "1"
+not_contains "9542 pair: the successor's window is never signaled from the original" "$(cat "$CALLS")" "800917"
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 672480 claude -n "$P_N_ORIG" work
+mkcmdline 672481 claude -n "${P_N_ORIG%-2026-11-07}" work
+mkcmdline 800917 claude -n "$P_N_RES" work
+pgrep_x_stub 672480 672481 800917
+reset_calls
+rc=0; out=$(run "$P_RES" 2>&1) || rc=$?
+check "9542 pair: three matches with one own-label still refuse -> rc 5" "$rc" "5"
+check "9542 pair: three matches signal nothing" "$(cat "$CALLS")" ""
+contains "9542 pair: the refusal names the live sessions that matched" "$out" "$P_N_ORIG (pid 672480)"
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 800917 claude -n "$P_N_RES" work
+mkcmdline 800918 claude -n "${P_N_RES%-2026-11-07}" work
+pgrep_x_stub 800917 800918
+reset_calls
+rc=0; out=$(run "$P_RES" 2>&1) || rc=$?
+check "9542 pair: two own-label matches still refuse -> rc 5" "$rc" "5"
+check "9542 pair: two own-label matches signal nothing" "$(cat "$CALLS")" ""
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 672480 claude -n "$P_N_ORIG" work
+mkcmdline 672481 claude -n "${P_N_ORIG%-2026-11-07}" work
+pgrep_x_stub 672480 672481
+reset_calls
+rc=0; out=$(run "$P_RES" 2>&1) || rc=$?
+check "9542 pair: two derived-only matches still refuse -> rc 5" "$rc" "5"
+check "9542 pair: two derived-only matches signal nothing" "$(cat "$CALLS")" ""
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 800917 claude -n "$P_N_RES" work
+mkproc 900001 HIMMEL-9502-unrelated-name "$P_SID_RES" 9900001
+pgrep_x_stub 800917 900001
+reset_calls
+rc=0; out=$(run "$P_RES" 2>&1) || rc=$?
+check "9542 pair: an own-label match plus an unrelated name proven by session id still refuse -> rc 5" "$rc" "5"
+check "9542 pair: that pair signals nothing" "$(cat "$CALLS")" ""
+rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
+pgrep_x_stub
+rm -f "$P_ORIG" "$P_RES"
+
 # --- 24: no handovers/ leaked into the real repo ----------------
 post_handovers=absent
 [ -n "$REPO_ROOT" ] && [ -e "$REPO_ROOT/handovers" ] && post_handovers=present
