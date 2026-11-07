@@ -167,7 +167,7 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ## Vendored skill: `unslop` (MIT, Lauren Tan)
 
-Added 2026-09-17 (re-synced to the pstack 0.15.25 pin below), the first single-file skill vendored outside
+Added 2026-09-17 (re-synced to the pinned commit below), the first single-file skill vendored outside
 `marketplace/plugins/*`. Lives at `.claude/skills/unslop/SKILL.md`, sourced
 from `cursor/plugins` (pstack) at pinned commit
 `99743e9c151c8537cbbf1f98bb38f34ef3368453`, path
