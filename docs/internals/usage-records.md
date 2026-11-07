@@ -92,6 +92,12 @@ that disappears (a class change moved it) is closed with a zero row. The whole r
 renices itself to 19 and, where `ionice` exists, to the idle io class. `--since` and
 the ticket selectors do not apply to phase-cost rows.
 
+**Reading them.** `usage-read.sh --phase-cost` prints the latest row per (day, session,
+phase), in key order; `--day YYYY-MM-DD` keeps one day, `--all` prints every stored
+version in append order. It does not combine with `--ticket`, and without `--phase-cost`
+the reader still prints ticket records only. A row the writer closed with zero calls is
+still a row; the Cost page (`scripts/config-ui/cost.ts`) drops it.
+
 ## PR/CI join (`--repo OWNER/NAME [--gh <executable>]`)
 
 Opt-in: without `--repo` records carry no `pr`/`ci` and nothing calls gh. The

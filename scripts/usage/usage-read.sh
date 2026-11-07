@@ -4,10 +4,14 @@
 #
 # Usage:
 #   usage-read.sh [--store <dir>] [--ticket KEY] [--all]
+#   usage-read.sh [--store <dir>] --phase-cost [--day YYYY-MM-DD] [--all]
 #
 # Prints JSONL: the LATEST record per ticket (or of --ticket), or with --all
 # every stored version in append order. Rows with no ticket (the `phase-cost`
 # kind) are not ticket records and are skipped.
+# --phase-cost prints the phase-cost rows instead: the LATEST row per (day,
+# session, phase) in key order (of --day only, when given), or with --all every
+# stored version in append order. It does not combine with --ticket.
 # Schema: docs/internals/usage-records.md.
 #
 # Platform guard: bash 3.2-safe + jq.
@@ -16,14 +20,20 @@ set -euo pipefail
 STORE="${HIMMEL_USAGE_STORE:-${HOME}/.himmel/state/usage}"
 TICKET=""
 ALL=0
+PC=0
+DAY=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --store)  STORE="${2:-}"; shift 2 ;;
     --ticket) TICKET="${2:-}"; shift 2 ;;
     --all)    ALL=1; shift ;;
+    --phase-cost) PC=1; shift ;;
+    --day)    DAY="${2:-}"; shift 2 ;;
     *) echo "usage-read: unknown argument: $1" >&2; exit 1 ;;
   esac
 done
+[ "$PC" = 1 ] || [ -z "$DAY" ] || { echo "usage-read: --day needs --phase-cost" >&2; exit 1; }
+[ "$PC" = 0 ] || [ -z "$TICKET" ] || { echo "usage-read: --ticket does not combine with --phase-cost" >&2; exit 1; }
 
 FILE="$STORE/records.jsonl"
 [ -f "$FILE" ] || { echo "usage-read: no store at $FILE" >&2; exit 1; }
@@ -51,7 +61,13 @@ else
 fi
 
 # shellcheck disable=SC2016  # jq's own $vars
-jq -c --arg t "$TICKET" --argjson all "$ALL" -n '
-  [inputs | select(.ticket != null) | select($t == "" or .ticket == $t)] as $rows
-  | if $all == 1 then $rows[]
-    else ($rows | reduce .[] as $r ({}; .[$r.ticket] = $r) | to_entries | sort_by(.key)[] | .value) end' "$FILE"
+jq -c --arg t "$TICKET" --arg d "$DAY" --argjson all "$ALL" --argjson pc "$PC" -n '
+  if $pc == 1 then
+    [inputs | select(.kind == "phase-cost") | select($d == "" or .day == $d)] as $rows
+    | if $all == 1 then $rows[]
+      else ($rows | reduce .[] as $r ({}; .["\($r.day)|\($r.session)|\($r.phase)"] = $r) | to_entries | sort_by(.key)[] | .value) end
+  else
+    [inputs | select(.ticket != null) | select($t == "" or .ticket == $t)] as $rows
+    | if $all == 1 then $rows[]
+      else ($rows | reduce .[] as $r ({}; .[$r.ticket] = $r) | to_entries | sort_by(.key)[] | .value) end
+  end' "$FILE"
