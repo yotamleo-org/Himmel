@@ -722,7 +722,7 @@ assert_eq "T38 the unskipped hook now passes on the index" "0" "$(hook_full_rc)"
 assert_eq "T38 no alert sent" "" "$(sent)"
 git -C "$V" commit -q -m sync >/dev/null 2>&1; crc=$?
 assert_eq "T38 the sync's own commit goes through the hook" "0" "$crc"
-assert_eq "T38 the committed blob keeps no final newline" '{"workers": []}' "$(git -C "$V" show HEAD:handovers/workers-TB-1.json)"
+assert_eq "T38 the committed blob is the staged blob, byte for byte (no newline added)" "$(printf '%s' "$blob_before" | awk '{print $2}')" "$(git -C "$V" rev-parse HEAD:handovers/workers-TB-1.json)"
 
 # --- T39 a state file beside one outside handovers/: all-or-nothing, the outside file alerts ---
 mkvault

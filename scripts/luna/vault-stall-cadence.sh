@@ -181,7 +181,8 @@ classify() {
 # exit code. Message lines only, never source or a match.
 refusal_cause() {
     local msg
-    msg="$(printf '%s\n' "$1" | sed -n -E 's/^(error|fatal): (.*)$/\2/p; s/^An (unexpected )?error has occurred: (.*)$/\2/p' | head -n 1)"
+    msg="$(printf '%s\n' "$1" | sed -n -E 's/^error: (.*)$/\1/p; s/^An (unexpected )?error has occurred: ([A-Za-z]+Error).*$/\2/p' | head -n 1)"
+    msg="${msg:0:100}"
     if [ -n "$msg" ]; then printf 'refused rc=%s: %s' "$2" "$msg"
     else printf 'unclassified refusal rc=%s (no hook id, %s output lines)' "$2" "$(printf '%s\n' "$1" | grep -c .)"; fi
 }
@@ -225,7 +226,7 @@ hook_log() {
         /^Did you mean:[[:space:]]*$/ { src = 1; next }
         /^Finding:/ { leak = 1 }
         leak && /^RuleID:/ { leak = 0 }
-        !leak' | grep -E '^([^ ].*\.{3,}(Passed|Failed|Skipped)$|- hook id: |- exit code: |- files were modified by this hook$|Fixing |In .+ line [0-9]+:$|.+: Failed to json decode|(error|fatal): |An (unexpected )?error has occurred: |(RuleID|File|Line|Fingerprint):|[0-9:]+(AM|PM) (ERR|FTL|WRN) )'
+        !leak' | grep -E '^([^ ].*\.{3,}(Passed|Failed|Skipped)$|- hook id: |- exit code: |- files were modified by this hook$|Fixing |In .+ line [0-9]+:$|.+: Failed to json decode|error: |An (unexpected )?error has occurred: |(RuleID|File|Line|Fingerprint):|[0-9:]+(AM|PM) (ERR|FTL|WRN) )'
 }
 
 # describe <row> — "hook [rule] file:line", the only shape that leaves this script.
