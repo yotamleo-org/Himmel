@@ -4,9 +4,9 @@
 
    **When it runs.** Count the added code comments over the branch diff (`<db_sha>` and `<head>` are step 3.0's values, carried forward as literals):
    ```bash
-   bash "<himmel_dir>/scripts/lint/check-history-comments.sh" --range <db_sha> --tip <head> --count-comments
+   bash "$HIMMEL_REPO/scripts/lint/check-history-comments.sh" --range <db_sha> --tip <head> --count-comments
    ```
-   It prints one integer. `0` means the step ends here and no row is owed. A non-zero exit or a non-integer is a stop: report it, never treat it as 0 (the gate refuses closed on the same condition, `reason=comment-review-unreadable`).
+   It prints one integer, from the anchor's counter (the one gate 4g runs, never the branch's copy: a `<himmel_dir>` spelling would run the branch's own bytes, which `test-cr-guarded-closure.sh` refuses). `0` means the step ends here and no row is owed. A non-zero exit or a non-integer is a stop: report it, never treat it as 0 (the gate refuses closed on the same condition, `reason=comment-review-unreadable`).
 
    **The diff file.** Print the branch diff with zero context lines (the agent reads nearby code itself), then save that output unchanged to a scratch path in the session scratchpad with the Write tool, since a fence may not redirect and git's `--output` option is refused by the fence guard:
    ```bash
