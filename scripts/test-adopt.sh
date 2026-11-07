@@ -151,6 +151,9 @@ git -C "$tp" commit -q --allow-empty -m "chore: initial commit"
 out_tp=$(HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tp" 2>&1)
 [ "$(git -C "$tp" status --porcelain -- scripts | wc -l)" -gt 0 ] || fail "HIMMEL-6326: install without --commit-install must stay uncommitted"
 grep -qx '.claude/worktrees/' "$tp/.gitignore" || fail "HIMMEL-6326: adopt did not add .claude/worktrees/ to .gitignore"
+# /handover-setup writes the project's .env, so adopt must ignore it (checked
+# right after the first adopt: later steps re-run the printed line through the real adopt.sh)
+[ "$(grep -c -x '.env' "$tp/.gitignore")" = "1" ] || fail "adopt did not add exactly one .env rule to .gitignore"
 printed_tp=$(sed -n 's/^.*Commit it once with: //p' <<< "$out_tp")
 [ -n "$printed_tp" ] || fail "HIMMEL-6852: install on main printed no 'Commit it once with:' line: $out_tp"
 eval "printed_argv=($printed_tp)"
@@ -164,6 +167,10 @@ echo "ok: the printed --commit-install line runs from the project cwd (HIMMEL-68
 HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tp" --commit-install >/dev/null
 [ "$(git -C "$tp" status --porcelain -- scripts .gitignore .claude/settings.json | wc -l)" -eq 0 ] || fail "HIMMEL-6326: --commit-install left the install uncommitted"
 [ "$(grep -c -x '.claude/worktrees/' "$tp/.gitignore")" = "1" ] || fail "HIMMEL-6326: .gitignore rule duplicated on re-run"
+printf 'HANDOVER_DIR=/x\n' > "$tp/.env"
+status_env=$(git -C "$tp" status --porcelain)
+grep -q '\.env' <<< "$status_env" && fail "a project .env shows in git status after adopt"
+rm -f "$tp/.env"
 [ "$(git -C "$tp" remote | wc -l)" -eq 0 ] || fail "HIMMEL-6326: fixture must have no remote"
 (cd "$tp" && HOME="$base_home" bash scripts/worktree.sh feat/try-himmel >/dev/null 2>&1) || fail "HIMMEL-6326: worktree.sh failed in a project with no origin"
 [ -f "$tp/.claude/worktrees/feat+try-himmel/scripts/worktree.sh" ] || fail "HIMMEL-6326: worktree cut after install lacks scripts/"
@@ -496,6 +503,27 @@ hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$preserve_target2/.claude/settings.j
 [ "$hd" = "ABSENT" ] || fail "project .env preserve: the project .env HANDOVER_DIR was shadowed by a settings.json write ([$hd])"
 grepq "$out" 'via /handover-setup' || fail "project .env preserve: missing the .env-preserve message (got: $out)"
 echo "ok: preserves an existing project .env HANDOVER_DIR (does not shadow it via settings.json)"
+
+# ── 4c1. an inline choice survives a re-run of adopt ──
+# /handover-setup records inline as an empty HANDOVER_DIR= in the project's .env
+# (replacing a stale vault path). Re-running adopt, which docs/setup/updating.md
+# tells project adopters to do, must not pin the vault again, and repeating the
+# choice must not add a second line.
+inline_setdir="$(dirname "$adopt")/handover/set-handover-dir.sh"
+inline_target2="$work/inline-target2"; mkdir -p "$inline_target2"
+inline_vault2="$work/inline-vault2"
+printf 'USER_SLUG=x\nHANDOVER_DIR=/stale/vault/handovers\n' > "$inline_target2/.env"
+bash "$inline_setdir" --inline --env-file "$inline_target2/.env" >/dev/null 2>&1 || fail "inline choice: set-handover-dir.sh --inline failed"
+bash "$inline_setdir" --inline --env-file "$inline_target2/.env" >/dev/null 2>&1 || fail "inline choice: the second --inline failed"
+HOME="$base_home" bash "$adopt" --profile luna --target "$inline_target2" --luna-target "$inline_vault2" >/dev/null 2>&1 || fail "inline choice: the first adopt failed"
+hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$inline_target2/.claude/settings.json" 2>/dev/null)
+[ "$hd" = "ABSENT" ] || fail "inline choice: re-adopt pinned a root over the inline choice ([$hd])"
+[ "$(grep -c '^HANDOVER_DIR=' "$inline_target2/.env")" = "1" ] || fail "inline choice: .env does not hold exactly one HANDOVER_DIR line"
+[ "$(grep '^HANDOVER_DIR=' "$inline_target2/.env")" = "HANDOVER_DIR=" ] || fail "inline choice: the stale .env path was not replaced by the empty record"
+HOME="$base_home" bash "$adopt" --profile luna --target "$inline_target2" --luna-target "$inline_vault2" >/dev/null 2>&1 || fail "inline choice: the second adopt failed"
+hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$inline_target2/.claude/settings.json" 2>/dev/null)
+[ "$hd" = "ABSENT" ] || fail "inline choice: the second re-adopt pinned a root ([$hd])"
+echo "ok: an inline choice (empty .env HANDOVER_DIR=) survives re-adopt and a repeated choice adds no line"
 
 # ── 4c1. the himmel clone's .env is NOT the project's choice ──
 # A project install reads the PROJECT's .env. A HANDOVER_DIR in the himmel

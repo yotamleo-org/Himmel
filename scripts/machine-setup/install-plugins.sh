@@ -146,12 +146,15 @@ run() {
 # a one-line shrug that hid the cause. Return failures to the caller: registration
 # retries once then aborts; plugin installs remain advisory with presence-verify
 # authoritative. A benign "already installed/registered" match stays a quiet line.
+RUN_STEP_OUT=""   # the CLI output of the last run_step, kept for the install summary below
 run_step() {
+  RUN_STEP_OUT=""
   if [[ $DRY_RUN -eq 1 ]]; then echo "DRY: $*"; return 0; fi
   # `|| rc=$?` (not `; rc=$?`): under `set -e` a bare `out=$(failing_cmd)` aborts
   # the script at the assignment before we can classify — the `||` absorbs it.
   local out rc=0
   out=$("$@" 2>&1 </dev/null) || rc=$?
+  RUN_STEP_OUT="$out"
   [[ $rc -eq 0 ]] && return 0
   # Benign-idempotency TEXT is trusted only for plugin installs, where the end
   # presence-verify is an authoritative second gate. Registration has no such
@@ -518,6 +521,8 @@ SPECS=$(echo "$EXPANDED" | jq -r '
   ((.enabledPlugins // {}) | to_entries[] | select(.value == true) | .key),
   ((.onDemandPlugins // {}) | keys[])
 ' | tr -d '\r' | sort -u)
+INSTALL_SPEC_LIST=()
+INSTALL_OUT_LIST=()
 while IFS= read -r SPEC; do
   [[ -z "$SPEC" ]] && continue
   echo "  install: $SPEC"
@@ -529,6 +534,10 @@ while IFS= read -r SPEC; do
       --field "marketplace=$(jq -nc --arg v "${SPEC##*@}" '$v')" \
       --field "project_path=$(jq -nc --arg v "$PROV_PROJECT_PATH" '$v')"
   fi
+  # Keep what the CLI said about this plugin: the presence verify below names a
+  # missing one, and the operator needs the install error next to that name.
+  INSTALL_SPEC_LIST+=("$SPEC")
+  INSTALL_OUT_LIST+=("$RUN_STEP_OUT")
 done <<< "$SPECS"
 
 # ── Verify (post-install presence check) ─────────────────────────
@@ -654,6 +663,11 @@ if [[ ${#MISSING[@]} -gt 0 ]]; then
     for SPEC in "${MISSING[@]}"; do
       [[ "${SPEC##*@}" == "$NAME" ]] || continue
       echo "      $SPEC — retry: claude plugin install $SPEC --scope $SCOPE" >&2
+      for ((i = 0; i < ${#INSTALL_SPEC_LIST[@]}; i++)); do
+        [[ "${INSTALL_SPEC_LIST[$i]}" == "$SPEC" && -n "${INSTALL_OUT_LIST[$i]}" ]] || continue
+        echo "      install output for $SPEC:" >&2
+        printf '%s\n' "${INSTALL_OUT_LIST[$i]}" | sed 's/^/        | /' >&2
+      done
     done
   done <<< "$MISSING_MARKETPLACES"
   exit 1
