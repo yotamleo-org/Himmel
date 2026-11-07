@@ -387,6 +387,7 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 // `CONTENT-SHA256 <sha> <path relative to the verdict file>` line above the verdict line.
 // A file is a signature page when it lives under `specs/{design,designs,spec,plan,plans}/` or
 // `specs/HIMMEL-<n>/`, or a plan critic file names it; every other file sends as before.
+const NOT_FOR_SIGNATURE = "Not for signature";
 const CLEAN = { spec: "SPEC CLEAN", plan: "PLAN CLEAN" } as const;
 const FINDINGS = { spec: /^SPEC FINDINGS \d+$/, plan: /^PLAN FINDINGS \d+$/ } as const;
 export const CRITIC_ROUND_CAP = 3;
@@ -622,7 +623,7 @@ export async function checkSignaturePage(abs: string): Promise<{ verdicts: Verdi
   const { spec, role } = g;
   const specReal = await realpath(spec).catch(() => spec);
   const bytes = await readFile(page);
-  if (/not for signature/i.test(bytes.toString("utf8"))) throw new Error(`${basename(page)} still says "Not for signature"; a page a critic passed must not, and the critic must read the final bytes; the page is not sent`);
+  if (new RegExp(NOT_FOR_SIGNATURE, "i").test(bytes.toString("utf8"))) throw new Error(`${basename(page)} still says "Not for signature"; a page a critic passed must not, and the critic must read the final bytes; the page is not sent`);
   const critics = await latestCritics(spec);
   const rounds = await criticRounds(spec);
   const mayGoOpen = (kind: Kind, line: string) => FINDINGS[kind].test(line) && rounds[kind].numbered >= CRITIC_ROUND_CAP;
@@ -717,15 +718,12 @@ ${body}</body></html>
 `;
 }
 
-// The by-request form of `send-file`: the operator asked to see a page that has not passed its critics.
-// It skips the critic check and marks the page and the caption as not passed and not for signature. The words
-// "Not for signature" in the sent bytes are what keep a marked copy from ever passing `checkSignaturePage`.
 const EARLY_CAPTION = "NOT PASSED - not for signature (sent on request)";
 function notPassedBlock(abs: string, request: string): string {
   const asked = request.trim();
   if (!asked) throw new Error("--by-request names no request; give the operator's request in words, or send without it (a page that has not passed is then refused)");
   if (!/\.(md|markdown|html?)$/i.test(abs)) throw new Error(`--by-request carries its mark only on a .md or .html page; ${basename(abs)} is neither, send it without --by-request`);
-  return `<section class="not-passed"><p><strong>NOT PASSED. Not for signature.</strong> Critic approval was not checked for this delivery. It is sent early because the operator asked: ${esc(asked)}</p></section>\n`;
+  return `<section class="not-passed"><p><strong>NOT PASSED. ${NOT_FOR_SIGNATURE}.</strong> Critic approval was not checked for this delivery. It is sent early because the operator asked: ${esc(asked)}</p></section>\n`;
 }
 
 export async function queueFile(root: string, chat: number, path: string, caption?: string, byRequest?: string): Promise<string> {
@@ -735,8 +733,8 @@ export async function queueFile(root: string, chat: number, path: string, captio
   if (!st) throw new Error(`file not found: ${path}`);
   if (!st.isFile()) throw new Error(`not a regular file: ${path}`);
   if (st.size > MAX_SEND_BYTES) throw tooBig(st.size);
-  const early = byRequest === undefined ? null : notPassedBlock(abs, byRequest);   // throws (nothing queued) on no request or no page
-  const signed = early ? null : await checkSignaturePage(abs);   // throws (nothing queued) unless the latest critics passed these bytes
+  const early = byRequest === undefined ? null : notPassedBlock(abs, byRequest);
+  const signed = early ? null : await checkSignaturePage(abs);
   // The caption opens with the verdicts read from the critic files; the caller's words follow, never replace them.
   const verdictCaption = early ? EARLY_CAPTION : signed?.verdicts.map(v => `${v.verdict} r${v.round}`).join(" | ");
   if (verdictCaption) caption = caption ? `${verdictCaption} - ${caption}` : verdictCaption;

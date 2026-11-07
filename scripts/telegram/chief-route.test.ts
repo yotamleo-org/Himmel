@@ -1608,7 +1608,6 @@ test("send-file refuses a spec page that still says Not for signature, and sends
   expect(createHash("sha256").update(bytes).digest("hex")).toBe(sha(clean));
 });
 
-// ---- send-file --by-request: the operator asked for an early look at a page that has not passed its critics ----
 const REQ = "operator asked to see it early";
 const earlySpec = (r: string, name = "early.md", text = "# Early\n\nbody\n") => {
   const dir = join(r, "specs", "designs"); mkdirSync(dir, { recursive: true });
@@ -1632,7 +1631,7 @@ test("send-file --by-request queues a spec page with no clean critics, marked no
   expect(html).toContain("Not for signature");
   expect(html).toContain(`asked: ${REQ}</p>`);
   expect(html.indexOf("NOT PASSED")).toBeLessThan(html.indexOf("<h1>"));
-  const after = await sendFile(r, "1", spec);   // the by-request send leaves the plain route as strict as it was
+  const after = await sendFile(r, "1", spec);
   expect(after.code).not.toBe(0);
   expect(after.lines.length).toBe(1);
 });
@@ -1671,7 +1670,7 @@ test("a page sent --by-request cannot satisfy the signature check, even with eve
   const res = await sendFile(r, "--by-request", REQ, "1", b.page);
   expect(res.code).toBe(0);
   const marked = readFileSync(res.lines[0].document_path as string, "utf8");
-  writeFileSync(b.page, marked);   // the operator forwards the marked copy back as a sign page
+  writeFileSync(b.page, marked);
   criticSeals(b.spec, "spec", 2, "SPEC CLEAN", [b.sealed[0], { text: marked, file: "design.html" }]);
   const { checkSignaturePage } = await import("./chief-route");
   await expect(checkSignaturePage(b.page)).rejects.toThrow("Not for signature");
