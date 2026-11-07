@@ -143,6 +143,7 @@ patch_case "apply_patch Update File on outside-contributors -> block" block "***
 patch_case "apply_patch symlinked header to outside-contributors -> block" block "*** Begin Patch${NL}*** Update File: $T/alias-contributors.json${NL}@@${NL}*** End Patch"
 bash_case "redirect into outside-contributors -> block" block "echo '[]' > $STORE_C"
 bash_case "tee into outside-PR approvals -> block" block "echo x | tee $STORE_A"
+bash_case "starred outside-review store name -> block" block "cat $HOME/.himmel/outside-*"
 bash_case "cat outside-PR approvals -> allow" allow "cat $STORE_A"
 bash_case "jq read of outside-contributors -> allow" allow "jq . $STORE_C"
 
