@@ -75,20 +75,30 @@ a project-scope install); a project without one (a user-scope install) uses the
 himmel clone's copy (`$HIMMEL_REPO/scripts/handover/set-handover-dir.sh`) with
 `--env-file <repo-root>/.env`. `<writer>` below means that command.
 
-- **Inline (Mode A):** record the choice as an empty `HANDOVER_DIR=` line in
-  `<repo-root>/.env`:
+- **Inline (Mode A):** first run `git -C <repo-root> worktree list`. More than
+  one line means worktrees are in use, and inline does not work from them yet:
+  the resolver (`scripts/lib/handover-path.sh`) resolves inline to
+  `git rev-parse --show-toplevel`, which in a worktree is `<worktree>/handovers`,
+  not `<repo-root>/handovers`. A session there finds none of the primary's
+  state, `/handover-resume` exits 2, and a write path (`handover_root_ensure`)
+  silently creates an empty `<worktree>/handovers` and strands the new state in
+  it. Tell the user this plainly and recommend vault or external; continue with
+  inline only if they confirm they will work from `<repo-root>` itself. Then
+  record the choice as an empty `HANDOVER_DIR=` line in `<repo-root>/.env`:
 
   ```bash
   bash <writer> --inline
   ```
 
-  An empty value reads as unset, so the resolver
-  (`scripts/lib/handover-path.sh`) defaults to `<repo-root>/handovers`. The
-  line replaces a vault or external path left by an earlier choice and is what
-  stops a later re-run of `adopt.sh` from pinning the vault again. Confirm the
-  printed `OK set-handover-dir:` line; on any other result stop and show it.
-  Then do the settings-pin reconcile below (inline removes a differing pin),
-  then continue to step 5 with `<state-root-host>` = `<repo-root>/handovers`.
+  An empty value reads as unset, so the resolver defaults to
+  `<repo-root>/handovers` when run from `<repo-root>`. The line replaces a vault
+  or external path left by an earlier choice and is what stops a later re-run of
+  `adopt.sh` from pinning the vault again. Confirm the printed
+  `OK set-handover-dir:` line; on any other result stop and show it. If the
+  writer prints `unknown flag: --inline`, the project's copy predates the flag:
+  re-run `adopt.sh` to refresh it, or use the himmel clone's copy with
+  `--env-file <repo-root>/.env`. Then do the reconcile below, then continue to
+  step 5 with `<state-root-host>` = `<repo-root>/handovers`.
 - **Vault or external (Mode B — both persist identically):** if the chosen
   directory does not exist yet, ask whether
   to create it (`mkdir -p`) — do not write a `HANDOVER_DIR` that points at a
@@ -109,59 +119,83 @@ himmel clone's copy (`$HIMMEL_REPO/scripts/handover/set-handover-dir.sh`) with
   Note for the current session: `.env` is read by tools at launch, so the new
   `HANDOVER_DIR` takes effect for shell scripts the next time Claude is launched
   from this repo (the loader `scripts/lib/load-dotenv.sh` picks it up); the
-  skill steps below use the path directly. Then do the settings-pin reconcile
-  below before step 5.
+  skill steps below use the path directly. Then do the reconcile below before
+  step 5.
 
-- **All three choices — reconcile the project's settings pin.** A project
-  install (`adopt.sh --profile all`) may have pinned `env.HANDOVER_DIR` in
-  `<repo-root>/.claude/settings.json`, and a settings `env` value beats `.env`,
-  so a different choice would silently not take effect. If
-  `<repo-root>/.claude/settings.json` does not exist there is nothing to
-  reconcile. Otherwise read it:
+- **All three choices — reconcile what outranks `.env`.** Three sources beat
+  `.env`: the project's settings pin, the user-scope settings pin, and the
+  himmel config files. A different choice would silently not take effect while
+  one of them holds another root. Do all of substeps 1 to 3 in order; an absent
+  file in one is not a reason to skip the next. In each read, a failure (`jq`
+  missing, invalid JSON, a non-zero exit) is not "no value": stop and show the
+  error, because the choice is not applied until it is read. The writers live in
+  the himmel clone, which is `<repo-root>` in a himmel checkout and
+  `$HIMMEL_REPO` in a project install. `<choice>` is `<canonical-path>`; for
+  inline it is `<repo-root>/handovers`.
 
-  ```bash
-  jq -r '.env.HANDOVER_DIR // empty' <repo-root>/.claude/settings.json
-  ```
+  1. **Project pin.** If `<repo-root>/.claude/settings.json` does not exist,
+     there is no project pin: go to substep 2. Otherwise read it:
 
-  If `jq` is missing or exits non-zero (invalid JSON), stop and show the error:
-  that is not "no pin", and the choice is not applied until it is read. An empty
-  result from a successful `jq` means no pin: nothing to do. Otherwise compare
-  the pin to the chosen root (`<canonical-path>`; for inline, any pin is
-  removed) and act only when they differ. The writers live in the himmel clone,
-  which is `<repo-root>` in a himmel checkout and `$HIMMEL_REPO` in a project
-  install:
+     ```bash
+     jq -r '.env.HANDOVER_DIR // empty' <repo-root>/.claude/settings.json
+     ```
 
-  - **Vault or external:** point the pin at the choice:
-    `bash <himmel-clone>/scripts/lib/wire-handover-dir.sh <repo-root>/.claude/settings.json "<canonical-path>"`
-  - **Inline:** remove the pin so the repo default applies:
-    `bash <himmel-clone>/scripts/lib/unwire-handover-dir.sh <repo-root>/.claude/settings.json`
+     An empty result from a successful `jq` means no pin. `<project-pin>` is
+     the value read.
+  2. **User-scope pin.** A user-scope install (`adopt.sh --scope user`) may have
+     pinned `env.HANDOVER_DIR` in `~/.claude/settings.json`. Read it with the
+     same `jq` command (an absent file means none). `<outer>` is that value.
+  3. **Config files.** `scripts/lib/load-dotenv.sh` reads `~/.himmel/himmel.conf.local`,
+     the active station profile and `~/.himmel/himmel.conf` before `.env`, and
+     `adopt.sh` writes no pin when one holds a `HANDOVER_DIR`. Read the winning
+     value with the loader itself:
 
-  If the writer exits non-zero, stop and show its output: `.env` is already
-  written but the pin is not, so the choice is only half applied. Do not go on
-  to step 5 and do not print the step 6 summary.
+     ```bash
+     bash -c '. <himmel-clone>/scripts/lib/load-dotenv.sh && _himmel_config_layers HANDOVER_DIR'
+     ```
 
-  **User-scope pin.** A user-scope install (`adopt.sh --scope user`) may have
-  pinned `env.HANDOVER_DIR` in `~/.claude/settings.json`. Read it with the same
-  `jq` command and the same stop rule. That value reaches every project and
-  beats `.env`, and project settings beat user settings. When it is non-empty
-  and differs from the choice (`<canonical-path>`; inline: `<repo-root>/handovers`),
-  give this project its own pin with `wire-handover-dir.sh` as above, even
-  when the project had none (for inline, wire it to `<repo-root>/handovers`
-  instead of removing it), and tell the user the user-scope value is unchanged.
-  Never edit `~/.claude/settings.json` here.
+     It prints `HANDOVER_DIR=<value>` or nothing. If `<outer>` is empty, a
+     value here becomes `<outer>`. (A settings `env` value still beats these
+     files, so a pin written below wins over them.)
+  4. **Apply**, only where something differs from `<choice>`:
+     - `<outer>` is non-empty and differs from `<choice>`: this project needs its
+       own pin, even when it had none, because a project setting beats a user
+       setting and any config file. Run
+       `bash <himmel-clone>/scripts/lib/wire-handover-dir.sh <repo-root>/.claude/settings.json "<choice>"`
+       (inline too: wire `<repo-root>/handovers` instead of removing). Tell the
+       user the user-scope pin or config value is unchanged; never edit
+       `~/.claude/settings.json` or `~/.himmel/himmel.conf*` here.
+     - Else `<project-pin>` is non-empty and differs from `<choice>` (inline:
+       any pin): vault or external, point it at the choice with the same
+       `wire-handover-dir.sh` command; inline, remove it with
+       `bash <himmel-clone>/scripts/lib/unwire-handover-dir.sh <repo-root>/.claude/settings.json`.
 
-  Tell the user what changed ("env.HANDOVER_DIR in .claude/settings.json was
-  `<old>`, now `<new>` / removed"). Settings are read at launch, so this too
-  takes effect from the next Claude launch in the project.
+     If a writer exits non-zero, stop and show its output: `.env` is already
+     written but the pin is not, so the choice is only half applied. Do not go on
+     to step 5 and do not print the step 6 summary. Step 6 names only a mode
+     that wins: if a source above still holds another root after this substep,
+     do not report the choice as applied.
 
-  **Is the settings file tracked?** Run
-  `git -C <repo-root> ls-files --error-unmatch .claude/settings.json`. If it is
-  (a committed install), the reconcile only changed the working copy in
-  `<repo-root>`: every worktree and every other clone reads its own checked-out
-  settings file and keeps the old pin, so their sessions keep writing and
-  reading the old root until the change lands. Tell the user to commit the
-  settings change on a branch and merge it through a PR, never on main, and
-  say what the worktrees do meanwhile. Do not commit it yourself.
+     Tell the user what changed ("env.HANDOVER_DIR in .claude/settings.json was
+     `<old>`, now `<new>` / removed"). Settings are read at launch, so this
+     takes effect from the next Claude launch in the project.
+  5. **Will worktrees see it?** Run
+     `git -C <repo-root> ls-files --error-unmatch .claude/settings.json` when
+     substep 4 wrote or removed a project pin.
+     - **Tracked** (a committed install): only the working copy in `<repo-root>`
+       changed. Every worktree and every other clone reads its own checked-out
+       settings file and keeps the old pin, so their sessions keep reading and
+       writing the old root until the change lands. Tell the user to commit the
+       settings change on a branch and merge it through a PR, never on main.
+     - **Untracked** (a user-scope install creates this file untracked): a
+       worktree cut from HEAD has no such file, so it falls back to
+       `<outer>` (the old root) and a new clone does too. Tell the user the
+       choice holds only in `<repo-root>` until they either add the file and
+       commit it on a branch (a PR, never on main) or change the user-scope pin
+       or config value to the new root. Do not say "needs committing" for a file
+       that was never committed.
+
+     Say what the worktrees do meanwhile. Do not commit anything yourself.
 
 ### 5. Initialise or adopt the state
 
@@ -200,3 +234,8 @@ this ran:
   `set-handover-dir.sh` (both forms) + the skill's `register` flow are idempotent.
 - Re-running `adopt.sh` keeps the choice: it leaves a `HANDOVER_DIR` line in the
   project's `.env`, empty or not, alone and does not pin a vault over it.
+- `load_dotenv` prints a `DEPRECATED ... HANDOVER_DIR read from .env` notice for
+  this line, empty or not. For the inline record that notice is expected: do not
+  delete the line, because a later `adopt.sh` run would then pin the vault again
+  (`himmel.conf` cannot hold the record: it skips an empty value). Tell the user
+  the notice is the cost of the inline record.

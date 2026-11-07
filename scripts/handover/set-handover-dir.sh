@@ -80,7 +80,7 @@ fi
 # Resolve the target .env: explicit --env-file, else the primary checkout root
 # (parent of git-common-dir — finds the real .env from inside a worktree too).
 if [ -z "$ENV_FILE" ]; then
-    if common=$(git rev-parse --git-common-dir 2>/dev/null); then
+    if common=$(git rev-parse --git-common-dir 2>/dev/null); then # swallow-ok: not in a git repo takes the else branch, a script-relative .env
         ENV_FILE="$(cd "$common/.." && pwd)/.env"
     else
         ENV_FILE="$SCRIPT_DIR/../../.env"
@@ -100,13 +100,31 @@ fi
 new_line="HANDOVER_DIR=$HDIR"
 
 if grep -qE '^[[:space:]]*HANDOVER_DIR=' "$ENV_FILE"; then
-    tmp="$ENV_FILE.tmp.$$"
+    # Follow a symlinked .env to its real file so the rename replaces the target,
+    # not the link (readlink without -f: bash 3.2 / macOS safe).
+    target="$ENV_FILE"
+    hops=0
+    while [ -L "$target" ] && [ "$hops" -lt 20 ]; do
+        link=$(readlink "$target")
+        case "$link" in
+            /*) target="$link" ;;
+            *)  target="$(dirname "$target")/$link" ;;
+        esac
+        hops=$((hops + 1))
+    done
+    # mktemp in the target's dir (0600, unpredictable name); copy the original
+    # mode onto it so the update never widens a 0600 .env to the umask mode.
+    tmp=$(mktemp "$target.XXXXXX") || { echo "ERR set-handover-dir: mktemp failed for $target" >&2; exit 1; }
+    trap 'rm -f "$tmp"' EXIT
+    perm=$(stat -c '%a' "$target" 2>/dev/null || stat -f '%Lp' "$target" 2>/dev/null || echo '') # swallow-ok: an unreadable mode skips the chmod, the temp keeps its 0600
+    if [ -n "$perm" ]; then chmod "$perm" "$tmp" 2>/dev/null || true; fi
     awk -v repl="$new_line" '
         !done && /^[[:space:]]*HANDOVER_DIR=/ { print repl; done=1; next }
         { print }
     ' "$ENV_FILE" > "$tmp"
-    # prim-ok: the temp is named by PID and takes the umask mode; atomic_write would reset it to 0600
-    mv "$tmp" "$ENV_FILE"
+    # prim-ok: the original .env mode is copied onto $tmp above; atomic_write would reset it to 0600 and drop the EXIT-trap cleanup shape.
+    mv "$tmp" "$target"
+    trap - EXIT
     echo "OK set-handover-dir: updated HANDOVER_DIR in $ENV_FILE"
 else
     env_append_line "$ENV_FILE" "$new_line"

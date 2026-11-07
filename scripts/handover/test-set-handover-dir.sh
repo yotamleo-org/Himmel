@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Tests for scripts/handover/set-handover-dir.sh.
+# The T14/T17 rows set HOME and HIMMEL_CONFIG_DIR inside $(...) on purpose: each case needs its own env.
+# shellcheck disable=SC2030,SC2031
 set -uo pipefail
 
 SCRIPT="$(cd "$(dirname "$0")" && pwd)/set-handover-dir.sh"
@@ -124,6 +126,47 @@ mkdir -p "$TMP/t14home"
 t14_root=$(cd "$T14_REPO" && unset HANDOVER_DIR && export HOME="$TMP/t14home" HIMMEL_CONFIG_DIR="$TMP/t14home/.himmel" && . "$LIB/load-dotenv.sh" && . "$LIB/handover-path.sh" \
     && load_dotenv --root "$T14_REPO" HANDOVER_DIR 2>/dev/null && handover_root 2>&1)
 assert_eq "T14 resolver lands on the repo handovers/" "$(cd "$T14_REPO/handovers" && pwd)" "$t14_root"
+
+# file_mode <path>: octal mode, GNU stat first then BSD stat (macOS).
+file_mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1" 2>/dev/null; }
+
+# T15: an in-place update keeps a 0600 .env at 0600 under a permissive umask (the
+# temp file must not take the umask mode), for a path and for --inline.
+ENV7="$TMP/mode.env"
+printf 'USER_SLUG=tester\nHANDOVER_DIR=/stale/vault/handovers\n' > "$ENV7"
+chmod 600 "$ENV7"
+(umask 022; bash "$SCRIPT" "$HDIR" --env-file "$ENV7" >/dev/null 2>&1)
+assert_eq "T15 path update keeps mode 600" "600" "$(file_mode "$ENV7")"
+(umask 022; bash "$SCRIPT" --inline --env-file "$ENV7" >/dev/null 2>&1)
+assert_eq "T15 inline update keeps mode 600" "600" "$(file_mode "$ENV7")"
+assert_eq "T15 inline value written" "HANDOVER_DIR=" "$(grep '^HANDOVER_DIR=' "$ENV7")"
+
+# T16: an in-place update through a symlinked .env writes the target and keeps the
+# link (the link must not be replaced by a regular file with the target left stale).
+mkdir -p "$TMP/t16"
+printf 'USER_SLUG=tester\nHANDOVER_DIR=/stale/vault/handovers\n' > "$TMP/t16/real.env"
+ln -s real.env "$TMP/t16/.env"
+bash "$SCRIPT" "$HDIR" --env-file "$TMP/t16/.env" >/dev/null 2>&1
+assert_rc "T16 symlinked .env rc=0" 0 "$?"
+if [ -L "$TMP/t16/.env" ]; then echo "PASS T16 link kept"; else echo "FAIL T16 link kept — replaced by a regular file"; FAILED=$((FAILED + 1)); fi
+assert_eq "T16 target updated" "HANDOVER_DIR=$HDIR_CANON" "$(grep '^HANDOVER_DIR=' "$TMP/t16/real.env")"
+
+# T17: the handover-setup.md reconcile reads himmel.conf with `_himmel_config_layers
+# HANDOVER_DIR`; a conf value beats the .env that set-handover-dir.sh writes, and a
+# process-env value (what a settings `env` pin becomes) beats the conf. Pins the
+# order the prose relies on to put a project pin over a conf root.
+T17_REPO="$TMP/t17repo"
+T17_CONF="$TMP/t17conf"
+mkdir -p "$T17_REPO" "$T17_CONF" "$TMP/t17home"
+git -C "$T17_REPO" init -q
+printf 'HANDOVER_DIR=/conf/vault/handovers\n' > "$T17_CONF/himmel.conf"
+bash "$SCRIPT" "$HDIR" --env-file "$T17_REPO/.env" >/dev/null 2>&1
+t17_read=$(cd "$T17_REPO" && unset HANDOVER_DIR && export HOME="$TMP/t17home" HIMMEL_CONFIG_DIR="$T17_CONF" && . "$LIB/load-dotenv.sh" && _himmel_config_layers HANDOVER_DIR)
+assert_eq "T17 config read finds the conf root" "HANDOVER_DIR=/conf/vault/handovers" "$t17_read"
+t17_conf_wins=$(cd "$T17_REPO" && unset HANDOVER_DIR && export HOME="$TMP/t17home" HIMMEL_CONFIG_DIR="$T17_CONF" && . "$LIB/load-dotenv.sh" && load_dotenv --root "$T17_REPO" HANDOVER_DIR 2>/dev/null && printf '%s' "$HANDOVER_DIR")
+assert_eq "T17 conf root beats the .env choice" "/conf/vault/handovers" "$t17_conf_wins"
+t17_pin_wins=$(cd "$T17_REPO" && export HANDOVER_DIR="$HDIR_CANON" HOME="$TMP/t17home" HIMMEL_CONFIG_DIR="$T17_CONF" && . "$LIB/load-dotenv.sh" && load_dotenv --root "$T17_REPO" HANDOVER_DIR 2>/dev/null && printf '%s' "$HANDOVER_DIR")
+assert_eq "T17 a settings-env pin beats the conf root" "$HDIR_CANON" "$t17_pin_wins"
 
 echo
 if [ "$FAILED" -eq 0 ]; then echo "All set-handover-dir tests passed."
