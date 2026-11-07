@@ -2110,20 +2110,20 @@ check "workers: a failed manifest listing -> rc 2, not an empty sweep" "$rc" "2"
 not_contains "workers: a failed manifest listing prints no sweep total" "$out" "sweeps: manifests=0"
 
 mkdir -p "$W/sessions"
-SID_A="aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa"   # the long-named launch the bus refused
-SID_B="bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb"   # the shortened relaunch
-SID_X="cccccccc-3333-4333-8333-cccccccccccc"   # another worker's session
+SID_REFUSED_LONG="aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa"
+SID_SHORT_RELAUNCH="bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb"
+SID_OTHER_WORKER="cccccccc-3333-4333-8333-cccccccccccc"
 SH_DOC="$W/HIMMEL-9-N60b-demo-slice-2026-01-01-RESUME.md"
 SH_OTHER="$W/HIMMEL-9-N77-other-2026-01-01.md"
-printf -- '---\nsession_ids: %s,%s\n---\n# worker\n\n## Results\n\n- 09:00 LIVE - resumed\n- 10:00 WRAPPED - done\n' "$SID_A" "$SID_B" > "$SH_DOC"
-printf -- '---\nsession_ids: %s\n---\n# other\n\n## Results\n\n- 09:00 LIVE - working\n' "$SID_X" > "$SH_OTHER"
+printf -- '---\nsession_ids: %s,%s\n---\n# worker\n\n## Results\n\n- 09:00 LIVE - resumed\n- 10:00 WRAPPED - done\n' "$SID_REFUSED_LONG" "$SID_SHORT_RELAUNCH" > "$SH_DOC"
+printf -- '---\nsession_ids: %s\n---\n# other\n\n## Results\n\n- 09:00 LIVE - working\n' "$SID_OTHER_WORKER" > "$SH_OTHER"
 mkproc() {
     mkcmdline "$1" claude -n "$2" work
     printf '%s (claude) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 9%s 0 0\n' "$1" "$1" > "$W/proc/$1/stat"
     printf '{"pid":%s,"sessionId":"%s","procStart":"%s"}\n' "$1" "$3" "$4" > "$W/sessions/$1.json"
 }
 rm -rf "$W/proc"; mkdir -p "$W/proc"
-mkproc 410 HIMMEL-9-N60b-slice-RESUME "$SID_B" 9410
+mkproc 410 HIMMEL-9-N60b-slice-RESUME "$SID_SHORT_RELAUNCH" 9410
 pgrep_x_stub 410
 reset_calls
 rc=0; out=$(run "$SH_DOC" 2>&1) || rc=$?
@@ -2131,30 +2131,30 @@ check "9542 a: a relaunch under a shortened name is found by its session id -> r
 not_contains "9542 a: it is not read as CLOSED-ALREADY while live" "$out" "CLOSED-ALREADY"
 exact_count "9542 a: exactly the proven pid is signaled" "$(cat "$CALLS")" "kill -TERM 410" "1"
 rm -rf "$W/proc"; mkdir -p "$W/proc"
-mkproc 411 HIMMEL-9-N60b-slice-RESUME "$SID_X" 9411
+mkproc 411 HIMMEL-9-N60b-slice-RESUME "$SID_OTHER_WORKER" 9411
 pgrep_x_stub 411
 reset_calls
 rc=0; out=$(run "$SH_DOC" 2>&1) || rc=$?
 check "9542 a: a live pid whose session id is another worker's is not signaled" "$(cat "$CALLS")" ""
 contains "9542 a: it reads as no live session" "$out" "CLOSED-ALREADY"
 rm -rf "$W/proc"; mkdir -p "$W/proc"
-mkproc 413 HIMMEL-9-N60b-slice-RESUME "$SID_B" 9413
+mkproc 413 HIMMEL-9-N60b-slice-RESUME "$SID_SHORT_RELAUNCH" 9413
 rm -f "$W/sessions/413.json"
 pgrep_x_stub 413
 reset_calls
 rc=0; out=$(run "$SH_DOC" 2>&1) || rc=$?
 check "9542 a: a live pid with no session record is not signaled" "$(cat "$CALLS")" ""
-printf '{"pid":413,"sessionId":"%s"}\n' "$SID_B" > "$W/sessions/413.json"
+printf '{"pid":413,"sessionId":"%s"}\n' "$SID_SHORT_RELAUNCH" > "$W/sessions/413.json"
 reset_calls
 rc=0; out=$(run "$SH_DOC" 2>&1) || rc=$?
 check "9542 a: a session record with no start time proves nothing, nothing is signaled" "$(cat "$CALLS")" ""
-mkproc 413 HIMMEL-9-N60b-slice-RESUME "$SID_B" 111
+mkproc 413 HIMMEL-9-N60b-slice-RESUME "$SID_SHORT_RELAUNCH" 111
 reset_calls
 rc=0; out=$(run "$SH_DOC" 2>&1) || rc=$?
 check "9542 a: a record left by a dead process (start time differs) is not signaled" "$(cat "$CALLS")" ""
 rm -rf "$W/proc"; mkdir -p "$W/proc"
-mkproc 410 HIMMEL-9-N60b-slice-RESUME "$SID_B" 9410
-mkproc 412 HIMMEL-9-N60b-other-RESUME "$SID_A" 9412
+mkproc 410 HIMMEL-9-N60b-slice-RESUME "$SID_SHORT_RELAUNCH" 9410
+mkproc 412 HIMMEL-9-N60b-other-RESUME "$SID_REFUSED_LONG" 9412
 pgrep_x_stub 410 412
 reset_calls
 rc=0; out=$(run "$SH_DOC" 2>&1) || rc=$?
@@ -2164,9 +2164,10 @@ rm -f "$SH_DOC" "$SH_OTHER"
 
 PB_ORIG="$W/HIMMEL-9-N61-pair-2026-01-01.md"
 PB_RES="$W/HIMMEL-9-N61-pair-2026-01-01-RESUME.md"
-pb_orig() { # pb_orig <resume wrapped stamp>
+pb_orig() {
+    local wrapped_stamp="$1"
     # shellcheck disable=SC2016  # literal fixture token delimiters
-    printf '# worker\n\n## Results\n\n- 09:00 LIVE - started, release-token `fixture-pid100`\n- 10:00 WRAPPED - hand-off, resume brief %s\n- 11:00 LIVE - resumed, release-token `fixture-pid200`\n- 11:30 READY - PR 7 abc GREEN\n- %s WRAPPED - merged\n' "$PB_RES" "$1" > "$PB_ORIG"
+    printf '# worker\n\n## Results\n\n- 09:00 LIVE - started, release-token `fixture-pid100`\n- 10:00 WRAPPED - hand-off, resume brief %s\n- 11:00 LIVE - resumed, release-token `fixture-pid200`\n- 11:30 READY - PR 7 abc GREEN\n- %s WRAPPED - merged\n' "$PB_RES" "$wrapped_stamp" > "$PB_ORIG"
 }
 pb_res() { printf '# resume\n\n## Results\n\n- %s READY - PR 7 abc GREEN\n' "$1" > "$PB_RES"; }
 rm -rf "$W/proc"; mkdir -p "$W/proc"
