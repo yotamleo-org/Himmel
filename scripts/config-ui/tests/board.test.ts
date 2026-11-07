@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
 import { DRIFT_BUDGET_S, DRIFT_REFRESH_MS, readBoardExtras, refreshDrift, runReader, TIMEOUT_MS } from "../board";
+import { renderBoard } from "../public/roadmap.js";
 
 const TOKEN = "a".repeat(64);
 const cleanups: (() => void)[] = [];
@@ -212,6 +213,38 @@ test("GET /api/board: with no running version the chain read runs on no version 
   const r = (await get(serve({ HIMMEL_CHAIN_REGISTRY: s.registry, TICKET_STATUS_STATE_DIR: join(s.d, "no-state") }, s))).versionChains;
   expect(r.version).toBeNull();
   expect(r.burn).toEqual({ total: 0, undated: 2, points: [] });
+});
+
+// The whole path with nothing set by hand: an operator hold in the chain log and an operator label in the mirror, read by the server's
+// two reads and drawn by the page. An unreadable chain log must read "not read" on the page, never as nobody waiting.
+test("Board page: a live operator hold and an operator label in the mirror both reach Waiting on you; an unreadable chain log reads as not read", async () => {
+  const s = scratch();
+  writeFileSync(join(s.mirror, "HIMMEL-9.md"), mirrorIssue(9, "To Do", "To Do", [], "Labelled and in no chain").replace("labels: []", 'labels: ["operator-decision"]'));
+  writeFileSync(s.mirror + ".versions.tsv", "v1.1.3\tfalse\t\n");
+  const st = join(s.d, "chain-state");
+  mkdirSync(st);
+  writeFileSync(join(st, "chain-log.jsonl"), JSON.stringify({ ts: "2026-10-29T10:00:00Z", change: "hold", key: "HIMMEL-2", kind: "operator", who: "chief", reason: "decide" }) + "\n");
+  const env = { HIMMEL_CHAIN_REGISTRY: s.registry, TICKET_STATUS_STATE_DIR: st };
+  const ui = { version: null, theme: null, v: "all" };
+  const page = async (base: string) => renderBoard(await get(base.replace("/api/board", "/api/roadmap")), ui, await get(base));
+  const html = await page(serve(env, s));
+  const sec = html.match(/<section id="rm-waiting"[\s\S]*?<\/section>/)![0];
+  expect(sec).toContain("HIMMEL-2");
+  expect(sec).toContain("memory 2/2"); // the hold, from chain-log.jsonl through chain-state.mjs
+  expect(sec).toContain('href="#/board?tab=chains&amp;v=all&amp;at=HIMMEL-2"');
+  expect(sec).toContain("HIMMEL-9"); // the label, from the mirror, in no chain
+  expect(sec).toContain("operator-decision");
+  expect(sec).not.toContain("at=HIMMEL-9"); // the Chains tab does not hold it, so the key is not a link
+  expect(html).toContain("2 wait for you");
+  rmSync(join(st, "chain-log.jsonl"));
+  mkdirSync(join(st, "chain-log.jsonl")); // there, but not a file: unreadable
+  const bad = await page(serve(env, s));
+  expect(bad).toContain("chain holds not read");
+  const badSec = bad.match(/<section id="rm-waiting"[\s\S]*?<\/section>/)![0];
+  expect(badSec).toContain("HIMMEL-9"); // the label still lists
+  expect(badSec).not.toContain("HIMMEL-2"); // the hold is not guessed at: nothing of it is listed or linked
+  expect(bad).toContain("1 waits for you"); // the label still counts
+  expect(bad).not.toContain("2 wait for you");
 });
 
 test("GET /api/board: the saved drift file and the chain registry named in the environment are read through the chief-kit scripts", async () => {

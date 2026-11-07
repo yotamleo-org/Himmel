@@ -16,12 +16,12 @@ const fixture = (d: any, over: Record<string, unknown> = {}) => ({ data: d, erro
 const tile = (apiRoles: unknown, id = "secrets") => renderConfigure({ rows: [] }, { tile: id, setup, state: { plans: {}, apiRoles }, msgs: {} }) as string;
 const text = (html: string) => html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
 
-test("absent: the empty-state card says decision 525 default and the accounts and editor still show", () => {
+test("absent: the empty-state card says the defaults apply and the accounts and editor still show", () => {
   const html = tile(fixture(data("absent", {})));
-  expect(text(html)).toContain("No role map: decision 525 default");
+  expect(text(html)).toContain("No roles set: the defaults apply");
   expect(html).toContain('data-account-row="A"');
   expect(html).toContain('data-act="role-toggle"');
-  expect(text(html)).toContain("graph pass (525 default)");
+  expect(text(html)).toContain("graph pass (default)");
 });
 
 test("valid: roles sit on their account rows, an unconfigured mapped account says it is skipped at pick time", () => {
@@ -47,7 +47,7 @@ test("invalid: the whole file is ignored and the editor starts empty", () => {
   const d = data("invalid", {}, ["invalid-role-map:not-json"]);
   const html = tile(fixture(d));
   expect(html).toContain("invalid-role-map:not-json");
-  expect(text(html)).toContain("the whole file is ignored, decision 525 applies");
+  expect(text(html)).toContain("the whole file is ignored, the defaults apply");
   expect(apiRolesDraft(d)).toEqual({});
 });
 
@@ -108,9 +108,9 @@ test("the Preview block shows only when asked and makes no server call; Save, Pr
   for (const act of ["roles-preview", "roles-save", "roles-cancel"]) expect(shown).toContain(`data-act="${act}"`);
 });
 
-test("the Secrets tile value carries the role text: up to two roles, 525 default, or role map error", () => {
+test("the Secrets tile value carries the role text: up to two roles, default roles, or role map error", () => {
   expect(text(tile(fixture(data("valid", { judge: ["B"], graphify: ["A", "C"] }))))).toContain("judge→B · graphify→A,C");
-  expect(text(tile(fixture(data("absent", {}))))).toContain("525 default");
+  expect(text(tile(fixture(data("absent", {}))))).toContain("default roles");
   expect(text(tile(fixture(data("partial", { judge: ["B"] }, ["unknown-role:x"]))))).toContain("role map error");
   expect(text(tile(fixture(data("invalid", {}, ["invalid-role-map:not-json"]))))).toContain("role map error");
 });

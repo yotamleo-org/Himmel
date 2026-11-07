@@ -20,7 +20,9 @@ import os
 import re
 import sys
 
-INK, MUTE, BLUE, GREY, RED = "#1c2430", "#4a5563", "#2457a6", "#c3c9d1", "#a33a2a"
+# dark is the default; the light set below is for print only (a printed dark page drops its background)
+DARK = "--ink:#e6e9ed;--mute:#a9b3be;--blue:#7aa2ff;--grey:#3a434e;--red:#ff8079;--bg:#0f1318;--card:#151d29;--code:#1d252f;--th:#1a222c"
+LIGHT = "--ink:#1c2430;--mute:#4a5563;--blue:#2457a6;--grey:#c3c9d1;--red:#a33a2a;--bg:#fff;--card:#f6f9fd;--code:#f2f4f7;--th:#f5f7fa"
 
 
 TABLE_SEP = re.compile(r"^\|\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$")
@@ -113,14 +115,15 @@ def render(text):
 
 
 CSS = f"""
-body{{font:14px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:{INK};max-width:980px;margin:24px auto;padding:0 18px;background:#fff}}
-h1{{font-size:21px;line-height:1.25;margin:6px 0 8px}} h2{{font-size:15.5px;margin:18px 0 6px;border-bottom:1px solid {GREY};padding-bottom:2px}}
-p{{margin:6px 0;overflow-wrap:anywhere}} .card{{border:2px solid {BLUE};border-radius:8px;padding:2px 14px;margin:10px 0;background:#f6f9fd}} .card h2{{border:0;color:{BLUE};margin:8px 0 2px}} li.decision{{border-left:3px solid {RED};padding-left:6px;list-style:none;margin-left:-6px}} ul,ol{{margin:6px 0;padding-left:20px}} li{{margin:3px 0}}
-code{{font:12.5px ui-monospace,Menlo,monospace;background:#f2f4f7;padding:0 3px;border-radius:3px;overflow-wrap:anywhere}}
-table{{border-collapse:collapse;width:100%;margin:8px 0;font-size:13px}} th,td{{border:1px solid {GREY};padding:3px 7px;text-align:left;vertical-align:top}} th{{background:#f5f7fa}}
-figure{{margin:10px 0}} svg{{width:100%;height:auto;display:block}} figcaption{{font-size:12.5px;color:{MUTE};margin-top:3px}}
-.meta{{font-size:12.5px;color:{MUTE}}}
-@media print{{body{{font-size:10px;line-height:1.25;margin:0;max-width:none}} h1{{font-size:14px}} h2{{font-size:11px;margin:6px 0 2px}} p{{margin:4px 0}} li{{margin:2px 0}} table{{font-size:9px;margin:5px 0}} th,td{{padding:1px 5px}} code{{font-size:9px}} figure{{margin:4px 0;break-inside:avoid}} figcaption{{font-size:8.5px}} svg{{max-height:100px}} @page{{margin:9mm}}}}
+:root{{{DARK};color-scheme:dark}}
+body{{font:14px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--ink);max-width:980px;margin:24px auto;padding:0 18px;background:var(--bg)}}
+h1{{font-size:21px;line-height:1.25;margin:6px 0 8px}} h2{{font-size:15.5px;margin:18px 0 6px;border-bottom:1px solid var(--grey);padding-bottom:2px}}
+p{{margin:6px 0;overflow-wrap:anywhere}} .card{{border:2px solid var(--blue);border-radius:8px;padding:2px 14px;margin:10px 0;background:var(--card)}} .card h2{{border:0;color:var(--blue);margin:8px 0 2px}} li.decision{{border-left:3px solid var(--red);padding-left:6px;list-style:none;margin-left:-6px}} ul,ol{{margin:6px 0;padding-left:20px}} li{{margin:3px 0}}
+code{{font:12.5px ui-monospace,Menlo,monospace;background:var(--code);padding:0 3px;border-radius:3px;overflow-wrap:anywhere}}
+table{{border-collapse:collapse;width:100%;margin:8px 0;font-size:13px}} th,td{{border:1px solid var(--grey);padding:3px 7px;text-align:left;vertical-align:top}} th{{background:var(--th)}}
+figure{{margin:10px 0}} svg{{width:100%;height:auto;display:block}} figcaption{{font-size:12.5px;color:var(--mute);margin-top:3px}}
+.meta{{font-size:12.5px;color:var(--mute)}}
+@media print{{:root{{{LIGHT};color-scheme:light}} body{{font-size:10px;line-height:1.25;margin:0;max-width:none}} h1{{font-size:14px}} h2{{font-size:11px;margin:6px 0 2px}} p{{margin:4px 0}} li{{margin:2px 0}} table{{font-size:9px;margin:5px 0}} th,td{{padding:1px 5px}} code{{font-size:9px}} figure{{margin:4px 0;break-inside:avoid}} figcaption{{font-size:8.5px}} svg{{max-height:100px}} @page{{margin:9mm}}}}
 """
 
 

@@ -165,6 +165,19 @@ start() { # <inbox> <outfile> [tick args...]
     bash "$WAIT" "$inbox" "$@" > "$out" 2>"$out.err" &
     WPID=$!
 }
+# stop_waiter: SIGTERM the waiter and reap it, bounded. A waiter that outlives its SIGTERM by
+# 10 s fails a named row and is killed, never an unbounded `wait` that runs the suite into its
+# 600 s cap (a CI retry once stopped printing after the (r0s5) rows, where this wait is the only unbounded step).
+stop_waiter() {
+    local n=0
+    kill "$WPID" 2>/dev/null
+    while [ "$n" -lt 100 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+    if kill -0 "$WPID" 2>/dev/null; then
+        fail "(teardown) the waiter outlived its SIGTERM by 10 s"
+        kill -9 "$WPID" 2>/dev/null
+    fi
+    wait "$WPID" 2>/dev/null
+}
 
 # fleet2 <case>: fleet plus a second worker N2 in the manifest; sets L2 too.
 fleet2() {
@@ -206,7 +219,7 @@ check "(r0k) the slow wrap finishes beyond the old bound" "HANDLED wrap-merged N
 check "(r0k) WRAPPED is parsed and labelled, not an empty bullet" "N1 WRAPPED — done" "$(cat "$STUB/le.stdin" 2>/dev/null)"
 check "(r0k) the completed wrap is recorded in the digest" "N1 wrap-merged 2566" "$(cat "$I.wait.digest" 2>/dev/null)"
 check "(r0k) no chief wake" "" "$(cat "$WORK/r0k.out")"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 reset_stub
 fleet r0l
@@ -222,7 +235,7 @@ contains "(r0l) the wake explains the timeout" "$(head -n 1 "$WORK/r0l.out")" "W
 contains "(r0l) the wake names the output artifact" "$(head -n 1 "$WORK/r0l.out")" "out=$I.wait.le-N1"
 if test -s "$I.wait.le-N1"; then pass "(r0l) test -s on the out file"; else fail "(r0l) test -s on the out file"; fi
 contains "(r0l) the out file explains the timeout" "$(cat "$I.wait.le-N1" 2>/dev/null)" "ESCALATE relay-timeout N1 rc=124"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 # --- (r0m/n) keep the relay within the heartbeat consumers' contract --------
 # Match the variable name literally in the source.
 # shellcheck disable=SC2016
@@ -245,7 +258,7 @@ for event_rc in 7 137; do
         contains "(r0o) SIGKILL named" "$(head -n 1 "$WORK/r0o-$event_rc.out")" "ESCALATE relay-timeout N1 rc=137"
     fi
     if test -s "$I.wait.le-N1"; then pass "(r0o) rc $event_rc artifact has a reason"; else fail "(r0o) rc $event_rc artifact has a reason"; fi
-    kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+    stop_waiter
 done
 reset_stub
 fleet r0o-output
@@ -255,7 +268,7 @@ wait_hb "$I" || fail "(r0o) no output-case heartbeat"
 printf -- '- 11:00 WRAPPED — done\n' >> "$L"; tick_line "N1:WRAPPED"
 wait_exit "$WPID"
 contains "(r0o) an output-bearing failure still records its rc" "$(head -n 1 "$WORK/r0o-output.out")" "rc=7 out=$I.wait.le-N1"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # --- (r0p) service Telegram between handled OR retryable slow wraps ---------
 for relay_mode in handled retry; do
@@ -278,7 +291,7 @@ for relay_mode in handled retry; do
     check "(r0p) Telegram wakes after one $relay_mode call" 0 "$rc"
     check "(r0p) $relay_mode leaves the second wrap for the next sample" 1 "$(cat "$STUB/le.calls" 2>/dev/null)"
     check "(r0p) the $relay_mode wake is Telegram" "WAKE telegram" "$(head -n 1 "$WORK/r0p-$relay_mode.out")"
-    kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+    stop_waiter
 done
 
 # --- (r0q) a standing retry must not starve the next worker ------------------
@@ -296,7 +309,7 @@ check "(r0q) first sample attempts N1" "N1 WRAPPED — done" "$(cat "$STUB/le.st
 check "(r0q) next sample reaches N2 despite N1 retry" "N2 WRAPPED — done" "$(cat "$STUB/le.stdin.2" 2>/dev/null)"
 check "(r0q) later worker completes its wrap" "N2 wrap-merged -" "$(cat "$I.wait.digest" 2>/dev/null)"
 check "(r0q) N1 stays retryable after N2 completes" "N1 WRAPPED — done" "$(cat "$STUB/le.stdin.3" 2>/dev/null)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # --- (r0r) retry rotation survives a Telegram wake and waiter re-arm --------
 reset_stub
@@ -315,7 +328,7 @@ printf -- '- 03:45 [telegram from=1 chat=2] first\n' >> "$I"
 wait_exit "$WPID"
 check "(r0r) stale cursor starts in plain order" "N1 WRAPPED — done" "$(cat "$STUB/le.stdin.1" 2>/dev/null)"
 check "(r0r) first waiter yields after one retry" 1 "$(cat "$STUB/le.calls" 2>/dev/null)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 start "$I" "$WORK/r0r-rearm.out" --doc "$D" --workers-from "$M"
 n=0
 while [ "$n" -lt 50 ] && [ ! -s "$STUB/le.stdin.2" ]; do sleep 0.1; n=$((n + 1)); done
@@ -323,7 +336,7 @@ printf -- '- 03:46 [telegram from=1 chat=2] second\n' >> "$I"
 wait_exit "$WPID"
 check "(r0r) re-armed waiter starts with N2" "N2 WRAPPED — done" "$(cat "$STUB/le.stdin.2" 2>/dev/null)"
 contains "(r0r) later worker wraps across re-arm" "$(cat "$WORK/r0r-rearm.out")" "absorbed since last wake: wraps=1 (N2)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # --- (r0s) the READY cursor: with auto_go on, every new READY bullet reaches worker-event once ---
 # The flag reads a fixture registry here (the real flags.tsv gets its auto_go row in a later PR).
@@ -353,17 +366,22 @@ wait_hb "$I" || fail "(r0s) no re-arm heartbeat"
 sleep 2.5
 check "(r0s) the same READY is not relayed twice" "" "$(cat "$STUB/le.calls" 2>/dev/null)"
 check "(r0s) no wake on a re-arm" "" "$(cat "$WORK/r0s-rearm.out")"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # on: two READY bullets (a series) are relayed one per pass, oldest first
 reset_stub
 fleet r0s2
 printf 'HANDLED auto-go N1\n' > "$STUB/le.out"; echo 0 > "$STUB/le.rc"
+# worker-event returns 1 s after it reads its line: the digest line of a call is written after
+# that return, so the second call is started (le.stdin.2) while its digest line is not written yet
+echo 1 > "$STUB/le.sleep"
 HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r0s2.out" --doc "$D" --workers-from "$M"
 wait_hb "$I" || fail "(r0s2) no baseline heartbeat"
 printf -- '%s\n%s\n- 10:31 LIVE — next item\n' "$READY_A" "$READY_B" >> "$L"
 n=0
 while [ "$n" -lt 80 ] && [ ! -s "$STUB/le.stdin.2" ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+n=0
+while [ "$n" -lt 80 ] && [ "$(wc -l < "$I.wait.digest" 2>/dev/null || echo 0)" -lt 2 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
 check "(r0s2) the first READY goes first" "N1 READY 2566 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa GREEN" "$(cat "$STUB/le.stdin.1" 2>/dev/null)"
 check "(r0s2) the second READY follows" "N1 READY 2567 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb GREEN" "$(cat "$STUB/le.stdin.2" 2>/dev/null)"
 check "(r0s2) a handled READY is a digest line, no wake" "N1 auto-go 2566
@@ -372,7 +390,7 @@ check "(r0s2) no chief wake" "" "$(cat "$WORK/r0s2.out")"
 printf -- '- 03:45 [telegram from=1 chat=2] hello\n' >> "$I"
 wait_exit "$WPID"
 check "(r0s2) the next wake counts the scripted GOs apart from the wraps" "absorbed since last wake: wraps=0 () merged=0 () auto-go=2 (#2566,#2567)" "$(tail -n 1 "$WORK/r0s2.out")"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # on: a worker doc shorter than its cursor was replaced; the cursor starts over after its existing READY
 reset_stub
@@ -387,7 +405,7 @@ check "(r0s4) a stale cursor past the end does not replay the old READY" "" "$(c
 printf -- '%s\n' "$READY_B" >> "$L"
 wait_exit "$WPID"
 check "(r0s4) a READY written after the reset is relayed" "N1 READY 2567 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb GREEN" "$(cat "$STUB/le.stdin" 2>/dev/null)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # on: a pending READY of N1 must not leave N2's cursor unset, or N2's later READY would count as history
 reset_stub
@@ -404,7 +422,7 @@ printf -- '- 10:40 READY 2568 cccccccccccccccccccccccccccccccccccccccc GREEN\n' 
 n=0
 while [ "$n" -lt 80 ] && [ ! -s "$STUB/le.stdin.3" ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
 check "(r0s5) N2's READY, written while N1's backlog drained, is relayed" "N2 READY 2568 cccccccccccccccccccccccccccccccccccccccc GREEN" "$(cat "$STUB/le.stdin.3" 2>/dev/null)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # off (the default): nothing is relayed and no cursor file appears
 reset_stub
@@ -416,7 +434,7 @@ sleep 2.5
 check "(r0s3) flag off: no worker-event call" "" "$(cat "$STUB/le.calls" 2>/dev/null)"
 check "(r0s3) flag off: no wake" "" "$(cat "$WORK/r0s3.out")"
 check "(r0s3) flag off: no cursor file" "no" "$([ -e "$I.wait.ready" ] && echo yes || echo no)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 unset HIMMEL_FLAGS_TSV HIMMEL_CONFIG_DIR
 
 export PATH="$relay_path"
@@ -443,7 +461,7 @@ printf -- '- 03:45 [telegram from=1 chat=2] hello\n' >> "$I"
 wait_exit "$WPID"
 check "(r0a) the next wake prints the digest" "$(printf 'WAKE telegram\n- 03:45 [telegram from=1 chat=2] hello\nabsorbed since last wake: wraps=1 (N1) merged=1 (#2566)')" "$(cat "$WORK/r0a.out")"
 check "(r0a) and clears it" "" "$(cat "$I.wait.digest" 2>/dev/null)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # --- (r0b) ESCALATE wakes once with the out file -----------------------------
 reset_stub
@@ -464,7 +482,7 @@ sleep 2.5
 wait_exit "$WPID"
 check "(r0b) a re-arm does not wake for the same bullet" "running" "$rc"
 check "(r0b) nor runs worker-event again" "1" "$(cat "$STUB/le.calls" 2>/dev/null)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # --- (r0c) a lock-held refusal is retried, never a worker-event wake ------------
 reset_stub
@@ -478,7 +496,7 @@ wait_exit "$WPID"
 lacks "(r0c) a lock-held refusal is not a worker-event wake" "$(cat "$WORK/r0c.out")" "WAKE worker-event"
 check "(r0c) it was asked again on the next sample" "2" "$(cat "$STUB/le.calls" 2>/dev/null)"
 check "(r0c) the standing refusal falls back to the tick wake" "WAKE tick changed=tails usage=PROCEED" "$(head -n 1 "$WORK/r0c.out")"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # --- (r0h) the same refusal text on a non-10 rc (a timeout) wakes at once -----
 reset_stub
@@ -490,7 +508,7 @@ printf -- '- 11:00 WRAPPED — done\n' >> "$L"
 tick_line "N1:WRAPPED"
 wait_exit "$WPID"
 check "(r0h) rc 124 is a worker-event wake, not a retry" "WAKE worker-event ESCALATE wrap-merged-failed rc=3 close-wrapped-worker: refusing - queue lock held rc=124 out=$I.wait.le-N1" "$(head -n 1 "$WORK/r0h.out")"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # --- (r0d) no RETASK token reaches worker-event, the wake or the out file -------
 reset_stub
@@ -505,7 +523,7 @@ check "(r0d) the escalate wakes (rc 0)" "0" "$rc"
 lacks "(r0d) worker-event never sees the token" "$(cat "$STUB/le.stdin" 2>/dev/null)" "f14f9339"
 lacks "(r0d) the wake carries no token" "$(cat "$WORK/r0d.out")" "f14f9339"
 lacks "(r0d) the out file carries no token" "$(cat "$I.wait.le-N1" 2>/dev/null)" "f14f9339"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # --- (r0e) without --workers-from worker-event never runs --------------------------
 reset_stub
@@ -517,7 +535,7 @@ tick_line "N1:WRAPPED"
 wait_exit "$WPID"
 check "(r0e) the tick change wakes as before" "WAKE tick changed=tails usage=PROCEED" "$(head -n 1 "$WORK/r0e.out")"
 check "(r0e) worker-event never ran" "" "$(cat "$STUB/le.calls" 2>/dev/null)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # --- (r0f) BLOCKED wakes first; the re-arm still absorbs the pending wrap ------
 reset_stub
@@ -532,7 +550,7 @@ check "(r0f) N2's change wakes (rc 0)" "0" "$rc"
 check "(r0f) as a tick wake on tails" "WAKE tick changed=tails usage=PROCEED" "$(head -n 1 "$WORK/r0f.out")"
 contains "(r0f) BLOCKED wakes before the wrap sample" "$(cat "$WORK/r0f.out")" "tails=N1:LIVE,N2:BLOCKED"
 check "(r0f) the relay has not seen the wrap yet" "" "$(cat "$STUB/le.calls" 2>/dev/null)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 start "$I" "$WORK/r0f2.out" --doc "$D" --workers-from "$M"
 wait_hb "$I" || fail "(r0f) no re-arm heartbeat"
 n=0
@@ -545,7 +563,7 @@ check "(r0f) the next Telegram wake exits (rc 0)" "0" "$rc"
 check "(r0f) the wake is Telegram" "WAKE telegram" "$(head -n 1 "$WORK/r0f2.out")"
 contains "(r0f) the absorbed N1 wrap is delivered after re-arm" "$(cat "$WORK/r0f2.out")" "absorbed since last wake: wraps=1 (N1)"
 check "(r0f) the delivered digest is cleared" "" "$(cat "$I.wait.digest" 2>/dev/null)"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # --- (r0g) a change beside the wrap survives the manifest move it makes -------
 reset_stub
@@ -560,7 +578,7 @@ wait_exit "$WPID"
 check "(r0g) N2's change wakes (rc 0)" "0" "$rc"
 check "(r0g) as a tick wake on tails" "WAKE tick changed=tails usage=PROCEED" "$(head -n 1 "$WORK/r0g.out")"
 check "(r0g) the relay dropped N1 from the manifest" "N2" "$(jq -r '.workers[].label' "$M")"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # --- (r0i) a window turning closable beside the absorbed wrap still wakes -----
 reset_stub
@@ -573,7 +591,7 @@ tick_seq "$(tick_text "N1:WRAPPED,N2:LIVE") closable=1"
 wait_exit "$WPID"
 check "(r0i) the closable rise wakes (rc 0)" "0" "$rc"
 check "(r0i) as a tick wake on closable" "WAKE tick changed=closable usage=PROCEED" "$(head -n 1 "$WORK/r0i.out")"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # --- (r0j) the heartbeat is refreshed before each worker-event call -------------
 # Two samples over two wraps: each worker-event call is up to 245 s, so the
@@ -592,7 +610,7 @@ check "(r0j) worker-event ran for both wraps" "2" "$(cat "$STUB/le.calls" 2>/dev
 hb1="$(cat "$STUB/le.hb.1" 2>/dev/null)"; hb2="$(cat "$STUB/le.hb.2" 2>/dev/null)"
 if [ -n "$hb1" ] && [ -n "$hb2" ] && [ "$hb2" -gt "$hb1" ]; then pass "(r0j) the second call starts under a newer heartbeat"
 else fail "(r0j) the second call starts under a newer heartbeat (want '$hb2' > '$hb1')"; fi
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # --- (hd) holds= wakes when a worker ENTERS the set, once per hold --------------
 # The age grows every tick, a hold that is still there does not re-wake, and a
@@ -633,7 +651,7 @@ check "(hd4) a worker leaving the holds set does not wake" "running" "$rc"
 holds_line ""
 wait_exit "$WPID"
 check "(hd5) the set emptying does not wake" "running" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # --- (rv) a worker whose newest marker is BLOCKED resolve wakes the chief -----
 # The wake names the worker, the PR and the thread ids; any other newest marker
@@ -657,7 +675,7 @@ printf -- '- 10:20 BLOCKED resolve 3628 PRRT_kwDOAb-1 — denied again\n' >> "$L
 wait_exit "$WPID"
 check "(rv) a later BLOCKED resolve bullet wakes again" "0" "$rc"
 check "(rv) naming its own thread" "WAKE resolve N1 pr=3628 threads=PRRT_kwDOAb-1" "$(head -n 1 "$WORK/rv2.out")"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # (rv-neg) none of these newest markers is a resolve wake
 for neg in 'BLOCKED permission prompt on gh pr merge' 'BLOCKED resolve-later nothing' 'FINDING resolve 3628 PRRT_abc' 'LIVE — BLOCKED resolve 3628 PRRT_abc' 'WRAPPED'; do
@@ -670,7 +688,7 @@ for neg in 'BLOCKED permission prompt on gh pr merge' 'BLOCKED resolve-later not
     sleep 2.5
     wait_exit "$WPID"
     lacks "(rv-neg) '$neg' is no resolve wake" "$(cat "$WORK/rvn.out")" "WAKE resolve"
-    kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+    stop_waiter
 done
 
 # a BLOCKED resolve the worker already retired with a later marker wakes no resolve
@@ -682,7 +700,7 @@ wait_hb "$I" || fail "(rv-retired) no baseline heartbeat"
 sleep 2.5
 wait_exit "$WPID"
 check "(rv-retired) a retired BLOCKED resolve does not wake" "running" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # a BLOCKED resolve followed by a MERGED bullet is retired too
 reset_stub
@@ -693,7 +711,7 @@ wait_hb "$I" || fail "(rv-merged) no baseline heartbeat"
 sleep 2.5
 wait_exit "$WPID"
 check "(rv-merged) a BLOCKED resolve before a MERGED bullet does not wake" "running" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # a later PARKED-USAGE bullet retires a BLOCKED resolve
 reset_stub
@@ -704,7 +722,7 @@ wait_hb "$I" || fail "(rv-parked) no baseline heartbeat"
 sleep 2.5
 wait_exit "$WPID"
 check "(rv-parked) a BLOCKED resolve before a PARKED-USAGE bullet does not wake" "running" "$rc"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # a later line that only starts like a marker (BLOCKED2) is no marker and hides nothing
 reset_stub
@@ -716,7 +734,7 @@ tick_line "N1:BLOCKED" "N1:BLOCKED#1"
 wait_exit "$WPID"
 check "(rv-boundary) a BLOCKED2 line does not hide a BLOCKED resolve" "0" "$rc"
 check "(rv-boundary) the wake names the resolve" "WAKE resolve N1 pr=3628 threads=PRRT_abc" "$(head -n 1 "$WORK/rvb.out")"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 
 # --- (sz) a SIZE-ESCALATE ledger row wakes the chief once ---
 # gen-briefs writes the rows through size-override.sh; the waiter reads them through the same script.
@@ -745,7 +763,7 @@ check "(sz) a later row wakes again" "0" "$rc"
 check "(sz) the second wake counts two rows" "WAKE size rows=2" "$(head -n 1 "$WORK/sz2.out")"
 contains "(sz) the second wake carries the new row" "$(cat "$WORK/sz2.out")" "bulk$(printf '\t')HIMMEL-9202"
 lacks "(sz) the second wake does not repeat the first row" "$(cat "$WORK/sz2.out")" "HIMMEL-9201"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+stop_waiter
 unset HANDOVER_DIR
 
 echo

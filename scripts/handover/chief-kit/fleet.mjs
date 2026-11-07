@@ -571,14 +571,14 @@ const page = (snap, live) => String.raw`<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="dark">
 <title>Fleet status</title>
 <style>
-:root { --bg:#f4f5f7; --surface:#fff; --text:#1a1f26; --muted:#56616d; --line:#d6dbe1; --accent:#1f4fb8; --ok:#17692f; --warn:#85560a; --bad:#b3202b; --tint:color-mix(in srgb, var(--bad) 9%, var(--surface)); --sel:#cfe0ff; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0e1217; --surface:#161b22; --text:#e4e8ed; --muted:#9aa5b1; --line:#2a323c; --accent:#7aa2ff; --ok:#4cc26b; --warn:#e0a63a; --bad:#ff8079; --sel:#27407a; } }
-:root[data-theme="dark"] { --bg:#0e1217; --surface:#161b22; --text:#e4e8ed; --muted:#9aa5b1; --line:#2a323c; --accent:#7aa2ff; --ok:#4cc26b; --warn:#e0a63a; --bad:#ff8079; --sel:#27407a; }
+:root { --bg:#0e1217; --surface:#161b22; --text:#e4e8ed; --muted:#9aa5b1; --line:#2a323c; --accent:#7aa2ff; --ok:#4cc26b; --warn:#e0a63a; --bad:#ff8079; --tint:color-mix(in srgb, var(--bad) 9%, var(--surface)); --sel:#27407a; }
+:root[data-theme="light"] { --bg:#f4f5f7; --surface:#fff; --text:#1a1f26; --muted:#56616d; --line:#d6dbe1; --accent:#1f4fb8; --ok:#17692f; --warn:#85560a; --bad:#b3202b; --sel:#cfe0ff; }
 * { box-sizing:border-box; }
-html { color-scheme:light dark; scrollbar-color:var(--line) var(--bg); }
+html { color-scheme:dark; scrollbar-color:var(--line) var(--bg); }
+html[data-theme="light"] { color-scheme:light; }
 body { margin:0; padding:16px; background:var(--bg); color:var(--text); font:14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; overflow-wrap:anywhere; }
 ::selection { background:var(--sel); color:var(--text); }
 :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }

@@ -12,8 +12,8 @@
 #                                         violation, exit 0 clean / 1 violations.
 #
 # Rules:
-#   - one row per tracked suite (basename test-*.sh, the runner's discovery), no stale rows,
-#     no duplicate rows, no malformed rows;
+#   - a tracked suite (basename test-*.sh, the runner's discovery) with no row is allowed
+#     and reads as tier pr; no stale rows, no duplicate rows, no malformed rows;
 #   - the tier is one of pr, local, flow, quarantine;
 #   - a pr reason is catch:<n> | trust-path | static-gate | guard | flow-miss:HIMMEL-<n>;
 #   - the trust list holds at least one pattern (an empty one would make every local row pass);
@@ -69,7 +69,7 @@ lint() { # <tiers> <trust> <tracked-list>
       if (nt == 0) { printf "FAIL trust list has no usable pattern: %s\n", trust; bad++ }
       for (i = 1; i <= ns; i++) {
         s = suites[i]; seen[s] = 1
-        if (!(s in tier)) { printf "FAIL suite has no tier row: %s\n", s; bad++; continue }
+        if (!(s in tier)) continue
         t = tier[s]; r = reason[s]
         if (t !~ /^(pr|local|flow|quarantine)$/) { printf "FAIL unknown tier %s: %s\n", t, s; bad++; continue }
         if (t == "pr" && r !~ /^(catch:[0-9]+|trust-path|static-gate|guard|flow-miss:HIMMEL-[0-9]+)$/) {
@@ -121,7 +121,7 @@ trap 'rm -rf "$tmp"' EXIT
 
 echo "== repo: scripts/ci/suite-tiers.tsv lints clean"
 if bash "$SELF" --lint > "$tmp/repo.out" 2>&1; then
-  pass "suite-tiers.tsv covers every tracked suite"
+  pass "suite-tiers.tsv lints clean"
 else
   fail "suite-tiers.tsv does not lint clean"
   head -20 "$tmp/repo.out"
@@ -152,7 +152,15 @@ echo "== fixture rows"
 row "clean fixture" 0 "" "$tmp/good.tsv"
 
 grep -v 'test-plain' "$tmp/good.tsv" > "$tmp/missing.tsv"
-row "RED: a suite with no row" 1 "suite has no tier row: scripts/foo/test-plain.sh" "$tmp/missing.tsv"
+row "a suite with no row is allowed" 0 "" "$tmp/missing.tsv"
+
+# A trust-owned suite with no row reads as pr, so the never-local rule has nothing to refuse.
+grep -v 'scripts/ci/test-alpha.sh' "$tmp/good.tsv" > "$tmp/missing-trust.tsv"
+row "a trust-owned suite with no row is allowed" 0 "" "$tmp/missing-trust.tsv"
+
+# The other rules still fire on a tier file that also leaves a suite without a row.
+retier "$tmp/missing.tsv" "$tmp/missing-localtrust.tsv" scripts/ci/test-alpha.sh local 'behaviour suite'
+row "RED: a local trust-path suite is refused beside a suite with no row" 1 "trust-path suite is local: scripts/ci/test-alpha.sh" "$tmp/missing-localtrust.tsv"
 
 { cat "$tmp/good.tsv"; printf 'scripts/gone/test-old.sh\tlocal\tbehaviour suite\n'; } > "$tmp/stale.tsv"
 row "RED: a stale row" 1 "stale row, no such suite: scripts/gone/test-old.sh" "$tmp/stale.tsv"
@@ -198,7 +206,11 @@ real_row() { # <label> <want-text> <tiers-file>
   if [ "$rc" -eq 1 ] && grep -qF -- "$2" "$tmp/out"; then pass "$1 -> exit 1"; else fail "$1 -> rc=$rc, output lacks '$2'"; fi
 }
 grep -vF 'scripts/hooks/test-block-edit-live-settings.sh' "$REAL" > "$tmp/real-missing.tsv"
-real_row "RED: real suite row removed" "suite has no tier row: scripts/hooks/test-block-edit-live-settings.sh" "$tmp/real-missing.tsv"
+if bash "$SELF" --lint --tiers "$tmp/real-missing.tsv" --trust "$REAL_TRUST" --tracked "$tmp/real-tracked" > "$tmp/out" 2>&1; then
+  pass "a real suite with its row removed lints clean"
+else
+  fail "a real suite with its row removed was refused: $(head -3 "$tmp/out")"
+fi
 retier "$REAL" "$tmp/real-local.tsv" scripts/ci/test-run-shell-tests.sh local behaviour
 real_row "RED: real ci/ suite demoted to local" "trust-path suite is local: scripts/ci/test-run-shell-tests.sh" "$tmp/real-local.tsv"
 retier "$REAL" "$tmp/real-sib.tsv" scripts/cr/test-failure-classify.sh local behaviour

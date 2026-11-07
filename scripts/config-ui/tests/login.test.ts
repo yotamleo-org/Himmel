@@ -35,7 +35,7 @@ function writeLegacy(path: string, line: string): void {
 
 // legacy: the login sits in the pre-keyring file instead of the keyring; locked: the stub keyring is locked;
 // envLogin: the process env carries its own HIMMEL_UI_LOGIN; extra: more stub knobs (KSTUB_*) for the server's env.
-function boot(o: { password?: string | null; noIdle?: boolean; legacy?: boolean; locked?: boolean; envLogin?: string; extra?: Record<string, string> } = {}) {
+function boot(o: { password?: string | null; noIdle?: boolean; readOnly?: boolean; legacy?: boolean; locked?: boolean; envLogin?: string; extra?: Record<string, string> } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "ui-login-"));
   const home = join(dir, "home"), root = join(dir, "root"), project = join(dir, "project");
   for (const d of [home, root, project]) mkdirSync(d);
@@ -48,7 +48,7 @@ function boot(o: { password?: string | null; noIdle?: boolean; legacy?: boolean;
   if (o.locked) env.KSTUB_LOCKED = "true";
   if (o.envLogin !== undefined) env[KEY] = o.envLogin;
   Object.assign(env, o.extra);
-  const s =startServer({ port: 0, token: TOKEN, root, projectRoot: project, noIdle: o.noIdle, onIdle: () => {}, now: () => t, env });
+  const s =startServer({ port: 0, token: TOKEN, root, projectRoot: project, noIdle: o.noIdle, readOnly: o.readOnly, onIdle: () => {}, now: () => t, env });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
   const base = `http://127.0.0.1:${s.port}`;
   const post = (path: string, body: unknown, headers: Record<string, string> = {}) => fetch(base + path, {
@@ -165,6 +165,23 @@ test("in service mode a logged-in session may save a secret, the launch token al
   expect(await bySession.text()).not.toContain(value);
   expect(b.audit()).not.toContain(value);
   expect(b.audit()).not.toContain(b.password);
+});
+
+test("/api/mode says in a header whether the caller holds a session, and only to a caller the server already lets in", async () => {
+  const b = boot({ noIdle: true });
+  const mode = (headers: Record<string, string>) => fetch(b.base + "/api/mode", { headers });
+  const byToken = await mode({ "x-himmel-token": TOKEN });
+  expect(byToken.status).toBe(200);
+  expect(byToken.headers.get("x-himmel-session")).toBe("0");
+  expect(await byToken.json()).toEqual({ readOnly: false }); // the body is what it was
+  const c = cookieOf(await b.login(USER, b.password));
+  expect((await mode({ "x-himmel-token": TOKEN, cookie: c })).headers.get("x-himmel-session")).toBe("1");
+  expect((await mode({ cookie: c })).headers.get("x-himmel-session")).toBe("1");
+  for (const refused of [{}, { cookie: "himmel_session=" + "a".repeat(64) }, { "x-himmel-token": "wrong" }]) { // no token and no session: refused as before, nothing said
+    const r = await mode(refused);
+    expect(r.status).toBe(401);
+    expect(r.headers.get("x-himmel-session")).toBeNull();
+  }
 });
 
 test("the login hash is stored in the keyring, never the password, and no login file is written", () => {
@@ -333,4 +350,299 @@ test("a credentials directory never serves the login either", () => {
   expect(readLogin(join(dir, "ui-login"), { ...k.env, CREDENTIALS_DIRECTORY: creds })).toBeNull();
   k.put(KEY, loginLine(USER, secret()));
   expect(readLogin(join(dir, "ui-login"), { ...k.env, CREDENTIALS_DIRECTORY: creds })?.user).toBe(USER);
+});
+
+// ---- the page side: app.js and login.js run against a real service-mode server through a cookie jar ----
+// A refused secret save offers Log in, login returns to Configure, the header shows the login state, and the typed value
+// reaches nothing but the one save request. The page runs against stubs of the DOM; the server, the session and the keyring are real.
+const PUBLIC = join(import.meta.dir, "../public");
+const settle = () => new Promise((r) => setTimeout(r, 120));
+const NAME = "JIRA_API_TOKEN";
+
+type Spy = { urls: string[]; bodies: { url: string; body: string }[]; store: string[]; logs: string[]; cookies: string[]; replaced: string[]; history: string[] };
+
+// What a browser keeps for one site: one cookie, and a record of everything the page sent, stored, logged or wrote to the address bar.
+function browser(base: string) {
+  let jar = "";
+  const spy: Spy = { urls: [], bodies: [], store: [], logs: [], cookies: [], replaced: [], history: [] };
+  const real = globalThis.fetch;
+  const answered = new Set(["/api/mode", "/api/setup/secret", "/api/login", "/api/logout"]);
+  const fetchStub = async (url: string, init: { headers?: Record<string, string>; body?: unknown } = {}) => {
+    const path = String(url).split("?")[0];
+    spy.urls.push(String(url));
+    if (init.body !== undefined) spy.bodies.push({ url: path, body: String(init.body) });
+    if (!answered.has(path)) return new Promise<Response>(() => {}); // every other read stays quiet
+    const r = await real(base + url, { ...init, headers: { ...init.headers, origin: base, ...(jar ? { cookie: jar } : {}) } });
+    const set = r.headers.get("set-cookie");
+    if (set) jar = /Max-Age=0/.test(set) ? "" : set.split(";")[0];
+    return r;
+  };
+  return { spy, fetchStub, hasSession: () => jar !== "" };
+}
+
+const GLOBALS = ["document", "location", "history", "fetch", "addEventListener", "localStorage", "sessionStorage", "console", "FormData"] as const;
+async function withGlobals(over: Record<string, unknown>, run: () => Promise<void>) {
+  const g = globalThis as Record<string, unknown>;
+  const names = [...GLOBALS, ...Object.keys(over)];
+  const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
+  Object.assign(g, over);
+  try { await run(); } finally { for (const n of names) { if (saved[n] === undefined) delete g[n]; else g[n] = saved[n]; } }
+}
+const recorder = (spy: Spy) => ({
+  localStorage: { setItem: (k: string, v: string) => spy.store.push(`${k}=${v}`) },
+  sessionStorage: { setItem: (k: string, v: string) => spy.store.push(`${k}=${v}`) },
+  console: { log: (...a: unknown[]) => spy.logs.push(a.join(" ")), warn: (...a: unknown[]) => spy.logs.push(a.join(" ")), error: (...a: unknown[]) => spy.logs.push(a.join(" ")), info: (...a: unknown[]) => spy.logs.push(a.join(" ")), debug: (...a: unknown[]) => spy.logs.push(a.join(" ")) },
+});
+
+// the names app.js imports are no-ops, but for the few whose result is read as data
+const DATA_STUBS: Record<string, unknown> = {
+  reviewGateDraft: () => [], verdict: () => ({ cls: "off", word: "No data" }), parseView: () => ({ mode: "project", project: null, tab: "broken", row: null }),
+  projectVerdict: () => ({ word: "All clear" }), chiefLiveFor: () => undefined, toolHealthLoader: () => ({}), driftSince: () => null, pinsFromSearch: () => [],
+  togglePin: () => ({ pins: [], msg: "" }), parseWorkflowRoute: () => null, apiRolesDraft: () => null, fleetDot: () => ({ cls: "off", title: "" }),
+  healthDot: () => ({ cls: "off", title: "" }), navLinks: () => [], parseLanding: () => null,
+};
+const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
+// Load the page at `hash` the way the browser does, hand the test a way to fire events, and read what was painted.
+async function onPage(b: ReturnType<typeof browser>, hash: string, run: (p: { main: () => string; top: () => string; status: () => string; readOnly: () => boolean; fire: (type: string, target: unknown) => boolean }) => Promise<void>) {
+  const full = readFileSync(join(PUBLIC, "app.js"), "utf8");
+  const importLine = /^import\s*\{([^}]*)\}\s*from\s*["'][^"']+["'];?\s*$/gm;
+  const src = full.replace(importLine, "");
+  const names = [...full.matchAll(importLine)].flatMap((m) => m[1].split(",").map((s) => s.trim().split(/\s+as\s+/).pop()!).filter(Boolean));
+  const stubs: Record<string, unknown> = Object.fromEntries(names.map((n) => [n, () => ""]));
+  Object.assign(stubs, DATA_STUBS);
+  // Configure paints each message the way setup.js does: <span class="ro" role="status">message</span>
+  stubs.render = (_f: unknown, c: { msgs: Record<string, string> }) => Object.values(c.msgs).map((m) => `<span class="ro" role="status">${escHtml(m)}</span>`).join("");
+  const els: Record<string, Record<string, unknown>> = {};
+  const el = (k: string) => (els[k] ??= { textContent: "", innerHTML: "", hidden: false, dataset: {}, focus() {}, setSelectionRange() {}, setAttribute() {}, classList: { toggle() {}, add() {}, remove() {} } });
+  const known = new Set(["#main", "#top", "#nav", "#where", "#pages", "#status", "#toast", "#read-only-banner"]);
+  const handlers: Record<string, ((e: unknown) => void)[]> = {};
+  const doc = {
+    querySelector: (s: string) => (known.has(s) ? el(s) : null), querySelectorAll: () => [], getElementById: (s: string) => el("#" + s), activeElement: null, body: { dataset: {} },
+    addEventListener: (t: string, f: (e: unknown) => void) => void (handlers[t] ??= []).push(f),
+    set cookie(v: string) { b.spy.cookies.push(v); }, get cookie() { return ""; },
+  };
+  // the address bar: the launch URL's #t=<token>&page=<id> lands on /#/<id>, as parseLanding and app.js do in the browser
+  const loc = { hash, pathname: "/", search: "", host: "x" };
+  stubs.parseLanding = (h: string) => { const m = /^#t=([^&]+)&page=(\w+)/.exec(h); return m ? { token: m[1], page: m[2] } : null; };
+  const over = {
+    ...stubs, ...recorder(b.spy), MutationObserver: class { observe() {} }, document: doc, fetch: b.fetchStub, addEventListener() {}, location: loc,
+    history: { replaceState: (_a: unknown, _b: unknown, u: string) => { b.spy.history.push(u); loc.hash = u.includes("#") ? u.slice(u.indexOf("#")) : ""; } },
+  };
+  await withGlobals(over, async () => {
+    new Function(src)();
+    await settle();
+    await run({
+      main: () => String(el("#main").innerHTML), top: () => String(el("#top").innerHTML), status: () => String(el("#status").textContent), readOnly: () => doc.body.dataset.readOnly === "1" && el("#read-only-banner").hidden === false,
+      fire: (type, target) => { let prevented = false; for (const h of handlers[type] ?? []) h({ target, preventDefault() { prevented = true; }, stopPropagation() {} }); return prevented; },
+    });
+  });
+}
+
+// the Save click on a secret row: a form holding one input
+const saveEvent = (value: string) => {
+  const input = { value };
+  const form = { dataset: { name: NAME }, querySelector: () => input };
+  return { input, target: { closest: (s: string) => (s === "[data-setup-form]" ? form : null) } };
+};
+const clickEvent = (act: string) => { const btn = { dataset: { act }, getAttribute: () => null, closest: () => null }; return { closest: (s: string) => (s === "[data-act],[data-f]" ? btn : null) }; };
+
+// login.js against the same browser: submit the form with a user, a password and the page's own ?next=
+async function logIn(b: ReturnType<typeof browser>, search: string, user: string, password: string) {
+  let submit: (e: unknown) => Promise<void> = async () => {};
+  const form = { elements: { password: { value: password } }, addEventListener: (_t: string, f: (e: unknown) => Promise<void>) => void (submit = f) };
+  const status = { textContent: "" };
+  class Form { get(k: string) { return k === "user" ? user : password; } }
+  const over = { ...recorder(b.spy), FormData: Form, fetch: b.fetchStub, document: { getElementById: (id: string) => (id === "login" ? form : status) }, location: { search, origin: "http://127.0.0.1", replace: (u: string) => b.spy.replaced.push(u) } };
+  await withGlobals(over, async () => {
+    new Function(readFileSync(join(PUBLIC, "login.js"), "utf8"))();
+    await submit({ preventDefault() {} });
+  });
+  return status.textContent;
+}
+
+// One operator walking the whole way: refused save, Log in, back on Configure, a save that works. Shared by the rows below.
+let walked: Promise<{ spy: Spy; refused: string; refusedTop: string; href: string; replaced: string[]; backTop: string; backMain: string; stored: string; typed: string; password: string; cleared: boolean }> | null = null;
+function walk() {
+  return (walked ??= (async () => {
+    const s = boot({ noIdle: true });
+    const b = browser(s.base);
+    const typed = "e2e-canary-" + randomBytes(12).toString("hex");
+    let refused = "", refusedTop = "", cleared = false;
+    await onPage(b, `#t=${TOKEN}&page=config`, async (p) => {
+      const ev = saveEvent(typed);
+      p.fire("submit", ev.target);
+      await settle();
+      refused = p.main(); refusedTop = p.top(); cleared = ev.input.value === "";
+    });
+    const href = /href="(\/login[^"]*)"/.exec(refused)?.[1] ?? "";
+    await logIn(b, href.includes("?") ? "?" + href.split("?")[1] : "", USER, s.password);
+    let backTop = "", backMain = "";
+    await onPage(b, "#/config", async (p) => {
+      backTop = p.top();
+      p.fire("submit", saveEvent(typed).target);
+      await settle();
+      backMain = p.main();
+    });
+    const envFile = join(dirname(s.home), "root", ".env");
+    const stored = (existsSync(envFile) ? readFileSync(envFile, "utf8") : "") + (s.k.get(NAME) ?? "");
+    return { spy: b.spy, refused, refusedTop, href, replaced: b.spy.replaced, backTop, backMain, stored, typed, password: s.password, cleared };
+  })());
+}
+
+test("a refused save offers a Log in button that leads back to Configure, and a save there then succeeds against the stub keyring", async () => {
+  const w = await walk();
+  expect(w.refused).toContain("log in to save a secret");
+  expect(w.refused).toMatch(/<a class="btn primary" href="\/login\?next=%2F%23%2Fconfig" target="_blank" rel="noopener">Log in<\/a>/);
+  expect(w.replaced).toEqual(["/#/config"]);
+  expect(w.backMain).toContain("saved");
+  expect(w.stored).toContain(w.typed);
+});
+
+test("the return path is limited to a path on this site: absolute, protocol-relative, backslash and scheme forms land on /", async () => {
+  const s = boot({ noIdle: true });
+  const off = ["https://evil.example/", "http://127.0.0.1.evil.example/", "//evil.example/x", "/\\evil.example", "\\\\evil.example", "\\/evil.example", "javascript:alert(1)", "/\t/evil.example", "/\n/evil.example", "evil.example", ""];
+  for (const next of off) {
+    const b = browser(s.base);
+    await logIn(b, "?next=" + encodeURIComponent(next), USER, s.password);
+    expect(b.spy.replaced, JSON.stringify(next)).toEqual(["/"]);
+  }
+  for (const next of ["/", "/#/config", "/#/config?tile=secrets"]) {
+    const b = browser(s.base);
+    await logIn(b, "?next=" + encodeURIComponent(next), USER, s.password);
+    expect(b.spy.replaced, next).toEqual([next]);
+  }
+  const none = browser(s.base);
+  await logIn(none, "", USER, s.password);
+  expect(none.spy.replaced).toEqual(["/"]);
+});
+
+test("a typed secret value reaches no URL, storage, log, cookie or address bar, only the save request body", async () => {
+  const w = await walk();
+  const v = w.typed;
+  expect(w.cleared).toBe(true);
+  expect(w.spy.bodies.filter((x) => x.body.includes(v)).map((x) => x.url)).toEqual(["/api/setup/secret", "/api/setup/secret"]);
+  for (const [what, seen] of Object.entries({ urls: w.spy.urls, store: w.spy.store, logs: w.spy.logs, cookies: w.spy.cookies, history: w.spy.history, replaced: w.spy.replaced, links: [w.href, w.refused, w.refusedTop, w.backTop, w.backMain] })) {
+    expect(seen.join("\n"), what).not.toContain(v);
+  }
+  expect(w.spy.bodies.map((x) => x.body).filter((x) => x.includes(w.password)).length).toBe(1); // the password is in the login request only
+  expect(w.spy.urls.join("\n")).not.toContain(w.password);
+});
+
+test("a read-only UI refuses every write, login and logout included, so its header offers neither", async () => {
+  const s = boot({ noIdle: true, readOnly: true });
+  const b = browser(s.base);
+  await onPage(b, `#t=${TOKEN}&page=config`, async (p) => {
+    await settle();
+    expect(p.readOnly()).toBe(true); // the page did read the mode: the absences below are not an unpainted header
+    expect(p.top()).not.toContain("login");
+    expect(p.top()).not.toContain('data-act="logout"');
+    expect(p.top()).not.toContain("/login");
+  });
+});
+
+test("the header shows the login state: Log in while out, Log out while in, and Log out ends the session", async () => {
+  const w = await walk();
+  expect(w.refusedTop).toContain("not logged in");
+  expect(w.refusedTop).toContain('href="/login?next=%2F%23%2Fconfig"');
+  expect(w.backTop).toContain("logged in");
+  expect(w.backTop).not.toContain("not logged in");
+  expect(w.backTop).toContain('data-act="logout"');
+  const s = boot({ noIdle: true });
+  const b = browser(s.base);
+  await logIn(b, "", USER, s.password);
+  await onPage(b, "#/config", async (p) => {
+    expect(p.top()).toContain('data-act="logout"');
+    p.fire("click", clickEvent("logout"));
+    await settle();
+    expect(b.hasSession()).toBe(false);
+    expect(p.top()).toContain("not logged in");
+    expect(p.top()).not.toContain('data-act="logout"');
+  });
+});
+
+// A link in the page, for the click handler: closest() answers only for the selector the page asks with.
+const linkEvent = (href: string) => ({ closest: (sel: string) => (sel === 'a[href^="/agui/"]' && href.startsWith("/agui/") ? { getAttribute: () => href } : null) });
+
+test("a save refused with 401 (the session ended after the page loaded) offers Log in, flips the header, and says the value was cleared", async () => {
+  const s = boot({ noIdle: true });
+  const b = browser(s.base);
+  await logIn(b, "", USER, s.password);
+  await onPage(b, "#/config", async (p) => {
+    expect(p.top()).toContain("logged in");
+    expect(p.top()).not.toContain("not logged in");
+    s.advance(60 * 60 * 1000 + 1); // the one-hour session ends
+    const ev = saveEvent("e2e-canary-" + randomBytes(8).toString("hex"));
+    p.fire("submit", ev.target);
+    await settle();
+    expect(ev.input.value).toBe("");
+    expect(p.main()).toContain("what you typed was cleared");
+    expect(p.main()).toMatch(/<a class="btn primary"[^>]* href="\/login\?next=%2F%23%2Fconfig"[^>]*>Log in<\/a>/);
+    expect(p.top()).toContain("not logged in");
+    expect(p.top()).toContain('href="/login?next=%2F%23%2Fconfig"');
+  });
+});
+
+test("a tab loaded with no token and no session (a reload, a bookmark, after Log out) shows not logged in and Log in at load", async () => {
+  const s = boot({ noIdle: true });
+  const b = browser(s.base);
+  await onPage(b, "#/config", async (p) => {
+    expect(p.top()).toContain("not logged in");
+    expect(p.top()).toMatch(/<a class="btn"[^>]* href="\/login\?next=%2F%23%2Fconfig"[^>]*>Log in<\/a>/);
+    expect(p.top()).not.toContain('data-act="logout"');
+  });
+});
+
+test("Log in opens in a new tab, so the working tab keeps its token and its next save succeeds on the cookie and flips the header", async () => {
+  const s = boot({ noIdle: true });
+  const b = browser(s.base);
+  await onPage(b, `#t=${TOKEN}&page=config`, async (p) => {
+    p.fire("submit", saveEvent("first-try").target);
+    await settle();
+    expect(p.main()).toMatch(/<a class="btn primary"[^>]*target="_blank"[^>]*rel="noopener"[^>]*>Log in<\/a>/);
+    expect(p.top()).toMatch(/<a class="btn"[^>]*target="_blank"[^>]*rel="noopener"[^>]*>Log in<\/a>/);
+    expect(p.top()).toContain("not logged in");
+    await logIn(b, "", USER, s.password); // the other tab's login: same cookie jar
+    p.fire("submit", saveEvent("second-try").target);
+    await settle();
+    expect(p.main()).toContain("saved");
+    expect(p.top()).toContain("logged in");
+    expect(p.top()).not.toContain("not logged in");
+  });
+});
+
+test("a token-less tab's Fleet and Shift links say to open the URL himmelctl ui printed; a tab with the token follows them", async () => {
+  const s = boot({ noIdle: true });
+  const less = browser(s.base);
+  await onPage(less, "#/config", async (p) => {
+    expect(p.fire("click", linkEvent("/agui/#t="))).toBe(true);
+    expect(p.status()).toContain("himmelctl ui");
+    expect(p.fire("auxclick", linkEvent("/agui/#t="))).toBe(true); // a middle-click
+    expect(p.fire("click", linkEvent("/other"))).toBe(false);
+  });
+  const withToken = browser(s.base);
+  await onPage(withToken, `#t=${TOKEN}&page=config`, async (p) => {
+    expect(p.fire("click", linkEvent(`/agui/#t=${TOKEN}`))).toBe(false);
+    expect(p.fire("auxclick", linkEvent(`/agui/#t=${TOKEN}`))).toBe(false);
+  });
+});
+
+test("a read-only server with no token: a refused save is a plain 403 and the row offers no Log in (the header's Log in is the accepted dead end: the server cannot say read-only to a caller it refuses)", async () => {
+  const s = boot({ noIdle: true, readOnly: true });
+  const b = browser(s.base);
+  await onPage(b, "#/config", async (p) => {
+    p.fire("submit", saveEvent("a-value").target);
+    await settle();
+    expect(p.main()).toContain("(403)"); // the refusal reached the row
+    expect(p.main()).not.toContain("/login");
+    expect(p.main()).not.toContain("log in to save");
+  });
+});
+
+test("the real setup.js paints the message the Log in button hangs on", async () => {
+  const msg = /const NEEDS_LOGIN = "([^"]+)"/.exec(readFileSync(join(PUBLIC, "app.js"), "utf8"))![1];
+  const { renderConfigure } = await import(join(PUBLIC, "setup.js"));
+  const secrets = [{ name: NAME, status: "unset", collect: "file", required: "optional", where: "keyring", group: "own" }];
+  const html = renderConfigure(null, { tile: "secrets", setup: { account: null, secrets, commit: {}, choices: {} }, state: {}, msgs: { [NAME]: msg }, verify: null });
+  expect(html).toContain(`role="status">${msg}</span>`);
 });

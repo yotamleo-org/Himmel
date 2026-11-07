@@ -26,12 +26,13 @@ test("J2. the rail shows Docs linking to the public site, in a new tab, with no 
 
 test("J2. the console reads the shared tokens: light and dark values, system fonts", async ({ page }) => {
   await open(page, "light");
+  // dark is the default, also under a light system preference; only a saved light choice flips it
+  expect(await token(page, "--bg")).toBe("#0C1319");
+  expect(await token(page, "--ok")).toBe("#7FD1A0");
+  await page.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
   expect(await token(page, "--bg")).toBe("#F3F6F8");
   expect(await token(page, "--panel")).toBe("#FFFFFF");
   expect(await token(page, "--ok")).toBe("#1B6A3E");
-  await page.emulateMedia({ colorScheme: "dark" });
-  expect(await token(page, "--bg")).toBe("#0C1319");
-  expect(await token(page, "--ok")).toBe("#7FD1A0");
   const fonts = await page.evaluate(() => getComputedStyle(document.querySelector(".rail .brand")!).fontFamily);
   expect(fonts).not.toMatch(/Plex/i);
   expect(await page.locator(".rail .brand").innerText()).toMatch(/^himmel/);

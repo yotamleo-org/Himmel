@@ -7,7 +7,6 @@
 :root{--tint:18%;
   --ag0:var(--accent); --ag1:var(--road); --ag2:var(--alpha); --ag3:var(--note); --ag4:var(--camp); --ag5:var(--muted);
 }
-@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--tint:14%}}
 :root[data-theme="light"]{--tint:14%}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--fg);font:var(--fs-sm)/1.55 var(--font-ui);margin:0}

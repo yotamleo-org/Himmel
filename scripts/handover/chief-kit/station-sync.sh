@@ -11,6 +11,10 @@
 # Path -> step:
 #   marketplace/                    marketplace
 #   scripts/jira/                   jira_cli
+#   scripts/config-ui/              config_ui     (rebuild the UI bundle, restart himmel-ui.service if active;
+#                                   the merge path pulls the primary first, so a full update sees no range;
+#                                   also added whenever ~/.himmel/state/config-ui-rebuild-pending exists, and
+#                                   while it exists the state reads BEHIND:config_ui-failed, never ok)
 #   scripts/lib/qmd-bin.sh          qmd_fork      (the fork pin)
 #   scripts/lib/graphify-bin.sh     graphify      (the graphify pin)
 #   templates/luna-second-brain/    luna_template (only after the local-edit check)
@@ -85,10 +89,14 @@ fi
 
 want=""; bridge=""
 add() { case " $want " in *" $1 "*) ;; *) want="$want $1" ;; esac; }
+# A rebuild that failed earlier (or never ran: bun missing) leaves this marker; this merge may touch no UI path, but the retry is owed.
+CUI_PENDING="$HOME/.himmel/state/config-ui-rebuild-pending"
+[ ! -f "$CUI_PENDING" ] || add config_ui
 while IFS= read -r p; do
     case "$p" in
         marketplace/*) add marketplace ;;
         scripts/jira/*) add jira_cli ;;
+        scripts/config-ui/*) add config_ui ;;
         scripts/lib/qmd-bin.sh) add qmd_fork ;;
         scripts/lib/graphify-bin.sh) add graphify ;;
         templates/luna-second-brain/*) add luna_template ;;
@@ -133,7 +141,7 @@ local_template_diff() {
 }
 
 refused=""; failed=""
-for step in marketplace jira_cli qmd_fork graphify luna_template; do
+for step in marketplace jira_cli config_ui qmd_fork graphify luna_template; do
     case " $want " in *" $step "*) ;; *) continue ;; esac
     if [ "$step" = luna_template ]; then
         diffs="$(local_template_diff)"
@@ -145,9 +153,15 @@ EOF
             continue
         fi
     fi
-    "${UPDATE[@]}" --only "$step" >/dev/null 2>&1; rc=$?
+    step_out="$("${UPDATE[@]}" --only "$step" 2>&1)"; rc=$?
     echo "STEP $step rc=$rc"
-    [ "$rc" -eq 0 ] || failed="${failed:+$failed,}$step-failed"
+    if [ "$rc" -ne 0 ]; then
+        failed="${failed:+$failed,}$step-failed"
+        # The step's own words, indented (stdout is the sync's report). --only prints its status table AFTER the build
+        # log, so the last lines are table rows: take the last 5 lines before the table, then the table's failed rows.
+        { printf '%s\n' "$step_out" | sed '/update chain status/,$d' | tail -n 5
+          printf '%s\n' "$step_out" | grep -E '^ +[a-z_]+ +failed '; } | sed "s/^/    $step: /"
+    fi
 done
 
 # The bridge imports scripts/telegram, scripts/lanes and scripts/lib, so a merge there leaves
@@ -186,6 +200,8 @@ behind="$(printf '%s\n' "$vers" | awk '$2 == "behind" { print $1 }' | paste -sd,
 if [ "$vrc" -gt 1 ] || ! printf '%s\n' "$vers" | grep -qE '^ +[a-z_-]+ +(current|behind|unknown|info) '; then
     behind="${behind:+$behind,}unverified"
 fi
+# the marker outlives a step that ran (or never could): the UI is still behind, so the state must not read ok
+if [ -f "$CUI_PENDING" ]; then case ",$failed," in *",config_ui-failed,"*) ;; *) failed="${failed:+$failed,}config_ui-failed" ;; esac; fi
 [ -z "$failed" ] || behind="${behind:+$behind,}$failed"
 [ -z "$refused" ] || case ",$behind," in *",$refused,"*) ;; *) behind="${behind:+$behind,}$refused" ;; esac
 

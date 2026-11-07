@@ -1094,9 +1094,9 @@ test("send-file reads the highest round numerically: r10 findings beat a clean r
   const sealed = { text: "# Design\n\nthe spec\n", file: "design.md" };
   critic(b.spec, "spec", 9, "SPEC CLEAN", sealed); critic(b.spec, "spec", 10, "SPEC FINDINGS 1", sealed);
   const res = await sendFile(r, "1", b.spec);
-  expect(res.code).not.toBe(0);
-  expect(res.err).toContain("critic-spec-r10.md");
-  expect(res.lines).toEqual([]);
+  expect(res.code).toBe(0);   // past the three rounds the page goes with its findings on it, and r10 is the one it shows
+  expect(res.lines[0].caption).toContain("SPEC FINDINGS 1 r10");
+  expect(readFileSync(res.lines[0].document_path as string, "utf8")).toContain("design.md.critic-spec-r10.md");
 });
 
 test("send-file refuses a plan whose latest plan critic is NO-GO, naming the plan verdict file", async () => {
@@ -1606,4 +1606,257 @@ test("send-file refuses a spec page that still says Not for signature, and sends
   expect(sent.code).toBe(0);
   const bytes = readFileSync(sent.lines.at(-1)!.document_path);
   expect(createHash("sha256").update(bytes).digest("hex")).toBe(sha(clean));
+});
+
+// ---- a spec gets three critic rounds per kind, then the page goes to the operator with each open finding on it ----
+const D_TEXT = "# Design\n\nthe spec\n";
+const P_TEXT = "# Plan\n\nthe plan\n";
+const D_SEAL = { text: D_TEXT, file: "design.md" };
+const P_SEAL = { text: P_TEXT, file: "design.plan.md" };
+// A bundle whose spec critic used all three rounds with findings still open: r1 and r2 hold finding-one and finding-two.
+const threeRounds = (r: string) => {
+  const b = bundle(r);
+  critic(b.spec, "spec", 1, "SPEC FINDINGS 1", D_SEAL);
+  critic(b.spec, "spec", 2, "SPEC FINDINGS 1", D_SEAL);
+  writeFileSync(`${b.spec}.critic-spec-r3.md`, `**F1.** finding-one <the tag> stays open\n**F2.** finding-two stays open\nCONTENT-SHA256 ${sha(D_TEXT)} design.md\nSPEC FINDINGS 2\n`);
+  return b;
+};
+const unsealedReturn = (file: string, text: string, verdict = "SPEC FINDINGS 1") => writeFileSync(file, `return, read ${sha(text)}\n${verdict}\n`);
+const grant = (r: string, spec: string, round: number, decision = 900, withVerbatim = true) => {
+  writeFileSync(`${spec}.operator-round-r${round}.md`, `Operator allows this round.\ndecision ${decision}\n`);
+  if (!withVerbatim) return;
+  mkdirSync(join(r, "specs", "decisions"), { recursive: true });
+  writeFileSync(join(r, "specs", "decisions", `verbatim-decision-${decision}-operator.txt`), "yes, one more\n");
+};
+
+test("DoD 1: a spec with 3 recorded rounds cannot get a fourth without an operator record, and one record grants exactly one round", async () => {
+  const r = root(); const b = threeRounds(r);
+  const r4 = `${b.spec}.critic-spec-r4.md`; unsealedReturn(r4, D_TEXT);
+  const refused = await seal(r4, b.spec, sha(D_TEXT));
+  expect(refused.code).not.toBe(0);
+  expect(refused.err).toContain("operator-round-r4.md");
+  expect(readFileSync(r4, "utf8")).not.toContain("CONTENT-SHA256");
+  grant(r, b.spec, 4, 900, false);   // a record whose decision has no verbatim file allows nothing
+  expect((await seal(r4, b.spec, sha(D_TEXT))).code).not.toBe(0);
+  grant(r, b.spec, 4);
+  expect((await seal(r4, b.spec, sha(D_TEXT))).code).toBe(0);
+  const r5 = `${b.spec}.critic-spec-r5.md`; unsealedReturn(r5, D_TEXT);
+  expect((await seal(r5, b.spec, sha(D_TEXT))).code).not.toBe(0);
+});
+
+test("DoD 1: an unsealed fourth round found on disk still keeps the page from going without an operator record", async () => {
+  const r = root(); const b = threeRounds(r);
+  unsealedReturn(`${b.spec}.critic-spec-r4.md`, D_TEXT);
+  const res = await sendFile(r, "1", b.spec);
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("critic-spec-r4.md");
+  expect(res.lines).toEqual([]);
+});
+
+test("DoD 2: a page sent after round 3 opens with the count and the rule line, and shows each open finding verbatim", async () => {
+  const r = root(); const b = threeRounds(r);
+  const res = await sendFile(r, "1", b.spec);
+  expect(res.code).toBe(0);
+  const html = readFileSync(res.lines.at(-1)!.document_path, "utf8");
+  const lead = html.slice(html.indexOf("<body>"));
+  expect(lead.indexOf("Round count: spec 3, plan 1. 1 critic did not end clean.")).toBeGreaterThan(-1);
+  expect(lead.indexOf("Round count")).toBeLessThan(lead.indexOf("Rule, don't just sign"));
+  expect(lead.indexOf("Rule, don't just sign")).toBeLessThan(lead.indexOf("finding-one"));
+  expect(lead.indexOf("finding-two")).toBeLessThan(lead.indexOf("<h1"));   // the page's own text follows the block
+  expect(html).toContain("finding-one &lt;the tag&gt; stays open");
+  expect(html).toContain("design.md.critic-spec-r3.md");
+  expect(res.lines.at(-1)!.caption).toContain("SPEC FINDINGS 2 r3");
+});
+
+test("DoD 2: a sealed .html page past round 3 goes as the sealed bytes with the block after <body>", async () => {
+  const r = root(); const b = threeRounds(r);
+  const page = join(b.dir, "design.html"); const pageText = "<!doctype html><html><head><title>D</title></head><body><h1>D</h1></body></html>\n";
+  writeFileSync(page, pageText);
+  writeFileSync(`${b.spec}.critic-spec-r3.md`, `**F1.** finding-one\nCONTENT-SHA256 ${sha(D_TEXT)} design.md\nCONTENT-SHA256 ${sha(pageText)} design.html\nSPEC FINDINGS 1\n`);
+  const res = await sendFile(r, "1", page);
+  expect(res.code).toBe(0);
+  const sent = readFileSync(res.lines.at(-1)!.document_path, "utf8");
+  expect(sent).toContain("finding-one");
+  expect(sent.indexOf("<body>")).toBeLessThan(sent.indexOf("Round count"));
+  expect(sent.replace(/<section class="open-findings">[\s\S]*<\/section>\n/, "")).toBe(pageText);
+  writeFileSync(page, pageText + "<!-- edited after round 3 -->\n");   // the exact bytes round 3 read, or nothing
+  const edited = await sendFile(r, "1", page);
+  expect(edited.code).not.toBe(0);
+  expect(edited.err).toContain("critic-spec-r3.md");
+});
+
+test("DoD 2: rounds 1 and 2 with findings stay refused, and each kind must reach 3 on its own count", async () => {
+  const r = root(); const b = bundle(r);
+  critic(b.spec, "spec", 2, "SPEC FINDINGS 1", D_SEAL);
+  expect((await sendFile(r, "1", b.spec)).code).not.toBe(0);
+  const r2 = root(); const t = threeRounds(r2);
+  critic(t.spec, "plan", 2, "PLAN FINDINGS 1", P_SEAL);
+  const plan2 = await sendFile(r2, "1", t.spec);
+  expect(plan2.code).not.toBe(0);
+  expect(plan2.err).toContain("critic-plan-r2.md");
+  critic(t.spec, "plan", 3, "PLAN FINDINGS 2", P_SEAL);
+  const plan3 = await sendFile(r2, "1", t.spec);
+  expect(plan3.code).toBe(0);
+  const html = readFileSync(plan3.lines.at(-1)!.document_path, "utf8");
+  expect(html).toContain("Round count: spec 3, plan 3. 2 critics did not end clean.");
+  expect(html).toContain("design.md.critic-plan-r3.md");
+});
+
+test("a spec already past 3 still goes with its findings when it is the bytes its last critic read, and its next round needs a record", async () => {
+  const r = root(); const b = bundle(r);
+  for (const n of [7, 8, 9]) critic(b.spec, "spec", n, "SPEC FINDINGS 4", D_SEAL);
+  const res = await sendFile(r, "1", b.spec);
+  expect(res.code).toBe(0);
+  expect(readFileSync(res.lines.at(-1)!.document_path, "utf8")).toContain("Round count: spec 9, plan 1.");
+  const r10 = `${b.spec}.critic-spec-r10.md`; unsealedReturn(r10, D_TEXT);
+  const next = await seal(r10, b.spec, sha(D_TEXT));
+  expect(next.code).not.toBe(0);
+  expect(next.err).toContain("operator-round-r10.md");
+});
+
+const sendSealedPage = async (r: string, b: ReturnType<typeof bundle>, pageText: string) => {
+  const page = join(b.dir, "design.html"); writeFileSync(page, pageText);
+  writeFileSync(`${b.spec}.critic-spec-r3.md`, `**F1.** finding-one\nCONTENT-SHA256 ${sha(D_TEXT)} design.md\nCONTENT-SHA256 ${sha(pageText)} design.html\nSPEC FINDINGS 1\n`);
+  return sendFile(r, "1", page);
+};
+
+test("a page that cannot carry the findings block is refused rather than sent without them", async () => {
+  for (const pageText of [
+    "<!doctype html><h1>D</h1>\n",
+    "<!doctype html><head><!-- <body> old --></head><h1>D</h1>\n",
+    "<!doctype html><head><title>The <body> tag</title></head><h1>D</h1>\n",
+    "<!doctype html><head><!-- <body> never closed\n",
+    "<!doctype html><head><meta name=\"note\" content=\"<body>\"></head><h1>D</h1>\n",
+    "<!doctype html><template><body><h1>D</h1></template>\n",
+    "<!doctype html><div hidden><body><h1>D</h1></div>\n",
+    "<!doctype html><head><script><!-- <script></script><body>--></script></head><h1>D</h1>\n",
+    "<!doctype html><body class=\"never closed\n",
+    "<!doctype html><head></head data-x=\"><body>\"><h1>D</h1>\n",
+    "<!doctype html><head><title>T</title x=\"><body>\"></head><h1>D</h1>\n",
+    "<!doctype html><head><meta a=b\"c><link title=\"d\"e=\"><body>\"></head><h1>D</h1>\n",
+  ]) {
+    const r = root(); const res = await sendSealedPage(r, threeRounds(r), pageText);
+    expect(res.code).not.toBe(0);
+    expect(res.err).toContain("<body>");
+    expect(res.lines).toEqual([]);
+  }
+});
+
+test("the findings block goes in the real body, not in a comment, a title or an attribute that spells the tag", async () => {
+  const real = "<body class=\"a>b\">\n<h1>D</h1></body></html>\n";
+  for (const head of [
+    "<head><!-- <body> old --></head>",
+    "<head><title>The <body> tag</title></head>",
+    "<head><meta name=\"note\" content=\"<body>\"></head>",
+    "<head><style>/* <body> */</style><script>const a = \"<body>\";</script></head>",
+    "<HEAD><TITLE>The <BODY> tag</TITLE></HEAD>",
+    "<head></head data-x=\"<body>\">",
+    "<head><meta a=b\"c></head>",
+  ]) {
+    const pageText = `<!doctype html><html>${head}${real}`;
+    const r = root(); const res = await sendSealedPage(r, threeRounds(r), pageText);
+    expect(res.code).toBe(0);
+    const sent = readFileSync(res.lines.at(-1)!.document_path, "utf8");
+    expect(sent.indexOf("<body class=")).toBeLessThan(sent.indexOf("Round count"));
+    expect(sent.indexOf("Round count")).toBeLessThan(sent.indexOf("<h1>D"));
+    expect(sent.replace(/<section class="open-findings">[\s\S]*<\/section>\n/, "")).toBe(pageText);
+  }
+});
+
+test("planted: one sealed return named for the third round does not open a page early, though it does bring the cap closer", async () => {
+  const r = root(); const b = bundle(r);
+  critic(b.spec, "spec", 3, "SPEC FINDINGS 1", D_SEAL);
+  const res = await sendFile(r, "1", b.spec);
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("critic-spec-r3.md");
+  expect(res.lines).toEqual([]);
+  const r4 = `${b.spec}.critic-spec-r4.md`; unsealedReturn(r4, D_TEXT);
+  expect((await seal(r4, b.spec, sha(D_TEXT))).err).toContain("operator-round-r4.md");
+});
+
+test("DoD 3: a scope edit on the same spec does not reset the count", async () => {
+  const r = root(); const b = threeRounds(r);
+  const edited = "# Design\n\nthe spec, with a wider scope\n"; writeFileSync(b.spec, edited);
+  const r4 = `${b.spec}.critic-spec-r4.md`; unsealedReturn(r4, edited);
+  const res = await seal(r4, b.spec, sha(edited));
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("operator-round-r4.md");
+});
+
+test("DoD 3, planted: a renamed critic cannot restart the count, under any new name", async () => {
+  const r = root(); const b = threeRounds(r);
+  for (const name of ["design.md.critic-fresh-r1.md", "design.md.critic-spec-opus-r1.md", "design.md.critic-r1.md", "fresh.critic-spec-r1.md", "other.md.critic-spec-r1.md"]) {
+    const v = join(b.dir, name); unsealedReturn(v, D_TEXT, "SPEC CLEAN");
+    const res = await seal(v, b.spec, sha(D_TEXT));
+    expect(res.code).not.toBe(0);
+    expect(res.err).toContain("operator-round-r4.md");
+    expect(readFileSync(v, "utf8")).not.toContain("CONTENT-SHA256");
+    unlinkSync(v);
+  }
+});
+
+test("DoD 3, planted: a renamed critic on disk counts as a round, so round 3 is reached sooner, not restarted", async () => {
+  const r = root(); const b = bundle(r);
+  critic(b.spec, "spec", 2, "SPEC FINDINGS 1", D_SEAL);
+  writeFileSync(join(b.dir, "fresh.critic-spec-r1.md"), `renamed return\nCONTENT-SHA256 ${sha(D_TEXT)} design.md\nSPEC FINDINGS 1\n`);
+  const r3 = `${b.spec}.critic-spec-r3.md`; unsealedReturn(r3, D_TEXT);
+  const res = await seal(r3, b.spec, sha(D_TEXT));
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("operator-round-r4.md");
+});
+
+test("DoD 4: a judge round is not counted and not limited", async () => {
+  const r = root(); const b = bundle(r);
+  critic(b.spec, "spec", 2, "SPEC CLEAN", D_SEAL);
+  for (let i = 1; i <= 9; i++) writeFileSync(`${b.spec}.judge-r${i}.md`, `judge round ${i}\nVERDICT: SPEC FINDINGS 1\n`);
+  const r3 = `${b.spec}.critic-spec-r3.md`; unsealedReturn(r3, D_TEXT);
+  expect((await seal(r3, b.spec, sha(D_TEXT))).code).toBe(0);   // 9 judge rounds, and the third critic round is still free
+  const r4 = `${b.spec}.critic-spec-r4.md`; unsealedReturn(r4, D_TEXT);
+  const res = await seal(r4, b.spec, sha(D_TEXT));
+  expect(res.err).toContain("3 spec critic rounds");   // the count names critics alone
+  writeFileSync(`${b.spec}.judge-r10.md`, "a tenth judge round is written with no record\n");
+  expect(existsSync(`${b.spec}.operator-round-r4.md`)).toBe(false);
+});
+
+test("planted: a renamed return cannot open the page before round 3, and past it the page lists that return too", async () => {
+  const r = root(); const b = bundle(r);
+  critic(b.spec, "spec", 2, "SPEC FINDINGS 1", D_SEAL);
+  writeFileSync(join(b.dir, "fresh.critic-spec-r1.md"), `renamed return, finding-renamed\nCONTENT-SHA256 ${sha(D_TEXT)} design.md\nSPEC FINDINGS 1\n`);
+  const early = await sendFile(r, "1", b.spec);
+  expect(early.code).not.toBe(0);
+  expect(early.err).toContain("design.md.critic-spec-r2.md");
+  expect(early.lines).toEqual([]);
+  critic(b.spec, "spec", 3, "SPEC FINDINGS 1", D_SEAL);
+  const res = await sendFile(r, "1", b.spec);
+  expect(res.code).toBe(0);
+  const page = readFileSync(res.lines[0].document_path as string, "utf8");
+  expect(page).toContain("finding-renamed");
+  expect(page).toContain("Round count: spec 4, plan 1. 2 critics did not end clean.");
+});
+
+test("DoD 4: a judge return that ends in a verdict line can be sealed past the cap, and adds no round", async () => {
+  const r = root(); const b = threeRounds(r);
+  const judge = `${b.spec}.judge-r1.md`; unsealedReturn(judge, D_TEXT, "SPEC CLEAN");
+  expect((await seal(judge, b.spec, sha(D_TEXT))).code).toBe(0);
+  const res = await sendFile(r, "1", b.spec);
+  expect(res.code).toBe(0);
+  expect(readFileSync(res.lines[0].document_path as string, "utf8")).toContain("Round count: spec 3, plan 1.");
+});
+
+test("DoD 4: every judge file name in use can be sealed past the cap", async () => {
+  const r = root(); const b = threeRounds(r);
+  for (const name of ["judge.md", "judge2.md", "judge-input.md"]) {
+    const judge = `${b.spec}.${name}`; unsealedReturn(judge, D_TEXT, "SPEC CLEAN");
+    expect((await seal(judge, b.spec, sha(D_TEXT))).code).toBe(0);
+  }
+});
+
+test("planted: a spec named like a judge file still gets three rounds", async () => {
+  const r = root(); const b = bundle(r);
+  const spec = join(b.dir, "judge-design.md"); writeFileSync(spec, D_TEXT);
+  for (const n of [1, 2, 3]) critic(spec, "spec", n, "SPEC FINDINGS 1", { text: D_TEXT, file: "judge-design.md" });
+  const r4 = `${spec}.critic-spec-r4.md`; unsealedReturn(r4, D_TEXT);
+  const refused = await seal(r4, spec, sha(D_TEXT));
+  expect(refused.code).not.toBe(0);
+  expect(refused.err).toContain("operator-round-r4.md");
 });

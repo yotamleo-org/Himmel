@@ -232,8 +232,11 @@ in the spec). The critic reads the estimate record and may challenge sigma.
 Dispatch a fresh subagent (Agent tool, `model: opus` at high effort) against
 the written spec file; never let it inherit the parent's tier (CLAUDE.md
 subagent policy). Loop
-fix → re-critic until it returns clean, **cap 2 rounds** (then advance with
-any residual findings noted).
+fix → re-critic until it returns clean, **cap 3 rounds per spec**: spec
+and plan critics are counted apart, and a new critic name or a scope edit does not
+restart the count. Every round the critic reads the whole file. After round 3 stop asking:
+the page goes to the operator with each open finding on it, for a ruling. A
+further round needs an operator record, and `critic-seal.sh` refuses to seal it without one.
 
 **Save every critic return as a verdict file (HIMMEL-8353).** After each round,
 write the critic's return verbatim, in both modes, to
@@ -304,7 +307,7 @@ Terminal section.
 
 Dispatch a fresh subagent (Agent tool, `model: sonnet` at high effort) against
 the written plan file. Loop
-fix → re-critic until clean, **cap 2 rounds**.
+fix → re-critic until clean, **cap 3 rounds**, counted as Stage 2 counts them.
 
 Save each return as Stage 2 does, beside the **spec** (not the plan):
 `<spec-file>.critic-plan-r<n>.md`, ending in `PLAN CLEAN` or

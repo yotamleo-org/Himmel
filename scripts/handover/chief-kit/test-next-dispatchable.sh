@@ -2440,6 +2440,163 @@ for k in HIMMEL-9711 HIMMEL-9712 HIMMEL-9713; do has "9181: --why gives a reason
 w9t="$(run9181 --why --top 2 | grep -E '^(LOCAL|CLOUD)' | grep -c .)"
 [ "$w9t" = 0 ] && pass "9181: an explicit --top is still the cap (two slots, both RESUME rows)" || fail "9181: --why --top 2 listed $w9t To Do rows"
 
+# A ticket waits only on the files its next step writes: the latest remainder, else a Writes: or Files: line, else the
+# description without its comments. A path it only runs holds nothing, and a ticket with no readable scope is a chief question.
+M91="$WORK/m91/HIMMEL"; mkdir -p "$M91" "$WORK/s91/workers"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/m91/HIMMEL.versions.tsv"
+M_SAVE="$M"; M="$M91"
+BODY_RUNS='Impact
+An adopter on the Mac could be billed for runs they never asked for.
+Plan
+1. On the Mac, in the checkout on fix/himmel-1-opt-in, run bash scripts/luna/graphmap-cadence.sh arm --ast-only.
+2. Run bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed --dry-run.
+3. Run bash scripts/himmel-doctor.sh --only C88.
+Agent detail
+Run by the chief, not the PR worker. Code: scripts/luna/graphmap-cadence.sh, scripts/himmel-doctor.sh (C88).'
+mk HIMMEL-9601 "To Do" Medium '[]' '["v1.0.1"]' '[]' "only runs the doctor" "$BODY_RUNS"
+mk HIMMEL-9602 "To Do" Medium '[]' '["v1.0.1"]' '[]' "runs a script that crashes" "Run bash scripts/himmel-doctor.sh --only C88 and it crashes on the Mac."
+mk HIMMEL-9603 "To Do" Medium '[]' '["v1.0.1"]' '[]' "runs it and edits it" "Run scripts/himmel-doctor.sh, then edit scripts/himmel-doctor.sh to add the check."
+mk HIMMEL-9604 "To Do" Medium '[]' '["v1.0.1"]' '[]' "held path only in a comment" "Edit scripts/lib/nd91-own1.sh.
+
+DoD
+- the row is green
+
+Proof
+- a RED row
+
+## Comments
+
+### a — 2026-11-01
+
+An old slice edited scripts/himmel-doctor.sh."
+mk HIMMEL-9605 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a Files line narrows the prose" "The doctor at scripts/himmel-doctor.sh shows this.
+Files: scripts/lib/nd91-own2.sh"
+mk HIMMEL-9606 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a Writes line names the held file" "Context first.
+> **Writes:** scripts/himmel-doctor.sh"
+mk HIMMEL-9607 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a plain description names the held file" "The doctor misreads C88 in scripts/himmel-doctor.sh."
+mk HIMMEL-9608 "To Do" Medium '[]' '["v1.0.1"]' '[]' "paths only in comments" "Nothing about files here.
+
+## Comments
+
+### a — 2026-11-01
+
+Maybe scripts/lib/nd91-comment.sh."
+mk HIMMEL-9609 "To Do" Medium '[]' '["v1.0.1"]' '[]' "no path anywhere" "Make the thing better."
+mk HIMMEL-9610 "To Do" Medium '[]' '["v1.0.1"]' '[]' "says it writes no code" "A live proof on the station. No code change is expected."
+BODY_SLICE='Plan
+1. Teach scripts/handover/merge-on-green.sh the repair.
+2. The station first run.'
+mk HIMMEL-9611 "In Progress" Medium '[]' '["v1.0.1"]' '[]' "partly merged, the remainder needs no code" "$BODY_SLICE"
+mk HIMMEL-9612 "In Progress" Medium '[]' '["v1.0.1"]' '[]' "the remainder really edits a held file" "Plan
+1. Edit scripts/lib/nd91-done.sh."
+mk HIMMEL-9613 "In Progress" Medium '[]' '["v1.0.1"]' '[]' "the remainder edits a registered file" "Plan
+1. Edit scripts/lib/nd91-done2.sh."
+mk HIMMEL-9614 "In Progress" Medium '[]' '["v1.0.1"]' '[]' "the remainder is vague" "Plan
+1. Edit scripts/handover/merge-on-green.sh."
+mk HIMMEL-9615 "In Progress" Medium '[]' '["v1.0.1"]' '[]' "an older missing remainder" "Edit scripts/lib/nd91-h1.sh."
+mk HIMMEL-9616 "In Progress" Medium '[]' '["v1.0.1"]' '[]' "a newer missing remainder" "Edit scripts/lib/nd91-h2.sh."
+mk HIMMEL-9617 "In Progress" Medium '[]' '["v1.0.1"]' '[]' "an older missing remainder, the newer hands off" "Edit scripts/lib/nd91-h3.sh."
+mk HIMMEL-9618 "In Progress" Medium '[]' '["v1.0.1"]' '[]' "in work, no readable scope" "Keep the thing going."
+mk HIMMEL-9619 "In Progress" Medium '[]' '["v1.0.1"]' '[]' "an older remainder, the newer hands off" "Edit scripts/lib/nd91-h4.sh."
+M="$M_SAVE"
+printf 'Remaining: S7 (the chief-run station first run on live state, no code).\n' > "$PR_BODY_DIR/9611"
+printf 'Remaining: edit scripts/lib/nd91-rem.sh for the last case.\n' > "$PR_BODY_DIR/9612"
+printf 'Remaining: edit scripts/lib/nd91-rem2.sh for the last case.\n' > "$PR_BODY_DIR/9613"
+printf 'Remaining: the rest of it.\n' > "$PR_BODY_DIR/9614"
+printf 'Merged the first slice.\n' > "$PR_BODY_DIR/9615"
+printf 'Remaining: only a clean live shift, no code.\n' > "$PR_BODY_DIR/9625"
+printf 'Remaining: an old half, no code.\n' > "$PR_BODY_DIR/9616"
+printf 'Merged the last slice.\n' > "$PR_BODY_DIR/9626"
+printf 'Merged the first slice.\n' > "$PR_BODY_DIR/9617"
+printf 'Remaining: edit scripts/himmel-doctor.sh.\n' > "$PR_BODY_DIR/9619"
+printf '## Ticket coverage\n- the rest: deferred → HIMMEL-9998\n' > "$PR_BODY_DIR/9629"
+printf '## Ticket coverage\n- the rest: deferred → HIMMEL-9999\n' > "$PR_BODY_DIR/9627"
+: > "$WORK/s91/status-events.jsonl"
+for row in 9611:9611 9612:9612 9613:9613 9614:9614 9615:9615 9615:9625 9616:9616 9616:9626 9617:9617 9617:9627 9619:9619 9619:9629; do
+    printf '{"ts":"t","event":"merge","key":"HIMMEL-%s","pr":"%s","contract":"no","result":"noop"}\n' "${row%%:*}" "${row#*:}" >> "$WORK/s91/status-events.jsonl"
+done
+printf 'scripts/himmel-doctor.sh\nscripts/handover/merge-on-green.sh\nscripts/lib/nd91-rem.sh\n' > "$WORK/held91.txt"
+fresh_register
+: > "$WORK/N91-holder.md"
+seed HIMMEL-9700 N91 "$WORK/N91-holder.md" scripts/lib/nd91-rem2.sh
+run91() { NEXT_DISPATCH_MIRROR="$M91" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --top 60 --held "$WORK/held91.txt" --workers-dir "$WORK/s91/workers" --workers-from "$WORK/fleet5.json" "$@" 2>/dev/null; }
+r91="$(run91 --why --dispositions)"
+row91() { printf '%s\n' "$r91" | grep -E "^(# )?$1[[:space:]]HIMMEL-$2[[:space:]:]" || true; } # <row kind> <ticket number>
+# one ticket, one file, the shape of a ticket that only runs the doctor
+has "a ticket that only runs himmel-doctor.sh is not dropped when another worker holds it" "$r91" "LOCAL	HIMMEL-9601	"
+has "and its row names no file" "$(row91 LOCAL 9601)" "files=-"
+lacks "and no collision is recorded for it" "$r91" "# drop HIMMEL-9601 collision"
+has "--why names the paths it only reads" "$(row91 scope 9601)" "reads=scripts/luna/graphmap-cadence.sh,scripts/himmel-doctor.sh"
+has "a run path that is reported broken still holds" "$r91" "# drop HIMMEL-9602 collision scripts/himmel-doctor.sh held by"
+has "a run path the same ticket edits still holds" "$r91" "# drop HIMMEL-9603 collision scripts/himmel-doctor.sh held by"
+has "a path named only in a comment holds nothing" "$r91" "LOCAL	HIMMEL-9604	"
+has "and the description's own path is its scope" "$(row91 LOCAL 9604)" "files=scripts/lib/nd91-own1.sh"
+has "a Files: line is the scope, not the prose around it" "$(row91 LOCAL 9605)" "files=scripts/lib/nd91-own2.sh"
+has "--why names the Files: line as the source" "$(row91 scope 9605)" "Files: line"
+has "a Writes: line naming a held file drops the ticket" "$r91" "# drop HIMMEL-9606 collision scripts/himmel-doctor.sh held by"
+has "--why names the Writes: line as the source" "$(row91 drop 9606)" "(from Writes: line)"
+has "a description naming a held file drops the ticket" "$r91" "# drop HIMMEL-9607 collision scripts/himmel-doctor.sh held by"
+has "--why names the description as the source" "$(row91 drop 9607)" "(from description)"
+# no readable scope: never silently free
+lacks "a ticket with paths only in comments is not listed" "$r91" "LOCAL	HIMMEL-9608	"
+has "and is a chief question" "$r91" "NEEDS-CHIEF-NOTE HIMMEL-9608: no readable scope"
+has "and its drop says so" "$r91" "# drop HIMMEL-9608 no-scope"
+lacks "a ticket with no path anywhere is not listed" "$r91" "LOCAL	HIMMEL-9609	"
+has "and is a chief question" "$r91" "NEEDS-CHIEF-NOTE HIMMEL-9609: no readable scope"
+has "a ticket that says it writes no code stays listed" "$(row91 LOCAL 9610)" "files=-"
+has "an in-work ticket with no readable scope is a chief question" "$r91" "NEEDS-CHIEF-NOTE HIMMEL-9618: no readable scope"
+lacks "and is no RESUME row" "$r91" "RESUME	HIMMEL-9618	"
+has "a newer hand-off supersedes an older remainder" "$r91" "HANDED-OFF HIMMEL-9619: remainder on HIMMEL-9998"
+lacks "and the older remainder holds no file" "$r91" "RESUME-HELD HIMMEL-9619"
+has "--resume-only still counts it as an orphan, dispatching nothing" "$(run91 --resume-only)" "RESUME	HIMMEL-9618	"
+r91top="$(run91 --top 1)"
+has "the question rows stop at --top and count the rest" "$r91top" "# no readable scope: 2 more ticket(s) not shown, --why names them"
+has "and only that many are printed" "$(printf '%s\n' "$r91top" | grep -c 'no readable scope: its description')" "1"
+has "--why names every one" "$(run91 --top 1 --why | grep -c 'no readable scope: its description')" "3"
+# the remainder is read before the collision check, the shape of a partly merged ticket whose rest needs no code
+has "a partly merged ticket whose remainder needs no code is not dropped on a path only its finished slice names" "$r91" "RESUME	HIMMEL-9611	"
+lacks "and it is no RESUME-HELD row" "$r91" "RESUME-HELD HIMMEL-9611"
+has "and its row names no file" "$(row91 RESUME 9611)" "files=-"
+has "a ticket whose remainder really edits a held file still drops as a collision" "$r91" "RESUME-HELD HIMMEL-9612 by held list"
+has "--why names the remainder as the source of the held path" "$(row91 why 9612)" "scripts/lib/nd91-rem.sh by held list, from remainder of PR #9612"
+has "a remainder's path is asked of the holds register too" "$r91" "RESUME-HELD HIMMEL-9613 by"
+has "a remainder naming no path and no no-code signal falls back to the description, never free" "$r91" "RESUME-HELD HIMMEL-9614 by held list"
+# the history trap: all contract=no PRs of a ticket accumulate
+has "a newer clear remainder is not overridden by an older missing one" "$r91" "RESUME	HIMMEL-9615	"
+lacks "and no chief note is asked for" "$r91" "NEEDS-CHIEF-NOTE HIMMEL-9615"
+has "and the row names only the newer slice" "$(row91 RESUME 9615)" "partial=PR #9625 merged, Remaining: only a clean live shift, no code."
+lacks "and not the older one" "$(row91 RESUME 9615)" "PR #9615"
+has "a missing remainder newer than the clear one still asks the chief" "$r91" "NEEDS-CHIEF-NOTE HIMMEL-9616: merged PR #9626 has no Remaining: line"
+lacks "and the question names only the newer PR" "$(row91 NEEDS-CHIEF-NOTE 9616)" "#9616"
+has "a newer hand-off supersedes an older missing remainder" "$r91" "HANDED-OFF HIMMEL-9617: remainder on HIMMEL-9999"
+quiet91="$(run91)"
+lacks "without --why no scope line is printed" "$quiet91" "# scope "
+
+# A chain sibling's worker owns its ticket only while it can be alive: a fresh queue lock, or a doc armed within the hour.
+B91="$WORK/h91/yotamleo/himmel"; mkdir -p "$B91" "$WORK/h91/.locks/queue/held.lock" "$WORK/h91/.locks/queue/stale.lock" "$WORK/h91/.locks/queue/named.lock"
+M91S="$WORK/m91s/HIMMEL"; mkdir -p "$M91S" "$WORK/s91s/workers"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/m91s/HIMMEL.versions.tsv"
+M_SAVE="$M"; M="$M91S"
+for n in 1 2 3 4 5; do mk "HIMMEL-963$n" "In Progress" Medium '[]' '["v1.0.1"]' '[]' "sibling case $n" "Edit scripts/lib/nd91-s$n.sh."; done
+M="$M_SAVE"
+for n in 1 2 3 4; do printf '# worker\n> **Writes:** scripts/lib/nd91-s%s.sh\n' "$n" > "$B91/HIMMEL-963$n-N96$n-case-2026-11-06.md"; done
+printf '# HIMMEL-9635 worker\n> **Writes:** scripts/lib/nd91-s5.sh\n' > "$B91/N965-ops-2026-11-06.md"
+ago "$B91/N965-ops-2026-11-06.md" 3
+printf '{"handover":"%s","heartbeat":"%s"}\n' "$B91/N965-ops-2026-11-06.md" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$WORK/h91/.locks/queue/named.lock/owner.json"
+ago "$B91/HIMMEL-9631-N961-case-2026-11-06.md" 3
+ago "$B91/HIMMEL-9632-N962-case-2026-11-06.md" 3
+ago "$B91/HIMMEL-9633-N963-case-2026-11-06.md" 3
+printf '{"handover":"%s","heartbeat":"%s"}\n' "$B91/HIMMEL-9632-N962-case-2026-11-06.md" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$WORK/h91/.locks/queue/held.lock/owner.json"
+printf '{"handover":"%s","heartbeat":"2026-01-01T00:00:00Z"}\n' "$B91/HIMMEL-9633-N963-case-2026-11-06.md" > "$WORK/h91/.locks/queue/stale.lock/owner.json"
+mkfleet "$B91/HIMMEL-nextleg-2026-11-06TA-roadmap-chief.fleet.json" "N965:$B91/N965-ops-2026-11-06.md" "N961:$B91/HIMMEL-9631-N961-case-2026-11-06.md" "N962:$B91/HIMMEL-9632-N962-case-2026-11-06.md" "N963:$B91/HIMMEL-9633-N963-case-2026-11-06.md" "N964:$B91/HIMMEL-9634-N964-case-2026-11-06.md"
+mkfleet "$B91/HIMMEL-nextleg-2026-11-07TB-roadmap-chief.fleet.json"
+s91="$(NEXT_DISPATCH_MIRROR="$M91S" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --top 20 --dispositions --workers-dir "$WORK/s91s/workers" --workers-from "$B91/HIMMEL-nextleg-2026-11-07TB-roadmap-chief.fleet.json" 2>/dev/null)"
+has "a sibling worker with no lock and a doc hours old owns nothing" "$s91" "RESUME	HIMMEL-9631	"
+lacks "and is not called live" "$s91" "live worker N961"
+lacks "a sibling worker with a fresh queue lock keeps its ticket" "$s91" "RESUME	HIMMEL-9632	"
+has "and is named as the owner" "$s91" "# disposition HIMMEL-9632 in-flight owned by live worker N962 of the chief on HIMMEL-nextleg-2026-11-06TA-roadmap-chief"
+has "a sibling worker whose lock heartbeat is past the TTL owns nothing" "$s91" "RESUME	HIMMEL-9633	"
+lacks "a fresh lock on a doc whose name carries no ticket keeps the ticket its title names" "$s91" "RESUME	HIMMEL-9635	"
+lacks "a sibling doc armed within the hour, its lock not yet taken, keeps its ticket" "$s91" "RESUME	HIMMEL-9634	"
+
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
 real_hits="$(grep -rlF "$WORK" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"

@@ -29,8 +29,8 @@ export const renderUserBoard = ({ stamp, running, waiting, shipped, shippedNote 
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Shift board</title>
 <style>
-:root { --bg:#f6f7f9; --surface:#fff; --text:#1c2128; --muted:#5b6672; --line:#d9dee4; --accent:#2457c5; --warn:#9a6700; --ok:#1a7f37; }
-@media (prefers-color-scheme: dark) { :root { --bg:#0f1318; --surface:#181d24; --text:#e6e9ed; --muted:#96a1ad; --line:#2b333d; --accent:#7aa2ff; --warn:#d29922; --ok:#3fb950; } }
+:root { --bg:#0f1318; --surface:#181d24; --text:#e6e9ed; --muted:#96a1ad; --line:#2b333d; --accent:#7aa2ff; --warn:#d29922; --ok:#3fb950; color-scheme:dark; }
+:root[data-theme="light"] { --bg:#f6f7f9; --surface:#fff; --text:#1c2128; --muted:#5b6672; --line:#d9dee4; --accent:#2457c5; --warn:#9a6700; --ok:#1a7f37; color-scheme:light; }
 * { box-sizing: border-box; }
 body { margin:0; padding:16px; background:var(--bg); color:var(--text); font:15px/1.45 system-ui, sans-serif; overflow-wrap:anywhere; }
 main { max-width:640px; margin:0 auto; }
