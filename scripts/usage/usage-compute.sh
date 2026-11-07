@@ -282,18 +282,26 @@ build_tickets() {
   jq -n -S --rawfile table "$WORK/bank.md" --slurpfile ledger "$WORK/ledger.jsonl" --argjson sel "$SEL" \
     "$BASE_PROGRAM" > "$WORK/base.json"
   if [ -n "$TICKETS" ] && [ "$(jq '[.[] | select(.ticket | startswith("_") | not)] | length' "$WORK/base.json")" = 0 ]; then die "--tickets matched no session or CR row: $TICKETS"; fi
-  : > "$WORK/records.jsonl"
-  local t rec dg
-  for t in $(jq -r '.[].ticket' "$WORK/base.json"); do
-    rec="$(jq -cS --arg t "$t" '.[] | select(.ticket == $t)' "$WORK/base.json")"
-    if [ -n "$REPO" ] && [ "${t#_}" = "$t" ]; then
-      join_ticket "$t"
-      rec="$(printf '%s' "$rec" | jq -cS --argjson pr "$PRJ" --argjson ci "$CIJ" '. + {pr: $pr, ci: $ci}')"
+  # one record per line, each read once (a jq pass over base.json per ticket took minutes on thousands of tickets);
+  # the loop reads on fd 4, so a gh call cannot take its input
+  jq -cS '.[]' "$WORK/base.json" > "$WORK/recs.jsonl"
+  : > "$WORK/recs2.jsonl"; : > "$WORK/digests"
+  local t rec
+  while IFS= read -r rec <&4; do
+    if [ -n "$REPO" ]; then
+      t="$(jq -r .ticket <<<"$rec")"
+      if [ "${t#_}" = "$t" ]; then
+        join_ticket "$t"
+        rec="$(printf '%s' "$rec" | jq -cS --argjson pr "$PRJ" --argjson ci "$CIJ" '. + {pr: $pr, ci: $ci}')"
+      fi
     fi
-    if command -v sha256sum >/dev/null 2>&1; then dg="$(printf '%s' "$rec" | sha256sum | cut -d' ' -f1)"
-    else dg="$(printf '%s' "$rec" | shasum -a 256 | cut -d' ' -f1)"; fi
-    printf '%s' "$rec" | jq -cS --arg d "$dg" '. + {digest: $d}' >> "$WORK/records.jsonl"
-  done
+    printf '%s\n' "$rec" >> "$WORK/recs2.jsonl"
+    if command -v sha256sum >/dev/null 2>&1; then printf '%s' "$rec" | sha256sum | cut -d' ' -f1 >> "$WORK/digests"
+    else printf '%s' "$rec" | shasum -a 256 | cut -d' ' -f1 >> "$WORK/digests"; fi
+  done 4< "$WORK/recs.jsonl"
+  # shellcheck disable=SC2016  # jq's own $vars
+  jq -cS -n --rawfile d "$WORK/digests" '($d | split("\n")) as $ds | foreach inputs as $r (-1; . + 1; $r + {digest: $ds[.]})' \
+    "$WORK/recs2.jsonl" > "$WORK/records.jsonl" || die "cannot attach the record digests"
 }
 
 # --- 4. phase-cost rows ------------------------------------------------------
