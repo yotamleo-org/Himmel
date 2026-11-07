@@ -76,10 +76,11 @@
 #   4g. A lane=full marker whose diff adds a code comment needs a `comments`
 #      row (/pr-check step 3.7) stamped with this branch at the clearing head,
 #      or at an earlier head with no comment added since; an `off` row audits as
-#      comments=off. The comments are counted by the anchor's own
-#      scripts/lint/check-history-comments.sh beside this script, so a branch
-#      cannot edit its counter; a counter or row that cannot be read refuses
-#      closed. A marker minted before the gate day is exempt
+#      comments=off. The comments are counted by the HIMMEL_REPO anchor's
+#      scripts/lint/check-history-comments.sh, never the copy beside this script
+#      (an absolute-path run is the branch's own copy), so a branch cannot edit
+#      its counter; an unset or relative HIMMEL_REPO, or a counter or row that
+#      cannot be read, refuses closed. A marker minted before the gate day is exempt
 #      (reason=missing-comment-review).
 #   4d. Every finding stamped with this branch whose effective verdict is
 #      agreed or fixed, at ANY round head, has a variant-sweep record in
@@ -1771,8 +1772,9 @@ fi
 # run the review as a context-free headless reviewer with a provenance artifact,
 # as claude-floor-review.sh does.
 cmt_count() {
-    local _n
-    _n=$(bash "$SCRIPT_DIR/../lint/check-history-comments.sh" --range "$1" --tip "$tip" --count-comments) || return 1
+    local _n _anchor="${HIMMEL_REPO:-}"
+    case "$_anchor" in /*) ;; *) return 1 ;; esac
+    _n=$(bash "$_anchor/scripts/lint/check-history-comments.sh" --range "$1" --tip "$tip" --count-comments) || return 1
     case "$_n" in ''|*[!0-9]*) return 1 ;; esac
     printf '%s' "$_n"
 }

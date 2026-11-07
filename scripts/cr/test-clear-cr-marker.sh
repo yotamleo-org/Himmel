@@ -300,8 +300,9 @@ stub_check_ci() {
 # run_clear <tmp> <expected-rc> <name> [args...]
 run_clear() {
     local tmp="$1" expected="$2" name="$3"; shift 3
-    local rc=0 out
-    out=$(cd "$tmp" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-review-marker.sh" "$@" 2>&1) || rc=$?
+    local rc=0 out _env=()
+    [ -n "${CM_ANCHOR_SELF:-}" ] && _env=(HIMMEL_REPO="$tmp")
+    out=$(cd "$tmp" && env ${_env[@]+"${_env[@]}"} PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-review-marker.sh" "$@" 2>&1) || rc=$?
     LAST_CLEAR_OUT="$out"
     if [ "$rc" -eq "$expected" ]; then pass; else
         fail "$name (expected rc=$expected, got $rc)"; echo "    out: $out" >&2
@@ -1308,6 +1309,7 @@ cm_finish() {
     stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 }
 cm_reason() { if grepq "$LAST_CLEAR_OUT" -F "reason=$1"; then pass; else fail "$2: must refuse with reason=$1: $LAST_CLEAR_OUT"; fi; }
+CM_ANCHOR_SELF=1
 
 cm_start; cm_finish "$_cm_ts"
 run_clear "$tmp" 14 "diff adds a code comment, no comments row → exit 14"
@@ -1425,6 +1427,30 @@ cm_anchor_case; rm -f "$_cm_anchor/scripts/lint/ticket-refs.awk"; cm_finish "$_c
 cm_run_anchored "$tmp" "$_cm_anchor" 14 "an anchor without ticket-refs.awk, no row → exit 14"
 cm_reason comment-review-unreadable "anchor without its classifier"
 rm -rf "$tmp" "$_cm_anchor"
+
+# The runbook clears by absolute path, so the branch's gate copy runs and its own lint sits beside it.
+cm_run_abs() {
+    local rc=0 out _e=(HIMMEL_REPO="$2")
+    [ "$2" = UNSET ] && _e=(-u HIMMEL_REPO)
+    out=$(cd "$1" && env -u CR_ANCHOR_HANDED_OFF "${_e[@]}" PATH="$1/bin:$PATH" bash "$1/scripts/cr/clear-review-marker.sh" 2>&1) || rc=$?
+    LAST_CLEAR_OUT="$out"
+    if [ "$rc" -eq "$3" ]; then pass; else fail "$4 (expected rc=$3, got $rc)"; echo "    out: $out" >&2; fi
+}
+cm_anchor_case; cm_finish "$_cm_ts"
+cm_run_abs "$tmp" "$_cm_anchor" 14 "absolute-path clear: a branch lint that prints 0 does not hide a code comment from the anchor's counter"
+cm_reason missing-comment-review "absolute path, branch lint prints 0"
+rm -rf "$tmp" "$_cm_anchor"
+
+cm_anchor_case; cm_finish "$_cm_ts"
+cm_run_abs "$tmp" UNSET 14 "absolute-path clear with HIMMEL_REPO unset refuses closed"
+cm_reason comment-review-unreadable "HIMMEL_REPO unset"
+rm -rf "$tmp" "$_cm_anchor"
+
+cm_anchor_case; cm_finish "$_cm_ts"
+cm_run_abs "$tmp" relative/anchor 14 "absolute-path clear with a relative HIMMEL_REPO refuses closed"
+cm_reason comment-review-unreadable "HIMMEL_REPO relative"
+rm -rf "$tmp" "$_cm_anchor"
+CM_ANCHOR_SELF=
 
 # 4b. Empty ledger → no evidence /pr-check ever ran → refuse.
 make_repo || exit 1

@@ -116,7 +116,7 @@ edges() {
 # suite-coverage.sh (run by impacted-suites.sh --check) only READS run-shell-tests.sh's SKIP_LIST and timeout tables as text; it never runs it.
 # merge-on-green.sh runs bug-origin-report.py only after a merge, from the anchor's bytes (HIMMEL_REPO), never a /pr-check run's branch.
 # pr-check-outside.sh runs ready-check.sh only in its --pr form, and that form refuses unless the script is the HIMMEL_REPO anchor's own copy (an -ef check before it runs anything), so the ready-check.sh it runs is the anchor's bytes, never a branch's. Held by a row in test-pr-check-outside.sh. The pin is per file, so it also hides any later classifier-form edge to ready-check.sh.
-# clear-review-marker.sh gate 4g runs scripts/lint/check-history-comments.sh beside the script; a non-anchor copy hands off to the anchor's copy first (anchor-handoff.sh), so the branch's lint bytes never run.
+# clear-review-marker.sh gate 4g runs the HIMMEL_REPO anchor's scripts/lint/check-history-comments.sh (an absolute HIMMEL_REPO only, else it refuses closed), never the branch's copy.
 NOT_RUN="scripts/cr/install-cr-gate.sh -> scripts/hooks/check-cr-before-push.sh
 scripts/cr/clear-review-marker.sh -> scripts/lint/check-history-comments.sh
 scripts/cr/pr-check-outside.sh -> scripts/handover/chief-kit/ready-check.sh
