@@ -157,8 +157,10 @@ EOF
     echo "STEP $step rc=$rc"
     if [ "$rc" -ne 0 ]; then
         failed="${failed:+$failed,}$step-failed"
-        # the step's own words: its last lines say which command failed (stdout is the sync's report, so they are indented)
-        printf '%s\n' "$step_out" | tail -n 5 | sed "s/^/    $step: /"
+        # The step's own words, indented (stdout is the sync's report). --only prints its status table AFTER the build
+        # log, so the last lines are table rows: take the last 5 lines before the table, then the table's failed rows.
+        { printf '%s\n' "$step_out" | sed '/update chain status/,$d' | tail -n 5
+          printf '%s\n' "$step_out" | grep -E '^ +[a-z_]+ +failed '; } | sed "s/^/    $step: /"
     fi
 done
 

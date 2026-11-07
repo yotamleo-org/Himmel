@@ -1659,7 +1659,10 @@ config_ui_confirm_up() {
         if [ "$s" != "active" ]; then CUI_CONFIRM_WHY="is-active says '${s:-nothing}'"; return 1; fi
         i=$((i + 1))
     done
-    if [ -n "$port" ] && command -v curl >/dev/null 2>&1 && ! curl -fsS -o /dev/null --max-time 3 "http://127.0.0.1:$port/agui/" 2>/dev/null; then
+    CUI_CONFIRM_NOTE=""
+    if [ -z "$port" ]; then CUI_CONFIRM_NOTE="; HTTP not checked, the unit file names no port"
+    elif ! command -v curl >/dev/null 2>&1; then CUI_CONFIRM_NOTE="; HTTP not checked, curl is missing"
+    elif ! curl -fsS -o /dev/null --max-time 3 --noproxy 127.0.0.1 "http://127.0.0.1:$port/agui/" 2>/dev/null; then
         CUI_CONFIRM_WHY="no HTTP answer on 127.0.0.1:$port"; return 1
     fi
     return 0
@@ -1730,7 +1733,7 @@ update_config_ui() {
         if systemctl --user restart "$unit" >/dev/null 2>&1; then
             if config_ui_confirm_up "$unit"; then
                 rm -f "$pending"
-                STATUS_config_ui="updated"; DETAIL_config_ui="bundle rebuilt, $unit restarted"
+                STATUS_config_ui="updated"; DETAIL_config_ui="bundle rebuilt, $unit restarted${CUI_CONFIRM_NOTE:-}"
                 return 0
             fi
             mkdir -p "${pending%/*}" 2>/dev/null && : > "$pending" 2>/dev/null || true

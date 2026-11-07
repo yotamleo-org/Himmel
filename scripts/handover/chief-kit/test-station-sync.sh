@@ -32,7 +32,13 @@ lacks()    { case "$2" in *"$3"*) echo "FAIL - $1: [$2] contains [$3]"; fails=$(
 cat > "$W/update" <<'EOF2'
 #!/usr/bin/env bash
 echo "update $*" >> "$SS_CALLS"
-if [ "$1 $2" = "--only ${SS_T_FAIL:-}" ]; then echo "bun: build exploded" >&2; exit 1; fi
+if [ "$1 $2" = "--only ${SS_T_FAIL:-}" ]; then
+    # the real --only layout: the step's own error first, the status table after it
+    printf '%s\n' "==> config UI rebuild" "    error: bun build exploded" "==> update chain status" \
+        "    jira_cli       not-attempted" "    qmd_fork       not-attempted" "    hermes         not-attempted" \
+        "    luna_template  not-attempted" "    config_ui      failed         build failed" >&2
+    exit 1
+fi
 if [ "$1" = "--versions" ]; then cat "$SS_T_VERSIONS"; grep -qw behind "$SS_T_VERSIONS" && exit 1; exit 0; fi
 exit 0
 EOF2
@@ -303,7 +309,9 @@ contains "26 and the station reads ok" "$out" "STATION=OK"
 : > "$CUI_MARK"
 SS_T_FAIL=config_ui run "$W/ver-current" scripts/config-ui/server.ts
 contains "27 a failed config_ui step reports its rc" "$out" "STEP config_ui rc=1"
-contains "27 and keeps the step's own failure line" "$out" "config_ui: bun: build exploded"
+contains "27 and keeps the step's own error, not just the table" "$out" "config_ui:     error: bun build exploded"
+contains "27 and the failed table row" "$out" "config_ui:     config_ui      failed         build failed"
+lacks "27 and not the unrelated table rows" "$out" "not-attempted"
 check "27 the failure is named once" "$(printf '%s\n' "$out" | grep -c 'STATION=BEHIND:config_ui-failed$')" 1
 rm -f "$CUI_MARK"
 
