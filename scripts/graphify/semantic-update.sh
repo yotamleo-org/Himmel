@@ -77,7 +77,7 @@
 # ended = the results are replayed through the same graphify extract (the replay shim answers each chunk prompt from
 # its result by hash), then merged and hardened as usual. A chunk the batch did not answer fails like any failed
 # chunk: its files stay unstamped and ride the next batch. The account follows HIMMEL_API_ACCOUNT (auto picks by
-# the lane's credit state); a credit-exhausted answer marks the account and an auto route retries once on the other.
+# the lane's credit state); a credit-exhausted answer marks the account and an auto route goes on to the accounts not yet tried, each at most once per pass (only a credit-exhausted answer moves on; any other error stops the pass).
 # The batch cost is not gated (decision 229); it lands in the run row. Every run prints one
 # `semantic-update: BATCH id=… state=submitted|pending|merged requests=N cost_usd=…` line for the cadence ledger.
 #
@@ -97,7 +97,7 @@
 # 3 bank at/over threshold (nothing touched); 4 promote lock held; 5 some chunks failed (the good ones merged, the failed
 # files stay unstamped): either a plain chunk failure or the lane's exit 6, a credit or key rejection that the
 # subscription fallback did not replay (fallback off, or its usage preflight skipped it), which also stops
-# dispatching the remaining chunks (one rejection on a pinned account, two on auto routing). A rejection the fallback
+# dispatching the remaining chunks (one rejection on a pinned account, one per account in play on auto routing). A rejection the fallback
 # does replay is not exit 6: the chunk runs on the subscription and the run goes on. Do not rerun until fixed.
 # graph-cadence.sh --semantic treats 3 and 4 as benign skips (the next fire
 # retries, nothing was touched) and alerts on every other non-zero rc.
@@ -326,7 +326,7 @@ fi
 [ "$DRY" -eq 0 ] || { echo "semantic-update: --dry-run, stopping before the bank and the copy"; exit 0; }
 if [ "$BACKEND" = "claude-api" ]; then
   { [ "${HIMMEL_API_LANE:-}" = "on" ] && [ -n "${HIMMEL_API_ACCOUNT:-}" ]; } \
-    || { echo "semantic-update: refusing claude-api: the API lane is off (HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|C|auto are required) -- nothing copied, no claude-cli fallback" >&2; exit 2; }
+    || { echo "semantic-update: refusing claude-api: the API lane is off (HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|C|auto are required) -- nothing copied, no claude-cli fallback; with no API account or subscription chosen graphify runs AST only, no semantic call" >&2; exit 2; }
   [ -z "${ANTHROPIC_API_KEY:-}" ] \
     || { echo "semantic-update: refusing claude-api: a caller ANTHROPIC_API_KEY is set; the lane reads its own per-account key file -- nothing copied" >&2; exit 2; }
   [ "$BATCH_MODE" -eq 1 ] || [ -f "$REPO_ROOT/scripts/api-lane/claude-api.sh" ] \
@@ -358,33 +358,62 @@ SCRATCH="$WORK/corpus"
 BATCH_CLIENT="$HERE/semantic-batch.mjs"
 batch_field() { python3 -c 'import json,sys; v = json.load(open(sys.argv[1])).get(sys.argv[2]); print("" if v is None else v)' "$PENDING/batch.json" "$1"; }
 batch_line() { echo "semantic-update: BATCH id=$(batch_field batch_id) state=$1 requests=$(batch_field request_count) cost_usd=${2:--}"; }
-# Submit the recorded prompts as one batch. A credit-exhausted answer marks the account (the lane's own marker) and an
-# auto route retries once on the other account; a pinned account is not rotated.
-batch_submit() {
-  local acct pick rc tried=0 role_accts=""
-  # the role map can narrow the graph pass to some accounts; none, or a broken map, is every configured
-  # account. The retry below re-picks inside the same list, so a mapped role never moves to an account outside it.
-  if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
-    role_accts="$(node "$REPO_ROOT/scripts/lib/api-roles.mjs" accounts graphify)" || role_accts=""
-    case "$role_accts" in *[!ABC,]*) role_accts="" ;; esac
+# The accounts an auto pass may use, comma-separated: the role map's graphify list, else every configured account
+# (A,B,C when the roster cannot be read). A mapped role never moves to an account outside its list.
+auto_accounts() {
+  local r
+  r="$(node "$REPO_ROOT/scripts/lib/api-roles.mjs" accounts graphify)" || r=""
+  case "$r" in *[!ABC,]*) r="" ;; esac
+  if [ -z "$r" ]; then
+    r="$(node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" accounts 2>/dev/null | tr '{' '\n' | sed -n 's/^"account":"\([ABC]\)","configured":true.*/\1/p' | paste -sd, -)" || r=""
   fi
+  printf '%s' "${r:-A,B,C}"
+}
+# Submit the recorded prompts as one batch. THE WALK RULE: on auto, a credit-exhausted answer (the
+# client's exit 5) marks the account (the lane's own marker) and the pick runs again over the accounts not yet tried,
+# so each account is tried at most once per pass and the pass ends when none is left; one batch is submitted, so
+# decision 664's single-batch limit is not widened. ONLY a credit-exhausted answer moves on to the next account: a bad
+# key, a network or API error or a refusal returns at once, because the next account would fail the same way or bill
+# for nothing. A pinned account is not rotated.
+batch_submit() {
+  local acct pick rc tried="" remaining a base=""
+  [ "$HIMMEL_API_ACCOUNT" != auto ] || base="$(auto_accounts)"
   while :; do
     acct="$HIMMEL_API_ACCOUNT"
     if [ "$acct" = auto ]; then
-      pick="$(node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" pick --usd "$API_CALL_BUDGET" ${role_accts:+--only "$role_accts"})"
-      case "$pick" in *'"verdict":"PROCEED"'*) ;; *) echo "semantic-update: refusing the batch: auto routing: no account has room ($pick)" >&2; return 2 ;; esac
+      remaining=""
+      for a in $(printf '%s' "$base" | tr ',' ' '); do
+        case " $tried " in *" $a "*) ;; *) remaining="${remaining:+$remaining,}$a" ;; esac
+      done
+      if [ -z "$remaining" ]; then
+        echo "semantic-update: credit exhausted on every account tried ($tried); nothing submitted" >&2; return 5
+      fi
+      pick="$(node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" pick --usd "$API_CALL_BUDGET" --only "$remaining")"
+      case "$pick" in
+        *'"verdict":"PROCEED"'*) ;;
+        *) if [ -n "$tried" ]; then
+             echo "semantic-update: credit exhausted on every account tried ($tried), and no other account has room ($pick); nothing submitted" >&2; return 5
+           fi
+           echo "semantic-update: refusing the batch: auto routing: no account has room ($pick)" >&2; return 2 ;;
+      esac
       acct="$(printf '%s' "$pick" | sed -n 's/.*"account":"\([ABC]\)".*/\1/p')"
       [ -n "$acct" ] || { echo "semantic-update: refusing the batch: auto routing returned no account" >&2; return 2; }
+      [ -z "$tried" ] || echo "semantic-update: retrying the batch on account $acct (tried: $tried)" >&2
     fi
     rc=0
     node "$BATCH_CLIENT" submit --dir "$PENDING" --prompts "$WORK/prompts" --account "$acct" \
       --model "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" --effort "$API_EFFORT" >&2 || rc=$?
-    [ "$rc" -eq 5 ] || return "$rc"
+    if [ "$rc" -ne 5 ]; then
+      [ "$rc" -eq 0 ] || [ "$HIMMEL_API_ACCOUNT" != auto ] \
+        || echo "semantic-update: account $acct failed (rc $rc), not on credit; only a credit-exhausted answer tries the next account, so no other account is tried" >&2
+      return "$rc"
+    fi
     HIMMEL_API_ACCOUNT="$acct" node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" exhausted >/dev/null 2>&1 \
       || echo "semantic-update: account $acct credit exhausted, but the marker was not saved" >&2
-    if [ "$HIMMEL_API_ACCOUNT" = auto ] && [ "$tried" -eq 0 ]; then
-      tried=1; echo "semantic-update: account $acct credit exhausted; retrying the batch on the other account" >&2; continue
-    fi
+    tried="${tried:+$tried }$acct"
+    echo "semantic-update: account $acct credit exhausted (tried: $tried)" >&2
+    if [ "$HIMMEL_API_ACCOUNT" = auto ]; then continue; fi
+    echo "semantic-update: credit exhausted on every account tried ($tried); nothing submitted" >&2
     return 5
   done
 }
@@ -441,6 +470,8 @@ if [ "$N_BATCH" -gt 0 ]; then
     if [ "$BATCH_MODE" -eq 1 ]; then
       ln -s "$HERE/semantic-batch-shim.mjs" "$WORK/bin/claude"
     else
+    # the shim's breaker stops after one rejection per account in play on auto
+    if [ "$HIMMEL_API_ACCOUNT" = auto ]; then GRAPHIFY_SHIM_ACCOUNTS="$(printf '%s\n' "$(auto_accounts)" | tr ',' '\n' | wc -l | tr -d ' ')"; export GRAPHIFY_SHIM_ACCOUNTS; fi
     cat > "$WORK/bin/claude" <<'SHIM'
 #!/usr/bin/env bash
 # graphify claude-cli -> API lane shim (written by semantic-update.sh)
@@ -464,10 +495,10 @@ export PATH="$newpath"
 cd "$here" || exit 2
 # The lane exits 6 when the provider rejects the account's credit or key and the subscription fallback does not
 # replay the chunk (HIMMEL_API_FALLBACK=off, or the fallback's usage preflight skipped it). That account would answer
-# every remaining chunk the same way, so dispatch stops: one rejection on a pinned account, two on auto (one per
+# every remaining chunk the same way, so dispatch stops: one rejection on a pinned account, N on auto (N = the accounts in play, one per
 # account). When the fallback does run, the lane exits with its own code, not 6, so this breaker never trips and the
 # remaining chunks go on on the subscription.
-limit=1; [ "${HIMMEL_API_ACCOUNT:-}" != auto ] || limit=2
+limit=1; [ "${HIMMEL_API_ACCOUNT:-}" != auto ] || limit="${GRAPHIFY_SHIM_ACCOUNTS:-3}"
 if [ "$(cat "$here/rejected" 2>/dev/null | wc -l)" -ge "$limit" ]; then
   echo "claude-api shim: the lane has rejected the account's credit or key $limit time(s) this run; not dispatching this chunk" >&2
   exit 6
