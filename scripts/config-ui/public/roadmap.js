@@ -288,8 +288,9 @@ function stripHtml(d, sel, ch, tab, ui = {}, lead = "") {
   return lead + note + (msg ? `<div class="nodata" role="alert">${esc(msg)}</div>` : "") + (tiles ? `<div class="rm-vstrip" aria-label="Versions">${tiles}</div>` : `<div class="empty">No versions to show with these filters.</div>`);
 }
 
-// Two links under the strip. "waits for you" counts the chain read's tickets whose state is "waits on you"; with no chain read it
-// says so. "Shipped" has no count here (the merged-PR read is the Shift page's), so it names where the number is.
+// Two links under the strip. "waits for you" counts the same rows as the Waiting on you section (open operator-labelled tickets plus
+// the chain read's "waits on you" tickets); with no chain read it still counts the labelled ones and says the holds were not read, and
+// with neither it says so. "Shipped" has no count here (the merged-PR read is the Shift page's), so it names where the number is.
 function linksHtml(ch, rows) {
   let wait = `<b>waits for you: not read</b> (${esc(noChains(ch))})`;
   if (chainOk(ch) || rows.length) {
