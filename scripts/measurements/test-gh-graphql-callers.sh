@@ -41,6 +41,7 @@ LOG="$TMP/calls.log"
 
 # 2 hours observed: tick 3 pts = 1.5/h ... printed with one decimal
 EXPECT=$(printf '%s\n' \
+  "# estimate: 1 point per GraphQL gh call; window 2 h (from --hours)" \
   "rank	caller	calls	points	points/hour" \
   "1	cr-first-release.sh	4	4	2.0" \
   "2	tick.sh	3	3	1.5" \
@@ -59,6 +60,16 @@ out_drop=$(bash "$SCRIPT" report --log "$LOG_DROP" --hours 2 --top 5 2>&1)
 if [ "$out_drop" != "$EXPECT" ]; then ok "control: an uncounted caller line fails the table match"
 else bad "control: table matched although a caller line was dropped"; fi
 
+# without --hours the window comes from the log's own epochs (1 h under a minute)
+out_short=$(bash "$SCRIPT" report --log "$LOG" 2>&1 | head -1)
+LOG_LONG="$TMP/long.log"
+{ printf '0\ttick.sh\t1\tpr list\n'; printf '7200\ttick.sh\t1\tpr list\n'; } >"$LOG_LONG"
+out_long=$(bash "$SCRIPT" report --log "$LOG_LONG" 2>&1 | head -1)
+if [ "$out_short" = "# estimate: 1 point per GraphQL gh call; window 1 h (from the log epochs, 1 h when the span is under a minute)" ] \
+  && [ "$out_long" = "# estimate: 1 point per GraphQL gh call; window 2.0000 h (from the log epochs, 1 h when the span is under a minute)" ]; then
+  ok "report states the estimate and takes its window from the log epochs"
+else bad "report window" "short: $out_short | long: $out_long"; fi
+
 before=$(cksum <"$LOG")
 out3=$(bash "$SCRIPT" report --log "$LOG" --hours 2 --top 3 2>&1)
 rows=$(printf '%s\n' "$out3" | grep -c -E '^[0-9]+	')
@@ -72,7 +83,7 @@ cat >"$BIN/gh" <<'STUB'
 #!/bin/bash
 [ -z "${FAKE_SLEEP:-}" ] || sleep "$FAKE_SLEEP"
 case "$*" in
-  "api -i graphql"*) printf 'HTTP/2.0 200 OK\r\nX-Ratelimit-Remaining: %s\r\nX-Ratelimit-Reset: 4102444800\r\n\r\n{}\n' "${FAKE_REMAINING:-4000}" ;;
+  "api -i graphql"*) [ -z "${FAKE_NOHDR:-}" ] || exit 0; printf 'HTTP/2.0 200 OK\r\nX-Ratelimit-Remaining: %s\r\nX-Ratelimit-Reset: 4102444800\r\n\r\n{}\n' "${FAKE_REMAINING:-4000}" ;;
   *) echo '{}' ;;
 esac
 exit 0
@@ -134,16 +145,32 @@ else bad "unwritable log" "rc=$rc_nolog"; fi
 cat >"$TMP/slowcaller.sh" <<'CALLER'
 #!/usr/bin/env bash
 FAKE_SLEEP=1 gh pr view 5
+FAKE_SLEEP=1 gh pr list --search scripts/foo.sh
 CALLER
 WLOG="$TMP/watch.log"
-FAKE_REMAINING=4000 PATH="$BIN:$PATH" bash "$SCRIPT" watch --log "$WLOG" --seconds 4 --interval 0.1 >"$TMP/watch.out" 2>&1 &
+FAKE_REMAINING=4000 PATH="$BIN:$PATH" bash "$SCRIPT" watch --log "$WLOG" --seconds 5 --interval 0.1 >"$TMP/watch.out" 2>&1 &
 wpid=$!
 sleep 1
 PATH="$BIN:$PATH" bash "$TMP/slowcaller.sh"
 wait "$wpid"
 nw=$(grep -c $'\tslowcaller.sh\t1\t' "$WLOG" 2>/dev/null)
-if [ "$nw" = 1 ]; then ok "watch charges one live gh call to slowcaller.sh"
-else bad "watch attribution" "count=$nw log=$(cat "$WLOG" 2>/dev/null) out=$(cat "$TMP/watch.out")"; fi
+nfoo=$(grep -c $'\tfoo.sh\t' "$WLOG" 2>/dev/null)
+if [ "$nw" = 2 ] && [ "$nfoo" = 0 ]; then ok "watch charges both live gh calls to slowcaller.sh, not to a .sh named in gh's arguments"
+else bad "watch attribution" "slowcaller=$nw foo=$nfoo log=$(cat "$WLOG" 2>/dev/null) out=$(cat "$TMP/watch.out")"; fi
+
+# --- watch and run: floor and unreadable budget -----------------------------
+WLOG2="$TMP/watch2.log"
+FAKE_REMAINING=1000 PATH="$BIN:$PATH" bash "$SCRIPT" watch --log "$WLOG2" --seconds 1 >/dev/null 2>&1
+rc_wfloor=$?
+if [ "$rc_wfloor" = 2 ] && [ ! -s "$WLOG2" ]; then ok "watch refuses under the floor and logs nothing"
+else bad "watch floor" "rc=$rc_wfloor"; fi
+
+FAKE_NOHDR=1 PATH="$BIN:$PATH" bash "$SCRIPT" watch --log "$TMP/watch3.log" --seconds 1 >/dev/null 2>&1
+rc_wnohdr=$?
+FAKE_NOHDR=1 PATH="$BIN:$PATH" bash "$SCRIPT" run --log "$TMP/run3.log" -- bash "$TMP/fakecaller.sh" >/dev/null 2>&1
+rc_rnohdr=$?
+if [ "$rc_wnohdr" = 2 ] && [ "$rc_rnohdr" = 2 ] && [ ! -s "$TMP/run3.log" ]; then ok "watch and run refuse when the budget is unreadable"
+else bad "unreadable budget" "watch rc=$rc_wnohdr run rc=$rc_rnohdr"; fi
 
 echo "passed=$passes failed=$fails"
 [ "$fails" -eq 0 ]
