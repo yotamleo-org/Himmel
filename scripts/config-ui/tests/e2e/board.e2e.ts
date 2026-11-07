@@ -779,3 +779,70 @@ test("with a Won't ticket and long sector names the Chains tab does not scroll s
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   }
 });
+
+// 9488 five-chain scale. fixture, not live: the chain read the page asks for is rewritten to five open chains (alpha and gamma linked, ops blocked on a
+// ticket in the next version); every ticket key, title and count below is fixture. The server, the page and the render are real.
+// The mockup's frame 1 starts its first chain at 177 px and ends the whole tab at 590 px (2 open chains, 3 finished, burn-down folded).
+// Height bound for this fixture = 590 + 3 x 90 + 55: the mockup's tab, plus 90 px for each of the three chains that are open here where the
+// mockup's were one-line finished rows (a rail, its NOW or NEXT line and its folds row), plus 55 px for the link strip the mockup frame has none of.
+const MOCKUP_FIRST_CHAIN_Y = 177, MOCKUP_TAB_H = 590, OPEN_CHAIN_ALLOWANCE = 90, LINK_STRIP_ALLOWANCE = 55;
+const FIXTURE_TAB_H_MAX = MOCKUP_TAB_H + 3 * OPEN_CHAIN_ALLOWANCE + LINK_STRIP_ALLOWANCE;
+function fiveChains() {
+  const lnk = (on: string, status: string, onVersions: string[]) => ({ on, kind: "jira-link", source: "jira", added: null, reason: null, owner: null, until: null, clears: `${on} completes`, status, at: null, onVersions });
+  const tk = (key: string, title: string, state: string, chain: string, step: number, steps: number, links: object[] = []) =>
+    ({ key, title, state, done: state === "done", chains: [{ id: chain, step, steps, state }], links });
+  const ch = (id: string, name: string, keys: string[], done: number, steps: number, next: string | null, across: object[] = []) =>
+    ({ id, name, members: keys, total: keys.length, done, steps, next: next ? { step: 2, keys: [next] } : null, across, log: [] });
+  return { schema: "himmel.chains/1", now: "2026-11-03T08:00:00.000Z", version: "v1.1.3",
+    chains: [
+      ch("fx-alpha", "Fixture alpha chain: a station finishes setup without hand editing", ["FIX-1", "FIX-2"], 1, 2, "FIX-2", [{ dir: "holds-up", key: "FIX-5", on: "FIX-2", kind: "jira-link", status: "open", chains: ["fx-gamma"] }]),
+      ch("fx-beta", "Fixture beta chain: an outside PR gets a full review at its final head", ["FIX-3", "FIX-4", "FIX-9"], 1, 3, null),
+      ch("fx-gamma", "Fixture gamma chain: the report page reads the new state", ["FIX-5", "FIX-6"], 0, 2, null, [{ dir: "waits-on", key: "FIX-5", on: "FIX-2", kind: "jira-link", status: "open", chains: ["fx-alpha"] }]),
+      ch("fx-ops", "Fixture ops chain: cleanup after the freeze", ["FIX-7", "FIX-8"], 0, 1, null, [{ dir: "waits-on", key: "FIX-8", on: "FIX-90", kind: "jira-link", status: "open", chains: [] }]),
+      ch("fx-delta", "Fixture delta chain: the health page counts every row", ["FIX-10", "FIX-11"], 0, 2, null),
+    ],
+    tickets: {
+      "FIX-1": tk("FIX-1", "Fixture step one, migrate the env file", "done", "fx-alpha", 1, 2),
+      "FIX-2": tk("FIX-2", "Fixture step two, secrets to a password vault", "can launch", "fx-alpha", 2, 2),
+      "FIX-3": tk("FIX-3", "Fixture review step one", "done", "fx-beta", 1, 3),
+      "FIX-4": tk("FIX-4", "Fixture review step two, in flight", "in flight", "fx-beta", 2, 3),
+      "FIX-9": tk("FIX-9", "Fixture review step three", "waits on step 2", "fx-beta", 3, 3, [lnk("FIX-4", "open", ["v1.1.3"])]),
+      "FIX-5": tk("FIX-5", "Fixture report step one, waits on the alpha chain", "waits on FIX-2", "fx-gamma", 1, 2, [lnk("FIX-2", "open", ["v1.1.3"])]),
+      "FIX-6": tk("FIX-6", "Fixture report step two", "waits on step 1", "fx-gamma", 2, 2),
+      "FIX-7": tk("FIX-7", "Fixture ops step, waits on the freeze", "waits on FIX-91", "fx-ops", 1, 1, [lnk("FIX-91", "open", ["v1.1.3"])]),
+      "FIX-8": tk("FIX-8", "Fixture ops step, blocked on a ticket in the next version", "blocked", "fx-ops", 1, 1, [lnk("FIX-90", "open", ["v1.1.4"])]),
+      "FIX-10": tk("FIX-10", "Fixture health step one", "in flight", "fx-delta", 1, 2),
+      "FIX-11": tk("FIX-11", "Fixture health step two", "waits on step 1", "fx-delta", 2, 2),
+    },
+    burn: { total: 11, undated: 0, points: [{ day: "2026-11-01", open: 10, merged: 1 }, { day: "2026-11-02", open: 9, merged: 1 }] } };
+}
+for (const [width, height] of [[1280, 900], [390, 844]]) {
+  test(`${width} px: five open chains stay compact, each open chain one rail, and the Ops chain's steps and Why links stay on one line`, async ({ page }) => {
+    await page.route("**/api/board", async (route) => {
+      const res = await route.fetch();
+      const j = await res.json();
+      j.chains = fiveChains();
+      j.versionChains = fiveChains();
+      await route.fulfill({ response: res, json: j });
+    });
+    await page.setViewportSize({ width, height });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await open(page);
+    await go(page, "#/board?tab=chains");
+    await expect(page.locator("#rm-chains article.cc")).toHaveCount(5);
+    for (const art of await page.locator("#rm-chains article.cc").all()) {
+      await expect(art.locator(".rl")).toHaveCount(1);
+      expect(await art.locator("details[open]").count()).toBe(0); // the folds are closed
+    }
+    const top = await page.locator("#rm-chains article.cc").first().evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
+    const bottom = await page.locator("#rm-chains").evaluate((el) => el.getBoundingClientRect().bottom + window.scrollY);
+    const ys = await page.locator("#rm-chain-fx-ops .rl").locator(".tk, .rm-whylink").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+    await shot(page, `board-chains-five-fixture-dark-${width}`);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+    if (width === 1280) {
+      expect(Math.abs(top - MOCKUP_FIRST_CHAIN_Y)).toBeLessThanOrEqual(40);
+      expect(bottom).toBeLessThanOrEqual(FIXTURE_TAB_H_MAX);
+      expect(Math.max(...ys) - Math.min(...ys)).toBeLessThanOrEqual(8); // the chip and its Why link share a line: nothing stacks
+    }
+  });
+}

@@ -407,7 +407,7 @@ function tabsHtml(d, ui, tab, ch, dr) {
 // What sits beside the tabs on the Chains tab: who waits for you (every version), the two pages that follow, and the real refresh.
 function asideHtml(ch, rows, fresh) {
   const wait = chainOk(ch) || rows.length ? `${nTickets(rows.length)} ${rows.length === 1 ? "waits" : "wait"} for you, any version` : "waits for you: not read";
-  return `<div class="aside"><a href="#/shift">${wait} Shift →</a><a href="#/report">Morning report →</a><button class="btn" data-act="refresh-roadmap" aria-label="refresh: read the board again">↻ refresh</button>${fresh ? `<span class="ro rd">${esc(fresh)}</span>` : ""}</div>`;
+  return `<div class="aside"><a href="#/shift">${wait} Shift →</a><a href="#/report">Morning report →</a><button class="btn" data-act="refresh-roadmap" aria-label="refresh: read the board again">↻ refresh</button>${fresh ? `<span class="ro rd" title="${esc(fresh)}">${esc(fresh)}</span>` : ""}</div>`;
 }
 
 // The Roadmap tab's lane filters. Project is the ticket id's prefix; Theme is the plan's theme (the Sector has its own filter); Only is one
@@ -558,8 +558,9 @@ function chipHtml(ui, ch, d, c, [t, x]) {
   const cls = st === "done · out of order" ? "oo" : /^done/.test(st) ? "dn" : st === "in flight" ? "fl" : st === "can launch" ? "go" : st === "blocked" ? "bd" : "wt";
   const word = st === "done" ? "" : ` ${st}`;
   const why = /^done/.test(st) ? "" : (t.links || []).filter(live).slice(0, 1).map((l) => " " + whyLink(ui, t.key, l.on)).join("");
-  return `<a class="tk ${cls}${ui.at === t.key ? " rm-at" : ""}"${t.chains[0].id === c.id ? ` id="cn-${esc(t.key)}"` : ""} href="${boardHref({ tab: "chains", v: ui.v, at: t.key })}" title="${esc(`${t.key} ${t.title || ""}`.trim())}">`
-    + `<span class="gl" aria-hidden="true">${glyph(st)}</span> ${esc(shortKey(t.key))}${esc(word)}</a>${why}`;
+  // the chip and its Why link are one unit: a narrow step wraps them sideways together and never stacks the link under the chip
+  return `<span class="tw"><a class="tk ${cls}${ui.at === t.key ? " rm-at" : ""}"${t.chains[0].id === c.id ? ` id="cn-${esc(t.key)}"` : ""} href="${boardHref({ tab: "chains", v: ui.v, at: t.key })}" title="${esc(`${t.key} ${t.title || ""}`.trim())}">`
+    + `<span class="gl" aria-hidden="true">${glyph(st)}</span> ${esc(shortKey(t.key))}${esc(word)}</a>${why}</span>`;
 }
 function railHtml(ui, ch, d, c, rows) {
   const by = new Map();
@@ -610,7 +611,7 @@ function logHtml(ui, c) {
 function openCard(ui, ch, d, whole, c, rows) {
   const red = rows.some(([t, x]) => viewState(t, x.state, ch, d).state === "blocked");
   return `<article id="rm-chain-${esc(c.id)}" class="cc${red ? " red" : ""}" aria-labelledby="h-rm-chain-${esc(c.id)}"><div class="cct"><div><h3 id="h-rm-chain-${esc(c.id)}">${esc(c.name || c.id)}</h3><span class="cid">${esc(c.id)}</span></div>`
-    + `<div class="prog">${outChip(outsideOf(ch, c, whole, d), ch.version || "this read")}${progress(c)}</div></div>${railHtml(ui, ch, d, c, rows)}${nowHtml(ch, d, c, rows)}${acrossHtml(ui, c, ch.version)}${titlesHtml(ch, d, rows)}${logHtml(ui, c)}</article>`;
+    + `<div class="prog">${outChip(outsideOf(ch, c, whole, d), ch.version || "this read")}${progress(c)}</div></div>${railHtml(ui, ch, d, c, rows)}${nowHtml(ch, d, c, rows)}<div class="folds">${acrossHtml(ui, c, ch.version)}${titlesHtml(ch, d, rows)}${logHtml(ui, c)}</div></article>`;
 }
 function finCard(ui, ch, d, whole, c, rows) {
   const bad = rows.filter(([, x]) => x.state === "done · out of order").map(([t]) => shortKey(t.key)), held = rows.some(([, x]) => x.state === "done · order held");
@@ -623,7 +624,7 @@ function finCard(ui, ch, d, whole, c, rows) {
 // The link strip: shown only when a ticket of one chain waits on a ticket of another chain of this read.
 function linkStrip(ui, ch) {
   const by = (id) => ch.chains.find((x) => x.id === id);
-  const box = (c) => `<span class="lbox">${esc(c.name || c.id)}<span>${c.done} of ${nTickets(c.total)} done</span></span>`;
+  const box = (c) => `<span class="lbox" title="${esc(c.name || c.id)}"><span class="ln">${esc(c.name || c.id)}</span><span>${c.done} of ${nTickets(c.total)} done</span></span>`;
   return ch.chains.flatMap((c) => (c.across || []).filter((a) => a.dir === "waits-on").map((a) => ({ c, a, from: (a.chains || []).map(by).find((x) => x && x.id !== c.id) })).filter((x) => x.from))
     .map(({ c, a, from }) => `<div class="lmap" aria-label="How the chains link">${box(from)}${arrow(live(a))}${box(c)}<span class="foot">${esc(a.key)} waits on ${esc(a.on)} · ${esc(a.kind)} · ${esc(a.status)}${live(a) ? " " + whyLink(ui, a.key, a.on) : ""}</span></div>`).join("");
 }

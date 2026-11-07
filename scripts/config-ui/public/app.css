@@ -667,30 +667,34 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 @media (prefers-reduced-motion:reduce){.rm-spin{animation:none}}
 
 /* The Chains tab: one colour (--road) joins the tab and its panel; counts carry their unit; a phone gets sideways rows, never a hover bubble. */
-.rm-head.bh{display:block;margin-bottom:var(--s2);min-width:0}
+.rm-head.bh{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1) var(--s4);margin-bottom:0;min-width:0}
+.rm-head.bh .ph{flex:none}
 .bh .vchips{max-width:100%}
 .bh .vchips{display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center}
 .cp .data th{font-size:11px}
-.bh .vc{display:grid;gap:2px;min-width:104px;border:1px solid var(--rule);border-radius:8px;background:var(--surface);padding:var(--s1) var(--s3);color:var(--ink);text-decoration:none;font:var(--fs-xs) var(--font-mono)}
+.bh .vc{display:flex;align-items:center;gap:var(--s2);min-width:0;border:1px solid var(--rule);border-radius:8px;background:var(--surface);padding:var(--s1) var(--s3);color:var(--ink);text-decoration:none;font:var(--fs-xs) var(--font-mono)}
 .bh .vc small{color:var(--muted);font-size:11px}
 .bh .vc.sel{border-color:var(--road);box-shadow:inset 0 -2px 0 var(--road)}
-.bh .vc progress{width:100%;height:4px;accent-color:var(--ship)}
+.bh .vc progress{width:56px;flex:none;height:4px;accent-color:var(--ship)}
 .bh .vc:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .bh .vmenu{align-self:center;position:relative}
 .bh .vmenu>summary{cursor:pointer;color:var(--dim);font-size:var(--fs-xs);white-space:nowrap}
 .bh .vmenu[open]>:not(summary){position:absolute;right:0;top:100%;z-index:20;background:var(--surface);border:1px solid var(--rule-strong);border-radius:8px;padding:var(--s2) var(--s3);white-space:nowrap}
-.bh .pv{margin:var(--s1) 0 0;font:var(--fs-xs) var(--font-mono);color:var(--muted)}
+.bh .pv{flex:1 1 100%;margin:0;font:var(--fs-xs) var(--font-mono);color:var(--muted)}
 .bh .pv b{color:var(--ink)}
-.tr{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:var(--s1) var(--s4);margin-top:var(--s2)}
+.tr{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--s1) var(--s4);margin-top:0}
 .tr .tabs{margin:0;flex:0 1 auto}
 .tabs .tab.ch,.tabs .tab.ch[aria-selected="true"]{color:var(--road)}
 .tabs .tab.ch[aria-selected="true"]{background:var(--road-soft);border:1px solid var(--road);border-bottom-color:transparent;border-radius:8px 8px 0 0;text-decoration:none}
 .tab.ch .ic,.rm-chain .ic{width:12px;height:12px;vertical-align:-2px;fill:none;stroke:currentColor;stroke-width:2}
 .tab.ch .cnt{font:700 11px var(--font-mono);border-radius:999px;background:var(--road-soft);padding:0 var(--s2)}
 .tab.ch .blk{font:600 11px var(--font-mono);color:var(--crit);background:var(--crit-soft);border-radius:999px;padding:0 var(--s2)}
-.tr .aside{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1) var(--s3);font-size:var(--fs-xs)}
-.tr .aside .rd{color:var(--muted)}
-.cp{display:grid;gap:var(--s2);border:1px solid var(--rule);border-top:3px solid var(--road);border-radius:0 0 10px 10px;background:var(--surface);padding:var(--s3) var(--s4)}
+/* beside the tabs on one line: the read line is clipped to what fits and keeps the whole text in its bubble; a phone has no bubble, so it wraps there */
+.tr .aside{display:flex;flex:1 1 0;min-width:0;contain:inline-size;flex-wrap:nowrap;align-items:center;justify-content:flex-end;gap:var(--s1) var(--s3);font-size:var(--fs-xs);overflow:hidden}
+.tr .aside>*{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tr .aside>.btn{flex:none}
+.tr .aside .rd{flex:0 8 auto;color:var(--muted)}
+.cp{display:grid;gap:var(--s1);border:1px solid var(--rule);border-top:3px solid var(--road);border-radius:0 0 10px 10px;background:var(--surface);padding:var(--s2) var(--s4)}
 .cph{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2) var(--s5)}
 .cph .big{font:700 var(--fs-md) var(--font-ui);color:var(--ink)}
 .cph .big small{display:block;font:400 var(--fs-xs) var(--font-mono);color:var(--muted)}
@@ -699,9 +703,10 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .cp .spark{display:flex;align-items:center;gap:var(--s2);font:var(--fs-xs) var(--font-mono);color:var(--muted)}
 .cp .spark svg{width:110px;height:26px}
 .cp .spark polyline,.cp .burn .ol{fill:none;stroke:var(--road);stroke-width:2}
-.cp .gh{margin-top:var(--s1);font:600 var(--fs-xs) var(--font-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
-.cp .cc{display:grid;gap:var(--s2);border:1px solid var(--rule);border-left:3px solid var(--rule-strong);border-radius:8px;background:var(--bg);padding:var(--s2) var(--s3);min-width:0}
+.cp .gh{font:600 var(--fs-xs) var(--font-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.cp .cc{display:grid;gap:var(--s1);border:1px solid var(--rule);border-left:3px solid var(--rule-strong);border-radius:8px;background:var(--bg);padding:var(--s2) var(--s3);min-width:0}
 .cp .cc.red{border-left-color:var(--crit)}
+.cp .cc+.cc{margin-top:var(--s1)}
 .cp .cct{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:var(--s1) var(--s3)}
 .cp .cct h3{display:inline;margin:0;font:600 var(--fs-base) var(--font-ui)}
 .cp .cid{font:var(--fs-xs) var(--font-mono);color:var(--muted);margin-left:var(--s2)}
@@ -709,10 +714,12 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .cp .prog progress{width:80px;height:6px;accent-color:var(--ship)}
 .cp .out{border:1px dashed var(--beta);border-radius:6px;color:var(--beta);padding:0 var(--s2)}
 .cp .outn{display:none}
-.cp .rl{display:flex;flex-wrap:wrap;align-items:flex-start;gap:var(--s2)}
-.cp .st{display:grid;gap:2px;justify-items:start}
-.cp .st small{font-size:11px;color:var(--muted)}
-.cp .lk{width:30px;height:12px;margin-top:var(--s4)}
+/* an open chain is one rail: its steps are boxes in a row, and a step's chips and Why links wrap sideways, never stack */
+.cp .rl{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1) var(--s2)}
+.cp .st{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1) var(--s2);padding:2px var(--s2);border:1px solid var(--rule);border-radius:8px;background:var(--surface)}
+.cp .st small{font-size:11px;color:var(--muted);white-space:nowrap}
+.cp .tw{display:inline-flex;align-items:center;gap:var(--s1);white-space:nowrap}
+.cp .lk{flex:none;width:30px;height:12px}
 .cp .lk line{stroke:var(--muted);stroke-width:2}
 .cp .lk path{fill:var(--muted)}
 .cp .lk.open{animation:rm-ping 1.6s ease-in-out infinite}
@@ -728,6 +735,8 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .cp .now{display:grid;gap:2px;font-size:var(--fs-xs);overflow-wrap:anywhere}
 .cp .now em{font:700 11px var(--font-mono);font-style:normal;background:var(--road-soft);color:var(--road);border-radius:4px;padding:0 var(--s1);margin-right:var(--s2)}
 .cp .fold>summary,.cp details.burn>summary{cursor:pointer;font:600 var(--fs-xs) var(--font-mono);color:var(--muted)}
+.cp .folds{display:flex;flex-wrap:wrap;gap:0 var(--s4)}
+.cp .folds>details[open]{flex:1 1 100%}
 .cp .tl{margin:var(--s1) 0 0;padding-left:var(--s4);display:grid;gap:2px;font-size:var(--fs-xs);overflow-wrap:anywhere}
 .cp .fin{border:1px solid var(--rule);border-radius:8px;background:var(--bg)}
 .cp .fin>summary{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1) var(--s3);padding:var(--s1) var(--s3);cursor:pointer;font-size:var(--fs-xs)}
@@ -737,8 +746,9 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .cp .fin .inner{display:grid;gap:var(--s2);padding:var(--s2) var(--s3)}
 .cp .foot{margin:0;font-size:var(--fs-xs);color:var(--muted)}
 .cp .lmap{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2)}
-.cp .lbox{display:grid;border:1px solid var(--rule-strong);border-radius:6px;padding:var(--s1) var(--s2);font:600 var(--fs-xs) var(--font-mono)}
-.cp .lbox span{font-weight:400;color:var(--muted)}
+.cp .lbox{display:flex;align-items:baseline;gap:var(--s2);min-width:0;max-width:300px;overflow:hidden;border:1px solid var(--rule-strong);border-radius:6px;padding:var(--s1) var(--s2);font:600 var(--fs-xs) var(--font-mono)}
+.cp .lbox span{font-weight:400;color:var(--muted);flex:none;white-space:nowrap}
+.cp .lbox .ln{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--ink)}
 .cp .lmap .lk{margin-top:0}
 .cp details.burn{border-top:1px solid var(--rule);padding-top:var(--s2)}
 .cp details.burn svg{display:block;width:100%;max-height:120px;height:auto}
@@ -751,7 +761,9 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
   .bh .vchips,.tr .tabs{flex-wrap:nowrap;overflow-x:auto}
   .bh .vc,.tr .tabs .tab{flex:0 0 auto}
   .bh .vmenu[open]>:not(summary){position:fixed;left:var(--s3);right:var(--s3);top:auto;white-space:normal}
-  .tr{display:block}.tr .aside{margin-top:var(--s2)}
+  .rm-head.bh .vchips{flex:1 1 100%}
+  .tr{display:block}.tr .aside{margin-top:var(--s2);flex-wrap:wrap;justify-content:flex-start;overflow:visible}
+  .tr .aside .rd{flex:1 1 100%;white-space:normal}
   .cp{padding:var(--s3)}
 }
 .seclegend{display:flex;flex-wrap:wrap;gap:4px 12px;margin:0 0 8px;font-size:.85em;color:var(--muted)}
