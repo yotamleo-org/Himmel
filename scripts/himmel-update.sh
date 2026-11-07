@@ -1646,7 +1646,7 @@ update_jira_cli() {
 update_config_ui() {
     local mode="$1"   # check | apply
     local web="$ROOT/scripts/config-ui/agui-web" unit="himmel-ui.service"
-    local from to changed bun log
+    local from to changed="" bun log pending="$HOME/.himmel/state/config-ui-rebuild-pending"
     [ -f "$web/package.json" ] || return 0
     if [ "$mode" = "check" ]; then
         changed=$(git diff --name-only HEAD '@{u}' -- scripts/config-ui 2>/dev/null) || return 0
@@ -1655,34 +1655,40 @@ update_config_ui() {
         return 0
     fi
     from="${PULL_HEAD_BEFORE:-}"
-    [ -n "$from" ] || return 0
-    to=$(git rev-parse HEAD 2>/dev/null) || return 0
-    [ "$from" != "$to" ] || return 0
-    changed=$(git diff --name-only "$from" "$to" -- scripts/config-ui 2>/dev/null) || return 0
-    [ -n "$changed" ] || return 0
+    to=$(git rev-parse HEAD 2>/dev/null) || to=""
+    if [ -n "$from" ] && [ -n "$to" ] && [ "$from" != "$to" ]; then
+        changed=$(git diff --name-only "$from" "$to" -- scripts/config-ui 2>/dev/null) || changed=""
+    fi
+    # A step that failed leaves $pending, so the next update retries it: by then the pulled range is empty.
+    [ -n "$changed" ] || [ -f "$pending" ] || return 0
 
     echo ""
     echo "==> config UI rebuild (scripts/config-ui/agui-web/dist)"
     bun=$(resolve_bun 2>/dev/null) || bun=""
     if [ -z "$bun" ]; then
-        STATUS_config_ui="skipped"; DETAIL_config_ui="bun not on PATH — the config UI changed but was not rebuilt; $unit (if running) still serves the old build"
+        mkdir -p "${pending%/*}" 2>/dev/null && : > "$pending" 2>/dev/null || true
+        STATUS_config_ui="skipped"; DETAIL_config_ui="bun not on PATH — the config UI changed but was not rebuilt; $unit (if running) still serves the old build; the next update retries"
         return 0
     fi
     if ! log=$( (cd "$web" && "$bun" install --frozen-lockfile && "$bun" run build) 2>&1 ); then
         printf '%s\n' "$log" | tail -20 | sed 's/^/    /'
+        mkdir -p "${pending%/*}" 2>/dev/null && : > "$pending" 2>/dev/null || true
         STATUS_config_ui="failed"
-        DETAIL_config_ui="build failed — $unit left running on the old build; rebuild by hand: (cd scripts/config-ui/agui-web && bun install --frozen-lockfile && bun run build), then systemctl --user restart $unit"
+        DETAIL_config_ui="build failed — $unit left running on the old build; the next update retries, or by hand: (cd scripts/config-ui/agui-web && bun install --frozen-lockfile && bun run build), then systemctl --user restart $unit"
         return 1
     fi
     if command -v systemctl >/dev/null 2>&1 && [ "$(systemctl --user is-active "$unit" 2>/dev/null)" = "active" ]; then
         if systemctl --user restart "$unit" >/dev/null 2>&1; then
+            rm -f "$pending"
             STATUS_config_ui="updated"; DETAIL_config_ui="bundle rebuilt, $unit restarted"
             return 0
         fi
+        mkdir -p "${pending%/*}" 2>/dev/null && : > "$pending" 2>/dev/null || true
         STATUS_config_ui="failed"
-        DETAIL_config_ui="bundle rebuilt but systemctl --user restart $unit failed — restart it by hand"
+        DETAIL_config_ui="bundle rebuilt but systemctl --user restart $unit failed — the next update retries, or restart it by hand"
         return 1
     fi
+    rm -f "$pending"
     STATUS_config_ui="updated"; DETAIL_config_ui="bundle rebuilt; $unit not active, nothing restarted"
     return 0
 }

@@ -987,6 +987,7 @@ run_cui() {
     cui_rc=0
     cui_out=$(
         set -euo pipefail
+        unset CUI_BUILD_FAIL CUI_SVC_STATE
         export CUI_LOG PATH="$CUI_BIN:$PATH"
         # shellcheck disable=SC2163  # kv holds NAME=value; exporting the expansion is the point
         for kv in "$@"; do export "$kv"; done
@@ -1039,6 +1040,15 @@ if grepq "$cui_log" "restart"; then assert_fail "config_ui build fails: must not
 assert_contains "config_ui build fails: prints the build error" "build exploded" "$cui_out"
 assert_contains "config_ui build fails: row says failed" "STATUS=failed" "$cui_out"
 assert_contains "config_ui build fails: row says the service was left running" "left running" "$cui_out"
+assert_eq "config_ui build fails: leaves the retry marker" "yes" "$([ -f "$HOME/.himmel/state/config-ui-rebuild-pending" ] && echo yes || echo no)"
+
+# the next update pulls nothing, but the marker makes it retry; the retry succeeds and clears the marker
+CUI_BEFORE=$(git -C "$CUI_REPO" rev-parse HEAD)
+run_cui apply
+assert_eq "config_ui retry after failure: rc 0" "0" "$cui_rc"
+assert_contains "config_ui retry after failure: builds the bundle" "agui-web|run build" "$cui_log"
+assert_contains "config_ui retry after failure: restarts the service" "restart himmel-ui.service" "$cui_log"
+assert_eq "config_ui retry after failure: clears the retry marker" "no" "$([ -f "$HOME/.himmel/state/config-ui-rebuild-pending" ] && echo yes || echo no)"
 
 # check mode: the checkout is behind an upstream that changed the UI; it says what apply would do and runs nothing
 make_cui_repo scripts/config-ui/agui-web/index.html
