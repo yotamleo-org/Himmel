@@ -116,7 +116,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
 
     This is digest-only: the waiter still exits on WAKE. Persistent delivery and
     tick-side suppression of changes authored by the chief are deferred to
-    the persistent-waiter ticket; no authorship is inferred from worker marker text.
+    the ticket for keeping the chief waiter armed across events; no authorship is inferred from worker marker text.
 
     **Re-start it at the end of the turn that handles each wake** — the waiter
     has exited, so a turn that does not re-start it leaves you deaf to Telegram
