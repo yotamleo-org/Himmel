@@ -266,11 +266,14 @@ route=any
 if bounded 2 "$scratch" /dev/null python3 -I "$HOLDS" grant-route --repo "$primary" -- "$rel"; then
     IFS= read -r route < "$scratch" || route=any
 fi
-case "$route" in
-    operator|chief)
-        deny "$rel is a trust path, held by $h_key ($h_label, $h_source), and has no grant. Wait for its release, or the operator launches with WRITE_HOLD_OK=1"
-        ;;
-esac
 printf -v q_repo '%q' "$primary"
 printf -v q_rel '%q' "$rel"
+case "$route" in
+    chief)
+        deny "$rel is a trust path, held by $h_key ($h_label, $h_source). Keep working on other files. This deny is logged: your chief sees it on its tick (hreg=) and can stamp a grant with: python3 -I $(holds_real) grant --key $KEY --repo $q_repo --chief-doc CHIEF_DOC $q_rel. Otherwise wait for its release, or the operator launches with WRITE_HOLD_OK=1"
+        ;;
+    operator)
+        deny "$rel is a settings or CI-workflow path, held by $h_key ($h_label, $h_source). Keep working on other files. This deny is logged: your chief sees it on its tick (hreg=), and only the operator grants it, in a real terminal. Otherwise wait for its release, or the operator launches with WRITE_HOLD_OK=1"
+        ;;
+esac
 deny "$rel is held by $h_key ($h_label, $h_source). Keep working on other files, and send your chief: HOLD-ASK $rel $KEY. Chief grants with: python3 -I $(holds_real) grant --key $KEY --repo $q_repo $q_rel. Bypass: WRITE_HOLD_OK=1 in the launching shell"

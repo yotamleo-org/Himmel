@@ -389,8 +389,13 @@ same "I9 on under HIMMEL_CONSOLE_LEG=1 exits 1" "$RC" 1
 run hp grant --key $K2 --repo "$R" .claude/settings.json
 same "I9 a grant on .claude/settings.json exits 1" "$RC" 1
 contains "I9 ... and says only the operator can" "$ERR" operator
+contains "I9 ... and names waiting as an exit" "$ERR" "wait for its release"
+contains "I9 ... and names the operator's bypass launch" "$ERR" "the operator launches with WRITE_HOLD_OK=1"
 run hp grant --key $K2 --repo "$R" scripts/ci/suite-tiers.tsv
 same "I9 a grant on a trust path exits 1" "$RC" 1
+contains "I9 ... and names the chief's stamp" "$ERR" "--chief-doc"
+contains "I9 ... and names waiting as an exit" "$ERR" "wait for its release"
+contains "I9 ... and names the operator's bypass launch" "$ERR" "the operator launches with WRITE_HOLD_OK=1"
 run hp grant --key $K2 --repo "$R" scripts/handover/chief-kit/holds-exempt.txt
 same "I9 a grant on the exempt list (itself a trust path) exits 1" "$RC" 1
 
@@ -1116,7 +1121,29 @@ put_row scripts/r9186.sh HIMMEL-9628 lab "$(mkdoc HIMMEL-9628-case.md)" brief ""
 touch "$(rowf scripts/r9186.sh "$R9")"
 run hp claim --key HIMMEL-9627 --label asker --doc "$(mkdoc HIMMEL-9627-case.md)" --repo "$R9" scripts/r9186.sh
 case "$ERR" in *"ask your chief: HOLD-ASK"*) fail "9186 the refusal no longer names the HOLD-ASK route that has no consumer" ;; *) pass "9186 the refusal no longer names the HOLD-ASK route that has no consumer" ;; esac
+same "8725 the path off every list routes any" "$(hp grant-route --repo "$R9" scripts/r9186.sh)" any
+contains "8725 route any: the refusal sends a HOLD-ASK" "$ERR" "Message your chief: HOLD-ASK scripts/r9186.sh HIMMEL-9627"
+case "$ERR" in *WRITE_HOLD_OK*) fail "8725 route any: the refusal does not name the bypass" ;; *) pass "8725 route any: the refusal does not name the bypass" ;; esac
+# refused_text <path> <asker key>: a live rival's row on the path, then that asker's claim; $ERR is the refusal
+refused_text() {
+    local rival=HIMMEL-9628
+    put_row "$1" "$rival" lab "$(mkdoc "$rival-case.md")" brief "" "$R9"
+    touch "$(rowf "$1" "$R9")"
+    run hp claim --key "$2" --label asker --doc "$(mkdoc "$2-case.md")" --repo "$R9" "$1"
+}
+same "8725 scripts/check-ci.sh routes chief" "$(hp grant-route --repo "$R9" scripts/check-ci.sh)" chief
+refused_text scripts/check-ci.sh HIMMEL-9626
+same "8725 route chief: the claim is refused" "$RC" 1
 contains "9186 the refusal tells the worker the chief sees the deny on its tick and grants it" "$ERR" "hreg="
+contains "8725 route chief: the refusal names the chief's stamp" "$ERR" "can stamp a grant with --chief-doc"
+contains "8725 route chief: the refusal names waiting and the bypass launch" "$ERR" "Otherwise wait for its release, or the operator launches with WRITE_HOLD_OK=1"
+case "$ERR" in *HOLD-ASK*) fail "8725 route chief: the refusal sends no HOLD-ASK" ;; *) pass "8725 route chief: the refusal sends no HOLD-ASK" ;; esac
+same "8725 a CI workflow routes operator" "$(hp grant-route --repo "$R9" .github/workflows/x.yml)" operator
+refused_text .github/workflows/x.yml HIMMEL-9625
+same "8725 route operator: the claim is refused" "$RC" 1
+contains "8725 route operator: only the operator grants" "$ERR" "only the operator grants it"
+contains "8725 route operator: the refusal names waiting and the bypass launch" "$ERR" "Otherwise wait for its release, or the operator launches with WRITE_HOLD_OK=1"
+case "$ERR" in *--chief-doc*|*HOLD-ASK*) fail "8725 route operator: the refusal names no chief stamp and no HOLD-ASK" ;; *) pass "8725 route operator: the refusal names no chief stamp and no HOLD-ASK" ;; esac
 
 # ---- 8725 Task 5: git-check --staged and --push read git's own file lists (I2, I7, I12)
 # A real repo with an origin and linked worktrees; the commit and push hooks are the real entries of .pre-commit-config.yaml,

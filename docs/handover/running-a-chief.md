@@ -737,6 +737,68 @@ line limit binds only when a line count is declared (`record --lines`): a brief 
 line count before the code exists, so `gen-briefs.py` never computes one. Send the
 operator the row and your split proposal.
 
+### A denied write: HOLD-ASK and the write barrier
+
+`check-write-hold.sh` denies a worker's write onto a file another live worker or an
+open PR holds. A write onto a free file outside the worker's `Writes` passes: it is
+claimed, recorded, and named on the PR's `outside-writes:` line for review. The
+register is `holds.py`, under `~/.himmel/state/holds`.
+
+**`HOLD-ASK <path> <key>`** is a worker telling you the deny stopped it: `<key>` wants
+`<path>`, and the deny named the holder. Rule it. To let the worker through, run the
+one grant command, then tell the worker:
+
+```bash
+python3 -I <primary>/scripts/handover/chief-kit/holds.py grant --key <key> --repo <primary> <path>
+```
+
+A grant lets one key write one file; it widens no scope and no tool permission. A
+`RULING <nonce> grant=<Gn>` from a worker's `Grants` block runs with this command.
+
+**The route depends on the path**; `holds.py grant-route --repo <primary> <path>` prints it:
+
+| route | paths | who grants |
+|---|---|---|
+| `any` | everything else | you, with the command above |
+| `chief` | anything `scripts/ci/ci-trust-paths.txt` lists | you, adding `--chief-doc <your doc>` with your own queue lock held here; or the operator in a real terminal, typing the path back |
+| `operator` | settings and `.github/` | the operator only, in a real terminal, typing the path back |
+
+A worker sends no `HOLD-ASK` on the last two routes. The deny itself is the ask: it is
+logged, shows as the third count of `hreg=` on your tick, and pages the operator once
+with the command, under the same `HOLD-ASK` name (`chief-sections/monitors.md`). Every route has two other exits: wait for the holder's
+release, or an operator launch with `WRITE_HOLD_OK=1`. A trust-path PR still needs its
+trust judge, whoever granted the write.
+
+**Crossed trust-file holders.** Two workers each hold a trust file the other needs, so
+both are denied and neither finishes on its own. Stamp one grant (or ask the operator on
+the `operator` route), or stop one worker: its rows die once its lock is free and the
+15-minute grace has passed. An operator launch with `WRITE_HOLD_OK=1` is the last exit.
+
+**A crashed holder whose lock stays held blocks its files until the heartbeat passes the
+6-hour TTL (21600 s) and the owner is proven dead.** An owner never proven dead reads plain
+`STALE` and keeps blocking until someone acts. The exits:
+
+- a grant, by the route above;
+- once past the TTL, `queue-lock.sh status --sweep --reap-dead [<root>]`, which releases only `STALE-DEAD` locks;
+- `QUEUE_LOCK_FORCE_RELEASE=1 bash scripts/handover/queue-lock.sh release <doc>`;
+- an operator launch with `WRITE_HOLD_OK=1`.
+
+No hook denies that force release by name. `auto-approve-safe-bash.sh` deliberately
+never approves it, and the `queue-lock.sh` allow rule does not match the env prefix, so
+it reaches the normal permission decision: a prompt or the classifier. Whether the
+classifier allows it from a chief session has not been tested; if it is denied, send
+the operator the line.
+
+**`holds.py off --reason <text>`** writes the `OFF` sentinel and folds the barrier for
+the live fleet at once; a worker is refused. `holds.py on --workers-from <fleet.json>
+--repo <repo>` removes the sentinel and backfills, because workers launched while it was
+off hold no rows. `WRITE_HOLD_OK=1` covers new launches only, and a `.single-writer`
+marker opts one repo out.
+
+**Backfill at cutover.** `holds.py backfill --manifest <fleet.json> --repo <primary>`
+seeds every manifest worker that has not `WRAPPED`. A worker it cannot seed holds no
+rows until it does, so read each `backfill: <label> <result>` line.
+
 ## Merges
 
 `READY <pr> <head> GREEN` → the chief verifies independently (all check-runs

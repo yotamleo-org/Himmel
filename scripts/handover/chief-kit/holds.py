@@ -584,10 +584,20 @@ def successor_of(resume, rest):
     return any(resume in l for l in rest)
 
 
+GRANT_EXITS = 'Otherwise wait for its release, or the operator launches with WRITE_HOLD_OK=1.'
+
+
 def refusal(path, fields, key):
-    return ('holds: %s is held by %s (%s, %s). Keep working on other files. This deny is logged: on a trust path your '
-            'chief sees it on its tick (hreg=) and the operator is paged with the grant command. For any other path, '
-            'message your chief: HOLD-ASK %s %s' % (path, fields[0], fields[1], fields[3], path, key))
+    head = 'holds: %s is held by %s (%s, %s). Keep working on other files. This deny is logged' % (path, fields[0], fields[1], fields[3])
+    trust = load_trust()
+    route = grant_route(path, path, trust) if trust is not None else 'any'
+    if route == 'chief':
+        return ('%s: this is a trust path, your chief sees it on its tick (hreg=) and can stamp a grant with --chief-doc, and '
+                'the operator is paged with the grant command. %s' % (head, GRANT_EXITS))
+    if route == 'operator':
+        return ('%s: this is a settings or CI-workflow path, your chief sees it on its tick (hreg=), and only the operator '
+                'grants it, paged with the command for a real terminal. %s' % (head, GRANT_EXITS))
+    return '%s. Message your chief: HOLD-ASK %s %s' % (head, path, key)
 
 
 def claim_one(repo, judge, path, key, label, doc, source, pr, created=None):
@@ -1093,10 +1103,12 @@ def op_grant(a):
                 sys.stderr.write('holds: %s is a trust path. The chief stamps it from its own session, naming its own doc (its '
                                  'queue lock held on this host): %s --chief-doc CHIEF_DOC %s . The operator grants it only in a real '
                                  'terminal, not a ! line in a Claude window: %s %s . From a Claude window, the operator asks the '
-                                 'chief, who stamps the grant.\n' % (p, line, p, line, p))
+                                 'chief, who stamps the grant. Otherwise wait for its release, or the operator launches with '
+                                 'WRITE_HOLD_OK=1.\n' % (p, line, p, line, p))
             else:
                 sys.stderr.write('holds: %s is a settings or CI-workflow path; only the operator grants it, and only in a real '
-                                 'terminal, not a ! line in a Claude window (the chief cannot stamp it): %s %s\n' % (p, line, p))
+                                 'terminal, not a ! line in a Claude window (the chief cannot stamp it): %s %s . Otherwise wait for '
+                                 'its release, or the operator launches with WRITE_HOLD_OK=1.\n' % (p, line, p))
             if st == 'mismatch':
                 sys.stderr.write('holds: the path typed back did not match; no grant\n')
             return 1

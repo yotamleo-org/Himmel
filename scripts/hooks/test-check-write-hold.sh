@@ -102,8 +102,12 @@ deny_text() {  # deny_text <path> <holder> <rival>
     printf '%s is held by %s (%s lbl, claim). Keep working on other files, and send your chief: HOLD-ASK %s %s. Chief grants with: python3 -I %q grant --key %s --repo %q %q. Bypass: WRITE_HOLD_OK=1 in the launching shell' \
         "$1" "$2" "$2" "$1" "$3" "$HOLDS_REAL" "$3" "$R" "$1"
 }
-trust_text() {  # trust_text <path> <holder>
-    printf '%s is a trust path, held by %s (%s lbl, claim), and has no grant. Wait for its release, or the operator launches with WRITE_HOLD_OK=1' "$1" "$2" "$2"
+trust_text() {  # trust_text <path> <holder> <rival>: grant-route says chief
+    printf '%s is a trust path, held by %s (%s lbl, claim). Keep working on other files. This deny is logged: your chief sees it on its tick (hreg=) and can stamp a grant with: python3 -I %q grant --key %s --repo %q --chief-doc CHIEF_DOC %q. Otherwise wait for its release, or the operator launches with WRITE_HOLD_OK=1' \
+        "$1" "$2" "$2" "$HOLDS_REAL" "$3" "$R" "$1"
+}
+operator_text() {  # operator_text <path> <holder>: grant-route says operator
+    printf '%s is a settings or CI-workflow path, held by %s (%s lbl, claim). Keep working on other files. This deny is logged: your chief sees it on its tick (hreg=), and only the operator grants it, in a real terminal. Otherwise wait for its release, or the operator launches with WRITE_HOLD_OK=1' "$1" "$2" "$2"
 }
 
 # stub_tree <holds.py body>: a copy of the hook whose sibling holds.py is the stub.
@@ -356,12 +360,17 @@ hasrow "the hook does not fold aliases: the old spelling has its own row" script
 w "$KA" "$R/scripts/handover/chief-kit/holds.py"
 w "$KB" "$R/scripts/handover/chief-kit/holds.py"
 same "a trust path held by a rival: exit 2" "$RC" 2
-same "the trust-path text is exact" "$ERR" "$(trust_text scripts/handover/chief-kit/holds.py "$KA")"
-lacks "the trust-path text has no HOLD-ASK" "$ERR" "HOLD-ASK"
+same "the trust path routes chief in the real holds.py" "$(python3 -I "$HOLDS_REAL" grant-route --repo "$R" -- scripts/handover/chief-kit/holds.py)" chief
+same "route chief: the deny text is exact" "$ERR" "$(trust_text scripts/handover/chief-kit/holds.py "$KA" "$KB")"
+lacks "route chief: the deny has no HOLD-ASK" "$ERR" "HOLD-ASK"
+lacks "route chief: the deny no longer says there is no grant" "$ERR" "has no grant"
 w "$KA" "$R/.claude/settings.json"
 w "$KB" "$R/.claude/settings.json"
 same "a settings file held by a rival: exit 2" "$RC" 2
-same "a settings file gets the trust-path text" "$ERR" "$(trust_text .claude/settings.json "$KA")"
+same "a settings file routes operator in the real holds.py" "$(python3 -I "$HOLDS_REAL" grant-route --repo "$R" -- .claude/settings.json)" operator
+same "route operator: the deny text is exact" "$ERR" "$(operator_text .claude/settings.json "$KA")"
+lacks "route operator: the deny has no HOLD-ASK" "$ERR" "HOLD-ASK"
+lacks "route operator: the deny offers no chief stamp" "$ERR" "--chief-doc"
 
 w "$KA" "$R/scripts/hooks/lib/x.sh"
 w "$KB" "$R/scripts/hooks/block-x.sh"
@@ -369,8 +378,8 @@ w "$KA" "$R/scripts/hooks/block-x.sh"; rc1=$RC; e1=$ERR
 w "$KB" "$R/scripts/hooks/lib/x.sh"; rc2=$RC; e2=$ERR
 same "crossed trust holders, first: exit 2" "$rc1" 2
 same "crossed trust holders, second: exit 2" "$rc2" 2
-same "crossed trust holders, first: trust-path text" "$e1" "$(trust_text scripts/hooks/block-x.sh "$KB")"
-same "crossed trust holders, second: trust-path text" "$e2" "$(trust_text scripts/hooks/lib/x.sh "$KA")"
+same "crossed trust holders, first: trust-path text" "$e1" "$(trust_text scripts/hooks/block-x.sh "$KB" "$KA")"
+same "crossed trust holders, second: trust-path text" "$e2" "$(trust_text scripts/hooks/lib/x.sh "$KA" "$KB")"
 
 grep -vE '^(#|$)' "$TRUST" > "$W/trust-patterns"
 for p in scripts/handover/chief-kit/holds.py scripts/hooks/check-write-hold.sh; do

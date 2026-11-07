@@ -470,7 +470,12 @@ has "Writes note retains scope context" "$wr_note" "scripts/wr-context/read.sh"
 has "Writes note retains stay-off paths" "$wr_note" "Stay off scripts/lib/"
 has "Writes note retains prior art paths" "$wr_note" "docs/prior.md"
 has "the original prior art field stays" "$wr_brief" "> **Prior art:** HIMMEL-9000: docs/prior.md"
-has "the original scope field stays" "$wr_brief" "> **Scope / do not:** writes confined to scripts/wr-context/read.sh. Stay off scripts/lib/. completes-ticket: no"
+has "the original scope field stays" "$wr_brief" "> **Scope / do not:** your Writes: scripts/wr-context/read.sh. Stay off scripts/lib/. completes-ticket: no"
+has "the scope line says a write onto another holder's file is denied" "$wr_brief" "A write onto a file another holder has is denied, and the deny says how to ask your chief"
+# shellcheck disable=SC2016 # literal backticks in the expected brief text
+has "the scope line says a free file outside Writes is claimed and recorded" "$wr_brief" 'a write onto a free file outside your Writes is claimed, recorded and named on your PR'"'"'s `outside-writes:` line for review'
+lacks "the scope line no longer says writes are confined" "$wr_brief" "writes confined to"
+lacks "the scope line no longer says stay off the other workers' files" "$wr_brief" "Stay off those"
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0].pop("writes",None); json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/wr-empty.json"
 python3 "$SUT" "$WORK/wr-empty.json" --base 4ccb59d --chief BZ --bucket "$WORK/wr-empty" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/wr-empty.err"; wr_rc=$?
 [ "$wr_rc" = 0 ] && pass "missing optional writes still generates a draft" || fail "missing writes generation rc=$wr_rc"
@@ -672,8 +677,9 @@ done
 HANDOVER_DOCS="${HANDOVER_DOCS:-$HERE/../../../docs/handover}"
 # worker-preface.md carries the adapter-repo stop-at-READY rule, so its budget is 12800.
 # chief-template.md carries the AG-UI board pointer in step 12 and the item 19 suite-evidence
-# note, so its budget is 17400; worker-preface.md's 12800 was raised to 12900 for the same change.
-for budget in "worker-preface.md:12900" "chief-template.md:17400"; do
+# note, so its budget is 17400; worker-preface.md's 12800 was raised to 12900 for the same change,
+# and to 13100 for the write-barrier bullet.
+for budget in "worker-preface.md:13100" "chief-template.md:17400"; do
     f="${budget%%:*}"; max="${budget##*:}"
     size="$(wc -c < "$HANDOVER_DOCS/$f" 2>/dev/null | tr -d '[:space:]')"
     [ -n "$size" ] && [ "$size" -le "$max" ] && pass "$f is within its byte budget ($size <= $max)" || fail "$f is over its byte budget (${size:-missing} > $max)"
@@ -893,6 +899,8 @@ has "G1 names its text and backticked path" "$GR" '> - G1 add the RED row to the
 # shellcheck disable=SC2016 # literal backticks in the expected brief text
 has "G2 lists every path it names" "$GR" '> - G2 mirror the change in the twin: `scripts/a.sh`, `scripts/b.sh`'
 has "an off-grant ruling gets a needs-rebrief FINDING" "$GR" "FINDING needs-rebrief <Gn>"
+# shellcheck disable=SC2016 # literal backticks in the expected brief text
+has "the chief runs holds.py grant with the ruling and the worker acts on the ruling" "$GR" 'Your chief runs `holds.py grant` with the ruling, and you act on the ruling once you have it.'
 bash "$HERE/brief-lint.sh" "$WORK"/gr/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/grlint.err"; rc=$?
 [ "$rc" = 0 ] && pass "the grants brief passes brief-lint.sh" || fail "grants brief brief-lint rc=$rc: $(cat "$WORK/grlint.err")"
 lacks "a worker without grants carries no grants block" "$ct_no" "Pre-granted follow-ups"
