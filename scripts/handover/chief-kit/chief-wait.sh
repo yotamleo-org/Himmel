@@ -183,9 +183,10 @@
 #                               (default 45); the doc's mtime stands in for its newest Results bullet, as
 #                               the tick's hold and READY ages do. succession-partial: a --succession
 #                               tally that stayed short names the worker (the line follows the partial
-#                               block) and its manifest rows do not all have a free queue lock (a worker
-#                               with no live session was closed, never launched or answers on another row's doc,
-#                               and is named by no line, bullet or page). One line per worker, once per (worker, signal, doc write time):
+#                               block) and a manifest row of it does not have a free queue lock. A worker
+#                               whose every row has a free lock is named by no line, bullet or page: it reads as
+#                               closed, never launched or answering on another row's doc, so a live worker that
+#                               lost its lock is not paged. One line per worker, once per (worker, signal, doc write time):
 #                               <inbox>.wait.silent holds the keys, so a re-arm on an unchanged state is quiet
 #                               and a worker that wrote and went quiet again wakes again. Each line also
 #                               appends a `WORKER-SILENT` bullet to --doc and sends the operator ONE page

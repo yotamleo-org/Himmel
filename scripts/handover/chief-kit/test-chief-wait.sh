@@ -209,23 +209,29 @@ rm -f "$STUB/pages"
 # --- (sp) a succession partial pages only a worker that is live ---
 # sp_run <case> <waiting labels, space separated> <labels whose doc holds a lock>...: runs one tally
 sp_run() {
-    local c="$1" labels="$2" l first=1 h; shift 2
+    local c="$1" labels="$2" l first=1 h lockless; shift 2
     mkdir -p "$WORK/$c/consoles"; I="$WORK/$c/consoles/c.md"; : > "$I"
     WD="$WORK/$c/chief.md"; printf '# chief\n\n## Results\n' > "$WD"
     WM="$WORK/$c/chief.fleet.json"
     : > "$STUB/sp-held"
     printf '{"schema":1,"workers":[' > "$WM"
     for l in $labels; do
+        [ "$l" != "${SP_NOROW:-}" ] || continue
         printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$WORK/$c/$l.md"
         [ "$first" -eq 1 ] || printf ',' >> "$WM"
         first=0
-        printf '{"doc":"%s/%s.md","label":"%s"}' "$WORK/$c" "$l" "$l" >> "$WM"
+        lockless=""; [ "$l" != "${SP_LOCKLESS:-}" ] || lockless=',"lockless":true'
+        if [ "$l" = "${SP_NODOC:-}" ]; then
+            printf '{"label":"%s"%s}' "$l" "$lockless" >> "$WM"
+        else
+            printf '{"doc":"%s/%s.md","label":"%s"%s}' "$WORK/$c" "$l" "$l" "$lockless" >> "$WM"
+        fi
     done
     [ -z "${SP_ROW2:-}" ] || printf ',{"doc":"%s/%s-b.md","label":"%s"}' "$WORK/$c" "$SP_ROW2" "$SP_ROW2" >> "$WM"
     printf ']}\n' >> "$WM"
     for h in "$@"; do printf '%s\n' "$WORK/$c/$h.md" >> "$STUB/sp-held"; done
     # shellcheck disable=SC2016  # the stub bodies expand when the stubs run
-    printf '#!/usr/bin/env bash\ngrep -qxF -- "$2" "$STUB/sp-held" && exit 11\nexit 0\n' > "$STUB/sp-lock.sh"
+    printf '#!/usr/bin/env bash\ngrep -qxF -- "$2" "$STUB/sp-held" && exit %s\nexit 0\n' "${SP_RC:-11}" > "$STUB/sp-lock.sh"
     printf 'INCOMPLETE 11/18 (waiting on: %s)\n' "$(printf '%s' "$labels" | tr ' ' ',')" > "$STUB/sp-succ.out"
     # shellcheck disable=SC2016
     printf '#!/usr/bin/env bash\ncat "$STUB/sp-succ.out"\n' > "$STUB/sp-tracker.sh"
@@ -250,6 +256,7 @@ sp_run sp3 "N5017 N5017c" N5017
 check "(sp3) a worker answered on another row's doc prints no worker-silent line for itself" "0" "$(grep -c '^WAKE worker-silent N5017c' "$WORK/sp3.out" || true)"  # pipefail-ok: none set
 check "(sp3) and is not paged" "0" "$(grep -c 'WORKER-SILENT N5017c' "$STUB/pages" 2>/dev/null || true)"  # pipefail-ok: none set
 check "(sp3) and gets no bullet" "0" "$(grep -c 'WORKER-SILENT N5017c' "$WD" || true)"  # pipefail-ok: none set
+check "(sp3) the held N5017 row still pages" "1" "$(grep -c '^WAKE worker-silent N5017 ' "$WORK/sp3.out" || true)"  # pipefail-ok: none set
 sp_run sp4 "N7001" N7001
 check "(sp4) a live worker with no quote-back prints one worker-silent line" "1" "$(grep -c '^WAKE worker-silent N7001 signal=succession-partial' "$WORK/sp4.out" || true)"  # pipefail-ok: none set
 check "(sp4) writes one WORKER-SILENT bullet" "1" "$(sp_bullets)"
@@ -260,6 +267,17 @@ check "(sp5) exactly one worker-silent line" "1" "$(sp_silent_lines sp5)"
 check "(sp5) and exactly one page" "1" "$(ws_pages)"
 SP_ROW2=N5017 sp_run sp6 "N5017" N5017-b
 check "(sp6) a worker whose relaunch row holds a lock still pages" "1" "$(sp_silent_lines sp6)"
+SP_LOCKLESS=N8001 sp_run sp7 "N8001"
+check "(sp7) a lockless row proves nothing, so the worker pages once" "1" "$(sp_silent_lines sp7)"
+check "(sp7) and sends one page" "1" "$(ws_pages)"
+SP_RC=12 sp_run sp8 "N8002" N8002
+check "(sp8) a lock status of 12 (stale) is not free, so the worker pages once" "1" "$(sp_silent_lines sp8)"
+SP_RC=1 sp_run sp9 "N8003" N8003
+check "(sp9) a lock status of 1 (could not read) is not free, so the worker pages once" "1" "$(sp_silent_lines sp9)"
+SP_NOROW=N8004 sp_run sp10 "N8004"
+check "(sp10) a label with no manifest row proves nothing, so it pages once" "1" "$(sp_silent_lines sp10)"
+SP_NODOC=N8005 sp_run sp11 "N8005"
+check "(sp11) a row with no doc proves nothing, so the worker pages once" "1" "$(sp_silent_lines sp11)"
 rm -f "$STUB/pages"
 if [ "${1:-}" = --worker-silent-only ]; then
     printf '\n%d failure(s)\n' "$fails"
