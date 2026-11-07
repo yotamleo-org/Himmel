@@ -4455,9 +4455,7 @@ check_c51_firecrawl_parked() {
 # graph-cadence's semantic step runs `graphify --backend ollama` only when
 # GRAPH_CADENCE_SEMANTIC_BACKEND=ollama (default claude-cli), which
 # needs the extra's openai client inside the uv graphifyy venv. Any other
-# accepted backend (claude-cli, claude-api, the api alias) skips the check; the
-# backend is resolved by the shared scripts/lib/llm-backend.sh, the same
-# resolver graph-cadence uses, so the two cannot drift. Never runs graphify itself
+# backend skips the check. Never runs graphify itself
 # (a graphify invocation auto-refreshes the user's skill dirs) -- only the venv
 # python. Seams: HIMMEL_DOCTOR_GRAPHIFY_VENV (venv dir), HIMMEL_DOCTOR_UV.
 check_c52_graphify_ollama() {
