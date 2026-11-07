@@ -6,7 +6,6 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, wri
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
-import { secretWrite } from "../setup";
 
 const STUB = join(import.meta.dir, "stub-himmelctl.js");
 const TOKEN = "t".repeat(64);
@@ -122,7 +121,8 @@ test("a server in service mode refuses remove from the launch token alone, with 
   expect(b.audit()).not.toContain("secret.remove");
 });
 
-test("a service-mode remove from a login session works as today", () => {
+test("a service-mode remove from a login session works as today", async () => {
+  const { secretWrite } = await import(join(import.meta.dir, "..", "setup"));
   const b = boot({ noIdle: true });
   writeFileSync(join(b.root, ".env"), "KEEP=1\nJIRA_API_TOKEN=" + canary() + "\n", { mode: 0o600 });
   const r = secretWrite({ name: "JIRA_API_TOKEN", op: "remove" }, { env: { PATH: process.env.PATH, HIMMEL_SECRETS_KEYRING: "off" }, home: b.root, himmelRoot: b.root, projectRoot: b.project, serviceMode: true, session: true });
