@@ -1751,11 +1751,7 @@ silent_emit() { # <label> <signal> <detail>: prints the WAKE line and succeeds w
     page_send "WORKER-SILENT $label signal=$signal$detail - $act" $(( $(date +%s) + page_timeout ))
     printf 'WAKE worker-silent %s signal=%s%s\n' "$label" "$signal" "$detail"
 }
-succ_row_live() { # <label>: success unless the fleet manifest proves the worker has no live session
-    # A worker is proven closed, or never launched, or answering on another row's doc when it has
-    # manifest rows and every one of them names a doc whose queue lock is free (status rc 0): nothing
-    # can quote back from a doc nobody holds. No manifest, no row, a row with no doc, a lockless row
-    # or any lock status but free proves nothing, so the worker stays live and pages.
+succ_row_live() {
     local mf="${legs_from:-${console_doc%.md}.fleet.json}" docs d
     [ -f "$mf" ] || return 0
     docs="$(jq -r --arg l "$1" "$JQ_W"'[W[]? | select(.label == $l)] | if length == 0 or any(.[]; .lockless == true or (.doc // "") == "") then empty else .[].doc end' "$mf" 2>/dev/null)" || return 0  # swallow-ok: an unreadable manifest proves nothing, so the worker pages

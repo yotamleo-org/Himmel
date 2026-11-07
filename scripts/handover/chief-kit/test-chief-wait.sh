@@ -197,7 +197,7 @@ ws_tick
 # shellcheck disable=SC2016  # the stub body expands when the stub runs
 printf '#!/usr/bin/env bash\ncat "$STUB/ws-succ.out"\n' > "$STUB/ws-tracker.sh"
 printf 'N1 missing\nINCOMPLETE 0/1 (waiting on: N1)\n' > "$STUB/ws-succ.out"
-printf '#!/usr/bin/env bash\nexit 11\n' > "$STUB/ws-lock.sh"  # the worker's doc lock is held: a live session
+printf '#!/usr/bin/env bash\nexit 11\n' > "$STUB/ws-lock.sh"
 CHIEF_WAIT_LOCK_STATUS="$STUB/ws-lock.sh" CHIEF_WAIT_TRACKER="$STUB/ws-tracker.sh" CHIEF_WAIT_SUCCESSION_SEC=1 start "$I" "$WORK/ws6.out" --doc "$WD" --succession S2 --silent-min 0 --workers-from "$WM"
 wait_exit "$WPID"
 check "(ws6) the partial wake still comes first" "WAKE succession partial 0/1 silent 0 min" "$(head -n1 "$WORK/ws6.out")"
@@ -207,13 +207,6 @@ if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null;
 rm -f "$STUB/pages"
 
 # --- (sp) a succession partial pages only a worker that is live ---
-# The tally names every worker still short of a quote-back, but a worker whose manifest rows all
-# have a free queue lock (closed by the chief without a WRAPPED bullet, never launched, or alive on
-# another row's doc) is not silent: no WAKE worker-silent line, no bullet, no page. A worker whose
-# row holds a lock is live, so it still pages once. The tally and the lock status are stubbed; the
-# waiting list copies the shape of the UC takeover tally (11 of 18): five closed rows, one brief
-# written with its launch held, and N5017c alive on the N5017 doc. RED control (chief-wait.sh before
-# this change): every waiting label pages.
 # sp_run <case> <waiting labels, space separated> <labels whose doc holds a lock>...: runs one tally
 sp_run() {
     local c="$1" labels="$2" l first=1 h; shift 2
@@ -228,7 +221,6 @@ sp_run() {
         first=0
         printf '{"doc":"%s/%s.md","label":"%s"}' "$WORK/$c" "$l" "$l" >> "$WM"
     done
-    # SP_ROW2=<label>: a second manifest row for that label, its doc <label>-b.md (a relaunch)
     [ -z "${SP_ROW2:-}" ] || printf ',{"doc":"%s/%s-b.md","label":"%s"}' "$WORK/$c" "$SP_ROW2" "$SP_ROW2" >> "$WM"
     printf ']}\n' >> "$WM"
     for h in "$@"; do printf '%s\n' "$WORK/$c/$h.md" >> "$STUB/sp-held"; done
@@ -245,30 +237,27 @@ sp_run() {
 }
 sp_silent_lines() { grep -c '^WAKE worker-silent' "$WORK/$1.out" || true; }  # pipefail-ok: none set
 sp_bullets() { grep -c '^- [0-9:]* WORKER-SILENT' "$WD" || true; }  # pipefail-ok: none set
-sp_run sp1 "N5004b" # closed by the chief: the row's doc has no WRAPPED bullet and no lock
+sp_run sp1 "N5004b"
 check "(sp1) the partial wake still comes first" "WAKE succession partial 11/18 silent 0 min" "$(head -n1 "$WORK/sp1.out")"
 check "(sp1) a closed worker with no lock prints no worker-silent line" "0" "$(sp_silent_lines sp1)"
 check "(sp1) and writes no WORKER-SILENT bullet" "0" "$(sp_bullets)"
 check "(sp1) and sends no page" "0" "$(ws_pages)"
-sp_run sp2 "N5054" # never launched: the brief is written, nothing holds its lock
+sp_run sp2 "N5054"
 check "(sp2) a never-launched worker prints no worker-silent line" "0" "$(sp_silent_lines sp2)"
 check "(sp2) and writes no WORKER-SILENT bullet" "0" "$(sp_bullets)"
 check "(sp2) and sends no page" "0" "$(ws_pages)"
-sp_run sp3 "N5017 N5017c" N5017 # N5017c is alive on the N5017 doc, whose lock is held; its own row's doc is free
+sp_run sp3 "N5017 N5017c" N5017
 check "(sp3) a worker answered on another row's doc prints no worker-silent line for itself" "0" "$(grep -c '^WAKE worker-silent N5017c' "$WORK/sp3.out" || true)"  # pipefail-ok: none set
 check "(sp3) and is not paged" "0" "$(grep -c 'WORKER-SILENT N5017c' "$STUB/pages" 2>/dev/null || true)"  # pipefail-ok: none set
 check "(sp3) and gets no bullet" "0" "$(grep -c 'WORKER-SILENT N5017c' "$WD" || true)"  # pipefail-ok: none set
-# control: a live worker (its row's lock held) with no quote-back still pages once; it goes red if the fix silences every page
 sp_run sp4 "N7001" N7001
 check "(sp4) a live worker with no quote-back prints one worker-silent line" "1" "$(grep -c '^WAKE worker-silent N7001 signal=succession-partial' "$WORK/sp4.out" || true)"  # pipefail-ok: none set
 check "(sp4) writes one WORKER-SILENT bullet" "1" "$(sp_bullets)"
 check "(sp4) and sends one page" "1" "$(ws_pages)"
-# the UC takeover tally: seven false labels and one live silent worker; only the live one pages
 sp_run sp5 "N5004b N4992c N5017b N4992d N5046b N5054 N5017c N7001" N7001
 check "(sp5) a mixed tally prints worker-silent for the live worker only" "WAKE worker-silent N7001 signal=succession-partial" "$(grep '^WAKE worker-silent' "$WORK/sp5.out" | head -n1)"
 check "(sp5) exactly one worker-silent line" "1" "$(sp_silent_lines sp5)"
 check "(sp5) and exactly one page" "1" "$(ws_pages)"
-# a label on two rows is closed only when both rows are lock-free
 SP_ROW2=N5017 sp_run sp6 "N5017" N5017-b
 check "(sp6) a worker whose relaunch row holds a lock still pages" "1" "$(sp_silent_lines sp6)"
 rm -f "$STUB/pages"
