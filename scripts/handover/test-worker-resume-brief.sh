@@ -777,8 +777,9 @@ R_HAS="$FIX/resume-has.md"
 # shellcheck disable=SC2016  # literal markdown backticks in a fixture doc
 printf '# doc\nWorking on `branch feat/himmel-2369-fixture` today.\n\n## Results (newest at the bottom)\n- 10:00 LIVE — x\n' > "$R_HAS"
 bash "$SCRIPT_COPY" "$R_HAS" >/dev/null 2>&1
+has_rc=$?
 heads=$(grep -cE '^## Results([[:space:]]|$)' "$R_HAS")
-if [ "$heads" -eq 1 ]; then
+if [ "$has_rc" -eq 0 ] && grep -q '^## RESUME BRIEF' "$R_HAS" && [ "$heads" -eq 1 ]; then
     ok "a doc that already has a Results heading keeps exactly one"
 else
     ko "a doc that already had a Results heading now has $heads"
