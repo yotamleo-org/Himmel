@@ -404,7 +404,7 @@ const DATA_STUBS: Record<string, unknown> = {
 const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 // Load the page at `hash` the way the browser does, hand the test a way to fire events, and read what was painted.
-async function onPage(b: ReturnType<typeof browser>, hash: string, run: (p: { main: () => string; top: () => string; status: () => string; fire: (type: string, target: unknown) => boolean }) => Promise<void>) {
+async function onPage(b: ReturnType<typeof browser>, hash: string, run: (p: { main: () => string; top: () => string; status: () => string; readOnly: () => boolean; fire: (type: string, target: unknown) => boolean }) => Promise<void>) {
   const full = readFileSync(join(PUBLIC, "app.js"), "utf8");
   const importLine = /^import\s*\{([^}]*)\}\s*from\s*["'][^"']+["'];?\s*$/gm;
   const src = full.replace(importLine, "");
@@ -433,7 +433,7 @@ async function onPage(b: ReturnType<typeof browser>, hash: string, run: (p: { ma
     new Function(src)();
     await settle();
     await run({
-      main: () => String(el("#main").innerHTML), top: () => String(el("#top").innerHTML), status: () => String(el("#status").textContent),
+      main: () => String(el("#main").innerHTML), top: () => String(el("#top").innerHTML), status: () => String(el("#status").textContent), readOnly: () => doc.body.dataset.readOnly === "1" && el("#read-only-banner").hidden === false,
       fire: (type, target) => { let prevented = false; for (const h of handlers[type] ?? []) h({ target, preventDefault() { prevented = true; }, stopPropagation() {} }); return prevented; },
     });
   });
@@ -534,6 +534,7 @@ test("a read-only UI refuses every write, login and logout included, so its head
   const b = browser(s.base);
   await onPage(b, `#t=${TOKEN}&page=config`, async (p) => {
     await settle();
+    expect(p.readOnly()).toBe(true); // the page did read the mode: the absences below are not an unpainted header
     expect(p.top()).not.toContain("login");
     expect(p.top()).not.toContain('data-act="logout"');
     expect(p.top()).not.toContain("/login");
@@ -561,12 +562,16 @@ test("the header shows the login state: Log in while out, Log out while in, and 
 });
 
 // A link in the page, for the click handler: closest() answers only for the selector the page asks with.
-const linkEvent = (href: string) => ({ closest: (sel: string) => (sel.includes("href^=") && sel.includes("/agui/") && href.startsWith("/agui/") ? { getAttribute: () => href } : null) });
+const linkEvent = (href: string) => ({ closest: (sel: string) => (sel === 'a[href^="/agui/"]' && href.startsWith("/agui/") ? { getAttribute: () => href } : null) });
 
-test("a save refused with 401 (a token-less tab whose session has ended) offers Log in, flips the header, and says the value was cleared", async () => {
+test("a save refused with 401 (the session ended after the page loaded) offers Log in, flips the header, and says the value was cleared", async () => {
   const s = boot({ noIdle: true });
   const b = browser(s.base);
+  await logIn(b, "", USER, s.password);
   await onPage(b, "#/config", async (p) => {
+    expect(p.top()).toContain("logged in");
+    expect(p.top()).not.toContain("not logged in");
+    s.advance(60 * 60 * 1000 + 1); // the one-hour session ends
     const ev = saveEvent("e2e-canary-" + randomBytes(8).toString("hex"));
     p.fire("submit", ev.target);
     await settle();
@@ -575,6 +580,16 @@ test("a save refused with 401 (a token-less tab whose session has ended) offers 
     expect(p.main()).toMatch(/<a class="btn primary"[^>]* href="\/login\?next=%2F%23%2Fconfig"[^>]*>Log in<\/a>/);
     expect(p.top()).toContain("not logged in");
     expect(p.top()).toContain('href="/login?next=%2F%23%2Fconfig"');
+  });
+});
+
+test("a tab loaded with no token and no session (a reload, a bookmark, after Log out) shows not logged in and Log in at load", async () => {
+  const s = boot({ noIdle: true });
+  const b = browser(s.base);
+  await onPage(b, "#/config", async (p) => {
+    expect(p.top()).toContain("not logged in");
+    expect(p.top()).toMatch(/<a class="btn"[^>]* href="\/login\?next=%2F%23%2Fconfig"[^>]*>Log in<\/a>/);
+    expect(p.top()).not.toContain('data-act="logout"');
   });
 });
 
@@ -602,23 +617,25 @@ test("a token-less tab's Fleet and Shift links say to open the URL himmelctl ui 
   await onPage(less, "#/config", async (p) => {
     expect(p.fire("click", linkEvent("/agui/#t="))).toBe(true);
     expect(p.status()).toContain("himmelctl ui");
+    expect(p.fire("auxclick", linkEvent("/agui/#t="))).toBe(true); // a middle-click
     expect(p.fire("click", linkEvent("/other"))).toBe(false);
   });
   const withToken = browser(s.base);
   await onPage(withToken, `#t=${TOKEN}&page=config`, async (p) => {
     expect(p.fire("click", linkEvent(`/agui/#t=${TOKEN}`))).toBe(false);
+    expect(p.fire("auxclick", linkEvent(`/agui/#t=${TOKEN}`))).toBe(false);
   });
 });
 
-test("a read-only server with no token offers no Log in: the refused save and the header both stay quiet", async () => {
+test("a read-only server with no token: a refused save is a plain 403 and the row offers no Log in (the header's Log in is the accepted dead end: the server cannot say read-only to a caller it refuses)", async () => {
   const s = boot({ noIdle: true, readOnly: true });
   const b = browser(s.base);
   await onPage(b, "#/config", async (p) => {
-    expect(p.top()).not.toContain("login");
     p.fire("submit", saveEvent("a-value").target);
     await settle();
+    expect(p.main()).toContain("(403)"); // the refusal reached the row
     expect(p.main()).not.toContain("/login");
-    expect(p.top()).not.toContain("login");
+    expect(p.main()).not.toContain("log in to save");
   });
 });
 

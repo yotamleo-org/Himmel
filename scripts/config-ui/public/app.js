@@ -307,7 +307,8 @@ async function loadMode() {
   let readOnlyNow = false;
   try {
     const r = await fetch("/api/mode", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
-    if (!r.ok) return; // 401: no token and no session. A read-only server answers the same, so the header stays quiet; a refused save (401) or a Log out sets it
+    if (r.status === 401) session = false; // no token and no session: not logged in. A token-less read-only server answers the same, so its Log in leads to a 403 (accepted: telling it apart would need a signal on a 401)
+    if (!r.ok) { if (session === false && (feed || currentPage.needsFeed === false)) paint(); return; }
     readOnlyNow = (await r.json()).readOnly === true;
     const held = r.headers.get("X-Himmel-Session"); // the cookie is HttpOnly, so the server says whether this browser holds a session
     session = readOnlyNow || held === null ? null : held === "1"; // a read-only server refuses login and logout too: the header offers neither
