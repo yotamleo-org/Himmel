@@ -1031,9 +1031,6 @@ printf 'garbage\n' > "$BL"
 contains 'bank lift: unparseable show output reads unavailable' "$(bl_html "$BL")" 'data-bank-lift="?">weekly budget override: unavailable</p>'
 html="$(BOARD_USAGE_LIFT="$W/no-such-lift" mrun >/dev/null; cat "$M/board.html")"
 contains 'bank lift: a failing show reads unavailable, never fatal' "$html" 'data-bank-lift="?"'
-# The REAL `show` of a standing lift that followed an account switch
-# (set on fixture A, login and cache on fixture B) still renders as standing.
-# Scratch HOME, lift file, login and cache; never the operator's own.
 # shellcheck disable=SC1091
 . "$HERE/../../lib/usage-cache-identity.sh"
 FL="$W/follow"; mkdir -p "$FL/home"

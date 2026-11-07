@@ -900,7 +900,6 @@ assert_rc 'no lift retains weekly refusal' 2 "$(lift_hook lift-absent USAGE_LIFT
 lift_policy "$LIFT_RESET" deadbeefdeadbeef false
 assert_rc 'other-account window lift refuses weekly 90' 2 "$(lift_hook lift-account)"
 assert_contains 'other-account window lift is loud' 'weekly budget override (usage lift) invalid (account)' "$(cat "$TMP/err-lift-account")"
-# A standing lift follows the login only when set_by is this user.
 lift_policy "$LIFT_RESET" deadbeefdeadbeef true not-the-operator
 assert_rc 'other-account standing lift set by another user refuses weekly 90' 2 "$(lift_hook lift-set-by)"
 assert_contains 'other-account standing lift set by another user is loud' 'weekly budget override (usage lift) invalid (set_by)' "$(cat "$TMP/err-lift-set-by")"

@@ -952,8 +952,6 @@ printf '%s' '{broken' > "$USAGE_LIFT_FILE"
 check "show explains malformed file" 'usage-lift: INVALID: parse' "$(bash "$LIFT" show "$W/lc.json" | tail -1)"
 rm -f "$USAGE_LIFT_FILE"
 
-# A standing lift follows the active account. Fixture accounts A
-# (origin) and B (login and cache); set_by is written explicitly in every row.
 FA_CFG="$W/follow-a.json"; FB_CFG="$W/follow-b.json"
 printf '%s' '{"oauthAccount":{"accountUuid":"uuid-lift-follow-a"}}' > "$FA_CFG"
 printf '%s' '{"oauthAccount":{"accountUuid":"uuid-lift-follow-b"}}' > "$FB_CFG"
@@ -980,7 +978,6 @@ fverdict() { # <five_hour> <seven_day>: login and cache on B
     bash "$SUT" </dev/null 2>"$W/err.log"
 }
 FOLLOWED_LINE="usage-lift: followed: standing lift set on ${HA:0:4}…, now on ${HB:0:4}…"
-# Row 1 (RED on main): standing on A, set_by the user, login and cache on B.
 follow_lift "$HA" true "\"$ME\""; fcache "$HB" 90 90
 check "standing lift on another account follows: show" "$FOLLOWED_LINE
 usage-lift: VALID" "$(fshow | tail -2)"
@@ -992,11 +989,9 @@ fline="$(fshow | grep -E '^usage-lift: followed: standing lift set on [0-9a-f]{4
 check "followed line prints at most 4 hex of each account" match "$([ -n "$fline" ] && echo match)"
 lrow="$(tail -1 "$W/ledger.jsonl" | grep -E "${HA:0:5}|${HB:0:5}")"
 check "ledger row of a followed lift carries no account hash" none "$([ -n "$lrow" ] && echo hash || echo none)"
-# Row 2: a window lift never follows.
 follow_lift "$HA" false "\"$ME\""; fcache "$HB" 10 90
 check "window lift on another account -> INVALID: account" 'usage-lift: INVALID: account' "$(fshow | tail -1)"
 check "window lift on another account, seven_day=90 -> SKIPPED-BANK" SKIPPED-BANK "$(fverdict 10 90)"
-# Rows 3, 4, 10: set_by must equal the current user for a follow.
 follow_lift "$HA" true '"not-the-operator"'; fcache "$HB" 90 90
 check "standing lift set by another user -> INVALID: set_by" 'usage-lift: INVALID: set_by' "$(fshow | tail -1)"
 check "standing lift set by another user -> SKIPPED-BANK" SKIPPED-BANK "$(CADENCE_USAGE_MAX_PCT='' fverdict 90 90)"
@@ -1006,28 +1001,23 @@ follow_lift "$HA" true "$(jq -cn --arg me "$ME" '$me+"\nx"')"; fcache "$HB" 90 9
 check "standing lift with a multiline set_by -> INVALID: set_by" 'usage-lift: INVALID: set_by' "$(fshow | tail -1)"
 follow_lift "$HA" true 42; fcache "$HB" 90 90
 check "standing lift with a numeric set_by -> INVALID: set_by" 'usage-lift: INVALID: set_by' "$(fshow | tail -1)"
-# Row 5: the cache must already be the login's account.
 follow_lift "$HA" true "\"$ME\""; fcache "$HA" 90 90
 check "standing lift, cache still on the origin account -> INVALID: cache-account" \
   'usage-lift: INVALID: cache-account' "$(fshow | tail -1)"
-# Rows 6, 7: a followed lift grants no more than a standing lift.
 follow_lift "$HA" true "\"$ME\""
 check "followed lift, seven_day=100 -> SKIPPED-BANK (no extra_usage)" SKIPPED-BANK "$(CADENCE_USAGE_MAX_PCT='' fverdict 10 100)"
 check "followed lift, explicit ceiling 85 binds five_hour=90" SKIPPED-BANK "$(CADENCE_USAGE_MAX_PCT=85 fverdict 90 10)"
-# Row 8: a standing lift on its own account does not follow.
 follow_lift "$HB" true "\"$ME\""; fcache "$HB" 90 90
 check "standing lift on its origin account -> VALID" 'usage-lift: VALID' "$(fshow | tail -1)"
 check "standing lift on its origin account prints no followed line" 0 "$(fshow | grep -c '^usage-lift: followed:')"
 check "standing lift on its origin account, ledger row carries lift_followed:false" false \
   "$(CADENCE_USAGE_MAX_PCT='' fverdict 90 90 >/dev/null; tail -1 "$W/ledger.jsonl" | jq -r '.lift_followed')"
-# Row 11: set_by matters only for a follow.
 follow_lift "$HB" true '"t"'
 check "standing lift on its origin account, set_by t -> VALID" 'usage-lift: VALID' "$(fshow | tail -1)"
 follow_lift "$HB" true '"unknown"'
 check "standing lift on its origin account, set_by unknown -> VALID" 'usage-lift: VALID' "$(fshow | tail -1)"
 follow_lift "$HB" true
 check "standing lift on its origin account, no set_by -> VALID" 'usage-lift: VALID' "$(fshow | tail -1)"
-# Row 12: CR-terminated jq output (native Windows jq) still follows.
 follow_lift "$HA" true "\"$ME\""; fcache "$HB" 90 90
 # shellcheck disable=SC1090,SC2030,SC2317,SC2329 # jq function called indirectly by validator
 crlf_follow() { (
@@ -1044,7 +1034,6 @@ crlf_follow() { (
   printf '%s:%s:%s' "$rc" "$USAGE_LIFT_STANDING" "${USAGE_LIFT_FOLLOWED:-}"
 ); }
 check "CRLF jq output still follows" '0:true:true' "$(crlf_follow)"
-# I7: reading a followed lift writes nothing.
 lift_state() {
   local sum mtime
   sum="$(sha256sum "$USAGE_LIFT_FILE" 2>/dev/null || shasum -a 256 "$USAGE_LIFT_FILE")"

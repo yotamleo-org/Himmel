@@ -95,7 +95,6 @@ _usage_lift_valid_one() {
   if [ "$standing" != true ] && [ "$until" -le "$now" ]; then USAGE_LIFT_REASON=expired; return 1; fi
   cur=$(current_account_hash)
   [ -n "$cur" ] || { USAGE_LIFT_REASON=account; return 1; }
-  # A standing lift set by this user follows the active account; a window lift never does.
   if [ "$acct" != "$cur" ]; then
     [ "$standing" = true ] || { USAGE_LIFT_REASON=account; return 1; }
     [ "$by_me" = true ] || { USAGE_LIFT_REASON=set_by; return 1; }
