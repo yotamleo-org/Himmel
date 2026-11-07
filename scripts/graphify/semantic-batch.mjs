@@ -119,7 +119,8 @@ async function call(key, method, path, body) {
   } catch (e) { refuse(`network failure: ${e.name}`, 3); }
   const text = await res.text();
   if (!res.ok) {
-    if (/credit balance|insufficient.{0,20}credit|billing/i.test(text)) refuse(`credit exhausted (HTTP ${res.status})`, 5);
+    // only a client error other than a rate limit is a credit answer; a server error or a 429 with billing text must not walk the accounts
+    if (res.status < 500 && res.status !== 429 && /credit balance|insufficient.{0,20}credit|billing/i.test(text)) refuse(`credit exhausted (HTTP ${res.status})`, 5);
     refuse(`HTTP ${res.status}: ${text.slice(0, 300).replace(/\s+/g, ' ')}`, 3);
   }
   return text;
