@@ -110,7 +110,7 @@ test("the Board draws the seeded mirror: strip, drift banner, chain badge, lanes
   await expect(page.locator(".rm-card[draggable]").first()).toBeVisible(); // drag and the Sector select are still there
   // no registry-less made-up number: the wait link counts the chain read's own rows
   await expect(page.locator(".rm-link").first()).toContainText("0 wait for you");
-  await expect(page.locator(".rm-link").first()).toContainText("not counted"); // the seeded mirror has a ticket with no version: the count says it is left out
+  await expect(page.locator(".rm-link").first()).not.toContainText("not counted"); // the seeded mirror has a ticket with no version, and the page reads it beside the default read, so nothing is left out
   await expect(page.locator("#rm-waiting")).toHaveCount(0); // nobody waits: no section, the count link above says 0
   // Chains tab
   await page.getByRole("tab", { name: /^Chains/ }).click();
@@ -311,7 +311,7 @@ test("a ticket with no fixVersion is on its own No version tab, fetched only whe
   await expect(page.locator(".rm-card", { hasText: "Standing ticket with no version" })).toHaveCount(0);
   await expect(page.locator("#rm-nv")).toHaveCount(0);
   await expect(page.getByRole("tab", { name: /^No version/ })).toContainText("1");
-  expect(reads.every((u) => !u.includes("nv=1"))).toBe(true); // the default read did not ask for them
+  await expect.poll(() => reads.filter((u) => u.includes("nv=1")).length).toBe(1); // Waiting on you needs them, so the page asks once beside the default read; the default read itself does not carry them
   await page.getByRole("tab", { name: /^No version/ }).click();
   await expect(page.locator("#rm-nv .rm-card", { hasText: "Standing ticket with no version" })).toBeVisible();
   await expect(page.locator("#rm-nv .rm-card", { hasText: "Work in flight" })).toHaveCount(0);
@@ -430,7 +430,7 @@ test("the Board at 1280 px is dense: a one-line bar, the first card near the top
   const bar = await page.locator(".rm-bar").first().boundingBox();
   expect(bar && bar.height <= 40).toBe(true);
   const card = await page.locator(".rm-card").first().boundingBox();
-  expect(card && card.y <= 400).toBe(true); // 350 in Noto Sans; DejaVu Sans (CI) is wider, the tab row's aside wraps under the tabs and the card sits near 373
+  expect(card && card.y <= 480).toBe(true); // the sector legend and the drain line add up to about 80 px above the lanes; 350 before them in Noto Sans; DejaVu Sans (CI) is wider, the tab row's aside wraps under the tabs and the card sits near 373
   const tracks = await page.locator(".rm-board").first().evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length);
   expect(tracks).toBe(5); // four columns and the narrow Won't lane
   await expect(page.locator('[data-rm-drop="wont"]')).toBeVisible();
