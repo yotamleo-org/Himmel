@@ -1852,7 +1852,7 @@ if [ "$marker_lane" = "full" ]; then
             audit "REFUSED reason=missing-comment-review branch=$branch sha=$tip"
             exit 14 ;;
         *)
-            echo "clear-cr-marker: could not evaluate the comment-review gate (the comment counter beside this script, the diff ${marker_base:0:8}...${tip:0:8}, or a comments row in $ledger is unusable) — refusing closed." >&2
+            echo "clear-cr-marker: could not evaluate the comment-review gate (the HIMMEL_REPO anchor's comment counter, the diff ${marker_base:0:8}...${tip:0:8}, or a comments row in $ledger is unusable) — refusing closed." >&2
             echo "  If the branch was rebased, earlier comments rows no longer resolve. Run the review, then record a row at the clearing head: bash scripts/cr/ledger-append.sh comments --head $tip --count <n> --status ok" >&2
             audit "REFUSED reason=comment-review-unreadable branch=$branch sha=$tip"
             exit 14 ;;

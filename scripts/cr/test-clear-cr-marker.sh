@@ -1447,7 +1447,7 @@ cm_reason comment-review-unreadable "HIMMEL_REPO unset"
 rm -rf "$tmp" "$_cm_anchor"
 
 cm_anchor_case; cm_finish "$_cm_ts"
-cm_run_abs "$tmp" relative/anchor 14 "absolute-path clear with a relative HIMMEL_REPO refuses closed"
+cm_run_abs "$tmp" . 14 "absolute-path clear with HIMMEL_REPO=. (cwd's own lint prints 0) refuses closed"
 cm_reason comment-review-unreadable "HIMMEL_REPO relative"
 rm -rf "$tmp" "$_cm_anchor"
 CM_ANCHOR_SELF=
