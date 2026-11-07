@@ -1296,7 +1296,7 @@ function failNote(ctx: Ctx, failed: Error, lines: string[]): void {
   }
 }
 
-// ponytail: a fixed 6 s settle, set by hand above claude-api.sh's 5 s kill grace, upgrade path: judgeCall escalates to SIGKILL after its own grace, so the wait derives from one number.
+// ponytail: a fixed 6 s settle covers the judge's own cleanup, and the aborted child gets one SIGTERM and may outlive the run, upgrade path: judgeCall waits for the child's exit and escalates to SIGKILL after a grace.
 export const JUDGE_SETTLE_MS = 6000;
 
 function startDeadline(stop: AbortController, ms: number | undefined): () => void {
