@@ -45,8 +45,17 @@
 # against the recorded findings without rerunning the panel. A hardening
 # finding with no recorded fu_why also exits 6 until --fu-why <code> names one
 # of unseen-failure|no-check|vacuous-check|no-recovery|silent-rot.
+# Decisions 746, 762: a polish Suggestion/nit files no ticket. With no
+# --defer-to, defer amends its row verdict=deferred, fu_class=polish with no
+# deferred_to (the finding is noted in the PR body; the marker still clears). A
+# hardening finding is filed only with --fu-override <judge verdict id|decision-N>;
+# without one defer exits 6 naming the flag. A pre-existing Important classed polish
+# cannot be noted: reclassify it or supply --defer-to <plain ticket>.
 # A Suggestions-only round below the cap closes early on a change that touches
-# no CI trust path. It files ONE batch residual per branch and keeps its key in
+# no CI trust path. Its polish rows file nothing (see above); an explicit
+# --defer-to attaches every pending finding to that existing ticket, and a
+# hardening row with an override is filed as ONE
+# batch residual per branch and keeps its key in
 # <branch>.deferred-to, which every later early close reuses, adding its
 # findings to that ticket as a comment (a failed comment exits 6; rerun to
 # retry it); the start of a
@@ -76,7 +85,7 @@ if [ -f "$HIMMEL_ROOT/scripts/lib/gh-read.sh" ]; then _RR_GH=(bash "$HIMMEL_ROOT
 
 usage() {
     echo "usage: review-round.sh start --branch <name> [--head <sha> [--base-sha <sha>]]" >&2
-    echo "       review-round.sh defer --branch <name> --head <sha> [--defer-to <ticket>] [--fu-why <code>]" >&2
+    echo "       review-round.sh defer --branch <name> --head <sha> [--defer-to <ticket>] [--fu-why <code>] [--fu-override <id>]" >&2
     echo "       review-round.sh promote [--check] --branch <name> --head <sha>   (--check: the same verdict, read only, nothing written)" >&2
     echo "       review-round.sh judge-go --branch <name> --head <sha>   (after the cap: a signed judge GO at <sha> stands in for the review)" >&2
     echo "       review-round.sh evidence --branch <name> --head <sha>   (ledger ok row for a tests-only head after a reviewed head; spends no round)" >&2
@@ -237,6 +246,7 @@ head_sha=""
 base_sha=""
 defer_to="${CR_DEFER_TO:-}"
 fu_why_arg=""
+fu_override_arg=""
 check_only=0
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -247,6 +257,7 @@ while [ $# -gt 0 ]; do
         --base-sha) [ $# -ge 2 ] || usage; base_sha="$2"; shift 2 ;;
         --defer-to) [ $# -ge 2 ] || usage; defer_to="$2"; shift 2 ;;
         --fu-why) [ $# -ge 2 ] || usage; fu_why_arg="$2"; shift 2 ;;
+        --fu-override) [ $# -ge 2 ] || usage; fu_override_arg="$2"; shift 2 ;;
         *) usage ;;
     esac
 done
@@ -2168,6 +2179,9 @@ early_reason='Suggestion deferred: a Suggestions-only round 2 or later closes th
 # carries the structured pre_existing field (an amend row critic-pre-existing-tag.py
 # wrote after git blame placed the cited line before the PR). Never read from text.
 pre_reason='Important finding deferred: the cited code is older than this PR (tagged pre-existing).'
+# A polish Suggestion/nit files no ticket: its row is amended
+# verdict=deferred, fu_class=polish with no deferred_to, and this reason.
+note_reason='Polish finding noted in the PR body: no ticket filed (decisions 746, 762).'
 # --head is the head the one delta round reviewed.
 delta_mode=0
 if [ "$round" -ge 4 ] && [ -f "$delta_state" ]; then
@@ -2191,7 +2205,7 @@ fi
 # and never in the delta round, where an Important is classified by an amend.
 pre_ok=0
 if [ "$delta_mode" -eq 0 ] && { [ "$round" -eq 2 ] || [ "$round" -eq 3 ]; }; then pre_ok=1; fi
-analysis="$(FULL_SHA="$full_head" LEDGER="$ledger" DELTA="$delta_mode" PRE_OK="$pre_ok" PRE_REASON="$pre_reason" CAP_REASON="$cap_reason" DEFER_REASON="$defer_reason" DELTA_REASON="$delta_reason" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
+analysis="$(FULL_SHA="$full_head" LEDGER="$ledger" DELTA="$delta_mode" PRE_OK="$pre_ok" PRE_REASON="$pre_reason" CAP_REASON="$cap_reason" DEFER_REASON="$defer_reason" DELTA_REASON="$delta_reason" NOTE_REASON="$note_reason" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
 const fs = require("fs"), cp = require("child_process"), e = process.env;
 const lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean);
 const SEP = String.fromCharCode(31), amends = new Map(), findings = new Map();
@@ -2237,7 +2251,10 @@ for (const o of findings.values()) {
   const ticket = typeof o.deferred_to === "string" ? o.deferred_to.trim() : "";
   const reason = typeof o.reason === "string" ? o.reason.trim() : "";
   const trackedDeferred = verdict === "deferred" && /^[A-Z][A-Z0-9]*-[0-9]+$/.test(ticket) && reason;
-  const resolved = verdict === "disproved" || trackedDeferred;
+  // a polish Suggestion/nit noted in the PR body carries no ticket.
+  const notedPolish = verdict === "deferred" && !ticket && reason === e.NOTE_REASON &&
+    (severity === "sug" || severity === "nit") && String(o.fu_class || "").trim() === "polish";
+  const resolved = verdict === "disproved" || trackedDeferred || notedPolish;
   if (e.DELTA === "1") {
     // The delta round blocks only on Critical or escape-class;
     // every other open finding is deferred. An Important needs an explicit
@@ -2250,12 +2267,14 @@ for (const o of findings.values()) {
       id,
       artifact: o.artifact || "diff",
       perspective: o.perspective || "off",
+      severity,
       fu_class: severity === "imp" ? fuClass : "polish",
       fu_why: typeof o.fu_why === "string" ? o.fu_why.trim() : "",
       class: typeof o.class === "string" ? o.class.trim() : "",
       text: typeof o.text === "string" ? o.text.replace(/\s+/g, " ").trim() : ""
     });
     else if (trackedDeferred && CAP_REASONS.includes(reason)) capDeferred.push({id, ticket});
+    else if (notedPolish) capDeferred.push({id, ticket: ""});
     else if (!resolved && verdict !== "fixed") blocking.push(id);
     continue;
   }
@@ -2271,6 +2290,7 @@ for (const o of findings.values()) {
       id,
       artifact: o.artifact || "diff",
       perspective: o.perspective || "off",
+      severity,
       fu_class: preClass,
       fu_why: typeof o.fu_why === "string" ? o.fu_why.trim() : "",
       reason: e.PRE_REASON,
@@ -2286,6 +2306,7 @@ for (const o of findings.values()) {
     id,
     artifact: o.artifact || "diff",
     perspective: o.perspective || "off",
+    severity,
     fu_class: "polish",
     class: typeof o.class === "string" ? o.class.trim() : "",
     text: typeof o.text === "string" ? o.text.replace(/\s+/g, " ").trim() : ""
@@ -2294,6 +2315,7 @@ for (const o of findings.values()) {
            reason === e.DEFER_REASON) {
     capDeferred.push({id, ticket});
   }
+  else if (notedPolish) capDeferred.push({id, ticket: ""});
   else if (!verdict) blocking.push(id);
 }
 process.stdout.write(JSON.stringify({malformed, pending, capDeferred, blocking, unclassified}));
@@ -2350,6 +2372,30 @@ if [ -n "$hardening_unreasoned" ]; then
     esac
 fi
 
+# Decisions 746, 762: with no ticket the worker named, a polish
+# Suggestion/nit files nothing (its row is amended below with no deferred_to), and
+# a hardening finding is filed only with a named --fu-override. Both are checked
+# here, once, before anything is commented, filed or amended, so a refused run
+# leaves nothing behind for a retry to repeat.
+explicit_defer=0
+if [[ $defer_to =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then explicit_defer=1; fi
+ticketed_analysis="$analysis"
+ticketed_count="$pending_count"
+if [ "$explicit_defer" -eq 0 ] && [ "$pending_count" -gt 0 ]; then
+    ticketed_analysis="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s);a.pending=a.pending.filter(f=>!(f.fu_class==="polish"&&(f.severity==="sug"||f.severity==="nit")));process.stdout.write(JSON.stringify(a))})')" || exit 5
+    ticketed_count="$(printf '%s' "$ticketed_analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s).pending.length)))')" || exit 5
+    polish_unnotable="$(printf '%s' "$ticketed_analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).pending.filter(f=>f.fu_class==="polish").map(f=>f.id).join(" ")))')" || exit 5
+    if [ -n "$polish_unnotable" ]; then
+        echo "review-round: pre-existing Important finding(s) classed polish cannot be noted without a ticket: $polish_unnotable; marker remains pending" >&2
+        echo "review-round: polish is not filed (decisions 746, 762). Reclassify each with ledger-append.sh amend --set fu_class=hardening --set fu_why=<code> (then supply --fu-override <judge verdict id|decision-N>), or file a plain ticket someone will work, link it from the PR ticket with jira link <PR ticket> <plain ticket>, and supply --defer-to <plain ticket>" >&2
+        exit 6
+    fi
+    if [ "$ticketed_count" -gt 0 ] && ! [[ $fu_override_arg =~ ^(decision-[0-9]+|[A-Z]{2}-j[0-9]+-[0-9]+)$ ]]; then
+        echo "review-round: hardening finding(s) are filed only with a named override (decisions 746, 762); marker remains pending" >&2
+        echo "review-round: supply --fu-override <judge verdict id of the form XX-jNNNN-N|decision-N> to file them (the id is printed into the ticket and not verified), or file a plain ticket, link it from the PR ticket with jira link <PR ticket> <plain ticket>, and supply --defer-to <plain ticket>; no ticket was filed" >&2
+        exit 6
+    fi
+fi
 # defer_to is a single small ticket-key string (well under the pipe
 # buffer), so printf's write completes atomically before grep could exit
 # early and SIGPIPE it.
@@ -2380,10 +2426,10 @@ if [ "$pending_count" -gt 0 ]; then
 fi
 # A reused batch ticket gets this round's findings as a comment, before any
 # ledger row points at it, so a failed comment leaves nothing to undo.
-if [ "$batch_reused" -eq 1 ] && [ "$pending_count" -gt 0 ]; then
+if [ "$batch_reused" -eq 1 ] && [ "$ticketed_count" -gt 0 ]; then
     batch_comment="$(mktemp -t cr-batch-comment.XXXXXX)" || exit 5
     if ! { printf 'Findings deferred on %s at %s:\n' "$branch" "$full_head" \
-            && printf '%s' "$analysis" | node -e "$pending_list_js"; } > "$batch_comment"; then
+            && printf '%s' "$ticketed_analysis" | node -e "$pending_list_js"; } > "$batch_comment"; then
         rm -f "$batch_comment"
         exit 5
     fi
@@ -2398,7 +2444,7 @@ if [ "$batch_reused" -eq 1 ] && [ "$pending_count" -gt 0 ]; then
     fi
 fi
 auto_defer=0
-if [ "$pending_count" -gt 0 ] && ! printf '%s' "$defer_to" | grep -qE '^[A-Z][A-Z0-9]*-[0-9]+$'; then  # pipefail-ok: bounded small input, see comment above
+if [ "$ticketed_count" -gt 0 ] && ! printf '%s' "$defer_to" | grep -qE '^[A-Z][A-Z0-9]*-[0-9]+$'; then  # pipefail-ok: bounded small input, see comment above
     auto_defer=1
     # shellcheck source=scripts/lib/timeout-bin.sh
     # shellcheck disable=SC1091
@@ -2423,7 +2469,7 @@ if [ "$auto_defer" -eq 1 ] && [ "$round" -lt 4 ]; then
     batch_body="$(mktemp -t cr-batch-body.XXXXXX)" || exit 5
     if ! { cat "$HIMMEL_ROOT/scripts/cr/deferred-ticket-body.md" \
             && printf '\nFindings deferred on %s at %s:\n' "$branch" "$full_head" \
-            && printf '%s' "$analysis" | node -e "$pending_list_js"; } > "$batch_body"; then
+            && printf '%s' "$ticketed_analysis" | node -e "$pending_list_js"; } > "$batch_body"; then
         rm -f "$batch_body"
         exit 5
     fi
@@ -2441,7 +2487,7 @@ if [ "$auto_defer" -eq 1 ] && [ "$round" -lt 4 ]; then
         batch_class=hardening
         if [ "$batch_why" = invalid ]; then batch_why="$fu_why_arg"; fi
         case "$batch_why" in
-            unseen-failure|no-check|vacuous-check|no-recovery|silent-rot) batch_why_args=(--fu-why "$batch_why") ;;
+            unseen-failure|no-check|vacuous-check|no-recovery|silent-rot) batch_why_args=(--fu-why "$batch_why" --fu-override "$fu_override_arg") ;;
             *)
                 rm -f "$batch_body"
                 echo "review-round: the batch holds a hardening finding but none has a valid fu_why; marker remains pending" >&2
@@ -2477,7 +2523,7 @@ fi
 ids_tmp="$(mktemp -t cr-round-ids.XXXXXX)" || exit 5
 verdicts_tmp="$(mktemp -t cr-round-verdicts.XXXXXX)" || { rm -f "$ids_tmp"; exit 5; }
 if ! printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const finding of JSON.parse(s).pending) process.stdout.write(JSON.stringify(finding)+"\n")})' > "$ids_tmp" \
-    || ! printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const finding of JSON.parse(s).capDeferred) process.stdout.write("VERDICT ["+finding.id+"] = deferred -> "+finding.ticket+"\n")})' > "$verdicts_tmp"; then
+    || ! printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const finding of JSON.parse(s).capDeferred) if(finding.ticket) process.stdout.write("VERDICT ["+finding.id+"] = deferred -> "+finding.ticket+"\n")})' > "$verdicts_tmp"; then
     rm -f "$ids_tmp" "$verdicts_tmp"
     echo "review-round: could not prepare the deferred finding recovery state" >&2
     exit 5
@@ -2496,6 +2542,23 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
         amend_rc=5
         break
     fi
+    # a polish Suggestion/nit with no ticket named files nothing; the row is
+    # amended deferred with no deferred_to and gets no verdict line (it is not a ticket).
+    if [ "$explicit_defer" -eq 0 ] && [ "$fu_class" = "polish" ]; then
+        finding_severity="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).severity||""))' 2>/dev/null)" || finding_severity=""   # swallow-ok: an empty severity is not noted, it falls to the filing path, which the verb refuses for polish
+        if [ "$finding_severity" = "sug" ] || [ "$finding_severity" = "nit" ]; then
+            if ! bash "$SCRIPT_DIR/ledger-append.sh" amend \
+                --branch "$branch" --head "$full_head" --id "$finding_id" \
+                --artifact "$artifact" --perspective "$perspective" \
+                --set verdict=deferred --set fu_class=polish \
+                --set class=unattributed --set "reason=$note_reason" \
+                --reason "$amend_why"; then
+                amend_rc=5
+                break
+            fi
+            continue
+        fi
+    fi
     fu_why=""
     fu_why_args=()
     if [ "$fu_class" = "hardening" ]; then
@@ -2505,7 +2568,7 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
             *) fu_why="$fu_why_arg" ;;
         esac
         case "$fu_why" in
-            unseen-failure|no-check|vacuous-check|no-recovery|silent-rot) fu_why_args=(--fu-why "$fu_why") ;;
+            unseen-failure|no-check|vacuous-check|no-recovery|silent-rot) fu_why_args=(--fu-why "$fu_why" --fu-override "$fu_override_arg") ;;
             *)
                 echo "review-round: finding $finding_id is hardening but has no valid fu_why; marker remains pending" >&2
                 echo "review-round: supply --fu-why <unseen-failure|no-check|vacuous-check|no-recovery|silent-rot> to recover without rerunning the panel" >&2

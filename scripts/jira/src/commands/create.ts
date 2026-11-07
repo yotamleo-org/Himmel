@@ -132,6 +132,23 @@ function sectorForCreate(
 
 const FU_CLASSES = ['polish', 'escape', 'hardening'];
 export const FU_WHY_CODES = ['unseen-failure', 'no-check', 'vacuous-check', 'no-recovery', 'silent-rot'];
+/**
+ * Decisions 746, 762: a named override is a judge verdict id (two capitals, j, number, number) or a chief decision number.
+ * ponytail: the id is an unverified audit label, only its shape is checked and nothing ties it to a real judge or chief
+ * ruling, so a worker could invent one; upgrade path: look it up in the verdicts folder and the decision register.
+ */
+const FU_OVERRIDE_SHAPE = /^(decision-[0-9]+|[A-Z]{2}-j[0-9]+-[0-9]+)$/;
+const POLISH_REFUSAL =
+  'a polish residual is not filed (decisions 746, 762): note it in the PR body, or file it as a plain ticket (jira create without --residual-of) if someone will really work it, ' +
+  'then link it from the PR ticket with `jira link <PR ticket> <plain ticket>` so it can be named as a deferral';
+/** A hardening residual prints its named override into the ticket description. */
+function appendFuOverride(fields: Record<string, unknown>, override: string | undefined): void {
+  if (override === undefined) return;
+  const named = markdownToAdf(`fu-override: ${override}`);
+  const body = fields['description'] as { content?: unknown[] } | undefined;
+  if (body?.content) body.content.push(...named.content);
+  else fields['description'] = named;
+}
 // Open residual slots per version; a `residual-budget:N` line in the
 // version description overrides it.
 export const RESIDUAL_BUDGET = 15;
@@ -197,6 +214,7 @@ interface ResidualOptions {
   residualOf: string;
   fuClass?: string;
   fuWhy?: string;
+  fuOverride?: string;
   class?: string;
   area?: string;
   fixVersion?: string;
@@ -366,11 +384,22 @@ export async function planResidual(project: string, o: ResidualOptions): Promise
   } else if (o.fuWhy !== undefined) {
     throw new Error('--fu-why applies only to --fu-class hardening');
   }
+  if (o.fuClass === 'polish') throw new Error(POLISH_REFUSAL);
+  if (o.fuClass === 'hardening') {
+    if (o.fuOverride === undefined || !FU_OVERRIDE_SHAPE.test(o.fuOverride)) {
+      throw new Error(
+        'a hardening residual is filed only with a named override (decisions 746, 762): pass --fu-override <judge verdict id of the form XX-jNNNN-N | decision-N>; the id is printed into the ticket and is not verified ' +
+          `against the verdict or decision it names${o.fuOverride === undefined ? '' : `; got "${o.fuOverride}"`}; otherwise note it in the PR body`,
+      );
+    }
+  } else if (o.fuOverride !== undefined) {
+    throw new Error('--fu-override applies only to --fu-class hardening');
+  }
   if (o.fixVersion !== undefined) throw new Error('--residual-of chooses the version itself; drop --fix-version');
   const classLabel = o.class !== undefined ? `class-${labelSlug(o.class)}` : undefined;
   const labels = ['residual', `fu-${o.fuClass}`];
   if (o.gate !== undefined) labels.push(`gate-${o.gate.split(':')[0]}`);
-  if (o.fuClass === 'hardening') labels.push(`fu-why-${o.fuWhy}`);
+  if (o.fuClass === 'hardening') labels.push(`fu-why-${o.fuWhy}`, 'fu-override');
   if (classLabel) labels.push(classLabel);
   const area = o.area ? `area-${labelSlug(o.area)}` : undefined;
   if (area) labels.push(area);
@@ -886,8 +915,9 @@ export function registerCreate(program: Command): void {
       '--over-cap <reason>',
       'File into the current version although it is at its residual cap; the reason is recorded on the ticket',
     )
-    .option('--fu-class <class>', 'Residual class: polish (backlog), escape (current, else next when frozen), hardening (its chain version, else next at High or above, else backlog)')
+    .option('--fu-class <class>', 'Residual class: escape (current, else next when frozen), hardening (its chain version, else next at High or above, else backlog; needs --fu-override). polish is refused: note it in the PR body')
     .option('--fu-why <code>', 'Why a hardening residual is one (' + FU_WHY_CODES.join('|') + '); required with --fu-class hardening')
+    .option('--fu-override <id>', 'The named override a hardening residual needs: a judge verdict id (XX-jNNNN-N) or decision-N; printed into the ticket as an unverified label')
     .option('--class <id>', 'Residual class id, stamped as the class-<id> label')
     .option('--area <name>', 'Residual area; an open residual with the same class and area is commented on instead of filing a new one')
     .option('--project <key>', 'Project key (default: JIRA_PROJECT_KEY env var)')
@@ -926,6 +956,7 @@ export function registerCreate(program: Command): void {
         overCap?: string;
         fuClass?: string;
         fuWhy?: string;
+        fuOverride?: string;
         class?: string;
         area?: string;
         project?: string;
@@ -1010,6 +1041,7 @@ export function registerCreate(program: Command): void {
             return;
           }
           labels = [...new Set([...(labels ?? []), ...residual.labels])];
+          appendFuOverride(fields, options.fuOverride);
         }
         if (options.followUpOf !== undefined) labels = [...new Set([...(labels ?? []), 'residual'])];
         const inherited = await residualInheritedVersion(options, residual);

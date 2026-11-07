@@ -849,7 +849,7 @@ else
                     if [ "$cov_rc" -eq 2 ]; then
                         cov_bad="$cov_bad; $cov_key UNKNOWN (jira links failed for $cov_own)"
                     else
-                        cov_bad="$cov_bad; $cov_key was made by a raw jira create (no 'residual' label, not older than ${cov_own:-the PR ticket}, not linked from it) - file it with: jira create --residual-of <parent> --fu-class <c> --class <id>"
+                        cov_bad="$cov_bad; $cov_key was made by a raw jira create (no 'residual' label, not older than ${cov_own:-the PR ticket}, not linked from it) - file it with: jira create --residual-of <parent> --fu-class escape|hardening --class <id>, or link a plain ticket: jira link ${cov_own:-<PR ticket>} $cov_key"
                     fi
                 fi
                 cov_body_keys="$cov_body_keys $cov_key"
