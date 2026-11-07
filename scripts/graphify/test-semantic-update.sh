@@ -1162,11 +1162,11 @@ out=$(ACCT=auto BATCH_STUB_FAIL=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t
 [ "$rc" -eq 2 ] && [ "$(batch_accounts)" = "A " ] && [ ! -s "$WS/exhausted.log" ] && [[ "$out" == *"only a credit-exhausted answer tries the next account"* ]] \
   && pass "T89 one submit on A, no marker, the walk rule is in the log" || fail "T89 (rc=$rc) accounts '$(batch_accounts)': $out"
 
-echo "T90: nothing chosen (the API lane off): no semantic call on any account, and the output says AST only"
+echo "T90: nothing chosen (the API lane off): no semantic call on any account, and the output says no API semantic call is made"
 C81="$WS/c81"; new_corpus "$C81"; batch_reset
 out=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT PATH="$WS/bin:$PATH" bash "$SCRIPT" --name t81 --corpus-root "$C81" --corpus-class himmel-code --backend claude-api 2>&1); rc=$?
-[ "$rc" -eq 2 ] && [ ! -s "$WS/batch.log" ] && ! grep -q '^lane \|^graphify extract' "$WS/calls.log" && [[ "$out" == *"AST only"* ]] \
-  && pass "T90 refused before any call, the output says AST only" || fail "T90 (rc=$rc): $out / $(cat "$WS/calls.log")"
+[ "$rc" -eq 2 ] && [ ! -s "$WS/batch.log" ] && ! grep -q '^lane \|^graphify extract' "$WS/calls.log" && [[ "$out" == *"no API semantic call is made"* ]] \
+  && pass "T90 refused before any call, the output says no API semantic call is made" || fail "T90 (rc=$rc): $out / $(cat "$WS/calls.log")"
 
 echo "T91: every account exhausted and the marker cannot be saved: still one try each, exactly A B C, under a deadline"
 C91="$REPO/c91"; new_corpus "$C91"; batch_reset
@@ -1267,7 +1267,7 @@ mark_a() { # $1 = how many seconds ago A was marked; every reading is older than
 cfg=json.load(open(sys.argv[1])); led=sys.argv[2]; snap=sys.argv[3]; now=int(sys.argv[4]); ago=int(sys.argv[5])
 l=json.load(open(led)); l["accounts"]["A"]["exhausted_at"]=now-ago; json.dump(l,open(led,"w"))
 s=json.load(open(snap))
-for a in s["accounts"].values(): a["observed_at"]=now-ago-1000
+for a in s["accounts"].values(): a["starts_at"]=now-ago-2000; a["observed_at"]=now-ago-1000
 json.dump(s,open(snap,"w"))' "$RC/config.json" "$RC/ledger.json" "$RC/snapshot.json" "$now" "$1"; }
 echo "T93: A marked 4000 s ago (past the 3600 s TTL), every reading older than the mark: A serves again"
 mark_a 4000
