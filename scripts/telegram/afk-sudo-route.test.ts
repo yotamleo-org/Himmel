@@ -458,7 +458,7 @@ test("button: a reply to a bot message with no known prompt holding a standalone
     expect(b.gate(reply(text, 99, { reply_to_bot: true }))).toBe(true);
     await settle();
     expect(b.calls).toEqual([]);
-    expect(b.replies).toEqual(["⚠️ afk-sudo: that code prompt expired, tap Approve again"]);
+    expect(b.replies).toEqual(["⚠️ afk-sudo: that code prompt expired or is not known, nothing ran. If the request is still pending, tap Approve on it again; if it already ran or ended, nothing more is needed."]);
   }
 });
 
@@ -555,7 +555,7 @@ test("button: a six-digit reply to a bot message with no known prompt is consume
   expect(b.gate(reply("123456", 99, { reply_to_bot: true }))).toBe(true);
   await settle();
   expect(b.calls).toEqual([]);
-  expect(b.replies).toEqual(["⚠️ afk-sudo: that code prompt expired, tap Approve again"]);
+  expect(b.replies).toEqual(["⚠️ afk-sudo: that code prompt expired or is not known, nothing ran. If the request is still pending, tap Approve on it again; if it already ran or ended, nothing more is needed."]);
   expect(b.logs.join("\n")).not.toContain("123456");
   // other shapes of a reply to the bot stay ordinary text
   for (const msg of [reply("hello", 99, { reply_to_bot: true }), reply("123456", 99, { reply_to_bot: true, from: 999, chat_id: 999 })]) {
@@ -805,7 +805,7 @@ test("plain message holding a nonce and code: never taken, the typed form is off
   expect(none.gate(dm("K7QF 123456"))).toBe(true);
   await settle();
   expect(none.calls).toEqual([]);
-  expect(none.replies).toEqual(['⚠️ afk-sudo: held a code-shaped message; nothing ran. To approve, send "approve <request id> <nonce> <code>" as one message, or tap Approve on the request and reply to that prompt. To send a number as text, prefix it with "text:".']);
+  expect(none.replies).toEqual(['⚠️ afk-sudo: held a code-shaped message; nothing ran. To approve, in your private chat with this bot (never in a group) send "approve <request id> <nonce> <code>" as one message, or tap Approve on the request there and reply to that prompt. To send a number as text, prefix it with "text:".']);
   const one = buttons();
   one.tap(tapOf("afk:approve:abcdefgh"));
   await settle();
@@ -824,6 +824,41 @@ test("plain message holding a nonce and code: never taken, the typed form is off
   for (const b of [none, one, two]) expect([...b.replies, ...b.logs].join("\n")).not.toContain("123456");
 });
 
+test("a nonce and code sent as a message in a group is held and the notice sends the operator to the private chat, never to the group", async () => {
+  const b = buttons();
+  const groupAccess = { ...access, groups: { "-100123": { trustAnonymousAdmins: true } } };
+  const gate = makeAfkSudoGate({ ...b.deps, access: () => groupAccess }, b.prompts);
+  expect(gate(dm("K7QF 123456", { chat_id: -100123, sender_chat: -100123 }))).toBe(true);
+  expect(gate(dm("K7QF 123456", { from: GROUP_ANONYMOUS_BOT_ID, chat_id: -100123, sender_chat: -100123 }))).toBe(true);
+  await settle();
+  expect(b.calls).toEqual([]);
+  expect(b.replies).toHaveLength(2);
+  for (const r of b.replies) {
+    expect(r).toContain("held");
+    expect(r).toContain("in your private chat with this bot (never in a group)");
+  }
+});
+
+test("a reply holding an ordinary 8-letter word is not taken for the request id; only this request's id is", async () => {
+  const mk = async (text: string) => {
+    const b = buttons();
+    b.tap(tapOf("afk:approve:abcdefgh"));
+    await settle();
+    b.gate(reply(text, 77));
+    await settle();
+    expect(b.calls).toEqual([]);
+    return b.replies[0];
+  };
+  expect(await mk("approved 123456")).toContain("could not read that as a nonce and a code");
+  expect(await mk("approve abcdefgh")).toContain("that holds the request id");
+  expect(await mk("ABCDEFGH 123456")).toContain("that holds the request id");
+  const { deps, calls, replies } = fake();
+  expect(makeAfkSudoGate(deps)(dm("approve abcdefgh K7QF approved 123456"))).toBe(true);
+  await settle();
+  expect(replies.filter((r) => r.includes("Nothing ran"))).toEqual([]);
+  expect(calls).toHaveLength(1);
+});
+
 test("replay: a code from an already spent step says to wait for the next code; the used prompt says to tap Approve again", async () => {
   const b = buttons({ helper: { code: 5, stdout: "result=replay id=abcdefgh\n" } });
   b.tap(tapOf("afk:approve:abcdefgh"));
@@ -835,7 +870,7 @@ test("replay: a code from an already spent step says to wait for the next code; 
   expect(b.gate(reply("K7QF 654321", 77))).toBe(true);
   await settle();
   expect(b.calls.length).toBe(1);
-  expect(b.replies.at(-1)).toBe("⚠️ afk-sudo: the prompt for abcdefgh was already used, nothing ran. Tap Approve on the request again for a new prompt.");
+  expect(b.replies.at(-1)).toBe("⚠️ afk-sudo: the prompt for abcdefgh was already used, nothing ran. If that request is still pending, tap Approve on it again for a new prompt; if it already ran or ended, nothing more is needed.");
   expect([...b.replies, ...b.logs].join("\n")).not.toMatch(/123456|654321/);
 });
 

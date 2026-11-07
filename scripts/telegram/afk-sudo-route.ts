@@ -178,10 +178,11 @@ function opRequest(deps: AfkSudoDeps, msg: AfkSudoMsg, rest: string): true {
 const CODE_REPLY = /^\s*([0-9A-Za-z]{4})\s*(\d{3})[\s-]?(\d{3})\s*$/;
 const BARE_CODE = /^\s*\d{6}\s*$/;
 const NONCE_HINT = "4-character nonce from the notice bot's message";
-// A request id (8 letters of a-z2-7) standing alone in a reply: the operator typed it where the nonce goes.
-const ID_TOKEN = /(?<![0-9a-z])[a-z2-7]{8}(?![0-9a-z])/i;
-// The spaces-removed rest of a typed approve ending in an id-shaped run and six digits (a valid nonce is 4 characters).
-const ID_THEN_CODE = /[a-z2-7]{8}\d{6}$/i;
+// This request's own id standing as a word in a reply: the operator typed it where the nonce goes.
+// Only the exact id counts, so an ordinary 8-letter word ("approved") is not mistaken for it.
+const holdsId = (text: string, id: string): boolean => text.toLowerCase().split(/[^0-9a-z]+/).includes(id);
+// The spaces-removed rest of a typed approve ending in the request id again and six digits (a valid nonce is 4 characters).
+const idThenCode = (rest: string, id: string): boolean => new RegExp(`${id}\\d{6}$`, "i").test(rest);
 // Six digits in a row, spaces or hyphens allowed between them ("123 456", "123-456"),
 // anywhere in the text. Used only to decide a message must not be forwarded.
 const CODE_RUN = /(?<!\d)\d(?:[\s-]*\d){5}/u;
@@ -215,11 +216,11 @@ function codeReply(deps: AfkSudoDeps, prompts: AfkSudoPrompts, msg: AfkSudoMsg, 
   }
   const say = (text: string) => void deps.reply(msg.chat_id, text).catch(() => {});
   if (p.used) {
-    say(`⚠️ afk-sudo: the prompt for ${p.id} was already used, nothing ran. Tap Approve on the request again for a new prompt.`);
+    say(`⚠️ afk-sudo: the prompt for ${p.id} was already used, nothing ran. If that request is still pending, tap Approve on it again for a new prompt; if it already ran or ended, nothing more is needed.`);
     return true;
   }
   if (p.expired) {
-    say(`⚠️ afk-sudo: the prompt for ${p.id} expired, nothing ran. Tap Approve on the request again for a new prompt.`);
+    say(`⚠️ afk-sudo: the prompt for ${p.id} expired, nothing ran. If that request is still pending, tap Approve on it again for a new prompt; if it already ran or ended, nothing more is needed.`);
     return true;
   }
   const m = CODE_REPLY.exec(msg.text);
@@ -227,7 +228,7 @@ function codeReply(deps: AfkSudoDeps, prompts: AfkSudoPrompts, msg: AfkSudoMsg, 
     // Name the cause from the shape alone; the refusal never repeats any of the text.
     const cause = wholeCode(msg.text)
       ? `that is the 6-digit code alone. Reply with the ${NONCE_HINT} first, then the code (<nonce> <code>)`
-      : ID_TOKEN.test(msg.text)
+      : holdsId(msg.text, p.id)
         ? `that holds the request id. Reply with only the ${NONCE_HINT} and the 6-digit code (<nonce> <code>)`
         : `could not read that as a nonce and a code. Reply with the ${NONCE_HINT}, then the 6-digit code (<nonce> <code>)`;
     say(`⚠️ afk-sudo: ${cause}. Nothing ran; the prompt still waits.`);
@@ -268,7 +269,7 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
         if ((msg.reply_to_bot === true && heldAsCode(msg.text)) || waiting.length > 0) {
           void deps.reply(msg.chat_id, waiting.length > 0
             ? `⚠️ afk-sudo: a code sent as a plain message is not taken, nothing ran. Reply to the "Approve ${waiting.join('" or "Approve ')}" prompt, or send: approve ${waiting.length === 1 ? waiting[0] : "<request id>"} <nonce> <code>`
-            : "⚠️ afk-sudo: that code prompt expired, tap Approve again").catch(() => {});
+            : "⚠️ afk-sudo: that code prompt expired or is not known, nothing ran. If the request is still pending, tap Approve on it again; if it already ran or ended, nothing more is needed.").catch(() => {});
           return true;
         }
       }
@@ -283,7 +284,7 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
       // A caption, a forward and a reply to a message that is not the bot's are held the same way.
       if ((wholeCode(msg.text) || pairCode(msg.text))
         && isOperatorIdentity(deps.access(), msg.from, msg.chat_id, msg.sender_chat)) {
-        void deps.reply(msg.chat_id, '⚠️ afk-sudo: held a code-shaped message; nothing ran. To approve, send "approve <request id> <nonce> <code>" as one message, or tap Approve on the request and reply to that prompt. To send a number as text, prefix it with "text:".').catch(() => deps.log("[afk-sudo] hold notice failed"));
+        void deps.reply(msg.chat_id, '⚠️ afk-sudo: held a code-shaped message; nothing ran. To approve, in your private chat with this bot (never in a group) send "approve <request id> <nonce> <code>" as one message, or tap Approve on the request there and reply to that prompt. To send a number as text, prefix it with "text:".').catch(() => deps.log("[afk-sudo] hold notice failed"));
         return true;
       }
       return false;
@@ -294,7 +295,7 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
     }
     // The helper would end the request on a missing or wrong nonce and spend the code, so a typed approve
     // that visibly lacks the nonce (the code alone) or repeats the id in its place is refused here.
-    if (line.verb === "approve" && (/^\d{6}$/.test(fold(line.code)) || ID_THEN_CODE.test(line.code))) {
+    if (line.verb === "approve" && (/^\d{6}$/.test(fold(line.code)) || idThenCode(line.code, line.id))) {
       const form = `approve ${line.id} <nonce> <code>`;
       void deps.reply(msg.chat_id, /^\d{6}$/.test(fold(line.code))
         ? `⚠️ afk-sudo: approve needs the ${NONCE_HINT} before the code: ${form}. Nothing ran.`
