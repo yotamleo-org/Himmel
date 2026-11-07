@@ -4455,20 +4455,23 @@ check_c51_firecrawl_parked() {
 # graph-cadence's semantic step runs `graphify --backend ollama` only when
 # GRAPH_CADENCE_SEMANTIC_BACKEND=ollama (default claude-cli), which
 # needs the extra's openai client inside the uv graphifyy venv. Any other
-# backend skips the check. Never runs graphify itself
+# accepted backend (claude-cli, claude-api, the api alias) skips the check; the
+# backend is resolved by the shared scripts/lib/llm-backend.sh, the same
+# resolver graph-cadence uses, so the two cannot drift. Never runs graphify itself
 # (a graphify invocation auto-refreshes the user's skill dirs) -- only the venv
 # python. Seams: HIMMEL_DOCTOR_GRAPHIFY_VENV (venv dir), HIMMEL_DOCTOR_UV.
 check_c52_graphify_ollama() {
-    local uv_bin="${HIMMEL_DOCTOR_UV:-uv}" venv tooldir="" py="" c
-    case "${GRAPH_CADENCE_SEMANTIC_BACKEND:-claude-cli}" in
-        ollama) ;;
-        claude-cli)
-            emit OK C52-graphify-ollama "graph-cadence semantic backend is claude-cli -- [ollama] extra check skipped"
-            return 0 ;;
-        *)
-            emit WARN C52-graphify-ollama "GRAPH_CADENCE_SEMANTIC_BACKEND='${GRAPH_CADENCE_SEMANTIC_BACKEND}' is not accepted -- graph-cadence will refuse it" "set GRAPH_CADENCE_SEMANTIC_BACKEND to claude-cli or ollama"
-            return 0 ;;
-    esac
+    local uv_bin="${HIMMEL_DOCTOR_UV:-uv}" venv tooldir="" py="" c backend
+    # shellcheck source=lib/llm-backend.sh
+    . "$SELF_DIR/lib/llm-backend.sh"
+    if ! backend="$(llm_backend_resolve "${GRAPH_CADENCE_SEMANTIC_BACKEND:-claude-cli}")"; then
+        emit WARN C52-graphify-ollama "GRAPH_CADENCE_SEMANTIC_BACKEND='${GRAPH_CADENCE_SEMANTIC_BACKEND}' is not accepted -- graph-cadence will refuse it" "set GRAPH_CADENCE_SEMANTIC_BACKEND to one of claude-cli, claude-api or ollama"
+        return 0
+    fi
+    if [ "$backend" != ollama ]; then
+        emit OK C52-graphify-ollama "graph-cadence semantic backend is $backend -- [ollama] extra check skipped"
+        return 0
+    fi
     if [ -n "${HIMMEL_DOCTOR_GRAPHIFY_VENV:-}" ]; then
         venv="$HIMMEL_DOCTOR_GRAPHIFY_VENV"
     else
