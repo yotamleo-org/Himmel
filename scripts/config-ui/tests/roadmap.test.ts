@@ -1523,3 +1523,24 @@ test("Board: it refreshes itself only when it is on screen, nothing is being edi
   expect(boardRefreshDue({ ...base, now: base.now - 1 })).toBe(false); // not yet
   for (const off of [{ page: "health" }, { visible: false }, { modal: true }, { editing: true }, { dragging: true }, { busy: true }, { readAt: 0 }]) expect(boardRefreshDue({ ...base, ...off })).toBe(false);
 });
+
+test("Board: an open ticket's card names the tickets it waits on, with their state: a shut one as 'after', an open one as 'blocked by open'", () => {
+  const s = station();
+  const put = (n: number, status: string, cat: string, by: string[]) => writeFileSync(join(s.mirror, `HIMMEL-${n}.md`),
+    issue(n, status, cat, ["v1.1.2"], `Step ${n}`).replace("blocked_by: []", `blocked_by: ${JSON.stringify(by)}`));
+  put(20, "To Do", "To Do", [K(21), K(22), K(99)]);
+  put(21, "In Progress", "In Progress", []);
+  put(22, "Done", "Done", []);
+  put(23, "Done", "Done", [K(22)]);
+  const r = read(s);
+  const t = (n: number) => r.tickets.find((x) => x.k === n)!;
+  expect(t(20).after).toEqual([{ id: K(21), b: "prog" }, { id: K(22), b: "done" }, { id: K(99), b: "unknown" }]); // 99 is in no mirror: its state is not guessed
+  expect(t(21).after).toBeUndefined();
+  expect(t(23).after).toBeUndefined(); // a ticket that is done waits on nothing
+  const absent = { state: "absent", reason: "none" };
+  const card = (k: string) => board(r, {}, { drift: absent, chains: absent }).match(new RegExp(`<div class="rm-card"[^>]*aria-label="${k}:[\\s\\S]*?</div></div>`))![0];
+  expect(card(K(20))).toContain(`blocked by open ${K(21)}`);
+  expect(card(K(20))).toContain(`after ${K(22)} (done)`);
+  expect(card(K(20))).toContain(`${K(99)} (state unknown)`);
+  expect(card(K(21))).not.toContain("after ");
+});

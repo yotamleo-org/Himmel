@@ -84,6 +84,14 @@ function prHtml(t, pr) {
   return t.b === "prog" || t.b === "rev" || t.b === "ci" ? `<div class="rm-pr"><span class="pr nopr">no open PR</span></div>` : "";
 }
 
+// What an open ticket waits on, from the mirror's links: "blocked by open X" for a blocker still open, "after X (done)" for a shut one, and a key in no mirror says its state is unknown.
+function depHtml(t) {
+  const a = Array.isArray(t.after) ? t.after : [];
+  if (!a.length) return "";
+  const open = a.filter((x) => x.b === "todo" || x.b === "prog" || x.b === "rev" || x.b === "ci"), shut = a.filter((x) => x.b === "done" || x.b === "wont"), unk = a.filter((x) => x.b === "unknown");
+  return `<div class="rm-dep">${open.length ? `<span class="warn">blocked by open ${open.map((x) => esc(x.id)).join(", ")}</span> ` : ""}${shut.length ? `after ${shut.map((x) => `${esc(x.id)} (${x.b === "wont" ? "won't do" : "done"})`).join(", ")} ` : ""}${unk.length ? unk.map((x) => `${esc(x.id)} (state unknown)`).join(", ") : ""}</div>`;
+}
+
 // "50 min ago", "3 h ago", "2 d ago": the tracker's own steps, from the worker record's last event; empty when the record is missing or unreadable.
 function agoHtml(t, pr) {
   const ts = pr && pr.state === "ok" && pr.seen ? Date.parse(pr.seen[idOf(t)]) : NaN;
@@ -104,7 +112,7 @@ function cardHtml(t, d, showVersion, w, ch, v, known, pr) {
   const ci = t.b === "ci" ? ` <span class="ro pill warn">CI</span>` : ""; // CI shares the Review column: the pill says which of the two the card is in
   // two lines: the id, status and sector row, then the title clamped to two lines; the card's accessible name is the id and the full title
   return `<div class="rm-card"${attrs}${open} role="button" aria-label="${esc(idOf(t))}: ${esc(t.t)}"><div class="rm-top"><b>${esc(idOf(t))}</b>${local ? ` <span class="ro pill">local</span>` : ""} <span class="ro pill${t.b === "done" ? " ok" : t.b === "prog" || t.b === "rev" || t.b === "ci" ? " warn" : ""}">${esc(t.s)}</span>${ci} <span class="ro">${ver}${theme} ${dr}</span></div>`
-    + `<div class="rm-tip rm-title" data-tip="${esc(t.t)}"><span class="rm-clip">${esc(t.t)}</span></div>${chainBadge(t, ch, v, d)}${kb}${prHtml(t, pr)}${lg}</div>`;
+    + `<div class="rm-tip rm-title" data-tip="${esc(t.t)}"><span class="rm-clip">${esc(t.t)}</span></div>${chainBadge(t, ch, v, d)}${kb}${depHtml(t)}${prHtml(t, pr)}${lg}</div>`;
 }
 
 // One board: a column per status over the given tickets (Review and CI share one). Won't stays hidden while empty so a quiet board stays short.
