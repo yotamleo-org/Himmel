@@ -74,7 +74,7 @@ scan() {
 
 # expect <label-key> <verdict>
 expect() {
-  if printf '%s\n' "$out" | grep -q -- "$1 .*: $2 "; then pass "$1 reads $2"
+  if grep -q -- "$1 .*: $2 " <<< "$out"; then pass "$1 reads $2"
   else fail "$1 should read $2; got: $(printf '%s\n' "$out" | grep -- "$1 " || echo '(no line)') [rc=$rc]"; fi
 }
 
@@ -101,7 +101,7 @@ printf 'this is not json\n' > "$W/holds-bad.json"
 scan "$W/holds-bad.json" "$NOW"
 expect npm:pkg-none BEHIND
 expect gh:owner/gh-none BEHIND
-if [ "$rc" -eq 1 ] && ! printf '%s\n' "$out" | grep -q Traceback; then pass "unreadable file: scan completes without a traceback, rc 1"; else fail "unreadable file: expected a clean rc 1, got rc $rc"; fi
+if [ "$rc" -eq 1 ] && ! grep -q Traceback <<< "$out"; then pass "unreadable file: scan completes without a traceback, rc 1"; else fail "unreadable file: expected a clean rc 1, got rc $rc"; fi
 
 echo "== the real clock is used when DRIFT_NOW is unset =="
 write_holds "$W/holds-real.json" '"2999-01-01T00:00Z"' '"2000-01-01T00:00Z"' '"soon"'
