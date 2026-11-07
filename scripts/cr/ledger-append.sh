@@ -75,8 +75,8 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 _kf_default="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/known-findings.json"
 kind="${1:-}"; shift || true
 case "$kind" in
-  finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight|blast|disposition|dependabot-go|round-scope|impacted|security-audit) ;;
-  *) echo "ledger-append.sh: kind must be finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight|blast|disposition|dependabot-go|round-scope|impacted|security-audit" >&2; exit 2;;
+  finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight|blast|comments|disposition|dependabot-go|round-scope|impacted|security-audit) ;;
+  *) echo "ledger-append.sh: kind must be finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight|blast|comments|disposition|dependabot-go|round-scope|impacted|security-audit" >&2; exit 2;;
 esac
 
 branch="" caller_branch="" head="" model="" responding_model="" id="" severity="" file="" line="" verdict="" status="" artifact="diff" perspective="off"
@@ -85,7 +85,7 @@ round="" disposition_round="" hit_pairs=""
 crit_n="" imp_n="" sug_n="" dropped_n="" raw_path=""
 target_head="" disposition="" source="" attest="" pr="" mac=""
 scope="" base_sha="" from_sha="" impacted_n="" unverdicted_n="" skip_n="" rc_n="" hard="-" critic_exit="" persp_sha="" report="" report_sha=""
-local_pass_file="" ruled_skip_file=""
+local_pass_file="" ruled_skip_file="" count_n=""
 while [ $# -gt 0 ]; do case "$1" in
   --branch) branch="$2"; shift 2;; --head) head="$2"; shift 2;;
   --model) model="$2"; shift 2;; --responding-model) responding_model="$2"; shift 2;;
@@ -120,6 +120,7 @@ while [ $# -gt 0 ]; do case "$1" in
   --important-n) imp_n="$2"; shift 2;; --dropped-n) dropped_n="$2"; shift 2;;
   --critic-exit) critic_exit="$2"; shift 2;; --perspective-sha256) persp_sha="$2"; shift 2;;
   --report) report="$2"; shift 2;; --report-sha256) report_sha="$2"; shift 2;;
+  --count) count_n="$2"; shift 2;;
   *) echo "ledger-append.sh: unknown $1" >&2; exit 2;;
 esac; done
 
@@ -502,6 +503,20 @@ if [ "$kind" = "blast" ]; then
   fi
 fi
 
+if [ "$kind" = "comments" ]; then
+  [ -n "$head" ] || { echo "ledger-append.sh: comments requires --head" >&2; exit 2; }
+  [ -n "$branch" ] || branch=$(git symbolic-ref --short -q HEAD 2>/dev/null || true) # swallow-ok: empty is refused on the next line
+  [ -n "$branch" ] || { echo "ledger-append.sh: comments needs --branch (no current branch to stamp: detached HEAD or not a repo) - NOTHING was written" >&2; exit 2; }
+  case "$status" in
+    ok) expr "$count_n" : '^[0-9][0-9]*$' >/dev/null 2>&1 || { echo "ledger-append.sh: comments --status ok needs --count <n>, the findings the review reported (got '$count_n') - NOTHING was written" >&2; exit 2; } ;;
+    off) case "$reason" in
+           codex-lane|agent-not-loaded) ;;
+           *) echo "ledger-append.sh: comments --status off needs --reason codex-lane|agent-not-loaded (got '$reason') - NOTHING was written" >&2; exit 2 ;;
+         esac ;;
+    *) echo "ledger-append.sh: comments --status must be ok|off (got '$status') - NOTHING was written" >&2; exit 2;;
+  esac
+fi
+
 # round-scope / impacted / security-audit: the records ready-check
 # item 16 reads for an outside PR. One row per call, never deduped; every bad
 # field refuses with exit 2 and writes nothing.
@@ -728,7 +743,7 @@ FILE="$file" LINE="$line" VERDICT="$verdict" STATUS="$status" BATCH_FILE="$batch
 PROMPT_CHARS="$prompt_chars" RESPONSE_CHARS="$response_chars" TS="$ts" LEDGER="$ledger" ARTIFACT="$artifact" PERSPECTIVE="$perspective" \
 ATTEMPT_NUM="$attempt_num" DURATION_SECS="$duration_secs" ROUND="$round" DISPOSITION_ROUND="$disposition_round" \
 CRIT_N="$crit_n" IMP_N="$imp_n" SUG_N="$sug_n" DROPPED_N="$dropped_n" RAW_PATH="$raw_path" \
-REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class" FU_WHY="$fu_why" TEXT="$text" RAW_TEXT="$raw_text" SET_PAIRS="$set_pairs" HIT_PAIRS="$hit_pairs" TARGET_HEAD="$target_head" DISPOSITION="$disposition" SOURCE="$source" ATTEST="$attest" PR="$pr" MAC="$mac" SCOPE="$scope" BASE_SHA="$base_sha" FROM_SHA="$from_sha" IMPACTED_N="$impacted_n" UNVERDICTED_N="$unverdicted_n" SKIP_N="$skip_n" RC_N="$rc_n" LOCAL_PASS_FILE="$local_pass_file" RULED_SKIP_FILE="$ruled_skip_file" HARD="$hard" CRITIC_EXIT="$critic_exit" PERSP_SHA="$persp_sha" REPORT="$report" REPORT_SHA="$report_sha" KF_FILE="${KNOWN_FINDINGS_FILE:-$_kf_default}" AMEND_AUTH="${_kf_default%/*}/ledger-amend-auth.js" DISPROVAL_JS="$DISPROVAL_JS" node - <<'JS'
+REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class" FU_WHY="$fu_why" TEXT="$text" RAW_TEXT="$raw_text" SET_PAIRS="$set_pairs" HIT_PAIRS="$hit_pairs" TARGET_HEAD="$target_head" DISPOSITION="$disposition" SOURCE="$source" ATTEST="$attest" PR="$pr" MAC="$mac" SCOPE="$scope" BASE_SHA="$base_sha" FROM_SHA="$from_sha" IMPACTED_N="$impacted_n" UNVERDICTED_N="$unverdicted_n" SKIP_N="$skip_n" RC_N="$rc_n" LOCAL_PASS_FILE="$local_pass_file" RULED_SKIP_FILE="$ruled_skip_file" HARD="$hard" CRITIC_EXIT="$critic_exit" PERSP_SHA="$persp_sha" REPORT="$report" REPORT_SHA="$report_sha" COUNT_N="$count_n" KF_FILE="${KNOWN_FINDINGS_FILE:-$_kf_default}" AMEND_AUTH="${_kf_default%/*}/ledger-amend-auth.js" DISPROVAL_JS="$DISPROVAL_JS" node - <<'JS'
   const fs=require("fs"), cp=require("child_process"), crypto=require("crypto"), e=process.env;
   // The disproved-verdict bar's text test (see DISPROVAL_JS above).
   const {measured,scan}=new Function(e.DISPROVAL_JS+"; return {measured,scan};")();
@@ -1442,6 +1457,11 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     // One row per blast-radius pass. NEVER deduped.
     rec={kind:"blast",ts:e.TS,branch:e.BRANCH,head:e.HEAD_,status:e.STATUS};
     if(e.DURATION_SECS!=="") rec.duration_secs=Number(e.DURATION_SECS)||0;
+    if(e.REASON) rec.reason=e.REASON;
+    dup=false;
+  } else if(e.KIND==="comments"){
+    rec={kind:"comments",ts:e.TS,branch:e.BRANCH,head:e.HEAD_,status:e.STATUS};
+    if(e.STATUS==="ok") rec.count=Number(e.COUNT_N);
     if(e.REASON) rec.reason=e.REASON;
     dup=false;
   } else if(e.KIND==="round-scope"){
