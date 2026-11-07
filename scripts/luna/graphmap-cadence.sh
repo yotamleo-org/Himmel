@@ -1036,13 +1036,21 @@ cron_existing() {
 # name/slug/tag/backend are fixed ASCII literals.
 cron_payload() {
     local q_bash="$1" q_script="$2" name="$3" q_corpus="$4" q_maps="$5" q_title="$6" slug="$7" tag="$8" q_out_root="${9:-}"
+    local backend="$BACKEND" lane=""
+    if [ "$name" = himmel ]; then
+        if ! semantic_api_opted_in; then
+            printf 'echo "[%s]"' "$SEMANTIC_API_SKIP_TEXT"
+            return 0
+        fi
+        backend="claude-api" lane="HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto "
+    fi
     # refresh-graph-map.sh falls back to
     # GRAPHIFY_OUT_ROOT from the environment when --out-root is absent -- clear
     # it whenever this worker omits --out-root, so an ambient value left over from
     # the OTHER worker's out-of-corpus run can't redirect this one.
     if [ -z "$q_out_root" ]; then printf 'unset GRAPHIFY_OUT_ROOT; '; fi
-    printf '%s %s --name %s --corpus-root %s --maps-dir %s --title %s --slug %s --backend %s --corpus-tag %s' \
-        "$q_bash" "$q_script" "$name" "$q_corpus" "$q_maps" "$q_title" "$slug" "$BACKEND" "$tag"
+    printf '%s%s %s --name %s --corpus-root %s --maps-dir %s --title %s --slug %s --backend %s --corpus-tag %s' \
+        "$lane" "$q_bash" "$q_script" "$name" "$q_corpus" "$q_maps" "$q_title" "$slug" "$backend" "$tag"
     if [ -n "$q_out_root" ]; then printf ' --out-root %s' "$q_out_root"; fi
     # himmel's live graph is mostly AST code nodes the hourly structural worker
     # keeps; this refresh extracts markdown only, so it must merge into the live
@@ -1401,7 +1409,8 @@ cmd_arm() {
     fi
     payload_semantic_luna=$(luna_semantic_cron_payload "$q_bash" "$q_semantic_script" "$q_vault" "$q_out_dir_ast_luna" "$API_ACCOUNT")
     # A semantic runner asked for without the opt-in renders without the lane; say so once.
-    if { [ "$PUBLISH_SEMANTIC" -eq 1 ] || [ "$WITH_LUNA_SEMANTIC" -eq 1 ]; } && ! semantic_api_opted_in; then
+    if { [ "$PUBLISH_SEMANTIC" -eq 1 ] || [ "$WITH_LUNA_SEMANTIC" -eq 1 ] \
+            || { [ "$REWRITE_ARMED" -ne 1 ] && [ "$AST_ONLY" -eq 0 ] && [ "$LUNA_ONLY" -eq 0 ]; }; } && ! semantic_api_opted_in; then
         note_semantic_api_off
     fi
 
@@ -1435,7 +1444,7 @@ cmd_arm() {
                 PUBLISH_SEMANTIC=1
                 payload_publish_himmel=$(publish_cron_payload "$q_bash" "$q_publish_script" "$q_himmel")
             fi
-            if [ "$rw_noted" -eq 0 ] && { [ "$rw_name" = semantic-luna ] || { [ "$rw_name" = publish-himmel ] && [ "$PUBLISH_SEMANTIC" -eq 1 ]; }; } && ! semantic_api_opted_in; then
+            if [ "$rw_noted" -eq 0 ] && { [ "$rw_name" = semantic-luna ] || [ "$rw_name" = himmel ] || { [ "$rw_name" = publish-himmel ] && [ "$PUBLISH_SEMANTIC" -eq 1 ]; }; } && ! semantic_api_opted_in; then
                 note_semantic_api_off
                 rw_noted=1
             fi
@@ -1703,9 +1712,13 @@ cmd_arm() {
   left byte-identical. Re-arm without --ast-only to add a missing
   semantic row (--force to replace). Disarm anytime with:"
     else
-        semantic_lines="  $TASK_HIMMEL     daily $HIMMEL_TIME   -> refresh-graph-map himmel (semantic, $BACKEND)"
+        if semantic_api_opted_in; then
+            semantic_lines="  $TASK_HIMMEL     daily $HIMMEL_TIME   -> refresh-graph-map himmel (semantic, claude-api auto)"
+        else
+            semantic_lines="  $TASK_HIMMEL     daily $HIMMEL_TIME   -> refresh-graph-map himmel (semantic SKIPPED: API lane not opted in)"
+        fi
         arming_note="  No task ever opens a claude session. Arming = semantic graphify (himmel daily)
-  extraction on the $BACKEND backend (off the interactive Anthropic bank)
+  extraction on the API lane (off the interactive Anthropic bank)
   + free structural refresh (himmel hourly); disarm anytime:"
     fi
     local publish_lines=""

@@ -171,13 +171,14 @@ secret, only role names and account letters:
 - **A pick stays inside the role.** The launcher and the graph batch ask `api-roles.mjs accounts <kind>` and pass the
   answer to `api-credit-state.mjs pick --usd N --only <letters>`. A role mapped to B is served by B or refused
   (`no account has room`), never by A. A named account never reads the map.
-- **The graph batch walks the accounts.** On auto, a credit-exhausted answer marks the account and the
-  pick runs again over the accounts of the same list that were not yet tried, so a pass reaches C when A and B are
-  out. Each account is tried at most once per pass, so a role mapped to one account is tried once and fails. When
-  none is left the pass stops with `credit exhausted on every account tried (A B C); nothing submitted`; each
-  retry line and the final failure name the accounts tried. ONLY a credit-exhausted answer moves on: a bad key or any
-  other error stops the pass at once (`only a credit-exhausted answer tries the next account`), because the next
-  account would fail the same way or bill for nothing. Walking the accounts never submits a second batch: one batch
+- **The graph batch walks the accounts.** On auto, a credit-exhausted answer or a rejected key (HTTP 401 or 403, the
+  batch client's exit 6) marks the account and the pick runs again over the accounts of the same list that were not
+  yet tried, so a pass reaches C when A is out of credit and B's key is dead. Each account is tried at most once per
+  pass, so a role mapped to one account is tried once and fails. When none is left the pass stops with
+  `every account tried is out of credit or rejected its key (A credit exhausted, B API key rejected, C ...); nothing
+  submitted`; each retry line and the final failure name the accounts tried. ONLY those two answers move on: a
+  network or server error, a rate limit or a refusal stops the pass at once (`only a credit-exhausted or rejected-key
+  answer tries the next account`), because the next account would fail the same way or bill for nothing. Walking the accounts never submits a second batch: one batch
   per pass, as before. The synchronous path's breaker stops dispatch after one rejection per account in play.
 - **An exhausted marker clears on its own.** `api-credit-state.mjs exhausted` writes `exhausted_at` for the account.
   Auto skips a marked account for `EXHAUSTED_TTL` (3600 seconds), or sooner when the operator snapshot holds a reading
