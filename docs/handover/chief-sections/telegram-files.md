@@ -44,7 +44,14 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   return is sealed, once per file the critic read, with
   `bash scripts/handover/chief-kit/critic-seal.sh <verdict file> <file it read> <sha the critic quoted>`
   (the return itself must quote that sha); a verdict with no such line is refused until it is. Reports, logs and audits under no such path send
-  as before. There is no read-only form: a signature-class file goes through the check or does not send.
+  as before. Plain `send-file` has no read-only form: a signature-class file goes through the check or does not send.
+- **The operator asked to see a page that has not passed: the by-request form.** Run
+  `bun scripts/telegram/chief-route.ts send-file --by-request "<the operator's request, in words>" <chat_id> <path> ["<caption>"]`.
+  It skips the critic check and sends the `.md` or `.html` page marked **NOT PASSED. Not for signature.** at the top of the page,
+  with the request quoted there, and the caption opens `NOT PASSED - not for signature (sent on request)`. An empty request is
+  refused, a file that is not a `.md` or `.html` page is refused, and nothing queues. The words "Not for signature" stay in the
+  sent bytes, so that copy can never pass the signature check: when the critics pass, send the page again without the flag.
+  Use it only when the operator asked; a page that merely is not ready yet is not a reason (decisions 725 and 729).
 - **Make a spec's sign page with the shared generator, then run the critic.** Generate first:
   `python3 -I scripts/telegram/spec-page-gen.py <spec.md> <out.html>` prints two lines, the sha256 of the
   md it read and of the page it wrote. The critic reads the md AND the page and quotes both shas; seal

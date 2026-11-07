@@ -1608,6 +1608,75 @@ test("send-file refuses a spec page that still says Not for signature, and sends
   expect(createHash("sha256").update(bytes).digest("hex")).toBe(sha(clean));
 });
 
+const REQ = "operator asked to see it early";
+const earlySpec = (r: string, name = "early.md", text = "# Early\n\nbody\n") => {
+  const dir = join(r, "specs", "designs"); mkdirSync(dir, { recursive: true });
+  const spec = join(dir, name); writeFileSync(spec, text);
+  return spec;
+};
+
+test("send-file --by-request queues a spec page with no clean critics, marked not passed on the page and in the caption; plain send-file still refuses it", async () => {
+  const r = root(); const spec = earlySpec(r);
+  const before = await sendFile(r, "1", spec);
+  expect(before.code).not.toBe(0);
+  expect(before.lines).toEqual([]);
+  const res = await sendFile(r, "--by-request", REQ, "1", spec, "my words");
+  expect(res.err).toBe("");
+  expect(res.code).toBe(0);
+  expect(res.lines.length).toBe(1);
+  expect(res.lines[0].caption).toMatch(/^NOT PASSED - not for signature/);
+  expect(res.lines[0].caption).toContain("my words");
+  const html = readFileSync(res.lines[0].document_path as string, "utf8");
+  expect(html).toContain("NOT PASSED");
+  expect(html).toContain("Not for signature");
+  expect(html).toContain(`asked: ${REQ}</p>`);
+  expect(html.indexOf("NOT PASSED")).toBeLessThan(html.indexOf("<h1>"));
+  const after = await sendFile(r, "1", spec);
+  expect(after.code).not.toBe(0);
+  expect(after.lines.length).toBe(1);
+});
+
+test("send-file --by-request puts the mark right after <body> of an .html page and leaves the rest of its bytes alone", async () => {
+  const r = root(); const page = earlySpec(r, "early.html", "<!doctype html><html><head><title>x</title></head><body><h1>Early</h1></body></html>\n");
+  const res = await sendFile(r, "--by-request", REQ, "1", page);
+  expect(res.code).toBe(0);
+  const html = readFileSync(res.lines[0].document_path as string, "utf8");
+  expect(html).toMatch(/<body><section class="not-passed">/);
+  expect(html).toContain("<h1>Early</h1></body></html>");
+  expect(html).toContain(REQ);
+});
+
+test("send-file --by-request names no request: refused, nothing queued", async () => {
+  const r = root(); const spec = earlySpec(r);
+  for (const args of [["--by-request", "", "1", spec], ["--by-request", "   ", "1", spec], ["--by-request"], ["--by-request", "1", spec]]) {
+    const res = await sendFile(r, ...args);
+    expect(res.code).not.toBe(0);
+    expect(res.lines).toEqual([]);
+  }
+  expect((await sendFile(r, "--by-request", "", "1", spec)).err).toContain("names no request");
+  expect(existsSync(join(r, "outgoing"))).toBe(false);
+});
+
+test("send-file --by-request carries its mark only on a .md or .html page", async () => {
+  const r = root(); const f = join(r, "run.log"); writeFileSync(f, "log\n");
+  const res = await sendFile(r, "--by-request", REQ, "1", f);
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("only on a .md or .html page");
+  expect(res.lines).toEqual([]);
+});
+
+test("a page sent --by-request cannot satisfy the signature check, even with every critic clean and sealed over its bytes", async () => {
+  const r = root(); const b = htmlBundle(r, "<!doctype html><html><body><h1>Design</h1></body></html>\n");
+  const res = await sendFile(r, "--by-request", REQ, "1", b.page);
+  expect(res.code).toBe(0);
+  const marked = readFileSync(res.lines[0].document_path as string, "utf8");
+  writeFileSync(b.page, marked);
+  criticSeals(b.spec, "spec", 2, "SPEC CLEAN", [b.sealed[0], { text: marked, file: "design.html" }]);
+  const { checkSignaturePage } = await import("./chief-route");
+  await expect(checkSignaturePage(b.page)).rejects.toThrow("Not for signature");
+  expect((await sendFile(r, "1", b.page)).code).not.toBe(0);
+});
+
 // ---- a spec gets three critic rounds per kind, then the page goes to the operator with each open finding on it ----
 const D_TEXT = "# Design\n\nthe spec\n";
 const P_TEXT = "# Plan\n\nthe plan\n";
