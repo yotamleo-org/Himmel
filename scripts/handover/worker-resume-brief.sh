@@ -356,8 +356,6 @@ _lrb_main() {
     local prior_note=""
     grep -q '^## RESUME BRIEF' "$worker_doc" 2>/dev/null && prior_note="(a previous RESUME BRIEF section already exists in this doc -- this is a new one appended below it)"
 
-    # a RESUME doc written from the --dry-run output, or a doc with no Results heading, needs one for
-    # append-results.sh; a doc that already has one never gets a second
     local results_heading=1
     [ "$dry_run" -eq 0 ] && grep -qE '^## Results([[:space:]]|$)' "$worker_doc" 2>/dev/null && results_heading=0
 

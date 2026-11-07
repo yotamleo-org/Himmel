@@ -700,7 +700,7 @@ if [ "$match_count" -eq 0 ] && [ "$CHIEF_MODE" -eq 0 ]; then
     close_success
 fi
 
-# A predecessor and its successor both still open (N5106 and N5106b): exactly one runs under this
+# A predecessor and its successor both still open: exactly one runs under this
 # doc's own label, the other matched only through a name derived from the predecessor or sibling doc.
 # That one is this worker's window; any other pair (both own, both derived, one by session id) stays ambiguous.
 if [ "$match_count" -eq 2 ] && [ "$name_count" -eq 2 ] && [ "$own_count" -eq 1 ]; then

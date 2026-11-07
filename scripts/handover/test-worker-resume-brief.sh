@@ -751,7 +751,6 @@ else
     ko "HIMMEL-2403: --repo pointing at a non-git directory exited $notrepo_rc, expected 1"
 fi
 
-# a RESUME doc written from the generated brief must take append-results.sh bullets
 APPEND_RESULTS="$SCRIPT_DIR/chief-kit/append-results.sh"
 R_DOC="$FIX/resume-src.md"
 # shellcheck disable=SC2016  # literal markdown backticks in a fixture doc

@@ -2278,8 +2278,7 @@ check "9542 sibling: a same-label doc that does not name the RESUME doc is not i
 exact_count "9542 sibling: an unnamed same-label doc does not stop the one pid being signaled" "$(cat "$CALLS")" "kill -TERM 450" "1"
 rm -f "$G_ORIG" "$G_RES" "$G_OTHER_UNNAMED"
 
-# the real N5106/N5106b pair (2026-11-07): the halted predecessor's window and its successor's window both
-# still open; the RESUME doc claims the predecessor's name too, so both matched and the close refused rc 5
+# a predecessor's window and its successor's window both live: the RESUME doc claims the predecessor's name too
 P_ORIG="$W/HIMMEL-9502-N5106-direction-companions-gate-2026-11-07.md"
 P_RES="$W/HIMMEL-9502-N5106b-direction-companions-gate-2026-11-07-RESUME.md"
 P_SID_RES="5d22a528-d2ca-4310-bb10-f9425076d556"
@@ -2303,7 +2302,6 @@ rc=0; out=$(run "$P_ORIG" 2>&1) || rc=$?
 check "9542 pair: the WRAPPED original closes with its successor's window also live -> rc 0" "$rc" "0"
 exact_count "9542 pair: only the original's own-label pid is signaled" "$(cat "$CALLS")" "kill -TERM 672480" "1"
 not_contains "9542 pair: the successor's window is never signaled from the original" "$(cat "$CALLS")" "800917"
-# controls: every other pair or count stays ambiguous and signals nothing
 rm -rf "$W/proc"; mkdir -p "$W/proc"
 mkcmdline 672480 claude -n "$P_N_ORIG" work
 mkcmdline 672481 claude -n "${P_N_ORIG%-2026-11-07}" work
