@@ -101,6 +101,32 @@ rc2=$?
 if [ "$rc2" = 2 ] && [ ! -s "$RLOG2" ]; then ok "run refuses under the floor and runs nothing"
 else bad "floor guard" "rc=$rc2 out=$(cat "$TMP/run2.out")"; fi
 
+# --- argument and setup edges -----------------------------------------------
+timeout 5 bash "$SCRIPT" report --log >/dev/null 2>&1
+rc_missing=$?
+if [ "$rc_missing" = 64 ]; then ok "an option with no value is a usage error, not a hang"
+else bad "missing option value" "rc=$rc_missing (124 = hang)"; fi
+
+bash "$SCRIPT" report --log "$LOG" --hours 0 >/dev/null 2>&1
+rc_h0=$?
+if [ "$rc_h0" = 64 ]; then ok "report rejects --hours 0"
+else bad "hours 0" "rc=$rc_h0"; fi
+
+cat >"$TMP/cdcaller.sh" <<'CALLER'
+#!/usr/bin/env bash
+cd /
+gh pr view 1
+CALLER
+mkdir -p "$TMP/rel"
+(cd "$TMP/rel" && FAKE_REMAINING=4000 PATH="$BIN:$PATH" bash "$SCRIPT" run --log relative.log -- bash "$TMP/cdcaller.sh" >/dev/null 2>&1)
+if [ "$(grep -c $'\tcdcaller.sh\t1\t' "$TMP/rel/relative.log" 2>/dev/null)" = 1 ]; then ok "run logs a relative --log even when the child changes directory"
+else bad "relative log" "$(cat "$TMP/rel/relative.log" 2>&1)"; fi
+
+FAKE_REMAINING=4000 PATH="$BIN:$PATH" bash "$SCRIPT" run --log /proc/nope/x.log -- bash "$TMP/fakecaller.sh" >/dev/null 2>&1
+rc_nolog=$?
+if [ "$rc_nolog" = 2 ]; then ok "run refuses to start when the log cannot be written"
+else bad "unwritable log" "rc=$rc_nolog"; fi
+
 # --- watch: charges a live fleet gh process without a wrapper ---------------
 cat >"$TMP/slowcaller.sh" <<'CALLER'
 #!/usr/bin/env bash

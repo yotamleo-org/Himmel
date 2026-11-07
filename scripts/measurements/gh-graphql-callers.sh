@@ -76,6 +76,7 @@ gqlc_caller() {
 cmd_report() {
     local log="$LOG_DEFAULT" hours=1 top=5
     while [ $# -gt 0 ]; do
+        [ "$1" = -- ] || [ $# -ge 2 ] || usage  # an option with no value would never shift
         case "$1" in
             --log) log="${2:-}"; shift 2 ;;
             --hours) hours="${2:-}"; shift 2 ;;
@@ -85,6 +86,7 @@ cmd_report() {
     done
     [ -r "$log" ] || { echo "gh-graphql-callers: cannot read log '$log'" >&2; exit 2; }
     case "$top" in ''|*[!0-9]*) usage ;; esac
+    awk -v h="$hours" 'BEGIN { exit !(h ~ /^[0-9]*\.?[0-9]+$/ && h + 0 > 0) }' || usage
     printf 'rank\tcaller\tcalls\tpoints\tpoints/hour\n'
     awk -F'\t' -v hours="$hours" '
         NF >= 3 && $3 ~ /^[0-9]+$/ { calls[$2]++; pts[$2] += $3 }
@@ -130,6 +132,7 @@ budget_gate() {
 cmd_watch() {
     local log="$LOG_DEFAULT" seconds=3600 interval=0.2 floor=1500
     while [ $# -gt 0 ]; do
+        [ "$1" = -- ] || [ $# -ge 2 ] || usage  # an option with no value would never shift
         case "$1" in
             --log) log="${2:-}"; shift 2 ;;
             --seconds) seconds="${2:-}"; shift 2 ;;
@@ -142,8 +145,7 @@ cmd_watch() {
     set -f  # cmdline words carry jq globs; never expand them
     local before="$GHB_REMAINING" reset0="$GHB_RESET" end=$((SECONDS + 10#$seconds))
     local seen=" " pid st key args w cost n=0 after="?" reset1=""
-    mkdir -p "$(dirname "$log")"
-    : >>"$log"
+    { mkdir -p "$(dirname "$log")" && : >>"$log"; } || { echo "gh-graphql-callers: cannot write log '$log'; nothing was watched" >&2; exit 2; }
     while [ "$SECONDS" -lt "$end" ]; do
         for pid in $(pgrep -x gh 2>/dev/null); do
             st=$(cut -d' ' -f22 "/proc/$pid/stat" 2>/dev/null) || continue
@@ -172,6 +174,7 @@ cmd_watch() {
 cmd_run() {
     local log="$LOG_DEFAULT" floor=1500
     while [ $# -gt 0 ]; do
+        [ "$1" = -- ] || [ $# -ge 2 ] || usage  # an option with no value would never shift
         case "$1" in
             --log) log="${2:-}"; shift 2 ;;
             --floor) floor="${2:-}"; shift 2 ;;
@@ -186,9 +189,9 @@ cmd_run() {
     shimdir=$(mktemp -d "${TMPDIR:-/tmp}/gqlc-shim.XXXXXX") || exit 2  # prim-ok: Linux-only measurement, one throwaway dir removed on exit
     # shellcheck disable=SC2064
     trap "rm -rf '$shimdir'" EXIT
-    write_shim "$shimdir"
-    mkdir -p "$(dirname "$log")"
-    : >>"$log"
+    case "$log" in /*) ;; *) log="$PWD/$log" ;; esac  # the child may change directory
+    write_shim "$shimdir" || { echo "gh-graphql-callers: cannot build the counting shim; nothing was run" >&2; exit 2; }
+    { mkdir -p "$(dirname "$log")" && : >>"$log"; } || { echo "gh-graphql-callers: cannot write log '$log'; nothing was run" >&2; exit 2; }
     lines_before=$(wc -l <"$log" | tr -d ' ')
     GQLC_SHIM_DIR="$shimdir" GQLC_LOG="$log" PATH="$shimdir:$PATH" "$@"
     rc=$?
