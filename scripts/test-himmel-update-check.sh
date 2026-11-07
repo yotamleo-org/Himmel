@@ -1178,7 +1178,6 @@ assert_eq "config_ui primary with .git/commondir: rc 0" "0" "$cui_rc"
 if grepq "$cui_out" "linked worktree"; then assert_fail "config_ui primary with .git/commondir: must not read as a linked worktree"; else assert_pass "config_ui primary with .git/commondir: not read as a linked worktree"; fi
 assert_contains "config_ui primary with .git/commondir: builds the bundle" "agui-web|run build" "$cui_log"
 assert_contains "config_ui primary with .git/commondir: restarts the service" "restart himmel-ui.service" "$cui_log"
-# and a real linked worktree of that same primary is still skipped
 git -C "$CUI_REPO" worktree add --quiet "$CUI_REPO-wt" HEAD 2>/dev/null
 run_cui apply CUI_ROOT="$CUI_REPO-wt"
 assert_eq "config_ui worktree of a commondir primary: rc 0" "0" "$cui_rc"
