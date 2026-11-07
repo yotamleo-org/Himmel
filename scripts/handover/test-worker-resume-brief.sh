@@ -751,5 +751,38 @@ else
     ko "HIMMEL-2403: --repo pointing at a non-git directory exited $notrepo_rc, expected 1"
 fi
 
+# a RESUME doc written from the generated brief must take append-results.sh bullets
+APPEND_RESULTS="$SCRIPT_DIR/chief-kit/append-results.sh"
+R_DOC="$FIX/resume-src.md"
+# shellcheck disable=SC2016  # literal markdown backticks in a fixture doc
+printf '# doc\nWorking on `branch feat/himmel-2369-fixture` today.\n' > "$R_DOC"
+R_RESUME="$FIX/resume-src-RESUME.md"
+bash "$SCRIPT_COPY" "$R_DOC" --dry-run > "$R_RESUME" 2>/dev/null
+bash "$APPEND_RESULTS" "$R_RESUME" "LIVE — resumed" >/dev/null 2>&1
+ar_rc=$?
+if [ "$ar_rc" -eq 0 ]; then
+    ok "a RESUME doc written from --dry-run takes an append-results.sh bullet (exit 0)"
+else
+    ko "append-results.sh on a RESUME doc written from --dry-run exited $ar_rc, expected 0"
+fi
+bash "$SCRIPT_COPY" "$R_DOC" >/dev/null 2>&1
+bash "$APPEND_RESULTS" "$R_DOC" "LIVE — resumed" >/dev/null 2>&1
+ar_rc=$?
+if [ "$ar_rc" -eq 0 ]; then
+    ok "a doc with no Results heading takes an append-results.sh bullet once the brief is appended (exit 0)"
+else
+    ko "append-results.sh on a doc the brief was appended to exited $ar_rc, expected 0"
+fi
+R_HAS="$FIX/resume-has.md"
+# shellcheck disable=SC2016  # literal markdown backticks in a fixture doc
+printf '# doc\nWorking on `branch feat/himmel-2369-fixture` today.\n\n## Results (newest at the bottom)\n- 10:00 LIVE — x\n' > "$R_HAS"
+bash "$SCRIPT_COPY" "$R_HAS" >/dev/null 2>&1
+heads=$(grep -cE '^## Results([[:space:]]|$)' "$R_HAS")
+if [ "$heads" -eq 1 ]; then
+    ok "a doc that already has a Results heading keeps exactly one"
+else
+    ko "a doc that already had a Results heading now has $heads"
+fi
+
 echo "Total: pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

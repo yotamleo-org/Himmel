@@ -573,6 +573,7 @@ ident=$(worker_identity "$DOC")
 # which other callers rely on for the stripped forms).
 doc_stem="$(basename "$DOC" .md)"
 names=",${ident#*$'\t'},${doc_stem},"
+own_names="$names"   # the doc's own label; names added below are derived from its predecessor or sibling
 # A RESUME doc's label carries a successor suffix (N3731c) but the window
 # still runs under the ORIGINAL worker's session name (...-N3731-...). Add each name with
 # the suffix dropped from its worker token (the -legN3731c form too); a live N3731b session
@@ -640,6 +641,7 @@ pid_proven_by_id() {
 
 match_sessions() {
     matched=""; matched_name=""; match_count=0
+    name_count=0; own_count=0; own_pid=""; own_name=""; matched_list=""
     while IFS=$'\t' read -r pid name _model _ac; do
         [ -n "$pid" ] || continue
         case "$name" in '#'*) continue ;; esac
@@ -648,11 +650,16 @@ match_sessions() {
         case "$names" in
             *",${name},"*|*",${base_name},"*)
                 matched="$pid"; matched_name="$name"
-                match_count=$((match_count + 1)) ;;
+                match_count=$((match_count + 1)); name_count=$((name_count + 1))
+                matched_list="$matched_list, $name (pid $pid)"
+                case "$own_names" in
+                    *",${name},"*|*",${base_name},"*) own_count=$((own_count + 1)); own_pid="$pid"; own_name="$name" ;;
+                esac ;;
             *)
                 if pid_proven_by_id "$pid"; then
                     matched="$pid"; matched_name="$name"
                     match_count=$((match_count + 1))
+                    matched_list="$matched_list, $name (pid $pid, by session id)"
                 fi ;;
         esac
     done <<EOF
@@ -693,8 +700,16 @@ if [ "$match_count" -eq 0 ] && [ "$CHIEF_MODE" -eq 0 ]; then
     close_success
 fi
 
+# A predecessor and its successor both still open (N5106 and N5106b): exactly one runs under this
+# doc's own label, the other matched only through a name derived from the predecessor or sibling doc.
+# That one is this worker's window; any other pair (both own, both derived, one by session id) stays ambiguous.
+if [ "$match_count" -eq 2 ] && [ "$name_count" -eq 2 ] && [ "$own_count" -eq 1 ]; then
+    echo "close-wrapped-worker: 2 live sessions matched; closing $own_name (pid $own_pid), the one under this doc's own label, never the other"
+    matched="$own_pid"; matched_name="$own_name"; match_count=1
+fi
+
 if [ "$match_count" -ne 1 ]; then
-    echo "close-wrapped-worker: refusing - $match_count live session(s) matched worker names [${ident#*$'\t'}] (need exactly 1)" >&2
+    echo "close-wrapped-worker: refusing - $match_count live session(s) matched worker names [${ident#*$'\t'}] (need exactly 1); live: ${matched_list#, }" >&2
     exit 5
 fi
 
