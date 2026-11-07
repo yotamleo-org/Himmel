@@ -43,7 +43,7 @@
    |---|---|---|
    | Always | `code-reviewer` | Upstream — `pr-review-toolkit:code-reviewer`, HIMMEL-178 directive prepended (fork agent type not registered) |
    | Test files changed (`*.test.*`, `**/test_*`, `**/tests/**`, `*.spec.*`, etc.) | `pr-test-analyzer` | Upstream — `pr-review-toolkit:pr-test-analyzer` |
-   | Comments / docs changed (`**/*.md`, comment-only diffs in code) | `comment-analyzer` | Upstream — `pr-review-toolkit:comment-analyzer` |
+   | Docs changed (`**/*.md`); comments added in code are reviewed by step 3.7 | `comment-analyzer` | Upstream — `pr-review-toolkit:comment-analyzer` |
    | Error-handling code changed (try/catch, error-return, panic, etc.) | `silent-failure-hunter` | Upstream — `pr-review-toolkit:silent-failure-hunter` |
    | Types added / modified (`*.ts`, `*.d.ts`, type-defs in Python/Rust/etc.) | `type-design-analyzer` | Upstream — `pr-review-toolkit:type-design-analyzer` |
    | Doc-freshness `advise` findings present AND `HIMMEL_DOC_FRESHNESS` `advise` worker on | `code-reviewer` with the **docs-audit charter** (step 2.5), SCOPED to only the mapped docs whose sources changed in range | Upstream — `pr-review-toolkit:code-reviewer`. Advisory: its findings are surfaced to the operator, NEVER added to the blocking Critical/Important counts of steps 4–6. |
