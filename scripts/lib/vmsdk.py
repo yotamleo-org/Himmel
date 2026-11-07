@@ -24,7 +24,7 @@ checkout's .env (the gitignored .env is NOT copied into worktrees, so it is
 resolved via the parent of `git rev-parse --git-common-dir`, matching
 scripts/lib/load-dotenv.sh).
 
-CLI: python scripts/lib/vmsdk.py <vm> <up|down|snapshot NAME [--no-secret-scan]|restore NAME|audit-base NAME|
+CLI: python scripts/lib/vmsdk.py <vm> <up|down|snapshot NAME [--no-secret-scan]|scan-down-snapshot NAME|restore NAME|audit-base NAME|
                                       baseline NAME|clone [REF]|provision|e2e|
                                       push FILE [DEST]|usage|
                                       trigger HANDOVER [--at TIME] [--cwd DIR] [--long-gap] [--timeout N]>
@@ -685,6 +685,9 @@ class VM:
                 "or pass --no-secret-scan if you verified the image another way.")
         else:
             self._assert_image_clean()
+        self._take_snapshot_checked(name)
+
+    def _take_snapshot_checked(self, name):
         vbox.take_snapshot(self.name, name)
         current = _current_snapshot(self.name)
         if current != name:
@@ -692,6 +695,21 @@ class VM:
                 f"snapshot readback: asked for snapshot {name!r} but "
                 f"CurrentSnapshotName of {self.name} is {current!r}; the "
                 "snapshot was NOT taken")
+
+    def scan_down_snapshot(self, name):
+        """Scan the RUNNING guest for host secrets, power it off, then snapshot it.
+
+        A powered-off guest cannot be scanned, so a scheduled run
+        scans first and snapshots after power off with no --no-secret-scan. A hit
+        or an unscannable guest raises before power off and before any snapshot."""
+        self._require_vm("scan-down-snapshot")
+        if not vbox.is_running(self.name):
+            raise VMError(
+                f"refusing to scan {self.name}: it is not running, so it cannot "
+                "be scanned for host secrets (.env). Bring it up first.")
+        self._assert_image_clean()
+        self.down()
+        self._take_snapshot_checked(name)
 
     def restore(self, name):
         self._require_vm("restore")
@@ -1180,7 +1198,7 @@ class VM:
 
 
 _USAGE = ("usage: vmsdk.py <vm> "
-          "<up|down|snapshot NAME [--no-secret-scan]|restore NAME|audit-base NAME|baseline NAME|clone [REF]|provision|e2e|"
+          "<up|down|snapshot NAME [--no-secret-scan]|scan-down-snapshot NAME|restore NAME|audit-base NAME|baseline NAME|clone [REF]|provision|e2e|"
           "push FILE [DEST]|usage|"
           "exec [--sudo] [--timeout N] -- CMD...|"
           "trigger HANDOVER [--at TIME] [--cwd DIR] [--long-gap] [--timeout N]>")
@@ -1264,6 +1282,8 @@ def main(argv):
             vm.down()
         elif cmd == "snapshot" and rest:
             vm.snapshot(rest[0], skip_secret_scan="--no-secret-scan" in rest[1:])
+        elif cmd == "scan-down-snapshot" and rest:
+            vm.scan_down_snapshot(rest[0])
         elif cmd == "restore" and rest:
             vm.restore(rest[0])
         elif cmd == "audit-base" and rest:

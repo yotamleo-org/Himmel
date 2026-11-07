@@ -1562,6 +1562,58 @@ class TestSecretBoundary(unittest.TestCase):
             vm.snapshot("base")
         take.assert_called_once_with("ubuntu_new", "base")
 
+    def _scan_down_snapshot(self, scan_out, running=True):
+        """Run scan_down_snapshot against a fake guest; returns (order, exc)."""
+        vm = self._vm()
+        order = mock.Mock()
+        exc = None
+        def fake_run(cmd, *a, **k):
+            if cmd.startswith("test -d "):
+                return (1, "")
+            order.scan(cmd)
+            return (0, scan_out)
+        with mock.patch.object(vmsdk.vbox, "is_running", return_value=running), \
+             mock.patch.object(vm, "run", side_effect=fake_run), \
+             mock.patch.object(vm, "down", order.down), \
+             mock.patch.object(vmsdk, "_current_snapshot", return_value="base"), \
+             mock.patch.object(vmsdk.vbox, "take_snapshot", order.take):
+            try:
+                vm.scan_down_snapshot("base")
+            except vmsdk.VMError as e:
+                exc = e
+        return order, exc
+
+    def test_scan_down_snapshot_scans_then_powers_off_then_snapshots(self):
+        """A powered-off guest cannot be scanned, so the scan runs
+        BEFORE power off and the snapshot follows with no --no-secret-scan."""
+        order, exc = self._scan_down_snapshot("")
+        self.assertIsNone(exc)
+        names = [c[0] for c in order.mock_calls]
+        self.assertEqual(names[-2:], ["down", "take"], names)
+        self.assertIn("scan", names[:-2])
+
+    def test_scan_down_snapshot_stops_on_a_planted_secret(self):
+        """A host .env on the guest stops the run before power off and before any snapshot."""
+        order, exc = self._scan_down_snapshot("/home/u/himmel/.env\n")
+        self.assertIsNotNone(exc)
+        self.assertIn("REFUSING", str(exc))
+        self.assertIn("/home/u/himmel/.env", str(exc))
+        order.down.assert_not_called()
+        order.take.assert_not_called()
+
+    def test_scan_down_snapshot_refuses_a_guest_that_is_not_running(self):
+        order, exc = self._scan_down_snapshot("", running=False)
+        self.assertIsNotNone(exc)
+        order.take.assert_not_called()
+
+    def test_cli_scan_down_snapshot_dispatches(self):
+        with mock.patch.dict(os.environ, {"ubuntu_vm_user": "u", "ubuntu_vm_pass": "p"}, clear=False):
+            with mock.patch.object(vmsdk, "_load_dotenv_into_env"), \
+                 mock.patch.object(vmsdk.VM, "scan_down_snapshot") as s:
+                rc = vmsdk.main(["ubuntu_new", "scan-down-snapshot", "maint-1"])
+        self.assertEqual(rc, 0)
+        s.assert_called_once_with("maint-1")
+
     def test_snapshot_of_powered_off_guest_is_refused(self):
         """A guest that cannot be scanned is not a clean guest."""
         vm = self._vm()
