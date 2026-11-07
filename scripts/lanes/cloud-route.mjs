@@ -360,6 +360,7 @@ function citedOnMain(key) {
 // names is not searched. Fails closed: a local answer of unknown (null) still searches. What a lagging ref can hide is a
 // merge of the last STALE_DAYS, and the shared window list above reads exactly those from GitHub, so only the key search
 // is skipped, never the window.
+// ponytail: a PR older than the window whose body gained the key after it merged (the squash message never held it) is not found, upgrade path: an indexed key-to-PR map filled once per merge
 // A key whose search fills the page is `truncated`: that ticket alone is BLOCKED, the other tickets of the run still classify.
 function mergedPrs(keys) {
   const gh = process.env.CLOUD_ROUTE_GH_CMD || 'gh';

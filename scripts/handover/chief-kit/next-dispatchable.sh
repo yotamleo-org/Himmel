@@ -702,12 +702,13 @@ except OSError as e:
     status_unreadable = True
     print('# warn: %s is unreadable (%s): merged contract rows are unknown: a To Do ticket with a merge on main is withheld, but a done-pending or partially merged In Progress ticket may still be listed as RESUME' % (os.path.join(os.path.dirname(workers.rstrip('/')), 'status-events.jsonl'), e.strerror or e))
 
-def cited_on_main(key):
-    # True: the local main ref carries a commit citing [KEY]. False: it does not. None: unknown (no such ref, git failed or timed out).
+def cited_on_main(key, subject_only=False):
+    # True: the local main ref carries a commit citing [KEY] (in its message, or in its subject only when subject_only: a squash
+    # subject is the PR title). False: it does not. None: unknown (no such ref, git failed or timed out).
     try:
-        r = subprocess.run(['git', '-C', os.environ['ND_GIT_DIR'], 'log', os.environ['ND_MAIN_REF'], '--fixed-strings', '--grep=[%s]' % key, '-1', '--format=%h'],
+        r = subprocess.run(['git', '-C', os.environ['ND_GIT_DIR'], 'log', os.environ['ND_MAIN_REF'], '--fixed-strings', '--grep=[%s]' % key, '--max-count=50', '--format=%s'],
                            capture_output=True, text=True, timeout=60, check=True)
-        return bool(r.stdout.strip())
+        return any('[%s]' % key in s for s in r.stdout.splitlines()) if subject_only else bool(r.stdout.strip())
     except (OSError, subprocess.SubprocessError):
         return None
 
@@ -1405,7 +1406,9 @@ if inci_keys and not (pr_unknown or pr_files_unknown or owners_unknown or regist
         # largest GraphQL cost. Local "no" and local "unknown" (no ref, git failed) are both asked of GitHub, because the
         # ref may lag a merge made minutes ago. Unknown fails closed in THIS direction: if GitHub cannot answer either, the error
         # propagates and the run reports `merged PRs unknown` with no IN CI row, so the ticket is never called merged and never dispatched on a guess.
-        if cited_on_main(key):
+        # (subject only: the old search read a PR's title and head branch, so a ticket named in another commit's body is not merged by it;
+        # 50 matches that are all body mentions fall through to GitHub, the safe direction)
+        if cited_on_main(key, subject_only=True):
             return True
         out = ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'merged', '--search', key, '--limit', '30', '--json', 'title,headRefName', '--jq', '.[] | [.title, .headRefName] | @tsv'],
                              capture_output=True, text=True, timeout=60, check=True).stdout
