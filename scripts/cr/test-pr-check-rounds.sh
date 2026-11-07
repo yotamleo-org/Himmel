@@ -383,6 +383,19 @@ for note_pass in first rerun; do
     assert_eq "$(wc -c < "$recovery_log" | tr -d ' ')" 0 "9498 the $note_pass polish-only defer never reaches Jira"
 done
 assert_eq "$(grep -c '"kind":"amend"' "$recovery_git/cr-critic-scores.jsonl" | tr -d ' ')" 1 "9498 the rerun of a polish-only defer adds no second amend"
+# A hand-written polish amend with any other reason does not count as noted: in a delta round the Suggestion still blocks.
+printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-1","severity":"sug","fu_class":"polish","class":"reader-allowlist","artifact":"spec","perspective":"on"}\n' \
+    "$recovery_head" > "$recovery_git/cr-critic-scores.jsonl"
+CR_LEDGER="$recovery_git/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" amend \
+    --branch recovery --head "$recovery_head" --id critic-1 --artifact spec --perspective on \
+    --set verdict=deferred --set fu_class=polish --set class=unattributed --set 'reason=hand-written note' \
+    --reason 'hand-written polish amend' >/dev/null 2>&1 || fail "9498 seed a hand-written polish amend"
+printf 'pending\n' > "$recovery_git/cr-pending/recovery"
+hand_rc=0
+(cd "$recovery_repo" && GH_PR_TITLE='fix: [HIMMEL-123] follow-up' RECOVERY_JIRA_LOG="$recovery_log" \
+    bash "$fx/scripts/cr/review-round.sh" defer --branch recovery --head "$recovery_head" >/dev/null 2>&1) || hand_rc=$?
+assert_eq "$hand_rc" 4 "9498 a hand-written polish amend with another reason still blocks in a delta round"
+if [ -e "$recovery_git/cr-pending/recovery" ]; then pass "9498 the hand-written polish amend leaves the marker pending"; else fail "9498 the hand-written polish amend leaves the marker pending"; fi
 # A missing class is recorded in the body, never invented as a class label.
 printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-unclassified","severity":"imp","fu_class":"hardening","fu_why":"no-check","text":"- [critic-unclassified]: a gap [a.sh:3]"}\n' \
     "$recovery_head" > "$recovery_git/cr-critic-scores.jsonl"
