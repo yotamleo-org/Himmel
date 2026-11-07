@@ -32,6 +32,7 @@ export type Bucket = "todo" | "prog" | "rev" | "ci" | "done" | "wont";
 export type Worker = { label: string; marker: string; reason: string };
 export type Ticket = {
   k: number; id?: string; project?: string; t: string; s: string; b: Bucket; v: number; theme: number; pt: number; pv: string | null; drift: 0 | 1 | 2; // id: the shown id (a Jira ticket's <PROJECT>-<k>, a GitHub issue's #<k>, a local item's LOCAL-<n>); project: the Jira project key; pt: the index into planThemes
+  after?: { id: string; b: Bucket | "unknown" }[]; // an open ticket's blockers from the mirror's links, each with its state; a key in no mirror is unknown
   noVersion?: true; // a Jira ticket with no fixVersion: v is -1, no version counts it; only the No version read (Opts.noVersion) carries it
   labels: string[]; worker: Worker | null; noted?: string; // noted: the mirror body, for the sync dedupe; non-enumerable, never shipped
   backend: Source; epic?: string; // backend: where a write for this card goes; epic: a local item's parent id
@@ -59,7 +60,7 @@ export type Roadmap = {
 // projects: the Jira mirrors to read, one per project (<root>/<KEY>, its versions in <root>/<KEY>.versions.tsv); without it mirrorDir is the one HIMMEL mirror
 type Opts = { mirrorDir: string; versionsFile?: string; projects?: { key: string; dir: string }[]; planDir?: string; driftLog?: string; workers: Section; github?: GhIssue[]; local?: LocalItem[]; none?: boolean;
   noVersion?: boolean }; // noVersion: carry the tickets with no fixVersion and nothing else; without it they are left out (the Board's No version tab asks)
-type M = { k: number; p: string; sn: string; cat: string; res: string; fv: string[]; labels: string[]; sector: string; upd: string; title: string; body: string; id?: string; epic?: string };
+type M = { k: number; p: string; sn: string; cat: string; res: string; fv: string[]; labels: string[]; sector: string; upd: string; title: string; body: string; id?: string; epic?: string; blockedBy?: string[] };
 
 const text = (f: string) => { try { return readFileSync(f, "utf8"); } catch { return ""; } };
 const json = <T>(s: string | undefined, d: T): T => { try { return s === undefined ? d : JSON.parse(s); } catch { return d; } };
@@ -97,7 +98,8 @@ function readMirror(dir: string, project: string): M[] {
     const sn = json<unknown>(fm.status, "");
     const res = json<unknown>(fm.resolution, "");
     const sector = json<unknown>(fm.sector, ""); // `sector: "Visibility"` or null; the line is absent when sectors are off
-    out.push({ k, p: project, sn: typeof sn === "string" ? sn : "", cat: unq(fm.statusCategory), res: typeof res === "string" ? res : "", fv: json<string[]>(fm.fixVersions, []).map(String), labels: json<string[]>(fm.labels, []).map(String),
+    const blockedBy = json<unknown>(/^\s+blocked_by:\s*(\[.*\])\s*$/m.exec(parts[1])?.[1], []); // the `links:` block's nested line, which the flat frontmatter read above skips
+    out.push({ k, p: project, blockedBy: Array.isArray(blockedBy) ? blockedBy.map(String) : [], sn: typeof sn === "string" ? sn : "", cat: unq(fm.statusCategory), res: typeof res === "string" ? res : "", fv: json<string[]>(fm.fixVersions, []).map(String), labels: json<string[]>(fm.labels, []).map(String),
       sector: typeof sector === "string" ? sector.trim() : "", upd: unq(fm.updated), title: /^# [A-Z][A-Z0-9]*-\d+:\s*(.*)$/m.exec(body)?.[1] ?? "", body });
   }
   return out;
@@ -258,6 +260,7 @@ export function readRoadmap(o: Opts): Roadmap {
   }
 
   const all: Ticket[] = [];
+  const byKey = new Map(mir.map((x) => [planKey(x), x]));
   for (const m of mir) {
     const hit = m.fv.filter((v) => vix(m, v) !== undefined);
     const nv = !m.fv.length; // no fixVersion at all: read, but kept out of the default read. A fixVersion outside the train is still dropped.
@@ -268,7 +271,8 @@ export function readRoadmap(o: Opts): Roadmap {
     const drift = nv || !place ? 0 : pv !== null ? (pv !== v ? 1 : 0) : isOpen(b) ? 2 : 0;
     const t: Ticket = { k: m.k, ...(gh ? { id: `#${m.k}` } : m.id ? { id: m.id } : m.p ? { id: pk, project: m.p } : {}), t: clip(m.title, 90), s: m.sn || m.cat, b, v: nv ? -1 : vix(m, v)!, theme: themes.indexOf(themeOf.get(pk) ?? NO_SECTOR),
       pt: planThemes.indexOf(planOf.get(pk) ?? NO_THEME), pv, drift: drift as 0 | 1 | 2,
-      labels: m.labels, worker: isOpen(b) ? workers.get(pk) ?? null : null, backend: source, ...(nv ? { noVersion: true as const } : {}), ...(m.epic ? { epic: m.epic } : {}) };
+      labels: m.labels, worker: isOpen(b) ? workers.get(pk) ?? null : null, backend: source,
+      ...(isOpen(b) && m.blockedBy?.length ? { after: m.blockedBy.map((id) => ({ id, b: byKey.has(id) ? bucketOf(byKey.get(id)!) : ("unknown" as const) })) } : {}), ...(nv ? { noVersion: true as const } : {}), ...(m.epic ? { epic: m.epic } : {}) };
     Object.defineProperty(t, "noted", { value: m.body, enumerable: false });
     all.push(t);
   }
