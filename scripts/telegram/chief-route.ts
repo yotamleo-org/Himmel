@@ -717,25 +717,37 @@ ${body}</body></html>
 `;
 }
 
-export async function queueFile(root: string, chat: number, path: string, caption?: string): Promise<string> {
+// The by-request form of `send-file`: the operator asked to see a page that has not passed its critics.
+// It skips the critic check and marks the page and the caption as not passed and not for signature. The words
+// "Not for signature" in the sent bytes are what keep a marked copy from ever passing `checkSignaturePage`.
+const EARLY_CAPTION = "NOT PASSED - not for signature (sent on request)";
+function notPassedBlock(abs: string, request: string): string {
+  const asked = request.trim();
+  if (!asked) throw new Error("--by-request names no request; give the operator's request in words, or send without it (a page that has not passed is then refused)");
+  if (!/\.(md|markdown|html?)$/i.test(abs)) throw new Error(`--by-request carries its mark only on a .md or .html page; ${basename(abs)} is neither, send it without --by-request`);
+  return `<section class="not-passed"><p><strong>NOT PASSED. Not for signature.</strong> No critic has passed this page. It is sent early because the operator asked: ${esc(asked)}</p></section>\n`;
+}
+
+export async function queueFile(root: string, chat: number, path: string, caption?: string, byRequest?: string): Promise<string> {
   const abs = resolve(path);
   const tooBig = (size: number) => new Error(`file is ${(size / 1048576).toFixed(1)} MB, over the Telegram 50 MB upload limit: ${path}`);
   const st = await stat(abs).catch(() => null);
   if (!st) throw new Error(`file not found: ${path}`);
   if (!st.isFile()) throw new Error(`not a regular file: ${path}`);
   if (st.size > MAX_SEND_BYTES) throw tooBig(st.size);
-  const signed = await checkSignaturePage(abs);   // throws (nothing queued) unless the latest critics passed these bytes
+  const early = byRequest === undefined ? null : notPassedBlock(abs, byRequest);   // throws (nothing queued) on no request or no page
+  const signed = early ? null : await checkSignaturePage(abs);   // throws (nothing queued) unless the latest critics passed these bytes
   // The caption opens with the verdicts read from the critic files; the caller's words follow, never replace them.
-  const verdictCaption = signed?.verdicts.map(v => `${v.verdict} r${v.round}`).join(" | ");
+  const verdictCaption = early ? EARLY_CAPTION : signed?.verdicts.map(v => `${v.verdict} r${v.round}`).join(" | ");
   if (verdictCaption) caption = caption ? `${verdictCaption} - ${caption}` : verdictCaption;
   const isMd = /\.(md|markdown)$/i.test(abs);
   if (signed?.lead && !isMd && !/\.html?$/i.test(abs)) throw new Error(`${basename(abs)} cannot carry its open findings (only .md and .html can); the page is not sent`);
-  const sealedPage = signed && !isMd ? (signed.lead ? withLead(signed.bytes, signed.lead, basename(abs)) : signed.bytes) : null;
+  const sealedPage = signed && !isMd ? (signed.lead ? withLead(signed.bytes, signed.lead, basename(abs)) : signed.bytes) : early && !isMd ? withLead(await readFile(abs), early, basename(abs)) : null;
   // Every file is COPIED (or rendered) into <bridge root>/outgoing/<id>/: the poller ships only from there.
   const dir = join(root, "outgoing", randomUUID());
   await mkdir(dir, { recursive: true, mode: 0o700 });
   const send = join(dir, isMd ? `${basename(abs).replace(/\.(md|markdown)$/i, "")}.html` : basename(abs));
-  if (isMd) await Bun.write(send, renderMarkdownHtml(signed ? signed.bytes.toString("utf8") : await readFile(abs, "utf8"), basename(abs), signed?.verdicts, signed?.lead));
+  if (isMd) await Bun.write(send, renderMarkdownHtml(signed ? signed.bytes.toString("utf8") : await readFile(abs, "utf8"), basename(abs), signed?.verdicts, signed?.lead ?? early ?? ""));
   else if (sealedPage) await Bun.write(send, sealedPage);
   else await copyFile(abs, send);
   const size = (await stat(send)).size;
@@ -752,12 +764,13 @@ export async function queueFile(root: string, chat: number, path: string, captio
 // static import back would be a cycle.
 if (import.meta.main) {
   const [verb, ...args] = process.argv.slice(2);
+  const byRequest = verb === "send-file" && args[0] === "--by-request" && args.length >= 4 ? args.splice(0, 2)[1] : undefined;
   if (verb === "register" && args.length === 3) {
     await registerConsole(args[0], args[1], args[2]);
   } else if (verb === "announce" && args.length === 1) {
     await announceConsole(args[0]);
   } else if (verb === "send-file" && args.length >= 2 && Number.isSafeInteger(Number(args[0])) && Number(args[0]) !== 0) {
-    try { console.log(`queued ${await queueFile(defaultRoot(), Number(args[0]), args[1], args.slice(2).join(" ") || undefined)}`); }
+    try { console.log(`queued ${await queueFile(defaultRoot(), Number(args[0]), args[1], args.slice(2).join(" ") || undefined, byRequest)}`); }
     catch (e) { console.error(`[chief-route] send-file refused: ${e instanceof Error ? e.message : e}`); process.exit(1); }
   } else if (verb === "critic-round-check" && args.length === 2) {
     try { await refuseRoundPastCap(args[0], args[1]); }
@@ -775,7 +788,7 @@ if (import.meta.main) {
         catch (e) { console.error(`[chief-route] queued the Telegram reply but could not speak on ${satellite}: ${e instanceof Error ? e.message : e}`); process.exit(1); }
       }
     } else {
-      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] <chat_id> <text> | send-file <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | register <inbox> <bucket> <project> | announce <inbox>");
+      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] <chat_id> <text> | send-file [--by-request <the operator's request>] <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | register <inbox> <bucket> <project> | announce <inbox>");
       process.exit(1);
     }
   }
