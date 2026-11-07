@@ -1457,6 +1457,8 @@ STATUS_graph="";                      DETAIL_graph=""
 # step ran and found a .env.
 STATUS_env_migration="";              DETAIL_env_migration=""
 STATUS_cron_runner_migration="";      DETAIL_cron_runner_migration=""
+# The config UI rebuild + service restart is advisory too: its row prints only when the pulled range touched scripts/config-ui.
+STATUS_config_ui="";                  DETAIL_config_ui=""
 # probe-mode station tools (rtk, ...) are advisory too.
 # Their count is registry-driven, so rows accumulate here as "name|status|detail"
 # lines (written by sync_probe_tools, read back by print_status_table) instead of
@@ -1629,6 +1631,60 @@ update_jira_cli() {
     STATUS_jira_cli="failed"
     DETAIL_jira_cli="build failed — (cd scripts/jira && $pm install && $pm run build)"
     return 1
+}
+
+# Config UI bundle + service. scripts/config-ui/agui-web/dist is a GITIGNORED build
+#    artifact and himmel-ui.service (himmelctl ui --service) only rebuilds it at its
+#    own start, so a pull that changed scripts/config-ui left the running service
+#    serving the old bundle and the old server code until someone restarted it by
+#    hand. When the pulled range (PULL_HEAD_BEFORE..HEAD) touched scripts/config-ui:
+#    rebuild the bundle with the recipe the server itself uses, then restart the
+#    service if it is active. The build runs BEFORE the restart: a failed build
+#    leaves the running service alone, on its old build, and says so. Advisory (the
+#    caller ignores the return): a failed UI build must not stop the chain.
+#    check mode only reports what apply would do, from HEAD..@{u}.
+update_config_ui() {
+    local mode="$1"   # check | apply
+    local web="$ROOT/scripts/config-ui/agui-web" unit="himmel-ui.service"
+    local from to changed bun log
+    [ -f "$web/package.json" ] || return 0
+    if [ "$mode" = "check" ]; then
+        changed=$(git diff --name-only HEAD '@{u}' -- scripts/config-ui 2>/dev/null) || return 0
+        [ -n "$changed" ] || return 0
+        STATUS_config_ui="skipped"; DETAIL_config_ui="check mode — would rebuild the config UI bundle and restart $unit if active"
+        return 0
+    fi
+    from="${PULL_HEAD_BEFORE:-}"
+    [ -n "$from" ] || return 0
+    to=$(git rev-parse HEAD 2>/dev/null) || return 0
+    [ "$from" != "$to" ] || return 0
+    changed=$(git diff --name-only "$from" "$to" -- scripts/config-ui 2>/dev/null) || return 0
+    [ -n "$changed" ] || return 0
+
+    echo ""
+    echo "==> config UI rebuild (scripts/config-ui/agui-web/dist)"
+    bun=$(resolve_bun 2>/dev/null) || bun=""
+    if [ -z "$bun" ]; then
+        STATUS_config_ui="skipped"; DETAIL_config_ui="bun not on PATH — the config UI changed but was not rebuilt; $unit (if running) still serves the old build"
+        return 0
+    fi
+    if ! log=$( (cd "$web" && "$bun" install --frozen-lockfile && "$bun" run build) 2>&1 ); then
+        printf '%s\n' "$log" | tail -20 | sed 's/^/    /'
+        STATUS_config_ui="failed"
+        DETAIL_config_ui="build failed — $unit left running on the old build; rebuild by hand: (cd scripts/config-ui/agui-web && bun install --frozen-lockfile && bun run build), then systemctl --user restart $unit"
+        return 1
+    fi
+    if command -v systemctl >/dev/null 2>&1 && [ "$(systemctl --user is-active "$unit" 2>/dev/null)" = "active" ]; then
+        if systemctl --user restart "$unit" >/dev/null 2>&1; then
+            STATUS_config_ui="updated"; DETAIL_config_ui="bundle rebuilt, $unit restarted"
+            return 0
+        fi
+        STATUS_config_ui="failed"
+        DETAIL_config_ui="bundle rebuilt but systemctl --user restart $unit failed — restart it by hand"
+        return 1
+    fi
+    STATUS_config_ui="updated"; DETAIL_config_ui="bundle rebuilt; $unit not active, nothing restarted"
+    return 0
 }
 
 # 4. qmd fork update. qmd ships from the himmel FORK, pinned by commit SHA
@@ -1988,6 +2044,9 @@ EOF
     fi
     if [ -n "$STATUS_cron_runner_migration" ]; then
         printf '    %-14s %-14s %s\n' "cron_runner" "$STATUS_cron_runner_migration" "$DETAIL_cron_runner_migration"
+    fi
+    if [ -n "$STATUS_config_ui" ]; then
+        printf '    %-14s %-14s %s\n' "config_ui" "$STATUS_config_ui" "$DETAIL_config_ui"
     fi
     local pt_name pt_status pt_detail
     while IFS='|' read -r pt_name pt_status pt_detail; do
@@ -3773,6 +3832,7 @@ if [ "${1:-}" = "--check" ] || [ "${1:-}" = "--dry-run" ]; then
     # chain below is where a failure is allowed to abort (via chain_rc).
     update_marketplace check || true
     update_jira_cli check || true
+    update_config_ui check || true
     update_qmd_fork check || true
     run_hermes_step check || true
     update_codex check || true
@@ -3988,6 +4048,8 @@ rewire_statusline
 wire_self_heartbeat
 sync_graphify
 sync_graph apply || true
+# advisory: a failed UI build leaves the running service alone and shows in the status table, never aborts the update.
+update_config_ui apply || true
 # `|| true`: a failed cli-proxy roll must never abort a himmel update. The
 # function now returns non-zero so `--only cli_proxy` can report it (above);
 # here the advisory contract still applies.

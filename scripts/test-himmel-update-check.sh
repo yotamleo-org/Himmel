@@ -946,6 +946,112 @@ if [ "$scan_rc" -gt 1 ]; then assert_fail "Jira id scan could not read himmel-up
 elif [ -z "$ids" ]; then assert_pass "no Jira id in himmel-update.sh"
 else assert_fail "Jira id left in himmel-update.sh: $ids"; fi
 
+echo "Test 31: update_config_ui → rebuilds the UI bundle and restarts himmel-ui.service only when the pulled range touched scripts/config-ui"
+CUI_BIN="$TMP/cui-bin"; mkdir -p "$CUI_BIN"
+cat > "$CUI_BIN/bun" <<'STUB'
+#!/bin/sh
+printf '%s|%s\n' "$(pwd)" "$*" >> "$CUI_LOG"
+if [ "$1 $2" = "run build" ] && [ "${CUI_BUILD_FAIL:-}" = "1" ]; then echo "error: build exploded" >&2; exit 1; fi
+exit 0
+STUB
+cat > "$CUI_BIN/systemctl" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >> "$CUI_LOG"
+case "$*" in
+    *is-active*) echo "${CUI_SVC_STATE:-active}"; [ "${CUI_SVC_STATE:-active}" = "active" ]; exit $? ;;
+esac
+exit 0
+STUB
+chmod +x "$CUI_BIN/bun" "$CUI_BIN/systemctl"
+
+# make_cui_repo <changed-path> — a two-commit repo; sets CUI_REPO and CUI_BEFORE (the first commit).
+make_cui_repo() {
+    _repo_counter=$((_repo_counter + 1))
+    CUI_REPO="$TMP/cui_repo_${_repo_counter}"
+    mkdir -p "$CUI_REPO/scripts/config-ui/agui-web" "$CUI_REPO/docs"
+    git init --quiet "$CUI_REPO"
+    git -C "$CUI_REPO" config user.email "test@test.test"
+    git -C "$CUI_REPO" config user.name "Test"
+    printf '{}\n' > "$CUI_REPO/scripts/config-ui/agui-web/package.json"
+    printf 'v1\n' > "$CUI_REPO/docs/a.md"
+    git -C "$CUI_REPO" add -A; git -C "$CUI_REPO" commit --quiet -m one
+    CUI_BEFORE=$(git -C "$CUI_REPO" rev-parse HEAD)
+    printf 'v2\n' > "$CUI_REPO/$1"
+    git -C "$CUI_REPO" add -A; git -C "$CUI_REPO" commit --quiet -m two
+}
+
+# run_cui <mode> [ENV=val ...] — sets cui_rc, cui_out (step output + a trailing STATUS line) and cui_log (stub calls).
+run_cui() {
+    local mode="$1"; shift
+    CUI_LOG="$TMP/cui-log-$_repo_counter"; : > "$CUI_LOG"
+    cui_rc=0
+    cui_out=$(
+        set -euo pipefail
+        export CUI_LOG PATH="$CUI_BIN:$PATH"
+        # shellcheck disable=SC2163  # kv holds NAME=value; exporting the expansion is the point
+        for kv in "$@"; do export "$kv"; done
+        # shellcheck disable=SC1090
+        HIMMEL_UPDATE_LIB=1 . "$SCRIPT"
+        ROOT="$CUI_REPO"; cd "$ROOT"
+        # shellcheck disable=SC2034  # read by update_config_ui from the sourced script
+        PULL_HEAD_BEFORE="$CUI_BEFORE"
+        rc=0; update_config_ui "$mode" || rc=$?
+        echo "STATUS=${STATUS_config_ui:-} DETAIL=${DETAIL_config_ui:-}"
+        exit "$rc"
+    ) 2>&1 || cui_rc=$?
+    cui_log=$(cat "$CUI_LOG")
+}
+
+# changed, service active: build, then restart
+make_cui_repo scripts/config-ui/agui-web/index.html
+run_cui apply
+assert_eq "config_ui changed: rc 0" "0" "$cui_rc"
+assert_contains "config_ui changed: installs deps in agui-web" "agui-web|install --frozen-lockfile" "$cui_log"
+assert_contains "config_ui changed: builds the bundle" "agui-web|run build" "$cui_log"
+assert_contains "config_ui changed: restarts the service" "restart himmel-ui.service" "$cui_log"
+assert_contains "config_ui changed: row says updated" "STATUS=updated" "$cui_out"
+
+# server code alone also needs the restart
+make_cui_repo scripts/config-ui/server.ts
+run_cui apply
+assert_contains "config_ui server.ts changed: restarts the service" "restart himmel-ui.service" "$cui_log"
+
+# unchanged: no build, no restart, no row
+make_cui_repo docs/a.md
+run_cui apply
+assert_eq "config_ui unchanged: rc 0" "0" "$cui_rc"
+assert_eq "config_ui unchanged: bun and systemctl not called" "" "$cui_log"
+assert_contains "config_ui unchanged: no status row" "STATUS= " "$cui_out"
+
+# no service installed or active: the bundle is rebuilt, nothing restarted, no error
+make_cui_repo scripts/config-ui/agui-web/index.html
+run_cui apply CUI_SVC_STATE=inactive
+assert_eq "config_ui no service: rc 0" "0" "$cui_rc"
+assert_contains "config_ui no service: still builds the bundle" "agui-web|run build" "$cui_log"
+if grepq "$cui_log" "restart"; then assert_fail "config_ui no service: must not restart"; else assert_pass "config_ui no service: no restart"; fi
+assert_contains "config_ui no service: row says updated" "STATUS=updated" "$cui_out"
+
+# build fails: the running service is left alone and the failure is printed
+make_cui_repo scripts/config-ui/agui-web/index.html
+run_cui apply CUI_BUILD_FAIL=1
+assert_eq "config_ui build fails: rc 1" "1" "$cui_rc"
+if grepq "$cui_log" "restart"; then assert_fail "config_ui build fails: must not restart the service"; else assert_pass "config_ui build fails: service not restarted"; fi
+assert_contains "config_ui build fails: prints the build error" "build exploded" "$cui_out"
+assert_contains "config_ui build fails: row says failed" "STATUS=failed" "$cui_out"
+assert_contains "config_ui build fails: row says the service was left running" "left running" "$cui_out"
+
+# check mode: the checkout is behind an upstream that changed the UI; it says what apply would do and runs nothing
+make_cui_repo scripts/config-ui/agui-web/index.html
+git init --bare --quiet "$CUI_REPO.git"
+git -C "$CUI_REPO" remote add origin "$CUI_REPO.git"
+git -C "$CUI_REPO" push --quiet -u origin HEAD:main 2>/dev/null
+git -C "$CUI_REPO" reset --quiet --hard "$CUI_BEFORE"
+git -C "$CUI_REPO" branch --quiet -u origin/main
+run_cui check
+assert_eq "config_ui check mode: rc 0" "0" "$cui_rc"
+assert_eq "config_ui check mode: bun and systemctl not called" "" "$cui_log"
+assert_contains "config_ui check mode: reports what apply would do" "would rebuild" "$cui_out"
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
 echo "RESULTS: $pass passed, $fail failed"
