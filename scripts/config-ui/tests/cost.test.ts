@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildCostModel, readPhaseCostRows, type PhaseCostRow } from "../cost";
+import { buildCostModel, readCost, readPhaseCostRows, type PhaseCostRow } from "../cost";
 import { mountCost, renderCost } from "../public/cost.js";
 
 const cleanups: (() => void)[] = [];
@@ -135,6 +135,33 @@ test("cost: usage-read hands over the latest row per day, session and phase, and
   const rows = readPhaseCostRows({ HIMMEL_USAGE_STORE: store, PATH: process.env.PATH });
   expect(rows.map((r) => [r.session, r.phase, r.usd])).toEqual([["w1", "build", 3], ["w2", "build", 5]]);
   expect(readPhaseCostRows({ HIMMEL_USAGE_STORE: join(dir, "absent"), PATH: process.env.PATH })).toEqual([]);
+});
+
+test("cost: no store says the usage store has not been built yet and names the command, never 'no data yet'", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cost-nostore-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const m = readCost({ HIMMEL_USAGE_STORE: join(dir, "absent"), PATH: process.env.PATH });
+  expect(m).toMatchObject({ state: "nostore", usd: null, phases: [] });
+  const html = renderCost(m, { open: [] });
+  expect(html).toContain("the usage store has not been built yet");
+  expect(html).toContain("scripts/usage/usage-compute.sh");
+  expect(html).not.toContain("no data yet");
+  // with no HIMMEL_USAGE_STORE the store is the one under HOME
+  expect(readCost({ HOME: join(dir, "home"), PATH: process.env.PATH }).state).toBe("nostore");
+});
+
+test("cost: a store with phase-cost rows gives the table", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cost-store-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const store = join(dir, "usage");
+  mkdirSync(store);
+  writeFileSync(join(store, "records.jsonl"), ROWS.map((r) => JSON.stringify(r)).join("\n") + "\n");
+  const m = readCost({ HIMMEL_USAGE_STORE: store, PATH: process.env.PATH }, DAY);
+  expect(m).toMatchObject({ state: "ok", day: DAY, usd: 53 });
+  const html = renderCost(m, { open: [] });
+  expect(html).toContain("Cost by phase");
+  expect(html).toContain("<table");
+  expect(html).not.toContain("not been built");
 });
 
 test("cost: usage-read --phase-cost keeps one day with --day, every version with --all, and refuses --day alone or with --ticket", () => {

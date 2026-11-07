@@ -29,6 +29,9 @@ function phaseBody(p, top, open) {
 
 export function renderCost(model, view = {}) {
   if (!model) return view.err ? "" : `<section class="card"><div class="card-h"><h2>Cost</h2></div><p class="sub">loading…</p></section>`;
+  if (model.state === "nostore")
+    return `<section class="card"><div class="card-h"><h2>Cost</h2></div><p class="sub">the usage store has not been built yet: run ` +
+      `<code>bash scripts/usage/usage-compute.sh</code>, and again until it says no window remains</p></section>`;
   if (model.state !== "ok")
     return`<section class="card"><div class="card-h"><h2>Cost</h2></div><p class="sub">no data yet</p></section>`;
   const open = new Set(view.open || []);

@@ -13,10 +13,20 @@
 #   usage-compute.sh [--projects <dir>] [--ledger <file>] [--store <dir>]
 #                    [--range KEY-a..KEY-b | --tickets K1,K2]
 #                    [--since <iso>] [--repo OWNER/NAME [--gh <executable>]]
-#                    [--print]
+#                    [--budget-seconds <n>] [--max-windows <n>] [--print]
 #
 # It also appends `phase-cost` rows (one per day, session and phase, see
 # docs/internals/usage-records.md); those ignore --since and the ticket selectors.
+#
+# The build runs in windows: the sessions (a top-level transcript with its
+# subagents) whose files changed since the last run, grouped by the local day of
+# their newest file, newest day first. Each window appends its phase-cost rows and
+# moves <store>/build-checkpoint.json in one commit; the ticket records follow
+# when no window is left, so a reader never sees a ticket's partial total. A run
+# starts no new window once --budget-seconds (default 240, 0 = no bound) have
+# passed or --max-windows windows are done, and a run that is stopped or killed
+# resumes at the first window it did not commit. --print and --repo run one
+# window over everything that changed (--repo keeps its all-or-nothing join).
 #
 # Default appends changed records to <store>/records.jsonl; --print writes the
 # records to stdout and touches no store. A record carries ids and numbers
@@ -44,6 +54,8 @@ PRINT=0
 PROJECTS_SET=0
 REPO=""
 GH=""
+BUDGET=240
+MAXWIN=0
 
 # one shared check: a value-taking flag must be followed by a non-empty value
 need_val() { [ -n "${2:-}" ] || die "$1 needs a non-empty value"; }
@@ -58,10 +70,14 @@ while [ $# -gt 0 ]; do
     --since)    need_val "$@"; SINCE="$2"; shift 2 ;;
     --repo)     need_val "$@"; REPO="$2"; shift 2 ;;
     --gh)       need_val "$@"; GH="$2"; shift 2 ;;
+    --budget-seconds) need_val "$@"; BUDGET="$2"; shift 2 ;;
+    --max-windows)    need_val "$@"; MAXWIN="$2"; shift 2 ;;
     --print)    PRINT=1; shift ;;
     *) die "unknown argument: $1" ;;
   esac
 done
+[[ "$BUDGET" =~ ^[0-9]+$ ]] || die "--budget-seconds must be a whole number of seconds (0 = no bound): $BUDGET"
+[[ "$MAXWIN" =~ ^[0-9]+$ ]] || die "--max-windows must be a whole number (0 = no limit): $MAXWIN"
 
 # The gh join needs an explicit repo (never inferred from the cwd) and a gh
 # that is ONE executable path (a path with a space is fine; arguments are not).
@@ -112,26 +128,46 @@ if command -v ionice >/dev/null 2>&1; then ionice -c3 -p $$ >/dev/null 2>&1 || t
 WORK="$(tmpdir)"
 trap 'rm -rf "$WORK"' EXIT
 [ -n "$PROJECTS" ] || { PROJECTS="$WORK/noprojects"; mkdir "$PROJECTS"; }
+# absolute, so a window's scratch root can link to its files
+PROJECTS="$(cd "$PROJECTS" && pwd)" || die "cannot enter $PROJECTS"
 
 # Serialize the whole compute-then-append (mkdir is atomic), so an older
 # snapshot can never publish after a newer one. --print touches no store.
 if [ "$PRINT" != 1 ]; then
   mkdir -p "$STORE"
   LOCK="$STORE/.lock"; n=0
+  # USAGE_COMPUTE_TEST_LOCK_TRIES is a TEST SEAM: fewer half-second tries, so a suite row reads the refusal without waiting 300 s
+  tries="${USAGE_COMPUTE_TEST_LOCK_TRIES:-600}"
   # prim-ok: readers share this directory lock; preserve the 300-second writer deadline instead of with_lock's blocking file protocol.
   until mkdir "$LOCK" 2>/dev/null; do
-    n=$((n + 1)); [ "$n" -lt 600 ] || die "store locked: $LOCK (remove it if no run is active)"
+    n=$((n + 1))
+    if [ "$n" -ge "$tries" ]; then
+      # a writer leaves its pid in the lock; a SIGKILL (no trap) leaves the lock behind, which is never taken over here
+      owner="owner unknown"; op="$(cat "$LOCK/pid" 2>/dev/null || true)"
+      if [[ "$op" =~ ^[0-9]+$ ]]; then
+        if ps -p "$op" >/dev/null 2>&1; then owner="owner pid $op, running"; else owner="owner pid $op, not running"; fi
+      fi
+      die "store locked: $LOCK ($owner; remove it with rm -r if no run is active)"
+    fi
     sleep 0.5
   done
-  trap 'rmdir "$LOCK" 2>/dev/null; rm -rf "$WORK"' EXIT
+  echo "$$" > "$LOCK/pid"
+  trap 'rm -f "$LOCK/pid"; rmdir "$LOCK" 2>/dev/null; rm -rf "$WORK"' EXIT
 fi
 # a signal exits through the EXIT trap, so the lock never outlives the run
 trap 'exit 130' INT TERM HUP
 
-# --- 1. per-session tokens (reuse bank-attribution, do not re-parse JSONL) --
-BA_ARGS=("$PROJECTS")
-[ -z "$SINCE" ] || BA_ARGS+=(--since "$SINCE")
-bash "$BANK" "${BA_ARGS[@]}" > "$WORK/bank.md" || die "bank-attribution failed (incomplete totals refused)"
+# TEST SEAM: inert unless USAGE_COMPUTE_TEST_PAUSE_AT names this point (window:<k> after the k-th window is committed,
+# file:<n> after the n-th transcript's phase state is saved) and USAGE_COMPUTE_TEST_PAUSE_FILE is set: it creates
+# <file>.reached and waits (about 30 s at most) while <file> exists, so a suite row can kill the run at that point.
+test_pause() {
+  [ "${USAGE_COMPUTE_TEST_PAUSE_AT:-}" = "$1" ] || return 0
+  local f="${USAGE_COMPUTE_TEST_PAUSE_FILE:-}" i=0
+  [ -n "$f" ] || return 0
+  : > "$f.reached"
+  while [ -e "$f" ] && [ "$i" -lt 600 ]; do sleep 0.05; i=$((i + 1)); done
+  return 0
+}
 
 : > "$WORK/ledger.jsonl"
 [ ! -f "$LEDGER" ] || cp "$LEDGER" "$WORK/ledger.jsonl" || die "cannot read ledger: $LEDGER"
@@ -193,9 +229,6 @@ def addz($a; $b): reduce (zero | keys[]) as $f ($a; .[$f] += ($b[$f] // 0));
           totals: {leg: tot("leg"), console: tot("console"), judge: tot("judge")},
           cr: {rounds: ($crt[$t].rounds // 0), findings: $fc, est_tokens: ($crt[$t].est_tokens // 0)} } ]
 '
-jq -n -S --rawfile table "$WORK/bank.md" --slurpfile ledger "$WORK/ledger.jsonl" --argjson sel "$SEL" \
-  "$BASE_PROGRAM" > "$WORK/base.json"
-if [ -n "$TICKETS" ] && [ "$(jq '[.[] | select(.ticket | startswith("_") | not)] | length' "$WORK/base.json")" = 0 ]; then die "--tickets matched no session or CR row: $TICKETS"; fi
 
 # --- 3. PR/CI join (opt-in via --repo) ---------------------------------------
 # gh JSON for one call, or die: auth, network, rate limit, a wrong repo and a
@@ -242,17 +275,26 @@ join_ticket() {
 }
 
 # --- assemble final records + digest ----------------------------------------
-: > "$WORK/records.jsonl"
-for t in $(jq -r '.[].ticket' "$WORK/base.json"); do
-  rec="$(jq -cS --arg t "$t" '.[] | select(.ticket == $t)' "$WORK/base.json")"
-  if [ -n "$REPO" ] && [ "${t#_}" = "$t" ]; then
-    join_ticket "$t"
-    rec="$(printf '%s' "$rec" | jq -cS --argjson pr "$PRJ" --argjson ci "$CIJ" '. + {pr: $pr, ci: $ci}')"
-  fi
-  if command -v sha256sum >/dev/null 2>&1; then dg="$(printf '%s' "$rec" | sha256sum | cut -d' ' -f1)"
-  else dg="$(printf '%s' "$rec" | shasum -a 256 | cut -d' ' -f1)"; fi
-  printf '%s' "$rec" | jq -cS --arg d "$dg" '. + {digest: $d}' >> "$WORK/records.jsonl"
-done
+# build_tickets <checkpoint>: every ticket record, from the per-session table rows the checkpoint holds for every
+# session (the same rows one usage-attribution.sh pass over the whole root prints), into $WORK/records.jsonl
+build_tickets() {
+  jq -r '[.units[].rows[]] | join("\n")' "$1" > "$WORK/bank.md"
+  jq -n -S --rawfile table "$WORK/bank.md" --slurpfile ledger "$WORK/ledger.jsonl" --argjson sel "$SEL" \
+    "$BASE_PROGRAM" > "$WORK/base.json"
+  if [ -n "$TICKETS" ] && [ "$(jq '[.[] | select(.ticket | startswith("_") | not)] | length' "$WORK/base.json")" = 0 ]; then die "--tickets matched no session or CR row: $TICKETS"; fi
+  : > "$WORK/records.jsonl"
+  local t rec dg
+  for t in $(jq -r '.[].ticket' "$WORK/base.json"); do
+    rec="$(jq -cS --arg t "$t" '.[] | select(.ticket == $t)' "$WORK/base.json")"
+    if [ -n "$REPO" ] && [ "${t#_}" = "$t" ]; then
+      join_ticket "$t"
+      rec="$(printf '%s' "$rec" | jq -cS --argjson pr "$PRJ" --argjson ci "$CIJ" '. + {pr: $pr, ci: $ci}')"
+    fi
+    if command -v sha256sum >/dev/null 2>&1; then dg="$(printf '%s' "$rec" | sha256sum | cut -d' ' -f1)"
+    else dg="$(printf '%s' "$rec" | shasum -a 256 | cut -d' ' -f1)"; fi
+    printf '%s' "$rec" | jq -cS --arg d "$dg" '. + {digest: $d}' >> "$WORK/records.jsonl"
+  done
+}
 
 # --- 4. phase-cost rows ------------------------------------------------------
 # One row per (day, session, phase), priced per call from scripts/lanes/lib/model-prices.tsv
@@ -365,80 +407,231 @@ def zero: { calls: 0, i: 0, o: 0, cr: 0, c5: 0, c1: 0, nano: 0, unp: 0, models: 
 | ( ($rows + $closed) | map(select(($prev["\(.day)|\(.session)|\(.phase)"]) != tojson)) ) as $changed
 | { rows: $changed, emitted: ($prev + ($changed | map({ key: "\(.day)|\(.session)|\(.phase)", value: tojson }) | from_entries)) }'
 
-if [ "$PRINT" = 1 ]; then PSTATE="$WORK/phase-state"; else PSTATE="$STORE/phase-cost-state"; fi
-mkdir -p "$PSTATE" "$WORK/pnew"
-[ -f "$PSTATE/emitted.json" ] || echo '{}' > "$PSTATE/emitted.json"
+# --- 5. the build, window by window --------------------------------------------
+# A session is a top-level transcript with its subagents (the unit usage-attribution.sh sums by). The checkpoint
+# keeps, per session, a size fingerprint of its files and the table rows usage-attribution.sh gave for them; a session
+# whose fingerprint changed is read again whole and its rows replaced, so the ticket totals equal one pass over the root.
+if [ "$PRINT" = 1 ]; then CK="$WORK/ck"; PSTATE="$WORK/phase-state"; else CK="$STORE"; PSTATE="$STORE/phase-cost-state"; fi
+EMDIR="$PSTATE/emitted"
+CHECKPOINT="$CK/build-checkpoint.json"
+FILE="$STORE/records.jsonl"
+mkdir -p "$CK" "$EMDIR"
 PHASE_FILTER='"type":"(assistant|custom-title|ai-title)"|"subtype":"compact_boundary"|"isCompactSummary":true'
-for f in "$PROJECTS"/*/*.jsonl "$PROJECTS"/*/*/subagents/*.jsonl; do
-  [ -f "$f" ] || continue
-  # the state file name is a checksum of the whole path plus a readable tail, so a long path cannot exceed a file-name limit
-  rel="${f#"$PROJECTS"/}"; ck="$(printf '%s' "$rel" | cksum | tr ' ' _)"; tl="${rel//[^A-Za-z0-9._-]/_}"; key="${ck}_${tl: -60}"
-  # the byte offset lives inside the state file, so the totals and the offset they cover move together
-  st=null; [ ! -f "$PSTATE/$key.json" ] || st="$(<"$PSTATE/$key.json")"
-  off=0; [ "$st" = null ] || off="$(jq -r '.off // 0' <<<"$st")"
-  size="$(wc -c < "$f" | tr -d ' ')"
-  if [ "$size" -lt "$off" ]; then off=0; st=null; fi   # shrunk: the file was replaced, read it again
-  [ "$size" -gt "$off" ] || continue
-  tail -c +"$((off + 1))" "$f" | head -c "$((size - off))" > "$WORK/chunk"
-  consumed=$((size - off))
-  # a last line with no newline is still being written: leave it for the next run
-  if [ -n "$(tail -c 1 "$WORK/chunk")" ]; then consumed=$((consumed - $(tail -n 1 "$WORK/chunk" | wc -c | tr -d ' '))); fi
-  [ "$consumed" -gt 0 ] || continue
-  stem="$(basename "$f" .jsonl)"; par=""; atype=""
-  if [ "$(basename "$(dirname "$f")")" = subagents ]; then
-    par="$(basename "$(dirname "$(dirname "$f")")")"
-    [ ! -f "${f%.jsonl}.meta.json" ] || atype="$(jq -r '.agentType // ""' "${f%.jsonl}.meta.json" 2>/dev/null || true)"
-  fi
-  meta="$(jq -nc --arg s "$stem" --arg p "$par" --arg a "$atype" '{session: $s, parent: (if $p == "" then null else $p end), agent_type: $a}')"
-  fp=""
-  printf '%s' "$st" > "$WORK/st.json"
-  if [ "$(jq -r '.fp // ""' "$WORK/st.json")" = "" ]; then
-    fp="$(grep -a -m1 '"type":"user"' "$f" | jq -r 'select(.type == "user") | (.message.content | if type == "string" then . else ([.[]? | select(.type == "text") | .text] | first // "") end) as $t
-      | if ($t | startswith("Read ./review-prompt.md")) then "critic" elif ($t | startswith("You are the release manager")) then "release-mgr" else "none" end' 2>/dev/null || true)"
-  fi
-  { head -c "$consumed" "$WORK/chunk" | { grep -a -E "$PHASE_FILTER" || true; } \
-      | jq -nRc --slurpfile st "$WORK/st.json" --argjson prices "$PRICES" --argjson meta "$meta" --arg fp "$fp" --argjson off "$((off + consumed))" "$PHASE_FILE_JQ"; } \
-    > "$WORK/pnew/$key.json" || die "phase-cost pass failed on $f"
-done
-rm -f "$WORK/chunk"
-# every saved state (the new one where this run made one), then the rows that changed
-: > "$WORK/pall.jsonl"
-for p in "$WORK/pnew"/*.json; do [ ! -f "$p" ] || { cat "$p"; echo; } >> "$WORK/pall.jsonl"; done
-for p in "$PSTATE"/*.json; do
-  [ -f "$p" ] || continue
-  [ "$(basename "$p")" != emitted.json ] || continue
-  [ ! -f "$WORK/pnew/$(basename "$p")" ] || continue
-  { cat "$p"; echo; } >> "$WORK/pall.jsonl"
-done
-jq -nc --slurpfile em "$PSTATE/emitted.json" "$PHASE_EMIT_JQ" "$WORK/pall.jsonl" > "$WORK/phase-out.json" \
-  || die "cannot build the phase-cost rows"
-jq -c '.rows[]' "$WORK/phase-out.json" > "$WORK/phase-rows.jsonl"
-jq -c '.emitted' "$WORK/phase-out.json" > "$WORK/phase-emitted.json"
 
-if [ "$PRINT" = 1 ]; then
-  cat "$WORK/records.jsonl" "$WORK/phase-rows.jsonl"
-  exit 0
+# put <src> <dest>: copy beside the destination, then rename, so <dest> is replaced whole or not at all
+put() {
+  if ! cp "$1" "${2%/*}/.${2##*/}.new" || ! mv "${2%/*}/.${2##*/}.new" "$2"; then die "cannot save $2"; fi
+}
+
+# A window is committed through <store>/.commit: staged whole under .commit.new, renamed, then applied. Applying
+# appends the part of append.jsonl that records.jsonl does not hold yet (a kill mid-append leaves a prefix of it),
+# then replaces the window's emitted maps and the checkpoint. A run that finds .commit applies it before anything else.
+apply_commit() {
+  local c="$STORE/.commit" base cur len p
+  base="$(cat "$c/base")"; [ -f "$FILE" ] || : > "$FILE"
+  cur="$(wc -c < "$FILE" | tr -d ' ')"; len="$(wc -c < "$c/append.jsonl" | tr -d ' ')"
+  if [ "$cur" -lt "$base" ] || [ "$cur" -gt $((base + len)) ]; then
+    die "$FILE is $cur bytes, outside the pending commit's $base + $len; refusing to apply $c"
+  fi
+  [ "$cur" -eq $((base + len)) ] || tail -c +$((cur - base + 1)) "$c/append.jsonl" >> "$FILE" || die "cannot append to $FILE"
+  for p in "$c"/emitted/*.json; do [ ! -f "$p" ] || put "$p" "$EMDIR/${p##*/}"; done
+  put "$c/checkpoint.json" "$CHECKPOINT"
+  rm -rf "$c"
+}
+# commit <append-file> <emitted-dir> <checkpoint>; --print keeps all three in the scratch dir and prints at the end
+commit() {
+  local s="$STORE/.commit.new" p
+  if [ "$PRINT" = 1 ]; then
+    cat "$1" >> "$WORK/print.jsonl"
+    for p in "$2"/*.json; do [ ! -f "$p" ] || cp "$p" "$EMDIR/"; done
+    cp "$3" "$CHECKPOINT"; return 0
+  fi
+  rm -rf "$s"; mkdir -p "$s/emitted"
+  cp "$1" "$s/append.jsonl"; cp "$3" "$s/checkpoint.json"
+  for p in "$2"/*.json; do [ ! -f "$p" ] || cp "$p" "$s/emitted/"; done
+  if [ -f "$FILE" ]; then wc -c < "$FILE" | tr -d ' ' > "$s/base"; else echo 0 > "$s/base"; fi
+  mv "$s" "$STORE/.commit" || die "cannot stage the window commit"
+  apply_commit
+}
+if [ "$PRINT" != 1 ]; then
+  rm -rf "$STORE/.commit.new"
+  if [ -d "$STORE/.commit" ]; then apply_commit; echo "usage-compute: note: applied the commit a stopped run left" >&2; fi
 fi
 
-# --- append-only store: add a line only when the ticket's digest changed ----
-mkdir -p "$STORE"
-FILE="$STORE/records.jsonl"
-touch "$FILE"
-added=0; kept=0
-while IFS= read -r line; do
-  t="$(printf '%s' "$line" | jq -r .ticket)"
-  d="$(printf '%s' "$line" | jq -r .digest)"
-  last="$(jq -r --arg t "$t" 'select(.ticket == $t) | .digest' "$FILE" | tail -n 1)"
-  if [ "$last" = "$d" ]; then kept=$((kept + 1)); else printf '%s\n' "$line" >> "$FILE"; added=$((added + 1)); fi
-done < "$WORK/records.jsonl"
-# phase-cost rows: append, then keep the offsets and the emitted map that produced them (still under the lock)
-phase_added="$(wc -l < "$WORK/phase-rows.jsonl" | tr -d ' ')"
-cat "$WORK/phase-rows.jsonl" >> "$FILE"
-# copy into the store first, then rename within it: a state file is replaced whole or not at all
-for p in "$WORK/pnew"/*.json "$WORK/phase-emitted.json"; do
-  [ -f "$p" ] || continue
-  name="$(basename "$p")"; [ "$name" != phase-emitted.json ] || name=emitted.json
-  cp "$p" "$PSTATE/.$name.new" || die "cannot save phase-cost state $name"
-  mv "$PSTATE/.$name.new" "$PSTATE/$name" || die "cannot save phase-cost state $name"
-done
+# the checkpoint this run starts from; a different --since makes every session's rows stale
+if [ -f "$CHECKPOINT" ]; then cp "$CHECKPOINT" "$WORK/ck-in.json"; else echo '{"schema":1,"since":"","units":{}}' > "$WORK/ck-in.json"; fi
+jq -c --arg s "$SINCE" 'if .since != $s then {schema: 1, since: $s, units: {}} else . end' "$WORK/ck-in.json" > "$WORK/ck-tmp.json" \
+  || die "cannot read the checkpoint $CHECKPOINT"
+mv "$WORK/ck-tmp.json" "$WORK/ck-in.json"
+
+# every transcript with its size and mtime, in one stat call per xargs batch
+shopt -s nullglob
+TFILES=("$PROJECTS"/*/*.jsonl "$PROJECTS"/*/*/subagents/*.jsonl)
+shopt -u nullglob
+: > "$WORK/inv.txt"
+if [ "${#TFILES[@]}" -gt 0 ]; then
+  if stat -L -c '%s' / >/dev/null 2>&1; then SFMT=(-L -c '%s %Y %n'); else SFMT=(-L -f '%z %m %N'); fi
+  printf '%s\0' "${TFILES[@]}" | xargs -0 stat "${SFMT[@]}" > "$WORK/inv.txt" || die "cannot read the transcripts' sizes"
+fi
+# the windows: changed sessions grouped by the local day of their newest file, newest day first (one window for --print
+# and --repo); the sessions the checkpoint holds and the root no longer has are dropped in the first window
+# shellcheck disable=SC2016  # jq's own $vars
+jq -nRc --slurpfile ck "$WORK/ck-in.json" --arg root "$PROJECTS" --argjson single "$([ "$PRINT" = 1 ] || [ -n "$REPO" ] && echo true || echo false)" '
+def ukey: if test("^[A-Za-z0-9._-]{1,100}$") then . else "b32-" + (@base32 | .[0:200]) end;
+[ inputs | capture("^(?<s>[0-9]+) (?<m>[0-9]+) (?<p>.*)$")
+  | (.p | ltrimstr($root + "/")) as $rel | ($rel | split("/")) as $c
+  | { rel: $rel, size: (.s | tonumber), m: (.m | tonumber), slug: $c[0],
+      sub: (($c | length) == 4), unit: (if ($c | length) == 4 then $c[1] else ($c[1] | sub("\\.jsonl$"; "")) end) } ]
+| group_by(.unit)
+| map( . as $fs | ($fs | map(.slug) | unique) as $slugs
+    | { unit: $fs[0].unit, ukey: ($fs[0].unit | ukey), fp: "\($fs | length):\($fs | map(.size) | add)",
+        day: ($fs | map(.m) | max | localtime | strftime("%Y-%m-%d")),
+        files: ($fs | sort_by(.rel) | map(. as $f | { rel, sub, j: ($slugs | index($f.slug)) })) } ) as $units
+| ($ck[0].units) as $done
+| [ $units[] | select($done[.unit].fp != .fp) ] as $dirty
+| (($done | keys) - ($units | map(.unit))) as $gone
+| ( if $single then [ { day: "all", units: ($dirty | sort_by(.unit)) } | select((.units | length) > 0) ]
+    else ($dirty | group_by(.day) | reverse | map({ day: .[0].day, units: sort_by(.unit) })) end ) as $wins
+| ( if ($wins | length) == 0 and ($gone | length) > 0 then [ { day: "removed", units: [] } ] else $wins end )
+| to_entries[] | .value + { gone: (if .key == 0 then $gone else [] end) }' "$WORK/inv.txt" > "$WORK/windows.jsonl" \
+  || die "cannot plan the windows"
+
+added=0; kept=0; phase_added=0; nfile=0
+: > "$WORK/print.jsonl"
+# build_window <window-json> <last 0|1>: the window's sessions, then its transcripts' phase rows, then (last) the ticket
+# records, all appended in one commit with the window's emitted maps and the new checkpoint
+build_window() {
+  local win="$1" last="$2" day nu nread=0 rel f ck tl key st off size consumed stem par atype meta fp k j nrows
+  day="$(jq -r .day <<<"$win")"; nu="$(jq '.units | length' <<<"$win")"
+  jq -c '.units' <<<"$win" > "$WORK/wunits.json"; jq -c '.gone' <<<"$win" > "$WORK/wgone.json"
+
+  # 1. per-session tokens: usage-attribution.sh, unchanged, on a scratch root of symlinks to this window's files; each
+  #    scratch project directory is named u<session index>-<project index>, so its table rows map back to a session
+  rm -rf "$WORK/shim"; mkdir -p "$WORK/shim"; : > "$WORK/wtable.md"
+  if [ "$nu" -gt 0 ]; then
+    jq -r 'to_entries[] | .key as $i | .value.unit as $u | .value.files[]
+      | (.rel | split("/") | last) as $b
+      | "u\($i)-\(.j)/\(if .sub then "\($u)/subagents/" else "" end)\($b)\t\(.rel)"' "$WORK/wunits.json" > "$WORK/shimlist"
+    while IFS=$'\t' read -r k rel; do
+      mkdir -p "$WORK/shim/${k%/*}"; ln -s "$PROJECTS/$rel" "$WORK/shim/$k"
+    done < "$WORK/shimlist"
+    BA_ARGS=("$WORK/shim")
+    [ -z "$SINCE" ] || BA_ARGS+=(--since "$SINCE")
+    bash "$BANK" "${BA_ARGS[@]}" > "$WORK/wtable.md" || die "bank-attribution failed in window $day (incomplete totals refused)"
+  fi
+  # shellcheck disable=SC2016  # jq's own $vars
+  jq -n --rawfile table "$WORK/wtable.md" --slurpfile ck "$WORK/ck-in.json" --slurpfile wu "$WORK/wunits.json" \
+    --slurpfile gone "$WORK/wgone.json" --arg day "$day" '
+    $wu[0] as $units
+    | ( [ $table | split("\n")[] | select(startswith("| ") and (startswith("| session |") | not) and (startswith("| **total") | not))
+          | . as $l | (.[2:-2] | split(" | ")[1] | capture("^u(?<i>[0-9]+)-").i | tonumber) as $i | { u: $units[$i].unit, l: $l } ]
+        | group_by(.u) | map({ key: .[0].u, value: map(.l) }) | from_entries ) as $rows
+    | $ck[0]
+    | .units = ((.units | delpaths([ $gone[0][] | [.] ])) + ($units | map({ key: .unit, value: { fp: .fp, rows: ($rows[.unit] // []) } }) | from_entries))
+    | if $day == "none" then . else .last_window = $day end' > "$WORK/ck-new.json" || die "cannot update the checkpoint in window $day"
+
+  # 2. phase-cost: each transcript read from its saved byte offset; its new state is saved as soon as it is read, so a
+  #    kill loses at most the transcript in flight (the rows come from the saved states at commit, never from memory)
+  : > "$WORK/wkeys"
+  while IFS= read -r rel; do
+    f="$PROJECTS/$rel"
+    [ -f "$f" ] || continue
+    # the state file name is a checksum of the whole path plus a readable tail, so a long path cannot exceed a file-name limit
+    ck="$(printf '%s' "$rel" | cksum | tr ' ' _)"; tl="${rel//[^A-Za-z0-9._-]/_}"; key="${ck}_${tl: -60}"
+    echo "$key" >> "$WORK/wkeys"
+    # the byte offset lives inside the state file, so the totals and the offset they cover move together
+    st=null; [ ! -f "$PSTATE/$key.json" ] || st="$(<"$PSTATE/$key.json")"
+    off=0; [ "$st" = null ] || off="$(jq -r '.off // 0' <<<"$st")"
+    size="$(wc -c < "$f" | tr -d ' ')"
+    if [ "$size" -lt "$off" ]; then off=0; st=null; fi   # shrunk: the file was replaced, read it again
+    [ "$size" -gt "$off" ] || continue
+    tail -c +"$((off + 1))" "$f" | head -c "$((size - off))" > "$WORK/chunk"
+    consumed=$((size - off))
+    # a last line with no newline is still being written: leave it for the next run
+    if [ -n "$(tail -c 1 "$WORK/chunk")" ]; then consumed=$((consumed - $(tail -n 1 "$WORK/chunk" | wc -c | tr -d ' '))); fi
+    [ "$consumed" -gt 0 ] || continue
+    stem="$(basename "$f" .jsonl)"; par=""; atype=""
+    if [ "$(basename "$(dirname "$f")")" = subagents ]; then
+      par="$(basename "$(dirname "$(dirname "$f")")")"
+      [ ! -f "${f%.jsonl}.meta.json" ] || atype="$(jq -r '.agentType // ""' "${f%.jsonl}.meta.json" 2>/dev/null || true)"
+    fi
+    meta="$(jq -nc --arg s "$stem" --arg p "$par" --arg a "$atype" '{session: $s, parent: (if $p == "" then null else $p end), agent_type: $a}')"
+    fp=""
+    printf '%s' "$st" > "$WORK/st.json"
+    if [ "$(jq -r '.fp // ""' "$WORK/st.json")" = "" ]; then
+      fp="$(grep -a -m1 '"type":"user"' "$f" | jq -r 'select(.type == "user") | (.message.content | if type == "string" then . else ([.[]? | select(.type == "text") | .text] | first // "") end) as $t
+        | if ($t | startswith("Read ./review-prompt.md")) then "critic" elif ($t | startswith("You are the release manager")) then "release-mgr" else "none" end' 2>/dev/null || true)"
+    fi
+    { head -c "$consumed" "$WORK/chunk" | { grep -a -E "$PHASE_FILTER" || true; } \
+        | jq -nRc --slurpfile st "$WORK/st.json" --argjson prices "$PRICES" --argjson meta "$meta" --arg fp "$fp" --argjson off "$((off + consumed))" "$PHASE_FILE_JQ"; } \
+      > "$WORK/pnew.json" || die "phase-cost pass failed on $f"
+    put "$WORK/pnew.json" "$PSTATE/$key.json"
+    nread=$((nread + 1)); nfile=$((nfile + 1))
+    test_pause "file:$nfile"
+  done < <(jq -r '.[].files[].rel' "$WORK/wunits.json")
+  rm -f "$WORK/chunk"
+
+  # the window's rows: every saved state of its sessions against what was emitted for them, so a key emitted before and
+  # gone now is closed with a zero row, and a resumed window emits exactly what an uninterrupted one would
+  : > "$WORK/pall.jsonl"
+  while IFS= read -r key; do [ ! -f "$PSTATE/$key.json" ] || { cat "$PSTATE/$key.json"; echo; } >> "$WORK/pall.jsonl"; done < "$WORK/wkeys"
+  : > "$WORK/em-parts"
+  while IFS= read -r k; do [ ! -f "$EMDIR/$k.json" ] || cat "$EMDIR/$k.json" >> "$WORK/em-parts"; done < <(jq -r '.[].ukey' "$WORK/wunits.json")
+  jq -sc 'add // {}' "$WORK/em-parts" > "$WORK/em.json" || die "cannot read the emitted maps in window $day"
+  jq -nc --slurpfile em "$WORK/em.json" "$PHASE_EMIT_JQ" "$WORK/pall.jsonl" > "$WORK/phase-out.json" \
+    || die "cannot build the phase-cost rows in window $day"
+  jq -c '.rows[]' "$WORK/phase-out.json" > "$WORK/wrows.jsonl"
+  # the emitted map, split back into one file per session (a subagent row belongs to its parent's session)
+  rm -rf "$WORK/wem"; mkdir "$WORK/wem"
+  # shellcheck disable=SC2016  # jq's own $vars
+  jq -r --slurpfile wu "$WORK/wunits.json" '($wu[0] | map({ key: .unit, value: .ukey }) | from_entries) as $uk
+    | .emitted | to_entries | group_by(.value | fromjson | (.parent // .session))[]
+    | (.[0].value | fromjson | (.parent // .session)) as $u
+    | if $uk[$u] == null then error("an emitted row outside the window: \($u)") else "\($uk[$u])\t\(from_entries | tojson)" end' \
+    "$WORK/phase-out.json" > "$WORK/wem.tsv" || die "cannot split the emitted map in window $day"
+  while IFS=$'\t' read -r k j; do printf '%s\n' "$j" > "$WORK/wem/$k.json"; done < "$WORK/wem.tsv"
+
+  # 3. the ticket records, once every window is in: a record changed since its last stored version is appended
+  : > "$WORK/tappend.jsonl"
+  if [ "$last" = 1 ]; then
+    build_tickets "$WORK/ck-new.json"
+    if [ "$PRINT" = 1 ]; then
+      cp "$WORK/records.jsonl" "$WORK/tappend.jsonl"
+    else
+      if [ -f "$FILE" ]; then
+        jq -n 'reduce (inputs | select(.ticket != null and .digest != null)) as $r ({}; .[$r.ticket] = $r.digest)' "$FILE" > "$WORK/last.json" \
+          || die "cannot read the stored digests in $FILE"
+      else echo '{}' > "$WORK/last.json"; fi
+      jq -c --slurpfile last "$WORK/last.json" 'select($last[0][.ticket] != .digest)' "$WORK/records.jsonl" > "$WORK/tappend.jsonl"
+      j="$(wc -l < "$WORK/tappend.jsonl" | tr -d ' ')"
+      added=$((added + j)); kept=$((kept + $(wc -l < "$WORK/records.jsonl" | tr -d ' ') - j))
+    fi
+  fi
+  cat "$WORK/tappend.jsonl" "$WORK/wrows.jsonl" > "$WORK/append.jsonl"
+  commit "$WORK/append.jsonl" "$WORK/wem" "$WORK/ck-new.json"
+  cp "$WORK/ck-new.json" "$WORK/ck-in.json"
+  nrows="$(wc -l < "$WORK/wrows.jsonl" | tr -d ' ')"; phase_added=$((phase_added + nrows))
+  [ "$day" = none ] || echo "usage-compute: window $day done: $nu sessions, $nread transcripts read, $nrows phase rows" >&2
+}
+
+W="$(wc -l < "$WORK/windows.jsonl" | tr -d ' ')"
+echo "usage-compute: $W window(s) to build" >&2
+k=0; stop=""
+while IFS= read -r win <&3; do
+  if [ "$k" -gt 0 ]; then
+    if [ "$MAXWIN" -gt 0 ] && [ "$k" -ge "$MAXWIN" ]; then stop="window limit"; break; fi
+    if [ "$BUDGET" -gt 0 ] && [ "$SECONDS" -ge "$BUDGET" ]; then stop="budget of ${BUDGET}s"; break; fi
+  fi
+  k=$((k + 1))
+  build_window "$win" "$([ "$k" -eq "$W" ] && echo 1 || echo 0)"
+  test_pause "window:$k"
+done 3< "$WORK/windows.jsonl"
+# nothing changed in the transcripts: the ticket records still follow the CR ledger
+[ "$W" != 0 ] || build_window '{"day":"none","units":[],"gone":[]}' 1
+
+if [ "$PRINT" = 1 ]; then
+  cat "$WORK/print.jsonl"
+  exit 0
+fi
+[ -z "$stop" ] || echo "usage-compute: stopped by the $stop after $k window(s), $((W - k)) window(s) remain; rerun to continue" >&2
 echo "usage-compute: appended $added, unchanged $kept, phase-cost rows $phase_added ($FILE)"
