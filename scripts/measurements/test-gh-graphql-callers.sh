@@ -102,7 +102,10 @@ if [ "$rc2" = 2 ] && [ ! -s "$RLOG2" ]; then ok "run refuses under the floor and
 else bad "floor guard" "rc=$rc2 out=$(cat "$TMP/run2.out")"; fi
 
 # --- argument and setup edges -----------------------------------------------
-timeout 5 bash "$SCRIPT" report --log >/dev/null 2>&1
+# shellcheck source=scripts/lib/timeout-bin.sh
+# shellcheck disable=SC1091
+. "$ROOT/scripts/lib/timeout-bin.sh"
+${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 5} bash "$SCRIPT" report --log >/dev/null 2>&1
 rc_missing=$?
 if [ "$rc_missing" = 64 ]; then ok "an option with no value is a usage error, not a hang"
 else bad "missing option value" "rc=$rc_missing (124 = hang)"; fi
