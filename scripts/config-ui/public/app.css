@@ -693,13 +693,13 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .tr .aside>*{flex:none;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tr .aside .rd{flex:1 1 8rem;width:8rem;text-align:right;color:var(--muted)}
 .cp{display:grid;gap:var(--s1);border:1px solid var(--rule);border-top:3px solid var(--road);border-radius:0 0 10px 10px;background:var(--surface);padding:var(--s2) var(--s4)}
-.cph{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2) var(--s5)}
+.cph{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2) var(--s3)}
 .cph .big{font:700 var(--fs-md) var(--font-ui);color:var(--ink)}
 .cph .big small{display:block;font:400 var(--fs-xs) var(--font-mono);color:var(--muted)}
 .cph .tick{flex:1 1 280px;min-width:0;font-size:var(--fs-xs);color:var(--ink)}
 .cph .legend{color:var(--muted);margin-top:2px}
 .cp .spark{display:flex;align-items:center;gap:var(--s2);font:var(--fs-xs) var(--font-mono);color:var(--muted)}
-.cp .spark svg{width:110px;height:26px}
+.cp .spark svg{width:56px;height:26px}
 .cp .spark polyline,.cp .burn .ol{fill:none;stroke:var(--road);stroke-width:2}
 .cp .gh{font:600 var(--fs-xs) var(--font-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .cp .cc{display:grid;gap:var(--s1);border:1px solid var(--rule);border-left:3px solid var(--rule-strong);border-radius:8px;background:var(--bg);padding:var(--s2) var(--s3);min-width:0}

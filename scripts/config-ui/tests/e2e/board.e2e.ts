@@ -853,7 +853,7 @@ for (const [width, height] of [[1280, 900], [390, 844]]) {
     await shot(page, `board-chains-five-fixture-dark-${width}`);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     if (width === 1280) {
-      expect(Math.abs(top - MOCKUP_FIRST_CHAIN_Y)).toBeLessThanOrEqual(40);
+      expect(Math.abs(top - MOCKUP_FIRST_CHAIN_Y), `first chain at ${top}px`).toBeLessThanOrEqual(40);
       expect(bottom).toBeLessThanOrEqual(FIXTURE_TAB_H_MAX);
       expect(Math.max(...ys) - Math.min(...ys)).toBeLessThanOrEqual(8);
     }
