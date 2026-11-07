@@ -2056,7 +2056,6 @@ _bwimc_mode_for_operand_set() {
     _BWIMC_MODE="$mode"
 }
 
-# Must stay the same test check-write-hold.sh uses to decide it acts on a worker.
 # ponytail: the denial rides this hook's text scan, whose shapes are not
 # finite; ceiling: a write shape the scan misses still creates the marker;
 # upgrade path: the doctor WARN for a marker repo with a live worker row.

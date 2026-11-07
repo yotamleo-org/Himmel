@@ -27,9 +27,6 @@
 # shellcheck source=lib-test-write-fence.sh
 . "$(dirname "$0")/lib-test-write-fence.sh"
 
-# Rows run as an operator or interactive session unless they set the worker
-# variables themselves (rows 10f to 10l): a worker running this suite must not
-# turn rows 9 to 10e into worker rows.
 _bwimc_worker_env() {
     export HIMMEL_CONSOLE_LEG=1 HIMMEL_HOLD_KEY=TEST-1 HIMMEL_HOLD_DOC="$FIX/home/worker-doc.md"
 }
@@ -102,7 +99,6 @@ check_both "10d echo > primary/.single-writerx (near-miss basename) still denies
 check_both "10e touch \$FIX/primary/.single-writer from cwd=wt (destination-based, not cwd-based) allows" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"touch $FIX/primary/.single-writer\",\"cwd\":\"$FIX/wt\"}}"
 
-# 10f to 10l: a worker session never takes the marker exemption.
 _bwimc_worker_env
 check_both_reason "10f worker: touch primary/.single-writer denies, says ask the chief" \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"touch $FIX/primary/.single-writer\",\"cwd\":\"$FIX/wt\"}}" \
