@@ -974,7 +974,6 @@ if (cmd === 'submit') {
   const ids = readdirSync(o.prompts).filter((f) => f.endsWith('.txt')).map((f) => f.slice(0, -4));
   log(`submit account=${o.account} prompts=${ids.length} model=${o.model} effort=${o.effort}`);
   if ((process.env.BATCH_STUB_EXHAUSTED || '').split(',').includes(o.account)) { console.error('semantic-batch: credit exhausted (HTTP 400)'); process.exit(5); }
-  // the client's rejected-key answer: exit 6, with the real 401 body of the 2026-11-07 publish log (403 on request)
   if ((process.env.BATCH_STUB_REJECTED || '').split(',').includes(o.account)) {
     const st = process.env.BATCH_STUB_REJECT_STATUS || '401';
     console.error(`semantic-batch: API key rejected (HTTP ${st}): {"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"},"request_id":"req_011CgoVv2iSXcDgSjk3R5rLm"}`);

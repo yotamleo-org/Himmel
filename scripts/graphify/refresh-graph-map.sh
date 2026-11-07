@@ -243,11 +243,6 @@ _endpoint_host_allowed() {
   return 1
 }
 
-# claude-api is the default backend and the one that never draws the subscription. graphify
-# runs its claude-cli path with a `claude` shim first on PATH that sends each chunk through
-# scripts/api-lane/claude-api.sh, as semantic-update.sh does. An extracting run without the
-# lane env refuses (rc 2) before any work. Never a fallback to claude-cli; that runs only
-# when passed explicitly. auto is accepted for the himmel checkout only (decision 525).
 GRAPHIFY_BACKEND="$BACKEND"
 if [ "$BACKEND" = "claude-api" ] && [ "$DO_EXTRACT" -eq 1 ]; then
   # shellcheck source=../lib/llm-backend.sh
@@ -262,7 +257,6 @@ if [ "$BACKEND" = "claude-api" ] && [ "$DO_EXTRACT" -eq 1 ]; then
   fi
   GRAPHIFY_MAP_LANE_BIN="${GRAPHIFY_MAP_LANE_BIN:-$REPO_ROOT/scripts/api-lane/claude-api.sh}"
   [ -f "$GRAPHIFY_MAP_LANE_BIN" ] || { echo "ERR refresh-graph-map: --backend claude-api needs $GRAPHIFY_MAP_LANE_BIN -- refusing" >&2; exit 2; }
-  # the shim calls the lane from a scratch directory, so the corpus repo is judged here, once, and handed to the lane
   if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
     _auto_repo="$(git -C "$CORPUS_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _auto_repo=""
     _own_repo="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _own_repo=""
@@ -2377,20 +2371,16 @@ for p in sys.stdin.buffer.read().split(b"\0"):
     fi
   fi
 
-  # claude-api: a `claude` shim first on PATH turns graphify's claude-cli calls into API-lane calls. It drops the
-  # flags the lane's allowlist refuses, adds the ones it requires, runs tool-free from its own directory (outside
-  # the corpus copy, so graphify never reads it), and removes that directory from PATH so the lane finds the real
-  # claude. The lane exits 6 when an account's credit or key is rejected and no fallback replays the chunk; that
-  # account answers every chunk the same way, so dispatch stops after one rejection on a pinned account, or one per
-  # account on auto (the lane marks the account and its own auto pick moves on).
   # ponytail: a slimmer copy of semantic-update.sh's sync shim (no addendum, no run-spend file; the lane's per-call
   # budget bounds each chunk), upgrade path: one shared shim file both scripts install.
   if [ "$BACKEND" = "claude-api" ]; then
-    # prim-ok: a sibling of the scratch workdir, removed by _scratch_cleanup; tmpdir's prefix would sit under the corpus copy.
-    _LANE_BIN_DIR="$(mktemp -d "$SCRATCH_PARENT/graphify-lane-$NAME-XXXXXX")" || { echo "refresh-graph-map: cannot create the API-lane shim dir under $SCRATCH_PARENT" >&2; exit 1; }
+    # shellcheck source=../lib/prim.sh
+    . "$REPO_ROOT/scripts/lib/prim.sh"
+    _LANE_BIN_DIR="$(tmpdir)" || { echo "refresh-graph-map: cannot create the API-lane shim dir" >&2; exit 1; }
+    GRAPHIFY_MAP_SHIM_ACCOUNTS="$(node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" accounts 2>/dev/null | grep -o '"configured":true' | wc -l | tr -d ' ')"
+    [ "${GRAPHIFY_MAP_SHIM_ACCOUNTS:-0}" -gt 0 ] 2>/dev/null || GRAPHIFY_MAP_SHIM_ACCOUNTS=3
     cat > "$_LANE_BIN_DIR/claude" <<'SHIM'
 #!/usr/bin/env bash
-# graphify claude-cli -> API lane shim (written by refresh-graph-map.sh)
 case "${1:-}" in
   --help|-h) echo "claude (himmel API-lane shim): -p [--model M] [--output-format json]; the prompt is read from stdin"; exit 0 ;;
 esac
@@ -2409,13 +2399,12 @@ IFS=: read -ra parts <<< "$PATH"
 for d in "${parts[@]}"; do [ "$d" = "$here" ] || newpath="${newpath:+$newpath:}$d"; done
 export PATH="$newpath"
 cd "$here" || exit 2
-limit=1; [ "${HIMMEL_API_ACCOUNT:-}" != auto ] || limit=3
+limit=1; [ "${HIMMEL_API_ACCOUNT:-}" != auto ] || limit="$GRAPHIFY_MAP_SHIM_ACCOUNTS"
 if [ "$(cat "$here/rejected" 2>/dev/null | wc -l)" -ge "$limit" ]; then
   echo "claude-api shim: the lane has rejected the account's credit or key $limit time(s) this run; not dispatching this chunk" >&2
   exit 6
 fi
 export HIMMEL_API_TOOLS=""
-# a failed chunk is never replayed on the subscription: that runs only with --backend claude-cli
 export HIMMEL_API_FALLBACK=off
 out="$here/lane-out.$$"
 HIMMEL_API_KIND=graphify "$GRAPHIFY_MAP_LANE_BIN" -p --model "${model:-sonnet}" --permission-mode default \
@@ -2427,7 +2416,7 @@ cat "$out"; rm -f "$out"
 exit "$rc"
 SHIM
     chmod +x "$_LANE_BIN_DIR/claude"
-    export GRAPHIFY_MAP_LANE_BIN GRAPHIFY_MAP_LANE_BUDGET="${GRAPHIFY_API_CALL_BUDGET_USD:-1.00}" \
+    export GRAPHIFY_MAP_LANE_BIN GRAPHIFY_MAP_SHIM_ACCOUNTS GRAPHIFY_MAP_LANE_BUDGET="${GRAPHIFY_API_CALL_BUDGET_USD:-1.00}" \
       GRAPHIFY_MAP_LANE_EFFORT="${CLAUDE_CODE_EFFORT_LEVEL:-high}"
     export PATH="$_LANE_BIN_DIR:$PATH"
   fi

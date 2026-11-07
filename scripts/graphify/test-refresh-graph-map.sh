@@ -236,9 +236,6 @@ bash "$SCRIPT" --name luna --corpus-root "$CORPUS" --maps-dir "$MAPS" \
 bash "$SCRIPT" --name luna >/dev/null 2>&1
 [ "$?" -eq 1 ] && pass "T4 missing flags exits 1" || fail "T4 usage exit code"
 
-# --- T4b: no --backend -> the default is claude-api. Without the lane env an
-# extracting run refuses before any work; graphify is never called and
-# claude-cli never runs unless passed explicitly.
 T4B_BIN="$WS/t4b-bin"; mkdir -p "$T4B_BIN"
 printf '#!/usr/bin/env bash\necho called >> "%s/t4b-calls"\nexit 0\n' "$WS" > "$T4B_BIN/graphify"; chmod +x "$T4B_BIN/graphify"
 rm -f "$WS/t4b-calls"
@@ -247,10 +244,6 @@ out=$( env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT GRAPHIFY_MAP_BIN="$T4B_BIN/g
 [ "$rc" -eq 2 ] && [[ "$out" == *"ERR refresh-graph-map: --backend claude-api needs HIMMEL_API_LANE=on"* ]] && [ ! -e "$WS/t4b-calls" ] \
   && pass "T4b default backend with the lane off refuses rc 2, graphify never called" || fail "T4b default backend with the lane off (rc=$rc): $out"
 
-# --- T4c: lane on, --backend claude-api extracts through the API lane: graphify runs its claude-cli
-# path, and the `claude` it shells is the shim, which hands the prompt on stdin to the lane
-# (GRAPHIFY_MAP_LANE_BIN stands in for scripts/api-lane/claude-api.sh) tool-free, kind graphify,
-# with the lane's own flags. The local subscription `claude` is never called.
 T4C="$WS/t4c"; mkdir -p "$T4C/bin" "$T4C/sub"
 cat > "$T4C/bin/graphify" <<STUB
 #!/usr/bin/env bash
@@ -270,6 +263,7 @@ cat > "$T4C/lane" <<STUB
 #!/usr/bin/env bash
 printf '%s\n' "\$*" > "$T4C/lane-args"
 printf 'kind=%s tools=%s tools_set=%s fallback=%s\n' "\$HIMMEL_API_KIND" "\$HIMMEL_API_TOOLS" "\${HIMMEL_API_TOOLS+yes}" "\${HIMMEL_API_FALLBACK:-on}" > "$T4C/lane-env"
+pwd > "$T4C/lane-cwd"
 cat > "$T4C/lane-stdin"
 printf '{"type":"result","is_error":false,"result":"LANE-ANSWER"}\n'
 STUB
@@ -286,9 +280,9 @@ out=$( HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A GRAPHIFY_MAP_LANE_BIN="$T4C/lane"
   && grep -q LANE-ANSWER "$T4C/graphify-got" 2>/dev/null && [ ! -e "$T4C/sub/calls" ] \
   && pass "T4c the chunk went through the lane (flags, kind graphify, tool-free, no subscription fallback, prompt on stdin), the subscription claude never ran" \
   || fail "T4c lane call: args '$(cat "$T4C/lane-args" 2>&1)' env '$(cat "$T4C/lane-env" 2>&1)' stdin '$(cat "$T4C/lane-stdin" 2>&1)' got '$(cat "$T4C/graphify-got" 2>&1)' sub '$(cat "$T4C/sub/calls" 2>&1)'"
-ls -d "$T4C/scratch"/graphify-lane-* >/dev/null 2>&1 && fail "T4c the shim dir was left behind" || pass "T4c the shim dir is removed after the run"
+t4c_shim="$(cat "$T4C/lane-cwd" 2>/dev/null)"
+[ -n "$t4c_shim" ] && [ ! -e "$t4c_shim" ] && pass "T4c the shim dir is removed after the run" || fail "T4c the shim dir was left behind: '$t4c_shim'"
 
-# --- T4d: auto routing on a corpus outside the himmel checkout refuses before graphify runs ---
 rm -f "$WS/t4b-calls"
 out=$( HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPHIFY_MAP_LANE_BIN="$T4C/lane" GRAPHIFY_MAP_BIN="$T4B_BIN/graphify" bash "$SCRIPT" --name luna \
   --corpus-root "$CORPUS" --backend claude-api --maps-dir "$MAPS" --title T --slug graphify-luna-map 2>&1 ); rc=$?

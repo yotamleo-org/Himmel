@@ -352,9 +352,7 @@ HIMMEL_TAG="himmel"
 # the operator's own Claude Code subscription (no API key) and needs no
 # egress-matrix ratification the way an external API backend would.
 # Already-armed tasks keep their baked-in --backend until re-armed with this
-# default. The himmel map is the exception: it renders on claude-api with
-# HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto on an opted-in station, else a skip
-# line (see cron_payload); arm --rewrite-armed re-renders an armed himmel runner.
+# default.
 BACKEND="claude-cli"
 
 # Resolved by validate_arm_inputs (both arm paths call it): `graphify` itself,
@@ -1039,9 +1037,6 @@ cron_existing() {
 cron_payload() {
     local q_bash="$1" q_script="$2" name="$3" q_corpus="$4" q_maps="$5" q_title="$6" slug="$7" tag="$8" q_out_root="${9:-}"
     local backend="$BACKEND" lane=""
-    # The himmel map extracts on the API lane, auto across the accounts, on a station that opted in
-    # (the publish row's opt-in); without it the fire logs the skip line and calls nothing. The luna
-    # map keeps BACKEND and never gets auto (decision 525).
     if [ "$name" = himmel ]; then
         if ! semantic_api_opted_in; then
             printf 'echo "[%s]"' "$SEMANTIC_API_SKIP_TEXT"

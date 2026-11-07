@@ -38,7 +38,6 @@ before(async () => {
         if (stub.create === 'credit') return reply(400, { type: 'error', error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API.' } });
         if (stub.create === 'server-billing') return reply(503, { type: 'error', error: { type: 'api_error', message: 'billing service unavailable' } });
         if (stub.create === 'rate-billing') return reply(429, { type: 'error', error: { type: 'rate_limit_error', message: 'rate limited; see your billing page for limits' } });
-        // the 401 body is the real answer for a dead key, copied from the HIMMEL-GraphPublish-Himmel log of 2026-11-07
         if (stub.create === 'key-401') return reply(401, '{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"},"request_id":"req_011CgoVv2iSXcDgSjk3R5rLm"}');
         if (stub.create === 'key-403') return reply(403, { type: 'error', error: { type: 'permission_error', message: 'Your API key does not have permission to use the specified resource.' } });
         if (stub.create === 'server-500') return reply(500, { type: 'error', error: { type: 'api_error', message: 'Internal server error' } });

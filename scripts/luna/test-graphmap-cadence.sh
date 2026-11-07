@@ -243,8 +243,6 @@ PATH_NOCLAUDE="$GRAPHIFY_BIN_DIR_PATH:$PATH_NOCLAUDE"
 export HOME="$TMP_ROOT/home"
 export HIMMEL_OBSERVABILITY_CONFIG="$TMP_ROOT/observability.json"
 mkdir -p "$HOME"
-# This HOME is the himmel station: it opted in to the API lane (graphify.semantic_api_ok), which the
-# himmel map row needs to render its extraction; the adopter rows at the end use a HOME without it.
 mkdir -p "$HOME/.himmel"
 printf '{"graphify":{"semantic_api_ok":true}}\n' > "$HOME/.himmel/config.json"
 # Fired probe runners call cadence-alert + the flow ledger; keep
@@ -1752,7 +1750,6 @@ for _r in luna himmel ast-luna ast-himmel publish-himmel; do
 done
 assert_contains "rewrite-armed himmel runner carries --merge-into-live" "--merge-into-live" "$(cat "$RWDIR/graphmap-himmel.sh")"
 assert_not_contains "rewrite-armed luna runner does not" "--merge-into-live" "$(cat "$RWDIR/graphmap-luna.sh")"
-# re-arm story: an armed himmel map runner is re-rendered onto the API lane, auto across the accounts
 rw_himmel=$(cat "$RWDIR/graphmap-himmel.sh"); rw_himmel_plain=${rw_himmel//\\/}
 assert_contains "rewrite-armed himmel runner extracts on the API lane on auto" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto " "$rw_himmel"
 assert_contains "rewrite-armed himmel runner uses the claude-api backend" "--backend claude-api --corpus-tag himmel" "$rw_himmel"
