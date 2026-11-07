@@ -2624,11 +2624,17 @@ CONTENT that is itself a script writing the lift, a script FILE that writes
 it without being handed its path, variable indirection that never spells the
 name, a bind mount, and interpreter tricks that never spell it. Judge J1855b
 bounds them where the lift is READ (HIMMEL-4423): `usage-preflight.sh`
-honours a lift only when it is account-bound, owner- and mode-checked,
-bounded by the usage cache's seven_day `resets_at`, and well-formed; anything
-else is no lift. A valid lift skips only the seven_day ceiling — five_hour
-still binds and a full seven_day still refuses — so a forged lift buys at
-most the rest of the current 7-day window. Remaining hook gaps
+honours a lift only when it is owner- and mode-checked, well-formed, and
+read against a usage cache stamped with the login's account and a future
+seven_day `resets_at`; anything else is no lift. A one-window lift is also
+bound to the account it was set on and capped by that `resets_at`, so a
+forged one buys at most the rest of the current 7-day window. A standing
+lift ignores its `until` and follows an account switch
+when its `set_by` equals the current user (`set_by` is provenance, not a
+bound: the same uid can write it). So a forged standing lift spends to
+100 % on every account the station logs into, not one. The ceiling still
+holds: five_hour binds under an explicit `CADENCE_USAGE_MAX_PCT`, and either
+window at 100 % refuses, so no lift spends extra_usage. Remaining hook gaps
 (ponytail): an edited or planted copy of `scripts/lib/usage-lift.sh` inside a
 worktree is trusted as the repo's script; and a pure-glob source under a
 computed destination (`cp --parents * "$d"`).

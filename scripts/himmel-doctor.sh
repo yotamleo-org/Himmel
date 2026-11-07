@@ -2924,10 +2924,17 @@ check_c34() {
     # shellcheck disable=SC1090
     if [ -r "$lift_lib" ] && . "$lift_lib"; then
         if usage_lift_valid; then
-            emit OK C34-cost-guards "lift set and VALID (standing=${USAGE_LIFT_STANDING:-false})"
+            local followed=""
+            [ "${USAGE_LIFT_FOLLOWED:-false}" = true ] && followed=", followed"
+            emit OK C34-cost-guards "lift set and VALID (standing=${USAGE_LIFT_STANDING:-false}${followed})"
         elif [ "${USAGE_LIFT_REASON:-unknown}" != missing ]; then
-            emit WARN C34-cost-guards "lift set but INVALID: ${USAGE_LIFT_REASON:-unknown}" \
-                "operator: inspect usage-lift.sh show; clear or re-set for the current account"
+            local remedy="operator: inspect usage-lift.sh show; clear or re-set"
+            case "${USAGE_LIFT_REASON:-unknown}" in
+                cache-account) remedy="the usage cache is still the old login's: force a refresh (running-a-chief.md, account switch step 3)" ;;
+                account) remedy="a one-window lift does not follow an account switch (or the login cannot be read): the operator re-sets it, or clear it" ;;
+                set_by) remedy="the standing lift was not set by this user (or was set with USER unset): the operator re-runs set --standing once" ;;
+            esac
+            emit WARN C34-cost-guards "lift set but INVALID: ${USAGE_LIFT_REASON:-unknown}" "$remedy"
         fi
     fi
 
