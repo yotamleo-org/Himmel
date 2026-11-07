@@ -73,8 +73,10 @@ confirm. The vault path must be a folder that exists. The forge is shown as dete
 not repeated; Review by a second model is on the Review tile.
 
 The Check this install strip (shown while no tile is open) runs the doctor (`scripts/himmel-doctor.sh --json`, its read-only
-checks; never `--fix`) and shows a fail, warn and ok count with one row per warning or failure, its remedy, and an
-Open in Health link to that check's row. It takes a minute or two and stops at 200 seconds. The run publishes nothing
+checks; never `--fix`) and shows the setup checks only (the `SETUP_CHECKS` list in `scripts/config-ui/public/setup.js`:
+the install's prerequisites, wiring, folders and settings): a fail and warn count for that subset, one row per setup
+warning or failure, its remedy, and an Open in Health link to that check's row. The Health page lists every check,
+so a worktree or search-index warning shows there and not here. It takes a minute or two and stops at 200 seconds. The run publishes nothing
 (no statusline counts), and any secret value in a row is redacted before the page sees it. The result lives in the
 page only, so press run again any time to re-check. It is `POST /api/setup/verify`, handled by `verifyDoctor` in `scripts/config-ui/setup.ts`.
 

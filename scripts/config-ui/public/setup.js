@@ -144,7 +144,7 @@ function verifyStep(v) {
   const summary = `<div class="summary"><span class="st fail">${v.fail} fail</span> <span class="st warn">${v.warn} warn</span> <span class="st ok">${v.ok} ok</span>${v.info ? ` <span class="st info">${v.info} info</span>` : ""}</div>`;
   const rows = v.findings.map((f) => `<div class="srow"><span class="id">${esc(f.id)}</span>
       <span class="det"><span class="st ${f.sev === "FAIL" ? "fail" : "warn"}">${esc(f.sev.toLowerCase())}</span> ${esc(f.msg)}${f.remedy ? ` · fix: ${esc(f.remedy)}` : ""}</span>
-      <button class="btn" type="button" data-act="open-config" data-id="doctor:${esc(f.id)}">Open in Settings</button></div>`).join("");
+      <button class="btn" type="button" data-act="open-config" data-id="doctor:${esc(f.id)}">Open in Health</button></div>`).join("");
   return `${head}${summary}${rows || `<p class="sub" role="status">Nothing to fix.</p>`}${run("run again")}`;
 }
 
@@ -190,17 +190,48 @@ function tileChip(id, { state, setup }) {
   return same ? `<span class="m ok">matches our pick</span>` : "";
 }
 
+// Which doctor checks count as setup: what this install needs to be set up correctly (its prerequisites, wiring, folders
+// and settings). Every other check, such as a stale worktree or the search index, is a health check and is listed only on
+// the Health page. Keyed by the check number: a check may emit several rows (C74-himmel-conf, C74-env-keys, ...).
+export const SETUP_CHECKS = [
+  { id: "C1", reason: "The safety hooks are wired into Claude Code for this install." },
+  { id: "C4", reason: "The source code host (GitHub or Bitbucket) is detected; Configure shows it under Project scope." },
+  { id: "C5", reason: "The handover folder exists; Configure sets it under Project scope." },
+  { id: "C6", reason: "The hooks and MCP servers himmel needs are registered." },
+  { id: "C15", reason: "The plugins this install needs are installed; Configure sets the plugin set under Project scope." },
+  { id: "C16", reason: "The install passes himmelctl's own status check." },
+  { id: "C20", reason: "Node matches the version this checkout pins; a mismatch breaks hooks and the Jira tool." },
+  { id: "C39", reason: "On macOS, the timeout command that hooks rely on is installed." },
+  { id: "C46", reason: "A plugin the settings turn on is actually installed." },
+  { id: "C53", reason: "The test VM mode is valid; Configure sets it under Project scope." },
+  { id: "C63", reason: "The Claude command line tool is installed, which every lane needs." },
+  { id: "C65", reason: "The git hooks and branch protection that gate commits are armed." },
+  { id: "C73", reason: "The Bun runtime the UI and tools run on is installed." },
+  { id: "C74", reason: "himmel.conf and the environment keys are well formed; Configure writes them." },
+  { id: "C75", reason: "The keyring and the secrets it holds are readable; Configure sets them under Secrets." },
+];
+const SETUP_IDS = new Set(SETUP_CHECKS.map((c) => c.id));
+// A doctor row id is the check number, then an optional "-name": C74-env-keys is C74, and C44-skill-index is not C4.
+export const isSetupCheck = (id) => {
+  const m = /^(C\d+)(?:-|$)/.exec(String(id));
+  return !!m && SETUP_IDS.has(m[1]);
+};
+
+// The strip shows the setup findings only. The verify answer totals every check, so its counts are not used here: the
+// fail and warn counts come from the setup findings, and there is no ok count for the subset.
 function checkStrip(v) {
   const run = (label) => `<button class="btn primary" type="button" data-act="setup-verify">${label}</button>`;
-  const head = `<b>Check this install</b><span class="sub">Read-only: nothing is fixed or changed, and no secret value is shown.</span>`;
+  const head = `<b>Check this install</b><span class="sub">Read-only: nothing is fixed or changed, and no secret value is shown. This lists the setup checks; <a href="#/health">the Health page</a> lists every check.</span>`;
   if (!v) return `<div class="chk">${head}<span class="det">not run yet</span>${run("run the checks")}</div>`;
   if (v.state === "running") return `<div class="chk">${head}<span class="det" role="status">running… this can take a minute or two</span></div>`;
   if (v.state !== "done") return `<div class="chk">${head}<span class="nodata" role="alert">${esc(v.error || "the checks did not finish")}</span>${run("run again")}</div>`;
-  const rows = v.findings.map((f) => `<div class="srow"><span class="id">${esc(f.id)}</span>
+  const mine = v.findings.filter((f) => isSetupCheck(f.id));
+  const fail = mine.filter((f) => f.sev === "FAIL").length, warn = mine.length - fail;
+  const rows = mine.map((f) => `<div class="srow"><span class="id">${esc(f.id)}</span>
       <span class="det"><span class="st ${f.sev === "FAIL" ? "fail" : "warn"}">${esc(f.sev.toLowerCase())}</span> ${esc(f.msg)}${f.remedy ? ` · fix: ${esc(f.remedy)}` : ""}</span>
       <button class="btn" type="button" data-act="open-config" data-id="doctor:${esc(f.id)}">Open in Health</button></div>`).join("");
-  return `<div class="chk">${head}<span class="summary"><span class="st fail">${v.fail} fail</span> <span class="st warn">${v.warn} warn</span> <span class="st ok">${v.ok} ok</span>${v.info ? ` <span class="st info">${v.info} info</span>` : ""}</span>${run("run again")}</div>
-    ${rows || `<p class="sub" role="status">Nothing to fix.</p>`}`;
+  return `<div class="chk">${head}<span class="summary"><span class="st fail">${fail} fail</span> <span class="st warn">${warn} warn</span> <span class="sub">in the setup checks</span></span>${run("run again")}</div>
+    ${rows || `<p class="sub" role="status">Nothing to fix in the setup checks.</p>`}`;
 }
 
 const loading = (what) => `<p class="sub" role="status">loading ${what}…</p>`;
