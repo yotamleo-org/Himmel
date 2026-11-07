@@ -811,6 +811,24 @@ function fiveChains() {
     },
     burn: { total: 11, undated: 0, points: [{ day: "2026-11-01", open: 10, merged: 1 }, { day: "2026-11-02", open: 9, merged: 1 }] } };
 }
+for (const width of [880, 960, 1280]) {
+  test(`${width} px: the tab row keeps the refresh button and both links whole`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await open(page);
+    await go(page, "#/board?tab=chains");
+    const aside = page.locator(".tr .aside");
+    await expect(aside).toBeVisible();
+    const a = await aside.boundingBox();
+    const b = await aside.locator(".btn").boundingBox();
+    expect(b!.x).toBeGreaterThanOrEqual(a!.x - 0.5);
+    expect(b!.x + b!.width).toBeLessThanOrEqual(a!.x + a!.width + 0.5);
+    for (const link of await aside.locator("a").all()) {
+      expect(await link.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  });
+}
 for (const [width, height] of [[1280, 900], [390, 844]]) {
   test(`${width} px: five open chains stay compact, each open chain one rail, and the Ops chain's steps and Why links stay on one line`, async ({ page }) => {
     await page.route("**/api/board", async (route) => {
