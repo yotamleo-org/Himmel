@@ -73,6 +73,6 @@ carries `scripts/cr/LICENSE-floor-reviewer` and `scripts/cr/NOTICE-floor-reviewe
 
 ## Remaining deferred step
 
-**GitHub visibility flip (private → public) is NOT done here.** It is
-gated on an explicit operator decision and remains deferred. This change is license-metadata housekeeping only; choosing a
+**GitHub visibility flip (private → public) is NOT done here.** It waits
+for the repository owner's explicit go-ahead and remains deferred. This change is license-metadata housekeeping only; choosing a
 license does not make the repository public.

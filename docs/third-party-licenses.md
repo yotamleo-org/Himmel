@@ -206,7 +206,7 @@ SOFTWARE.
 
 ## Vendored skill: `technical-writing` (MIT, Lauren Tan)
 
-Added 2026-10-27 (HIMMEL-7622, decision 345). Lives at
+Added 2026-10-27. Lives at
 `.claude/skills/technical-writing/SKILL.md`, sourced from `cursor/plugins`
 (pstack) at pinned commit `99743e9c151c8537cbbf1f98bb38f34ef3368453`, path
 `pstack/skills/technical-writing/SKILL.md`. A single vendored markdown file:

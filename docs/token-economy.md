@@ -283,13 +283,12 @@ once.
 structurally enforced kept its one-line directive and gained the enforcer's
 name (`block-edit-on-main`, `check-push-target`, `orchestrator-inline-guard`, …);
 only the rationale and recovery detail moved. The session-critical paragraph
-(hook bypass = launching-shell env, `.single-writer`), the RETASK rule, the
+(hook bypass = launching-shell env, `.single-writer`), the revision-channel rule, the
 Jira absolute-path invocation, the qmd `--collections` trap and the egress
 clause stayed inline verbatim, because a directive behind a lookup is a dead
 directive.
 
-**The `## graphify` section stays as verbatim upstream text (operator ruling
-2026-08-23).** `graphify install --platform claude` writes a stock `## graphify`
+**The `## graphify` section stays as verbatim upstream text.** `graphify install --platform claude` writes a stock `## graphify`
 section into the project `CLAUDE.md` on every run (`graphifyy`
 `install.py: claude_install` → `_replace_or_append_section`: replace the
 section in place if a line is exactly `## graphify`, else append at EOF), and

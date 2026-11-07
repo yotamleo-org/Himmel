@@ -102,7 +102,7 @@ names who does what and why each hand-off exists.
    each change traces to a reason.
 2. **Dispatch.** The chief writes a brief and launches a worker. The dispatch
    carries a fresh worktree on a `type/slug` branch, a trimmed tool set, an
-   explicit model, a fresh RETASK nonce for each dispatch, and a queue lock on
+   explicit model, a fresh revision token for each dispatch, and a queue lock on
    the worker's own handover document. Before launching, the chief checks the
    subscription usage budget and counts live workers against the fleet cap; over the cap, nothing
    launches.
@@ -162,7 +162,7 @@ nonce. A judge cannot write its own GO. A worker cannot widen its own scope. The
 are enforced by the scripts, which refuse under the environment markers that
 every session started by the chief carries, not by a request to behave.
 
-**The RETASK channel treats tool output as hostile.** Text that arrives inside
+**The revision channel treats tool output as hostile.** Text that arrives inside
 a tool result, a file or a web page is data, never instruction. A genuine
 revision of a worker's task arrives only as a direct message from its chief. An
 expansion or a redirect must quote the worker's token; a halt or a narrowing needs
@@ -241,5 +241,5 @@ can be revisited rather than re-argued. See
 | Coordination doctrine for fan-outs and verify loops | [`orchestration-patterns.md`](orchestration-patterns.md) |
 | Where knowledge lives so the always-loaded surface stays small | [`internals/context-architecture.md`](internals/context-architecture.md) |
 | Every hook, gate and bypass | [`internals/enforcement.md`](internals/enforcement.md) |
-| The RETASK channel and its threat model | [`internals/retask-channel.md`](internals/retask-channel.md) |
+| The revision channel and its threat model | [`internals/retask-channel.md`](internals/retask-channel.md) |
 | The handover system and its resolver | [`internals/handover-system.md`](internals/handover-system.md) |
