@@ -851,7 +851,7 @@ document.addEventListener("dragend", () => { rmDrag = null; });
 // The Board reads itself again at a bounded interval (roadmap.js BOARD_REFRESH_MS), checked on a 10 s tick; boardRefreshDue holds back while the page is hidden, a drawer
 // is open, a field has focus, a card is being dragged or a read of this kind is still running.
 let boardReads = 0;
-setInterval(() => {
+setInterval(() => { // t13b-ok: a bounded 10 s tick that lives and dies with the open Board page, no background service
   if (typeof document === "undefined") return; // a suite that imports this module without a page has nothing to refresh
   const a = document.activeElement;
   if (!boardRefreshDue({ page: currentPage.id, visible: document.visibilityState === "visible", modal: !!(roadmapUi.drawer || roadmapUi.why),
