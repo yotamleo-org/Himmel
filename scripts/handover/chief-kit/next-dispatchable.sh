@@ -1370,7 +1370,7 @@ for i in issues.values():
         resume_held.append((i['key'], hit[1]))  # a held RESUME row is named, never dropped silently
         held_why[i['key']] = hit
         continue
-    if i['no_scope'] and i['key'] not in briefs:  # a wrapped worker's brief carries its own Writes line
+    if i['no_scope'] and i['key'] not in briefs and not resume_only:  # a wrapped worker's brief carries its own Writes line; --resume-only counts orphans, dispatching nothing
         scope_questions.append(i['key'])
         continue
     resume.append(i)

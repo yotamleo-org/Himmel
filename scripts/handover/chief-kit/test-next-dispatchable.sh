@@ -2542,6 +2542,7 @@ has "and is a chief question" "$r91" "NEEDS-CHIEF-NOTE HIMMEL-9609: no readable 
 has "a ticket that says it writes no code stays listed" "$(row91 LOCAL 9610)" "files=-"
 has "an in-work ticket with no readable scope is a chief question" "$r91" "NEEDS-CHIEF-NOTE HIMMEL-9618: no readable scope"
 lacks "and is no RESUME row" "$r91" "RESUME	HIMMEL-9618	"
+has "--resume-only still counts it as an orphan, dispatching nothing" "$(run91 --resume-only)" "RESUME	HIMMEL-9618	"
 r91top="$(run91 --top 1)"
 has "the question rows stop at --top and count the rest" "$r91top" "# no readable scope: 2 more ticket(s) not shown, --why names them"
 has "and only that many are printed" "$(printf '%s\n' "$r91top" | grep -c 'no readable scope: its description')" "1"
