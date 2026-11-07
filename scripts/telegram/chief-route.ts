@@ -461,8 +461,9 @@ const readCritic = (file: string) => readFile(file, "utf8").catch((e) => { throw
 // The critic rounds a spec has had, per kind (decision 763: three, then the operator). Judge files never
 // match. `renamed` holds any other critic return that reads as this spec's: named after it, or sealing a
 // file its own critics sealed. Each adds a round of its own, so a new critic name cannot restart the count.
-// `also` is a return being sealed now, counted whatever its name. `count` is what the cap on another round reads, so a
-// renamed file can only bring the cap closer; `numbered` is what lets a page go with findings, so a planted file cannot open it early.
+// `also` is a return being sealed now, counted whatever its name. `count` is what the cap on another round reads: the top
+// round number plus the renamed returns. `numbered` is what lets a page go with findings: how many numbered returns are on disk,
+// so one file named for the third round cannot open a page early, though three planted files still can.
 // ponytail: the count is read from the files on disk, so deleting or overwriting critic files lowers it, and a new
 // spec file name starts a new count; upgrade path: an append-only ledger written at seal time, keyed on the ticket.
 type Rounds = { count: number; numbered: number; renamed: string[] };
@@ -488,7 +489,7 @@ async function criticRounds(spec: string, also?: string): Promise<Record<Kind, R
     const kind = verdictKind(lastLine(text));
     if (kind && (isOwn(file) || (await sealedBy(file, text)).some(t => targets.has(t)))) renamed[kind].push(file);
   }
-  const rounds = (k: Kind): Rounds => { const numbered = Math.max(0, ...numbers[k]); return { count: numbered + renamed[k].length, numbered, renamed: renamed[k] }; };
+  const rounds = (k: Kind): Rounds => ({ count: Math.max(0, ...numbers[k]) + renamed[k].length, numbered: numbers[k].size, renamed: renamed[k] });
   return { spec: rounds("spec"), plan: rounds("plan") };
 }
 
@@ -673,12 +674,29 @@ ${returns.join("")}</section>
 `;
 }
 
+// The tokens a head may hold before <body>, read as a browser reads them: a comment, a doctype or end tag, the text of a raw element, a start tag whose quoted attributes may hold anything.
+const ATTRS = `(?:[^>"']|"[^"]*(?:"|$)|'[^']*(?:'|$))*(?:>|$)`;
+const HEAD_TOKENS = new RegExp(`<!--[\\s\\S]*?(?:-->|$)|<[!?/][^>]*(?:>|$)|<(title|style|script|noscript)(?=[\\s/>])${ATTRS}[\\s\\S]*?(?:</\\1(?=[\\s/>])[^>]*(?:>|$)|$)|<([a-z][^\\s/>]*)${ATTRS}`, "gi");
+
+// Where the page's real <body> start tag ends, or null when that cannot be told: a start tag no head holds comes first
+// (it may hide what follows), the tag never closes, or a script holds "<!--" (what looks like its end tag may not be one).
+function bodyTagEnd(html: string): number | null {
+  for (const t of html.matchAll(HEAD_TOKENS)) {
+    if (t[1]?.toLowerCase() === "script" && t[0].includes("<!--")) return null;
+    const tag = t[2]?.toLowerCase();
+    if (!tag) continue;
+    if (tag === "body") { const end = t.index + t[0].length; return end < html.length ? end : null; }
+    if (!["html", "head", "meta", "link", "base"].includes(tag)) return null;
+  }
+  return null;
+}
+
 // A sealed .html page goes as its sealed bytes with the block right after <body>; a page with nowhere to put the block does not go.
 function withLead(page: Buffer, lead: string, name: string): Buffer {
   const html = page.toString("utf8");
-  const body = /<body\b[^>]*>\r?\n?/i.exec(html);
-  if (!body) throw new Error(`${name} has no <body> tag to carry its open findings; the page is not sent`);
-  const at = body.index + body[0].length;
+  const end = bodyTagEnd(html);
+  if (end === null) throw new Error(`${name} has no <body> tag that can be told apart to carry its open findings; the page is not sent`);
+  const at = end + /^\r?\n?/.exec(html.slice(end))![0].length;
   return Buffer.from(html.slice(0, at) + lead + html.slice(at));
 }
 
