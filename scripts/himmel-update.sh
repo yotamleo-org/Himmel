@@ -1675,7 +1675,9 @@ update_config_ui() {
     [ -f "$web/package.json" ] || return 0
     # The unit serves the primary checkout: a run from a linked worktree would build the worktree's
     # bundle and restart the primary's unit, so it does neither and says why.
-    if [ "$mode" != "check" ] && [ "$(git -C "$ROOT" rev-parse --git-dir 2>/dev/null)" != "$(git -C "$ROOT" rev-parse --git-common-dir 2>/dev/null)" ]; then
+    # Both paths are read in the absolute form: the plain forms differ in spelling (".git" against a full path) in a
+    # primary whose .git carries a commondir file, which read as a linked worktree.
+    if [ "$mode" != "check" ] && [ "$(git -C "$ROOT" rev-parse --path-format=absolute --git-dir 2>/dev/null)" != "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ]; then
         STATUS_config_ui="skipped"; DETAIL_config_ui="run from a linked worktree — $unit serves the primary checkout, so nothing was rebuilt; run the update there"
         return 0
     fi
