@@ -52,7 +52,15 @@
 # `deferred -> <KEY>` lines under `## Ticket coverage` (scripts/lib/pr_remainder.py, the one reader merge-on-green.sh and
 # the brief generator share). A remainder kept on the ticket is a RESUME row (`partial=PR #n merged, Remaining: <text>`); one
 # handed wholly to other tickets prints `HANDED-OFF <KEY>: remainder on <keys>` (the chief closes the ticket or keeps it as an
-# umbrella by hand); a body with neither form prints `NEEDS-CHIEF-NOTE` naming the PR and the line that clears it.
+# umbrella by hand); a body with neither form prints `NEEDS-CHIEF-NOTE` naming the PR and the line that clears it. PRs read in
+# merge order: a clear remainder supersedes every older PR that records none; a PR newer than it that records none still asks.
+#
+# Scope: a ticket waits only on the files its next step writes. That is the latest `Remaining:` text when it names a path or says
+# it writes nothing (no code, no repo write, chief-run, state repo), else a `Writes:` or `Files:` line of the description, else the
+# description's paths, comments left out. A path a text only runs (`run`, `bash <path>`) holds nothing, unless a line naming it
+# edits it or reports it broken. A ticket with no path and no such statement prints `NEEDS-CHIEF-NOTE <KEY>: no readable scope` and
+# is not listed; those rows stop at --top, best ranked first, and --why prints them all. --why also prints `# scope <KEY> <source>: <paths> reads=<paths>`, `# why <KEY> held <file> by <holder>, from <source>`
+# for a RESUME-HELD row, and `(from <source>)` on a collision drop.
 #
 # Held RESUME rows: an in-work ticket a file collision keeps off the list prints
 # `RESUME-HELD <KEY> by <holder>` (a live worker, the --held list, an open PR, or `listed <KEY>`
@@ -70,7 +78,8 @@
 # the other manifests of that chain in the same directory (same prefix and name, any letter) also own their live
 # workers' tickets, so a worker the other chief armed after `chief.sh next` copied the manifest is not offered
 # again. Ownership of the ticket only: a doc that is missing, WRAPPED, or untouched for
-# NEXT_DISPATCH_SIBLING_MAX_AGE_MIN (default 1440) holds nothing, and an unreadable sibling never marks the fleet unknown.
+# NEXT_DISPATCH_SIBLING_MAX_AGE_MIN (default 1440) holds nothing, and an unreadable sibling never marks the fleet unknown. Where the
+# handover root has a queue-lock dir, a doc past its first hour also needs a lock on its ticket with a heartbeat inside QUEUE_LOCK_TTL_SECONDS.
 #
 # Wrapped tickets: a To Do ticket whose worker record (--workers-dir, default
 # $TICKET_STATUS_STATE_DIR/workers or ~/.himmel/state/workers) is in state wrapped
@@ -79,8 +88,8 @@
 # ticket with a contract=yes merge row in the status-events.jsonl beside that dir
 # (its Done write is pending) is never a RESUME row.
 #
-# Collision (one writer per file): the files a candidate names in its
-# description are checked against (a) the files in the live workers' docs (the
+# Collision (one writer per file): a candidate's scope (see Scope above) is
+# checked against (a) the files in the live workers' docs (the
 # manifest's `workers[].doc`, scope lines), (b) the diff of every open PR (gh), and
 # (c) --held FILE (one path per line). A directory a ticket names is context and
 # collides with nothing. Any other path collides with an equal held path; a concrete
@@ -225,6 +234,44 @@ def files_in(text):
         if f and f not in out:
             out.append(f)
     return out
+
+# A ticket's write scope. A `Writes:` or `Files:` line of the description wins; else the description's paths, comments left
+# out. A path is a read, holding nothing, only when the text runs it and no line naming it edits it or reports it broken.
+EXPLICIT_RE = re.compile(r'^\W*(writes?|files?)(?:\s+(?:likely|expected|touched))?(?:\s*\([^)\n]*\))?\W{0,3}:', re.I)
+RUN_BEFORE_RE = re.compile(r"(?<![\w/.-])(?:(?:re-?)?run(?:s|ning)?(?:\s+(?:bash|sh|zsh|node|python3?))?|bash|sh|zsh|node|python3?)(?:\s+-[\w=-]+)*\s*[`\"'(]?$", re.I)
+WRITTEN_RE = re.compile(r'(?<![\w/.-])(?:edit|fix|change|modify|modifies|patch|add|extend|write|rewrite|remove|delete|rename|update|replace|refactor|touch|teach|wire|move|port|implement)(?:e?s|ing|ed)?(?![\w/-])'
+                        r'|(?<![\w/.-])(?:fail|crash|error|bug|regress|refus|deni|hang|stall)\w*|(?<![\w/.-])(?:wrong|broken)(?![\w/-])', re.I)
+# ponytail: prose can say `no code` of something else, only ever read on a text naming no path; upgrade path = a ticket field
+NO_WRITE_RE = re.compile(r'(?<![\w-])no (?:code(?! path)|repo(?:sitory)? (?:write|change|edit)s?)\b|(?<![\w-])chief-run\b|\bstate repo\b', re.I)
+
+def split_reads(text):
+    # (paths it writes, paths it only runs)
+    run, written = set(), set()
+    for line in text.splitlines():
+        for m in FILE_RE.finditer(line):
+            if RUN_BEFORE_RE.search(line[:m.start()]):
+                run.update(files_in(m.group(0)))
+        if WRITTEN_RE.search(line):
+            written.update(files_in(line))
+    named = files_in(text)
+    reads = [f for f in named if f in run and f not in written]
+    return [f for f in named if f not in reads], reads
+
+def scope_of(body):
+    # files, the source --why names, reads, and no_scope: nothing says what the ticket writes, not even that it writes nothing
+    cut = body.find('\n## Comments')
+    desc = body if cut < 0 else body[:cut]
+    explicit, kinds = [], set()
+    for line in desc.splitlines():
+        m = EXPLICIT_RE.match(line)
+        hits = files_in(line) if m else []
+        if hits:
+            explicit += [f for f in hits if f not in explicit]
+            kinds.add(m.group(1)[0].lower())
+    if explicit:
+        return {'files': explicit, 'src': 'Writes: line' if 'w' in kinds else 'Files: line', 'reads': [], 'no_scope': False}
+    files, reads = split_reads(desc)
+    return {'files': files, 'src': 'description', 'reads': reads, 'no_scope': not (files or reads or NO_WRITE_RE.search(desc))}
 
 MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED)\b')
 TITLE_KEY_RE = re.compile(r'([A-Z]+)-(\d+)((?:\s*\(?\s*(?:[/+,&]\s*)+\(?\s*\d+\b)*)')  # KEY-1 / 2, KEY-1 + 2, KEY-1 (+2, +3)
@@ -403,8 +450,9 @@ for n in names:
         'prio': unq(fm_val(fm, 'priority')), 'parent': unq(fm_val(fm, 'parent')).replace('null', ''), 'labels': set(re.findall(r'"([^"]+)"', fm_val(fm, 'labels'))),
         'ver': re.findall(r'"([^"]+)"', fm_val(fm, 'fixVersions')),
         'blocked_by': re.findall(r'[A-Z]+-\d+', re.search(r'blocked_by: (.*)', fm).group(1)) if re.search(r'blocked_by: (.*)', fm) else [],
-        'title': t.group(1).strip() if t else '', 'files': files_in(body),
+        'title': t.group(1).strip() if t else '',
         'last': last_owed(body),
+        **scope_of(body),
     }
 
 # unreleased versions in natural order
@@ -910,6 +958,39 @@ if workers_from and os.path.isfile(workers_from):
 # letter) for ownership of a ticket only: a doc that is gone, WRAPPED, or untouched for a day holds nothing, and
 # an unreadable sibling never marks the fleet unknown (it is not this chief's fleet).
 chain_m = re.match(r'^(.+)-nextleg-\d{4}-\d{2}-\d{2}[A-Z]+-(.+)\.fleet\.json$', os.path.basename(workers_from)) if workers_from else None
+SIB_ARM_GRACE_S = 3600  # a worker takes its queue lock in its first minutes
+lock_keys_of = {}
+def fresh_lock_keys(start):
+    # the ticket keys of the docs whose queue lock has a heartbeat inside queue-lock.sh's TTL, or None when no lock dir sits above start
+    d = start
+    for _ in range(4):
+        if os.path.isdir(os.path.join(d, '.locks', 'queue')):
+            break
+        d = os.path.dirname(d)
+    else:
+        return None
+    q = os.path.join(d, '.locks', 'queue')
+    if q not in lock_keys_of:
+        try:
+            ttl = int(os.environ.get('QUEUE_LOCK_TTL_SECONDS') or 21600)
+        except ValueError:
+            ttl = 21600
+        keys = set()
+        for lock in os.listdir(q) if os.access(q, os.R_OK) else []:
+            if not lock.endswith('.lock'):
+                continue
+            named = lock
+            try:
+                o = json.load(open(os.path.join(q, lock, 'owner.json'), encoding='utf-8'))
+                named = os.path.basename(o.get('handover') or lock)
+                beat = datetime.datetime.strptime(o.get('heartbeat', ''), '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc).timestamp()
+                if time.time() - beat > ttl:
+                    continue
+            except (OSError, ValueError, TypeError, AttributeError):
+                pass  # swallow-ok: a lock that cannot be read may be live, and an unparsable heartbeat is fresh, as queue-lock.sh status reads it
+            keys.update(re.findall(r'[A-Z]+-\d+', named))
+        lock_keys_of[q] = keys
+    return lock_keys_of[q]
 if chain_m:
     sib_dir = os.path.dirname(os.path.abspath(workers_from))
     try:
@@ -932,7 +1013,8 @@ if chain_m:
                 if not isinstance(sdoc, str) or not sdoc:
                     continue  # an entry that names no doc owns nothing
                 try:
-                    if time.time() - os.path.getmtime(sdoc) > sib_age_s:
+                    sage = time.time() - os.path.getmtime(sdoc)
+                    if sage > sib_age_s:
                         continue
                     slines = open(sdoc, encoding='utf-8', errors='replace').read().splitlines()
                 except OSError:
@@ -940,6 +1022,9 @@ if chain_m:
                 smarks = [m.group(1) for m in (MARKER_RE.match(l) for l in slines) if m]
                 if smarks and smarks[-1] == 'WRAPPED':
                     continue
+                slocked = fresh_lock_keys(os.path.dirname(sdoc))
+                if slocked is not None and sage > SIB_ARM_GRACE_S and not slocked & set(re.findall(r'[A-Z]+-\d+', os.path.basename(sdoc))):
+                    continue  # past the arming hour with no fresh lock on the ticket: that worker is gone
                 for k in re.findall(r'[A-Z]+-\d+', os.path.basename(sdoc)) + owned_keys(sdoc, slines):
                     worker_keys.add(k); owner.setdefault(k, 'live worker %s of the chief on %s' % (worker.get('label', '?'), sib[:-len('.fleet.json')]))
         except (OSError, ValueError, TypeError, AttributeError):
@@ -1002,6 +1087,56 @@ try:
             pr_keys.add(k.upper()); owner.setdefault(k.upper(), 'open PR %s' % line.split('\t')[0])
 except (OSError, subprocess.SubprocessError):
     pr_unknown = True
+
+# The remainder of a merged partial PR's body, read by the ONE reader every partial-merge site shares
+# (scripts/lib/pr_remainder.py): a `Remaining:` line, or the `deferred -> <KEY>` lines under `## Ticket coverage`.
+# Returns (kind, handed_keys, text), kind none | remaining | handed-off. A body gh cannot read, or a reader that fails, is
+# recorded in unread_prs and returns kind none, so the ticket is never dispatched blind.
+remainder_cache = {}
+unread_prs = set()
+reader = os.environ.get('NEXT_DISPATCH_READER') or os.path.join(repo, 'scripts', 'lib', 'pr_remainder.py')  # NEXT_DISPATCH_READER: the test seam for the reader
+def remainder_of(pr, key):
+    if (pr, key) not in remainder_cache:
+        ans = ('none', [], '')
+        try:
+            body = subprocess.run([gh, 'pr', 'view', pr, '--repo', gh_repo, '--json', 'body', '--jq', '.body'], capture_output=True, text=True, timeout=60, check=True).stdout
+            out = subprocess.run([sys.executable, '-I', reader, key], input=body.encode('utf-8'), capture_output=True, timeout=60, check=True).stdout.decode('utf-8', 'replace').rstrip('\n').split('\t')
+            if out[0] == 'remaining' and len(out) == 2:
+                ans = ('remaining', [], out[1])
+            elif out[0] == 'handed-off' and len(out) == 3:
+                ans = ('handed-off', out[1].split(', '), out[2])
+            elif out[0] != 'none':
+                raise subprocess.SubprocessError('unrecognised reader answer')
+        except (OSError, subprocess.SubprocessError):
+            unread_prs.add(pr)
+        remainder_cache[(pr, key)] = ans
+    return remainder_cache[(pr, key)]
+
+def resume_eligible(i):
+    # the gates an in-work ticket (or a wrapped To Do one) passes whoever holds its files
+    if pool_only and (tier_of(i) > 4 or i['key'] in prio_cloud):
+        return False
+    wrapped = i['status'] == 'To Do' and (i['key'] in briefs or partial_resume(i['key']))
+    if not (wrapped or i['status'] in ('In Progress', 'In Review', 'IN CI')) or i['type'] in ('Epic', 'Sub-task'):
+        return False
+    if i['key'] in done_pending or i['labels'] & excl or any('parked' in l for l in i['labels']):
+        return False
+    return not (pool_only and (platform_dropped(i) or residual_out(i)))
+
+# A partly merged ticket's next step, read before the register's deadline starts and before the register is asked for
+# the candidates' files, so a remainder's path gets its rows. PRs are in merge order: a clear remainder supersedes every older
+# PR that records none, and a PR newer than it that records none is still a question. The latest `remaining` is the scope when
+# it names a path or says it writes nothing; a remainder saying neither leaves the description's scope, so it frees nothing.
+for i in issues.values() if not pr_unknown else ():
+    if partial_resume(i['key']) and i['key'] not in worker_keys and i['key'] not in pr_keys and resume_eligible(i):
+        parts = [(pr, remainder_of(pr, i['key'])) for pr in partials[i['key']]]
+        clear = max((n for n, (_, ans) in enumerate(parts) if ans[0] != 'none'), default=-1)
+        i['parts'] = [p for n, p in enumerate(parts) if n >= clear or p[1][0] != 'none']
+        latest = [(pr, ans[2]) for pr, ans in i['parts'] if ans[0] == 'remaining'][-1:]
+        if latest:
+            files, reads = split_reads(latest[0][1])
+            if files or reads or NO_WRITE_RE.search(latest[0][1]):
+                i.update(files=files, reads=reads, src='remainder of PR #%s' % latest[0][0], no_scope=False)
 
 # The holds register (scripts/handover/chief-kit/holds.py): the one record of who holds which file. Rows of open PRs are
 # synced in, dead rows swept, then the rows of the candidates' files are read. A worker whose key holds a live (or unproven)
@@ -1200,52 +1335,19 @@ if inci_keys and not (pr_unknown or pr_files_unknown or owners_unknown or regist
     except (OSError, subprocess.SubprocessError):
         merged_unknown = True
 
-# The remainder of a merged partial PR's body, read by the ONE reader every partial-merge site shares
-# (scripts/lib/pr_remainder.py): a `Remaining:` line, or the `deferred -> <KEY>` lines under `## Ticket coverage`.
-# Returns (kind, handed_keys, text), kind none | remaining | handed-off. A body gh cannot read, or a reader that fails, is
-# recorded in unread_prs and returns kind none, so the ticket is never dispatched blind.
-remainder_cache = {}
-unread_prs = set()
-reader = os.environ.get('NEXT_DISPATCH_READER') or os.path.join(repo, 'scripts', 'lib', 'pr_remainder.py')  # NEXT_DISPATCH_READER: the test seam for the reader
-def remainder_of(pr, key):
-    if (pr, key) not in remainder_cache:
-        ans = ('none', [], '')
-        try:
-            body = subprocess.run([gh, 'pr', 'view', pr, '--repo', gh_repo, '--json', 'body', '--jq', '.body'], capture_output=True, text=True, timeout=60, check=True).stdout
-            out = subprocess.run([sys.executable, '-I', reader, key], input=body.encode('utf-8'), capture_output=True, timeout=60, check=True).stdout.decode('utf-8', 'replace').rstrip('\n').split('\t')
-            if out[0] == 'remaining' and len(out) == 2:
-                ans = ('remaining', [], out[1])
-            elif out[0] == 'handed-off' and len(out) == 3:
-                ans = ('handed-off', out[1].split(', '), out[2])
-            elif out[0] != 'none':
-                raise subprocess.SubprocessError('unrecognised reader answer')
-        except (OSError, subprocess.SubprocessError):
-            unread_prs.add(pr)
-        remainder_cache[(pr, key)] = ans
-    return remainder_cache[(pr, key)]
-
 # In-work tickets nobody holds (and wrapped To Do ones): no worker, no open PR, not parked or blocked.
 needs_note = []  # (key, partial PR numbers that record no remainder) of in-work tickets that need a chief note first
+scope_questions = []  # keys of tickets nothing says the write scope of: a chief question, never silently free
 handed_off = []  # (key, tickets) of in-work tickets whose every partial PR hands its remainder to other tickets
 resume = []
 resume_held = []  # (key, holder) of in-work tickets a collision keeps off the list
+held_why = {}  # key -> (file, holder) of a held in-work ticket, for --why
 for i in issues.values():
-    if pool_only and (tier_of(i) > 4 or i['key'] in prio_cloud):
-        continue
-    wrapped = i['status'] == 'To Do' and (i['key'] in briefs or partial_resume(i['key']))
-    if not (wrapped or i['status'] in ('In Progress', 'In Review', 'IN CI')) or i['type'] in ('Epic', 'Sub-task'):
+    if not resume_eligible(i):
         continue
     if i['status'] == 'IN CI' and merged_unknown:  # an unread merged-PR set could hide the ticket's merge
         continue
     i['merged'] = i['status'] == 'IN CI' and i['key'] in merged_keys
-    if i['key'] in done_pending:
-        continue
-    if i['labels'] & excl or any('parked' in l for l in i['labels']):
-        continue
-    if pool_only and platform_dropped(i):
-        continue
-    if pool_only and residual_out(i):
-        continue
     if i['key'] in worker_keys or i['key'] in pr_keys:
         continue
     if pr_unknown or pr_files_unknown or owners_unknown or register_unknown:  # an unread PR, PR file set or worker set could hide the ticket's owner; a worker with unknown FILES (no Writes line, unreadable doc) still owns its key
@@ -1255,17 +1357,21 @@ for i in issues.values():
         continue
     if any(blocker_state(b) for b in i['blocked_by']):
         continue
-    hit = held_hit(i)
-    if hit:
-        resume_held.append((i['key'], hit[1]))  # a held RESUME row is named, never dropped silently
-        continue
-    parts = [(pr, remainder_of(pr, i['key'])) for pr in partials.get(i['key'], [])] if partial_resume(i['key']) else []
+    parts = i.get('parts', [])
     i['partial'] = [(pr, ans[2]) for pr, ans in parts]
     if any(ans[0] == 'none' for _, ans in parts):  # a merged slice whose PR body names no remaining work: not dispatched blind
         needs_note.append((i['key'], [pr for pr, ans in parts if ans[0] == 'none']))
         continue
     if parts and all(ans[0] == 'handed-off' for _, ans in parts):  # nothing left on this ticket: the chief closes it or keeps it as an umbrella
         handed_off.append((i['key'], [k for _, ans in parts for k in ans[1]]))
+        continue
+    hit = held_hit(i)
+    if hit:
+        resume_held.append((i['key'], hit[1]))  # a held RESUME row is named, never dropped silently
+        held_why[i['key']] = hit
+        continue
+    if i['no_scope'] and i['key'] not in briefs:  # a wrapped worker's brief carries its own Writes line
+        scope_questions.append(i['key'])
         continue
     resume.append(i)
 resume.sort(key=ranked if pool_only else rank)
@@ -1299,6 +1405,10 @@ for i in cands:
         else:
             free.append(i)
         continue
+    if i['no_scope']:
+        scope_questions.append(i['key'])
+        drop(i, 'no-scope (nothing says what it writes: a chief question)')
+        continue
     hit = held_hit(i)
     if hit:
         stack = stackable_on(i) if stacked else None
@@ -1307,7 +1417,7 @@ for i in cands:
             continue  # judged in emit_stackable once it is classified: a ticket that would be BLOCKED is not offered
         soft = soft_overlap(i, held_hits(i))
         if soft is None:
-            drop(i, 'collision %s held by %s' % hit)
+            drop(i, 'collision %s held by %s (from %s)' % (hit + (i['src'],)))
             continue
         soft_rows[i['key']] = soft
     if register_unknown:  # an unread register could hold the ticket's files
@@ -1353,6 +1463,12 @@ for k, prs in needs_note:
     print('NEEDS-CHIEF-NOTE %s: merged PR %s %s, needs a chief note before it is dispatched%s' % (k, ', '.join('#' + p for p in prs),
           'body could not be read (gh failed)' if unread else 'has no Remaining: line and no deferred line under ## Ticket coverage',
           '' if unread else '; to clear it add one to PR %s\'s body (gh pr edit <n> --body-file), or close %s by hand if nothing remains' % (', '.join('#' + p for p in prs), k)))
+scope_questions.sort(key=lambda k: ranked(issues[k]))
+scope_shown = scope_questions if os.environ.get('ND_WHY') == '1' else scope_questions[:top]
+for k in scope_shown:
+    print('NEEDS-CHIEF-NOTE %s: no readable scope: its description names no file, needs a chief note before it is dispatched; to clear it add a Writes: line to the ticket, or say no code' % k)
+if len(scope_questions) > len(scope_shown):
+    print('# no readable scope: %d more ticket(s) not shown, --why names them' % (len(scope_questions) - len(scope_shown)))
 for k, keys in handed_off:
     print('HANDED-OFF %s: remainder on %s' % (k, ', '.join(dict.fromkeys(keys))))
 for sid, wdoc in series_orphans:
@@ -1480,6 +1596,11 @@ def drop_summary():
         for k in sorted(lane_of, key=lambda k: int(k.split('-')[1])):
             if k in issues:
                 print('# why %s listed %s tier %d' % (k, lane_of[k], tier_of(issues[k])))
+        for k in sorted(held_why, key=lambda k: int(k.split('-')[1])):
+            print('# why %s held %s by %s, from %s' % (k, held_why[k][0], held_why[k][1], issues[k]['src']))
+        for k in sorted(set(lane_of) | set(held_why) | {k for k, r in why.items() if r.startswith('collision ')}, key=lambda k: int(k.split('-')[1])):
+            if k in issues:
+                print('# scope %s %s: %s%s' % (k, issues[k]['src'], ','.join(issues[k]['files']) or '-', ' reads=' + ','.join(issues[k]['reads']) if issues[k]['reads'] else ''))
     if first_ver is None:
         return
     listed = {i['key'] for i in emitted}
@@ -1546,6 +1667,7 @@ def emit_resume(rows):
             hit = picked_hit(i)
             if hit:
                 say('RESUME-HELD %s by listed %s' % (i['key'], hit[1]))
+                held_why[i['key']] = (hit[0], 'listed ' + hit[1])
                 continue
         picked.extend((f, i['key']) for f in i['files'])
         emitted.append(i)
