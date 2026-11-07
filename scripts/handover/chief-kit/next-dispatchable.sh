@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# next-dispatchable.sh — Ranked, collision-checked list of the next
+# next-dispatchable.sh — Ranked list, with its file overlaps named, of the next
 # tickets a chief can dispatch. READ-ONLY: it prints, it never launches,
 # creates a worktree or writes the mirror. chief-wait.sh prints it with the
 # `WAKE underfilled` block; a chief can also run it by hand. It absorbs the
@@ -33,7 +33,7 @@
 # that are operator-directed, a Bug of High or above, labelled scope-<earliest version> or proposed-<earliest version> (a ticket proposed to any other version or the backlog has its INTAKE queued and is excluded), or held by a worker or
 # open PR make it `,INTAKE:<m>` instead (never a bare LOW) plus a `# intake <m> for <version>: <keys>` line (`# intake <m>: <keys>` with no open version; --dispositions prints it too, for the tick's INTAKE=); an empty
 # pool prints `POOL-EMPTY` and then the tier-5 To Do rows as `NEXT-TIER` rows (rank
-# order, unclassified, collision-checked against held files), never dispatched from here.
+# order, unclassified, with their `# overlap` lines), never dispatched from here.
 #
 # Residual depth: a ticket labelled residual-depth-<n> (n >= 1) is a judge, CR or
 # panel residual and is excluded unless --doc records `residual-must <KEY>` on a
@@ -59,12 +59,13 @@
 # it writes nothing (no code, no repo write, chief-run, state repo), else a `Writes:` or `Files:` line of the description, else the
 # description's paths, comments left out. A path a text only runs (`run`, `bash <path>`) holds nothing, unless a line naming it
 # edits it or reports it broken. A ticket with no path and no such statement prints `NEEDS-CHIEF-NOTE <KEY>: no readable scope` and
-# is not listed; those rows stop at --top, best ranked first, and --why prints them all. --why also prints `# scope <KEY> <source>: <paths> reads=<paths>`, `# why <KEY> held <file> by <holder>, from <source>`
-# for a RESUME-HELD row, and `(from <source>)` on a collision drop.
+# is not listed; those rows stop at --top, best ranked first, and --why prints them all. --why also prints `# scope <KEY> <source>: <paths> reads=<paths>`
+# and `(from <source>)` on an `# overlap` line.
 #
-# Held RESUME rows: an in-work ticket a file collision keeps off the list prints
-# `RESUME-HELD <KEY> by <holder>` (a live worker, the --held list, an open PR, or `listed <KEY>`
-# for another RESUME row; the last in the full pass only), so no in-work ticket vanishes unnamed.
+# Overlaps (no file holds): a shared file never keeps a ticket off the list. A To Do or RESUME row that names a file
+# a live worker, the --held list, an open PR, a series ledger or an earlier listed row also names is listed all the same, and
+# `# overlap <KEY> <file> with <holder>` follows it (`live worker <N>`, `held list`, `open PR <n>`, `series <sid>`, `listed <KEY>`),
+# so the chief sees the shared file and the merge-forward duty covers the conflict. There is no RESUME-HELD row and no `# SOFT` line.
 # A DISPOSITION ... BLOCKED-BY comment hides nothing here: stuck-scan.sh re-checks it.
 #
 # DESIGN rows (always on):
@@ -88,42 +89,34 @@
 # ticket with a contract=yes merge row in the status-events.jsonl beside that dir
 # (its Done write is pending) is never a RESUME row.
 #
-# Collision (one writer per file): a candidate's scope (see Scope above) is
-# checked against (a) the files in the live workers' docs (the
-# manifest's `workers[].doc`, scope lines), (b) the diff of every open PR (gh), and
-# (c) --held FILE (one path per line). A directory a ticket names is context and
-# collides with nothing. Any other path collides with an equal held path; a concrete
-# file (one the repo holds, or a new one with a dotted basename) also collides with a
+# Overlap sources: a candidate's scope (see Scope above) is compared with (a) the files in the live workers' docs (the
+# manifest's `workers[].doc`, their `> **Writes:**` line through holds.py parse), (b) the diff of every open PR (gh), and
+# (c) --held FILE (one path per line). A directory a ticket names is context and overlaps
+# nothing. Any other path overlaps an equal held path; a concrete
+# file (one the repo holds, or a new one with a dotted basename) also overlaps a
 # directory a worker's write scope or --held names above it; an open PR's diff is files,
-# compared exactly. Two listed tickets collide on an equal file only. A live worker's write
-# scope is the path list after `writes confined to` up to its first sentence break (a
-# `> **Writes:**` line is all of it); past the break only a concrete file holds, so a
-# directory the brief merely mentions holds nothing. Paths compare after the rename registry
+# compared exactly. Two listed tickets overlap on an equal file only. Paths compare after the rename registry
 # (scripts/lib/rename-aliases.tsv, kind directory) maps a pre-rename spelling to its new one.
 # An open PR's files come from the paginated files API (`gh api --paginate`, filename and
-# previous_filename), one PR at a time: a PR whose read fails (HTTP 406 over 300 files by
-# `gh pr diff`, a timeout, the API's 3000-file cap) is named in an `open PR files unknown`
-# header, the other PRs still hold their files, and no RESUME or IN CI row is listed (the
-# unread PR could own it). When the PR list itself fails the list is printed with an
-# `open PRs unknown` header rather than silently trusting an empty set.
-#
-# Soft edges: a candidate held only by open PRs is not dropped for the file collision when the overlap is
-# small and merges clean: every holder is an open PR, the overlap is at most 2 files, none is
-# a ci-trust path, and each holder's head merges into main with `git merge-tree` without a
-# conflict. Such a ticket is listed, preceded by a `# SOFT <holders> <files> for <KEY>` line.
+# previous_filename), one PR at a time. A holder whose files cannot be read (a PR whose read fails: HTTP 406 over 300 files by
+# `gh pr diff`, a timeout, the API's 3000-file cap; a live worker whose doc names no Writes line; an unreadable series ledger)
+# prints `# overlap unknown for PR <n>` / `live worker <N>` / `series ledger <n>` under the header and gates no row.
+# What still gates: an open-PR LIST that fails (the list is printed with an `open PRs unknown` header and no RESUME or
+# IN CI row, rather than silently trusting an empty set) and a live-worker manifest that cannot be read (`live workers unknown`).
+# An open PR that is not ours (cross-repository) and has been idle OUTSIDE_OWN_DAYS (7) or more days no longer owns a ticket key
+# its title names: the ticket is listed with `# overlap <KEY> also named by outside PR <n> (idle <d>d)`.
 #
 # Series ledgers (stacked_series only): each ledger under the --workers-from manifest's `series/` directory, read through
-# chief-kit/series-ledger.py read, holds every non-abandoned item's writes as `series <sid>`, so the files stay held
+# chief-kit/series-ledger.py read, names every non-abandoned item's writes as `series <sid>`, so the files stay an overlap
 # between a predecessor's WRAPPED and its successor's launch. A published item stops holding once gh reports every PR of its
 # publish_branch merged or closed. A ledger whose writer doc has no LIVE bullet and no manifest entry 2 h after the newest
 # pass (a series with no pass: after the ledger's last write) prints `SERIES-ORPHAN <sid> <writer doc>`. With the flag off
 # the ledgers are not read and the output is as without them.
 #
 # Drops: every To Do ticket of the earliest unreleased version that is not listed
-# is counted by reason on a `# dropped from <version>:` line (owned, collision,
-# blocker, type, label, platform, residual-depth, classification, below --top ...);
-# --why adds one `# drop <KEY> <reason>` line each, the collision naming the file and
-# its holder, and one `# why <KEY> listed <lane> tier <n>` line each for the listed ones; --why with no
+# is counted by reason on a `# dropped from <version>:` line (owned,
+# blocker, type, label, platform, residual-depth, classification, below --top ...; a shared file is no reason);
+# --why adds one `# drop <KEY> <reason>` line each, and one `# why <KEY> listed <lane> tier <n>` line each for the listed ones; --why with no
 # --top lists up to 50 rows (the fleet cap), so the RESUME rows do not fill the default 8 slots and hide the
 # To Do rows the waiter counts. --dispositions adds `# disposition <KEY> <class> <holder, blocker or question>`
 # for EVERY open ticket of that version (To Do or in work), listed ones too (`listed LOCAL`,
@@ -137,9 +130,8 @@
 # too) drops the ticket as `blocker-unknown KEY`, never clears it. With the live read off the
 # mirror is the only word. The output opens with `# source mirror_age_min=<n>` (minutes since
 # the mirror's newest file changed). A classifier
-# BLOCKED is never lifted: the drop carries its reason, and a ticket naming a directory with a
-# held file in it is BLOCKED naming that file's holder. While any open PR's files are unreadable
-# no To Do row is listed: a false free is worse than a short list.
+# BLOCKED is never lifted: the drop carries its reason. cloud-route.mjs never returns BLOCKED for a held file
+#: classify() passes no --held, and an overlap only ends the reason it prints.
 #
 # Classification: the survivors go through scripts/lanes/cloud-route.mjs
 # --classify-only (the same gates as /cloud-route). CLOUD-OK prints CLOUD;
@@ -237,6 +229,9 @@ def manifest_workers(m):
 excl = set(filter(None, os.environ.get('NEXT_DISPATCH_EXCLUDE_LABELS',
     'operator-decision,operator,operator-present,operator-gated,blocked,decision,windows-parked,design-deferred,placeholder,held').split(',')))
 FILE_RE = re.compile(r"(?<![\w./-])((?:scripts|docs|marketplace|plugins|templates|tools|\.claude|\.github|\.codex)/[\w.+@-]+(?:/[\w.+@-]+)*/?|CLAUDE\.md|AGENTS\.md|README\.md|package\.json|package-lock\.json|bun\.lock|uv\.lock|pyproject\.toml|\.gitignore|\.pre-commit-config\.yaml)")
+# Q8: an outside PR (cross-repository) that names a ticket key but has been idle this many days or more no longer owns the key;
+# the ticket is listed with an `# overlap <KEY> also named by outside PR` line. Our own PRs keep owning their key with no bound.
+OUTSIDE_OWN_DAYS = 7
 PRIO = {'Highest': 0, 'Blocker': 0, 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3, 'Lowest': 4}
 
 def files_in(text):
@@ -363,62 +358,16 @@ def blocks(f, h, tree):
         return not os.path.isdir(os.path.join(repo, f))
     return tree and concrete(f) and f.startswith(h + '/')
 
-def held_hit(i):
-    # the first (file, holder) of held that holds one of the ticket's files, else None
-    for f in i['files']:
-        for h, who, tree in held:
-            if held_key.get((h, who)) != i['key'] and blocks(f, h, tree):  # a row of the issue's own key is the issue itself
-                return f, who
-    return None
-
 def held_hits(i):
-    # every (file, holder) of held that holds one of the ticket's files
-    return [(f, who) for f in i['files'] for h, who, tree in held if held_key.get((h, who)) != i['key'] and blocks(f, h, tree)]
+    # every (file, holder) of held that holds one of the ticket's files: an overlap, printed and never a hold
+    return list(dict.fromkeys((f, who) for f in i['files'] for h, who, tree in held if blocks(f, h, tree)))
 
-held_key = {}  # (path, holder) -> the register key of a row that joined held, so an issue skips its own rows
-soft_rows = {}  # key -> the `# SOFT` text of a listed ticket whose file overlap is soft
-trust_res = []
-for tf in ('scripts/ci/ci-trust-paths.txt', 'scripts/ci/ci-trust-paths-core.txt'):
-    try:
-        trust_res += [re.compile(l.strip()) for l in open(os.path.join(repo, tf), encoding='utf-8') if l.strip() and not l.lstrip().startswith('#')]
-    except (OSError, re.error):
-        trust_res = None  # swallow-ok: an unreadable or invalid trust list makes every overlap hard
-        break
-head_cache = {}
+unknown_notes = []  # `# overlap unknown for ...` lines: a holder whose files could not be read, printed under the header
 
-def trial_clean(num):
-    # the open PR's head merges into main with no conflict (git merge-tree, no worktree). The candidate has
-    # no branch yet, so this is the holder's side of the pair; a conflict found later upgrades the edge to hard.
-    if num not in head_cache:
-        ok = False
-        gitdir, mainref = os.environ['ND_GIT_DIR'], os.environ['ND_MAIN_REF']
-        try:
-            sha = ghrun([gh, 'api', 'repos/%s/pulls/%s' % (gh_repo, num), '--jq', '.head.sha'], capture_output=True, text=True, timeout=60, check=True).stdout.strip()
-            if re.fullmatch(r'[0-9a-f]{40,64}', sha):
-                have = lambda: subprocess.run(['git', '-C', gitdir, 'cat-file', '-e', sha + '^{commit}'], capture_output=True, timeout=60).returncode == 0
-                if not have():
-                    subprocess.run(['git', '-C', gitdir, 'fetch', '-q', 'origin', 'refs/pull/%s/head' % num], capture_output=True, timeout=120)
-                if have() and subprocess.run(['git', '-C', gitdir, 'rev-parse', '--verify', '-q', mainref + '^{commit}'], capture_output=True, timeout=60).returncode == 0:
-                    ok = subprocess.run(['git', '-C', gitdir, 'merge-tree', '--write-tree', '--no-messages', mainref, sha], capture_output=True, timeout=60).returncode == 0
-        except (OSError, subprocess.SubprocessError):
-            ok = False  # swallow-ok: a trial that cannot run is not clean, so the collision drop stands
-        head_cache[num] = ok
-    return head_cache[num]
-
-def soft_overlap(i, hits):
-    # the `# SOFT` text when every overlap is with an open PR, there are at most 2 files, none is a trust
-    # path and each holder's trial merge is clean; else None and the collision drop stands
-    if trust_res is None or not trust_res or not hits:
-        return None
-    files = sorted({f for f, _ in hits})
-    holders = sorted({who for _, who in hits})
-    if len(files) > 2 or not all(w.startswith('open PR ') for w in holders):
-        return None
-    if any(r.search(canon(f)) for f in files for r in trust_res):
-        return None
-    if not all(trial_clean(w.split()[-1]) for w in holders):
-        return None
-    return '%s %s' % (','.join(holders), ','.join(files))
+def note_unknown(what):
+    line = '# overlap unknown for %s' % what
+    if line not in unknown_notes:
+        unknown_notes.append(line)
 
 def fm_val(fm, name):
     m = re.search(r'^%s: (.*)$' % re.escape(name), fm, re.M)
@@ -951,7 +900,7 @@ manifest_docs = set()  # the resolved path of every worker doc the manifest list
 workers_from = os.environ.get('ND_WORKERS_FROM', '')
 workers_unknown = False
 owners_unknown = False  # only a fleet whose OWNERS are unreadable hides the orphans; a worker whose FILES are unknown still owns the key in its doc name
-live_workers = []  # (label, doc, lines, keys) of every manifest worker not WRAPPED: the register, else holds.py parse, says what it writes
+live_workers = []  # (label, doc, lines, keys) of every manifest worker not WRAPPED: holds.py parse of its Writes line says what it writes
 worker_keys = set(os.environ.get('ND_OWNERS', '').split())
 owner = {k: 'the --owners list' for k in worker_keys}
 resume_only = os.environ.get('ND_RESUME_ONLY') == '1'
@@ -969,6 +918,7 @@ if workers_from and os.path.isfile(workers_from):
                 for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)):
                     worker_keys.add(k); owner.setdefault(k, 'live worker %s' % worker.get('label', '?'))
                 workers_unknown = True
+                note_unknown('live worker %s' % worker.get('label', '?'))
                 continue
             marks = [m.group(1) for m in (MARKER_RE.match(l) for l in lines) if m]
             if marks and marks[-1] == 'WRAPPED':  # a wrapped worker holds no files and owns no ticket
@@ -1090,10 +1040,11 @@ hf = os.environ.get('ND_HELD', '')
 if hf and os.path.isfile(hf):
     held += [(l.strip(), 'held list', True) for l in open(hf) if l.strip()]
 pr_unknown = False
-pr_files_unknown = []
 pr_keys = set()
 pr_file_map = {}  # PR number -> its files
 pr_meta = {}  # PR number -> (title, head branch)
+outside_idle = {}  # KEY -> (PR number, idle days) of an outside PR that names the key but has been idle OUTSIDE_OWN_DAYS or more: it owns nothing
+now_s = float(os.environ.get('NEXT_DISPATCH_NOW') or time.time())  # NEXT_DISPATCH_NOW: the test seam for Q8's idle clock
 gh = os.environ.get('NEXT_DISPATCH_GH_CMD', 'gh')
 gh_repo = 'yotamleo-org/Himmel'  # env-literal-ok: the canonical slug; --search does not follow a repo rename
 try:
@@ -1113,18 +1064,27 @@ try:
         with ThreadPoolExecutor(max_workers=min(8, len(pr_nums))) as pool:
             for num, d in zip(pr_nums, pool.map(pr_files, pr_nums)):
                 if d is None:
-                    pr_files_unknown.append(num)
+                    note_unknown('PR %s' % num)
                     continue
                 held += [(f, 'open PR %s' % num, False) for f in d if f]  # a diff is files: compared exactly
                 pr_file_map[num] = [f for f in d if f]
     # an open PR cites a ticket by its title or head branch (the commit/PR gate puts the key in both)
-    for line in ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName', '--jq', '.[] | [.number, .title, .headRefName] | @tsv'],
+    for line in ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName,isCrossRepository,updatedAt', '--jq', '.[] | [.number, .title, .headRefName, .isCrossRepository, .updatedAt] | @tsv'],
                                capture_output=True, text=True, timeout=60, check=True).stdout.splitlines():
         cols = line.split('\t')
         if len(cols) >= 3:
             pr_meta[cols[0]] = (cols[1], cols[2])
-        for k in re.findall(r'[A-Za-z]+-\d+', line):
-            pr_keys.add(k.upper()); owner.setdefault(k.upper(), 'open PR %s' % line.split('\t')[0])
+        idle = None  # whole days since an outside PR was last updated; None for one of ours, or when the time cannot be read (it owns)
+        if len(cols) >= 5 and cols[3] == 'true':
+            try:
+                idle = int((now_s - datetime.datetime.fromisoformat(cols[4].replace('Z', '+00:00')).timestamp()) // 86400)
+            except ValueError:
+                idle = None
+        for k in re.findall(r'[A-Za-z]+-\d+', '\t'.join(cols[1:3]) if len(cols) >= 3 else line):
+            if idle is not None and idle >= OUTSIDE_OWN_DAYS:
+                outside_idle.setdefault(k.upper(), (cols[0], idle))
+            else:
+                pr_keys.add(k.upper()); owner.setdefault(k.upper(), 'open PR %s' % cols[0])
 except (OSError, subprocess.SubprocessError):
     pr_unknown = True
 
@@ -1218,8 +1178,8 @@ def resume_eligible(i):
         return False
     return not (pool_only and (platform_dropped(i) or residual_out(i)))
 
-# A partly merged ticket's next step, read before the register's deadline starts and before the register is asked for
-# the candidates' files, so a remainder's path gets its rows. PRs are in merge order: a clear remainder supersedes every older
+# A partly merged ticket's next step, read before the candidates' files are compared with their holders,
+# so a remainder's path gets its overlap lines. PRs are in merge order: a clear remainder supersedes every older
 # PR that records none, and a PR newer than it that records none is still a question. The latest `remaining` is the scope when
 # it names a path or says it writes nothing; a remainder saying neither leaves the description's scope, so it frees nothing.
 for i in issues.values() if not pr_unknown else ():
@@ -1234,98 +1194,17 @@ for i in issues.values() if not pr_unknown else ():
             if files or reads or NO_WRITE_RE.search(latest[0][1]):
                 i.update(files=files, reads=reads, src='remainder of PR #%s' % latest[0][0], no_scope=False)
 
-# The holds register (scripts/handover/chief-kit/holds.py): the one record of who holds which file. Rows of open PRs are
-# synced in, dead rows swept, then the rows of the candidates' files are read. A worker whose key holds a live (or unproven)
-# SEEDED row (not a sync-prs one) has its files in the register; any other worker falls back to its doc's Writes line through holds.py parse.
-# A register that cannot be read hides holders, so it drops rows like an unread PR list does. OFF folds the barrier: no
-# register verb runs and every worker is read from its doc.
-register_unknown = False
+# A live worker's files come from its doc's Writes line through holds.py parse; the dispatcher reads and writes no register
+# No file holds: the unknown-files cases print `# overlap unknown for live worker N`.
 holds_py = os.environ['ND_HOLDS']
-holds_off = os.path.exists(os.path.join(os.environ.get('HOME') or os.path.expanduser('~'), '.himmel', 'state', 'holds', 'OFF'))
-reg_deadline = time.time() + (30 if resume_only else 60)
-
-def reg(args, fatal=True):
-    # one holds.py verb inside the read deadline: its stdout, or None. A read that fails or runs out of time marks the register unknown.
-    global register_unknown, workers_unknown
-    left = reg_deadline - time.time()
-    r = None
-    if left > 0:
-        try:
-            r = subprocess.run([sys.executable, '-I', holds_py] + args, capture_output=True, text=True, timeout=left)
-        except (OSError, subprocess.SubprocessError):
-            r = None
-    if r is None or r.returncode != 0:
-        if fatal:
-            register_unknown = True
-            workers_unknown = True  # tick reads the header's live-workers-unknown line as a `?`
-            print('next-dispatchable: holds register %s failed%s: its holders are unknown' % (args[0], (': ' + r.stderr.strip().splitlines()[-1]) if r is not None and r.stderr.strip() else ''), file=sys.stderr)
-        return None
-    return r.stdout
-
-def register_rows(out):
-    # the rows of a plain read that still hold: (path, holder, key); only a dead row is free
-    global register_unknown, workers_unknown
-    rows = []
-    for l in (out or '').splitlines():
-        if not l.strip():
-            continue
-        c = l.split('\t')
-        if len(c) != 6:
-            register_unknown = workers_unknown = True  # a row this reader cannot split could be hiding a holder
-            print('next-dispatchable: holds register row is malformed (%d columns): its holders are unknown' % len(c), file=sys.stderr)
-        elif c[5] != 'dead':
-            rows.append((c[0], 'open PR %s' % c[4] if c[3] == 'pr' and c[4] else 'live worker %s' % c[2], c[1]))
-    return rows
-
-def write_tmp(text):
-    t = tempfile.NamedTemporaryFile('w', suffix='.holds', delete=False, encoding='utf-8')
-    t.write(text); t.close()
-    return t.name
-
-key_state = {}
-seeded_keys = set()
-if not holds_off:
-    if not resume_only and not pr_unknown and pr_file_map:
-        tsv = write_tmp(''.join('%s\t%s\t%s\t%s\n' % (n, pr_meta.get(n, ('', ''))[1], re.sub(r'\s+', ' ', pr_meta.get(n, ('', ''))[0]), f)
-                                for n, fs in pr_file_map.items() for f in fs if '\t' not in f and '\n' not in f))
-        reg(['sync-prs', '--repo', repo, '--files-from', tsv], fatal=False)
-        os.unlink(tsv)
-    if not resume_only and not pr_unknown:
-        reg(['gc', '--repo', repo], fatal=False)
-    if workers_from:
-        for l in (reg(['read', '--repo', repo, '--keys']) or '').splitlines():
-            c = l.split('\t')
-            if len(c) == 3:
-                key_state[c[0]] = c[1]
-        # a key counts as seeded only with a row that is not a sync-prs row (source pr, label branch:<head>): a PR title's key is not proof the worker was seeded, but the pr rows a worker's own PR open makes carry its label
-        seeded_keys = {c[1] for c in (l.split('\t') for l in (reg(['read', '--repo', repo], fatal=False) or '').splitlines()) if len(c) == 6 and (c[3] != 'pr' or not c[2].startswith('branch:')) and c[5] != 'dead'}
-    want = []
-    for i in issues.values():
-        for f in i['files']:
-            want += [f, canon(f)]
-    pf = write_tmp('\n'.join(dict.fromkeys(want)) + '\n')
-    have = {(h, who) for h, who, _ in held}
-    for path, who, key in register_rows(reg(['read', '--repo', repo, '--paths-from', pf])):
-        held_key[(path, who)] = key
-        if (path, who) not in have:  # an open PR's diff already held its files: one hold per (file, holder), or a soft overlap counts twice
-            held.append((path, who, False))  # a row is one file, compared exactly
-            have.add((path, who))
-    os.unlink(pf)
-
-# every live row of the register, read with the early reads so a fault is recorded before any gate runs, for the classifier's --held file
-held_all_rows = []
-if not holds_off and not register_unknown and os.environ.get('ND_CLASSIFY') == '1':
-    held_all_rows = [r[0] for r in register_rows(reg(['read', '--repo', repo]))]
-
 for label, doc, lines, wkeys in live_workers:
-    if wkeys and key_state.get(wkeys[0]) in ('alive', 'unknown') and wkeys[0] in seeded_keys and not holds_off:
-        continue  # its files are in the register
     try:
         r = subprocess.run([sys.executable, '-I', holds_py, 'parse', doc, '--repo', repo], capture_output=True, text=True, timeout=30)
         if r.returncode != 0:
             raise subprocess.SubprocessError(r.stderr.strip())
     except (OSError, subprocess.SubprocessError) as e:
         workers_unknown = True
+        note_unknown('live worker %s' % label)
         print('next-dispatchable: live worker %s: holds.py parse of %s failed (%s): its files are unknown' % (label, os.path.basename(doc), e), file=sys.stderr)
         continue
     mine = [l.split('\t', 1)[1] for l in r.stdout.splitlines() if '\t' in l]
@@ -1336,7 +1215,8 @@ for label, doc, lines, wkeys in live_workers:
                 print('# warn: %s holds directory %s' % (label, f))
     if not mine and not any(l[len(WRITES_LEAD):].strip() == 'none named' for l in lines if l.startswith(WRITES_LEAD)):  # "none named" is what gen-briefs writes for a worker that writes nothing
         workers_unknown = True  # a scope that yields no paths could be hiding the worker's files
-        print('next-dispatchable: live worker %s yields no held paths (no Writes line in %s and no register row): its files are unknown' % (label, os.path.basename(doc)), file=sys.stderr)
+        note_unknown('live worker %s' % label)
+        print('next-dispatchable: live worker %s yields no held paths (no Writes line in %s): its files are unknown' % (label, os.path.basename(doc)), file=sys.stderr)
 
 # stacked_series: every ledger under <bucket>/series/ (the bucket is the --workers-from manifest's directory), read through
 # series-ledger.py, is a holder. An item holds its writes as `series <sid>` until it is abandoned or gh reports every PR of its
@@ -1385,6 +1265,7 @@ if stacked and workers_from:
     except OSError:
         ledger_files = []
         workers_unknown = True  # a directory that cannot be listed could be hiding every hold
+        note_unknown('series directory %s' % series_dir)
         print('next-dispatchable: series directory %s cannot be listed: the files its ledgers hold are unknown' % series_dir, file=sys.stderr)
     for n in ledger_files:
         path = os.path.join(series_dir, n)
@@ -1411,6 +1292,7 @@ if stacked and workers_from:
                 series_orphans.append((sid, writer))
         except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.SubprocessError):
             workers_unknown = True  # a ledger that cannot be read could be hiding held files
+            note_unknown('series ledger %s' % n)
             print('next-dispatchable: series ledger %s is unreadable: the files it holds are unknown' % n, file=sys.stderr)
 
 # An IN CI ticket nobody holds is merged-not-closed when a merged PR cites it, else a RESUME row.
@@ -1419,7 +1301,7 @@ merged_unknown = False
 merged_keys = set()
 inci_keys = [i['key'] for i in issues.values() if i['status'] == 'IN CI' and i['type'] not in ('Epic', 'Sub-task')
              and i['key'] not in worker_keys and i['key'] not in pr_keys]
-if inci_keys and not (pr_unknown or pr_files_unknown or owners_unknown or register_unknown):
+if inci_keys and not (pr_unknown or owners_unknown):
     def merged_cites(key):
         # A commit on the local main ref citing [KEY] answers "merged" with no GitHub call: this search was the dispatcher's
         # largest GraphQL cost. Local "no" and local "unknown" (no ref, git failed) are both asked of GitHub, because the
@@ -1444,8 +1326,6 @@ needs_note = []  # (key, partial PR numbers that record no remainder) of in-work
 scope_questions = []  # keys of tickets nothing says the write scope of: a chief question, never silently free
 handed_off = []  # (key, tickets) of in-work tickets whose every partial PR hands its remainder to other tickets
 resume = []
-resume_held = []  # (key, holder) of in-work tickets a collision keeps off the list
-held_why = {}  # key -> (file, holder) of a held in-work ticket, for --why
 for i in issues.values():
     if not resume_eligible(i):
         continue
@@ -1454,7 +1334,7 @@ for i in issues.values():
     i['merged'] = i['status'] == 'IN CI' and i['key'] in merged_keys
     if i['key'] in worker_keys or i['key'] in pr_keys:
         continue
-    if pr_unknown or pr_files_unknown or owners_unknown or register_unknown:  # an unread PR, PR file set or worker set could hide the ticket's owner; a worker with unknown FILES (no Writes line, unreadable doc) still owns its key
+    if pr_unknown or owners_unknown:  # an unread PR list or worker set could hide the ticket's owner; a worker with unknown FILES (no Writes line, unreadable doc) still owns its key, and an unread PR file set only prints `# overlap unknown for PR n`
         continue
     if i['merged']:  # nothing to dispatch: the ticket only needs closing
         resume.append(i)
@@ -1469,11 +1349,6 @@ for i in issues.values():
     if parts and all(ans[0] == 'handed-off' for _, ans in parts):  # nothing left on this ticket: the chief closes it or keeps it as an umbrella
         handed_off.append((i['key'], [k for _, ans in parts for k in ans[1]]))
         continue
-    hit = held_hit(i)
-    if hit:
-        resume_held.append((i['key'], hit[1]))  # a held RESUME row is named, never dropped silently
-        held_why[i['key']] = hit
-        continue
     if i['no_scope'] and i['key'] not in briefs and not resume_only:  # a wrapped worker's brief carries its own Writes line; --resume-only counts orphans, dispatching nothing
         scope_questions.append(i['key'])
         continue
@@ -1481,10 +1356,10 @@ for i in issues.values():
 resume.sort(key=ranked if pool_only else rank)
 
 def stackable_on(i):
-    # (worker label, items, writer doc) when every file the ticket collides on is held by ONE live series worker with room; else None.
+    # (worker label, items, writer doc) when every file the ticket shares is named by ONE live series worker with room; else None.
     # A series worker's own ledger is that same worker, not a second holder. A holder that is an open PR, the --held list or a
-    # second worker, or an unread PR / worker set, keeps the drop.
-    if pr_unknown or pr_files_unknown or workers_unknown or register_unknown:
+    # second worker keeps it an ordinary overlap; an unread PR list or worker manifest offers none.
+    if pr_unknown or owners_unknown:
         return None
     holders = {('live worker ' + series_label_of[who[len('series '):]]) if who.startswith('series ') and who[len('series '):] in series_label_of else who
                for _, who in held_hits(i)}
@@ -1502,9 +1377,7 @@ for i in cands:
         drop(i, 'owned by ' + owner.get(i['key'], 'a live worker'))
         continue
     if i['key'] in design:  # a design leg writes only its spec in the state repo: it holds no files against the rest of the list
-        if register_unknown:  # an unread register could hide the holder of the design's own files
-            drop(i, 'holds register unknown: collisions cannot be checked')
-        elif pr_unknown:  # an unread PR list could hide an open PR that owns the ticket
+        if pr_unknown:  # an unread PR list could hide an open PR that owns the ticket
             drop(i, 'open PRs unknown (gh failed): ownership cannot be checked')
         else:
             free.append(i)
@@ -1513,24 +1386,15 @@ for i in cands:
         scope_questions.append(i['key'])
         drop(i, 'no-scope (nothing says what it writes: a chief question)')
         continue
-    hit = held_hit(i)
-    if hit:
-        stack = stackable_on(i) if stacked else None
+    if stacked and held_hits(i):
+        stack = stackable_on(i)
         if stack:
             stackable_rows.append((i, 'STACKABLE %s %s' % (i['key'], stack[2]), 'stackable on %s (%d/%d)' % (stack[0], stack[1], SERIES_CAP)))
             continue  # judged in emit_stackable once it is classified: a ticket that would be BLOCKED is not offered
-        soft = soft_overlap(i, held_hits(i))
-        if soft is None:
-            drop(i, 'collision %s held by %s (from %s)' % (hit + (i['src'],)))
-            continue
-        soft_rows[i['key']] = soft
-    if register_unknown:  # an unread register could hold the ticket's files
-        drop(i, 'holds register unknown: collisions cannot be checked')
+    if pr_unknown:  # an unread PR list could hide the open PR that owns the ticket
+        drop(i, 'open PRs unknown (gh failed): ownership cannot be checked')
         continue
-    if pr_unknown or pr_files_unknown:  # an unread PR list or PR file set could hold the ticket's files
-        drop(i, 'open PRs unknown (gh failed): collisions cannot be checked' if pr_unknown else 'open PR files unknown (PR %s): its collisions cannot be checked' % ' '.join(pr_files_unknown))
-        continue
-    free.append(i)
+    free.append(i)  # a file shared with an open PR, a worker or the held list is printed as an overlap when the row is listed, never a drop
 
 reasons = {}  # the classifier's stated reason per key
 
@@ -1538,14 +1402,6 @@ def classify(batch):
     cls = {}
     cmd = os.environ.get('NEXT_DISPATCH_CLASSIFY_CMD')
     argv = [cmd] if cmd else ['node', os.path.join(repo, 'scripts/lanes/cloud-route.mjs'), '--classify-only']
-    hfile = None
-    paths = [h for h, _, _ in held] + held_all_rows
-    if paths:
-        import tempfile
-        t = tempfile.NamedTemporaryFile('w', suffix='.held', delete=False)
-        t.write('\n'.join(paths) + '\n'); t.close(); hfile = t.name
-        if not cmd:
-            argv += ['--held', hfile]
     try:
         r = subprocess.run(argv + [i['key'] for i in batch], capture_output=True, text=True, timeout=300)
         for line in r.stdout.splitlines():
@@ -1555,15 +1411,13 @@ def classify(batch):
                 reasons[p[0]] = p[2].strip() if len(p) > 2 else ''
     except (OSError, subprocess.SubprocessError):
         pass
-    if hfile:
-        os.unlink(hfile)
     return cls
 
-print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', open PR files unknown for PR %s (gh failed; their collisions are unchecked)' % ' '.join(pr_files_unknown) if pr_files_unknown else '') + (', %d RESUME (in work, no worker, no open PR)' % len(resume) if resume else '') + (', live workers unknown (manifest or worker doc unreadable, or a worker names no write scope)' if workers_unknown else '') + (', holds register unknown (unreadable or too slow)' if register_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
+print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', %d RESUME (in work, no worker, no open PR)' % len(resume) if resume else '') + (', live workers unknown (manifest or worker doc unreadable, or a worker names no write scope)' if workers_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
 if rate_limited:
     print('# WARN: GitHub rate limit: gh answered "%s"; the reads it refused are unknown, not empty, so rows may be missing' % rate_limited[0])
-for k, who in resume_held:
-    print('RESUME-HELD %s by %s' % (k, who))
+for line in unknown_notes:
+    print(line)
 for k, prs in needs_note:
     unread = any(p in unread_prs for p in prs)
     print('NEEDS-CHIEF-NOTE %s: merged PR %s %s, needs a chief note before it is dispatched%s' % (k, ', '.join('#' + p for p in prs),
@@ -1586,14 +1440,14 @@ def family_of(f):
     p = canon(f).strip('/').split('/') + (['*'] if f.endswith('/') else [])  # a directory is cut as a file inside it
     return '/'.join(p[:2]) if len(p) >= 3 else (p[0] if len(p) == 2 else '.')
 
-if stacked and first_ver and not (pr_unknown or pr_files_unknown or workers_unknown or register_unknown):
+if stacked and first_ver and not (pr_unknown or owners_unknown):
     # SERIES FAMILY: To Do sub-tasks of one parent whose files all sit in one directory family, free of every holder. Sub-tasks
     # are never dispatch rows; the chief composes the series from this row (`series: [...]` in workers.json)
     families = {}
     for i in sorted(issues.values(), key=lambda i: int(i['key'].split('-')[1])):
         if not family_candidate(i) or i['key'] in worker_keys or i['key'] in pr_keys:
             continue
-        if held_hit(i) or any(blocker_state(b) for b in i['blocked_by']):
+        if any(blocker_state(b) for b in i['blocked_by']):
             continue
         fams = {family_of(f) for f in i['files']}
         if len(fams) == 1:
@@ -1606,15 +1460,13 @@ if skipped_platform:
 n = 0
 picked = []  # (file, key) a listed ticket holds against the rest of the list
 
-def picked_hit(i):
-    for f in i['files']:
-        for h, k in picked:
-            if blocks(f, h, False):
-                return f, k
-    return None
-
 def picked_hits(i):
+    # (file, key) of every listed row whose file the ticket also names
     return [(f, k) for f in i['files'] for h, k in picked if blocks(f, h, False)]
+
+def picked_hit(i):
+    hits = picked_hits(i)
+    return hits[0] if hits else None
 emitted = []
 lane_of = {}  # key -> how a listed ticket was listed
 
@@ -1627,6 +1479,16 @@ def say(text):
         out_buf.append(text)
     else:
         print(text)
+
+def say_overlaps(i, listed=True):
+    # a row is listed whatever it shares a file with: each shared (file, holder) is a `# overlap` line, with `(from <source>)` under --why
+    pairs = held_hits(i) + ([(f, 'listed ' + k) for f, k in picked_hits(i)] if listed else [])
+    src = ' (from %s)' % i['src'] if os.environ.get('ND_WHY') == '1' else ''
+    for f, who in dict.fromkeys(pairs):
+        say('# overlap %s %s with %s%s' % (i['key'], f, who, src))
+    if i['key'] in outside_idle:
+        num, days = outside_idle[i['key']]
+        say('# overlap %s also named by outside PR %s (idle %dd)' % (i['key'], num, days))
 
 def flush_rows():
     for t in out_buf:
@@ -1647,8 +1509,6 @@ def list_free(i, lane, c, row):
     picked.extend((f, i['key']) for f in i['files'])
     emitted.append(i)
     lane_of[i['key']] = lane
-    if i['key'] in soft_rows:
-        say('# SOFT %s for %s' % (soft_rows[i['key']], i['key']))
     if not stacked:
         print(row)
         return
@@ -1658,11 +1518,11 @@ def list_free(i, lane, c, row):
     out_buf.append(lambda h=i['key']: series_text(h))
 
 def join_series(i, lane, c):
-    # True when the ticket joins the series of the listed row it collides with: every listed ticket it collides with is in that
-    # one series, the series has room (cap 4), the ticket's version is the head's or earlier, and no soft-edge note rides on it
+    # True when the ticket joins the series of the listed row it shares a file with: every listed ticket it shares one with is in that
+    # one series, the series has room (cap 4) and the ticket's version is the head's or earlier. A ticket that cannot join is listed
     hits = picked_hits(i)
     heads = {series_of.get(k) for _, k in hits}
-    if not hits or None in heads or len(heads) != 1 or i['key'] in soft_rows:
+    if not hits or None in heads or len(heads) != 1:
         return False
     h = next(iter(heads))
     s = series[h]
@@ -1702,9 +1562,7 @@ def drop_summary():
         for k in sorted(lane_of, key=lambda k: int(k.split('-')[1])):
             if k in issues:
                 print('# why %s listed %s tier %d' % (k, lane_of[k], tier_of(issues[k])))
-        for k in sorted(held_why, key=lambda k: int(k.split('-')[1])):
-            print('# why %s held %s by %s, from %s' % (k, held_why[k][0], held_why[k][1], issues[k]['src']))
-        for k in sorted(set(lane_of) | set(held_why) | {k for k, r in why.items() if r.startswith('collision ')}, key=lambda k: int(k.split('-')[1])):
+        for k in sorted(lane_of, key=lambda k: int(k.split('-')[1])):
             if k in issues:
                 print('# scope %s %s: %s%s' % (k, issues[k]['src'], ','.join(issues[k]['files']) or '-', ' reads=' + ','.join(issues[k]['reads']) if issues[k]['reads'] else ''))
     if first_ver is None:
@@ -1769,12 +1627,7 @@ def emit_resume(rows):
             say('\t'.join(['MERGED-NOT-CLOSED', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')]))
             n += 1
             continue
-        if not resume_only:
-            hit = picked_hit(i)
-            if hit:
-                say('RESUME-HELD %s by listed %s' % (i['key'], hit[1]))
-                held_why[i['key']] = (hit[0], 'listed ' + hit[1])
-                continue
+        say_overlaps(i, listed=not resume_only)  # --resume-only counts orphans, dispatching nothing: no row of it is listed against another
         picked.extend((f, i['key']) for f in i['files'])
         emitted.append(i)
         lane_of[i['key']] = 'RESUME'
@@ -1861,12 +1714,11 @@ def emit_free(rows):
             if rc is None:
                 continue
             lane, c = rc
-            # one writer per file: a listed ticket holds its files against the rest of the list
-            hit = picked_hit(i)
-            if hit:
-                if not (stacked and join_series(i, lane, c)):
-                    drop(i, 'collision %s held by listed %s' % hit)
+            # a file shared with an earlier listed row is no hold: under stacked_series the ticket joins that row's series if it can,
+            # else it is listed with an `# overlap ... with listed` line
+            if picked_hit(i) and stacked and join_series(i, lane, c):
                 continue
+            say_overlaps(i)
             list_free(i, lane, c, '\t'.join([lane, i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')] + (['hook'] if c == 'HOOK-BYPASS' else [])))
             n += 1
             if n >= top:
@@ -1903,7 +1755,7 @@ if pool_only:
     if n == 0 and not resume_only:  # nothing in the pool, or every pool ticket was classified BLOCKED or collided
         print('POOL-EMPTY')
         # the next tier, in rank order and unclassified: for the chief to read, never to dispatch
-        for i in [i for i in next_tier if i['key'] not in worker_keys and i['key'] not in pr_keys and not held_hit(i)][:top]:
+        for i in [i for i in next_tier if i['key'] not in worker_keys and i['key'] not in pr_keys][:top]:
             print('\t'.join(['NEXT-TIER', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')]))
     warn_missing()
     if not resume_only:

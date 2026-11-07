@@ -9,9 +9,10 @@
 // operator's terminal and spends credit, so the tool only prints the line.
 //
 // Classes, first match wins:
-//   BLOCKED      ticket not To Do/Backlog/Open, the open-PR/held-file list or file tree is unknown, or a
-//                file it touches is held (one writer per file), a directory it names included: any held file
-//                under it blocks, and the reason names the file and its holder
+//   BLOCKED      ticket not To Do/Backlog/Open, or the file tree or merged-PR list is unknown. A held file
+//                never blocks: the chief's --held list and the files of a CLOUD-OK ticket routed earlier
+//                in the run are information, and the reason of whatever class is picked ends in `overlaps <file> (<why>)`,
+//                a directory it names included (`contains held <file>`)
 //   HOOK-BYPASS  touches scripts/hooks/ (hooks do not run in the cloud, and the
 //                integrity guard locks hook edits out of a normal worker)
 //   LOCAL-NATIVE a trust path (needs a trust-reviewed GO), a run-time need the
@@ -147,38 +148,6 @@ const overlaps = (a, b) => a === b || b.startsWith(a.replace(/\/?$/, '/')) || a.
 const STALE_DAYS = 14;
 const MERGED_PAGE = 30; // the per-ticket merged search reads this many; a full page may hide more matches
 
-// a CLOUD-OK ticket's files stay reserved across invocations through the bucket's
-// cloud-route.jsonl. A reservation ends at RESERVATION_HOURS, or when a merged PR cites the
-// ticket; an open PR needs no release rule, its files are already held. ponytail: a ticket
-// outside this run that left To Do without a merged PR (closed, abandoned) keeps its files
-// until the cap, because its status would cost a Jira read per record, upgrade path: read
-// the status of reserved keys once per run.
-export const RESERVATION_HOURS = 48;
-
-// reservedFiles(jsonlText, {now, merged}) -> [{file, why}]. Skips what it cannot read: a corrupt
-// line, a record without files (written before reservations carried files), without a parseable time, or not
-// CLOUD-OK. A record in the future is kept, so a clock step cannot free a file early.
-export function reservedFiles(text, ctx = {}) {
-  const now = ctx.now ?? Date.now();
-  const out = [];
-  for (const line of String(text ?? '').split('\n')) {
-    let r;
-    try { r = JSON.parse(line); } catch { continue; }
-    if (!r || r.class !== 'CLOUD-OK' || typeof r.ticket !== 'string' || !/^[A-Z][A-Z0-9]*-\d+$/.test(r.ticket) || !Array.isArray(r.files)) continue;
-    const at = Date.parse(r.time ?? '');
-    if (Number.isNaN(at) || now - at > RESERVATION_HOURS * 3600e3) continue;
-    const cites = new RegExp(`(?<![A-Za-z0-9])${r.ticket}(?!\\d)`);
-    // only a PR merged after the reservation was made releases it
-    const released = (ctx.merged ?? []).some((pr) => {
-      const m = Date.parse(pr.mergedAt ?? '');
-      return !Number.isNaN(m) && m >= at && cites.test(`${pr.title ?? ''}\n${pr.body ?? ''}`);
-    });
-    if (released) continue;
-    for (const file of r.files) if (typeof file === 'string' && file) out.push({ file, why: `routed ${r.ticket} in an earlier run` });
-  }
-  return out;
-}
-
 // fixedBy(ticket, files, ctx) -> [{number, why, mergedAt}]: merged PRs that cite the key
 // (not a longer key sharing its prefix) or touch a named file, merged after the ticket was
 // created. Jira's `get` carries no creation date, so without ticket.created (chief spec)
@@ -200,8 +169,9 @@ export function fixedBy(t, files, ctx) {
   return out;
 }
 
-// classifyTicket(ticket, {trust, held, heldUnknown, merged, mergedUnknown, tree, treeUnknown, now}) -> {class, reason, files, asks, prs?}. Pure.
-// held is [{file, why}]; ticket.files (chief-supplied) overrides text extraction.
+// classifyTicket(ticket, {trust, held, merged, mergedUnknown, tree, treeUnknown, now}) -> {class, reason, files, asks, prs?}. Pure.
+// held is [{file, why}], information only: it adds an `overlaps ...` clause to the reason, it never picks a class.
+// ticket.files (chief-supplied) overrides text extraction.
 export function classifyTicket(t, ctx) {
   const text = `${t.title}\n${t.description}`;
   const named = t.files?.length ? t.files : [...extractFiles(text), ...bareNames(text, ctx.tree ?? [])];
@@ -209,20 +179,21 @@ export function classifyTicket(t, ctx) {
   const asDir = (f) => (!f.endsWith('/') && (ctx.tree ?? []).some((p) => p.startsWith(`${f}/`)) ? `${f}/` : f);
   const files = [...new Set(named.map((f) => asDir(posix.normalize(f))))];
   const asks = Math.max(1, askLines(t.description).length);
-  const v = (cls, reason) => ({ class: cls, reason, files, asks });
+  // a held file (or a held directory over it, or a held file under a directory the ticket names) is an overlap, said in the reason
+  const shared = new Set();
+  for (const f of files) {
+    for (const h of ctx.held ?? []) {
+      if (!overlaps(f, h.file)) continue;
+      shared.add(h.file !== f && h.file.startsWith(f.replace(/\/?$/, '/')) ? `${f} (contains held ${h.file}, ${h.why})` : `${f} (${h.why})`);
+    }
+  }
+  const overlap = shared.size ? ` — overlaps ${[...shared].join('; ')}` : '';
+  const v = (cls, reason) => ({ class: cls, reason: reason + overlap, files, asks });
   const needs = needsOf(ctx.matrix ?? (defaultMatrix ??= loadMatrix()));
 
   if (!/^(to do|backlog|open)$/i.test(t.status ?? '')) return v('BLOCKED', `status is '${t.status}', not To Do/Backlog/Open — already in flight or done`);
   // a run-time need (state-repo spec paths and the like) is the more specific LOCAL-NATIVE reason
   const strange = t.files?.length || needs.re.test(text) ? [] : unrecognisedPaths(text);
-  for (const f of files) {
-    const h = (ctx.held ?? []).find((x) => overlaps(f, x.file));
-    if (!h) continue;
-    // a directory the ticket names is held by every file under it: one writer per file
-    if (h.file !== f && h.file.startsWith(f.replace(/\/?$/, '/'))) return v('BLOCKED', `${f} contains held ${h.file} (${h.why}) — one writer per file`);
-    return v('BLOCKED', `${f} is held (${h.why}) — one writer per file`);
-  }
-  if (ctx.heldUnknown) return v('BLOCKED', 'held-file list unavailable (gh failed, or the reservation log is unreadable) — cannot prove the files are free');
   const hook = files.find((f) => HOOKS.test(f));
   if (hook) return v('HOOK-BYPASS', `touches ${hook} — hooks do not run in the cloud and edits need the hook-integrity bypass`);
   const trust = files.find((f) => (ctx.trust ?? []).some((re) => re.test(f)));
@@ -242,7 +213,7 @@ export function classifyTicket(t, ctx) {
   if (ctx.mergedTruncated?.has(t.key)) return v('BLOCKED', `merged-PR list unavailable for ${t.key} (${MERGED_PAGE} merged PRs match it, so the search may be truncated) — cannot prove the ticket is not already fixed`);
   const fixed = fixedBy(t, files, ctx);
   if (fixed.length) return { ...v('VERIFY-LOCAL', `may already be fixed on main — ${fixed.map((f) => `PR ${f.number} (${f.why}, merged ${String(f.mergedAt).slice(0, 10)})`).join('; ')}; verify locally before any cloud session`), prs: fixed.map((f) => f.number) };
-  return v('CLOUD-OK', `${files.length} file(s), ${asks} ask(s), no hook, trust path or run-time need, none held`);
+  return v('CLOUD-OK', `${files.length} file(s), ${asks} ask(s), no hook, trust path or run-time need${shared.size ? '' : ', none held'}`);
 }
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').split('-').slice(0, 6).join('-').slice(0, 40).replace(/-$/, '');
@@ -328,20 +299,6 @@ function baseTree() {
   throw new Error('git ls-tree failed at origin/main and HEAD');
 }
 
-function openPrFiles() {
-  const gh = process.env.CLOUD_ROUTE_GH_CMD || 'gh';
-  const out = [];
-  const nums = execFileSync(gh, ['pr', 'list', '--repo', REPO_SLUG, '--state', 'open', '--limit', '200', '--json', 'number', '--jq', '.[].number'], { encoding: 'utf8' }).split('\n').filter(Boolean);
-  if (nums.length >= 200) throw new Error('200 open PRs listed — the list may be truncated');
-  for (const num of nums) {
-    // the paginated files API: `gh pr diff` fails with HTTP 406 on a PR over 300 files. A rename holds both names.
-    const files = execFileSync(gh, ['api', '--paginate', `repos/${REPO_SLUG}/pulls/${num}/files`, '--jq', '.[] | .filename, (.previous_filename // empty)'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }).split('\n').filter(Boolean);
-    if (files.length >= 3000) throw new Error(`PR ${num} lists 3000 files — the API stops there, so its files are cut short`);
-    for (const f of files) out.push({ file: f, why: `open PR ${num}` });
-  }
-  return out;
-}
-
 // Can an empty `git log --grep` on this ref show a key is absent? Only when its history is whole and recent: a shallow clone
 // stops at its boundary, and a ref last updated more than the window ago lacks every merge since. Either reads as unknown.
 const refProof = new Map();
@@ -419,22 +376,14 @@ function main(argv) {
   }
   const spec = opt.spec ? JSON.parse(readFileSync(opt.spec, 'utf8')) : {};
   const held = opt.held ? readFileSync(opt.held, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean).map((file) => ({ file, why: 'chief held list' })) : [];
-  let heldUnknown = false;
-  try { held.push(...openPrFiles()); } catch (e) { heldUnknown = true; process.stderr.write(`cloud-route: gh failed, open-PR files unknown — ${e.message.split('\n')[0]}\n`); }
   let merged = [];
   let mergedUnknown = false;
   let mergedTruncated = new Set();
   try { ({ prs: merged, truncated: mergedTruncated } = mergedPrs(keys)); } catch (e) { mergedUnknown = true; process.stderr.write(`cloud-route: gh failed, merged PRs unknown — ${e.message.split('\n')[0]}\n`); }
-  // reservations from earlier runs; read after merged so a merged PR can release them
-  const log = opt.bucket ? join(opt.bucket, 'cloud-route.jsonl') : null;
-  if (log) {
-    // only a confirmed-missing log means "no reservations"; any other failure is unknown
-    try { held.push(...reservedFiles(readFileSync(log, 'utf8'), { merged })); } catch (e) { if (e.code !== 'ENOENT') { heldUnknown = true; process.stderr.write(`cloud-route: cannot read ${log}, earlier reservations unknown — ${e.message.split('\n')[0]}\n`); } }
-  }
   let tree = [];
   let treeUnknown = false;
   try { tree = baseTree(); } catch (e) { treeUnknown = true; process.stderr.write(`cloud-route: git failed, file tree unknown — ${e.message.split('\n')[0]}\n`); }
-  const ctx = { trust: loadTrust(), held, heldUnknown, merged, mergedUnknown, mergedTruncated, tree, treeUnknown };
+  const ctx = { trust: loadTrust(), held, merged, mergedUnknown, mergedTruncated, tree, treeUnknown };
   const date = new Date().toISOString().slice(0, 10);
   const launches = [];
   if (!opt.classifyOnly) mkdirSync(opt.bucket, { recursive: true });

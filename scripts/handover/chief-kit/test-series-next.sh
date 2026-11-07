@@ -370,7 +370,8 @@ printf '{"schema":1,"legs":[]}\n' > "$IB/fleet.json"   # the predecessor has WRA
 nd="$( HIMMEL_FLAG_STACKED_SERIES=1 NEXT_DISPATCH_JIRA_CLI="$tmp/stub-jira/index.js" NEXT_DISPATCH_MIRROR="$tmp/inc/HIMMEL" NEXT_DISPATCH_GH_CMD="$tmp/nd-gh" \
     bash "$HERE/next-dispatchable.sh" --workers-from "$IB/fleet.json" --no-classify --why 2>/dev/null )"; nd_rc=$?
 check "9: next-dispatchable rc 0" "$nd_rc" 0
-contains "9: the started + committed item still holds its file (collision drop)" "$nd" "collision scripts/sa/a.sh held by series HIMMEL-9301-N931"
+contains "9: a started + committed item's file is an overlap, not a drop (listed)" "$nd" "LOCAL?	HIMMEL-9390"
+contains "9: the overlap names the series that wrote the file" "$nd" "# overlap HIMMEL-9390 scripts/sa/a.sh with series HIMMEL-9301-N931"
 
 # --- 10. series.md --------------------------------------------------------------------------------------------------------
 SM="$DOCS/series.md"
