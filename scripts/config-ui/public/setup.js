@@ -190,25 +190,30 @@ function tileChip(id, { state, setup }) {
   return same ? `<span class="m ok">matches our pick</span>` : "";
 }
 
-// Which doctor checks count as setup: what this install needs to be set up correctly (its prerequisites, wiring, folders
-// and settings). Every other check, such as a stale worktree or the search index, is a health check and is listed only on
-// the Health page. Keyed by the check number: a check may emit several rows (C74-himmel-conf, C74-env-keys, ...).
+// Which doctor checks count as setup: what this install needs to be set up correctly (its prerequisites, wiring,
+// configuration files and tracker). Every other check, such as a stale worktree or the search index, is a health check
+// and is listed only on the Health page. Keyed by the check number: a check may emit several rows (C74-himmel-conf,
+// C74-env-keys, ...). Only WARN and FAIL rows reach the strip, so each reason says what the doctor warns about. A test
+// reads himmel-doctor.sh: a number here must still emit a warning or failure, and a new check must be classified.
 export const SETUP_CHECKS = [
-  { id: "C1", reason: "The safety hooks are wired into Claude Code for this install." },
-  { id: "C4", reason: "The source code host (GitHub or Bitbucket) is detected; Configure shows it under Project scope." },
-  { id: "C5", reason: "The handover folder exists; Configure sets it under Project scope." },
-  { id: "C6", reason: "The hooks and MCP servers himmel needs are registered." },
-  { id: "C15", reason: "The plugins this install needs are installed; Configure sets the plugin set under Project scope." },
-  { id: "C16", reason: "The install passes himmelctl's own status check." },
-  { id: "C20", reason: "Node matches the version this checkout pins; a mismatch breaks hooks and the Jira tool." },
-  { id: "C39", reason: "On macOS, the timeout command that hooks rely on is installed." },
-  { id: "C46", reason: "A plugin the settings turn on is actually installed." },
-  { id: "C53", reason: "The test VM mode is valid; Configure sets it under Project scope." },
-  { id: "C63", reason: "The Claude command line tool is installed, which every lane needs." },
-  { id: "C65", reason: "The git hooks and branch protection that gate commits are armed." },
-  { id: "C73", reason: "The Bun runtime the UI and tools run on is installed." },
-  { id: "C74", reason: "himmel.conf and the environment keys are well formed; Configure writes them." },
-  { id: "C75", reason: "The keyring and the secrets it holds are readable; Configure sets them under Secrets." },
+  { id: "C1", reason: "The user-level guardrail hooks point at a node that exists; a missing node makes every tool call error and the guardrails fail open." },
+  { id: "C6", reason: "No MCP server or hook is wired as a bare interpreter this host does not have." },
+  { id: "C15", reason: "Enabled plugins stay at the lean floor; each extra one adds context cost at the start of every session." },
+  { id: "C16", reason: "himmelctl status finds no install or wiring problem." },
+  { id: "C17", reason: "Every enabled skill has the API key it declares." },
+  { id: "C20", reason: "The running Node major matches the one .nvmrc pins; the hooks, the Jira tool and the test suites run on it." },
+  { id: "C38", reason: "uv is on PATH; graphify is uv-managed and neither installs nor updates without it." },
+  { id: "C39", reason: "On macOS a working timeout or gtimeout is on PATH; graph refresh runs unbounded without it." },
+  { id: "C46", reason: "Every plugin the settings enable is installed." },
+  { id: "C53", reason: "The test VM mode resolves to a VM that answers; with none, every VM-proof hold stays held." },
+  { id: "C55", reason: "The project resolves to one tracker and one source code host." },
+  { id: "C62", reason: "bunx or bun is on PATH; without it the oxlint commit gates are skipped on every commit." },
+  { id: "C63", reason: "Claude Code meets the minimum version that chief and worker launches need." },
+  { id: "C65", reason: "The git hooks are installed and core.hooksPath stays in this repo; main's branch protection requires status checks." },
+  { id: "C73", reason: "Compiled Bun binaries embed a Bun at least as new as .bun-version." },
+  { id: "C74", reason: "himmel.conf, .env and the gate policy file are readable and well formed, and behaviour keys sit in himmel.conf." },
+  { id: "C75", reason: "The OS keyring answers and himmel-secrets reads it, so secrets are not served from .env." },
+  { id: "C78", reason: "shfmt is on PATH; without it the Bash guards deny commands that name a stash, ref-plumbing or graphify verb." },
 ];
 const SETUP_IDS = new Set(SETUP_CHECKS.map((c) => c.id));
 // A doctor row id is the check number, then an optional "-name": C74-env-keys is C74, and C44-skill-index is not C4.
@@ -218,19 +223,22 @@ export const isSetupCheck = (id) => {
 };
 
 // The strip shows the setup findings only. The verify answer totals every check, so its counts are not used here: the
-// fail and warn counts come from the setup findings, and there is no ok count for the subset.
+// fail and warn counts come from the setup findings, and there is no ok count for the subset. The findings outside the
+// setup list are counted apart, so a clean setup never sits beside a failure this page does not show.
 function checkStrip(v) {
   const run = (label) => `<button class="btn primary" type="button" data-act="setup-verify">${label}</button>`;
   const head = `<b>Check this install</b><span class="sub">Read-only: nothing is fixed or changed, and no secret value is shown. This lists the setup checks; <a href="#/health">the Health page</a> lists every check.</span>`;
   if (!v) return `<div class="chk">${head}<span class="det">not run yet</span>${run("run the checks")}</div>`;
   if (v.state === "running") return `<div class="chk">${head}<span class="det" role="status">running… this can take a minute or two</span></div>`;
   if (v.state !== "done") return `<div class="chk">${head}<span class="nodata" role="alert">${esc(v.error || "the checks did not finish")}</span>${run("run again")}</div>`;
-  const mine = v.findings.filter((f) => isSetupCheck(f.id));
-  const fail = mine.filter((f) => f.sev === "FAIL").length, warn = mine.length - fail;
+  const mine = v.findings.filter((f) => isSetupCheck(f.id)), rest = v.findings.filter((f) => !isSetupCheck(f.id));
+  const nFail = (list) => list.filter((f) => f.sev === "FAIL").length;
+  const fail = nFail(mine), warn = mine.length - fail;
+  const elsewhere = rest.length ? `<span class="sub">Not setup, so only on <a href="#/health">the Health page</a>: ${nFail(rest)} fail, ${rest.length - nFail(rest)} warn.</span>` : "";
   const rows = mine.map((f) => `<div class="srow"><span class="id">${esc(f.id)}</span>
       <span class="det"><span class="st ${f.sev === "FAIL" ? "fail" : "warn"}">${esc(f.sev.toLowerCase())}</span> ${esc(f.msg)}${f.remedy ? ` · fix: ${esc(f.remedy)}` : ""}</span>
       <button class="btn" type="button" data-act="open-config" data-id="doctor:${esc(f.id)}">Open in Health</button></div>`).join("");
-  return `<div class="chk">${head}<span class="summary"><span class="st fail">${fail} fail</span> <span class="st warn">${warn} warn</span> <span class="sub">in the setup checks</span></span>${run("run again")}</div>
+  return `<div class="chk">${head}<span class="summary"><span class="st fail">${fail} fail</span> <span class="st warn">${warn} warn</span> <span class="sub">in the setup checks</span></span>${elsewhere}${run("run again")}</div>
     ${rows || `<p class="sub" role="status">Nothing to fix in the setup checks.</p>`}`;
 }
 
