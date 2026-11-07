@@ -68,7 +68,8 @@ tab="$(printf '\t')"
 # shell metacharacter gets only the relative spelling.
 wt_re=""
 case "$top" in *[!A-Za-z0-9_./+-]*) ;; *) wt_re="(${esc_top}/)?" ;; esac
-while IFS="$tab" read -r id re _fence verify; do
+# The fifth field, capability, is read as its own field so it never lands inside the verify= list; nothing acts on it yet.
+while IFS="$tab" read -r id re _fence verify _capability; do
     case "$id" in ''|'#'*) continue ;; esac
     [ -n "$re" ] || continue
     re="${re//\{WT\}/$wt_re}"

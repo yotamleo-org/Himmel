@@ -16,6 +16,7 @@ import { env as hostEnv } from 'node:process';
 import { BASH_BIN } from './lib/resolve-bash.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { resolveProfile } from '../plugin-profiles.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SETTINGS = JSON.parse(readFileSync(join(REPO_ROOT, '.claude', 'settings.json'), 'utf8'));
@@ -300,32 +301,35 @@ const SCAN_ROOTS = ['docs', 'marketplace', 'scripts'];
 const SPAN_RE = /`((?:(?:cd \S+ && |timeout \d+ |[A-Za-z_]\w*=\S+ ))*bash [^`]+)`/g;
 // the backticked spans of one text that start with `bash ` (after an optional cd, timeout or VAR= prefix)
 // and name one of the three scripts, each with its line number
-function spansIn(text) {
+function spansIn(text, scriptRe = CHIEF_KIT_SCRIPT) {
   const out = [];
   for (const m of text.matchAll(SPAN_RE)) {
     const command = m[1].replace(/\s+/g, ' ').trim();
-    if (CHIEF_KIT_SCRIPT.test(command)) out.push({ line: text.slice(0, m.index).split('\n').length, command });
+    if (scriptRe.test(command)) out.push({ line: text.slice(0, m.index).split('\n').length, command });
   }
   return out;
 }
-const docSpans = () => {
+const docSpans = (scriptRe = CHIEF_KIT_SCRIPT, roots = SCAN_ROOTS, excludes = SPAN_EXCLUDES) => {
   const out = [];
-  // every tracked text file under the three roots that names one of the scripts
-  for (const f of gitLines(['grep', '-I', '-l', '-E', CHIEF_KIT_SCRIPT.source, '--', ...SCAN_ROOTS])) {
-    for (const { line, command } of spansIn(readFileSync(join(REPO_ROOT, f), 'utf8'))) {
-      if (SPAN_EXCLUDES.some((x) => x.file === f && command.includes(x.text))) continue;
+  // every tracked text file under the roots that names one of the scripts
+  for (const f of gitLines(['grep', '-I', '-l', '-E', scriptRe.source, '--', ...roots])) {
+    for (const { line, command } of spansIn(readFileSync(join(REPO_ROOT, f), 'utf8'), scriptRe)) {
+      if (excludes.some((x) => x.file === f && command.includes(x.text))) continue;
       out.push({ where: `${f}:${line}`, command });
     }
   }
   return out;
 };
 // the NEXT:/GO printf formats under scripts/: %q becomes a word, %s a separate argument
+// a plain directory listing filtered here: no wildcard pathspec, so the result does not depend on the git version or pathspec env
+const printingShellFiles = () => {
+  const files = gitLines(['ls-files', '--', 'scripts']).filter((f) => f.endsWith('.sh') && !/\/test-[^/]*\.sh$/.test(f) && !f.includes('/tests/'));
+  assert.ok(files.includes('scripts/handover/chief-kit/ready-go.sh'), `anti-vacuity: ready-go.sh missing from ${files.length} listed scripts`);
+  return files;
+};
 const printfNextCommands = () => {
   const out = [];
-  // a plain directory listing filtered here: no wildcard pathspec, so the result does not depend on the git version or pathspec env
-  const shellFiles = gitLines(['ls-files', '--', 'scripts']).filter((f) => f.endsWith('.sh') && !/\/test-[^/]*\.sh$/.test(f) && !f.includes('/tests/'));
-  assert.ok(shellFiles.includes('scripts/handover/chief-kit/ready-go.sh'), `anti-vacuity: ready-go.sh missing from ${shellFiles.length} listed scripts`);
-  for (const f of shellFiles) {
+  for (const f of printingShellFiles()) {
     readFileSync(join(REPO_ROOT, f), 'utf8').split('\n').forEach((line, i) => {
       const m = /printf '((?:NEXT:|GO )[^']*)'/.exec(line);
       const cmd = m && /\bbash \S*(?:go|ready-check|ready-go)\.sh.*$/.exec(m[1].replace(/%q/g, 'X').replace(/%s/g, ' X').replace(/ +/g, ' '));
@@ -388,11 +392,82 @@ test('the printed-form check refuses a leading cd, timeout, VAR= or absolute pat
     'bash /abs/scripts/handover/chief-kit/go.sh 1 a',
     'bash <anchor>/scripts/handover/chief-kit/go.sh 1 a',
   ]) assert.notDeepEqual(printedFormProblems(command), [], command);
-  assert.deepEqual(printedFormProblems('bash scripts/handover/chief-kit/go.sh --contract no 1 a'), []);
-  // a prefixed span in any scanned file is a hit, whatever the file type
+  assert.deepEqual(printedFormProblems('bash scripts/handover/chief-kit/go.sh --contract no 1 a'), []);  // a prefixed span in any scanned file is a hit, whatever the file type
   // (the fixture is assembled so this file carries no backticked span of its own)
   const tick = String.fromCharCode(96);
   const hits = spansIn(['see ', tick, 'timeout 90 bash scripts/handover/chief-kit/go.sh 1 a', tick, ' and ', tick, 'cd /x && bash scripts/handover/chief-kit/ready-check.sh 1 a', tick].join(''));
   assert.equal(hits.length, 2);
   for (const { command } of hits) assert.notDeepEqual(printedFormProblems(command), [], command);
+});
+
+// Capability tags (I4): the registry owns every himmel-script rule, the project file mirrors it.
+const CAPABILITIES = ['go', 'merge', 'ship', 'fleet', 'release', 'infra', 'housekeeping'];
+test('every himmel-script rule in .claude/settings.json is a registry rule with a capability', () => {
+  const rules = ALLOW.filter((r) => /\b(scripts|templates)\//.test(r));
+  assert.ok(rules.length > 40, `anti-vacuity: expected the himmel-script rules, got ${rules.length}`);
+  const untagged = rules.filter((r) => !CAPABILITIES.includes(REG.ruleCapabilities?.[r]));
+  assert.deepEqual(untagged, [], `rules with no registry capability:\n${untagged.join('\n')}`);
+});
+
+// Printed merge form (I2, part 2): a merge-on-green or merge-fork-pr command is typed as printed, so
+// it must match one allow rule of the profile it is printed for: chief text the chief's rendered
+// chiefAllow (relative form, run from the checkout root), worker text the worker's rendered rules
+// (the anchor-absolute twin, with the doc placeholder replaced by a validated primary path).
+// ponytail: models the `:*` matcher, as above; upgrade path a live allow probe in a test VM (spec R12).
+const MERGE_SCRIPT = /handover\/(merge-on-green|merge-fork-pr)\.sh/;
+const MERGE_SCAN_ROOTS = ['docs', 'marketplace'];
+// A span is excluded only by an entry here: the span names a shape on purpose, as a counter-example.
+const MERGE_SPAN_EXCLUDES = [
+  { file: 'docs/internals/enforcement.md', text: 'VAR=x bash scripts/handover/merge-on-green.sh', reason: 'counter-example: a VAR= prefix can never match an allow rule' },
+  { file: 'docs/internals/hermes-guardrail-parity.md', text: 'ARMAUTOMERGE=1 bash', reason: 'names the env-prefix shape a guard refuses' },
+  { file: 'docs/handover/afk-mode.md', text: 'bash scripts/handover/merge-on-green.sh', reason: 'names the retired relative rule as retired' },
+];
+// Docs a worker reads and types from; every other scanned doc is chief-facing.
+const WORKER_FACING_DOCS = ['docs/handover/worker-brief-template.md', 'docs/handover/worker-preface.md', 'docs/handover/afk-mode.md'];
+const MERGE_ANCHOR = '/home/u/himmel';
+const CHIEF_RENDERED_ALLOW = resolveProfile(REG, 'chief', { installed: [] }).permissions?.allow ?? [];
+const WORKER_RENDERED_ALLOW = [...ALLOW, ...resolveProfile(REG, 'worker-impl', { installed: [], anchor: MERGE_ANCHOR }).permissions.allow];
+// the worker messages auto-go.sh and verdict-go.sh print: `GO <pr> <head> - merge with: bash %q...`, the first %q being the anchor path
+function mergePrintfCommands() {
+  const out = [];
+  for (const f of printingShellFiles()) {
+    readFileSync(join(REPO_ROOT, f), 'utf8').split('\n').forEach((line, i) => {
+      const fmt = /printf '(GO [^']*bash %q[^']*)'/.exec(line);
+      const script = MERGE_SCRIPT.exec(line);
+      if (!fmt || !script) return;
+      const typed = fmt[1].replace('%q', `<anchor>/scripts/handover/${script[1]}.sh`).replace(/%q/g, 'X').replace(/%s/g, '').replace(/ +/g, ' ');
+      out.push({ where: `${f}:${i + 1}`, command: /bash .*$/.exec(typed)[0].trim(), worker: true });
+    });
+  }
+  return out;
+}
+function mergePrintedProblems({ command, worker }) {
+  const problems = [];
+  if (/^(cd|timeout|nohup|env|[A-Za-z_][A-Za-z0-9_]*=)\b/.test(command)) problems.push('leading cd, timeout or VAR= prefix');
+  const typed = worker ? command.replaceAll('<anchor>', MERGE_ANCHOR) : command;
+  const rules = worker ? WORKER_RENDERED_ALLOW : CHIEF_RENDERED_ALLOW;
+  if (matching(rules, typed).length < 1) problems.push(`matches no ${worker ? 'worker' : 'chief'} allow rule`);
+  return problems;
+}
+
+test('every printed merge-on-green and merge-fork-pr command matches one allow pattern of the profile it is printed for', () => {
+  const spans = docSpans(MERGE_SCRIPT, MERGE_SCAN_ROOTS, MERGE_SPAN_EXCLUDES).map((s) => ({ ...s, worker: WORKER_FACING_DOCS.includes(s.where.split(':')[0]) }));
+  const printfs = mergePrintfCommands();
+  assert.ok(spans.some((s) => s.worker) && spans.some((s) => !s.worker), 'anti-vacuity: worker-facing and chief-facing doc spans');
+  assert.ok(spans.length >= 4, `anti-vacuity: expected the doc spans, got ${spans.length}`);
+  assert.equal(printfs.length, 2, 'anti-vacuity: the auto-go and verdict-go worker messages');
+  const bad = [];
+  for (const hit of [...spans, ...printfs]) {
+    const problems = mergePrintedProblems(hit);
+    if (problems.length) bad.push(`${hit.where}: ${hit.command}\n    ${problems.join('; ')}`);
+  }
+  assert.deepEqual(bad, [], `printed merge commands no allow rule of their profile matches:\n${bad.join('\n')}`);
+});
+
+test('the merge printed-form check refuses the retired relative worker spelling and an absolute chief spelling', () => {
+  assert.notDeepEqual(mergePrintedProblems({ command: 'bash scripts/handover/merge-on-green.sh --jira-transition', worker: true }), []);
+  assert.notDeepEqual(mergePrintedProblems({ command: 'bash <anchor>/scripts/handover/merge-fork-pr.sh o/r 1 a', worker: false }), []);
+  assert.notDeepEqual(mergePrintedProblems({ command: 'timeout 90 bash scripts/handover/merge-on-green.sh 1', worker: false }), []);
+  assert.deepEqual(mergePrintedProblems({ command: 'bash <anchor>/scripts/handover/merge-on-green.sh --jira-transition --go f', worker: true }), []);
+  assert.deepEqual(mergePrintedProblems({ command: 'bash scripts/handover/merge-fork-pr.sh o/r 1 a', worker: false }), []);
 });
