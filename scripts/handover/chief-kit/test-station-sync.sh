@@ -7,7 +7,7 @@
 # Cases:
 #   1. usage: no source / both sources                        -> rc 2
 #   2. a merged diff touching marketplace/                    -> --only marketplace, nothing else
-#   3. jira / qmd pin / graphify pin / unrelated paths        -> the mapped steps only; --versions always
+#   3. jira / config-ui / qmd pin / graphify pin / unrelated paths -> the mapped steps only; --versions always
 #   4. a behind row                                           -> STATION=BEHIND:<components> + state file
 #   5. non-comment local template hunk                        -> luna_template NOT applied, hunk named
 #   6. comment-only local template hunk                       -> luna_template applied
@@ -22,6 +22,8 @@ SCRIPT="$HERE/station-sync.sh"
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/ss-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$W"' EXIT
+# the config_ui retry marker lives under $HOME; a developer's real one must not steer these cases
+export HOME="$W/home"; mkdir -p "$HOME"
 fails=0
 check()    { if [ "$2" = "$3" ]; then echo "ok - $1"; else echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); fi; }
 contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: [$2] does not contain [$3]"; fails=$((fails+1)) ;; esac; }
@@ -30,6 +32,13 @@ lacks()    { case "$2" in *"$3"*) echo "FAIL - $1: [$2] contains [$3]"; fails=$(
 cat > "$W/update" <<'EOF2'
 #!/usr/bin/env bash
 echo "update $*" >> "$SS_CALLS"
+if [ "$1 $2" = "--only ${SS_T_FAIL:-}" ]; then
+    # the real --only layout: the step's own error first, the status table after it
+    printf '%s\n' "==> config UI rebuild" "    error: bun build exploded" "==> update chain status" \
+        "    jira_cli       not-attempted" "    qmd_fork       not-attempted" "    hermes         not-attempted" \
+        "    luna_template  not-attempted" "    config_ui      failed         build failed" >&2
+    exit 1
+fi
 if [ "$1" = "--versions" ]; then cat "$SS_T_VERSIONS"; grep -qw behind "$SS_T_VERSIONS" && exit 1; exit 0; fi
 exit 0
 EOF2
@@ -79,6 +88,10 @@ contains "3 jira" "$calls" "update --only jira_cli"
 contains "3 qmd" "$calls" "update --only qmd_fork"
 contains "3 graphify" "$calls" "update --only graphify"
 lacks "3 no marketplace" "$calls" "--only marketplace"
+run "$W/ver-current" scripts/config-ui/agui-web/src/main.tsx scripts/config-ui/server.ts
+contains "3 config ui step" "$calls" "update --only config_ui"
+check "3 config ui step runs once" "$(printf '%s\n' "$calls" | grep -c -- '--only config_ui')" 1
+lacks "3 config ui alone runs no jira step" "$calls" "--only jira_cli"
 run "$W/ver-current" docs/x.md
 lacks "3 docs only runs no step" "$calls" "--only"
 contains "3 docs only still checks versions" "$calls" "update --versions"
@@ -281,5 +294,25 @@ rm -f "$W/bridge-restart.ts"; : > "$SS_SC_CALLS"
 SS_T_ENABLED=1 run_bridge scripts/lanes/a.json
 lacks "22 unit not enabled: no restart" "$sc" " restart "
 contains "22 skip names the reason" "$out" "SKIP bridge_restart unit-not-enabled"
+
+# 25-28: the config_ui retry marker (a rebuild that failed, or never ran for want of bun)
+CUI_MARK="$HOME/.himmel/state/config-ui-rebuild-pending"
+mkdir -p "$HOME/.himmel/state"; : > "$CUI_MARK"
+run "$W/ver-current" docs/x.md
+contains "25 marker owed: the sync runs config_ui though the merge touched no UI path" "$calls" "update --only config_ui"
+contains "25 marker still there (the stub left it): the state is not ok" "$out" "STATION=BEHIND:config_ui-failed"
+check "25 state file agrees" "$(cat "$SS_STATE")" "BEHIND:config_ui-failed"
+rm -f "$CUI_MARK"
+run "$W/ver-current" docs/x.md
+lacks "26 no marker, no UI path: no config_ui step" "$calls" "--only config_ui"
+contains "26 and the station reads ok" "$out" "STATION=OK"
+: > "$CUI_MARK"
+SS_T_FAIL=config_ui run "$W/ver-current" scripts/config-ui/server.ts
+contains "27 a failed config_ui step reports its rc" "$out" "STEP config_ui rc=1"
+contains "27 and keeps the step's own error, not just the table" "$out" "config_ui:     error: bun build exploded"
+contains "27 and the failed table row" "$out" "config_ui:     config_ui      failed         build failed"
+lacks "27 and not the unrelated table rows" "$out" "not-attempted"
+check "27 the failure is named once" "$(printf '%s\n' "$out" | grep -c 'STATION=BEHIND:config_ui-failed$')" 1
+rm -f "$CUI_MARK"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

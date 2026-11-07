@@ -311,7 +311,12 @@ ship separately.
 **19. suite evidence.** A suite CI runs is run once, in CI: pr-check
 step 3.6 records it `SUITE <p> = CI` (`scripts/cr/pr-check-ref/33-step3-impacted.md`),
 and `ready-check.sh` item 19 needs proof for every impacted suite of
-`origin/main..<head>` at the exact head:
+`origin/main..<head>` at the exact head. A worker runs on the station only the
+suite its PR changed, with its failing-first proof, and a suite CI cannot run, each with a
+named reason; `impacted-suites.sh --plan <base>..<head>` prints that split (`LOCAL <p> (<reason>)`
+or `CI <p>`; the failing-first proof is an instruction the plan prints, no gate checks it) (operator decision 775).
+A JS/TS suite has no per-suite CI proof yet, so it stays `LOCAL` until item 19 reads one; only then does a
+typical PR plan 5 or fewer `LOCAL` lines:
 
 | Proof | Counts when |
 |---|---|

@@ -421,6 +421,61 @@ out=$(USERPROFILE='' HOME="$fake_home_8" HIMMEL_UPDATE_CLAUDE_BIN="$claude_ok_8"
 assert_eq "bump wiring: rc 0" "0" "$rc"
 assert_eq "bump wiring: SessionEnd timeout raised to 30" "30" "$(jq -r '.hooks.SessionEnd[0].hooks[0].timeout' "$hooks_8/hooks.json")"
 
+# ─── Test 9: the config_ui step is wired into --only, the full update, --check and the status table ───
+echo "Test 9: config_ui wiring — --only config_ui, a full update owing a retry, --check, the status row"
+make_mock_clone
+mkdir -p "$CHECKOUT_DIR/scripts/config-ui/agui-web"
+printf '{}\n' > "$CHECKOUT_DIR/scripts/config-ui/agui-web/package.json"
+git -C "$CHECKOUT_DIR" add -A
+git -C "$CHECKOUT_DIR" commit --quiet -m "ui"
+git -C "$CHECKOUT_DIR" push --quiet origin HEAD 2>/dev/null
+fake_home_9="$TMP/fake-home-test9"; mkdir -p "$fake_home_9/.himmel/state"
+claude_ok_9="$TMP/claude-ok-test9"; make_claude_stub "$claude_ok_9" 0
+bin_9="$TMP/bin-test9"; mkdir -p "$bin_9" "$TMP/cui9"
+cat > "$bin_9/bun" <<'STUB'
+#!/bin/sh
+printf '%s|%s\n' "$(pwd)" "$*" >> "$CUI9_CALLS"
+exit 0
+STUB
+cat > "$bin_9/systemctl" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >> "$CUI9_CALLS"
+case "$*" in *is-active*) echo inactive; exit 3 ;; esac
+exit 0
+STUB
+chmod +x "$bin_9/bun" "$bin_9/systemctl"
+run_9() {   # run_9 <args...> — sets out_9 / rc_9 / calls_9; the real script, a fake HOME, stub bun + systemctl
+    : > "$TMP/cui9/calls"; rc_9=0
+    out_9=$(USERPROFILE='' HOME="$fake_home_9" PATH="$bin_9:$PATH" CUI9_CALLS="$TMP/cui9/calls" \
+            HIMMEL_UPDATE_CLAUDE_BIN="$claude_ok_9" HERMES_HOME="$TMP/no-hermes" \
+            CLAUDE_USER_SETTINGS="$fake_home_9/.claude/settings.json" CLAUDE_CONFIG_DIR="$fake_home_9/.claude" \
+            bash "$CHECKOUT_DIR/scripts/himmel-update.sh" "$@" 2>&1) || rc_9=$?
+    calls_9=$(cat "$TMP/cui9/calls")
+}
+marker_9="$fake_home_9/.himmel/state/config-ui-rebuild-pending"
+
+run_9 --only config_ui
+assert_eq "config_ui --only: rc 0" "0" "$rc_9"
+assert_contains "config_ui --only: builds the bundle in agui-web" "agui-web|run build" "$calls_9"
+assert_contains "config_ui --only: the status row is printed" "config_ui  *updated" "$out_9"
+assert_not_contains "config_ui --only: is not an unknown item" "unknown item" "$out_9"
+
+: > "$marker_9"
+run_9
+assert_contains "config_ui full update owing a retry: builds the bundle" "agui-web|run build" "$calls_9"
+assert_contains "config_ui full update owing a retry: the status row is in the table" "config_ui  *updated" "$out_9"
+assert_eq "config_ui full update owing a retry: clears the marker" "no" "$([ -f "$marker_9" ] && echo yes || echo no)"
+
+run_9
+assert_not_contains "config_ui full update owing nothing: no row" "config_ui  " "$out_9"
+assert_eq "config_ui full update owing nothing: bun not called" "" "$calls_9"
+
+: > "$marker_9"
+run_9 --check
+assert_contains "config_ui --check owing a retry: row says what apply would do" "config_ui  *skipped  *check mode" "$out_9"
+assert_eq "config_ui --check: runs nothing" "" "$calls_9"
+assert_eq "config_ui --check: keeps the marker" "yes" "$([ -f "$marker_9" ] && echo yes || echo no)"
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
 echo "RESULTS: $pass passed, $fail failed"

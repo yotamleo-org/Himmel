@@ -38,8 +38,9 @@ which are `no-setpriv` and `no-notice-bot`.
 A session could put any text into the bridge bot's chat, so a look-alike request message
 cannot be ruled out there. The facts therefore come from a second bot whose token only
 root can read, `/etc/himmel/afk-sudo/notice-bot.env` (`TELEGRAM_BOT_TOKEN=<token>`, root
-0600). `install.sh` creates it empty and prints the steps: `/newbot` at @BotFather, send the
-new bot `/start`, then `sudoedit` the file. While the file is missing or holds no token,
+0600). `install.sh` writes it from `notice-bot.env.template` (a `TELEGRAM_BOT_TOKEN=` placeholder, no
+token) and prints the steps: `/newbot` at @BotFather, send the new bot `/start`, then `sudoedit` the file.
+A station with no editor needs `SUDO_EDITOR=nano sudoedit <file>`; the installer prints the form that works here. While the file is missing or holds no token,
 every `request` and `run-request` answers `result=no-notice-bot` (exit 5, no ledger row). A
 file another user can read is `unsafe-perms`.
 
@@ -58,7 +59,10 @@ operator could not read), and a user-writable argv[0] that is not a shown script
 framed (`⟦…⟧`) with control and non-ASCII characters shown as escapes. When an element (the cwd included) or the message would
 pass its limit it is cut, and the whole request goes first as a `<id>.json` document, so
 the nonce is never sent while the attachment may still fail. If either send fails the request is withdrawn (`result=notice-failed`, a `notice` ledger
-row, the step spent): the operator never approves what they were not shown.
+row, the step spent): the operator never approves what they were not shown. The row carries a
+`reason`: the failing call and an error kind (`sendMessage:api-4xx`, the class of the reply's
+`error_code`; `curl-exit-N`, `curl-timeout`, `curl-os-error`, `no-curl`, `bad-response`,
+`api-not-ok`, or `exception-<class>` when the send raised). Never the token, the URL or the reply text.
 
 The nonce applies to **both kinds**, sudo and run (the operator's default of 10-30, Q3).
 The approve line is `approve <id> <nonce> <code>`; the helper reads `NONCE CODE` on stdin
@@ -347,7 +351,14 @@ run kind's frozen argv for anything that needs more):
 false), `run.ttl_s` (default 900, max 3600), `run.timeout_s` (default 300, max 1800),
 `grant.enabled` (default false), `grant.ttl_s` (default 900, 30 to 3600),
 `ops.enabled` (default false), `ops.ttl_s` (default 900, 30 to 3600), `never_remote_extra`. `install.sh` writes them with the safe defaults on first
-install and never rewrites an existing config.
+install from `afk-sudo.json.template` (beside it). Over an existing config it adds the keys the template has and the
+config lacks, nested ones too, changes no existing value, keeps the file's mode and owner, and prints key names only.
+The installer refuses what the helper refuses: a config that is a link or not a regular file, not owned by root, or
+group- or world-writable is left as it was, with a non-zero exit. A config that is not a JSON object is refused too.
+The new file is fsynced before it replaces the old one. Just before the replace the installer re-reads the config and
+stops, leaving it as it is, if it changed since the read. The helper takes no lock on the config, so a `lockdown`
+landing in the few microseconds between that re-read and the replace would still be overwritten with the value
+read earlier; run the install while the station is quiet, and check `enabled` afterwards.
 
 ## Turning it off
 
@@ -363,7 +374,7 @@ again by the helper on every call, so it takes effect on the next verb:
 3. `"enabled": false`: every verb except `mode`, `lockdown`, `status` and `run-status`
    answers `result=disabled`, `approve` and `deny` included, so a pending request can no
    longer be approved. `lockdown` (below) writes this value and also denies the pending one.
-4. Empty `/etc/himmel/afk-sudo/notice-bot.env` (`sudoedit`): no request of either kind is
+4. No token in `/etc/himmel/afk-sudo/notice-bot.env` (`sudoedit`): no request of either kind is
    filed (`no-notice-bot`). A pending one can still be approved with the nonce already sent.
 5. `sudo bash scripts/lib/afk-sudo/install.sh --uninstall`: removes the helper, the floor
    module and the sudoers rule. The config, the seed, `notice-bot.env`, the state and the

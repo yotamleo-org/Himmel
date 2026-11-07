@@ -144,7 +144,7 @@ function verifyStep(v) {
   const summary = `<div class="summary"><span class="st fail">${v.fail} fail</span> <span class="st warn">${v.warn} warn</span> <span class="st ok">${v.ok} ok</span>${v.info ? ` <span class="st info">${v.info} info</span>` : ""}</div>`;
   const rows = v.findings.map((f) => `<div class="srow"><span class="id">${esc(f.id)}</span>
       <span class="det"><span class="st ${f.sev === "FAIL" ? "fail" : "warn"}">${esc(f.sev.toLowerCase())}</span> ${esc(f.msg)}${f.remedy ? ` · fix: ${esc(f.remedy)}` : ""}</span>
-      <button class="btn" type="button" data-act="open-config" data-id="doctor:${esc(f.id)}">Open in Settings</button></div>`).join("");
+      <button class="btn" type="button" data-act="open-config" data-id="doctor:${esc(f.id)}">Open in Health</button></div>`).join("");
   return `${head}${summary}${rows || `<p class="sub" role="status">Nothing to fix.</p>`}${run("run again")}`;
 }
 
@@ -190,17 +190,63 @@ function tileChip(id, { state, setup }) {
   return same ? `<span class="m ok">matches our pick</span>` : "";
 }
 
+// Which doctor checks count as setup: what this install needs to be set up correctly (its prerequisites, wiring,
+// configuration files and tracker). Every other check, such as a stale worktree or the search index, is a health check
+// and is listed only on the Health page. Keyed by the check number: a check may emit several rows (C74-himmel-conf,
+// C74-env-keys, ...). Only WARN and FAIL rows reach the strip, so each reason says what the doctor warns about. A test
+// reads himmel-doctor.sh: a number here must still emit a warning or failure, and a new check must be classified.
+export const SETUP_CHECKS = [
+  { id: "C1", reason: "The user-level guardrail hooks point at a node that exists; a missing node makes every tool call error and the guardrails fail open." },
+  { id: "C6", reason: "No MCP server is wired as a bare interpreter, such as uvx, bun or node, which a GUI launch's minimal PATH may lack even when this host has it; no hook leads with a bare interpreter this host lacks." },
+  { id: "C9", reason: "A scheduler backend (at with atd running, or crontab) is available, so an armed resume can fire." },
+  { id: "C13", reason: "The himmel-ops plugin hooks point at hook scripts that exist in this checkout; a missing one makes the hook do nothing, silently." },
+  { id: "C15", reason: "Enabled plugins stay at the lean floor; each extra one adds context cost at the start of every session." },
+  { id: "C16", reason: "himmelctl status finds no install or wiring problem." },
+  { id: "C17", reason: "Every enabled skill has the API key it declares, and no ready toolkit is marked disabled in a doc." },
+  { id: "C20", reason: "The running Node major matches the one .nvmrc pins; the hooks, the Jira tool and the test suites run on it." },
+  { id: "C28", reason: "The guardrail hook is wired into your global settings, or you declined it on record; otherwise nothing enforces it." },
+  { id: "C32", reason: "The hook that refuses a commit or push straight to main is installed, executable and has its target script." },
+  { id: "C38", reason: "uv is on PATH; graphify is uv-managed and neither installs nor updates without it." },
+  { id: "C39", reason: "On macOS a working timeout or gtimeout is on PATH; graph refresh runs unbounded without it." },
+  { id: "C43", reason: "The user settings carry no bare rtk hook, which bypasses the rtk hook guard." },
+  { id: "C46", reason: "Every plugin the settings enable is installed." },
+  { id: "C53", reason: "The test VM mode resolves to a VM, and a remote VM answers at its host and port; otherwise every VM-proof hold stays held." },
+  { id: "C55", reason: "The project resolves to one tracker and one source code host." },
+  { id: "C62", reason: "bunx or bun is on PATH; without it the oxlint commit gates are skipped on every commit." },
+  { id: "C63", reason: "Claude Code meets the minimum version that chief and worker launches need." },
+  { id: "C65", reason: "The git gate hooks are installed and run (core.hooksPath stays in this repo, none is a stub), jq is on PATH for the gates, and main's branch protection requires status checks." },
+  { id: "C73", reason: "Compiled Bun binaries embed a Bun at least as new as .bun-version." },
+  { id: "C74", reason: "himmel.conf, .env, the gate policy file and the config keys are readable and well formed, and behaviour keys sit in himmel.conf." },
+  { id: "C75", reason: "The OS keyring answers and himmel-secrets reads it, secrets are not served from .env, and every served credential has its setting." },
+  { id: "C78", reason: "shfmt is on PATH; without it the Bash guards deny commands that name a stash, ref-plumbing or graphify verb." },
+  { id: "C81", reason: "No hook script is wired from more than one settings layer, so none runs twice per call." },
+  { id: "C85", reason: "The queue lock self-heartbeat hook is wired for every tool and hooks are not disabled; without it a long worker's lock goes stale after one TTL." },
+];
+const SETUP_IDS = new Set(SETUP_CHECKS.map((c) => c.id));
+// A doctor row id is the check number, then an optional "-name": C74-env-keys is C74, and C44-skill-index is not C4.
+export const isSetupCheck = (id) => {
+  const m = /^(C\d+)(?:-|$)/.exec(String(id));
+  return !!m && SETUP_IDS.has(m[1]);
+};
+
+// The strip shows the setup findings only. The verify answer totals every check, so its counts are not used here: the
+// fail and warn counts come from the setup findings, and there is no ok count for the subset. The findings outside the
+// setup list are counted apart, so a clean setup never sits beside a failure this page does not show.
 function checkStrip(v) {
   const run = (label) => `<button class="btn primary" type="button" data-act="setup-verify">${label}</button>`;
-  const head = `<b>Check this install</b><span class="sub">Read-only: nothing is fixed or changed, and no secret value is shown.</span>`;
+  const head = `<b>Check this install</b><span class="sub">Read-only: nothing is fixed or changed, and no secret value is shown. This lists the setup checks; <a href="#/health">the Health page</a> lists every check.</span>`;
   if (!v) return `<div class="chk">${head}<span class="det">not run yet</span>${run("run the checks")}</div>`;
   if (v.state === "running") return `<div class="chk">${head}<span class="det" role="status">running… this can take a minute or two</span></div>`;
   if (v.state !== "done") return `<div class="chk">${head}<span class="nodata" role="alert">${esc(v.error || "the checks did not finish")}</span>${run("run again")}</div>`;
-  const rows = v.findings.map((f) => `<div class="srow"><span class="id">${esc(f.id)}</span>
+  const mine = v.findings.filter((f) => isSetupCheck(f.id)), rest = v.findings.filter((f) => !isSetupCheck(f.id));
+  const nFail = (list) => list.filter((f) => f.sev === "FAIL").length;
+  const fail = nFail(mine), warn = mine.length - fail;
+  const elsewhere = rest.length ? `<span class="sub">Not setup, so only on <a href="#/health">the Health page</a>: ${nFail(rest)} fail, ${rest.length - nFail(rest)} warn.</span>` : "";
+  const rows = mine.map((f) => `<div class="srow"><span class="id">${esc(f.id)}</span>
       <span class="det"><span class="st ${f.sev === "FAIL" ? "fail" : "warn"}">${esc(f.sev.toLowerCase())}</span> ${esc(f.msg)}${f.remedy ? ` · fix: ${esc(f.remedy)}` : ""}</span>
       <button class="btn" type="button" data-act="open-config" data-id="doctor:${esc(f.id)}">Open in Health</button></div>`).join("");
-  return `<div class="chk">${head}<span class="summary"><span class="st fail">${v.fail} fail</span> <span class="st warn">${v.warn} warn</span> <span class="st ok">${v.ok} ok</span>${v.info ? ` <span class="st info">${v.info} info</span>` : ""}</span>${run("run again")}</div>
-    ${rows || `<p class="sub" role="status">Nothing to fix.</p>`}`;
+  return `<div class="chk">${head}<span class="summary"><span class="st fail">${fail} fail</span> <span class="st warn">${warn} warn</span> <span class="sub">in the setup checks</span></span>${elsewhere}${run("run again")}</div>
+    ${rows || `<p class="sub" role="status">Nothing to fix in the setup checks.</p>`}`;
 }
 
 const loading = (what) => `<p class="sub" role="status">loading ${what}…</p>`;
@@ -208,7 +254,7 @@ const setupFailed = (setup) => (setup ? `<div class="nodata" role="alert">${esc(
 
 // ---- Multi accounts: which API account may serve each kind of run on auto. The data is GET /api/api-roles:
 // the role map's state and live roles, ROLES, one row per account and the account letters. The page holds no role list.
-const ROLE_NOTE = { graphify: "every configured account (the himmel graph pass)", judge: "subscription judge (decision 525)" };
+const ROLE_NOTE = { graphify: "every configured account (the himmel graph pass)", judge: "the subscription, no API account" };
 const BANK_STYLE = { "not configured": "off", unknown: "warn", "marked exhausted": "fail", "no room": "fail", "last resort": "warn", "no reading": "warn", "stale reading": "warn", room: "ok" };
 const ROLES_FILE = "~/.himmel/state/api-credit/roles.json";
 
@@ -257,7 +303,7 @@ function accountRows(d) {
     const mapped = d.ROLES.filter((role) => (map.roles[role] || []).includes(r.account));
     const roles = mapped.length
       ? `<span class="chips">${mapped.map((role) => `<span class="ro">${esc(role)}</span>`).join(" ")}</span>${r.configured === false ? ` <span class="det">skipped at pick time</span>` : ""}`
-      : map.state === "absent" && r.configured ? `<span class="det">graph pass (525 default)</span>` : "—";
+      : map.state === "absent" && r.configured ? `<span class="det">graph pass (default)</span>` : "—";
     const tag = `<span class="st ${BANK_STYLE[r.tag] || "warn"}">${esc(r.tag)}${r.reason ? ` (${esc(r.reason)})` : ""}</span>`;
     const cap = r.cap_usd == null ? "—" : `$${esc(String(Number(r.cap_usd)))} cap`;
     return `<tr data-account-row="${esc(r.account)}"><th scope="row">${esc(r.account)}</th><td>${r.configured == null ? "unknown" : r.configured ? "configured" : "not configured"}</td><td>${cap}</td><td>${tag}</td><td>${roles}</td></tr>`;
@@ -271,18 +317,18 @@ function roleEditor(d, ar) {
     const on = (draft[role] || []).includes(l);
     return `<button class="btn${on ? " primary" : ""}" type="button" data-act="role-toggle" data-role="${esc(role)}" data-account="${esc(l)}" aria-pressed="${on}">${esc(l)}</button>`;
   }).join(" ");
-  const rows = d.ROLES.map((role) => `<tr><th scope="row">${esc(role)}</th><td>${toggles(role)}</td><td class="det">${esc(ROLE_NOTE[role] || "its decision 525 default")}</td></tr>`).join("");
+  const rows = d.ROLES.map((role) => `<tr><th scope="row">${esc(role)}</th><td>${toggles(role)}</td><td class="det">${esc(ROLE_NOTE[role] || "auto is refused")}</td></tr>`).join("");
   const p = rolesPreview(apiRolesDraft(d), draft);
   const missing = (d.rows || []).filter((r) => r.configured === false && Object.values(draft).some((ls) => ls.includes(r.account))).map((r) => r.account);
   const preview = ar.preview ? `<div class="dryrun"><b>Preview (in the page, not saved)</b> <code>${ROLES_FILE}</code>
       <pre>${p.diff.map((l) => `${l.sign} ${esc(l.text)}`).join("\n") || esc(p.after)}</pre>
-      ${p.after === "file removed" ? `<p class="sub">An empty map removes the file: decision 525 applies.</p>` : ""}
+      ${p.after === "file removed" ? `<p class="sub">An empty map removes the file: the defaults apply.</p>` : ""}
       ${missing.map((l) => `<p class="sub">${esc(l)} is not configured: it is kept and skipped at pick time until a ${esc(l)} row exists.</p>`).join("")}</div>` : "";
   const msg = ar.msg ? `<span class="${ar.msg.ok ? "ok-t" : "bad-t"}" role="status">${esc(ar.msg.text)}</span>` : "";
   return `<h4>Edit roles</h4>
-    <p class="sub">Press an account to let it serve that kind of run on auto. Leaving a row with no account means its decision 525 default.</p>
+    <p class="sub">Press an account to let it serve that kind of run on auto. A row with no account uses the default in its last column.</p>
     <div class="scroll"><table class="roles-table roles-edit"><thead><tr><th>Role</th><th>Accounts</th><th>With no account</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="sub">critic, eval, bulk and cull get a row when their callers route auto (P2).</p>
+    <p class="sub">critic, eval, bulk and cull get a row when their callers route auto.</p>
     ${preview}
     <div class="srow"><span class="det">${p.changes ? `${p.changes} change${p.changes === 1 ? "" : "s"} · not saved` : "no changes"}</span>
       <span class="acts"><button class="btn" type="button" data-act="roles-preview">Preview</button> <button class="btn primary" type="button" data-act="roles-save">Save</button> <button class="btn" type="button" data-act="roles-cancel">Cancel</button></span>${msg}</div>`;
@@ -295,11 +341,11 @@ function multiAccounts({ state }) {
   const d = ar.data, map = d.roleMap;
   const intro = `<p class="sub">Which API account may serve each kind of run when a caller asks for <code>auto</code>. A run that names its account (A, B or C) is not affected. Roles never widen auto beyond the himmel repo.</p>`;
   let card = "";
-  if (map.state === "absent") card = `<div class="card role-card"><h3>No role map: decision 525 default</h3><p class="sub">Only the himmel graph pass uses auto, on any configured account. The judge runs on the subscription. A run that names A, B or C is not affected. To let an account serve a role, use Edit roles.</p></div>`;
+  if (map.state === "absent") card = `<div class="card role-card"><h3>No roles set: the defaults apply</h3><p class="sub">Only the himmel graph pass uses auto, on any configured account. The judge runs on the subscription. A run that names A, B or C is not affected. To let an account serve a role, use Edit roles.</p></div>`;
   else if (map.state === "partial" || map.state === "invalid") {
     const n = map.errors.length;
-    card = `<div class="card crit role-card" role="alert"><h3>${map.state === "partial" ? `Role map: ${n} error${n === 1 ? "" : "s"}; the other entries still apply` : "Role map: the whole file is ignored, decision 525 applies"}</h3>
-      <p class="sub">An ignored role falls back to its decision 525 default. Nothing else is refused, and the account money config is untouched.</p>
+    card = `<div class="card crit role-card" role="alert"><h3>${map.state === "partial" ? `Role map: ${n} error${n === 1 ? "" : "s"}; the other entries still apply` : "Role map: the whole file is ignored, the defaults apply"}</h3>
+      <p class="sub">An ignored role falls back to its default. Nothing else is refused, and the account money config is untouched.</p>
       <ul>${map.errors.map((e) => `<li>${esc(roleErrorLine(e, map.roles))}</li>`).join("")}</ul></div>`;
   }
   const warn = (d.warnings || []).length ? `<div class="card warn role-card" role="status"><ul>${d.warnings.map((w) => `<li>${esc(roleWarningLine(w, map.roles))}</li>`).join("")}</ul></div>` : "";
@@ -307,13 +353,13 @@ function multiAccounts({ state }) {
     <p class="sub">Roles are saved to <code>${ROLES_FILE}</code> (no secret in it; the account money config is never written) · takes effect on the next auto call</p>`;
 }
 
-// the Secrets tile's role text: up to two roles, "525 default" with no map, "role map error" for a broken one; "" until loaded
+// the Secrets tile's role text: up to two roles, "default roles" with no map, "role map error" for a broken one; "" until loaded
 function rolesTileText(state) {
   const d = state.apiRoles && state.apiRoles.data;
   if (!d) return "";
   const { state: s, roles } = d.roleMap, entries = Object.entries(roles);
   if (s === "partial" || s === "invalid") return " · role map error";
-  return entries.length ? ` · ${entries.slice(0, 2).map(([role, letters]) => `${role}→${letters.join(",")}`).join(" · ")}` : " · 525 default";
+  return entries.length ? ` · ${entries.slice(0, 2).map(([role, letters]) => `${role}→${letters.join(",")}`).join(" · ")}` : " · default roles";
 }
 
 function secretsPanel({ setup, msgs, state }) {

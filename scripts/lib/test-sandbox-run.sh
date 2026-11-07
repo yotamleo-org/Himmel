@@ -330,19 +330,77 @@ churn() { while [ ! -e "$RACE/stop" ]; do
     mkdir -p "$RACE/d/e"; touch "$RACE/d/e/f" "$RACE/d/g"; mkfifo "$RACE/d/p" 2>/dev/null
     rm -rf "$RACE/d"
 done; }
+# The hook runs, or bwrap says why it could not mount over a node that vanished after the
+# scan (a few ms window): never a launch that ends without a reason. bwrap words that
+# reason differently (Read-only file system, No such file, and "Unable to find ... in mount
+# table", which a CI run logged; the bwrap version behind each wording is not established),
+# so the reason is a bwrap setup error that names a node of the churn directory, whatever
+# its wording.
+churn_reasoned_launch() { [ "$1" = 1 ] && [[ "$2" == "bwrap: Can't "*"$RACE/d/"* ]]; }
+# fixture copied from CI run 42262795231 job 128048101493 (shell-unit-shard 5), mount path as logged
+ci_line="bwrap: Can't bind mount /oldroot/dev/null on /newroot$RACE/d/p: Unable to find \"/newroot$RACE/d/p\" in mount table"
+if churn_reasoned_launch 1 "$ci_line"; then ok 'the bwrap mount-table wording CI logged counts as a reasoned churn launch'
+else bad "CI bwrap wording not accepted as a reasoned churn launch: $ci_line"; fi
+if ! churn_reasoned_launch 1 "bwrap: Can't bind mount /oldroot/dev/null on /newroot/etc/x: Unable to find in mount table" \
+    && ! churn_reasoned_launch 1 "something else wrote $RACE/d/p" \
+    && ! churn_reasoned_launch 125 "$ci_line" && ! churn_reasoned_launch 1 ''; then
+    ok 'a bwrap error off the churn directory, a bare rc 1, or another rc is not a reasoned churn launch'
+else bad 'churn reason accepts something it should refuse'; fi
+# churn_launches LAUNCHES ROW_SECS LAUNCH_SECS CMD...: runs CMD up to LAUNCHES times and sorts each
+# launch into churn_ran / churn_reasoned / churn_bad. A launch gets at most LAUNCH_SECS and never more
+# than what is left of ROW_SECS, and is killed 5 s after the TERM; its output goes to a file, so a
+# descendant that outlives the kill and holds stdout cannot keep the row waiting. Too few launches
+# finished, or too few that ran the hook, is a bad launch with its reason.
+churn_launches() {
+    local want=$1 row=$2 cap=$3 start=$SECONDS left lim rc out
+    shift 3
+    churn_bad=0; churn_reasoned=0; churn_ran=0; churn_done=0; churn_first=''
+    while [ "$churn_done" -lt "$want" ]; do
+        left=$((row - (SECONDS - start)))
+        [ "$left" -gt 0 ] || break
+        lim=$((left < cap ? left : cap))
+        { timeout -k 5 "$lim" "$@" > "$TMP/churn-launch" 2>&1; } 2>/dev/null; rc=$?
+        out=$(cat "$TMP/churn-launch")
+        churn_done=$((churn_done + 1))
+        if [ "$rc" = 0 ] && [[ "$out" == *RAN* ]]; then churn_ran=$((churn_ran + 1))
+        elif churn_reasoned_launch "$rc" "$out"; then churn_reasoned=$((churn_reasoned + 1))
+        else churn_bad=$((churn_bad + 1)); churn_first=${churn_first:-"rc=$rc $out"}; fi
+    done
+    [ "$churn_done" = "$want" ] || { churn_bad=$((churn_bad + 1)); churn_first=${churn_first:-"only $churn_done of $want launches finished in $row s"}; }
+    [ "$churn_ran" -ge $((want / 3)) ] || { churn_bad=$((churn_bad + 1)); churn_first=${churn_first:-"only $churn_ran of $want launches ran the hook"}; }
+}
+# the bound itself: a launch that ignores TERM and holds stdout in its own session (as the sandbox's
+# does) is killed, counted bad with its reason, and the row ends near its budget, never at the launch's end.
+t0=$SECONDS
+churn_launches 3 4 2 setsid bash -c 'trap "" TERM; echo HELD; sleep 20'
+t_held=$((SECONDS - t0))
+if [ "$t_held" -le 12 ] && [ "$churn_bad" -ge 1 ] && [[ "$churn_first" == rc=124* || "$churn_first" == rc=137* ]] && [[ "$churn_first" == *HELD* ]]; then
+    ok "a churn launch that ignores TERM and holds stdout is killed and counted bad with its reason ($t_held s on a 4 s row)"
+else bad "wedged churn launch: ${t_held} s, bad=$churn_bad first=$churn_first"; fi
+# a row that runs out of budget before its launches is bad and says so.
+t0=$SECONDS
+churn_launches 30 3 2 bash -c 'sleep 0.7; echo RAN'
+t_slow=$((SECONDS - t0))
+if [ "$t_slow" -le 8 ] && [ "$churn_bad" -ge 1 ] && [[ "$churn_first" == *'launches finished'* ]]; then
+    ok "a churn row that runs out of budget before its launches is bad and says so ($churn_done of 30 in $t_slow s)"
+else bad "churn budget: ${t_slow} s, done=$churn_done bad=$churn_bad first=$churn_first"; fi
+# every launch reasoned and none ran the hook is bad; launches that all run the hook are not.
+# shellcheck disable=SC2016  # the stub's own variable expands when it runs
+printf '#!/bin/bash\nprintf "%%s\\n" "bwrap: Can'"'"'t create file $1/d/p: Read-only file system"\nexit 1\n' > "$TMP/reasoned-launch.sh"
+churn_launches 6 30 5 bash "$TMP/reasoned-launch.sh" "$RACE"
+if [ "$churn_reasoned" = 6 ] && [ "$churn_bad" -ge 1 ] && [[ "$churn_first" == *'ran the hook'* ]]; then
+    ok 'a churn row where every launch is reasoned and none ran the hook is bad'
+else bad "all-reasoned churn row: reasoned=$churn_reasoned bad=$churn_bad first=$churn_first"; fi
+churn_launches 6 30 5 bash -c 'echo RAN'
+if [ "$churn_ran" = 6 ] && [ "$churn_bad" = 0 ]; then ok 'a churn row whose launches all run the hook is clean'
+else bad "clean churn row: ran=$churn_ran bad=$churn_bad first=$churn_first"; fi
 churn & churn_pid=$!
-churn_bad=0; churn_reasoned=0
-for _ in $(seq 1 30); do
-    OUT=$(staged bash "$SRUNNER" -- bash -c 'echo RAN' 2>&1); RC=$?
-    # The hook runs, or bwrap says why it could not mount over a node that vanished
-    # after the scan (a few ms window): never a launch that ends without a reason.
-    if [ "$RC" = 0 ] && [[ "$OUT" == *RAN* ]]; then :
-    elif [ "$RC" = 1 ] && [[ "$OUT" == *"bwrap: Can't "*"Read-only file system"* || "$OUT" == *"bwrap: Can't "*"No such file"* ]]; then churn_reasoned=$((churn_reasoned + 1))
-    else churn_bad=$((churn_bad + 1)); churn_first=${churn_first:-"rc=$RC $OUT"}; fi
-done
-touch "$RACE/stop"; wait "$churn_pid" 2>/dev/null
-if [ "$churn_bad" = 0 ]; then ok "launches under a FIFO and directory churning in ROOT run the hook or say why (30 of 30, $churn_reasoned reasoned)"
-else bad "churn under ROOT: $churn_bad of 30 launches failed, first: ${churn_first:-}"; fi
+# shellcheck disable=SC2016  # the launch's own variables expand when it runs
+churn_launches 30 120 60 bash -c 'cd "$1" && shift && exec "$@"' _ "$STAGE" bash "$SRUNNER" -- bash -c 'echo RAN'
+touch "$RACE/stop"; kill "$churn_pid" 2>/dev/null; wait "$churn_pid" 2>/dev/null
+churn_pid=
+if [ "$churn_bad" = 0 ]; then ok "launches under a FIFO and directory churning in ROOT run the hook or say why (30 of 30: $churn_ran ran the hook, $churn_reasoned reasoned)"
+else bad "churn under ROOT: $churn_bad bad of $churn_done launches, first: ${churn_first:-}"; fi
 # containment control: a real FIFO in a bound input is still refused, with the reason.
 mkdir -p "$TMP/ro-fifo/sub"; mkfifo "$TMP/ro-fifo/sub/pipe"
 OUT=$(bash "$RUNNER" --read-only "$TMP/ro-fifo" -- bash -c 'echo RAN' 2>&1); RC=$?

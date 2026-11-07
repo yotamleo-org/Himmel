@@ -135,8 +135,8 @@ test("header repaint preserves the open build details and summary keyboard focus
   const elements: Record<string, unknown> = { "#top": top, "#main": {}, "#nav": {}, "#where": {} };
   const $ = (selector: string) => selector === "#top details" ? details : selector === "#top summary" ? summary : elements[selector];
   const paint = read(join(PUBLIC, "app.js")).match(/function paint\(\) \{[\s\S]*?\n\}/)![0];
-  new Function("document", "$", "currentPage", "feed", "unmountPage", "renderHeader", "renderPages", "location", `${paint}\npaint();`)(
-    doc, $, { render: () => "" }, { himmel: { version: "1.1.3", describe: "v1.1.3", commit: "0123456789abcdef" }, target: { scope: "user" } }, null, renderHeader, () => {}, { host: "localhost" },
+  new Function("document", "$", "currentPage", "feed", "unmountPage", "renderHeader", "loginBadge", "renderPages", "location", `${paint}\npaint();`)(
+    doc, $, { render: () => "" }, { himmel: { version: "1.1.3", describe: "v1.1.3", commit: "0123456789abcdef" }, target: { scope: "user" } }, null, renderHeader, () => "", () => {}, { host: "localhost" },
   );
   expect(details.open).toBe(true);
   expect(doc.activeElement).toBe(summary);

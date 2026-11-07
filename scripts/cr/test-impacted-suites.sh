@@ -1449,6 +1449,48 @@ out="$(cx_check "$V_A" "$V_B" "$V_VM" "$V_JS" 'SUITE scripts/test-cx-c.sh = CI')
 cp "$CX/sc.real" "$CX/scripts/handover/suite-coverage.sh"
 if [ "$rc" -eq 1 ] && grepq "$out" -F 'impacted-suites: CI NOT ACCEPTED scripts/test-cx-c.sh (unknown' && ! grepq "$out" -F 'NOT ACCEPTED scripts/test-cx-a.sh'; then pass "T2d a path with no coverage line is refused as unknown"; else fail "T2d truncated coverage: rc=$rc out=$out"; fi
 
+# --- --plan: the local/CI split is computed, not prose -------------
+# A worker runs locally only the suite its PR changed (with the failing-first proof) and a
+# suite CI cannot run (named reason); every other impacted suite is left to CI.
+plan_cx() { ( cd "$CX" && bash "$IS" --plan "$crange" 2>&1 ); }
+# P1: the suite the PR changed stays local and the plan says the failing-first proof is required
+out="$(plan_cx)"; rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" -F 'LOCAL scripts/test-cx-b.sh (changed: failing-first proof required)'; then pass "P1 a changed suite is planned LOCAL with the failing-first proof required"; else fail "P1 changed suite plan: rc=$rc out=$out"; fi
+# P3: a suite CI cannot run stays local with a NAMED reason, a JS/TS suite too
+if grepq "$out" -F 'LOCAL scripts/test-cx-vm.sh (not run in CI (SKIP_LIST)' && grepq "$out" -F 'LOCAL scripts/lib/cx.test.mjs (not a test-*.sh'; then pass "P3 a suite CI cannot run is planned LOCAL with its named reason"; else fail "P3 named reasons: out=$out"; fi
+# P1b: untouched PR-CI suites go to CI, and the summary counts both sides
+if grepq "$out" -F 'CI scripts/test-cx-a.sh' && grepq "$out" -F 'CI scripts/test-cx-c.sh' && grepq "$out" -F 'impacted-suites: plan 5 impacted, 3 local, 2 to CI'; then pass "P1b untouched PR-CI suites are planned CI (3 local, 2 to CI)"; else fail "P1b plan summary: out=$out"; fi
+# P4: HIMMEL_SUITES_LOCAL=1 plans every suite local
+out="$( cd "$CX" && HIMMEL_SUITES_LOCAL=1 bash "$IS" --plan "$crange" 2>&1 )"
+if grepq "$out" -F 'impacted-suites: plan 5 impacted, 5 local, 0 to CI'; then pass "P4 HIMMEL_SUITES_LOCAL=1 plans every suite local"; else fail "P4 local flag plan: out=$out"; fi
+# P2: a PR with many impacted suites (a changed shared lib, 14 callers, 1 changed suite) plans 5 or fewer local
+CY="$(fixture_mktemp_dir)" || exit 1
+trap 'rm -rf "$FX" "$CX" "$CY"' EXIT
+(
+    fixture_enter_git_init_dir "$CY" || exit 1
+    git init -q
+    git config user.email t@e
+    git config user.name t
+)
+mkdir -p "$CY/scripts/ci" "$CY/scripts/handover" "$CY/scripts/lib"
+cp "$REPO_ROOT/scripts/ci/run-shell-tests.sh" "$CY/scripts/ci/run-shell-tests.sh"
+cp "$REPO_ROOT/scripts/handover/suite-coverage.sh" "$CY/scripts/handover/suite-coverage.sh"
+printf '# lib\n' > "$CY/scripts/lib/cy-lib.sh"
+for n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do printf 'bash "$d/lib/cy-lib.sh"\n' > "$CY/scripts/test-cy-$n.sh"; done
+git -C "$CY" add -A
+git -C "$CY" commit -q -m "chore: base"
+printf '# changed\n' >> "$CY/scripts/lib/cy-lib.sh"
+printf '# changed\n' >> "$CY/scripts/test-cy-1.sh"
+git -C "$CY" add -A
+git -C "$CY" commit -q -m "fix: lib and one suite"
+yrange="$(git -C "$CY" rev-parse HEAD~1)..$(git -C "$CY" rev-parse HEAD)"
+out="$( cd "$CY" && bash "$IS" --plan "$yrange" 2>&1 )"; rc=$?
+n_local=$(grep -c '^LOCAL ' <<< "$out")
+if [ "$rc" -eq 0 ] && [ "$n_local" -le 5 ] && [ "$n_local" -ge 1 ] && grepq "$out" -F 'impacted-suites: plan 14 impacted, 1 local, 13 to CI'; then pass "P2 a PR with 14 impacted suites plans 1 local and 13 to CI"; else fail "P2 many impacted: rc=$rc local=$n_local out=$out"; fi
+# P5: --plan is a read mode: it refuses --check and a missing range
+( cd "$CY" && bash "$IS" --plan --check "$yrange" >/dev/null 2>&1 ); rc=$?
+if [ "$rc" -eq 2 ]; then pass "P5 --plan with --check is a usage error (rc 2)"; else fail "P5 --plan --check: rc=$rc"; fi
+
 echo
 if [ "$failures" -eq 0 ]; then echo "OK: all cases passed"; exit 0; fi
 echo "FAIL: $failures case(s) failed"

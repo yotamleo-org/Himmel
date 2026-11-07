@@ -177,6 +177,10 @@ template_version: 3
 > 3. **Tests:** <the suite to write and the specific RED assertion to show
 >    first; the impacted suites you already know about, by name.> Which
 >    impacted suites run locally and which go to CI as `SUITE <p> = CI`:
+>    `bash scripts/cr/impacted-suites.sh --plan <base>..<head>` prints the split (a worker
+>    runs locally the suite its PR changed with its failing-first proof, plus a suite CI
+>    cannot run, each with a named reason; every other one is CI; JS/TS suites stay local
+>    until item 19 reads a CI proof for them); the rule is
 >    `scripts/cr/pr-check-ref/33-step3-impacted.md`; a
 >    `> **Local suites:** <path>` line, one per path, keeps a suite local (copy
 >    each into the PR body as the bare line `Local suites: <path>`, which
@@ -345,10 +349,11 @@ template_version: 3
   (`guard-worker-context-handoff.sh`) is off by default;
   arm with `--context-guard compact|handoff` to turn it on. A native Sonnet 5.5 launch on
   `worker-impl` (hand-off) or `worker-eval` (compaction) turns it on by default, at a
-  450000 ceiling. An explicit `--context-guard` (including `none`) or
+  450000 ceiling; so does a native Opus 5.5 launch on any `worker-*` profile (hand-off,
+  `worker-eval` compaction), at an 800000 ceiling with the deny at 700000 tokens. An explicit `--context-guard` (including `none`) or
   `WORKER_SESSION_CONTEXT=1m` takes precedence. When it is on, past
-  75 % of the worker's `--autocompact` ceiling (15 % fill for an opus worker pinned
-  at 200000 on its 1M window) it blocks ordinary work until the worker acts on its
+  75 % of the worker's `--autocompact` ceiling by default, or the profile's own share (15 %
+  fill for an opus worker pinned at 200000 on its 1M window) it blocks ordinary work until the worker acts on its
   mode: `compact` commits, pushes and writes a `CHECKPOINT <sha> pushed`
   bullet, then carries on through the compaction; `handoff` writes a
   `b`-suffixed successor brief and stops. Reference:

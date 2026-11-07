@@ -60,7 +60,8 @@ directly — one invocation site to audit instead of many
 Added as `headed-arm-worker.sh --headless` (or `WORKER_SESSION_HEADLESS=1`
 in the launching shell; the flag wins) — same profile injection, model and
 `--autocompact` pin (200000, or the profile's 450000 for a native Sonnet 5.5
-`worker-impl`/`worker-eval` launch) as a headed worker, but no konsole
+`worker-impl`/`worker-eval` launch, or its 800000 for a native Opus 5.5 `worker-*`
+launch) as a headed worker, but no konsole
 (`headed-arm-worker.sh:40-45` docstring).
 
 - **Env inheritance:** the background session runs under the `claude`

@@ -175,7 +175,7 @@ then prove the process subtree is clean** with
 `CLOSABLE:` line; on `WITHHELD:` TaskStop the pids and re-run, no `WRAPPED`.
 
 **Context past 75 % of your `--autocompact` ceiling, when the guard
-is on** (off by default; on in Sonnet 5.5 worker-impl/eval;
+is on** (off by default; on in Sonnet 5.5 worker-impl/eval, Opus 5.5 worker-*;
 reference `docs/internals/worker-context-guard.md`): **`compact`:** commit,
 push, then append `LIVE — CHECKPOINT <full sha of HEAD> pushed` with
 `append-results.sh`. **`handoff`:** write `…legN<n>b-…-RESUME.md` (keep

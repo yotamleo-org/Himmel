@@ -273,6 +273,12 @@ case "$(LIVESTATE_BUDGET_BYTES=200 budget_tick)" in *'ACTION livestate-over-budg
 check '20. trailing blank lines of the Live state count toward the budget' flagged "$r"
 case "$(LIVESTATE_BUDGET_BYTES=100000 budget_tick)" in *'livestate-over-budget'*) r=flagged ;; *) r=silent ;; esac
 check '20. a Live state under the budget is not flagged' silent "$r"
+# 20b. the whole doc is measured against the Read limit, not only the Live state.
+printf '# c\n\n## Live state\n\nlegs: none\nqueue: none\nlast GO: none\nacked: none\n\n## Current direction\n\n%s\n\n## Results\n' "$(printf 'x%.0s' $(seq 1 600))" > "$budget_doc"
+case "$(DOC_READ_BUDGET_BYTES=500 budget_tick)" in *'ACTION doc-over-read-limit='*'/500:'*) r=flagged ;; *) r=silent ;; esac
+check '20b. a whole doc over DOC_READ_BUDGET_BYTES is flagged although its Live state is small' flagged "$r"
+case "$(LIVESTATE_BUDGET_BYTES=100000 DOC_READ_BUDGET_BYTES=100000 budget_tick)" in *'doc-over-read-limit'*) r=flagged ;; *) r=silent ;; esac
+check '20b. a whole doc under the budget is not flagged' silent "$r"
 
 # 21. M1a: `workers:` first, the pre-rename `legs:` line and `.legs` array still read,
 #     `workers:` wins when a doc carries both, and HIMMEL_LEGACY_NAMES=0 drops the old spelling.

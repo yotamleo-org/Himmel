@@ -4,8 +4,9 @@
 # reason  pr: catch:<PR> | trust-path | static-gate | guard | flow-miss:HIMMEL-<n>; any other tier: free text
 # A trust-owned suite (its path, or a sibling of a file, under ci-trust-paths.txt) is never local.
 # scripts/ci/run-shell-tests.sh reads local rows in pr mode and quarantine rows in every mode. scripts/ci/test-suite-tiers.sh lints it; each of these fails the build:
-# a suite with no row, a row with no suite (stale), a duplicate row, a malformed row (not three fields),
+# a row with no suite (stale), a duplicate row, a malformed row (not three fields),
 # an unknown tier, an unjustified pr reason, a trust-path suite that is local, an empty trust list.
+# A suite with no row is allowed and reads as tier pr; scripts/ci/ledger-drift.sh --no-row lists them.
 # This file is under scripts/ci/ (a trust path): every tier change needs a trust-reviewed GO.
 scripts/security/test-security-audit-cadence.sh	local	behaviour suite, new (HIMMEL-8281)
 marketplace/plugins/pstack/test-vendor.sh	pr	static-gate
@@ -1257,4 +1258,7 @@ scripts/eval/relay-cost/test-relay-cost.sh	local	behaviour suite, new for HIMMEL
 scripts/handover/test-morning-report-cadence.sh	local	behaviour suite, new for HIMMEL-7977 (morning-report-cadence.sh)
 scripts/test-himmel-doctor-morning-report.sh	local	behaviour suite, new for HIMMEL-7977 (doctor C86-morning-report)
 scripts/handover/chief-kit/test-size-override.sh	local	behaviour suite, new
+scripts/handover/chief-kit/test-chief-doc-one-read.sh	local	behaviour suite, new
+scripts/measurements/test-gh-graphql-callers.sh	local	behaviour suite, new
 scripts/telegram/test-spec-page-gen.sh	pr	guard
+scripts/vm/test-vm-maintain.sh	local	behaviour suite, new
