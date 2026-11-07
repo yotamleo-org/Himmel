@@ -146,7 +146,6 @@ test("cost: no store says the usage store has not been built yet and names the c
   expect(html).toContain("the usage store has not been built yet");
   expect(html).toContain("scripts/usage/usage-compute.sh");
   expect(html).not.toContain("no data yet");
-  // with no HIMMEL_USAGE_STORE the store is the one under HOME
   expect(readCost({ HOME: join(dir, "home"), PATH: process.env.PATH }).state).toBe("nostore");
 });
 

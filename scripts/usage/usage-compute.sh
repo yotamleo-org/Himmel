@@ -128,7 +128,6 @@ if command -v ionice >/dev/null 2>&1; then ionice -c3 -p $$ >/dev/null 2>&1 || t
 WORK="$(tmpdir)"
 trap 'rm -rf "$WORK"' EXIT
 [ -n "$PROJECTS" ] || { PROJECTS="$WORK/noprojects"; mkdir "$PROJECTS"; }
-# absolute, so a window's scratch root can link to its files
 PROJECTS="$(cd "$PROJECTS" && pwd)" || die "cannot enter $PROJECTS"
 
 # Serialize the whole compute-then-append (mkdir is atomic), so an older
@@ -142,7 +141,6 @@ if [ "$PRINT" != 1 ]; then
   until mkdir "$LOCK" 2>/dev/null; do
     n=$((n + 1))
     if [ "$n" -ge "$tries" ]; then
-      # a writer leaves its pid in the lock; a SIGKILL (no trap) leaves the lock behind, which is never taken over here
       owner="owner unknown"; op="$(cat "$LOCK/pid" 2>/dev/null || true)"
       if [[ "$op" =~ ^[0-9]+$ ]]; then
         if ps -p "$op" >/dev/null 2>&1; then owner="owner pid $op, running"; else owner="owner pid $op, not running"; fi
@@ -275,15 +273,11 @@ join_ticket() {
 }
 
 # --- assemble final records + digest ----------------------------------------
-# build_tickets <checkpoint>: every ticket record, from the per-session table rows the checkpoint holds for every
-# session (the same rows one usage-attribution.sh pass over the whole root prints), into $WORK/records.jsonl
 build_tickets() {
   jq -r '[.units[].rows[]] | join("\n")' "$1" > "$WORK/bank.md"
   jq -n -S --rawfile table "$WORK/bank.md" --slurpfile ledger "$WORK/ledger.jsonl" --argjson sel "$SEL" \
     "$BASE_PROGRAM" > "$WORK/base.json"
   if [ -n "$TICKETS" ] && [ "$(jq '[.[] | select(.ticket | startswith("_") | not)] | length' "$WORK/base.json")" = 0 ]; then die "--tickets matched no session or CR row: $TICKETS"; fi
-  # one record per line, each read once (a jq pass over base.json per ticket took minutes on thousands of tickets);
-  # the loop reads on fd 4, so a gh call cannot take its input
   jq -cS '.[]' "$WORK/base.json" > "$WORK/recs.jsonl"
   : > "$WORK/recs2.jsonl"; : > "$WORK/digests"
   local t rec
@@ -415,10 +409,6 @@ def zero: { calls: 0, i: 0, o: 0, cr: 0, c5: 0, c1: 0, nano: 0, unp: 0, models: 
 | ( ($rows + $closed) | map(select(($prev["\(.day)|\(.session)|\(.phase)"]) != tojson)) ) as $changed
 | { rows: $changed, emitted: ($prev + ($changed | map({ key: "\(.day)|\(.session)|\(.phase)", value: tojson }) | from_entries)) }'
 
-# --- 5. the build, window by window --------------------------------------------
-# A session is a top-level transcript with its subagents (the unit usage-attribution.sh sums by). The checkpoint
-# keeps, per session, a size fingerprint of its files and the table rows usage-attribution.sh gave for them; a session
-# whose fingerprint changed is read again whole and its rows replaced, so the ticket totals equal one pass over the root.
 if [ "$PRINT" = 1 ]; then CK="$WORK/ck"; PSTATE="$WORK/phase-state"; else CK="$STORE"; PSTATE="$STORE/phase-cost-state"; fi
 EMDIR="$PSTATE/emitted"
 CHECKPOINT="$CK/build-checkpoint.json"
@@ -426,14 +416,10 @@ FILE="$STORE/records.jsonl"
 mkdir -p "$CK" "$EMDIR"
 PHASE_FILTER='"type":"(assistant|custom-title|ai-title)"|"subtype":"compact_boundary"|"isCompactSummary":true'
 
-# put <src> <dest>: copy beside the destination, then rename, so <dest> is replaced whole or not at all
 put() {
   if ! cp "$1" "${2%/*}/.${2##*/}.new" || ! mv "${2%/*}/.${2##*/}.new" "$2"; then die "cannot save $2"; fi
 }
 
-# A window is committed through <store>/.commit: staged whole under .commit.new, renamed, then applied. Applying
-# appends the part of append.jsonl that records.jsonl does not hold yet (a kill mid-append leaves a prefix of it),
-# then replaces the window's emitted maps and the checkpoint. A run that finds .commit applies it before anything else.
 apply_commit() {
   local c="$STORE/.commit" base cur len p
   base="$(cat "$c/base")"; [ -f "$FILE" ] || : > "$FILE"
@@ -444,11 +430,9 @@ apply_commit() {
   [ "$cur" -eq $((base + len)) ] || tail -c +$((cur - base + 1)) "$c/append.jsonl" >> "$FILE" || die "cannot append to $FILE"
   for p in "$c"/emitted/*.json; do [ ! -f "$p" ] || put "$p" "$EMDIR/${p##*/}"; done
   put "$c/checkpoint.json" "$CHECKPOINT"
-  # renamed aside first: a kill during the removal leaves .commit.done, which is never replayed, not a half .commit
   mv "$c" "$STORE/.commit.done" || die "cannot retire the applied commit $c"
   rm -rf "$STORE/.commit.done"
 }
-# commit <append-file> <emitted-dir> <checkpoint>; --print keeps all three in the scratch dir and prints at the end
 commit() {
   local s="$STORE/.commit.new" p
   if [ "$PRINT" = 1 ]; then
@@ -468,13 +452,11 @@ if [ "$PRINT" != 1 ]; then
   if [ -d "$STORE/.commit" ]; then apply_commit; echo "usage-compute: note: applied the commit a stopped run left" >&2; fi
 fi
 
-# the checkpoint this run starts from; a different --since makes every session's rows stale
 if [ -f "$CHECKPOINT" ]; then cp "$CHECKPOINT" "$WORK/ck-in.json"; else echo '{"schema":1,"since":"","units":{}}' > "$WORK/ck-in.json"; fi
 jq -c --arg s "$SINCE" 'if .since != $s then {schema: 1, since: $s, units: {}} else . end' "$WORK/ck-in.json" > "$WORK/ck-tmp.json" \
   || die "cannot read the checkpoint $CHECKPOINT"
 mv "$WORK/ck-tmp.json" "$WORK/ck-in.json"
 
-# every transcript with its size and mtime, in one stat call per xargs batch
 shopt -s nullglob
 TFILES=("$PROJECTS"/*/*.jsonl "$PROJECTS"/*/*/subagents/*.jsonl)
 shopt -u nullglob
@@ -483,11 +465,8 @@ if [ "${#TFILES[@]}" -gt 0 ]; then
   if stat -L -c '%s' / >/dev/null 2>&1; then SFMT=(-L -c '%s %Y %n'); else SFMT=(-L -f '%z %m %N'); fi
   printf '%s\0' "${TFILES[@]}" | xargs -0 stat "${SFMT[@]}" > "$WORK/inv.txt" || die "cannot read the transcripts' sizes"
 fi
-# the windows: changed sessions grouped by the local day of their newest file, newest day first (one window for --print
-# and --repo); the sessions the checkpoint holds and the root no longer has are dropped in the first window
 # shellcheck disable=SC2016  # jq's own $vars
 jq -nRc --slurpfile ck "$WORK/ck-in.json" --arg root "$PROJECTS" --argjson single "$([ "$PRINT" = 1 ] || [ -n "$REPO" ] && echo true || echo false)" '
-# a plain session name is its own emitted-map file name; any other gets null here and a checksum key in build_window
 def ukey: if test("^[A-Za-z0-9.-][A-Za-z0-9._-]{0,99}$") then . else null end;
 [ inputs | capture("^(?<s>[0-9]+) (?<m>[0-9]+) (?<p>.*)$")
   | (.p | ltrimstr($root + "/")) as $rel | ($rel | split("/")) as $c
@@ -509,14 +488,10 @@ def ukey: if test("^[A-Za-z0-9.-][A-Za-z0-9._-]{0,99}$") then . else null end;
 
 added=0; kept=0; phase_added=0; nfile=0
 : > "$WORK/print.jsonl"
-# build_window <window-json> <last 0|1>: the window's sessions, then its transcripts' phase rows, then (last) the ticket
-# records, all appended in one commit with the window's emitted maps and the new checkpoint
 build_window() {
   local win="$1" last="$2" day nu nread=0 rel f ck tl key st off size consumed stem par atype meta fp k j nrows
   day="$(jq -r .day <<<"$win")"; nu="$(jq '.units | length' <<<"$win")"
   jq -c '.units' <<<"$win" > "$WORK/wunits.json"; jq -c '.gone' <<<"$win" > "$WORK/wgone.json"
-  # a session name outside the plain set is keyed like a transcript's state file: "_" (which no plain name starts
-  # with), a checksum of the whole name and a readable tail
   if jq -e 'any(.[]; .ukey == null)' "$WORK/wunits.json" >/dev/null; then
     : > "$WORK/ukeys.tsv"
     while IFS= read -r k; do
@@ -529,8 +504,6 @@ build_window() {
     mv "$WORK/wunits.tmp" "$WORK/wunits.json"
   fi
 
-  # 1. per-session tokens: usage-attribution.sh, unchanged, on a scratch root of symlinks to this window's files; each
-  #    scratch project directory is named u<session index>-<project index>, so its table rows map back to a session
   rm -rf "$WORK/shim"; mkdir -p "$WORK/shim"; : > "$WORK/wtable.md"
   if [ "$nu" -gt 0 ]; then
     jq -r 'to_entries[] | .key as $i | .value.unit as $u | .value.files[]
@@ -554,8 +527,6 @@ build_window() {
     | .units = ((.units | delpaths([ $gone[0][] | [.] ])) + ($units | map({ key: .unit, value: { fp: .fp, rows: ($rows[.unit] // []) } }) | from_entries))
     | if $day == "none" then . else .last_window = $day end' > "$WORK/ck-new.json" || die "cannot update the checkpoint in window $day"
 
-  # 2. phase-cost: each transcript read from its saved byte offset; its new state is saved as soon as it is read, so a
-  #    kill loses at most the transcript in flight (the rows come from the saved states at commit, never from memory)
   : > "$WORK/wkeys"
   while IFS= read -r rel; do
     f="$PROJECTS/$rel"
@@ -595,8 +566,6 @@ build_window() {
   done < <(jq -r '.[].files[].rel' "$WORK/wunits.json")
   rm -f "$WORK/chunk"
 
-  # the window's rows: every saved state of its sessions against what was emitted for them, so a key emitted before and
-  # gone now is closed with a zero row, and a resumed window emits exactly what an uninterrupted one would
   : > "$WORK/pall.jsonl"
   while IFS= read -r key; do [ ! -f "$PSTATE/$key.json" ] || { cat "$PSTATE/$key.json"; echo; } >> "$WORK/pall.jsonl"; done < "$WORK/wkeys"
   : > "$WORK/em-parts"
@@ -605,7 +574,6 @@ build_window() {
   jq -nc --slurpfile em "$WORK/em.json" "$PHASE_EMIT_JQ" "$WORK/pall.jsonl" > "$WORK/phase-out.json" \
     || die "cannot build the phase-cost rows in window $day"
   jq -c '.rows[]' "$WORK/phase-out.json" > "$WORK/wrows.jsonl"
-  # the emitted map, split back into one file per session (a subagent row belongs to its parent's session)
   rm -rf "$WORK/wem"; mkdir "$WORK/wem"
   # shellcheck disable=SC2016  # jq's own $vars
   jq -r --slurpfile wu "$WORK/wunits.json" '($wu[0] | map({ key: .unit, value: .ukey }) | from_entries) as $uk
@@ -615,7 +583,6 @@ build_window() {
     "$WORK/phase-out.json" > "$WORK/wem.tsv" || die "cannot split the emitted map in window $day"
   while IFS=$'\t' read -r k j; do printf '%s\n' "$j" > "$WORK/wem/$k.json"; done < "$WORK/wem.tsv"
 
-  # 3. the ticket records, once every window is in: a record changed since its last stored version is appended
   : > "$WORK/tappend.jsonl"
   if [ "$last" = 1 ]; then
     build_tickets "$WORK/ck-new.json"
@@ -650,7 +617,6 @@ while IFS= read -r win <&3; do
   build_window "$win" "$([ "$k" -eq "$W" ] && echo 1 || echo 0)"
   test_pause "window:$k"
 done 3< "$WORK/windows.jsonl"
-# nothing changed in the transcripts: the ticket records still follow the CR ledger
 [ "$W" != 0 ] || build_window '{"day":"none","units":[],"gone":[]}' 1
 
 if [ "$PRINT" = 1 ]; then

@@ -20,7 +20,6 @@ export type Mark = "counted" | "derived" | "unpriced" | "nocount";
 export type CostPart = { id: string; name: string; note: string; usd: number | null; share: number | null; mark: Mark };
 export type CostPhase = { id: string; name: string; usd: number | null; share: number | null; mark: Mark; made: string; parts: CostPart[] };
 export type CostModel = {
-  // nostore: the usage store has no records.jsonl yet (usage-compute.sh has never run), told apart from a store with no rows
   state: "ok" | "nodata" | "nostore"; day: string | null; days: string[]; usd: number | null; mark: Mark; calls: number;
   models: { model: string; usd: number | null }[]; phases: CostPhase[];
 };
@@ -140,7 +139,6 @@ export function buildCostModel(all: PhaseCostRow[], day?: string): CostModel {
   return { state: "ok", day: picked, days, usd: total, mark: rows.some((r) => r.mark === "unpriced") ? "unpriced" : "counted", calls: rows.reduce((a, r) => a + r.calls, 0), models, phases };
 }
 
-// the store usage-read.sh reads: HIMMEL_USAGE_STORE, else ~/.himmel/state/usage
 const storeFile = (env: Env) => join(env.HIMMEL_USAGE_STORE || join(env.HOME ?? "", ".himmel", "state", "usage"), "records.jsonl");
 
 export const readCost = (env: Env, day?: string): CostModel =>

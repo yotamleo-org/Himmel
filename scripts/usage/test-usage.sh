@@ -636,9 +636,6 @@ MP_CENTS="$(node "$HERE/../lanes/model-price.mjs" transcripts "$PC3P" | sed -n '
 check "phase-cost: the dollars equal model-price.mjs on the same directory, in cents (non-adjacent repeat included)" "$((10#$MP_CENTS))" \
   "$(jq -sr '[.[] | select(.kind=="phase-cost") | .usd] | add | . * 100 | round' "$PC3STORE/records.jsonl")"
 
-# 11. the build runs in windows: the sessions whose newest transcript changed on one day, newest day first.
-# Each window appends its phase-cost rows and moves the checkpoint; a budget or a window count ends a run
-# cleanly; a killed run resumes where it stopped and ends byte-identical to one uninterrupted run.
 WP="$ROOT/win/projects"; WS="$WP/slug"; mkdir -p "$WS"
 WX1=bbbbbbbb-1111-4111-8111-000000000001; WX2=bbbbbbbb-1111-4111-8111-000000000002; WX3=bbbbbbbb-1111-4111-8111-000000000003
 { echo '{"type":"custom-title","customTitle":"HIMMEL-9001-N1-w1"}'
@@ -652,13 +649,12 @@ arow $WX3 2026-11-04T10:00:02.000Z y4 $OP 10 1 100 0 0 > "$WS/$WX3/subagents/age
 TZ=UTC touch -t 202611021200 "$WS/$WX1.jsonl"; TZ=UTC touch -t 202611031200 "$WS/$WX2.jsonl"
 TZ=UTC touch -t 202611041200 "$WS/$WX3.jsonl" "$WS/$WX3/subagents/agent-w3.jsonl"
 WL="$ROOT/win/ledger.jsonl"; : > "$WL"
-wrun() { # store args... ; stderr to $ROOT/win/err
+wrun() {
   local st="$1"; shift
   HOME="$PCH" TZ=UTC bash "$COMPUTE" --projects "$WP" --ledger "$WL" --store "$st" "$@" 2>"$ROOT/win/err"
 }
 wdays() { jq -r 'select(.kind=="phase-cost") | .day' "$1/records.jsonl" 2>/dev/null | sort -u | tr '\n' ' '; }
-# start a run that holds at a pause point, wait until it gets there, then SIGKILL it
-wkill() { # store point
+wkill() {
   local st="$1" pf="$ROOT/win/pause-$2" i=0 pid
   : > "$pf"
   HOME="$PCH" TZ=UTC USAGE_COMPUTE_TEST_PAUSE_AT="$2" USAGE_COMPUTE_TEST_PAUSE_FILE="$pf" \
@@ -669,7 +665,6 @@ wkill() { # store point
   [ -e "$pf.reached" ] && echo reached || echo "never reached"
 }
 
-# (a) chunked: after window 1 the newest day's rows are in the store, two windows pending
 WA="$ROOT/win/store-a"
 rc=0; wrun "$WA" --max-windows 1 >/dev/null || rc=$?
 check "windows (a): a run stopped after window 1 exits 0" "0" "$rc"
@@ -678,7 +673,6 @@ check "windows (a): the run names the windows that remain" "yes" "$(grep -q '2 w
 check "windows (a): no ticket record while windows remain (no partial totals)" "0" \
   "$(jq -s '[.[] | select(.ticket != null)] | length' "$WA/records.jsonl" 2>/dev/null || echo missing)"
 
-# (b) bounded: a budget spent during window 1 ends the run after it, rc 0, naming what remains
 WB="$ROOT/win/store-b"; PB="$ROOT/win/pause-b"; : > "$PB"
 HOME="$PCH" TZ=UTC USAGE_COMPUTE_TEST_PAUSE_AT=window:1 USAGE_COMPUTE_TEST_PAUSE_FILE="$PB" \
   bash "$COMPUTE" --projects "$WP" --ledger "$WL" --store "$WB" --budget-seconds 1 >/dev/null 2>"$ROOT/win/err-b" & bp=$!
@@ -690,24 +684,21 @@ check "windows (b): it stops after the window in flight and says 2 remain" "yes"
 check "windows (b): only the first window's rows were stored" "2026-11-04 " "$(wdays "$WB")"
 check "windows (b): the budget run released the store lock" "no" "$([ -d "$WB/.lock" ] && echo yes || echo no)"
 
-# the reference: one uninterrupted run, no budget
 WU="$ROOT/win/store-u"
 rc=0; wrun "$WU" --budget-seconds 0 >/dev/null || rc=$?
 check "windows: one uninterrupted run exits 0 with all three days" "0/2026-11-02 2026-11-03 2026-11-04 " "$rc/$(wdays "$WU")"
 check "windows: the uninterrupted run appends the ticket records at its end" "3" \
   "$(jq -s '[.[] | select(.ticket != null)] | length' "$WU/records.jsonl")"
-# each window reads its sessions through a scratch root of symlinks: the totals equal usage-attribution.sh on the real root
 WBA="$(bash "$BANK" "$WP" | grep -F "| $T1-N1-w1 |" | awk -F' [|] ' '{print $4"/"$5"/"$6"/"$7"/"$8}')"
 check "windows: attribution on the real root counts the session (fixture guard)" "2/20/200/5/21" "$WBA"
 check "windows: a session read through the symlinked window root keeps its rows (equal to attribution on the real root)" "$WBA" \
   "$(bash "$READ" --store "$WU" --ticket HIMMEL-9001 2>/dev/null | jq -r '.legs[0] | "\(.turns)/\(.input)/\(.cache_read)/\(.cache_create)/\(.output)"')"
 
-# (c) resumable: SIGKILL after window 1 committed; the rerun does windows 2 and 3 only and ends byte-identical
 WC="$ROOT/win/store-c"
 check "windows (c): the run reached the pause after window 1" "reached" "$(wkill "$WC" window:1)"
 check "windows (c): a SIGKILL leaves the store lock (no trap runs)" "yes" "$([ -d "$WC/.lock" ] && echo yes || echo no)"
 check "windows (c): the left lock names the killed run's pid" "yes" "$([ -s "$WC/.lock/pid" ] && echo yes || echo no)"
-rm -f "$WC/.lock/pid"; rmdir "$WC/.lock"   # what the refusal tells the operator to do once no run is active
+rm -f "$WC/.lock/pid"; rmdir "$WC/.lock"
 rc=0; wrun "$WC" --budget-seconds 0 >/dev/null || rc=$?
 check "windows (c): the rerun exits 0" "0" "$rc"
 check "windows (c): the rerun did not rebuild window 1 (2026-11-04)" "no" "$(grep -q 'window 2026-11-04' "$ROOT/win/err" && echo yes || echo no)"
@@ -715,14 +706,11 @@ check "windows (c): the rerun built the two windows left" "2" "$(grep -c '^usage
 check "windows (c): killed then resumed ends byte-identical to one uninterrupted run" "same" \
   "$(cmp -s "$WC/records.jsonl" "$WU/records.jsonl" && echo same || echo differ)"
 
-# (d) a rerun with nothing new builds no window and appends nothing
 wc_h="$(cksum < "$WC/records.jsonl")"
 rc=0; wrun "$WC" >/dev/null || rc=$?
 check "windows (d): a rerun with nothing new exits 0 and appends nothing" "0/$wc_h" "$rc/$(cksum < "$WC/records.jsonl")"
 check "windows (d): it says no window is left to build" "yes" "$(grep -q '0 window(s) to build' "$ROOT/win/err" && echo yes || echo no)"
 
-# (e) the phase-cost offsets are saved per transcript: a SIGKILL after the first one keeps its state,
-# and the rerun reads only the transcript that was not saved yet
 WE="$ROOT/win/store-e"
 check "windows (e): the run reached the pause after the first transcript" "reached" "$(wkill "$WE" file:1)"
 check "windows (e): the first transcript's offset is saved before its window is committed" "1/0" \
@@ -734,8 +722,6 @@ check "windows (e): the rerun reads only the transcript left in window 1" "yes" 
 check "windows (e): the rerun ends byte-identical to one uninterrupted run" "same" \
   "$(cmp -s "$WE/records.jsonl" "$WU/records.jsonl" && echo same || echo differ)"
 
-# a store written before the windows (one global emitted.json, no checkpoint) re-emits its phase rows once with the
-# same values; usage-read keeps the latest row per (day, session, phase), so the total read back is not doubled
 WLG="$ROOT/win/store-legacy"; cp -R "$WU" "$WLG"
 rm -rf "$WLG/build-checkpoint.json" "$WLG/phase-cost-state/emitted"; echo '{}' > "$WLG/phase-cost-state/emitted.json"
 n0="$(jq -s '[.[] | select(.kind=="phase-cost")] | length' "$WLG/records.jsonl")"
@@ -746,14 +732,12 @@ check "windows: the re-emitted rows read back as the same rows, calls not double
   "$(bash "$READ" --store "$WU" --phase-cost | jq -s '[length, (map(.calls) | add)]' | tr -d ' \n')" \
   "$(bash "$READ" --store "$WLG" --phase-cost | jq -s '[length, (map(.calls) | add)]' | tr -d ' \n')"
 
-# a session whose name falls outside [A-Za-z0-9._-] still gets its own emitted-map file and its rows
 WO="$ROOT/win/odd/projects"; mkdir -p "$WO/slug"
 arow odd 2026-11-04T10:00:00.000Z o1 $OP 10 1 100 0 0 > "$WO/slug/odd name+1.jsonl"
 rc=0; HOME="$PCH" TZ=UTC bash "$COMPUTE" --projects "$WO" --ledger "$WL" --store "$ROOT/win/store-odd" >/dev/null 2>&1 || rc=$?
 check "windows: a session named outside the plain set builds (rc 0, one phase row)" "0/1" \
   "$rc/$(jq -s '[.[] | select(.kind=="phase-cost" and .session=="odd name+1")] | length' "$ROOT/win/store-odd/records.jsonl" 2>/dev/null || echo none)"
 
-# two long odd names that share their first 160 bytes keep separate emitted maps: a new call in one appends one row
 LP="$(printf '%0160d' 0 | tr 0 x)+"; WO2="$ROOT/win/odd2/projects"; mkdir -p "$WO2/slug"
 { arow a 2026-11-03T10:00:00.000Z la1 $OP 10 1 100 0 0; arow a 2026-11-04T10:00:00.000Z la2 $OP 10 1 100 0 0; } > "$WO2/slug/${LP}a.jsonl"
 arow b 2026-11-04T10:00:00.000Z lb1 $OP 10 1 100 0 0 > "$WO2/slug/${LP}b.jsonl"
@@ -764,16 +748,13 @@ rc=0; wo2 || rc=$?
 check "windows: two names alike for 160 bytes keep their own emitted maps (3 rows, then one more)" "3/0/4" \
   "$n1/$rc/$(jq -s '[.[] | select(.kind=="phase-cost")] | length' "$ROOT/win/store-odd2/records.jsonl")"
 
-# an applied commit is renamed aside before it is removed, so a kill during the removal leaves nothing a later run replays
 mkdir -p "$WU/.commit.done/emitted"; echo 7 > "$WU/.commit.done/base"
 wu_h="$(cksum < "$WU/records.jsonl")"
 rc=0; wrun "$WU" >/dev/null || rc=$?
 check "windows: a half-removed applied commit is dropped, not replayed (rc 0, store unchanged, leftover gone)" "0/$wu_h/no" \
   "$rc/$(cksum < "$WU/records.jsonl")/$([ -e "$WU/.commit.done" ] && echo yes || echo no)"
 
-# a held store lock: the refusal names the lock, the owner pid it holds and whether that pid runs
 WK="$ROOT/win/store-lock"; mkdir -p "$WK/.lock"
-# lockmsg <text>: yes when the refused run's last stderr line holds <text> (the run's own rc 1 is expected)
 lockmsg() {
   local m
   m="$(HOME="$PCH" TZ=UTC USAGE_COMPUTE_TEST_LOCK_TRIES=2 bash "$COMPUTE" --projects "$WP" --ledger "$WL" --store "$WK" 2>&1 >/dev/null || true)"
