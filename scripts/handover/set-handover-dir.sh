@@ -9,6 +9,8 @@
 # Usage:
 #   set-handover-dir.sh <handover-dir> [--env-file <path>]
 #   set-handover-dir.sh --inline [--env-file <path>]
+#   set-handover-dir.sh --read-env [--root <repo-root>]
+#   set-handover-dir.sh --read-config
 #
 #   <handover-dir>   Absolute path to the handover state root (Mode B). Must be
 #                    an existing directory (fail-closed — matches the resolver
@@ -40,11 +42,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HDIR=""
 ENV_FILE=""
 INLINE=0
+READ_MODE=""
+READ_ROOT=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --env-file)   ENV_FILE="${2:-}"; shift 2 ;;
         --env-file=*) ENV_FILE="${1#--env-file=}"; shift ;;
         --inline)     INLINE=1; shift ;;
+        --read-env)    READ_MODE=dotenv; shift ;;
+        --read-config) READ_MODE=config; shift ;;
+        --root)        READ_ROOT="${2:-}"; shift 2 ;;
         -*)           echo "ERR set-handover-dir: unknown flag: $1" >&2; exit 1 ;;
         *)
             if [ -z "$HDIR" ]; then HDIR="$1"; shift
@@ -56,6 +63,42 @@ done
 if [ "$INLINE" -eq 1 ] && [ -n "$HDIR" ]; then
     echo "ERR set-handover-dir: --inline takes no handover dir" >&2
     exit 1
+fi
+
+# Read modes: print one layer's HANDOVER_DIR through the loader, never touching a file.
+# They exist so /handover-setup can read a layer with `bash <this> --read-env`, a shape
+# the secrets and main-checkout guards pass (a `bash -c` body with a redirect is refused).
+#   --read-env     the .env layer only (config files off): `HANDOVER_DIR=<value>` or `unset`
+#   --read-config  the himmel.conf layers (.local, station profile, himmel.conf): same output
+#   --root <dir>   the repo root whose .env is read (default: the primary checkout)
+# Non-zero exit means the loader could not be read; it never prints `unset` then.
+if [ -n "$READ_MODE" ]; then
+    if [ "$INLINE" -eq 1 ] || [ -n "$HDIR" ]; then
+        echo "ERR set-handover-dir: --read-env/--read-config take no handover dir and no --inline" >&2
+        exit 1
+    fi
+    if [ -z "$READ_ROOT" ]; then
+        if common=$(git rev-parse --git-common-dir 2>/dev/null); then # swallow-ok: not in a git repo takes the else branch, a script-relative root
+            READ_ROOT="$(cd "$common/.." && pwd)"
+        else
+            READ_ROOT="$SCRIPT_DIR/../.."
+        fi
+    fi
+    (
+        unset HANDOVER_DIR
+        if [ "$READ_MODE" = dotenv ]; then export HIMMEL_CONFIG_DIR=/nonexistent; fi
+        # shellcheck source=scripts/lib/load-dotenv.sh
+        # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
+        . "$SCRIPT_DIR/../lib/load-dotenv.sh" || exit 1
+        if [ "$READ_MODE" = dotenv ]; then
+            load_dotenv --root "$READ_ROOT" HANDOVER_DIR 2>/dev/null || exit 1
+            if [ "${HANDOVER_DIR+set}" = set ]; then printf 'HANDOVER_DIR=%s\n' "$HANDOVER_DIR"; else echo unset; fi
+        else
+            out=$(_himmel_config_layers HANDOVER_DIR) || exit 1
+            if [ -n "$out" ]; then printf '%s\n' "$out"; else echo unset; fi
+        fi
+    )
+    exit $?
 fi
 
 if [ "$INLINE" -eq 0 ] && [ -z "$HDIR" ]; then
@@ -125,8 +168,8 @@ if grep -qE '^[[:space:]]*HANDOVER_DIR=' "$ENV_FILE"; then
     # prim-ok: the original .env mode is copied onto $tmp above; atomic_write would reset it to 0600 and drop the EXIT-trap cleanup shape.
     mv "$tmp" "$target"
     trap - EXIT
-    echo "OK set-handover-dir: updated HANDOVER_DIR in $ENV_FILE"
+    echo "OK set-handover-dir: updated HANDOVER_DIR=$HDIR in $ENV_FILE"
 else
     env_append_line "$ENV_FILE" "$new_line"
-    echo "OK set-handover-dir: appended HANDOVER_DIR to $ENV_FILE"
+    echo "OK set-handover-dir: appended HANDOVER_DIR=$HDIR to $ENV_FILE"
 fi

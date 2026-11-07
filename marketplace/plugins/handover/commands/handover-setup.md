@@ -26,15 +26,18 @@ Check both signals:
 - **Config:** is `HANDOVER_DIR` already set in the environment, or does
   `<repo-root>/.env` hold an active (uncommented) `HANDOVER_DIR=` line? An empty
   line is the recorded inline choice, so it counts as set. Do not read `.env`
-  yourself (the secrets guard refuses it); ask the loader for that one layer
-  (`<himmel-clone>` is `<repo-root>` in a himmel checkout and `$HIMMEL_REPO` in a
-  project install). `<env-value>` is its output: `unset` means no line, empty
-  means inline. A non-zero exit (for example a wrong clone path) is a failed
-  read, not `unset`:
+  yourself (the secrets guard refuses it); ask the himmel clone's copy of the
+  writer for that one layer (`<himmel-clone>` is `<repo-root>` in a himmel
+  checkout and `$HIMMEL_REPO` in a project install; always the clone's copy, a
+  project's own copy may predate the read mode):
 
   ```bash
-  env -u HANDOVER_DIR HIMMEL_CONFIG_DIR=/nonexistent bash -c '. <himmel-clone>/scripts/lib/load-dotenv.sh && load_dotenv --root <repo-root> HANDOVER_DIR 2>/dev/null && printf "%s" "${HANDOVER_DIR-unset}"'
+  bash <himmel-clone>/scripts/handover/set-handover-dir.sh --read-env --root <repo-root>
   ```
+
+  It prints `HANDOVER_DIR=<value>` or `unset`. `<env-value>` is the value:
+  `unset` means no line, an empty value means inline. A non-zero exit (for
+  example a wrong clone path) is a failed read, not `unset`.
 - **Registry:** does `~/.claude/handover/registry.json` already contain an entry
   whose `path` canonicalises to `<repo-root>`?
 
@@ -129,9 +132,10 @@ himmel clone's copy (`$HIMMEL_REPO/scripts/handover/set-handover-dir.sh`) with
   It creates-or-updates the `HANDOVER_DIR=` line in `<repo-root>/.env`. Confirm
   the printed `OK set-handover-dir:` line; on any other result stop and show it.
   The writer stores the canonical absolute path (`<canonical-path>`), which may
-  differ from what the user typed (relative, trailing slash). Get it without
-  reading `.env` (the secrets guard refuses that):
-  `bash -c 'cd "<chosen-path>" && pwd'`. `<state-root-host>` = `<canonical-path>`.
+  differ from what the user typed (relative, trailing slash). It is the value
+  in the printed line, `OK set-handover-dir: ... HANDOVER_DIR=<canonical-path> ...`;
+  do not read `.env` for it (the secrets guard refuses that).
+  `<state-root-host>` = `<canonical-path>`.
 
   Note for the current session: `.env` is read by tools at launch, so the new
   `HANDOVER_DIR` takes effect for shell scripts the next time Claude is launched
@@ -164,14 +168,14 @@ himmel clone's copy (`$HIMMEL_REPO/scripts/handover/set-handover-dir.sh`) with
   3. **Config files.** `scripts/lib/load-dotenv.sh` reads `~/.himmel/himmel.conf.local`,
      the active station profile and `~/.himmel/himmel.conf` before `.env`, and
      `adopt.sh` writes no pin when one holds a `HANDOVER_DIR`. Read the winning
-     value with the loader itself:
+     value through the loader (the clone's copy, as in step 2):
 
      ```bash
-     bash -c '. <himmel-clone>/scripts/lib/load-dotenv.sh && _himmel_config_layers HANDOVER_DIR'
+     bash <himmel-clone>/scripts/handover/set-handover-dir.sh --read-config
      ```
 
-     It prints `HANDOVER_DIR=<value>` or nothing. If `<outer>` is empty, a
-     value here becomes `<outer>`. (A settings `env` value still beats these
+     It prints `HANDOVER_DIR=<value>` or `unset`; a non-zero exit is a failed
+     read. If `<outer>` is empty, a value here becomes `<outer>`. (A settings `env` value still beats these
      files, so a pin written below wins over them.)
   4. **Apply**, only where something differs from `<choice>`:
      - `<outer>` is non-empty and differs from `<choice>`: this project needs its
