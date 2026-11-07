@@ -211,8 +211,9 @@ set -e
 [ "$rcAB" -eq 0 ] || fail "case a/b: gaps should exit 0 even with gaps present (got rc=$rcAB): $outAB"
 grepq "$outAB" -i 'not a gap' || fail "case a: expected group (a) to label an off answer as a choice, not a gap (got: $outAB)"
 grepq "$outAB" -i 'always-on' || fail "case a: expected the always-on field to appear as an off-by-choice gap (got: $outAB)"
-grepq "$outAB" 'HIMMEL-2302' || fail "case b: expected a reference-only item to carry its ticket id (got: $outAB)"
-echo "ok: case a/b — an all-off profile surfaces group (a) as a labelled choice and group (b) with a ticket id; exit 0"
+grepq "$outAB" 'Armed cadences beyond the pipeline family' || fail "case b: expected a reference-only item to be listed by its label (got: $outAB)"
+grepq "$outAB" -E 'HIMMEL-[0-9]' && fail "case b: the text report must not print internal ticket keys (got: $outAB)"
+echo "ok: case a/b — an all-off profile surfaces group (a) as a labelled choice and group (b) by label, no ticket key; exit 0"
 
 # ── case c/d: --json is parseable, has the expected shape, exit 0 ─────────
 outJSON=$(run_gaps "$cacheAB" --json)
@@ -414,7 +415,7 @@ node -e '
 ' <<< "$outLjson" || fail "case l: --json non-operator-preset assertions failed (got: $outLjson)"
 outLtext=$(HIMMELCTL_CACHE_DIR="$(winpath "$cacheL")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheL/luna-config.json")" HOME="$home" USERPROFILE="$homeWin" \
   HIMMELCTL_REPO_ROOT="$(winpath "$repoStubL")" "$node_bin" "$wizard" gaps --preset custom)
-grepq "$outLtext" 'HIMMEL-2302' && fail "case l: a non-operator preset must not present the operator TBD ticket rows as its own (got: $outLtext)"
+grepq "$outLtext" 'Armed cadences beyond the pipeline family' && fail "case l: a non-operator preset must not present the operator TBD rows as its own (got: $outLtext)"
 grepq "$outLtext" -i 'omitted' || fail "case l: expected an omission note explaining why group (b) is empty (got: $outLtext)"
 echo "ok: case l — a non-operator --preset omits the operator-machine TBD rows instead of presenting them as its own"
 
