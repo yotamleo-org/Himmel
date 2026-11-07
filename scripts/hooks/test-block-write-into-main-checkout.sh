@@ -31,7 +31,7 @@
 # variables themselves (rows 10f to 10l): a worker running this suite must not
 # turn rows 9 to 10e into worker rows.
 _bwimc_worker_env() {
-    export HIMMEL_CONSOLE_LEG=1 HIMMEL_HOLD_KEY=TEST-1HIMMEL_HOLD_DOC="$FIX/home/worker-doc.md"
+    export HIMMEL_CONSOLE_LEG=1 HIMMEL_HOLD_KEY=TEST-1 HIMMEL_HOLD_DOC="$FIX/home/worker-doc.md"
 }
 _bwimc_no_worker_env() {
     unset HIMMEL_CONSOLE_LEG HIMMEL_HOLD_KEY HIMMEL_HOLD_DOC
