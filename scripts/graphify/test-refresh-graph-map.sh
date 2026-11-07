@@ -269,7 +269,7 @@ printf '{"type":"result","is_error":false,"result":"LANE-ANSWER"}\n'
 STUB
 printf '#!/usr/bin/env bash\necho called >> "%s/sub/calls"\n' "$T4C" > "$T4C/sub/claude"
 chmod +x "$T4C/bin/graphify" "$T4C/lane" "$T4C/sub/claude"
-out=$( HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A GRAPHIFY_MAP_LANE_BIN="$T4C/lane" GRAPHIFY_MAP_BIN="$T4C/bin/graphify" \
+out=$( HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A HIMMEL_API_CREDIT_CONFIG="$T4C/no-config.json" GRAPHIFY_MAP_LANE_BIN="$T4C/lane" GRAPHIFY_MAP_BIN="$T4C/bin/graphify" \
   PATH="$T4C/sub:$PATH" bash "$SCRIPT" --name luna --corpus-root "$CORPUS" --backend claude-api \
   --maps-dir "$MAPS" --title "Graphify Luna Map" --slug graphify-luna-map --scratch "$T4C/scratch" 2>&1 ); rc=$?
 [ "$rc" -eq 0 ] && grep -q -- '--update --backend claude-cli' "$T4C/graphify-args" 2>/dev/null \
