@@ -225,8 +225,9 @@ class Broker:
         finally:
             os.close(fd)
 
-    def withdraw(self, rid, result):
-        """End a pending request the operator was never shown (its notice could not be sent)."""
+    def withdraw(self, rid, result, reason=None):
+        """End a pending request the operator was never shown (its notice could not be sent). `reason`
+        is a short error kind for the ledger row, never a secret."""
         fd = self._locked()
         try:
             s = self._load()
@@ -236,7 +237,7 @@ class Broker:
                 self._drop(s, rid)
                 self._spend(s, self.now())
                 self._save(s)
-                self._row("notice", result, p["meta"], id=rid)
+                self._row("notice", result, p["meta"], id=rid, **({"reason": reason} if reason else {}))
         finally:
             os.close(fd)
 

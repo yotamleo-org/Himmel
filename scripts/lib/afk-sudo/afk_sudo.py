@@ -754,12 +754,25 @@ def curl_q(s):
     return f'"{s}"'
 
 
+NOTICE_FAIL = ""  # why the last tg_send failed: a call name and an error kind, never a token, URL or reply text
+
+
+def exc_reason(e):
+    """The ledger reason for a notice that raised: the exception's class name only, never its message."""
+    return "exception-" + re.sub(r"[^A-Za-z0-9_]", "", type(e).__name__)[:40]
+
+
 def tg_send(config, token, method, fields, document=None):
     """One Bot API call as root. Everything goes to curl on stdin (-K -): the URL holding the token and
     every field, the nonce among them, since a root process's argv is world-readable. -q skips any
-    .curlrc. True when the API answers ok."""
+    .curlrc. True when the API answers ok; otherwise NOTICE_FAIL names the call and the error kind
+    (no-curl, curl-os-error, curl-timeout, curl-exit-N, bad-response, api-Nxx from the reply's error_code,
+    api-not-ok)."""
+    global NOTICE_FAIL
+    NOTICE_FAIL = ""
     curl = curl_path()
     if not curl:
+        NOTICE_FAIL = f"{method}:no-curl"
         return False
     lines = [f"url = {curl_q(api_base(config) + '/bot' + token + '/' + method)}"]
     if document:
@@ -770,9 +783,24 @@ def tg_send(config, token, method, fields, document=None):
     try:
         p = subprocess.run([curl, "-q", "-sS", "-m", "10", "-K", "-"], input="\n".join(lines) + "\n", capture_output=True,
                            text=True, env={"PATH": FIXED_PATH, "LANG": "C.UTF-8"}, cwd="/", timeout=30)
-        return json.loads(p.stdout or "{}").get("ok") is True
-    except (OSError, ValueError, AttributeError, subprocess.TimeoutExpired):
+        reply = json.loads(p.stdout or "{}")
+        if reply.get("ok") is True:
+            return True
+        code = reply.get("error_code")
+        if p.returncode != 0 and not p.stdout:
+            NOTICE_FAIL = f"{method}:curl-exit-{p.returncode}"
+        elif isinstance(code, int) and 100 <= code <= 599:
+            NOTICE_FAIL = f"{method}:api-{code // 100}xx"
+        else:
+            NOTICE_FAIL = f"{method}:api-not-ok"
         return False
+    except subprocess.TimeoutExpired:
+        NOTICE_FAIL = f"{method}:curl-timeout"
+    except OSError:
+        NOTICE_FAIL = f"{method}:curl-os-error"
+    except (ValueError, AttributeError):
+        NOTICE_FAIL = f"{method}:bad-response"
+    return False
 
 
 def esc(s, keep=None):
@@ -964,7 +992,7 @@ def send_notice(broker, config, token, rec, nonce, mode, cls, digest=None, bodie
         ok = tg_send(config, token, "sendDocument", [("chat_id", op)], (doc, f"{rid}.json"))
     ok = ok and tg_send(config, token, "sendMessage", [("chat_id", op), ("parse_mode", "HTML"), ("text", text)])
     if not ok:
-        broker.withdraw(rid, "notice-failed")
+        broker.withdraw(rid, "notice-failed", reason=NOTICE_FAIL or "unknown")
     return ok
 
 
@@ -1142,8 +1170,8 @@ def run_request(broker, config, args):
     try:
         rec = load_record(rid)
         ok = send_notice(broker, config, token, rec, nonce, mode, cls, rec_hash(rec), *run_bodies(rec))
-    except BaseException:
-        broker.withdraw(rid, "notice-failed")
+    except BaseException as e:
+        broker.withdraw(rid, "notice-failed", reason=exc_reason(e))
         raise
     if not ok:
         print(f"result=notice-failed id={rid}")
@@ -1213,8 +1241,8 @@ def grant_request(broker, config, args):
         bodies = [(f["path"], read_copy(rid, f"f{i}")) for i, f in enumerate(rec["files"]) if f["shown"]]
         ok = send_notice(broker, config, token, rec, nonce, None, None, bodies=bodies,
                          built=grant_facts(rec, nonce, ttl, rec_hash(rec), bodies))
-    except BaseException:
-        broker.withdraw(rid, "notice-failed")
+    except BaseException as e:
+        broker.withdraw(rid, "notice-failed", reason=exc_reason(e))
         raise
     if not ok:
         print(f"result=notice-failed id={rid}")
@@ -1562,8 +1590,8 @@ def op_request(broker, config, args):
     try:
         rec = load_record(rid)
         ok = send_notice(broker, config, token, rec, nonce, None, None, built=op_facts(rec, nonce, rec_hash(rec)))
-    except BaseException:
-        broker.withdraw(rid, "notice-failed")
+    except BaseException as e:
+        broker.withdraw(rid, "notice-failed", reason=exc_reason(e))
         raise
     if not ok:
         print(f"result=notice-failed id={rid}")
@@ -1729,8 +1757,8 @@ def main(argv):
                    "session": meta["session"], "ticket": meta["ticket"], "expires": expires}
             try:
                 ok = send_notice(broker, config, token, rec, nonce, "allowlist", name)
-            except BaseException:
-                broker.withdraw(rid, "notice-failed")
+            except BaseException as e:
+                broker.withdraw(rid, "notice-failed", reason=exc_reason(e))
                 raise
             if not ok:
                 print(f"result=notice-failed id={rid}")

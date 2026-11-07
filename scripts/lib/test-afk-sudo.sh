@@ -243,7 +243,8 @@ for k, v in pairs:
 fail = os.path.exists(failf) and open(failf).read().strip() in rec["url"]
 n = len(os.listdir(d))
 json.dump(rec, open(os.path.join(d, "%03d.json" % n), "w"))
-print(json.dumps({"ok": not fail, "result": {"message_id": 100 + n}}))
+# A failure answers as the Bot API does (its documented error body); the reason a notice failed is read from it.
+print(json.dumps({"ok": False, "error_code": 401, "description": "Unauthorized"} if fail else {"ok": True, "result": {"message_id": 100 + n}}))
 FAKETG
 chmod +x "$tmp/fakecurl/curl"
 export AFK_SUDO_CURL="$tmp/fakecurl/curl"
@@ -1695,13 +1696,13 @@ INSTALL="$LIB/install.sh"
 assert_contains "install.sh installs never_remote.py" 'never_remote.py" "$LIBEXEC/never_remote.py"' "$(cat "$INSTALL")"
 # shellcheck disable=SC2016 # matched literally, as above
 assert_contains "install.sh removes never_remote.py on uninstall" 'rm -f "$SUDOERS" "$LIBEXEC/afk-sudo" "$LIBEXEC/approval_broker.py" "$LIBEXEC/never_remote.py"' "$(cat "$INSTALL")"
-assert_contains "the default config ships mode allowlist" '"mode": "allowlist"' "$(cat "$INSTALL")"
-assert_contains "the default config ships the run block off" '"run": {"enabled": false' "$(cat "$INSTALL")"
-assert_contains "HIMMEL-7686: the default config ships the grant block off" '"grant": {"enabled": false' "$(cat "$INSTALL")"
+assert_contains "the default config ships mode allowlist" '"mode": "allowlist"' "$(cat "$INSTALL" "$LIB/afk-sudo.json.template")"
+assert_contains "the default config ships the run block off" '"run": {"enabled": false' "$(cat "$INSTALL" "$LIB/afk-sudo.json.template")"
+assert_contains "the default config ships the grant block off" '"grant": {"enabled": false' "$(cat "$INSTALL" "$LIB/afk-sudo.json.template")"
 assert_contains "HIMMEL-7686: install.sh creates the root-owned grant marker directory" '-m 0755 /var/lib/himmel/afk-grants' "$(cat "$INSTALL")"
 # shellcheck disable=SC2016 # matched literally, as above
-assert_contains "slice 1b: install.sh creates an empty root 0600 notice-bot.env" 'install -m 0600 -o root -g "$ROOT_GROUP" /dev/null "$NOTICE_ENV"' "$(cat "$INSTALL")"
-assert_contains "slice 1b: install.sh says runs stay refused while notice-bot.env is empty" "run requests are refused while it is empty" "$(cat "$INSTALL")"
+assert_contains "slice 1b: install.sh creates a root 0600 notice-bot.env from its template" 'install -o root -g "$ROOT_GROUP" -m 0600 "$src/notice-bot.env.template" "$f"' "$(cat "$INSTALL")"
+assert_contains "slice 1b: install.sh says runs stay refused while notice-bot.env holds no token" "run requests are refused until it holds one" "$(cat "$INSTALL")"
 
 echo "== install.sh prints hints that work on this platform =="
 INSTALL="$LIB/install.sh"
@@ -1734,6 +1735,78 @@ assert_absent "a set EDITOR keeps plain sudoedit" "SUDO_EDITOR" "$out"
 assert_contains "a missing qrencode prints its install hint" "sudo pacman -S qrencode" "$(hint "$tmp/os-arch" linux qr_hint)"
 printf '#!/bin/sh\n' > "$STUBS/linux-nano/qrencode"; chmod +x "$STUBS/linux-nano/qrencode"
 assert_absent "a present qrencode prints nothing" "pacman" "$(hint "$tmp/os-arch" linux-nano qr_hint)"
+
+echo "== HIMMEL-9507: a failed notice leaves its reason in the ledger, never a secret =="
+notice_row() { ledger | grep '"event": "notice"' | tail -1; }
+new_root reasonmsg; cfg "$ALL" true
+: > "$tmp/tg-fail"
+out=$(rr 0 -- true)
+rm -f "$tmp/tg-fail"
+assert_contains "RED 9507: the notice-failed row names the failing call and the API error class" '"reason": "sendMessage:api-4xx"' "$(notice_row)"
+assert_absent "the reason row holds no token" "$NTOK" "$(ledger)"
+assert_absent "the reason row holds no API URL" "api.telegram.org" "$(ledger)"
+assert_absent "the reason row holds no API description" "Unauthorized" "$(ledger)"
+new_root reasondoc; cfg "$ALL" true
+printf 'sendDocument' > "$tmp/tg-fail"
+out=$(rr 0 -- printf '%s\n' $(seq 30))
+rm -f "$tmp/tg-fail"
+assert_contains "RED 9507: a failed attachment names sendDocument" '"reason": "sendDocument:api-4xx"' "$(notice_row)"
+new_root reasoncurl; cfg "$ALL" true
+out=$(AFK_SUDO_CURL=/nonexistent/curl rr 0 -- true)
+assert_contains "RED 9507: a curl that cannot start names its error kind" '"reason": "sendMessage:curl-os-error"' "$(notice_row)"
+assert_absent "the curl error row holds no token" "$NTOK" "$(ledger)"
+new_root reasonsudo; cfg "$ALL" true
+: > "$tmp/tg-fail"
+out=$(req 0)
+rm -f "$tmp/tg-fail"
+assert_contains "RED 9507: a failed sudo-kind notice is ledgered with the same reason" '"reason": "sendMessage:api-4xx"' "$(notice_row)"
+
+echo "== HIMMEL-9507: install.sh writes both files from templates and adds new keys to an old config =="
+INSTALL="$LIB/install.sh"
+CFG_TPL="$LIB/afk-sudo.json.template"; ENV_TPL="$LIB/notice-bot.env.template"
+# mode_of <file>: its octal mode (GNU stat, else BSD).
+mode_of() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+# install_stub: a PATH dir whose `install` drops -o/-g (the test user is not root) and runs the real one.
+mkdir -p "$tmp/installstub"
+# shellcheck disable=SC2016 # the stub's shell source, written out literally
+printf '#!/bin/sh\nn=$#\nwhile [ "$n" -gt 0 ]; do\n  case "$1" in -o|-g) shift 2; n=$((n-2)) ;; *) set -- "$@" "$1"; shift; n=$((n-1)) ;; esac\ndone\nexec %s "$@"\n' "$(command -v install)" > "$tmp/installstub/install"
+chmod 0755 "$tmp/installstub/install"
+# shellcheck disable=SC2030,SC2031,SC1090
+inst() { ( PATH="$tmp/installstub:$PATH"; source "$INSTALL" && "$@" ); }
+assert_eq "RED 9507: the config template exists beside install.sh" "yes" "$([ -f "$CFG_TPL" ] && echo yes || echo no)"
+assert_eq "RED 9507: the notice-bot.env template exists beside install.sh" "yes" "$([ -f "$ENV_TPL" ] && echo yes || echo no)"
+FRESH="$tmp/fresh-etc"; mkdir -p "$FRESH"
+out=$(inst install_config "$LIB" "$FRESH/afk-sudo.json" 2>&1)
+assert_eq "RED 9507: a fresh install writes the config from the template (mode 0644)" "644" "$(mode_of "$FRESH/afk-sudo.json")"
+assert_eq "RED 9507: the fresh config is disabled, allowlist, every kind off" "False False False False allowlist" \
+    "$(python3 -I -c 'import json, sys; c = json.load(open(sys.argv[1])); print(c["enabled"], c["run"]["enabled"], c["grant"]["enabled"], c["ops"]["enabled"], c["mode"])' "$FRESH/afk-sudo.json" 2>&1)"
+out=$(inst install_notice_env "$LIB" "$FRESH/notice-bot.env" 2>&1)
+assert_eq "RED 9507: a fresh install writes notice-bot.env at mode 0600" "600" "$(mode_of "$FRESH/notice-bot.env")"
+assert_eq "RED 9507: the fresh notice-bot.env holds the TELEGRAM_BOT_TOKEN= placeholder and no value" "TELEGRAM_BOT_TOKEN=" \
+    "$(grep -v '^#' "$FRESH/notice-bot.env" 2>/dev/null | grep -v '^$')"
+printf 'TELEGRAM_BOT_TOKEN=%s\n' "$NTOK" > "$FRESH/notice-bot.env"
+out=$(inst install_notice_env "$LIB" "$FRESH/notice-bot.env" 2>&1)
+assert_contains "an existing notice-bot.env is never rewritten" "TELEGRAM_BOT_TOKEN=$NTOK" "$(cat "$FRESH/notice-bot.env")"
+OLD="$tmp/old-etc"; mkdir -p "$OLD"
+printf '{"enabled": true, "operator_id": 4242, "operator_user": "SECRETNAME", "mode": "all", "run": {"enabled": true, "ttl_s": 77}, "classes": {"c1": {"argv": ["/bin/true"]}}}\n' > "$OLD/afk-sudo.json"
+chmod 0640 "$OLD/afk-sudo.json"
+out=$(inst install_config "$LIB" "$OLD/afk-sudo.json" 2>&1)
+assert_eq "RED 9507: an old config keeps its existing values" "True 4242 SECRETNAME all True 77 /bin/true" \
+    "$(python3 -I -c 'import json, sys; c = json.load(open(sys.argv[1])); print(c["enabled"], c["operator_id"], c["operator_user"], c["mode"], c["run"]["enabled"], c["run"]["ttl_s"], c["classes"]["c1"]["argv"][0])' "$OLD/afk-sudo.json" 2>&1)"
+assert_eq "RED 9507: an old config gains the missing keys, nested ones too" "900 300 False False [] 120 6" \
+    "$(python3 -I -c 'import json, sys; c = json.load(open(sys.argv[1])); print(c["grant"]["ttl_s"] if "grant" in c else "-", c["run"].get("timeout_s", "-"), c["grant"]["enabled"], c["ops"]["enabled"], c["never_remote_extra"], c["window_s"], c["max_per_hour"])' "$OLD/afk-sudo.json" 2>&1)"
+assert_eq "RED 9507: the old config keeps its mode" "640" "$(mode_of "$OLD/afk-sudo.json")"
+assert_contains "RED 9507: the install names the added keys" "run.timeout_s" "$out"
+assert_absent "the install output never shows a config value" "SECRETNAME" "$out"
+before=$(cat "$OLD/afk-sudo.json")
+out=$(inst install_config "$LIB" "$OLD/afk-sudo.json" 2>&1)
+assert_eq "a second install over the merged config changes nothing" "$before" "$(cat "$OLD/afk-sudo.json")"
+printf '{not json' > "$OLD/bad.json"
+out=$(inst install_config "$LIB" "$OLD/bad.json" 2>&1); rc=$?
+assert_eq "a config that is not JSON is refused and left as it was" "1 {not json" "$rc $(cat "$OLD/bad.json")"
+# shellcheck disable=SC2123,SC2030,SC2031,SC1090
+assert_contains "RED 9507: the notice-bot.env step names SUDO_EDITOR when no editor exists" "SUDO_EDITOR=nano sudoedit /etc/himmel/afk-sudo/notice-bot.env" \
+    "$( ( PATH="$STUBS/linux"; export AFK_OS_RELEASE="$tmp/os-arch"; unset SUDO_EDITOR VISUAL EDITOR; source "$INSTALL" && notice_env_steps ) 2>&1 )"
 
 echo
 echo "test summary: $PASS passed, $FAIL failed"
