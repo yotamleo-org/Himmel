@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# usage-lift.sh — An expiring, account-bound OPERATOR decision to
-# spend the seven_day usage past the launch ceiling before it resets anyway.
+# usage-lift.sh — An expiring OPERATOR decision to spend the seven_day usage
+# past the launch ceiling before it resets anyway. A window lift is bound to
+# the account it was set on.
 #
 #   usage-lift.sh set [--standing] [cache]   record a window or standing lift
 #   usage-lift.sh show          print the lift file and whether it is valid now
@@ -10,7 +11,8 @@
 # Operator-set only — nothing calls `set` automatically. Window lifts expire
 # at `until`, bounded by the current reset plus one second of API jitter.
 # A standing policy persists across resets, defaults both usage ceilings to 100,
-# but still requires a future cache reset, the same account and trusted mode.
+# follows the active account when set_by is the current user, and still
+# requires a future cache reset, a cache on the login's account and trusted mode.
 # Missing or malformed files fail toward the ceiling. Fleet caps and SKIPPED-*
 # tokens are unchanged; neither policy spends extra_usage.
 #
@@ -61,53 +63,67 @@ _usage_lift_trusted() {
 
 # _usage_lift_valid_one <file> <cache>: one lift file, the checks usage_lift_valid names.
 _usage_lift_valid_one() {
-  local f="$1" cache="$2" win until acct cur now cached fields resets rs_epoch standing
+  local f="$1" cache="$2" win until acct cur now cached fields resets rs_epoch standing by_me followed=false
   USAGE_LIFT_REASON=parse
   USAGE_LIFT_STANDING=false
+  USAGE_LIFT_FOLLOWED=false
   [ -f "$f" ] || { USAGE_LIFT_REASON=missing; return 1; }
   command -v jq >/dev/null 2>&1 || return 1
   _usage_lift_trusted "$f" || { USAGE_LIFT_REASON=trust; return 1; }
   # Slurp so trailing garbage or multiple objects cannot supply a second policy.
-  fields=$(jq -ers '
+  # The set_by match is a string: under -e a trailing bare false would exit 1.
+  fields=$(jq -ers --arg me "$(id -un 2>/dev/null)" '
     if length != 1 then error("one lift required") else .[0] end |
     (if .window=="seven_day" then .window else "" end),
     (if (.until|type)=="number" and (.until|floor)==.until then (.until|tostring) else "" end),
     (if (.account|type)=="string" and (.account|test("^[a-f0-9]{16}$")) then .account else "" end),
-    (if has("standing") and (.standing|type)!="boolean" then error("standing must be boolean") else (.standing // false | tostring) end)
+    (if has("standing") and (.standing|type)!="boolean" then error("standing must be boolean") else (.standing // false | tostring) end),
+    (((.set_by|type)=="string" and $me != "" and .set_by == $me) | tostring)
     ' "$f" 2>/dev/null) || return 1
   {
     IFS= read -r win
     IFS= read -r until
     IFS= read -r acct
     IFS= read -r standing
+    IFS= read -r by_me
   } <<<"$fields"
-  win=${win%$'\r'}; until=${until%$'\r'}; acct=${acct%$'\r'}; standing=${standing%$'\r'}
+  win=${win%$'\r'}; until=${until%$'\r'}; acct=${acct%$'\r'}; standing=${standing%$'\r'}; by_me=${by_me%$'\r'}
   [ "$win" = "seven_day" ] || { USAGE_LIFT_REASON=window; return 1; }
   case "$until" in ''|*[!0-9]*) return 1 ;; esac
   [ -n "$acct" ] || return 1
   now=$(date +%s)
   if [ "$standing" != true ] && [ "$until" -le "$now" ]; then USAGE_LIFT_REASON=expired; return 1; fi
   cur=$(current_account_hash)
-  if [ -z "$cur" ] || [ "$acct" != "$cur" ]; then USAGE_LIFT_REASON=account; return 1; fi
+  [ -n "$cur" ] || { USAGE_LIFT_REASON=account; return 1; }
+  if [ "$acct" != "$cur" ]; then
+    [ "$standing" = true ] || { USAGE_LIFT_REASON=account; return 1; }
+    [ "$by_me" = true ] || { USAGE_LIFT_REASON=set_by; return 1; }
+    followed=true
+  fi
   [ -f "$cache" ] || return 1
   cached=$(jq -r 'if (.account|type)=="string" then .account else "" end' "$cache" 2>/dev/null)
-  [ "$cached" = "$cur" ] || { USAGE_LIFT_REASON=account; return 1; }
+  [ "$cached" = "$cur" ] || { USAGE_LIFT_REASON="cache-account"; return 1; }
   resets=$(jq -r '.seven_day.resets_at // empty' "$cache" 2>/dev/null)
   rs_epoch=$(_usage_lift_epoch "$resets") || return 1
   [ "$rs_epoch" -gt "$now" ] || { USAGE_LIFT_REASON=expired; return 1; }
   # One second covers fractional API jitter, never a different weekly window.
   if [ "$standing" != true ] && [ "$until" -gt "$((rs_epoch+1))" ]; then USAGE_LIFT_REASON=window; return 1; fi
-  # shellcheck disable=SC2034  # output-contract global, read by sourcing callers (usage-preflight.sh)
+  # shellcheck disable=SC2034  # output-contract globals, read by sourcing callers (usage-preflight.sh)
   USAGE_LIFT_STANDING="$standing"
+  # shellcheck disable=SC2034
+  USAGE_LIFT_FOLLOWED="$followed"
   USAGE_LIFT_REASON=""
   return 0
 }
 
 # usage_lift_valid [cache]: 0 only when the lift file is owner/mode-trusted,
-# well-formed, unexpired, bound to the current account (which must also be the
+# well-formed, unexpired, on the current account (which must also be the
 # cache's account), and its `until` is bounded by the current reset (+1s).
-# Standing policies renew against the current future reset, not their old until.
-# USAGE_LIFT_REASON explains failure; USAGE_LIFT_STANDING is true only on success.
+# Standing policies renew against the current future reset, not their old until,
+# and follow an account switch when set_by is the current user (id -un); a
+# window lift stays bound to the account it was set on.
+# USAGE_LIFT_REASON explains failure; USAGE_LIFT_STANDING is true only on success;
+# USAGE_LIFT_FOLLOWED is true only on success on an account other than the origin.
 usage_lift_valid() {
   local cache="${1:-}" f
   [ -n "$cache" ] || cache="$(_usage_lift_default_cache)"
@@ -134,7 +150,7 @@ _usage_lift_cmd() {
       mkdir -p "$(dirname "$f")" || return 1
       tmp=$(mktemp "$f.tmp.XXXXXX") || return 1
       # Store whole seconds, independent of fractional timestamp spelling.
-      if ! ( umask 077; jq -n --argjson u "$until" --argjson s "$standing" --arg a "$acct" --arg by "${USER:-unknown}" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      if ! ( umask 077; jq -n --argjson u "$until" --argjson s "$standing" --arg a "$acct" --arg by "$(id -un)" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         '{window:"seven_day",until:$u,standing:$s,account:$a,set_by:$by,set_at:$at}' > "$tmp" ); then rm -f "$tmp"; return 1; fi
       # prim-ok: hooks source this file for usage_lift_valid, and the hook-closure walkers cannot resolve prim.sh's own dynamic source lines, so it must not load prim.sh
       if ! mv "$tmp" "$f"; then rm -f "$tmp"; return 1; fi
@@ -142,7 +158,13 @@ _usage_lift_cmd() {
       ;;
     show)
       if [ -f "$f" ]; then cat "$f"; echo; else echo "usage-lift: none"; fi # read-sink-ok: show prints the operator's own lift file
-      if usage_lift_valid "${2:-}"; then echo "usage-lift: VALID"; else echo "usage-lift: INVALID: $USAGE_LIFT_REASON"; fi
+      if usage_lift_valid "${2:-}"; then
+        if [ "$USAGE_LIFT_FOLLOWED" = true ]; then
+          acct=$(jq -r '.account' "$f" 2>/dev/null)
+          echo "usage-lift: followed: standing lift set on ${acct:0:4}…, now on $(current_account_hash | cut -c1-4)…"
+        fi
+        echo "usage-lift: VALID"
+      else echo "usage-lift: INVALID: $USAGE_LIFT_REASON"; fi
       ;;
     clear)
       rm -f "$f" && echo "usage-lift: cleared"
