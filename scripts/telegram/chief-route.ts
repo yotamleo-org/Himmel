@@ -725,7 +725,7 @@ function notPassedBlock(abs: string, request: string): string {
   const asked = request.trim();
   if (!asked) throw new Error("--by-request names no request; give the operator's request in words, or send without it (a page that has not passed is then refused)");
   if (!/\.(md|markdown|html?)$/i.test(abs)) throw new Error(`--by-request carries its mark only on a .md or .html page; ${basename(abs)} is neither, send it without --by-request`);
-  return `<section class="not-passed"><p><strong>NOT PASSED. Not for signature.</strong> No critic has passed this page. It is sent early because the operator asked: ${esc(asked)}</p></section>\n`;
+  return `<section class="not-passed"><p><strong>NOT PASSED. Not for signature.</strong> Critic approval was not checked for this delivery. It is sent early because the operator asked:${esc(asked)}</p></section>\n`;
 }
 
 export async function queueFile(root: string, chat: number, path: string, caption?: string, byRequest?: string): Promise<string> {
