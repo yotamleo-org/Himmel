@@ -182,6 +182,25 @@ test("page: a repaint after a review gate control changes puts the focus back on
   expect(focused).toEqual(["required:claude"]);
 });
 
+test("page: a repaint after a Cost read puts the focus back on the phase row the visitor had focused", async () => {
+  const src = readFileSync(join(import.meta.dir, "../public/app.js"), "utf8")
+    .replace(/^import .*$/gm, "").concat("\nglobalThis.__paint = paint;\n");
+  const focused: string[] = [];
+  const btn = (phase: string) => ({ dataset: { phase }, matches: (q: string) => q === "button.dr", focus() { focused.push(phase); } });
+  const rendered = [btn("chief"), btn("build"), btn("review")];
+  const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
+  stubGlobals({
+    ...APP_IMPORT_STUBS, renderNav: () => "",
+    document: { querySelector: el, querySelectorAll: (q: string) => (q === "button.dr" ? rendered : []), getElementById: el, activeElement: rendered[1], addEventListener() {} },
+    location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
+    fetch: () => new Promise(() => {}),
+  }, ["__paint"]);
+  new Function("setInterval", src)(() => 0);
+  focused.length = 0;
+  ((globalThis as Record<string, unknown>).__paint as () => void)();
+  expect(focused).toEqual(["build"]);
+});
+
 // before: the path field as the page holds it; after: the same field as the repaint renders it from the fresh read
 for (const [name, before, after, want] of [
   ["a path field the operator emptied stays empty through a repaint", { value: "", defaultValue: "/saved/path" }, "/saved/path", ""],

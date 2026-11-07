@@ -82,7 +82,7 @@ const PAGES = [
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => toolHealthPage(), onVisit: () => loadToolHealth(), afterPaint: () => thFocusBack() },
   { id: "board", label: "Board", needsFeed: false, render: trackerPage(() => renderBoard(roadmap, roadmapUi, boardExtras)), afterPaint: () => { whyFocus(null); loadDriftOrigins(); }, onVisit: () => { if (!(sources && !sources.length)) { if (!roadmap) loadRoadmap(); if (!boardExtras) loadBoard(); if (roadmapUi.tab === "nv" && !roadmapUi.nv) loadNoVersion(); } } },
   { id: "workflow", label: "Workflow", needsFeed: false, render: () => renderWorkflow(wfModel, wfUi, wfStats), onVisit: () => { if (!wfModel || wfModel.error || !wfStats || wfStats.error || Date.now() - wfAt > 60_000) loadWorkflow(); }, afterPaint: () => wfScroll() },
-  { id: "cost", label: "Cost", needsFeed: false, render: () => (costErr ? `<p class="sub">The cost could not be read just now${costModel ? "; this is the last good read" : ""}.</p>` : "") + renderCost(costModel, costView), onVisit: () => loadCost(), afterPaint: () => costMount() },
+  { id: "cost", label: "Cost", needsFeed: false, render: () => (costErr ? `<p class="sub">The cost could not be read just now${costModel ? "; this is the last good read" : ""}.</p>` : "") + renderCost(costModel, { ...costView, err: costErr }), onVisit: () => loadCost(), afterPaint: () => costMount() },
   { id: "shift", label: "Shift", needsFeed: false, render: () => renderShift(shift, { ...shiftUi, fleet: (navLinks({ here: "console", token, current: "shift", sources }).find((l) => l.id === "fleet") || {}).href }), onVisit: () => loadShift() },
   { id: "report", label: "Morning report", needsFeed: false, render: () => pageBar() + renderReport(reportList, reportView, { ...reportUi, shiftHref: "#/shift" }), onVisit: () => loadReport() },
 ];
@@ -261,6 +261,7 @@ function paint() {
   const focusB = document.activeElement && document.activeElement.matches && document.activeElement.matches(".bhead") ? document.activeElement.dataset.b : null;
   const focusRg = document.activeElement && document.activeElement.matches && document.activeElement.matches("[data-rg]") ? { rg: document.activeElement.dataset.rg, slug: document.activeElement.dataset.slug } : null;
   const focusT = document.activeElement && document.activeElement.matches && document.activeElement.matches("button.tile") ? document.activeElement.dataset.tile : null;
+  const focusP = document.activeElement && document.activeElement.matches && document.activeElement.matches("button.dr") ? document.activeElement.dataset.phase : null;
   const focusD = document.activeElement && document.activeElement.closest && document.activeElement.closest(".drawer") ? { act: document.activeElement.dataset.act, cmd: document.activeElement.dataset.cmd } : null; // any repaint (the history landing, a refresh) keeps keyboard focus on the same drawer control
   // A secret or path being typed lives only in its field: a repaint (a report landing, a read finishing) must not wipe it.
   // It is held in this one synchronous call and put straight back; it is never kept in page state.
@@ -281,7 +282,8 @@ function paint() {
   if (focusB !== null) { for (const h of document.querySelectorAll(".bhead")) if (h.dataset.b === focusB) { h.focus(); break; } }
   if (focusRg !== null) { for (const c of document.querySelectorAll("[data-rg]")) if (c.dataset.rg === focusRg.rg && c.dataset.slug === focusRg.slug) { c.focus(); break; } }
   if (focusT !== null) { for (const t of document.querySelectorAll("button.tile")) if (t.dataset.tile === focusT) { t.focus(); break; } }
-  if (focusD) { const c = [...document.querySelectorAll(".drawer [data-act]")].find((x) => x.dataset.act === focusD.act && x.dataset.cmd === focusD.cmd); if (c) c.focus(); }
+  if (focusP !== null) { for (const b of document.querySelectorAll("button.dr")) if (b.dataset.phase === focusP) { b.focus(); break; } }
+  if (focusD) { const c =[...document.querySelectorAll(".drawer [data-act]")].find((x) => x.dataset.act === focusD.act && x.dataset.cmd === focusD.cmd); if (c) c.focus(); }
   if (keep !== null) { const q = $("#q"); q.focus(); q.setSelectionRange(keep, keep); }
 }
 

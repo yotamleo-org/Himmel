@@ -152,3 +152,9 @@ test("cost: usage-read --phase-cost keeps one day with --day, every version with
   expect(read("--day", DAY)).toMatchObject({ status: 1, stderr: expect.stringContaining("--day needs --phase-cost") });
   expect(read("--phase-cost", "--ticket", "HIMMEL-1")).toMatchObject({ status: 1, stderr: expect.stringContaining("does not combine") });
 });
+
+test("cost: before the first read lands the page says loading, and after a failed read it adds no 'no data yet' beside the failure note", () => {
+  expect(renderCost(null, { open: [] })).toContain("loading");
+  expect(renderCost(null, { open: [] })).not.toContain("no data yet");
+  expect(renderCost(null, { open: [], err: true })).toBe("");
+});
