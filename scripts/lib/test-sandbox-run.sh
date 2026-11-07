@@ -330,17 +330,35 @@ churn() { while [ ! -e "$RACE/stop" ]; do
     mkdir -p "$RACE/d/e"; touch "$RACE/d/e/f" "$RACE/d/g"; mkfifo "$RACE/d/p" 2>/dev/null
     rm -rf "$RACE/d"
 done; }
+# The hook runs, or bwrap says why it could not mount over a node that vanished after the
+# scan (a few ms window): never a launch that ends without a reason. bwrap words that
+# reason differently by version (Read-only file system, No such file, and on the CI image
+# "Unable to find ... in mount table"), so the reason is a bwrap setup error that names a
+# node of the churn directory, whatever its wording.
+churn_reasoned_launch() { [ "$1" = 1 ] && [[ "$2" == "bwrap: Can't "*"$RACE/d/"* ]]; }
+# fixture copied from CI run 42262795231 job 128048101493 (shell-unit-shard 5), mount path as logged
+ci_line="bwrap: Can't bind mount /oldroot/dev/null on /newroot$RACE/d/p: Unable to find \"/newroot$RACE/d/p\" in mount table"
+if churn_reasoned_launch 1 "$ci_line"; then ok 'the bwrap mount-table wording CI logged counts as a reasoned churn launch'
+else bad "CI bwrap wording not accepted as a reasoned churn launch: $ci_line"; fi
+if ! churn_reasoned_launch 1 "bwrap: Can't bind mount /oldroot/dev/null on /newroot/etc/x: Unable to find in mount table" \
+    && ! churn_reasoned_launch 1 "something else wrote $RACE/d/p" \
+    && ! churn_reasoned_launch 125 "$ci_line" && ! churn_reasoned_launch 1 ''; then
+    ok 'a bwrap error off the churn directory, a bare rc 1, or another rc is not a reasoned churn launch'
+else bad 'churn reason accepts something it should refuse'; fi
 churn & churn_pid=$!
-churn_bad=0; churn_reasoned=0
+churn_bad=0; churn_reasoned=0; churn_start=$SECONDS; churn_done=0
 for _ in $(seq 1 30); do
-    OUT=$(staged bash "$SRUNNER" -- bash -c 'echo RAN' 2>&1); RC=$?
-    # The hook runs, or bwrap says why it could not mount over a node that vanished
-    # after the scan (a few ms window): never a launch that ends without a reason.
+    # a launch that never returns would eat the suite's whole cap: bound each one, and the row.
+    [ $((SECONDS - churn_start)) -lt 120 ] || break
+    OUT=$(staged timeout 60 bash "$SRUNNER" -- bash -c 'echo RAN' 2>&1); RC=$?
+    churn_done=$((churn_done + 1))
     if [ "$RC" = 0 ] && [[ "$OUT" == *RAN* ]]; then :
-    elif [ "$RC" = 1 ] && [[ "$OUT" == *"bwrap: Can't "*"Read-only file system"* || "$OUT" == *"bwrap: Can't "*"No such file"* ]]; then churn_reasoned=$((churn_reasoned + 1))
+    elif churn_reasoned_launch "$RC" "$OUT"; then churn_reasoned=$((churn_reasoned + 1))
     else churn_bad=$((churn_bad + 1)); churn_first=${churn_first:-"rc=$RC $OUT"}; fi
 done
-touch "$RACE/stop"; wait "$churn_pid" 2>/dev/null
+touch "$RACE/stop"; kill "$churn_pid" 2>/dev/null; wait "$churn_pid" 2>/dev/null
+churn_pid=
+[ "$churn_done" = 30 ] || { churn_bad=$((churn_bad + 1)); churn_first=${churn_first:-"only $churn_done of 30 launches finished in 120 s"}; }
 if [ "$churn_bad" = 0 ]; then ok "launches under a FIFO and directory churning in ROOT run the hook or say why (30 of 30, $churn_reasoned reasoned)"
 else bad "churn under ROOT: $churn_bad of 30 launches failed, first: ${churn_first:-}"; fi
 # containment control: a real FIFO in a bound input is still refused, with the reason.
