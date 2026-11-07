@@ -10,6 +10,9 @@ code,pre,kbd,.bhead,.row-head,.kv,.hrow .id,.hrow .ro{font-family:var(--font-mon
 .top details>span{display:block;margin-top:var(--s1)}
 .top .k{color:var(--dim)}
 .top .unk{color:var(--warn)}
+/* The login line is out of the flow, so the rail, shared with the separate agui-web page, keeps its height: at the foot of the rail, or a pill at the bottom right once the rail is a top bar. */
+#login-state{position:fixed;left:var(--s3);bottom:var(--s3);width:133px;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1) var(--s2)}
+@media (max-width:760px){#login-state{left:auto;right:var(--s3);width:auto;background:var(--bg);border:1px solid var(--line);border-radius:var(--s2);padding:var(--s1) var(--s2)}}
 .nav{display:flex;flex-direction:column;gap:2px}
 .nav button{all:unset;cursor:pointer;display:flex;justify-content:space-between;padding:6px 8px;border-radius:3px;color:var(--dim)}
 .nav button[aria-current="true"]{color:var(--fg);background:var(--panel)}

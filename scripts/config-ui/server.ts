@@ -667,7 +667,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (!session && !sameToken(req.headers.get("x-himmel-token"), token)) return new Response("unauthorized", { status: 401 });
       bump(); // only an authenticated request keeps the server alive
       lastSeen = now(); // and only one keeps the background refresh going
-      if (req.method === "GET" && path === "/api/mode") return json({ readOnly: !!opts.readOnly }); // the page's banner and disabled write controls
+      if (req.method === "GET" && path === "/api/mode") return new Response(JSON.stringify({ readOnly: !!opts.readOnly }), { headers: { "content-type": "application/json", "cache-control": "no-store", "x-himmel-session": session ? "1" : "0" } }); // the page's banner and disabled write controls; the header says whether this caller holds a login session
       if (req.method === "GET" && path === "/api/projects") { // never runs a doctor: each project's own cached feed, or "not checked"
         const { current, list } = projectsNow();
         return json(redactOut({ current, projects: list.map((p) => summarize(p, p.name === current, loadFeed(env, list, p.name))) })); // a saved feed may predate a secret the list has learned
