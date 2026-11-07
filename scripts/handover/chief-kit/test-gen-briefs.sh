@@ -1215,7 +1215,7 @@ pso="$(psrun big off)"; rc=$?
 has "flag off: a warning names the 40-file hard max" "$pso" "warning: worker N921 Writes project to 41 files, over the 40-file hard max"
 [ -n "$(ps_brief big off)" ] && pass "flag off: the brief is written" || fail "flag off: no brief"
 
-pso="$(unset HIMMEL_FLAG_PR_SIZE_GATE; psrun big dflt)"; rc=$?
+pso="$(unset HIMMEL_FLAG_PR_SIZE_GATE HIMMEL_FLAGS_TSV; psrun big dflt)"; rc=$?
 [ "$rc" = 1 ] && pass "pr_size_gate at its registry default (on): 41 files are refused (rc 1)" || fail "registry default: rc=$rc: $pso"
 has "registry default: the refusal names the 40-file hard max" "$pso" "40-file hard max"
 [ -z "$(ps_brief big dflt)" ] && pass "registry default: a refused brief writes no doc" || fail "registry default: a refused brief wrote a doc"
