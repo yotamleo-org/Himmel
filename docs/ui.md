@@ -1,6 +1,6 @@
 # The himmel UI surfaces
 
-Audience: newcomer who has installed himmel, and contributor. Owner: HIMMEL-6836 (this page).
+Audience: newcomer who has installed himmel, and contributor.
 
 himmel has no hosted UI. Three surfaces exist, all local, and each is started by a
 command you run yourself. Only the config UI can change anything on your machine. Configure switches show a dry-run and ask
@@ -31,7 +31,7 @@ dry-run first, then, once confirmed, runs the `himmelctl` command printed under 
 | Scheduled jobs | the job's crontab entry, through its `*-cadence.sh arm` or `disarm` | at the next scheduled run |
 | Commit rules (Configure, Tracker tile) | `TRACKER` and `TICKET_ID_REQUIRED` in `~/.himmel/himmel.conf`, through `himmelctl config set commit.<key>` | your next commit |
 | Setup choices (Configure, Project scope tile) | `HANDOVER_DIR` and `LUNA_VAULT_PATH` in `~/.himmel/himmel.conf`, through `himmelctl config set handover.root` or `luna.vaultPath`; an absolute path with no `.` or `..` part, quote, `#`, `$`, backslash or control character | next Claude launch |
-| Fleet cap (Configure, Project scope tile) | nothing: the tile is read-only. It shows the cap the preflight applies (default 4) and names the key to edit by hand, `~/.himmel/config.json` `.policy.HIMMEL_FLEET_CAP`; a legacy `.env` line still applies until that key is set, and a value exported in the shell that launches a worker is ignored. The tile can show the `.env` cap for an empty-string or non-object `.policy` where the preflight applies 4 (HIMMEL-8150) | the next worker launch |
+| Fleet cap (Configure, Project scope tile) | nothing: the tile is read-only. It shows the cap the preflight applies (default 4) and names the key to edit by hand, `~/.himmel/config.json` `.policy.HIMMEL_FLEET_CAP`; a legacy `.env` line still applies until that key is set, and a value exported in the shell that launches a worker is ignored. An empty-string cap or a non-object `.policy` shows 4, the cap the preflight applies | the next worker launch |
 | VM mode (Configure, Project scope tile) | the `vm` section of the himmel config file in `~/.himmel`: `local`, `remote` (ssh target, port, identity) or `none`; validated before the write | the next VM proof run |
 | Review gate (Configure, Review tile) | the per-machine overlay `critics.local.json` only, through `POST /api/review-gate`: each reviewer's `mode`, `required` and on/off (`drop`). The shared `scripts/cr/critics.json` is never written | the next review round |
 
@@ -241,24 +241,22 @@ artifacts; neither runs a server.
 Both are Linux-only chief tooling; an install without a chief does not
 have them in use.
 
-## Entry pages: audience and owner
+## Entry pages: audience
 
-Each of the ten user entry pages names who it is for and who owns its rewrite. The evidence is the
-HIMMEL-6743 design review, section "Ten user-page recommendations" (the cited line range is the part
-of the page the review read).
+Who each of the ten user entry pages is written for.
 
-| Page | Audience | Owner | Evidence in the review |
-|---|---|---|---|
-| `README.md` | newcomer | HIMMEL-7211 | `README.md:5-19,33-62,75-89` |
-| `docs/why-himmel.md` | newcomer | HIMMEL-7211 | `docs/why-himmel.md:15-48` |
-| `docs/getting-started.md` | newcomer | HIMMEL-7211 | `docs/getting-started.md:27-73` |
-| `docs/setup/install.md` | newcomer | HIMMEL-7212 | `docs/setup/install.md:1-89,227-232` |
-| `docs/adoption-trail.html` | newcomer | HIMMEL-6290 | `docs/adoption-trail.html`, frames F2 to F8 |
-| `docs/daily-loop.md` | contributor | HIMMEL-7213 | `docs/daily-loop.md:3-28,32-97` |
-| `docs/configuration.md` | contributor | HIMMEL-7212 | `docs/configuration.md:9-79` |
-| `docs/commands-catalog.md` | contributor | HIMMEL-7213 | `docs/commands-catalog.md:3-70,80-105` |
-| `docs/setup/updating.md` | newcomer | HIMMEL-7212 | `docs/setup/updating.md:3-25,27-100` |
-| `docs/ui.md` | newcomer and contributor | HIMMEL-6836 | `docs/ui.md:3-16,25-45` |
+| Page | Audience |
+|---|---|
+| `README.md` | newcomer |
+| `docs/why-himmel.md` | newcomer |
+| `docs/getting-started.md` | newcomer |
+| `docs/setup/install.md` | newcomer |
+| `docs/adoption-trail.html` | newcomer |
+| `docs/daily-loop.md` | contributor |
+| `docs/configuration.md` | contributor |
+| `docs/commands-catalog.md` | contributor |
+| `docs/setup/updating.md` | newcomer |
+| `docs/ui.md` | newcomer and contributor |
 
 ## Keeping this page current
 

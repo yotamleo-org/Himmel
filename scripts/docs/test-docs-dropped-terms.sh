@@ -56,7 +56,7 @@ docs/glossary.md	| **`HIMMEL_WORKER`** | The dispatched-lane security marker (ho
 docs/glossary.md	| Secrets never read | `block-read-secrets` (Bash, PowerShell, Read, Grep) | — | `block-read-secrets` (Bash, Read, Grep) | — | — | — |
 docs/glossary.md	| No rogue scheduler job launches `claude` | `block-rogue-claude-schedule` (Bash, PowerShell) | — | `block-rogue-claude-schedule` (Bash) | — | — | — |
 docs/glossary.md	| No `git stash` | `block-git-stash` (Bash, PowerShell) | — | `block-git-stash` (Bash) | — | — | — |
-docs/glossary.md	| Live settings not writable | `block-edit-live-settings` (Bash, PowerShell, Edit) | — | `block-edit-live-settings` (Bash; not `apply_patch`, HIMMEL-5430 open) | — | — | — |
+docs/glossary.md	| Live settings not writable | `block-edit-live-settings` (Bash, PowerShell, Edit) | — | `block-edit-live-settings` (Bash; not `apply_patch` yet) | — | — | — |
 docs/guide/installer-journey.html	<span class="d">  [ ] 2. add the vault's absolute path as a line in ~/.config/claude-glm/phi-roots</span>
 docs/guide/installer-journey.html	<span class="d">  [ ] 3. add the relevant path(s)/pattern(s) to ~/.config/claude-glm/egress-denylist</span>
 docs/guide/installer-journey.html	      term: function () { return [['d', '── PHI checklist — READ ONLY, himmelctl creates none of this ──────────────'], ['d', '  [ ] 1. drop a `.salus` marker file at the vault root (or an ancestor dir)'], ['d', '  [ ] 2. add the vault\'s absolute path as a line in ~/.config/claude-glm/phi-roots'], ['d', '  [ ] 3. add the relevant path(s)/pattern(s) to ~/.config/claude-glm/egress-denylist'], ['q', '? does this vault handle Protected Health Information (PHI)? [yes|no] (default: no)'], ['in', '> no']]; },
