@@ -38,6 +38,8 @@ export XDG_CONFIG_HOME="$HOME/.config" GIT_CONFIG_NOSYSTEM=1 FORGE=github
 unset GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
     GIT_ALTERNATE_OBJECT_DIRECTORIES SERIES_LEDGER_LOCK_TIMEOUT HIMMEL_FLAG_STACKED_SERIES
 export HANDOVER_DIR="$tmp/handovers"; mkdir -p "$HANDOVER_DIR/.locks/go"
+# #4917 turned the pr_size_gate on, and its Writes projection needs a base commit this fixture repo does not carry
+export HIMMEL_FLAG_PR_SIZE_GATE=0
 
 git init -q --bare "$tmp/origin.git"
 REPO="$tmp/repo"
