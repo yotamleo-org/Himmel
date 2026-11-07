@@ -186,7 +186,7 @@ contains 'a cap the plan does not record says so (HIMMEL-3957)' "$html3" 'not re
 write_meta 20 0.6
 write_caps 0.30
 # the page contract — tokens for both themes, phone layout, keyboard-reachable drill-downs.
-contains 'light tokens follow the system (HIMMEL-3990)' "$html" '@media (prefers-color-scheme:light){:root:not([data-theme="dark"])'
+not_contains 'a light system preference no longer flips the tracker page' "$html" 'prefers-color-scheme:light'
 contains 'light tokens follow the toggle (HIMMEL-3990)' "$html" ':root[data-theme="light"]{'
 contains 'the phone layout has its own rules (HIMMEL-3990)' "$html" '@media (max-width:560px)'
 contains 'every number is a button (HIMMEL-3990)' "$html" 'var b=el("button","n",label);b.type="button";'
@@ -1335,6 +1335,39 @@ if [ "$(cat "$v7out.vfp" 2>/dev/null)" != "$vfp7a" ]; then pass 'a changed opera
 rm -f "$vp/HIMMEL-431.md"
 v7render >/dev/null
 contains 'Waiting on you says so when no ticket waits (HIMMEL-7621)' "$(grep -F 'data-section="waiting"' "$v7out")" 'nothing is waiting on you'
+
+# --- both pages open dark with no saved choice, whatever the system preference says
+if command -v node >/dev/null 2>&1; then
+cat > "$W/dark-check.mjs" <<'JS'
+// dark-check.mjs <page.html> <bg var> <text var> <muted var>: DARK-OK when the page's first :root rule (no saved
+// choice) is a dark palette with readable text (WCAG contrast 4.5 for text and muted), no prefers-color-scheme: light
+// query flips it back, and a saved light choice still has its [data-theme="light"] rule.
+import { readFileSync } from 'node:fs';
+const [file, bgV, textV, mutedV] = process.argv.slice(2);
+const html = readFileSync(file, 'utf8');
+const root = /:root\s*\{([^}]*)\}/.exec(html);
+const val = (v) => { const m = root && new RegExp(`${v}\\s*:\\s*(#[0-9a-fA-F]{3,6})`).exec(root[1]); return m && m[1]; };
+const lum = (h) => { h = h.slice(1); if (h.length === 3) h = [...h].map((c) => c + c).join('');
+    const c = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+const [bg, text, muted] = [bgV, textV, mutedV].map(val);
+const why = [];
+if (!bg || !text || !muted) why.push(`missing ${[bgV, textV, mutedV].filter((v) => !val(v)).join(',')} in the first :root rule`);
+else {
+    if (lum(bg) > 0.1) why.push(`background ${bg} is light`);
+    if (ratio(text, bg) < 4.5) why.push(`text ${text} on ${bg} is ${ratio(text, bg).toFixed(2)}`);
+    if (ratio(muted, bg) < 4.5) why.push(`muted ${muted} on ${bg} is ${ratio(muted, bg).toFixed(2)}`);
+}
+if (/prefers-color-scheme\s*:\s*light/.test(html)) why.push('a prefers-color-scheme: light query flips the page');
+if (!/:root\[data-theme="light"\]/.test(html)) why.push('no :root[data-theme="light"] rule');
+console.log(why.length ? `DARK-BAD ${why.join('; ')}` : `DARK-OK bg=${bg} text=${ratio(text, bg).toFixed(1)} muted=${ratio(muted, bg).toFixed(1)}`);
+JS
+contains 'the tracker page opens dark with readable text and a light choice still works' "$(node "$W/dark-check.mjs" "$W/workers.html" --bg --fg --dim)" 'DARK-OK'
+contains 'the version page opens dark with readable text and a light choice still works' "$(node "$W/dark-check.mjs" "$vout" --bg --fg --muted)" 'DARK-OK'
+else
+    printf 'skip - node not available: dark default contrast rows\n'
+fi
 
 printf '%s\n' "$fails failure(s)"
 [ "$fails" -eq 0 ]

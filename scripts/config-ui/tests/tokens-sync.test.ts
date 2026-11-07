@@ -66,10 +66,47 @@ test("the tokens define light and dark values for the ten colours the console re
   for (const v of ["--bg", "--surface", "--rule", "--rule-strong", "--ink", "--muted", "--accent", "--ship", "--beta", "--crit"]) {
     expect(css, v).toContain(`${v}:`);
   }
-  expect(css).toContain("prefers-color-scheme: dark");
-  expect(css).toContain(':root[data-theme="dark"]');
+  expect(css).toContain(':root[data-theme="light"]');
   expect(css).toContain("--font-ui:");
   expect(css).toContain("--font-mono:");
+});
+
+// with no saved choice the page is dark whatever the system prefers; only a saved light choice
+// ([data-theme="light"]) turns it light. A prefers-color-scheme query would let a light system preference win.
+const lum = (hex: string) => {
+  const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+};
+const contrast = (a: string, b: string) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+// the colour a token resolves to in the rule that begins with `selector`, following var(--x) references through :root
+function resolve(css: string, selector: string, token: string): string {
+  const body = (sel: string) => new RegExp(`${sel.replace(/[[\]().]/g, "\\$&")}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? "";
+  const raw = (name: string, ...sels: string[]) => {
+    for (const s of sels) { const m = new RegExp(`${name}\\s*:\\s*([^;]+);`).exec(body(s)); if (m) return m[1].trim(); }
+    return "";
+  };
+  let v = raw(token, selector, ":root");
+  for (let i = 0; i < 4 && v.startsWith("var("); i++) v = raw(v.slice(4, -1), ":root");
+  return v;
+}
+
+test("no saved choice is dark with readable text, whatever the system prefers", () => {
+  const css = read(COPY);
+  expect(css).not.toContain("prefers-color-scheme");
+  expect(/:root\s*\{[^}]*color-scheme:\s*dark/.test(css)).toBe(true);
+  const bg = resolve(css, ":root", "--bg");
+  expect(lum(bg)).toBeLessThan(0.1);
+  for (const t of ["--ink", "--muted", "--accent", "--ship", "--beta", "--crit"]) {
+    expect(contrast(resolve(css, ":root", t), bg), t).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
+test("a saved light choice still wins and is readable", () => {
+  const css = read(COPY);
+  expect(css).toMatch(/:root\[data-theme="light"\]\s*\{[^}]*color-scheme:\s*light/);
+  const bg = resolve(css, ':root[data-theme="light"]', "--bg");
+  expect(lum(bg)).toBeGreaterThan(0.5);
+  for (const t of ["--ink", "--muted"]) expect(contrast(resolve(css, ':root[data-theme="light"]', t), bg), t).toBeGreaterThanOrEqual(4.5);
 });
 
 test("theme.css imports the shared tokens and points its ten names at them; no IBM Plex", () => {

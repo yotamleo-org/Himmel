@@ -451,6 +451,35 @@ case "$SRV" in *FAIL*) fails=$((fails + $(printf '%s\n' "$SRV" | grep -c '^FAIL'
 # --serve refuses a non-loopback bind request outright.
 run --serve --port 0 --host 0.0.0.0 "${COMMON[@]}" >/dev/null 2>&1; eq "--host is not a flag (no way to bind off loopback)" "$?" "2"
 
+# --- the page opens dark with no saved choice, whatever the system preference says
+cat > "$W/dark-check.mjs" <<'JS'
+// dark-check.mjs <page.html> <bg var> <text var> <muted var>: DARK-OK when the page's first :root rule (no saved
+// choice) is a dark palette with readable text (WCAG contrast 4.5 for text and muted), no prefers-color-scheme: light
+// query flips it back, and a saved light choice still has its [data-theme="light"] rule.
+import { readFileSync } from 'node:fs';
+const [file, bgV, textV, mutedV] = process.argv.slice(2);
+const html = readFileSync(file, 'utf8');
+const root = /:root\s*\{([^}]*)\}/.exec(html);
+const val = (v) => { const m = root && new RegExp(`${v}\\s*:\\s*(#[0-9a-fA-F]{3,6})`).exec(root[1]); return m && m[1]; };
+const lum = (h) => { h = h.slice(1); if (h.length === 3) h = [...h].map((c) => c + c).join('');
+    const c = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+const [bg, text, muted] = [bgV, textV, mutedV].map(val);
+const why = [];
+if (!bg || !text || !muted) why.push(`missing ${[bgV, textV, mutedV].filter((v) => !val(v)).join(',')} in the first :root rule`);
+else {
+    if (lum(bg) > 0.1) why.push(`background ${bg} is light`);
+    if (ratio(text, bg) < 4.5) why.push(`text ${text} on ${bg} is ${ratio(text, bg).toFixed(2)}`);
+    if (ratio(muted, bg) < 4.5) why.push(`muted ${muted} on ${bg} is ${ratio(muted, bg).toFixed(2)}`);
+}
+if (/prefers-color-scheme\s*:\s*light/.test(html)) why.push('a prefers-color-scheme: light query flips the page');
+if (!/:root\[data-theme="light"\]/.test(html)) why.push('no :root[data-theme="light"] rule');
+console.log(why.length ? `DARK-BAD ${why.join('; ')}` : `DARK-OK bg=${bg} text=${ratio(text, bg).toFixed(1)} muted=${ratio(muted, bg).toFixed(1)}`);
+JS
+contains "the fleet page opens dark with readable text and a light choice still works" "$(node "$W/dark-check.mjs" "$H" --bg --text --muted)" "DARK-OK"
+lacks "the fleet page no longer follows a light system preference" "$HTML" "prefers-color-scheme"
+
 if [ "$fails" -eq 0 ]; then
     printf 'test-fleet.sh: all passed\n'
     exit 0
