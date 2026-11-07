@@ -321,7 +321,7 @@ loadMode();
 function loginHref() { return "/login?next=" + encodeURIComponent(location.pathname + location.search + location.hash); }
 function loginBadge() {
   if (session === null) return "";
-  return `<span id="login-state"><span class="k">login</span> ${session ? `logged in · <button class="btn" type="button" data-act="logout">Log out</button>` : `not logged in · <a class="btn" href="${loginHref()}">Log in</a>`}</span>`;
+  return `<div id="login-state"><span class="k">login</span> ${session ? `logged in · <button class="btn" type="button" data-act="logout">Log out</button>` : `not logged in · <a class="btn" href="${loginHref()}">Log in</a>`}</div>`;
 }
 async function loadSession() {
   try { session = (await fetch("/api/mode", { cache: "no-store" })).ok; } catch (_) { return; }
