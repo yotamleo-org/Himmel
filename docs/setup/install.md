@@ -1,6 +1,6 @@
 # Installing himmel on your project
 
-Audience: newcomer. Owner of the rewrite: HIMMEL-7212.
+Audience: newcomer.
 
 **The task:** protect one git project with himmel, so that a Claude Code
 session's edit tools refuse to change files in your project's own checkout, on
@@ -37,7 +37,7 @@ vault tooling, qmd search, the Telegram bridge, armed resume). No `node` on the
 machine yet? Run `bash ~/himmel/scripts/himmelctl/bootstrap.sh` first; it
 installs Node.
 
-> **Windows is not supported** (HIMMEL-5729). himmel runs on Linux and macOS.
+> **Windows is not supported**. himmel runs on Linux and macOS.
 
 ## Preview
 
@@ -163,7 +163,7 @@ script (`merge-on-green.sh`) wherever it is run.
 A merge made another way, in the forge web UI or with a raw
 `gh pr merge`, bypasses them and is not checked. To enforce the list on the
 forge too, turn on the optional branch rules (CODEOWNERS and a required review
-for the listed paths; tracked in HIMMEL-3897).
+for the listed paths).
 
 ## Verify
 

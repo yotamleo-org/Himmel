@@ -85,7 +85,7 @@ Detection caveat: the gateway's `/v1/models` endpoint is registry-backed and
 keeps returning 200 during an OAuth gap. Probe a real completion
 (`/v1/messages`) to detect an auth gap, never `/v1/models`.
 
-## Transient 5xx: bounded retry and a second credential (HIMMEL-5391)
+## Transient 5xx: bounded retry and a second credential
 
 An upstream codex `502` ends a claudex worker's turn, and the `503
 auth_unavailable` that follows is the proxy cooling down the only codex

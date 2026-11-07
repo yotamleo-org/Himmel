@@ -94,7 +94,7 @@ it what it needs (a new bus message wakes it once more), relaunch it from its RE
 or close it. A `capped` worker whose doc has had no write for `CHIEF_WAIT_WORKER_SILENT_MIN` minutes wakes the chief as `WAKE worker-silent` (`waiter.md`); rc 3 and rc 4 wake nothing, read them at the next tick. Absent when no waker
 left a state file.
 
-`chief-kit/denied-launch-alert.sh` sends the operator ONE `DENIED-LAUNCH <worker>` Telegram per classifier-denied `headed-arm-worker.sh` launch (worker, tool and the local log path only; the denied command and reason stay on the host). Run it by hand after a launch that stalls; the waiter call is HIMMEL-6461.
+`chief-kit/denied-launch-alert.sh` sends the operator ONE `DENIED-LAUNCH <worker>` Telegram per classifier-denied `headed-arm-worker.sh` launch (worker, tool and the local log path only; the denied command and reason stay on the host). Run it by hand after a launch that stalls; the waiter does not call it yet.
 
 Five, and no more — every event wakes a full-context turn, so each one filters
 to terminal-state changes and emits nothing otherwise. The tick and Telegram
@@ -167,7 +167,7 @@ by the ticket's latest `DISPOSITION` comment is still open (it prints `STUCK` ag
 that PR merges or closes). Give each one a disposition:
 `<kit>/stuck-scan.sh dispose <KEY> RESUME <worker> | BLOCKED-BY <ref> | OPERATOR <ask> | PARKED <reason>`.
 `next-dispatchable.sh` names a RESUME row a file collision drops as
-`RESUME-HELD <key> by <worker or listed key>` (HIMMEL-6604), so the held ticket is never silent.
+`RESUME-HELD <key> by <worker or listed key>`, so the held ticket is never silent.
 The tick also re-reads the Live-state `pool-disposition:` lines: `pool-stale=<n>:<KEY>,...`
 lists the ones whose named blocker is now Done or merged (`?` = an unreadable target, never
 stale) and `WAKE pool-stale` fires once per newly stale key; `residual-unversioned=<n>:<KEY>,...`

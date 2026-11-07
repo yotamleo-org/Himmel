@@ -26,7 +26,7 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   `Completes ticket:` answer; `go.sh` refuses a PR titled with a ticket key
   without it, and `no` leaves `--jira-transition` off the merge line. The hand
   steps are for a verdict it refuses.
-- **Residuals are depth-gated** (HIMMEL-6115): a ticket labelled `residual-depth-<n>`
+- **Residuals are depth-gated**: a ticket labelled `residual-depth-<n>`
   (n >= 1) is a judge, CR or panel residual. `write-verdict.sh --residual-of <KEY>`
   stamps `residual-depth-<depth of KEY + 1>` on each ticket the residual lines cite;
   `next-dispatchable.sh` drops depth >= 1 unless the chief doc has a
@@ -34,8 +34,8 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   and depth >= 2 files to ICE with no fixVersion. Pass `--residual-of <PR ticket key>`
   (to `write-verdict.sh` or `verdict-go.sh`) on EVERY verdict whose residual lines
   cite tickets; an unlabelled parent is depth 0, so its residuals stamp depth 1.
-- **Lock/succession model-check evidence is optional, never a replacement judge**
-  (HIMMEL-8276): before judging a PR touching `queue-lock.sh` or
+- **Lock/succession model-check evidence is optional, never a replacement judge**:
+  before judging a PR touching `queue-lock.sh` or
   `chief-kit/succession-tracker.sh`, the chief assigns an isolated worker or
   subagent to run
   `bash scripts/handover/chief-kit/model-check-report.sh <pr> <queue-lock|succession-tracker> <absolute-model.tla> <absolute-view.mjs>`.
@@ -50,7 +50,7 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   The judge brief names the absolute `report.md` path and its full PR head;
   the judge cites the report path in their verdict, checks head freshness,
   model fidelity and every unchecked rule, and reasons independently. A clean
-  report never replaces the judge: the with-skill arm missed HIMMEL-8273,
+  report never replaces the judge: the with-skill arm missed the bug where an old token could delete a fresh queue lock,
   which the no-skill arm found. A missing chart or incomplete/timeout report
   is not a pass. Replay counterexamples against real code (destructive lock
   replays are VM-only); a succession run also leaves a `FINDINGS.md` verdict.
@@ -60,13 +60,13 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   stays on the 5-minute cache TTL (prediction table:
   `docs/internals/prompt-cache.md`). After each judge, append its ledger row:
   `bash scripts/eval/judge-cache-row.sh --ledger <ledger> <agent-*.jsonl>`.
-- **A judge reads the PR at its head sha, never FETCH_HEAD** (HIMMEL-7062): parallel
+- **A judge reads the PR at its head sha, never FETCH_HEAD**: parallel
   judges share one checkout and each `git fetch` overwrites `FETCH_HEAD`. Tell the
   judge to check `gh pr view <N> --json headRefOid` equals the dispatched head,
   check `git cat-file -t <sha>` prints `commit` (a bare `git fetch origin` if not,
   never a refspec fetch: the primary-checkout guard refuses it), then read with
   `git diff origin/main...<sha>` and `git show <sha>:<path>`; never FETCH_HEAD.
-- **Convene at the cheapest tier that can rule** (HIMMEL-1864): start a judge subagent at
+- **Convene at the cheapest tier that can rule**: start a judge subagent at
   Sonnet or Opus and escalate only when it returns above-my-tier
   (`bash scripts/handover/chief-kit/judge-ladder.sh next-tier <tier>`; Fable's next
   rung is the operator). Spend each convening with `judge-ladder.sh convene <seat>
@@ -76,7 +76,7 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   `judge-ladder.sh breakglass <class>` routes it to the operator at once.
 - **A per-page docs review is a helper, not a judge**: it goes to `sonnet` per the
   helper table in [`running-a-chief.md`](../running-a-chief.md#dispatching-workers).
-- **A later push needs a judge only when its delta does** (HIMMEL-7637): after a judge's GO,
+- **A later push needs a judge only when its delta does**: after a judge's GO,
   `bash scripts/handover/chief-kit/delta-class.sh --qid <qid> <judged head> <new head>`,
   run in the checkout holding both commits, prints one word and always exits 0:
   `trust` (a changed file, either name of a rename, matches `scripts/ci/ci-trust-paths.txt`
@@ -95,15 +95,15 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   the last real judge and the delta stays cumulative. `go.sh --trust-reviewed` re-runs the
   classifier whenever a head's only GO is a no-op and refuses (exit 10) unless it still prints
   `none`, so a trust-path delta cannot merge on a no-op.
-  **A delta judge may run on Sonnet** (HIMMEL-7637): the re-judge of a LATER push whose
+  **A delta judge may run on Sonnet**: the re-judge of a LATER push whose
   `delta-class.sh` prints `finding` puts one line of its own in the judge's prompt,
   `DELTA-JUDGE: <the head sha it judges, 7 to 40 lowercase hex>`, and `guard-agent-model.sh`
   then allows `model: sonnet` on a `judge` or `judge-ro` dispatch with no `ESCALATION:` line
   (it echoes `agent-model-delta-judge: …` on stderr). The marker rescues Sonnet only: haiku and
   fable stay denied. The first full judge of a PR keeps Opus, and so does a delta that prints
   `trust`: the guard only reads the declaration and cannot check the class, so the chief does.
-- **A deferred Critical or Important finding needs a disposition before GO**
-  (HIMMEL-6377): past the round cap such a finding is never dropped. `go.sh` runs
+- **A deferred Critical or Important finding needs a disposition before GO**:
+  past the round cap such a finding is never dropped. `go.sh` runs
   `cr-disposition.sh check <pr> <head>` and refuses (exit 9) while any
   Critical/Important on the PR's branch is deferred with no valid row at that head.
   The judge rules one of two, which the chief (never the worker) records with

@@ -138,15 +138,15 @@ already use: `.salus` root markers and the
 plus vault/state roots from env or config — never hardcoded absolute paths.
 The matrix defines *policy*; membership resolution stays with the guards.
 
-**The neutral dir (HIMMEL-7898): no guard reads it yet.** The old path above
+**The neutral dir: no guard reads it yet.** The old path above
 stays authoritative: every guard reads it and none reads `~/.config/himmel/phi/`
-until HIMMEL-8915 re-points them. No PHI list leaves the old path, and no action
+until a later change re-points them. No PHI list leaves the old path, and no action
 is needed until then. Removing or moving an old list drops its roots from every
 guard. A root listed only under the neutral dir is **not enforced**, so
 `himmel-doctor` C27 reports it as a FAIL, with a count and never the entries.
 `_guard_phi_decision` in `scripts/guardrails/phi-egress-lib.sh` is a union where
 a list under either dir counts and an unreadable dir denies, but only its own
-tests call it so far, and HIMMEL-8915 settles its open cases before any guard
+tests call it so far, and that change settles its open cases before any guard
 does.
 
 List files are read line by line with surrounding whitespace (and a CRLF `\r`)
@@ -297,7 +297,7 @@ Granting it is an operator call. Defense in depth around it:
 
 ## Reviewed outside the matrix: the research path's Reddit lane
 
-`scripts/web/research/research_path.py` (HIMMEL-5862) fetches two hosts,
+`scripts/web/research/research_path.py` fetches two hosts,
 `www.reddit.com` (Scrapling, keyless) and `arctic-shift.photon-reddit.com`
 (plain GET, keyless). They carry no row here: the matrix keys corpus content
 leaving the machine, and this lane sends none. **Boundary:** the only text sent
@@ -325,8 +325,8 @@ review, not a code edit.
   `allow` on `himmel-code` only; no bulk pipelines over handover-state.
 - `jina` (EU, Berlin; Elastic-owned) is allowed for `embedding` and `rerank`
   only, on `luna-personal`, `luna-clippings` and `himmel-code`, via explicit
-  rows (HIMMEL-5673, operator ruling 2026-10-14; Jina legal 10.4: no training
-  on customer request data), and, since HIMMEL-5683, on every other qmd corpus
+  rows (operator ruling 2026-10-14; Jina legal 10.4: no training
+  on customer request data), and, since the qmd per-collection egress enforcement, on every other qmd corpus
   except salus: `operator-repos` (ggs-local, ggs-bridge, agent-command-chain,
   station-ops, nvidia-steam-shader-cache), `jira-mirror`, `roadmap-plan` and
   `skill-index`. Every other purpose and corpus stays
@@ -335,13 +335,13 @@ review, not a code edit.
   test pins that it resolves through that row). This only permits: the live qmd
   use stays off until the fork backend is installed. `jina` is distinct from
   `jina-reader` (US, keyless URL scrape).
-- `openrouter` (US) is the remote qmd embedder and reranker (HIMMEL-5756,
-  operator ruling 2026-10-15, HIMMEL-5712 A/B winner `qwen3-embedding-8b`
+- `openrouter` (US) is the remote qmd embedder and reranker (operator
+  ruling 2026-10-15, blind A/B winner `qwen3-embedding-8b`
   plus `cohere/rerank-4-fast`): `embedding` and `rerank` only, via explicit
   rows, on every non-salus qmd corpus (`himmel-code`, `luna-personal`,
   `luna-clippings`, `operator-repos`, `jira-mirror`, `roadmap-plan`,
   `skill-index`). Every other purpose keeps its prior verdict.
-  Query expansion (qmd's `generate` role, HIMMEL-6125, operator ruling
+  Query expansion (qmd's `generate` role, operator ruling
   2026-10-17) is its own purpose, `query-expansion`, so the `inference` cells
   (`himmel-code`, `handover-state`) are not widened: the same seven corpora get
   explicit allow rows and the raw query is the content sent.
@@ -367,7 +367,7 @@ review, not a code edit.
   process when the config names a remote model. A hand-typed `qmd` on PATH
   bypasses it: salus is protected by living in its own local-only index.
   Windows launchers are out of scope (Windows is dropped).
-- **qmd enforcement (HIMMEL-5683).** qmd's model config is per index, not per
+- **qmd enforcement.** qmd's model config is per index, not per
   collection, so salus lives in its own index (`qmd --index salus`, own
   `salus.yml`/db/daemon port, local models). `scripts/qmd/qmd-jina-gate.mjs`
   evaluates every remote model role (an `openai:` URI to a non-loopback

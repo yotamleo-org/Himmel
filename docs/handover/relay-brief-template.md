@@ -64,7 +64,7 @@ full shape.
 > narrowing as if it needed a token (it never does — that asymmetry is
 > deliberate and fail-safe).
 <!-- -->
-> **Ops duty (HIMMEL-5973).** When the chief asks, run a mechanical
+> **Ops duty.** When the chief asks, run a mechanical
 > chief-kit script through `bash <repo>/scripts/handover/chief-kit/ops-run.sh <script> [args]`
 > and forward its single `OPS …` line to the chief as an escalation,
 > verbatim. `ops-run.sh` refuses everything off its allowlist and

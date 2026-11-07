@@ -1,9 +1,9 @@
-# pstack integration map (HIMMEL-5851)
+# pstack integration map
 
 The ten vendored pstack skills (`marketplace/plugins/pstack`, pinned
 `4dd1d058` (0.15.36), [`VENDORED.md`](../../marketplace/plugins/pstack/VENDORED.md)) are
 installed for interactive sessions only (route and per-skill adopt decisions: the
-HIMMEL-5802 audit, follow-ups HIMMEL-5803 to HIMMEL-5807). This page maps each one onto the himmel
+pstack integration audit and its follow-ups). This page maps each one onto the himmel
 flow it should strengthen, names the overlap, and records which one gets the
 measured POC. Verdicts live in [`registry.md`](registry.md) once the POC has run.
 
@@ -18,11 +18,11 @@ measured POC. Verdicts live in [`registry.md`](registry.md) once the POC has run
 | `benchmark-checklist` | Eval scorecards, cost reports, worker-digest | Stops an unvetted number reaching a report | Rubric measurement protocol (`rubric.md` §4), `docs/tool-adoption/telemetry.md` | No: candidate for a later wiring into the A/B scorecard |
 | `principle-explain-the-number` | Same as `benchmark-checklist` (its shorter principle form) | Names the limiter before a number is trusted | `benchmark-checklist` (it points to it for perf numbers) | No: fold with `benchmark-checklist` |
 | `in-your-own-words` | `brainstorming` and `minerva` grill stages | Forces a restatement of the goal | `lean-skills:brainstorming`, `grilling` already open with goal restatement; one line of text, no leverage | No |
-| `statechart` (HIMMEL-6690, HIMMEL-8218) | Explicit VM-only TLA+ checks of concurrent protocols | Shortest counterexamples in readable statecharts; ADAPT after the operator accepted readability | Evidence for the judge, never a substitute for tests, replay or GO | Completed: 8 VM runs; 7036 path 2/2 RED, 0/2 GREEN, no false bugs; median USD 0.98× Python, wall 0.59×; one target only |
-| `create-formal-verification-skill` (HIMMEL-6690, HIMMEL-8218) | Generate a code-grounded, bounded check for a high-cost property | ADOPT narrow after E12 found a real queue-lock defect | Generates the verification procedure; statechart explains its TLC results | E12: 1 defect, 9,368 states; broader target value remains unmeasured |
-| `maintain-formal-verification-skill` (HIMMEL-6690, HIMMEL-8218) | Keep generated checks aligned with changing code | Distinguish verification drift from real bugs | Useful only after a verification skill exists | KEEP OPT-IN; independent effect unmeasured |
+| `statechart` | Explicit VM-only TLA+ checks of concurrent protocols | Shortest counterexamples in readable statecharts; ADAPT after the operator accepted readability | Evidence for the judge, never a substitute for tests, replay or GO | Completed: 8 VM runs; 7036 path 2/2 RED, 0/2 GREEN, no false bugs; median USD 0.98× Python, wall 0.59×; one target only |
+| `create-formal-verification-skill` | Generate a code-grounded, bounded check for a high-cost property | ADOPT narrow after E12 found a real queue-lock defect | Generates the verification procedure; statechart explains its TLC results | E12: 1 defect, 9,368 states; broader target value remains unmeasured |
+| `maintain-formal-verification-skill` | Keep generated checks aligned with changing code | Distinguish verification drift from real bugs | Useful only after a verification skill exists | KEEP OPT-IN; independent effect unmeasured |
 
-## Formal verification boundary (HIMMEL-6690, HIMMEL-8218)
+## Formal verification boundary
 
 All ten remain `disable-model-invocation: true`, off in worker/lane/chief
 profiles. No whole-plugin install or autonomous behavior is adopted. The fork
@@ -47,12 +47,12 @@ Rendering uses the docs site's Pele 1.13.0, without a separate Pele install.
 ## Related take-parts tickets (not duplicated here)
 
 Four pstack skills outside the ten are being taken in part, nothing installed;
-their scope stays in their own tickets: HIMMEL-5808 (`interrogate` verdict
-buckets into adversarial-verify), HIMMEL-5809 (`reflect` routing step into the
-wrap flow), HIMMEL-5810 (six-principle digest), HIMMEL-5811 (`arena` base
-selection and graft rule). The unvendored `poteto-mode` and the fork's
+their scope stays in their own tickets: `interrogate` verdict
+buckets into adversarial-verify, `reflect` routing step into the
+wrap flow, the six-principle digest, and `arena` base
+selection and graft rule. The unvendored `poteto-mode` and the fork's
 SessionStart hook stay out: they grant autonomy the chief, RETASK and GO rails
-own (HIMMEL-5697, A1).
+own (the integration audit, A1).
 
 No overlap with `unslop`, `no-comments` or `comment-sicko`: those edit prose and
 comments, while these skills review behaviour, vet numbers or generate
@@ -73,7 +73,7 @@ not exist yet.
 orchestrating session applies the `blast-radius` procedure to the diff after
 adjudicating the panel, and records any proven breakage as a normal `[claude-N]`
 finding. That value runs no agent matrix. Default off: the unset path is
-unchanged. Follow-up on the default: HIMMEL-5855. Nothing
+unchanged. Follow-up on the default: a panel comparison. Nothing
 in `scripts/lanes/plugin-profiles.json` changes; the procedure is read from the
 vendored skill file, so it works in a worker that has pstack disabled.
 

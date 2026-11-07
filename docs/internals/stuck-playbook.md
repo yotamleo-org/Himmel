@@ -198,7 +198,7 @@ repo authorization file. The durable fix is to never emit an unnecessary
 
 ## Symptom: `merge-on-green.sh` exits 22 — "main-red gate: cannot read … CI runs" — or prints `MAIN-RED advisory:`
 
-Since HIMMEL-8675 a **red** main no longer blocks a PR whose own checks passed:
+A **red** main no longer blocks a PR whose own checks passed:
 the newest **completed** run of the `CI` workflow on the default branch being red
 (cancelled and skipped runs are skipped; it falls back to the next older completed
 one) prints one `MAIN-RED advisory:` line, audits `main-red-advisory ... via=advisory
@@ -782,7 +782,7 @@ it, so keep working while you wait.
 
 ---
 
-## Symptom: `vm-runner.sh on|off|status` is denied by the classifier (HIMMEL-5037)
+## Symptom: `vm-runner.sh on|off|status` is denied by the classifier
 
 The VM CI runner's only control entry point is
 `bash scripts/handover/chief-kit/vm-runner.sh on|off|status` (optionally

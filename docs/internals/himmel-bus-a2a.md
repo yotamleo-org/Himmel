@@ -1,6 +1,6 @@
 # himmel-bus and A2A v1.0.0 — mapping and boundary
 
-HIMMEL-5487 spike. Settles how the bus envelope projects onto the A2A
+A spike. Settles how the bus envelope projects onto the A2A
 (Agent2Agent) v1.0.0 data model and where the authority boundary sits, before
 any server exists. Normative source: `spec/a2a.proto` in
 `github.com/a2aproject/A2A` (package `lf.a2a.v1`); the JSON below uses its
@@ -71,7 +71,7 @@ Is the target **internal-fleet only** or **external interop**?
 - **Internal-fleet (default, what this spike assumes).** A projection is
   enough: the bus stays the transport, A2A shapes are an export view.
 - **External interop.** Needs the Phase 2 loopback Streamable-HTTP endpoint
-  with Origin validation and per-session bearer (HIMMEL-4818 spec §12), a
+  with Origin validation and per-session bearer (himmel-bus spec §12), a
   dedicated uid so an outside agent is not the operator's user, and an
   `AgentInterface` plus `securitySchemes` on the card. That is a separate
   ticket and changes the lint in `tests/test-lint.sh` (no network code in

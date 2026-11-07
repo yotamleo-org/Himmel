@@ -5,8 +5,7 @@ lets himmel sessions (a chief, its workers, judges and consults) message each
 other without going through a transcript or a shared file. It is a plugin under
 `marketplace/plugins/himmel-bus/`, not a `himmelctl` install item, and it has
 not yet had a clean live round trip on every station: the working record and
-open failures are kept in the state repo (`specs/decisions/himmel-bus-poc.md`;
-tracking ticket HIMMEL-5320). Read that before relying on it.
+open failures are kept in the state repo (`specs/decisions/himmel-bus-poc.md`). Read that before relying on it.
 
 The plugin's own [README](../marketplace/plugins/himmel-bus/README.md) is the
 store-level spec (chain, cursors, rotation, recovery). This page is the

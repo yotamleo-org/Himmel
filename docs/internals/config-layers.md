@@ -188,7 +188,7 @@ last healthy snapshot.
 
 ### The config audit log, backups and restore
 
-`scripts/lib/config-audit.sh` (HIMMEL-8401) makes a lost or shrunken station
+`scripts/lib/config-audit.sh` makes a lost or shrunken station
 config loud and recoverable:
 
 - **Every write is backed up and logged.** The writers (`himmelctl` luna and
@@ -222,7 +222,7 @@ ponytail: the seed, backups and audit log are owned by the same uid as every
 session, so a session can read the seed or plant a backup. The TOTP defends
 against a forged or hijacked Telegram sender, not against a hostile same-uid
 session. Upgrade path: a root-owned store with the restore as an afk-sudo kind
-(after HIMMEL-8066's root helper).
+(after the afk-sudo root helper).
 
 ponytail: a planted newest backup becomes the watcher's "newest good backup"
 suggestion, and `list` names a changed key only as "values differ", so the
@@ -268,7 +268,7 @@ file whose quoted value does not close on its line is refused) and `export-env <
 `block-read-secrets.sh` refuses an agent's direct `get`, `put`, `import-env`
 and `export-env` commands and direct keyring reads. That is not a full
 barrier: an agent can still reach `get` by sourcing the script
-(`. scripts/lib/himmel-secrets get KEY`), which HIMMEL-7585 tracks.
+(`. scripts/lib/himmel-secrets get KEY`), a gap still open.
 
 `himmel-doctor` check C75 reports the keyring state (`C75-keyring`) and which
 secret names are still served from `.env` (`C75-secrets`), names only.
@@ -375,7 +375,7 @@ or legacy `.env`, never from `himmel.conf` or its local override.
 Every reader of these keys follows the same order as `load_dotenv`: the
 process env, `himmel.conf.local`, `himmel.conf`, the legacy `.env`, the
 default. Only the shell loader reads the project file so far; the Jira CLI,
-the lane resolver, the profile capture and the config UI (HIMMEL-7134) do
+the lane resolver, the profile capture and the config UI do
 not yet. A reader that opens only `.env`, or only the process env, misses a
 key the operator has moved; the shell, the Jira CLI
 (`scripts/jira/src/handover-root.ts`), the lane resolver, the profile capture
@@ -385,7 +385,7 @@ Gate policy (`config.json` `.policy`): `CR_REQUIRE_CROSS_MODEL`,
 `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`, `ENV_MIGRATION_CONSENT` and
 `HIMMEL_FLEET_CAP` (read only from `config.json`, then the legacy `.env`).
 
-`HIMMEL_FLEET_CAP` became gate policy in HIMMEL-3111. `usage-preflight.sh`
+`HIMMEL_FLEET_CAP` became gate policy when behavioural config split out of `.env`. `usage-preflight.sh`
 reads it through `load_policy`, so **an exported `HIMMEL_FLEET_CAP` no longer
 counts**: a launching shell, a wrapper or a per-call prefix cannot raise the
 cap, and `load_policy` prints `ignoring process-env HIMMEL_FLEET_CAP` when one
@@ -401,24 +401,24 @@ Two keys an operator may have in `.env` are never read from it:
   launchers export their own value, and the worker context guard reads the
   process environment.
 - `CODERABBIT_CLI_DISABLE` is dead: its reader went with the CodeRabbit CLI
-  review step (HIMMEL-2704). Deleting the line is the operator's call.
+  review step. Deleting the line is the operator's call.
 
 Everything else stays in `.env`. That includes keys whose secret-or-config
 class has not been decided yet: other account emails, cookie-file
 paths, service URLs and VM user names. Only the explicitly named identifiers
 above are config; tokens and all other unclassified keys remain secrets.
-Five more keys are config, so `import-env` leaves them alone (HIMMEL-8165).
+Five more keys are config, so `import-env` leaves them alone.
 `TELEGRAM_CHAT_ID`, `TELEGRAM_GROUP_CHAT_ID` and `JIRA_BASE_URL` are served from
 station config. A git-tracked `.env` serves neither chat id. `JIRA_BASE_URL`
 is a trusted credential destination: non-empty process env wins, then station
 `himmel.conf.local`, the selected station profile, `himmel.conf`, and the
-legacy `.env` as a one-release fallback (HIMMEL-8244). `HIMMEL_CONFIG_DIR`
+legacy `.env` as a one-release fallback. `HIMMEL_CONFIG_DIR`
 overrides the station config directory. Project config cannot choose this URL.
 Migration and the setup wizard move it into config; after verifying that Jira
 works, remove its legacy `.env` line to clear C74's warning.
 
 Agent writes to `himmel.conf`, `.local`, and station profiles are guarded by
-`block-himmel-config-writes.sh` (HIMMEL-7550): direct file tools, patches and
+`block-himmel-config-writes.sh`: direct file tools, patches and
 Bash mutations naming these paths are refused. Plain reads and supported
 `himmelctl config set` operations remain allowed. This is a speed bump, not a
 sandbox: Bash path assembly and symlink aliases retain the guard's documented
@@ -536,8 +536,8 @@ Rules, enforced by `scripts/ci/check-flags.sh` on every CI event:
 - **Registered and read.** A flag the code reads must be in the registry, and a
   registered flag must have a reader.
 
-The registry is empty today: the four `chain_*` flags (HIMMEL-7701) came out in
-HIMMEL-7711 and soft edges, the chain render, the merge plan and the push check run
+The registry is empty today: the four `chain_*` flags came out when the push trial-merge landed,
+and soft edges, the chain render, the merge plan and the push check run
 always. `check-flags.sh` passes on an empty registry (`OK (0 flag(s) registered)`).
 
 ## Why this route

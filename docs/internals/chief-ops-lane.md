@@ -1,8 +1,7 @@
 # Chief ops lane
 
 A cheap session runs the chief's mechanical scripts and wakes the chief
-with one verdict line, instead of the chief running them itself. HIMMEL-5973
-(rescoped), HIMMEL-2975.
+with one verdict line, instead of the chief running them itself.
 
 ## Why
 
@@ -10,7 +9,7 @@ A chief script that takes 15 to 60 s costs the Opus chief either a blocked
 foreground (every worker message queues behind it) or a background run (three
 full-context turns: launch, end-of-turn text, wake). Measured launch-to-notification:
 `go.sh` 15 s median, `worker-event.sh` 29 s, `ready-check.sh` 20 s, `board.mjs` 30 s,
-`close-wrapped-worker.sh` 58 s. About 6.0M Opus-equivalents a day (HIMMEL-5970).
+`close-wrapped-worker.sh` 58 s. About 6.0M Opus-equivalents a day (from the chief flow savings audit).
 
 ## Decision: the ops lane is the relay
 

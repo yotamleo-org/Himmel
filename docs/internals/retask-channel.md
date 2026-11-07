@@ -192,7 +192,7 @@ consumption, and never advances the hook's authoritative delivery cursor.
 - **Cursor locking:** a session-keyed `flock` beside the cursor serializes peek/deliver/commit; missing `flock` retains unlocked, fail-open delivery.
 - **Delivery confirmation:** PostToolUse, SessionStart, and direct stdout callers commit only after successful serialization/output; failures leave rulings pending (this confirms the local write, not downstream consumption).
 - **Document mirroring:** `--doc` writers serialize on a canonical-path hash lock in a private user directory under `${TMPDIR:-/tmp}`; other doc writers must use the same lock to participate, and missing/failed `flock` aborts before mirroring or inbox append.
-- **Sent-record, delivery gate + audit (HIMMEL-8437):** every `inbox-send.sh` send, with or without a token, first records a `sha256` of the bullet, a digest of the token (never the token itself) and the recipient session in a per-sender ledger (`${HIMMEL_CONSOLE_RUNDIR:-<chief.sh convention>}/<sender>/inbox-sent.log`, mode 0600), and only then writes the doc mirror and the inbox; exit 4 means the ledger write failed and nothing was sent. `scripts/lib/claudex-inbox.sh` delivers only inbox lines whose `sha256` is recorded for this session in a trusted ledger (the file, its directory and its base all owned by this uid, none a symlink, neither the file nor its directory group- or world-writable; bases `HIMMEL_CONSOLE_RUNDIR`, `$XDG_RUNTIME_DIR/himmel-chief` and `${TMPDIR:-/tmp}/himmel-chief-<uid>`); any other line is dropped and alerted through `cadence-alert.sh`, so neither a copied token nor a genuine line copied from another inbox carries a forged ruling. An unreadable trusted ledger holds delivery, with an alert, rather than dropping genuine lines. `scripts/handover/chief-kit/inbox-audit.sh <inbox-file> <sent-log-dir>` names every inbox line, whatever its field order, with no ledger line recorded for that inbox's session.
+- **Sent-record, delivery gate + audit:** every `inbox-send.sh` send, with or without a token, first records a `sha256` of the bullet, a digest of the token (never the token itself) and the recipient session in a per-sender ledger (`${HIMMEL_CONSOLE_RUNDIR:-<chief.sh convention>}/<sender>/inbox-sent.log`, mode 0600), and only then writes the doc mirror and the inbox; exit 4 means the ledger write failed and nothing was sent. `scripts/lib/claudex-inbox.sh` delivers only inbox lines whose `sha256` is recorded for this session in a trusted ledger (the file, its directory and its base all owned by this uid, none a symlink, neither the file nor its directory group- or world-writable; bases `HIMMEL_CONSOLE_RUNDIR`, `$XDG_RUNTIME_DIR/himmel-chief` and `${TMPDIR:-/tmp}/himmel-chief-<uid>`); any other line is dropped and alerted through `cadence-alert.sh`, so neither a copied token nor a genuine line copied from another inbox carries a forged ruling. An unreadable trusted ledger holds delivery, with an alert, rather than dropping genuine lines. `scripts/handover/chief-kit/inbox-audit.sh <inbox-file> <sent-log-dir>` names every inbox line, whatever its field order, with no ledger line recorded for that inbox's session.
 
 ## 3a. Chief succession
 
@@ -268,7 +268,7 @@ is accepted, for two reasons: the only stronger authenticator is the relay,
 which is unavailable in exactly the case the chain path exists to serve; and
 refusing the chain keeps every succession stranded. The exposure is bounded, not
 removed: the token sits in plaintext in `## Live state` and the HANDOFF, readable
-by any same-uid session. It is tracked as HIMMEL-3257, the recorded disposition
+by any same-uid session. It is tracked as a backlog ticket, the recorded disposition
 of the panel finding that raised it (`deferred`, not `disproved` — the finding
 is correct).
 
@@ -389,7 +389,7 @@ direct store writes are another matter.
   (phase 2) closes it.
 - **The store guard is a soft block, not a fence.**
   `scripts/hooks/guard-bus-store.sh` is wired as a PreToolUse hook on the Bash
-  chain and on the file-edit tools (HIMMEL-4818 T6). It denies a Bash command
+  chain and on the file-edit tools. It denies a Bash command
   that names the bus root, calls `bus register|bind|rebind`, or assigns a
   `HIMMEL_BUS_*` variable, and a file edit whose path names or resolves to the
   bus root. It matches text, so an interpreter one-liner or a renamed copy of

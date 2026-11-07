@@ -1,4 +1,4 @@
-# CI image — prebuilt tooling (HIMMEL-2872)
+# CI image — prebuilt tooling
 
 `ghcr.io/yotamleo-org/himmel-ci` carries the tools the Linux CI jobs install per run
 today, so a job starts from a ready environment that only changes when we change it.
@@ -41,7 +41,7 @@ pinned in the Dockerfile), bun (pinned to `.bun-version`, sha256), gitleaks (pin
 sha256), pre-commit 4.7.0, shellcheck-py 0.11.0.1 first on PATH. A `runner` user, uid/gid
 1001 like the hosted runner's, with passwordless sudo, so jobs need not run as root.
 
-## Pinning decisions (HIMMEL-6493)
+## Pinning decisions
 
 - **Base image:** pinned by digest; Dependabot bumps the digest, release jumps are manual.
 - **Node:** an exact `NODE_VERSION` with its `NODE_SHA256` in the Dockerfile, so a
@@ -106,6 +106,6 @@ on pre-commit; `claude-startup` 5 s on bubblewrap/socat.
 Not measured: the container side. The station has no docker daemon and the workflow cannot
 run before it is on main, so no image pull time exists yet. A multi-hundred-MB pull on a
 hosted runner is likely the same order as the 20-35 s it replaces, so on hosted runners the
-gain is immunity to apt-mirror outages (HIMMEL-2871), not speed; the speed gain is on the
+gain is immunity to apt-mirror outages, not speed; the speed gain is on the
 GCP VMs. The first `ci-image.yml` run after merge gives the build time; compare a trial
 `container:` job's "Initialize containers" step against the figures above before switching.

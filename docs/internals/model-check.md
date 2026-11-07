@@ -4,7 +4,7 @@ A chief commissions an isolated model-check worker/subagent to produce a
 bounded TLC report and a Mermaid statechart for a PR that changes `scripts/handover/queue-lock.sh` or
 `scripts/handover/chief-kit/succession-tracker.sh`. This is optional evidence,
 not a new merge gate. A clean report never replaces the judge: the with-skill
-arm of HIMMEL-8218 missed HIMMEL-8273, which the no-skill arm found.
+arm of the VM trial missed the bug where an old token could delete a fresh queue lock, which the no-skill arm found.
 
 ## Optional prerequisites
 
