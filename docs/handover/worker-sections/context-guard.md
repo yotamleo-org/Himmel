@@ -10,8 +10,8 @@ launched you with `--context-guard compact|handoff`, which sets
 Opus 5 launch on any `worker-*` profile hands off, `worker-eval` compacts, at an 800000 ceiling
 with the deny at 700000 tokens); you cannot
 change it in-session. The one reference is
-`docs/internals/worker-context-guard.md`. The threshold is 75 % of the ceiling, not
-of the window: an opus worker pinned at 200000 runs on a 1000000-token window, so it
+`docs/internals/worker-context-guard.md`. The threshold is 75 % of the ceiling by default
+(73 on a Sonnet profile, 87 on an Opus one; the deny names yours), not of the window: an opus worker pinned at 200000 runs on a 1000000-token window, so it
 fires at 15 % fill (150k tokens), 7k before the earliest observed compaction
 (none fired below 157k of 200k). Past it the hook denies every call
 but the hand-off ones; its deny names your mode and exactly what unlocks it.

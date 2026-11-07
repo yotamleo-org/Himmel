@@ -348,8 +348,8 @@ template_version: 3
   450000 ceiling; so does a native Opus 5 launch on any `worker-*` profile (hand-off,
   `worker-eval` compaction), at an 800000 ceiling with the deny at 700000 tokens. An explicit `--context-guard` (including `none`) or
   `WORKER_SESSION_CONTEXT=1m` takes precedence. When it is on, past
-  75 % of the worker's `--autocompact` ceiling (15 % fill for an opus worker pinned
-  at 200000 on its 1M window) it blocks ordinary work until the worker acts on its
+  75 % of the worker's `--autocompact` ceiling by default, or the profile's own share (15 %
+  fill for an opus worker pinned at 200000 on its 1M window) it blocks ordinary work until the worker acts on its
   mode: `compact` commits, pushes and writes a `CHECKPOINT <sha> pushed`
   bullet, then carries on through the compaction; `handoff` writes a
   `b`-suffixed successor brief and stops. Reference:
