@@ -3956,19 +3956,12 @@ check_c90_effort_pin() {
         "remove CLAUDE_CODE_EFFORT_LEVEL from the env block of each file named above (set the effort per session with /effort or --effort instead)"
 }
 
-# --- C91-api-policy-refusals: the API lane refused a caller by the decision-525 policy ---
-# claude-api.sh refuses a HIMMEL_API_ACCOUNT=auto call whose kind is not the graph pass (or a role-mapped kind) in
-# the himmel repo, sends no alert and never falls back, so a refused critic or release judge looks like a silent
-# skip. It leaves one JSON line per refusal in policy-refusals.jsonl under the alert directory (HIMMEL_API_ALERT_DIR,
-# else the state directory the launcher defaults to). WARN, one line per kind with its count and repo(s), for the
-# refusals of the last 48 h; a line that does not parse is skipped. Read-only.
 check_c91_api_policy_refusals() {
     command -v jq >/dev/null 2>&1 || { emit INFO C91-api-policy-refusals "jq not on PATH -- API lane policy refusal record not checked"; return 0; }
     local dir rec rows="" recent kind n repos
     dir="${HIMMEL_API_ALERT_DIR:-${HOME:-/tmp}/.himmel/state/api-lane-alerts}"
     rec="$dir/policy-refusals.jsonl"
     if [ -e "$rec" ] || [ -L "$rec" ]; then
-        # a record that is there but cannot be read, or that jq fails on, is "cannot tell", never "no refusals"
         if [ ! -f "$rec" ] || [ ! -r "$rec" ]; then
             emit INFO C91-api-policy-refusals "the API lane policy refusal record exists but cannot be read as a file ($rec) -- not checked"
             return 0

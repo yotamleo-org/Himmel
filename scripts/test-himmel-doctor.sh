@@ -8123,9 +8123,6 @@ out2="$(c90_run)"
 if grepq "$out" 'WARN C90-effort-pin' && grepq "$out" -F "$c90_t/root/.claude/settings.json" && grepq "$out2" 'WARN C90-effort-pin' && grepq "$out2" -F "$c90_t/root/.claude/settings.local.json"; then pass "C90 project pins -> WARN"; else fail "C90 project pins -> $(printf '%s' "$out$out2" | head -6)"; fi
 rm -rf "$c90_t"
 
-# --- C91-api-policy-refusals: the doctor reads the record the API lane leaves for a decision-525 refusal ---
-# The record comes from the REAL launcher (scripts/api-lane/claude-api.sh) run in a sandboxed HOME with no
-# HIMMEL_API_ALERT_DIR, so the launcher and the doctor each fall back to their own default directory.
 c91_t="$(mktemp -d "${TMPDIR:-/tmp}/c91.XXXXXX")" || { echo "FATAL: C91 setup mktemp failed" >&2; exit 1; }
 git init -q "$c91_t/repo"
 c91_repo="$(cd "$c91_t/repo" && pwd -P)"
