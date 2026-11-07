@@ -28,8 +28,9 @@ function phaseBody(p, top, open) {
 }
 
 export function renderCost(model, view = {}) {
-  if (!model || model.state !== "ok")
-    return `<section class="card"><div class="card-h"><h2>Cost</h2></div><p class="sub">no data yet</p></section>`;
+  if (!model) return view.err ? "" : `<section class="card"><div class="card-h"><h2>Cost</h2></div><p class="sub">loading…</p></section>`;
+  if (model.state !== "ok")
+    return`<section class="card"><div class="card-h"><h2>Cost</h2></div><p class="sub">no data yet</p></section>`;
   const open = new Set(view.open || []);
   const top = Math.max(0, ...model.phases.map((p) => p.share || 0));
   const models = model.models.map((m) => `${esc(m.model)} ${usd(m.usd)}`).join(" · ");

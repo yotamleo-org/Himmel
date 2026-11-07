@@ -345,14 +345,14 @@ test("10. console to Fleet to a run view and back: one rail, the token in the fr
   page.on("request", (r) => lines.push(r.url()));
   await page.goto(h.url.replace("/agui/#t=", "/#t="));
   const rail = page.locator("nav.pages a");
-  await expect(rail).toHaveText(["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Board", "Workflow", "Docs"]);
+  await expect(rail).toHaveText(["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Board", "Workflow", "Cost", "Docs"]);
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Configure");
   expect(await page.evaluate(() => location.hash)).toBe("#/config");
   await expect(rail.filter({ hasText: "Fleet" }).locator(".st-dot")).toHaveClass(/\bok\b/);
 
   await rail.filter({ hasText: "Fleet" }).click();
   await expect(page).toHaveURL(new RegExp(`/agui/#t=${tok}$`));
-  await expect(rail).toHaveText(["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Board", "Workflow", "Docs"]);
+  await expect(rail).toHaveText(["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Board", "Workflow", "Cost", "Docs"]);
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Fleet");
   const worker = card(page, FLEET.worker.name);
   await expand(page, FLEET.worker.name);
@@ -360,7 +360,7 @@ test("10. console to Fleet to a run view and back: one rail, the token in the fr
 
   await worker.locator("a.fleet-head").click();
   await expect(page).toHaveURL(new RegExp(`&run=${FLEET.worker.run}$`));
-  await expect(rail).toHaveText(["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Board", "Workflow", "Run", "Docs"]);
+  await expect(rail).toHaveText(["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Board", "Workflow", "Cost", "Run", "Docs"]);
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Run");
   await expect(page.locator(".call", { hasText: "Push" })).toBeVisible();
 

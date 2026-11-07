@@ -183,7 +183,12 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   one), Chains and Tidy up (status drift, sync and librarian), live from the Jira mirror, or the lanes and librarian
   from the local tracker store; the old `#/roadmap`, `#/roadmap/<version>` and `#/kanban` routes land on it),
   `#/workflow` (the development graph and its guided walkthroughs,
-  the same graph as the docs page), and **Fleet** at `/agui/`.
+  the same graph as the docs page), `#/cost` (Cost by phase: the day's dollars with how they were got,
+  then each phase of the work and the parts it is made of. A phase row opens to its parts, each with its
+  dollars, its share of the phase and a bar; every figure says whether it is counted (read from a ledger or
+  the session's own usage), derived (a counted total split by the last tool a call read) or has no price
+  yet, and a part no record splits says "not countable yet" and shows no number. The page only reads:
+  `GET /api/cost`; with no usage records it says "no data yet"), and **Fleet** at `/agui/`.
 - **Fleet and run view (AG-UI).** `/agui/` lists every live Claude session
   with its ticket, PR and state; clicking one opens its run page: assistant
   text, tool-call cards, subagents, failures. The first `himmelctl ui` builds the page

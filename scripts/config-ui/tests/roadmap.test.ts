@@ -218,7 +218,7 @@ test("the page renders every section and escapes ticket text", () => {
 // landings resolve to it (a deliberate change of the pinned assertion, named in the PR body).
 test("the rail lists one Board entry after Configure, and Board is a console route; the old landings resolve to it", () => {
   const labels = navLinks({ here: "console", token: TOKEN, current: "board" }).map((l) => l.label);
-  expect(labels.slice(labels.indexOf("Fleet"))).toEqual(["Fleet", "Health", "Tool health", "Configure", "Board", "Workflow", "Docs"]);
+  expect(labels.slice(labels.indexOf("Fleet"))).toEqual(["Fleet", "Health", "Tool health", "Configure", "Board", "Workflow", "Cost", "Docs"]);
   expect(parseLanding(`#t=${TOKEN}&page=board`)).toEqual({ token: TOKEN, page: "board" });
   expect(parseLanding(`#t=${TOKEN}&page=roadmap`)).toEqual({ token: TOKEN, page: "board" });
   expect(parseLanding(`#t=${TOKEN}&page=kanban`)).toEqual({ token: TOKEN, page: "board", q: "v=all" });

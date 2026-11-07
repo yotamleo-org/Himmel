@@ -4,6 +4,7 @@ import { renderHealth, verdict, parseView, projectVerdict, chiefLiveFor } from "
 import { renderToolHealth, toolHealthLoader, toolHealthHref } from "/tool-health.js";
 import { boardRefreshDue, driftSince, pinsFromSearch, renderBoard, searchWithPins, togglePin } from "/roadmap.js";
 import { renderWorkflow, parseWorkflowRoute } from "/workflow.js";
+import { renderCost } from "/cost.js";
 import { apiRolesDraft, renderConfigure as render } from "/setup.js";
 import { renderShift } from "/shift.js";
 import { renderReport, reportBar } from "/report.js";
@@ -73,12 +74,15 @@ let shift = null, shiftGen = 0, shiftAt = 0; // GET /api/shift, null until read;
 const shiftUi = { id: null, all: false }; // from the route: #/shift/<id>?all=1
 let wfModel = null, wfStats = null, wfGen = 0, wfAt = 0, wfScrolled = null; // the workflow model and GET /api/phase-stats, null until read
 const wfUi = { tab: "workflow", phase: null, step: null, walk: null, at: 0 }; // from the route: #/workflow[/eval]?phase=|step=|walk=&at=
+let costModel = null, costErr = false, costGen = 0;
+const costView = { open: [] };
 const PAGES = [
   { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => withLoginButton(render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify })), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.apiRoles || !state.apiRoles.data) loadApiRoles(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); if (!state.reports || !state.reports.data) loadReportSettings(); loadSetup(); } },
   { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => pageBar() + healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => toolHealthPage(), onVisit: () => loadToolHealth(), afterPaint: () => thFocusBack() },
   { id: "board", label: "Board", needsFeed: false, render: trackerPage(() => renderBoard(roadmap, roadmapUi, boardExtras)), afterPaint: () => { whyFocus(null); loadDriftOrigins(); }, onVisit: () => { if (!(sources && !sources.length)) { if (!roadmap) loadRoadmap(); if (!boardExtras) loadBoard(); if (roadmapUi.tab === "nv" && !roadmapUi.nv) loadNoVersion(); } } },
   { id: "workflow", label: "Workflow", needsFeed: false, render: () => renderWorkflow(wfModel, wfUi, wfStats), onVisit: () => { if (!wfModel || wfModel.error || !wfStats || wfStats.error || Date.now() - wfAt > 60_000) loadWorkflow(); }, afterPaint: () => wfScroll() },
+  { id: "cost", label: "Cost", needsFeed: false, render: () => (costErr ? `<p class="sub">The cost could not be read just now${costModel ? "; this is the last good read" : ""}.</p>` : "") + renderCost(costModel, { ...costView, err: costErr }), onVisit: () => loadCost(), afterPaint: () => costMount() },
   { id: "shift", label: "Shift", needsFeed: false, render: () => renderShift(shift, { ...shiftUi, fleet: (navLinks({ here: "console", token, current: "shift", sources }).find((l) => l.id === "fleet") || {}).href }), onVisit: () => loadShift() },
   { id: "report", label: "Morning report", needsFeed: false, render: () => pageBar() + renderReport(reportList, reportView, { ...reportUi, shiftHref: "#/shift" }), onVisit: () => loadReport() },
 ];
@@ -257,6 +261,7 @@ function paint() {
   const focusB = document.activeElement && document.activeElement.matches && document.activeElement.matches(".bhead") ? document.activeElement.dataset.b : null;
   const focusRg = document.activeElement && document.activeElement.matches && document.activeElement.matches("[data-rg]") ? { rg: document.activeElement.dataset.rg, slug: document.activeElement.dataset.slug } : null;
   const focusT = document.activeElement && document.activeElement.matches && document.activeElement.matches("button.tile") ? document.activeElement.dataset.tile : null;
+  const focusP = document.activeElement && document.activeElement.matches && document.activeElement.matches("button.dr") ? document.activeElement.dataset.phase : null;
   const focusD = document.activeElement && document.activeElement.closest && document.activeElement.closest(".drawer") ? { act: document.activeElement.dataset.act, cmd: document.activeElement.dataset.cmd } : null; // any repaint (the history landing, a refresh) keeps keyboard focus on the same drawer control
   // A secret or path being typed lives only in its field: a repaint (a report landing, a read finishing) must not wipe it.
   // It is held in this one synchronous call and put straight back; it is never kept in page state.
@@ -277,7 +282,8 @@ function paint() {
   if (focusB !== null) { for (const h of document.querySelectorAll(".bhead")) if (h.dataset.b === focusB) { h.focus(); break; } }
   if (focusRg !== null) { for (const c of document.querySelectorAll("[data-rg]")) if (c.dataset.rg === focusRg.rg && c.dataset.slug === focusRg.slug) { c.focus(); break; } }
   if (focusT !== null) { for (const t of document.querySelectorAll("button.tile")) if (t.dataset.tile === focusT) { t.focus(); break; } }
-  if (focusD) { const c = [...document.querySelectorAll(".drawer [data-act]")].find((x) => x.dataset.act === focusD.act && x.dataset.cmd === focusD.cmd); if (c) c.focus(); }
+  if (focusP !== null) { for (const b of document.querySelectorAll("button.dr")) if (b.dataset.phase === focusP) { b.focus(); break; } }
+  if (focusD) { const c =[...document.querySelectorAll(".drawer [data-act]")].find((x) => x.dataset.act === focusD.act && x.dataset.cmd === focusD.cmd); if (c) c.focus(); }
   if (keep !== null) { const q = $("#q"); q.focus(); q.setSelectionRange(keep, keep); }
 }
 
@@ -641,6 +647,33 @@ async function loadWorkflow() {
   wfModel = m.status === "fulfilled" ? m.value : { error: m.reason instanceof Error ? m.reason.message : "server unreachable" };
   wfStats = s.status === "fulfilled" ? s.value : { error: s.reason instanceof Error ? s.reason.message : "server unreachable" };
   if (currentPage.id === "workflow") paint();
+}
+async function loadCost() {
+  const gen = ++costGen;
+  try {
+    const r = await fetch("/api/cost", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    const m = await r.json();
+    if (gen !== costGen) return;
+    costModel = m; costErr = false;
+  } catch (_) { if (gen !== costGen) return; costErr = true; }
+  if (currentPage.id === "cost") paint();
+}
+// The bars' widths come in the markup as style attributes, which the page's CSP (default-src 'self') refuses, so they are set here.
+function costMount() {
+  const main = $("#main");
+  for (const el of main.querySelectorAll(".bar[style]")) el.style.width = (/width:\s*([\d.]+%)/.exec(el.getAttribute("style")) || [])[1] || "0%";
+  const onClick = (e) => {
+    const b = e.target.closest && e.target.closest("button.dr");
+    const id = b && b.dataset.phase;
+    if (!id) return;
+    costView.open = costView.open.includes(id) ? costView.open.filter((x) => x !== id) : [...costView.open, id];
+    paint();
+    const again = [...main.querySelectorAll("button.dr")].find((x) => x.dataset.phase === id);
+    if (again) again.focus();
+  };
+  main.addEventListener("click", onClick);
+  return () => main.removeEventListener("click", onClick);
 }
 // a step link or a walk scrolls its card (or the opened phase) into view, once per route: a later repaint never jumps.
 function wfScroll() {

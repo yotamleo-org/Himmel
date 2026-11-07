@@ -3,8 +3,9 @@
 // Nothing is computed in the browser and nothing is written. Every figure carries how it was got: counted (a ledger or the
 // session's own usage), derived (a counted total split by the last-tool rule), unpriced (a call's model has no price row).
 // A part no record splits is "nocount": it has no number of its own, or it holds the whole phase as the one figure the records keep.
-// ponytail: a synchronous spawn of usage-read.sh per read, one day at a time, no week window;
-// upgrade path: an async read behind the route once it is wired, and a week table once the records carry parts per phase for it.
+// ponytail: a synchronous spawn of usage-read.sh per read, one day at a time, no week window; behind GET /api/cost a read that waits
+// on the usage store lock (usage-read.sh waits up to 60 s) holds the whole server for that long;
+// upgrade path: an async read behind the route, and a week table once the records carry parts per phase for it.
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 
