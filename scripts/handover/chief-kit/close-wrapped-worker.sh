@@ -261,6 +261,21 @@ elif [[ $DOC == *-RESUME.md ]]; then
     done <<EOF
 $sib_cands
 EOF
+    if [ -z "$SIB_DOC" ] && [[ $sib_label =~ ^(N[0-9]+)[a-z]+$ ]]; then
+        sib_orig_label="${BASH_REMATCH[1]}"
+        sib_ticket="$(printf '%s' "$sib_base" | cut -d- -f1-2)"
+        sib_hits=0
+        for sib_c in "$sib_dir/$sib_ticket"-*.md; do
+            [ -f "$sib_c" ] && [[ $sib_c != *-RESUME.md ]] || continue
+            [[ $(basename "$sib_c") =~ ^${sib_ticket}-(leg)?${sib_orig_label}- ]] || continue
+            grep -qF -- "$(basename "$DOC")" "$sib_c" || continue
+            SIB_DOC="$sib_c"; sib_hits=$((sib_hits + 1))
+        done
+        if [ "$sib_hits" -gt 1 ]; then
+            echo "close-wrapped-worker: refusing - $sib_hits original docs of $sib_orig_label name $DOC; close the right one by name" >&2
+            exit 5
+        fi
+    fi
 elif [ -f "$sib_dir/$sib_base-RESUME.md" ]; then
     SIB_DOC="$sib_dir/$sib_base-RESUME.md"
 else
@@ -364,6 +379,7 @@ resumed_wrapped_newer() {
     [ "$(doc_tail_status "$1")" = WRAPPED ] || return 1
     o=$(tail_marker_minutes "$1"); r=$(tail_marker_minutes "$2")
     [ -n "$o" ] && [ -n "$r" ] || return 1
+    # ponytail: stamps carry no date, so a day-2 relaunch can pass this gap test, upgrade to dated timestamps or to bullet position across the pair
     gap=$((o - r))
     [ "$gap" -gt 0 ] && [ "$gap" -lt "$half_day" ]
 }
@@ -385,10 +401,11 @@ if [ -n "$NAMED_SUCCESSOR" ]; then
 fi
 if [ -n "$SIB_DOC" ] && [ "$PREDECESSOR" -eq 0 ]; then
     if [[ $DOC == *-RESUME.md ]]; then sib_res="$DOC"; sib_orig="$SIB_DOC"; else sib_res="$SIB_DOC"; sib_orig="$DOC"; fi
-    if ! res_marker=$(doc_tail_status "$sib_res"); then
+    if ! res_marker=$(results_tail_status "$sib_res"); then
         echo "close-wrapped-worker: refusing - cannot read the ## Results section of $sib_res" >&2
         exit 4
     fi
+    [ "$res_marker" != nosection ] || res_marker=""
     if [ -z "$res_marker" ]; then
         # the resumed worker has written nothing of its own yet, so it may be a successor that has just
         # started: only the successor's own record on the original (a LIVE with a new release token,
