@@ -79,6 +79,7 @@ else bad "top/read-only" "rows=$rows before=$before after=$after"; fi
 
 # --- run: shim attribution --------------------------------------------------
 BIN="$TMP/bin"; mkdir -p "$BIN"
+export FAKE_NOHDR="" FAKE_SLEEP=""  # an inherited export must not change the stub's answers
 cat >"$BIN/gh" <<'STUB'
 #!/bin/bash
 [ -z "${FAKE_SLEEP:-}" ] || sleep "$FAKE_SLEEP"
