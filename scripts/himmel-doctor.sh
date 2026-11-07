@@ -3958,7 +3958,7 @@ check_c90_effort_pin() {
 
 check_c91_api_policy_refusals() {
     command -v jq >/dev/null 2>&1 || { emit INFO C91-api-policy-refusals "jq not on PATH -- API lane policy refusal record not checked"; return 0; }
-    local dir rec rows="" recent kind n repos
+    local dir rec rows="" recent kind n repo
     dir="${HIMMEL_API_ALERT_DIR:-${HOME:-/tmp}/.himmel/state/api-lane-alerts}"
     rec="$dir/policy-refusals.jsonl"
     if [ -e "$rec" ] || [ -L "$rec" ]; then
@@ -3972,16 +3972,16 @@ check_c91_api_policy_refusals() {
             return 0
         }
         if [ -n "$recent" ]; then
-            rows="$(printf '%s\n' "$recent" | awk -F'\t' '{ if (!($1 in c)) order[++k] = $1; c[$1]++; if (!(($1 SUBSEP $2) in seen)) { seen[$1 SUBSEP $2] = 1; r[$1] = r[$1] (r[$1] == "" ? "" : ", ") $2 } }
-                END { for (i = 1; i <= k; i++) printf "%d|%s|%s\n", c[order[i]], order[i], r[order[i]] }')"
+            rows="$(printf '%s\n' "$recent" | awk -F'\t' '{ p = $1 SUBSEP $2; if (!(p in c)) { order[++k] = p; kind[p] = $1; repo[p] = $2 }; c[p]++ }
+                END { for (i = 1; i <= k; i++) printf "%d|%s|%s\n", c[order[i]], kind[order[i]], repo[order[i]] }')"
         fi
     fi
     if [ -z "$rows" ]; then
         emit OK C91-api-policy-refusals "no API lane policy refusal in the last 48 h"
         return 0
     fi
-    while IFS='|' read -r n kind repos; do
-        emit WARN C91-api-policy-refusals "kind $kind: $n refused in the last 48 h by the API lane's auto-routing policy and not run (repo $repos)" \
+    while IFS='|' read -r n kind repo; do
+        emit WARN C91-api-policy-refusals "kind $kind: $n refused in the last 48 h by the API lane's auto-routing policy and not run (repo $repo)" \
             "name HIMMEL_API_ACCOUNT=A, B or C in that caller; the record is policy-refusals.jsonl in the alert directory ($dir)"
     done <<EOF
 $rows

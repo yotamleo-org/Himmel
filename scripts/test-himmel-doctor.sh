@@ -8129,7 +8129,7 @@ c91_repo="$(cd "$c91_t/repo" && pwd -P)"
 printf '#!/bin/sh\nexit 0\n' > "$c91_t/alert-stub"; chmod 700 "$c91_t/alert-stub"
 c91_rec="$c91_t/home/.himmel/state/api-lane-alerts/policy-refusals.jsonl"
 c91_reset() { rm -rf "${c91_t:?}/home" "${c91_t:?}/claude"; mkdir -p "$c91_t/home" "$c91_t/claude"; }
-c91_refuse() { (cd "$c91_t/repo" && env -i PATH="$PATH" HOME="$c91_t/home" HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto HIMMEL_API_KIND="$1" \
+c91_refuse() { (cd "${2:-$c91_t/repo}" && env -i PATH="$PATH" HOME="$c91_t/home" HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto HIMMEL_API_KIND="$1" \
     HIMMEL_API_ALERT_CMD="$c91_t/alert-stub" HIMMEL_API_JOB_ID=job-c91 bash "$REPO_ROOT/scripts/api-lane/claude-api.sh" \
     -p 'say hi' --model claude-haiku-5-5 --permission-mode plan --max-budget-usd 0.10 >/dev/null 2>&1); }
 c91_run() { env -u HIMMEL_API_ALERT_DIR CLAUDE_DIR="$c91_t/claude" HOME="$c91_t/home" bash "$DOC" --only C91 --no-color 2>&1; }
@@ -8142,6 +8142,13 @@ echo "== C91: two kinds -> two WARN lines under one ID, each with its count =="
 c91_reset; c91_refuse critic; c91_refuse critic; c91_refuse judge
 out="$(c91_run)"
 if [ "$(printf '%s\n' "$out" | grep -c 'WARN C91-api-policy-refusals')" -eq 2 ] && grepq "$out" 'WARN C91-api-policy-refusals.*critic: 2 refused' && grepq "$out" 'WARN C91-api-policy-refusals.*judge: 1 refused'; then pass "C91 two kinds -> two WARN lines with counts"; else fail "C91 two kinds -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C91: one kind refused in two repos -> two WARN lines, each with its own repo and count =="
+git init -q "$c91_t/repo2"
+c91_repo2="$(cd "$c91_t/repo2" && pwd -P)"
+c91_reset; c91_refuse critic; c91_refuse critic "$c91_t/repo2"
+out="$(c91_run)"
+if [ "$(printf '%s\n' "$out" | grep -c 'WARN C91-api-policy-refusals')" -eq 2 ] && [ "$(printf '%s\n' "$out" | grep -c 'critic: 1 refused')" -eq 2 ] \
+    && grepq "$out" "critic: 1 refused.*repo $c91_repo/" && grepq "$out" "critic: 1 refused.*repo $c91_repo2/"; then pass "C91 one kind in two repos -> two WARN lines, each with its repo"; else fail "C91 two repos -> $(printf '%s' "$out" | head -4)"; fi
 echo "== C91: the window is 48 hours: a record 47 h old warns, one 49 h old does not =="
 c91_reset; c91_refuse critic; c91_age 47
 out="$(c91_run)"
