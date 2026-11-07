@@ -1803,16 +1803,16 @@ check_direction_real() {
 # ponytail: a hand-written ruling shaped exactly like an index line, with no pointer, is refused too; the LOST bullet clears it
 # Args: outgoing doc.
 check_direction_companions() {
-    local doc="$1" base body pointer rel f bad="" listed="" found=0
+    local doc="$1" base body results pointer rel f bad="" listed="" found=0
     body="$(direction_block "$doc")"
-    printf '%s\n' "$body" | grep -Eq '^(OPERATOR|CHIEF) [^(]*, decisions? [0-9]+(, [0-9]+)*( \((carry|standing|not marked binding)\))?: ' || return 0
-    awk '$0 == "## Results" { f = 1; next } f && /^## / { f = 0 } f' "$doc" \
-        | grep -Eq "^- .*DIRECTION-COMPANION-LOST:[[:space:]]*[^[:space:]<]" && return 0
+    grep -Eq '^(OPERATOR|CHIEF) [^(]*, decisions? [0-9]+(, [0-9]+)*( \((carry|standing|not marked binding)\))?: ' <<< "$body" || return 0
+    results="$(awk '$0 == "## Results" { f = 1; next } f && /^## / { f = 0 } f' "$doc")"
+    ! grep -Eq "^- .*DIRECTION-COMPANION-LOST:[[:space:]]*[^[:space:]<]" <<< "$results" || return 0
     base="$(dirname "$doc")"
     pointer="$(printf '%s\n' "$body" | grep -m 1 '^Full original text')" || pointer=""
     if [ -z "$pointer" ]; then
         for f in "$base"/specs/decisions/chief-direction-*.md; do
-            [ -e "$f" ] && listed="$listed ${f#"$base"/}"
+            if [ -e "$f" ]; then listed="$listed ${f#"$base"/}"; fi
         done
         err "refusing to hand over: the Current direction in $doc was shortened to one-line readings, but the line beginning 'Full original text' that names the full text of every ruling is gone."
         if [ -n "$listed" ]; then listed="the bucket holds${listed}"; else listed="the bucket holds no chief-direction file, so the full text is lost"; fi
