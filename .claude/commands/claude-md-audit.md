@@ -116,3 +116,5 @@ Notes:
 - Audit-only: the skill emits a report; edits are a separate, deliberate step you
   make in the worktree. Nothing is mutated automatically by invoking this command.
 - Scope to the changed CLAUDE.md(s) — do not audit unchanged files in the tree.
+
+Be thorough in your analysis and bold in your recommendations

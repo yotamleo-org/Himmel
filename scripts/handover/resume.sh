@@ -35,8 +35,19 @@ if [ "$mode" = "resume" ] && [ -z "$id" ]; then
 fi
 
 # handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+# An exported HANDOVER_DIR wins (load_dotenv only fills an absent key). When it
+# differs from the .env root /handover-setup chose, say so in one line instead
+# of silently searching the other folder.
 # shellcheck disable=SC1091
-if . "$SCRIPT_DIR/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
+if . "$SCRIPT_DIR/../lib/load-dotenv.sh" 2>/dev/null; then
+  if [ -n "${HANDOVER_DIR-}" ]; then
+    env_hd="$( unset HANDOVER_DIR; load_dotenv HANDOVER_DIR 2>/dev/null; printf '%s' "${HANDOVER_DIR-}" )"  # swallow-ok: advisory comparison only, an unreadable .env just skips the warning
+    if [ -n "$env_hd" ] && [ "${env_hd%/}" != "${HANDOVER_DIR%/}" ]; then
+      echo "resume.sh: warning: exported HANDOVER_DIR ($HANDOVER_DIR) overrides the configured root ($env_hd); unset it to follow the root /handover-setup chose" >&2
+    fi
+  fi
+  load_dotenv HANDOVER_DIR 2>/dev/null || true
+fi
 # --- handover root + repo/bucket resolution (mirrors resolve-active-item.sh) ---
 # shellcheck source=/dev/null
 . "$SCRIPT_DIR/../lib/handover-path.sh" || { echo "resume.sh: cannot source handover-path.sh" >&2; exit 2; }
@@ -60,7 +71,7 @@ meta="$(REG="$reg" RR="$rr_canon" node -e '
   const repos=(j&&j.repos)||{};
   for(const k of Object.keys(repos)){
     const p=String(repos[k].path||"").replace(/\\/g,"/").replace(/\/+$/,"").toLowerCase();
-    if(p===e.RR){ process.stdout.write([repos[k].user||"",k,repos[k].jira_project||""].join("\t")); process.exit(0); }
+    if(p===e.RR){ process.stdout.write([repos[k].user||"",repos[k].bucket_name||k,repos[k].jira_project||""].join("\t")); process.exit(0); }
   }
   process.exit(1);
 ')"; node_rc=$?

@@ -483,26 +483,38 @@ hd=$(jq -r '.env.HANDOVER_DIR' "$preserve_target/.claude/settings.json" 2>/dev/n
 grepq "$out" 'leaving it' || fail "HIMMEL-839 preserve: missing the leaving-it message (got: $out)"
 echo "ok: HIMMEL-839 preserves an existing settings.json env.HANDOVER_DIR (re-adopt reproduces, not resets)"
 
-# ── 4c. PRESERVE an existing repo .env HANDOVER_DIR ──
-# The other place HANDOVER_DIR can already live: the primary checkout's own
-# .env (set-handover-dir.sh / Mode B — what /handover-setup actually writes).
-# settings.json env takes PROCESS-ENV precedence over .env, so writing it here
-# would silently shadow that choice even with the .env file itself untouched.
+# ── 4c. PRESERVE an existing project .env HANDOVER_DIR ──
+# The other place HANDOVER_DIR can already live: the PROJECT's own .env
+# (set-handover-dir.sh writes <project>/.env — what /handover-setup actually
+# writes). settings.json env takes PROCESS-ENV precedence over .env, so writing
+# it here would silently shadow that choice even with the .env file untouched.
+preserve_vault2="$work/preserve-vault2"
+preserve_target2="$work/preserve-target2"; mkdir -p "$preserve_target2"
+printf 'HANDOVER_DIR=/some/dotenv/handovers\n' > "$preserve_target2/.env"
+out=$(HOME="$base_home" bash "$adopt" --profile luna --target "$preserve_target2" --luna-target "$preserve_vault2" 2>&1)
+hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$preserve_target2/.claude/settings.json" 2>/dev/null)
+[ "$hd" = "ABSENT" ] || fail "project .env preserve: the project .env HANDOVER_DIR was shadowed by a settings.json write ([$hd])"
+grepq "$out" 'via /handover-setup' || fail "project .env preserve: missing the .env-preserve message (got: $out)"
+echo "ok: preserves an existing project .env HANDOVER_DIR (does not shadow it via settings.json)"
+
+# ── 4c1. the himmel clone's .env is NOT the project's choice ──
+# A project install reads the PROJECT's .env. A HANDOVER_DIR in the himmel
+# clone's .env (another install's choice, or --profile all run from the clone)
+# must not stop the project's own wiring.
 if [ -f "$real_env" ]; then
   env_backup="$work/env-backup"
   mv "$real_env" "$env_backup"
 fi
-printf 'HANDOVER_DIR=/some/dotenv/handovers\n' > "$real_env"
+printf 'HANDOVER_DIR=/some/himmel-clone/handovers\n' > "$real_env"
 env_mutated=1
-preserve_vault2="$work/preserve-vault2"
-preserve_target2="$work/preserve-target2"; mkdir -p "$preserve_target2"
-out=$(HOME="$base_home" bash "$adopt" --profile luna --target "$preserve_target2" --luna-target "$preserve_vault2" 2>&1)
+other_vault="$work/other-vault"
+other_target="$work/other-target"; mkdir -p "$other_target"
+out=$(HOME="$base_home" bash "$adopt" --profile luna --target "$other_target" --luna-target "$other_vault" 2>&1)
 if [ -n "$env_backup" ]; then mv "$env_backup" "$real_env"; env_backup=""; else rm -f "$real_env"; fi
 env_mutated=0
-hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$preserve_target2/.claude/settings.json" 2>/dev/null)
-[ "$hd" = "ABSENT" ] || fail "HIMMEL-839 preserve: .env-configured HANDOVER_DIR was shadowed by a settings.json write ([$hd])"
-grepq "$out" 'via /handover-setup' || fail "HIMMEL-839 preserve: missing the .env-preserve message (got: $out)"
-echo "ok: HIMMEL-839 preserves an existing repo .env HANDOVER_DIR (does not shadow it via settings.json)"
+hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$other_target/.claude/settings.json" 2>/dev/null)
+[ "$hd" = "$(norm "$other_vault/handovers")" ] || fail "clone .env scope: the himmel clone's .env HANDOVER_DIR suppressed the project's wiring ([$hd])"
+echo "ok: a HANDOVER_DIR in the himmel clone's .env does not stop a project install wiring its own"
 
 # ── 4c2. PRESERVE a HANDOVER_DIR in the tracked config file ──
 # The behaviour-config layer (~/.himmel/himmel.conf) is where HANDOVER_DIR now

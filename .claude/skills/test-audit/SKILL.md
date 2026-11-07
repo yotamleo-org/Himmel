@@ -210,3 +210,5 @@ Report:
 - named follow-ups.
 
 See also: [test-behavior-not-implementation](../../../docs/tool-adoption/pstack-principles-digest.md#test-behavior-not-implementation).
+
+Be thorough in your analysis and bold in your recommendations

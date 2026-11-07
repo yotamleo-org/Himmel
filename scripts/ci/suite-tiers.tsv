@@ -959,6 +959,7 @@ scripts/lib/test-wire-pretooluse-hooks.sh	pr	trust-path
 scripts/lib/test-wire-statusline.sh	pr	trust-path
 scripts/lib/test-worker-successor.sh	pr	trust-path
 scripts/lib/test-worktree-inuse.sh	pr	trust-path
+scripts/lint/test-audit-prompt-sentence.sh	pr	static-gate
 scripts/lint/test-check-history-comments.sh	pr	static-gate
 scripts/lint/test-check-mcp-sdk-v1.sh	pr	static-gate
 scripts/lint/test-check-platform-dropped.sh	pr	static-gate

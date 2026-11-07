@@ -99,8 +99,15 @@ specs in the skill's `references/init-register.md`.
 ### 6. Confirm
 
 Print a one-line summary: the mode (inline / vault / external), the resolved
-`<state-root>`, and the registered repo name. Suggest the next step:
-`/handover new-epic <name>`.
+`<state-root>`, and the registered repo name. Suggest the next step by where
+this ran:
+
+- **A himmel checkout** (`<repo-root>/marketplace/plugins/handover/` exists):
+  `/handover new-epic <name>`.
+- **A project install** (that folder is absent): do not suggest `new-epic` or the
+  other `new-*` commands, because only a himmel checkout has been shown running
+  them. Say that `/handover-resume` here picks up an item already in this repo's
+  bucket of the state root.
 
 ### Notes
 

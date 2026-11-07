@@ -126,6 +126,42 @@ chmod +x "$fakebin/node"
 PATH="$fakebin:$PATH" HANDOVER_DIR="$root" HANDOVER_REGISTRY="$reg" bash "$R" --repo-root "$RR" 389 >/dev/null 2>&1
 check "node crash (rc=5) -> hard error, not graceful skip" "$?" "2"
 
+# 7. The bucket folder is the registry's bucket_name, not the key.
+# register-state.sh --bucket-name stores the folder name in bucket_name while
+# the registry key stays the repo name; resume must search the folder the
+# items were filed under.
+bn_base="$root/yotamleo/renamed-bucket"
+mkdir -p "$bn_base/standalones/#610-renamed-item"
+printf '**Status:** pending\nBUCKETNAME-610-MARKER body.\n' > "$bn_base/standalones/#610-renamed-item/brief.md"
+reg_bn="$tmp/registry-bucketname.json"
+cat > "$reg_bn" <<'JSON'
+{ "repos": { "myrepo": {
+  "path": "c:/work/myrepo", "user": "yotamleo", "jira_project": "HIMMEL", "bucket_name": "renamed-bucket"
+} } }
+JSON
+o="$(HANDOVER_DIR="$root" HANDOVER_REGISTRY="$reg_bn" bash "$R" --repo-root "c:/work/myrepo" 610 2>&1)"
+has "bucket_name: resume finds the item under the registered bucket" "$o" "BUCKETNAME-610-MARKER"
+o="$(HANDOVER_DIR="$root" HANDOVER_REGISTRY="$reg_bn" bash "$R" --repo-root "c:/work/myrepo" --list 2>&1)"
+has "bucket_name: --list reads the registered bucket" "$o" "#610"
+
+# 8. An exported HANDOVER_DIR wins over the .env one (a live value
+# always wins in load-dotenv.sh, and settings.json env relies on that). When
+# the two differ, resume prints ONE warning naming both roots instead of
+# silently searching the other folder.
+cache="$tmp/cache"; other_root="$tmp/other-root"; fakehome="$tmp/fakehome"
+mkdir -p "$cache" "$other_root/yotamleo/himmel" "$fakehome"
+printf 'HANDOVER_DIR=%s\n' "$other_root" > "$cache/.env"
+# fake HOME: load-dotenv.sh also reads ~/.himmel/himmel.conf, which must not leak in
+run_env(){ HOME="$fakehome" HIMMELCTL_CACHE_DIR="$cache" HANDOVER_DIR="$root" HANDOVER_REGISTRY="$reg" bash "$R" --repo-root "$RR" HIMMEL-389; }
+err="$(run_env 2>&1 >/dev/null)"
+has "env differs: warns about the exported root"  "$err" "exported HANDOVER_DIR"
+has "env differs: warning names the .env root"    "$err" "$other_root"
+check "env differs: exactly one warning line" "$(printf '%s\n' "$err" | grep -c 'exported HANDOVER_DIR')" "1"
+has "env differs: the exported root still wins" "$(run_env 2>/dev/null)" "RESUME-389-V2 line one"
+printf 'HANDOVER_DIR=%s\n' "$root" > "$cache/.env"
+err="$(run_env 2>&1 >/dev/null)"
+hasnt "env matches: no warning" "$err" "exported HANDOVER_DIR"
+
 # BSD sed (macOS) has no `\|` alternation in a BRE, so the list
 # id split silently fell through. Keep resume.sh free of it (use sed -E).
 # ponytail: a source grep, because Linux CI cannot execute BSD sed; the macOS

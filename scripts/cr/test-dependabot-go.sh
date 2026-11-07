@@ -394,7 +394,7 @@ TICK="$HERE/../handover/chief-kit/tick.sh"
 check    "6: tick.sh gates the sweep on DEPENDABOT_AUTOLAND=on" "$(grep -c '"${DEPENDABOT_AUTOLAND:-off}" = on' "$TICK")" "1"
 check    "6: tick.sh launches dependabot-go.sh --sweep" "$(grep -c 'dependabot-go.sh" --sweep' "$TICK")" "1"
 # shellcheck disable=SC2016  # the literal tick.sh text, not an expansion
-check   "6: tick.sh keeps a failed sweep's output" "$(grep -c 'mv -f "$dbot_tmp" "$dbot_base.err"' "$TICK")" "1"
+check   "6: tick.sh keeps a failed sweep's output" "$(grep -c 'mv -f "$3" "$2.err"' "$TICK")" "1"
 # shellcheck disable=SC2016  # the literal tick.sh text, not an expansion
 check   "6: tick.sh shows err when the last sweep failed" "$(grep -c '\[ "$dbot_base.err" -nt "$dbot_base.log" \] && dbot_summary="$dbot_summary,err"' "$TICK")" "1"
 

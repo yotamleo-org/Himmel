@@ -23,8 +23,9 @@ step 10 undoes the install. A different result means stop and read
 > in its own worktree, passes git gates and tests, is reviewed (by a second
 > model too, once you add one), and merges through one gate. Hooks refuse
 > risky actions before they run, so the rules hold even when nobody remembers
-> them, and handover notes carry the work across sessions. See the
-> [README](../README.md) for the full pitch and the
+> them. In a himmel checkout, handover notes carry the work across sessions; in
+> your own project, the install copies their setup and resume scripts, and resume
+> has been shown running. See the [README](../README.md) for the full pitch and the
 > [advantages](../README.md#what-you-get).
 
 ## The first protected project, in ten steps
@@ -258,14 +259,25 @@ git add -A && git commit -m "feat: my change #2" && git push -u origin feat/my-t
 /pr-check                    # multi-agent review; clears the merge gate when clean
 #   gh pr create / gh pr merge --squash
 /clean                       # prune merged-PR worktrees
-/handover                    # save notes on what you did + where you left off, so the
-                             #   next session (or a teammate) resumes with full context
+/handover                    # on an item you already track, shown running in a himmel checkout:
+                             #   save notes on what you did + where you left off, so the next
+                             #   session (or a teammate) resumes with full context; see below
 ```
 
-> **First time using `/handover`?** Run **`/handover-setup`** once to point it at
-> your own state store: an inline `handovers/` folder in the repo, or a separate
-> git repo (via `HANDOVER_DIR`). Your cross-session notes land wherever you
-> point it.
+> **Handover in your own project.** The install copies the resume and
+> storage-setup scripts, so `/handover-setup` and `/handover-resume` run here.
+> `/handover-setup` asks where notes live: a folder in your vault or a separate
+> git repo (either through `HANDOVER_DIR`), or an inline `handovers/` folder in
+> the repo. `/handover` has no default: it writes into an existing tracked item,
+> and a fresh project has none. Only a himmel checkout has been shown running the
+> commands that create an item or write a note (`new-*`, end-session). The scripts
+> that open, merge and flush a handover branch's PR (`pr-open.sh`, `pr-merge.sh`,
+> `flush.sh`) are not copied. `/handover-resume` here picks up an item already in
+> this repo's bucket of the store you chose. In a himmel checkout with the inline
+> folder, the note lands in a `handover/<slug>` worktree off `main`, not in the
+> folder you are in, and `/handover-resume` sees it from that worktree, or from the
+> main folder once the branch merges. With `HANDOVER_DIR`, the note goes under that
+> folder.
 
 **How to tell it's working:** if you try to edit a file on `main` you'll get a
 `block-edit-on-main` message pointing you back into a worktree (`/clean_garden`
@@ -273,8 +285,8 @@ or `/worktree`). That message means the guardrail works; it is not an error.
 (If you also installed the optional pre-commit gates,
 `pre-commit run --all-files` should pass too.)
 
-**You're done when:** `/pr-check` reports clean, the PR merges, `/clean` removes
-the worktree, and `/handover` confirms a saved snapshot. To verify, run
+**You're done when:** `/pr-check` reports clean, the PR merges, and `/clean`
+removes the worktree. To verify, run
 `cd ~/try-himmel && git checkout main && git pull && git log --oneline -3` and
 look for your change on `main`. (Run it from the project folder: `main` is
 checked out there, so `git checkout main` fails inside a linked worktree.)

@@ -38,6 +38,8 @@
 # REMEDIATE, all-or-nothing: only when EVERY finding is benign —
 #   a shellcheck / check-json finding on a file under handovers/
 #       → that hook's `exclude:` gains the canonical `^handovers/` alternative;
+#   end-of-file-fixer on a file under handovers/ (a state file written without its
+#       final newline)  → that hook's `exclude:` gains the same `^handovers/`;
 #   gitleaks on a file under handovers/ whose secret fully matches CLOSED_SHAPES
 #       → that shape's canonical regex line is added to .gitleaks.toml.
 # The edit is always a canonical line from this file, never one derived from
@@ -116,8 +118,17 @@ gitleaks_findings() {
 US=$'\x1f'
 row() { local IFS="$US"; printf '%s' "$*"; }
 classify() {
-    local vault="$1" out="$2" hook files rows f l rule file line shape verdict
+    local vault="$1" out="$2" hook files rows f l rule file line shape verdict ids
     FINDINGS=""
+    ids="$(printf '%s\n' "$out" | sed -n 's/^- hook id: //p' | sort -u)"
+    # The vault's wrapper runs gitleaks itself after pre-commit: its finding carries RuleID
+    # lines but no `- hook id:` line, and was alerted as "unclassified refusal".
+    local rule_line
+    rule_line="$(printf '%s\n' "$out" | sed -n '/^RuleID:/{p;q;}')"
+    case $'\n'"$ids"$'\n' in
+        *$'\n'gitleaks$'\n'*) ;;
+        *) [ -z "$rule_line" ] || ids="${ids:+$ids$'\n'}gitleaks" ;;
+    esac
     while IFS= read -r hook; do
         [ -n "$hook" ] || continue
         rows=""
@@ -153,13 +164,27 @@ classify() {
                     on && sub(/^Fixing /, "")' | sort -u)"
                 while IFS= read -r f; do
                     [ -n "$f" ] || continue
-                    rows="$rows$(row alert "$hook" "$hook" "" "$f" "")"$'\n'
+                    # A state file under handovers/ left without its final newline (an agent's Write
+                    # tool, a JSON.stringify) is machine output, never content: only end-of-file-fixer.
+                    verdict=alert; case "$hook:$f" in end-of-file-fixer:handovers/*) verdict=benign ;; esac
+                    rows="$rows$(row "$verdict" "$hook" "$hook" "" "$f" "")"$'\n'
                 done <<<"$files" ;;
         esac
         # A failed hook this script cannot attribute to a file is never benign.
         [ -n "$rows" ] || rows="$(row alert "$hook" "$hook" no-file-reported "" "")"$'\n'
         FINDINGS="$FINDINGS$rows"
-    done < <(printf '%s\n' "$out" | sed -n 's/^- hook id: //p' | sort -u)
+    done < <(printf '%s\n' "$ids")
+}
+
+# refusal_cause <hook-output> <rc> — the alert reason for a refusal with no hook id and no
+# finding: the wrapper's `error:` or pre-commit's `An error has occurred:` message, else the
+# exit code. Message lines only, never source or a match.
+refusal_cause() {
+    local msg
+    msg="$(printf '%s\n' "$1" | sed -n -E 's/^error: (.*)$/\1/p; s/^An (unexpected )?error has occurred: ([A-Za-z]+Error).*$/\2/p' | head -n 1)"
+    msg="${msg:0:100}"
+    if [ -n "$msg" ]; then printf 'refused rc=%s: %s' "$2" "$msg"
+    else printf 'unclassified refusal rc=%s (no hook id, %s output lines)' "$2" "$(printf '%s\n' "$1" | grep -c .)"; fi
 }
 
 # replay_hook <vault> <gitdir> — sets HOOK_OUT to the vault's pre-commit output
@@ -201,7 +226,7 @@ hook_log() {
         /^Did you mean:[[:space:]]*$/ { src = 1; next }
         /^Finding:/ { leak = 1 }
         leak && /^RuleID:/ { leak = 0 }
-        !leak' | grep -E '^([^ ].*\.{3,}(Passed|Failed|Skipped)$|- hook id: |- exit code: |- files were modified by this hook$|Fixing |In .+ line [0-9]+:$|.+: Failed to json decode|(RuleID|File|Line|Fingerprint):|[0-9:]+(AM|PM) (ERR|FTL|WRN) )'
+        !leak' | grep -E '^([^ ].*\.{3,}(Passed|Failed|Skipped)$|- hook id: |- exit code: |- files were modified by this hook$|Fixing |In .+ line [0-9]+:$|.+: Failed to json decode|error: |An (unexpected )?error has occurred: |(RuleID|File|Line|Fingerprint):|[0-9:]+(AM|PM) (ERR|FTL|WRN) )'
 }
 
 # describe <row> — "hook [rule] file:line", the only shape that leaves this script.
@@ -293,7 +318,7 @@ plan_edits() {
     [ -f "$work/toml" ] && cp "$work/toml" "$work/toml.orig"
     for c in $classes; do
         case "$c" in
-            shellcheck | check-json)
+            shellcheck | check-json | end-of-file-fixer)
                 f=.pre-commit-config.yaml
                 yaml_exclude "$work/yaml" "$c" "$work/next"; rc=$?
                 [ "$rc" -eq 0 ] && mv -f "$work/next" "$work/yaml"
@@ -355,8 +380,10 @@ rollback_edits() {
 
 # Verify: the hook must pass on the edited config, and the edit must still be ours.
 verify_edits() {
-    local f wf
-    if ! (cd "$vault" && SKIP="$SKIP_FIXERS" git hook run pre-commit </dev/null >/dev/null 2>&1); then
+    local f wf skip
+    # The fixer being remediated runs for real, so the exclude is proven on the staged set.
+    skip="$SKIP_FIXERS"; case " $classes " in *" end-of-file-fixer "*) skip="trailing-whitespace" ;; esac
+    if ! (cd "$vault" && SKIP="$skip" git hook run pre-commit </dev/null >/dev/null 2>&1); then
         rollback_edits; rm -rf "$work"; alert "still-refused-after-remediation $classes (rolled back)" 0; return "$PHASE_STOP"
     fi
     # Another writer may have changed a config file since it was written: never
@@ -459,6 +486,7 @@ cmd_run() {
         return 0
     fi
     classify "$REPLAY_DIR" "$out"
+    local cause; cause="$(refusal_cause "$out" "$hook_rc")"
     out=""; rm -rf "$REPLAY_DIR"
     local bad="" classes="" nbad=0 r
     while IFS= read -r r; do
@@ -475,7 +503,7 @@ cmd_run() {
     done <<<"$FINDINGS"
     [ "$dry" -eq 1 ] || printf -- '--- hook output\n%s\n' "$hook_lines" >> "$STATE_DIR/last-run.log"
     if [ -n "$bad" ]; then alert "unremediable: ${bad%; }" "$dry"; return 0; fi
-    [ -n "$classes" ] || { alert "unclassified refusal" "$dry"; return 0; }
+    [ -n "$classes" ] || { alert "$cause" "$dry"; return 0; }
 
     # Loop cap: one remediation per class per vault per 24 h.
     for c in $classes; do
