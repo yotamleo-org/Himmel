@@ -715,7 +715,7 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .cp .rl{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1) var(--s2)}
 .cp .st{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1) var(--s2);padding:2px var(--s2);border:1px solid var(--rule);border-radius:8px;background:var(--surface)}
 .cp .st small{font-size:11px;color:var(--muted);white-space:nowrap}
-.cp .tw{display:inline-flex;align-items:center;gap:var(--s1);white-space:nowrap}
+.cp .tw{display:inline-flex;align-items:center;gap:var(--s1);white-space:nowrap;overflow:visible}
 .cp .lk{flex:none;width:30px;height:12px}
 .cp .lk line{stroke:var(--muted);stroke-width:2}
 .cp .lk path{fill:var(--muted)}

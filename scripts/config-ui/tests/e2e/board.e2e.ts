@@ -850,6 +850,9 @@ for (const [width, height] of [[1280, 900], [390, 844]]) {
     const top = await page.locator("#rm-chains article.cc").first().evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
     const bottom = await page.locator("#rm-chains").evaluate((el) => el.getBoundingClientRect().bottom + window.scrollY);
     const ys = await page.locator("#rm-chain-fx-ops .rl").locator(".tk, .rm-whylink").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+    const twOverflow = await page.locator("#rm-chains .tw").evaluateAll((els) => els.map((e) => getComputedStyle(e).overflowX + "/" + getComputedStyle(e).overflowY));
+    expect(twOverflow.length).toBeGreaterThan(0);
+    expect(twOverflow.every((o) => o === "visible/visible"), `a chip wrapper must not scroll, it would clip the chip's focus outline: ${[...new Set(twOverflow)].join(",")}`).toBe(true);
     await shot(page, `board-chains-five-fixture-dark-${width}`);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     if (width === 1280) {
