@@ -41,4 +41,5 @@ K6	^scripts/eval/steering-cull/probes\.json$	"prompt":|"must":	the probe prompt 
 K6	^scripts/eval/retrieval-eval/questions\.jsonl$	^\{"id":"q[0-9]+"	the question set test-retrieval-eval.sh checks
 K6	^docs/internals/handover-token-grammar\.md$	[A-Z]+-4999	the example that illustrates the ticket-key label shape the token grammar accepts
 K6	^docs/handover/chief-sections/live-state\.md$	specs/plan/[A-Z]+-3882	tick.sh and wrap-merged.sh read this default plan directory
+K6	^scripts/lib/flags\.tsv$	^[a-z_]+[[:space:]](on|off)[[:space:]]	check-flags.sh reads the ticket and blocker columns of each flag row
 K7	^scripts/lint/ticket-ref-allow\.tsv$		this list names the key pattern itself

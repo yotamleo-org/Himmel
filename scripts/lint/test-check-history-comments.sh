@@ -357,6 +357,9 @@ echo "== 27-28. a row's file and shape; other project keys =="
 KB=scripts/handover/chief-kit/known-checker-bugs.tsv
 expect_allow "data row a program reads" "$KB" "+${H}-7980${TAB}UNOWNED${TAB}${H}-7848${TAB}2026-10-28T22:31:00Z"
 expect_block "same file, another line" "$KB" "+# note about ${H}-7980"
+FL=scripts/lib/flags.tsv
+expect_allow "flag row ticket columns" "$FL" "+demo_flag${TAB}on${TAB}feature${TAB}${H}-1${TAB}${H}-1${TAB}2026-11-28${TAB}text"
+expect_block "same flags file, a comment" "$FL" "+# see ${H}-1"
 expect_block "LUNA key in a doc" docs/x.md "+see ${LU}-12"
 expect_block "SALUS key in a doc" docs/x.md "+see ${SA}-3"
 
