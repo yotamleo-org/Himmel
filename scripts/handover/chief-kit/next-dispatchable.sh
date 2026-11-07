@@ -65,7 +65,7 @@
 # Overlaps (no file holds): a shared file never keeps a ticket off the list. A To Do or RESUME row that names a file
 # a live worker, the --held list, an open PR, a series ledger or an earlier listed row also names is listed all the same, and
 # `# overlap <KEY> <file> with <holder>` follows it (`live worker <N>`, `held list`, `open PR <n>`, `series <sid>`, `listed <KEY>`),
-# so the chief sees the shared file and the merge-forward duty covers the conflict. There is no RESUME-HELD row and no `# SOFT` line.
+# so the chief sees the shared file and the merge-forward duty covers the conflict.
 # A DISPOSITION ... BLOCKED-BY comment hides nothing here: stuck-scan.sh re-checks it.
 #
 # DESIGN rows (always on):
@@ -229,8 +229,6 @@ def manifest_workers(m):
 excl = set(filter(None, os.environ.get('NEXT_DISPATCH_EXCLUDE_LABELS',
     'operator-decision,operator,operator-present,operator-gated,blocked,decision,windows-parked,design-deferred,placeholder,held').split(',')))
 FILE_RE = re.compile(r"(?<![\w./-])((?:scripts|docs|marketplace|plugins|templates|tools|\.claude|\.github|\.codex)/[\w.+@-]+(?:/[\w.+@-]+)*/?|CLAUDE\.md|AGENTS\.md|README\.md|package\.json|package-lock\.json|bun\.lock|uv\.lock|pyproject\.toml|\.gitignore|\.pre-commit-config\.yaml)")
-# Q8: an outside PR (cross-repository) that names a ticket key but has been idle this many days or more no longer owns the key;
-# the ticket is listed with an `# overlap <KEY> also named by outside PR` line. Our own PRs keep owning their key with no bound.
 OUTSIDE_OWN_DAYS = 7
 PRIO = {'Highest': 0, 'Blocker': 0, 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3, 'Lowest': 4}
 
@@ -359,10 +357,9 @@ def blocks(f, h, tree):
     return tree and concrete(f) and f.startswith(h + '/')
 
 def held_hits(i):
-    # every (file, holder) of held that holds one of the ticket's files: an overlap, printed and never a hold
     return list(dict.fromkeys((f, who) for f in i['files'] for h, who, tree in held if blocks(f, h, tree)))
 
-unknown_notes = []  # `# overlap unknown for ...` lines: a holder whose files could not be read, printed under the header
+unknown_notes = []
 
 def note_unknown(what):
     line = '# overlap unknown for %s' % what
@@ -900,7 +897,7 @@ manifest_docs = set()  # the resolved path of every worker doc the manifest list
 workers_from = os.environ.get('ND_WORKERS_FROM', '')
 workers_unknown = False
 owners_unknown = False  # only a fleet whose OWNERS are unreadable hides the orphans; a worker whose FILES are unknown still owns the key in its doc name
-live_workers = []  # (label, doc, lines, keys) of every manifest worker not WRAPPED: holds.py parse of its Writes line says what it writes
+live_workers = []
 worker_keys = set(os.environ.get('ND_OWNERS', '').split())
 owner = {k: 'the --owners list' for k in worker_keys}
 resume_only = os.environ.get('ND_RESUME_ONLY') == '1'
@@ -1043,8 +1040,8 @@ pr_unknown = False
 pr_keys = set()
 pr_file_map = {}  # PR number -> its files
 pr_meta = {}  # PR number -> (title, head branch)
-outside_idle = {}  # KEY -> (PR number, idle days) of an outside PR that names the key but has been idle OUTSIDE_OWN_DAYS or more: it owns nothing
-now_s = float(os.environ.get('NEXT_DISPATCH_NOW') or time.time())  # NEXT_DISPATCH_NOW: the test seam for Q8's idle clock
+outside_idle = {}
+now_s = float(os.environ.get('NEXT_DISPATCH_NOW') or time.time())
 gh = os.environ.get('NEXT_DISPATCH_GH_CMD', 'gh')
 gh_repo = 'yotamleo-org/Himmel'  # env-literal-ok: the canonical slug; --search does not follow a repo rename
 try:
@@ -1074,7 +1071,7 @@ try:
         cols = line.split('\t')
         if len(cols) >= 3:
             pr_meta[cols[0]] = (cols[1], cols[2])
-        idle = None  # whole days since an outside PR was last updated; None for one of ours, or when the time cannot be read (it owns)
+        idle = None
         if len(cols) >= 5 and cols[3] == 'true':
             try:
                 idle = int((now_s - datetime.datetime.fromisoformat(cols[4].replace('Z', '+00:00')).timestamp()) // 86400)
@@ -1178,8 +1175,7 @@ def resume_eligible(i):
         return False
     return not (pool_only and (platform_dropped(i) or residual_out(i)))
 
-# A partly merged ticket's next step, read before the candidates' files are compared with their holders,
-# so a remainder's path gets its overlap lines. PRs are in merge order: a clear remainder supersedes every older
+# A partly merged ticket's next step. PRs are in merge order: a clear remainder supersedes every older
 # PR that records none, and a PR newer than it that records none is still a question. The latest `remaining` is the scope when
 # it names a path or says it writes nothing; a remainder saying neither leaves the description's scope, so it frees nothing.
 for i in issues.values() if not pr_unknown else ():
@@ -1194,8 +1190,6 @@ for i in issues.values() if not pr_unknown else ():
             if files or reads or NO_WRITE_RE.search(latest[0][1]):
                 i.update(files=files, reads=reads, src='remainder of PR #%s' % latest[0][0], no_scope=False)
 
-# A live worker's files come from its doc's Writes line through holds.py parse; the dispatcher reads and writes no register
-# No file holds: the unknown-files cases print `# overlap unknown for live worker N`.
 holds_py = os.environ['ND_HOLDS']
 for label, doc, lines, wkeys in live_workers:
     try:
@@ -1356,9 +1350,6 @@ for i in issues.values():
 resume.sort(key=ranked if pool_only else rank)
 
 def stackable_on(i):
-    # (worker label, items, writer doc) when every file the ticket shares is named by ONE live series worker with room; else None.
-    # A series worker's own ledger is that same worker, not a second holder. A holder that is an open PR, the --held list or a
-    # second worker keeps it an ordinary overlap; an unread PR list or worker manifest offers none.
     if pr_unknown or owners_unknown:
         return None
     holders = {('live worker ' + series_label_of[who[len('series '):]]) if who.startswith('series ') and who[len('series '):] in series_label_of else who
@@ -1391,10 +1382,10 @@ for i in cands:
         if stack:
             stackable_rows.append((i, 'STACKABLE %s %s' % (i['key'], stack[2]), 'stackable on %s (%d/%d)' % (stack[0], stack[1], SERIES_CAP)))
             continue  # judged in emit_stackable once it is classified: a ticket that would be BLOCKED is not offered
-    if pr_unknown:  # an unread PR list could hide the open PR that owns the ticket
+    if pr_unknown:
         drop(i, 'open PRs unknown (gh failed): ownership cannot be checked')
         continue
-    free.append(i)  # a file shared with an open PR, a worker or the held list is printed as an overlap when the row is listed, never a drop
+    free.append(i)
 
 reasons = {}  # the classifier's stated reason per key
 
@@ -1461,7 +1452,6 @@ n = 0
 picked = []  # (file, key) a listed ticket holds against the rest of the list
 
 def picked_hits(i):
-    # (file, key) of every listed row whose file the ticket also names
     return [(f, k) for f in i['files'] for h, k in picked if blocks(f, h, False)]
 
 def picked_hit(i):
@@ -1481,7 +1471,6 @@ def say(text):
         print(text)
 
 def say_overlaps(i, listed=True):
-    # a row is listed whatever it shares a file with: each shared (file, holder) is a `# overlap` line, with `(from <source>)` under --why
     pairs = held_hits(i) + ([(f, 'listed ' + k) for f, k in picked_hits(i)] if listed else [])
     src = ' (from %s)' % i['src'] if os.environ.get('ND_WHY') == '1' else ''
     for f, who in dict.fromkeys(pairs):
@@ -1518,8 +1507,6 @@ def list_free(i, lane, c, row):
     out_buf.append(lambda h=i['key']: series_text(h))
 
 def join_series(i, lane, c):
-    # True when the ticket joins the series of the listed row it shares a file with: every listed ticket it shares one with is in that
-    # one series, the series has room (cap 4) and the ticket's version is the head's or earlier. A ticket that cannot join is listed
     hits = picked_hits(i)
     heads = {series_of.get(k) for _, k in hits}
     if not hits or None in heads or len(heads) != 1:
@@ -1714,8 +1701,6 @@ def emit_free(rows):
             if rc is None:
                 continue
             lane, c = rc
-            # a file shared with an earlier listed row is no hold: under stacked_series the ticket joins that row's series if it can,
-            # else it is listed with an `# overlap ... with listed` line
             if picked_hit(i) and stacked and join_series(i, lane, c):
                 continue
             say_overlaps(i)

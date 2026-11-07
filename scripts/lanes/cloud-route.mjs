@@ -179,7 +179,6 @@ export function classifyTicket(t, ctx) {
   const asDir = (f) => (!f.endsWith('/') && (ctx.tree ?? []).some((p) => p.startsWith(`${f}/`)) ? `${f}/` : f);
   const files = [...new Set(named.map((f) => asDir(posix.normalize(f))))];
   const asks = Math.max(1, askLines(t.description).length);
-  // a held file (or a held directory over it, or a held file under a directory the ticket names) is an overlap, said in the reason
   const shared = new Set();
   for (const f of files) {
     for (const h of ctx.held ?? []) {

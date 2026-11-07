@@ -30,15 +30,12 @@ export HOME="$WORK/home" HANDOVER_DIR="$WORK/h"
 mkdir -p "$HOME" "$HANDOVER_DIR"
 HOLDS_PY="$HERE/holds.py"
 SEEDED=0
-# the dispatcher reads no register, so a worker's files are the `> **Writes:**` line of its doc (holds.py parse).
-# seed keeps the call shape of the old register seeding: it appends that line to a fixture doc under $WORK; a doc of the repo's
-# fixtures/ is left as it is (its own Writes line says what it writes).
+# a worker's files are the `> **Writes:**` line of its doc (holds.py parse); seed appends that line to a fixture doc under $WORK
 seed() { # <key> <label> <doc> <path>...
     local d="$3"; shift 3
     case "$d" in "$WORK"/*) printf '> **Writes:** %s\n' "$*" >> "$d" ;; esac
     SEEDED=$((SEEDED + $#))
 }
-fresh_register() { SEEDED=0; }  # kept for the sections that start from a clean slate; there is no register to clear
 # the default worker records live under the status state dir: keep it in the fixture
 export TICKET_STATUS_STATE_DIR="$WORK/ts-none"
 # and the admissions ledger: the real one must never admit a fixture key
@@ -113,7 +110,6 @@ export GH_ARGS="$WORK/gh.args"
 export PRS_TSV="$WORK/prs.tsv"
 export MERGED_TSV="$WORK/merged.tsv" MERGED_FAIL="$WORK/merged.fail"
 : > "$MERGED_TSV"
-# PR 4242 (the one the stub's files read returns scripts/lib/pr-held.sh for) is an outside PR: cross-repository, names no ticket
 printf '4242\tfix(x): an outside change to a held file\tcontributor/pr-held\ttrue\t2026-01-01T00:00:00Z\n4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
 
 WORKER="$WORK/HIMMEL-99-N1-live.md"
@@ -399,7 +395,6 @@ rm -f "$MERGED_FAIL"
 has "a failed merged-PR read is reported" "$r6f" "merged PRs unknown"
 lacks "a failed merged-PR read lists no IN CI row" "$r6f" "HIMMEL-7"
 : > "$MERGED_TSV"
-# PR 4242 (the one the stub's files read returns scripts/lib/pr-held.sh for) is an outside PR: cross-repository, names no ticket
 printf '4242\tfix(x): an outside change to a held file\tcontributor/pr-held\ttrue\t2026-01-01T00:00:00Z\n4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
 
 # A ticket the status funnel returned to To Do when its worker WRAPPED (a worker record in state
@@ -947,7 +942,6 @@ has "never-edit: a ticket on the worker's own named file stays held: listed, its
 has "never-edit: a file a 'Touches <file> ... pattern' sentence really writes stays held: listed, its shared file an overlap" "$f25" "# overlap HIMMEL-754 "
 
 # --- a worker holds only the files it writes, not paths in a quoted grep or boilerplate ---
-# a scope-only doc is unknown to the dispatcher (it reads Writes lines), so the docs are copied under $WORK and seed adds the Writes line
 FX="$WORK/held-fx"; cp -r "$HERE/fixtures/held-paths" "$FX"
 M26="$WORK/jira-mirror26/HIMMEL"; mkdir -p "$M26"
 M_SAVE="$M"; M="$M26"
@@ -983,7 +977,6 @@ printf '{"schema":1,"legs":[{"doc":"%s","label":"N3558"},{"doc":"%s","label":"N3
     "$FX/HIMMEL-7469-N3578-neg-control.md" "$FX/HIMMEL-7469-N3579-writes-line.md" "$FX/HIMMEL-7469-N3580-frontmatter-description.md" "$FX/HIMMEL-7469-N3581-command-word-in-path.md" \
     "$FX/HIMMEL-7469-N3582-prose-before-path.md" "$FX/HIMMEL-7469-N3583-writes-line-prose.md" "$FX/HIMMEL-7469-N3584-writes-wrapped.md" "$FX/HIMMEL-7469-N3585-no-scope.md" "$FX/HIMMEL-7469-N3586-command-segment.md" > "$WORK/fleet26.json"
 # the register, not each doc's scope prose, says what a worker writes: one launch row per file the old reader held (trees are noted, not held)
-fresh_register
 seed HIMMEL-7377 N3558 "$FX/HIMMEL-7377-N3558-adoption-trail-narrow-panel.md" docs/adoption-trail.html
 seed HIMMEL-7469 N3579 "$FX/HIMMEL-7469-N3579-writes-line.md" docs/nd-writes-line.html scripts/handover/nd-writes-line.sh
 seed HIMMEL-7469 N3580 "$FX/HIMMEL-7469-N3580-frontmatter-description.md" docs/nd-frontmatter.html
@@ -1019,7 +1012,6 @@ has "held-paths: a path after a path segment named find is held: listed, its sha
 has "held-paths: a path the front-matter description names (no command word before it) holds nothing" "$f26" "HIMMEL-883	"
 has "held-paths: a find -delete dir is a note, not a held file" "$f26" "HIMMEL-884	"
 # N3585 names no scope and has no row: its own run on a clean register (a key that has a row is read from the register, and the others above share one)
-fresh_register
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N3585"}]}\n' "$FX/HIMMEL-7469-N3585-no-scope.md" > "$WORK/fleet26b.json"
 f26b="$(NEXT_DISPATCH_MIRROR="$M26" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --top 50 --workers-from "$WORK/fleet26b.json" 2>"$WORK/f26.err")"
 has "held-paths: a live worker that yields no held paths is named on stderr" "$(cat "$WORK/f26.err")" "live worker N3585 yields no held paths"
@@ -1029,7 +1021,6 @@ f27="$(NEXT_DISPATCH_MIRROR="$M26" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" -
 lacks "held-paths: an explicit 'Writes: none named' worker is a real empty scope, not unknown" "$f27" "live workers unknown"
 has "held-paths: a path after 'replace grep -P in' is a write, not a read: listed, its shared file an overlap" "$f26" "# overlap HIMMEL-885 "
 
-# (the pr-rows rows are deleted: they tested the register, which the dispatcher no longer reads)
 
 # --- a disposition per open ticket, live blocker re-check, rename registry, per-PR file reads, narrow write scope ---
 DD="$HERE/fixtures/dispatch-disposition"
@@ -1103,7 +1094,7 @@ printf '5001\tfix(x): [HIMMEL-9101] one\tfix/himmel-9101-one\n5002\tfix(x): [HIM
 printf 'scripts/lib/dd-pr1.sh\nscripts/lib/dd-ov/x.sh\nscripts/lib/dd-ov2/y.sh\n' > "$DD_DIR/files-5001"
 printf 'scripts/lib/dd-huge.sh\n' > "$DD_DIR/files-5002"
 printf 'scripts/lib/dd-pr3.sh\nscripts/lib/dd-new-name.sh\nscripts/lib/dd-old-name.sh\n' > "$DD_DIR/files-5003"
-cp -r "$DD" "$WORK/dd-fx"  # a copy, so seed can add the leg a Writes line
+cp -r "$DD" "$WORK/dd-fx"
 sed "s#@@FIXTURE@@#$WORK/dd-fx#" "$DD/fleet.json" > "$WORK/dd-fleet.json"
 printf 'scripts/handover/chief-kit/dd-old.sh\nscripts/handover/chief-kit/dd-newn.sh\n' > "$WORK/dd-held.txt"
 seed HIMMEL-7044 N3901 "$WORK/dd-fx/HIMMEL-7044-N3901-mentions.md" scripts/dd-own.sh  # its list also names scripts/dd-in/: a tree, noted and not held
@@ -1173,7 +1164,6 @@ ddu_n="$(printf '%s\n' "$ddu_out" | grep -c '^# disposition ')"
 dd_plain="$(rundd)"
 lacks "dispositions: a plain run prints none" "$dd_plain" "# disposition "
 
-# (the soft-edge rows are deleted with the soft-edge code: a collision is no longer a drop to be softened)
 
 # --- a ticket with no DoD or no Proof is refused at dispatch. The
 # checker is marketplace/plugins/himmel-ops/scripts/ticket-standard-check.sh; the
@@ -1335,8 +1325,6 @@ fi
 chmod 600 "$M/HIMMEL-9690.md"
 M="$WORK/jira-mirror/HIMMEL"
 
-# A RESUME row that shares a file is offered as RESUME with an `# overlap` line (it was named RESUME-HELD and withheld):
-# one a live worker's write scope names, one another listed RESUME row names (full pass only).
 M7="$WORK/m7/HIMMEL"; mkdir -p "$M7"
 M_SAVE="$M"; M="$M7"
 mk HIMMEL-80 "In Progress" High '[]' '[]' '[]' "held by a live worker scope" "Edit scripts/lib/rh1.sh."
@@ -2257,11 +2245,8 @@ has "I13 ... an IN CI row (a merged PR, no worker) is not withheld" "$rg6" "MERG
 rgf="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-live" LIVE_STATUS="In Progress" runl 1 "$FAM" "$WORK/fleet-rg.json")"
 has "I13 ... a series-family row is not withheld" "$rgf" "SERIES FAMILY docs/handover HIMMEL-870,HIMMEL-871"
 : > "$MERGED_TSV"
-# PR 4242 (the one the stub's files read returns scripts/lib/pr-held.sh for) is an outside PR: cross-repository, names no ticket
 printf '4242\tfix(x): an outside change to a held file\tcontributor/pr-held\ttrue\t2026-01-01T00:00:00Z\n4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
 
-# (the fault, unseeded-worker and OFF rows are deleted with the holds read: the dispatcher no longer calls holds.py read, sync-prs or gc)
-# PR 4242 (the one the stub's files read returns scripts/lib/pr-held.sh for) is an outside PR: cross-repository, names no ticket
 printf '4242\tfix(x): an outside change to a held file\tcontributor/pr-held\ttrue\t2026-01-01T00:00:00Z\n4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
 
 # the waiter counts the pool with --top <slack>; a bare `--doc <doc> --why` kept the default --top 8, which nine
@@ -2358,7 +2343,6 @@ for row in 9611:9611 9612:9612 9613:9613 9614:9614 9615:9615 9615:9625 9616:9616
     printf '{"ts":"t","event":"merge","key":"HIMMEL-%s","pr":"%s","contract":"no","result":"noop"}\n' "${row%%:*}" "${row#*:}" >> "$WORK/s91/status-events.jsonl"
 done
 printf 'scripts/himmel-doctor.sh\nscripts/handover/merge-on-green.sh\nscripts/lib/nd91-rem.sh\n' > "$WORK/held91.txt"
-fresh_register
 : > "$WORK/N91-holder.md"
 seed HIMMEL-9700 N91 "$WORK/N91-holder.md" scripts/lib/nd91-rem2.sh
 run91() { NEXT_DISPATCH_MIRROR="$M91" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --top 60 --held "$WORK/held91.txt" --workers-dir "$WORK/s91/workers" --workers-from "$WORK/fleet5.json" "$@" 2>/dev/null; }
@@ -2402,7 +2386,6 @@ has "and its row names no file" "$(row91 RESUME 9611)" "files=-"
 has "a ticket whose remainder really edits a held file is offered as RESUME with an overlap line" "$r91" "# overlap HIMMEL-9612 scripts/lib/nd91-rem.sh with held list"
 has "and it is still a RESUME row" "$r91" "RESUME	HIMMEL-9612	"
 has "--why names the remainder as the source of the overlapping path" "$(row91 overlap 9612)" "(from remainder of PR #9612)"
-# (the row asking the holds store about a remainder path is deleted with the holds read)
 has "a remainder naming no path and no no-code signal falls back to the description, never free (overlap line)" "$r91" "# overlap HIMMEL-9614 scripts/handover/merge-on-green.sh with held list"
 # the history trap: all contract=no PRs of a ticket accumulate
 has "a newer clear remainder is not overridden by an older missing one" "$r91" "RESUME	HIMMEL-9615	"
@@ -2543,8 +2526,7 @@ rl_secs=$(( $(date +%s) - rl_t0 ))
 has "9438: the output names the rate limit" "$rl9" "rate limit"
 lacks "9438: a rate-limited read lists no IN CI row" "$rl9" "RESUME	HIMMEL-960"
 
-# --- dispatch stops holding a ticket on a shared file or an open PR; every overlap is printed ---
-S1D="$WORK/s1d"; mkdir -p "$S1D"; export DD_DIR="$S1D"  # gh-dd reads its PR list and per-PR files from DD_DIR
+S1D="$WORK/s1d"; mkdir -p "$S1D"; export DD_DIR="$S1D"
 : > "$S1D/prs.tsv"
 S1M="$WORK/s1m/HIMMEL"; mkdir -p "$S1M"
 M_SAVE="$M"; M="$S1M"
@@ -2569,7 +2551,6 @@ has "S1: two To Do tickets on one file are both listed (first)" "$s1_out" "HIMME
 has "S1: two To Do tickets on one file are both listed (second)" "$s1_out" "HIMMEL-9703	"
 has "S1: the later one carries the listed overlap" "$s1_out" "# overlap HIMMEL-9703 scripts/s1/shared.sh with listed HIMMEL-9702"
 lacks "S1: no collision drop is counted" "$(s1run --why)" "# drop HIMMEL-9703 collision"
-# an open PR whose files read fails: its rows are still listed, and the header names the PR unknown
 S1U="$WORK/s1u"; mkdir -p "$S1U"
 printf '5001\tfix(x): one\tfix/one\n5002\tfix(x): huge\tfix/huge\n' > "$S1U/prs.tsv"
 printf 'scripts/s1/pr-one.sh\n' > "$S1U/files-5001"
@@ -2579,7 +2560,6 @@ has "S1: an unreadable PR files read still lists the To Do rows" "$s1u_out" "HIM
 has "S1: an unreadable PR files read still lists the RESUME row" "$s1u_out" "RESUME	HIMMEL-9701"
 has "S1: an unreadable PR files read prints overlap unknown for that PR" "$s1u_out" "# overlap unknown for PR 5002"
 lacks "S1: an unreadable PR files read does not mark every open PR unknown" "$s1u_out" "open PRs unknown"
-# the dispatcher no longer reads or writes the holds register
 cat > "$WORK/holds-log.py" <<'EOF'
 import os, runpy, sys
 with open(os.environ['HOLDS_LOG'], 'a') as f:
@@ -2596,7 +2576,6 @@ has "S1: control: the holds.py shim ran (parse of the live worker's doc)" "$(cat
 lacks "S1: the dispatcher calls no holds.py sync-prs" "$(cat "$HOLDS_LOG")" "sync-prs"
 lacks "S1: the dispatcher calls no holds.py gc" "$(cat "$HOLDS_LOG")" "gc"
 lacks "S1: the dispatcher calls no holds.py read" "$(cat "$HOLDS_LOG")" "read"
-# stacked_series: a worker whose Writes line yields no paths no longer removes SERIES FAMILY or STACKABLE
 printf '# live\nno scope named here\n' > "$WORK/HIMMEL-795-N10-noscope.md"
 mkfleet "$WORK/fleet-s10.json" "N5:$WORK/HIMMEL-790-N5-series.md" "N10:$WORK/HIMMEL-795-N10-noscope.md"
 sk="$(runs "$SM" 1 --workers-from "$WORK/fleet-s10.json" --why)"
@@ -2619,7 +2598,6 @@ sf3="$(runs "$SM" 1 --workers-from "$WORK/fleet-s11.json" --why)"
 has "S1: control: an unreadable worker doc still owns the key in its name" "$sf3" "# drop HIMMEL-851 owned by live worker N11"
 sf4="$(runs "$S1FAM" 1 --workers-from "$WORK/no-such-fleet.json" --why)"
 lacks "S1: control: a missing manifest (owners unknown) still withholds SERIES FAMILY" "$sf4" "SERIES FAMILY"
-# Q8: an outside PR (cross-repository) idle for 7 or more days no longer owns the key it names
 S1Q="$WORK/s1q"; mkdir -p "$S1Q"
 S1NOW=1794000000
 q8_at() { python3 -I -c 'import datetime, sys
@@ -2630,7 +2608,7 @@ mk HIMMEL-9710 "To Do" High '[]' '["v1.0.1"]' '[]' "named by a PR from outside" 
 M="$M_SAVE"
 cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/s1qm/HIMMEL.versions.tsv"
 printf 'scripts/s1/q8-other.sh\n' > "$S1Q/files-5201"
-q8run() { # <cross-repository flag> <idle days>: the one PR 5201 names the ticket
+q8run() {
     local cross="$1" days="$2"
     printf '5201\tfix(x): [HIMMEL-9710] a change from outside\tfork/q8\t%s\t%s\n' "$cross" "$(q8_at "$days")" > "$S1Q/prs.tsv"
     NEXT_DISPATCH_NOW="$S1NOW" DD_DIR="$S1Q" NEXT_DISPATCH_MIRROR="$S1QM" NEXT_DISPATCH_GH_CMD="$WORK/gh-dd" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --top 20 --why 2>/dev/null

@@ -493,7 +493,6 @@ exit 1`);
   assert.equal(run({ CLOUD_ROUTE_GIT_DIR: g, CLOUD_ROUTE_MAIN_REF: 'main' }).status, 0);
   assert.deepEqual(searched(), ['HIMMEL-9002'], 'only the key a commit names is searched');
   const slugs = new Set(readFileSync(log, 'utf8').split('\n').flatMap((l) => l.match(/(?:--repo |repos\/)[\w-]+\/\w+/g) ?? []));
-  // the open-PR files read (repos/<slug>/pulls) is gone with the holds: only the merged-PR searches name the slug
   assert.deepEqual([...slugs].sort(), ['--repo yotamleo-org/Himmel']);
   // unknown (no such ref) fails closed: every key is searched
   writeFileSync(log, '');
@@ -677,13 +676,10 @@ test('a ticket naming a directory with a held file under it is an overlap, namin
   const v = classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/lanes/other.sh', why: 'open PR 77' }] }));
   assert.notEqual(v.class, 'BLOCKED');
   assert.match(v.reason, /overlaps scripts\/lanes\/ \(contains held scripts\/lanes\/other\.sh, open PR 77\)/);
-  // the exact file a PR touches overlaps, beside a directory the ticket names
   const exact = classifyTicket(tk({ description: 'Tidy scripts/lanes/ and fix scripts/lanes/other.sh.' }), ctx({ held: [{ file: 'scripts/lanes/other.sh', why: 'open PR 77' }] }));
   assert.notEqual(exact.class, 'BLOCKED');
   assert.match(exact.reason, /overlaps .*scripts\/lanes\/other\.sh \(open PR 77\)/);
-  // a held directory (a live worker's tree) over a ticket's directory overlaps too
   assert.match(classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/lanes/', why: 'live worker' }] })).reason, /overlaps scripts\/lanes\/ \(live worker\)/);
-  // nothing held under the directory: no overlap text
   const clear = classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/other/x.sh', why: 'open PR 78' }] }));
   assert.equal(clear.class, 'CLOUD-OK');
   assert.doesNotMatch(clear.reason, /overlaps/);
