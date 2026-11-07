@@ -891,7 +891,10 @@ printf '%s' "{\"account\":\"$ACCT\",\"seven_day\":{\"resets_at\":\"$RESET_996\"}
 bash "$LIFT" set "$W/lc.json" >/dev/null 2>&1
 check "set against .996 timestamp records stable whole seconds" "$((NOW+7200))" "$(jq -r '.until' "$USAGE_LIFT_FILE")"
 check "set against .996 then validate" 0 "$(lift_rc "$W/lc.json")"
+( env -u USER bash "$LIFT" set --standing "$W/lc.json" >/dev/null 2>&1 )
+check "standing set with USER unset stamps set_by from id -un" "$(id -un)" "$(jq -r '.set_by' "$USAGE_LIFT_FILE")"
 bash "$LIFT" set --standing "$W/lc.json" >/dev/null 2>&1
+check "standing set stamps set_by from id -un" "$(id -un)" "$(jq -r '.set_by' "$USAGE_LIFT_FILE")"
 check "operator standing set persists policy in fenced lift file" true "$(jq -r '.standing' "$USAGE_LIFT_FILE")"
 # The old until is now expired, but the policy applies to the fresh window.
 jq '.until=1' "$USAGE_LIFT_FILE" > "$W/standing.json"; mv "$W/standing.json" "$USAGE_LIFT_FILE"; chmod 600 "$USAGE_LIFT_FILE"
@@ -1047,7 +1050,19 @@ fshow >/dev/null
 ( export CLAUDE_ACCOUNT_CONFIG="$FB_CFG"; . "$LIFT"; usage_lift_valid "$W/fc.json" >/dev/null 2>&1 )
 CADENCE_USAGE_MAX_PCT='' fverdict 90 90 >/dev/null
 check "reading a followed lift leaves the lift file and state dir unchanged" "$before_state" "$(lift_state)"
+mkdir -p "$W/id-un-empty"
+printf '%s\n' '#!/usr/bin/env bash' "if [ \"\${1:-}\" = -un ]; then echo ''; else exec $(command -v id) \"\$@\"; fi" > "$W/id-un-empty/id"; chmod +x "$W/id-un-empty/id"
+follow_lift "$HA" true '""'; fcache "$HB" 90 90
+check "empty id -un and empty set_by never follow -> INVALID: set_by" 'usage-lift: INVALID: set_by' "$(PATH="$W/id-un-empty:$PATH" fshow | tail -1)"
+follow_lift "$HA" true "\"$ME\""
+printf '{"five_hour":{"utilization":10},"seven_day":{"utilization":10,"resets_at":%s}}' "$LRESET" > "$W/fc-noacct.json"
+check "login unreadable and cache without account -> INVALID: account" 'usage-lift: INVALID: account' \
+  "$(CLAUDE_ACCOUNT_CONFIG="$W/absent-login.json" bash "$LIFT" show "$W/fc-noacct.json" 2>/dev/null | tail -1)"
 rm -f "$USAGE_LIFT_FILE"
+lift_followed=true; export lift_followed
+check "no lift, inherited env lift_followed=true cannot leak into the ledger row" false \
+  "$(fverdict 10 10 >/dev/null; tail -1 "$W/ledger.jsonl" | jq -r '.lift_followed')"
+unset lift_followed
 
 # The lift file: the default path, then the USAGE_LIFT_FILE override.
 NEWL="$W/home/.himmel/state/usage-lift.json"
