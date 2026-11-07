@@ -50,6 +50,10 @@ tick_bound() {
 # job is started by a subshell that exits at once, so init adopts it and the tick never reaps it.
 tick_detach() { ( "$@" </dev/null >/dev/null 2>&1 & printf '%s\n' "$!" ); }
 
+# tick_now_s: the epoch seconds in $tick_now, from the shell's own clock (no fork) when it has one;
+# bash 3.2 (macOS /bin/bash) has no printf '%(%s)T', so it falls back to date.
+tick_now_s() { printf -v tick_now '%(%s)T' -1 2>/dev/null || tick_now="$(date +%s)"; }  # swallow-ok: a shell without the builtin clock uses date
+
 # tick_section_refresh <base> <min-secs> <script> <args...>: run <script> detached, so the
 # waiter's timeout kills the tick's process group and never the refresh, at most once per
 # <min-secs> whether it succeeded or not ($base.tried), one at a time per <base> ($base.lock).
@@ -63,8 +67,11 @@ tick_section_refresh() {
     touch "$base.tried"
     pid="$(tick_detach setsid -w flock -n -E 75 "$base.lock" bash -c "$@")"  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the cache; gnu-ok: chief kit is Linux-only
     wait_s="${TICK_SECTION_WAIT:-3}"; case "$wait_s" in '' | *[!0-9]*) wait_s=3 ;; esac
-    end=$(( $(date +%s) + wait_s ))
-    while kill -0 "$pid" 2>/dev/null && [ "$(date +%s)" -lt "$end" ]; do sleep 0.05; done
+    # The poll forks only its sleep, every 0.25 s: the tick's CPU must not grow with how long a
+    # refresh runs, and a loaded runner makes the refresh, and so the poll, run longer.
+    tick_now_s
+    end=$(( tick_now + wait_s ))
+    while kill -0 "$pid" 2>/dev/null && [ "$tick_now" -lt "$end" ]; do sleep 0.25; tick_now_s; done
 }
 
 # tick_cache_age <file>: its age in seconds; nothing when it cannot be read.
@@ -2611,8 +2618,9 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
         pd_pid="$(tick_detach setsid -w flock -n -E 75 "$pd_base.lock" bash -c "$pd_script" _ "$HERE/next-dispatchable.sh" "$pd_base.rows" "${pd_args[@]}")"  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the snapshot; gnu-ok: chief kit is Linux-only
         pd_wait="${TICK_POOL_WAIT:-10}"; case "$pd_wait" in '' | *[!0-9]*) pd_wait=10 ;; esac
         pd_wait="$(tick_bound "$pd_wait")"
-        pd_end=$(( $(date +%s) + pd_wait ))
-        while kill -0 "$pd_pid" 2>/dev/null && [ "$(date +%s)" -lt "$pd_end" ]; do sleep 0.2; done
+        tick_now_s  # the poll forks only its sleep
+        pd_end=$(( tick_now + pd_wait ))
+        while kill -0 "$pd_pid" 2>/dev/null && [ "$tick_now" -lt "$pd_end" ]; do sleep 0.25; tick_now_s; done
         pd_m="$(stat -c %Y "$pd_base.rows" 2>/dev/null)" || pd_m=""  # gnu-ok: chief kit is Linux-only; swallow-ok: no snapshot reads old
         case "$pd_m" in '' | *[!0-9]*) ;; *) pd_age=$(( $(date +%s) - pd_m )) ;; esac
     fi
