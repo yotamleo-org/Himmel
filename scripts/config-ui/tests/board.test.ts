@@ -586,7 +586,7 @@ test("Board: a card shows its open PR and CI as a link from the worker records, 
   const api = await get(base);
   expect(api.prs).toEqual({ state: "ok", repo: "acme/widgets", prs: {
     ["HIMMEL-" + 3]: [{ pr: 4703, head: "a".repeat(40), ci: "running" }],
-    ["HIMMEL-" + 5]: [{ pr: 4704, head: "b".repeat(40), ci: "red" }] }, seen: {} }); // pending reads running, a red latch reads red, a closed PR is not listed
+    ["HIMMEL-" + 5]: [{ pr: 4704, head: "b".repeat(40), ci: "red" }] }, seen: {}, unread: [] }); // pending reads running, a red latch reads red, a closed PR is not listed
   const html = await page(base);
   const card = (k: string) => html.match(new RegExp(`<div class="rm-card"[^>]*aria-label="${k}:[\\s\\S]*?</div></div>`))![0];
   expect(card("HIMMEL-3")).toContain('<a class="pr ci-running" href="https://github.com/acme/widgets/pull/4703"');
@@ -597,6 +597,9 @@ test("Board: a card shows its open PR and CI as a link from the worker records, 
   expect(card("HIMMEL-4")).toContain("no open PR"); // started, and no worker record names an open PR
   expect(card("HIMMEL-2")).not.toContain("no open PR"); // not started
   expect(card("HIMMEL-1")).not.toContain("no open PR"); // done
+  writeFileSync(join(st, "workers", "HIMMEL-4.json"), "{ not json");
+  expect((await get(serve(env, s))).prs.unread).toEqual(["HIMMEL-" + 4]);
+  expect((await page(serve(env, s))).match(new RegExp(`<div class="rm-card"[^>]*aria-label="HIMMEL-${4}:[\\s\\S]*?</div></div>`))![0]).not.toContain("no open PR"); // the record could not be read, so no claim is made
   const none = await page(serve({ ...env, TICKET_STATUS_STATE_DIR: join(s.d, "no-state") }, s));
   expect(none).not.toContain("no open PR"); // the records could not be read: no card is flagged on a guess
   expect(none).not.toContain("CI running");

@@ -81,6 +81,7 @@ function prHtml(t, pr) {
     const text = `#${p.pr} · CI ${p.ci}`;
     return pr.repo ? `<a class="pr ci-${esc(p.ci)}" href="https://github.com/${esc(pr.repo)}/pull/${p.pr}" target="_blank" rel="noopener">${esc(text)}</a>` : `<span class="pr ci-${esc(p.ci)}">${esc(text)}</span>`;
   }).join(" ")}</div>`;
+  if ((pr.unread || []).includes(idOf(t))) return "";
   return t.b === "prog" || t.b === "rev" || t.b === "ci" ? `<div class="rm-pr"><span class="pr nopr">no open PR</span></div>` : "";
 }
 
