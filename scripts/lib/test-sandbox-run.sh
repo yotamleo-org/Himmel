@@ -348,9 +348,11 @@ else bad 'churn reason accepts something it should refuse'; fi
 churn & churn_pid=$!
 churn_bad=0; churn_reasoned=0; churn_start=$SECONDS; churn_done=0
 for _ in $(seq 1 30); do
-    # a launch that never returns would eat the suite's whole cap: bound each one, and the row.
-    [ $((SECONDS - churn_start)) -lt 120 ] || break
-    OUT=$(staged timeout 60 bash "$SRUNNER" -- bash -c 'echo RAN' 2>&1); RC=$?
+    # a launch that never returns would eat the suite's whole cap: a launch gets at most 60 s,
+    # never more than what is left of the row's 120 s, and is killed 5 s after the TERM.
+    churn_left=$((120 - (SECONDS - churn_start)))
+    [ "$churn_left" -gt 0 ] || break
+    OUT=$(staged timeout -k 5 "$((churn_left < 60 ? churn_left : 60))" bash "$SRUNNER" -- bash -c 'echo RAN' 2>&1); RC=$?
     churn_done=$((churn_done + 1))
     if [ "$RC" = 0 ] && [[ "$OUT" == *RAN* ]]; then :
     elif churn_reasoned_launch "$RC" "$OUT"; then churn_reasoned=$((churn_reasoned + 1))
