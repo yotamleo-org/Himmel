@@ -44,18 +44,23 @@ knowledge.
 
 ## Retrieval Routing — which organ answers what
 
-When the vault has a knowledge graph (a `graphify-out/` dir at the vault
-root), route retrieval by question shape, not habit — text-search-only is
-the failure mode:
+When the vault has a knowledge graph, route retrieval by question shape, not
+habit — text-search-only is the failure mode. The graph lives **outside the
+vault**, at `~/.local/share/himmel/graphify/luna/graphify-out/`
+(`GRAPHIFY_LUNA_OUT_ROOT` overrides the root), because Obsidian hung on its
+churn inside the vault:
 
 - **Content lookup** ("find my notes on X", "what did I save about Y") →
   text/semantic search (qmd or your search tool) first.
 - **Structure & neighborhoods** ("how does X relate to Y", "what clusters
   around Z", "map this theme") → the **graphify graph**:
-  `graphify query "<question>" --graph "<vault-root>/graphify-out/graph.json"`
+  `graphify query "<question>" --graph ~/.local/share/himmel/graphify/luna/graphify-out/graph.json`
   (the graph path must be the `--graph` flag — a positional directory is
   silently ignored and the query runs against the current directory's
-  graph), or the graphify MCP tools when connected. The curated entry
+  graph), or the graphify MCP tools when connected, always passing
+  `project_path` set to `~/.local/share/himmel/graphify/luna` with the `~`
+  expanded to your home directory (the tools do not expand it, and without
+  `project_path` they read the current directory's graph). The curated entry
   point is the graphify map note in `60-Maps/` (written by the graph
   refresh).
 - A **search miss is not evidence of absence** — structural connections
