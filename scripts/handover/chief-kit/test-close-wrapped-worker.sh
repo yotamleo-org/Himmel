@@ -2207,8 +2207,8 @@ check "9542 b: no record means nothing is signaled" "$(cat "$CALLS")" ""
 pb_orig 23:50; pb_res 00:10
 reset_calls
 rc=0; out=$(run "$PB_ORIG" 2>&1) || rc=$?
-check "9542 b: a gap of twenty hours is not read as the newest WRAPPED -> rc 4" "$rc" "4"
-check "9542 b: the twenty-hour gap signals nothing" "$(cat "$CALLS")" ""
+check "9542 b: a gap of 23h40 is not read as the newest WRAPPED -> rc 4" "$rc" "4"
+check "9542 b: the 23h40 gap signals nothing" "$(cat "$CALLS")" ""
 rm -f "$PB_ORIG" "$PB_RES"
 
 # the real N5072 pair: the RESUME doc has no Results heading and one prose bullet that begins READY
@@ -2260,7 +2260,23 @@ reset_calls
 rc=0; out=$(run "$G_RES" 2>&1) || rc=$?
 check "9542 sibling: two originals naming one RESUME doc are refused -> rc 5" "$rc" "5"
 check "9542 sibling: two originals signal nothing" "$(cat "$CALLS")" ""
-rm -f "$G_ORIG" "$G_RES" "$G_OTHER"
+rm -f "$G_OTHER"
+# shellcheck disable=SC2016  # literal fixture token delimiters
+printf '# worker\n\n## Results\n\n- 09:00 LIVE - started, release-token `fixture-pid100`\n- 10:00 WRAPPED - halted. Resume: %s\n- 11:00 LIVE - resumed, release-token fixture-pid200\n- 12:00 WRAPPED - merged\n' "$G_RES" > "$G_ORIG"
+G_OTHER_LABEL="$W/HIMMEL-9-N64-x-2026-01-01.md"
+printf '# worker\n\n## Results\n\n- 10:00 WRAPPED - halted. Resume: %s\n' "$G_RES" > "$G_OTHER_LABEL"
+reset_calls
+rc=0; out=$(run "$G_RES" 2>&1) || rc=$?
+check "9542 sibling: a doc of another worker that names the RESUME doc is not its original -> rc 0" "$rc" "0"
+exact_count "9542 sibling: another worker's doc does not stop the one pid being signaled" "$(cat "$CALLS")" "kill -TERM 450" "1"
+rm -f "$G_OTHER_LABEL"
+G_OTHER_UNNAMED="$W/HIMMEL-9-N62-unrelated-2026-01-01.md"
+printf '# worker\n\n## Results\n\n- 10:00 WRAPPED - halted, no resume\n' > "$G_OTHER_UNNAMED"
+reset_calls
+rc=0; out=$(run "$G_RES" 2>&1) || rc=$?
+check "9542 sibling: a same-label doc that does not name the RESUME doc is not its original -> rc 0" "$rc" "0"
+exact_count "9542 sibling: an unnamed same-label doc does not stop the one pid being signaled" "$(cat "$CALLS")" "kill -TERM 450" "1"
+rm -f "$G_ORIG" "$G_RES" "$G_OTHER_UNNAMED"
 
 # --- 24: no handovers/ leaked into the real repo ----------------
 post_handovers=absent

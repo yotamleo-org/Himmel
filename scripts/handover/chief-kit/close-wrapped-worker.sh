@@ -41,7 +41,8 @@
 #     starting with LIVE, is no tail); a -RESUME doc with no marker-bullet of its own reads the original's
 #     (a resumed worker's WRAPPED lands on the original doc) only when the original's Results hold,
 #     after the hand-off WRAPPED naming the -RESUME doc, a LIVE with a new release token and then a
-#     WRAPPED, and the sibling's queue lock must be free too;
+#     WRAPPED, and the sibling's queue lock must be free too; a -RESUME doc with no Results
+#     heading has no marker of its own, whatever prose bullet it holds;
 #   - exactly one live `claude` session's real argv (via
 #     scripts/lanes/lib/claude-sessions.sh's claude_sessions, /proc-argv
 #     based, never a flattened pgrep -af scan) carries a `-n <name>` naming
@@ -233,7 +234,8 @@ fi
 # The resumed worker's label carries a successor letter (N4426b), so the sibling is found by
 # the label with and without it: a RESUME doc looks for the original (letter dropped, with and
 # without -RESUME); an original looks for <stem>-RESUME.md, else the one -N<k>[a-z]-...-RESUME.md
-# successor (more than one is refused).
+# successor (more than one is refused). A leg-named RESUME doc whose original has no leg and a
+# date finds no candidate by name: the one same-ticket, same-worker doc that names it is the original.
 # shellcheck source=scripts/lib/worker-identity.sh
 # shellcheck disable=SC1091
 if ! . "$HERE/../../lib/worker-identity.sh"; then
