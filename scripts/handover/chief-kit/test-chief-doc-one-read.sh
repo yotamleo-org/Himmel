@@ -186,6 +186,7 @@ run_fixture() { # <name> <queue segments> <ruling groups>
     [ "$rc" -eq 0 ] || printf '%s\n' "$out" | tail -n 5 | sed 's/^/    next said: /'
     docB="$(printf '%s\n' "$out" | sed -n 's/^doc: //p')"
     [ -f "$docB" ] || { check "$b: next wrote the successor doc" no yes; return; }
+    last_docB="$docB"
     local bytes; bytes="$(wc -c < "$docB" | tr -d ' ')"
     printf 'fixture %s: successor doc %s bytes (bound %s)\n' "$b" "$bytes" "$BOUND_BYTES"
     check "$b: (a) the successor doc is under the Read bound ($bound_note)" "$([ "$bytes" -le "$BOUND_BYTES" ] && echo under || echo "over:$bytes")" under
@@ -220,6 +221,35 @@ bound_note="$BOUND_BYTES bytes"
 # RED/GREEN rows on the two fixtures
 run_fixture sjlike 14 110
 run_fixture tqlike 40 140
+
+# (d) a second succession: 20 long rulings added on top of the already shortened direction are
+# shortened too, so the direction does not grow by their full text each time
+cat > "$tmp/gen2.py" <<'PY'
+import os, sys
+doc, bucket, n = sys.argv[1], sys.argv[2], int(sys.argv[3])
+W = "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike november oscar papa".split()
+new = []
+for i in range(n):
+    num = 900 + i
+    open(os.path.join(bucket, "specs", "decisions", "verbatim-decision-%d-operator-11-07-ZZ.txt" % num), "w").write("operator words\n")
+    new.append("OPERATOR 11-07 ZZ (BINDING, carry to every successor; decision %d, verbatim specs/decisions/verbatim-decision-%d-operator-11-07-ZZ.txt). Read, unconfirmed: %s." % (num, num, " ".join(W[(i + j) % len(W)] for j in range(70))))
+lines = open(doc, encoding="utf-8").read().split("\n")
+cur = lines.index("## Current direction")
+nxt = next(i for i in range(cur + 1, len(lines)) if lines[i].startswith("## "))
+lines[nxt:nxt] = ["\n\n".join(new), ""]
+open(doc, "w", encoding="utf-8").write("\n".join(lines))
+PY
+dir_bytes() { awk '$0 == "## Current direction" { f = 1; next } f && /^## / { exit } f' "$1" | wc -c | tr -d ' '; }
+gen2_doc="$last_docB"
+before_dir="$(dir_bytes "$gen2_doc")"
+python3 -I "$tmp/gen2.py" "$gen2_doc" "$root/tester/tqlike" 20
+with_new="$(dir_bytes "$gen2_doc")"
+out2="$(chief next --bucket tqlike --doc "$gen2_doc" 2>&1)"; rc=$?
+check "tqlike second succession: next succeeds" "$rc" "0"
+doc2="$(printf '%s\n' "$out2" | sed -n 's/^doc: //p')"
+after_dir="$([ -f "$doc2" ] && dir_bytes "$doc2" || echo 0)"
+printf 'second succession: direction %s bytes, with 20 new rulings %s, successor %s\n' "$before_dir" "$with_new" "$after_dir"
+check "tqlike second succession: the 20 new rulings add under 4400 bytes (not their 12000 of full text)" "$([ "$after_dir" -gt 0 ] && [ "$((after_dir - before_dir))" -lt 4400 ] && echo under || echo "over:$((after_dir - before_dir))")" under
 
 # the refusals on an absent or empty Current direction stay
 chief new --bucket empty >/dev/null 2>&1

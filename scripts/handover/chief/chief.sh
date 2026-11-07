@@ -1978,7 +1978,8 @@ tracker_head() {
 # the pattern). A line not marked BINDING says so. The reading is cut at a sentence or word so
 # the whole block fits CHIEF_DIRECTION_BUDGET_BYTES (default 15000): the newest 40 lines get
 # twice the share of the older ones, at least 48 bytes (96 for the newest). A line of another
-# shape keeps its start, at least 150 bytes. Every line the shortening cuts is kept byte for
+# shape keeps its start, at least 150 bytes. A line an earlier run already shortened stays as
+# it is but counts against the budget, so rulings added later are shortened to the floors. Every line the shortening cuts is kept byte for
 # byte in the history file named in the first line of the result. Prints nothing and returns 1
 # when no line was shortened.
 # Args: block (stdin), dir, history file (relative to dir).
@@ -2017,11 +2018,11 @@ for ln in sys.stdin.read().split("\n"):
         rows.append((ln, "", ln))
 short = [r for r in rows if r[1] is not None]
 n = len(short)
-fixed = sum(len(r[1].encode()) for r in short)
+fixed = sum(len(r[1].encode()) for r in short) + sum(len(r[0].encode()) for r in rows if r[1] is None and r[0].strip() and not r[0].startswith(">"))
 base = max(48, (budget - fixed) // max(n + min(n, 40), 1))
 def cut(t, cap):
     if len(t.encode()) <= cap: return t
-    t = t[:cap]
+    t = t.encode()[:cap].decode("utf-8", "ignore")
     s = max(t.rfind(". "), t.rfind("; "))
     t = t[:s + 1] if s >= cap // 2 else (t.rsplit(" ", 1)[0] if " " in t else t)
     return t.rstrip(",;: ") + " …"
