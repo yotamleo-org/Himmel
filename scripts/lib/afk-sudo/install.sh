@@ -80,19 +80,31 @@ enable_cmd() {
 # mode and owner; only key names are printed, never a value.
 install_config() {
     local src=$1 cfg=$2 added
-    if [ ! -e "$cfg" ]; then
+    if [ ! -e "$cfg" ] && [ ! -L "$cfg" ]; then
         install -o root -g root -m 0644 "$src/afk-sudo.json.template" "$cfg" || return 1
         return 0
     fi
     # shellcheck disable=SC2016 # python source, not shell
     added=$(python3 -I -c '
-import json, os, sys, tempfile
+import json, os, stat, sys, tempfile
 tpl_path, cfg_path = sys.argv[1:3]
+# The owner the helper requires is root; a test seam names another uid, honoured only when this is not root.
+owner = int(os.environ.get("AFK_OWNER_UID", "0")) if os.geteuid() != 0 else 0
+def refuse(why):
+    sys.exit("install.sh: refusing " + cfg_path + ": " + why + " (the helper refuses it too); fix it first")
 with open(tpl_path) as f:
     tpl = json.load(f)
-st = os.stat(cfg_path)
-with open(cfg_path) as f:
-    cur = json.load(f)
+# The checks the helper makes before it reads the config (approval_broker.check_safe): lstat, so a link is refused.
+st = os.lstat(cfg_path)
+if not stat.S_ISREG(st.st_mode):
+    refuse("not a regular file (a link or a directory)")
+if st.st_uid != owner:
+    refuse("not owned by root")
+if st.st_mode & 0o022:
+    refuse("group- or world-writable")
+with open(cfg_path, "rb") as f:
+    raw = f.read()
+cur = json.loads(raw)
 if not isinstance(cur, dict):
     sys.exit("the config is not a JSON object")
 added = []
@@ -107,17 +119,31 @@ fill(cur, tpl, "")
 if added:
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(cfg_path), prefix=".afk-sudo.")
     try:
+        os.fchmod(fd, st.st_mode & 0o7777)
+        os.fchown(fd, st.st_uid, st.st_gid)
         with os.fdopen(fd, "w") as f:
             json.dump(cur, f, indent=2, ensure_ascii=False)
             f.write("\n")
-        os.chown(tmp, st.st_uid, st.st_gid)
-        os.chmod(tmp, st.st_mode & 0o7777)
+            f.flush()
+            os.fsync(f.fileno())
+        # Replace only a config that is still the one we read (a lockdown or an edit in between is not overwritten).
+        st2 = os.lstat(cfg_path)
+        with open(cfg_path, "rb") as f:
+            again = f.read()
+        if (st2.st_ino, st2.st_mtime_ns, st2.st_size) != (st.st_ino, st.st_mtime_ns, st.st_size) or again != raw:
+            sys.exit("install.sh: " + cfg_path + " changed while it was being merged; it is left as it is, run the install again")
         os.replace(tmp, cfg_path)
     except BaseException:
-        os.unlink(tmp)
+        if os.path.lexists(tmp):
+            os.unlink(tmp)
         raise
+    dfd = os.open(os.path.dirname(cfg_path), os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(dfd)
+    finally:
+        os.close(dfd)
 print(" ".join(added))
-' "$src/afk-sudo.json.template" "$cfg") || { echo "install.sh: cannot add the new keys to $cfg; it is left as it was" >&2; return 1; }
+' "$src/afk-sudo.json.template" "$cfg") || { echo "install.sh: the new keys were not added to $cfg; it is left as it was" >&2; return 1; }
     if [ -n "$added" ]; then
         echo "Added the new keys to $cfg (existing values untouched): $added"
     fi

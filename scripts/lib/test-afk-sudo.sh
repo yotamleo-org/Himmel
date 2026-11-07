@@ -1764,6 +1764,8 @@ assert_contains "RED 9507: a failed sudo-kind notice is ledgered with the same r
 echo "== HIMMEL-9507: install.sh writes both files from templates and adds new keys to an old config =="
 INSTALL="$LIB/install.sh"
 CFG_TPL="$LIB/afk-sudo.json.template"; ENV_TPL="$LIB/notice-bot.env.template"
+AFK_OWNER_UID=$(id -u)
+export AFK_OWNER_UID
 # mode_of <file>: its octal mode (GNU stat, else BSD).
 mode_of() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 # install_stub: a PATH dir whose `install` drops -o/-g (the test user is not root) and runs the real one.
@@ -1804,6 +1806,36 @@ assert_eq "a second install over the merged config changes nothing" "$before" "$
 printf '{not json' > "$OLD/bad.json"
 out=$(inst install_config "$LIB" "$OLD/bad.json" 2>&1); rc=$?
 assert_eq "a config that is not JSON is refused and left as it was" "1 {not json" "$rc $(cat "$OLD/bad.json")"
+# The installer refuses the config files the helper refuses (a link, a file not owned by root, a group- or world-writable one).
+# The test user is not root, so the owner the installer expects is the test user's own uid, through AFK_OWNER_UID (honoured only for euid != 0).
+SL="$tmp/sl-etc"; mkdir -p "$SL"
+printf '{"enabled": true}\n' > "$SL/real.json"; chmod 0644 "$SL/real.json"; ln -s real.json "$SL/afk-sudo.json"
+out=$(AFK_OWNER_UID=$(id -u) inst install_config "$LIB" "$SL/afk-sudo.json" 2>&1); rc=$?
+assert_eq "RED 9507: a symlinked config is refused (rc 1)" "1" "$rc"
+assert_eq "RED 9507: a refused symlinked config stays a link to an untouched target" "yes {\"enabled\": true}" "$([ -L "$SL/afk-sudo.json" ] && echo yes || echo no) $(cat "$SL/real.json")"
+assert_contains "RED 9507: the symlink refusal says what is wrong" "not a regular file" "$out"
+ln -s missing.json "$SL/dangling.json"
+out=$(AFK_OWNER_UID=$(id -u) inst install_config "$LIB" "$SL/dangling.json" 2>&1); rc=$?
+assert_eq "RED 9507: a dangling symlink is not written through" "1 no" "$rc $([ -e "$SL/missing.json" ] && echo yes || echo no)"
+printf '{"enabled": true}\n' > "$SL/other.json"; chmod 0644 "$SL/other.json"
+out=$(AFK_OWNER_UID=$(( $(id -u) + 1 )) inst install_config "$LIB" "$SL/other.json" 2>&1); rc=$?
+assert_eq "RED 9507: a config not owned by the expected owner is refused and left as it was" "1 {\"enabled\": true}" "$rc $(cat "$SL/other.json")"
+assert_contains "RED 9507: the owner refusal says so" "not owned by root" "$out"
+chmod 0664 "$SL/other.json"
+out=$(AFK_OWNER_UID=$(id -u) inst install_config "$LIB" "$SL/other.json" 2>&1); rc=$?
+assert_eq "RED 9507: a group-writable config is refused and left as it was" "1 {\"enabled\": true}" "$rc $(cat "$SL/other.json")"
+assert_contains "RED 9507: the writable refusal says so" "group- or world-writable" "$out"
+# gid_of <file>: its numeric group (GNU stat, else BSD).
+gid_of() { stat -c %g "$1" 2>/dev/null || stat -f %g "$1"; }
+othergid=""
+for g in $(id -G); do if [ "$g" != "$(id -g)" ]; then othergid=$g; break; fi; done
+if [ -n "$othergid" ]; then
+    printf '{"enabled": true}\n' > "$SL/grp.json"; chmod 0644 "$SL/grp.json"; chgrp "$othergid" "$SL/grp.json"
+    out=$(AFK_OWNER_UID=$(id -u) inst install_config "$LIB" "$SL/grp.json" 2>&1)
+    assert_eq "RED 9507: a merge keeps the file's group (fails if the chown is removed)" "$othergid" "$(gid_of "$SL/grp.json")"
+else
+    echo "  SKIP  the test user has no second group, so the merge's group-keeping row cannot run"
+fi
 # shellcheck disable=SC2123,SC2030,SC2031,SC1090
 assert_contains "RED 9507: the notice-bot.env step names SUDO_EDITOR when no editor exists" "SUDO_EDITOR=nano sudoedit /etc/himmel/afk-sudo/notice-bot.env" \
     "$( ( PATH="$STUBS/linux"; export AFK_OS_RELEASE="$tmp/os-arch"; unset SUDO_EDITOR VISUAL EDITOR; source "$INSTALL" && notice_env_steps ) 2>&1 )"

@@ -353,7 +353,12 @@ false), `run.ttl_s` (default 900, max 3600), `run.timeout_s` (default 300, max 1
 `ops.enabled` (default false), `ops.ttl_s` (default 900, 30 to 3600), `never_remote_extra`. `install.sh` writes them with the safe defaults on first
 install from `afk-sudo.json.template` (beside it). Over an existing config it adds the keys the template has and the
 config lacks, nested ones too, changes no existing value, keeps the file's mode and owner, and prints key names only.
-A config that is not a JSON object is refused and left as it was.
+The installer refuses what the helper refuses: a config that is a link or not a regular file, not owned by root, or
+group- or world-writable is left as it was, with a non-zero exit. A config that is not a JSON object is refused too.
+The new file is fsynced before it replaces the old one. Just before the replace the installer re-reads the config and
+stops, leaving it as it is, if it changed since the read. The helper takes no lock on the config, so a `lockdown`
+landing in the few microseconds between that re-read and the replace would still be overwritten with the value
+read earlier; run the install while the station is quiet, and check `enabled` afterwards.
 
 ## Turning it off
 
