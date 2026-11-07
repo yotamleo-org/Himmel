@@ -126,7 +126,7 @@ docs/internals/egress-matrix.md	  an unreadable claude-glm config dir, a base UR
 docs/internals/egress-matrix.md	  Windows launchers are out of scope (Windows is dropped).
 docs/internals/enforcement.md	leftover Codex copy, which was costing a `pwsh`→`cmd`→`bash` spawn on every
 docs/internals/enforcement.md	Fires on `Bash|PowerShell|mcp__.*`. Keyed on `HIMMEL_WORKER=1`, the
-docs/internals/enforcement.md	- **Pin-dir class (HIMMEL-2085):** a Bash/PowerShell command whose text names
+docs/internals/enforcement.md	- **Pin-dir class:** a Bash/PowerShell command whose text names
 docs/internals/enforcement.md	**What drops is the node launches, not the Git Bash ones** — the members stay one
 docs/internals/enforcement.md	shell each by design (no extra wrapper shell), so the per-Git-Bash pool cost is
 docs/internals/enforcement.md	- **Matchers are disjoint** — `Bash`, `PowerShell`, `Read|Grep`, the Edit/Write
@@ -136,21 +136,21 @@ docs/internals/enforcement.md	same resolver the wired hooks use: on Windows a ba
 docs/internals/enforcement.md	launcher or a 0-byte WindowsApps alias, which would time a different shell than
 docs/internals/enforcement.md	this inventory over Windows PATH roulette (the WSL stub, the 0-byte Store
 docs/internals/enforcement.md	  spelling falls through, as does a drive-letter payload `cwd`. Windows Git
-docs/internals/enforcement.md	- **Windows Git Bash drive-letter paths (HIMMEL-3192).** The three
+docs/internals/enforcement.md	- **Windows Git Bash drive-letter paths.** The three
 docs/internals/enforcement.md	  Linux-only tested — the cases simulate the spelling; Git Bash itself was not run.
 docs/internals/enforcement.md	  literal name. So Windows Git Bash always gets a prompt.
 docs/internals/enforcement.md	Bash/PowerShell payload whose command is missing or not a string.
 docs/internals/enforcement.md	Fires on Edit/Write/MultiEdit/NotebookEdit, plus a textual Bash/PowerShell
-docs/internals/enforcement.md	**The Bash/PowerShell arm is textual and blunt (HIMMEL-1525, HIMMEL-3468,
+docs/internals/enforcement.md	**The Bash/PowerShell arm is textual and blunt.** It does not parse commands. It fires when the
 docs/internals/enforcement.md	PowerShell arm's; the Bash arm judges EVERY segment holding a
 docs/internals/enforcement.md	(backslash-newline) is removed as a pair. The PowerShell arm deletes quotes
 docs/internals/enforcement.md	a PowerShell read of the file piped or redirected onward (the Bash arm
 docs/internals/enforcement.md	- a POSIX-mount spelling (`/c/Users/…`) of a Windows drive root.
 docs/internals/enforcement.md	Fires on Bash/PowerShell/Read/Grep. Refuses any tool call that would
-docs/internals/enforcement.md	outer clause and the HIMMEL-440 recursed `bash -c` body; PowerShell's
+docs/internals/enforcement.md	outer clause and the recursed `bash -c` body; PowerShell's
 docs/internals/enforcement.md	Fires on Bash/PowerShell. Shared floor with the Codex lane — ports the
 docs/internals/enforcement.md	tool-permission config: recursive `rm` / Windows `del`/`erase`/`rd`/`rmdir`,
-docs/internals/enforcement.md	spelling (HIMMEL-1821: `schtasks` mutating verbs, the PowerShell
+docs/internals/enforcement.md	spelling (`schtasks` mutating verbs, the PowerShell
 docs/internals/enforcement.md	`Schedule.Service` COM object, while the read-only diagnostics `schtasks
 docs/internals/enforcement.md	`pskill`/`kill -9`), system shutdown/reboot/logoff, Windows registry
 docs/internals/enforcement.md	(`sudo`, `env`, `cmd /c`, `powershell`/`pwsh -c`) and an executable-path
@@ -190,7 +190,7 @@ docs/internals/enforcement.md	cross-platform-sensitive path (`*.sh`, `*.bash`, `
 docs/internals/enforcement.md	`pwsh`. Empty (`Platforms tested:`) and unrecognised
 docs/internals/enforcement.md	**Bash-only.** There is no PowerShell execution path for
 docs/internals/enforcement.md	(`'VAR': 1`, `VAR: '1'`) and PowerShell `$env:VAR = 1`, and only exactly `1` (not
-docs/internals/enforcement.md	| A `Bash`/`PowerShell` command matching either (i) a keyword/substring hit — `refs/remotes/`, `remotes/origin/`, `symbolic-ref`, `remote set-head`, `remote set-url`, `remote add`, `remote remove`, `remote rm`, `remote rename`, `update-ref`, `insteadOf`, `remote.origin.url` — anywhere in the (lowercased) command text, or (ii) a command-position `git [global-flags] (fetch\|push\|pull)` shape carrying an explicit refspec whose **destination** writes remote-tracking space — `refs/remotes/…`, or an `<a>/<b>` shorthand whose `<a>` is a real remote/tracking namespace in this repo — regardless of which remote is named, and including via `git -C <dir>` | A native dispatched worker session (`HIMMEL_WORKER=1`); a headed operator session never reaches `worker_lane` and is unaffected | Deny, rc=2 | `HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1` set in the **launching** shell (same bypass var as the HIMMEL-2085 pin-dir class — one escape hatch covers both hook-integrity fences; since HIMMEL-3396 it is honoured only inside a linked worktree of the session's recorded repo and audited, so the primary checkout keeps both fences on) |
+docs/internals/enforcement.md	| A `Bash`/`PowerShell` command matching either (i) a keyword/substring hit — `refs/remotes/`, `remotes/origin/`, `symbolic-ref`, `remote set-head`, `remote set-url`, `remote add`, `remote remove`, `remote rm`, `remote rename`, `update-ref`, `insteadOf`, `remote.origin.url` — anywhere in the (lowercased) command text, or (ii) a command-position `git [global-flags] (fetch\|push\|pull)` shape carrying an explicit refspec whose **destination** writes remote-tracking space — `refs/remotes/…`, or an `<a>/<b>` shorthand whose `<a>` is a real remote/tracking namespace in this repo — regardless of which remote is named, and including via `git -C <dir>` | A native dispatched worker session (`HIMMEL_WORKER=1`); a headed operator session never reaches `worker_lane` and is unaffected | Deny, rc=2 | `HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1` set in the **launching** shell (same bypass var as the pin-dir class — one escape hatch covers both hook-integrity fences; it is honoured only inside a linked worktree of the session's recorded repo and audited, so the primary checkout keeps both fences on) |
 docs/internals/enforcement.md	**Both fences in the file are fixed, by ONE shared joiner.** The GLM-lane
 docs/internals/enforcement.md	The GLM lane is currently **dropped**; that is recorded as a fact, and it is
 docs/internals/enforcement.md	   and the GLM-lane shape matchers (round 5).
@@ -297,10 +297,10 @@ docs/internals/worker-spawn-matrix.md	- `scripts/telegram/phi-egress-guard.ts` (
 docs/internals/worker-spawn-matrix.md	| **Hermes one-shot via `scripts/hermes/invoke.sh` / `dispatch-trusted.sh`** | `invoke.sh` runs in caller's current directory; no worktree creation. Isolation depends on caller creating/choosing a worktree first. | `invoke.sh` uses Hermes with default `todo` toolset unless `--toolsets` opts in. `dispatch-trusted.sh` sets `HERMES_EXTERNAL_WRITES_OK=1` and defaults to `--profile himmel_agent`; `parity_guard.py` remains the fence and fail-closes external writes unless the engine is trusted. | **Yes — LIVE-PROVEN** (2026-07-07 session 11): `invoke.sh --model qwen3-coder-plus` routed to the Alibaba provider (model self-identified) while the unflagged default stayed `gpt-5.5`/openai-codex — two providers from two dispatches on the same surface. Failure mode is loud, not silent: an alias that does not resolve (observed: `qwen-flash`) falls through to the DEFAULT provider, which rejects the unknown model name with HTTP 400. `--profile` selects profile; `--toolsets` selects toolsets. | Optional `--log <path>` tees stdout/stderr. Hermes owns its normal session store; exact one-shot transcript path was not verified in repo files. | `dispatch-trusted.sh` allows trusted-engine external writes through `parity_guard.py`; push/PR still require operator authorization by higher-level policy. GLM/z.ai signals override the opt-in and are refused. | One-shot uses `-z` / yolo-style auto-approval in `invoke.sh`; therefore the default toolset is intentionally `todo` to avoid unattended terminal/browser/fs access unless a caller opts in. | Exit code is Hermes' return code, UNLESS the watchdog fires: `invoke.sh` wall-clock timeboxes (`HERMES_INVOKE_TIMEOUT`, default 1800s) and kills the process tree (rc 124), and separately aborts early (rc 125) on `PARITY_GUARD_DENY_ESCALATE_N` (default 3) identical `parity_guard` denies in a row — a DENY is not terminal to hermes upstream. Optional log file. |
 docs/internals/worker-spawn-matrix.md	| **Codex worker / Codex lane surfaces** | Codex itself uses the caller workspace. Branch provenance convention is `codex/<slug>` per `docs/internals/harness-compat.md`; dedicated worktree creation is outside the codex supervision scripts read here. | Codex direct guard path is `.codex/hooks.json` -> `.codex/run-hook.{sh,cmd}` -> adapter -> native guard scripts per `harness-compat.md` / `lane-parity.md`. `scripts/codex/*` adds observability/supervision, not the primary guard fence. | **UNVERIFIED in repo files read.** Codex model selection surface is not described in the inspected `scripts/codex/*` supervision scripts. | Codex session rollouts live under `$CODEX_HOME/sessions/rollout-*.jsonl`; startup warnings in `$CODEX_HOME/logs_2.sqlite`. Codex companion job state lives under `$CLAUDE_PLUGIN_DATA/state/<slug>-<hash>/state.json` or fallbacks documented in `companion-liveness.sh`. | `lane-parity.md` marks `codex-direct` write-authority / external-write e2e proof as `GAP`; docs say native block hooks are reached through adapter, but codex external-write through-adapter proof remains missing. | `harness-compat.md` says Codex hooks block by stdout JSON `permissionDecision:"deny"`, not Claude exit 2; the adapter translates. Interactive permission-window parity is **UNVERIFIED** here and is a known open item. | `startup-health.sh` reports degraded startup signals: ignored hooks, skill/plugin prompt truncation, oversized `_where-are-we`. `companion-liveness.sh` flags queued/running jobs with no live runner. `reap-mcp-fleet.{sh,ps1}` reports/reaps orphaned Windows MCP fleet processes. |
 docs/internals/worker-spawn-matrix.md	write (`pwsh Set-Content`) went through — the fix for such gaps is structural
-docs/internals/enforcement.md	> **Platform tier:** Windows is dropped (HIMMEL-5729): no Windows host is
+docs/internals/enforcement.md	> **Platform tier:** Windows is dropped: no Windows host is
 docs/internals/enforcement.md	> supported or tested. A Windows, PowerShell or Git Bash note below describes
 docs/internals/enforcement.md	`fedora`, `arch`, `wsl`, `posix`, `gitbash`, `git-bash`, `powershell`,
-docs/internals/enforcement.md	external lane (the GLM fallback was removed, HIMMEL-7481). No suitable lane, an unrunnable
+docs/internals/enforcement.md	external lane (the GLM fallback was removed). No suitable lane, an unrunnable
 docs/internals/lane-calibration.md	| `hermes-oneshot` — hermes one-shot dispatch | impl | invoke.sh wall-clock timebox (default 1800s) + Nth-identical-deny abort | 900000 — re-confirmed on ox-alpha (2026-08-22: 300K/600K/900K probes all accepted); previously operator-verified inside hermes v0.20.2 (2026.8.16), upstream commit `bab7be3c` (2026-08-17), superseding 350000 (hermes-agent commit 522997543, 2026-08-16) | none (dashboard-omitted) | calibrated — live-proven spawn path; see [the hermes default](#the-hermes-himmel_agent-default-and-the-ox-alpha-record) |
 docs/internals/lane-calibration.md	## The hermes `himmel_agent` default and the ox-alpha record
 docs/internals/lane-calibration.md	when the temporary ox-alpha trial ended. Hermes-routed critics do not ride the
@@ -311,7 +311,7 @@ docs/internals/lane-calibration.md	describe ox-alpha, not `gpt-6.1-sol`.
 docs/internals/lane-calibration.md	  900000 stays the declared operating window on that basis, unchanged — it was already an operator ruling/measurement before ox-alpha, and these probes establish ACCEPTANCE at that size, not a verified usable window.
 docs/internals/lane-calibration.md	- **Expired.** ox-alpha's trial ended on 2026-10-04 and the profile default
 docs/internals/lane-calibration.md	  this repo pins ox-alpha by name, which is deliberate.
-docs/internals/lane-calibration.md	| `glm` — GLM lane | impl | — | — | — | removed: dropped (HIMMEL-1967), registry row and dispatcher deleted (HIMMEL-7909, HIMMEL-7481) |
+docs/internals/lane-calibration.md	| `glm` — GLM lane | impl | — | — | — | removed: dropped, registry row and dispatcher deleted |
 docs/hermes-runbook.md	closed the Codex/GPT-5.5 "should be 1M" report as **not a bug**: live
 docs/hermes-runbook.md	`openai-codex` reports and enforces `gpt-5.5` at `272000` tokens, while direct
 docs/hermes-runbook.md	OpenAI API `gpt-5.5` can resolve around `1050000`. Pinning Codex to 1M would
@@ -350,8 +350,8 @@ docs/tool-adoption/lane-adoption-playbook.md	needed. The GLM onboarding (the GLM
 docs/tool-adoption/lane-adoption-playbook.md	  (`docs/tooling-catalog.md` `claude-codex` section). The removed GLM lane
 docs/tool-adoption/lane-adoption-playbook.md	  (`glm-5.2[1m]` + 1000000, or `glm-5.2` + 200000).
 docs/tool-adoption/lane-adoption-playbook.md	ruling (2026-08-07): **glm gated at 10 consecutive passes** (the lane has since been removed; down since the
-docs/tooling-catalog.md	leftover of the dropped Windows support (HIMMEL-5729) and is never read. A cadence copied between stations leaves a dormant,
-docs/tooling-catalog.md	dropped Windows support, HIMMEL-5729, never fires on Linux or macOS) and `default_vault` (honors `LUNA_VAULT_PATH` first — the path
+docs/tooling-catalog.md	leftover of the dropped Windows support and is never read. A cadence copied between stations leaves a dormant,
+docs/tooling-catalog.md	dropped Windows support, never fires on Linux or macOS) and `default_vault` (honors `LUNA_VAULT_PATH` first — the path
 docs/tooling-catalog.md	<a id="claude-glm"></a>
 docs/tooling-catalog.md	`claude-sonnet-5` when the proxy serves it (cli-proxy-api's claude provider, OAuth
 docs/tooling-catalog.md	classifier and substitutes `claude-sonnet-5`). The main, Haiku, Opus and subagent
