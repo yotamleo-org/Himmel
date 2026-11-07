@@ -1061,7 +1061,7 @@ check "login unreadable and cache without account -> INVALID: account" 'usage-li
 rm -f "$USAGE_LIFT_FILE"
 lift_followed=true; export lift_followed
 check "no lift, inherited env lift_followed=true cannot leak into the ledger row" false \
-  "$(fverdict 10 10 >/dev/null; tail -1 "$W/ledger.jsonl" | jq -r '.lift_followed')"
+  "$(fverdict null null >/dev/null; tail -1 "$W/ledger.jsonl" | jq -r '.lift_followed')"
 unset lift_followed
 
 # The lift file: the default path, then the USAGE_LIFT_FILE override.
