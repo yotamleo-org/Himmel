@@ -3,7 +3,7 @@ name: pr-check
 description: Local code review of a non-himmel repo's branch.
 ---
 
-# pr-check — the CR review from an adopter session (HIMMEL-7790)
+# pr-check — the CR review from an adopter session
 
 `/pr-check` is a himmel project command, so a session whose cwd is an adopted
 repo does not load it. This skill is the same runbook, reached through the

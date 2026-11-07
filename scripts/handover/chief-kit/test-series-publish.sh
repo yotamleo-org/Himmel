@@ -406,28 +406,33 @@ GH_PRS="$PRS7" sp --ledger "$L7" --doc "$B" K2
 check "7: K1 committed and never published: K2 refuses rc 2" "$rc" 2
 contains "7: the refusal names K1" "$out" "previous item K1"
 lacks "7: the refusal is not a conflict" "$out" "PUBLISH-CONFLICT"
+lacks "7: (e) no recorded PR is a refusal, not a wait" "$out" "PUBLISH-WAIT"
 nothing_moved "7 no PR recorded" s7 "$before"
 sl set --ledger "$L7" --key K1 state=published publish_branch=series-pub/s7/K1 published_head="$K1WIP"
 before="$(cat "$L7")"
 GH_PRS="$PRS7" sp --ledger "$L7" --doc "$B" K2
 check "7: K1 with a publish branch and gh printing nothing: K2 refuses rc 2" "$rc" 2
 contains "7: the refusal names K1" "$out" "previous item K1"
+contains "7: (a) gh printing nothing prints a wait line naming K1" "$out" "PUBLISH-WAIT K1"
 nothing_moved "7 gh prints nothing" s7 "$before"
 GH_PR_FAIL=1 GH_PRS="$PRS7" sp --ledger "$L7" --doc "$B" K2
 check "7: gh erroring fails closed: K2 refuses rc 2" "$rc" 2
 contains "7: the refusal names K1" "$out" "previous item K1"
+contains "7: (a) gh erroring prints a wait line naming K1 (fail closed)" "$out" "PUBLISH-WAIT K1"
 nothing_moved "7 gh errors" s7 "$before"
 printf 'series-pub/s7/K1\t11\tOPEN\tmain\n' > "$PRS7"
 GH_PRS="$PRS7" sp --ledger "$L7" --doc "$B" K2
 check "7: K1's PR open: K2 refuses rc 2" "$rc" 2
 contains "7: the refusal names K1 and its state" "$out" "previous item K1"
 contains "7: the refusal says the PR is open" "$out" "OPEN"
+contains "7: (b) an open PR prints a wait line naming K1" "$out" "PUBLISH-WAIT K1"
 nothing_moved "7 PR open" s7 "$before"
 printf 'series-pub/s7/K1\t11\tCLOSED\tmain\n' > "$PRS7"
 GH_PRS="$PRS7" sp --ledger "$L7" --doc "$B" K2
 check "7: K1's PR closed unmerged: K2 refuses rc 2" "$rc" 2
 contains "7: the refusal names K1" "$out" "previous item K1"
 contains "7: the refusal says the PR is closed" "$out" "CLOSED"
+lacks "7: (d) a PR closed unmerged is a refusal, not a wait" "$out" "PUBLISH-WAIT"
 nothing_moved "7 PR closed" s7 "$before"
 printf 'series-pub/s7/K1\t11\tMERGED\trelease\n' > "$PRS7"
 GH_PRS="$PRS7" sp --ledger "$L7" --doc "$B" K2

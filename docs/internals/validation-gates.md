@@ -21,7 +21,7 @@ They compose: a new merge-gate *mechanism* is itself a tool and must pass the
 adoption gate (license check first, then measured delta) before it is adopted.
 Nothing here redefines the adoption bar.
 
-`pre-commit run --all-files` must exit 0 on main; a red there is a regression, not a baseline (HIMMEL-2716).
+`pre-commit run --all-files` must exit 0 on main; a red there is a regression, not a baseline.
 
 ## 1. The lane gate (merge review for Codex branches)
 

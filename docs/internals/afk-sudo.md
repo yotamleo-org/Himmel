@@ -1,10 +1,10 @@
 # AFK sudo and the `run` kind
 
 `scripts/lib/afk-sudo/` is the root helper that runs one privileged command after
-the operator approves it with a TOTP code (HIMMEL-8066). Slice 1a of HIMMEL-8067
+the operator approves it with a TOTP code. Slice 1a
 adds a second kind, `run`, which freezes one argv, shows it to the operator and
 runs exactly that once. Slice 1b adds root's notice bot and a nonce bound to each request
-(HIMMEL-8078 part 1) and turns the run kind on. The helper is Linux-only: safe file
+and turns the run kind on. The helper is Linux-only: safe file
 validation needs `O_PATH`, `/proc/self/fd` and `fstatfs`.
 
 Files: `afk_sudo.py` (the helper, installed as `/usr/local/libexec/himmel/afk-sudo`),
@@ -33,7 +33,7 @@ Check order for a run: `disabled` (top-level `enabled`), `run-not-shipped`,
 `os.path.ALLOW_MISSING`; see the binding below), then the request checks, the last of
 which are `no-setpriv` and `no-notice-bot`.
 
-## The notice bot and the nonce (slice 1b, HIMMEL-8078 part 1)
+## The notice bot and the nonce (slice 1b)
 
 A session could put any text into the bridge bot's chat, so a look-alike request message
 cannot be ruled out there. The facts therefore come from a second bot whose token only
@@ -287,14 +287,14 @@ the `deny` rows (a single deny, its refusals, and each request a lockdown denies
 ledger shows per request the denial that caused it, the request, who approved or denied and how, and
 the result of the one re-run. An `expire` row is not an answer, so it carries neither field.
 
-## Spent steps (HIMMEL-8078 part 2)
+## Spent steps
 
 A code valid for request A is refused (`replay`) for request B when A ended without
 running in the same 30-second step. Deny, burn and a failed code check spend the
 current step; an expiry spends the step the request ran out in (not the lazy detection
 time). All writes keep the maximum step.
 
-## The `grant` kind (HIMMEL-7686)
+## The `grant` kind
 
 A grant lets one Bash call the permission classifier refused run once in the worker's own
 session, after the operator approves it. Nothing runs as root: root only records the
@@ -382,7 +382,7 @@ again by the helper on every call, so it takes effect on the next verb:
 
 A session cannot do any of these: the config, the helper and the sudoers rule are root-owned.
 
-**`/afk-lockdown` (HIMMEL-8067 slice 4).** The one Telegram verb that only narrows, for a
+**`/afk-lockdown` (slice 4).** The one Telegram verb that only narrows, for a
 lost phone or the end of a trip. Typed by the operator in their private chat, with no
 argument (text after it is refused and nothing runs), it calls the root helper's
 `lockdown --from SENDER --chat CHAT`, which checks the sender and chat against
@@ -394,7 +394,7 @@ config back: no verb, flag or argument sets `enabled: true` or `mode: "all"`, an
 anything), and it leaves live grants dead because `grant-spend` answers `disabled`. While
 the bridge's own lockdown switch is on, the poller does not consult this route at all.
 
-## The `op` kind: station ops (HIMMEL-8203)
+## The `op` kind: station ops
 
 A station op is one named, versioned, reviewed script in `scripts/station-ops/<op>.sh` with a
 schema `<op>.json` (name, version, `run_as`, `timeout_s`, `effect`, `params` as an `enum` or a `re`,
@@ -406,7 +406,7 @@ to the manifest; the repo copy is never executed. OPS-1 ships `cron-entry.sh` (t
 (`pacman -Syu` on Arch, `apt-get` on Debian; log in `/var/log/himmel/ops/<id>.log`), each with its
 `<op>.json` schema.
 
-OPS-2 (HIMMEL-8562) adds three more, each `<op>.sh` plus `<op>.json`:
+OPS-2 adds three more, each `<op>.sh` plus `<op>.json`:
 
 | op | runs as | what it does |
 | --- | --- | --- |
@@ -446,7 +446,7 @@ pending op request like any other.
 
 ## Approving over SSH
 
-HIMMEL-8067. `himmelctl approve <id>`, `himmelctl deny <id>` and `himmelctl approve status <id>` let the
+`himmelctl approve <id>`, `himmelctl deny <id>` and `himmelctl approve status <id>` let the
 operator answer a pending request from an SSH shell, for example after a classifier denial when the phone
 is out of reach. It is a thin caller of the same root helper the Telegram route calls:
 

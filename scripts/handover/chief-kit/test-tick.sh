@@ -2436,6 +2436,34 @@ contains '(8349) a STACKABLE row prints its key' "$pk_out" '# pool-keys 2 STACKA
 contains '(8349) a held-by-series disposition prints its key' "$pk_out" '# pool-keys 5 # HIMMEL-804'
 same '(8349) a plain row and a listed disposition print no pool-keys line' "$(printf '%s\n' "$pk_out" | grep -c '^# pool-keys ')" '3'
 
+dc_rel1='specs/decisions/chief-direction-2026-11-07-p1.md'
+dc_rel2='specs/decisions/chief-direction-2026-11-07-p2.md'
+dc_doc="$W/handover/chief-dc9502.md"
+printf '%s\n' '# DC — CHIEF' '' '## Current direction' '' "Full original text of every ruling below, byte for byte, is in 2 files under the bucket ($dc_rel1 $dc_rel2). READ ALL OF THEM in your first turn." 'OPERATOR 11-05 AB, decision 5: reading.' '' '## Results' > "$dc_doc"
+dc_stamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+dc_read() { printf '{"type":"assistant","timestamp":"%s","message":{"content":[{"type":"tool_use","id":"dc-%s","name":"Read","input":{"file_path":"%s/%s"}}]}}\n' "$dc_stamp" "$1" "$W/handover" "$2"; }
+dc_tick() { TOKEN='' bash "$SUT" --doc "$dc_doc" 2>/dev/null; }
+printf '{"type":"custom-title","customTitle":"chief-dc9502"}\n{"type":"assistant","timestamp":"%s","message":{"content":[{"type":"tool_use","id":"dc-0","name":"Read","input":{"file_path":"%s/chief-dc9502.md"}}]}}\n' "$dc_stamp" "$W/handover" > "$TICK_PROJECTS_DIR/p/dc9502.jsonl"
+dc_out="$(dc_tick)"
+contains '(9502) a chief transcript that never Reads the companions is flagged with the count' "$dc_out" 'ACTION direction-companions-unread=2/2'
+contains '(9502) the flag names each unread companion' "$dc_out" "$dc_rel2"
+dc_read 1 "$dc_rel1" >> "$TICK_PROJECTS_DIR/p/dc9502.jsonl"
+dc_out="$(dc_tick)"
+contains '(9502) one companion Read of two leaves one flagged' "$dc_out" 'ACTION direction-companions-unread=1/2'
+not_contains '(9502) the companion that was Read is not named' "$dc_out" "$dc_rel1"
+dc_read 2 "$dc_rel2" >> "$TICK_PROJECTS_DIR/p/dc9502.jsonl"
+not_contains '(9502) a chief that Read every companion is not flagged' "$(dc_tick)" 'direction-companions-unread'
+printf '{"type":"custom-title","customTitle":"chief-dc9502"}\n{"type":"assistant","timestamp":"%s","message":{"content":[{"type":"text","text":"next I read %s"},{"type":"tool_use","id":"dc-9","name":"Read","input":{"file_path":"%s/%s"}}]}}\n' "$dc_stamp" "$dc_rel2" "$W/handover" "$dc_rel1" > "$TICK_PROJECTS_DIR/p/dc9502.jsonl"
+dc_out="$(dc_tick)"
+contains '(9502) a companion named only in message text, beside a Read of the other, is still flagged' "$dc_out" 'ACTION direction-companions-unread=1/2'
+not_contains '(9502) the companion that was Read in that message is not named' "$dc_out" "$dc_rel1"
+printf '{"type":"custom-title","customTitle":"someone-else"}\n' > "$TICK_PROJECTS_DIR/p/dc9502.jsonl"
+not_contains '(9502) no transcript with the chief title: no guess, no flag' "$(dc_tick)" 'direction-companions-unread'
+printf '{"type":"custom-title","customTitle":"chief-dc9502"}\n' > "$TICK_PROJECTS_DIR/p/dc9502.jsonl"
+printf '%s\n' '# DC — CHIEF' '' '## Current direction' '' 'In work: the fixture.' '' '## Results' > "$dc_doc"
+not_contains '(9502) a doc with no Full original text line is not flagged' "$(dc_tick)" 'direction-companions-unread'
+rm -f "$TICK_PROJECTS_DIR/p/dc9502.jsonl" "$dc_doc"
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'
     exit 0

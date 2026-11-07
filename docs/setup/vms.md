@@ -449,11 +449,28 @@ bash scripts/vm/vm-maintain.sh run <vm>
 bash scripts/vm/vm-maintain.sh probe <vm>
 ```
 
-`run` takes the vm-lock, boots the VM from its current state (no restore), runs `apt update` and `apt upgrade`, brings claude and the CLIProxyAPI binary to the pins in `scripts/machine-setup/installer-pins.sh` and `scripts/setup/cli-proxy-lane.sh`, brings codex to npm latest, powers off, snapshots in place as `maint-YYYYMMDD-HHMM`, records it, and deletes `maint-*` snapshots beyond the last 3. A failed step prints `FAILED <step>`, takes no snapshot and leaves the record alone; the VM is powered off either way. Set `HIMMEL_VM_LOCK_WAIT=<seconds>` to wait behind another leg. The snapshot is taken powered off, and `vmsdk` refuses a powered-off VM it cannot scan for host `.env` files, so the plain `run` stops at the snapshot step with `FAILED snapshot` until a scan before power off exists. `run <vm> --no-secret-scan` skips the scan for that one run: use it only after checking the VM holds no host copy (the run itself copies nothing from the host), never as a standing command and never in a schedule. No cron entry exists yet.
+`run` takes the vm-lock, boots the VM from its current state (no restore), runs `apt update` and `apt upgrade`, brings claude and the CLIProxyAPI binary to the pins in `scripts/machine-setup/installer-pins.sh` and `scripts/setup/cli-proxy-lane.sh`, brings codex to npm latest, powers off, snapshots in place as `maint-YYYYMMDD-HHMM`, records it, and deletes `maint-*` snapshots beyond the last 3. A failed step prints `FAILED <step>`, takes no snapshot and leaves the record alone; the VM is powered off either way. Set `HIMMEL_VM_LOCK_WAIT=<seconds>` to wait behind another leg.
+
+`vmsdk` cannot scan a powered-off VM for host `.env` files, so the plain `run` uses the `vmsdk` verb `scan-down-snapshot <name>`: it scans the running guest, powers it off and then snapshots. A secret-bearing file stops the run with `FAILED secret-scan <files>` before power off and before any snapshot. `run <vm> --no-secret-scan` powers off and snapshots with no scan: use it only by hand, after checking the VM holds no host copy (the run itself copies nothing from the host), never as a standing command and never in a schedule.
 
 `probe` reads the login files in the guest, makes no model call, is silent when every login is live, reads the VM's current state only (it does not probe each saved snapshot), and prints the exact login command for each expired one (claude, codex, cli-proxy), paging the operator once per CLI. "Live" means not provably expired; a token revoked on the server side only shows on a real turn.
 
 A snapshot that holds a login is never cloned: maintain and snapshot the VM in place.
+
+#### Scheduled maintenance
+
+`scripts/vm/vm-maintain-cadence.sh` runs the maintenance for every test VM on a schedule. It is pure code: no model turn and no paid call.
+
+```bash
+bash scripts/vm/vm-maintain-cadence.sh run [--vms a,b]
+bash scripts/vm/vm-maintain-cadence.sh arm [--day 0-6] [--time HH:MM]
+bash scripts/vm/vm-maintain-cadence.sh status
+bash scripts/vm/vm-maintain-cadence.sh disarm
+```
+
+`run` takes the VMs one at a time (default `ubuntu_new`, or the comma list in `VM_MAINTAIN_VMS`). For each it runs `vm-maintain.sh run`, which scans for host secrets before power off and never takes `--no-secret-scan` here, then `vm-maintain.sh probe`, which prints the exact login command of each expired CLI and pages the operator once per CLI. A VM another leg holds past `VMCAD_LOCK_WAIT` seconds (default 1800) is skipped with a line and retried on the next pass. A failed step stops the pass with `CADENCE FAILED vm-maintain <vm> <step>` and one page; the station update does not run. After the VMs it runs `scripts/himmel-update.sh`, whose VM-proof gate still applies, and a package that needs `sudo` prints its command instead of running it. While any worker session is live it does nothing and logs `DEFERRED station-update`; a held chief lock and a provably dead lock do not count, and a failed census counts as live. A failed update is `CADENCE FAILED station-update`.
+
+`arm` installs one crontab entry (default Sunday 03:30) and a runner that carries `PATH` and the handover root; nothing runs until you arm it. `status` shows whether it is armed and when it last ran; `disarm` removes only this entry. The last pass is in `~/.himmel/state/vm-maintain/cadence-last-run.log`.
 
 ### Connect
 
