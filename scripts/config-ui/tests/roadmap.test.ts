@@ -424,6 +424,27 @@ test("Board: chain badges, the waits-for-you card and the Chains tab come from t
   expect(one).not.toContain("Orphaned work"); // ticket 2, in no chain
 });
 
+test("Board: a Waiting on you section above the lanes lists each ticket that waits on you, from the chain read alone", () => {
+  const r = read(station());
+  const ch = chainsOk();
+  ch.tickets[K(5)].title = "Decide <b>the</b> guard rework";
+  const html = renderBoard(r, { version: null, theme: null }, { drift: null, chains: ch });
+  const sec = html.match(/<section id="rm-waiting"[\s\S]*?<\/section>/)![0];
+  expect(sec).toContain("Waiting on you");
+  expect(sec).toContain('href="#/board?tab=chains&amp;at=HIMMEL-5"'); // the key opens its chain
+  expect(sec).toContain("Decide &lt;b&gt;the&lt;/b&gt; guard rework"); // title, escaped
+  expect(sec).toContain("memory 2/2"); // the chain and step it waits at
+  expect(sec).not.toContain("HIMMEL-1"); // an in-flight ticket is not listed
+  expect(html.indexOf('id="rm-waiting"')).toBeLessThan(html.indexOf('id="rm-lanes"')); // above the lanes
+  // nothing waits, no chain read, or another tab: no section (the "0 wait for you" link beside the tabs carries the count)
+  ch.tickets[K(5)].state = "in flight";
+  const none = renderBoard(r, { version: null, theme: null }, { drift: null, chains: ch });
+  expect(none).not.toContain("rm-waiting");
+  expect(none).toContain("0 wait for you");
+  for (const extras of [null, { drift: null, chains: { state: "absent", reason: "no chain registry" } }]) expect(renderBoard(r, { version: null, theme: null }, extras)).not.toContain("rm-waiting");
+  expect(renderBoard(r, { version: null, theme: null, tab: "chains" }, { drift: null, chains: chainsOk() })).not.toContain("rm-waiting");
+});
+
 test("Board: loading, no tracker, unavailable and GitHub read-only states, and ticket text is escaped", () => {
   const r = read(station());
   r.tickets[0].t = "<script>x</script>";

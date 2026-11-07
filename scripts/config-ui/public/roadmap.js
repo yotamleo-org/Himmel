@@ -300,6 +300,21 @@ function linksHtml(ch) {
     + `<div class="rm-link"><span><b>Shipped since yesterday</b>: the count is not read here</span><a href="#/report">Morning report →</a></div></div>`;
 }
 
+// The Waiting on you section: every ticket the chain read marks "waits on you", one row each (key opens its chain, title, the chain and
+// step it waits at). Only the chain read is used; with none there is no section, and the count link beside the tabs says it was not read.
+function waitingHtml(ch, v) {
+  if (!chainOk(ch)) return "";
+  const w = Object.values(ch.tickets).filter((x) => x.state === "waits on you");
+  const row = (x) => {
+    const c = (x.chains || []).find((y) => y.state === "waits on you") || (x.chains || [])[0];
+    const href = `#/board?tab=chains${v ? `&amp;v=${esc(encodeURIComponent(v))}` : ""}&amp;at=${esc(encodeURIComponent(x.key))}`;
+    return `<li><a href="${href}">${esc(x.key)}</a> ${esc(x.title || "")}${c ? ` <span class="ro">${esc(c.id)} ${esc(String(c.step))}/${esc(String(c.steps))}</span>` : ""}</li>`;
+  };
+  if (!w.length) return ""; // the "0 wait for you" link beside the tabs says so; an empty box would push the first card down
+  return section("rm-waiting", "Waiting on you", `${w.length} ${w.length === 1 ? "ticket waits" : "tickets wait"} on a decision or action from you.`,
+    `<ul class="rm-waiting">${w.map(row).join("")}</ul>`);
+}
+
 function tabsHtml(d, ui, tab, ch, dr) {
   const blocked = chainOk(ch) ? Object.values(ch.tickets).filter((x) => x.state === "blocked").length : 0;
   const em = { chains: chainOk(ch) ? (ch.version ? `${ch.chains.length} in ${ch.version} · ${blocked} blocked` : `${ch.chains.length} · no running version`) : "", tidy: driftOk(dr) ? `${dr.counts.real} drift` : "", nv: d.noVersionCount ? String(d.noVersionCount) : "" };
@@ -629,7 +644,7 @@ function boardPage(data, ui, extras) {
     : `the Jira mirror (${data.mirror.count} tickets, newest update ${data.mirror.newest || "unknown"})`;
   // plain text: the bar clips it to what fits and keeps the whole line in its bubble
   const fresh = `read live from ${src}${driftOk(dr) && dr.file.exists ? ` · drift: saved run ${dr.file.writtenHm || "unknown"}` : ""}`;
-  const body = tab === "chains" ? chainsTab(ui, tabCh, data) : tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, ch, dr) : lanesHtml(data, ui, sel, ch, dr);
+  const body = tab === "chains" ? chainsTab(ui, tabCh, data) : tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, ch, dr) : waitingHtml(ch, ui.v) + lanesHtml(data, ui, sel, ch, dr);
   const drawer = drawerHtml(data, ui), why = tab === "chains" ? whyHtml(ui, tabCh) : "";
   // with a drawer or the Why panel open the board under it is inert: no drag, select, key or click reaches a card until it closes
   return [`<div class="rm-head">${page}${windowBar(data, ui, windowOf(data, ui), !!(drawer || why))}</div>`, `<div class="rm-under"${drawer || why ? " inert" : ""}>`, stripHtml(data, tileSel, ch, tab, ui, driftBanner(dr)), `<div class="rm-tabrow">${tabsHtml(data, ui, tab, tabCh, dr)}${linksHtml(ch)}</div>`, barHtml(data, ui, ch, tab, sel, fresh), body, `</div>`, drawer, why].join("\n");
