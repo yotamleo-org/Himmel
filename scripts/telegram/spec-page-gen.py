@@ -51,16 +51,24 @@ def render(text):
         elif ln.startswith("## "):
             name = ln[3:].strip()
             if name == "At a glance":
-                items = []
+                block = []
                 i += 1
                 while i < len(lines) and not lines[i].startswith("## "):
-                    if lines[i].startswith("- "):
-                        items.append(lines[i][2:])
+                    block.append(lines[i])
                     i += 1
-                lis = "".join(f'<li class="{"decision" if x.startswith("**A") else "fact"}">{inline(x)}</li>' for x in items)
-                out.append(f'<div class="card"><h2>{inline(name)}</h2><ul>{lis}</ul></div>')
+                content = [x for x in block if x.strip()]
+                if content and all(x.startswith("- ") for x in content):
+                    lis = "".join(f'<li class="{"decision" if x.startswith("**A", 2) else "fact"}">{inline(x[2:])}</li>' for x in content)
+                    inner = f"<ul>{lis}</ul>"
+                else:
+                    inner = render("\n".join(block))
+                out.append(f'<div class="card"><h2>{inline(name)}</h2>{inner}</div>')
                 continue
             out.append(f"<h2>{inline(name)}</h2>")
+            i += 1
+        elif re.match(r"#{3,6} ", ln):
+            level = len(ln) - len(ln.lstrip("#"))
+            out.append(f"<h{level}>{inline(ln[level + 1:].strip())}</h{level}>")
             i += 1
         elif ln.startswith("|"):
             head = split_row(ln)
@@ -83,7 +91,8 @@ def render(text):
         elif not ln.strip():
             i += 1
         else:
-            para = []
+            para = [ln]
+            i += 1
             while i < len(lines) and lines[i].strip() and not re.match(r"(#|\||- |\d+\. )", lines[i]):
                 para.append(lines[i])
                 i += 1

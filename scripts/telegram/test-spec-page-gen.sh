@@ -42,6 +42,18 @@ out="$(gen "$T/fm.md" "$T/fm.html")"; rc=$?
 [ "$rc" -eq 0 ] && pass "an md carrying no status line generates" || fail "an md carrying no status line generates" "$out"
 (cd "$T" && gen plain.md rel.html >/dev/null); has "a relative md path is written absolute" "content=\"$T/plain.md\"" "$(cat "$T/rel.html" 2>/dev/null)"
 
+echo "== every line of the md reaches the page =="
+printf '# Spec\n\n### Third level\n\nUnder the third level.\n' > "$T/h3.md"
+out="$(gen "$T/h3.md" "$T/h3.html")"; rc=$?
+[ "$rc" -eq 0 ] && pass "a third-level heading generates" || fail "a third-level heading generates" "$out"
+has "a heading below the second level is a heading" "<h3>Third level</h3>" "$(cat "$T/h3.html" 2>/dev/null)"
+printf '# Spec\n\n## At a glance\n\nA paragraph in the card.\n\n1. a numbered line\n- a bullet\n\n## Next\n\nAfter the card.\n' > "$T/lines.md"
+gen "$T/lines.md" "$T/lines.html" >/dev/null
+page="$(cat "$T/lines.html" 2>/dev/null)"
+has "the section after the card still renders" "After the card." "$page"
+has "a paragraph in the At a glance card is kept" "A paragraph in the card." "$page"
+has "a numbered line in the At a glance card is kept" "a numbered line" "$page"
+
 echo "== round trip through chief-route.ts =="
 got="$(read_marker "$T/plain.html")"
 has "the reader resolves the marker to the md" "has no spec critic file ($T/plain.md.critic-spec-r<n>.md)" "$got"
