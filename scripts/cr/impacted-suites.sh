@@ -1438,9 +1438,6 @@ if [ "$plan" -eq 1 ]; then
     n_pl=$(wc -l < "$plan_local" | tr -d ' ')
     n_pc=$(wc -l < "$plan_ci" | tr -d ' ')
     printf 'impacted-suites: plan %s impacted, %s local, %s to CI\n' "$(wc -l < "$impacted" | tr -d ' ')" "$n_pl" "$n_pc"
-    if [ "$n_pl" -gt 5 ]; then
-        printf 'impacted-suites: plan: %s local is over the usual 5; each LOCAL line names why it cannot go to CI\n' "$n_pl" >&2
-    fi
     exit 0
 fi
 

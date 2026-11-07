@@ -179,8 +179,8 @@ template_version: 3
 >    impacted suites run locally and which go to CI as `SUITE <p> = CI`:
 >    `bash scripts/cr/impacted-suites.sh --plan <base>..<head>` prints the split (a worker
 >    runs locally the suite its PR changed with its failing-first proof, plus a suite CI
->    cannot run, each with a named reason; every other one is CI, 5 or fewer local for a
->    typical PR); the rule is
+>    cannot run, each with a named reason; every other one is CI; JS/TS suites stay local
+>    until item 19 reads a CI proof for them); the rule is
 >    `scripts/cr/pr-check-ref/33-step3-impacted.md`; a
 >    `> **Local suites:** <path>` line, one per path, keeps a suite local (copy
 >    each into the PR body as the bare line `Local suites: <path>`, which
