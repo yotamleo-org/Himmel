@@ -80,13 +80,44 @@ for (const [field, value] of [['sonnetAutocompact', 450001], ['sonnetAutocompact
     assert.ok(PP.validateRegistry(r).some((e) => e.includes(field)), 'invalid Sonnet field was accepted');
   });
 }
+test('a standard profile may declare an Opus-only ceiling up to 800000 and a context guard', () => {
+  const r = registry();
+  Object.assign(r.profiles['worker-impl'], { opusAutocompact: 800000, opusContextGuard: 'handoff', opusContextShare: 87 });
+  assert.deepEqual(PP.validateRegistry(r), []);
+  assert.deepEqual(PP.contextForProfile(r, 'worker-impl'),
+    { contextMode: 'standard', autocompact: 200000, opusAutocompact: 800000, opusContextGuard: 'handoff', opusContextShare: 87 });
+});
+for (const [field, value] of [['opusAutocompact', 800001], ['opusAutocompact', 199999], ['opusAutocompact', '800000'],
+  ['opusAutocompact', 300000.5], ['opusContextGuard', 'none'], ['opusContextGuard', 'bogus'], ['opusContextGuard', null],
+  ['opusContextShare', 0], ['opusContextShare', 101], ['opusContextShare', 87.5], ['opusContextShare', '87']]) {
+  test(`validator refuses ${field}=${JSON.stringify(value)}`, () => {
+    const r = registry(); r.profiles['worker-impl'][field] = value;
+    assert.ok(PP.validateRegistry(r).some((e) => e.includes(field)), 'invalid Opus field was accepted');
+  });
+}
+const OPUS = (guard) => ({ opusAutocompact: 800000, opusContextGuard: guard, opusContextShare: 87 });
 test('the shipped registry sets 450k per profile: impl hands off, eval compacts, docs stays at 200k', () => {
   const real = PP.loadRegistry();
   assert.deepEqual(PP.validateRegistry(real), []);
   const ctx = (name) => PP.contextForProfile(real, name);
-  assert.deepEqual(ctx('worker-impl'), { contextMode: 'standard', autocompact: 200000, sonnetAutocompact: 450000, sonnetContextGuard: 'handoff', sonnetContextShare: 73 });
-  assert.deepEqual(ctx('worker-eval'), { contextMode: 'standard', autocompact: 200000, sonnetAutocompact: 450000, sonnetContextGuard: 'compact', sonnetContextShare: 73 });
-  assert.deepEqual(ctx('worker-docs'), { contextMode: 'standard', autocompact: 200000 });
+  assert.deepEqual(ctx('worker-impl'), { contextMode: 'standard', autocompact: 200000, sonnetAutocompact: 450000, sonnetContextGuard: 'handoff', sonnetContextShare: 73, ...OPUS('handoff') });
+  assert.deepEqual(ctx('worker-eval'), { contextMode: 'standard', autocompact: 200000, sonnetAutocompact: 450000, sonnetContextGuard: 'compact', sonnetContextShare: 73, ...OPUS('compact') });
+  assert.deepEqual(ctx('worker-docs'), { contextMode: 'standard', autocompact: 200000, ...OPUS('handoff') });
+});
+test('decision 751: every worker profile carries the Opus numbers, and no other profile does', () => {
+  const real = PP.loadRegistry();
+  const carrying = Object.entries(real.profiles).filter(([, spec]) => spec?.opusAutocompact !== undefined).map(([name]) => name).sort();
+  assert.deepEqual(carrying, ['worker-bus', 'worker-docs', 'worker-e2e', 'worker-eval', 'worker-impl', 'worker-vm']);
+  for (const name of carrying) {
+    assert.equal(real.profiles[name].opusAutocompact, 800000, name);
+    assert.equal(real.profiles[name].opusContextShare, 87, name);
+  }
+});
+test('share 87 of the 800000 ceiling is exactly 700000 on the 1M window, as the guard rounds it', () => {
+  const window = 1000000;
+  const thresholdPct = (share) => Math.floor((share * 800000 + window - 1) / window);
+  assert.equal(thresholdPct(87) * window / 100, 700000);
+  assert.equal(thresholdPct(88) * window / 100, 710000);
 });
 test('worker launcher reads standard ceiling from the profile', (t) => {
   const result = launch(fixture(t), 'worker-impl');
