@@ -170,8 +170,25 @@ secret, only role names and account letters:
   `no-configured-account:<role>` when none of a role's letters is configured.
 - **A pick stays inside the role.** The launcher and the graph batch ask `api-roles.mjs accounts <kind>` and pass the
   answer to `api-credit-state.mjs pick --usd N --only <letters>`. A role mapped to B is served by B or refused
-  (`no account has room`), never by A. The batch's credit-exhausted retry re-picks inside the same list, so a role
-  mapped to one account retries on that account once and then fails. A named account never reads the map.
+  (`no account has room`), never by A. A named account never reads the map.
+- **The graph batch walks the accounts.** On auto, a credit-exhausted answer marks the account and the
+  pick runs again over the accounts of the same list that were not yet tried, so a pass reaches C when A and B are
+  out. Each account is tried at most once per pass, so a role mapped to one account is tried once and fails. When
+  none is left the pass stops with `credit exhausted on every account tried (A B C); nothing submitted`; each
+  retry line and the final failure name the accounts tried. ONLY a credit-exhausted answer moves on: a bad key or any
+  other error stops the pass at once (`only a credit-exhausted answer tries the next account`), because the next
+  account would fail the same way or bill for nothing. One batch is submitted per pass, so decision 664's single-batch
+  limit is unchanged. The synchronous path's breaker stops dispatch after one rejection per account in play.
+- **An exhausted marker clears on its own.** `api-credit-state.mjs exhausted` writes `exhausted_at` for the account.
+  Auto skips a marked account for `EXHAUSTED_TTL` (3600 seconds), or sooner when the operator snapshot holds a reading
+  newer than the marker (refresh the snapshot after funding the account and the next pick uses it). An account marked
+  while no other has room still serves, the one marked longest ago first, so a pick is never refused for the marker
+  alone. Covered by the rows T93 and T93b of `scripts/graphify/test-semantic-update.sh`, which run the real pick over a
+  marker older than an hour with a valid reading taken before the marker, and by `api-credit-state.test.mjs`.
+- **Nothing chosen on the API backend makes no API call.** With `GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api` and the lane
+  off (`HIMMEL_API_LANE` unset) the cadence refuses the whole fire (exit 1) before any call; a direct call of
+  `semantic-update.sh` refuses with exit 2 and says no API semantic call is made. Either way graphify makes no API semantic call. The
+  `claude-cli` backend does not read the lane: it draws the subscription.
 - **The judge opt-in.** With `judge` mapped, the release judge tries the mapped account through the launcher first
   (fallback off, no tools, an empty working directory, a two-dollar cap) and answers from the subscription on any
   failure. With `judge` unmapped it never touches the launcher. Only the himmel project's mirror reaches this route.
