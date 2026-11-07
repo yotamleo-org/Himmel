@@ -13,6 +13,7 @@ Each compaction gets a shape:
           an estimate): one large batch jumped the context, so the guard,
           which checks between calls, had no call to deny;
   steady  neither: ordinary growth, the only shape that locates the trigger.
+  manual  a /compact the worker asked for; it says nothing about the trigger.
 
 Input: transcript paths, or --launch-logs <dir> (headed-arm-worker logs, a line
 `... model=<opus model> (autocompact=<n>)` per launch) joined to the
@@ -74,7 +75,8 @@ def parse(path, batch_tokens, idle_s):
             last = calls[-1] if calls else None
             gap = round(t - last["t"]) if (last and t is not None and last["t"] is not None) else None
             est = since_call_chars // 4
-            shape = ("idle" if gap is not None and gap >= idle_s
+            shape = ("manual" if meta.get("trigger") == "manual"
+                     else "idle" if gap is not None and gap >= idle_s
                      else "batch" if est >= batch_tokens else "steady")
             comps.append({"t": t, "trigger": meta.get("trigger"), "cli_pre": meta.get("preTokens"),
                           "api_before": last["api"] if last else None, "api_after": None,
@@ -170,7 +172,7 @@ def fmt(v):
 
 def report(rows, args, threshold):
     comps = [(r["session"], c) for r in rows for c in r["compactions"]]
-    shapes = {s: sum(1 for _, c in comps if c["shape"] == s) for s in ("steady", "batch", "idle")}
+    shapes = {s: sum(1 for _, c in comps if c["shape"] == s) for s in ("steady", "batch", "idle", "manual")}
     orders = {o: sum(1 for r in rows if r["order"] == o)
               for o in ("deny-first", "deny-only", "compact-first", "compact-only", "neither")}
     steady = [c for _, c in comps if c["shape"] == "steady"]
@@ -213,6 +215,7 @@ def main():
     paths = list(args.transcripts)
     if args.launch_logs:
         paths += find(args.projects, launches(args.launch_logs, args.ceiling, since), since)
+    paths = sorted(set(paths))
     if not paths:
         print("compaction-trigger-report: no transcripts (give paths or --launch-logs)", file=sys.stderr)
         return 1
@@ -241,9 +244,9 @@ def main():
                 fmt(c["api_after"]), fmt(c["gap_s"]), c["batch_est"], c["shape"]))
     print()
     s = summary
-    print("ceiling %d, guard threshold %d api; workers %d; compactions %d (steady %d, batch %d, idle %d)" % (
+    print("ceiling %d, guard threshold %d api; workers %d; compactions %d (steady %d, batch %d, idle %d, manual %d)" % (
         s["ceiling"], s["threshold_api"], s["workers"], s["compactions"],
-        s["shapes"]["steady"], s["shapes"]["batch"], s["shapes"]["idle"]))
+        s["shapes"]["steady"], s["shapes"]["batch"], s["shapes"]["idle"], s["shapes"]["manual"]))
     print("order: " + ", ".join("%s %d" % kv for kv in s["orders"].items()))
     print("ANSWER: " + s["answer"])
     return 0

@@ -82,6 +82,18 @@ check "summary shapes" "1 1 1" "$(jq -r '.summary.shapes | "\(.steady) \(.batch)
 check "summary threshold is the hook's ceil(87 x 800000 / 1M) %" 700000 "$(jq '.summary.threshold_api' "$out")"
 check "answer counts deny-first and compact-first" 1 "$(jq -r '.summary.answer' "$out" | grep -c 'denied before any compaction in 1, a compaction came first in 2')"
 
+mn="$tmp/manual.jsonl"
+{
+    title fx-n4-manual
+    call k1 13:00:00 610000
+    result 13:00:10 false short
+    printf '{"type":"system","subtype":"compact_boundary","timestamp":"2026-11-07T13:01:00Z","compactMetadata":{"trigger":"manual","preTokens":640000}}\n'
+    call k2 13:02:00 30000
+} > "$mn"
+python3 -I "$SUT" --json "$mn" "$mn" > "$tmp/mn.json"
+check "a manual /compact is manual, not steady growth" "manual 0" "$(jq -r '"\(.workers[0].compactions[0].shape) \(.summary.shapes.steady)"' "$tmp/mn.json")"
+check "a transcript given twice is read once" 1 "$(jq '.summary.workers' "$tmp/mn.json")"
+
 python3 -I "$SUT" "$ba" > "$tmp/ba.txt" 2>&1
 check "no steady compaction: the answer says the sample is too small" 1 "$(grep -c '^ANSWER: sample too small: 0 steady-growth compactions at 800000 across 1 workers' "$tmp/ba.txt")"
 python3 -I "$SUT" --json --min-peak 700000 "$st" "$ba" > "$tmp/peak.json"
