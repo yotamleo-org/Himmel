@@ -72,7 +72,19 @@ function chainBadge(t, ch, v, d) {
   return `<div class="rm-chains">${parts.join("")}${ct.more ? ` <span class="ro">+${esc(String(ct.more))}</span>` : ""}</div>`;
 }
 
-function cardHtml(t, d, showVersion, w, ch, v, known) {
+// A card's open PRs and their CI as links (#N · CI state), from the worker records /api/board carries as prs; a started card with none says so. With no read
+// of the records nothing is shown, so the flag never rests on a guess.
+function prHtml(t, pr) {
+  if (!pr || pr.state !== "ok" || !pr.prs) return "";
+  const list = pr.prs[idOf(t)] || [];
+  if (list.length) return `<div class="rm-pr">${list.map((p) => {
+    const text = `#${p.pr} · CI ${p.ci}`;
+    return pr.repo ? `<a class="pr ci-${esc(p.ci)}" href="https://github.com/${esc(pr.repo)}/pull/${p.pr}" target="_blank" rel="noopener">${esc(text)}</a>` : `<span class="pr ci-${esc(p.ci)}">${esc(text)}</span>`;
+  }).join(" ")}</div>`;
+  return t.b === "prog" || t.b === "rev" || t.b === "ci" ? `<div class="rm-pr"><span class="pr nopr">no open PR</span></div>` : "";
+}
+
+function cardHtml(t, d, showVersion, w, ch, v, known, pr) {
   const kb = known && known.get(idOf(t)) ? `<span class="rm-kb" title="The drift row on this ticket is the checker's fault: listed, not counted."><span aria-hidden="true">≠</span> checker bug ${esc(known.get(idOf(t)))}</span>` : "";
   const lg = t.worker ? `<div class="rm-worker"><b>${esc(t.worker.label)} ${esc(t.worker.marker)}</b>${t.worker.reason ? " " + esc(t.worker.reason) : ""}</div>` : "";
   const dr = t.drift === 1 ? `<span class="st pill warn">drift</span> plan: ${esc(t.pv)}` : t.drift === 2 ? `<span class="st pill warn">unplanned</span>` : "";
@@ -84,7 +96,7 @@ function cardHtml(t, d, showVersion, w, ch, v, known) {
   const ci = t.b === "ci" ? ` <span class="ro pill warn">CI</span>` : ""; // CI shares the Review column: the pill says which of the two the card is in
   // two lines: the id, status and sector row, then the title clamped to two lines; the card's accessible name is the id and the full title
   return `<div class="rm-card"${attrs}${open} role="button" aria-label="${esc(idOf(t))}: ${esc(t.t)}"><div class="rm-top"><b>${esc(idOf(t))}</b>${local ? ` <span class="ro pill">local</span>` : ""} <span class="ro pill${t.b === "done" ? " ok" : t.b === "prog" || t.b === "rev" || t.b === "ci" ? " warn" : ""}">${esc(t.s)}</span>${ci} <span class="ro">${ver}${theme} ${dr}</span></div>`
-    + `<div class="rm-tip rm-title" data-tip="${esc(t.t)}"><span class="rm-clip">${esc(t.t)}</span></div>${chainBadge(t, ch, v, d)}${kb}${lg}</div>`;
+    + `<div class="rm-tip rm-title" data-tip="${esc(t.t)}"><span class="rm-clip">${esc(t.t)}</span></div>${chainBadge(t, ch, v, d)}${kb}${prHtml(t, pr)}${lg}</div>`;
 }
 
 // One board: a column per status over the given tickets (Review and CI share one). Won't stays hidden while empty so a quiet board stays short.
@@ -97,7 +109,7 @@ function boardHtml(d, tickets, showVersion, w, ch, v, o = {}) {
     const cards = tickets.filter((t) => bs.includes(t.b)), n = cards.length;
     const jn = o.scope ? o.scope.filter((t) => bs.includes(t.b)).length : null;
     const jira = jn === null ? "" : `<span class="ro rm-jira">${jn === n ? `Jira ${jn} matches` : `Jira ${jn} · ${n} shown`}</span>`;
-    const body = cards.map((t) => cardHtml(t, d, showVersion, w, ch, v, o.known)).join(""), drop = w ? ` data-rm-drop="${b}"` : "";
+    const body = cards.map((t) => cardHtml(t, d, showVersion, w, ch, v, o.known, o.prs)).join(""), drop = w ? ` data-rm-drop="${b}"` : "";
     const drawerHere = o.drawer && cards.some((t) => t.k === o.drawer.k && (t.project || "") === (o.drawer.project || "")); // closing the drawer focuses its card: it must not sit in a closed <details>
     if (o.foldDone && b === "done") return `<details class="rm-col rm-done"${o.find || drawerHere ? " open" : ""}${drop} data-rm-col="done"><summary><b>${esc(l)}</b> <span class="ro rm-n">${n}</span> ${jira}</summary>${body}</details>`;
     return `<div class="rm-col${b === "wont" ? " rm-lane" : ""}"${drop}${o.scope ? ` data-rm-col="${b}"` : ""}><h4>${tip(l, esc(l))} <span class="ro rm-n">${n}</span> ${jira}</h4>${body}</div>`;
@@ -424,7 +436,7 @@ const passOf = (d, ui, ch, from = d) => {
 // ticket key to the checker ticket that explains its drift row, for the tag on a lane card
 const knownByKey = (dr) => new Map((dr && dr.known ? dr.known : []).map((r) => [r.key, r.checker]));
 
-function lanesHtml(d, ui, sel, ch, dr) {
+function lanesHtml(d, ui, sel, ch, dr, prs) {
   const gh = d.source === "github";
   const writeOn = !!ui.writes && !gh;
   if (sel === -2) return section("rm-lanes", "Roadmap", "", `<div class="empty">${esc(ui.v)}: no such version in the mirror.</div>`);
@@ -432,19 +444,19 @@ function lanesHtml(d, ui, sel, ch, dr) {
   const what = sel >= 0 ? `${d.versions[sel].n}: ${shown.length} tickets` : `every version: ${shown.length} tickets`;
   const sub = gh ? `${what}. GitHub issues are read-only here: change them on GitHub.${d.truncated ? " Only the newest 1000 issues are read, so older ones are missing." : ""}`
     : `${what}.${writeOn ? " Drag a card to another column to change its status." : ""}`;
-  return section("rm-lanes", "Roadmap", sub, shown.length ? boardHtml(d, shown, sel < 0, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase(), drawer: ui.drawer, known: knownByKey(dr) }) : `<div class="empty">No tickets match.</div>`);
+  return section("rm-lanes", "Roadmap", sub, shown.length ? boardHtml(d, shown, sel < 0, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase(), drawer: ui.drawer, known: knownByKey(dr), prs }) : `<div class="empty">No tickets match.</div>`);
 }
 
 // The No version tab: the tickets with no fixVersion, in the same columns. They are not in the default read; ui.nv is GET /api/roadmap?nv=1,
 // asked for when this tab opens (null until it arrives).
-function nvTab(data, ui, ch, dr) {
+function nvTab(data, ui, ch, dr, prs) {
   const nv = ui.nv, sub = "Tickets with no fixVersion. Give one a fixVersion in Jira to put it on a version's board.";
   if (!nv) return section("rm-nv", "No version", sub, `<p class="sub" id="status">loading…</p>`);
   if (nv.state !== "ok") return section("rm-nv", "No version", sub, `<div class="nodata">${esc(nv.reason || "the tickets with no version could not be read")}</div>`);
   const writeOn = !!ui.writes && nv.source !== "github";
   const scope = nv.tickets.filter((t) => t.noVersion), shown = scope.filter(passOf(nv, ui, ch, data));
   return section("rm-nv", "No version", `${shown.length} ticket${shown.length === 1 ? "" : "s"}. ${sub}${writeOn ? " Drag a card to another column to change its status." : ""}`,
-    shown.length ? boardHtml(nv, shown, false, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase(), drawer: ui.drawer, known: knownByKey(dr) }) : `<div class="empty">No tickets match.</div>`);
+    shown.length ? boardHtml(nv, shown, false, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase(), drawer: ui.drawer, known: knownByKey(dr), prs }) : `<div class="empty">No tickets match.</div>`);
 }
 
 // The Chains tab: one read, the selected version's, and every count carries its unit. Reads only.
@@ -784,7 +796,7 @@ function boardPage(data, ui, extras) {
   if (data.source === "none") return page + noTrackerHtml();
   if (data.state !== "ok") return page + `<div class="nodata">${esc(data.reason || "board unavailable")}</div><button class="btn" data-act="refresh-roadmap">refresh</button>`;
   // the whole Board reads every version; the Chains tab reads the running one
-  const { drift: dr, chains: ch, versionChains: tabCh = ch } = extras;
+  const { drift: dr, chains: ch, versionChains: tabCh = ch, prs } = extras;
   const tab = TABS.some(([id]) => id === ui.tab) ? ui.tab : "roadmap";
   const sel = selIndex(data, ui);
   const rows = waitingRows(data, ch, ui.nv);
@@ -804,7 +816,7 @@ function boardPage(data, ui, extras) {
   }
   // the No version tab's tickets are in no version, so the picked version's read cannot hold them: it keeps the whole read
   const shownCh = tab === "nv" ? ch : cardCh;
-  const body = tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, shownCh, dr) : waitingHtml(rows, tabCh, ui.v, data, ch, ui.nv) + lanesHtml(data, ui, sel, cardCh, dr);
+  const body = tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, shownCh, dr, prs) : waitingHtml(rows, tabCh, ui.v, data, ch, ui.nv) + lanesHtml(data, ui, sel, cardCh, dr, prs);
   // with a drawer or the Why panel open the board under it is inert: no drag, select, key or click reaches a card until it closes
   return [`<div class="rm-head">${page}${windowBar(data, ui, windowOf(data, ui), modal)}</div>`, `<div class="rm-under"${modal ? " inert" : ""}>`, stripHtml(data, tileSel, tab, ui, driftBanner(dr)), `<div class="rm-tabrow">${tabsHtml(data, ui, tab, tabCh, dr)}${linksHtml(ch, rows, data, ui.nv)}</div>`, barHtml(data, ui, shownCh, tab, sel, fresh), body, `</div>`, drawer, why].join("\n");
 }

@@ -4,8 +4,8 @@
 // (HIMMEL_FOCUS_DRIFT, TRACKER_HANDOVERS_DIR, HIMMEL_CHAIN_REGISTRY) or, on a real launch, the newest file of that name under
 // <HANDOVER_DIR>/<slug>/himmel/. A test therefore reaches only the paths it sets: with none of these nothing is spawned and
 // the page shows both as absent, with the reason, never as a count.
-import { execFile } from "node:child_process";
-import { readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { execFile, execFileSync } from "node:child_process";
+import { readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { runChild } from "./lock";
 import { readRoadmap } from "./roadmap";
@@ -14,7 +14,9 @@ import { jiraMirrorDir } from "./tracker-sources";
 type Env = Record<string, string | undefined>;
 export type Absent = { state: "absent"; reason: string };
 // chains: every version, for the whole Board. versionChains: the picked version (else the running one), for the Chains tab alone, with its burn-down.
-export type BoardExtras = { drift: Record<string, unknown> | Absent; chains: Record<string, unknown> | Absent; versionChains: Record<string, unknown> | Absent };
+// prs: the open PRs and their CI per ticket, from the worker records the status sweep keeps (a local file read, no GitHub call).
+export type BoardExtras = { drift: Record<string, unknown> | Absent; chains: Record<string, unknown> | Absent; versionChains: Record<string, unknown> | Absent; prs: PrRead | Absent };
+export type PrRead = { state: "ok"; repo?: string; prs: Record<string, { pr: number; head: string; ci: string }[]> };
 
 const KIT = resolve(import.meta.dir, "../handover/chief-kit");
 export const TIMEOUT_MS = 10_000;
@@ -53,6 +55,36 @@ export function driftFile(env: Env): string | undefined {
   return env.HIMMEL_FOCUS_DRIFT || (env.TRACKER_HANDOVERS_DIR ? join(env.TRACKER_HANDOVERS_DIR, "focus-drift.txt") : inHandoverRoot(env, "focus-drift.txt"));
 }
 export const chainRegistry = (env: Env) => env.HIMMEL_CHAIN_REGISTRY || inHandoverRoot(env, "chains.json");
+
+// The open PRs per ticket, from <state dir>/workers/<KEY>.json: the same records the roadmap tracker prefers for CI (a red latch or red reads red, pending reads
+// running). The state dir is the status scripts' own: TICKET_STATUS_STATE_DIR, else $HOME/.himmel/state. No GitHub call, no write; an unreadable directory is
+// absent, so a card is never flagged "no open PR" on a guess.
+// ponytail: a PR no worker record names (a human's) is not listed, upgrade path: read the sweep's open-PR snapshot once focus-refresh keeps it.
+function repoSlug(env: Env): string | undefined {
+  const named = env.GH_REPO || env.GITHUB_REPOSITORY;
+  if (named) return named;
+  try {
+    const url = execFileSync("git", ["config", "--get", "remote.origin.url"], { cwd: KIT, timeout: 2000, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return url.match(/github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?$/)?.[1];
+  } catch { return undefined; }
+}
+export function readPrs(env: Env): PrRead | Absent {
+  const dir = join(env.TICKET_STATUS_STATE_DIR || join(env.HOME || "/tmp", ".himmel/state"), "workers");
+  let names: string[];
+  try { names = readdirSync(dir); } catch { return absent("no worker records: the directory is not there or not readable"); }
+  const prs: PrRead["prs"] = {};
+  for (const n of names) {
+    const m = n.match(/^([A-Z][A-Z0-9]*-\d+)\.json$/);
+    if (!m) continue;
+    let rec: { prs?: Record<string, { head?: string; ci?: string; red_latch?: boolean; open?: boolean }> };
+    try { rec = JSON.parse(readFileSync(join(dir, n), "utf8")); } catch { continue; }
+    const open = Object.entries(rec?.prs && typeof rec.prs === "object" ? rec.prs : {}).filter(([k, p]) => p && p.open && /^\d+$/.test(k))
+      .map(([k, p]) => ({ pr: Number(k), head: String(p.head || ""), ci: p.red_latch ? "red" : p.ci === "pending" ? "running" : p.ci === "red" || p.ci === "green" ? p.ci : "none" }))
+      .sort((a, b) => a.pr - b.pr);
+    if (open.length) prs[m[1]] = open;
+  }
+  return { state: "ok", repo: repoSlug(env), prs };
+}
 
 // The versions the Board lists and the one the cards call running. Without a running version the chain read covers every version, and a blocker outside the version cannot read as blocked.
 // ponytail: this reads the mirror a second time beside GET /api/roadmap, upgrade path: hand the page's own read to this one if it ever shows in the Board's load time.
@@ -124,7 +156,7 @@ export async function readBoardExtras(env: Env, read: typeof readRoadmap = readR
   // the chain read's state dir (hold and merge rows) is the script's own: TICKET_STATUS_STATE_DIR, else $HOME/.himmel/state
   if (!registry) {
     const none = absent("no chain registry: none found under the handover root, and HIMMEL_CHAIN_REGISTRY is not set");
-    return { drift: await drift, chains: none, versionChains: none };
+    return { drift: await drift, chains: none, versionChains: none, prs: readPrs(env) };
   }
   const chainRead = (extra: string[]) => runReader(join(KIT, "chain-state.mjs"), ["--json", "--registry", registry, "--mirror", mirror, ...extra], env, "the chain read");
   const withBurn = (r: Record<string, unknown> | Absent) => ("tickets" in r ? { ...r, burn: burnDown(r as Parameters<typeof burnDown>[0]) } : r);
@@ -136,5 +168,5 @@ export async function readBoardExtras(env: Env, read: typeof readRoadmap = readR
   const fell = !("state" in vs) && asked && pick !== bare ? { fellBack: { asked, to: vs.running ?? null } } : {};
   const forTab = "state" in vs ? Promise.resolve(vs) : (pick ? chainRead(["--version", pick]) : whole).then(withBurn).then((r) => ("tickets" in r ? { ...r, ...fell } : r));
   const [d, chains, versionChains] = await Promise.all([drift, whole, forTab]);
-  return { drift: d, chains, versionChains };
+  return { drift: d, chains, versionChains, prs: readPrs(env) };
 }

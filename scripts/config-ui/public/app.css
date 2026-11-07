@@ -207,6 +207,8 @@ div.tile{cursor:default}.tiles.three{grid-template-columns:repeat(3,minmax(0,1fr
 .rm-top{display:flex;flex-wrap:wrap;gap:0 var(--s1);align-items:baseline;font-size:var(--fs-xs)}
 .rm-title{font-size:var(--fs-sm);line-height:1.3}
 .rm-worker{margin-top:var(--s1);color:var(--warn)}
+.rm-pr{margin-top:var(--s1);font-size:var(--fs-xs)}
+.rm-pr .pr.ci-green{color:var(--ok)}.rm-pr .pr.ci-red,.rm-pr .pr.nopr{color:var(--warn)}.rm-pr .pr.ci-running{color:var(--muted)}
 /* Board ticket drawer (mockup v4 frame 3): a panel over the dimmed, inert board. tokens.css tokens, light and dark; full width at 390 px. */
 .rm-under[inert]{opacity:.45;user-select:none}
 .rm-card[data-rm-open]{cursor:pointer}
