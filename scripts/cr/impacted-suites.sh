@@ -65,6 +65,17 @@
 #       CR ledger; the exit code is unchanged, and a failed append exits 4.
 #       The range must end at --head and start from its merge-base with the
 #       remote default branch, else exit 2 and no row.
+#   impacted-suites.sh --plan <base>..<head>
+#       Which impacted suites run on this machine and which are left to CI
+#       (operator decision 775: little on the host, the rest in CI).
+#       One line per suite: `LOCAL <path> (<reason>)` or `CI <path>`, then
+#       `impacted-suites: plan N impacted, L local, C to CI`. LOCAL means the
+#       suite the PR changed (run it, with its failing-first proof), a suite CI
+#       cannot run (the reason is suite-coverage.sh's own words), or a
+#       non-test-*.sh suite (no per-suite CI proof yet); every other
+#       impacted test-*.sh is CI. HIMMEL_SUITES_LOCAL=1 plans every suite
+#       LOCAL. Read-only; exit 0, or 2 on an unresolvable range; it cannot be
+#       combined with --check or any other mode.
 #   impacted-suites.sh --runner <path>
 #       Print the ONE command CI uses to run a JS/TS suite path,
 #       e.g. `node --test scripts/hooks/foo.test.mjs` or
@@ -364,6 +375,7 @@ run_suite() {
 }
 
 check=0
+plan=0
 shell_only=0
 range=""
 runner_path=""
@@ -379,6 +391,7 @@ rec_head=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --check) check=1; shift ;;
+        --plan) plan=1; shift ;;
         --record) record=1; shift ;;
         --branch)
             [ "$#" -ge 2 ] || { echo "impacted-suites.sh: --branch requires a name" >&2; exit 2; }
@@ -424,6 +437,9 @@ if [ -n "$paths_file" ]; then
     case "$paths_file" in /*) ;; *) paths_file="$PWD/$paths_file" ;; esac
 fi
 
+if [ "$plan" -eq 1 ] && { [ "$check" -eq 1 ] || [ "$record" -eq 1 ] || [ -n "$from_file" ] || [ "$selector_miss" -eq 1 ] || [ -n "$paths_file" ] || [ -n "$runner_path" ] || [ "$runner_check_mode" -eq 1 ] || [ -n "$run_path" ]; }; then
+    echo "impacted-suites.sh: --plan is its own mode: it cannot be combined with --check, --record, --from-file, --selector-miss, --paths-file, --runner, --runner-check or --run" >&2; exit 2
+fi
 if [ "$record" -eq 1 ] && { [ "$check" -eq 0 ] || [ -z "$rec_branch" ] || [ -z "$rec_head" ]; }; then
     echo "impacted-suites.sh: --record requires --check, --branch <name> and --head <sha>" >&2; exit 2
 fi
@@ -1375,6 +1391,57 @@ if [ "$selector_miss" -eq 1 ]; then
         fi
     done < "$red_file"
     exit "$miss"
+fi
+
+# --plan: which impacted suites run on this machine and which are left to CI.
+# The same tests --check applies to a `= CI` verdict, run forward: a suite the PR changed
+# (its failing-first proof), a non-test-*.sh suite (no per-suite CI proof) and a suite
+# suite-coverage.sh says CI does not run are LOCAL with the reason named; every other one is CI.
+if [ "$plan" -eq 1 ]; then
+    plan_local="$work/plan.local"
+    plan_ci="$work/plan.ci"
+    plan_cand="$work/plan.cand"
+    : > "$plan_local"
+    : > "$plan_ci"
+    : > "$plan_cand"
+    while IFS= read -r s; do
+        if [ "${HIMMEL_SUITES_LOCAL:-0}" != 0 ]; then
+            printf 'LOCAL %s (HIMMEL_SUITES_LOCAL=1: every impacted suite runs locally)\n' "$s" >> "$plan_local" || io_fail "writing the plan"
+            continue
+        fi
+        if grep -Fxq -- "$s" "$work/diff.changed"; then
+            printf 'LOCAL %s (changed: failing-first proof required)\n' "$s" >> "$plan_local" || io_fail "writing the plan"
+            continue
+        fi
+        case "${s##*/}" in
+            test-*.sh) printf '%s\n' "$s" >> "$plan_cand" || io_fail "writing the plan candidates" ;;
+            *) printf 'LOCAL %s (not a test-*.sh: a JS/TS suite has no per-suite CI proof)\n' "$s" >> "$plan_local" || io_fail "writing the plan" ;;
+        esac
+    done < "$impacted"
+    if [ -s "$plan_cand" ]; then
+        plan_args=()
+        while IFS= read -r s; do plan_args+=("$s"); done < "$plan_cand"
+        cov_rc=0
+        bash "$top/scripts/handover/suite-coverage.sh" "${plan_args[@]}" > "$work/plan.cov" 2> "$work/plan.cov.err" || cov_rc=$?
+        case "$cov_rc" in 0|3) ;; *) io_fail "suite-coverage.sh (rc ${cov_rc}: $(head -n 1 "$work/plan.cov.err"))" ;; esac
+        while IFS= read -r s; do
+            line=$(awk -v p="$s: " 'index($0, p) == 1 { print substr($0, length(p) + 1); exit }' "$work/plan.cov") || io_fail "reading suite-coverage.sh's answer"
+            case "$line" in
+                "runs in PR CI"*) printf 'CI %s\n' "$s" >> "$plan_ci" || io_fail "writing the plan" ;;
+                "") printf 'LOCAL %s (unknown: suite-coverage.sh printed no line for it)\n' "$s" >> "$plan_local" || io_fail "writing the plan" ;;
+                *) printf 'LOCAL %s (%s)\n' "$s" "$line" >> "$plan_local" || io_fail "writing the plan" ;;
+            esac
+        done < "$plan_cand"
+    fi
+    sort "$plan_local" || io_fail "printing the local plan"
+    sort "$plan_ci" || io_fail "printing the CI plan"
+    n_pl=$(wc -l < "$plan_local" | tr -d ' ')
+    n_pc=$(wc -l < "$plan_ci" | tr -d ' ')
+    printf 'impacted-suites: plan %s impacted, %s local, %s to CI\n' "$(wc -l < "$impacted" | tr -d ' ')" "$n_pl" "$n_pc"
+    if [ "$n_pl" -gt 5 ]; then
+        printf 'impacted-suites: plan: %s local is over the usual 5; each LOCAL line names why it cannot go to CI\n' "$n_pl" >&2
+    fi
+    exit 0
 fi
 
 if [ "$check" -eq 0 ]; then
