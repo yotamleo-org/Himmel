@@ -7,7 +7,7 @@ is on:** checkpoint or hand off. The guard (`guard-worker-context-handoff.sh`) i
 launched you with `--context-guard compact|handoff`, which sets
 `HIMMEL_WORKER_SESSION_CONTEXT_MODE`, or when your profile turns it on (a native Sonnet 5.5
 `worker-impl` launch hands off and `worker-eval` compacts, both at a 450000 ceiling; a native
-Opus 5 launch on any `worker-*` profile hands off, `worker-eval` compacts, at an 800000 ceiling
+Opus 5.5 launch on any `worker-*` profile hands off, `worker-eval` compacts, at an 800000 ceiling
 with the deny at 700000 tokens); you cannot
 change it in-session. The one reference is
 `docs/internals/worker-context-guard.md`. The threshold is 75 % of the ceiling by default

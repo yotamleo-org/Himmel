@@ -345,7 +345,7 @@ template_version: 3
   (`guard-worker-context-handoff.sh`) is off by default;
   arm with `--context-guard compact|handoff` to turn it on. A native Sonnet 5.5 launch on
   `worker-impl` (hand-off) or `worker-eval` (compaction) turns it on by default, at a
-  450000 ceiling; so does a native Opus 5 launch on any `worker-*` profile (hand-off,
+  450000 ceiling; so does a native Opus 5.5 launch on any `worker-*` profile (hand-off,
   `worker-eval` compaction), at an 800000 ceiling with the deny at 700000 tokens. An explicit `--context-guard` (including `none`) or
   `WORKER_SESSION_CONTEXT=1m` takes precedence. When it is on, past
   75 % of the worker's `--autocompact` ceiling by default, or the profile's own share (15 %

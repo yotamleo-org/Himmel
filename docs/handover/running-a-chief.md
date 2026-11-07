@@ -500,7 +500,7 @@ pasted into the brief. Detail:
   unnumbered id counts too) takes the profile's `sonnetAutocompact` as its ceiling
   (`worker-impl` and `worker-eval`: `450000`) and the profile's
   `sonnetContextGuard` as its default context guard (`worker-impl`: hand-off,
-  `worker-eval`: compaction). A standard-context launch of an Opus 5 model on the
+  `worker-eval`: compaction). A standard-context launch of an Opus 5.5 model on the
   native lane takes `opusAutocompact` (every `worker-*` profile: `800000`),
   `opusContextGuard` (hand-off, `worker-eval`: compaction) and `opusContextShare`
   (`87`, a deny at 700000 tokens), so launch Opus workers **without**
@@ -514,7 +514,7 @@ pasted into the brief. Detail:
   5.0 to 5.9 range, `worker-impl` or `worker-eval`), `ab_arm` is refused by the
   wrapper and up front by `gen-briefs`, so run the arm on a profile without
   one, for example `worker-docs`. The wrapper also refuses it on a 1m context. On
-  an Opus 5 launch the arm skips the Opus fields and runs at its own ceiling.
+  an Opus 5.5 launch the arm skips the Opus fields and runs at its own ceiling.
 
 **Repo map (off by default).** Set `WORKER_SESSION_REPO_MAP=1` in the launching shell and
 a profiled worker's system prompt starts with a repo map: the files of

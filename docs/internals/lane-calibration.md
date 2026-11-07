@@ -667,8 +667,8 @@ worker whose Writes are all under `docs/` or `*.md` to `worker-docs`. The `arm-r
 successor path does not apply these fields: `arm-resume.sh --tier worker` pins
 `--autocompact 200000` with no guard, so a Sonnet successor runs at 200000.
 
-Three Opus-only fields take the same path for the **native lane on an Opus 5 model**
-(the `claude-opus-5` prefix; operator decision 751): `opusAutocompact`
+Three Opus-only fields take the same path for the **native lane on an Opus 5.5 model**
+(matched by id prefix, like the Sonnet fields; operator decision 751): `opusAutocompact`
 (200000 to 800000), `opusContextGuard` and `opusContextShare`. Every `worker-*` profile
 sets 800000 and share 87, a deny at exactly 700000 tokens (`worker-context-guard.md`);
 each hands off except `worker-eval`, which compacts. The wrapper hands the value over in
@@ -814,7 +814,7 @@ measured** — do not assume a `standard` worker makes its children compact earl
 | lane | default mode | override |
 |---|---|---|
 | chief arm (`*-chief.md`) | `standard` | `CHIEF_CONTEXT=1m` |
-| headed worker / worker arm | profile default (`design`: `1m` / 1000000; Sonnet 5.5 `worker-impl` and `worker-eval` on the native lane: `standard` / 450000; Opus 5 `worker-*` on the native lane: `standard` / 800000; others: `standard` / 200000) | `WORKER_SESSION_CONTEXT=1m` plus reasoned brief Context line; either alone does not enable 1m |
+| headed worker / worker arm | profile default (`design`: `1m` / 1000000; Sonnet 5.5 `worker-impl` and `worker-eval` on the native lane: `standard` / 450000; Opus 5.5 `worker-*` on the native lane: `standard` / 800000; others: `standard` / 200000) | `WORKER_SESSION_CONTEXT=1m` plus reasoned brief Context line; either alone does not enable 1m |
 | subagent of either | inherits the parent | none — set it on the parent's arm |
 
 Given that, the chief-side mitigation is a lean parent (the
