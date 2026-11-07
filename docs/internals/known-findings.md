@@ -182,7 +182,7 @@ The table omits `sh-ps1-twin-drift` (a twin-file checklist whose title names a d
   Retired open-weight critics (kimi, qwen, gptoss, laguna) disproved at 70-90 %
   and are already off the panel; codex 23 %, codex-adv 6 %, glm 17 %,
   coderabbit 24 %. Test-fixture bucket disproves at ~29-34 %, docs at ~25 %.
-- **Before-metric for NOW-19:** rounds per branch (distinct reviewed heads) —
+- **Before-metric for reducing review rounds:** rounds per branch (distinct reviewed heads) —
   all branches since 2026-08-01 mean 3.24 / median 2 (n = 348); last 30 branches
   mean 2.63 / median 2, 3.9 findings per branch, 1.17 round-1 Critical+Important
   per branch. CodeRabbit App: 3.3 finding-comments per PR since 08-10.
