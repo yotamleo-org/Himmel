@@ -381,12 +381,17 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 
 // A spec or plan page goes to the operator to be signed, so it goes only after its latest-round
 // spec critic and plan critic ended in a clean line AND quoted the sha256 of the exact bytes
-// being sent (operator decisions 700 and 701). The critic files sit beside the spec as
+// being sent (operator decisions 700 and 701), or, once that kind of critic has had its three
+// rounds (decision 763), with each open finding on the page. The critic files sit beside the spec as
 // `<spec>.critic-spec-r<n>.md` / `<spec>.critic-plan-r<n>.md`; `critic-seal.sh` adds the
 // `CONTENT-SHA256 <sha> <path relative to the verdict file>` line above the verdict line.
 // A file is a signature page when it lives under `specs/{design,designs,spec,plan,plans}/` or
 // `specs/HIMMEL-<n>/`, or a plan critic file names it; every other file sends as before.
 const CLEAN = { spec: "SPEC CLEAN", plan: "PLAN CLEAN" } as const;
+const FINDINGS = { spec: /^SPEC FINDINGS \d+$/, plan: /^PLAN FINDINGS \d+$/ } as const;
+export const CRITIC_ROUND_CAP = 3;
+type Kind = "spec" | "plan";
+const verdictKind = (line: string): Kind | undefined => /^(SPEC|PLAN) (CLEAN|FINDINGS \d+)$/.exec(line)?.[1].toLowerCase() as Kind | undefined;
 const SIGNATURE_DIRS = new Set(["design", "designs", "spec", "plan", "plans"]);
 const sha256 = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 const lastLine = (text: string) => text.split("\n").map(l => l.trim()).filter(Boolean).at(-1) ?? "";
@@ -453,9 +458,72 @@ const isFile = (p: string) => stat(p).then(s => s.isFile(), () => false);
 
 const readCritic = (file: string) => readFile(file, "utf8").catch((e) => { throw new Error(`${file}: cannot read the critic file (${e instanceof Error ? e.message : e}); the page is not sent`); });
 
+// The critic rounds a spec has had, per kind (decision 763: three, then the operator). Judge files never
+// match. `renamed` holds any other critic return that reads as this spec's: named after it, or sealing a
+// file its own critics sealed. Each adds a round of its own, so a new critic name cannot restart the count.
+// `also` is a return being sealed now, counted whatever its name. `count` is what the cap on another round reads, so a
+// renamed file can only bring the cap closer; `numbered` is what lets a page go with findings, so a planted file cannot open it early.
+// ponytail: the count is read from the files on disk, so deleting or overwriting critic files lowers it, and a new
+// spec file name starts a new count; upgrade path: an append-only ledger written at seal time, keyed on the ticket.
+type Rounds = { count: number; numbered: number; renamed: string[] };
+async function criticRounds(spec: string, also?: string): Promise<Record<Kind, Rounds>> {
+  const base = basename(spec);
+  const files = new Map<string, string>();
+  for (const dir of criticDirs(spec)) {
+    for (const n of await listDir(dir)) if (/\.critic.*\.md$/.test(n)) files.set(join(dir, n), await readCritic(join(dir, n)));
+  }
+  if (also) files.set(also, await readCritic(also));
+  const sealedBy = (file: string, text: string) => Promise.all(sealsOf(text).map(s => realpath(resolve(dirname(file), s.rel)).catch(() => "")));
+  const isOwn = (file: string) => file === also || basename(file).startsWith(`${base}.critic`);
+  const targets = new Set([await realpath(spec).catch(() => spec)]);
+  for (const [file, text] of files) if (isOwn(file)) for (const t of await sealedBy(file, text)) if (t) targets.add(t);
+  const numbers = { spec: new Set<number>(), plan: new Set<number>() };
+  const renamed: Record<Kind, string[]> = { spec: [], plan: [] };
+  for (const [file, text] of files) {
+    const name = basename(file);
+    const m = name.startsWith(`${base}.`) ? /^\.critic-(spec|plan)-r(\d+)\.md$/.exec(name.slice(base.length)) : null;
+    if (m && (dirname(file) === dirname(spec) || (m[1] === "plan" && planDirs(spec).includes(dirname(file))))) { numbers[m[1] as Kind].add(Number(m[2])); continue; }
+    const kind = verdictKind(lastLine(text));
+    if (kind && (isOwn(file) || (await sealedBy(file, text)).some(t => targets.has(t)))) renamed[kind].push(file);
+  }
+  const rounds = (k: Kind): Rounds => { const numbered = Math.max(0, ...numbers[k]); return { count: numbered + renamed[k].length, numbered, renamed: renamed[k] }; };
+  return { spec: rounds("spec"), plan: rounds("plan") };
+}
+
+// One operator record allows one round past the cap: `<spec>.operator-round-r<round>.md` with a line
+// `decision <n>`, where specs/decisions/verbatim-decision-<n>-*.txt holds the operator's words.
+// ponytail: a chief can write this file itself, so it records a ruling rather than proving one; upgrade path: a `jira release operator` kind.
+async function operatorAllowsRound(spec: string, round: number): Promise<boolean> {
+  const decision = /^decision (\d+)\s*$/m.exec(await readFile(`${spec}.operator-round-r${round}.md`, "utf8").catch(() => ""))?.[1];
+  const parts = spec.split("/"); const specs = parts.lastIndexOf("specs");
+  if (!decision || specs < 0) return false;
+  return (await listDir([...parts.slice(0, specs + 1), "decisions"].join("/"))).some(n => n.startsWith(`verbatim-decision-${decision}-`));
+}
+
+// Refuses a critic return past the cap with no operator record for that round: `critic-seal.sh` runs this before it
+// seals. The count is keyed on the spec the read file belongs to, and on the spec the return is named after; the higher wins.
+export async function refuseRoundPastCap(verdict: string, readPath: string): Promise<void> {
+  const v = await realpath(verdict); const page = await realpath(readPath);
+  const kind = verdictKind(lastLine(await readCritic(v)));
+  if (!kind) return;
+  const source = await markedSource(page);
+  const md = siblingMd(page);
+  const read = source ?? (await governingSpec(page))?.spec ?? (md && await isFile(md) ? md : page);
+  const named = /^(.+?)\.critic/.exec(basename(v))?.[1];
+  const specs = new Set([read]);
+  if (named && await isFile(join(dirname(v), named))) specs.add(join(dirname(v), named));
+  for (const spec of specs) {
+    const round = (await criticRounds(spec, v))[kind].count;
+    if (round <= CRITIC_ROUND_CAP || await operatorAllowsRound(spec, round)) continue;
+    throw new Error(`${basename(spec)} already has ${round - 1} ${kind} critic rounds; round ${round} needs an operator record, ${spec}.operator-round-r${round}.md with a line "decision <n>" naming specs/decisions/verbatim-decision-<n>-*.txt. Send the page to the operator with its findings listed instead`);
+  }
+}
+
 // Whichever spec governs the page, the latest plan critic of ANY spec that seals it must be clean: a
-// failed one refuses the send, so the file name of a spec cannot decide which critic is heard.
-async function refuseIfPlanCriticFailed(page: string): Promise<void> {
+// failed one refuses the send, so the file name of a spec cannot decide which critic is heard. Past that
+// spec's plan rounds it does not refuse: its return is handed back, to go on the page.
+async function refuseIfPlanCriticFailed(page: string): Promise<string[]> {
+  const open: string[] = [];
   const latest = new Map<string, { round: number; files: string[] }>();
   for (const dir of criticDirs(page)) {
     for (const n of await listDir(dir)) {
@@ -472,10 +540,15 @@ async function refuseIfPlanCriticFailed(page: string): Promise<void> {
       const last = lastLine(text);
       if (last === CLEAN.plan) continue;
       for (const seal of sealsOf(text)) {
-        if (await realpath(resolve(dirname(file), seal.rel)).catch(() => "") === page) throw new Error(`${file}: the latest plan critic that seals ${basename(page)} ended '${last}', not '${CLEAN.plan}'; the page is not sent`);
+        if (await realpath(resolve(dirname(file), seal.rel)).catch(() => "") !== page) continue;
+        const spec = join(dirname(file), basename(file).replace(/\.critic-plan-r\d+\.md$/, ""));
+        if (!FINDINGS.plan.test(last) || (await criticRounds(spec)).plan.numbered < CRITIC_ROUND_CAP) throw new Error(`${file}: the latest plan critic that seals ${basename(page)} ended '${last}', not '${CLEAN.plan}'; the page is not sent`);
+        open.push(file);
+        break;
       }
     }
   }
+  return open;
 }
 
 // null = nothing is filed for the page. An unreadable critic file or folder throws.
@@ -530,9 +603,10 @@ export type VerdictLine = { kind: "spec" | "plan"; round: number; file: string; 
 
 // null = not a signature page (sends as before); throws, naming the verdict file, when the page may not be sent.
 // `bytes` are the page's bytes as read once here: the caller sends THOSE, so an edit after the check cannot slip through.
-export async function checkSignaturePage(abs: string): Promise<{ verdicts: VerdictLine[]; bytes: Buffer } | null> {
+// `lead` is the block of open findings a page past its critic rounds opens with, empty otherwise.
+export async function checkSignaturePage(abs: string): Promise<{ verdicts: VerdictLine[]; bytes: Buffer; lead: string } | null> {
   const page = await realpath(abs).catch(() => abs);
-  await refuseIfPlanCriticFailed(page);
+  const open = new Set(await refuseIfPlanCriticFailed(page));
   // A page that names its source (`<meta name="spec-source" content="<abs path of the .md>">`) is governed by that spec wherever the copy sits.
   // ponytail: a hand-built page with no marker, outside the registered folders, reads as a report, upgrade path: one shared spec page generator writes the marker
   const source = await markedSource(page);
@@ -547,16 +621,23 @@ export async function checkSignaturePage(abs: string): Promise<{ verdicts: Verdi
   const bytes = await readFile(page);
   if (/not for signature/i.test(bytes.toString("utf8"))) throw new Error(`${basename(page)} still says "Not for signature"; a page a critic passed must not, and the critic must read the final bytes; the page is not sent`);
   const critics = await latestCritics(spec);
+  const rounds = await criticRounds(spec);
+  const mayGoOpen = (kind: Kind, line: string) => FINDINGS[kind].test(line) && rounds[kind].numbered >= CRITIC_ROUND_CAP;
   const verdicts: VerdictLine[] = [];
   for (const kind of ["spec", "plan"] as const) {
     const c = critics[kind];
     if (!c) throw new Error(`${basename(page)} is a spec or plan page and has no ${kind} critic file (${spec}.critic-${kind}-r<n>.md); run the ${kind} critic first`);
     const text = await readFile(c.path, "utf8");
     const last = lastLine(text);
-    if (last !== CLEAN[kind]) throw new Error(`${c.path}: the latest ${kind} critic ended '${last}', not '${CLEAN[kind]}'; the page is not sent`);
+    if (last !== CLEAN[kind] && !mayGoOpen(kind, last)) throw new Error(`${c.path}: the latest ${kind} critic ended '${last}', not '${CLEAN[kind]}'; the page is not sent`);
+    if (last !== CLEAN[kind]) {
+      open.add(c.path);
+      for (const file of rounds[kind].renamed) if (FINDINGS[kind].test(lastLine(await readCritic(file)))) open.add(file);
+    }
     for (const tied of c.tied) {
       const tiedLast = lastLine(await readCritic(tied));
-      if (tiedLast !== CLEAN[kind]) throw new Error(`${tied}: a ${kind} critic of the same round ended '${tiedLast}', not '${CLEAN[kind]}'; the page is not sent`);
+      if (tiedLast !== CLEAN[kind] && !mayGoOpen(kind, tiedLast)) throw new Error(`${tied}: a ${kind} critic of the same round ended '${tiedLast}', not '${CLEAN[kind]}'; the page is not sent`);
+      if (tiedLast !== CLEAN[kind]) open.add(tied);
     }
     const seals = sealsOf(text);
     if (!seals.length) throw new Error(`${c.path} has no CONTENT-SHA256 line, so it does not record the bytes it read (chief-kit/critic-seal.sh adds it); the page is not sent`);
@@ -573,14 +654,37 @@ export async function checkSignaturePage(abs: string): Promise<{ verdicts: Verdi
     if (kind === "plan" && role === "plan" && !sealed.has(page)) throw new Error(`${c.path} does not seal ${basename(page)}`);
     verdicts.push({ kind, round: c.round, file: basename(c.path), verdict: last });
   }
-  return { verdicts, bytes };
+  return { verdicts, bytes, lead: open.size ? await openFindingsBlock(open, rounds) : "" };
 }
 
-export function renderMarkdownHtml(md: string, title: string, verdicts?: VerdictLine[]): string {
+// The operator rules on this page rather than signing it (decision 734), so it opens by saying so, and with the
+// return of each critic that did not end clean, verbatim: a return is free prose, so no parser could list its findings one by one.
+async function openFindingsBlock(open: Set<string>, rounds: Record<Kind, Rounds>): Promise<string> {
+  const returns = await Promise.all([...open].map(async file => {
+    const text = await readCritic(file);
+    return `<h2>${esc(basename(file))}: ${esc(lastLine(text))}</h2>\n<pre style="white-space:pre-wrap">${esc(text.split("\n").filter(l => !l.startsWith("CONTENT-SHA256 ")).join("\n"))}</pre>\n`;
+  }));
+  return `<section class="open-findings">
+<p><strong>Round count: spec ${rounds.spec.count}, plan ${rounds.plan.count}. ${open.size} critic${open.size === 1 ? "" : "s"} did not end clean.</strong></p>
+<p><strong>Rule, don't just sign.</strong> These findings are still open. Rule on each one and add what is missing. One operator record allows one more critic round.</p>
+${returns.join("")}</section>
+`;
+}
+
+// A sealed .html page goes as its sealed bytes with the block right after <body>; a page with nowhere to put the block does not go.
+function withLead(page: Buffer, lead: string, name: string): Buffer {
+  const html = page.toString("utf8");
+  const body = /<body\b[^>]*>\r?\n?/i.exec(html);
+  if (!body) throw new Error(`${name} has no <body> tag to carry its open findings; the page is not sent`);
+  const at = body.index + body[0].length;
+  return Buffer.from(html.slice(0, at) + lead + html.slice(at));
+}
+
+export function renderMarkdownHtml(md: string, title: string, verdicts?: VerdictLine[], lead = ""): string {
   const banner = verdicts?.length
     ? `<p class="verdict">${verdicts.map(v => `<strong>${esc(v.verdict)}</strong> (round ${v.round}, <code>${esc(v.file)}</code>)`).join("<br>")}</p>\n`
     : "";
-  const body = banner + Bun.markdown.html(md, { noHtmlBlocks: true, noHtmlSpans: true });   // raw HTML in the source is shown as text
+  const body = lead + banner + Bun.markdown.html(md, { noHtmlBlocks: true, noHtmlSpans: true });   // raw HTML in the source is shown as text
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -603,13 +707,15 @@ export async function queueFile(root: string, chat: number, path: string, captio
   // The caption opens with the verdicts read from the critic files; the caller's words follow, never replace them.
   const verdictCaption = signed?.verdicts.map(v => `${v.verdict} r${v.round}`).join(" | ");
   if (verdictCaption) caption = caption ? `${verdictCaption} - ${caption}` : verdictCaption;
+  const isMd = /\.(md|markdown)$/i.test(abs);
+  if (signed?.lead && !isMd && !/\.html?$/i.test(abs)) throw new Error(`${basename(abs)} cannot carry its open findings (only .md and .html can); the page is not sent`);
+  const sealedPage = signed && !isMd ? (signed.lead ? withLead(signed.bytes, signed.lead, basename(abs)) : signed.bytes) : null;
   // Every file is COPIED (or rendered) into <bridge root>/outgoing/<id>/: the poller ships only from there.
   const dir = join(root, "outgoing", randomUUID());
   await mkdir(dir, { recursive: true, mode: 0o700 });
-  const isMd = /\.(md|markdown)$/i.test(abs);
   const send = join(dir, isMd ? `${basename(abs).replace(/\.(md|markdown)$/i, "")}.html` : basename(abs));
-  if (isMd) await Bun.write(send, renderMarkdownHtml(signed ? signed.bytes.toString("utf8") : await readFile(abs, "utf8"), basename(abs), signed?.verdicts));
-  else if (signed) await Bun.write(send, signed.bytes);
+  if (isMd) await Bun.write(send, renderMarkdownHtml(signed ? signed.bytes.toString("utf8") : await readFile(abs, "utf8"), basename(abs), signed?.verdicts, signed?.lead));
+  else if (sealedPage) await Bun.write(send, sealedPage);
   else await copyFile(abs, send);
   const size = (await stat(send)).size;
   if (size > MAX_SEND_BYTES) { await rm(dir, { recursive: true, force: true }); throw tooBig(size); }
@@ -632,6 +738,9 @@ if (import.meta.main) {
   } else if (verb === "send-file" && args.length >= 2 && Number.isSafeInteger(Number(args[0])) && Number(args[0]) !== 0) {
     try { console.log(`queued ${await queueFile(defaultRoot(), Number(args[0]), args[1], args.slice(2).join(" ") || undefined)}`); }
     catch (e) { console.error(`[chief-route] send-file refused: ${e instanceof Error ? e.message : e}`); process.exit(1); }
+  } else if (verb === "critic-round-check" && args.length === 2) {
+    try { await refuseRoundPastCap(args[0], args[1]); }
+    catch (e) { console.error(e instanceof Error ? e.message : e); process.exit(1); }
   } else {
     const name = args[0] === "--chief" ? args.splice(0, 2)[1] : verb === "reply" ? await currentConsoleName(defaultRoot()) : undefined;
     const satellite = verb === "reply" && args[0] === "--satellite" ? args.splice(0, 2)[1] : undefined;
@@ -645,7 +754,7 @@ if (import.meta.main) {
         catch (e) { console.error(`[chief-route] queued the Telegram reply but could not speak on ${satellite}: ${e instanceof Error ? e.message : e}`); process.exit(1); }
       }
     } else {
-      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] <chat_id> <text> | send-file <chat_id> <path> [caption] | register <inbox> <bucket> <project> | announce <inbox>");
+      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] <chat_id> <text> | send-file <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | register <inbox> <bucket> <project> | announce <inbox>");
       process.exit(1);
     }
   }

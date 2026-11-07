@@ -30,7 +30,14 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   sign page beside a `<stem>.md` is governed by the `.md`'s critics first: it goes only when the `.md`'s
   latest spec critic is clean and also sealed that `.html`. A folder that cannot be listed refuses the
   send, naming the folder. Today a page whose critic return carries no `CONTENT-SHA256` line is refused,
-  and so is one whose latest critic ended `SPEC FINDINGS <n>` even when it passed with minors. The seal
+  and so is one whose latest critic ended `SPEC FINDINGS <n>` before round 3, even when it passed with minors.
+  **From round 3 of that kind** a sealed `FINDINGS` page goes, with the block opening it: the round
+  count, how many critics did not end clean, "Rule, don't just sign", then each such return verbatim. An `.html` page
+  is its sealed bytes with the block after `<body>`; a page with no `<body>` is refused. Spec and plan rounds are counted
+  apart, 3 each, read from the files on disk, so a differently named return that belongs to the spec adds a round
+  to the cap; only the numbered rounds open the page. Round 4 and on: `critic-seal.sh` refuses the seal
+  until `<spec>.operator-round-r<n>.md` holds a line `decision <d>` and `specs/decisions/verbatim-decision-<d>-*` exists. One
+  record allows that one round. A judge round is neither counted nor limited. The seal
   line is proof of the bytes read, not of who wrote it: a chief could append a sha it computed itself, and
   `send-file` does not check the quote. The Telegram caption opens with the verdict lines
   read from those files (your own caption follows), and a rendered page opens with them too. A critic
