@@ -336,12 +336,13 @@ run_fixture tqlike 40 140
 cat > "$tmp/gen2.py" <<'PY'
 import os, sys
 doc, bucket, n = sys.argv[1], sys.argv[2], int(sys.argv[3])
+first, tagz = (int(sys.argv[4]), sys.argv[5]) if len(sys.argv) > 5 else (900, "ZZ")
 W = "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike november oscar papa".split()
 new = []
 for i in range(n):
-    num = 900 + i
-    open(os.path.join(bucket, "specs", "decisions", "verbatim-decision-%d-operator-11-07-ZZ.txt" % num), "w").write("operator words\n")
-    new.append("OPERATOR 11-07 ZZ (BINDING, carry to every successor; decision %d, verbatim specs/decisions/verbatim-decision-%d-operator-11-07-ZZ.txt). Read, unconfirmed: %s." % (num, num, " ".join(W[(i + j) % len(W)] for j in range(70))))
+    num = first + i
+    open(os.path.join(bucket, "specs", "decisions", "verbatim-decision-%d-operator-11-07-%s.txt" % (num, tagz)), "w").write("operator words\n")
+    new.append("OPERATOR 11-07 %s (BINDING, carry to every successor; decision %d, verbatim specs/decisions/verbatim-decision-%d-operator-11-07-%s.txt). Read, unconfirmed: %s." % (tagz, num, num, tagz, " ".join(W[(i + j) % len(W)] for j in range(70))))
 lines = open(doc, encoding="utf-8").read().split("\n")
 cur = lines.index("## Current direction")
 nxt = next(i for i in range(cur + 1, len(lines)) if lines[i].startswith("## "))
@@ -367,6 +368,20 @@ python3 -I "$tmp/check.py" "$doc2" "$root/tester/tqlike" "$tmp/gen2.expected" "$
 check "tqlike second succession: the companions hold the first generation and the 20 new rulings byte for byte, the index lists every number" "$rc" "0"
 [ "$rc" -eq 0 ] || sed 's/^/    check said: /' "$tmp/check.out"
 check "tqlike second succession: the 20 new rulings are in a companion file" "$(companion_files "$doc2" | while read -r f; do cat "$root/tester/tqlike/$f"; done | grep -c '^OPERATOR 11-07 ZZ ')" "20"
+
+# (e) a third succession when an earlier companion file is gone: the direction and its pointer are
+# carried as they were, with a warning, never replaced by companions that lack the full text
+rc=0; python3 -I "$tmp/gen2.py" "$doc2" "$root/tester/tqlike" 3 950 YY || rc=$?
+dir_lines "$doc2" > "$tmp/gen3.expected"
+lost="$(companion_files "$doc2" | tail -n 1)"
+mv "$root/tester/tqlike/$lost" "$tmp/lost-companion"
+out3="$(chief next --bucket tqlike --doc "$doc2" 2>&1)"; rc3=$?
+mv "$tmp/lost-companion" "$root/tester/tqlike/$lost"
+check "tqlike third succession (a companion file gone): next succeeds" "$rc3" "0"
+check "tqlike third succession (a companion file gone): next warns about the companion" "$(printf '%s\n' "$out3" | grep -c 'could not read the earlier direction companion')" "1"
+doc3="$(printf '%s\n' "$out3" | sed -n 's/^doc: //p')"
+[ ! -f "$doc3" ] || dir_lines "$doc3" | diff - "$tmp/gen3.expected" | cut -c1-120 | head -n 6 | sed 's/^/    direction diff: /'
+check "tqlike third succession (a companion file gone): the direction is carried as it was, pointer included" "$([ -f "$doc3" ] && dir_lines "$doc3" | cmp -s - "$tmp/gen3.expected" && echo same || echo differs)" same
 
 # the refusals on an absent or empty Current direction stay
 chief new --bucket empty >/dev/null 2>&1

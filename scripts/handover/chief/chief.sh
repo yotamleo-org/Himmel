@@ -2057,28 +2057,27 @@ for ln, head, reading in rows:
     if line != ln: changed += 1
     out.append(line)
 if not changed: sys.exit(1)
-prior, prior_ok = [], True
+prior = []
 for ln in src:
     if NOTE.match(ln):
         for rel in re.findall(r"specs/decisions/chief-direction-[A-Za-z0-9._-]+\.md", ln):
             try:
                 body = open(os.path.join(bucket, rel), encoding="utf-8").read().split("\n")
             except OSError:
-                prior_ok = False
-                sys.stderr.write("warning: could not read the earlier direction companion %s; the index lines it holds are carried as they are\n" % rel)
-                continue
+                sys.stderr.write("warning: could not read the earlier direction companion %s; the Current direction is carried as it is, with its pointer\n" % rel)
+                sys.exit(2)
             for b in body:
                 if b.strip() and not b.startswith("# Current direction, full text") and b not in prior: prior.append(b)
 full = list(prior)
 for ln in src:
     if not ln.strip() or ln.startswith(">") or NOTE.match(ln): continue
-    if DONE.match(ln) and prior_ok: continue
+    if DONE.match(ln): continue
     if ln not in full: full.append(ln)
-parts, cur, size = [], [], 0
+parts, cur, size = [], [], 160
 for ln in full:
     need = len(ln.encode()) + 2
     if cur and size + need > partmax:
-        parts.append(cur); cur, size = [], 0
+        parts.append(cur); cur, size = [], 160
     cur.append(ln); size += need
 if cur: parts.append(cur)
 stem = "specs/decisions/chief-direction-" + today
@@ -2086,7 +2085,7 @@ suffix, names = "", []
 try:
     os.makedirs(os.path.join(bucket, "specs", "decisions"), exist_ok=True)
     i = 1
-    while os.path.exists(os.path.join(bucket, stem + suffix + "-p1.md")):
+    while glob.glob(os.path.join(bucket, stem + suffix + "-p[0-9]*.md")):
         i += 1; suffix = "-%d" % i
     for j, p in enumerate(parts, 1):
         rel = "%s%s-p%d.md" % (stem, suffix, j)
@@ -2505,7 +2504,7 @@ cmd_next() {
         case "$dir_rc" in
             0) predecessor_direction="$dir_short" ;;
             1) ;;
-            *) err "warning: could not write the direction companion files; seeded the Current direction whole" ;;
+            *) err "warning: could not read or write the direction companion files; carried the Current direction as it was, with its pointer" ;;
         esac
     fi
     render_template "$console_template" "$doc" \
