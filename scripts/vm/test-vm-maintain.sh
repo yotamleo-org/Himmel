@@ -56,7 +56,7 @@ for a in "$@"; do if [ "$seen" -eq 1 ]; then after=$((after + 1)); elif [ "$a" =
 if [ "$seen" -ne 1 ] || [ "$after" -lt 1 ]; then echo "usage: guest-exec.sh <vm> [--sudo] [--timeout N] -- <cmd> [args...]" >&2; exit 2; fi
 all="$*"; cmd="${all#*-- }"
 case "$cmd" in
-    *PROBE-CREDS*) HOME="$FAKE_HOME" bash -c "$cmd"; exit $? ;;
+    *PROBE-CREDS*) [ -n "${STUB_PROBE_EMPTY:-}" ] && exit 0; HOME="$FAKE_HOME" bash -c "$cmd"; exit $? ;;
 esac
 if [ -n "${FAIL_STEP:-}" ] && [[ "$cmd" == *"$FAIL_STEP"* ]]; then echo "E: stub failure at $FAIL_STEP"; exit 100; fi
 case "$cmd" in
@@ -78,7 +78,7 @@ cat > "$WORK/bin/vbox" <<'STUB'
 #!/usr/bin/env bash
 echo "vbox $*" >> "$LOG"
 case "$*" in
-    "snapshot $VM list --machinereadable") cat "$SNAPS" ;;
+    "snapshot $VM list --machinereadable") [ -n "${STUB_LIST_FAIL:-}" ] && exit 1; cat "$SNAPS" ;;
     "snapshot $VM delete "*) grep -vF "\"${*##* }\"" "$SNAPS" > "$SNAPS.new"; mv "$SNAPS.new" "$SNAPS" ;;
 esac
 exit 0
@@ -193,6 +193,13 @@ fresh; out=$(vm_maintain FAIL_SDK=snapshot 2>&1); rc=$?
 check "F-snapshot a failed snapshot is FAILED snapshot and records nothing" bash -c '[ "$1" -ne 0 ] && grep -q "FAILED snapshot" <<<"$2" && [ ! -s "$3/newest-good.tsv" ]' _ "$rc" "$out" "$WORK/state"
 fresh; echo "$VM	maint-20261105-0000	2026-11-05T00:00:00Z" > "$WORK/state/newest-good.tsv"; out=$(vm_maintain FAIL_STEP="apt-get -y upgrade" 2>&1); rc=$?
 check "F-keeps-old a failed run leaves the previous newest-good record untouched" grep -q "maint-20261105-0000" "$WORK/state/newest-good.tsv"
+fresh; out=$(vm_maintain STUB_LIST_FAIL=1 2>&1); rc=$?
+check "F-list a failed snapshot listing is reported, not read as an empty set" bash -c '[ "$1" -eq 0 ] && grep -q "could not list" <<<"$2"' _ "$rc" "$out"
+fresh; printf '%s\t%s\t%s\n' "$VM" maint-20261105-0000 2026-11-05T00:00:00Z > "$WORK/state/newest-good.tsv"; chmod 000 "$WORK/state/newest-good.tsv"
+out=$(vm_maintain 2>&1); rc=$?; chmod 600 "$WORK/state/newest-good.tsv"
+check "F-record-read an unreadable record file is FAILED snapshot and the file is left as it was" bash -c '[ "$1" -ne 0 ] && grep -q "FAILED snapshot" <<<"$2" && grep -q "maint-20261105-0000" "$3"' _ "$rc" "$out" "$WORK/state/newest-good.tsv"
+fresh; out=$(vm_maintain 2>&1); ARGS=(run othervm --no-secret-scan); out=$(vm_maintain 2>&1); rc=$?; ARGS=(run "$VM" --no-secret-scan)
+check "R9 a run for a second VM keeps the first VM's record" bash -c '[ "$(grep -c . "$1")" -eq 2 ] && grep -q "^testvm	" "$1" && grep -q "^othervm	" "$1"' _ "$WORK/state/newest-good.tsv"
 # RED control: the stopped check fails on a run that succeeded
 fresh; out=$(vm_maintain 2>&1); rc=$?
 control "F-RED the stopped check fails on a run that did not stop" stopped_check apt-upgrade
@@ -233,6 +240,8 @@ check "P13 a login that dies again pages again" sent_count 3
 mkhome "$WORK/home" live live live; out=$(vm_maintain 2>&1); rc=$?
 control "P-RED the expired-report check fails when every login is live" bash -c 'grep -q "claude.*EXPIRED" <<<"$1" && grep -qF "claude auth login" <<<"$1"' _ "$out"
 
+fresh; out=$(vm_maintain STUB_PROBE_EMPTY=1 2>&1); rc=$?
+check "P15 a probe command that prints no result is FAILED probe, never read as healthy" bash -c '[ "$1" -ne 0 ] && grep -q "FAILED probe" <<<"$2"' _ "$rc" "$out"
 fresh; mkhome "$WORK/home" none none none; out=$(vm_maintain 2>&1); rc=$?
 check "P14 a guest with no login files reports all three CLIs" bash -c 'grep -q "claude.*EXPIRED" <<<"$1" && grep -q "codex.*EXPIRED" <<<"$1" && grep -q "cli-proxy.*EXPIRED" <<<"$1"' _ "$out"
 

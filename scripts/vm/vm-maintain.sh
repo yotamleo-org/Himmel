@@ -86,6 +86,9 @@ CLAUDE_SHA="$(pin "$ROOT/scripts/machine-setup/installer-pins.sh" CLAUDE_LINUX_X
 PROXY_VER="$(pin "$ROOT/scripts/setup/cli-proxy-lane.sh" VERSION)"
 PROXY_SHA="$(pin "$ROOT/scripts/setup/cli-proxy-lane.sh" ASSET_SHA256)"
 
+# shellcheck source=../lib/prim.sh
+. "$ROOT/scripts/lib/prim.sh" || { echo "vm-maintain.sh: cannot source prim.sh" >&2; exit 2; }
+
 # --- lock + power-off on every exit path ------------------------------------------------------
 # shellcheck source=vm-lock.sh
 . "$HERE/vm-lock.sh" || { echo "vm-maintain.sh: cannot source vm-lock.sh" >&2; exit 2; }
@@ -147,8 +150,8 @@ cmd_run() {
     guest_out codex-update "$GUEST_PATH; codex --version"
     [ -n "$OUT" ] || fail codex-update "codex --version printed nothing"
 
-    guest_step cli-proxy-update --timeout 600 -- "d=\"\$HOME/.cli-proxy-api\"; if [ \"\$(head -n1 \"\$d/cli-proxy-api.version\" 2>/dev/null)\" = '$PROXY_VER' ]; then echo current; exit 0; fi; set -e; mkdir -p \"\$d\"; t=\"\$HOME/.cache/vm-maintain.\$\$\"; mkdir -p \"\$t\"; a='CLIProxyAPI_${PROXY_VER}_linux_amd64.tar.gz'; curl -fsSL --proto '=https' --tlsv1.2 -o \"\$t/\$a\" 'https://github.com/router-for-me/CLIProxyAPI/releases/download/v$PROXY_VER/CLIProxyAPI_${PROXY_VER}_linux_amd64.tar.gz'; echo '$PROXY_SHA  '\"\$t/\$a\" | sha256sum -c -; tar -xzf \"\$t/\$a\" -C \"\$t\"; install -m 755 \"\$t/cli-proxy-api\" \"\$d/cli-proxy-api\"; printf '%s\\n' '$PROXY_VER' > \"\$d/cli-proxy-api.version\"; rm -rf \"\$t\""
-    guest_out cli-proxy-update 'head -n1 "$HOME/.cli-proxy-api/cli-proxy-api.version"'; ver="$(printf '%s\n' "$OUT" | head -n1)"
+    guest_step cli-proxy-update --timeout 600 -- "d=\"\$HOME/.cli-proxy-api\"; if [ -x \"\$d/cli-proxy-api\" ] && [ \"\$(head -n1 \"\$d/cli-proxy-api.version\" 2>/dev/null)\" = '$PROXY_VER' ]; then echo current; exit 0; fi; set -e; mkdir -p \"\$d\"; t=\"\$HOME/.cache/vm-maintain.\$\$\"; mkdir -p \"\$t\"; a='CLIProxyAPI_${PROXY_VER}_linux_amd64.tar.gz'; curl -fsSL --proto '=https' --tlsv1.2 -o \"\$t/\$a\" 'https://github.com/router-for-me/CLIProxyAPI/releases/download/v$PROXY_VER/CLIProxyAPI_${PROXY_VER}_linux_amd64.tar.gz'; echo '$PROXY_SHA  '\"\$t/\$a\" | sha256sum -c -; tar -xzf \"\$t/\$a\" -C \"\$t\"; install -m 755 \"\$t/cli-proxy-api\" \"\$d/cli-proxy-api\"; printf '%s\\n' '$PROXY_VER' > \"\$d/cli-proxy-api.version\"; rm -rf \"\$t\""
+    guest_out cli-proxy-update '[ -x "$HOME/.cli-proxy-api/cli-proxy-api" ] && head -n1 "$HOME/.cli-proxy-api/cli-proxy-api.version"'; ver="$(printf '%s\n' "$OUT" | head -n1)"
     [ "$ver" = "$PROXY_VER" ] || fail cli-proxy-update "the version stamp reads '${ver:-nothing}', the pin is $PROXY_VER"
 
     sdk "$VM" down >/dev/null || fail power-off "vmsdk down failed"
@@ -160,17 +163,29 @@ cmd_run() {
     say "OK $VM updated (claude $CLAUDE_VER, cli-proxy $PROXY_VER) and snapshotted as $snap; newest good recorded in $NEWEST"
 }
 
-record() { # one line per VM, replaced atomically
+# record <snapshot>: one line per VM, replaced atomically. The read-modify-write runs under a file lock,
+# because the vm-lock is per VM and two VMs can finish together; a failed read or write leaves the old file.
+record_locked() {
+    local keep="" rc
+    if [ -e "$NEWEST" ]; then
+        keep="$(grep -v "^$VM	" "$NEWEST")"; rc=$?
+        [ "$rc" -le 1 ] || { say "FAILED snapshot ($VM) - cannot read $NEWEST"; return 1; }
+    fi
+    { [ -z "$keep" ] || printf '%s\n' "$keep"; printf '%s\t%s\t%s\n' "$VM" "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"; } | atomic_write "$NEWEST" \
+        || { say "FAILED snapshot ($VM) - cannot write $NEWEST"; return 1; }
+}
+record() {
     mkdir -p "$STATE_DIR" || fail snapshot "cannot create $STATE_DIR"
-    { [ -f "$NEWEST" ] && grep -v "^$VM	" "$NEWEST"; printf '%s\t%s\t%s\n' "$VM" "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"; } > "$NEWEST.new"
-    mv -f "$NEWEST.new" "$NEWEST" || fail snapshot "cannot write $NEWEST"
+    with_lock "$NEWEST.lock" record_locked "$1" || exit 1
 }
 
 # prune: delete maint-* beyond the last KEEP_DATED. Never any other name. A refused delete (VirtualBox
 # refuses some snapshots that linked clones hang off) is a warning, not a failed update.
 prune() {
-    local names n drop
-    names="$("$VBOX" snapshot "$VM" list --machinereadable 2>/dev/null | sed -n 's/^SnapshotName[-0-9]*="\(.*\)"$/\1/p' \
+    local listing names n drop
+    listing="$("$VBOX" snapshot "$VM" list --machinereadable 2>/dev/null)" \
+        || { say "WARNING: could not list the snapshots of $VM, nothing pruned"; return 0; }
+    names="$(printf '%s\n' "$listing" | sed -n 's/^SnapshotName[-0-9]*="\(.*\)"$/\1/p' \
         | grep -E "^${SNAP_PREFIX}[0-9]{8}-[0-9]{4}\$" | sort -u)"
     n="$(printf '%s\n' "$names" | grep -c .)"
     [ "$n" -gt "$KEEP_DATED" ] || return 0
@@ -223,7 +238,7 @@ login_cmd() {
 }
 
 cmd_probe() {
-    local b64 out rc line cli state why bad=0 worker logf
+    local b64 out rc n line cli state why bad=0 worker logf
     acquire
     boot
     b64="$(printf '%s' "$PROBE_PY" | base64 -w0)"
@@ -231,6 +246,8 @@ cmd_probe() {
     [ "$rc" -eq 0 ] || fail probe "guest command rc=$rc: $(printf '%s' "$out" | tail -n 3 | tr '\n' ' ')"
     mkdir -p "$STATE_DIR"; logf="$STATE_DIR/probe-$VM.log"
     printf '%s\n' "$out" > "$logf"
+    n="$(printf '%s\n' "$out" | grep -cE '^PROBE (claude|codex|cli-proxy) (live|expired)')"
+    [ "$n" -eq 3 ] || fail probe "expected one result for each of claude, codex and cli-proxy, got $n: $(printf '%s' "$out" | tail -n 3 | tr '\n' ' ')"
     while read -r line; do
         case "$line" in "PROBE "*) ;; *) continue ;; esac
         read -r _ cli state why <<<"$line"
