@@ -140,7 +140,7 @@ cmd_watch() {
     case "$seconds" in ''|*[!0-9]*) usage ;; esac
     budget_gate "$floor"
     set -f  # cmdline words carry jq globs; never expand them
-    local before="$GHB_REMAINING" reset0="$GHB_RESET" end=$((SECONDS + seconds))
+    local before="$GHB_REMAINING" reset0="$GHB_RESET" end=$((SECONDS + 10#$seconds))
     local seen=" " pid st key args w cost n=0 after="?" reset1=""
     mkdir -p "$(dirname "$log")"
     : >>"$log"
