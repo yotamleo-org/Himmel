@@ -333,15 +333,15 @@
       "id": "outside-pr-approvals",
       "default_path": "~/.himmel/outside-pr-approvals.jsonl",
       "override_env": "",
-      "writer": "scripts/lib/outside-contributors.sh",
-      "readers": ["scripts/cr/pr-check-outside.sh"],
+      "writer": "scripts/telegram/chief-route.ts",
+      "readers": ["scripts/lib/outside-contributors.sh", "scripts/cr/pr-check-outside.sh"],
       "format": "jsonl",
       "rotation": "none",
       "retention": "unbounded",
       "schema_version": 1,
       "envelope": ["v", "ts", "host", "source", "kind"],
       "grandfathered": false,
-      "_note": "No row exists and nothing writes this ledger yet: the writer listed is the one script that owns the row format and reads it (outside_pr_authorize); the Telegram approve verb is the future writer. There is no path override. The envelope is the contract for that writer's rows."
+      "_note": "The only writer is the operator's Telegram approve verb (routeApprove in chief-route.ts); it appends one stage review row per PR and head, with the envelope keys, after the gate, the reply check and the live-head check. outside_pr_authorize in scripts/lib/outside-contributors.sh reads it and ignores the envelope. There is no path override."
     }
   ]
 }

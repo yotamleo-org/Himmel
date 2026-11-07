@@ -22,6 +22,7 @@ export type Route =
   | { kind: "consoles" }
   | { kind: "fleet"; verb: "status" | "workers" | "go?" | "push" | "halt"; worker?: string }
   | { kind: "fleet-malformed" }
+  | { kind: "approve"; pr: number; prefix: string }
   | { kind: "lockdown" }
   | { kind: "chat"; text: string };
 
@@ -79,7 +80,12 @@ const RESTART = /^\/restart(?:\s+(full))?$/i;
 // Only the leading verb is matched, so a mid-text or trailing /chief stays chat.
 const CONSOLE_VERB = /^\/(chiefs?)(?:@([A-Za-z0-9_]+))?(?=\s|$)/i;
 
-const FLEET_VERB = /^\/(lockdown|fleet|workers|legs|halt|go|push)(?:@([A-Za-z0-9_]+))?(?![A-Za-z0-9_@])/i;
+// The operator's approval of an outside PR: `approve <pr> <hex>`, the whole message, as a reply to the
+// chief's `outside-approve-request` (the reply, the sender, the chat and the live head are checked in chief-route.ts).
+// Any hex length parses so a too-short prefix is refused WITH a reason; the 7-hex floor lives in the handler.
+const APPROVE = /^approve\s+#?([1-9][0-9]{0,5})\s+([0-9a-f]{1,40})$/i;
+
+const FLEET_VERB =/^\/(lockdown|fleet|workers|legs|halt|go|push)(?:@([A-Za-z0-9_]+))?(?![A-Za-z0-9_@])/i;
 
 export function classify(raw: string, botUsername?: string | null): Route {
   const t = raw.trim();
@@ -145,6 +151,8 @@ export function classify(raw: string, botUsername?: string | null): Route {
   const restart = t.match(RESTART);
   // Bare `/restart` => rung 1 ("poller"); `/restart full` => rung 2 ("full").
   if (restart) return { kind: "auto", op: "restart", arg: restart[1] ? "full" : "poller", time: "-" };
+  const approve = t.match(APPROVE);
+  if (approve) return { kind: "approve", pr: Number(approve[1]), prefix: approve[2].toLowerCase() };
   const verb = t.match(CONSOLE_VERB);
   if (verb && (!verb[2] || !botUsername || verb[2].toLowerCase() === botUsername.toLowerCase())) {
     const rest = t.slice(verb[0].length);

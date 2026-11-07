@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, readFileSync, appen
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readNewLines, readMeta, writeMeta, ensureSession, appendLine, sessionDir } from "./bus";
-import { ingestUpdates, repairThenIngest, loadOffset, handleInbound, handleAutoCommand, replyViaOutbox, sendFileViaOutbox, runAndSettle, reconcile, flushOutboxes, isRetryDue, peekPending, commitPending, makeRunFn, makeAllow, makeDispatcher, makeFetchVoice, sweepStuckRunning, signalTyping, guarded, deliverAllPending, sweepAttachments, resolveRetentionMs, noticeText, parseBridgeEnv, loadBridgeEnv, bridgeEnvOrigin, makeRestart, makeBurstCoalescer, intervalEnvMs, windowEnvMs, handleBatch, ingestBatch, getUpdatesBackoffMs, shouldAlertOutage, OUTAGE_ALERT_AFTER_MS, parseModelTag, hasReadOnlyFloor, mentionsBot, loadPluginProfilesModule, type FetchImageFn } from "./poller";
+import { ingestUpdates, repairThenIngest, loadOffset, handleInbound, handleAutoCommand, replyViaOutbox, sendFileViaOutbox, runAndSettle, reconcile, flushOutboxes, isRetryDue, peekPending, commitPending, makeRunFn, makeAllow, makeDispatcher, makeFetchVoice, sweepStuckRunning, signalTyping, guarded, deliverAllPending, sweepAttachments, resolveRetentionMs, noticeText, parseBridgeEnv, loadBridgeEnv, bridgeEnvOrigin, makeRestart, makeBurstCoalescer, intervalEnvMs, windowEnvMs, handleBatch, ingestBatch, getUpdatesBackoffMs, shouldAlertOutage, OUTAGE_ALERT_AFTER_MS, parseModelTag, hasReadOnlyFloor, mentionsBot, loadPluginProfilesModule, inboundToDelivered, type FetchImageFn } from "./poller";
 import { readFile, writeFile, mkdir, utimes } from "node:fs/promises";
 import { GROUP_ANONYMOUS_BOT_ID, isAllowed, isOperatorIdentity, vaultForChat } from "./gate";
 import { describeEnabledOps, KNOWN_OPS } from "./auto-action";
@@ -1123,6 +1123,23 @@ test("ingest records a reply to a bot message as reply_to_bot, and no other repl
   const lines = await readNewLines(join(r, "inbound.jsonl"), join(r, "inbound.jsonl.cursor"));
   expect(lines.map((l: any) => l.reply_to_bot)).toEqual([true, undefined, undefined]);
   expect(lines[0].reply_to_message_id).toBe(40);
+});
+
+// The approve verb reads the first line of the bot message it replies to.
+test("ingest carries reply_to_text as the first line (max 200 chars) of a bot message only", async () => {
+  const r = root();
+  const req = `outside-approve-request 7 ${"a1".repeat(20)}`;
+  const msg = (id: number, reply_to_message: object) => ({ update_id: id, message: { message_id: id, chat: { id: 5 }, from: { id: 5 }, text: "approve 7 a1a1a1a", reply_to_message } });
+  await ingestUpdates(r, [
+    msg(1, { message_id: 40, from: { id: 99, is_bot: true }, text: `${req}\nauthor: x\nfiles: y` }),
+    msg(2, { message_id: 41, from: { id: 5, is_bot: false }, text: req }),
+    msg(3, { message_id: 42, from: { id: 99, is_bot: true }, text: "x".repeat(500) }),
+    msg(4, { message_id: 43, from: { id: 99, is_bot: true } }),
+    msg(5, { message_id: 44, from: { id: 99, is_bot: true }, text: 12345 }),
+  ], allowAll);
+  const lines = await readNewLines(join(r, "inbound.jsonl"), join(r, "inbound.jsonl.cursor"));
+  expect(lines.map((l: any) => l.reply_to_text)).toEqual([req, undefined, "x".repeat(200), undefined, undefined]);
+  expect(inboundToDelivered(lines[0]).reply_to_text).toBe(req);
 });
 
 // sender_chat is spread into all FOUR ingest branches, and the media ones append

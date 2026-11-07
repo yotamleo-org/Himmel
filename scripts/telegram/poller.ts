@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { homedir, tmpdir } from "node:os";
 import { appendLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, peekNewLines, commitCursorPos, repairCursorBeyondEof, truncateFullyConsumed, rotateConsumedLedger, type Meta, type OnCursorReset } from "./bus";
 import { classify, isTicketKey, type Route } from "./router";
-import { routeToConsole, routeFleetCommand, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, makeChiefTap, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
+import { routeToConsole, routeFleetCommand, routeApprove, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, makeChiefTap, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getUpdates, getMe, sendMessage, sendDocument, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId } from "./telegram-api";
@@ -54,7 +54,7 @@ const RETRY_MS = Number(process.env.TELEGRAM_RETRY_MS ?? 15 * 60 * 1000);
 // present (the injection-refuse signal). `caption` = the text came from a media caption
 // or voice transcript, NOT a genuinely typed m.text. Both fail toward "not a typed
 // command" so an undefined-deserialized value can never fail OPEN.
-export type Inbound = { from: number; chat_id: number; text: string; ts: number; update_id: number; sender_chat?: number; reply_to_message_id?: number; reply_to_bot?: boolean; message_id?: number; forwarded: boolean; caption: boolean; image_path?: string; document_path?: string; document_name?: string };
+export type Inbound = { from: number; chat_id: number; text: string; ts: number; update_id: number; sender_chat?: number; reply_to_message_id?: number; reply_to_bot?: boolean; reply_to_text?: string; message_id?: number; forwarded: boolean; caption: boolean; image_path?: string; document_path?: string; document_name?: string };
 export type AllowFn = (fromId: number, chatId: number) => boolean;
 // Downloads a photo by file_id, returns the local path (null on failure).
 export type FetchImageFn = (file_id: string, update_id: number) => Promise<string | null>;
@@ -281,7 +281,17 @@ function plainRecord(c: MsgCtx): Inbound {
     ...(Number.isSafeInteger(m.message_id) && m.message_id > 0 ? { message_id: m.message_id } : {}),
     ...(Number.isSafeInteger(m.reply_to_message?.message_id) && m.reply_to_message.message_id > 0 ? { reply_to_message_id: m.reply_to_message.message_id } : {}),
     ...(m.reply_to_message?.from?.is_bot === true ? { reply_to_bot: true } : {}),
+    ...(replyToBotText(m) ? { reply_to_text: replyToBotText(m) } : {}),
   });
+}
+
+// The first line (max 200 chars) of the bot message a reply answers: all the approve verb reads of it
+// (`outside-approve-request <pr> <40-hex head>`). Never the text of a message the bot did not send.
+const REPLY_TEXT_MAX = 200;
+function replyToBotText(m: any): string | undefined {
+  const quoted = m.reply_to_message;
+  if (quoted?.from?.is_bot !== true || typeof quoted.text !== "string") return undefined;
+  return quoted.text.split("\n", 1)[0].trim().slice(0, REPLY_TEXT_MAX) || undefined;
 }
 
 // Await photo/document downloads concurrently, then write their inbox
@@ -358,7 +368,7 @@ export async function repairThenIngest(root: string, updates: any[], allow: Allo
   await ingestUpdates(root, updates, allow, fetchImage, fetchVoice, fetchDoc, notifyDocFail);
 }
 
-export type DeliveredMsg = { from: number; chat_id: number; text: string; ts?: number; sender_chat?: number; reply_to_message_id?: number; reply_to_bot?: boolean; message_id?: number; forwarded?: boolean; caption?: boolean; image_path?: string; document_path?: string; document_name?: string; update_id?: number };
+export type DeliveredMsg = { from: number; chat_id: number; text: string; ts?: number; sender_chat?: number; reply_to_message_id?: number; reply_to_bot?: boolean; reply_to_text?: string; message_id?: number; forwarded?: boolean; caption?: boolean; image_path?: string; document_path?: string; document_name?: string; update_id?: number };
 
 // True when the session inbox already holds a line stamped with this update_id:
 // the record was enqueued before a crash stopped the inbound cursor ack, so the
@@ -501,7 +511,7 @@ function lockdownEnabled(root: string): boolean {
 }
 
 // The journal record as handleInbound takes it; main() delivers every record through this.
-export const inboundToDelivered = (i: Inbound): DeliveredMsg => ({ from: i.from, chat_id: i.chat_id, text: i.text, ts: i.ts, sender_chat: i.sender_chat, reply_to_message_id: i.reply_to_message_id, reply_to_bot: i.reply_to_bot, message_id: i.message_id, forwarded: i.forwarded, caption: i.caption, image_path: i.image_path, document_path: i.document_path, document_name: i.document_name, update_id: i.update_id });
+export const inboundToDelivered = (i: Inbound): DeliveredMsg => ({ from: i.from, chat_id: i.chat_id, text: i.text, ts: i.ts, sender_chat: i.sender_chat, reply_to_message_id: i.reply_to_message_id, reply_to_bot: i.reply_to_bot, reply_to_text: i.reply_to_text, message_id: i.message_id, forwarded: i.forwarded, caption: i.caption, image_path: i.image_path, document_path: i.document_path, document_name: i.document_name, update_id: i.update_id });
 
 // Under lockdown a button tap is dropped before the AFK sudo gate sees it.
 export const afkTapUnlessLocked = <T>(root: string, tap: (t: T) => boolean) => (t: T): boolean => !lockdownEnabled(root) && tap(t);
@@ -525,7 +535,7 @@ async function handleConsolePolicy(root: string, msg: DeliveredMsg, route: Route
     else if (notifyChat && fromOperator) await notifyChat(msg.chat_id, "locked, reset at the station");
     return true;
   }
-  if (["fleet", "fleet-malformed", "lockdown", "console", "consoles"].includes(route.kind) && !eligible) return true;
+  if (["fleet", "fleet-malformed", "lockdown", "console", "consoles", "approve"].includes(route.kind) && !eligible) return true;
   if (route.kind === "fleet-malformed") {
     await reply(msg.chat_id, "⚠️ malformed fleet command — nothing was queued. Use /go, /push or /halt with one label of 1–64 letters, digits, _ . or - (no ..).");
     return true;
@@ -533,7 +543,7 @@ async function handleConsolePolicy(root: string, msg: DeliveredMsg, route: Route
   const threadName = eligible && (route.kind === "chat" || route.kind === "followup") && !msg.text.trimStart().startsWith("/") && msg.reply_to_message_id != null
     ? await consoleReplyTarget(root, msg.chat_id, msg.reply_to_message_id) : null;
   const typedAuto = !tagged && route.kind === "auto" && auto?.authorize(msg.from, msg.chat_id) && msg.caption === false && !msg.forwarded;
-  if ((eligible && (["fleet", "console", "consoles"].includes(route.kind) || threadName) || typedAuto) && staleConsoleCommand(msg.ts)) {
+  if ((eligible && (["fleet", "console", "consoles", "approve"].includes(route.kind) || threadName) || typedAuto) && staleConsoleCommand(msg.ts)) {
     if (consoleRoute) await reply(msg.chat_id, "⚠️ stale, resend — nothing was queued.");
     else if (notifyChat) await notifyChat(msg.chat_id, "⚠️ stale, resend — nothing was queued.");
     return true;
@@ -541,6 +551,10 @@ async function handleConsolePolicy(root: string, msg: DeliveredMsg, route: Route
   if (!eligible) return false;
   if (route.kind === "fleet") {
     await routeFleetCommand(root, msg, route, consoleRoute);
+    return true;
+  }
+  if (route.kind === "approve") {
+    await routeApprove(msg, route, consoleRoute);
     return true;
   }
   if (route.kind === "auto" && route.op === "launch-bypass-worker") {

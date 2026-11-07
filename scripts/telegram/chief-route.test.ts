@@ -1946,3 +1946,179 @@ test("the routed markdown page opens dark with readable text, no system-preferen
   expect(html).toContain("color-scheme:dark");
   expect(html).toMatch(/@media print\{:root\{[^}]*--bg:#fff/);
 });
+
+// ---- the operator's `approve <pr> <7+ hex>` reply writes one review-stage approval row ----
+// A scratch HOME (the store), a scratch bridge root, a fake `gh` on PATH and a scratch access.json: nothing here touches the
+// real ~/.himmel/outside-pr-approvals.jsonl, the real bridge root or Telegram. The reader is the real outside_pr_authorize.
+import { chmodSync, readdirSync, appendFileSync, copyFileSync } from "node:fs";
+
+const H1 = "a1".repeat(20);
+const H2 = "b2".repeat(20);
+const GH_STUB = `#!/usr/bin/env bash
+echo "$*" >> "$STUB_LOG"
+case "\${STUB_MODE:-ok}" in
+  fail) exit 1 ;;
+  junk) echo 'not json at all' ;;
+  sleep) sleep 30 ;;
+  *) printf '{"state":"%s","author":{"login":"Stranger","id":"U_stranger"},"headRefName":"feat/x","headRefOid":"%s"}\\n' "\${STUB_STATE:-OPEN}" "\${STUB_OID:?}" ;;
+esac
+`;
+const LIB_DIR = join(import.meta.dir, "../lib");
+
+function approveEnv(liveHead = H1) {
+  const home = mkdtempSync(join(tmpdir(), "approve-home-"));
+  const bin = join(home, "bin"); mkdirSync(bin);
+  writeFileSync(join(bin, "gh"), GH_STUB); chmodSync(join(bin, "gh"), 0o755);
+  const access = join(home, "access.json"); writeFileSync(access, JSON.stringify({ allowFrom: ["1"] }));
+  const repo = join(home, "repo");
+  expect(Bun.spawnSync(["git", "init", "-q", repo]).exitCode).toBe(0);
+  const ledger = join(repo, ".git", "cr-critic-scores.jsonl");
+  // The real reader, copied into a scratch anchor beside a fixture perspective (the way scripts/lib/test-outside-contributors.sh does).
+  const anchor = join(home, "anchor"); mkdirSync(join(anchor, "scripts", "lib"), { recursive: true }); mkdirSync(join(anchor, "scripts", "cr", "perspectives"), { recursive: true });
+  for (const f of ["outside-contributors.sh", "timeout-bin.sh"]) copyFileSync(join(LIB_DIR, f), join(anchor, "scripts", "lib", f));
+  const persp = join(anchor, "scripts", "cr", "perspectives", "outside-security.md"); writeFileSync(persp, "# fixture outside-security perspective\n");
+  const psha = createHash("sha256").update(readFileSync(persp)).digest("hex");
+  for (const head of [H1, H2]) {
+    const report = join(repo, `audit-${head.slice(0, 7)}.md`); writeFileSync(report, `audit pass ${head}\n`);
+    appendFileSync(ledger, JSON.stringify({ kind: "security-audit", ts: "2026-11-07T10:00:00Z", pr: 7, branch: "feat/x", head, verdict: "pass", perspective_sha256: psha, report, report_sha256: sha(readFileSync(report, "utf8")), status: "ok" }) + "\n");
+  }
+  const log = join(home, "gh.log");
+  const keys = { HOME: home, PATH: `${bin}:${process.env.PATH}`, TELEGRAM_ACCESS_PATH: access, STUB_LOG: log, STUB_OID: liveHead, STUB_STATE: "OPEN", STUB_MODE: "ok" } as Record<string, string>;
+  const saved: Record<string, string | undefined> = {};
+  for (const [k, v] of Object.entries(keys)) { saved[k] = process.env[k]; process.env[k] = v; }
+  return {
+    home, repo, log, store: join(home, ".himmel", "outside-pr-approvals.jsonl"),
+    set: (k: string, v: string) => { process.env[k] = v; },
+    // The verb's own live-head reads (the reader's `author,headRefName,headRefOid` reads are not counted).
+    gh: () => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").filter(l => l.includes("state,headRefOid")) : []),
+    // The real reader, run the way the review route runs it: prints `<rc>:<stdout>`.
+    authorize: (pr: number, head: string) => {
+      const p = Bun.spawnSync(["bash", "-c", '. "$1" && shift && outside_pr_authorize "$@"', "_", join(anchor, "scripts", "lib", "outside-contributors.sh"), String(pr), head, "0"], { cwd: repo, env: process.env as Record<string, string> });
+      return `${p.exitCode}:${p.stdout.toString().trim()}`;
+    },
+    done: () => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } },
+  };
+}
+const requestText = (pr: number, head: string) => `outside-approve-request ${pr} ${head}`;
+const approveMsg = (text: string, extra: Record<string, unknown> = {}) =>
+  fresh(text, { reply_to_message_id: 500, reply_to_bot: true, reply_to_text: requestText(7, H1), ...extra });
+const rows = (store: string) => (existsSync(store) ? readFileSync(store, "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l)) : []);
+
+test("approve: an unlisted author's PR is refused, then reviewable at the same head after the operator's reply", async () => {
+  const e = approveEnv(); const r = root(); const replies: string[] = []; const ran: string[] = [];
+  try {
+    expect(e.authorize(7, H1)).toBe("1:");
+    await inbound(r, approveMsg(`approve 7 ${H1.slice(0, 7)}`), replies, ran);
+    expect(e.authorize(7, H1)).toBe("0:approval:123");
+    expect(ran).toEqual([]);
+    expect(replies.join("\n")).toContain(`approved PR 7 at ${H1.slice(0, 7)}`);
+    expect(e.gh()).toEqual([expect.stringMatching(/^pr view 7 --json state,headRefOid/)]);
+    // The row: exactly one new line, every key and type, checked with jq -e.
+    const lines = readFileSync(e.store, "utf8").split("\n").filter(Boolean);
+    expect(lines).toHaveLength(1);
+    const jq = Bun.spawnSync(["jq", "-e", '(keys | length == 11) and (.pr | type == "number") and (.head | test("^[0-9a-f]{40}$")) and .stage == "review" and (.from | type == "number") and (.chat | type == "number") and (.message_id | type == "number") and (.ts | type == "string" and test("^[0-9]{4}-")) and .v == 1 and (.host | type == "string" and length > 0) and .source == "telegram-approve" and .kind == "approval"'], { stdin: Buffer.from(lines[0]) });
+    expect(jq.exitCode).toBe(0);
+    expect(rows(e.store)[0]).toMatchObject({ pr: 7, head: H1, stage: "review", from: 1, chat: 1, message_id: 123 });
+  } finally { e.done(); }
+});
+
+test("approve: a row for head H1 does not authorize H2; a second approve at H2 writes a second row", async () => {
+  const e = approveEnv(); const r = root(); const replies: string[] = [];
+  try {
+    await inbound(r, approveMsg(`approve 7 ${H1.slice(0, 7)}`), replies);
+    expect(e.authorize(7, H1)).toBe("0:approval:123");
+    e.set("STUB_OID", H2);                       // the author pushed: the forge head is now H2
+    expect(e.authorize(7, H2)).toBe("1:");       // the H1 row does not authorize H2
+    await inbound(r, approveMsg(`approve 7 ${H2.slice(0, 9)}`, { reply_to_text: requestText(7, H2), message_id: 124 }), replies);
+    expect(rows(e.store).map(x => [x.head, x.message_id])).toEqual([[H1, 123], [H2, 124]]);
+    expect(e.authorize(7, H2)).toBe("0:approval:124");
+    e.set("STUB_OID", H1);
+    expect(e.authorize(7, H1)).toBe("0:approval:123");
+  } finally { e.done(); }
+});
+
+test("approve: a repeated approve for the same PR and head writes no second row and says so", async () => {
+  const e = approveEnv(); const r = root(); const replies: string[] = [];
+  try {
+    await inbound(r, approveMsg(`approve 7 ${H1.slice(0, 7)}`), replies);
+    const before = readFileSync(e.store, "utf8");
+    await inbound(r, approveMsg(`approve 7 ${H1.slice(0, 12)}`, { message_id: 130 }), replies);
+    expect(readFileSync(e.store, "utf8")).toBe(before);
+    expect(replies.at(-1)).toContain("already approved");
+    expect(e.authorize(7, H1)).toBe("0:approval:123");
+  } finally { e.done(); }
+});
+
+test("approve: a reply with no message id writes no row and says why", async () => {
+  const e = approveEnv(); const r = root(); const replies: string[] = [];
+  try {
+    await inbound(r, approveMsg(`approve 7 ${H1.slice(0, 7)}`, { message_id: undefined }), replies);
+    expect(existsSync(e.store)).toBe(false);
+    expect(replies.join("\n")).toContain("no message id");
+    expect(e.gh()).toEqual([]);
+  } finally { e.done(); }
+});
+
+const REFUSALS: { name: string; text?: string; extra?: Record<string, unknown>; env?: [string, string]; reply: string; gh: boolean }[] = [
+  { name: "a prefix shorter than 7 hex", text: `approve 7 ${H1.slice(0, 6)}`, reply: "at least 7 hex", gh: false },
+  { name: "a prefix of another sha", text: `approve 7 ${"c3".repeat(4)}`, reply: "not a prefix", gh: false },
+  { name: "a PR number that differs from the request", text: `approve 8 ${H1.slice(0, 7)}`, reply: "request is for PR 7", gh: false },
+  { name: "a PR that is not open", env: ["STUB_STATE", "MERGED"], reply: "PR 7 is not open", gh: true },
+  { name: "a live head that differs from the requested sha", env: ["STUB_OID", H2], reply: "head changed", gh: true },
+  { name: "gh exits non-zero", env: ["STUB_MODE", "fail"], reply: "cannot read PR 7; nothing stored", gh: true },
+  { name: "gh prints junk", env: ["STUB_MODE", "junk"], reply: "cannot read PR 7; nothing stored", gh: true },
+  { name: "not a reply at all", extra: { reply_to_message_id: undefined, reply_to_bot: undefined, reply_to_text: undefined }, reply: "reply to the outside-approve-request", gh: false },
+  { name: "a reply to a message that is not from the bot", extra: { reply_to_bot: undefined }, reply: "reply to the outside-approve-request", gh: false },
+  { name: "a reply to a bot message that is not a request", extra: { reply_to_text: "hello there" }, reply: "reply to the outside-approve-request", gh: false },
+  { name: "a request whose sha is not 40 hex", extra: { reply_to_text: `outside-approve-request 7 ${H1.slice(0, 12)}` }, reply: "reply to the outside-approve-request", gh: false },
+  { name: "an authorized chat that is not the operator chat", extra: { chat_id: -1 }, reply: "operator's own chat", gh: false },
+  { name: "a stale command", extra: { ts: Math.floor(Date.now() / 1000) - 301 }, reply: "stale, resend", gh: false },
+  // Ineligible senders and shapes are dropped without a reply and never reach the agent.
+  { name: "a sender who is not the operator", extra: { from: 999 }, reply: "", gh: false },
+  { name: "a forwarded message", extra: { forwarded: true }, reply: "", gh: false },
+  { name: "a voice transcript or caption", extra: { caption: true }, reply: "", gh: false },
+  { name: "a model-tagged line", text: `model:opus approve 7 ${H1.slice(0, 7)}`, reply: "", gh: false },
+];
+test("approve: every refusal replies with its reason, stores nothing and leaves the file bytes unchanged", async () => {
+  for (const seeded of [false, true]) {
+    for (const c of REFUSALS) {
+      const e = approveEnv(); const r = root(); const replies: string[] = []; const ran: string[] = [];
+      try {
+        const seed = JSON.stringify({ pr: 99, head: H2, stage: "review", from: 1, chat: 1, message_id: 9, ts: "2026-11-07T10:00:00Z" }) + "\n";
+        if (seeded) { mkdirSync(join(e.home, ".himmel")); writeFileSync(e.store, seed); }
+        if (c.env) e.set(...c.env);
+        await inbound(r, approveMsg(c.text ?? `approve 7 ${H1.slice(0, 7)}`, c.extra), replies, ran);
+        const label = `${c.name} (seeded=${seeded})`;
+        expect(existsSync(e.store), label).toBe(seeded);
+        if (seeded) expect(readFileSync(e.store, "utf8"), label).toBe(seed);
+        expect(ran, label).toEqual([]);
+        if (c.reply) expect(replies.join("\n"), label).toContain(c.reply); else expect(replies, label).toEqual([]);
+        expect(e.gh().length > 0, label).toBe(c.gh);
+        expect(e.authorize(7, H1), label).toBe("1:");
+      } finally { e.done(); }
+    }
+  }
+});
+
+test("approve: a gh call that outlives its bound is killed, replies cannot-read and stores nothing", async () => {
+  const e = approveEnv(); const r = root(); const replies: string[] = [];
+  try {
+    e.set("STUB_MODE", "sleep");
+    const { routeApprove } = await import("./chief-route");
+    const t0 = Date.now();
+    await routeApprove(approveMsg(`approve 7 ${H1.slice(0, 7)}`) as never, { kind: "approve", pr: 7, prefix: H1.slice(0, 7) }, gate(replies), { ghTimeoutMs: 300 });
+    expect(Date.now() - t0).toBeLessThan(5000);
+    expect(replies.join("\n")).toContain("cannot read PR 7; nothing stored");
+    expect(existsSync(e.store)).toBe(false);
+  } finally { e.done(); }
+});
+
+test("approve: only the verb writes the store: another word, a non-numeric PR or a trailing word is chat and writes nothing", async () => {
+  const e = approveEnv(); const r = root(); const ran: string[] = [];
+  try {
+    for (const text of ["approved 7 a1a1a1a", "approve seven a1a1a1a", "approve 7", "approve 7 a1a1a1a and more", "approve 7 zzzzzzz"]) await inbound(r, approveMsg(text), [], ran);
+    expect(existsSync(e.store)).toBe(false);
+    expect(e.gh()).toEqual([]);
+    expect(readdirSync(e.home).includes(".himmel")).toBe(false);
+  } finally { e.done(); }
+});
