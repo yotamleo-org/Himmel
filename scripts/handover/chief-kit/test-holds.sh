@@ -389,8 +389,13 @@ same "I9 on under HIMMEL_CONSOLE_LEG=1 exits 1" "$RC" 1
 run hp grant --key $K2 --repo "$R" .claude/settings.json
 same "I9 a grant on .claude/settings.json exits 1" "$RC" 1
 contains "I9 ... and says only the operator can" "$ERR" operator
+contains "I9 ... and names waiting as an exit" "$ERR" "wait for its release"
+contains "I9 ... and names the operator's bypass launch" "$ERR" "the operator launches with WRITE_HOLD_OK=1"
 run hp grant --key $K2 --repo "$R" scripts/ci/suite-tiers.tsv
 same "I9 a grant on a trust path exits 1" "$RC" 1
+contains "I9 ... and names the chief's stamp" "$ERR" "--chief-doc"
+contains "I9 ... and names waiting as an exit" "$ERR" "wait for its release"
+contains "I9 ... and names the operator's bypass launch" "$ERR" "the operator launches with WRITE_HOLD_OK=1"
 run hp grant --key $K2 --repo "$R" scripts/handover/chief-kit/holds-exempt.txt
 same "I9 a grant on the exempt list (itself a trust path) exits 1" "$RC" 1
 
@@ -1116,7 +1121,61 @@ put_row scripts/r9186.sh HIMMEL-9628 lab "$(mkdoc HIMMEL-9628-case.md)" brief ""
 touch "$(rowf scripts/r9186.sh "$R9")"
 run hp claim --key HIMMEL-9627 --label asker --doc "$(mkdoc HIMMEL-9627-case.md)" --repo "$R9" scripts/r9186.sh
 case "$ERR" in *"ask your chief: HOLD-ASK"*) fail "9186 the refusal no longer names the HOLD-ASK route that has no consumer" ;; *) pass "9186 the refusal no longer names the HOLD-ASK route that has no consumer" ;; esac
+same "8725 the path off every list routes any" "$(hp grant-route --repo "$R9" scripts/r9186.sh)" any
+contains "8725 route any: the refusal sends a HOLD-ASK" "$ERR" "Message your chief: HOLD-ASK scripts/r9186.sh HIMMEL-9627"
+case "$ERR" in *WRITE_HOLD_OK*) fail "8725 route any: the refusal does not name the bypass" ;; *) pass "8725 route any: the refusal does not name the bypass" ;; esac
+# refused_text <path> <asker key>: a live rival's row on the path, then that asker's claim; $ERR is the refusal
+refused_text() {
+    local rival=HIMMEL-9628
+    put_row "$1" "$rival" lab "$(mkdoc "$rival-case.md")" brief "" "$R9"
+    touch "$(rowf "$1" "$R9")"
+    run hp claim --key "$2" --label asker --doc "$(mkdoc "$2-case.md")" --repo "$R9" "$1"
+}
+same "8725 scripts/check-ci.sh routes chief" "$(hp grant-route --repo "$R9" scripts/check-ci.sh)" chief
+refused_text scripts/check-ci.sh HIMMEL-9626
+same "8725 route chief: the claim is refused" "$RC" 1
 contains "9186 the refusal tells the worker the chief sees the deny on its tick and grants it" "$ERR" "hreg="
+contains "8725 route chief: the refusal names the chief's stamp" "$ERR" "can stamp a grant with --chief-doc"
+contains "8725 route chief: the refusal names waiting and the bypass launch" "$ERR" "Otherwise wait for its release, or the operator launches with WRITE_HOLD_OK=1"
+case "$ERR" in *HOLD-ASK*) fail "8725 route chief: the refusal sends no HOLD-ASK" ;; *) pass "8725 route chief: the refusal sends no HOLD-ASK" ;; esac
+same "8725 a CI workflow routes operator" "$(hp grant-route --repo "$R9" .github/workflows/x.yml)" operator
+refused_text .github/workflows/x.yml HIMMEL-9625
+same "8725 route operator: the claim is refused" "$RC" 1
+contains "8725 route operator: only the operator grants" "$ERR" "only the operator grants it"
+contains "8725 route operator: the refusal names waiting and the bypass launch" "$ERR" "Otherwise wait for its release, or the operator launches with WRITE_HOLD_OK=1"
+case "$ERR" in *--chief-doc*|*HOLD-ASK*) fail "8725 route operator: the refusal names no chief stamp and no HOLD-ASK" ;; *) pass "8725 route operator: the refusal names no chief stamp and no HOLD-ASK" ;; esac
+# copy_claim <list content for printf %b, or - for no list> <path> <asker key>: the same claim, by a holds.py copy beside that
+# list. Every caller reads rc 1 as a deny and passes on rc 2, so a bad list must leave the deny a deny.
+copy_claim() {
+    local d="$W/trust-$3" rival=HIMMEL-9628
+    mkdir -p "$d/scripts/handover/chief-kit" "$d/scripts/ci"
+    cp "$SUT" "$d/scripts/handover/chief-kit/holds.py"
+    if [ "$1" != - ]; then printf '%b' "$1" > "$d/scripts/ci/ci-trust-paths.txt"; fi
+    put_row "$2" "$rival" lab "$(mkdoc "$rival-case.md")" brief "" "$R9"
+    touch "$(rowf "$2" "$R9")"
+    run python3 -I "$d/scripts/handover/chief-kit/holds.py" claim --key "$3" --label asker --doc "$(mkdoc "$3-case.md")" --repo "$R9" "$2"
+}
+copy_claim '^scripts/tl-good\\.sh$\n' scripts/tl-good.sh HIMMEL-9624
+same "8725 control: a copy beside a good list is refused" "$RC" 1
+contains "8725 control: the copy reads its own list, the path routes chief" "$ERR" "can stamp a grant with --chief-doc"
+copy_claim '*bad\n' scripts/tl-invalid.sh HIMMEL-9623
+same "8725 an invalid pattern in the list: the claim is still refused" "$RC" 1
+contains "8725 an invalid pattern in the list: the refusal is a holds: line" "$ERR" "holds: scripts/tl-invalid.sh is held by"
+copy_claim '\0377\n' scripts/tl-bytes.sh HIMMEL-9622
+same "8725 a non-UTF-8 byte in the list: the claim is still refused" "$RC" 1
+contains "8725 a non-UTF-8 byte in the list: the refusal is a holds: line" "$ERR" "holds: scripts/tl-bytes.sh is held by"
+copy_claim - scripts/tl-missing.sh HIMMEL-9621
+same "8725 no list: the claim is still refused" "$RC" 1
+contains "8725 no list: the refusal is a holds: line" "$ERR" "holds: scripts/tl-missing.sh is held by"
+copy_claim - .github/workflows/tl-missing.yml HIMMEL-9620
+same "8725 no list, a CI workflow: the claim is still refused" "$RC" 1
+contains "8725 no list, a CI workflow: it still routes operator" "$ERR" "only the operator grants it"
+copy_claim '*bad\n' .github/workflows/tl-invalid.yml HIMMEL-9619
+same "8725 an invalid list, a CI workflow: the claim is still refused" "$RC" 1
+contains "8725 an invalid list, a CI workflow: it still routes operator" "$ERR" "only the operator grants it"
+run python3 -I "$W/trust-HIMMEL-9623/scripts/handover/chief-kit/holds.py" grant --key HIMMEL-9623 --repo "$R9" scripts/tl-invalid.sh
+same "8725 an invalid list: a grant still refuses" "$RC" 2
+same "8725 an invalid list: a grant writes nothing" "$(find "$(slugdir "$R9")" -name '*.grant.HIMMEL-9623' | wc -l | tr -d ' ')" 0
 
 # ---- 8725 Task 5: git-check --staged and --push read git's own file lists (I2, I7, I12)
 # A real repo with an origin and linked worktrees; the commit and push hooks are the real entries of .pre-commit-config.yaml,

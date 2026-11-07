@@ -52,8 +52,8 @@ around it, and you run scripts rather than slash commands.
    ([install.md](setup/install.md#what-you-are-opting-into)).
 7. **Prune** with `bash scripts/clean.sh`, which removes worktrees whose PR merged.
 
-Slash commands in an adopted repo: `/cr-scores`, `/cr-tune` and
-`/cr-learnings-refresh` (copied in by the install), and the commands of the
+Slash commands in an adopted repo: `/cr-scores`, `/cr-tune`,
+`/cr-learnings-refresh` and `/handover-resume` (copied in by the install), and the commands of the
 plugins in the `lean` plugin set (`/handover-setup`, `/chief`, `/himmel-doctor`
 and the rest of the `himmel-ops` plugin). `/worktree`, `/clean`, `/pr-check` and
 `/check-ci` are not among them; steps 1, 5 and 7 above are their scripts.
@@ -532,17 +532,29 @@ worktrees whose branch has a merged PR and removes them. The worktree at
 ## 10. Handover
 
 At session end (or when switching context), snapshot your in-progress
-state:
+state on a tracked item (one you opened with `/handover new-epic <name>` or
+`/handover new-standalone <name>`):
 
 ```
 /handover
 ```
 
-The handover skill writes a structured summary of what was done, what is
-in-flight, and what the next session should pick up. State is stored in
-your handover state repo (not in himmel's `handovers/` stub). To resume in
-a future session, use `/handover-resume-armed` or browse the handover
-registry via `/handover repos`.
+`/handover` has no default: it writes into an existing item. The handover skill
+writes a structured summary of what was done, what is in-flight, and what the
+next session should pick up. With an inline `handovers/` folder, the note lands in
+a `handover/<slug>` worktree off `main`, not in the folder you are in, and a fresh
+session reads it with `/handover-resume` from that worktree, or from the main
+folder once the branch merges. With `HANDOVER_DIR`, the note goes under that
+folder, where `/handover-resume` reads it. `/handover-resume-armed` is a different
+command: it recovers an interrupted session. `/handover repos` browses the
+registry.
+
+In your own project, the install copies the resume and storage-setup scripts, so
+`/handover-setup` and `/handover-resume` run. Only a himmel checkout has been shown
+running the commands that create an item or write a note (`new-*`, end-session).
+The scripts that open, merge and flush a handover branch's PR (`pr-open.sh`,
+`pr-merge.sh`, `flush.sh`) are not copied. A fresh project has no item for
+`/handover` to write into.
 
 Full handover internals:
 [docs/internals/handover-system.md](internals/handover-system.md).

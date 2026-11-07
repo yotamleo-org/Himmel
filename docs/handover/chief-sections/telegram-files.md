@@ -38,6 +38,17 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   `bash scripts/handover/chief-kit/critic-seal.sh <verdict file> <file it read> <sha the critic quoted>`
   (the return itself must quote that sha); a verdict with no such line is refused until it is. Reports, logs and audits under no such path send
   as before. There is no read-only form: a signature-class file goes through the check or does not send.
+- **Make a spec's sign page with the shared generator, then run the critic.** Generate first:
+  `python3 -I scripts/telegram/spec-page-gen.py <spec.md> <out.html>` prints two lines, the sha256 of the
+  md it read and of the page it wrote. The critic reads the md AND the page and quotes both shas; seal
+  both, one `critic-seal.sh` run per file (the spec critic file, the md, its sha; then the same file, the
+  page, its sha); then `send-file` the `.html`. The page names its spec in a `spec-source` meta tag (the
+  md's absolute path), so `send-file` applies the spec's critic check to a copy in any folder under any
+  name, and refuses it when the critic's seals do not include the page's own bytes. The generator leaves
+  the front matter status out and refuses, naming the line and writing nothing, an md body line that
+  starts with `Status:` or says "not for signature": the draft state lives in the missing critic seal.
+  Edit the spec after that and the md, the page and the critic all start over. A hand-built page with no
+  marker, outside the folders above, still reads as a report.
 - The check covers `send-file` only. A file the bridge chat copies into `outgoing/` and queues itself is
   not checked (ponytail: a hand-built `.html` there carries no link to its spec; upgrade path:
   a follow-up that starts with a ruling on how to tell a report from a spec page; the PR names its ticket).

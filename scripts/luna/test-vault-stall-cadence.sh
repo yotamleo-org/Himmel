@@ -79,9 +79,10 @@ if ! gl_out="$(gitleaks git --pre-commit --redact --staged --verbose --no-banner
     printf 'Detect hardcoded secrets...Failed\n- hook id: gitleaks\n- exit code: 1\n\n%s\n' "$gl_out"; rc=1
 fi
 if ! skipped end-of-file-fixer; then
-    eof_out=""
+    eof_out=""; eof_ex="$(excl end-of-file-fixer)"
     for f in "${files[@]}"; do
         case "$f" in *.sh|*.json|*.yaml|*.toml) ;; *) continue ;; esac
+        [ -n "$eof_ex" ] && [ -n "$(printf '%s' "$f" | grep -E "$eof_ex")" ] && continue
         if [ -s "$f" ] && [ -n "$(tail -c 1 "$f")" ]; then echo >>"$f"; eof_out="${eof_out}Fixing $f"$'\n'; fi
     done
     if [ -n "$eof_out" ]; then
@@ -115,6 +116,9 @@ repos:
         files: '\.(sh|ps1|yaml|yml|json|toml)$'
       - id: check-json
         exclude: '^handovers/.*/verdicts/'
+      - id: end-of-file-fixer
+        files: '\.(sh|ps1|yaml|yml|json|toml)$'
+        exclude: '^\.manifest\.json$'
 
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.10.0.1
@@ -624,16 +628,16 @@ assert_eq "T30 the working tree is left as it was" "echo fixed" "$(sed -n 2p "$V
 # --- T31 a fixer refusal on a staged blob is named, never run on the vault ----
 mkvault
 before="$(head_sha)"
-printf '{"workers": []}' >"$V/handovers/workers.json"
-git -C "$V" add handovers/workers.json
+printf '{"workers": []}' >"$V/data.json"
+git -C "$V" add data.json
 out="$(run_sut)"; rc=$?
 assert_eq "T31 run exits 0" "0" "$rc"
 assert_eq "T31 no commit" "$before" "$(head_sha)"
-assert_has "T31 alert names the fixer and file" "end-of-file-fixer handovers/workers.json" "$(sent)"
+assert_has "T31 alert names the fixer and file" "end-of-file-fixer data.json" "$(sent)"
 assert_not_has "T31 not reported as passing" "stall-but-pre-commit-passes" "$(sent)"
-assert_has "T31 last-run.log keeps the fixer's output" "Fixing handovers/workers.json" "$(cat "$S/last-run.log" 2>/dev/null)"
-assert_eq "T31 the vault file is not rewritten" '{"workers": []}' "$(cat "$V/handovers/workers.json")"
-assert_eq "T31 the backlog is untouched" "handovers/workers.json " "$(staged)"
+assert_has "T31 last-run.log keeps the fixer's output" "Fixing data.json" "$(cat "$S/last-run.log" 2>/dev/null)"
+assert_eq "T31 the vault file is not rewritten (still no final newline)" '}' "$(tail -c 1 "$V/data.json")"
+assert_eq "T31 the backlog is untouched" "data.json " "$(staged)"
 
 # --- T32 a staged gitleaks hit the working tree no longer has ----------------
 mkvault
@@ -698,6 +702,77 @@ assert_eq "T37 run exits 0" "0" "$rc"
 assert_has "T37 the remediation commit still lands" "remediate stall class shellcheck" "$(git -C "$V" log -1 --format=%s)"
 assert_eq "T37 only the real backlog stays staged" "handovers/x.sh " "$(staged)"
 assert_eq "T37 no alert sent" "" "$(sent)"
+
+# --- T38 a state file staged without its final newline: the fixer's refusal is remediated, through the index ---
+# The alerts' own shape: end-of-file-fixer "Fixing" a JSON under handovers/ that an agent's Write tool left bare.
+hook_full_rc() { (cd "$V" && git hook run pre-commit >/dev/null 2>&1); echo $?; }
+mkvault
+printf '{"workers": []}' >"$V/handovers/workers-TB-1.json"
+git -C "$V" add handovers/workers-TB-1.json
+blob_before="$(git -C "$V" ls-files -s handovers/workers-TB-1.json)"
+assert_eq "T38 control: the unskipped hook refuses the staged blob before the run" "1" "$(hook_full_rc)"
+git -C "$V" checkout -q -- . 2>/dev/null; printf '{"workers": []}' >"$V/handovers/workers-TB-1.json"   # the control's fixer rewrote the tree
+out="$(run_sut)"; rc=$?
+assert_eq "T38 run exits 0" "0" "$rc"
+assert_has "T38 commit names the end-of-file-fixer class" "remediate stall class end-of-file-fixer" "$(git -C "$V" log -1 --format=%s)"
+assert_eq "T38 commit holds ONLY the config" ".pre-commit-config.yaml " "$(head_files)"
+assert_has "T38 end-of-file-fixer exclude covers handovers/ and keeps the old alternative" "exclude: '^handovers/|^\\.manifest\\.json\$'" "$(sed -n '/id: end-of-file-fixer/,/repo:/p' "$V/.pre-commit-config.yaml")"
+assert_eq "T38 the staged blob is exactly what the sync staged" "$blob_before" "$(git -C "$V" ls-files -s handovers/workers-TB-1.json)"
+assert_eq "T38 the unskipped hook now passes on the index" "0" "$(hook_full_rc)"
+assert_eq "T38 no alert sent" "" "$(sent)"
+git -C "$V" commit -q -m sync >/dev/null 2>&1; crc=$?
+assert_eq "T38 the sync's own commit goes through the hook" "0" "$crc"
+assert_eq "T38 the committed blob is the staged blob, byte for byte (no newline added)" "$(printf '%s' "$blob_before" | awk '{print $2}')" "$(git -C "$V" rev-parse HEAD:handovers/workers-TB-1.json)"
+
+# --- T39 a state file beside one outside handovers/: all-or-nothing, the outside file alerts ---
+mkvault
+before="$(head_sha)"; cfg_before="$(cat "$V/.pre-commit-config.yaml")"
+printf '{"a": 1}' >"$V/handovers/workers-TB-2.json"; printf '{"b": 2}' >"$V/data.json"
+git -C "$V" add handovers/workers-TB-2.json data.json
+out="$(run_sut)"; rc=$?
+assert_eq "T39 no commit" "$before" "$(head_sha)"
+assert_eq "T39 config untouched" "$cfg_before" "$(cat "$V/.pre-commit-config.yaml")"
+assert_has "T39 alert names the outside file" "end-of-file-fixer data.json" "$(sent)"
+
+# --- T40 the vault wrapper's own gitleaks stage prints no hook id: classified, not "unclassified refusal" ---
+# The last line of the real wrapper (.git/hooks/pre-commit, scripts/hooks/install-nostash-hooks.sh) runs gitleaks itself.
+wrapper_hook() { # <body line(s)> -> the wrapper's tail as the vault's hook
+    printf '#!/usr/bin/env bash\ncd "$(git rev-parse --show-toplevel)" || exit 2\n%s\n' "$1" >"$V/.git/hooks/pre-commit"
+    chmod +x "$V/.git/hooks/pre-commit"
+}
+WRAPPER_GL='gitleaks git --pre-commit --staged --redact --verbose --no-banner'
+mkvault; wrapper_hook "$WRAPPER_GL"
+printf -- '- 10:00 LIVE — release-token: `%s`\n' "$LOCK_TOKEN" >"$V/handovers/b.md"
+git -C "$V" add handovers/b.md
+assert_eq "T40 control: the wrapper's gitleaks refuses the staged token" "1" "$(cd "$V" && git hook run pre-commit >/dev/null 2>&1; echo $?)"
+out="$(run_sut)"
+assert_has "T40 a wrapper gitleaks finding of the closed shape is remediated" "remediate stall class gitleaks:handover-token" "$(git -C "$V" log -1 --format=%s)"
+assert_not_has "T40 not reported as unclassified" "unclassified refusal" "$(sent)"
+
+# --- T41 a real secret from the wrapper's gitleaks stage still alerts by rule and stops the commit ---
+mkvault; wrapper_hook "$WRAPPER_GL"
+before="$(head_sha)"; toml_before="$(cat "$V/.gitleaks.toml")"
+printf 'aws_key = "%s"\n' "$AWS_KEY" >"$V/handovers/c.md"
+git -C "$V" add handovers/c.md
+out="$(run_sut)"
+assert_eq "T41 no commit" "$before" "$(head_sha)"
+assert_eq "T41 gitleaks config untouched" "$toml_before" "$(cat "$V/.gitleaks.toml")"
+assert_has "T41 alert names rule, file and line" "gitleaks aws-access-token handovers/c.md:1" "$(sent)"
+assert_not_has "T41 not reported as unclassified" "unclassified refusal" "$(sent)"
+assert_not_has "T41 alert never carries the secret" "$AWS_KEY" "$(sent)"
+assert_eq "T41 no state file carries the secret" "" "$(grep -rl "$AWS_KEY" "$S" "$TMP/home" 2>/dev/null)"
+assert_eq "T41 control: the secret is still refused by the wrapper" "1" "$(cd "$V" && git hook run pre-commit >/dev/null 2>&1; echo $?)"
+
+# --- T42 a wrapper refusal with no hook id and no finding is named by its message ---
+mkvault; wrapper_hook 'echo "error: gitleaks not found (baked path gone, none on PATH); refusing the commit." >&2; exit 1'
+echo note >"$V/notes.md"; git -C "$V" add notes.md
+out="$(run_sut)"
+assert_has "T42 the alert carries the wrapper's message" "gitleaks not found" "$(sent)"
+assert_has "T42 the alert carries the exit code" "rc=1" "$(sent)"
+mkvault; wrapper_hook 'echo "something unexpected" ; exit 3'
+echo note >"$V/notes.md"; git -C "$V" add notes.md
+out="$(run_sut)"
+assert_has "T42 a refusal with no message stays unclassified, with its exit code" "unclassified refusal rc=3" "$(sent)"
 
 echo "----"
 if [ "$FAILED" -eq 0 ]; then echo "PASS: vault-stall-cadence ($0)"; else echo "FAIL: vault-stall-cadence — $FAILED failed ($0)" >&2; exit 1; fi

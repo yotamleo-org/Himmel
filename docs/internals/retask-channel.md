@@ -96,6 +96,13 @@ stopping is always safe). Cost: ~6 lines/brief + one echoed token/revision.
 Degrades safely: a forgotten token = today's behavior (child completes the
 sealed scope and reports).
 
+**The sealed scope is not a write fence.** A worker's write onto a file another
+live worker or open PR holds is denied, and the deny says how to ask the chief. A
+write onto a free file outside the brief's `Writes` passes: it is claimed, recorded
+and named on the PR's `outside-writes:` line, so scope creep is refused by review
+and `## Ticket coverage`, not at the write. A `holds.py grant` lets one worker write
+one held file and widens nothing else; only a token-bearing revision widens the scope.
+
 **Completion condition (required alongside the block):** every
 brief this token protects must also state its own completion condition
 explicitly. The RETASK block is scope-*safety*; it says what the child may not

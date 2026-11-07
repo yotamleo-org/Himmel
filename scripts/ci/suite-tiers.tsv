@@ -1258,3 +1258,4 @@ scripts/handover/test-morning-report-cadence.sh	local	behaviour suite, new for H
 scripts/test-himmel-doctor-morning-report.sh	local	behaviour suite, new for HIMMEL-7977 (doctor C86-morning-report)
 scripts/handover/chief-kit/test-size-override.sh	local	behaviour suite, new
 scripts/handover/chief-kit/test-chief-doc-one-read.sh	local	behaviour suite, new
+scripts/telegram/test-spec-page-gen.sh	pr	guard
