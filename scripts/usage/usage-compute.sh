@@ -444,7 +444,9 @@ apply_commit() {
   [ "$cur" -eq $((base + len)) ] || tail -c +$((cur - base + 1)) "$c/append.jsonl" >> "$FILE" || die "cannot append to $FILE"
   for p in "$c"/emitted/*.json; do [ ! -f "$p" ] || put "$p" "$EMDIR/${p##*/}"; done
   put "$c/checkpoint.json" "$CHECKPOINT"
-  rm -rf "$c"
+  # renamed aside first: a kill during the removal leaves .commit.done, which is never replayed, not a half .commit
+  mv "$c" "$STORE/.commit.done" || die "cannot retire the applied commit $c"
+  rm -rf "$STORE/.commit.done"
 }
 # commit <append-file> <emitted-dir> <checkpoint>; --print keeps all three in the scratch dir and prints at the end
 commit() {
@@ -462,7 +464,7 @@ commit() {
   apply_commit
 }
 if [ "$PRINT" != 1 ]; then
-  rm -rf "$STORE/.commit.new"
+  rm -rf "$STORE/.commit.new" "$STORE/.commit.done"
   if [ -d "$STORE/.commit" ]; then apply_commit; echo "usage-compute: note: applied the commit a stopped run left" >&2; fi
 fi
 
@@ -485,7 +487,7 @@ fi
 # and --repo); the sessions the checkpoint holds and the root no longer has are dropped in the first window
 # shellcheck disable=SC2016  # jq's own $vars
 jq -nRc --slurpfile ck "$WORK/ck-in.json" --arg root "$PROJECTS" --argjson single "$([ "$PRINT" = 1 ] || [ -n "$REPO" ] && echo true || echo false)" '
-def ukey: if test("^[A-Za-z0-9._-]{1,100}$") then . else "b32-" + (@base32 | .[0:200]) end;
+def ukey: if test("^[A-Za-z0-9._-]{1,100}$") then . else "b64-" + (@base64 | gsub("/"; "_") | gsub("\\+"; "-") | gsub("="; "") | .[0:200]) end;
 [ inputs | capture("^(?<s>[0-9]+) (?<m>[0-9]+) (?<p>.*)$")
   | (.p | ltrimstr($root + "/")) as $rel | ($rel | split("/")) as $c
   | { rel: $rel, size: (.s | tonumber), m: (.m | tonumber), slug: $c[0],

@@ -746,6 +746,20 @@ check "windows: the re-emitted rows read back as the same rows, calls not double
   "$(bash "$READ" --store "$WU" --phase-cost | jq -s '[length, (map(.calls) | add)]' | tr -d ' \n')" \
   "$(bash "$READ" --store "$WLG" --phase-cost | jq -s '[length, (map(.calls) | add)]' | tr -d ' \n')"
 
+# a session whose name falls outside [A-Za-z0-9._-] still gets its own emitted-map file and its rows
+WO="$ROOT/win/odd/projects"; mkdir -p "$WO/slug"
+arow odd 2026-11-04T10:00:00.000Z o1 $OP 10 1 100 0 0 > "$WO/slug/odd name+1.jsonl"
+rc=0; HOME="$PCH" TZ=UTC bash "$COMPUTE" --projects "$WO" --ledger "$WL" --store "$ROOT/win/store-odd" >/dev/null 2>&1 || rc=$?
+check "windows: a session named outside the plain set builds (rc 0, one phase row)" "0/1" \
+  "$rc/$(jq -s '[.[] | select(.kind=="phase-cost" and .session=="odd name+1")] | length' "$ROOT/win/store-odd/records.jsonl" 2>/dev/null || echo none)"
+
+# an applied commit is renamed aside before it is removed, so a kill during the removal leaves nothing a later run replays
+mkdir -p "$WU/.commit.done/emitted"; echo 7 > "$WU/.commit.done/base"
+wu_h="$(cksum < "$WU/records.jsonl")"
+rc=0; wrun "$WU" >/dev/null || rc=$?
+check "windows: a half-removed applied commit is dropped, not replayed (rc 0, store unchanged, leftover gone)" "0/$wu_h/no" \
+  "$rc/$(cksum < "$WU/records.jsonl")/$([ -e "$WU/.commit.done" ] && echo yes || echo no)"
+
 # a held store lock: the refusal names the lock, the owner pid it holds and whether that pid runs
 WK="$ROOT/win/store-lock"; mkdir -p "$WK/.lock"
 # lockmsg <text>: yes when the refused run's last stderr line holds <text> (the run's own rc 1 is expected)

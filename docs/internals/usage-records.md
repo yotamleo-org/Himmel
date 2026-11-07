@@ -121,8 +121,9 @@ runs in windows rather than all at once.
 - **A commit per window.** The window's phase-cost rows, its sessions' emitted maps and
   the new checkpoint are staged under `<store>/.commit.new`, renamed to `.commit`, and
   then applied: the part of the staged rows that `records.jsonl` lacks is appended, and
-  each state file is replaced by copy then rename. A run that finds `.commit` applies it
-  first. A kill at any point therefore leaves each row appended once or not yet, never
+  each state file is replaced by copy then rename. An applied commit is renamed to
+  `.commit.done` before it is removed, so it is never replayed. A run that finds
+  `.commit` applies it first. A kill at any point therefore leaves each row appended once or not yet, never
   twice and never lost. Each transcript's phase state is saved as soon as it is read, so
   a kill loses at most the transcript in flight.
 - **Ticket records** are computed and appended only in the run's last window, once every
