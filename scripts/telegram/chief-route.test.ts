@@ -1792,3 +1792,21 @@ test("DoD 4: a judge return that ends in a verdict line can be sealed past the c
   expect(res.code).toBe(0);
   expect(readFileSync(res.lines[0].document_path as string, "utf8")).toContain("Round count: spec 3, plan 1.");
 });
+
+test("DoD 4: every judge file name in use can be sealed past the cap", async () => {
+  const r = root(); const b = threeRounds(r);
+  for (const name of ["judge.md", "judge2.md", "judge-input.md"]) {
+    const judge = `${b.spec}.${name}`; unsealedReturn(judge, D_TEXT, "SPEC CLEAN");
+    expect((await seal(judge, b.spec, sha(D_TEXT))).code).toBe(0);
+  }
+});
+
+test("planted: a spec named like a judge file still gets three rounds", async () => {
+  const r = root(); const b = bundle(r);
+  const spec = join(b.dir, "judge-design.md"); writeFileSync(spec, D_TEXT);
+  for (const n of [1, 2, 3]) critic(spec, "spec", n, "SPEC FINDINGS 1", { text: D_TEXT, file: "judge-design.md" });
+  const r4 = `${spec}.critic-spec-r4.md`; unsealedReturn(r4, D_TEXT);
+  const refused = await seal(r4, spec, sha(D_TEXT));
+  expect(refused.code).not.toBe(0);
+  expect(refused.err).toContain("operator-round-r4.md");
+});

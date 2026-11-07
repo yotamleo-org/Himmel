@@ -466,7 +466,8 @@ const readCritic = (file: string) => readFile(file, "utf8").catch((e) => { throw
 // ponytail: the count is read from the files on disk, so deleting or overwriting critic files lowers it, and a new
 // spec file name starts a new count; upgrade path: an append-only ledger written at seal time, keyed on the ticket.
 type Rounds = { count: number; numbered: number; renamed: string[] };
-const isJudgeReturn = (name: string) => /(^|[.-])judge[-.]/.test(name);
+// Reads the last name segment only: the spec's own name comes first and may hold the word.
+const isJudgeReturn = (name: string) => /(^|[.-])judge[^.]*\.md$/.test(name);
 async function criticRounds(spec: string, also?: string): Promise<Record<Kind, Rounds>> {
   const base = basename(spec);
   const files = new Map<string, string>();
