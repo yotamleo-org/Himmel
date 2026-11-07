@@ -203,7 +203,7 @@ fail_over() {
     { mkdir -p "$dir" && printf '{"ts":%s,"kind":"%s","repo":"%s","job_id":"%s","branch":"%s","head":"%s"}\n' \
       "$(date +%s)" "$KIND_SAFE" "$repo_json" "$JOB_SAFE" "$R_BRANCH" "$R_HEAD" >>"$dir/policy-refusals.jsonl"; } 2>/dev/null ||
       echo "claude-api: warning: policy refusal record not written" >&2
-    echo "claude-api: policy refusal (decision 525): no alert, no fallback" >&2
+    echo "claude-api: policy refusal: this call was not sent, and no alert or fallback follows. Name an account (A, B or C) instead of auto" >&2
     return 0
   fi
   if [ "${HIMMEL_API_FALLBACK:-on}" = off ]; then

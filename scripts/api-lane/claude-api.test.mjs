@@ -1431,7 +1431,7 @@ test('a decision-525 policy refusal sends no alert, writes no stamp, runs no fal
   const alertDir = f.env.HIMMEL_API_ALERT_DIR;
   assert.deepEqual(alerts(f), []);
   assert.deepEqual(readdirSync(alertDir), ['policy-refusals.jsonl']);
-  assert.match(r.stderr, /^claude-api: policy refusal \(decision 525\): no alert, no fallback$/m);
+  assert.match(r.stderr, /^claude-api: policy refusal: this call was not sent, and no alert or fallback follows\. Name an account \(A, B or C\) instead of auto$/m);
   const lines = readFileSync(join(alertDir, 'policy-refusals.jsonl'), 'utf8').trim().split('\n');
   assert.equal(lines.length, 1);
   const rec = JSON.parse(lines[0]);
@@ -1502,7 +1502,7 @@ test('judge mapped to B picks B; with the map removed the same call is refused-p
   const g = fixture();
   const refused = autoKind(g, 'judge');
   assert.equal(refused.status, 2, refused.stderr);
-  assert.match(refused.stderr, /policy refusal \(decision 525\): no alert, no fallback/);
+  assert.match(refused.stderr, /policy refusal: this call was not sent, and no alert or fallback follows\. Name an account \(A, B or C\) instead of auto/);
   assert.equal(policyLines(g).length, 1);
   assert.equal(g.called(), false);
 });
@@ -1558,7 +1558,7 @@ test('an invalid map routes as decision 525: eval refused-policy, graphify picks
   const g = autoKind(f, 'graphify');
   assert.equal(g.status, 0, g.stderr);
   assert.equal(usedKey(f), 'AAAA');
-  assert.match(g.stderr, /role map invalid \(invalid-role-map:not-json\); decision 525 applies/);
+  assert.match(g.stderr, /role map invalid \(invalid-role-map:not-json\); the map is ignored, so auto routing stays limited to the graph pass\. Fix or remove roles\.json/);
 });
 
 test('a mapped judge from another repo is refused-policy: the map never widens the repo', () => {

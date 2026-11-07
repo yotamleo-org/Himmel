@@ -96,11 +96,11 @@ export function writeRoles(env, doc) {
 
 // The one stderr line for the caller's own kind, or ''.
 function noteFor(map, kind) {
-  if (map.state === 'invalid') return ROLES.includes(kind) ? `claude-api: role map invalid (${map.errors[0]}); decision 525 applies` : '';
+  if (map.state === 'invalid') return ROLES.includes(kind) ? `claude-api: role map invalid (${map.errors[0]}); the map is ignored, so auto routing stays limited to the graph pass. Fix or remove roles.json` : '';
   if (!ROLES.includes(kind)) return '';
   const own = map.errors.filter((e) => e.split(':')[1] === kind);
   const empty = own.find((e) => e.startsWith('empty-role:'));
-  if (empty) return `claude-api: role map: ${kind} entry ignored (${empty}); decision 525 applies`;
+  if (empty) return `claude-api: role map: ${kind} entry ignored (${empty}); ${kind} gets no account from it. Add an account to it or remove it`;
   if (own.length) return `claude-api: role map: ${kind} entry kept as [${accountsFor(map, kind).join(',')}] (${own.join(', ')})`;
   return '';
 }
