@@ -445,16 +445,19 @@ rm -f "$W"/sess-*.log
 RR="$(cd "$R" && pwd -P)"
 bankrow='{"id":"a1","kind":"where","q":"where is the queue lock described","gold":["docs/lock.md"],"reason":[],"note":"BANKSECRET"}'
 mkdir -p "$R/scripts/eval/retrieval-eval" "$R/.claude/worktrees/x/scripts/eval/retrieval-eval"
-for f in scripts/eval/retrieval-eval/questions.jsonl scripts/eval/retrieval-eval/questions-v2.jsonl .claude/worktrees/x/scripts/eval/retrieval-eval/questions.jsonl inrepo-bank.jsonl; do
+for f in scripts/eval/retrieval-eval/questions.jsonl scripts/eval/retrieval-eval/questions-v2.jsonl inrepo-bank.jsonl; do
   printf '%s\n' "$bankrow" > "$R/$f"
 done
+printf '/.claude/worktrees\n' > "$R/.gitignore"
+printf '%s\n' "${bankrow%\}},\"wt\":\"BANKSECRET-wt\"}" > "$R/.claude/worktrees/x/scripts/eval/retrieval-eval/questions.jsonl"
 git -C "$R" add -A && git -C "$R" -c user.email=t@t -c user.name=t commit -q -m banks
+printf 'BANKSECRET-untracked\n' > "$R/untracked-bank.txt"
 inrepo="$R/inrepo-bank.jsonl"
 python3 -I "$AB" run --repo "$R" --questions "$inrepo" --out "$W/out-deny" --arms "$REAL" --model claude-sonnet-5-5 --pool 1 --n 1 --no-ledger > "$W/deny.txt" 2>&1
 eq "a deny-rule run completes" "0" "$?"
 eq "four sessions ran" "4" "$(wc -l < "$W/sess-cwd.log" | tr -d ' ')"
 eq "no session runs inside the repo, or in a tree under it" "0" "$(awk '{print $1}' "$W/sess-cwd.log" | grep -c "^$RR")"
-eq "no bank bytes are in any session's cwd tree (a tracked copy under .claude/worktrees included)" "0" "$(awk '{s += $2} END {print s + 0}' "$W/sess-cwd.log")"
+eq "no bank bytes are in any session's cwd tree (an ignored worktree copy and an untracked file included, neither byte-identical to a bank)" "0" "$(awk '{s += $2} END {print s + 0}' "$W/sess-cwd.log")"
 eq "the rest of the repo is still in the session's cwd tree" "4" "$(awk '{s += $3} END {print s + 0}' "$W/sess-cwd.log")"
 eq "the session's scratch export is gone after the run" "no" "$([ -e "$(awk 'NR==1 {print $1}' "$W/sess-cwd.log")" ] && echo yes || echo no)"
 eq "the repo's own bank is untouched" "1" "$(grep -c BANKSECRET "$R/scripts/eval/retrieval-eval/questions.jsonl")"
@@ -473,7 +476,7 @@ rm -f "$W"/sess-*.log
 extrow='{"id":"a1","kind":"where","q":"where is the queue lock described","gold":["docs/lock.md"],"reason":[],"note":"BANKSECRET-ext"}'
 printf '%s\n' "$extrow" > "$W/ext-bank.jsonl"
 printf '%s\n' "$extrow" > "$R/renamed-copy.dat"
-git -C "$R" add -A && git -C "$R" -c user.email=t@t -c user.name=t commit -q -m renamed
+git -C "$R" add renamed-copy.dat && git -C "$R" -c user.email=t@t -c user.name=t commit -q -m renamed
 python3 -I "$AB" run --repo "$R" --questions "$W/ext-bank.jsonl" --out "$W/out-ext" --arms vanilla --model claude-sonnet-5-5 --pool 1 --n 1 --no-ledger > "$W/ext.txt" 2>&1
 eq "an external-bank run completes" "0" "$?"
 eq "a tracked copy of an external --questions file is not in the session's cwd tree" "0" "$(awk '{s += $2} END {print s + 0}' "$W/sess-cwd.log")"

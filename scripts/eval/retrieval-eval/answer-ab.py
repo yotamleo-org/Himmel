@@ -28,7 +28,8 @@ Steps:
                 fused      grep + qmd-hybrid + graphify outputs, as the combined arm reads them
               The default --arms are these six. The four realistic arms are opt-in (--arms):
                 vanilla       a worker session: the himmel worker preface, the repo CLAUDE.md and
-                              hooks (cwd = --repo), tools Read, Grep, Glob only, an empty MCP config
+                              hooks (cwd = a bank-free export of --repo), tools Read, Grep, Glob only,
+                              an empty MCP config
                 fused-cached  the same session plus ONE tool, route, that returns grep + qmd
                               hybrid (reranked) + graphify, rank-fused, as a tool RESULT. The session
                               flags (preface, CLAUDE.md, hooks, model, permission mode) are vanilla's,
