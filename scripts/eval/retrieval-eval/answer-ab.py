@@ -333,9 +333,15 @@ class Sweep:
                 sess.setdefault("old", []).append(sess["id"])
                 sess["id"] = str(uuid.uuid4())  # the failed call may have taken the id: nothing to resume
         if trace:
+            calls = []
             with open(trace) as fh:
-                row["tool_trace"] = [json.loads(line) for line in fh if line.strip()]
-            row["route_calls"] = len(row["tool_trace"])
+                for line in fh:
+                    try:  # a session killed mid-write leaves a truncated last line: keep the complete calls
+                        calls.append(json.loads(line))
+                    except ValueError:
+                        pass
+            row["tool_trace"] = calls
+            row["route_calls"] = len(calls)
         row["ms"] = int((time.time() - t0) * 1000)
         self.spent += row["cost_usd"]
         self.rows.append(row)
