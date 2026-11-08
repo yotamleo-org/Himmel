@@ -3607,7 +3607,8 @@
         "worker-silent": "a worker gone quiet: the chief relaunches it or takes over its one blocked step, operational triage",
         "silent-go": "a GO'd PR whose worker went silent: the waiter merged it through merge-on-green.sh --go, or held it and paged, operational triage",
         "unclosed": "a worker window left open on two ticks with no disposition bullet: the chief closes it, parks it with a named wake or gives it up with a reason, operational triage",
-        "size": "a SIZE-ESCALATE row for a refused or bulk brief: the chief splits it, signs a size override or escalates to the operator, operational triage"
+        "size": "a SIZE-ESCALATE row for a refused or bulk brief: the chief splits it, signs a size override or escalates to the operator, operational triage",
+        "pr-watch": "a watched outside PR whose head, comments, reviews or state moved: the chief reads it and relaunches the closed worker or acts, operational triage"
       }
     },
     "docs/handover/worker-preface.md": {
