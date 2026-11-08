@@ -350,6 +350,7 @@ walk_words() {
 
 globroot_reaches() {
     local s="$1" m lead before tail pre p d r c tc
+    [[ "$s" =~ $GLOBROOT_RE ]] || return 1
     case "$s" in *..*) return 0 ;; esac
     while [[ "$s" =~ $GLOBROOT_RE ]]; do
         m=${BASH_REMATCH[0]}; lead=${BASH_REMATCH[1]}
