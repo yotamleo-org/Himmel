@@ -109,7 +109,7 @@ runs in windows rather than all at once.
 
 - **A window** is the set of sessions that changed since the last run, grouped by the
   local day of each session's newest file. A session is a top-level transcript plus its
-  subagents. Windows run newest day first, so the Cost page has today before history.
+  subagents. The windows run newest day first, so the Cost page has today before history.
   A session that changed is read again in full (`usage-attribution.sh`, unchanged, on a
   scratch root of symlinks to that window's files). Its table rows then replace the
   ones it had, so the ticket totals equal one pass over the whole root.
