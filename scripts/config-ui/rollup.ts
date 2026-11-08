@@ -8,10 +8,10 @@ import { join } from "node:path";
 type Env = Record<string, string | undefined>;
 type Row = { kind: string; key: string; partial?: boolean; since?: string; delta?: Record<string, number | null>; [k: string]: unknown };
 export type Point = { key: string; value: number };
-export type Compared = { key: string; value: number; delta: number | null; partial: boolean };
+export type Compared = { key: string; value: number; delta: number | null; prev_key: string | null; partial: boolean };
 export type Card = {
   id: "velocity" | "cost" | "health"; title: string; metric: string; unit: string; state: "ok" | "nodata";
-  spark: Point[]; week: Compared | null; version: Compared | null; sentence: string;
+  spark: Point[]; week: Compared | null; version: Compared | null; running: Point | null; sentence: string;
 };
 export type Rollup = { state: "ok"; cards: Card[] } | { state: "absent"; reason: string };
 
@@ -44,7 +44,10 @@ function newest(rs: Row[], kind: string, series: string, finished: boolean): Com
   const row = (finished ? have.filter((r) => !r.partial) : have).at(-1) ?? have.at(-1);
   if (!row) return null;
   const d = row.delta?.[series];
-  return { key: row.key, value: row[series] as number, delta: isNum(d) && !row.partial ? d : null, partial: !!row.partial };
+  const compared = isNum(d) && !row.partial;
+  const before = rs.filter((r) => r.kind === kind).sort(byKey);
+  const prev = before[before.findIndex((r) => r.key === row.key) - 1];
+  return { key: row.key, value: row[series] as number, delta: compared ? d : null, prev_key: compared && prev ? prev.key : null, partial: !!row.partial };
 }
 
 function sentence(c: (typeof CARDS)[number], week: Compared | null, version: Compared | null): string {
@@ -62,10 +65,12 @@ export function readRollup(env: Env): Rollup {
     const weeks = rs.filter((r) => r.kind === "week" && isNum(r[c.series])).sort(byKey);
     const spark = (weeks.some((r) => !r.partial) ? weeks.filter((r) => !r.partial) : weeks).slice(-SPARK_WEEKS).map((r) => ({ key: r.key, value: r[c.series] as number }));
     const week = newest(rs, "week", c.series, true), version = newest(rs, "version", c.series, true);
+    const live = weeks.filter((r) => r.partial).at(-1);
+    const running = live ? { key: live.key, value: live[c.series] as number } : null;
     const { better: _b, words: _w, series: _s, ...shown } = c;
     return week || version
-      ? { ...shown, state: "ok", spark, week, version, sentence: sentence(c, week, version) }
-      : { ...shown, state: "nodata", spark: [], week: null, version: null, sentence: "no data yet" };
+      ? { ...shown, state: "ok", spark, week, version, running, sentence: sentence(c, week, version) }
+      : { ...shown, state: "nodata", spark: [], week: null, version: null, running: null, sentence: "no data yet" };
   });
   return { state: "ok", cards };
 }
