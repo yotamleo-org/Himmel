@@ -31,8 +31,8 @@ FIXTURE_RTK_CHECKSUMS='21c4a2e30879ce49ebd939fa338c99208871ba591da9feeb483f2ed26
 FIXTURE_NODE_TARBALL='d28a96af6c38596f6d9d97c0ee531c13d238d757742387d1928de822d959e997  node-v26.13.0-linux-x64.tar.xz'
 FIXTURE_NODE_BIN='0adde40d1b7dfa57c8bc83cbc319758c3ec6ebba21363bb2fa752ea6b267ad1b  node-v26.13.0-linux-x64/bin/node'
 FIXTURE_CLAUDE_MANIFEST_LINUX_X64='708c77b204db30086ff6f1ed34577bda03e1be74ced80557cbf7b54249ebf0bd'
-FIXTURE_NVM_INSTALL='48a0eee9a60e07422dce0eb5774754c83889570ca1ee2566c516acbe8af03a9e  install.sh'
-FIXTURE_NVM_TAG_COMMIT='a885b885fef16fac4bc544188fb25e9e37ae83e8'
+FIXTURE_NVM_INSTALL='045932fe05f0d4247c946f2ec0ec4026dbfd8ce88a5f67ea28d8ea833227f48b  install.sh'
+FIXTURE_NVM_TAG_COMMIT='4e8758a801eea9479b32a904f31093e410ddaba4'
 FIXTURE_CERTIFI_WHEEL='e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1'
 FIXTURE_CERTIFI_SDIST='a9895e6e2758b371e0545e321a3a8fd1fcfd9829ada8824a936dfb16aaaf36cd'
 
@@ -66,7 +66,7 @@ if [ -f "$pins" ]; then
   check "claude linux-x64 sha256" test "${CLAUDE_LINUX_X64_SHA256:-}" = "$FIXTURE_CLAUDE_MANIFEST_LINUX_X64"
   check "nvm install.sh sha256" test "${NVM_INSTALL_SHA256:-}  install.sh" = "$FIXTURE_NVM_INSTALL"
   check "nvm tag commit"       test "${NVM_COMMIT:-}" = "$FIXTURE_NVM_TAG_COMMIT"
-  check "nvm tag v0.40.8"      test "${NVM_TAG:-}" = "v0.40.8"
+  check "nvm tag v0.41.0"      test "${NVM_TAG:-}" = "v0.41.0"
   check "pinned node major == .nvmrc major" test "${NODE_VERSION%%.*}" = "$(tr -d '[:space:]v' < "$repo_root/.nvmrc" | cut -d. -f1)"
   check "bun sha table covers .bun-version" test -n "$(bun_sha256 "$(tr -d '[:space:]' < "$repo_root/.bun-version")" 2>/dev/null)"
   # shellcheck disable=SC2016 # the inner shell expands $1
