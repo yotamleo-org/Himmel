@@ -12,6 +12,7 @@ README="$ROOT/README.md"
 CHIEF_RUN="$ROOT/docs/handover/running-a-chief.md"
 AFK="$ROOT/docs/handover/afk-mode.md"
 SERIES="$ROOT/docs/handover/worker-sections/series.md"
+CONFIG="$ROOT/docs/configuration.md"
 fails=0
 
 pass() { printf 'ok - %s\n' "$1"; }
@@ -27,7 +28,7 @@ section() {
     awk -v re="$2" '$0 ~ re { f = 1; next } f && /^#+ / { exit } f { print }' "$1"
 }
 
-for f in "$PREFACE" "$CHECK_CI" "$PLAYBOOK" "$GATES" "$README" "$CHIEF_RUN" "$AFK" "$SERIES"; do
+for f in "$PREFACE" "$CHECK_CI" "$PLAYBOOK" "$GATES" "$README" "$CHIEF_RUN" "$AFK" "$SERIES" "$CONFIG"; do
     [ -r "$f" ] || { printf 'FAIL - unreadable %s\n' "$f"; exit 1; }
 done
 
@@ -52,6 +53,11 @@ has 'D1 afk-mode: a wait is armed with run_in_background' "$afk" "bounded \`run_
 series="$(cat "$SERIES")"
 lacks 'D1 series: no "Nothing runs in the background"' "$series" 'Nothing runs in the background'
 has 'D1 series: the long wait is armed with run_in_background' "$series" "bounded \`run_in_background\` wait"
+config="$(cat "$CONFIG")"
+lacks 'D1 configuration: check-ci is not called in the foreground' "$config" "call \`scripts/check-ci.sh\` in the foreground"
+lacks 'D1 configuration: the run-mode wait is not foreground' "$config" 'Run the same entrypoint in the foreground'
+lacks 'D1 configuration: run_in_background is not forbidden' "$config" "poll loop or use \`run_in_background\`"
+has 'D1 configuration: a long wait runs with run_in_background' "$config" "run a long wait with \`run_in_background\`"
 lacks 'D7 check-ci: merge is not "an operator action"' "$checkci" 'merge stays an operator action'
 has 'D7 check-ci: a chief worker merges on the GO' "$checkci" 'merges only on the chief'"'"'s GO'
 
