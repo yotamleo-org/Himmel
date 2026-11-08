@@ -1188,8 +1188,8 @@ EOF
     return 0
 }
 
-# _in_session_scratchpad FILE — true when FILE (canonical) is the caller's own
-# session scratchpad or lies under it: <tmp>/claude-<uid>/<project>/<session>/scratchpad
+# _in_session_scratchpad FILE — true when FILE (canonical) is a session scratchpad
+# of this uid (any project, any session) or lies under it: <tmp>/claude-<uid>/<project>/<session>/scratchpad
 # with <tmp> = $TMPDIR or /tmp. The scratchpad directory lands in _SCRATCHPAD_ROOT.
 _SCRATCHPAD_ROOT=""
 _SCRATCHPAD_BASE=""
@@ -1237,10 +1237,6 @@ main_checkout_verdict_set() {
     [ -n "$repo_real" ] || return 0
     repo_real="${repo_real%/}"
 
-    if _stray_git_above_scratchpad "$file_real" "$repo_real"; then
-        return 0
-    fi
-
     case "$file_real" in
         "$repo_real"/handovers/*)
             _MCV_ROOT="$repo_real"
@@ -1266,6 +1262,9 @@ main_checkout_verdict_set() {
     elif [ "$branch_rc" -eq 0 ]; then
         block_reason="main"
     else
+        if _stray_git_above_scratchpad "$file_real" "$repo_real"; then
+            return 0
+        fi
         _MCV_ROOT="$repo_real"
         return 3
     fi

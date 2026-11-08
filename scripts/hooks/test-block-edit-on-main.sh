@@ -229,6 +229,24 @@ assert_rc "T3e a scratchpad symlink into a primary still blocks under the stray 
 mkdir -p "$SANDBOX/mainrepo/tmproot/claude-$(id -u)/proj/sess/scratchpad"
 assert_rc "T3e a temp root inside a checkout on main still blocks a scratchpad Write" 2 \
     "$(rc_of "$SANDBOX/mainrepo/tmproot/claude-$(id -u)/proj/sess/scratchpad/x.py" TMPDIR="$SANDBOX/mainrepo/tmproot")"
+P9626="$SB9626/claude-$(id -u)"
+mkdir -p "$P9626/projA/sessA/scratchpad" "$P9626/projB/sessB/scratchpad" "$P9626/projB/sessB/.git" \
+    "$P9626/projC/sessC/scratchpad" "$P9626/projD/sessD/scratchpad" "$P9626/projE/sessE/scratchpad/.git"
+ln -s "$SANDBOX/mainrepo/.git" "$P9626/projA/sessA/.git"
+printf 'ref: refs/heads/main\n' > "$P9626/projB/sessB/.git/HEAD"
+printf '%s\n' "$SANDBOX/mainrepo/.git" > "$P9626/projB/sessB/.git/commondir"
+mkrepo "$P9626/projC" main
+mkrepo "$P9626/projD/sessD" main
+assert_rc "T3e a session-level .git symlinked into a primary on main blocks" 2 \
+    "$(rc_of "$P9626/projA/sessA/scratchpad/x.py" TMPDIR="$SB9626")"
+assert_rc "T3e a session-level .git with a commondir into a primary on main blocks" 2 \
+    "$(rc_of "$P9626/projB/sessB/scratchpad/x.py" TMPDIR="$SB9626")"
+assert_rc "T3e a real repo on main at the project level blocks" 2 \
+    "$(rc_of "$P9626/projC/sessC/scratchpad/x.py" TMPDIR="$SB9626")"
+assert_rc "T3e a real repo on main at the session level blocks" 2 \
+    "$(rc_of "$P9626/projD/sessD/scratchpad/x.py" TMPDIR="$SB9626")"
+assert_rc "T3e a .git directly in the scratchpad blocks" 2 \
+    "$(rc_of "$P9626/projE/sessE/scratchpad/x.py" TMPDIR="$SB9626")"
 t3eerr=$(printf '%s' "{\"tool_input\":{\"file_path\":\"$SB9626/other/x.py\"}}" | env TMPDIR="$SB9626" bash "$HOOK" 2>&1 >/dev/null)
 case "$t3eerr" in
     *"$SB9626/.git"*) echo "PASS T3e the rc 3 message names the .git it found" ;;
