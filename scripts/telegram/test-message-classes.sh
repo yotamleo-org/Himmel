@@ -120,7 +120,7 @@ if want("workers1"):
 
 if want("workers2"):
     home, vault = tempfile.mkdtemp(), tempfile.mkdtemp()
-    env = dict(os.environ, HOME=home, LINT_VAULT=vault, PATH=os.environ["LINT_STUB_PATH"])
+    env = dict(os.environ, HOME=home, LINT_VAULT=vault, HANDOVER_DIR=vault, PATH=os.environ["LINT_STUB_PATH"])
     for cmd in [l for l in open(opt["--emitters-file"]).read().split("\n") if l.strip()]:
         p = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, env=env, cwd=repo)
         if p.returncode != 0:
