@@ -1171,7 +1171,8 @@ _py_body_readonly() {
             wm=${BASH_REMATCH[0]}
             wp=${BASH_REMATCH[1]}
             case "$wp" in /tmp/* | /var/tmp/*) ;; *) return 1 ;; esac
-            case "$wp" in *..* | *.[Cc][Ll][Aa][Uu][Dd][Ee]* | *'$'* | *'%'* | *'{'*) return 1 ;; esac
+            # a backslash escape (\x2e) would spell what these tests look for
+            case "$wp" in *..* | *.[Cc][Ll][Aa][Uu][Dd][Ee]* | *'$'* | *'%'* | *'{'* | *\\*) return 1 ;; esac
             wp=$(canon "$wp") || return 1
             case "$wp" in /tmp/* | /var/tmp/* | /private/tmp/* | /private/var/tmp/*) ;; *) return 1 ;; esac
             case "$wp" in *.[Cc][Ll][Aa][Uu][Dd][Ee]*) return 1 ;; esac
@@ -1958,6 +1959,7 @@ _tok_readonly_ok() {
         if [ "$sg" != "$s" ]; then
             [ "$s" -lt 0 ] || _tok_ro_segment || return 1
             s=$sg first='' fk=-1 sub='' _GGV=0 _GGD=0 _UQ=0 _UQV=0 _AW=0 _CPN=0 _CPL='' _CPD=0 _PYS=0
+            _CPA=()
         fi
         w=${ST_W[k]}
         lw=${ST_LW[k]}
@@ -2098,7 +2100,17 @@ _tok_uniq_word() {
 # is next, 2 the program was seen (the rest are input files).
 _tok_awk_word() {
     local k=$1 w=${ST_W[$1]} lw=${ST_LW[$1]}
-    [ "$_AW" != 2 ] || return 0
+    if [ "$_AW" = 2 ]; then
+        # an input file; a trailing option (-f PROG) or a word that can expand
+        # into one is not (some awks read options after the program)
+        case "$w" in -?*) return 1 ;; esac
+        [ "${ST_X[k]}" = 0 ] || return 1
+        if [ "${ST_G[k]}" = 1 ]; then
+            # shellcheck disable=SC2088 # the word's literal `~/` prefix, not an expansion
+            case "$w" in /* | '~/'*) ;; *) return 1 ;; esac
+        fi
+        return 0
+    fi
     [ "${ST_X[k]}" = 0 ] && [ "${ST_G[k]}" = 0 ] || return 1
     if [ "$_AW" = 1 ]; then _AW=0; return 0; fi
     case "$w" in
@@ -2124,6 +2136,7 @@ _tok_cp_word() {
             -?*) case "${w#-}" in *[!fpaRrvnu]*) return 1 ;; esac; return 0 ;;
         esac
     fi
+    _CPA[_CPN]=$w
     _CPN=$((_CPN + 1))
     _CPL=$w
 }
@@ -2145,6 +2158,20 @@ _tok_cp_end() {
     # never the directory that holds a live .claude (a recursive copy of a
     # tree carrying .claude/settings.json lands in it)
     [ "$rl" != "$primary_root_lc" ] && [ "$rl" != "$own_root_lc" ] && [ "$rl" != "$home_root_lc" ] || return 1
+    # into a directory, each source lands as DIR/<its name>, which may itself
+    # be a symlink to a live file: that file is judged the same way
+    if [ -d "$r" ]; then
+        local i=0 s f
+        while [ "$i" -lt $((_CPN - 1)) ]; do
+            s=${_CPA[i]%/}
+            s=${s##*/}
+            case "$s" in '' | . | ..) return 1 ;; esac
+            f=$(canon "$r/$s" | tr '[:upper:]' '[:lower:]') || return 1
+            case "$f" in /tmp/* | /var/tmp/* | /private/tmp/* | /private/var/tmp/*) ;; *) return 1 ;; esac
+            case "$f" in *.claude*) return 1 ;; esac
+            i=$((i + 1))
+        done
+    fi
     return 0
 }
 

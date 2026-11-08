@@ -3868,6 +3868,25 @@ import os
 f = open('$SANDBOX/scratch-link', 'w')
 f.write(os.path.expanduser('~'))
 PY" HOME="$FAKEHOME")"
+# An escaped path in a python open(), an awk option after the program, and a
+# cp into a /tmp directory whose settings.json is a live symlink all deny.
+rows_both 9883 2 "an escaped python path, a trailing awk option, an awk expansion deny" <<'ROWS'
+python3 - <<'PY'\nimport os\nf = open('/tmp/\x2e\x2e/home/x/\x2eclaude/settings.json', 'w')\nf.write(os.path.expanduser('~'))\nPY
+awk '{print}' @P@/.claude/settings.json -f /tmp/evil.awk
+awk '{print}' @P@/.claude/settings.json $D
+awk '{print}' @P@/.claude/settings.json sub/*.log
+ROWS
+rows_both 9887 0 "awk over an absolute glob operand allows" <<'ROWS'
+awk '{print $1}' @P@/.claude/settings.json /tmp/claude-1000/x/*.log
+ROWS
+mkdir -p "$SANDBOX/scratchdir" "$SANDBOX/scratchok"
+ln -s "$FAKEHOME/.claude/settings.json" "$SANDBOX/scratchdir/settings.json"
+assert_rc "9890 cp into a /tmp dir whose settings.json is a live symlink (cwd worktree) denies" 2 \
+    "$(bash_rc_of "$NESTED_WT" "cp $PRIMARY/.claude/settings.json $SANDBOX/scratchdir/" HOME="$FAKEHOME")"
+assert_rc "9891 cp into a /tmp dir whose settings.json is a live symlink (cwd primary) denies" 2 \
+    "$(bash_rc_of "$PRIMARY" "cp $PRIMARY/.claude/settings.json $SANDBOX/scratchdir" HOME="$FAKEHOME")"
+assert_rc "9892 cp into a plain /tmp dir (cwd primary) allows" 0 \
+    "$(bash_rc_of "$PRIMARY" "cp $PRIMARY/.claude/settings.json $SANDBOX/scratchok/" HOME="$FAKEHOME")"
 
 # Clean up worktree registrations before removing the sandbox (avoids
 # dangling `git worktree` admin records under SANDBOX/primary).
