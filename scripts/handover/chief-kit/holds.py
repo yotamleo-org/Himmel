@@ -631,8 +631,7 @@ def sync_denied_write(repo, lines):
 
 
 def claim_one(repo, judge, path, key, label, doc, source, pr, created=None, seen=None):
-    """-> 'claimed' | 'own' | 'granted' | 'skipped' | 'fault' | 'refused:<message>'. seen = (denies logged by the last
-    sync-prs, denies of this one): a deny whose path, key and holder row are in the first is not logged again."""
+    """-> 'claimed' | 'own' | 'granted' | 'skipped' | 'fault' | 'refused:<message>'."""
     norm = normalize(repo, path)
     if norm is None:
         return 'skipped'  # a tree is noted, not held
@@ -695,7 +694,7 @@ def claim_one(repo, judge, path, key, label, doc, source, pr, created=None, seen
                 log_event('deny', rel, key, fields[0])
             else:
                 sig = '\t'.join(clean(x) for x in [rel, key] + fields)
-                if sig not in seen[0]:
+                if sig not in seen[0] and sig not in seen[1]:
                     log_event('deny', rel, key, fields[0])
                 seen[1].add(sig)
             return 'refused:' + refusal(rel, fields, key)
