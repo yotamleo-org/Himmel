@@ -364,6 +364,13 @@ template_version: 3
 - (b) The chief creates the worker's worktree before arming it, never after.
 - (c) Holding for the chief's `GO` ends the worker's turn — never a Bash sleep
   loop; a worker that blocks in one never wakes to receive it.
+- (c2) A hold on an outside event (an outside PR's review or merge, a third
+  party's reply) is not a state a worker stays in. It writes `LIVE — HOLD-OUTSIDE
+  pr=<n> owes: <what it owes>`, puts the debt in its resume brief and WRAPs; the
+  chief runs `fleet-manifest.sh watch <manifest> add <n> --head <sha> --comments <n>
+  --reviews <n>` and closes the window. `chief-wait.sh` polls the row over REST and
+  wakes the chief as `WAKE pr-watch <n>` (waiter.md); the tick flags an idle window
+  left on the hold as `holdout=`.
 - (d) `/pr-check` runs at the exact head the worker reports in its `READY` line,
   not an earlier or later one.
 - (e) Every HALT or WRAP brief or message says: "TaskStop EVERY background

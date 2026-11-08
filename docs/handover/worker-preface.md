@@ -170,6 +170,15 @@ once the lock frees. A worker never idles: gated on something
 outside your control, WRAP with a successor resume brief, and first send the
 chief `ORPHAN PR <n> <full head sha>, resume brief <absolute path>` if the PR is open.
 
+**A hold on an outside event is not a state you stay in.** Waiting on an outside PR's
+review or merge, or on a third party's reply, closes the window: write
+`LIVE — HOLD-OUTSIDE pr=<n> owes: <what you owe once it moves>` with `append-results.sh`, put the
+same debt in the resume brief, and WRAP. The chief records a watch row for the PR
+(`fleet-manifest.sh watch`); `chief-wait.sh` polls it over REST and wakes the chief as
+`WAKE pr-watch <n>` when the head, a comment or a review changes, and the chief relaunches
+you from the resume brief. An idle window left on a `HOLD-OUTSIDE` bullet is flagged by the tick
+(`holdout=`). [enforced: tick `holdout=`, chief-wait `WAKE pr-watch`]
+
 **HALT / WRAP: TaskStop EVERY background task and every agent you spawned,
 then prove the process subtree is clean** with
 `bash scripts/handover/wrap-subtree-check.sh --queue-doc <doc>`: paste its

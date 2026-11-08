@@ -225,6 +225,22 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
 
     **A GO'd PR whose worker went silent merges without it**: with `--doc` and `--workers-from`, a READY worker that has had a GO file and no doc write for `CHIEF_WAIT_WORKER_SILENT_MIN` minutes (default 45), and no live process unless its last bullet is a hand-off, is merged by `silent-go-merge.sh` through ready-check at the GO head and `merge-on-green.sh --go`; you wake as `WAKE silent-go` with one `SILENT-WORKER-MERGE`, `-MERGE-FAILED` or `-HELD reason=<why>` line; the operator was already paged with it and your doc carries it as a bullet.
 
+    **A watched outside PR that moved wakes you once.** A worker waiting on an outside event
+    does not keep a window open: it writes `LIVE — HOLD-OUTSIDE pr=<n> owes: <what>` and WRAPs
+    (the tick flags an idle window left on that bullet as `holdout=<label>:<pr>` and prints the
+    command). You record the PR in the fleet manifest and close the window:
+    `bash scripts/handover/chief-kit/fleet-manifest.sh watch <manifest> add <pr> --head <sha> --comments <n> --reviews <n>`
+    (the values the worker last saw; `--repo owner/name` for a repository other than the waiter's cwd;
+    a count left off is a silent baseline). With `--workers-from`, the waiter then reads each row every
+    `CHIEF_WAIT_PR_WATCH_SEC` (default 120) over REST only (`gh api` on the pull request and its
+    reviews: no GraphQL, no model turn) and wakes `WAKE pr-watch <pr> head <old7>→<new7> comments
+    <o>→<n> reviews <o>→<n>` (only what moved) when the head, the comment count (issue and review
+    comments) or the review count differs from the row. It writes the new values back first, so the
+    same change never wakes twice; no change is silent, a failed read is silent and retried next
+    interval. The rows live in the manifest, so a successor's waiter on the inherited manifest
+    watches them with no re-arm. Read the PR, relaunch the worker from its resume brief or act, and
+    `fleet-manifest.sh watch <manifest> remove <pr>` when the event is over.
+
     **An oversized brief wakes you once.** `WAKE size rows=<total>` followed by
     `SIZE-ESCALATE<TAB>epoch<TAB>refuse|bulk<TAB>KEY<TAB>label<TAB>files<TAB>trust<TAB>detail` lines
     means `gen-briefs.py` (with `pr_size_gate` on) refused a brief over the size bands or took a

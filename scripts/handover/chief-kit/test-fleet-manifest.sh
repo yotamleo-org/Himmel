@@ -242,6 +242,48 @@ check '7e. the refused re-add leaves the arm alone' 400k "$(jq -r '.workers[0].a
 bash "$SCRIPT" add "$m9" --lane native --arm 400k "$l1" >/dev/null 2>&1; rc=$?
 check '7e. re-adding with the same arm stays a no-op (rc 0)' 0 "$rc"
 
+# 9. watch rows: one row per outside PR, kept in the top-level `watch` array.
+m10="$tmp/m10.json"
+h1=1111111111111111111111111111111111111111
+h2=2222222222222222222222222222222222222222
+bash "$SCRIPT" add "$m10" --lane native "$l1" >/dev/null 2>&1
+bash "$SCRIPT" watch "$m10" add 4761 --head "$h1" --comments 3 --reviews 1 >/dev/null 2>&1; rc=$?
+check '9. watch add (rc 0)' 0 "$rc"
+check '9. the row holds the PR, head, comment and review counts' "4761 $h1 3 1" "$(jq -r '.watch[0] | "\(.pr) \(.head) \(.comments) \(.reviews)"' "$m10" 2>/dev/null)"
+check '9. the row carries an added timestamp' yes "$(jq -e '.watch[0].added | test("^[0-9]{4}-")' "$m10" >/dev/null 2>&1 && echo yes)"
+check '9. schema 1 is still valid: list still prints the workers' "$l1" "$(bash "$SCRIPT" list "$m10" 2>/dev/null)"
+bash "$SCRIPT" watch "$m10" add 4761 --comments 5 >/dev/null 2>&1
+check '9. a second add of the same PR updates the given field only, never a second row' "1 $h1 5 1" "$(jq -r '"\(.watch | length) \(.watch[0].head) \(.watch[0].comments) \(.watch[0].reviews)"' "$m10" 2>/dev/null)"
+bash "$SCRIPT" watch "$m10" set 4761 --head "$h2" --comments 6 --reviews 2 >/dev/null 2>&1
+check '9. watch set rewrites the row to what was last seen' "$h2 6 2" "$(jq -r '.watch[0] | "\(.head) \(.comments) \(.reviews)"' "$m10" 2>/dev/null)"
+bash "$SCRIPT" watch "$m10" set 999 --head "$h1" >/dev/null 2>&1; rc=$?
+check '9. watch set on a PR with no row is a no-op, not a new row' "0 1" "$rc $(jq '.watch | length' "$m10" 2>/dev/null)"
+bash "$SCRIPT" add "$m10" --lane native "$l2" >/dev/null 2>&1
+bash "$SCRIPT" remove "$m10" "$l1" >/dev/null 2>&1
+check '9. a worker add and remove carry the watch rows through untouched' "1 $h2" "$(jq -r '"\(.watch | length) \(.watch[0].head)"' "$m10" 2>/dev/null)"
+m10b="$tmp/successor.fleet.json"; cp "$m10" "$m10b"
+check '9. a successor reading the inherited manifest lists the same row (no re-arm)' "4761	$h2	6	2	-" "$(bash "$SCRIPT" watch "$m10b" list 2>/dev/null)"
+bash "$SCRIPT" watch "$m10" add 4762 --repo yotamleo-org/Himmel >/dev/null 2>&1
+check '9. a row with only a PR and a repo lists a dash for what is unset' "4762	-	-	-	yotamleo-org/Himmel" "$(bash "$SCRIPT" watch "$m10" list 2>/dev/null | sed -n 2p)"
+bash "$SCRIPT" watch "$m10" remove 4761 >/dev/null 2>&1; rc=$?
+check '9. watch remove drops one row' "0 4762" "$rc $(jq -r '.watch | map(.pr) | join(",")' "$m10" 2>/dev/null)"
+bash "$SCRIPT" watch "$m10" remove 5555 >/dev/null 2>&1; rc=$?
+check '9. removing a PR that is not watched is not an error' 0 "$rc"
+bash "$SCRIPT" watch "$m10" add notanumber >/dev/null 2>&1; rc=$?
+check '9. a non-numeric PR is a usage error (rc 2)' 2 "$rc"
+bash "$SCRIPT" watch "$m10" add 4763 --head XYZ >/dev/null 2>&1; rc=$?
+check '9. a head that is not lowercase hex is a usage error (rc 2)' 2 "$rc"
+bash "$SCRIPT" watch "$m10" add 4763 --repo notaslug >/dev/null 2>&1; rc=$?
+check '9. a repo that is not owner/name is a usage error (rc 2)' 2 "$rc"
+check '9. and the refused adds wrote nothing' 4762 "$(jq -r '.watch | map(.pr) | join(",")' "$m10" 2>/dev/null)"
+bash "$SCRIPT" watch "$tmp/bad.fleet.json" add 4764 >/dev/null 2>&1; rc=$?
+check '9. watch refuses to rewrite an invalid manifest (rc 1)' 1 "$rc"
+m11="$tmp/m11.json"
+bash "$SCRIPT" watch "$m11" add 4765 >/dev/null 2>&1; rc=$?
+check '9. watch add on a missing manifest creates a schema-1 one' "0 1 0 4765" "$rc $(jq -r '"\(.schema) \(.workers | length) \(.watch[0].pr)"' "$m11" 2>/dev/null)"
+for i in 1 2 3 4 5 6; do bash "$SCRIPT" watch "$m11" add "50$i" >/dev/null 2>&1 & done; wait
+check '9. concurrent watch adds lose no row' 7 "$(jq '.watch | length' "$m11" 2>/dev/null)"
+
 # 8. usage.
 bash "$SCRIPT" >/dev/null 2>&1; rc=$?
 check '8. no verb is a usage error (rc 2)' 2 "$rc"

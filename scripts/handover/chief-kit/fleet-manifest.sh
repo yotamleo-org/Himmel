@@ -7,6 +7,18 @@
 #   fleet-manifest.sh add    <manifest> <worker doc>... --lane <lane> [--lockless] [--arm 200k|400k]
 #   fleet-manifest.sh remove <manifest> <worker doc | label>...
 #   fleet-manifest.sh list   <manifest>                      one doc per line
+#   fleet-manifest.sh watch  <manifest> add    <pr> [--head <sha>] [--comments <n>] [--reviews <n>] [--repo <owner/name>]
+#   fleet-manifest.sh watch  <manifest> set    <pr> [--head <sha>] [--comments <n>] [--reviews <n>]   (an existing row only)
+#   fleet-manifest.sh watch  <manifest> remove <pr>
+#   fleet-manifest.sh watch  <manifest> list                 pr<TAB>head<TAB>comments<TAB>reviews<TAB>repo, `-` for unset
+#
+# watch: one row per outside PR a worker no longer waits on -- the PR number plus the
+# head sha, the comment count (issue + review comments) and the review count last seen. chief-wait.sh
+# polls each row over REST and wakes `WAKE pr-watch <pr> ...` when one differs, then `watch set`s the
+# row so the same change never wakes twice. The rows live in the top-level `watch` array, a key the
+# writer carries through every rewrite untouched, so schema 1 stays valid, every reader of `workers`
+# is unchanged, and a successor chief that inherits the manifest inherits the rows with no re-arm.
+# A count or head left off a row is a silent baseline on the first poll.
 #
 # Location: next to the chief doc, named after it —
 # <chief doc stem>.fleet.json.
@@ -63,6 +75,9 @@ usage() {
 usage: fleet-manifest.sh add    <manifest> <worker doc>... --lane <lane> [--lockless] [--arm 200k|400k]
        fleet-manifest.sh remove <manifest> <worker doc | label>...
        fleet-manifest.sh list   <manifest>
+       fleet-manifest.sh watch  <manifest> add|set <pr> [--head <sha>] [--comments <n>] [--reviews <n>] [--repo <owner/name>]
+       fleet-manifest.sh watch  <manifest> remove <pr>
+       fleet-manifest.sh watch  <manifest> list
 USAGE
 }
 
@@ -77,6 +92,46 @@ VALID="$JQ_W"'length == 1 and (.[0] | type == "object" and .schema == 1 and (W |
 [ "$#" -ge 2 ] || { usage >&2; exit 2; }
 verb="$1"; manifest="$2"; shift 2
 
+# watch: one row per outside PR in the top-level `watch` array -- parsed here, applied
+# to the locked, validated manifest below, in the same single write path as add/remove.
+wsub=""; wpr=""; whead=""; wcom=""; wrev=""; wrepo=""
+if [ "$verb" = watch ]; then
+    [ "$#" -ge 1 ] || { usage >&2; exit 2; }
+    wsub="$1"; shift
+    case "$wsub" in
+        list) [ "$#" -eq 0 ] || { usage >&2; exit 2; } ;;
+        add|set|remove)
+            [ "$#" -ge 1 ] || { usage >&2; exit 2; }
+            wpr="$1"; shift
+            case "$wpr" in ''|*[!0-9]*|0*) echo "fleet-manifest: watch needs a PR number: $wpr" >&2; exit 2 ;; esac
+            while [ "$#" -gt 0 ]; do
+                [ "$wsub" != remove ] && [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+                case "$1" in
+                    --head) case "$2" in ''|*[!0-9a-f]*) echo "fleet-manifest: --head must be a lowercase hex sha: $2" >&2; exit 2 ;; esac; whead="$2" ;;
+                    --comments) case "$2" in ''|*[!0-9]*) echo "fleet-manifest: --comments must be a count: $2" >&2; exit 2 ;; esac; wcom="$2" ;;
+                    --reviews) case "$2" in ''|*[!0-9]*) echo "fleet-manifest: --reviews must be a count: $2" >&2; exit 2 ;; esac; wrev="$2" ;;
+                    --repo) case "$2" in
+                                */*/*|*[!A-Za-z0-9_./-]*) echo "fleet-manifest: --repo must be owner/name: $2" >&2; exit 2 ;;
+                                [A-Za-z0-9_.-]*/[A-Za-z0-9_.-]*) wrepo="$2" ;;
+                                *) echo "fleet-manifest: --repo must be owner/name: $2" >&2; exit 2 ;;
+                            esac ;;
+                    *) usage >&2; exit 2 ;;
+                esac
+                shift 2
+            done ;;
+        *) usage >&2; exit 2 ;;
+    esac
+    if [ "$wsub" = list ]; then
+        if ! jq -e -s "$VALID" "$manifest" >/dev/null 2>&1; then
+            echo "fleet-manifest: not a schema-1 fleet manifest: $manifest" >&2
+            exit 1
+        fi
+        jq -r '(.watch // [])[] | [.pr, (.head // "-"), (.comments // "-"), (.reviews // "-"), (.repo // "-")] | @tsv' "$manifest"
+        exit $?
+    fi
+    set -- watch
+fi
+
 case "$verb" in
     list)
         [ "$#" -eq 0 ] || { usage >&2; exit 2; }
@@ -88,6 +143,7 @@ case "$verb" in
         exit $?
         ;;
     add|remove) [ "$#" -ge 1 ] || { usage >&2; exit 2; } ;;
+    watch) ;;
     *) usage >&2; exit 2 ;;
 esac
 
@@ -162,7 +218,22 @@ fi
 
 now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 for arg in "$@"; do
-    if [ "$verb" = add ]; then
+    if [ "$verb" = watch ]; then
+        # add upserts the fields given; set updates an existing row only (a poll that races a remove must
+        # not bring the row back); remove drops it. A key the row does not carry stays absent.
+        case "$wsub" in
+            remove)
+                cur="$(printf '%s\n' "$cur" | jq --argjson p "$wpr" 'if has("watch") then .watch |= map(select(.pr != $p)) else . end')" || exit 1 ;;
+            add|set)
+                cur="$(printf '%s\n' "$cur" | jq --argjson p "$wpr" --arg sub "$wsub" --arg t "$now" --arg h "$whead" --arg c "$wcom" --arg r "$wrev" --arg rp "$wrepo" \
+                    '({} + (if $h != "" then {head: $h} else {} end) + (if $c != "" then {comments: ($c | tonumber)} else {} end)
+                        + (if $r != "" then {reviews: ($r | tonumber)} else {} end) + (if $rp != "" then {repo: $rp} else {} end)) as $f
+                    | (.watch // []) as $w
+                    | .watch = (if any($w[]; .pr == $p) then ($w | map(if .pr == $p then . + $f else . end))
+                                elif $sub == "add" then $w + [{pr: $p, added: $t} + $f]
+                                else $w end)')" || exit 1 ;;
+        esac
+    elif [ "$verb" = add ]; then
         label="$(worker_label "$arg")"
         # Re-adding a listed doc never rewrites its row: flags that would change the
         # stored lane or lockless are refused, not silently ignored.
