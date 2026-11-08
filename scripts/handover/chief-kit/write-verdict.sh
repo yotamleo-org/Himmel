@@ -42,6 +42,11 @@
 #     prior: <GO|NO-GO>         (only when --prior is given)
 #     flipped: <y|n>            (with prior: y when it differs from the answer)
 #
+#     CEILINGS: <header>        (a --pr verdict without --delta-noop: the
+#     <id>\t<file>\t<anchor>\t<ticket> ...   ceilings ledger rows open for the
+#                               PR's touched files, ceiling-lookup.sh --ids;
+#                               `CEILINGS: not read (<reason>)` when it cannot run)
+#
 #     <the evidence file, verbatim>
 #     mac: <64 hex>
 #
@@ -472,6 +477,20 @@ if [ -n "$DNOOP" ]; then
     fi
 fi
 
+CEILINGS_BLOCK=""
+if [ -n "$PR" ] && [ -z "$DNOOP" ]; then
+    if [ ! -f "$ANCHOR/scripts/ledger/ceiling-lookup.sh" ]; then
+        CEILINGS_BLOCK="CEILINGS: not read (no scripts/ledger/ceiling-lookup.sh at $ANCHOR)"
+    else
+        lk_rc=0
+        CEILINGS_BLOCK=$(bash "$ANCHOR/scripts/ledger/ceiling-lookup.sh" --ids ${VREPO:+--repo "$VREPO"} --range "origin/main...$HEAD" </dev/null 2>/dev/null) || lk_rc=$?  # swallow-ok: a failed lookup is recorded as not read with its rc below
+        case "$CEILINGS_BLOCK" in
+            CEILINGS:*) ;;
+            *) CEILINGS_BLOCK="CEILINGS: not read (ceiling-lookup.sh failed, rc=$lk_rc)" ;;
+        esac
+    fi
+fi
+
 # Walk <root>/<user>/<bucket>/verdicts/<qid>, refusing a symlink at any step.
 dir=$ROOT
 for seg in "${SCOPE%%/*}" "${SCOPE#*/}" verdicts "$QID"; do
@@ -583,6 +602,7 @@ if ! {
     { [ -z "$DNOOP" ] || printf 'delta: no-op\ndelta-judged: %s\ndelta-class: none\n' "$DNOOP"; } &&
     printf '\n' &&
     { [ -z "$REVIEWED" ] || printf 'reviewed-head: %s\nbound-by: write-verdict --bind-reviewed; the delta from the reviewed head is test-path-only or comment-only\n\n' "$REVIEWED"; } &&
+    { [ -z "$CEILINGS_BLOCK" ] || printf '%s\n\n' "$CEILINGS_BLOCK"; } &&
     cat "$EVIDENCE" &&
     # the body ends in a newline, so the mac line is a line of its own.
     { [ -z "$(tail -c 1 "$EVIDENCE")" ] || printf '\n'; }

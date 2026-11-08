@@ -77,7 +77,8 @@ function fixture() {
     HIMMEL_FLEET_CAP: '4', HIMMEL_FLEET_SLOTS: join(dir, 'slots'), FLEET_PS_CMD: p.ps, FLEET_PROC: dir,
     CADENCE_USAGE_LEDGER: join(dir, 'bank-ledger'), CADENCE_USAGE_SKIP_REFRESH: '1',
     CADENCE_USAGE_CACHE: join(dir, 'native-cache.json'),
-    HIMMEL_API_ALERT_CMD: p.alert, HIMMEL_API_ALERT_DIR: join(dir, 'alerts') };
+    HIMMEL_API_ALERT_CMD: p.alert, HIMMEL_API_ALERT_DIR: join(dir, 'alerts'),
+    HIMMEL_CEILINGS_LEDGER: join(dir, 'no-ceilings-ledger.tsv') };
   writeFileSync(env.CADENCE_USAGE_CACHE, JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
   const args = ['--qid', `q${pr}`, '--pr', String(pr), '--head', HEAD, '--question-file', p.q,
     '--model', 'claude-opus-5-5', '--max-budget-usd', '0.10'];
@@ -218,6 +219,45 @@ test('the prompt tells the judge a class other needs a class-reason line', () =>
   const f = fixture();
   f.run(f.args);
   assert.match(readFileSync(f.p.env, 'utf8'), /class-reason: <why>/);
+});
+
+test('the question carries the ceilings rows under a Claude chain, withheld under claudex, and the verdict still records', () => {
+  const f = fixture();
+  assert.ok(f.env.HIMMEL_CEILINGS_LEDGER.startsWith(f.dir), 'the ledger is pinned inside the case dir');
+  const repo = join(f.dir, 'repo');
+  mkdirSync(repo);
+  const git = (...a) => spawnSync('git', ['-C', repo, '-c', 'user.email=t@t', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  writeFileSync(join(repo, 'a.sh'), 'do_a() {\n  :\n}\n');
+  git('add', '-A'); git('commit', '-qm', 'base');
+  git('update-ref', 'refs/remotes/origin/main', git('rev-parse', 'HEAD').stdout.trim());
+  writeFileSync(join(repo, 'a.sh'), 'do_a() {\n  :\n}\n# more\n');
+  git('commit', '-qam', 'change');
+  const head = git('rev-parse', 'HEAD').stdout.trim();
+  const secret = 'the a.sh helper never handles CRLF';
+  const ledger = join(f.dir, 'ceilings.tsv');
+  writeFileSync(ledger, `id\tfile\tanchor\tceiling\ttrigger\tticket\tstate\tdate\tpr\tnote\nC-0001\ta.sh\tdo_a\t${secret}\ta CRLF report\t\topen\t2026-11-08\t\t\n`);
+  const claude = join(f.dir, 'claude');
+  writeFileSync(claude, readFileSync(spawnSync('bash', ['-c', 'command -v bash'], { encoding: 'utf8' }).stdout.trim()), { mode: 0o755 });
+  const args = f.args.map((a) => (a === HEAD ? head : a));
+  const run = (extra) => spawnSync(claude, ['-c', 'bash "$0" "$@"; rc=$?; exit $rc', BRIDGE, ...args],
+    { cwd: repo, env: { ...f.env, CLAUDECODE: '1', HIMMEL_CEILINGS_LEDGER: ledger, STUB_OUT: result(go(head)), ...extra }, encoding: 'utf8' });
+  const r = run({});
+  assert.equal(r.status, 0, r.stderr);
+  let seen = readFileSync(f.p.env, 'utf8');
+  assert.match(seen, /CEILINGS: 1 open rows for 1 of 1 touched files/);
+  assert.match(seen, /C-0001 a\.sh \[do_a\]/);
+  assert.match(seen, /cite a row by its id only; never quote its ceiling or trigger/);
+  const art = JSON.parse(readFileSync(r.stdout.trim(), 'utf8'));
+  assert.equal(art.status, 'RECORDED');
+  const rec = readFileSync(art.verdict_path, 'utf8');
+  assert.match(rec, /^C-0001\ta\.sh\tdo_a\t$/m);
+  assert.doesNotMatch(rec, new RegExp(secret));
+  const x = run({ ANTHROPIC_BASE_URL: 'http://127.0.0.1:8317', ANTHROPIC_MODEL: 'gpt-6.1-sol' });
+  assert.equal(x.status, 0, x.stderr);
+  seen = readFileSync(f.p.env, 'utf8');
+  assert.match(seen, /CEILINGS: withheld \(non-Claude session:/);
+  assert.doesNotMatch(seen, new RegExp(secret));
 });
 
 test('a refused launch alerts once, then the judge runs once on the subscription with no key and its verdict is recorded', () => {
