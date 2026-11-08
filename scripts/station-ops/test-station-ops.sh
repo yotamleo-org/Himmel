@@ -95,7 +95,7 @@ rid() { printf '%s\n' "$1" | sed -n 's/^result=[^ ]* id=\([a-z2-7]*\).*/\1/p' | 
 ledger() { cat "$R/var/log/himmel/afk-sudo.jsonl" 2>/dev/null; }
 table() { cat "$R/cron.$(id -un)" 2>/dev/null; }
 # op <script> args...: run an installed op script directly (the helper's own call shape).
-op() { local s="$1"; shift; HIMMEL_OPS_ROOT="$R" HIMMEL_OPS_BIN="$R/bin" bash "$R/usr/local/libexec/himmel/ops/$s.sh" --id testid00 --operator-user "$(id -un)" "$@" 2>&1; }
+op() { local s="$1"; shift; HIMMEL_OPS_ROOT="$R" HIMMEL_OPS_BIN="${OPS_BIN:-$R/bin}" bash "$R/usr/local/libexec/himmel/ops/$s.sh" --id testid00 --operator-user "$(id -un)" "$@" 2>&1; }
 # oreq <now-offset> <session> <op> key=value...
 oreq() { local off="$1" sess="$2"; shift 2; h "$off" op-request --session "$sess" --ticket HIMMEL-8203 "$@"; }
 CMD=/usr/local/bin/open-session
@@ -527,6 +527,79 @@ out=$(HIMMEL_RECOVER_STATE="$R/stamp-state" PATH="$R/ubin:$PATH" RECOVER_FAKE_DI
 assert_contains "RED: a stamp write that fails after the recovery steps names the stamp path" "cannot record completion in $R/stamp-state/recover-done" "$out"
 assert_contains "the failed stamp write makes recover exit 1" "rc=1" "$out"
 assert_contains "RED: a failed stamp write still sends the status report" "recover: reboot recovery on" "$out"
+
+echo "== size-approval (R5): --check writes nothing, a run writes the approval, a re-run renews it =="
+new_root sa
+SA_DIR="$R/var/lib/himmel/size-approvals"
+SA_S=3f9a0c1d2e4b5a69788796a5b4c3d2e1
+sa() { OPS_BIN="$R/bin-clock" op size-approval "$@"; }
+mkdir -p "$R/bin-clock"
+# shellcheck disable=SC2016
+printf '#!/bin/sh\necho "$FAKE_NOW"\n' > "$R/bin-clock/date"; chmod +x "$R/bin-clock/date"
+export FAKE_NOW=$T0
+out=$(sa --check --key HIMMEL-9228 --label N5216 --files 272 --scope "$SA_S" --reason keep-whole)
+assert_contains "RED: size-approval --check reports a would-change" "result=would-change" "$out"
+assert_eq "--check created no size-approvals directory" "no" "$([ -e "$SA_DIR" ] && echo yes || echo no)"
+out=$(sa --key HIMMEL-9228 --label N5216 --files 272 --scope "$SA_S" --reason keep-whole)
+assert_contains "RED: a size-approval run reports changed" "result=changed" "$out"
+SA_F="$SA_DIR/HIMMEL-9228.N5216.272.$SA_S"
+assert_eq "the approval file is mode 0644" "644" "$(stat -c %a "$SA_F" 2>/dev/null)"  # gnu-ok: the suite is Linux-only (guard above)
+sa_field() { awk -F'\t' -v c="$1" 'NR == 1 { print $c }' "$SA_F" 2>/dev/null; }
+assert_eq "the approval is one line" "1" "$(wc -l < "$SA_F" 2>/dev/null | tr -d ' ')"
+assert_eq "the approval holds 8 tab-separated fields" "8" "$(awk -F'\t' 'NR == 1 { print NF }' "$SA_F" 2>/dev/null)"
+assert_eq "the approval starts SIZE-APPROVAL" "SIZE-APPROVAL" "$(sa_field 1)"
+assert_eq "RED: the clock pin takes: expires is the pinned now plus 7 days" "$((T0 + 604800))" "$(sa_field 2)"
+assert_eq "the approval names key, label, files, scope, id and reason" "HIMMEL-9228 N5216 272 $SA_S testid00 keep-whole" "$(sa_field 3) $(sa_field 4) $(sa_field 5) $(sa_field 6) $(sa_field 7) $(sa_field 8)"
+export FAKE_NOW=$((T0 + 60))
+out=$(sa --key HIMMEL-9228 --label N5216 --files 272 --scope "$SA_S" --reason keep-whole)
+assert_contains "a re-approval reports changed" "result=changed" "$out"
+assert_eq "RED: a re-approval renews expires" "$((T0 + 60 + 604800))" "$(sa_field 2)"
+sa_bad() { # <param> <bad value, or <none> to leave it out> <description>: every other param valid
+    local -A v=([key]=HIMMEL-9228 [label]=N5216 [files]=272 [scope]="$SA_S" [reason]=keep-whole)
+    v[$1]="$2"
+    local a=() k
+    for k in key label files scope reason; do [ "${v[$k]}" = "<none>" ] || a+=(--"$k" "${v[$k]}"); done
+    out=$(sa "${a[@]}"); rc=$?
+    case "$out" in *"result=bad-param name=$1"*) if [ "$rc" = 3 ]; then pass "$3"; else fail "$3 (exit $rc)" "$out"; fi ;; *) fail "$3" "$out" ;; esac
+}
+sa_bad key himmel-9228 "a lowercase key is bad-param, exit 3"
+sa_bad files 27x "a non-number files value is bad-param, exit 3"
+sa_bad scope "${SA_S%?}" "a scope of 31 hex is bad-param, exit 3"
+sa_bad scope "$(printf '%s' "$SA_S" | tr 'a-f' 'A-F')" "an uppercase scope is bad-param, exit 3"
+sa_bad reason "keep whole" "a reason holding a space is bad-param, exit 3"
+sa_bad reason "keep/whole" "a reason holding / is bad-param, exit 3"
+sa_bad reason 'keep"whole' "a reason holding a double quote is bad-param, exit 3"
+sa_bad reason "keep;whole" "a reason holding ; is bad-param, exit 3"
+sa_bad scope "<none>" "a call missing --scope is bad-param, exit 3"
+unset FAKE_NOW
+
+echo "== size-approval (R6): the Telegram line through the helper, then the reader =="
+new_root sa6
+SA_DIR="$R/var/lib/himmel/size-approvals"
+line=$(head -n 1 "$REPO_ROOT/scripts/handover/chief-kit/fixtures/size-approval-op-line.txt")
+read -ra words <<< "${line#/op }"
+SA6_S=$(printf '%s\n' "${words[@]}" | sed -n 's/^scope=//p')
+out=$(h 0 op-request --session telegram-op --ticket operator -- "${words[@]}"); id=$(rid "$out")
+assert_contains "RED: the fixture line files a pending size-approval request" "result=pending" "$out"
+assert_contains "the notice shows the --check line" "will approve HIMMEL-9228 N5216" "$(cat "$TG"/*.txt 2>/dev/null)"
+assert_eq "a pending request wrote no approval" "no" "$([ -e "$SA_DIR" ] && echo yes || echo no)"
+out=$(printf 'ZZZZ 000000\n' | AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + 2)) HIMMEL_OPS_ROOT="$R" HIMMEL_OPS_BIN="$R/bin" python3 -I "$HELPER" approve "$id" --from "$OPERATOR" --chat "$OPERATOR" 2>&1)
+assert_absent "a wrong nonce and code does not run the op" "result=ran" "$out"
+assert_eq "a wrong code wrote no approval" "no" "$([ -e "$SA_DIR" ] && echo yes || echo no)"
+out=$(h 40 op-request --session telegram-op --ticket operator -- "${words[@]}"); id=$(rid "$out")
+out=$(approve 43 "$id" "$(code 43)")
+assert_contains "RED: NONCE CODE runs the size-approval op" "op_result=changed" "$out"
+SA6_F="$SA_DIR/HIMMEL-9228.N5216.272.$SA6_S"
+assert_eq "the approved op wrote the approval file" "yes" "$([ -f "$SA6_F" ] && echo yes || echo no)"
+RK="$tmp/rkit"; mkdir -p "$RK/scripts/handover/chief-kit" "$tmp/hroot"
+ln -s "$REPO_ROOT/scripts/lib" "$RK/scripts/lib"; ln -s "$REPO_ROOT/scripts/ci" "$RK/scripts/ci"
+sed -e "s|^SIZE_APPROVALS=/var/lib/himmel/size-approvals\$|SIZE_APPROVALS=$SA_DIR|" -e "s|^SIZE_APPROVAL_UID=0\$|SIZE_APPROVAL_UID=$(id -u)|" \
+    "$REPO_ROOT/scripts/handover/chief-kit/size-override.sh" > "$RK/scripts/handover/chief-kit/size-override.sh"
+assert_eq "the reader copy points at the sandbox approvals" "1" "$(grep -c "^SIZE_APPROVALS=$SA_DIR\$" "$RK/scripts/handover/chief-kit/size-override.sh")"
+assert_eq "the reader copy owns the approvals as the test user" "1" "$(grep -c "^SIZE_APPROVAL_UID=$(id -u)\$" "$RK/scripts/handover/chief-kit/size-override.sh")"
+out=$(bash "$RK/scripts/handover/chief-kit/size-override.sh" check HIMMEL-9228 N5216 --files 272 --trust yes --scope "$SA6_S" --root "$tmp/hroot" 2>&1); rc=$?
+assert_eq "RED: the reader accepts the approval the Telegram line produced (exit 0)" "0" "$rc"
+assert_contains "the reader says the operator kept it whole" "kept whole by the operator" "$out"
 
 echo "test summary: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
