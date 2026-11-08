@@ -78,7 +78,7 @@ eq "8 concurrent adds leave 8 whole rows" "$whole" 8
 
 cp "$HIMMEL_CEILINGS_LEDGER" "$work/before"
 add set --id C-0002 --state lifted --note "fixed by the b rewrite" >/dev/null; eq "set exits 0" "$?" 0
-prefix() { cmp -s "$1" <(head -c "$(wc -c < "$1" | tr -d ' ')" "$2"); }
+prefix() { cmp -s "$1" <(head -c "$(wc -c < "$1" | tr -d ' ')" "$2"); }  # read-sink-ok: both arguments are fixture files this suite made in its work dir
 prefix "$work/before" "$HIMMEL_CEILINGS_LEDGER" && ok "the bytes before set are a prefix of the bytes after" || bad "set rewrote ledger bytes"
 idsout=$(cd "$fx" && bash "$LOOKUP" --ids -- b.sh)
 eq "the reader shows the newest state (C-0002 lifted, so none open for b.sh)" "$idsout" "CEILINGS: none for the 1 touched files"
