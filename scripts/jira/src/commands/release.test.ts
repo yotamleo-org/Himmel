@@ -852,6 +852,12 @@ describe('routedJudge', () => {
     expect(w.fallbackCalls).toHaveLength(0);
   }, 20_000);
 
+  it('mapped, node kills the launcher at its spawn timeout: it exits 143, the run fails and no fallback runs', async () => {
+    const w = world({ judge: ['B'] }, { sleep: 30 });
+    await expect(makeRoutedJudge(w.fallback, 60, 2000)(INPUT)).rejects.toMatchObject({ killed: true, status: 143 });
+    expect(w.fallbackCalls).toHaveLength(0);
+  }, 20_000);
+
   it('judgeCall kills a call past its timeout and says so', async () => {
     const t0 = Date.now();
     await expect(judgeCall('bash', ['-c', 'sleep 5'], { input: '', cwd: root, env: process.env, timeoutMs: 100 }))

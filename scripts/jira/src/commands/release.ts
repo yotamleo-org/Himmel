@@ -437,10 +437,11 @@ function launcherStopped(e: unknown): boolean {
 // launcher refuse on policy after routedJudge saw "mapped", which writes one policy-refusals line and lands on liveJudge;
 // the window is one node start; a UI save landing in that window has the same effect; plan P4's write guard covers
 // agent writes only, not that race.
-// `fallback` and `callTimeoutS` are the test seams; production passes nothing and gets liveJudge and the 900 s call.
+// `fallback`, `callTimeoutS` and `spawnTimeoutMs` are the test seams; production passes nothing and gets liveJudge, the
+// launcher's 900 s call timeout and node's 930 s kill.
 // Any other API-route failure (a policy refusal, no room, an API error, an unparseable reply) ends in the fallback, once.
 // A stopped run or a timed-out call ends the run instead (decision 815).
-export function makeRoutedJudge(fallback: Judge = liveJudge, callTimeoutS: number = JUDGE_TIMEOUT_S): Judge {
+export function makeRoutedJudge(fallback: Judge = liveJudge, callTimeoutS: number = JUDGE_TIMEOUT_S, spawnTimeoutMs: number = (callTimeoutS + 30) * 1000): Judge {
   return async (input, opts) => {
     const env = judgeApiEnv(process.env, undefined, callTimeoutS);
     const mapped = spawnSync('node', [join(repoRoot, 'scripts', 'lib', 'api-roles.mjs'), 'accounts', 'judge'], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
@@ -454,7 +455,7 @@ export function makeRoutedJudge(fallback: Judge = liveJudge, callTimeoutS: numbe
       try {
         out = await judgeCall('bash', [join(repoRoot, 'scripts', 'api-lane', 'claude-api.sh'),
           '-p', '--model', 'opus', '--effort', 'high', '--permission-mode', 'plan', '--max-budget-usd', String(JUDGE_API_BUDGET_USD), '--output-format', 'json',
-        ], { input: judgePrompt(input, skill), cwd, env, timeoutMs: (callTimeoutS + 30) * 1000, signal: opts?.signal });
+        ], { input: judgePrompt(input, skill), cwd, env, timeoutMs: spawnTimeoutMs, signal: opts?.signal });
       } catch (e) {
         if (opts?.signal?.aborted || launcherStopped(e)) throw e;
         return fallback(input, opts);
