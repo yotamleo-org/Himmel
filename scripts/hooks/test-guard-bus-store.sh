@@ -260,8 +260,6 @@ deny  "a path-qualified bus status runs a file the same call wrote (text reader)
     "$(bash_json $'tee ./bus <<\'EOF\'\nbus register x\nEOF\n./bus status')"
 
 echo "== HIMMEL-8776: a glob under a himmel/ dir that cannot hold the bus store passes =="
-# repos/himmel is a checkout (no bus child); alt/himmel holds a bus dir under a
-# spelling with no `state/himmel` in it, so only the glob arm can see it.
 mkdir -p "$SCR/repos/himmel/pkg/node_modules/playwright-core" "$SCR/alt/himmel/bus/peers" "$SCR/home/.himmel/x" \
     "$SCR/home/.local/state/himmel/bus" "$SCR/home/code/himmel/pkg" "$SCR/repos2" \
     || { echo "FAIL: cannot build the glob fixtures" >&2; exit 1; }

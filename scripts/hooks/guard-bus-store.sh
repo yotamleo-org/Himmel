@@ -347,12 +347,6 @@ walk_words() {
     return 1
 }
 
-# globroot_reaches <text>: can a glob or expansion right under a `himmel/` dir
-# reach the bus store? Each match is judged by the path before it: only an
-# absolute, `~/` or $HOME/ prefix with no expansion, glob or `..` whose himmel dir
-# exists and resolves to a dir with no `bus` child (a checkout) is excused. A
-# relative prefix, a missing dir, an unresolvable one or a dir holding `bus`
-# reaches. A `.himmel` (the harness home) is another name and never matches.
 globroot_reaches() {
     local s="$1" m lead before pre p d r
     while [[ "$s" =~ $GLOBROOT_RE ]]; do
