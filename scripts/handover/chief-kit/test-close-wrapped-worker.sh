@@ -290,6 +290,57 @@ check "zero-match: rc 0 (the window already exited, HIMMEL-7811)" "$rc" "0"
 contains "zero-match: says CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
 check "zero-match: kill never called" "$(cat "$CALLS")" ""
 
+# --- 4a. a RESUME-shaped doc (Results first, then three more sections) ----
+mkdir -p "$W/vault9607/.git"
+cp "$HERE/../../../templates/luna-second-brain/.gitleaks.toml" "$W/vault9607/.gitleaks.toml"
+mk9607() {
+    local results_bullet="$1" trap_bullet="$2"
+    {
+        echo "# HIMMEL-9 N1 demo worker"; echo; echo "Your RETASK token is X-1."; echo
+        echo "## Results (newest at the bottom)"; echo
+        [ -z "$results_bullet" ] || echo "$results_bullet"
+        echo
+        echo "## State at hand-off"; echo; echo "- committed, nothing dirty"; echo
+        echo "## Remaining steps"; echo; echo "- ship it"; echo
+        echo "## Traps learned"; echo; echo "$trap_bullet"
+    } > "$DOC"
+}
+mk9607 "- 09:00 LIVE - resumed" "- a trap"
+TICK_VAULT_DIR="$W/vault9607" WORKER_SESSION_JIRA_STATUS=0 bash "$HERE/append-results.sh" "$DOC" "WRAPPED - done" >/dev/null 2>&1
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "9607 RESUME-shaped doc: a bullet from append-results.sh is accepted -> rc 0" "$rc" "0"
+contains "9607 RESUME-shaped doc: says CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
+check "9607 RESUME-shaped doc: the tick's parser reads the same WRAPPED" "$(bash -c '. "$1"; worker_tail_status "$2"' _ "$HERE/../../lib/worker-tail-status.sh" "$DOC")" "WRAPPED"
+mk9607 "" "- 10:00 WRAPPED - done"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "9607 legacy doc: bullets written at the end of the file under an empty Results are refused -> rc 4" "$rc" "4"
+mk9607 "- 09:00 LIVE - resumed" "- 10:00 WRAPPED - done"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "9607 legacy doc: a Results that holds a marker bullet is not overridden by a later section -> rc 4" "$rc" "4"
+mk9607 "" "- when done, append the WRAPPED bullet"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "9607 empty Results: a later bullet that only mentions WRAPPED is no worker tail -> rc 4" "$rc" "4"
+printf '# HIMMEL-9 N1 demo worker\n\n- **WRAPPED** once merge-on-green lands\n\n## Results (newest at the bottom)\n\n## Traps learned\n\n- a trap\n' > "$DOC"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "9607 empty Results: a marker-led bullet above the Results heading is no worker tail -> rc 4" "$rc" "4"
+ORIG9607="$W/HIMMEL-9-N1-demo-2026-01-01.md"
+printf '# HIMMEL-9 N1 demo worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - starting\n- 09:30 WRAPPED - hand-off\n' > "$ORIG9607"
+mk9607 "- 09:00 LIVE - resumed" "- a trap"
+TICK_VAULT_DIR="$W/vault9607" WORKER_SESSION_JIRA_STATUS=0 bash "$HERE/append-results.sh" "$DOC" "WRAPPED - done" >/dev/null 2>&1
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "9607 RESUME doc with its original beside it: a bullet from append-results.sh closes -> rc 0" "$rc" "0"
+mk9607 "" "- 10:00 WRAPPED - done"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "9607 RESUME doc with its original beside it: bullets at the end of the file under an empty Results are refused -> rc 4" "$rc" "4"
+rm -f "$ORIG9607"
+
 # --- 4b. a session-scratchpad clone holding unpushed commits ------------
 SCR="$W/claude-$(id -u)/proj/sess/scratchpad"
 mkdir -p "$SCR"
