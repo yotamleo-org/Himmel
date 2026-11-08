@@ -5,7 +5,7 @@ argument-hint: [--message "what to pick up"] [--delay <minutes>] [--print] [--dr
 
 Operator-invoked context-hop: writes a snapshot to the handover root then either prints the command to run manually (`--print`) or schedules a relaunch via `arm-resume.sh` (default).
 
-Use this when the current session is approaching ~75–80% of its context window and you want to /exit + pick up cleanly without losing state. **Measure that threshold, do not eyeball it** — `bash scripts/context-fill.sh` prints the current session's window fill, and `--percent` gives the bare integer (HIMMEL-2212). Branch on its EXIT STATUS, not on the number alone: a stale or unknown reading prints nothing and exits 3/4, so a bare `[ "$(…)" -ge 75 ]` collapses into a false comparison indistinguishable from "below threshold". Note it reports **context-window fill**, not the `<total_tokens>` spend budget. Sibling of `/handover-arm-resume`:
+Use this when the current session is approaching ~75–80% of its context window and you want to /exit + pick up cleanly without losing state. **Measure that threshold, do not eyeball it** — `bash scripts/context-fill.sh` prints the current session's window fill, and `--percent` gives the bare integer. Branch on its EXIT STATUS, not on the number alone: a stale or unknown reading prints nothing and exits 3/4, so a bare `[ "$(…)" -ge 75 ]` collapses into a false comparison indistinguishable from "below threshold". Note it reports **context-window fill**, not the `<total_tokens>` spend budget. Sibling of `/handover-arm-resume`:
 
 ```bash
 if fill=$(bash scripts/context-fill.sh --percent); then
@@ -53,7 +53,7 @@ bash scripts/handover/hop.sh $ARGUMENTS
 
 ## Handover root resolution
 
-In priority order (HIMMEL-335):
+In priority order:
 
 1. `--handover-root <dir>` flag (used verbatim).
 2. The shared resolver `scripts/lib/handover-path.sh` joined to `USER_SLUG` —
@@ -74,11 +74,11 @@ hardcoded fallback path.
 
 ## Scope
 
-Spike covers the operator-invoked path. The DETECT half is no longer blind: since HIMMEL-2212 a session can read its own context-window fill via `scripts/context-fill.sh`, so a 75/80% auto-trigger is now a mechanical follow-up rather than an unmeasurable one. Firing the hop is still an operator action.
+Spike covers the operator-invoked path. The DETECT half is no longer blind: a session can read its own context-window fill via `scripts/context-fill.sh`, so a 75/80% auto-trigger is now a mechanical follow-up rather than an unmeasurable one. Firing the hop is still an operator action.
 
 ## Prior stop-point (shared resolver)
 
-Before writing the snapshot, surface the immediately-prior armed session's stop-point so the hop carries it forward (same resolver as `/handover-resume-armed`, HIMMEL-208):
+Before writing the snapshot, surface the immediately-prior armed session's stop-point so the hop carries it forward (same resolver as `/handover-resume-armed`):
 
 ```bash
 bash scripts/handover/resume-armed.sh || true

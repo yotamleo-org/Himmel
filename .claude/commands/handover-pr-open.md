@@ -7,7 +7,7 @@ Opens a new PR (or updates an existing one) for the current handover branch.
 Idempotent across re-runs. Body shape: `## Summary`, `## Files changed`, `## Ticket`.
 
 Refuses (rc=3) if HEAD is not on a `handover/*` branch — this command is
-scoped to the auto-commit branched flow (HIMMEL-140).
+scoped to the auto-commit branched flow.
 
 Run from the worktree of the handover repo (not from himmel root). The
 script invokes `gh pr create` on first call and `gh pr edit` on subsequent

@@ -51,6 +51,6 @@ Thresholds are tuned guesses, overridable: `PROSE_AUDIT_MIN_BYTES` (6144),
 `PROSE_AUDIT_FENCE_RATIO` (15), `PROSE_AUDIT_MAX_SNIPPETS` (3).
 
 Findings are advisory — a successful scan exits 0. Non-zero means the reporter
-itself failed. Program of record: HIMMEL-1941.
+itself failed. Program of record: the prose-to-code extraction program.
 
 Be thorough in your analysis and bold in your recommendations

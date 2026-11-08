@@ -4,8 +4,8 @@ argument-hint: [--dry-run]
 ---
 
 Fires a PLAIN `gh pr merge <N> --squash --delete-branch` against the open
-PR associated with the current handover branch — no `--admin` (HIMMEL-224:
-the admin flag bypasses nothing on this repo yet trips the auto-mode
+PR associated with the current handover branch — no `--admin` (the
+admin flag bypasses nothing on this repo yet trips the auto-mode
 classifier's hard veto). `--admin` exists only as a fallback on a
 non-cosmetic plain-merge failure AND requires explicit authorization via
 `GH_ADMIN_MERGE_OK=1`; the script never silently escalates. Squash is the
@@ -41,5 +41,5 @@ Exit codes:
 - `3` not on a handover/* branch (refuses)
 - `4` gh pr merge failed (non-cosmetic)
 
-Run after `/handover-flush` (HIMMEL-143) or at session-end to land the
+Run after `/handover-flush` or at session-end to land the
 handover branch.

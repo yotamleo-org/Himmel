@@ -2,13 +2,13 @@
 description: Lint staged shell before committing.
 ---
 
-Pre-emptive shell lint (HIMMEL-478, C4 of the autonomy-resilience epic). Run it
+Pre-emptive shell lint (part of the autonomy-resilience epic). Run it
 on a worktree branch **before `git commit`** whenever the branch changes shell
 scripts, so issues are fixed up front instead of bouncing off the real
 pre-commit gate mid-run. The authoritative gate (`.pre-commit-config.yaml`)
 stays the source of truth and is unchanged — this is additive and runs earlier.
 
-Lean-invoke by design (HIMMEL-177): a fast advisory step the autonomous loop (or
+Lean-invoke by design: a fast advisory step the autonomous loop (or
 the operator) runs on demand, not an always-on hook. It only reports — it never
 modifies files.
 

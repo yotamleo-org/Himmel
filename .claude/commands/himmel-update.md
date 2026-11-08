@@ -15,15 +15,15 @@ In **apply mode** (no `--check`), refuses to run against a **dirty checkout**
 (uncommitted changes) up front — commit or stash first, then re-run. (The
 read-only `--check` mode does not reject a dirty tree.) To update through
 deliberately-kept local tracked diffs (e.g. locally-installed skills), set
-`HIMMEL_UPDATE_AUTOSTASH=1` per-invocation to autostash them around the pull
-(HIMMEL-1197). On a clean tree it runs
+`HIMMEL_UPDATE_AUTOSTASH=1` per-invocation to autostash them around the pull.
+On a clean tree it runs
 a **six-item dependency chain, in order**: (1) `git pull --ff-only` of this checkout, (2)
 `claude plugin marketplace update himmel` to refresh plugins from the
 freshly-pulled dir, (3) a **jira CLI dist rebuild** (`scripts/jira/dist` is
 gitignored, so a pull that touches the jira TypeScript source needs a
 rebuild to take effect), (4) a **qmd fork update** (qmd ships from a
 himmel-pinned fork outside this checkout), (5) a **hermes
-update** (HIMMEL-426 — hermes is a separate editable git checkout *outside*
+update** (hermes is a separate editable git checkout *outside*
 this repo, so `git pull` here never touches it; this pulls + reinstalls it),
 and (6) a **luna template upgrade** (`LUNA_VAULT_PATH`, content-preserving).
 Each item reports one of `updated` / `up-to-date` / `skipped` / `failed` /
@@ -33,9 +33,9 @@ the script exits non-zero.
 
 After the chain (win or lose — these never abort and always run, restoring
 their pre-existing best-effort behavior even on a chain failure) come seven
-advisory steps: a **codex plugin re-sync**
-(HIMMEL-742), a **statusLine hud re-wire** (HIMMEL-718), a **graphify pin
-sync** (HIMMEL-1048) — rolls an EXISTING `uv`-managed graphify install
+advisory steps: a **codex plugin re-sync**,
+a **statusLine hud re-wire**, a **graphify pin
+sync** — rolls an EXISTING `uv`-managed graphify install
 forward to the pinned version, so a pin bump in this checkout actually
 reaches the machine (`git pull` alone only updates the resolver script, not
 the installed tool); it reinstalls graphify via `uv` when the pinned version
@@ -44,25 +44,25 @@ the chain on failure — a **plugin install-state report** — `marketplace
 update` only re-syncs plugins that are *already installed*, so it can't tell
 you a himmel-marketplace plugin is missing, or is being served from a
 non-`@himmel` marketplace whose `autoUpdate` shadows the himmel SHA pin
-(HIMMEL-434; the report prints the `claude plugin install …@himmel` /
-migrate commands for any gap) — a **lean plugin-set reconcile** (HIMMEL-1032,
-warn-only unless `HIMMEL_RECONCILE_PLUGINS=1`), stale **cadence-runner** /
+(the report prints the `claude plugin install …@himmel` /
+migrate commands for any gap) — a **lean plugin-set reconcile**
+(warn-only unless `HIMMEL_RECONCILE_PLUGINS=1`), stale **cadence-runner** /
 **guardrail-mode block** drift checks, and a **dependency-readiness check**
-(HIMMEL-1393) — surfaces an enabled skill missing its declared API key, or
+— surfaces an enabled skill missing its declared API key, or
 an enabled+keyed skill whose docs still mark its toolkit disabled
 (presence-only, no key values read), a **cli-proxy-api host roll** and an
-**installed-marketplaces catch-up** (both HIMMEL-2134, below), and a **qmd
+**installed-marketplaces catch-up** (both below), and a **qmd
 daemon-restart notice** when the qmd step installed new code under a live
 daemon.
 
-**Gap-audit offer (HIMMEL-5836).** The run ends with a print-only offer: the
+**Gap-audit offer.** The run ends with a print-only offer: the
 read-only checks that came back non-green (qmd pin / embed backlog / collections
 unscanned for over 3 days, AST graph age and the semantic manifest's age,
 in-work tickets with no session or PR, `ponytail:` markers whose upgrade ticket
 is Done), each with its remedy, via `scripts/lib/gap-audit.sh`. Nothing runs
 until you say yes; the full audit is `bash scripts/himmel-doctor.sh`.
 
-**Machine-local catch-up (HIMMEL-2134).** Three advisory steps close the gap
+**Machine-local catch-up.** Three advisory steps close the gap
 where a merged pin bump reached this checkout's *repo* but never reached the
 *machine*. That staleness is invisible to `scripts/check-plugin-drift.sh`: for
 a `tag_release`/`mode: base` entry the guard reads `synced_base` — a literal in
@@ -90,7 +90,7 @@ bump merges while the host still runs the old build.
   marketplaces (`autoUpdate` off) that nothing else updates. `himmel` is
   excluded: it is chain item 2, where a failure must abort the update. Every row
   is attempted regardless of what the previous row did.
-- **claude CLI sync (HIMMEL-5501)** — `claude` is no longer report-only. In
+- **claude CLI sync** — `claude` is no longer report-only. In
   apply mode a Claude Code below the launch floor (2.1.280: Opus 5.5 and
   `--autocompact`) or behind the latest is updated by its owner's updater
   (native: `claude update`; npm: `npm install -g @anthropic-ai/claude-code@latest`;
@@ -115,7 +115,7 @@ and Edit call is denied. In that case the script closes with a
 `RESTART CLAUDE NOW` line; finish and commit other work first. Only a new
 claude session recovers.
 
-This command can run from **any directory** (HIMMEL-459), so first resolve the
+This command can run from **any directory**, so first resolve the
 himmel checkout using the same checkout-resolution order as
 `marketplace/plugins/himmel-ops/scripts/workers.sh` (here it fails closed with an
 error; workers.sh fails open): `$HIMMEL_REPO` → the current git toplevel →
