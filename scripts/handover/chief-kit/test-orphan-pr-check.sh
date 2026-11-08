@@ -113,6 +113,9 @@ check "9599 a narrative segment that names the PR and no hold is unowned" "UNMAP
 write_doc "4951 merging | 102 222 HELD until 9032 Task 2 | 4660 8992 relaunch"
 run
 check "9599 a HELD segment names the PR: exits 0" "0" "$rc"
+write_doc "102 222 threshold tuning, withheld relaunch"
+run
+check "9599 hold inside another word does not hold the PR" "UNMAPPED 102 feat/himmel-222-beta" "$out"
 write_doc "4951 merging || prior US queue: 102 222 HELD until 9032"
 run
 check "9599 a hold in a prior-queue segment after || does not hold the PR" "UNMAPPED 102 feat/himmel-222-beta" "$out"
