@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# test-one-rule-per-gate-docs.sh — each doc states the one rule its gate enforces.
 # PLATFORM GUARD: Bash 3.2, grep/awk/tr only.
 set -uo pipefail
 
