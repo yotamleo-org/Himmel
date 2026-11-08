@@ -1670,6 +1670,16 @@ test("readOwed: reads the unsigned specs, the newest chief doc's lines naming th
   rmSync(join(bucket, "HIMMEL-nextleg-2026-11-08VE-roadmap-chief-HANDOFF.md"));
   const part = readOwed(env);
   expect(part.state === "ok" && part.unread).toEqual(["handoff items"]);
+  // a critic file that cannot be read names the spec source unread, never a quiet gap in its list
+  mkdirSync(join(designs, "HIMMEL-9-broken.critic-spec-r1.md"));
+  const broken = readOwed(env);
+  expect(broken.state === "ok" && broken.unread).toEqual(["unsigned specs", "handoff items"]);
+  rmSync(join(designs, "HIMMEL-9-broken.critic-spec-r1.md"), { recursive: true });
+  // a release with no operator.jsonl yet has signed nothing: its clean specs are owed, not unread
+  rmSync(join(rel, "operator.jsonl"));
+  const fresh = readOwed(env);
+  expect(fresh.state === "ok" && fresh.unread).toEqual(["handoff items"]);
+  expect(fresh.state === "ok" && fresh.items.filter((i) => i.source === "unsigned spec").map((i) => i.key)).toEqual([K(1), K(2), K(7)]);
   // no handover root and no chief doc: nothing is readable, so the answer is absent with the reasons
   const none = readOwed({ ...env, HANDOVER_DIR: join(s.d, "no-ho") });
   expect(none.state).toBe("absent");

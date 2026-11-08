@@ -175,7 +175,9 @@ function mdSection(text: string, heading: string): string[] | undefined {
 const readText = (p: string) => readFileSync(p, "utf8");
 function specItems(bucket: string, version: string, open: Map<string, string>): OwedItem[] {
   const signed = new Set<string>();
-  for (const l of readText(join(bucket, "release", version, "operator.jsonl")).split("\n")) {
+  let ledger = "";
+  try { ledger = readText(join(bucket, "release", version, "operator.jsonl")); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; } // a release with no record yet has signed nothing
+  for (const l of ledger.split("\n")) {
     try { const r = JSON.parse(l); if (r && r.kind === "spec" && typeof r.spec_path === "string") signed.add(r.spec_path); } catch { /* a torn or blank line holds no record */ }
   }
   const dir = join(bucket, "specs", "designs"), latest = new Map<string, { n: number; f: string }>();
@@ -186,8 +188,7 @@ function specItems(bucket: string, version: string, open: Map<string, string>): 
   const items: OwedItem[] = [];
   for (const [spec, { n, f }] of [...latest].sort((a, b) => a[0].localeCompare(b[0]))) {
     const key = spec.match(/[A-Z][A-Z0-9]*-\d+/)?.[0];
-    let last: string;
-    try { last = readText(join(dir, f)).split("\n").map((x) => x.trim()).filter(Boolean).pop() ?? ""; } catch { continue; }
+    const last = readText(join(dir, f)).split("\n").map((x) => x.trim()).filter(Boolean).pop() ?? ""; // an unreadable critic file fails the whole source, so it is named unread
     if (!key || !open.has(key) || signed.has(join(dir, spec)) || signed.has(join(dir, `${spec}.md`)) || !(last === "SPEC CLEAN" || n >= SPEC_ROUNDS)) continue;
     items.push({ source: "unsigned spec", key, title: open.get(key)!, act: "sign the spec, or rule on its findings",
       ctx: `${spec}: latest critic round ${n} reads ${/^SPEC (?:CLEAN|FINDINGS \d+)$/.test(last) ? last : "no verdict line"}, no spec row in operator.jsonl` });
