@@ -58,7 +58,7 @@ router, jira CLI and breadcrumb writer stay in the himmel clone at `$HIMMEL_REPO
 
 4. **Fan out subagents (only when operator confirms).**
 
-   **Stop-marker check, before this step starts at all (HIMMEL-2724 lead 4):**
+   **Stop-marker check, before this step starts at all (so `/stop`'s marker has a consumer):**
    the dispatch loop below polls `/stop`'s marker before EVERY subagent
    dispatch, but the first check happens here, before the loop even begins —
    a stop armed between confirmation and fanout must not start a single
@@ -77,8 +77,8 @@ router, jira CLI and breadcrumb writer stay in the himmel clone at `$HIMMEL_REPO
    Never let "no tickets started" stand in for the list; the morning report
    needs the IDs, not just the count.
 
-   **Route every ticket through the same validator `/fanout` uses (HIMMEL-2722
-   item 1) — one routing implementation, not two** (`marketplace/plugins/himmel-ops/commands/fanout.md`
+   **Route every ticket through the same validator `/fanout` uses —
+   one routing implementation, not two** (`marketplace/plugins/himmel-ops/commands/fanout.md`
    already said this dispatch loop should). Build one entry per non-epic
    ticket in the confirmed plan — `{id, type: "implementation", destructive:
    <classified>, effort: "medium", why: "<ticket title>"}` (architecture-heavy
@@ -87,7 +87,7 @@ router, jira CLI and breadcrumb writer stay in the himmel clone at `$HIMMEL_REPO
    live roster:
 
    **Classify `destructive` from the ticket — never hardcode `false` (CR
-   finding, deferred once to HIMMEL-2749, fixed here on the second round):**
+   finding, deferred once, fixed here on the second round):**
    `true` when the ticket's title/description matches an irreversible-
    operation pattern (delete, remove, drop, purge, wipe, truncate,
    force-push, uninstall, destroy) or the operator flagged it destructive
@@ -117,7 +117,7 @@ router, jira CLI and breadcrumb writer stay in the himmel clone at `$HIMMEL_REPO
    - Exit 2 → items file didn't parse.
 
    **Dispatch loop — one Agent tool call issued at a time, each preceded by
-   a poll (HIMMEL-2724 lead 4):** the stop-marker contract requires a
+   a poll:** the stop-marker contract requires a
    checkpoint before every dispatch, so walk the confirmed, plan-resolved
    ticket list in order, issuing exactly one `Agent` call per iteration:
 
@@ -140,7 +140,7 @@ router, jira CLI and breadcrumb writer stay in the himmel clone at `$HIMMEL_REPO
      tickets, run the built-in `Plan` agent first to design the implementation plan.
      A ticket that adds or aggregates a status, report, doctor, health, probe,
      check or inventory surface is routed through `/minerva` instead. It needs
-     a lint-clean Fact ownership matrix before dispatch (HIMMEL-4375; the
+     a lint-clean Fact ownership matrix before dispatch (the
      worker-brief-template's item (g)).
    - `model`: the `model` `fanout-plan.mjs` resolved for this ticket's item id.
    - `isolation`: `worktree` (each subagent gets its own copy of the
@@ -161,7 +161,7 @@ router, jira CLI and breadcrumb writer stay in the himmel clone at `$HIMMEL_REPO
    - `block-mcp-when-plugin-exists.sh` — refuses MCP calls when a
      plugin equivalent exists (existing).
 
-5. **After all subagents return — self-heal pass (HIMMEL-476, C2).**
+5. **After all subagents return — self-heal pass.**
    The fanout is fire-and-forget: a returned subagent can't be resumed,
    only replaced. Before writing the report, run a POST-RETURN
    retry/triage pass so one mechanical gate slip doesn't silently kill a
@@ -191,7 +191,7 @@ router, jira CLI and breadcrumb writer stay in the himmel clone at `$HIMMEL_REPO
 
    c. **Dispatch fresh fix subagents** — for each row in the dispatch
       plan, **poll the stop marker before that dispatch** (same contract as
-      step 4 — HIMMEL-2724 lead 4):
+      step 4):
 
       ```bash
       if bash scripts/afk/stop-marker.sh check; then
@@ -228,7 +228,7 @@ router, jira CLI and breadcrumb writer stay in the himmel clone at `$HIMMEL_REPO
    and feed THAT file to the report in step 6 (there is no
    `<state-dir>/overnight-final.tsv` in this case, because reconcile never ran).
 
-   e. **Emit structured status back to the ledger (HIMMEL-517, L3 push-side).**
+   e. **Emit structured status back to the ledger.**
       The parent session holds the structured signal the where-are-we ledger's
       `next_action`/`blockers`/`awaiting_operator` fields exist for — populate
       them so the **next** session's L2 view surfaces real status (closes the
@@ -256,7 +256,7 @@ router, jira CLI and breadcrumb writer stay in the himmel clone at `$HIMMEL_REPO
       `appendRecords` lock the collectors use (single-writer rule holds). Skip
       entirely if `.where-are-we/` does not exist.
 
-6. **Write the consolidated morning report (HIMMEL-258).**
+6. **Write the consolidated morning report.**
    Feed the final rows —
 
    ```text
@@ -284,13 +284,13 @@ router, jira CLI and breadcrumb writer stay in the himmel clone at `$HIMMEL_REPO
    `HANDOVER_DIR` fails closed (exit 2 — fix it or pass `--out`); there
    is no hardcoded `./handovers/` fallback.
 
-   Then run `/handover-flush` (HIMMEL-143) to reconcile any handover
+   Then run `/handover-flush` to reconcile any handover
    state the subagents wrote, and surface the report path + its
    "Decisions needed" block in chat. Morning review = the operator reads
    that ONE report, then drills into PRs (`/pr-check`) — no per-ticket
    discovery.
 
-7. **Drop a durable resume breadcrumb (HIMMEL-477, C3).**
+7. **Drop a durable resume breadcrumb.**
    This post-fanout step is one of the seams the breadcrumb writer
    piggybacks (there is no per-worker dispatch runtime). Record where the run
    stopped so a crashed/interrupted resume reconstructs intent instead of
@@ -324,10 +324,10 @@ router, jira CLI and breadcrumb writer stay in the himmel clone at `$HIMMEL_REPO
 | `--priority ORDER` | `key-desc` | v1 supports `key-desc` (newest-first). Other values pass through for forward-compat with a future priority-aware jira CLI. |
 | `--out PATH` | _(none)_ | Write plan to a file in addition to stdout. |
 
-## Out of scope (per HIMMEL-32 reopen)
+## Out of scope
 
 - Per-agent guardrails beyond the existing PreToolUse hooks — covered separately.
-- MORNING_BRIEFING.md auto-generator — separate sub-task (HIMMEL-135).
+- MORNING_BRIEFING.md auto-generator — a separate sub-task.
 
 ## Smoke test
 

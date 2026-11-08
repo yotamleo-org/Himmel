@@ -7,10 +7,10 @@ The third repair path. `/drift-fix` handles the two easy classes — a version p
 in the repo (`mode: base`) and an installed binary (`mode: probe`). This one
 handles the class that has no cheap fix: a **fork**.
 
-`qmd` carries a `fork` block again (HIMMEL-3956): it is SHA-pinned via
+`qmd` carries a `fork` block again: it is SHA-pinned via
 `_qmd_fork_ref()` in `scripts/lib/qmd-bin.sh` to a `yotamleo/qmd` commit whose
-launcher forwards signals, until tobi/qmd#1030 lands (HIMMEL-3982 returns it
-to upstream). HIMMEL-3045 had de-forked it once before. A registry entry with a `fork` block records, in
+launcher forwards signals, until tobi/qmd#1030 lands (then it returns
+to upstream). It had been de-forked once before. A registry entry with a `fork` block records, in
 `synced_base`, the highest upstream STABLE tag that fork actually sits on.
 
 **The trap this command exists to prevent:** when upstream tags past
@@ -18,13 +18,13 @@ to upstream). HIMMEL-3045 had de-forked it once before. A registry entry with a 
 `synced_base` — is a lie. It marks the fork as carrying an upstream base it never
 rebased onto, and the guard goes quiet while the fork drifts further. That is why
 a genuine SHA-pinned fork deliberately has **no `version_pin`** (qmd's shape again
-since HIMMEL-3956) and why `apply-drift-bump.sh` returns SKIP for it
+since its launcher fork) and why `apply-drift-bump.sh` returns SKIP for it
 rather than being taught to handle it.
 
 The real fix is a rebase, and a rebase can conflict. That needs judgment, which
 is why this is a runbook and not a shell script.
 
-**Syncing a fork is upkeep, never a PR (HIMMEL-8334).** A registered fork
+**Syncing a fork is upkeep, never a PR.** A registered fork
 (`scripts/guardrails/himmel-adapters.json`, non-null `upstream`) is synced by
 `bash scripts/upstreams/resync-fork.sh --sync <owner/repo>`: no carried commits
 → it says `use-upstream` (point pins and installs at upstream, no sync);
@@ -64,7 +64,7 @@ Take every `BEHIND` entry that declares a **`fork`** block in
 
 Nothing BEHIND with a `fork` block → report "no fork drift" and stop. This is
 the expected outcome whenever no fork is drifting — today only `qmd` declares a
-`fork` block (HIMMEL-3956), and it reads BEHIND only once upstream tags past
+`fork` block, and it reads BEHIND only once upstream tags past
 its `synced_base`.
 
 Any registry entry that declares a `fork` block is in scope, however it is
@@ -92,16 +92,16 @@ remote without `--push`.
 | 3 | SKIP — no `fork` block | not in scope for this command |
 | 4 | rebase CONFLICTED, the delta is NOT additive, OR a pin-literal failure (`PIN_FILE_MISSING`/`PIN_NOT_FOUND`/`PIN_AMBIGUOUS`) | **stop and escalate** — see below; expected-non-additive entries are the exception |
 
-**Expected-non-additive entries (HIMMEL-1435).** An entry whose `fork.note`
+**Expected-non-additive entries.** An entry whose `fork.note`
 declares the delta non-additive BY DESIGN reports rc 4 NON-ADDITIVE on every
-healthy audit — `qmd` is such an entry (HIMMEL-2136's reviewed bugfixes until
-HIMMEL-3045 de-forked it; since HIMMEL-3956 its `bin/qmd` launcher fix). For such an entry that outcome IS the report — record the drift +
+healthy audit — `qmd` is such an entry (its reviewed bugfixes until
+it was first de-forked; now its `bin/qmd` launcher fix). For such an entry that outcome IS the report — record the drift +
 rebase-feasibility result and **continue with the remaining forks**; do not
 escalate it and do not let it terminate an unattended sweep. A CONFLICTED
 rebase or a pin-literal failure on the SAME entry is still a real
 stop-and-escalate — only the declared non-additive shape is expected. A fork
 whose carried delta is strictly additive (`claude-obsidian` was one, at
-v2.1.1-himmel.1, +10 −0, before its own HIMMEL-2925 retirement) is NOT such an
+v2.1.1-himmel.1, +10 −0, before that fork was collapsed onto upstream v2.2.0) is NOT such an
 entry: its healthy audit result is ADDITIVE, and a NON-ADDITIVE result there
 would be a regression to report, not a designed exception.
 
@@ -185,11 +185,11 @@ Same as `/drift-fix` steps 6–9:
 - `/pr-check` until CR is clean, open the PR, watch CI green.
 - Merge via `scripts/handover/merge-on-green.sh` (armed — it admits a
   confirmed-private repo, or the ONE configured public origin under
-  live-verified branch protection, HIMMEL-2869; a fork that is neither is
+  live-verified branch protection; a fork that is neither is
   refused, exit 12) or `scripts/handover/pr-merge.sh`. **The ≥1-approval rule
   applies to this cadence exactly as it does to a human PR** — green CI is
   necessary, never sufficient.
-  `merge-on-green.sh` exits 18 (GitHub-blocked, HIMMEL-3381) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is now the chief-GO refusal only); if no automation identity can satisfy the required review, the merge is a human admin action (HIMMEL-2887).
+  `merge-on-green.sh` exits 18 (GitHub-blocked) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is now the chief-GO refusal only); if no automation identity can satisfy the required review, the merge is a human admin action.
   Never `--admin`, never a branch-protection override. A merge refused for want
   of an approval is the rule working: leave the PR open, report `awaiting
   approval`, and stop. That is a successful run — the himmel pin move waits in a
