@@ -270,6 +270,10 @@ _model_fail "9566: an unreadable model output denies a pipe into a shell" deny "
 _model_fail "9566: shfmt missing denies a pipe into a shell" deny "$T/no-shfmt" "$HOOK" "$PIPE_SET"
 _model_fail "9566: a missing model lib denies a pipe into a shell" deny "$PATH" "$T/nolib/scripts/hooks/block-bank-lift-writes.sh" "$PIPE_SET"
 _model_fail "9566: a crashing model leaves a command with no pipe into a shell allowed" allow "$T/crash-model:$PATH" "$HOOK" "echo hi | grep h"
+# A real parse failure denies too: the Bash tool may run zsh, so a zsh-only
+# clause shfmt cannot read must not hide a piped set.
+row "9566: a zsh-only clause after a piped set denies" deny "$PIPE_SET; for f (a) { echo \$f }"
+row "9566: a zsh-only flag expansion after a piped set denies" deny "echo 'bash scripts/lib/usage-lift.sh set x' | bash; echo \${(f)x}"
 
 echo "== deny message names the operator remedy =="
 err=$(printf '%s' "$(bash_json "bash $S set")" | bash "$HOOK" 2>&1 >/dev/null)

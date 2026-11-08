@@ -969,7 +969,8 @@ analyse "$CMD" 0
 # on a pipe beside a shell word; past that gate any model failure denies (a
 # missing lib, shfmt or jq, a timeout, a parse failure, a jq error): shfmt's Go
 # runtime can abort "out of memory" under an address-space limit, and the model
-# reports that as a parse failure.
+# reports that as a parse failure. A real parse failure denies as well: the
+# Bash tool may run zsh, so a zsh-only clause must not hide a piped set.
 # swallow-ok: read -d '' on a literal heredoc always returns 1 at EOF
 IFS= read -r -d '' BL_JQ <<'BL_JQ_EOF' || true
 def thru: length == 1 and (.[0] | .prog == "tee"
