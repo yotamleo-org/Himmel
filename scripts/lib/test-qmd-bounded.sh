@@ -286,8 +286,8 @@ lex: console
 vec: the chief|" "$(t8 query "the chief")"
 assert_eq "T8c QMD_VOCAB_EXPAND=0 runs the argv as given" "search|-c|himmel|the chief|" "$(QMD_VOCAB_EXPAND=0 t8 search -c himmel "the chief")"
 assert_eq "T8d a question with no fleet word and no filler runs as given" "search|prompt cache|" "$(t8 search "prompt cache")"
-assert_eq "T8e filler words leave the lex line, a leading dash word leaves the vec line" "query|--|lex: waiter wake -p
-vec: how does the waiter wake|" "$(t8 query "how does the waiter wake -p")"
+assert_eq "T8e a natural question, with filler or a dash word, passes through to qmd's own expansion" "query|how does the waiter wake -p|query|how does the waiter wake|" "$(t8 query "how does the waiter wake -p")$(t8 query "how does the waiter wake")"
+assert_eq "T8f a search drops filler words from its lex line and keeps a typed -negation" "query|--no-rerank|--|lex: waiter wake -p|" "$(t8 search "how does the waiter wake -p")"
 
 if [ "$FAILED" -eq 0 ]; then
     echo "ALL PASS"

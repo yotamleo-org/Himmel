@@ -283,13 +283,13 @@ EOF
 chmod +x "$W/qmd-rec"
 RETRIEVAL_EVAL_QMD_CMD="$W/qmd-rec" py -c 'import importlib.util,sys
 s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
-m.arm_qmd("how does the waiter wake the chief -p", True, 5, 5, "himmel")' "$EV"
+m.arm_qmd("how does the waiter wake the chief -p --bg", True, 5, 5, "himmel")' "$EV"
 sent() { py -c 'import json,sys
 a = json.load(open(sys.argv[1]))
 print(a["intent"] if sys.argv[2] == "intent" else [s["query"] for s in a["searches"] if s["type"] == sys.argv[2]][0])' "$W/sent.json" "$1"; }
-eq "lex leg drops filler words and keeps -p" "waiter wake chief -p" "$(sent lex)"
-eq "vec leg drops the leading dash word" "how does the waiter wake the chief" "$(sent vec)"
-eq "intent keeps the whole question" "how does the waiter wake the chief -p" "$(sent intent)"
+eq "lex leg drops filler words and quotes the dash words, which qmd would read as a NOT" 'waiter wake chief "-p" "--bg"' "$(sent lex)"
+eq "vec leg drops the single-dash word qmd rejects" "how does the waiter wake the chief --bg" "$(sent vec)"
+eq "intent keeps the whole question" "how does the waiter wake the chief -p --bg" "$(sent intent)"
 
 # 8d. grep never returns the tracked question set.
 eq "grep skips the question set" "0" "$(grep -c 'retrieval-eval/questions' "$W/out/results.jsonl")"

@@ -36,13 +36,13 @@ if [ "$got" = "$want" ]; then pass "V3 mixed question gives one line per directi
 else fail "V3 got='$got'"; fi
 
 # V4: a question naming no registry word passes through unchanged.
-got="$(doc query "prompt cache prefix warm")"
-if [ "$got" = "prompt cache prefix warm" ]; then pass "V4 no registry word, unchanged"
+got="$(doc query "how long does the prompt cache keep a prefix warm")"
+if [ "$got" = "how long does the prompt cache keep a prefix warm" ]; then pass "V4 no registry word, unchanged"
 else fail "V4 got='$got'"; fi
 
 # V5: a question that already is a query document, or a lex line would reject, passes through.
-got="$(doc query "lex: console worker")|$(doc search 'the "chief worker')"
-if [ "$got" = 'lex: console worker|the "chief worker' ]; then pass "V5 document and odd quote unchanged"
+got="$(doc query "lex: console worker")|$(doc search 'the "chief worker')|$(doc query "chief -worker")"
+if [ "$got" = 'lex: console worker|the "chief worker|chief -worker' ]; then pass "V5 document, odd quote and negation unchanged"
 else fail "V5 got='$got'"; fi
 
 # V6: a phrase already in the new vocabulary is not grown ("parallel wave" never "parallel parallel wave").
@@ -85,10 +85,18 @@ want="lex: waiter wake chief${nl}lex: waiter wake console"
 if [ "$got" = "$want" ]; then pass "V11 lex line drops filler words"
 else fail "V11 got='$got'"; fi
 
-got="$(doc query "claude -p mode")"
-want="lex: claude -p mode${nl}vec: claude mode"
-if [ "$got" = "$want" ]; then pass "V12 vec line drops -p, lex line keeps it"
+got="$(doc query "claude -p mode")|$(doc query "how does the waiter wake")"
+if [ "$got" = 'claude -p mode|how does the waiter wake' ]; then pass "V12 a query naming no registry word keeps qmd's own expansion, filler or dash word or not"
 else fail "V12 got='$got'"; fi
+
+vxpy() { python3 -I -c 'import importlib.util, sys; s = importlib.util.spec_from_file_location("vx", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m); print(eval(sys.argv[2], {"m": m}))' "$VX" "$1"; }
+got="$(vxpy 'm.shape_vec("claude -p --bg mode")')|$(vxpy 'm.shape_lex("claude -p --bg mode", quote_flags=True)')|$(vxpy 'm.shape_lex("claude -p mode")')"
+if [ "$got" = 'claude --bg mode|claude "-p" "--bg" mode|claude -p mode' ]; then pass "V15 vec drops a single-dash word, lex quotes dash words only when asked"
+else fail "V15 got='$got'"; fi
+
+got="$(doc search "how does the waiter wake -p")"
+if [ "$got" = 'lex: waiter wake -p' ]; then pass "V16 a search keeps a typed -negation"
+else fail "V16 got='$got'"; fi
 
 got="$(doc search 'what is "the end" mode')|$(doc search "how does the")"
 if [ "$got" = 'lex: "the end" mode|how does the' ]; then pass "V13 quoted phrase kept, all-filler question whole"

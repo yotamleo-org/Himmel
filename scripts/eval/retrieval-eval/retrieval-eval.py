@@ -388,7 +388,7 @@ def mcp_rows(msg):
 
 def arm_qmd(q, hybrid, timeout, k, collection, rerank=True):
     vec = vocab_expand.shape_vec(q) if hybrid else ""
-    args = {"searches": [{"type": "lex", "query": vocab_expand.shape_lex(q)}] + ([{"type": "vec", "query": vec}] if vec else []),
+    args = {"searches": [{"type": "lex", "query": vocab_expand.shape_lex(q, quote_flags=True)}] + ([{"type": "vec", "query": vec}] if vec else []),
             "collections": [collection], "limit": k, "intent": q}
     args["rerank"] = hybrid and rerank
     cmd = os.environ.get("RETRIEVAL_EVAL_QMD_CMD")
