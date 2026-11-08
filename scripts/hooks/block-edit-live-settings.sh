@@ -1275,6 +1275,7 @@ is_readonly_allowlisted() {
 # ANSI-C `$'…'` word (which spells any byte). TOK=0 sends every caller back
 # to the older whole-text scan (PowerShell always) or fails closed.
 TOK=0
+TOK_ANSIC=0
 # 1 when only a glob/alias leaf, not a named settings file, made
 # the command a candidate: `ls` is then a read the allowlist may pass.
 _RO_LS=0
@@ -3776,9 +3777,9 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         st_lower "$cmd"
         if st_tokenize "$ST_LOWER"; then
             ST_LW=("${ST_W[@]}") lw_n=$ST_N lw_nseg=$ST_NSEG
-            if st_tokenize "$cmd" && [ "$ST_HEREDOC" = 0 ] && [ "$ST_ANSIC" = 0 ] \
+            if st_tokenize "$cmd" && [ "$ST_HEREDOC" = 0 ] \
                 && [ "$ST_N" = "$lw_n" ] && [ "$ST_NSEG" = "$lw_nseg" ]; then
-                TOK=1
+                if [ "$ST_ANSIC" = 0 ]; then TOK=1; else TOK_ANSIC=1; fi
             fi
         fi
         # An extglob group (`@(…)`, `+(…)`, `!(…)`, `?(…)`,
@@ -4292,7 +4293,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
                         && ! _ansi_in_param_brace "$cmd" \
                         && _tok_no_shell_ok; then
                         :
-                    elif [ "$ST_ANSIC" = 1 ] && [ "$ST_OK" = 1 ] && [ "$cmd_j" = "$cmd" ] \
+                    elif [ "$TOK_ANSIC" = 1 ] && [ "$cmd_j" = "$cmd" ] \
                         && ! _ansi_in_param_brace "$cmd" && _tok_no_shell_ok \
                         && _ansi_words_inert "$cmd_j"; then
                         :
