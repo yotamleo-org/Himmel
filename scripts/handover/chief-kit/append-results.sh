@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# scripts/handover/chief-kit/append-results.sh - append a
-# worker's marker bullet at a handover doc's true EOF, so it can never land
-# mid-doc. Twice in one shift a worker's WRAPPED bullet, written with the Edit
-# tool anchored on an earlier bullet, landed ABOVE later bullets instead of
-# at the true end of the doc; close-wrapped-worker.sh and tick.sh both read the
-# doc's LAST `- ` line (scripts/lib/worker-tail-status.sh) as the worker's current
-# status, so the misordered WRAPPED bullet was invisible to them and the
-# wrap was refused. This script always appends at the literal end of the
-# file, so a worker calling it can never repeat that mistake.
+# scripts/handover/chief-kit/append-results.sh - put a worker's marker bullet
+# at the end of a handover doc's `## Results` section, so it can never land
+# mid-section. A bullet written with the Edit tool anchored on an earlier bullet
+# lands ABOVE later bullets, and close-wrapped-worker.sh and tick.sh both read the
+# newest `- ` line (scripts/lib/worker-tail-status.sh) as the worker's current
+# status, so a misordered WRAPPED bullet is invisible to them and the wrap is
+# refused. A RESUME doc has more sections after Results, so the end of the file
+# is the wrong place for it too: the closer reads Results. This script always
+# writes at the end of the Results section, so a worker calling it cannot repeat
+# either mistake.
 #
 # Usage: append-results.sh <doc> <text>
 #
@@ -178,6 +179,7 @@ doc_lock "$DOC" append-results && locked=1
 # insert_after: the last non-blank line of the LAST `## Results` / `## Chief Rulings` /
 # `## Console Rulings` section (the sections close-wrapped-worker.sh reads), when a `## ` heading
 # follows it; 0 when that section runs to EOF, where the bullet is appended.
+scanned_sum="$(cksum < "$DOC")"
 insert_after="$(awk '
     /^## (Results|Chief Rulings|Console Rulings)([ \t]|$)/ { tgt = 1; last = NR; closed = 0; next }
     tgt && !closed { if (/^## /) closed = 1; else if ($0 !~ /^[ \t]*$/) last = NR }
@@ -190,11 +192,12 @@ if [ "$insert_after" -gt 0 ]; then
     tmp=""
     if tmp="$(mktemp "$DOC.tmp.XXXXXX")" && cp -p "$DOC" "$tmp" \
         && bullet="$bullet" awk -v after="$insert_after" '{ print } NR == after { print ENVIRON["bullet"] }' "$DOC" > "$tmp" \
+        && [ "$(cksum < "$DOC")" = "$scanned_sum" ] \
         && mv -f "$tmp" "$DOC"; then  # prim-ok: the temp is cp -p'd from the doc to keep its mode; atomic_write would publish it 0600
         inserted=1
     else
         [ -z "$tmp" ] || rm -f "$tmp"
-        echo "append-results: write failed for $DOC" >&2
+        echo "append-results: write failed for $DOC (or the doc changed while the bullet was placed; re-run)" >&2
         exit 5
     fi
 fi

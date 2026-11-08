@@ -2,7 +2,7 @@
 # worker-doc-lock.sh - Sourced, never run. One lock shared by every
 # script that writes a handover doc, so a rewrite never drops a concurrent
 # append:
-#   append-results.sh   appends a bullet (>>)
+#   append-results.sh   adds a bullet at the end of the Results section (an insert, or >> at EOF)
 #   headed-arm-worker.sh   rewrites the front matter (session_ids:)
 #   inbox-send.sh --doc rewrites the doc's "## Chief Rulings" section
 #   live-state.sh       rewrites a chief doc's `legs:` line

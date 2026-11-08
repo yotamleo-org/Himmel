@@ -320,6 +320,21 @@ mk9607 "- 09:00 LIVE - resumed" "- 10:00 WRAPPED - done"
 reset_calls
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
 check "9607 legacy doc: a Results that holds a marker bullet is not overridden by a later section -> rc 4" "$rc" "4"
+mk9607 "" "- when done, append the WRAPPED bullet"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "9607 empty Results: a later bullet that only mentions WRAPPED is no worker tail -> rc 4" "$rc" "4"
+mk9607 "" "- 10:00 WRAPPED - done"
+ORIG9607="$W/HIMMEL-9-N1-demo-2026-01-01.md"
+printf '# HIMMEL-9 N1 demo worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - starting\n- 09:30 WRAPPED - hand-off\n' > "$ORIG9607"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "9607 RESUME doc with its original beside it: marker bullets below an empty Results close -> rc 0" "$rc" "0"
+mk9607 "" "- when done, append the WRAPPED bullet"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "9607 RESUME doc with its original beside it: a later WRAPPED mention alone is refused -> rc 4" "$rc" "4"
+rm -f "$ORIG9607"
 
 # --- 4b. a session-scratchpad clone holding unpushed commits ------------
 SCR="$W/claude-$(id -u)/proj/sess/scratchpad"

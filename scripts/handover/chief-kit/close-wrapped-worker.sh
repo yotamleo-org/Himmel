@@ -356,13 +356,38 @@ results_tail_status() {
     printf '%s' "$out"
 }
 
-# doc_tail_status <doc>: the status the close gates read for a doc - its Results tail (results_tail_status),
-# or the whole-file tail for a legacy doc with no Results heading, or whose Results holds no marker bullet.
-# Returns 1 when the doc cannot be read.
-doc_tail_status() {
+# results_has_bullets <doc>: success when the Results section (with its ruling sections) holds any `- ` line.
+results_has_bullets() {
+    awk '/^## Results( |$)/ { seen = 1; keep = 1; next } /^## / { keep = seen && ($0 ~ /^## (Chief|Console) Rulings( |$)/); next } keep && /^- / { found = 1 } END { exit !found }' "$1"
+}
+
+# marker_led_tail_status <doc>: the marker the last marker-led bullet anywhere in the doc starts with. A bullet that
+# only mentions a marker (`- when done, append the WRAPPED bullet`) is never read.
+marker_led_tail_status() {
+    awk '
+        match($0, /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/) {
+            mk = substr($0, RSTART, RLENGTH)
+            sub(/^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?/, "", mk)
+            sub(/[^A-Za-z0-9_]$/, "", mk)
+            last = mk
+        }
+        END { printf "%s", last }' "$1"
+}
+
+# results_or_fallback_status <doc>: results_tail_status, except that a Results section with no bullet at all reads
+# the marker-led bullets further down the doc. Prints `nosection` for a doc with no Results heading.
+results_or_fallback_status() {
     local rt
     rt=$(results_tail_status "$1") || return 1
-    if [ "$rt" = nosection ] || [ -z "$rt" ]; then worker_tail_status "$1"; else printf '%s' "$rt"; fi
+    if [ -z "$rt" ] && ! results_has_bullets "$1"; then marker_led_tail_status "$1"; else printf '%s' "$rt"; fi
+}
+
+# doc_tail_status <doc>: the status the close gates read for a doc - its Results tail (results_or_fallback_status),
+# or the whole-file tail for a legacy doc with no Results heading. Returns 1 when the doc cannot be read.
+doc_tail_status() {
+    local rt
+    rt=$(results_or_fallback_status "$1") || return 1
+    if [ "$rt" = nosection ]; then worker_tail_status "$1"; else printf '%s' "$rt"; fi
 }
 
 tail_marker_minutes() {
@@ -404,7 +429,7 @@ if [ -n "$NAMED_SUCCESSOR" ]; then
 fi
 if [ -n "$SIB_DOC" ] && [ "$PREDECESSOR" -eq 0 ]; then
     if [[ $DOC == *-RESUME.md ]]; then sib_res="$DOC"; sib_orig="$SIB_DOC"; else sib_res="$SIB_DOC"; sib_orig="$DOC"; fi
-    if ! res_marker=$(results_tail_status "$sib_res"); then
+    if ! res_marker=$(results_or_fallback_status "$sib_res"); then
         echo "close-wrapped-worker: refusing - cannot read the ## Results section of $sib_res" >&2
         exit 4
     fi
