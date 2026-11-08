@@ -431,9 +431,8 @@ contains "14 a label that is only a prefix of the closed one still escalates" "$
 
 # 15. READY: with the auto_go flag on it goes to auto-go.sh (a stub through LE_AUTOGO), live; the chief doc gets an AUTO-GO bullet
 H40=0780b95dcad44fe293c7798066626cd52bb2dce0
-# the flag-off dry run is detached: settle waits for the stub's call, none_settle gives a wrongly detached call time to land
-settle() { local i=0; while [ ! -s "$LE_CALLS" ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i+1)); done; calls="$(cat "$LE_CALLS")"; }
-none_settle() { sleep 1; calls="$(cat "$LE_CALLS")"; }
+wait_for_autogo_call() { local i=0; while [ ! -s "$LE_CALLS" ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i+1)); done; calls="$(cat "$LE_CALLS")"; }
+pause_then_read_calls() { sleep 1; calls="$(cat "$LE_CALLS")"; }
 cat > "$W/autogo" <<'EOF3'
 #!/usr/bin/env bash
 echo "autogo $*" >> "$LE_CALLS"
@@ -446,24 +445,24 @@ printf 'auto_go\toff\tfeature\tHIMMEL-8349\tHIMMEL-8404\t2099-01-01\tfixture\nst
 export HIMMEL_FLAGS_TSV="$W/flags.tsv" HIMMEL_CONFIG_DIR="$W/no-conf" LE_AUTOGO="$W/autogo"
 unset HIMMEL_FLAG_AUTO_GO
 
-run "READY 2553 $H40 GREEN N2088"; settle
+run "READY 2553 $H40 GREEN N2088"; wait_for_autogo_call
 check "15a flag off: rc" "$rc" 10
 check "15a flag off: ESCALATE marker-READY, as before" "$out" "ESCALATE marker-READY"
 check "15a flag off: auto-go runs once, dry" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/fleet.json --worker N2088 2553 $H40"
 
-LE_AUTOGO_RC=3 LE_AUTOGO_OUT="auto-go: refusing - chief relay" run "READY 2553 $H40 GREEN N2088"; settle
+LE_AUTOGO_RC=3 LE_AUTOGO_OUT="auto-go: refusing - chief relay" run "READY 2553 $H40 GREEN N2088"; wait_for_autogo_call
 check "15a1 a failed dry run: rc unchanged" "$rc" 10
 check "15a1 a failed dry run: ESCALATE marker-READY unchanged" "$out" "ESCALATE marker-READY"
-LE_AUTOGO_RC=0 LE_AUTOGO_OUT="WOULD-GO 2553 $H40" run "READY 2553 $H40 GREEN N2088"; settle
+LE_AUTOGO_RC=0 LE_AUTOGO_OUT="WOULD-GO 2553 $H40" run "READY 2553 $H40 GREEN N2088"; wait_for_autogo_call
 check "15a2 a WOULD-GO dry run: still ESCALATE marker-READY" "$out" "ESCALATE marker-READY"
-run "N2088 READY 2553 $H40 GREEN"; settle
+run "N2088 READY 2553 $H40 GREEN"; wait_for_autogo_call
 check "15a3 a label-first READY dry-runs the same" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/fleet.json --worker N2088 2553 $H40"
-run "READY 2553 abc N2088"; none_settle
+run "READY 2553 abc N2088"; pause_then_read_calls
 check "15a4 no full head: no dry run" "$calls" ""
-run "READY 2553 $H40 GREEN"; none_settle
+run "READY 2553 $H40 GREEN"; pause_then_read_calls
 check "15a5 no worker label: no dry run" "$calls" ""
 check "15a5 no worker label: ESCALATE marker-READY unchanged" "$out" "ESCALATE marker-READY"
-run "READY 2553 $H40 N2078 N2088"; none_settle
+run "READY 2553 $H40 N2078 N2088"; pause_then_read_calls
 check "15a6 two labels: no dry run" "$calls" ""
 
 export HIMMEL_FLAG_AUTO_GO=1
@@ -605,8 +604,7 @@ runf "$W/s-bad/fleet.json" "WRAPPED N8. Lock released."
 contains "16.6 an unreadable ledger escalates instead of guessing a route" "$out" "ESCALATE series-find-failed rc=1"
 check "16.6 nothing ran" "$calls" ""
 
-# 17. the flag-off READY dry run: detached and bounded, so a hung dry run never holds the READY
-# escalation, and a series READY dry-runs under the label the series ledger holds. The dry run is advisory throughout.
+# 17. the flag-off READY dry run
 cat > "$W/autogo-sleep" <<'EOF17'
 #!/usr/bin/env bash
 echo $$ > "$LE_SLEEP_PID"
@@ -621,6 +619,8 @@ check "17.1 a hung dry run: rc" "$rc" 10
 check "17.1 a hung dry run: ESCALATE marker-READY" "$out" "ESCALATE marker-READY"
 check "17.1 a hung dry run: the escalation returns within the bound (elapsed under 6s)" "$([ "$el" -lt 6 ] && echo yes || echo "no ${el}s")" yes
 if timeout --version >/dev/null 2>&1; then
+    i=0; while [ "$i" -lt 50 ] && [ ! -s "$LE_SLEEP_PID" ]; do sleep 0.1; i=$((i+1)); done
+    check "17.1b the sleeping dry run started" "$([ -s "$LE_SLEEP_PID" ] && echo yes || echo no)" yes
     i=0; while [ "$i" -lt 100 ] && [ -s "$LE_SLEEP_PID" ] && kill -0 "$(cat "$LE_SLEEP_PID")" 2>/dev/null; do sleep 0.1; i=$((i+1)); done
     check "17.1b the bounded dry run is gone once its bound passed" "$(kill -0 "$(cat "$LE_SLEEP_PID" 2>/dev/null)" 2>/dev/null && echo alive || echo gone)" gone
 else
@@ -630,19 +630,19 @@ fi
 pkill -f "$W/autogo-sleep" 2>/dev/null
 unset LE_SLEEP_PID
 
-HIMMEL_FLAG_AUTO_GO=0 runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N8"; settle
+HIMMEL_FLAG_AUTO_GO=0 runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N8"; wait_for_autogo_call
 check "17.2 a series READY: ESCALATE marker-READY unchanged" "$out" "ESCALATE marker-READY"
 check "17.2 a series READY dry-runs under the ledger's writer label, not the message's" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/s-ok/fleet.json --worker N9 2553 $H40"
-HIMMEL_FLAG_AUTO_GO=0 runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N2078"; settle
+HIMMEL_FLAG_AUTO_GO=0 runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N2078"; wait_for_autogo_call
 check "17.3 a non-series READY dry-runs under the message's label" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/s-ok/fleet.json --worker N2078 2553 $H40"
-HIMMEL_FLAG_AUTO_GO=0 HIMMEL_FLAG_STACKED_SERIES=0 runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N8"; settle
+HIMMEL_FLAG_AUTO_GO=0 HIMMEL_FLAG_STACKED_SERIES=0 runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N8"; wait_for_autogo_call
 check "17.4 stacked_series off: the dry run keeps the message's label" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/s-ok/fleet.json --worker N8 2553 $H40"
-HIMMEL_FLAG_AUTO_GO=0 runf "$W/s-zero/fleet.json" "READY 2553 $H40 GREEN N8"; settle
+HIMMEL_FLAG_AUTO_GO=0 runf "$W/s-zero/fleet.json" "READY 2553 $H40 GREEN N8"; wait_for_autogo_call
 check "17.5 the writer is in no manifest entry: the dry run keeps the message's label" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/s-zero/fleet.json --worker N8 2553 $H40"
-HIMMEL_FLAG_AUTO_GO=0 runf "$W/s-bad/fleet.json" "READY 2553 $H40 GREEN N8"; settle
+HIMMEL_FLAG_AUTO_GO=0 runf "$W/s-bad/fleet.json" "READY 2553 $H40 GREEN N8"; wait_for_autogo_call
 check "17.6 an unreadable ledger: the dry run keeps the message's label" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/s-bad/fleet.json --worker N8 2553 $H40"
 check "17.6 an unreadable ledger: ESCALATE marker-READY, never series-find-failed" "$out" "ESCALATE marker-READY"
-HIMMEL_FLAG_AUTO_GO=0 LE_AUTOGO_RC=3 LE_AUTOGO_OUT="auto-go: refusing" runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N8"; settle
+HIMMEL_FLAG_AUTO_GO=0 LE_AUTOGO_RC=3 LE_AUTOGO_OUT="auto-go: refusing" runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N8"; wait_for_autogo_call
 check "17.7 a failing, printing dry run changes nothing: rc" "$rc" 10
 check "17.7 a failing, printing dry run changes nothing: out" "$out" "ESCALATE marker-READY"
 unset HIMMEL_FLAG_AUTO_GO HIMMEL_FLAG_STACKED_SERIES HIMMEL_FLAGS_TSV HIMMEL_CONFIG_DIR LE_AUTOGO

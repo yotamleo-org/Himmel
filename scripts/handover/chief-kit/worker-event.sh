@@ -112,8 +112,6 @@ dry_run_ready() {
     # subshell gets the GNU timeout where one exists (scripts/lib/timeout-bin.sh; macOS has none, so there the dry run
     # is detached but unbounded); timeout kills the dry run's whole process group, so nothing outlives the bound.
     (
-        # the series label, as the live path below reads it (the series-ledger.py find call and the label it addresses):
-        # a series READY dry-runs under the ledger writer's manifest label, else the message's label stands
         if stacked_series_state; then
             dw="$("${LIST[@]}" "$FLEET" | grep -F -- "-${dlabels}-" | head -n 1)"
             if [ -n "$dw" ] && dfind="$(python3 -I "$HERE/series-ledger.py" find --bucket "$(dirname "$FLEET")" --doc "$dw" --manifest "$FLEET")" \
