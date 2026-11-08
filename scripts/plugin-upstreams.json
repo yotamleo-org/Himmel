@@ -50,8 +50,8 @@
     "standalone": true,
     "upstream_repo": "obra/superpowers",
     "track": "release",
-    "synced_base": "v7.0.1",
-    "ref": "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b"
+    "synced_base": "v7.0.2",
+    "ref": "22f0b463e7a5e579904dd6211a520321035526f7"
   },
   "mattpocock-skills": {
     "standalone": true,

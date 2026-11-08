@@ -11,6 +11,12 @@ marketplace/plugins/himmel-ops/scripts/test-autonomy-mode.sh	errexit	1
 marketplace/plugins/himmel-ops/scripts/test-himmel-update-cmd-resolution.sh	mktemp	1
 marketplace/plugins/himmel-ops/scripts/test-workers.sh	mktemp	3
 marketplace/plugins/himmel-ops/scripts/test-minerva-scripts-resolution.sh	mktemp	1
+marketplace/plugins/lean-skills/skills/executing-plans/scripts/task-done	errexit	1	vendored verbatim from obra/superpowers 7.0.2 (VENDORED.md); run, never sourced; a local edit makes the next re-vendor a merge
+marketplace/plugins/lean-skills/skills/executing-plans/scripts/task-start	errexit	1	vendored verbatim from obra/superpowers 7.0.2 (VENDORED.md); run, never sourced; a local edit makes the next re-vendor a merge
+marketplace/plugins/lean-skills/skills/subagent-driven-development/scripts/review-package	errexit	1	vendored verbatim from obra/superpowers 7.0.2 (VENDORED.md); run, never sourced; a local edit makes the next re-vendor a merge
+marketplace/plugins/lean-skills/skills/subagent-driven-development/scripts/sdd-repo	errexit	1	vendored verbatim from obra/superpowers 7.0.2 (VENDORED.md); run, never sourced; a local edit makes the next re-vendor a merge
+marketplace/plugins/lean-skills/skills/subagent-driven-development/scripts/sdd-workspace	errexit	1	vendored verbatim from obra/superpowers 7.0.2 (VENDORED.md); run, never sourced; a local edit makes the next re-vendor a merge
+marketplace/plugins/lean-skills/skills/subagent-driven-development/scripts/task-brief	errexit	1	vendored verbatim from obra/superpowers 7.0.2 (VENDORED.md); run, never sourced; a local edit makes the next re-vendor a merge
 marketplace/plugins/lean-skills/skills/systematic-debugging/find-polluter.sh	errexit	1
 marketplace/plugins/obsidian-triage/evals/telegram-clip-basic/fixture.sh	errexit	1
 marketplace/plugins/obsidian-triage/skills/vault-lint/check-vendor-drift.sh	errexit	1

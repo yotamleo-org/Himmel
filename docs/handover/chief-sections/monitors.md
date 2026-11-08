@@ -166,8 +166,8 @@ for work no live worker or open PR holds, `BLOCKED-BY <key> <ref>` while the blo
 by the ticket's latest `DISPOSITION` comment is still open (it prints `STUCK` again once
 that PR merges or closes). Give each one a disposition:
 `<kit>/stuck-scan.sh dispose <KEY> RESUME <worker> | BLOCKED-BY <ref> | OPERATOR <ask> | PARKED <reason>`.
-`next-dispatchable.sh` names a RESUME row a file collision drops as
-`RESUME-HELD <key> by <worker or listed key>`, so the held ticket is never silent.
+`next-dispatchable.sh` lists a RESUME row that shares a file with a worker, an open PR or another
+listed row and prints `# overlap <key> <file> with <holder>` beside it: a shared file is information, never a hold.
 The tick also re-reads the Live-state `pool-disposition:` lines: `pool-stale=<n>:<KEY>,...`
 lists the ones whose named blocker is now Done or merged (`?` = an unreadable target, never
 stale) and `WAKE pool-stale` fires once per newly stale key; `residual-unversioned=<n>:<KEY>,...`
