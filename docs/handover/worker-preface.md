@@ -166,8 +166,7 @@ or any `skip=` but the two below). Never close it by hand on `skip=never-touch-t
 `skip=cannot-verify-type`: report it to the chief. Then release the
 lock (paste the line), append `WRAPPED`, print the closable-window banner and stop:
 the chief's `close-wrapped-worker.sh` ends the session
-once the lock frees. A worker never idles: gated on something
-outside your control, WRAP with a successor resume brief, and first send the
+once the lock frees. A worker never idles: on an outside event, write `LIVE — HOLD-OUTSIDE pr=<n>` and WRAP with a resume brief; send the
 chief `ORPHAN PR <n> <full head sha>, resume brief <absolute path>` if the PR is open.
 
 **HALT / WRAP: TaskStop EVERY background task and every agent you spawned,
