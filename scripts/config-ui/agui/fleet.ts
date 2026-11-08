@@ -316,7 +316,7 @@ const BUS_KINDS = new Set(["ruling", "report", "proposal", "data"]);
 const BUS_WAIT_MS = 500;
 type BusRead = { edges: BusEdge[]; rows: Map<string, BusCounts> };
 const busCache = new Map<string, { sig: string; read: BusRead }>();
-const busRuns = new Map<string, { sig: string; done: Promise<void> }>();
+const busRuns = new Map<string, Promise<void>>();
 async function busSig(root: string): Promise<string> {
   const parts: string[] = [];
   for (const dir of ["log", "ack", "cur"]) {
@@ -327,7 +327,8 @@ async function busSig(root: string): Promise<string> {
   }
   return parts.join("|");
 }
-async function busRead(root: string): Promise<BusRead> {
+// null when the store could not be read: nothing is cached, so the next poll tries again.
+async function busRead(root: string): Promise<BusRead | null> {
   type Msg = { f?: string | null; r?: string | null; t?: number; c?: number; kind?: string; delivered?: boolean; acked?: boolean; expired?: boolean };
   const msgs = new Map<string, Msg>();
   try {
@@ -339,7 +340,7 @@ async function busRead(root: string): Promise<BusRead> {
       if (m[2]) msg[m[2] as "delivered" | "acked" | "expired"] = true;
       else Object.assign(msg, { f: plain(d.value.f), r: plain(d.value.r), t: d.value.t, c: d.value.c, kind: d.value.kind });
     }
-  } catch { return { edges: [], rows: new Map() }; }
+  } catch { return null; }
   const edges = new Map<string, BusEdge>(), rows = new Map<string, BusCounts>();
   for (const msg of msgs.values()) {
     if (!msg.f || !msg.r || msg.t === undefined) continue; // a follow-up whose send is gone
@@ -358,14 +359,14 @@ async function busOf(root: string, env: Record<string, string | undefined>): Pro
   const sig = await busSig(root);
   let hit = busCache.get(root);
   if (hit?.sig !== sig) {
+    // one replay per root at a time: a change that lands while it runs is picked up by the next poll after it ends
     let run = busRuns.get(root);
-    if (run?.sig !== sig) {
-      const mine = { sig, done: busRead(root).then((read) => { busCache.set(root, { sig, read }); }).finally(() => { if (busRuns.get(root) === mine) busRuns.delete(root); }) };
-      busRuns.set(root, mine);
-      run = mine;
+    if (!run) {
+      run = busRead(root).then((read) => { if (read) busCache.set(root, { sig, read }); }).finally(() => { busRuns.delete(root); });
+      busRuns.set(root, run);
     }
     let t: ReturnType<typeof setTimeout> | undefined;
-    await Promise.race([run.done, new Promise((ok) => { t = setTimeout(ok, Number(env.HIMMEL_FLEET_BUS_WAIT_MS) || BUS_WAIT_MS); })]);
+    await Promise.race([run, new Promise((ok) => { t = setTimeout(ok, Number(env.HIMMEL_FLEET_BUS_WAIT_MS) || BUS_WAIT_MS); })]);
     clearTimeout(t);
     hit = busCache.get(root);
   }
