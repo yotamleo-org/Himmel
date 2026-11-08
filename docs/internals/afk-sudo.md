@@ -67,9 +67,13 @@ row, the step spent): the operator never approves what they were not shown. The 
 The nonce applies to **both kinds**, sudo and run (the operator's default of 10-30, Q3).
 The approve line is `approve <id> <nonce> <code>`; the helper reads `NONCE CODE` on stdin
 (the two may also run together, the last six characters being the code). A wrong or
-missing nonce is refused as `bad-nonce`: it counts as a wrong code towards the lockout, ends
-the request, and spends the code's step, since the code was typed where a look-alike may
-have read it. The nonce is never in curl's argv (root's command line is world-readable),
+missing nonce is refused as `bad-nonce`. It counts on that request id only, never towards
+the broker-wide lockout, and leaves the request pending. A valid code sent with it is spent,
+since it was typed where a look-alike may have read it. After three wrong nonces on one id,
+a call without a valid unspent code is refused `locked`, and a wrong nonce sent with a valid
+code ends the request (`denied:bad-nonce`). So one id takes at most 4 nonce-and-code guesses,
+and requests filed without proof are capped at 6 an hour (`max_per_hour`; proven ones are
+not). The nonce is never in curl's argv (root's command line is world-readable),
 the ledger, the requester's output or the attached document. The token and every Bot API
 parameter reach curl on stdin (`-K -`).
 

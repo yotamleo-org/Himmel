@@ -321,8 +321,8 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
       deps.log(`[afk-sudo] ${line.verb} ${line.id} refused: not a typed message in the operator's private chat`);
       return true;
     }
-    // The helper would end the request on a missing or wrong nonce and spend the code, so a typed approve
-    // that visibly lacks the nonce (the code alone) or repeats the id in its place is refused here.
+    // The helper spends a code sent with a missing or wrong nonce, so a typed approve that visibly lacks
+    // the nonce (the code alone) or repeats the id in its place is refused here.
     if (line.verb === "approve" && (/^\d{6}$/.test(fold(line.code)) || idThenCode(line.code, line.id))) {
       const form = `approve ${line.id} <nonce> <code>`;
       void deps.reply(msg.chat_id, /^\d{6}$/.test(fold(line.code))
@@ -359,7 +359,7 @@ export function makeAfkSudoCallback(deps: AfkSudoCallbackDeps, prompts: AfkSudoP
     }
     const text = verb === "deny"
       ? `Deny ${id}: reply to this message with the ${NONCE_HINT}. A wrong nonce leaves the request pending.`
-      : `Approve ${id}: reply to this message with the ${NONCE_HINT}, then the 6-digit code (<nonce> <code>), not the request id. A wrong code with the right nonce ends the request; a wrong nonce leaves it pending.`;
+      : `Approve ${id}: reply to this message with the ${NONCE_HINT}, then the 6-digit code (<nonce> <code>), not the request id. A wrong code with the right nonce ends the request; a wrong nonce leaves it pending until three wrong nonces have been sent; after that it ends the request.`;
     const want = verb === "deny" ? "the nonce" : "the code";
     void deps.prompt(tap.chat_id, text)
       .then((mid) => {

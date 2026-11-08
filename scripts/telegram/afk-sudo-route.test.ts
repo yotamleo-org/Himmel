@@ -372,7 +372,7 @@ test("button: an Approve tap asks for the nonce and code with a prompt and never
   expect(b.tap(tapOf("afk:approve:abcdefgh"))).toBe(true);
   await settle();
   expect(b.calls).toEqual([]);
-  expect(b.sent).toEqual([{ chat: OP, text: "Approve abcdefgh: reply to this message with the 4-character nonce from the notice bot's message, then the 6-digit code (<nonce> <code>), not the request id. A wrong code with the right nonce ends the request; a wrong nonce leaves it pending." }]);
+  expect(b.sent).toEqual([{ chat: OP, text: "Approve abcdefgh: reply to this message with the 4-character nonce from the notice bot's message, then the 6-digit code (<nonce> <code>), not the request id. A wrong code with the right nonce ends the request; a wrong nonce leaves it pending until three wrong nonces have been sent; after that it ends the request." }]);
   expect(b.answers.length).toBe(1);
 });
 
@@ -893,7 +893,7 @@ test("prompt: names the nonce and the notice bot, says the request id is not wha
   const b = buttons();
   b.tap(tapOf("afk:approve:abcdefgh"));
   await settle();
-  expect(b.sent).toEqual([{ chat: OP, text: `Approve abcdefgh: reply to this message with the ${NONCE_HINT}, then the 6-digit code (<nonce> <code>), not the request id. A wrong code with the right nonce ends the request; a wrong nonce leaves it pending.` }]);
+  expect(b.sent).toEqual([{ chat: OP, text: `Approve abcdefgh: reply to this message with the ${NONCE_HINT}, then the 6-digit code (<nonce> <code>), not the request id. A wrong code with the right nonce ends the request; a wrong nonce leaves it pending until three wrong nonces have been sent; after that it ends the request.` }]);
 });
 
 test("refusal: a reply to the prompt names its cause per shape, runs no verb and keeps the prompt alive", async () => {
