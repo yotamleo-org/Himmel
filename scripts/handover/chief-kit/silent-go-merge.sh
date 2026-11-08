@@ -136,7 +136,7 @@ while IFS=$'\t' read -r label wdoc; do
         once "$label $pr $head alive" && { alert "$id reason=alive: silent ${silent}m after its GO but its process is alive, not merged"; acted=1; }
         continue
     fi
-    rc_out="$(timeout -k 5 150 bash "${CHIEF_SILENT_GO_READY_CHECK:-$HERE/ready-check.sh}" "$pr" "$head" </dev/null 2>&1)"; rcc=$?  # gnu-ok: Linux-only kit
+    rc_out="$(timeout -k 5 150 bash "${CHIEF_SILENT_GO_READY_CHECK:-$HERE/ready-check.sh}" --observe "$pr" "$head" </dev/null 2>&1)"; rcc=$?  # gnu-ok: Linux-only kit
     if [ "$rcc" -ne 0 ]; then
         once "$label $pr $head ready-check" && { alert "$id reason=ready-check: ready-check rc=$rcc at the GO head, not merged"; acted=1; }
         continue

@@ -147,7 +147,9 @@ with `--preset <name>`, which resolves to
 
 1. **Answered off/none:** your own choice, not a gap.
 2. **Not recorded:** the profile predates the question; not a choice.
-3. **Reference-only:** no wizard question can produce it yet (each carries its ticket).
+3. **Reference-only:** what the operator's machine runs, each with its state:
+   covered by the wizard, planned, or not planned
+   ([the list](setup/operator-profile-tbd-delta.md)).
 4. **Present but unverified:** recorded, but `gaps` is a static diff, not a
    live probe; run `himmelctl status` to confirm it is still wired.
 
