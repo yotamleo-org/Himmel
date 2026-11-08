@@ -283,13 +283,9 @@ h() { local off="$1"; shift; AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + off)) pytho
 # the nonce is the one root holds for the id. approve_raw <now-offset> <id> <line> sends the line as given.
 approve_raw() { printf '%s\n' "$3" | AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + $1)) python3 -I "$HELPER" approve "$2" --from "${4:-$OP}" --chat "${4:-$OP}" 2>&1; }
 approve() { approve_raw "$1" "$2" "$(state_nonce "$2") $3" "${4:-}"; }
-# other_nonce <nonce>: a well-formed nonce that is not this one.
 other_nonce() { if [ "$1" = ZZZZ ]; then echo YYYY; else echo ZZZZ; fi; }
-# dn <now-offset> <id> [args...]: the operator's deny, with the nonce root holds for the id on stdin.
 dn() { local off="$1" id="$2"; shift 2; printf '%s\n' "$(state_nonce "$id")" | h "$off" deny "$id" --from "$OP" --chat "$OP" "$@"; }
-# lockdown_nonce: the nonce in the notice bot's last lockdown message.
 lockdown_nonce() { tg notice sendMessage text | sed -n 's|.*/afk-lockdown \([0-9A-Z]\{8\}\).*|\1|p' | head -1; }
-# ld <now-offset>: the operator's lockdown, both steps: the bare call, then the nonce root sent.
 ld() { h "$1" lockdown --from "$OP" --chat "$OP" >/dev/null; printf '%s\n' "$(lockdown_nonce)" | h "$1" lockdown --with-nonce --from "$OP" --chat "$OP"; }
 # code <now-offset>: the TOTP the operator's authenticator shows at that time.
 code() { python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import approval_broker as b; print(b.totp(open(sys.argv[2]).read().strip(), int(sys.argv[3]) // 30))' "$LIB" "$R/etc/himmel/afk-sudo/totp.seed" $((T0 + $1)); }
@@ -410,8 +406,6 @@ out=$(req 10)
 assert_contains "a seventh request inside an hour is rate-limited" "result=rate-limited" "$out"
 
 echo "== HIMMEL-8067 slice 2: three pending slots, one per session, each approved on its own =="
-# breq <now-offset> <session> [code]: a request filed straight through the broker, as the op kind files one;
-# with a code it is filed with that proof (op-request --proof).
 breq() { python3 -I -c 'import os, sys; sys.path.insert(0, sys.argv[1]); import approval_broker as ab
 R, t = sys.argv[2], float(sys.argv[3])
 b = ab.Broker(R + "/var/lib/himmel/afk-sudo", R + "/var/log/himmel/afk-sudo.jsonl", R + "/etc/himmel/afk-sudo/totp.seed",
@@ -1351,7 +1345,6 @@ out=$(rr 80 -- true); id=$(rid "$out"); n=$(notice_nonce)
 out=$(AFK_SUDO_RUN=1 approve_raw 81 "$id" "$(printf '%s' "$n" | tr '[:upper:]' '[:lower:]') $(code 81)")
 assert_contains "the right nonce (any case) and code run the request" "result=ran" "$out"
 echo "== wrong nonces count per request id, never for the whole broker =="
-# rs <now-offset> <session>: a run request from that session.
 rs() { hr "$1" run-request --session "$2" --ticket T --blocked-by prompt -- true </dev/null; }
 new_root noncelock; cfg "$ALL" true
 a=$(rid "$(rs 0 S1)"); na=$(state_nonce "$a")
@@ -1664,7 +1657,6 @@ assert_contains "slice 2: the lockdown row names all three ids" "\"denied\": [\"
 assert_eq "slice 2: each slot has its own deny row" "3" "$(ledger | grep -c '"event": "deny"')"
 
 echo "== lockdown needs the nonce root sends =="
-# notices: how many messages the notice bot has sent.
 notices() { tg_by notice | grep -c '/sendMessage' || true; }
 new_root lockdown-nonce
 out=$(req 0); id=$(rid "$out")

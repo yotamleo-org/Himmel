@@ -21,10 +21,9 @@ import { classify } from "./router";
 // (callback data `afk:approve:<id>` / `afk:deny:<id>`). A tap NEVER reaches the helper:
 // it only sends a ForceReply prompt and remembers prompt-message -> id and verb; the
 // `NONCE CODE` reply to an Approve prompt (the `NONCE` reply to a Deny prompt) is the same
-// helper call as the typed line, so the nonce and TOTP checks stay the helper's. A deny
-// needs the nonce because every session runs as the operator's uid and can call the
-// helper itself. A tap needs the sender in allowFrom, in their own
-// private chat, AND equal to the helper's operator id.
+// helper call as the typed line, so the nonce and TOTP checks stay the helper's. A tap
+// needs the sender in allowFrom, in their own private chat, AND equal to the helper's
+// operator id.
 
 export const AFK_SUDO_HELPER = "/usr/local/libexec/himmel/afk-sudo";
 const LINE = /^\s*(approve|deny)\s+([a-z2-7]{8})\b(.*)$/is;
@@ -87,7 +86,6 @@ export function makeAfkSudoPrompts(now: () => number = Date.now, ttlMs = 150_000
 export function parseAfkSudo(text: string): AfkSudoLine | null {
   const m = LINE.exec(text);
   if (!m) return null;
-  // Anything after the id is the nonce (and for approve the code); the helper refuses a wrong one.
   return { verb: m[1].toLowerCase() as "approve" | "deny", id: m[2].toLowerCase(), code: m[3].replace(/\s+/g, "") };
 }
 
@@ -121,9 +119,6 @@ function runVerb(deps: AfkSudoDeps, verb: "approve" | "deny" | "lockdown", id: s
     .catch((e) => deps.log(`[afk-sudo] ${verb} ${id} failed: ${e}`));
 }
 
-// `/afk-lockdown`: the one verb that only narrows, in two steps. Bare, it makes root send
-// an 8-character lockdown nonce through the notice bot; `/afk-lockdown <nonce>` then locks down. The nonce
-// goes to the helper on stdin; no other text after the command is taken, so nothing typed can reach a flag.
 const LOCKDOWN = /^\s*\/afk-lockdown(?:@\w+)?(?=\s|$)(.*)$/is;
 const LOCKDOWN_NONCE = /^[0-9A-Za-z]{8}$/;
 
@@ -193,8 +188,6 @@ function opRequest(deps: AfkSudoDeps, msg: AfkSudoMsg, rest: string): true {
 
 // The prompt reply: the notice's four-character nonce, then the six-digit code.
 const CODE_REPLY = /^\s*([0-9A-Za-z]{4})\s*(\d{3})[\s-]?(\d{3})\s*$/;
-// The Deny prompt reply, and what follows the id in a typed deny: the nonce, and after three wrong nonces
-// on the request the nonce and a code. The helper reads them as `NONCE [CODE]`.
 const DENY_REPLY = /^\s*([0-9A-Za-z]{4})\s*(?:(\d{3})[\s-]?(\d{3}))?\s*$/;
 const denyInput = (m: RegExpExecArray): string => (m[2] ? `${m[1]} ${m[2]}${m[3]}` : m[1]);
 const BARE_CODE = /^\s*\d{6}\s*$/;

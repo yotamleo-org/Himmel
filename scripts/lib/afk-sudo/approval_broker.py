@@ -49,7 +49,6 @@ VIAS = ("telegram", "ssh")
 # Crockford base32: no I, L, O or U, so a nonce read off a phone screen has one spelling.
 NONCE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 NONCE_LEN = 4
-# The lockdown nonce: longer, since nothing caps the guesses at it, and one lives at a time for LOCKDOWN_S.
 LOCKDOWN_NONCE_LEN = 8
 LOCKDOWN_S = 120
 
@@ -194,7 +193,6 @@ class Broker:
         return quiet
 
     def _hit(self, t, code):
-        """The 30-second step a valid code belongs to (the current or the previous one), else None."""
         if not re.fullmatch(r"[0-9]{%d}" % DIGITS, code or ""):
             return None
         seed = open(self.seed_path).read().strip()
@@ -491,7 +489,6 @@ class Broker:
             os.close(fd)
 
     def lockdown_drop(self):
-        """Forget the live lockdown nonce (its notice could not be sent)."""
         fd = self._locked()
         try:
             s = self._load()

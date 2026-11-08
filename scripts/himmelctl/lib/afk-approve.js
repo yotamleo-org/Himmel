@@ -27,8 +27,6 @@ const CONFIG = '/etc/himmel/afk-sudo.json';
 const ID_RE = /^[a-z2-7]{8}$/;
 // The nonce root sent (4 characters, Crockford base32) then the 6-digit code; spaces between are free.
 const REPLY_RE = /^([0-9A-Za-z]{4})([0-9]{6})$/;
-// A deny carries the nonce, so only the holder of root's notice can end a request; after three wrong nonces on
-// the request the helper also wants the code.
 const DENY_RE = /^([0-9A-Za-z]{4})([0-9]{6})?$/;
 
 function readConfig(env) {
