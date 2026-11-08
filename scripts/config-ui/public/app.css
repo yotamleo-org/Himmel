@@ -183,6 +183,9 @@ div.tile{cursor:default}.tiles.three{grid-template-columns:repeat(3,minmax(0,1fr
 /* the tab panels are grid items of .p: without this the wide table grows the track instead of scrolling inside .scroll */
 .p>[role="tabpanel"]{min-width:0}
 .alert{padding:var(--s2) 0;border-bottom:1px solid var(--rule);overflow-wrap:anywhere}
+.alert.warnbar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px var(--s3);padding:6px var(--s3);border:1px solid var(--beta);border-left:4px solid var(--beta);border-radius:8px;background:var(--beta-soft);color:var(--ink);font-size:var(--fs-xs)}
+.alert.warnbar b{color:var(--beta);font-family:var(--font-mono)}
+.alert.warnbar a{font:600 12px var(--font-mono);color:var(--accent)}
 .card{border:1px solid var(--rule);border-radius:8px;background:var(--bg);padding:var(--s3);margin:var(--s2) 0;overflow-wrap:anywhere}
 .card h3{margin:0 0 var(--s1);font:600 var(--fs-sm) var(--font-ui)}
 .card .ro{color:var(--muted);font-size:var(--fs-xs)}

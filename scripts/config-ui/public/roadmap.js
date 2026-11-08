@@ -268,8 +268,10 @@ function driftBanner(dr) {
   if (!dr.file.exists) return `<div class="nodata">drift: no saved run yet</div>`;
   if (dr.unknown) return `<div class="nodata">drift: the saved run's result is unknown</div>`;
   const c = dr.counts, n = c.real;
-  return `<div class="alert"><span class="st pill ${n ? "warn" : "ok"}">drift</span> <b>${n} drift row${n === 1 ? "" : "s"}</b> · not counted: ${c.known} known checker bug, ${c.transient} transient · <b>${esc(dr.mode)}</b> mode`
-    + `${dr.stale ? " · the saved run is older than 3 h" : ""} <a href="#/board?tab=tidy">Tidy up ▸</a></div>`;
+  const rest = ` · not counted: ${c.known} known checker bug, ${c.transient} transient · <b>${esc(dr.mode)}</b> mode${dr.stale ? " · the saved run is older than 3 h" : ""}`;
+  const tidyLink = `<a href="#/board?tab=tidy">Tidy up ▸</a>`;
+  if (!n) return `<div class="alert"><span class="st pill ok">drift</span> <b>0 drift rows</b>${rest} ${tidyLink}</div>`;
+  return `<div class="alert warnbar"><span><b>! ${n} drift row${n === 1 ? "" : "s"}</b>${rest}</span><span class="acts">${tidyLink}</span></div>`;
 }
 
 // The version strip shows at most MAX_VERSIONS tiles. Pins (ui.pins, version names) win; with none, the running version and 2 each side. "Show all"
