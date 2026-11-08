@@ -8122,6 +8122,7 @@ function jiraLiveTest(candidate) {
   const cannot = `himmelctl: config set: the jira live-test verb cannot run (${cli}); build it with: npm --prefix scripts/jira run build`;
   if (!fs.existsSync(cli)) return { error: cannot };
   const r = spawnSync(process.execPath, [cli, 'live-test', '--json', ...(candidate === undefined ? [] : ['--candidate', candidate])], { encoding: 'utf8' });
+  if (r.error || r.status !== 0) return { error: cannot };
   try {
     const out = JSON.parse(r.stdout);
     return { testProject: out.test_project || null, problem: out.problem || null };

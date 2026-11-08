@@ -854,6 +854,18 @@ run_cfg_s live-test-ok.json live-test-none.json set jira.testProject HTEST
 [ "$CFG_RC" -eq 1 ] || fail "caseS: a post-write mismatch should exit 1 (got rc=$CFG_RC): $CFG_OUT"
 grepq "$CFG_OUT" -F 'no JIRA_TEST_PROJECT is set' || fail "caseS: the mismatch should carry the verb's problem (got: $CFG_OUT)"
 
+# the verb prints a valid answer and then exits non-zero: its answer is not trusted, exit 2, nothing written
+stubSF="$work/stub-jira-cli-fails.js"
+cat > "$stubSF" <<'STUB'
+const fs = require('fs'), path = require('path');
+process.stdout.write(fs.readFileSync(path.join(process.env.STUB_DIR, 'out.1'), 'utf8'));
+process.exit(1);
+STUB
+S_CLI=$(winpath "$stubSF")
+run_cfg_s live-test-ok.json - set jira.testProject HTEST
+[ "$CFG_RC" -eq 2 ] || fail "caseS: a verb that exits non-zero should exit 2 even with parseable output (got rc=$CFG_RC): $CFG_OUT"
+[ -e "$confS" ] && fail "caseS: a verb that exits non-zero must write nothing (got: $(cat "$confS"))"
+
 # the verb cannot run: exit 2, nothing written, the build command is named
 S_CLI="$work/no-such-jira-cli.js"
 run_cfg_s live-test-ok.json - set jira.testProject HTEST
