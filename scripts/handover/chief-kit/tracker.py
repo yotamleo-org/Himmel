@@ -1406,7 +1406,6 @@ def md_section(path, heading):
 
 
 def operator_owed(bucket, chief_doc, version, opn, mir):
-    """([(source, ticket number or None, title, context, action)], whether any source was readable)."""
     items, readable = [], False
     if bucket:
         signed = set()

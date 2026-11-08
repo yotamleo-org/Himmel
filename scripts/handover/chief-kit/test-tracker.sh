@@ -1336,7 +1336,6 @@ rm -f "$vp/HIMMEL-431.md"
 v7render >/dev/null
 contains 'Waiting on you says no source was read when none was, never a bare 0' "$(grep -F 'data-section="waiting"' "$v7out")" 'no operator-owed source read'
 
-# --- a section whose source is old says so, or leaves the old data off the page.
 printf '%s\n' '---' 'key: "HIMMEL-434"' 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'type: "Task"' \
     '---' '# HIMMEL-434: stalesec old wrapped worker' > "$vp/HIMMEL-434.md"
 printf '%s\n' '---' 'key: "HIMMEL-435"' 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'type: "Task"' \
@@ -1371,7 +1370,6 @@ h9611="$(cat "$v9611out" 2>/dev/null)"
 contains 'a priority file older than the newest Jira update names its age' "$h9611" 'priority line last edited 2026-09-01 00:00 UTC, older than the newest Jira update'
 not_contains 'a priority file read says nothing about having no source' "$h9611" 'no priority line is read'
 
-# --- Waiting on you reads the records that hold what waits on the operator.
 for t in 436 437 438; do
     printf '%s\n' '---' "key: \"HIMMEL-$t\"" 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'type: "Task"' \
         '---' "# HIMMEL-$t: owedsec ticket $t" > "$vp/HIMMEL-$t.md"
