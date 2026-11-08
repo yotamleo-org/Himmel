@@ -8,15 +8,18 @@
 # chain never merges.
 #
 # This is the narrow, self-gating merge path the operator authorizes via a
-# specific standing allow-rule. Workers invoke the relative spelling
-# `bash scripts/handover/merge-on-green.sh` from their worktree root: it
-# matches the relative `Bash(bash scripts/handover/merge-on-green.sh:*)` rule
-# as plain text, guard-pr-check-literal.sh admits it when this copy equals the
-# anchor's or, on a branch behind main that never touched it, its merge-base's,
-# and it hands off to the anchor's own copy on a relative entry. The anchored
-# `Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh":*)` rule
-# carries a shell expansion, so whether it applies is left to the auto-mode
-# classifier, which allows and denies it run to run — never a raw
+# specific standing allow-rule. Workers type the anchor's literal path,
+# `bash <anchor>/scripts/handover/merge-on-green.sh`: it matches the generated
+# `Bash(bash <anchor>/scripts/handover/merge-on-green.sh:*)` rule as plain text.
+# The relative spelling `bash scripts/handover/merge-on-green.sh` from a
+# worktree root is admitted by guard-pr-check-literal.sh when this copy equals
+# the anchor's or, on a branch behind main that never touched it, its
+# merge-base's, and it hands off to the anchor's own copy on a relative entry.
+# The spelling that goes through the HIMMEL_REPO variable carries a shell
+# expansion, so no allow rule can match it and the auto-mode classifier decides
+# it run to run; guard-pr-check-literal.sh refuses that spelling in himmel
+# sessions and prints the literal. Retiring the variable-spelling rule is
+# tracked apart from this file — never a raw
 # `gh pr merge` (still classifier-blocked) and never a permission widening.
 # It merges ONLY on: opt-in (ARMAUTOMERGE=1) AND a PRIVATE github repo
 # — or, the ONE configured public origin, live-verified under
@@ -295,8 +298,10 @@
 # script is the only branch-controllable byte left. HIMMEL_REPO is a registered
 # chokepoint seam (scripts/chokepoints.json), so a per-call `HIMMEL_REPO=. bash …`
 # re-pointing it at the branch is denied.
-# Workers are told to invoke the anchored spelling,
-# `bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh"`, which never runs a branch's own copy. The relative entry
+# Workers are told to type the anchor's literal path,
+# `bash <anchor>/scripts/handover/merge-on-green.sh`, which never runs a branch's own copy
+# (guard-pr-check-literal.sh refuses the HIMMEL_REPO variable spelling of it and prints that
+# literal). The relative entry
 # (`bash scripts/handover/merge-on-green.sh`, still pre-approved, retirement planned) now hands off to the anchor's own copy on a
 # relative invocation too, the same one-hop, fail-closed pattern
 # scripts/cr/anchor-handoff.sh uses for the scripts/cr/ gate writers.
