@@ -966,8 +966,7 @@ analyse "$CMD" 0
 # echo's words joined by spaces; a printf's format, each argument, and the
 # arguments joined, since the format is not rendered (an argument the format
 # would only print as data can still deny). Escapes are not decoded. Pre-gated
-# on a pipe beside a shell word; past that gate any model failure denies (a
-# missing lib, shfmt or jq, a timeout, a parse failure, a jq error): shfmt's Go
+# on a pipe beside a shell word; past that gate any model failure denies. shfmt's Go
 # runtime can abort "out of memory" under an address-space limit, and the model
 # reports that as a parse failure. A real parse failure denies as well: the
 # Bash tool may run zsh, so a zsh-only clause must not hide a piped set.
