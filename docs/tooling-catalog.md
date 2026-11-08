@@ -469,7 +469,7 @@ plugin, so a skill that a profile must enable moves into a plugin instead
 
 ### writing-for-agents (`.claude/skills/writing-for-agents/`)
 
-**What:** Vendored `mattpocock/skills` skill (MIT, pinned `49dd158d1076134a641b33efb035946536778336`) on cutting and tightening agent-facing docs. User-invoked (`disable-model-invocation`), 0 listing tokens. POC use: `/writing-for-agents find ways to cull my global steering files`, read-only, proposal only. Complements `claude-md-audit` (rubric check of a changed CLAUDE.md) and `prose-audit` (mechanical prose to script); neither culls sediment or no-ops across the steering set. Scheduling is not wired.
+**What:** Vendored `mattpocock/skills` skill (MIT, pinned `49dd158d1076134a641b33efb035946536778336`) on cutting and tightening agent-facing docs. User-invoked (`disable-model-invocation`), 0 listing tokens. POC use: `/writing-for-agents find ways to cull my global steering files`, read-only, proposal only. Complements `claude-md-audit` (rubric check of a changed CLAUDE.md) and `prose-audit` (mechanical prose to script); neither culls sediment or no-ops across the steering set. Scheduling is not wired yet.
 
 ---
 
