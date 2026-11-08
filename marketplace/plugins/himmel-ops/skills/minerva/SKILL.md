@@ -3,7 +3,7 @@ name: minerva
 description: Idea to reviewed spec and plan.
 ---
 
-# minerva — grill → brainstorm → critic → spec → critic → plan (HIMMEL-428)
+# minerva — grill → brainstorm → critic → spec → critic → plan
 
 Orchestrate a hardened path from idea to implementation plan. You drive the
 superpowers sub-skills and insert an adversarial critic between each stage, so
@@ -13,20 +13,20 @@ goddess of wisdom + strategic planning with himmel's critic discipline.
 **You are the orchestrator.** Do not let the sub-skills auto-chain past their
 stage — you decide when each critic runs and when to advance.
 
-**One front door (HIMMEL-2039).** grill / stress-test / interrogate / brainstorm
+**One front door.** grill / stress-test / interrogate / brainstorm
 / "build / design / implement X" / `/minerva` all land here. The grilling
 stance is minerva's Stage 1a, not a second skill: if
 `lean-skills:grilling` fires, run Stage 1a below and continue the
 pipeline rather than stopping at a shared understanding. A standalone
 `lean-skills:brainstorming` that sizes the work "a small change", or runs
-outside a himmel-managed repo, finishes on its own without minerva
-(HIMMEL-8205): it has no estimate record, so the Stage-2 gate would refuse it.
+outside a himmel-managed repo, finishes on its own without minerva:
+it has no estimate record, so the Stage-2 gate would refuse it.
 
 ## Mode (gates)
 
 Determine once, up front, whether to pause for the operator between stages.
 `CLAUDE_PLUGIN_ROOT` is set under Claude Code but **empty in a Codex skill
-shell** (HIMMEL-606), so resolve the himmel-ops scripts dir with a fallback
+shell**, so resolve the himmel-ops scripts dir with a fallback
 chain before invoking — the resolver below is reused verbatim in the Terminal
 section (keep both copies byte-identical):
 
@@ -52,7 +52,7 @@ bash "$S/autonomy-mode.sh" 2>/dev/null || echo interactive
 
 ## Stage 1 — grill → brainstorm → spec
 
-### 1a. Grill (the interrogation phase, HIMMEL-2039)
+### 1a. Grill (the interrogation phase)
 
 Before any design is written, interrogate the idea until it survives. Map it as
 a **design tree**: every decision branches into the decisions that hang off it.
@@ -73,7 +73,7 @@ frontier outward and unblock the questions that depended on them. Recompute the
 frontier and ask the next round. A question whose answer depends on another
 question still open in THIS round belongs to a LATER round.
 
-**Round 1 asks why (HIMMEL-8205).** When the request does not state the goal
+**Round 1 asks why.** When the request does not state the goal
 behind it, round 1 asks why, open-ended, even when you can guess; the answer
 feeds `effort-assess --goal`. Never re-ask what the request already settled.
 
@@ -85,7 +85,7 @@ block on it: only the questions downstream of a running exploration wait; ask
 the rest of the frontier now. The *decisions* are the operator's — put each to
 them and wait.
 
-**The eight standing questions (HIMMEL-3996, HIMMEL-6929).** Besides the design tree, every
+**The eight standing questions.** Besides the design tree, every
 grill asks these, each with your recommended answer. Facts (open PRs, the
 version's headroom) you look up yourself; only the choices go to the operator.
 
@@ -122,7 +122,7 @@ write the frontier out, but answer each question yourself with the recommended
 answer and carry the whole Q/A list (the eight standing questions included) into
 the spec as an explicit ASSUMPTIONS section — the Stage-2 critic red-teams it
 (charter dimension 1, hidden assumptions). Write each answer as one ruling line,
-in the subagent-driven-development Ruling format (HIMMEL-8205):
+in the subagent-driven-development Ruling format:
 `<decision> — <why> — <cost if wrong>`.
 
 ### 1b. Brainstorm → spec
@@ -136,14 +136,14 @@ Brainstorming's **Approaches** part is that alternatives section: tell it to
 title the part `## Alternatives considered` (the gate also accepts
 `## Approaches`), never write both.
 
-**Where the spec goes (HIMMEL-8205).** Brainstorming's "Where it goes" default,
+**Where the spec goes.** Brainstorming's "Where it goes" default,
 `docs/superpowers/specs/`, is gitignored in himmel, and CLAUDE.md keeps internal
 specs out of the repo. Tell brainstorming, as your human partner's preference, to
 write the spec to the state repo `specs/<type>/` bucket
 (`$HANDOVER_DIR/<user>/<repo>/specs/design/` for a design spec), with the
 effort-assess JSON beside it.
 
-It also carries, for the terminal lint (HIMMEL-4375):
+It also carries, for the terminal lint:
 - `## Invariants`: `none`, or one `I<n>` line per "one / never / always /
   every" rule the design states.
 - `## Fact ownership`, when the design adds or aggregates a status, report,
@@ -213,7 +213,7 @@ is approved, return HERE
 instead of letting it invoke writing-plans — minerva runs the spec-critic
 first.
 
-**`autonomous` mode: no human step waits (HIMMEL-8205).** Brainstorming asks
+**`autonomous` mode: no human step waits.** Brainstorming asks
 its human partner three times: to pick an approach, to answer the builder
 check's "theirs" pile, and to approve the document. With no operator, make
 each call yourself and record it as one ASSUMPTIONS ruling line,
@@ -221,7 +221,7 @@ each call yourself and record it as one ASSUMPTIONS ruling line,
 
 ## Stage 2 — spec critic (adversarial)
 
-**Gate first (HIMMEL-3996).** Resolve `$S` with the resolver from the Mode
+**Gate first.** Resolve `$S` with the resolver from the Mode
 section, then run `bash "$S/minerva-spec-gate.sh" <spec-file>`. A non-zero exit
 means the spec lacks the estimate record, alternatives or definition of done:
 it names what is missing — fix the spec (back to 1a/1b), re-run the gate, and
@@ -238,7 +238,7 @@ restart the count. Every round the critic reads the whole file. After round 3 st
 the page goes to the operator with each open finding on it, for a ruling. A
 further round needs an operator record, and `critic-seal.sh` refuses to seal it without one.
 
-**Save every critic return as a verdict file (HIMMEL-8353).** After each round,
+**Save every critic return as a verdict file.** After each round,
 write the critic's return verbatim, in both modes, to
 `<spec-file>.critic-spec-r<n>.md` beside the spec (`<n>` = the round, from 1).
 Its last line is the verdict: `SPEC CLEAN`, or `SPEC FINDINGS <count>`. If the
@@ -252,9 +252,9 @@ in any other form. A `FINDINGS` file signs only when the spec's
 CHARTER — the single source is **`panel-charter.md`** in this skill dir; paste
 its contents into the subagent prompt verbatim. Do NOT inline a second copy here
 — the file is the one source, shared with the panel lane below (two prose-synced
-copies is the instructional-not-structural drift HIMMEL-195 warns against).
+copies is the instructional-not-structural drift root `CLAUDE.md` warns against).
 
-**⚑ fork-1 ADVISORY cross-model panel lane (HIMMEL-414 WS4).** After the Claude
+**⚑ fork-1 ADVISORY cross-model panel lane.** After the Claude
 critic round, run the free-cloud critic panel over the SAME spec as an advisory
 second opinion — it catches the same-family popularity trap (Claude reviewing
 Claude). The Claude critic stays the GATE; the panel only feeds its next round.
@@ -265,7 +265,7 @@ REPO="$(git rev-parse --show-toplevel)"; CR="$REPO/scripts/cr"
 CHARTER="$REPO/marketplace/plugins/himmel-ops/skills/minerva/panel-charter.md"
 # 1. Enumerate the advisory critic rows (free-preferred; if the registry has NO
 #    free rows, fall back to the PAID rows rather than an empty panel — an empty
-#    advisory panel silently degrades minerva to claude-only, HIMMEL-1221 G3).
+#    advisory panel silently degrades minerva to claude-only).
 #    Reads the UNIVERSAL critics.json (adopter-neutral), NOT the operator overlay.
 bash "$CR/advisory-rows.sh" "$CR/critics.json"
 # 2. Per row, critique the spec artifact (dead row exits non-zero → FAIL OPEN, note + continue):
@@ -296,7 +296,7 @@ implementation plan. Its "Save plans to" default is gitignored in himmel too:
 tell it to save the plan to the state repo `specs/plans/` bucket, beside the
 spec's bucket.
 
-**HALT it before its writing-plans step "Execution Handoff" (HIMMEL-8205).** When the
+**HALT it before its writing-plans step "Execution Handoff".** When the
 plan is written and self-reviewed, return HERE instead of letting it ask for an
 execution method or invoke subagent-driven-development or executing-plans: the
 plan critic and the terminal lint run first, and the Terminal section makes the
@@ -315,11 +315,11 @@ Save each return as Stage 2 does, beside the **spec** (not the plan):
 
 CHARTER — the single source is **`plan-charter.md`** in this skill dir; paste its
 contents into the subagent prompt verbatim (no inline second copy — same
-HIMMEL-195 rule as Stage 2).
+structural-over-instructional rule as Stage 2).
 
 **⚑ fork-1 ADVISORY panel lane** — mirror Stage 2's lane on the PLAN artifact:
-same `advisory-rows.sh` enumeration (free-preferred, paid-fallback; HIMMEL-1221
-G3) + fail-open + Claude-adjudicates-and-gates, but with
+same `advisory-rows.sh` enumeration (free-preferred, paid-fallback)
++ fail-open + Claude-adjudicates-and-gates, but with
 `--artifact <plan-file> --charter "$REPO/marketplace/plugins/himmel-ops/skills/minerva/plan-charter.md"`
 and the ledger records segmented as `--artifact plan`
 (`cr-scores.sh --artifact plan` reports them). The Claude plan-critic remains the
@@ -331,7 +331,7 @@ if `autonomous`, proceed.
 ## Terminal
 
 You now hold a critic-hardened, approved implementation plan. What happens next
-depends on the **`execute` step** of the initiative grammar (HIMMEL-444). Read the
+depends on the **`execute` step** of the initiative grammar. Read the
 active steps (transport wrapper → the shared resolver; fail-open). Re-resolve the
 scripts dir (this runs in a separate shell from the Mode section — same resolver,
 byte-identical):
@@ -351,7 +351,7 @@ fi
 bash "$S/workers.sh" 2>/dev/null || true
 ```
 
-**Lint first (HIMMEL-4375).** Run `bash "$S/minerva-trace-lint.sh" <spec-file> <plan-file>`
+**Lint first.** Run `bash "$S/minerva-trace-lint.sh" <spec-file> <plan-file>`
 from the target repo before any hand-off. A non-zero exit names each gap:
 - a missing or ungrepped Fact ownership row → back to the spec (1b);
 - an invariant with no named test → back to the plan (Stage 3).
