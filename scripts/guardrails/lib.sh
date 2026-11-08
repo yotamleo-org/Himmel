@@ -1188,6 +1188,37 @@ EOF
     return 0
 }
 
+# _in_session_scratchpad FILE — true when FILE (canonical) is the caller's own
+# session scratchpad or lies under it: <tmp>/claude-<uid>/<project>/<session>/scratchpad
+# with <tmp> = $TMPDIR or /tmp. The scratchpad directory lands in _SCRATCHPAD_ROOT.
+# Callers pass an already-canonical path, so a symlink in the scratchpad that
+# leads into a checkout is already that checkout's path and never matches here.
+_SCRATCHPAD_ROOT=""
+_in_session_scratchpad() {
+    local file="$1" uid base rest proj sess
+    _SCRATCHPAD_ROOT=""
+    uid=$(id -u 2>/dev/null) || return 1
+    for base in "${TMPDIR:-}" /tmp; do
+        base="${base%/}"
+        [ -n "$base" ] || continue
+        base=$(cd -P -- "$base" 2>/dev/null && pwd -P) || continue
+        case "$file" in
+            "$base/claude-$uid/"*) ;;
+            *) continue ;;
+        esac
+        rest="${file#"$base/claude-$uid/"}"
+        proj="${rest%%/*}"; [ -n "$proj" ] && [ "$proj" != "$rest" ] || continue; rest="${rest#*/}"
+        sess="${rest%%/*}"; [ -n "$sess" ] && [ "$sess" != "$rest" ] || continue; rest="${rest#*/}"
+        case "$rest" in
+            scratchpad|scratchpad/*)
+                _SCRATCHPAD_ROOT="$base/claude-$uid/$proj/$sess/scratchpad"
+                return 0
+                ;;
+        esac
+    done
+    return 1
+}
+
 main_checkout_verdict_set() {
     local file_real="${1:-}"
     local repo_real=""
@@ -1195,6 +1226,15 @@ main_checkout_verdict_set() {
     _repo_root_for_path_set "$file_real" && repo_real="$_RRFP_OUT" || repo_real=""
     [ -n "$repo_real" ] || return 0
     repo_real="${repo_real%/}"
+
+    # A path in the caller's own session scratchpad is outside any repo when the
+    # `.git` the walk-up found sits ABOVE the scratchpad (a stray /tmp/.git).
+    # A `.git` in the scratchpad itself or below it decides as before.
+    if _in_session_scratchpad "$file_real" && [ "$repo_real" != "$_SCRATCHPAD_ROOT" ]; then
+        case "$_SCRATCHPAD_ROOT/" in
+            "$repo_real/"*) return 0 ;;
+        esac
+    fi
 
     case "$file_real" in
         "$repo_real"/handovers/*)

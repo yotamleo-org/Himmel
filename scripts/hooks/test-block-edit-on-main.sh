@@ -207,6 +207,39 @@ assert_rc "T3d scratchpad .git dir with a commondir file into a primary blocks (
 assert_rc "T3d scratchpad clone with core.worktree set blocks (HIMMEL-8443)" 2 \
     "$(rc_of "$SCR/gfork/cw/foo.js" TMPDIR="$SANDBOX")"
 
+# T3e: a stray `.git` at the temp root (an empty /tmp/.git is the
+# known shape) must not refuse a Write into the session's own scratchpad. The
+# `.git` here is an empty directory, so the branch is unreadable (rc 3 → exit 2).
+# TMPDIR pins the temp root to a fixture separate from $SANDBOX (which must stay
+# outside any repo for T4/T13/T14).
+SB9626=$(mktemp -d "${TMPDIR:-/tmp}/t3e.XXXXXX") || exit 1
+SCR2="$SB9626/claude-$(id -u)/proj/sess/scratchpad"
+mkdir -p "$SB9626/.git" "$SCR2/sub" "$SB9626/other"
+assert_rc "T3e stray .git at the temp root: a Write into the scratchpad allows" 0 \
+    "$(rc_of "$SCR2/x.py" TMPDIR="$SB9626")"
+assert_rc "T3e stray .git at the temp root: a Write into a scratchpad subdir allows" 0 \
+    "$(rc_of "$SCR2/sub/x.py" TMPDIR="$SB9626")"
+assert_rc "T3e stray .git at the temp root: a Write elsewhere under the temp root still fails closed" 2 \
+    "$(rc_of "$SB9626/other/x.py" TMPDIR="$SB9626")"
+assert_rc "T3e stray .git at the temp root: a Write outside the session layout still fails closed" 2 \
+    "$(rc_of "$SB9626/claude-$(id -u)/proj/x.py" TMPDIR="$SB9626")"
+# A `.git` INSIDE the scratchpad still decides: the scratchpad is then a repo.
+mkdir -p "$SCR2/sub/.git"
+assert_rc "T3e a .git inside the scratchpad still fails closed" 2 \
+    "$(rc_of "$SCR2/sub/x.py" TMPDIR="$SB9626")"
+# A scratchpad path that reaches a primary checkout by symlink is judged by the checkout.
+ln -sfn "$SANDBOX/featrepo" "$SCR2/linkprim"
+assert_rc "T3e a scratchpad symlink into a primary still blocks" 2 \
+    "$(rc_of "$SCR2/linkprim/foo.js" TMPDIR="$SANDBOX")"
+assert_rc "T3e a scratchpad symlink into a primary still blocks under the stray .git" 2 \
+    "$(rc_of "$SCR2/linkprim/foo.js" TMPDIR="$SB9626")"
+# The rc 3 message names the `.git` the walk-up found.
+t3eerr=$(printf '%s' "{\"tool_input\":{\"file_path\":\"$SB9626/other/x.py\"}}" | env TMPDIR="$SB9626" bash "$HOOK" 2>&1 >/dev/null)
+case "$t3eerr" in
+    *"$SB9626/.git"*) echo "PASS T3e the rc 3 message names the .git it found" ;;
+    *) echo "FAIL T3e the rc 3 message names the .git it found — got: $t3eerr"; FAILED=$((FAILED + 1)) ;;
+esac
+
 # T4: file not inside any git repo → ALLOW
 if [ "$SANDBOX_IN_REPO" -eq 0 ]; then
     assert_rc "T4 outside any repo allows" 0 "$(rc_of "$SANDBOX/plain/foo.js")"
@@ -665,7 +698,7 @@ assert_rc "T50 Write .single-writer (untracked+gitignored) on main blocks (HIMME
 # Clean up the worktree registration before removing the sandbox (avoids a
 # dangling `git worktree` admin record under SANDBOX/wtrepo).
 git -C "$SANDBOX/wtrepo" worktree remove --force "$SANDBOX/wtrepo/.claude/worktrees/feat+x" 2>/dev/null || true
-rm -rf "$SANDBOX" 2>/dev/null || true
+rm -rf "$SANDBOX" "$SB9626" 2>/dev/null || true
 
 if [ "$FAILED" -gt 0 ]; then
     echo "---"
