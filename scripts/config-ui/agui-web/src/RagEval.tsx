@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { RAG_EVAL_URL, ragEvalModel, type Measure, type RagEval, type Route } from "./rag-eval-model";
+import { RAG_EVAL_URL, ragEvalModel, type Measure, type RagEval, type Route, type Split } from "./rag-eval-model";
 
 type State = { model: RagEval | null; error: string | null };
 function useRagEval(token: string): State {
@@ -20,13 +20,16 @@ function useRagEval(token: string): State {
 
 const day = (ts: string) => new Date(ts).toLocaleDateString([], { day: "numeric", month: "short" });
 const tokens = (t: number | null) => (t === null ? "—" : Math.round(t).toLocaleString());
+const share = (s: Split) => `${s.count} of ${s.n} (${Math.round((s.count / s.n) * 100)}%)`;
 const secs = (ms: number | null) => (ms === null ? "—" : `${(ms / 1000).toFixed(1)} s`);
 
 function Cells({ m, gap }: { m: Measure | null; gap: string }) {
   if (!m) return <td colSpan={4} className="rag-gap">{gap}</td>;
   return (
     <>
-      <td><b>{m.count} of {m.n}</b> <span className="rag-dim">{Math.round(m.rate * 100)}%</span></td>
+      <td><b>{m.count} of {m.n}</b> <span className="rag-dim">{Math.round(m.rate * 100)}%</span>
+        {m.heldout && <span className="rag-split">held-out {share(m.heldout)}</span>}
+        {m.insample && <span className="rag-split">in-sample {share(m.insample)}</span>}</td>
       <td>{tokens(m.tokens)}</td>
       <td>{secs(m.ms)}</td>
       <td className="rag-dim" title={m.runId}>{day(m.ts)}</td>
@@ -55,19 +58,20 @@ export function RagEvalPage({ token }: { token: string }) {
         <>
           <p className="rag-bottom">{model.bottomLine}</p>
           <p className="rag-dim">From the eval runs already recorded{model.newest ? `, newest ${day(model.newest)}` : ""}. Opening this page runs no eval.</p>
+          {model.sampleNote && <p className="rag-sample">{model.sampleNote}</p>}
           <div className="rag-scroll">
             <table className="rag-table">
               <thead>
-                <tr><th rowSpan={2} scope="col">Route</th><th colSpan={4} scope="colgroup">Finds the file (hit@5 on the raw list)</th><th colSpan={4} scope="colgroup">Right answers (Claude session)</th></tr>
+                <tr><th rowSpan={2} scope="col">Route</th><th colSpan={4} scope="colgroup">Finds the file (hit@5 on the raw list)</th><th colSpan={4} scope="colgroup">Names a gold file (Claude session, up to 3 guesses)</th></tr>
                 <tr><th scope="col">Found</th><th scope="col">List tokens</th><th scope="col">Median time</th><th scope="col">Run</th>
-                  <th scope="col">Right</th><th scope="col">Session tokens</th><th scope="col">Median time</th><th scope="col">Run</th></tr>
+                  <th scope="col">Named</th><th scope="col">Session tokens</th><th scope="col">Median time</th><th scope="col">Run</th></tr>
               </thead>
               <tbody>{model.routes.map((r) => <Row key={r.key} r={r} />)}</tbody>
             </table>
           </div>
           <ul className="rag-notes">
             <li><b>Finds</b>: is a right file among the route's first 5 results. No model is involved. List tokens are what a caller reads from the list.</li>
-            <li><b>Right answers</b>: a Claude session with Read, Grep and Glob, plus the route as one tool, names the right file. Session tokens are the whole session's, so they are not comparable with list tokens.</li>
+            <li><b>Names a gold file</b>: a Claude session with Read, Grep and Glob, plus the route as one tool, lists up to 3 files, and it counts when one of them is a gold file. The answer itself is not checked. Session tokens are the whole session's, so they are not comparable with list tokens.</li>
             <li><b>Vanilla Claude</b> is the same session with no route tool. It produces no ranked list, so it has no hit@5.</li>
             <li>A tie means the two 95% ranges overlap: the test cannot tell the two apart.</li>
           </ul>
