@@ -507,7 +507,7 @@ async function main() {
     let rest = text.slice(pre[0].length);
     if (rest.startsWith("[")) { const i = rest.indexOf("]: "); rest = i >= 0 ? rest.slice(i + 3) : ""; }
     const name = /^[^\w]*([a-z0-9][a-z0-9-]*):/.exec(rest)?.[1];
-    return name && hooks.has(name) ? name : opened(rest) ?? "other";
+    return opened(rest) ?? (name && hooks.has(name) ? name : "other");
   };
 
   for (const e of events) {
