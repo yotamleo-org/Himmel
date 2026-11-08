@@ -8244,6 +8244,9 @@ rm -rf "$c91_t"
 
 # --- C95: a repo whose single-writer barrier is off is visible (invariant I8 of the single-writer barrier) ---
 # Fake HOME only: the register is $HOME/.himmel/state/holds, never the station's own.
+# shellcheck source=lib/timeout-bin.sh
+# shellcheck disable=SC1091
+{ . "$REPO_ROOT/scripts/lib/timeout-bin.sh"; } 2>/dev/null || _TIMEOUT_BIN=""
 c95_t="$(mktemp -d "${TMPDIR:-/tmp}/c95.XXXXXX")" || { echo "FATAL: C95 setup mktemp failed" >&2; exit 1; }
 git init -q "$c95_t/repo"
 c95_repo="$(cd "$c95_t/repo" && pwd -P)"
@@ -8253,6 +8256,7 @@ c95_reset() { rm -rf "${c95_t:?}/home" "${c95_t:?}/claude" "$c95_repo/.single-wr
 c95_row() { printf '%b' "$2" > "$c95_holds/$c95_esc/$1"; }                # c95_row <escaped file name> <content>
 c95_live() { c95_row 'scripts%2Fa.sh' 'HIMMEL-8725\tN1\t\tclaim\t\n'; }    # a row written now is inside the grace, so alive
 c95_run() { env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" bash "$DOC" --only C95 --no-color 2>&1; }
+c95_run_bounded() { env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" "${_TIMEOUT_BIN:-timeout}" -k 2 20 bash "$DOC" --only C95 --no-color 2>&1 < /dev/null; }
 echo "== C95: a .single-writer marker at the primary plus a live worker row -> WARN naming the repo and the marker age =="
 c95_reset; c95_live; : > "$c95_repo/.single-writer"
 out="$(c95_run)"
@@ -8289,6 +8293,23 @@ echo "== C95: no register at all -> OK =="
 rm -rf "${c95_t:?}/home" "$c95_repo/.single-writer"; mkdir -p "$c95_t/home"
 out="$(c95_run)"
 if grepq "$out" 'OK   C95-barrier-off' && ! grepq "$out" 'WARN C95'; then pass "C95 no register -> OK"; else fail "C95 no register -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C95: a holds root that cannot be listed -> WARN, never a silent OK =="
+if [ "$(id -u)" -eq 0 ]; then
+    echo "  SKIP: C95 unlistable holds root — root reads any directory"
+else
+    c95_reset; chmod 000 "$c95_holds"
+    out="$(c95_run)"
+    chmod 700 "$c95_holds"
+    if grepq "$out" -E 'WARN C95-barrier-off.*cannot list'; then pass "C95 unlistable holds root -> WARN"; else fail "C95 unlistable holds root -> $(printf '%s' "$out" | head -4)"; fi
+fi
+echo "== C95: an OFF entry that is a FIFO -> WARN and the doctor does not hang =="
+if command -v mkfifo >/dev/null 2>&1 && [ -n "${_TIMEOUT_BIN:-}" ]; then
+    c95_reset; mkfifo "$c95_holds/OFF"
+    out="$(c95_run_bounded)"
+    if grepq "$out" -E 'WARN C95-barrier-off.*OFF.*not a regular file'; then pass "C95 FIFO OFF -> WARN, no hang"; else fail "C95 FIFO OFF -> $(printf '%s' "$out" | head -4)"; fi
+else
+    echo "  SKIP: C95 FIFO OFF — no mkfifo or no timeout binary"
+fi
 rm -rf "$c95_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

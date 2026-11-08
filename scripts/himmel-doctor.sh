@@ -4011,18 +4011,24 @@ check_c95_barrier_off() {
     local name repo rows rc err marker age live bad offline warned=0 off="$holds/OFF"
     if [ -e "$off" ] || [ -L "$off" ]; then
         warned=1
-        offline="$(head -n 1 "$off" 2>/dev/null | cut -c1-300)"
+        # a FIFO or device named OFF would block the read: only a regular file (or a link to one) is read
+        [ -f "$off" ] && offline="$(head -n 1 "$off" 2>/dev/null | cut -c1-300)" || offline=""
         # holds.py off writes "<utc time><TAB><reason>": that is a ruled, standing state (INFO); anything else is not ours (WARN)
-        if grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]+Z'"$(printf '\t')" <<< "$offline"; then
+        if [ -f "$off" ] && grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]+Z'"$(printf '\t')" <<< "$offline"; then
             emit INFO C95-barrier-off "the single-writer barrier is OFF for every repo: $off exists ($(printf '%s' "$offline" | tr '\t' ' '))" \
                 "when the reason is over, the chief runs: python3 -I $py on"
         else
-            emit WARN C95-barrier-off "the single-writer barrier is OFF for every repo: $off exists but is not a holds.py off sentinel ($(printf '%s' "$offline" | tr '\t' ' '))" \
+            emit WARN C95-barrier-off "the single-writer barrier is OFF for every repo: $off exists but is not a holds.py off sentinel ($([ -f "$off" ] || printf 'not a regular file; ')$(printf '%s' "$offline" | tr '\t' ' '))" \
                 "the chief runs python3 -I $py on, or removes the file if it is stray"
         fi
     fi
     if [ ! -d "$holds" ]; then
         [ "$warned" = 1 ] || emit OK C95-barrier-off "no holds register on this station, so no repo has a barrier-off marker to see"
+        return 0
+    fi
+    if [ ! -r "$holds" ] || [ ! -x "$holds" ]; then
+        emit WARN C95-barrier-off "cannot list the holds register $holds (no read or search permission) -- a barrier-off repo would not show" \
+            "check the permissions of $holds"
         return 0
     fi
     command -v python3 >/dev/null 2>&1 || { emit WARN C95-barrier-off "python3 not on PATH -- the holds register was not read, so a barrier-off repo would not show"; return 0; }
