@@ -1361,7 +1361,7 @@ pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun trustsoft esc6)"; rc=$?
 [ "$rc" = 1 ] && has "size escape: still the operator's after the attempted record" "$pso" "operator" || fail "trust soft after record: rc=$rc: $pso"
 pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun huge esc7)"; rc=$?
 [ "$rc" = 1 ] && pass "size escape: a brief past the 300-file cap is refused (rc 1)" || fail "huge: rc=$rc: $pso"
-has "size escape: the 300-file refusal routes to the operator" "$pso" "operator"
+has "size escape: the 300-file refusal says split the ticket" "$pso" "split the ticket"
 pso="$(HOME="$PSHOME" env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME=chief-t bash "$OV" record "$SZK" N921 --files 301 --reason "huge" --root "$WORK/handovers" 2>&1)"; rc=$?
 [ "$rc" = 4 ] && pass "size escape: the chief cannot sign for a brief past 300 files (rc 4)" || fail "huge record: rc=$rc: $pso"
 pso="$(HOME="$PSHOME" env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME=chief-t bash "$OV" record "$SZK" N921 --files 41 --lines 1501 --reason "huge" --root "$WORK/handovers" 2>&1)"; rc=$?
@@ -1375,6 +1375,31 @@ has "size escape: the bulk trust-path refusal routes to the operator" "$pso" "op
 [ -z "$(ps_brief bulktrust esc10)" ] && pass "size escape: the bulk trust-path brief writes no doc" || fail "bulk trust-path brief was written"
 pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun bulkhuge esc11)"; rc=$?
 [ "$rc" = 1 ] && pass "size escape: bulk: mechanical past the 300-file cap is refused (rc 1)" || fail "bulk huge: rc=$rc: $pso"
+has "size escape: the bulk past-cap refusal says split the ticket" "$pso" "past the 300-file CodeRabbit cap: this cannot open as one PR; split the ticket"
+lacks "size escape: the bulk past-cap refusal prints no Telegram approve line" "$pso" "/op size-approval"
+lacks "size escape: the bulk past-cap refusal prints no terminal approve line" "$pso" "size-override.sh operator"
+pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun huge esc12)"
+has "size escape: the past-cap refusal says split the ticket" "$pso" "past the 300-file CodeRabbit cap: this cannot open as one PR; split the ticket"
+lacks "size escape: the past-cap refusal prints no Telegram approve line" "$pso" "/op size-approval"
+lacks "size escape: the past-cap refusal prints no terminal approve line" "$pso" "size-override.sh operator"
+# the operator's lines: a 272-file trust-path brief (one tracked trust-path file, 271 new ones) is refused with the base,
+# the scope digest of its file list, the Telegram line byte-equal to the shared fixture and the terminal line
+SAFIX="$HERE/fixtures/size-approval-op-line.txt"
+SAKEY=$(printf 'HIMMEL-%s' 9228)
+SAD=$(sed -n 's/.* scope=\([0-9a-f]*\) .*/\1/p' "$SAFIX")
+if [ -e "/var/lib/himmel/size-approvals/$SAKEY.N5216.272.$SAD" ]; then
+    fail "the host holds an approval for the R7 fixture (/var/lib/himmel/size-approvals/$SAKEY.N5216.272.$SAD); gen-briefs reads it"
+else
+    pass "the host holds no approval for the R7 fixture"
+fi
+cat > "$WORK/ps-opline.json" <<PSEOF
+[{"label":"N5216","keys":["$SAKEY"],"slug":"size","branch":"fix/himmel-9228-size","title":"a sized fix","desc":"d","why":"w","prior":"HIMMEL-9000 (the earlier fix). Source: \`git log -3 -- scripts/x\`.","writes":"scripts/ci/t1.sh $(for n in $(seq 1 271); do printf 'scripts/newd/n%s.txt ' "$n"; done)","scope":"\`scripts/ci/t1.sh\`","scope_short":"scripts/ci/t1.sh","commit":"fix(x): [$SAKEY] f"}]
+PSEOF
+pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun opline esc13)"; rc=$?
+[ "$rc" = 1 ] && pass "size escape: a 272-file trust-path brief is refused (rc 1)" || fail "opline: rc=$rc: $pso"
+has "size escape: the refusal names the base, the scope digest and the list ends" "$pso" "base ${PSBASE:0:12}, scope $SAD = 272 files, first scripts/ci/t1.sh, last scripts/newd/n99.txt"
+has "size escape: the refusal prints the Telegram line byte for byte as the shared fixture" "$pso" "$(head -n 1 "$SAFIX")"
+has "size escape: the refusal prints the terminal line" "$pso" "size-override.sh operator $SAKEY N5216 --files 272 --scope $SAD --reason keep-whole"
 pso2="$(psrun trustsoft esc9)"; rc2=$?
 [ "$rc2" = 0 ] && pass "size escape: with the gate off a trust-path brief over the soft band only warns (rc 0)" || fail "trust soft gate off: rc=$rc2: $pso2"
 

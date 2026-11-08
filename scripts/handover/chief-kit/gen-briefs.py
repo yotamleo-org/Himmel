@@ -690,6 +690,26 @@ def size_override(args, hroot):
     return r
 
 
+def size_scope(fl):
+    # the brief's file-list digest the operator's approval binds: 32 hex of sha256 over the paths in code-point order,
+    # one per line, each ending in a newline (the same order as LC_ALL=C sort)
+    return hashlib.sha256(''.join(p + '\n' for p in sorted(fl)).encode()).hexdigest()[:32]
+
+
+def operator_lines(key, label, n, fl, scope, base):
+    # what a check exit 4 tells the chief to send: past the CodeRabbit cap only the split; otherwise the paste-ready
+    # Telegram line and terminal line that file the size-approval op for this exact brief
+    cap = size_bands()['coderabbit']
+    if n > cap:
+        return 'past the %d-file CodeRabbit cap: this cannot open as one PR; split the ticket (SIZE-ESCALATE row written)' % cap
+    return '\n'.join([
+        'the operator approves this exact brief (base %s, scope %s = %d files, first %s, last %s):' % (base[:12], scope, n, fl[0], fl[-1]),
+        '/op size-approval key=%s label=%s files=%d scope=%s reason=keep-whole' % (key, label, n, scope),
+        'bash %s operator %s %s --files %d --scope %s --reason keep-whole' % (SIZE_OVERRIDE, key, label, n, scope),
+        'SIZE-ESCALATE row written. Send the operator the Telegram line inside a code span and the terminal line for a plain '
+        'terminal; never run them yourself, the approval needs the operator\'s code.'])
+
+
 def size_trust(files):
     res = load_trust_res()
     return any(rx.search(f) for f in files for rx in res)
@@ -717,11 +737,12 @@ def check_pr_size(l, repo, base, hroot):
         if pr_size_gate_on():
             btrust = n is not None and size_trust(fl)
             if n is not None:
-                r = size_override(['check', l['keys'][0], l['label'], '--files', str(n), '--trust', 'yes' if btrust else 'no'], hroot)
+                scope = size_scope(fl)
+                r = size_override(['check', l['keys'][0], l['label'], '--files', str(n), '--trust', 'yes' if btrust else 'no', '--scope', scope], hroot)
                 if r.returncode == 4:
                     msg = 'worker %s is bulk: mechanical, Writes project to %d files' % (l['label'], n)
                     size_note('refuse', l, hroot, n, btrust, msg)
-                    die(msg + '; ' + r.stderr.strip() + '; ask the operator (SIZE-ESCALATE row written)')
+                    die(msg + '; ' + r.stderr.strip() + '\n' + operator_lines(l['keys'][0], l['label'], n, fl, scope, base))
             size_note('bulk', l, hroot, n or 0, btrust, 'bulk: mechanical, Writes project to %s files' % ('?' if n is None else n))
         return
     bands = size_bands()
@@ -736,7 +757,8 @@ def check_pr_size(l, repo, base, hroot):
         if pr_size_gate_on():
             key = l['keys'][0]
             if n is not None:
-                r = size_override(['check', key, l['label'], '--files', str(n), '--trust', 'yes' if trust else 'no'], hroot)
+                scope = size_scope(fl)
+                r = size_override(['check', key, l['label'], '--files', str(n), '--trust', 'yes' if trust else 'no', '--scope', scope], hroot)
                 if r.returncode == 0:
                     print('gen-briefs: warning: ' + msg + '; ' + r.stdout.strip(), file=sys.stderr)
                     return
@@ -744,7 +766,7 @@ def check_pr_size(l, repo, base, hroot):
             if n is None:
                 die(msg)
             if r.returncode == 4:
-                die(msg + '; ' + r.stderr.strip() + '; ask the operator (SIZE-ESCALATE row written)')
+                die(msg + '; ' + r.stderr.strip() + '\n' + operator_lines(key, l['label'], n, fl, scope, base))
             die(msg + '; split the ticket, set "bulk": "mechanical" on a scripted transform, or the chief signs an override '
                 '(bash %s record %s %s --files %d --reason "<why keep it whole>"; SIZE-ESCALATE row written)' % (SIZE_OVERRIDE, key, l['label'], n))
         print('gen-briefs: warning: ' + msg + '; pr_size_gate is off, so the brief is written', file=sys.stderr)

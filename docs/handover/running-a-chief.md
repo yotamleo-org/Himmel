@@ -746,8 +746,16 @@ CodeRabbit cap, and one past the 1500-line max: `size-override.sh` refuses to re
 these (exit 4). `gen-briefs.py` refuses the first two whatever rows exist, and
 `"bulk": "mechanical"` does not lift them; it skips only the bands you can rule. The
 line limit binds only when a line count is declared (`record --lines`): a brief has no
-line count before the code exists, so `gen-briefs.py` never computes one. Send the
-operator the row and your split proposal.
+line count before the code exists, so `gen-briefs.py` never computes one. For a
+trust-path brief of 21 to 300 files, send the operator the lines the refusal prints:
+the Telegram line (`/op size-approval …`) inside a code span, so a tap copies it, and
+the terminal line (`size-override.sh operator …`) for a plain terminal. The operator
+copies the Telegram line into a new message; a forwarded one is refused with no reply.
+Never run either line yourself: the approval needs the operator's nonce and code, and
+root writes it (`docs/internals/afk-sudo.md`, the `size-approval` op). It binds that
+worker's file count and file-list digest for 7 days. When the refusal says an approval
+covers another list, re-run at the base the approval was given for, or send the new
+lines. Past the 300-file cap there is no approval: split the ticket.
 
 ### A denied write: HOLD-ASK and the write barrier
 
